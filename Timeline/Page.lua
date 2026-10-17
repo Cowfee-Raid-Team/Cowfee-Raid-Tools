@@ -4,16 +4,15 @@ local ADDON, CRT = ...
 -- references or saved pulls, see it drawn by the timeline view), References (Timeline/ReferencePage.lua: paste, edit
 -- and delete reference timelines) and Settings (Timeline/SettingsTab.lua: the view, which rows to
 -- show, the deaths, and recording). Every control writes through Timeline:Set or the Journal's
--- setters, and the page redraws when either tells it something changed. The boss list is the
--- bosses with saved pulls, the bosses of the raid you are standing in, and the bosses that only
--- have a reference, so a boss can be opened before its first pull. With a reference shown, the
+-- setters, and the page redraws when either tells it something changed. The boss list is the boss
+-- library's bosses in the raid route (CRT.Bosses:Options), headed by raid, so a boss can be opened
+-- before its first pull; a boss outside the library is not listed. With a reference shown, the
 -- Recent pulls list beside it lays one of the boss's pulls over it; that choice is not saved. The
 -- Difficulty dropdown picks Normal/Heroic or Mythic, and every list shows only that group. The
 -- difficulty, boss and reference or pull shown are saved in timeline.lastView, so the page opens on
 -- them again, after a reload too.
 
 local Timeline = CRT.Timeline
-local Journal = CRT.TimelineJournal
 local View = CRT.TimelineView
 local Reference = CRT.TimelineReference
 local ReferencePage = CRT.TimelineReferencePage
@@ -57,7 +56,6 @@ local controls = {} -- the Review tab's controls, which refresh() redraws
 local currentTab = "review"
 local selectedBoss, selectedPull
 local selectedGroup = "nh" -- "nh" or "mythic": which difficulty the page shows
-local selectedBossName -- the selected boss's name, to find it again if its key changes
 local shownBoss, shownPull, shownBase, shownOverlay, shownGroup
 local overlayID -- the pull laid over the shown reference, by id; not saved
 local bossList -- { { key, name, label } } for the dropdown and name lookups, rebuilt on each refresh
@@ -66,13 +64,6 @@ local refresh
 
 local function settings()
     return Timeline:Settings()
-end
-
--- A name as the lanes compare it: trimmed, curly apostrophes made plain, lowercase. The same rule
--- as trimLower in Lanes.lua.
-local function nameKey(name)
-    local s = tostring(name or ""):gsub("\226\128\153", "'"):gsub("\226\128\152", "'")
-    return (s:gsub("^%s+", ""):gsub("%s+$", "")):lower()
 end
 
 local function skin(frame, alpha)
@@ -99,33 +90,34 @@ end
 
 -- The bosses ------------------------------------------------------------------------------------
 
--- Bosses with saved pulls first, then this raid's bosses that have none, then the bosses that only
--- have a reference: { { key, name, label } }, the label being the name with the pull count for a
--- boss that has pulls. Each reference goes to the boss Reference:BossKey gives it, so the boss list
--- and each boss's references use one rule. A boss added for a reference has a text key, so a later
--- reference finds it only by the same name, which is the key BossKey would give it anyway.
+-- The boss library's bosses in the raid route (CRT.Bosses:Options: a heading per raid, then its
+-- bosses, never re-sorted here): { { key, name, label } }, the label being the name with the pull
+-- count on the shown difficulty, and a heading { key = "raid:...", label, title = true }. A boss that
+-- is not in the library is not listed, even with saved pulls (they stay saved). Each reference goes
+-- to the boss Reference:BossKey gives it; one for a boss that is not listed is left out too.
 local function buildBossList()
-    local list, seen = {}, {}
+    local list, bosses = {}, {}
     refsByBoss = {}
+    local counts = {}
     for _, boss in ipairs(Timeline:Bosses(selectedGroup)) do
-        seen[boss.encounterID] = true
-        local name = boss.name ~= "" and boss.name or tostring(boss.encounterID)
-        list[#list + 1] = { key = boss.encounterID, name = name, label = boss.count > 0 and (name .. " (" .. boss.count .. ")") or name }
+        counts[boss.encounterID] = boss.count
     end
-    for _, boss in ipairs(Journal:RaidBosses()) do
-        if not seen[boss.encounterID] then
-            seen[boss.encounterID] = true
-            list[#list + 1] = { key = boss.encounterID, name = boss.name, label = boss.name }
+    for _, option in ipairs(CRT.Bosses:Options()) do
+        if option.title then
+            list[#list + 1] = option
+        else
+            local count = counts[option.key] or 0
+            local entry = { key = option.key, name = option.label, label = count > 0 and (option.label .. " (" .. count .. ")") or option.label }
+            list[#list + 1] = entry
+            bosses[#bosses + 1] = entry
         end
     end
     for _, entry in ipairs(Reference:ForGroup(Reference:List(), selectedGroup)) do
-        local key = Reference:BossKey(entry, list)
-        if not seen[key] then
-            seen[key] = true
-            list[#list + 1] = { key = key, name = entry.ref.boss, label = entry.ref.boss }
+        local key = Reference:BossKey(entry, bosses)
+        if type(key) == "number" then
+            refsByBoss[key] = refsByBoss[key] or {}
+            table.insert(refsByBoss[key], entry)
         end
-        refsByBoss[key] = refsByBoss[key] or {}
-        table.insert(refsByBoss[key], entry)
     end
     return list
 end
@@ -211,29 +203,13 @@ local function fixSelection()
     local options = bossOptions()
     local found = false
     for _, option in ipairs(options) do
-        if option.key == selectedBoss then
+        if not option.title and option.key == selectedBoss then
             found = true
         end
     end
-    -- a boss that was listed only for its reference ("ref:name") gets a numeric key once it is
-    -- pulled or you enter its raid: the same name stays selected, with its reference
-    if not found and type(selectedBoss) == "string" and selectedBossName then
-        for _, option in ipairs(options) do
-            if type(option.key) == "number" and nameKey(option.name) == selectedBossName then
-                selectedBoss, found = option.key, true
-                break
-            end
-        end
-    end
     if not found then
-        selectedBoss = options[1] and options[1].key or nil
+        selectedBoss = CRT.Bosses.FirstKey(options)
         selectedPull = nil
-    end
-    selectedBossName = nil
-    for _, option in ipairs(options) do
-        if option.key == selectedBoss then
-            selectedBossName = nameKey(option.name)
-        end
     end
     local valid
     if showingReference() then
@@ -385,6 +361,7 @@ local GRIP = "Interface\\ChatFrame\\UI-ChatIM-SizeGrabber"
 local MIN_W, MIN_H = 760, 360
 local popWin, popButton, dockedNote
 local popped = false
+local returnPage -- the page Show on the Timeline came from, shown again when the pop-out is closed
 
 local function popSettings()
     local s = settings()
@@ -494,13 +471,19 @@ local function buildPopout()
     end)
 
     -- Closing the window, however it closes, puts the Review tab back, and ends a Show on the
-    -- Timeline's light.
+    -- Timeline's light. Opened by Show on the Timeline, the main window goes back to the page it
+    -- came from (Raid Notes on its Mech Alerts tab); the Dock button stays on the Timeline.
     popWin:SetScript("OnHide", function()
         if view then
             view:ClearHighlight()
         end
+        local back = returnPage
+        returnPage = nil
         if popped then
             dock()
+        end
+        if back then
+            UI:SelectPage(back)
         end
     end)
     popWin:Hide()
@@ -540,6 +523,7 @@ local function popOut()
 end
 
 local function togglePopout()
+    returnPage = nil
     if popped then
         dock()
     else
@@ -651,6 +635,9 @@ local function bossKeyFor(encounterID)
 end
 
 function Timeline:ShowRow(encounterID, spell, name)
+    if not (popped and popWin:IsShown()) and CRT.db.lastPage ~= "timeline" then
+        returnPage = CRT.db.lastPage
+    end
     CRT.TimelinePopout()
     local key, before = nil, selectedGroup
     for _, group in ipairs({ before, before == "nh" and "mythic" or "nh" }) do
@@ -685,7 +672,7 @@ refresh = function()
     bossList = buildBossList()
     fixSelection()
     -- what is shown is kept, so the page (and a reload) opens on it again
-    settings().lastView = { group = selectedGroup, boss = selectedBoss, pull = selectedPull, bossName = selectedBossName }
+    settings().lastView = { group = selectedGroup, boss = selectedBoss, pull = selectedPull }
     for _, control in ipairs(controls) do
         control.refresh()
     end
@@ -783,7 +770,7 @@ local function build(pf)
     local last = settings().lastView
     if type(last) == "table" then
         selectedGroup = (last.group == "mythic") and "mythic" or "nh"
-        selectedBoss, selectedPull, selectedBossName = last.boss, last.pull, last.bossName
+        selectedBoss, selectedPull = last.boss, last.pull
     end
 
     pf:SetScript("OnShow", function()
@@ -791,6 +778,7 @@ local function build(pf)
         refresh()
     end)
     Timeline:OnChange(refresh)
+    CRT.Bosses:OnRouteChange(refresh) -- the raid route, the boss list's order
     if CRT.Notes and CRT.Notes.OnChange then
         CRT.Notes:OnChange(refresh) -- a note shared, edited or deleted
     end
