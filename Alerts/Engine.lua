@@ -23,6 +23,7 @@ local ADDON, CRT = ...
 local Rules = CRT.AlertRules
 
 local REHEARSAL_JUMP = 0.25 -- fight seconds a tick may stray from real time x speed before it counts as a jump
+local CUT_EPSILON = 0.001   -- an item this close before the rehearsal's start still counts as at it (rounding)
 
 local Alerts = {
     listeners = {},
@@ -123,13 +124,30 @@ function Alerts:RehearsalSpeed()
 end
 
 -- Preview as: nil (you), "*" (everyone) or a player's name. Always nil outside a rehearsal.
-function Alerts:PreviewAs()
-    local r = rehearsal(self)
+-- Whether a name (realm optional) is your own character's.
+local function isYou(name)
+    local ok, mine = pcall(UnitName, "player")
+    local T = CRT.Timeline
+    if not ok or type(mine) ~= "string" or (T and T.readable and not T.readable(mine)) then
+        return false
+    end
+    return (name:gsub("%-.*$", "")):lower() == mine:lower()
+end
+
+-- A rehearsal's Preview as: "*", another player's name, or nil (you, which your own name also means).
+local function previewOf(r)
     local as = r and r.as
-    if as == "*" or (type(as) == "string" and as ~= "") then
+    if as == "*" then
+        return as
+    end
+    if type(as) == "string" and as ~= "" and not isYou(as) then
         return as
     end
     return nil
+end
+
+function Alerts:PreviewAs()
+    return previewOf(rehearsal(self))
 end
 
 -- What the countdown swipes need, which run on real time: paused, speed, epoch. The epoch goes up on
@@ -147,7 +165,8 @@ function Alerts:RehearsalTick()
         local fight, speed = ask(r.clock), self:RehearsalSpeed()
         if fight and r.tickFight then
             local moved = fight - r.tickFight
-            local paused = moved == 0 and speed == r.tickSpeed
+            -- a clock standing still is paused, whatever the speed says
+            local paused = moved == 0
             local expected = (real - r.tickReal) * r.tickSpeed
             local jumped = not paused and math.abs(moved - expected) > REHEARSAL_JUMP
             if paused ~= r.paused or speed ~= r.tickSpeed or jumped then
@@ -205,8 +224,8 @@ end
 function Alerts:Collect(run, opts)
     local out = {}
     -- Previewing as another player shows exactly what they get: none of your own reminders.
-    local as = run and run.rehearsal and run.rehearsal.as
-    local othersOnly = type(as) == "string" and as ~= "" and as ~= "*"
+    local as = run and run.rehearsal and previewOf(run.rehearsal)
+    local othersOnly = as ~= nil and as ~= "*"
     for _, key in ipairs(self.blockOrder) do
         local def = self.blocks[key]
         if def and not (othersOnly and def.own) and (not (opts and opts.blocks) or opts.blocks[key]) then
@@ -299,9 +318,12 @@ function Alerts:Start(encounterID, difficultyName, reason, opts)
     if reason == "rehearsal" then
         local o = type(opts) == "table" and opts or {}
         local at = ask(o.clock) or 0
-        local base = GetTime() - at
+        local now = GetTime()
+        local base = now - at
+        local speed = ask(o.speed)
+        -- the first tick compares against the clock at Start, so a run that starts paused is paused at once
         run.rehearsal = { clock = o.clock, speed = o.speed, as = o.as, base = base, from = base + at,
-            epoch = 0, paused = false }
+            epoch = 0, paused = false, tickReal = now, tickFight = at, tickSpeed = (speed and speed > 0) and speed or 1 }
     end
     self.run = run
     self.starting = true
@@ -468,7 +490,7 @@ function Alerts:Lines(now)
     for _, it in ipairs(self.items) do
         local start = self.starts[it.ph]
         if start and not self.skipped[it.ph] and hasOutput(it) and not self:IsCut(it.ph, it.time)
-            and not (from and start + it.time < from) then
+            and not (from and start + it.time < from - CUT_EPSILON) then
             local e = {}
             for k, v in pairs(it) do e[k] = v end
             e.at = start + it.time

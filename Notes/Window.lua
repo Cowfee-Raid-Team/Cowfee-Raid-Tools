@@ -157,8 +157,22 @@ end
 
 -- What each window shows: returns text, heading, hasContent ------------------------------------
 
-local function timersText()
+-- The note the timers window shows: the rehearsed one during a rehearsal run (CRT.NoteEngine.noteId, which
+-- need not be the active note), else the active note. Returns record, note.
+local function timersNote()
+    local Alerts = CRT.Alerts
+    if Engine.noteId and Engine:Note() and Alerts and Alerts.IsRehearsal and Alerts:IsRehearsal() then
+        local record = Notes:Get(Engine.noteId)
+        if record then
+            return record, Engine:Note()
+        end
+    end
     local _, record, note = Notes:Active()
+    return record, note
+end
+
+local function timersText()
+    local record, note = timersNote()
     if not note then
         if previewOn then
             return "|cffffd100> 0:03|r  Avenging Wrath  Crazyoio\n|cffaaaaaa0:06|r  Sample spell  Cheoeqar\n|cffaaaaaa0:48|r  |cff00ffffGroup 1 go in|r  Cheoeqar Djaztech", "Raid note (sample)", true
@@ -169,10 +183,18 @@ local function timersText()
     local heading = record.name .. (record.difficulty and (" (" .. record.difficulty .. ")") or "")
     -- "Show only me" keeps your lines, your group's and role's, and lines with no tag.
     local onlyMe = Notes:WindowSettings("window").onlyMe
+    -- Previewing as another player in a rehearsal shows what their window would with Show only me on;
+    -- as everyone, every line.
+    local as = CRT.Alerts and CRT.Alerts.PreviewAs and CRT.Alerts:PreviewAs()
+    if as == "*" then
+        onlyMe = false
+    elseif as then
+        onlyMe = true
+    end
     local function shown(item)
         return not onlyMe or Engine:IsForMe(item)
     end
-    if onlyMe then
+    if onlyMe and not as then
         heading = heading .. "   |cffffd100only me|r"
     end
     if Engine.running and Engine:Note() == note then
