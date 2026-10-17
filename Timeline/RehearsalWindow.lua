@@ -5,7 +5,7 @@ local ADDON, CRT = ...
 -- bottom: the title "Rehearsal · <boss>" with its close button; the boss panel (the name, a health
 -- bar draining evenly from 100% at the pull to 0% at the fight's length, and the percentage); the
 -- cast bar (the cast showing now, its icon and name, filling over Rehearsal.CAST seconds); Next up
--- (the next 3 casts with their times); the strip (STRIP_SPAN seconds of the fight's casts in their
+-- (the next 3 casts counting down to them); the strip (STRIP_SPAN seconds of the fight's casts in their
 -- type colors scrolling under a fixed "now" line a third of the way across, with the phase lines and
 -- their labels; a click jumps there); and the controls (Play/Pause, Restart, Speed, Preview as and
 -- the clock). An OnUpdate redraws from the clock while it plays. At the fight's length the clock
@@ -28,6 +28,8 @@ local CAST_H = 20
 local CAST_W = INNER - CAST_H - 4
 local NEXT_N = 3
 local NEXT_H = 18
+local NEXT_COUNT = 10 -- seconds before a cast its Next up line counts down in tenths and fills its bar
+local NEXT_BAR_W = INNER - 20
 local STRIP_H = 56
 local STRIP_LABEL_H = 14 -- the phase labels' row at the top of the strip
 local MARK_W = 3
@@ -37,6 +39,8 @@ local SPEEDS = { 1, 2, 4 }
 RehearsalWindow.STRIP_W = INNER
 RehearsalWindow.BAR_W = INNER
 RehearsalWindow.CAST_W = CAST_W
+RehearsalWindow.NEXT_COUNT = NEXT_COUNT
+RehearsalWindow.NEXT_BAR_W = NEXT_BAR_W
 
 local TEXT = {
     title = "Rehearsal \194\183 ",
@@ -223,6 +227,11 @@ local function buildNext(f)
         line.icon = f:CreateTexture(nil, "ARTWORK")
         line.icon:SetPoint("TOPLEFT", f, "TOPLEFT", PAD, y)
         line.icon:SetSize(16, 16)
+        -- behind the name: fills in the cast's color over the last NEXT_COUNT seconds before it
+        line.bar = f:CreateTexture(nil, "BORDER")
+        line.bar:SetPoint("TOPLEFT", f, "TOPLEFT", PAD + 20, y)
+        line.bar:SetHeight(16)
+        line.bar:Hide()
         line.name = fontString(f, "CRTFontSmall")
         line.name:SetPoint("LEFT", line.icon, "RIGHT", 6, 0)
         line.name:SetPoint("RIGHT", f, "RIGHT", -PAD - 50, 0)
@@ -631,11 +640,23 @@ function RehearsalWindow:Redraw()
             line.icon:SetTexture(c.icon or ICON)
             line.icon:Show()
             line.name:SetText(c.name or "")
-            line.time:SetText(fmt(c.t))
+            -- counts down to the cast: m:ss, then tenths with a filling bar over the last NEXT_COUNT seconds
+            local left = math.max(0, c.t - now)
+            if left < NEXT_COUNT then
+                local col = castColor(c)
+                line.time:SetText(string.format("%.1f", left))
+                line.bar:SetColorTexture(col[1], col[2], col[3], 0.45)
+                line.bar:SetWidth(math.max(1, NEXT_BAR_W * (1 - left / NEXT_COUNT)))
+                line.bar:Show()
+            else
+                line.time:SetText(fmt(left))
+                line.bar:Hide()
+            end
         else
             line.icon:Hide()
             line.name:SetText("")
             line.time:SetText("")
+            line.bar:Hide()
         end
     end
 
