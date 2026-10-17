@@ -343,10 +343,11 @@ local function plannedLines(encounterID, list, record)
     return lines
 end
 
--- During a run: the run's own reminder items, counting down from each phase's start.
+-- During a run: the run's own reminder items, counting down from each phase's start, on the engine's
+-- time (a rehearsal's clock in one).
 local function runLines()
     local Alerts = CRT.Alerts
-    local now = GetTime()
+    local now = Alerts.Now and Alerts:Now() or GetTime()
     local hidePassed = Notes:WindowSettings("window").hidePassed
     local byPhase, phases, waiting = {}, {}, {}
     local nextRow

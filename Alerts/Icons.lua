@@ -135,22 +135,6 @@ local function greyness(total, left)
     return math.max(0, math.min(1, (total - left) / total))
 end
 
--- The swipe starts full: it runs over the time left when the line first showed, at most `warn`. It is
--- set only when the line or its time changes, since widgets are pooled by position and lines move up.
-local function setSwipe(w, line, total)
-    local key = tostring(line.id) .. "|" .. tostring(line.at)
-    if w.swipeKey == key then
-        return
-    end
-    w.swipeKey = key
-    local cd = w.cooldown
-    if total > 0 and cd.SetCooldown then
-        cd:SetCooldown(line.at - total, total)
-    elseif cd.Clear then
-        cd:Clear()
-    end
-end
-
 local function draw(w, line, now, s, shownAt)
     local size, textSize = iconSize(s), fontSize(s)
     local at = line.at
@@ -161,11 +145,12 @@ local function draw(w, line, now, s, shownAt)
         w.icon:SetTexture(texture)
         w.icon:Show()
         w.cooldown:Show()
+        -- The swipe starts full: it runs over the time left when the line first showed, at most `warn`.
         local total = at - (shownAt or now)
         if type(line.warn) == "number" then
             total = math.min(line.warn, total)
         end
-        setSwipe(w, line, total)
+        Areas.Swipe(w, line, total, now) -- set only when the line, its time or a rehearsal's state changes
         setGrey(w.icon, fadeOn(s) and greyness(total, at - now) or 0)
     else
         setGrey(w.icon, 0)

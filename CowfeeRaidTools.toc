@@ -62,6 +62,7 @@ Timeline\Rehearsal.lua
 Timeline\RehearsalWindow.lua
 Alerts\CooldownData.lua
 Alerts\Cooldowns.lua
+Alerts\Roster.lua
 Timeline\View.lua
 Timeline\ReferencePage.lua
 Timeline\ReviewTab.lua

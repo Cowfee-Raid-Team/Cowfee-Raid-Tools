@@ -22,9 +22,16 @@ local ADDON, CRT = ...
 -- one. Dragging a chip onto the track opens the editor on a new alert from it at that time (taking the
 -- spell of a cast icon it is dropped on); right-clicking a chip edits, renames or deletes it. Under it a
 -- Cooldowns row lists healer cooldowns and raid defensives (CRT.AlertCooldowns, filtered by its
--- dropdown): dragged the same way, one opens a new alert of your own with its spell, or for a raid leader
--- or assistant a menu of who it is for (a Raid note for a player, or for no one yet); right-clicked, it
--- can be saved as a template. Each group's chips wrap onto rows, up to 3 shown (fewer when the lanes
+-- dropdown): dragged the same way, one is saved at once as an alert of your own with its spell (shown as
+-- text and read out, Alerts/Draft.lua's cooldown defaults), or for a raid leader or assistant after a menu
+-- of who it is for (a Raid note line for a player, or for no one yet); a double-click on its flag edits it.
+-- Right-clicked, it can be saved as a template; the cooldowns themselves never change. A single click on
+-- a flag selects it (outlined; a click on empty track or Escape clears it): its spell's cooldown shows as
+-- two see-through bands on its row, the cooldown before the cast and after it, red where another cast of
+-- the spell for the same target falls inside. The bands also follow a dragged flag, and a dragged chip
+-- with a spell on the lane under the cursor, and the drag's label says when the drop would be too soon
+-- (Cooldowns:Length gives the length; with none there are no bands). Each group's
+-- chips wrap onto rows, up to 3 shown (fewer when the lanes
 -- would get under 3 rows); the wheel scrolls the rest. A right click on the track that doesn't move
 -- opens a menu there: New alert here, or Place a template or a cooldown.
 
@@ -72,6 +79,16 @@ local DASH, DASH_GAP = 6, 4 -- the dashed line where a dragged chip would land
 local RENAME_POPUP = "COWFEE_RAID_TOOLS_SAVED_ALERT_RENAME"
 local CD_DROP_W = 120 -- the Cooldowns row's filter dropdown
 local ASSIGN_MENU_MAX_H = 400 -- the "Anyone else" submenu scrolls past this height
+local SELECT_COLOR = { 0xF3 / 255, 0xEC / 255, 0xE0 / 255 } -- the selected flag's outline: foamy off-white F3ECE0
+local SELECT_W = 2 -- the selected flag's outline width
+local BAND_ALPHA = 0.25 -- a cooldown band: the flag's edge colour, this see-through
+local BAND_RED_ALPHA = 0.45 -- the part of a band where another cast of the spell for the same target falls
+local BAND_LINE_W = 1 -- the line at a band's far end, where the cooldown is up again
+local BAND_INSET = 2 -- a band's gap from its row's top and bottom
+local BAND_LABEL_PAD = 3 -- the length label's room inside the after band
+local SAME_MOMENT = 0.05 -- seconds: another cast this close to the selected one is the same moment, not too soon
+local SELECT_INNER = { 0.10, 0.07, 0.05 } -- a dark inner border under the outline, so it shows on any flag colour
+local SELECT_INNER_W = 1
 
 local TEXT = {
     notes = "Notes",
@@ -122,13 +139,13 @@ local TEXT = {
     deleteTime = "Delete this time of \"%s\"? Its other times stay.",
     deleteReminder = "Delete your reminder \"%s\"?",
     cooldowns = "Cooldowns",
-    cooldownsHelp = "Healer cooldowns and raid defensives. Drag one onto the timeline to make an alert with its "
-        .. "spell there (your own, Only me). A raid leader or assistant picks who it is for: a player of its "
-        .. "class, anyone else on the Raid Groups layout, no one yet, or just you. Right-click one to save it "
-        .. "as a template.\n\n"
+    cooldownsHelp = "Healer cooldowns and raid defensives. Drag one onto the timeline to place an alert with its "
+        .. "spell there at once (your own, Only me), shown as text and read out. A raid leader or assistant "
+        .. "picks who it is for: a player of its class, anyone else on the Raid Groups layout, no one yet, or "
+        .. "just you. Double-click its flag to change it. Right-click one to save it as a template.\n\n"
         .. "The dropdown picks which ones are listed: your class (healer cooldowns when your class has none), "
         .. "all of them, the healer cooldowns, the raid defensives, or one class.",
-    cooldownHint = "Drag onto the timeline to make an alert",
+    cooldownHint = "Drag onto the timeline to place an alert",
     saveTemplate = "Save as template",
     noCooldowns = "No cooldowns",
     assignClass = "%s", -- the title over a dropped cooldown's class players: the class's name
@@ -136,6 +153,14 @@ local TEXT = {
     unassigned = "Leave unassigned",
     anyoneElse = "Anyone else",
     justMe = "Just me",
+    -- the chat line after a cooldown is placed: its name, the time, and who it is for
+    placedFor = "%s placed at %s for %s.",
+    placedMine = "%s placed at %s for you.",
+    placedNone = "%s placed at %s unassigned.",
+    placeFailed = "%s was not placed: %s",
+    placeFailedWhy = "it could not be saved.", -- the reason in placeFailed when none is given
+    bandLength = "%d:%02d", -- a cooldown band's length, minutes and seconds, inside the after band
+    tooSoon = " \194\183 too soon", -- added to a drag's label when another cast of the spell is inside its bands
 }
 
 local function settings()
@@ -480,6 +505,20 @@ function View.Create(parent)
         view:CancelMove()
         view:CancelChipMove()
         view.rightAt = nil
+        view:ClearSelection()
+        view:CatchKeys(false)
+    end)
+    -- the keys for Escape: taken again on show, and once combat ends for a selection made during it
+    f:SetScript("OnShow", function()
+        view:CatchKeys(view.selected ~= nil)
+    end)
+    if f.RegisterEvent then
+        f:RegisterEvent("PLAYER_REGEN_ENABLED")
+    end
+    f:SetScript("OnEvent", function(_, event)
+        if event == "PLAYER_REGEN_ENABLED" then
+            view:CatchKeys(view.selected ~= nil)
+        end
     end)
     -- the markers follow the notes and the reminders; only a shown view redraws
     -- a failing redraw must never break the note or reminder save that fired it
@@ -880,6 +919,7 @@ end
 -- Opens the editor on a new alert at t, your own (Only me); given tag (a player's name, or "" for no
 -- one) a Raid note with For set to it.
 function Methods:OpenAt(t, spellID, text, tag)
+    self:ClearSelection() -- the editor opens: Escape is its to close, not the selection's
     local encounterID = self:EncounterNumber()
     if not encounterID then
         CRT:Print(TEXT.needPull)
@@ -952,6 +992,7 @@ function Methods:TrackClick(button)
     if button ~= "LeftButton" or not self.pull then
         return
     end
+    self:ClearSelection() -- a left click on empty track
     local scale = self.hscroll:GetEffectiveScale()
     local x, y = GetCursorPosition()
     x, y = x / scale, y / scale
@@ -1115,6 +1156,39 @@ function Methods:Flag(n)
         f.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
         f.edge:Hide()
         f.icon:Hide()
+        -- the outline of the selected flag: four thin sides around the button, shown by DrawSelection
+        f.sel = {}
+        for i, side in ipairs({ { "TOPLEFT", "TOPRIGHT" }, { "BOTTOMLEFT", "BOTTOMRIGHT" }, { "TOPLEFT", "BOTTOMLEFT" },
+            { "TOPRIGHT", "BOTTOMRIGHT" } }) do
+            local tex = f:CreateTexture(nil, "OVERLAY")
+            tex:SetColorTexture(SELECT_COLOR[1], SELECT_COLOR[2], SELECT_COLOR[3], 1)
+            tex:SetPoint(side[1], f, side[1])
+            tex:SetPoint(side[2], f, side[2])
+            if i <= 2 then
+                tex:SetHeight(SELECT_W)
+            else
+                tex:SetWidth(SELECT_W)
+            end
+            tex:Hide()
+            f.sel[i] = tex
+        end
+        -- inside it a thin dark border, so the outline shows on a cream flag as well as a caramel one
+        f.selIn = {}
+        local w = SELECT_W
+        for i, side in ipairs({ { "TOPLEFT", "TOPRIGHT", 0, -w }, { "BOTTOMLEFT", "BOTTOMRIGHT", 0, w },
+            { "TOPLEFT", "BOTTOMLEFT", w, 0 }, { "TOPRIGHT", "BOTTOMRIGHT", -w, 0 } }) do
+            local tex = f:CreateTexture(nil, "OVERLAY", nil, -1)
+            tex:SetColorTexture(SELECT_INNER[1], SELECT_INNER[2], SELECT_INNER[3], 1)
+            tex:SetPoint(side[1], f, side[1], side[3], side[4])
+            tex:SetPoint(side[2], f, side[2], side[3], side[4])
+            if i <= 2 then
+                tex:SetHeight(SELECT_INNER_W)
+            else
+                tex:SetWidth(SELECT_INNER_W)
+            end
+            tex:Hide()
+            f.selIn[i] = tex
+        end
         f:SetHighlightTexture("Interface\\Buttons\\WHITE8X8", "ADD")
         f:GetHighlightTexture():SetVertexColor(1, 1, 1, 0.15)
         f:SetScript("OnEnter", function(btn)
@@ -1125,6 +1199,8 @@ function Methods:Flag(n)
         f:SetScript("OnMouseDown", function(_, button)
             self.clickAt = nil
             if button == "LeftButton" then
+                -- any flag, changeable or not, can be selected: remember the press to tell a click
+                self.flagPress = { mark = f.mark, x0 = GetCursorPosition() / self.hscroll:GetEffectiveScale() }
                 self:StartMove(f)
             else
                 self:StartDrag(button)
@@ -1133,13 +1209,22 @@ function Methods:Flag(n)
         end)
         f:SetScript("OnMouseUp", function(_, button)
             if button == "LeftButton" then
+                -- a press and release under MOVE_DIST pixels, not ending a double-click, selects the flag
+                local press = self.flagPress
+                self.flagPress = nil
+                local x = GetCursorPosition() / self.hscroll:GetEffectiveScale()
+                local click = press and math.abs(x - press.x0) < MOVE_DIST
                 self:FinishMove()
+                if click then
+                    self:Select(press.mark)
+                end
             else
                 self:RightUp(button, f)
                 self:StopDrag()
             end
         end)
         f:SetScript("OnDoubleClick", function()
+            self.flagPress = nil
             self:FlagDoubleClick(f)
         end)
         return f
@@ -1148,6 +1233,7 @@ end
 
 -- Opens a marker's note line or reminder in the editor.
 function Methods:FlagDoubleClick(f)
+    self:ClearSelection() -- the editor opens: Escape is its to close, not the selection's
     self:CancelMove()
     if self.dragX then
         self:ScrollTo(self.dragFrom)
@@ -1242,7 +1328,8 @@ function Methods:StartMove(f)
         for k, v in pairs(f.mark) do
             m[k] = v
         end
-        self.move = { f = f, m = m, x0 = cursorScreenX(self), scroll0 = self.hscroll:GetHorizontalScroll() }
+        self.move = { f = f, m = m, x0 = cursorScreenX(self), scroll0 = self.hscroll:GetHorizontalScroll(),
+            others = self:OtherCasts(m) }
     end
 end
 
@@ -1256,9 +1343,13 @@ function Methods:MoveTarget(mv)
 end
 
 function Methods:CancelMove()
+    local had = self.move ~= nil
     self.move = nil
     if self.ghost then
         self.ghost:Hide()
+    end
+    if had then
+        self:DrawSelection() -- the drag's bands go; the selected flag's come back
     end
 end
 
@@ -1288,7 +1379,10 @@ function Methods:UpdateMove()
     g:ClearAllPoints()
     g:SetPoint("TOPLEFT", self.track, "TOPLEFT", x, -(m.row - 1) * ROW_H)
     g:SetFrameLevel((mv.f:GetFrameLevel() or 0) + 1)
-    g.label:SetText(string.format(IsAltKeyDown() and TEXT.addTime or TEXT.moveTo, clock(t)))
+    -- the cooldown bands at the ghost, on its row; Alt keeps the grabbed time, so it counts as another cast
+    local alt = IsAltKeyDown()
+    local soon = self:DrawBands(self:BandSpec(m, t, m.row, mv.others, alt and m.t or nil))
+    g.label:SetText(string.format(alt and TEXT.addTime or TEXT.moveTo, clock(t)) .. (soon and TEXT.tooSoon or ""))
     -- the label stays inside the visible part of the track: above the flag (beside it on row 1,
     -- where nothing is above), slid sideways as far as it needs
     local w = g.label:GetStringWidth() or 0
@@ -1364,6 +1458,7 @@ function Methods:FinishMove()
     if t == m.t then
         return
     end
+    local shown, selected = t, self:IsSelected(m)
     t = t - (m.shiftDelta or 0) -- back to the written order
     local Reminders = CRT.AlertReminders
     local ph, seconds = Reminders.PhaseAt(self.pull and self.pull.reference, t)
@@ -1393,6 +1488,11 @@ function Methods:FinishMove()
     end
     if not ok then
         CRT:Print(TEXT.moveRefused)
+    elseif selected and m.kind == "mine" then
+        -- the selection follows the moved or added time: its index may change, so it is found by its time.
+        -- A note line keeps its line when moved; one Alt adds goes on a new line, and the selection stays
+        -- on the line it was copied from.
+        self:SelectReminderAt(m, shown)
     end
 end
 
@@ -1448,6 +1548,13 @@ function Methods:LaneAtY(y)
     return row and self.lanes[row] or nil
 end
 
+-- The drop rule for a template saved as saveAs ("note" or "mine") dropped on lane: whether it is saved as
+-- your own. Always on the Personal notes lane, and for a Raid note by someone who may not change the raid
+-- note (asked now). PlaceSaved and the bands of a held chip both go by it.
+local function savedDropMine(lane, saveAs)
+    return (lane ~= nil and lane.kind == "personal") or saveAs ~= "note" or not canEditRaid()
+end
+
 -- Opens the editor on a new alert from saved alert id at t seconds from the pull (phase + seconds as
 -- OpenAt gives them), with spellID (a cast icon's) in place of its own when given. Placed on the
 -- Personal notes lane (lane), or as a Raid note by someone who may not change the raid note (asked
@@ -1467,7 +1574,7 @@ function Methods:PlaceSaved(id, t, spellID, lane)
     local ph, seconds = CRT.AlertReminders.PhaseAt(self.pull and self.pull.reference, tenth(t))
     local prefill = Saved:Prefill(id, encounterID, ph, tenth(seconds), spellID, self.bossName)
     if prefill then
-        if (lane and lane.kind == "personal") or (prefill.saveAs == "note" and not canEditRaid()) then
+        if savedDropMine(lane, prefill.saveAs) then
             prefill.saveAs = "mine"
         end
         CRT.AlertEditor:Open(encounterID, nil, prefill)
@@ -1494,6 +1601,13 @@ local function assigns(lane)
         return false
     end
     return canEditRaid() and true or false
+end
+
+-- The drop rule for a cooldown dropped on lane: whether it is saved at once as your own (no one to assign
+-- it, no encounter number, or no game menus) rather than through the menu of who it is for. PlaceCooldown
+-- and the bands of a held chip both go by it.
+local function cooldownDropMine(view, lane)
+    return not (view:EncounterNumber() and assigns(lane) and MenuUtil and MenuUtil.CreateContextMenu)
 end
 
 -- A name as a menu line in its class's colour, or as it is when the class is unknown.
@@ -1558,10 +1672,51 @@ function Methods:AssignRoster()
     return out
 end
 
+-- Saves cooldown e (as CRT.AlertCooldowns:List gives it) at t seconds from the pull at once, with the
+-- cooldown defaults (Alerts/Draft.lua): for tag, a player's name (a raid note line for them), "" (a line
+-- for no one), or nil (one of your reminders, Only me). The time goes back through WrittenTime for the
+-- chosen order. A chat line says it was placed, or why not; the editor never opens.
+function Methods:PlaceCooldownAt(t, e, tag)
+    local encounterID = self:EncounterNumber()
+    if not encounterID then
+        CRT:Print(TEXT.needPull)
+        return false
+    end
+    local Draft = CRT.AlertDraft
+    local name = e and (e.name or (e.spellID and (CRT.AlertReminders.SpellName(e.spellID)
+        or string.format(TEXT.spell, e.spellID)))) or TEXT.reminder
+    if not (Draft and e and e.spellID) then
+        CRT:Print(string.format(TEXT.placeFailed, name, TEXT.placeFailedWhy))
+        return false
+    end
+    local at = clock(t)
+    local written = self:WrittenTime(e.spellID, e.name, t)
+    local ph, seconds = CRT.AlertReminders.PhaseAt(self.pull and self.pull.reference, tenth(written))
+    local called, ok, err = pcall(Draft.PlaceCooldown, encounterID, e.spellID, e.name, self.bossName, ph,
+        tenth(seconds), tag)
+    if not called then
+        ok, err = false, tostring(ok)
+    end
+    if not ok then
+        local why = err ~= nil and tostring(err) or ""
+        CRT:Print(string.format(TEXT.placeFailed, name, why ~= "" and why or TEXT.placeFailedWhy))
+        return false
+    end
+    if tag == nil then
+        CRT:Print(string.format(TEXT.placedMine, name, at))
+    elseif tag == "" then
+        CRT:Print(string.format(TEXT.placedNone, name, at))
+    else
+        CRT:Print(string.format(TEXT.placedFor, name, at, tag))
+    end
+    return true
+end
+
 -- Fills root (the drop's menu, or a cooldown's Place submenu) with who cooldown e can be given at t: under
 -- its class's name that class's players, or a greyed line saying there are none and Leave unassigned (a
--- Raid note for no one); then Anyone else, the rest of the roster; then Just me (your own, as before).
--- With nobody on the roster: Leave unassigned and Just me. roster is AssignRoster's, read here when nil.
+-- Raid note line for no one); then Anyone else, the rest of the roster; then Just me (your own). Each
+-- choice places it at once (PlaceCooldownAt). With nobody on the roster: Leave unassigned and Just me.
+-- roster is AssignRoster's, read here when nil.
 function Methods:AssignMenu(root, e, t, roster)
     roster = roster or self:AssignRoster()
     local ofClass, others = {}, {}
@@ -1574,7 +1729,7 @@ function Methods:AssignMenu(root, e, t, roster)
     end
     local function forPlayer(menu, p)
         menu:CreateButton(classColored(p.name, p.class), function()
-            self:OpenAt(t, e.spellID, e.name, p.name)
+            self:PlaceCooldownAt(t, e, p.name)
         end)
     end
     if #roster > 0 and type(e.class) == "string" then
@@ -1593,7 +1748,7 @@ function Methods:AssignMenu(root, e, t, roster)
     end
     if #ofClass == 0 then
         root:CreateButton(TEXT.unassigned, function()
-            self:OpenAt(t, e.spellID, e.name, "")
+            self:PlaceCooldownAt(t, e, "")
         end)
     end
     if #others > 0 then
@@ -1608,21 +1763,21 @@ function Methods:AssignMenu(root, e, t, roster)
     end
     root:CreateDivider()
     root:CreateButton(TEXT.justMe, function()
-        self:OpenAt(t, e.spellID, e.name)
+        self:PlaceCooldownAt(t, e)
     end)
 end
 
 -- Places cooldown e (as CRT.AlertCooldowns:List gives it) at t seconds from the pull, dropped on lane.
 -- Someone who may change the raid note gets a menu at the cursor of who it is for (AssignMenu); anyone
--- else, and anyone on the Personal notes lane, gets the editor at once on an alert of their own (OpenAt
--- with its spell and its name as the text).
+-- else, and anyone on the Personal notes lane, has it saved at once as an alert of their own
+-- (PlaceCooldownAt, Only me).
 function Methods:PlaceCooldown(e, t, lane)
     if not (e and e.spellID) then
         return
     end
-    -- without the game's menus, as before: the editor at once
-    if not (self:EncounterNumber() and assigns(lane) and MenuUtil and MenuUtil.CreateContextMenu) then
-        self:OpenAt(t, e.spellID, e.name)
+    -- without the game's menus too: saved at once as your own
+    if cooldownDropMine(self, lane) then
+        self:PlaceCooldownAt(t, e)
         return
     end
     contextMenu(self.hscroll, function(root)
@@ -2262,6 +2417,352 @@ function Methods:DrawCooldowns()
     self:LayoutStrip()
 end
 
+-- Cooldown bands ------------------------------------------------------------------------------------
+-- A single click on a flag selects it; the selected flag's spell cooldown shows as two see-through bands on
+-- its row: "before" from t - cd to t and "after" from t to t + cd, with a thin line at each far end (up
+-- again) and the length inside the after band. Where another cast of the same spell for the same target
+-- falls inside, the stretch from it to the selected cast is red. A dragged flag or chip shows its own bands
+-- the same way. Display only: nothing here is saved.
+
+-- A mark's identity, kept across redraws: a note line's noteID and line, a reminder's id and which time.
+local function markKey(m)
+    if not m then
+        return nil
+    end
+    if m.kind == "note" and m.noteID ~= nil then
+        return "note:" .. tostring(m.noteID) .. ":" .. tostring(m.line)
+    elseif m.kind == "mine" and m.id ~= nil then
+        return "mine:" .. tostring(m.encounterID) .. ":" .. tostring(m.id) .. ":" .. tostring(m.index)
+    end
+    return nil
+end
+
+-- The words of a tags list (or a tags text) as one text, to tell the same target.
+local function tagsText(tags)
+    if type(tags) == "table" then
+        return table.concat(tags, " ")
+    end
+    return type(tags) == "string" and tags or ""
+end
+
+-- Whether mark o is a cast of b's spell for b's target: a line of the same note (so the same difficulty)
+-- with the same tag: text, or another time of your personal reminders. A chip not yet in a note (no
+-- noteID) is compared with the lines of every note.
+local function sameTarget(o, b)
+    if o.kind ~= b.kind or o.spellID == nil or o.spellID ~= b.spellID then
+        return false
+    end
+    if o.kind == "mine" then
+        return true
+    end
+    return (b.noteID == nil or o.noteID == b.noteID) and tagsText(o.tags) == tagsText(b.tags)
+end
+
+-- spellID's cooldown length in seconds (Alerts/Cooldowns.lua's Length), else nil.
+local function cdLength(spellID)
+    if not (readable(spellID) and type(spellID) == "number" and spellID > 0) then
+        return nil
+    end
+    local C = CRT.AlertCooldowns
+    if not (C and C.Length) then
+        return nil
+    end
+    local ok, n = pcall(C.Length, C, spellID)
+    if ok and type(n) == "number" and n > 0 then
+        return n
+    end
+    return nil
+end
+
+-- The times of the other casts of mark m's spell for its target on what is drawn, m itself left out (a
+-- mark not yet drawn, such as a held chip's, has nothing to leave out). A drag works them out once.
+function Methods:OtherCasts(m)
+    local own = markKey(m)
+    local others = {}
+    for _, o in ipairs(self.marks or {}) do
+        if (own == nil or markKey(o) ~= own) and sameTarget(o, m) and type(o.t) == "number" then
+            others[#others + 1] = o.t
+        end
+    end
+    return others
+end
+
+-- What the bands of mark m are drawn from: its time t on row (its own when nil), its spell and colour,
+-- and others, the other casts' times (OtherCasts when nil). extra is one more cast's time: the grabbed one
+-- while Alt adds a time and leaves it there.
+function Methods:BandSpec(m, t, row, others, extra)
+    return { t = t or m.t, row = row or m.row, spellID = m.spellID, key = m.mine and "cream" or "caramel",
+        others = others or self:OtherCasts(m), extra = extra }
+end
+
+-- The bands of the chip held in cm at t, x, y on the track (as cursorOnTrack gives them): on the lane under
+-- the cursor, with the spell it would place (a template's own, or a cast icon's it is dropped on). Who it
+-- is for decides what counts as another cast: your reminders when it is saved as your own, the note lines
+-- with its tags for a template saved as a raid note. A cooldown a raid leader is about to assign has no
+-- target yet, so only its bands show. Nil with no lane there.
+function Methods:ChipBands(cm, t, x, y)
+    local lane = self:LaneAtY(y)
+    if not lane then
+        return nil
+    end
+    local row = math.floor(y / ROW_H) + 1
+    local mark, known
+    if cm.kind == "cooldown" then
+        local mine = cooldownDropMine(self, lane)
+        mark, known = { kind = "mine", mine = mine, spellID = cm.cooldown and cm.cooldown.spellID }, mine
+    else
+        local s = CRT.AlertSaved and CRT.AlertSaved:Get(cm.id)
+        if not s then
+            return nil
+        end
+        -- the cast icon under the cursor, looked up again only when the row or the whole pixel changes
+        local at = row .. ":" .. math.floor(x + 0.5)
+        if cm.iconAt ~= at then
+            cm.iconAt, cm.iconSpell = at, self:IconSpellAt(x, y)
+        end
+        local mine = savedDropMine(lane, s.saveAs)
+        mark = { kind = mine and "mine" or "note", mine = mine, spellID = cm.iconSpell or s.spellID, tags = s.tags }
+        known = true
+    end
+    -- the other casts, worked out again only when the lane, the spell or who it is for changes
+    local key = row .. "|" .. mark.kind .. "|" .. tostring(mark.spellID) .. "|" .. tagsText(mark.tags) .. "|"
+        .. tostring(known)
+    if cm.othersKey ~= key then
+        cm.othersKey, cm.others = key, known and self:OtherCasts(mark) or {}
+    end
+    return self:BandSpec(mark, t, row, cm.others)
+end
+
+-- The bands' frame over the track, a level under the flags (DrawMarks puts them 8 above the track), with
+-- the length label.
+function Methods:BandFrame()
+    local bf = self.bandFrame
+    if not bf then
+        bf = CreateFrame("Frame", nil, self.track)
+        bf:SetAllPoints(self.track)
+        bf.label = bf:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+        bf.label:SetTextColor(mocha("cream"))
+        bf.label:Hide()
+        self.bandFrame, self.bandLabel, self.bandTex = bf, bf.label, {}
+    end
+    bf:SetFrameLevel((self.track:GetFrameLevel() or 0) + 7)
+    return bf
+end
+
+-- Draws the bands of spec (BandSpec's), or hides them all with none. Clamped to the timeline's length;
+-- nothing when the spell's length is unknown. Returns true when another cast is inside them (too soon).
+function Methods:DrawBands(spec)
+    local n, soon, labelShown = 0, false, false
+    local cd = spec and self.pull and spec.row and cdLength(spec.spellID)
+    if cd then
+        local bf = self:BandFrame()
+        local length = math.max(1, self.extra.length or 0)
+        local trackW = self.trackW
+        local function x(t)
+            return View.TimeToX(math.max(0, math.min(length, t)), length, trackW)
+        end
+        local top, h = -(spec.row - 1) * ROW_H - BAND_INSET, ROW_H - 2 * BAND_INSET
+        local function put(x0, x1, r, g, b, a, sub)
+            if x1 - x0 <= 0 then
+                return
+            end
+            n = n + 1
+            local tex = pooled(self.bandTex, n, function()
+                return bf:CreateTexture(nil, "ARTWORK")
+            end)
+            tex:SetDrawLayer("ARTWORK", sub)
+            tex:SetColorTexture(r, g, b, a)
+            tex:ClearAllPoints()
+            tex:SetPoint("TOPLEFT", self.track, "TOPLEFT", x0, top)
+            tex:SetSize(x1 - x0, h)
+        end
+        local t = spec.t
+        local lo, hi = t - cd, t + cd
+        local r, g, b = mocha(spec.key)
+        put(x(lo), x(t), r, g, b, BAND_ALPHA, 0)
+        put(x(t), x(hi), r, g, b, BAND_ALPHA, 0)
+        -- the farthest other cast inside each band: red from it to the selected cast
+        -- a cast at the selected cast's own time is the same moment, so it is left out
+        local redLo, redHi
+        local function inside(c)
+            if type(c) == "number" and c > lo and c < hi and math.abs(c - t) > SAME_MOMENT then
+                soon = true
+                if c < t then
+                    redLo = math.min(redLo or t, c)
+                else
+                    redHi = math.max(redHi or t, c)
+                end
+            end
+        end
+        for _, c in ipairs(spec.others or {}) do
+            inside(c)
+        end
+        inside(spec.extra)
+        if redLo then
+            put(x(redLo), x(t), DEATH_RED[1], DEATH_RED[2], DEATH_RED[3], BAND_RED_ALPHA, 1)
+        end
+        if redHi then
+            put(x(t), x(redHi), DEATH_RED[1], DEATH_RED[2], DEATH_RED[3], BAND_RED_ALPHA, 1)
+        end
+        -- up again: a line at each far end that is inside the timeline
+        if lo >= 0 then
+            put(x(lo), x(lo) + BAND_LINE_W, r, g, b, 1, 2)
+        end
+        if hi <= length then
+            put(x(hi) - BAND_LINE_W, x(hi), r, g, b, 1, 2)
+        end
+        local label = self.bandLabel
+        local secs = math.floor(cd + 0.5)
+        label:SetText(string.format(TEXT.bandLength, math.floor(secs / 60), secs % 60))
+        if textWidth(label) + 2 * BAND_LABEL_PAD <= x(hi) - x(t) then
+            label:ClearAllPoints()
+            label:SetPoint("LEFT", self.track, "TOPLEFT", x(t) + BAND_LABEL_PAD, top - h / 2)
+            label:Show()
+            labelShown = true
+        end
+    end
+    hideFrom(self.bandTex or {}, n + 1)
+    if self.bandLabel and not labelShown then
+        self.bandLabel:Hide()
+    end
+    return soon
+end
+
+-- The selected flag's mark on what is drawn now, else nil.
+function Methods:SelectedMark()
+    local want = self.selected
+    if want == nil then
+        return nil
+    end
+    for _, m in ipairs(self.marks or {}) do
+        if markKey(m) == want then
+            return m
+        end
+    end
+    return nil
+end
+
+-- Outlines the selected flag and draws its bands (not while a drag draws its own). A selection whose alert
+-- is no longer drawn is dropped.
+function Methods:DrawSelection()
+    local m = self:SelectedMark()
+    if not m and self.selected ~= nil then
+        self.selected = nil
+        self:CatchKeys(false)
+    end
+    for _, f in ipairs(self.flags) do
+        local on = m ~= nil and f:IsShown() and f.mark == m
+        for _, side in ipairs(f.sel or {}) do
+            side:SetShown(on)
+        end
+        for _, side in ipairs(f.selIn or {}) do
+            side:SetShown(on)
+        end
+    end
+    if not ((self.move and self.move.moved) or (self.chipMove and self.chipMove.moved)) then
+        self:DrawBands(m and self:BandSpec(m))
+    end
+end
+
+-- Whether mark m (or a copy of it) is the selected one.
+function Methods:IsSelected(m)
+    return self.selected ~= nil and markKey(m) == self.selected
+end
+
+-- Selects the time of reminder m (by its encounter and id) drawn at shown seconds, when there is one.
+function Methods:SelectReminderAt(m, shown)
+    for _, o in ipairs(self.marks or {}) do
+        if o.kind == "mine" and o.encounterID == m.encounterID and o.id == m.id and type(o.t) == "number"
+            and math.abs(o.t - shown) <= SAME_MOMENT then
+            self:Select(o)
+            return
+        end
+    end
+end
+
+-- Selects mark m's flag (the only one selected).
+function Methods:Select(m)
+    self.selected = markKey(m)
+    self:CatchKeys(self.selected ~= nil)
+    self:DrawSelection()
+end
+
+function Methods:ClearSelection()
+    if self.selected == nil then
+        return
+    end
+    self.selected = nil
+    self:CatchKeys(false)
+    self:DrawSelection()
+end
+
+-- While a flag is selected the view takes the keys so Escape can clear it; every other key goes on to the
+-- game. Never taken in combat, where letting keys through can't be changed.
+function Methods:CatchKeys(on)
+    local f = self.frame
+    if not (f and f.EnableKeyboard) then
+        return
+    end
+    if on then
+        if self.keysOn or (InCombatLockdown and InCombatLockdown()) then
+            return
+        end
+        if not self.keysHooked then
+            self.keysHooked = true
+            f:SetScript("OnKeyDown", function(_, key)
+                self:KeyDown(key)
+            end)
+        end
+        if f.SetPropagateKeyboardInput then
+            f:SetPropagateKeyboardInput(true)
+        end
+        f:EnableKeyboard(true)
+        self.keysOn = true
+    elseif self.keysOn then
+        f:EnableKeyboard(false)
+        self.keysOn = false
+    end
+end
+
+-- Whether a window Escape closes (UISpecialFrames) is shown, other than the one holding the view.
+local function escapeWindowShown(view)
+    local list = UISpecialFrames
+    if type(list) ~= "table" then
+        return false
+    end
+    for _, name in ipairs(list) do
+        local w = type(name) == "string" and _G[name] or nil
+        if type(w) == "table" and w.IsShown and w:IsShown() then
+            local holds, p = false, view.frame
+            while p do
+                if p == w then
+                    holds = true
+                    break
+                end
+                p = p.GetParent and p:GetParent() or nil
+            end
+            if not holds then
+                return true
+            end
+        end
+    end
+    return false
+end
+
+-- Escape clears the selection and stops there, unless a window Escape closes is shown (the alert editor):
+-- then it goes on to close it. Any other key passes through.
+function Methods:KeyDown(key)
+    local escape = key == "ESCAPE" and self.selected ~= nil
+    local keep = escape and not escapeWindowShown(self)
+    local f = self.frame
+    if f.SetPropagateKeyboardInput and not (InCombatLockdown and InCombatLockdown()) then
+        f:SetPropagateKeyboardInput(not keep)
+    end
+    if escape then
+        self:ClearSelection()
+    end
+end
+
 -- The ghost chip that follows the cursor while a chip is dragged; above everything, taking no clicks.
 function Methods:ChipGhost()
     local g = self.chipGhost
@@ -2294,8 +2795,8 @@ function Methods:DropLine()
 end
 
 -- Shows the dashed line at time t, its label at the cursor's height (y down from the track's top), kept
--- inside the visible part of the track.
-function Methods:DrawDropLine(t, y)
+-- inside the visible part of the track. soon: the label says the drop would be too soon.
+function Methods:DrawDropLine(t, y, soon)
     local d = self:DropLine()
     local length = math.max(1, self.extra.length or 0)
     local x = View.TimeToX(t, length, self.trackW)
@@ -2316,7 +2817,7 @@ function Methods:DrawDropLine(t, y)
         dash:SetPoint("TOP", d, "TOP", 0, -(i - 1) * (DASH + DASH_GAP))
     end
     hideFrom(self.dashes, n + 1)
-    d.label:SetText(string.format(TEXT.placeAt, clock(t)))
+    d.label:SetText(string.format(TEXT.placeAt, clock(t)) .. (soon and TEXT.tooSoon or ""))
     local w = d.label:GetStringWidth() or 0
     local left = self.hscroll:GetHorizontalScroll()
     local right = left + self:VisibleWidth()
@@ -2342,12 +2843,16 @@ function Methods:StartChipMove(c)
 end
 
 function Methods:CancelChipMove()
+    local had = self.chipMove ~= nil
     self.chipMove = nil
     if self.chipGhost then
         self.chipGhost:Hide()
     end
     if self.dropLine then
         self.dropLine:Hide()
+    end
+    if had then
+        self:DrawSelection() -- the drag's bands go; the selected flag's come back
     end
 end
 
@@ -2392,9 +2897,14 @@ function Methods:UpdateChipMove()
     g:Show()
     if self.pull and overTrack(self) and not overEditor() then
         local tx, ty = cursorOnTrack(self)
-        self:DrawDropLine(self:TimeAtX(tx), ty)
-    elseif self.dropLine then
-        self.dropLine:Hide()
+        local t = self:TimeAtX(tx)
+        local soon = self:DrawBands(self:ChipBands(cm, t, tx, ty))
+        self:DrawDropLine(t, ty, soon)
+    else
+        self:DrawBands(nil)
+        if self.dropLine then
+            self.dropLine:Hide()
+        end
     end
 end
 
@@ -2414,17 +2924,16 @@ function Methods:FinishChipMove()
     end
 end
 
--- Makes a template from cooldown e: its name, spell and text, in caramel, with what a new alert in the
--- editor starts with (CRT.AlertEditor.NewDefaults, the one source of those).
+-- Makes a new template from cooldown e: its name, spell and text, with the cooldown defaults a drop saves
+-- with (Alerts/Draft.lua's Draft.CooldownTemplate: Text, read out). The cooldown itself is never changed.
 function Methods:SaveCooldown(e)
     local Saved = CRT.AlertSaved
     if not (Saved and e) then
         return nil
     end
-    local Editor = CRT.AlertEditor
-    local fields = Editor and Editor.NewDefaults and Editor.NewDefaults() or {}
-    local r, g, b = mocha("caramel")
-    fields.name, fields.spellID, fields.text, fields.color = e.name, e.spellID, e.name, { r, g, b, 1 }
+    local Draft = CRT.AlertDraft
+    local fields = Draft and Draft.CooldownTemplate and Draft.CooldownTemplate() or {}
+    fields.name, fields.spellID, fields.text = e.name, e.spellID, e.name
     return Saved:Save(nil, fields)
 end
 
@@ -2949,6 +3458,7 @@ function Methods:Refresh()
     self.unknownText:SetText(#names > 0 and ("Time unknown: " .. table.concat(names, ", ")) or "")
     self:DrawHighlight(lanes)
     self:DrawMarks(length)
+    self:DrawSelection()
     self:DrawStrip()
     self:ScrollTo(self.hscroll:GetHorizontalScroll())
 end
