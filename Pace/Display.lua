@@ -167,7 +167,8 @@ local function where()
         return 1, now - run.pullAt
     end
     if ph and at then
-        return ph, now - at
+        -- a phase start is on the engine's clock (Alerts:Now, the rehearsal's during a rehearsal)
+        return ph, (Alerts.Now and Alerts:Now() or now) - at
     end
     return 1, now - run.pullAt
 end
