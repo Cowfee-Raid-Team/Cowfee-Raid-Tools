@@ -604,7 +604,7 @@ local lastViewRead = false
 -- What the Review tab shows, as the Rehearsal window takes it: { base, encounterID, group, order,
 -- bossName, difficultyName }, or nil when nothing is shown. Built the way refresh() builds the view;
 -- before the page was first opened, from the last view saved. The difficulty name is a recorded
--- pull's own (as the game names it), else the group's: Mythic, or Heroic for Normal/Heroic.
+-- pull's own (as the game names it) or a reference's Difficulty line, else the group's: Mythic, or Heroic for Normal/Heroic.
 function Timeline:RehearsalSource()
     if not page then
         if not lastViewRead then
@@ -635,7 +635,7 @@ function Timeline:RehearsalSource()
         group = selectedGroup,
         order = chosenOrder(),
         bossName = bossName(),
-        difficultyName = (pull and gameDifficultyName(pull.difficultyID)) or (selectedGroup == "mythic" and "Mythic" or "Heroic"),
+        difficultyName = (base.reference and base.reference.difficulty) or (pull and gameDifficultyName(pull.difficultyID)) or (selectedGroup == "mythic" and "Mythic" or "Heroic"),
     }
 end
 

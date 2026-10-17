@@ -215,6 +215,7 @@ local function buildNext(f)
     head:SetPoint("TOPLEFT", f, "TOPLEFT", PAD, -104)
     head:SetText(TEXT.nextUp)
     head:SetTextColor(mocha("latte"))
+    f.nextHead = head
     f.next = {}
     for i = 1, NEXT_N do
         local y = -120 - (i - 1) * NEXT_H
@@ -240,6 +241,8 @@ local function buildStrip(f)
     strip:SetPoint("TOPLEFT", f, "TOPLEFT", PAD, -178)
     strip:SetSize(INNER, STRIP_H)
     strip:EnableMouse(true)
+    -- a phase label entering at the right edge is cut there, not drawn over the window's border
+    strip:SetClipsChildren(true)
     local bg = strip:CreateTexture(nil, "BACKGROUND")
     bg:SetAllPoints()
     bg:SetColorTexture(0, 0, 0, 0.35)
@@ -256,9 +259,9 @@ local function buildStrip(f)
         RehearsalWindow:SeekStrip(x)
     end)
     f.strip = strip
-    -- the (?) sits in the strip's top right corner, over its label row, so it stays clear of Next up
-    local help = CRT.UI.Help(strip, "Strip", TEXT.stripHelp)
-    help:SetPoint("TOPRIGHT", strip, "TOPRIGHT", 0, 0)
+    -- the (?) sits beside the Next up heading, outside the strip, so no phase label slides under it
+    local help = CRT.UI.Help(f, "Strip", TEXT.stripHelp)
+    help:SetPoint("LEFT", f.nextHead, "RIGHT", 2, 0)
 end
 
 -- Preview as: Me, Everyone, then the players CRT.AlertRoster gives (the selected Raid Groups page's,
@@ -357,11 +360,12 @@ function RehearsalWindow:Frame()
         end
         self:Closed()
     end)
+    -- onTick runs every frame while the window is open, paused too, so the engine sees a pause at once
     f:SetScript("OnUpdate", function()
         if self.playing then
             self:Redraw()
-            hook("onTick", self:Now())
         end
+        hook("onTick", self:Now())
     end)
     tinsert(UISpecialFrames, "CowfeeRaidToolsRehearsalWindow")
     f:Hide()
@@ -719,9 +723,17 @@ function Run.Restart()
     startRun(Alerts)
 end
 
+-- Each frame while the window is open: the engine's RehearsalTick (pause and speed reach the icon
+-- swipes within a frame), then the phase lines the clock has passed.
 function Run.Tick(now)
     local Alerts = CRT.Alerts
-    if Alerts and Alerts:IsRehearsal() and Run.last and now > Run.last then
+    if not (Alerts and Alerts:IsRehearsal()) then
+        return
+    end
+    if Alerts.RehearsalTick then
+        Alerts:RehearsalTick()
+    end
+    if Run.last and now > Run.last then
         startPhases(Alerts, Run.last, now)
     end
 end
@@ -768,6 +780,7 @@ events:RegisterEvent("PLAYER_REGEN_DISABLED")
 events:RegisterEvent("PLAYER_REGEN_ENABLED")
 events:RegisterEvent("ENCOUNTER_START")
 events:RegisterEvent("ENCOUNTER_END")
+events:RegisterEvent("PLAYER_ENTERING_WORLD")
 events:SetScript("OnEvent", function(_, event)
     if event == "PLAYER_REGEN_DISABLED" then
         inCombat = true
@@ -777,6 +790,9 @@ events:SetScript("OnEvent", function(_, event)
         inEncounter = true
     elseif event == "ENCOUNTER_END" then
         inEncounter = false
+    elseif event == "PLAYER_ENTERING_WORLD" then
+        -- a missed ENCOUNTER_END or REGEN_ENABLED must not leave Rehearse blocked
+        inCombat, inEncounter = false, false
     end
     if event == "PLAYER_REGEN_DISABLED" or event == "ENCOUNTER_START" then
         -- a real fight wins: the window closes, which stops only a rehearsal run
