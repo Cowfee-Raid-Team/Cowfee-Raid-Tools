@@ -40,6 +40,8 @@ local ADDON, CRT = ...
 -- line.glow and now >= at. The drag box (title, settings button, reset) shows only with Previews, above
 -- the area, or below it when it grows up. Every area refreshes from one ticker every 0.1 s, and only
 -- while a run, a preview or a test is going; otherwise it hides once and does nothing.
+-- A run's lines are drawn on the engine's time (Alerts:Now(), the clock of a rehearsal run); Previews and
+-- tests are drawn on GetTime(), which they were made with.
 --   area:Refresh()        draws it now
 --   area:ResetPosition()  back to defaultPosition
 --   area:Test(lines)      shows the given lines (with `at` set) until they have all passed
@@ -49,6 +51,7 @@ local ADDON, CRT = ...
 --   Areas.Panel(parent, onChange)  the settings panel the Alerts tab shows an area's rows in (below)
 --   Areas.Find(key)       the area with that def.key
 --   Areas.Glow(widget, on)  a pulsing border on a widget's own frame
+--   Areas.Swipe(w, line, total, now)  sets the countdown swipe on w.cooldown (icons, circles), see below
 --   Areas.LineText(line), Areas.LineIcon(line), Areas.LineColor(line), Areas.SetFont(fontString, name,
 --     size, outline): what a line shows, with values the game hides left out, and the area's font.
 
@@ -193,6 +196,43 @@ function Areas.SetFont(fontString, name, size, outline)
         fontString:SetFont(DEFAULT_FONT, size, outline)
     end
     fontString.crtFontKey = key
+end
+
+-- The countdown swipe ------------------------------------------------------------------------
+
+-- Sets w.cooldown to sweep over `total` seconds ending at line.at. It is set only when the run, the line,
+-- its time or the rehearsal's state changes, since widgets are pooled by position and lines move up. A Cooldown
+-- frame runs on real time, so in a rehearsal run (Alerts:RehearsalTick) the swipe is set from the fight
+-- seconds already done and the whole length, both divided by the speed; while the clock stands still it
+-- is paused (Cooldown:Pause, where the client has it), and on resume or a speed change it is set again.
+function Areas.Swipe(w, line, total, now)
+    local paused, speed, epoch = false, 1, nil
+    if Alerts.RehearsalTick then
+        paused, speed, epoch = Alerts:RehearsalTick()
+    end
+    local key = tostring(Alerts.runId) .. "|" .. tostring(line.id) .. "|" .. tostring(line.at) .. "|" .. tostring(epoch)
+    if w.swipeKey == key then
+        return
+    end
+    w.swipeKey = key
+    local cd = w.cooldown
+    if total > 0 and cd.SetCooldown then
+        if epoch == nil then
+            cd:SetCooldown(line.at - total, total)
+        else
+            if w.swipePaused and cd.Resume then
+                cd:Resume()
+            end
+            local done = now - (line.at - total)
+            cd:SetCooldown(GetTime() - done / speed, total / speed)
+            w.swipePaused = paused and cd.Pause and true or nil
+            if w.swipePaused then
+                cd:Pause()
+            end
+        end
+    elseif cd.Clear then
+        cd:Clear()
+    end
 end
 
 -- Glow --------------------------------------------------------------------------------------
@@ -706,7 +746,8 @@ function Area:Draw(lines, now, s, more)
         if id ~= nil then
             seen[id] = true
             at = shownAt[id]
-            if not at then
+            -- a rehearsal started again earlier on its clock: the line shows anew from now
+            if not at or at > now then
                 at = now
                 shownAt[id] = at
             end
@@ -792,7 +833,7 @@ function Area:Refresh()
         return
     end
     local s = self:Settings()
-    local now = GetTime()
+    local now = (self.preview or self.testList or not Alerts.Now) and GetTime() or Alerts:Now()
     self.handle:SetShown(self.preview)
     local lines, more
     if self.preview then

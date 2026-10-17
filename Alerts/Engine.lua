@@ -9,14 +9,27 @@ local ADDON, CRT = ...
 -- starts at the pull; a later phase starts when its event fires or Next phase is pressed, and starting
 -- one skips every earlier phase that never began.
 -- Settings are read from CRT.db.alerts fresh each time, so a profile switch or reset mid-pull is safe.
+--
+-- A rehearsal run (reason "rehearsal", started by the Timeline's Rehearsal window) plays a fight on the
+-- window's clock instead of the real one: Start(encounterID, difficultyName, "rehearsal", opts) with
+-- opts.clock() -> the fight's seconds (it may stand still or jump), opts.speed() -> 1, 2 or 4, and opts.as
+-- (nil for you, "*" for everyone, or a player's name: Preview as). Every time the engine and the displays
+-- use comes from Alerts:Now(), which is GetTime() outside a rehearsal and base + clock() in one; base is
+-- fixed at Start, so Now() equals GetTime() at that moment. Alerts:TimeAt(s) is base + s. Items due
+-- before the clock's value at Start never show (measured by the item's own time, not its warning). A
+-- rehearsal runs no onPull hooks and sends nothing; its onRehearsal hooks pick the boss's note instead.
+-- A real Start (an encounter) replaces it like any other run.
 
 local Rules = CRT.AlertRules
+
+local REHEARSAL_JUMP = 0.25 -- fight seconds a tick may stray from real time x speed before it counts as a jump
 
 local Alerts = {
     listeners = {},
     blocks = {},       -- [key] = def
     blockOrder = {},   -- keys in registration order
     onPull = {},       -- functions (run) called when an encounter run starts, before items are collected
+    onRehearsal = {},  -- functions (run) called when a rehearsal run starts, before items are collected
     phaseSources = {}, -- functions (run) -> { ph }: phases that come from events rather than items
     running = false,
     runId = 0,
@@ -53,9 +66,104 @@ function Alerts:Fire()
     end
 end
 
--- def = { label, group = bool, Entries = function(run) -> { item }, keepBlock = bool }. Registering a key
--- again replaces it. With keepBlock, an item that names its own `block` keeps it (the editor's Test runs
--- a note line as a "note" item, so the note's speech and sound switches still apply).
+-- The rehearsal ------------------------------------------------------------------------------
+
+-- The current run's rehearsal state, or nil outside a rehearsal.
+local function rehearsal(self)
+    local run = self.running and self.run
+    return run and run.rehearsal or nil
+end
+
+-- A finite number from one of the window's functions, or nil.
+local function ask(fn)
+    if type(fn) ~= "function" then
+        return nil
+    end
+    local ok, v = pcall(fn)
+    if ok and type(v) == "number" and v == v and v ~= math.huge and v ~= -math.huge then
+        return v
+    end
+    return nil
+end
+
+function Alerts:IsRehearsal()
+    return rehearsal(self) ~= nil
+end
+
+-- The engine's time: GetTime() outside a rehearsal, base + the window's clock in one. A clock that
+-- fails keeps the last time it gave.
+function Alerts:Now()
+    local r = rehearsal(self)
+    if not r then
+        return GetTime()
+    end
+    local s = ask(r.clock)
+    if s then
+        r.last = r.base + s
+    end
+    return r.last or r.from
+end
+
+-- Fight seconds as the engine's time: base + s in a rehearsal; outside one, from the run's first phase
+-- (or now when no run is going).
+function Alerts:TimeAt(s)
+    local r = rehearsal(self)
+    if r then
+        return r.base + s
+    end
+    local first = self.running and self.run and self.run.firstAt
+    return (first or GetTime()) + s
+end
+
+-- The rehearsal's speed (1 outside one, or when the window gives nothing usable).
+function Alerts:RehearsalSpeed()
+    local r = rehearsal(self)
+    local v = r and ask(r.speed)
+    return (v and v > 0) and v or 1
+end
+
+-- Preview as: nil (you), "*" (everyone) or a player's name. Always nil outside a rehearsal.
+function Alerts:PreviewAs()
+    local r = rehearsal(self)
+    local as = r and r.as
+    if as == "*" or (type(as) == "string" and as ~= "") then
+        return as
+    end
+    return nil
+end
+
+-- What the countdown swipes need, which run on real time: paused, speed, epoch. The epoch goes up on
+-- every pause, resume, speed change or jump, so a swipe knows to set itself again. Pause is the clock not
+-- moving between two ticks of real time at an unchanged speed. The window may call this every frame; the
+-- displays call it too, and calls in the same frame (GetTime unchanged) only read the last answer.
+-- Outside a rehearsal: false, 1, nil.
+function Alerts:RehearsalTick()
+    local r = rehearsal(self)
+    if not r then
+        return false, 1, nil
+    end
+    local real = GetTime()
+    if r.tickReal ~= real then
+        local fight, speed = ask(r.clock), self:RehearsalSpeed()
+        if fight and r.tickFight then
+            local moved = fight - r.tickFight
+            local paused = moved == 0 and speed == r.tickSpeed
+            local expected = (real - r.tickReal) * r.tickSpeed
+            local jumped = not paused and math.abs(moved - expected) > REHEARSAL_JUMP
+            if paused ~= r.paused or speed ~= r.tickSpeed or jumped then
+                r.epoch = r.epoch + 1
+            end
+            r.paused = paused
+        end
+        r.tickReal, r.tickFight, r.tickSpeed = real, fight or r.tickFight, speed
+    end
+    return r.paused, r.tickSpeed or 1, r.epoch
+end
+
+-- def = { label, group = bool, Entries = function(run) -> { item }, keepBlock = bool, own = bool }.
+-- Registering a key again replaces it. With keepBlock, an item that names its own `block` keeps it (the
+-- editor's Test runs a note line as a "note" item, so the note's speech and sound switches still apply).
+-- own marks your personal items (your reminders): previewing as another player leaves them out.
 function Alerts:RegisterBlock(key, def)
     if not self.blocks[key] then
         self.blockOrder[#self.blockOrder + 1] = key
@@ -96,9 +204,12 @@ end
 
 function Alerts:Collect(run, opts)
     local out = {}
+    -- Previewing as another player shows exactly what they get: none of your own reminders.
+    local as = run and run.rehearsal and run.rehearsal.as
+    local othersOnly = type(as) == "string" and as ~= "" and as ~= "*"
     for _, key in ipairs(self.blockOrder) do
         local def = self.blocks[key]
-        if def and (not (opts and opts.blocks) or opts.blocks[key]) then
+        if def and not (othersOnly and def.own) and (not (opts and opts.blocks) or opts.blocks[key]) then
             local ok, list = safe(def.Entries, run)
             if ok and type(list) == "table" then
                 for _, it in ipairs(list) do
@@ -178,11 +289,20 @@ end
 -- Alerts.starting is true while the hooks and the first phase run, so a hook can tell not to start again.
 -- opts.firstAt is the start time recorded for the lowest phase (default now): the editor's Test uses it to
 -- begin a reminder a few seconds before its first time.
+-- reason "rehearsal" takes opts.clock, opts.speed and opts.as (see the top of this file) and runs the
+-- onRehearsal hooks instead; its lowest phase starts at fight second 0 (TimeAt(0)).
 function Alerts:Start(encounterID, difficultyName, reason, opts)
     if self.running then
         self:Stop(true)
     end
     local run = { encounterID = encounterID, difficultyName = difficultyName, reason = reason }
+    if reason == "rehearsal" then
+        local o = type(opts) == "table" and opts or {}
+        local at = ask(o.clock) or 0
+        local base = GetTime() - at
+        run.rehearsal = { clock = o.clock, speed = o.speed, as = o.as, base = base, from = base + at,
+            epoch = 0, paused = false }
+    end
     self.run = run
     self.starting = true
     self.runId = self.runId + 1
@@ -195,6 +315,10 @@ function Alerts:Start(encounterID, difficultyName, reason, opts)
         for _, fn in ipairs(self.onPull) do
             safe(fn, run)
         end
+    elseif reason == "rehearsal" then
+        for _, fn in ipairs(self.onRehearsal) do
+            safe(fn, run)
+        end
     end
     -- A hook may have called Stop; only carry on if this run is still the current one.
     -- Anything failing here must still clear `starting`, so it runs inside pcall.
@@ -202,7 +326,8 @@ function Alerts:Start(encounterID, difficultyName, reason, opts)
         if self.run == run then
             self.items = self:Collect(run, opts)
             changed(self)
-            self:StartPhase(self:Phases()[1], "start", opts and type(opts.firstAt) == "number" and opts.firstAt or GetTime())
+            local first = run.rehearsal and run.rehearsal.base or GetTime()
+            self:StartPhase(self:Phases()[1], "start", opts and type(opts.firstAt) == "number" and opts.firstAt or first)
         end
     end)
     self.starting = false
@@ -230,7 +355,7 @@ function Alerts:StartPhase(ph, source, at)
     if not self.running or type(ph) ~= "number" or self.starts[ph] or self.skipped[ph] then
         return false
     end
-    self.starts[ph] = at or GetTime()
+    self.starts[ph] = at or self:Now()
     for _, p in ipairs(self:Phases()) do
         if p < ph and not self.starts[p] then
             self.skipped[p] = true
@@ -316,7 +441,7 @@ function Alerts:Elapsed()
     if not self.running or not self.run.firstAt then
         return nil
     end
-    return GetTime() - self.run.firstAt
+    return self:Now() - self.run.firstAt
 end
 
 -- Whether an item shows anywhere: an alert, a bar, speech, or the text, icon or circle areas.
@@ -338,9 +463,12 @@ function Alerts:Lines(now)
         return self.cachedLines
     end
     local entries = {}
+    -- A rehearsal leaves out every item due before the clock's value at its Start.
+    local from = self.run.rehearsal and self.run.rehearsal.from
     for _, it in ipairs(self.items) do
         local start = self.starts[it.ph]
-        if start and not self.skipped[it.ph] and hasOutput(it) and not self:IsCut(it.ph, it.time) then
+        if start and not self.skipped[it.ph] and hasOutput(it) and not self:IsCut(it.ph, it.time)
+            and not (from and start + it.time < from) then
             local e = {}
             for k, v in pairs(it) do e[k] = v end
             e.at = start + it.time

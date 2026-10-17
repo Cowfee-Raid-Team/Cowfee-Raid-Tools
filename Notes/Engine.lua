@@ -16,6 +16,8 @@ local note       -- the parsed note being run
 local noteRunId  -- the engine run the note belongs to; any other run drops it
 local claiming   -- true while Engine:Start starts the engine run for its note
 
+local TOKEN_SECONDS = 5 -- how long the words that match you (or the player previewed as) are kept
+
 -- Melee damage specializations, used for the "melee" and "ranged" tags. Tanks and healers match
 -- "tank" and "healer" instead. A spec not listed counts as ranged.
 local MELEE_SPECS = {
@@ -51,7 +53,7 @@ end
 -- The words that match you: your name, your role, and melee or ranged.
 local myTokens, tokensAt
 local function tokens()
-    if myTokens and tokensAt and GetTime() - tokensAt < 5 then
+    if myTokens and tokensAt and GetTime() - tokensAt < TOKEN_SECONDS then
         return myTokens
     end
     local t = { all = true, everyone = true, raid = true }
@@ -94,7 +96,7 @@ end
 -- Only IsMine reads these: a class word is common in ordinary sentences, so it never marks free text as yours.
 local myClasses, classesAt
 local function classTokens()
-    if myClasses and classesAt and GetTime() - classesAt < 5 then
+    if myClasses and classesAt and GetTime() - classesAt < TOKEN_SECONDS then
         return myClasses
     end
     local t = {}
@@ -147,12 +149,57 @@ local function groupTag(word, nextWord)
     return nil
 end
 
+-- A class's tag words (its file name and its own name, lower-cased, spaces removed) added to t.
+local function addClassWords(t, file)
+    local names = LOCALIZED_CLASS_NAMES_MALE
+    for _, v in ipairs({ { file }, { names and names[file] } }) do
+        v = v[1]
+        if readable(v) and type(v) == "string" then
+            local word = v:gsub("%s+", ""):lower()
+            if word ~= "" then
+                t[word] = true
+            end
+        end
+    end
+end
+
+-- Preview as (a rehearsal): the words that match another player, their name and, when CRT.AlertRoster
+-- knows it, their class. Their role, spec and group can't be known, so those tags never match them.
+-- Kept for a few seconds per name, as your own are, since the windows ask for every line.
+local preview = {}
+local function previewTokens(name)
+    if preview.name == name and preview.at and GetTime() - preview.at < TOKEN_SECONDS then
+        return preview.t, preview.classes
+    end
+    local t = { all = true, everyone = true, raid = true }
+    local short = name:lower():gsub("%-.*$", "")
+    t[short] = true
+    local classes = {}
+    local Roster = CRT.AlertRoster
+    local class = Roster and Roster.ClassOf and Roster:ClassOf(name)
+    if class then
+        addClassWords(classes, class)
+    end
+    preview.name, preview.at, preview.t, preview.classes = name, GetTime(), t, classes
+    return t, classes
+end
+
 -- Whether a timer is for you: your name, your role, your class, everyone, or your raid group. A name in
 -- a tag may carry a realm, which is ignored. A class name of several words may be split over them.
+-- In a rehearsal, Preview as decides instead: "*" takes every tagged line (an untagged line is for no
+-- one, so it still shows only in the timers window), and a player's name takes their lines.
 function Engine:IsMine(item)
-    local mine = tokens()
-    local classes = classTokens()
     local tags = item.tags
+    local as = Alerts.PreviewAs and Alerts:PreviewAs()
+    if as == "*" then
+        return #tags > 0
+    end
+    local mine, classes
+    if as then
+        mine, classes = previewTokens(as)
+    else
+        mine, classes = tokens(), classTokens()
+    end
     local subgroup
     local i = 1
     while i <= #tags do
@@ -169,9 +216,12 @@ function Engine:IsMine(item)
         end
         local number, used = groupTag(word, tags[i + 1])
         if number then
-            subgroup = subgroup or mySubgroup()
-            if number == subgroup then
-                return true
+            -- another player's group can't be known, so a group tag never matches them
+            if not as then
+                subgroup = subgroup or mySubgroup()
+                if number == subgroup then
+                    return true
+                end
             end
             i = i + used
         else
@@ -271,7 +321,7 @@ function Engine:Remaining(item)
         return nil
     end
     local t = Alerts:OrderTime(item.spellId, item.text, item.ph, item.time)
-    return start + (t or item.time) - GetTime()
+    return start + (t or item.time) - (Alerts.Now and Alerts:Now() or GetTime())
 end
 
 -- The note block -----------------------------------------------------------------------------
@@ -387,6 +437,20 @@ Alerts.onPull[#Alerts.onPull + 1] = function(run)
         Notes:SetActive(id)
         Engine:Start(Notes:Parsed(id), "encounter")
     end
+end
+
+-- A rehearsal runs the boss's note (preferring the same difficulty) without making it the active one,
+-- and without the pull's hooks.
+Alerts.onRehearsal = Alerts.onRehearsal or {}
+Alerts.onRehearsal[#Alerts.onRehearsal + 1] = function(run)
+    note = nil
+    local id = Notes:FindForEncounter(run.encounterID, run.difficultyName)
+    if id then
+        note = Notes:Parsed(id)
+        noteRunId = Alerts.runId
+        Engine.reason = "rehearsal"
+    end
+    preview.at = nil -- the roster may have changed since the last rehearsal
 end
 
 -- running and runId follow the engine; running is only true while the engine runs a note, so a pull

@@ -129,8 +129,9 @@ function Alert:Refresh()
         return
     end
 
-    -- The alert: the engine's line inside its warn and hold window, soonest first.
-    local now = GetTime()
+    -- The alert: the engine's line inside its warn and hold window, soonest first, on the engine's time
+    -- (a rehearsal's clock in one).
+    local now = CRT.Alerts.Now and CRT.Alerts:Now() or GetTime()
     local best = CRT.AlertRules.Alert(CRT.Alerts:Lines(now), now)
     if not best then
         frame:Hide()

@@ -7,6 +7,9 @@ local ADDON, CRT = ...
 -- Raid Notes "Read them out" switch (notes.alert.tts) is on, for every block. A line's sound cue plays once
 -- at zero, whatever that switch says; a raid note line's sound only while it is on, like its speech, and
 -- whether or not the Next spell alert is on (ruling B2).
+-- In a rehearsal run the queue ticks on the engine's time (Alerts:Now()), and speech plays only at 1x: a
+-- change away from 1x stops what is being said and drops the queue, and lines that come due at 2x or 4x
+-- are never said. What was queued at 1x stays while the speed stays 1x. Sound cues play at any speed.
 
 local Rules = CRT.AlertRules
 local Alerts = CRT.Alerts
@@ -39,6 +42,7 @@ local Speech = {
     playing = false,
     playingUntil = 0,
     runId = nil,
+    speed = 1,      -- the rehearsal speed at the last tick (1 outside a rehearsal)
 }
 CRT.AlertSpeech = Speech
 
@@ -121,6 +125,16 @@ function Speech:Reset()
     self.playingUntil = 0
 end
 
+-- Stops what is being said now and drops the queue.
+function Speech:Hush()
+    if C_VoiceChat and C_VoiceChat.StopSpeakingText then
+        pcall(C_VoiceChat.StopSpeakingText)
+    end
+    wipe(self.queue)
+    self.playing = false
+    self.playingUntil = 0
+end
+
 -- Oldest first; at the same time the higher priority goes first, then arrival order.
 local function before(a, b)
     if a.at ~= b.at then return a.at < b.at end
@@ -162,6 +176,18 @@ function Speech:Tick(now)
         end
     end
 
+    -- A rehearsal off 1x says nothing; the lines coming due are marked so they are never said late.
+    local speed = Alerts.RehearsalSpeed and Alerts:RehearsalSpeed() or 1
+    if speed ~= 1 then
+        if self.speed == 1 then
+            self:Hush()
+        end
+        self.speed = speed
+        Rules.SpeechDue(lines, now, self.spoken)
+        return
+    end
+    self.speed = 1
+
     if not settings().tts then
         return
     end
@@ -183,15 +209,22 @@ function Speech:Tick(now)
     end
     Rules.Behind(self.queue, now)
 
-    if self.playing and now >= self.playingUntil then
+    -- The speaker's timeout is real time, which the rehearsal's clock is not.
+    local real = (Alerts.IsRehearsal and Alerts:IsRehearsal()) and GetTime() or now
+    if self.playing and real >= self.playingUntil then
         self.playing = false
     end
     if not self.playing and self.queue[1] then
         local item = table.remove(self.queue, 1)
         self.playing = true
-        self.playingUntil = now + Rules.SPEECH_TIMEOUT
+        self.playingUntil = real + Rules.SPEECH_TIMEOUT
         self:SpeakNow(item.text or "")
     end
+end
+
+-- The engine's time (the rehearsal's clock in one), or GetTime() without it.
+local function engineNow()
+    return Alerts and Alerts.Now and Alerts:Now() or GetTime()
 end
 
 local elapsed = 0
@@ -203,7 +236,7 @@ driver:SetScript("OnUpdate", function(_, dt)
     end
     elapsed = 0
     if Alerts.running or #Speech.queue > 0 then
-        Speech:Tick(GetTime())
+        Speech:Tick(engineNow())
     end
 end)
 
@@ -217,7 +250,7 @@ driver:SetScript("OnEvent", function(_, event)
     end
     Speech.playing = false
     if Alerts.running then
-        Speech:Tick(GetTime())
+        Speech:Tick(engineNow())
     end
 end)
 pcall(driver.RegisterEvent, driver, "VOICE_CHAT_TTS_PLAYBACK_FINISHED")

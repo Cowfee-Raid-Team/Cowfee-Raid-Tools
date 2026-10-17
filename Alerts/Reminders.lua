@@ -525,4 +525,4 @@ local function entries(run)
     return out
 end
 
-Alerts:RegisterBlock(BLOCK, { label = "Your reminders", group = true, Entries = entries })
+Alerts:RegisterBlock(BLOCK, { label = "Your reminders", group = true, own = true, Entries = entries })
