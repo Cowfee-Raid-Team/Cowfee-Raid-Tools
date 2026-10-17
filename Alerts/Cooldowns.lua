@@ -145,6 +145,28 @@ function Cooldowns:Filters()
     return out
 end
 
+-- spellID's cooldown length in seconds, for the Timeline's cooldown bands: the list's own cd first, else
+-- the game's base cooldown (GetSpellBaseCooldown, milliseconds) when it reads as over 0, else nil (no
+-- bands). C_Spell.GetSpellCooldown is the current cooldown, not the base, so it isn't asked.
+function Cooldowns:Length(spellID)
+    if type(spellID) ~= "number" then
+        return nil
+    end
+    for _, e in ipairs(LIST) do
+        if e.spellID == spellID and type(e.cd) == "number" and e.cd > 0 then
+            return e.cd
+        end
+    end
+    if not GetSpellBaseCooldown then
+        return nil
+    end
+    local ok, ms = pcall(GetSpellBaseCooldown, spellID)
+    if ok and ms ~= nil and readable(ms) and type(ms) == "number" and ms > 0 then
+        return ms / 1000
+    end
+    return nil
+end
+
 local KINDS = { mine = true, all = true, healer = true, raid = true }
 
 -- The stored filter: "mine" when none is kept, or when it is no longer one of the choices (a class the
