@@ -31,6 +31,9 @@ local TEXT = {
     noNote = "This boss has no encounter ID yet, so no raid note can be made for it.",
     made = "Made a raid note for %s. It is on Raid Notes.",
     phaseCopy = "Moved the phase line in a reference of your own (shipped references never change). It is listed as yours.",
+    rehearse = "Rehearse",
+    rehearseHelp = "Plays this fight out in a window of its own: a stand-in boss frame and cast bar, with your real alerts firing on time from your notes, personal notes and assigned cooldowns. It plays what is shown here: the reference with its order and phase lines, or the recorded pull.\n\nIt can't start in combat or during a boss encounter, and stops at once if either begins. Nothing is sent to the group.\n\n/crt timeline rehearse does the same.",
+    noRehearse = "Nothing to rehearse: pick a boss's reference or pull on the Timeline's Review tab.",
 }
 
 local GRAY = { 0.35, 0.35, 0.35 }
@@ -51,6 +54,7 @@ local TABS = {
 local page, view, emptyLabel, unnamedHelp
 local reviewFrame, holder, recent, refTab, settingsTab
 local shareButton, shareHelp
+local rehearseButton
 local tabButtons, tabFrames = {}, {}
 local controls = {} -- the Review tab's controls, which refresh() redraws
 local currentTab = "review"
@@ -581,12 +585,97 @@ local function shareNote()
     CRT.NoteComm:Share(id)
 end
 
+-- Rehearse ---------------------------------------------------------------------------------------
+-- The Rehearse button opens the Rehearsal window (Timeline/RehearsalWindow.lua) on what the Review tab
+-- shows. It is greyed out with nothing shown, in combat, during a boss encounter and while the alerts
+-- run a real pull (CRT.TimelineRehearsalRun.Blocked), and /crt timeline rehearse follows the same rules.
+
+-- The difficulty, boss and reference or pull last shown (timeline.lastView).
+local function loadLastView()
+    local last = settings().lastView
+    if type(last) == "table" then
+        selectedGroup = (last.group == "mythic") and "mythic" or "nh"
+        selectedBoss, selectedPull = last.boss, last.pull
+    end
+end
+
+local lastViewRead = false
+
+-- What the Review tab shows, as the Rehearsal window takes it: { base, encounterID, group, order,
+-- bossName, difficultyName }, or nil when nothing is shown. Built the way refresh() builds the view;
+-- before the page was first opened, from the last view saved. The difficulty name is a recorded
+-- pull's own (as the game names it), else the group's: Mythic, or Heroic for Normal/Heroic.
+function Timeline:RehearsalSource()
+    if not page then
+        if not lastViewRead then
+            lastViewRead = true
+            loadLastView()
+        end
+        bossList = buildBossList()
+        fixSelection()
+    end
+    local base, pull
+    if showingReference() then
+        local entry = findRef(selectedPull)
+        base = entry and { reference = entry.ref }
+    else
+        pull = selectedBoss and selectedPull and Timeline:Pull(selectedBoss, selectedPull) or nil
+        base = pull
+    end
+    if not base then
+        return nil
+    end
+    local encounterID = selectedBoss
+    if type(encounterID) ~= "number" and CRT.TimelineJournal then
+        encounterID = CRT.TimelineJournal:ResolveID(encounterID, base.reference) or encounterID
+    end
+    return {
+        base = base,
+        encounterID = encounterID,
+        group = selectedGroup,
+        order = chosenOrder(),
+        bossName = bossName(),
+        difficultyName = (pull and gameDifficultyName(pull.difficultyID)) or (selectedGroup == "mythic" and "Mythic" or "Heroic"),
+    }
+end
+
+-- Opens the Rehearsal window on the shown fight, or prints why it can't. True when it opened.
+function Timeline:Rehearse()
+    local source = self:RehearsalSource()
+    if not source then
+        CRT:Print(TEXT.noRehearse)
+        return false
+    end
+    local why = CRT.TimelineRehearsalRun.Blocked()
+    if why then
+        CRT:Print(why)
+        return false
+    end
+    CRT.TimelineRehearsalWindow:Open(source)
+    return true
+end
+
+local function updateRehearse()
+    if rehearseButton then
+        rehearseButton:SetEnabled(Timeline:RehearsalSource() ~= nil and not CRT.TimelineRehearsalRun.Blocked())
+    end
+end
+
 -- The Pop out button on the Review tab, and the note left on the tab while it is popped out.
 local function buildPopControls()
     popButton = button(reviewFrame, "Pop out", 90)
     popButton:SetPoint("TOPRIGHT", reviewFrame, "TOPRIGHT", -8, -38)
     popButton:SetScript("OnClick", togglePopout)
-    UI.Help(reviewFrame, "Pop out", "Moves the timeline into a window of its own that you can drag to any size, for a wider view. Drag its title to move it and its corner to resize it.\n\nDock, the window's X or Escape puts it back here."):SetPoint("RIGHT", popButton, "LEFT", -2, 0)
+    local popHelp = UI.Help(reviewFrame, "Pop out", "Moves the timeline into a window of its own that you can drag to any size, for a wider view. Drag its title to move it and its corner to resize it.\n\nDock, the window's X or Escape puts it back here.")
+    popHelp:SetPoint("RIGHT", popButton, "LEFT", -2, 0)
+
+    -- Rehearse: see Timeline:Rehearse above.
+    rehearseButton = button(reviewFrame, TEXT.rehearse, 90)
+    rehearseButton:SetPoint("RIGHT", popHelp, "LEFT", -6, 0)
+    rehearseButton:SetScript("OnClick", function()
+        Timeline:Rehearse()
+    end)
+    UI.Help(reviewFrame, TEXT.rehearse, TEXT.rehearseHelp):SetPoint("RIGHT", rehearseButton, "LEFT", -2, 0)
 
     -- Share note: see shareNote above.
     shareButton = button(reviewFrame, TEXT.shareNote, 90)
@@ -678,6 +767,7 @@ refresh = function()
     end
     updateView()
     updateShare()
+    updateRehearse()
     settingsTab:Refresh()
     refTab:Refresh()
 end
@@ -767,11 +857,8 @@ local function build(pf)
 
     -- open on the difficulty, boss and reference or pull last shown; fixSelection falls back when
     -- the boss or pull is gone (the boss's reference, else its newest pull)
-    local last = settings().lastView
-    if type(last) == "table" then
-        selectedGroup = (last.group == "mythic") and "mythic" or "nh"
-        selectedBoss, selectedPull = last.boss, last.pull
-    end
+    loadLastView()
+    lastViewRead = true
 
     pf:SetScript("OnShow", function()
         selectTab(currentTab)
@@ -781,6 +868,11 @@ local function build(pf)
     CRT.Bosses:OnRouteChange(refresh) -- the raid route, the boss list's order
     if CRT.Notes and CRT.Notes.OnChange then
         CRT.Notes:OnChange(refresh) -- a note shared, edited or deleted
+    end
+    -- Rehearse greys out as combat or an encounter starts, and while the alerts run a real pull
+    CRT.TimelineRehearsalRun.OnChange(updateRehearse)
+    if CRT.Alerts and CRT.Alerts.OnChange then
+        CRT.Alerts:OnChange(updateRehearse)
     end
 end
 

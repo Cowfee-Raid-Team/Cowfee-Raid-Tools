@@ -10,10 +10,11 @@ local ADDON, CRT = ...
 -- their labels; a click jumps there); and the controls (Play/Pause, Restart, Speed, Preview as and
 -- the clock). An OnUpdate redraws from the clock while it plays. At the fight's length the clock
 -- stops and the window says "Rehearsal over".
--- The window only drives its own clock. The alerts engine is hooked on from outside: set
--- RehearsalWindow.onPlay(), onPause(), onSeek(t), onClose() and onAs(as) and they are called when
--- that happens. timeline.rehearsal keeps the position, the speed and Preview as (nil is you, "*"
--- everyone); the clock and the source aren't saved.
+-- The window only drives its own clock. The alerts engine is hooked on through
+-- RehearsalWindow.onPlay(), onPause(), onSeek(t), onClose(), onAs(as) and onTick(now) (each frame
+-- while it plays), which are called when that happens; RehearsalRun at the end of this file sets
+-- them. timeline.rehearsal keeps the position, the speed and Preview as (nil is you, "*" everyone, or
+-- a player's name); the clock and the source aren't saved.
 
 local Rehearsal = CRT.TimelineRehearsal
 local RehearsalWindow = {}
@@ -49,8 +50,11 @@ local TEXT = {
     as = "Preview as",
     me = "Me",
     everyone = "Everyone",
-    asHelp = "Whose alerts the rehearsal fires. Me: exactly yours. Everyone: every line, with who it's for.",
+    asHelp = "Whose alerts the rehearsal fires. Me: exactly yours. Everyone: every line, with who it's for. A player: what they would get. The players are the selected Raid Groups page's, or your group's when that page is empty.",
     stripHelp = "The next stretch of the fight in the rows' type colors, the line being now. Click it to jump there.",
+    inCombat = "Rehearsal can't start in combat.",
+    inEncounter = "Rehearsal can't start during a boss encounter.",
+    running = "Rehearsal can't start while the alerts are running a pull or a test.",
 }
 
 local function mocha(key, alpha)
@@ -257,6 +261,26 @@ local function buildStrip(f)
     help:SetPoint("TOPRIGHT", strip, "TOPRIGHT", 0, 0)
 end
 
+-- Preview as: Me, Everyone, then the players CRT.AlertRoster gives (the selected Raid Groups page's,
+-- or the group's when that page is empty), read each time the menu opens. A saved name that is not
+-- on the roster now still shows at the end, so the choice is never lost or shown blank.
+local function asOptions()
+    local list = { { key = "me", label = TEXT.me }, { key = "*", label = TEXT.everyone } }
+    local seen = {}
+    local Roster = CRT.AlertRoster
+    for _, p in ipairs(Roster and Roster:Players() or {}) do
+        if type(p.name) == "string" and not seen[p.name] then
+            seen[p.name] = true
+            list[#list + 1] = { key = p.name, label = p.name }
+        end
+    end
+    local as = saved().as
+    if type(as) == "string" and as ~= "*" and not seen[as] then
+        list[#list + 1] = { key = as, label = as }
+    end
+    return list
+end
+
 local function buildControls(f)
     local UI = CRT.UI
     f.play = button(f, TEXT.play, 70)
@@ -288,9 +312,8 @@ local function buildControls(f)
         end,
     })
     f.speed:SetPoint("TOPLEFT", f, "TOPLEFT", PAD, -270)
-    -- Preview as holds you and Everyone; the players of the raid groups join it with the alerts engine.
     f.as = UI.Dropdown(f, TEXT.as, {
-        options = { { key = "me", label = TEXT.me }, { key = "*", label = TEXT.everyone } },
+        options = asOptions,
         labelWidth = 70,
         width = 110,
         get = function()
@@ -326,17 +349,18 @@ function RehearsalWindow:Frame()
         s:StopMovingOrSizing()
         savePosition(s)
     end)
-    -- closing (the X, Escape or Close) stops the rehearsal
-    f:SetScript("OnHide", function()
-        if self.clock then
-            self.clock:Pause()
+    -- closing (the X, Escape or Close) stops the rehearsal. OnHide also fires when the whole UI hides
+    -- (Alt+Z, a cinematic) with the window still shown; that is not a close.
+    f:SetScript("OnHide", function(s)
+        if s:IsShown() then
+            return
         end
-        self.playing = false
-        hook("onClose")
+        self:Closed()
     end)
     f:SetScript("OnUpdate", function()
         if self.playing then
             self:Redraw()
+            hook("onTick", self:Now())
         end
     end)
     tinsert(UISpecialFrames, "CowfeeRaidToolsRehearsalWindow")
@@ -352,9 +376,14 @@ end
 
 -- Opens the window on source = { base, encounterID, group, order, bossName, difficultyName }: the
 -- reference or pull the Review tab shows, laid out the way the Timeline lays it out, paused at 0:00.
+-- Opened again while open, the old fight ends first (its rehearsal run stops), so nothing keeps
+-- playing against the new one.
 function RehearsalWindow:Open(source)
     source = source or {}
     local f = self:Frame()
+    if self.open then
+        self:Closed()
+    end
     if self.clock then
         self.clock:Pause()
     end
@@ -373,14 +402,30 @@ function RehearsalWindow:Open(source)
     f.speed.refresh()
     f.as.refresh()
     applyPosition(f)
+    self.open = true
     f:Show()
     self:Redraw()
 end
 
+-- The fight ends: the clock stops and onClose is told, once per Open.
+function RehearsalWindow:Closed()
+    if not self.open then
+        return
+    end
+    self.open = false
+    if self.clock then
+        self.clock:Pause()
+    end
+    self.playing = false
+    hook("onClose")
+end
+
+-- Hiding a window the hidden UI already hides fires no OnHide, so the close is finished here too.
 function RehearsalWindow:Close()
     if self.frame and self.frame:IsShown() then
         self.frame:Hide()
     end
+    self:Closed()
 end
 
 function RehearsalWindow:IsOpen()
@@ -596,3 +641,149 @@ function RehearsalWindow:Redraw()
     f.clockText:SetText(fmt(now) .. " / " .. fmt(length))
     self.playing = playing
 end
+
+-- The alerts engine ------------------------------------------------------------------------------
+-- RehearsalRun ties the window to the alerts engine's rehearsal run (Alerts/Engine.lua):
+--   Play starts a run on the window's clock, Alerts:Start(encounterID, difficultyName, "rehearsal",
+--   { clock, speed, as }), then starts every phase whose line is at or before the clock. Played
+--   again after a pause, the run is still going and the clock simply runs on.
+--   Pause leaves the run going, with the clock standing still.
+--   A jump, Restart or a new Preview as stops the run quietly and starts it again at the clock's
+--   time (once a run was started; before the first Play there is none to restart).
+--   While it plays, each phase line the clock passes starts its phase at that line's time. The
+--   phase is the number in the line's label (Reminders.PhaseNumber); a line with no number, and
+--   phase 1, which the engine starts at the pull, start nothing.
+--   Closing the window stops a rehearsal run, never a real one, and Play never replaces a real run.
+--   Combat or a boss encounter starting closes the window. Blocked() says why Rehearse can't open now
+--   (combat, a boss encounter, or the alerts running a real pull or a test), and OnChange(fn) is told
+--   when combat or an encounter starts or ends, so the Rehearse button can grey out.
+
+local Run = { started = false, last = nil, listeners = {} }
+CRT.TimelineRehearsalRun = Run
+
+-- Set by the events: InCombatLockdown() is still false inside PLAYER_REGEN_DISABLED, and the order of
+-- this file's ENCOUNTER_START against the game's own must not matter.
+local inCombat, inEncounter = false, false
+
+-- A run that is not a rehearsal (an encounter, a test) is going.
+local function realRun(Alerts)
+    return Alerts.running and not Alerts:IsRehearsal()
+end
+
+-- Starts the phase of every line after `from` (nil: from the pull) up to `to`, in time order.
+local function startPhases(Alerts, from, to)
+    local Reminders = CRT.AlertReminders
+    local model = RehearsalWindow.model
+    for _, p in ipairs(model and model.phases or {}) do
+        if p.t <= to and (from == nil or p.t > from) then
+            local ph = Reminders and Reminders.PhaseNumber(p.label)
+            if ph and ph ~= 1 then
+                Alerts:StartPhase(ph, "rehearsal", Alerts:TimeAt(p.t))
+            end
+        end
+    end
+    Run.last = to
+end
+
+local function startRun(Alerts)
+    local W = RehearsalWindow
+    local source = W.source or {}
+    Alerts:Start(source.encounterID, source.difficultyName, "rehearsal", {
+        clock = function()
+            return W:Now()
+        end,
+        speed = function()
+            return W:Speed()
+        end,
+        as = W:As(),
+    })
+    Run.started = true
+    startPhases(Alerts, nil, W:Now())
+end
+
+function Run.Play()
+    local Alerts = CRT.Alerts
+    if not Alerts or Alerts:IsRehearsal() or realRun(Alerts) then
+        return
+    end
+    startRun(Alerts)
+end
+
+-- A jump, Restart or a new Preview as: the run starts again at the clock's time.
+function Run.Restart()
+    local Alerts = CRT.Alerts
+    if not Alerts or realRun(Alerts) or not (Run.started or Alerts:IsRehearsal()) then
+        return
+    end
+    Alerts:Stop(true)
+    startRun(Alerts)
+end
+
+function Run.Tick(now)
+    local Alerts = CRT.Alerts
+    if Alerts and Alerts:IsRehearsal() and Run.last and now > Run.last then
+        startPhases(Alerts, Run.last, now)
+    end
+end
+
+function Run.Close()
+    local Alerts = CRT.Alerts
+    if Alerts and Alerts:IsRehearsal() then
+        Alerts:Stop()
+    end
+    Run.started, Run.last = false, nil
+end
+
+-- Why Rehearse can't open now, or nil when it can.
+function Run.Blocked()
+    if inCombat or (InCombatLockdown and InCombatLockdown()) then
+        return TEXT.inCombat
+    end
+    if inEncounter or (IsEncounterInProgress and IsEncounterInProgress()) then
+        return TEXT.inEncounter
+    end
+    local Alerts = CRT.Alerts
+    if Alerts and realRun(Alerts) then
+        return TEXT.running
+    end
+    return nil
+end
+
+function Run.OnChange(fn)
+    Run.listeners[#Run.listeners + 1] = fn
+end
+
+-- Sets the window's hooks to the engine (done once here; the harness sets them again).
+function Run.Install()
+    RehearsalWindow.onPlay = Run.Play
+    RehearsalWindow.onSeek = Run.Restart
+    RehearsalWindow.onAs = Run.Restart
+    RehearsalWindow.onTick = Run.Tick
+    RehearsalWindow.onClose = Run.Close
+end
+Run.Install()
+
+local events = CreateFrame("Frame")
+events:RegisterEvent("PLAYER_REGEN_DISABLED")
+events:RegisterEvent("PLAYER_REGEN_ENABLED")
+events:RegisterEvent("ENCOUNTER_START")
+events:RegisterEvent("ENCOUNTER_END")
+events:SetScript("OnEvent", function(_, event)
+    if event == "PLAYER_REGEN_DISABLED" then
+        inCombat = true
+    elseif event == "PLAYER_REGEN_ENABLED" then
+        inCombat = false
+    elseif event == "ENCOUNTER_START" then
+        inEncounter = true
+    elseif event == "ENCOUNTER_END" then
+        inEncounter = false
+    end
+    if event == "PLAYER_REGEN_DISABLED" or event == "ENCOUNTER_START" then
+        -- a real fight wins: the window closes, which stops only a rehearsal run
+        RehearsalWindow:Close()
+        Run.Close()
+    end
+    for _, fn in ipairs(Run.listeners) do
+        fn()
+    end
+end)

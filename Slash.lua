@@ -21,6 +21,7 @@ local function printHelp()
     print("  |cffffd100/crt tattle export|r - the Tattlebot totals as text to paste into Discord")
     print("  |cffffd100/crt pace|r - open the Pace page: where each boss's health should be")
     print("  |cffffd100/crt timeline|r - open the Timeline page (|cffffd100/crt timeline pop|r opens it in its own window)")
+    print("  |cffffd100/crt timeline rehearse|r - play the fight the Timeline shows in the Rehearsal window, with your alerts")
     print("  |cffffd100/crt break 10|r - a 10 minute break timer (any minutes, 0 cancels); from a raid leader or assistant it reaches the whole raid")
     print("  |cffffd100/crt qol|r - open the Quality of Life page (low health and debuffs)")
     print("  |cffffd100/crt settings|r - open General Settings: window, fonts, sound, minimap button, layers, profiles")
@@ -104,6 +105,8 @@ SlashCmdList["COWFEERAIDTOOLS"] = function(msg)
         CRT.UI:Show("pace")
     elseif msg == "timeline pop" then
         CRT.TimelinePopout()
+    elseif msg == "timeline rehearse" then
+        CRT.Timeline:Rehearse()
     elseif msg == "tattle" then
         CRT.UI:Show("tattle")
     elseif msg == "tattle post" then
