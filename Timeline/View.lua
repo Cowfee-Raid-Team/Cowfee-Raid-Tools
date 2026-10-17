@@ -2388,13 +2388,17 @@ local function tagsText(tags)
     return type(tags) == "string" and tags or ""
 end
 
--- Whether mark o is a cast of b's spell for b's target: a note line with the same tag: text, or another
--- time of your personal reminders.
+-- Whether mark o is a cast of b's spell for b's target: a line of the same note (so the same difficulty)
+-- with the same tag: text, or another time of your personal reminders. A chip not yet in a note (no
+-- noteID) is compared with the lines of every note.
 local function sameTarget(o, b)
     if o.kind ~= b.kind or o.spellID == nil or o.spellID ~= b.spellID then
         return false
     end
-    return o.kind == "mine" or tagsText(o.tags) == tagsText(b.tags)
+    if o.kind == "mine" then
+        return true
+    end
+    return (b.noteID == nil or o.noteID == b.noteID) and tagsText(o.tags) == tagsText(b.tags)
 end
 
 -- spellID's cooldown length in seconds (Alerts/Cooldowns.lua's Length), else nil.
