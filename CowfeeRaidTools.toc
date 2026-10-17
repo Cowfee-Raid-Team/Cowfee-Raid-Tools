@@ -59,6 +59,7 @@ Timeline\Database.lua
 Timeline\Reference.lua
 Timeline\Lanes.lua
 Timeline\Rehearsal.lua
+Timeline\RehearsalWindow.lua
 Alerts\CooldownData.lua
 Alerts\Cooldowns.lua
 Timeline\View.lua
