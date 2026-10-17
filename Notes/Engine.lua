@@ -442,12 +442,16 @@ end
 -- A rehearsal runs the boss's note (preferring the same difficulty) without making it the active one,
 -- and without the pull's hooks.
 Alerts.onRehearsal = Alerts.onRehearsal or {}
+-- Engine.noteId is the rehearsed note's id (the timers window shows that note, not the active one); it is
+-- cleared whenever the note is dropped.
 Alerts.onRehearsal[#Alerts.onRehearsal + 1] = function(run)
     note = nil
+    Engine.noteId = nil
     local id = Notes:FindForEncounter(run.encounterID, run.difficultyName)
     if id then
         note = Notes:Parsed(id)
         noteRunId = Alerts.runId
+        Engine.noteId = id
         Engine.reason = "rehearsal"
     end
     preview.at = nil -- the roster may have changed since the last rehearsal
@@ -463,6 +467,9 @@ Alerts:OnChange(function()
     end
     if not Alerts.running or Alerts.runId ~= noteRunId then
         note = nil
+    end
+    if not note or not (Alerts.IsRehearsal and Alerts:IsRehearsal()) then
+        Engine.noteId = nil
     end
     Engine.running = Alerts.running and note ~= nil
     Engine.runId = Alerts.runId

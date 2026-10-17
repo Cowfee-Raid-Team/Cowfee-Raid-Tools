@@ -329,6 +329,9 @@ Bars = Areas.New({
     make = make,
     draw = draw,
     lines = lines,
+    lead = function(_, s)
+        return aheadOf(s)
+    end,
     after = after,
     sample = sample,
     settings = settingsRows,

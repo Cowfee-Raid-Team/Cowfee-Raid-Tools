@@ -1630,46 +1630,9 @@ end
 -- else the live group. { { key, name, class } } in name order: name as the editor's For shows it (no
 -- realm on your own), class from the live group, else the class cache, else nil.
 function Methods:AssignRoster()
-    local Groups = CRT.Groups
-    if not Groups then
-        return {}
-    end
-    local live = {}
-    if Groups.ReadRoster then
-        local ok, list = pcall(Groups.ReadRoster, Groups)
-        for _, entry in ipairs(ok and type(list) == "table" and list or {}) do
-            if readable(entry.key) and type(entry.key) == "string" and entry.key ~= "" then
-                live[#live + 1] = entry
-            end
-        end
-    end
-    local keys = Groups.ActiveNames and Groups:ActiveNames() or {}
-    if #keys == 0 then
-        for _, entry in ipairs(live) do
-            keys[#keys + 1] = entry.key
-        end
-    end
-    local lookup = Groups.MakeLookup and Groups.MakeLookup(live)
-    local cache = CRT.db and CRT.db.classCache or {}
-    local out = {}
-    for _, key in ipairs(keys) do
-        local entry = lookup and lookup(key)
-        local class = entry and entry.class
-        if not (readable(class) and type(class) == "string" and class ~= "") then
-            class = cache[key:lower()]
-            if not (readable(class) and type(class) == "string" and class ~= "") then
-                class = nil
-            end
-        end
-        local name = Groups.Display and Groups.Display(key) or key
-        if readable(name) and type(name) == "string" and name ~= "" then
-            out[#out + 1] = { key = key, name = name, class = class }
-        end
-    end
-    table.sort(out, function(a, b)
-        return a.name:lower() < b.name:lower()
-    end)
-    return out
+    -- one roster for the assign menu and the Rehearsal's Preview as (Alerts/Roster.lua)
+    local Roster = CRT.AlertRoster
+    return Roster and Roster:Players() or {}
 end
 
 -- Saves cooldown e (as CRT.AlertCooldowns:List gives it) at t seconds from the pull at once, with the

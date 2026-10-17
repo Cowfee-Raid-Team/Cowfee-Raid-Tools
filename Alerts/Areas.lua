@@ -24,6 +24,9 @@ local ADDON, CRT = ...
 --                      set(new table); opts as for UI.Dropdown and UI.Slider). It is called every time the area
 --                      shows there; the rows are made the first time and reused after. A change refreshes the
 --                      area at once.
+--   Optional:
+--     lead(line, s)    -> seconds before line.at the line first shows in this area (default line.warn); a
+--                      rehearsal that jumps in part-way starts the line as if it had shown from then
 --   Optional, for an area whose settings or lines live elsewhere (the bars):
 --     store()          -> the settings table, instead of CRT.db.alerts.areas[settingsKey]
 --     lines(now, s, cap)  -> lines, more: the lines to show and how many were left out, instead of
@@ -120,6 +123,10 @@ local GROW_OPTIONS = {
 
 local EMPTY = {}
 
+-- True while an area draws a run's lines, false for Previews and tests, which never take a rehearsal's
+-- pause or speed. Set by Area:Refresh just before it draws.
+local drawingRun = false
+
 local function readable(v)
     return CRT.Timeline.readable(v)
 end
@@ -205,9 +212,11 @@ end
 -- frame runs on real time, so in a rehearsal run (Alerts:RehearsalTick) the swipe is set from the fight
 -- seconds already done and the whole length, both divided by the speed; while the clock stands still it
 -- is paused (Cooldown:Pause, where the client has it), and on resume or a speed change it is set again.
+-- Previews and tests always swipe on real time. A swipe left paused is resumed before anything else is
+-- set on it, so a rehearsal's pause never carries into a real run.
 function Areas.Swipe(w, line, total, now)
     local paused, speed, epoch = false, 1, nil
-    if Alerts.RehearsalTick then
+    if drawingRun and Alerts.RehearsalTick then
         paused, speed, epoch = Alerts:RehearsalTick()
     end
     local key = tostring(Alerts.runId) .. "|" .. tostring(line.id) .. "|" .. tostring(line.at) .. "|" .. tostring(epoch)
@@ -216,13 +225,16 @@ function Areas.Swipe(w, line, total, now)
     end
     w.swipeKey = key
     local cd = w.cooldown
+    if w.swipePaused then
+        if cd.Resume then
+            cd:Resume()
+        end
+        w.swipePaused = nil
+    end
     if total > 0 and cd.SetCooldown then
         if epoch == nil then
             cd:SetCooldown(line.at - total, total)
         else
-            if w.swipePaused and cd.Resume then
-                cd:Resume()
-            end
             local done = now - (line.at - total)
             cd:SetCooldown(GetTime() - done / speed, total / speed)
             w.swipePaused = paused and cd.Pause and true or nil
@@ -734,8 +746,17 @@ function Area:Draw(lines, now, s, more)
         point, relative = align[1], align[2]
     end
 
-    -- When each line id first showed, kept by id so it survives the line moving to another widget.
+    -- When each line id first showed, kept by id so it survives the line moving to another widget, and
+    -- forgotten when a new run starts. A rehearsal that starts part-way into a line's lead counts it as
+    -- shown from where the lead began (never before the fight's start), so its bar and swipe start there.
     local shownAt, seen = self.shownAt, self.seen
+    if self.shownRun ~= Alerts.runId then
+        self.shownRun = Alerts.runId
+        for id in pairs(shownAt) do
+            shownAt[id] = nil
+        end
+    end
+    local fightStart = drawingRun and Alerts.IsRehearsal and Alerts:IsRehearsal() and Alerts:TimeAt(0)
     for i = 1, n do
         local line, w = lines[i], pool[i]
         if not w then
@@ -749,6 +770,12 @@ function Area:Draw(lines, now, s, more)
             -- a rehearsal started again earlier on its clock: the line shows anew from now
             if not at or at > now then
                 at = now
+                if fightStart then
+                    local lead = def.lead and def.lead(line, s) or line.warn
+                    if type(lead) == "number" then
+                        at = math.min(now, math.max(line.at - lead, fightStart))
+                    end
+                end
                 shownAt[id] = at
             end
         end
@@ -833,7 +860,8 @@ function Area:Refresh()
         return
     end
     local s = self:Settings()
-    local now = (self.preview or self.testList or not Alerts.Now) and GetTime() or Alerts:Now()
+    drawingRun = not (self.preview or self.testList)
+    local now = (not drawingRun or not Alerts.Now) and GetTime() or Alerts:Now()
     self.handle:SetShown(self.preview)
     local lines, more
     if self.preview then
