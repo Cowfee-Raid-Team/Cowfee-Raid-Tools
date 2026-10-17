@@ -145,13 +145,11 @@ function Cooldowns:Filters()
     return out
 end
 
--- spellID's cooldown length in seconds, for the Timeline's cooldown bands: the list's own cd first, else
--- the game's base cooldown (GetSpellBaseCooldown, milliseconds) when it reads as over 0, else nil (no
--- bands). C_Spell.GetSpellCooldown is the current cooldown, not the base, so it isn't asked.
-function Cooldowns:Length(spellID)
-    if type(spellID) ~= "number" then
-        return nil
-    end
+-- The lengths found so far by spellID (false for none), since a drag asks every frame. The list is season
+-- data that never changes while the game runs; ResetLengths forgets them all should it ever change.
+local lengths = {}
+
+local function findLength(spellID)
     for _, e in ipairs(LIST) do
         if e.spellID == spellID and type(e.cd) == "number" and e.cd > 0 then
             return e.cd
@@ -161,10 +159,31 @@ function Cooldowns:Length(spellID)
         return nil
     end
     local ok, ms = pcall(GetSpellBaseCooldown, spellID)
-    if ok and ms ~= nil and readable(ms) and type(ms) == "number" and ms > 0 then
+    -- readable first: a secret value must not be compared
+    if ok and readable(ms) and type(ms) == "number" and ms > 0 then
         return ms / 1000
     end
     return nil
+end
+
+-- spellID's cooldown length in seconds, for the Timeline's cooldown bands: the list's own cd first, else
+-- the game's base cooldown (GetSpellBaseCooldown, milliseconds) when it reads as over 0, else nil (no
+-- bands). C_Spell.GetSpellCooldown is the current cooldown, not the base, so it isn't asked. Each spell
+-- is looked up once (a nil answer too) until ResetLengths.
+function Cooldowns:Length(spellID)
+    if type(spellID) ~= "number" then
+        return nil
+    end
+    local known = lengths[spellID]
+    if known == nil then
+        known = findLength(spellID) or false
+        lengths[spellID] = known
+    end
+    return known or nil
+end
+
+function Cooldowns:ResetLengths()
+    lengths = {}
 end
 
 local KINDS = { mine = true, all = true, healer = true, raid = true }
