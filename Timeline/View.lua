@@ -155,6 +155,7 @@ local TEXT = {
     placedMine = "%s placed at %s for you.",
     placedNone = "%s placed at %s unassigned.",
     placeFailed = "%s was not placed: %s",
+    placeFailedWhy = "it could not be saved.", -- the reason in placeFailed when none is given
     bandLength = "%d:%02d", -- a cooldown band's length, minutes and seconds, inside the after band
     tooSoon = " \194\183 too soon", -- added to a drag's label when another cast of the spell is inside its bands
 }
@@ -1625,10 +1626,12 @@ function Methods:PlaceCooldownAt(t, e, tag)
         return false
     end
     local Draft = CRT.AlertDraft
+    local name = e and (e.name or (e.spellID and (CRT.AlertReminders.SpellName(e.spellID)
+        or string.format(TEXT.spell, e.spellID)))) or TEXT.reminder
     if not (Draft and e and e.spellID) then
+        CRT:Print(string.format(TEXT.placeFailed, name, TEXT.placeFailedWhy))
         return false
     end
-    local name = e.name or CRT.AlertReminders.SpellName(e.spellID) or string.format(TEXT.spell, e.spellID)
     local at = clock(t)
     local written = self:WrittenTime(e.spellID, e.name, t)
     local ph, seconds = CRT.AlertReminders.PhaseAt(self.pull and self.pull.reference, tenth(written))
@@ -1638,7 +1641,8 @@ function Methods:PlaceCooldownAt(t, e, tag)
         ok, err = false, tostring(ok)
     end
     if not ok then
-        CRT:Print(string.format(TEXT.placeFailed, name, tostring(err or "")))
+        local why = err ~= nil and tostring(err) or ""
+        CRT:Print(string.format(TEXT.placeFailed, name, why ~= "" and why or TEXT.placeFailedWhy))
         return false
     end
     if tag == nil then

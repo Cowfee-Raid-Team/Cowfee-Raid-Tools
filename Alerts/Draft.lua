@@ -198,10 +198,10 @@ end
 -- What a placed cooldown starts with, as draft fields: Show as Text only, Speak the text, no count,
 -- glow or sound, Show from COOLDOWN_WARN, Linger COOLDOWN_LINGER, the default colour, the spell's own
 -- icon. A fresh table each call. Not the editor's new-alert defaults (Draft.New): a cooldown has its own.
+-- No sound and the default colour are nil, which a table can't hold: Draft.ForCooldown clears them.
 function Draft.CooldownDefaults()
     return { show = { alert = false, text = true, icon = false, bar = false, circle = false }, speak = true,
-        count = false, glow = false, sound = nil, warn = COOLDOWN_WARN, linger = COOLDOWN_LINGER, color = nil,
-        iconType = "spell" }
+        count = false, glow = false, warn = COOLDOWN_WARN, linger = COOLDOWN_LINGER, iconType = "spell" }
 end
 
 -- A new draft for a cooldown: its spell, named after the spell unless text is given, with the cooldown
@@ -211,7 +211,7 @@ function Draft.ForCooldown(spellID, text, boss)
     for k, v in pairs(Draft.CooldownDefaults()) do
         d[k] = v
     end
-    d.iconID = nil
+    d.sound, d.color, d.iconID = nil, nil, nil
     return d
 end
 
