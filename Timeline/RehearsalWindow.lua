@@ -433,6 +433,7 @@ function RehearsalWindow:Open(source)
     local Journal = CRT.TimelineJournal
     local rows = Journal and Journal:Rows(source.encounterID) or {}
     local lanes, _, extra = CRT.TimelineLanes.Build(source.base, rows, CRT.Timeline:Settings(), source.encounterID, nil, source.group, source.order)
+    lanes = CRT.Timeline:WithoutIgnored(lanes, source.encounterID) -- your ignored mechanics stay hidden here too
     self.source = source
     self.model = Rehearsal.Build(lanes, extra)
     self.clock = Rehearsal.NewClock()

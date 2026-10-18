@@ -40,6 +40,55 @@ function Timeline:Set(field, value)
     self:Fire()
 end
 
+-- Ignored mechanics: boss mechanics you hide from your own timeline, per boss, by name (a reference row
+-- and a recorded pull's spell row of the same ability share it), in timeline.ignored[boss][name in
+-- lower case] = the name as shown. Only what you see: the notes, alerts, reminders and anything shared
+-- are never touched, and a hidden mechanic's alerts still fire. The view lists them under Ignored
+-- mechanics, and the Rehearsal leaves them out too.
+
+local function ignoreKey(name)
+    return tostring(name or ""):lower()
+end
+
+-- Whether a lane is a boss mechanic that can be ignored (not deaths, notes or overlay ticks).
+function Timeline.Ignorable(lane)
+    return lane ~= nil and (lane.kind == "reference" or lane.kind == "spell") and lane.label ~= nil
+end
+
+function Timeline:Ignored(encounterID, name)
+    local all = tdb().ignored
+    local list = all and all[tostring(encounterID)]
+    return (list and list[ignoreKey(name)] ~= nil) or false
+end
+
+function Timeline:SetIgnored(encounterID, name, on)
+    if encounterID == nil or name == nil then
+        return
+    end
+    local db = tdb()
+    db.ignored = db.ignored or {}
+    local boss = tostring(encounterID)
+    db.ignored[boss] = db.ignored[boss] or {}
+    db.ignored[boss][ignoreKey(name)] = on and name or nil
+    if next(db.ignored[boss]) == nil then
+        db.ignored[boss] = nil
+    end
+    self:Fire()
+end
+
+-- lanes split into the ones to draw and the ignored ones, each in its order.
+function Timeline:WithoutIgnored(lanes, encounterID)
+    local shown, hidden = {}, {}
+    for _, lane in ipairs(lanes or {}) do
+        if self.Ignorable(lane) and self:Ignored(encounterID, lane.label) then
+            hidden[#hidden + 1] = lane
+        else
+            shown[#shown + 1] = lane
+        end
+    end
+    return shown, hidden
+end
+
 -- The raid's chosen order of a boss's parts (see Reference.PartMover), per boss and difficulty group,
 -- saved as its Reference.OrderKey ("Iku > Gebbo > Nama") in timeline.orders[encounterID][group]. Nil
 -- means the order the reference was written in. Setting nil clears it.
