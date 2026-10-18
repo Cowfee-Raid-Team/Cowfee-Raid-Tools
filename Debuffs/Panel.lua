@@ -16,6 +16,13 @@ local ADDON, CRT = ...
 -- The panel is faded with alpha, not hidden, when you are out of combat, because showing and hiding
 -- frames can be blocked in combat. The container stays shown and enabled throughout. Positions and
 -- settings are saved per player in CRTDB.debuffs.
+--
+-- During a boss encounter the container's buttons hold secret aura data and the game makes them, and
+-- what is attached to them, forbidden to addon code; that lasts after you die, when combat has ended
+-- but the encounter hasn't. So the buttons are set up in initializeFrame, and a settings change only
+-- wires them again when it is safe (safeToWire: out of combat and no encounter running). A button
+-- found forbidden is skipped and marked dirty, and wired again once it is safe. Anything that touches
+-- the container or a button checks forbidden() first.
 
 local Debuffs = CRT.Debuffs
 local Panel = {}
@@ -37,6 +44,12 @@ local slots = {} -- one frame per private aura slot
 local anchorIds = {} -- the private aura anchors added for those slots
 local tiles = {} -- preview tiles
 local buttons = {} -- every container button built, with its parts, to apply the look again
+local dirty = {} -- buttons skipped while forbidden, to wire again when it is safe
+local skipped = 0 -- how many times a forbidden button was skipped, for the diagnostics
+local encounter = false -- between ENCOUNTER_START and ENCOUNTER_END
+local pendingApply = false -- a settings change waiting for a safe moment
+local lastApply = 0 -- GetTime() of the last Apply, so a button that stays forbidden is retried slowly
+local RETRY_SECONDS = 5
 local dragging
 local previewOn = false
 local inCombat = false
@@ -69,6 +82,28 @@ local function try(label, object, method, ...)
     return true, a, b
 end
 
+-- Whether a frame or region may be touched by addon code right now.
+local function forbidden(object)
+    if object == nil then
+        return false
+    end
+    local fn = object.IsForbidden
+    if type(fn) ~= "function" then
+        return false
+    end
+    local ok, result = pcall(fn, object)
+    return not ok or result == true
+end
+
+local function encounterActive()
+    return encounter or (IsEncounterInProgress and IsEncounterInProgress() and true or false)
+end
+
+-- Setting up the container and its buttons: out of combat, and no encounter (you may be dead in one).
+local function safeToWire()
+    return not InCombatLockdown() and not encounterActive()
+end
+
 local function rowWidth()
     local size, count = Debuffs:Size(), Debuffs:MaxCount()
     return count * size + (count - 1) * GAP, size
@@ -96,7 +131,7 @@ end
 -- One private aura anchor per slot, the way Blizzard's debuff frame does, when the setting is on. The
 -- game draws these itself and takes only a few options. Out of combat only.
 local function addAnchors()
-    if not frame or InCombatLockdown() then
+    if not frame or not safeToWire() then
         return
     end
     local on = Debuffs:PrivateSlots()
@@ -250,6 +285,13 @@ end
 -- Points a container button's parts at the game: what it fills, and what it leaves out (the Clear
 -- calls), so a setting turned off stops showing at once.
 local function wireButton(button, parts)
+    if forbidden(button) or forbidden(parts.icon) or forbidden(parts.border) or forbidden(parts.over) then
+        dirty[button] = true
+        skipped = skipped + 1
+        pendingApply = true
+        return false
+    end
+    dirty[button] = nil
     local size = Debuffs:Size()
     local timerShown = layoutParts(button, parts, size)
     if parts.cooldown and (Debuffs:Get("swipe") or Debuffs:SwipeNumbers()) then
@@ -278,11 +320,22 @@ local function wireButton(button, parts)
     else
         parts.dispel:Hide()
     end
+    return true
 end
 
 -- The container calls this once for each button it makes; the button is the first argument.
 local function initializeButton(button)
-    if type(button) ~= "table" or not button.SetIcon then
+    if type(button) ~= "table" then
+        note("initializeFrame was called without an aura button")
+        return
+    end
+    if forbidden(button) then
+        dirty[button] = true
+        skipped = skipped + 1
+        pendingApply = true
+        return
+    end
+    if not button.SetIcon then
         note("initializeFrame was called without an aura button")
         return
     end
@@ -314,7 +367,7 @@ end
 
 -- The flow layout: one row from the top left, growing right.
 local function applyContainerLayout()
-    if not container or InCombatLockdown() then
+    if not container or not safeToWire() or forbidden(container) then
         return
     end
     local width, size = rowWidth()
@@ -377,7 +430,7 @@ end
 
 -- Sizes the panel and its rows. Out of combat only.
 local function layout()
-    if not frame or InCombatLockdown() then
+    if not frame or not safeToWire() then
         return
     end
     local width, height = panelSize()
@@ -506,7 +559,7 @@ local function updateVisibility()
     if frame:GetAlpha() ~= alpha then
         frame:SetAlpha(alpha)
     end
-    if container then
+    if container and not forbidden(container) then
         local real = previewOn and 0 or 1
         if container:GetAlpha() ~= real then
             container:SetAlpha(real)
@@ -528,14 +581,24 @@ local function placeHandle()
     handle:SetPoint("BOTTOMRIGHT", frame, "TOPRIGHT", 0, 2 + lift)
 end
 
+-- Applies the settings: position, the container's group options, and every button's look. In combat
+-- or during an encounter it waits (pendingApply) for PLAYER_REGEN_ENABLED or ENCOUNTER_END.
 function Panel:Apply()
-    if not frame or InCombatLockdown() then
+    if not frame then
         return
     end
+    if not safeToWire() then
+        pendingApply = true
+        return
+    end
+    pendingApply = false
+    lastApply = GetTime()
     if not dragging then
         applyPosition()
     end
-    if container then
+    if container and forbidden(container) then
+        pendingApply = true -- tried again at the next safe moment
+    elseif container then
         try("container", container, "SetAuraGroupMaxFrameCount", GROUP, Debuffs:MaxCount())
         try("container", container, "SetAuraGroupCandidateFilters", GROUP, Debuffs:CandidateFilters())
         local method, direction = sortOptions()
@@ -548,7 +611,12 @@ function Panel:Apply()
     for button, parts in pairs(buttons) do
         wireButton(button, parts)
     end
-    if container then
+    for button in pairs(dirty) do
+        if not buttons[button] then
+            initializeButton(button)
+        end
+    end
+    if container and not forbidden(container) then
         try("container", container, "SetEnabled", true)
         try("container", container, "UpdateAllAuras")
     end
@@ -626,6 +694,10 @@ local function build()
             return
         end
         elapsed = 0
+        -- a change that waited for combat or an encounter to end, or buttons skipped while forbidden
+        if pendingApply and safeToWire() and GetTime() - lastApply >= RETRY_SECONDS then
+            Panel:Apply()
+        end
         layout()
         tickTiles()
     end)
@@ -677,6 +749,12 @@ function Panel:InfoText()
     add("Debuff panel diagnostics")
     add("Game build: " .. tostring(select(4, GetBuildInfo())))
     add("In combat: lockdown " .. tostring(InCombatLockdown()) .. ", flag " .. tostring(inCombat) .. ", UnitAffectingCombat " .. tostring(UnitAffectingCombat("player")) .. "; preview on: " .. tostring(previewOn) .. ", enabled: " .. tostring(Debuffs:Enabled()))
+    local dirtyCount = 0
+    for _ in pairs(dirty) do
+        dirtyCount = dirtyCount + 1
+    end
+    add("Encounter in progress: " .. tostring(encounterActive()) .. " (flag " .. tostring(encounter) .. "), safe to set up buttons: " .. tostring(safeToWire())
+        .. ", settings waiting: " .. tostring(pendingApply) .. ", forbidden buttons skipped: " .. skipped .. " (" .. dirtyCount .. " waiting)")
     add(format("Settings: size %d, max %d, dispel icon %s, hide longer than %s, boss debuff slots %s", Debuffs:Size(), Debuffs:MaxCount(),
         tostring(Debuffs:DispelIcon()), Debuffs:MaxDuration() > 0 and (Debuffs:MaxDuration() .. " s") or "off", tostring(Debuffs:PrivateSlots())))
     add(format("Look: swipe %s, edge %s, countdown numbers %s, timer %s (%s, %s), border %s", tostring(Debuffs:Get("swipe")), tostring(Debuffs:Get("swipeEdge")),
@@ -701,7 +779,9 @@ function Panel:InfoText()
         .. ", aura group added: " .. tostring(report.created) .. ", sort: " .. tostring(report.sort))
     add("  group filter: HARMFUL, candidate filters: " .. describe(Debuffs:CandidateFilters(), 2))
     add("  dispel icon style: " .. tostring(dispelStyle()) .. ", time formatter: " .. tostring(timeFormatter() ~= nil))
-    if container then
+    if container and forbidden(container) then
+        add("  the container is forbidden right now (an encounter), so its frames can't be read")
+    elseif container then
         local count = "?"
         local ok, n = pcall(container.GetAuraGroupFrameCount, container, GROUP)
         if ok and type(n) == "number" and not isSecret(n) then
@@ -760,29 +840,42 @@ local events = CreateFrame("Frame")
 events:RegisterEvent("PLAYER_LOGIN")
 events:RegisterEvent("PLAYER_REGEN_DISABLED")
 events:RegisterEvent("PLAYER_REGEN_ENABLED")
+events:RegisterEvent("ENCOUNTER_START")
+events:RegisterEvent("ENCOUNTER_END")
 events:SetScript("OnEvent", function(_, event)
     if event == "PLAYER_REGEN_DISABLED" then
         inCombat = true
     elseif event == "PLAYER_REGEN_ENABLED" then
         inCombat = false
+    elseif event == "ENCOUNTER_START" then
+        encounter = true
+        return
+    elseif event == "ENCOUNTER_END" then
+        encounter = false
+        if frame then
+            Panel:Apply() -- waits again if still in combat; PLAYER_REGEN_ENABLED then applies it
+        elseif not InCombatLockdown() then
+            build()
+        end
+        return
     end
     if event == "PLAYER_LOGIN" then
         inCombat = UnitAffectingCombat("player") and true or false
-        if not InCombatLockdown() then
+        if safeToWire() then
             build()
         end
     elseif frame then
         updateVisibility()
         if event == "PLAYER_REGEN_ENABLED" then
-            Panel:Apply()
+            Panel:Apply() -- after a death mid-encounter this waits for ENCOUNTER_END
         end
-    elseif event == "PLAYER_REGEN_ENABLED" then
-        build() -- a /reload in combat: the panel is built once combat ends
+    elseif event == "PLAYER_REGEN_ENABLED" and not encounterActive() then
+        build() -- a /reload in combat: the panel is built once combat (and any encounter) ends
     end
 end)
 
 CRT.UI:RegisterPreview("debuffs", function(on)
-    if not frame and not InCombatLockdown() then
+    if not frame and safeToWire() then
         build()
     end
     Panel:SetPreview(on)
