@@ -46,7 +46,7 @@ local FORMAT_HELP = "One line per thing:\n\n"
     .. "Encounter: 3001  (the boss's encounter ID, optional)\n"
     .. "Phase: P2 7:20  (a phase line, the label is optional)\n"
     .. "Soulcoil Rite (type raid, lead 7) [spell 123456]: 0:02+45, 1:17, 95\n\n"
-    .. "A time is m:ss or plain seconds, and +N after it draws a bar N seconds long. type says what the ability is, one or more of the words below: the first colors the row, and each other one adds a dot to its name. tags lists the Encounter Journal's icons for it (tank, healer, dps, heroic, mythic, deadly, important, interrupt, magic, curse, poison, disease, enrage, bleed), which the Journal's Export reference writes for you. lead N draws the cast line N seconds before each icon, color rrggbb colors the name instead of its type, and [spell N] gives the icon and tooltip; without it the row is matched by name to the boss's Journal abilities. Blank lines and lines starting with # are skipped. Nothing is saved until every line reads.\n\n"
+    .. "A time is m:ss or plain seconds, and +N after it draws a bar N seconds long. type says what the ability is, one or more of the words below: the first colors the row, and each other one adds a dot to its name. tags lists the Encounter Journal's icons for it (tank, healer, dps, heroic, mythic, deadly, important, interrupt, magic, curse, poison, disease, enrage, bleed), which the Journal's Export Abilities writes for you. lead N draws the cast line N seconds before each icon, color rrggbb colors the name instead of its type, and [spell N] gives the icon and tooltip; without it the row is matched by name to the boss's Journal abilities. Blank lines and lines starting with # are skipped. Nothing is saved until every line reads.\n\n"
     .. CRT.TimelineReference.Legend()
     .. "\n\nIcons and the match to a Journal ability come from the Encounter Journal, which is not read in combat, so they can be blank until you are out of combat."
 
@@ -219,9 +219,9 @@ function ReferencePage.Build(f, ctx)
     local lines = {}
 
     -- Left: the text box, Save and Clear, and the status line.
-    local title = label(f, "Reference text")
+    local title = label(f, "Abilities Text")
     title:SetPoint("TOPLEFT", f, "TOPLEFT", 8, -8)
-    UI.Help(f, "Reference text", FORMAT_HELP):SetPoint("LEFT", title, "RIGHT", 6, 0)
+    UI.Help(f, "Abilities Text", FORMAT_HELP):SetPoint("LEFT", title, "RIGHT", 6, 0)
     local mode = label(f, "", "CRTFontSmall")
     mode:SetPoint("TOPLEFT", f, "TOPLEFT", 160, -10)
     mode:SetWidth(BOX_W - 152)

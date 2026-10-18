@@ -364,7 +364,7 @@ function Reference.Parse(text)
                 local t = last and Reference.ParseTime(last)
                 local planned = plannedText and Reference.ParseTime(plannedText)
                 if not t and not plannedText and trim(val) ~= "" then
-                    -- a phase whose start isn't known yet (the Journal's Export reference writes these): kept
+                    -- a phase whose start isn't known yet (the Journal's Export Abilities writes these): kept
                     -- with its line, drawn nowhere until it has a time
                     ref.pending = ref.pending or {}
                     ref.pending[#ref.pending + 1] = { label = trim(val), title = title, line = n }

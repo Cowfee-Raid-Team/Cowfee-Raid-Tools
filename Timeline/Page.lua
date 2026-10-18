@@ -885,7 +885,7 @@ local function selectTab(key)
 end
 
 -- Opens the Timeline on its Advanced tab with text in the reference box, ready to fill in and Save (the
--- Encounter Journal's Export reference, Timeline/JournalExport.lua).
+-- Encounter Journal's Export Abilities, Timeline/JournalExport.lua).
 function Timeline:OpenReferenceText(text)
     UI:Show("timeline")
     selectTab("references")

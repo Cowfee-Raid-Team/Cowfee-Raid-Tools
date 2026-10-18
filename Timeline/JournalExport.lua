@@ -1,6 +1,6 @@
 local ADDON, CRT = ...
 
--- Export reference: a button on the game's Encounter Journal, on the row of its tabs at the bottom right
+-- Export Abilities: a button on the game's Encounter Journal, on the row of its tabs at the bottom right
 -- (clear of the boss's name and the difficulty dropdown), while a boss is open. It reads that boss (EncounterJournal.encounterID, set by EncounterJournal_DisplayEncounter) and the
 -- difficulty picked in the Journal (EJ_GetDifficulty), and writes a starting reference timeline for it:
 -- the Boss, Difficulty and Encounter lines, then one line per Journal ability with its spell ID, each a
@@ -13,7 +13,7 @@ local Export = {}
 CRT.TimelineJournalExport = Export
 
 local TEXT = {
-    button = "Export reference",
+    button = "Export Abilities",
     tip = "Cowfee Raid Tools: a reference timeline for this boss and difficulty, with every Journal ability and its spell ID, to add the cast times to on the Timeline's Advanced tab.",
     title = "Reference for %s (Ctrl+C to copy)",
     send = "Send to Timeline",
