@@ -32,6 +32,7 @@ local TEXT = {
     made = "Made a raid note for %s. It is on Raid Notes.",
     phaseCopy = "Moved the phase line in a reference of your own (shipped references never change). It is listed as yours.",
     rehearse = "Rehearse",
+    advancedBlurb = "A reference timeline is a boss's planned cast times, typed or pasted as text on the left. The Review tab draws it as the boss's rows, your alerts and Mech Alerts take their times from it, and the Rehearsal plays it. The boss's Encounter Journal abilities are listed on the right: right-click one to give it a row on the timeline, a type, your own name, or a Mech Alert.",
     play = "Play",
     pause = "Pause",
     playHelp = "Plays the rehearsal of this fight, as Rehearse does, and a gold line moves across the timeline at its time, so you can watch the whole fight and its cooldowns from above while the Rehearsal window shows it as you would see it.\n\nPlay and Pause here and in the Rehearsal window run the same fight, and dragging its strip moves the line too. While it plays, the timeline scrolls to keep the line in view.",
@@ -48,10 +49,12 @@ local BACKDROP = {
 
 local GROUPS = Timeline.GROUP_NAMES
 
+local ADVANCED_BLURB_H = 54 -- the blurb over the reference editor on the Advanced tab
+
 local TABS = {
     { key = "review", label = "Review" },
-    { key = "references", label = "References" },
     { key = "settings", label = "Settings" },
+    { key = "references", label = "Advanced" }, -- the reference editor and the Journal abilities
 }
 
 local page, view, emptyLabel, unnamedHelp
@@ -886,7 +889,7 @@ local function build(pf)
 
     local title = label(pf, "Timeline", "CRTFontLarge")
     title:SetPoint("TOPLEFT", 8, -8)
-    UI.Help(pf, "The Timeline", "Every raid boss pull is saved automatically: when the boss cast its spells and when players died. Pick a boss and a pull on the Review tab to see it as a timeline, hover for the time, scroll the mouse wheel to zoom, hold the right mouse button and drag to move left and right, and use Shift with the mouse wheel to scroll the rows.\n\nA reference is a boss's planned timeline. It is listed first in the pull list, and a recent pull can be laid over it. The References tab is where you paste your own.\n\nThe red lines are phase changes. Hold Shift and drag one to move it: that phase's casts and note lines move with it, and the phase before it hides whatever would now come after the line (they come back when you move it back). Right-click a moved line to put it back. A move is saved in the reference; a shipped reference becomes one of your own.\n\nThe Settings tab has the view, which rows are shown, the deaths filters and recording.\n\nA reference row's color says what the ability is (a dot on the row's name for each extra type):\n" .. CRT.TimelineReference.Legend()):SetPoint("LEFT", title, "RIGHT", 6, 0)
+    UI.Help(pf, "The Timeline", "Every raid boss pull is saved automatically: when the boss cast its spells and when players died. Pick a boss and a pull on the Review tab to see it as a timeline, hover for the time, scroll the mouse wheel to zoom, hold the right mouse button and drag to move left and right, and use Shift with the mouse wheel to scroll the rows.\n\nA reference is a boss's planned timeline. It is listed first in the pull list, and a recent pull can be laid over it. The Advanced tab is where you paste your own.\n\nThe red lines are phase changes. Hold Shift and drag one to move it: that phase's casts and note lines move with it, and the phase before it hides whatever would now come after the line (they come back when you move it back). Right-click a moved line to put it back. A move is saved in the reference; a shipped reference becomes one of your own.\n\nThe Settings tab has the view, which rows are shown, the deaths filters and recording.\n\nA reference row's color says what the ability is (a dot on the row's name for each extra type):\n" .. CRT.TimelineReference.Legend()):SetPoint("LEFT", title, "RIGHT", 6, 0)
 
     for i, tab in ipairs(TABS) do
         local b = CreateFrame("Button", nil, pf, "BackdropTemplate")
@@ -922,7 +925,18 @@ local function build(pf)
     review:SetAllPoints(tabFrames.review)
     buildReview(review)
     buildPopControls()
-    refTab = ReferencePage.Build(tabFrames.references, {
+    -- Advanced: what a reference is, in a few lines over the editor, as it is easy to miss what it does
+    local blurb = tabFrames.references:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    blurb:SetPoint("TOPLEFT", 8, -8)
+    blurb:SetPoint("TOPRIGHT", -8, -8)
+    blurb:SetJustifyH("LEFT")
+    blurb:SetSpacing(2)
+    blurb:SetTextColor(0.85, 0.78, 0.67)
+    blurb:SetText(TEXT.advancedBlurb)
+    local refHost = CreateFrame("Frame", nil, tabFrames.references)
+    refHost:SetPoint("TOPLEFT", 0, -ADVANCED_BLURB_H)
+    refHost:SetPoint("BOTTOMRIGHT", 0, 0)
+    refTab = ReferencePage.Build(refHost, {
         selectedBoss = function()
             return selectedBoss
         end,

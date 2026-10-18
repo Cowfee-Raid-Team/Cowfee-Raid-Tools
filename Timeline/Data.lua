@@ -52,7 +52,13 @@ end
 
 -- Whether a lane is a boss mechanic that can be ignored (not deaths, notes or overlay ticks).
 function Timeline.Ignorable(lane)
-    return lane ~= nil and (lane.kind == "reference" or lane.kind == "spell") and lane.label ~= nil
+    return lane ~= nil and (lane.kind == "reference" or lane.kind == "spell" or lane.kind == "journal")
+        and lane.label ~= nil
+end
+
+-- The name a lane is ignored by: its own, not one you gave it (ApplyAbilities keeps it as baseLabel).
+function Timeline.IgnoreName(lane)
+    return lane and (lane.baseLabel or lane.label)
 end
 
 function Timeline:Ignored(encounterID, name)
@@ -80,13 +86,91 @@ end
 function Timeline:WithoutIgnored(lanes, encounterID)
     local shown, hidden = {}, {}
     for _, lane in ipairs(lanes or {}) do
-        if self.Ignorable(lane) and self:Ignored(encounterID, lane.label) then
+        if self.Ignorable(lane) and self:Ignored(encounterID, self.IgnoreName(lane)) then
             hidden[#hidden + 1] = lane
         else
             shown[#shown + 1] = lane
         end
     end
     return shown, hidden
+end
+
+-- Your labels for a boss's Encounter Journal abilities, set from the Advanced tab's Journal list: per boss
+-- by spell ID, timeline.abilities[boss][spellID] = { row = true, type = "raid", name = "Tank buster" }.
+-- row gives the ability a row of its own on the timeline even when nothing has a time for it, type colors
+-- its row as a reference type does, and name shows instead of the Journal's. Only what you see, like
+-- ignored mechanics: no reference, note or anything shared changes.
+
+function Timeline:Ability(encounterID, spellID)
+    local all = tdb().abilities
+    local list = all and all[tostring(encounterID)]
+    return list and list[spellID] or nil
+end
+
+-- field: "row", "type" or "name"; nil (or "") clears it.
+function Timeline:SetAbility(encounterID, spellID, field, value)
+    if encounterID == nil or type(spellID) ~= "number" then
+        return
+    end
+    local db = tdb()
+    db.abilities = db.abilities or {}
+    local boss = tostring(encounterID)
+    db.abilities[boss] = db.abilities[boss] or {}
+    local a = db.abilities[boss][spellID] or {}
+    if value == "" or value == false then
+        value = nil
+    end
+    a[field] = value
+    db.abilities[boss][spellID] = next(a) and a or nil
+    if next(db.abilities[boss]) == nil then
+        db.abilities[boss] = nil
+    end
+    self:Fire()
+end
+
+-- lanes with your labels laid on: each lane of an ability you labelled takes its name and type, and
+-- each ability you gave a row and that has no lane yet gets an empty one (after the boss's rows, kind
+-- "journal"). rows are the boss's Journal rows (Journal:Rows). Returns the new list.
+function Timeline:ApplyAbilities(lanes, encounterID, rows)
+    local all = tdb().abilities
+    local list = all and all[tostring(encounterID)]
+    if not list then
+        return lanes
+    end
+    local Reference = CRT.TimelineReference
+    local function dress(lane, a)
+        if a.name then
+            lane.baseLabel = lane.baseLabel or lane.label
+            lane.label = a.name
+        end
+        local t = a.type and Reference and Reference.TYPES[a.type]
+        if t then
+            lane.types = { a.type }
+            lane.color = t.color
+        end
+    end
+    local out, has = {}, {}
+    for _, lane in ipairs(lanes or {}) do
+        local a = lane.spellID and list[lane.spellID]
+        if a and self.Ignorable(lane) then
+            dress(lane, a)
+        end
+        if lane.spellID then
+            has[lane.spellID] = true
+        end
+        out[#out + 1] = lane
+    end
+    for _, row in ipairs(rows or {}) do
+        local a = row.spellID and list[row.spellID]
+        if a and a.row and not has[row.spellID] then
+            has[row.spellID] = true
+            local lane = { key = "journal:" .. row.spellID, label = row.name, kind = "journal", spellID = row.spellID,
+                icon = row.icon, marks = {} }
+            dress(lane, a)
+            out[#out + 1] = lane
+        end
+    end
+    return out
 end
 
 -- The raid's chosen order of a boss's parts (see Reference.PartMover), per boss and difficulty group,

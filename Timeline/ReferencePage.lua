@@ -137,6 +137,67 @@ function ReferencePage.Recent(f, width, pullLabel, toggle)
     return recent
 end
 
+-- The Journal abilities' menu ------------------------------------------------------------------------
+
+local TEXT_ROW = "row"
+local TEXT_MENU = {
+    row = "Show as a timeline row",
+    type = "Set type",
+    noType = "No type",
+    rename = "Rename...",
+    unname = "Use the Journal's name",
+    alert = "Make a Mech Alert",
+    renamePrompt = "Your name for %s on the timeline:",
+}
+local RENAME_ABILITY = "COWFEERAIDTOOLS_RENAME_ABILITY"
+local abilityMenu -- set in Build, where the list is
+
+local function acceptAbilityName(edit, data)
+    if edit and data then
+        CRT.Timeline:SetAbility(data.boss, data.spellID, "name", strtrim(edit:GetText() or ""))
+    end
+end
+
+-- A popup with an edit box for your name of a Journal ability; an empty name goes back to the Journal's.
+local function askAbilityName(boss, row, current)
+    if not StaticPopupDialogs then
+        return
+    end
+    if not StaticPopupDialogs[RENAME_ABILITY] then
+        StaticPopupDialogs[RENAME_ABILITY] = {
+            text = "%s",
+            button1 = ACCEPT or "Accept",
+            button2 = CANCEL or "Cancel",
+            hasEditBox = true,
+            maxLetters = 48,
+            timeout = 0,
+            whileDead = true,
+            hideOnEscape = true,
+            preferredIndex = 3,
+            OnShow = function(dialog, data)
+                local edit = CRT.UI.PopupEditBox(dialog)
+                if edit then
+                    edit:SetText(data and data.current or "")
+                    edit:HighlightText()
+                end
+            end,
+            OnAccept = function(dialog, data)
+                acceptAbilityName(CRT.UI.PopupEditBox(dialog), data)
+            end,
+            EditBoxOnEnterPressed = function(edit, data)
+                local parent = edit:GetParent()
+                acceptAbilityName(edit, data or (parent and parent.data))
+                StaticPopup_Hide(RENAME_ABILITY)
+            end,
+            EditBoxOnEscapePressed = function()
+                StaticPopup_Hide(RENAME_ABILITY)
+            end,
+        }
+    end
+    StaticPopup_Show(RENAME_ABILITY, string.format(TEXT_MENU.renamePrompt, row.name or ""), nil,
+        { boss = boss, spellID = row.spellID, current = current or row.name })
+end
+
 -- The References tab -----------------------------------------------------------------------------
 
 function ReferencePage.Build(f, ctx)
@@ -384,7 +445,7 @@ function ReferencePage.Build(f, ctx)
     abilitiesLabel:SetWidth(280)
     abilitiesLabel:SetJustifyH("LEFT")
     abilitiesLabel:SetWordWrap(false)
-    UI.Help(f, "Journal abilities", "The boss's abilities in the Encounter Journal, with their spell IDs. A reference line whose name matches one gets its icon and tooltip, or use Fill spell IDs to write the IDs into the text.\n\nThe Journal's spell for an ability is sometimes a summary spell rather than the exact cast, so its ID may differ from what the damage meter shows.\n\nNothing shows in combat or while the Journal window is open."):SetPoint("LEFT", abilitiesLabel, "RIGHT", -4, 0)
+    UI.Help(f, "Journal abilities", "The boss's abilities in the Encounter Journal, with their spell IDs. A reference line whose name matches one gets its icon and tooltip, or use Fill spell IDs to write the IDs into the text.\n\nClick or right-click an ability to give it a row on the timeline (even with no cast times, so notes, templates and cooldowns can go on it), a type that colors its row, your own name for it, or a Mech Alert. These are only yours: no reference or note changes.\n\nThe Journal's spell for an ability is sometimes a summary spell rather than the exact cast, so its ID may differ from what the damage meter shows.\n\nNothing shows in combat or while the Journal window is open."):SetPoint("LEFT", abilitiesLabel, "RIGHT", -4, 0)
     local abilitiesNone = label(f, "", "CRTFontSmall")
     abilitiesNone:SetWidth(300)
     abilitiesNone:SetJustifyH("LEFT")
@@ -411,8 +472,17 @@ function ReferencePage.Build(f, ctx)
         if l then
             return l
         end
-        l = CreateFrame("Frame", nil, abilitiesChild)
+        l = CreateFrame("Button", nil, abilitiesChild)
         l:SetSize(290, ABILITY_H)
+        l:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+        l:SetHighlightTexture("Interface\\Buttons\\WHITE8X8")
+        local hl = l:GetHighlightTexture()
+        if hl then
+            hl:SetVertexColor(1, 0.82, 0, 0.12)
+        end
+        l:SetScript("OnClick", function(self)
+            abilityMenu(self)
+        end)
         l:SetPoint("TOPLEFT", abilitiesChild, "TOPLEFT", 0, -(i - 1) * ABILITY_H)
         l.icon = l:CreateTexture(nil, "ARTWORK")
         l.icon:SetSize(16, 16)
@@ -425,8 +495,61 @@ function ReferencePage.Build(f, ctx)
         l.id = label(l, "", "CRTFontSmall")
         l.id:SetPoint("RIGHT", 0, 0)
         l.id:SetTextColor(0.6, 0.6, 0.6)
+        l.tag = label(l, "", "CRTFontSmall")
+        l.tag:SetPoint("RIGHT", l.id, "LEFT", -6, 0)
+        l.tag:SetTextColor(0.85, 0.7, 0.4)
         abilityLines[i] = l
         return l
+    end
+
+    -- The menu on a Journal ability (left or right click): your own labels for it (Timeline:SetAbility),
+    -- and Make a Mech Alert, which opens the Mech Alerts tab on it.
+    abilityMenu = function(l)
+        local boss, row = l.boss, l.row
+        if not (boss and row and row.spellID and MenuUtil and MenuUtil.CreateContextMenu) then
+            return
+        end
+        local Timeline = CRT.Timeline
+        local function get(field)
+            local a = Timeline:Ability(boss, row.spellID)
+            return a and a[field]
+        end
+        MenuUtil.CreateContextMenu(l, function(_, root)
+            root:CreateTitle((get("name") or row.name or "") .. (get("name") and (" (" .. row.name .. ")") or ""))
+            root:CreateCheckbox(TEXT_MENU.row, function()
+                return get("row") and true or false
+            end, function()
+                Timeline:SetAbility(boss, row.spellID, "row", not get("row") or nil)
+            end)
+            local types = root:CreateButton(TEXT_MENU.type)
+            types:CreateRadio(TEXT_MENU.noType, function()
+                return get("type") == nil
+            end, function()
+                Timeline:SetAbility(boss, row.spellID, "type", nil)
+            end)
+            for _, key in ipairs(Reference.TYPE_ORDER) do
+                local t = Reference.TYPES[key]
+                local hex = string.format("%02x%02x%02x", t.color[1] * 255, t.color[2] * 255, t.color[3] * 255)
+                types:CreateRadio("|cff" .. hex .. key:sub(1, 1):upper() .. key:sub(2) .. "|r  " .. t.label, function()
+                    return get("type") == key
+                end, function()
+                    Timeline:SetAbility(boss, row.spellID, "type", key)
+                end)
+            end
+            root:CreateButton(TEXT_MENU.rename, function()
+                askAbilityName(boss, row, get("name"))
+            end)
+            if get("name") then
+                root:CreateButton(TEXT_MENU.unname, function()
+                    Timeline:SetAbility(boss, row.spellID, "name", nil)
+                end)
+            end
+            root:CreateButton(TEXT_MENU.alert, function()
+                if CRT.NoteReminders and CRT.NoteReminders.Open then
+                    CRT.NoteReminders.Open(boss, row.spellID)
+                end
+            end)
+        end)
     end
 
     local abilitiesFor -- the encounter ID the list was last filled for, so typing doesn't refill it
@@ -435,10 +558,20 @@ function ReferencePage.Build(f, ctx)
         abilitiesFor = id
         abilitiesLabel:SetText("Journal abilities" .. (name and (": " .. name) or ""))
         local rows = id and Journal:Rows(id) or {}
+        local Timeline = CRT.Timeline
         for i, row in ipairs(rows) do
             local l = abilityLine(i)
+            l.boss, l.row = id, row
+            local a = Timeline.Ability and Timeline:Ability(id, row.spellID) or nil
+            local t = a and a.type and Reference.TYPES[a.type]
             l.icon:SetTexture(row.icon or 134400)
-            l.name:SetText(row.name or "")
+            l.name:SetText((a and a.name) or row.name or "")
+            if t then
+                l.name:SetTextColor(t.color[1], t.color[2], t.color[3])
+            else
+                l.name:SetTextColor(1, 1, 1)
+            end
+            l.tag:SetText(a and a.row and TEXT_ROW or "")
             l.id:SetText(tostring(row.spellID))
             l:Show()
         end

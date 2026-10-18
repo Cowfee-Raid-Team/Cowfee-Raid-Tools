@@ -1484,6 +1484,20 @@ end
 
 CRT.NoteReminders = {
     Build = build,
+    -- Opens the Mech Alerts tab on a boss with one of its Journal abilities selected (by spell ID), as
+    -- the Timeline's Journal list does with Make a Mech Alert.
+    Open = function(encounterID, spellID)
+        if encounterID == nil then
+            return
+        end
+        selected, viewDiff = encounterID, nil
+        if spellID then
+            picked[encounterID] = "a:" .. tostring(spellID)
+            reveal = true
+        end
+        CRT.NotesPage.Open("reminders")
+        refresh()
+    end,
     Refresh = function()
         allChanged()
         refresh()

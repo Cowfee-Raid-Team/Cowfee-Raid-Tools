@@ -3117,7 +3117,7 @@ function Methods:Label(n)
         l.check:SetPoint("LEFT", l, "LEFT", 0, 0)
         l.check:SetScript("OnClick", function(b)
             if l.lane then
-                CRT.Timeline:SetIgnored(self.encounterID, l.lane.label, not b:GetChecked())
+                CRT.Timeline:SetIgnored(self.encounterID, CRT.Timeline.IgnoreName(l.lane), not b:GetChecked())
             end
         end)
         l.check:SetScript("OnEnter", function(b)
@@ -3414,7 +3414,9 @@ function Methods:Refresh()
     if pull then
         local rows = CRT.TimelineJournal:Rows(self.encounterID)
         self.lanes, self.unknown, extra = View.Lanes(pull, rows, s, self.encounterID, self.overlay, self.group, self.order)
-        -- your ignored mechanics are drawn only in their own list under the lanes (DrawIgnored)
+        -- your labels for Journal abilities (rows, types, names), then your ignored mechanics, which are
+        -- drawn only in their own list under the lanes (DrawIgnored)
+        self.lanes = CRT.Timeline:ApplyAbilities(self.lanes, self.encounterID, rows)
         self.lanes, self.ignoredLanes = CRT.Timeline:WithoutIgnored(self.lanes, self.encounterID)
     else
         self.lanes, self.unknown, self.ignoredLanes = {}, {}, {}
