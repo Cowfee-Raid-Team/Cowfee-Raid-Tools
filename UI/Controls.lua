@@ -120,6 +120,51 @@ function UI.Dropdown(parent, text, opts)
     return row
 end
 
+-- The sound dropdown every page uses: the sound engine's choices (Sound/Engine.lua), each with a Play
+-- button in the open menu. opts as UI.Dropdown, plus none (a label for a "no sound" choice, key "none")
+-- and filesOnly; options defaults to the engine's list. opts.help true adds the (?) on where your own
+-- files go, as row.help, for the caller to anchor.
+UI.SOUND_HELP = "Game sounds, sounds other addons share (through LibSharedMedia), and your own files.\n\nYour own .ogg or .mp3 files go in the CowfeeRaidTools_Media companion addon's Sounds folder: Quality of Life > Sounds says how to set it up, and has a Test button for each file.\n\nPlay in the open list plays a sound on your sound channel (General Settings)."
+
+function UI.SoundDropdown(parent, text, opts)
+    local o = {}
+    for k, v in pairs(opts) do
+        o[k] = v
+    end
+    o.options = opts.options or function()
+        return CRT.Sound:Choices({ none = opts.none, filesOnly = opts.filesOnly })
+    end
+    o.decorate = function(button, option)
+        if option.key == "none" then
+            return nil
+        end
+        local hit = button:AttachFrame("Button")
+        hit:SetSize(36, 18)
+        hit:SetPoint("RIGHT", -4, 0)
+        hit:EnableMouse(true)
+        local label = button:AttachFontString()
+        label:SetFontObject(CRTFontButtonSmall)
+        label:SetPoint("CENTER", hit, "CENTER")
+        label:SetText("|cff80c0ffPlay|r")
+        hit:SetScript("OnClick", function()
+            local handle, info = CRT.Sound:Play(option.key)
+            if not handle then
+                CRT:Print("That sound didn't play: " .. tostring(info) .. ".")
+            end
+        end)
+        if button.fontString then
+            button.fontString:SetPoint("RIGHT", hit, "LEFT", -6, 0)
+        end
+        local textWidth = button.fontString and button.fontString:GetUnboundedStringWidth() or 120
+        return textWidth + 70, 20
+    end
+    local row = UI.Dropdown(parent, text, o)
+    if opts.help then
+        row.help = UI.Help(parent, text ~= "" and text or "Sound", UI.SOUND_HELP)
+    end
+    return row
+end
+
 -- A slider. opts:
 --   min, max, step (default 1)
 --   get(), set(value)   value is always a whole step

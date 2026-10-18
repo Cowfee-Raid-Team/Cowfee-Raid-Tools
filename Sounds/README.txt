@@ -1,6 +1,10 @@
-Your own low-health sounds for Cowfee Raid Tools.
+Your own sounds for Cowfee Raid Tools: the old place.
 
-Put .ogg or .mp3 files in this folder, then /reload (the game only finds files that were here when you logged in or reloaded).
-On the Quality of Life page, type the file name (for example airhorn.ogg) under Your sound file and press Add. It then appears in the Sound list.
+The new place is the CowfeeRaidTools_Media companion addon. Its template is in the "Media Addon Template"
+folder inside this addon: copy CowfeeRaidTools_Media from there into Interface\AddOns once, and keep your
+files in its Sounds folder. Updating Cowfee Raid Tools replaces this whole folder, this Sounds folder
+included, but never touches CowfeeRaidTools_Media.
 
-Updating the addon by replacing its folder removes this folder too, so keep a copy of your sounds somewhere else.
+Files left here still play. Type a file's name on the Quality of Life > Sounds tab to list it, and use
+its Test button to check the game finds it. A file added while the game is running may need a game
+restart, not just a /reload.

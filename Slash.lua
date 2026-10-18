@@ -36,7 +36,8 @@ end
 
 SLASH_COWFEERAIDTOOLS1 = "/crt"
 SlashCmdList["COWFEERAIDTOOLS"] = function(msg)
-    msg = strtrim(msg or ""):lower()
+    local raw = strtrim(msg or "")
+    msg = raw:lower()
     if msg == "" then
         CRT.UI:Toggle()
     elseif msg == "groups" then
@@ -163,6 +164,8 @@ SlashCmdList["COWFEERAIDTOOLS"] = function(msg)
         end
     elseif CRT.NoteTargetsDev and CRT.NoteTargetsDev:Command(msg) then
         -- dev nsrt, dev mrt and dev all: the note targets (Dev/NoteTargets.lua)
+    elseif CRT.SoundDev and CRT.SoundDev:Command(msg, raw) then
+        -- dev sound: play any sound reference, list them (Dev/Sound.lua)
     elseif CRT.BreaksDev and CRT.BreaksDev:Command(msg) then
         -- dev break: the break timer's other-addon formats (Dev/Breaks.lua)
     elseif msg == "dev layout" then

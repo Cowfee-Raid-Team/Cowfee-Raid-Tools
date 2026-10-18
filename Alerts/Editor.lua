@@ -1446,10 +1446,10 @@ local function build()
         count = makeCheck(f, TEXT.count, 226, -274 - ROW1_EXTRA, setter(function(on) draft.count = on end)),
         glow = makeCheck(f, TEXT.glow, 386, -274 - ROW1_EXTRA, setter(function(on) draft.glow = on end)),
     }
-    row(UI.Dropdown(f, TEXT.sound, {
+    row(UI.SoundDropdown(f, TEXT.sound, {
         labelWidth = 70, width = 160, maxHeight = MENU_MAX_HEIGHT, enabledIf = editable,
         options = soundOptions,
-        get = function() return draft and draft.sound or NO_SOUND end,
+        get = function() return draft and Draft.SoundKey(draft.sound) or NO_SOUND end,
         set = setter(function(v) draft.sound = v ~= NO_SOUND and v or nil end),
     }), LEFT, -304 - ROW1_EXTRA)
     f.speakAt = speakAtRow(f, row)

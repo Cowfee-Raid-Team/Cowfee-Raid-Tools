@@ -21,16 +21,11 @@ local ADDON, CRT = ...
 -- your channel instead, so your health is never read by the addon. The game's pulse kits loop by
 -- themselves; the other sounds repeat, faster at each lower 10% tier, until the pulse stops.
 --
--- Where the sounds come from (Sound.Choices):
---   * the game's pulse and game alert sounds (sound kits), played with C_Sound.PlaySoundWithOptions,
---     which takes your volume
---   * sounds other addons share through LibSharedMedia-3.0 (List("sound") and Fetch("sound", name)),
---     when one of them loaded it; the library is not shipped
---   * your own .ogg or .mp3 files in Interface\AddOns\CowfeeRaidTools\Sounds, added by name on the
---     Quality of Life page, since the game can't list a folder. A file must be there before you log in
---     or /reload. Updating the addon by replacing its folder removes them, so keep a copy.
--- Files play with PlaySoundFile(path, channel), which has no volume of its own: they follow the
--- channel's volume.
+-- Where the sounds come from (Sound.Choices): the game's pulse, then every sound the addon's sound
+-- engine offers (Sound/Engine.lua: game sounds, shared ones, your own files), by reference. Game sounds
+-- play with C_Sound.PlaySoundWithOptions, which takes your volume; files play with PlaySoundFile(path,
+-- channel), which has no volume of its own, so they follow the channel's volume. Your own files are
+-- listed on Quality of Life > Sounds; the page's own list (customSounds) was moved there.
 --
 -- Play once (soundOnce, on by default): any sound other than the game's pulse plays one time, in full,
 -- each time your health drops under the threshold; dropping into a lower 10% tier during the same dip
@@ -60,124 +55,32 @@ local PREVIEW_SECONDS = 3
 -- starts the timer that ends its own 3-second volume preview, and the addon's copy of that preview
 -- was never told to stop. At 1% the game plays and ends it as usual.
 local MUTED_VOLUME = 1
-local SOUNDS_FOLDER = "Interface\\AddOns\\" .. ADDON .. "\\Sounds\\"
 
--- The sounds to choose from: the game's pulse, then game alert sounds by their SOUNDKIT name (checked
--- in Blizzard_SharedXML/Mainline/SoundKitConstants.lua, with the ID there as a fallback).
-Sound.CHOICES = {
-    { key = "pulse", label = "Game pulse (speeds up)" },
-    { key = "RAID_WARNING", label = "Raid warning", id = 8959 },
-    { key = "RAID_BOSS_EMOTE_WARNING", label = "Boss emote warning", id = 12197 },
-    { key = "UI_RAID_BOSS_WHISPER_WARNING", label = "Boss whisper warning", id = 37666 },
-    { key = "ALARM_CLOCK_WARNING_3", label = "Alarm clock", id = 12889 },
-    { key = "READY_CHECK", label = "Ready check", id = 8960 },
-    { key = "PVP_THROUGH_QUEUE", label = "Queue pop", id = 8459 },
-    { key = "TELL_MESSAGE", label = "Whisper", id = 3081 },
-}
-local choiceByKey = {}
-for _, c in ipairs(Sound.CHOICES) do
-    choiceByKey[c.key] = c
-end
-
--- LibSharedMedia-3.0, if another addon loaded it.
-local function sharedMedia()
-    if not LibStub then
-        return nil
-    end
-    local ok, lib = pcall(LibStub.GetLibrary, LibStub, "LibSharedMedia-3.0", true)
-    return ok and lib or nil
-end
-
--- Every sound to choose from: the game's, then shared ones, then your own files. Read each time the
--- menu opens, so sounds shared by other addons appear.
+-- Every sound to choose from: the game's pulse, then the sound engine's list. Read each time the menu
+-- opens, so sounds shared by other addons appear.
 function Sound.Choices()
-    local out = {}
-    for _, c in ipairs(Sound.CHOICES) do
+    local out = { { key = "pulse", label = "Game pulse (speeds up)" } }
+    for _, c in ipairs(CRT.Sound:Choices()) do
         out[#out + 1] = c
-    end
-    local lib = sharedMedia()
-    if lib then
-        local ok, list = pcall(lib.List, lib, "sound")
-        if ok and type(list) == "table" then
-            for _, name in ipairs(list) do
-                if name ~= "None" then
-                    out[#out + 1] = { key = "lsm:" .. name, label = name .. " (shared)" }
-                end
-            end
-        end
-    end
-    for _, file in ipairs(CRT.db.qol.lowHealth.customSounds or {}) do
-        out[#out + 1] = { key = "file:" .. file, label = file .. " (yours)" }
     end
     return out
 end
 
--- What a choice plays: { kind = "pulse" }, { kind = "kit", id } or { kind = "file", path }, or nil
--- when it is gone (a shared sound whose addon isn't loaded).
+-- What a choice plays: { kind = "pulse" }, { kind = "kit", id } or { kind = "file", paths }, or nil when
+-- it is gone (a shared sound whose addon isn't loaded). An old saved choice (a bare game sound name) is
+-- read as a game sound.
 local function resolve(choice)
     choice = choice or "pulse"
     if choice == "pulse" then
         return { kind = "pulse" }
     end
-    local shared = choice:match("^lsm:(.+)$")
-    if shared then
-        local lib = sharedMedia()
-        local ok, path = false, nil
-        if lib then
-            ok, path = pcall(lib.Fetch, lib, "sound", shared, true)
-        end
-        if ok and path then
-            return { kind = "file", path = path }
-        end
-        return nil
-    end
-    local file = choice:match("^file:(.+)$")
-    if file then
-        return { kind = "file", path = SOUNDS_FOLDER .. file }
-    end
-    local c = choiceByKey[choice]
-    if c then
-        return { kind = "kit", id = (SOUNDKIT and SOUNDKIT[c.key]) or c.id }
+    local source = CRT.Sound:Resolve(choice)
+    if source and source.kind ~= "tts" then
+        return source
     end
     return nil
 end
 Sound.Resolve = resolve
-
--- Adds one of your own sound files by name. Returns ok, message.
-function Sound:AddCustom(name)
-    name = (name or ""):gsub("^%s+", ""):gsub("%s+$", "")
-    if name == "" then
-        return false, "Type the file's name, such as airhorn.ogg."
-    end
-    if name:find("[/\\]") then
-        return false, "Just the file name, without a folder."
-    end
-    if not (name:lower():find("%.ogg$") or name:lower():find("%.mp3$")) then
-        return false, "The game plays .ogg and .mp3 files."
-    end
-    local list = CRT.db.qol.lowHealth.customSounds
-    for _, existing in ipairs(list) do
-        if existing:lower() == name:lower() then
-            return false, name .. " is already in the list."
-        end
-    end
-    list[#list + 1] = name
-    return true, "Added " .. name .. ". If you just copied it into the Sounds folder, /reload first so the game can find it."
-end
-
-function Sound:RemoveCustom(name)
-    local list = CRT.db.qol.lowHealth.customSounds
-    for i, existing in ipairs(list) do
-        if existing == name then
-            table.remove(list, i)
-            if CRT.db.qol.lowHealth.soundChoice == "file:" .. name then
-                CRT.db.qol.lowHealth.soundChoice = "pulse"
-            end
-            return true
-        end
-    end
-    return false
-end
 
 -- The outputs to choose from: the game's own (the pulse plays as a voice sound), then every channel.
 function Sound.Outputs()
@@ -373,8 +276,13 @@ local function play(entry, source, output, replace)
         if channel == "Voice" then
             channel = "Master"
         end
-        local ok, willPlay, h = pcall(PlaySoundFile, source.path, channel)
-        handle = ok and willPlay and h or nil
+        for _, path in ipairs(source.paths) do
+            local ok, willPlay, h = pcall(PlaySoundFile, path, channel)
+            if ok and willPlay then
+                handle = h
+                break
+            end
+        end
     else
         local volume = (settings().soundVolume or 100) / 100
         if C_Sound and C_Sound.PlaySoundWithOptions then
@@ -388,13 +296,14 @@ local function play(entry, source, output, replace)
             handle = ok and willPlay and h or nil
         end
     end
-    lastPlay = format("%s %s on %s: %s", source.kind, tostring(source.path or source.id), channel, handle and "playing" or "refused by the game")
+    local what = source.paths and table.concat(source.paths, " or ") or tostring(source.id)
+    lastPlay = format("%s %s on %s: %s", source.kind, what, channel, handle and "playing" or "refused by the game")
     if not handle then
         -- Say so once per sound, so a silent warning has a reason in chat.
         if not entry.warned then
             entry.warned = true
             CRT:Print(format("The game didn't play %s on %s. Check that channel isn't muted in the game's Sound settings%s.",
-                tostring(source.path or source.id), channel, source.kind == "file" and ", and that the file exists (then /reload)" or ""))
+                what, channel, source.kind == "file" and ", and that the file exists (Quality of Life > Sounds has a Test button)" or ""))
         end
         return
     end

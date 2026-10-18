@@ -188,7 +188,7 @@ onUpdate = function(_, dt)
         timeText:SetText("0:00")
         endsText:SetText("")
         bar:SetValue(0)
-        CRT:PlaySound(SOUNDKIT and SOUNDKIT.RAID_WARNING or 8959)
+        CRT.Sound:Play("kit:RAID_WARNING")
         CRT:Print("The break is over.")
         return
     end

@@ -1,0 +1,9 @@
+## Interface: 120105
+## Title: |cFFC8A050Cowfee|r Raid Tools - Media
+## Notes: Your own sound files for Cowfee Raid Tools. Lives in its own folder so updating the addon never removes them.
+## Author: Solex
+## Version: 1
+## OptionalDeps: CowfeeRaidTools
+## Category: Dungeons & Raids
+
+Sounds.lua

@@ -95,7 +95,7 @@ end
 -- Each timer is { time, ph, tags, kind = "spell" or "text", spellId, text, dur, color, line } with `line`
 -- its line number in the text, and, when the line has them: show (a set), tts, speakAt ("zero" for
 -- ttsat:0), count, glow (true),
--- sound (the text as written; Speech plays it only if it names one of Speech.SOUNDS), warn, linger
+-- sound (the text as written; the sound engine plays it if it names a sound, see Sound/Engine.lua), warn, linger
 -- (seconds) and iconID.
 function Parser.Parse(text)
     local note = { timers = {}, phases = {}, lines = {}, invite = nil }

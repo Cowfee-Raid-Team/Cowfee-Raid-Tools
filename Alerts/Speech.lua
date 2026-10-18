@@ -10,27 +10,14 @@ local ADDON, CRT = ...
 -- In a rehearsal run the queue ticks on the engine's time (Alerts:Now()), and speech plays only at 1x: a
 -- change away from 1x stops what is being said and drops the queue, and lines that come due at 2x or 4x
 -- are never said. What was queued at 1x stays while the speed stays 1x. Sound cues play at any speed.
+-- Both go through the sound engine (Sound/Engine.lua): a cue is any sound reference, and a line is said
+-- with CRT.Sound:Speak at the Raid Notes rate and volume.
 
 local Rules = CRT.AlertRules
 local Alerts = CRT.Alerts
 
 local TICK = 0.1
 local SOUND_LATE = 1  -- a sound whose time passed more than this many seconds ago is not played
-
--- The sounds an alert can play: the choices in the editor, from the game's own sound kit names.
--- A name this client does not have is left out.
-local TEXT = {
-    RAID_WARNING = "Raid warning",
-    READY_CHECK = "Ready check",
-    ALARM_CLOCK_WARNING_3 = "Alarm clock",
-    UI_BNET_TOAST = "Toast",
-    IG_PLAYER_INVITE = "Invite",
-    MAP_PING = "Map ping",
-    IG_QUEST_LIST_OPEN = "Quest list",
-    IG_MAINMENU_OPTION_CHECKBOX_ON = "Checkbox",
-}
-local SOUND_ORDER = { "RAID_WARNING", "READY_CHECK", "ALARM_CLOCK_WARNING_3", "UI_BNET_TOAST", "IG_PLAYER_INVITE",
-    "MAP_PING", "IG_QUEST_LIST_OPEN", "IG_MAINMENU_OPTION_CHECKBOX_ON" }
 
 local NOTICE = {
     speech = "Raid Notes: your note lines are now read out even with the next-spell alert off. Untick 'Read them out' on Raid Notes > Alert Settings to stop it.",
@@ -63,57 +50,17 @@ function Speech:SpeechNotice()
     return false
 end
 
-Speech.SOUNDS = {}  -- { { key, label, kit } }, in the order above
-for _, name in ipairs(SOUND_ORDER) do
-    local kit = SOUNDKIT and SOUNDKIT[name]
-    if kit then
-        Speech.SOUNDS[#Speech.SOUNDS + 1] = { key = name, label = TEXT[name], kit = kit }
-    end
-end
-
-local function soundKit(key)
-    for _, s in ipairs(Speech.SOUNDS) do
-        if s.key == key then return s.kit end
-    end
-end
-
 local function settings()
     local notes = CRT.db and CRT.db.notes
     return notes and notes.alert or {}
 end
 
-local function voiceId()
-    if C_TTSSettings and C_TTSSettings.GetVoiceOptionID then
-        local voiceType = (Enum and Enum.TtsVoiceType and Enum.TtsVoiceType.Standard) or 0
-        local ok, id = pcall(C_TTSSettings.GetVoiceOptionID, voiceType)
-        if ok and type(id) == "number" then
-            return id
-        end
-    end
-    if C_VoiceChat and C_VoiceChat.GetTtsVoices then
-        local ok, voices = pcall(C_VoiceChat.GetTtsVoices)
-        if ok and type(voices) == "table" and voices[1] then
-            return voices[1].voiceID
-        end
-    end
-    return nil
-end
-
--- Speaks now, outside the queue (the Test speech button uses this).
+-- Speaks now, outside the queue (the Test speech button uses this), at the Raid Notes rate and volume.
 function Speech:SpeakNow(text)
-    if not (C_VoiceChat and C_VoiceChat.SpeakText) then
-        CRT:Print("Text to speech isn't available on this client.")
-        return
-    end
-    local id = voiceId()
-    if not id then
-        CRT:Print("No text to speech voice is installed. Check the game's Text to Speech settings.")
-        return
-    end
     local s = settings()
-    local ok, err = pcall(C_VoiceChat.SpeakText, id, text, s.ttsRate or 0, s.ttsVolume or 100, false)
-    if not ok then
-        CRT:Print("Text to speech failed: " .. tostring(err))
+    local ok, why = CRT.Sound:Speak(text, { rate = s.ttsRate or 0, volume = s.ttsVolume or 100 })
+    if not ok and why then
+        CRT:Print(why)
     end
 end
 
@@ -127,9 +74,7 @@ end
 
 -- Stops what is being said now and drops the queue.
 function Speech:Hush()
-    if C_VoiceChat and C_VoiceChat.StopSpeakingText then
-        pcall(C_VoiceChat.StopSpeakingText)
-    end
+    CRT.Sound:StopSpeaking()
     wipe(self.queue)
     self.playing = false
     self.playingUntil = 0
@@ -167,9 +112,8 @@ function Speech:Tick(now)
                 local key = tostring(member.id) .. "#sound"
                 if not self.spoken[key] then
                     self.spoken[key] = true
-                    local kit = soundKit(member.sound)
-                    if kit and now - at <= SOUND_LATE then
-                        CRT:PlaySound(kit)
+                    if now - at <= SOUND_LATE then
+                        CRT.Sound:Play(member.sound) -- any reference; an old bare name is a game sound
                     end
                 end
             end

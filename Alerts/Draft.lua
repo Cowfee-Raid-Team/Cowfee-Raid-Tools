@@ -408,7 +408,7 @@ function Draft.NoteTimer(ctx, draft)
         -- ttsat:0 only with the text read out: a line without it speaks when it shows
         speakAt = (draft.speak and draft.speakAt == "zero") and "zero" or nil,
         count = draft.count or nil,
-        sound = draft.sound,
+        sound = CRT.Sound.Compact(draft.sound), -- a game sound by its bare name, as older versions read it
         glow = draft.glow or nil,
         warn = draft.warn,
         linger = draft.linger > 0 and draft.linger or nil,
@@ -653,14 +653,16 @@ function Draft.PlaceCooldown(encounterID, spellID, text, boss, ph, seconds, tag)
     return Draft.SaveNote(ctx, draft)
 end
 
--- The Sound choices: None (key Draft.NO_SOUND, saved as no sound), then the speech module's sounds.
+-- The Sound choices: None (key Draft.NO_SOUND, saved as no sound), then every sound the engine offers
+-- (Sound/Engine.lua), keyed by reference. Draft.SoundKey reads a saved value (an old bare game sound
+-- name too) as the key the menu shows.
 Draft.NO_SOUND = "none"
 function Draft.SoundOptions(noneLabel)
-    local out = { { key = Draft.NO_SOUND, label = noneLabel } }
-    for _, s in ipairs(CRT.AlertSpeech and CRT.AlertSpeech.SOUNDS or {}) do
-        out[#out + 1] = { key = s.key, label = s.label }
-    end
-    return out
+    return CRT.Sound:Choices({ none = noneLabel })
+end
+
+function Draft.SoundKey(value)
+    return CRT.Sound.Normalize(value) or Draft.NO_SOUND
 end
 
 -- The spell box --------------------------------------------------------------------------------------

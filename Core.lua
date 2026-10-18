@@ -173,6 +173,11 @@ local defaults = {
             bridge = false, -- the raid leader's CRT passes a break on in the formats it didn't come in
         },
     },
+    -- The sound engine (Sound/Engine.lua): custom, your own sound file names typed on Quality of Life >
+    -- Sounds (the companion addon CowfeeRaidTools_Media lists more in its Sounds.lua).
+    sound = {
+        custom = {},
+    },
     -- The late tracker. days[wday] is true for raid days (1 is Sunday, as date() counts them), and
     -- hour and minute are the start on this computer's clock. Who is expected is the active Raid
     -- Groups layout (Groups:Active); layoutId, its old pick, is read once to set that. current is the
@@ -458,9 +463,12 @@ CRT.SOUND_CHANNELS = {
     { key = "Talking Head", label = "Talking head" },
 }
 
--- Plays a sound kit through the channel chosen on the General Settings page. Every sound the addon plays
--- goes through here. Returns the sound handle, to stop it with StopSound.
+-- Plays a sound kit through the channel chosen on the General Settings page, through the sound engine
+-- (Sound/Engine.lua). Kept for older callers; new code calls CRT.Sound:Play. Returns the handle.
 function CRT:PlaySound(kit)
+    if CRT.Sound then
+        return (CRT.Sound:Play("kit:" .. tostring(kit)))
+    end
     local channel = (self.db and self.db.ui and self.db.ui.soundChannel) or "Master"
     local ok, willPlay, handle = pcall(PlaySound, kit, channel)
     if ok and willPlay then

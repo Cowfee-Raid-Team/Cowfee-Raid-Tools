@@ -22,12 +22,18 @@ local TEXT = {
     lowHealthSoundNote = "Turns on the game's own low-health pulse (Combat Audio Alerts, in the game's Accessibility options): a sound that loops while your health is under your threshold, faster as it drops. The game compares your health itself, so it works in combat, where an addon can't.\n\nThe pulse works in 10% steps, so your threshold is rounded to the nearest one (35% becomes 40%).\n\nIf you weren't using Combat Audio Alerts, its spoken alerts are switched off so only the pulse plays. Unticking this puts every game setting it changed back.",
     lowHealthVolume = "Volume",
     lowHealthChoice = "Sound",
-    lowHealthChoiceNote = "The game's pulse loops and speeds up as your health drops. Any other sound repeats, faster at each lower 10%.\n\nShared sounds come from other addons through LibSharedMedia, when one of them is installed.\n\nYour own sounds: put an .ogg or .mp3 file in Interface\\AddOns\\CowfeeRaidTools\\Sounds, /reload, then type its name below and press Add. Updating the addon by replacing its folder removes them, so keep a copy.\n\nVolume only changes the game's sounds. Shared and your own sounds play at the volume of their output channel.",
+    lowHealthChoiceNote = "The game's pulse loops and speeds up as your health drops. Any other sound repeats, faster at each lower 10%.\n\nShared sounds come from other addons through LibSharedMedia, when one of them is installed.\n\nYour own sounds are listed on the Sounds tab, which says where the files go.\n\nVolume only changes the game's sounds. Shared and your own sounds play at the volume of their output channel.",
     lowHealthOnce = "Play once each time my health drops under",
     lowHealthOnceNote = "On: the sound plays one time, in full, each time your health drops under the threshold. Dropping lower during the same dip doesn't play it again; healing and dropping again does.\n\nOff: it repeats until you heal, faster as your health drops, each repeat cutting off the one before.\n\nThe game's pulse is a loop and keeps looping either way.",
-    lowHealthCustom = "Your sound file",
-    lowHealthAdd = "Add",
-    lowHealthRemove = "Remove",
+    soundsTitle = "Your sound files",
+    soundsNote = "Your own .ogg or .mp3 files, for every sound list in the addon (marked yours) and, as CRT: <name>, for other addons that use LibSharedMedia.\n\nWhere they go: the CowfeeRaidTools_Media companion addon. Copy the CowfeeRaidTools_Media folder from Interface\\AddOns\\CowfeeRaidTools\\Media Addon Template into Interface\\AddOns once, put your files in its Sounds folder and list their names in its Sounds.lua. Updating Cowfee Raid Tools never touches that folder. Files in the old place, CowfeeRaidTools\\Sounds, still play, but an update removes them.\n\nThe game can't list a folder, so a file is known by name: from Sounds.lua, or typed here and added. Test plays a file and says whether the game found it. A file copied in while the game is running may need a game restart, not only a /reload.",
+    soundsAdd = "Add",
+    soundsTest = "Test",
+    soundsRemove = "Remove",
+    soundsNone = "No files yet. Type a file's name and press Add, or list them in CowfeeRaidTools_Media's Sounds.lua.",
+    soundsMedia = "CowfeeRaidTools_Media: %s",
+    soundsFromManifest = "from Sounds.lua",
+    soundsTyped = "typed here",
     lowHealthOutput = "Output",
     lowHealthOutputNote = "Game default plays the sound on the game's voice output, like its own pulse. Pick a channel to follow that channel's volume and mute in the game's Sound settings instead.\n\nAny sound other than the game's pulse, or any channel, is played by the addon: the game's pulse runs silently and the addon plays yours whenever it starts or stops, so it still works in combat.",
     lowHealthTest = "Test sound",
@@ -285,60 +291,6 @@ local function buildLowHealth(pf, top)
     end
     controls[#controls + 1] = once
 
-    -- Your own sound files, added by name since the game can't list a folder.
-    local customLabel = pf:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    customLabel:SetPoint("TOPLEFT", 10, top - 228)
-    customLabel:SetWidth(SLIDER_LABEL_W)
-    customLabel:SetJustifyH("LEFT")
-    customLabel:SetText(TEXT.lowHealthCustom)
-    local customEdit = CreateFrame("EditBox", nil, pf, "InputBoxTemplate")
-    customEdit:SetAutoFocus(false)
-    customEdit:SetFontObject(CRTFontHighlight)
-    customEdit:SetMaxLetters(80)
-    customEdit:SetSize(190, 22)
-    customEdit:SetPoint("LEFT", customLabel, "RIGHT", 12, 0)
-    customEdit:SetScript("OnEnterPressed", function(self)
-        self:ClearFocus()
-    end)
-    customEdit:SetScript("OnEscapePressed", function(self)
-        self:ClearFocus()
-    end)
-    local add = smallButton(pf, TEXT.lowHealthAdd)
-    add:SetWidth(60)
-    add:SetPoint("LEFT", customEdit, "RIGHT", 8, 0)
-    add:SetScript("OnClick", function()
-        local ok, message = Sound:AddCustom(customEdit:GetText())
-        CRT:Print(message)
-        if ok then
-            local name = customEdit:GetText():gsub("^%s+", ""):gsub("%s+$", "")
-            customEdit:SetText("")
-            settings().soundChoice = "file:" .. name
-            Sound:Apply()
-        end
-        refresh()
-    end)
-    local remove = smallButton(pf, TEXT.lowHealthRemove)
-    remove:SetWidth(70)
-    remove:SetPoint("LEFT", add, "RIGHT", 6, 0)
-    remove:SetScript("OnClick", function()
-        local file = (settings().soundChoice or ""):match("^file:(.+)$")
-        if file and Sound:RemoveCustom(file) then
-            CRT:Print("Removed " .. file .. " from the list. The file itself stays in the Sounds folder.")
-            Sound:Apply()
-        end
-        refresh()
-    end)
-    controls[#controls + 1] = {
-        refresh = function()
-            local on = soundOn() and true or false
-            customEdit:SetEnabled(on)
-            add:SetEnabled(on)
-            remove:SetEnabled(on and (settings().soundChoice or ""):find("^file:") ~= nil)
-            local c = on and 1 or 0.5
-            customLabel:SetTextColor(c, c, c)
-        end,
-    }
-
     local test = smallButton(pf, TEXT.lowHealthTest)
     test:SetPoint("LEFT", volume, "RIGHT", 12, 0)
     -- Test sound plays your choice for 3 seconds; while it plays the button stops it.
@@ -355,6 +307,114 @@ local function buildLowHealth(pf, top)
         end,
     }
 
+end
+
+-- Your sound files (Sound/Engine.lua) --------------------------------------------------------
+
+local SOUND_ROWS = 12
+
+local function buildSounds(pf, top)
+    local Engine = CRT.Sound
+    local heading = pf:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
+    heading:SetPoint("TOPLEFT", 8, top)
+    heading:SetText(TEXT.soundsTitle)
+    UI.Help(pf, TEXT.soundsTitle, TEXT.soundsNote):SetPoint("LEFT", heading, "RIGHT", 6, 0)
+
+    local media = pf:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    media:SetPoint("TOPLEFT", 10, top - 22)
+
+    local edit = CreateFrame("EditBox", nil, pf, "InputBoxTemplate")
+    edit:SetAutoFocus(false)
+    edit:SetFontObject(CRTFontHighlight)
+    edit:SetMaxLetters(80)
+    edit:SetSize(220, 22)
+    edit:SetPoint("TOPLEFT", 16, top - 44)
+    edit:SetScript("OnEscapePressed", function(self)
+        self:ClearFocus()
+    end)
+    local add = smallButton(pf, TEXT.soundsAdd)
+    add:SetWidth(60)
+    add:SetPoint("LEFT", edit, "RIGHT", 8, 0)
+    local function addTyped()
+        local ok, message = Engine:AddCustom(edit:GetText())
+        CRT:Print(message)
+        if ok then
+            edit:SetText("")
+        end
+        edit:ClearFocus()
+        refresh()
+    end
+    add:SetScript("OnClick", addTyped)
+    edit:SetScript("OnEnterPressed", addTyped)
+
+    local empty = pf:CreateFontString(nil, "OVERLAY", "CRTFontDisableSmall")
+    empty:SetPoint("TOPLEFT", 10, top - 76)
+    empty:SetText(TEXT.soundsNone)
+
+    -- One row per file: its name, where it is listed, Test (and what Test found), and Remove for a typed one.
+    local rows = {}
+    local results = {} -- file name -> what its last Test found
+    for i = 1, SOUND_ROWS do
+        local y = top - 74 - (i - 1) * 24
+        local row = {}
+        row.name = pf:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+        row.name:SetPoint("TOPLEFT", 10, y - 4)
+        row.name:SetWidth(220)
+        row.name:SetJustifyH("LEFT")
+        row.name:SetWordWrap(false)
+        row.source = pf:CreateFontString(nil, "OVERLAY", "CRTFontDisableSmall")
+        row.source:SetPoint("TOPLEFT", 236, y - 4)
+        row.test = smallButton(pf, TEXT.soundsTest)
+        row.test:SetWidth(60)
+        row.test:SetPoint("TOPLEFT", 346, y)
+        row.remove = smallButton(pf, TEXT.soundsRemove)
+        row.remove:SetWidth(70)
+        row.remove:SetPoint("LEFT", row.test, "RIGHT", 6, 0)
+        row.result = pf:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+        row.result:SetPoint("LEFT", row.remove, "RIGHT", 10, 0)
+        row.test:SetScript("OnClick", function()
+            if row.file then
+                local played, message = Engine:TestFile(row.file)
+                results[row.file] = played and "|cff60ff60played|r" or "|cffff6060not found|r"
+                CRT:Print(message)
+                refresh()
+            end
+        end)
+        row.remove:SetScript("OnClick", function()
+            if row.file and Engine:RemoveCustom(row.file) then
+                CRT:Print("Removed " .. row.file .. " from the list. The file itself stays where it is.")
+                refresh()
+            end
+        end)
+        rows[i] = row
+    end
+    local more = pf:CreateFontString(nil, "OVERLAY", "CRTFontDisableSmall")
+    more:SetPoint("TOPLEFT", 10, top - 74 - SOUND_ROWS * 24)
+
+    controls[#controls + 1] = {
+        refresh = function()
+            local loaded = C_AddOns and C_AddOns.IsAddOnLoaded and C_AddOns.IsAddOnLoaded(Engine.MEDIA_ADDON)
+            media:SetText(string.format(TEXT.soundsMedia, loaded and "|cff60ff60loaded|r" or "|cffff8080not installed|r (see the (?))"))
+            local files = Engine:CustomFiles()
+            empty:SetShown(#files == 0)
+            for i, row in ipairs(rows) do
+                local f = files[i]
+                row.file = f and f.name or nil
+                local shown = f ~= nil
+                row.name:SetShown(shown)
+                row.source:SetShown(shown)
+                row.test:SetShown(shown)
+                row.remove:SetShown(shown and f.source == "typed")
+                row.result:SetShown(shown)
+                if f then
+                    row.name:SetText(f.name)
+                    row.source:SetText(f.source == "manifest" and TEXT.soundsFromManifest or TEXT.soundsTyped)
+                    row.result:SetText(results[f.name] or "")
+                end
+            end
+            more:SetText(#files > SOUND_ROWS and ("+" .. (#files - SOUND_ROWS) .. " more") or "")
+        end,
+    }
 end
 
 -- Break timer ---------------------------------------------------------------------------------
@@ -421,11 +481,12 @@ local function buildBreak(pf, top)
     UI.Help(pf, TEXT.breakBridge, TEXT.breakBridgeNote):SetPoint("LEFT", bridge.label, "RIGHT", 6, 0)
 end
 
--- Tabs: Low health, Debuffs and Break timer (the debuff panel, Debuffs/Page.lua). Both are only settings.
+-- Tabs: Low health, Debuffs, Break timer and Sounds (the debuff panel, Debuffs/Page.lua). Both are only settings.
 local TABS = {
     { key = "lowhealth", label = "Low health" },
     { key = "debuffs", label = "Debuffs" },
     { key = "break", label = "Break timer" },
+    { key = "sounds", label = "Sounds" },
 }
 local tabButtons, tabFrames = {}, {}
 
@@ -481,6 +542,7 @@ local function build(pf)
     buildLowHealth(tabFrames.lowhealth, -8)
     CRT.DebuffsPage.Build(tabFrames.debuffs)
     buildBreak(tabFrames["break"], -8)
+    buildSounds(tabFrames.sounds, -8)
     selectTab(CRT.db.qol.tab)
 
     pf:SetScript("OnShow", refresh)
@@ -492,7 +554,7 @@ end
 
 UI:RegisterPage("qol", TEXT.title, build)
 
--- Opens the page on a tab: "lowhealth", "debuffs" (/crt debuffs) or "break".
+-- Opens the page on a tab: "lowhealth", "debuffs" (/crt debuffs), "break" or "sounds".
 CRT.QoLPage = {
     Open = function(key)
         UI:Show("qol")

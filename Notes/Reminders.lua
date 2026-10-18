@@ -1152,10 +1152,10 @@ local function buildPanel(f)
     panel.colorDefault:SetScript("OnClick", change(function()
         cur.draft.color = nil
     end))
-    panel.sound = row(UI.Dropdown(p, TEXT.sound, {
+    panel.sound = row(UI.SoundDropdown(p, TEXT.sound, {
         labelWidth = L.LABEL_W, width = L.SOUND_W, maxHeight = L.MENU_MAX_H,
         options = function() return Draft.SoundOptions(TEXT.soundNone) end,
-        get = function() return cur.draft and cur.draft.sound or Draft.NO_SOUND end,
+        get = function() return cur.draft and Draft.SoundKey(cur.draft.sound) or Draft.NO_SOUND end,
         set = change(function(v) cur.draft.sound = v ~= Draft.NO_SOUND and v or nil end),
     }))
     panel.sound:SetPoint("TOPLEFT", L.COL2_X, L.COL_Y - 106)

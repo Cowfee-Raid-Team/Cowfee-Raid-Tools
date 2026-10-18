@@ -14,6 +14,7 @@ Profiles.lua
 Bosses\Registry.lua
 Slash.lua
 Perf.lua
+Sound\Engine.lua
 UI\Panel.lua
 UI\Controls.lua
 Groups\Data.lua
@@ -119,5 +120,6 @@ Dev\LayoutCheck.lua
 Dev\LateTest.lua
 Dev\NoteTargets.lua
 Dev\Breaks.lua
+Dev\Sound.lua
 Dev\DevPage.lua
 #@end-do-not-package@
