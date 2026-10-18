@@ -112,5 +112,6 @@ Dev\ReferenceTypes.lua
 Dev\WindowLog.lua
 Dev\LayoutCheck.lua
 Dev\LateTest.lua
+Dev\NSRT.lua
 Dev\DevPage.lua
 #@end-do-not-package@
