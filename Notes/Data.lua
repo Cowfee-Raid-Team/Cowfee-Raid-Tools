@@ -247,6 +247,34 @@ end
 
 local DIFFICULTY_RANK = { mythic = 1, heroic = 2, normal = 3 }
 
+-- Your guild's name, read now (so a guild renamed or changed shows at once); nil out of a guild.
+local function myGuild()
+    return IsInGuild and IsInGuild() and GetGuildInfo and GetGuildInfo("player") or nil
+end
+
+-- A shared note you put out becomes your guild's (labelled "- <your guild>", so your guildies' later
+-- shares update it instead of adding another): on a share, `shared` true, also marked as shared by you
+-- through this addon; on a save, only a note that has no source yet (your own) is claimed, never someone
+-- else's. Personal notes are never claimed. Out of a guild a share is still marked as yours.
+function Notes:ClaimForGuild(id, shared)
+    local record = self:Get(id)
+    if not record or record.personal then
+        return
+    end
+    if not shared and record.source then
+        return
+    end
+    local guild = myGuild()
+    if guild then
+        record.source = "guild:" .. guild
+    end
+    if shared then
+        record.from = me()
+        record.sharedAt = date("%Y-%m-%d %H:%M")
+        record.via = "CRT"
+    end
+end
+
 -- A player's name without the realm: "Rixxy" for "Rixxy-TwistingNether".
 function Notes.ShortName(name)
     return name and (name:match("^([^%-]+)") or name) or nil
@@ -481,6 +509,9 @@ function Notes:UpdateRaw(id, text)
     record.difficulty = note.difficulty or record.difficulty
     record.updated = date("%Y-%m-%d %H:%M")
     record.updatedBy = me() -- your own change
+    if not record.source and not record.personal and Notes.ClaimForGuild then
+        Notes:ClaimForGuild(id, false) -- your own note, saved: your guild's
+    end
     parsed[id] = nil
     self:Parsed(id)
     self:Fire()

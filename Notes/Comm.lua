@@ -226,6 +226,9 @@ function Comm:Share(id)
         CRT:Print("That note is empty.")
         return
     end
+    -- what you put out to the raid is your guild's note, labelled "- <your guild>" and shared by you
+    Notes:ClaimForGuild(id, true)
+    Notes:Fire()
 
     local prefix, parts = PREFIX, nil
     if canCompress then
