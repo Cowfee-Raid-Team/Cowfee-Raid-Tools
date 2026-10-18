@@ -296,12 +296,14 @@ Comm.TagSender = tagSender
 
 local function received(text, short)
     local newId, result
+    -- your guild's note is one note, updated by each of your officers; anyone else's is a note of its own
     local guild = guildOf(short)
-    local source = guild and ("guild:" .. guild) or ("player:" .. short)
+    local mine = IsInGuild and IsInGuild() and GetGuildInfo("player")
+    local source = (guild and mine and guild == mine) and ("guild:" .. guild) or ("pug:" .. short)
     text = tagSender(text, short)
     -- someone else's note is the Timeline's new starting point, never something Ctrl+Z puts back
     local function import()
-        newId, result = Notes:Import(text, short, nil, source)
+        newId, result = Notes:Import(text, short, nil, source, "Cowfee Raid Tools")
     end
     if CRT.TimelineUndo then
         CRT.TimelineUndo:Quietly(import)

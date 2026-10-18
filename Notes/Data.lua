@@ -3,11 +3,13 @@ local ADDON, CRT = ...
 -- Stored raid notes and their settings, in CRTDB.notes (per player):
 --   list[id] = { raw, name, encounterID, difficulty, updated, from, presetId, personal, source }
 -- A note is shared or, with personal = true, your own.
---   Shared: the raid's notes. A received one is kept per sender's guild (source "guild:<name>", or
---   "player:<name>" for a sender with none): a share from someone in the same guild replaces that guild's
---   note for the boss and difficulty, and one from another guild is a note of its own, so several officers
---   sharing in a night keep one note and a pickup group's share never replaces your guild's. The newest
---   share is the note in use, and the shared note in use runs on the pull (FindForEncounter).
+--   Shared: the raid's notes. One from someone in your own guild is kept as your guild's note (source
+--   "guild:<name>"): the next share from anyone in your guild replaces it for that boss and difficulty, so
+--   several officers sharing in a night keep one note, which shows who updated it last. One from anyone
+--   else (a pickup group, another guild, no guild) is an unknown source, "pug:<sender>": every share is a
+--   note of its own, never replacing yours or another's, except an exact repeat from the same sender. The
+--   newest share is the note in use, and the shared note in use runs on the pull (FindForEncounter).
+--   `via` says how a note came: "Cowfee Raid Tools" (shared to you), "Imported" (pasted), "Timeline".
 --   Personal: your own lines for a boss and difficulty, kept on this computer, never shared or replaced.
 --   They run on every pull of that boss alongside the shared note in use (PersonalFor, Notes/Engine.lua's
 --   "personal" block).
@@ -186,6 +188,17 @@ end
 
 local DIFFICULTY_RANK = { mythic = 1, heroic = 2, normal = 3 }
 
+-- Whose a shared note is, for its label: your guild's name, else its sender without the realm.
+function Notes.SourceLabel(record)
+    local src = record and record.source
+    local guild = type(src) == "string" and src:match("^guild:(.+)$")
+    if guild then
+        return guild
+    end
+    local from = record and record.from
+    return from and (from:match("^([^%-]+)") or from) or nil
+end
+
 -- kind: "shared" or "personal" lists only those, nil every note.
 -- All notes, in the raid route (CRT.Bosses:RouteIndex of the EncounterID in each note's header), the
 -- same order as every boss list; a boss's notes Mythic, Heroic, Normal, then any other difficulty.
@@ -324,7 +337,7 @@ end
 -- personal: the note is your own (the Personal tab's Import), replacing yours for that boss and
 -- difficulty. Otherwise it is shared, replacing the shared note of the same source (a sender's guild, see
 -- the top), or one from before sources were kept; never a personal note.
-function Notes:Import(text, from, personal, source)
+function Notes:Import(text, from, personal, source, via)
     local note = Parser.Parse(text)
     if not note.name and not note.encounterID and #note.timers == 0 then
         return nil, "That doesn't look like a raid note. It needs an EncounterID line or time: lines."
@@ -335,7 +348,16 @@ function Notes:Import(text, from, personal, source)
         local sameBoss = note.encounterID and record.encounterID == note.encounterID
         local sameDifficulty = (record.difficulty or "") == (note.difficulty or "")
         local sameKind = (record.personal == true) == (personal == true)
-        local sameSource = personal or record.source == nil or record.source == source
+        -- your guild's note is replaced by your guild's next share (and a note from before sources were
+        -- kept by the first); an unknown source's note only by its exact repeat
+        local sameSource
+        if personal then
+            sameSource = true
+        elseif type(source) == "string" and source:find("^pug:") then
+            sameSource = record.source == source and record.raw == text
+        else
+            sameSource = record.source == source or record.source == nil
+        end
         if sameBoss and sameDifficulty and sameKind and sameSource then
             id = existingId
             break
@@ -354,6 +376,7 @@ function Notes:Import(text, from, personal, source)
     record.from = from
     record.personal = personal and true or nil
     record.source = (not personal) and source or nil
+    record.via = via or record.via
     db.list[id] = record
 
     -- The invite list becomes a Raid Groups layout the first time, which can then be adjusted there.
@@ -485,7 +508,7 @@ function Notes:NoteFor(encounterID, difficultyName, bossName)
     if id then
         return id, false
     end
-    local newId = self:Import(headerLine(encounterID, difficultyName, bossName) .. "\n")
+    local newId = self:Import(headerLine(encounterID, difficultyName, bossName) .. "\n", nil, nil, nil, "Timeline")
     return newId, newId ~= nil
 end
 
@@ -499,7 +522,7 @@ function Notes:AddLine(encounterID, difficultyName, bossName, line)
     difficultyName, bossName = headerWord(difficultyName), headerWord(bossName)
     local id = self:FindForEncounter(encounterID, difficultyName)
     if not id then
-        local newId = self:Import(headerLine(encounterID, difficultyName, bossName) .. "\n" .. line)
+        local newId = self:Import(headerLine(encounterID, difficultyName, bossName) .. "\n" .. line, nil, nil, nil, "Timeline")
         return newId, newId and 2 or nil
     end
     return id, self:AddLineTo(id, line)

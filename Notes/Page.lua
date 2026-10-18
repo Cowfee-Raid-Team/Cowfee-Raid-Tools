@@ -160,7 +160,7 @@ local function getImportDialog()
     ok:SetPoint("BOTTOM", -60, 12)
     ok:SetScript("OnClick", function()
         -- on the Personal tab an import is your own copy, never replaced by a share
-        local id, message = Notes:Import(d.edit:GetText(), nil, listKind == "personal")
+        local id, message = Notes:Import(d.edit:GetText(), nil, listKind == "personal", nil, "Imported")
         CRT:Print(message)
         if id then
             selected = id
@@ -230,9 +230,9 @@ refresh = function()
         local entry = list[i]
         if entry then
             local r = entry.record
-            -- a shared note says who sent it: "Nek'zali (Mythic) - Solex"
+            -- a shared note says whose it is: your guild's by its name, anyone else's by the sender
             local label = (r.name or "Note") .. (r.difficulty and (" (" .. r.difficulty .. ")") or "")
-                .. ((not r.personal and r.from) and (" - " .. r.from) or "")
+                .. ((not r.personal) and Notes.SourceLabel(r) and (" - " .. Notes.SourceLabel(r)) or "")
             if entry.id == activeId then
                 label = label .. "  |cff55dd55active|r"
             end
@@ -265,6 +265,7 @@ refresh = function()
     local lines = {}
     if record then
         lines[#lines + 1] = "Updated " .. (record.updated or "?") .. (record.from and (", shared by " .. record.from) or "")
+            .. (record.via and (" (" .. record.via .. ")") or "")
         if record.presetId and CRT.Groups:Find(record.presetId) then
             lines[#lines + 1] = "Roster: linked to a Raid Groups layout"
         end
@@ -328,6 +329,7 @@ local function buildNotes(pf)
         row.text:SetPoint("LEFT", 8, 0)
         row.text:SetPoint("RIGHT", -6, 0)
         row.text:SetJustifyH("LEFT")
+        row.text:SetWordWrap(false) -- one line, cut short rather than wrapping out of its box
         row:SetScript("OnClick", function(self)
             selected = self.id
             refresh()
