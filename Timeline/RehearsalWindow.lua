@@ -4,8 +4,8 @@ local ADDON, CRT = ...
 -- A separate pop-up, movable by its title, that stays open while the Timeline is closed. Top to
 -- bottom: the title "Rehearsal · <boss>" with its close button; the boss panel (the name, a health
 -- bar draining evenly from 100% at the pull to 0% at the fight's length, and the percentage); the
--- cast bar (the cast showing now, its icon and name, filling over Rehearsal.CAST seconds); Next up
--- (the next 3 casts counting down to them); the strip (STRIP_SPAN seconds of the fight's casts in their
+-- cast bar (the cast showing now, its icon and name, filling over its last Rehearsal.CAST seconds); Next up
+-- (the next 3 casts counting down to them, leaving out the one in the cast bar); the strip (STRIP_SPAN seconds of the fight's casts in their
 -- type colors scrolling under a fixed "now" line a third of the way across, with the phase lines and
 -- their labels; a click jumps there); and the controls (Play/Pause, Restart, Speed, Preview as and
 -- the clock). An OnUpdate redraws from the clock while it plays. At the fight's length the clock
@@ -28,7 +28,8 @@ local CAST_H = 20
 local CAST_W = INNER - CAST_H - 4
 local NEXT_N = 3
 local NEXT_H = 18
-local NEXT_COUNT = 10 -- seconds before a cast its Next up line counts down in tenths and fills its bar
+local NEXT_COUNT = 10 -- seconds before a cast its Next up line counts down in tenths and fills its bar,
+-- full when the cast moves into the cast bar Rehearsal.CAST seconds before it
 local NEXT_BAR_W = INNER - 20
 local STRIP_H = 56
 local STRIP_LABEL_H = 14 -- the phase labels' row at the top of the strip
@@ -632,8 +633,9 @@ function RehearsalWindow:Redraw()
         f.castFill:Hide()
     end
 
-    -- Next up
-    local list = Rehearsal.NextUp(model, now, NEXT_N)
+    -- Next up, without the cast the cast bar shows
+    local list = Rehearsal.NextUp(model, now, NEXT_N, shown and shown.cast)
+    local fillSpan = NEXT_COUNT - Rehearsal.CAST
     for i, line in ipairs(f.next) do
         local c = list[i]
         if c then
@@ -646,7 +648,8 @@ function RehearsalWindow:Redraw()
                 local col = castColor(c)
                 line.time:SetText(string.format("%.1f", left))
                 line.bar:SetColorTexture(col[1], col[2], col[3], 0.45)
-                line.bar:SetWidth(math.max(1, NEXT_BAR_W * (1 - left / NEXT_COUNT)))
+                local fill = math.max(0, math.min(1, (NEXT_COUNT - left) / fillSpan))
+                line.bar:SetWidth(math.max(1, NEXT_BAR_W * fill))
                 line.bar:Show()
             else
                 line.time:SetText(fmt(left))

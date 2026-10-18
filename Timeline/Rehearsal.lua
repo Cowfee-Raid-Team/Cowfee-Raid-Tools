@@ -9,7 +9,7 @@ local ADDON, CRT = ...
 local Rehearsal = {}
 CRT.TimelineRehearsal = Rehearsal
 
-Rehearsal.CAST = 2         -- seconds a fake cast bar shows, ending on the cast's time
+Rehearsal.CAST = 5         -- seconds a fake cast bar shows, ending on the cast's time
 Rehearsal.STRIP_SPAN = 40  -- seconds the strip shows, "now" a third of the way across
 
 local Clock = {}
@@ -122,12 +122,12 @@ function Rehearsal.CastAt(model, t)
     return nil
 end
 
--- The next n casts at or after t, in time order.
-function Rehearsal.NextUp(model, t, n)
+-- The next n casts at or after t, in time order, leaving out skip (the cast the cast bar shows).
+function Rehearsal.NextUp(model, t, n, skip)
     local out = {}
     for _, c in ipairs(model.casts) do
         if #out >= n then break end
-        if c.t >= t then out[#out + 1] = c end
+        if c.t >= t and c ~= skip then out[#out + 1] = c end
     end
     return out
 end
