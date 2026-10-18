@@ -591,6 +591,11 @@ function ReferencePage.Build(f, ctx)
         end
     end)
 
+    -- Puts text in the box as a new reference (Save adds it), as the Journal's Export reference sends it.
+    function tab:Fill(text)
+        fill(text or "", nil)
+    end
+
     function tab:Refresh()
         refreshAbilities()
         local boss = ctx.selectedBoss()

@@ -65,10 +65,27 @@ local function getWindow()
     return w
 end
 
-function Tools:ShowText(title, text)
+-- action, when given, is { label, onClick(text) }: one button at the bottom right, for this text only.
+function Tools:ShowText(title, text, action)
     local w = getWindow()
     UI.SetFrameTitle(w, title)
     w.edit:SetText(text)
+    if action and not w.action then
+        w.action = CreateFrame("Button", nil, w, "UIPanelButtonTemplate")
+        w.action:SetSize(140, 22)
+        w.action:SetPoint("BOTTOMRIGHT", w, "BOTTOMRIGHT", -24, 8)
+    end
+    if w.action then
+        w.action:SetShown(action ~= nil)
+        if action then
+            w.action:SetText(action.label)
+            w.action:SetScript("OnClick", function()
+                local t = w.edit:GetText()
+                w:Hide()
+                action.onClick(t)
+            end)
+        end
+    end
     w:Show()
     w.edit:SetFocus()
     w.edit:HighlightText()

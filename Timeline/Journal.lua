@@ -172,6 +172,23 @@ local function collect(root, rows, seen)
     walk(root)
 end
 
+-- A Journal encounter (its Journal ID, as the Journal window shows it): its name, dungeon encounter ID and
+-- ability rows in Journal order, read without changing the Journal's selection. Nil when unknown.
+function Journal.FromJournalEncounter(journalEncounterID)
+    if not (journalEncounterID and EJ_GetEncounterInfo) then
+        return nil
+    end
+    local ok, name, _, _, rootSectionID, _, _, dungeonEncounterID = pcall(EJ_GetEncounterInfo, journalEncounterID)
+    if not ok or not name then
+        return nil
+    end
+    local rows = {}
+    if rootSectionID and rootSectionID > 0 then
+        collect(rootSectionID, rows, {})
+    end
+    return name, dungeonEncounterID, rows
+end
+
 -- The rows of a boss: Journal abilities, then your own. Empty in combat or while the Journal is
 -- open (nothing cached then). When the Journal does not know the boss only your own spells are
 -- listed, and that miss is remembered until the zone changes so the Journal is not walked again.
