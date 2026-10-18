@@ -33,6 +33,7 @@ local listeners = {}
 local STARTER_SHOW = { alert = true, bar = true, speech = true }
 local STARTERS = {
     { key = "healthstone", pin = 1, name = "Healthstone", text = "Healthstone", iconID = 538745 },
+    { key = "healthpotion", pin = 2, name = "Health potion", text = "Health potion", iconID = 7548909 },
     { key = "gate", name = "Gate", text = "Gate", iconID = 607512 },
 }
 Saved.STARTERS = STARTERS
