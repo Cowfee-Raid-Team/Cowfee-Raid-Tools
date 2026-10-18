@@ -376,15 +376,17 @@ CRT.MODERN_FONT = "Fonts\\ARIALN.TTF"
 CRT.FONT_SCALE = 1.2
 local fonts = {} -- { object, path, size, flags }: each font object and the game font it started as
 
-local function makeFont(name, source, scale)
+-- minSize, when given, is the smallest it is ever drawn, whatever the text size setting (a small font that
+-- must stay readable).
+local function makeFont(name, source, scale, minSize)
     local font = CreateFont(name)
     font:CopyFontObject(source)
     local path, size, flags = font:GetFont()
-    size = math.floor(size * (scale or CRT.FONT_SCALE) + 0.5)
+    size = math.max(minSize or 0, math.floor(size * (scale or CRT.FONT_SCALE) + 0.5))
     -- SetFont's third argument is no longer optional (12.0.5), so pass "" when there are no flags.
     font:SetFont(path, size, flags or "")
     local r, g, b = font:GetTextColor()
-    fonts[#fonts + 1] = { object = font, path = path, size = size, flags = flags or "", color = { r, g, b } }
+    fonts[#fonts + 1] = { object = font, path = path, size = size, flags = flags or "", color = { r, g, b }, min = minSize }
     return font
 end
 
@@ -412,7 +414,7 @@ function CRT:ApplyFonts()
             flags = f.flags
         end
         local size = f.size * factor * (modernDefault and 1.1 or 1)
-        f.object:SetFont(path, math.floor(size + 0.5), flags)
+        f.object:SetFont(path, math.max(f.min or 0, math.floor(size + 0.5)), flags)
         -- Modern: the game's gold text turns latte and its white text cream; grey stays grey.
         local r, g, b = f.color[1], f.color[2], f.color[3]
         if modern and r and r > 0.9 then
@@ -463,6 +465,8 @@ makeFont("CRTFontStandard", GameFontNormal, 1)
 makeFont("CRTFontStandardHighlight", GameFontHighlight, 1)
 makeFont("CRTFontStandardDisable", GameFontDisable, 1)
 makeFont("CRTFontEdit", ChatFontNormal, 1)
+-- the raid note's text: smaller, so more of a note line fits without wrapping, but never under 10 points
+makeFont("CRTFontEditSmall", ChatFontNormal, 0.8, 10)
 
 -- The game's sound channels a sound can play through, for the General Settings page.
 CRT.SOUND_CHANNELS = {

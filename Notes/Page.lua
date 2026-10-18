@@ -374,8 +374,8 @@ local function buildNotes(pf)
     -- Shared and Personal: which notes the list shows
     for i, kind in ipairs({ "shared", "personal" }) do
         local b = CreateFrame("Button", nil, pf, "BackdropTemplate")
-        b:SetSize(76, 20)
-        b:SetPoint("TOPLEFT", 98 + (i - 1) * 80, -10)
+        b:SetSize(68, 20)
+        b:SetPoint("TOPLEFT", 98 + (i - 1) * 72, -10)
         skin(b, 0.4)
         b.sel = b:CreateTexture(nil, "ARTWORK")
         b.sel:SetAllPoints()
@@ -391,7 +391,8 @@ local function buildNotes(pf)
         UI:RegisterTab(b)
         kindTabs[kind] = b
     end
-    UI.Help(pf, TEXT.personal, TEXT.kindHelp):SetPoint("TOPLEFT", 98 + 2 * 80, -12)
+    -- the (?) just after the tabs, clear of the Note text heading at TEXT_X
+    UI.Help(pf, TEXT.personal, TEXT.kindHelp):SetPoint("TOPLEFT", 98 + 2 * 72, -12)
 
     -- the difficulty filter over the list, for the Dropdown and Chips styles (Notes Settings)
     local DIFF_OPTIONS = { { key = "All", label = TEXT.allDifficulties } }
@@ -558,7 +559,7 @@ local function buildNotes(pf)
     editor = CreateFrame("EditBox", nil, scroll)
     editor:SetMultiLine(true)
     editor:SetAutoFocus(false)
-    editor:SetFontObject(CRTFontEdit)
+    editor:SetFontObject(_G.CRTFontEditSmall or CRTFontEdit) -- smaller, so note lines fit; never unreadable
     editor:SetWidth(TEXT_W - 40)
     editor:SetScript("OnEscapePressed", function(self)
         self:ClearFocus()
