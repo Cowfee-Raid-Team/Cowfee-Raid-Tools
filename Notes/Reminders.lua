@@ -15,7 +15,7 @@ local UI = CRT.UI
 -- text in quotes, save, and /reload.
 local TEXT = {
     title = "Mech Alerts",
-    help = "On the left are the boss's abilities from the Encounter Journal, then your own reminders that are not tied to an ability. Tick one to get a reminder for it, with the times of the boss's reference timeline; untick it to turn the reminder off. It is kept, and ticking it again brings it back. A small dot means the reference has times for it.\n\nClick a row to see its alert on the right. Every change there is saved at once; the first change on an ability makes its reminder. Your own reminder adds one that is not tied to an ability.\n\nDouble-click an ability's row on the Timeline page to open it in the pop-out editor.\n\nThe abilities are read from the Encounter Journal, out of combat only.",
+    help = "On the left are the boss's abilities from the Encounter Journal, then your own reminders that are not tied to an ability. Tick one to get a reminder for it, with the times of the boss's reference timeline; untick it to turn the reminder off. It is kept, and ticking it again brings it back. A small dot means the reference has times for it.\n\nClick a row to see its alert on the right. Every change there is saved at once; the first change on an ability makes its reminder. Your own reminder adds one that is not tied to an ability, and Delete removes one of yours. The boss's abilities can't be deleted: untick one to turn its reminder off.\n\nDouble-click an ability's row on the Timeline page to open it in the pop-out editor.\n\nThe abilities are read from the Encounter Journal, out of combat only.",
     boss = "Boss",
     difficulty = "Difficulty",
     any = "Any",
@@ -65,6 +65,8 @@ local TEXT = {
     soundNone = "None",
     test = "Test",
     template = "Save as template",
+    delete = "Delete",
+    deleteConfirm = "Delete reminder '%s'?",
     noTest = "Nothing to test: this alert has no times.",
 
     markerTitle = "Marker display",
@@ -116,7 +118,9 @@ L.ICON_Y, L.NAME_Y, L.ALERT_Y, L.SAVE_Y, L.SAVE_HELP_Y = -10, -16, -12, -8, -16
 L.TRIGGERS_Y, L.SLIDERS_Y, L.TIMES_Y, L.TIMES_BOX_Y, L.TIMELINE_Y = -50, -66, -104, -100, -124
 L.TIMELINE_W, L.TEMPLATE_W, L.TEST_W, L.DEFAULT_W = 170, 140, 80, 80
 L.BUTTON_GAP = 8
-L.BUTTONS_W = L.TEMPLATE_W + L.BUTTON_GAP + L.TEST_W + L.BUTTON_GAP -- Test and Save as template, bottom right
+L.DELETE_W = 80
+-- Delete, Test and Save as template, bottom right
+L.BUTTONS_W = L.TEMPLATE_W + L.BUTTON_GAP + L.TEST_W + L.BUTTON_GAP + L.DELETE_W + L.BUTTON_GAP
 L.BOTTOM_Y = 10 -- the bottom row's buttons above the panel's bottom edge
 L.MENU_MAX_H = 400 -- the Sound menu scrolls past this
 L.COL_Y = -162
@@ -425,6 +429,9 @@ local function drawPanel()
     end
     local d = cur.draft
     panel.content:SetShown(d ~= nil)
+    -- Delete only for a reminder of your own (a row not from the Journal), never for a boss's ability
+    local item = cur.item
+    panel.deleteBtn:SetShown(d ~= nil and item ~= nil and not item.ability and (item.id ~= nil or item.pending == true))
     if not d then
         panel.name:SetText("")
         return
@@ -446,7 +453,6 @@ local function drawPanel()
     local c = d.color or WHITE
     panel.colorSwatch.tex:SetColorTexture(c[1], c[2], c[3], 1)
     -- the selected row's times, as the list read them; typed times over the reference stay read only
-    local item = cur.item
     local text = item and item.timesRaw
     panel.times:SetText(text and text:gsub("; ", " · ") or TEXT.noTimes)
     local own = not (item and item.refHas)
@@ -1163,6 +1169,54 @@ local function buildPanel(f)
             drawPanel()
         end
     end)
+    -- Delete: a reminder of your own, after a confirmation; a new one not saved yet is just dropped. The
+    -- row after it (else before it) is selected next. Shown by drawPanel only for your own reminders.
+    panel.deleteBtn = makeButton(p, TEXT.delete, L.DELETE_W)
+    panel.deleteBtn:SetPoint("BOTTOMRIGHT", -L.INSET - L.TEMPLATE_W - L.BUTTON_GAP - L.TEST_W - L.BUTTON_GAP, L.BOTTOM_Y)
+    panel.deleteBtn:SetScript("OnClick", function()
+        local item = cur.item
+        local enc = pickBoss(bosses())
+        if not (item and enc and items) or item.ability then
+            return
+        end
+        local function forget()
+            -- typing waiting to save would bring the reminder back
+            typed = false
+            typedGen = typedGen + 1
+            notice = nil
+            local nextKey
+            for i, other in ipairs(items) do
+                if other == item then
+                    local neighbour = items[i + 1] or items[i - 1]
+                    nextKey = neighbour and itemKey(neighbour) or nil
+                end
+            end
+            picked[enc] = nextKey
+            reveal = true
+        end
+        if item.pending then
+            forget()
+            pendingOwn[enc] = nil
+            refresh()
+            return
+        end
+        local id = item.id
+        UI.LiftOver(UI.ShownPopup(StaticPopup_ShowCustomGenericConfirmation({
+            text = string.format(TEXT.deleteConfirm, itemName(item)),
+            acceptText = TEXT.delete,
+            cancelText = CANCEL,
+            showAlert = true,
+            callback = function()
+                local saved = CRT.AlertReminders:Get(enc, id)
+                if not saved or saved.spellID ~= (item.r and item.r.spellID) then
+                    return -- changed or gone since the click
+                end
+                forget()
+                CRT.AlertReminders:Delete(enc, id) -- fires the alerts change, which redraws the tab
+            end,
+        }), "GENERIC_CONFIRMATION"))
+    end)
+
     panel.testBtn = makeButton(p, TEXT.test, L.TEST_W)
     panel.testBtn:SetPoint("BOTTOMRIGHT", -L.INSET - L.TEMPLATE_W - L.BUTTON_GAP, L.BOTTOM_Y)
     panel.testBtn:SetScript("OnClick", function()

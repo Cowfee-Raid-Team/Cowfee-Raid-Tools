@@ -644,6 +644,48 @@ function Timeline:RehearsalSource()
     }
 end
 
+-- What the Review tab would show for a boss on a difficulty group ("mythic" or "nh"), as the Rehearsal
+-- window takes it (see RehearsalSource): the boss's first reference for that group (yours first, as the
+-- pull dropdown lists them), else its newest pull of that group; nil when it has neither. For the alerts'
+-- Test buttons (RehearsalWindow:OpenAt); the page's own selection is left alone.
+function Timeline:RehearsalSourceFor(encounterID, group)
+    group = group == "mythic" and "mythic" or "nh"
+    local bosses, name = {}, nil
+    for _, option in ipairs(CRT.Bosses:Options()) do
+        if not option.title then
+            bosses[#bosses + 1] = { key = option.key, name = option.label }
+            if option.key == encounterID then
+                name = option.label
+            end
+        end
+    end
+    local base, pull
+    for _, entry in ipairs(Reference:ForGroup(Reference:List(), group)) do
+        if Reference:BossKey(entry, bosses) == encounterID then
+            base = { reference = entry.ref }
+            break
+        end
+    end
+    if not base then
+        pull = Timeline:Pulls(encounterID, group)[1]
+        base = pull
+    end
+    if not base then
+        return nil
+    end
+    local ref = base.reference
+    return {
+        base = base,
+        encounterID = encounterID,
+        boss = encounterID,
+        pull = pull and pull.id,
+        group = group,
+        order = ref and ref.order and Reference.ResolveOrder(ref, Timeline:Order(ref.encounterID or encounterID, group)) or nil,
+        bossName = name,
+        difficultyName = (ref and ref.difficulty) or (pull and gameDifficultyName(pull.difficultyID)) or (group == "mythic" and "Mythic" or "Heroic"),
+    }
+end
+
 -- Opens the Rehearsal window on the shown fight, or prints why it can't. True when it opened.
 function Timeline:Rehearse()
     local source = self:RehearsalSource()
