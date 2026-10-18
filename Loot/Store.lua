@@ -106,6 +106,19 @@ function Loot:Boss(encounterID)
     return encounterID and db().bosses[encounterID] or nil
 end
 
+-- The encounter ID a boss name was recorded under, or nil (for awards that carry only a name).
+function Loot:BossID(name)
+    if type(name) ~= "string" then
+        return nil
+    end
+    for id, n in pairs(db().bosses) do
+        if n == name then
+            return id
+        end
+    end
+    return nil
+end
+
 function Loot:SetBoss(encounterID, name)
     if encounterID and type(name) == "string" and name ~= "" then
         db().bosses[encounterID] = name

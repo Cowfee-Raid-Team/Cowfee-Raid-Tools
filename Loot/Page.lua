@@ -3,10 +3,15 @@ local ADDON, CRT = ...
 -- The Loot History page, with three tabs:
 --   History   every recorded item, newest first, in a ScrollBox (only the visible rows exist, and a new
 --             item is inserted, not the list rebuilt), with dropdown filters, a search box and a CSV
---             export of what the filters show
+--             export of what the filters show. With RCLootCouncil, its awards that match a record fill in
+--             the response, votes, note and gear columns, and the awards that match nothing are rows of
+--             their own (Source: RCLootCouncil), read from Loot/RCLC.lua and never saved here
 --   Summary   per player, the items and tier tokens in the same filtered view
---   Settings  what is recorded, how long it is kept, RCLootCouncil matching, and deleting
--- Right-click a row to delete it. The data is in Loot/Store.lua.
+--   Settings  what is recorded, how long it is kept, RCLootCouncil, and deleting
+-- Right-click a recorded row to delete it. The data is in Loot/Store.lua.
+-- A list entry is { rec, month } for a record or { award, month } for an RCLootCouncil award on its own;
+-- fieldsOf(entry) reads either into the same fields, so the list, filters, summary and export share one
+-- reader.
 
 local Loot = CRT.Loot
 local R = Loot.R
@@ -15,16 +20,22 @@ local UI = CRT.UI
 local ROW_H = 20
 local ALL = ""
 local TOKEN_CLASS, TOKEN_SUBCLASS = 15, 0 -- Miscellaneous, Junk: how the game files tier tokens
+local GEAR_ICON = 16 -- the Had column's item icons
+local MAX_CANDIDATES = 25 -- lines of RCLootCouncil's candidate list in a row's tooltip
 
 local TEXT = {
     title = "Loot History",
-    help = "Every boss item of epic quality or better that someone in your group gets in a raid, recorded on your own computer from what the game reports: who got it, from which boss, on which difficulty, and how they rolled when it was group loot.\n\nWith RCLootCouncil installed, its council responses, notes and votes are added to the matching items (read only).\n\nRight-click an item to delete it. Settings has what is recorded, how long it is kept, and deleting more.",
-    filtersHelp = "Filters: each dropdown narrows the list; All shows everything. Search matches the item, player and boss names (an item's name shows once the game has loaded it).\n\nExport gives what the list shows now as CSV, to paste into a spreadsheet or Notion.",
+    help = "Every boss item of epic quality or better that someone in your group gets in a raid, recorded on your own computer from what the game reports: who got it, from which boss, on which difficulty, and how they rolled when it was group loot.\n\nWith RCLootCouncil installed, its awards are read in too (read only): the response, the council's votes, the winner's note and the gear they had fill in the matching items, and its awards that match no recorded item are listed as rows of their own. Hover a row for every candidate's response and roll.\n\nRight-click a recorded item to delete it. Settings has what is recorded, how long it is kept, and deleting more.",
+    filtersHelp = "Filters: each dropdown narrows the list; All shows everything. Source picks items CRT recorded, or RCLootCouncil's awards that CRT did not record. Search matches the item, player and boss names (an item's name shows once the game has loaded it).\n\nExport gives what the list shows now as CSV, to paste into a spreadsheet or Notion.",
     summaryHelp = "For the filters on the History tab: how many items each player got, and how many of them were tier tokens (in gold).",
+    rcHelp = "With RCLootCouncil installed, CRT reads its saved awards: the response and its colour, the council's votes, the winner's note and roll, the gear they had, and every candidate's response, roll and item level. An award that matches a recorded item (same player and item, within a few hours) fills in that item; the others are listed on the History tab as rows of their own. CRT only reads RCLootCouncil's data and never changes or saves it. Re-scan reads it again now.",
     search = "Search",
     export = "Export CSV",
     count = "%d items",
     all = "All",
+    sourceCRT = "Recorded by CRT",
+    sourceRC = "RCLootCouncil only",
+    rcRow = "From RCLootCouncil (not recorded by CRT)",
     deleteOne = "Delete this item from the history?",
     deleteBefore = "Delete every item from before %s?",
     deleteAll = "Delete the whole loot history? This can't be undone.",
@@ -34,7 +45,7 @@ local TEXT = {
 local page, list, summary
 local tabButtons, tabFrames = {}, {}
 local currentTab = "history"
-local filters = { player = ALL, boss = ALL, diff = ALL, month = ALL, roll = ALL, text = "" }
+local filters = { player = ALL, boss = ALL, diff = ALL, month = ALL, roll = ALL, source = ALL, text = "" }
 local controls = {}
 
 local function skin(frame, alpha)
@@ -59,14 +70,14 @@ local function confirm(text, onYes)
     }), "GENERIC_CONFIRMATION"))
 end
 
--- Reading a record ---------------------------------------------------------------------------
+-- Reading an entry ---------------------------------------------------------------------------
 
 local itemCache = {} -- itemID -> { name, link } once the game has it
 local requested = {}
 local refreshVisible -- set once the list exists
 
-local function item(rec)
-    local id = Loot.ItemID(rec[R.ITEM])
+local function item(itemString)
+    local id = Loot.ItemID(itemString)
     if not id then
         return nil
     end
@@ -74,7 +85,7 @@ local function item(rec)
     if cached then
         return cached
     end
-    local name, link = C_Item.GetItemInfo(rec[R.ITEM])
+    local name, link = C_Item.GetItemInfo(itemString)
     if name then
         cached = { name = name, link = link }
         itemCache[id] = cached
@@ -92,10 +103,13 @@ local function item(rec)
     return nil
 end
 
-local function classColor(classID)
+local function fileColor(classFile)
+    return classFile and (C_ClassColor and C_ClassColor.GetClassColor(classFile) or RAID_CLASS_COLORS[classFile]) or nil
+end
+
+local function classFileOf(classID)
     local _, file = GetClassInfo(classID or 0)
-    local c = file and (C_ClassColor and C_ClassColor.GetClassColor(file) or RAID_CLASS_COLORS[file])
-    return c
+    return file
 end
 
 local function difficultyName(id)
@@ -103,60 +117,118 @@ local function difficultyName(id)
     return name or "?"
 end
 
-local function playerName(rec)
-    return Loot:Name("players", rec[R.PLAYER]) or "?"
+-- The name inside an item link, for awards whose item the game hasn't loaded.
+local function itemName(link)
+    return type(link) == "string" and link:match("|h%[(.-)%]|h") or ""
 end
 
-local function rollText(rec)
-    local rc = Loot.rc[rec]
-    if rc and rc.response then
-        return rc.response, rc.color
+-- The same fields for a record or an award. A record's are read each time (its winner and roll can
+-- change); an award's are kept on the entry, since it only changes with a new scan, which rebuilds.
+local function fieldsOf(e)
+    if e.rec then
+        local rec = e.rec
+        local rc = Loot.rc[rec]
+        local roll = rec[R.ROLL]
+        return {
+            time = rec[R.TIME], player = Loot:Name("players", rec[R.PLAYER]) or "?", classFile = classFileOf(rec[R.CLASS]),
+            itemString = rec[R.ITEM], boss = Loot:Boss(rec[R.ENC]) or "", bossKey = tostring(rec[R.ENC]),
+            instance = Loot:Name("instances", rec[R.INST]) or "", diff = rec[R.DIFF], roll = roll,
+            rollKey = tostring(roll or "none"), rc = rc, source = "crt",
+        }
     end
-    return Loot.ROLLS[rec[R.ROLL] or -1] or "", nil
+    if not e.f then
+        local a = e.award
+        local id = Loot:BossID(a.boss)
+        e.f = {
+            time = a.time, player = a.winner, classFile = a.class, itemString = a.itemString, link = a.link,
+            boss = a.boss or "", bossKey = id and tostring(id) or ("rc:" .. (a.boss or "")), instance = a.instance or "",
+            diff = a.difficultyID, rollKey = "none", rc = a, source = "rc",
+        }
+    end
+    return e.f
 end
 
-local searchCache = setmetatable({}, { __mode = "k" })
-local function searchText(rec)
-    local s = searchCache[rec]
-    local it = item(rec)
+local function responseText(f)
+    if f.rc and f.rc.response then
+        return f.rc.response, f.rc.color
+    end
+    return Loot.ROLLS[f.roll or -1] or "", nil
+end
+
+local searchCache = setmetatable({}, { __mode = "k" }) -- by record or award
+local function searchText(e, f)
+    local key = e.rec or e.award
+    local s = searchCache[key]
+    local it = item(f.itemString)
     if not s or (it and not s.named) then
-        local text = ((it and it.name or "") .. "\n" .. playerName(rec) .. "\n" .. (Loot:Boss(rec[R.ENC]) or "")):lower()
+        local text = ((it and it.name or itemName(f.link)) .. "\n" .. f.player .. "\n" .. f.boss):lower()
         s = { text = text, named = it ~= nil }
-        searchCache[rec] = s
+        searchCache[key] = s
     end
     return s.text
 end
 
-local function passes(rec, month)
-    if filters.player ~= ALL and playerName(rec) ~= filters.player then
+local function passes(e)
+    local f = fieldsOf(e)
+    if filters.source ~= ALL and f.source ~= filters.source then
         return false
-    elseif filters.boss ~= ALL and tostring(rec[R.ENC]) ~= filters.boss then
+    elseif filters.player ~= ALL and f.player ~= filters.player then
         return false
-    elseif filters.diff ~= ALL and tostring(rec[R.DIFF]) ~= filters.diff then
+    elseif filters.boss ~= ALL and f.bossKey ~= filters.boss then
         return false
-    elseif filters.month ~= ALL and month ~= filters.month then
+    elseif filters.diff ~= ALL and tostring(f.diff) ~= filters.diff then
         return false
-    elseif filters.roll ~= ALL and tostring(rec[R.ROLL] or "none") ~= filters.roll then
+    elseif filters.month ~= ALL and e.month ~= filters.month then
+        return false
+    elseif filters.roll ~= ALL and f.rollKey ~= filters.roll then
         return false
     end
-    if filters.text ~= "" and not searchText(rec):find(filters.text, 1, true) then
+    if filters.text ~= "" and not searchText(e, f):find(filters.text, 1, true) then
         return false
     end
     return true
 end
 
--- The filtered view, newest first: { { rec, month } }.
-local function view()
+-- An award's entry is made once and kept (with its fields) until a scan replaces the award.
+local awardEntries = setmetatable({}, { __mode = "k" })
+
+-- Every entry, newest first: the records, then RCLootCouncil's awards on their own merged in by time.
+local function allEntries()
     local out = {}
     Loot:Each(function(rec, month)
-        if passes(rec, month) then
-            out[#out + 1] = { rec = rec, month = month }
-        end
+        out[#out + 1] = { rec = rec, month = month }
     end)
+    local awards = CRT.LootRCLC and CRT.LootRCLC.unmatched or {}
+    if #awards > 0 then
+        for _, a in ipairs(awards) do
+            local e = awardEntries[a]
+            if not e then
+                e = { award = a, month = a.time and Loot.MonthOf(a.time) or "" }
+                awardEntries[a] = e
+            end
+            out[#out + 1] = e
+        end
+        table.sort(out, function(x, y)
+            local tx = x.rec and x.rec[R.TIME] or x.award.time or 0
+            local ty = y.rec and y.rec[R.TIME] or y.award.time or 0
+            return tx > ty
+        end)
+    end
     return out
 end
 
--- Filter choices, from what has been recorded.
+-- The filtered view.
+local function view()
+    local out = {}
+    for _, e in ipairs(allEntries()) do
+        if passes(e) then
+            out[#out + 1] = e
+        end
+    end
+    return out
+end
+
+-- Filter choices, from what is listed.
 local function choices(kind)
     local out, seen = { { key = ALL, label = TEXT.all } }, {}
     local function add(key, label)
@@ -165,29 +237,36 @@ local function choices(kind)
             out[#out + 1] = { key = key, label = label }
         end
     end
-    if kind == "month" then
-        for _, m in ipairs(Loot:Months()) do
-            add(m, m)
-        end
+    if kind == "source" then
+        add("crt", TEXT.sourceCRT)
+        add("rc", TEXT.sourceRC)
         return out
     end
     local found = {}
-    Loot:Each(function(rec)
+    local entries = allEntries()
+    for _, e in ipairs(entries) do
+        local f = fieldsOf(e)
         if kind == "player" then
-            local name = playerName(rec)
-            found[#found + 1] = { name, Ambiguate(name, "short") }
+            found[#found + 1] = { f.player, Ambiguate(f.player, "short") }
         elseif kind == "boss" then
-            found[#found + 1] = { tostring(rec[R.ENC]), Loot:Boss(rec[R.ENC]) or ("Boss " .. rec[R.ENC]) }
+            found[#found + 1] = { f.bossKey, f.boss ~= "" and f.boss or ("Boss " .. f.bossKey) }
         elseif kind == "diff" then
-            found[#found + 1] = { tostring(rec[R.DIFF]), difficultyName(rec[R.DIFF]) }
+            found[#found + 1] = { tostring(f.diff), difficultyName(f.diff) }
         elseif kind == "roll" then
-            local roll = rec[R.ROLL]
-            found[#found + 1] = { tostring(roll or "none"), roll and Loot.ROLLS[roll] or "Not rolled" }
+            found[#found + 1] = { f.rollKey, f.roll and Loot.ROLLS[f.roll] or "Not rolled" }
+        elseif kind == "month" and e.month ~= "" then
+            found[#found + 1] = { e.month, e.month }
         end
-    end)
-    table.sort(found, function(a, b)
-        return a[2] < b[2]
-    end)
+    end
+    if kind == "month" then
+        table.sort(found, function(a, b)
+            return a[1] > b[1]
+        end)
+    else
+        table.sort(found, function(a, b)
+            return a[2] < b[2]
+        end)
+    end
     for _, f in ipairs(found) do
         add(f[1], f[2])
     end
@@ -196,57 +275,113 @@ end
 
 -- History: the list ------------------------------------------------------------------------------
 
--- Columns: x and width inside a row.
+-- Columns: x and width inside a row. "gear" holds icons, the others text.
 local COLS = {
-    { key = "date", x = 4, w = 104 },
-    { key = "player", x = 112, w = 150 },
-    { key = "item", x = 266, w = 290 },
-    { key = "boss", x = 560, w = 180 },
-    { key = "diff", x = 744, w = 100 },
-    { key = "roll", x = 848, w = 120 },
+    { key = "date", x = 4, w = 100, title = "Date" },
+    { key = "player", x = 108, w = 116, title = "Player" },
+    { key = "item", x = 228, w = 210, title = "Item" },
+    { key = "boss", x = 442, w = 124, title = "Boss" },
+    { key = "diff", x = 570, w = 70, title = "Difficulty" },
+    { key = "roll", x = 644, w = 120, title = "Roll / response" },
+    { key = "votes", x = 768, w = 30, title = "Votes" },
+    { key = "note", x = 802, w = 100, title = "Note" },
+    { key = "gear", x = 906, w = 60, title = "Had" },
 }
+
+local function addCandidates(rc)
+    local list = rc.candidates or {}
+    if #list == 0 then
+        return
+    end
+    GameTooltip:AddLine(" ")
+    GameTooltip:AddLine(string.format("Everyone who answered (%d)", #list), 1, 0.82, 0)
+    for i, c in ipairs(list) do
+        if i > MAX_CANDIDATES then
+            GameTooltip:AddLine(string.format("... and %d more", #list - MAX_CANDIDATES), 0.7, 0.7, 0.7)
+            break
+        end
+        local cc = fileColor(c.class)
+        local rgb = c.color or { 0.85, 0.85, 0.85 }
+        local right = (c.roll and ("roll " .. c.roll) or "") .. (c.ilvl and string.format("  ilvl %.0f", c.ilvl) or "")
+        GameTooltip:AddDoubleLine(
+            (cc and cc:WrapTextInColorCode(Ambiguate(c.name, "short")) or Ambiguate(c.name, "short")) .. "  " .. c.response,
+            right, rgb[1], rgb[2], rgb[3], 0.85, 0.85, 0.85)
+    end
+end
+
+local function showTooltip(row)
+    local e = row.entry
+    if not e then
+        return
+    end
+    local f = fieldsOf(e)
+    GameTooltip:SetOwner(row, "ANCHOR_CURSOR")
+    pcall(GameTooltip.SetHyperlink, GameTooltip, f.link or f.itemString)
+    local rc = f.rc
+    if rc then
+        GameTooltip:AddLine(" ")
+        if f.source == "rc" then
+            GameTooltip:AddLine(TEXT.rcRow, 0.7, 0.7, 0.7)
+        end
+        local rgb = rc.color or { 1, 0.82, 0 }
+        GameTooltip:AddDoubleLine("RCLootCouncil", rc.response or "?", 1, 0.82, 0, rgb[1], rgb[2], rgb[3])
+        if rc.votes then
+            GameTooltip:AddDoubleLine("Votes", tostring(rc.votes), 1, 1, 1, 1, 1, 1)
+        end
+        if rc.roll then
+            GameTooltip:AddDoubleLine("Roll", tostring(rc.roll), 1, 1, 1, 1, 1, 1)
+        end
+        if rc.ilvl then
+            GameTooltip:AddDoubleLine("Their item level", string.format("%.1f", rc.ilvl), 1, 1, 1, 1, 1, 1)
+        end
+        for i, link in ipairs(rc.replaced or {}) do
+            GameTooltip:AddDoubleLine(i == 1 and "Had" or " ", link, 1, 1, 1)
+        end
+        if rc.owner then
+            GameTooltip:AddDoubleLine("Looted by", Ambiguate(rc.owner, "short"), 1, 1, 1, 1, 1, 1)
+        end
+        if rc.instance then
+            GameTooltip:AddDoubleLine("Instance", rc.instance, 1, 1, 1, 1, 1, 1)
+        end
+        if rc.note and rc.note ~= "" then
+            GameTooltip:AddLine("Note: " .. rc.note, 1, 1, 1, true)
+        end
+        addCandidates(rc)
+    end
+    GameTooltip:Show()
+end
 
 local function initRow(row, entry)
     if not row.cols then
         row.cols = {}
         for _, c in ipairs(COLS) do
-            local fs = row:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-            fs:SetPoint("LEFT", c.x, 0)
-            fs:SetWidth(c.w)
-            fs:SetJustifyH("LEFT")
-            fs:SetWordWrap(false)
-            row.cols[c.key] = fs
+            if c.key ~= "gear" then
+                local fs = row:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+                fs:SetPoint("LEFT", c.x, 0)
+                fs:SetWidth(c.w)
+                fs:SetJustifyH("LEFT")
+                fs:SetWordWrap(false)
+                row.cols[c.key] = fs
+            end
+        end
+        row.gear = {}
+        for i = 1, 2 do
+            local t = row:CreateTexture(nil, "OVERLAY")
+            t:SetSize(GEAR_ICON, GEAR_ICON)
+            t:SetPoint("LEFT", COLS[#COLS].x + (i - 1) * (GEAR_ICON + 4), 0)
+            row.gear[i] = t
         end
         local hl = row:CreateTexture(nil, "HIGHLIGHT")
         hl:SetAllPoints()
         hl:SetColorTexture(1, 1, 1, 0.08)
         row:RegisterForClicks("RightButtonUp")
-        row:SetScript("OnEnter", function(self)
-            local rec = self.entry and self.entry.rec
-            if not rec then
-                return
-            end
-            GameTooltip:SetOwner(self, "ANCHOR_CURSOR")
-            pcall(GameTooltip.SetHyperlink, GameTooltip, rec[R.ITEM])
-            local rc = Loot.rc[rec]
-            if rc then
-                GameTooltip:AddLine(" ")
-                GameTooltip:AddLine("RCLootCouncil: " .. (rc.response or "?"), 1, 0.82, 0)
-                if rc.note and rc.note ~= "" then
-                    GameTooltip:AddLine("Note: " .. rc.note, 1, 1, 1, true)
-                end
-                if rc.votes then
-                    GameTooltip:AddLine("Votes: " .. rc.votes, 1, 1, 1)
-                end
-            end
-            GameTooltip:Show()
-        end)
+        row:SetScript("OnEnter", showTooltip)
         row:SetScript("OnLeave", function()
             GameTooltip:Hide()
         end)
         row:SetScript("OnClick", function(self)
             local e = self.entry
-            if e then
+            if e and e.rec then -- an RCLootCouncil award is its data, not ours to delete
                 confirm(TEXT.deleteOne, function()
                     Loot:Delete(e.rec, e.month)
                 end)
@@ -254,26 +389,27 @@ local function initRow(row, entry)
         end)
     end
     row.entry = entry
-    local rec = entry.rec
-    row.cols.date:SetText(date("%Y-%m-%d %H:%M", rec[R.TIME]))
-    local name = playerName(rec)
-    local c = classColor(rec[R.CLASS])
-    row.cols.player:SetText(Ambiguate(name, "short"))
-    if c then
-        row.cols.player:SetTextColor(c.r, c.g, c.b)
-    else
-        row.cols.player:SetTextColor(1, 1, 1)
-    end
-    local it = item(rec)
-    row.cols.item:SetText(it and it.link or ("item " .. tostring(Loot.ItemID(rec[R.ITEM]))))
-    row.cols.boss:SetText(Loot:Boss(rec[R.ENC]) or "")
-    row.cols.diff:SetText(difficultyName(rec[R.DIFF]))
-    local roll, color = rollText(rec)
-    row.cols.roll:SetText(roll)
-    if color then
-        row.cols.roll:SetTextColor(color[1], color[2], color[3])
-    else
-        row.cols.roll:SetTextColor(0.85, 0.85, 0.85)
+    local f = fieldsOf(entry)
+    local cols = row.cols
+    cols.date:SetText(f.time and date("%Y-%m-%d %H:%M", f.time) or "?")
+    local cc = fileColor(f.classFile)
+    cols.player:SetText(Ambiguate(f.player, "short"))
+    cols.player:SetTextColor(cc and cc.r or 1, cc and cc.g or 1, cc and cc.b or 1)
+    local it = f.link and { link = f.link } or item(f.itemString)
+    cols.item:SetText(it and it.link or ("item " .. tostring(Loot.ItemID(f.itemString))))
+    cols.boss:SetText(f.boss)
+    cols.diff:SetText(difficultyName(f.diff))
+    local text, color = responseText(f)
+    cols.roll:SetText(text)
+    cols.roll:SetTextColor(color and color[1] or 0.85, color and color[2] or 0.85, color and color[3] or 0.85)
+    local rc = f.rc
+    cols.votes:SetText(rc and rc.votes and tostring(rc.votes) or "")
+    cols.note:SetText(rc and rc.note or "")
+    for i, t in ipairs(row.gear) do
+        local link = rc and rc.replaced and rc.replaced[i]
+        local icon = link and C_Item.GetItemIconByID(link)
+        t:SetTexture(icon)
+        t:SetShown(icon ~= nil)
     end
 end
 
@@ -309,21 +445,21 @@ local function csvField(v)
 end
 
 local function exportCSV()
-    local lines = { "date,time,player,class,item id,item name,boss,instance,difficulty,roll type,rc response,rc note" }
+    local lines = { "date,time,player,class,item id,item name,boss,instance,difficulty,roll type,source,rc response,rc votes,rc roll,rc item level,rc note,had 1,had 2,candidates" }
     for _, e in ipairs(view()) do
-        local rec = e.rec
-        local it = item(rec)
-        local rc = Loot.rc[rec] or {}
-        local _, classFile = GetClassInfo(rec[R.CLASS] or 0)
-        local roll = rec[R.ROLL]
+        local f = fieldsOf(e)
+        local it = item(f.itemString)
+        local rc = f.rc or {}
+        local replaced = rc.replaced or {}
         local fields = {
-            date("%Y-%m-%d", rec[R.TIME]), date("%H:%M:%S", rec[R.TIME]), playerName(rec), classFile or "",
-            Loot.ItemID(rec[R.ITEM]) or "", it and it.name or "", Loot:Boss(rec[R.ENC]) or "",
-            Loot:Name("instances", rec[R.INST]) or "", difficultyName(rec[R.DIFF]),
-            roll and Loot.ROLLS[roll] or "", rc.response or "", rc.note or "",
+            f.time and date("%Y-%m-%d", f.time) or "", f.time and date("%H:%M:%S", f.time) or "", f.player, f.classFile or "",
+            Loot.ItemID(f.itemString) or "", it and it.name or itemName(f.link), f.boss, f.instance, difficultyName(f.diff),
+            f.roll and Loot.ROLLS[f.roll] or "", f.source == "rc" and "RCLootCouncil" or "CRT", rc.response or "",
+            rc.votes or "", rc.roll or "", rc.ilvl or "", rc.note or "", itemName(replaced[1]), itemName(replaced[2]),
+            #(rc.candidates or {}) > 0 and #rc.candidates or "",
         }
-        for i, f in ipairs(fields) do
-            fields[i] = csvField(f)
+        for i, v in ipairs(fields) do
+            fields[i] = csvField(v)
         end
         lines[#lines + 1] = table.concat(fields, ",")
     end
@@ -357,13 +493,15 @@ local function buildHistory(f)
         x = x + spec[2] + 5 + spec[3] + 12
     end
 
+    local source = filterDropdown(f, "Source", 44, 150, "source")
+    source:SetPoint("TOPLEFT", 8, -38)
     local searchLabel = f:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    searchLabel:SetPoint("TOPLEFT", 8, -46)
+    searchLabel:SetPoint("LEFT", source, "RIGHT", 16, 0)
     searchLabel:SetText(TEXT.search)
     local search = CreateFrame("EditBox", nil, f, "InputBoxTemplate")
     search:SetAutoFocus(false)
     search:SetFontObject(CRTFontHighlight)
-    search:SetSize(220, 22)
+    search:SetSize(200, 22)
     search:SetPoint("LEFT", searchLabel, "RIGHT", 10, 0)
     search:SetScript("OnTextChanged", function(self, user)
         if user then
@@ -385,7 +523,7 @@ local function buildHistory(f)
     for _, c in ipairs(COLS) do
         local h = f:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
         h:SetPoint("TOPLEFT", 8 + c.x, -74)
-        h:SetText(({ date = "Date", player = "Player", item = "Item", boss = "Boss", diff = "Difficulty", roll = "Roll / response" })[c.key])
+        h:SetText(c.title)
     end
     local box = CreateFrame("Frame", nil, f, "WowScrollBoxList")
     box:SetPoint("TOPLEFT", 8, -92)
@@ -407,8 +545,8 @@ end
 
 -- Summary ------------------------------------------------------------------------------------
 
-local function isToken(rec)
-    local id = Loot.ItemID(rec[R.ITEM])
+local function isToken(itemString)
+    local id = Loot.ItemID(itemString)
     if not id then
         return false
     end
@@ -442,7 +580,7 @@ local function buildSummary(f)
             row.tokens:SetPoint("LEFT", 310, 0)
         end
         row.name:SetText(Ambiguate(e.name, "short"))
-        local c = classColor(e.classID)
+        local c = fileColor(e.classFile)
         row.name:SetTextColor(c and c.r or 1, c and c.g or 1, c and c.b or 1)
         row.items:SetText(e.items .. " items")
         row.tokens:SetText(e.tokens > 0 and ("|cffffd100" .. e.tokens .. " tier|r") or "")
@@ -452,15 +590,15 @@ local function buildSummary(f)
         refresh = function(entries)
             local by, order = {}, {}
             for _, e in ipairs(entries) do
-                local name = playerName(e.rec)
-                local s = by[name]
+                local fe = fieldsOf(e)
+                local s = by[fe.player]
                 if not s then
-                    s = { name = name, classID = e.rec[R.CLASS], items = 0, tokens = 0 }
-                    by[name] = s
+                    s = { name = fe.player, classFile = fe.classFile, items = 0, tokens = 0 }
+                    by[fe.player] = s
                     order[#order + 1] = s
                 end
                 s.items = s.items + 1
-                if isToken(e.rec) then
+                if isToken(fe.itemString) then
                     s.tokens = s.tokens + 1
                 end
             end
@@ -539,8 +677,8 @@ local function buildSettings(f)
     local rcHeading = f:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
     rcHeading:SetPoint("TOPLEFT", 8, -144)
     rcHeading:SetText("RCLootCouncil")
-    UI.Help(f, "RCLootCouncil", "With RCLootCouncil installed, its saved awards add the council's response, note and votes to the matching items: same player and item, within a few hours. CRT only reads RCLootCouncil's data, never changes it. Re-scan reads it again now."):SetPoint("LEFT", rcHeading, "RIGHT", 6, 0)
-    check(f, 6, -164, "Add RCLootCouncil's responses", function()
+    UI.Help(f, "RCLootCouncil", TEXT.rcHelp):SetPoint("LEFT", rcHeading, "RIGHT", 6, 0)
+    check(f, 6, -164, "Show RCLootCouncil's awards", function()
         return s().rcEnrich
     end, function(on)
         s().rcEnrich = on
@@ -561,7 +699,7 @@ local function buildSettings(f)
     local delHeading = f:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
     delHeading:SetPoint("TOPLEFT", 8, -240)
     delHeading:SetText("Deleting")
-    UI.Help(f, "Deleting", "Delete the months before the one you pick, or everything. Single items are deleted with a right-click on the History tab."):SetPoint("LEFT", delHeading, "RIGHT", 6, 0)
+    UI.Help(f, "Deleting", "Delete the months before the one you pick, or everything. Single items are deleted with a right-click on the History tab. RCLootCouncil's awards are its own data, so they are never deleted here."):SetPoint("LEFT", delHeading, "RIGHT", 6, 0)
     local before = ALL
     local monthDrop = UI.Dropdown(f, "Before", {
         labelWidth = 50, width = 120,
@@ -681,8 +819,9 @@ Loot:OnChange(function(what, rec, month)
         return
     end
     if what == "added" then
-        if passes(rec, month) then
-            list.provider:InsertAtIndex({ rec = rec, month = month }, 1)
+        local e = { rec = rec, month = month }
+        if passes(e) then
+            list.provider:InsertAtIndex(e, 1)
             countText:SetText(string.format(TEXT.count, list.provider:GetSize()))
         end
     elseif what == "changed" then
