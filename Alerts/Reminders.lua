@@ -272,10 +272,17 @@ function Reminders:Save(encounterID, id, r)
     return id
 end
 
+-- Removes a reminder, and any display overrides saved for it, so nothing is left pointing at it. The
+-- Timeline's flags and the alert run read the reminders afresh on the change this fires.
 function Reminders:Delete(encounterID, id)
     local all = store()
     if all and all[encounterID] then
         all[encounterID][id] = nil
+    end
+    local db = Alerts:Settings()
+    local over = db and db.overrides and db.overrides[BLOCK]
+    if type(over) == "table" then
+        over[id] = nil
     end
     Alerts:Fire()
 end
