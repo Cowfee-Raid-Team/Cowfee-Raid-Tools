@@ -1159,7 +1159,7 @@ local function buildPanel(f)
         cur.draft.color = nil
     end))
     panel.sound = row(UI.SoundDropdown(p, TEXT.sound, {
-        labelWidth = L.LABEL_W, width = L.SOUND_W, maxHeight = L.MENU_MAX_H,
+        labelWidth = L.LABEL_W, width = L.SOUND_W, maxHeight = L.MENU_MAX_H, playButton = true,
         options = function() return Draft.SoundOptions(TEXT.soundNone) end,
         get = function() return cur.draft and Draft.SoundKey(cur.draft.sound) or Draft.NO_SOUND end,
         set = change(function(v) cur.draft.sound = v ~= Draft.NO_SOUND and v or nil end),

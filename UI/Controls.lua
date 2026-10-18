@@ -123,7 +123,9 @@ end
 -- The sound dropdown every page uses: the sound engine's choices (Sound/Engine.lua), each with a Play
 -- button in the open menu. opts as UI.Dropdown, plus none (a label for a "no sound" choice, key "none")
 -- and filesOnly; options defaults to the engine's list. opts.help true adds the (?) on where your own
--- files go, as row.help, for the caller to anchor.
+-- files go, as row.help, for the caller to anchor. opts.playButton true adds a small Play button after the
+-- closed dropdown, as row.play, that plays the chosen sound once (nothing else: no alert, bar or speech).
+UI.SOUND_PLAY_W, UI.SOUND_PLAY_GAP = 44, 6
 UI.SOUND_HELP = "Game sounds, sounds other addons share (through LibSharedMedia), and your own files.\n\nYour own .ogg or .mp3 files go in the CowfeeRaidTools_Media companion addon's Sounds folder: Quality of Life > Sounds says how to set it up, and has a Test button for each file.\n\nPlay in the open list plays a sound on your sound channel (General Settings)."
 
 function UI.SoundDropdown(parent, text, opts)
@@ -161,6 +163,33 @@ function UI.SoundDropdown(parent, text, opts)
     local row = UI.Dropdown(parent, text, o)
     if opts.help then
         row.help = UI.Help(parent, text ~= "" and text or "Sound", UI.SOUND_HELP)
+    end
+    if opts.playButton then
+        local play = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
+        play:SetSize(UI.SOUND_PLAY_W, 20)
+        play:SetPoint("LEFT", row.Dropdown, "RIGHT", UI.SOUND_PLAY_GAP, 0)
+        play:SetText("Play")
+        if play.GetFontString and play:GetFontString() then
+            play:GetFontString():SetFontObject(CRTFontButtonSmall)
+        end
+        play:SetScript("OnClick", function()
+            local key = opts.get()
+            if key == nil or key == "none" then
+                return
+            end
+            local handle, info = CRT.Sound:Play(key)
+            if not handle then
+                CRT:Print("That sound didn't play: " .. tostring(info) .. ".")
+            end
+        end)
+        row.play = play
+        local refresh = row.refresh
+        row.refresh = function()
+            refresh()
+            local key = opts.get()
+            local on = not (opts.enabledIf and not opts.enabledIf()) and key ~= nil and key ~= "none"
+            play:SetEnabled(on and true or false)
+        end
     end
     return row
 end

@@ -141,7 +141,7 @@ local EXPORT_PAD, EXPORT_MIN_TEXT, EXPORT_MAX_TEXT = 6, 16, 180
 local EXPORT_WIDTH = WIDTH - 88 -- the text box
 local EXPORT_TEXT_WIDTH = EXPORT_WIDTH - 2 * EXPORT_PAD
 local PREVIEW_INSET = 16 -- the editor Previews opens sits this far into the screen's bottom right corner
-local SPEAK_AT_X, SPEAK_AT_LABEL, SPEAK_AT_W = 270, 56, 104 -- Speak at, beside Sound under the Also row
+local SPEAK_AT_X, SPEAK_AT_LABEL, SPEAK_AT_W = 316, 56, 104 -- Speak at, beside Sound and its Play button under the Also row
 local ID_WIDTH = 140 -- the Spell / Icon ID box, wide enough for a spell name being looked up
 local ID_SHIFT = ID_WIDTH - 80 -- the (?), preview and name sit this much right of where an 80 px box put them
 
@@ -1447,7 +1447,7 @@ local function build()
         glow = makeCheck(f, TEXT.glow, 386, -274 - ROW1_EXTRA, setter(function(on) draft.glow = on end)),
     }
     row(UI.SoundDropdown(f, TEXT.sound, {
-        labelWidth = 70, width = 160, maxHeight = MENU_MAX_HEIGHT, enabledIf = editable,
+        labelWidth = 70, width = 160, maxHeight = MENU_MAX_HEIGHT, enabledIf = editable, playButton = true,
         options = soundOptions,
         get = function() return draft and Draft.SoundKey(draft.sound) or NO_SOUND end,
         set = setter(function(v) draft.sound = v ~= NO_SOUND and v or nil end),
