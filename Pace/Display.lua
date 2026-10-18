@@ -8,6 +8,10 @@ local ADDON, CRT = ...
 -- is. AHEAD and BEHIND are faded in by two step curves built around the expected health: the game
 -- runs the hidden health through them and SetAlpha takes the result, so the game does the comparing.
 -- The curves are rebuilt only when the expected health moves.
+--
+-- During a Timeline rehearsal (the alerts engine running one) of a boss with a plan, the window shows
+-- too, on the rehearsal's clock and phases. No boss is there, so each bar sits on its tick: always on
+-- pace, to show where the plan wants the health. It closes when the rehearsal ends.
 
 local Pace = CRT.Pace
 local UI = CRT.UI
@@ -18,7 +22,7 @@ local TICK_EVERY = 0.2
 
 local frame, handle
 local bars = {}
-local run -- { encounterID, plan, units, pullAt } while a pull with a plan runs
+local run -- { encounterID, plan, units, pullAt, rehearsal } while a pull (or a rehearsal) with a plan runs
 local previewOn = false
 
 local function db()
@@ -157,10 +161,15 @@ local function layout(units)
     frame:SetSize(BAR_W + 16, 10 + #units * ROW_H)
 end
 
--- The phase and seconds into it, from the alerts engine's phase clock, else phase 1 from the pull.
+-- The phase and seconds into it, from the alerts engine's phase clock, else phase 1 from the pull. In a
+-- rehearsal the pull is the engine's time for 0:00, which moves when the rehearsal jumps.
 local function where()
-    local now = GetTime()
     local Alerts = CRT.Alerts
+    local now = GetTime()
+    if run.rehearsal then
+        now = Alerts:Now()
+        run.pullAt = Alerts:TimeAt(0)
+    end
     local ph = Alerts and Alerts.CurrentPhase and Alerts:CurrentPhase()
     local at = ph and Alerts:PhaseStart(ph)
     if run.plan.mode == "time" then
@@ -171,6 +180,23 @@ local function where()
         return ph, (Alerts.Now and Alerts:Now() or now) - at
     end
     return 1, now - run.pullAt
+end
+
+-- A rehearsal's bar: the plan's own health, on its tick.
+local function setRehearsalBar(b, i, expected)
+    b.label:SetText(i == 1 and run.bossName or ("Boss " .. i))
+    b.bar:SetValue(expected or 0)
+    b.ahead:SetAlpha(0)
+    b.behind:SetAlpha(0)
+    if not expected then
+        b.tick:Hide()
+        b.state:SetText("")
+        return
+    end
+    b.tick:ClearAllPoints()
+    b.tick:SetPoint("CENTER", b.bar, "LEFT", BAR_W * expected / 100, 0)
+    b.tick:Show()
+    b.state:SetText(string.format("should be %.0f%%", expected))
 end
 
 local function setBar(b, unit, expected)
@@ -224,7 +250,10 @@ local function onUpdate(_, dt)
     elapsed = 0
     local ph, seconds = where()
     for i, unit in ipairs(run.units) do
-        if UnitExists(unit) then
+        if run.rehearsal then
+            setRehearsalBar(bar(i), i, Pace.Expected(run.plan, unit, ph, seconds))
+            bar(i):SetAlpha(1)
+        elseif UnitExists(unit) then
             setBar(bar(i), unit, Pace.Expected(run.plan, unit, ph, seconds))
             bar(i):SetAlpha(1)
         else
@@ -233,7 +262,8 @@ local function onUpdate(_, dt)
     end
 end
 
-function Pace:Start(encounterID)
+-- rehearsal: true for a Timeline rehearsal, on the alerts engine's clock (see the top of this file).
+function Pace:Start(encounterID, rehearsal)
     local plan = self:Plan(encounterID)
     if not plan or not self:Enabled(encounterID) or db().shown == false then
         self:Stop()
@@ -244,7 +274,12 @@ function Pace:Start(encounterID)
     if #units == 0 then
         return
     end
-    run = { encounterID = encounterID, plan = plan, units = units, pullAt = GetTime() }
+    run = { encounterID = encounterID, plan = plan, units = units, pullAt = GetTime(), rehearsal = rehearsal and true or nil }
+    if rehearsal then
+        local def = CRT.Bosses and CRT.Bosses:Get(encounterID)
+        run.bossName = def and def.name or "Boss"
+    end
+    elapsed = TICK_EVERY -- the first update draws at once
     for _, b in ipairs(bars) do
         b.curveKey = nil
     end
@@ -298,3 +333,24 @@ events:SetScript("OnEvent", function(_, event, encounterID)
         Pace:Stop()
     end
 end)
+
+-- A Timeline rehearsal starting or ending (the alerts engine's change event). A real pull's run is
+-- never touched here.
+local function followRehearsal()
+    local Alerts = CRT.Alerts
+    if not CRT.db or (run and not run.rehearsal) then
+        return
+    end
+    local enc = Alerts:IsRehearsal() and Alerts.run and Alerts.run.encounterID
+    if enc then
+        if not (run and run.encounterID == enc) then
+            Pace:Start(enc, true)
+        end
+    elseif run then
+        Pace:Stop()
+    end
+end
+
+if CRT.Alerts and CRT.Alerts.OnChange then
+    CRT.Alerts:OnChange(followRehearsal)
+end
