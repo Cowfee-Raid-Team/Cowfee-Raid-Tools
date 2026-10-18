@@ -55,6 +55,16 @@ function Notes:SetPersonal(text)
     self:Fire()
 end
 
+-- Display my notes first: the personal window shows what you typed above your reminders.
+function Notes:PersonalFirst()
+    return ndb().personalFirst and true or false
+end
+
+function Notes:SetPersonalFirst(on)
+    ndb().personalFirst = on and true or nil
+    self:Fire()
+end
+
 function Notes:Alert()
     return ndb().alert
 end

@@ -3,6 +3,7 @@ local ADDON, CRT = ...
 -- Reads a raid note's text. The format is lines of "key:value;" pairs:
 --   EncounterID:3470;Difficulty:Mythic;Name:Nek'zali              the boss this note is for
 --   time:34;ph:1;tag:Cheoeqar;spellid:64843;                     a spell for a player, 34s into phase 1
+--   ph:1;time:34;tag:Cheoeqar;spellid:64843;                     the same, with ph first
 --   time:48;ph:1;tag:Abu Sixz;text:Group 1 go in;dur:8;colors:0 1 1 1;DisplayType:Text;
 --                                                                a text callout shown for 8 seconds
 --   invitelist:Name-Realm,Name-Realm,,Name-Realm;                the roster, in group order
@@ -110,7 +111,8 @@ function Parser.Parse(text)
             note.encounterID = tonumber(f.encounterid)
             note.difficulty = f.difficulty
             note.name = f.name
-        elseif lower:find("^time:") then
+        elseif lower:find("^time:") or (lower:find("^ph:%s*[%d%.]+%s*;") and lower:find(";%s*time:")) then
+            -- a timed line, "time:" first, or "ph:" first as Northern Sky also writes it
             local f = fields(line)
             local t = tonumber(f.time)
             if t then

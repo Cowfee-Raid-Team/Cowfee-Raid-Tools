@@ -108,8 +108,8 @@ local function timerLine(item, seconds)
 end
 
 -- A line of free text: names class colored, your own name in gold, and the line marked with ">" when it
--- names you or your role. A line with no colon is treated as a heading.
-local function textLine(line)
+-- names you or your role. A line with no colon is treated as a heading, unless noHeading.
+local function textLine(line, noHeading)
     if line == "" then
         return ""
     end
@@ -124,7 +124,7 @@ local function textLine(line)
         end
         return colorName(word)
     end)
-    if not line:find(":", 1, true) then
+    if not noHeading and not line:find(":", 1, true) then
         colored = "|cffffd100" .. colored .. "|r"
     end
     if mine then
@@ -143,6 +143,48 @@ end
 
 -- Formats lines of free text the way the assignments and personal windows show them.
 NoteWindow.FormatText = textBlock
+
+-- Markdown in your personal note, a small set the game's text can show (one font size, no italics):
+--   # Heading, ## Heading   a gold heading line
+--   **bold**                 amber
+--   - item or * item         a bullet
+--   ---                      a divider line
+-- Applied before the names are colored, so a name in a bullet or in bold still shows its class color.
+local BOLD = "|cffffb84d"
+local BULLET = "  \226\128\162 "
+
+local function markdownLine(line)
+    local heading = line:match("^%s*#+%s+(.-)%s*$")
+    if heading then
+        return "|cffffd100" .. heading .. "|r", true
+    end
+    if line:match("^%s*%-%-%-+%s*$") or line:match("^%s*%*%*%*+%s*$") then
+        return "|cff806040" .. string.rep("-", 30) .. "|r", true
+    end
+    local item = line:match("^%s*[%-%*]%s+(.+)$")
+    if item then
+        line = BULLET .. item
+    end
+    line = line:gsub("%*%*(.-)%*%*", function(inner)
+        return BOLD .. inner .. "|r"
+    end)
+    return line, false
+end
+
+-- A free text line of the personal note: markdown, then the names and ">" as textLine gives them. A
+-- heading or divider is shown as it is; a line markdown changed is never taken as a colon-less heading.
+local function personalLine(line)
+    if line == "" then
+        return ""
+    end
+    local md, whole = markdownLine(line)
+    if whole then
+        return md
+    end
+    -- a bullet or bold line keeps its own look: never the gold of a line with no colon
+    return textLine(md, md ~= line)
+end
+NoteWindow.PersonalLine = personalLine
 
 local function splitLines(text)
     local lines = {}
@@ -456,8 +498,64 @@ local function personalLive()
     return listed and type(list) == "table" and #list > 0
 end
 
+-- Your personal note as typed. A raid note pasted in (an "EncounterID:…;Name:…" header, timed
+-- "time:…;ph:…" lines, as Northern Sky and this addon write them) shows as a heading with the boss's name
+-- and difficulty and its timed lines by phase, "0:34 [icon] Spell" (marked ">" when they name you), then
+-- its other lines. Free text gets the markdown above. The personal note never runs alerts.
+local function personalNoteBlock(text)
+    local Parser = CRT.NoteParser
+    local note = Parser and Parser.Parse(text or "")
+    if not note or (not note.encounterID and not note.name and #note.timers == 0) then
+        local out = {}
+        for _, line in ipairs(splitLines(text)) do
+            out[#out + 1] = personalLine(line)
+        end
+        return table.concat(out, "\n")
+    end
+    local out = {}
+    if note.name or note.difficulty then
+        out[#out + 1] = "|cffffd100" .. (note.name or "") .. "|r"
+            .. (note.difficulty and ("|cffaaaaaa (" .. note.difficulty .. ")|r") or "")
+    end
+    local timers = {}
+    for _, t in ipairs(note.timers) do
+        timers[#timers + 1] = t
+    end
+    table.sort(timers, function(a, b)
+        if (a.ph or 1) ~= (b.ph or 1) then
+            return (a.ph or 1) < (b.ph or 1)
+        end
+        return (a.time or 0) < (b.time or 0)
+    end)
+    local shownPh
+    local multi = timers[1] and timers[#timers] and (timers[1].ph or 1) ~= (timers[#timers].ph or 1)
+    for _, t in ipairs(timers) do
+        if multi and t.ph ~= shownPh then
+            shownPh = t.ph
+            out[#out + 1] = "|cffffd100Phase " .. tostring(t.ph or 1) .. "|r"
+        end
+        out[#out + 1] = timerLine(t, t.time or 0)
+    end
+    local lines = {}
+    for _, line in ipairs(note.lines or {}) do
+        lines[#lines + 1] = personalLine(line)
+    end
+    while #lines > 0 and lines[#lines] == "" do
+        lines[#lines] = nil
+    end
+    if #lines > 0 then
+        out[#out + 1] = ""
+        for _, l in ipairs(lines) do
+            out[#out + 1] = l
+        end
+    end
+    return table.concat(out, "\n")
+end
+NoteWindow.PersonalNoteBlock = personalNoteBlock
+
 local function personalText()
-    local lines = splitLines(Notes:Personal())
+    local typed = Notes:Personal()
+    local lines = splitLines(typed)
     local ok, reminders = pcall(remindersBlock)
     if not ok then
         -- a failure must never take the free text with it
@@ -466,10 +564,15 @@ local function personalText()
         end
         reminders = nil
     end
+    -- your reminders, then what you typed; "Display my notes first" (notes.personalFirst) swaps them
     local parts = {}
-    parts[#parts + 1] = reminders
-    if #lines > 0 then
-        parts[#parts + 1] = textBlock(lines)
+    local typedBlock = #lines > 0 and personalNoteBlock(typed) or nil
+    if Notes:PersonalFirst() then
+        parts[#parts + 1] = typedBlock
+        parts[#parts + 1] = reminders
+    else
+        parts[#parts + 1] = reminders
+        parts[#parts + 1] = typedBlock
     end
     if #parts > 0 then
         return table.concat(parts, "\n\n"), "Personal note", true

@@ -460,9 +460,24 @@ local function buildNotes(pf)
         Notes:SetPersonal(personal:GetText())
         CRT:Print("Personal note saved.")
     end)
+    -- Display my notes first: what you typed above your Mech Alerts reminders in the personal window
+    local first = CreateFrame("CheckButton", nil, pf, "UICheckButtonTemplate")
+    first:SetSize(24, 24)
+    first:SetPoint("TOPLEFT", psave, "BOTTOMLEFT", -2, -2)
+    local firstText = pf:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    firstText:SetPoint("LEFT", first, "RIGHT", 2, 0)
+    firstText:SetText("Display my notes first")
+    UI.Help(pf, "Display my notes first", "Shows what you typed in your personal note above your Mech Alerts reminders in the personal note window, instead of under them.\n\nYour note can use a little formatting: # Heading, **bold**, - a bullet, and --- for a line. A raid note pasted in (EncounterID:…;Name:… with time:…;ph:… lines) shows as the boss and its timed lines."):SetPoint("LEFT", firstText, "RIGHT", 4, 0)
+    first:SetScript("OnClick", function(self)
+        Notes:SetPersonalFirst(self:GetChecked())
+    end)
+    first.refresh = function()
+        first:SetChecked(Notes.PersonalFirst and Notes:PersonalFirst() or false)
+    end
+    controls[#controls + 1] = first
     -- Right, under the personal note: try the note in use. Next phase has its own row, since its text
     -- grows with the phase it starts ("Next phase (1.5)").
-    top = top - 22 - 220 - 6 - 26 - 20
+    top = top - 22 - 220 - 6 - 26 - 26 - 20
     local runLabel = pf:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
     runLabel:SetPoint("TOPLEFT", RIGHT_X, top)
     runLabel:SetText("Try it")
