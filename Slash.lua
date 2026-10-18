@@ -161,10 +161,8 @@ SlashCmdList["COWFEERAIDTOOLS"] = function(msg)
         if CRT.LateTest then
             CRT.LateTest:Toggle()
         end
-    elseif msg == "dev nsrt" or msg:match("^dev nsrt%s") then
-        if CRT.NSRT then
-            CRT.NSRT:Command(msg:match("^dev nsrt%s*(.*)$"))
-        end
+    elseif CRT.NoteTargetsDev and CRT.NoteTargetsDev:Command(msg) then
+        -- dev nsrt, dev mrt and dev all: the note targets (Dev/NoteTargets.lua)
     elseif msg == "dev layout" then
         if CRT.LayoutCheck then
             CRT.LayoutCheck:Run()

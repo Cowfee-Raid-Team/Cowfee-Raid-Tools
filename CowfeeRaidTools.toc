@@ -43,6 +43,9 @@ Notes\Engine.lua
 Notes\Window.lua
 Notes\Alert.lua
 Notes\Comm.lua
+Integrations\NoteTargets.lua
+Integrations\NSRT.lua
+Integrations\MRT.lua
 Notes\Settings.lua
 Notes\Reminders.lua
 Notes\Phases.lua
@@ -112,6 +115,6 @@ Dev\ReferenceTypes.lua
 Dev\WindowLog.lua
 Dev\LayoutCheck.lua
 Dev\LateTest.lua
-Dev\NSRT.lua
+Dev\NoteTargets.lua
 Dev\DevPage.lua
 #@end-do-not-package@
