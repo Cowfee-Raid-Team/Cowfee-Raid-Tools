@@ -66,6 +66,8 @@ local TEXT = {
     inCombat = "Rehearsal can't start in combat.",
     inEncounter = "Rehearsal can't start during a boss encounter.",
     running = "Rehearsal can't start while the alerts are running a pull or a test.",
+    testing = "Testing: ",
+    noSource = "Rehearsal has no reference or recorded pull for this boss.",
 }
 
 local function mocha(key, alpha)
@@ -226,6 +228,13 @@ local function buildNext(f)
     head:SetPoint("TOPLEFT", f, "TOPLEFT", PAD, -104)
     head:SetText(TEXT.nextUp)
     head:SetTextColor(mocha("latte"))
+    -- "Testing: <alert>" on the right of the heading while a Test button's rehearsal plays
+    f.testing = fontString(f, "CRTFontSmall")
+    f.testing:SetPoint("TOPRIGHT", f, "TOPRIGHT", -PAD, -104)
+    f.testing:SetPoint("LEFT", head, "RIGHT", 30, 0)
+    f.testing:SetJustifyH("RIGHT")
+    f.testing:SetWordWrap(false)
+    f.testing:SetTextColor(mocha("caramel"))
     f.nextHead = head
     f.next = {}
     for i = 1, NEXT_N do
@@ -433,6 +442,7 @@ function RehearsalWindow:Open(source)
     CRT.UI.SetFrameTitle(f, TEXT.title .. boss)
     f.bossName:SetText(boss)
     f.difficulty:SetText(source.difficultyName or "")
+    f.testing:SetText(source.testing and (TEXT.testing .. source.testing) or "")
     f.speed.refresh()
     f.as.refresh()
     applyPosition(f)
@@ -828,7 +838,7 @@ end
 local function startRun(Alerts)
     local W = RehearsalWindow
     local source = W.source or {}
-    Alerts:Start(source.encounterID, source.difficultyName, "rehearsal", {
+    local opts = {
         clock = function()
             return W:Now()
         end,
@@ -836,7 +846,14 @@ local function startRun(Alerts)
             return W:Speed()
         end,
         as = W:As(),
-    })
+    }
+    -- a Test button's extra opts (the tested alert as it stands, what it replaces) ride on every start
+    for k, v in pairs(source.alerts or {}) do
+        if opts[k] == nil and k ~= "as" then
+            opts[k] = v
+        end
+    end
+    Alerts:Start(source.encounterID, source.difficultyName, "rehearsal", opts)
     Run.started = true
     startPhases(Alerts, nil, W:Now())
 end
@@ -899,6 +916,30 @@ end
 
 function Run.OnChange(fn)
     Run.listeners[#Run.listeners + 1] = fn
+end
+
+-- For the alerts' Test buttons: opens the rehearsal of a boss on a difficulty (what the Review tab
+-- would show for it: its reference for that difficulty group, else its newest pull), seeks to fight
+-- second t (0 at the earliest) and plays. opts.testing labels the window "Testing: <testing>";
+-- opts.alerts is copied into Alerts:Start's opts on every start (a jump or Restart keeps it). It
+-- replaces whatever the window had open. True, or false and the reason to print.
+function RehearsalWindow:OpenAt(encounterID, difficultyName, t, opts)
+    opts = opts or {}
+    local why = Run.Blocked()
+    if why then
+        return false, why
+    end
+    local group = difficultyName == "Mythic" and "mythic" or "nh"
+    local source = CRT.Timeline.RehearsalSourceFor and CRT.Timeline:RehearsalSourceFor(encounterID, group)
+    if not source then
+        return false, TEXT.noSource
+    end
+    source.encounterID, source.difficultyName = encounterID, difficultyName
+    source.testing, source.alerts = opts.testing, opts.alerts
+    self:Open(source)
+    self:Seek(math.max(0, tonumber(t) or 0))
+    self:Play()
+    return true
 end
 
 -- Sets the window's hooks to the engine (done once here; the harness sets them again).
