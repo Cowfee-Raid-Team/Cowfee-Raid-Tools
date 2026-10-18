@@ -264,18 +264,42 @@ end
 
 -- Receiving ---------------------------------------------------------------------------------------
 
--- The guild of a group member, by name; nil when they have none or aren't found.
+-- The guild of a group member, by name ("Rixxy", or "Rixxy-TwistingNether" for another realm, as a share's
+-- sender reads); nil when they have none or aren't found. UnitName gives the realm apart, so a player of
+-- another realm is matched by name and realm together.
 local function guildOf(name)
     local prefix = IsInRaid() and "raid" or "party"
     for i = 1, GetNumGroupMembers() do
         local unit = prefix .. i
-        if UnitName(unit) == name then
+        local n, realm = UnitName(unit)
+        local full = (realm and realm ~= "") and (n .. "-" .. realm) or n
+        if n and (full == name or n == name) then
             return GetGuildInfo(unit)
         end
     end
     return nil
 end
 Comm.GuildOf = guildOf
+
+-- Whether a sender is in your guild: on your guild roster (Raid Groups' guild list, by name and realm, so a
+-- guildie of another realm counts), else in your group with your guild.
+local function inMyGuild(name)
+    if not (IsInGuild and IsInGuild()) then
+        return false
+    end
+    local Groups = CRT.Groups
+    if Groups and Groups.ReadGuild and Groups.Normalize then
+        local key = Groups.Normalize(name):lower()
+        for _, m in ipairs(Groups:ReadGuild()) do
+            if (m.key or ""):lower() == key then
+                return true
+            end
+        end
+    end
+    local theirs = guildOf(name)
+    return theirs ~= nil and theirs == GetGuildInfo("player")
+end
+Comm.InMyGuild = inMyGuild
 
 -- A note as received: an older "Sent by:" line taken off, and the sender's put at the bottom, so the note
 -- says who shared it (and the Assignments window shows it).
@@ -297,13 +321,12 @@ Comm.TagSender = tagSender
 local function received(text, short)
     local newId, result
     -- your guild's note is one note, updated by each of your officers; anyone else's is a note of its own
-    local guild = guildOf(short)
-    local mine = IsInGuild and IsInGuild() and GetGuildInfo("player")
-    local source = (guild and mine and guild == mine) and ("guild:" .. guild) or ("pug:" .. short)
+    local mine = inMyGuild(short) and GetGuildInfo("player")
+    local source = mine and ("guild:" .. mine) or ("pug:" .. short)
     text = tagSender(text, short)
     -- someone else's note is the Timeline's new starting point, never something Ctrl+Z puts back
     local function import()
-        newId, result = Notes:Import(text, short, nil, source, "Cowfee Raid Tools")
+        newId, result = Notes:Import(text, short, nil, source, "CRT")
     end
     if CRT.TimelineUndo then
         CRT.TimelineUndo:Quietly(import)

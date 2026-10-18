@@ -332,11 +332,12 @@ refresh = function()
     local lines = {}
     if record then
         -- the note's details, one per line: its last change, who shared it, its roster
-        local by = record.updatedBy or record.from
+        local by = Notes.ShortName(record.updatedBy or record.from)
         lines[#lines + 1] = "Last updated: " .. (record.updated or "?") .. (by and (" - " .. by) or "")
         if record.from then
-            lines[#lines + 1] = "Shared by: " .. record.from .. ", " .. (record.sharedAt or record.updated or "?")
-                .. (record.via and (" (" .. record.via .. ")") or "")
+            local via = Notes.ViaLabel(record.via)
+            lines[#lines + 1] = "Shared by: " .. Notes.ShortName(record.from) .. ", " .. (record.sharedAt or record.updated or "?")
+                .. (via and (" (" .. via .. ")") or "")
         end
         if record.presetId and CRT.Groups:Find(record.presetId) then
             lines[#lines + 1] = "Roster: linked to a Raid Groups layout"

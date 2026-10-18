@@ -11,7 +11,8 @@ local ADDON, CRT = ...
 --   else (a pickup group, another guild, no guild) is an unknown source, "pug:<sender>": every share is a
 --   note of its own, never replacing yours or another's, except an exact repeat from the same sender. The
 --   newest share is the note in use, and the shared note in use runs on the pull (FindForEncounter).
---   `via` says how a note came: "Cowfee Raid Tools" (shared to you), "Imported" (pasted), "Timeline".
+--   `via` says how a note came: "CRT" (shared to you by this addon), "Imported" (pasted), "Timeline", or
+--   another addon's short name (MRT, NSRT).
 --   Personal: your own lines for a boss and difficulty, kept on this computer, never shared or replaced.
 --   They run on every pull of that boss alongside the shared note in use (PersonalFor, Notes/Engine.lua's
 --   "personal" block).
@@ -245,6 +246,18 @@ function Notes:Parsed(id)
 end
 
 local DIFFICULTY_RANK = { mythic = 1, heroic = 2, normal = 3 }
+
+-- A player's name without the realm: "Rixxy" for "Rixxy-TwistingNether".
+function Notes.ShortName(name)
+    return name and (name:match("^([^%-]+)") or name) or nil
+end
+
+-- How a note came, short: CRT, MRT, NSRT, Imported or Timeline (older notes kept the long name).
+local VIA_SHORT = { ["Cowfee Raid Tools"] = "CRT", ["Method Raid Tools"] = "MRT", ["Northern Sky"] = "NSRT",
+    ["Northern Sky Raid Tools"] = "NSRT" }
+function Notes.ViaLabel(via)
+    return via and (VIA_SHORT[via] or via) or nil
+end
 
 -- Whose a shared note is, for its label: your guild's name, else its sender without the realm.
 function Notes.SourceLabel(record)
