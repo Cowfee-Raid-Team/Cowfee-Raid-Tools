@@ -173,6 +173,15 @@ local defaults = {
             bridge = false, -- the raid leader's CRT passes a break on in the formats it didn't come in
         },
     },
+    -- Loot History's settings (the records are in CRTLootDB, Loot/Store.lua): minQuality (3 rare, 4 epic,
+    -- 5 legendary), dungeons (record dungeon bosses too), keepMonths (0 keeps everything), rcEnrich
+    -- (match RCLootCouncil's awards, read only).
+    loot = {
+        minQuality = 4,
+        dungeons = false,
+        keepMonths = 12,
+        rcEnrich = true,
+    },
     -- The sound engine (Sound/Engine.lua): custom, your own sound file names typed on Quality of Life >
     -- Sounds (the companion addon CowfeeRaidTools_Media lists more in its Sounds.lua).
     sound = {

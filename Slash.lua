@@ -19,6 +19,7 @@ local function printHelp()
     print("  |cffffd100/crt tattle post|r, |cffffd100night|r, |cffffd100end|r - post the last pull or tonight's totals, or end the night")
     print("  |cffffd100/crt tattle scan|r - pick spells to track from the last fight (|cffffd100/crt tattle scan text|r for the plain list)")
     print("  |cffffd100/crt tattle export|r - the Tattlebot totals as text to paste into Discord")
+    print("  |cffffd100/crt loot|r - open Loot History: who got which boss item, with filters and a CSV export")
     print("  |cffffd100/crt pace|r - open the Pace page: where each boss's health should be")
     print("  |cffffd100/crt timeline|r - open the Timeline page (|cffffd100/crt timeline pop|r opens it in its own window)")
     print("  |cffffd100/crt timeline rehearse|r - play the fight the Timeline shows in the Rehearsal window, with your alerts")
@@ -108,6 +109,8 @@ SlashCmdList["COWFEERAIDTOOLS"] = function(msg)
         CRT.TimelinePopout()
     elseif msg == "timeline rehearse" then
         CRT.Timeline:Rehearse()
+    elseif msg == "loot" then
+        CRT.UI:Show("loot")
     elseif msg == "tattle" then
         CRT.UI:Show("tattle")
     elseif msg == "tattle post" then
@@ -164,6 +167,8 @@ SlashCmdList["COWFEERAIDTOOLS"] = function(msg)
         end
     elseif CRT.NoteTargetsDev and CRT.NoteTargetsDev:Command(msg) then
         -- dev nsrt, dev mrt and dev all: the note targets (Dev/NoteTargets.lua)
+    elseif CRT.LootDev and CRT.LootDev:Command(msg, raw) then
+        -- dev loot: fake records, stats, the RCLootCouncil match report (Dev/Loot.lua)
     elseif CRT.SoundDev and CRT.SoundDev:Command(msg, raw) then
         -- dev sound: play any sound reference, list them (Dev/Sound.lua)
     elseif CRT.BreaksDev and CRT.BreaksDev:Command(msg) then

@@ -261,7 +261,7 @@ UI.MENU_GROUPS = {
     { "settings", "qol" },
     { "groups", "readycheck" },
     { "notes", "timeline", "pace" },
-    { "late", "tattle" },
+    { "late", "tattle", "loot" },
 }
 
 function UI:IsModern()
