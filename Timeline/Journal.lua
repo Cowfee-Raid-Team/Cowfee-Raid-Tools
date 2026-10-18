@@ -143,7 +143,27 @@ local function byEncounter(encounterID)
     end
 end
 
--- Every ability section under root, depth first in Journal order: children, then siblings.
+-- The Journal's Overview section (its role summaries: Damage Dealers, Healer, Tank) repeats the boss's
+-- abilities under a role's icon, so its abilities are read from their own sections, never from it. The
+-- Journal's own code calls this header type EJ_HTYPE_OVERVIEW.
+local HTYPE_OVERVIEW = 3
+
+-- Adds a section's tags to a row already made for its spell (an ability the Journal lists twice).
+local function mergeTags(row, tags)
+    row.tags = row.tags or {}
+    for _, t in ipairs(tags or {}) do
+        local have = false
+        for _, h in ipairs(row.tags) do
+            have = have or h == t
+        end
+        if not have then
+            row.tags[#row.tags + 1] = t
+        end
+    end
+end
+
+-- Every ability section under root, depth first in Journal order: children, then siblings. The Overview is
+-- left out.
 local function collect(root, rows, seen)
     local visited = {}
     local function walk(id)
@@ -153,20 +173,25 @@ local function collect(root, rows, seen)
             if not ok or type(info) ~= "table" then
                 return
             end
-            local spellID = info.spellID
-            if type(spellID) == "number" and spellID > 0 and not seen[spellID] then
-                seen[spellID] = true
-                local okName, name = pcall(C_Spell.GetSpellName, spellID)
-                local okIcon, icon = pcall(C_Spell.GetSpellTexture, spellID)
-                rows[#rows + 1] = {
-                    spellID = spellID,
-                    name = (okName and name) or info.title or "",
-                    icon = (okIcon and icon) or info.abilityIcon,
-                    own = false,
-                    tags = Journal.SectionTags and Journal.SectionTags(id) or nil, -- the Journal's icons
-                }
+            if info.headerType ~= HTYPE_OVERVIEW then
+                local spellID = info.spellID
+                local tags = Journal.SectionTags and Journal.SectionTags(id) or nil -- the Journal's icons
+                if type(spellID) == "number" and spellID > 0 and seen[spellID] then
+                    mergeTags(seen[spellID], tags)
+                elseif type(spellID) == "number" and spellID > 0 then
+                    local okName, name = pcall(C_Spell.GetSpellName, spellID)
+                    local okIcon, icon = pcall(C_Spell.GetSpellTexture, spellID)
+                    rows[#rows + 1] = {
+                        spellID = spellID,
+                        name = (okName and name) or info.title or "",
+                        icon = (okIcon and icon) or info.abilityIcon,
+                        own = false,
+                        tags = tags,
+                    }
+                    seen[spellID] = rows[#rows] -- a later section of the same spell adds its icons to this row
+                end
+                walk(info.firstChildSectionID)
             end
-            walk(info.firstChildSectionID)
             id = info.siblingSectionID
         end
     end
@@ -221,15 +246,16 @@ function Journal.FromJournalEncounter(journalEncounterID)
             if not okInfo or type(info) ~= "table" then
                 return
             end
-            if not info.filteredByDifficulty then
+            if not info.filteredByDifficulty and info.headerType ~= HTYPE_OVERVIEW then
                 local spellID = info.spellID
                 local here = stage
                 if depth == 1 and not (type(spellID) == "number" and spellID > 0) and info.firstChildSectionID then
                     here = info.title
                     stages[#stages + 1] = info.title
                 end
-                if type(spellID) == "number" and spellID > 0 and not seen[spellID] then
-                    seen[spellID] = true
+                if type(spellID) == "number" and spellID > 0 and seen[spellID] then
+                    mergeTags(seen[spellID], sectionTags(id))
+                elseif type(spellID) == "number" and spellID > 0 then
                     local okName, spellName = pcall(C_Spell.GetSpellName, spellID)
                     rows[#rows + 1] = {
                         spellID = spellID,
@@ -238,6 +264,7 @@ function Journal.FromJournalEncounter(journalEncounterID)
                         tags = sectionTags(id),
                         stage = here,
                     }
+                    seen[spellID] = rows[#rows]
                 end
                 walk(info.firstChildSectionID, depth + 1, here)
             end

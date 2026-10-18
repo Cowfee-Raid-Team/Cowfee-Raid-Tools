@@ -70,9 +70,17 @@ function Export.Build(journalEncounterID, difficultyID)
     for _, help in ipairs(TEXT.help) do
         lines[#lines + 1] = help
     end
-    -- each stage after the first gets a Phase line to fill in: P2, P3 for stages, P1.5 for an intermission
+    -- each stage with abilities after the first gets a Phase line to fill in: P2, P3 for stages, P1.5 for an
+    -- intermission (a stage the export lists no ability under, such as an empty header, isn't counted)
+    local order, listed = {}, {}
+    for _, row in ipairs(rows) do
+        if row.stage and not listed[row.stage] then
+            listed[row.stage] = true
+            order[#order + 1] = row.stage
+        end
+    end
     local phaseOf, whole = {}, 1
-    for i, title in ipairs(stages or {}) do
+    for i, title in ipairs(order) do
         if i > 1 then
             if title:lower():find("intermission") then
                 phaseOf[title] = whole .. ".5"
