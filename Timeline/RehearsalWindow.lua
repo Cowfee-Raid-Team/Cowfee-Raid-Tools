@@ -922,10 +922,16 @@ end
 -- would show for it: its reference for that difficulty group, else its newest pull), seeks to fight
 -- second t (0 at the earliest) and plays. opts.testing labels the window "Testing: <testing>";
 -- opts.alerts is copied into Alerts:Start's opts on every start (a jump or Restart keeps it). It
--- replaces whatever the window had open. True, or false and the reason to print.
+-- replaces whatever the window had open, and a quick test run (never a real pull). True, or false and
+-- the reason to print.
 function RehearsalWindow:OpenAt(encounterID, difficultyName, t, opts)
     opts = opts or {}
     local why = Run.Blocked()
+    local Alerts = CRT.Alerts
+    if why == TEXT.running and Alerts.run and Alerts.run.reason == "test" then
+        Alerts:Stop(true)
+        why = Run.Blocked()
+    end
     if why then
         return false, why
     end
