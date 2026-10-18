@@ -1729,12 +1729,13 @@ function Editor:OpenNote(noteID, lineNumber)
     draft.spellID = validID(timer.spellId)
     draft.text = timer.text or ""
     draft.color = copy(timer.color)
+    -- kept even on a line with no show: field, which the engine also speaks at 0
+    draft.speakAt = timer.speakAt == "zero" and "zero" or nil
     if timer.show then
         for _, k in ipairs(SHOW_KEYS) do
             draft.show[k] = timer.show[k] and true or false
         end
         draft.speak, draft.count = timer.tts and true or false, timer.count and true or false
-        draft.speakAt = timer.speakAt == "zero" and "zero" or nil
         draft.glow = timer.glow and true or false
         draft.sound = timer.sound
         draft.linger = timer.linger or 0

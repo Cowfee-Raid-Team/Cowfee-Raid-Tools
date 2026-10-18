@@ -1066,7 +1066,7 @@ local function buildPanel(f)
         get = function() return Draft.SpeakAtKey(cur.draft) end,
         set = change(function(v) Draft.SetSpeakAt(cur.draft, v) end),
     }))
-    panel.speakAt:SetPoint("TOPLEFT", L.INSET + L.CHECK_STEP, L.COL_Y - 122)
+    panel.speakAt:SetPoint("TOPLEFT", L.INSET + L.CHECK_STEP, L.COL_Y - 124) -- in line with Glow at 0
 
     -- Right column: Look and sound
     heading(p, TEXT.look, L.COL2_X, L.COL_Y)
