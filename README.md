@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <strong>Game version</strong> <code>12.1.5</code> &nbsp;&nbsp;·&nbsp;&nbsp; <strong>Addon version</strong> <code>0.22.0</code> &nbsp;&nbsp;·&nbsp;&nbsp; <strong>License</strong> <code>MIT</code>
+  <strong>Game version</strong> <code>12.1.5</code> &nbsp;&nbsp;·&nbsp;&nbsp; <strong>Addon version</strong> <code>0.22.0</code> &nbsp;&nbsp;·&nbsp;&nbsp; <strong>License</strong> <code>All rights reserved</code>
 </p>
 
 <!-- Add a screenshot taken with dummy names, then uncomment:
@@ -269,4 +269,4 @@ CowfeeRaidTools/
 
 ## License
 
-Released under the [MIT License](LICENSE). World of Warcraft and Blizzard Entertainment are trademarks of Blizzard Entertainment, Inc. This addon is not made by or endorsed by Blizzard.
+Copyright (c) 2026 Solex. All rights reserved: see [LICENSE](LICENSE). You may download it from its official releases and use it for your own play; copying, changing or redistributing it needs written permission. World of Warcraft and Blizzard Entertainment are trademarks of Blizzard Entertainment, Inc. This addon is not made by or endorsed by Blizzard.
