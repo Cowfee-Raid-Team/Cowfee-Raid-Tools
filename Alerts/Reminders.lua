@@ -5,9 +5,10 @@ local ADDON, CRT = ...
 -- you type, and it runs on the alerts engine as the "mine" block beside the raid note. A reminder is
 -- saved in CRT.db.alerts.reminders[encounterID][id] as
 --   { boss, spellID, text, times, outputs = { alert, bar, speech, text, icon, circle }, warn, speech,
---     priority, difficulty, enabled, linger, sound, glow, iconID, color }
+--     priority, difficulty, enabled, linger, sound, glow, iconID, color, speakAt }
 -- where `times` is typed text ("P1 0:02, 1:17; P2 +0:18") or nil for the reference, `speech` is
--- "text", "textcount" (the text, then 3, 2, 1) or "count", and `difficulty` nil means any.
+-- "text", "textcount" (the text, then 3, 2, 1) or "count", `speakAt` is nil (the text is read out when
+-- the alert shows) or "zero" (at its time), and `difficulty` nil means any.
 
 local Alerts = CRT.Alerts
 local Rules = CRT.AlertRules
@@ -465,7 +466,8 @@ end
 
 local function speechList(r, text)
     local mode = r.speech
-    return Rules.SpeechItems(text, r.warn or 5, mode ~= "count", mode == "textcount" or mode == "count")
+    return Rules.SpeechItems(text, r.warn or 5, mode ~= "count", mode == "textcount" or mode == "count",
+        r.speakAt == "zero")
 end
 
 -- The alert items of one reminder (r with any overrides already laid over it), one per time. Used by

@@ -388,7 +388,8 @@ function Engine.ItemFor(t, index, mine)
         item.hold = math.max(0.5, t.linger or t.dur or 0)
         item.sound = t.sound
         item.glow = t.glow and true or nil
-        item.speech = Rules.SpeechItems(item.text, item.warn, t.tts and true or false, t.count and true or false)
+        item.speech = Rules.SpeechItems(item.text, item.warn, t.tts and true or false, t.count and true or false,
+            t.speakAt == "zero")
         return item
     end
     local settings = Alerts:Settings() or {}
@@ -410,7 +411,8 @@ function Engine.ItemFor(t, index, mine)
     item.warn = s.seconds or 10
     -- A spell shows for half a second after its time, a text line for its dur:.
     item.hold = t.kind == "text" and (t.dur or 0) or 0.5
-    item.speech = { { offset = s.ttsSeconds or 3, text = info and info.name or t.text or "" } }
+    -- ttsat:0 reads it out at its time, as a line with show: does
+    item.speech = { { offset = t.speakAt == "zero" and 0 or (s.ttsSeconds or 3), text = info and info.name or t.text or "" } }
     return item
 end
 

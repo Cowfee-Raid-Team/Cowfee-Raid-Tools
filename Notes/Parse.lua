@@ -12,6 +12,7 @@ local ADDON, CRT = ...
 -- A timed line may also say how it shows. Without show: it shows as it always has.
 --   show:icon,text;   only these displays: alert, text, icon, bar, circle
 --   tts:1; count:1;   read the line out; count down 3, 2, 1
+--   ttsat:0;          read the line out at its time, not when it shows (absent: when it shows)
 --   sound:RAID_WARNING; glow:1; warn:6; linger:3; icon:135940;
 -- DisplayType: is ignored.
 
@@ -92,7 +93,8 @@ end
 
 -- Returns { encounterID, difficulty, name, timers = {...}, phases = {...}, lines = {...}, invite = {...} }.
 -- Each timer is { time, ph, tags, kind = "spell" or "text", spellId, text, dur, color, line } with `line`
--- its line number in the text, and, when the line has them: show (a set), tts, count, glow (true),
+-- its line number in the text, and, when the line has them: show (a set), tts, speakAt ("zero" for
+-- ttsat:0), count, glow (true),
 -- sound (the text as written; Speech plays it only if it names one of Speech.SOUNDS), warn, linger
 -- (seconds) and iconID.
 function Parser.Parse(text)
@@ -128,6 +130,7 @@ function Parser.Parse(text)
                     show = f.show and showSet(f.show) or nil,
                     tts = flag(f.tts),
                     count = flag(f.count),
+                    speakAt = (tonumber(f.ttsat) == 0) and "zero" or nil,
                     glow = flag(f.glow),
                     sound = (f.sound and f.sound ~= "") and f.sound or nil,
                     warn = tonumber(f.warn),
@@ -215,6 +218,9 @@ function Parser.FormatLine(t)
     if t.tts then
         add("tts", "1")
     end
+    if t.speakAt == "zero" then
+        add("ttsat", "0")
+    end
     if t.count then
         add("count", "1")
     end
@@ -238,7 +244,7 @@ end
 
 -- The keys FormatLine writes.
 local FORMAT_KEYS = {}
-for _, k in ipairs({ "time", "ph", "tag", "spellid", "text", "dur", "colors", "show", "tts", "count", "sound",
+for _, k in ipairs({ "time", "ph", "tag", "spellid", "text", "dur", "colors", "show", "tts", "ttsat", "count", "sound",
     "glow", "warn", "linger", "icon" }) do
     FORMAT_KEYS[k] = true
 end

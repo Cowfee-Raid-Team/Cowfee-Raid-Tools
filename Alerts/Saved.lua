@@ -3,11 +3,12 @@ local ADDON, CRT = ...
 -- Saved alerts: one alert's setup without its time, kept to place on any boss's Timeline or to open in
 -- the alert editor. Stored in CRT.db.alerts.saved[id] (ids from nextSavedId) as
 --   { name, saveAs, tags, spellID, iconID, text, color, outputs = { alert, text, icon, bar, circle, speech },
---     speech, sound, glow, warn, linger }
+--     speech, speakAt, sound, glow, warn, linger }
 -- where `tags` are the words of the editor's For choice, `saveAs` is "note" or "mine", and `speech` is
--- "text", "textcount" or "count" as a reminder keeps it. The time, phase, boss and difficulty of the alert
--- a saved alert was made from are never kept. A saved alert's name defaults to its text, else its spell's
--- name. Every change tells the alerts windows (CRT.Alerts:Fire) and this store's own listeners.
+-- "text", "textcount" or "count" and `speakAt` nil or "zero" as a reminder keeps them. The time, phase,
+-- boss and difficulty of the alert a saved alert was made from are never kept. A saved alert's name
+-- defaults to its text, else its spell's name. Every change tells the alerts windows (CRT.Alerts:Fire)
+-- and this store's own listeners.
 -- A saved alert may also have `pin`, a number: pinned ones are listed first, lowest pin first.
 --
 -- Starter templates: STARTERS are added to your saved alerts once each (alerts.starters[key] = true), as
@@ -173,6 +174,7 @@ function Saved:Save(id, fields)
         text = trim(fields.text),
         color = copy(fields.color),
         speech = fields.speech,
+        speakAt = fields.speakAt == "zero" and "zero" or nil,
         sound = fields.sound,
         glow = fields.glow and true or nil,
         warn = type(fields.warn) == "number" and fields.warn or 5,
@@ -259,6 +261,7 @@ function Saved:Prefill(id, encounterID, ph, time, spellID, boss)
         saved = id,
         spellID = validID(spellID) or s.spellID,
         saveAs = s.saveAs,
+        speakAt = s.speakAt,
         ph = ph,
         time = time,
         boss = boss,

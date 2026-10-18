@@ -149,11 +149,13 @@ function Rules.Area(lines, now, output, cap)
 end
 
 -- The spoken parts of one alert as { { offset, text } }, offset in seconds before it is due: `speak` says
--- the text at `warn` seconds (at least 4 when counting), `count` says 3, 2, 1 at those seconds.
-function Rules.SpeechItems(text, warn, speak, count)
+-- the text at `warn` seconds (at least 4 when counting), or at 0 when `atZero` (Speak at: At 0), `count`
+-- says 3, 2, 1 at those seconds.
+function Rules.SpeechItems(text, warn, speak, count, atZero)
     local out = {}
     if speak then
-        out[1] = { offset = count and math.max(warn, 4) or warn, text = text }
+        local offset = count and math.max(warn, 4) or warn
+        out[1] = { offset = atZero and 0 or offset, text = text }
     end
     if count then
         for n = 3, 1, -1 do

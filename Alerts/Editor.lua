@@ -81,6 +81,9 @@ local TEXT = {
     glow = "Glow at 0",
     sound = "Sound",
     none = "None",
+    speakAt = "Speak at",
+    onShow = "On show",
+    atZero = "At 0",
     fromPrefix = "From ",
     timesPrefix = "Times: ",
     noTimes = "No times",
@@ -138,6 +141,7 @@ local EXPORT_PAD, EXPORT_MIN_TEXT, EXPORT_MAX_TEXT = 6, 16, 180
 local EXPORT_WIDTH = WIDTH - 88 -- the text box
 local EXPORT_TEXT_WIDTH = EXPORT_WIDTH - 2 * EXPORT_PAD
 local PREVIEW_INSET = 16 -- the editor Previews opens sits this far into the screen's bottom right corner
+local SPEAK_AT_X, SPEAK_AT_LABEL, SPEAK_AT_W = 270, 56, 104 -- Speak at, beside Sound under the Also row
 local ID_WIDTH = 140 -- the Spell / Icon ID box, wide enough for a spell name being looked up
 local ID_SHIFT = ID_WIDTH - 80 -- the (?), preview and name sit this much right of where an 80 px box put them
 
@@ -1187,6 +1191,18 @@ local function pickColor()
     UI.LiftOver(ColorPickerFrame)
 end
 
+-- Speak at: when Speak the text says the text, On show or At 0 (the alert's time). Greyed while Speak the
+-- text is off, and on a read-only note line. Its own function: build is near Lua 5.1's 60 upvalue limit.
+local function speakAtRow(f, row)
+    return row(UI.Dropdown(f, TEXT.speakAt, {
+        labelWidth = SPEAK_AT_LABEL, width = SPEAK_AT_W,
+        enabledIf = function() return editable() and draft ~= nil and draft.speak and true or false end,
+        options = Draft.SpeakAtOptions(TEXT.onShow, TEXT.atZero),
+        get = function() return Draft.SpeakAtKey(draft) end,
+        set = setter(function(v) Draft.SetSpeakAt(draft, v) end),
+    }), SPEAK_AT_X, -304 - ROW1_EXTRA)
+end
+
 local function build()
     if frame then
         return
@@ -1436,6 +1452,7 @@ local function build()
         get = function() return draft and draft.sound or NO_SOUND end,
         set = setter(function(v) draft.sound = v ~= NO_SOUND and v or nil end),
     }), LEFT, -304 - ROW1_EXTRA)
+    f.speakAt = speakAtRow(f, row)
 
     f.messageText = f:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     lay(f.messageText, LEFT, -350 - ROW1_EXTRA)
@@ -1601,9 +1618,9 @@ local function show()
 end
 
 -- Opens the editor for a boss: one of your reminders (id), or a new alert. prefill is { spellID, text,
--- times, boss, ph, time, saveAs, tag } from a spell, a Timeline row or a click on the Timeline: time is
--- seconds into phase ph, saveAs "note" or "mine", tag the For of a note line ("" for No one). A new
--- alert from a spell is named after it.
+-- times, boss, ph, time, saveAs, tag, speakAt } from a spell, a Timeline row or a click on the Timeline:
+-- time is seconds into phase ph, saveAs "note" or "mine", tag the For of a note line ("" for No one),
+-- speakAt "zero" for Speak at: At 0. A new alert from a spell is named after it.
 function Editor:Open(encounterID, id, prefill)
     build()
     ctx = { encounterID = encounterID }
@@ -1640,6 +1657,9 @@ function Editor:Open(encounterID, id, prefill)
         -- the caller's Save as wins over a saved alert's own (the Personal notes row asks for Only me)
         if prefill.saveAs == "note" or prefill.saveAs == "mine" then
             draft.saveAs = prefill.saveAs
+        end
+        if prefill.speakAt == "zero" then
+            draft.speakAt = "zero"
         end
         Draft.ApplyFor(ctx, draft, prefill.tag) -- For: a player's name, or "" for No one
         if type(prefill.time) == "number" then
@@ -1714,6 +1734,7 @@ function Editor:OpenNote(noteID, lineNumber)
             draft.show[k] = timer.show[k] and true or false
         end
         draft.speak, draft.count = timer.tts and true or false, timer.count and true or false
+        draft.speakAt = timer.speakAt == "zero" and "zero" or nil
         draft.glow = timer.glow and true or false
         draft.sound = timer.sound
         draft.linger = timer.linger or 0

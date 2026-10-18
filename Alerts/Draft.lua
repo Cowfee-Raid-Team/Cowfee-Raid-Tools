@@ -6,8 +6,9 @@ local ADDON, CRT = ...
 --   ctx    where the draft came from: { encounterID, id (a reminder) and reminder (its saved copy) },
 --          and for the editor also a note line (noteID, line, expected) or a saved alert (savedMode)
 --   draft  { saveAs, tag, difficulty, ph, timeText, timeTouched, keptTimes, spellID, iconType, iconID,
---          text, color, show = { alert, text, icon, bar, circle }, speak, count, glow, sound, warn,
---          linger, boss, baseDifficulty, difficultyTouched }
+--          text, color, show = { alert, text, icon, bar, circle }, speak, speakAt, count, glow, sound,
+--          warn, linger, boss, baseDifficulty, difficultyTouched }
+--          speakAt is nil (Speak at: On show) or "zero" (At 0), as a reminder keeps it
 -- Every function takes ctx and the draft it works on; none keeps either.
 -- A cooldown dropped on the Timeline (or placed from its menu) is saved at once, without the editor:
 -- Draft.PlaceCooldown, with Draft.CooldownDefaults (the one place those are set). A note line, from the
@@ -36,8 +37,9 @@ local SHOW_KEYS = { "alert", "text", "icon", "bar", "circle" }
 Draft.SHOW_KEYS = SHOW_KEYS
 local DEFAULT_WARN = 5
 
--- A cooldown placed from the Timeline's Cooldowns row: shown as Text only and read out, from this many
--- seconds ahead, gone at once (Linger), in the default colour. Draft.CooldownDefaults gives them.
+-- A cooldown placed from the Timeline's Cooldowns row: shown as Text only and read out at its time
+-- (Speak at: At 0), from this many seconds ahead, gone at once (Linger), in the default colour.
+-- Draft.CooldownDefaults gives them.
 local COOLDOWN_WARN = 5
 local COOLDOWN_LINGER = 0
 
@@ -137,7 +139,21 @@ end
 function Draft.NewDefaults()
     local d = Draft.New()
     local outputs, speech = Draft.Outputs(d)
-    return { saveAs = d.saveAs, tags = d.tag, outputs = outputs, speech = speech, warn = d.warn }
+    return { saveAs = d.saveAs, tags = d.tag, outputs = outputs, speech = speech, warn = d.warn,
+        speakAt = d.speakAt }
+end
+
+-- The Speak at choices: On show (key "show", saved as nil) and At 0 ("zero"), in the caller's words.
+function Draft.SpeakAtOptions(onShow, atZero)
+    return { { key = "show", label = onShow }, { key = "zero", label = atZero } }
+end
+
+-- Speak at as its dropdown's key, and a key back into the draft.
+function Draft.SpeakAtKey(draft)
+    return draft and draft.speakAt == "zero" and "zero" or "show"
+end
+function Draft.SetSpeakAt(draft, key)
+    draft.speakAt = key == "zero" and "zero" or nil
 end
 
 -- A saved reminder into the draft. Its times text is kept until Relative to or Time is touched.
@@ -153,6 +169,7 @@ function Draft.FromReminder(draft, r)
     local mode = r.speech or "text"
     draft.speak = speaks and mode ~= "count"
     draft.count = speaks and (mode == "textcount" or mode == "count")
+    draft.speakAt = r.speakAt == "zero" and "zero" or nil
     draft.glow = r.glow and true or false
     draft.sound = r.sound
     draft.warn = r.warn or DEFAULT_WARN
@@ -195,13 +212,15 @@ function Draft.ApplyFor(ctx, draft, tag)
     end
 end
 
--- What a placed cooldown starts with, as draft fields: Show as Text only, Speak the text, no count,
--- glow or sound, Show from COOLDOWN_WARN, Linger COOLDOWN_LINGER, the default colour, the spell's own
--- icon. A fresh table each call. Not the editor's new-alert defaults (Draft.New): a cooldown has its own.
--- No sound and the default colour are nil, which a table can't hold: Draft.ForCooldown clears them.
+-- What a placed cooldown starts with, as draft fields: Show as Text only, Speak the text at 0 (at the
+-- cast), no count, glow or sound, Show from COOLDOWN_WARN, Linger COOLDOWN_LINGER, the default colour,
+-- the spell's own icon. A fresh table each call. Not the editor's new-alert defaults (Draft.New): a
+-- cooldown has its own. No sound and the default colour are nil, which a table can't hold:
+-- Draft.ForCooldown clears them.
 function Draft.CooldownDefaults()
     return { show = { alert = false, text = true, icon = false, bar = false, circle = false }, speak = true,
-        count = false, glow = false, warn = COOLDOWN_WARN, linger = COOLDOWN_LINGER, iconType = "spell" }
+        speakAt = "zero", count = false, glow = false, warn = COOLDOWN_WARN, linger = COOLDOWN_LINGER,
+        iconType = "spell" }
 end
 
 -- A new draft for a cooldown: its spell, named after the spell unless text is given, with the cooldown
@@ -216,12 +235,12 @@ function Draft.ForCooldown(spellID, text, boss)
 end
 
 -- The cooldown defaults as a template's fields (CRT.AlertSaved:Save), for Save as template on a cooldown:
--- Only me, for everyone, Text, read out.
+-- Only me, for everyone, Text, read out at 0.
 function Draft.CooldownTemplate()
     local d = Draft.ForCooldown(nil, nil, nil)
     local outputs, speech = Draft.Outputs(d)
     return { saveAs = d.saveAs, tags = d.tag, outputs = outputs, speech = speech, warn = d.warn,
-        linger = d.linger, glow = d.glow or nil, sound = d.sound, color = copy(d.color) }
+        linger = d.linger, glow = d.glow or nil, sound = d.sound, color = copy(d.color), speakAt = d.speakAt }
 end
 
 -- Checks ----------------------------------------------------------------------------------------------
@@ -316,6 +335,7 @@ function Draft.BuildReminder(ctx, draft)
     if speech then
         r.speech = speech
     end
+    r.speakAt = draft.speakAt == "zero" and "zero" or nil
     r.warn = draft.warn
     r.linger = draft.linger > 0 and draft.linger or nil
     r.sound = draft.sound
@@ -385,6 +405,8 @@ function Draft.NoteTimer(ctx, draft)
         color = copy(draft.color),
         show = show,
         tts = draft.speak or nil,
+        -- ttsat:0 only with the text read out: a line without it speaks when it shows
+        speakAt = (draft.speak and draft.speakAt == "zero") and "zero" or nil,
         count = draft.count or nil,
         sound = draft.sound,
         glow = draft.glow or nil,

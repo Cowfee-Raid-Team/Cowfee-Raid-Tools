@@ -53,6 +53,9 @@ local TEXT = {
     speak = "Speak the text",
     count = "Count down 3 2 1",
     glow = "Glow at 0",
+    speakAt = "Speak at",
+    onShow = "On show",
+    atZero = "At 0",
     look = "Look and sound",
     text = "Text",
     icon = "Icon",
@@ -134,6 +137,7 @@ L.ICON_DROP_W = 90
 L.ID_X = L.COL2_X + L.LABEL_W + L.DROP_GAP + L.ICON_DROP_W + 8
 L.ID_W = L.COL2_X + L.COL_W - L.ID_X - L.HELP_ROOM
 L.SOUND_W = 160
+L.SPEAK_AT_LABEL, L.SPEAK_AT_W = 56, 104 -- Speak at, beside Glow under Count down
 L.BUTTON_H = 22
 L.TYPING_PAUSE = 0.5 -- seconds after the last key before a typed box saves
 local ANY = "any"
@@ -1054,6 +1058,15 @@ local function buildPanel(f)
         count = makeCheck(p, TEXT.count, L.INSET - 4 + L.CHECK_STEP, L.COL_Y - 98, change(function(on) cur.draft.count = on end)),
         glow = makeCheck(p, TEXT.glow, L.INSET - 4, L.COL_Y - 124, change(function(on) cur.draft.glow = on end)),
     }
+    -- Speak at: when Speak the text says it, On show or At 0; greyed while Speak the text is off
+    panel.speakAt = row(UI.Dropdown(p, TEXT.speakAt, {
+        labelWidth = L.SPEAK_AT_LABEL, width = L.SPEAK_AT_W,
+        enabledIf = function() return cur.draft ~= nil and cur.draft.speak and true or false end,
+        options = Draft.SpeakAtOptions(TEXT.onShow, TEXT.atZero),
+        get = function() return Draft.SpeakAtKey(cur.draft) end,
+        set = change(function(v) Draft.SetSpeakAt(cur.draft, v) end),
+    }))
+    panel.speakAt:SetPoint("TOPLEFT", L.INSET + L.CHECK_STEP, L.COL_Y - 122)
 
     -- Right column: Look and sound
     heading(p, TEXT.look, L.COL2_X, L.COL_Y)

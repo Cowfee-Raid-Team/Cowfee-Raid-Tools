@@ -48,8 +48,8 @@ end
 
 -- Fields only CRT reads. NSRT has its own words for some of these ideas (TTS:, countdown:, sound:,
 -- glowunit:) but not the same values, so they are left out rather than guessed.
-local CRT_ONLY = { show = true, tts = true, count = true, glow = true, warn = true, linger = true, icon = true,
-    sound = true }
+local CRT_ONLY = { show = true, tts = true, ttsat = true, count = true, glow = true, warn = true, linger = true,
+    icon = true, sound = true }
 
 local classIDs -- "DEATHKNIGHT" -> 6, built on first use
 
