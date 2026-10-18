@@ -1220,6 +1220,8 @@ local function buildPanel(f)
     panel.testBtn = makeButton(p, TEXT.test, L.TEST_W)
     panel.testBtn:SetPoint("BOTTOMRIGHT", -L.INSET - L.TEMPLATE_W - L.BUTTON_GAP, L.BOTTOM_Y)
     panel.testBtn:SetScript("OnClick", function()
+        -- typing still waiting is saved first, so the test (and the Rehearsal's saved copy) has it
+        saveTyped()
         if not cur.draft then
             return
         end

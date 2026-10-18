@@ -427,7 +427,16 @@ local function entries(run)
     return out
 end
 
-Alerts:RegisterBlock("note", { label = "Raid note", group = false, Entries = entries })
+-- Whether an item of this block is the note line a rehearsal's test replaces ({ noteID, line }, see
+-- Alerts:Collect): the run's note is that note and the item's timer (its index, "note:<n>") is on that line.
+local function replaces(run, rep, item)
+    local n = noteFor(run)
+    local index = type(item.id) == "string" and tonumber(item.id:match("^note:(%d+)$"))
+    local t = n and index and n.timers[index]
+    return t ~= nil and Engine.noteId ~= nil and Engine.noteId == rep.noteID and t.line == rep.line
+end
+
+Alerts:RegisterBlock("note", { label = "Raid note", group = false, Entries = entries, Replaces = replaces })
 
 -- On a pull, the note for the boss (preferring the same difficulty) becomes the note in use and runs.
 Alerts.onPull[#Alerts.onPull + 1] = function(run)

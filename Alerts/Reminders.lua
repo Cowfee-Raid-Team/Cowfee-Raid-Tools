@@ -380,8 +380,9 @@ local function rowFor(ref, encounterID, r)
 end
 
 -- The times of a reminder: { { ph, t } } and where they came from ("typed", "reference" or "none").
--- Typed text that does not read gives {}, "typed" and the message.
-function Reminders:Times(encounterID, r)
+-- Typed text that does not read gives {}, "typed" and the message. `ref` (optional) is the reference a
+-- reminder that follows one is read from, in place of its own (the Rehearsal's, for the editor's Test).
+function Reminders:Times(encounterID, r, ref)
     if type(r.times) == "string" and trim(r.times) ~= "" then
         local list, err = Reminders.ParseTimes(r.times)
         if not list then
@@ -389,7 +390,7 @@ function Reminders:Times(encounterID, r)
         end
         return list, "typed"
     end
-    local ref = referenceFor(encounterID, r)
+    ref = ref or referenceFor(encounterID, r)
     local row = ref and rowFor(ref, encounterID, r)
     if row then
         return Reminders.FromReference(ref, row), "reference"

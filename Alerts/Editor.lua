@@ -10,6 +10,10 @@ local ADDON, CRT = ...
 -- Test runs the draft as it stands on screen without saving anything: its items go to a block of their
 -- own ("minetest") that gives them out only to a run started with reason "test". A note line's item is
 -- the note block's own (CRT.NoteEngine.ItemFor) and stays a "note" item, so the note's switches apply.
+-- When the Timeline's Rehearsal window can open (CRT.TimelineRehearsalWindow:OpenAt), Test opens it
+-- instead, REHEARSAL_LEAD seconds before the alert's first fight second, playing the whole fight with the
+-- draft's items added and its saved version left out (Alerts:Start's opts.extra and opts.replaces). The
+-- quick test above is the fallback: no window, the window refusing (its reason printed), or no fight time.
 -- Export shows the draft as a note line in a copy box.
 -- Only the raid leader or an assistant changes the raid note (CRT.Notes:CanEditRaid): for anyone else
 -- Save as Raid note is greyed out, a new alert set to it opens as Only me, a note line opens read-only
@@ -99,6 +103,7 @@ local TEXT = {
     testInPull = "Test is off during a pull.",
     testTrigger = "Nothing to test: this alert starts in phase %s, which waits for its trigger.",
     testBlock = "Alert test",
+    noRehearsal = "%s Running the quick test instead.",
     reopen = "You can change the raid note now. Close this line and open it again to edit it.",
     noteLineTitle = "Raid note line",
     copyToMine = "Copy to my reminders",
@@ -115,6 +120,7 @@ CRT.AlertEditor = Editor
 
 local TEST_BLOCK = "minetest"
 local TEST_LEAD = 10 -- a test starts this many seconds before the alert's first time
+local REHEARSAL_LEAD = 8 -- Test opens the Rehearsal this many fight seconds before the alert's first time
 local ANY = "any"    -- the difficulty dropdown's key for "any difficulty" (saved as nil)
 local NO_SOUND = Draft.NO_SOUND
 local FRAME_NAME = "CowfeeRaidToolsAlertEditor"
@@ -681,9 +687,93 @@ function Editor:Save()
     return saveMine()
 end
 
--- Runs a draft alone as a test, starting TEST_LEAD seconds before its first time. Saves nothing. True, or
--- false and the message (none when the draft simply has no times). Only the editor's own draft is ever a
--- raid note line (noteTimers reads it).
+-- The draft's test items: a note line's through the note block's own builder (block "note"), a
+-- reminder's through Reminders:Items (ids "mine:test:n"). Returns items, the lowest phase and its first
+-- time, or nil when a reminder has no times. A saved alert has no time: ten seconds from the start.
+-- Only the editor's own draft is ever a raid note line (noteTimers reads it).
+local function testItemsFor(c, d)
+    local items, list = {}, {}
+    if d.saveAs == "note" then
+        for i, t in ipairs(noteTimers()) do
+            if c.savedMode then
+                t.ph, t.time = 1, TEST_LEAD
+            end
+            local item = CRT.NoteEngine.ItemFor(t, i, true)
+            item.id = "note:test:" .. i
+            item.block = "note"
+            items[i] = item
+            list[i] = { ph = t.ph, t = t.time }
+        end
+    else
+        local r = Draft.BuildReminder(c, d)
+        if c.savedMode then
+            r.times = Reminders.FormatTimes({ { ph = 1, t = TEST_LEAD } })
+        end
+        list = Reminders:Times(c.encounterID, r)
+        if #list == 0 then
+            return nil
+        end
+        items = Reminders:Items(c.encounterID, "test", r)
+    end
+    local lowest, first = firstTime(list)
+    return items, lowest, first
+end
+
+-- What the Rehearsal shows as "Testing: <name>": the draft's text, else its spell's name.
+local function testLabel(d)
+    if trim(d.text) ~= "" then
+        return trim(d.text)
+    end
+    return Reminders.SpellName(validID(d.spellID)) or TEXT.testBlock
+end
+
+-- The saved version of the tested alert, which the Rehearsal leaves out (Alerts:Start's opts.replaces).
+local function savedIdentity(c)
+    if c.id ~= nil then
+        return { block = "mine", id = c.id }
+    elseif c.noteID ~= nil and c.line ~= nil then
+        return { block = "note", noteID = c.noteID, line = c.line }
+    end
+    return nil
+end
+
+-- Opens the Rehearsal on the boss REHEARSAL_LEAD seconds before the draft's first fight second, playing
+-- the whole fight with the draft as it stands on screen in place of its saved version. True when it
+-- opened; false (the quick test runs instead) when the window is missing or can't open, or the draft has
+-- no fight time or boss. A reason from the window is printed once.
+local function rehearse(c, d)
+    local W = CRT.TimelineRehearsalWindow
+    if not (W and W.OpenAt) or c.savedMode or type(c.encounterID) ~= "number" then
+        return false
+    end
+    local first, difficulty = Draft.FirstFightTime(c, d)
+    if not first then
+        return false
+    end
+    local items = testItemsFor(c, d)
+    if not items or #items == 0 then
+        return false
+    end
+    for _, it in ipairs(items) do
+        it.block = it.block or TEST_BLOCK
+    end
+    -- OpenAt itself stops a quick test still going; a real pull never gets here (runTest)
+    local ok, why = W:OpenAt(c.encounterID, difficulty, first - REHEARSAL_LEAD, {
+        testing = testLabel(d),
+        alerts = { extra = items, replaces = savedIdentity(c) },
+    })
+    if ok then
+        return true
+    end
+    if type(why) == "string" and why ~= "" then
+        CRT:Print(string.format(TEXT.noRehearsal, why))
+    end
+    return false
+end
+
+-- Tests a draft: in the Rehearsal when it can open (rehearse), else alone as a quick test starting
+-- TEST_LEAD seconds before its first time. Saves nothing. True, or false and the message (none when the
+-- draft simply has no times).
 local function runTest(c, d)
     -- A real pull is never cut short by a test.
     if Alerts.running and Alerts.run and Alerts.run.reason == "encounter" then
@@ -693,32 +783,12 @@ local function runTest(c, d)
     if err then
         return false, err
     end
-    local items, lowest, first
-    if d.saveAs == "note" then
-        local list = {}
-        items = {}
-        for i, t in ipairs(noteTimers()) do
-            if c.savedMode then
-                t.ph, t.time = 1, TEST_LEAD -- a saved alert has no time: ten seconds from the start
-            end
-            local item = CRT.NoteEngine.ItemFor(t, i, true)
-            item.id = "note:test:" .. i
-            item.block = "note"
-            items[i] = item
-            list[i] = { ph = t.ph, t = t.time }
-        end
-        lowest, first = firstTime(list)
-    else
-        local r = Draft.BuildReminder(c, d)
-        if c.savedMode then
-            r.times = Reminders.FormatTimes({ { ph = 1, t = TEST_LEAD } })
-        end
-        local list = Reminders:Times(c.encounterID, r)
-        if #list == 0 then
-            return false
-        end
-        lowest, first = firstTime(list)
-        items = Reminders:Items(c.encounterID, "test", r)
+    if rehearse(c, d) then
+        return true
+    end
+    local items, lowest, first = testItemsFor(c, d)
+    if not items then
+        return false
     end
     testItems = items
     Alerts:Start(c.encounterID or 0, nil, "test", {
