@@ -63,7 +63,8 @@ local function shareHelp()
 end
 
 local ROW_H = 24
-local MAX_ROWS = 9
+local BUTTONS_H = 4 * (24 + 4) + 26 -- the note buttons and Send to, at the bottom of the list's column
+local LIST_SCROLL_W = 22 -- the list's scroll bar
 -- The Notes tab in three columns across the page (UI.PAGE_W): the notes list, the note text, and your
 -- personal note with Try it. The tab is UI.PAGE_H - 66 high, under the tabs.
 local LIST_W = 250
@@ -88,8 +89,10 @@ local page, rows, editor, status, selected = nil, {}, nil, nil, nil
 -- text shown is the note that runs; clicking another note still shows that one until the next change.
 local followedActive
 local kindTabs, toPersonal = {}, nil -- the Shared and Personal tabs, and Make my personal note
+local makeRow -- makes the notes list's i-th row (set in build)
 local diffDropdown, diffChips = nil, {} -- the list's difficulty filter, for the Dropdown and Chips styles
 local LIST_TOP = -36 -- where the notes list starts; a filter row takes one row of it
+local listScroll, listChild -- the notes list scrolls, from the top down to the note buttons
 local useButton, shareButton -- Use this note and Share to raid, for shared notes only
 local controls = {}
 local importDialog
@@ -277,13 +280,18 @@ refresh = function()
     toPersonal:SetShown(listKind == "shared")
     useButton:SetShown(listKind == "shared")
     shareButton:SetShown(listKind == "shared")
-    local shownRows = MAX_ROWS - math.floor((LIST_TOP - top) / ROW_H)
-    for i = 1, MAX_ROWS do
+    -- the list scrolls under its filter row (when there is one) down to the note buttons
+    listScroll:ClearAllPoints()
+    listScroll:SetPoint("TOPLEFT", 8, top)
+    listScroll:SetPoint("BOTTOMRIGHT", page, "TOPLEFT", 8 + LIST_W - LIST_SCROLL_W, -(TAB_H - BUTTONS_H - 6))
+    for i = #rows + 1, #list do
+        rows[i] = makeRow(i)
+    end
+    listChild:SetHeight(math.max(1, #list * ROW_H))
+    for i = 1, #rows do
         local row = rows[i]
-        local item = i <= shownRows and list[i] or nil
+        local item = list[i]
         local entry = item and item.entry
-        row:ClearAllPoints()
-        row:SetPoint("TOPLEFT", 8, top - (i - 1) * ROW_H)
         row.heading = item and item.heading or nil
         if item and item.heading then
             -- a difficulty heading: gold, no box, click to fold it
@@ -434,10 +442,16 @@ local function buildNotes(pf)
         diffChips[key] = c
     end
 
-    for i = 1, MAX_ROWS do
-        local row = CreateFrame("Button", nil, pf, "BackdropTemplate")
-        row:SetSize(LIST_W, ROW_H - 2)
-        row:SetPoint("TOPLEFT", 8, -36 - (i - 1) * ROW_H)
+    -- the notes list: a scroll frame from under the tabs to the note buttons, holding a row per note or
+    -- heading (made as the list grows), scrolled with the mouse wheel or its bar
+    listScroll = CreateFrame("ScrollFrame", "CowfeeRaidToolsNotesListScroll", pf, "UIPanelScrollFrameTemplate")
+    listChild = CreateFrame("Frame", nil, listScroll)
+    listChild:SetSize(LIST_W - LIST_SCROLL_W, 1)
+    listScroll:SetScrollChild(listChild)
+    makeRow = function(i)
+        local row = CreateFrame("Button", nil, listChild, "BackdropTemplate")
+        row:SetSize(LIST_W - LIST_SCROLL_W, ROW_H - 2)
+        row:SetPoint("TOPLEFT", 0, -(i - 1) * ROW_H)
         skin(row, 0.45)
         row.text = row:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
         row.text:SetPoint("LEFT", 8, 0)
@@ -452,11 +466,12 @@ local function buildNotes(pf)
             selected = self.id
             refresh()
         end)
-        rows[i] = row
+        return row
     end
 
+    -- the note buttons, at the bottom of the column (BUTTONS_H high, Send to the last row)
     local import = makeButton(pf, "Import", 122)
-    import:SetPoint("TOPLEFT", 8, -36 - MAX_ROWS * ROW_H - 6)
+    import:SetPoint("TOPLEFT", 8, -(TAB_H - BUTTONS_H))
     import:SetScript("OnClick", function()
         local d = getImportDialog()
         d.edit:SetText("")
