@@ -3359,7 +3359,9 @@ function Methods:DrawPhases(phases, length, height)
             -- the part a chosen order put in this phase is added to the drawn label only: the alerts
             -- read a phase's number from phase.label, which stays as written
             local part = self.extra and self.extra.parts and self.extra.parts[i]
-            local label = phase.label
+            -- a phase with its stage's name shows that ("Intermission: Ritual of Awakening"); its number
+            -- (P1.5) stays in the reference text for the alerts
+            local label = phase.title or phase.label
             if part then
                 label = label and (label .. " \194\183 " .. part) or part
             end

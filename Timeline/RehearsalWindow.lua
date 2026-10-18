@@ -695,7 +695,7 @@ function RehearsalWindow:DrawStrip(now)
             local label = pooledLabel(strip.phaseLabels, p, strip)
             label:ClearAllPoints()
             label:SetPoint("TOPLEFT", strip, "TOPLEFT", x + 3, -1)
-            label:SetText(ph.label or "")
+            label:SetText(ph.title or ph.label or "") -- the stage's name when it has one
             label:SetTextColor(mocha("latte"))
             label:Show()
         end

@@ -96,7 +96,7 @@ function Rehearsal.Build(lanes, extra)
         return order[a] < order[b]
     end)
     for _, ph in ipairs(extra and extra.phases or {}) do
-        if type(ph.t) == "number" then phases[#phases + 1] = { t = ph.t, label = ph.label } end
+        if type(ph.t) == "number" then phases[#phases + 1] = { t = ph.t, label = ph.label, title = ph.title } end
     end
     local porder = {}
     for i, p in ipairs(phases) do porder[p] = i end

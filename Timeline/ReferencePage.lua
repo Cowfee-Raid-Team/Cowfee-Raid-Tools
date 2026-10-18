@@ -613,9 +613,9 @@ function ReferencePage.Build(f, ctx)
             return
         end
         MenuUtil.CreateContextMenu(l, function(_, root)
-            root:CreateTitle((p.label or "") .. (p.title and ("  " .. p.title) or ""))
+            root:CreateTitle(p.title or p.label or "")
             root:CreateButton(TEXT_MENU.setStart, function()
-                askPhaseStart(string.format(TEXT_MENU.phasePrompt, p.label or ""), p.t and View.Format(p.t) or "", function(timeText)
+                askPhaseStart(string.format(TEXT_MENU.phasePrompt, p.title or p.label or ""), p.t and View.Format(p.t) or "", function(timeText)
                     if timeText ~= "" and not Reference.ParseTime(timeText) then
                         status:SetText("Not a time: " .. timeText)
                         status:SetTextColor(1, 0.3, 0.3)
@@ -763,7 +763,7 @@ function ReferencePage.Build(f, ctx)
         l.boss, l.row, l.refRow, l.phase = nil, nil, nil, p
         l.icon:Hide()
         l.name:SetPoint("LEFT", 0, 0)
-        l.name:SetText((p.label or "") .. (p.title and ("  " .. p.title) or ""))
+        l.name:SetText(p.title or p.label or "") -- "Intermission: Ritual of Awakening", not its number
         l.name:SetTextColor(1, 0.82, 0)
         l.tag:SetText("")
         l.id:SetText(p.pull and "" or (p.t and View.Format(p.t) or TEXT_MENU.noStart))
