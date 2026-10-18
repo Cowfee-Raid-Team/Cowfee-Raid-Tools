@@ -396,6 +396,9 @@ function View.Create(parent)
     local f = CreateFrame("Frame", nil, parent)
     f:SetAllPoints(parent)
     view.frame = f
+    if CRT.TimelineUndo then
+        CRT.TimelineUndo:Watch(f) -- changes made while this view shows can be undone
+    end
 
     -- the time under the cursor, in the empty corner above the lane names
     view.hover = f:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
@@ -508,16 +511,16 @@ function View.Create(parent)
         view:ClearSelection()
         view:CatchKeys(false)
     end)
-    -- the keys for Escape: taken again on show, and once combat ends for a selection made during it
+    -- the keys (Escape, Ctrl+Z and Ctrl+Y): taken on show, and once combat ends when it showed during it
     f:SetScript("OnShow", function()
-        view:CatchKeys(view.selected ~= nil)
+        view:CatchKeys(true)
     end)
     if f.RegisterEvent then
         f:RegisterEvent("PLAYER_REGEN_ENABLED")
     end
     f:SetScript("OnEvent", function(_, event)
         if event == "PLAYER_REGEN_ENABLED" then
-            view:CatchKeys(view.selected ~= nil)
+            view:CatchKeys(f:IsShown())
         end
     end)
     -- the markers follow the notes and the reminders; only a shown view redraws
@@ -2611,7 +2614,6 @@ function Methods:DrawSelection()
     local m = self:SelectedMark()
     if not m and self.selected ~= nil then
         self.selected = nil
-        self:CatchKeys(false)
     end
     for _, f in ipairs(self.flags) do
         local on = m ~= nil and f:IsShown() and f.mark == m
@@ -2646,7 +2648,6 @@ end
 -- Selects mark m's flag (the only one selected).
 function Methods:Select(m)
     self.selected = markKey(m)
-    self:CatchKeys(self.selected ~= nil)
     self:DrawSelection()
 end
 
@@ -2655,12 +2656,11 @@ function Methods:ClearSelection()
         return
     end
     self.selected = nil
-    self:CatchKeys(false)
     self:DrawSelection()
 end
 
--- While a flag is selected the view takes the keys so Escape can clear it; every other key goes on to the
--- game. Never taken in combat, where letting keys through can't be changed.
+-- While the view shows it takes the keys, for Escape (clearing a selection) and Ctrl+Z and Ctrl+Y; every other
+-- key goes on to the game. Never taken in combat, where letting keys through can't be changed.
 function Methods:CatchKeys(on)
     local f = self.frame
     if not (f and f.EnableKeyboard) then
@@ -2713,16 +2713,29 @@ local function escapeWindowShown(view)
 end
 
 -- Escape clears the selection and stops there, unless a window Escape closes is shown (the alert editor):
--- then it goes on to close it. Any other key passes through.
+-- then it goes on to close it. Ctrl+Z undoes the last change and Ctrl+Y or Ctrl+Shift+Z redoes it
+-- (Timeline/Undo.lua). Any other key passes through.
 function Methods:KeyDown(key)
     local escape = key == "ESCAPE" and self.selected ~= nil
     local keep = escape and not escapeWindowShown(self)
+    local ctrl = IsControlKeyDown and IsControlKeyDown()
+    local undo = ctrl and key == "Z" and not (IsShiftKeyDown and IsShiftKeyDown())
+    local redo = ctrl and (key == "Y" or (key == "Z" and not undo))
+    local Undo = CRT.TimelineUndo
+    if Undo and (undo or redo) then
+        keep = true
+    end
     local f = self.frame
     if f.SetPropagateKeyboardInput and not (InCombatLockdown and InCombatLockdown()) then
         f:SetPropagateKeyboardInput(not keep)
     end
     if escape then
         self:ClearSelection()
+    end
+    if Undo and undo then
+        Undo:Undo()
+    elseif Undo and redo then
+        Undo:Redo()
     end
 end
 

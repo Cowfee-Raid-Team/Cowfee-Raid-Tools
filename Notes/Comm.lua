@@ -265,7 +265,16 @@ end
 -- Receiving ---------------------------------------------------------------------------------------
 
 local function received(text, short)
-    local newId, result = Notes:Import(text, short)
+    local newId, result
+    -- someone else's note is the Timeline's new starting point, never something Ctrl+Z puts back
+    local function import()
+        newId, result = Notes:Import(text, short)
+    end
+    if CRT.TimelineUndo then
+        CRT.TimelineUndo:Quietly(import)
+    else
+        import()
+    end
     if newId then
         Notes:SetActive(newId)
         -- the note windows show a "note updated" stamp

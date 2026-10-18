@@ -73,6 +73,7 @@ Timeline\ReviewTab.lua
 Timeline\SettingsTab.lua
 Timeline\Page.lua
 Alerts\Reminders.lua
+Timeline\Undo.lua
 Alerts\PhaseDatabase.lua
 Alerts\Phases.lua
 Alerts\Areas.lua
