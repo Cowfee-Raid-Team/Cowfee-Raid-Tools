@@ -181,30 +181,36 @@ function NSRT.Encode(event, ...)
     return C_EncodingUtil.EncodeBase64(packed, Enum.Base64Variant.StandardUrlSafe)
 end
 
+-- Each step unwraps one layer of NSRT's wire format; any failure means "not an NSRT message".
+local UNWRAP = {
+    function(s) return C_EncodingUtil.DecodeBase64(s, Enum.Base64Variant.StandardUrlSafe) end,
+    function(s) return C_EncodingUtil.DecompressString(s, Enum.CompressionMethod.Deflate) end,
+    function(s) return C_EncodingUtil.DeserializeCBOR(s) end,
+}
+
+-- True when a decoded value has the shape NSRT sends: an event name and a counted argument list.
+local function isMessage(value)
+    if type(value) ~= "table" then return false end
+    local event, args = value.event, value.args
+    if type(event) ~= "string" or type(args) ~= "table" then return false end
+    local count = args.n
+    return type(count) == "number" and count % 1 == 0 and count >= 1 and count <= WIRE.maxArgs
+end
+
 -- A received NSRT message back into { event, args }, or nil if it isn't a well-formed one.
 function NSRT.Decode(text)
     if type(text) ~= "string" or text:find(WIRE.validText) then
         return nil
     end
-    local ok, packed = pcall(C_EncodingUtil.DecodeBase64, text, Enum.Base64Variant.StandardUrlSafe)
-    if not ok or not packed then
-        return nil
+    local value = text
+    for _, step in ipairs(UNWRAP) do
+        local ok, out = pcall(step, value)
+        if not ok or out == nil then
+            return nil
+        end
+        value = out
     end
-    local cbor
-    ok, cbor = pcall(C_EncodingUtil.DecompressString, packed, Enum.CompressionMethod.Deflate)
-    if not ok or not cbor then
-        return nil
-    end
-    local payload
-    ok, payload = pcall(C_EncodingUtil.DeserializeCBOR, cbor)
-    if not ok or type(payload) ~= "table" or type(payload.event) ~= "string" or type(payload.args) ~= "table" then
-        return nil
-    end
-    local n = payload.args.n
-    if type(n) ~= "number" or n < 1 or n > WIRE.maxArgs or n ~= math.floor(n) then
-        return nil
-    end
-    return payload
+    return isMessage(value) and value or nil
 end
 
 -- Sends an encoded message to the group (or, whisper = true, under NSRT's whisper prefix). done(sent,

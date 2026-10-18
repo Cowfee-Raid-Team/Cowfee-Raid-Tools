@@ -9,6 +9,7 @@ local ADDON, CRT = ...
 --   /crt dev <target> preview [note]  the note as that addon's text, printed, not sent
 --   /crt dev <target> samples         sample CRT lines and what they become, for targets that have them
 --   /crt dev all send [note]          send to every target that is loaded
+--   /crt dev nsrt selftest            NSRT.Encode then NSRT.Decode round trips, and Decode's rejections
 -- <target> is a target's key: nsrt or mrt.
 
 local Targets = CRT.NoteTargets
@@ -94,6 +95,45 @@ local function samples(target)
     end
 end
 
+-- Encodes any table the way NSRT's wire does, for payloads NSRT.Encode would never make.
+local function encodeRaw(payload)
+    local cbor = C_EncodingUtil.SerializeCBOR(payload)
+    local packed = C_EncodingUtil.CompressString(cbor, Enum.CompressionMethod.Deflate, Enum.CompressionLevel.OptimizeForSize)
+    return C_EncodingUtil.EncodeBase64(packed, Enum.Base64Variant.StandardUrlSafe)
+end
+
+-- NSRT.Decode against what it must accept and reject. Prints each case and the total.
+local function selftest()
+    local NSRT = CRT.NSRT
+    local passed, total = 0, 0
+    local function case(name, ok)
+        total = total + 1
+        if ok then
+            passed = passed + 1
+        end
+        print(string.format("  %s %s", ok and "|cff60ff60pass|r" or "|cffff6060FAIL|r", name))
+    end
+    CRT:Print("NSRT Decode self-test:")
+    local good = NSRT.Encode("CRT_SELFTEST", "text", 42, true)
+    local back = NSRT.Decode(good)
+    case("round trip keeps the event", back and back.event == "CRT_SELFTEST")
+    case("round trip keeps the arguments", back and back.args.n == 4 and back.args[2] == "text" and back.args[3] == 42
+        and back.args[4] == true and type(back.args[1]) == "string")
+    case("a character outside URL-safe Base64 is rejected", NSRT.Decode(good:sub(1, 4) .. "*" .. good:sub(6)) == nil)
+    case("a truncated message is rejected", NSRT.Decode(good:sub(1, math.floor(#good / 2))) == nil)
+    case("an empty string is rejected", NSRT.Decode("") == nil)
+    case("not a string is rejected", NSRT.Decode(nil) == nil and NSRT.Decode(5) == nil)
+    case("args.n = 0 is rejected", NSRT.Decode(encodeRaw({ event = "X", args = { n = 0 } })) == nil)
+    case("args.n = 17 is rejected", NSRT.Decode(encodeRaw({ event = "X", args = { n = 17 } })) == nil)
+    case("args.n = 1.5 is rejected", NSRT.Decode(encodeRaw({ event = "X", args = { n = 1.5 } })) == nil)
+    case("args.n = 16 is accepted", NSRT.Decode(encodeRaw({ event = "X", args = { n = 16 } })) ~= nil)
+    case("args.n = 1 is accepted", NSRT.Decode(encodeRaw({ event = "X", args = { n = 1 } })) ~= nil)
+    case("no event is rejected", NSRT.Decode(encodeRaw({ args = { n = 1 } })) == nil)
+    case("no args is rejected", NSRT.Decode(encodeRaw({ event = "X" })) == nil)
+    case("a value that isn't a table is rejected", NSRT.Decode(encodeRaw("just text")) == nil)
+    CRT:Print(string.format("NSRT Decode self-test: %d of %d passed.", passed, total))
+end
+
 local function run(target, verb, arg)
     if verb == "send" then
         local id, record = findNote(arg)
@@ -106,6 +146,11 @@ local function run(target, verb, arg)
         status(target)
     elseif verb == "preview" then
         preview(target, arg)
+    elseif verb == "selftest" and target.key == "nsrt" then
+        local ok, err = pcall(selftest)
+        if not ok then
+            CRT:Print("NSRT Decode self-test stopped: " .. tostring(err))
+        end
     elseif verb == "samples" then
         samples(target)
     else
