@@ -264,11 +264,44 @@ end
 
 -- Receiving ---------------------------------------------------------------------------------------
 
+-- The guild of a group member, by name; nil when they have none or aren't found.
+local function guildOf(name)
+    local prefix = IsInRaid() and "raid" or "party"
+    for i = 1, GetNumGroupMembers() do
+        local unit = prefix .. i
+        if UnitName(unit) == name then
+            return GetGuildInfo(unit)
+        end
+    end
+    return nil
+end
+Comm.GuildOf = guildOf
+
+-- A note as received: an older "Sent by:" line taken off, and the sender's put at the bottom, so the note
+-- says who shared it (and the Assignments window shows it).
+local function tagSender(text, short)
+    local lines = {}
+    for line in ((text or "") .. "\n"):gmatch("(.-)\r?\n") do
+        if not line:lower():find("^%s*sent by:") then
+            lines[#lines + 1] = line
+        end
+    end
+    while #lines > 0 and lines[#lines]:match("^%s*$") do
+        lines[#lines] = nil
+    end
+    lines[#lines + 1] = "Sent by: " .. short
+    return table.concat(lines, "\n")
+end
+Comm.TagSender = tagSender
+
 local function received(text, short)
     local newId, result
+    local guild = guildOf(short)
+    local source = guild and ("guild:" .. guild) or ("player:" .. short)
+    text = tagSender(text, short)
     -- someone else's note is the Timeline's new starting point, never something Ctrl+Z puts back
     local function import()
-        newId, result = Notes:Import(text, short)
+        newId, result = Notes:Import(text, short, nil, source)
     end
     if CRT.TimelineUndo then
         CRT.TimelineUndo:Quietly(import)

@@ -440,6 +440,29 @@ end
 
 Alerts:RegisterBlock("note", { label = "Raid note", group = false, Entries = entries, Replaces = replaces })
 
+-- Your personal note for the run's boss (Notes:PersonalFor): every line of it is yours, alerting as your
+-- own note lines do, on every pull of that boss whichever shared note runs. Never shared.
+local function personalEntries(run)
+    run = run or Alerts.run
+    if not (run and run.encounterID) then
+        return {}
+    end
+    local id = Notes.PersonalFor and Notes:PersonalFor(run.encounterID, run.difficultyName)
+    local n = id and Notes:Parsed(id)
+    if not n then
+        return {}
+    end
+    local out = {}
+    for index, t in ipairs(n.timers) do
+        local item = Engine.ItemFor(t, index, true)
+        item.id = "personal:" .. index
+        out[#out + 1] = item
+    end
+    return out
+end
+
+Alerts:RegisterBlock("personal", { label = "Your personal note", group = false, Entries = personalEntries })
+
 -- On a pull, the note for the boss (preferring the same difficulty) becomes the note in use and runs.
 Alerts.onPull[#Alerts.onPull + 1] = function(run)
     note = nil

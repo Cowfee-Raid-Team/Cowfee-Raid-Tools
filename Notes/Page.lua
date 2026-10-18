@@ -17,8 +17,8 @@ local Targets = CRT.NoteTargets
 local TEXT = {
     shared = "Shared",
     personal = "Personal",
-    toPersonal = "Save to personal",
-    kindHelp = "Shared: the raid's notes. A note the raid lead shares replaces the shared one for that boss, and becomes the note in use.\n\nPersonal: your own copies. Save to personal (on the Shared tab) copies the selected note with your changes, and a share never replaces it. Use this note on a copy to run it on the pull instead of the shared note; a new share from the raid lead puts the shared note back in use.",
+    toPersonal = "Make my personal note",
+    kindHelp = "Shared: the raid's notes, kept one per guild. A share from someone in a guild replaces that guild's note for the boss, and a share from another guild (a pickup group) is a note of its own, so it never replaces yours. Each says who sent it at the bottom. The newest share is the note in use, and the shared note in use runs on the pull.\n\nPersonal: your own lines for a boss, only on this computer. They run on every pull of that boss, alongside the shared note, and a share never touches them. Make my personal note (on the Shared tab) starts one for the selected note's boss; type your lines under its first line and save",
     noteText = "Note text",
     saveText = "Save text changes",
     saved = "Saved.",
@@ -84,7 +84,8 @@ local page, rows, editor, status, selected = nil, {}, nil, nil, nil
 -- Timeline, received from the raid leader, or made from the Timeline), the page selects it, so the
 -- text shown is the note that runs; clicking another note still shows that one until the next change.
 local followedActive
-local kindTabs, toPersonal = {}, nil -- the Shared and Personal tabs, and Save to personal
+local kindTabs, toPersonal = {}, nil -- the Shared and Personal tabs, and Make my personal note
+local useButton, shareButton -- Use this note and Share to raid, for shared notes only
 local controls = {}
 local importDialog
 local refresh
@@ -222,12 +223,16 @@ refresh = function()
         UI:SetTabSelected(kindTabs[kind], kind == listKind)
     end
     toPersonal:SetShown(listKind == "shared")
+    useButton:SetShown(listKind == "shared")
+    shareButton:SetShown(listKind == "shared")
     for i = 1, MAX_ROWS do
         local row = rows[i]
         local entry = list[i]
         if entry then
             local r = entry.record
+            -- a shared note says who sent it: "Nek'zali (Mythic) - Solex"
             local label = (r.name or "Note") .. (r.difficulty and (" (" .. r.difficulty .. ")") or "")
+                .. ((not r.personal and r.from) and (" - " .. r.from) or "")
             if entry.id == activeId then
                 label = label .. "  |cff55dd55active|r"
             end
@@ -348,6 +353,7 @@ local function buildNotes(pf)
         end
     end)
     local active = makeButton(pf, "Use this note", 122)
+    useButton = active
     active:SetPoint("TOPLEFT", import, "BOTTOMLEFT", 0, -4)
     active:SetScript("OnClick", function()
         if selected then
@@ -355,6 +361,7 @@ local function buildNotes(pf)
         end
     end)
     local share = makeButton(pf, "Share to raid", 122)
+    shareButton = share
     share:SetPoint("LEFT", active, "RIGHT", 6, 0)
     share:SetScript("OnClick", function()
         -- With no note picked, CRT sends the Empty note (Notes/Comm.lua) and the other addons clear theirs.
@@ -405,9 +412,13 @@ local function buildNotes(pf)
         if not selected then
             return
         end
-        local id, message = Notes:SaveToPersonal(selected)
+        local record = Notes:Get(selected)
+        local id = record and Notes:MakePersonal(record.encounterID, record.difficulty, record.name)
         if id then
-            CRT:Print(message)
+            listKind, selected = "personal", id
+            refresh()
+        else
+            CRT:Print("This note has no boss (EncounterID), so there is no personal note to make for it.")
         end
     end)
     sendTo:SetPoint("TOPLEFT", toPersonal, "BOTTOMLEFT", 0, -4)

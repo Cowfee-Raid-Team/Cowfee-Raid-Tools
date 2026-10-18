@@ -1125,10 +1125,21 @@ function Methods:NoteAndReminderMarks(lanes, length)
         m.row = m.kind == "note" and rowFor(lanes, spellID, text) or nil
         out[#out + 1] = m
     end
+    -- the notes that run: for each difficulty, the shared note in use (one of the guilds' notes), and
+    -- your personal notes, which always run beside it
     local Notes = CRT.Notes
+    local runs = {}
     if Notes and Notes.List then
         for _, n in ipairs(Notes:List()) do
-            if n.record.encounterID == encounterID then
+            local r = n.record
+            if r.encounterID == encounterID then
+                runs[n.id] = r.personal or Notes:FindForEncounter(encounterID, r.difficulty) == n.id
+            end
+        end
+    end
+    if Notes and Notes.List then
+        for _, n in ipairs(Notes:List()) do
+            if n.record.encounterID == encounterID and runs[n.id] then
                 local note = Notes:Parsed(n.id)
                 local rawLines = Notes:RawLines(n.id) -- the lines as drawn, so a move can tell one has changed
                 for _, timer in ipairs(note and note.timers or {}) do
