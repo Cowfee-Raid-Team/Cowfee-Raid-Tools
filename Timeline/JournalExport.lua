@@ -1,7 +1,7 @@
 local ADDON, CRT = ...
 
--- Export reference: a button on the game's Encounter Journal, beside the boss's name while a boss is
--- open. It reads that boss (EncounterJournal.encounterID, set by EncounterJournal_DisplayEncounter) and the
+-- Export reference: a button on the game's Encounter Journal, on the row of its tabs at the bottom right
+-- (clear of the boss's name and the difficulty dropdown), while a boss is open. It reads that boss (EncounterJournal.encounterID, set by EncounterJournal_DisplayEncounter) and the
 -- difficulty picked in the Journal (EJ_GetDifficulty), and writes a starting reference timeline for it:
 -- the Boss, Difficulty and Encounter lines, then one line per Journal ability with its spell ID, each a
 -- "#" line (skipped when read) until it gets times. It opens in a copy window with Send to Timeline, which
@@ -92,9 +92,10 @@ local function build()
     if button or not (info and info.encounterTitle) then
         return
     end
+    -- the boss panel holds it, so it hides with the panel; it sits under the Journal's bottom right corner
     button = CreateFrame("Button", nil, info, "UIPanelButtonTemplate")
-    button:SetSize(130, 22)
-    button:SetPoint("LEFT", info.encounterTitle, "RIGHT", 10, 0)
+    button:SetSize(140, 24)
+    button:SetPoint("TOPRIGHT", EncounterJournal, "BOTTOMRIGHT", -6, -2)
     button:SetText(TEXT.button)
     button:SetScript("OnClick", function()
         Export:Run()
