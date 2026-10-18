@@ -451,6 +451,8 @@ makeFont("CRTFontHighlight", GameFontHighlight)
 makeFont("CRTFontDisable", GameFontDisable)
 makeFont("CRTFontSmall", GameFontHighlightSmall)
 makeFont("CRTFontDisableSmall", GameFontDisableSmall)
+-- a step under the small text, for fine print such as the Raid Notes note's details
+makeFont("CRTFontDisableTiny", GameFontDisableSmall, CRT.FONT_SCALE * 0.85)
 makeFont("CRTFontLarge", GameFontNormalLarge)
 -- The game's own sizes, unscaled, for the small title-bar and page buttons, the standard buttons,
 -- the dropdown and slider text, and the edit boxes. They follow the General Settings font too.

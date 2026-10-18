@@ -1,7 +1,9 @@
 local ADDON, CRT = ...
 
 -- Stored raid notes and their settings, in CRTDB.notes (per player):
---   list[id] = { raw, name, encounterID, difficulty, updated, from, presetId, personal, source }
+--   list[id] = { raw, name, encounterID, difficulty, updated, updatedBy, from, sharedAt, presetId, personal,
+--                source, via }: updated and updatedBy the last change and who made it, from and sharedAt who
+--                shared it to you and when
 -- A note is shared or, with personal = true, your own.
 --   Shared: the raid's notes. One from someone in your own guild is kept as your guild's note (source
 --   "guild:<name>"): the next share from anyone in your guild replaces it for that boss and difficulty, so
@@ -30,6 +32,11 @@ local spells = {} -- spellId -> { name, icon }
 
 local function ndb()
     return CRT.db.notes
+end
+
+-- Your name, for a note you change (updatedBy).
+local function me()
+    return UnitName and UnitName("player") or nil
 end
 
 local function isSecret(value)
@@ -425,6 +432,10 @@ function Notes:Import(text, from, personal, source, via)
     record.difficulty = note.difficulty
     record.updated = date("%Y-%m-%d %H:%M")
     record.from = from
+    record.updatedBy = from or me()
+    if from then
+        record.sharedAt = record.updated
+    end
     record.personal = personal and true or nil
     record.source = (not personal) and source or nil
     record.via = via or record.via
@@ -456,6 +467,7 @@ function Notes:UpdateRaw(id, text)
     record.encounterID = note.encounterID or record.encounterID
     record.difficulty = note.difficulty or record.difficulty
     record.updated = date("%Y-%m-%d %H:%M")
+    record.updatedBy = me() -- your own change
     parsed[id] = nil
     self:Parsed(id)
     self:Fire()

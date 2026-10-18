@@ -331,8 +331,13 @@ refresh = function()
 
     local lines = {}
     if record then
-        lines[#lines + 1] = "Updated " .. (record.updated or "?") .. (record.from and (", shared by " .. record.from) or "")
-            .. (record.via and (" (" .. record.via .. ")") or "")
+        -- the note's details, one per line: its last change, who shared it, its roster
+        local by = record.updatedBy or record.from
+        lines[#lines + 1] = "Last updated: " .. (record.updated or "?") .. (by and (" - " .. by) or "")
+        if record.from then
+            lines[#lines + 1] = "Shared by: " .. record.from .. ", " .. (record.sharedAt or record.updated or "?")
+                .. (record.via and (" (" .. record.via .. ")") or "")
+        end
         if record.presetId and CRT.Groups:Find(record.presetId) then
             lines[#lines + 1] = "Roster: linked to a Raid Groups layout"
         end
@@ -593,7 +598,7 @@ local function buildNotes(pf)
     end
     controls[#controls + 1] = lockHelp
 
-    status = pf:CreateFontString(nil, "OVERLAY", "CRTFontDisableSmall")
+    status = pf:CreateFontString(nil, "OVERLAY", _G.CRTFontDisableTiny and "CRTFontDisableTiny" or "CRTFontDisableSmall")
     status:SetPoint("TOPLEFT", box, "BOTTOMLEFT", 0, -8)
     status:SetPoint("RIGHT", save, "LEFT", -8, 0)
     status:SetJustifyH("LEFT")
