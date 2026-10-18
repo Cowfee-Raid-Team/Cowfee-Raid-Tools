@@ -56,11 +56,12 @@ function Targets.ChatLocked()
         or false
 end
 
--- The checks every target makes before its own: combat, a group, chat lockdown. Returns a reason or nil.
-function Targets.Blocked()
+-- The checks every target makes before its own: combat, a group (unless soloOK, for a target that can
+-- send to yourself), chat lockdown. Returns a reason or nil.
+function Targets.Blocked(soloOK)
     if InCombatLockdown() then
         return "you are in combat."
-    elseif not IsInGroup() then
+    elseif not soloOK and not IsInGroup() then
         return "you are not in a group."
     elseif Targets.ChatLocked() then
         return "addon messages are locked down right now (an encounter or a Mythic+ run)."

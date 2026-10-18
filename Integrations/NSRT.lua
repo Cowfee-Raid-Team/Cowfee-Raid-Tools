@@ -32,7 +32,7 @@ local WIRE = {
 local NSRT = {
     key = "nsrt",
     label = "Northern Sky",
-    help = "Northern Sky (NSRT) puts the note in NSRT's shared reminder note: its timed lines become NSRT reminders and the rest shows in NSRT's note frame, for every raider running NSRT. CRT's own raid note is not changed. In a raid you must be the leader or an assistant; in a party, the leader.",
+    help = "Northern Sky (NSRT) puts the note in NSRT's shared reminder note: its timed lines become NSRT reminders and the rest shows in NSRT's note frame, for every raider running NSRT. CRT's own raid note is not changed. In a raid you must be the leader or an assistant; in a party, the leader. It needs a group: NSRT takes a shared note only from a group leader or assistant, so it can't be sent to yourself.",
 }
 CRT.NSRT = NSRT
 
@@ -144,6 +144,7 @@ function NSRT.IsAvailable()
 end
 
 function NSRT.CanSend()
+    -- No solo send: NSRT only takes a shared note from a group's leader or assistant.
     local why = Targets.Blocked()
     if why then
         return false, why

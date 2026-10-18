@@ -17,6 +17,7 @@ local Targets = CRT.NoteTargets
 --   then: "multiline_add\t<index>\t<encounterID or ->\t<note name>", the note's boss and name
 --   a single space as the note text clears it
 --   receivers in a raid take it only from the leader or an assistant (MRT's default "only promoted")
+--   solo, it goes as a WHISPER to yourself, which MRT accepts from its own character
 local WIRE = {
     addon = "MRT",
     prefix = "EXRTADD",
@@ -32,7 +33,7 @@ local WIRE = {
 local MRT = {
     key = "mrt",
     label = "MRT",
-    help = "MRT (Method Raid Tools) replaces MRT's raid note: timed lines become {time:} countdowns, a line for a role, group or class shows only to them, and the rest is plain text, for every raider running MRT. CRT's own raid note is not changed. In a raid you must be the leader or an assistant (MRT's receivers ignore anyone else by default); in a party, anyone can send.",
+    help = "MRT (Method Raid Tools) replaces MRT's raid note: timed lines become {time:} countdowns, a line for a role, group or class shows only to them, and the rest is plain text, for every raider running MRT. CRT's own raid note is not changed. In a raid you must be the leader or an assistant (MRT's receivers ignore anyone else by default); in a party, anyone can send. Out of a group it goes only to your own MRT, to try a note.",
 }
 CRT.MRTTarget = MRT
 
@@ -41,6 +42,7 @@ local SUCCESS = RESULT.Success or 0
 local THROTTLED = RESULT.AddonMessageThrottle or 3
 local LOCKDOWN = RESULT.AddOnMessageLockdown or 11
 
+-- The channel, and the whisper target when you are on your own (only your own MRT gets it).
 local function channel()
     if IsInGroup(LE_PARTY_CATEGORY_INSTANCE) then
         return "INSTANCE_CHAT"
@@ -49,7 +51,7 @@ local function channel()
     elseif IsInGroup() then
         return "PARTY"
     end
-    return nil
+    return "WHISPER", UnitName("player")
 end
 
 -- CRT note text into MRT's -----------------------------------------------------------------------
@@ -207,11 +209,11 @@ local function pump()
     waiting = false
     while queue[1] do
         local item = queue[1]
-        local chan = channel()
-        if not chan then
-            fail(item.send, "you left the group.")
+        local chan, whisperTo = channel()
+        if item.send.chan ~= chan then
+            fail(item.send, "your group changed while sending; send again.")
         else
-            local ok, result = pcall(C_ChatInfo.SendAddonMessage, WIRE.prefix, item.body, chan)
+            local ok, result = pcall(C_ChatInfo.SendAddonMessage, WIRE.prefix, item.body, chan, whisperTo)
             if ok and result == THROTTLED then
                 waiting = true
                 C_Timer.After(1, pump)
@@ -225,7 +227,8 @@ local function pump()
             else
                 table.remove(queue, 1)
                 if item.last then
-                    item.send.done(true, format("sent to %s in %d part%s.", chan, item.send.parts,
+                    item.send.done(true, format("sent to %s in %d part%s.",
+                        chan == "WHISPER" and "yourself only (not in a group)" or chan, item.send.parts,
                         item.send.parts == 1 and "" or "s"))
                 end
             end
@@ -261,7 +264,7 @@ local function send(text, meta, done)
     local index = format("%d%04d", time() % 100000, math.random(0, 9999))
     local head = WIRE.note .. "\t" .. index .. "\t"
     local pieces = parts(text, math.min(WIRE.maxPart, WIRE.maxMessage - #head))
-    local s = { parts = #pieces, done = done }
+    local s = { parts = #pieces, done = done, chan = (channel()) }
     for _, piece in ipairs(pieces) do
         queue[#queue + 1] = { body = head .. piece, send = s }
     end
@@ -286,7 +289,7 @@ function MRT.IsAvailable()
 end
 
 function MRT.CanSend()
-    local why = Targets.Blocked()
+    local why = Targets.Blocked(true)
     if why then
         return false, why
     elseif IsInRaid() and not Targets.Rank() then
