@@ -464,6 +464,13 @@ local function build(pf)
     pf:SetScript("OnShow", refresh)
     Pace:OnChange(refresh)
     CRT.Bosses:OnRouteChange(refresh)
+    -- the Share buttons follow your role: promoted or demoted, joined or left, while the page is open
+    local roles = CreateFrame("Frame")
+    roles:RegisterEvent("GROUP_ROSTER_UPDATE")
+    roles:RegisterEvent("PARTY_LEADER_CHANGED")
+    roles:SetScript("OnEvent", function()
+        refresh()
+    end)
 end
 
 UI:RegisterPage("pace", TEXT.title, build)
