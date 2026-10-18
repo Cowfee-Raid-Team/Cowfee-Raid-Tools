@@ -401,6 +401,13 @@ function RehearsalWindow:Frame()
     end)
     -- onTick runs every frame while the window is open, paused too, so the engine sees a pause at once
     f:SetScript("OnUpdate", function()
+        -- a Test's stopAt: the clock pauses there once (the run goes on), and Play carries on past it
+        local stop, clock = self.stopAt, self.clock
+        if stop and clock and clock:Playing() and clock:Now() >= stop then
+            self.stopAt = nil
+            clock:Seek(stop)
+            self:Pause()
+        end
         if self.playing then
             self:Redraw()
         end
@@ -434,6 +441,7 @@ function RehearsalWindow:Open(source)
     local rows = Journal and Journal:Rows(source.encounterID) or {}
     local lanes, _, extra = CRT.TimelineLanes.Build(source.base, rows, CRT.Timeline:Settings(), source.encounterID, nil, source.group, source.order)
     self.source = source
+    self.stopAt = nil
     self.model = Rehearsal.Build(lanes, extra)
     self.clock = Rehearsal.NewClock()
     self.clock:SetLength(self.model.length)
@@ -546,6 +554,7 @@ function RehearsalWindow:Restart()
         return
     end
     local was = self.clock:Playing()
+    self.stopAt = nil
     self.clock:Seek(0)
     self.clock:Pause()
     if was then
@@ -559,6 +568,7 @@ function RehearsalWindow:Seek(t)
     if not self.clock then
         return
     end
+    self.stopAt = nil
     self.clock:Seek(t)
     hook("onSeek", self.clock:Now())
     self:Redraw()
@@ -920,7 +930,8 @@ end
 
 -- For the alerts' Test buttons: opens the rehearsal of a boss on a difficulty (what the Review tab
 -- would show for it: its reference for that difficulty group, else its newest pull), seeks to fight
--- second t (0 at the earliest) and plays. opts.testing labels the window "Testing: <testing>";
+-- second t (0 at the earliest) and plays, pausing once at fight second opts.stopAt when given (a jump,
+-- Restart or a plain Rehearse clears it). opts.testing labels the window "Testing: <testing>";
 -- opts.alerts is copied into Alerts:Start's opts on every start (a jump or Restart keeps it). It
 -- replaces whatever the window had open, and a quick test run (never a real pull). True, or false and
 -- the reason to print.
@@ -945,6 +956,7 @@ function RehearsalWindow:OpenAt(encounterID, difficultyName, t, opts)
     source.testing, source.alerts = opts.testing, opts.alerts
     self:Open(source)
     self:Seek(math.max(0, tonumber(t) or 0))
+    self.stopAt = tonumber(opts.stopAt)
     self:Play()
     return true
 end
