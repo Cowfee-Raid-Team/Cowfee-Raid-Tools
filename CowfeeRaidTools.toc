@@ -15,6 +15,7 @@ Bosses\Registry.lua
 Slash.lua
 Perf.lua
 Sound\Engine.lua
+Sound\Auras.lua
 UI\Panel.lua
 UI\Controls.lua
 Groups\Data.lua

@@ -172,6 +172,7 @@ function Draft.FromReminder(draft, r)
     draft.speakAt = r.speakAt == "zero" and "zero" or nil
     draft.glow = r.glow and true or false
     draft.sound = r.sound
+    draft.auraSound = r.auraSound and true or false -- also play the sound when the spell lands on you
     draft.warn = r.warn or DEFAULT_WARN
     draft.linger = type(r.linger) == "number" and r.linger or 0
     draft.iconID = validID(r.iconID)
@@ -339,6 +340,7 @@ function Draft.BuildReminder(ctx, draft)
     r.warn = draft.warn
     r.linger = draft.linger > 0 and draft.linger or nil
     r.sound = draft.sound
+    r.auraSound = draft.auraSound or nil
     r.glow = draft.glow or nil
     r.iconID = draft.iconType == "id" and validID(draft.iconID) or nil
     r.color = copy(draft.color)

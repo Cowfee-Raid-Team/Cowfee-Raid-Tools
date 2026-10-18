@@ -5,7 +5,8 @@ local ADDON, CRT = ...
 -- you type, and it runs on the alerts engine as the "mine" block beside the raid note. A reminder is
 -- saved in CRT.db.alerts.reminders[encounterID][id] as
 --   { boss, spellID, text, times, outputs = { alert, bar, speech, text, icon, circle }, warn, speech,
---     priority, difficulty, enabled, linger, sound, glow, iconID, color, speakAt }
+--     priority, difficulty, enabled, linger, sound, auraSound, glow, iconID, color, speakAt }
+-- auraSound true also plays the sound when the spell's aura is put on you (Sound/Auras.lua).
 -- where `times` is typed text ("P1 0:02, 1:17; P2 +0:18") or nil for the reference, `speech` is
 -- "text", "textcount" (the text, then 3, 2, 1) or "count", `speakAt` is nil (the text is read out when
 -- the alert shows) or "zero" (at its time), and `difficulty` nil means any.

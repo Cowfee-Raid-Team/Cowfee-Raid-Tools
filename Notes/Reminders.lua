@@ -66,6 +66,8 @@ local TEXT = {
     colorDefault = "Default",
     sound = "Sound",
     soundNone = "None",
+    auraSound = "Also when it lands on me",
+    auraSoundHelp = "Plays the sound whenever this ability's debuff is put on you, even in combat. The game plays it itself, so it also works for boss debuffs hidden from addons.\n\nIt needs the alert's spell and a sound. Your own files and shared sounds work; whether the game takes one of its own sounds here isn't confirmed, so if one stays silent, pick a file.",
     test = "Test",
     template = "Save as template",
     delete = "Delete",
@@ -454,6 +456,10 @@ local function drawPanel()
     panel.also.speak:SetChecked(d.speak and true or false)
     panel.also.count:SetChecked(d.count and true or false)
     panel.also.glow:SetChecked(d.glow and true or false)
+    local auraOK = d.spellID ~= nil and CRT.Sound.Normalize(d.sound) ~= nil and CRT.SoundAuras:Available()
+    panel.auraSound:SetChecked(d.auraSound and true or false)
+    panel.auraSound:SetEnabled(auraOK and true or false)
+    panel.auraSound.label:SetTextColor(auraOK and 1 or 0.5, auraOK and 1 or 0.5, auraOK and 1 or 0.5)
     local c = d.color or WHITE
     panel.colorSwatch.tex:SetColorTexture(c[1], c[2], c[3], 1)
     -- the selected row's times, as the list read them; typed times over the reference stay read only
@@ -1159,10 +1165,16 @@ local function buildPanel(f)
         set = change(function(v) cur.draft.sound = v ~= Draft.NO_SOUND and v or nil end),
     }))
     panel.sound:SetPoint("TOPLEFT", L.COL2_X, L.COL_Y - 106)
+    -- Under Sound: the same sound as an aura sound when the spell lands on you (Sound/Auras.lua).
+    panel.auraSound = makeCheck(p, TEXT.auraSound, L.COL2_X - 4, L.COL_Y - 134, change(function(on)
+        cur.draft.auraSound = on
+    end))
+    panel.auraSound.label:SetWidth(L.COL_W - L.CHECK_SIZE - 30)
+    UI.Help(p, TEXT.auraSound, TEXT.auraSoundHelp):SetPoint("LEFT", panel.auraSound.label, "RIGHT", 2, 0)
 
     -- A save's problem, in red
     panel.message = p:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    panel.message:SetPoint("TOPLEFT", L.INSET, L.COL_Y - 150)
+    panel.message:SetPoint("TOPLEFT", L.INSET, L.COL_Y - 162)
     panel.message:SetWidth(L.PANEL_W - 2 * L.INSET)
     panel.message:SetJustifyH("LEFT")
 
