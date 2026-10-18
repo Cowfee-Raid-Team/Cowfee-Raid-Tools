@@ -120,7 +120,8 @@ CRT.AlertEditor = Editor
 
 local TEST_BLOCK = "minetest"
 local TEST_LEAD = 10 -- a test starts this many seconds before the alert's first time
-local REHEARSAL_LEAD = 8 -- Test opens the Rehearsal this many fight seconds before the alert's first time
+local REHEARSAL_LEAD = 8 -- Test opens the Rehearsal this many seconds before the alert's first time, when it has no Show from
+local REHEARSAL_AFTER = 3 -- and pauses it this many seconds after (longer when the alert lingers longer)
 local ANY = "any"    -- the difficulty dropdown's key for "any difficulty" (saved as nil)
 local NO_SOUND = Draft.NO_SOUND
 local FRAME_NAME = "CowfeeRaidToolsAlertEditor"
@@ -737,8 +738,10 @@ local function savedIdentity(c)
     return nil
 end
 
--- Opens the Rehearsal on the boss REHEARSAL_LEAD seconds before the draft's first fight second, playing
--- the whole fight with the draft as it stands on screen in place of its saved version. True when it
+-- Opens the Rehearsal on the boss at the start of the draft's countdown (its Show from, else
+-- REHEARSAL_LEAD seconds) before its first fight second, playing the whole fight with the draft as it
+-- stands on screen in place of its saved version, and pausing REHEARSAL_AFTER seconds after it (or its
+-- Linger, if longer), so a test shows just that alert's countdown and what follows. True when it
 -- opened; false (the quick test runs instead) when the window is missing or can't open, or the draft has
 -- no fight time or boss. A reason from the window is printed once.
 local function rehearse(c, d)
@@ -758,8 +761,11 @@ local function rehearse(c, d)
         it.block = it.block or TEST_BLOCK
     end
     -- OpenAt itself stops a quick test still going; a real pull never gets here (runTest)
-    local ok, why = W:OpenAt(c.encounterID, difficulty, first - REHEARSAL_LEAD, {
+    local lead = (type(d.warn) == "number" and d.warn > 0) and d.warn or REHEARSAL_LEAD
+    local after = math.max(REHEARSAL_AFTER, type(d.linger) == "number" and d.linger or 0)
+    local ok, why = W:OpenAt(c.encounterID, difficulty, first - lead, {
         testing = testLabel(d),
+        stopAt = first + after,
         alerts = { extra = items, replaces = savedIdentity(c) },
     })
     if ok then

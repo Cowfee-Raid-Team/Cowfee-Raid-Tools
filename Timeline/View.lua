@@ -38,7 +38,8 @@ local ADDON, CRT = ...
 local View = {}
 CRT.TimelineView = View
 
-local LABEL_W = 150 -- the lane name column
+local LABEL_W = 166 -- the lane name column, with a mechanic's show tick at its left
+local NAME_X = 42 -- where a lane's name starts in its label, after the tick and the icon
 local ROW_H = 30
 local AXIS_H = 20
 local PHASE_ROW_H = 12 -- each row of phase labels above the time labels
@@ -93,6 +94,8 @@ local SELECT_INNER_W = 1
 local TEXT = {
     notes = "Notes",
     personal = "Personal notes",
+    ignoredHead = "Ignored mechanics (%d)",
+    showTip = "Untick to hide this mechanic on your timeline. It moves to Ignored mechanics at the bottom; tick it there to bring it back. Only your view changes: its alerts still fire, and no note changes.",
     personalHelp = "Your personal reminders (Save as: Only me). These are only yours: they stay on your PC and are "
         .. "never shared with the raid.\n\nDouble-click this row, or drop a template on it, to make one. Drag one "
         .. "to change its time; Alt+drag adds a time.",
@@ -1122,9 +1125,12 @@ function Methods:NoteAndReminderMarks(lanes, length)
         end
     end
     for _, e in ipairs(Reminders:List(encounterID)) do
-        for index, at in ipairs((Reminders:Times(encounterID, e.r))) do
-            add({ ph = at.ph, time = at.t, mine = true, encounterID = encounterID, id = e.id, index = index,
-                kind = "mine" }, e.r.spellID, e.r.text, e.r.iconID)
+        -- a reminder turned off (its tick on Mech Alerts) doesn't fire, so it isn't drawn either
+        if e.r.enabled ~= false then
+            for index, at in ipairs((Reminders:Times(encounterID, e.r))) do
+                add({ ph = at.ph, time = at.t, mine = true, encounterID = encounterID, id = e.id, index = index,
+                    kind = "mine" }, e.r.spellID, e.r.text, e.r.iconID)
+            end
         end
     end
     local notesRow
@@ -3089,11 +3095,26 @@ function Methods:Label(n)
         l:SetSize(LABEL_W - 4, ROW_H)
         l.stripe = self.body:CreateTexture(nil, "BACKGROUND")
         l.stripe:SetColorTexture(mocha("cream", 0.04))
+        -- a boss mechanic's show tick: unticked, it goes to Ignored mechanics (Timeline:SetIgnored)
+        l.check = CreateFrame("CheckButton", nil, l, "UICheckButtonTemplate")
+        l.check:SetSize(18, 18)
+        l.check:SetPoint("LEFT", l, "LEFT", 0, 0)
+        l.check:SetScript("OnClick", function(b)
+            if l.lane then
+                CRT.Timeline:SetIgnored(self.encounterID, l.lane.label, not b:GetChecked())
+            end
+        end)
+        l.check:SetScript("OnEnter", function(b)
+            GameTooltip:SetOwner(b, "ANCHOR_RIGHT")
+            GameTooltip:SetText(TEXT.showTip, 1, 1, 1, 1, true)
+            GameTooltip:Show()
+        end)
+        l.check:SetScript("OnLeave", hideTip)
         l.icon = l:CreateTexture(nil, "ARTWORK")
         l.icon:SetSize(18, 18)
-        l.icon:SetPoint("LEFT", l, "LEFT", 4, 0)
+        l.icon:SetPoint("LEFT", l, "LEFT", 20, 0)
         l.text = l:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-        l.text:SetPoint("LEFT", l, "LEFT", 26, 0)
+        l.text:SetPoint("LEFT", l, "LEFT", NAME_X, 0)
         l.text:SetPoint("RIGHT", l, "RIGHT", -2, 0)
         l.text:SetJustifyH("LEFT")
         l.text:SetWordWrap(false)
@@ -3111,6 +3132,72 @@ function Methods:Label(n)
         l:SetScript("OnLeave", hideTip)
         return l
     end)
+end
+
+-- Ignored mechanics, under the lanes: a header row that opens and closes the list (saved as
+-- timeline.ignoredOpen), then each ignored mechanic greyed with its tick off, and nothing on the track.
+-- Returns how many lane labels it used after the first `after`.
+function Methods:DrawIgnored(after, rows)
+    local head = self.ignoredHead
+    if rows == 0 then
+        if head then
+            head:Hide()
+        end
+        return 0
+    end
+    local s = settings()
+    if not head then
+        head = CreateFrame("Button", nil, self.body)
+        head:SetSize(LABEL_W - 4, ROW_H)
+        head.arrow = head:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+        head.arrow:SetPoint("LEFT", head, "LEFT", 4, 0)
+        head.text = head:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+        head.text:SetPoint("LEFT", head, "LEFT", 20, 0)
+        head.text:SetTextColor(mocha("latte"))
+        head.line = self.body:CreateTexture(nil, "ARTWORK")
+        head.line:SetHeight(1)
+        head.line:SetColorTexture(mocha("caramel", 0.6))
+        head:SetScript("OnClick", function()
+            CRT.Timeline:Set("ignoredOpen", not settings().ignoredOpen)
+        end)
+        self.ignoredHead = head
+    end
+    local y = -after * ROW_H
+    head:ClearAllPoints()
+    head:SetPoint("TOPLEFT", self.body, "TOPLEFT", 2, y)
+    head.line:ClearAllPoints()
+    head.line:SetPoint("TOPLEFT", self.body, "TOPLEFT", 0, y)
+    head.line:SetPoint("TOPRIGHT", self.body, "TOPRIGHT", 0, y)
+    head.arrow:SetText(s.ignoredOpen and "v" or ">")
+    head.text:SetText(string.format(TEXT.ignoredHead, #self.ignoredLanes))
+    head:Show()
+    if not s.ignoredOpen then
+        return 0
+    end
+    for i, lane in ipairs(self.ignoredLanes) do
+        local ly = y - i * ROW_H
+        local l = self:Label(after + i)
+        l.lane = lane
+        l:ClearAllPoints()
+        l:SetPoint("TOPLEFT", self.body, "TOPLEFT", 2, ly)
+        l.stripe:SetPoint("TOPLEFT", self.body, "TOPLEFT", 0, ly)
+        l.stripe:SetPoint("BOTTOMRIGHT", self.body, "TOPRIGHT", 0, ly - ROW_H)
+        l.stripe:SetColorTexture(mocha("cream", 0.02))
+        l.stripe:Show()
+        for d = 1, MAX_DOTS do
+            l.dots[d]:Hide()
+        end
+        l.check:Show()
+        l.check:SetChecked(false)
+        l.icon:SetTexture(lane.icon)
+        l.icon:SetDesaturated(true)
+        l.icon:SetAlpha(0.6)
+        l.text:SetPoint("RIGHT", l, "RIGHT", -2, 0)
+        l.text:SetText(lane.label or "")
+        l.text:SetTextColor(mocha("latte"))
+        l:Show()
+    end
+    return #self.ignoredLanes
 end
 
 -- The (?) on the Personal notes lane's label, just after its name: these are only yours and stay on
@@ -3138,8 +3225,8 @@ function Methods:DrawPersonalHelp(lanes)
     -- its name's own width (a width set by the label's anchors caps GetStringWidth)
     local w = textWidth(l.text)
     h:ClearAllPoints()
-    -- the name starts 26 px in (after the icon); the (?) stays inside the label
-    h:SetPoint("LEFT", l, "LEFT", math.min(26 + w, LABEL_W - 4 - 24), 0)
+    -- the name starts NAME_X in (after the tick and the icon); the (?) stays inside the label
+    h:SetPoint("LEFT", l, "LEFT", math.min(NAME_X + w, LABEL_W - 4 - 24), 0)
     h:SetFrameLevel((l:GetFrameLevel() or 0) + 2)
     h:Show()
 end
@@ -3311,8 +3398,10 @@ function Methods:Refresh()
     if pull then
         local rows = CRT.TimelineJournal:Rows(self.encounterID)
         self.lanes, self.unknown, extra = View.Lanes(pull, rows, s, self.encounterID, self.overlay, self.group, self.order)
+        -- your ignored mechanics are drawn only in their own list under the lanes (DrawIgnored)
+        self.lanes, self.ignoredLanes = CRT.Timeline:WithoutIgnored(self.lanes, self.encounterID)
     else
-        self.lanes, self.unknown = {}, {}
+        self.lanes, self.unknown, self.ignoredLanes = {}, {}, {}
     end
     self.extra = extra or { phases = {}, length = 0 }
     local lanes = self.lanes
@@ -3322,9 +3411,10 @@ function Methods:Refresh()
     self.marks = self:Marks(lanes, length)
     self.trackW = pull and math.max(1, length * width / clampSpan(s.span)) or 1
     local height = math.max(1, #lanes * ROW_H)
+    local ignoredRows = #self.ignoredLanes > 0 and (1 + (s.ignoredOpen and #self.ignoredLanes or 0)) or 0
     -- the track reaches at least the bottom of the window, so the empty space under the lanes takes
     -- a double-click too; when the lanes fit there is still nothing to scroll up and down
-    local area = math.max(height, self.vscroll:GetHeight() or 0)
+    local area = math.max(height + ignoredRows * ROW_H, self.vscroll:GetHeight() or 0)
     self.body:SetSize(math.max(1, self.vscroll:GetWidth() or 1), area)
     self.track:SetSize(self.trackW, area)
     self.axis:SetSize(self.trackW, self.axisH or AXIS_H)
@@ -3355,6 +3445,10 @@ function Methods:Refresh()
         local y = -(i - 1) * ROW_H
         local l = self:Label(i)
         l.lane = lane
+        l.check:SetShown(CRT.Timeline.Ignorable(lane))
+        l.check:SetChecked(true)
+        l.icon:SetDesaturated(false)
+        l.icon:SetAlpha(1)
         l:SetPoint("TOPLEFT", self.body, "TOPLEFT", 2, y)
         l.stripe:SetPoint("TOPLEFT", self.body, "TOPLEFT", 0, y)
         l.stripe:SetPoint("BOTTOMRIGHT", self.body, "TOPRIGHT", 0, y - ROW_H)
@@ -3430,7 +3524,7 @@ function Methods:Refresh()
             b:SetAlpha(math.max(0.1, 1 - 0.25 * (mark.age or 0)))
         end
     end
-    hideFrom(self.labels, #lanes + 1)
+    hideFrom(self.labels, #lanes + self:DrawIgnored(#lanes, ignoredRows) + 1)
     for i = #lanes + 1, #self.labels do
         self.labels[i].stripe:Hide()
     end
