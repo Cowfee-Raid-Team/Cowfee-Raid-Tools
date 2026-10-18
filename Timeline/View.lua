@@ -182,17 +182,33 @@ end
 
 -- Pure helpers -------------------------------------------------------------------------------------
 
--- The seconds to label on an axis: multiples of grid from 0 to span, with the step doubled until
+-- Auto's steps, finest first: the first at least AUTO_GAP pixels apart at the zoom is used, so zoomed all
+-- the way in (60 seconds across the track) it labels every 5 seconds, and zoomed out every minute.
+local AUTO_STEPS = { 5, 10, 15, 30, 60, 120 }
+local AUTO_GAP = 80
+
+-- The seconds to label on an axis, from 0 to span: with grid "auto" (or none) the first of AUTO_STEPS at
+-- least AUTO_GAP pixels apart; with a number of seconds, multiples of it, the step doubled until
 -- neighbors are at least TICK_GAP pixels apart at this width.
 function View.Ticks(span, grid, width)
     local list = {}
     if not span or span <= 0 or not width or width <= 0 then
         return list
     end
-    local step = (grid and grid > 0) and grid or 30
     local perSecond = width / span
-    while step * perSecond < TICK_GAP do
-        step = step * 2
+    local step
+    if type(grid) == "number" and grid > 0 then
+        step = grid
+        while step * perSecond < TICK_GAP do
+            step = step * 2
+        end
+    else
+        for _, s in ipairs(AUTO_STEPS) do
+            step = s
+            if s * perSecond >= AUTO_GAP then
+                break
+            end
+        end
     end
     local s = 0
     while s <= span do

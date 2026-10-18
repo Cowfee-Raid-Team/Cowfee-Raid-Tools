@@ -21,6 +21,8 @@ local ROW_H = 22
 local RIGHT_X = 360
 
 local GRIDS = {
+    { key = "auto", label = "Auto (by zoom)" },
+    { key = 5, label = "5 seconds" },
     { key = 10, label = "10 seconds" },
     { key = 15, label = "15 seconds" },
     { key = 30, label = "30 seconds" },
@@ -235,7 +237,7 @@ function SettingsTab.Build(f, ctx)
 
     -- View
     label(f, "View"):SetPoint("TOPLEFT", f, "TOPLEFT", 8, -8)
-    UI.Help(f, "View", "How much time is visible at once (the mouse wheel over the timeline zooms too), how often the time axis is labelled, and how big the cast icons are."):SetPoint("TOPLEFT", f, "TOPLEFT", 60, -9)
+    UI.Help(f, "View", "How much time is visible at once (the mouse wheel over the timeline zooms too), how often the time axis is labelled, and how big the cast icons are. Auto labels the axis more often as you zoom in: every 5 seconds zoomed all the way in, up to every minute zoomed out."):SetPoint("TOPLEFT", f, "TOPLEFT", 60, -9)
     settingSlider(f, 8, -26, "Seconds visible", "span", 60, 600, 30, View.Format)
     place(UI.Dropdown(f, "Axis labels every", {
         options = GRIDS,

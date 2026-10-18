@@ -213,7 +213,7 @@ local defaults = {
         bosses = {},
         rows = {}, -- [encounterID] = { hidden = { [spellID] = true }, custom = { spellID, ... } }
         span = 300, -- seconds visible
-        grid = 30,
+        grid = "auto", -- seconds between axis labels, or "auto" by the zoom (View.Ticks)
         iconSize = 22,
         deathRows = "combined", -- or "player"
         roles = { TANK = true, HEALER = true, DAMAGER = true },
@@ -480,6 +480,14 @@ frame:SetScript("OnEvent", function(self, event, arg1)
         -- Puts this character's profile on top of CRTDB before anything reads it.
         CRT.Profiles:Load()
         copyDefaults(defaults, CRTDB)
+        -- once: the old default of axis labels every 30 seconds becomes Auto, which follows the zoom
+        local tl = CRTDB.timeline
+        if tl and not tl.gridAutoOnce then
+            tl.gridAutoOnce = true
+            if tl.grid == 30 then
+                tl.grid = "auto"
+            end
+        end
         CRT.db = CRTDB
         CRT:ApplyFonts()
         self:UnregisterEvent("ADDON_LOADED")
