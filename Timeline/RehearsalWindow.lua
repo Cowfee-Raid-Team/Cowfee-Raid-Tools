@@ -935,12 +935,13 @@ function RehearsalWindow:OpenAt(encounterID, difficultyName, t, opts)
     if why then
         return false, why
     end
-    local group = difficultyName == "Mythic" and "mythic" or "nh"
+    -- the group as the engine's order shift picks it; no difficulty from the caller keeps the source's
+    local group = CRT.Timeline:GroupFor(difficultyName)
     local source = CRT.Timeline.RehearsalSourceFor and CRT.Timeline:RehearsalSourceFor(encounterID, group)
     if not source then
         return false, TEXT.noSource
     end
-    source.encounterID, source.difficultyName = encounterID, difficultyName
+    source.encounterID, source.difficultyName = encounterID, difficultyName or source.difficultyName
     source.testing, source.alerts = opts.testing, opts.alerts
     self:Open(source)
     self:Seek(math.max(0, tonumber(t) or 0))
