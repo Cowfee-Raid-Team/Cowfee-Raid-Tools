@@ -105,6 +105,7 @@ local defaults = {
         list = {},
         nextId = 1,
         trustedOnly = true, -- only accept shared notes from the raid leader or assistants
+        shareTarget = "crt", -- Share's Send to: "crt", a note target's key (Integrations/), or "all"
         -- keepEmpty keeps a window up, blank at its own transparency, while it has nothing to show, so a
         -- note being cleared or shared doesn't make it vanish (Notes/Window.lua).
         window = { -- the timers

@@ -40,7 +40,8 @@ end
 -- A dropdown. opts:
 --   options    { { key, label }, ... }, or a function returning that list when the menu opens. An
 --              option with disabled = true is shown greyed out and can't be picked, and one with
---              title = true is a heading in the open list (such as a raid over its bosses).
+--              title = true is a heading in the open list (such as a raid over its bosses). An
+--              option's tooltip, when it has one, shows while the mouse is over it in the open list.
 --   get()      the selected key
 --   set(key)   called when a choice is picked
 --   width, labelWidth, enabledIf() (greys the row out while it returns false)
@@ -77,6 +78,12 @@ function UI.Dropdown(parent, text, opts)
                 end, option.key)
                 if option.disabled and radio and radio.SetEnabled then
                     radio:SetEnabled(false)
+                end
+                if option.tooltip and radio and radio.SetTooltip then
+                    radio:SetTooltip(function(tooltip)
+                        GameTooltip_SetTitle(tooltip, option.label)
+                        GameTooltip_AddNormalLine(tooltip, option.tooltip)
+                    end)
                 end
                 if opts.decorate then
                     radio:AddInitializer(function(button)

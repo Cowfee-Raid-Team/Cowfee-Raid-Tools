@@ -12,12 +12,48 @@ local ADDON, CRT = ...
 local Notes = CRT.Notes
 local Engine = CRT.NoteEngine
 local UI = CRT.UI
+local Targets = CRT.NoteTargets
 
 local TEXT = {
     noteText = "Note text",
     saveText = "Save text changes",
     saved = "Saved.",
+    sendTo = "Send to",
+    crtHelp = "CRT shares the note with CRT's own raid note and makes it everyone's active note. In a raid you must be the leader or an assistant.",
+    allHelp = "All available sends with CRT and with every other addon on the list that is loaded, and says in chat how each one went.",
 }
+
+-- Share's Send to: "crt", a note target's key, or "all". A saved target that no longer exists is CRT.
+local function shareTarget()
+    local key = CRT.db.notes.shareTarget
+    if key == "all" or (key and Targets:Get(key)) then
+        return key
+    end
+    return "crt"
+end
+
+-- CRT first (the default), then every note target, greyed out with the reason when its addon isn't
+-- loaded, then All available.
+local function shareOptions()
+    local list = { { key = "crt", label = "CRT", tooltip = TEXT.crtHelp } }
+    for _, target in ipairs(Targets:List()) do
+        local available, why = target.IsAvailable()
+        list[#list + 1] = { key = target.key, label = target.label, disabled = not available,
+            tooltip = available and target.help or ("Not available: " .. why) }
+    end
+    list[#list + 1] = { key = "all", label = "All available", tooltip = TEXT.allHelp }
+    return list
+end
+
+local function shareHelp()
+    local parts = { TEXT.crtHelp }
+    for _, target in ipairs(Targets:List()) do
+        local available, why = target.IsAvailable()
+        parts[#parts + 1] = target.help .. (available and "" or ("\n|cffff8080Not available: " .. why .. "|r"))
+    end
+    parts[#parts + 1] = TEXT.allHelp
+    return table.concat(parts, "\n\n")
+end
 
 local ROW_H = 24
 local MAX_ROWS = 9
@@ -283,8 +319,24 @@ local function buildNotes(pf)
     local share = makeButton(pf, "Share to raid", 122)
     share:SetPoint("LEFT", active, "RIGHT", 6, 0)
     share:SetScript("OnClick", function()
-        -- with no note picked, Share sends the Empty note (Notes/Comm.lua)
-        CRT.NoteComm:Share(selected)
+        -- With no note picked, CRT sends the Empty note (Notes/Comm.lua) and the other addons clear theirs.
+        local key = shareTarget()
+        local record = selected and Notes:Get(selected)
+        if key == "crt" or key == "all" then
+            CRT.NoteComm:Share(selected)
+        end
+        if key == "all" then
+            for _, target in ipairs(Targets:List()) do
+                local available, why = target.IsAvailable()
+                if available then
+                    Targets:Share(target.key, record)
+                else
+                    CRT:Print(target.label .. ": skipped, " .. why)
+                end
+            end
+        elseif key ~= "crt" then
+            Targets:Share(key, record)
+        end
         refresh()
     end)
     local roster = makeButton(pf, "Open roster in Raid Groups", LIST_W)
@@ -298,6 +350,19 @@ local function buildNotes(pf)
             CRT:Print("This note has no invite list, so there is no roster for it.")
         end
     end)
+    -- Where Share to raid sends the note: CRT's own sharing, another raid addon's note, or all of them.
+    local sendTo = UI.Dropdown(pf, TEXT.sendTo, {
+        labelWidth = 56,
+        width = 160,
+        options = shareOptions,
+        get = shareTarget,
+        set = function(key)
+            Notes:Set(nil, "shareTarget", key)
+        end,
+    })
+    sendTo:SetPoint("TOPLEFT", roster, "BOTTOMLEFT", 0, -4)
+    controls[#controls + 1] = sendTo
+    UI.Help(pf, TEXT.sendTo, shareHelp):SetPoint("LEFT", sendTo, "RIGHT", 2, 0)
 
     -- Middle: the note text, editable, down to the Save button at the bottom of the tab.
     local textLabel = pf:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
