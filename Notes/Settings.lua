@@ -42,6 +42,12 @@ local TEXT = {
     -- Sharing.
     sharing = "Sharing",
     trustedOnly = "Only accept notes from leader or assistants",
+    notesList = "Notes list",
+    listStyle = "Show notes",
+    listHelp = "How the Notes tab lists your notes.\n\nGrouped headings: every note, under a heading per difficulty that you click to fold.\n\nDropdown: one difficulty at a time, picked in a dropdown over the list.\n\nChips: one difficulty at a time, picked with buttons over the list that count each one's notes.",
+    grouped = "Grouped headings",
+    dropdown = "Dropdown",
+    chips = "Chips",
 }
 
 -- Four columns across the page (UI.PAGE_W): the three note windows, COLUMN_W each, then Alerts and
@@ -263,6 +269,23 @@ local function build(pf)
     end, function(value)
         Notes:Set(nil, "trustedOnly", value)
     end)
+
+    -- how the Notes tab lists the notes
+    local listTitle = heading(pf, x, top - 256, TEXT.notesList)
+    UI.Help(pf, TEXT.notesList, TEXT.listHelp):SetPoint("LEFT", listTitle, "RIGHT", 6, 0)
+    local styleRow = UI.Dropdown(pf, TEXT.listStyle, {
+        options = { { key = "grouped", label = TEXT.grouped }, { key = "dropdown", label = TEXT.dropdown }, { key = "chips", label = TEXT.chips } },
+        labelWidth = 80,
+        width = ALERTS_W - 85,
+        get = function()
+            return Notes:ListStyle()
+        end,
+        set = function(key)
+            Notes:SetListStyle(key)
+        end,
+    })
+    styleRow:SetPoint("TOPLEFT", x, top - 278)
+    controls[#controls + 1] = styleRow
 
     pf:SetScript("OnShow", refresh)
     Notes:OnChange(refresh)

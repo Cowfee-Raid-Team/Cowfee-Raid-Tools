@@ -66,6 +66,57 @@ function Notes:SetPersonal(text)
     self:Fire()
 end
 
+-- How the Raid Notes list shows its notes (Notes Settings): "grouped" under difficulty headings that fold,
+-- "dropdown" one difficulty picked in a dropdown, or "chips" one picked with buttons. listDifficulty is the
+-- difficulty the dropdown and the chips show ("All" for every note), listFolded the folded headings.
+Notes.LIST_STYLES = { "grouped", "dropdown", "chips" }
+Notes.DIFFICULTIES = { "Mythic", "Heroic", "Normal" } -- in this order; any other is listed as Other
+
+function Notes:ListStyle()
+    local s = ndb().listStyle
+    for _, k in ipairs(Notes.LIST_STYLES) do
+        if k == s then
+            return s
+        end
+    end
+    return "grouped"
+end
+
+function Notes:SetListStyle(style)
+    ndb().listStyle = style
+    self:Fire()
+end
+
+function Notes:ListDifficulty()
+    return ndb().listDifficulty or "All"
+end
+
+function Notes:SetListDifficulty(d)
+    ndb().listDifficulty = (d ~= "All") and d or nil
+    self:Fire()
+end
+
+function Notes:ListFolded(group)
+    return (ndb().listFolded or {})[group] and true or false
+end
+
+function Notes:SetListFolded(group, folded)
+    ndb().listFolded = ndb().listFolded or {}
+    ndb().listFolded[group] = folded and true or nil
+    self:Fire()
+end
+
+-- A note's difficulty group: Mythic, Heroic or Normal as written (any case), else Other.
+function Notes.DifficultyGroup(record)
+    local d = (record and record.difficulty or ""):lower()
+    for _, k in ipairs(Notes.DIFFICULTIES) do
+        if k:lower() == d then
+            return k
+        end
+    end
+    return "Other"
+end
+
 -- Display my notes first: the personal window shows what you typed above your reminders.
 function Notes:PersonalFirst()
     return ndb().personalFirst and true or false

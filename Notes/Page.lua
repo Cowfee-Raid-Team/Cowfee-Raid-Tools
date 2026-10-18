@@ -18,6 +18,9 @@ local TEXT = {
     shared = "Shared",
     personal = "Personal",
     toPersonal = "Make my personal note",
+    difficulty = "Difficulty",
+    allDifficulties = "All",
+    otherDifficulty = "Other",
     kindHelp = "Shared: the raid's notes, kept one per guild. A share from someone in a guild replaces that guild's note for the boss, and a share from another guild (a pickup group) is a note of its own, so it never replaces yours. Each says who sent it at the bottom. The newest share is the note in use, and the shared note in use runs on the pull.\n\nPersonal: your own lines for a boss, only on this computer. They run on every pull of that boss, alongside the shared note, and a share never touches them. Make my personal note (on the Shared tab) starts one for the selected note's boss; type your lines under its first line and save",
     noteText = "Note text",
     saveText = "Save text changes",
@@ -85,6 +88,8 @@ local page, rows, editor, status, selected = nil, {}, nil, nil, nil
 -- text shown is the note that runs; clicking another note still shows that one until the next change.
 local followedActive
 local kindTabs, toPersonal = {}, nil -- the Shared and Personal tabs, and Make my personal note
+local diffDropdown, diffChips = nil, {} -- the list's difficulty filter, for the Dropdown and Chips styles
+local LIST_TOP = -36 -- where the notes list starts; a filter row takes one row of it
 local useButton, shareButton -- Use this note and Share to raid, for shared notes only
 local controls = {}
 local importDialog
@@ -218,20 +223,82 @@ refresh = function()
     local id, record = selectedNote()
     local activeId = Notes:Active()
 
-    local list = Notes:List(listKind)
+    -- the list as Notes Settings says: grouped under folding difficulty headings, or one difficulty (or
+    -- All) picked with a dropdown or with chips over it
+    local all = Notes:List(listKind)
+    local style = Notes:ListStyle()
+    local filter = Notes:ListDifficulty()
+    local items, top = {}, LIST_TOP
+    if style == "grouped" then
+        local groups = {}
+        for _, e in ipairs(all) do
+            local g = Notes.DifficultyGroup(e.record)
+            groups[g] = groups[g] or {}
+            table.insert(groups[g], e)
+        end
+        for _, g in ipairs({ "Mythic", "Heroic", "Normal", "Other" }) do
+            if groups[g] then
+                local folded = Notes:ListFolded(g)
+                items[#items + 1] = { heading = g, count = #groups[g], folded = folded }
+                if not folded then
+                    for _, e in ipairs(groups[g]) do
+                        items[#items + 1] = { entry = e, short = true }
+                    end
+                end
+            end
+        end
+    else
+        top = LIST_TOP - ROW_H
+        for _, e in ipairs(all) do
+            if filter == "All" or Notes.DifficultyGroup(e.record) == filter then
+                items[#items + 1] = { entry = e, short = filter ~= "All" }
+            end
+        end
+    end
+    diffDropdown:SetShown(style == "dropdown")
+    if style == "dropdown" then
+        diffDropdown.refresh()
+    end
+    for key, chip in pairs(diffChips) do
+        chip:SetShown(style == "chips")
+        local n = 0
+        for _, e in ipairs(all) do
+            if key == "All" or Notes.DifficultyGroup(e.record) == key then
+                n = n + 1
+            end
+        end
+        chip:SetText((key == "All" and "All" or key:sub(1, 1)) .. " " .. n)
+        UI:SetTabSelected(chip, key == filter)
+    end
+    local list = items
     for _, kind in ipairs({ "shared", "personal" }) do
         UI:SetTabSelected(kindTabs[kind], kind == listKind)
     end
     toPersonal:SetShown(listKind == "shared")
     useButton:SetShown(listKind == "shared")
     shareButton:SetShown(listKind == "shared")
+    local shownRows = MAX_ROWS - math.floor((LIST_TOP - top) / ROW_H)
     for i = 1, MAX_ROWS do
         local row = rows[i]
-        local entry = list[i]
-        if entry then
+        local item = i <= shownRows and list[i] or nil
+        local entry = item and item.entry
+        row:ClearAllPoints()
+        row:SetPoint("TOPLEFT", 8, top - (i - 1) * ROW_H)
+        row.heading = item and item.heading or nil
+        if item and item.heading then
+            -- a difficulty heading: gold, no box, click to fold it
+            row.text:SetText((item.folded and "> " or "v ") .. item.heading .. " (" .. item.count .. ")")
+            row.text:SetTextColor(1, 0.82, 0)
+            row:SetBackdropColor(0, 0, 0, 0)
+            row:SetBackdropBorderColor(0, 0, 0, 0)
+            row.id = nil
+            row:Show()
+        elseif entry then
+            row.text:SetTextColor(1, 1, 1)
+            row:SetBackdropColor(0, 0, 0, 0.45)
             local r = entry.record
             -- a shared note says whose it is: your guild's by its name, anyone else's by the sender
-            local label = (r.name or "Note") .. (r.difficulty and (" (" .. r.difficulty .. ")") or "")
+            local label = (r.name or "Note") .. ((r.difficulty and not item.short) and (" (" .. r.difficulty .. ")") or "")
                 .. ((not r.personal) and Notes.SourceLabel(r) and (" - " .. Notes.SourceLabel(r)) or "")
             if entry.id == activeId then
                 label = label .. "  |cff55dd55active|r"
@@ -320,6 +387,46 @@ local function buildNotes(pf)
     end
     UI.Help(pf, TEXT.personal, TEXT.kindHelp):SetPoint("TOPLEFT", 98 + 2 * 80, -12)
 
+    -- the difficulty filter over the list, for the Dropdown and Chips styles (Notes Settings)
+    local DIFF_OPTIONS = { { key = "All", label = TEXT.allDifficulties } }
+    for _, d in ipairs(Notes.DIFFICULTIES) do
+        DIFF_OPTIONS[#DIFF_OPTIONS + 1] = { key = d, label = d }
+    end
+    DIFF_OPTIONS[#DIFF_OPTIONS + 1] = { key = "Other", label = TEXT.otherDifficulty }
+    diffDropdown = UI.Dropdown(pf, TEXT.difficulty, {
+        options = DIFF_OPTIONS,
+        labelWidth = 64,
+        width = LIST_W - 68,
+        get = function()
+            return Notes:ListDifficulty()
+        end,
+        set = function(key)
+            Notes:SetListDifficulty(key)
+        end,
+    })
+    diffDropdown:SetPoint("TOPLEFT", 8, LIST_TOP)
+    diffDropdown:Hide()
+    local chipKeys = { "All", "Mythic", "Heroic", "Normal" }
+    local chipW = math.floor((LIST_W - 3 * 4) / #chipKeys)
+    for i, key in ipairs(chipKeys) do
+        local c = CreateFrame("Button", nil, pf, "BackdropTemplate")
+        c:SetSize(chipW, 18)
+        c:SetPoint("TOPLEFT", 8 + (i - 1) * (chipW + 4), LIST_TOP - 2)
+        skin(c, 0.4)
+        c.sel = c:CreateTexture(nil, "ARTWORK")
+        c.sel:SetAllPoints()
+        c.sel:SetColorTexture(1, 0.82, 0, 0.18)
+        c.text = c:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+        c.text:SetPoint("CENTER")
+        c:SetFontString(c.text)
+        c:SetScript("OnClick", function()
+            Notes:SetListDifficulty(key)
+        end)
+        UI:RegisterTab(c)
+        c:Hide()
+        diffChips[key] = c
+    end
+
     for i = 1, MAX_ROWS do
         local row = CreateFrame("Button", nil, pf, "BackdropTemplate")
         row:SetSize(LIST_W, ROW_H - 2)
@@ -331,6 +438,10 @@ local function buildNotes(pf)
         row.text:SetJustifyH("LEFT")
         row.text:SetWordWrap(false) -- one line, cut short rather than wrapping out of its box
         row:SetScript("OnClick", function(self)
+            if type(self.heading) == "string" then -- a difficulty heading folds; a note row picks its note
+                Notes:SetListFolded(self.heading, not Notes:ListFolded(self.heading))
+                return
+            end
             selected = self.id
             refresh()
         end)
