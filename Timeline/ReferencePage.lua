@@ -21,10 +21,10 @@ CRT.TimelineReferencePage = ReferencePage
 
 local ROW_H = 46 -- a reference row: name and kind above, its buttons below
 local BOX_W = 340
-local LIST_X = 364
+local LIST_X = 364 -- the Journal abilities, the full height of the middle column
 local LIST_W = 310
+local REFS_X = UI.PAGE_W - 8 - LIST_W -- the boss's references, in the right column, out of the way
 local MAX_ERRORS = 3
-local REF_ROWS = 3 -- references listed before the Journal abilities start
 local ABILITY_H = 20
 
 local GROUP_NAMES = CRT.Timeline.GROUP_NAMES
@@ -373,12 +373,12 @@ function ReferencePage.Build(f, ctx)
 
     -- Right: the selected boss's references.
     local listLabel = label(f, "")
-    listLabel:SetPoint("TOPLEFT", f, "TOPLEFT", LIST_X, -8)
+    listLabel:SetPoint("TOPLEFT", f, "TOPLEFT", REFS_X, -8)
     listLabel:SetWidth(310)
     listLabel:SetJustifyH("LEFT")
     listLabel:SetWordWrap(false)
     local empty = label(f, "No references for this boss yet", "CRTFontSmall")
-    empty:SetPoint("TOPLEFT", f, "TOPLEFT", LIST_X, -34)
+    empty:SetPoint("TOPLEFT", f, "TOPLEFT", REFS_X, -34)
 
     local function line(i)
         local l = lines[i]
@@ -387,7 +387,7 @@ function ReferencePage.Build(f, ctx)
         end
         l = CreateFrame("Frame", nil, f)
         l:SetSize(LIST_W, ROW_H)
-        l:SetPoint("TOPLEFT", f, "TOPLEFT", LIST_X, -30 - (i - 1) * ROW_H)
+        l:SetPoint("TOPLEFT", f, "TOPLEFT", REFS_X, -30 - (i - 1) * ROW_H)
         l.name = label(l, "", "CRTFontSmall")
         l.name:SetPoint("TOPLEFT", 0, -2)
         l.name:SetWidth(150)
@@ -450,16 +450,18 @@ function ReferencePage.Build(f, ctx)
     abilitiesNone:SetWidth(300)
     abilitiesNone:SetJustifyH("LEFT")
     local abilitiesScroll = CreateFrame("ScrollFrame", "CowfeeRaidToolsTimelineAbilitiesScroll", f, "UIPanelScrollFrameTemplate")
-    -- the abilities start under the references, however many there are (at least REF_ROWS rows)
+    -- the abilities take the middle column from the top down, beside the references (refCount is unused
+    -- since the references moved to the right column, kept so the callers stay as they are)
     local function placeAbilities(refCount)
-        local top = -30 - math.max(REF_ROWS, refCount) * ROW_H - 12
+        local top = -8
         abilitiesLabel:ClearAllPoints()
         abilitiesLabel:SetPoint("TOPLEFT", f, "TOPLEFT", LIST_X, top)
         abilitiesNone:ClearAllPoints()
         abilitiesNone:SetPoint("TOPLEFT", f, "TOPLEFT", LIST_X, top - 24)
         abilitiesScroll:ClearAllPoints()
         abilitiesScroll:SetPoint("TOPLEFT", f, "TOPLEFT", LIST_X, top - 22)
-        abilitiesScroll:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -28, 8)
+        abilitiesScroll:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", LIST_X, 8)
+        abilitiesScroll:SetWidth(LIST_W - 10)
     end
     placeAbilities(0)
     local abilitiesChild = CreateFrame("Frame", nil, abilitiesScroll)
