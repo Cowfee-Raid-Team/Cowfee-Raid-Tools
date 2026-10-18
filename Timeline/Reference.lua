@@ -168,9 +168,7 @@ local function readTimes(row, text)
             row.casts[#row.casts + 1] = cast
         end
     end
-    if #row.casts == 0 then
-        return "needs at least one time"
-    end
+    -- no times yet is allowed: the row is drawn empty until they are added (the Journal's export writes these)
 end
 
 -- One ability line, "Name [spell N] (options): times". Returns the row, or nil and a reason.
@@ -350,21 +348,33 @@ function Reference.Parse(text)
                     err = "bad encounter ID '" .. val .. "'"
                 end
             elseif key == "phase" then
-                -- a moved phase line keeps the time it was transcribed with: "P2 2:53 (planned 3:03)"
-                local plannedText
+                -- a moved phase line keeps the time it was transcribed with: "P2 2:53 (planned 3:03)";
+                -- any other bracket at the end is the stage's name: "P1.5 3:17 (Intermission: Ritual)"
+                local plannedText, title
                 local rest, p = val:match("^(.-)%s*%(%s*[Pp][Ll][Aa][Nn][Nn][Ee][Dd]%s+(%S+)%s*%)$")
                 if rest then
                     val, plannedText = rest, p
+                else
+                    local before, inside = val:match("^(.-)%s*%(([^%(%)]*)%)%s*$")
+                    if before then
+                        val, title = before, trim(inside)
+                    end
                 end
                 local label, last = val:match("^(.-)%s*(%S+)$")
                 local t = last and Reference.ParseTime(last)
                 local planned = plannedText and Reference.ParseTime(plannedText)
-                if not t then
+                if not t and not plannedText and trim(val) ~= "" then
+                    -- a phase whose start isn't known yet (the Journal's Export reference writes these): kept
+                    -- with its line, drawn nowhere until it has a time
+                    ref.pending = ref.pending or {}
+                    ref.pending[#ref.pending + 1] = { label = trim(val), title = title, line = n }
+                elseif not t then
                     err = "Phase needs a time at the end"
                 elseif plannedText and not planned then
                     err = "bad planned time '" .. plannedText .. "'"
                 else
-                    ref.phases[#ref.phases + 1] = { t = t, planned = planned or t, label = label ~= "" and label or nil }
+                    ref.phases[#ref.phases + 1] = { t = t, planned = planned or t, label = label ~= "" and label or nil,
+                        title = title, line = n }
                     -- the alerts take a phase's number from the first number in its label: a label
                     -- that reads as phase 1 (which always runs from the pull) or as a number used
                     -- before would put reminders at the wrong time, so it is saved with a warning
@@ -406,7 +416,7 @@ function Reference.Parse(text)
     end
     checkOrder(ref, errors)
     if #ref.rows == 0 and #errors == 0 then
-        errors[#errors + 1] = "Needs at least one ability line with a time"
+        errors[#errors + 1] = "Needs at least one ability line"
     end
     if #errors > 0 then
         return nil, errors
@@ -754,6 +764,76 @@ end
 -- The text with its Difficulty line set for the group: Mythic for "mythic"; for "nh" a Normal or Heroic
 -- line stays, anything else becomes Heroic. A text with no Difficulty line gets one right after the Boss
 -- line (at the top when there is none). Every other line, and each line's own \r, is kept.
+-- Editing reference text by line, for the Advanced tab's list ------------------------------------------
+
+local function textLines(text)
+    local lines = {}
+    for line in ((text or "") .. "\n"):gmatch("([^\n]*)\n") do
+        lines[#lines + 1] = (line:gsub("\r", ""))
+    end
+    if lines[#lines] == "" then
+        lines[#lines] = nil
+    end
+    return lines
+end
+
+-- A phase line: "Phase: P1.5 3:17 (Intermission: Ritual)", without the time when timeText is nil or "".
+function Reference.PhaseLine(label, timeText, title)
+    local line = "Phase: " .. label
+    if timeText and trim(timeText) ~= "" then
+        line = line .. " " .. trim(timeText)
+    end
+    if title and title ~= "" then
+        line = line .. " (" .. title .. ")"
+    end
+    return line
+end
+
+-- text with a line put before line number `before` (after the last line when it is past the end).
+function Reference.InsertLine(text, before, line)
+    local lines = textLines(text)
+    table.insert(lines, math.max(1, math.min(before or (#lines + 1), #lines + 1)), line)
+    return table.concat(lines, "\n")
+end
+
+-- text with line number `at` replaced by line, or taken out when line is nil.
+function Reference.ReplaceLine(text, at, line)
+    local lines = textLines(text)
+    if not lines[at] then
+        return text
+    end
+    if line then
+        lines[at] = line
+    else
+        table.remove(lines, at)
+    end
+    return table.concat(lines, "\n")
+end
+
+-- The label for a phase put before line `before` of ref: the phase number before it (1 for the pull)
+-- plus 1, or plus a half for an intermission ("P2", "P1.5"). Labels are written "P" and the number.
+function Reference.NextPhaseLabel(ref, before, intermission)
+    local prev = 1
+    local all = {}
+    for _, p in ipairs(ref.phases or {}) do
+        all[#all + 1] = p
+    end
+    for _, p in ipairs(ref.pending or {}) do
+        all[#all + 1] = p
+    end
+    for _, p in ipairs(all) do
+        local num = p.label and tonumber(p.label:match("%d+%.?%d*"))
+        if num and (p.line or 0) < (before or math.huge) and num > prev then
+            prev = num
+        end
+    end
+    local num = intermission and (math.floor(prev) + 0.5) or (math.floor(prev) + 1)
+    if num == math.floor(num) then
+        return "P" .. string.format("%d", num)
+    end
+    return "P" .. tostring(num)
+end
+
 function Reference.StampDifficulty(text, group)
     if type(text) ~= "string" then
         return text

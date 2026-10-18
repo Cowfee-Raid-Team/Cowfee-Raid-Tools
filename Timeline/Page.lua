@@ -894,6 +894,31 @@ function Timeline:OpenReferenceText(text)
     end
 end
 
+-- Saves text as one of your references at once and opens it on the Advanced tab, the boss and difficulty
+-- it names picked (the Journal's Send to Timeline). Text that doesn't read yet goes in the box with what
+-- is wrong. Returns the new reference's key, or nil.
+function Timeline:SaveReferenceText(text)
+    local key = Reference:Add(text)
+    local ref = key and Reference.Parse(text)
+    if not ref then
+        self:OpenReferenceText(text)
+        return nil
+    end
+    if type(ref.encounterID) == "number" then
+        selectedBoss = ref.encounterID
+    end
+    local diff = (ref.difficulty or ""):lower()
+    selectedGroup = diff == "mythic" and "mythic" or "nh"
+    selectedPull, overlayID, bossList = key, nil, nil
+    UI:Show("timeline")
+    selectTab("references")
+    if refTab then
+        refTab:Fill(text, key)
+    end
+    refresh()
+    return key
+end
+
 local function build(pf)
     page = pf
 

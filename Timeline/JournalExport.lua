@@ -20,11 +20,10 @@ local TEXT = {
     none = "Open a boss in the Journal first.",
     combat = "The Journal can't be read in combat.",
     help = {
-        "# From the Encounter Journal. Take the # off an ability's line and add its times after the colon,",
-        "# as m:ss or seconds, separated by commas: Soulcoil Rite [spell 1284033]: 0:02, 1:17, 2:28",
-        "# Each stage has a Phase line: take its # off and put the time the stage starts. Lines left with # are skipped.",
-        "# type colors the row (from the Journal's dispel, Heroic and Mythic icons); tags are the Journal's icons.",
+        "# From the Encounter Journal. Add each ability's times after its colon, as m:ss or seconds: 0:02, 1:17",
+        "# A Phase line with no time yet is the stage's start to fill in: Phase: P1.5 3:17 (Intermission: ...)",
     },
+    saved = "Saved a reference for %s. Add its times on the Timeline's Advanced tab.",
 }
 
 -- The Journal's icons that are reference types too: a dispellable debuff, a Heroic or a Mythic mechanic.
@@ -90,16 +89,19 @@ function Export.Build(journalEncounterID, difficultyID)
             end
         end
     end
+    -- the first stage starts at the pull (a heading only); each later one is a Phase line with no time yet
+    local Reference = CRT.TimelineReference
     local shownStage
     for _, row in ipairs(rows) do
         if row.stage and row.stage ~= shownStage then
             shownStage = row.stage
-            lines[#lines + 1] = "# --- " .. row.stage .. " ---"
             if phaseOf[row.stage] then
-                lines[#lines + 1] = "# Phase: P" .. phaseOf[row.stage] .. " 0:00"
+                lines[#lines + 1] = Reference.PhaseLine("P" .. phaseOf[row.stage], nil, row.stage)
+            else
+                lines[#lines + 1] = "# " .. row.stage
             end
         end
-        lines[#lines + 1] = "# " .. row.name .. " [spell " .. row.spellID .. "]" .. Export.Options(row.tags) .. ":"
+        lines[#lines + 1] = row.name .. " [spell " .. row.spellID .. "]" .. Export.Options(row.tags) .. ":"
     end
     return table.concat(lines, "\n"), name
 end
@@ -108,7 +110,9 @@ local function show(text, name)
     CRT.ConsumablesTools:ShowText(string.format(TEXT.title, name), text, {
         label = TEXT.send,
         onClick = function(t)
-            CRT.Timeline:OpenReferenceText(t)
+            if CRT.Timeline:SaveReferenceText(t) then
+                CRT:Print(string.format(TEXT.saved, name))
+            end
         end,
     })
 end

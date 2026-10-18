@@ -628,9 +628,10 @@ function ReferencePage.Build(f, ctx)
         end
     end)
 
-    -- Puts text in the box as a new reference (Save adds it), as the Journal's Export reference sends it.
-    function tab:Fill(text)
-        fill(text or "", nil)
+    -- Puts text in the box: as a new reference (Save adds it), or as your reference key when given (the
+    -- Journal's Send to Timeline saves first, then opens it here).
+    function tab:Fill(text, key)
+        fill(text or "", key)
     end
 
     function tab:Refresh()
