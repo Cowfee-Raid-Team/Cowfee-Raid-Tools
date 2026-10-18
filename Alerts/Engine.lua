@@ -19,6 +19,10 @@ local ADDON, CRT = ...
 -- before the clock's value at Start never show (measured by the item's own time, not its warning). A
 -- rehearsal runs no onPull hooks and sends nothing; its onRehearsal hooks pick the boss's note instead.
 -- A real Start (an encounter) replaces it like any other run.
+-- A rehearsal can also test an alert (the editor's Test): opts.extra is a list of items added to the run
+-- (time-cut like any other), and opts.replaces ({ block = "mine", id } or { block = "note", noteID, line })
+-- names the saved version of that alert, which is left out so it doesn't fire twice (a block may answer
+-- for its own items with def.Replaces: the note matches by line). Both apply only in a rehearsal.
 
 local Rules = CRT.AlertRules
 
@@ -179,7 +183,8 @@ function Alerts:RehearsalTick()
     return r.paused, r.tickSpeed or 1, r.epoch
 end
 
--- def = { label, group = bool, Entries = function(run) -> { item }, keepBlock = bool, own = bool }.
+-- def = { label, group = bool, Entries = function(run) -> { item }, keepBlock = bool, own = bool,
+-- Replaces = function(run, rep, item) -> bool (optional, see Collect) }.
 -- Registering a key again replaces it. With keepBlock, an item that names its own `block` keeps it (the
 -- editor's Test runs a note line as a "note" item, so the note's speech and sound switches still apply).
 -- own marks your personal items (your reminders): previewing as another player leaves them out.
@@ -221,11 +226,45 @@ function Alerts:OrderTime(spellID, text, ph, time)
     return t
 end
 
+-- One item as the run holds it: copied, stamped with its block, its phase and time defaulted, and moved
+-- by the raid's chosen order (a part's line moves with it). Nil when the order says it never comes.
+local function stamp(self, it, block)
+    local copy = {}
+    for k, v in pairs(it) do copy[k] = v end
+    copy.block = block
+    copy.ph = type(copy.ph) == "number" and copy.ph or 1
+    copy.time = type(copy.time) == "number" and copy.time or 0
+    local t = self:OrderTime(copy.spellID, copy.text, copy.ph, copy.time)
+    if not t then
+        return nil
+    end
+    copy.time = t
+    return copy
+end
+
+-- Whether a collected item is the saved alert a rehearsal's test replaces (see the top of this file).
+-- A block with Replaces(run, rep, item) answers for its own items (the note matches by line); otherwise
+-- rep.id matches the item ids "<block>:<id>:<n>" (your reminders give theirs that way).
+local function replaced(self, run, rep, item)
+    if type(rep) ~= "table" or item.block ~= rep.block then
+        return false
+    end
+    local def = self.blocks[rep.block]
+    if def and type(def.Replaces) == "function" then
+        local ok, res = safe(def.Replaces, run, rep, item)
+        return ok and res and true or false
+    end
+    local prefix = rep.block .. ":" .. tostring(rep.id) .. ":"
+    return rep.id ~= nil and type(item.id) == "string" and item.id:sub(1, #prefix) == prefix
+end
+
 function Alerts:Collect(run, opts)
     local out = {}
     -- Previewing as another player shows exactly what they get: none of your own reminders.
     local as = run and run.rehearsal and previewOf(run.rehearsal)
     local othersOnly = as ~= nil and as ~= "*"
+    local testing = run and run.rehearsal and type(opts) == "table"
+    local rep = testing and opts.replaces or nil
     for _, key in ipairs(self.blockOrder) do
         local def = self.blocks[key]
         if def and not (othersOnly and def.own) and (not (opts and opts.blocks) or opts.blocks[key]) then
@@ -238,18 +277,23 @@ function Alerts:Collect(run, opts)
                         keep = okF and res and true or false
                     end
                     if keep then
-                        local copy = {}
-                        for k, v in pairs(it) do copy[k] = v end
-                        copy.block = (def.keepBlock and type(it.block) == "string") and it.block or key
-                        copy.ph = type(copy.ph) == "number" and copy.ph or 1
-                        copy.time = type(copy.time) == "number" and copy.time or 0
-                        -- the raid's chosen order: a part's line moves with it, or never comes
-                        local t = self:OrderTime(copy.spellID, copy.text, copy.ph, copy.time)
-                        if t then
-                            copy.time = t
+                        local block = (def.keepBlock and type(it.block) == "string") and it.block or key
+                        local copy = stamp(self, it, block)
+                        if copy and not replaced(self, run, rep, copy) then
                             out[#out + 1] = copy
                         end
                     end
+                end
+            end
+        end
+    end
+    -- the tested alert as it stands on screen
+    if testing and type(opts.extra) == "table" then
+        for _, it in ipairs(opts.extra) do
+            if type(it) == "table" then
+                local copy = stamp(self, it, type(it.block) == "string" and it.block or "extra")
+                if copy then
+                    out[#out + 1] = copy
                 end
             end
         end

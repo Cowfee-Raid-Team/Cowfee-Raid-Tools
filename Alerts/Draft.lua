@@ -431,6 +431,38 @@ local function lower(s)
     return trim(s):lower()
 end
 
+-- The tested alert's first fight second (seconds from the pull) and the difficulty it was worked out
+-- for: the draft's own, else the raid you are in, else that of the boss's reference used. Each time is
+-- phase 1 from the pull, or a later phase through that reference (Reminders.AbsoluteTime); the earliest
+-- wins. Nil for a saved alert (no time), no boss, or no time that can be placed in the fight.
+function Draft.FirstFightTime(ctx, draft)
+    if not (ctx and type(ctx.encounterID) == "number") or ctx.savedMode or not draft then
+        return nil
+    end
+    local list
+    if draft.saveAs == "note" then
+        list = {}
+        for i, t in ipairs(Draft.NoteTimers(ctx, draft)) do
+            list[i] = { ph = t.ph, t = t.time }
+        end
+    else
+        list = Reminders:Times(ctx.encounterID, Draft.BuildReminder(ctx, draft))
+    end
+    local difficulty = draft.difficulty or Draft.CurrentDifficulty()
+    local ref = Reminders.ReferenceFor(ctx.encounterID, { boss = draft.boss, difficulty = difficulty })
+    if not difficulty and ref then
+        difficulty = ref.difficulty
+    end
+    local first
+    for _, e in ipairs(list) do
+        local s = Reminders.AbsoluteTime(ref, e.ph, e.t)
+        if s and (not first or s < first) then
+            first = s
+        end
+    end
+    return first, difficulty
+end
+
 -- The raid difficulty you are in now, by the name a pull there gets (GetDifficultyInfo, as the engine
 -- names it on ENCOUNTER_START), or nil outside a raid.
 function Draft.CurrentDifficulty()
