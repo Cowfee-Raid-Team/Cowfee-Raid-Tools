@@ -31,6 +31,7 @@ local GROUP_NAMES = CRT.Timeline.GROUP_NAMES
 local OTHER_GROUP = { nh = "mythic", mythic = "nh" }
 
 local GRAY = { 0.35, 0.35, 0.35 }
+local GOLD = { 1, 0.82, 0 }
 local BACKDROP = {
     bgFile = "Interface\\Buttons\\WHITE8X8",
     edgeFile = "Interface\\Buttons\\WHITE8X8",
@@ -84,7 +85,7 @@ end
 
 -- The Recent pulls list -------------------------------------------------------------------------
 
-local RECENT_H = 32
+local RECENT_H = 36 -- a pull's box and the gap under it
 
 function ReferencePage.Recent(f, width, pullLabel, toggle)
     local frame = CreateFrame("Frame", nil, f)
@@ -97,23 +98,24 @@ function ReferencePage.Recent(f, width, pullLabel, toggle)
     UI.Help(frame, "Recent pulls", "This boss's saved pulls. Click one to lay it over the reference: its deaths go in the Deaths row, its casts are drawn as ticks in a row of their own (their spells are usually unreadable), and a line marks where it ended. Click it again to clear it."):SetPoint("LEFT", title, "RIGHT", 4, 0)
 
     local recent, lines = {}, {}
-    -- pulls newest first, overlayID the one laid over the reference (highlighted), shown whether
-    -- a reference is shown at all
+    -- pulls newest first, each in a box as the Raid Notes list draws its notes, overlayID the one laid
+    -- over the reference (a gold border), shown whether a reference is shown at all
     function recent:Update(pulls, overlayID, shown)
         frame:SetShown(shown)
         for i, pull in ipairs(pulls) do
             local line = lines[i]
             if not line then
-                line = CreateFrame("Button", nil, frame)
-                line:SetSize(width, RECENT_H - 2)
-                line:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, -20 - (i - 1) * RECENT_H)
-                line.sel = line:CreateTexture(nil, "BACKGROUND")
-                line.sel:SetAllPoints()
-                line.sel:SetColorTexture(1, 0.82, 0, 0.18)
+                line = CreateFrame("Button", nil, frame, "BackdropTemplate")
+                line:SetSize(width, RECENT_H - 4)
+                line:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, -22 - (i - 1) * RECENT_H)
+                skin(line, 0.45)
                 line.title = label(line, "", "CRTFontSmall")
-                line.title:SetPoint("TOPLEFT", 4, -2)
+                line.title:SetPoint("TOPLEFT", 8, -3)
+                line.title:SetPoint("RIGHT", line, "RIGHT", -6, 0)
+                line.title:SetJustifyH("LEFT")
+                line.title:SetWordWrap(false)
                 line.deaths = label(line, "", "CRTFontSmall")
-                line.deaths:SetPoint("TOPLEFT", 4, -16)
+                line.deaths:SetPoint("TOPLEFT", 8, -17)
                 line.deaths:SetTextColor(1, 0.3, 0.3)
                 line:SetScript("OnClick", function(self)
                     toggle(self.pullID)
@@ -124,7 +126,8 @@ function ReferencePage.Recent(f, width, pullLabel, toggle)
             line.title:SetText(pullLabel(pull))
             local n = #(pull.deaths or {})
             line.deaths:SetText(n == 1 and "1 death" or (n .. " deaths"))
-            line.sel:SetShown(pull.id == overlayID)
+            local c = pull.id == overlayID and GOLD or GRAY
+            line:SetBackdropBorderColor(c[1], c[2], c[3], 1)
             line:Show()
         end
         for i = #pulls + 1, #lines do
