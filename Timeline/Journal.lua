@@ -163,6 +163,7 @@ local function collect(root, rows, seen)
                     name = (okName and name) or info.title or "",
                     icon = (okIcon and icon) or info.abilityIcon,
                     own = false,
+                    tags = Journal.SectionTags and Journal.SectionTags(id) or nil, -- the Journal's icons
                 }
             end
             walk(info.firstChildSectionID)
@@ -196,6 +197,8 @@ local function sectionTags(sectionID)
     end
     return out
 end
+
+Journal.SectionTags = sectionTags
 
 -- A Journal encounter (its Journal ID, as the Journal window shows it): its name, dungeon encounter ID and
 -- ability rows in Journal order, each { spellID, name, icon, tags, stage } with stage the title of the

@@ -58,6 +58,8 @@ local TINT_ALPHA = 0.08 -- a reference row's background, in its type's color
 local DOT = "Interface\\CHARACTERFRAME\\TempPortraitAlphaMask" -- a white circle, colored per type
 local DOT_SIZE = 8
 local MAX_DOTS = 3
+local TAG_SIZE = 14 -- the Journal's icons at the right of a row's name (Reference.TAGS atlases)
+local MAX_TAGS = 4
 local TICK_W, TICK_H = 3, 10 -- one cast of an overlaid pull
 local SKULL = "Interface\\TargetingFrame\\UI-TargetingFrame-Skull"
 local UNNAMED_ICON = "Interface\\Icons\\INV_Misc_QuestionMark"
@@ -362,16 +364,32 @@ local function flagEnter(f)
     GameTooltip:Show()
 end
 
+-- The Journal's icons of a lane, one tooltip line each: the icon and its name.
+local function addTags(lane)
+    local TAGS = CRT.TimelineReference and CRT.TimelineReference.TAGS
+    for _, key in ipairs(lane.tags or {}) do
+        local t = TAGS and TAGS[key]
+        if t then
+            GameTooltip:AddLine("|A:" .. t.atlas .. ":14:14|a " .. t.label, 1, 1, 1)
+        end
+    end
+end
+
 local function labelEnter(l)
     local lane = l.lane
+    local tagged = lane and lane.tags and #lane.tags > 0
     if lane and lane.kind == "spell" then
         GameTooltip:SetOwner(l, "ANCHOR_RIGHT")
         spellTip(lane.spellID, lane.label)
+        if tagged then
+            addTags(lane)
+        end
         GameTooltip:Show()
-    elseif lane and lane.kind == "reference" and lane.types and #lane.types > 0 then
+    elseif lane and (lane.kind == "reference" or lane.kind == "journal") and ((lane.types and #lane.types > 0) or tagged) then
         GameTooltip:SetOwner(l, "ANCHOR_RIGHT")
         GameTooltip:SetText(lane.label or "", 1, 0.82, 0)
         addTypes(lane)
+        addTags(lane)
         GameTooltip:Show()
     end
 end
@@ -3145,7 +3163,16 @@ function Methods:Label(n)
         l.text:SetPoint("RIGHT", l, "RIGHT", -2, 0)
         l.text:SetJustifyH("LEFT")
         l.text:SetWordWrap(false)
-        -- one dot per extra ability type, at the right end of the label
+        -- the Journal's icons at the right end of the label, then one dot per extra type left of them
+        -- (placed in Refresh, as how many icons a row has moves the dots)
+        l.tagIcons = {}
+        for t = 1, MAX_TAGS do
+            local icon = l:CreateTexture(nil, "OVERLAY")
+            icon:SetSize(TAG_SIZE, TAG_SIZE)
+            icon:SetPoint("RIGHT", l, "RIGHT", -3 - (t - 1) * (TAG_SIZE + 1), 0)
+            icon:Hide()
+            l.tagIcons[t] = icon
+        end
         l.dots = {}
         for d = 1, MAX_DOTS do
             local dot = l:CreateTexture(nil, "OVERLAY")
@@ -3213,6 +3240,9 @@ function Methods:DrawIgnored(after, rows)
         l.stripe:Show()
         for d = 1, MAX_DOTS do
             l.dots[d]:Hide()
+        end
+        for t = 1, MAX_TAGS do
+            l.tagIcons[t]:Hide()
         end
         l.check:Show()
         l.check:SetChecked(false)
@@ -3503,7 +3533,27 @@ function Methods:Refresh()
                 l.dots[d]:Hide()
             end
         end
-        l.text:SetPoint("RIGHT", l, "RIGHT", -2 - dotCount * (DOT_SIZE + 3), 0)
+        -- the Journal's icons, right to left in the Journal's order read from the right end
+        local TAGS = Reference and Reference.TAGS
+        local tagCount = 0
+        for _, key in ipairs(lane.tags or {}) do
+            local t = TAGS and TAGS[key]
+            if t and tagCount < MAX_TAGS then
+                tagCount = tagCount + 1
+                local icon = l.tagIcons[tagCount]
+                icon:SetAtlas(t.atlas)
+                icon:Show()
+            end
+        end
+        for t = tagCount + 1, MAX_TAGS do
+            l.tagIcons[t]:Hide()
+        end
+        local tagW = tagCount > 0 and (tagCount * (TAG_SIZE + 1) + 3) or 0
+        for d = 1, MAX_DOTS do
+            l.dots[d]:ClearAllPoints()
+            l.dots[d]:SetPoint("RIGHT", l, "RIGHT", -4 - tagW - (d - 1) * (DOT_SIZE + 3), 0)
+        end
+        l.text:SetPoint("RIGHT", l, "RIGHT", -2 - tagW - dotCount * (DOT_SIZE + 3), 0)
         l.icon:SetTexture(lane.icon)
         l.text:SetText(lane.label or "")
         if lane.class then

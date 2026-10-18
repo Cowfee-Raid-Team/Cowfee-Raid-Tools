@@ -144,6 +144,8 @@ local TEXT_MENU = {
     row = "Show as a timeline row",
     type = "Set type",
     noType = "No type",
+    tags = "Tags",
+    journalTags = "Use the Journal's icons",
     rename = "Rename...",
     unname = "Use the Journal's name",
     alert = "Make a Mech Alert",
@@ -536,6 +538,41 @@ function ReferencePage.Build(f, ctx)
                     return get("type") == key
                 end, function()
                     Timeline:SetAbility(boss, row.spellID, "type", key)
+                end)
+            end
+            -- the Journal's icons for it: ticked ones are yours (they start as the Journal's own)
+            local tags = root:CreateButton(TEXT_MENU.tags)
+            local function current()
+                local a = get("tags")
+                return type(a) == "table" and a or (row.tags or {})
+            end
+            for _, key in ipairs(Reference.TAG_ORDER) do
+                local t = Reference.TAGS[key]
+                tags:CreateCheckbox("|A:" .. t.atlas .. ":14:14|a " .. t.label, function()
+                    for _, k in ipairs(current()) do
+                        if k == key then
+                            return true
+                        end
+                    end
+                    return false
+                end, function()
+                    local out, had = {}, false
+                    for _, k in ipairs(current()) do
+                        if k == key then
+                            had = true
+                        else
+                            out[#out + 1] = k
+                        end
+                    end
+                    if not had then
+                        out[#out + 1] = key
+                    end
+                    Timeline:SetAbility(boss, row.spellID, "tags", out)
+                end)
+            end
+            if type(get("tags")) == "table" then
+                tags:CreateButton(TEXT_MENU.journalTags, function()
+                    Timeline:SetAbility(boss, row.spellID, "tags", nil)
                 end)
             end
             root:CreateButton(TEXT_MENU.rename, function()

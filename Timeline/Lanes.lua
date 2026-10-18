@@ -75,7 +75,8 @@ local function pullLanes(pull, rows, settings, encounterID, group)
     -- Ability rows. A cast on a hidden row is not drawn, and does not count as unnamed either.
     local byID, shown = {}, {}
     for _, row in ipairs(rows or {}) do
-        local lane = { key = "spell:" .. row.spellID, label = row.name, icon = row.icon, spellID = row.spellID, kind = "spell", marks = {} }
+        local lane = { key = "spell:" .. row.spellID, label = row.name, icon = row.icon, spellID = row.spellID, kind = "spell", marks = {},
+            tags = row.tags }
         byID[row.spellID] = lane
         if not CRT.TimelineJournal:IsHidden(encounterID, row.spellID) then
             shown[#shown + 1] = lane
@@ -198,6 +199,7 @@ local function referenceLanes(ref, rows, settings, encounterID, overlay, group, 
                 lanes[#lanes + 1] = {
                     key = "ref:" .. row.name, label = row.name, color = row.color, lead = row.lead, kind = "reference",
                     types = row.types, spellID = spellID, icon = icon or UNNAMED_ICON, marks = marks,
+                    tags = row.tags or (match and match.tags) or nil, -- the Journal's icons
                 }
             end
         end

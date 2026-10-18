@@ -96,7 +96,8 @@ function Timeline:WithoutIgnored(lanes, encounterID)
 end
 
 -- Your labels for a boss's Encounter Journal abilities, set from the Advanced tab's Journal list: per boss
--- by spell ID, timeline.abilities[boss][spellID] = { row = true, type = "raid", name = "Tank buster" }.
+-- by spell ID, timeline.abilities[boss][spellID] = { row = true, type = "raid", name = "Tank buster",
+-- tags = { "tank", "magic" } }.
 -- row gives the ability a row of its own on the timeline even when nothing has a time for it, type colors
 -- its row as a reference type does, and name shows instead of the Journal's. Only what you see, like
 -- ignored mechanics: no reference, note or anything shared changes.
@@ -148,6 +149,9 @@ function Timeline:ApplyAbilities(lanes, encounterID, rows)
             lane.types = { a.type }
             lane.color = t.color
         end
+        if type(a.tags) == "table" then
+            lane.tags = a.tags -- your choice of the Journal's icons, in place of the Journal's own
+        end
     end
     local out, has = {}, {}
     for _, lane in ipairs(lanes or {}) do
@@ -165,7 +169,7 @@ function Timeline:ApplyAbilities(lanes, encounterID, rows)
         if a and a.row and not has[row.spellID] then
             has[row.spellID] = true
             local lane = { key = "journal:" .. row.spellID, label = row.name, kind = "journal", spellID = row.spellID,
-                icon = row.icon, marks = {} }
+                icon = row.icon, marks = {}, tags = row.tags }
             dress(lane, a)
             out[#out + 1] = lane
         end
