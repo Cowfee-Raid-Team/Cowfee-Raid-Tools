@@ -461,7 +461,8 @@ local function personalEntries(run)
     return out
 end
 
-Alerts:RegisterBlock("personal", { label = "Your personal note", group = false, Entries = personalEntries })
+-- own: your personal note is yours alone, so a Rehearsal previewing as another player leaves it out
+Alerts:RegisterBlock("personal", { label = "Your personal note", group = false, own = true, Entries = personalEntries })
 
 -- On a pull, the note for the boss (preferring the same difficulty) becomes the note in use and runs.
 Alerts.onPull[#Alerts.onPull + 1] = function(run)
