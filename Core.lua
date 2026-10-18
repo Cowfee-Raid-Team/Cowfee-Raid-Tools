@@ -86,8 +86,9 @@ local defaults = {
         enabled = true,
         size = 44, -- icon size in pixels
         maxCount = 4, -- how many to show at once
-        dispelIcon = false, -- show the dispel type icon on mechanic debuffs
-        includeRegular = false, -- also show regular (not boss mechanic) debuffs in a second row
+        dispelIcon = false, -- show the dispel type icon on each debuff
+        maxDuration = 300, -- leave out debuffs longer than this many seconds; 0 shows every length
+        privateSlots = false, -- also the game's boss debuff slots, as a second row (a fallback)
         -- The look: only what the game lets an addon pass to its own debuff icons.
         swipe = true, -- the dark swipe that sweeps over the icon as the debuff runs out
         swipeEdge = true, -- the bright line on the swipe's edge

@@ -7,7 +7,7 @@ local ADDON, CRT = ...
 local Debuffs = CRT.Debuffs
 local UI = CRT.UI
 
-local page, enabledCheck, sizeEdit, countEdit, dispelCheck, regularCheck
+local page, enabledCheck, sizeEdit, countEdit, durationEdit, dispelCheck, slotsCheck
 local refresh
 local look = {} -- the Look section's controls, each with refresh(on)
 
@@ -46,7 +46,7 @@ local function usable(control, on)
 end
 
 -- The Look settings sit in a right-hand column, beside the panel settings (the page is UI.PAGE_W wide;
--- the widest row on the left, the regular debuffs checkbox, wraps at LEFT_TEXT_W).
+-- the widest row on the left, the boss debuff slots checkbox, wraps at LEFT_TEXT_W).
 local LOOK_X = 440
 local LEFT_TEXT_W = 390
 
@@ -122,12 +122,13 @@ refresh = function()
     end
     enabledCheck:SetChecked(Debuffs:Enabled())
     dispelCheck:SetChecked(Debuffs:DispelIcon())
-    regularCheck:SetChecked(Debuffs:IncludeRegular())
+    slotsCheck:SetChecked(Debuffs:PrivateSlots())
     local on = Debuffs:Enabled() and true or false
     sizeEdit.refresh()
     countEdit.refresh()
+    durationEdit.refresh()
     usable(dispelCheck, on)
-    usable(regularCheck, on)
+    usable(slotsCheck, on)
     for _, control in ipairs(look) do
         control.refresh(on)
     end
@@ -140,7 +141,7 @@ local function build(pf)
     title:SetPoint("TOPLEFT", 8, -8)
     title:SetText("Debuff panel")
 
-    UI.Help(pf, "The debuff panel", "A movable panel for the short debuffs a boss puts on you in combat. The game hides those from addons, but lets an addon choose where it draws them, so this panel is where they appear. Press Previews in the top right corner of this window to see it and drag it into place.\n\nThese are the boss mechanic debuffs the game calls private auras, which are short by design, so no time filter is needed.\n\nRegular debuffs cannot be limited to short ones, because the game hides their durations from addons in combat, which is why that row is off by default.\n\nYour settings are saved in your own saved variables."):SetPoint("LEFT", title, "RIGHT", 6, 0)
+    UI.Help(pf, "The debuff panel", "A movable row of the debuffs enemies put on you, shown in combat, shortest first. Press Previews in the top right corner of this window to see it and drag it into place.\n\nThe game fills the row itself, so it keeps working in combat, when debuff details are hidden from addons. Debuffs you or your pet cast, debuffs longer than the time you pick, and lockouts such as Exhaustion and Sated are left out.\n\nYour settings are saved in your own saved variables."):SetPoint("LEFT", title, "RIGHT", 6, 0)
 
     enabledCheck = makeCheck(pf, "Show the panel in combat", -30, function(checked)
         Debuffs:SetEnabled(checked)
@@ -162,20 +163,38 @@ local function build(pf)
     end })
     countEdit:SetPoint("TOPLEFT", 8, -84)
 
-    dispelCheck = makeCheck(pf, "Show the dispel type icon on each debuff", -130, function(checked)
+    durationEdit = UI.Slider(pf, "Hide debuffs longer than", { min = 0, max = 600, step = 30, labelWidth = 130, width = 200, enabledIf = panelOn,
+        format = function(v)
+            if v == 0 then
+                return "Off"
+            end
+            return v % 60 == 0 and format("%d min", v / 60) or format("%d:%02d", math.floor(v / 60), v % 60)
+        end,
+        get = function()
+            return Debuffs:MaxDuration()
+        end,
+        set = function(value)
+            Debuffs:SetMaxDuration(value)
+        end,
+    })
+    durationEdit:SetPoint("TOPLEFT", 8, -112)
+    UI.Help(pf, "Hide debuffs longer than", "Debuffs that last longer than this are left out, so long ones don't fill the panel. Boss mechanics are short, so 5 minutes keeps them all. Off shows every length."):SetPoint("LEFT", durationEdit, "RIGHT", 4, 0)
+
+    dispelCheck = makeCheck(pf, "Show the dispel type icon on each debuff", -146, function(checked)
         Debuffs:SetDispelIcon(checked)
     end)
-    regularCheck = makeCheck(pf, "Also show regular debuffs in a second row (this includes long ones)", -154, function(checked)
-        Debuffs:SetIncludeRegular(checked)
+    slotsCheck = makeCheck(pf, "Also use the game's boss debuff slots, in a second row", -170, function(checked)
+        Debuffs:SetPrivateSlots(checked)
     end)
-    regularCheck.label:SetWidth(LEFT_TEXT_W)
-    regularCheck.label:SetJustifyH("LEFT")
+    slotsCheck.label:SetWidth(LEFT_TEXT_W - 30)
+    slotsCheck.label:SetJustifyH("LEFT")
+    UI.Help(pf, "Boss debuff slots", "A fallback. Some boss mechanic debuffs are private: the game won't show them to addons at all, only draw them itself in slots an addon places. If a boss's debuff doesn't show in the panel, turn this on and the game draws its private debuffs in a second row under it.\n\nThe game draws those itself, so only the swipe, timer, dispel icon and border size apply to them. Off by default, since the same debuff could show in both rows."):SetPoint("LEFT", slotsCheck.label, "RIGHT", 4, 0)
 
     -- The look of the boss debuff icons. Previews shows the changes as you make them.
     local lookTitle = pf:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
     lookTitle:SetPoint("TOPLEFT", LOOK_X, -8)
     lookTitle:SetText("Look")
-    UI.Help(pf, "Look", "The game draws boss mechanic debuffs itself, and only takes these options from an addon. It writes their timer in its own shared small font, so their font and text size can't be changed without changing text all over the game. The font setting on the General Settings page changes everything else.\n\nTimer: the game's timer text beside or on the icon, or its countdown numbers on the swipe, never both.\n\nBorder size: the game's colored debuff border, the icon plus 5 pixels for each step.\n\nTurn on Previews to see each change as you make it."):SetPoint("LEFT", lookTitle, "RIGHT", 6, 0)
+    UI.Help(pf, "Look", "How each debuff in the panel looks. The timer and stacks use the addon's font from the General Settings page.\n\nTimer: the time left as text beside or on the icon, or as countdown numbers on the swipe, never both.\n\nBorder size: a dark border around the icon, 5 pixels for each step; 0 has none.\n\nTurn on Previews to see each change as you make it."):SetPoint("LEFT", lookTitle, "RIGHT", 6, 0)
 
     local timer = lookDropdown(pf, -26, "Timer", "timerPosition", Debuffs.TIMER_POSITIONS)
     local nudgeX = nudgeBox(pf, timer, "Nudge X", "timerX")

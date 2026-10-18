@@ -1,9 +1,12 @@
 local ADDON, CRT = ...
 
 -- Settings for the in-combat debuff panel, saved per player in CRTDB.debuffs:
---   enabled, size (icon size), maxCount (how many at once), and the dispel icon and regular row options.
+--   enabled, size (icon size), maxCount (how many at once), dispelIcon, maxDuration (seconds; debuffs
+--   longer than this are left out, 0 shows every length) and privateSlots (the game's boss debuff
+--   slots as a second row, a fallback).
 --   The look: swipe, swipeEdge, timerPosition, timerX, timerY and borderScale.
---   A reverse option existed until 0.13.0. Its saved value may remain and is ignored.
+--   A reverse option existed until 0.13.0, and includeRegular (the old optional second row) until the
+--   AuraContainer became the panel. Their saved values may remain and are ignored.
 --   position = { point, relativePoint, x, y } once the panel has been moved.
 -- Each player has their own copy in their own saved variables, so nothing is shared between players.
 
@@ -69,28 +72,66 @@ function Debuffs:SetDispelIcon(value)
     self:Fire()
 end
 
--- Also show regular debuffs, in a second row. Off by default: they cannot be limited to short ones.
-function Debuffs:IncludeRegular()
-    return ddb().includeRegular and true or false
+-- Debuffs longer than this many seconds are left out (the container's candidate filter maxDuration),
+-- so long ones such as a lockout don't fill the panel. 0 shows every length.
+function Debuffs:MaxDuration()
+    return tonumber(ddb().maxDuration) or 0
 end
 
-function Debuffs:SetIncludeRegular(value)
-    ddb().includeRegular = value and true or false
+function Debuffs:SetMaxDuration(seconds)
+    seconds = tonumber(seconds)
+    if seconds then
+        ddb().maxDuration = math.max(0, math.min(600, math.floor(seconds)))
+    end
     self:Fire()
 end
 
+-- The game's boss debuff slots (private aura anchors) as a second row, a fallback in case boss
+-- mechanic debuffs don't reach the container. Off by default.
+function Debuffs:PrivateSlots()
+    return ddb().privateSlots and true or false
+end
+
+function Debuffs:SetPrivateSlots(value)
+    ddb().privateSlots = value and true or false
+    self:Fire()
+end
+
+-- Debuffs never shown, whatever their length: lockouts and penalties that are on you for a long
+-- time and aren't a mechanic.
+Debuffs.EXCLUDED_SPELLS = {
+    [57723] = true, -- Exhaustion (Heroism)
+    [390435] = true, -- Exhaustion (Fury of the Aspects)
+    [57724] = true, -- Sated (Bloodlust)
+    [80354] = true, -- Temporal Displacement (Time Warp)
+    [95809] = true, -- Insanity (Ancient Hysteria)
+    [264689] = true, -- Fatigued (Primal Rage)
+    [160455] = true, -- Fatigued (Netherwinds)
+    [26013] = true, -- Deserter
+    [71041] = true, -- Dungeon Deserter
+}
+
+-- What the panel's AuraContainer group keeps of your HARMFUL auras: not cast by you or your pet, no
+-- longer than maxDuration (when set), and none of the excluded spells. A new table each call, since
+-- the container may keep it.
+function Debuffs:CandidateFilters()
+    local exclude = {}
+    for id in pairs(self.EXCLUDED_SPELLS) do
+        exclude[id] = true
+    end
+    local filters = { isFromPlayerOrPlayerPet = false, excludeSpellIDs = exclude }
+    if self:MaxDuration() > 0 then
+        filters.maxDuration = self:MaxDuration()
+    end
+    return filters
+end
+
 -- The look ----------------------------------------------------------------------------------
--- Boss mechanic debuffs are drawn by the game, which takes only these options from an addon: the
--- swipe, its edge, the countdown numbers, the dispel icon, the border scale and where the timer
--- text is anchored. Blizzard_PrivateAurasUI (in the game's own UI source) sets the timer text to the
--- shared GameFontNormalSmall font, inside a protected environment, so its font can't be changed
--- without changing that font across the whole game. The border it draws is the icon's width plus
--- 5 x borderScale pixels, with the dispel type's colored border art.
---
--- The game draws two different timers: its timer text, placed by the anchor we give it, and the
--- countdown numbers on the swipe. Showing both would show the time twice, so they are one setting.
--- The timer text can't be switched off, so for "numbers" and "hidden" it is anchored far off the
--- top of the screen.
+-- The panel's debuffs are buttons of Blizzard's AuraContainer, built by this addon: the game fills
+-- each one (icon, time, stacks, dispel type) without handing the values to addon code, so the panel
+-- also works in combat, when debuff details are secret. The look is ours: the swipe and its edge, the
+-- timer as text beside or on the icon or as countdown numbers on the swipe (never both), the dispel
+-- type icon, and a border of 5 x borderScale pixels around the icon.
 
 Debuffs.TIMER_POSITIONS = {
     { key = "below", label = "Below the icon" },
