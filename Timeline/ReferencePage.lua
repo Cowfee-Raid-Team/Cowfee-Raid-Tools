@@ -15,6 +15,7 @@ local ADDON, CRT = ...
 local Reference = CRT.TimelineReference
 local Journal = CRT.TimelineJournal
 local UI = CRT.UI
+local View = CRT.TimelineView
 
 local ReferencePage = {}
 CRT.TimelineReferencePage = ReferencePage
@@ -146,6 +147,16 @@ local TEXT_MENU = {
     noType = "No type",
     tags = "Tags",
     journalTags = "Use the Journal's icons",
+    addPhase = "Add phase here...",
+    addIntermission = "Add intermission here...",
+    setStart = "Set start time...",
+    removePhase = "Remove this phase",
+    intermissionTitle = "Intermission",
+    phasePrompt = "When %s starts, m:ss or seconds (leave it empty to fill in later):",
+    noTimes = "no times",
+    noStart = "no start yet",
+    refHeading = "Reference abilities",
+    pullPhase = "Phase 1 (from the pull)",
     rename = "Rename...",
     unname = "Use the Journal's name",
     alert = "Make a Mech Alert",
@@ -261,6 +272,8 @@ function ReferencePage.Build(f, ctx)
         mode:SetText((entry and ("Editing " .. Reference.Label(entry.ref)) or "New reference") .. where)
     end
 
+    local refreshAbilities -- set below, with the abilities list; fill uses it
+
     -- Fills the box. key is your reference being edited, nil for text to save as a new one.
     local function fill(text, key)
         editing = key
@@ -268,6 +281,9 @@ function ReferencePage.Build(f, ctx)
         edit:SetCursorPosition(0)
         status:SetText("")
         showMode()
+        if refreshAbilities then
+            refreshAbilities() -- the middle list shows your reference while it is open here
+        end
     end
 
     local save = button(f, "Save", 80)
@@ -351,7 +367,6 @@ function ReferencePage.Build(f, ctx)
         return Journal:ResolveID(selected, refs[1] and refs[1].ref), ctx.bossName()
     end
 
-    local refreshAbilities -- set below, with the abilities list
 
     local fillIDs = button(f, "Fill spell IDs", 110)
     fillIDs:SetPoint("LEFT", clear, "RIGHT", 8, 0)
@@ -447,7 +462,9 @@ function ReferencePage.Build(f, ctx)
     abilitiesLabel:SetWidth(280)
     abilitiesLabel:SetJustifyH("LEFT")
     abilitiesLabel:SetWordWrap(false)
-    UI.Help(f, "Journal abilities", "The boss's abilities in the Encounter Journal, with their spell IDs. A reference line whose name matches one gets its icon and tooltip, or use Fill spell IDs to write the IDs into the text.\n\nClick or right-click an ability to give it a row on the timeline (even with no cast times, so notes, templates and cooldowns can go on it), a type that colors its row, your own name for it, or a Mech Alert. These are only yours: no reference or note changes.\n\nThe Journal's spell for an ability is sometimes a summary spell rather than the exact cast, so its ID may differ from what the damage meter shows.\n\nNothing shows in combat or while the Journal window is open."):SetPoint("LEFT", abilitiesLabel, "RIGHT", -4, 0)
+    UI.Help(f, "Journal abilities", "The boss's abilities in the Encounter Journal, with their spell IDs. A reference line whose name matches one gets its icon and tooltip, or use Fill spell IDs to write the IDs into the text.\n\nClick or right-click an ability to give it a row on the timeline (even with no cast times, so notes, templates and cooldowns can go on it), a type that colors its row, your own name for it, or a Mech Alert. These are only yours: no reference or note changes.
+
+While one of your references is open in the box (Edit, or the Journal's Send to Timeline), this list is that reference: its abilities under its phases. Right-click an ability to add a phase or an intermission before it, and right-click a phase to set when it starts or take it out; the reference's text follows.\n\nThe Journal's spell for an ability is sometimes a summary spell rather than the exact cast, so its ID may differ from what the damage meter shows.\n\nNothing shows in combat or while the Journal window is open."):SetPoint("LEFT", abilitiesLabel, "RIGHT", -4, 0)
     local abilitiesNone = label(f, "", "CRTFontSmall")
     abilitiesNone:SetWidth(300)
     abilitiesNone:SetJustifyH("LEFT")
@@ -506,120 +523,312 @@ function ReferencePage.Build(f, ctx)
         return l
     end
 
-    -- The menu on a Journal ability (left or right click): your own labels for it (Timeline:SetAbility),
-    -- and Make a Mech Alert, which opens the Mech Alerts tab on it.
-    abilityMenu = function(l)
-        local boss, row = l.boss, l.row
-        if not (boss and row and row.spellID and MenuUtil and MenuUtil.CreateContextMenu) then
+    -- Edits the reference open in the box (editing) through its text, one line at a time: yours is
+    -- updated; a shipped one is saved as a new one of yours (shipped references can't change). The box,
+    -- the list and the Timeline follow.
+    local function applyText(text)
+        local entry = editing and Reference:Find(editing)
+        local ok, errors
+        if entry and entry.own then
+            ok, errors = Reference:Update(editing, text)
+        else
+            local key
+            key, errors = Reference:Add(text)
+            ok = key ~= nil
+            editing = key or editing
+        end
+        if ok then
+            fill(text, editing)
+            ctx.refresh()
+        else
+            status:SetText(errors and errors[1] or "")
+            status:SetTextColor(1, 0.3, 0.3)
+        end
+    end
+
+    -- A popup for a phase's start: m:ss or seconds, or empty to leave it for later. onDone(text).
+    local PHASE_POPUP = "COWFEERAIDTOOLS_PHASE_START"
+    local function askPhaseStart(prompt, current, onDone)
+        if not StaticPopupDialogs then
             return
         end
+        StaticPopupDialogs[PHASE_POPUP] = StaticPopupDialogs[PHASE_POPUP] or {
+            text = "%s",
+            button1 = ACCEPT or "Accept",
+            button2 = CANCEL or "Cancel",
+            hasEditBox = true,
+            maxLetters = 12,
+            timeout = 0,
+            whileDead = true,
+            hideOnEscape = true,
+            preferredIndex = 3,
+            OnShow = function(dialog, data)
+                local e = CRT.UI.PopupEditBox(dialog)
+                if e then
+                    e:SetText(data and data.current or "")
+                    e:HighlightText()
+                end
+            end,
+            OnAccept = function(dialog, data)
+                local e = CRT.UI.PopupEditBox(dialog)
+                if e and data then
+                    data.onDone(strtrim(e:GetText() or ""))
+                end
+            end,
+            EditBoxOnEnterPressed = function(e, data)
+                local parent = e:GetParent()
+                data = data or (parent and parent.data)
+                if data then
+                    data.onDone(strtrim(e:GetText() or ""))
+                end
+                StaticPopup_Hide(PHASE_POPUP)
+            end,
+            EditBoxOnEscapePressed = function()
+                StaticPopup_Hide(PHASE_POPUP)
+            end,
+        }
+        StaticPopup_Show(PHASE_POPUP, prompt, nil, { current = current, onDone = onDone })
+    end
+
+    -- Puts a phase (or an intermission) before line `before` of the open reference, asking its start.
+    local function addPhase(before, intermission)
+        local entry = editing and Reference:Find(editing)
+        if not entry then
+            return
+        end
+        local label = Reference.NextPhaseLabel(entry.ref, before, intermission)
+        local title = intermission and TEXT_MENU.intermissionTitle or nil
+        askPhaseStart(string.format(TEXT_MENU.phasePrompt, label), "", function(timeText)
+            if timeText ~= "" and not Reference.ParseTime(timeText) then
+                status:SetText("Not a time: " .. timeText)
+                status:SetTextColor(1, 0.3, 0.3)
+                return
+            end
+            applyText(Reference.InsertLine(entry.text, before, Reference.PhaseLine(label, timeText, title)))
+        end)
+    end
+
+    -- The menu on a phase heading of the open reference: its start time, or take it out.
+    local function phaseMenu(l)
+        local p, entry = l.phase, editing and Reference:Find(editing)
+        if not (p and p.line and entry and MenuUtil and MenuUtil.CreateContextMenu) then
+            return
+        end
+        MenuUtil.CreateContextMenu(l, function(_, root)
+            root:CreateTitle((p.label or "") .. (p.title and ("  " .. p.title) or ""))
+            root:CreateButton(TEXT_MENU.setStart, function()
+                askPhaseStart(string.format(TEXT_MENU.phasePrompt, p.label or ""), p.t and View.Format(p.t) or "", function(timeText)
+                    if timeText ~= "" and not Reference.ParseTime(timeText) then
+                        status:SetText("Not a time: " .. timeText)
+                        status:SetTextColor(1, 0.3, 0.3)
+                        return
+                    end
+                    applyText(Reference.ReplaceLine(entry.text, p.line, Reference.PhaseLine(p.label or "P2", timeText, p.title)))
+                end)
+            end)
+            root:CreateButton(TEXT_MENU.removePhase, function()
+                applyText(Reference.ReplaceLine(entry.text, p.line, nil))
+            end)
+        end)
+    end
+
+    -- The menu on an ability (left or right click). With its spell: your own labels for it
+    -- (Timeline:SetAbility) and Make a Mech Alert, which opens the Mech Alerts tab on it. On a row of the
+    -- open reference: also Add phase here and Add intermission here, put just before it.
+    abilityMenu = function(l)
+        if l.phase then
+            phaseMenu(l)
+            return
+        end
+        local boss, row = l.boss, l.row
+        if not (row and MenuUtil and MenuUtil.CreateContextMenu) then
+            return
+        end
+        local spellID = boss and row.spellID and row.spellID ~= 0 and row.spellID or nil
         local Timeline = CRT.Timeline
         local function get(field)
-            local a = Timeline:Ability(boss, row.spellID)
+            local a = spellID and Timeline:Ability(boss, spellID)
             return a and a[field]
         end
         MenuUtil.CreateContextMenu(l, function(_, root)
             root:CreateTitle((get("name") or row.name or "") .. (get("name") and (" (" .. row.name .. ")") or ""))
-            root:CreateCheckbox(TEXT_MENU.row, function()
-                return get("row") and true or false
-            end, function()
-                Timeline:SetAbility(boss, row.spellID, "row", not get("row") or nil)
-            end)
-            local types = root:CreateButton(TEXT_MENU.type)
-            types:CreateRadio(TEXT_MENU.noType, function()
-                return get("type") == nil
-            end, function()
-                Timeline:SetAbility(boss, row.spellID, "type", nil)
-            end)
-            for _, key in ipairs(Reference.TYPE_ORDER) do
-                local t = Reference.TYPES[key]
-                local hex = string.format("%02x%02x%02x", t.color[1] * 255, t.color[2] * 255, t.color[3] * 255)
-                types:CreateRadio("|cff" .. hex .. key:sub(1, 1):upper() .. key:sub(2) .. "|r  " .. t.label, function()
-                    return get("type") == key
+            if spellID then
+                root:CreateCheckbox(TEXT_MENU.row, function()
+                    return get("row") and true or false
                 end, function()
-                    Timeline:SetAbility(boss, row.spellID, "type", key)
+                    Timeline:SetAbility(boss, spellID, "row", not get("row") or nil)
                 end)
-            end
-            -- the Journal's icons for it: ticked ones are yours (they start as the Journal's own)
-            local tags = root:CreateButton(TEXT_MENU.tags)
-            local function current()
-                local a = get("tags")
-                return type(a) == "table" and a or (row.tags or {})
-            end
-            for _, key in ipairs(Reference.TAG_ORDER) do
-                local t = Reference.TAGS[key]
-                tags:CreateCheckbox("|A:" .. t.atlas .. ":14:14|a " .. t.label, function()
-                    for _, k in ipairs(current()) do
-                        if k == key then
-                            return true
-                        end
-                    end
-                    return false
+                local types = root:CreateButton(TEXT_MENU.type)
+                types:CreateRadio(TEXT_MENU.noType, function()
+                    return get("type") == nil
                 end, function()
-                    local out, had = {}, false
-                    for _, k in ipairs(current()) do
-                        if k == key then
-                            had = true
-                        else
-                            out[#out + 1] = k
-                        end
-                    end
-                    if not had then
-                        out[#out + 1] = key
-                    end
-                    Timeline:SetAbility(boss, row.spellID, "tags", out)
+                    Timeline:SetAbility(boss, spellID, "type", nil)
                 end)
-            end
-            if type(get("tags")) == "table" then
-                tags:CreateButton(TEXT_MENU.journalTags, function()
-                    Timeline:SetAbility(boss, row.spellID, "tags", nil)
-                end)
-            end
-            root:CreateButton(TEXT_MENU.rename, function()
-                askAbilityName(boss, row, get("name"))
-            end)
-            if get("name") then
-                root:CreateButton(TEXT_MENU.unname, function()
-                    Timeline:SetAbility(boss, row.spellID, "name", nil)
-                end)
-            end
-            root:CreateButton(TEXT_MENU.alert, function()
-                if CRT.NoteReminders and CRT.NoteReminders.Open then
-                    CRT.NoteReminders.Open(boss, row.spellID)
+                for _, key in ipairs(Reference.TYPE_ORDER) do
+                    local t = Reference.TYPES[key]
+                    local hex = string.format("%02x%02x%02x", t.color[1] * 255, t.color[2] * 255, t.color[3] * 255)
+                    types:CreateRadio("|cff" .. hex .. key:sub(1, 1):upper() .. key:sub(2) .. "|r  " .. t.label, function()
+                        return get("type") == key
+                    end, function()
+                        Timeline:SetAbility(boss, spellID, "type", key)
+                    end)
                 end
-            end)
+                -- the Journal's icons for it: ticked ones are yours (they start as the Journal's own)
+                local tags = root:CreateButton(TEXT_MENU.tags)
+                local function current()
+                    local a = get("tags")
+                    return type(a) == "table" and a or (row.tags or {})
+                end
+                for _, key in ipairs(Reference.TAG_ORDER) do
+                    local t = Reference.TAGS[key]
+                    tags:CreateCheckbox("|A:" .. t.atlas .. ":14:14|a " .. t.label, function()
+                        for _, k in ipairs(current()) do
+                            if k == key then
+                                return true
+                            end
+                        end
+                        return false
+                    end, function()
+                        local out, had = {}, false
+                        for _, k in ipairs(current()) do
+                            if k == key then
+                                had = true
+                            else
+                                out[#out + 1] = k
+                            end
+                        end
+                        if not had then
+                            out[#out + 1] = key
+                        end
+                        Timeline:SetAbility(boss, spellID, "tags", out)
+                    end)
+                end
+                if type(get("tags")) == "table" then
+                    tags:CreateButton(TEXT_MENU.journalTags, function()
+                        Timeline:SetAbility(boss, spellID, "tags", nil)
+                    end)
+                end
+                root:CreateButton(TEXT_MENU.rename, function()
+                    askAbilityName(boss, { name = row.name, spellID = spellID }, get("name"))
+                end)
+                if get("name") then
+                    root:CreateButton(TEXT_MENU.unname, function()
+                        Timeline:SetAbility(boss, spellID, "name", nil)
+                    end)
+                end
+                root:CreateButton(TEXT_MENU.alert, function()
+                    if CRT.NoteReminders and CRT.NoteReminders.Open then
+                        CRT.NoteReminders.Open(boss, spellID)
+                    end
+                end)
+            end
+            if l.refRow and row.line then
+                root:CreateDivider()
+                root:CreateButton(TEXT_MENU.addPhase, function()
+                    addPhase(row.line, false)
+                end)
+                root:CreateButton(TEXT_MENU.addIntermission, function()
+                    addPhase(row.line, true)
+                end)
+            end
         end)
+    end
+
+    -- One line of the list: an ability (its icon, name in its type's color, a tag, its spell ID), or on
+    -- the open reference a phase heading (gold, its start or "no start yet").
+    local function showAbility(l, id, row, refRow)
+        local Timeline = CRT.Timeline
+        l.boss, l.row, l.refRow, l.phase = id, row, refRow, nil
+        local spellID = row.spellID ~= 0 and row.spellID or nil
+        local a = spellID and Timeline.Ability and Timeline:Ability(id, spellID) or nil
+        local typeKey = (a and a.type) or (row.types and row.types[1])
+        local t = typeKey and Reference.TYPES[typeKey]
+        l.icon:SetTexture(row.icon or 134400)
+        l.icon:Show()
+        l.name:SetPoint("LEFT", 22, 0)
+        l.name:SetText((a and a.name) or row.name or "")
+        if t then
+            l.name:SetTextColor(t.color[1], t.color[2], t.color[3])
+        else
+            l.name:SetTextColor(1, 1, 1)
+        end
+        local tag = a and a.row and TEXT_ROW or ""
+        if refRow and #(row.casts or {}) == 0 then
+            tag = TEXT_MENU.noTimes
+        end
+        l.tag:SetText(tag)
+        l.id:SetText(spellID and tostring(spellID) or "")
+        l:Show()
+    end
+
+    local function showPhase(l, p)
+        l.boss, l.row, l.refRow, l.phase = nil, nil, nil, p
+        l.icon:Hide()
+        l.name:SetPoint("LEFT", 0, 0)
+        l.name:SetText((p.label or "") .. (p.title and ("  " .. p.title) or ""))
+        l.name:SetTextColor(1, 0.82, 0)
+        l.tag:SetText("")
+        l.id:SetText(p.pull and "" or (p.t and View.Format(p.t) or TEXT_MENU.noStart))
+        l:Show()
     end
 
     local abilitiesFor -- the encounter ID the list was last filled for, so typing doesn't refill it
     refreshAbilities = function()
         local id, name = journalBoss()
         abilitiesFor = id
-        abilitiesLabel:SetText("Journal abilities" .. (name and (": " .. name) or ""))
         local rows = id and Journal:Rows(id) or {}
-        local Timeline = CRT.Timeline
-        for i, row in ipairs(rows) do
-            local l = abilityLine(i)
-            l.boss, l.row = id, row
-            local a = Timeline.Ability and Timeline:Ability(id, row.spellID) or nil
-            local t = a and a.type and Reference.TYPES[a.type]
-            l.icon:SetTexture(row.icon or 134400)
-            l.name:SetText((a and a.name) or row.name or "")
-            if t then
-                l.name:SetTextColor(t.color[1], t.color[2], t.color[3])
-            else
-                l.name:SetTextColor(1, 1, 1)
+        local entry = editing and Reference:Find(editing)
+        local n = 0
+        if entry then
+            -- the open reference: its abilities under its phases, in the order they are written
+            abilitiesLabel:SetText(TEXT_MENU.refHeading .. (entry.ref.boss and (": " .. entry.ref.boss) or ""))
+            local items = {}
+            for _, p in ipairs(entry.ref.phases or {}) do
+                items[#items + 1] = { line = p.line or 0, phase = p }
             end
-            l.tag:SetText(a and a.row and TEXT_ROW or "")
-            l.id:SetText(tostring(row.spellID))
-            l:Show()
+            for _, p in ipairs(entry.ref.pending or {}) do
+                items[#items + 1] = { line = p.line or 0, phase = p }
+            end
+            for _, r in ipairs(entry.ref.rows or {}) do
+                items[#items + 1] = { line = r.line or 0, row = r }
+            end
+            table.sort(items, function(x, y)
+                return x.line < y.line
+            end)
+            n = n + 1
+            showPhase(abilityLine(n), { label = TEXT_MENU.pullPhase, pull = true })
+            local byID = {}
+            for _, r in ipairs(rows) do
+                byID[r.spellID] = r
+            end
+            local Lanes = CRT.TimelineLanes
+            for _, it in ipairs(items) do
+                n = n + 1
+                if it.phase then
+                    showPhase(abilityLine(n), it.phase)
+                else
+                    local r = it.row
+                    local spellID = Lanes and Lanes.RowSpell(r, id, rows) or r.spellID or 0
+                    local j = byID[spellID]
+                    showAbility(abilityLine(n), id, {
+                        name = r.name, spellID = spellID, types = r.types, tags = r.tags or (j and j.tags),
+                        icon = j and j.icon, casts = r.casts, line = r.line,
+                    }, true)
+                end
+            end
+        else
+            abilitiesLabel:SetText("Journal abilities" .. (name and (": " .. name) or ""))
+            for _, row in ipairs(rows) do
+                n = n + 1
+                showAbility(abilityLine(n), id, row, false)
+            end
         end
-        for i = #rows + 1, #abilityLines do
+        for i = n + 1, #abilityLines do
             abilityLines[i]:Hide()
         end
-        abilitiesChild:SetHeight(math.max(1, #rows * ABILITY_H))
+        abilitiesChild:SetHeight(math.max(1, n * ABILITY_H))
         abilitiesNone:SetText(name and "No Journal abilities found" or "No boss picked")
-        abilitiesNone:SetShown(#rows == 0)
+        abilitiesNone:SetShown(n == 0)
     end
     edit:SetScript("OnTextChanged", function()
         local id = journalBoss()
