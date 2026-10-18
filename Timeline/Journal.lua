@@ -225,11 +225,57 @@ end
 
 Journal.SectionTags = sectionTags
 
+-- Whether a Journal section starts a stage of the fight: its title begins with Stage, Phase or Intermission
+-- (after any numbering, any case), or it is a header with no spell that heads other headers (sections with
+-- their own children). An add's header ("Echo of Jawae", only abilities under it) is not one: its abilities
+-- belong to the stage above it. Nor is a header that holds stages (a boss's page put under one header):
+-- the stages under it are. The Overview is never a stage.
+local function getSection(id)
+    local ok, info = pcall(C_EncounterJournal.GetSectionInfo, id)
+    return ok and type(info) == "table" and info or nil
+end
+
+local function titledStage(info)
+    local title = tostring(info.title or ""):lower():gsub("^%s*[%d%.%)%-:]*%s*", "")
+    return title:find("^stage") ~= nil or title:find("^phase") ~= nil or title:find("^intermission") ~= nil
+end
+
+function Journal.IsStage(info)
+    if not info or info.headerType == HTYPE_OVERVIEW then
+        return false
+    end
+    if titledStage(info) then
+        return true
+    end
+    if type(info.spellID) == "number" and info.spellID > 0 then
+        return false
+    end
+    local headsHeaders = false
+    local child, guard = info.firstChildSectionID, 0
+    while child and child ~= 0 and guard < 200 do
+        guard = guard + 1
+        local c = getSection(child)
+        if not c then
+            break
+        end
+        if titledStage(c) then
+            return false -- it holds stages, it isn't one
+        end
+        if c.firstChildSectionID and c.firstChildSectionID ~= 0 then
+            headsHeaders = true
+        end
+        child = c.siblingSectionID
+    end
+    return headsHeaders
+end
+
 -- A Journal encounter (its Journal ID, as the Journal window shows it): its name, dungeon encounter ID and
--- ability rows in Journal order, each { spellID, name, icon, tags, stage } with stage the title of the
--- top-level section it is under ("Stage One: ...", "Intermission: ..."), and stages, those titles in
--- order. Sections the Journal leaves out for its picked difficulty (filteredByDifficulty) are left out with
--- what is under them. Read without changing the Journal's selection. Nil when unknown.
+-- ability rows in Journal order, each { spellID, name, icon, tags, stage } with stage the title of its
+-- nearest stage (Journal.IsStage, at any depth), and stages, those titles in order. An ability listed in two
+-- stages is in both; within one stage it is listed once, with its sections' icons merged. A stage header
+-- that has a spell of its own is an ability of that stage too. Sections the Journal leaves out for its picked
+-- difficulty (filteredByDifficulty) are left out with what is under them, and so is the Overview. Read
+-- without changing the Journal's selection. Nil when unknown.
 function Journal.FromJournalEncounter(journalEncounterID)
     if not (journalEncounterID and EJ_GetEncounterInfo and C_EncounterJournal) then
         return nil
@@ -239,40 +285,43 @@ function Journal.FromJournalEncounter(journalEncounterID)
         return nil
     end
     local rows, stages, seen, visited = {}, {}, {}, {}
-    local function walk(id, depth, stage)
+    local function walk(id, stage)
         while id and id ~= 0 and not visited[id] do
             visited[id] = true
-            local okInfo, info = pcall(C_EncounterJournal.GetSectionInfo, id)
-            if not okInfo or type(info) ~= "table" then
+            local info = getSection(id)
+            if not info then
                 return
             end
             if not info.filteredByDifficulty and info.headerType ~= HTYPE_OVERVIEW then
                 local spellID = info.spellID
                 local here = stage
-                if depth == 1 and not (type(spellID) == "number" and spellID > 0) and info.firstChildSectionID then
+                if Journal.IsStage(info) then
                     here = info.title
                     stages[#stages + 1] = info.title
                 end
-                if type(spellID) == "number" and spellID > 0 and seen[spellID] then
-                    mergeTags(seen[spellID], sectionTags(id))
-                elseif type(spellID) == "number" and spellID > 0 then
-                    local okName, spellName = pcall(C_Spell.GetSpellName, spellID)
-                    rows[#rows + 1] = {
-                        spellID = spellID,
-                        name = (okName and spellName) or info.title or "",
-                        icon = info.abilityIcon,
-                        tags = sectionTags(id),
-                        stage = here,
-                    }
-                    seen[spellID] = rows[#rows]
+                if type(spellID) == "number" and spellID > 0 then
+                    local key = tostring(here) .. "|" .. spellID -- once per stage
+                    if seen[key] then
+                        mergeTags(seen[key], sectionTags(id))
+                    else
+                        local okName, spellName = pcall(C_Spell.GetSpellName, spellID)
+                        rows[#rows + 1] = {
+                            spellID = spellID,
+                            name = (okName and spellName) or info.title or "",
+                            icon = info.abilityIcon,
+                            tags = sectionTags(id),
+                            stage = here,
+                        }
+                        seen[key] = rows[#rows]
+                    end
                 end
-                walk(info.firstChildSectionID, depth + 1, here)
+                walk(info.firstChildSectionID, here)
             end
             id = info.siblingSectionID
         end
     end
     if rootSectionID and rootSectionID > 0 then
-        walk(rootSectionID, 1, nil)
+        walk(rootSectionID, nil)
     end
     return name, dungeonEncounterID, rows, stages
 end

@@ -141,6 +141,10 @@ SlashCmdList["COWFEERAIDTOOLS"] = function(msg)
     --@do-not-package@
     elseif msg == "dev debuffs" then
         CRT.DebuffPanel:ShowInfo()
+    elseif msg == "dev journaltree" or msg:match("^dev journaltree%s") then
+        if CRT.JournalTree then
+            CRT.JournalTree:Show(msg:match("^dev journaltree%s+(%d+)"))
+        end
     elseif msg == "dev bosses" then
         if CRT.BossOrder then
             CRT.BossOrder:Toggle()
