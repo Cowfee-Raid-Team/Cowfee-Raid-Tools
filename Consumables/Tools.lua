@@ -34,6 +34,7 @@ local function getWindow()
     local scroll = CreateFrame("ScrollFrame", "CowfeeRaidToolsTextWindowScroll", w, "UIPanelScrollFrameTemplate")
     scroll:SetPoint("TOPLEFT", 14, -34)
     scroll:SetPoint("BOTTOMRIGHT", -34, 14)
+    w.scroll = scroll
     w.edit = CreateFrame("EditBox", nil, scroll)
     w.edit:SetMultiLine(true)
     w.edit:SetAutoFocus(false)
@@ -75,7 +76,10 @@ function Tools:ShowText(title, text, action)
         w.action:SetSize(140, 22)
         w.action:SetPoint("BOTTOMRIGHT", w, "BOTTOMRIGHT", -24, 8)
     end
+    -- the text stops above the action button (and the button sits over it), so the whole button takes clicks
+    w.scroll:SetPoint("BOTTOMRIGHT", -34, action and 40 or 14)
     if w.action then
+        w.action:SetFrameLevel(w.scroll:GetFrameLevel() + 5)
         w.action:SetShown(action ~= nil)
         if action then
             w.action:SetText(action.label)
