@@ -757,10 +757,7 @@ local function rehearse(c, d)
     for _, it in ipairs(items) do
         it.block = it.block or TEST_BLOCK
     end
-    -- the window opens only while no other run goes: a quick test still going gives way
-    if Alerts.running and Alerts.run and Alerts.run.reason == "test" then
-        Alerts:Stop(true)
-    end
+    -- OpenAt itself stops a quick test still going; a real pull never gets here (runTest)
     local ok, why = W:OpenAt(c.encounterID, difficulty, first - REHEARSAL_LEAD, {
         testing = testLabel(d),
         alerts = { extra = items, replaces = savedIdentity(c) },

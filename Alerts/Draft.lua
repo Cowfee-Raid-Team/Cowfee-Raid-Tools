@@ -431,31 +431,64 @@ local function lower(s)
     return trim(s):lower()
 end
 
--- The tested alert's first fight second (seconds from the pull) and the difficulty it was worked out
--- for: the draft's own, else the raid you are in, else that of the boss's reference used. Each time is
--- phase 1 from the pull, or a later phase through that reference (Reminders.AbsoluteTime); the earliest
--- wins. Nil for a saved alert (no time), no boss, or no time that can be placed in the fight.
-function Draft.FirstFightTime(ctx, draft)
-    if not (ctx and type(ctx.encounterID) == "number") or ctx.savedMode or not draft then
+-- The chosen order's shift for a boss and group (CRT.Timeline:OrderShift), or nil.
+local function orderShift(encounterID, group)
+    local T = CRT.Timeline
+    if not (T and T.OrderShift) then
         return nil
     end
-    local list
+    local ok, shift = pcall(T.OrderShift, T, encounterID, group)
+    return ok and type(shift) == "function" and shift or nil
+end
+
+-- The tested alert's first fight second (seconds from the pull) and the difficulty to open the Rehearsal
+-- on, worked out on the fight the window plays: CRT.Timeline:RehearsalSourceFor for the draft's
+-- difficulty (else the raid you are in; neither is the Normal/Heroic group). A reminder that follows the
+-- reference reads that source's reference, and a later phase is placed through it
+-- (Reminders.AbsoluteTime); a recorded pull has no reference, so only phase 1 times are placed. A phase 1
+-- time of a part row moves with the raid's chosen order (CRT.Timeline:OrderShift) and is left out when
+-- it falls past its new window. The earliest time left wins. Nil for a saved alert (no time), no boss, no
+-- source, or no time that can be placed.
+function Draft.FirstFightTime(ctx, draft)
+    local T = CRT.Timeline
+    if not (ctx and type(ctx.encounterID) == "number") or ctx.savedMode or not draft
+        or not (T and T.RehearsalSourceFor and T.GroupFor) then
+        return nil
+    end
+    local enc = ctx.encounterID
+    local difficulty = draft.difficulty or Draft.CurrentDifficulty()
+    local group = T:GroupFor(difficulty)
+    local ok, source = pcall(T.RehearsalSourceFor, T, enc, group)
+    if not (ok and type(source) == "table" and type(source.base) == "table") then
+        return nil
+    end
+    local ref = source.base.reference
+    difficulty = difficulty or source.difficultyName
+    local list, spellID, text = {}, validID(draft.spellID), trim(draft.text)
     if draft.saveAs == "note" then
-        list = {}
         for i, t in ipairs(Draft.NoteTimers(ctx, draft)) do
             list[i] = { ph = t.ph, t = t.time }
         end
     else
-        list = Reminders:Times(ctx.encounterID, Draft.BuildReminder(ctx, draft))
+        local r = Draft.BuildReminder(ctx, draft)
+        list = Reminders:Times(enc, r, ref)
+        text = r.text ~= "" and r.text or Reminders.SpellName(spellID) or text
     end
-    local difficulty = draft.difficulty or Draft.CurrentDifficulty()
-    local ref = Reminders.ReferenceFor(ctx.encounterID, { boss = draft.boss, difficulty = difficulty })
-    if not difficulty and ref then
-        difficulty = ref.difficulty
-    end
+    local shift = orderShift(enc, group)
     local first
     for _, e in ipairs(list) do
-        local s = Reminders.AbsoluteTime(ref, e.ph, e.t)
+        local s
+        if e.ph == 1 then
+            s = e.t
+            if shift then
+                local okShift, moved = pcall(shift, spellID, text, s)
+                if okShift and (moved == false or type(moved) == "number") then
+                    s = moved or nil
+                end
+            end
+        elseif ref then
+            s = Reminders.AbsoluteTime(ref, e.ph, e.t)
+        end
         if s and (not first or s < first) then
             first = s
         end

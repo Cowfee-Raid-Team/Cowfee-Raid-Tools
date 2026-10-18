@@ -287,7 +287,8 @@ function Alerts:Collect(run, opts)
             end
         end
     end
-    -- the tested alert as it stands on screen
+    -- the tested alert as it stands on screen. It shows under any Preview as: you always see the alert
+    -- you are testing.
     if testing and type(opts.extra) == "table" then
         for _, it in ipairs(opts.extra) do
             if type(it) == "table" then
@@ -336,6 +337,7 @@ local function phaseList(self, run, items)
 end
 
 -- The phases a run would have, without starting anything.
+-- (Collect without opts: a phase only a test's extra items name is left out; the Rehearsal window starts phases itself.)
 function Alerts:PhasesFor(run)
     return phaseList(self, run, self:Collect(run))
 end
