@@ -1490,6 +1490,9 @@ CRT.NoteReminders = {
         if encounterID == nil then
             return
         end
+        if saveTyped then
+            saveTyped() -- typing waiting to save belongs to the row it was typed on
+        end
         selected, viewDiff = encounterID, nil
         if spellID then
             picked[encounterID] = "a:" .. tostring(spellID)
