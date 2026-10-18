@@ -349,16 +349,16 @@ function Reference.Parse(text)
                 end
             elseif key == "phase" then
                 -- a moved phase line keeps the time it was transcribed with: "P2 2:53 (planned 3:03)";
-                -- any other bracket at the end is the stage's name: "P1.5 3:17 (Intermission: Ritual)"
+                -- another bracket at the end is the stage's name: "P1.5 3:17 (Intermission: Ritual)",
+                -- and a moved one has both, the name first: "P1.5 3:07 (Intermission: Ritual) (planned 3:17)"
                 local plannedText, title
                 local rest, p = val:match("^(.-)%s*%(%s*[Pp][Ll][Aa][Nn][Nn][Ee][Dd]%s+(%S+)%s*%)$")
                 if rest then
                     val, plannedText = rest, p
-                else
-                    local before, inside = val:match("^(.-)%s*%(([^%(%)]*)%)%s*$")
-                    if before then
-                        val, title = before, trim(inside)
-                    end
+                end
+                local before, inside = val:match("^(.-)%s*%(([^%(%)]*)%)%s*$")
+                if before then
+                    val, title = before, trim(inside)
                 end
                 local label, last = val:match("^(.-)%s*(%S+)$")
                 local t = last and Reference.ParseTime(last)
@@ -703,6 +703,9 @@ function Reference.MovePhaseText(text, index, t)
     end
     local phase = hit.phase
     local line = hit.indent .. "Phase: " .. (phase.label and (phase.label .. " ") or "") .. clock(t)
+    if phase.title then
+        line = line .. " (" .. phase.title .. ")"
+    end
     if math.floor(t + 0.5) ~= phase.planned then
         line = line .. " (planned " .. clock(phase.planned) .. ")"
     end
