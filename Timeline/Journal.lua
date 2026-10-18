@@ -172,21 +172,79 @@ local function collect(root, rows, seen)
     walk(root)
 end
 
+-- The Journal's icon flags of a section as tag words (Reference.TAGS), in the Journal's own enum, so a
+-- renumbered flag still reads right: Interruptible is "interrupt", the rest their names in lower case.
+local function sectionTags(sectionID)
+    local flags = C_EncounterJournal and C_EncounterJournal.GetSectionIconFlags
+    local enum = Enum and Enum.JournalEncounterIconFlags
+    if not (flags and enum) then
+        return {}
+    end
+    local ok, list = pcall(flags, sectionID)
+    if not ok or type(list) ~= "table" then
+        return {}
+    end
+    local byValue = {}
+    for key, value in pairs(enum) do
+        byValue[value] = (key == "Interruptible") and "interrupt" or key:lower()
+    end
+    local out = {}
+    for _, f in ipairs(list) do
+        if byValue[f] then
+            out[#out + 1] = byValue[f]
+        end
+    end
+    return out
+end
+
 -- A Journal encounter (its Journal ID, as the Journal window shows it): its name, dungeon encounter ID and
--- ability rows in Journal order, read without changing the Journal's selection. Nil when unknown.
+-- ability rows in Journal order, each { spellID, name, icon, tags, stage } with stage the title of the
+-- top-level section it is under ("Stage One: ...", "Intermission: ..."), and stages, those titles in
+-- order. Sections the Journal leaves out for its picked difficulty (filteredByDifficulty) are left out with
+-- what is under them. Read without changing the Journal's selection. Nil when unknown.
 function Journal.FromJournalEncounter(journalEncounterID)
-    if not (journalEncounterID and EJ_GetEncounterInfo) then
+    if not (journalEncounterID and EJ_GetEncounterInfo and C_EncounterJournal) then
         return nil
     end
     local ok, name, _, _, rootSectionID, _, _, dungeonEncounterID = pcall(EJ_GetEncounterInfo, journalEncounterID)
     if not ok or not name then
         return nil
     end
-    local rows = {}
-    if rootSectionID and rootSectionID > 0 then
-        collect(rootSectionID, rows, {})
+    local rows, stages, seen, visited = {}, {}, {}, {}
+    local function walk(id, depth, stage)
+        while id and id ~= 0 and not visited[id] do
+            visited[id] = true
+            local okInfo, info = pcall(C_EncounterJournal.GetSectionInfo, id)
+            if not okInfo or type(info) ~= "table" then
+                return
+            end
+            if not info.filteredByDifficulty then
+                local spellID = info.spellID
+                local here = stage
+                if depth == 1 and not (type(spellID) == "number" and spellID > 0) and info.firstChildSectionID then
+                    here = info.title
+                    stages[#stages + 1] = info.title
+                end
+                if type(spellID) == "number" and spellID > 0 and not seen[spellID] then
+                    seen[spellID] = true
+                    local okName, spellName = pcall(C_Spell.GetSpellName, spellID)
+                    rows[#rows + 1] = {
+                        spellID = spellID,
+                        name = (okName and spellName) or info.title or "",
+                        icon = info.abilityIcon,
+                        tags = sectionTags(id),
+                        stage = here,
+                    }
+                end
+                walk(info.firstChildSectionID, depth + 1, here)
+            end
+            id = info.siblingSectionID
+        end
     end
-    return name, dungeonEncounterID, rows
+    if rootSectionID and rootSectionID > 0 then
+        walk(rootSectionID, 1, nil)
+    end
+    return name, dungeonEncounterID, rows, stages
 end
 
 -- The rows of a boss: Journal abilities, then your own. Empty in combat or while the Journal is

@@ -22,14 +22,40 @@ local TEXT = {
     help = {
         "# From the Encounter Journal. Take the # off an ability's line and add its times after the colon,",
         "# as m:ss or seconds, separated by commas: Soulcoil Rite [spell 1284033]: 0:02, 1:17, 2:28",
-        "# Add a Length line and Phase lines (Phase: P2 7:20) if you know them. Lines left with # are skipped.",
+        "# Each stage has a Phase line: take its # off and put the time the stage starts. Lines left with # are skipped.",
+        "# type colors the row (from the Journal's dispel, Heroic and Mythic icons); tags are the Journal's icons.",
     },
 }
+
+-- The Journal's icons that are reference types too: a dispellable debuff, a Heroic or a Mythic mechanic.
+local TYPE_OF_TAG = { magic = "dispel", curse = "dispel", poison = "dispel", disease = "dispel", heroic = "heroic",
+    mythic = "mythic" }
+
+-- " (type dispel, tags magic healer)" for an ability's Journal icons, the types once each; "" with none.
+function Export.Options(tags)
+    if not (tags and tags[1]) then
+        return ""
+    end
+    local types, seen = {}, {}
+    for _, tag in ipairs(tags) do
+        local t = TYPE_OF_TAG[tag]
+        if t and not seen[t] then
+            seen[t] = true
+            types[#types + 1] = t
+        end
+    end
+    local parts = {}
+    if types[1] then
+        parts[#parts + 1] = "type " .. table.concat(types, " ")
+    end
+    parts[#parts + 1] = "tags " .. table.concat(tags, " ")
+    return " (" .. table.concat(parts, ", ") .. ")"
+end
 
 -- The reference text for a Journal encounter at a difficulty ID; nil when the Journal can't say.
 function Export.Build(journalEncounterID, difficultyID)
     local Journal = CRT.TimelineJournal
-    local name, dungeonID, rows = Journal.FromJournalEncounter(journalEncounterID)
+    local name, dungeonID, rows, stages = Journal.FromJournalEncounter(journalEncounterID)
     if not name then
         return nil
     end
@@ -44,8 +70,28 @@ function Export.Build(journalEncounterID, difficultyID)
     for _, help in ipairs(TEXT.help) do
         lines[#lines + 1] = help
     end
+    -- each stage after the first gets a Phase line to fill in: P2, P3 for stages, P1.5 for an intermission
+    local phaseOf, whole = {}, 1
+    for i, title in ipairs(stages or {}) do
+        if i > 1 then
+            if title:lower():find("intermission") then
+                phaseOf[title] = whole .. ".5"
+            else
+                whole = whole + 1
+                phaseOf[title] = tostring(whole)
+            end
+        end
+    end
+    local shownStage
     for _, row in ipairs(rows) do
-        lines[#lines + 1] = "# " .. row.name .. " [spell " .. row.spellID .. "]:"
+        if row.stage and row.stage ~= shownStage then
+            shownStage = row.stage
+            lines[#lines + 1] = "# --- " .. row.stage .. " ---"
+            if phaseOf[row.stage] then
+                lines[#lines + 1] = "# Phase: P" .. phaseOf[row.stage] .. " 0:00"
+            end
+        end
+        lines[#lines + 1] = "# " .. row.name .. " [spell " .. row.spellID .. "]" .. Export.Options(row.tags) .. ":"
     end
     return table.concat(lines, "\n"), name
 end

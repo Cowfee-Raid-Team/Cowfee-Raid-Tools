@@ -32,6 +32,28 @@ Reference.TYPES = {
     heavydot = { label = "Heavy damage over time", color = { 0.75, 0.92, 0.25 } },
 }
 
+-- The Encounter Journal's icons for an ability, written (tags tank magic). Unlike a type they don't color
+-- the row: they say who it is for and what it is, as the Journal's own icons do. The words are the
+-- Journal's icon names (Enum.JournalEncounterIconFlags), and atlas is the Journal's icon for each.
+Reference.TAG_ORDER = { "tank", "healer", "dps", "heroic", "mythic", "deadly", "important", "interrupt", "magic",
+    "curse", "poison", "disease", "enrage", "bleed" }
+Reference.TAGS = {
+    tank = { label = "Tank", atlas = "icons_16x16_tank" },
+    healer = { label = "Healer", atlas = "icons_16x16_heal" },
+    dps = { label = "Damage dealers", atlas = "icons_16x16_damage" },
+    heroic = { label = "Heroic", atlas = "icons_16x16_heroic" },
+    mythic = { label = "Mythic", atlas = "icons_16x16_mythic" },
+    deadly = { label = "Deadly", atlas = "icons_16x16_deadly" },
+    important = { label = "Important", atlas = "icons_16x16_important" },
+    interrupt = { label = "Interruptible", atlas = "icons_16x16_interrupt" },
+    magic = { label = "Magic", atlas = "icons_16x16_magic" },
+    curse = { label = "Curse", atlas = "icons_16x16_curse" },
+    poison = { label = "Poison", atlas = "icons_16x16_poison" },
+    disease = { label = "Disease", atlas = "icons_16x16_disease" },
+    enrage = { label = "Enrage", atlas = "icons_16x16_enrage" },
+    bleed = { label = "Bleed", atlas = "icons_16x16_bleed" },
+}
+
 -- The type colors as tooltip text, one line per type in its own color: "Soak (soak)".
 function Reference.Legend()
     local lines = {}
@@ -101,6 +123,15 @@ local function readOptions(row, text)
             elseif key == "part" then
                 -- which part of an Order line the row belongs to (checked against it after reading)
                 row.part = trim(arg)
+            elseif key == "tags" then
+                row.tags = row.tags or {}
+                for word in arg:gmatch("%S+") do
+                    word = word:lower()
+                    if not Reference.TAGS[word] then
+                        return "unknown tag '" .. word .. "' (use " .. table.concat(Reference.TAG_ORDER, ", ") .. ")"
+                    end
+                    row.tags[#row.tags + 1] = word
+                end
             elseif key == "type" then
                 row.types = row.types or {}
                 for word in arg:gmatch("%S+") do
