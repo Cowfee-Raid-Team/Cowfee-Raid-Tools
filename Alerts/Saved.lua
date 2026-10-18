@@ -8,6 +8,12 @@ local ADDON, CRT = ...
 -- "text", "textcount" or "count" as a reminder keeps it. The time, phase, boss and difficulty of the alert
 -- a saved alert was made from are never kept. A saved alert's name defaults to its text, else its spell's
 -- name. Every change tells the alerts windows (CRT.Alerts:Fire) and this store's own listeners.
+-- A saved alert may also have `pin`, a number: pinned ones are listed first, lowest pin first.
+--
+-- Starter templates: STARTERS are added to your saved alerts once each (alerts.starters[key] = true), as
+-- your own, so they can be changed, renamed or deleted like any other, and a deleted one never comes
+-- back. One with `pin` is pinned; when you already have a template of that name, yours is pinned instead
+-- of a copy being added.
 
 local TEXT = {
     unnamed = "Template",
@@ -20,6 +26,15 @@ CRT.AlertSaved = Saved
 
 local OUTPUT_KEYS = { "alert", "text", "icon", "bar", "circle", "speech" }
 local listeners = {}
+
+-- Each: key (never reused), the fields Saved:Save takes, and pin for the ones listed first. Defaults as a
+-- new template: only you, shown 5 seconds before, as the next spell alert and a bar, the text read out.
+local STARTER_SHOW = { alert = true, bar = true, speech = true }
+local STARTERS = {
+    { key = "healthstone", pin = 1, name = "Healthstone", text = "Healthstone", iconID = 538745 },
+    { key = "gate", name = "Gate", text = "Gate", iconID = 607512 },
+}
+Saved.STARTERS = STARTERS
 
 local function trim(s)
     return (tostring(s or ""):gsub("^%s+", ""):gsub("%s+$", ""))
@@ -59,7 +74,12 @@ local function store(create)
     return db.saved
 end
 
+local seeding = false -- adding the starters, inside List: no change event while a list is being drawn
+
 local function changed()
+    if seeding then
+        return
+    end
     Alerts:Fire()
     for _, fn in ipairs(listeners) do
         local ok, err = pcall(fn)
@@ -93,13 +113,23 @@ function Saved:Get(id)
     return all and all[id] or nil
 end
 
--- { { id, s } } sorted by name (any case), then oldest first.
+local addStarters -- below Saved:Save, which it uses
+
+-- { { id, s } }: the pinned ones first (lowest pin first), then by name (any case), then oldest first.
 function Saved:List()
+    addStarters()
     local out = {}
     for id, s in pairs(store() or {}) do
         out[#out + 1] = { id = id, s = s }
     end
     table.sort(out, function(a, b)
+        local pa, pb = tonumber(a.s.pin), tonumber(b.s.pin)
+        if pa ~= pb then
+            if pa and pb then
+                return pa < pb
+            end
+            return pa ~= nil
+        end
         local x, y = tostring(a.s.name or ""):lower(), tostring(b.s.name or ""):lower()
         if x ~= y then
             return x < y
@@ -157,6 +187,7 @@ function Saved:Save(id, fields)
         name = all[id].name
     end
     s.name = (name and name ~= "") and name or Saved.DefaultName(s)
+    s.pin = tonumber(fields.pin) or (id and all[id] and all[id].pin) or nil
     if not id then
         id = db.nextSavedId or 1
     end
@@ -166,6 +197,35 @@ function Saved:Save(id, fields)
     all[id] = s
     changed()
     return id
+end
+
+-- Adds each starter not added before (see the top of this file).
+addStarters = function()
+    local db = Alerts:Settings()
+    local all = store(true)
+    if not (db and all) then
+        return
+    end
+    db.starters = db.starters or {}
+    for _, st in ipairs(STARTERS) do
+        if not db.starters[st.key] then
+            db.starters[st.key] = true
+            local mine
+            for _, s in pairs(all) do
+                if tostring(s.name or ""):lower() == st.name:lower() then
+                    mine = s
+                end
+            end
+            if mine then
+                mine.pin = mine.pin or st.pin
+            else
+                seeding = true
+                pcall(Saved.Save, Saved, nil, { name = st.name, text = st.text, iconID = st.iconID, saveAs = "mine",
+                    outputs = STARTER_SHOW, speech = "text", warn = 5, pin = st.pin })
+                seeding = false
+            end
+        end
+    end
 end
 
 -- False when there is no such saved alert. An empty name takes the default.
