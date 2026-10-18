@@ -13,17 +13,21 @@ local Targets = CRT.NoteTargets
 
 -- NSRT's wire format, VERSION-SENSITIVE. Worked out against NorthernSkyRaidTools 12.1.31. If an NSRT
 -- update stops notes arriving, this block is the one place to fix.
---   message: AceComm under PREFIX, to RAID (PARTY when not in a raid)
+--   message: AceComm under PREFIX, to RAID (PARTY when not in a raid); WHISPER_PREFIX carries NSRT's
+--            "whispers", sent to RAID with the target as the payload's second argument
 --   payload: { event = EVENT, args = { n = ARG_COUNT, <sender unit>, <note text>, <assignments>, <manual> } }
 --            CBOR, then Deflate (optimised for size), then URL-safe Base64
 --   <sender unit> is "raid<N>" in a raid, else your name; NSRT checks it is the leader or an assistant
 --   <manual> true lets an assistant send and skips NSRT's Heroic/Mythic check; <assignments> stays nil
 --   a single space as the note text clears it
+--   a receiver drops a payload with any character outside URL-safe Base64, or args.n outside 1 to 16
 local WIRE = {
     addon = "NorthernSkyRaidTools",
     prefix = "NSI_MSG",
+    whisperPrefix = "NSI_WHISPER",
+    validText = "[^A-Za-z0-9_%-=]",
+    maxArgs = 16,
     event = "NSI_REM_SHARE",
-    argCount = 4,
     manual = true,
     clearText = " ",
     changedCallback = "NSRT_REMINDER_CHANGED",
@@ -166,23 +170,84 @@ local function senderUnit()
     return UnitName("player")
 end
 
-local function encode(text)
-    local payload = { event = WIRE.event, args = { n = WIRE.argCount, senderUnit(), text, nil, WIRE.manual } }
+-- NSRT's transport, shared by the note target and the break timer (Integrations/Breaks.lua) ----------
+
+-- An NSRT message: the event and its arguments, with your own unit put first, encoded for the wire.
+function NSRT.Encode(event, ...)
+    local payload = { event = event, args = { n = select("#", ...) + 1, senderUnit(), ... } }
     local cbor = C_EncodingUtil.SerializeCBOR(payload)
     local packed = C_EncodingUtil.CompressString(cbor, Enum.CompressionMethod.Deflate,
         Enum.CompressionLevel.OptimizeForSize)
     return C_EncodingUtil.EncodeBase64(packed, Enum.Base64Variant.StandardUrlSafe)
 end
 
+-- A received NSRT message back into { event, args }, or nil if it isn't a well-formed one.
+function NSRT.Decode(text)
+    if type(text) ~= "string" or text:find(WIRE.validText) then
+        return nil
+    end
+    local ok, packed = pcall(C_EncodingUtil.DecodeBase64, text, Enum.Base64Variant.StandardUrlSafe)
+    if not ok or not packed then
+        return nil
+    end
+    local cbor
+    ok, cbor = pcall(C_EncodingUtil.DecompressString, packed, Enum.CompressionMethod.Deflate)
+    if not ok or not cbor then
+        return nil
+    end
+    local payload
+    ok, payload = pcall(C_EncodingUtil.DeserializeCBOR, cbor)
+    if not ok or type(payload) ~= "table" or type(payload.event) ~= "string" or type(payload.args) ~= "table" then
+        return nil
+    end
+    local n = payload.args.n
+    if type(n) ~= "number" or n < 1 or n > WIRE.maxArgs or n ~= math.floor(n) then
+        return nil
+    end
+    return payload
+end
+
+-- Sends an encoded message to the group (or, whisper = true, under NSRT's whisper prefix). done(sent,
+-- total) is called as AceComm sends it, so the caller can tell when the last of it is out.
+function NSRT.SendRaw(message, whisper, done)
+    local chan = IsInRaid() and "RAID" or "PARTY"
+    aceComm().SendCommMessage(NSRT, whisper and WIRE.whisperPrefix or WIRE.prefix, message, chan, nil, "NORMAL",
+        done and function(_, sent, total)
+            done(sent, total, chan)
+        end)
+end
+
+-- Calls fn(payload, sender) for every well-formed NSRT message ("whisper" ones too, with whisper true),
+-- through NSRT's own AceComm. Returns false when NSRT isn't loaded.
+local listener = {}
+function NSRT.Listen(fn)
+    local comm = Targets.AddonLoaded(WIRE.addon) and aceComm()
+    if not comm then
+        return false
+    end
+    comm.RegisterComm(listener, WIRE.prefix, function(_, text, _, sender)
+        local payload = NSRT.Decode(text)
+        if payload then
+            fn(payload, sender, false)
+        end
+    end)
+    comm.RegisterComm(listener, WIRE.whisperPrefix, function(_, text, _, sender)
+        local payload = NSRT.Decode(text)
+        if payload then
+            fn(payload, sender, true)
+        end
+    end)
+    return true
+end
+
 local function send(text, done)
-    local ok, message = pcall(encode, text)
+    local ok, message = pcall(NSRT.Encode, WIRE.event, text, nil, WIRE.manual)
     if not ok or type(message) ~= "string" then
         done(false, "encoding failed (" .. tostring(message) .. ").")
         return
     end
-    local chan = IsInRaid() and "RAID" or "PARTY"
     local reported = false
-    aceComm().SendCommMessage(NSRT, WIRE.prefix, message, chan, nil, "NORMAL", function(_, sent, total)
+    NSRT.SendRaw(message, false, function(sent, total, chan)
         if sent >= total and not reported then
             reported = true
             done(true, format("sent to %s (%d characters of text, %d on the wire).", chan, #text, total))

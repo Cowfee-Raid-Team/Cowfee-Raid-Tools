@@ -167,7 +167,10 @@ local defaults = {
         lowHealth = { enabled = false, threshold = 35, sound = false, soundVolume = 100, soundChoice = "pulse", soundChannel = "game", soundOnce = true, customSounds = {} },
         -- The break timer (QoL/BreakTimer.lua): endsAt (a time() value), total seconds and who started it
         -- while a break runs; position once the window is moved.
-        breakTimer = {},
+        breakTimer = {
+            formats = {}, -- Also send to: format key -> false when unticked (Integrations/Breaks.lua)
+            bridge = false, -- the raid leader's CRT passes a break on in the formats it didn't come in
+        },
     },
     -- The late tracker. days[wday] is true for raid days (1 is Sunday, as date() counts them), and
     -- hour and minute are the start on this computer's clock. Who is expected is the active Raid

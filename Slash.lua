@@ -163,6 +163,8 @@ SlashCmdList["COWFEERAIDTOOLS"] = function(msg)
         end
     elseif CRT.NoteTargetsDev and CRT.NoteTargetsDev:Command(msg) then
         -- dev nsrt, dev mrt and dev all: the note targets (Dev/NoteTargets.lua)
+    elseif CRT.BreaksDev and CRT.BreaksDev:Command(msg) then
+        -- dev break: the break timer's other-addon formats (Dev/Breaks.lua)
     elseif msg == "dev layout" then
         if CRT.LayoutCheck then
             CRT.LayoutCheck:Run()

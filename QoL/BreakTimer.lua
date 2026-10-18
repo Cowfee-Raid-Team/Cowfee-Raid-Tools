@@ -6,6 +6,14 @@ local ADDON, CRT = ...
 -- same timer (addon message CRTBreak1: "S:<seconds>" to start, "C" to cancel), and a raid warning (in a
 -- party, a party message) tells everyone else. From anyone else it is a timer for you only.
 -- The break's end is saved (CRTDB.qol.breakTimer.endsAt, a time() value), so it survives a /reload.
+--
+-- Other addons' breaks (Integrations/Breaks.lua): a shared break is also sent as Northern Sky, BigWigs
+-- and DBM breaks (each ticked under Also send to, CRTDB.qol.breakTimer.formats), and a break from the
+-- leader or an assistant in any of those formats shows here too. Breaks that end within DEDUPE seconds
+-- of each other are one break. With Bridge on (breakTimer.bridge), the raid leader's CRT sends a break
+-- that arrived in some formats on in the others, once, after waiting BRIDGE_WAIT seconds to see which
+-- formats it came in, so raiders with only one of the addons all get it. The leader's CRT also answers
+-- NSRT's sync request from a raider who reloaded.
 
 local Break = {}
 CRT.BreakTimer = Break
@@ -14,6 +22,9 @@ local UI = CRT.UI
 
 local PREFIX = "CRTBreak1"
 local MAX_MINUTES = 60
+local RECEIVE_MAX = 180 * 60 -- the longest break taken from another addon (NSRT allows 120 minutes)
+local DEDUPE = 3 -- seconds apart that two breaks' ends may be and still be one break
+local BRIDGE_WAIT = 1.5 -- seconds to collect the formats a break arrived in before bridging it
 local BAR_W, BAR_H = 300, 30
 local OVER_SHOWN = 6 -- seconds "Break's over" stays up
 local LAST_MINUTE = 60 -- seconds left when the bar turns red
@@ -236,6 +247,76 @@ local function broadcast(message)
     end
 end
 
+-- Other addons' formats ----------------------------------------------------------------------
+
+local Formats = CRT.BreakFormats
+
+-- Sends the break (seconds 0: a cancel) in the ticked formats, except skip, and says which in chat.
+local function sendFormats(seconds, total)
+    local sent, failed = Formats:SendAll(seconds, total)
+    if not sent then
+        CRT:Print("Break not sent to other addons: " .. failed .. ".")
+        return
+    end
+    if #sent > 0 then
+        CRT:Print("Also sent as a break for: " .. table.concat(sent, ", ") .. ".")
+    end
+    if #failed > 0 then
+        CRT:Print("Couldn't send the break to: " .. table.concat(failed, ", ") .. ".")
+    end
+end
+
+-- The bridge: one at a time, the break (or cancel) being collected, with the formats it came in.
+local bridging -- { endsAt or "cancel", seen = { [source] = true }, done }
+
+local function sameBreak(id, other)
+    if id == "cancel" or other == "cancel" then
+        return id == other
+    end
+    return math.abs(id - other) <= DEDUPE
+end
+
+local function noteSeen(id, source)
+    if bridging and sameBreak(bridging.id, id) then
+        bridging.seen[source] = true
+    end
+end
+
+local function startBridge(id, source)
+    if not db().bridge or not UnitIsGroupLeader("player") then
+        return
+    end
+    local b = { id = id, seen = { [source] = true } }
+    bridging = b
+    C_Timer.After(BRIDGE_WAIT, function()
+        if bridging ~= b or b.done then
+            return
+        end
+        b.done = true
+        local seconds = 0
+        if id ~= "cancel" then
+            seconds = Break:Remaining()
+            if not seconds or seconds <= DEDUPE then
+                return
+            end
+        end
+        local sent, failed = Formats:SendAll(seconds, db().total or seconds, b.seen)
+        if not sent then
+            return -- left the group, or messages are locked down
+        end
+        if not b.seen.crt then
+            broadcast(seconds > 0 and ("S:" .. seconds) or "C")
+            table.insert(sent, 1, "CRT")
+        end
+        if #sent > 0 then
+            CRT:Print("Bridged the " .. (seconds > 0 and "break" or "cancel") .. " to: " .. table.concat(sent, ", ") .. ".")
+        end
+        if #failed > 0 then
+            CRT:Print("Couldn't bridge the break to: " .. table.concat(failed, ", ") .. ".")
+        end
+    end)
+end
+
 local function announce(text)
     local ch = channel()
     if not ch or not send then
@@ -261,6 +342,7 @@ function Break:Command(arg)
         stop()
         if shared then
             broadcast("C")
+            sendFormats(0, 0)
             announce("Break cancelled.")
         end
         return
@@ -269,6 +351,7 @@ function Break:Command(arg)
     begin(seconds, nil)
     if shared then
         broadcast("S:" .. seconds)
+        sendFormats(seconds, seconds)
         announce(string.format("Break: %s minute%s, back at %s.", (minutes % 1 == 0) and tostring(minutes) or string.format("%.1f", minutes), minutes == 1 and "" or "s", date("%H:%M", time() + seconds)))
     elseif IsInGroup() then
         CRT:Print("Break timer started for you only. A raid leader or assistant's break reaches the whole group.")
@@ -279,6 +362,45 @@ function Break:Remaining()
     local s = db()
     return s.endsAt and math.max(0, s.endsAt - time()) or nil
 end
+
+-- A break (seconds left) or a cancel (0) from the leader or an assistant, in any format: source is
+-- "crt" or a format key. A break ending within DEDUPE seconds of the one running is the same break.
+function Break:Receive(source, sender, seconds)
+    if seconds > RECEIVE_MAX then
+        return
+    end
+    self.lastReceived = { source = source, sender = sender, seconds = seconds, at = time() }
+    local s = db()
+    local who = Ambiguate(sender, "short")
+    local via = source == "crt" and "" or (" (" .. Formats.Label(source) .. ")")
+    if seconds > 0 then
+        local endsAt = time() + seconds
+        if s.endsAt and math.abs(s.endsAt - endsAt) <= DEDUPE then
+            noteSeen(endsAt, source)
+            return
+        end
+        begin(seconds, sender)
+        CRT:Print(string.format("%s started a %s break%s.", who, clock(seconds), via))
+        startBridge(endsAt, source)
+    else
+        if not s.endsAt then
+            noteSeen("cancel", source)
+            return
+        end
+        stop(true)
+        CRT:Print(who .. " cancelled the break" .. via .. ".")
+        startBridge("cancel", source)
+    end
+end
+
+Formats:OnReceive(function(source, sender, seconds)
+    Break:Receive(source, sender, seconds)
+end)
+Formats:AnswerSyncWith(function()
+    return Break:Remaining()
+end, function()
+    return db().total
+end)
 
 -- Previews: the window with a sample break, to place it.
 UI:RegisterPreview("break", function(on)
@@ -323,11 +445,9 @@ events:SetScript("OnEvent", function(_, event, prefix, message, _, sender)
         return
     end
     local seconds = tonumber(message:match("^S:(%d+)$"))
-    if seconds and seconds > 0 and seconds <= MAX_MINUTES * 60 then
-        begin(seconds, sender)
-        CRT:Print(string.format("%s started a %s break.", Ambiguate(sender, "short"), clock(seconds)))
+    if seconds and seconds > 0 then
+        Break:Receive("crt", sender, seconds)
     elseif message == "C" then
-        stop(true)
-        CRT:Print(Ambiguate(sender, "short") .. " cancelled the break.")
+        Break:Receive("crt", sender, 0)
     end
 end)

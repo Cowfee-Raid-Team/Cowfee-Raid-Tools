@@ -1,8 +1,9 @@
 local ADDON, CRT = ...
 
 -- The Quality of Life page: a home for small conveniences and their settings, in CRTDB.qol with
--- defaults in Core.lua: the experimental low-health alert (QoL/LowHealth.lua). The window scale moved
--- to the Addon Settings page (UI/SettingsPage.lua) in 0.13.1.
+-- defaults in Core.lua: the experimental low-health alert (QoL/LowHealth.lua), and on its own tab the
+-- break timer's other-addon formats and bridge (QoL/BreakTimer.lua, Integrations/Breaks.lua). The
+-- window scale moved to the Addon Settings page (UI/SettingsPage.lua) in 0.13.1.
 
 local UI = CRT.UI
 local LowHealth = CRT.LowHealth
@@ -31,6 +32,12 @@ local TEXT = {
     lowHealthOutputNote = "Game default plays the sound on the game's voice output, like its own pulse. Pick a channel to follow that channel's volume and mute in the game's Sound settings instead.\n\nAny sound other than the game's pulse, or any channel, is played by the addon: the game's pulse runs silently and the addon plays yours whenever it starts or stops, so it still works in combat.",
     lowHealthTest = "Test sound",
     lowHealthStop = "Stop sound",
+    breakTitle = "Break timer",
+    breakNote = "/crt break 10 starts a 10 minute break, /crt break 0 cancels it. From the raid leader or an assistant it reaches the whole group.\n\nA break from the leader or an assistant started in Northern Sky (/ns break), BigWigs, DBM or MRT's Timers page shows here too.",
+    breakAlso = "Also send to",
+    breakAlsoNote = "When you start or cancel a break as the leader or an assistant, it is also sent as a break in each ticked format, so raiders running those addons get it in their own break bar.\n\nNorthern Sky: NSRT's break bar. It needs NSRT loaded here.\n\nBigWigs and DBM: their break bars. They are sent even if you don't run them, since your raiders may. MRT's Timers page uses these two, so there is no separate MRT format.",
+    breakBridge = "Bridge breaks between addons (raid leader)",
+    breakBridgeNote = "When you are the raid leader and someone starts or cancels a break in one addon (such as /ns break, or MRT's Timers page), your CRT sends the same break on in the formats it didn't arrive in, and as a CRT break, so everyone sees it whichever addon they run.\n\nIt waits a moment to see which formats the break came in, then sends each missing one once. Your own breaks are never bridged, and breaks that end within 3 seconds of each other count as one.",
     lowHealthNote = "Experimental: in combat the game hides your health from addons, so the banner lets the game compare it to your setting. If it misbehaves, untick it here or type /crt lowhp off. Use Previews to place the banner.",
 }
 
@@ -350,10 +357,75 @@ local function buildLowHealth(pf, top)
 
 end
 
--- Tabs: Low health and Debuffs (the debuff panel, Debuffs/Page.lua). Both are only settings.
+-- Break timer ---------------------------------------------------------------------------------
+
+local Formats = CRT.BreakFormats
+
+local function checkRow(pf, x, y, text)
+    local check = CreateFrame("CheckButton", nil, pf, "UICheckButtonTemplate")
+    check:SetSize(24, 24)
+    check:SetPoint("TOPLEFT", x, y)
+    check.label = pf:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    check.label:SetPoint("LEFT", check, "RIGHT", 1, 0)
+    check.label:SetText(text)
+    return check
+end
+
+local function buildBreak(pf, top)
+    local heading = pf:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
+    heading:SetPoint("TOPLEFT", 8, top)
+    heading:SetText(TEXT.breakTitle)
+    UI.Help(pf, TEXT.breakTitle, TEXT.breakNote):SetPoint("LEFT", heading, "RIGHT", 6, 0)
+
+    local also = pf:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    also:SetPoint("TOPLEFT", 8, top - 26)
+    also:SetText(TEXT.breakAlso)
+    -- The (?) also says, for each format, whether it can be sent from here.
+    UI.Help(pf, TEXT.breakAlso, function()
+        local lines = { TEXT.breakAlsoNote }
+        for _, f in ipairs(Formats.FORMATS) do
+            local ok, note = Formats.Available(f)
+            lines[#lines + 1] = f.label .. ": " .. (ok and (note or "loaded here") or ("|cffff8080" .. note .. "|r"))
+        end
+        return table.concat(lines, "\n\n")
+    end):SetPoint("LEFT", also, "RIGHT", 6, 0)
+
+    local y = top - 44
+    for _, f in ipairs(Formats.FORMATS) do
+        local check = checkRow(pf, 6, y, f.label)
+        check:SetScript("OnClick", function(self)
+            Formats.SetEnabled(f.key, self:GetChecked())
+        end)
+        check.refresh = function()
+            local ok = Formats.Available(f)
+            check:SetChecked(Formats.Enabled(f.key))
+            check:SetEnabled(ok and true or false)
+            if ok then
+                check.label:SetTextColor(1, 1, 1)
+            else
+                check.label:SetTextColor(0.5, 0.5, 0.5)
+            end
+        end
+        controls[#controls + 1] = check
+        y = y - 24
+    end
+
+    local bridge = checkRow(pf, 6, y - 10, TEXT.breakBridge)
+    bridge:SetScript("OnClick", function(self)
+        CRT.db.qol.breakTimer.bridge = self:GetChecked() and true or false
+    end)
+    bridge.refresh = function()
+        bridge:SetChecked(CRT.db.qol.breakTimer.bridge and true or false)
+    end
+    controls[#controls + 1] = bridge
+    UI.Help(pf, TEXT.breakBridge, TEXT.breakBridgeNote):SetPoint("LEFT", bridge.label, "RIGHT", 6, 0)
+end
+
+-- Tabs: Low health, Debuffs and Break timer (the debuff panel, Debuffs/Page.lua). Both are only settings.
 local TABS = {
     { key = "lowhealth", label = "Low health" },
     { key = "debuffs", label = "Debuffs" },
+    { key = "break", label = "Break timer" },
 }
 local tabButtons, tabFrames = {}, {}
 
@@ -408,6 +480,7 @@ local function build(pf)
 
     buildLowHealth(tabFrames.lowhealth, -8)
     CRT.DebuffsPage.Build(tabFrames.debuffs)
+    buildBreak(tabFrames["break"], -8)
     selectTab(CRT.db.qol.tab)
 
     pf:SetScript("OnShow", refresh)
@@ -419,7 +492,7 @@ end
 
 UI:RegisterPage("qol", TEXT.title, build)
 
--- Opens the page on a tab: "lowhealth" or "debuffs" (/crt debuffs).
+-- Opens the page on a tab: "lowhealth", "debuffs" (/crt debuffs) or "break".
 CRT.QoLPage = {
     Open = function(key)
         UI:Show("qol")
