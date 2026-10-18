@@ -517,10 +517,15 @@ function View.Create(parent)
     end)
     if f.RegisterEvent then
         f:RegisterEvent("PLAYER_REGEN_ENABLED")
+        f:RegisterEvent("PLAYER_REGEN_DISABLED")
     end
+    -- Combat starting lets go of the keyboard (allowed on this plain frame in combat), so a kept key's
+    -- "don't pass on" can never hold the game's keys for the fight; it is taken back when combat ends.
     f:SetScript("OnEvent", function(_, event)
         if event == "PLAYER_REGEN_ENABLED" then
             view:CatchKeys(f:IsShown())
+        elseif event == "PLAYER_REGEN_DISABLED" then
+            view:CatchKeys(false)
         end
     end)
     -- the markers follow the notes and the reminders; only a shown view redraws
@@ -2728,6 +2733,14 @@ function Methods:KeyDown(key)
     local f = self.frame
     if f.SetPropagateKeyboardInput and not (InCombatLockdown and InCombatLockdown()) then
         f:SetPropagateKeyboardInput(not keep)
+        -- a kept key passes keys on again at once (next frame), not only at the next key press
+        if keep and C_Timer and C_Timer.After then
+            C_Timer.After(0, function()
+                if not (InCombatLockdown and InCombatLockdown()) then
+                    f:SetPropagateKeyboardInput(true)
+                end
+            end)
+        end
     end
     if escape then
         self:ClearSelection()
