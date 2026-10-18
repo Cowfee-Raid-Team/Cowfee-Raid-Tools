@@ -15,6 +15,10 @@ local UI = CRT.UI
 local Targets = CRT.NoteTargets
 
 local TEXT = {
+    shared = "Shared",
+    personal = "Personal",
+    toPersonal = "Save to personal",
+    kindHelp = "Shared: the raid's notes. A note the raid lead shares replaces the shared one for that boss, and becomes the note in use.\n\nPersonal: your own copies. Save to personal (on the Shared tab) copies the selected note with your changes, and a share never replaces it. Use this note on a copy to run it on the pull instead of the shared note; a new share from the raid lead puts the shared note back in use.",
     noteText = "Note text",
     saveText = "Save text changes",
     saved = "Saved.",
@@ -68,6 +72,7 @@ local TAB_H = UI.PAGE_H - 66
 
 local GRAY = { 0.35, 0.35, 0.35 }
 local GOLD = { 1, 0.82, 0 }
+local listKind = "shared" -- the Notes list's tab: "shared" (the raid's notes) or "personal" (your copies)
 local BACKDROP = {
     bgFile = "Interface\\Buttons\\WHITE8X8",
     edgeFile = "Interface\\Buttons\\WHITE8X8",
@@ -79,6 +84,7 @@ local page, rows, editor, status, selected = nil, {}, nil, nil, nil
 -- Timeline, received from the raid leader, or made from the Timeline), the page selects it, so the
 -- text shown is the note that runs; clicking another note still shows that one until the next change.
 local followedActive
+local kindTabs, toPersonal = {}, nil -- the Shared and Personal tabs, and Save to personal
 local controls = {}
 local importDialog
 local refresh
@@ -152,7 +158,8 @@ local function getImportDialog()
     local ok = makeButton(d, "Import", 110, 26)
     ok:SetPoint("BOTTOM", -60, 12)
     ok:SetScript("OnClick", function()
-        local id, message = Notes:Import(d.edit:GetText(), nil)
+        -- on the Personal tab an import is your own copy, never replaced by a share
+        local id, message = Notes:Import(d.edit:GetText(), nil, listKind == "personal")
         CRT:Print(message)
         if id then
             selected = id
@@ -172,16 +179,20 @@ end
 
 -- The page ---------------------------------------------------------------------------------
 
+local function kindOf(record)
+    return record and record.personal and "personal" or "shared"
+end
+
 local function selectedNote()
-    if selected and Notes:Get(selected) then
+    if selected and Notes:Get(selected) and kindOf(Notes:Get(selected)) == listKind then
         return selected, Notes:Get(selected)
     end
-    local activeId = Notes:Active()
-    if activeId then
+    local activeId, activeRecord = Notes:Active()
+    if activeId and kindOf(activeRecord) == listKind then
         selected = activeId
-        return activeId, Notes:Get(activeId)
+        return activeId, activeRecord
     end
-    local list = Notes:List()
+    local list = Notes:List(listKind)
     if list[1] then
         selected = list[1].id
         return selected, list[1].record
@@ -200,12 +211,17 @@ refresh = function()
         followedActive = newActive
         if newActive then
             selected = newActive
+            listKind = kindOf(Notes:Get(newActive)) -- the list follows the note in use to its tab
         end
     end
     local id, record = selectedNote()
     local activeId = Notes:Active()
 
-    local list = Notes:List()
+    local list = Notes:List(listKind)
+    for _, kind in ipairs({ "shared", "personal" }) do
+        UI:SetTabSelected(kindTabs[kind], kind == listKind)
+    end
+    toPersonal:SetShown(listKind == "shared")
     for i = 1, MAX_ROWS do
         local row = rows[i]
         local entry = list[i]
@@ -276,6 +292,28 @@ local function buildNotes(pf)
     listLabel:SetPoint("TOPLEFT", 8, -14)
     listLabel:SetText("Notes")
     UI.Help(pf, "Raid notes", "Import a note, share it with the raid before the pull, and its timers count down from the start of the fight. The note's other text goes to the Assignments window.\n\nWindow, alert timing and sharing settings are on the Notes Settings tab; where your note lines show is on the Alert Settings tab, and your alerts for boss mechanics are on Mech Alerts."):SetPoint("LEFT", listLabel, "RIGHT", 6, 0)
+    -- Shared and Personal: which notes the list shows
+    for i, kind in ipairs({ "shared", "personal" }) do
+        local b = CreateFrame("Button", nil, pf, "BackdropTemplate")
+        b:SetSize(76, 20)
+        b:SetPoint("TOPLEFT", 98 + (i - 1) * 80, -10)
+        skin(b, 0.4)
+        b.sel = b:CreateTexture(nil, "ARTWORK")
+        b.sel:SetAllPoints()
+        b.sel:SetColorTexture(1, 0.82, 0, 0.18)
+        b.text = b:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+        b.text:SetPoint("CENTER")
+        b.text:SetText(kind == "shared" and TEXT.shared or TEXT.personal)
+        b:SetScript("OnClick", function()
+            listKind = kind
+            selected = nil
+            refresh()
+        end)
+        UI:RegisterTab(b)
+        kindTabs[kind] = b
+    end
+    UI.Help(pf, TEXT.personal, TEXT.kindHelp):SetPoint("TOPLEFT", 98 + 2 * 80, -12)
+
     for i = 1, MAX_ROWS do
         local row = CreateFrame("Button", nil, pf, "BackdropTemplate")
         row:SetSize(LIST_W, ROW_H - 2)
@@ -360,7 +398,19 @@ local function buildNotes(pf)
             Notes:Set(nil, "shareTarget", key)
         end,
     })
-    sendTo:SetPoint("TOPLEFT", roster, "BOTTOMLEFT", 0, -4)
+    -- Save to personal (on the Shared tab): a copy of this note, with your changes, kept as your own
+    toPersonal = makeButton(pf, TEXT.toPersonal, LIST_W)
+    toPersonal:SetPoint("TOPLEFT", roster, "BOTTOMLEFT", 0, -4)
+    toPersonal:SetScript("OnClick", function()
+        if not selected then
+            return
+        end
+        local id, message = Notes:SaveToPersonal(selected)
+        if id then
+            CRT:Print(message)
+        end
+    end)
+    sendTo:SetPoint("TOPLEFT", toPersonal, "BOTTOMLEFT", 0, -4)
     controls[#controls + 1] = sendTo
     UI.Help(pf, TEXT.sendTo, shareHelp):SetPoint("LEFT", sendTo, "RIGHT", 2, 0)
 

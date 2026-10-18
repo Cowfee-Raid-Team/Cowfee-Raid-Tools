@@ -1,7 +1,10 @@
 local ADDON, CRT = ...
 
 -- Stored raid notes and their settings, in CRTDB.notes (per player):
---   list[id] = { raw, name, encounterID, difficulty, updated, from, presetId }
+--   list[id] = { raw, name, encounterID, difficulty, updated, from, presetId, personal }
+-- A note is shared (the raid's, which a share from the raid lead replaces) or, with personal = true, your
+-- own copy, saved with Save to personal: kept on this computer and never replaced by a share. Whichever
+-- note is active runs on the pull (FindForEncounter); a share makes the shared one active again.
 --   active = id of the note in use, nextId
 --   window = note window settings, alert = personal alert settings, trustedOnly
 -- A note's invite list becomes a Raid Groups layout when it is imported (presetId links them).
@@ -177,13 +180,15 @@ end
 
 local DIFFICULTY_RANK = { mythic = 1, heroic = 2, normal = 3 }
 
+-- kind: "shared" or "personal" lists only those, nil every note.
 -- All notes, in the raid route (CRT.Bosses:RouteIndex of the EncounterID in each note's header), the
 -- same order as every boss list; a boss's notes Mythic, Heroic, Normal, then any other difficulty.
 -- Notes for a boss the route doesn't list, or with no EncounterID, come last, by name: { id, record }.
-function Notes:List()
+function Notes:List(kind)
     local out = {}
     local Bosses = CRT.Bosses
     for id, record in pairs(ndb().list) do
+        if kind == nil or (kind == "personal") == (record.personal == true) then
         local route = record.encounterID and Bosses and Bosses:RouteIndex(record.encounterID)
         out[#out + 1] = {
             id = id,
@@ -192,6 +197,7 @@ function Notes:List()
             rank = DIFFICULTY_RANK[(record.difficulty or ""):lower()] or 4,
             name = (record.name or ""):lower(),
         }
+        end
     end
     table.sort(out, function(a, b)
         if a.route ~= b.route then
@@ -225,11 +231,22 @@ function Notes:SetActive(id)
     self:Fire()
 end
 
--- The note for a boss, by encounter ID, preferring the same difficulty.
+local function sameDifficulty(record, difficultyName)
+    return not (difficultyName and record.difficulty) or record.difficulty:lower() == difficultyName:lower()
+end
+
+-- The note a pull of a boss runs (and the Timeline adds lines to): the active note when it is for this
+-- boss and difficulty, shared or personal; else the boss's shared note, preferring the same difficulty.
+-- A personal copy runs only while it is the active one.
 function Notes:FindForEncounter(encounterID, difficultyName)
+    local activeId = ndb().active
+    local active = activeId and ndb().list[activeId]
+    if active and active.encounterID == encounterID and sameDifficulty(active, difficultyName) then
+        return activeId
+    end
     local fallback
     for id, record in pairs(ndb().list) do
-        if record.encounterID == encounterID then
+        if record.encounterID == encounterID and not record.personal then
             if difficultyName and record.difficulty and record.difficulty:lower() == difficultyName:lower() then
                 return id
             end
@@ -237,6 +254,23 @@ function Notes:FindForEncounter(encounterID, difficultyName)
         end
     end
     return fallback
+end
+
+-- Save to personal: a copy of note id as it is now (with your changes) as your personal note for that
+-- boss and difficulty, replacing the copy you saved before. Returns the copy's id and a message.
+function Notes:SaveToPersonal(id)
+    local record = self:Get(id)
+    if not record then
+        return nil
+    end
+    local copyId, message = self:Import(record.raw or "", nil, true)
+    local copy = copyId and self:Get(copyId)
+    if copy then
+        copy.presetId = record.presetId
+        message = "Saved " .. (copy.name or "the note") .. (copy.difficulty and (" (" .. copy.difficulty .. ")") or "")
+            .. " to your personal notes. A share from the raid lead never replaces it."
+    end
+    return copyId, message
 end
 
 -- Builds a Raid Groups layout from the invite list, in order, keeping empty slots.
@@ -260,7 +294,9 @@ local function rosterFromInvite(note, title)
 end
 
 -- Imports note text. A note for the same boss and difficulty is replaced. Returns id, message.
-function Notes:Import(text, from)
+-- personal: the note goes to your personal copies (the Personal tab's Import), replacing your copy for
+-- that boss and difficulty; otherwise it replaces the shared one, never a personal copy.
+function Notes:Import(text, from, personal)
     local note = Parser.Parse(text)
     if not note.name and not note.encounterID and #note.timers == 0 then
         return nil, "That doesn't look like a raid note. It needs an EncounterID line or time: lines."
@@ -270,7 +306,7 @@ function Notes:Import(text, from)
     for existingId, record in pairs(db.list) do
         local sameBoss = note.encounterID and record.encounterID == note.encounterID
         local sameDifficulty = (record.difficulty or "") == (note.difficulty or "")
-        if sameBoss and sameDifficulty then
+        if sameBoss and sameDifficulty and (record.personal == true) == (personal == true) then
             id = existingId
             break
         end
@@ -286,6 +322,7 @@ function Notes:Import(text, from)
     record.difficulty = note.difficulty
     record.updated = date("%Y-%m-%d %H:%M")
     record.from = from
+    record.personal = personal and true or nil
     db.list[id] = record
 
     -- The invite list becomes a Raid Groups layout the first time, which can then be adjusted there.
