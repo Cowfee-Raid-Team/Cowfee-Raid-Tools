@@ -466,6 +466,25 @@ function RehearsalWindow:IsOpen()
     return self.frame and self.frame:IsShown() and true or false
 end
 
+-- What the window shows now: the time under a drag while one scrubs, else the clock's. The Timeline's
+-- playhead follows this, so it moves with the strip.
+function RehearsalWindow:ShownTime()
+    local d = self.drag
+    if d and d.moved then
+        return d.at
+    end
+    return self.clock and self.clock:Now() or 0
+end
+
+function RehearsalWindow:Playing()
+    return self.clock and self.clock:Playing() or false
+end
+
+-- The source it was opened on (see Open), or nil.
+function RehearsalWindow:Source()
+    return self.open and self.source or nil
+end
+
 -- What the alerts engine reads: the clock (fight seconds), the speed and Preview as.
 function RehearsalWindow:Now()
     return self.clock and self.clock:Now() or 0

@@ -32,6 +32,9 @@ local TEXT = {
     made = "Made a raid note for %s. It is on Raid Notes.",
     phaseCopy = "Moved the phase line in a reference of your own (shipped references never change). It is listed as yours.",
     rehearse = "Rehearse",
+    play = "Play",
+    pause = "Pause",
+    playHelp = "Plays the rehearsal of this fight, as Rehearse does, and a gold line moves across the timeline at its time, so you can watch the whole fight and its cooldowns from above while the Rehearsal window shows it as you would see it.\n\nPlay and Pause here and in the Rehearsal window run the same fight, and dragging its strip moves the line too. While it plays, the timeline scrolls to keep the line in view.",
     rehearseHelp = "Plays this fight out in a window of its own: a stand-in boss frame and cast bar, with your real alerts firing on time from your notes, personal notes and assigned cooldowns. It plays what is shown here: the reference with its order and phase lines, or the recorded pull.\n\nIt can't start in combat or during a boss encounter, and stops at once if either begins. Nothing is sent to the group.\n\n/crt timeline rehearse does the same.",
     noRehearse = "Nothing to rehearse: pick a boss's reference or pull on the Timeline's Review tab.",
 }
@@ -54,7 +57,7 @@ local TABS = {
 local page, view, emptyLabel, unnamedHelp
 local reviewFrame, holder, recent, refTab, settingsTab
 local shareButton, shareHelp
-local rehearseButton
+local rehearseButton, playButton
 local tabButtons, tabFrames = {}, {}
 local controls = {} -- the Review tab's controls, which refresh() redraws
 local currentTab = "review"
@@ -632,6 +635,8 @@ function Timeline:RehearsalSource()
     return {
         base = base,
         encounterID = encounterID,
+        boss = selectedBoss,
+        pull = selectedPull,
         group = selectedGroup,
         order = chosenOrder(),
         bossName = bossName(),
@@ -657,7 +662,46 @@ end
 
 local function updateRehearse()
     if rehearseButton then
-        rehearseButton:SetEnabled(Timeline:RehearsalSource() ~= nil and not CRT.TimelineRehearsalRun.Blocked())
+        local can = Timeline:RehearsalSource() ~= nil and not CRT.TimelineRehearsalRun.Blocked()
+        rehearseButton:SetEnabled(can)
+        playButton:SetEnabled(can)
+    end
+end
+
+-- Play on the Review tab and the playhead. One fight plays at a time, on the Rehearsal window's clock:
+-- Play here opens that window on the shown fight when it isn't open on it, then plays or pauses it,
+-- and the window's own Play does the same. While the window is open on the fight shown here (the
+-- same boss, difficulty and reference or pull), the view draws the playhead at the window's time.
+
+-- The open rehearsal, when it is of the fight shown here.
+local function shownRehearsal()
+    local RW = CRT.TimelineRehearsalWindow
+    local src = RW and RW:IsOpen() and RW:Source()
+    if src and src.boss == selectedBoss and src.pull == selectedPull and src.group == selectedGroup then
+        return RW
+    end
+end
+
+local function playClicked()
+    local RW = shownRehearsal()
+    if RW then
+        RW:TogglePlay()
+    elseif Timeline:Rehearse() then
+        CRT.TimelineRehearsalWindow:Play()
+    end
+end
+
+-- Each frame while the Review tab shows: the playhead and the button's Play or Pause.
+local function followRehearsal()
+    local RW = shownRehearsal()
+    if RW then
+        view:SetPlayhead(RW:ShownTime(), RW:Playing())
+    elseif view.playT then
+        view:SetPlayhead(nil)
+    end
+    local text = (RW and RW:Playing()) and TEXT.pause or TEXT.play
+    if playButton:GetText() ~= text then
+        playButton:SetText(text)
     end
 end
 
@@ -675,7 +719,15 @@ local function buildPopControls()
     rehearseButton:SetScript("OnClick", function()
         Timeline:Rehearse()
     end)
-    UI.Help(reviewFrame, TEXT.rehearse, TEXT.rehearseHelp):SetPoint("RIGHT", rehearseButton, "LEFT", -2, 0)
+    local rehearseHelp = UI.Help(reviewFrame, TEXT.rehearse, TEXT.rehearseHelp)
+    rehearseHelp:SetPoint("RIGHT", rehearseButton, "LEFT", -2, 0)
+
+    -- Play: see playClicked above.
+    playButton = button(reviewFrame, TEXT.play, 70)
+    playButton:SetPoint("RIGHT", rehearseHelp, "LEFT", -6, 0)
+    playButton:SetScript("OnClick", playClicked)
+    UI.Help(reviewFrame, TEXT.play, TEXT.playHelp):SetPoint("RIGHT", playButton, "LEFT", -2, 0)
+    reviewFrame:SetScript("OnUpdate", followRehearsal)
 
     -- Share note: see shareNote above.
     shareButton = button(reviewFrame, TEXT.shareNote, 90)

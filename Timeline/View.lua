@@ -3424,4 +3424,62 @@ function Methods:Refresh()
     self:DrawSelection()
     self:DrawStrip()
     self:ScrollTo(self.hscroll:GetHorizontalScroll())
+    self.drawLength, self.drawHeight = length, height
+    self:DrawPlayhead()
+end
+
+-- The rehearsal's playhead -------------------------------------------------------------------------
+-- While a rehearsal of the shown fight is open (Timeline/Page.lua), a gold line crosses the lanes at
+-- its time, with the time on a tag at the bottom of the axis. Following (while it plays), the track
+-- scrolls whenever the line leaves the view, putting it a third of the way across again.
+
+-- t is the rehearsal's time, or nil to hide the line.
+function Methods:SetPlayhead(t, follow)
+    self.playT = type(t) == "number" and t or nil
+    self.playFollow = follow and true or false
+    self:DrawPlayhead()
+end
+
+function Methods:DrawPlayhead()
+    local t = self.playT
+    if not (t and self.pull and self.drawLength) then
+        if self.playLine then
+            self.playLine:Hide()
+            self.playTag:Hide()
+        end
+        return
+    end
+    if not self.playLine then
+        self.playLine = self.track:CreateTexture(nil, "OVERLAY")
+        self.playLine:SetColorTexture(1, 0.82, 0, 0.9)
+        local tag = CreateFrame("Frame", nil, self.axis)
+        tag:SetFrameLevel((self.axis:GetFrameLevel() or 0) + 5)
+        tag:SetHeight(14)
+        tag.bg = tag:CreateTexture(nil, "BACKGROUND")
+        tag.bg:SetAllPoints()
+        tag.bg:SetColorTexture(mocha("roast", 0.95))
+        tag.text = tag:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+        tag.text:SetPoint("CENTER")
+        tag.text:SetTextColor(1, 0.82, 0)
+        self.playTag = tag
+    end
+    local length = self.drawLength
+    local x = View.TimeToX(math.max(0, math.min(t, length)), length, self.trackW)
+    self.playLine:ClearAllPoints()
+    self.playLine:SetPoint("TOPLEFT", self.track, "TOPLEFT", x - 1, 0)
+    self.playLine:SetSize(2, self.drawHeight or 1)
+    self.playLine:Show()
+    local tag = self.playTag
+    tag.text:SetText(View.Format(t))
+    tag:SetWidth((tag.text.GetStringWidth and tag.text:GetStringWidth() or 30) + 8)
+    tag:ClearAllPoints()
+    tag:SetPoint("BOTTOM", self.axis, "BOTTOMLEFT", x, 2)
+    tag:Show()
+    if self.playFollow then
+        local shown = self:VisibleWidth()
+        local from = self.hscroll:GetHorizontalScroll() or 0
+        if x < from or x > from + shown - 8 then
+            self:ScrollTo(x - shown / 3)
+        end
+    end
 end
