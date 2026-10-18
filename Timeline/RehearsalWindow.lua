@@ -6,8 +6,9 @@ local ADDON, CRT = ...
 -- bar draining evenly from 100% at the pull to 0% at the fight's length, and the percentage); the
 -- cast bar (the cast showing now, its icon and name, filling over its last Rehearsal.CAST seconds); Next up
 -- (the next 3 casts counting down to them, leaving out the one in the cast bar); the strip (STRIP_SPAN seconds of the fight's casts in their
--- type colors scrolling under a fixed "now" line a third of the way across, with the phase lines and
--- their labels; a click jumps there); and the controls (Play/Pause, Restart, Speed, Preview as and
+-- type colors scrolling under a fixed "now" line a third of the way across, the time over that line,
+-- the phase lines and their labels, and a faint line every 30 seconds labelled along the bottom; a
+-- click jumps there, and dragging with either button scrubs, the clock jumping once on release); and the controls (Play/Pause, Restart, Speed, Preview as and
 -- the clock). An OnUpdate redraws from the clock while it plays. At the fight's length the clock
 -- stops and the window says "Rehearsal over".
 -- The window only drives its own clock. The alerts engine is hooked on through
@@ -22,7 +23,7 @@ CRT.TimelineRehearsalWindow = RehearsalWindow
 
 local W, PAD = 360, 12
 local INNER = W - PAD * 2
-local H = 312
+local H = 338
 local BAR_H = 16
 local CAST_H = 20
 local CAST_W = INNER - CAST_H - 4
@@ -31,13 +32,18 @@ local NEXT_H = 18
 local NEXT_COUNT = 10 -- seconds before a cast its Next up line counts down in tenths and fills its bar,
 -- full when the cast moves into the cast bar Rehearsal.CAST seconds before it
 local NEXT_BAR_W = INNER - 20
-local STRIP_H = 56
+local STRIP_H = 68
 local STRIP_LABEL_H = 14 -- the phase labels' row at the top of the strip
+local STRIP_TICK_H = 12 -- the 30-second labels' row at the bottom of the strip
+local STRIP_TOP = -192 -- under the time shown over the now line
+local TICK = 30 -- seconds between the strip's time lines
+local DRAG_MIN = 3 -- pixels a press moves before it is a drag, not a click
 local MARK_W = 3
 local ICON = "Interface\\Icons\\INV_Misc_QuestionMark"
 local SPEEDS = { 1, 2, 4 }
 
 RehearsalWindow.STRIP_W = INNER
+RehearsalWindow.TICK = TICK
 RehearsalWindow.BAR_W = INNER
 RehearsalWindow.CAST_W = CAST_W
 RehearsalWindow.NEXT_COUNT = NEXT_COUNT
@@ -56,7 +62,7 @@ local TEXT = {
     me = "Me",
     everyone = "Everyone",
     asHelp = "Whose alerts the rehearsal fires. Me: exactly yours. Everyone: every line, with who it's for. A player: what they would get. The players are the selected Raid Groups page's, or your group's when that page is empty.",
-    stripHelp = "The next stretch of the fight in the rows' type colors, the line being now. Click it to jump there.",
+    stripHelp = "The next stretch of the fight in the rows' type colors, the line being now, with a line every 30 seconds. Click it to jump there, or drag it with either mouse button to scrub through the fight.",
     inCombat = "Rehearsal can't start in combat.",
     inEncounter = "Rehearsal can't start during a boss encounter.",
     running = "Rehearsal can't start while the alerts are running a pull or a test.",
@@ -248,7 +254,7 @@ end
 
 local function buildStrip(f)
     local strip = CreateFrame("Frame", nil, f)
-    strip:SetPoint("TOPLEFT", f, "TOPLEFT", PAD, -178)
+    strip:SetPoint("TOPLEFT", f, "TOPLEFT", PAD, STRIP_TOP)
     strip:SetSize(INNER, STRIP_H)
     strip:EnableMouse(true)
     -- a phase label entering at the right edge is cut there, not drawn over the window's border
@@ -256,17 +262,31 @@ local function buildStrip(f)
     local bg = strip:CreateTexture(nil, "BACKGROUND")
     bg:SetAllPoints()
     bg:SetColorTexture(0, 0, 0, 0.35)
-    strip.marks, strip.phaseLines, strip.phaseLabels = {}, {}, {}
+    strip.marks, strip.phaseLines, strip.phaseLabels, strip.ticks, strip.tickLabels = {}, {}, {}, {}, {}
     strip.nowLine = strip:CreateTexture(nil, "OVERLAY")
     strip.nowLine:SetPoint("TOPLEFT", strip, "TOPLEFT", math.floor(INNER / 3) - 1, 0)
     strip.nowLine:SetSize(2, STRIP_H)
     strip.nowLine:SetColorTexture(mocha("cream", 0.9))
-    strip:SetScript("OnMouseUp", function(s, mouse)
-        if mouse and mouse ~= "LeftButton" then
+    -- the time over the now line, outside the strip so it isn't clipped
+    strip.nowText = fontString(f, "CRTFontSmall")
+    strip.nowText:SetPoint("BOTTOM", strip, "TOPLEFT", math.floor(INNER / 3), 2)
+    -- A press with either button starts a drag; one that never moves DRAG_MIN pixels is a click,
+    -- which jumps there with the left button and does nothing with the right.
+    local function cursorX(s)
+        return GetCursorPosition() / (s:GetEffectiveScale() or 1) - (s:GetLeft() or 0)
+    end
+    strip:SetScript("OnMouseDown", function(s, mouse)
+        if mouse ~= "LeftButton" and mouse ~= "RightButton" then
             return
         end
-        local x = GetCursorPosition() / (s:GetEffectiveScale() or 1) - (s:GetLeft() or 0)
-        RehearsalWindow:SeekStrip(x)
+        RehearsalWindow:DragStart(cursorX(s))
+        s:SetScript("OnUpdate", function(self)
+            RehearsalWindow:DragTo(cursorX(self))
+        end)
+    end)
+    strip:SetScript("OnMouseUp", function(s, mouse)
+        s:SetScript("OnUpdate", nil)
+        RehearsalWindow:DragEnd(cursorX(s), not mouse or mouse == "LeftButton")
     end)
     f.strip = strip
     -- the (?) sits beside the Next up heading, outside the strip, so no phase label slides under it
@@ -297,7 +317,7 @@ end
 local function buildControls(f)
     local UI = CRT.UI
     f.play = button(f, TEXT.play, 70)
-    f.play:SetPoint("TOPLEFT", f, "TOPLEFT", PAD, -244)
+    f.play:SetPoint("TOPLEFT", f, "TOPLEFT", PAD, -270)
     f.play:SetScript("OnClick", function()
         RehearsalWindow:TogglePlay()
     end)
@@ -324,7 +344,7 @@ local function buildControls(f)
             RehearsalWindow:SetSpeed(key)
         end,
     })
-    f.speed:SetPoint("TOPLEFT", f, "TOPLEFT", PAD, -270)
+    f.speed:SetPoint("TOPLEFT", f, "TOPLEFT", PAD, -296)
     f.as = UI.Dropdown(f, TEXT.as, {
         options = asOptions,
         labelWidth = 70,
@@ -525,6 +545,53 @@ function RehearsalWindow:SeekStrip(x)
     self:Seek(self:StripTime(x))
 end
 
+-- Scrubbing the strip. While a drag moves, only the window shows the time under it (drag.at): the
+-- clock stands still, so no alert or phase fires on the way. On release the clock jumps there once
+-- (Seek, which restarts the alerts run there) and plays on if it was playing. x is from the strip's
+-- left edge; dragging left goes forward, as if pulling the fight along.
+function RehearsalWindow:DragStart(x)
+    if not self.clock then
+        return
+    end
+    local playing = self.clock:Playing()
+    if playing then
+        self:Pause()
+    end
+    local now = self.clock:Now()
+    self.drag = { x = x, t = now, at = now, resume = playing, moved = false }
+end
+
+function RehearsalWindow:DragTo(x)
+    local d = self.drag
+    if not d then
+        return
+    end
+    local dx = x - d.x
+    if not d.moved and math.abs(dx) < DRAG_MIN then
+        return
+    end
+    d.moved = true
+    local t = d.t - dx / INNER * Rehearsal.STRIP_SPAN
+    d.at = math.max(0, math.min(self.model.length or 0, t))
+    self:Redraw()
+end
+
+-- click: the press was the left button, so one that didn't move jumps to the time under it.
+function RehearsalWindow:DragEnd(x, click)
+    local d = self.drag
+    self.drag = nil
+    if d and d.moved then
+        self:Seek(d.at)
+    elseif click then
+        self:SeekStrip(x)
+    end
+    if d and d.resume then
+        self:Play()
+    elseif d then
+        self:Redraw()
+    end
+end
+
 function RehearsalWindow:SetSpeed(s)
     saved().speed = s
     if self.clock then
@@ -560,7 +627,7 @@ function RehearsalWindow:DrawStrip(now)
             tex:SetColorTexture(col[1], col[2], col[3], 1)
             tex:ClearAllPoints()
             tex:SetPoint("TOPLEFT", strip, "TOPLEFT", (c.t - left) / span * INNER - MARK_W / 2, -STRIP_LABEL_H - 4)
-            tex:SetSize(MARK_W, STRIP_H - STRIP_LABEL_H - 8)
+            tex:SetSize(MARK_W, STRIP_H - STRIP_LABEL_H - STRIP_TICK_H - 8)
             tex.t = c.t
             tex:Show()
         end
@@ -594,6 +661,31 @@ function RehearsalWindow:DrawStrip(now)
         strip.phaseLabels[i]:Hide()
     end
     strip.shownPhases = p
+    -- a faint line every TICK seconds, its time along the bottom
+    local k = 0
+    for t = math.max(0, math.ceil(left / TICK)) * TICK, left + span, TICK do
+        k = k + 1
+        local x = (t - left) / span * INNER
+        local line = pooled(strip.ticks, k, strip, "BORDER")
+        line:SetColorTexture(mocha("cream", 0.15))
+        line:ClearAllPoints()
+        line:SetPoint("TOPLEFT", strip, "TOPLEFT", x, -STRIP_LABEL_H)
+        line:SetSize(1, STRIP_H - STRIP_LABEL_H)
+        line.t = t
+        line:Show()
+        local label = pooledLabel(strip.tickLabels, k, strip)
+        label:ClearAllPoints()
+        label:SetPoint("BOTTOMLEFT", strip, "TOPLEFT", x + 3, -STRIP_H + 1)
+        label:SetText(fmt(t))
+        label:SetTextColor(mocha("latte"))
+        label:Show()
+    end
+    for i = k + 1, #strip.ticks do
+        strip.ticks[i]:Hide()
+        strip.tickLabels[i]:Hide()
+    end
+    strip.shownTicks = k
+    strip.nowText:SetText(fmt(now))
 end
 
 -- Everything from the clock.
@@ -602,7 +694,8 @@ function RehearsalWindow:Redraw()
     if not (f and model and clock) then
         return
     end
-    local now = clock:Now()
+    -- while a drag scrubs, the time under it; the clock waits for the release
+    local now = self.drag and self.drag.moved and self.drag.at or clock:Now()
     local length = model.length or 0
     local playing = clock:Playing()
 
