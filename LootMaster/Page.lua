@@ -2,7 +2,8 @@ local ADDON, CRT = ...
 
 -- The Loot Master page (/crt lootmaster), with three tabs:
 --   Tonight       the running session (or none), and buttons to test, open the looter window, show your
---                 popup and end the session
+--                 popup and end the session; CRT Looting's state, with the leader's Turn on / Turn off
+--                 for everyone (LootMaster/Looting.lua)
 --   Raider Score  every player's score from the Late Tracker's nights (LootMaster/Score.lua)
 --   Settings      the response buttons raiders see (label, colour, weight, icon, order), how long they
 --                 have to answer, the award message, the Raider Score weights, loot authority, and the
@@ -44,6 +45,9 @@ local TEXT = {
     testTag = "TEST · ",
     test = "Test", window = "Looter window", popup = "My popup", endSession = "End session",
     items = "Items",
+    crtLooting = "CRT Looting",
+    crtLootingHelp = "When CRT Looting is on, every raider with CRT will pass the game's roll so the raid leader gets each boss item to give out. Only the raid leader turns it on or off, for everyone, in a raid instance; CRT asks them on the way in. It starts off after a /reload or a zone change, until the leader's next word.\n\nThis version shows the state only. It doesn't pass any roll yet.",
+    turnOn = "Turn on", turnOff = "Turn off for everyone",
     awarded = "given to %s (%s)",
     open = "open",
     scoreHelp = "Built from the Late Tracker's saved nights: everyone starts at 100, a late arrival and a no-show cost points, and points come back every week. Change the weights on the Settings tab. Players with no night in the time counted have no score.",
@@ -205,6 +209,29 @@ local function buildTonight(f)
         b:SetPoint("TOPLEFT", x, -58)
         b:SetScript("OnClick", spec[3])
         x = x + spec[2] + 6
+    end
+    -- CRT Looting: the state, and the leader's button
+    heading(f, L.col3, -8, TEXT.crtLooting, TEXT.crtLootingHelp)
+    local looting = f:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    looting:SetPoint("TOPLEFT", L.col3, -34)
+    looting:SetWidth(L.col3W)
+    looting:SetJustifyH("LEFT")
+    local toggle = UI.PanelButton(f, TEXT.turnOn, 24, function()
+        if LM:LootingOn() then
+            LM:SetLooting(false, "off")
+        else
+            LM:SetLooting(true)
+        end
+    end)
+    toggle:SetPoint("TOPLEFT", L.col3 + 4, -58)
+    refreshers[#refreshers + 1] = function()
+        looting:SetText((LM:LootingStatus()))
+        local leader = IsInGroup() and UnitIsGroupLeader("player")
+        toggle:SetShown(leader and true or false)
+        toggle:SetText(LM:LootingOn() and TEXT.turnOff or TEXT.turnOn)
+        local fs = toggle:GetFontString()
+        toggle:SetWidth(UI.PanelButtonWidth(fs and fs:GetStringWidth() or 0))
+        toggle:SetEnabled(LM:LootingOn() or (LM:CanRunLooting()) or false)
     end
     heading(f, L.col1, -100, TEXT.items)
     local lines = {}
@@ -926,7 +953,7 @@ end
 
 LM:OnChange(function(what)
     if what == "responses" or what == "session" or what == "started" or what == "ended" or what == "scores"
-        or what == "authority" or what == "sync" then
+        or what == "authority" or what == "sync" or what == "looting" then
         refresh()
     end
 end)

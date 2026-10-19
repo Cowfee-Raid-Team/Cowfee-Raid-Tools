@@ -13,7 +13,8 @@ local ADDON, CRT = ...
 --           CRT drew for a raider (silent: no /roll in chat), A an item given out, E end
 --   raider: K hello, Y ready (every item and button arrived), R answer
 --   leader: U who may run loot (the raid leader's list; raiders trust only that), M Sync Master Loot
---           (LootMaster/Sync.lua, its own handler through LM.Handle)
+--           (LootMaster/Sync.lua, its own handler through LM.Handle); O on, F off and H heartbeat for
+--           CRT Looting (LootMaster/Looting.lua)
 -- A kind this version doesn't know is dropped without a word, so a new kind never troubles an older CRT.
 -- Who may run loot: the raid leader (unless their list says not) and the names on the current raid
 -- leader's list. A raider's own settings never grant anyone authority; no list received means leader only.

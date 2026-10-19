@@ -68,12 +68,15 @@ LootMaster\Data.lua
 LootMaster\Score.lua
 LootMaster\Comm.lua
 LootMaster\Sync.lua
+LootMaster\AutoPass.lua
+LootMaster\Looting.lua
 LootMaster\Tabs.lua
 LootMaster\Popup.lua
 LootMaster\Window.lua
 LootMaster\RaiderWindow.lua
 LootMaster\Trade.lua
 LootMaster\Test.lua
+LootMaster\LootingPrompt.lua
 LootMaster\Page.lua
 Timeline\Data.lua
 Timeline\Journal.lua
