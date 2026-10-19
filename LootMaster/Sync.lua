@@ -43,13 +43,7 @@ end
 -- Why a sync can't start now, or nil: while chat is locked (C_ChatInfo.InChatMessagingLockdown, a boss
 -- encounter) addon messages are held, so the answers couldn't come back in time.
 function LM:SyncBlocked()
-    if C_ChatInfo and C_ChatInfo.InChatMessagingLockdown then
-        local ok, locked = pcall(C_ChatInfo.InChatMessagingLockdown)
-        if ok and locked == true then
-            return LM.SYNC_HELD
-        end
-    end
-    return nil
+    return LM.ChatLocked() and LM.SYNC_HELD or nil
 end
 
 -- Your synced settings, as messages for these recipients (full names). Pure but for LM:Settings().

@@ -17,14 +17,16 @@ local ADDON, CRT = ...
 --   O|<version>|<instance>                       on: the leader said Yes for this instance
 --   F|<version>|<why>                            off: no (said No), off (turned off), left (went into
 --                                                another raid instance), away (out too long), lead (can't
---                                                lead it any more), reload (the leader's login or /reload)
+--                                                lead it any more), party (Enable in party turned off),
+--                                                reload (the leader's login or /reload)
 --   H|<version>|<instance>|<instance>|<seconds>  the heartbeat, every HEARTBEAT_SECONDS while on: the
 --                                                instance it said Yes for, the one the leader is in now
 --                                                (empty outside), and the seconds it has been outside
 -- An instance is "<instanceID>-<difficultyID>" (GetInstanceInfo). A raider takes these only from its
 -- current raid leader, and forgets the leader's word when the lead moves or the leader goes offline.
 -- Combat never stops a heartbeat; only the game's chat lockdown (a boss encounter) holds one, and a fresh
--- one goes out when the encounter ends. A click that needs a message during the lockdown shows red error
+-- one goes out when the encounter ends (tried every BEAT_RETRY seconds while the lockdown lasts, for up
+-- to BEAT_RETRIES tries) and when combat ends. A click that needs a message during the lockdown shows red error
 -- text and does nothing.
 --
 -- Nothing here passes a roll: LM:LootingState() collects the facts the auto-pass gate
@@ -37,6 +39,8 @@ local Wire = LM.Wire
 LM.HEARTBEAT_SECONDS = 30
 LM.LOOTING_TICK = 5 -- seconds between a raider's checks for a quiet or offline leader
 LM.QUIET_GRACE = 10 -- seconds after an encounter before a quiet leader is reported in chat
+LM.BEAT_RETRY = 2 -- seconds between tries of the heartbeat after an encounter, while chat is still locked
+LM.BEAT_RETRIES = 10
 
 local TEXT = {
     line = "CRT Looting: %s",
@@ -61,6 +65,7 @@ local OFF_WHY = {
     left = "the raid leader went to another instance",
     away = "the raid leader was out of the instance for over 10 minutes",
     lead = "the raid leader changed",
+    party = "Enable in party was turned off",
     reload = "the raid leader reloaded",
 }
 -- Why a raider forgot the leader's word.
@@ -208,6 +213,26 @@ beat = function()
     LM.SendText(Wire.Encode("H", { LM.VERSION, own.instance, LM.InstanceKey() or "", math.floor(away) }))
 end
 
+-- After an encounter: a heartbeat now, or, while chat is still locked, tried again every BEAT_RETRY
+-- seconds, BEAT_RETRIES times at most. A newer encounter's end starts its own tries.
+local retryRun = 0
+local function beatAfterLockdown()
+    retryRun = retryRun + 1
+    local run, tries = retryRun, 0
+    local function try()
+        if run ~= retryRun or not own.on then
+            return
+        end
+        if not LM.ChatLocked() then
+            beat()
+        elseif tries < LM.BEAT_RETRIES then
+            tries = tries + 1
+            C_Timer.After(LM.BEAT_RETRY, try)
+        end
+    end
+    try()
+end
+
 -- Raider -----------------------------------------------------------------------------------------------
 
 local function stopWatch()
@@ -236,7 +261,7 @@ local function checkHeard()
         return
     end
     local leader = LM.LeaderName()
-    if heard.from ~= leader then
+    if leader ~= nil and heard.from ~= leader then -- a different leader known, not a roster still updating
         heard, forgot = nil, "lead"
     elseif online(LM.UnitOf(leader)) == false then
         heard, forgot = nil, "offline"
@@ -368,9 +393,10 @@ LM.Handle("F", function(f, sender)
     if not fromLeader(sender) then
         return
     end
+    local wasOn = lastOk == true or (heard ~= nil and heard.on == true)
     hear({ from = sender, on = false, version = f[1], why = f[2], at = GetTime() })
     stopWatch()
-    report(true)
+    report(wasOn) -- said only to a raider it was on for
 end)
 
 -- Events -----------------------------------------------------------------------------------------------
@@ -394,7 +420,7 @@ local function zoned()
     if key == lastKey then
         return
     end
-    if lastKey == false and isLeader() then
+    if lastKey == false and canLead() then
         LM.SendText(Wire.Encode("F", { LM.VERSION, "reload" }))
     end
     lastKey = key
@@ -420,15 +446,15 @@ local function zoned()
     maybeAsk()
 end
 
--- The group changed (or Enable in party did): a leader who can't lead it any more turns it off, a raider
--- forgets a word that no longer counts.
-local function regrouped()
+-- The group changed (or Enable in party did: from "setting"): a leader who can't lead it any more turns
+-- it off, a raider forgets a word that no longer counts.
+local function regrouped(from)
     if not isLeader() then
         askedFor = nil -- asked again on getting the lead back
     end
     local ok, whyNot = canLead()
     if own.on and not ok then
-        LM:SetLooting(false, "lead", whyNot)
+        LM:SetLooting(false, (from == "setting" and whyNot == AutoPass.WHY.party) and "party" or "lead", whyNot)
     end
     checkHeard()
     report(false)
@@ -439,7 +465,7 @@ LM.LootingRecheck = regrouped
 
 local events = CreateFrame("Frame")
 for _, e in ipairs({ "PLAYER_ENTERING_WORLD", "ZONE_CHANGED_NEW_AREA", "GROUP_ROSTER_UPDATE", "PARTY_LEADER_CHANGED",
-    "ENCOUNTER_START", "ENCOUNTER_END" }) do
+    "ENCOUNTER_START", "ENCOUNTER_END", "PLAYER_REGEN_ENABLED" }) do
     events:RegisterEvent(e)
 end
 events:SetScript("OnEvent", function(_, event)
@@ -449,8 +475,10 @@ events:SetScript("OnEvent", function(_, event)
         inEncounter = true
     elseif event == "ENCOUNTER_END" then
         inEncounter, endedAt = false, GetTime()
-        beat()
+        beatAfterLockdown()
         report(false)
+    elseif event == "PLAYER_REGEN_ENABLED" then
+        beat()
     else
         regrouped()
     end

@@ -146,6 +146,7 @@ eq(reason(function(st) st.leaderInstance = nil st.leaderAway = 600.5 end), "away
 eq(reason(function(st) st.leaderInstance = nil st.leaderAway = nil end), "away", "leader outside, time unknown")
 eq(reason(function(st) st.leaderInstance = nil st.leaderAway = -1 end), "away", "leader outside, a time from the future")
 eq(reason(function(st) st.leaderInstance = nil st.leaderAway = "5" end), "away", "leader outside, a time that isn't a number")
+eq(reason(function(st) st.leaderInstance = nil st.leaderAway = 0 / 0 end), "away", "leader outside, a time that is NaN")
 eq(reason(function(st) st.leaderInstance = ELSEWHERE st.leaderAway = 5 end), "away", "leader in another raid instance: away whatever the time")
 eq(reason(function(st) st.leaderInstance = nil st.leaderAway = 5 st.yesInstance = ELSEWHERE end), "instance", "leader outside, Yes for another instance")
 eq(reason(function(st) st.leaderInstance = nil st.leaderAway = 5 st.myInstance = nil end), "notraid", "leader outside and you outside: you must be in")

@@ -225,7 +225,7 @@ local function buildTonight(f)
             LM:ChooseLooting(true)
         end
     end)
-    toggle:SetPoint("TOPLEFT", L.col3 + 4, -58)
+    toggle:SetPoint("TOPLEFT", looting, "BOTTOMLEFT", 4, -8) -- under the line, however many lines it takes
     refreshers[#refreshers + 1] = function()
         looting:SetText((LM:LootingStatus()))
         local leader = IsInGroup() and UnitIsGroupLeader("player")
@@ -581,8 +581,10 @@ local function buildSync(f)
     cover:SetAllPoints(button)
     cover:SetFrameLevel(button:GetFrameLevel() + 5)
     cover:EnableMouse(true)
-    cover:SetScript("OnMouseUp", function()
-        LM.ShowError(LM.LOCKDOWN_ERROR)
+    cover:SetScript("OnMouseUp", function(_, mouseButton)
+        if mouseButton == "LeftButton" then
+            LM.ShowError(LM.LOCKDOWN_ERROR)
+        end
     end)
     cover:SetScript("OnEnter", function()
         button:GetScript("OnEnter")(button)
@@ -669,7 +671,7 @@ local function buildSettings(f)
         return LM:Settings().enableInParty
     end, function(on)
         LM:Settings().enableInParty = on
-        LM.LootingRecheck() -- a party leader who had it on turns it off
+        LM.LootingRecheck("setting") -- a party leader who had it on turns it off
     end)
 
     heading(f, L.col2, -8, TEXT.looting, TEXT.lootingHelp)

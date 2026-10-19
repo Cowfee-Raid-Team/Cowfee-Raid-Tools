@@ -63,6 +63,7 @@ C_Timer = {
   After = function(s, fn) timers[#timers+1] = fn end,
   NewTicker = function(s, fn) local t = { seconds = s, fn = fn } t.Cancel = function(me) me.cancelled = true end tickers[#tickers+1] = t return t end,
 }
+local function runTimers() local t = timers timers = {} for _, fn in ipairs(t) do fn() end end
 local function live(seconds) local n = 0 for _, t in ipairs(tickers) do if not t.cancelled and (not seconds or t.seconds == seconds) then n = n + 1 end end return n end
 local function tick(seconds) for _, t in ipairs(tickers) do if not t.cancelled and (not seconds or t.seconds == seconds) then t.fn() end end end
 local outbox, result = {}, 0
@@ -206,7 +207,22 @@ LM.AskLooting = function() asked = asked + 1 end
 ME = "Halo"
 onEvent("PLAYER_ENTERING_WORLD", false, true)
 eq(#outbox, 0, "reload: a raider sends nothing")
+-- an F reload to a raider who was never on says nothing
+printed = {}
+deliver({ "F|" .. V .. "|reload" }, "Solex-Sargeras")
+eq(#printed, 0, "reload F: nothing said to a raider who was never on")
 ME = "Solex"
+-- a leader who can't lead it (a finder group) sends no reload F
+loadLooting()
+LM.AskLooting = function() asked = asked + 1 end
+GROUP.lfg = true
+onEvent("PLAYER_ENTERING_WORLD", false, true)
+eq(#outbox, 0, "reload: a finder group's leader sends nothing")
+GROUP.lfg = nil
+loadLooting()
+LM.AskLooting = function() asked = asked + 1 end
+onEvent("PLAYER_ENTERING_WORLD", false, true)
+take()
 
 -- 4. Yes: on for everyone, an O, then a heartbeat every 30 seconds
 printed = {}
@@ -229,6 +245,9 @@ onEvent("PLAYER_REGEN_DISABLED")
 tick(30)
 eq(#take(), 1, "combat: the heartbeat still goes out")
 onEvent("PLAYER_REGEN_ENABLED")
+local regen = take()
+eq(#regen, 1, "out of combat: a heartbeat straight away")
+check(regen[1] and regen[1]:sub(1, 2) == "H|", "out of combat: it is an H")
 -- in an encounter's chat lockdown no heartbeat piles up; one goes out when it ends
 LOCKED = true
 onEvent("ENCOUNTER_START", 1, "Boss", 16, 20)
@@ -244,7 +263,29 @@ eq(errors[1] and errors[1].r, 1, "error text: red")
 eq(errors[1] and errors[1].g, 0.1, "error text: red, not orange")
 eq(select(2, LM:ChooseLooting(true)), "locked", "lockdown: Turn on refused too, with the reason")
 eq(#outbox, 0, "lockdown: nothing sent")
+-- still locked when the encounter ends: tried again every 2 s, sent once the lockdown lifts
+timers = {}
+onEvent("ENCOUNTER_END", 1, "Boss", 16, 20, 1)
+eq(#outbox, 0, "encounter end, still locked: nothing yet")
+runTimers()
+eq(#outbox, 0, "still locked 2 s later: nothing yet")
 LOCKED = false
+runTimers()
+local retried = take()
+eq(#retried, 1, "lockdown lifted: the heartbeat goes out")
+check(retried[1] and retried[1]:sub(1, 2) == "H|", "lockdown lifted: it is an H")
+runTimers()
+eq(#outbox, 0, "lockdown lifted: no more tries")
+-- the retries give up after 20 s
+LOCKED = true
+timers = {}
+onEvent("ENCOUNTER_START", 1, "Boss", 16, 20)
+onEvent("ENCOUNTER_END", 1, "Boss", 16, 20, 1)
+local tries = 0
+while #timers > 0 and tries < 50 do tries = tries + 1 runTimers() end
+eq(tries, 10, "retries: every 2 s for 20 s")
+LOCKED = false
+onEvent("ENCOUNTER_START", 1, "Boss", 16, 20)
 onEvent("ENCOUNTER_END", 1, "Boss", 16, 20, 1)
 local afterFight = take()
 eq(#afterFight, 1, "encounter end: one heartbeat straight away")
@@ -340,6 +381,13 @@ onEvent("PARTY_LEADER_CHANGED")
 eq(LM:LootingStatus(), "CRT Looting: off: the raid leader changed", "raider: lead back: still off without a new O")
 eq((LM.AutoPass:Ready(LM:LootingState())), false, "raider: lead back: the gate says no")
 deliver(box, "Solex-Sargeras")
+-- the leader not known for a moment (the roster updating): the word is kept
+GROUP.leader = nil
+onEvent("GROUP_ROSTER_UPDATE")
+GROUP.leader = "Solex-Sargeras"
+eq(LM:LootingState().from, "Solex-Sargeras", "leader unknown for a moment: the word is kept")
+eq(LM:LootingStatus(), "CRT Looting: on (leader Solex)", "leader unknown for a moment: still on")
+deliver(box, "Solex-Sargeras")
 eq(LM:LootingStatus(), "CRT Looting: on (leader Solex)", "raider: on again after a new O")
 -- the leader's reload: off before any heartbeat
 deliver({ "F|" .. V .. "|reload" }, "Solex-Sargeras")
@@ -353,7 +401,12 @@ eq(LM:LootingStatus(), "CRT Looting: off: the raid leader turned it off", "raide
 eq(lastPrint(), "CRT Looting: off: the raid leader turned it off", "raider: said in chat")
 deliver({ "F|" .. V .. "|no" }, "Solex-Sargeras")
 eq(LM:LootingStatus(), "CRT Looting: off: the raid leader said No", "raider: said No")
-eq(lastPrint(), "CRT Looting: off: the raid leader said No", "raider: said No in chat")
+eq(lastPrint(), "CRT Looting: off: the raid leader turned it off", "raider: already off, a No says nothing more")
+deliver(box, "Solex-Sargeras")
+deliver({ "F|" .. V .. "|no" }, "Solex-Sargeras")
+eq(lastPrint(), "CRT Looting: off: the raid leader said No", "raider: on, then said No in chat")
+deliver({ "F|" .. V .. "|party" }, "Solex-Sargeras")
+eq(LM:LootingStatus(), "CRT Looting: off: Enable in party was turned off", "raider: Enable in party turned off")
 deliver({ "F|" .. V .. "|left" }, "Solex-Sargeras")
 eq(LM:LootingStatus(), "CRT Looting: off: the raid leader went to another instance", "raider: leader went elsewhere")
 deliver({ "F|" .. V .. "|away" }, "Solex-Sargeras")
@@ -483,8 +536,10 @@ eq((LM:SetLooting(true)), false, "party with Enable in party off: can't turn it 
 CRT.db.lootmaster.enableInParty = true
 eq((LM:SetLooting(true)), true, "party with Enable in party on: turned on")
 CRT.db.lootmaster.enableInParty = false
-LM.LootingRecheck()
+take()
+LM.LootingRecheck("setting")
 eq(LM:LootingOn(), false, "party: turning Enable in party off turns it off")
+eq(take()[1], "F|" .. V .. "|party", "party: F party")
 GROUP.raid = nil
 take()
 local own = GROUP

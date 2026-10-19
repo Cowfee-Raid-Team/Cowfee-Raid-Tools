@@ -102,7 +102,7 @@ function AutoPass:Ready(state)
     end
     if state.leaderInstance ~= state.myInstance then
         local away = state.leaderAway
-        if state.leaderInstance ~= nil or type(away) ~= "number" or away < 0 or away > LM.LOOTING_AWAY then
+        if state.leaderInstance ~= nil or type(away) ~= "number" or not (away >= 0 and away <= LM.LOOTING_AWAY) then
             return false, "away"
         end
     end
