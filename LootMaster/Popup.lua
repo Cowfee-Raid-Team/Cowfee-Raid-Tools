@@ -33,7 +33,7 @@ local TEXT = {
     autoOne = "%d item you can't use was answered %s for you.",
     autoMany = "%d items you can't use were answered %s for you.",
     showAuto = "Show",
-    answers = "Everyone's answers",
+    answers = "All Loot Rolls",
     autoAnswered = "%s: answered %s for you",
     -- why an item was answered for you, by the reason your CRT found (LM.CantUse)
     autoWhy = {
