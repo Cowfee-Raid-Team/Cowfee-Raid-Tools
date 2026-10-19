@@ -116,7 +116,7 @@ function CRT:FontPath(name) for _, f in ipairs(fontList) do if f.name == name th
 CRT.UI = {
   RegisterLayer = function(_, key, f) layers[key] = f end,
   RegisterPreview = function(_, key, fn) previews[key] = fn end,
-  ResetButton = function(parent, fn) resets = resets + 1 local b = mock("Button", parent) rawset(b, "onReset", fn) return b end,
+  ResetButtonWidth = function() return 44 end, ResetButton = function(parent, fn) resets = resets + 1 local b = mock("Button", parent) rawset(b, "onReset", fn) return b end,
   SetFrameTitle = function(f, t) rawset(f, "title", t) end,
   StyleWindow = function(_, f) rawset(f, "styled", (rawget(f, "styled") or 0) + 1) end,
   Help = function(parent) return mock("Button", parent) end,

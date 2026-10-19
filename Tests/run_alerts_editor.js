@@ -158,7 +158,7 @@ local UI = CRT.UI
 assert(UI.StyleWindow and UI.ApplyStyle and UI.SkinTree, "Panel API")
 UI.RegisterLayer = function(_, key, f) layers[key] = f end
 UI.RegisterPreview = function(_, key, fn) previews[key] = fn end
-UI.ResetButton = function(parent, fn) local b = mock("Button", parent) rawset(b, "onReset", fn) rawset(b, "isReset", true) return b end
+UI.ResetButtonWidth = function() return 44 end; UI.ResetButton = function(parent, fn) local b = mock("Button", parent) rawset(b, "onReset", fn) rawset(b, "isReset", true) return b end
 UI.SetFrameTitle = function(f, t) f.title = t end
 UI.Help = function(parent, title, text) local b = mock("Button", parent) rawset(b, "helpTitle", title) rawset(b, "helpText", text) helps[#helps + 1] = b return b end
 UI.Dropdown = function(parent, label, opts) local r = mock("Row", parent) rawset(r, "label", label) rawset(r, "opts", opts)

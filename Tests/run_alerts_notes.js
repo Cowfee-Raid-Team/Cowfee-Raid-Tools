@@ -133,7 +133,7 @@ local CRT = {
       reminders = {}, phases = {}, overrides = {}, nextId = 1 },
   },
   UI = { RegisterLayer = function() end, RegisterPreview = function(_, k, fn) CRT_previewFns = CRT_previewFns or {} CRT_previewFns[k] = fn end,
-    ResetButton = function(p) return newObj("Button", p) end },
+    ResetButtonWidth = function() return 44 end, ResetButton = function(p) return newObj("Button", p) end },
   FONTS = {},
   FontPath = function() return "font" end,
   Print = function(_, m) printed[#printed + 1] = m end,

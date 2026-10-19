@@ -304,7 +304,7 @@ UI.windows = {}
 function UI:ApplyWindow(f)
     local modern = self:IsModern()
     -- Classic with the Minimal black style is flat too, in black and grey like the main window
-    local flat = modern or (CRT.db and CRT.db.ui and CRT.db.ui.style == "minimal")
+    local flat = self:IsFlat()
     for _, texture in ipairs(f.crtArt) do
         texture:SetShown(not flat)
     end
@@ -388,7 +388,7 @@ function UI:ApplyStyle()
     end
     local s = CRT.db.ui
     local modern = self:IsModern()
-    local flat = modern or s.style == "minimal"
+    local flat = self:IsFlat()
     -- Opacity (bgAlpha) fades the whole window, text and buttons too, never below 30%. The window's
     -- own art and colours stay solid underneath.
     f:SetAlpha(math.max(30, math.min(100, s.bgAlpha or 100)) / 100)
@@ -788,25 +788,44 @@ function UI.Help(parent, title, text)
     return b
 end
 
--- A small button for a window's header bar. In the Minimal and Modern looks it is the Reset button's
--- look: dark fill, grey edge, small text, 16 high. In the Classic look it is the game's red panel button,
--- like Previews, 20 high. Its width comes from the label (plus the icon, if any) and padding, never under
--- UI.HEADER_BUTTON_MIN_W. opts: icon (an LM.ICONS key or a texture path, shown left of the label in every
--- look), tipTitle and tipText (a tooltip). It sits above its parent's own parts, so a bar can hold it.
-UI.HEADER_BUTTON_H = 16 -- Minimal and Modern
-UI.HEADER_BUTTON_CLASSIC_H = 20
+-- A small button for a window's header bar. In the flat looks (UI:IsFlat) it is the Reset button's look:
+-- dark fill, grey edge, small text. In the Classic look it is the game's red panel button, like
+-- Previews. Its width comes from the label (plus the icon, if any) and padding, never under
+-- UI.HEADER_BUTTON_MIN_W; its height is UI.HEADER_BUTTON_H unless opts.flatH / opts.classicH say
+-- otherwise. opts: icon (a texture path, or { atlas = name }; shown left of the label in every look; an
+-- unknown value shows nothing), tipTitle and tipText (a tooltip). It sits above its parent's own parts,
+-- so a bar can hold it.
+UI.HEADER_BUTTON_H = 20
 UI.HEADER_BUTTON_MIN_W = 44
-UI.HEADER_BUTTON_PAD = 8 -- each side, flat looks
-UI.HEADER_BUTTON_CLASSIC_PAD = 14 -- each side, the template's end caps
+UI.HEADER_BUTTON_PAD = 8 -- each side, flat looks; Classic uses PANEL_BUTTON_PAD for the end caps
 UI.HEADER_BUTTON_ICON = 12
 UI.HEADER_BUTTON_ICON_GAP = 3
+-- Reset on a window's drag handle stays small, so the handle's 1 px border shows (Previews is 18 high)
+UI.RESET_BUTTON_H = 16
+UI.RESET_BUTTON_CLASSIC_H = 18
 
--- True for the looks that are flat: Modern, and Classic with the Minimal black style.
+-- True for the looks that are flat: Modern, and Classic with the Minimal black style. The one place the
+-- rule is kept.
 function UI:IsFlat()
     if self:IsModern() then
         return true
     end
     return CRT.db and CRT.db.ui and CRT.db.ui.style == "minimal" and true or false
+end
+
+local function headerButtonWidth(labelW, flat)
+    return math.max(UI.HEADER_BUTTON_MIN_W, math.ceil(labelW) + 2 * (flat and UI.HEADER_BUTTON_PAD or UI.PANEL_BUTTON_PAD))
+end
+
+-- The widest a Reset button gets (Classic), for a handle that must leave room for it whatever the look.
+local resetMeasure
+function UI.ResetButtonWidth()
+    if not resetMeasure then
+        resetMeasure = UIParent:CreateFontString(nil, "OVERLAY", "CRTFontButtonSmall")
+        resetMeasure:Hide()
+    end
+    resetMeasure:SetText("Reset")
+    return headerButtonWidth(resetMeasure:GetStringWidth(), false)
 end
 
 function UI.HeaderButton(parent, label, onClick, opts)
@@ -823,16 +842,16 @@ function UI.HeaderButton(parent, label, onClick, opts)
     local labelW = fs and fs:GetStringWidth() or 0
     -- the icon, left of the label
     local icon
-    if opts.icon then
+    local iconKind = type(opts.icon)
+    if iconKind == "string" or (iconKind == "table" and type(opts.icon.atlas) == "string") then
         icon = b:CreateTexture(nil, "OVERLAY")
         icon:SetSize(UI.HEADER_BUTTON_ICON, UI.HEADER_BUTTON_ICON)
-        local LM = CRT.LootMaster
-        if LM and LM.Icon and LM.Icon(opts.icon) then
-            LM.SetIconTexture(icon, opts.icon)
+        if iconKind == "table" then
+            icon:SetAtlas(opts.icon.atlas)
         else
             icon:SetTexture(opts.icon)
-            icon:SetShown(true)
         end
+        icon:Show()
         labelW = labelW + UI.HEADER_BUTTON_ICON + UI.HEADER_BUTTON_ICON_GAP
     end
     b.icon = icon
@@ -841,9 +860,9 @@ function UI.HeaderButton(parent, label, onClick, opts)
     local hover = b:CreateTexture(nil, "HIGHLIGHT")
     hover:SetAllPoints(bg)
     hover:SetColorTexture(1, 1, 1, 0.15)
-    b.crtSkin = function(modern)
-        local flat = modern or UI:IsFlat()
-        local pad = flat and UI.HEADER_BUTTON_PAD or UI.HEADER_BUTTON_CLASSIC_PAD
+    b.crtSkin = function()
+        local flat = UI:IsFlat()
+        local pad = flat and UI.HEADER_BUTTON_PAD or UI.PANEL_BUTTON_PAD
         for _, art in ipairs({ b.Left, b.Middle, b.Right }) do
             if type(art) == "table" then
                 art:SetAlpha(flat and 0 or 1)
@@ -859,7 +878,7 @@ function UI.HeaderButton(parent, label, onClick, opts)
             e:SetShown(flat)
             e:SetColorTexture(0.6, 0.6, 0.6, 1)
         end
-        b:SetSize(math.max(UI.HEADER_BUTTON_MIN_W, math.ceil(labelW) + 2 * pad), flat and UI.HEADER_BUTTON_H or UI.HEADER_BUTTON_CLASSIC_H)
+        b:SetSize(headerButtonWidth(labelW, flat), (flat and opts.flatH or opts.classicH) or UI.HEADER_BUTTON_H)
         if icon and fs then
             icon:ClearAllPoints()
             icon:SetPoint("LEFT", pad, 0)
@@ -868,7 +887,7 @@ function UI.HeaderButton(parent, label, onClick, opts)
         end
     end
     UI.skinned[#UI.skinned + 1] = b
-    b.crtSkin(UI:IsModern())
+    b.crtSkin() -- the current look at once, for a button made before the main window exists
     b:SetScript("OnClick", function()
         onClick()
     end)
@@ -892,6 +911,7 @@ end
 -- it starts, and is shown with the bar (or by the window, during Previews). onClick does the reset.
 function UI.ResetButton(parent, onClick)
     return UI.HeaderButton(parent, "Reset", onClick, {
+        flatH = UI.RESET_BUTTON_H, classicH = UI.RESET_BUTTON_CLASSIC_H,
         tipTitle = "Reset position", tipText = "Puts this window back where it starts.",
     })
 end

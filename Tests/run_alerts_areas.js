@@ -97,7 +97,7 @@ function CRT:FontPath(name) for _, f in ipairs(fontList) do if f.name == name th
 CRT.UI = {
   RegisterLayer = function(_, key, f) layers[key] = f end,
   RegisterPreview = function(_, key, fn) previews[key] = fn end,
-  ResetButton = function(parent, fn) resets = resets + 1 local b = mock("Button", parent) rawset(b, "onReset", fn) return b end,
+  ResetButtonWidth = function() return 44 end, ResetButton = function(parent, fn) resets = resets + 1 local b = mock("Button", parent) rawset(b, "onReset", fn) return b end,
   SetFrameTitle = function(f, t) rawset(f, "title", t) end,
   StyleWindow = function(_, f) rawset(f, "styled", (rawget(f, "styled") or 0) + 1) end,
   Help = function(parent) return mock("Button", parent) end,
@@ -172,10 +172,10 @@ assert(resets >= 1, "reset on the drag box")
 -- the whole title sits left of the settings button and Reset (retail widths: the title's unbounded text)
 do
   local titleRight = title.pts[1][2] + title:GetUnboundedStringWidth()
-  local gearLeft = handle.w + gear.pts[1][2] - gear.w
+  local gearLeft = handle.w - 2 - 44 - 4 - gear.w -- left of Reset (the stand-in is 44 wide), 4 apart
   assert(handle.w >= 220, "never narrower than before: " .. handle.w)
   assert(titleRight < gearLeft, "title (right edge " .. titleRight .. ") ends left of the settings button (" .. gearLeft .. ")")
-  assert(gear.pts[1][2] + 0 >= -handle.w and gearLeft - titleRight >= 4, "a gap before the button")
+  assert(gear.pts[1][1] == "RIGHT" and gearLeft - titleRight >= 4, "a gap before the button")
   print("ok areas: the drag box fits its title")
 end
 A:Settings().areas.texts.shown = false

@@ -332,7 +332,7 @@ local function build()
     local endButton = UI.HeaderButton(header, TEXT.endSession, function()
         LM:End()
     end)
-    endButton:SetPoint("TOPRIGHT", 0, -2)
+    endButton:SetPoint("RIGHT", 0, 0)
     header.answered = header:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     header.answered:SetPoint("RIGHT", endButton, "LEFT", -12, 0)
 

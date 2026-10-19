@@ -30,14 +30,14 @@ end
 
 -- The alert -------------------------------------------------------------------------------
 
--- Wide enough for the whole title left of Reset (44 wide), and at least as wide as the alert. Measured
+-- Wide enough for the whole title left of Reset, and at least as wide as the alert. Measured
 -- again whenever Previews turn on, so a font change applies.
 local function measureHandle()
     if not (handle and handleText) then
         return
     end
     local titleWidth = handleText.GetUnboundedStringWidth and handleText:GetUnboundedStringWidth() or handleText:GetStringWidth()
-    handleMin = math.ceil(6 + titleWidth + 4 + 44 + 2)
+    handleMin = math.ceil(6 + titleWidth + 4 + CRT.UI.ResetButtonWidth() + 2)
     handle:SetWidth(math.max(handleMin, frame and frame:GetWidth() or 0))
 end
 
@@ -206,9 +206,10 @@ local function build()
     local text = handle:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     text:SetPoint("LEFT", 6, 0)
     text:SetText("Your next spell: drag to move")
-    CRT.UI.ResetButton(handle, function()
+    handle.reset = CRT.UI.ResetButton(handle, function()
         Alert:ResetPosition()
-    end):SetPoint("RIGHT", -2, 0)
+    end)
+    handle.reset:SetPoint("RIGHT", -2, 0)
     handleText = text
     measureHandle()
     handle:SetScript("OnDragStart", function()
