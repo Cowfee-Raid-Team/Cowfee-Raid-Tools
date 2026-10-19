@@ -65,7 +65,7 @@ local TEXT = {
     noIcon = "No icon",
     guildStream = "Guild: %s",
     specs = "Items a raider can't use",
-    specsHelp = "Each raider's own CRT answers an item for them when they can't use it, and leaves it off their popup. The game's data shows it in one of four ways: none of their specs is listed (a tank trinket for a mage), a Classes line without their class, an armor type that isn't their class's, or a weapon type the game marks in red for their class. The looter window shows it with an 'auto' tag and why.\n\nThe answer is always Transmog: your own Transmog button when you have one (or a button named Transmog), else a built-in Transmog that weighs 10. A looter on an older CRT with no Transmog button gets Pass. Every answer gets a roll.\n\nOnly a clear answer from the game counts. If the item hasn't loaded, or the game gives no list, an empty list or anything odd, the item is shown as normal.\n\nRaiders who tick Show me items I can't use see those items with their buttons off: they can look, not answer.",
+    specsHelp = "Each raider's own CRT answers an item for them when they can't use it, and leaves it off their popup. The game's data shows it in one of four ways: none of their specs is listed (a tank trinket for a mage), a Classes line without their class, an armor type that isn't their class's, or a weapon type the game marks in red for their class. The looter window shows it with an 'auto' tag and why.\n\nThe answer is always Transmog: your own Transmog button when you have one (or a button labelled Transmog), else a built-in Transmog that weighs 1 (below every button you weighted above 0). A looter on an older CRT with no Transmog button gets Pass. Every answer gets a roll.\n\nOnly a clear answer from the game counts. If the item hasn't loaded, or the game gives no list, an empty list or anything odd, the item is shown as normal.\n\nRaiders who tick Show me items I can't use see those items with their buttons off: they can look, not answer.",
     autoPass = "Answer them for raiders (sent with your sessions)",
     showAll = "Show me items I can't use (to look at, just you)",
     award = "Award message",
@@ -157,8 +157,8 @@ local function editBox(parent, width, onCommit, placeholder)
         hint:SetPoint("LEFT", 1, 0)
         hint:SetTextColor(0.5, 0.5, 0.5)
         hint:SetText(placeholder)
-        e:SetScript("OnEditFocusGained", showHint)
-        e:SetScript("OnTextChanged", showHint)
+        e:HookScript("OnEditFocusGained", showHint) -- hooked: the template's own handlers still run
+        e:HookScript("OnTextChanged", showHint)
         e.showHint = showHint
     end
     return e
@@ -739,6 +739,7 @@ local function buildSettings(f)
     end, TEXT.authorityType)
     local dropH = pick.Dropdown:GetHeight()
     matchHeight(typed, (dropH and dropH >= 16) and dropH or 26)
+    UI:SkinEditBox(typed) -- flat in Modern, like the dropdown beside it
     typed:SetPoint("LEFT", pick.Dropdown, "RIGHT", L.addGap, 0)
     refreshers[#refreshers + 1] = function()
         local names = auth().names

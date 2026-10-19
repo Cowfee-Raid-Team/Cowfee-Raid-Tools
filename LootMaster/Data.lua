@@ -88,12 +88,13 @@ LM.DEFAULT_RESPONSES = {
 
 -- The built-in Transmog: the answer a raider's CRT gives for an item they can't use, when the looter's set has
 -- no Transmog of its own. Every session accepts it, sorts it by this weight and shows it in the looter window,
--- but it is not a raider button.
-LM.TRANSMOG = { key = "tmog", label = "Transmog", color = { 0.71, 0.55, 0.91 }, weight = 10, icon = "transmog", builtin = true }
+-- but it is not a raider button. Weight 1: below any button weighted above 0, above a weight-0 Pass.
+LM.TRANSMOG = { key = "tmog", label = "Transmog", color = { 0.71, 0.55, 0.91 }, weight = 1, icon = "transmog", builtin = true }
 
--- Whether a response is a Transmog: the transmog icon, or the label Transmog in any case.
+-- Whether a response is a Transmog: the tmog key, or the label Transmog in any case. The transmog icon
+-- alone doesn't count (a looter may put it on Offspec).
 function LM.IsTransmog(r)
-    return type(r) == "table" and (r.icon == "transmog" or (type(r.label) == "string" and r.label:lower() == "transmog"))
+    return type(r) == "table" and (r.key == "tmog" or (type(r.label) == "string" and r.label:lower() == "transmog"))
 end
 
 -- The key an item you can't use is answered with: the set's tmog, else the set's own Transmog (such as the
@@ -462,8 +463,9 @@ end
 --   weapon  a weapon whose tooltip data shows its weapon type in red on the slot line (the line's right
 --          text, as on the item tooltip: "Sword" in red for a druid), and that text is the item's own weapon
 --          type. The game's subtype name is longer ("One-Handed Swords" for "Sword"), so the tooltip's text
---          counts when it is the subtype or a part of it, in any case. A staff ("Staff", "Staves") never
---          matches, so it is shown.
+--          counts when it is the subtype or a part of it, in any case. Known misses, both shown as normal
+--          (failing open): a staff ("Staff" is not part of "Staves"), and languages whose letters
+--          string.lower doesn't fold (non-Latin scripts), where a case difference stops the match.
 LM.ITEM_CLASS_WEAPON = 2 -- Enum.ItemClass.Weapon
 -- The game's red text (RED_FONT_COLOR, about 1 / 0.1 / 0.1): a colour within tolerance of this on each part.
 LM.RED_TEXT = { r = 1, g = 0.12, b = 0.12, tolerance = 0.15 }
@@ -513,6 +515,7 @@ function LM.IsRed(c)
 end
 
 -- Whether the tooltip's weapon type text is the item's own weapon type (its subtype name, or a part of it).
+-- Misses (shown as normal): Staff vs Staves, and a case difference string.lower can't fold (non-Latin).
 function LM.WeaponTypeMatches(text, subType)
     if type(text) ~= "string" or type(subType) ~= "string" or text == "" or subType == "" then
         return false
