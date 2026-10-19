@@ -256,7 +256,8 @@ eq(s3.players["Solex-Sargeras"].answers[1].auto, true, "you can't answer it your
 LM:End()
 CRT.db.lootmaster.autoPass = false
 LM:Start({ { itemString = "item:111" } }, true)
-eq(LM.incoming.mine[1], nil, "leader switch off: nothing answered for you")
+eq(LM.current.autoPass, true, "a session always answers, even with an old saved autoPass = false")
+eq(LM.incoming.mine[1] == nil, false, "old saved off setting is ignored: still answered for you")
 LM:End()
 CRT.db.lootmaster.autoPass = nil
 CRT.db.lootmaster.showAllItems = true

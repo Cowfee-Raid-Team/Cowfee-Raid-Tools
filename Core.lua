@@ -202,7 +202,6 @@ local defaults = {
         awardMessage = "%i awarded to %p for %r with a %v roll.",
         awardChannel = "RAID",
         noRoll = "-",
-        autoPass = true, -- answer items a raider's specs can't use (the leader's setting, sent with sessions)
         showAllItems = false, -- this raider sees every item anyway
         authority = { leader = true, names = {} }, -- who may run loot (the raid leader's list is the one raiders trust)
         sort = {}, -- the looter list's and Raider Score's chosen column and direction
