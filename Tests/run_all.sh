@@ -50,7 +50,7 @@ echo "== lootmaster sync"; node run_lootmaster_sync.js "$W" 2>&1 | tail -6; echo
 echo "== lootmaster score"; node run_lootmaster_score.js "$W" 2>&1 | tail -6; echo "exit ${PIPESTATUS[0]}"
 echo "== lootmaster ui"; node run_lootmaster_ui.js "$W" 2>&1 | tail -6; echo "exit ${PIPESTATUS[0]}"
 echo "== debuffs"; node run_debuffs.js "$W" 2>&1 | tail -12; echo "exit ${PIPESTATUS[0]}"
-echo "== late data"; node run_late.js "$W/Late/Data.lua" 2>&1 | tail -2; echo "exit ${PIPESTATUS[0]}"
+echo "== late data"; node run_late.js "$W/Late/Data.lua" 2>&1 | tail -6; echo "exit ${PIPESTATUS[0]}"
 echo "== late page"; node run_latepage.js "$W/Late/Data.lua" "$W/Late/Page.lua" 2>&1 | tail -2; echo "exit ${PIPESTATUS[0]}"
 echo "== groups extras"; node run_groups_extras.js "$W" 2>&1 | tail -2; echo "exit ${PIPESTATUS[0]}"
 echo "== Lua 5.1 upvalue limit (60 per function; the harnesses run a newer Lua that allows 255)"; node lua-upvalue-check.cjs "$W" | grep -v "^OK"; up=${PIPESTATUS[0]}; if [ "$up" = "0" ]; then echo "all passed"; else echo "FAIL a function has more than 60 upvalues"; fi
