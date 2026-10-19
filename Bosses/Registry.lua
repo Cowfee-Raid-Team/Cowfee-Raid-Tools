@@ -21,6 +21,34 @@ CRT.Bosses = Bosses
 function Bosses:Season(def)
     assert(type(def) == "table" and type(def.key) == "string", "a season needs a key")
     self.seasons[def.key] = def
+    for _, raid in ipairs(type(def.raids) == "table" and def.raids or {}) do
+        for _, entry in ipairs(raid.bosses or {}) do
+            self:Stub(def.key, entry)
+        end
+    end
+end
+
+-- A route entry's encounter ID: the entry is the ID, or { id = 3501, name = "New Boss" } for a boss with
+-- no file of its own yet.
+function Bosses.EntryID(entry)
+    if type(entry) == "table" then
+        return tonumber(entry.id)
+    end
+    return tonumber(entry)
+end
+
+-- A boss named only in the route ({ id, name }, added for a .5 or .7 patch with Boss order's Add boss):
+-- registered with just its name and season (stub = true), so every boss list shows it. Its boss file,
+-- once it has one (an ability timeline, phases, hidden abilities), replaces it, as Season.lua loads
+-- first. A bare ID with no boss file stays skipped.
+function Bosses:Stub(seasonKey, entry)
+    local id = type(entry) == "table" and self.EntryID(entry)
+    local name = type(entry) == "table" and entry.name
+    if not (id and type(name) == "string" and name ~= "") or self.bosses[id] then
+        return
+    end
+    self.bosses[id] = { encounterID = id, name = name, season = seasonKey, stub = true }
+    self.order[#self.order + 1] = id
 end
 
 -- One boss, from its boss file. encounterID, name and season are required.
@@ -76,7 +104,8 @@ end
 -- it on the dev's own computer (CRTDB.dev.bossRoute[seasonKey], the same shape); it never ships.
 -- Every boss list reads Route or RouteList and keeps their order: none sorts bosses itself. A boss with
 -- a file but missing from the route goes at the end of the last raid, so a new boss file is never lost;
--- a route ID with no boss file is skipped.
+-- a route ID with no boss file is skipped, unless it is written { id = 3501, name = "New Boss" }, a boss
+-- with only its name (Bosses:Stub).
 
 local routeListeners = {}
 local seasonLoaded -- defined below, with LoadMode
@@ -106,8 +135,10 @@ local function seasonRoute(self, seasonKey)
     local out, placed = {}, {}
     for _, raid in ipairs((self:Raids(seasonKey))) do
         local group = { raid = { key = raid.key, name = raid.name }, bosses = {} }
-        for _, id in ipairs(raid.bosses or {}) do
-            local def = self.bosses[id]
+        for _, entry in ipairs(raid.bosses or {}) do
+            self:Stub(seasonKey, entry) -- one the dev added on this computer
+            local id = self.EntryID(entry)
+            local def = id and self.bosses[id]
             if def and def.season == seasonKey and not placed[id] then
                 placed[id] = true
                 group.bosses[#group.bosses + 1] = def
