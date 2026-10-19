@@ -28,7 +28,8 @@ check(type(AutoPass) == "table" and type(AutoPass.ShouldPass) == "function", "th
 local HERE, ELSEWHERE = "2810-16", "2810-15"
 local function good()
   local state = {
-    test = false, me = "Halo-Sargeras", leader = "Solex-Sargeras", myInstance = HERE, on = true,
+    test = false, me = "Halo-Sargeras", leader = "Solex-Sargeras", myInstance = HERE, finder = false,
+    inRaid = true, enableInParty = false, on = true,
     from = "Solex-Sargeras", version = LM.LOOTING_SINCE, yesInstance = HERE, leaderOnline = true,
     leaderInstance = HERE, heartbeatAt = 1000, now = 1030, passed = { [3] = true },
   }
@@ -42,6 +43,8 @@ local CHECKS = {
   { "test", function(s, r) r.test = true end },
   { "notraid", function(s, r) s.myInstance = nil end },
   { "nogroup", function(s, r) s.leader = nil end },
+  { "finder", function(s, r) s.finder = true end },
+  { "party", function(s, r) s.inRaid = false end },
   { "looter", function(s, r) s.me = "Solex-Sargeras" end },
   { "off", function(s, r) s.on = false end },
   { "notleader", function(s, r) s.from = "Quick-Sargeras" end },
@@ -130,6 +133,22 @@ eq(reason(function(st) st.passed = nil end), "pass", "no passed list: none passe
 eq(reason(function(st, ro) ro.test = 1 end), "test", "any test mark counts")
 eq(reason(function(st, ro) ro.bossInstance = ELSEWHERE end), "notboss", "a boss in another instance")
 eq(reason(function(st) st.me = nil end), "pass", "your own name unknown: you aren't the leader")
+eq(reason(function(st) st.finder = nil end), "finder", "finder group unknown: refused")
+eq(reason(function(st) st.finder = 0 end), "finder", "finder must be exactly false")
+eq(reason(function(st) st.inRaid = false st.enableInParty = true end), "pass", "a party with Enable in party on")
+eq(reason(function(st) st.inRaid = nil end), "party", "raid unknown: refused")
+eq(reason(function(st) st.inRaid = false st.enableInParty = 1 end), "party", "Enable in party must be exactly true")
+-- a wipe: the leader outside (no instance), for the instance it said Yes for, within the away window
+eq(LM.LOOTING_AWAY, 600, "the away window is 10 minutes")
+eq(reason(function(st) st.leaderInstance = nil st.leaderAway = 120 end), "pass", "leader outside for 2 minutes")
+eq(reason(function(st) st.leaderInstance = nil st.leaderAway = 600 end), "pass", "leader outside for exactly 10 minutes")
+eq(reason(function(st) st.leaderInstance = nil st.leaderAway = 600.5 end), "away", "leader outside for over 10 minutes")
+eq(reason(function(st) st.leaderInstance = nil st.leaderAway = nil end), "away", "leader outside, time unknown")
+eq(reason(function(st) st.leaderInstance = nil st.leaderAway = -1 end), "away", "leader outside, a time from the future")
+eq(reason(function(st) st.leaderInstance = nil st.leaderAway = "5" end), "away", "leader outside, a time that isn't a number")
+eq(reason(function(st) st.leaderInstance = ELSEWHERE st.leaderAway = 5 end), "away", "leader in another raid instance: away whatever the time")
+eq(reason(function(st) st.leaderInstance = nil st.leaderAway = 5 st.yesInstance = ELSEWHERE end), "instance", "leader outside, Yes for another instance")
+eq(reason(function(st) st.leaderInstance = nil st.leaderAway = 5 st.myInstance = nil end), "notraid", "leader outside and you outside: you must be in")
 
 -- 5. Pure: nothing it is given changes
 s, r = good()

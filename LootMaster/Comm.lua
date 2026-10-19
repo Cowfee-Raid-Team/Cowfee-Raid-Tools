@@ -216,6 +216,25 @@ local function send(kind, fields)
     sendText(Wire.Encode(kind, fields))
 end
 LM.Send = send
+
+-- Whether the game holds addon messages now (C_ChatInfo.InChatMessagingLockdown: a boss encounter).
+-- Ordinary combat doesn't. Unreadable is no.
+function LM.ChatLocked()
+    if C_ChatInfo and C_ChatInfo.InChatMessagingLockdown then
+        local ok, locked = pcall(C_ChatInfo.InChatMessagingLockdown)
+        return ok and locked == true
+    end
+    return false
+end
+
+-- Red error text at the top of the screen (the game's UIErrorsFrame, a MessageFrame), for a click that
+-- can't be done now.
+LM.LOCKDOWN_ERROR = "Can't do that during a boss encounter."
+function LM.ShowError(text)
+    if UIErrorsFrame and UIErrorsFrame.AddMessage then
+        pcall(UIErrorsFrame.AddMessage, UIErrorsFrame, text, 1, 0.1, 0.1)
+    end
+end
 LM.SendText = sendText -- a finished message, such as one of Wire.Pack's, and an optional done(sent)
 
 -- Loot authority -------------------------------------------------------------------------------------

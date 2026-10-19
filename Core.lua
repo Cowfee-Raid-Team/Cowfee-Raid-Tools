@@ -204,6 +204,7 @@ local defaults = {
         awardChannel = "RAID",
         noRoll = "-",
         showAllItems = false, -- this raider sees every item anyway
+        enableInParty = false, -- CRT Looting also in a party group, not only a raid (LootMaster/Looting.lua)
         authority = { leader = true, names = {} }, -- who may run loot (the raid leader's list is the one raiders trust)
         sort = {}, -- the looter list's and Raider Score's chosen column and direction
     },

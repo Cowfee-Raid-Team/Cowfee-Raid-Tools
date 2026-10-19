@@ -11,10 +11,15 @@ local ADDON, CRT = ...
 -- proofs (START_LOOT_ROLL in a raid, a pass from an event, CANCEL_LOOT_ROLL closing the frame).
 --
 -- state: test (a test session is running), me and leader (full names; leader nil out of a group),
---   myInstance (your raid instance's key, nil outside a raid instance), on (the leader's last word: true
+--   myInstance (your raid instance's key, nil outside a raid instance), finder (false only when you are
+--   not in a finder group), inRaid (true in a raid group), enableInParty (your "Enable in party" setting:
+--   true lets a party group pass too), on (the leader's last word: true
 --   only when it said on), from (who sent it), version (the sender's CRT), yesInstance (the instance it
 --   said Yes for), leaderOnline (true only when the game says so), leaderInstance (where its last
---   heartbeat said it was), heartbeatAt and now (GetTime() seconds), passed ({ [rollID] = true }).
+--   heartbeat said it was: nil when outside every raid instance), leaderAway (seconds it has been outside,
+--   counted to now), heartbeatAt and now (GetTime() seconds), passed ({ [rollID] = true }).
+-- A leader outside (a wipe: dead, released, running back) still counts for up to LM.LOOTING_AWAY seconds;
+-- a leader in another raid instance never does. You must be in the instance it said Yes for.
 -- roll: id (the rollID), test, instance (your instance's key when it started), bossInstance (the
 --   instance key of the boss kill it follows, or nil).
 
@@ -31,6 +36,8 @@ AutoPass.WHY = {
     test = "a test can't pass",
     notraid = "you are not in a raid instance",
     nogroup = "you are not in a group",
+    finder = "a finder group has no raid leader to follow",
+    party = "you are in a party, and Enable in party is off",
     looter = "you are the looter",
     unheard = "the raid leader hasn't turned it on",
     off = "the raid leader turned it off",
@@ -69,6 +76,12 @@ function AutoPass:Ready(state)
     if not key(state.leader) then
         return false, "nogroup"
     end
+    if state.finder ~= false then
+        return false, "finder"
+    end
+    if not (isTrue(state.inRaid) or isTrue(state.enableInParty)) then
+        return false, "party"
+    end
     if state.me == state.leader then
         return false, "looter"
     end
@@ -88,7 +101,10 @@ function AutoPass:Ready(state)
         return false, "offline"
     end
     if state.leaderInstance ~= state.myInstance then
-        return false, "away"
+        local away = state.leaderAway
+        if state.leaderInstance ~= nil or type(away) ~= "number" or away < 0 or away > LM.LOOTING_AWAY then
+            return false, "away"
+        end
     end
     local at, now = state.heartbeatAt, state.now
     if type(at) ~= "number" or type(now) ~= "number" or now < at or now - at > AutoPass.STALE then

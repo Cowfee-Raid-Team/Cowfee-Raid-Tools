@@ -23,6 +23,7 @@ LM.VERSION = "0.27.0"
 -- The oldest leader's CRT a raider's auto-pass gate trusts (LootMaster/AutoPass.lua). The job that makes the
 -- leader roll Need or Greed must raise this to its own version, so no raider passes for a leader who doesn't roll.
 LM.LOOTING_SINCE = "0.27.0"
+LM.LOOTING_AWAY = 600 -- seconds the raid leader may be out of the instance (a wipe) before CRT Looting turns off
 LM.AUTO_TMOG_SINCE = "0.26.0" -- a looter from this version on accepts the built-in Transmog (LM.TRANSMOG)
 LM.HELLO_SECONDS = 5 -- after this, raiders who never said hello have no CRT
 LM.READY_SECONDS = 10 -- a raider who said hello but never got everything is sent the session again, once

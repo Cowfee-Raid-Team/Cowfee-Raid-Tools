@@ -4,20 +4,28 @@ local ADDON, CRT = ...
 -- "Safety") in the vault. When the raid leader with CRT enters a raid instance, CRT asks "Use CRT Looting
 -- in this instance?" (LootMaster/LootingPrompt.lua, through LM.AskLooting). Yes turns it on for everyone in
 -- the raid with CRT, No leaves it off; the leader can turn it off and on again from the Tonight tab.
--- Raiders can't change it.
+-- Raiders can't change it. A party group counts only with "Enable in party" (Settings), on both sides; a
+-- finder group never does.
 --
--- The on state lives in memory only, never saved: a login, /reload or zone change (another instance, or
--- leaving one) starts it off, for the leader and for raiders, until the leader's next word.
+-- The on state lives in memory only, never saved: a login or /reload starts it off (the leader's first
+-- loading screen tells raiders so). A wipe keeps it on: the leader may be out of the instance (dead,
+-- released, running back) for up to LM.LOOTING_AWAY seconds, and isn't asked again on the way back in. It
+-- turns off when the leader stays out longer, goes into another raid instance, leaves the group, loses
+-- the lead, or turns it off.
 --
 -- Messages, on LM.PREFIX like the rest of Loot Master (an older CRT drops a kind it doesn't know):
---   O|<version>|<instance>               on: the leader said Yes for this instance
---   F|<version>|<why>                    off: no (said No), off (turned off), left (left the instance),
---                                        lead (no longer the leader)
---   H|<version>|<instance>|<instance>    the heartbeat, every HEARTBEAT_SECONDS while on: the instance it
---                                        said Yes for, then the one the leader is in now
+--   O|<version>|<instance>                       on: the leader said Yes for this instance
+--   F|<version>|<why>                            off: no (said No), off (turned off), left (went into
+--                                                another raid instance), away (out too long), lead (can't
+--                                                lead it any more), reload (the leader's login or /reload)
+--   H|<version>|<instance>|<instance>|<seconds>  the heartbeat, every HEARTBEAT_SECONDS while on: the
+--                                                instance it said Yes for, the one the leader is in now
+--                                                (empty outside), and the seconds it has been outside
 -- An instance is "<instanceID>-<difficultyID>" (GetInstanceInfo). A raider takes these only from its
--- current raid leader. During an encounter addon messages are held, so no heartbeat is queued then; one
--- goes out when the encounter ends.
+-- current raid leader, and forgets the leader's word when the lead moves or the leader goes offline.
+-- Combat never stops a heartbeat; only the game's chat lockdown (a boss encounter) holds one, and a fresh
+-- one goes out when the encounter ends. A click that needs a message during the lockdown shows red error
+-- text and does nothing.
 --
 -- Nothing here passes a roll: LM:LootingState() collects the facts the auto-pass gate
 -- (LootMaster/AutoPass.lua) needs, and the state line says what the gate would say.
@@ -27,7 +35,8 @@ local AutoPass = LM.AutoPass
 local Wire = LM.Wire
 
 LM.HEARTBEAT_SECONDS = 30
-LM.LOOTING_TICK = 5 -- seconds between a raider's checks for a quiet leader
+LM.LOOTING_TICK = 5 -- seconds between a raider's checks for a quiet or offline leader
+LM.QUIET_GRACE = 10 -- seconds after an encounter before a quiet leader is reported in chat
 
 local TEXT = {
     line = "CRT Looting: %s",
@@ -38,27 +47,32 @@ local TEXT = {
     saidNo = "you said No",
     turnedOn = "CRT Looting: on for everyone in the raid with CRT.",
     turnedOff = "CRT Looting: off for everyone.",
-    left = "CRT Looting: off, you left the instance.",
+    left = "CRT Looting: off, you went into another raid instance.",
+    away = "CRT Looting: off, you were out of the instance for over 10 minutes.",
     lead = "CRT Looting: off: %s.",
     cant = "CRT Looting: can't turn it on: %s.",
     notLead = "you are not the raid leader",
-    finder = "a finder group has no raid leader to follow",
 }
 
 -- Why the leader turned it off, as a raider reads it (F's <why>); anything else is just off.
 local OFF_WHY = {
     no = "the raid leader said No",
     off = AutoPass.WHY.off,
-    left = "the raid leader left the instance",
+    left = "the raid leader went to another instance",
+    away = "the raid leader was out of the instance for over 10 minutes",
     lead = "the raid leader changed",
+    reload = "the raid leader reloaded",
 }
+-- Why a raider forgot the leader's word.
+local FORGOT = { lead = OFF_WHY.lead, offline = AutoPass.WHY.offline }
 
-local own = { on = false } -- the leader's choice: on, instance (the key it said Yes for), why (when off)
-local heard -- a raider's last word from the leader: { from, on, version, yes, here, at, why }
-local passed = {} -- rolls passed in this instance: { [rollID] = true } (filled by the gate's caller, later)
-local lastKey = false -- the instance key last seen (false: none seen yet since loading)
-local askedFor -- the instance key the leader was last asked about
-local inEncounter = false
+local own = { on = false } -- the leader's choice: on, instance (said Yes for), why (when off), awaySince
+local heard -- a raider's last word from the leader: { from, on, version, yes, here, away, at, why }
+local forgot -- why heard was dropped (FORGOT's keys), until the leader's next word
+local passed, passedIn = {}, nil -- rolls passed in the raid instance passedIn: { [rollID] = true }
+local lastKey = false -- the instance key last seen (false: no loading screen yet since loading)
+local askedFor -- the raid instance the leader was last asked about
+local inEncounter, endedAt = false, nil
 local beatTicker, watchTicker
 local lastOk -- what a raider's chat line last said: true on, false off
 
@@ -83,17 +97,34 @@ local function isLeader()
     return IsInGroup() and UnitIsGroupLeader("player") and true or false
 end
 
--- Whether you can turn CRT Looting on: the leader of your own group (not a finder group), in a raid
--- instance. Returns true, or false and the words why not.
-function LM:CanRunLooting()
+local function enableInParty()
+    local set = LM:Settings()
+    return type(set) == "table" and set.enableInParty == true
+end
+
+-- Whether you may lead CRT Looting wherever you are: the leader of your own raid (or party, with Enable
+-- in party), not a finder group. Returns true, or false and the words why not.
+local function canLead()
     if not IsInGroup() then
         return false, AutoPass.WHY.nogroup
     end
     if IsInGroup(LE_PARTY_CATEGORY_INSTANCE) then
-        return false, TEXT.finder
+        return false, AutoPass.WHY.finder
     end
     if not UnitIsGroupLeader("player") then
         return false, TEXT.notLead
+    end
+    if not IsInRaid() and not enableInParty() then
+        return false, AutoPass.WHY.party
+    end
+    return true
+end
+
+-- Whether you can turn CRT Looting on now: you may lead it, and you are in a raid instance.
+function LM:CanRunLooting()
+    local ok, why = canLead()
+    if not ok then
+        return false, why
     end
     if not LM.InstanceKey() then
         return false, AutoPass.WHY.notraid
@@ -107,14 +138,6 @@ end
 
 -- Leader -----------------------------------------------------------------------------------------------
 
-local function locked()
-    if C_ChatInfo and C_ChatInfo.InChatMessagingLockdown then
-        local ok, yes = pcall(C_ChatInfo.InChatMessagingLockdown)
-        return ok and yes == true
-    end
-    return false
-end
-
 local function stopBeat()
     if beatTicker then
         beatTicker:Cancel()
@@ -122,20 +145,11 @@ local function stopBeat()
     end
 end
 
-local function beat()
-    if not own.on then
-        stopBeat()
-        return
-    end
-    if locked() then
-        return -- held messages would pile up; ENCOUNTER_END sends a fresh one
-    end
-    LM.SendText(Wire.Encode("H", { LM.VERSION, own.instance, LM.InstanceKey() or "" }))
-end
+local beat -- set below
 
 -- Turns CRT Looting on or off for everyone (the leader only, in a raid instance, to turn it on). why
--- (when off): "no", "off", "left" or "lead" (words: what you lost, for "lead"). Returns whether it
--- changed anything.
+-- (when off): one of F's reasons (words: what you lost, for "lead"). Returns whether it changed anything.
+-- Called by CRT itself; a click goes through LM:ChooseLooting.
 function LM:SetLooting(on, why, words)
     if on then
         local ok, whyNot = self:CanRunLooting()
@@ -143,7 +157,7 @@ function LM:SetLooting(on, why, words)
             CRT:Print(string.format(TEXT.cant, whyNot))
             return false
         end
-        own.on, own.instance, own.why = true, LM.InstanceKey(), nil
+        own.on, own.instance, own.why, own.awaySince = true, LM.InstanceKey(), nil, nil
         LM.SendText(Wire.Encode("O", { LM.VERSION, own.instance }))
         if not beatTicker then
             beatTicker = C_Timer.NewTicker(LM.HEARTBEAT_SECONDS, beat)
@@ -151,62 +165,50 @@ function LM:SetLooting(on, why, words)
         CRT:Print(TEXT.turnedOn)
     else
         why = why or "off"
-        own.on, own.instance, own.why = false, nil, why
+        own.on, own.instance, own.why, own.awaySince = false, nil, why, nil
         stopBeat()
         LM.SendText(Wire.Encode("F", { LM.VERSION, why }))
-        CRT:Print(why == "left" and TEXT.left or (why == "lead" and TEXT.lead:format(words or TEXT.notLead) or TEXT.turnedOff))
+        local line = TEXT.turnedOff
+        if why == "left" then
+            line = TEXT.left
+        elseif why == "away" then
+            line = TEXT.away
+        elseif why == "lead" then
+            line = TEXT.lead:format(words or TEXT.notLead)
+        end
+        CRT:Print(line)
     end
     LM:Fire("looting")
     return true
 end
 
+-- A click on Yes, No, Turn on or Turn off for everyone: during the chat lockdown of a boss encounter the
+-- message can't go, so it shows red error text and does nothing (returns false, "locked").
+function LM:ChooseLooting(on, why)
+    if LM.ChatLocked() then
+        LM.ShowError(LM.LOCKDOWN_ERROR)
+        return false, "locked"
+    end
+    return self:SetLooting(on, why)
+end
+
+beat = function()
+    if not own.on then
+        stopBeat()
+        return
+    end
+    local away = own.awaySince and math.max(0, GetTime() - own.awaySince) or 0
+    if away > LM.LOOTING_AWAY then
+        LM:SetLooting(false, "away")
+        return
+    end
+    if LM.ChatLocked() then
+        return -- held messages would pile up; ENCOUNTER_END sends a fresh one
+    end
+    LM.SendText(Wire.Encode("H", { LM.VERSION, own.instance, LM.InstanceKey() or "", math.floor(away) }))
+end
+
 -- Raider -----------------------------------------------------------------------------------------------
-
--- Everything the auto-pass gate needs, read now (AutoPass.lua lists the fields).
-function LM:LootingState()
-    local leader = LM.LeaderName()
-    local online
-    local unit = leader and LM.UnitOf(leader)
-    if unit then
-        local ok, v = pcall(UnitIsConnected, unit)
-        if ok and not secret(v) then
-            online = v == true
-        end
-    end
-    local h = heard or {}
-    local test = (LM.current and LM.current.test) or (LM.incoming and LM.incoming.test)
-    return {
-        test = test and true or false, me = LM:Me(), leader = leader, myInstance = LM.InstanceKey(),
-        on = h.on == true, from = h.from, version = h.version, yesInstance = h.yes, leaderOnline = online,
-        leaderInstance = h.here, heartbeatAt = h.on and h.at or nil, now = GetTime(), passed = passed,
-    }
-end
-
--- The one-line state: "CRT Looting: on (leader X)" or "CRT Looting: off: <why>", and whether it is on.
-function LM:LootingStatus()
-    if isLeader() then
-        local ok, whyNot = self:CanRunLooting()
-        if own.on then
-            return TEXT.line:format(TEXT.leaderOn), true
-        elseif not ok then
-            return TEXT.line:format(TEXT.offWhy:format(whyNot)), false
-        elseif own.why == "no" then
-            return TEXT.line:format(TEXT.offWhy:format(TEXT.saidNo)), false
-        end
-        return TEXT.line:format(TEXT.off), false
-    end
-    local state = self:LootingState()
-    state.test = false -- the line is about the leader; a test only stops the pass itself
-    local ok, why = AutoPass:Ready(state)
-    if ok then
-        return TEXT.line:format(TEXT.raiderOn:format(Ambiguate(state.leader, "short"))), true
-    end
-    local words = AutoPass.WHY[why] or why
-    if why == "off" then
-        words = not heard and AutoPass.WHY.unheard or (OFF_WHY[heard.why] or AutoPass.WHY.off)
-    end
-    return TEXT.line:format(TEXT.offWhy:format(words)), false
-end
 
 local function stopWatch()
     if watchTicker then
@@ -215,24 +217,117 @@ local function stopWatch()
     end
 end
 
--- Says the raider's line in chat when on turns to off or back (force: say it anyway, for the leader's
--- off). Not during an encounter, when the heartbeat is held: it is checked again when it ends.
+-- Whether the game says this unit is online: true, false, or nil when it can't tell.
+local function online(unit)
+    if not unit then
+        return nil
+    end
+    local ok, v = pcall(UnitIsConnected, unit)
+    if not ok or secret(v) then
+        return nil
+    end
+    return v == true
+end
+
+-- Forgets the leader's word when it no longer counts: the lead moved, or the leader went offline. Only
+-- its next word (O or H) turns it back on.
+local function checkHeard()
+    if not heard then
+        return
+    end
+    local leader = LM.LeaderName()
+    if heard.from ~= leader then
+        heard, forgot = nil, "lead"
+    elseif online(LM.UnitOf(leader)) == false then
+        heard, forgot = nil, "offline"
+    end
+    if not heard then
+        stopWatch()
+    end
+end
+
+-- Everything the auto-pass gate needs, read now (AutoPass.lua lists the fields).
+function LM:LootingState()
+    local leader = LM.LeaderName()
+    local h = heard or {}
+    local now = GetTime()
+    local test = (LM.current and LM.current.test) or (LM.incoming and LM.incoming.test)
+    local away
+    if h.on and h.here == nil and type(h.away) == "number" then
+        away = h.away + math.max(0, now - h.at)
+    end
+    return {
+        test = test and true or false, me = LM:Me(), leader = leader, myInstance = LM.InstanceKey(),
+        finder = IsInGroup(LE_PARTY_CATEGORY_INSTANCE) and true or false, inRaid = IsInRaid() and true or false,
+        enableInParty = enableInParty(), on = h.on == true, from = h.from, version = h.version,
+        yesInstance = h.yes, leaderOnline = online(leader and LM.UnitOf(leader)), leaderInstance = h.here,
+        leaderAway = away, heartbeatAt = h.on and h.at or nil, now = now, passed = passed,
+    }
+end
+
+-- The one-line state: "CRT Looting: on (leader X)" or "CRT Looting: off: <why>", whether it is on, and
+-- the gate's reason.
+function LM:LootingStatus()
+    if isLeader() then
+        local ok, whyNot = canLead()
+        if own.on then
+            return TEXT.line:format(TEXT.leaderOn), true, "pass"
+        end
+        if ok then
+            ok, whyNot = self:CanRunLooting()
+        end
+        if not ok then
+            return TEXT.line:format(TEXT.offWhy:format(whyNot)), false, "off"
+        elseif own.why == "no" then
+            return TEXT.line:format(TEXT.offWhy:format(TEXT.saidNo)), false, "off"
+        end
+        return TEXT.line:format(TEXT.off), false, "off"
+    end
+    local state = self:LootingState()
+    state.test = false -- the line is about the leader; a test only stops the pass itself
+    local ok, why = AutoPass:Ready(state)
+    if ok then
+        return TEXT.line:format(TEXT.raiderOn:format(Ambiguate(state.leader, "short"))), true, why
+    end
+    local words = AutoPass.WHY[why] or why
+    if why == "off" then
+        if heard then
+            words = OFF_WHY[heard.why] or AutoPass.WHY.off
+        else
+            words = FORGOT[forgot] or AutoPass.WHY.unheard
+        end
+    elseif why == "notleader" then
+        words = OFF_WHY.lead
+    end
+    return TEXT.line:format(TEXT.offWhy:format(words)), false, why
+end
+
+-- Says the raider's line in chat when on turns to off or back, and tells the page (force: say it
+-- anyway, for the leader's off). Not during an encounter, and a quiet leader not until QUIET_GRACE after
+-- one: the heartbeat held by the encounter comes right after it.
 local function report(force)
     if isLeader() then
         return
     end
-    local line, ok = LM:LootingStatus()
-    if not force and (inEncounter or ok == (lastOk or false)) then
-        if not inEncounter then
-            lastOk = ok
+    local line, ok, why = LM:LootingStatus()
+    local flipped = ok ~= (lastOk or false)
+    if not force then
+        if not flipped or inEncounter then
+            return
         end
-        return
+        if why == "quiet" and endedAt and GetTime() - endedAt < LM.QUIET_GRACE then
+            return
+        end
     end
     lastOk = ok
     CRT:Print(line)
+    if flipped then
+        LM:Fire("looting")
+    end
 end
 
 local function watch()
+    checkHeard()
     report(false)
     if not (heard and heard.on) then
         stopWatch()
@@ -245,7 +340,7 @@ local function fromLeader(sender)
 end
 
 local function hear(entry)
-    heard = entry
+    heard, forgot = entry, nil
     if heard.on and not watchTicker then
         watchTicker = C_Timer.NewTicker(LM.LOOTING_TICK, watch)
     end
@@ -256,15 +351,16 @@ LM.Handle("O", function(f, sender)
     if not fromLeader(sender) or (f[2] or "") == "" then
         return
     end
-    hear({ from = sender, on = true, version = f[1], yes = f[2], here = f[2], at = GetTime() })
+    hear({ from = sender, on = true, version = f[1], yes = f[2], here = f[2], away = 0, at = GetTime() })
     report(false)
 end)
 
 LM.Handle("H", function(f, sender)
-    if not fromLeader(sender) or (f[2] or "") == "" or (f[3] or "") == "" then
+    if not fromLeader(sender) or (f[2] or "") == "" then
         return
     end
-    hear({ from = sender, on = true, version = f[1], yes = f[2], here = f[3], at = GetTime() })
+    local here = (f[3] or "") ~= "" and f[3] or nil
+    hear({ from = sender, on = true, version = f[1], yes = f[2], here = here, away = tonumber(f[4]), at = GetTime() })
     report(false)
 end)
 
@@ -279,7 +375,8 @@ end)
 
 -- Events -----------------------------------------------------------------------------------------------
 
--- Asks the leader once per entry into a raid instance (also on becoming the leader inside).
+-- Asks the leader once per raid instance (also on becoming the leader inside); a wipe's run back into
+-- the same instance doesn't ask again.
 local function maybeAsk()
     if lastKey and askedFor ~= lastKey and not own.on and LM:CanRunLooting() then
         askedFor = lastKey
@@ -289,20 +386,33 @@ local function maybeAsk()
     end
 end
 
--- A loading screen or a new zone: another instance (or none) starts off, for the leader and raiders.
+-- A loading screen or a new zone. The leader's first one after loading tells raiders it starts off.
+-- Outside every raid instance the leader stays on (a wipe) and its heartbeat says so; another raid
+-- instance turns it off. Raiders keep the leader's word: the gate checks where they are.
 local function zoned()
     local key = LM.InstanceKey()
     if key == lastKey then
         return
     end
-    lastKey, askedFor = key, nil
-    passed = {}
-    heard = nil
-    stopWatch()
-    if own.on then
-        LM:SetLooting(false, "left")
+    if lastKey == false and isLeader() then
+        LM.SendText(Wire.Encode("F", { LM.VERSION, "reload" }))
     end
-    if LM.HideLootingPrompt then
+    lastKey = key
+    if key and key ~= passedIn then
+        passed, passedIn = {}, key
+    end
+    if own.on then
+        if key == own.instance then
+            own.awaySince = nil
+            beat()
+        elseif key == nil then
+            own.awaySince = own.awaySince or GetTime()
+            beat()
+        else
+            LM:SetLooting(false, "left")
+        end
+    end
+    if key ~= askedFor and LM.HideLootingPrompt then
         LM.HideLootingPrompt()
     end
     report(false)
@@ -310,15 +420,22 @@ local function zoned()
     maybeAsk()
 end
 
+-- The group changed (or Enable in party did): a leader who can't lead it any more turns it off, a raider
+-- forgets a word that no longer counts.
 local function regrouped()
-    local ok, whyNot = LM:CanRunLooting()
+    if not isLeader() then
+        askedFor = nil -- asked again on getting the lead back
+    end
+    local ok, whyNot = canLead()
     if own.on and not ok then
         LM:SetLooting(false, "lead", whyNot)
     end
+    checkHeard()
     report(false)
     LM:Fire("looting")
     maybeAsk()
 end
+LM.LootingRecheck = regrouped
 
 local events = CreateFrame("Frame")
 for _, e in ipairs({ "PLAYER_ENTERING_WORLD", "ZONE_CHANGED_NEW_AREA", "GROUP_ROSTER_UPDATE", "PARTY_LEADER_CHANGED",
@@ -331,7 +448,7 @@ events:SetScript("OnEvent", function(_, event)
     elseif event == "ENCOUNTER_START" then
         inEncounter = true
     elseif event == "ENCOUNTER_END" then
-        inEncounter = false
+        inEncounter, endedAt = false, GetTime()
         beat()
         report(false)
     else

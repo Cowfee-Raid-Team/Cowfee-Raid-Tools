@@ -13,7 +13,7 @@ local L = { width = 360, height = 112, buttonH = 24, buttonMinW = 80, gap = 12, 
 local TEXT = {
     title = "CRT Looting",
     question = "Use CRT Looting in this instance?",
-    help = "Yes turns CRT Looting on for everyone in the raid with CRT. It stays on until you leave this instance, /reload or turn it off on Loot Master > Tonight. No leaves it off. Raiders can't change it.\n\nThis version shows raiders whether it is on. It doesn't pass any roll yet.",
+    help = "Yes turns CRT Looting on for everyone in the raid with CRT. It stays on through a wipe (up to 10 minutes out of the instance) until you go into another raid instance, /reload or turn it off on Loot Master > Tonight. No leaves it off. Raiders can't change it.\n\nThis version shows raiders whether it is on. It doesn't pass any roll yet.",
     yes = "Yes",
     no = "No",
 }
@@ -32,13 +32,17 @@ local function build()
     q:SetPoint("TOP", -10, L.top)
     q:SetText(TEXT.question)
     UI.Help(c, TEXT.title, TEXT.help):SetPoint("LEFT", q, "RIGHT", 6, 0)
+    -- in a boss encounter's chat lockdown the answer can't be sent: red error text, and the question stays
+    local function answer(on, why)
+        if select(2, LM:ChooseLooting(on, why)) ~= "locked" then
+            win:Hide()
+        end
+    end
     local yes = UI.PanelButton(c, TEXT.yes, L.buttonH, function()
-        win:Hide()
-        LM:SetLooting(true)
+        answer(true)
     end)
     local no = UI.PanelButton(c, TEXT.no, L.buttonH, function()
-        win:Hide()
-        LM:SetLooting(false, "no")
+        answer(false, "no")
     end)
     local w = math.max(L.buttonMinW, yes:GetWidth(), no:GetWidth()) -- both as wide as the wider label needs
     yes:SetWidth(w)
