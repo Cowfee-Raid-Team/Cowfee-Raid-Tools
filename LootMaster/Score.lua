@@ -38,11 +38,13 @@ local function compute()
                         out[key] = t
                     end
                     t.nights = t.nights + 1
+                    -- The Late Tracker's own rule, so the score never disagrees with its History.
+                    local status = Late.Status(night, p)
                     local penalty = 0
-                    if p.never then
+                    if status == "noshow" then
                         penalty = tonumber(c.noShow) or 0
                         t.never = t.never + 1
-                    elseif Late.IsLate(night, p) then
+                    elseif status == "late" then
                         local minutes = Late.Seconds(night, p) / 60
                         penalty = (tonumber(c.late) or 0) + (tonumber(c.per10) or 0) * math.floor(minutes / 10)
                         t.late = t.late + 1
