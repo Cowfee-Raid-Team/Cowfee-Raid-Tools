@@ -275,17 +275,19 @@ end
 
 -- History: the list ------------------------------------------------------------------------------
 
--- Columns: x and width inside a row. "gear" holds icons, the others text.
+-- Columns: x and width inside a row. "gear" holds icons, the others text. Sized from the game at its
+-- default font (about 7.5 units a character in a row, 9 in a heading); the date column shows the day
+-- only, and the tooltip has the time.
 local COLS = {
-    { key = "date", x = 4, w = 100, title = "Date" },
-    { key = "player", x = 108, w = 116, title = "Player" },
-    { key = "item", x = 228, w = 210, title = "Item" },
-    { key = "boss", x = 442, w = 124, title = "Boss" },
-    { key = "diff", x = 570, w = 70, title = "Difficulty" },
-    { key = "roll", x = 644, w = 120, title = "Roll / response" },
-    { key = "votes", x = 768, w = 30, title = "Votes" },
-    { key = "note", x = 802, w = 100, title = "Note" },
-    { key = "gear", x = 906, w = 60, title = "Had" },
+    { key = "date", x = 4, w = 80, title = "Date" },
+    { key = "player", x = 88, w = 108, title = "Player" },
+    { key = "item", x = 200, w = 220, title = "Item" },
+    { key = "boss", x = 424, w = 150, title = "Boss" },
+    { key = "diff", x = 578, w = 62, title = "Difficulty" },
+    { key = "roll", x = 644, w = 150, title = "Roll / response" },
+    { key = "votes", x = 798, w = 44, title = "Votes" },
+    { key = "note", x = 848, w = 80, title = "Note" },
+    { key = "gear", x = 932, w = 40, title = "Had" },
 }
 
 local function addCandidates(rc)
@@ -317,6 +319,11 @@ local function showTooltip(row)
     local f = fieldsOf(e)
     GameTooltip:SetOwner(row, "ANCHOR_CURSOR")
     pcall(GameTooltip.SetHyperlink, GameTooltip, f.link or f.itemString)
+    GameTooltip:AddLine(" ")
+    GameTooltip:AddDoubleLine("When", f.time and date("%Y-%m-%d %H:%M", f.time) or "?", 1, 1, 1, 1, 1, 1)
+    if f.boss ~= "" then
+        GameTooltip:AddDoubleLine("Boss", f.boss .. " (" .. difficultyName(f.diff) .. ")", 1, 1, 1, 1, 1, 1)
+    end
     local rc = f.rc
     if rc then
         GameTooltip:AddLine(" ")
@@ -391,7 +398,7 @@ local function initRow(row, entry)
     row.entry = entry
     local f = fieldsOf(entry)
     local cols = row.cols
-    cols.date:SetText(f.time and date("%Y-%m-%d %H:%M", f.time) or "?")
+    cols.date:SetText(f.time and date("%Y-%m-%d", f.time) or "?")
     local cc = fileColor(f.classFile)
     cols.player:SetText(Ambiguate(f.player, "short"))
     cols.player:SetTextColor(cc and cc.r or 1, cc and cc.g or 1, cc and cc.b or 1)
