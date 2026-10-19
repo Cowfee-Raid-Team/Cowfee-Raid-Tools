@@ -95,6 +95,113 @@ function Timeline:WithoutIgnored(lanes, encounterID)
     return shown, hidden
 end
 
+-- Whether this is a developer build with the Development page open (/crt dev). Players never have it:
+-- the page and every Dev file are left out of the package.
+function Timeline.DevMode()
+    local pages = type(CRT.UI) == "table" and rawget(CRT.UI, "pages")
+    local page = type(pages) == "table" and rawget(pages, "dev")
+    return type(page) == "table" and not page.hidden
+end
+
+-- Hidden abilities: boss mechanics taken off the timeline for everyone, unlike ignored mechanics, which
+-- are one player's and listed to bring back. They ship as the boss file's hidden list of names
+-- (Bosses:Register({ ..., hidden = { "Disgusting Fish" } })). A developer build sets them from the
+-- right-click menu of a row (Review tab, pop-out, Advanced tab) while /crt dev is open, saved on that
+-- computer as dev.hiddenAbilities[boss][name in lower case] = the name (hidden) or false (shown though
+-- shipped hidden), until the list is copied into the boss file (/crt dev hidden prints it). Hidden rows
+-- leave the Review tab, the pop-out and the Rehearsal; alerts, notes and reminders are untouched.
+
+local function shippedHidden(encounterID, key)
+    local def = CRT.Bosses and CRT.Bosses.Get and CRT.Bosses:Get(encounterID)
+    for _, name in ipairs(def and type(def.hidden) == "table" and def.hidden or {}) do
+        if ignoreKey(name) == key then
+            return true
+        end
+    end
+    return false
+end
+
+local function devHidden(encounterID, make)
+    local db = CRT.db
+    if not db then
+        return nil
+    end
+    if make then
+        db.dev = db.dev or {}
+        db.dev.hiddenAbilities = db.dev.hiddenAbilities or {}
+        db.dev.hiddenAbilities[tostring(encounterID)] = db.dev.hiddenAbilities[tostring(encounterID)] or {}
+    end
+    local all = db.dev and db.dev.hiddenAbilities
+    return all and all[tostring(encounterID)]
+end
+
+function Timeline:Hidden(encounterID, name)
+    if encounterID == nil or name == nil then
+        return false
+    end
+    local key = ignoreKey(name)
+    local mine = devHidden(encounterID)
+    if mine and mine[key] ~= nil then
+        return mine[key] ~= false
+    end
+    return shippedHidden(encounterID, key)
+end
+
+-- Developer builds only (the menus offer it in DevMode).
+function Timeline:SetHidden(encounterID, name, on)
+    if encounterID == nil or name == nil then
+        return
+    end
+    local key = ignoreKey(name)
+    local mine = devHidden(encounterID, true)
+    if (on and true or false) == shippedHidden(encounterID, key) then
+        mine[key] = nil -- the same as shipped: nothing to keep
+    else
+        mine[key] = on and name or false
+    end
+    if next(mine) == nil then
+        CRT.db.dev.hiddenAbilities[tostring(encounterID)] = nil
+    end
+    self:Fire()
+end
+
+-- The names hidden for a boss as they should ship: the boss file's list in its order, less any this
+-- computer shows again, then this computer's own.
+function Timeline:HiddenNames(encounterID)
+    local out, seen = {}, {}
+    local def = CRT.Bosses and CRT.Bosses.Get and CRT.Bosses:Get(encounterID)
+    for _, name in ipairs(def and type(def.hidden) == "table" and def.hidden or {}) do
+        local key = ignoreKey(name)
+        if not seen[key] and self:Hidden(encounterID, name) then
+            seen[key] = true
+            out[#out + 1] = name
+        end
+    end
+    local mine = devHidden(encounterID)
+    local extra = {}
+    for key, name in pairs(mine or {}) do
+        if name and not seen[key] then
+            extra[#extra + 1] = name
+        end
+    end
+    table.sort(extra)
+    for _, name in ipairs(extra) do
+        out[#out + 1] = name
+    end
+    return out
+end
+
+-- lanes without the hidden boss mechanics.
+function Timeline:WithoutHidden(lanes, encounterID)
+    local shown = {}
+    for _, lane in ipairs(lanes or {}) do
+        if not (self.Ignorable(lane) and self:Hidden(encounterID, self.IgnoreName(lane))) then
+            shown[#shown + 1] = lane
+        end
+    end
+    return shown
+end
+
 -- Your labels for a boss's Encounter Journal abilities, set from the Advanced tab's Journal list: per boss
 -- by spell ID, timeline.abilities[boss][spellID] = { row = true, type = "raid", name = "Tank buster",
 -- tags = { "tank", "magic" } }.

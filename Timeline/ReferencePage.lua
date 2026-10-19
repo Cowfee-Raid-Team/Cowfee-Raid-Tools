@@ -161,6 +161,8 @@ local TEXT_MENU = {
     unname = "Use the Journal's name",
     alert = "Make a Mech Alert",
     renamePrompt = "Your name for %s on the timeline:",
+    hide = "Hide from the timeline (dev, ships)",
+    hidden = "hidden",
 }
 local RENAME_ABILITY = "COWFEERAIDTOOLS_RENAME_ABILITY"
 local abilityMenu -- set in Build, where the list is
@@ -209,6 +211,102 @@ local function askAbilityName(boss, row, current)
     end
     StaticPopup_Show(RENAME_ABILITY, string.format(TEXT_MENU.renamePrompt, row.name or ""), nil,
         { boss = boss, spellID = row.spellID, current = current or row.name })
+end
+
+-- One ability's menu, shared by the Advanced tab's lists and (developer builds, /crt dev open) the Review
+-- tab's and the pop-out's row names: with its spell, your own labels for it (Timeline:SetAbility: a row,
+-- a type, the Journal's icons, a name) and Make a Mech Alert, which opens the Mech Alerts tab on it; in
+-- DevMode, Hide from the timeline (Timeline:SetHidden), which ships. row: { name, spellID, tags } with the
+-- Journal's name and icons; hideName: the name it is hidden by (nil for no Hide).
+local AbilityMenu = {}
+CRT.TimelineAbilityMenu = AbilityMenu
+
+function AbilityMenu.Fill(root, boss, row, hideName)
+    local spellID = boss and row.spellID and row.spellID ~= 0 and row.spellID or nil
+    local Timeline = CRT.Timeline
+    local function get(field)
+        local a = spellID and Timeline:Ability(boss, spellID)
+        return a and a[field]
+    end
+    root:CreateTitle((get("name") or row.name or "") .. (get("name") and (" (" .. (row.name or "") .. ")") or ""))
+    if spellID then
+        root:CreateCheckbox(TEXT_MENU.row, function()
+            return get("row") and true or false
+        end, function()
+            Timeline:SetAbility(boss, spellID, "row", not get("row") or nil)
+        end)
+        local types = root:CreateButton(TEXT_MENU.type)
+        types:CreateRadio(TEXT_MENU.noType, function()
+            return get("type") == nil
+        end, function()
+            Timeline:SetAbility(boss, spellID, "type", nil)
+        end)
+        for _, key in ipairs(Reference.TYPE_ORDER) do
+            local t = Reference.TYPES[key]
+            local hex = string.format("%02x%02x%02x", t.color[1] * 255, t.color[2] * 255, t.color[3] * 255)
+            types:CreateRadio("|cff" .. hex .. key:sub(1, 1):upper() .. key:sub(2) .. "|r  " .. t.label, function()
+                return get("type") == key
+            end, function()
+                Timeline:SetAbility(boss, spellID, "type", key)
+            end)
+        end
+        -- the Journal's icons for it: ticked ones are yours (they start as the Journal's own)
+        local tags = root:CreateButton(TEXT_MENU.tags)
+        local function current()
+            local a = get("tags")
+            return type(a) == "table" and a or (row.tags or {})
+        end
+        for _, key in ipairs(Reference.TAG_ORDER) do
+            local t = Reference.TAGS[key]
+            tags:CreateCheckbox("|A:" .. t.atlas .. ":14:14|a " .. t.label, function()
+                for _, k in ipairs(current()) do
+                    if k == key then
+                        return true
+                    end
+                end
+                return false
+            end, function()
+                local out, had = {}, false
+                for _, k in ipairs(current()) do
+                    if k == key then
+                        had = true
+                    else
+                        out[#out + 1] = k
+                    end
+                end
+                if not had then
+                    out[#out + 1] = key
+                end
+                Timeline:SetAbility(boss, spellID, "tags", out)
+            end)
+        end
+        if type(get("tags")) == "table" then
+            tags:CreateButton(TEXT_MENU.journalTags, function()
+                Timeline:SetAbility(boss, spellID, "tags", nil)
+            end)
+        end
+        root:CreateButton(TEXT_MENU.rename, function()
+            askAbilityName(boss, { name = row.name, spellID = spellID }, get("name"))
+        end)
+        if get("name") then
+            root:CreateButton(TEXT_MENU.unname, function()
+                Timeline:SetAbility(boss, spellID, "name", nil)
+            end)
+        end
+        root:CreateButton(TEXT_MENU.alert, function()
+            if CRT.NoteReminders and CRT.NoteReminders.Open then
+                CRT.NoteReminders.Open(boss, spellID)
+            end
+        end)
+    end
+    if hideName and boss and Timeline.DevMode() then
+        root:CreateDivider()
+        root:CreateCheckbox(TEXT_MENU.hide, function()
+            return Timeline:Hidden(boss, hideName)
+        end, function()
+            Timeline:SetHidden(boss, hideName, not Timeline:Hidden(boss, hideName))
+        end)
+    end
 end
 
 -- The References tab -----------------------------------------------------------------------------
@@ -642,84 +740,8 @@ function ReferencePage.Build(f, ctx)
         if not (row and MenuUtil and MenuUtil.CreateContextMenu) then
             return
         end
-        local spellID = boss and row.spellID and row.spellID ~= 0 and row.spellID or nil
-        local Timeline = CRT.Timeline
-        local function get(field)
-            local a = spellID and Timeline:Ability(boss, spellID)
-            return a and a[field]
-        end
         MenuUtil.CreateContextMenu(l, function(_, root)
-            root:CreateTitle((get("name") or row.name or "") .. (get("name") and (" (" .. row.name .. ")") or ""))
-            if spellID then
-                root:CreateCheckbox(TEXT_MENU.row, function()
-                    return get("row") and true or false
-                end, function()
-                    Timeline:SetAbility(boss, spellID, "row", not get("row") or nil)
-                end)
-                local types = root:CreateButton(TEXT_MENU.type)
-                types:CreateRadio(TEXT_MENU.noType, function()
-                    return get("type") == nil
-                end, function()
-                    Timeline:SetAbility(boss, spellID, "type", nil)
-                end)
-                for _, key in ipairs(Reference.TYPE_ORDER) do
-                    local t = Reference.TYPES[key]
-                    local hex = string.format("%02x%02x%02x", t.color[1] * 255, t.color[2] * 255, t.color[3] * 255)
-                    types:CreateRadio("|cff" .. hex .. key:sub(1, 1):upper() .. key:sub(2) .. "|r  " .. t.label, function()
-                        return get("type") == key
-                    end, function()
-                        Timeline:SetAbility(boss, spellID, "type", key)
-                    end)
-                end
-                -- the Journal's icons for it: ticked ones are yours (they start as the Journal's own)
-                local tags = root:CreateButton(TEXT_MENU.tags)
-                local function current()
-                    local a = get("tags")
-                    return type(a) == "table" and a or (row.tags or {})
-                end
-                for _, key in ipairs(Reference.TAG_ORDER) do
-                    local t = Reference.TAGS[key]
-                    tags:CreateCheckbox("|A:" .. t.atlas .. ":14:14|a " .. t.label, function()
-                        for _, k in ipairs(current()) do
-                            if k == key then
-                                return true
-                            end
-                        end
-                        return false
-                    end, function()
-                        local out, had = {}, false
-                        for _, k in ipairs(current()) do
-                            if k == key then
-                                had = true
-                            else
-                                out[#out + 1] = k
-                            end
-                        end
-                        if not had then
-                            out[#out + 1] = key
-                        end
-                        Timeline:SetAbility(boss, spellID, "tags", out)
-                    end)
-                end
-                if type(get("tags")) == "table" then
-                    tags:CreateButton(TEXT_MENU.journalTags, function()
-                        Timeline:SetAbility(boss, spellID, "tags", nil)
-                    end)
-                end
-                root:CreateButton(TEXT_MENU.rename, function()
-                    askAbilityName(boss, { name = row.name, spellID = spellID }, get("name"))
-                end)
-                if get("name") then
-                    root:CreateButton(TEXT_MENU.unname, function()
-                        Timeline:SetAbility(boss, spellID, "name", nil)
-                    end)
-                end
-                root:CreateButton(TEXT_MENU.alert, function()
-                    if CRT.NoteReminders and CRT.NoteReminders.Open then
-                        CRT.NoteReminders.Open(boss, spellID)
-                    end
-                end)
-            end
+            AbilityMenu.Fill(root, boss, row, row.name)
             if l.refRow and row.line then
                 root:CreateDivider()
                 root:CreateButton(TEXT_MENU.addPhase, function()
@@ -753,6 +775,9 @@ function ReferencePage.Build(f, ctx)
         local tag = a and a.row and TEXT_ROW or ""
         if refRow and #(row.casts or {}) == 0 then
             tag = TEXT_MENU.noTimes
+        end
+        if Timeline.DevMode() and Timeline:Hidden(id, row.name) then
+            tag = TEXT_MENU.hidden
         end
         l.tag:SetText(tag)
         l.id:SetText(spellID and tostring(spellID) or "")

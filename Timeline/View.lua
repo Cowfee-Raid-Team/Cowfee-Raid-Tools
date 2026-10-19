@@ -3184,7 +3184,28 @@ function Methods:Label(n)
         end
         l:SetScript("OnEnter", labelEnter)
         l:SetScript("OnLeave", hideTip)
+        l:RegisterForClicks("RightButtonUp")
+        l:SetScript("OnClick", function(b, button)
+            if button == "RightButton" then
+                self:LabelMenu(b)
+            end
+        end)
         return l
+    end)
+end
+
+-- Developer builds with /crt dev open: right-click a boss mechanic's name for the Advanced tab's menu
+-- (its type, tags, name, a row of its own, a Mech Alert) and Hide from the timeline, which ships.
+-- Players get no menu here; the Advanced tab is theirs.
+function Methods:LabelMenu(l)
+    local lane, Timeline, Menu = l.lane, CRT.Timeline, CRT.TimelineAbilityMenu
+    if not (lane and self.encounterID and Timeline.DevMode() and Timeline.Ignorable(lane) and Menu
+        and MenuUtil and MenuUtil.CreateContextMenu) then
+        return
+    end
+    local name = Timeline.IgnoreName(lane)
+    MenuUtil.CreateContextMenu(l, function(_, root)
+        Menu.Fill(root, self.encounterID, { name = name, spellID = lane.spellID, tags = lane.tags }, name)
     end)
 end
 
@@ -3460,6 +3481,7 @@ function Methods:Refresh()
         -- your labels for Journal abilities (rows, types, names), then your ignored mechanics, which are
         -- drawn only in their own list under the lanes (DrawIgnored)
         self.lanes = CRT.Timeline:ApplyAbilities(self.lanes, self.encounterID, rows)
+        self.lanes = CRT.Timeline:WithoutHidden(self.lanes, self.encounterID)
         self.lanes, self.ignoredLanes = CRT.Timeline:WithoutIgnored(self.lanes, self.encounterID)
     else
         self.lanes, self.unknown, self.ignoredLanes = {}, {}, {}

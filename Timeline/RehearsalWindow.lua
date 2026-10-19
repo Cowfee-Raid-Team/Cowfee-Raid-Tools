@@ -444,6 +444,9 @@ function RehearsalWindow:Open(source)
     if CRT.Timeline.ApplyAbilities then
         lanes = CRT.Timeline:ApplyAbilities(lanes, source.encounterID, rows)
     end
+    if CRT.Timeline.WithoutHidden then
+        lanes = CRT.Timeline:WithoutHidden(lanes, source.encounterID)
+    end
     lanes = CRT.Timeline:WithoutIgnored(lanes, source.encounterID)
     self.source = source
     self.stopAt = nil

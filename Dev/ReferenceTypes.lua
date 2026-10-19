@@ -382,3 +382,22 @@ function Editor:Toggle()
     win:SetShown(not win:IsShown())
     refresh()
 end
+
+-- /crt dev hidden: each boss's hidden abilities as they should ship (Timeline:HiddenNames), as the line to
+-- paste into its boss file, for every boss this computer changed.
+function Editor:PrintHidden()
+    local all = CRT.db.dev and CRT.db.dev.hiddenAbilities
+    if not (all and next(all)) then
+        CRT:Print("No hidden abilities changed on this computer. Right-click a row's name on the Timeline with /crt dev open.")
+        return
+    end
+    for boss in pairs(all) do
+        local id = tonumber(boss) or boss
+        local def = CRT.Bosses:Get(id)
+        local names = {}
+        for _, name in ipairs(CRT.Timeline:HiddenNames(id)) do
+            names[#names + 1] = string.format("%q", name)
+        end
+        CRT:Print(string.format("%s (%s): hidden = { %s },", def and def.name or "?", tostring(boss), table.concat(names, ", ")))
+    end
+end

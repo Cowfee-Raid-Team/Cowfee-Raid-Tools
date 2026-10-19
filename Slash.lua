@@ -160,6 +160,10 @@ SlashCmdList["COWFEERAIDTOOLS"] = function(msg)
         if CRT.MarkerEditor then
             CRT.MarkerEditor:Toggle()
         end
+    elseif msg == "dev hidden" then
+        if CRT.ReferenceTypes then
+            CRT.ReferenceTypes:PrintHidden()
+        end
     elseif msg == "dev types" then
         if CRT.ReferenceTypes then
             CRT.ReferenceTypes:Toggle()
