@@ -558,11 +558,35 @@ do
   R:Delete(other)
   print("ok Delete all my copies leaves shipped references alone")
 
-  -- your copies keep when they were saved
+  -- your copies keep when their text last changed
+  local now = 1000
+  time = function() return now end
   local saved = R:Add(NEKZALI)
-  local e = R:Find(saved)
-  assert(e.saved == nil or type(e.saved) == "number", "saved: a number when stored")
+  assert(R:Find(saved).saved == 1000, "saved: Add stamps the time")
+  now = 2000
+  assert(R:Update(saved, NEKZALI) and R:Find(saved).saved == 1000, "saved: an Update with no change keeps the date")
+  assert(R:Update(saved, NEKZALI .. "\\n# changed") and R:Find(saved).saved == 2000, "saved: an Update with new text refreshes it")
   R:Delete(saved)
+  time = nil
+  print("ok your copies keep when they last changed")
+
+  -- marks whose block is already gone from the boss files
+  CRT.TimelineDB = { references = { NEKZALI } }
+  R:SetRemoved(R:List()[1], true)
+  local m = R:Removed()
+  assert(#m == 1 and not m[1].gone and m[1].encounterID == 3470, "gone: a shipped block's mark is not gone (encounter from the boss file)")
+  CRT.TimelineDB.references = {}
+  m = R:Removed()
+  assert(#m == 1 and m[1].gone, "gone: no shipped block has its header")
+  local realLoaded = CRT.Bosses.Loaded
+  CRT.Bosses.Loaded = function() return false end
+  assert(not R:Removed()[1].gone and R:PruneRemoved() == 0, "gone: a boss whose season isn't loaded can't tell, kept")
+  CRT.Bosses.Loaded = realLoaded
+  local before3 = fired
+  assert(R:PruneRemoved() == 1 and fired == before3 + 1, "gone: PruneRemoved drops it")
+  assert(#R:Removed() == 0 and CRT.db.dev.removedReferences == nil, "gone: nothing left")
+  assert(R:PruneRemoved() == 0, "gone: nothing to prune")
+  print("ok marks whose blocks are gone are flagged and pruned")
 end
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }

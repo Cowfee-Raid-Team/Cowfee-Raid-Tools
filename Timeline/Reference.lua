@@ -2,7 +2,8 @@ local ADDON, CRT = ...
 
 -- Timeline: reference timelines. A reference is a boss's known cast schedule written as plain text,
 -- either shipped with the addon (CRT.TimelineDB.references, a list of text blocks) or pasted in
--- game and saved in CRTDB.timeline.references as { id, text }. This file reads that text (Parse),
+-- game and saved in CRTDB.timeline.references as { id, text, saved } (saved: when the text last
+-- changed, from time(); optional, older copies have none). This file reads that text (Parse),
 -- keeps the player's own references (Add, Update, Delete) and answers which references exist and
 -- which belong to a boss (List, Find, ForBoss, BossKey). The text is one line per thing:
 --   Boss: Name            (required)   Difficulty: Mythic   Length: 9:48   Encounter: 3001
@@ -526,6 +527,7 @@ end
 
 -- A shipped block's mark key: its encounter ID, difficulty and header, so it survives a /reload and
 -- a reorder of the shipped list (its "ship:N" key may change), but not an edit of those lines.
+-- Two shipped blocks with an identical header share a key, so marking one marks both.
 function Reference.RemovalKey(ref, text)
     return tostring(ref.encounterID or "") .. "|" .. (ref.difficulty or "") .. "|" .. headerOf(text)
 end
@@ -539,6 +541,22 @@ function Reference:IsRemoved(entry)
     return entry ~= nil and isMarked(removedMarks(), entry)
 end
 
+-- The encounter ID of a reference's boss: its Encounter line, else the boss file of the same name.
+local function bossIDOf(encounterID, boss)
+    if encounterID then
+        return encounterID
+    end
+    local want = type(boss) == "string" and fold(trim(boss)):lower()
+    if want and CRT.Bosses and CRT.Bosses.List then
+        for _, def in ipairs(CRT.Bosses:List()) do
+            if type(def.name) == "string" and fold(trim(def.name)):lower() == want then
+                return def.encounterID
+            end
+        end
+    end
+end
+Reference.BossID = bossIDOf
+
 -- Marks a shipped reference for removal (on) or keeps it (off). Your own copies are deleted instead.
 function Reference:SetRemoved(entry, on)
     if not entry or entry.own then
@@ -548,7 +566,7 @@ function Reference:SetRemoved(entry, on)
     if on then
         removedMarks(true)[key] = {
             boss = entry.ref.boss,
-            encounterID = entry.ref.encounterID,
+            encounterID = bossIDOf(entry.ref.encounterID, entry.ref.boss),
             difficulty = entry.ref.difficulty,
             header = headerOf(entry.text),
         }
@@ -565,11 +583,42 @@ function Reference:SetRemoved(entry, on)
     CRT.Timeline:Fire()
 end
 
--- Every mark, by boss then difficulty: { { key, boss, encounterID, difficulty, header } }.
+-- Whether a mark's block is already gone from the boss files: no shipped block has its key. A boss whose
+-- season pack isn't loaded can't tell (its blocks aren't listed), so its marks are never gone.
+local function shippedKeys(self)
+    local keys = {}
+    for _, entry in ipairs(self:List(true)) do
+        if not entry.own then
+            keys[Reference.RemovalKey(entry.ref, entry.text)] = true
+        end
+    end
+    return keys
+end
+
+local function isGone(keys, key, m)
+    if keys[key] then
+        return false
+    end
+    local id = bossIDOf(m.encounterID, m.boss)
+    local B = CRT.Bosses
+    return not (id and B and B.Get and B.Loaded and B:Get(id) and not B:Loaded(id))
+end
+
+-- Every mark, by boss then difficulty: { { key, boss, encounterID, difficulty, header, gone } }.
+-- gone: the block is no longer shipped (Claude deleted it), so the mark has nothing left to do.
 function Reference:Removed()
     local out = {}
-    for key, m in pairs(removedMarks() or {}) do
-        out[#out + 1] = { key = key, boss = m.boss, encounterID = m.encounterID, difficulty = m.difficulty, header = m.header }
+    local marks = removedMarks()
+    local keys = marks and shippedKeys(self) or {}
+    for key, m in pairs(marks or {}) do
+        out[#out + 1] = {
+            key = key,
+            boss = m.boss,
+            encounterID = bossIDOf(m.encounterID, m.boss),
+            difficulty = m.difficulty,
+            header = m.header,
+            gone = isGone(keys, key, m) or nil,
+        }
     end
     table.sort(out, function(a, b)
         if (a.boss or "") ~= (b.boss or "") then
@@ -578,6 +627,28 @@ function Reference:Removed()
         return a.key < b.key
     end)
     return out
+end
+
+-- Drops the marks whose blocks are already gone from the boss files. Returns how many.
+function Reference:PruneRemoved()
+    local marks = removedMarks()
+    if not marks then
+        return 0
+    end
+    local keys, count = shippedKeys(self), 0
+    for key, m in pairs(marks) do
+        if isGone(keys, key, m) then
+            marks[key] = nil
+            count = count + 1
+        end
+    end
+    if next(marks) == nil then
+        CRT.db.dev.removedReferences = nil
+    end
+    if count > 0 then
+        CRT.Timeline:Fire()
+    end
+    return count
 end
 
 -- Every reference: yours, then the shipped ones less those marked for removal on this computer.
@@ -742,8 +813,11 @@ function Reference:Update(key, text)
     if not ref then
         return false, errors
     end
-    r.text = text
-    r.saved = stamp()
+    if r.text ~= text then
+        -- only a real change gets a new date: a save with no change (or the same rewrite) adds no undo step
+        r.text = text
+        r.saved = stamp()
+    end
     CRT.Timeline:Fire()
     return true
 end
