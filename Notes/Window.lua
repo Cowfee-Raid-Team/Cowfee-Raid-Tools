@@ -15,6 +15,17 @@ local Engine = CRT.NoteEngine
 local NoteWindow = { windows = {} }
 CRT.NoteWindow = NoteWindow
 
+-- Whether the note windows may show where you are: always, unless "Show outside of raid" is unticked
+-- (Notes Settings) and you are not in a raid instance. Dungeons, delves, battlegrounds and the open
+-- world all count as outside.
+function NoteWindow.AllowedHere()
+    if Notes:ShowOutsideRaid() then
+        return true
+    end
+    local _, instanceType = IsInInstance()
+    return instanceType == "raid"
+end
+
 local REFRESH_SECONDS = 0.1
 local GRIP = "Interface\\ChatFrame\\UI-ChatIM-SizeGrabber"
 local BACKDROP = { bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 }
@@ -750,7 +761,7 @@ local function createWindow(key, defaultPosition, build)
         self.flashPending = nil
         local stamping = stampNow or self.stamp:IsPlaying()
         -- Keep up when empty: a window with nothing to show stays up, blank at its own transparency
-        local visible = previewOn or (s().shown and (hasContent or stamping or s().keepEmpty))
+        local visible = previewOn or (NoteWindow.AllowedHere() and s().shown and (hasContent or stamping or s().keepEmpty))
         frame:SetShown(visible and true or false)
         if not visible then
             return
@@ -846,11 +857,16 @@ driver:RegisterEvent("PLAYER_LOGIN")
 driver:RegisterEvent("GROUP_ROSTER_UPDATE")
 driver:RegisterEvent("PLAYER_SPECIALIZATION_CHANGED")
 driver:RegisterEvent("PLAYER_ROLES_ASSIGNED")
+driver:RegisterEvent("PLAYER_ENTERING_WORLD")
+driver:RegisterEvent("ZONE_CHANGED_NEW_AREA")
 driver:SetScript("OnEvent", function(_, event)
     changed()
     if event == "PLAYER_LOGIN" then
         build()
         styleAll()
+    elseif built and (event == "PLAYER_ENTERING_WORLD" or event == "ZONE_CHANGED_NEW_AREA") then
+        -- the window rule follows the instance you are in
+        NoteWindow:RefreshAll()
     end
 end)
 
