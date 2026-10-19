@@ -274,9 +274,23 @@ local function build(pf)
     })
     border:SetPoint("TOPLEFT", LOOK_X, -112)
     look[#look + 1] = border
-    local dispelBorder = lookCheck(pf, "Color the border by dispel type", -148, "dispelBorder", LOOK_X - 4, nil, Debuffs.SetDispelBorder)
+    local spacing = UI.Slider(pf, "Spacing", { min = Debuffs.MIN_SPACING, max = Debuffs.MAX_SPACING, labelWidth = 80, width = 200, enabledIf = panelOn,
+        format = function(v)
+            return format("%d px", v)
+        end,
+        get = function()
+            return Debuffs:Spacing()
+        end,
+        set = function(v)
+            Debuffs:SetSpacing(v)
+        end,
+    })
+    spacing:SetPoint("TOPLEFT", LOOK_X, -140)
+    look[#look + 1] = spacing
+    UI.Help(pf, "Spacing", "The gap between two debuffs' borders. The border's width is added on top automatically, so borders never overlap at any border size. At 0 the borders touch.\n\nThe glow adds no space: it draws over the debuffs beside it."):SetPoint("LEFT", spacing, "RIGHT", 4, 0)
+    local dispelBorder = lookCheck(pf, "Color the border by dispel type", -176, "dispelBorder", LOOK_X - 4, nil, Debuffs.SetDispelBorder)
     UI.Help(pf, "Color the border by dispel type", "Debuffs that have a dispel type get a border in its color: Magic blue, Poison green, Curse purple, Disease brown, and Bleed in the game's bleed color. This works in combat. Debuffs with no dispel type keep the plain border.\n\nGlow adds a soft glow in the same color around those borders.\n\nThe border and the glow need a border size above 0. The boss debuff slots row is drawn by the game and isn't colored."):SetPoint("LEFT", dispelBorder.label, "RIGHT", 4, 0)
-    lookCheck(pf, "Glow on dispellable debuffs", -172, "dispelGlow", LOOK_X + 20, "dispelBorder", Debuffs.SetDispelGlow)
+    lookCheck(pf, "Glow on dispellable debuffs", -200,"dispelGlow", LOOK_X + 20, "dispelBorder", Debuffs.SetDispelGlow)
 
     pf:SetScript("OnShow", refresh)
     Debuffs:OnChange(refresh)

@@ -5,8 +5,9 @@ local ADDON, CRT = ...
 --   longer than this are left out, 0 shows every length) and privateSlots (the game's boss debuff
 --   slots as a second row, a fallback).
 --   dispelIconScale is that icon's size, a fraction of the debuff icon (0.2 to 1).
---   The look: swipe, swipeEdge, timerPosition, timerX, timerY, borderScale, dispelBorder (the border
---   colored by dispel type) and dispelGlow (a soft glow around that border).
+--   The look: swipe, swipeEdge, timerPosition, timerX, timerY, borderScale, spacing (pixels between two
+--   icons' borders, 0 to 20; the border's width is added to it), dispelBorder (the border colored by
+--   dispel type) and dispelGlow (a soft glow around that border).
 --   A reverse option existed until 0.13.0, and includeRegular (the old optional second row) until the
 --   AuraContainer became the panel. Their saved values may remain and are ignored.
 --   position = { point, relativePoint, x, y } once the panel has been moved.
@@ -213,6 +214,34 @@ function Debuffs:SwipeNumbers()
     return ddb().timerPosition == "numbers"
 end
 
+-- The border's width: the game's debuff border is the icon plus 5 x borderScale pixels, half of it
+-- on each side.
+function Debuffs:Edge()
+    return 5 * (tonumber(ddb().borderScale) or 1)
+end
+
+-- The pixels between two icons' borders, 0 to 20. Saved data from before this setting has none, and
+-- reads as the gap used until then.
+Debuffs.MIN_SPACING, Debuffs.MAX_SPACING, Debuffs.DEFAULT_SPACING = 0, 20, 4
+
+function Debuffs:Spacing()
+    return tonumber(ddb().spacing) or self.DEFAULT_SPACING
+end
+
+function Debuffs:SetSpacing(pixels)
+    pixels = tonumber(pixels)
+    if pixels then
+        ddb().spacing = math.max(self.MIN_SPACING, math.min(self.MAX_SPACING, math.floor(pixels + 0.5)))
+    end
+    self:Fire()
+end
+
+-- The distance from one icon to the next: the icon, the border's width (half from each icon) and the
+-- spacing, so two borders never overlap. The glow adds nothing: it is drawn over its neighbours.
+function Debuffs:Step(size)
+    return size + self:Edge() + self:Spacing()
+end
+
 -- The border colored by dispel type, and the glow around it. The glow only shows with the colored
 -- border, so DispelGlow is false while the border is off.
 function Debuffs:DispelBorder()
@@ -276,7 +305,8 @@ function Debuffs:LookSignature()
     local timerPoint, _, timerX, timerY = self:TimerAnchor()
     return table.concat({ tostring(self:PrivateSlots()), self:Size(), self:MaxCount(), tostring(self:DispelIcon()), self:DispelIconScale(),
         tostring(self:Get("swipe")), tostring(self:Get("swipeEdge")), tostring(self:SwipeNumbers()), tostring(timerPoint), tostring(timerX),
-        tostring(timerY), tostring(self:Get("borderScale")), tostring(self:DispelBorder()), tostring(ddb().dispelGlow and true or false) }, ":")
+        tostring(timerY), tostring(self:Get("borderScale")), tostring(self:DispelBorder()), tostring(ddb().dispelGlow and true or false),
+        self:Spacing() }, ":")
 end
 
 -- The saved position, or the default one in the upper middle of the screen.
