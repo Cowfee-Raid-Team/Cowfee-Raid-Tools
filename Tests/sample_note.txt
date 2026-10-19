@@ -1,0 +1,55 @@
+EncounterID:3470;Difficulty:Mythic;Name:Nek'zali
+
+time:3;ph:1;tag:Crazyoio;spellid:31884;
+time:6;ph:1;tag:Cheoeqar;spellid:200183;
+time:34;ph:1;tag:Cheoeqar;spellid:64843;
+time:34;ph:1;tag:Crazyoio;spellid:31821;
+time:81;ph:1;tag:Rixxy;spellid:363534;
+time:104;ph:1;tag:Abu;spellid:114052;
+time:139;ph:1;tag:Crazyoio;spellid:31884;
+time:141;ph:1;tag:Cheoeqar;spellid:200183;
+time:174;ph:1;tag:Cheoeqar;spellid:64843;
+time:34.11;ph:1.5;tag:Abu;spellid:98008;
+time:40.11;ph:1.5;tag:Crazyoio;spellid:31821;
+time:68.11;ph:1.5;tag:Cheoeqar;spellid:200183;
+time:72.11;ph:1.5;tag:Rixxy;spellid:363534;
+time:21.1;ph:1.75;tag:Crazyoio;spellid:31884;
+time:27.1;ph:1.75;tag:Abu;spellid:114052;
+time:54.1;ph:1.75;tag:Cheoeqar;spellid:64843;
+time:50.72;ph:2;tag:Cheoeqar;spellid:200183;
+time:54.72;ph:2;tag:Abu;spellid:98008;
+time:65.72;ph:2;tag:Crazyoio;spellid:31884;
+time:81.72;ph:2;tag:Abu;spellid:108280;
+time:101.72;ph:2;tag:Cheoeqar;spellid:64843;
+time:130.72;ph:2;tag:Abu;spellid:114052;
+time:181.72;ph:2;tag:Cheoeqar;spellid:200183;
+time:48;ph:1;tag:Cheoeqar Djaztech Gadios;text:Group 1 go in;dur:8;colors:0 1 1 1;DisplayType:Text;
+time:50;ph:1.5;tag:Cheoeqar Djaztech Gadios;text:Group 1 go in;dur:8;colors:0 1 1 1;DisplayType:Text;
+time:33;ph:2;tag:Cheoeqar Djaztech Gadios;text:Group 1 go in;dur:8;colors:0 1 1 1;DisplayType:Text;
+time:113;ph:2;tag:Cheoeqar Djaztech Gadios;text:Group 1 go in;dur:8;colors:0 1 1 1;DisplayType:Text;
+time:119;ph:1;tag:Abu Sarrantha Sixz;text:Group 2 go in;dur:8;colors:0.63 0.16 1 1;DisplayType:Text;
+time:40;ph:1.75;tag:Abu Sarrantha Sixz;text:Group 2 go in;dur:8;colors:0.63 0.16 1 1;DisplayType:Text;
+time:73;ph:2;tag:Abu Sarrantha Sixz;text:Group 2 go in;dur:8;colors:0.63 0.16 1 1;DisplayType:Text;
+time:153;ph:2;tag:Abu Sarrantha Sixz;text:Group 2 go in;dur:8;colors:0.63 0.16 1 1;DisplayType:Text;
+time:36;ph:1.5;tag:tank melee;text:Soak the Circle;dur:8;colors:0.16 1 0.16 1;DisplayType:Text;
+time:71;ph:1.5;tag:tank melee;text:Soak the Circle;dur:8;colors:0.16 1 0.16 1;DisplayType:Text;
+time:26;ph:1.75;tag:tank melee;text:Soak the Circle;dur:8;colors:0.16 1 0.16 1;DisplayType:Text;
+time:61;ph:1.75;tag:tank melee;text:Soak the Circle;dur:8;colors:0.16 1 0.16 1;DisplayType:Text;
+time:36;ph:1.5;tag:healer ranged;text:Stay Out of the Circle;dur:8;colors:1 0.16 0.16 1;DisplayType:Text;
+time:71;ph:1.5;tag:healer ranged;text:Stay Out of the Circle;dur:8;colors:1 0.16 0.16 1;DisplayType:Text;
+time:26;ph:1.75;tag:healer ranged;text:Stay Out of the Circle;dur:8;colors:1 0.16 0.16 1;DisplayType:Text;
+time:61;ph:1.75;tag:healer ranged;text:Stay Out of the Circle;dur:8;colors:1 0.16 0.16 1;DisplayType:Text;
+
+Soulcoil Well Realm Groups
+Realm Group 1: Cheoeqar Djaztech Gadios
+Realm Group 2: Abu Sarrantha Sixz
+
+Hungering Pyre Soak Circle
+Soak Circle: Tanks Melee
+Don't Soak Circle: Healers Ranged
+
+Kick order
+Kicks G1: Teronhorefnd Gadios
+Kicks G2: Sixz Djaztech
+
+invitelist:Rixxy-TwistingNether,Teronhorefnd-Tichondrius,,Durayn-Dalaran,Skarghan-Kel'Thuzad,Gadios-Silvermoon,Cheoeqar-Area52,Balevolence-Stormrage,Solex-Sargeras,Mesmertism-Stormrage,Abu-Kel'Thuzad,Sixz-Sargeras,Djaztech-TwistingNether,Granddh-Magtheridon,Lichkingstoy-Sentinels,,Notkvr-Stormrage,Whitecrows-Stormrage,Dotsanhots-Area52,Crazyoio-Illidan,Sarrantha-Sargeras,Thisisfartaa-Kil'jaeden,Xuelan-Sargeras,Dyspepsia-Bloodhoof;

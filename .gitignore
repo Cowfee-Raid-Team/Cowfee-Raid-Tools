@@ -20,3 +20,7 @@ Code map/
 # Your own low-health sounds stay out of the repository
 Sounds/*
 !Sounds/README.txt
+
+# Factory: per-job state and the test run's output stay local (factory/backlog.md is tracked)
+factory/jobs/
+Tests/last-run.txt

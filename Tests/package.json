@@ -1,0 +1,9 @@
+{
+  "name": "crt-tests",
+  "private": true,
+  "description": "Cowfee Raid Tools Lua test harnesses (fengari) and the syntax check (luaparse)",
+  "dependencies": {
+    "fengari": "^0.1.4",
+    "luaparse": "^0.3.1"
+  }
+}

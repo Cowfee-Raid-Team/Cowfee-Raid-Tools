@@ -5,6 +5,9 @@ ignore:
   - docs
   - "Cowfee Raid Tools - Architecture.md"
   - Dev
+  - Tests
+  - factory
+  - .claude
 
 manual-changelog:
   filename: CHANGELOG.md
