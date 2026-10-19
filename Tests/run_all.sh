@@ -41,16 +41,16 @@ echo "== notes share"; node run_notes_share.js "$WA/Notes/Parse.lua" "$WA/Notes/
 echo "== alerts personalwin"; node run_alerts_personalwin.js "$WA/Bosses/Registry.lua" "$WA/Seasons/Midnight-S1/Season.lua" "$WA/Seasons/Midnight-S1/NekzaliTheSoulcoiler.lua" "$WA/Alerts/Rules.lua" "$WA/Alerts/Engine.lua" "$WA/Notes/Parse.lua" "$WA/Notes/Data.lua" "$WA/Notes/Engine.lua" "$WA/Notes/Window.lua" "$WA/Timeline/Data.lua" "$WA/Timeline/Database.lua" "$WA/Timeline/Reference.lua" "$WA/Alerts/Reminders.lua" 2>&1 | tail -10; echo "exit ${PIPESTATUS[0]}"
 echo "== alerts rehearsal"; node run_alerts_rehearsal.js "$WA/Bosses/Registry.lua" "$WA/Seasons/Midnight-S1/Season.lua" "$WA/Seasons/Midnight-S1/NekzaliTheSoulcoiler.lua" "$WA/Groups/Data.lua" "$WA/Alerts/Rules.lua" "$WA/Alerts/Engine.lua" "$WA/Sound/Engine.lua" "$WA/Alerts/Speech.lua" "$WA/Notes/Parse.lua" "$WA/Notes/Data.lua" "$WA/Notes/Engine.lua" "$WA/Notes/Window.lua" "$WA/Timeline/Data.lua" "$WA/Timeline/Database.lua" "$WA/Timeline/Reference.lua" "$WA/Alerts/Roster.lua" "$WA/Alerts/Reminders.lua" "$WA/Alerts/Areas.lua" "$WA/Alerts/Bars.lua" "$WA/Alerts/Icons.lua" 2>&1 | tail -20; echo "exit ${PIPESTATUS[0]}"
 echo "== reference types"; node run_reftypes.js "$W" 2>&1 | tail -2
-echo "== drag starts from the mouse"; bad=$(grep -rn "StartMoving" --include=*.lua "$W" | grep -v "/.claude/" | grep -v "WindowLog.lua" | grep -v "StartMoving(true)"); if [ -n "$bad" ]; then echo "FAIL StartMoving without true:"; echo "$bad"; else echo "all passed"; fi
+echo "== drag starts from the mouse"; bad=$(grep -rn "StartMoving" --include=*.lua --exclude-dir=.claude --exclude-dir=Tests --exclude-dir=node_modules "$W" | grep -v "WindowLog.lua" | grep -v "StartMoving(true)"); if [ -n "$bad" ]; then echo "FAIL StartMoving without true:"; echo "$bad"; else echo "all passed"; fi
 echo "== fit text"; node run_fittext.js "$W" 2>&1 | tail -1
-echo "== loot rclc"; node run_loot_rclc.js "C:/Program Files (x86)/World of Warcraft/_retail_/Interface/AddOns/CowfeeRaidTools" 2>&1 | tail -6; echo "exit ${PIPESTATUS[0]}"
-echo "== lootmaster data"; node run_lootmaster_data.js "C:/Program Files (x86)/World of Warcraft/_retail_/Interface/AddOns/CowfeeRaidTools" 2>&1 | tail -6; echo "exit ${PIPESTATUS[0]}"
-echo "== lootmaster comm"; node run_lootmaster_comm.js "C:/Program Files (x86)/World of Warcraft/_retail_/Interface/AddOns/CowfeeRaidTools" 2>&1 | tail -6; echo "exit ${PIPESTATUS[0]}"
-echo "== lootmaster score"; node run_lootmaster_score.js "C:/Program Files (x86)/World of Warcraft/_retail_/Interface/AddOns/CowfeeRaidTools" 2>&1 | tail -6; echo "exit ${PIPESTATUS[0]}"
+echo "== loot rclc"; node run_loot_rclc.js "$W" 2>&1 | tail -6; echo "exit ${PIPESTATUS[0]}"
+echo "== lootmaster data"; node run_lootmaster_data.js "$W" 2>&1 | tail -6; echo "exit ${PIPESTATUS[0]}"
+echo "== lootmaster comm"; node run_lootmaster_comm.js "$W" 2>&1 | tail -6; echo "exit ${PIPESTATUS[0]}"
+echo "== lootmaster score"; node run_lootmaster_score.js "$W" 2>&1 | tail -6; echo "exit ${PIPESTATUS[0]}"
 echo "== late data"; node run_late.js "$W/Late/Data.lua" 2>&1 | tail -2; echo "exit ${PIPESTATUS[0]}"
 echo "== late page"; node run_latepage.js "$W/Late/Data.lua" "$W/Late/Page.lua" 2>&1 | tail -2; echo "exit ${PIPESTATUS[0]}"
 echo "== groups extras"; node run_groups_extras.js "$W" 2>&1 | tail -2; echo "exit ${PIPESTATUS[0]}"
-echo "== Lua 5.1 upvalue limit (60 per function; the harnesses run a newer Lua that allows 255)"; NODE_PATH="$(dirname "$0")/node_modules" node "C:/Users/Alex/OneDrive/Documents/Mythic Lab/.claude/skills/wow-addon-patch-maintenance/scripts/lua-upvalue-check.cjs" "$W" | grep -v "^OK" | grep -v "/.claude/\|\\.claude\\\\" ; up=${PIPESTATUS[0]}; if [ "$up" = "0" ]; then echo "all passed"; else echo "FAIL a function has more than 60 upvalues"; fi
+echo "== Lua 5.1 upvalue limit (60 per function; the harnesses run a newer Lua that allows 255)"; node lua-upvalue-check.cjs "$W" | grep -v "^OK"; up=${PIPESTATUS[0]}; if [ "$up" = "0" ]; then echo "all passed"; else echo "FAIL a function has more than 60 upvalues"; fi
 echo "== boss route"; node run_bossroute.js "$W" 2>&1 | tail -1
 echo "== journal export"; node run_journal_export.js "$W" 2>&1 | tail -2; echo "exit ${PIPESTATUS[0]}"
 echo "== journal walk"; node run_journal_walk.js "$W" 2>&1 | tail -2; echo "exit ${PIPESTATUS[0]}"
