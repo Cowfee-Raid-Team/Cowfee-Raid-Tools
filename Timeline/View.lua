@@ -1640,12 +1640,23 @@ function Methods:PlaceSaved(id, t, spellID, lane)
     end
 end
 
+-- A context menu built by fill(root), above every window and the pop-out, submenus too (UI.ContextMenu,
+-- UI/Window.lua); straight from the game's menu when UI/Window.lua isn't loaded (the test harnesses).
+function View.OpenMenu(owner, fill)
+    local ui = CRT.UI
+    local open = type(ui) == "table" and rawget(ui, "ContextMenu")
+    if open then
+        return open(owner, fill)
+    end
+    return MenuUtil.CreateContextMenu(owner, function(_, root)
+        fill(root)
+    end)
+end
+
 -- A context menu at the cursor, built by build(root) with the game's menu; without one, a chat line.
 local function contextMenu(owner, build)
     if MenuUtil and MenuUtil.CreateContextMenu then
-        MenuUtil.CreateContextMenu(owner, function(_, root)
-            build(root)
-        end)
+        View.OpenMenu(owner, build)
     else
         CRT:Print(TEXT.noMenu)
     end
@@ -3204,7 +3215,7 @@ function Methods:LabelMenu(l)
         return
     end
     local name = Timeline.IgnoreName(lane)
-    MenuUtil.CreateContextMenu(l, function(_, root)
+    View.OpenMenu(l, function(root)
         Menu.Fill(root, self.encounterID, { name = name, spellID = lane.spellID, tags = lane.tags }, name)
     end)
 end

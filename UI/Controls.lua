@@ -63,6 +63,9 @@ function UI.Dropdown(parent, text, opts)
         dropdown.Text:SetFontObject(CRTFontStandardHighlight)
     end
     dropdown:SetupMenu(function(_, root)
+        if UI.MenuOnTop then
+            UI.MenuOnTop(root) -- submenus too (UI/Window.lua)
+        end
         if opts.maxHeight and root.SetScrollMode then
             root:SetScrollMode(opts.maxHeight)
         end

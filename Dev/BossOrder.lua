@@ -214,7 +214,7 @@ local function addMenu(owner, gi)
         return
     end
     local journal = journalRaids()
-    MenuUtil.CreateContextMenu(owner, function(_, root)
+    UI.ContextMenu(owner, function(root)
         root:CreateTitle("Add a boss to " .. (raids[gi] and raids[gi].name or "this raid"))
         if #journal == 0 then
             root:CreateTitle(InCombatLockdown() and "The Journal isn't read in combat" or "No raids in the Journal's tier")

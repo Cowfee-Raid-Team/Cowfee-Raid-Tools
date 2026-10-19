@@ -51,14 +51,29 @@ local function save(f, opts)
     end
 end
 
--- A context menu (MenuUtil.CreateContextMenu) opened from a window on the popups layer shows behind it;
--- this lifts the menu above every window until it closes, then puts its strata back.
+-- The game opens a menu on FULLSCREEN_DIALOG (Blizzard_Menu's AcquireMenu), and every submenu too,
+-- whatever the root is on: the same layer as the popups windows, which come in front of it. UI.MenuOnTop
+-- puts every level of a menu on TOOLTIP as it opens (the root description's AddMenuAcquiredCallback runs
+-- for the root and each submenu). The game sets a menu's strata again each time it is acquired, so
+-- nothing has to be put back. Every context menu and dropdown list in the addon goes through it:
+-- UI.ContextMenu here, UI.Dropdown in UI/Controls.lua.
 local MENU_STRATA = "TOOLTIP"
+function UI.MenuOnTop(root)
+    if root and root.AddMenuAcquiredCallback then
+        root:AddMenuAcquiredCallback(function(menu)
+            if menu and menu.SetFrameStrata then
+                pcall(menu.SetFrameStrata, menu, MENU_STRATA)
+            end
+        end)
+    end
+end
+
 function UI.ContextMenu(owner, fill)
     if not (MenuUtil and MenuUtil.CreateContextMenu) then
         return nil
     end
     local menu = MenuUtil.CreateContextMenu(owner, function(_, root)
+        UI.MenuOnTop(root)
         fill(root)
     end)
     if menu and menu.SetFrameStrata then

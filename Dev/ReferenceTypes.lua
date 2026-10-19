@@ -202,6 +202,7 @@ local function widgetRow(i)
     w.also:SetWidth(110)
     w.also:SetPoint("LEFT", w.main, "RIGHT", 10, 0)
     w.also:SetupMenu(function(_, root)
+        UI.MenuOnTop(root)
         for _, key in ipairs(Reference.TYPE_ORDER) do
             if not (rows[i] and rows[i].main == key) then
                 root:CreateCheckbox(colored(key), function()

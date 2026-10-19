@@ -710,7 +710,7 @@ function ReferencePage.Build(f, ctx)
         if not (p and p.line and entry and MenuUtil and MenuUtil.CreateContextMenu) then
             return
         end
-        MenuUtil.CreateContextMenu(l, function(_, root)
+        View.OpenMenu(l, function(root)
             root:CreateTitle(p.title or p.label or "")
             root:CreateButton(TEXT_MENU.setStart, function()
                 askPhaseStart(string.format(TEXT_MENU.phasePrompt, p.title or p.label or ""), p.t and View.Format(p.t) or "", function(timeText)
@@ -740,7 +740,7 @@ function ReferencePage.Build(f, ctx)
         if not (row and MenuUtil and MenuUtil.CreateContextMenu) then
             return
         end
-        MenuUtil.CreateContextMenu(l, function(_, root)
+        View.OpenMenu(l, function(root)
             AbilityMenu.Fill(root, boss, row, row.name)
             if l.refRow and row.line then
                 root:CreateDivider()
