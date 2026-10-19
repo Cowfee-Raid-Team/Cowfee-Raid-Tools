@@ -11,6 +11,8 @@ local ADDON, CRT = ...
 --   /crt dev loot probe bags          list bag items that are still tradeable, with the timer line
 --   /crt dev loot probe trade <itemID>  open a trade with your target, then place that item in it
 --   /crt dev loot probe icons         show the roll-type icon candidates (Need, Greed, Disenchant, Pass)
+--   /crt dev loot probe spec <item>   C_Item.GetItemSpecInfo for a shift-clicked item or ID, and what the
+--                                     planned auto-pass rule would decide on this character
 --   /crt dev loot probe log           print the saved log; "clear" empties it
 -- Nothing here passes, rolls or trades unless you type the command for it; "pass" passes one roll only.
 
@@ -255,6 +257,85 @@ function Probe:ShowIcons()
     f:Show()
 end
 
+-- Spec info: what C_Item.GetItemSpecInfo says for an item on this character, and what the planned
+-- auto-pass rule would decide (only a loaded item whose non-empty spec list holds none of your class's
+-- specs would be passed; anything else is shown). Run it on tank, healer and DPS trinkets, a weapon and a
+-- tier token, on several classes, before the rule ships.
+local function mySpecs()
+    local out, names = {}, {}
+    for i = 1, (GetNumSpecializations and GetNumSpecializations() or 0) do
+        local id, name = GetSpecializationInfo(i)
+        if id then
+            out[id] = true
+            names[#names + 1] = id .. " " .. tostring(name)
+        end
+    end
+    return out, table.concat(names, ", ")
+end
+
+local function specName(id)
+    local ok, _, name, _, _, _, classFile = pcall(GetSpecializationInfoByID, id)
+    return ok and (tostring(name) .. " " .. tostring(classFile)) or "?"
+end
+
+function Probe:Spec(arg)
+    local link = arg and arg:match("|H(item:[^|]+)|h") or (tonumber(arg) and ("item:" .. arg)) or nil
+    if not link then
+        print("Use /crt dev loot probe spec <shift-click an item, or an item ID>")
+        return
+    end
+    local id = tonumber(link:match("item:(%d+)"))
+    local item = Item:CreateFromItemID(id)
+    local started = GetTime()
+    local function report(loaded)
+        local mine, mineText = mySpecs()
+        local ok, specs = pcall(C_Item.GetItemSpecInfo, link)
+        local secret = issecretvalue and ok and issecretvalue(specs)
+        local kind = not ok and ("error " .. tostring(specs)) or (secret and "secret") or type(specs)
+        local ids, match = {}, false
+        if ok and not secret and type(specs) == "table" then
+            for _, s in ipairs(specs) do
+                ids[#ids + 1] = s .. " (" .. specName(s) .. ")"
+                if mine[s] then
+                    match = true
+                end
+            end
+        end
+        local verdict
+        if not loaded then
+            verdict = "SHOW (item not loaded in time)"
+        elseif not ok or secret or type(specs) ~= "table" then
+            verdict = "SHOW (" .. kind .. ")"
+        elseif #specs == 0 then
+            verdict = "SHOW (empty list)"
+        elseif match then
+            verdict = "SHOW (one of your specs can use it)"
+        else
+            verdict = "WOULD AUTO-PASS (none of your specs is listed)"
+        end
+        log("spec info for %s: %s, %d ids: %s", tostring(item:GetItemLink() or link), kind, #ids, #ids > 0 and table.concat(ids, "; ") or "-")
+        log("  your specs: %s", mineText)
+        log("  rule: %s  (%.1f s to load)", verdict, GetTime() - started)
+    end
+    if item:IsItemDataCached() then
+        report(true)
+        return
+    end
+    local done = false
+    item:ContinueOnItemLoad(function()
+        if not done then
+            done = true
+            report(true)
+        end
+    end)
+    C_Timer.After(5, function()
+        if not done then
+            done = true
+            report(false)
+        end
+    end)
+end
+
 function Probe:Command(rest)
     local verb, arg = (rest or ""):match("^(%S*)%s*(.-)$")
     verb = (verb or ""):lower()
@@ -308,6 +389,8 @@ function Probe:Command(rest)
         log("InitiateTrade(target %s): ok=%s %s; when the window opens, item %d is placed", str(GetUnitName("target", true)), str(ok), ok and "" or str(err), id)
     elseif verb == "icons" then
         self:ShowIcons()
+    elseif verb == "spec" then
+        self:Spec(arg)
     elseif verb == "log" then
         for _, line in ipairs(CRTLootDB.probe or {}) do
             print(line)
