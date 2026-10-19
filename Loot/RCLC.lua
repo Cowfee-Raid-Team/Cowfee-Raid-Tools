@@ -5,7 +5,7 @@ local ADDON, CRT = ...
 -- that matches nothing (given before Loot History existed, or recorded on another computer) goes in
 -- RC.unmatched, newest first, so the History list can show it as a row of its own. Nothing is ever
 -- written to RCLootCouncil's data, and nothing here is saved: a scan reads it fresh, at login, a little
--- after new loot, and with Re-scan. This file is meant to go once Loot Master replaces RCLootCouncil.
+-- after new loot, and with Re-scan. This file is meant to go once Loot Master handles loot itself.
 --
 -- RCLootCouncil's saved data, VERSION-SENSITIVE. Learned from the saved data itself (never from its code),
 -- 768 awards read on 2026-10-18. If an update moves it, the WIRE block and read() are the places to fix:
