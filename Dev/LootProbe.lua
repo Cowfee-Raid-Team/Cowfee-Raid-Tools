@@ -10,6 +10,7 @@ local ADDON, CRT = ...
 --   /crt dev loot probe roll          /roll 1-100 and show how CRT reads the result from chat
 --   /crt dev loot probe bags          list bag items that are still tradeable, with the timer line
 --   /crt dev loot probe trade <itemID>  open a trade with your target, then place that item in it
+--   /crt dev loot probe icons         show the roll-type icon candidates (Need, Greed, Disenchant, Pass)
 --   /crt dev loot probe log           print the saved log; "clear" empties it
 -- Nothing here passes, rolls or trades unless you type the command for it; "pass" passes one roll only.
 
@@ -195,6 +196,65 @@ function Probe:Watch(on)
     log("watching %s", on and "ON" or "OFF")
 end
 
+-- The roll-type icon candidates side by side, to see which exist in this client. Files are from the
+-- Classic loot frames (Dice, Coin, Pass) and Classic LootHistory.lua (DE); atlases from retail's
+-- GroupLootFrame.xml and LootHistory.lua (Gethe/wow-ui-source, read 2026-10-18). A missing file shows as
+-- green, a missing atlas as nothing; each is also printed with what the game reports.
+local ICONS = {
+    { file = "Interface\\Buttons\\UI-GroupLoot-Dice-Up", label = "Dice (file)" },
+    { file = "Interface\\Buttons\\UI-GroupLoot-Coin-Up", label = "Coin (file)" },
+    { file = "Interface\\Buttons\\UI-GroupLoot-DE-Up", label = "DE (file)" },
+    { file = "Interface\\Buttons\\UI-GroupLoot-Pass-Up", label = "Pass (file)" },
+    { atlas = "lootroll-toast-icon-need-up", label = "need" },
+    { atlas = "lootroll-toast-icon-greed-up", label = "greed" },
+    { atlas = "lootroll-toast-icon-transmog-up", label = "transmog" },
+    { atlas = "lootroll-toast-icon-pass-up", label = "pass" },
+    { atlas = "lootroll-icon-need", label = "icon-need" },
+    { atlas = "lootroll-icon-greed", label = "icon-greed" },
+    { atlas = "lootroll-icon-transmog", label = "icon-tmog" },
+    { atlas = "lootroll-icon-pass", label = "icon-pass" },
+}
+
+function Probe:ShowIcons()
+    local f = self.iconFrame
+    if not f then
+        f = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
+        f:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
+        f:SetBackdropColor(0, 0, 0, 0.9)
+        f:SetBackdropBorderColor(0.5, 0.5, 0.5, 1)
+        f:SetSize(16 + 6 * 76, 2 * 70 + 30)
+        f:SetPoint("CENTER")
+        f:SetFrameStrata("DIALOG")
+        f:EnableMouse(true)
+        f:SetScript("OnMouseDown", f.Hide)
+        local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        title:SetPoint("TOP", 0, -6)
+        title:SetText("Roll-type icon candidates (click to close)")
+        for i, ic in ipairs(ICONS) do
+            local col, row = (i - 1) % 6, math.floor((i - 1) / 6)
+            local t = f:CreateTexture(nil, "ARTWORK")
+            t:SetSize(36, 36)
+            t:SetPoint("TOPLEFT", 8 + col * 76 + 20, -28 - row * 70)
+            local how, result
+            if ic.atlas then
+                local okInfo, info = pcall(function()
+                    return C_Texture.GetAtlasInfo(ic.atlas)
+                end)
+                how, result = "GetAtlasInfo", okInfo and (info ~= nil) or ("error " .. tostring(info))
+                t:SetAtlas(ic.atlas)
+            else
+                how, result = "SetTexture returned", t:SetTexture(ic.file)
+            end
+            local fs = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            fs:SetPoint("TOP", t, "BOTTOM", 0, -2)
+            fs:SetText(ic.label)
+            log("icon %s: %s %s", ic.atlas or ic.file, how, str(result))
+        end
+        self.iconFrame = f
+    end
+    f:Show()
+end
+
 function Probe:Command(rest)
     local verb, arg = (rest or ""):match("^(%S*)%s*(.-)$")
     verb = (verb or ""):lower()
@@ -246,6 +306,8 @@ function Probe:Command(rest)
         self.tradeItem = id
         local ok, err = pcall(InitiateTrade, "target")
         log("InitiateTrade(target %s): ok=%s %s; when the window opens, item %d is placed", str(GetUnitName("target", true)), str(ok), ok and "" or str(err), id)
+    elseif verb == "icons" then
+        self:ShowIcons()
     elseif verb == "log" then
         for _, line in ipairs(CRTLootDB.probe or {}) do
             print(line)
