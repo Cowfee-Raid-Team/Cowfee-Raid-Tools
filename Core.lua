@@ -207,6 +207,12 @@ local defaults = {
         enableInParty = false, -- CRT Looting also in a party group, not only a raid (LootMaster/Looting.lua)
         authority = { leader = true, names = {} }, -- who may run loot (the raid leader's list is the one raiders trust)
         sort = {}, -- the looter list's and Raider Score's chosen column and direction
+        -- the loot filter: which items open a session (LootMaster/Filter.lua): where it dropped, the lowest
+        -- quality (4 Epic) and item level (0 any), and the kinds of items
+        filter = {
+            boss = true, trash = false, quality = 4, ilvl = 0,
+            kinds = { bop = true, tier = true, boe = false, wue = false, toy = false, mount = false, cosmetic = false, other = false },
+        },
     },
     -- The sound engine (Sound/Engine.lua): custom, your own sound file names typed on Quality of Life >
     -- Sounds (the companion addon CowfeeRaidTools_Media lists more in its Sounds.lua).

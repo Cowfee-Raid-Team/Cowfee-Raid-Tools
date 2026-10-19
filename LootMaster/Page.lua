@@ -1,10 +1,11 @@
 local ADDON, CRT = ...
 
--- The Loot Master page (/crt lootmaster), with three tabs:
+-- The Loot Master page (/crt lootmaster), with four tabs:
 --   Tonight       the running session (or none), and buttons to test, open the looter window, show your
 --                 popup and end the session; CRT Looting's state, with the leader's Turn on / Turn off
 --                 for everyone (LootMaster/Looting.lua)
 --   Raider Score  every player's score from the Late Tracker's nights (LootMaster/Score.lua)
+--   Loot filter   which items open a loot session (LootMaster/FilterTab.lua, rules in Filter.lua)
 --   Settings      the response buttons raiders see (label, colour, weight, icon, order), how long they
 --                 have to answer, the award message, the Raider Score weights, loot authority, and the
 --                 leader's Sync Master Loot (LootMaster/Sync.lua)
@@ -34,9 +35,10 @@ L.col2W = L.col3 - L.col2 - 12 -- the second column, with a gap before the third
 
 local TEXT = {
     title = "Loot Master",
-    help = "Run the loot: the raid leader gives each boss item out from one window, and every raider with CRT answers from a popup. Settings has the buttons raiders see and the Raider Score weights.\n\n/crt loot test tries it with sample items.",
+    help = "Run the loot: the raid leader gives each boss item out from one window, and every raider with CRT answers from a popup. Loot filter picks which items open a session. Settings has the buttons raiders see and the Raider Score weights.\n\n/crt loot test tries it with sample items.",
     tonight = "Tonight",
     score = "Raider Score",
+    filter = "Loot filter",
     settings = "Settings",
     session = "Loot session",
     sessionHelp = "The session you are running. Test sends sample items marked TEST to you and everyone with CRT; nothing is passed or traded.",
@@ -914,6 +916,9 @@ end
 local TABS = {
     { key = "tonight", label = TEXT.tonight, build = buildTonight },
     { key = "score", label = TEXT.score, build = buildScore },
+    { key = "filter", label = TEXT.filter, build = function(f)
+        LM.BuildFilterTab(f, { heading = heading, check = check, refreshers = refreshers })
+    end },
     { key = "settings", label = TEXT.settings, build = buildSettings },
 }
 
@@ -981,7 +986,7 @@ end
 
 LM:OnChange(function(what)
     if what == "responses" or what == "session" or what == "started" or what == "ended" or what == "scores"
-        or what == "authority" or what == "sync" or what == "looting" then
+        or what == "authority" or what == "sync" or what == "looting" or what == "filter" then
         refresh()
     end
 end)

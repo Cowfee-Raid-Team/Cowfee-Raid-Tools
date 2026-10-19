@@ -6,7 +6,7 @@ const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate();
 lualib.luaL_openlibs(L);
 const harness = `
-local src, testSrc = ...
+local src, testSrc, filterSrc = ...
 local fails, passes = 0, 0
 local function check(ok, what) if ok then passes = passes + 1 else fails = fails + 1 print("FAIL " .. what) end end
 local function eq(a, b, what) check(a == b, what .. " (got " .. tostring(a) .. ", want " .. tostring(b) .. ")") end
@@ -426,6 +426,10 @@ C_Item = { GetItemInfoInstant = function(s) local id = tonumber(s:match("item:(%
   GetDetailedItemLevelInfo = function() return 289 end }
 CRT.Print = function() end
 IsInGroup = function() return false end
+-- the loot filter (Filter.lua; run_lootmaster_filter.js tests it): these items can't be read here, so none
+-- passes and the test fills with others, as before the filter
+CRT.defaults = { lootmaster = { filter = { boss = true, quality = 4, ilvl = 0, kinds = { bop = true, tier = true } } } }
+assert(load(filterSrc, "Filter.lua"))("CowfeeRaidTools", CRT)
 assert(load(testSrc, "Test.lua"))("CowfeeRaidTools", CRT)
 local started
 function LM:Start(items, test) started = items return { items = items } end
@@ -476,5 +480,5 @@ if fails > 0 then error("failures") end
 `;
 const dir = process.argv[2];
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
-for (const f of ['LootMaster/Data.lua', 'LootMaster/Test.lua']) lua.lua_pushstring(L, to_luastring(fs.readFileSync(path.join(dir, f), 'utf8')));
-if (lua.lua_pcall(L, 2, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
+for (const f of ['LootMaster/Data.lua', 'LootMaster/Test.lua', 'LootMaster/Filter.lua']) lua.lua_pushstring(L, to_luastring(fs.readFileSync(path.join(dir, f), 'utf8')));
+if (lua.lua_pcall(L, 3, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }

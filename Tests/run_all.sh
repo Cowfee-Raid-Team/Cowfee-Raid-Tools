@@ -53,6 +53,7 @@ echo "== lootmaster looting"; node run_lootmaster_looting.js "$W" 2>&1 | tail -6
 echo "== RollOnLoot only in the auto-pass gate"; bad=$(grep -rln "RollOnLoot" --include=*.lua --exclude-dir=.claude --exclude-dir=Tests --exclude-dir=node_modules "$W" | sed 's#\\#/#g' | grep -v "/LootMaster/AutoPass\.lua$" | grep -v "/Dev/LootProbe\.lua$"); if [ -n "$bad" ]; then echo "FAIL RollOnLoot outside LootMaster/AutoPass.lua (Dev/LootProbe.lua is exempt):"; echo "$bad"; else echo "all passed"; fi
 echo "== lootmaster score"; node run_lootmaster_score.js "$W" 2>&1 | tail -6; echo "exit ${PIPESTATUS[0]}"
 echo "== lootmaster ui"; node run_lootmaster_ui.js "$W" 2>&1 | tail -6; echo "exit ${PIPESTATUS[0]}"
+echo "== lootmaster filter"; node run_lootmaster_filter.js "$W" 2>&1 | tail -6; echo "exit ${PIPESTATUS[0]}"
 echo "== debuffs"; node run_debuffs.js "$W" 2>&1 | tail -12; echo "exit ${PIPESTATUS[0]}"
 echo "== late data"; node run_late.js "$W/Late/Data.lua" 2>&1 | tail -6; echo "exit ${PIPESTATUS[0]}"
 echo "== late page"; node run_latepage.js "$W/Late/Data.lua" "$W/Late/Page.lua" 2>&1 | tail -2; echo "exit ${PIPESTATUS[0]}"
