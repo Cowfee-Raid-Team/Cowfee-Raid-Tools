@@ -47,6 +47,7 @@ echo "== loot rclc"; node run_loot_rclc.js "$W" 2>&1 | tail -6; echo "exit ${PIP
 echo "== lootmaster data"; node run_lootmaster_data.js "$W" 2>&1 | tail -6; echo "exit ${PIPESTATUS[0]}"
 echo "== lootmaster comm"; node run_lootmaster_comm.js "$W" 2>&1 | tail -6; echo "exit ${PIPESTATUS[0]}"
 echo "== lootmaster score"; node run_lootmaster_score.js "$W" 2>&1 | tail -6; echo "exit ${PIPESTATUS[0]}"
+echo "== lootmaster ui"; node run_lootmaster_ui.js "$W" 2>&1 | tail -6; echo "exit ${PIPESTATUS[0]}"
 echo "== debuffs"; node run_debuffs.js "$W" 2>&1 | tail -12; echo "exit ${PIPESTATUS[0]}"
 echo "== late data"; node run_late.js "$W/Late/Data.lua" 2>&1 | tail -2; echo "exit ${PIPESTATUS[0]}"
 echo "== late page"; node run_latepage.js "$W/Late/Data.lua" "$W/Late/Page.lua" 2>&1 | tail -2; echo "exit ${PIPESTATUS[0]}"

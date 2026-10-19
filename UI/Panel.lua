@@ -571,6 +571,26 @@ function UI:SkinButton(b)
     b.crtSkin(self:IsModern())
 end
 
+-- A UIPanelButtonTemplate button made outside a panel page (where SkinTree doesn't reach), such as in a
+-- window: as wide as its label plus room for the template's end caps (its highlight is inset 12 on each
+-- side), so the label fits in Classic and Modern, and skinned by UI:SkinButton, so it follows the look.
+UI.PANEL_BUTTON_PAD = 14 -- each side
+UI.PANEL_BUTTON_MIN_W = 40
+
+function UI.PanelButtonWidth(labelWidth)
+    return math.max(UI.PANEL_BUTTON_MIN_W, math.ceil(labelWidth or 0) + 2 * UI.PANEL_BUTTON_PAD)
+end
+
+function UI.PanelButton(parent, label, height, onClick)
+    local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
+    b:SetText(label)
+    local fs = b:GetFontString()
+    b:SetSize(UI.PanelButtonWidth(fs and fs:GetStringWidth() or 0), height)
+    b:SetScript("OnClick", onClick)
+    UI:SkinButton(b)
+    return b
+end
+
 -- Skins every panel button under a frame. Pages call nothing themselves: the panel runs this when a
 -- page is built or shown, and when a page tab changes, so buttons made later are caught too.
 function UI:SkinTree(frame)

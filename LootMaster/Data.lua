@@ -24,6 +24,7 @@ LM.AUTO_TMOG_SINCE = "0.26.0" -- a looter from this version on accepts the built
 LM.HELLO_SECONDS = 5 -- after this, raiders who never said hello have no CRT
 LM.READY_SECONDS = 10 -- a raider who said hello but never got everything is sent the session again, once
 LM.RESTORE_HOURS = 3 -- a saved session older than this is not restored after a /reload
+LM.BOSS_SECONDS = 600 -- a session started this soon after a boss kill shows the boss's name
 LM.MAX_ITEMS = 8
 LM.MAX_RESPONSES = 8
 LM.LABEL_MAX = 16 -- letters in a button's label
@@ -769,6 +770,33 @@ function Session:Answered(index)
         end
     end
     return n
+end
+
+-- The item tabs' count: answers in, raiders with CRT (raiders without it can never answer), and whether
+-- the time ran out with answers missing (a timeout the looter's Tick marked, or the same rule on a copy
+-- that never ticks: ready, no answer, asked longer ago than the session's seconds), or someone said hello
+-- but still hasn't got the session READY_SECONDS after it started.
+function Session:AnswerCount(index)
+    local answered, expected, late = 0, 0, false
+    local now = GetTime()
+    for _, p in pairs(self.players) do
+        local a = p.answers[index]
+        local has = (a and a.response) and true or false
+        if has then
+            answered = answered + 1
+        end
+        if p.crt then
+            expected = expected + 1
+            if not has then
+                if (a and a.state == "timeout") or (p.ready and now - ((a and a.asked) or self.started) > self.seconds) then
+                    late = true
+                elseif not p.ready and now - self.started > LM.READY_SECONDS then
+                    late = true
+                end
+            end
+        end
+    end
+    return answered, expected, late
 end
 
 -- Raiders with CRT who have not answered this item.

@@ -13,7 +13,8 @@ local ADDON, CRT = ...
 --   saved      function returning the table that keeps point, x, y (and width, height)
 --   escape     false keeps Escape from closing it
 -- The frame gets f.content (the area under the title), f:Place() (puts it where it was saved) and
--- f.strip, its title bar (UI.TitleStrip): f.strip:SetTitle(text), f.strip:SetBadge("TEST", note).
+-- f.strip, its title bar (UI.TitleStrip): f.strip:SetTitle(text), f.strip:SetBadge("TEST", note), or
+-- f.strip:SetBadge(name, nil, UI.TITLE_STRIP.neutral) for a plain badge such as a boss's name.
 -- UI.ContextMenu(owner, fill) opens the game's context menu above every window.
 -- Windows made by hand before this helper existed are moved onto it one at a time (see the skill's
 -- Known debt); new windows use it from the start.
@@ -124,12 +125,15 @@ end
 
 -- The title bar: a mocha strip lighter than the window, a caramel line under it, the title in larger
 -- bold text, and an optional badge (such as TEST) with a short note. strip:SetTitle(text),
--- strip:SetBadge(text or nil, note). Its colours are in STRIP.
+-- strip:SetBadge(text or nil, note, colors). colors is { bg, edge, text }; without it the badge is the
+-- orange TEST one. STRIP.neutral is the window's gold text on a dark badge. Its colours are in STRIP.
 local STRIP = {
     top = { 0.353, 0.247, 0.173 }, bottom = { 0.227, 0.165, 0.122 }, line = { 0.78, 0.56, 0.36 },
     badgeBg = { 0.35, 0.16, 0.06 }, badgeEdge = { 0.63, 0.34, 0.12 }, badgeText = { 1, 0.81, 0.6 },
     title = { 0.95, 0.90, 0.84 }, note = { 0.80, 0.71, 0.60 },
+    neutral = { bg = { 0.11, 0.078, 0.063 }, edge = { 0.30, 0.235, 0.188 }, text = { 0.87, 0.73, 0.56 } },
 }
+STRIP.warning = { bg = STRIP.badgeBg, edge = STRIP.badgeEdge, text = STRIP.badgeText }
 UI.TITLE_STRIP = STRIP
 
 function UI.TitleStrip(parent, height)
@@ -153,12 +157,9 @@ function UI.TitleStrip(parent, height)
     s.title:SetTextColor(STRIP.title[1], STRIP.title[2], STRIP.title[3])
     s.badge = CreateFrame("Frame", nil, s, "BackdropTemplate")
     s.badge:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
-    s.badge:SetBackdropColor(STRIP.badgeBg[1], STRIP.badgeBg[2], STRIP.badgeBg[3], 1)
-    s.badge:SetBackdropBorderColor(STRIP.badgeEdge[1], STRIP.badgeEdge[2], STRIP.badgeEdge[3], 1)
     s.badge:SetPoint("LEFT", s.title, "RIGHT", 8, 0)
     s.badge.text = s.badge:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     s.badge.text:SetPoint("CENTER")
-    s.badge.text:SetTextColor(STRIP.badgeText[1], STRIP.badgeText[2], STRIP.badgeText[3])
     s.note = s:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     s.note:SetPoint("LEFT", s.badge, "RIGHT", 8, 0)
     s.note:SetTextColor(STRIP.note[1], STRIP.note[2], STRIP.note[3])
@@ -166,8 +167,12 @@ function UI.TitleStrip(parent, height)
     function s:SetTitle(text)
         self.title:SetText(text or "")
     end
-    function s:SetBadge(text, note)
+    function s:SetBadge(text, note, colors)
         if text and text ~= "" then
+            local c = colors or STRIP.warning
+            self.badge:SetBackdropColor(c.bg[1], c.bg[2], c.bg[3], 1)
+            self.badge:SetBackdropBorderColor(c.edge[1], c.edge[2], c.edge[3], 1)
+            self.badge.text:SetTextColor(c.text[1], c.text[2], c.text[3])
             self.badge.text:SetText(text)
             self.badge:SetSize(self.badge.text:GetStringWidth() + 12, 16)
             self.badge:Show()

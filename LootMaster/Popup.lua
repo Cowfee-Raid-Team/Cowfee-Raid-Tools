@@ -383,13 +383,10 @@ local function build()
     header.help = UI.Help(header, TEXT.title, TEXT.help)
     header.help:SetPoint("RIGHT", -6, 0)
     -- everyone's answers and rolls, read only (LootMaster/RaiderWindow.lua)
-    header.answers = CreateFrame("Button", nil, header, "UIPanelButtonTemplate")
-    header.answers:SetSize(130, 18)
-    header.answers:SetPoint("RIGHT", header.help, "LEFT", -6, 0)
-    header.answers:SetText(TEXT.answers)
-    header.answers:SetScript("OnClick", function()
+    header.answers = UI.PanelButton(header, TEXT.answers, 18, function()
         LM:ShowAnswers()
     end)
+    header.answers:SetPoint("RIGHT", header.help, "LEFT", -6, 0)
     -- "N items you can't use were answered Transmog for you. Show": shown only when there are any
     autoLine = CreateFrame("Frame", nil, anchor, "BackdropTemplate")
     autoLine:SetSize(L.width, L.autoH)
@@ -398,13 +395,10 @@ local function build()
     autoLine.text = autoLine:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     autoLine.text:SetPoint("LEFT", L.pad, 0)
     autoLine.text:SetTextColor(0.8, 0.75, 0.65)
-    autoLine.show = CreateFrame("Button", nil, autoLine, "UIPanelButtonTemplate")
-    autoLine.show:SetSize(70, 18)
-    autoLine.show:SetPoint("LEFT", autoLine.text, "RIGHT", 8, 0)
-    autoLine.show:SetText(TEXT.showAuto)
-    autoLine.show:SetScript("OnClick", function()
+    autoLine.show = UI.PanelButton(autoLine, TEXT.showAuto, 18, function()
         LM:ShowAutoItems()
     end)
+    autoLine.show:SetPoint("LEFT", autoLine.text, "RIGHT", 8, 0)
     autoLine:Hide()
     -- the timers: each open panel's background and time left, once a second is plenty for the text
     local elapsed = 0
@@ -437,7 +431,12 @@ local function refresh()
     end
     build()
     header:SetTitle(TEXT.title)
-    header:SetBadge(inc.test and TEXT.test or nil, TEXT.testNote)
+    -- TEST for a test, else the boss you saw killed just before (LM:RecentBoss)
+    if inc.test then
+        header:SetBadge(TEXT.test, TEXT.testNote)
+    else
+        header:SetBadge(inc.boss, nil, UI.TITLE_STRIP.neutral)
+    end
     local open = openItems(inc)
     local shown = {}
     local y = L.headerH + L.gap -- panels can be taller when their buttons wrap, so they stack by height

@@ -41,6 +41,9 @@ local TEXT = {
 local ROLE_TEXT = { T = "Tank", H = "Heal", D = "DPS", N = "" }
 
 local win, list, header, tabs
+local ticker -- refreshes the window while it is shown
+local refresh
+local REFRESH_SECONDS = 1
 local current = 1
 
 local function settings()
@@ -164,9 +167,23 @@ local function build()
     v:SetElementInitializer("Frame", initRow)
     ScrollUtil.InitScrollBoxListWithScrollBar(box, bar, v)
     list = box
+    -- while it is shown, once a second, so an item whose time ran out turns orange without a message
+    win:HookScript("OnShow", function()
+        if not ticker then
+            ticker = C_Timer.NewTicker(REFRESH_SECONDS, function()
+                refresh()
+            end)
+        end
+    end)
+    win:HookScript("OnHide", function()
+        if ticker then
+            ticker:Cancel()
+            ticker = nil
+        end
+    end)
 end
 
-local function refresh()
+refresh = function() -- declared above, for the ticker
     local inc = LM.incoming
     if not (win and win:IsShown() and inc and inc.view) then
         return
@@ -176,13 +193,14 @@ local function refresh()
         current = 1
     end
     win.strip:SetTitle(TEXT.title)
-    win.strip:SetBadge(inc.test and TEXT.test or nil, TEXT.note)
+    -- TEST for a test, else the boss you saw killed just before (LM:RecentBoss)
+    win.strip:SetBadge(inc.test and TEXT.test or inc.boss, TEXT.note, not inc.test and UI.TITLE_STRIP.neutral or nil)
     if not inc.test then
         win.strip.note:SetText(TEXT.note)
         win.strip.note:Show()
     end
     tabs:Update(inc.items, current, function(i)
-        return view:Answered(i)
+        return view:AnswerCount(i)
     end, function(name)
         return view.players[name] and view.players[name].class
     end)
