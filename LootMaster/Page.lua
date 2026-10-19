@@ -20,7 +20,11 @@ local L = {
     sliderLabel = 118, sliderW = 110,
     scoreRow = 20,
     authorityRows = 6, -- named players with loot authority
+    -- the Loot authority Add row: "Add", the guild dropdown, then a box filling the rest of the column
+    addLabel = 30, addPick = 146, addGap = 12, addEdge = 4, -- addGap: the box's border art starts ~5 left of it
+    dropdownGap = 5, -- UI.Dropdown's gap between its label and the dropdown
 }
+L.col3W = UI.PAGE_W - L.col3 - 8 -- the third column, to the page's right margin
 
 local TEXT = {
     title = "Loot Master",
@@ -54,6 +58,7 @@ local TEXT = {
     authorityAlso = "Also these players:",
     authorityAdd = "Add",
     authorityPick = "Pick a guild member",
+    authorityType = "Type a name",
     authorityNone = "(nobody yet)",
     late = "Late", per10 = "Per 10 min", noShow = "No-show", recover = "Back each week", weeks = "Count the last",
     colLabel = "Label", colWeight = "Weight", colIcon = "Icon",
@@ -123,11 +128,18 @@ local function check(f, x, y, text, get, set)
     return c
 end
 
-local function editBox(parent, width, onCommit)
+-- placeholder (optional): grey text shown in the empty box while it doesn't have focus.
+local function editBox(parent, width, onCommit, placeholder)
     local e = CreateFrame("EditBox", nil, parent, "InputBoxTemplate")
     e:SetAutoFocus(false)
     e:SetFontObject(CRTFontHighlight)
     e:SetSize(width, 20)
+    local hint
+    local function showHint()
+        if hint then
+            hint:SetShown(not e:HasFocus() and (e:GetText() or "") == "")
+        end
+    end
     local function commit(self)
         self:ClearFocus()
         onCommit(strtrim(self:GetText() or ""))
@@ -135,11 +147,33 @@ local function editBox(parent, width, onCommit)
     e:SetScript("OnEnterPressed", commit)
     e:SetScript("OnEditFocusLost", function(self)
         onCommit(strtrim(self:GetText() or ""))
+        showHint()
     end)
     e:SetScript("OnEscapePressed", function(self)
         self:ClearFocus()
     end)
+    if placeholder then
+        hint = e:CreateFontString(nil, "OVERLAY", "CRTFontHighlight")
+        hint:SetPoint("LEFT", 1, 0)
+        hint:SetTextColor(0.5, 0.5, 0.5)
+        hint:SetText(placeholder)
+        e:SetScript("OnEditFocusGained", showHint)
+        e:SetScript("OnTextChanged", showHint)
+        e.showHint = showHint
+    end
     return e
+end
+
+-- Makes an edit box as tall as another control, its template's border art too (the art keeps its own
+-- height otherwise). Art the template doesn't have is skipped.
+local function matchHeight(e, h)
+    e:SetHeight(h)
+    for _, key in ipairs({ "Left", "Middle", "Right" }) do
+        local art = e[key]
+        if type(art) == "table" and art.SetHeight then
+            art:SetHeight(h)
+        end
+    end
 end
 
 -- Tonight -------------------------------------------------------------------------------------------
@@ -676,7 +710,7 @@ local function buildSettings(f)
         end
     end
     pick = UI.Dropdown(f, TEXT.authorityAdd, {
-        labelWidth = 30, width = 170, maxHeight = 300,
+        labelWidth = L.addLabel, width = L.addPick, maxHeight = 300,
         options = function()
             local out = { { key = "", label = TEXT.authorityPick } }
             local Groups = CRT.Groups
@@ -697,11 +731,15 @@ local function buildSettings(f)
             add(v)
         end,
     })
-    pick:SetPoint("TOPLEFT", L.col3, ay - 66 - L.authorityRows * 18 - 4)
-    local typed = editBox(f, 110, function(text)
+    pick:SetPoint("TOPLEFT", rows[1], "BOTTOMLEFT", -8, -2) -- moved under the last name by the refresher
+    -- the box fills the rest of the column, as tall as the dropdown and centred on it
+    local boxW = L.col3W - L.addLabel - L.dropdownGap - L.addPick - L.addGap - L.addEdge
+    local typed = editBox(f, boxW, function(text)
         add(text)
-    end)
-    typed:SetPoint("LEFT", pick, "RIGHT", 6, 0)
+    end, TEXT.authorityType)
+    local dropH = pick.Dropdown:GetHeight()
+    matchHeight(typed, (dropH and dropH >= 16) and dropH or 26)
+    typed:SetPoint("LEFT", pick.Dropdown, "RIGHT", L.addGap, 0)
     refreshers[#refreshers + 1] = function()
         local names = auth().names
         for i, r in ipairs(rows) do
@@ -709,9 +747,13 @@ local function buildSettings(f)
             r.text:SetText(names[i] or ("|cff9c8a78" .. TEXT.authorityNone .. "|r"))
             r.remove:SetShown(names[i] ~= nil)
         end
+        -- the Add row sits just under the last name shown
+        pick:ClearAllPoints()
+        pick:SetPoint("TOPLEFT", rows[math.max(1, math.min(#names, L.authorityRows))], "BOTTOMLEFT", -8, -2)
         if not typed:HasFocus() then
             typed:SetText("")
         end
+        typed.showHint()
     end
 end
 
