@@ -106,11 +106,11 @@ local function responseButton(parent, r)
     b.text = b:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     b.text:SetTextColor(math.min(1, c[1] * 0.5 + 0.5), math.min(1, c[2] * 0.5 + 0.5), math.min(1, c[3] * 0.5 + 0.5))
     b.text:SetText(r.label)
-    if r.icon then
+    if LM.Icon(r.icon) then
         local t = b:CreateTexture(nil, "OVERLAY")
         t:SetSize(L.button.icon, L.button.icon)
         t:SetPoint("LEFT", 4, 0)
-        t:SetTexture(r.icon)
+        LM.SetIconTexture(t, r.icon)
         b.text:SetPoint("LEFT", t, "RIGHT", 3, 0)
     else
         b.text:SetPoint("CENTER")

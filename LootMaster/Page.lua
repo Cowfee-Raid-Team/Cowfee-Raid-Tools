@@ -39,7 +39,7 @@ local TEXT = {
     scoreHelp = "Built from the Late Tracker's saved nights: everyone starts at 100, a late arrival and a no-show cost points, and points come back every week. Change the weights on the Settings tab. Players with no night in the time counted have no score.",
     scoreEmpty = "No Late Tracker nights in the time counted yet.",
     responses = "Response buttons",
-    responsesHelp = "The buttons raiders see, in this order. Weight sorts the looter's list, higher first. Click the colour to change it. Icon takes a texture path or a file ID, shown inside the button. At most 8 buttons; Pass is always last, weighs 0 and can't be removed.\n\nYour buttons are sent with each session you start, so raiders always see the leader's set.",
+    responsesHelp = "The buttons raiders see, in this order. Weight sorts the looter's list, higher first. Click the colour to change it. Icon picks one of the game's loot icons (Need, Greed, Transmog, Disenchant, Pass), shown inside the button. At most 8 buttons; Pass is always last, weighs 0 and can't be removed.\n\nYour buttons are sent with each session you start, so raiders always see the leader's set.",
     add = "Add", reset = "Defaults",
     looting = "Looting",
     lootingHelp = "How long raiders have to answer an item before its popup closes.",
@@ -49,8 +49,10 @@ local TEXT = {
     showScore = "Show the Score column",
     late = "Late", per10 = "Per 10 min", noShow = "No-show", recover = "Back each week", weeks = "Count the last",
     colLabel = "Label", colWeight = "Weight", colIcon = "Icon",
+    noIcon = "No icon",
+    guildStream = "Guild: %s",
     award = "Award message",
-    awardHelp = "Sent when you give an item out. %i is the item, %p the player, %r what it was rolled as (Need, Greed, Disenchant) or else their answer, and %v their roll. When the place you pick isn't open to you (Raid out of a raid, a channel you left, chat locked in an encounter), only you see it, with the reason. In a test only you see it.",
+    awardHelp = "Sent when you give an item out. %i is the item, %p the player, %r what it was rolled as (Need, Greed, Disenchant) or else their answer, and %v their roll. Your guild's own channels (from the Guild & Communities window) are listed too; picking one adds it to your chat so CRT can post there. When the place you pick isn't open to you (Raid out of a raid, a channel you left, chat locked in an encounter), only you see it, with the reason. In a test only you see it.",
     awardVars = "%i item   %p player   %r roll type   %v roll",
     channel = "Send to",
     noRoll = "If no roll, %v is",
@@ -297,6 +299,7 @@ end
 -- Settings -------------------------------------------------------------------------------------------
 
 local respRows = {}
+local NO_ICON = "~none~" -- the icon dropdown's key for no icon
 
 -- A small square button with a character on it (move up / down).
 local function smallButton(parent, text)
@@ -349,18 +352,30 @@ local function responseRow(f, i)
     r.weight:SetPoint("LEFT", r.label, "RIGHT", 10, 0)
     r.weight:SetNumeric(true)
     r.weight:SetMaxLetters(3)
-    r.icon = editBox(r, L.icon, function(text)
-        if r.key then
-            LM:UpdateResponse(r.key, { icon = tonumber(text) or text })
-        end
-    end)
-    r.icon:SetPoint("LEFT", r.weight, "RIGHT", 10, 0)
-    r.preview = r:CreateTexture(nil, "ARTWORK")
-    r.preview:SetSize(18, 18)
-    r.preview:SetPoint("LEFT", r.icon, "RIGHT", 6, 0)
+    -- the icon: a dropdown of Blizzard's group loot icons, each shown in the list
+    r.icon = UI.Dropdown(r, "", {
+        labelWidth = 0, width = L.icon,
+        options = function()
+            local out = { { key = NO_ICON, label = TEXT.noIcon } }
+            for _, ic in ipairs(LM.ICONS) do
+                out[#out + 1] = { key = ic.key, label = LM.IconMarkup(ic.key, 16) .. " " .. ic.label }
+            end
+            return out
+        end,
+        get = function()
+            local resp = r.key and LM:Response(r.key)
+            return resp and resp.icon or NO_ICON
+        end,
+        set = function(v)
+            if r.key then
+                LM:UpdateResponse(r.key, { icon = v == NO_ICON and "" or v })
+            end
+        end,
+    })
+    r.icon:SetPoint("LEFT", r.weight, "RIGHT", 6, 0)
     r.remove = CreateFrame("Button", nil, r, "UIPanelCloseButton")
     r.remove:SetSize(20, 20)
-    r.remove:SetPoint("LEFT", r.preview, "RIGHT", 4, 0)
+    r.remove:SetPoint("LEFT", r.icon, "RIGHT", 4, 0)
     UI:SkinCloseButton(r.remove)
     r.up:SetScript("OnClick", function()
         LM:MoveResponse(r.key, -1)
@@ -433,11 +448,7 @@ local function buildSettings(f)
                 if not r.weight:HasFocus() then
                     r.weight:SetText(tostring(resp.weight))
                 end
-                if not r.icon:HasFocus() then
-                    r.icon:SetText(resp.icon and tostring(resp.icon) or "")
-                end
-                r.preview:SetTexture(resp.icon)
-                r.preview:SetShown(resp.icon ~= nil)
+                r.icon.refresh()
                 local pass = resp.key == "pass"
                 r.weight:SetEnabled(not pass)
                 r.remove:SetShown(not pass)
@@ -496,11 +507,16 @@ local function buildSettings(f)
             for _, c in ipairs(TEXT.channels) do
                 out[#out + 1] = c
             end
-            -- chat channels you have joined: GetChannelList gives id, name, disabled for each
+            -- your guild's own channels (Guild & Communities), joined as chat when picked
+            for _, st in ipairs(LM.GuildStreams()) do
+                out[#out + 1] = { key = st.key, label = TEXT.guildStream:format(st.name) }
+            end
+            -- chat channels you have joined: GetChannelList gives id, name, disabled for each (guild
+            -- channels added to chat show as Community:..., listed above by their names instead)
             local list = { GetChannelList() }
             for i = 1, #list, 3 do
                 local name = list[i + 1]
-                if type(name) == "string" and name ~= "" then
+                if type(name) == "string" and name ~= "" and not name:find("^Community:") then
                     out[#out + 1] = { key = "CHANNEL:" .. name, label = list[i] .. ". " .. name }
                 end
             end
@@ -511,6 +527,7 @@ local function buildSettings(f)
         end,
         set = function(v)
             LM:Settings().awardChannel = v
+            LM.JoinStream(v) -- a guild channel is joined now, so the first award can go there
         end,
     })
     channel:SetPoint("TOPLEFT", L.col2, -142)

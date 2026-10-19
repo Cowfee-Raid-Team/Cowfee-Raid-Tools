@@ -213,6 +213,7 @@ end
 -- joined, "SELF" (only you) or "NONE". When the place isn't open to you (RAID out of a raid, GUILD with no
 -- guild, a channel you left, chat locked during an encounter) it is shown only to you, saying why.
 local CHAT = (C_ChatInfo and C_ChatInfo.SendChatMessage) or SendChatMessage
+local COMMUNITY_CHANNEL -- set with the guild channel code below
 
 local function where(channel)
     if channel == "NONE" then
@@ -226,8 +227,55 @@ local function where(channel)
     elseif type(channel) == "string" and channel:find("^CHANNEL:") then
         local id = GetChannelName(channel:sub(9))
         return (id and id > 0) and "CHANNEL" or nil, "you are not in that channel", id
+    elseif type(channel) == "string" and channel:find("^COMMUNITY:") then
+        local club, stream = channel:match("^COMMUNITY:([^:]+):([^:]+)$")
+        local id = club and GetChannelName(COMMUNITY_CHANNEL:format(club, stream))
+        if not (id and id > 0) then
+            LM.JoinStream(channel) -- joined now, ready for the next award
+        end
+        return (id and id > 0) and "CHANNEL" or nil, "joining the guild channel, the next award goes there", id
     end
     return nil
+end
+
+-- Guild channels ---------------------------------------------------------------------------------------
+
+-- A guild's channels (the Guild & Communities window's streams) can't be posted to by an addon directly
+-- (C_Club.SendMessage is protected since 8.1). Once added to chat (C_Club.AddClubStreamChatChannel, what
+-- "Add to Chat Window" does), a stream is a chat channel named "Community:<clubId>:<streamId>"
+-- (Blizzard's ChatFrameUtil.GetCommunitiesChannelName), and a click can post to it as CHANNEL.
+COMMUNITY_CHANNEL = "Community:%s:%s" -- the local declared above where()
+
+-- The guild's channels other than Guild and Officer (those are chat types already):
+-- { { key = "COMMUNITY:<club>:<stream>", name } }. Empty with no guild, or while chat is locked.
+function LM.GuildStreams()
+    local out = {}
+    if not (C_Club and C_Club.GetGuildClubId and C_Club.GetStreams) then
+        return out
+    end
+    local ok, club = pcall(C_Club.GetGuildClubId)
+    if not ok or not club then
+        return out
+    end
+    local ok2, streams = pcall(C_Club.GetStreams, club)
+    if not ok2 or type(streams) ~= "table" then
+        return out
+    end
+    local skip = Enum and Enum.ClubStreamType or {}
+    for _, st in ipairs(streams) do
+        if st.streamType ~= skip.Guild and st.streamType ~= skip.Officer and type(st.name) == "string" then
+            out[#out + 1] = { key = "COMMUNITY:" .. tostring(club) .. ":" .. tostring(st.streamId), name = st.name }
+        end
+    end
+    return out
+end
+
+-- Joins a guild channel as a chat channel, so awards can be posted to it.
+function LM.JoinStream(key)
+    local club, stream = tostring(key or ""):match("^COMMUNITY:([^:]+):([^:]+)$")
+    if club and C_Club and C_Club.AddClubStreamChatChannel then
+        pcall(C_Club.AddClubStreamChatChannel, club, stream)
+    end
 end
 
 function LM:AwardText(s, index, name, response)

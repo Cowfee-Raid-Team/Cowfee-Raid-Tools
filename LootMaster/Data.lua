@@ -26,8 +26,52 @@ LM.MAX_RESPONSES = 8
 LM.LABEL_MAX = 16 -- letters in a button's label
 LM.WEIGHT_MAX = 100
 
+-- The icons a response button can show: Blizzard's group loot icons, each seen in game with
+-- /crt dev loot probe icons on 2026-10-18 (files from the loot frames, the transmog one an atlas from
+-- retail's GroupLootFrame.xml). A response stores the key.
+LM.ICONS = {
+    { key = "need", label = "Need", file = "Interface\\Buttons\\UI-GroupLoot-Dice-Up" },
+    { key = "greed", label = "Greed", file = "Interface\\Buttons\\UI-GroupLoot-Coin-Up" },
+    { key = "transmog", label = "Transmog", atlas = "lootroll-toast-icon-transmog-up" },
+    { key = "de", label = "Disenchant", file = "Interface\\Buttons\\UI-GroupLoot-DE-Up" },
+    { key = "pass", label = "Pass", file = "Interface\\Buttons\\UI-GroupLoot-Pass-Up" },
+}
+local iconByKey = {}
+for _, ic in ipairs(LM.ICONS) do
+    iconByKey[ic.key] = ic
+    iconByKey[ic.label:lower()] = ic
+end
+
+-- The icon for a key (or its label, any case), or nil.
+function LM.Icon(key)
+    return type(key) == "string" and iconByKey[key:lower()] or nil
+end
+
+-- Shows an icon on a texture (a file or an atlas); hides the texture for no icon.
+function LM.SetIconTexture(texture, key)
+    local ic = LM.Icon(key)
+    if ic and ic.atlas then
+        texture:SetAtlas(ic.atlas)
+    else
+        texture:SetTexture(ic and ic.file or nil)
+    end
+    texture:SetShown(ic ~= nil)
+end
+
+-- The icon as text markup, for menus and labels.
+function LM.IconMarkup(key, size)
+    local ic = LM.Icon(key)
+    size = size or 16
+    if not ic then
+        return ""
+    elseif ic.atlas then
+        return string.format("|A:%s:%d:%d|a", ic.atlas, size, size)
+    end
+    return string.format("|T%s:%d:%d|t", ic.file, size, size)
+end
+
 -- The default buttons, in the order raiders see them; weight sorts the looter's list (higher first).
--- icon (optional): a texture path or file ID shown at the left of the button. Pass is always last, can't
+-- icon (optional): a key of LM.ICONS, shown at the left of the button. Pass is always last, can't
 -- be removed, and weighs 0. Your own set is saved in CRTDB lootmaster.responses only once you change it
 -- (Settings tab), so a default can still change in a later version for everyone who never edited it.
 LM.DEFAULT_RESPONSES = {
@@ -64,6 +108,8 @@ function LM.CleanResponses(list)
             local c = copyResponse(r)
             c.label = tostring(c.label or c.key):sub(1, LM.LABEL_MAX)
             c.weight = math.max(0, math.min(LM.WEIGHT_MAX, math.floor(tonumber(c.weight) or 0)))
+            local ic = LM.Icon(c.icon) -- only known icons; an old typed path or name is matched or dropped
+            c.icon = ic and ic.key or nil
             if c.key == "pass" then
                 c.weight = 0
                 pass = c
