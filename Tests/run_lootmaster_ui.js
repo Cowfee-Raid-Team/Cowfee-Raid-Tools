@@ -6,7 +6,7 @@ const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate();
 lualib.luaL_openlibs(L);
 const harness = `
-local panelSrc, windowSrc, tabsSrc = ...
+local panelSrc, windowSrc, tabsSrc, popupSrc = ...
 local fails, passes = 0, 0
 local function check(ok, what) if ok then passes = passes + 1 else fails = fails + 1 print("FAIL " .. what) end end
 local function eq(a, b, what) check(a == b, what .. " (got " .. tostring(a) .. ", want " .. tostring(b) .. ")") end
@@ -24,6 +24,7 @@ local function mock()
     SetTextColor = function(self, r, g, b) self.color = { r, g, b } end,
     SetBackdropColor = function(self, r, g, b) self.bg = { r, g, b } end,
     SetBackdropBorderColor = function(self, r, g, b) self.edge = { r, g, b } end,
+    SetAlpha = function(self, a) self.alpha = a end,
     Show = function(self) self.shown = true end,
     Hide = function(self) self.shown = false end,
     SetShown = function(self, v) self.shown = v and true or false end,
@@ -55,6 +56,11 @@ CRT.MOCHA = { roast = { 0.165, 0.122, 0.098 }, edge = { 0.30, 0.235, 0.188 }, ca
 assert(load(panelSrc, "Panel.lua"))("CowfeeRaidTools", CRT)
 assert(load(windowSrc, "Window.lua"))("CowfeeRaidTools", CRT)
 assert(load(tabsSrc, "Tabs.lua"))("CowfeeRaidTools", CRT)
+local itemInfo = {}
+CRT.LootMaster.OnChange = function() end
+C_Item.GetItemInfoInstant = function(s) local i = itemInfo[s] or {} return 1, "", i.sub, i.loc, 0, i.class, i.subclass end
+INVTYPE_WAIST, MISCELLANEOUS = "Waist", "Miscellaneous"
+assert(load(popupSrc, "Popup.lua"))("CowfeeRaidTools", CRT)
 local UI, LM = CRT.UI, CRT.LootMaster
 local STRIP = UI.TITLE_STRIP
 
@@ -71,6 +77,43 @@ check(type(pb.crtSkin) == "function", "panel button: has the skin switch")
 pb.scripts.OnClick()
 check(clicked, "panel button: the click runs")
 eq(UI.PanelButton(mock(), "x", 18).w, UI.PANEL_BUTTON_MIN_W, "panel button: a short label gets the minimum width")
+
+-- the header button: the game's red button in Classic, the Reset look in Minimal and Modern; an icon in all three
+local function looks(btn, what, flat, w, h)
+  CRT.db.ui.modern, CRT.db.ui.style = flat == "modern", flat == "minimal" and "minimal" or nil
+  for _, c in ipairs(UI.skinned) do c.crtSkin(CRT.db.ui.modern) end
+  eq(btn.w, w, what .. ": width") eq(btn.h, h, what .. ": height")
+  eq(btn.Left.alpha, flat == "classic" and 1 or 0, what .. ": template art")
+end
+local hb = UI.HeaderButton(mock(), "All Loot Rolls", function() clicked = false end)
+local lw = 14 * 6
+looks(hb, "header classic", "classic", lw + 2 * UI.HEADER_BUTTON_CLASSIC_PAD, 20)
+looks(hb, "header minimal", "minimal", lw + 2 * UI.HEADER_BUTTON_PAD, 16)
+looks(hb, "header modern", "modern", lw + 2 * UI.HEADER_BUTTON_PAD, 16)
+local sh = UI.HeaderButton(mock(), "Go", function() end)
+looks(sh, "short header", "minimal", 44, 16)
+local ib = UI.HeaderButton(mock(), "Rolls", function() end, { icon = "need" })
+for _, look in ipairs({ "classic", "minimal", "modern" }) do
+  local c = look == "classic"
+  looks(ib, "icon " .. look, look, 45 + 2 * (c and UI.HEADER_BUTTON_CLASSIC_PAD or UI.HEADER_BUTTON_PAD), c and 20 or 16)
+  check(ib.icon and ib.icon.shown, "header button icon kept in " .. look)
+end
+hb.scripts.OnClick()
+check(not clicked, "header button: the click runs")
+local rb = UI.ResetButton(mock(), function() end)
+looks(rb, "reset minimal", "minimal", math.max(44, 5 * 6 + 16), 16)
+eq(rb.label.text, "Reset", "reset button: its label")
+check(type(rb.scripts.OnEnter) == "function", "reset button: keeps its tooltip")
+looks(rb, "reset classic", "classic", 30 + 2 * UI.HEADER_BUTTON_CLASSIC_PAD, 20)
+
+-- the popup's detail line
+LM.MyGear = function() return {} end
+itemInfo.waist = { sub = "Leather", loc = "INVTYPE_WAIST", class = 4, subclass = 2 }
+itemInfo.junk = { sub = "Junk", loc = "INVTYPE_NON_EQUIP_IGNORE", class = 15, subclass = 0 }
+local junk = LM.DetailText({ itemString = "junk", ilvl = 75 })
+check(not junk:find("^, ") and not junk:find(", Junk") and not junk:find("You have"), "detail: junk has no slot text and no 'You have' (" .. junk .. ")")
+local waist = LM.DetailText({ itemString = "waist", ilvl = 318 })
+check(waist:find("Waist, Leather", 1, true) and waist:find("You have: nothing in that slot", 1, true), "detail: a normal item is unchanged (" .. waist .. ")")
 
 -- the badge: the old call is unchanged, a colour makes it the neutral boss badge
 local s = UI.TitleStrip(mock(), 24)
@@ -108,5 +151,5 @@ if fails > 0 then error("failures") end
 `;
 const dir = process.argv[2];
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
-for (const f of ['UI/Panel.lua', 'UI/Window.lua', 'LootMaster/Tabs.lua']) lua.lua_pushstring(L, to_luastring(fs.readFileSync(path.join(dir, f), 'utf8')));
-if (lua.lua_pcall(L, 3, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
+for (const f of ['UI/Panel.lua', 'UI/Window.lua', 'LootMaster/Tabs.lua', 'LootMaster/Popup.lua']) lua.lua_pushstring(L, to_luastring(fs.readFileSync(path.join(dir, f), 'utf8')));
+if (lua.lua_pcall(L, 4, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }

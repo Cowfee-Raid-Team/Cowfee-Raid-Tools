@@ -788,36 +788,112 @@ function UI.Help(parent, title, text)
     return b
 end
 
--- A small "Reset" button for the header bar of a window you can drag. It puts the window back where
--- it starts, and is shown with the bar (or by the window, during Previews). onClick does the reset.
-function UI.ResetButton(parent, onClick)
-    local b = CreateFrame("Button", nil, parent, "BackdropTemplate")
-    b:SetSize(44, 16)
-    b:SetFrameLevel((parent:GetFrameLevel() or 1) + 5)
-    b:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
-    b:SetBackdropColor(0, 0, 0, 0.6)
-    b:SetBackdropBorderColor(0.6, 0.6, 0.6, 1)
-    local text = b:CreateFontString(nil, "OVERLAY", "CRTFontButtonSmall")
-    text:SetPoint("CENTER")
-    text:SetText("Reset")
-    b:SetHighlightTexture("Interface\\Buttons\\WHITE8X8")
-    local highlight = b:GetHighlightTexture()
-    if highlight then
-        highlight:SetVertexColor(1, 1, 1, 0.15)
+-- A small button for a window's header bar. In the Minimal and Modern looks it is the Reset button's
+-- look: dark fill, grey edge, small text, 16 high. In the Classic look it is the game's red panel button,
+-- like Previews, 20 high. Its width comes from the label (plus the icon, if any) and padding, never under
+-- UI.HEADER_BUTTON_MIN_W. opts: icon (an LM.ICONS key or a texture path, shown left of the label in every
+-- look), tipTitle and tipText (a tooltip). It sits above its parent's own parts, so a bar can hold it.
+UI.HEADER_BUTTON_H = 16 -- Minimal and Modern
+UI.HEADER_BUTTON_CLASSIC_H = 20
+UI.HEADER_BUTTON_MIN_W = 44
+UI.HEADER_BUTTON_PAD = 8 -- each side, flat looks
+UI.HEADER_BUTTON_CLASSIC_PAD = 14 -- each side, the template's end caps
+UI.HEADER_BUTTON_ICON = 12
+UI.HEADER_BUTTON_ICON_GAP = 3
+
+-- True for the looks that are flat: Modern, and Classic with the Minimal black style.
+function UI:IsFlat()
+    if self:IsModern() then
+        return true
     end
+    return CRT.db and CRT.db.ui and CRT.db.ui.style == "minimal" and true or false
+end
+
+function UI.HeaderButton(parent, label, onClick, opts)
+    opts = opts or {}
+    local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
+    b:SetFrameLevel((parent:GetFrameLevel() or 1) + 5)
+    if _G.CRTFontButtonSmall then
+        b:SetNormalFontObject(_G.CRTFontButtonSmall)
+        b:SetHighlightFontObject(_G.CRTFontButtonSmallHighlight or _G.CRTFontButtonSmall)
+        b:SetDisabledFontObject(_G.CRTFontButtonSmallDisable or _G.CRTFontButtonSmall)
+    end
+    b:SetText(label)
+    local fs = b:GetFontString()
+    local labelW = fs and fs:GetStringWidth() or 0
+    -- the icon, left of the label
+    local icon
+    if opts.icon then
+        icon = b:CreateTexture(nil, "OVERLAY")
+        icon:SetSize(UI.HEADER_BUTTON_ICON, UI.HEADER_BUTTON_ICON)
+        local LM = CRT.LootMaster
+        if LM and LM.Icon and LM.Icon(opts.icon) then
+            LM.SetIconTexture(icon, opts.icon)
+        else
+            icon:SetTexture(opts.icon)
+            icon:SetShown(true)
+        end
+        labelW = labelW + UI.HEADER_BUTTON_ICON + UI.HEADER_BUTTON_ICON_GAP
+    end
+    b.icon = icon
+    local bg, edges = flatSkin(b, 0)
+    local highlight = b:GetHighlightTexture()
+    local hover = b:CreateTexture(nil, "HIGHLIGHT")
+    hover:SetAllPoints(bg)
+    hover:SetColorTexture(1, 1, 1, 0.15)
+    b.crtSkin = function(modern)
+        local flat = modern or UI:IsFlat()
+        local pad = flat and UI.HEADER_BUTTON_PAD or UI.HEADER_BUTTON_CLASSIC_PAD
+        for _, art in ipairs({ b.Left, b.Middle, b.Right }) do
+            if type(art) == "table" then
+                art:SetAlpha(flat and 0 or 1)
+            end
+        end
+        if highlight then
+            highlight:SetAlpha(flat and 0 or 1)
+        end
+        hover:SetAlpha(flat and 1 or 0)
+        bg:SetShown(flat)
+        bg:SetColorTexture(0, 0, 0, 0.6)
+        for _, e in ipairs(edges) do
+            e:SetShown(flat)
+            e:SetColorTexture(0.6, 0.6, 0.6, 1)
+        end
+        b:SetSize(math.max(UI.HEADER_BUTTON_MIN_W, math.ceil(labelW) + 2 * pad), flat and UI.HEADER_BUTTON_H or UI.HEADER_BUTTON_CLASSIC_H)
+        if icon and fs then
+            icon:ClearAllPoints()
+            icon:SetPoint("LEFT", pad, 0)
+            fs:ClearAllPoints()
+            fs:SetPoint("LEFT", icon, "RIGHT", UI.HEADER_BUTTON_ICON_GAP, 0)
+        end
+    end
+    UI.skinned[#UI.skinned + 1] = b
+    b.crtSkin(UI:IsModern())
     b:SetScript("OnClick", function()
         onClick()
     end)
-    b:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_TOP")
-        GameTooltip:SetText("Reset position", 1, 1, 1)
-        GameTooltip:AddLine("Puts this window back where it starts.", 0.85, 0.85, 0.85, true)
-        GameTooltip:Show()
-    end)
-    b:SetScript("OnLeave", function()
-        GameTooltip:Hide()
-    end)
+    if opts.tipTitle then
+        b:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_TOP")
+            GameTooltip:SetText(opts.tipTitle, 1, 1, 1)
+            if opts.tipText then
+                GameTooltip:AddLine(opts.tipText, 0.85, 0.85, 0.85, true)
+            end
+            GameTooltip:Show()
+        end)
+        b:SetScript("OnLeave", function()
+            GameTooltip:Hide()
+        end)
+    end
     return b
+end
+
+-- A small "Reset" button for the header bar of a window you can drag. It puts the window back where
+-- it starts, and is shown with the bar (or by the window, during Previews). onClick does the reset.
+function UI.ResetButton(parent, onClick)
+    return UI.HeaderButton(parent, "Reset", onClick, {
+        tipTitle = "Reset position", tipText = "Puts this window back where it starts.",
+    })
 end
 
 -- Fades a frame out over seconds, then calls done (which hides it). Showing it again should call
