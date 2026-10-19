@@ -815,28 +815,22 @@ end
 
 -- The game's color picker on the draft's color; Cancel puts the old one back.
 local function pickColor()
-    if not (cur.draft and ColorPickerFrame and ColorPickerFrame.SetupColorPickerAndShow) then
+    if not (cur.draft and ColorPickerFrame) then
         return
     end
     local target = cur.draft -- a picker left open never writes into the next alert
     local before = cur.draft.color and CRT.AlertDraft.copy(cur.draft.color)
-    local c = cur.draft.color or WHITE
-    ColorPickerFrame:SetupColorPickerAndShow({
-        r = c[1], g = c[2], b = c[3], hasOpacity = false,
-        swatchFunc = function()
-            local r, g, b = ColorPickerFrame:GetColorRGB()
-            if cur.draft == target then
-                target.color = { r, g, b, 1 }
-                commit()
-            end
-        end,
-        cancelFunc = function()
-            if cur.draft == target then
-                target.color = before
-                commit()
-            end
-        end,
-    })
+    UI.PickColor(cur.draft.color or WHITE, function(c)
+        if cur.draft == target then
+            target.color = { c[1], c[2], c[3], 1 }
+            commit()
+        end
+    end, { cancel = function()
+        if cur.draft == target then
+            target.color = before
+            commit()
+        end
+    end })
 end
 
 local function makeButton(parent, label, width, height)

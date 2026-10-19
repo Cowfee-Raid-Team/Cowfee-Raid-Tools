@@ -404,7 +404,11 @@ function UI.PickColor(color, set, opts)
         set({ r, g, b, a })
     end
     local function cancel()
-        set({ before[1], before[2], before[3], before[4] })
+        if opts.cancel then
+            opts.cancel() -- the caller puts back what it had (an alert's colour may be none)
+        else
+            set({ before[1], before[2], before[3], before[4] })
+        end
     end
     if ColorPickerFrame.SetupColorPickerAndShow then
         ColorPickerFrame:SetupColorPickerAndShow({

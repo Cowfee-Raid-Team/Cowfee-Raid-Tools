@@ -1164,29 +1164,23 @@ end
 
 -- The game's color picker on the draft's color; Cancel puts the old one back.
 local function pickColor()
-    if not (draft and ColorPickerFrame and ColorPickerFrame.SetupColorPickerAndShow) or readOnly() then
+    if not (draft and ColorPickerFrame) or readOnly() then
         return
     end
     -- the alert open now: a picker left open never writes into the next one
     local target = draft
     local before = copy(draft.color)
-    local c = draft.color or { 1, 1, 1, 1 }
-    ColorPickerFrame:SetupColorPickerAndShow({
-        r = c[1], g = c[2], b = c[3], hasOpacity = false,
-        swatchFunc = function()
-            local r, g, b = ColorPickerFrame:GetColorRGB()
-            if draft and draft == target then
-                draft.color = { r, g, b, 1 }
-                changed()
-            end
-        end,
-        cancelFunc = function()
-            if draft and draft == target then
-                draft.color = copy(before)
-                changed()
-            end
-        end,
-    })
+    UI.PickColor(draft.color or { 1, 1, 1, 1 }, function(c)
+        if draft and draft == target then
+            draft.color = { c[1], c[2], c[3], 1 }
+            changed()
+        end
+    end, { cancel = function()
+        if draft and draft == target then
+            draft.color = copy(before)
+            changed()
+        end
+    end })
     -- the picker is DIALOG strata, below the editor: lift it over until it hides
     UI.LiftOver(ColorPickerFrame)
 end

@@ -362,33 +362,11 @@ local function makeColor(parent, label, slot, changed)
             return
         end
         local set = slot.opts.set -- this showing's settings, kept until the picker closes
-        local before = copyColor(slot.opts.get())
-        local function apply()
-            local r, g, b = ColorPickerFrame:GetColorRGB()
-            local a = ColorPickerFrame.GetColorAlpha and ColorPickerFrame:GetColorAlpha() or before[4]
-            set({ r, g, b, a })
+        -- the shared picker (UI/Controls.lua), with opacity; it puts the colour back on cancel
+        CRT.UI.PickColor(copyColor(slot.opts.get()), function(c)
+            set(c)
             changed()
-        end
-        local function cancel()
-            set(copyColor(before))
-            changed()
-        end
-        if ColorPickerFrame.SetupColorPickerAndShow then
-            ColorPickerFrame:SetupColorPickerAndShow({
-                r = before[1], g = before[2], b = before[3], opacity = before[4], hasOpacity = true,
-                swatchFunc = apply, opacityFunc = apply, cancelFunc = cancel,
-            })
-        else
-            ColorPickerFrame.hasOpacity = true
-            ColorPickerFrame.opacity = 1 - before[4] -- the older picker counts transparency
-            ColorPickerFrame.previousValues = { before[1], before[2], before[3], before[4] }
-            ColorPickerFrame.func = apply
-            ColorPickerFrame.opacityFunc = apply
-            ColorPickerFrame.cancelFunc = cancel
-            ColorPickerFrame:SetColorRGB(before[1], before[2], before[3])
-            ColorPickerFrame:Hide()
-            ColorPickerFrame:Show()
-        end
+        end, { hasOpacity = true })
     end)
     return row
 end
