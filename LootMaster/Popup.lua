@@ -29,17 +29,17 @@ local L = {
 local TEXT = {
     title = "Loot",
     test = "TEST",
-    testNote = "nothing is passed or traded",
+    testNote = "nothing is passed",
     autoOne = "%d item your specs can't use was answered %s for you.",
     autoMany = "%d items your specs can't use were answered %s for you.",
     showAuto = "Show",
+    answers = "Everyone's answers",
     autoAnswered = "Your specs can't use this: answered %s for you",
-    help = "Pick an answer for each item. Your pick goes to the raid leader, who gives the item out, and every button except Pass also does a /roll that everyone can see. You can change your answer until the time runs out.\n\nThe lighter part of each item's background is the time left. Close an item with its X or a right-click; drag any item to move them all.",
+    help = "Pick an answer for each item. Your pick goes to the looter, who gives the item out; every answer except Pass gets a roll from 1 to 100, drawn by the looter's CRT and shown in everyone's loot window (no /roll in chat). You can change your answer until the time runs out.\n\nThe lighter part of each item's background is the time left. Close an item with its X or a right-click; drag any item to move them all.",
     have = "You have: ",
     nothing = "nothing in that slot",
     sent = "Sent %s",
     rolled = "  ·  rolled %d",
-    rollAgain = "Roll again",
     awarded = "Given to %s (%s)",
     notes = "Notes:",
     timeLeft = "Time left: %d",
@@ -49,11 +49,18 @@ local TEXT = {
 
 local ROLE_LETTER = { TANK = "T", HEALER = "H", DAMAGER = "D" }
 
+-- Your role as a letter. The group role can be a secret value in combat (answering while trash is
+-- pulled), so anything unreadable falls back to your spec's role, then to "N".
+local function readable(v)
+    return not (issecretvalue and issecretvalue(v))
+end
+
 function LM:MyRole()
-    local role = UnitGroupRolesAssigned and UnitGroupRolesAssigned("player")
+    local ok, role = pcall(UnitGroupRolesAssigned or function() end, "player")
+    role = (ok and readable(role)) and role or nil
     if not ROLE_LETTER[role] and GetSpecialization and GetSpecializationRole then
-        local ok, r = pcall(GetSpecializationRole, GetSpecialization() or 0)
-        role = ok and r or role
+        local ok2, r = pcall(GetSpecializationRole, GetSpecialization() or 0)
+        role = (ok2 and readable(r)) and r or role
     end
     return ROLE_LETTER[role] or "N"
 end
@@ -258,19 +265,6 @@ local function panel(index)
     p.status:SetPoint("RIGHT", -L.pad, 0)
     p.status:SetJustifyH("LEFT")
     p.status:SetWordWrap(false)
-    p.reroll = CreateFrame("Button", nil, p, "UIPanelButtonTemplate")
-    p.reroll:SetSize(96, 22)
-    p.reroll:SetPoint("LEFT", p.note, "RIGHT", 10, 0)
-    p.reroll:SetText(TEXT.rollAgain)
-    p.reroll:SetScript("OnClick", function()
-        local inc = LM.incoming
-        local mine = inc and inc.mine[p.index]
-        if mine then
-            mine.reroll = nil
-        end
-        LM:RollFor(p.index)
-        LM:Fire("incoming")
-    end)
     panels[index] = p
     return p
 end
@@ -327,9 +321,6 @@ local function fill(p, index, it, mine, inc)
         local picked = mine and mine.response == b.response
         b:SetAlpha((award or (mine and mine.response and not picked)) and 0.5 or 1)
     end
-    local rerolling = mine and mine.reroll and not award
-    p.reroll:SetShown(rerolling and true or false)
-    p.status:SetShown(not rerolling)
     if award then
         local r = inc.byKey[award.response]
         p.status:SetText(string.format(TEXT.awarded, Ambiguate(award.name, "short"), r and r.label or award.response))
@@ -343,7 +334,7 @@ local function fill(p, index, it, mine, inc)
         p.status:SetText("")
     end
     -- answered: faded, but still there to change your mind until the time runs out
-    p:SetAlpha((mine and mine.response and not rerolling) and L.fadeAlpha or 1)
+    p:SetAlpha((mine and mine.response) and L.fadeAlpha or 1)
 end
 
 local function timeLeft(it, inc)
@@ -386,6 +377,14 @@ local function build()
     end)
     header.help = UI.Help(header, TEXT.title, TEXT.help)
     header.help:SetPoint("RIGHT", -6, 0)
+    -- everyone's answers and rolls, read only (LootMaster/RaiderWindow.lua)
+    header.answers = CreateFrame("Button", nil, header, "UIPanelButtonTemplate")
+    header.answers:SetSize(130, 18)
+    header.answers:SetPoint("RIGHT", header.help, "LEFT", -6, 0)
+    header.answers:SetText(TEXT.answers)
+    header.answers:SetScript("OnClick", function()
+        LM:ShowAnswers()
+    end)
     -- "N items your specs can't use were answered Transmog for you. Show": shown only when there are any
     autoLine = CreateFrame("Frame", nil, anchor, "BackdropTemplate")
     autoLine:SetSize(L.width, L.autoH)

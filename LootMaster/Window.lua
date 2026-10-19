@@ -11,8 +11,8 @@ local LM = CRT.LootMaster
 local UI = CRT.UI
 
 local L = {
-    width = 940, height = 460, minWidth = 760, minHeight = 300,
-    tab = 40, tabGap = 6, left = 52, -- item tabs, and where the list starts
+    width = 1040, height = 460, minWidth = 760, minHeight = 300,
+    left = LM.TAB_COLUMN + 14, -- the item tabs (LootMaster/Tabs.lua), then the list
     headerH = 50, rowH = 22,
 }
 
@@ -31,32 +31,29 @@ local COLS = {
 local TEXT = {
     title = "Loot Master",
     test = "TEST",
-    help = "Every raider's answer for the item picked on the left, best first: the answer's weight, then Raider Score, then the roll.\n\nRight-click a raider to give them the item, show their popup again (it didn't open, or ran out of time), ask them to roll again (only when no roll of theirs was seen), or clear their answer. Ctrl-click picks several raiders first.\n\nRight-click an item on the left to do that for everyone who still needs it.",
+    help = "Every raider's answer for the item picked on the left, best first: the answer's weight, then Raider Score, then the roll.\n\nRight-click a raider to give them the item, show their popup again (when they haven't answered: it didn't open, or ran out of time), roll again for them (CRT draws every roll, silently, and shows it to everyone), or clear their answer. Ctrl-click picks several raiders first.\n\nRight-click an item on the left to do that for everyone who still needs it.",
     answered = "%d of %d answered",
     awarded = "Given to %s for %s",
     endSession = "End session",
+    tradeHint = "Double-click to trade it to the winner (stand next to them).",
     waiting = "Choosing...",
     timeout = "No answer (timed out)",
     nocrt = "No CRT",
-    reroll = "Asked to roll again...",
-    noRoll = "none seen",
+    loading = "Loading...",
     auto = "auto",
     autoClasses = "Answered by %s's CRT: the item is only for %s, not their class. You can turn this off on the Settings tab.",
     autoArmor = "Answered by %s's CRT: the item is %s, not their class's armor type. You can turn this off on the Settings tab.",
     autoWhy = "Answered by %s's CRT: the game lists this item only for %s, and none of those is one of their specs. They can answer it themselves, and you can turn this off on the Settings tab.",
     awardFor = "Give for %s",
     resend = "Show their popup again",
-    rerollAsk = "Ask to roll again",
+    rerollAsk = "Roll again for them",
     clear = "Clear their answer",
     resendAll = "Show the popup again to everyone who hasn't answered (%d)",
-    rerollAll = "Ask everyone with no roll to roll again (%d)",
     selected = "%d raiders",
 }
 
-local DONE_ICON = "Interface\\RaidFrame\\ReadyCheck-Ready" -- an item that has been given out
-
 local win, list, header, sorter
-local tabs = {}
+local tabs -- LM.ItemTabs
 local loading = {} -- item IDs asked of the game, so the header fills in once each loads
 local current = 1 -- the item shown
 local selected = {} -- name -> true
@@ -113,7 +110,7 @@ local function rowMenu(row)
         end
         local canResend, canReroll = 0, 0
         for _, n in ipairs(picked) do
-            canResend = canResend + (s:CanResend(n) and 1 or 0)
+            canResend = canResend + (s:CanResend(n, index) and 1 or 0)
             canReroll = canReroll + (s:CanReroll(n, index) and 1 or 0)
         end
         local b = root:CreateButton(TEXT.resend .. (#picked > 1 and (" (" .. canResend .. ")") or ""), function()
@@ -121,14 +118,15 @@ local function rowMenu(row)
         end)
         b:SetEnabled(canResend > 0)
         b = root:CreateButton(TEXT.rerollAsk .. (#picked > 1 and (" (" .. canReroll .. ")") or ""), function()
-            LM:AskReroll(index, picked)
+            LM:Reroll(index, picked)
         end)
         b:SetEnabled(canReroll > 0)
         if #picked == 1 then
             b = root:CreateButton(TEXT.clear, function()
                 LM:ClearAnswer(index, picked[1])
             end)
-            b:SetEnabled(s:CanResend(picked[1]))
+            local pl = s.players[picked[1]]
+            b:SetEnabled((pl and pl.answers[index] and pl.answers[index].response) and true or false)
         end
     end)
 end
@@ -138,9 +136,8 @@ local function responseCell(r, s)
         return "|cffff8a40" .. TEXT.nocrt .. "|r"
     elseif r.state == "timeout" then
         return "|cffff6040" .. TEXT.timeout .. "|r"
-    elseif r.state == "reroll" then
-        local resp = s:Response(r.response)
-        return (resp and resp.label or "") .. "  |cffc78f5c" .. TEXT.reroll .. "|r"
+    elseif r.state == "loading" then
+        return "|cff9c8a78" .. TEXT.loading .. "|r"
     elseif r.response then
         local resp = s:Response(r.response)
         local c = resp.color
@@ -255,8 +252,8 @@ local function initRow(row, r)
     cols.note:SetText(r.note or "")
     if r.roll then
         cols.roll:SetText(tostring(r.roll))
-    elseif r.response and r.response ~= "pass" and r.state ~= "reroll" and not r.auto then
-        cols.roll:SetText("|cffff6040" .. TEXT.noRoll .. "|r")
+    elseif r.response and r.response ~= "pass" and not r.auto then
+        cols.roll:SetText("|cff9c8a78...|r") -- drawn when the answer arrives
     else
         cols.roll:SetText("")
     end
@@ -272,11 +269,10 @@ local function tabMenu(tab)
     if not s then
         return
     end
-    local missing = s:Missing(index)
-    local noRoll = {}
+    local missing = {} -- raiders with CRT who haven't answered this item
     for _, name in ipairs(s.order) do
-        if s:CanReroll(name, index) then
-            noRoll[#noRoll + 1] = name
+        if s:CanResend(name, index) then
+            missing[#missing + 1] = name
         end
     end
     contextMenu(tab, function(root)
@@ -285,51 +281,7 @@ local function tabMenu(tab)
             LM:Resend(index, missing)
         end)
         b:SetEnabled(#missing > 0)
-        b = root:CreateButton(string.format(TEXT.rerollAll, #noRoll), function()
-            LM:AskReroll(index, noRoll)
-        end)
-        b:SetEnabled(#noRoll > 0)
     end)
-end
-
-local function tab(i)
-    local t = tabs[i]
-    if t then
-        return t
-    end
-    t = CreateFrame("Button", nil, win.content, "BackdropTemplate")
-    t:SetSize(L.tab, L.tab)
-    t:SetPoint("TOPLEFT", 0, -(i - 1) * (L.tab + L.tabGap))
-    t:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 2 })
-    t:SetBackdropColor(0, 0, 0, 0.6)
-    t.icon = t:CreateTexture(nil, "ARTWORK")
-    t.icon:SetPoint("TOPLEFT", 3, -3)
-    t.icon:SetPoint("BOTTOMRIGHT", -3, 3)
-    t.count = t:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    t.count:SetPoint("BOTTOMRIGHT", 2, -2)
-    t:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-    t:SetScript("OnClick", function(self, button)
-        if button == "RightButton" then
-            tabMenu(self)
-            return
-        end
-        current = self.index
-        wipe(selected)
-        LM:Fire("session")
-    end)
-    t:SetScript("OnEnter", function(self)
-        local s = LM.current
-        if s and s.items[self.index] then
-            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-            pcall(GameTooltip.SetHyperlink, GameTooltip, s.items[self.index].itemString)
-            GameTooltip:Show()
-        end
-    end)
-    t:SetScript("OnLeave", function()
-        GameTooltip:Hide()
-    end)
-    tabs[i] = t
-    return t
 end
 
 -- The window -----------------------------------------------------------------------------------------
@@ -347,8 +299,20 @@ local function build()
     local divider = c:CreateTexture(nil, "ARTWORK")
     divider:SetColorTexture(0.35, 0.35, 0.35, 0.8)
     divider:SetWidth(1)
-    divider:SetPoint("TOPLEFT", L.tab + (L.left - L.tab) / 2, 0)
-    divider:SetPoint("BOTTOMLEFT", L.tab + (L.left - L.tab) / 2, 0)
+    divider:SetPoint("TOPLEFT", LM.TAB_COLUMN + 6, 0)
+    divider:SetPoint("BOTTOMLEFT", LM.TAB_COLUMN + 6, 0)
+    tabs = LM.ItemTabs(c, {
+        onSelect = function(index)
+            current = index
+            wipe(selected)
+            LM:Fire("session")
+        end,
+        onRightClick = tabMenu,
+        onDoubleClick = function(index)
+            LM:TradeItem(index)
+        end,
+        doubleClickHint = TEXT.tradeHint,
+    })
     header = CreateFrame("Frame", nil, c)
     header:SetPoint("TOPLEFT", L.left, 0)
     header:SetPoint("TOPRIGHT", 0, 0)
@@ -408,23 +372,11 @@ local function refresh()
     end
     win.strip:SetTitle(TEXT.title)
     win.strip:SetBadge(s.test and TEXT.test or nil)
-    for i, it in ipairs(s.items) do
-        local t = tab(i)
-        t.index = i
-        t.icon:SetTexture(C_Item.GetItemIconByID(it.itemString or "") or 134400)
-        local on = i == current
-        if on then
-            t:SetBackdropBorderColor(0.78, 0.56, 0.36, 1)
-        else
-            t:SetBackdropBorderColor(0.3, 0.24, 0.19, 1)
-        end
-        t:SetAlpha(it.award and 0.55 or 1)
-        t.count:SetText(it.award and ("|T" .. DONE_ICON .. ":14:14|t") or s:Answered(i))
-        t:Show()
-    end
-    for i = #s.items + 1, #tabs do
-        tabs[i]:Hide()
-    end
+    tabs:Update(s.items, current, function(i)
+        return s:Answered(i)
+    end, function(name)
+        return s.players[name] and s.players[name].class
+    end)
     local it = s.items[current]
     header.icon:SetTexture(C_Item.GetItemIconByID(it.itemString or "") or 134400)
     local _, link = C_Item.GetItemInfo(it.itemString or "")

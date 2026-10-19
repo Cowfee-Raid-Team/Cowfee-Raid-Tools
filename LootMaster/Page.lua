@@ -19,6 +19,7 @@ local L = {
     label = 104, weight = 40, icon = 120,
     sliderLabel = 118, sliderW = 110,
     scoreRow = 20,
+    authorityRows = 6, -- named players with loot authority
 }
 
 local TEXT = {
@@ -47,6 +48,13 @@ local TEXT = {
     scoreSettings = "Raider Score",
     scoreSettingsHelp = "Each night counted where a player was expected: a no-show costs the No-show points, a late arrival the Late points plus the Per 10 min points for every full ten minutes. Each penalty shrinks by Back each week, a week at a time. Only the last weeks you pick count.",
     showScore = "Show the Score column",
+    authority = "Loot authority",
+    authorityHelp = "Who may run loot: start a session, give items out, show popups again, roll again, end it. Everyone else gets the raider window only.\n\nRaiders only accept a session from the current raid leader, or from a name on the list the raid leader's CRT sends. Your own list only counts while you lead, so officers who lead should keep the same list. No list received means the leader only.",
+    authorityLeader = "The raid leader",
+    authorityAlso = "Also these players:",
+    authorityAdd = "Add",
+    authorityPick = "Pick a guild member",
+    authorityNone = "(nobody yet)",
     late = "Late", per10 = "Per 10 min", noShow = "No-show", recover = "Back each week", weeks = "Count the last",
     colLabel = "Label", colWeight = "Weight", colIcon = "Icon",
     noIcon = "No icon",
@@ -610,6 +618,101 @@ local function buildSettings(f)
     slider(f, L.col3, y, TEXT.weeks, "weeks", 1, 26, 1, function(v)
         return v .. " wk"
     end)
+
+    -- Loot authority: the raid leader, and named players (the leader's list is the one raiders trust)
+    local function auth()
+        local s = LM:Settings()
+        s.authority = s.authority or { leader = true, names = {} }
+        s.authority.names = s.authority.names or {}
+        return s.authority
+    end
+    local function changed()
+        LM:SendAuthority()
+        refresh()
+    end
+    local ay = y - 48
+    heading(f, L.col3, ay, TEXT.authority, TEXT.authorityHelp)
+    check(f, L.col3 - 2, ay - 20, TEXT.authorityLeader, function()
+        return auth().leader ~= false
+    end, function(on)
+        auth().leader = on
+        changed()
+    end)
+    local also = f:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    also:SetPoint("TOPLEFT", L.col3, ay - 50)
+    also:SetTextColor(0.7, 0.7, 0.7)
+    also:SetText(TEXT.authorityAlso)
+    local rows = {}
+    for i = 1, L.authorityRows do
+        local r = CreateFrame("Frame", nil, f)
+        r:SetSize(260, 18)
+        r:SetPoint("TOPLEFT", L.col3 + 8, ay - 66 - (i - 1) * 18)
+        r.text = r:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+        r.text:SetPoint("LEFT")
+        r.remove = CreateFrame("Button", nil, r, "UIPanelCloseButton")
+        r.remove:SetSize(16, 16)
+        r.remove:SetPoint("LEFT", 200, 0)
+        UI:SkinCloseButton(r.remove)
+        r.remove:SetScript("OnClick", function()
+            table.remove(auth().names, i)
+            changed()
+        end)
+        rows[i] = r
+    end
+    local pick
+    local function add(name)
+        name = LM.NormalizeName(strtrim(name or ""))
+        if not name or name == "" then
+            return
+        end
+        for _, n in ipairs(auth().names) do
+            if n:lower() == name:lower() then
+                return
+            end
+        end
+        if #auth().names < L.authorityRows then
+            table.insert(auth().names, name)
+            changed()
+        end
+    end
+    pick = UI.Dropdown(f, TEXT.authorityAdd, {
+        labelWidth = 30, width = 170, maxHeight = 300,
+        options = function()
+            local out = { { key = "", label = TEXT.authorityPick } }
+            local Groups = CRT.Groups
+            local list = (Groups and Groups.ReadGuild) and Groups:ReadGuild() or {}
+            table.sort(list, function(a, b)
+                return a.key:lower() < b.key:lower()
+            end)
+            for _, m in ipairs(list) do
+                local c = m.class and (C_ClassColor and C_ClassColor.GetClassColor(m.class) or RAID_CLASS_COLORS[m.class])
+                out[#out + 1] = { key = m.key, label = c and c:WrapTextInColorCode(m.key) or m.key }
+            end
+            return out
+        end,
+        get = function()
+            return ""
+        end,
+        set = function(v)
+            add(v)
+        end,
+    })
+    pick:SetPoint("TOPLEFT", L.col3, ay - 66 - L.authorityRows * 18 - 4)
+    local typed = editBox(f, 110, function(text)
+        add(text)
+    end)
+    typed:SetPoint("LEFT", pick, "RIGHT", 6, 0)
+    refreshers[#refreshers + 1] = function()
+        local names = auth().names
+        for i, r in ipairs(rows) do
+            r:SetShown(names[i] ~= nil or i == 1)
+            r.text:SetText(names[i] or ("|cff9c8a78" .. TEXT.authorityNone .. "|r"))
+            r.remove:SetShown(names[i] ~= nil)
+        end
+        if not typed:HasFocus() then
+            typed:SetText("")
+        end
+    end
 end
 
 -- The page -------------------------------------------------------------------------------------------

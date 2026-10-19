@@ -192,6 +192,7 @@ local defaults = {
     lootmaster = {
         window = {},
         popup = {},
+        answers = {}, -- the raider window's place and size
         responseSeconds = 60,
         score = { show = true, late = 5, per10 = 1, noShow = 15, recover = 5, weeks = 8 },
         awardMessage = "%i awarded to %p for %r with a %v roll.",
@@ -199,6 +200,7 @@ local defaults = {
         noRoll = "-",
         autoPass = true, -- answer items a raider's specs can't use (the leader's setting, sent with sessions)
         showAllItems = false, -- this raider sees every item anyway
+        authority = { leader = true, names = {} }, -- who may run loot (the raid leader's list is the one raiders trust)
         sort = {}, -- the looter list's and Raider Score's chosen column and direction
     },
     -- The sound engine (Sound/Engine.lua): custom, your own sound file names typed on Quality of Life >

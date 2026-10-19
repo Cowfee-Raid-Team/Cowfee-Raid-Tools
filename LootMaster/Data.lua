@@ -18,9 +18,11 @@ local ADDON, CRT = ...
 local LM = { listeners = {} }
 CRT.LootMaster = LM
 
-LM.PREFIX = "CRTLoot1"
-LM.VERSION = "0.24.0"
+LM.PREFIX = "CRTLoot2" -- 2 since 0.25: answers broadcast, packed start, silent rolls
+LM.VERSION = "0.25.0"
 LM.HELLO_SECONDS = 5 -- after this, raiders who never said hello have no CRT
+LM.READY_SECONDS = 10 -- a raider who said hello but never got everything is sent the session again, once
+LM.RESTORE_HOURS = 3 -- a saved session older than this is not restored after a /reload
 LM.MAX_ITEMS = 8
 LM.MAX_RESPONSES = 8
 LM.LABEL_MAX = 16 -- letters in a button's label
@@ -314,6 +316,37 @@ function Session:Ack(name, version)
     p.crt, p.version = true, version
 end
 
+-- The raider got every item and button: their clock starts now, not when the looter started.
+function Session:Ready(name)
+    local p = self:Player(name)
+    p.crt = true
+    if p.ready then
+        return false
+    end
+    p.ready = true
+    for index in ipairs(self.items) do
+        local a = p.answers[index]
+        if not a then
+            p.answers[index] = { asked = GetTime() }
+        elseif not a.response then
+            a.asked, a.state = GetTime(), nil
+        end
+    end
+    return true
+end
+
+-- Raiders who said hello but never became ready.
+function Session:NotReady()
+    local out = {}
+    for _, name in ipairs(self.order) do
+        local p = self.players[name]
+        if p.crt and not p.ready then
+            out[#out + 1] = name
+        end
+    end
+    return out
+end
+
 -- After HELLO_SECONDS: everyone who never said hello has no CRT.
 function Session:MarkNoCRT()
     for _, p in pairs(self.players) do
@@ -443,40 +476,41 @@ function Session:Answer(name, index, fields)
     return true
 end
 
--- The first roll seen counts; a later one only when the looter asked for it.
-function Session:Roll(name, index, roll)
+-- Rolls are silent: the looter's CRT draws them (Comm.lua) and sends them to everyone. A raider's roll is
+-- set once per item; force (the looter's Roll again) replaces it.
+function Session:SetRoll(name, index, roll, force)
     local p = self.players[name]
     local a = p and p.answers[index]
-    if not a or not roll then
+    if not (a and a.response and roll) then
         return false
     end
-    if a.roll and a.state ~= "reroll" then
+    if a.roll and not force then
         return false
     end
     a.roll = roll
-    if a.state == "reroll" then
-        a.state = a.response and "answered" or "waiting"
-    end
     return true
 end
 
+-- Whether a raider's answer needs a roll: anything but Pass and an automatic answer.
+function Session:NeedsRoll(name, index)
+    local p = self.players[name]
+    local a = p and p.answers[index]
+    return (a and a.response and a.response ~= "pass" and not a.auto) and true or false
+end
+
+-- The looter may roll again for an answer that has a roll.
 function Session:CanReroll(name, index)
     local p = self.players[name]
     local a = p and p.answers[index]
-    return (p and p.crt and a and a.response and a.response ~= "pass" and not a.auto and a.roll == nil and a.state ~= "reroll") and true or false
+    return (p and p.crt and self:NeedsRoll(name, index) and a.roll ~= nil) and true or false
 end
 
-function Session:CanResend(name)
+-- Showing the popup again is for a raider with CRT who hasn't answered this item (it never opened, or
+-- ran out of time); an answer is never wiped by it.
+function Session:CanResend(name, index)
     local p = self.players[name]
-    return (p and p.crt ~= false) and true or false
-end
-
-function Session:AskReroll(name, index)
-    if not self:CanReroll(name, index) then
-        return false
-    end
-    self.players[name].answers[index].state = "reroll"
-    return true
+    local a = p and p.answers[index]
+    return (p and p.crt ~= false and not (a and a.response)) and true or false
 end
 
 -- Wipes an answer so the raider can pick again (a re-sent popup does this too).
@@ -492,7 +526,7 @@ end
 function Session:Tick()
     local now, changed = GetTime(), false
     for _, p in pairs(self.players) do
-        if p.crt then
+        if p.crt and p.ready then
             for index in ipairs(self.items) do
                 local a = answer(p, index)
                 if not a.response and a.state ~= "timeout" and now - (a.asked or self.started) > self.seconds then
@@ -594,6 +628,29 @@ function LM.SortRows(rows, key, dir)
     return rows
 end
 
+-- A session saved in CRTDBChar (plain tables) made a session again after a /reload. Every clock starts
+-- again from now, so nobody loses time to the reload.
+function LM.Revive(t)
+    if type(t) ~= "table" or type(t.items) ~= "table" or type(t.players) ~= "table" then
+        return nil
+    end
+    local s = setmetatable(t, Session)
+    s.byKey = {}
+    for _, r in ipairs(s.responses or {}) do
+        s.byKey[r.key] = r
+    end
+    local now = GetTime()
+    s.started = now
+    for _, p in pairs(s.players) do
+        for _, a in pairs(p.answers) do
+            if not a.response then
+                a.asked, a.state = now, nil
+            end
+        end
+    end
+    return s
+end
+
 function Session:Award(index, name, response)
     local item = self.items[index]
     if item then
@@ -627,6 +684,9 @@ end
 local function stateOf(p, a)
     if p.crt == false then
         return "nocrt"
+    end
+    if p.crt and not p.ready and not (a and a.response) then
+        return "loading"
     end
     if a and a.state then
         return a.state
@@ -685,7 +745,8 @@ end
 -- The message format ---------------------------------------------------------------------------------
 
 -- "<kind>|<field>|<field>..." in one addon message (255 bytes at most). A field never carries "|" (it
--- becomes "/"); the last field, the note, is cut to fit.
+-- becomes "/"); the last field, the note, is cut to fit. Lists (the buttons, the items) are packed
+-- with Wire.Pack, several entries a message, and never cut.
 local Wire = {}
 LM.Wire = Wire
 local MAX_MESSAGE = 255
@@ -717,6 +778,51 @@ function Wire.Decode(msg)
         fields[#fields + 1] = f
     end
     return kind, fields
+end
+
+-- Packs entries (each a list of fields) into as few messages as fit: "<kind>|<id>|e1;e2;...", the fields
+-- of an entry joined by ",". Fields lose any , ; or | (labels are cleaned before). An entry too long for
+-- a message on its own is left out and returned in the second list, so the caller can say so.
+function Wire.Pack(kind, id, entries)
+    local messages, tooLong = {}, {}
+    local head = kind .. "|" .. tostring(id) .. "|"
+    local current = nil
+    for _, e in ipairs(entries) do
+        local parts = {}
+        for i, v in ipairs(e) do
+            parts[i] = (tostring(v == nil and "" or v):gsub("[,;|]", " "))
+        end
+        local text = table.concat(parts, ",")
+        if #head + #text > MAX_MESSAGE then
+            tooLong[#tooLong + 1] = e
+        elseif current and #current + 1 + #text <= MAX_MESSAGE then
+            current = current .. ";" .. text
+        else
+            if current then
+                messages[#messages + 1] = current
+            end
+            current = head .. text
+        end
+    end
+    if current then
+        messages[#messages + 1] = current
+    end
+    return messages, tooLong
+end
+
+-- The entries of a packed field: { { field, field, ... }, ... }.
+function Wire.Unpack(field)
+    local out = {}
+    for entry in (tostring(field or "") .. ";"):gmatch("(.-);") do
+        if entry ~= "" then
+            local fields = {}
+            for f in (entry .. ","):gmatch("(.-),") do
+                fields[#fields + 1] = f
+            end
+            out[#out + 1] = fields
+        end
+    end
+    return out
 end
 
 -- A colour as six hex digits, and back.

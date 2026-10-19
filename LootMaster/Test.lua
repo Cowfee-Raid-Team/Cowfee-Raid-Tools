@@ -2,13 +2,15 @@ local ADDON, CRT = ...
 
 -- Testing Loot Master with no boss: /crt loot test starts a session of sample items marked TEST. You get
 -- the looter window straight away, and everyone in the group with CRT (you too) gets the raider popup.
--- The answers, the /rolls, Award, show again and roll again all work as in a real session; nothing is
--- passed, traded or written to Loot History. The items are real ones from your own loot: the newest
+-- The answers, the rolls (drawn silently by the looter's CRT), Award, show again, roll again, the raider
+-- window and double-click trading all work as in a real session; nothing is passed or written to Loot
+-- History, and the award message is shown only to you. The items are real ones from your own loot: the newest
 -- items in Loot History and RCLootCouncil's awards, so their icons and tooltips work; FALLBACK is only
 -- used when you have none.
 --   /crt loot test [count]   start a test (count 1-8, default 4)
 --   /crt loot window         show the looter window again
 --   /crt loot popup          show your raider popup again
+--   /crt loot answers        everyone's answers and rolls (the raider window)
 --   /crt loot end            end the session
 --   /crt loot settings       open the Loot Master page (also /crt loot master)
 
@@ -51,7 +53,7 @@ function LM:Test(count)
     local items = samples(count)
     local s = self:Start(items, true)
     if s then
-        CRT:Print(string.format("Loot Master test: %d sample items sent to %s. Nothing is passed or traded.",
+        CRT:Print(string.format("Loot Master test: %d sample items sent to %s. Nothing is passed; you can test trading a given-out item by double-clicking it.",
             #items, IsInGroup() and "the group" or "you (not in a group)"))
     end
 end
@@ -65,6 +67,8 @@ function LM:Command(msg)
         self:ShowWindow()
     elseif verb == "popup" then
         self:ShowPopup()
+    elseif verb == "answers" then
+        self:ShowAnswers()
     elseif verb == "end" then
         self:End()
     elseif verb == "settings" or verb == "master" then
