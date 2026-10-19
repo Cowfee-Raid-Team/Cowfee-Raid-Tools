@@ -4,7 +4,7 @@ The rules (Kinds) and the places that don't follow them yet (Review queue). Line
 
 ## The looks
 
-Every element is checked in each look. Alex, 2026-10-19: "I think we can remove the minimalistic black". So there are two looks, Classic and Modern, switched by a "UI: Classic / UI: Modern" header button in the main window's title bar (job 20261019-ui-two-looks; until it merges, the looks are set on General Settings (UI/Panel.lua:244-252, `UI:IsModern`, `UI:ApplyStyle`):
+Every element is checked in each look. Alex, 2026-10-19: "I think we can remove the minimalistic black". So there are two looks, Classic and Modern, switched by a "UI: Classic / UI: Modern" header button in the main window's title bar (job 20261019-ui-two-looks; until it merges, the looks are set on General Settings (UI/Panel.lua:244-252, `UI:IsModern`, `UI:ApplyStyle`)):
 
 - **Classic:** `CRTDB.ui.modern` off and the style "game". The window template's own art. The main `/crt` window's title bar is the reference: a thin dark bar, the title small, gold and centred, the version on the left, red game buttons (Previews) and the red game X.
 - **Minimal (being removed):** `modern` off and `style = "minimal"`. Its column below goes when job 20261019-ui-two-looks merges; don't design for it.
