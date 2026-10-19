@@ -40,7 +40,7 @@ Sort every request into one size before anything else.
 - **Bug:** use Opus. The spec starts with the error text, file and line, and the steps to reproduce, and the builder must find the root cause before fixing (the superpowers `systematic-debugging` approach). Then the tester, and the reviewer when the fix is not trivial.
 
 Pause for Alex before building only when:
-1. the job adds or reshapes UI: show a mockup first (an inline `show_widget` sketch or a small Artifact), and build only after Alex approves;
+1. the job adds or reshapes UI: check every control against the `crt-ui-elements` catalog (`.claude/skills/crt-ui-elements/references/catalog.md`) in Classic, Minimal and Modern, name its kind and helper in the spec, and show a mockup first (an inline `show_widget` sketch or a small Artifact), and build only after Alex approves;
 2. the request needs a decision only Alex can make: ask with AskUserQuestion, recommended option first;
 3. the job is in an area another live session owns and has uncommitted changes in: say so and ask whether to wait.
 

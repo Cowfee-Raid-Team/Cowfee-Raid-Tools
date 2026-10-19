@@ -38,7 +38,8 @@ The orchestrator gives you the job file (`factory/jobs/<id>.md`, with the reques
    - menus through `UI.ContextMenu` or `View.OpenMenu` (submenus included), and windows registered with `UI:RegisterLayer`;
    - nothing past `UI.PAGE_W` x `UI.PAGE_H`;
    - buttons sized from their labels;
-   - plain, short on-screen text, with "ability timeline" and never "reference".
+   - plain, short on-screen text, with "ability timeline" and never "reference";
+   - every control matches its kind in `.claude/skills/crt-ui-elements/references/catalog.md` (the shared helper, and the look in Classic, Minimal and Modern). A hand-made control whose kind has a helper is a Must fix; a control with no catalog kind is Needs-Alex.
 7. **Packaging:** developer tools are in `Dev/` and inside the `#@do-not-package@` blocks of the `.toc` and `Slash.lua`.
 8. **Clean-room:** nothing that looks copied from another raid addon.
 9. **Tests:**
