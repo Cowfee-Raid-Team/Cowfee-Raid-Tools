@@ -211,33 +211,16 @@ function LM:UpdateResponse(key, fields)
     return false
 end
 
--- What an item is rolled as, set by the looter per item. It shows on the item's tab and the raider's
--- panel, and is %r in the award message (else the winner's response is). The textures are Blizzard's
--- group loot icons, seen in game with /crt dev loot probe icons on 2026-10-18.
-LM.ROLL_TYPES = {
-    { key = "need", label = "Need", icon = "Interface\\Buttons\\UI-GroupLoot-Dice-Up" },
-    { key = "greed", label = "Greed", icon = "Interface\\Buttons\\UI-GroupLoot-Coin-Up" },
-    { key = "de", label = "Disenchant", icon = "Interface\\Buttons\\UI-GroupLoot-DE-Up" },
-}
-local rollTypes = {}
-for _, t in ipairs(LM.ROLL_TYPES) do
-    rollTypes[t.key] = t
-end
-
-function LM:RollType(key)
-    return rollTypes[key]
-end
-
--- The award message: %i item, %p player, %r roll type or response, %v roll (or the "no roll" text).
+-- The award message: %i item, %p player, %r the winner's answer, %v roll (or the "no roll" text).
 LM.AWARD_DEFAULT = "%i awarded to %p for %r with a %v roll."
 LM.NO_ROLL_CHOICES = { "-", "0", "no" }
 
--- fields: item, player, rollType, response, roll, noRoll. Pure, for tests.
+-- fields: item, player, response, roll, noRoll. Pure, for tests.
 function LM.FormatAward(template, f)
     local values = {
         i = f.item or "?",
         p = f.player or "?",
-        r = f.rollType or f.response or "?",
+        r = f.response or "?",
         v = f.roll and tostring(f.roll) or (f.noRoll or "-"),
     }
     return (tostring(template or LM.AWARD_DEFAULT):gsub("%%(%a)", function(k)
@@ -424,13 +407,6 @@ function Session:Tick()
         end
     end
     return changed
-end
-
-function Session:SetRollType(index, key)
-    local item = self.items[index]
-    if item then
-        item.rollType = rollTypes[key] and key or nil
-    end
 end
 
 -- The columns the looter can sort by, and the value each sorts on.

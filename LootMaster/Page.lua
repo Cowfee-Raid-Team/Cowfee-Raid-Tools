@@ -52,8 +52,8 @@ local TEXT = {
     noIcon = "No icon",
     guildStream = "Guild: %s",
     award = "Award message",
-    awardHelp = "Sent when you give an item out. %i is the item, %p the player, %r what it was rolled as (Need, Greed, Disenchant) or else their answer, and %v their roll. Your guild's own channels (from the Guild & Communities window) are listed too; picking one adds it to your chat so CRT can post there. When the place you pick isn't open to you (Raid out of a raid, a channel you left, chat locked in an encounter), only you see it, with the reason. In a test only you see it.",
-    awardVars = "%i item   %p player   %r roll type   %v roll",
+    awardHelp = "Sent when you give an item out. %i is the item, %p the player, %r their answer (BiS, Upgrade...), and %v their roll. Your guild's own channels (from the Guild & Communities window) are listed too; picking one adds it to your chat so CRT can post there. When the place you pick isn't open to you (Raid out of a raid, a channel you left, chat locked in an encounter), only you see it, with the reason. In a test only you see it.",
+    awardVars = "%i item   %p player   %r answer   %v roll",
     channel = "Send to",
     noRoll = "If no roll, %v is",
     preview = "Preview:",
@@ -562,7 +562,7 @@ local function buildSettings(f)
     preview:SetTextColor(1, 0.5, 0)
     function preview.update(template)
         local set = LM:Settings()
-        preview:SetText(LM.FormatAward(template, { item = "[Twisted Horror's Tendril]", player = "Quickstab", rollType = "Need", roll = 71 })
+        preview:SetText(LM.FormatAward(template, { item = "[Twisted Horror's Tendril]", player = "Quickstab", response = "BiS", roll = 71 })
             .. "\n" .. LM.FormatAward(template, { item = "[Twisted Horror's Tendril]", player = "Halo", response = "Offspec", noRoll = set.noRoll }))
     end
     refreshers[#refreshers + 1] = function()
