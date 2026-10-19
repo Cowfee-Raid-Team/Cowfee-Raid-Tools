@@ -41,6 +41,9 @@ local TEXT = {
 local ROLE_TEXT = { T = "Tank", H = "Heal", D = "DPS", N = "" }
 
 local win, list, header, tabs
+local ticker -- refreshes the window while it is shown
+local refresh
+local REFRESH_SECONDS = 1
 local current = 1
 
 local function settings()
@@ -164,9 +167,23 @@ local function build()
     v:SetElementInitializer("Frame", initRow)
     ScrollUtil.InitScrollBoxListWithScrollBar(box, bar, v)
     list = box
+    -- while it is shown, once a second, so an item whose time ran out turns orange without a message
+    win:HookScript("OnShow", function()
+        if not ticker then
+            ticker = C_Timer.NewTicker(REFRESH_SECONDS, function()
+                refresh()
+            end)
+        end
+    end)
+    win:HookScript("OnHide", function()
+        if ticker then
+            ticker:Cancel()
+            ticker = nil
+        end
+    end)
 end
 
-local function refresh()
+refresh = function() -- declared above, for the ticker
     local inc = LM.incoming
     if not (win and win:IsShown() and inc and inc.view) then
         return

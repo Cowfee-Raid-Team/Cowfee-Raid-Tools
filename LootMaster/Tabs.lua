@@ -128,16 +128,3 @@ function LM.ItemTabs(parent, opts)
 
     return self
 end
-
--- A UIPanelButtonTemplate button for the loot windows (End session, Everyone's answers, Show): as wide as
--- its label plus the template's end caps (LM.PanelButtonWidth), skinned like every panel button
--- (UI:SkinButton: flat in Modern, the template's art in Classic, switched with the look).
-function LM.PanelButton(parent, label, height, onClick)
-    local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
-    b:SetText(label)
-    local fs = b:GetFontString()
-    b:SetSize(LM.PanelButtonWidth(fs and fs:GetStringWidth() or 0), height)
-    b:SetScript("OnClick", onClick)
-    CRT.UI:SkinButton(b)
-    return b
-end

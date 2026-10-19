@@ -315,7 +315,8 @@ GROUP = { names = { "Solex-Sargeras", "Halo-Sargeras" }, leader = "Solex-Sargera
 LM.authority = nil
 local BOSS = "Plexus Sentinel"
 onEvent(nil, "ENCOUNTER_END", 3129, BOSS, 16, 20, 1)
-NOW = NOW + 120
+eq(CRTDBChar.lootmaster and CRTDBChar.lootmaster.lastKill and CRTDBChar.lootmaster.lastKill.name, BOSS, "boss: the kill is saved per character")
+CLOCK = CLOCK + 120
 local sb = LM:Start({ { itemString = "item:111" } }, false)
 eq(sb and sb.boss, BOSS, "boss: a session within 10 minutes of a kill has its name")
 deliver("Solex-Sargeras")
@@ -344,9 +345,20 @@ sb = LM:Start({ { itemString = "item:111" } }, false)
 eq(sb and sb.boss, BOSS, "boss: a secret name is never kept")
 LM:End()
 deliver("Solex-Sargeras")
-NOW = NOW + LM.BOSS_SECONDS
+CLOCK = CLOCK + LM.BOSS_SECONDS
 sb = LM:Start({ { itemString = "item:111" } }, false)
 eq(sb and sb.boss, nil, "boss: more than 10 minutes after the kill, none")
+LM:End()
+deliver("Solex-Sargeras")
+-- a /reload between the kill and the session: the game loads the saved kill again, nothing in memory
+CRTDBChar = { lootmaster = { lastKill = { name = "Saved Boss", at = CLOCK - 300 } } }
+sb = LM:Start({ { itemString = "item:111" } }, false)
+eq(sb and sb.boss, "Saved Boss", "boss: a kill from before a /reload still counts")
+LM:End()
+deliver("Solex-Sargeras")
+CRTDBChar.lootmaster.lastKill.at = CLOCK + 50
+sb = LM:Start({ { itemString = "item:111" } }, false)
+eq(sb and sb.boss, nil, "boss: a kill dated in the future is ignored")
 LM:End()
 deliver("Solex-Sargeras")
 LM.incoming = nil

@@ -658,14 +658,6 @@ function LM.ButtonWidth(labelWidth, hasIcon)
     return math.max(LM.BUTTON_MIN_W, w)
 end
 
--- A UIPanelButtonTemplate button (End session, Everyone's answers, Show): its label plus room for the
--- template's end caps (its highlight is inset 12 on each side), so the label fits in Classic and Modern.
-LM.PANEL_BUTTON_PAD = 14 -- each side
-
-function LM.PanelButtonWidth(labelWidth)
-    return math.max(LM.BUTTON_MIN_W, math.ceil(labelWidth or 0) + 2 * LM.PANEL_BUTTON_PAD)
-end
-
 -- Lays buttons of these widths out in rows no wider than maxW: one row with `gap` when it fits, else one
 -- row with `minGap`, else as many rows as needed with `gap`. Returns { { x, row } } and the row count.
 function LM.ButtonLayout(widths, maxW, gap, minGap)
@@ -782,7 +774,8 @@ end
 
 -- The item tabs' count: answers in, raiders with CRT (raiders without it can never answer), and whether
 -- the time ran out with answers missing (a timeout the looter's Tick marked, or the same rule on a copy
--- that never ticks: ready, no answer, asked longer ago than the session's seconds).
+-- that never ticks: ready, no answer, asked longer ago than the session's seconds), or someone said hello
+-- but still hasn't got the session READY_SECONDS after it started.
 function Session:AnswerCount(index)
     local answered, expected, late = 0, 0, false
     local now = GetTime()
@@ -794,8 +787,12 @@ function Session:AnswerCount(index)
         end
         if p.crt then
             expected = expected + 1
-            if not has and ((a and a.state == "timeout") or (p.ready and now - ((a and a.asked) or self.started) > self.seconds)) then
-                late = true
+            if not has then
+                if (a and a.state == "timeout") or (p.ready and now - ((a and a.asked) or self.started) > self.seconds) then
+                    late = true
+                elseif not p.ready and now - self.started > LM.READY_SECONDS then
+                    late = true
+                end
             end
         end
     end

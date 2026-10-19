@@ -329,7 +329,7 @@ local function build()
     header.info:SetTextColor(0.7, 0.7, 0.7)
     header.help = UI.Help(header, TEXT.title, TEXT.help)
     header.help:SetPoint("LEFT", header.name, "RIGHT", 4, 0)
-    local endButton = LM.PanelButton(header, TEXT.endSession, 24, function()
+    local endButton = UI.PanelButton(header, TEXT.endSession, 24, function()
         LM:End()
     end)
     endButton:SetPoint("TOPRIGHT", 0, -2)
@@ -395,13 +395,7 @@ local function refresh()
     else
         header.info:SetText(it.ilvl and ("Item level " .. it.ilvl) or "")
     end
-    local crt = 0
-    for _, p in pairs(s.players) do
-        if p.crt then
-            crt = crt + 1
-        end
-    end
-    header.answered:SetText(string.format(TEXT.answered, s:Answered(current), crt))
+    header.answered:SetText(string.format(TEXT.answered, s:AnswerCount(current))) -- the same count as the tab
     local rows = s:Rows(current, LM.Score)
     local sort = CRT.db.lootmaster.sort
     if sort.looterKey then

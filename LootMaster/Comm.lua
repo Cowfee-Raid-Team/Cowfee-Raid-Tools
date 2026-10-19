@@ -336,24 +336,30 @@ end
 
 -- The boss in the title bar: each computer keeps its own last kill (ENCOUNTER_END: encounterID,
 -- encounterName, difficultyID, groupSize, success), so no message carries it; everyone in the session was
--- in the fight. A session started within BOSS_SECONDS of it keeps the name (s.boss, inc.boss), saved with
--- the session for a /reload. A test never has one.
-local lastKill -- { name, at }
-
+-- in the fight. The kill is kept in CRTDBChar.lootmaster.lastKill ({ name, at = time() }), so a /reload
+-- between the kill and the session keeps it. A session started within BOSS_SECONDS of it keeps the name
+-- (s.boss, inc.boss), saved with the session for a /reload. A test never has one.
 local function noteEncounter(name, success)
     if issecretvalue and (issecretvalue(name) or issecretvalue(success)) then
         return
     end
     if type(name) == "string" and name ~= "" and success == 1 then
-        lastKill = { name = name, at = GetTime() }
+        CRTDBChar = CRTDBChar or {}
+        CRTDBChar.lootmaster = CRTDBChar.lootmaster or {}
+        CRTDBChar.lootmaster.lastKill = { name = name, at = time() }
     end
 end
 
 function LM:RecentBoss(test)
-    if test or not lastKill or GetTime() - lastKill.at > LM.BOSS_SECONDS then
+    local kill = CRTDBChar and type(CRTDBChar.lootmaster) == "table" and CRTDBChar.lootmaster.lastKill
+    if test or type(kill) ~= "table" or type(kill.name) ~= "string" or type(kill.at) ~= "number" then
         return nil
     end
-    return lastKill.name
+    local age = time() - kill.at
+    if age < 0 or age > LM.BOSS_SECONDS then
+        return nil
+    end
+    return kill.name
 end
 
 -- items: { { itemString, link, ilvl } }. test marks it as a test everywhere.

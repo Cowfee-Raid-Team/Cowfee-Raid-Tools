@@ -1,4 +1,4 @@
-// UI/Window.lua's title bar badge and LootMaster/Tabs.lua's item tabs, with stand-in frames that remember
+// UI/Panel.lua's UI.PanelButton, UI/Window.lua's title bar badge and LootMaster/Tabs.lua's item tabs, with stand-in frames that remember
 // what was set on them. Usage: node run_lootmaster_ui.js <addon folder>
 const fs = require('fs');
 const path = require('path');
@@ -6,7 +6,7 @@ const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate();
 lualib.luaL_openlibs(L);
 const harness = `
-local windowSrc, tabsSrc = ...
+local panelSrc, windowSrc, tabsSrc = ...
 local fails, passes = 0, 0
 local function check(ok, what) if ok then passes = passes + 1 else fails = fails + 1 print("FAIL " .. what) end end
 local function eq(a, b, what) check(a == b, what .. " (got " .. tostring(a) .. ", want " .. tostring(b) .. ")") end
@@ -29,19 +29,48 @@ local function mock()
     SetShown = function(self, v) self.shown = v and true or false end,
     IsShown = function(self) return self.shown end,
     GetFrameLevel = function() return 1 end,
+    SetSize = function(self, w, h) self.w, self.h = w, h end,
+    SetScript = function(self, k, fn) local t = rawget(self, "scripts") or {} rawset(self, "scripts", t) t[k] = fn end,
   }
   return setmetatable(o, { __index = function(_, k) return methods[k] or function() end end })
 end
-CreateFrame = function() return mock() end
+CreateFrame = function(kind, name, parent, template)
+  local f = mock()
+  if template == "UIPanelButtonTemplate" then
+    -- the template's end caps and its button text
+    f.Left, f.Middle, f.Right, f.label = mock(), mock(), mock(), mock()
+    f.crtSkin = false -- not skinned yet (every other unknown key is a no-op method)
+    f.SetText = function(self, t) self.label.text = t end
+    f.GetFontString = function(self) return self.label end
+    f.GetObjectType = function() return "Button" end
+  end
+  return f
+end
 CreateColor = function(r, g, b, a) return { r = r, g = g, b = b, a = a } end
 C_Item = { GetItemIconByID = function() return 134400 end }
 Ambiguate = function(n) return (n:gsub("%-.*$", "")) end
 RAID_CLASS_COLORS = { MAGE = { r = 0.25, g = 0.78, b = 0.92 } }
-local CRT = { UI = {}, LootMaster = {} }
+local CRT = { LootMaster = {}, db = { ui = { modern = true } } }
+CRT.MOCHA = { roast = { 0.165, 0.122, 0.098 }, edge = { 0.30, 0.235, 0.188 }, caramel = { 0.78, 0.56, 0.36 }, cream = { 0.95, 0.90, 0.84 } }
+assert(load(panelSrc, "Panel.lua"))("CowfeeRaidTools", CRT)
 assert(load(windowSrc, "Window.lua"))("CowfeeRaidTools", CRT)
 assert(load(tabsSrc, "Tabs.lua"))("CowfeeRaidTools", CRT)
 local UI, LM = CRT.UI, CRT.LootMaster
 local STRIP = UI.TITLE_STRIP
+
+-- a panel button outside a panel page: sized from its label, skinned so it follows the look
+local before = #UI.skinned
+local clicked = false
+local pb = UI.PanelButton(mock(), "Everyone's answers", 18, function() clicked = true end)
+eq(pb.label.text, "Everyone's answers", "panel button: its label")
+eq(pb.w, 18 * 6 + 2 * UI.PANEL_BUTTON_PAD, "panel button: the label's width plus both end caps")
+eq(pb.h, 18, "panel button: the height asked for")
+eq(#UI.skinned, before + 1, "panel button: added to UI.skinned, so switching the look updates it")
+eq(UI.skinned[#UI.skinned], pb, "panel button: the one skinned")
+check(type(pb.crtSkin) == "function", "panel button: has the skin switch")
+pb.scripts.OnClick()
+check(clicked, "panel button: the click runs")
+eq(UI.PanelButton(mock(), "x", 18).w, UI.PANEL_BUTTON_MIN_W, "panel button: a short label gets the minimum width")
 
 -- the badge: the old call is unchanged, a colour makes it the neutral boss badge
 local s = UI.TitleStrip(mock(), 24)
@@ -79,5 +108,5 @@ if fails > 0 then error("failures") end
 `;
 const dir = process.argv[2];
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
-for (const f of ['UI/Window.lua', 'LootMaster/Tabs.lua']) lua.lua_pushstring(L, to_luastring(fs.readFileSync(path.join(dir, f), 'utf8')));
-if (lua.lua_pcall(L, 2, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
+for (const f of ['UI/Panel.lua', 'UI/Window.lua', 'LootMaster/Tabs.lua']) lua.lua_pushstring(L, to_luastring(fs.readFileSync(path.join(dir, f), 'utf8')));
+if (lua.lua_pcall(L, 3, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
