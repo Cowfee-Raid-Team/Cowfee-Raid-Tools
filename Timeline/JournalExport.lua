@@ -14,8 +14,8 @@ CRT.TimelineJournalExport = Export
 
 local TEXT = {
     button = "Export Abilities",
-    tip = "Cowfee Raid Tools: a reference timeline for this boss and difficulty, with every Journal ability and its spell ID, to add the cast times to on the Timeline's Advanced tab.",
-    title = "Reference for %s (Ctrl+C to copy)",
+    tip = "Cowfee Raid Tools: an ability timeline for this boss and difficulty, with every Journal ability and its spell ID, to add the cast times to on the Timeline's Advanced tab.",
+    title = "Abilities for %s (Ctrl+C to copy)",
     send = "Send to Timeline",
     none = "Open a boss in the Journal first.",
     combat = "The Journal can't be read in combat.",
@@ -23,7 +23,7 @@ local TEXT = {
         "# From the Encounter Journal. Add each ability's times after its colon, as m:ss or seconds: 0:02, 1:17",
         "# A Phase line with no time yet is the stage's start to fill in: Phase: P1.5 3:17 (Intermission: ...)",
     },
-    saved = "Saved a reference for %s. Add its times on the Timeline's Advanced tab.",
+    saved = "Saved the abilities for %s. Add their times on the Timeline's Advanced tab.",
 }
 
 -- The Journal's icons that are reference types too: a dispellable debuff, a Heroic or a Mythic mechanic.

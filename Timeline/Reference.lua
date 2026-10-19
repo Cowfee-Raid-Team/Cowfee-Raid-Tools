@@ -446,9 +446,9 @@ function Reference.Label(ref)
     local len = ref.length or 0
     local time = string.format("%d:%02d", math.floor(len / 60), len % 60)
     if ref.difficulty and ref.difficulty ~= "" then
-        return "Reference \194\183 " .. ref.difficulty .. " \194\183 " .. time
+        return "Abilities \194\183 " .. ref.difficulty .. " \194\183 " .. time
     end
-    return "Reference \194\183 " .. time
+    return "Abilities \194\183 " .. time
 end
 
 -- The saved list of your own references, made when first needed.
@@ -633,7 +633,7 @@ end
 function Reference:Update(key, text)
     local r = findOwn(key)
     if not r then
-        return false, { "No such reference" }
+        return false, { "No such ability timeline" }
     end
     local ref, errors = Reference.Parse(text)
     if not ref then

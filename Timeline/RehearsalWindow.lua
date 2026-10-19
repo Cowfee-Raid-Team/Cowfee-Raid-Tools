@@ -67,7 +67,7 @@ local TEXT = {
     inEncounter = "Rehearsal can't start during a boss encounter.",
     running = "Rehearsal can't start while the alerts are running a pull or a test.",
     testing = "Testing: ",
-    noSource = "Rehearsal has no reference or recorded pull for this boss.",
+    noSource = "Rehearsal has no ability timeline or recorded pull for this boss.",
 }
 
 local function mocha(key, alpha)
