@@ -2,12 +2,12 @@
 
 The rules (Kinds) and the places that don't follow them yet (Review queue). Line numbers are from `main` on 2026-10-19, so check the file before you trust them.
 
-## The three looks
+## The looks
 
-Every element is checked in all three looks, which are set on General Settings (UI/Panel.lua:244-252, `UI:IsModern`, `UI:ApplyStyle`):
+Every element is checked in each look. Alex, 2026-10-19: "I think we can remove the minimalistic black". So there are two looks, Classic and Modern, switched by a "UI: Classic / UI: Modern" header button in the main window's title bar (job 20261019-ui-two-looks; until it merges, the looks are set on General Settings (UI/Panel.lua:244-252, `UI:IsModern`, `UI:ApplyStyle`):
 
 - **Classic:** `CRTDB.ui.modern` off and the style "game". The window template's own art. The main `/crt` window's title bar is the reference: a thin dark bar, the title small, gold and centred, the version on the left, red game buttons (Previews) and the red game X.
-- **Minimal:** `modern` off and `style = "minimal"`. A flat black background, a darker title strip, a thin grey border (UI/Panel.lua:956, `f.flatBg`, `f.flatTitle`).
+- **Minimal (being removed):** `modern` off and `style = "minimal"`. Its column below goes when job 20261019-ui-two-looks merges; don't design for it.
 - **Modern:** `modern` on. Coffee colours (`CRT.MOCHA`): an espresso background, caramel lines, flat controls.
 
 Alex, 2026-10-19: "we need to validate both the classic UI, minimalist UI, and the modern UI elements to keep the same style theme across even as we add new features." A pop-out window must look like the main `/crt` window in the same look. A blank cell below means the look still has to be checked.
