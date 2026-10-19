@@ -2,7 +2,7 @@ local ADDON, CRT = ...
 
 -- The raider popup: one small panel per item of the session you were sent, stacked with a gap, each with
 -- the gear you wear in that slot, the response buttons and a note. A button sends your answer to the
--- looter and does a real /roll (not for Pass); the panel then fades, so you can see it is answered, and
+-- looter, whose CRT draws a roll for it; the panel then fades, so you can see it is answered, and
 -- you can still change your mind. Each panel's background is its timer: the lighter part shrinks as the
 -- answer time runs out, and the panel closes itself at the end. Close it sooner with its X or a
 -- right-click. The looter can show a panel again or ask you to roll again, which restarts its timer.
@@ -30,12 +30,17 @@ local TEXT = {
     title = "Loot",
     test = "TEST",
     testNote = "nothing is passed",
-    autoOne = "%d item your specs can't use was answered %s for you.",
-    autoMany = "%d items your specs can't use were answered %s for you.",
+    autoOne = "%d item you can't use was answered %s for you.",
+    autoMany = "%d items you can't use were answered %s for you.",
     showAuto = "Show",
     answers = "Everyone's answers",
-    autoAnswered = "Your specs can't use this: answered %s for you",
-    help = "Pick an answer for each item. Your pick goes to the looter, who gives the item out; every answer except Pass gets a roll from 1 to 100, drawn by the looter's CRT and shown in everyone's loot window (no /roll in chat). You can change your answer until the time runs out.\n\nThe lighter part of each item's background is the time left. Close an item with its X or a right-click; drag any item to move them all.",
+    autoAnswered = "%s: answered %s for you",
+    -- why an item was answered for you, by the reason your CRT found (LM.CantUse)
+    autoWhy = {
+        spec = "Your specs can't use this", classes = "This is for other classes",
+        armor = "Not your armor type", weapon = "Your class can't use this weapon type",
+    },
+    help = "Pick an answer for each item. Your pick goes to the looter, who gives the item out; every answer gets a roll from 1 to 100, drawn by the looter's CRT and shown in everyone's loot window (no /roll in chat). You can change your answer until the time runs out.\n\nThe lighter part of each item's background is the time left. Close an item with its X or a right-click; drag any item to move them all.",
     have = "You have: ",
     nothing = "nothing in that slot",
     sent = "Sent %s",
@@ -322,13 +327,13 @@ local function fill(p, index, it, mine, inc)
         b:SetAlpha((award or (mine and mine.response and not picked)) and 0.5 or 1)
     end
     if award then
-        local r = inc.byKey[award.response]
+        local r = LM.ResponseOf(inc.byKey, award.response)
         p.status:SetText(string.format(TEXT.awarded, Ambiguate(award.name, "short"), r and r.label or award.response))
     elseif mine and mine.auto then
-        local r = inc.byKey[mine.response]
-        p.status:SetText(string.format(TEXT.autoAnswered, r and r.label or mine.response))
+        local r = LM.ResponseOf(inc.byKey, mine.response)
+        p.status:SetText(string.format(TEXT.autoAnswered, TEXT.autoWhy[mine.autoWhy] or TEXT.autoWhy.spec, r and r.label or mine.response))
     elseif mine and mine.response then
-        local r = inc.byKey[mine.response]
+        local r = LM.ResponseOf(inc.byKey, mine.response)
         p.status:SetText(string.format(TEXT.sent, r and r.label or mine.response) .. (mine.roll and string.format(TEXT.rolled, mine.roll) or ""))
     else
         p.status:SetText("")
@@ -385,7 +390,7 @@ local function build()
     header.answers:SetScript("OnClick", function()
         LM:ShowAnswers()
     end)
-    -- "N items your specs can't use were answered Transmog for you. Show": shown only when there are any
+    -- "N items you can't use were answered Transmog for you. Show": shown only when there are any
     autoLine = CreateFrame("Frame", nil, anchor, "BackdropTemplate")
     autoLine:SetSize(L.width, L.autoH)
     autoLine:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8" })
@@ -436,15 +441,15 @@ local function refresh()
     local open = openItems(inc)
     local shown = {}
     local y = L.headerH + L.gap -- panels can be taller when their buttons wrap, so they stack by height
-    local auto = 0
+    local auto, autoKey = 0, nil
     for _, mine in pairs(inc.mine) do
         if mine.auto and mine.closed then
-            auto = auto + 1
+            auto, autoKey = auto + 1, mine.response
         end
     end
     autoLine:SetShown(auto > 0)
     if auto > 0 then
-        local r = inc.byKey.tmog or inc.byKey.pass
+        local r = LM.ResponseOf(inc.byKey, autoKey)
         autoLine.text:SetText(string.format(auto == 1 and TEXT.autoOne or TEXT.autoMany, auto, r and r.label or "Transmog"))
         autoLine:ClearAllPoints()
         autoLine:SetPoint("TOPLEFT", 0, -y)

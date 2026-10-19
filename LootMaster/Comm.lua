@@ -748,7 +748,7 @@ local function judge(inc, index, loaded)
 end
 
 -- Checks every item of a session, then calls done once: when all are judged, or after SPEC_WAIT.
--- Off when the leader turned it off. "Show me items my specs can't use" only shows them.
+-- Off when the leader turned it off. "Show me items I can't use" only shows them.
 function LM:CheckSpecs(inc, done)
     local finished = false
     local function finish()
