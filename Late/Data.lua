@@ -305,6 +305,8 @@ end
 -- and the night ran past the grace). This is the one rule for the History, the Totals and the Raider
 -- Score. A player who never joined a night that ended inside the grace is on time, as nothing shows
 -- they were late, even though the saved night marks them never joined (p.never).
+-- Meant for ended nights. On a running night "noshow" only means "not here yet", so the Tonight view
+-- keeps its own wording and does not use this.
 function Late.Status(night, p, now)
     if not Late.IsLate(night, p, now) then
         return "ontime"
