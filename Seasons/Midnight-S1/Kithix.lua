@@ -6,7 +6,7 @@ local ADDON, CRT = ...
 --             yet.
 -- references  The Mythic reference timeline, in the Timeline's text format (see Timeline/Database.lua
 --             for the format), transcribed from two planner screenshots on 2026-10-19. The rows have
---             no types yet: Alex sets them in game with the Reference types tool on the Development
+--             no types yet: Alex sets them in game with the Logged Timeline Ref tool on the Development
 --             page, and its export replaces this block.
 
 CRT.Bosses:Register({

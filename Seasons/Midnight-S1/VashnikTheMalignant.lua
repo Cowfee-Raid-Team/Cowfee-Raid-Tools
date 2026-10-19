@@ -7,7 +7,7 @@ local ADDON, CRT = ...
 -- references  The Mythic reference timeline, in the Timeline's text format (see Timeline/Database.lua
 --             for the format), transcribed from a planner screenshot on 2026-10-17 (the vault note
 --             "Cowfee Raid Tools - Boss Reference Transcriptions"). The rows have no types yet: Alex
---             sets them in game with the Reference types tool on the Development page, and its export
+--             sets them in game with the Logged Timeline Ref tool on the Development page, and its export
 --             replaces this block.
 
 CRT.Bosses:Register({
