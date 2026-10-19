@@ -315,7 +315,21 @@ function Probe:Spec(arg)
         end
         log("spec info for %s: %s, %d ids: %s", tostring(item:GetItemLink() or link), kind, #ids, #ids > 0 and table.concat(ids, "; ") or "-")
         log("  your specs: %s", mineText)
-        log("  rule: %s  (%.1f s to load)", verdict, GetTime() - started)
+        log("  spec check alone: %s  (%.1f s to load)", verdict, GetTime() - started)
+        -- the real decision, from the same code Loot Master runs (spec, then Classes line, then armor type)
+        local LM = CRT.LootMaster
+        if LM and LM.CantUse then
+            local okC, why, detail = pcall(LM.CantUse, link, loaded)
+            if not okC then
+                log("  FINAL: SHOW (the check failed: %s)", str(why))
+            elseif why then
+                local names = { spec = "your specs aren't listed", classes = "the Classes line doesn't name your class",
+                    armor = "not your class's armor type" }
+                log("  FINAL: AUTO-PASS (Transmog for you), by the %s rule: %s [%s]", why, names[why] or why, str(detail))
+            else
+                log("  FINAL: SHOW (no rule says you can't use it)")
+            end
+        end
         -- class limits (weapon and armor types, "Classes:" lines): what each candidate API says, to decide
         -- which one truly means "this class can never use it"
         local _, _, subType, equipLoc, _, classID, subClassID = C_Item.GetItemInfoInstant(link)

@@ -489,24 +489,45 @@ local function classesLine(itemString)
     return nil
 end
 
+-- Class names as the game writes them in this language, male and female (Blizzard's
+-- LOCALIZED_CLASS_NAMES_MALE and _FEMALE: class file -> name): yours, and every class's.
+local function classNames(classFile)
+    local mine, known = {}, {}
+    for _, list in ipairs({ LOCALIZED_CLASS_NAMES_MALE or {}, LOCALIZED_CLASS_NAMES_FEMALE or {} }) do
+        for file, name in pairs(list) do
+            known[name] = true
+            if file == classFile then
+                mine[name] = true
+            end
+        end
+    end
+    return mine, known
+end
+
 -- Why an item can't be used by you: "spec" with the spec IDs, "classes" with the classes it is for,
--- "armor" with its armor subclass; nil when it can be, or when anything is unclear.
-local function cantUse(it, loaded)
-    local ok, specs = pcall(C_Item.GetItemSpecInfo, it.itemString)
+-- "armor" with its armor subclass; nil when it can be, or when anything is unclear. The probe calls it
+-- too (/crt dev loot probe spec), so what it prints is the real decision.
+function LM.CantUse(itemString, loaded)
+    local ok, specs = pcall(C_Item.GetItemSpecInfo, itemString)
     if ok and not secret(specs) and LM.SpecVerdict(specs, mySpecs(), loaded) == "auto" then
         return "spec", table.concat(specs, ",")
     end
-    local okI, _, _, _, equipLoc, _, itemClass, subClass = pcall(C_Item.GetItemInfoInstant, it.itemString)
-    local className, classFile = UnitClass("player")
-    local classes = classesLine(it.itemString)
+    local okI, _, _, _, equipLoc, _, itemClass, subClass = pcall(C_Item.GetItemInfoInstant, itemString)
+    local _, classFile = UnitClass("player")
+    local mine, known = classNames(classFile)
+    local classes = classesLine(itemString)
     local verdict, why = LM.ClassVerdict({
         loaded = loaded and okI, itemClass = itemClass, subClass = subClass, equipLoc = equipLoc,
-        myClass = classFile, myClassName = className, classes = classes,
+        myClass = classFile, myClassNames = mine, knownClassNames = known, classes = classes,
     })
     if verdict == "auto" then
         return why, why == "classes" and table.concat(classes, "/") or tostring(subClass)
     end
     return nil
+end
+
+local function cantUse(it, loaded)
+    return LM.CantUse(it.itemString, loaded)
 end
 
 -- Answers one item for you when you can't use it (your specs, your class, your armor type); else leaves

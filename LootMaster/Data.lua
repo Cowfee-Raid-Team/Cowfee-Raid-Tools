@@ -393,16 +393,21 @@ function LM.ParseClassesLine(text, format)
 end
 
 -- f: loaded, itemClass, subClass, equipLoc (from C_Item.GetItemInfoInstant), myClass (class file),
--- myClassName (the localized name), classes (the names on a "Classes:" line, or nil).
+-- myClassNames ({ [name] = true }: your class's localized names, male and female, as some languages
+-- differ), knownClassNames (every class's names, the same way), classes (the names on a "Classes:" line).
 -- Returns "auto" with a reason ("classes" or "armor"), or "show".
 function LM.ClassVerdict(f)
     if not (f and f.loaded) then
         return "show"
     end
-    if type(f.classes) == "table" and #f.classes > 0 and type(f.myClassName) == "string" then
+    if type(f.classes) == "table" and #f.classes > 0 then
+        if type(f.myClassNames) ~= "table" or next(f.myClassNames) == nil
+            or type(f.knownClassNames) ~= "table" or next(f.knownClassNames) == nil then
+            return "show" -- your own names unknown: can't tell
+        end
         for _, name in ipairs(f.classes) do
-            if name == f.myClassName then
-                return "show"
+            if f.myClassNames[name] or not f.knownClassNames[name] then
+                return "show" -- your class is named, or a name isn't a class we know: show
             end
         end
         return "auto", "classes"
