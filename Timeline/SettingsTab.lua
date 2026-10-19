@@ -254,7 +254,7 @@ function SettingsTab.Build(f, ctx)
 
     -- Rows
     label(f, "Rows"):SetPoint("TOPLEFT", f, "TOPLEFT", 8, -132)
-    UI.Help(f, "Rows", "The rows come from the boss's Encounter Journal abilities, then your own. Untick a row to hide it. Add a spell by its ID (the number in its Wowhead address) to track a cast the Journal does not list. The Journal is read out of combat with the Journal window closed.\n\nWith a reference shown, its own rows are listed instead, and unticking one hides it by name. Adding a spell works for recorded pulls only.\n\nA reference row gets its icon, and its match to a Journal ability, from the Encounter Journal, which is not read in combat; they can be blank until you are out of combat."):SetPoint("TOPLEFT", f, "TOPLEFT", 54, -133)
+    UI.Help(f, "Rows", "The rows come from the boss's Encounter Journal abilities, then your own. Untick a row to hide it. Add a spell by its ID (the number in its Wowhead address) to track a cast the Journal does not list. The Journal is read out of combat with the Journal window closed.\n\nWith an ability timeline shown, its own rows are listed instead, and unticking one hides it by name. Adding a spell works for recorded pulls only.\n\nAn ability timeline row gets its icon, and its match to a Journal ability, from the Encounter Journal, which is not read in combat; they can be blank until you are out of combat."):SetPoint("TOPLEFT", f, "TOPLEFT", 54, -133)
     bossLabel = label(f, "", "CRTFontSmall")
     bossLabel:SetPoint("TOPLEFT", f, "TOPLEFT", 8, -154)
     checkbox(f, 8, -172, "Hide rows with no casts in this pull", function()

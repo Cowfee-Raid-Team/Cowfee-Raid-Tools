@@ -96,7 +96,7 @@ function ReferencePage.Recent(f, width, pullLabel, toggle)
     frame:Hide()
     local title = label(frame, "Recent pulls")
     title:SetPoint("TOPLEFT", 4, 0)
-    UI.Help(frame, "Recent pulls", "This boss's saved pulls. Click one to lay it over the reference: its deaths go in the Deaths row, its casts are drawn as ticks in a row of their own (their spells are usually unreadable), and a line marks where it ended. Click it again to clear it."):SetPoint("LEFT", title, "RIGHT", 4, 0)
+    UI.Help(frame, "Recent pulls", "This boss's saved pulls. Click one to lay it over the ability timeline: its deaths go in the Deaths row, its casts are drawn as ticks in a row of their own (their spells are usually unreadable), and a line marks where it ended. Click it again to clear it."):SetPoint("LEFT", title, "RIGHT", 4, 0)
 
     local recent, lines = {}, {}
     -- pulls newest first, each in a box as the Raid Notes list draws its notes, overlayID the one laid
@@ -155,7 +155,7 @@ local TEXT_MENU = {
     phasePrompt = "When %s starts, m:ss or seconds (leave it empty to fill in later):",
     noTimes = "no times",
     noStart = "no start yet",
-    refHeading = "Reference abilities",
+    refHeading = "Abilities",
     pullPhase = "Phase 1 (from the pull)",
     rename = "Rename...",
     unname = "Use the Journal's name",
@@ -269,7 +269,7 @@ function ReferencePage.Build(f, ctx)
             editing = nil
         end
         local where = " \194\183 " .. GROUP_NAMES[ctx.difficulty()]
-        mode:SetText((entry and ("Editing " .. Reference.Label(entry.ref)) or "New reference") .. where)
+        mode:SetText((entry and ("Editing " .. Reference.Label(entry.ref)) or "New abilities") .. where)
     end
 
     local refreshAbilities -- set below, with the abilities list; fill uses it
@@ -394,7 +394,7 @@ function ReferencePage.Build(f, ctx)
     listLabel:SetWidth(310)
     listLabel:SetJustifyH("LEFT")
     listLabel:SetWordWrap(false)
-    local empty = label(f, "No references for this boss yet", "CRTFontSmall")
+    local empty = label(f, "No ability timelines for this boss yet", "CRTFontSmall")
     empty:SetPoint("TOPLEFT", f, "TOPLEFT", REFS_X, -34)
 
     local function line(i)
@@ -445,7 +445,7 @@ function ReferencePage.Build(f, ctx)
             if not entry then
                 return
             end
-            confirm("Delete your reference %s?", Reference.Label(entry.ref), "Delete", function()
+            confirm("Delete your %s?", Reference.Label(entry.ref), "Delete", function()
                 if editing == key then
                     editing = nil
                 end
@@ -462,7 +462,7 @@ function ReferencePage.Build(f, ctx)
     abilitiesLabel:SetWidth(280)
     abilitiesLabel:SetJustifyH("LEFT")
     abilitiesLabel:SetWordWrap(false)
-    UI.Help(f, "Journal abilities", "The boss's abilities in the Encounter Journal, with their spell IDs. A reference line whose name matches one gets its icon and tooltip, or use Fill spell IDs to write the IDs into the text.\n\nClick or right-click an ability to give it a row on the timeline (even with no cast times, so notes, templates and cooldowns can go on it), a type that colors its row, your own name for it, or a Mech Alert. These are only yours: no reference or note changes.\n\nWhile one of your references is open in the box (Edit, or the Journal's Send to Timeline), this list is that reference: its abilities under its phases. Right-click an ability to add a phase or an intermission before it, and right-click a phase to set when it starts or take it out; the reference's text follows.\n\nThe Journal's spell for an ability is sometimes a summary spell rather than the exact cast, so its ID may differ from what the damage meter shows.\n\nNothing shows in combat or while the Journal window is open."):SetPoint("LEFT", abilitiesLabel, "RIGHT", -4, 0)
+    UI.Help(f, "Journal abilities", "The boss's abilities in the Encounter Journal, with their spell IDs. An ability line whose name matches one gets its icon and tooltip, or use Fill spell IDs to write the IDs into the text.\n\nClick or right-click an ability to give it a row on the timeline (even with no cast times, so notes, templates and cooldowns can go on it), a type that colors its row, your own name for it, or a Mech Alert. These are only yours: no ability timeline or note changes.\n\nWhile one of your ability timelines is open in the box (Edit, or the Journal's Send to Timeline), this list is that ability timeline: its abilities under its phases. Right-click an ability to add a phase or an intermission before it, and right-click a phase to set when it starts or take it out; the ability timeline's text follows.\n\nThe Journal's spell for an ability is sometimes a summary spell rather than the exact cast, so its ID may differ from what the damage meter shows.\n\nNothing shows in combat or while the Journal window is open."):SetPoint("LEFT", abilitiesLabel, "RIGHT", -4, 0)
     local abilitiesNone = label(f, "", "CRTFontSmall")
     abilitiesNone:SetWidth(300)
     abilitiesNone:SetJustifyH("LEFT")
@@ -844,7 +844,7 @@ function ReferencePage.Build(f, ctx)
     function tab:Refresh()
         refreshAbilities()
         local boss = ctx.selectedBoss()
-        listLabel:SetText(boss and ("References for " .. (ctx.bossName() or tostring(boss)) .. " (" .. GROUP_NAMES[ctx.difficulty()] .. ")") or "Pick a boss on the Review tab")
+        listLabel:SetText(boss and ("Ability timelines for " .. (ctx.bossName() or tostring(boss)) .. " (" .. GROUP_NAMES[ctx.difficulty()] .. ")") or "Pick a boss on the Review tab")
         local refs = boss and ctx.references() or {}
         -- a reference that is no longer in this list (another difficulty or boss) is not edited any more:
         -- Save then adds a new one and the box keeps its text
