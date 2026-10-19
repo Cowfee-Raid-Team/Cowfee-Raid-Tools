@@ -334,6 +334,28 @@ local function startTimers(s)
     end)
 end
 
+-- The boss in the title bar: each computer keeps its own last kill (ENCOUNTER_END: encounterID,
+-- encounterName, difficultyID, groupSize, success), so no message carries it; everyone in the session was
+-- in the fight. A session started within BOSS_SECONDS of it keeps the name (s.boss, inc.boss), saved with
+-- the session for a /reload. A test never has one.
+local lastKill -- { name, at }
+
+local function noteEncounter(name, success)
+    if issecretvalue and (issecretvalue(name) or issecretvalue(success)) then
+        return
+    end
+    if type(name) == "string" and name ~= "" and success == 1 then
+        lastKill = { name = name, at = GetTime() }
+    end
+end
+
+function LM:RecentBoss(test)
+    if test or not lastKill or GetTime() - lastKill.at > LM.BOSS_SECONDS then
+        return nil
+    end
+    return lastKill.name
+end
+
 -- items: { { itemString, link, ilvl } }. test marks it as a test everywhere.
 function LM:Start(items, test)
     if not self:CanLoot() then
@@ -359,6 +381,7 @@ function LM:Start(items, test)
     warned = {}
     local id = string.format("%x", (time() % 0xFFFFFF)) .. string.format("%02x", math.random(0, 255))
     local s = Session.New({ id = id, test = test, leader = self:Me(), items = ok })
+    s.boss = self:RecentBoss(s.test)
     s.autoPass = self:Settings().autoPass ~= false
     s:Expect(self:Roster())
     self.current = s
@@ -867,6 +890,7 @@ HANDLERS.S = function(f, sender)
             seconds = tonumber(f[5]) or 60, nResponses = tonumber(f[6]) or 0, responses = {}, byKey = {},
             autoPass = f[7] == "1", version = f[4],
         }
+        inc.boss = LM:RecentBoss(inc.test)
         -- everyone's answers, for the raider window
         inc.view = Session.New({ id = id, test = inc.test, leader = sender, items = {}, responses = {}, seconds = inc.seconds })
         inc.view.items, inc.view.responses, inc.view.byKey = inc.items, inc.responses, inc.byKey
@@ -1087,7 +1111,7 @@ events:RegisterEvent("PLAYER_REGEN_ENABLED")
 events:RegisterEvent("GROUP_ROSTER_UPDATE")
 events:RegisterEvent("PARTY_LEADER_CHANGED")
 local rosterPending = false
-events:SetScript("OnEvent", function(_, event, a1, a2, a3, a4)
+events:SetScript("OnEvent", function(_, event, a1, a2, a3, a4, a5)
     if event == "CHAT_MSG_ADDON" then
         if a1 == LM.PREFIX then
             receive(a2, a4)
@@ -1097,6 +1121,9 @@ events:SetScript("OnEvent", function(_, event, a1, a2, a3, a4)
     elseif event == "PLAYER_LOGOUT" then
         save()
     elseif event == "ENCOUNTER_END" or event == "PLAYER_REGEN_ENABLED" then
+        if event == "ENCOUNTER_END" then
+            noteEncounter(a2, a5)
+        end
         resume()
     elseif not rosterPending then
         rosterPending = true

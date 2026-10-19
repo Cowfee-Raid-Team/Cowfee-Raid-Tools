@@ -24,6 +24,7 @@ LM.AUTO_TMOG_SINCE = "0.26.0" -- a looter from this version on accepts the built
 LM.HELLO_SECONDS = 5 -- after this, raiders who never said hello have no CRT
 LM.READY_SECONDS = 10 -- a raider who said hello but never got everything is sent the session again, once
 LM.RESTORE_HOURS = 3 -- a saved session older than this is not restored after a /reload
+LM.BOSS_SECONDS = 600 -- a session started this soon after a boss kill shows the boss's name
 LM.MAX_ITEMS = 8
 LM.MAX_RESPONSES = 8
 LM.LABEL_MAX = 16 -- letters in a button's label
@@ -657,6 +658,14 @@ function LM.ButtonWidth(labelWidth, hasIcon)
     return math.max(LM.BUTTON_MIN_W, w)
 end
 
+-- A UIPanelButtonTemplate button (End session, Everyone's answers, Show): its label plus room for the
+-- template's end caps (its highlight is inset 12 on each side), so the label fits in Classic and Modern.
+LM.PANEL_BUTTON_PAD = 14 -- each side
+
+function LM.PanelButtonWidth(labelWidth)
+    return math.max(LM.BUTTON_MIN_W, math.ceil(labelWidth or 0) + 2 * LM.PANEL_BUTTON_PAD)
+end
+
 -- Lays buttons of these widths out in rows no wider than maxW: one row with `gap` when it fits, else one
 -- row with `minGap`, else as many rows as needed with `gap`. Returns { { x, row } } and the row count.
 function LM.ButtonLayout(widths, maxW, gap, minGap)
@@ -769,6 +778,28 @@ function Session:Answered(index)
         end
     end
     return n
+end
+
+-- The item tabs' count: answers in, raiders with CRT (raiders without it can never answer), and whether
+-- the time ran out with answers missing (a timeout the looter's Tick marked, or the same rule on a copy
+-- that never ticks: ready, no answer, asked longer ago than the session's seconds).
+function Session:AnswerCount(index)
+    local answered, expected, late = 0, 0, false
+    local now = GetTime()
+    for _, p in pairs(self.players) do
+        local a = p.answers[index]
+        local has = (a and a.response) and true or false
+        if has then
+            answered = answered + 1
+        end
+        if p.crt then
+            expected = expected + 1
+            if not has and ((a and a.state == "timeout") or (p.ready and now - ((a and a.asked) or self.started) > self.seconds)) then
+                late = true
+            end
+        end
+    end
+    return answered, expected, late
 end
 
 -- Raiders with CRT who have not answered this item.

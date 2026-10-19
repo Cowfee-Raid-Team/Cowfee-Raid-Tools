@@ -198,6 +198,33 @@ for _, label in ipairs({ 20, 47, 33, 44, 57, 110, 90, 28 }) do many[#many + 1] =
 ok, rows = placed(many, 464)
 check(ok, "eight buttons with a long name: inside, no overlap")
 check(rows >= 2, "they wrap to a second line")
+
+-- answers in of raiders with CRT, and whether the time ran out (the item tabs' "3/5 answered")
+local sc = LM.Session.New({ id = "cnt", items = { { itemString = "item:1" }, { itemString = "item:2" } }, seconds = 60 })
+sc:Expect({ "A", "B", "C", "D", "E", "NoAddon" })
+for _, n in ipairs({ "A", "B", "C", "D", "E" }) do sc:Ack(n, "x") sc:Ready(n) end
+sc:MarkNoCRT()
+for _, n in ipairs({ "A", "B", "C" }) do sc:Answer(n, 1, { response = "bis" }) end
+local x, y, late = sc:AnswerCount(1)
+eq(x, 3, "AnswerCount: three answers in")
+eq(y, 5, "AnswerCount: five raiders with CRT, not the one without")
+eq(late, false, "AnswerCount: time left")
+NOW = NOW + 61
+x, y, late = sc:AnswerCount(1)
+eq(late, true, "AnswerCount: the time ran out with answers missing")
+sc:Answer("D", 2, { response = "bis", auto = true })
+for _, n in ipairs({ "A", "B", "C", "E" }) do sc:Answer(n, 2, { response = "pass" }) end
+x, y, late = sc:AnswerCount(2)
+eq(x .. "/" .. y, "5/5", "AnswerCount: an automatic answer counts")
+eq(late, false, "AnswerCount: everyone answered is never late")
+sc:Tick()
+NOW = NOW - 61
+x, y, late = sc:AnswerCount(1)
+eq(late, true, "AnswerCount: a timeout the looter marked")
+
+-- a panel button (UIPanelButtonTemplate) is as wide as its label plus the template's end caps
+check(LM.PanelButtonWidth(100) >= 100 + 2 * 12, "a panel button holds its label and both end caps")
+check(LM.PanelButtonWidth(4) >= LM.BUTTON_MIN_W, "a panel button is never narrower than the minimum")
 local tight = { 100, 100, 100, 100, 56 } -- 456: 472 with gap 4, 464 with gap 2
 ok, rows = placed(tight, 464)
 check(ok and rows == 1, "a row that only fits with the smaller gap stays on one line")

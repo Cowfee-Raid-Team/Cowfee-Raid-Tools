@@ -1,19 +1,23 @@
 local ADDON, CRT = ...
 
 -- The column of item tabs both loot windows share (the looter's and the raider window): each tab is the
--- item's icon with, beside it, who it was given to (in their class colour) or "Open" with how many have
--- answered. Click picks the item; the looter window also uses right-click (its menu) and double-click
--- (trade the item to its winner).
+-- item's icon with, beside it, who it was given to (in their class colour) or "Open" with "3/5 answered":
+-- the answers in of the raiders with CRT, orange when the time ran out with answers missing. Click picks
+-- the item; the looter window also uses right-click (its menu) and double-click (trade the item to its
+-- winner).
 --   local tabs = LM.ItemTabs(parent, opts)
 --   opts: onSelect(index), onRightClick(tab), onDoubleClick(index), doubleClickHint (tooltip line)
---   tabs:Update(items, current, answered(index) -> number, classOf(name) -> class file)
+--   tabs:Update(items, current, count(index) -> answered, expected, late (Session:AnswerCount),
+--               classOf(name) -> class file)
 
 local LM = CRT.LootMaster
 
 local L = { width = 146, height = 40, gap = 6, icon = 36 }
 LM.TAB_COLUMN = L.width
 
-local TEXT = { given = "Given to", open = "Open", answered = "%d answered" }
+local TEXT = { given = "Given to", open = "Open", answered = "%d/%d answered" }
+local COUNT_COLOR = { 0.85, 0.85, 0.85 }
+LM.TAB_LATE_COLOR = { 1, 0.54, 0.25 } -- the count when someone ran out of time
 
 local function classColor(file)
     return file and (C_ClassColor and C_ClassColor.GetClassColor(file) or RAID_CLASS_COLORS[file]) or nil
@@ -88,7 +92,7 @@ function LM.ItemTabs(parent, opts)
         return t
     end
 
-    function self:Update(items, current, answered, classOf)
+    function self:Update(items, current, count, classOf)
         self.items = items
         local n = 0
         for i, it in ipairs(items or {}) do
@@ -106,8 +110,14 @@ function LM.ItemTabs(parent, opts)
                 t.name:SetTextColor(c and c.r or 0.95, c and c.g or 0.9, c and c.b or 0.84)
             else
                 t.label:SetText(TEXT.open)
-                t.name:SetText(string.format(TEXT.answered, answered and answered(i) or 0))
-                t.name:SetTextColor(0.85, 0.85, 0.85)
+                local x, y, late
+                if count then
+                    x, y, late = count(i)
+                end
+                x, y = x or 0, y or 0
+                t.name:SetText(string.format(TEXT.answered, x, y))
+                local c = (late and x < y) and LM.TAB_LATE_COLOR or COUNT_COLOR
+                t.name:SetTextColor(c[1], c[2], c[3])
             end
             t:Show()
         end
@@ -117,4 +127,17 @@ function LM.ItemTabs(parent, opts)
     end
 
     return self
+end
+
+-- A UIPanelButtonTemplate button for the loot windows (End session, Everyone's answers, Show): as wide as
+-- its label plus the template's end caps (LM.PanelButtonWidth), skinned like every panel button
+-- (UI:SkinButton: flat in Modern, the template's art in Classic, switched with the look).
+function LM.PanelButton(parent, label, height, onClick)
+    local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
+    b:SetText(label)
+    local fs = b:GetFontString()
+    b:SetSize(LM.PanelButtonWidth(fs and fs:GetStringWidth() or 0), height)
+    b:SetScript("OnClick", onClick)
+    CRT.UI:SkinButton(b)
+    return b
 end

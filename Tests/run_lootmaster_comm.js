@@ -310,6 +310,49 @@ LM.incoming = nil
 GROUP = nil
 outbox = {}
 
+-- 7. The boss's name in the title bar: each side's own last ENCOUNTER_END, no message carries it
+GROUP = { names = { "Solex-Sargeras", "Halo-Sargeras" }, leader = "Solex-Sargeras" }
+LM.authority = nil
+local BOSS = "Plexus Sentinel"
+onEvent(nil, "ENCOUNTER_END", 3129, BOSS, 16, 20, 1)
+NOW = NOW + 120
+local sb = LM:Start({ { itemString = "item:111" } }, false)
+eq(sb and sb.boss, BOSS, "boss: a session within 10 minutes of a kill has its name")
+deliver("Solex-Sargeras")
+eq(LM.incoming and LM.incoming.boss, BOSS, "boss: the raider's popup has it from their own fight")
+LM.current, LM.incoming = nil, nil
+onEvent(nil, "PLAYER_LOGIN")
+eq(LM.current and LM.current.boss, BOSS, "boss: kept after a /reload (looter)")
+eq(LM.incoming and LM.incoming.boss, BOSS, "boss: kept after a /reload (raider)")
+LM:End()
+deliver("Solex-Sargeras")
+onEvent(nil, "ENCOUNTER_END", 3130, "Wiped Boss", 16, 20, 0)
+sb = LM:Start({ { itemString = "item:111" } }, false)
+eq(sb and sb.boss, BOSS, "boss: a wipe doesn't replace the boss that was killed")
+LM:End()
+deliver("Solex-Sargeras")
+sb = LM:Start({ { itemString = "item:111" } }, true)
+eq(sb and sb.boss, nil, "boss: a test never has one")
+deliver("Solex-Sargeras")
+eq(LM.incoming and LM.incoming.boss, nil, "boss: nor the test's popup")
+LM:End()
+deliver("Solex-Sargeras")
+issecretvalue = function(v) return v == "SECRET" end
+onEvent(nil, "ENCOUNTER_END", 3131, "SECRET", 16, 20, 1)
+issecretvalue = nil
+sb = LM:Start({ { itemString = "item:111" } }, false)
+eq(sb and sb.boss, BOSS, "boss: a secret name is never kept")
+LM:End()
+deliver("Solex-Sargeras")
+NOW = NOW + LM.BOSS_SECONDS
+sb = LM:Start({ { itemString = "item:111" } }, false)
+eq(sb and sb.boss, nil, "boss: more than 10 minutes after the kill, none")
+LM:End()
+deliver("Solex-Sargeras")
+LM.incoming = nil
+GROUP = nil
+outbox = {}
+
 print(string.format("%d passed, %d failed", passes, fails))
 if fails > 0 then error("failures") end
 `;

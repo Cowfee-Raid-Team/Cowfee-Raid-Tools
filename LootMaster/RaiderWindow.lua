@@ -176,13 +176,14 @@ local function refresh()
         current = 1
     end
     win.strip:SetTitle(TEXT.title)
-    win.strip:SetBadge(inc.test and TEXT.test or nil, TEXT.note)
+    -- TEST for a test, else the boss you saw killed just before (LM:RecentBoss)
+    win.strip:SetBadge(inc.test and TEXT.test or inc.boss, TEXT.note, not inc.test and UI.TITLE_STRIP.neutral or nil)
     if not inc.test then
         win.strip.note:SetText(TEXT.note)
         win.strip.note:Show()
     end
     tabs:Update(inc.items, current, function(i)
-        return view:Answered(i)
+        return view:AnswerCount(i)
     end, function(name)
         return view.players[name] and view.players[name].class
     end)
