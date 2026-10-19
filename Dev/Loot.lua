@@ -6,6 +6,7 @@ local ADDON, CRT = ...
 --   /crt dev loot fill <count>            that many fake records spread over the last 12 months
 --   /crt dev loot stats                   records, months, names and the saved table's rough size
 --   /crt dev loot rc                      re-scan RCLootCouncil and print the match report
+--   /crt dev loot probe ...               the Loot Master probes (Dev/LootProbe.lua)
 
 local Loot = CRT.Loot
 local Dev = {}
@@ -74,6 +75,8 @@ function Dev:Command(msg, raw)
         for _, m in ipairs(Loot:Months()) do
             print("  " .. m .. ": " .. #d.months[m])
         end
+    elseif verb == "probe" and CRT.LootProbe then
+        CRT.LootProbe:Command(rawRest:match("^%S+%s*(.*)$"))
     elseif verb == "rc" then
         CRT.LootRCLC:Scan()
         CRT:Print(CRT.LootRCLC:ReportText())
