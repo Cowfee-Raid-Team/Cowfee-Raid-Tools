@@ -5,3 +5,7 @@ ignore:
   - docs
   - "Cowfee Raid Tools - Architecture.md"
   - Dev
+
+manual-changelog:
+  filename: CHANGELOG.md
+  markup-type: markdown
