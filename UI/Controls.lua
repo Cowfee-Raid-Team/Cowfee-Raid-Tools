@@ -388,3 +388,38 @@ function UI.SlotGrid(parent, opts)
     end
     return grid
 end
+
+-- Opens the game's colour picker on color ({ r, g, b [, a] }). set(newColor) is called as the colour
+-- changes, and with the starting colour again on Cancel. opts.hasOpacity shows the opacity slider.
+-- Alerts/Areas.lua has its own copy from before this helper; it can move onto it.
+function UI.PickColor(color, set, opts)
+    if not ColorPickerFrame then
+        return
+    end
+    opts = opts or {}
+    local before = { color[1] or 1, color[2] or 1, color[3] or 1, color[4] or 1 }
+    local function apply()
+        local r, g, b = ColorPickerFrame:GetColorRGB()
+        local a = (opts.hasOpacity and ColorPickerFrame.GetColorAlpha) and ColorPickerFrame:GetColorAlpha() or before[4]
+        set({ r, g, b, a })
+    end
+    local function cancel()
+        set({ before[1], before[2], before[3], before[4] })
+    end
+    if ColorPickerFrame.SetupColorPickerAndShow then
+        ColorPickerFrame:SetupColorPickerAndShow({
+            r = before[1], g = before[2], b = before[3], opacity = before[4], hasOpacity = opts.hasOpacity and true or false,
+            swatchFunc = apply, opacityFunc = apply, cancelFunc = cancel,
+        })
+    else
+        ColorPickerFrame.hasOpacity = opts.hasOpacity and true or false
+        ColorPickerFrame.opacity = 1 - before[4] -- the older picker counts transparency
+        ColorPickerFrame.previousValues = { before[1], before[2], before[3], before[4] }
+        ColorPickerFrame.func = apply
+        ColorPickerFrame.opacityFunc = apply
+        ColorPickerFrame.cancelFunc = cancel
+        ColorPickerFrame:SetColorRGB(before[1], before[2], before[3])
+        ColorPickerFrame:Hide()
+        ColorPickerFrame:Show()
+    end
+end

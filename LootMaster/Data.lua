@@ -8,24 +8,29 @@ local ADDON, CRT = ...
 --   players   by full name: { name, crt (nil until known, then true or false), class, role,
 --             answers[itemIndex] = { response, note, roll, gear = { { id, ilvl } }, ilvl, state, asked } }
 -- An answer's state: waiting (has CRT, no answer yet), answered, reroll (asked to roll again), timeout
--- (no answer in RESPONSE_SECONDS), nocrt (never said hello). A raider's roll is the first one seen for that
+-- (no answer in the session's seconds), nocrt (never said hello). A raider's roll is the first one seen for that
 -- item; a later one never replaces it, so nobody rolls again for a better number unless asked.
 --
 -- Messages (prefix CRTLoot1, fields split by "|", see Wire): the looter sends S (session), I (item),
--- Q (show the popup again), X (roll again), A (award), E (end); raiders send K (hello), R (answer), L (roll).
+-- B (a response button), Q (show the popup again), X (roll again), A (award), E (end); raiders send K
+-- (hello), R (answer), L (roll).
 
 local LM = { listeners = {} }
 CRT.LootMaster = LM
 
 LM.PREFIX = "CRTLoot1"
 LM.VERSION = "0.24.0"
-LM.RESPONSE_SECONDS = 60 -- how long raiders have to answer
 LM.HELLO_SECONDS = 5 -- after this, raiders who never said hello have no CRT
 LM.MAX_ITEMS = 8
+LM.MAX_RESPONSES = 8
+LM.LABEL_MAX = 16 -- letters in a button's label
+LM.WEIGHT_MAX = 100
 
 -- The default buttons, in the order raiders see them; weight sorts the looter's list (higher first).
--- icon (optional): a texture path or file ID shown at the left of the button.
-LM.RESPONSES = {
+-- icon (optional): a texture path or file ID shown at the left of the button. Pass is always last, can't
+-- be removed, and weighs 0. Your own set is saved in CRTDB lootmaster.responses only once you change it
+-- (Settings tab), so a default can still change in a later version for everyone who never edited it.
+LM.DEFAULT_RESPONSES = {
     { key = "bis", label = "BiS", color = { 0.24, 0.86, 0.35 }, weight = 100 },
     { key = "up", label = "Upgrade", color = { 0.56, 0.82, 0.31 }, weight = 80 },
     { key = "minor", label = "Minor", color = { 0.90, 0.82, 0.29 }, weight = 50 },
@@ -33,13 +38,141 @@ LM.RESPONSES = {
     { key = "tmog", label = "Transmog", color = { 0.71, 0.55, 0.91 }, weight = 10 },
     { key = "pass", label = "Pass", color = { 0.54, 0.54, 0.54 }, weight = 0 },
 }
-local byKey = {}
-for _, r in ipairs(LM.RESPONSES) do
-    byKey[r.key] = r
+
+function LM:Settings()
+    return CRT.db.lootmaster
 end
 
+-- How long raiders have to answer, in seconds (Settings tab).
+function LM:ResponseSeconds()
+    return tonumber(self:Settings().responseSeconds) or 60
+end
+
+local function copyResponse(r)
+    return {
+        key = r.key, label = r.label, weight = r.weight, icon = r.icon,
+        color = { r.color and r.color[1] or 1, r.color and r.color[2] or 1, r.color and r.color[3] or 1 },
+    }
+end
+
+-- A response set made safe: known fields only, at most MAX_RESPONSES, one Pass, last, weighing 0.
+function LM.CleanResponses(list)
+    local out, seen, pass = {}, {}, nil
+    for _, r in ipairs(type(list) == "table" and list or {}) do
+        if type(r) == "table" and type(r.key) == "string" and r.key ~= "" and not seen[r.key] then
+            seen[r.key] = true
+            local c = copyResponse(r)
+            c.label = tostring(c.label or c.key):sub(1, LM.LABEL_MAX)
+            c.weight = math.max(0, math.min(LM.WEIGHT_MAX, math.floor(tonumber(c.weight) or 0)))
+            if c.key == "pass" then
+                c.weight = 0
+                pass = c
+            elseif #out < LM.MAX_RESPONSES - 1 then
+                out[#out + 1] = c
+            end
+        end
+    end
+    out[#out + 1] = pass or copyResponse(LM.DEFAULT_RESPONSES[#LM.DEFAULT_RESPONSES])
+    return out
+end
+
+-- Your response set: the saved one, or the defaults.
+function LM:Responses()
+    local saved = self:Settings().responses
+    if type(saved) == "table" and #saved > 0 then
+        return LM.CleanResponses(saved)
+    end
+    return LM.CleanResponses(LM.DEFAULT_RESPONSES)
+end
+
+function LM:SaveResponses(list)
+    self:Settings().responses = LM.CleanResponses(list)
+    self:Fire("responses")
+end
+
+function LM:ResetResponses()
+    self:Settings().responses = nil
+    self:Fire("responses")
+end
+
+-- Adds a response before Pass, with a key no other response uses. Returns its key, or nil when full.
+function LM:AddResponse()
+    local list = self:Responses()
+    if #list >= LM.MAX_RESPONSES then
+        return nil
+    end
+    local used = {}
+    for _, r in ipairs(list) do
+        used[r.key] = true
+    end
+    local n = 1
+    while used["r" .. n] do
+        n = n + 1
+    end
+    local key = "r" .. n
+    table.insert(list, #list, { key = key, label = "New", color = { 0.6, 0.6, 0.6 }, weight = 20 })
+    self:SaveResponses(list)
+    return key
+end
+
+function LM:RemoveResponse(key)
+    if key == "pass" then
+        return false
+    end
+    local list = self:Responses()
+    for i, r in ipairs(list) do
+        if r.key == key then
+            table.remove(list, i)
+            self:SaveResponses(list)
+            return true
+        end
+    end
+    return false
+end
+
+-- Moves a response up (-1) or down (1); Pass stays last.
+function LM:MoveResponse(key, dir)
+    local list = self:Responses()
+    for i, r in ipairs(list) do
+        if r.key == key and key ~= "pass" then
+            local j = i + dir
+            if j >= 1 and j < #list then
+                list[i], list[j] = list[j], list[i]
+                self:SaveResponses(list)
+                return true
+            end
+            return false
+        end
+    end
+    return false
+end
+
+-- fields: label, color, weight, icon (an empty icon removes it).
+function LM:UpdateResponse(key, fields)
+    local list = self:Responses()
+    for _, r in ipairs(list) do
+        if r.key == key then
+            for k, v in pairs(fields) do
+                r[k] = v
+            end
+            if r.icon == "" then
+                r.icon = nil
+            end
+            self:SaveResponses(list)
+            return true
+        end
+    end
+    return false
+end
+
+-- A response of your set, by key (the looter's own set; a session uses the set it was started with).
 function LM:Response(key)
-    return byKey[key]
+    for _, r in ipairs(self:Responses()) do
+        if r.key == key then
+            return r
+        end
+    end
+    return nil
 end
 
 function LM:OnChange(fn)
@@ -76,8 +209,12 @@ LM.Session = Session
 function Session.New(opts)
     local s = setmetatable({
         id = opts.id, test = opts.test and true or false, leader = opts.leader, started = GetTime(),
-        items = {}, players = {}, order = {},
+        items = {}, players = {}, order = {}, seconds = opts.seconds or LM:ResponseSeconds(),
+        responses = LM.CleanResponses(opts.responses or LM:Responses()), byKey = {},
     }, Session)
+    for _, r in ipairs(s.responses) do
+        s.byKey[r.key] = r
+    end
     for i, it in ipairs(opts.items or {}) do
         if i > LM.MAX_ITEMS then
             break
@@ -85,6 +222,11 @@ function Session.New(opts)
         s.items[i] = { itemString = it.itemString, link = it.link, ilvl = it.ilvl }
     end
     return s
+end
+
+-- A response of this session's set.
+function Session:Response(key)
+    return self.byKey[key]
 end
 
 function Session:Player(name)
@@ -129,7 +271,7 @@ end
 
 -- fields: response, note, role, class, ilvl, gear ({ { id, ilvl } })
 function Session:Answer(name, index, fields)
-    if not self.items[index] or not byKey[fields.response] then
+    if not self.items[index] or not self.byKey[fields.response] then
         return false
     end
     local p = self:Player(name)
@@ -187,14 +329,14 @@ function Session:Clear(name, index)
     p.answers[index] = { asked = GetTime(), state = p.crt and "waiting" or nil }
 end
 
--- Answers not in after RESPONSE_SECONDS become timeouts. Returns true when anything changed.
+-- Answers not in after the session's seconds become timeouts. Returns true when anything changed.
 function Session:Tick()
     local now, changed = GetTime(), false
     for _, p in pairs(self.players) do
         if p.crt then
             for index in ipairs(self.items) do
                 local a = answer(p, index)
-                if not a.response and a.state ~= "timeout" and now - (a.asked or self.started) > LM.RESPONSE_SECONDS then
+                if not a.response and a.state ~= "timeout" and now - (a.asked or self.started) > self.seconds then
                     a.state = "timeout"
                     changed = true
                 end
@@ -258,7 +400,7 @@ function Session:Row(name, index)
             low = g.ilvl
         end
     end
-    local r = a and a.response and byKey[a.response]
+    local r = a and a.response and self.byKey[a.response]
     return {
         name = name, class = p.class, role = p.role, crt = p.crt, state = stateOf(p, a),
         response = a and a.response, weight = r and r.weight or (p.crt == false and -2 or -1),
@@ -326,6 +468,20 @@ function Wire.Decode(msg)
         fields[#fields + 1] = f
     end
     return kind, fields
+end
+
+-- A colour as six hex digits, and back.
+function Wire.Color(c)
+    return string.format("%02x%02x%02x", math.floor((c[1] or 1) * 255 + 0.5), math.floor((c[2] or 1) * 255 + 0.5),
+        math.floor((c[3] or 1) * 255 + 0.5))
+end
+
+function Wire.ParseColor(text)
+    local r, g, b = tostring(text or ""):match("^(%x%x)(%x%x)(%x%x)$")
+    if not r then
+        return { 1, 1, 1 }
+    end
+    return { tonumber(r, 16) / 255, tonumber(g, 16) / 255, tonumber(b, 16) / 255 }
 end
 
 -- "id:ilvl" for a piece of gear.

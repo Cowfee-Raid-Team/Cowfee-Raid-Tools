@@ -10,6 +10,7 @@ local ADDON, CRT = ...
 --   /crt loot window         show the looter window again
 --   /crt loot popup          show your raider popup again
 --   /crt loot end            end the session
+--   /crt loot settings       open the Loot Master page (also /crt loot master)
 
 local LM = CRT.LootMaster
 local Loot = CRT.Loot
@@ -66,6 +67,8 @@ function LM:Command(msg)
         self:ShowPopup()
     elseif verb == "end" then
         self:End()
+    elseif verb == "settings" or verb == "master" then
+        CRT.UI:Show("lootmaster")
     else
         return false
     end

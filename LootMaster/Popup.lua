@@ -227,14 +227,6 @@ local function panel(index)
     p.detail:SetTextColor(0.75, 0.75, 0.75)
 
     p.buttons = {}
-    for k, r in ipairs(LM.RESPONSES) do
-        local b = responseButton(p, r)
-        b:SetPoint("TOPLEFT", L.pad + (k - 1) * (L.button.w + L.button.gap), -(L.pad + L.icon + 6))
-        b:SetScript("OnClick", function()
-            LM:Answer(p.index, r.key, strtrim(p.note:GetText() or ""))
-        end)
-        p.buttons[k] = b
-    end
 
     local rowY = -(L.pad + L.icon + 6 + L.button.h + 8)
     p.notesLabel = p:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
@@ -274,8 +266,30 @@ local function panel(index)
     return p
 end
 
-local function fill(p, index, it, mine)
+-- The session's buttons (the leader's set), made again only when the set changes.
+local function setButtons(p, responses)
+    if p.buttonsFor == responses then
+        return
+    end
+    p.buttonsFor = responses
+    for _, b in ipairs(p.buttons) do
+        b:Hide()
+        b:SetParent(nil)
+    end
+    wipe(p.buttons)
+    for k, r in ipairs(responses) do
+        local b = responseButton(p, r)
+        b:SetPoint("TOPLEFT", L.pad + (k - 1) * (L.button.w + L.button.gap), -(L.pad + L.icon + 6))
+        b:SetScript("OnClick", function()
+            LM:Answer(p.index, r.key, strtrim(p.note:GetText() or ""))
+        end)
+        p.buttons[k] = b
+    end
+end
+
+local function fill(p, index, it, mine, inc)
     p.index, p.itemString = index, it.itemString
+    setButtons(p, inc.responses)
     local bg, edge = colors()
     p:SetBackdropColor(bg[1], bg[2], bg[3], 0.92)
     p:SetBackdropBorderColor(edge[1], edge[2], edge[3], 1)
@@ -296,10 +310,10 @@ local function fill(p, index, it, mine)
     p.reroll:SetShown(rerolling and true or false)
     p.status:SetShown(not rerolling)
     if award then
-        local r = LM:Response(award.response)
+        local r = inc.byKey[award.response]
         p.status:SetText(string.format(TEXT.awarded, Ambiguate(award.name, "short"), r and r.label or award.response))
     elseif mine and mine.response then
-        local r = LM:Response(mine.response)
+        local r = inc.byKey[mine.response]
         p.status:SetText(string.format(TEXT.sent, r and r.label or mine.response) .. (mine.roll and string.format(TEXT.rolled, mine.roll) or ""))
     else
         p.status:SetText("")
@@ -308,8 +322,8 @@ local function fill(p, index, it, mine)
     p:SetAlpha((mine and mine.response and not rerolling) and L.fadeAlpha or 1)
 end
 
-local function timeLeft(it)
-    return LM.RESPONSE_SECONDS - (GetTime() - (it.shownAt or GetTime()))
+local function timeLeft(it, inc)
+    return (inc.seconds or 60) - (GetTime() - (it.shownAt or GetTime()))
 end
 
 -- Panels still open: not closed, not timed out. Timed-out panels are closed here.
@@ -319,7 +333,7 @@ local function openItems(inc)
         local it = inc.items[i]
         local mine = inc.mine[i]
         if it and not (mine and mine.closed) then
-            if timeLeft(it) <= 0 then
+            if timeLeft(it, inc) <= 0 then
                 inc.mine[i] = mine or {}
                 inc.mine[i].closed = true
             else
@@ -359,8 +373,8 @@ local function build()
         end
         for _, p in pairs(panels) do
             if p:IsShown() and inc.items[p.index] then
-                local left = timeLeft(inc.items[p.index])
-                p.timer:SetWidth(math.max(0.01, (L.width - 2) * math.max(0, left) / LM.RESPONSE_SECONDS))
+                local left = timeLeft(inc.items[p.index], inc)
+                p.timer:SetWidth(math.max(0.01, (L.width - 2) * math.max(0, left) / (inc.seconds or 60)))
             end
         end
         elapsed = elapsed + dt
@@ -387,8 +401,8 @@ local function refresh()
         local p = panel(index)
         p:ClearAllPoints()
         p:SetPoint("TOPLEFT", 0, -(L.headerH + (k - 1) * (L.panelH + L.gap)))
-        fill(p, index, inc.items[index], inc.mine[index])
-        p.time:SetText(string.format(TEXT.timeLeft, math.ceil(timeLeft(inc.items[index]))))
+        fill(p, index, inc.items[index], inc.mine[index], inc)
+        p.time:SetText(string.format(TEXT.timeLeft, math.ceil(timeLeft(inc.items[index], inc))))
         p:Show()
         shown[index] = true
     end

@@ -96,7 +96,7 @@ local function rowMenu(row)
     contextMenu(row, function(root)
         root:CreateTitle(#picked == 1 and Ambiguate(picked[1], "short") or string.format(TEXT.selected, #picked))
         if #picked == 1 then
-            for _, resp in ipairs(LM.RESPONSES) do
+            for _, resp in ipairs(s.responses) do
                 if resp.key ~= "pass" then
                     local c = resp.color
                     local label = string.format("|cff%02x%02x%02x%s|r", c[1] * 255, c[2] * 255, c[3] * 255, string.format(TEXT.awardFor, resp.label))
@@ -129,16 +129,16 @@ local function rowMenu(row)
     end)
 end
 
-local function responseCell(r)
+local function responseCell(r, s)
     if r.state == "nocrt" then
         return "|cffff8a40" .. TEXT.nocrt .. "|r"
     elseif r.state == "timeout" then
         return "|cffff6040" .. TEXT.timeout .. "|r"
     elseif r.state == "reroll" then
-        local resp = LM:Response(r.response)
+        local resp = s:Response(r.response)
         return (resp and resp.label or "") .. "  |cffc78f5c" .. TEXT.reroll .. "|r"
     elseif r.response then
-        local resp = LM:Response(r.response)
+        local resp = s:Response(r.response)
         local c = resp.color
         return string.format("|cff%02x%02x%02x%s|r", c[1] * 255, c[2] * 255, c[3] * 255, resp.label)
     end
@@ -211,7 +211,7 @@ local function initRow(row, r)
     cols.name:SetText(Ambiguate(r.name, "short"))
     cols.name:SetTextColor(cc and cc.r or 0.85, cc and cc.g or 0.85, cc and cc.b or 0.85)
     cols.role:SetText(ROLE_TEXT[r.role or "N"] or "")
-    cols.response:SetText(responseCell(r))
+    cols.response:SetText(responseCell(r, LM.current))
     cols.ilvl:SetText(r.ilvl and string.format("%.0f", r.ilvl) or "")
     for i, t in ipairs(row.gear) do
         local g = r.gear[i]
@@ -402,7 +402,7 @@ local function refresh()
     end
     header.name:SetText(it.link or it.itemString)
     if it.award then
-        local r = LM:Response(it.award.response)
+        local r = s:Response(it.award.response)
         header.info:SetText(string.format(TEXT.awarded, Ambiguate(it.award.name, "short"), r and r.label or it.award.response))
     else
         header.info:SetText(it.ilvl and ("Item level " .. it.ilvl) or "")
@@ -424,7 +424,7 @@ LM:OnChange(function(what)
         wipe(selected)
         refresh()
         win:Show()
-    elseif what == "session" then
+    elseif what == "session" or what == "scores" then
         refresh()
     elseif what == "ended" and win then
         win:Hide()

@@ -65,10 +65,12 @@ Loot\Capture.lua
 Loot\RCLC.lua
 Loot\Page.lua
 LootMaster\Data.lua
+LootMaster\Score.lua
 LootMaster\Comm.lua
 LootMaster\Popup.lua
 LootMaster\Window.lua
 LootMaster\Test.lua
+LootMaster\Page.lua
 Timeline\Data.lua
 Timeline\Journal.lua
 Timeline\Database.lua

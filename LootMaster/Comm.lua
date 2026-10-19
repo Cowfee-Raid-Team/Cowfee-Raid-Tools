@@ -148,6 +148,17 @@ local function stopTicker()
     end
 end
 
+-- The session to one player (target) or the group: S, then its response buttons (B), then its items (I).
+local function sendSession(s, target)
+    send("S", { s.id, s.test and 1 or 0, #s.items, LM.VERSION, s.seconds, #s.responses }, target)
+    for i, r in ipairs(s.responses) do
+        send("B", { s.id, i, r.key, Wire.Color(r.color), r.weight, r.icon or "", r.label }, target)
+    end
+    for i, it in ipairs(s.items) do
+        send("I", { s.id, i, it.ilvl and math.floor(it.ilvl + 0.5) or "", it.itemString }, target)
+    end
+end
+
 -- Whether you may run a session: the raid leader, or anyone out of a group (to test alone).
 function LM:CanLoot()
     return not IsInGroup() or UnitIsGroupLeader("player")
@@ -164,10 +175,7 @@ function LM:Start(items, test)
     s:Expect(self:Roster())
     self.current = s
     stopTicker()
-    send("S", { id, test and 1 or 0, #s.items, LM.VERSION })
-    for i, it in ipairs(s.items) do
-        send("I", { id, i, it.ilvl and math.floor(it.ilvl + 0.5) or "", it.itemString })
-    end
+    sendSession(s)
     C_Timer.After(LM.HELLO_SECONDS, function()
         if self.current == s then
             s:MarkNoCRT()
@@ -192,7 +200,7 @@ function LM:Award(index, name, response)
     end
     s:Award(index, name, response)
     send("A", { s.id, index, name, response })
-    local r = self:Response(response)
+    local r = s:Response(response)
     CRT:Print(string.format("Loot Master%s: %s awarded to %s for %s.", s.test and " (test)" or "",
         s.items[index].link or s.items[index].itemString, Ambiguate(name, "short"), r and r.label or response))
     self:Fire("session")
@@ -209,10 +217,7 @@ function LM:Resend(index, names)
     for _, name in ipairs(names) do
         if s:CanResend(name) then
             s:Clear(name, index)
-            send("S", { s.id, s.test and 1 or 0, #s.items, LM.VERSION }, name)
-            for i, it in ipairs(s.items) do
-                send("I", { s.id, i, it.ilvl and math.floor(it.ilvl + 0.5) or "", it.itemString }, name)
-            end
+            sendSession(s, name)
             send("Q", { s.id, index }, name)
             n = n + 1
         end
@@ -331,7 +336,7 @@ end
 
 local HANDLERS = {}
 
--- S: a session starts (or is sent again): id, test, item count, version.
+-- S: a session starts (or is sent again): id, test, item count, version, seconds to answer, button count.
 HANDLERS.S = function(f, sender)
     if not fromLeader(sender) then
         return
@@ -339,7 +344,10 @@ HANDLERS.S = function(f, sender)
     local id = f[1]
     local inc = LM.incoming
     if not inc or inc.id ~= id then
-        inc = { id = id, test = f[2] == "1", n = tonumber(f[3]) or 0, leader = sender, items = {}, mine = {}, got = 0 }
+        inc = {
+            id = id, test = f[2] == "1", n = tonumber(f[3]) or 0, leader = sender, items = {}, mine = {}, got = 0,
+            seconds = tonumber(f[5]) or 60, nResponses = tonumber(f[6]) or 0, responses = {}, byKey = {},
+        }
         LM.incoming = inc
         wipe(pendingRolls)
     end
@@ -357,9 +365,21 @@ HANDLERS.I = function(f, sender)
         inc.got = inc.got + 1
     end
     inc.items[index] = { itemString = f[4], ilvl = tonumber(f[3]), shownAt = GetTime() }
-    if inc.got >= inc.n then
+    if inc.got >= inc.n and #inc.responses >= inc.nResponses then
         LM:Fire("incoming", "shown")
     end
+end
+
+-- B: one response button: id, index, key, colour, weight, icon, label (last, so a long one is cut).
+HANDLERS.B = function(f, sender)
+    local inc = LM.incoming
+    local index = tonumber(f[2])
+    if not (inc and inc.id == f[1] and inc.leader == sender and index and index <= LM.MAX_RESPONSES and f[3] ~= "") then
+        return
+    end
+    local r = { key = f[3], color = Wire.ParseColor(f[4]), weight = tonumber(f[5]) or 0, icon = f[6] ~= "" and (tonumber(f[6]) or f[6]) or nil, label = f[7] }
+    inc.responses[index] = r
+    inc.byKey[r.key] = r
 end
 
 -- Q: answer this item again (the looter re-sent it or cleared your answer).

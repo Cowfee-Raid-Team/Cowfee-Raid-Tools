@@ -183,10 +183,15 @@ local defaults = {
         rcEnrich = true,
     },
     -- Loot Master (LootMaster/): window and popup, where the looter window and the raider popup were
-    -- last placed (UI.Window keeps point, x, y, and the window's width and height).
+    -- last placed (UI.Window keeps point, x, y, and the window's width and height); responseSeconds,
+    -- how long raiders have to answer; score, the Raider Score weights (LootMaster/Score.lua). The
+    -- response buttons are saved in lootmaster.responses only once edited, so they are not a default
+    -- here (copyDefaults would refill a deleted button).
     lootmaster = {
         window = {},
         popup = {},
+        responseSeconds = 60,
+        score = { show = true, late = 5, per10 = 1, noShow = 15, recover = 5, weeks = 8 },
     },
     -- The sound engine (Sound/Engine.lua): custom, your own sound file names typed on Quality of Life >
     -- Sounds (the companion addon CowfeeRaidTools_Media lists more in its Sounds.lua).
