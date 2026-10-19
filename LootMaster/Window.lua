@@ -40,6 +40,8 @@ local TEXT = {
     nocrt = "No CRT",
     reroll = "Asked to roll again...",
     noRoll = "none seen",
+    auto = "auto",
+    autoWhy = "Answered by %s's CRT: the game lists this item only for %s, and none of those is one of their specs. They can answer it themselves, and you can turn this off on the Settings tab.",
     awardFor = "Give for %s",
     resend = "Show their popup again",
     rerollAsk = "Ask to roll again",
@@ -141,6 +143,7 @@ local function responseCell(r, s)
         local resp = s:Response(r.response)
         local c = resp.color
         return string.format("|cff%02x%02x%02x%s|r", c[1] * 255, c[2] * 255, c[3] * 255, resp.label)
+            .. (r.auto and ("  |cff9c8a78" .. TEXT.auto .. "|r") or "")
     end
     return "|cff9c8a78" .. TEXT.waiting .. "|r"
 end
@@ -194,12 +197,25 @@ local function initRow(row, r)
         end)
         row:SetScript("OnEnter", function(self)
             local d = self.data
-            if d and d.note and d.note ~= "" then
-                GameTooltip:SetOwner(self, "ANCHOR_CURSOR")
-                GameTooltip:SetText(Ambiguate(d.name, "short"), 1, 1, 1)
-                GameTooltip:AddLine(d.note, 0.85, 0.85, 0.85, true)
-                GameTooltip:Show()
+            if not d or not ((d.note and d.note ~= "") or d.auto) then
+                return
             end
+            GameTooltip:SetOwner(self, "ANCHOR_CURSOR")
+            GameTooltip:SetText(Ambiguate(d.name, "short"), 1, 1, 1)
+            if d.note and d.note ~= "" then
+                GameTooltip:AddLine(d.note, 0.85, 0.85, 0.85, true)
+            end
+            if d.auto then
+                -- why it was answered for them: the specs the game listed, by name
+                local names = {}
+                for _, id in ipairs(d.autoSpecs or {}) do
+                    local ok, _, spec, _, _, _, _, class = pcall(GetSpecializationInfoByID, id)
+                    names[#names + 1] = ok and spec and (spec .. " " .. (class or "")) or tostring(id)
+                end
+                GameTooltip:AddLine(string.format(TEXT.autoWhy, Ambiguate(d.name, "short"),
+                    #names > 0 and table.concat(names, ", ") or "?"), 0.85, 0.85, 0.85, true)
+            end
+            GameTooltip:Show()
         end)
         row:SetScript("OnLeave", function()
             GameTooltip:Hide()
@@ -227,7 +243,7 @@ local function initRow(row, r)
     cols.note:SetText(r.note or "")
     if r.roll then
         cols.roll:SetText(tostring(r.roll))
-    elseif r.response and r.response ~= "pass" and r.state ~= "reroll" then
+    elseif r.response and r.response ~= "pass" and r.state ~= "reroll" and not r.auto then
         cols.roll:SetText("|cffff6040" .. TEXT.noRoll .. "|r")
     else
         cols.roll:SetText("")

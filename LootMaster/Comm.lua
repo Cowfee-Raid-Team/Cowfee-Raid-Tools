@@ -150,7 +150,7 @@ end
 
 -- The session to one player (target) or the group: S, then its response buttons (B), then its items (I).
 local function sendSession(s, target)
-    send("S", { s.id, s.test and 1 or 0, #s.items, LM.VERSION, s.seconds, #s.responses }, target)
+    send("S", { s.id, s.test and 1 or 0, #s.items, LM.VERSION, s.seconds, #s.responses, s.autoPass and 1 or 0 }, target)
     for i, r in ipairs(s.responses) do
         send("B", { s.id, i, r.key, Wire.Color(r.color), r.weight, r.icon or "", r.label }, target)
     end
@@ -172,6 +172,7 @@ function LM:Start(items, test)
     end
     local id = string.format("%x", (time() % 0xFFFFFF)) .. string.format("%02x", math.random(0, 255))
     local s = Session.New({ id = id, test = test, leader = self:Me(), items = items })
+    s.autoPass = self:Settings().autoPass ~= false
     s:Expect(self:Roster())
     self.current = s
     stopTicker()
@@ -387,8 +388,9 @@ function LM:Answer(index, response, note)
     mine.response, mine.note = response, note
     local gear = self:MyGear(inc.items[index].itemString)
     local _, classFile = UnitClass("player")
+    mine.auto, mine.autoSpecs = nil, nil -- a pick of your own replaces an automatic answer
     send("R", { inc.id, index, response, self:MyRole(), classFile or "", self:MyItemLevel(),
-        Wire.GearText(gear[1]), Wire.GearText(gear[2]), note or "" }, inc.leader)
+        Wire.GearText(gear[1]), Wire.GearText(gear[2]), "", "", note or "" }, inc.leader)
     if response ~= "pass" and not mine.rolled then
         self:RollFor(index)
     end
@@ -435,6 +437,105 @@ end
 
 -- Receiving ------------------------------------------------------------------------------------------
 
+-- Items your specs can't use ------------------------------------------------------------------------------
+
+LM.SPEC_WAIT = 2 -- seconds to wait for an item to load; one that isn't loaded by then is shown
+
+function LM.ParseSpecs(text)
+    local out = {}
+    for id in tostring(text or ""):gmatch("%d+") do
+        out[#out + 1] = tonumber(id)
+    end
+    return #out > 0 and out or nil
+end
+
+-- Your class's specs: { [specID] = true }.
+local function mySpecs()
+    local out = {}
+    for i = 1, (GetNumSpecializations and GetNumSpecializations() or 0) do
+        local ok, id = pcall(GetSpecializationInfo, i)
+        if ok and type(id) == "number" then
+            out[id] = true
+        end
+    end
+    return out
+end
+
+-- Answers one item for you when your specs can't use it (LM.SpecVerdict); else leaves it alone.
+local function judge(inc, index, loaded)
+    local it = inc.items[index]
+    if not it or LM.incoming ~= inc or (inc.mine[index] and inc.mine[index].response) then
+        return
+    end
+    local ok, specs = pcall(C_Item.GetItemSpecInfo, it.itemString)
+    if not ok or (issecretvalue and issecretvalue(specs)) then
+        return
+    end
+    if LM.SpecVerdict(specs, mySpecs(), loaded) ~= "auto" then
+        return
+    end
+    local response = inc.byKey.tmog and "tmog" or "pass"
+    local gear = LM:MyGear(it.itemString)
+    local _, classFile = UnitClass("player")
+    inc.mine[index] = { response = response, auto = true, autoSpecs = specs, closed = true }
+    send("R", { inc.id, index, response, LM:MyRole(), classFile or "", LM:MyItemLevel(),
+        Wire.GearText(gear[1]), Wire.GearText(gear[2]), "1", table.concat(specs, ","), "" }, inc.leader)
+end
+
+-- Checks every item of a session, then calls done once: when all are judged, or after SPEC_WAIT.
+-- Off when the leader turned it off, or you ticked "Show me items my specs can't use".
+function LM:CheckSpecs(inc, done)
+    local finished = false
+    local function finish()
+        if not finished then
+            finished = true
+            done()
+        end
+    end
+    if not inc.autoPass or self:Settings().showAllItems or not (C_Item and C_Item.GetItemSpecInfo) then
+        finish()
+        return
+    end
+    local waiting = 0
+    for index, it in pairs(inc.items) do
+        local id = tonumber((it.itemString or ""):match("item:(%d+)"))
+        local item = id and Item:CreateFromItemID(id)
+        if item and item:IsItemDataCached() then
+            judge(inc, index, true)
+        elseif item then
+            waiting = waiting + 1
+            item:ContinueOnItemLoad(function()
+                if not finished then
+                    judge(inc, index, true)
+                    waiting = waiting - 1
+                    if waiting == 0 then
+                        finish()
+                    end
+                end
+            end)
+        end
+    end
+    if waiting == 0 then
+        finish()
+    else
+        C_Timer.After(LM.SPEC_WAIT, finish) -- not loaded in time: shown as normal
+    end
+end
+
+-- Shows the items that were answered for you, so you can answer them yourself.
+function LM:ShowAutoItems()
+    local inc = self.incoming
+    if not inc then
+        return
+    end
+    for _, mine in pairs(inc.mine) do
+        if mine.auto then
+            mine.closed = nil
+        end
+    end
+    self:Fire("incoming", "shown")
+end
+
 local function fromLeader(sender)
     if sender == LM:Me() then
         return true
@@ -445,7 +546,8 @@ end
 
 local HANDLERS = {}
 
--- S: a session starts (or is sent again): id, test, item count, version, seconds to answer, button count.
+-- S: a session starts (or is sent again): id, test, item count, version, seconds to answer, button count,
+-- whether items a raider's specs can't use are answered for them.
 HANDLERS.S = function(f, sender)
     if not fromLeader(sender) then
         return
@@ -456,6 +558,7 @@ HANDLERS.S = function(f, sender)
         inc = {
             id = id, test = f[2] == "1", n = tonumber(f[3]) or 0, leader = sender, items = {}, mine = {}, got = 0,
             seconds = tonumber(f[5]) or 60, nResponses = tonumber(f[6]) or 0, responses = {}, byKey = {},
+            autoPass = f[7] == "1",
         }
         LM.incoming = inc
         wipe(pendingRolls)
@@ -475,7 +578,16 @@ HANDLERS.I = function(f, sender)
     end
     inc.items[index] = { itemString = f[4], ilvl = tonumber(f[3]), shownAt = GetTime() }
     if inc.got >= inc.n and #inc.responses >= inc.nResponses then
-        LM:Fire("incoming", "shown")
+        if inc.checked then
+            LM:Fire("incoming", "shown")
+        elseif not inc.checking then
+            -- first, answer the items your specs can't use; the popup opens once that is done
+            inc.checking = true
+            LM:CheckSpecs(inc, function()
+                inc.checked = true
+                LM:Fire("incoming", "shown")
+            end)
+        end
     end
 end
 
@@ -552,7 +664,8 @@ HANDLERS.R = function(f, sender)
     end
     s:Answer(sender, index, {
         response = f[3], role = f[4] ~= "" and f[4] or nil, class = f[5] ~= "" and f[5] or nil,
-        ilvl = tonumber(f[6]), gear = { Wire.Gear(f[7]), Wire.Gear(f[8]) }, note = f[9] ~= "" and f[9] or nil,
+        ilvl = tonumber(f[6]), gear = { Wire.Gear(f[7]), Wire.Gear(f[8]) }, note = f[11] ~= "" and f[11] or nil,
+        auto = f[9] == "1", autoSpecs = LM.ParseSpecs(f[10]),
     })
     LM:Fire("session")
 end

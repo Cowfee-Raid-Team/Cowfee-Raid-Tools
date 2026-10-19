@@ -197,6 +197,8 @@ local defaults = {
         awardMessage = "%i awarded to %p for %r with a %v roll.",
         awardChannel = "RAID",
         noRoll = "-",
+        autoPass = true, -- answer items a raider's specs can't use (the leader's setting, sent with sessions)
+        showAllItems = false, -- this raider sees every item anyway
         sort = {}, -- the looter list's and Raider Score's chosen column and direction
     },
     -- The sound engine (Sound/Engine.lua): custom, your own sound file names typed on Quality of Life >

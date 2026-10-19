@@ -332,7 +332,31 @@ local function answer(p, index)
     return a
 end
 
--- fields: response, note, role, class, ilvl, gear ({ { id, ilvl } })
+-- Items a raider's specs can't use ---------------------------------------------------------------------
+-- Each raider's own CRT decides, never the looter's: C_Item.GetItemSpecInfo only knows the calling
+-- player's class. The item is answered for them only when it is loaded and the game gives a non-empty
+-- list of specs that holds none of theirs. Anything else (not loaded, nil, not a table, empty, odd values,
+-- your specs unknown) shows the item as normal: it fails open, never closed.
+-- specs: what C_Item.GetItemSpecInfo returned; mine: { [specID] = true } for your class's specs.
+function LM.SpecVerdict(specs, mine, loaded)
+    if not loaded or type(specs) ~= "table" or #specs == 0 or type(mine) ~= "table" or next(mine) == nil then
+        return "show"
+    end
+    for _, id in ipairs(specs) do
+        if type(id) ~= "number" or mine[id] then
+            return "show"
+        end
+    end
+    return "auto", "nospec"
+end
+
+-- The answer given for an item a raider's specs can't use: Transmog, or Pass when the set has none.
+function Session:AutoResponse()
+    return self.byKey.tmog and "tmog" or "pass"
+end
+
+-- fields: response, note, role, class, ilvl, gear ({ { id, ilvl } }), auto (answered by the raider's
+-- CRT because their specs can't use it) and autoSpecs (the spec IDs the game listed)
 function Session:Answer(name, index, fields)
     if not self.items[index] or not self.byKey[fields.response] then
         return false
@@ -343,6 +367,7 @@ function Session:Answer(name, index, fields)
     p.role = fields.role or p.role
     local a = answer(p, index)
     a.response, a.note, a.ilvl, a.gear = fields.response, fields.note, fields.ilvl, fields.gear or {}
+    a.auto, a.autoSpecs = fields.auto and true or nil, fields.auto and fields.autoSpecs or nil
     a.state = "answered"
     return true
 end
@@ -367,7 +392,7 @@ end
 function Session:CanReroll(name, index)
     local p = self.players[name]
     local a = p and p.answers[index]
-    return (p and p.crt and a and a.response and a.response ~= "pass" and a.roll == nil and a.state ~= "reroll") and true or false
+    return (p and p.crt and a and a.response and a.response ~= "pass" and not a.auto and a.roll == nil and a.state ~= "reroll") and true or false
 end
 
 function Session:CanResend(name)
@@ -557,6 +582,7 @@ function Session:Row(name, index)
         name = name, class = p.class, role = p.role, crt = p.crt, state = stateOf(p, a),
         response = a and a.response, weight = r and r.weight or (p.crt == false and -2 or -1),
         note = a and a.note, roll = a and a.roll, ilvl = a and a.ilvl, gear = a and a.gear or {},
+        auto = a and a.auto, autoSpecs = a and a.autoSpecs,
         diff = (item and item.ilvl and low) and (item.ilvl - low) or nil,
     }
 end

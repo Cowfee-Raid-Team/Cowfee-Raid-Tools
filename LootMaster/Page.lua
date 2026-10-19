@@ -51,6 +51,10 @@ local TEXT = {
     colLabel = "Label", colWeight = "Weight", colIcon = "Icon",
     noIcon = "No icon",
     guildStream = "Guild: %s",
+    specs = "Items your specs can't use",
+    specsHelp = "When an item's game data lists the specs it is for, and none of a raider's specs is among them (a tank trinket for a mage), that raider's own CRT answers it Transmog for them and leaves it off their popup; the looter window shows it with an 'auto' tag and why.\n\nOnly a clear answer from the game counts. If the item hasn't loaded, or the game gives no list, an empty list or anything odd, the item is shown as normal.",
+    autoPass = "Answer them for raiders (sent with your sessions)",
+    showAll = "Show me every item anyway (just you)",
     award = "Award message",
     awardHelp = "Sent when you give an item out. %i is the item, %p the player, %r their answer (BiS, Upgrade...), and %v their roll. Your guild's own channels (from the Guild & Communities window) are listed too; picking one adds it to your chat so CRT can post there. When the place you pick isn't open to you (Raid out of a raid, a channel you left, chat locked in an encounter), only you see it, with the reason. In a test only you see it.",
     awardVars = "%i item   %p player   %r answer   %v roll",
@@ -466,6 +470,18 @@ local function buildSettings(f)
         add:SetEnabled(#list < LM.MAX_RESPONSES)
         reset:SetPoint("LEFT", add, "RIGHT", 6, 0)
     end
+
+    heading(f, L.col1, -350, TEXT.specs, TEXT.specsHelp)
+    check(f, L.col1 - 2, -372, TEXT.autoPass, function()
+        return LM:Settings().autoPass ~= false
+    end, function(on)
+        LM:Settings().autoPass = on
+    end)
+    check(f, L.col1 - 2, -398, TEXT.showAll, function()
+        return LM:Settings().showAllItems
+    end, function(on)
+        LM:Settings().showAllItems = on
+    end)
 
     heading(f, L.col2, -8, TEXT.looting, TEXT.lootingHelp)
     local answerTime = UI.Slider(f, TEXT.responseTime, {

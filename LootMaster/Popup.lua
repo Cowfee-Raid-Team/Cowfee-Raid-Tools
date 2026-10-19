@@ -17,6 +17,7 @@ local L = {
     panelH = 104,
     gap = 4, -- between panels
     headerH = 26, -- the title bar above the panels
+    autoH = 22, -- the line saying which items were answered for you
     pad = 8,
     icon = 36,
     button = { h = 22, gap = 4, minGap = 2, rowGap = 4 }, -- widths come from each label (LM.ButtonWidth)
@@ -29,6 +30,9 @@ local TEXT = {
     title = "Loot",
     test = "TEST",
     testNote = "nothing is passed or traded",
+    autoOne = "%d item your specs can't use was answered %s for you.",
+    autoMany = "%d items your specs can't use were answered %s for you.",
+    showAuto = "Show",
     help = "Pick an answer for each item. Your pick goes to the raid leader, who gives the item out, and every button except Pass also does a /roll that everyone can see. You can change your answer until the time runs out.\n\nThe lighter part of each item's background is the time left. Close an item with its X or a right-click; drag any item to move them all.",
     have = "You have: ",
     nothing = "nothing in that slot",
@@ -77,7 +81,7 @@ end
 
 -- Panels -----------------------------------------------------------------------------------------------
 
-local anchor, header
+local anchor, header, autoLine
 local panels = {} -- by item index
 local loading = {} -- item IDs asked of the game once each
 
@@ -378,6 +382,22 @@ local function build()
     end)
     header.help = UI.Help(header, TEXT.title, TEXT.help)
     header.help:SetPoint("RIGHT", -6, 0)
+    -- "N items your specs can't use were answered Transmog for you. Show": shown only when there are any
+    autoLine = CreateFrame("Frame", nil, anchor, "BackdropTemplate")
+    autoLine:SetSize(L.width, L.autoH)
+    autoLine:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8" })
+    autoLine:SetBackdropColor(0, 0, 0, 0.75)
+    autoLine.text = autoLine:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    autoLine.text:SetPoint("LEFT", L.pad, 0)
+    autoLine.text:SetTextColor(0.8, 0.75, 0.65)
+    autoLine.show = CreateFrame("Button", nil, autoLine, "UIPanelButtonTemplate")
+    autoLine.show:SetSize(70, 18)
+    autoLine.show:SetPoint("LEFT", autoLine.text, "RIGHT", 8, 0)
+    autoLine.show:SetText(TEXT.showAuto)
+    autoLine.show:SetScript("OnClick", function()
+        LM:ShowAutoItems()
+    end)
+    autoLine:Hide()
     -- the timers: each open panel's background and time left, once a second is plenty for the text
     local elapsed = 0
     anchor:SetScript("OnUpdate", function(_, dt)
@@ -413,6 +433,20 @@ local function refresh()
     local open = openItems(inc)
     local shown = {}
     local y = L.headerH + L.gap -- panels can be taller when their buttons wrap, so they stack by height
+    local auto = 0
+    for _, mine in pairs(inc.mine) do
+        if mine.auto and mine.closed then
+            auto = auto + 1
+        end
+    end
+    autoLine:SetShown(auto > 0)
+    if auto > 0 then
+        local r = inc.byKey.tmog or inc.byKey.pass
+        autoLine.text:SetText(string.format(auto == 1 and TEXT.autoOne or TEXT.autoMany, auto, r and r.label or "Transmog"))
+        autoLine:ClearAllPoints()
+        autoLine:SetPoint("TOPLEFT", 0, -y)
+        y = y + L.autoH + L.gap
+    end
     for _, index in ipairs(open) do
         local p = panel(index)
         fill(p, index, inc.items[index], inc.mine[index], inc)
