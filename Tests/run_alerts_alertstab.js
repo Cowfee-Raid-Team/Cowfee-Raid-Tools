@@ -122,7 +122,7 @@ CRT.UI = { PAGE_W = 1026, PAGE_H = 560,
   RegisterLayer = function() end,
   SetFrameTitle = function(f, t) rawset(f, "title", t) end,
   StyleWindow = function(_, f) rawset(f, "styled", true) end,
-  ResetButton = function(parent) return mock("Button", parent) end,
+  ResetButtonWidth = function() return 44 end, ResetButton = function(parent) return mock("Button", parent) end,
   Help = function(parent, title, text) local b = mock("Button", parent) rawset(b, "helpTitle", title) rawset(b, "helpText", text) return b end,
   Dropdown = function(parent, label, opts) rowsMade = rowsMade + 1 local r = mock("Row", parent) rawset(r, "label", label) rawset(r, "opts", opts)
     local function menu() local o = opts.options local list = type(o) == "function" and o() or o assert(type(list) == "table", label .. ": options") rawset(r, "value", opts.get()) end

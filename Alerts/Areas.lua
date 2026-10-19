@@ -89,7 +89,8 @@ local HANDLE_MIN_WIDTH = 220
 local GEAR_TEXTURE = "Interface\\WorldMap\\Gear_64Grey" -- the settings button
 local GEAR_SIZE = 16
 local HANDLE_TITLE_LEFT = 6   -- the title's left edge on the drag box
-local HANDLE_GEAR_RIGHT = 50  -- the settings button's right edge, from the drag box's right
+local HANDLE_GEAR_GAP = 4    -- between the settings button and Reset
+local HANDLE_RESET_RIGHT = 2  -- Reset's right edge, from the drag box's right
 local HANDLE_TITLE_GAP = 4    -- between the title and the settings button
 local GLOW_SIZE = 2      -- the border's thickness
 local GLOW_OUTSET = 3    -- how far it sits outside the widget
@@ -640,7 +641,7 @@ function Area:MeasureHandle()
         return
     end
     local titleWidth = title.GetUnboundedStringWidth and title:GetUnboundedStringWidth() or title:GetStringWidth()
-    self.handleMin = math.max(HANDLE_MIN_WIDTH, math.ceil(HANDLE_TITLE_LEFT + titleWidth + HANDLE_TITLE_GAP + HANDLE_GEAR_RIGHT + GEAR_SIZE))
+    self.handleMin = math.max(HANDLE_MIN_WIDTH, math.ceil(HANDLE_TITLE_LEFT + titleWidth + HANDLE_TITLE_GAP + GEAR_SIZE + HANDLE_GEAR_GAP + CRT.UI.ResetButtonWidth() + HANDLE_RESET_RIGHT))
     self.handle:SetWidth(self.handleMin)
 end
 
@@ -669,16 +670,17 @@ function Area:Build()
     local title = handle:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     title:SetPoint("LEFT", 6, 0)
     title:SetText(format(TEXT.drag, self.title))
-    CRT.UI.ResetButton(handle, function()
+    handle.reset = CRT.UI.ResetButton(handle, function()
         self:ResetPosition()
-    end):SetPoint("RIGHT", -2, 0)
+    end)
+    handle.reset:SetPoint("RIGHT", -2, 0)
     self.handleTitle = title
     self:MeasureHandle()
 
     local gear = CreateFrame("Button", nil, handle)
     handle.gear = gear
     gear:SetSize(GEAR_SIZE, GEAR_SIZE)
-    gear:SetPoint("RIGHT", -HANDLE_GEAR_RIGHT, 0)
+    gear:SetPoint("RIGHT", handle.reset, "LEFT", -HANDLE_GEAR_GAP, 0)
     gear:SetFrameLevel((handle:GetFrameLevel() or 1) + 5)
     gear:SetNormalTexture(GEAR_TEXTURE)
     gear:SetHighlightTexture(GEAR_TEXTURE)

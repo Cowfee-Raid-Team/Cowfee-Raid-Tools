@@ -20,6 +20,7 @@ local L = {
     autoH = 22, -- the line saying which items were answered for you
     pad = 8,
     icon = 36,
+    showButtonH = 22, -- the Show button on the auto line, as tall as the answer buttons
     button = { h = 22, gap = 4, minGap = 2, rowGap = 4 }, -- widths come from each label (LM.ButtonWidth)
     noteW = 190,
     fadeAlpha = 0.55, -- an answered panel
@@ -154,16 +155,30 @@ local function itemText(it)
     return "item " .. tostring(id)
 end
 
+-- Junk is the Miscellaneous class's Junk subclass (15 and 0 if the game has no names for them)
+local MISC_CLASS = Enum and Enum.ItemClass and Enum.ItemClass.Miscellaneous or 15
+local JUNK_SUBCLASS = Enum and Enum.ItemMiscellaneousSubclass and Enum.ItemMiscellaneousSubclass.Junk or 0
+
 -- "318 · Hands, Leather · You have: [icon] 334"
 local function detailText(it)
-    local _, _, subType, equipLoc = C_Item.GetItemInfoInstant(it.itemString or "")
+    local _, _, subType, equipLoc, _, classID, subClassID = C_Item.GetItemInfoInstant(it.itemString or "")
     local parts = {}
     if it.ilvl then
         parts[#parts + 1] = "|cff1eff00" .. it.ilvl .. "|r"
     end
+    -- an item with no slot (INVTYPE_NON_EQUIP_IGNORE has an empty name) shows its subtype alone, if useful
     local slot = equipLoc and equipLoc ~= "" and _G[equipLoc]
+    if slot == "" then
+        slot = nil
+    end
+    local sub = subType and subType ~= "" and subType ~= MISCELLANEOUS and not (classID == MISC_CLASS and subClassID == JUNK_SUBCLASS) and subType or nil
     if slot then
-        parts[#parts + 1] = (subType and subType ~= "" and subType ~= MISCELLANEOUS) and (slot .. ", " .. subType) or slot
+        parts[#parts + 1] = sub and (slot .. ", " .. sub) or slot
+    elseif sub then
+        parts[#parts + 1] = sub
+    end
+    if not slot then
+        return table.concat(parts, "  ·  ")
     end
     local gear = LM:MyGear(it.itemString)
     local have = {}
@@ -174,6 +189,8 @@ local function detailText(it)
     parts[#parts + 1] = TEXT.have .. (#have > 0 and table.concat(have, "  ") or TEXT.nothing)
     return table.concat(parts, "  ·  ")
 end
+
+LM.DetailText = detailText
 
 local function closePanel(index)
     local inc = LM.incoming
@@ -383,7 +400,7 @@ local function build()
     header.help = UI.Help(header, TEXT.title, TEXT.help)
     header.help:SetPoint("RIGHT", -6, 0)
     -- everyone's answers and rolls, read only (LootMaster/RaiderWindow.lua)
-    header.answers = UI.PanelButton(header, TEXT.answers, 18, function()
+    header.answers = UI.HeaderButton(header, TEXT.answers, function()
         LM:ShowAnswers()
     end)
     header.answers:SetPoint("RIGHT", header.help, "LEFT", -6, 0)
@@ -395,7 +412,7 @@ local function build()
     autoLine.text = autoLine:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     autoLine.text:SetPoint("LEFT", L.pad, 0)
     autoLine.text:SetTextColor(0.8, 0.75, 0.65)
-    autoLine.show = UI.PanelButton(autoLine, TEXT.showAuto, 18, function()
+    autoLine.show = UI.PanelButton(autoLine, TEXT.showAuto, L.showButtonH, function()
         LM:ShowAutoItems()
     end)
     autoLine.show:SetPoint("LEFT", autoLine.text, "RIGHT", 8, 0)

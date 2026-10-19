@@ -180,7 +180,7 @@ local CRT = {
       reminders = {}, phases = {}, overrides = {}, nextId = 1, speechNotice = true },
   },
   UI = { RegisterLayer = function() end, RegisterPreview = function() end,
-    ResetButton = function(p) return newObj("Button", p) end, Help = function(p) return newObj("Button", p) end },
+    ResetButtonWidth = function() return 44 end, ResetButton = function(p) return newObj("Button", p) end, Help = function(p) return newObj("Button", p) end },
   FONTS = {},
   FontPath = function() return "font" end,
   FontList = function() return {} end,

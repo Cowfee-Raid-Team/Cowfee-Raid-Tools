@@ -109,7 +109,7 @@ CRT.UI = {
   RegisterLayer = function() end,
   RegisterPreview = function(_, key, fn) previewFns[key] = fn end,
   SetPreviews = function() end,
-  ResetButton = function() return mock("Button") end,
+  ResetButtonWidth = function() return 44 end, ResetButton = function() return mock("Button") end,
   Slider = function(p, text, opts) local r = mock("Slider") rawset(r, "opts", opts) rawset(r, "refresh", function() end) sliders[text] = r return r end,
   Dropdown = function(p, text, opts) local r = mock("Dropdown") rawset(r, "refresh", function() end) return r end,
   Help = function(p, title, text) local h = mock("Help") helps[title] = text return h end,

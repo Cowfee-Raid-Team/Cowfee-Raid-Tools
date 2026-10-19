@@ -944,6 +944,9 @@ CRT.UI:RegisterPreview("readycheckwindow", function(on)
     end
     previewOn = on
     frame.reset:SetShown(on and true or false)
+    -- the timer text sits left of whichever is shown
+    frame.timer:ClearAllPoints()
+    frame.timer:SetPoint("RIGHT", on and frame.reset or frame.close, "LEFT", -4, 0)
     if on then
         applyPosition()
         frame:Show()

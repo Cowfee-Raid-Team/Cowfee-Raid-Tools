@@ -6,7 +6,7 @@ const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate();
 lualib.luaL_openlibs(L);
 const harness = `
-local panelSrc, windowSrc, tabsSrc = ...
+local panelSrc, windowSrc, tabsSrc, popupSrc = ...
 local fails, passes = 0, 0
 local function check(ok, what) if ok then passes = passes + 1 else fails = fails + 1 print("FAIL " .. what) end end
 local function eq(a, b, what) check(a == b, what .. " (got " .. tostring(a) .. ", want " .. tostring(b) .. ")") end
@@ -24,6 +24,7 @@ local function mock()
     SetTextColor = function(self, r, g, b) self.color = { r, g, b } end,
     SetBackdropColor = function(self, r, g, b) self.bg = { r, g, b } end,
     SetBackdropBorderColor = function(self, r, g, b) self.edge = { r, g, b } end,
+    SetAlpha = function(self, a) self.alpha = a end,
     Show = function(self) self.shown = true end,
     Hide = function(self) self.shown = false end,
     SetShown = function(self, v) self.shown = v and true or false end,
@@ -55,6 +56,12 @@ CRT.MOCHA = { roast = { 0.165, 0.122, 0.098 }, edge = { 0.30, 0.235, 0.188 }, ca
 assert(load(panelSrc, "Panel.lua"))("CowfeeRaidTools", CRT)
 assert(load(windowSrc, "Window.lua"))("CowfeeRaidTools", CRT)
 assert(load(tabsSrc, "Tabs.lua"))("CowfeeRaidTools", CRT)
+local itemInfo = {}
+CRT.LootMaster.OnChange = function() end
+C_Item.GetItemInfoInstant = function(s) local i = itemInfo[s] or {} return 1, "", i.sub, i.loc, 0, i.class, i.subclass end
+INVTYPE_WAIST, MISCELLANEOUS, INVTYPE_NON_EQUIP_IGNORE = "Waist", "Miscellaneous", ""
+UIParent = mock()
+assert(load(popupSrc, "Popup.lua"))("CowfeeRaidTools", CRT)
 local UI, LM = CRT.UI, CRT.LootMaster
 local STRIP = UI.TITLE_STRIP
 
@@ -71,6 +78,65 @@ check(type(pb.crtSkin) == "function", "panel button: has the skin switch")
 pb.scripts.OnClick()
 check(clicked, "panel button: the click runs")
 eq(UI.PanelButton(mock(), "x", 18).w, UI.PANEL_BUTTON_MIN_W, "panel button: a short label gets the minimum width")
+
+-- the header button: the game's red button in Classic, the Reset look in Minimal and Modern; an icon in all three
+local function look(name)
+  CRT.db.ui.modern, CRT.db.ui.style = name == "modern", name == "minimal" and "minimal" or nil
+  for _, c in ipairs(UI.skinned) do c.crtSkin(CRT.db.ui.modern) end
+end
+local function sized(btn, what, w, h)
+  eq(btn.w, w, what .. ": width") eq(btn.h, h, what .. ": height")
+end
+local CAPS, PAD = UI.PANEL_BUTTON_PAD, UI.HEADER_BUTTON_PAD
+look("classic")
+local hb = UI.HeaderButton(mock(), "All Loot Rolls", function() clicked = false end)
+local lw = 14 * 6
+sized(hb, "header classic", lw + 2 * CAPS, 20)
+eq(hb.Left.alpha, 1, "header classic: template art shown")
+look("minimal")
+sized(hb, "header minimal", lw + 2 * PAD, 20)
+eq(hb.Left.alpha, 0, "header minimal: template art hidden")
+look("modern")
+sized(hb, "header modern", lw + 2 * PAD, 20)
+sized(UI.HeaderButton(mock(), "Go", function() end), "short header", 44, 20)
+-- a button made while Modern is on is already Modern
+local early = UI.HeaderButton(mock(), "Go", function() end)
+eq(early.Left.alpha, 0, "header: made in Modern, flat at once")
+-- the icon: a texture path or an atlas, kept in every look; an unknown value shows none
+local ib = UI.HeaderButton(mock(), "Rolls", function() end, { icon = "icon-file" })
+local ab = UI.HeaderButton(mock(), "Rolls", function() end, { icon = { atlas = "some-atlas" } })
+check(UI.HeaderButton(mock(), "Rolls", function() end, { icon = 5 }).icon ~= nil and type(UI.HeaderButton(mock(), "R", function() end, { icon = 5 }).icon) ~= "table", "header button: an unknown icon shows none")
+for _, name in ipairs({ "classic", "minimal", "modern" }) do
+  look(name)
+  local caps = name == "classic" and CAPS or PAD
+  sized(ib, "icon " .. name, 45 + 2 * caps, 20)
+  check(ib.icon and ib.icon.shown and ab.icon and ab.icon.shown, "header button icon kept in " .. name)
+end
+hb.scripts.OnClick()
+check(not clicked, "header button: the click runs")
+-- Reset on a handle stays small: 16 flat, 18 in Classic, and it re-sizes when the look changes
+look("classic")
+local rb = UI.ResetButton(mock(), function() end)
+sized(rb, "reset classic", 30 + 2 * CAPS, 18)
+look("modern")
+sized(rb, "reset modern", math.max(44, 30 + 2 * PAD), 16)
+look("minimal")
+sized(rb, "reset minimal", math.max(44, 30 + 2 * PAD), 16)
+eq(rb.label.text, "Reset", "reset button: its label")
+check(type(rb.scripts.OnEnter) == "function", "reset button: keeps its tooltip")
+eq(UI.ResetButtonWidth(), 30 + 2 * CAPS, "reset width: the widest look")
+
+-- the popup's detail line
+LM.MyGear = function() return {} end
+itemInfo.waist = { sub = "Leather", loc = "INVTYPE_WAIST", class = 4, subclass = 2 }
+itemInfo.junk = { sub = "Junk", loc = "INVTYPE_NON_EQUIP_IGNORE", class = 15, subclass = 0 }
+local junk = LM.DetailText({ itemString = "junk", ilvl = 75 })
+check(not junk:find("^, ") and not junk:find(", Junk") and not junk:find("You have"), "detail: junk has no slot text and no 'You have' (" .. junk .. ")")
+itemInfo.bag = { sub = "Bag", loc = "INVTYPE_NON_EQUIP_IGNORE", class = 1, subclass = 0 }
+local bag = LM.DetailText({ itemString = "bag", ilvl = 20 })
+check(bag:find("Bag", 1, true) and not bag:find(", Bag") and not bag:find("You have"), "detail: a no-slot item shows its subtype alone (" .. bag .. ")")
+local waist = LM.DetailText({ itemString = "waist", ilvl = 318 })
+check(waist:find("Waist, Leather", 1, true) and waist:find("You have: nothing in that slot", 1, true), "detail: a normal item is unchanged (" .. waist .. ")")
 
 -- the badge: the old call is unchanged, a colour makes it the neutral boss badge
 local s = UI.TitleStrip(mock(), 24)
@@ -108,5 +174,5 @@ if fails > 0 then error("failures") end
 `;
 const dir = process.argv[2];
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
-for (const f of ['UI/Panel.lua', 'UI/Window.lua', 'LootMaster/Tabs.lua']) lua.lua_pushstring(L, to_luastring(fs.readFileSync(path.join(dir, f), 'utf8')));
-if (lua.lua_pcall(L, 3, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
+for (const f of ['UI/Panel.lua', 'UI/Window.lua', 'LootMaster/Tabs.lua', 'LootMaster/Popup.lua']) lua.lua_pushstring(L, to_luastring(fs.readFileSync(path.join(dir, f), 'utf8')));
+if (lua.lua_pcall(L, 4, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
