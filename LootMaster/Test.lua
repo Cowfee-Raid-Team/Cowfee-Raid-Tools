@@ -4,9 +4,9 @@ local ADDON, CRT = ...
 -- the looter window straight away, and everyone in the group with CRT (you too) gets the raider popup.
 -- The answers, the rolls (drawn silently by the looter's CRT), Award, show again, roll again, the raider
 -- window and double-click trading all work as in a real session; nothing is passed or written to Loot
--- History, and the award message is shown only to you. The items are real ones from your own loot: the newest
--- items in Loot History and RCLootCouncil's awards, so their icons and tooltips work; FALLBACK is only
--- used when you have none.
+-- History, and the award message is shown only to you. The items are real ones from your own loot: picked at
+-- random from Loot History and RCLootCouncil's awards, so their icons and tooltips work, one per slot (or kind
+-- of item) first so each test shows a mix; FALLBACK is only used when you have none.
 --   /crt loot test [count]   start a test (count 1-8, default 4)
 --   /crt loot window         show the looter window again
 --   /crt loot popup          show your raider popup again
@@ -26,14 +26,45 @@ local function short(itemString)
     return (itemString or ""):gsub(":+$", "")
 end
 
-local function samples(count)
+-- Picks count entries of the pool ({ equipLoc, itemClass, ... }) at random: first one per slot (an item
+-- with no slot, such as a token, counts by its item class), then any others. random(n) gives 1..n, as
+-- math.random does; a test passes its own to make the picks the same each run.
+function LM.PickSamples(pool, count, random)
+    random = random or math.random
+    local order = {}
+    for i, e in ipairs(pool) do
+        order[i] = e
+    end
+    for i = #order, 2, -1 do
+        local j = random(i)
+        order[i], order[j] = order[j], order[i]
+    end
+    local out, used, kinds = {}, {}, {}
+    for i, e in ipairs(order) do
+        local kind = (e.equipLoc and e.equipLoc ~= "") and e.equipLoc or ("class" .. tostring(e.itemClass))
+        if #out < count and not kinds[kind] then
+            kinds[kind], used[i] = true, true
+            out[#out + 1] = e
+        end
+    end
+    for i, e in ipairs(order) do
+        if #out < count and not used[i] then
+            out[#out + 1] = e
+        end
+    end
+    return out
+end
+
+-- Every item you have looted (Loot History, then RCLootCouncil's awards), once each; FALLBACK too when that is
+-- fewer than count.
+local function pool(count)
     local out, seen = {}, {}
     local function add(itemString, link)
         local id = Loot.ItemID(itemString)
-        if id and not seen[id] and #out < count then
+        if id and not seen[id] then
             seen[id] = true
-            local ilvl = C_Item.GetDetailedItemLevelInfo(link or itemString)
-            out[#out + 1] = { itemString = short(itemString), link = link, ilvl = ilvl }
+            local ok, _, _, _, equipLoc, _, itemClass = pcall(C_Item.GetItemInfoInstant, itemString)
+            out[#out + 1] = { itemString = itemString, link = link, equipLoc = ok and equipLoc or nil, itemClass = ok and itemClass or nil }
         end
     end
     Loot:Each(function(rec)
@@ -42,15 +73,26 @@ local function samples(count)
     for _, a in ipairs(CRT.LootRCLC and CRT.LootRCLC.unmatched or {}) do
         add(a.itemString, a.link)
     end
-    for _, id in ipairs(FALLBACK) do
-        add("item:" .. id)
+    if #out < count then
+        for _, id in ipairs(FALLBACK) do
+            add("item:" .. id)
+        end
     end
     return out
 end
 
-function LM:Test(count)
+local function samples(count, random)
+    local out = {}
+    for i, e in ipairs(LM.PickSamples(pool(count), count, random)) do
+        out[i] = { itemString = short(e.itemString), link = e.link, ilvl = C_Item.GetDetailedItemLevelInfo(e.link or e.itemString) }
+    end
+    return out
+end
+
+-- random: optional, for tests (see LM.PickSamples).
+function LM:Test(count, random)
     count = math.max(1, math.min(LM.MAX_ITEMS, tonumber(count) or DEFAULT_COUNT))
-    local items = samples(count)
+    local items = samples(count, random)
     local s = self:Start(items, true)
     if s then
         CRT:Print(string.format("Loot Master test: %d sample items sent to %s. Nothing is passed; you can test trading a given-out item by double-clicking it.",

@@ -624,26 +624,51 @@ local function secret(v)
     return issecretvalue and issecretvalue(v) or false
 end
 
--- The class names on the item's "Classes: ..." tooltip line, read from tooltip data (no tooltip is
--- shown), or nil.
-local function classesLine(itemString)
-    if not (C_TooltipInfo and C_TooltipInfo.GetHyperlink and ITEM_CLASSES_ALLOWED) then
+-- A tooltip line's colour (a ColorMixin from the game) as { r, g, b }, or nil when unreadable or secret.
+local function lineColor(c)
+    if type(c) ~= "table" or secret(c) then
+        return nil
+    end
+    local r, g, b
+    if type(c.GetRGB) == "function" then
+        local ok, x, y, z = pcall(c.GetRGB, c)
+        if ok then
+            r, g, b = x, y, z
+        end
+    else
+        r, g, b = c.r, c.g, c.b
+    end
+    if secret(r) or secret(g) or secret(b) or type(r) ~= "number" or type(g) ~= "number" or type(b) ~= "number" then
+        return nil
+    end
+    return { r, g, b }
+end
+
+-- From the item's tooltip data (read in the background, no tooltip is shown): the class names on its
+-- "Classes: ..." line, and the right text and colour of its slot line (Enum.TooltipDataLineType.EquipSlot,
+-- where the game writes a weapon's type, red when you can't use it). Each is nil when missing or secret.
+local function tooltipFacts(itemString)
+    if not (C_TooltipInfo and C_TooltipInfo.GetHyperlink) then
         return nil
     end
     local ok, data = pcall(C_TooltipInfo.GetHyperlink, itemString)
     if not ok or type(data) ~= "table" or type(data.lines) ~= "table" then
         return nil
     end
+    local types = Enum and Enum.TooltipDataLineType
+    local equipSlot = types and types.EquipSlot
+    local classes, slotText, slotColor
     for _, line in ipairs(data.lines) do
         local text = line.leftText
-        if type(text) == "string" and not secret(text) then
-            local names = LM.ParseClassesLine(text, ITEM_CLASSES_ALLOWED)
-            if names then
-                return names
-            end
+        if not classes and ITEM_CLASSES_ALLOWED and type(text) == "string" and not secret(text) then
+            classes = LM.ParseClassesLine(text, ITEM_CLASSES_ALLOWED)
+        end
+        if not slotText and equipSlot and not secret(line.type) and line.type == equipSlot
+            and type(line.rightText) == "string" and not secret(line.rightText) then
+            slotText, slotColor = line.rightText, lineColor(line.rightColor)
         end
     end
-    return nil
+    return classes, slotText, slotColor
 end
 
 -- Class names as the game writes them in this language, male and female (Blizzard's
@@ -662,28 +687,46 @@ local function classNames(classFile)
 end
 
 -- Why an item can't be used by you: "spec" with the spec IDs, "classes" with the classes it is for,
--- "armor" with its armor subclass; nil when it can be, or when anything is unclear. The probe calls it
--- too (/crt dev loot probe spec), so what it prints is the real decision.
+-- "armor" with its armor subclass, "weapon" with the weapon type the tooltip shows; nil when it can be, or
+-- when anything is unclear. The probe calls it too (/crt dev loot probe spec), so what it prints is the
+-- real decision.
+local DETAIL = {
+    classes = function(f) return table.concat(f.classes, "/") end,
+    weapon = function(f) return f.slotText end,
+}
+
 function LM.CantUse(itemString, loaded)
     local ok, specs = pcall(C_Item.GetItemSpecInfo, itemString)
     if ok and not secret(specs) and LM.SpecVerdict(specs, mySpecs(), loaded) == "auto" then
         return "spec", table.concat(specs, ",")
     end
-    local okI, _, _, _, equipLoc, _, itemClass, subClass = pcall(C_Item.GetItemInfoInstant, itemString)
+    local okI, _, _, subType, equipLoc, _, itemClass, subClass = pcall(C_Item.GetItemInfoInstant, itemString)
     local _, classFile = UnitClass("player")
     local mine, known = classNames(classFile)
-    local classes = classesLine(itemString)
-    local verdict, why = LM.ClassVerdict({
+    local classes, slotText, slotColor = tooltipFacts(itemString)
+    local f = {
         loaded = loaded and okI, itemClass = itemClass, subClass = subClass, equipLoc = equipLoc,
-        myClass = classFile, myClassNames = mine, knownClassNames = known, classes = classes,
-    })
+        subType = not secret(subType) and subType or nil, myClass = classFile, myClassNames = mine,
+        knownClassNames = known, classes = classes, slotText = slotText, slotColor = slotColor,
+    }
+    local verdict, why = LM.ClassVerdict(f)
     if verdict == "auto" then
-        return why, why == "classes" and table.concat(classes, "/") or tostring(subClass)
+        return why, DETAIL[why] and DETAIL[why](f) or tostring(subClass)
     end
     return nil
 end
 
--- Answers one item for you when you can't use it (your specs, your class, your armor type); else leaves
+-- The answer your CRT gives for an item you can't use: a Transmog (LM.AutoKey). A looter older than
+-- AUTO_TMOG_SINCE refuses an answer that isn't one of its buttons, so with no Transmog in its set it gets Pass.
+function LM.AutoAnswer(inc)
+    local key = LM.AutoKey(inc.responses)
+    if not inc.byKey[key] and not LM.VersionAtLeast(inc.version, LM.AUTO_TMOG_SINCE) then
+        return "pass"
+    end
+    return key
+end
+
+-- Answers one item for you when you can't use it (your specs, your class, your armor or weapon type); else leaves
 -- it alone.
 local function judge(inc, index, loaded)
     local it = inc.items[index]
@@ -694,7 +737,7 @@ local function judge(inc, index, loaded)
     if not why then
         return
     end
-    local response = inc.byKey.tmog and "tmog" or "pass"
+    local response = LM.AutoAnswer(inc)
     local gear = LM:MyGear(it.itemString)
     local _, classFile = UnitClass("player")
     -- hidden, unless you chose to see every item; either way you can see it but not answer it
@@ -822,7 +865,7 @@ HANDLERS.S = function(f, sender)
         inc = {
             id = id, test = f[2] == "1", n = tonumber(f[3]) or 0, leader = sender, items = {}, mine = {}, got = 0,
             seconds = tonumber(f[5]) or 60, nResponses = tonumber(f[6]) or 0, responses = {}, byKey = {},
-            autoPass = f[7] == "1",
+            autoPass = f[7] == "1", version = f[4],
         }
         -- everyone's answers, for the raider window
         inc.view = Session.New({ id = id, test = inc.test, leader = sender, items = {}, responses = {}, seconds = inc.seconds })

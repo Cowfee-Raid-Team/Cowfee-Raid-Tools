@@ -19,7 +19,8 @@ local LM = { listeners = {} }
 CRT.LootMaster = LM
 
 LM.PREFIX = "CRTLootRemaster" -- since 0.25 (0.24 was CRTLoot1). A new protocol gets a new word, never a number: a prefix is 16 characters at most
-LM.VERSION = "0.25.0"
+LM.VERSION = "0.26.0"
+LM.AUTO_TMOG_SINCE = "0.26.0" -- a looter from this version on accepts the built-in Transmog (LM.TRANSMOG)
 LM.HELLO_SECONDS = 5 -- after this, raiders who never said hello have no CRT
 LM.READY_SECONDS = 10 -- a raider who said hello but never got everything is sent the session again, once
 LM.RESTORE_HOURS = 3 -- a saved session older than this is not restored after a /reload
@@ -84,6 +85,60 @@ LM.DEFAULT_RESPONSES = {
     { key = "tmog", label = "Transmog", color = { 0.71, 0.55, 0.91 }, weight = 10 },
     { key = "pass", label = "Pass", color = { 0.54, 0.54, 0.54 }, weight = 0 },
 }
+
+-- The built-in Transmog: the answer a raider's CRT gives for an item they can't use, when the looter's set has
+-- no Transmog of its own. Every session accepts it, sorts it by this weight and shows it in the looter window,
+-- but it is not a raider button.
+LM.TRANSMOG = { key = "tmog", label = "Transmog", color = { 0.71, 0.55, 0.91 }, weight = 10, icon = "transmog", builtin = true }
+
+-- Whether a response is a Transmog: the transmog icon, or the label Transmog in any case.
+function LM.IsTransmog(r)
+    return type(r) == "table" and (r.icon == "transmog" or (type(r.label) == "string" and r.label:lower() == "transmog"))
+end
+
+-- The key an item you can't use is answered with: the set's tmog, else the set's own Transmog (such as the
+-- last button relabelled), else the built-in Transmog. Never Pass, and never a second Transmog.
+function LM.AutoKey(responses)
+    local own
+    for _, r in ipairs(type(responses) == "table" and responses or {}) do
+        if r.key == "tmog" then
+            return "tmog"
+        end
+        own = own or (LM.IsTransmog(r) and r.key) or nil
+    end
+    return own or LM.TRANSMOG.key
+end
+
+-- A response by key from a set's byKey, or the built-in Transmog for "tmog".
+function LM.ResponseOf(byKey, key)
+    local r = type(byKey) == "table" and byKey[key] or nil
+    if not r and key == LM.TRANSMOG.key then
+        return LM.TRANSMOG
+    end
+    return r
+end
+
+-- Whether a version ("0.26.0") is this one or newer; an unknown or unreadable version is older.
+function LM.VersionAtLeast(version, min)
+    local function parts(v)
+        local out = {}
+        for n in tostring(v or ""):gmatch("%d+") do
+            out[#out + 1] = tonumber(n)
+        end
+        return out
+    end
+    local a, b = parts(version), parts(min)
+    if #a == 0 then
+        return false
+    end
+    for i = 1, math.max(#a, #b) do
+        local x, y = a[i] or 0, b[i] or 0
+        if x ~= y then
+            return x > y
+        end
+    end
+    return true
+end
 
 function LM:Settings()
     return CRT.db.lootmaster
@@ -289,9 +344,22 @@ function Session.New(opts)
     return s
 end
 
--- A response of this session's set.
+-- A response of this session's set, or the built-in Transmog.
 function Session:Response(key)
-    return self.byKey[key]
+    return LM.ResponseOf(self.byKey, key)
+end
+
+-- What the looter can give an item for: every response of the set, and the built-in Transmog (before the
+-- last button) when the set has no Transmog of its own.
+function Session:AwardResponses()
+    local out = {}
+    for _, r in ipairs(self.responses) do
+        out[#out + 1] = r
+    end
+    if not self.byKey[self:AutoResponse()] then
+        table.insert(out, math.max(1, #out), LM.TRANSMOG)
+    end
+    return out
 end
 
 function Session:Player(name)
@@ -391,8 +459,14 @@ end
 --          and check them each expansion (references/season-update.md).
 --   classes  a "Classes: ..." line (ITEM_CLASSES_ALLOWED) on the item's tooltip data that doesn't name
 --          your class, such as a tier token for other classes. Read in the background, never by hover.
--- Weapon types a class can't use are not judged yet: that waits for the probe to show which tooltip
--- marking is reliable.
+--   weapon  a weapon whose tooltip data shows its weapon type in red on the slot line (the line's right
+--          text, as on the item tooltip: "Sword" in red for a druid), and that text is the item's own weapon
+--          type. The game's subtype name is longer ("One-Handed Swords" for "Sword"), so the tooltip's text
+--          counts when it is the subtype or a part of it, in any case. A staff ("Staff", "Staves") never
+--          matches, so it is shown.
+LM.ITEM_CLASS_WEAPON = 2 -- Enum.ItemClass.Weapon
+-- The game's red text (RED_FONT_COLOR, about 1 / 0.1 / 0.1): a colour within tolerance of this on each part.
+LM.RED_TEXT = { r = 1, g = 0.12, b = 0.12, tolerance = 0.15 }
 LM.ARMOR = { CLOTH = 1, LEATHER = 2, MAIL = 3, PLATE = 4 } -- Enum.ItemArmorSubclass values
 LM.ITEM_CLASS_ARMOR = 4 -- Enum.ItemClass.Armor
 LM.CLASS_ARMOR = {
@@ -425,10 +499,32 @@ function LM.ParseClassesLine(text, format)
     return out
 end
 
--- f: loaded, itemClass, subClass, equipLoc (from C_Item.GetItemInfoInstant), myClass (class file),
+-- Whether a colour (r, g, b fields or a list of three) is the game's red text. Anything else is not red.
+function LM.IsRed(c)
+    if type(c) ~= "table" then
+        return false
+    end
+    local want, tol = LM.RED_TEXT, LM.RED_TEXT.tolerance
+    local r, g, b = c.r or c[1], c.g or c[2], c.b or c[3]
+    if type(r) ~= "number" or type(g) ~= "number" or type(b) ~= "number" then
+        return false
+    end
+    return math.abs(r - want.r) <= tol and math.abs(g - want.g) <= tol and math.abs(b - want.b) <= tol
+end
+
+-- Whether the tooltip's weapon type text is the item's own weapon type (its subtype name, or a part of it).
+function LM.WeaponTypeMatches(text, subType)
+    if type(text) ~= "string" or type(subType) ~= "string" or text == "" or subType == "" then
+        return false
+    end
+    return text == subType or subType:lower():find(text:lower(), 1, true) ~= nil
+end
+
+-- f: loaded, itemClass, subClass, subType, equipLoc (from C_Item.GetItemInfoInstant), myClass (class file),
 -- myClassNames ({ [name] = true }: your class's localized names, male and female, as some languages
--- differ), knownClassNames (every class's names, the same way), classes (the names on a "Classes:" line).
--- Returns "auto" with a reason ("classes" or "armor"), or "show".
+-- differ), knownClassNames (every class's names, the same way), classes (the names on a "Classes:" line),
+-- slotText and slotColor (the right side of the tooltip's slot line; a colour as LM.IsRed reads it).
+-- Returns "auto" with a reason ("classes", "armor" or "weapon"), or "show".
 function LM.ClassVerdict(f)
     if not (f and f.loaded) then
         return "show"
@@ -450,18 +546,21 @@ function LM.ClassVerdict(f)
         and f.subClass and f.subClass >= LM.ARMOR.CLOTH and f.subClass <= LM.ARMOR.PLATE and f.subClass ~= mine then
         return "auto", "armor"
     end
+    if f.itemClass == LM.ITEM_CLASS_WEAPON and LM.IsRed(f.slotColor) and LM.WeaponTypeMatches(f.slotText, f.subType) then
+        return "auto", "weapon"
+    end
     return "show"
 end
 
--- The answer given for an item a raider's specs can't use: Transmog, or Pass when the set has none.
+-- The answer given for an item a raider can't use: always a Transmog (LM.AutoKey).
 function Session:AutoResponse()
-    return self.byKey.tmog and "tmog" or "pass"
+    return LM.AutoKey(self.responses)
 end
 
 -- fields: response, note, role, class, ilvl, gear ({ { id, ilvl } }), auto (answered by the raider's
 -- CRT because their specs can't use it) and autoSpecs (the spec IDs the game listed)
 function Session:Answer(name, index, fields)
-    if not self.items[index] or not self.byKey[fields.response] then
+    if not self.items[index] or not self:Response(fields.response) then
         return false
     end
     local p = self:Player(name)
@@ -491,11 +590,12 @@ function Session:SetRoll(name, index, roll, force)
     return true
 end
 
--- Whether a raider's answer needs a roll: anything but Pass and an automatic answer.
+-- Whether a raider's answer needs a roll: every answer does, the last button and an automatic one too, so
+-- no answer is left without a number. The answer's weight still sorts first.
 function Session:NeedsRoll(name, index)
     local p = self.players[name]
     local a = p and p.answers[index]
-    return (a and a.response and a.response ~= "pass" and not a.auto) and true or false
+    return (a and a.response) and true or false
 end
 
 -- The looter may roll again for an answer that has a roll.
@@ -708,7 +808,7 @@ function Session:Row(name, index)
             low = g.ilvl
         end
     end
-    local r = a and a.response and self.byKey[a.response]
+    local r = a and a.response and self:Response(a.response)
     return {
         name = name, class = p.class, role = p.role, crt = p.crt, state = stateOf(p, a),
         response = a and a.response, weight = r and r.weight or (p.crt == false and -2 or -1),

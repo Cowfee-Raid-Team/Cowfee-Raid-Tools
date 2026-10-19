@@ -6,7 +6,7 @@ const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate();
 lualib.luaL_openlibs(L);
 const harness = `
-local src = ...
+local src, testSrc = ...
 local fails, passes = 0, 0
 local function check(ok, what) if ok then passes = passes + 1 else fails = fails + 1 print("FAIL " .. what) end end
 local function eq(a, b, what) check(a == b, what .. " (got " .. tostring(a) .. ", want " .. tostring(b) .. ")") end
@@ -104,13 +104,17 @@ eq(rows[1].name, "Arrow-Sargeras", "without scores the higher roll first")
 eq(rows[1].diff, 289 - 281, "item level difference against their gear")
 
 -- rolls, re-roll and re-send rules
-eq(s:NeedsRoll("Solex-Sargeras", 1), false, "a pass needs no roll")
+eq(s:NeedsRoll("Solex-Sargeras", 1), true, "every answer gets a roll, the last button too")
 eq(s:NeedsRoll("Quick-Sargeras", 1), true, "BiS needs a roll")
+eq(s:NeedsRoll("Brew-Sargeras", 1), false, "no answer, no roll")
 eq(s:SetRoll("Quick-Sargeras", 1, 5), false, "a second roll never replaces the first")
 eq(s:Row("Quick-Sargeras", 1).roll, 71, "the first stays")
 eq(s:CanReroll("Quick-Sargeras", 1), true, "the looter can roll again for an answer with a roll")
 eq(s:SetRoll("Quick-Sargeras", 1, 5, true), true, "Roll again replaces it")
-eq(s:CanReroll("Solex-Sargeras", 1), false, "no roll again for a pass")
+eq(s:CanReroll("Solex-Sargeras", 1), false, "no roll drawn yet: nothing to roll again")
+s:SetRoll("Solex-Sargeras", 1, 12)
+eq(s:CanReroll("Solex-Sargeras", 1), true, "a weight-0 answer's roll can be rolled again")
+eq(s:Rows(1)[4].name, "Solex-Sargeras", "weight still sorts first: the weight-0 answer stays after Offspec")
 eq(s:CanReroll("Nocrt-Sargeras", 1), false, "no CRT: nothing to roll")
 eq(s:CanResend("Nocrt-Sargeras", 1), false, "no CRT: no popup to re-send")
 eq(s:CanResend("Brew-Sargeras", 1), true, "CRT, no answer: popup can be re-sent")
@@ -216,14 +220,56 @@ eq(LM.SpecVerdict({ 73 }, nil, true), "show", "no spec list of yours: show")
 eq(LM.SpecVerdict({ "73" }, mine, true), "show", "odd values: show")
 local s2 = LM.Session.New({ id = "b", items = { { itemString = "item:1" } } })
 eq(s2:AutoResponse(), "tmog", "auto answers Transmog")
-local noTmog = LM.Session.New({ id = "c", items = { { itemString = "item:1" } }, responses = { { key = "bis", label = "BiS" }, { key = "pass", label = "Pass" } } })
-eq(noTmog:AutoResponse(), "pass", "without Transmog, Pass")
+local noTmog = LM.Session.New({ id = "c", items = { { itemString = "item:1" } }, responses = { { key = "bis", label = "BiS", weight = 100 }, { key = "pass", label = "Pass" } } })
+eq(noTmog:AutoResponse(), "tmog", "without a Transmog button, still Transmog")
+eq(noTmog:Response("tmog").label, "Transmog", "the built-in Transmog")
+eq(noTmog:Response("tmog").weight, 10, "weighs 10")
+eq(noTmog:Response("tmog").icon, "transmog", "with the transmog icon")
+eq(#noTmog.responses, 2, "the built-in Transmog is not a raider button")
+noTmog:Expect({ "Frost-Sargeras", "Bear-Sargeras", "Last-Sargeras" })
+eq(noTmog:Answer("Frost-Sargeras", 1, { response = "tmog", auto = true, autoWhy = "armor" }), true, "Answer accepts tmog with no button")
+noTmog:Answer("Bear-Sargeras", 1, { response = "pass" })
+noTmog:Answer("Last-Sargeras", 1, { response = "bis" })
+local nr = noTmog:Rows(1)
+eq(nr[1].name, "Last-Sargeras", "BiS first")
+eq(nr[2].name, "Frost-Sargeras", "the built-in Transmog sorts by its weight, before Pass")
+eq(nr[2].weight, 10, "the row has its weight")
+eq(noTmog:Answer("Frost-Sargeras", 1, { response = "nope" }), false, "an unknown answer is still refused")
+-- a Transmog button of your own keeps its own label, colour and weight
+local ownTmog = LM.Session.New({ id = "d", items = { { itemString = "item:1" } }, responses = { { key = "bis", label = "BiS", weight = 100 }, { key = "tmog", label = "Looks", weight = 40, color = { 0.1, 0.2, 0.3 } }, { key = "pass", label = "Pass" } } })
+eq(ownTmog:AutoResponse(), "tmog", "your own Transmog button")
+eq(ownTmog:Response("tmog").label, "Looks", "keeps its label")
+eq(ownTmog:Response("tmog").weight, 40, "and its weight")
+eq(ownTmog:Response("tmog").color[3], 0.3, "and its colour")
+-- the last button relabelled Transmog: the auto answer uses it, so there is never a second Transmog
+local lastTmog = LM.Session.New({ id = "e", items = { { itemString = "item:1" } }, responses = { { key = "major", label = "Major Upgrade", weight = 100 }, { key = "os", label = "Offspec", weight = 30 }, { key = "pass", label = "transmog", weight = 0 } } })
+eq(lastTmog:AutoResponse(), "pass", "the last button named Transmog (any case) is the auto answer")
+local iconTmog = LM.Session.New({ id = "f", items = { { itemString = "item:1" } }, responses = { { key = "bis", label = "BiS" }, { key = "pass", label = "Mog", icon = "transmog" } } })
+eq(iconTmog:AutoResponse(), "pass", "the last button with the transmog icon is the auto answer")
+local function awardKeys(sess)
+  local out = {}
+  for _, r in ipairs(sess:AwardResponses()) do out[#out + 1] = r.key end
+  return table.concat(out, ",")
+end
+eq(awardKeys(lastTmog), "major,os,pass", "Give for lists every button, the weight-0 last one too, and no second Transmog")
+eq(awardKeys(noTmog), "bis,tmog,pass", "the built-in Transmog can be given for too, before the last button")
+eq(awardKeys(ownTmog), "bis,tmog,pass", "your own Transmog button once")
+-- the version an auto answer needs from the looter
+eq(LM.VersionAtLeast("0.26.0", "0.26.0"), true, "same version")
+eq(LM.VersionAtLeast("0.26.1", "0.26.0"), true, "newer patch")
+eq(LM.VersionAtLeast("0.30.0", "0.26.0"), true, "newer minor")
+eq(LM.VersionAtLeast("1.0", "0.26.0"), true, "newer major, short")
+eq(LM.VersionAtLeast("0.25.0", "0.26.0"), false, "older")
+eq(LM.VersionAtLeast("0.25.9", "0.26.0"), false, "older, higher patch")
+eq(LM.VersionAtLeast(nil, "0.26.0"), false, "unknown: old")
+eq(LM.VersionAtLeast("garbage", "0.26.0"), false, "unreadable: old")
+check(LM.VersionAtLeast(LM.VERSION, LM.AUTO_TMOG_SINCE), "this version sends Transmog")
 s2:Expect({ "Frost-Sargeras" })
 s2:Answer("Frost-Sargeras", 1, { response = "tmog", auto = true, autoSpecs = { 73, 66 } })
 local ar = s2:Row("Frost-Sargeras", 1)
 eq(ar.auto, true, "the row knows it was automatic")
 eq(ar.autoSpecs and ar.autoSpecs[2], 66, "and which specs the game listed")
-eq(s2:NeedsRoll("Frost-Sargeras", 1), false, "no roll for an automatic answer")
+eq(s2:NeedsRoll("Frost-Sargeras", 1), true, "an automatic answer gets a roll too")
 
 -- class limits: not your armor type, and items locked to other classes
 local function cv(f) return (LM.ClassVerdict(f)) end
@@ -246,6 +292,31 @@ eq(cv({ loaded = true, classes = { "Paladin" }, myClass = "MAGE", knownClassName
 eq(cv({ loaded = true, classes = { "Paladin" }, myClassNames = { Mage = true }, myClass = "MAGE" }), "show", "the class list unknown: show")
 local _, why = LM.ClassVerdict({ loaded = true, itemClass = 4, subClass = 4, equipLoc = "INVTYPE_HEAD", myClass = "PRIEST" })
 eq(why, "armor", "reason: armor")
+-- weapon types: the game's red weapon type on the tooltip's slot line
+local RED, WHITE = { 1, 0.125, 0.125 }, { 1, 1, 1 }
+local function weapon(text, color, extra)
+  local f = { loaded = true, itemClass = 2, subClass = 7, subType = "One-Handed Swords", equipLoc = "INVTYPE_WEAPON", myClass = "DRUID", slotText = text, slotColor = color }
+  for k, v in pairs(extra or {}) do f[k] = v end
+  return LM.ClassVerdict(f)
+end
+local wv, wwhy = weapon("Sword", RED)
+eq(wv, "auto", "a red Sword on a druid")
+eq(wwhy, "weapon", "reason: weapon")
+eq(weapon("One-Handed Swords", RED), "auto", "red text equal to the subtype")
+eq(weapon("Dagger", { 1, 0.1, 0.1 }, { subType = "Daggers", subClass = 15 }), "auto", "a slightly different red still counts")
+eq(weapon("Sword", WHITE), "show", "white: your class can use it")
+eq(weapon("Sword", { 1, 0.82, 0 }), "show", "gold isn't red")
+eq(weapon("Mace", RED), "show", "red text that isn't the item's weapon type")
+eq(weapon(nil, nil), "show", "no slot line: show")
+eq(weapon("Sword", nil), "show", "no colour: show")
+eq(weapon("", RED), "show", "empty text: show")
+eq(weapon("Sword", RED, { subType = false }), "show", "subtype unknown: show")
+eq(weapon("Sword", { "x", 0, 0 }), "show", "odd colour values: show")
+eq(weapon("Leather", RED, { itemClass = 4, subClass = 1, subType = "Leather", equipLoc = "INVTYPE_CLOAK" }), "show", "not a weapon: the weapon rule doesn't apply")
+eq(weapon("Sword", RED, { loaded = false }), "show", "not loaded: show")
+eq(LM.IsRed({ r = 1, g = 0.125, b = 0.125 }), true, "a colour with r g b fields")
+eq(LM.IsRed(RED), true, "a colour as a list")
+eq(LM.IsRed(nil), false, "no colour")
 local names = LM.ParseClassesLine("Classes: Paladin, Warrior, Death Knight", "Classes: %s")
 eq(names and #names, 3, "three classes read from the line")
 eq(names and names[3], "Death Knight", "a two-word class name")
@@ -296,10 +367,72 @@ eq(g and g.id, 9, "gear id")
 eq(g and g.ilvl, 276, "gear ilvl")
 eq(LM.Wire.Gear(""), nil, "no gear")
 
+-- the test's sample items (Test.lua): random, one per slot first, then filled
+local HISTORY = {}
+local SLOT = {}
+local function hist(id, equipLoc, itemClass) HISTORY[#HISTORY + 1] = { [8] = "item:" .. id .. "::::" } SLOT[id] = { equipLoc, itemClass } end
+for i = 1, 4 do hist(1000 + i, "INVTYPE_HEAD", 4) end
+for i = 1, 4 do hist(2000 + i, "INVTYPE_WEAPON", 2) end
+hist(3001, "INVTYPE_TRINKET", 4)
+hist(4001, "", 15) -- a token: no slot, judged by its item class
+hist(1001, "INVTYPE_HEAD", 4) -- seen twice: once in the pool
+CRT.Loot = { R = { ITEM = 8 }, ItemID = function(s) return tonumber((s or ""):match("item:(%d+)")) end,
+  Each = function(_, fn) for _, rec in ipairs(HISTORY) do fn(rec) end end }
+CRT.LootRCLC = { unmatched = { { itemString = "item:5001", link = "[Five]" } } }
+SLOT[5001] = { "INVTYPE_HAND", 4 }
+C_Item = { GetItemInfoInstant = function(s) local id = tonumber(s:match("item:(%d+)")) local sl = SLOT[id] if not sl then return id, "Misc", "Junk", "", 0, 15, 0 end return id, "x", "y", sl[1], 0, sl[2], 0 end,
+  GetDetailedItemLevelInfo = function() return 289 end }
+CRT.Print = function() end
+IsInGroup = function() return false end
+assert(load(testSrc, "Test.lua"))("CowfeeRaidTools", CRT)
+local started
+function LM:Start(items, test) started = items return { items = items } end
+-- a fixed random: a seeded generator, so each run is the same
+local function seeded(seed)
+  return function(n) seed = (seed * 1103515245 + 12345) % 2147483648 return (seed % n) + 1 end
+end
+local function slotsOf(items)
+  local seen, n = {}, 0
+  for _, it in ipairs(items) do
+    local sl = SLOT[tonumber(it.itemString:match("item:(%d+)"))]
+    local k = sl and (sl[1] ~= "" and sl[1] or ("class" .. sl[2])) or "?"
+    if not seen[k] then seen[k] = true n = n + 1 end
+  end
+  return n
+end
+local function ids(items)
+  local out = {}
+  for _, it in ipairs(items) do out[#out + 1] = it.itemString end
+  return table.concat(out, " ")
+end
+LM:Test(4, seeded(7))
+eq(#started, 4, "four items")
+eq(slotsOf(started), 4, "four different slots or kinds when the pool has them")
+local first = ids(started)
+local dupe = {}
+for _, it in ipairs(started) do check(not dupe[it.itemString], "no item twice") dupe[it.itemString] = true end
+eq(started[1].ilvl, 289, "item level read for the picked items")
+eq(started[1].itemString:find(":$"), nil, "short item strings")
+LM:Test(4, seeded(7))
+eq(ids(started), first, "the same random gives the same items")
+local differ = 0
+for seed = 1, 10 do LM:Test(4, seeded(seed * 31)) if ids(started) ~= first then differ = differ + 1 end end
+check(differ >= 5, "other tests usually show a different set (" .. differ .. " of 10)")
+LM:Test(8, seeded(3))
+eq(#started, 8, "eight items: every slot first, then filled")
+eq(slotsOf(started), 5, "all five slots and kinds are in")
+local picked = LM.PickSamples({ { id = 1, equipLoc = "A" }, { id = 2, equipLoc = "A" }, { id = 3, equipLoc = "B" } }, 2, function(n) return 1 end)
+check(picked[1].equipLoc ~= picked[2].equipLoc, "PickSamples: two different slots before a second of one")
+eq(#LM.PickSamples({}, 4, seeded(1)), 0, "an empty pool gives nothing")
+HISTORY = {}
+CRT.LootRCLC = nil
+LM:Test(3, seeded(5))
+eq(#started, 3, "no history: the fallback items")
+
 print(string.format("%d passed, %d failed", passes, fails))
 if fails > 0 then error("failures") end
 `;
 const dir = process.argv[2];
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
-lua.lua_pushstring(L, to_luastring(fs.readFileSync(path.join(dir, 'LootMaster/Data.lua'), 'utf8')));
-if (lua.lua_pcall(L, 1, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
+for (const f of ['LootMaster/Data.lua', 'LootMaster/Test.lua']) lua.lua_pushstring(L, to_luastring(fs.readFileSync(path.join(dir, f), 'utf8')));
+if (lua.lua_pcall(L, 2, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }

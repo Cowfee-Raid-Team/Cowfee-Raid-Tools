@@ -96,14 +96,14 @@ eq(inc.view.players["Solex-Sargeras"].answers[1].note, "4pc", "with your note")
 LM:Answer(1, "up")
 eq(s.players["Solex-Sargeras"].answers[1].roll, 42, "changing your answer keeps your roll")
 LM:Answer(2, "pass")
-eq(s.players["Solex-Sargeras"].answers[2].roll, nil, "a pass gets no roll")
+eq(s.players["Solex-Sargeras"].answers[2].roll, 7, "the weight-0 last button gets a roll too")
 eq(LM:Reroll(1, { "Solex-Sargeras" }), 1, "the looter rolls again")
-eq(s.players["Solex-Sargeras"].answers[1].roll, 7, "a new number")
-eq(inc.view.players["Solex-Sargeras"].answers[1].roll, 7, "shown to everyone")
+eq(s.players["Solex-Sargeras"].answers[1].roll, 99, "a new number")
+eq(inc.view.players["Solex-Sargeras"].answers[1].roll, 99, "shown to everyone")
 eq(LM:Resend(1, { "Solex-Sargeras" }), 0, "an answered item is not shown again")
 LM:Award(1, "Solex-Sargeras", "up")
 eq(inc.items[1].award and inc.items[1].award.name, "Solex-Sargeras", "raider sees the award")
-check(printed[#printed]:find("with a 7 roll", 1, true) ~= nil, "award message carries the roll: " .. tostring(printed[#printed]))
+check(printed[#printed]:find("with a 99 roll", 1, true) ~= nil, "award message carries the roll: " .. tostring(printed[#printed]))
 check(CRTDBChar.lootSession ~= nil, "the session is saved for a /reload")
 -- /reload: both sides come back, with fresh clocks
 local savedId = s.id
@@ -112,7 +112,7 @@ NOW = NOW + 500
 onEvent(nil, "PLAYER_LOGIN")
 eq(LM.current and LM.current.id, savedId, "the looter's session is back")
 eq(LM.incoming and LM.incoming.id, savedId, "the raider's session is back")
-eq(LM.current.players["Solex-Sargeras"].answers[1].roll, 7, "answers and rolls kept")
+eq(LM.current.players["Solex-Sargeras"].answers[1].roll, 99, "answers and rolls kept")
 eq(LM.incoming.items[2].shownAt, NOW, "the popup's clock starts again")
 eq(LM.current:Response("bis").label, "BiS", "buttons usable again")
 LM:End()
@@ -203,12 +203,13 @@ GROUP.leader = "Solex-Sargeras"
 GROUP = nil
 LM.authority = nil
 local SPECS = { [111] = { 73, 66, 250 }, [222] = { 62, 73 }, [333] = {}, [444] = nil }
-local cached = { [111] = true, [222] = true, [333] = true, [444] = true, [555] = false, [666] = true, [777] = true, [778] = true }
+local cached = { [111] = true, [222] = true, [333] = true, [444] = true, [555] = false, [666] = true, [777] = true, [778] = true, [779] = true, [780] = true, [781] = true }
 local loadCallbacks = {}
 C_Item.GetItemSpecInfo = function(str) local id = tonumber(str:match("item:(%d+)")) return SPECS[id] end
 C_Item.GetItemInfoInstant = function(str)
   local id = tonumber(str:match("item:(%d+)"))
   if id == 666 then return 666, "Armor", "Leather", "INVTYPE_CHEST", 0, 4, 2 end
+  if id == 779 or id == 780 or id == 781 then return id, "Weapon", "One-Handed Swords", "INVTYPE_WEAPON", 0, 2, 7 end
   return id, "Misc", "Junk", "", 0, 15, 0
 end
 ITEM_CLASSES_ALLOWED = "Classes: %s"
@@ -217,7 +218,12 @@ LOCALIZED_CLASS_NAMES_FEMALE = LOCALIZED_CLASS_NAMES_MALE
 C_TooltipInfo = { GetHyperlink = function(str)
   if str:find("item:777") then return { lines = { { leftText = "Classes: Warrior, Death Knight" } } } end
   if str:find("item:778") then return { lines = { { leftText = "Classes: Paladin, Priest" } } } end
+  -- 779 a sword the game marks red (a colour object, as the game gives), 780 the same in white, 781 red as a secret
+  if str:find("item:779") then return { lines = { { type = 21, leftText = "One-Hand", rightText = "Sword", rightColor = { GetRGB = function() return 1, 0.125, 0.125 end } } } } end
+  if str:find("item:780") then return { lines = { { type = 21, leftText = "One-Hand", rightText = "Sword", rightColor = { r = 1, g = 1, b = 1 } } } } end
+  if str:find("item:781") then return { lines = { { type = 21, leftText = "One-Hand", rightText = "Sword", rightColor = { r = "secret", g = 0.1, b = 0.1 } } } } end
   return { lines = {} } end }
+Enum = { TooltipDataLineType = { EquipSlot = 21 } }
 Item = { CreateFromItemID = function(_, id) return {
   IsItemDataCached = function() return cached[id] end,
   ContinueOnItemLoad = function(_, fn) loadCallbacks[#loadCallbacks + 1] = fn end } end }
@@ -234,7 +240,7 @@ eq(s3.players["Solex-Sargeras"].ready, true, "and the looter hears you are ready
 eq(inc3.mine[1] and inc3.mine[1].auto, true, "spec: a tank-only item is answered for a mage")
 eq(inc3.mine[1].closed, true, "and hidden")
 eq(s3.players["Solex-Sargeras"].answers[1].response, "tmog", "the looter sees Transmog")
-eq(s3.players["Solex-Sargeras"].answers[1].roll, nil, "no roll for an automatic answer")
+check(s3.players["Solex-Sargeras"].answers[1].roll ~= nil, "an automatic answer gets a roll too")
 eq(inc3.mine[2], nil, "an item one of your specs can use is shown")
 eq(inc3.mine[3], nil, "an empty spec list is shown")
 eq(inc3.mine[4], nil, "no spec info is shown")
@@ -270,6 +276,39 @@ LM:End()
 local why = LM.CantUse("item:777", true)
 eq(why, "classes", "CantUse: the token for warriors")
 eq(LM.CantUse("item:778", true), nil, "CantUse: a token naming the paladin")
+local wwhy, wdetail = LM.CantUse("item:779", true)
+eq(wwhy, "weapon", "CantUse: a sword the tooltip marks red")
+eq(wdetail, "Sword", "with the weapon type the tooltip shows")
+eq(LM.CantUse("item:780", true), nil, "CantUse: a sword in white is shown")
+issecretvalue = function(v) return v == "secret" end
+eq(LM.CantUse("item:781", true), nil, "CantUse: a secret colour is shown")
+issecretvalue = nil
+
+-- 6. The auto answer and the looter's version: Halo runs loot, you are a raider
+GROUP = { names = { "Solex-Sargeras", "Halo-Sargeras" }, leader = "Halo-Sargeras" }
+LM.authority = nil
+local function autoSent(id, version, buttons)
+  outbox = {}
+  LM.incoming = nil
+  onEvent(nil, "CHAT_MSG_ADDON", LM.PREFIX, "S|" .. id .. "|1|1|" .. version .. "|60|2|1", "RAID", "Halo-Sargeras")
+  onEvent(nil, "CHAT_MSG_ADDON", LM.PREFIX, "B|" .. id .. "|" .. buttons, "RAID", "Halo-Sargeras")
+  onEvent(nil, "CHAT_MSG_ADDON", LM.PREFIX, "I|" .. id .. "|1,289,item:666", "RAID", "Halo-Sargeras")
+  for _, m in ipairs(outbox) do
+    local kind, f = LM.Wire.Decode(m)
+    if kind == "R" then return f[3] end
+  end
+end
+local noTmogSet = "1,bis,ffffff,100,,BiS;2,pass,888888,0,,Pass"
+eq(autoSent("v1", LM.VERSION, noTmogSet), "tmog", "a looter on this version: Transmog, with no Transmog button")
+eq(LM.incoming.mine[1].response, "tmog", "your popup knows it too")
+eq(autoSent("v2", "0.25.0", noTmogSet), "pass", "an older looter with no Transmog button: Pass, which it accepts")
+eq(autoSent("v3", "", noTmogSet), "pass", "a looter whose version is unknown: Pass")
+eq(autoSent("v4", "0.25.0", "1,bis,ffffff,100,,BiS;2,tmog,b48ce8,10,,Transmog"), "tmog", "an older looter with a Transmog button: Transmog")
+eq(autoSent("v5", "0.25.0", "1,bis,ffffff,100,,BiS;2,pass,888888,0,transmog,Transmog"), "pass", "the last button is the Transmog: its key, which any looter accepts")
+eq(autoSent("v6", LM.VERSION, "1,bis,ffffff,100,,BiS;2,pass,888888,0,,TRANSMOG"), "pass", "a new looter whose last button is Transmog: that one, never a second Transmog")
+LM.incoming = nil
+GROUP = nil
+outbox = {}
 
 print(string.format("%d passed, %d failed", passes, fails))
 if fails > 0 then error("failures") end
