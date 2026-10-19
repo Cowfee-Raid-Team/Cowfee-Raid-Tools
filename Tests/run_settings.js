@@ -6,6 +6,9 @@ const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
 const harness = `
 local coreSrc, panelSrc, controlsSrc, pageSrc, alertSrc, profilesSrc = ...
+-- FAIL lines are counted, and the count printed last, so a failure shows past the runner's tail
+local failCount, rawPrint = 0, print
+print = function(s, ...) if type(s) == "string" and s:find("^FAIL ") then failCount = failCount + 1 end rawPrint(s, ...) end
 CLOSE = "Close" DELETE = "Delete"
 function strtrim(s) return (s:gsub("^%s+", ""):gsub("%s+$", "")) end
 local frames = {}
@@ -95,8 +98,12 @@ UI:RegisterPage("devtest", "Development", function() end)
 UI:SetPageHidden("devtest", true, true)
 assert(load(alertSrc, "Alert.lua"))("CowfeeRaidTools", CRT)
 
--- Layers.
+-- Layers. Header buttons made by UI:Create are remembered, for the look toggle's check.
+headerMade = {}
+local realHeaderButton = UI.HeaderButton
+UI.HeaderButton = function(p, label, fn, opts) local b = realHeaderButton(p, label, fn, opts) headerMade[b] = label return b end
 local f = UI:Create()
+UI.HeaderButton = realHeaderButton
 print("main window layer " .. tostring(f.strata) .. ", art textures " .. #f.art)
 local bar = mock("Frame") rawset(bar, "protected", true)
 UI:RegisterLayer("bar", bar)
@@ -110,17 +117,48 @@ combat = false
 for _, fr in ipairs(frames) do if rawget(fr, "OnEvent") and fr ~= frames[1] then fr.OnEvent(fr, "PLAYER_REGEN_ENABLED") end end
 print("after combat: " .. tostring(bar.strata))
 
--- Style.
+-- Two looks only: a profile saved with the old style "minimal" is the Classic look, with the game's art.
 CRT.db.ui.style = "minimal" CRT.db.ui.bgAlpha = 50 UI:ApplyStyle()
-print("minimal 50%: art shown " .. tostring(f.art[1].shown) .. ", flat shown " .. tostring(f.flatBg.shown) .. ", bg alpha " .. f.flatBg.color[4])
-CRT.db.ui.style = "game" UI:ApplyStyle()
-print("game 50%: art shown " .. tostring(f.art[1].shown) .. ", art alpha " .. tostring(f.art[1].alpha) .. ", flat shown " .. tostring(f.flatBg.shown))
+if not f.art[1].shown or f.flatBg.shown or UI:IsModern() then print("FAIL a saved style 'minimal' must load as Classic (art shown " .. tostring(f.art[1].shown) .. ", flat shown " .. tostring(f.flatBg.shown) .. ")") end
+if UI.IsFlat then print("FAIL UI:IsFlat is gone: only Classic and Modern are left") end
+print("old minimal 50%: art shown " .. tostring(f.art[1].shown) .. ", art alpha " .. tostring(f.art[1].alpha) .. ", flat shown " .. tostring(f.flatBg.shown))
+
+-- The look toggle in the title bar: a header button whose label shows the look; a click switches it
+-- live, fonts and all, as the old checkbox did.
+do
+  local lb = UI.lookButton
+  if not lb then
+    print("FAIL no look toggle in the title bar")
+  else
+    if not headerMade[lb] then print("FAIL the look toggle is not a UI.HeaderButton") end
+    if lb.text ~= "UI: Classic" then print("FAIL toggle label in Classic: " .. tostring(lb.text)) end
+    local before = fontObjects.CRTFontNormal.path
+    lb.OnClick(lb)
+    if not CRT.db.ui.modern then print("FAIL a click turns Modern on") end
+    if lb.text ~= "UI: Modern" then print("FAIL toggle label in Modern: " .. tostring(lb.text)) end
+    if not f.titleLine.shown or f.art[1].shown then print("FAIL a click applies the Modern look at once") end
+    if fontObjects.CRTFontNormal.path == before then print("FAIL a click applies the Modern fonts at once") end
+    lb.OnClick(lb)
+    if CRT.db.ui.modern or lb.text ~= "UI: Classic" or f.titleLine.shown or not f.art[1].shown then print("FAIL a second click goes back to Classic") end
+    if fontObjects.CRTFontNormal.path ~= before then print("FAIL a second click puts the Classic fonts back") end
+    -- a look set another way (a profile switch) shows on the button with the next ApplyStyle
+    CRT.db.ui.modern = true UI:ApplyStyle()
+    if lb.text ~= "UI: Modern" then print("FAIL toggle label follows ApplyStyle") end
+    CRT.db.ui.modern = false CRT:ApplyFonts() UI:ApplyStyle()
+    print("look toggle: " .. lb.text)
+  end
+end
 
 -- Settings page builds, with the dropdown options captured by label.
 local dropdowns = {}
 local realDropdown = UI.Dropdown
 UI.Dropdown = function(p, text, opts) dropdowns[text] = opts return realDropdown(p, text, opts) end
 UI:SelectPage("settings")
+if dropdowns["Style"] then print("FAIL General Settings still has the Style dropdown") end
+for _, fr in ipairs(frames) do
+  local t = rawget(fr, "text")
+  if type(t) == "string" and t:find("Modern look", 1, true) then print("FAIL General Settings still has the Modern look checkbox") end
+end
 local names = {} for _, o in ipairs(dropdowns["Font"].options()) do names[#names + 1] = o.label end
 print("font choices: " .. table.concat(names, ", "))
 CRT.Notes.Fire = function() print("  note windows redraw") end
@@ -225,6 +263,7 @@ for _, side in ipairs({ "left", "right", "above", "below" }) do
   for _, fr in ipairs(frames) do if rawget(fr, "strata") and fr.kind == "Frame" and rawget(fr, "w") and fr ~= f and fr ~= bar then size = fr.w .. "x" .. fr.h end end
   print(side .. ": icon at " .. tostring(icon and icon.pts[1][1]) .. ", alert " .. tostring(size))
 end
+if failCount > 0 then print(failCount .. " failed") end
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 const d = process.argv[2];
