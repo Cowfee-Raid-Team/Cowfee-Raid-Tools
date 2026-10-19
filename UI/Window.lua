@@ -169,7 +169,7 @@ local function layoutStrip(s)
     if UI:IsModern() then
         title:SetPoint("LEFT", s, "LEFT", 10, 1)
         badge:SetPoint("LEFT", title, "RIGHT", STRIP.gap, 0)
-        note:SetPoint("LEFT", badge, "RIGHT", STRIP.gap, 0)
+        note:SetPoint("LEFT", badge:IsShown() and badge or title, "RIGHT", STRIP.gap, 0)
         return
     end
     local y = s.framed and STRIP.framedBadgeY or 0
@@ -209,6 +209,10 @@ local function styleStrip(s)
         s.title:SetTextColor(font:GetTextColor())
     end
     layoutStrip(s)
+    -- what the window keeps in the strip that moves with the look (UI.Window's Reset)
+    if s.onStyle then
+        s.onStyle(modern)
+    end
 end
 
 function UI.TitleStrip(parent, height, opts)
@@ -357,11 +361,17 @@ function UI.Window(name, opts)
             end
             f:Place()
         end)
-        if f.CloseButton then
-            reset:SetPoint("RIGHT", f.CloseButton, "LEFT", -4, 0)
-        else
-            reset:SetPoint("TOPRIGHT", -30, -4)
+        -- beside the close button; in Classic 1 higher, like the main window's Previews, so it sits
+        -- inside the template's title tile
+        strip.onStyle = function(modern)
+            reset:ClearAllPoints()
+            if f.CloseButton then
+                reset:SetPoint("RIGHT", f.CloseButton, "LEFT", -4, modern and 0 or 1)
+            else
+                reset:SetPoint("TOPRIGHT", -30, modern and -4 or -3)
+            end
         end
+        strip.onStyle(UI:IsModern())
         f.reset = reset
     end
 
