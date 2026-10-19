@@ -41,6 +41,8 @@ local TEXT = {
     reroll = "Asked to roll again...",
     noRoll = "none seen",
     auto = "auto",
+    autoClasses = "Answered by %s's CRT: the item is only for %s, not their class. You can turn this off on the Settings tab.",
+    autoArmor = "Answered by %s's CRT: the item is %s, not their class's armor type. You can turn this off on the Settings tab.",
     autoWhy = "Answered by %s's CRT: the game lists this item only for %s, and none of those is one of their specs. They can answer it themselves, and you can turn this off on the Settings tab.",
     awardFor = "Give for %s",
     resend = "Show their popup again",
@@ -206,14 +208,24 @@ local function initRow(row, r)
                 GameTooltip:AddLine(d.note, 0.85, 0.85, 0.85, true)
             end
             if d.auto then
-                -- why it was answered for them: the specs the game listed, by name
-                local names = {}
-                for _, id in ipairs(d.autoSpecs or {}) do
-                    local ok, _, spec, _, _, _, _, class = pcall(GetSpecializationInfoByID, id)
-                    names[#names + 1] = ok and spec and (spec .. " " .. (class or "")) or tostring(id)
+                -- why it was answered for them, by the reason their CRT sent
+                local who = Ambiguate(d.name, "short")
+                local text
+                if d.autoWhy == "classes" then
+                    text = string.format(TEXT.autoClasses, who, (d.autoDetail or "?"):gsub("/", ", "))
+                elseif d.autoWhy == "armor" then
+                    local sub = tonumber(d.autoDetail)
+                    local name = sub and C_Item.GetItemSubClassInfo and C_Item.GetItemSubClassInfo(LM.ITEM_CLASS_ARMOR, sub)
+                    text = string.format(TEXT.autoArmor, who, name or "?")
+                else
+                    local names = {}
+                    for _, id in ipairs(d.autoSpecs or {}) do
+                        local ok, _, spec, _, _, _, _, class = pcall(GetSpecializationInfoByID, id)
+                        names[#names + 1] = ok and spec and (spec .. " " .. (class or "")) or tostring(id)
+                    end
+                    text = string.format(TEXT.autoWhy, who, #names > 0 and table.concat(names, ", ") or "?")
                 end
-                GameTooltip:AddLine(string.format(TEXT.autoWhy, Ambiguate(d.name, "short"),
-                    #names > 0 and table.concat(names, ", ") or "?"), 0.85, 0.85, 0.85, true)
+                GameTooltip:AddLine(text, 0.85, 0.85, 0.85, true)
             end
             GameTooltip:Show()
         end)

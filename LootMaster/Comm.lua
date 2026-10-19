@@ -463,26 +463,71 @@ local function mySpecs()
     return out
 end
 
--- Answers one item for you when your specs can't use it (LM.SpecVerdict); else leaves it alone.
+local function secret(v)
+    return issecretvalue and issecretvalue(v) or false
+end
+
+-- The class names on the item's "Classes: ..." tooltip line, read from tooltip data (no tooltip is
+-- shown), or nil.
+local function classesLine(itemString)
+    if not (C_TooltipInfo and C_TooltipInfo.GetHyperlink and ITEM_CLASSES_ALLOWED) then
+        return nil
+    end
+    local ok, data = pcall(C_TooltipInfo.GetHyperlink, itemString)
+    if not ok or type(data) ~= "table" or type(data.lines) ~= "table" then
+        return nil
+    end
+    for _, line in ipairs(data.lines) do
+        local text = line.leftText
+        if type(text) == "string" and not secret(text) then
+            local names = LM.ParseClassesLine(text, ITEM_CLASSES_ALLOWED)
+            if names then
+                return names
+            end
+        end
+    end
+    return nil
+end
+
+-- Why an item can't be used by you: "spec" with the spec IDs, "classes" with the classes it is for,
+-- "armor" with its armor subclass; nil when it can be, or when anything is unclear.
+local function cantUse(it, loaded)
+    local ok, specs = pcall(C_Item.GetItemSpecInfo, it.itemString)
+    if ok and not secret(specs) and LM.SpecVerdict(specs, mySpecs(), loaded) == "auto" then
+        return "spec", table.concat(specs, ",")
+    end
+    local okI, _, _, _, equipLoc, _, itemClass, subClass = pcall(C_Item.GetItemInfoInstant, it.itemString)
+    local className, classFile = UnitClass("player")
+    local classes = classesLine(it.itemString)
+    local verdict, why = LM.ClassVerdict({
+        loaded = loaded and okI, itemClass = itemClass, subClass = subClass, equipLoc = equipLoc,
+        myClass = classFile, myClassName = className, classes = classes,
+    })
+    if verdict == "auto" then
+        return why, why == "classes" and table.concat(classes, "/") or tostring(subClass)
+    end
+    return nil
+end
+
+-- Answers one item for you when you can't use it (your specs, your class, your armor type); else leaves
+-- it alone.
 local function judge(inc, index, loaded)
     local it = inc.items[index]
     if not it or LM.incoming ~= inc or (inc.mine[index] and inc.mine[index].response) then
         return
     end
-    local ok, specs = pcall(C_Item.GetItemSpecInfo, it.itemString)
-    if not ok or (issecretvalue and issecretvalue(specs)) then
-        return
-    end
-    if LM.SpecVerdict(specs, mySpecs(), loaded) ~= "auto" then
+    local why, detail = cantUse(it, loaded)
+    if not why then
         return
     end
     local response = inc.byKey.tmog and "tmog" or "pass"
     local gear = LM:MyGear(it.itemString)
     local _, classFile = UnitClass("player")
     -- hidden, unless you chose to see every item; either way you can see it but not answer it
-    inc.mine[index] = { response = response, auto = true, autoSpecs = specs, closed = not LM:Settings().showAllItems }
+    inc.mine[index] = { response = response, auto = true, autoWhy = why, autoSpecs = why == "spec" and LM.ParseSpecs(detail) or nil,
+        closed = not LM:Settings().showAllItems }
     send("R", { inc.id, index, response, LM:MyRole(), classFile or "", LM:MyItemLevel(),
-        Wire.GearText(gear[1]), Wire.GearText(gear[2]), "1", table.concat(specs, ","), "" }, inc.leader)
+        Wire.GearText(gear[1]), Wire.GearText(gear[2]), why, detail or "", "" }, inc.leader)
 end
 
 -- Checks every item of a session, then calls done once: when all are judged, or after SPEC_WAIT.
@@ -668,7 +713,8 @@ HANDLERS.R = function(f, sender)
     s:Answer(sender, index, {
         response = f[3], role = f[4] ~= "" and f[4] or nil, class = f[5] ~= "" and f[5] or nil,
         ilvl = tonumber(f[6]), gear = { Wire.Gear(f[7]), Wire.Gear(f[8]) }, note = f[11] ~= "" and f[11] or nil,
-        auto = f[9] == "1", autoSpecs = LM.ParseSpecs(f[10]),
+        auto = f[9] ~= "", autoWhy = (f[9] == "1" or f[9] == "spec") and "spec" or f[9], autoDetail = f[10],
+        autoSpecs = (f[9] == "1" or f[9] == "spec") and LM.ParseSpecs(f[10]) or nil,
     })
     LM:Fire("session")
 end

@@ -350,6 +350,71 @@ function LM.SpecVerdict(specs, mine, loaded)
     return "auto", "nospec"
 end
 
+-- Class limits, also judged on the raider's own client, also failing open:
+--   armor  an armor piece in an armor-typed slot that isn't your class's armor type (Alex: leather for a
+--          warrior counts). The slots are the eight Blizzard's auction house files by armor type
+--          (Blizzard_AuctionData.lua; the back slot is not one of them). The class armor types are from the
+--          wiki's Armor page, read 2026-10-18; confirm each class in game with /crt dev loot probe spec,
+--          and check them each expansion (references/season-update.md).
+--   classes  a "Classes: ..." line (ITEM_CLASSES_ALLOWED) on the item's tooltip data that doesn't name
+--          your class, such as a tier token for other classes. Read in the background, never by hover.
+-- Weapon types a class can't use are not judged yet: that waits for the probe to show which tooltip
+-- marking is reliable.
+LM.ARMOR = { CLOTH = 1, LEATHER = 2, MAIL = 3, PLATE = 4 } -- Enum.ItemArmorSubclass values
+LM.ITEM_CLASS_ARMOR = 4 -- Enum.ItemClass.Armor
+LM.CLASS_ARMOR = {
+    PRIEST = 1, MAGE = 1, WARLOCK = 1,
+    ROGUE = 2, DRUID = 2, MONK = 2, DEMONHUNTER = 2,
+    HUNTER = 3, SHAMAN = 3, EVOKER = 3,
+    WARRIOR = 4, PALADIN = 4, DEATHKNIGHT = 4,
+}
+LM.ARMOR_SLOTS = {
+    INVTYPE_HEAD = true, INVTYPE_SHOULDER = true, INVTYPE_CHEST = true, INVTYPE_ROBE = true,
+    INVTYPE_WAIST = true, INVTYPE_LEGS = true, INVTYPE_FEET = true, INVTYPE_WRIST = true, INVTYPE_HAND = true,
+}
+
+-- The class names on a "Classes: ..." line (format is the game's ITEM_CLASSES_ALLOWED), or nil.
+function LM.ParseClassesLine(text, format)
+    if type(text) ~= "string" or type(format) ~= "string" then
+        return nil
+    end
+    local pattern = "^" .. format:gsub("[%(%)%.%-%+%*%?%[%]%^%$]", "%%%0"):gsub("%%s", "(.+)") .. "$"
+    local list = text:match(pattern)
+    if not list then
+        return nil
+    end
+    local out = {}
+    for name in (list .. ","):gmatch("%s*(.-)%s*,") do
+        if name ~= "" then
+            out[#out + 1] = name
+        end
+    end
+    return out
+end
+
+-- f: loaded, itemClass, subClass, equipLoc (from C_Item.GetItemInfoInstant), myClass (class file),
+-- myClassName (the localized name), classes (the names on a "Classes:" line, or nil).
+-- Returns "auto" with a reason ("classes" or "armor"), or "show".
+function LM.ClassVerdict(f)
+    if not (f and f.loaded) then
+        return "show"
+    end
+    if type(f.classes) == "table" and #f.classes > 0 and type(f.myClassName) == "string" then
+        for _, name in ipairs(f.classes) do
+            if name == f.myClassName then
+                return "show"
+            end
+        end
+        return "auto", "classes"
+    end
+    local mine = LM.CLASS_ARMOR[f.myClass]
+    if f.itemClass == LM.ITEM_CLASS_ARMOR and LM.ARMOR_SLOTS[f.equipLoc] and mine
+        and f.subClass and f.subClass >= LM.ARMOR.CLOTH and f.subClass <= LM.ARMOR.PLATE and f.subClass ~= mine then
+        return "auto", "armor"
+    end
+    return "show"
+end
+
 -- The answer given for an item a raider's specs can't use: Transmog, or Pass when the set has none.
 function Session:AutoResponse()
     return self.byKey.tmog and "tmog" or "pass"
@@ -368,6 +433,7 @@ function Session:Answer(name, index, fields)
     local a = answer(p, index)
     a.response, a.note, a.ilvl, a.gear = fields.response, fields.note, fields.ilvl, fields.gear or {}
     a.auto, a.autoSpecs = fields.auto and true or nil, fields.auto and fields.autoSpecs or nil
+    a.autoWhy, a.autoDetail = fields.auto and (fields.autoWhy or "spec") or nil, fields.auto and fields.autoDetail or nil
     a.state = "answered"
     return true
 end
@@ -582,7 +648,7 @@ function Session:Row(name, index)
         name = name, class = p.class, role = p.role, crt = p.crt, state = stateOf(p, a),
         response = a and a.response, weight = r and r.weight or (p.crt == false and -2 or -1),
         note = a and a.note, roll = a and a.roll, ilvl = a and a.ilvl, gear = a and a.gear or {},
-        auto = a and a.auto, autoSpecs = a and a.autoSpecs,
+        auto = a and a.auto, autoSpecs = a and a.autoSpecs, autoWhy = a and a.autoWhy, autoDetail = a and a.autoDetail,
         diff = (item and item.ilvl and low) and (item.ilvl - low) or nil,
     }
 end
