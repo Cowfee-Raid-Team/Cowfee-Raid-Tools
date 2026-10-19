@@ -46,7 +46,7 @@ local TEXT = {
     test = "Test", window = "Looter window", popup = "My popup", endSession = "End session",
     items = "Items",
     crtLooting = "CRT Looting",
-    crtLootingHelp = "When CRT Looting is on, every raider with CRT will pass the game's roll so the raid leader gets each boss item to give out. Only the raid leader turns it on or off, for everyone, in a raid instance; CRT asks them on the way in. It starts off after a /reload, until the leader's next word. A wipe keeps it on while the leader is out of the instance for up to 10 minutes.\n\nThis version shows the state only. It doesn't pass any roll yet.",
+    crtLootingHelp = "When CRT Looting is on, every raider with CRT will pass the game's roll so the raid leader gets each boss item to give out. Only the raid leader turns it on or off, for everyone, in a raid instance; CRT asks them on the way in. It starts off after a /reload, until the leader's next word. A wipe keeps it on while the leader is in the open world for up to 10 minutes; entering any other instance turns it off.\n\nThis version shows the state only. It doesn't pass any roll yet.",
     turnOn = "Turn on", turnOff = "Turn off for everyone",
     awarded = "given to %s (%s)",
     open = "open",

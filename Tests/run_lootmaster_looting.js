@@ -407,8 +407,8 @@ deliver({ "F|" .. V .. "|no" }, "Solex-Sargeras")
 eq(lastPrint(), "CRT Looting: off: the raid leader said No", "raider: on, then said No in chat")
 deliver({ "F|" .. V .. "|party" }, "Solex-Sargeras")
 eq(LM:LootingStatus(), "CRT Looting: off: Enable in party was turned off", "raider: Enable in party turned off")
-deliver({ "F|" .. V .. "|left" }, "Solex-Sargeras")
-eq(LM:LootingStatus(), "CRT Looting: off: the raid leader went to another instance", "raider: leader went elsewhere")
+deliver({ "F|" .. V .. "|instance" }, "Solex-Sargeras")
+eq(LM:LootingStatus(), "CRT Looting: off: the raid leader entered another instance", "raider: leader entered another instance")
 deliver({ "F|" .. V .. "|away" }, "Solex-Sargeras")
 eq(LM:LootingStatus(), "CRT Looting: off: the raid leader was out of the instance for over 10 minutes", "raider: leader away too long")
 deliver({ "F|9.9.9|whatever" }, "Solex-Sargeras")
@@ -439,8 +439,9 @@ eq(LM:LootingStatus(), "CRT Looting: off: the raid leader said Yes for another i
 WHERE.difficulty = 16
 onEvent("PLAYER_ENTERING_WORLD", false, false)
 -- the leader's wipe: outside for up to 10 minutes still counts
-deliver({ "H|" .. V .. "|" .. HERE .. "||590" }, "Solex-Sargeras")
+deliver({ "H|" .. V .. "|" .. HERE .. "|world|590" }, "Solex-Sargeras")
 eq(LM:LootingState().leaderInstance, nil, "leader outside: no instance")
+eq(LM:LootingState().leaderOpenWorld, true, "leader outside: in the open world")
 eq(LM:LootingStatus(), "CRT Looting: on (leader Solex)", "leader outside 590 s: on")
 NOW = NOW + 10
 eq(LM:LootingState().leaderAway, 600, "leader away: counted to now")
@@ -449,8 +450,13 @@ NOW = NOW + 1
 eq(LM:LootingStatus(), "CRT Looting: off: the raid leader is not in this instance", "leader outside 601 s: off")
 deliver({ "H|" .. V .. "|" .. HERE .. "|2810-15|0" }, "Solex-Sargeras")
 eq(LM:LootingStatus(), "CRT Looting: off: the raid leader is not in this instance", "leader in another raid instance: off")
-deliver({ "H|" .. V .. "|" .. HERE .. "||" }, "Solex-Sargeras")
+deliver({ "H|" .. V .. "|" .. HERE .. "|world|" }, "Solex-Sargeras")
 eq(LM:LootingStatus(), "CRT Looting: off: the raid leader is not in this instance", "leader outside, no away time: off")
+deliver({ "H|" .. V .. "|" .. HERE .. "||5" }, "Solex-Sargeras")
+eq(LM:LootingState().leaderOpenWorld, false, "leader's place empty: not the open world")
+eq(LM:LootingStatus(), "CRT Looting: off: the raid leader is not in this instance", "leader's place empty: off")
+deliver({ "H|" .. V .. "|" .. HERE .. "|world|5" }, "Solex-Sargeras")
+eq(LM:LootingStatus(), "CRT Looting: on (leader Solex)", "leader in the open world 5 s: on")
 -- bad messages change nothing
 deliver({ "F|" .. V .. "|off" }, "Solex-Sargeras")
 deliver({ "O|" .. V, "H|" .. V, "O" }, "Solex-Sargeras")
@@ -476,10 +482,10 @@ n = asked
 goOutside()
 onEvent("PLAYER_ENTERING_WORLD", false, false)
 eq(LM:LootingOn(), true, "wipe: still on outside")
-eq(take()[1], "H|" .. V .. "|" .. HERE .. "||0", "wipe: a heartbeat straight away says the leader is outside")
+eq(take()[1], "H|" .. V .. "|" .. HERE .. "|world|0", "wipe: a heartbeat straight away says the leader is in the open world")
 NOW = NOW + 30
 tick(30)
-eq(take()[1], "H|" .. V .. "|" .. HERE .. "||30", "wipe: the heartbeat goes on, with the time away")
+eq(take()[1], "H|" .. V .. "|" .. HERE .. "|world|30", "wipe: the heartbeat goes on, with the time away")
 eq(LM:LootingStatus(), "CRT Looting: on for everyone in the raid with CRT", "wipe: the leader's line")
 goInside()
 onEvent("PLAYER_ENTERING_WORLD", false, false)
@@ -512,10 +518,39 @@ take()
 n = asked
 WHERE.difficulty = 15
 onEvent("PLAYER_ENTERING_WORLD", false, false)
-eq(LM:LootingOn(), false, "another instance: off")
-eq(take()[1], "F|" .. V .. "|left", "another instance: F left")
-eq(asked, n + 1, "another instance: asked there")
+eq(LM:LootingOn(), false, "another raid instance: off")
+eq(take()[1], "F|" .. V .. "|instance", "another raid instance: F instance")
+eq(asked, n + 1, "another raid instance: asked there")
 WHERE.difficulty = 16
+onEvent("PLAYER_ENTERING_WORLD", false, false)
+take()
+-- only the open world counts as outside: any other instance turns it off for everyone
+for _, kind in ipairs({ "party", "scenario", "pvp", "arena", "neighborhood", "interior" }) do
+  LM:SetLooting(true)
+  take()
+  printed = {}
+  WHERE.inside, WHERE.kind = true, kind
+  onEvent("PLAYER_ENTERING_WORLD", false, false)
+  eq(LM:LootingOn(), false, kind .. ": off")
+  eq(take()[1], "F|" .. V .. "|instance", kind .. ": F instance")
+  eq(lastPrint(), "CRT Looting: off, you entered another instance.", kind .. ": said in chat")
+  eq(live(LM.HEARTBEAT_SECONDS), 0, kind .. ": no heartbeat")
+  goInside()
+  onEvent("PLAYER_ENTERING_WORLD", false, false)
+  take()
+end
+-- on in the open world, then into a dungeon: off
+LM:SetLooting(true)
+take()
+goOutside()
+onEvent("PLAYER_ENTERING_WORLD", false, false)
+eq(LM:LootingOn(), true, "open world: still on")
+WHERE.inside, WHERE.kind = true, "party"
+onEvent("PLAYER_ENTERING_WORLD", false, false)
+eq(LM:LootingOn(), false, "open world, then a dungeon: off")
+local msgs = take()
+eq(msgs[#msgs], "F|" .. V .. "|instance", "open world, then a dungeon: F instance")
+goInside()
 onEvent("PLAYER_ENTERING_WORLD", false, false)
 take()
 -- the lead lost

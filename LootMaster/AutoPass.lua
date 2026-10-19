@@ -16,10 +16,12 @@ local ADDON, CRT = ...
 --   true lets a party group pass too), on (the leader's last word: true
 --   only when it said on), from (who sent it), version (the sender's CRT), yesInstance (the instance it
 --   said Yes for), leaderOnline (true only when the game says so), leaderInstance (where its last
---   heartbeat said it was: nil when outside every raid instance), leaderAway (seconds it has been outside,
---   counted to now), heartbeatAt and now (GetTime() seconds), passed ({ [rollID] = true }).
--- A leader outside (a wipe: dead, released, running back) still counts for up to LM.LOOTING_AWAY seconds;
--- a leader in another raid instance never does. You must be in the instance it said Yes for.
+--   heartbeat said it was: nil when not in a raid instance), leaderOpenWorld (true only when that
+--   heartbeat said the open world), leaderAway (seconds it has been out, counted to now), heartbeatAt and
+--   now (GetTime() seconds), passed ({ [rollID] = true }).
+-- A leader in the open world (a wipe: dead, released, running back) still counts for up to
+-- LM.LOOTING_AWAY seconds; a leader in any other instance never does. You must be in the instance it said
+-- Yes for.
 -- roll: id (the rollID), test, instance (your instance's key when it started), bossInstance (the
 --   instance key of the boss kill it follows, or nil).
 
@@ -102,7 +104,8 @@ function AutoPass:Ready(state)
     end
     if state.leaderInstance ~= state.myInstance then
         local away = state.leaderAway
-        if state.leaderInstance ~= nil or type(away) ~= "number" or not (away >= 0 and away <= LM.LOOTING_AWAY) then
+        if state.leaderInstance ~= nil or not isTrue(state.leaderOpenWorld) or type(away) ~= "number"
+            or not (away >= 0 and away <= LM.LOOTING_AWAY) then
             return false, "away"
         end
     end

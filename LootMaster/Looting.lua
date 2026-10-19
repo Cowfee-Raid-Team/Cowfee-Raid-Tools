@@ -8,20 +8,22 @@ local ADDON, CRT = ...
 -- finder group never does.
 --
 -- The on state lives in memory only, never saved: a login or /reload starts it off (the leader's first
--- loading screen tells raiders so). A wipe keeps it on: the leader may be out of the instance (dead,
+-- loading screen tells raiders so). A wipe keeps it on: the leader may be in the open world (dead,
 -- released, running back) for up to LM.LOOTING_AWAY seconds, and isn't asked again on the way back in. It
--- turns off when the leader stays out longer, goes into another raid instance, leaves the group, loses
--- the lead, or turns it off.
+-- turns off when the leader stays out longer, enters any other instance (a dungeon, delve, scenario,
+-- battleground, arena, house or another raid), leaves the group, loses the lead, or turns it off. Only
+-- IsInInstance's "none" is the open world.
 --
 -- Messages, on LM.PREFIX like the rest of Loot Master (an older CRT drops a kind it doesn't know):
 --   O|<version>|<instance>                       on: the leader said Yes for this instance
---   F|<version>|<why>                            off: no (said No), off (turned off), left (went into
---                                                another raid instance), away (out too long), lead (can't
+--   F|<version>|<why>                            off: no (said No), off (turned off), instance (entered
+--                                                another instance), away (out too long), lead (can't
 --                                                lead it any more), party (Enable in party turned off),
 --                                                reload (the leader's login or /reload)
 --   H|<version>|<instance>|<instance>|<seconds>  the heartbeat, every HEARTBEAT_SECONDS while on: the
---                                                instance it said Yes for, the one the leader is in now
---                                                (empty outside), and the seconds it has been outside
+--                                                instance it said Yes for, where the leader is now (that
+--                                                instance, or "world" for the open world), and the
+--                                                seconds it has been out
 -- An instance is "<instanceID>-<difficultyID>" (GetInstanceInfo). A raider takes these only from its
 -- current raid leader, and forgets the leader's word when the lead moves or the leader goes offline.
 -- Combat never stops a heartbeat; only the game's chat lockdown (a boss encounter) holds one, and a fresh
@@ -51,7 +53,7 @@ local TEXT = {
     saidNo = "you said No",
     turnedOn = "CRT Looting: on for everyone in the raid with CRT.",
     turnedOff = "CRT Looting: off for everyone.",
-    left = "CRT Looting: off, you went into another raid instance.",
+    instance = "CRT Looting: off, you entered another instance.",
     away = "CRT Looting: off, you were out of the instance for over 10 minutes.",
     lead = "CRT Looting: off: %s.",
     cant = "CRT Looting: can't turn it on: %s.",
@@ -62,7 +64,7 @@ local TEXT = {
 local OFF_WHY = {
     no = "the raid leader said No",
     off = AutoPass.WHY.off,
-    left = "the raid leader went to another instance",
+    instance = "the raid leader entered another instance",
     away = "the raid leader was out of the instance for over 10 minutes",
     lead = "the raid leader changed",
     party = "Enable in party was turned off",
@@ -72,10 +74,11 @@ local OFF_WHY = {
 local FORGOT = { lead = OFF_WHY.lead, offline = AutoPass.WHY.offline }
 
 local own = { on = false } -- the leader's choice: on, instance (said Yes for), why (when off), awaySince
-local heard -- a raider's last word from the leader: { from, on, version, yes, here, away, at, why }
+local heard -- a raider's last word from the leader: { from, on, version, yes, here, world, away, at, why }
 local forgot -- why heard was dropped (FORGOT's keys), until the leader's next word
 local passed, passedIn = {}, nil -- rolls passed in the raid instance passedIn: { [rollID] = true }
-local lastKey = false -- the instance key last seen (false: no loading screen yet since loading)
+local lastKey = false -- the raid instance key last seen (false: no loading screen yet since loading)
+local lastPlace = false -- where you were last seen: a raid instance's key, "world" or "elsewhere"
 local askedFor -- the raid instance the leader was last asked about
 local inEncounter, endedAt = false, nil
 local beatTicker, watchTicker
@@ -96,6 +99,20 @@ function LM.InstanceKey()
         return nil
     end
     return string.format("%d-%d", id, difficulty)
+end
+
+-- Whether you are in the open world: IsInInstance's "none". Anything else (or unreadable) is an instance.
+local function openWorld()
+    local inside, kind = IsInInstance()
+    if secret(inside) or secret(kind) then
+        return false
+    end
+    return not inside and kind == "none"
+end
+
+-- Where you are: your raid instance's key, "world" for the open world, or "elsewhere" (any other instance).
+local function place()
+    return LM.InstanceKey() or (openWorld() and "world" or "elsewhere")
 end
 
 local function isLeader()
@@ -174,8 +191,8 @@ function LM:SetLooting(on, why, words)
         stopBeat()
         LM.SendText(Wire.Encode("F", { LM.VERSION, why }))
         local line = TEXT.turnedOff
-        if why == "left" then
-            line = TEXT.left
+        if why == "instance" then
+            line = TEXT.instance
         elseif why == "away" then
             line = TEXT.away
         elseif why == "lead" then
@@ -210,7 +227,8 @@ beat = function()
     if LM.ChatLocked() then
         return -- held messages would pile up; ENCOUNTER_END sends a fresh one
     end
-    LM.SendText(Wire.Encode("H", { LM.VERSION, own.instance, LM.InstanceKey() or "", math.floor(away) }))
+    local where = place()
+    LM.SendText(Wire.Encode("H", { LM.VERSION, own.instance, where ~= "elsewhere" and where or "", math.floor(away) }))
 end
 
 -- After an encounter: a heartbeat now, or, while chat is still locked, tried again every BEAT_RETRY
@@ -278,7 +296,7 @@ function LM:LootingState()
     local now = GetTime()
     local test = (LM.current and LM.current.test) or (LM.incoming and LM.incoming.test)
     local away
-    if h.on and h.here == nil and type(h.away) == "number" then
+    if h.on and h.here == nil and h.world and type(h.away) == "number" then
         away = h.away + math.max(0, now - h.at)
     end
     return {
@@ -286,7 +304,7 @@ function LM:LootingState()
         finder = IsInGroup(LE_PARTY_CATEGORY_INSTANCE) and true or false, inRaid = IsInRaid() and true or false,
         enableInParty = enableInParty(), on = h.on == true, from = h.from, version = h.version,
         yesInstance = h.yes, leaderOnline = online(leader and LM.UnitOf(leader)), leaderInstance = h.here,
-        leaderAway = away, heartbeatAt = h.on and h.at or nil, now = now, passed = passed,
+        leaderOpenWorld = h.world == true, leaderAway = away, heartbeatAt = h.on and h.at or nil, now = now, passed = passed,
     }
 end
 
@@ -376,7 +394,7 @@ LM.Handle("O", function(f, sender)
     if not fromLeader(sender) or (f[2] or "") == "" then
         return
     end
-    hear({ from = sender, on = true, version = f[1], yes = f[2], here = f[2], away = 0, at = GetTime() })
+    hear({ from = sender, on = true, version = f[1], yes = f[2], here = f[2], world = false, away = 0, at = GetTime() })
     report(false)
 end)
 
@@ -384,8 +402,10 @@ LM.Handle("H", function(f, sender)
     if not fromLeader(sender) or (f[2] or "") == "" then
         return
     end
-    local here = (f[3] or "") ~= "" and f[3] or nil
-    hear({ from = sender, on = true, version = f[1], yes = f[2], here = here, away = tonumber(f[4]), at = GetTime() })
+    local world = f[3] == "world"
+    local here = (not world and (f[3] or "") ~= "") and f[3] or nil
+    hear({ from = sender, on = true, version = f[1], yes = f[2], here = here, world = world, away = tonumber(f[4]),
+        at = GetTime() })
     report(false)
 end)
 
@@ -413,17 +433,17 @@ local function maybeAsk()
 end
 
 -- A loading screen or a new zone. The leader's first one after loading tells raiders it starts off.
--- Outside every raid instance the leader stays on (a wipe) and its heartbeat says so; another raid
--- instance turns it off. Raiders keep the leader's word: the gate checks where they are.
+-- In the open world the leader stays on (a wipe) and its heartbeat says so; any other instance turns it
+-- off. Raiders keep the leader's word: the gate checks where they are.
 local function zoned()
-    local key = LM.InstanceKey()
-    if key == lastKey then
+    local key, where = LM.InstanceKey(), place()
+    if where == lastPlace then
         return
     end
-    if lastKey == false and canLead() then
+    if lastPlace == false and canLead() then
         LM.SendText(Wire.Encode("F", { LM.VERSION, "reload" }))
     end
-    lastKey = key
+    lastKey, lastPlace = key, where
     if key and key ~= passedIn then
         passed, passedIn = {}, key
     end
@@ -431,11 +451,11 @@ local function zoned()
         if key == own.instance then
             own.awaySince = nil
             beat()
-        elseif key == nil then
+        elseif where == "world" then
             own.awaySince = own.awaySince or GetTime()
             beat()
         else
-            LM:SetLooting(false, "left")
+            LM:SetLooting(false, "instance")
         end
     end
     if key ~= askedFor and LM.HideLootingPrompt then
