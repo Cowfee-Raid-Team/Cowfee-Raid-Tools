@@ -499,7 +499,7 @@ local function personalLive()
 end
 
 -- Your personal note as typed. A raid note pasted in (an "EncounterID:…;Name:…" header, timed
--- "time:…;ph:…" lines, as Northern Sky and this addon write them) shows as a heading with the boss's name
+-- "time:…;ph:…" lines, the timed-line format of shared raid notes) shows as a heading with the boss's name
 -- and difficulty and its timed lines by phase, "0:34 [icon] Spell" (marked ">" when they name you), then
 -- its other lines. Free text gets the markdown above. The personal note never runs alerts.
 local function personalNoteBlock(text)

@@ -114,7 +114,7 @@ function Parser.Parse(text)
             note.difficulty = f.difficulty
             note.name = f.name
         elseif lower:find("^time:") or (lower:find("^ph:%s*[%d%.]+%s*;") and lower:find(";%s*time:")) then
-            -- a timed line, "time:" first, or "ph:" first as Northern Sky also writes it
+            -- a timed line, "time:" first or "ph:" first (shared raid notes use both orders)
             local f = fields(line)
             local t = tonumber(f.time)
             if t then
