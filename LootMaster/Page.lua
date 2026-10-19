@@ -65,9 +65,8 @@ local TEXT = {
     noIcon = "No icon",
     guildStream = "Guild: %s",
     specs = "Items a raider can't use",
-    specsHelp = "Each raider's own CRT answers an item for them when they can't use it, and leaves it off their popup. The game's data shows it in one of four ways: none of their specs is listed (a tank trinket for a mage), a Classes line without their class, an armor type that isn't their class's, or a weapon type the game marks in red for their class. The looter window shows it with an 'auto' tag and why.\n\nThe answer is always Transmog: your own Transmog button when you have one (or a button labelled Transmog), else a built-in Transmog that weighs 1 (below every button you weighted above 0). A looter on an older CRT with no Transmog button gets Pass. Every answer gets a roll.\n\nOnly a clear answer from the game counts. If the item hasn't loaded, or the game gives no list, an empty list or anything odd, the item is shown as normal.\n\nRaiders who tick Show me items I can't use see those items with their buttons off: they can look, not answer.",
-    autoPass = "Answer them for raiders (sent with your sessions)",
-    showAll = "Show me items I can't use (to look at, just you)",
+    specsHelp = "CRT always answers these for raiders. Each raider's own CRT answers an item for them when they can't use it, and leaves it off their popup. The game's data shows it in one of four ways: none of their specs is listed (a tank trinket for a mage), a Classes line without their class, an armor type that isn't their class's, or a weapon type the game marks in red for their class. The looter window shows it with an 'auto' tag and why.\n\nThe answer is always Transmog: your own Transmog button when you have one (or a button labelled Transmog), else a built-in Transmog that weighs 1 (below every button you weighted above 0). A looter on an older CRT with no Transmog button gets Pass. Every answer gets a roll.\n\nOnly a clear answer from the game counts. If the item hasn't loaded, or the game gives no list, an empty list or anything odd, the item is shown as normal.\n\nRaiders who tick Show me items I can't use see those items with their buttons off: they can look, not answer.",
+    showAll = "Show me items I can't use (greyed out, just for you)",
     award = "Award message",
     awardHelp = "Sent when you give an item out. %i is the item, %p the player, %r their answer (BiS, Upgrade...), and %v their roll. Your guild's own channels (from the Guild & Communities window) are listed too; picking one adds it to your chat so CRT can post there. When the place you pick isn't open to you (Raid out of a raid, a channel you left, chat locked in an encounter), only you see it, with the reason. In a test only you see it.",
     awardVars = "%i item   %p player   %r answer   %v roll",
@@ -514,12 +513,7 @@ local function buildSettings(f)
     end
 
     heading(f, L.col1, -350, TEXT.specs, TEXT.specsHelp)
-    check(f, L.col1 - 2, -372, TEXT.autoPass, function()
-        return LM:Settings().autoPass ~= false
-    end, function(on)
-        LM:Settings().autoPass = on
-    end)
-    check(f, L.col1 - 2, -398, TEXT.showAll, function()
+    check(f, L.col1 - 2, -372, TEXT.showAll, function()
         return LM:Settings().showAllItems
     end, function(on)
         LM:Settings().showAllItems = on

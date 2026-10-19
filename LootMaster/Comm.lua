@@ -388,7 +388,7 @@ function LM:Start(items, test)
     local id = string.format("%x", (time() % 0xFFFFFF)) .. string.format("%02x", math.random(0, 255))
     local s = Session.New({ id = id, test = test, leader = self:Me(), items = ok })
     s.boss = self:RecentBoss(s.test)
-    s.autoPass = self:Settings().autoPass ~= false
+    s.autoPass = true -- always on; an old saved autoPass setting is ignored
     s:Expect(self:Roster())
     self.current = s
     self:SendAuthority()
