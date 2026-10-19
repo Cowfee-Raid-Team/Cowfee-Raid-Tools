@@ -105,7 +105,7 @@ local function build(pf)
     end)
 
     -- Logged Timeline Ref.
-    heading(pf, x, -252, "Logged Timeline Ref", "Set each ability's types on a boss's ability timeline with dropdowns: a Main type that colors the row, and any others as dots. Save as my copy shows the colors on the Timeline; Export gives the text to paste to Claude, who ships it in the boss's file.\n\nManage references deletes your copies, and marks shipped ability timelines for removal: they're hidden on this computer at once, and Export removals (or /crt dev removed) lists them for Claude to delete from the boss files.")
+    heading(pf, x, -252, "Logged Timeline Ref", "Set each ability's types on a boss's ability timeline with dropdowns: a Main type that colors the row, and any others as dots. Save as my copy shows the colors on the Timeline; Export gives the text to paste to Claude, who ships it in the boss's file.\n\nManage ability timelines deletes your copies, and marks shipped ability timelines for removal: they're hidden on this computer at once, and Export removals (or /crt dev removed) lists them for Claude to delete from the boss files.")
     action(pf, x, -272, "Open Logged Timeline Ref", 180, function()
         CRT.ReferenceTypes:Toggle()
     end)

@@ -8,7 +8,7 @@ local ADDON, CRT = ...
 --                       colors straight away; your copy is listed before the shipped one
 --   Export              the text, to paste to Claude and ship in the boss's file
 --   Delete my copy      drops your copy, so the shipped one shows again
---   Manage references   every ability timeline of the picked boss: delete your copies (one or all), and
+--   Manage ability timelines   every ability timeline of the picked boss: delete your copies (one or all), and
 --                       mark shipped ones for removal (hidden on this computer at once, Keep undoes it);
 --                       Export removals and /crt dev removed list the marks for Claude to delete from
 --                       the boss files (Reference:SetRemoved in Timeline/Reference.lua)
@@ -323,33 +323,43 @@ end
 
 -- The encounter ID of a reference's boss: its Encounter line, else the boss file of the same name.
 local function bossID(ref)
-    if ref.encounterID then
-        return ref.encounterID
-    end
-    local want = type(ref.boss) == "string" and ref.boss:lower()
-    if want and CRT.Bosses and CRT.Bosses.List then
-        for _, def in ipairs(CRT.Bosses:List()) do
-            if type(def.name) == "string" and def.name:lower() == want then
-                return def.encounterID
-            end
-        end
-    end
+    return Reference.BossID(ref.encounterID, ref.boss)
 end
 
--- The boss file a boss's references ship in: its name in title case without spaces or apostrophes.
-function Editor.BossFile(name)
+-- midnight-s1 -> Midnight-S1: each part of a season key capitalized, as its folder is named.
+local function seasonFolder(key)
+    return (key:gsub("(%w)(%w*)", function(first, rest)
+        return first:upper() .. rest
+    end))
+end
+
+-- The boss file a boss's references ship in. The registry doesn't keep each boss's source file, so this
+-- is a guess from the naming rule: the boss's name in title case without spaces or apostrophes, in its
+-- season's folder ("Seasons/Midnight-S1/Kithix.lua") when the registry knows the boss, else the file
+-- name alone.
+function Editor.BossFile(name, encounterID)
+    local def = encounterID and CRT.Bosses and CRT.Bosses.Get and CRT.Bosses:Get(encounterID)
+    if def and type(def.name) == "string" then
+        name = def.name
+    end
     local out = {}
     for word in tostring(name or "?"):gmatch("%S+") do
         word = word:gsub("[^%w]", "")
         out[#out + 1] = word:sub(1, 1):upper() .. word:sub(2)
     end
-    return table.concat(out) .. ".lua"
+    local file = table.concat(out) .. ".lua"
+    if def and type(def.season) == "string" then
+        return "Seasons/" .. seasonFolder(def.season) .. "/" .. file
+    end
+    return file
 end
 
--- One line of the removals export: "Kithix.lua; encounter 3513; Mythic; Boss: Kith'ix / Difficulty: Mythic / Length: 7:00".
+-- One line of the removals export:
+-- "Seasons/Midnight-S1/Kithix.lua; encounter 3513; Mythic; Boss: Kith'ix / Difficulty: Mythic / Length: 7:00",
+-- ending "; already gone" when no shipped block has that header any more (Claude deleted it).
 function Editor.RemovalLine(mark)
-    local id = mark.encounterID or bossID({ boss = mark.boss })
-    return string.format("%s; encounter %s; %s; %s", Editor.BossFile(mark.boss), id and tostring(id) or "?", mark.difficulty or "any difficulty", mark.header or "")
+    local id = Reference.BossID(mark.encounterID, mark.boss)
+    return string.format("%s; encounter %s; %s; %s%s", Editor.BossFile(mark.boss, id), id and tostring(id) or "?", mark.difficulty or "any difficulty", mark.header or "", mark.gone and "; already gone" or "")
 end
 
 -- Every shipped reference marked for removal on this computer, one line each, by boss.
@@ -374,7 +384,7 @@ end
 function Editor:PrintRemoved()
     local lines = Editor.RemovalLines()
     if #lines == 0 then
-        CRT:Print("No shipped ability timelines are marked for removal. Mark them in Logged Timeline Ref > Manage references.")
+        CRT:Print("No shipped ability timelines are marked for removal. Mark them in Logged Timeline Ref > Manage ability timelines.")
         return
     end
     CRT:Print("Marked for removal (paste to Claude):")
@@ -394,12 +404,17 @@ local function confirm(text, arg, acceptText, accept)
     }), "GENERIC_CONFIRMATION"))
 end
 
+-- After a delete or a mark: a new ability timeline loads if the shown one is gone, from the top.
 local function afterChange()
+    local before = entryKey
     loadFirstIfGone()
     refresh()
+    if entryKey ~= before then
+        scrollTop()
+    end
 end
 
--- Manage references ---------------------------------------------------------------------------------
+-- Manage ability timelines --------------------------------------------------------------------------
 -- A panel beside the window with every ability timeline of the picked boss, yours and shipped.
 
 local MANAGE_W, MANAGE_H, LINE_H = 470, 340, 28
@@ -483,14 +498,14 @@ local function refreshManage()
 end
 
 local function buildManage()
-    manage = UI.Window("CowfeeRaidToolsReferenceManage", { kind = "dialog", title = "Manage references", width = MANAGE_W, height = MANAGE_H })
+    manage = UI.Window("CowfeeRaidToolsReferenceManage", { kind = "dialog", title = "Manage ability timelines", width = MANAGE_W, height = MANAGE_H })
     manage:SetToplevel(true)
     manage.lines = {}
     manage.refresh = refreshManage
 
     manage.heading = manage:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
     manage.heading:SetPoint("TOPLEFT", 14, -34)
-    UI.Help(manage, "Manage references", "Every ability timeline of this boss, yours and shipped.\n\nDelete removes one of your copies; Delete all my copies removes every copy of yours for this boss. The shipped ones stay.\n\nThe game can't change the addon's files, so a shipped one is removed in two steps. Remove from addon hides it on this computer at once and marks it for removal; Keep undoes that. Export removals (or /crt dev removed) lists the marks: paste them to Claude, who deletes those blocks from the boss files."):SetPoint("LEFT", manage.heading, "RIGHT", 6, 0)
+    UI.Help(manage, "Manage ability timelines", "Every ability timeline of this boss, yours and shipped.\n\nDelete removes one of your copies; Delete all my copies removes every copy of yours for this boss. The shipped ones stay.\n\nThe game can't change the addon's files, so a shipped one is removed in two steps. Remove from addon hides it on this computer at once and marks it for removal; Keep undoes that. Export removals (or /crt dev removed) lists the marks: paste them to Claude, who deletes those blocks from the boss files. Opening this panel clears marks whose blocks are already gone.\n\nA marked one also leaves the alerts and notes on this computer, as a preview of the deletion."):SetPoint("LEFT", manage.heading, "RIGHT", 6, 0)
 
     local scroll = CreateFrame("ScrollFrame", "CowfeeRaidToolsReferenceManageScroll", manage, "UIPanelScrollFrameTemplate")
     scroll:SetPoint("TOPLEFT", 14, -60)
@@ -532,6 +547,10 @@ local function openManage()
         buildManage()
     end
     manage.boss = { id = bossID(entry.ref), name = entry.ref.boss }
+    local pruned = Reference:PruneRemoved()
+    if pruned > 0 then
+        CRT:Print(string.format("Cleared %d removal mark%s: those ability timelines are already gone from the boss files.", pruned, pruned == 1 and "" or "s"))
+    end
     manage:ClearAllPoints()
     manage:SetPoint("TOPLEFT", win, "TOPRIGHT", 4, 0)
     manage:Show()
@@ -585,12 +604,10 @@ local function buildButtons()
         if entry and entry.own then
             Reference:Delete(entryKey)
             CRT:Print("Deleted your copy; the shipped ability timeline shows again.")
-            load(nil)
             afterChange()
-            scrollTop()
         end
     end)
-    win.manage = button(win, "Manage references\226\128\166")
+    win.manage = button(win, "Manage ability timelines\226\128\166")
     win.manage:SetPoint("LEFT", win.delete, "RIGHT", 6, 0)
     win.manage:SetScript("OnClick", openManage)
 end
@@ -618,7 +635,7 @@ local function build()
         end,
     })
     win.pick:SetPoint("TOPLEFT", 14, -34)
-    UI.Help(win, "Logged Timeline Ref", "Main colors the ability's row on the Timeline; Also adds a dot per type, and the tooltip lists them all. No type is a plain white row.\n\nSave as my copy to see it on the Timeline, then Export and paste the text to Claude, who ships it in the boss's file.\n\nManage references lists every ability timeline of this boss: delete your copies, or mark a shipped one for removal.\n\n" .. Reference.Legend()):SetPoint("LEFT", win.pick, "RIGHT", 6, 0)
+    UI.Help(win, "Logged Timeline Ref", "Main colors the ability's row on the Timeline; Also adds a dot per type, and the tooltip lists them all. No type is a plain white row.\n\nSave as my copy to see it on the Timeline, then Export and paste the text to Claude, who ships it in the boss's file.\n\nManage ability timelines lists every ability timeline of this boss: delete your copies, or mark a shipped one for removal.\n\n" .. Reference.Legend()):SetPoint("LEFT", win.pick, "RIGHT", 6, 0)
 
     local head = win:CreateFontString(nil, "OVERLAY", "CRTFontDisableSmall")
     head:SetPoint("TOPLEFT", 14, -72)

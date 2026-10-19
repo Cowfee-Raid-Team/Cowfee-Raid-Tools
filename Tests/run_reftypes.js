@@ -50,21 +50,25 @@ check("dodge and heavydot read", d and d.rows[1].types[1] == "dodge" and d.rows[
 check("Sszorak types shipped", s.rows[1].types[1] == "raid" and s.rows[2].types[1] == "soak" and s.rows[5].types[1] == "raid")
 -- Export removals: one line per marked shipped reference (boss file, encounter ID, difficulty, header).
 check("boss file from name", E.BossFile("Kith'ix") == "Kithix.lua" and E.BossFile("Nek'zali the Soulcoiler") == "NekzaliTheSoulcoiler.lua")
+CRT.Bosses.Get = function(_, id) if id == 3513 then return { encounterID = 3513, name = "Kith'ix", season = "midnight-s1" } end end
+check("boss file in its season folder when the registry knows it", E.BossFile("Kith'ix", 3513) == "Seasons/Midnight-S1/Kithix.lua")
 local line = E.RemovalLine({ boss = "Kith'ix", encounterID = 3513, difficulty = "Mythic", header = "Boss: Kith'ix / Difficulty: Mythic / Length: 7:00" })
-check("removal line format", line == "Kithix.lua; encounter 3513; Mythic; Boss: Kith'ix / Difficulty: Mythic / Length: 7:00")
+check("removal line format", line == "Seasons/Midnight-S1/Kithix.lua; encounter 3513; Mythic; Boss: Kith'ix / Difficulty: Mythic / Length: 7:00")
 check("removal line, no encounter or difficulty", E.RemovalLine({ boss = "X", header = "Boss: X" }) == "X.lua; encounter ?; any difficulty; Boss: X")
+check("removal line, already gone", E.RemovalLine({ boss = "X", header = "Boss: X", gone = true }) == "X.lua; encounter ?; any difficulty; Boss: X; already gone")
 CRT.db = { timeline = {}, dev = { removedReferences = {
   ["3513|Mythic|Boss: Kith'ix / Difficulty: Mythic / Length: 7:00"] = { boss = "Kith'ix", encounterID = 3513, difficulty = "Mythic", header = "Boss: Kith'ix / Difficulty: Mythic / Length: 7:00" },
   ["3420|Heroic|Boss: Sszorak / Difficulty: Heroic / Length: 6:32"] = { boss = "Sszorak", encounterID = 3420, difficulty = "Heroic", header = "Boss: Sszorak / Difficulty: Heroic / Length: 6:32" },
 } } }
 CRT.Timeline.Settings = function() return CRT.db.timeline end
+CRT.TimelineDB.references = { "Boss: Kith'ix\\nDifficulty: Mythic\\nLength: 7:00\\nEncounter: 3513\\nX: 0:10" }
 local lines = E.RemovalLines()
-check("removal lines sorted by boss", #lines == 2 and lines[1]:find("^Kithix%.lua") and lines[2]:find("^Sszorak%.lua; encounter 3420; Heroic; "))
+check("removal lines sorted by boss", #lines == 2 and lines[1] == "Seasons/Midnight-S1/Kithix.lua; encounter 3513; Mythic; Boss: Kith'ix / Difficulty: Mythic / Length: 7:00" and lines[2] == "Sszorak.lua; encounter 3420; Heroic; Boss: Sszorak / Difficulty: Heroic / Length: 6:32; already gone")
 CRT.db.dev.removedReferences = nil
 check("no removals, no lines", #E.RemovalLines() == 0)
 print(fails == 0 and "all passed" or (fails .. " failed"))
 `;
-if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
+if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
 for (const f of ['Timeline/Reference.lua', 'Dev/ReferenceTypes.lua', 'Bosses/Registry.lua', 'Seasons/Midnight-S1/Season.lua', 'Seasons/Midnight-S1/NekzaliTheSoulcoiler.lua', 'Seasons/Midnight-S1/Sszorak.lua'])
   lua.lua_pushstring(L, to_luastring(fs.readFileSync(A + '/' + f, 'utf8')));
 if (lua.lua_pcall(L, 6, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
