@@ -21,6 +21,9 @@ Code map/
 Sounds/*
 !Sounds/README.txt
 
-# Factory: per-job state and the test run's output stay local (factory/backlog.md is tracked)
-factory/jobs/
+# Claude tooling and the factory stay on this PC only (backed up to the vault: Files/CRT factory backup)
+.claude/
+factory/
+
+# The test run's output stays local
 Tests/last-run.txt
