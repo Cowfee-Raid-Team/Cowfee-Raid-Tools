@@ -13,7 +13,8 @@ local dataSrc, commSrc, syncSrc = ...
 local fails, passes = 0, 0
 local function check(ok, what) if ok then passes = passes + 1 else fails = fails + 1 print("FAIL " .. what) end end
 local function eq(a, b, what) check(a == b, what .. " (got " .. tostring(a) .. ", want " .. tostring(b) .. ")") end
-GetTime = function() return 100 end
+local NOW = 100
+GetTime = function() return NOW end
 time = function() return 1790000000 end
 wipe = function(t) for k in pairs(t) do t[k] = nil end return t end
 strtrim = function(s) return (s:gsub("^%s+", ""):gsub("%s+$", "")) end
@@ -40,13 +41,33 @@ UnitIsGroupLeader = function(u)
 end
 UnitClass = function() return "Paladin", "PALADIN" end
 C_Item = { GetItemInfo = function() return nil end }
+-- where the receiver can post: a guild whose rank may speak in Guild and Officer, the channel Loot, one guild channel
+local PLACES = { guild = true, guildSpeak = true, officer = true, channels = { Loot = 3 } }
+IsInGuild = function() return PLACES.guild end
+GetGuildInfo = function(u) if PLACES.guild then return "Cowfee", "Officer", 1 end end
+C_GuildInfo = {
+  CanSpeakInGuildChat = function() return PLACES.guildSpeak end,
+  GuildControlGetRankFlags = function(order) if order ~= 2 then error("rank order " .. tostring(order)) end return { true, true, true, PLACES.officer } end,
+}
+GetChannelName = function(name) return PLACES.channels[name] or 0 end
+C_Club = { GetGuildClubId = function() return PLACES.guild and 77 or nil end,
+  GetStreams = function(club) return { { streamId = 5, name = "Loot council", streamType = 4 } } end }
 local timers = {}
 C_Timer = { After = function(s, fn) timers[#timers+1] = fn end, NewTicker = function(s, fn) return { Cancel = function() end } end }
 local function runTimers() local t = timers timers = {} for _, fn in ipairs(t) do fn() end end
-local outbox = {}
-C_ChatInfo = { RegisterAddonMessagePrefix = function() end, SendAddonMessage = function(p, text, ch) outbox[#outbox+1] = text return 0 end }
+local outbox, result = {}, 0
+C_ChatInfo = { RegisterAddonMessagePrefix = function() end, SendAddonMessage = function(p, text, ch) if result ~= 0 then return result end outbox[#outbox+1] = text return 0 end }
 local onEvent
-function CreateFrame() return { RegisterEvent = function() end, SetScript = function(_, _, fn) onEvent = fn end } end
+-- each file's event frame gets the events it registered, as in the game
+local frames = {}
+onEvent = function(self, event, ...) for _, f in ipairs(frames) do if f.events[event] and f.fn then f.fn(self, event, ...) end end end
+function CreateFrame()
+  local f = { events = {} }
+  f.RegisterEvent = function(me, e) me.events[e] = true end
+  f.SetScript = function(me, _, fn) me.fn = fn end
+  frames[#frames + 1] = f
+  return f
+end
 local printed = {}
 CRTDBChar = {}
 -- each player's saved Loot Master settings, swapped in as CRT.db.lootmaster
@@ -278,6 +299,114 @@ eq(LM.CleanAwardChannel("CHANNEL:Trade - City"), "CHANNEL:Trade - City", "clean:
 eq(LM.CleanAwardChannel("COMMUNITY:123:4"), "COMMUNITY:123:4", "clean: a guild channel")
 eq(LM.CleanAwardMessage(string.rep("ab", 150)):len(), LM.AWARD_MAX, "clean: award message cut to 200 letters")
 eq(LM.CleanAwardMessage(string.rep("\\208\\159", 250)):len(), LM.AWARD_MAX * 2, "clean: cut by letters, not bytes")
+
+
+-- 11. A late answer updates the line; the wait starts only when the last part has left the queue
+local fired = {}
+LM:OnChange(function(what) fired[#fired + 1] = what end)
+be("Solex")
+timers = {}
+take()
+result = 3 -- the game throttles: everything waits in the queue
+LM:SyncTo("Quick")
+local id = LM.syncOut.id
+eq(#outbox, 0, "queue: nothing sent yet")
+eq(#timers, 1, "queue: only the queue's retry is waiting, not the answer wait")
+result = 0
+runTimers() -- the queue sends everything; the last part starts the wait
+check(#outbox >= 5, "queue: all sent")
+check(LM:SyncStatus():find("Sending", 1, true) ~= nil, "queue: still waiting for answers once sent")
+take()
+runTimers()
+eq(LM:SyncStatus(), "Not synced to anyone.\\nNot reached: Quick, Halo, Gone.", "queue: then the line says who got it")
+fired = {}
+deliver({ "M|" .. id .. ":K" }, "Quick-Sargeras")
+eq(fired[#fired], "sync", "late answer: the page is told")
+eq(LM:SyncStatus(), "Synced to 1 player: Quick.\\nNot reached: Halo, Gone.", "late answer: the line changes")
+fired = {}
+deliver({ "M|other:K" }, "Halo-Sargeras")
+eq(#fired, 0, "an answer to another sync changes nothing")
+
+-- 12. Chat lockdown (a boss encounter): no sync, no ask, the reason given
+C_ChatInfo.InChatMessagingLockdown = function() return true end
+eq(LM:SyncBlocked(), "Addon messages are held during a boss encounter.", "lockdown: the reason")
+local outBefore = LM.syncOut
+eq(LM:SyncTo("Quick"), nil, "lockdown: no sync")
+eq(#outbox, 0, "lockdown: nothing sent")
+eq(LM.syncOut, outBefore, "lockdown: the last line stays")
+NOW = NOW + LM.SYNC_PING_SECONDS + 1
+eq(LM:SyncPing(), false, "lockdown: no ask either")
+C_ChatInfo.InChatMessagingLockdown = function() return false end
+eq(LM:SyncBlocked(), nil, "after the encounter: free")
+C_ChatInfo.InChatMessagingLockdown = function() error("boom") end
+eq(LM:SyncBlocked(), nil, "lockdown check failing: not blocked")
+C_ChatInfo.InChatMessagingLockdown = nil
+
+-- 13. An unfinished sync is dropped: when the lead changes, after 60 seconds
+be("Halo")
+DB.Halo = settings()
+be("Halo")
+deliver({ "M|part1:H|0.99.0|1|1|0|0|40|RAID|-|5|1|15|5|8|1", "M|part1:N|1,Halo-Sargeras" }, "Solex-Sargeras")
+eq(LM.SyncPending(), true, "pending: waiting for the buttons")
+GROUP.leader = "Quick-Sargeras"
+onEvent(nil, "PARTY_LEADER_CHANGED")
+eq(LM.SyncPending(), false, "pending: dropped when the lead changes")
+GROUP.leader = "Solex-Sargeras"
+deliver({ "M|part1:B|1,pass,888888,0,,Pass" }, "Solex-Sargeras")
+eq(DB.Halo.responseSeconds, 60, "pending: the rest alone applies nothing")
+timers = {}
+deliver({ "M|part2:H|0.99.0|1|1|0|0|40|RAID|-|5|1|15|5|8|1", "M|part2:N|1,Halo-Sargeras" }, "Solex-Sargeras")
+NOW = NOW + LM.SYNC_KEEP + 1
+deliver({ "M|part2:B|1,pass,888888,0,,Pass" }, "Solex-Sargeras")
+eq(DB.Halo.responseSeconds, 60, "pending: a part after 60 seconds applies nothing")
+deliver({ "M|part3:H|0.99.0|1|1|0|0|40|RAID|-|5|1|15|5|8|1" }, "Solex-Sargeras")
+eq(LM.SyncPending(), true, "pending: a new one waiting")
+runTimers()
+eq(LM.SyncPending(), false, "pending: dropped by its 60 second timer")
+deliver({ "M|part4:H|0.99.0|1|1|0|0|40|RAID|-|5|1|15|5|8|1", "M|part4:N|1,Halo-Sargeras", "M|part4:B|1,pass,888888,0,,Pass" }, "Solex-Sargeras")
+eq(DB.Halo.responseSeconds, 40, "pending: a whole sync in time still applies")
+take()
+
+-- 14. Send to: a place the receiver can't post to becomes Raid, and the chat line says so
+local syncN = 0
+local function syncSendTo(channel)
+  printed = {}
+  DB.Halo = settings()
+  be("Halo")
+  syncN = syncN + 1
+  local sid = "ch" .. syncN
+  deliver({ "M|" .. sid .. ":H|0.99.0|1|1|0|0|40|" .. channel .. "|-|5|1|15|5|8|1", "M|" .. sid .. ":N|1,Halo-Sargeras", "M|" .. sid .. ":B|1,pass,888888,0,,Pass" }, "Solex-Sargeras")
+  take()
+  return DB.Halo.awardChannel, printed[1]
+end
+local got, line = syncSendTo("GUILD")
+eq(got, "GUILD", "Guild: kept when you may speak there")
+eq(line, "Loot Master settings synced from Solex.", "Guild: nothing more said")
+PLACES.guildSpeak = false
+got, line = syncSendTo("GUILD")
+eq(got, "RAID", "Guild: Raid when your rank can't speak")
+eq(line, "Loot Master settings synced from Solex. Send to: Guild isn't open to you, so Raid.", "Guild: said in the chat line")
+PLACES.guildSpeak = true
+eq((syncSendTo("OFFICER")), "OFFICER", "Officer: kept with the Officerchat Speak flag")
+PLACES.officer = false
+got, line = syncSendTo("OFFICER")
+eq(got, "RAID", "Officer: Raid without the flag")
+eq(line, "Loot Master settings synced from Solex. Send to: Officer isn't open to you, so Raid.", "Officer: said")
+PLACES.officer = true
+PLACES.guild = false
+eq((syncSendTo("GUILD")), "RAID", "Guild: Raid with no guild")
+eq((syncSendTo("OFFICER")), "RAID", "Officer: Raid with no guild")
+eq((syncSendTo("COMMUNITY:77:5")), "RAID", "guild channel: Raid with no guild")
+PLACES.guild = true
+eq((syncSendTo("CHANNEL:Loot")), "CHANNEL:Loot", "channel: kept when joined")
+got, line = syncSendTo("CHANNEL:Trade")
+eq(got, "RAID", "channel: Raid when not joined")
+eq(line, "Loot Master settings synced from Solex. Send to: Trade isn't open to you, so Raid.", "channel: said by name")
+eq((syncSendTo("COMMUNITY:77:5")), "COMMUNITY:77:5", "guild channel: kept when it is one of your guild's")
+got, line = syncSendTo("COMMUNITY:99:1")
+eq(got, "RAID", "guild channel: Raid when not your guild's")
+eq(line, "Loot Master settings synced from Solex. Send to: that guild channel isn't open to you, so Raid.", "guild channel: said")
+eq((syncSendTo("SELF")), "SELF", "other places: kept")
 
 print(string.format("%d passed, %d failed", passes, fails))
 if fails > 0 then error("failures") end

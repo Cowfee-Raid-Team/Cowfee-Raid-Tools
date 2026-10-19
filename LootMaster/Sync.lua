@@ -15,13 +15,17 @@ local ADDON, CRT = ...
 --   T  the award message in pieces, so commas and long texts come through: index, text
 --   P  the leader asks who has a CRT that takes a sync; K is the answer, and also "applied" after a sync
 -- A receiver keeps the parts until all are in (in any order), then applies them only when the sender is
--- its current raid leader and it is named in N. Every value is cleaned with the Settings tab's own rules.
+-- its current raid leader and it is named in N. Every value is cleaned with the Settings tab's own rules,
+-- and a Send to the receiver can't post to (LM.CanPostTo) becomes Raid. Parts still missing SYNC_KEEP seconds
+-- after the first, or when the leader changes, are dropped.
 
 local LM = CRT.LootMaster
 local Wire = LM.Wire
 
 LM.SYNC_WAIT = 5 -- seconds the leader waits for answers before saying who was reached
 LM.SYNC_PING_SECONDS = 30 -- at most one "who has CRT" ask this often
+LM.SYNC_KEEP = 60 -- seconds a receiver keeps an unfinished sync
+LM.SYNC_HELD = "Addon messages are held during a boss encounter."
 local CHUNK = 180 -- bytes of award message a T part carries
 local LIST_MAX = 40 -- entries of one list a receiver keeps; a header promising more never completes
 
@@ -34,6 +38,18 @@ end
 -- Whether you can sync now: the raid leader, in a group.
 function LM:CanSync()
     return IsInGroup() and UnitIsGroupLeader("player") and true or false
+end
+
+-- Why a sync can't start now, or nil: while chat is locked (C_ChatInfo.InChatMessagingLockdown, a boss
+-- encounter) addon messages are held, so the answers couldn't come back in time.
+function LM:SyncBlocked()
+    if C_ChatInfo and C_ChatInfo.InChatMessagingLockdown then
+        local ok, locked = pcall(C_ChatInfo.InChatMessagingLockdown)
+        if ok and locked == true then
+            return LM.SYNC_HELD
+        end
+    end
+    return nil
 end
 
 -- Your synced settings, as messages for these recipients (full names). Pure but for LM:Settings().
@@ -124,9 +140,10 @@ function LM:SyncStatus()
 end
 
 -- Sends your settings to target (a name, or nil) and every name on your authority list who is in the
--- group. Only the raid leader, in a group. Returns the status line, or nil when you can't sync.
+-- group. Only the raid leader, in a group, out of chat lockdown. Returns the status line, or nil when you
+-- can't sync. The wait for answers starts once the queue has sent the last part.
 function LM:SyncTo(target)
-    if not LM:CanSync() then
+    if not LM:CanSync() or self:SyncBlocked() then
         return nil
     end
     local roster, me = {}, self:Me():lower()
@@ -155,16 +172,19 @@ function LM:SyncTo(target)
     local o = { id = newId(), sent = sent, missing = missing, acked = {}, done = #sent == 0 }
     self.syncOut = o
     if #sent > 0 then
-        for _, text in ipairs(self:SyncMessages(o.id, sent)) do
-            LM.SendText(text)
+        local function wait()
+            C_Timer.After(LM.SYNC_WAIT, function()
+                if LM.syncOut == o then
+                    o.done = true
+                    CRT:Print("Loot Master: " .. LM:SyncStatus():gsub("\n", " "))
+                    LM:Fire("sync")
+                end
+            end)
         end
-        C_Timer.After(LM.SYNC_WAIT, function()
-            if LM.syncOut == o then
-                o.done = true
-                CRT:Print("Loot Master: " .. LM:SyncStatus():gsub("\n", " "))
-                LM:Fire("sync")
-            end
-        end)
+        local messages = self:SyncMessages(o.id, sent)
+        for i, text in ipairs(messages) do
+            LM.SendText(text, i == #messages and wait or nil)
+        end
     end
     self:Fire("sync")
     return self:SyncStatus()
@@ -174,7 +194,7 @@ end
 -- SYNC_PING_SECONDS; returns whether it asked.
 local lastPing
 function LM:SyncPing()
-    if not LM:CanSync() or (lastPing and GetTime() - lastPing < LM.SYNC_PING_SECONDS) then
+    if not LM:CanSync() or LM:SyncBlocked() or (lastPing and GetTime() - lastPing < LM.SYNC_PING_SECONDS) then
         return false
     end
     lastPing = GetTime()
@@ -198,7 +218,14 @@ end
 
 -- Receiving -------------------------------------------------------------------------------------------
 
-local pending -- the sync coming in: { id, from, head, rec = {}, buttons = {}, names = {}, chunks = {} }
+local pending -- the sync coming in: { id, from, started, head, rec = {}, buttons = {}, names = {}, chunks = {} }
+
+-- Drops an unfinished sync whose time ran out, or whose sender no longer leads.
+local function dropStale()
+    if pending and (GetTime() - pending.started > LM.SYNC_KEEP or pending.from ~= LM.LeaderName()) then
+        pending = nil
+    end
+end
 
 local function count(t)
     local n = 0
@@ -285,7 +312,11 @@ local function apply(p)
     set.responses = LM.CleanResponses(ordered(p.buttons, h.nButtons))
     set.responseSeconds = LM.Clamp("responseSeconds", h.seconds, set.responseSeconds)
     set.awardMessage = LM.CleanAwardMessage(table.concat(ordered(p.chunks, h.nChunks)))
-    set.awardChannel = LM.CleanAwardChannel(h.channel)
+    local channel, closed = LM.CleanAwardChannel(h.channel), nil
+    if not LM.CanPostTo(channel) then
+        channel, closed = "RAID", channel
+    end
+    set.awardChannel = channel
     set.noRoll = LM.CleanNoRoll(h.noRoll)
     set.score = set.score or {}
     for _, k in ipairs(LM.SCORE_WEIGHTS) do
@@ -304,7 +335,11 @@ local function apply(p)
         LM.ScoreChanged()
     end
     LM.SendText(Wire.Encode("M", { p.id .. ":K" }))
-    CRT:Print(string.format("Loot Master settings synced from %s.", Ambiguate(p.from, "short")))
+    local line = string.format("Loot Master settings synced from %s.", Ambiguate(p.from, "short"))
+    if closed then
+        line = line .. string.format(" Send to: %s isn't open to you, so Raid.", LM.PlaceName(closed))
+    end
+    CRT:Print(line)
     LM:Fire("responses")
     LM:Fire("authority")
 end
@@ -320,6 +355,7 @@ LM.Handle("M", function(f, sender)
         local o = LM.syncOut
         if o and o.id == id then
             o.acked[sender] = true
+            LM:Fire("sync") -- a late answer updates the line too
         end
         return
     end
@@ -334,8 +370,15 @@ LM.Handle("M", function(f, sender)
     if not read then
         return -- a part from a newer version
     end
+    dropStale()
     if not pending or pending.id ~= id or pending.from ~= sender then
-        pending = { id = id, from = sender, rec = {}, buttons = {}, names = {}, chunks = {} }
+        local p = { id = id, from = sender, started = GetTime(), rec = {}, buttons = {}, names = {}, chunks = {} }
+        pending = p
+        C_Timer.After(LM.SYNC_KEEP, function()
+            if pending == p then
+                pending = nil
+            end
+        end)
     end
     read(pending, f)
     if complete(pending) then
@@ -343,4 +386,22 @@ LM.Handle("M", function(f, sender)
         pending = nil
         apply(p)
     end
+end)
+
+-- Whether a sync is coming in (for tests).
+function LM.SyncPending()
+    return pending ~= nil
+end
+
+-- A lead change drops an unfinished sync; entering or leaving combat or an encounter updates the button.
+local events = CreateFrame("Frame")
+for _, e in ipairs({ "GROUP_ROSTER_UPDATE", "PARTY_LEADER_CHANGED", "ENCOUNTER_START", "ENCOUNTER_END",
+    "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED" }) do
+    events:RegisterEvent(e)
+end
+events:SetScript("OnEvent", function(_, event)
+    if event == "GROUP_ROSTER_UPDATE" or event == "PARTY_LEADER_CHANGED" then
+        dropStale()
+    end
+    LM:Fire("sync")
 end)
