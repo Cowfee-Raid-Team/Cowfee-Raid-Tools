@@ -37,6 +37,7 @@ local function mock(kind)
     if k == "SetVertexColor" then return function(self, r, g, b, a) rawset(self, "vertex", { r, g, b, a }) end end
     if k == "SetAlpha" then return function(self, a) rawset(self, "alpha", a) end end
     if k == "GetAlpha" then return function(self) return rawget(self, "alpha") or 1 end end
+    if k == "SetAtlas" then return function(self, a) rawset(self, "atlas", a) end end
     if k == "SetBlendMode" then return function(self, b) rawset(self, "blend", b) end end
     if k == "GetFont" then return function() return "f", 12, "" end end
     if k == "GetTextColor" then return function() return 1, 1, 1 end end
@@ -59,7 +60,10 @@ local SECRET = setmetatable({}, { __eq = function() error("compared a secret val
   __lt = function() error("compared a secret value") end, __le = function() error("compared a secret value") end,
   __concat = function() error("joined a secret value") end })
 issecretvalue = function(v) return rawequal(v, SECRET) end
-InCombatLockdown = function() return false end
+local combat = false
+InCombatLockdown = function() return combat end
+CreateColor = function(r, g, b, a) return { r = r, g = g, b = b, a = a, GetRGBA = function(c) return c.r, c.g, c.b, c.a end } end
+C_Texture = { GetAtlasInfo = function(name) if name == "bags-glow-white" then return { width = 64, height = 64 } end end }
 IsEncounterInProgress = function() return false end
 UnitAffectingCombat = function() return false end
 GetTime = function() return 100 end
@@ -93,7 +97,7 @@ CRT.db = { debuffs = fresh() }
 -- UI stubs: sliders, dropdowns and help icons record their options.
 local sliders, helps, previewFns = {}, {}, {}
 CRT.UI = {
-  PAGE_W = 1026, PAGE_H = 560,
+  PAGE_W = 1026, PAGE_H = 560, previewing = false,
   RegisterLayer = function() end,
   RegisterPreview = function(_, key, fn) previewFns[key] = fn end,
   SetPreviews = function() end,
@@ -199,6 +203,9 @@ local function styles()
   table.sort(out)
   return table.concat(out, ",")
 end
+local function glowTex()
+  for _, a in ipairs(added) do if a.tex.sublevel == -1 then return a.tex end end
+end
 groupOpts.initializeFrame(button)
 check("all off: no dispel textures", #added == 0, styles())
 Debuffs:SetDispelIcon(true)
@@ -216,7 +223,23 @@ Debuffs:SetDispelBorder(true)
 check("border and glow: two PreserveAsset textures", styles() == "3,3", styles())
 for _, a in ipairs(added) do
   check("dispel border texture skips debuffs with no type", not a.opts.showWithoutDispelType and a.opts.showWhenHarmful == true)
+  local map = a.opts.customDispelColorMap
+  local keys = {}
+  for k, c in pairs(map or {}) do
+    if type(c.GetRGBA) == "function" then keys[#keys + 1] = k end
+  end
+  table.sort(keys)
+  check("the color map has a color object for each dispel type", table.concat(keys, ",") == "Bleed,Curse,Disease,Magic,Poison", table.concat(keys, ","))
+  if map then
+    local r, g, b = map.Magic:GetRGBA()
+    local er, eg, eb = Debuffs:DispelColor("Magic")
+    check("the color map's Magic is Debuffs:DispelColor's", r == er and g == eg and b == eb)
+  end
 end
+check("the glow uses the white bag glow atlas, drawn additively", glowTex() and glowTex().atlas == "bags-glow-white" and glowTex().blend == "ADD")
+Debuffs:Set("borderScale", 0)
+check("border size 0: neither the border nor the glow is added", #added == 0, styles())
+Debuffs:Set("borderScale", 1)
 Debuffs:SetDispelGlow(false)
 check("border only: one PreserveAsset texture", styles() == "3", styles())
 local borderTex = added[1].tex
@@ -243,6 +266,20 @@ for _, f in ipairs(frames) do
 end
 check("6 sample tiles with a dispel type get a colored border", colored == 6, colored)
 check("2 sample tiles without one keep the plain border", plain == 2, plain)
+local function tileGlows()
+  local n = 0
+  for _, f in ipairs(frames) do
+    local parts = rawget(f, "parts")
+    if parts and parts.glow and parts.glow.shown then n = n + 1 end
+  end
+  return n
+end
+Debuffs:SetDispelGlow(true)
+check("6 sample tiles glow", tileGlows() == 6, tileGlows())
+Debuffs:Set("borderScale", 0)
+check("no tile glows at border size 0", tileGlows() == 0, tileGlows())
+Debuffs:Set("borderScale", 1)
+Debuffs:SetDispelGlow(false)
 Panel:SetPreview(false)
 check("the preview stops", Panel:IsPreviewing() == false)
 Debuffs:SetDispelBorder(false)
@@ -267,6 +304,57 @@ check("dispel icon size is off while the dispel icon is off", ds.opts.enabledIf(
 Debuffs:SetDispelIcon(true)
 check("dispel icon size is on with the dispel icon", ds.opts.enabledIf() == true)
 check("the dispel border has a (?) help", helps["Color the border by dispel type"] ~= nil)
+
+-- The look boxes save through Debuffs' setters.
+local function findCheck(label)
+  for _, f in ipairs(frames) do
+    local l = rawget(f, "label")
+    if f.kind == "CheckButton" and l and rawget(l, "text") == label then return f end
+  end
+end
+local borderBox, glowBox = findCheck("Color the border by dispel type"), findCheck("Glow on dispellable debuffs")
+check("the border and glow boxes exist", borderBox ~= nil and glowBox ~= nil)
+rawset(glowBox, "GetChecked", function() return true end)
+glowBox.OnClick(glowBox)
+check("glow ticked with the border off: saved, but no glow", CRT.db.debuffs.dispelGlow == true and Debuffs:DispelGlow() == false)
+rawset(borderBox, "GetChecked", function() return true end)
+borderBox.OnClick(borderBox)
+check("border ticked: the glow is on", Debuffs:DispelBorder() == true and Debuffs:DispelGlow() == true)
+Debuffs:SetDispelBorder(false) Debuffs:SetDispelGlow(false)
+
+-- Preview debuffs: only this panel, its label, combat, and closing the tab.
+local pb
+for _, f in ipairs(frames) do if f.kind == "Button" and rawget(f, "text") == "Preview debuffs" then pb = f end end
+check("the Preview debuffs button exists", pb ~= nil and type(rawget(pb, "OnClick")) == "function")
+pf:Show()
+pb.OnClick(pb)
+check("Preview debuffs turns the debuff preview on", Panel:IsPreviewing() == true)
+check("and leaves the global Previews off", CRT.UI.previewing == false)
+check("the label reads Stop preview", pb.text == "Stop preview", pb.text)
+pb.OnClick(pb)
+check("Stop preview turns it off", Panel:IsPreviewing() == false and pb.text == "Preview debuffs", pb.text)
+combat = true
+pb.OnClick(pb)
+check("in combat it won't turn on", Panel:IsPreviewing() == false and pb.text == "Preview debuffs", pb.text)
+combat = false
+pb.OnClick(pb)
+combat = true
+pb.OnClick(pb)
+check("in combat Stop preview still works", Panel:IsPreviewing() == false and pb.text == "Preview debuffs", pb.text)
+combat = false
+previewFns.debuffs(true)
+check("the global Previews sets the label", pb.text == "Stop preview", pb.text)
+previewFns.debuffs(false)
+check("and sets it back", pb.text == "Preview debuffs", pb.text)
+pb.OnClick(pb)
+pf.OnHide(pf)
+check("closing the tab ends the preview", Panel:IsPreviewing() == false and pb.text == "Preview debuffs", pb.text)
+CRT.UI.previewing = true
+previewFns.debuffs(true)
+pf.OnHide(pf)
+check("closing the tab leaves it on while Previews is on", Panel:IsPreviewing() == true)
+CRT.UI.previewing = false
+previewFns.debuffs(false)
 
 print(passed .. " passed, " .. failed .. " failed")
 if failed > 0 then error("debuff checks failed") end

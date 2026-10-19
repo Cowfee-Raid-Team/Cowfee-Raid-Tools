@@ -236,13 +236,15 @@ end
 -- The border's color on a debuff with no dispel type, or with the colored border off.
 Debuffs.BORDER_COLOR = { 0, 0, 0, 1 }
 
--- Each dispel type's border color, for when the game doesn't give its own. In combat the game colors
--- the container's borders itself (Panel.lua), with its own colors; these are for the preview samples.
+-- The dispel types that color the border, each with its color for when the game doesn't give its own.
+-- Panel.lua hands these colors to the game, which colors the container's borders in combat; the
+-- preview samples use them directly.
 Debuffs.DISPEL_COLORS = {
     Magic = { 0.2, 0.6, 1 }, -- blue
     Poison = { 0, 0.6, 0 }, -- green
     Curse = { 0.6, 0, 1 }, -- purple
     Disease = { 0.6, 0.4, 0 }, -- brown
+    Bleed = { 0.8, 0, 0 }, -- red
 }
 
 -- The border color for a dispel type name such as "Magic", as r, g, b, a: the game's own color for it

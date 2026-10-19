@@ -107,9 +107,14 @@ local function nudgeBox(pf, anchor, label, field)
     return edit
 end
 
-local function lookCheck(pf, label, yOffset, field, x, dependsOn)
+-- setter, when given, saves the box through Debuffs (such as Debuffs.SetDispelBorder) instead of Set.
+local function lookCheck(pf, label, yOffset, field, x, dependsOn, setter)
     local check = makeCheck(pf, label, yOffset, function(checked)
-        Debuffs:Set(field, checked and true or false)
+        if setter then
+            setter(Debuffs, checked)
+        else
+            Debuffs:Set(field, checked and true or false)
+        end
     end, x)
     check.refresh = function(on)
         check:SetChecked(Debuffs:Get(field) and true or false)
@@ -245,11 +250,11 @@ local function build(pf)
     slotsCheck.label:SetJustifyH("LEFT")
     UI.Help(pf, "Boss debuff slots", "A fallback. Some boss mechanic debuffs are private: the game won't show them to addons at all, only draw them itself in slots an addon places. If a boss's debuff doesn't show in the panel, turn this on and the game draws its private debuffs in a second row under it.\n\nThe game draws those itself, so only the swipe, timer, dispel icon and border size apply to them. Off by default, since the same debuff could show in both rows."):SetPoint("LEFT", slotsCheck.label, "RIGHT", 4, 0)
 
-    -- The look of the boss debuff icons. Previews shows the changes as you make them.
+    -- The look of the boss debuff icons. Preview debuffs shows the changes as you make them.
     local lookTitle = pf:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
     lookTitle:SetPoint("TOPLEFT", LOOK_X, -8)
     lookTitle:SetText("Look")
-    UI.Help(pf, "Look", "How each debuff in the panel looks. The timer and stacks use the addon's font from the General Settings page.\n\nTimer: the time left as text beside or on the icon, or as countdown numbers on the swipe, never both.\n\nBorder size: a dark border around the icon, 5 pixels for each step; 0 has none.\n\nTurn on Previews to see each change as you make it."):SetPoint("LEFT", lookTitle, "RIGHT", 6, 0)
+    UI.Help(pf, "Look", "How each debuff in the panel looks. The timer and stacks use the addon's font from the General Settings page.\n\nTimer: the time left as text beside or on the icon, or as countdown numbers on the swipe, never both.\n\nBorder size: a dark border around the icon, 5 pixels for each step; 0 has none.\n\nPress Preview debuffs to see each change as you make it."):SetPoint("LEFT", lookTitle, "RIGHT", 6, 0)
 
     local timer = lookDropdown(pf, -26, "Timer", "timerPosition", Debuffs.TIMER_POSITIONS)
     local nudgeX = nudgeBox(pf, timer, "Nudge X", "timerX")
@@ -269,9 +274,9 @@ local function build(pf)
     })
     border:SetPoint("TOPLEFT", LOOK_X, -112)
     look[#look + 1] = border
-    local dispelBorder = lookCheck(pf, "Color the border by dispel type", -148, "dispelBorder", LOOK_X - 4)
-    UI.Help(pf, "Color the border by dispel type", "Debuffs that have a dispel type get a border in its color: Magic blue, Poison green, Curse purple, Disease brown. The game picks the color itself, so this works in combat too. Debuffs with no dispel type keep the plain border.\n\nGlow adds a soft glow in the same color around those borders.\n\nThe border needs a border size above 0. The boss debuff slots row is drawn by the game and isn't colored."):SetPoint("LEFT", dispelBorder.label, "RIGHT", 4, 0)
-    lookCheck(pf, "Glow on dispellable debuffs", -172, "dispelGlow", LOOK_X + 20, "dispelBorder")
+    local dispelBorder = lookCheck(pf, "Color the border by dispel type", -148, "dispelBorder", LOOK_X - 4, nil, Debuffs.SetDispelBorder)
+    UI.Help(pf, "Color the border by dispel type", "Debuffs that have a dispel type get a border in its color: Magic blue, Poison green, Curse purple, Disease brown, and Bleed in the game's bleed color. This works in combat. Debuffs with no dispel type keep the plain border.\n\nGlow adds a soft glow in the same color around those borders.\n\nThe border and the glow need a border size above 0. The boss debuff slots row is drawn by the game and isn't colored."):SetPoint("LEFT", dispelBorder.label, "RIGHT", 4, 0)
+    lookCheck(pf, "Glow on dispellable debuffs", -172, "dispelGlow", LOOK_X + 20, "dispelBorder", Debuffs.SetDispelGlow)
 
     pf:SetScript("OnShow", refresh)
     Debuffs:OnChange(refresh)

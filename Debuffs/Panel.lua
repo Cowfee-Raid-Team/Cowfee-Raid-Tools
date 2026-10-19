@@ -10,9 +10,9 @@ local ADDON, CRT = ...
 -- none of the excluded lockouts (Debuffs.EXCLUDED_SPELLS), shortest first.
 --
 -- The border colored by dispel type and its glow are textures handed to the game the same way as the
--- dispel type icon (AddDispelTypeTexture, PreserveAsset style): the game shows them only on a debuff
--- with a dispel type and tints them that type's color. The preview tiles color theirs from their
--- samples' known types (Debuffs:DispelColor).
+-- dispel type icon (AddDispelTypeTexture, PreserveAsset style, with a customDispelColorMap): the game
+-- shows them only on a debuff with a dispel type and tints them that type's color from the map. The
+-- preview tiles color theirs from their samples' known types (Debuffs:DispelColor).
 --
 -- The game's boss debuff slots (C_UnitAuras.AddPrivateAuraAnchor, where the game draws a private aura
 -- itself) are kept as an optional second row, off by default, in case boss mechanic debuffs don't
@@ -43,8 +43,9 @@ local REFRESH_SECONDS = 0.5
 local TIMER_FONT = "CRTFontSmall"
 local COUNT_FONT = "CRTFontHighlight"
 local WHITE = "Interface\\Buttons\\WHITE8X8"
--- The glow behind a dispel type's border: the game's soft square button highlight, drawn additively.
-local GLOW_TEXTURE = "Interface\\Buttons\\ButtonHilight-Square"
+-- The glow behind a dispel type's border: the game's white glow for a new item in the bags, drawn
+-- additively, so the dispel type's color tints it cleanly. A plain square if the atlas is missing.
+local GLOW_ATLAS = "bags-glow-white"
 local GLOW_ALPHA = 0.8
 
 local frame, container, handle
@@ -224,9 +225,15 @@ local function makeParts(owner)
     local parts = {}
     parts.glow = owner:CreateTexture(nil, "BACKGROUND", nil, -1)
     parts.glow:SetPoint("CENTER")
-    parts.glow:SetTexture(GLOW_TEXTURE)
+    local atlas = C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(GLOW_ATLAS)
+    if atlas then
+        parts.glow:SetAtlas(GLOW_ATLAS)
+        parts.glow:SetAlpha(GLOW_ALPHA)
+    else
+        parts.glow:SetTexture(WHITE)
+        parts.glow:SetAlpha(GLOW_ALPHA * 0.4)
+    end
     parts.glow:SetBlendMode("ADD")
-    parts.glow:SetAlpha(GLOW_ALPHA)
     parts.glow:Hide()
     parts.border = owner:CreateTexture(nil, "BACKGROUND")
     parts.border:SetPoint("CENTER")
@@ -300,11 +307,32 @@ local function timeFormatter()
 end
 
 -- The game's dispel type texture styles (Enum.CustomAuraButtonDispelTypeTextureStyle): Icon swaps the
--- texture for the type's icon; PreserveAsset keeps the texture and tints it the type's color, which is
--- how the border and glow are colored in combat without the addon seeing the type.
+-- texture for the type's icon; PreserveAsset keeps the texture as it is, so the border stays a plain
+-- square and the glow keeps its glow.
 local function dispelStyle(name)
     local styles = Enum and Enum.CustomAuraButtonDispelTypeTextureStyle
     return type(styles) == "table" and styles[name or "Icon"] or nil
+end
+
+-- Each dispel type's color as the game's color objects, keyed by type name (the options'
+-- customDispelColorMap): the game tints the border and glow with the one for the debuff's type, so
+-- the addon never sees the type. Built once, the first time it is needed.
+local colorMap
+local function dispelColorMap()
+    if colorMap == nil then
+        colorMap = false
+        if type(CreateColor) == "function" then
+            local map = {}
+            for kind in pairs(Debuffs.DISPEL_COLORS) do
+                local r, g, b = Debuffs:DispelColor(kind)
+                map[kind] = CreateColor(r, g, b, 1)
+            end
+            colorMap = map
+        else
+            note("CreateColor is missing, so the dispel border has no colors")
+        end
+    end
+    return colorMap or nil
 end
 
 -- Hides a dispel border or glow the game no longer fills. The game may have made its shown state
@@ -314,17 +342,19 @@ local function hidePart(texture)
 end
 
 -- The border colored by dispel type, and its glow, on a container button. The game fills both: it
--- shows them only on a debuff that has a dispel type, tinted that type's color.
+-- shows them only on a debuff that has a dispel type, tinted that type's color from the color map.
+-- Both need a border size above 0.
 local function wireDispelBorder(button, parts)
     local style = dispelStyle("PreserveAsset")
     local edge = 5 * (Debuffs:Get("borderScale") or 1)
-    local options = { style = style, showWhenHarmful = true, showWhenHelpful = false, showWithoutDispelType = false }
+    local options = { style = style, showWhenHarmful = true, showWhenHelpful = false, showWithoutDispelType = false,
+        customDispelColorMap = dispelColorMap() }
     if Debuffs:DispelBorder() and edge > 0 and style ~= nil then
         try("button", button, "AddDispelTypeTexture", parts.dispelBorder, options)
     else
         hidePart(parts.dispelBorder)
     end
-    if Debuffs:DispelGlow() and style ~= nil then
+    if Debuffs:DispelGlow() and edge > 0 and style ~= nil then
         try("button", button, "AddDispelTypeTexture", parts.glow, options)
     else
         hidePart(parts.glow)
@@ -334,7 +364,8 @@ end
 -- Points a container button's parts at the game: what it fills, and what it leaves out (the Clear
 -- calls), so a setting turned off stops showing at once.
 local function wireButton(button, parts)
-    if forbidden(button) or forbidden(parts.icon) or forbidden(parts.border) or forbidden(parts.over) or forbidden(parts.dispelBorder) then
+    if forbidden(button) or forbidden(parts.icon) or forbidden(parts.border) or forbidden(parts.over) or forbidden(parts.dispelBorder)
+        or forbidden(parts.glow) then
         dirty[button] = true
         skipped = skipped + 1
         pendingApply = true
@@ -556,7 +587,7 @@ local function updateTiles()
             parts.dispelBorder:SetVertexColor(r, g, b, 1)
             parts.dispelBorder:SetShown(Debuffs:DispelBorder() and typed and edge > 0)
             parts.glow:SetVertexColor(r, g, b, 1)
-            parts.glow:SetShown(Debuffs:DispelGlow() and typed)
+            parts.glow:SetShown(Debuffs:DispelGlow() and typed and edge > 0)
             if not tile.endsAt then
                 tile.endsAt = GetTime() + sample.left
                 if parts.cooldown then
