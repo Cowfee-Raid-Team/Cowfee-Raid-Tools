@@ -1,34 +1,42 @@
 local ADDON, CRT = ...
 
--- The raider popup: every item of the session you were sent, with the gear you wear in that slot, the
--- response buttons and a note. A button sends your answer to the looter and does a real /roll (not for
--- Pass); the looter can ask you to answer again or to roll again. A test session says TEST in the title.
--- The window is made by UI.Window; its place is kept in CRTDB lootmaster.popup.
+-- The raider popup: one small panel per item of the session you were sent, stacked with a gap, each with
+-- the gear you wear in that slot, the response buttons and a note. A button sends your answer to the
+-- looter and does a real /roll (not for Pass); the panel then fades, so you can see it is answered, and
+-- you can still change your mind. Each panel's background is its timer: the lighter part shrinks as the
+-- answer time runs out, and the panel closes itself at the end. Close it sooner with its X or a
+-- right-click. The looter can show a panel again or ask you to roll again, which restarts its timer.
+-- The panels hang from one overlay (UI.Window kind "overlay"): drag any panel to move them all; the
+-- place is kept in CRTDB lootmaster.popup. Sizes and the gap are in L, for the dev layout tools later.
 
 local LM = CRT.LootMaster
 local UI = CRT.UI
 
 local L = {
-    width = 470,
-    itemH = 96, -- one item's block
-    top = 6,
-    bottom = 10,
+    width = 480,
+    panelH = 104,
+    gap = 4, -- between panels
+    headerH = 18, -- the line above the panels
+    pad = 8,
     icon = 36,
-    button = { w = 68, h = 22, gap = 4 },
+    button = { w = 70, h = 22, gap = 4, icon = 14 },
+    noteW = 190,
+    fadeAlpha = 0.55, -- an answered panel
+    timerAlpha = 0.07, -- the lighter part of the background, the time left
 }
 
 local TEXT = {
     title = "Loot",
-    titleTest = "Loot — TEST (nothing is passed or traded)",
-    help = "Pick an answer for each item. Your pick goes to the raid leader, who gives the item out, and every button except Pass also does a /roll that everyone can see. You can change your answer until the leader gives the item out.",
+    titleTest = "Loot — TEST: nothing is passed or traded",
+    help = "Pick an answer for each item. Your pick goes to the raid leader, who gives the item out, and every button except Pass also does a /roll that everyone can see. You can change your answer until the time runs out.\n\nThe lighter part of each item's background is the time left. Close an item with its X or a right-click; drag any item to move them all.",
     have = "You have: ",
-    nothing = "You have nothing in that slot",
+    nothing = "nothing in that slot",
     sent = "Sent %s",
-    rolled = "  ·  you rolled %d",
+    rolled = "  ·  rolled %d",
     rollAgain = "Roll again",
-    askedRoll = "The leader asked you to roll again",
     awarded = "Given to %s (%s)",
-    notePlaceholder = "Note to the leader (optional)",
+    notes = "Notes:",
+    timeLeft = "Time left: %d",
 }
 
 -- What you bring to an answer ---------------------------------------------------------------------
@@ -66,201 +74,333 @@ function LM:MyGear(itemString)
     return out
 end
 
--- The window -----------------------------------------------------------------------------------------
+-- Panels -----------------------------------------------------------------------------------------------
 
-local win
-local blocks = {}
+local anchor, header
+local panels = {} -- by item index
+local loading = {} -- item IDs asked of the game once each
 
 local function settings()
     return CRT.db.lootmaster.popup
 end
 
-local function colorButton(parent, r)
+local function colors()
+    if UI:IsModern() then
+        return CRT.MOCHA.espresso, CRT.MOCHA.edge
+    end
+    return { 0.05, 0.05, 0.05 }, { 0.3, 0.3, 0.3 }
+end
+
+-- A response button: a dark fill in the response's colour, its edge and text brighter, and its icon
+-- when it has one.
+local function responseButton(parent, r)
     local b = CreateFrame("Button", nil, parent, "BackdropTemplate")
     b:SetSize(L.button.w, L.button.h)
     b:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
-    b:SetBackdropColor(r.color[1], r.color[2], r.color[3], 0.9)
-    b:SetBackdropBorderColor(0, 0, 0, 1)
+    local c = r.color
+    b:SetBackdropColor(c[1] * 0.3, c[2] * 0.3, c[3] * 0.3, 0.95)
+    b:SetBackdropBorderColor(c[1] * 0.8, c[2] * 0.8, c[3] * 0.8, 1)
     b.text = b:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    b.text:SetPoint("CENTER")
-    b.text:SetTextColor(0, 0, 0)
+    b.text:SetTextColor(math.min(1, c[1] * 0.5 + 0.5), math.min(1, c[2] * 0.5 + 0.5), math.min(1, c[3] * 0.5 + 0.5))
     b.text:SetText(r.label)
+    if r.icon then
+        local t = b:CreateTexture(nil, "OVERLAY")
+        t:SetSize(L.button.icon, L.button.icon)
+        t:SetPoint("LEFT", 4, 0)
+        t:SetTexture(r.icon)
+        b.text:SetPoint("LEFT", t, "RIGHT", 3, 0)
+    else
+        b.text:SetPoint("CENTER")
+    end
     b:SetHighlightTexture("Interface\\Buttons\\WHITE8X8")
-    b:GetHighlightTexture():SetVertexColor(1, 1, 1, 0.25)
+    b:GetHighlightTexture():SetVertexColor(1, 1, 1, 0.12)
     b.response = r.key
     return b
 end
 
-local loading = {} -- item IDs asked of the game once each
-
 local function itemText(it)
     local name, link = C_Item.GetItemInfo(it.itemString or "")
-    if not name then
-        local id = tonumber((it.itemString or ""):match("item:(%d+)"))
-        if id and not loading[id] then
-            loading[id] = true
-            Item:CreateFromItemID(id):ContinueOnItemLoad(function()
-                LM:Fire("incoming")
-            end)
-        end
-        return "item " .. tostring(id)
+    if name then
+        return link
     end
-    return link
+    local id = tonumber((it.itemString or ""):match("item:(%d+)"))
+    if id and not loading[id] then
+        loading[id] = true
+        Item:CreateFromItemID(id):ContinueOnItemLoad(function()
+            LM:Fire("incoming")
+        end)
+    end
+    return "item " .. tostring(id)
 end
 
-local function gearText(itemString)
-    local gear = LM:MyGear(itemString)
-    if #gear == 0 then
-        return TEXT.nothing
-    end
+-- "318 · Hands, Leather · You have: [icon] 334"
+local function detailText(it)
+    local _, _, subType, equipLoc = C_Item.GetItemInfoInstant(it.itemString or "")
     local parts = {}
+    if it.ilvl then
+        parts[#parts + 1] = "|cff1eff00" .. it.ilvl .. "|r"
+    end
+    local slot = equipLoc and equipLoc ~= "" and _G[equipLoc]
+    if slot then
+        parts[#parts + 1] = (subType and subType ~= "" and subType ~= MISCELLANEOUS) and (slot .. ", " .. subType) or slot
+    end
+    local gear = LM:MyGear(it.itemString)
+    local have = {}
     for _, g in ipairs(gear) do
         local icon = C_Item.GetItemIconByID(g.id)
-        parts[#parts + 1] = (icon and ("|T" .. icon .. ":14:14|t ") or "") .. (g.ilvl or "?")
+        have[#have + 1] = (icon and ("|T" .. icon .. ":14:14|t ") or "") .. (g.ilvl or "?")
     end
-    return TEXT.have .. table.concat(parts, "   ")
+    parts[#parts + 1] = TEXT.have .. (#have > 0 and table.concat(have, "  ") or TEXT.nothing)
+    return table.concat(parts, "  ·  ")
 end
 
-local function block(i)
-    local b = blocks[i]
-    if b then
-        return b
+local function closePanel(index)
+    local inc = LM.incoming
+    if inc then
+        local mine = inc.mine[index] or {}
+        inc.mine[index] = mine
+        mine.closed = true
     end
-    b = CreateFrame("Frame", nil, win.content)
-    b:SetSize(L.width - 20, L.itemH)
-    b:SetPoint("TOPLEFT", 0, -L.top - (i - 1) * L.itemH)
-    b.icon = b:CreateTexture(nil, "ARTWORK")
-    b.icon:SetSize(L.icon, L.icon)
-    b.icon:SetPoint("TOPLEFT", 2, -2)
-    b.name = b:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
-    b.name:SetPoint("TOPLEFT", b.icon, "TOPRIGHT", 8, 0)
-    b.name:SetPoint("RIGHT", -50, 0)
-    b.name:SetJustifyH("LEFT")
-    b.name:SetWordWrap(false)
-    b.ilvl = b:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
-    b.ilvl:SetPoint("TOPRIGHT", -4, -2)
-    b.ilvl:SetTextColor(0.12, 1, 0)
-    b.gear = b:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    b.gear:SetPoint("TOPLEFT", b.name, "BOTTOMLEFT", 0, -4)
-    b.gear:SetTextColor(0.7, 0.7, 0.7)
-    local hover = CreateFrame("Frame", nil, b)
-    hover:SetAllPoints(b.icon)
-    hover:SetScript("OnEnter", function(self)
-        if b.itemString then
-            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-            pcall(GameTooltip.SetHyperlink, GameTooltip, b.itemString)
-            GameTooltip:Show()
+    LM:Fire("incoming")
+end
+
+local function panel(index)
+    local p = panels[index]
+    if p then
+        return p
+    end
+    p = CreateFrame("Frame", nil, anchor, "BackdropTemplate")
+    p:SetSize(L.width, L.panelH)
+    p:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
+    p.timer = p:CreateTexture(nil, "BACKGROUND", nil, 2)
+    p.timer:SetPoint("TOPLEFT", 1, -1)
+    p.timer:SetPoint("BOTTOMLEFT", 1, 1)
+    p.timer:SetColorTexture(1, 1, 1, L.timerAlpha)
+    p:EnableMouse(true)
+    p:RegisterForDrag("LeftButton")
+    p:SetScript("OnDragStart", function()
+        anchor:StartDrag()
+    end)
+    p:SetScript("OnDragStop", function()
+        anchor:StopDrag()
+    end)
+    p:SetScript("OnMouseUp", function(self, button)
+        if button == "RightButton" then
+            closePanel(self.index)
         end
+    end)
+
+    p.icon = p:CreateTexture(nil, "ARTWORK")
+    p.icon:SetSize(L.icon, L.icon)
+    p.icon:SetPoint("TOPLEFT", L.pad, -L.pad)
+    local hover = CreateFrame("Frame", nil, p)
+    hover:SetAllPoints(p.icon)
+    hover:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        pcall(GameTooltip.SetHyperlink, GameTooltip, p.itemString)
+        GameTooltip:Show()
     end)
     hover:SetScript("OnLeave", function()
         GameTooltip:Hide()
     end)
-    b.buttons = {}
+
+    p.close = CreateFrame("Button", nil, p, "UIPanelCloseButton")
+    p.close:SetSize(20, 20)
+    p.close:SetPoint("TOPRIGHT", -2, -2)
+    UI:SkinCloseButton(p.close)
+    p.close:SetScript("OnClick", function()
+        closePanel(p.index)
+    end)
+    p.time = p:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    p.time:SetPoint("RIGHT", p.close, "LEFT", -4, 0)
+    p.time:SetTextColor(0.8, 0.8, 0.8)
+    p.name = p:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
+    p.name:SetPoint("TOPLEFT", p.icon, "TOPRIGHT", 8, 0)
+    p.name:SetPoint("RIGHT", p.time, "LEFT", -8, 0)
+    p.name:SetJustifyH("LEFT")
+    p.name:SetWordWrap(false)
+    p.detail = p:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    p.detail:SetPoint("TOPLEFT", p.name, "BOTTOMLEFT", 0, -4)
+    p.detail:SetPoint("RIGHT", -L.pad, 0)
+    p.detail:SetJustifyH("LEFT")
+    p.detail:SetWordWrap(false)
+    p.detail:SetTextColor(0.75, 0.75, 0.75)
+
+    p.buttons = {}
     for k, r in ipairs(LM.RESPONSES) do
-        local btn = colorButton(b, r)
-        btn:SetPoint("TOPLEFT", 2 + (k - 1) * (L.button.w + L.button.gap), -L.icon - 8)
-        btn:SetScript("OnClick", function()
-            LM:Answer(b.index, r.key, strtrim(b.note:GetText() or ""))
+        local b = responseButton(p, r)
+        b:SetPoint("TOPLEFT", L.pad + (k - 1) * (L.button.w + L.button.gap), -(L.pad + L.icon + 6))
+        b:SetScript("OnClick", function()
+            LM:Answer(p.index, r.key, strtrim(p.note:GetText() or ""))
         end)
-        b.buttons[k] = btn
+        p.buttons[k] = b
     end
-    b.note = CreateFrame("EditBox", nil, b, "InputBoxTemplate")
-    b.note:SetAutoFocus(false)
-    b.note:SetFontObject(CRTFontHighlightSmall or CRTFontHighlight)
-    b.note:SetSize(230, 20)
-    b.note:SetPoint("TOPLEFT", 8, -L.icon - 8 - L.button.h - 6)
-    b.note:SetMaxLetters(120)
-    b.note:SetScript("OnEscapePressed", function(self)
+
+    local rowY = -(L.pad + L.icon + 6 + L.button.h + 8)
+    p.notesLabel = p:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    p.notesLabel:SetPoint("TOPLEFT", L.pad, rowY - 3)
+    p.notesLabel:SetText(TEXT.notes)
+    p.note = CreateFrame("EditBox", nil, p, "InputBoxTemplate")
+    p.note:SetAutoFocus(false)
+    p.note:SetFontObject(CRTFontHighlight)
+    p.note:SetSize(L.noteW, 20)
+    p.note:SetPoint("LEFT", p.notesLabel, "RIGHT", 10, 0)
+    p.note:SetMaxLetters(120)
+    p.note:SetScript("OnEscapePressed", function(self)
         self:ClearFocus()
     end)
-    b.status = b:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    b.status:SetPoint("LEFT", b.note, "RIGHT", 10, 0)
-    b.status:SetPoint("RIGHT", -4, 0)
-    b.status:SetJustifyH("LEFT")
-    b.status:SetWordWrap(false)
-    b.reroll = CreateFrame("Button", nil, b, "UIPanelButtonTemplate")
-    b.reroll:SetSize(96, 22)
-    b.reroll:SetPoint("LEFT", b.note, "RIGHT", 10, 0)
-    b.reroll:SetText(TEXT.rollAgain)
-    b.reroll:SetScript("OnClick", function()
-        LM:RollFor(b.index)
+    p.note:SetScript("OnEnterPressed", function(self)
+        self:ClearFocus()
+    end)
+    p.status = p:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    p.status:SetPoint("LEFT", p.note, "RIGHT", 10, 0)
+    p.status:SetPoint("RIGHT", -L.pad, 0)
+    p.status:SetJustifyH("LEFT")
+    p.status:SetWordWrap(false)
+    p.reroll = CreateFrame("Button", nil, p, "UIPanelButtonTemplate")
+    p.reroll:SetSize(96, 22)
+    p.reroll:SetPoint("LEFT", p.note, "RIGHT", 10, 0)
+    p.reroll:SetText(TEXT.rollAgain)
+    p.reroll:SetScript("OnClick", function()
         local inc = LM.incoming
-        local mine = inc and inc.mine[b.index]
+        local mine = inc and inc.mine[p.index]
         if mine then
             mine.reroll = nil
         end
+        LM:RollFor(p.index)
         LM:Fire("incoming")
     end)
-    local line = b:CreateTexture(nil, "ARTWORK")
-    line:SetColorTexture(0.35, 0.35, 0.35, 0.6)
-    line:SetHeight(1)
-    line:SetPoint("BOTTOMLEFT", 0, 2)
-    line:SetPoint("BOTTOMRIGHT", 0, 2)
-    blocks[i] = b
-    return b
+    panels[index] = p
+    return p
 end
 
-local function fill(b, i, it, mine)
-    b.index, b.itemString = i, it.itemString
-    b.icon:SetTexture(C_Item.GetItemIconByID(it.itemString or "") or 134400)
-    b.name:SetText(itemText(it))
-    b.ilvl:SetText(it.ilvl or "")
-    b.gear:SetText(gearText(it.itemString))
-    local award = it.award
-    for _, btn in ipairs(b.buttons) do
-        btn:SetEnabled(award == nil)
-        btn:SetAlpha(award and 0.4 or ((mine and mine.response and mine.response ~= btn.response) and 0.55 or 1))
+local function fill(p, index, it, mine)
+    p.index, p.itemString = index, it.itemString
+    local bg, edge = colors()
+    p:SetBackdropColor(bg[1], bg[2], bg[3], 0.92)
+    p:SetBackdropBorderColor(edge[1], edge[2], edge[3], 1)
+    p.icon:SetTexture(C_Item.GetItemIconByID(it.itemString or "") or 134400)
+    p.name:SetText(itemText(it))
+    -- the detail line reads your gear: worked out when the item changes, not on every timer tick
+    if p.detailFor ~= it then
+        p.detailFor = it
+        p.detail:SetText(detailText(it))
     end
-    b.reroll:SetShown(mine and mine.reroll and not award or false)
+    local award = it.award
+    for _, b in ipairs(p.buttons) do
+        b:SetEnabled(award == nil)
+        local picked = mine and mine.response == b.response
+        b:SetAlpha((award or (mine and mine.response and not picked)) and 0.5 or 1)
+    end
+    local rerolling = mine and mine.reroll and not award
+    p.reroll:SetShown(rerolling and true or false)
+    p.status:SetShown(not rerolling)
     if award then
         local r = LM:Response(award.response)
-        b.status:SetText(string.format(TEXT.awarded, Ambiguate(award.name, "short"), r and r.label or award.response))
-    elseif mine and mine.reroll then
-        b.status:SetText("")
+        p.status:SetText(string.format(TEXT.awarded, Ambiguate(award.name, "short"), r and r.label or award.response))
     elseif mine and mine.response then
         local r = LM:Response(mine.response)
-        b.status:SetText(string.format(TEXT.sent, r and r.label or mine.response) .. (mine.roll and string.format(TEXT.rolled, mine.roll) or ""))
+        p.status:SetText(string.format(TEXT.sent, r and r.label or mine.response) .. (mine.roll and string.format(TEXT.rolled, mine.roll) or ""))
     else
-        b.status:SetText("")
+        p.status:SetText("")
     end
-    b.note:SetShown(not (mine and mine.reroll))
-    b:Show()
+    -- answered: faded, but still there to change your mind until the time runs out
+    p:SetAlpha((mine and mine.response and not rerolling) and L.fadeAlpha or 1)
+end
+
+local function timeLeft(it)
+    return LM.RESPONSE_SECONDS - (GetTime() - (it.shownAt or GetTime()))
+end
+
+-- Panels still open: not closed, not timed out. Timed-out panels are closed here.
+local function openItems(inc)
+    local out = {}
+    for i = 1, LM.MAX_ITEMS do
+        local it = inc.items[i]
+        local mine = inc.mine[i]
+        if it and not (mine and mine.closed) then
+            if timeLeft(it) <= 0 then
+                inc.mine[i] = mine or {}
+                inc.mine[i].closed = true
+            else
+                out[#out + 1] = i
+            end
+        end
+    end
+    return out
 end
 
 local function build()
-    if win then
+    if anchor then
         return
     end
-    win = UI.Window("CowfeeRaidToolsLootPopup", {
-        kind = "dialog", title = TEXT.title, width = L.width, height = 200, saved = settings,
-    })
-    win.help = UI.Help(win, "Loot", TEXT.help)
-    win.help:SetPoint("TOPLEFT", 6, -4)
+    anchor = UI.Window("CowfeeRaidToolsLootPopup", { kind = "overlay", width = L.width, height = 40, saved = settings })
+    header = CreateFrame("Frame", nil, anchor)
+    header:SetPoint("TOPLEFT")
+    header:SetSize(L.width, L.headerH)
+    header:EnableMouse(true)
+    header:RegisterForDrag("LeftButton")
+    header:SetScript("OnDragStart", function()
+        anchor:StartDrag()
+    end)
+    header:SetScript("OnDragStop", function()
+        anchor:StopDrag()
+    end)
+    header.text = header:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
+    header.text:SetPoint("LEFT", 2, 0)
+    header.help = UI.Help(header, TEXT.title, TEXT.help)
+    header.help:SetPoint("LEFT", header.text, "RIGHT", 4, 0)
+    -- the timers: each open panel's background and time left, once a second is plenty for the text
+    local elapsed = 0
+    anchor:SetScript("OnUpdate", function(_, dt)
+        local inc = LM.incoming
+        if not inc then
+            return
+        end
+        for _, p in pairs(panels) do
+            if p:IsShown() and inc.items[p.index] then
+                local left = timeLeft(inc.items[p.index])
+                p.timer:SetWidth(math.max(0.01, (L.width - 2) * math.max(0, left) / LM.RESPONSE_SECONDS))
+            end
+        end
+        elapsed = elapsed + dt
+        if elapsed >= 1 then
+            elapsed = 0
+            LM:Fire("incoming")
+        end
+    end)
 end
 
 local function refresh()
     local inc = LM.incoming
     if not inc then
-        if win then
-            win:Hide()
+        if anchor then
+            anchor:Hide()
         end
         return
     end
     build()
-    UI.SetFrameTitle(win, inc.test and TEXT.titleTest or TEXT.title)
-    local n = 0
-    for i = 1, LM.MAX_ITEMS do
-        local it = inc.items[i]
-        if it then
-            n = n + 1
-            local b = block(n)
-            fill(b, i, it, inc.mine[i])
+    header.text:SetText(inc.test and TEXT.titleTest or TEXT.title)
+    local open = openItems(inc)
+    local shown = {}
+    for k, index in ipairs(open) do
+        local p = panel(index)
+        p:ClearAllPoints()
+        p:SetPoint("TOPLEFT", 0, -(L.headerH + (k - 1) * (L.panelH + L.gap)))
+        fill(p, index, inc.items[index], inc.mine[index])
+        p.time:SetText(string.format(TEXT.timeLeft, math.ceil(timeLeft(inc.items[index]))))
+        p:Show()
+        shown[index] = true
+    end
+    for index, p in pairs(panels) do
+        if not shown[index] then
+            p:Hide()
         end
     end
-    for k = n + 1, #blocks do
-        blocks[k]:Hide()
+    anchor:SetHeight(L.headerH + math.max(1, #open) * (L.panelH + L.gap))
+    if #open == 0 then
+        anchor:Hide()
     end
-    win:SetHeight(UI.WINDOW_DEFAULTS.titleHeight + 4 + L.top + n * L.itemH + L.bottom + UI.WINDOW_DEFAULTS.inset)
 end
 
 LM:OnChange(function(what, how)
@@ -268,20 +408,31 @@ LM:OnChange(function(what, how)
         return
     end
     if how == "ended" then
-        if win then
-            win:Hide()
+        if anchor then
+            anchor:Hide()
         end
         return
     end
     refresh()
-    if how == "shown" and win and LM.incoming then
-        win:Show()
+    if how == "shown" and anchor and LM.incoming and #openItems(LM.incoming) > 0 then
+        anchor:Show()
     end
 end)
 
+-- /crt loot popup: every item that still has time, closed ones too.
 function LM:ShowPopup()
+    local inc = self.incoming
+    if not inc then
+        CRT:Print("Loot Master: you have no loot to answer.")
+        return
+    end
+    for _, mine in pairs(inc.mine) do
+        mine.closed = nil
+    end
     refresh()
-    if win and self.incoming then
-        win:Show()
+    if anchor and #openItems(inc) > 0 then
+        anchor:Show()
+    else
+        CRT:Print("Loot Master: the time to answer has run out.")
     end
 end

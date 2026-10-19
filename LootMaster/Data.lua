@@ -24,6 +24,7 @@ LM.HELLO_SECONDS = 5 -- after this, raiders who never said hello have no CRT
 LM.MAX_ITEMS = 8
 
 -- The default buttons, in the order raiders see them; weight sorts the looter's list (higher first).
+-- icon (optional): a texture path or file ID shown at the left of the button.
 LM.RESPONSES = {
     { key = "bis", label = "BiS", color = { 0.24, 0.86, 0.35 }, weight = 100 },
     { key = "up", label = "Upgrade", color = { 0.56, 0.82, 0.31 }, weight = 80 },

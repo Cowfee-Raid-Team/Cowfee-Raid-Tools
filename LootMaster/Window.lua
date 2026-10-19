@@ -67,13 +67,7 @@ local function classColor(file)
     return file and (C_ClassColor and C_ClassColor.GetClassColor(file) or RAID_CLASS_COLORS[file]) or nil
 end
 
-local function contextMenu(owner, fill)
-    if MenuUtil and MenuUtil.CreateContextMenu then
-        MenuUtil.CreateContextMenu(owner, function(_, root)
-            fill(root)
-        end)
-    end
-end
+local contextMenu = UI.ContextMenu -- above the window, which sits on the popups layer
 
 -- Rows -----------------------------------------------------------------------------------------------
 
@@ -321,6 +315,12 @@ local function build()
         minWidth = L.minWidth, minHeight = L.minHeight, saved = settings,
     })
     local c = win.content
+    -- the line between the item tabs and the list
+    local divider = c:CreateTexture(nil, "ARTWORK")
+    divider:SetColorTexture(0.35, 0.35, 0.35, 0.8)
+    divider:SetWidth(1)
+    divider:SetPoint("TOPLEFT", L.tab + (L.left - L.tab) / 2, 0)
+    divider:SetPoint("BOTTOMLEFT", L.tab + (L.left - L.tab) / 2, 0)
     header = CreateFrame("Frame", nil, c)
     header:SetPoint("TOPLEFT", L.left, 0)
     header:SetPoint("TOPRIGHT", 0, 0)

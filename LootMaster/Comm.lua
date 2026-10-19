@@ -356,7 +356,7 @@ HANDLERS.I = function(f, sender)
     if not inc.items[index] then
         inc.got = inc.got + 1
     end
-    inc.items[index] = { itemString = f[4], ilvl = tonumber(f[3]) }
+    inc.items[index] = { itemString = f[4], ilvl = tonumber(f[3]), shownAt = GetTime() }
     if inc.got >= inc.n then
         LM:Fire("incoming", "shown")
     end
@@ -366,8 +366,9 @@ end
 HANDLERS.Q = function(f, sender)
     local inc = LM.incoming
     local index = tonumber(f[2])
-    if inc and inc.id == f[1] and inc.leader == sender and index then
+    if inc and inc.id == f[1] and inc.leader == sender and index and inc.items[index] then
         inc.mine[index] = nil
+        inc.items[index].shownAt = GetTime() -- a fresh timer
         LM:Fire("incoming", "shown")
     end
 end
@@ -376,10 +377,11 @@ end
 HANDLERS.X = function(f, sender)
     local inc = LM.incoming
     local index = tonumber(f[2])
-    if inc and inc.id == f[1] and inc.leader == sender and index then
+    if inc and inc.id == f[1] and inc.leader == sender and index and inc.items[index] then
         local mine = inc.mine[index] or {}
         inc.mine[index] = mine
-        mine.reroll, mine.rolled = true, false
+        mine.reroll, mine.rolled, mine.closed = true, false, nil
+        inc.items[index].shownAt = GetTime()
         LM:Fire("incoming", "shown")
     end
 end

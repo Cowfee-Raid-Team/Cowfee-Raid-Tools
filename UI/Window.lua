@@ -5,13 +5,15 @@ local ADDON, CRT = ...
 --   layer, clamped to the screen, dragged by its title from where the mouse is (StartMoving(true)),
 --   closed by Escape, with its place (and size, for a pop-out) kept in a table you pass.
 -- opts:
---   kind       "dialog" (fixed size) or "popout" (resizable, with a grip and a Reset button)
+--   kind       "dialog" (fixed size), "popout" (resizable, with a grip and a Reset button) or "overlay"
+--              (no frame art; its own panels drag it with f:StartDrag() and f:StopDrag())
 --   title      the title text
 --   width, height, minWidth, minHeight   sizes (the minimums only matter for a pop-out)
 --   layer      a UI layer key (default "popups")
 --   saved      function returning the table that keeps point, x, y (and width, height)
 --   escape     false keeps Escape from closing it
 -- The frame gets f.content (the area under the title) and f:Place() (puts it where it was saved).
+-- UI.ContextMenu(owner, fill) opens the game's context menu above every window.
 -- Windows made by hand before this helper existed are moved onto it one at a time (see the skill's
 -- Known debt); new windows use it from the start.
 
@@ -48,8 +50,67 @@ local function save(f, opts)
     end
 end
 
+-- A context menu (MenuUtil.CreateContextMenu) opened from a window on the popups layer shows behind it;
+-- this lifts the menu above every window until it closes, then puts its strata back.
+local MENU_STRATA = "TOOLTIP"
+function UI.ContextMenu(owner, fill)
+    if not (MenuUtil and MenuUtil.CreateContextMenu) then
+        return nil
+    end
+    local menu = MenuUtil.CreateContextMenu(owner, function(_, root)
+        fill(root)
+    end)
+    if menu and menu.SetFrameStrata then
+        if not menu.crtMenuStrata then
+            menu.crtMenuStrata = menu:GetFrameStrata()
+            menu:HookScript("OnHide", function(m)
+                if m.crtMenuStrata then
+                    m:SetFrameStrata(m.crtMenuStrata)
+                    m.crtMenuStrata = nil
+                end
+            end)
+        end
+        menu:SetFrameStrata(MENU_STRATA)
+        menu:Raise()
+    end
+    return menu
+end
+
+-- An overlay: no frame art, moved by dragging anything that calls f:StartDrag() / f:StopDrag(), its place
+-- kept like a window's. Used for groups of small panels, such as the raider loot popup.
+local function overlay(name, opts)
+    local f = CreateFrame("Frame", name, UIParent)
+    UI:RegisterLayer(opts.layer or DEFAULTS.layer, f)
+    f:SetClampedToScreen(true)
+    f:SetMovable(true)
+    f:SetSize(opts.width or DEFAULTS.width, opts.height or DEFAULTS.height)
+    function f:StartDrag()
+        self:StartMoving(true)
+    end
+    function f:StopDrag()
+        self:StopMovingOrSizing()
+        save(self, opts)
+    end
+    function f:Place()
+        local s = savedOf(opts)
+        self:ClearAllPoints()
+        if s and s.point then
+            self:SetPoint("TOPLEFT", UIParent, "TOPLEFT", s.x or 0, s.y or 0)
+        else
+            self:SetPoint("TOP", 0, -140)
+        end
+    end
+    f.content = f
+    f:Place()
+    f:Hide()
+    return f
+end
+
 function UI.Window(name, opts)
     opts = opts or {}
+    if opts.kind == "overlay" then
+        return overlay(name, opts)
+    end
     local popout = opts.kind == "popout"
     local f = CreateFrame("Frame", name, UIParent, DEFAULTS.template)
     UI:StyleWindow(f)
