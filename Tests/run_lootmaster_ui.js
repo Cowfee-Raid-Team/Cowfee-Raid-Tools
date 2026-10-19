@@ -19,8 +19,8 @@ local function mock()
     CreateTexture = function() return mock() end,
     CreateFontString = function() return mock() end,
     SetText = function(self, t) self.text = t end,
-    GetText = function(self) return self.text end,
-    GetStringWidth = function(self) return #(self.text or "") * 6 end,
+    GetText = function(self) return rawget(self, "text") end,
+    GetStringWidth = function(self) local t = rawget(self, "text") return #(type(t) == "string" and t or "") * 6 end,
     SetTextColor = function(self, r, g, b) self.color = { r, g, b } end,
     SetBackdropColor = function(self, r, g, b) self.bg = { r, g, b } end,
     SetBackdropBorderColor = function(self, r, g, b) self.edge = { r, g, b } end,
@@ -32,6 +32,12 @@ local function mock()
     GetFrameLevel = function() return 1 end,
     SetSize = function(self, w, h) self.w, self.h = w, h end,
     SetScript = function(self, k, fn) local t = rawget(self, "scripts") or {} rawset(self, "scripts", t) t[k] = fn end,
+    SetWidth = function(self, w) self.w = w end,
+    GetWidth = function(self) return rawget(self, "w") end,
+    SetFontObject = function(self, f) self.font = f end,
+    SetAtlas = function(self, a) self.atlas = a end,
+    ClearAllPoints = function(self) self.points = {} end,
+    SetPoint = function(self, ...) local t = rawget(self, "points") or {} rawset(self, "points", t) t[#t + 1] = { ... } end,
   }
   return setmetatable(o, { __index = function(_, k) return methods[k] or function() end end })
 end
@@ -45,13 +51,17 @@ CreateFrame = function(kind, name, parent, template)
     f.GetFontString = function(self) return self.label end
     f.GetObjectType = function() return "Button" end
   end
+  if template == "BasicFrameTemplateWithInset" then f.CloseButton = mock() end
   return f
 end
+-- the game's font objects the title strip uses, and CRT's
+GameFontNormal = { GetTextColor = function() return 1, 0.82, 0 end }
+CRTFontLarge = { GetTextColor = function() return 1, 0.82, 0 end }
 CreateColor = function(r, g, b, a) return { r = r, g = g, b = b, a = a } end
 C_Item = { GetItemIconByID = function() return 134400 end }
 Ambiguate = function(n) return (n:gsub("%-.*$", "")) end
 RAID_CLASS_COLORS = { MAGE = { r = 0.25, g = 0.78, b = 0.92 } }
-local CRT = { LootMaster = {}, db = { ui = { modern = true } } }
+local CRT = { LootMaster = {}, db = { ui = { modern = true, layers = {} } } }
 CRT.MOCHA = { roast = { 0.165, 0.122, 0.098 }, edge = { 0.30, 0.235, 0.188 }, caramel = { 0.78, 0.56, 0.36 }, cream = { 0.95, 0.90, 0.84 } }
 assert(load(panelSrc, "Panel.lua"))("CowfeeRaidTools", CRT)
 assert(load(windowSrc, "Window.lua"))("CowfeeRaidTools", CRT)
@@ -158,6 +168,73 @@ s:SetBadge("TEST", "again")
 check(near(s.badge.bg, STRIP.badgeBg) and near(s.badge.text.color, STRIP.badgeText), "badge: TEST after a boss is orange again")
 s:SetBadge(nil)
 check(not s.badge.shown and not s.note.shown, "badge: nothing hides it")
+
+-- the title strip per look. Classic is the main window's title bar (BasicFrameTemplate: GameFontNormal
+-- centred at the frame's TOP -6, -4, the game's dark title tile, the badge at the left end); Modern the
+-- espresso strip with the larger cream title on the left. A look switch re-styles a strip made earlier.
+local function point(r) return r.points and r.points[#r.points] or {} end
+look("classic")
+local parent = mock()
+local fs = UI.TitleStrip(parent, 24, { framed = true })
+fs:SetWidth(600)
+fs:SetTitle("Loot Master")
+eq(fs.title.font, GameFontNormal, "classic: the main window's title font")
+check(near(fs.title.color, { 1, 0.82, 0 }), "classic: the title font's own gold")
+local p = point(fs.title)
+check(p[1] == "TOP" and p[2] == parent and p[3] == "TOP" and p[4] == -6 and p[5] == -4, "classic framed: the title where the window template puts its own")
+check(not fs.bg.shown and not fs.line.shown, "classic: no espresso strip or caramel line")
+check(not fs.bar.shown, "classic framed: the window's own title bar shows, no second one")
+fs:SetBadge("TEST", "nothing is passed")
+p = point(fs.badge)
+check(p[1] == "LEFT" and p[2] == fs and p[3] == "LEFT" and p[4] == STRIP.classicBadgeX, "classic: the badge at the left end, where the main window shows its version")
+p = point(fs.note)
+check(p[1] == "LEFT" and p[2] == fs.badge and p[3] == "RIGHT", "classic: the note after the badge")
+eq(point(fs.title)[1], "TOP", "classic: a short badge leaves the title centred")
+-- a badge too wide for the centred title pushes it right of the note
+fs:SetWidth(200)
+fs:SetBadge("A very long boss name here", "and a note")
+p = point(fs.title)
+check(p[1] == "LEFT" and p[2] == fs.note and p[3] == "RIGHT", "classic: a wide badge puts the title after the note, not under it")
+fs:SetWidth(600)
+fs:SetBadge(nil)
+eq(point(fs.title)[1], "TOP", "classic: no badge, centred again")
+-- a note with no badge still shows, at the left end
+fs:SetBadge(nil, "all loot rolls, read only")
+check(fs.note.shown and not fs.badge.shown, "badge: a note shows without a badge")
+p = point(fs.note)
+check(p[1] == "LEFT" and p[2] == fs and p[4] == STRIP.classicBadgeX, "classic: a note alone sits at the left end")
+-- a strip of its own (the popup's): draws the game's title tile itself, title centred
+local own = UI.TitleStrip(mock(), 26)
+own:SetWidth(480)
+check(own.bar.shown and own.bar.atlas == STRIP.classicBar, "classic own strip: the game's title tile")
+eq(STRIP.classicBar, "_UI-Frame-TitleTileBg", "classic: the window template's title tile")
+p = point(own.title)
+check(p[1] == "CENTER" and p[2] == own, "classic own strip: the title centred")
+-- Modern, by switching the look: both strips re-style
+look("modern")
+for _, st in ipairs({ fs, own }) do
+  eq(st.title.font, CRTFontLarge, "modern: the larger title font")
+  check(near(st.title.color, STRIP.title), "modern: the cream title")
+  check(st.bg.shown and st.line.shown and not st.bar.shown, "modern: the espresso strip and caramel line")
+  p = point(st.title)
+  check(p[1] == "LEFT" and p[2] == st and p[4] == 10, "modern: the title on the left")
+end
+fs:SetBadge("TEST", "x")
+p = point(fs.badge)
+check(p[1] == "LEFT" and p[2] == fs.title and p[3] == "RIGHT", "modern: the badge after the title")
+-- every UI.Window's strip lies on the window template's own title bar
+UISpecialFrames, tinsert = {}, table.insert
+local win = UI.Window("TestWindow", { kind = "popout", title = "Loot Master" })
+check(win.strip.framed and win.strip.window == win, "window: its strip is framed by the window template")
+eq(win.strip.title.text, "Loot Master", "window: the title")
+-- and back to Classic
+look("classic")
+check(not win.strip.bar.shown and not win.strip.bg.shown, "window classic: only the template's title bar")
+eq(win.strip.title.font, GameFontNormal, "window classic: the main window's title font")
+eq(fs.title.font, GameFontNormal, "classic again: the main window's title font")
+check(near(fs.title.color, { 1, 0.82, 0 }), "classic again: gold")
+check(not fs.bg.shown and own.bar.shown, "classic again: the strip art switches back")
+look("modern")
 
 -- the item tabs: "X/Y answered", orange when the time ran out with answers missing
 local tabs = LM.ItemTabs(mock(), {})

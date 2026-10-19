@@ -123,21 +123,98 @@ local function overlay(name, opts)
     return f
 end
 
--- The title bar: a mocha strip lighter than the window, a caramel line under it, the title in larger
--- bold text, and an optional badge (such as TEST) with a short note. strip:SetTitle(text),
--- strip:SetBadge(text or nil, note, colors). colors is { bg, edge, text }; without it the badge is the
--- orange TEST one. STRIP.neutral is the window's gold text on a dark badge. Its colours are in STRIP.
+-- The title bar, in each look (UI:IsModern), re-styled when the look changes (it is in UI.skinned):
+--   Classic  the main window's title bar. The window template (BasicFrameTemplate, Blizzard_UIPanelTemplates)
+--            draws the dark title tile and the red X; the title is its TitleText's font (GameFontNormal,
+--            in that font's own gold) where the template puts it, centred; the badge sits at the left
+--            end, where the main window shows its version. A strip with no window template under it
+--            (opts.framed false, such as the raider popup's) draws the template's title tile itself.
+--   Modern   a mocha strip lighter than the window, a caramel line under it, the title in larger bold
+--            text on the left with the badge after it.
+-- UI.TitleStrip(parent, height, opts): opts.framed when parent is a BasicFrameTemplate window (UI.Window).
+-- strip:SetTitle(text), strip:SetBadge(text or nil, note, colors): colors is { bg, edge, text }; without
+-- it the badge is the orange TEST one. STRIP.neutral is the window's gold text on a dark badge. A note
+-- shows with or without a badge. Its colours and Classic places are in STRIP.
 local STRIP = {
     top = { 0.353, 0.247, 0.173 }, bottom = { 0.227, 0.165, 0.122 }, line = { 0.78, 0.56, 0.36 },
     badgeBg = { 0.35, 0.16, 0.06 }, badgeEdge = { 0.63, 0.34, 0.12 }, badgeText = { 1, 0.81, 0.6 },
     title = { 0.95, 0.90, 0.84 }, note = { 0.80, 0.71, 0.60 },
     neutral = { bg = { 0.11, 0.078, 0.063 }, edge = { 0.30, 0.235, 0.188 }, text = { 0.87, 0.73, 0.56 } },
+    modernFont = "CRTFontLarge",
+    -- Classic, from BasicFrameTemplate: TitleText inherits GameFontNormal, anchored TOP x -6, y -4;
+    -- TitleBg is the _UI-Frame-TitleTileBg atlas, tiled across
+    classicFont = "GameFontNormal", classicBar = "_UI-Frame-TitleTileBg",
+    classicTitleX = -6, classicTitleY = -4,
+    classicBadgeX = 9, -- the main window's version is 10 from the window's edge; the strip starts 1 in
+    framedBadgeY = 2, -- the template's title tile is above the strip's middle
+    gap = 8,
 }
 STRIP.warning = { bg = STRIP.badgeBg, edge = STRIP.badgeEdge, text = STRIP.badgeText }
 UI.TITLE_STRIP = STRIP
 
-function UI.TitleStrip(parent, height)
+local function shownWidth(r, pad)
+    if not r:IsShown() then
+        return 0
+    end
+    return (r.GetWidth and r:GetWidth() or 0) + pad
+end
+
+-- Places the title, badge and note for the look. In Classic the title is centred unless the badge and
+-- note reach it; then it follows them.
+local function layoutStrip(s)
+    local title, badge, note = s.title, s.badge, s.note
+    title:ClearAllPoints()
+    badge:ClearAllPoints()
+    note:ClearAllPoints()
+    if UI:IsModern() then
+        title:SetPoint("LEFT", s, "LEFT", 10, 1)
+        badge:SetPoint("LEFT", title, "RIGHT", STRIP.gap, 0)
+        note:SetPoint("LEFT", badge, "RIGHT", STRIP.gap, 0)
+        return
+    end
+    local y = s.framed and STRIP.framedBadgeY or 0
+    badge:SetPoint("LEFT", s, "LEFT", STRIP.classicBadgeX, y)
+    if badge:IsShown() then
+        note:SetPoint("LEFT", badge, "RIGHT", STRIP.gap, 0)
+    else
+        note:SetPoint("LEFT", s, "LEFT", STRIP.classicBadgeX, y)
+    end
+    local noteW = (note:IsShown() and (note:GetText() or "") ~= "") and (note:GetStringWidth() or 0) + STRIP.gap or 0
+    local leftEnd = STRIP.classicBadgeX + shownWidth(badge, STRIP.gap) + noteW
+    local width = s:GetWidth() or 0
+    local titleW = title:GetStringWidth() or 0
+    -- a strip not sized yet is laid out again when it is (OnSizeChanged)
+    if width > 0 and (width - titleW) / 2 + (s.framed and STRIP.classicTitleX or 0) < leftEnd then
+        title:SetPoint("LEFT", noteW > 0 and note or badge, "RIGHT", STRIP.gap, 0)
+    elseif s.framed then
+        title:SetPoint("TOP", s.window, "TOP", STRIP.classicTitleX, STRIP.classicTitleY)
+    else
+        title:SetPoint("CENTER", s, "CENTER", 0, 0)
+    end
+end
+
+local function styleStrip(s)
+    local modern = UI:IsModern()
+    s.bg:SetShown(modern)
+    s.line:SetShown(modern)
+    s.bar:SetShown(not modern and not s.framed)
+    local font = _G[modern and STRIP.modernFont or STRIP.classicFont]
+    if font then
+        s.title:SetFontObject(font)
+    end
+    if modern then
+        s.title:SetTextColor(STRIP.title[1], STRIP.title[2], STRIP.title[3])
+    elseif font and font.GetTextColor then
+        -- the font's own colour, set again because Modern set its own on this font string
+        s.title:SetTextColor(font:GetTextColor())
+    end
+    layoutStrip(s)
+end
+
+function UI.TitleStrip(parent, height, opts)
     local s = CreateFrame("Frame", nil, parent)
+    s.framed = opts and opts.framed and true or false
+    s.window = parent
     s:SetHeight(height or 24)
     local bg = s:CreateTexture(nil, "BACKGROUND")
     bg:SetAllPoints()
@@ -147,25 +224,33 @@ function UI.TitleStrip(parent, height)
     if not ok then
         bg:SetColorTexture(STRIP.top[1], STRIP.top[2], STRIP.top[3], 1)
     end
+    s.bg = bg
+    -- Classic, with no window template under it: the template's title tile
+    local bar = s:CreateTexture(nil, "BACKGROUND")
+    bar:SetAllPoints()
+    bar:SetAtlas(STRIP.classicBar)
+    if bar.SetHorizTile then
+        pcall(bar.SetHorizTile, bar, true)
+    end
+    s.bar = bar
     local line = s:CreateTexture(nil, "BORDER")
     line:SetColorTexture(STRIP.line[1], STRIP.line[2], STRIP.line[3], 1)
     line:SetHeight(2)
     line:SetPoint("BOTTOMLEFT")
     line:SetPoint("BOTTOMRIGHT")
-    s.title = s:CreateFontString(nil, "OVERLAY", "CRTFontLarge")
-    s.title:SetPoint("LEFT", 10, 1)
-    s.title:SetTextColor(STRIP.title[1], STRIP.title[2], STRIP.title[3])
+    s.line = line
+    s.title = s:CreateFontString(nil, "OVERLAY", STRIP.modernFont)
     s.badge = CreateFrame("Frame", nil, s, "BackdropTemplate")
     s.badge:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
-    s.badge:SetPoint("LEFT", s.title, "RIGHT", 8, 0)
     s.badge.text = s.badge:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     s.badge.text:SetPoint("CENTER")
     s.note = s:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    s.note:SetPoint("LEFT", s.badge, "RIGHT", 8, 0)
     s.note:SetTextColor(STRIP.note[1], STRIP.note[2], STRIP.note[3])
     s.badge:Hide()
+    s.note:Hide()
     function s:SetTitle(text)
         self.title:SetText(text or "")
+        layoutStrip(self)
     end
     function s:SetBadge(text, note, colors)
         if text and text ~= "" then
@@ -176,13 +261,20 @@ function UI.TitleStrip(parent, height)
             self.badge.text:SetText(text)
             self.badge:SetSize(self.badge.text:GetStringWidth() + 12, 16)
             self.badge:Show()
-            self.note:SetText(note or "")
-            self.note:Show()
         else
             self.badge:Hide()
-            self.note:Hide()
         end
+        self.note:SetText(note or "")
+        self.note:SetShown(note ~= nil and note ~= "")
+        layoutStrip(self)
     end
+    -- the centred Classic title moves aside when the window narrows
+    s:SetScript("OnSizeChanged", layoutStrip)
+    s.crtSkin = function()
+        styleStrip(s)
+    end
+    UI.skinned[#UI.skinned + 1] = s
+    styleStrip(s)
     return s
 end
 
@@ -197,7 +289,7 @@ function UI.Window(name, opts)
     UI:RegisterLayer(opts.layer or DEFAULTS.layer, f)
     UI.SetFrameTitle(f, "")
     -- the title bar, over the template's own title area; the close button stays on top of it
-    local strip = UI.TitleStrip(f, DEFAULTS.titleHeight - 2)
+    local strip = UI.TitleStrip(f, DEFAULTS.titleHeight - 2, { framed = true })
     strip:SetPoint("TOPLEFT", 1, -1)
     strip:SetPoint("TOPRIGHT", -1, -1)
     strip:SetFrameLevel(f:GetFrameLevel() + 2)
