@@ -76,6 +76,39 @@ groupsChanged()
 print("after layout change: " .. names(g))
 Late:RemovePlayer("Absent-Area52") groupsChanged()
 print("Absent removed by hand stays off after another save: " .. names(g))
+-- Checks: Late.Status is the one rule for on time, late and no-show, and the totals follow it.
+local fails, passes = 0, 0
+local function eq(a, b, what) if a == b then passes = passes + 1 else fails = fails + 1 print("FAIL " .. what .. " (got " .. tostring(a) .. ", want " .. tostring(b) .. ")") end end
+Late:End("button", NOW)
+s.history = {}
+s.grace = 10
+layout.slots[2] = "Sixz-Area52" layout.slots[6] = ""
+-- A test night on your own: started 17:33, ended 17:34, nobody seen in your group.
+inGroup = false roster = {}
+local t0 = os.time({ year = 2026, month = 10, day = 19, hour = 17, min = 33, sec = 0 })
+NOW = t0 Late:Start("button", t0) NOW = t0 + 60 Late:End("button", NOW)
+local short = s.history[1]
+eq(short.players[1].never, true, "saved: never joined")
+for _, p in ipairs(short.players) do eq(Late.Status(short, p), "ontime", p.key .. " ended inside the grace: on time") end
+for _, t in ipairs(Late:Totals()) do eq(t.never, 0, t.key .. " no no-show in the totals") eq(t.late, 0, t.key .. " not late in the totals") end
+-- A night past the grace: Gadios on time, Sixz 25 minutes late, the rest never come.
+local t1 = t0 + 86400
+inGroup = true roster = { "Gadios-Area52" }
+NOW = t1 Late:Start("button", t1)
+NOW = t1 + 25 * 60 roster[#roster+1] = "Sixz-Area52" Late:Scan(NOW)
+NOW = t1 + 2 * 3600 Late:End("button", NOW)
+local long = s.history[2]
+local status = {} for _, p in ipairs(long.players) do status[p.key] = Late.Status(long, p) end
+eq(status["Gadios-Area52"], "ontime", "joined at the start")
+eq(status["Sixz-Area52"], "late", "joined after the grace")
+eq(status["Abu-Area52"], "noshow", "never joined, past the grace")
+eq(Late.Status(long, { key = "X", joinedAt = t1 + 5 * 60 }), "ontime", "joined inside the grace")
+local tot = {} for _, t in ipairs(Late:Totals()) do tot[t.key] = t end
+eq(tot["Gadios-Area52"].late, 0, "totals: on time")
+eq(tot["Sixz-Area52"].late, 1, "totals: late once") eq(tot["Sixz-Area52"].never, 0, "totals: late is not a no-show") eq(tot["Sixz-Area52"].seconds, 25 * 60, "totals: 25 minutes")
+eq(tot["Abu-Area52"].never, 1, "totals: one no-show") eq(tot["Abu-Area52"].late, 1, "totals: a no-show counts in Late too") eq(tot["Abu-Area52"].nights, 2, "totals: two nights")
+print(string.format("%d passed, %d failed", passes, fails))
+if fails > 0 then error("failures") end
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 lua.lua_pushstring(L, to_luastring(fs.readFileSync(process.argv[2], 'utf8')));

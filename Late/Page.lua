@@ -163,8 +163,9 @@ local function nightLines(night)
     end
     local late, onTime = {}, {}
     for _, p in ipairs(sortedPlayers(night)) do
-        if Late.IsLate(night, p) then
-            if p.never then
+        local status = Late.Status(night, p)
+        if status ~= "ontime" then
+            if status == "noshow" then
                 late[#late + 1] = format("  %s  |cffff6060no-show|r, %s until the end", name(p.key), minutes(Late.Seconds(night, p)))
             else
                 late[#late + 1] = format("  %s  joined %s, %s late", name(p.key), clock(p.joinedAt), minutes(Late.Seconds(night, p)))
@@ -239,7 +240,7 @@ local function nightExport(night)
     }
     local late, onTime = {}, {}
     for _, p in ipairs(sortedPlayers(night)) do
-        if Late.IsLate(night, p) then
+        if Late.Status(night, p) ~= "ontime" then
             late[#late + 1] = p
         else
             onTime[#onTime + 1] = plain(p.key)
@@ -249,7 +250,7 @@ local function nightExport(night)
         lines[#lines + 1] = "```"
         lines[#lines + 1] = pad("Player", 26) .. pad("Joined", 10) .. "Late"
         for _, p in ipairs(late) do
-            lines[#lines + 1] = pad(plain(p.key), 26) .. pad(p.never and "no-show" or clock(p.joinedAt), 10) .. minutes(Late.Seconds(night, p))
+            lines[#lines + 1] = pad(plain(p.key), 26) .. pad(Late.Status(night, p) == "noshow" and "no-show" or clock(p.joinedAt), 10) .. minutes(Late.Seconds(night, p))
         end
         lines[#lines + 1] = "```"
     else
@@ -470,7 +471,7 @@ local function refreshList()
         local night = history[i]
         local count = 0
         for _, p in ipairs(night.players) do
-            if Late.IsLate(night, p) then
+            if Late.Status(night, p) ~= "ontime" then
                 count = count + 1
             end
         end

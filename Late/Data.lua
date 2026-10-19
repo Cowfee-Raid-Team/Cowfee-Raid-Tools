@@ -301,8 +301,21 @@ function Late.IsLate(night, p, now)
     return Late.Seconds(night, p, now) > (night.grace or 0) * 60
 end
 
--- One row per player across all saved nights: nights expected, nights late, nights never joined, and
--- total seconds late. Sorted most late first.
+-- How a player did on a night: "ontime", "late" (joined after the grace) or "noshow" (never joined,
+-- and the night ran past the grace). This is the one rule for the History, the Totals and the Raider
+-- Score. A player who never joined a night that ended inside the grace is on time, as nothing shows
+-- they were late, even though the saved night marks them never joined (p.never).
+-- Meant for ended nights. On a running night "noshow" only means "not here yet", so the Tonight view
+-- keeps its own wording and does not use this.
+function Late.Status(night, p, now)
+    if not Late.IsLate(night, p, now) then
+        return "ontime"
+    end
+    return p.joinedAt and "late" or "noshow"
+end
+
+-- One row per player across all saved nights, by Late.Status: nights expected, nights late (no-shows
+-- included), no-shows, and total seconds late. Sorted most late first.
 function Late:Totals()
     local byKey, out = {}, {}
     for _, night in ipairs(ldb().history) do
@@ -315,10 +328,11 @@ function Late:Totals()
                 out[#out + 1] = t
             end
             t.nights = t.nights + 1
-            if Late.IsLate(night, p) then
+            local status = Late.Status(night, p)
+            if status ~= "ontime" then
                 t.late = t.late + 1
                 t.seconds = t.seconds + Late.Seconds(night, p)
-                if p.never then
+                if status == "noshow" then
                     t.never = t.never + 1
                 end
             end
