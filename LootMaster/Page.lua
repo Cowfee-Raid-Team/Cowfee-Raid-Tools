@@ -5,7 +5,8 @@ local ADDON, CRT = ...
 --                 popup and end the session
 --   Raider Score  every player's score from the Late Tracker's nights (LootMaster/Score.lua)
 --   Settings      the response buttons raiders see (label, colour, weight, icon, order), how long they
---                 have to answer, and the Raider Score weights
+--                 have to answer, the award message, the Raider Score weights, loot authority, and the
+--                 leader's Sync Master Loot (LootMaster/Sync.lua)
 -- Laid out for the main window's page area (1026 x 560) with nothing scrolling but the score list.
 -- Layout numbers are in L; wording in TEXT.
 
@@ -19,12 +20,16 @@ local L = {
     label = 104, weight = 40, icon = 120,
     sliderLabel = 118, sliderW = 110,
     scoreRow = 20,
-    authorityRows = 6, -- named players with loot authority
+    authorityRows = LM.AUTHORITY_MAX, -- named players with loot authority
     -- the Loot authority Add row: "Add", the guild dropdown, then a box filling the rest of the column
     addLabel = 30, addPick = 146, addGap = 12, addEdge = 4, -- addGap: the box's border art starts ~5 left of it
     dropdownGap = 5, -- UI.Dropdown's gap between its label and the dropdown
+    previewLines = 4, -- the award preview is cut after this many lines, so it never reaches Sync
+    -- Sync Master Loot, in the second column under the award message: "Sync to", the dropdown, a box
+    syncTop = -306, syncLabel = 46, syncPick = 124,
 }
 L.col3W = UI.PAGE_W - L.col3 - 8 -- the third column, to the page's right margin
+L.col2W = L.col3 - L.col2 - 12 -- the second column, with a gap before the third
 
 local TEXT = {
     title = "Loot Master",
@@ -78,6 +83,12 @@ local TEXT = {
         { key = "GUILD", label = "Guild" }, { key = "OFFICER", label = "Officer" }, { key = "SELF", label = "Only you" },
         { key = "NONE", label = "Don't send" },
     },
+    sync = "Sync Master Loot",
+    syncHelp = "Only the raid leader can sync. It sends your Loot Master settings to the player you pick and to everyone on your Loot authority list who is in the group, and replaces theirs: the response buttons, Time to answer, the award message, Send to, the no-roll text, the Raider Score weights and the Loot authority list.\n\nTheir window places, their sort and their Show me items I can't use box stay their own. A player only takes a sync from their current raid leader.\n\nThe list has the group members whose CRT can take a sync. For anyone else, type their name. After a few seconds the line under the button says who got it.",
+    syncTo = "Sync to",
+    syncPickOne = "Pick a player",
+    syncNobody = "(no one with CRT found yet)",
+    syncType = "Type a name",
 }
 
 local page
@@ -443,9 +454,10 @@ local function responseRow(f, i)
     return r
 end
 
-local function slider(f, x, y, text, key, min, max, step, format)
+local function slider(f, x, y, text, key, format)
+    local lim = LM.LIMITS[key]
     local row = UI.Slider(f, text, {
-        min = min, max = max, step = step or 1, labelWidth = L.sliderLabel, width = L.sliderW,
+        min = lim[1], max = lim[2], step = lim[3], labelWidth = L.sliderLabel, width = L.sliderW,
         format = format,
         get = function()
             return LM:Settings().score[key]
@@ -461,6 +473,94 @@ local function slider(f, x, y, text, key, min, max, step, format)
     row:SetPoint("TOPLEFT", x, y)
     refreshers[#refreshers + 1] = row.refresh
     return row
+end
+
+-- Sync Master Loot: "Sync to" a group member with CRT (or a typed name), and the button; the line under it
+-- says who got it. Only the raid leader in a group can use it.
+local function buildSync(f)
+    heading(f, L.col2, L.syncTop, TEXT.sync, TEXT.syncHelp)
+    local picked -- the name picked in the dropdown; a typed name wins over it
+    local typed
+    local function canSync()
+        return LM:CanSync()
+    end
+    local pick = UI.Dropdown(f, TEXT.syncTo, {
+        labelWidth = L.syncLabel, width = L.syncPick, maxHeight = 300,
+        options = function()
+            local out = { { key = "", label = TEXT.syncPickOne } }
+            local targets = LM:SyncTargets()
+            for _, name in ipairs(targets) do
+                local unit = LM.UnitOf(name)
+                local class = unit and select(2, UnitClass(unit))
+                if issecretvalue and issecretvalue(class) then
+                    class = nil
+                end
+                local c = class and (C_ClassColor and C_ClassColor.GetClassColor(class) or RAID_CLASS_COLORS[class])
+                local label = Ambiguate(name, "none")
+                out[#out + 1] = { key = name, label = c and c:WrapTextInColorCode(label) or label }
+            end
+            if #targets == 0 then
+                out[#out + 1] = { key = "~nobody~", label = TEXT.syncNobody, disabled = true }
+            end
+            return out
+        end,
+        get = function()
+            return picked or ""
+        end,
+        set = function(v)
+            picked = v ~= "" and v or nil
+            typed:SetText("")
+            typed.showHint()
+        end,
+        enabledIf = canSync,
+    })
+    pick:SetPoint("TOPLEFT", L.col2, L.syncTop - 20)
+    local boxW = L.col2W - L.syncLabel - L.dropdownGap - L.syncPick - L.addGap - L.addEdge
+    typed = editBox(f, boxW, function(text)
+        if text ~= "" then
+            picked = nil
+            pick.refresh()
+        end
+    end, TEXT.syncType)
+    local dropH = pick.Dropdown:GetHeight()
+    matchHeight(typed, (dropH and dropH >= 16) and dropH or 26)
+    UI:SkinEditBox(typed)
+    typed:SetPoint("LEFT", pick.Dropdown, "RIGHT", L.addGap, 0)
+    local status = f:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    local button = UI.PanelButton(f, TEXT.sync, 24, function()
+        local name = strtrim(typed:GetText() or "")
+        LM:SyncTo(name ~= "" and name or picked)
+        refresh()
+    end)
+    button:SetPoint("TOPLEFT", L.col2 + 4, L.syncTop - 58)
+    -- greyed out during chat lockdown, with the reason on hover (motion scripts run while disabled)
+    button:SetMotionScriptsWhileDisabled(true)
+    button:SetScript("OnEnter", function(self)
+        local why = LM:CanSync() and LM:SyncBlocked()
+        if why then
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            GameTooltip:SetText(TEXT.sync)
+            GameTooltip:AddLine(why, 1, 0.82, 0, true)
+            GameTooltip:Show()
+        end
+    end)
+    button:SetScript("OnLeave", function()
+        GameTooltip:Hide()
+    end)
+    status:SetPoint("TOPLEFT", L.col2, L.syncTop - 90)
+    status:SetWidth(L.col2W)
+    status:SetJustifyH("LEFT")
+    refreshers[#refreshers + 1] = function()
+        local on = canSync()
+        pick.refresh()
+        typed:SetEnabled(on)
+        typed.showHint()
+        button:SetEnabled(on and not LM:SyncBlocked())
+        status:SetText(LM:SyncStatus() or "")
+        if on and f:IsVisible() then
+            LM:SyncPing() -- who has CRT, for the list (at most every SYNC_PING_SECONDS)
+        end
+    end
 end
 
 local function buildSettings(f)
@@ -520,8 +620,9 @@ local function buildSettings(f)
     end)
 
     heading(f, L.col2, -8, TEXT.looting, TEXT.lootingHelp)
+    local secs = LM.LIMITS.responseSeconds
     local answerTime = UI.Slider(f, TEXT.responseTime, {
-        min = 20, max = 180, step = 5, labelWidth = L.sliderLabel, width = L.sliderW,
+        min = secs[1], max = secs[2], step = secs[3], labelWidth = L.sliderLabel, width = L.sliderW,
         format = function(v)
             return v .. " s"
         end,
@@ -538,11 +639,11 @@ local function buildSettings(f)
     heading(f, L.col2, -78, TEXT.award, TEXT.awardHelp)
     local preview
     local message = editBox(f, 280, function(text)
-        LM:Settings().awardMessage = text ~= "" and text or LM.AWARD_DEFAULT
+        LM:Settings().awardMessage = LM.CleanAwardMessage(text) -- the same rule as a synced one
         refresh()
     end)
     message:SetPoint("TOPLEFT", L.col2 + 4, -100)
-    message:SetMaxLetters(200)
+    message:SetMaxLetters(LM.AWARD_MAX)
     message:SetScript("OnTextChanged", function(self, user)
         if user and preview then
             preview.update(self:GetText())
@@ -610,6 +711,7 @@ local function buildSettings(f)
     preview = f:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     preview:SetPoint("TOPLEFT", L.col2, -232)
     preview:SetWidth(285)
+    preview:SetMaxLines(L.previewLines)
     preview:SetJustifyH("LEFT")
     preview:SetTextColor(1, 0.5, 0)
     function preview.update(template)
@@ -637,13 +739,12 @@ local function buildSettings(f)
     end)
     local y = -56
     for _, spec in ipairs({
-        { TEXT.late, "late", 0, 30 }, { TEXT.per10, "per10", 0, 10 }, { TEXT.noShow, "noShow", 0, 50 },
-        { TEXT.recover, "recover", 0, 20 },
+        { TEXT.late, "late" }, { TEXT.per10, "per10" }, { TEXT.noShow, "noShow" }, { TEXT.recover, "recover" },
     }) do
-        slider(f, L.col3, y, spec[1], spec[2], spec[3], spec[4])
+        slider(f, L.col3, y, spec[1], spec[2])
         y = y - 32
     end
-    slider(f, L.col3, y, TEXT.weeks, "weeks", 1, 26, 1, function(v)
+    slider(f, L.col3, y, TEXT.weeks, "weeks", function(v)
         return v .. " wk"
     end)
 
@@ -750,6 +851,7 @@ local function buildSettings(f)
         end
         typed.showHint()
     end
+    buildSync(f)
 end
 
 -- The page -------------------------------------------------------------------------------------------
@@ -823,7 +925,8 @@ local function build(pf)
 end
 
 LM:OnChange(function(what)
-    if what == "responses" or what == "session" or what == "started" or what == "ended" or what == "scores" then
+    if what == "responses" or what == "session" or what == "started" or what == "ended" or what == "scores"
+        or what == "authority" or what == "sync" then
         refresh()
     end
 end)

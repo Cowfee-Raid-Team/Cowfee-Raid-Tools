@@ -12,7 +12,9 @@ local ADDON, CRT = ...
 --           I items (packed, several a message), Q show an item again to a raider, L a roll the looter's
 --           CRT drew for a raider (silent: no /roll in chat), A an item given out, E end
 --   raider: K hello, Y ready (every item and button arrived), R answer
---   leader: U who may run loot (the raid leader's list; raiders trust only that)
+--   leader: U who may run loot (the raid leader's list; raiders trust only that), M Sync Master Loot
+--           (LootMaster/Sync.lua, its own handler through LM.Handle)
+-- A kind this version doesn't know is dropped without a word, so a new kind never troubles an older CRT.
 -- Who may run loot: the raid leader (unless their list says not) and the names on the current raid
 -- leader's list. A raider's own settings never grant anyone authority; no list received means leader only.
 -- A session survives a /reload on both sides (CRTDBChar.lootSession), with every clock started again.
@@ -114,6 +116,7 @@ local function leaderName()
     end
     return nil
 end
+LM.LeaderName = leaderName
 
 -- Sending --------------------------------------------------------------------------------------------
 
@@ -128,7 +131,7 @@ local function channel()
     return nil
 end
 
-local queue = {}
+local queue = {} -- { text, done }: done (optional) is called once the message has left the queue
 local sending, held = false, false
 local warned = {} -- results already reported, so a failure is printed once, not per message
 local receive -- set below
@@ -141,16 +144,29 @@ local function resume()
     end
 end
 
+-- Takes the first message off the queue and tells its sender (sent: whether the game took it).
+local function dequeue(sent)
+    local entry = table.remove(queue, 1)
+    if entry.done then
+        local ok, err = pcall(entry.done, sent)
+        if not ok then
+            geterrorhandler()(err)
+        end
+    end
+end
+
 -- Sends what the game takes now. On the throttle it waits a second; in an encounter's lockdown it holds
 -- every message until the encounter ends (or LOCKDOWN_RETRY); anything else is dropped, reported once.
 pump = function()
     while queue[1] do
         local ch = channel()
         if not ch then
-            wipe(queue) -- left the group: no one to send to
+            while queue[1] do
+                dequeue(false) -- left the group: no one to send to
+            end
             break
         end
-        local ok, result = pcall(C_ChatInfo.SendAddonMessage, LM.PREFIX, queue[1], ch)
+        local ok, result = pcall(C_ChatInfo.SendAddonMessage, LM.PREFIX, queue[1].text, ch)
         if ok and (result == THROTTLED or result == CHANNEL_THROTTLED) then
             C_Timer.After(1, pump)
             return
@@ -170,19 +186,25 @@ pump = function()
                 warned[key] = true
                 CRT:Print("Loot Master: a message could not be sent (" .. key .. ").")
             end
+            dequeue(false)
+        else
+            dequeue(true)
         end
-        table.remove(queue, 1)
     end
     sending = false
 end
 
--- A finished message to the group; out of a group it is handed straight to receive().
-local function sendText(text)
+-- A finished message to the group; out of a group it is handed straight to receive(). done (optional):
+-- done(sent) once the message has left the queue, sent or dropped (sent: whether the game took it).
+local function sendText(text, done)
     if not channel() then
         receive(text, LM:Me())
+        if done then
+            done(true)
+        end
         return
     end
-    queue[#queue + 1] = text
+    queue[#queue + 1] = { text = text, done = done }
     if not sending and not held then
         sending = true
         pump()
@@ -193,6 +215,7 @@ local function send(kind, fields)
     sendText(Wire.Encode(kind, fields))
 end
 LM.Send = send
+LM.SendText = sendText -- a finished message, such as one of Wire.Pack's, and an optional done(sent)
 
 -- Loot authority -------------------------------------------------------------------------------------
 
@@ -482,6 +505,52 @@ function LM.JoinStream(key)
     if club and C_Club and C_Club.AddClubStreamChatChannel then
         pcall(C_Club.AddClubStreamChatChannel, club, stream)
     end
+end
+
+-- Whether you can post the award message to a guild or channel place: Guild (in a guild, and your rank
+-- may speak there), Officer (your rank's Officerchat Speak flag, index 4 of
+-- C_GuildInfo.GuildControlGetRankFlags; ranks count from 1, GetGuildInfo's index from 0), a chat channel
+-- you have joined, or one of your guild's channels. Anything unreadable is no. Other places are yes.
+local OFFICER_SPEAK = 4
+
+function LM.CanPostTo(key)
+    if key == "GUILD" or key == "OFFICER" then
+        if not IsInGuild() then
+            return false
+        end
+        if key == "GUILD" then
+            local ok, can = pcall(C_GuildInfo.CanSpeakInGuildChat)
+            return ok and can == true
+        end
+        local _, _, rank = GetGuildInfo("player")
+        local ok, flags = pcall(C_GuildInfo.GuildControlGetRankFlags, (tonumber(rank) or -2) + 1)
+        return ok and type(flags) == "table" and flags[OFFICER_SPEAK] == true
+    elseif type(key) == "string" and key:find("^CHANNEL:") then
+        local id = GetChannelName(key:sub(9))
+        return type(id) == "number" and id > 0
+    elseif type(key) == "string" and key:find("^COMMUNITY:") then
+        for _, st in ipairs(LM.GuildStreams()) do
+            if st.key == key then
+                return true
+            end
+        end
+        return false
+    end
+    return true
+end
+
+-- A place as words, for chat: Guild, Officer, a channel's name, or "that guild channel".
+function LM.PlaceName(key)
+    if key == "GUILD" then
+        return "Guild"
+    elseif key == "OFFICER" then
+        return "Officer"
+    elseif type(key) == "string" and key:find("^CHANNEL:") then
+        return key:sub(9)
+    elseif type(key) == "string" and key:find("^COMMUNITY:") then
+        return "that guild channel"
+    end
+    return tostring(key)
 end
 
 function LM:AwardText(s, index, name, response)
@@ -860,6 +929,11 @@ local function fromLooter(inc, f, sender)
 end
 
 local HANDLERS = {}
+
+-- Another file's message kind: fn(fields, sender), sender a full Name-Realm.
+function LM.Handle(kind, fn)
+    HANDLERS[kind] = fn
+end
 
 -- U: the raid leader's list of who may run loot. Parts share a stamp; a new stamp starts a new list.
 HANDLERS.U = function(f, sender)

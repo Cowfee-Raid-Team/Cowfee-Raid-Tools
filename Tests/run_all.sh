@@ -46,6 +46,7 @@ echo "== fit text"; node run_fittext.js "$W" 2>&1 | tail -1
 echo "== loot rclc"; node run_loot_rclc.js "$W" 2>&1 | tail -6; echo "exit ${PIPESTATUS[0]}"
 echo "== lootmaster data"; node run_lootmaster_data.js "$W" 2>&1 | tail -6; echo "exit ${PIPESTATUS[0]}"
 echo "== lootmaster comm"; node run_lootmaster_comm.js "$W" 2>&1 | tail -6; echo "exit ${PIPESTATUS[0]}"
+echo "== lootmaster sync"; node run_lootmaster_sync.js "$W" 2>&1 | tail -6; echo "exit ${PIPESTATUS[0]}"
 echo "== lootmaster score"; node run_lootmaster_score.js "$W" 2>&1 | tail -6; echo "exit ${PIPESTATUS[0]}"
 echo "== lootmaster ui"; node run_lootmaster_ui.js "$W" 2>&1 | tail -6; echo "exit ${PIPESTATUS[0]}"
 echo "== debuffs"; node run_debuffs.js "$W" 2>&1 | tail -12; echo "exit ${PIPESTATUS[0]}"
