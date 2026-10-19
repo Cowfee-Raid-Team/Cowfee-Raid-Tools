@@ -497,6 +497,97 @@ do
   end
   print("ok a titled phase line moves with its title")
 end
+do
+  -- Shipped references marked for removal (dev.removedReferences): left out of the list, Keep brings them back.
+  for _, e in ipairs(R:List()) do if e.own then R:Delete(e.key) end end
+  CRT.TimelineDB = { references = { NEKZALI } }
+  local NAME = "Nek'zali the Soulcoiler"
+  local shippedEntry = R:List()[1]
+  assert(shippedEntry and not shippedEntry.own, "marks: one shipped reference to start")
+  assert(CRT.db.dev == nil or CRT.db.dev.removedReferences == nil, "marks: none stored to start")
+  assert(not R:IsRemoved(shippedEntry), "marks: an unmarked shipped reference is not removed")
+  local own = R:Add(NEKZALI)
+  local ownEntry = R:Find(own)
+  R:SetRemoved(ownEntry, true)
+  assert(CRT.db.dev == nil or CRT.db.dev.removedReferences == nil, "marks: your own copy cannot be marked")
+  local before = fired
+  R:SetRemoved(shippedEntry, true)
+  assert(fired == before + 1, "marks: marking redraws the Timeline")
+  local marks = CRT.db.dev and CRT.db.dev.removedReferences
+  local n = 0
+  for _ in pairs(marks or {}) do n = n + 1 end
+  assert(n == 1, "marks: one mark stored in dev.removedReferences")
+  local list = R:List()
+  assert(#list == 1 and list[1].own and list[1].key == own, "marks: the marked shipped reference leaves the list, your copy stays")
+  assert(R:Find(shippedEntry.key) == nil, "marks: Find skips a marked shipped reference")
+  assert(#R:ForBoss(nil, NAME) == 1, "marks: ForBoss leaves it out")
+  local all = R:List(true)
+  assert(#all == 2 and all[2].removed and not all[1].removed, "marks: List(true) still has it, flagged removed")
+  assert(#R:ForBoss(nil, NAME, true) == 2, "marks: ForBoss(..., true) still has it")
+  assert(R:IsRemoved(all[2]) and not R:IsRemoved(all[1]), "marks: IsRemoved")
+  -- the mark is keyed by the block's header, not its place in the list, so it survives a /reload
+  local key = R.RemovalKey(shippedEntry.ref, shippedEntry.text)
+  assert(marks[key] and key:find("Boss: Nek'zali the Soulcoiler / Difficulty: Mythic / Length: 9:48", 1, true), "marks: keyed by the header: " .. key)
+  local removed = R:Removed()
+  assert(#removed == 1 and removed[1].boss == NAME and removed[1].difficulty == "Mythic" and removed[1].header == "Boss: Nek'zali the Soulcoiler / Difficulty: Mythic / Length: 9:48", "marks: Removed lists the mark")
+  -- Keep
+  R:SetRemoved(all[2], false)
+  assert(#R:List() == 2 and R:Find(shippedEntry.key), "marks: Keep brings it back")
+  assert(CRT.db.dev.removedReferences == nil, "marks: no marks left, the store is dropped")
+  assert(#R:Removed() == 0, "marks: Removed is empty")
+  print("ok shipped references marked for removal leave the list, Keep restores them")
+
+  -- Delete all my copies for a boss leaves the shipped references (and other bosses' copies) alone.
+  local other = R:Add("Boss: Someone Else\\nX: 0:10")
+  R:Add(NEKZALI)
+  R:SetRemoved(shippedEntry, true)
+  local before2 = fired
+  local count = R:DeleteOwn(nil, NAME)
+  assert(count == 2, "delete all: two copies deleted, got " .. tostring(count))
+  assert(fired == before2 + 1, "delete all: one redraw")
+  local left = R:List(true)
+  assert(#left == 2, "delete all: the other boss's copy and the shipped one are left")
+  local sawShipped, sawOther = false, false
+  for _, e in ipairs(left) do
+    if e.key == other then sawOther = true end
+    if not e.own and e.ref.boss == NAME then sawShipped = e.removed end
+  end
+  assert(sawOther and sawShipped, "delete all: the shipped reference keeps its mark, the other boss's copy stays")
+  assert(R:DeleteOwn(nil, NAME) == 0, "delete all: nothing left to delete")
+  R:SetRemoved(R:List(true)[2], false)
+  R:Delete(other)
+  print("ok Delete all my copies leaves shipped references alone")
+
+  -- your copies keep when their text last changed
+  local now = 1000
+  time = function() return now end
+  local saved = R:Add(NEKZALI)
+  assert(R:Find(saved).saved == 1000, "saved: Add stamps the time")
+  now = 2000
+  assert(R:Update(saved, NEKZALI) and R:Find(saved).saved == 1000, "saved: an Update with no change keeps the date")
+  assert(R:Update(saved, NEKZALI .. "\\n# changed") and R:Find(saved).saved == 2000, "saved: an Update with new text refreshes it")
+  R:Delete(saved)
+  time = nil
+  print("ok your copies keep when they last changed")
+
+  -- marks whose block is already gone from the boss files
+  CRT.TimelineDB = { references = { NEKZALI } }
+  R:SetRemoved(R:List()[1], true)
+  local m = R:Removed()
+  assert(#m == 1 and not m[1].gone and m[1].encounterID == 3470, "gone: a shipped block's mark is not gone (encounter from the boss file)")
+  CRT.TimelineDB.references = {}
+  m = R:Removed()
+  assert(#m == 1 and m[1].gone, "gone: no shipped block has its header")
+  local realLoaded = CRT.Bosses.Loaded
+  CRT.Bosses.Loaded = function() return false end
+  assert(not R:Removed()[1].gone and R:PruneRemoved() == 0, "gone: a boss whose season isn't loaded can't tell, kept")
+  CRT.Bosses.Loaded = realLoaded
+  local before3 = fired
+  assert(R:PruneRemoved() == 1 and fired == before3 + 1, "gone: PruneRemoved drops it")
+  assert(#R:Removed() == 0 and CRT.db.dev.removedReferences == nil, "gone: nothing left")
+  assert(R:PruneRemoved() == 0, "gone: nothing to prune")
+  print("ok marks whose blocks are gone are flagged and pruned")
+end
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 // Each file named on the command line is loaded in order (Database.lua before Reference.lua).

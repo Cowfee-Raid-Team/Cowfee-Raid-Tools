@@ -9,7 +9,7 @@ local ADDON, CRT = ...
 --   Diagnostics       the debuff panel's diagnostics
 --   Timeline probe    arm it for the next raid boss pull, show what it found
 --   Marker displays   the marker display editor
---   Reference types   set each ability's types on a reference timeline
+--   Logged Timeline Ref   set each ability's types on an ability timeline, manage and remove them
 --   Layers            every window's layer on its own (General Settings shows groups)
 --   Window log        prints every move of the main window, to find what makes it jump
 --   Season packs      which seasons load, and purging one
@@ -60,7 +60,7 @@ local function build(pf)
     local title = pf:CreateFontString(nil, "OVERLAY", "CRTFontLarge")
     title:SetPoint("TOPLEFT", 8, -8)
     title:SetText("Development")
-    UI.Help(pf, "Development", "Developer tools. This page is only in a developer build of the addon (from Git); release zips leave it out, along with every tool on it.\n\nThe same tools have slash commands: /crt dev (this page), /crt dev edit, /crt dev reset, /crt dev clear, /crt dev debuffs, /crt dev probe, /crt dev probe show, /crt dev markers, /crt dev types, /crt dev winlog and /crt dev seasons."):SetPoint("LEFT", title, "RIGHT", 6, 0)
+    UI.Help(pf, "Development", "Developer tools. This page is only in a developer build of the addon (from Git); release zips leave it out, along with every tool on it.\n\nThe same tools have slash commands: /crt dev (this page), /crt dev edit, /crt dev reset, /crt dev clear, /crt dev debuffs, /crt dev probe, /crt dev probe show, /crt dev markers, /crt dev types, /crt dev removed, /crt dev winlog and /crt dev seasons."):SetPoint("LEFT", title, "RIGHT", 6, 0)
 
     -- Three columns: tools, more tools, and every window's layer.
     local x, right, third = 8, 360, 700
@@ -104,9 +104,9 @@ local function build(pf)
         CRT.DebuffPanel:ShowInfo()
     end)
 
-    -- Reference types.
-    heading(pf, x, -252, "Reference types", "Set each ability's types on a boss's reference timeline with dropdowns: a Main type that colors the row, and any others as dots. Save as my copy shows the colors on the Timeline; Export gives the text to paste to Claude, who ships it in the boss's file.")
-    action(pf, x, -272, "Open reference types", 180, function()
+    -- Logged Timeline Ref.
+    heading(pf, x, -252, "Logged Timeline Ref", "Set each ability's types on a boss's ability timeline with dropdowns: a Main type that colors the row, and any others as dots. Save as my copy shows the colors on the Timeline; Export gives the text to paste to Claude, who ships it in the boss's file.\n\nManage ability timelines deletes your copies, and marks shipped ability timelines for removal: they're hidden on this computer at once, and Export removals (or /crt dev removed) lists them for Claude to delete from the boss files.")
+    action(pf, x, -272, "Open Logged Timeline Ref", 180, function()
         CRT.ReferenceTypes:Toggle()
     end)
 
