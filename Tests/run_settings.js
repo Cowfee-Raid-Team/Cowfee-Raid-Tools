@@ -146,6 +146,15 @@ do
     if lb.text ~= "UI: Modern" then print("FAIL toggle label follows ApplyStyle") end
     CRT.db.ui.modern = false CRT:ApplyFonts() UI:ApplyStyle()
     print("look toggle: " .. lb.text)
+    -- the toggle is sized once per ApplyStyle, and again after a font change (its label's width moves)
+    local realSkin, skins = lb.crtSkin, 0
+    lb.crtSkin = function(...) skins = skins + 1 return realSkin(...) end
+    UI:ApplyStyle()
+    if skins ~= 1 then print("FAIL ApplyStyle sizes the toggle once (got " .. skins .. ")") end
+    skins = 0 CRT.db.ui.outline = "OUTLINE" CRT:ApplyFonts()
+    if skins < 1 then print("FAIL a font change re-sizes the header buttons") end
+    CRT.db.ui.outline = "" CRT:ApplyFonts()
+    lb.crtSkin = realSkin
   end
 end
 

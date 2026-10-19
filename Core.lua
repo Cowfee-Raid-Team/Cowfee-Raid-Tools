@@ -455,6 +455,14 @@ function CRT:ApplyFonts()
     if self.Notes and self.Notes.Fire and self.ready then
         self.Notes:Fire()
     end
+    -- Skinned controls size themselves from their text (header buttons), so they measure again.
+    local UI = self.UI
+    if UI and UI.skinned then
+        local modern = UI:IsModern()
+        for _, control in ipairs(UI.skinned) do
+            control.crtSkin(modern)
+        end
+    end
 end
 
 -- Sets the font for everything the addon draws, the note windows included, from the General Settings

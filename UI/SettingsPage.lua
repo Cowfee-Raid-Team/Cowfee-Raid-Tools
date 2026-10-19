@@ -5,8 +5,8 @@ local ADDON, CRT = ...
 --   Appearance  three columns. Left: Window (the main window's scale and opacity, UI:ApplyStyle in
 --               UI/Panel.lua; the look is the title bar's UI button) and Text (the font, outline and
 --               size of every text the addon draws with its shared fonts, CRT:ApplyFonts in Core.lua).
---               Middle: Sound, Reports and the Minimap button. Right: Layers (which frame strata each group of windows is drawn
---               in, UI:SetLayer in UI/Panel.lua)
+--               Middle: Sound, Reports and the Minimap button. Right: Layers (which frame strata each
+--               group of windows is drawn in, UI:SetLayer in UI/Panel.lua)
 --   Profiles    Profiles.lua
 -- Named Addon Settings before 0.16.0. Its key is still "settings".
 

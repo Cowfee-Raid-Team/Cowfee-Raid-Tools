@@ -383,8 +383,9 @@ function UI:ApplyStyle()
     end
     local s = CRT.db.ui
     local modern = self:IsModern()
+    -- the toggle's label; the skinned controls below size it
     if self.lookButton then
-        self.lookButton:SetLabel(modern and "UI: Modern" or "UI: Classic")
+        self.lookButton:SetText(modern and "UI: Modern" or "UI: Classic")
     end
     -- Opacity (bgAlpha) fades the whole window, text and buttons too, never below 30%. The window's
     -- own art and colours stay solid underneath.
