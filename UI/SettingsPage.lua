@@ -2,11 +2,11 @@ local ADDON, CRT = ...
 
 -- The General Settings page: settings for the whole addon, on two tabs (the last one is remembered in
 -- CRTDB.ui.settingsTab).
---   Appearance  three columns. Left: Window (the main window's scale, style and background opacity,
---               UI:ApplyStyle in UI/Panel.lua) and Text (the font, outline and size of every text the
---               addon draws with its shared fonts, CRT:ApplyFonts in Core.lua). Middle: Sound, Reports
---               and the Minimap button. Right: Layers (which frame strata each group of windows is drawn
---               in, UI:SetLayer in UI/Panel.lua)
+--   Appearance  three columns. Left: Window (the main window's scale and opacity, UI:ApplyStyle in
+--               UI/Panel.lua; the look is the title bar's UI button) and Text (the font, outline and
+--               size of every text the addon draws with its shared fonts, CRT:ApplyFonts in Core.lua).
+--               Middle: Sound, Reports and the Minimap button. Right: Layers (which frame strata each
+--               group of windows is drawn in, UI:SetLayer in UI/Panel.lua)
 --   Profiles    Profiles.lua
 -- Named Addon Settings before 0.16.0. Its key is still "settings".
 
@@ -24,10 +24,6 @@ local CHECK_TEXT_W = COL_W - 40 -- a checkbox's text wraps at this width, inside
 local page
 local controls = {}
 
-local STYLES = {
-    { key = "game", label = "Game window" },
-    { key = "minimal", label = "Minimal black" },
-}
 -- Text size in points, for the body text: 8 to 22 pt.
 local TEXT_SIZES = {}
 for pt = 8, 22 do
@@ -241,15 +237,7 @@ end
 local function buildLeft(pf)
     local x = LEFT_X
 
-    heading(pf, x, -44, "Window", "Modern look gives the whole addon coffee colors, flat dropdowns and buttons, the menu in grouped blocks, and Arial Narrow text when the font below is Default. Unticked, it uses the Classic look, with the Style choice below.\n\nWindow Scale applies when you let go of the slider. Ctrl + mouse wheel over the window also changes it.\n\nIn the Classic look, Minimal black swaps the game's stone and marble window art for a flat black background. Opacity fades the whole window, text and buttons included, down to 30%.")
-    checkbox(pf, x, -62, "Modern look (unticked: Classic)", function()
-        return ui().modern
-    end, function(on)
-        ui().modern = on
-        CRT:ApplyFonts()
-        UI:ApplyStyle()
-        refresh()
-    end)
+    heading(pf, x, -44, "Window", "The UI button in the title bar switches between the Classic and Modern look. Modern gives the whole addon coffee colors, flat dropdowns and buttons, the menu in grouped blocks, and Arial Narrow text when the font below is Default.\n\nWindow Scale applies when you let go of the slider. Ctrl + mouse wheel over the window also changes it.\n\nOpacity fades the whole window, text and buttons included, down to 30%.")
     add(UI.Slider(pf, "Window scale", {
         min = UI.MIN_SCALE,
         max = UI.MAX_SCALE,
@@ -264,28 +252,12 @@ local function buildLeft(pf)
         set = function(v)
             UI:SetScale(v)
         end,
-    }), x, -90)
+    }), x, -62)
     local resetScale = button(pf, "Reset scale to 100%", 140)
-    resetScale:SetPoint("TOPLEFT", x + LABEL_W + 5, -124)
+    resetScale:SetPoint("TOPLEFT", x + LABEL_W + 5, -96)
     resetScale:SetScript("OnClick", function()
         UI:SetScale(100)
     end)
-    add(UI.Dropdown(pf, "Style", {
-        options = STYLES,
-        labelWidth = LABEL_W,
-        width = CONTROL_W,
-        enabledIf = function()
-            return not ui().modern
-        end,
-        get = function()
-            return ui().style
-        end,
-        set = function(key)
-            ui().style = key
-            UI:ApplyStyle()
-            refresh()
-        end,
-    }), x, -148)
     add(UI.Slider(pf, "Opacity", {
         min = 30,
         max = 100,
@@ -300,9 +272,9 @@ local function buildLeft(pf)
             ui().bgAlpha = v
             UI:ApplyStyle()
         end,
-    }), x, -180)
+    }), x, -120)
 
-    heading(pf, x, -224, "Text", "The font, outline and size of every text the addon draws: this window, the note windows and their titles, your next spell alert, and the ready check bar and window.\n\nThe font list has the game's fonts, plus any font other addons share through LibSharedMedia, when one of them is installed. Default is the game's own font in the Classic look and Arial Narrow in the Modern look. The game's font also suits clients in other languages.\n\nChanging the font sets every note window to it too. You can still give a note window its own font on Raid Notes afterwards. Text size is the body text size in points, 8 to 22 pt (14 pt is the default); headings and small text grow or shrink with it. It doesn't change the note windows, which have their own size.\n\nBoss debuff timers are drawn by the game in its own font, which no addon can change, so the debuff preview keeps that font too.")
+    heading(pf, x, -164, "Text", "The font, outline and size of every text the addon draws: this window, the note windows and their titles, your next spell alert, and the ready check bar and window.\n\nThe font list has the game's fonts, plus any font other addons share through LibSharedMedia, when one of them is installed. Default is the game's own font in the Classic look and Arial Narrow in the Modern look. The game's font also suits clients in other languages.\n\nChanging the font sets every note window to it too. You can still give a note window its own font on Raid Notes afterwards. Text size is the body text size in points, 8 to 22 pt (14 pt is the default); headings and small text grow or shrink with it. It doesn't change the note windows, which have their own size.\n\nBoss debuff timers are drawn by the game in its own font, which no addon can change, so the debuff preview keeps that font too.")
     add(UI.Dropdown(pf, "Font", {
         options = fontChoices,
         labelWidth = LABEL_W,
@@ -311,9 +283,9 @@ local function buildLeft(pf)
             return ui().font
         end,
         set = confirmFont,
-    }), x, -242)
+    }), x, -182)
     local warning = pf:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    warning:SetPoint("TOPLEFT", x + LABEL_W + 5, -272)
+    warning:SetPoint("TOPLEFT", x + LABEL_W + 5, -212)
     warning:SetWidth(CONTROL_W + 40)
     warning:SetJustifyH("LEFT")
     warning:SetTextColor(1, 0.55, 0.1)
@@ -331,7 +303,7 @@ local function buildLeft(pf)
             CRT:ApplyFonts()
             refresh()
         end,
-    }), x, -286)
+    }), x, -226)
     add(UI.Dropdown(pf, "Text size", {
         options = TEXT_SIZES,
         labelWidth = LABEL_W,
@@ -344,7 +316,7 @@ local function buildLeft(pf)
             CRT:ApplyFonts()
             refresh()
         end,
-    }), x, -318)
+    }), x, -258)
 
     x = MIDDLE_X
     heading(pf, x, -44, "Sound", "Every sound the addon plays goes through this game sound channel, so it follows that channel's volume and mute in the game's Sound settings.\n\nTwo sounds are played by the game instead and keep its own outputs: the low-health pulse (Combat Audio Alerts, with its own volume on Quality of Life) and text to speech for your next spell (its volume is on Raid Notes).")

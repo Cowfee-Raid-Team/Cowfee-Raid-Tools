@@ -8,13 +8,13 @@ local defaults = {
     window = { point = "CENTER", x = 0, y = 0, scale = 100 }, -- the main panel; scale is a percent, 50 to 200
     -- The General Settings page. font is "default" (the game's own) or a name from CRT.FONTS, outline is
     -- "", "OUTLINE" or "THICKOUTLINE", fontSize the body text size in points (set the first time from
-    -- textSize, the percent used before 0.17.2). style is "game" (the game's window art) or
-    -- "minimal" (flat black), bgAlpha the main window's opacity in percent (30 to 100). layers holds a
+    -- textSize, the percent used before 0.17.2). bgAlpha is the main window's opacity in percent (30 to
+    -- 100). An old profile may still hold style, a window style choice that is no longer read. layers holds a
     -- frame strata for each kind of window moved off its default (UI.LAYERS in UI/Panel.lua).
     -- soundChannel is the game sound channel every sound the addon plays goes through (CRT:PlaySound).
-    -- modern is the Modern look (UI:ApplyStyle in UI/Panel.lua); off is the Classic look.
+    -- modern is the Modern look (UI:SetModern in UI/Panel.lua, the title bar's UI button); off is Classic.
     -- hideRealms leaves realm names out of the Late Tracker and Tattlebot, on screen, in chat and in exports.
-    ui = { font = "default", outline = "", textSize = 100, style = "game", bgAlpha = 100, layers = {}, soundChannel = "Master", hideRealms = false, modern = false },
+    ui = { font = "default", outline = "", textSize = 100, bgAlpha = 100, layers = {}, soundChannel = "Master", hideRealms = false, modern = false },
     lastPage = "groups",
     -- The minimap button (UI/Minimap.lua): angle is its place around the minimap, in degrees.
     minimap = { hide = false, angle = 225 },
@@ -454,6 +454,14 @@ function CRT:ApplyFonts()
     -- The note windows keep their own font objects, so they redraw with the new font and outline.
     if self.Notes and self.Notes.Fire and self.ready then
         self.Notes:Fire()
+    end
+    -- Skinned controls size themselves from their text (header buttons), so they measure again.
+    local UI = self.UI
+    if UI and UI.skinned then
+        local modern = UI:IsModern()
+        for _, control in ipairs(UI.skinned) do
+            control.crtSkin(modern)
+        end
     end
 end
 

@@ -242,9 +242,9 @@ layerEvents:SetScript("OnEvent", function()
 end)
 
 -- Window style ------------------------------------------------------------------------------------
--- Two looks, picked with the "Modern look" checkbox on General Settings (CRTDB.ui.modern):
---   Classic  the menu as one list, and the style dropdown: "game" shows the window template's own
---            art, "minimal" hides it for a flat black background with a thin border
+-- Two looks, switched with the "UI: Classic" / "UI: Modern" button in the main window's title bar
+-- (CRTDB.ui.modern, UI:SetModern):
+--   Classic  the window template's own art, the game's red buttons and dropdowns, the menu as one list
 --   Modern   coffee colors (CRT.MOCHA in Core.lua): an espresso window with caramel lines under the
 --            title and beside the menu, the menu in grouped blocks (UI.MENU_GROUPS) with the
 --            selected page in mocha, mocha page tabs, flat dropdowns and buttons, and Arial Narrow
@@ -266,6 +266,13 @@ UI.MENU_GROUPS = {
 
 function UI:IsModern()
     return CRT.db and CRT.db.ui and CRT.db.ui.modern and true or false
+end
+
+-- Switches the look live: fonts, every window and control, and the title bar toggle's label.
+function UI:SetModern(on)
+    CRT.db.ui.modern = on and true or false
+    CRT:ApplyFonts()
+    self:ApplyStyle()
 end
 
 -- Backdrop frames outside the main window that follow the look: your bar, its drag and Close bars,
@@ -294,8 +301,7 @@ end
 
 -- Floating windows: a window of its own made from BasicFrameTemplateWithInset, such as the alert
 -- editor, its export box, the dev tools and the text and import dialogs. Classic shows the template's
--- own art, or with the Minimal black style a flat black background with a grey border like the main
--- window; Modern a flat espresso background with an edge border, a caramel line under the title and
+-- own art; Modern a flat espresso background with an edge border, a caramel line under the title and
 -- the plain X.
 -- Call StyleWindow right after CreateFrame, before adding anything, so only the template's own
 -- textures count as its art. Its buttons and dropdowns are skinned now and each time it shows.
@@ -303,33 +309,22 @@ UI.windows = {}
 
 function UI:ApplyWindow(f)
     local modern = self:IsModern()
-    -- Classic with the Minimal black style is flat too, in black and grey like the main window
-    local flat = self:IsFlat()
     for _, texture in ipairs(f.crtArt) do
-        texture:SetShown(not flat)
+        texture:SetShown(not modern)
     end
-    f.crtBg:SetShown(flat)
-    f.crtTitle:SetShown(flat)
-    if modern then
-        f.crtBg:SetColorTexture(mocha("espresso", 0.96))
-        f.crtTitle:SetColorTexture(mocha("espresso"))
-    else
-        f.crtBg:SetColorTexture(0, 0, 0, 0.92)
-        f.crtTitle:SetColorTexture(0.12, 0.12, 0.12, 1)
-    end
+    f.crtBg:SetShown(modern)
+    f.crtTitle:SetShown(modern)
+    f.crtBg:SetColorTexture(mocha("espresso", 0.96))
+    f.crtTitle:SetColorTexture(mocha("espresso"))
     for _, edge in ipairs(f.crtEdges) do
-        edge:SetShown(flat)
-        if modern then
-            edge:SetColorTexture(mocha("edge"))
-        else
-            edge:SetColorTexture(0.3, 0.3, 0.3, 1)
-        end
+        edge:SetShown(modern)
+        edge:SetColorTexture(mocha("edge"))
     end
     f.crtTitleLine:SetShown(modern)
     f.crtTitleLine:SetColorTexture(mocha("caramel"))
     -- the template's inset (its own frame on some clients) is part of the Classic art
     if type(f.Inset) == "table" and f.Inset.SetShown then
-        f.Inset:SetShown(not flat)
+        f.Inset:SetShown(not modern)
     end
 end
 
@@ -388,30 +383,25 @@ function UI:ApplyStyle()
     end
     local s = CRT.db.ui
     local modern = self:IsModern()
-    local flat = self:IsFlat()
+    -- the toggle's label; the skinned controls below size it
+    if self.lookButton then
+        self.lookButton:SetText(modern and "UI: Modern" or "UI: Classic")
+    end
     -- Opacity (bgAlpha) fades the whole window, text and buttons too, never below 30%. The window's
     -- own art and colours stay solid underneath.
     f:SetAlpha(math.max(30, math.min(100, s.bgAlpha or 100)) / 100)
     local alpha = 1
     for _, texture in ipairs(f.art) do
-        texture:SetShown(not flat)
+        texture:SetShown(not modern)
         texture:SetAlpha(alpha)
     end
     for _, texture in ipairs(f.flat) do
-        texture:SetShown(flat)
+        texture:SetShown(modern)
     end
-    if modern then
-        f.flatBg:SetColorTexture(mocha("espresso", 0.96 * alpha))
-        f.flatTitle:SetColorTexture(mocha("espresso", alpha))
-        for _, edge in ipairs(f.flatEdges) do
-            edge:SetColorTexture(mocha("edge", alpha))
-        end
-    else
-        f.flatBg:SetColorTexture(0, 0, 0, 0.92 * alpha)
-        f.flatTitle:SetColorTexture(0.12, 0.12, 0.12, alpha)
-        for _, edge in ipairs(f.flatEdges) do
-            edge:SetColorTexture(0.3, 0.3, 0.3, alpha)
-        end
+    f.flatBg:SetColorTexture(mocha("espresso", 0.96 * alpha))
+    f.flatTitle:SetColorTexture(mocha("espresso", alpha))
+    for _, edge in ipairs(f.flatEdges) do
+        edge:SetColorTexture(mocha("edge", alpha))
     end
     f.titleLine:SetColorTexture(mocha("caramel", alpha))
     f.titleLine:SetShown(modern)
@@ -788,30 +778,21 @@ function UI.Help(parent, title, text)
     return b
 end
 
--- A small button for a window's header bar. In the flat looks (UI:IsFlat) it is the Reset button's look:
+-- A small button for a window's header bar. In the Modern look it is the Reset button's look:
 -- dark fill, grey edge, small text. In the Classic look it is the game's red panel button, like
 -- Previews. Its width comes from the label (plus the icon, if any) and padding, never under
 -- UI.HEADER_BUTTON_MIN_W; its height is UI.HEADER_BUTTON_H unless opts.flatH / opts.classicH say
--- otherwise. opts: icon (a texture path, or { atlas = name }; shown left of the label in every look; an
+-- otherwise. b:SetLabel(text) changes the label, and the width with it. opts: icon (a texture path, or { atlas = name }; shown left of the label in every look; an
 -- unknown value shows nothing), tipTitle and tipText (a tooltip). It sits above its parent's own parts,
 -- so a bar can hold it.
 UI.HEADER_BUTTON_H = 20
 UI.HEADER_BUTTON_MIN_W = 44
-UI.HEADER_BUTTON_PAD = 8 -- each side, flat looks; Classic uses PANEL_BUTTON_PAD for the end caps
+UI.HEADER_BUTTON_PAD = 8 -- each side, Modern; Classic uses PANEL_BUTTON_PAD for the end caps
 UI.HEADER_BUTTON_ICON = 12
 UI.HEADER_BUTTON_ICON_GAP = 3
 -- Reset on a window's drag handle stays small, so the handle's 1 px border shows (Previews is 18 high)
 UI.RESET_BUTTON_H = 16
 UI.RESET_BUTTON_CLASSIC_H = 18
-
--- True for the looks that are flat: Modern, and Classic with the Minimal black style. The one place the
--- rule is kept.
-function UI:IsFlat()
-    if self:IsModern() then
-        return true
-    end
-    return CRT.db and CRT.db.ui and CRT.db.ui.style == "minimal" and true or false
-end
 
 local function headerButtonWidth(labelW, flat)
     return math.max(UI.HEADER_BUTTON_MIN_W, math.ceil(labelW) + 2 * (flat and UI.HEADER_BUTTON_PAD or UI.PANEL_BUTTON_PAD))
@@ -839,7 +820,6 @@ function UI.HeaderButton(parent, label, onClick, opts)
     end
     b:SetText(label)
     local fs = b:GetFontString()
-    local labelW = fs and fs:GetStringWidth() or 0
     -- the icon, left of the label
     local icon
     local iconKind = type(opts.icon)
@@ -852,7 +832,6 @@ function UI.HeaderButton(parent, label, onClick, opts)
             icon:SetTexture(opts.icon)
         end
         icon:Show()
-        labelW = labelW + UI.HEADER_BUTTON_ICON + UI.HEADER_BUTTON_ICON_GAP
     end
     b.icon = icon
     local bg, edges = flatSkin(b, 0)
@@ -861,7 +840,12 @@ function UI.HeaderButton(parent, label, onClick, opts)
     hover:SetAllPoints(bg)
     hover:SetColorTexture(1, 1, 1, 0.15)
     b.crtSkin = function()
-        local flat = UI:IsFlat()
+        local flat = UI:IsModern()
+        -- measured each time, so a new label or font size gets its width
+        local labelW = fs and fs:GetStringWidth() or 0
+        if icon then
+            labelW = labelW + UI.HEADER_BUTTON_ICON + UI.HEADER_BUTTON_ICON_GAP
+        end
         local pad = flat and UI.HEADER_BUTTON_PAD or UI.PANEL_BUTTON_PAD
         for _, art in ipairs({ b.Left, b.Middle, b.Right }) do
             if type(art) == "table" then
@@ -888,6 +872,10 @@ function UI.HeaderButton(parent, label, onClick, opts)
     end
     UI.skinned[#UI.skinned + 1] = b
     b.crtSkin() -- the current look at once, for a button made before the main window exists
+    function b:SetLabel(text)
+        self:SetText(text)
+        self.crtSkin()
+    end
     b:SetScript("OnClick", function()
         onClick()
     end)
@@ -1049,7 +1037,7 @@ function UI:Create()
             f.art[#f.art + 1] = region
         end
     end
-    -- The minimal style: a flat background, a darker title strip and a thin border.
+    -- The Modern look's window: a flat background, its own title strip and a thin border.
     f.flatBg = f:CreateTexture(nil, "BACKGROUND", nil, -8)
     f.flatBg:SetAllPoints()
     f.flatTitle = f:CreateTexture(nil, "BACKGROUND", nil, -7)
@@ -1179,10 +1167,21 @@ function UI:Create()
     end)
     f.minimizeButton = mb
 
+    -- The look toggle, left of Minimize: its label is the look in use, and a click switches to the
+    -- other one. 18 high, like Previews, to fit inside the title bar. ApplyStyle keeps the label.
+    local lb = UI.HeaderButton(f, "UI: Classic", function()
+        UI:SetModern(not UI:IsModern())
+    end, {
+        flatH = 18, classicH = 18,
+        tipTitle = "Look", tipText = "Switch between the Classic and Modern look.",
+    })
+    lb:SetPoint("RIGHT", mb, "LEFT", -4, 0)
+    UI.lookButton = lb
+
     -- The title bar: drag it to move the window, double-click it to minimize or restore.
     local titleBar = CreateFrame("Button", nil, f)
     titleBar:SetPoint("TOPLEFT", f, "TOPLEFT", 0, 0)
-    titleBar:SetPoint("RIGHT", mb, "LEFT", -4, 0)
+    titleBar:SetPoint("RIGHT", lb, "LEFT", -4, 0)
     titleBar:SetHeight(24)
     titleBar:RegisterForClicks("LeftButtonUp")
     titleBar:RegisterForDrag("LeftButton")

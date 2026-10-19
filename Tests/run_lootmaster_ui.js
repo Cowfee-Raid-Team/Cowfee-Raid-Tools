@@ -79,9 +79,9 @@ pb.scripts.OnClick()
 check(clicked, "panel button: the click runs")
 eq(UI.PanelButton(mock(), "x", 18).w, UI.PANEL_BUTTON_MIN_W, "panel button: a short label gets the minimum width")
 
--- the header button: the game's red button in Classic, the Reset look in Minimal and Modern; an icon in all three
+-- the header button: the game's red button in Classic, the Reset look in Modern; an icon in both
 local function look(name)
-  CRT.db.ui.modern, CRT.db.ui.style = name == "modern", name == "minimal" and "minimal" or nil
+  CRT.db.ui.modern = name == "modern"
   for _, c in ipairs(UI.skinned) do c.crtSkin(CRT.db.ui.modern) end
 end
 local function sized(btn, what, w, h)
@@ -93,11 +93,17 @@ local hb = UI.HeaderButton(mock(), "All Loot Rolls", function() clicked = false 
 local lw = 14 * 6
 sized(hb, "header classic", lw + 2 * CAPS, 20)
 eq(hb.Left.alpha, 1, "header classic: template art shown")
-look("minimal")
-sized(hb, "header minimal", lw + 2 * PAD, 20)
-eq(hb.Left.alpha, 0, "header minimal: template art hidden")
 look("modern")
 sized(hb, "header modern", lw + 2 * PAD, 20)
+eq(hb.Left.alpha, 0, "header modern: template art hidden")
+-- the label can change: the width follows it
+hb:SetLabel("Rolls")
+sized(hb, "header relabelled", math.max(44, 5 * 6 + 2 * PAD), 20)
+eq(hb.label.text, "Rolls", "header relabelled: its text")
+look("classic")
+sized(hb, "header relabelled classic", 5 * 6 + 2 * CAPS, 20)
+hb:SetLabel("All Loot Rolls")
+look("modern")
 sized(UI.HeaderButton(mock(), "Go", function() end), "short header", 44, 20)
 -- a button made while Modern is on is already Modern
 local early = UI.HeaderButton(mock(), "Go", function() end)
@@ -106,7 +112,7 @@ eq(early.Left.alpha, 0, "header: made in Modern, flat at once")
 local ib = UI.HeaderButton(mock(), "Rolls", function() end, { icon = "icon-file" })
 local ab = UI.HeaderButton(mock(), "Rolls", function() end, { icon = { atlas = "some-atlas" } })
 check(UI.HeaderButton(mock(), "Rolls", function() end, { icon = 5 }).icon ~= nil and type(UI.HeaderButton(mock(), "R", function() end, { icon = 5 }).icon) ~= "table", "header button: an unknown icon shows none")
-for _, name in ipairs({ "classic", "minimal", "modern" }) do
+for _, name in ipairs({ "classic", "modern" }) do
   look(name)
   local caps = name == "classic" and CAPS or PAD
   sized(ib, "icon " .. name, 45 + 2 * caps, 20)
@@ -120,8 +126,6 @@ local rb = UI.ResetButton(mock(), function() end)
 sized(rb, "reset classic", 30 + 2 * CAPS, 18)
 look("modern")
 sized(rb, "reset modern", math.max(44, 30 + 2 * PAD), 16)
-look("minimal")
-sized(rb, "reset minimal", math.max(44, 30 + 2 * PAD), 16)
 eq(rb.label.text, "Reset", "reset button: its label")
 check(type(rb.scripts.OnEnter) == "function", "reset button: keeps its tooltip")
 eq(UI.ResetButtonWidth(), 30 + 2 * CAPS, "reset width: the widest look")
