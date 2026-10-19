@@ -49,13 +49,14 @@ local function mock(kind)
       return rawget(self, "level") or (p and p:GetFrameLevel() + 1) or 1 end end
     if k == "EnableMouse" then return function(self, on) rawset(self, "mouse", on) end end
     if k == "GetPoint" then return function() return "CENTER", nil, "CENTER", 0, 0 end end
-    if k == "IsForbidden" then return function() return false end end
+    if k == "IsForbidden" then return function(self) return forbidTextures and self.kind == "Texture" or false end end
     if k == "SetEnabled" then return function(self, on) rawset(self, "enabled", on) end end
     return function() end
   end })
 end
 
--- Game stubs.
+-- Game stubs. forbidTextures makes every texture forbidden, as during an encounter.
+forbidTextures = false
 format = string.format
 CreateFont = function() return mock("Font") end
 for _, n in ipairs({ "GameFontNormal", "GameFontHighlight", "GameFontDisable", "GameFontHighlightSmall", "GameFontDisableSmall",
@@ -316,6 +317,18 @@ if glow then
 end
 Debuffs:SetDispelBorder(false) Debuffs:SetDispelGlow(false)
 
+-- The timer and stacks are raised when the parts are made, even if the button can't be wired yet.
+local button3 = mock("AuraButton")
+rawset(button3, "SetIcon", function() end)
+forbidTextures = true
+groupOpts.initializeFrame(button3)
+forbidTextures = false
+local top3 = 0
+for _, f in ipairs(frames) do
+  if f.kind == "Frame" and rawget(f, "parent") == button3 then top3 = math.max(top3, f:GetFrameLevel()) end
+end
+check("a button skipped while forbidden still has its text above the swipe", top3 == button3:GetFrameLevel() + 21, top3)
+
 -- The panel and the container's row are laid out by the step.
 local panelFrame
 for _, f in ipairs(frames) do if rawget(f, "name") == "CowfeeRaidToolsDebuffPanel" then panelFrame = f end end
@@ -459,6 +472,36 @@ pf.OnHide(pf)
 check("closing the tab leaves it on while Previews is on", Panel:IsPreviewing() == true)
 CRT.UI.previewing = false
 previewFns.debuffs(false)
+
+-- Without the glow's atlas there is no glow at all: a plain square above the icon would tint it.
+C_Texture = { GetAtlasInfo = function() return nil end }
+local before = #frames
+assert(load(panelSrc, "Panel.lua"))("CowfeeRaidTools", CRT)
+local Panel2 = CRT.DebuffPanel
+for i = before + 1, #frames do if rawget(frames[i], "OnEvent") then events = frames[i] end end
+events.OnEvent(events, "PLAYER_LOGIN")
+check("no glow atlas: a second panel is built", groupOpts ~= nil and #frames > before + 1)
+Debuffs:SetDispelBorder(true) Debuffs:SetDispelGlow(true)
+added = {}
+local button4 = mock("AuraButton")
+rawset(button4, "SetIcon", function() end)
+rawset(button4, "ClearDispelTypeTextures", function() added = {} end)
+rawset(button4, "AddDispelTypeTexture", function(self, tex, opts) added[#added + 1] = { tex = tex, opts = opts } tex:Show() end)
+groupOpts.initializeFrame(button4)
+local borders = 0
+for _, a in ipairs(added) do if a.opts.style == 3 then borders = borders + 1 end end
+check("no glow atlas: only the border is handed to the game", borders == 1 and glowTex() == nil, styles())
+Debuffs:SetMaxCount(8)
+Panel2:SetPreview(true)
+local plainGlows, tilesSeen = 0, 0
+for _, f in ipairs(frames) do
+  local parts = rawget(f, "parts")
+  if parts and parts.glow and not rawget(parts.glow, "atlas") then tilesSeen = tilesSeen + 1 if parts.glow.shown then plainGlows = plainGlows + 1 end end
+end
+check("no glow atlas: no preview tile shows a glow", tilesSeen == 8 and plainGlows == 0, tilesSeen .. " tiles, " .. plainGlows .. " glowing")
+Panel2:SetPreview(false)
+check("no glow atlas: the diagnostics say so", Panel2:InfoText():find("glow atlas") ~= nil)
+Debuffs:SetDispelBorder(false) Debuffs:SetDispelGlow(false) Debuffs:SetMaxCount(4)
 
 print(passed .. " passed, " .. failed .. " failed")
 if failed > 0 then error("debuff checks failed") end

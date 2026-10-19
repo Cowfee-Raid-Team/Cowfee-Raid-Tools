@@ -49,7 +49,8 @@ local TIMER_FONT = "CRTFontSmall"
 local COUNT_FONT = "CRTFontHighlight"
 local WHITE = "Interface\\Buttons\\WHITE8X8"
 -- The glow around a dispel type's border: the game's white glow for a new item in the bags, drawn
--- additively, so the dispel type's color tints it cleanly. A plain square if the atlas is missing.
+-- additively, so the dispel type's color tints it cleanly. Without the atlas there is no glow: a plain
+-- square drawn above the icon would tint the whole icon.
 local GLOW_ATLAS = "bags-glow-white"
 local GLOW_ALPHA = 0.8
 -- Frame levels above each icon's own: the glow's frame, over every other icon in the row and its
@@ -231,6 +232,27 @@ end
 -- text and stacks on a frame above the swipe, and the dispel type icon. Behind the icon: the plain
 -- border, and the dispel type's border over it. The glow is on its own frame, raised over the other
 -- icons (raiseParts); it never takes the mouse.
+-- Whether the game has the glow's atlas. Checked once; a missing one is noted for the diagnostics.
+local glowAtlas
+local function hasGlowAtlas()
+    if glowAtlas == nil then
+        glowAtlas = (C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(GLOW_ATLAS)) and true or false
+        if not glowAtlas then
+            note("the glow atlas " .. GLOW_ATLAS .. " is missing, so there is no glow")
+        end
+    end
+    return glowAtlas
+end
+
+-- An owner's frame level, or nil when the game hides it or won't give it.
+local function frameLevel(owner)
+    local ok, level = pcall(owner.GetFrameLevel, owner)
+    if not ok or isSecret(level) or type(level) ~= "number" then
+        return nil
+    end
+    return level
+end
+
 local function makeParts(owner)
     local parts = {}
     parts.glowFrame = CreateFrame("Frame", nil, owner)
@@ -238,13 +260,9 @@ local function makeParts(owner)
     parts.glowFrame:EnableMouse(false)
     parts.glow = parts.glowFrame:CreateTexture(nil, "BACKGROUND", nil, -1)
     parts.glow:SetPoint("CENTER")
-    local atlas = C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(GLOW_ATLAS)
-    if atlas then
+    if hasGlowAtlas() then
         parts.glow:SetAtlas(GLOW_ATLAS)
         parts.glow:SetAlpha(GLOW_ALPHA)
-    else
-        parts.glow:SetTexture(WHITE)
-        parts.glow:SetAlpha(GLOW_ALPHA * 0.4)
     end
     parts.glow:SetBlendMode("ADD")
     parts.glow:Hide()
@@ -267,6 +285,10 @@ local function makeParts(owner)
     -- The text sits on its own frame above the swipe, so the swipe never covers it.
     parts.over = CreateFrame("Frame", nil, owner)
     parts.over:SetAllPoints()
+    local level = frameLevel(owner)
+    if level then
+        pcall(parts.over.SetFrameLevel, parts.over, level + TEXT_LEVEL) -- raiseParts keeps it there
+    end
     parts.time = parts.over:CreateFontString(nil, "OVERLAY", TIMER_FONT)
     parts.time:SetTextColor(1, 1, 1)
     parts.count = parts.over:CreateFontString(nil, "OVERLAY", COUNT_FONT)
@@ -281,8 +303,8 @@ end
 -- the parts are laid out, in case the game has moved the owner's level. A level the game hides or
 -- won't give leaves the parts where they are.
 local function raiseParts(owner, parts)
-    local ok, level = pcall(owner.GetFrameLevel, owner)
-    if not ok or isSecret(level) or type(level) ~= "number" then
+    local level = frameLevel(owner)
+    if not level then
         return
     end
     pcall(parts.glowFrame.SetFrameLevel, parts.glowFrame, level + GLOW_LEVEL)
@@ -380,7 +402,7 @@ local function wireDispelBorder(button, parts)
     else
         hidePart(parts.dispelBorder)
     end
-    if Debuffs:DispelGlow() and edge > 0 and style ~= nil then
+    if Debuffs:DispelGlow() and edge > 0 and style ~= nil and hasGlowAtlas() then
         try("button", button, "AddDispelTypeTexture", parts.glow, options)
     else
         hidePart(parts.glow)
@@ -613,7 +635,7 @@ local function updateTiles()
             parts.dispelBorder:SetVertexColor(r, g, b, 1)
             parts.dispelBorder:SetShown(Debuffs:DispelBorder() and typed and edge > 0)
             parts.glow:SetVertexColor(r, g, b, 1)
-            parts.glow:SetShown(Debuffs:DispelGlow() and typed and edge > 0)
+            parts.glow:SetShown(Debuffs:DispelGlow() and typed and edge > 0 and hasGlowAtlas())
             if not tile.endsAt then
                 tile.endsAt = GetTime() + sample.left
                 if parts.cooldown then
