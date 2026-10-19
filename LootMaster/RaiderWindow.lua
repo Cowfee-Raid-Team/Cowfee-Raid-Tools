@@ -193,12 +193,8 @@ refresh = function() -- declared above, for the ticker
         current = 1
     end
     win.strip:SetTitle(TEXT.title)
-    -- TEST for a test, else the boss you saw killed just before (LM:RecentBoss)
+    -- TEST for a test, else the boss you saw killed just before (LM:RecentBoss); the note shows either way
     win.strip:SetBadge(inc.test and TEXT.test or inc.boss, TEXT.note, not inc.test and UI.TITLE_STRIP.neutral or nil)
-    if not inc.test then
-        win.strip.note:SetText(TEXT.note)
-        win.strip.note:Show()
-    end
     tabs:Update(inc.items, current, function(i)
         return view:AnswerCount(i)
     end, function(name)
