@@ -92,7 +92,7 @@ local TEXT = {
         { key = "NONE", label = "Don't send" },
     },
     sync = "Sync Master Loot",
-    syncHelp = "Only the raid leader can sync. It sends your Loot Master settings to the player you pick and to everyone on your Loot authority list who is in the group, and replaces theirs: the response buttons, Time to answer, the award message, Send to, the no-roll text, the Raider Score weights and the Loot authority list.\n\nTheir window places, their sort and their Show me items I can't use box stay their own. A player only takes a sync from their current raid leader.\n\nThe list has the group members whose CRT can take a sync. For anyone else, type their name. After a few seconds the line under the button says who got it.",
+    syncHelp = "Only the raid leader can sync. It sends your Loot Master settings to the player you pick and to everyone on your Loot authority list who is in the group, and replaces theirs: the response buttons, Time to answer, the award message, Send to, the no-roll text, the Raider Score weights, the loot filter and the Loot authority list.\n\nTheir window places, their sort and their Show me items I can't use box stay their own. A player only takes a sync from their current raid leader.\n\nThe list has the group members whose CRT can take a sync. For anyone else, type their name. After a few seconds the line under the button says who got it.",
     syncTo = "Sync to",
     syncPickOne = "Pick a player",
     syncNobody = "(no one with CRT found yet)",
