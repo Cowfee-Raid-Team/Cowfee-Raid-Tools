@@ -48,6 +48,20 @@ check("spell and m:ss lead kept", t == "Boss: X\\nFoo [spell 123] (type soak, le
 local d = R.Parse("Boss: X\\nFoo (type dodge heavydot): 0:10\\n")
 check("dodge and heavydot read", d and d.rows[1].types[1] == "dodge" and d.rows[1].types[2] == "heavydot")
 check("Sszorak types shipped", s.rows[1].types[1] == "raid" and s.rows[2].types[1] == "soak" and s.rows[5].types[1] == "raid")
+-- Export removals: one line per marked shipped reference (boss file, encounter ID, difficulty, header).
+check("boss file from name", E.BossFile("Kith'ix") == "Kithix.lua" and E.BossFile("Nek'zali the Soulcoiler") == "NekzaliTheSoulcoiler.lua")
+local line = E.RemovalLine({ boss = "Kith'ix", encounterID = 3513, difficulty = "Mythic", header = "Boss: Kith'ix / Difficulty: Mythic / Length: 7:00" })
+check("removal line format", line == "Kithix.lua; encounter 3513; Mythic; Boss: Kith'ix / Difficulty: Mythic / Length: 7:00")
+check("removal line, no encounter or difficulty", E.RemovalLine({ boss = "X", header = "Boss: X" }) == "X.lua; encounter ?; any difficulty; Boss: X")
+CRT.db = { timeline = {}, dev = { removedReferences = {
+  ["3513|Mythic|Boss: Kith'ix / Difficulty: Mythic / Length: 7:00"] = { boss = "Kith'ix", encounterID = 3513, difficulty = "Mythic", header = "Boss: Kith'ix / Difficulty: Mythic / Length: 7:00" },
+  ["3420|Heroic|Boss: Sszorak / Difficulty: Heroic / Length: 6:32"] = { boss = "Sszorak", encounterID = 3420, difficulty = "Heroic", header = "Boss: Sszorak / Difficulty: Heroic / Length: 6:32" },
+} } }
+CRT.Timeline.Settings = function() return CRT.db.timeline end
+local lines = E.RemovalLines()
+check("removal lines sorted by boss", #lines == 2 and lines[1]:find("^Kithix%.lua") and lines[2]:find("^Sszorak%.lua; encounter 3420; Heroic; "))
+CRT.db.dev.removedReferences = nil
+check("no removals, no lines", #E.RemovalLines() == 0)
 print(fails == 0 and "all passed" or (fails .. " failed"))
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
