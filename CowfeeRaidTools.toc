@@ -126,6 +126,7 @@ Seasons\Midnight-S1\VashnikTheMalignant.lua
 Seasons\Midnight-S1\TheCoiledAltar.lua
 Seasons\Midnight-S1\Ulatek.lua
 Seasons\Midnight-S1\NymrissaWavecaller.lua
+Seasons\Midnight-S1\Kithix.lua
 #@do-not-package@
 Dev\LayoutEditor.lua
 Dev\TimelineProbe.lua
