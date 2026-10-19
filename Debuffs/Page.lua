@@ -1,14 +1,17 @@
 local ADDON, CRT = ...
 
 -- The Debuffs tab of the Quality of Life page (a page of its own before 0.17.2): settings for the
--- in-combat debuff panel. The panel is moved with "Previews" in the corner of the main window.
+-- in-combat debuff panel. The panel is moved with "Preview debuffs" on the tab, which previews only
+-- this panel, or with "Previews" in the corner of the main window, which previews them all.
 -- QoL/Page.lua builds it into its tab through CRT.DebuffsPage.Build.
 
 local Debuffs = CRT.Debuffs
 local UI = CRT.UI
 
-local page, enabledCheck, sizeEdit, countEdit, durationEdit, dispelCheck, slotsCheck
+local page, enabledCheck, sizeEdit, countEdit, durationEdit, dispelCheck, dispelSizeEdit, slotsCheck, previewButton
 local refresh
+
+local PREVIEW_LABEL, STOP_LABEL = "Preview debuffs", "Stop preview"
 local look = {} -- the Look section's controls, each with refresh(on)
 
 local function makeButton(parent, label, width, height)
@@ -104,9 +107,14 @@ local function nudgeBox(pf, anchor, label, field)
     return edit
 end
 
-local function lookCheck(pf, label, yOffset, field, x, dependsOn)
+-- setter, when given, saves the box through Debuffs (such as Debuffs.SetDispelBorder) instead of Set.
+local function lookCheck(pf, label, yOffset, field, x, dependsOn, setter)
     local check = makeCheck(pf, label, yOffset, function(checked)
-        Debuffs:Set(field, checked and true or false)
+        if setter then
+            setter(Debuffs, checked)
+        else
+            Debuffs:Set(field, checked and true or false)
+        end
     end, x)
     check.refresh = function(on)
         check:SetChecked(Debuffs:Get(field) and true or false)
@@ -127,6 +135,8 @@ refresh = function()
     sizeEdit.refresh()
     countEdit.refresh()
     durationEdit.refresh()
+    dispelSizeEdit.refresh()
+    previewButton:SetText(CRT.DebuffPanel:IsPreviewing() and STOP_LABEL or PREVIEW_LABEL)
     usable(dispelCheck, on)
     usable(slotsCheck, on)
     for _, control in ipairs(look) do
@@ -141,7 +151,40 @@ local function build(pf)
     title:SetPoint("TOPLEFT", 8, -8)
     title:SetText("Debuff panel")
 
-    UI.Help(pf, "The debuff panel", "A movable row of the debuffs enemies put on you, shown in combat, shortest first. Press Previews in the top right corner of this window to see it and drag it into place.\n\nThe game fills the row itself, so it keeps working in combat, when debuff details are hidden from addons. Debuffs you or your pet cast, debuffs longer than the time you pick, and lockouts such as Exhaustion and Sated are left out.\n\nYour settings are saved in your own saved variables."):SetPoint("LEFT", title, "RIGHT", 6, 0)
+    local help = UI.Help(pf, "The debuff panel", "A movable row of the debuffs enemies put on you, shown in combat, shortest first. Press Preview debuffs to see it with sample debuffs and drag it into place. Previews in the top right corner of this window shows it along with every other panel.\n\nThe game fills the row itself, so it keeps working in combat, when debuff details are hidden from addons. Debuffs you or your pet cast, debuffs longer than the time you pick, and lockouts such as Exhaustion and Sated are left out.\n\nYour settings are saved in your own saved variables.")
+    help:SetPoint("LEFT", title, "RIGHT", 6, 0)
+
+    -- Only this panel's preview, not every panel's. It ends when the tab closes, unless Previews is on.
+    previewButton = makeButton(pf, PREVIEW_LABEL, 120, 22)
+    local labelWidth = 0
+    local text = previewButton:GetFontString()
+    if text then
+        for _, label in ipairs({ PREVIEW_LABEL, STOP_LABEL }) do
+            text:SetText(label)
+            labelWidth = math.max(labelWidth, text:GetStringWidth() or 0)
+        end
+    end
+    if labelWidth > 0 then
+        previewButton:SetWidth(math.ceil(labelWidth) + 24)
+    end
+    previewButton:SetText(PREVIEW_LABEL)
+    previewButton:SetPoint("LEFT", help, "RIGHT", 12, 0)
+    previewButton:SetScript("OnClick", function()
+        local panel = CRT.DebuffPanel
+        if not panel:IsPreviewing() and InCombatLockdown() then
+            CRT:Print("Previews can't be turned on during combat.")
+            return
+        end
+        panel:ShowPreview(not panel:IsPreviewing())
+    end)
+    CRT.DebuffPanel.onPreviewChange = function(on)
+        previewButton:SetText(on and STOP_LABEL or PREVIEW_LABEL)
+    end
+    pf:SetScript("OnHide", function()
+        if CRT.DebuffPanel:IsPreviewing() and not UI.previewing then
+            CRT.DebuffPanel:ShowPreview(false)
+        end
+    end)
 
     enabledCheck = makeCheck(pf, "Show the panel in combat", -30, function(checked)
         Debuffs:SetEnabled(checked)
@@ -150,7 +193,7 @@ local function build(pf)
     local function panelOn()
         return Debuffs:Enabled()
     end
-    sizeEdit = UI.Slider(pf, "Icon size", { min = 24, max = 96, step = 2, labelWidth = 130, width = 200, enabledIf = panelOn, get = function()
+    sizeEdit = UI.Slider(pf, "Icon size", { min = Debuffs.MIN_SIZE, max = Debuffs.MAX_SIZE, step = 2, labelWidth = 130, width = 200, enabledIf = panelOn, get = function()
         return Debuffs:Size()
     end, set = function(value)
         Debuffs:SetSize(value)
@@ -183,18 +226,35 @@ local function build(pf)
     dispelCheck = makeCheck(pf, "Show the dispel type icon on each debuff", -146, function(checked)
         Debuffs:SetDispelIcon(checked)
     end)
-    slotsCheck = makeCheck(pf, "Also use the game's boss debuff slots, in a second row", -170, function(checked)
+    -- Indented under its box, with the bar lined up with the sliders above.
+    dispelSizeEdit = UI.Slider(pf, "Dispel icon size", { min = Debuffs.MIN_DISPEL_SCALE * 100, max = Debuffs.MAX_DISPEL_SCALE * 100, step = 5,
+        labelWidth = 110, width = 200,
+        enabledIf = function()
+            return Debuffs:Enabled() and Debuffs:DispelIcon()
+        end,
+        format = function(v)
+            return format("%d%%", v)
+        end,
+        get = function()
+            return math.floor(Debuffs:DispelIconScale() * 100 + 0.5)
+        end,
+        set = function(value)
+            Debuffs:SetDispelIconScale(value / 100)
+        end,
+    })
+    dispelSizeEdit:SetPoint("TOPLEFT", 28, -172)
+    slotsCheck = makeCheck(pf, "Also use the game's boss debuff slots, in a second row", -206, function(checked)
         Debuffs:SetPrivateSlots(checked)
     end)
     slotsCheck.label:SetWidth(LEFT_TEXT_W - 30)
     slotsCheck.label:SetJustifyH("LEFT")
     UI.Help(pf, "Boss debuff slots", "A fallback. Some boss mechanic debuffs are private: the game won't show them to addons at all, only draw them itself in slots an addon places. If a boss's debuff doesn't show in the panel, turn this on and the game draws its private debuffs in a second row under it.\n\nThe game draws those itself, so only the swipe, timer, dispel icon and border size apply to them. Off by default, since the same debuff could show in both rows."):SetPoint("LEFT", slotsCheck.label, "RIGHT", 4, 0)
 
-    -- The look of the boss debuff icons. Previews shows the changes as you make them.
+    -- The look of the boss debuff icons. Preview debuffs shows the changes as you make them.
     local lookTitle = pf:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
     lookTitle:SetPoint("TOPLEFT", LOOK_X, -8)
     lookTitle:SetText("Look")
-    UI.Help(pf, "Look", "How each debuff in the panel looks. The timer and stacks use the addon's font from the General Settings page.\n\nTimer: the time left as text beside or on the icon, or as countdown numbers on the swipe, never both.\n\nBorder size: a dark border around the icon, 5 pixels for each step; 0 has none.\n\nTurn on Previews to see each change as you make it."):SetPoint("LEFT", lookTitle, "RIGHT", 6, 0)
+    UI.Help(pf, "Look", "How each debuff in the panel looks. The timer and stacks use the addon's font from the General Settings page.\n\nTimer: the time left as text beside or on the icon, or as countdown numbers on the swipe, never both.\n\nBorder size: a dark border around the icon, 5 pixels for each step; 0 has none.\n\nPress Preview debuffs to see each change as you make it."):SetPoint("LEFT", lookTitle, "RIGHT", 6, 0)
 
     local timer = lookDropdown(pf, -26, "Timer", "timerPosition", Debuffs.TIMER_POSITIONS)
     local nudgeX = nudgeBox(pf, timer, "Nudge X", "timerX")
@@ -214,7 +274,9 @@ local function build(pf)
     })
     border:SetPoint("TOPLEFT", LOOK_X, -112)
     look[#look + 1] = border
-
+    local dispelBorder = lookCheck(pf, "Color the border by dispel type", -148, "dispelBorder", LOOK_X - 4, nil, Debuffs.SetDispelBorder)
+    UI.Help(pf, "Color the border by dispel type", "Debuffs that have a dispel type get a border in its color: Magic blue, Poison green, Curse purple, Disease brown, and Bleed in the game's bleed color. This works in combat. Debuffs with no dispel type keep the plain border.\n\nGlow adds a soft glow in the same color around those borders.\n\nThe border and the glow need a border size above 0. The boss debuff slots row is drawn by the game and isn't colored."):SetPoint("LEFT", dispelBorder.label, "RIGHT", 4, 0)
+    lookCheck(pf, "Glow on dispellable debuffs", -172, "dispelGlow", LOOK_X + 20, "dispelBorder", Debuffs.SetDispelGlow)
 
     pf:SetScript("OnShow", refresh)
     Debuffs:OnChange(refresh)

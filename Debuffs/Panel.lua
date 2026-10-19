@@ -9,6 +9,11 @@ local ADDON, CRT = ...
 -- filters keep only debuffs not cast by you or your pet, no longer than Hide debuffs longer than, and
 -- none of the excluded lockouts (Debuffs.EXCLUDED_SPELLS), shortest first.
 --
+-- The border colored by dispel type and its glow are textures handed to the game the same way as the
+-- dispel type icon (AddDispelTypeTexture, PreserveAsset style, with a customDispelColorMap): the game
+-- shows them only on a debuff with a dispel type and tints them that type's color from the map. The
+-- preview tiles color theirs from their samples' known types (Debuffs:DispelColor).
+--
 -- The game's boss debuff slots (C_UnitAuras.AddPrivateAuraAnchor, where the game draws a private aura
 -- itself) are kept as an optional second row, off by default, in case boss mechanic debuffs don't
 -- reach the container. Whether they do is checked in game.
@@ -37,7 +42,11 @@ local SLOT_ROW_OFFSET = 24 -- gap above the boss debuff slots, which leaves room
 local REFRESH_SECONDS = 0.5
 local TIMER_FONT = "CRTFontSmall"
 local COUNT_FONT = "CRTFontHighlight"
-local BORDER_COLOR = { 0, 0, 0, 1 }
+local WHITE = "Interface\\Buttons\\WHITE8X8"
+-- The glow behind a dispel type's border: the game's white glow for a new item in the bags, drawn
+-- additively, so the dispel type's color tints it cleanly. A plain square if the atlas is missing.
+local GLOW_ATLAS = "bags-glow-white"
+local GLOW_ALPHA = 0.8
 
 local frame, container, handle
 local slots = {} -- one frame per private aura slot
@@ -137,8 +146,7 @@ local function addAnchors()
     local on = Debuffs:PrivateSlots()
     local size, count = Debuffs:Size(), Debuffs:MaxCount()
     local timerPoint, timerRelative, timerX, timerY = Debuffs:TimerAnchor()
-    local signature = table.concat({ tostring(on), size, count, tostring(Debuffs:DispelIcon()), tostring(Debuffs:Get("swipe")), tostring(Debuffs:Get("swipeEdge")),
-        tostring(Debuffs:SwipeNumbers()), tostring(timerPoint), tostring(timerX), tostring(timerY), tostring(Debuffs:Get("borderScale")) }, ":")
+    local signature = Debuffs:LookSignature()
     if signature == appliedAnchors then
         return
     end
@@ -211,11 +219,28 @@ local function applyCooldownLook(cooldown)
 end
 
 -- The parts of a debuff on a frame (a container button or a preview tile): border, icon, swipe, timer
--- text and stacks on a frame above the swipe, and the dispel type icon.
+-- text and stacks on a frame above the swipe, and the dispel type icon. Behind the icon: the plain
+-- border, the dispel type's border over it, and the glow under both.
 local function makeParts(owner)
     local parts = {}
+    parts.glow = owner:CreateTexture(nil, "BACKGROUND", nil, -1)
+    parts.glow:SetPoint("CENTER")
+    local atlas = C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(GLOW_ATLAS)
+    if atlas then
+        parts.glow:SetAtlas(GLOW_ATLAS)
+        parts.glow:SetAlpha(GLOW_ALPHA)
+    else
+        parts.glow:SetTexture(WHITE)
+        parts.glow:SetAlpha(GLOW_ALPHA * 0.4)
+    end
+    parts.glow:SetBlendMode("ADD")
+    parts.glow:Hide()
     parts.border = owner:CreateTexture(nil, "BACKGROUND")
     parts.border:SetPoint("CENTER")
+    parts.dispelBorder = owner:CreateTexture(nil, "BACKGROUND", nil, 1)
+    parts.dispelBorder:SetPoint("CENTER")
+    parts.dispelBorder:SetTexture(WHITE)
+    parts.dispelBorder:Hide()
     parts.icon = owner:CreateTexture(nil, "ARTWORK")
     parts.icon:SetAllPoints()
     parts.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
@@ -244,9 +269,13 @@ local function layoutParts(owner, parts, size)
     pcall(owner.SetSize, owner, size, size) -- a container button may be set up in combat
     local edge = 5 * (Debuffs:Get("borderScale") or 1)
     parts.border:SetSize(size + edge, size + edge)
-    parts.border:SetColorTexture(BORDER_COLOR[1], BORDER_COLOR[2], BORDER_COLOR[3], BORDER_COLOR[4])
+    local plain = Debuffs.BORDER_COLOR
+    parts.border:SetColorTexture(plain[1], plain[2], plain[3], plain[4])
     parts.border:SetShown(edge > 0)
-    local mark = math.max(10, math.floor(size * 0.35))
+    parts.dispelBorder:SetSize(size + edge, size + edge)
+    local glow = size + edge + 2 * math.max(4, math.floor(size * 0.2))
+    parts.glow:SetSize(glow, glow)
+    local mark = math.max(10, math.floor(size * Debuffs:DispelIconScale()))
     parts.dispel:SetSize(mark, mark)
     if parts.cooldown then
         applyCooldownLook(parts.cooldown)
@@ -277,15 +306,66 @@ local function timeFormatter()
     return formatter or nil
 end
 
-local function dispelStyle()
+-- The game's dispel type texture styles (Enum.CustomAuraButtonDispelTypeTextureStyle): Icon swaps the
+-- texture for the type's icon; PreserveAsset keeps the texture as it is, so the border stays a plain
+-- square and the glow keeps its glow.
+local function dispelStyle(name)
     local styles = Enum and Enum.CustomAuraButtonDispelTypeTextureStyle
-    return type(styles) == "table" and styles.Icon or nil
+    return type(styles) == "table" and styles[name or "Icon"] or nil
+end
+
+-- Each dispel type's color as the game's color objects, keyed by type name (the options'
+-- customDispelColorMap): the game tints the border and glow with the one for the debuff's type, so
+-- the addon never sees the type. Built once, the first time it is needed.
+local colorMap
+local function dispelColorMap()
+    if colorMap == nil then
+        colorMap = false
+        if type(CreateColor) == "function" then
+            local map = {}
+            for kind in pairs(Debuffs.DISPEL_COLORS) do
+                local r, g, b = Debuffs:DispelColor(kind)
+                map[kind] = CreateColor(r, g, b, 1)
+            end
+            colorMap = map
+        else
+            note("CreateColor is missing, so the dispel border has no colors")
+        end
+    end
+    return colorMap or nil
+end
+
+-- Hides a dispel border or glow the game no longer fills. The game may have made its shown state
+-- secret, so the call is guarded.
+local function hidePart(texture)
+    pcall(texture.Hide, texture)
+end
+
+-- The border colored by dispel type, and its glow, on a container button. The game fills both: it
+-- shows them only on a debuff that has a dispel type, tinted that type's color from the color map.
+-- Both need a border size above 0.
+local function wireDispelBorder(button, parts)
+    local style = dispelStyle("PreserveAsset")
+    local edge = 5 * (Debuffs:Get("borderScale") or 1)
+    local options = { style = style, showWhenHarmful = true, showWhenHelpful = false, showWithoutDispelType = false,
+        customDispelColorMap = dispelColorMap() }
+    if Debuffs:DispelBorder() and edge > 0 and style ~= nil then
+        try("button", button, "AddDispelTypeTexture", parts.dispelBorder, options)
+    else
+        hidePart(parts.dispelBorder)
+    end
+    if Debuffs:DispelGlow() and edge > 0 and style ~= nil then
+        try("button", button, "AddDispelTypeTexture", parts.glow, options)
+    else
+        hidePart(parts.glow)
+    end
 end
 
 -- Points a container button's parts at the game: what it fills, and what it leaves out (the Clear
 -- calls), so a setting turned off stops showing at once.
 local function wireButton(button, parts)
-    if forbidden(button) or forbidden(parts.icon) or forbidden(parts.border) or forbidden(parts.over) then
+    if forbidden(button) or forbidden(parts.icon) or forbidden(parts.border) or forbidden(parts.over) or forbidden(parts.dispelBorder)
+        or forbidden(parts.glow) then
         dirty[button] = true
         skipped = skipped + 1
         pendingApply = true
@@ -320,6 +400,7 @@ local function wireButton(button, parts)
     else
         parts.dispel:Hide()
     end
+    wireDispelBorder(button, parts)
     return true
 end
 
@@ -499,6 +580,14 @@ local function updateTiles()
             local dispel = Debuffs:DispelIcon() and sample.dispel and DISPEL_ICONS[sample.dispel]
             parts.dispel:SetTexture(dispel or nil)
             parts.dispel:SetShown(dispel and true or false)
+            -- The samples' dispel types are the addon's own, so their border is colored here.
+            local typed = sample.dispel ~= nil
+            local edge = 5 * (Debuffs:Get("borderScale") or 1)
+            local r, g, b = Debuffs:DispelColor(sample.dispel)
+            parts.dispelBorder:SetVertexColor(r, g, b, 1)
+            parts.dispelBorder:SetShown(Debuffs:DispelBorder() and typed and edge > 0)
+            parts.glow:SetVertexColor(r, g, b, 1)
+            parts.glow:SetShown(Debuffs:DispelGlow() and typed and edge > 0)
             if not tile.endsAt then
                 tile.endsAt = GetTime() + sample.left
                 if parts.cooldown then
@@ -630,6 +719,13 @@ function Panel:SetPreview(on)
     updateTiles()
     layout()
     updateVisibility()
+    if self.onPreviewChange then
+        self.onPreviewChange(previewOn)
+    end
+end
+
+function Panel:IsPreviewing()
+    return previewOn
 end
 
 function Panel:ResetPosition()
@@ -755,10 +851,12 @@ function Panel:InfoText()
     end
     add("Encounter in progress: " .. tostring(encounterActive()) .. " (flag " .. tostring(encounter) .. "), safe to set up buttons: " .. tostring(safeToWire())
         .. ", settings waiting: " .. tostring(pendingApply) .. ", forbidden buttons skipped: " .. skipped .. " (" .. dirtyCount .. " waiting)")
-    add(format("Settings: size %d, max %d, dispel icon %s, hide longer than %s, boss debuff slots %s", Debuffs:Size(), Debuffs:MaxCount(),
-        tostring(Debuffs:DispelIcon()), Debuffs:MaxDuration() > 0 and (Debuffs:MaxDuration() .. " s") or "off", tostring(Debuffs:PrivateSlots())))
-    add(format("Look: swipe %s, edge %s, countdown numbers %s, timer %s (%s, %s), border %s", tostring(Debuffs:Get("swipe")), tostring(Debuffs:Get("swipeEdge")),
-        tostring(Debuffs:SwipeNumbers()), tostring(Debuffs:Get("timerPosition")), tostring(Debuffs:Get("timerX")), tostring(Debuffs:Get("timerY")), tostring(Debuffs:Get("borderScale"))))
+    add(format("Settings: size %d, max %d, dispel icon %s, dispel icon size %d%%, hide longer than %s, boss debuff slots %s", Debuffs:Size(), Debuffs:MaxCount(),
+        tostring(Debuffs:DispelIcon()), math.floor(Debuffs:DispelIconScale() * 100 + 0.5), Debuffs:MaxDuration() > 0 and (Debuffs:MaxDuration() .. " s") or "off",
+        tostring(Debuffs:PrivateSlots())))
+    add(format("Look: swipe %s, edge %s, countdown numbers %s, timer %s (%s, %s), border %s, dispel border %s, glow %s", tostring(Debuffs:Get("swipe")),
+        tostring(Debuffs:Get("swipeEdge")), tostring(Debuffs:SwipeNumbers()), tostring(Debuffs:Get("timerPosition")), tostring(Debuffs:Get("timerX")),
+        tostring(Debuffs:Get("timerY")), tostring(Debuffs:Get("borderScale")), tostring(Debuffs:DispelBorder()), tostring(Debuffs:DispelGlow())))
     if frame then
         local point, _, relativePoint, x, y = frame:GetPoint()
         add(format("Panel: alpha %s, shown %s, effective alpha %s, size %s x %s, at %s %s %s,%s",
@@ -778,7 +876,7 @@ function Panel:InfoText()
     add("  created: " .. tostring(container ~= nil) .. (report.template and (" (template " .. report.template .. ")") or "")
         .. ", aura group added: " .. tostring(report.created) .. ", sort: " .. tostring(report.sort))
     add("  group filter: HARMFUL, candidate filters: " .. describe(Debuffs:CandidateFilters(), 2))
-    add("  dispel icon style: " .. tostring(dispelStyle()) .. ", time formatter: " .. tostring(timeFormatter() ~= nil))
+    add("  dispel icon style: " .. tostring(dispelStyle()) .. ", dispel border style: " .. tostring(dispelStyle("PreserveAsset")) .. ", time formatter: " .. tostring(timeFormatter() ~= nil))
     if container and forbidden(container) then
         add("  the container is forbidden right now (an encounter), so its frames can't be read")
     elseif container then
@@ -874,9 +972,15 @@ events:SetScript("OnEvent", function(_, event)
     end
 end)
 
-CRT.UI:RegisterPreview("debuffs", function(on)
+-- Shows or hides the preview, building the panel first when it hasn't been yet: for Previews in the
+-- main window, and for Preview debuffs on the Debuffs tab, which shows only this panel.
+function Panel:ShowPreview(on)
     if not frame and safeToWire() then
         build()
     end
-    Panel:SetPreview(on)
+    self:SetPreview(on)
+end
+
+CRT.UI:RegisterPreview("debuffs", function(on)
+    Panel:ShowPreview(on)
 end)

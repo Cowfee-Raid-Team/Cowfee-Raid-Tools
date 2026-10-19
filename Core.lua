@@ -87,6 +87,7 @@ local defaults = {
         size = 44, -- icon size in pixels
         maxCount = 4, -- how many to show at once
         dispelIcon = false, -- show the dispel type icon on each debuff
+        dispelIconScale = 0.35, -- that icon's size, as a fraction of the debuff icon (0.2 to 1)
         maxDuration = 300, -- leave out debuffs longer than this many seconds; 0 shows every length
         privateSlots = false, -- also the game's boss debuff slots, as a second row (a fallback)
         -- The look: only what the game lets an addon pass to its own debuff icons.
@@ -99,6 +100,8 @@ local defaults = {
         timerX = 0, -- nudges the timer text, in pixels
         timerY = 0,
         borderScale = 1, -- the game's debuff border is the icon plus 5 x this many pixels, 0 to 6
+        dispelBorder = false, -- color the border by the debuff's dispel type
+        dispelGlow = false, -- and a soft glow around it (only with dispelBorder)
     },
     -- Raid notes. list[id] holds each imported or received note. window and alert hold the
     -- note window and personal alert settings, with position added when they are moved.
