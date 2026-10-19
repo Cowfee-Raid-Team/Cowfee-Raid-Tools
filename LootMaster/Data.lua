@@ -409,6 +409,53 @@ function Session:Tick()
     return changed
 end
 
+-- Response buttons on the raider popup: each is as wide as its label (measured in the game's font),
+-- plus its icon and padding, never narrower than BUTTON_MIN_W.
+LM.BUTTON_PAD = 6 -- each side
+LM.BUTTON_ICON = 14
+LM.BUTTON_ICON_GAP = 3
+LM.BUTTON_MIN_W = 40
+
+function LM.ButtonWidth(labelWidth, hasIcon)
+    local w = math.ceil(labelWidth or 0) + 2 * LM.BUTTON_PAD
+    if hasIcon then
+        w = w + LM.BUTTON_ICON + LM.BUTTON_ICON_GAP
+    end
+    return math.max(LM.BUTTON_MIN_W, w)
+end
+
+-- Lays buttons of these widths out in rows no wider than maxW: one row with `gap` when it fits, else one
+-- row with `minGap`, else as many rows as needed with `gap`. Returns { { x, row } } and the row count.
+function LM.ButtonLayout(widths, maxW, gap, minGap)
+    local total = 0
+    for _, w in ipairs(widths) do
+        total = total + w
+    end
+    local n = #widths
+    local one = function(g)
+        return total + g * math.max(0, n - 1) <= maxW
+    end
+    local out = {}
+    if one(gap) or one(minGap) then
+        local g = one(gap) and gap or minGap
+        local x = 0
+        for i, w in ipairs(widths) do
+            out[i] = { x = x, row = 1 }
+            x = x + w + g
+        end
+        return out, (n > 0) and 1 or 0
+    end
+    local x, row = 0, 1
+    for i, w in ipairs(widths) do
+        if x > 0 and x + w > maxW then
+            x, row = 0, row + 1
+        end
+        out[i] = { x = x, row = row }
+        x = x + w + gap
+    end
+    return out, row
+end
+
 -- The columns the looter can sort by, and the value each sorts on.
 LM.SORT_VALUES = {
     name = function(r) return r.name:lower() end,

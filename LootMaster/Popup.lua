@@ -19,7 +19,7 @@ local L = {
     headerH = 26, -- the title bar above the panels
     pad = 8,
     icon = 36,
-    button = { w = 70, h = 22, gap = 4, icon = 14 },
+    button = { h = 22, gap = 4, minGap = 2, rowGap = 4 }, -- widths come from each label (LM.ButtonWidth)
     noteW = 190,
     fadeAlpha = 0.55, -- an answered panel
     timerAlpha = 0.07, -- the lighter part of the background, the time left
@@ -93,10 +93,10 @@ local function colors()
 end
 
 -- A response button: a dark fill in the response's colour, its edge and text brighter, and its icon
--- when it has one.
+-- when it has one. Its width comes from the label as the game draws it (LM.ButtonWidth), so a long
+-- label or an icon never spills over the edge.
 local function responseButton(parent, r)
     local b = CreateFrame("Button", nil, parent, "BackdropTemplate")
-    b:SetSize(L.button.w, L.button.h)
     b:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
     local c = r.color
     b:SetBackdropColor(c[1] * 0.3, c[2] * 0.3, c[3] * 0.3, 0.95)
@@ -104,12 +104,15 @@ local function responseButton(parent, r)
     b.text = b:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     b.text:SetTextColor(math.min(1, c[1] * 0.5 + 0.5), math.min(1, c[2] * 0.5 + 0.5), math.min(1, c[3] * 0.5 + 0.5))
     b.text:SetText(r.label)
-    if LM.Icon(r.icon) then
+    b.text:SetWordWrap(false)
+    local hasIcon = LM.Icon(r.icon) ~= nil
+    b:SetSize(LM.ButtonWidth(b.text:GetStringWidth(), hasIcon), L.button.h)
+    if hasIcon then
         local t = b:CreateTexture(nil, "OVERLAY")
-        t:SetSize(L.button.icon, L.button.icon)
-        t:SetPoint("LEFT", 4, 0)
+        t:SetSize(LM.BUTTON_ICON, LM.BUTTON_ICON)
+        t:SetPoint("LEFT", LM.BUTTON_PAD, 0)
         LM.SetIconTexture(t, r.icon)
-        b.text:SetPoint("LEFT", t, "RIGHT", 3, 0)
+        b.text:SetPoint("LEFT", t, "RIGHT", LM.BUTTON_ICON_GAP, 0)
     else
         b.text:SetPoint("CENTER")
     end
@@ -278,14 +281,26 @@ local function setButtons(p, responses)
         b:SetParent(nil)
     end
     wipe(p.buttons)
+    local widths = {}
     for k, r in ipairs(responses) do
         local b = responseButton(p, r)
-        b:SetPoint("TOPLEFT", L.pad + (k - 1) * (L.button.w + L.button.gap), -(L.pad + L.icon + 6))
         b:SetScript("OnClick", function()
             LM:Answer(p.index, r.key, strtrim(p.note:GetText() or ""))
         end)
         p.buttons[k] = b
+        widths[k] = b:GetWidth()
     end
+    -- one row with a gap, a tighter gap, or more rows: never overlapping, never past the panel's edge
+    local pos, rows = LM.ButtonLayout(widths, L.width - 2 * L.pad, L.button.gap, L.button.minGap)
+    local top = -(L.pad + L.icon + 6)
+    for k, b in ipairs(p.buttons) do
+        b:SetPoint("TOPLEFT", L.pad + pos[k].x, top - (pos[k].row - 1) * (L.button.h + L.button.rowGap))
+    end
+    -- the Notes line and the panel move down for each extra row
+    local extra = (math.max(1, rows) - 1) * (L.button.h + L.button.rowGap)
+    p.notesLabel:ClearAllPoints()
+    p.notesLabel:SetPoint("TOPLEFT", L.pad, top - L.button.h - 8 - extra - 3)
+    p:SetHeight(L.panelH + extra)
 end
 
 local function fill(p, index, it, mine, inc)
@@ -397,11 +412,13 @@ local function refresh()
     header:SetBadge(inc.test and TEXT.test or nil, TEXT.testNote)
     local open = openItems(inc)
     local shown = {}
-    for k, index in ipairs(open) do
+    local y = L.headerH + L.gap -- panels can be taller when their buttons wrap, so they stack by height
+    for _, index in ipairs(open) do
         local p = panel(index)
-        p:ClearAllPoints()
-        p:SetPoint("TOPLEFT", 0, -(L.headerH + L.gap + (k - 1) * (L.panelH + L.gap)))
         fill(p, index, inc.items[index], inc.mine[index], inc)
+        p:ClearAllPoints()
+        p:SetPoint("TOPLEFT", 0, -y)
+        y = y + p:GetHeight() + L.gap
         p.time:SetText(string.format(TEXT.timeLeft, math.ceil(timeLeft(inc.items[index], inc))))
         p:Show()
         shown[index] = true
@@ -411,7 +428,7 @@ local function refresh()
             p:Hide()
         end
     end
-    anchor:SetHeight(L.headerH + L.gap + math.max(1, #open) * (L.panelH + L.gap))
+    anchor:SetHeight(math.max(y, L.headerH + L.gap + L.panelH))
     if #open == 0 then
         anchor:Hide()
     end
