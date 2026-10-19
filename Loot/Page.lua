@@ -21,18 +21,20 @@ local ROW_H = 20
 local ALL = ""
 local TOKEN_CLASS, TOKEN_SUBCLASS = 15, 0 -- Miscellaneous, Junk: how the game files tier tokens
 local GEAR_ICON = 16 -- the Had column's item icons
+local NOT_ROLLED = "~none~" -- the Response filter's key for items with no roll or response
 local MAX_CANDIDATES = 25 -- lines of RCLootCouncil's candidate list in a row's tooltip
 
 local TEXT = {
     title = "Loot History",
     help = "Every boss item of epic quality or better that someone in your group gets in a raid, recorded on your own computer from what the game reports: who got it, from which boss, on which difficulty, and how they rolled when it was group loot.\n\nWith RCLootCouncil installed, its awards are read in too (read only): the response, the council's votes, the winner's note and the gear they had fill in the matching items, and its awards that match no recorded item are listed as rows of their own. Hover a row for every candidate's response and roll.\n\nRight-click a recorded item to delete it. Settings has what is recorded, how long it is kept, and deleting more.",
-    filtersHelp = "Filters: each dropdown narrows the list; All shows everything. Source picks items CRT recorded, or RCLootCouncil's awards that CRT did not record. Search matches the item, player and boss names (an item's name shows once the game has loaded it).\n\nExport gives what the list shows now as CSV, to paste into a spreadsheet or Notion.",
+    filtersHelp = "Filters: each dropdown narrows the list; All shows everything. Response lists what the Roll / response column shows, each once: the game's roll types and RCLootCouncil's responses. Source picks items CRT recorded, or RCLootCouncil's awards that CRT did not record. Search matches the item, player and boss names (an item's name shows once the game has loaded it).\n\nExport gives what the list shows now as CSV, to paste into a spreadsheet or Notion.",
     summaryHelp = "For the filters on the History tab: how many items each player got, and how many of them were tier tokens (in gold).",
     rcHelp = "With RCLootCouncil installed, CRT reads its saved awards: the response and its colour, the council's votes, the winner's note and roll, the gear they had, and every candidate's response, roll and item level. An award that matches a recorded item (same player and item, within a few hours) fills in that item; the others are listed on the History tab as rows of their own. CRT only reads RCLootCouncil's data and never changes or saves it. Re-scan reads it again now.",
     search = "Search",
     export = "Export CSV",
     count = "%d items",
     all = "All",
+    notRolled = "Not rolled",
     sourceCRT = "Recorded by CRT",
     sourceRC = "RCLootCouncil only",
     rcRow = "From RCLootCouncil (not recorded by CRT)",
@@ -133,7 +135,7 @@ local function fieldsOf(e)
             time = rec[R.TIME], player = Loot:Name("players", rec[R.PLAYER]) or "?", classFile = classFileOf(rec[R.CLASS]),
             itemString = rec[R.ITEM], boss = Loot:Boss(rec[R.ENC]) or "", bossKey = tostring(rec[R.ENC]),
             instance = Loot:Name("instances", rec[R.INST]) or "", diff = rec[R.DIFF], roll = roll,
-            rollKey = tostring(roll or "none"), rc = rc, source = "crt",
+            rollKey = (rc and rc.response) or (roll and Loot.ROLLS[roll]) or NOT_ROLLED, rc = rc, source = "crt",
         }
     end
     if not e.f then
@@ -142,7 +144,7 @@ local function fieldsOf(e)
         e.f = {
             time = a.time, player = a.winner, classFile = a.class, itemString = a.itemString, link = a.link,
             boss = a.boss or "", bossKey = id and tostring(id) or ("rc:" .. (a.boss or "")), instance = a.instance or "",
-            diff = a.difficultyID, rollKey = "none", rc = a, source = "rc",
+            diff = a.difficultyID, rollKey = a.response or NOT_ROLLED, rc = a, source = "rc",
         }
     end
     return e.f
@@ -253,7 +255,7 @@ local function choices(kind)
         elseif kind == "diff" then
             found[#found + 1] = { tostring(f.diff), difficultyName(f.diff) }
         elseif kind == "roll" then
-            found[#found + 1] = { f.rollKey, f.roll and Loot.ROLLS[f.roll] or "Not rolled" }
+            found[#found + 1] = { f.rollKey, f.rollKey == NOT_ROLLED and TEXT.notRolled or f.rollKey }
         elseif kind == "month" and e.month ~= "" then
             found[#found + 1] = { e.month, e.month }
         end
@@ -494,7 +496,7 @@ end
 local function buildHistory(f)
     local x = 8
     for _, spec in ipairs({ { "Player", 44, 140, "player" }, { "Boss", 34, 150, "boss" }, { "Difficulty", 62, 110, "diff" },
-        { "Month", 42, 100, "month" }, { "Roll", 30, 100, "roll" } }) do
+        { "Month", 42, 100, "month" }, { "Response", 62, 150, "roll" } }) do
         local row = filterDropdown(f, spec[1], spec[2], spec[3], spec[4])
         row:SetPoint("TOPLEFT", x, -4)
         x = x + spec[2] + 5 + spec[3] + 12
