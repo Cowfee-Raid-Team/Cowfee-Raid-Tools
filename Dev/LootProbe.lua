@@ -316,6 +316,39 @@ function Probe:Spec(arg)
         log("spec info for %s: %s, %d ids: %s", tostring(item:GetItemLink() or link), kind, #ids, #ids > 0 and table.concat(ids, "; ") or "-")
         log("  your specs: %s", mineText)
         log("  rule: %s  (%.1f s to load)", verdict, GetTime() - started)
+        -- class limits (weapon and armor types, "Classes:" lines): what each candidate API says, to decide
+        -- which one truly means "this class can never use it"
+        local _, _, subType, equipLoc, _, classID, subClassID = C_Item.GetItemInfoInstant(link)
+        local _, myClassFile, myClassID = UnitClass("player")
+        local function try(fn, ...)
+            if not fn then
+                return "missing"
+            end
+            local ok2, a, b = pcall(fn, ...)
+            return ok2 and (tostring(a) .. (b ~= nil and (", " .. tostring(b)) or "")) or ("error " .. tostring(a))
+        end
+        log("  item class %s / subclass %s (%s), slot %s; you are %s (class %s)", str(classID), str(subClassID),
+            str(subType), str(equipLoc), str(myClassFile), str(myClassID))
+        log("  IsEquippableItem: %s   IsUsableItem: %s   DoesItemContainSpec(class): %s", try(C_Item.IsEquippableItem, link),
+            try(C_Item.IsUsableItem, link), try(C_Item.DoesItemContainSpec, link, myClassID or 0, 0))
+        local okT, data = pcall(C_TooltipInfo.GetHyperlink, link)
+        if okT and type(data) == "table" and type(data.lines) == "table" then
+            local T = Enum and Enum.TooltipDataLineType or {}
+            local want = { [T.UsageRequirement or -1] = "UsageRequirement", [T.EquipSlot or -2] = "EquipSlot",
+                [T.ErrorLine or -3] = "ErrorLine", [T.DisabledLine or -4] = "DisabledLine" }
+            for _, line in ipairs(data.lines) do
+                local kind = want[line.type]
+                local function col(c)
+                    return c and c.GetRGB and string.format("%.2f/%.2f/%.2f", c:GetRGB()) or "-"
+                end
+                if kind then
+                    log("  tooltip %s: '%s' (%s)  right '%s' (%s)", kind, str(line.leftText), col(line.leftColor),
+                        str(line.rightText), col(line.rightColor))
+                end
+            end
+        else
+            log("  tooltip data: %s", okT and "none" or ("error " .. tostring(data)))
+        end
     end
     if item:IsItemDataCached() then
         report(true)

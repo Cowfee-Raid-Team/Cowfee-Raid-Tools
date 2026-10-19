@@ -33,6 +33,7 @@ local TEXT = {
     autoOne = "%d item your specs can't use was answered %s for you.",
     autoMany = "%d items your specs can't use were answered %s for you.",
     showAuto = "Show",
+    autoAnswered = "Your specs can't use this: answered %s for you",
     help = "Pick an answer for each item. Your pick goes to the raid leader, who gives the item out, and every button except Pass also does a /roll that everyone can see. You can change your answer until the time runs out.\n\nThe lighter part of each item's background is the time left. Close an item with its X or a right-click; drag any item to move them all.",
     have = "You have: ",
     nothing = "nothing in that slot",
@@ -322,7 +323,7 @@ local function fill(p, index, it, mine, inc)
     end
     local award = it.award
     for _, b in ipairs(p.buttons) do
-        b:SetEnabled(award == nil)
+        b:SetEnabled(award == nil and not (mine and mine.auto))
         local picked = mine and mine.response == b.response
         b:SetAlpha((award or (mine and mine.response and not picked)) and 0.5 or 1)
     end
@@ -332,6 +333,9 @@ local function fill(p, index, it, mine, inc)
     if award then
         local r = inc.byKey[award.response]
         p.status:SetText(string.format(TEXT.awarded, Ambiguate(award.name, "short"), r and r.label or award.response))
+    elseif mine and mine.auto then
+        local r = inc.byKey[mine.response]
+        p.status:SetText(string.format(TEXT.autoAnswered, r and r.label or mine.response))
     elseif mine and mine.response then
         local r = inc.byKey[mine.response]
         p.status:SetText(string.format(TEXT.sent, r and r.label or mine.response) .. (mine.roll and string.format(TEXT.rolled, mine.roll) or ""))

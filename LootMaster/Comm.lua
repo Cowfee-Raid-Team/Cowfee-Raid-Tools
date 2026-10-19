@@ -383,12 +383,14 @@ function LM:Answer(index, response, note)
     if not inc or not inc.items[index] then
         return
     end
+    if inc.mine[index] and inc.mine[index].auto then
+        return -- answered for you because your specs can't use it: you can see it, not answer it
+    end
     local mine = inc.mine[index] or {}
     inc.mine[index] = mine
     mine.response, mine.note = response, note
     local gear = self:MyGear(inc.items[index].itemString)
     local _, classFile = UnitClass("player")
-    mine.auto, mine.autoSpecs = nil, nil -- a pick of your own replaces an automatic answer
     send("R", { inc.id, index, response, self:MyRole(), classFile or "", self:MyItemLevel(),
         Wire.GearText(gear[1]), Wire.GearText(gear[2]), "", "", note or "" }, inc.leader)
     if response ~= "pass" and not mine.rolled then
@@ -477,13 +479,14 @@ local function judge(inc, index, loaded)
     local response = inc.byKey.tmog and "tmog" or "pass"
     local gear = LM:MyGear(it.itemString)
     local _, classFile = UnitClass("player")
-    inc.mine[index] = { response = response, auto = true, autoSpecs = specs, closed = true }
+    -- hidden, unless you chose to see every item; either way you can see it but not answer it
+    inc.mine[index] = { response = response, auto = true, autoSpecs = specs, closed = not LM:Settings().showAllItems }
     send("R", { inc.id, index, response, LM:MyRole(), classFile or "", LM:MyItemLevel(),
         Wire.GearText(gear[1]), Wire.GearText(gear[2]), "1", table.concat(specs, ","), "" }, inc.leader)
 end
 
 -- Checks every item of a session, then calls done once: when all are judged, or after SPEC_WAIT.
--- Off when the leader turned it off, or you ticked "Show me items my specs can't use".
+-- Off when the leader turned it off. "Show me every item anyway" only shows them: you still can't answer.
 function LM:CheckSpecs(inc, done)
     local finished = false
     local function finish()
@@ -492,7 +495,7 @@ function LM:CheckSpecs(inc, done)
             done()
         end
     end
-    if not inc.autoPass or self:Settings().showAllItems or not (C_Item and C_Item.GetItemSpecInfo) then
+    if not inc.autoPass or not (C_Item and C_Item.GetItemSpecInfo) then
         finish()
         return
     end
@@ -522,7 +525,7 @@ function LM:CheckSpecs(inc, done)
     end
 end
 
--- Shows the items that were answered for you, so you can answer them yourself.
+-- Shows the items that were answered for you, to look at (their buttons stay off).
 function LM:ShowAutoItems()
     local inc = self.incoming
     if not inc then
