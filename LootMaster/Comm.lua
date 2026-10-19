@@ -12,7 +12,9 @@ local ADDON, CRT = ...
 --           I items (packed, several a message), Q show an item again to a raider, L a roll the looter's
 --           CRT drew for a raider (silent: no /roll in chat), A an item given out, E end
 --   raider: K hello, Y ready (every item and button arrived), R answer
---   leader: U who may run loot (the raid leader's list; raiders trust only that)
+--   leader: U who may run loot (the raid leader's list; raiders trust only that), M Sync Master Loot
+--           (LootMaster/Sync.lua, its own handler through LM.Handle)
+-- A kind this version doesn't know is dropped without a word, so a new kind never troubles an older CRT.
 -- Who may run loot: the raid leader (unless their list says not) and the names on the current raid
 -- leader's list. A raider's own settings never grant anyone authority; no list received means leader only.
 -- A session survives a /reload on both sides (CRTDBChar.lootSession), with every clock started again.
@@ -114,6 +116,7 @@ local function leaderName()
     end
     return nil
 end
+LM.LeaderName = leaderName
 
 -- Sending --------------------------------------------------------------------------------------------
 
@@ -193,6 +196,7 @@ local function send(kind, fields)
     sendText(Wire.Encode(kind, fields))
 end
 LM.Send = send
+LM.SendText = sendText -- a finished message, such as one of Wire.Pack's
 
 -- Loot authority -------------------------------------------------------------------------------------
 
@@ -860,6 +864,11 @@ local function fromLooter(inc, f, sender)
 end
 
 local HANDLERS = {}
+
+-- Another file's message kind: fn(fields, sender), sender a full Name-Realm.
+function LM.Handle(kind, fn)
+    HANDLERS[kind] = fn
+end
 
 -- U: the raid leader's list of who may run loot. Parts share a stamp; a new stamp starts a new list.
 HANDLERS.U = function(f, sender)

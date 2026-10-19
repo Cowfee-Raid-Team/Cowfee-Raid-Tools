@@ -67,6 +67,7 @@ Loot\Page.lua
 LootMaster\Data.lua
 LootMaster\Score.lua
 LootMaster\Comm.lua
+LootMaster\Sync.lua
 LootMaster\Tabs.lua
 LootMaster\Popup.lua
 LootMaster\Window.lua

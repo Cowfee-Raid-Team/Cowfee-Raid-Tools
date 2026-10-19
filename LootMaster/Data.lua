@@ -274,6 +274,73 @@ end
 LM.AWARD_DEFAULT = "%i awarded to %p for %r with a %v roll."
 LM.NO_ROLL_CHOICES = { "-", "0", "no" }
 
+LM.AWARD_MAX = 200 -- letters in the award message
+LM.AWARD_CHANNELS = { "RAID", "RAID_WARNING", "PARTY", "GUILD", "OFFICER", "SELF", "NONE" } -- besides CHANNEL: and COMMUNITY:
+LM.AUTHORITY_MAX = 6 -- named players with loot authority
+
+-- The Settings tab's number settings: { min, max, step }. The sliders use them, and a synced value is
+-- clamped to them (LootMaster/Sync.lua).
+LM.LIMITS = {
+    responseSeconds = { 20, 180, 5 },
+    late = { 0, 30, 1 }, per10 = { 0, 10, 1 }, noShow = { 0, 50, 1 }, recover = { 0, 20, 1 }, weeks = { 1, 26, 1 },
+}
+LM.SCORE_WEIGHTS = { "late", "per10", "noShow", "recover", "weeks" } -- the Raider Score weights, in order
+
+-- A number setting made safe: a number (else fallback, else the minimum), on a step, within its limits.
+function LM.Clamp(key, v, fallback)
+    local lim = LM.LIMITS[key]
+    v = tonumber(v)
+    if not v or v ~= v then
+        v = tonumber(fallback) or lim[1]
+    end
+    v = math.max(lim[1], math.min(lim[2], v))
+    return math.max(lim[1], math.min(lim[2], lim[1] + math.floor((v - lim[1]) / lim[3] + 0.5) * lim[3]))
+end
+
+-- At most n letters of a UTF-8 text (a letter may be several bytes).
+local function cutLetters(text, n)
+    local letters = 0
+    for i = 1, #text do
+        local b = text:byte(i)
+        if b < 0x80 or b >= 0xC0 then
+            letters = letters + 1
+            if letters > n then
+                return text:sub(1, i - 1)
+            end
+        end
+    end
+    return text
+end
+
+-- The award message made safe: trimmed, at most AWARD_MAX letters, the default when empty.
+function LM.CleanAwardMessage(text)
+    text = cutLetters((tostring(text or ""):gsub("^%s+", ""):gsub("%s+$", "")), LM.AWARD_MAX)
+    return text ~= "" and text or LM.AWARD_DEFAULT
+end
+
+-- Send to made safe: a chat type of AWARD_CHANNELS, CHANNEL:<name> or COMMUNITY:<club>:<stream>; else Raid.
+function LM.CleanAwardChannel(v)
+    v = tostring(v or "")
+    for _, k in ipairs(LM.AWARD_CHANNELS) do
+        if v == k then
+            return v
+        end
+    end
+    if v:match("^CHANNEL:[^:]+$") or v:match("^COMMUNITY:[^:]+:[^:]+$") then
+        return v
+    end
+    return "RAID"
+end
+
+function LM.CleanNoRoll(v)
+    for _, k in ipairs(LM.NO_ROLL_CHOICES) do
+        if v == k then
+            return v
+        end
+    end
+    return LM.NO_ROLL_CHOICES[1]
+end
+
 -- fields: item, player, response, roll, noRoll. Pure, for tests.
 function LM.FormatAward(template, f)
     local values = {
