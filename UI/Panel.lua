@@ -482,6 +482,35 @@ function UI:SkinDropdown(d)
     d.crtSkin(self:IsModern())
 end
 
+-- An InputBoxTemplate edit box: flat like a dropdown in Modern, the template's Left, Middle and Right art
+-- in Classic. The flat box starts 5 pixels left of the frame, where the template's art starts, so the
+-- text keeps a little room either way.
+local EDIT_ART_OUT = 5
+
+function UI:SkinEditBox(e)
+    if type(e) ~= "table" or e.crtSkin then
+        return
+    end
+    local bg, edges = flatSkin(e, 0)
+    bg:ClearAllPoints()
+    bg:SetPoint("TOPLEFT", -EDIT_ART_OUT, 0)
+    bg:SetPoint("BOTTOMRIGHT", 0, 0)
+    local art = {}
+    for _, key in ipairs({ "Left", "Middle", "Right" }) do
+        if type(e[key]) == "table" and e[key].SetAlpha then
+            art[#art + 1] = e[key]
+        end
+    end
+    e.crtSkin = function(modern)
+        for _, t in ipairs(art) do
+            t:SetAlpha(modern and 0 or 1)
+        end
+        setFlat(bg, edges, modern)
+    end
+    self.skinned[#self.skinned + 1] = e
+    e.crtSkin(self:IsModern())
+end
+
 -- A UIPanelButtonTemplate button: its Left, Middle and Right art and its red highlight.
 -- A close button (UIPanelCloseButton, or the window template's own): in Modern, a plain X in place
 -- of the game's red and gold button art, cream and turning caramel on hover.

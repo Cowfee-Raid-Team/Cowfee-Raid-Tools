@@ -43,6 +43,7 @@ local TEXT = {
     auto = "auto",
     autoClasses = "Answered by %s's CRT: the item is only for %s, not their class. You can turn this off on the Settings tab.",
     autoArmor = "Answered by %s's CRT: the item is %s, not their class's armor type. You can turn this off on the Settings tab.",
+    autoWeapon = "Answered by %s's CRT: its weapon type (%s) is one their class can't use. You can turn this off on the Settings tab.",
     autoWhy = "Answered by %s's CRT: the game lists this item only for %s, and none of those is one of their specs. They can answer it themselves, and you can turn this off on the Settings tab.",
     awardFor = "Give for %s",
     resend = "Show their popup again",
@@ -97,14 +98,13 @@ local function rowMenu(row)
     contextMenu(row, function(root)
         root:CreateTitle(#picked == 1 and Ambiguate(picked[1], "short") or string.format(TEXT.selected, #picked))
         if #picked == 1 then
-            for _, resp in ipairs(s.responses) do
-                if resp.key ~= "pass" then
-                    local c = resp.color
-                    local label = string.format("|cff%02x%02x%02x%s|r", c[1] * 255, c[2] * 255, c[3] * 255, string.format(TEXT.awardFor, resp.label))
-                    root:CreateButton(label, function()
-                        LM:Award(index, picked[1], resp.key)
-                    end)
-                end
+            -- every answer can win an item, the weight-0 last button and the built-in Transmog too
+            for _, resp in ipairs(s:AwardResponses()) do
+                local c = resp.color
+                local label = string.format("|cff%02x%02x%02x%s|r", c[1] * 255, c[2] * 255, c[3] * 255, string.format(TEXT.awardFor, resp.label))
+                root:CreateButton(label, function()
+                    LM:Award(index, picked[1], resp.key)
+                end)
             end
             root:CreateDivider()
         end
@@ -214,6 +214,8 @@ local function initRow(row, r)
                     local sub = tonumber(d.autoDetail)
                     local name = sub and C_Item.GetItemSubClassInfo and C_Item.GetItemSubClassInfo(LM.ITEM_CLASS_ARMOR, sub)
                     text = string.format(TEXT.autoArmor, who, name or "?")
+                elseif d.autoWhy == "weapon" then
+                    text = string.format(TEXT.autoWeapon, who, d.autoDetail or "?")
                 else
                     local names = {}
                     for _, id in ipairs(d.autoSpecs or {}) do
@@ -252,7 +254,7 @@ local function initRow(row, r)
     cols.note:SetText(r.note or "")
     if r.roll then
         cols.roll:SetText(tostring(r.roll))
-    elseif r.response and r.response ~= "pass" and not r.auto then
+    elseif r.response then
         cols.roll:SetText("|cff9c8a78...|r") -- drawn when the answer arrives
     else
         cols.roll:SetText("")

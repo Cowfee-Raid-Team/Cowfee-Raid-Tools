@@ -20,7 +20,11 @@ local L = {
     sliderLabel = 118, sliderW = 110,
     scoreRow = 20,
     authorityRows = 6, -- named players with loot authority
+    -- the Loot authority Add row: "Add", the guild dropdown, then a box filling the rest of the column
+    addLabel = 30, addPick = 146, addGap = 12, addEdge = 4, -- addGap: the box's border art starts ~5 left of it
+    dropdownGap = 5, -- UI.Dropdown's gap between its label and the dropdown
 }
+L.col3W = UI.PAGE_W - L.col3 - 8 -- the third column, to the page's right margin
 
 local TEXT = {
     title = "Loot Master",
@@ -40,7 +44,7 @@ local TEXT = {
     scoreHelp = "Built from the Late Tracker's saved nights: everyone starts at 100, a late arrival and a no-show cost points, and points come back every week. Change the weights on the Settings tab. Players with no night in the time counted have no score.",
     scoreEmpty = "No Late Tracker nights in the time counted yet.",
     responses = "Response buttons",
-    responsesHelp = "The buttons raiders see, in this order. Weight sorts the looter's list, higher first. Click the colour to change it. Icon picks one of the game's loot icons (Need, Greed, Transmog, Disenchant, Pass), shown inside the button. At most 8 buttons; Pass is always last, weighs 0 and can't be removed.\n\nYour buttons are sent with each session you start, so raiders always see the leader's set.",
+    responsesHelp = "The buttons raiders see, in this order. Weight sorts the looter's list, higher first. Click the colour to change it. Icon picks one of the game's loot icons (Need, Greed, Transmog, Disenchant, Pass), shown inside the button. At most 8 buttons; the last one (Pass at first) always weighs 0 and can't be removed, and you can rename it, to Transmog for example. Every answer gets a roll, and you can give an item for any of them.\n\nYour buttons are sent with each session you start, so raiders always see the leader's set.",
     add = "Add", reset = "Defaults",
     looting = "Looting",
     lootingHelp = "How long raiders have to answer an item before its popup closes.",
@@ -54,15 +58,16 @@ local TEXT = {
     authorityAlso = "Also these players:",
     authorityAdd = "Add",
     authorityPick = "Pick a guild member",
+    authorityType = "Type a name",
     authorityNone = "(nobody yet)",
     late = "Late", per10 = "Per 10 min", noShow = "No-show", recover = "Back each week", weeks = "Count the last",
     colLabel = "Label", colWeight = "Weight", colIcon = "Icon",
     noIcon = "No icon",
     guildStream = "Guild: %s",
-    specs = "Items your specs can't use",
-    specsHelp = "When an item's game data lists the specs it is for, and none of a raider's specs is among them (a tank trinket for a mage), that raider's own CRT answers it Transmog for them and leaves it off their popup; the looter window shows it with an 'auto' tag and why.\n\nOnly a clear answer from the game counts. If the item hasn't loaded, or the game gives no list, an empty list or anything odd, the item is shown as normal.\n\nRaiders who tick Show me items my specs can't use see those items with their buttons off: they can look, not answer.",
+    specs = "Items a raider can't use",
+    specsHelp = "Each raider's own CRT answers an item for them when they can't use it, and leaves it off their popup. The game's data shows it in one of four ways: none of their specs is listed (a tank trinket for a mage), a Classes line without their class, an armor type that isn't their class's, or a weapon type the game marks in red for their class. The looter window shows it with an 'auto' tag and why.\n\nThe answer is always Transmog: your own Transmog button when you have one (or a button labelled Transmog), else a built-in Transmog that weighs 1 (below every button you weighted above 0). A looter on an older CRT with no Transmog button gets Pass. Every answer gets a roll.\n\nOnly a clear answer from the game counts. If the item hasn't loaded, or the game gives no list, an empty list or anything odd, the item is shown as normal.\n\nRaiders who tick Show me items I can't use see those items with their buttons off: they can look, not answer.",
     autoPass = "Answer them for raiders (sent with your sessions)",
-    showAll = "Show me items my specs can't use (to look at, just you)",
+    showAll = "Show me items I can't use (to look at, just you)",
     award = "Award message",
     awardHelp = "Sent when you give an item out. %i is the item, %p the player, %r their answer (BiS, Upgrade...), and %v their roll. Your guild's own channels (from the Guild & Communities window) are listed too; picking one adds it to your chat so CRT can post there. When the place you pick isn't open to you (Raid out of a raid, a channel you left, chat locked in an encounter), only you see it, with the reason. In a test only you see it.",
     awardVars = "%i item   %p player   %r answer   %v roll",
@@ -123,11 +128,18 @@ local function check(f, x, y, text, get, set)
     return c
 end
 
-local function editBox(parent, width, onCommit)
+-- placeholder (optional): grey text shown in the empty box while it doesn't have focus.
+local function editBox(parent, width, onCommit, placeholder)
     local e = CreateFrame("EditBox", nil, parent, "InputBoxTemplate")
     e:SetAutoFocus(false)
     e:SetFontObject(CRTFontHighlight)
     e:SetSize(width, 20)
+    local hint
+    local function showHint()
+        if hint then
+            hint:SetShown(not e:HasFocus() and (e:GetText() or "") == "")
+        end
+    end
     local function commit(self)
         self:ClearFocus()
         onCommit(strtrim(self:GetText() or ""))
@@ -135,11 +147,33 @@ local function editBox(parent, width, onCommit)
     e:SetScript("OnEnterPressed", commit)
     e:SetScript("OnEditFocusLost", function(self)
         onCommit(strtrim(self:GetText() or ""))
+        showHint()
     end)
     e:SetScript("OnEscapePressed", function(self)
         self:ClearFocus()
     end)
+    if placeholder then
+        hint = e:CreateFontString(nil, "OVERLAY", "CRTFontHighlight")
+        hint:SetPoint("LEFT", 1, 0)
+        hint:SetTextColor(0.5, 0.5, 0.5)
+        hint:SetText(placeholder)
+        e:HookScript("OnEditFocusGained", showHint) -- hooked: the template's own handlers still run
+        e:HookScript("OnTextChanged", showHint)
+        e.showHint = showHint
+    end
     return e
+end
+
+-- Makes an edit box as tall as another control, its template's border art too (the art keeps its own
+-- height otherwise). Art the template doesn't have is skipped.
+local function matchHeight(e, h)
+    e:SetHeight(h)
+    for _, key in ipairs({ "Left", "Middle", "Right" }) do
+        local art = e[key]
+        if type(art) == "table" and art.SetHeight then
+            art:SetHeight(h)
+        end
+    end
 end
 
 -- Tonight -------------------------------------------------------------------------------------------
@@ -676,7 +710,7 @@ local function buildSettings(f)
         end
     end
     pick = UI.Dropdown(f, TEXT.authorityAdd, {
-        labelWidth = 30, width = 170, maxHeight = 300,
+        labelWidth = L.addLabel, width = L.addPick, maxHeight = 300,
         options = function()
             local out = { { key = "", label = TEXT.authorityPick } }
             local Groups = CRT.Groups
@@ -697,11 +731,16 @@ local function buildSettings(f)
             add(v)
         end,
     })
-    pick:SetPoint("TOPLEFT", L.col3, ay - 66 - L.authorityRows * 18 - 4)
-    local typed = editBox(f, 110, function(text)
+    pick:SetPoint("TOPLEFT", rows[1], "BOTTOMLEFT", -8, -2) -- moved under the last name by the refresher
+    -- the box fills the rest of the column, as tall as the dropdown and centred on it
+    local boxW = L.col3W - L.addLabel - L.dropdownGap - L.addPick - L.addGap - L.addEdge
+    local typed = editBox(f, boxW, function(text)
         add(text)
-    end)
-    typed:SetPoint("LEFT", pick, "RIGHT", 6, 0)
+    end, TEXT.authorityType)
+    local dropH = pick.Dropdown:GetHeight()
+    matchHeight(typed, (dropH and dropH >= 16) and dropH or 26)
+    UI:SkinEditBox(typed) -- flat in Modern, like the dropdown beside it
+    typed:SetPoint("LEFT", pick.Dropdown, "RIGHT", L.addGap, 0)
     refreshers[#refreshers + 1] = function()
         local names = auth().names
         for i, r in ipairs(rows) do
@@ -709,9 +748,13 @@ local function buildSettings(f)
             r.text:SetText(names[i] or ("|cff9c8a78" .. TEXT.authorityNone .. "|r"))
             r.remove:SetShown(names[i] ~= nil)
         end
+        -- the Add row sits just under the last name shown
+        pick:ClearAllPoints()
+        pick:SetPoint("TOPLEFT", rows[math.max(1, math.min(#names, L.authorityRows))], "BOTTOMLEFT", -8, -2)
         if not typed:HasFocus() then
             typed:SetText("")
         end
+        typed.showHint()
     end
 end
 
