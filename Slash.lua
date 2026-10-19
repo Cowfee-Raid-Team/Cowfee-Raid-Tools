@@ -20,6 +20,7 @@ local function printHelp()
     print("  |cffffd100/crt tattle scan|r - pick spells to track from the last fight (|cffffd100/crt tattle scan text|r for the plain list)")
     print("  |cffffd100/crt tattle export|r - the Tattlebot totals as text to paste into Discord")
     print("  |cffffd100/crt loot|r - open Loot History: who got which boss item, with filters and a CSV export")
+    print("  |cffffd100/crt loot test|r - try Loot Master with sample items: the looter window for you, the popup for everyone with CRT (|cffffd100window|r, |cffffd100popup|r, |cffffd100end|r)")
     print("  |cffffd100/crt pace|r - open the Pace page: where each boss's health should be")
     print("  |cffffd100/crt timeline|r - open the Timeline page (|cffffd100/crt timeline pop|r opens it in its own window)")
     print("  |cffffd100/crt timeline rehearse|r - play the fight the Timeline shows in the Rehearsal window, with your alerts")
@@ -111,6 +112,8 @@ SlashCmdList["COWFEERAIDTOOLS"] = function(msg)
         CRT.Timeline:Rehearse()
     elseif msg == "loot" then
         CRT.UI:Show("loot")
+    elseif msg:match("^loot%s") and CRT.LootMaster and CRT.LootMaster:Command(msg) then
+        -- loot test, window, popup, end: Loot Master (LootMaster/Test.lua)
     elseif msg == "tattle" then
         CRT.UI:Show("tattle")
     elseif msg == "tattle post" then

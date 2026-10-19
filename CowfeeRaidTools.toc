@@ -18,6 +18,7 @@ Sound\Engine.lua
 Sound\Auras.lua
 UI\Panel.lua
 UI\Controls.lua
+UI\Window.lua
 Groups\Data.lua
 Groups\Apply.lua
 Groups\Page.lua
@@ -63,6 +64,11 @@ Loot\Store.lua
 Loot\Capture.lua
 Loot\RCLC.lua
 Loot\Page.lua
+LootMaster\Data.lua
+LootMaster\Comm.lua
+LootMaster\Popup.lua
+LootMaster\Window.lua
+LootMaster\Test.lua
 Timeline\Data.lua
 Timeline\Journal.lua
 Timeline\Database.lua
@@ -128,6 +134,7 @@ Dev\LateTest.lua
 Dev\NoteTargets.lua
 Dev\Breaks.lua
 Dev\Sound.lua
+Dev\LootProbe.lua
 Dev\Loot.lua
 Dev\DevPage.lua
 #@end-do-not-package@

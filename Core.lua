@@ -182,6 +182,12 @@ local defaults = {
         keepMonths = 12,
         rcEnrich = true,
     },
+    -- Loot Master (LootMaster/): window and popup, where the looter window and the raider popup were
+    -- last placed (UI.Window keeps point, x, y, and the window's width and height).
+    lootmaster = {
+        window = {},
+        popup = {},
+    },
     -- The sound engine (Sound/Engine.lua): custom, your own sound file names typed on Quality of Life >
     -- Sounds (the companion addon CowfeeRaidTools_Media lists more in its Sounds.lua).
     sound = {

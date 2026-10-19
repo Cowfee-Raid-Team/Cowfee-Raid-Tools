@@ -1,0 +1,442 @@
+local ADDON, CRT = ...
+
+-- The looter's window: the session's items as tabs down the left, and for the chosen item every raider's
+-- row, sorted by the response's weight, then Raider Score, then roll (Session:Rows). Right-click a row to
+-- award the item for a response, show the raider's popup again, ask them to roll again, or clear their
+-- answer; right-click an item tab to do that for everyone who still needs it. A pop-out made by
+-- UI.Window: drag it, resize it from the corner, Reset puts it back; its place is kept in CRTDB
+-- lootmaster.window.
+
+local LM = CRT.LootMaster
+local UI = CRT.UI
+
+local L = {
+    width = 940, height = 460, minWidth = 760, minHeight = 300,
+    tab = 40, tabGap = 6, left = 52, -- item tabs, and where the list starts
+    headerH = 50, rowH = 22,
+}
+
+-- Columns: x and width inside a row.
+local COLS = {
+    { key = "name", x = 4, w = 130, title = "Name" },
+    { key = "role", x = 138, w = 40, title = "Role" },
+    { key = "response", x = 182, w = 160, title = "Response" },
+    { key = "ilvl", x = 346, w = 48, title = "iLvl" },
+    { key = "gear", x = 398, w = 92, title = "Gear" },
+    { key = "note", x = 494, w = 170, title = "Note" },
+    { key = "roll", x = 668, w = 60, title = "Roll" },
+    { key = "score", x = 732, w = 50, title = "Score" },
+}
+
+local TEXT = {
+    title = "Loot Master",
+    titleTest = "Loot Master — TEST",
+    help = "Every raider's answer for the item picked on the left, best first: the answer's weight, then Raider Score, then the roll.\n\nRight-click a raider to give them the item, show their popup again (it didn't open, or ran out of time), ask them to roll again (only when no roll of theirs was seen), or clear their answer. Ctrl-click picks several raiders first.\n\nRight-click an item on the left to do that for everyone who still needs it.",
+    answered = "%d of %d answered",
+    awarded = "Given to %s for %s",
+    endSession = "End session",
+    waiting = "Choosing...",
+    timeout = "No answer (timed out)",
+    nocrt = "No CRT",
+    reroll = "Asked to roll again...",
+    noRoll = "none seen",
+    awardFor = "Give for %s",
+    resend = "Show their popup again",
+    rerollAsk = "Ask to roll again",
+    clear = "Clear their answer",
+    resendAll = "Show the popup again to everyone who hasn't answered (%d)",
+    rerollAll = "Ask everyone with no roll to roll again (%d)",
+    selected = "%d raiders",
+}
+
+local DONE_ICON = "Interface\\RaidFrame\\ReadyCheck-Ready" -- an item that has been given out
+
+local win, list, header
+local tabs = {}
+local loading = {} -- item IDs asked of the game, so the header fills in once each loads
+local current = 1 -- the item shown
+local selected = {} -- name -> true
+
+local function settings()
+    return CRT.db.lootmaster.window
+end
+
+local ROLE_TEXT = { T = "Tank", H = "Heal", D = "DPS", N = "" }
+
+local function classColor(file)
+    return file and (C_ClassColor and C_ClassColor.GetClassColor(file) or RAID_CLASS_COLORS[file]) or nil
+end
+
+local function contextMenu(owner, fill)
+    if MenuUtil and MenuUtil.CreateContextMenu then
+        MenuUtil.CreateContextMenu(owner, function(_, root)
+            fill(root)
+        end)
+    end
+end
+
+-- Rows -----------------------------------------------------------------------------------------------
+
+local function names()
+    local out = {}
+    for n in pairs(selected) do
+        out[#out + 1] = n
+    end
+    table.sort(out)
+    return out
+end
+
+local function rowMenu(row)
+    local s = LM.current
+    local r = row.data
+    if not (s and r) then
+        return
+    end
+    if not selected[r.name] then
+        wipe(selected)
+        selected[r.name] = true
+        LM:Fire("session")
+    end
+    local picked = names()
+    local index = current
+    contextMenu(row, function(root)
+        root:CreateTitle(#picked == 1 and Ambiguate(picked[1], "short") or string.format(TEXT.selected, #picked))
+        if #picked == 1 then
+            for _, resp in ipairs(LM.RESPONSES) do
+                if resp.key ~= "pass" then
+                    local c = resp.color
+                    local label = string.format("|cff%02x%02x%02x%s|r", c[1] * 255, c[2] * 255, c[3] * 255, string.format(TEXT.awardFor, resp.label))
+                    root:CreateButton(label, function()
+                        LM:Award(index, picked[1], resp.key)
+                    end)
+                end
+            end
+            root:CreateDivider()
+        end
+        local canResend, canReroll = 0, 0
+        for _, n in ipairs(picked) do
+            canResend = canResend + (s:CanResend(n) and 1 or 0)
+            canReroll = canReroll + (s:CanReroll(n, index) and 1 or 0)
+        end
+        local b = root:CreateButton(TEXT.resend .. (#picked > 1 and (" (" .. canResend .. ")") or ""), function()
+            LM:Resend(index, picked)
+        end)
+        b:SetEnabled(canResend > 0)
+        b = root:CreateButton(TEXT.rerollAsk .. (#picked > 1 and (" (" .. canReroll .. ")") or ""), function()
+            LM:AskReroll(index, picked)
+        end)
+        b:SetEnabled(canReroll > 0)
+        if #picked == 1 then
+            b = root:CreateButton(TEXT.clear, function()
+                LM:ClearAnswer(index, picked[1])
+            end)
+            b:SetEnabled(s:CanResend(picked[1]))
+        end
+    end)
+end
+
+local function responseCell(r)
+    if r.state == "nocrt" then
+        return "|cffff8a40" .. TEXT.nocrt .. "|r"
+    elseif r.state == "timeout" then
+        return "|cffff6040" .. TEXT.timeout .. "|r"
+    elseif r.state == "reroll" then
+        local resp = LM:Response(r.response)
+        return (resp and resp.label or "") .. "  |cffc78f5c" .. TEXT.reroll .. "|r"
+    elseif r.response then
+        local resp = LM:Response(r.response)
+        local c = resp.color
+        return string.format("|cff%02x%02x%02x%s|r", c[1] * 255, c[2] * 255, c[3] * 255, resp.label)
+    end
+    return "|cff9c8a78" .. TEXT.waiting .. "|r"
+end
+
+local function initRow(row, r)
+    if not row.cols then
+        row.cols = {}
+        for _, c in ipairs(COLS) do
+            if c.key ~= "gear" then
+                local fs = row:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+                fs:SetPoint("LEFT", c.x, 0)
+                fs:SetWidth(c.w)
+                fs:SetJustifyH("LEFT")
+                fs:SetWordWrap(false)
+                row.cols[c.key] = fs
+            end
+        end
+        row.gear = {}
+        local gx = COLS[5].x
+        for i = 1, 2 do
+            local t = row:CreateTexture(nil, "OVERLAY")
+            t:SetSize(16, 16)
+            t:SetPoint("LEFT", gx + (i - 1) * 20, 0)
+            row.gear[i] = t
+        end
+        row.diff = row:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+        row.diff:SetPoint("LEFT", gx + 44, 0)
+        row.sel = row:CreateTexture(nil, "BACKGROUND")
+        row.sel:SetAllPoints()
+        row.sel:SetColorTexture(0.78, 0.56, 0.36, 0.18)
+        local hl = row:CreateTexture(nil, "HIGHLIGHT")
+        hl:SetAllPoints()
+        hl:SetColorTexture(1, 1, 1, 0.06)
+        row:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+        row:SetScript("OnClick", function(self, button)
+            local name = self.data and self.data.name
+            if not name then
+                return
+            end
+            if button == "RightButton" then
+                rowMenu(self)
+                return
+            end
+            if IsControlKeyDown() or IsShiftKeyDown() then
+                selected[name] = not selected[name] or nil
+            else
+                wipe(selected)
+                selected[name] = true
+            end
+            LM:Fire("session")
+        end)
+        row:SetScript("OnEnter", function(self)
+            local d = self.data
+            if d and d.note and d.note ~= "" then
+                GameTooltip:SetOwner(self, "ANCHOR_CURSOR")
+                GameTooltip:SetText(Ambiguate(d.name, "short"), 1, 1, 1)
+                GameTooltip:AddLine(d.note, 0.85, 0.85, 0.85, true)
+                GameTooltip:Show()
+            end
+        end)
+        row:SetScript("OnLeave", function()
+            GameTooltip:Hide()
+        end)
+    end
+    row.data = r
+    local cols = row.cols
+    local cc = classColor(r.class)
+    cols.name:SetText(Ambiguate(r.name, "short"))
+    cols.name:SetTextColor(cc and cc.r or 0.85, cc and cc.g or 0.85, cc and cc.b or 0.85)
+    cols.role:SetText(ROLE_TEXT[r.role or "N"] or "")
+    cols.response:SetText(responseCell(r))
+    cols.ilvl:SetText(r.ilvl and string.format("%.0f", r.ilvl) or "")
+    for i, t in ipairs(row.gear) do
+        local g = r.gear[i]
+        local icon = g and g.id and C_Item.GetItemIconByID(g.id)
+        t:SetTexture(icon)
+        t:SetShown(icon ~= nil)
+    end
+    if r.diff then
+        row.diff:SetText(r.diff > 0 and ("|cff1eff00+" .. r.diff .. "|r") or (r.diff < 0 and ("|cffff4040" .. r.diff .. "|r") or "0"))
+    else
+        row.diff:SetText("")
+    end
+    cols.note:SetText(r.note or "")
+    if r.roll then
+        cols.roll:SetText(tostring(r.roll))
+    elseif r.response and r.response ~= "pass" and r.state ~= "reroll" then
+        cols.roll:SetText("|cffff6040" .. TEXT.noRoll .. "|r")
+    else
+        cols.roll:SetText("")
+    end
+    cols.score:SetText(r.score and tostring(r.score) or "—")
+    row.sel:SetShown(selected[r.name] and true or false)
+end
+
+-- Item tabs ------------------------------------------------------------------------------------------
+
+local function tabMenu(tab)
+    local s = LM.current
+    local index = tab.index
+    if not s then
+        return
+    end
+    local missing = s:Missing(index)
+    local noRoll = {}
+    for _, name in ipairs(s.order) do
+        if s:CanReroll(name, index) then
+            noRoll[#noRoll + 1] = name
+        end
+    end
+    contextMenu(tab, function(root)
+        root:CreateTitle(s.items[index].link or s.items[index].itemString)
+        local b = root:CreateButton(string.format(TEXT.resendAll, #missing), function()
+            LM:Resend(index, missing)
+        end)
+        b:SetEnabled(#missing > 0)
+        b = root:CreateButton(string.format(TEXT.rerollAll, #noRoll), function()
+            LM:AskReroll(index, noRoll)
+        end)
+        b:SetEnabled(#noRoll > 0)
+    end)
+end
+
+local function tab(i)
+    local t = tabs[i]
+    if t then
+        return t
+    end
+    t = CreateFrame("Button", nil, win.content, "BackdropTemplate")
+    t:SetSize(L.tab, L.tab)
+    t:SetPoint("TOPLEFT", 0, -(i - 1) * (L.tab + L.tabGap))
+    t:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 2 })
+    t:SetBackdropColor(0, 0, 0, 0.6)
+    t.icon = t:CreateTexture(nil, "ARTWORK")
+    t.icon:SetPoint("TOPLEFT", 3, -3)
+    t.icon:SetPoint("BOTTOMRIGHT", -3, 3)
+    t.count = t:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    t.count:SetPoint("BOTTOMRIGHT", 2, -2)
+    t:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    t:SetScript("OnClick", function(self, button)
+        if button == "RightButton" then
+            tabMenu(self)
+            return
+        end
+        current = self.index
+        wipe(selected)
+        LM:Fire("session")
+    end)
+    t:SetScript("OnEnter", function(self)
+        local s = LM.current
+        if s and s.items[self.index] then
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            pcall(GameTooltip.SetHyperlink, GameTooltip, s.items[self.index].itemString)
+            GameTooltip:Show()
+        end
+    end)
+    t:SetScript("OnLeave", function()
+        GameTooltip:Hide()
+    end)
+    tabs[i] = t
+    return t
+end
+
+-- The window -----------------------------------------------------------------------------------------
+
+local function build()
+    if win then
+        return
+    end
+    win = UI.Window("CowfeeRaidToolsLootMaster", {
+        kind = "popout", title = TEXT.title, width = L.width, height = L.height,
+        minWidth = L.minWidth, minHeight = L.minHeight, saved = settings,
+    })
+    local c = win.content
+    header = CreateFrame("Frame", nil, c)
+    header:SetPoint("TOPLEFT", L.left, 0)
+    header:SetPoint("TOPRIGHT", 0, 0)
+    header:SetHeight(L.headerH)
+    header.icon = header:CreateTexture(nil, "ARTWORK")
+    header.icon:SetSize(40, 40)
+    header.icon:SetPoint("TOPLEFT", 0, -2)
+    header.name = header:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
+    header.name:SetPoint("TOPLEFT", header.icon, "TOPRIGHT", 8, 0)
+    header.info = header:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    header.info:SetPoint("TOPLEFT", header.name, "BOTTOMLEFT", 0, -4)
+    header.info:SetTextColor(0.7, 0.7, 0.7)
+    header.help = UI.Help(header, TEXT.title, TEXT.help)
+    header.help:SetPoint("LEFT", header.name, "RIGHT", 4, 0)
+    local endButton = CreateFrame("Button", nil, header, "UIPanelButtonTemplate")
+    endButton:SetSize(110, 24)
+    endButton:SetPoint("TOPRIGHT", 0, -2)
+    endButton:SetText(TEXT.endSession)
+    endButton:SetScript("OnClick", function()
+        LM:End()
+    end)
+    header.answered = header:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    header.answered:SetPoint("RIGHT", endButton, "LEFT", -12, 0)
+
+    for _, col in ipairs(COLS) do
+        local h = c:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
+        h:SetPoint("TOPLEFT", L.left + col.x, -L.headerH - 4)
+        h:SetText(col.title)
+    end
+    local box = CreateFrame("Frame", nil, c, "WowScrollBoxList")
+    box:SetPoint("TOPLEFT", L.left, -L.headerH - 24)
+    box:SetPoint("BOTTOMRIGHT", -20, 0)
+    local bar = CreateFrame("EventFrame", nil, c, "MinimalScrollBar")
+    bar:SetPoint("TOPLEFT", box, "TOPRIGHT", 6, 0)
+    bar:SetPoint("BOTTOMLEFT", box, "BOTTOMRIGHT", 6, 0)
+    local v = CreateScrollBoxListLinearView()
+    v:SetElementExtent(L.rowH)
+    v:SetElementInitializer("Button", initRow)
+    ScrollUtil.InitScrollBoxListWithScrollBar(box, bar, v)
+    list = box
+end
+
+local function refresh()
+    local s = LM.current
+    if not (win and s) then
+        return
+    end
+    if not s.items[current] then
+        current = 1
+    end
+    UI.SetFrameTitle(win, s.test and TEXT.titleTest or TEXT.title)
+    for i, it in ipairs(s.items) do
+        local t = tab(i)
+        t.index = i
+        t.icon:SetTexture(C_Item.GetItemIconByID(it.itemString or "") or 134400)
+        local on = i == current
+        if on then
+            t:SetBackdropBorderColor(0.78, 0.56, 0.36, 1)
+        else
+            t:SetBackdropBorderColor(0.3, 0.24, 0.19, 1)
+        end
+        t:SetAlpha(it.award and 0.55 or 1)
+        t.count:SetText(it.award and ("|T" .. DONE_ICON .. ":14:14|t") or s:Answered(i))
+        t:Show()
+    end
+    for i = #s.items + 1, #tabs do
+        tabs[i]:Hide()
+    end
+    local it = s.items[current]
+    header.icon:SetTexture(C_Item.GetItemIconByID(it.itemString or "") or 134400)
+    local _, link = C_Item.GetItemInfo(it.itemString or "")
+    it.link = it.link or link
+    local id = tonumber((it.itemString or ""):match("item:(%d+)"))
+    if not it.link and id and not loading[id] then
+        loading[id] = true
+        Item:CreateFromItemID(id):ContinueOnItemLoad(function()
+            LM:Fire("session")
+        end)
+    end
+    header.name:SetText(it.link or it.itemString)
+    if it.award then
+        local r = LM:Response(it.award.response)
+        header.info:SetText(string.format(TEXT.awarded, Ambiguate(it.award.name, "short"), r and r.label or it.award.response))
+    else
+        header.info:SetText(it.ilvl and ("Item level " .. it.ilvl) or "")
+    end
+    local crt = 0
+    for _, p in pairs(s.players) do
+        if p.crt then
+            crt = crt + 1
+        end
+    end
+    header.answered:SetText(string.format(TEXT.answered, s:Answered(current), crt))
+    list:SetDataProvider(CreateDataProvider(s:Rows(current, LM.Score)), ScrollBoxConstants and ScrollBoxConstants.RetainScrollPosition)
+end
+
+LM:OnChange(function(what)
+    if what == "started" then
+        build()
+        current = 1
+        wipe(selected)
+        refresh()
+        win:Show()
+    elseif what == "session" then
+        refresh()
+    elseif what == "ended" and win then
+        win:Hide()
+    end
+end)
+
+function LM:ShowWindow()
+    if not self.current then
+        CRT:Print("Loot Master: no loot session is running. /crt loot test starts a test.")
+        return
+    end
+    build()
+    refresh()
+    win:Show()
+end
