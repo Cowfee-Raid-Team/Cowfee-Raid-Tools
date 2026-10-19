@@ -11,14 +11,14 @@ local ADDON, CRT = ...
 -- (no answer in the session's seconds), nocrt (never said hello). A raider's roll is the first one seen for that
 -- item; a later one never replaces it, so nobody rolls again for a better number unless asked.
 --
--- Messages (prefix CRTLoot1, fields split by "|", see Wire): the looter sends S (session), I (item),
+-- Messages (prefix LM.PREFIX, fields split by "|", see Wire): the looter sends S (session), I (item),
 -- B (a response button), Q (show the popup again), X (roll again), A (award), E (end); raiders send K
 -- (hello), R (answer), L (roll).
 
 local LM = { listeners = {} }
 CRT.LootMaster = LM
 
-LM.PREFIX = "CRTLoot2" -- 2 since 0.25: answers broadcast, packed start, silent rolls
+LM.PREFIX = "CRTLootRemaster" -- since 0.25 (0.24 was CRTLoot1). A new protocol gets a new word, never a number: a prefix is 16 characters at most
 LM.VERSION = "0.25.0"
 LM.HELLO_SECONDS = 5 -- after this, raiders who never said hello have no CRT
 LM.READY_SECONDS = 10 -- a raider who said hello but never got everything is sent the session again, once

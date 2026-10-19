@@ -1,6 +1,6 @@
 local ADDON, CRT = ...
 
--- Loot Master over addon messages (prefix CRTLoot2): the looter's running session (LM.current) and, on
+-- Loot Master over addon messages (prefix CRTLootRemaster, LM.PREFIX): the looter's running session (LM.current) and, on
 -- every raider's computer, the session they were sent (LM.incoming), with inc.view, a copy of everyone's
 -- answers and rolls for the raider window. Every message goes to the group channel, never as a whisper,
 -- so answers work across realms and every window sees every answer. Raid messages come back to the
