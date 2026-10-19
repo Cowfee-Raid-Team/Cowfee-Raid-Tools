@@ -331,13 +331,24 @@ eq(#fired, 0, "an answer to another sync changes nothing")
 C_ChatInfo.InChatMessagingLockdown = function() return true end
 eq(LM:SyncBlocked(), "Addon messages are held during a boss encounter.", "lockdown: the reason")
 local outBefore = LM.syncOut
+local shown = {}
+UIErrorsFrame = { AddMessage = function(self, text, r, g, b) shown[#shown + 1] = { text, r, g, b } end }
 eq(LM:SyncTo("Quick"), nil, "lockdown: no sync")
+eq(shown[1] and shown[1][1], "Can't do that during a boss encounter.", "lockdown: red error text on the click")
+eq(shown[1] and shown[1][2], 1, "lockdown: the text is red")
 eq(#outbox, 0, "lockdown: nothing sent")
 eq(LM.syncOut, outBefore, "lockdown: the last line stays")
 NOW = NOW + LM.SYNC_PING_SECONDS + 1
 eq(LM:SyncPing(), false, "lockdown: no ask either")
 C_ChatInfo.InChatMessagingLockdown = function() return false end
 eq(LM:SyncBlocked(), nil, "after the encounter: free")
+be("Halo")
+shown = {}
+C_ChatInfo.InChatMessagingLockdown = function() return true end
+LM:SyncTo("Quick")
+eq(#shown, 0, "lockdown: a non-leader's click shows no error (it can't sync anyway)")
+C_ChatInfo.InChatMessagingLockdown = function() return false end
+be("Solex")
 C_ChatInfo.InChatMessagingLockdown = function() error("boom") end
 eq(LM:SyncBlocked(), nil, "lockdown check failing: not blocked")
 C_ChatInfo.InChatMessagingLockdown = nil

@@ -2,7 +2,8 @@ local ADDON, CRT = ...
 
 -- The Loot Master page (/crt lootmaster), with three tabs:
 --   Tonight       the running session (or none), and buttons to test, open the looter window, show your
---                 popup and end the session
+--                 popup and end the session; CRT Looting's state, with the leader's Turn on / Turn off
+--                 for everyone (LootMaster/Looting.lua)
 --   Raider Score  every player's score from the Late Tracker's nights (LootMaster/Score.lua)
 --   Settings      the response buttons raiders see (label, colour, weight, icon, order), how long they
 --                 have to answer, the award message, the Raider Score weights, loot authority, and the
@@ -44,6 +45,9 @@ local TEXT = {
     testTag = "TEST · ",
     test = "Test", window = "Looter window", popup = "My popup", endSession = "End session",
     items = "Items",
+    crtLooting = "CRT Looting",
+    crtLootingHelp = "When CRT Looting is on, every raider with CRT will pass the game's roll so the raid leader gets each boss item to give out. Only the raid leader turns it on or off, for everyone, in a raid instance; CRT asks them on the way in. It starts off after a /reload, until the leader's next word. A wipe keeps it on while the leader is in the open world for up to 10 minutes; entering any other instance turns it off.\n\nThis version shows the state only. It doesn't pass any roll yet.",
+    turnOn = "Turn on", turnOff = "Turn off for everyone",
     awarded = "given to %s (%s)",
     open = "open",
     scoreHelp = "Built from the Late Tracker's saved nights: everyone starts at 100, a late arrival and a no-show cost points, and points come back every week. Change the weights on the Settings tab. Players with no night in the time counted have no score.",
@@ -72,6 +76,8 @@ local TEXT = {
     specs = "Items a raider can't use",
     specsHelp = "CRT always answers these for raiders. Each raider's own CRT answers an item for them when they can't use it, and leaves it off their popup. The game's data shows it in one of four ways: none of their specs is listed (a tank trinket for a mage), a Classes line without their class, an armor type that isn't their class's, or a weapon type the game marks in red for their class. The looter window shows it with an 'auto' tag and why.\n\nThe answer is always Transmog: your own Transmog button when you have one (or a button labelled Transmog), else a built-in Transmog that weighs 1 (below every button you weighted above 0). A looter on an older CRT with no Transmog button gets Pass. Every answer gets a roll.\n\nOnly a clear answer from the game counts. If the item hasn't loaded, or the game gives no list, an empty list or anything odd, the item is shown as normal.\n\nRaiders who tick Show me items I can't use see those items with their buttons off: they can look, not answer.",
     showAll = "Show me items I can't use (greyed out, just for you)",
+    partyHelp = "CRT Looting is for raid groups. With Enable in party on, a party's leader can turn it on in a raid instance too, and your CRT follows a party leader who did. Off by default. Finder groups never count.",
+    enableInParty = "Enable in party",
     award = "Award message",
     awardHelp = "Sent when you give an item out. %i is the item, %p the player, %r their answer (BiS, Upgrade...), and %v their roll. Your guild's own channels (from the Guild & Communities window) are listed too; picking one adds it to your chat so CRT can post there. When the place you pick isn't open to you (Raid out of a raid, a channel you left, chat locked in an encounter), only you see it, with the reason. In a test only you see it.",
     awardVars = "%i item   %p player   %r answer   %v roll",
@@ -205,6 +211,29 @@ local function buildTonight(f)
         b:SetPoint("TOPLEFT", x, -58)
         b:SetScript("OnClick", spec[3])
         x = x + spec[2] + 6
+    end
+    -- CRT Looting: the state, and the leader's button
+    heading(f, L.col3, -8, TEXT.crtLooting, TEXT.crtLootingHelp)
+    local looting = f:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    looting:SetPoint("TOPLEFT", L.col3, -34)
+    looting:SetWidth(L.col3W)
+    looting:SetJustifyH("LEFT")
+    local toggle = UI.PanelButton(f, TEXT.turnOn, 24, function()
+        if LM:LootingOn() then
+            LM:ChooseLooting(false, "off")
+        else
+            LM:ChooseLooting(true)
+        end
+    end)
+    toggle:SetPoint("TOPLEFT", looting, "BOTTOMLEFT", 4, -8) -- under the line, however many lines it takes
+    refreshers[#refreshers + 1] = function()
+        looting:SetText((LM:LootingStatus()))
+        local leader = IsInGroup() and UnitIsGroupLeader("player")
+        toggle:SetShown(leader and true or false)
+        toggle:SetText(LM:LootingOn() and TEXT.turnOff or TEXT.turnOn)
+        local fs = toggle:GetFontString()
+        toggle:SetWidth(UI.PanelButtonWidth(fs and fs:GetStringWidth() or 0))
+        toggle:SetEnabled(LM:LootingOn() or (LM:CanRunLooting()) or false)
     end
     heading(f, L.col1, -100, TEXT.items)
     local lines = {}
@@ -547,6 +576,23 @@ local function buildSync(f)
     button:SetScript("OnLeave", function()
         GameTooltip:Hide()
     end)
+    -- a greyed button gets no clicks: during the lockdown a cover over it takes the click and says why in red
+    local cover = CreateFrame("Frame", nil, f)
+    cover:SetAllPoints(button)
+    cover:SetFrameLevel(button:GetFrameLevel() + 5)
+    cover:EnableMouse(true)
+    cover:SetScript("OnMouseUp", function(_, mouseButton)
+        if mouseButton == "LeftButton" then
+            LM.ShowError(LM.LOCKDOWN_ERROR)
+        end
+    end)
+    cover:SetScript("OnEnter", function()
+        button:GetScript("OnEnter")(button)
+    end)
+    cover:SetScript("OnLeave", function()
+        GameTooltip:Hide()
+    end)
+    cover:Hide()
     status:SetPoint("TOPLEFT", L.col2, L.syncTop - 90)
     status:SetWidth(L.col2W)
     status:SetJustifyH("LEFT")
@@ -556,6 +602,7 @@ local function buildSync(f)
         typed:SetEnabled(on)
         typed.showHint()
         button:SetEnabled(on and not LM:SyncBlocked())
+        cover:SetShown(on and LM:SyncBlocked() ~= nil)
         status:SetText(LM:SyncStatus() or "")
         if on and f:IsVisible() then
             LM:SyncPing() -- who has CRT, for the list (at most every SYNC_PING_SECONDS)
@@ -617,6 +664,14 @@ local function buildSettings(f)
         return LM:Settings().showAllItems
     end, function(on)
         LM:Settings().showAllItems = on
+    end)
+
+    heading(f, L.col1, -404, TEXT.crtLooting, TEXT.partyHelp)
+    check(f, L.col1 - 2, -426, TEXT.enableInParty, function()
+        return LM:Settings().enableInParty
+    end, function(on)
+        LM:Settings().enableInParty = on
+        LM.LootingRecheck("setting") -- a party leader who had it on turns it off
     end)
 
     heading(f, L.col2, -8, TEXT.looting, TEXT.lootingHelp)
@@ -926,7 +981,7 @@ end
 
 LM:OnChange(function(what)
     if what == "responses" or what == "session" or what == "started" or what == "ended" or what == "scores"
-        or what == "authority" or what == "sync" then
+        or what == "authority" or what == "sync" or what == "looting" then
         refresh()
     end
 end)

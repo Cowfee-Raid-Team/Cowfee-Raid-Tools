@@ -197,12 +197,14 @@ local defaults = {
         window = {},
         popup = {},
         answers = {}, -- the raider window's place and size
+        lootingPrompt = {}, -- the place of the leader's "Use CRT Looting in this instance?" (never the on state: that is never saved)
         responseSeconds = 60,
         score = { show = true, late = 5, per10 = 1, noShow = 15, recover = 5, weeks = 8 },
         awardMessage = "%i awarded to %p for %r with a %v roll.",
         awardChannel = "RAID",
         noRoll = "-",
         showAllItems = false, -- this raider sees every item anyway
+        enableInParty = false, -- CRT Looting also in a party group, not only a raid (LootMaster/Looting.lua)
         authority = { leader = true, names = {} }, -- who may run loot (the raid leader's list is the one raiders trust)
         sort = {}, -- the looter list's and Raider Score's chosen column and direction
     },

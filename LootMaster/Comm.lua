@@ -13,7 +13,8 @@ local ADDON, CRT = ...
 --           CRT drew for a raider (silent: no /roll in chat), A an item given out, E end
 --   raider: K hello, Y ready (every item and button arrived), R answer
 --   leader: U who may run loot (the raid leader's list; raiders trust only that), M Sync Master Loot
---           (LootMaster/Sync.lua, its own handler through LM.Handle)
+--           (LootMaster/Sync.lua, its own handler through LM.Handle); O on, F off and H heartbeat for
+--           CRT Looting (LootMaster/Looting.lua)
 -- A kind this version doesn't know is dropped without a word, so a new kind never troubles an older CRT.
 -- Who may run loot: the raid leader (unless their list says not) and the names on the current raid
 -- leader's list. A raider's own settings never grant anyone authority; no list received means leader only.
@@ -215,6 +216,25 @@ local function send(kind, fields)
     sendText(Wire.Encode(kind, fields))
 end
 LM.Send = send
+
+-- Whether the game holds addon messages now (C_ChatInfo.InChatMessagingLockdown: a boss encounter).
+-- Ordinary combat doesn't. Unreadable is no.
+function LM.ChatLocked()
+    if C_ChatInfo and C_ChatInfo.InChatMessagingLockdown then
+        local ok, locked = pcall(C_ChatInfo.InChatMessagingLockdown)
+        return ok and locked == true
+    end
+    return false
+end
+
+-- Red error text at the top of the screen (the game's UIErrorsFrame, a MessageFrame), for a click that
+-- can't be done now.
+LM.LOCKDOWN_ERROR = "Can't do that during a boss encounter."
+function LM.ShowError(text)
+    if UIErrorsFrame and UIErrorsFrame.AddMessage then
+        pcall(UIErrorsFrame.AddMessage, UIErrorsFrame, text, 1, 0.1, 0.1)
+    end
+end
 LM.SendText = sendText -- a finished message, such as one of Wire.Pack's, and an optional done(sent)
 
 -- Loot authority -------------------------------------------------------------------------------------

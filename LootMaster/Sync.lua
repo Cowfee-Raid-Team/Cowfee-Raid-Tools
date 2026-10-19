@@ -43,13 +43,7 @@ end
 -- Why a sync can't start now, or nil: while chat is locked (C_ChatInfo.InChatMessagingLockdown, a boss
 -- encounter) addon messages are held, so the answers couldn't come back in time.
 function LM:SyncBlocked()
-    if C_ChatInfo and C_ChatInfo.InChatMessagingLockdown then
-        local ok, locked = pcall(C_ChatInfo.InChatMessagingLockdown)
-        if ok and locked == true then
-            return LM.SYNC_HELD
-        end
-    end
-    return nil
+    return LM.ChatLocked() and LM.SYNC_HELD or nil
 end
 
 -- Your synced settings, as messages for these recipients (full names). Pure but for LM:Settings().
@@ -141,9 +135,14 @@ end
 
 -- Sends your settings to target (a name, or nil) and every name on your authority list who is in the
 -- group. Only the raid leader, in a group, out of chat lockdown. Returns the status line, or nil when you
--- can't sync. The wait for answers starts once the queue has sent the last part.
+-- can't sync; during the chat lockdown the leader's click shows red error text. The wait for answers
+-- starts once the queue has sent the last part.
 function LM:SyncTo(target)
-    if not LM:CanSync() or self:SyncBlocked() then
+    if not LM:CanSync() then
+        return nil
+    end
+    if self:SyncBlocked() then
+        LM.ShowError(LM.LOCKDOWN_ERROR)
         return nil
     end
     local roster, me = {}, self:Me():lower()
