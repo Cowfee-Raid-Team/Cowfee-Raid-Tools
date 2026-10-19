@@ -30,7 +30,9 @@ local COLS = {
 
 local TEXT = {
     title = "Loot Master",
-    titleTest = "Loot Master — TEST",
+    test = "TEST",
+    rollType = "Roll type",
+    none = "None",
     help = "Every raider's answer for the item picked on the left, best first: the answer's weight, then Raider Score, then the roll.\n\nRight-click a raider to give them the item, show their popup again (it didn't open, or ran out of time), ask them to roll again (only when no roll of theirs was seen), or clear their answer. Ctrl-click picks several raiders first.\n\nRight-click an item on the left to do that for everyone who still needs it.",
     answered = "%d of %d answered",
     awarded = "Given to %s for %s",
@@ -51,7 +53,9 @@ local TEXT = {
 
 local DONE_ICON = "Interface\\RaidFrame\\ReadyCheck-Ready" -- an item that has been given out
 
-local win, list, header
+local ROLL_ICON = 18 -- the roll-type buttons in the header, and the mark on an item's tab
+
+local win, list, header, sorter
 local tabs = {}
 local loading = {} -- item IDs asked of the game, so the header fills in once each loads
 local current = 1 -- the item shown
@@ -279,6 +283,9 @@ local function tab(i)
     t.icon:SetPoint("BOTTOMRIGHT", -3, 3)
     t.count = t:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     t.count:SetPoint("BOTTOMRIGHT", 2, -2)
+    t.rollType = t:CreateTexture(nil, "OVERLAY")
+    t.rollType:SetSize(16, 16)
+    t.rollType:SetPoint("TOPLEFT", -4, 4)
     t:RegisterForClicks("LeftButtonUp", "RightButtonUp")
     t:SetScript("OnClick", function(self, button)
         if button == "RightButton" then
@@ -345,11 +352,63 @@ local function build()
     header.answered = header:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     header.answered:SetPoint("RIGHT", endButton, "LEFT", -12, 0)
 
-    for _, col in ipairs(COLS) do
-        local h = c:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
-        h:SetPoint("TOPLEFT", L.left + col.x, -L.headerH - 4)
-        h:SetText(col.title)
+    -- what the item is rolled as: Need, Greed, Disenchant or none
+    header.rollTypes = {}
+    local prev
+    for k = #LM.ROLL_TYPES + 1, 1, -1 do
+        local rt = LM.ROLL_TYPES[k]
+        local b = CreateFrame("Button", nil, header, "BackdropTemplate")
+        b:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
+        b:SetBackdropColor(0, 0, 0, 0.5)
+        if rt then
+            b:SetSize(ROLL_ICON + 6, ROLL_ICON + 6)
+            local tex = b:CreateTexture(nil, "ARTWORK")
+            tex:SetPoint("TOPLEFT", 3, -3)
+            tex:SetPoint("BOTTOMRIGHT", -3, 3)
+            tex:SetTexture(rt.icon)
+        else
+            b:SetSize(44, ROLL_ICON + 6)
+            local fs = b:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+            fs:SetPoint("CENTER")
+            fs:SetText(TEXT.none)
+        end
+        b.key = rt and rt.key or nil
+        if prev then
+            b:SetPoint("RIGHT", prev, "LEFT", -4, 0)
+        else
+            b:SetPoint("TOPRIGHT", 0, -28)
+        end
+        b:SetScript("OnClick", function(self)
+            LM:SetRollType(current, self.key)
+        end)
+        b:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_TOP")
+            GameTooltip:SetText(rt and rt.label or TEXT.none, 1, 1, 1)
+            GameTooltip:Show()
+        end)
+        b:SetScript("OnLeave", function()
+            GameTooltip:Hide()
+        end)
+        header.rollTypes[#header.rollTypes + 1] = b
+        prev = b
     end
+    local rtLabel = header:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    rtLabel:SetPoint("RIGHT", prev, "LEFT", -8, 0)
+    rtLabel:SetTextColor(0.7, 0.7, 0.7)
+    rtLabel:SetText(TEXT.rollType)
+
+    sorter = UI.SortHeaders(c, COLS, {
+        x = L.left, y = -L.headerH - 4, backToDefault = true,
+        get = function()
+            local s = CRT.db.lootmaster.sort
+            return s.looterKey, s.looterDir or 1
+        end,
+        set = function(key, dir)
+            local s = CRT.db.lootmaster.sort
+            s.looterKey, s.looterDir = key, dir
+            LM:Fire("session")
+        end,
+    })
     local box = CreateFrame("Frame", nil, c, "WowScrollBoxList")
     box:SetPoint("TOPLEFT", L.left, -L.headerH - 24)
     box:SetPoint("BOTTOMRIGHT", -20, 0)
@@ -371,7 +430,8 @@ local function refresh()
     if not s.items[current] then
         current = 1
     end
-    UI.SetFrameTitle(win, s.test and TEXT.titleTest or TEXT.title)
+    win.strip:SetTitle(TEXT.title)
+    win.strip:SetBadge(s.test and TEXT.test or nil)
     for i, it in ipairs(s.items) do
         local t = tab(i)
         t.index = i
@@ -384,6 +444,9 @@ local function refresh()
         end
         t:SetAlpha(it.award and 0.55 or 1)
         t.count:SetText(it.award and ("|T" .. DONE_ICON .. ":14:14|t") or s:Answered(i))
+        local rt = it.rollType and LM:RollType(it.rollType)
+        t.rollType:SetTexture(rt and rt.icon or nil)
+        t.rollType:SetShown(rt ~= nil)
         t:Show()
     end
     for i = #s.items + 1, #tabs do
@@ -414,7 +477,17 @@ local function refresh()
         end
     end
     header.answered:SetText(string.format(TEXT.answered, s:Answered(current), crt))
-    list:SetDataProvider(CreateDataProvider(s:Rows(current, LM.Score)), ScrollBoxConstants and ScrollBoxConstants.RetainScrollPosition)
+    for _, b in ipairs(header.rollTypes) do
+        local on = b.key == it.rollType
+        b:SetBackdropBorderColor(on and 0.78 or 0.3, on and 0.56 or 0.24, on and 0.36 or 0.19, 1)
+    end
+    local rows = s:Rows(current, LM.Score)
+    local sort = CRT.db.lootmaster.sort
+    if sort.looterKey then
+        LM.SortRows(rows, sort.looterKey, sort.looterDir or 1)
+    end
+    sorter.refresh()
+    list:SetDataProvider(CreateDataProvider(rows), ScrollBoxConstants and ScrollBoxConstants.RetainScrollPosition)
 end
 
 LM:OnChange(function(what)

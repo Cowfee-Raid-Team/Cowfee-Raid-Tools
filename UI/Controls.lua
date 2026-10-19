@@ -427,3 +427,54 @@ function UI.PickColor(color, set, opts)
         ColorPickerFrame:Show()
     end
 end
+
+-- Column headings you click to sort a list: once low to high (^), again high to low (v), and with
+-- opts.backToDefault a third click goes back to the list's own order. cols: { { key, x, w, title } };
+-- the headings sit at opts.x (default 0) + col.x, opts.y. A column with sortable = false is plain.
+-- opts.get() returns key, dir (dir 1 or -1, key nil for the default order); opts.set(key, dir).
+-- Returns { refresh = function }, which redraws the arrows.
+function UI.SortHeaders(parent, cols, opts)
+    local x0, y = opts.x or 0, opts.y or 0
+    local buttons = {}
+    local function refresh()
+        local key, dir = opts.get()
+        for _, b in ipairs(buttons) do
+            local on = b.col.key == key
+            b.arrow:SetText(on and (dir < 0 and "v" or "^") or "")
+            b.text:SetTextColor(on and 1 or 0.87, on and 0.95 or 0.73, on and 0.85 or 0.56)
+        end
+    end
+    for _, col in ipairs(cols) do
+        local b = CreateFrame("Button", nil, parent)
+        b.col = col
+        b:SetPoint("TOPLEFT", x0 + col.x, y)
+        b:SetSize(col.w, 18)
+        b.text = b:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
+        b.text:SetPoint("LEFT")
+        b.text:SetText(col.title)
+        b.arrow = b:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+        b.arrow:SetPoint("LEFT", b.text, "RIGHT", 3, 0)
+        b.arrow:SetTextColor(0.78, 0.56, 0.36)
+        if col.sortable ~= false then
+            local hl = b:CreateTexture(nil, "HIGHLIGHT")
+            hl:SetAllPoints()
+            hl:SetColorTexture(1, 1, 1, 0.06)
+            b:SetScript("OnClick", function()
+                local key, dir = opts.get()
+                if key ~= col.key then
+                    opts.set(col.key, 1)
+                elseif dir > 0 then
+                    opts.set(col.key, -1)
+                elseif opts.backToDefault then
+                    opts.set(nil, 1)
+                else
+                    opts.set(col.key, 1)
+                end
+                refresh()
+            end)
+        end
+        buttons[#buttons + 1] = b
+    end
+    refresh()
+    return { refresh = refresh }
+end

@@ -12,7 +12,8 @@ local ADDON, CRT = ...
 --   layer      a UI layer key (default "popups")
 --   saved      function returning the table that keeps point, x, y (and width, height)
 --   escape     false keeps Escape from closing it
--- The frame gets f.content (the area under the title) and f:Place() (puts it where it was saved).
+-- The frame gets f.content (the area under the title), f:Place() (puts it where it was saved) and
+-- f.strip, its title bar (UI.TitleStrip): f.strip:SetTitle(text), f.strip:SetBadge("TEST", note).
 -- UI.ContextMenu(owner, fill) opens the game's context menu above every window.
 -- Windows made by hand before this helper existed are moved onto it one at a time (see the skill's
 -- Known debt); new windows use it from the start.
@@ -106,6 +107,65 @@ local function overlay(name, opts)
     return f
 end
 
+-- The title bar: a mocha strip lighter than the window, a caramel line under it, the title in larger
+-- bold text, and an optional badge (such as TEST) with a short note. strip:SetTitle(text),
+-- strip:SetBadge(text or nil, note). Its colours are in STRIP.
+local STRIP = {
+    top = { 0.353, 0.247, 0.173 }, bottom = { 0.227, 0.165, 0.122 }, line = { 0.78, 0.56, 0.36 },
+    badgeBg = { 0.35, 0.16, 0.06 }, badgeEdge = { 0.63, 0.34, 0.12 }, badgeText = { 1, 0.81, 0.6 },
+    title = { 0.95, 0.90, 0.84 }, note = { 0.80, 0.71, 0.60 },
+}
+UI.TITLE_STRIP = STRIP
+
+function UI.TitleStrip(parent, height)
+    local s = CreateFrame("Frame", nil, parent)
+    s:SetHeight(height or 24)
+    local bg = s:CreateTexture(nil, "BACKGROUND")
+    bg:SetAllPoints()
+    bg:SetColorTexture(1, 1, 1, 1)
+    local ok = pcall(bg.SetGradient, bg, "VERTICAL", CreateColor(STRIP.bottom[1], STRIP.bottom[2], STRIP.bottom[3], 1),
+        CreateColor(STRIP.top[1], STRIP.top[2], STRIP.top[3], 1))
+    if not ok then
+        bg:SetColorTexture(STRIP.top[1], STRIP.top[2], STRIP.top[3], 1)
+    end
+    local line = s:CreateTexture(nil, "BORDER")
+    line:SetColorTexture(STRIP.line[1], STRIP.line[2], STRIP.line[3], 1)
+    line:SetHeight(2)
+    line:SetPoint("BOTTOMLEFT")
+    line:SetPoint("BOTTOMRIGHT")
+    s.title = s:CreateFontString(nil, "OVERLAY", "CRTFontLarge")
+    s.title:SetPoint("LEFT", 10, 1)
+    s.title:SetTextColor(STRIP.title[1], STRIP.title[2], STRIP.title[3])
+    s.badge = CreateFrame("Frame", nil, s, "BackdropTemplate")
+    s.badge:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
+    s.badge:SetBackdropColor(STRIP.badgeBg[1], STRIP.badgeBg[2], STRIP.badgeBg[3], 1)
+    s.badge:SetBackdropBorderColor(STRIP.badgeEdge[1], STRIP.badgeEdge[2], STRIP.badgeEdge[3], 1)
+    s.badge:SetPoint("LEFT", s.title, "RIGHT", 8, 0)
+    s.badge.text = s.badge:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    s.badge.text:SetPoint("CENTER")
+    s.badge.text:SetTextColor(STRIP.badgeText[1], STRIP.badgeText[2], STRIP.badgeText[3])
+    s.note = s:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    s.note:SetPoint("LEFT", s.badge, "RIGHT", 8, 0)
+    s.note:SetTextColor(STRIP.note[1], STRIP.note[2], STRIP.note[3])
+    s.badge:Hide()
+    function s:SetTitle(text)
+        self.title:SetText(text or "")
+    end
+    function s:SetBadge(text, note)
+        if text and text ~= "" then
+            self.badge.text:SetText(text)
+            self.badge:SetSize(self.badge.text:GetStringWidth() + 12, 16)
+            self.badge:Show()
+            self.note:SetText(note or "")
+            self.note:Show()
+        else
+            self.badge:Hide()
+            self.note:Hide()
+        end
+    end
+    return s
+end
+
 function UI.Window(name, opts)
     opts = opts or {}
     if opts.kind == "overlay" then
@@ -115,7 +175,17 @@ function UI.Window(name, opts)
     local f = CreateFrame("Frame", name, UIParent, DEFAULTS.template)
     UI:StyleWindow(f)
     UI:RegisterLayer(opts.layer or DEFAULTS.layer, f)
-    UI.SetFrameTitle(f, opts.title or "")
+    UI.SetFrameTitle(f, "")
+    -- the title bar, over the template's own title area; the close button stays on top of it
+    local strip = UI.TitleStrip(f, DEFAULTS.titleHeight - 2)
+    strip:SetPoint("TOPLEFT", 1, -1)
+    strip:SetPoint("TOPRIGHT", -1, -1)
+    strip:SetFrameLevel(f:GetFrameLevel() + 2)
+    strip:SetTitle(opts.title or "")
+    f.strip = strip
+    if f.CloseButton then
+        f.CloseButton:SetFrameLevel(strip:GetFrameLevel() + 3)
+    end
     f:SetClampedToScreen(true)
     f:SetMovable(true)
     f:EnableMouse(true)
@@ -168,7 +238,7 @@ function UI.Window(name, opts)
             save(f, opts)
         end)
         f.grip = grip
-        local reset = UI.ResetButton(f, function()
+        local reset = UI.ResetButton(strip, function()
             local s = savedOf(opts)
             if s then
                 s.point, s.x, s.y, s.width, s.height = nil, nil, nil, nil, nil

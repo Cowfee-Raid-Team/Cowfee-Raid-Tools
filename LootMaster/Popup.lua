@@ -16,7 +16,8 @@ local L = {
     width = 480,
     panelH = 104,
     gap = 4, -- between panels
-    headerH = 18, -- the line above the panels
+    headerH = 26, -- the title bar above the panels
+    rollIcon = 18, -- the roll-type mark beside an item's name
     pad = 8,
     icon = 36,
     button = { w = 70, h = 22, gap = 4, icon = 14 },
@@ -27,7 +28,9 @@ local L = {
 
 local TEXT = {
     title = "Loot",
-    titleTest = "Loot — TEST: nothing is passed or traded",
+    test = "TEST",
+    testNote = "nothing is passed or traded",
+    rolledAs = "Rolled as %s",
     help = "Pick an answer for each item. Your pick goes to the raid leader, who gives the item out, and every button except Pass also does a /roll that everyone can see. You can change your answer until the time runs out.\n\nThe lighter part of each item's background is the time left. Close an item with its X or a right-click; drag any item to move them all.",
     have = "You have: ",
     nothing = "nothing in that slot",
@@ -214,6 +217,21 @@ local function panel(index)
     p.time = p:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     p.time:SetPoint("RIGHT", p.close, "LEFT", -4, 0)
     p.time:SetTextColor(0.8, 0.8, 0.8)
+    p.rollType = p:CreateTexture(nil, "ARTWORK")
+    p.rollType:SetSize(L.rollIcon, L.rollIcon)
+    p.rollType:SetPoint("TOPLEFT", p.icon, "TOPRIGHT", 6, 1)
+    p.rollTypeHover = CreateFrame("Frame", nil, p)
+    p.rollTypeHover:SetAllPoints(p.rollType)
+    p.rollTypeHover:SetScript("OnEnter", function(self)
+        if self.label then
+            GameTooltip:SetOwner(self, "ANCHOR_TOP")
+            GameTooltip:SetText(string.format(TEXT.rolledAs, self.label), 1, 1, 1)
+            GameTooltip:Show()
+        end
+    end)
+    p.rollTypeHover:SetScript("OnLeave", function()
+        GameTooltip:Hide()
+    end)
     p.name = p:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
     p.name:SetPoint("TOPLEFT", p.icon, "TOPRIGHT", 8, 0)
     p.name:SetPoint("RIGHT", p.time, "LEFT", -8, 0)
@@ -294,6 +312,17 @@ local function fill(p, index, it, mine, inc)
     p:SetBackdropColor(bg[1], bg[2], bg[3], 0.92)
     p:SetBackdropBorderColor(edge[1], edge[2], edge[3], 1)
     p.icon:SetTexture(C_Item.GetItemIconByID(it.itemString or "") or 134400)
+    local rt = it.rollType and LM:RollType(it.rollType)
+    p.rollType:SetTexture(rt and rt.icon or nil)
+    p.rollType:SetShown(rt ~= nil)
+    p.rollTypeHover.label = rt and rt.label or nil
+    p.name:ClearAllPoints()
+    if rt then
+        p.name:SetPoint("TOPLEFT", p.rollType, "TOPRIGHT", 4, -1)
+    else
+        p.name:SetPoint("TOPLEFT", p.icon, "TOPRIGHT", 8, 0)
+    end
+    p.name:SetPoint("RIGHT", p.time, "LEFT", -8, 0)
     p.name:SetText(itemText(it))
     -- the detail line reads your gear: worked out when the item changes, not on every timer tick
     if p.detailFor ~= it then
@@ -349,9 +378,9 @@ local function build()
         return
     end
     anchor = UI.Window("CowfeeRaidToolsLootPopup", { kind = "overlay", width = L.width, height = 40, saved = settings })
-    header = CreateFrame("Frame", nil, anchor)
+    header = UI.TitleStrip(anchor, L.headerH)
     header:SetPoint("TOPLEFT")
-    header:SetSize(L.width, L.headerH)
+    header:SetWidth(L.width)
     header:EnableMouse(true)
     header:RegisterForDrag("LeftButton")
     header:SetScript("OnDragStart", function()
@@ -360,10 +389,8 @@ local function build()
     header:SetScript("OnDragStop", function()
         anchor:StopDrag()
     end)
-    header.text = header:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
-    header.text:SetPoint("LEFT", 2, 0)
     header.help = UI.Help(header, TEXT.title, TEXT.help)
-    header.help:SetPoint("LEFT", header.text, "RIGHT", 4, 0)
+    header.help:SetPoint("RIGHT", -6, 0)
     -- the timers: each open panel's background and time left, once a second is plenty for the text
     local elapsed = 0
     anchor:SetScript("OnUpdate", function(_, dt)
@@ -394,13 +421,14 @@ local function refresh()
         return
     end
     build()
-    header.text:SetText(inc.test and TEXT.titleTest or TEXT.title)
+    header:SetTitle(TEXT.title)
+    header:SetBadge(inc.test and TEXT.test or nil, TEXT.testNote)
     local open = openItems(inc)
     local shown = {}
     for k, index in ipairs(open) do
         local p = panel(index)
         p:ClearAllPoints()
-        p:SetPoint("TOPLEFT", 0, -(L.headerH + (k - 1) * (L.panelH + L.gap)))
+        p:SetPoint("TOPLEFT", 0, -(L.headerH + L.gap + (k - 1) * (L.panelH + L.gap)))
         fill(p, index, inc.items[index], inc.mine[index], inc)
         p.time:SetText(string.format(TEXT.timeLeft, math.ceil(timeLeft(inc.items[index], inc))))
         p:Show()
@@ -411,7 +439,7 @@ local function refresh()
             p:Hide()
         end
     end
-    anchor:SetHeight(L.headerH + math.max(1, #open) * (L.panelH + L.gap))
+    anchor:SetHeight(L.headerH + L.gap + math.max(1, #open) * (L.panelH + L.gap))
     if #open == 0 then
         anchor:Hide()
     end

@@ -156,6 +156,9 @@ local function sendSession(s, target)
     end
     for i, it in ipairs(s.items) do
         send("I", { s.id, i, it.ilvl and math.floor(it.ilvl + 0.5) or "", it.itemString }, target)
+        if it.rollType then
+            send("T", { s.id, i, it.rollType }, target)
+        end
     end
 end
 
@@ -193,6 +196,81 @@ function LM:Start(items, test)
     return s
 end
 
+-- The looter sets what an item is rolled as (a key of LM.ROLL_TYPES, or nil for none).
+function LM:SetRollType(index, key)
+    local s = self.current
+    if not (s and s.items[index]) then
+        return
+    end
+    s:SetRollType(index, key)
+    send("T", { s.id, index, s.items[index].rollType or "" })
+    self:Fire("session")
+end
+
+-- The award message ------------------------------------------------------------------------------------
+
+-- Where the award message goes (Settings): a chat type, "CHANNEL:<name>" for a chat channel you have
+-- joined, "SELF" (only you) or "NONE". When the place isn't open to you (RAID out of a raid, GUILD with no
+-- guild, a channel you left, chat locked during an encounter) it is shown only to you, saying why.
+local CHAT = (C_ChatInfo and C_ChatInfo.SendChatMessage) or SendChatMessage
+
+local function where(channel)
+    if channel == "NONE" then
+        return nil
+    elseif channel == "RAID" or channel == "RAID_WARNING" then
+        return IsInRaid() and channel or nil, "you are not in a raid"
+    elseif channel == "PARTY" then
+        return IsInGroup() and "PARTY" or nil, "you are not in a group"
+    elseif channel == "GUILD" or channel == "OFFICER" then
+        return IsInGuild() and channel or nil, "you are not in a guild"
+    elseif type(channel) == "string" and channel:find("^CHANNEL:") then
+        local id = GetChannelName(channel:sub(9))
+        return (id and id > 0) and "CHANNEL" or nil, "you are not in that channel", id
+    end
+    return nil
+end
+
+function LM:AwardText(s, index, name, response)
+    local it = s.items[index]
+    local _, link = C_Item.GetItemInfo(it.itemString or "")
+    local r = s:Response(response)
+    local rt = it.rollType and self:RollType(it.rollType)
+    local p = s.players[name]
+    local a = p and p.answers[index]
+    local set = self:Settings()
+    return LM.FormatAward(set.awardMessage, {
+        item = it.link or link or it.itemString, player = Ambiguate(name, "short"),
+        rollType = rt and rt.label, response = r and r.label or response, roll = a and a.roll, noRoll = set.noRoll,
+    })
+end
+
+function LM:Announce(text, test)
+    local channel = self:Settings().awardChannel or "RAID"
+    if channel == "NONE" then
+        return
+    end
+    if test then
+        CRT:Print("Loot Master (test, only you see this): " .. text)
+        return
+    end
+    if channel == "SELF" then
+        CRT:Print(text)
+        return
+    end
+    local chatType, why, target = where(channel)
+    if chatType and C_ChatInfo and C_ChatInfo.InChatMessagingLockdown and C_ChatInfo.InChatMessagingLockdown() then
+        chatType, why = nil, "chat is locked during the encounter"
+    end
+    if not chatType then
+        CRT:Print(text .. "  |cff999999(only you: " .. (why or "no channel") .. ")|r")
+        return
+    end
+    local ok, err = pcall(CHAT, text, chatType, nil, target)
+    if not ok then
+        CRT:Print(text .. "  |cff999999(only you: " .. tostring(err) .. ")|r")
+    end
+end
+
 function LM:Award(index, name, response)
     local s = self.current
     if not s then
@@ -200,9 +278,7 @@ function LM:Award(index, name, response)
     end
     s:Award(index, name, response)
     send("A", { s.id, index, name, response })
-    local r = s:Response(response)
-    CRT:Print(string.format("Loot Master%s: %s awarded to %s for %s.", s.test and " (test)" or "",
-        s.items[index].link or s.items[index].itemString, Ambiguate(name, "short"), r and r.label or response))
+    self:Announce(self:AwardText(s, index, name, response), s.test)
     self:Fire("session")
 end
 
@@ -412,6 +488,16 @@ HANDLERS.A = function(f, sender)
     local index = tonumber(f[2])
     if inc and inc.id == f[1] and inc.leader == sender and index and inc.items[index] then
         inc.items[index].award = { name = f[3], response = f[4] }
+        LM:Fire("incoming")
+    end
+end
+
+-- T: what an item is rolled as (empty for none).
+HANDLERS.T = function(f, sender)
+    local inc = LM.incoming
+    local index = tonumber(f[2])
+    if inc and inc.id == f[1] and inc.leader == sender and index and inc.items[index] then
+        inc.items[index].rollType = LM:RollType(f[3]) and f[3] or nil
         LM:Fire("incoming")
     end
 end

@@ -165,6 +165,40 @@ function LM:UpdateResponse(key, fields)
     return false
 end
 
+-- What an item is rolled as, set by the looter per item. It shows on the item's tab and the raider's
+-- panel, and is %r in the award message (else the winner's response is). The textures are Blizzard's
+-- group loot icons, seen in game with /crt dev loot probe icons on 2026-10-18.
+LM.ROLL_TYPES = {
+    { key = "need", label = "Need", icon = "Interface\\Buttons\\UI-GroupLoot-Dice-Up" },
+    { key = "greed", label = "Greed", icon = "Interface\\Buttons\\UI-GroupLoot-Coin-Up" },
+    { key = "de", label = "Disenchant", icon = "Interface\\Buttons\\UI-GroupLoot-DE-Up" },
+}
+local rollTypes = {}
+for _, t in ipairs(LM.ROLL_TYPES) do
+    rollTypes[t.key] = t
+end
+
+function LM:RollType(key)
+    return rollTypes[key]
+end
+
+-- The award message: %i item, %p player, %r roll type or response, %v roll (or the "no roll" text).
+LM.AWARD_DEFAULT = "%i awarded to %p for %r with a %v roll."
+LM.NO_ROLL_CHOICES = { "-", "0", "no" }
+
+-- fields: item, player, rollType, response, roll, noRoll. Pure, for tests.
+function LM.FormatAward(template, f)
+    local values = {
+        i = f.item or "?",
+        p = f.player or "?",
+        r = f.rollType or f.response or "?",
+        v = f.roll and tostring(f.roll) or (f.noRoll or "-"),
+    }
+    return (tostring(template or LM.AWARD_DEFAULT):gsub("%%(%a)", function(k)
+        return values[k] or ("%" .. k)
+    end))
+end
+
 -- A response of your set, by key (the looter's own set; a session uses the set it was started with).
 function LM:Response(key)
     for _, r in ipairs(self:Responses()) do
@@ -344,6 +378,55 @@ function Session:Tick()
         end
     end
     return changed
+end
+
+function Session:SetRollType(index, key)
+    local item = self.items[index]
+    if item then
+        item.rollType = rollTypes[key] and key or nil
+    end
+end
+
+-- The columns the looter can sort by, and the value each sorts on.
+LM.SORT_VALUES = {
+    name = function(r) return r.name:lower() end,
+    role = function(r) return r.role or "" end,
+    response = function(r) return r.weight end,
+    ilvl = function(r) return r.ilvl end,
+    gear = function(r) return r.diff end,
+    note = function(r) return r.note and r.note:lower() end,
+    roll = function(r) return r.roll end,
+    score = function(r) return r.score end,
+}
+
+-- Sorts rows by one column (dir 1 low to high, -1 high to low); rows without a value go last, and ties
+-- keep the order they came in (Rows' default order).
+function LM.SortRows(rows, key, dir)
+    local value = LM.SORT_VALUES[key]
+    if not value then
+        return rows
+    end
+    local pos = {}
+    for i, r in ipairs(rows) do
+        pos[r] = i
+    end
+    table.sort(rows, function(a, b)
+        local x, y = value(a), value(b)
+        if x == nil or y == nil then
+            if (x == nil) ~= (y == nil) then
+                return y == nil
+            end
+            return pos[a] < pos[b]
+        end
+        if x ~= y then
+            if dir < 0 then
+                return x > y
+            end
+            return x < y
+        end
+        return pos[a] < pos[b]
+    end)
+    return rows
 end
 
 function Session:Award(index, name, response)

@@ -49,6 +49,17 @@ local TEXT = {
     showScore = "Show the Score column",
     late = "Late", per10 = "Per 10 min", noShow = "No-show", recover = "Back each week", weeks = "Count the last",
     colLabel = "Label", colWeight = "Weight", colIcon = "Icon",
+    award = "Award message",
+    awardHelp = "Sent when you give an item out. %i is the item, %p the player, %r what it was rolled as (Need, Greed, Disenchant) or else their answer, and %v their roll. When the place you pick isn't open to you (Raid out of a raid, a channel you left, chat locked in an encounter), only you see it, with the reason. In a test only you see it.",
+    awardVars = "%i item   %p player   %r roll type   %v roll",
+    channel = "Send to",
+    noRoll = "If no roll, %v is",
+    preview = "Preview:",
+    channels = {
+        { key = "RAID", label = "Raid" }, { key = "RAID_WARNING", label = "Raid warning" }, { key = "PARTY", label = "Party" },
+        { key = "GUILD", label = "Guild" }, { key = "OFFICER", label = "Officer" }, { key = "SELF", label = "Only you" },
+        { key = "NONE", label = "Don't send" },
+    },
 }
 
 local page
@@ -194,13 +205,31 @@ local SCORE_COLS = {
     { key = "last", x = 454, w = 110, title = "Last miss" },
 }
 
+local SCORE_VALUES = {
+    name = function(t) return t.name:lower() end,
+    score = function(t) return t.score end,
+    nights = function(t) return t.nights end,
+    late = function(t) return t.late end,
+    never = function(t) return t.never end,
+    last = function(t) return t.lastMiss or 0 end,
+}
+
+local refresh -- the page's refresh, set below
+
 local function buildScore(f)
     heading(f, L.col1, -8, TEXT.score, TEXT.scoreHelp)
-    for _, c in ipairs(SCORE_COLS) do
-        local h = f:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
-        h:SetPoint("TOPLEFT", L.col1 + c.x, -36)
-        h:SetText(c.title)
-    end
+    local sorter = UI.SortHeaders(f, SCORE_COLS, {
+        x = L.col1, y = -36,
+        get = function()
+            local s = LM:Settings().sort
+            return s.scoreKey or "score", s.scoreDir or 1
+        end,
+        set = function(key, dir)
+            local s = LM:Settings().sort
+            s.scoreKey, s.scoreDir = key, dir
+            refresh()
+        end,
+    })
     local empty = f:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     empty:SetPoint("TOPLEFT", L.col1 + 4, -62)
     empty:SetText(TEXT.scoreEmpty)
@@ -244,6 +273,22 @@ local function buildScore(f)
             return
         end
         local list = LM.ScoreList()
+        local s = LM:Settings().sort
+        local key, dir = s.scoreKey or "score", s.scoreDir or 1
+        local value = SCORE_VALUES[key]
+        if value then
+            table.sort(list, function(a, b)
+                local x, y = value(a), value(b)
+                if x == y then
+                    return a.name:lower() < b.name:lower()
+                end
+                if dir < 0 then
+                    return x > y
+                end
+                return x < y
+            end)
+        end
+        sorter.refresh()
         empty:SetShown(#list == 0)
         box:SetDataProvider(CreateDataProvider(list))
     end
@@ -427,6 +472,90 @@ local function buildSettings(f)
     answerTime:SetPoint("TOPLEFT", L.col2, -28)
     refreshers[#refreshers + 1] = answerTime.refresh
 
+    heading(f, L.col2, -78, TEXT.award, TEXT.awardHelp)
+    local preview
+    local message = editBox(f, 280, function(text)
+        LM:Settings().awardMessage = text ~= "" and text or LM.AWARD_DEFAULT
+        refresh()
+    end)
+    message:SetPoint("TOPLEFT", L.col2 + 4, -100)
+    message:SetMaxLetters(200)
+    message:SetScript("OnTextChanged", function(self, user)
+        if user and preview then
+            preview.update(self:GetText())
+        end
+    end)
+    local vars = f:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    vars:SetPoint("TOPLEFT", L.col2, -124)
+    vars:SetTextColor(0.7, 0.7, 0.7)
+    vars:SetText(TEXT.awardVars)
+    local channel = UI.Dropdown(f, TEXT.channel, {
+        labelWidth = L.sliderLabel - 30, width = 150, maxHeight = 300,
+        options = function()
+            local out = {}
+            for _, c in ipairs(TEXT.channels) do
+                out[#out + 1] = c
+            end
+            -- chat channels you have joined: GetChannelList gives id, name, disabled for each
+            local list = { GetChannelList() }
+            for i = 1, #list, 3 do
+                local name = list[i + 1]
+                if type(name) == "string" and name ~= "" then
+                    out[#out + 1] = { key = "CHANNEL:" .. name, label = list[i] .. ". " .. name }
+                end
+            end
+            return out
+        end,
+        get = function()
+            return LM:Settings().awardChannel or "RAID"
+        end,
+        set = function(v)
+            LM:Settings().awardChannel = v
+        end,
+    })
+    channel:SetPoint("TOPLEFT", L.col2, -142)
+    refreshers[#refreshers + 1] = channel.refresh
+    local noRoll = UI.Dropdown(f, TEXT.noRoll, {
+        labelWidth = L.sliderLabel - 30, width = 150,
+        options = function()
+            local out = {}
+            for _, v in ipairs(LM.NO_ROLL_CHOICES) do
+                out[#out + 1] = { key = v, label = '"' .. v .. '"' }
+            end
+            return out
+        end,
+        get = function()
+            return LM:Settings().noRoll or "-"
+        end,
+        set = function(v)
+            LM:Settings().noRoll = v
+            refresh()
+        end,
+    })
+    noRoll:SetPoint("TOPLEFT", L.col2, -174)
+    refreshers[#refreshers + 1] = noRoll.refresh
+    local previewLabel = f:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    previewLabel:SetPoint("TOPLEFT", L.col2, -214)
+    previewLabel:SetTextColor(0.7, 0.7, 0.7)
+    previewLabel:SetText(TEXT.preview)
+    preview = f:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    preview:SetPoint("TOPLEFT", L.col2, -232)
+    preview:SetWidth(285)
+    preview:SetJustifyH("LEFT")
+    preview:SetTextColor(1, 0.5, 0)
+    function preview.update(template)
+        local set = LM:Settings()
+        preview:SetText(LM.FormatAward(template, { item = "[Twisted Horror's Tendril]", player = "Quickstab", rollType = "Need", roll = 71 })
+            .. "\n" .. LM.FormatAward(template, { item = "[Twisted Horror's Tendril]", player = "Halo", response = "Offspec", noRoll = set.noRoll }))
+    end
+    refreshers[#refreshers + 1] = function()
+        local set = LM:Settings()
+        if not message:HasFocus() then
+            message:SetText(set.awardMessage or LM.AWARD_DEFAULT)
+        end
+        preview.update(message:GetText())
+    end
+
     heading(f, L.col3, -8, TEXT.scoreSettings, TEXT.scoreSettingsHelp)
     check(f, L.col3 - 2, -28, TEXT.showScore, function()
         return LM:Settings().score.show
@@ -458,7 +587,7 @@ local TABS = {
     { key = "settings", label = TEXT.settings, build = buildSettings },
 }
 
-local function refresh()
+refresh = function()
     if not (page and page:IsVisible()) then
         return
     end
