@@ -4,7 +4,9 @@ local ADDON, CRT = ...
 --   enabled, size (icon size), maxCount (how many at once), dispelIcon, maxDuration (seconds; debuffs
 --   longer than this are left out, 0 shows every length) and privateSlots (the game's boss debuff
 --   slots as a second row, a fallback).
---   The look: swipe, swipeEdge, timerPosition, timerX, timerY and borderScale.
+--   dispelIconScale is that icon's size, a fraction of the debuff icon (0.2 to 1).
+--   The look: swipe, swipeEdge, timerPosition, timerX, timerY, borderScale, dispelBorder (the border
+--   colored by dispel type) and dispelGlow (a soft glow around that border).
 --   A reverse option existed until 0.13.0, and includeRegular (the old optional second row) until the
 --   AuraContainer became the panel. Their saved values may remain and are ignored.
 --   position = { point, relativePoint, x, y } once the panel has been moved.
@@ -14,6 +16,14 @@ local Debuffs = { listeners = {} }
 CRT.Debuffs = Debuffs
 
 local DEFAULT_POSITION = { point = "CENTER", relativePoint = "CENTER", x = 0, y = 150 }
+
+-- The icon size range in pixels, and the dispel type icon's size range as a fraction of the icon.
+Debuffs.MIN_SIZE, Debuffs.MAX_SIZE = 24, 128
+Debuffs.MIN_DISPEL_SCALE, Debuffs.MAX_DISPEL_SCALE, Debuffs.DEFAULT_DISPEL_SCALE = 0.2, 1, 0.35
+
+local function isSecret(value)
+    return issecretvalue and issecretvalue(value) or false
+end
 
 local function ddb()
     return CRT.db.debuffs
@@ -45,7 +55,7 @@ end
 function Debuffs:SetSize(size)
     size = tonumber(size)
     if size then
-        ddb().size = math.max(24, math.min(96, math.floor(size)))
+        ddb().size = math.max(Debuffs.MIN_SIZE, math.min(Debuffs.MAX_SIZE, math.floor(size)))
     end
     self:Fire()
 end
@@ -69,6 +79,21 @@ end
 
 function Debuffs:SetDispelIcon(value)
     ddb().dispelIcon = value and true or false
+    self:Fire()
+end
+
+-- The dispel type icon's size, as a fraction of the debuff icon. Saved data from before this setting
+-- has none, and reads as the size used until then.
+function Debuffs:DispelIconScale()
+    return tonumber(ddb().dispelIconScale) or self.DEFAULT_DISPEL_SCALE
+end
+
+function Debuffs:SetDispelIconScale(scale)
+    scale = tonumber(scale)
+    if scale then
+        scale = math.floor(scale * 100 + 0.5) / 100
+        ddb().dispelIconScale = math.max(self.MIN_DISPEL_SCALE, math.min(self.MAX_DISPEL_SCALE, scale))
+    end
     self:Fire()
 end
 
@@ -131,7 +156,9 @@ end
 -- each one (icon, time, stacks, dispel type) without handing the values to addon code, so the panel
 -- also works in combat, when debuff details are secret. The look is ours: the swipe and its edge, the
 -- timer as text beside or on the icon or as countdown numbers on the swipe (never both), the dispel
--- type icon, and a border of 5 x borderScale pixels around the icon.
+-- type icon, and a border of 5 x borderScale pixels around the icon, which can take the color of the
+-- debuff's dispel type, with a glow. The game colors that border itself, so the addon never sees the
+-- type in combat.
 
 Debuffs.TIMER_POSITIONS = {
     { key = "below", label = "Below the icon" },
@@ -184,6 +211,70 @@ end
 -- True when the timer is the game's countdown numbers on the swipe.
 function Debuffs:SwipeNumbers()
     return ddb().timerPosition == "numbers"
+end
+
+-- The border colored by dispel type, and the glow around it. The glow only shows with the colored
+-- border, so DispelGlow is false while the border is off.
+function Debuffs:DispelBorder()
+    return ddb().dispelBorder and true or false
+end
+
+function Debuffs:SetDispelBorder(value)
+    ddb().dispelBorder = value and true or false
+    self:Fire()
+end
+
+function Debuffs:DispelGlow()
+    return (ddb().dispelBorder and ddb().dispelGlow) and true or false
+end
+
+function Debuffs:SetDispelGlow(value)
+    ddb().dispelGlow = value and true or false
+    self:Fire()
+end
+
+-- The border's color on a debuff with no dispel type, or with the colored border off.
+Debuffs.BORDER_COLOR = { 0, 0, 0, 1 }
+
+-- Each dispel type's border color, for when the game doesn't give its own. In combat the game colors
+-- the container's borders itself (Panel.lua), with its own colors; these are for the preview samples.
+Debuffs.DISPEL_COLORS = {
+    Magic = { 0.2, 0.6, 1 }, -- blue
+    Poison = { 0, 0.6, 0 }, -- green
+    Curse = { 0.6, 0, 1 }, -- purple
+    Disease = { 0.6, 0.4, 0 }, -- brown
+}
+
+-- The border color for a dispel type name such as "Magic", as r, g, b, a: the game's own color for it
+-- (AuraUtil.GetAuraBorderColor, which the game also uses in combat) when it has one, else the table
+-- above. No type, an unknown one or a secret value gives the plain border. A secret value is never
+-- compared or used as a key.
+function Debuffs:DispelColor(kind)
+    local plain = self.BORDER_COLOR
+    if isSecret(kind) or type(kind) ~= "string" or not self.DISPEL_COLORS[kind] then
+        return plain[1], plain[2], plain[3], plain[4]
+    end
+    local get = AuraUtil and AuraUtil.GetAuraBorderColor
+    if type(get) == "function" then
+        local ok, color = pcall(get, kind)
+        if ok and type(color) == "table" and type(color.GetRGB) == "function" then
+            local okRGB, r, g, b = pcall(color.GetRGB, color)
+            if okRGB and type(r) == "number" and type(g) == "number" and type(b) == "number" then
+                return r, g, b, 1
+            end
+        end
+    end
+    local c = self.DISPEL_COLORS[kind]
+    return c[1], c[2], c[3], 1
+end
+
+-- Every setting the panel's look is built from, as one string: a change to any of them rebuilds the
+-- boss debuff slots (Panel.lua).
+function Debuffs:LookSignature()
+    local timerPoint, _, timerX, timerY = self:TimerAnchor()
+    return table.concat({ tostring(self:PrivateSlots()), self:Size(), self:MaxCount(), tostring(self:DispelIcon()), self:DispelIconScale(),
+        tostring(self:Get("swipe")), tostring(self:Get("swipeEdge")), tostring(self:SwipeNumbers()), tostring(timerPoint), tostring(timerX),
+        tostring(timerY), tostring(self:Get("borderScale")), tostring(self:DispelBorder()), tostring(ddb().dispelGlow and true or false) }, ":")
 end
 
 -- The saved position, or the default one in the upper middle of the screen.
