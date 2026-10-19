@@ -43,7 +43,7 @@ local CRT = {
   Notes = {
     CanEditRaid = function() return true end, -- Notes/Data.lua: solo, you may change the raid note
     WindowSettings = function() return win end, Alert = function() return alertSettings end, Set = function(_, k, f, v) print("Set", k, f, v); local t = k == "alert" and alertSettings or win; t[f] = v; for _, fn in ipairs(listeners) do fn() end end,
-    TrustedOnly = function() return true end, OnChange = function(_, fn) listeners[#listeners+1] = fn end,
+    TrustedOnly = function() return true end, ShowOutsideRaid = function() return true end, OnChange = function(_, fn) listeners[#listeners+1] = fn end,
     List = function() return {} end, ListStyle = function() return "grouped" end, ListDifficulty = function() return "All" end, ListFolded = function() return false end, SetListFolded = function() end, SetListDifficulty = function() end, SetListStyle = function() end, DifficultyGroup = function() return "Other" end, DIFFICULTIES = { "Mythic", "Heroic", "Normal" }, ShortName = function(n) return n end, ViaLabel = function(v) return v end, SourceLabel = function() return nil end, Active = function() return nil end, Get = function() return nil end, Personal = function() return "my note" end,
   },
   NoteEngine = { running = false, PeekNextPhase = function() return nil end },
@@ -77,7 +77,7 @@ alertSettings.enabled = true alertSettings.tts = true
 local checks = 0
 for _, f in ipairs(allFrames) do if f.kind == "CheckButton" then checks = checks + 1 end end
 -- 3 windows (Show, Locked) + Hide lines once passed + Show only me + the sharing switch
-assert(checks == 13, "checkboxes (12 settings, and Display my notes first on the Notes tab): " .. checks)
+assert(checks == 14, "checkboxes (13 settings, and Display my notes first on the Notes tab): " .. checks)
 print("ok alerts column keeps timing and voice")
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }

@@ -109,6 +109,7 @@ local defaults = {
     notes = {
         list = {},
         nextId = 1,
+        showOutsideRaid = true, -- false hides the three note windows unless you are in a raid instance
         trustedOnly = true, -- only accept shared notes from the raid leader or assistants
         shareTarget = "crt", -- Share's Send to: "crt", a note target's key (Integrations/), or "all"
         -- keepEmpty keeps a window up, blank at its own transparency, while it has nothing to show, so a

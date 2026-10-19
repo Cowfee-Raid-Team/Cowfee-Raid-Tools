@@ -23,6 +23,8 @@ function UnitGroupRolesAssigned() return "DAMAGER" end
 C_SpecializationInfo = { GetSpecialization = function() return 1 end,
   GetSpecializationInfo = function() return 62, "Arcane", "", 0, "DAMAGER" end }
 function IsInRaid() return false end
+local instType = "none"
+function IsInInstance() return instType ~= "none", instType end
 function IsInGroup() return false end
 function GetNumGroupMembers() return 1 end
 function UnitIsUnit() return false end
@@ -93,6 +95,7 @@ local function fire(ev, ...)
   end
 end
 
+local previewFns = {}
 local noteText = "EncounterID:3470;Difficulty:Mythic;Name:Nek'zali\\ntime:10;ph:1;tag:Rixxy;text:Raid line;\\n"
 local CRT = {
   MOCHA = { caramel = { 0.78, 0.56, 0.36 } },
@@ -111,7 +114,7 @@ local CRT = {
     alerts = { bars = { shown = true, noteLines = true, cap = 5, ahead = 20, width = 240, height = 20 },
       reminders = {}, phases = {}, overrides = {}, nextId = 1 },
   },
-  UI = { RegisterLayer = function() end, RegisterPreview = function() end,
+  UI = { RegisterLayer = function() end, RegisterPreview = function(_, k, fn) previewFns[k] = fn end,
     ResetButtonWidth = function() return 44 end, ResetButton = function(p) return newObj("Button", p) end },
   FONTS = {},
   FontPath = function() return "font" end,
@@ -142,6 +145,8 @@ local function fresh()
   CRT.db.alerts.nextId = 1
   CRT.db.notes.active = 1
   CRT.db.notes.personalText = "Heal CDs: Cheoeqar"
+  CRT.db.notes.showOutsideRaid = nil
+  instType = "none"
   A:Fire()
 end
 local function at(text, s) return (text:find(s, 1, true)) end
@@ -364,6 +369,38 @@ test("window: a run with no reminders is not live", function()
   end)
   Notes.Personal = orig
   assert(ok, err)
+end)
+
+test("show outside of raid: hides the note windows in the open world, not in a raid or a preview", function()
+  local assign = named.CowfeeRaidToolsNote_assignments
+  assert(NW.AllowedHere(), "old saved data (no setting) counts as on")
+  show()
+  assert(win.shown, "shown outside a raid by default")
+  CRT.db.notes.showOutsideRaid = false
+  Notes:Fire()
+  assert(not NW.AllowedHere(), "not allowed in the open world")
+  show()
+  assert(not win.shown, "hidden outside a raid when unticked")
+  instType = "party"
+  Notes:Fire()
+  show()
+  assert(not win.shown, "a dungeon counts as outside")
+  instType = "raid"
+  fire("PLAYER_ENTERING_WORLD")
+  assert(NW.AllowedHere() and win.shown, "entering a raid shows it without waiting")
+  instType = "none"
+  fire("ZONE_CHANGED_NEW_AREA")
+  assert(not win.shown, "a zone change out of the raid hides it")
+  previewFns.note(true)
+  NW:RefreshAll()
+  assert(win.shown, "a preview shows it anyway")
+  previewFns.note(false)
+  NW:RefreshAll()
+  assert(not win.shown, "hidden again after the preview")
+  CRT.db.notes.showOutsideRaid = true
+  Notes:Fire()
+  show()
+  assert(win.shown, "ticked: shown outside")
 end)
 
 test("stamp: a cleared note keeps the shared windows up for the stamp, then hides", function()

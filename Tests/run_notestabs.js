@@ -37,7 +37,7 @@ local CRT = {
   Notes = {
     CanEditRaid = function() return true end, -- Notes/Data.lua: solo, you may change the raid note
     WindowSettings = function() return win end, Alert = function() return alertSettings end, Set = function(_, k, f, v) end,
-    TrustedOnly = function() return true end, OnChange = function(_, fn) listeners[#listeners+1] = fn end,
+    TrustedOnly = function() return true end, ShowOutsideRaid = function() return true end, OnChange = function(_, fn) listeners[#listeners+1] = fn end,
     List = function() return {} end, ListStyle = function() return "grouped" end, ListDifficulty = function() return "All" end, ListFolded = function() return false end, SetListFolded = function() end, SetListDifficulty = function() end, SetListStyle = function() end, DifficultyGroup = function() return "Other" end, DIFFICULTIES = { "Mythic", "Heroic", "Normal" }, ShortName = function(n) return n end, ViaLabel = function(v) return v end, SourceLabel = function() return nil end, Active = function() return nil end, Get = function() return nil end, Personal = function() return "my note" end,
   },
   Alerts = { Settings = function() return { bars = { shown = true, noteLines = true, cap = 5, ahead = 20, width = 240, height = 20 } } end },

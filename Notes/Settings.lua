@@ -39,6 +39,11 @@ local TEXT = {
     testSpeech = "Test speech",
     testPhrase = "Cowfee Raid Tools. Avenging Wrath in three.",
 
+    -- All three note windows.
+    allWindows = "All note windows",
+    allWindowsHelp = "Settings for the Timers, Assignments and Personal note windows together.\n\nShow outside of raid: untick it to hide all three windows unless you are in a raid instance. They come back when you enter a raid. Previews still shows them, so you can move them.",
+    showOutsideRaid = "Show outside of raid",
+
     -- Sharing.
     sharing = "Sharing",
     trustedOnly = "Only accept notes from leader or assistants",
@@ -286,6 +291,15 @@ local function build(pf)
     })
     styleRow:SetPoint("TOPLEFT", x, top - 278)
     controls[#controls + 1] = styleRow
+
+    -- one switch for all three note windows
+    local allTitle = heading(pf, x, top - 322, TEXT.allWindows)
+    UI.Help(pf, TEXT.allWindows, TEXT.allWindowsHelp):SetPoint("LEFT", allTitle, "RIGHT", 6, 0)
+    makeCheck(pf, x - 4, top - 342, TEXT.showOutsideRaid, nil, function()
+        return Notes:ShowOutsideRaid()
+    end, function(value)
+        Notes:Set(nil, "showOutsideRaid", value)
+    end)
 
     pf:SetScript("OnShow", refresh)
     Notes:OnChange(refresh)
