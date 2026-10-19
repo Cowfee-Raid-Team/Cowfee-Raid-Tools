@@ -490,21 +490,118 @@ local function parseCached(text, keep)
     return ref or nil
 end
 
-function Reference:List()
+-- Shipped references marked for removal (developer builds). The game can't change the addon's files,
+-- so taking a shipped reference out is two steps: the Logged Timeline Ref window (Dev/ReferenceTypes.lua)
+-- marks it, which leaves it out of every list on this computer at once, saved as
+-- dev.removedReferences[RemovalKey] = { boss, encounterID, difficulty, header }; then /crt dev removed
+-- prints the marks to paste to Claude, who deletes those blocks from the boss files. Keep undoes a mark.
+-- Players never have marks, so their lists are the full shipped ones. Same idea as dev.hiddenAbilities
+-- (Timeline/Data.lua).
+
+-- The Boss, Difficulty and Length lines of a block, as written: "Boss: X / Difficulty: Mythic / Length: 9:48".
+local function headerOf(text)
+    local parts = {}
+    for raw in (text .. "\n"):gmatch("([^\n]*)\n") do
+        local line = trim((raw:gsub("\r", "")))
+        local key = line:match("^(%a+)%s*:")
+        key = key and key:lower()
+        if key == "boss" or key == "difficulty" or key == "length" then
+            parts[#parts + 1] = line
+        end
+    end
+    return table.concat(parts, " / ")
+end
+
+local function removedMarks(make)
+    local db = CRT.db
+    if not db then
+        return nil
+    end
+    if make then
+        db.dev = db.dev or {}
+        db.dev.removedReferences = db.dev.removedReferences or {}
+    end
+    return db.dev and db.dev.removedReferences
+end
+
+-- A shipped block's mark key: its encounter ID, difficulty and header, so it survives a /reload and
+-- a reorder of the shipped list (its "ship:N" key may change), but not an edit of those lines.
+function Reference.RemovalKey(ref, text)
+    return tostring(ref.encounterID or "") .. "|" .. (ref.difficulty or "") .. "|" .. headerOf(text)
+end
+
+local function isMarked(marks, entry)
+    return marks ~= nil and not entry.own and marks[Reference.RemovalKey(entry.ref, entry.text)] ~= nil
+end
+
+-- Whether a shipped reference is marked for removal on this computer. Your own copies never are.
+function Reference:IsRemoved(entry)
+    return entry ~= nil and isMarked(removedMarks(), entry)
+end
+
+-- Marks a shipped reference for removal (on) or keeps it (off). Your own copies are deleted instead.
+function Reference:SetRemoved(entry, on)
+    if not entry or entry.own then
+        return
+    end
+    local key = Reference.RemovalKey(entry.ref, entry.text)
+    if on then
+        removedMarks(true)[key] = {
+            boss = entry.ref.boss,
+            encounterID = entry.ref.encounterID,
+            difficulty = entry.ref.difficulty,
+            header = headerOf(entry.text),
+        }
+    else
+        local marks = removedMarks()
+        if not (marks and marks[key]) then
+            return
+        end
+        marks[key] = nil
+        if next(marks) == nil then
+            CRT.db.dev.removedReferences = nil
+        end
+    end
+    CRT.Timeline:Fire()
+end
+
+-- Every mark, by boss then difficulty: { { key, boss, encounterID, difficulty, header } }.
+function Reference:Removed()
+    local out = {}
+    for key, m in pairs(removedMarks() or {}) do
+        out[#out + 1] = { key = key, boss = m.boss, encounterID = m.encounterID, difficulty = m.difficulty, header = m.header }
+    end
+    table.sort(out, function(a, b)
+        if (a.boss or "") ~= (b.boss or "") then
+            return (a.boss or "") < (b.boss or "")
+        end
+        return a.key < b.key
+    end)
+    return out
+end
+
+-- Every reference: yours, then the shipped ones less those marked for removal on this computer.
+-- all keeps the marked ones too, flagged removed = true (the Manage references panel lists them).
+function Reference:List(all)
     local list = {}
     local keep = {}
     for _, r in ipairs(saved()) do
         local ref = parseCached(r.text, keep)
         if ref then
-            list[#list + 1] = { key = "own:" .. r.id, ref = ref, own = true, text = r.text }
+            list[#list + 1] = { key = "own:" .. r.id, ref = ref, own = true, text = r.text, saved = r.saved }
         end
     end
     local shipped = CRT.TimelineDB and CRT.TimelineDB.references
+    local marks = removedMarks()
     if shipped then
         for i, text in ipairs(shipped) do
             local ref = parseCached(text, keep)
             if ref then
-                list[#list + 1] = { key = "ship:" .. i, ref = ref, own = false, text = text }
+                local entry = { key = "ship:" .. i, ref = ref, own = false, text = text }
+                entry.removed = isMarked(marks, entry) or nil
+                if all or not entry.removed then
+                    list[#list + 1] = entry
+                end
             end
         end
     end
@@ -578,10 +675,11 @@ function Reference.FillSpellIDs(text, rows)
 end
 
 -- The references of a boss: by encounter ID when the reference has one, otherwise by boss name.
-function Reference:ForBoss(encounterID, name)
+-- all keeps shipped ones marked for removal (see List).
+function Reference:ForBoss(encounterID, name, all)
     local want = norm(name)
     local found = {}
-    for _, entry in ipairs(self:List()) do
+    for _, entry in ipairs(self:List(all)) do
         local ref = entry.ref
         if ref.encounterID then
             if ref.encounterID == encounterID then
@@ -614,6 +712,11 @@ function Reference:BossKey(entry, listed)
     return "ref:" .. want
 end
 
+-- When a reference of yours was saved (the game's time(); nil where there is none, as in the tests).
+local function stamp()
+    return type(time) == "function" and time() or nil
+end
+
 -- Saves new text as your reference. Returns its key, or nil and the errors (nothing is saved then).
 function Reference:Add(text)
     local ref, errors = Reference.Parse(text)
@@ -624,7 +727,7 @@ function Reference:Add(text)
     local db = settings()
     local id = db.nextRef
     db.nextRef = id + 1
-    list[#list + 1] = { id = id, text = text }
+    list[#list + 1] = { id = id, text = text, saved = stamp() }
     CRT.Timeline:Fire()
     return "own:" .. id
 end
@@ -640,6 +743,7 @@ function Reference:Update(key, text)
         return false, errors
     end
     r.text = text
+    r.saved = stamp()
     CRT.Timeline:Fire()
     return true
 end
@@ -652,6 +756,28 @@ function Reference:Delete(key)
     end
     table.remove(saved(), i)
     CRT.Timeline:Fire()
+end
+
+-- Deletes every reference of yours for a boss (matched as ForBoss does); the shipped ones stay.
+-- Returns how many were deleted.
+function Reference:DeleteOwn(encounterID, name)
+    local doomed = {}
+    for _, entry in ipairs(self:ForBoss(encounterID, name, true)) do
+        if entry.own then
+            doomed[entry.key] = true
+        end
+    end
+    local list, count = saved(), 0
+    for i = #list, 1, -1 do
+        if doomed["own:" .. list[i].id] then
+            table.remove(list, i)
+            count = count + 1
+        end
+    end
+    if count > 0 then
+        CRT.Timeline:Fire()
+    end
+    return count
 end
 
 -- Moving phases -------------------------------------------------------------------------------------
