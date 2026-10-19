@@ -20,7 +20,8 @@ local function mock(kind)
   local m = { kind = kind, shown = true, pts = {}, calls = {} }
   return setmetatable(m, { __index = function(t, k)
     if k == "CreateFontString" or k == "CreateTexture" then return function(self, _, layer, _, sub)
-      local r = mock(k == "CreateTexture" and "Texture" or "FontString") rawset(r, "layer", layer) rawset(r, "sublevel", sub) return r end end
+      local r = mock(k == "CreateTexture" and "Texture" or "FontString") rawset(r, "layer", layer) rawset(r, "sublevel", sub)
+      rawset(r, "parent", self) return r end end
     if k == "SetScript" then return function(self, n, fn) rawset(self, n, fn) end end
     if k == "Show" then return function(self) self.shown = true end end
     if k == "Hide" then return function(self) self.shown = false end end
@@ -41,15 +42,21 @@ local function mock(kind)
     if k == "SetBlendMode" then return function(self, b) rawset(self, "blend", b) end end
     if k == "GetFont" then return function() return "f", 12, "" end end
     if k == "GetTextColor" then return function() return 1, 1, 1 end end
-    if k == "GetFrameLevel" then return function() return 1 end end
+    -- A frame's level is its own when set, else one above its parent's, as in the game.
+    if k == "SetFrameLevel" then return function(self, n) rawset(self, "level", n) end end
+    if k == "GetFrameLevel" then return function(self)
+      local p = rawget(self, "parent")
+      return rawget(self, "level") or (p and p:GetFrameLevel() + 1) or 1 end end
+    if k == "EnableMouse" then return function(self, on) rawset(self, "mouse", on) end end
     if k == "GetPoint" then return function() return "CENTER", nil, "CENTER", 0, 0 end end
-    if k == "IsForbidden" then return function() return false end end
+    if k == "IsForbidden" then return function(self) return forbidTextures and self.kind == "Texture" or false end end
     if k == "SetEnabled" then return function(self, on) rawset(self, "enabled", on) end end
     return function() end
   end })
 end
 
--- Game stubs.
+-- Game stubs. forbidTextures makes every texture forbidden, as during an encounter.
+forbidTextures = false
 format = string.format
 CreateFont = function() return mock("Font") end
 for _, n in ipairs({ "GameFontNormal", "GameFontHighlight", "GameFontDisable", "GameFontHighlightSmall", "GameFontDisableSmall",
@@ -77,6 +84,7 @@ Enum = { CustomAuraButtonDispelTypeTextureStyle = { Border = 0, BorderWithIcon =
 local frames, groupOpts = {}, nil
 function CreateFrame(kind, name, parent, template)
   local f = mock(kind)
+  rawset(f, "parent", parent) rawset(f, "name", name)
   frames[#frames + 1] = f
   if kind == "AuraContainer" then
     rawset(f, "AddAuraGroup", function(self, key, filter, opts) groupOpts = opts return true end)
@@ -179,6 +187,31 @@ check("signature changes with dispelIconScale", changes("dispelIconScale", 0.7))
 check("signature changes with dispelBorder", changes("dispelBorder", true))
 check("signature changes with dispelGlow", changes("dispelGlow", true))
 check("signature changes with size", changes("size", 60))
+check("signature changes with spacing", changes("spacing", 10))
+
+-- Spacing: the gap between two icons' borders, 0 to 20, default 4.
+check("default spacing is 4", defaults.spacing == 4 and Debuffs:Spacing() == 4, tostring(defaults.spacing))
+CRT.db.debuffs.spacing = nil
+check("old saved data without a spacing reads 4", Debuffs:Spacing() == 4, Debuffs:Spacing())
+CRT.db.debuffs = fresh()
+Debuffs:SetSpacing(50) check("spacing clamps to 20", Debuffs:Spacing() == 20, Debuffs:Spacing())
+Debuffs:SetSpacing(-3) check("spacing clamps to 0", Debuffs:Spacing() == 0, Debuffs:Spacing())
+Debuffs:SetSpacing(7.6) check("spacing is whole pixels", Debuffs:Spacing() == 8, Debuffs:Spacing())
+Debuffs:SetSpacing("x") check("spacing ignores junk", Debuffs:Spacing() == 8, Debuffs:Spacing())
+Debuffs:SetSpacing(4)
+
+-- The step from one icon to the next: the icon, the border's width (half of it on each icon) and the
+-- spacing, so neighbouring borders never overlap.
+for _, scale in ipairs({ 0, 1, 2, 4 }) do
+  for _, gap in ipairs({ 0, 4, 20 }) do
+    CRT.db.debuffs.borderScale, CRT.db.debuffs.spacing = scale, gap
+    local edge = 5 * scale
+    local step = Debuffs:Step(44)
+    check(format("step at border %d, spacing %d is 44 + %d + %d", scale, gap, edge, gap), step == 44 + edge + gap, step)
+    check(format("borders never overlap at border %d, spacing %d", scale, gap), step >= 44 + Debuffs:Edge(), step)
+  end
+end
+CRT.db.debuffs.borderScale, CRT.db.debuffs.spacing = 1, 4
 check("signature is stable", Debuffs:LookSignature() == Debuffs:LookSignature())
 
 -- The panel: build it, then make a container button through the group's initializeFrame.
@@ -250,6 +283,65 @@ Debuffs:Set("borderScale", 1)
 Debuffs:SetDispelBorder(false)
 check("border off: hidden and not registered", #added == 0 and not borderTex.shown, styles())
 
+-- The glow sits on its own frame inside the button, above every button and its swipe, and below its
+-- own button's timer and stacks.
+local timeText = {}
+rawset(button, "SetDurationText", function(self, fs) timeText[self] = fs end)
+local button2 = mock("AuraButton")
+rawset(button2, "SetIcon", function() end)
+rawset(button2, "ClearDispelTypeTextures", function() end)
+rawset(button2, "AddDispelTypeTexture", function() end)
+rawset(button2, "SetDurationText", function(self, fs) timeText[self] = fs end)
+Debuffs:SetDispelBorder(true) Debuffs:SetDispelGlow(true)
+groupOpts.initializeFrame(button2)
+local glow = glowTex()
+check("the glow is handed to the game", glow ~= nil)
+if glow then
+  local holder = rawget(glow, "parent")
+  local function descends(region, owner)
+    local p = rawget(region, "parent")
+    while p do if p == owner then return true end p = rawget(p, "parent") end
+    return false
+  end
+  check("the glow is still inside its button (the game needs that)", descends(glow, button))
+  check("the glow's frame is not the button itself", holder ~= button)
+  local level = holder:GetFrameLevel()
+  local below = level > button:GetFrameLevel() and level > button2:GetFrameLevel()
+  for _, f in ipairs(frames) do
+    if f.kind == "Cooldown" and (rawget(f, "parent") == button or rawget(f, "parent") == button2) and f:GetFrameLevel() >= level then below = false end
+  end
+  check("the glow's frame is above every button and its swipe", below, level)
+  local text = timeText[button] and rawget(timeText[button], "parent")
+  check("its own timer and stacks stay above the glow", text ~= nil and text:GetFrameLevel() > level, text and text:GetFrameLevel())
+  check("the glow's frame never takes the mouse", rawget(holder, "mouse") == false)
+end
+Debuffs:SetDispelBorder(false) Debuffs:SetDispelGlow(false)
+
+-- The timer and stacks are raised when the parts are made, even if the button can't be wired yet.
+local button3 = mock("AuraButton")
+rawset(button3, "SetIcon", function() end)
+forbidTextures = true
+groupOpts.initializeFrame(button3)
+forbidTextures = false
+local top3 = 0
+for _, f in ipairs(frames) do
+  if f.kind == "Frame" and rawget(f, "parent") == button3 then top3 = math.max(top3, f:GetFrameLevel()) end
+end
+check("a button skipped while forbidden still has its text above the swipe", top3 == button3:GetFrameLevel() + 21, top3)
+
+-- The panel and the container's row are laid out by the step.
+local panelFrame
+for _, f in ipairs(frames) do if rawget(f, "name") == "CowfeeRaidToolsDebuffPanel" then panelFrame = f end end
+for _, case in ipairs({ { 1, 4 }, { 2, 0 }, { 4, 20 } }) do
+  CRT.db.debuffs.borderScale, CRT.db.debuffs.spacing = case[1], case[2]
+  Debuffs:Fire()
+  local step = Debuffs:Step(44)
+  check(format("panel width uses the step (border %d, spacing %d)", case[1], case[2]), panelFrame.w == 3 * step + 44, panelFrame.w)
+end
+CRT.db.debuffs.borderScale, CRT.db.debuffs.spacing = 1, 4
+Debuffs:Fire()
+check("the group's spacing is the step less the icon", groupOpts.layout.elementSpacing == 5 + 4, groupOpts.layout.elementSpacing)
+
 -- The preview tiles color their border only where the sample's type is known.
 Debuffs:SetDispelBorder(true)
 Debuffs:SetMaxCount(8)
@@ -266,6 +358,14 @@ for _, f in ipairs(frames) do
 end
 check("6 sample tiles with a dispel type get a colored border", colored == 6, colored)
 check("2 sample tiles without one keep the plain border", plain == 2, plain)
+local tileXs = {}
+for _, f in ipairs(frames) do
+  if rawget(f, "parts") and f.shown and f.pts[1] then tileXs[#tileXs + 1] = f.pts[1][4] end
+end
+table.sort(tileXs)
+local stepOK = #tileXs == 8
+for i, x in ipairs(tileXs) do if x ~= (i - 1) * Debuffs:Step(44) then stepOK = false end end
+check("preview tiles are one step apart", stepOK, table.concat(tileXs, ","))
 local function tileGlows()
   local n = 0
   for _, f in ipairs(frames) do
@@ -276,6 +376,16 @@ local function tileGlows()
 end
 Debuffs:SetDispelGlow(true)
 check("6 sample tiles glow", tileGlows() == 6, tileGlows())
+local tileGlowAbove, tileCount = true, 0
+for _, f in ipairs(frames) do
+  local parts = rawget(f, "parts")
+  if parts and parts.glow then
+    tileCount = tileCount + 1
+    local holder = rawget(parts.glow, "parent")
+    if holder == f or holder:GetFrameLevel() <= f:GetFrameLevel() + 1 then tileGlowAbove = false end
+  end
+end
+check("each tile's glow is on a frame above the tiles", tileCount == 8 and tileGlowAbove, tileCount)
 Debuffs:Set("borderScale", 0)
 check("no tile glows at border size 0", tileGlows() == 0, tileGlows())
 Debuffs:Set("borderScale", 1)
@@ -285,7 +395,7 @@ check("the preview stops", Panel:IsPreviewing() == false)
 Debuffs:SetDispelBorder(false)
 Debuffs:SetMaxCount(4)
 local info = Panel:InfoText()
-check("diagnostics list the new settings", info:find("dispel icon size 20%%") and info:find("dispel border false") and info:find("glow false"), info:match("Settings:[^\\n]*"))
+check("diagnostics list the new settings", info:find("dispel icon size 20%%") and info:find("dispel border false") and info:find("glow false") and info:find("spacing 4"), info:match("Settings:[^\\n]*"))
 
 -- The tab.
 assert(load(pageSrc, "Page.lua"))("CowfeeRaidTools", CRT)
@@ -295,6 +405,13 @@ check("icon size slider goes to 128", sliders["Icon size"] and sliders["Icon siz
 local ds = sliders["Dispel icon size"]
 check("dispel icon size slider is 20 to 100", ds and ds.opts.min == 20 and ds.opts.max == 100)
 check("dispel icon size shows a percent", ds and ds.opts.format(35) == "35%")
+local sp = sliders["Spacing"]
+check("spacing slider is 0 to 20", sp and sp.opts.min == 0 and sp.opts.max == 20)
+check("spacing slider reads the setting", sp and sp.opts.get() == 4)
+if sp then sp.opts.set(12) end
+check("spacing slider saves", Debuffs:Spacing() == 12, Debuffs:Spacing())
+Debuffs:SetSpacing(4)
+check("spacing has a (?) help that mentions the border", helps["Spacing"] ~= nil and helps["Spacing"]:find("border") ~= nil)
 Debuffs:SetDispelIconScale(0.35)
 check("dispel icon size reads the saved scale", ds and ds.opts.get() == 35, ds and ds.opts.get())
 ds.opts.set(70)
@@ -355,6 +472,36 @@ pf.OnHide(pf)
 check("closing the tab leaves it on while Previews is on", Panel:IsPreviewing() == true)
 CRT.UI.previewing = false
 previewFns.debuffs(false)
+
+-- Without the glow's atlas there is no glow at all: a plain square above the icon would tint it.
+C_Texture = { GetAtlasInfo = function() return nil end }
+local before = #frames
+assert(load(panelSrc, "Panel.lua"))("CowfeeRaidTools", CRT)
+local Panel2 = CRT.DebuffPanel
+for i = before + 1, #frames do if rawget(frames[i], "OnEvent") then events = frames[i] end end
+events.OnEvent(events, "PLAYER_LOGIN")
+check("no glow atlas: a second panel is built", groupOpts ~= nil and #frames > before + 1)
+Debuffs:SetDispelBorder(true) Debuffs:SetDispelGlow(true)
+added = {}
+local button4 = mock("AuraButton")
+rawset(button4, "SetIcon", function() end)
+rawset(button4, "ClearDispelTypeTextures", function() added = {} end)
+rawset(button4, "AddDispelTypeTexture", function(self, tex, opts) added[#added + 1] = { tex = tex, opts = opts } tex:Show() end)
+groupOpts.initializeFrame(button4)
+local borders = 0
+for _, a in ipairs(added) do if a.opts.style == 3 then borders = borders + 1 end end
+check("no glow atlas: only the border is handed to the game", borders == 1 and glowTex() == nil, styles())
+Debuffs:SetMaxCount(8)
+Panel2:SetPreview(true)
+local plainGlows, tilesSeen = 0, 0
+for _, f in ipairs(frames) do
+  local parts = rawget(f, "parts")
+  if parts and parts.glow and not rawget(parts.glow, "atlas") then tilesSeen = tilesSeen + 1 if parts.glow.shown then plainGlows = plainGlows + 1 end end
+end
+check("no glow atlas: no preview tile shows a glow", tilesSeen == 8 and plainGlows == 0, tilesSeen .. " tiles, " .. plainGlows .. " glowing")
+Panel2:SetPreview(false)
+check("no glow atlas: the diagnostics say so", Panel2:InfoText():find("glow atlas") ~= nil)
+Debuffs:SetDispelBorder(false) Debuffs:SetDispelGlow(false) Debuffs:SetMaxCount(4)
 
 print(passed .. " passed, " .. failed .. " failed")
 if failed > 0 then error("debuff checks failed") end

@@ -100,6 +100,7 @@ local defaults = {
         timerX = 0, -- nudges the timer text, in pixels
         timerY = 0,
         borderScale = 1, -- the game's debuff border is the icon plus 5 x this many pixels, 0 to 6
+        spacing = 4, -- pixels between two icons' borders, 0 to 20; the border's own width is added to it
         dispelBorder = false, -- color the border by the debuff's dispel type
         dispelGlow = false, -- and a soft glow around it (only with dispelBorder)
     },

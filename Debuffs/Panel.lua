@@ -14,6 +14,12 @@ local ADDON, CRT = ...
 -- shows them only on a debuff with a dispel type and tints them that type's color from the map. The
 -- preview tiles color theirs from their samples' known types (Debuffs:DispelColor).
 --
+-- Icons sit Debuffs:Step(size) apart: the icon, the border's width and the Spacing setting, so two
+-- borders never overlap. The glow adds no space: it is on a frame inside its button, raised above every
+-- button (GLOW_LEVEL), so it draws over its neighbours instead of under them. The game only takes a
+-- dispel texture that is inside the button (AuraContainerUtil.ValidateInboundScriptObject), so the glow
+-- can't move to one shared frame above the row. The timer and stacks sit one level above the glow.
+--
 -- The game's boss debuff slots (C_UnitAuras.AddPrivateAuraAnchor, where the game draws a private aura
 -- itself) are kept as an optional second row, off by default, in case boss mechanic debuffs don't
 -- reach the container. Whether they do is checked in game.
@@ -36,17 +42,21 @@ CRT.DebuffPanel = Panel
 local CONTAINER_ADDON = "Blizzard_AuraContainer"
 local TEMPLATES = { "CustomAuraContainerTemplate, DisableUntrustedLayoutScriptsTemplate", "CustomAuraContainerTemplate" }
 local GROUP = "debuffs"
-local GAP = 4
 local MAX_SLOTS = 8
 local SLOT_ROW_OFFSET = 24 -- gap above the boss debuff slots, which leaves room for the row's timer text
 local REFRESH_SECONDS = 0.5
 local TIMER_FONT = "CRTFontSmall"
 local COUNT_FONT = "CRTFontHighlight"
 local WHITE = "Interface\\Buttons\\WHITE8X8"
--- The glow behind a dispel type's border: the game's white glow for a new item in the bags, drawn
--- additively, so the dispel type's color tints it cleanly. A plain square if the atlas is missing.
+-- The glow around a dispel type's border: the game's white glow for a new item in the bags, drawn
+-- additively, so the dispel type's color tints it cleanly. Without the atlas there is no glow: a plain
+-- square drawn above the icon would tint the whole icon.
 local GLOW_ATLAS = "bags-glow-white"
 local GLOW_ALPHA = 0.8
+-- Frame levels above each icon's own: the glow's frame, over every other icon in the row and its
+-- swipe, and the timer and stacks, over the glow.
+local GLOW_LEVEL = 20
+local TEXT_LEVEL = 21
 
 local frame, container, handle
 local slots = {} -- one frame per private aura slot
@@ -115,7 +125,7 @@ end
 
 local function rowWidth()
     local size, count = Debuffs:Size(), Debuffs:MaxCount()
-    return count * size + (count - 1) * GAP, size
+    return (count - 1) * Debuffs:Step(size) + size, size
 end
 
 -- The whole panel: the container's row, and the slot row under it when that is on.
@@ -173,7 +183,7 @@ local function addAnchors()
         if index <= count then
             slot:SetSize(size, size)
             slot:ClearAllPoints()
-            slot:SetPoint("TOPLEFT", frame, "TOPLEFT", (index - 1) * (size + GAP), top)
+            slot:SetPoint("TOPLEFT", frame, "TOPLEFT", (index - 1) * Debuffs:Step(size), top)
             slot:Show()
             local args = {
                 unitToken = "player",
@@ -220,18 +230,39 @@ end
 
 -- The parts of a debuff on a frame (a container button or a preview tile): border, icon, swipe, timer
 -- text and stacks on a frame above the swipe, and the dispel type icon. Behind the icon: the plain
--- border, the dispel type's border over it, and the glow under both.
+-- border, and the dispel type's border over it. The glow is on its own frame, raised over the other
+-- icons (raiseParts); it never takes the mouse.
+-- Whether the game has the glow's atlas. Checked once; a missing one is noted for the diagnostics.
+local glowAtlas
+local function hasGlowAtlas()
+    if glowAtlas == nil then
+        glowAtlas = (C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(GLOW_ATLAS)) and true or false
+        if not glowAtlas then
+            note("the glow atlas " .. GLOW_ATLAS .. " is missing, so there is no glow")
+        end
+    end
+    return glowAtlas
+end
+
+-- An owner's frame level, or nil when the game hides it or won't give it.
+local function frameLevel(owner)
+    local ok, level = pcall(owner.GetFrameLevel, owner)
+    if not ok or isSecret(level) or type(level) ~= "number" then
+        return nil
+    end
+    return level
+end
+
 local function makeParts(owner)
     local parts = {}
-    parts.glow = owner:CreateTexture(nil, "BACKGROUND", nil, -1)
+    parts.glowFrame = CreateFrame("Frame", nil, owner)
+    parts.glowFrame:SetAllPoints()
+    parts.glowFrame:EnableMouse(false)
+    parts.glow = parts.glowFrame:CreateTexture(nil, "BACKGROUND", nil, -1)
     parts.glow:SetPoint("CENTER")
-    local atlas = C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(GLOW_ATLAS)
-    if atlas then
+    if hasGlowAtlas() then
         parts.glow:SetAtlas(GLOW_ATLAS)
         parts.glow:SetAlpha(GLOW_ALPHA)
-    else
-        parts.glow:SetTexture(WHITE)
-        parts.glow:SetAlpha(GLOW_ALPHA * 0.4)
     end
     parts.glow:SetBlendMode("ADD")
     parts.glow:Hide()
@@ -254,7 +285,10 @@ local function makeParts(owner)
     -- The text sits on its own frame above the swipe, so the swipe never covers it.
     parts.over = CreateFrame("Frame", nil, owner)
     parts.over:SetAllPoints()
-    parts.over:SetFrameLevel(owner:GetFrameLevel() + 5)
+    local level = frameLevel(owner)
+    if level then
+        pcall(parts.over.SetFrameLevel, parts.over, level + TEXT_LEVEL) -- raiseParts keeps it there
+    end
     parts.time = parts.over:CreateFontString(nil, "OVERLAY", TIMER_FONT)
     parts.time:SetTextColor(1, 1, 1)
     parts.count = parts.over:CreateFontString(nil, "OVERLAY", COUNT_FONT)
@@ -264,10 +298,24 @@ local function makeParts(owner)
     return parts
 end
 
+-- Raises the glow over every icon in the row and the text over the glow, as levels above the owner's
+-- own. Every icon in a row shares one level, so this puts the glow over its neighbours. Done each time
+-- the parts are laid out, in case the game has moved the owner's level. A level the game hides or
+-- won't give leaves the parts where they are.
+local function raiseParts(owner, parts)
+    local level = frameLevel(owner)
+    if not level then
+        return
+    end
+    pcall(parts.glowFrame.SetFrameLevel, parts.glowFrame, level + GLOW_LEVEL)
+    pcall(parts.over.SetFrameLevel, parts.over, level + TEXT_LEVEL)
+end
+
 -- Size, border, swipe and where the timer text goes, the same for a button and a tile.
 local function layoutParts(owner, parts, size)
     pcall(owner.SetSize, owner, size, size) -- a container button may be set up in combat
-    local edge = 5 * (Debuffs:Get("borderScale") or 1)
+    raiseParts(owner, parts)
+    local edge = Debuffs:Edge()
     parts.border:SetSize(size + edge, size + edge)
     local plain = Debuffs.BORDER_COLOR
     parts.border:SetColorTexture(plain[1], plain[2], plain[3], plain[4])
@@ -346,7 +394,7 @@ end
 -- Both need a border size above 0.
 local function wireDispelBorder(button, parts)
     local style = dispelStyle("PreserveAsset")
-    local edge = 5 * (Debuffs:Get("borderScale") or 1)
+    local edge = Debuffs:Edge()
     local options = { style = style, showWhenHarmful = true, showWhenHelpful = false, showWithoutDispelType = false,
         customDispelColorMap = dispelColorMap() }
     if Debuffs:DispelBorder() and edge > 0 and style ~= nil then
@@ -354,7 +402,7 @@ local function wireDispelBorder(button, parts)
     else
         hidePart(parts.dispelBorder)
     end
-    if Debuffs:DispelGlow() and edge > 0 and style ~= nil then
+    if Debuffs:DispelGlow() and edge > 0 and style ~= nil and hasGlowAtlas() then
         try("button", button, "AddDispelTypeTexture", parts.glow, options)
     else
         hidePart(parts.glow)
@@ -365,7 +413,7 @@ end
 -- calls), so a setting turned off stops showing at once.
 local function wireButton(button, parts)
     if forbidden(button) or forbidden(parts.icon) or forbidden(parts.border) or forbidden(parts.over) or forbidden(parts.dispelBorder)
-        or forbidden(parts.glow) then
+        or forbidden(parts.glowFrame) or forbidden(parts.glow) then
         dirty[button] = true
         skipped = skipped + 1
         pendingApply = true
@@ -443,7 +491,7 @@ end
 
 local function groupLayout()
     local size = Debuffs:Size()
-    return { elementWidth = size, elementHeight = size, elementSpacing = GAP }
+    return { elementWidth = size, elementHeight = size, elementSpacing = Debuffs:Step(size) - size }
 end
 
 -- The flow layout: one row from the top left, growing right.
@@ -569,7 +617,7 @@ local function updateTiles()
         if previewOn and index <= count then
             local sample, parts = SAMPLES[index], tile.parts
             tile:ClearAllPoints()
-            tile:SetPoint("TOPLEFT", frame, "TOPLEFT", (index - 1) * (size + GAP), 0)
+            tile:SetPoint("TOPLEFT", frame, "TOPLEFT", (index - 1) * Debuffs:Step(size), 0)
             local timerShown = layoutParts(tile, parts, size)
             parts.icon:SetTexture(sampleIcon(sample.spell))
             parts.count:SetText(sample.stacks or "")
@@ -582,12 +630,12 @@ local function updateTiles()
             parts.dispel:SetShown(dispel and true or false)
             -- The samples' dispel types are the addon's own, so their border is colored here.
             local typed = sample.dispel ~= nil
-            local edge = 5 * (Debuffs:Get("borderScale") or 1)
+            local edge = Debuffs:Edge()
             local r, g, b = Debuffs:DispelColor(sample.dispel)
             parts.dispelBorder:SetVertexColor(r, g, b, 1)
             parts.dispelBorder:SetShown(Debuffs:DispelBorder() and typed and edge > 0)
             parts.glow:SetVertexColor(r, g, b, 1)
-            parts.glow:SetShown(Debuffs:DispelGlow() and typed and edge > 0)
+            parts.glow:SetShown(Debuffs:DispelGlow() and typed and edge > 0 and hasGlowAtlas())
             if not tile.endsAt then
                 tile.endsAt = GetTime() + sample.left
                 if parts.cooldown then
@@ -854,9 +902,9 @@ function Panel:InfoText()
     add(format("Settings: size %d, max %d, dispel icon %s, dispel icon size %d%%, hide longer than %s, boss debuff slots %s", Debuffs:Size(), Debuffs:MaxCount(),
         tostring(Debuffs:DispelIcon()), math.floor(Debuffs:DispelIconScale() * 100 + 0.5), Debuffs:MaxDuration() > 0 and (Debuffs:MaxDuration() .. " s") or "off",
         tostring(Debuffs:PrivateSlots())))
-    add(format("Look: swipe %s, edge %s, countdown numbers %s, timer %s (%s, %s), border %s, dispel border %s, glow %s", tostring(Debuffs:Get("swipe")),
+    add(format("Look: swipe %s, edge %s, countdown numbers %s, timer %s (%s, %s), border %s, spacing %d (%g px from icon to icon), dispel border %s, glow %s", tostring(Debuffs:Get("swipe")),
         tostring(Debuffs:Get("swipeEdge")), tostring(Debuffs:SwipeNumbers()), tostring(Debuffs:Get("timerPosition")), tostring(Debuffs:Get("timerX")),
-        tostring(Debuffs:Get("timerY")), tostring(Debuffs:Get("borderScale")), tostring(Debuffs:DispelBorder()), tostring(Debuffs:DispelGlow())))
+        tostring(Debuffs:Get("timerY")), tostring(Debuffs:Get("borderScale")), Debuffs:Spacing(), Debuffs:Step(Debuffs:Size()), tostring(Debuffs:DispelBorder()), tostring(Debuffs:DispelGlow())))
     if frame then
         local point, _, relativePoint, x, y = frame:GetPoint()
         add(format("Panel: alpha %s, shown %s, effective alpha %s, size %s x %s, at %s %s %s,%s",
