@@ -32,6 +32,8 @@ local function mock(kind, parent)
     SetTexture = function(self, f) self.file = f self.atlas = nil end,
     SetAtlas = function(self, a) self.atlas = a self.file = nil end,
     SetTexCoord = function(self, ...) self.coords = { ... } end,
+    SetHorizTile = function(self, v) self.horizTile = v end,
+    SetVertTile = function(self, v) self.vertTile = v end,
     SetAlpha = function(self, a) self.alpha = a end,
     Show = function(self) self.shown = true end,
     Hide = function(self) self.shown = false end,
@@ -195,10 +197,12 @@ eq(panels[2].slot.atlas, "loottoast-itemborder-blue", "classic: a rare item's sl
 check(p.plate and #p.plate == 3 and allShown(p.plate, true), "classic: the name plate's three pieces show")
 check(p.plate[1].file == "Interface\\\\LootFrame\\\\LootToast" and p.plate[1].coords, "classic: the plate is LootToast's item name border")
 check(not p.plateFlat.shown and not p.slotFlat.shown, "classic: no flat plate or slot")
-check(p.stone and p.stone.shown and p.stone.file == "Interface\\\\LootFrame\\\\LootToast" and near(p.stone.coords, { 0.28222656, 0.55273438, 0.30859375 }), "classic: the roll frame's stone background")
+check(p.stone and p.stone.shown, "classic: the stone shows")
+eq(p.stone.file, "Interface\\\\FrameGeneral\\\\UI-Background-Marble", "classic: the stone is the grey marble")
+check(p.stone.horizTile and p.stone.vertTile and rawget(p.stone, "coords") == nil, "classic: the marble tiles, unstretched")
 eq(p.bg[4], 0, "classic: no dark flat fill over the stone")
 local own = UI.Stone(mock("Frame"))
-check(own.file == UI.STONE.file and near(own.coords, UI.STONE.coords) and own.points[1][1] == "TOPLEFT" and own.points[1][2] == 0 and own.points[2][1] == "BOTTOMRIGHT", "UI.Stone: the shared stone, covering its frame")
+check(own.file == UI.STONE.file and own.horizTile and own.vertTile and own.points[1][1] == "TOPLEFT" and own.points[1][2] == 0 and own.points[2][1] == "BOTTOMRIGHT", "UI.Stone: the shared stone, covering its frame")
 eq(p.edge[4], 0, "classic: the flat edge gives way to the border art")
 check(p.timer.shown ~= false and p.timer.fill and p.timer.fill[4] > 0, "classic: the background timer is still there, lighter over the stone")
 -- the game draws its border about 4.5 px outside the stone: the stone and the timer sit 4 in
