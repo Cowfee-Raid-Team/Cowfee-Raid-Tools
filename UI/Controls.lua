@@ -203,12 +203,13 @@ end
 -- knob without dragging (under KNOB_CLICK pixels) to type a number; the mouse wheel, and the arrow
 -- keys while typing, move one step. There are no < > buttons. The game's slider stays for the Classic
 -- look, and the look button switches between the two live (UI.skinned).
--- Rounded corners are quarters of Media/Disc.tga, a 32 px white disc with soft edges: each shape is a
--- quarter disc in each corner and plain colour between them.
+-- Rounded corners: UI.RoundRect, below.
 local DISC = "Interface\\AddOns\\CowfeeRaidTools\\Media\\Disc"
 local TRACK_H, TRACK_R = 4, 2
 local KNOB_H, KNOB_R, KNOB_MIN_W, KNOB_PAD = 22, 5, 38, 14
+local KNOB_TEXT_PAD = 8 -- the knob is at least this much taller than its font
 local KNOB_CLICK = 3 -- a knob that moved less than this was clicked, not dragged
+local NUDGE_DELAY = 0.4 -- an onRelease slider saves a wheel or arrow nudge this long after the last one
 
 local QUARTERS = {
     -- point, texture coordinates (left, right, top, bottom), which way the inset goes
@@ -219,8 +220,11 @@ local QUARTERS = {
 }
 
 -- A rounded rectangle drawn by owner's textures over anchor (a frame or a texture), inset pixels in
--- from its edges, with corners of the given radius. Colour it with paintShape.
-local function roundRect(owner, anchor, layer, sublevel, radius, inset)
+-- from its edges, with corners of the given radius: a quarter of Media/Disc.tga in each corner and
+-- plain colour between them. height, when given and no more than two radii (a pill-ended bar), leaves
+-- out the side pieces, which would have no height. Colour it with UI.PaintShape.
+function UI.RoundRect(owner, anchor, layer, sublevel, radius, inset, height)
+    inset = inset or 0
     local shape = { corners = {}, fills = {} }
     for _, q in ipairs(QUARTERS) do
         local t = owner:CreateTexture(nil, layer, nil, sublevel)
@@ -235,23 +239,28 @@ local function roundRect(owner, anchor, layer, sublevel, radius, inset)
     local middle = owner:CreateTexture(nil, layer, nil, sublevel)
     middle:SetPoint("TOPLEFT", anchor, "TOPLEFT", edge, -inset)
     middle:SetPoint("BOTTOMRIGHT", anchor, "BOTTOMRIGHT", -edge, inset)
-    local left = owner:CreateTexture(nil, layer, nil, sublevel)
-    left:SetPoint("TOPLEFT", anchor, "TOPLEFT", inset, -edge)
-    left:SetPoint("BOTTOMRIGHT", anchor, "BOTTOMLEFT", edge, edge)
-    local right = owner:CreateTexture(nil, layer, nil, sublevel)
-    right:SetPoint("TOPRIGHT", anchor, "TOPRIGHT", -inset, -edge)
-    right:SetPoint("BOTTOMLEFT", anchor, "BOTTOMRIGHT", -edge, edge)
-    shape.fills = { middle, left, right }
+    shape.fills[1] = middle
+    if not height or height - 2 * inset > 2 * radius then
+        local left = owner:CreateTexture(nil, layer, nil, sublevel)
+        left:SetPoint("TOPLEFT", anchor, "TOPLEFT", inset, -edge)
+        left:SetPoint("BOTTOMRIGHT", anchor, "BOTTOMLEFT", edge, edge)
+        local right = owner:CreateTexture(nil, layer, nil, sublevel)
+        right:SetPoint("TOPRIGHT", anchor, "TOPRIGHT", -inset, -edge)
+        right:SetPoint("BOTTOMLEFT", anchor, "BOTTOMRIGHT", -edge, edge)
+        shape.fills[2], shape.fills[3] = left, right
+    end
     return shape
 end
 
-local function paintShape(shape, key)
-    local c = CRT.MOCHA[key]
+-- Colours a UI.RoundRect shape: color is a CRT.MOCHA key ("foam") or { r, g, b [, a] }.
+function UI.PaintShape(shape, color)
+    local c = type(color) == "table" and color or CRT.MOCHA[color]
+    local a = c[4] or 1
     for _, t in ipairs(shape.corners) do
-        t:SetVertexColor(c[1], c[2], c[3], 1)
+        t:SetVertexColor(c[1], c[2], c[3], a)
     end
     for _, t in ipairs(shape.fills) do
-        t:SetColorTexture(c[1], c[2], c[3], 1)
+        t:SetColorTexture(c[1], c[2], c[3], a)
     end
 end
 
@@ -264,14 +273,26 @@ local function plainNumber(v)
     return s
 end
 
--- The knob's look and position for s.current. s is the slider's state (UI.Slider).
+-- A typed number, in the unit the knob shows: "4.5" (or "4,5"), "45%", or minutes and seconds
+-- ("4:30" is 4.5). nil when it isn't a number.
+local function readTyped(text)
+    text = (text or ""):gsub(",", ".")
+    local minutes, secs = text:match("^%s*(%d+):(%d%d?)%s*$")
+    if minutes then
+        return tonumber(minutes) + tonumber(secs) / 60
+    end
+    return tonumber((text:gsub("[^%d%.%-]", "")))
+end
+
+-- The knob's look and position for s.current. s is the slider's state (UI.Slider). The knob keeps
+-- the widest text it has shown, so it never grows in the middle of a drag.
 local function drawKnob(m, s)
     local text = s.format(s.current)
     m.text:SetText(text)
     local bean = CRT.MOCHA.bean
     m.text:SetTextColor(bean[1], bean[2], bean[3])
-    local textW = math.max(m.widest or 0, m.text:GetUnboundedStringWidth() or 0)
-    local knobW = math.min(m.trackW, math.max(KNOB_MIN_W, math.ceil(textW) + KNOB_PAD))
+    m.widest = math.max(m.widest or 0, m.text:GetUnboundedStringWidth() or 0)
+    local knobW = math.min(m.trackW, math.max(KNOB_MIN_W, math.ceil(m.widest) + KNOB_PAD))
     local span = s.high - s.low
     local frac = span > 0 and (s.current - s.low) / span or 0
     frac = math.max(0, math.min(1, frac))
@@ -284,15 +305,18 @@ local function drawKnob(m, s)
     m.fillArea:SetWidth(m.fillW)
 end
 
--- Colours and the knob's width again, after a look or font change: the knob is as wide as the widest
--- of the values at the two ends, so it keeps its size while it moves.
+-- Colours, and the knob's size again, after a look or font change: as wide as the widest of the
+-- values at the two ends, so it keeps its size while it moves, and tall enough for the font.
 local function restyleKnob(m, s)
-    paintShape(m.empty, "edge")
-    paintShape(m.filled, "caramel")
-    paintShape(m.edge, "caramel")
-    paintShape(m.face, "foam")
+    UI.PaintShape(m.empty, "edge")
+    UI.PaintShape(m.filled, "caramel")
+    UI.PaintShape(m.edge, "caramel")
+    UI.PaintShape(m.face, "foam")
     local bean = CRT.MOCHA.bean
     m.edit:SetTextColor(bean[1], bean[2], bean[3])
+    local _, fontHeight = m.text:GetFont()
+    m.knobH = math.max(KNOB_H, math.ceil(tonumber(fontHeight) or 0) + KNOB_TEXT_PAD)
+    m.knob:SetHeight(m.knobH)
     local widest = 0
     for _, v in ipairs({ s.low, s.high }) do
         m.text:SetText(s.format(v))
@@ -355,17 +379,21 @@ local function wireModern(m, s)
             return
         end
         m.editing = false
-        local typed = tonumber(((edit:GetText() or ""):gsub("[^%d%.%-]", "")))
+        local typed = readTyped(edit:GetText())
         edit:Hide()
         m.text:Show()
         edit:ClearFocus()
         if apply and typed then
-            s.commit(typed)
+            s.commit(s.fromDisplay(typed))
+        end
+        -- Enter applies at once, arrow nudges included, even on an onRelease slider
+        if apply and not s.dragging then
+            s.release()
         end
     end
     local function openEdit()
         m.editing = true
-        edit:SetText(plainNumber(s.current))
+        edit:SetText(plainNumber(s.toDisplay(s.current)))
         m.text:Hide()
         edit:Show()
         edit:SetFocus()
@@ -373,9 +401,23 @@ local function wireModern(m, s)
     end
     m.closeEdit = closeEdit
 
-    local function wheel(_, delta)
+    -- Ctrl + wheel is the window's scale (UI/Panel.lua): it goes to the first frame above the slider
+    -- with a wheel handler, as it would without the slider there.
+    local function wheel(self, delta)
+        if IsControlKeyDown and IsControlKeyDown() then
+            local parent = track:GetParent()
+            while parent do
+                local handler = parent:GetScript("OnMouseWheel")
+                if handler then
+                    handler(parent, delta)
+                    return
+                end
+                parent = parent:GetParent()
+            end
+            return
+        end
         if s.enabled and not s.dragging then
-            s.commit(s.current + (delta > 0 and 1 or -1) * s.step)
+            s.commit(s.current + (delta > 0 and 1 or -1) * s.step, true)
         end
     end
     for _, f in ipairs({ track, knob }) do
@@ -418,9 +460,9 @@ local function wireModern(m, s)
         if not delta then
             return
         end
-        local typed = tonumber(((edit:GetText() or ""):gsub("[^%d%.%-]", "")))
-        s.commit((typed and s.clamp(typed) or s.current) + delta * s.step)
-        edit:SetText(plainNumber(s.current))
+        local typed = readTyped(edit:GetText())
+        s.commit((typed and s.clamp(s.fromDisplay(typed)) or s.current) + delta * s.step, true)
+        edit:SetText(plainNumber(s.toDisplay(s.current)))
         edit:HighlightText()
     end)
 end
@@ -442,15 +484,15 @@ local function buildModern(row, s)
     m.fillArea:SetPoint("LEFT", barArea, "LEFT")
     m.fillArea:SetHeight(TRACK_H)
     m.fillArea:Hide()
-    m.empty = roundRect(track, barArea, "BACKGROUND", 0, TRACK_R, 0)
-    m.filled = roundRect(track, m.fillArea, "BACKGROUND", 1, TRACK_R, 0)
+    m.empty = UI.RoundRect(track, barArea, "BACKGROUND", 0, TRACK_R, 0, TRACK_H)
+    m.filled = UI.RoundRect(track, m.fillArea, "BACKGROUND", 1, TRACK_R, 0, TRACK_H)
 
     local knob = CreateFrame("Button", nil, track)
     knob:SetHeight(KNOB_H)
     m.knob = knob
     -- a 1 px caramel edge: the caramel shape, and the foam one 1 px inside it
-    m.edge = roundRect(knob, knob, "BACKGROUND", 0, KNOB_R, 0)
-    m.face = roundRect(knob, knob, "BACKGROUND", 1, KNOB_R - 1, 1)
+    m.edge = UI.RoundRect(knob, knob, "BACKGROUND", 0, KNOB_R, 0)
+    m.face = UI.RoundRect(knob, knob, "BACKGROUND", 1, KNOB_R - 1, 1)
     m.text = knob:CreateFontString(nil, "OVERLAY", "CRTFontStandard")
     m.text:SetPoint("CENTER", 0, 0)
     m.text:SetWordWrap(false)
@@ -476,8 +518,12 @@ end
 --   get(), set(value)   value is always a whole step
 --   format(value)       the text beside the bar (on the knob in Modern), by default the number
 --   onRelease           true to call set only when the mouse lets go of the bar, for a slider that
---                       resizes the window it sits in. The steppers, the wheel and a typed number
---                       still apply at once.
+--                       resizes the window it sits in. The steppers (Classic) and a typed number
+--                       (Modern, on Enter) apply at once; in Modern the wheel and the arrow keys
+--                       apply NUDGE_DELAY seconds after the last nudge.
+--   toDisplay(value), fromDisplay(number)   optional, for a format in another unit (seconds shown
+--                       as minutes): the number box in Modern opens with toDisplay(value), and a
+--                       typed number goes through fromDisplay before it is kept in range on a step
 --   width, labelWidth, enabledIf()
 -- Returns the row, with row.refresh(). row.Slider is the game's slider (Classic), row.modern the
 -- track and knob (built the first time the Modern look shows).
@@ -492,6 +538,10 @@ function UI.Slider(parent, text, opts)
     -- current: the value the Modern knob shows.
     local s = { low = low, high = high, step = step, width = width, format = opts.format or tostring, enabled = true,
         updating = false, dragging = false, pending = nil, current = opts.get() or low }
+    local function same(v)
+        return v
+    end
+    s.toDisplay, s.fromDisplay = opts.toDisplay or same, opts.fromDisplay or same
     local function snap(value)
         return math.floor((value - low) / step + 0.5) * step + low
     end
@@ -539,9 +589,11 @@ function UI.Slider(parent, text, opts)
     end
     slider:RegisterCallback(Event.OnInteractEnd, s.release, row)
 
-    -- A value from the Modern slider: kept in range on a whole step, shown on the knob, and saved
-    -- (with onRelease, on release when it comes from a drag).
-    s.commit = function(value)
+    -- A value from the Modern slider: kept in range on a whole step, shown on the knob, and saved.
+    -- With onRelease, a drag saves when the mouse lets go, and a nudge (wheel, arrow key) NUDGE_DELAY
+    -- seconds after the last one, so turning the wheel doesn't rescale the window at every notch.
+    s.nudges = 0
+    s.commit = function(value, nudge)
         value = s.clamp(value)
         if value == s.current then
             return
@@ -550,10 +602,20 @@ function UI.Slider(parent, text, opts)
         if s.modern then
             drawKnob(s.modern, s)
         end
-        if opts.onRelease and s.dragging then
+        if opts.onRelease and (s.dragging or nudge) then
             s.pending = value
+            if not s.dragging then
+                s.nudges = s.nudges + 1
+                local nudges = s.nudges
+                C_Timer.After(NUDGE_DELAY, function()
+                    if nudges == s.nudges and not s.dragging then
+                        s.release()
+                    end
+                end)
+            end
             return
         end
+        s.pending = nil
         opts.set(value)
     end
 
@@ -570,7 +632,7 @@ function UI.Slider(parent, text, opts)
         slider:SetShown(not modern)
         m.track:SetShown(modern)
         if modern then
-            if not s.dragging then
+            if not s.dragging and s.pending == nil then
                 s.current = opts.get() or low
             end
             restyleKnob(m, s)
@@ -587,7 +649,10 @@ function UI.Slider(parent, text, opts)
             s.updating = true
             slider:SetValue(opts.get() or low)
             s.updating = false
-            s.current = opts.get() or low
+            -- a nudge waiting to be saved stays on the knob
+            if s.pending == nil then
+                s.current = opts.get() or low
+            end
         end
         if opts.enabledIf then
             local on = opts.enabledIf() and true or false
@@ -598,6 +663,9 @@ function UI.Slider(parent, text, opts)
         local m = s.modern
         if m then
             m.track:SetAlpha(s.enabled and 1 or 0.5)
+            -- a greyed slider lets the wheel through to the page under it
+            m.track:EnableMouseWheel(s.enabled)
+            m.knob:EnableMouseWheel(s.enabled)
             if not s.enabled then
                 m.closeEdit(false)
             end
