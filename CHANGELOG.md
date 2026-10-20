@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.1.0 (2026-10-20)
+
+- CRT Looting passes for real: while it's on, raiders' boss rolls are passed as soon as the loot window shows, and chat says what happened.
+- The raid leader's CRT rolls Need (or Greed or Transmog) and a Boss loot window lists each item and who won it; tick the items and click Start session.
+- Loot Master: choose where item tooltips open (Item tooltip on the Settings tab).
+- The Timeline pop-out uses the game's window art in Default: Blizzard, and the clicked window comes to the front.
+
 ## 1.0.0 (2026-10-20)
 
 - Themes: pick the look from the title bar: Default: Blizzard, Blackout: Midnight, Blackout: Nitro or Beanworks: Cowfee. Minimal black is gone.
