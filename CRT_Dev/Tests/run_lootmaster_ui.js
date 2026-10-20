@@ -32,6 +32,7 @@ local function mock()
     GetFrameLevel = function() return 1 end,
     SetSize = function(self, w, h) self.w, self.h = w, h end,
     SetScript = function(self, k, fn) local t = rawget(self, "scripts") or {} rawset(self, "scripts", t) t[k] = fn end,
+    GetScript = function(self, k) local t = rawget(self, "scripts") return t and t[k] end,
     SetWidth = function(self, w) self.w = w end,
     GetWidth = function(self) return rawget(self, "w") end,
     SetFontObject = function(self, f) self.font = f end,
@@ -266,6 +267,29 @@ eq(tabs.tabs[3].name.text, "5/5 answered", "tabs: everyone")
 check(not near(tabs.tabs[3].name.color, LM.TAB_LATE_COLOR), "tabs: everyone answered is the normal colour")
 eq(tabs.tabs[4].name.text, "0/0 answered", "tabs: nobody with CRT yet")
 eq(tabs.tabs[5].name.text, "Quick", "tabs: a given item shows its winner")
+
+-- the tooltip: only the icon has it, and it opens left of the window; clicks on the icon reach the tab
+local winFrame = mock()
+local got = {}
+GameTooltip = { SetOwner = function(_, o, a) got.owner, got.anchor = o, a end, SetPoint = function(_, ...) got.pt = { ... } end,
+  SetHyperlink = function() end, AddLine = function() end, Show = function() got.shown = true end, Hide = function() got.shown = false end }
+local picked, dbl
+local t2 = LM.ItemTabs(mock(), { window = winFrame, onSelect = function(i) picked = i end, onDoubleClick = function(i) dbl = i end })
+t2:Update({ { itemString = "item:1" } }, 1, nil, nil)
+local tb = t2.tabs[1]
+check(tb.frame.scripts.OnEnter ~= nil, "tooltip: the icon has OnEnter")
+check(tb.scripts.OnEnter == nil, "tooltip: the tab body has none")
+tb.frame.scripts.OnEnter(tb.frame)
+eq(got.anchor, "ANCHOR_NONE", "tooltip: placed by hand")
+eq(got.pt[1], "TOPRIGHT", "tooltip: its right edge")
+check(got.pt[2] == winFrame and got.pt[3] == "TOPLEFT", "tooltip: sits at the window's left")
+tb.scripts.OnClick(tb, "LeftButton")
+eq(picked, 1, "tab click selects")
+picked = nil
+tb.frame.scripts.OnClick(tb.frame, "LeftButton")
+eq(picked, 1, "icon click selects the tab")
+tb.frame.scripts.OnDoubleClick(tb.frame, "LeftButton")
+eq(dbl, 1, "icon double-click reaches the tab")
 
 print(string.format("%d passed, %d failed", passes, fails))
 if fails > 0 then error("failures") end

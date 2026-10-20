@@ -6,7 +6,8 @@ local ADDON, CRT = ...
 -- the item; the looter window also uses right-click (its menu) and double-click (trade the item to its
 -- winner).
 --   local tabs = LM.ItemTabs(parent, opts)
---   opts: onSelect(index), onRightClick(tab), onDoubleClick(index), doubleClickHint (tooltip line)
+--   opts: onSelect(index), onRightClick(tab), onDoubleClick(index), doubleClickHint (tooltip line),
+--         window (the frame the tooltip sits left of; the parent if not given)
 --   tabs:Update(items, current, count(index) -> answered, expected, late (Session:AnswerCount),
 --               classOf(name) -> class file)
 
@@ -40,7 +41,8 @@ function LM.ItemTabs(parent, opts)
         local hl = t:CreateTexture(nil, "HIGHLIGHT")
         hl:SetAllPoints()
         hl:SetColorTexture(1, 1, 1, 0.05)
-        t.frame = CreateFrame("Frame", nil, t, "BackdropTemplate")
+        -- a button, so the icon alone shows the tooltip and still hands its clicks to the tab
+        t.frame = CreateFrame("Button", nil, t, "BackdropTemplate")
         t.frame:SetSize(L.icon + 4, L.icon + 4)
         t.frame:SetPoint("LEFT", 0, 0)
         t.frame:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 2 })
@@ -73,10 +75,24 @@ function LM.ItemTabs(parent, opts)
                 end
             end)
         end
-        t:SetScript("OnEnter", function(b)
-            local it = self.items and self.items[b.index]
+        -- the icon passes its clicks on, so a click anywhere on the tab acts the same
+        t.frame:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+        t.frame:SetScript("OnClick", function(_, button)
+            t:GetScript("OnClick")(t, button)
+        end)
+        if opts.onDoubleClick then
+            t.frame:SetScript("OnDoubleClick", function(_, button)
+                t:GetScript("OnDoubleClick")(t, button)
+            end)
+        end
+        -- the tooltip sits left of the window, level with the hovered icon
+        t.frame:SetScript("OnEnter", function(icon)
+            local it = self.items and self.items[t.index]
             if it then
-                GameTooltip:SetOwner(b, "ANCHOR_RIGHT")
+                local win = opts.window or parent
+                GameTooltip:SetOwner(icon, "ANCHOR_NONE")
+                local top, winTop = icon:GetTop(), win:GetTop()
+                GameTooltip:SetPoint("TOPRIGHT", win, "TOPLEFT", -4, (top and winTop) and (top - winTop) or 0)
                 pcall(GameTooltip.SetHyperlink, GameTooltip, it.itemString)
                 if it.award and opts.doubleClickHint then
                     GameTooltip:AddLine(" ")
@@ -85,7 +101,7 @@ function LM.ItemTabs(parent, opts)
                 GameTooltip:Show()
             end
         end)
-        t:SetScript("OnLeave", function()
+        t.frame:SetScript("OnLeave", function()
             GameTooltip:Hide()
         end)
         self.tabs[i] = t
