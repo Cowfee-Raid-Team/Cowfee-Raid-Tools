@@ -508,6 +508,9 @@ LM:OnChange(function(what, how)
     end
 end)
 
+-- a new theme repaints the open panels
+UI:OnTheme(refresh)
+
 -- /crt loot popup: every item that still has time, closed ones too.
 function LM:ShowPopup()
     local inc = self.incoming

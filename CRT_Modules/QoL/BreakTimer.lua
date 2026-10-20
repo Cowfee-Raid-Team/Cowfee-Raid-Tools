@@ -30,7 +30,7 @@ local OVER_SHOWN = 6 -- seconds "Break's over" stays up
 local LAST_MINUTE = 60 -- seconds left when the bar turns red
 local COLOR_LAST = { 0.85, 0.27, 0.2, 1 }
 
--- The bar's colour until the last minute: the theme's accent (CRT.MOCHA.caramel).
+-- The bar's color until the last minute: the theme's accent (CRT.MOCHA.caramel).
 local function barColor()
     local c = CRT.MOCHA.caramel
     return c[1], c[2], c[3], 1

@@ -167,8 +167,12 @@ palette("midnight", { espresso = "050505", roast = "121212", edge = "2E2E2E", mo
 palette("nitro", { espresso = "06080A", roast = "11151A", edge = "28313B", mocha = "1E2A36", caramel = "7FB3D9", latte = "A9BBCB",
   cream = "EEF2F5", matcha = "8FCFA0", walnut = "18202A", walnutEdge = "000000", walnutShine = "34414F", tick = "7FB3D9", checkEdge = "7FB3D9" })
 -- Default: Blizzard keeps the colours from before themes, so what reads CRT.MOCHA in Classic is unchanged.
-palette("blizzard", { espresso = { 0.11, 0.078, 0.063 }, roast = { 0.165, 0.122, 0.098 }, edge = { 0.30, 0.235, 0.188 }, mocha = { 0.44, 0.31, 0.22 },
-  caramel = { 0.78, 0.56, 0.36 }, latte = { 0.87, 0.73, 0.56 }, cream = { 0.95, 0.90, 0.84 } })
+local old = { espresso = { 0.11, 0.078, 0.063 }, roast = { 0.165, 0.122, 0.098 }, edge = { 0.30, 0.235, 0.188 }, mocha = { 0.44, 0.31, 0.22 },
+  caramel = { 0.78, 0.56, 0.36 }, latte = { 0.87, 0.73, 0.56 }, cream = { 0.95, 0.90, 0.84 }, matcha = "8FA876", walnut = "4A3424",
+  walnutEdge = "1A120C", walnutShine = "7A5A3E", walnutText = { 1, 1, 1 }, tick = { 1, 1, 1 }, checkEdge = "1A120C",
+  stripTop = { 0.353, 0.247, 0.173 }, stripBottom = { 0.227, 0.165, 0.122 }, note = { 0.80, 0.71, 0.60 } }
+for _, key in ipairs(CRT.THEME_KEYS) do check(old[key] ~= nil, "the test knows blizzard's old " .. key) end
+palette("blizzard", old)
 print("ok themes: the palettes")
 
 -- Old saved data maps to a theme; ui.modern follows the theme.
@@ -249,6 +253,43 @@ for i, w in ipairs(want) do
   end
 end
 print("ok themes: picking each theme saves it and re-skins live")
+
+-- UI.Tint and UI:OnTheme: a theme change repaints a tinted part, runs the hooks, refreshes the page in
+-- view (its OnShow script) and an open window with a refresh.
+do
+  local tex = texture(nil)
+  local box = frame("Frame", nil)
+  UI.Tint(tex, "SetColorTexture", "caramel", 0.4)
+  UI.Tint(box, "SetBackdropColor", "roast", 0.9)
+  UI.Tint(box, "SetBackdropBorderColor", "edge")
+  local hooked, pageRefreshed, winRefreshed = 0, 0, 0
+  UI:OnTheme(function() hooked = hooked + 1 end)
+  UI:OnTheme(function() error("a broken hook") end)
+  geterrorhandler = function() return function() end end
+  -- the main window, with what UI:ApplyStyle paints
+  local mf = frame("Frame", nil)
+  mf.art, mf.flat, mf.flatEdges = {}, {}, {}
+  mf.flatBg, mf.flatTitle, mf.titleLine, mf.menuLine = texture(nil), texture(nil), texture(nil), texture(nil)
+  mf.menu = { blocks = {} }
+  UI.frame = mf
+  local pf = frame("Frame", nil)
+  pf:SetScript("OnShow", function() pageRefreshed = pageRefreshed + 1 end)
+  UI.pages.demo = { key = "demo", frame = pf }
+  CRT.db.lastPage = "demo"
+  local w = UI.windows[1]
+  w.refresh = function() winRefreshed = winRefreshed + 1 end
+  UI:SetTheme("nitro")
+  local n = CRT.THEMES.nitro
+  check(near(tex.rgb, n.caramel) and tex.a == 0.4, "a tinted texture takes the new caramel at its alpha")
+  check(near(box.backdrop, n.roast) and near(box.border, n.edge), "a tinted backdrop takes both its colors")
+  check(hooked == 1, "UI:OnTheme hooks run, even after a broken one")
+  check(pageRefreshed == 1, "the page in view refreshes")
+  check(winRefreshed == 1, "an open window with a refresh refreshes")
+  UI:SetTheme("midnight")
+  check(near(tex.rgb, CRT.THEMES.midnight.caramel), "and again on the next theme")
+  UI.frame, UI.pages.demo, w.refresh = nil, nil, nil
+end
+print("ok themes: a theme change repaints tinted parts, hooks, the page and windows")
 
 -- UI:SetModern still works: on picks Beanworks: Cowfee, or keeps a Modern theme in use.
 UI:SetTheme("nitro")

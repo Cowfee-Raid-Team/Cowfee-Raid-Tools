@@ -423,6 +423,8 @@ LM:OnChange(function(what)
         win:Hide()
     end
 end)
+-- a new theme repaints the rows, the tabs and the answered count
+UI:OnTheme(refresh)
 
 function LM:ShowWindow()
     if not self.current then

@@ -228,6 +228,8 @@ LM:OnChange(function(what, how)
     end
     refresh()
 end)
+-- a new theme repaints the rows and the tabs
+UI:OnTheme(refresh)
 
 function LM:ShowAnswers()
     if not (self.incoming and self.incoming.view) then

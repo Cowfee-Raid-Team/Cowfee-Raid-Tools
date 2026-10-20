@@ -76,9 +76,23 @@ assert(load(themesSrc, "CRT_Core/Themes.lua"))("CowfeeRaidTools", CRT)
 assert(load(profilesSrc, "CRT_Core/Profiles.lua"))("CowfeeRaidTools", CRT)
 -- the shipped textures' folder, set once in Core.lua
 if CRT.MEDIA == "Interface\\\\AddOns\\\\CowfeeRaidTools\\\\CRT_Media\\\\Media\\\\" then print("ok CRT.MEDIA") else print("FAIL CRT.MEDIA: " .. tostring(CRT.MEDIA)) end
--- ADDON_LOADED.
-CRTDB = nil
+-- ADDON_LOADED, with data saved before themes: the Modern look on and no theme loads as Beanworks: Cowfee.
+CRTDB = { ui = { modern = true } }
 for _, f in ipairs(frames) do if rawget(f, "OnEvent") then f.OnEvent(f, "ADDON_LOADED", "CowfeeRaidTools") end end
+do
+  local ui, want, same = CRT.db.ui, CRT.THEMES.cowfee, true
+  for _, k in ipairs(CRT.THEME_KEYS) do
+    local a, b = CRT.MOCHA[k], want[k]
+    if math.abs(a[1] - b[1]) > 0.001 or math.abs(a[2] - b[2]) > 0.001 or math.abs(a[3] - b[3]) > 0.001 then same = false end
+  end
+  if ui.theme == "cowfee" and ui.modern == true and same then print("ok old Modern data loads as cowfee, CRT.MOCHA its palette")
+  else print("FAIL old Modern data: theme " .. tostring(ui.theme) .. ", modern " .. tostring(ui.modern) .. ", palette " .. tostring(same)) end
+end
+-- the rest starts from a fresh install in Classic
+CRT.db.ui.theme, CRT.db.ui.modern = "blizzard", false
+CRT:UseTheme("blizzard")
+CRT:ApplyFonts()
+if CRT.db.ui.theme ~= "blizzard" then print("FAIL back to Classic") end
 local function fontLine(name) local o = fontObjects[name] return name .. " " .. o.path .. " " .. o.size .. " '" .. o.flags .. "'" end
 print("loaded: " .. fontLine("CRTFontNormal") .. ", ui.font " .. CRT.db.ui.font)
 CRT.db.ui.font = "Arial Narrow" CRT.db.ui.outline = "OUTLINE" CRT.db.ui.textSize = 125 CRT:ApplyFonts()

@@ -418,6 +418,7 @@ local function buildPopout()
     end
     popWin:EnableMouse(true)
     UI:RegisterLayer("timeline", popWin)
+    UI:OnTheme(stylePopout) -- its colors follow a new theme too
     tinsert(UISpecialFrames, "CowfeeRaidToolsTimelineWindow")
 
     -- The header: drag it to move the window.

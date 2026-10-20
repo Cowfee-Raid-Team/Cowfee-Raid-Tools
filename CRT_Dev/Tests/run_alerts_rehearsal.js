@@ -179,7 +179,7 @@ local CRT = {
       areas = { icons = { shown = true, cap = 5, size = 44, fontSize = 20, grow = "down" } },
       reminders = {}, phases = {}, overrides = {}, nextId = 1, speechNotice = true },
   },
-  UI = { RegisterLayer = function() end, RegisterPreview = function() end,
+  UI = { Tint = function() end, OnTheme = function() end, RegisterLayer = function() end, RegisterPreview = function() end,
     ResetButtonWidth = function() return 44 end, ResetButton = function(p) return newObj("Button", p) end, Help = function(p) return newObj("Button", p) end },
   FONTS = {},
   FontPath = function() return "font" end,

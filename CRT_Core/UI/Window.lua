@@ -69,17 +69,38 @@ function UI.MenuOnTop(root)
     end
 end
 
+-- A context menu opened at an anchor, the way the game's dropdown buttons open theirs
+-- (DropdownButtonMixin:OpenMenu in Blizzard_Menu): a root description with the context menu's look,
+-- filled by the generator, opened by the menu manager at AnchorUtil.CreateAnchor(...). nil when any of
+-- those is missing or fails, so the caller can fall back.
+local function openAnchored(owner, generator, anchor)
+    if not (Menu and Menu.GetManager and Menu.PopulateDescription and MenuUtil.CreateRootMenuDescription
+        and MenuVariants and MenuVariants.GetDefaultContextMenuMixin and AnchorUtil and AnchorUtil.CreateAnchor) then
+        return nil
+    end
+    local ok, menu = pcall(function()
+        local desc = MenuUtil.CreateRootMenuDescription(MenuVariants.GetDefaultContextMenuMixin())
+        Menu.PopulateDescription(generator, owner, desc)
+        local at = AnchorUtil.CreateAnchor(anchor[1], anchor[2], anchor[3], anchor[4] or 0, anchor[5] or 0)
+        return Menu.GetManager():OpenMenu(owner, desc, at)
+    end)
+    return ok and menu or nil
+end
+
 -- anchor, when given, is { point, relativeTo, relativePoint, x, y }: the menu opens there instead of at
--- the mouse (the title bar's theme menu sits under its button).
+-- the mouse (the title bar's theme menu sits under its button). Without the game's anchored route it
+-- opens at the mouse and is moved there.
 function UI.ContextMenu(owner, fill, anchor)
     if not (MenuUtil and MenuUtil.CreateContextMenu) then
         return nil
     end
-    local menu = MenuUtil.CreateContextMenu(owner, function(_, root)
+    local function generator(_, root)
         UI.MenuOnTop(root)
         fill(root)
-    end)
-    if menu and anchor and menu.ClearAllPoints then
+    end
+    local anchored = anchor and openAnchored(owner, generator, anchor)
+    local menu = anchored or MenuUtil.CreateContextMenu(owner, generator)
+    if menu and anchor and not anchored and menu.ClearAllPoints then
         pcall(function()
             menu:ClearAllPoints()
             menu:SetPoint(anchor[1], anchor[2], anchor[3], anchor[4] or 0, anchor[5] or 0)
@@ -161,7 +182,7 @@ local STRIP = {
 STRIP.warning = { bg = STRIP.badgeBg, edge = STRIP.badgeEdge, text = STRIP.badgeText }
 UI.TITLE_STRIP = STRIP
 
--- A STRIP colour as r, g, b: a CRT.MOCHA key (the theme in use) or { r, g, b }. A key the palette
+-- A STRIP color as r, g, b: a CRT.MOCHA key (the theme in use) or { r, g, b }. A key the palette
 -- lacks gives grey.
 function UI.StripColor(c)
     if type(c) == "string" then
@@ -174,8 +195,8 @@ function UI.StripColor(c)
 end
 local stripColor = UI.StripColor
 
--- The strip's own colours, painted again when the theme changes; the badge keeps the colours it was
--- given, so a theme colour (STRIP.neutral) follows too.
+-- The strip's own colors, painted again when the theme changes; the badge keeps the colors it was
+-- given, so a theme color (STRIP.neutral) follows too.
 local function paintStrip(s)
     local tr, tg, tb = stripColor(STRIP.top)
     local br, bgr, bb = stripColor(STRIP.bottom)
@@ -290,7 +311,7 @@ function UI.TitleStrip(parent, height, opts)
     s.note = s:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     s.badge:Hide()
     s.note:Hide()
-    s.badgeColors = false -- the colours SetBadge was given, painted again by paintStrip
+    s.badgeColors = false -- the colors SetBadge was given, painted again by paintStrip
     function s:SetTitle(text)
         self.title:SetText(text or "")
         layoutStrip(self)

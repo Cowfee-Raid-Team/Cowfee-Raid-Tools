@@ -277,17 +277,77 @@ function UI:Theme()
     return ui and CRT:ThemeInfo(ui.theme) and ui.theme or (self:IsModern() and CRT.THEME_MODERN or CRT.THEME_CLASSIC)
 end
 
+-- Repainting on a theme change. A part colored from CRT.MOCHA once, when it is made, is colored with
+-- UI.Tint(region, method, key, alpha) instead: method is the setter ("SetColorTexture", "SetTextColor",
+-- "SetVertexColor", "SetBackdropColor" or "SetBackdropBorderColor"), key a CRT.MOCHA key. A region keeps
+-- one entry per setter. UI:SetTheme paints every tinted part again. A surface that reads CRT.MOCHA when
+-- it draws registers UI:OnTheme(fn) and redraws there.
+local tinted = setmetatable({}, { __mode = "k" })
+local themeHooks = {}
+
+local function paintTint(region, method, t)
+    local c = CRT.MOCHA[t.key]
+    if c and region[method] then
+        region[method](region, c[1], c[2], c[3], t.alpha or 1)
+    end
+end
+
+function UI.Tint(region, method, key, alpha)
+    local list = tinted[region]
+    if not list then
+        list = {}
+        tinted[region] = list
+    end
+    local t = { key = key, alpha = alpha }
+    list[method] = t
+    paintTint(region, method, t)
+end
+
+function UI:OnTheme(fn)
+    themeHooks[#themeHooks + 1] = fn
+end
+
+-- Runs after a theme change: the tinted parts, the OnTheme hooks, then the page in view and every open
+-- window with a refresh function are refreshed (a page's OnShow script is its refresh), so text colored
+-- when it is written (UI.GoodText) follows too. A failing hook never stops the others.
+function UI:RepaintTheme()
+    for region, list in pairs(tinted) do
+        for method, t in pairs(list) do
+            paintTint(region, method, t)
+        end
+    end
+    for _, fn in ipairs(themeHooks) do
+        local ok, err = pcall(fn)
+        if not ok and geterrorhandler then
+            geterrorhandler()(err)
+        end
+    end
+    local page = self.frame and self.frame:IsShown() and CRT.db.lastPage and self.pages[CRT.db.lastPage]
+    local onShow = page and page.frame and page.frame:IsShown() and page.frame:GetScript("OnShow")
+    if onShow then
+        pcall(onShow, page.frame)
+    end
+    for _, w in ipairs(self.windows) do
+        if type(w.refresh) == "function" and w:IsShown() then
+            pcall(w.refresh, w)
+        end
+    end
+end
+
 -- Switches the theme live: saves it (and ui.modern with it), fills CRT.MOCHA with its palette, then
--- redraws the fonts, every window and control, and the theme button's label.
+-- redraws the fonts, every window and control, the theme button's label and everything that follows
+-- the theme (UI:RepaintTheme).
 function UI:SetTheme(key)
     local ui = CRT.db.ui
     ui.theme = key
     CRT:UseTheme(CRT:ResolveTheme(ui))
     CRT:ApplyFonts()
     self:ApplyStyle()
+    self:RepaintTheme()
 end
 
--- The older on/off switch: Modern keeps a Modern theme in use or takes Beanworks: Cowfee.
+-- A compatibility shim for callers from before themes, which only knew on and off: on keeps a Modern
+-- theme in use or takes Beanworks: Cowfee; off is Default: Blizzard.
 function UI:SetModern(on)
     if on then
         self:SetTheme(self:IsModern() and self:Theme() or CRT.THEME_MODERN)
@@ -313,7 +373,7 @@ function UI:FillThemeMenu(root)
     end
 end
 
--- Text in a good state (synced, answered, on): matcha in a Modern theme; in Classic the classic colour
+-- Text in a good state (synced, answered, on): matcha in a Modern theme; in Classic the classic color
 -- (a hex such as "80ff80"), or as it is without one.
 function UI.GoodText(text, classic)
     local hex
@@ -641,7 +701,7 @@ end
 -- A UICheckButtonTemplate checkbox. Modern hides the template's art and draws a CHECK_SIZE box with
 -- rounded corners (UI.RoundRect) in its centre: unticked, a roast fill with a mocha edge; ticked, the
 -- slider knob's bevelled walnut (a checkEdge edge, a soft line inside the top edge) with a tick
--- (CRT_Media/Media/Check.tga) in the theme's tick colour. The edge turns caramel under the mouse; a
+-- (CRT_Media/Media/Check.tga) in the theme's tick color. The edge turns caramel under the mouse; a
 -- disabled box is faded to CHECK_OFF_ALPHA. Classic shows the template's art again. The page's label and click are untouched.
 -- The box follows SetChecked, clicks, SetEnabled / Enable / Disable and the mouse through hooks, so
 -- pages call nothing new. cb.crtCheck keeps the parts.
@@ -1167,7 +1227,7 @@ function UI:MakeThemeButton(parent)
         end, { "TOPRIGHT", lb, "BOTTOMRIGHT", 0, -2 })
     end, {
         flatH = 18, classicH = 18,
-        tipTitle = "Theme", tipText = "Pick the theme: Default: Blizzard is the game's own look; the others are flat, in their own colours.",
+        tipTitle = "Theme", tipText = "Pick the theme: Default: Blizzard is the game's own look; the others are flat, in their own colors.",
     })
     self.lookButton = lb
     return lb

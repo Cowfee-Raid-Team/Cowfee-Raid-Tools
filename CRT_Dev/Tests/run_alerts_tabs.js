@@ -66,7 +66,7 @@ local CRT = {
 }
 function CRT:Print() end
 CRT.MOCHA = { espresso = { 0.11, 0.078, 0.063 }, edge = { 0.3, 0.235, 0.188 }, mocha = { 0.44, 0.31, 0.22 }, caramel = { 0.78, 0.56, 0.36 } }
-CRT.UI = { PAGE_W = 1026, PAGE_H = 560, IsModern = function() return true end,
+CRT.UI = { Tint = function() end, OnTheme = function() end, PAGE_W = 1026, PAGE_H = 560, IsModern = function() return true end,
   RegisterPage = function(_, key, title, fn) pages[key] = fn end,
   RegisterTab = function(_, b) tabs[#tabs + 1] = b end,
   SetTabSelected = function(_, b, on) rawset(b, "selected", on) end,

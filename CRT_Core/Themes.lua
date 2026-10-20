@@ -2,14 +2,14 @@ local ADDON, CRT = ...
 
 -- The themes, picked from the main window's title bar (UI:SetTheme in UI/Panel.lua). Each has a palette
 -- in CRT.THEMES with every key in CRT.THEME_KEYS. CRT.MOCHA is the theme in use: CRT:UseTheme copies the
--- picked palette into CRT.MOCHA's own colour tables, so every CRT.MOCHA.x read, and a table kept from one,
--- shows the new colours. Saved as CRTDB.ui.theme; CRTDB.ui.modern stays in step (false for "blizzard"),
+-- picked palette into CRT.MOCHA's own color tables, so every CRT.MOCHA.x read, and a table kept from one,
+-- shows the new colors. Saved as CRTDB.ui.theme; CRTDB.ui.modern stays in step (false for "blizzard"),
 -- so UI:IsModern() keeps working.
---   blizzard  Default: Blizzard, the game's own art (Classic). Its palette is the colours from before
+--   blizzard  Default: Blizzard, the game's own art (Classic). Its palette is the colors from before
 --             themes, for the few things that read CRT.MOCHA in either look, so Classic stays as it was.
 --   midnight  Blackout: Midnight, Modern in black and greys with a white accent.
 --   nitro     Blackout: Nitro, Modern in blue-black with a blue accent.
---   cowfee    Beanworks: Cowfee, Modern in coffee colours; the Modern theme old saved data loads as.
+--   cowfee    Beanworks: Cowfee, Modern in coffee colors; the Modern theme old saved data loads as.
 -- menuBar draws a 2 px accent bar on the left of the selected menu page.
 
 -- The menu's entries, in this order.
@@ -22,7 +22,7 @@ CRT.THEME_LIST = {
 CRT.THEME_CLASSIC = "blizzard"
 CRT.THEME_MODERN = "cowfee" -- old saved data with the Modern look on
 
--- What each palette key colours:
+-- What each palette key colors:
 --   espresso     the window background
 --   roast        menu blocks, fields and buttons
 --   edge         borders, the empty part of a slider's track
@@ -47,7 +47,7 @@ local function hex(h)
 end
 
 CRT.THEMES = {
-    -- the colours from before themes, as they were written then
+    -- the colors from before themes, as they were written then
     blizzard = {
         espresso = { 0.11, 0.078, 0.063 },
         roast = { 0.165, 0.122, 0.098 },

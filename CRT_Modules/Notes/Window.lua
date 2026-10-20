@@ -629,8 +629,7 @@ local function createWindow(key, defaultPosition, build)
     -- on ARTWORK: above the backdrop's own background, whatever layer it uses, and under the text
     local flash = frame:CreateTexture(nil, "ARTWORK")
     flash:SetAllPoints()
-    local tan = CRT.MOCHA.caramel
-    flash:SetColorTexture(tan[1], tan[2], tan[3], FLASH_ALPHA)
+    CRT.UI.Tint(flash, "SetColorTexture", "caramel", FLASH_ALPHA)
     flash:SetAlpha(0)
     local stamp = flash:CreateAnimationGroup()
     local fade = stamp:CreateAnimation("Alpha")
