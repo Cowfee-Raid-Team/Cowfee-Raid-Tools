@@ -179,6 +179,113 @@ end
 check(type(AutoPass.WHY.nostate) == "string" and type(AutoPass.WHY.unheard) == "string", "words for nostate and unheard")
 eq(AutoPass.STALE, 90, "heartbeat stale after 90 s")
 
+-- 7. The roll types: the numbers Blizzard's GroupLootFrame.xml buttons send (Pass 0, Need 1, Greed 2,
+-- Transmog 4) and the wiki's Disenchant 3
+eq(AutoPass.ROLL.pass, 0, "pass is 0")
+eq(AutoPass.ROLL.need, 1, "need is 1")
+eq(AutoPass.ROLL.greed, 2, "greed is 2")
+eq(AutoPass.ROLL.disenchant, 3, "disenchant is 3")
+eq(AutoPass.ROLL.transmog, 4, "transmog is 4")
+eq(AutoPass.ROLL_NAME[1], "Need", "need's name")
+eq(AutoPass.ROLL_NAME[2], "Greed", "greed's name")
+eq(AutoPass.ROLL_NAME[4], "Transmog", "transmog's name")
+
+-- 8. LeaderRoll: the raid leader's own roll. Every combination of its checks: false with the first failing
+-- reason; with all holding, Need when allowed, else Greed, else Transmog, else false "cant"
+local function leaderGood()
+  local state = {
+    test = false, me = "Solex-Sargeras", leader = "Solex-Sargeras", myInstance = HERE,
+    leading = true, leadingInstance = HERE, canLoot = true, rolled = { [3] = { type = 1 } },
+  }
+  local roll = { id = 7, test = false, instance = HERE, bossInstance = HERE }
+  local info = { canNeed = true, canGreed = true, canTransmog = true }
+  return state, roll, info
+end
+local LCHECKS = {
+  { "test", function(s, r, i) s.test = true end },
+  { "test", function(s, r, i) r.test = true end },
+  { "notraid", function(s, r, i) s.myInstance = nil end },
+  { "notleader", function(s, r, i) s.me = "Halo-Sargeras" end },
+  { "off", function(s, r, i) s.leading = false end },
+  { "instance", function(s, r, i) s.leadingInstance = ELSEWHERE end },
+  { "authority", function(s, r, i) s.canLoot = false end },
+  { "noroll", function(s, r, i) r.id = nil end },
+  { "once", function(s, r, i) s.rolled[r.id or 7] = { type = 2 } end },
+  { "rollplace", function(s, r, i) r.instance = ELSEWHERE end },
+  { "notboss", function(s, r, i) r.bossInstance = nil end },
+  { "noinfo", function(s, r, i) return "noinfo" end },
+}
+local ln = #LCHECKS
+local lcombos, lwrong = 0, 0
+for mask = 0, 2 ^ ln - 1 do
+  local st, ro, inf = leaderGood()
+  local first
+  local m = mask
+  for i = 1, ln do
+    if m % 2 == 1 then
+      if LCHECKS[i][2](st, ro, inf) == "noinfo" then inf = nil end
+      first = first or LCHECKS[i][1]
+    end
+    m = math.floor(m / 2)
+  end
+  local got, reason = AutoPass:LeaderRoll(st, ro, inf)
+  lcombos = lcombos + 1
+  if first then
+    if got ~= false or reason ~= first then
+      lwrong = lwrong + 1
+      if lwrong <= 5 then print("FAIL leader combination " .. mask .. ": got " .. tostring(got) .. " " .. tostring(reason) .. ", want false " .. first) end
+    end
+  elseif got ~= AutoPass.ROLL.need then
+    lwrong = lwrong + 1
+    print("FAIL leader combination 0 should roll Need")
+  end
+end
+eq(lcombos, 2 ^ ln, "leader: every combination tried")
+eq(lwrong, 0, "leader: every combination gives the right answer and reason")
+-- which roll: every mix of canNeed, canGreed and canTransmog
+for need = 0, 1 do for greed = 0, 1 do for tmog = 0, 1 do
+  local st, ro = leaderGood()
+  local inf = { canNeed = need == 1, canGreed = greed == 1, canTransmog = tmog == 1 }
+  local want, wantWhy = false, "cant"
+  if need == 1 then want, wantWhy = AutoPass.ROLL.need, "need"
+  elseif greed == 1 then want, wantWhy = AutoPass.ROLL.greed, "greed"
+  elseif tmog == 1 then want, wantWhy = AutoPass.ROLL.transmog, "transmog" end
+  local got, why = AutoPass:LeaderRoll(st, ro, inf)
+  local label = string.format("leader: need=%d greed=%d transmog=%d", need, greed, tmog)
+  eq(got, want, label)
+  eq(why, wantWhy, label .. ", the reason")
+end end end
+-- only exactly true counts as allowed; anything else fails closed
+local function lroll(edit)
+  local st, ro, inf = leaderGood()
+  inf = edit(st, ro, inf) or inf
+  local got, why = AutoPass:LeaderRoll(st, ro, inf)
+  return got, why
+end
+eq(select(2, lroll(function(st, ro, inf) inf.canNeed = 1 inf.canGreed = "yes" inf.canTransmog = {} end)), "cant", "leader: allowed must be exactly true")
+eq(select(2, lroll(function(st, ro, inf) inf.canNeed = nil inf.canGreed = nil inf.canTransmog = nil end)), "cant", "leader: nothing allowed")
+eq(select(2, lroll(function(st, ro, inf) return "x" end)), "noinfo", "leader: info that isn't a table")
+eq(select(2, lroll(function(st) st.me = nil end)), "notleader", "leader: your name unknown")
+eq(select(2, lroll(function(st) st.leader = nil end)), "notleader", "leader: no leader (not in a group)")
+eq(select(2, lroll(function(st) st.leading = "yes" end)), "off", "leader: on must be exactly true")
+eq(select(2, lroll(function(st) st.leadingInstance = nil end)), "instance", "leader: no Yes instance")
+eq(select(2, lroll(function(st) st.canLoot = nil end)), "authority", "leader: loot authority unknown: refused")
+eq(select(2, lroll(function(st) st.canLoot = 1 end)), "authority", "leader: loot authority must be exactly true")
+eq(select(2, lroll(function(st) st.rolled = nil end)), "need", "leader: no rolled list: none rolled yet")
+eq(select(2, lroll(function(st, ro) ro.id = "7" end)), "noroll", "leader: a roll id that isn't a number")
+eq(select(2, AutoPass:LeaderRoll(nil, nil, nil)), "nostate", "leader: nothing: no state")
+eq(select(2, AutoPass:LeaderRoll(nil, { test = true }, nil)), "test", "leader: a test roll before anything")
+-- pure: nothing it is given changes
+local st, ro, inf = leaderGood()
+AutoPass:LeaderRoll(st, ro, inf)
+eq(st.rolled[7], nil, "leader: the gate doesn't mark the roll rolled")
+eq(#reads, 0, "leader: no global read")
+for _, c in ipairs(LCHECKS) do
+  check(type(AutoPass.LEADER_WHY[c[1]]) == "string" and AutoPass.LEADER_WHY[c[1]] ~= "", "leader words for " .. c[1])
+end
+check(type(AutoPass.LEADER_WHY.cant) == "string", "leader words for cant")
+eq(AutoPass.CLOSE_SECONDS, 3, "the game gets 3 s to close a roll; a confirm later than that isn't answered")
+
 print(string.format("%d passed, %d failed", passes, fails))
 if fails > 0 then error("failures") end
 `;

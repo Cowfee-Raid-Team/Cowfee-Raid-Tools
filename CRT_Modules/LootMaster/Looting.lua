@@ -32,7 +32,8 @@ local ADDON, CRT = ...
 -- text and does nothing.
 --
 -- Nothing here passes a roll: LM:LootingState() collects the facts the auto-pass gate
--- (LootMaster/AutoPass.lua) needs, and the state line says what the gate would say.
+-- (LootMaster/AutoPass.lua) needs, and the state line says what the gate would say. The game's roll
+-- events are handled in LootMaster/Rolls.lua.
 
 local LM = CRT.LootMaster
 local AutoPass = LM.AutoPass
@@ -76,7 +77,8 @@ local FORGOT = { lead = OFF_WHY.lead, offline = AutoPass.WHY.offline }
 local own = { on = false } -- the leader's choice: on, instance (said Yes for), why (when off), awaySince
 local heard -- a raider's last word from the leader: { from, on, version, yes, here, world, away, at, why }
 local forgot -- why heard was dropped (FORGOT's keys), until the leader's next word
-local passed, passedIn = {}, nil -- rolls passed in the raid instance passedIn: { [rollID] = true }
+-- rolls passed (a raider) or rolled (the leader: { type, confirmed }) in the raid instance passedIn
+local passed, rolled, passedIn = {}, {}, nil
 local lastKey = false -- the raid instance key last seen (false: no loading screen yet since loading)
 local lastPlace = false -- where you were last seen: a raid instance's key, "world" or "elsewhere"
 local askedFor -- the raid instance the leader was last asked about
@@ -289,7 +291,13 @@ local function checkHeard()
     end
 end
 
--- Everything the auto-pass gate needs, read now (AutoPass.lua lists the fields).
+-- Whether a raider's last word from its raid leader said on: CRT Looting is meant to be on, so a roll it
+-- doesn't pass is reported in chat (LootMaster/Rolls.lua). Off, never heard or forgotten: silent.
+function LM:LootingHeardOn()
+    return heard ~= nil and heard.on == true
+end
+
+-- Everything the auto-pass gate and the leader's roll need, read now (AutoPass.lua lists the fields).
 function LM:LootingState()
     local leader = LM.LeaderName()
     local h = heard or {}
@@ -305,6 +313,8 @@ function LM:LootingState()
         enableInParty = enableInParty(), on = h.on == true, from = h.from, version = h.version,
         yesInstance = h.yes, leaderOnline = online(leader and LM.UnitOf(leader)), leaderInstance = h.here,
         leaderOpenWorld = h.world == true, leaderAway = away, heartbeatAt = h.on and h.at or nil, now = now, passed = passed,
+        leading = own.on == true, leadingInstance = own.on and own.instance or nil, rolled = rolled,
+        canLoot = LM:CanLoot() == true,
     }
 end
 
@@ -388,6 +398,7 @@ local function hear(entry)
         watchTicker = C_Timer.NewTicker(LM.LOOTING_TICK, watch)
     end
     LM:Fire("looting")
+    LM:Fire("heard") -- a roll refused for a quiet leader is tried once more (LootMaster/Rolls.lua)
 end
 
 LM.Handle("O", function(f, sender)
@@ -445,7 +456,7 @@ local function zoned()
     end
     lastKey, lastPlace = key, where
     if key and key ~= passedIn then
-        passed, passedIn = {}, key
+        passed, rolled, passedIn = {}, {}, key
     end
     if own.on then
         if key == own.instance then

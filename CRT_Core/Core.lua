@@ -202,6 +202,7 @@ local defaults = {
         window = {},
         popup = {},
         answers = {}, -- the raider window's place and size
+        bossLoot = {}, -- the leader's Boss loot window's place and size
         lootingPrompt = {}, -- the place of the leader's "Use CRT Looting in this instance?" (never the on state: that is never saved)
         responseSeconds = 60,
         score = { show = true, late = 5, per10 = 1, noShow = 15, recover = 5, weeks = 8 },

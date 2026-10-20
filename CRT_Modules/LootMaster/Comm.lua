@@ -19,7 +19,8 @@ local ADDON, CRT = ...
 -- Who may run loot: the raid leader (unless their list says not) and the names on the current raid
 -- leader's list. A raider's own settings never grant anyone authority; no list received means leader only.
 -- A session survives a /reload on both sides (CRTDBChar.lootSession), with every clock started again.
--- Nothing here passes a Blizzard roll. Trading is in LootMaster/Trade.lua.
+-- Nothing here passes a Blizzard roll (that is LootMaster/Rolls.lua, through AutoPass.lua). Trading is in
+-- LootMaster/Trade.lua.
 
 local LM = CRT.LootMaster
 local Session, Wire = LM.Session, LM.Wire
@@ -379,30 +380,39 @@ end
 
 -- The boss in the title bar: each computer keeps its own last kill (ENCOUNTER_END: encounterID,
 -- encounterName, difficultyID, groupSize, success), so no message carries it; everyone in the session was
--- in the fight. The kill is kept in CRTDBChar.lootmaster.lastKill ({ name, at = time() }), so a /reload
--- between the kill and the session keeps it. A session started within BOSS_SECONDS of it keeps the name
--- (s.boss, inc.boss), saved with the session for a /reload. A test never has one.
-local function noteEncounter(name, success)
-    if issecretvalue and (issecretvalue(name) or issecretvalue(success)) then
+-- in the fight. The kill is kept in CRTDBChar.lootmaster.lastKill ({ name, at = time(), instance = the
+-- raid instance's key, LM.InstanceKey, or nil outside one; encounterID }), so a /reload between the kill and the
+-- session keeps it. A session started within BOSS_SECONDS of it keeps the name (s.boss, inc.boss), saved
+-- with the session for a /reload. A test never has one. The game's loot rolls (LootMaster/Rolls.lua) count
+-- as a boss's within BOSS_SECONDS of a kill in the same instance.
+local function noteEncounter(encounterID, name, success)
+    if issecretvalue and (issecretvalue(encounterID) or issecretvalue(name) or issecretvalue(success)) then
         return
     end
     if type(name) == "string" and name ~= "" and success == 1 then
         CRTDBChar = CRTDBChar or {}
         CRTDBChar.lootmaster = CRTDBChar.lootmaster or {}
-        CRTDBChar.lootmaster.lastKill = { name = name, at = time() }
+        CRTDBChar.lootmaster.lastKill = { name = name, at = time(), instance = LM.InstanceKey and LM.InstanceKey() or nil,
+            encounterID = type(encounterID) == "number" and encounterID or nil }
     end
 end
 
-function LM:RecentBoss(test)
+-- The last boss kill within BOSS_SECONDS ({ name, at, instance }), or nil.
+function LM:LastKill()
     local kill = CRTDBChar and type(CRTDBChar.lootmaster) == "table" and CRTDBChar.lootmaster.lastKill
-    if test or type(kill) ~= "table" or type(kill.name) ~= "string" or type(kill.at) ~= "number" then
+    if type(kill) ~= "table" or type(kill.name) ~= "string" or type(kill.at) ~= "number" then
         return nil
     end
     local age = time() - kill.at
     if age < 0 or age > LM.BOSS_SECONDS then
         return nil
     end
-    return kill.name
+    return kill
+end
+
+function LM:RecentBoss(test)
+    local kill = not test and self:LastKill()
+    return kill and kill.name or nil
 end
 
 -- items: { { itemString, link, ilvl } }. test marks it as a test everywhere.
@@ -1222,7 +1232,7 @@ events:SetScript("OnEvent", function(_, event, a1, a2, a3, a4, a5)
         save()
     elseif event == "ENCOUNTER_END" or event == "PLAYER_REGEN_ENABLED" then
         if event == "ENCOUNTER_END" then
-            noteEncounter(a2, a5)
+            noteEncounter(a1, a2, a5)
         end
         resume()
     elseif not rosterPending then
