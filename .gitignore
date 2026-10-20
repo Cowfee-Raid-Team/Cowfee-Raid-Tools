@@ -28,3 +28,4 @@ factory/
 
 # The test run's output stays local
 CRT_Dev/Tests/last-run.txt
+CRT_Dev/Tests/last-group.txt
