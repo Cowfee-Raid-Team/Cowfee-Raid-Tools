@@ -542,6 +542,7 @@ local function build()
     info.move:SetScript("OnClick", function(self)
         Dev:SetMoving(self:GetChecked() and true or false)
     end)
+    UI:SkinCheckButton(info.move) -- the info box is outside the panel, where SkinTree doesn't reach
 
     local done = makeButton(info, "Done", 104)
     done:SetPoint("BOTTOMLEFT", 8, 6)

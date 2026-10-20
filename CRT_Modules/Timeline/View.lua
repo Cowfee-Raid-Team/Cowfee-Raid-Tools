@@ -3166,6 +3166,11 @@ function Methods:Label(n)
             GameTooltip:Show()
         end)
         l.check:SetScript("OnLeave", hideTip)
+        -- labels are pooled as the view draws, after the page is skinned
+        local UI = CRT.UI
+        if UI and UI.SkinCheckButton then
+            UI:SkinCheckButton(l.check)
+        end
         l.icon = l:CreateTexture(nil, "ARTWORK")
         l.icon:SetSize(18, 18)
         l.icon:SetPoint("LEFT", l, "LEFT", 20, 0)
