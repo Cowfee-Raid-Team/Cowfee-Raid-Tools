@@ -1,7 +1,7 @@
 local ADDON, CRT = ...
 
 -- The Debuffs tab of the Quality of Life page (a page of its own before 0.17.2): settings for the
--- in-combat debuff panel. The panel is moved with "Preview debuffs" on the tab, which previews only
+-- debuff panel. The panel is moved with "Preview debuffs" on the tab, which previews only
 -- this panel, or with "Previews" in the corner of the main window, which previews them all.
 -- QoL/Page.lua builds it into its tab through CRT.DebuffsPage.Build.
 
@@ -151,7 +151,7 @@ local function build(pf)
     title:SetPoint("TOPLEFT", 8, -8)
     title:SetText("Debuff panel")
 
-    local help = UI.Help(pf, "The debuff panel", "A movable row of the debuffs enemies put on you, shown in combat, shortest first. Press Preview debuffs to see it with sample debuffs and drag it into place. Previews in the top right corner of this window shows it along with every other panel.\n\nThe game fills the row itself, so it keeps working in combat, when debuff details are hidden from addons. Debuffs you or your pet cast, debuffs longer than the time you pick, and lockouts such as Exhaustion and Sated are left out.\n\nYour settings are saved in your own saved variables.")
+    local help = UI.Help(pf, "The debuff panel", "A movable row of the debuffs enemies put on you, shortest first. It shows everywhere, in and out of combat, while it is on. Press Preview debuffs to see it with sample debuffs and drag it into place. Previews in the top right corner of this window shows it along with every other panel.\n\nThe game fills the row itself, so it keeps working in combat, when debuff details are hidden from addons. Debuffs you or your pet cast, debuffs longer than the time you pick, and lockouts such as Exhaustion and Sated are left out.\n\nYour settings are saved in your own saved variables.")
     help:SetPoint("LEFT", title, "RIGHT", 6, 0)
 
     -- Only this panel's preview, not every panel's. It ends when the tab closes, unless Previews is on.
@@ -186,7 +186,7 @@ local function build(pf)
         end
     end)
 
-    enabledCheck = makeCheck(pf, "Show the panel in combat", -30, function(checked)
+    enabledCheck = makeCheck(pf, "Show the debuff panel", -30, function(checked)
         Debuffs:SetEnabled(checked)
     end)
 
@@ -228,7 +228,7 @@ local function build(pf)
         end,
     })
     durationEdit:SetPoint("TOPLEFT", 8, -112)
-    UI.Help(pf, "Hide debuffs longer than", "Debuffs that last longer than this are left out, so long ones don't fill the panel. Boss mechanics are short, so 5 minutes keeps them all. Off shows every length."):SetPoint("LEFT", durationEdit, "RIGHT", 4, 0)
+    UI.Help(pf, "Hide debuffs longer than", "Debuffs that last longer than this are left out, so long ones don't fill the panel. A debuff that lasts exactly this long still shows. Debuffs with no end time are left out too. Boss mechanics are short, so 5 minutes keeps them all. Off shows every length, including debuffs with no end time."):SetPoint("LEFT", durationEdit, "RIGHT", 4, 0)
 
     dispelCheck = makeCheck(pf, "Show the dispel type icon on each debuff", -146, function(checked)
         Debuffs:SetDispelIcon(checked)

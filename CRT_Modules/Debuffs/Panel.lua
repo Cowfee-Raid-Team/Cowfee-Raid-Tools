@@ -1,6 +1,7 @@
 local ADDON, CRT = ...
 
--- The in-combat debuff panel: a movable row of the debuffs enemies put on you.
+-- The debuff panel: a movable row of the debuffs enemies put on you, shown everywhere, in and out of
+-- combat, while it is turned on.
 --
 -- The row is one of Blizzard's AuraContainer frames (Blizzard_AuraContainer, patch 12.1.0, loaded
 -- here before the first one is made). The container watches the player's HARMFUL auras itself and fills
@@ -24,8 +25,8 @@ local ADDON, CRT = ...
 -- itself) are kept as an optional second row, off by default, in case boss mechanic debuffs don't
 -- reach the container. Whether they do is checked in game.
 --
--- The panel is faded with alpha, not hidden, when you are out of combat, because showing and hiding
--- frames can be blocked in combat. The container stays shown and enabled throughout. Positions and
+-- The panel is faded with alpha, not hidden, when it is turned off, because showing and hiding frames
+-- can be blocked in combat. The container stays shown and enabled throughout. Positions and
 -- settings are saved per player in CRTDB.debuffs.
 --
 -- During a boss encounter the container's buttons hold secret aura data and the game makes them, and
@@ -71,7 +72,7 @@ local lastApply = 0 -- GetTime() of the last Apply, so a button that stays forbi
 local RETRY_SECONDS = 5
 local dragging
 local previewOn = false
-local inCombat = false
+local inCombat = false -- set from PLAYER_REGEN_DISABLED/ENABLED, for the diagnostics
 local elapsed = 0
 local report = { loaded = nil, template = nil, created = false, error = nil, notes = {} }
 local appliedAnchors, appliedContainer -- the settings each part was last built for
@@ -677,21 +678,15 @@ local function applyPosition()
     frame:SetPoint(saved.point, UIParent, saved.relativePoint or saved.point, saved.x, saved.y)
 end
 
--- Whether you are in combat. InCombatLockdown() is false inside the PLAYER_REGEN_DISABLED handler,
--- because the lockdown only starts after that event fires, so the events set a flag directly and
--- UnitAffectingCombat backs it up.
-local function playerInCombat()
-    return inCombat or (UnitAffectingCombat("player") and true or false)
-end
-
--- Shows the panel during combat, or always while previewing. Alpha, not Show, because showing and
--- hiding may be blocked in combat. It runs every frame, so a missed event cannot leave it stuck. During
--- a preview the real row is faded out, so only the samples show.
+-- Shows the panel whenever it is turned on, in and out of combat, anywhere: only the settings (the
+-- candidate filters) decide which debuffs it holds. Always while previewing. Alpha, not Show, because
+-- showing and hiding may be blocked in combat. It runs every frame, so a missed event cannot leave it
+-- stuck. During a preview the real row is faded out, so only the samples show.
 local function updateVisibility()
     if not frame then
         return
     end
-    local visible = previewOn or (Debuffs:Enabled() and playerInCombat())
+    local visible = previewOn or Debuffs:Enabled()
     local alpha = visible and 1 or 0
     if frame:GetAlpha() ~= alpha then
         frame:SetAlpha(alpha)
