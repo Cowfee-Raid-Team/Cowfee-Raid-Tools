@@ -52,6 +52,10 @@ local function mock(kind, parent)
     ClearAllPoints = function(self) self.points = {} end,
     SetPoint = function(self, ...) local t = rawget(self, "points") or {} rawset(self, "points", t) t[#t + 1] = { ... } end,
     SetAllPoints = function(self, r) self.all = r or true end,
+    GetObjectType = function(self) return self.kind end,
+    SetNormalAtlas = function(self, a) self.normalAtlas = a end,
+    SetHighlightAtlas = function(self, a) self.highlightAtlas = a end,
+    SetPushedAtlas = function(self, a) self.pushedAtlas = a end,
     GetHighlightTexture = function(self) local h = rawget(self, "hl") or mock("Texture", self) rawset(self, "hl", h) return h end,
   }
   return setmetatable(o, { __index = function(_, k) return methods[k] or function() end end })
@@ -66,7 +70,20 @@ CreateFrame = function(kind, name, parent, template)
     f.GetFontString = function(self) return self.label end
     f.GetObjectType = function() return "Button" end
   end
-  if template == "BasicFrameTemplateWithInset" then f.CloseButton = mock() end
+  if template == "BasicFrameTemplateWithInset" then
+    -- the window template's own textures (Blizzard_UIPanelTemplates: BasicFrameTemplate and its inset)
+    f.CloseButton = mock("Button", f)
+    f.CloseButton.crtSkin = false
+    f.crtArt = false -- not styled yet (every other unknown key is a no-op method)
+    local regions = {}
+    for _, key in ipairs({ "Bg", "TitleBg", "TopTileStreaks", "InsetBg", "InsetBorderTop", "InsetBorderBottom", "InsetBorderLeft", "InsetBorderRight" }) do
+      local t = mock("Texture", f)
+      t.key = key
+      f[key] = t
+      regions[#regions + 1] = t
+    end
+    f.GetRegions = function() return unpack(regions) end
+  end
   frames[#frames + 1] = f
   return f
 end
@@ -74,6 +91,7 @@ GameFontNormal = { GetTextColor = function() return 1, 0.82, 0 end }
 CRTFontLarge = { GetTextColor = function() return 1, 0.82, 0 end }
 CreateColor = function(r, g, b, a) return { r = r, g = g, b = b, a = a } end
 GetTime = function() return 100 end
+unpack = unpack or table.unpack
 wipe = function(t) for k in pairs(t) do t[k] = nil end return t end
 strtrim = function(s) return (s:gsub("^%s+", ""):gsub("%s+$", "")) end
 UISpecialFrames, tinsert = {}, table.insert
@@ -176,8 +194,49 @@ eq(panels[2].slot.atlas, "loottoast-itemborder-blue", "classic: a rare item's sl
 check(p.plate and #p.plate == 3 and allShown(p.plate, true), "classic: the name plate's three pieces show")
 check(p.plate[1].file == "Interface\\\\LootFrame\\\\LootToast" and p.plate[1].coords, "classic: the plate is LootToast's item name border")
 check(not p.plateFlat.shown and not p.slotFlat.shown, "classic: no flat plate or slot")
+check(p.stone and p.stone.shown and p.stone.file == "Interface\\\\LootFrame\\\\LootToast" and near(p.stone.coords, { 0.28222656, 0.55273438, 0.30859375 }), "classic: the roll frame's stone background")
+eq(p.bg[4], 0, "classic: no dark flat fill over the stone")
+local own = UI.Stone(mock("Frame"))
+check(own.file == UI.STONE.file and near(own.coords, UI.STONE.coords) and own.all, "UI.Stone: the shared stone, covering its frame")
 eq(p.edge[4], 0, "classic: the flat edge gives way to the border art")
-check(p.timer.shown ~= false and p.timer.fill and p.timer.fill[4] > 0, "classic: the background timer is still there")
+check(p.timer.shown ~= false and p.timer.fill and p.timer.fill[4] > 0, "classic: the background timer is still there, lighter over the stone")
+eq(p.close.normalAtlas, "lootroll-toast-icon-pass-up", "classic: the roll frame's X")
+check(p.close.highlightAtlas == "lootroll-toast-icon-pass-highlight" and p.close.pushedAtlas == "lootroll-toast-icon-pass-down", "classic: the X's hover and pressed art")
+check(rawget(p.close, "template") == nil, "the X is the roll frame's, not the window close button")
+
+-- Default: Blizzard: one window frame around everything, the window template kept by UI:StyleWindow
+local chrome
+for _, f in ipairs(frames) do
+  if f.template == "BasicFrameTemplateWithInset" and f.parent and f.parent == panels[1].parent then chrome = f end
+end
+local anchor = panels[1].parent
+check(chrome ~= nil, "classic: the popup has the window template's frame")
+check(chrome and chrome.crtArt and #chrome.crtArt == 8, "classic: StyleWindow keeps the template's 8 textures as its art")
+local artShown = chrome and #chrome.crtArt > 0
+for _, t in ipairs(chrome and chrome.crtArt or {}) do if not t.shown then artShown = false end end
+check(artShown and chrome.TitleBg.shown and chrome.InsetBg.shown, "classic: the border pieces show")
+check(chrome and chrome.shown, "classic: the frame shows")
+check(chrome and not chrome.CloseButton.shown, "classic: the frame's own X is hidden")
+local strip
+for _, f in ipairs(frames) do if rawget(f, "framed") ~= nil and f.parent == anchor then strip = f end end
+check(strip and strip.framed and not strip.bar.shown, "classic: the strip lets the template draw the title tile")
+eq(strip and strip.points[1][2], 1, "classic: the strip 1 in from the frame's edge")
+-- the frame holds the title bar and both items, with no gap under the last and nothing outside it
+local p2 = panels[2]
+local function fits(what, items)
+  local want = 26 + 4
+  for i, q in ipairs(items) do want = want + q.h + (i < #items and 4 or 0) end
+  want = want + 6
+  eq(chrome.h, want, what .. ": the frame's height follows the items")
+  eq(chrome.w, 520 + 4 + 6, what .. ": the frame is the items plus its inset")
+  eq(anchor.h, chrome.h, what .. ": the popup is the frame")
+  local y = -(26 + 4)
+  for _, q in ipairs(items) do
+    check(last(q)[2] == 4 and last(q)[3] == y, what .. ": an item inside the inset at " .. y .. " (got " .. tostring(last(q)[2]) .. ", " .. tostring(last(q)[3]) .. ")")
+    y = y - q.h - 4
+  end
+end
+fits("classic, two items", { p, p2 })
 
 -- the name in the plate, the detail line under it, the X at the top right
 check(last(p.name)[2] == p.plate[1] or last(p.name)[2] == p.plateFlat or (p.name.points[1] and p.name.points[1][2] == p.plate[1]), "the name sits in the plate")
@@ -186,32 +245,59 @@ check(p.detail.text and p.detail.text:find("639", 1, true), "the detail line kee
 check(p.time.text and p.time.text:find("Time left", 1, true), "the time left shows")
 eq(p.close.points[1][1], "TOPRIGHT", "the X at the top right")
 
--- Beanworks: Cowfee and Blackout: Midnight: the theme's colours, no game art
-local function modern(name)
-  palette(name)
-  CRT.db.ui.modern = true
+-- Beanworks: Cowfee and Blackout: Midnight: the theme's colours, no game art (UI:SetTheme repaints, then
+-- the skinned controls follow through CRT:ApplyFonts)
+local function theme(isModern)
+  CRT.db.ui.modern = isModern
   UI:RepaintTheme()
+  for _, c in ipairs(UI.skinned) do c.crtSkin(isModern) end
 end
 for _, name in ipairs({ "cowfee", "midnight" }) do
-  modern(name)
+  palette(name)
+  theme(true)
   local pal = PALETTES[name]
   check(allShown(p.rollBorder, false), name .. ": no game border")
-  check(not p.slot.shown and allShown(p.plate, false), name .. ": no game slot or plate")
+  check(not p.slot.shown and allShown(p.plate, false) and not p.stone.shown, name .. ": no game slot, plate or stone")
   check(p.plateFlat.shown and near(p.plateFlat.fill, pal.roast), name .. ": a flat plate in the theme's field colour")
-  check(near(p.bg, pal.espresso) and near(p.edge, pal.edge) and p.edge[4] == 1, name .. ": the panel in the theme's colours")
+  check(near(p.bg, pal.espresso) and p.bg[4] > 0.9 and near(p.edge, pal.edge) and p.edge[4] == 1, name .. ": the panel in the theme's colours")
   check(p.slotFlat.shown and near(p.slotFlat.edge, { 0.64, 0.21, 0.93 }), name .. ": the slot edge in the quality colour")
+  check(not chrome.shown, name .. ": no window frame, the flat strip only")
+  check(strip.points[1][2] == 0 and strip.w == 520 and strip.bg.shown, name .. ": the flat strip full width")
+  check(last(p)[2] == 0 and last(p)[3] == -(26 + 4), name .. ": the first item right under the strip, full width")
+  eq(anchor.h, 26 + 4 + p.h + 4 + p2.h, name .. ": the popup ends at the last item")
 end
 -- and back to Default: Blizzard
-CRT.db.ui.modern = false
-UI:RepaintTheme()
-check(allShown(p.rollBorder, true) and p.slot.shown and not p.plateFlat.shown, "classic again: the game's art is back")
+theme(false)
+check(allShown(p.rollBorder, true) and p.slot.shown and p.stone.shown and not p.plateFlat.shown, "classic again: the game's art is back")
+check(chrome.shown and chrome.TitleBg.shown, "classic again: the window frame is back")
+fits("classic again", { p, p2 })
 
--- unchanged behaviour: a click answers, a right-click closes
+-- an item answered for you: the auto line inside the frame's inset, the items under it
+LM.incoming.items[3] = { itemString = "item:2", shownAt = 100 }
+LM.incoming.mine[3] = { auto = true, closed = true, response = "pass" }
+UI:RepaintTheme()
+local autoFrame
+for _, f in ipairs(frames) do if rawget(f, "show") and rawget(f, "text") and f.parent == anchor then autoFrame = f end end
+check(autoFrame and autoFrame.shown, "auto line shows")
+check(autoFrame and autoFrame.points[1][2] == 4 and autoFrame.points[1][3] == -(26 + 4), "classic: the auto line inside the inset")
+eq(chrome.h, 26 + 4 + 22 + 4 + p.h + 4 + p2.h + 6, "classic: the frame takes in the auto line")
+eq(last(p)[3], -(26 + 4 + 22 + 4), "classic: the items under it")
+
+-- unchanged behaviour: a click answers, a right-click closes, and the frame shrinks to what is left
 p.note.text = " my note "
 p.buttons[2].scripts.OnClick()
 check(answered and answered[1] == p.index and answered[2] == eight[2].key and answered[3] == "my note", "a click sends the answer with the note")
 p.scripts.OnMouseUp(p, "RightButton")
 check(LM.incoming.mine[p.index] and LM.incoming.mine[p.index].closed, "a right-click closes the item")
+check(not p.shown, "the closed item hides")
+eq(chrome.h, 26 + 4 + 22 + 4 + p2.h + 6, "closed: the frame shrinks to the items left")
+eq(last(p2)[3], -(26 + 4 + 22 + 4), "closed: the next item moves up, no gap")
+-- the auto items shown again (Show again): every item back, the frame grows
+LM:ShowPopup()
+check(p.shown and autoFrame.shown == false, "shown again: the closed item is back and the auto line goes")
+local p3
+for _, f in ipairs(frames) do if rawget(f, "note") and rawget(f, "buttons") and f ~= p and f ~= p2 then p3 = f end end
+fits("shown again", { p, p2, p3 })
 
 print(string.format("%d passed, %d failed", passes, fails))
 if fails > 0 then error("failures") end
