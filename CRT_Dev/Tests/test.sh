@@ -1,20 +1,24 @@
 #!/usr/bin/env bash
 # Runs the whole suite and the Lua syntax check, then prints one verdict. Exit 0 only when all pass.
-#   bash Tests/test.sh [addon folder]      the full output is kept in Tests/last-run.txt
-# The factory's tester runs this; so can you. First run: cd Tests && npm install.
+#   bash CRT_Dev/Tests/test.sh [addon folder]      the full output is kept in CRT_Dev/Tests/last-run.txt
+# The factory's tester runs this; so can you. First run: cd CRT_Dev/Tests && npm install.
 here="$(cd "$(dirname "$0")" && pwd)"
-root="${1:-$(cd "$here/.." && (pwd -W 2>/dev/null || pwd))}"
+root="${1:-$(cd "$here/../.." && (pwd -W 2>/dev/null || pwd))}"
 out="$here/last-run.txt"
 
 # node_modules is not in Git, so a fresh worktree borrows the main checkout's (git's common dir is
-# <main checkout>/.git)
+# <main checkout>/.git). A main checkout from before the CRT_Dev move still has it in Tests/.
 mods="$here/node_modules"
 if [ ! -d "$mods/fengari" ]; then
     common="$(git -C "$here" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)"
-    [ -n "$common" ] && mods="$(dirname "$common")/Tests/node_modules"
+    if [ -n "$common" ]; then
+        main="$(dirname "$common")"
+        mods="$main/CRT_Dev/Tests/node_modules"
+        [ -d "$mods/fengari" ] || mods="$main/Tests/node_modules"
+    fi
 fi
 if [ ! -d "$mods/fengari" ]; then
-    echo "Tests: run 'npm install' in Tests/ of the main checkout first."
+    echo "Tests: run 'npm install' in CRT_Dev/Tests/ of the main checkout first."
     exit 2
 fi
 export NODE_PATH="$mods"
@@ -40,5 +44,5 @@ if [ -z "$fails" ] && [ -z "$syntax" ]; then
     echo "RESULT: PASS"
     exit 0
 fi
-echo "RESULT: FAIL (full output in Tests/last-run.txt)"
+echo "RESULT: FAIL (full output in CRT_Dev/Tests/last-run.txt)"
 exit 1

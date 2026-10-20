@@ -1,5 +1,5 @@
-// Alerts/Saved.lua and the editor's saved alert features: save as saved alert, open from one, edit one.
-// Usage: node run_alerts_saved.js <the files of run_alerts_editor.js>, then Alerts/Saved.lua last
+// CRT_Modules/Alerts/Saved.lua and the editor's saved alert features: save as saved alert, open from one, edit one.
+// Usage: node run_alerts_saved.js <the files of run_alerts_editor.js>, then CRT_Modules/Alerts/Saved.lua last
 const fs = require('fs');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);

@@ -1,11 +1,11 @@
-// Alerts/Circles.lua: the circles area (ring, seconds, text), with mock frames.
-// Usage: node run_alerts_circles.js Alerts/Rules.lua Alerts/Engine.lua Alerts/Areas.lua Alerts/Circles.lua
+// CRT_Modules/Alerts/Circles.lua: the circles area (ring, seconds, text), with mock frames.
+// Usage: node run_alerts_circles.js CRT_Modules/Alerts/Rules.lua CRT_Modules/Alerts/Engine.lua CRT_Modules/Alerts/Areas.lua CRT_Modules/Alerts/Circles.lua
 const fs = require('fs');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
 const harness = `
 local rulesSrc, engineSrc, areasSrc, circlesSrc, controlsSrc = ...
-local RING = "Interface\\\\AddOns\\\\CowfeeRaidTools\\\\Media\\\\"
+local RING = "Interface\\\\AddOns\\\\CowfeeRaidTools\\\\CRT_Media\\\\Media\\\\"
 local frames, fontStrings = {}, {}
 local hides = 0
 local function mock(kind, parent, template)
@@ -126,7 +126,7 @@ CRT.UI = {
   SetFrameTitle = function(f, t) rawset(f, "title", t) end,
   StyleWindow = function(_, f) rawset(f, "styled", (rawget(f, "styled") or 0) + 1) end,
   Help = function(parent) return mock("Button", parent) end,
-  -- Like UI/Controls.lua: a dropdown builds its menu (options and get) when made and on refresh, and a
+  -- Like CRT_Core/UI/Controls.lua: a dropdown builds its menu (options and get) when made and on refresh, and a
   -- slider reads get() as it is made (slider:Init) and on refresh.
   Dropdown = function(parent, label, opts) dropdownsMade = dropdownsMade + 1 local r = mock("Row", parent) rawset(r, "label", label) rawset(r, "opts", opts)
     local function menu() local o = opts.options local list = type(o) == "function" and o() or o assert(type(list) == "table", label .. ": options") rawset(r, "value", opts.get()) end
@@ -142,9 +142,9 @@ assert(load(rulesSrc, "Rules"))("CowfeeRaidTools", CRT)
 assert(load(engineSrc, "Engine"))("CowfeeRaidTools", CRT)
 assert(load(areasSrc, "Areas"))("CowfeeRaidTools", CRT)
 assert(load(circlesSrc, "Circles"))("CowfeeRaidTools", CRT)
-do -- the real UI/Controls.lua: only PickColor is taken, the harness keeps its own Dropdown and Slider
+do -- the real CRT_Core/UI/Controls.lua: only PickColor is taken, the harness keeps its own Dropdown and Slider
   local tmp = { UI = {} }
-  assert(load(controlsSrc, "UI/Controls.lua"))("CowfeeRaidTools", tmp)
+  assert(load(controlsSrc, "CRT_Core/UI/Controls.lua"))("CowfeeRaidTools", tmp)
   CRT.UI.PickColor = tmp.UI.PickColor
 end
 local A, Areas, I = CRT.Alerts, CRT.AlertAreas, CRT.AlertCircles
@@ -438,7 +438,7 @@ if (lua.lua_pcall(L, 5, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.
 
 // The ring textures: header bytes, a clear centre and an opaque ring
 const path = require('path');
-const media = path.join(path.dirname(path.dirname(path.resolve(process.argv[5]))), 'Media');
+const media = path.join(path.dirname(path.dirname(path.dirname(path.resolve(process.argv[5])))), 'CRT_Media', 'Media');
 for (const [name, width] of [['RingThin', 12], ['RingMedium', 22], ['RingThick', 36]]) {
   const b = fs.readFileSync(path.join(media, name + '.tga'));
   const ok = b.length === 18 + 256 * 256 * 4 && b[0] === 0 && b[1] === 0 && b[2] === 2 && b.readUInt16LE(12) === 256 && b.readUInt16LE(14) === 256 && b[16] === 32 && b[17] === 0x28;

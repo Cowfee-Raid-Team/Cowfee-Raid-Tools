@@ -1,9 +1,9 @@
-// Notes/Reminders.lua: the Mech Alerts tab (a list of the boss's abilities and your own reminders, and one
-// settings panel for the selected row), with the real Alerts/Draft.lua, Alerts/SpellLookup.lua and
-// Alerts/Editor.lua on mock frames.
-// Usage: node run_mechalerts.js Timeline/Data.lua Timeline/Database.lua Timeline/Reference.lua Timeline/Lanes.lua
-//   Alerts/Rules.lua Alerts/Engine.lua Alerts/Speech.lua Alerts/Reminders.lua Alerts/Draft.lua
-//   Alerts/SpellLookup.lua Alerts/Editor.lua Notes/Reminders.lua
+// CRT_Modules/Notes/Reminders.lua: the Mech Alerts tab (a list of the boss's abilities and your own reminders, and one
+// settings panel for the selected row), with the real CRT_Modules/Alerts/Draft.lua, CRT_Modules/Alerts/SpellLookup.lua and
+// CRT_Modules/Alerts/Editor.lua on mock frames.
+// Usage: node run_mechalerts.js CRT_Modules/Timeline/Data.lua CRT_Modules/Timeline/Database.lua CRT_Modules/Timeline/Reference.lua CRT_Modules/Timeline/Lanes.lua
+//   CRT_Modules/Alerts/Rules.lua CRT_Modules/Alerts/Engine.lua CRT_Modules/Alerts/Speech.lua CRT_Modules/Alerts/Reminders.lua CRT_Modules/Alerts/Draft.lua
+//   CRT_Modules/Alerts/SpellLookup.lua CRT_Modules/Alerts/Editor.lua CRT_Modules/Notes/Reminders.lua
 const fs = require('fs');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
@@ -125,28 +125,28 @@ CRT.UI.SoundDropdown = function(parent, label, opts) local o = {} for k, v in pa
   if opts.help then rawset(r, "help", CRT.UI.Help(parent, label, "sound help")) end
   return r end
 CRT.Notes = {
-  CanEditRaid = function() return true end, -- Notes/Data.lua: solo, you may change the raid note
-  -- Notes/Data.lua: listeners told on every note change, the active note's included
+  CanEditRaid = function() return true end, -- CRT_Modules/Notes/Data.lua: solo, you may change the raid note
+  -- CRT_Modules/Notes/Data.lua: listeners told on every note change, the active note's included
   listeners = {}, OnChange = function(self, fn) table.insert(self.listeners, fn) end,
   Fire = function(self) for _, fn in ipairs(self.listeners) do fn() end end,
   List = function() return {} end, Get = function() return nil end,
 }
 local activeRecord = { encounterID = 9001, name = "Test Boss" }
 CRT.Notes.Active = function() return "n1", activeRecord end
-CRT.NotesPage = { TAB_H = CRT.UI.PAGE_H - 66 } -- Notes/Page.lua: a tab's height under the tabs
+CRT.NotesPage = { TAB_H = CRT.UI.PAGE_H - 66 } -- CRT_Modules/Notes/Page.lua: a tab's height under the tabs
 local journalRows = { { spellID = 777, name = "Real Name", icon = "tex777" }, { spellID = 888, name = "Other Spell", icon = "tex888" } }
 local raidList = { { encounterID = 5555, name = "Raid Boss" } }
 CRT.TimelineJournal = { Rows = function(self, id) if id == 9001 then return journalRows end return {} end, RaidBosses = function() return raidList end }
--- Bosses/Registry.lua: the boss library's route, the one ordered boss list (raid headings, then bosses)
+-- CRT_Data/Bosses/Registry.lua: the boss library's route, the one ordered boss list (raid headings, then bosses)
 local routeFns = {}
 local route = { { key = "raid:test", label = "Test Raid", title = true }, { key = 5555, label = "Raid Boss" }, { key = 9001, label = "Test Boss" } }
 CRT.Bosses = { Options = function() return route end, OnRouteChange = function(self, fn) routeFns[#routeFns + 1] = fn end,
   FirstKey = function(o) for _, x in ipairs(o) do if not x.title then return x.key end end end }
 
 local function loadSource(i, src)
-  if src:find("function UI.PickColor", 1, true) then -- the real UI/Controls.lua: only PickColor is taken, the harness keeps its own Dropdown and Slider
+  if src:find("function UI.PickColor", 1, true) then -- the real CRT_Core/UI/Controls.lua: only PickColor is taken, the harness keeps its own Dropdown and Slider
     local tmp = { UI = {} }
-    assert(load(src, "UI/Controls.lua"))("CowfeeRaidTools", tmp)
+    assert(load(src, "CRT_Core/UI/Controls.lua"))("CowfeeRaidTools", tmp)
     CRT.UI.PickColor = tmp.UI.PickColor
   else
     assert(load(src, "src" .. i))("CowfeeRaidTools", CRT)
@@ -163,7 +163,7 @@ local ENC = 9001
 local showCalls, showResult = {}, true
 CRT.Timeline.ShowRow = function(self, enc, spell, name) showCalls[#showCalls + 1] = { enc = enc, spell = spell, name = name } return showResult end
 
-local TAB_W, TAB_H = CRT.UI.PAGE_W, CRT.UI.PAGE_H - 66 -- Notes/Page.lua: a tab sits under the tabs
+local TAB_W, TAB_H = CRT.UI.PAGE_W, CRT.UI.PAGE_H - 66 -- CRT_Modules/Notes/Page.lua: a tab sits under the tabs
 local function click(b) assert(b and b.OnClick, "clickable") b.OnClick(b, "LeftButton") end
 local function setCheck(c, on) c.checked = on click(c) end
 -- typing: the box has the focus (a click in it), then the text changes
@@ -852,7 +852,7 @@ check("mech: nothing passes the page edges", function()
   assert(#errors == 0, tostring(errors[1]))
 end)
 
--- Timeline/Page.lua's RehearsalSourceFor, as the window plays it: the boss's first reference for the
+-- CRT_Modules/Timeline/Page.lua's RehearsalSourceFor, as the window plays it: the boss's first reference for the
 -- group, else nothing. sourceOverride replaces it (a recorded pull: a base with no reference).
 local sourceOverride
 CRT.Timeline.RehearsalSourceFor = function(self, enc, group)
@@ -862,7 +862,7 @@ CRT.Timeline.RehearsalSourceFor = function(self, enc, group)
   if not ref then return nil end
   return { base = { reference = ref }, encounterID = enc, group = group, difficultyName = ref.difficulty }
 end
--- The Rehearsal window's OpenAt (Timeline/RehearsalWindow.lua), mocked: every call recorded.
+-- The Rehearsal window's OpenAt (CRT_Modules/Timeline/RehearsalWindow.lua), mocked: every call recorded.
 local opened = {}
 local function mockWindow(ok, reason)
   for i = #opened, 1, -1 do opened[i] = nil end

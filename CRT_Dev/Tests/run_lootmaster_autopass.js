@@ -1,4 +1,4 @@
-// LootMaster/AutoPass.lua: the auto-pass gate, AutoPass:ShouldPass(state, roll). Every combination of its
+// CRT_Modules/LootMaster/AutoPass.lua: the auto-pass gate, AutoPass:ShouldPass(state, roll). Every combination of its
 // checks (each one good or bad) gives false with the first failing check's reason, and true only when all
 // hold; a test returns false before anything else; the 90 second heartbeat edge; the gate is pure (it reads
 // no global and changes nothing it is given). Usage: node run_lootmaster_autopass.js <addon folder>
@@ -184,7 +184,7 @@ if fails > 0 then error("failures") end
 `;
 const dir = process.argv[2];
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
-for (const f of ['LootMaster/Data.lua', 'LootMaster/AutoPass.lua']) {
+for (const f of ['CRT_Modules/LootMaster/Data.lua', 'CRT_Modules/LootMaster/AutoPass.lua']) {
   const p = path.join(dir, f);
   lua.lua_pushstring(L, to_luastring(fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : 'error("missing ' + f + '")'));
 }

@@ -1,5 +1,5 @@
-// LootMaster/Filter.lua, FilterTab.lua and the filter's use in Test.lua and Page.lua: the defaults (from
-// Core.lua), every kind of item, both sources, the quality and item level thresholds, facts the game can't
+// CRT_Modules/LootMaster/Filter.lua, FilterTab.lua and the filter's use in Test.lua and Page.lua: the defaults (from
+// CRT_Core/Core.lua), every kind of item, both sources, the quality and item level thresholds, facts the game can't
 // give (the item is left out, with a chat line), cleaning, /crt loot test's sampling, and the Loot filter tab
 // on stand-in frames, placed before Settings. Usage: node run_lootmaster_filter.js <addon folder>
 const fs = require('fs');
@@ -42,7 +42,7 @@ for _, n in ipairs({ "GameFontNormal", "GameFontHighlight", "GameFontDisable", "
   "GameFontNormalLarge", "GameFontNormalSmall", "ChatFontNormal" }) do _G[n] = mock("Font") end
 
 local CRT = {}
-assert(load(coreSrc, "Core.lua"))("CowfeeRaidTools", CRT)
+assert(load(coreSrc, "CRT_Core/Core.lua"))("CowfeeRaidTools", CRT)
 local printed = {}
 function CRT:Print(m) printed[#printed + 1] = m end
 local function deepCopy(t) if type(t) ~= "table" then return t end local o = {} for k, v in pairs(t) do o[k] = deepCopy(v) end return o end
@@ -488,7 +488,7 @@ if fails > 0 then error("failures") end
 `;
 const dir = process.argv[2];
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
-const files = ['Core.lua', 'LootMaster/Data.lua', 'LootMaster/Filter.lua', 'LootMaster/Test.lua', 'LootMaster/FilterTab.lua', 'LootMaster/Page.lua'];
+const files = ['CRT_Core/Core.lua', 'CRT_Modules/LootMaster/Data.lua', 'CRT_Modules/LootMaster/Filter.lua', 'CRT_Modules/LootMaster/Test.lua', 'CRT_Modules/LootMaster/FilterTab.lua', 'CRT_Modules/LootMaster/Page.lua'];
 for (const f of files) {
   const p = path.join(dir, f);
   lua.lua_pushstring(L, to_luastring(fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : 'error("missing ' + f + '")'));

@@ -1,4 +1,4 @@
-// Profiles.lua: swap at load, switch, copy, reset, delete, export and import.
+// CRT_Core/Profiles.lua: swap at load, switch, copy, reset, delete, export and import.
 const fs = require('fs');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
@@ -11,7 +11,7 @@ local store = {}
 C_EncodingUtil = { SerializeCBOR = function(t) store[#store+1] = t return "cbor" .. #store end, CompressString = function(s) return s end, EncodeBase64 = function(s) return s end,
   DecodeBase64 = function(s) return s end, DecompressString = function(s) return s end, DeserializeCBOR = function(s) return store[tonumber(s:match("%d+"))] end }
 local CRT = { defaults = { ui = { font = "default" }, groups = { presets = {} }, late = { history = {} }, lastPage = "groups", classCache = {}, timeline = { bosses = {}, record = true }, alerts = { noteLines = { text = false, icon = false, circle = false }, bars = { cap = 5 }, areas = { texts = { cap = 3 }, icons = { cap = 5 }, circles = { cap = 3 } }, reminders = {}, nextId = 1, saved = {}, nextSavedId = 1 } } }
-assert(load(src, "Profiles.lua"))("CowfeeRaidTools", CRT)
+assert(load(src, "CRT_Core/Profiles.lua"))("CowfeeRaidTools", CRT)
 local P = CRT.Profiles
 local function fill(db, src) src = src or CRT.defaults for k, v in pairs(src) do if type(v) == "table" then if type(db[k]) ~= "table" then db[k] = {} end fill(db[k], v) elseif db[k] == nil then db[k] = v end end end
 -- First load ever: an old CRTDB with no profiles becomes Default.

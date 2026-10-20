@@ -1,5 +1,5 @@
-// Timeline/Lanes.lua: the lanes of a recorded pull, a reference timeline and an overlaid pull.
-// Usage: node run_timeline_lanes.js Timeline/Data.lua Timeline/Database.lua Timeline/Reference.lua Timeline/Lanes.lua
+// CRT_Modules/Timeline/Lanes.lua: the lanes of a recorded pull, a reference timeline and an overlaid pull.
+// Usage: node run_timeline_lanes.js CRT_Modules/Timeline/Data.lua CRT_Modules/Timeline/Database.lua CRT_Modules/Timeline/Reference.lua CRT_Modules/Timeline/Lanes.lua
 const fs = require('fs');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
@@ -26,10 +26,10 @@ CRT.TimelineJournal = {
     return nil
   end,
 }
-assert(load(dataSrc, "Timeline/Data.lua"))("CowfeeRaidTools", CRT)
-assert(load(dbSrc, "Timeline/Database.lua"))("CowfeeRaidTools", CRT)
-assert(load(refSrc, "Timeline/Reference.lua"))("CowfeeRaidTools", CRT)
-assert(load(lanesSrc, "Timeline/Lanes.lua"))("CowfeeRaidTools", CRT)
+assert(load(dataSrc, "CRT_Modules/Timeline/Data.lua"))("CowfeeRaidTools", CRT)
+assert(load(dbSrc, "CRT_Modules/Timeline/Database.lua"))("CowfeeRaidTools", CRT)
+assert(load(refSrc, "CRT_Modules/Timeline/Reference.lua"))("CowfeeRaidTools", CRT)
+assert(load(lanesSrc, "CRT_Modules/Timeline/Lanes.lua"))("CowfeeRaidTools", CRT)
 local Lanes = CRT.TimelineLanes
 local S = CRT.db.timeline
 local function kinds(lanes) local t = {} for i, l in ipairs(lanes) do t[i] = l.kind end return table.concat(t, ",") end

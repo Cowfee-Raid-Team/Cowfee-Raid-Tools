@@ -1,4 +1,4 @@
-// Timeline/Undo.lua: Ctrl+Z puts back the notes, reminders and references as they were before the last
+// CRT_Modules/Timeline/Undo.lua: Ctrl+Z puts back the notes, reminders and references as they were before the last
 // change made while a timeline shows; Ctrl+Y redoes. Stubs for the three owners' change events.
 // Usage: node run_timeline_undo.js <addon folder>
 const fs = require('fs');
@@ -120,5 +120,5 @@ print(fails == 0 and "all passed" or (fails .. " failed"))
 if fails > 0 then error(fails .. " failed", 0) end
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
-lua.lua_pushstring(L, to_luastring(fs.readFileSync(process.argv[2] + '/Timeline/Undo.lua', 'utf8')));
+lua.lua_pushstring(L, to_luastring(fs.readFileSync(process.argv[2] + '/CRT_Modules/Timeline/Undo.lua', 'utf8')));
 if (lua.lua_pcall(L, 1, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }

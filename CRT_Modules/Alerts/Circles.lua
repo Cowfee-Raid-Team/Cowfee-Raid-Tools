@@ -3,8 +3,9 @@ local ADDON, CRT = ...
 -- The circles area: a ring that empties as the time runs out, the seconds inside it and the alert's text
 -- under it. Built on Alerts/Areas.lua; its settings are CRT.db.alerts.areas.circles (size, thickness,
 -- ringColor, fontSize, font, outline, beside the common shown, cap, grow). The ring is a Cooldown whose swipe
--- is a ring texture from Media/ (Thin, Medium or Thick, a see-through centre), so its coloured part shrinks as
--- the time runs out (REVERSE below) over a faint full ring of the same texture. The centre is left clear.
+-- is a ring texture from CRT_Media/Media/ (Thin, Medium or Thick, a see-through centre), so its coloured part
+-- shrinks as the time runs out (REVERSE below) over a faint full ring of the same texture. The centre is left
+-- clear.
 
 local Areas = CRT.AlertAreas
 
@@ -30,7 +31,7 @@ local TEXT = {
 
 -- Tune the look in game here.
 -- The swipe and the faint ring: 256 px white rings, outer radius 126 px, 12 / 22 / 36 px wide (make_rings.js).
-local MEDIA = "Interface\\AddOns\\CowfeeRaidTools\\Media\\"
+local MEDIA = "Interface\\AddOns\\" .. ADDON .. "\\CRT_Media\\Media\\"
 local RING_TEXTURES = {
     thin = MEDIA .. "RingThin",
     medium = MEDIA .. "RingMedium",

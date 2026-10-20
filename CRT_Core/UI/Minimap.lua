@@ -9,8 +9,8 @@ local UI = CRT.UI
 local Minimap_ = {}
 CRT.MinimapButton = Minimap_
 
--- The addon's own coffee cup, a round 128 x 128 TGA in the Media folder.
-local ICON = "Interface\\AddOns\\CowfeeRaidTools\\Media\\Icon"
+-- The addon's own coffee cup, a round 128 x 128 TGA in CRT_Media/Media.
+local ICON = "Interface\\AddOns\\" .. ADDON .. "\\CRT_Media\\Media\\Icon"
 
 local button
 

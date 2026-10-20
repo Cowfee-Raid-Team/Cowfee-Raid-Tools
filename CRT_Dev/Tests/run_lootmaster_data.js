@@ -1,4 +1,4 @@
-// LootMaster/Data.lua: the session model, the sorted rows, re-roll rules and the message format, with no
+// CRT_Modules/LootMaster/Data.lua: the session model, the sorted rows, re-roll rules and the message format, with no
 // frames. Usage: node run_lootmaster_data.js <addon folder>
 const fs = require('fs');
 const path = require('path');
@@ -480,5 +480,5 @@ if fails > 0 then error("failures") end
 `;
 const dir = process.argv[2];
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
-for (const f of ['LootMaster/Data.lua', 'LootMaster/Test.lua', 'LootMaster/Filter.lua']) lua.lua_pushstring(L, to_luastring(fs.readFileSync(path.join(dir, f), 'utf8')));
+for (const f of ['CRT_Modules/LootMaster/Data.lua', 'CRT_Modules/LootMaster/Test.lua', 'CRT_Modules/LootMaster/Filter.lua']) lua.lua_pushstring(L, to_luastring(fs.readFileSync(path.join(dir, f), 'utf8')));
 if (lua.lua_pcall(L, 3, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }

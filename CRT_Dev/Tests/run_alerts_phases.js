@@ -1,4 +1,4 @@
-// Alerts/PhaseDatabase.lua + Alerts/Phases.lua: phase events on the alerts engine.
+// CRT_Modules/Alerts/PhaseDatabase.lua + CRT_Modules/Alerts/Phases.lua: phase events on the alerts engine.
 const fs = require('fs');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);

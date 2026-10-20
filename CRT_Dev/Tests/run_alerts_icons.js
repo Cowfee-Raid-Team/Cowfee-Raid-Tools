@@ -1,5 +1,5 @@
-// Alerts/Icons.lua: the icons area (icon, cooldown swipe, seconds, text), with mock frames.
-// Usage: node run_alerts_icons.js Alerts/Rules.lua Alerts/Engine.lua Alerts/Areas.lua Alerts/Icons.lua
+// CRT_Modules/Alerts/Icons.lua: the icons area (icon, cooldown swipe, seconds, text), with mock frames.
+// Usage: node run_alerts_icons.js CRT_Modules/Alerts/Rules.lua CRT_Modules/Alerts/Engine.lua CRT_Modules/Alerts/Areas.lua CRT_Modules/Alerts/Icons.lua
 const fs = require('fs');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
@@ -120,7 +120,7 @@ CRT.UI = {
   SetFrameTitle = function(f, t) rawset(f, "title", t) end,
   StyleWindow = function(_, f) rawset(f, "styled", (rawget(f, "styled") or 0) + 1) end,
   Help = function(parent) return mock("Button", parent) end,
-  -- Like UI/Controls.lua: a dropdown builds its menu (options and get) when made and on refresh, and a
+  -- Like CRT_Core/UI/Controls.lua: a dropdown builds its menu (options and get) when made and on refresh, and a
   -- slider reads get() as it is made (slider:Init) and on refresh.
   Dropdown = function(parent, label, opts) dropdownsMade = dropdownsMade + 1 local r = mock("Row", parent) rawset(r, "label", label) rawset(r, "opts", opts)
     local function menu() local o = opts.options local list = type(o) == "function" and o() or o assert(type(list) == "table", label .. ": options") rawset(r, "value", opts.get()) end

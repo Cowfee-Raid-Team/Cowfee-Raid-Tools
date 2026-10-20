@@ -1,4 +1,4 @@
-// The Timeline and Raid Notes stay in step: the real Notes/Parse.lua, Data.lua, Comm.lua, Settings.lua and
+// The Timeline and Raid Notes stay in step: the real CRT_Modules/Notes/Parse.lua, Data.lua, Comm.lua, Settings.lua and
 // Page.lua. A note made for a boss gets its header and shows on Raid Notes; Share always makes the note
 // active here (sent to the group only when allowed); the Raid Notes page follows the active note; lines the
 // Timeline writes show in the Raid Notes text.

@@ -4,8 +4,7 @@ ignore:
   - README.md
   - docs
   - "Cowfee Raid Tools - Architecture.md"
-  - Dev
-  - Tests
+  - CRT_Dev
   - factory
   - .claude
 

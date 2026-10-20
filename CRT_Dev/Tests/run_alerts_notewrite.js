@@ -1,5 +1,5 @@
 // Alerts stage 2a Task 7: add, replace and remove one raid note line (Notes:AddLine/ReplaceLine/RemoveLine/TimerAt).
-// Usage: node run_alerts_notewrite.js Notes/Parse.lua Notes/Data.lua
+// Usage: node run_alerts_notewrite.js CRT_Modules/Notes/Parse.lua CRT_Modules/Notes/Data.lua
 const fs = require('fs');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
@@ -213,7 +213,7 @@ end)
 if checks.failed then error(checks.failed .. " failed") end
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
-const names = ['Notes/Parse.lua', 'Notes/Data.lua'];
+const names = ['CRT_Modules/Notes/Parse.lua', 'CRT_Modules/Notes/Data.lua'];
 const files = process.argv.slice(2);
 if (files.length !== names.length) { console.error('usage: node run_alerts_notewrite.js ' + names.join(' ')); process.exit(2); }
 files.forEach((p, i) => { lua.lua_pushstring(L, to_luastring(names[i])); lua.lua_pushstring(L, to_luastring(fs.readFileSync(p, 'utf8'))); });

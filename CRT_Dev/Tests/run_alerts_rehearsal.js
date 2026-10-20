@@ -1,11 +1,11 @@
 // The alerts engine's rehearsal run (Timeline Rehearsal plan, Task 2): a run driven by the Rehearsal
 // window's clock, which may stand still, speed up or jump. Engine, speech, the bars and icons areas, the
 // note engine (Preview as), the personal note window and CRT.AlertRoster, with game-like mocks.
-// Args (in the TOC's order): Bosses/Registry.lua Seasons/Midnight-S1/Season.lua
-//   Seasons/Midnight-S1/NekzaliTheSoulcoiler.lua Groups/Data.lua Alerts/Rules.lua Alerts/Engine.lua
-//   Alerts/Speech.lua Notes/Parse.lua Notes/Data.lua Notes/Engine.lua Notes/Window.lua Timeline/Data.lua
-//   Timeline/Database.lua Timeline/Reference.lua Alerts/Roster.lua Alerts/Reminders.lua Alerts/Areas.lua
-//   Alerts/Bars.lua Alerts/Icons.lua
+// Args (in the TOC's order): CRT_Data/Bosses/Registry.lua CRT_Data/Seasons/Midnight-S1/Season.lua
+//   CRT_Data/Seasons/Midnight-S1/NekzaliTheSoulcoiler.lua CRT_Modules/Groups/Data.lua CRT_Modules/Alerts/Rules.lua CRT_Modules/Alerts/Engine.lua
+//   CRT_Modules/Alerts/Speech.lua CRT_Modules/Notes/Parse.lua CRT_Modules/Notes/Data.lua CRT_Modules/Notes/Engine.lua CRT_Modules/Notes/Window.lua CRT_Modules/Timeline/Data.lua
+//   CRT_Modules/Timeline/Database.lua CRT_Modules/Timeline/Reference.lua CRT_Modules/Alerts/Roster.lua CRT_Modules/Alerts/Reminders.lua CRT_Modules/Alerts/Areas.lua
+//   CRT_Modules/Alerts/Bars.lua CRT_Modules/Alerts/Icons.lua
 const fs = require('fs');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 
@@ -191,7 +191,7 @@ for i = 1, #sources, 2 do
   local before = #all
   assert(load(sources[i + 1], "@" .. sources[i]))("CowfeeRaidTools", CRT)
   -- The Timeline's recorder is not under test: its frames hear no events and run no updates here.
-  if sources[i]:find("Timeline/Data.lua", 1, true) then
+  if sources[i]:find("CRT_Modules/Timeline/Data.lua", 1, true) then
     for j = before + 1, #all do all[j].events = {} all[j].scripts.OnUpdate = nil end
   end
 end

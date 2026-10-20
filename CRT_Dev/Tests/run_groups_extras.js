@@ -1,4 +1,4 @@
-// Groups/Data.lua and Groups/Page.lua on mock frames: the "In group, not in layout" list.
+// CRT_Modules/Groups/Data.lua and CRT_Modules/Groups/Page.lua on mock frames: the "In group, not in layout" list.
 // usage: node run_groups_extras.js <addon folder>
 const fs = require('fs');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
@@ -69,6 +69,6 @@ print("after drag onto slot 1: slot 1 = " .. w[1] .. "; list: " .. table.concat(
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness + tail)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 const d = process.argv[2];
-lua.lua_pushstring(L, to_luastring(fs.readFileSync(d + '/Groups/Data.lua', 'utf8')));
-lua.lua_pushstring(L, to_luastring(fs.readFileSync(d + '/Groups/Page.lua', 'utf8')));
+lua.lua_pushstring(L, to_luastring(fs.readFileSync(d + '/CRT_Modules/Groups/Data.lua', 'utf8')));
+lua.lua_pushstring(L, to_luastring(fs.readFileSync(d + '/CRT_Modules/Groups/Page.lua', 'utf8')));
 if (lua.lua_pcall(L, 2, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }

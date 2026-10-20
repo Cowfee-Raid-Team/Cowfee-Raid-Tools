@@ -1,8 +1,8 @@
-// Alerts/Editor.lua: the popout alert editor (Stage 2a), with mock frames. UI/Panel.lua is loaded for the
+// CRT_Modules/Alerts/Editor.lua: the popout alert editor (Stage 2a), with mock frames. CRT_Core/UI/Panel.lua is loaded for the
 // real window look (UI:StyleWindow, UI:ApplyStyle); its controls are replaced by recording mocks.
-// Usage: node run_alerts_editor.js UI/Panel.lua Timeline/Data.lua Timeline/Database.lua Timeline/Reference.lua
-//   Timeline/Lanes.lua Alerts/Rules.lua Alerts/Engine.lua Alerts/Speech.lua Notes/Parse.lua Notes/Data.lua
-//   Notes/Engine.lua Alerts/Reminders.lua Alerts/Editor.lua
+// Usage: node run_alerts_editor.js CRT_Core/UI/Panel.lua CRT_Modules/Timeline/Data.lua CRT_Modules/Timeline/Database.lua CRT_Modules/Timeline/Reference.lua
+//   CRT_Modules/Timeline/Lanes.lua CRT_Modules/Alerts/Rules.lua CRT_Modules/Alerts/Engine.lua CRT_Modules/Alerts/Speech.lua CRT_Modules/Notes/Parse.lua CRT_Modules/Notes/Data.lua
+//   CRT_Modules/Notes/Engine.lua CRT_Modules/Alerts/Reminders.lua CRT_Modules/Alerts/Editor.lua
 const fs = require('fs');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
@@ -171,9 +171,9 @@ UI.SoundDropdown = function(parent, label, opts) local o = {} for k, v in pairs(
 UI.Slider = function(parent, label, opts) local r = mock("Row", parent) rawset(r, "label", label) rawset(r, "opts", opts)
   rawset(r, "refresh", function() end) sliders[label] = r return r end
 local function loadSource(i, src)
-  if src:find("function UI.PickColor", 1, true) then -- the real UI/Controls.lua: only PickColor is taken, the harness keeps its own Dropdown and Slider
+  if src:find("function UI.PickColor", 1, true) then -- the real CRT_Core/UI/Controls.lua: only PickColor is taken, the harness keeps its own Dropdown and Slider
     local tmp = { UI = {} }
-    assert(load(src, "UI/Controls.lua"))("CowfeeRaidTools", tmp)
+    assert(load(src, "CRT_Core/UI/Controls.lua"))("CowfeeRaidTools", tmp)
     CRT.UI.PickColor = tmp.UI.PickColor
   else
     assert(load(src, "src" .. i))("CowfeeRaidTools", CRT)
@@ -1542,7 +1542,7 @@ do
   print("ok lookup: a far-off query still shows No spells match")
 end
 
--- the note line save is Alerts/Draft.lua's (Draft.SaveNote, no frames): the editor saves through it,
+-- the note line save is CRT_Modules/Alerts/Draft.lua's (Draft.SaveNote, no frames): the editor saves through it,
 -- and writes the same line as before the move
 do
   reset()
@@ -1580,7 +1580,7 @@ do
   assert(ok == false and type(err) == "string" and err ~= "", "no encounter ID: refused")
   print("ok editor: note save unchanged after the core move")
 end
--- Timeline/Page.lua's RehearsalSourceFor, as the window plays it: the boss's first reference for the
+-- CRT_Modules/Timeline/Page.lua's RehearsalSourceFor, as the window plays it: the boss's first reference for the
 -- group, else nothing. sourceOverride replaces it (a recorded pull: a base with no reference).
 local sourceOverride
 CRT.Timeline.RehearsalSourceFor = function(self, enc, group)
@@ -1590,7 +1590,7 @@ CRT.Timeline.RehearsalSourceFor = function(self, enc, group)
   if not ref then return nil end
   return { base = { reference = ref }, encounterID = enc, group = group, difficultyName = ref.difficulty }
 end
--- The Rehearsal window's OpenAt (Timeline/RehearsalWindow.lua), mocked: every call recorded.
+-- The Rehearsal window's OpenAt (CRT_Modules/Timeline/RehearsalWindow.lua), mocked: every call recorded.
 local opened = {}
 local function mockWindow(ok, reason)
   for i = #opened, 1, -1 do opened[i] = nil end

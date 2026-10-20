@@ -1,5 +1,5 @@
-// Alerts/Speech.lua: the speech queue. Real Rules + Engine + Speech with a mocked clock and TTS.
-// Args: Alerts/Rules.lua Alerts/Engine.lua Alerts/Speech.lua
+// CRT_Modules/Alerts/Speech.lua: the speech queue. Real Rules + Engine + Speech with a mocked clock and TTS.
+// Args: CRT_Modules/Alerts/Rules.lua CRT_Modules/Alerts/Engine.lua CRT_Modules/Alerts/Speech.lua
 const fs = require('fs');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
@@ -162,6 +162,16 @@ CRT.db.notes.alert.enabled = true CRT.db.notes.alert.tts = true
 print("ok speech: one-time notice")
 assert(#errors == 0, table.concat(errors, "; "))
 print("ok speech: tts off, SpeakNow, reset")
+
+-- a file: sound is looked for in the companion addon, then CRT_Media\\Sounds, then the Sounds folder from before the move
+local found = CRT.Sound:Resolve("file:horn.ogg")
+local AD = "Interface\\\\AddOns\\\\"
+assert(found and found.kind == "file" and #found.paths == 3, "three places tried")
+assert(found.paths[1] == AD .. "CowfeeRaidTools_Media\\\\Sounds\\\\horn.ogg", found.paths[1])
+assert(found.paths[2] == AD .. "CowfeeRaidTools\\\\CRT_Media\\\\Sounds\\\\horn.ogg", found.paths[2])
+assert(found.paths[3] == AD .. "CowfeeRaidTools\\\\Sounds\\\\horn.ogg", found.paths[3])
+assert(CRT.Sound.BUNDLED_FOLDER == AD .. "CowfeeRaidTools\\\\CRT_Media\\\\Media\\\\Sounds\\\\", CRT.Sound.BUNDLED_FOLDER)
+print("ok speech: file sounds looked for in the new and old folders")
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 const files = process.argv.slice(2);

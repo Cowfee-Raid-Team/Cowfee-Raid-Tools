@@ -1,4 +1,4 @@
-// Builds Late/Page.lua on mock frames with two saved nights and prints the totals table rows.
+// Builds CRT_Modules/Late/Page.lua on mock frames with two saved nights and prints the totals table rows.
 const fs = require('fs');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);

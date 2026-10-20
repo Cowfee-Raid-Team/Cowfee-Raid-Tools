@@ -1,5 +1,5 @@
-// Timeline/Page.lua on mock frames: the real Data.lua, a stub Journal and View.
-// usage: node run_timeline_page.js <Data.lua> <Database.lua> <Reference.lua> <Lanes.lua> <ReferencePage.lua> <SettingsTab.lua> <Page.lua> <Journal.lua> <Registry.lua> <Season.lua> <Nekzali.lua> <ReviewTab.lua> <Rehearsal.lua> <RehearsalWindow.lua> <Slash.lua>
+// CRT_Modules/Timeline/Page.lua on mock frames: the real Data.lua, a stub Journal and View.
+// usage: node run_timeline_page.js <Data.lua> <Database.lua> <Reference.lua> <Lanes.lua> <ReferencePage.lua> <SettingsTab.lua> <Page.lua> <Journal.lua> <Registry.lua> <Season.lua> <Nekzali.lua> <ReviewTab.lua> <Rehearsal.lua> <RehearsalWindow.lua> <CRT_Core/Slash.lua>
 // Journal.lua is loaded on its own CRT table only for its RaidBosses, which the stub Journal hands on.
 const fs = require('fs');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
@@ -80,7 +80,7 @@ end
 local view = { SetData = function(self, pull, eid, overlay, name, group) self.pull, self.eid, self.overlay, self.group = pull, eid, overlay, group self.sets = (self.sets or 0) + 1 end, refreshes = 0, Refresh = function(self) self.refreshes = self.refreshes + 1 end, SetSpan = function(self, v) self.span = v end, CastCount = function() return 0 end, SetOrder = function(self, o) self.order = o end, ClearHighlight = function(self) self.highlight = nil end, Highlight = function(self, id, name) self.highlight = { spellID = id, name = name and name:lower() } local ref = self.pull and self.pull.reference for _, row in ipairs(ref and ref.rows or {}) do if (id and row.spellID == id) or (name and row.name:lower() == name:lower()) then return true end end return false end }
 view.EncounterNumber = function(self) return type(self.eid) == "number" and self.eid or nil end
 view.SetPlayhead = function(self, t, follow) self.playT = type(t) == "number" and t or nil self.playFollow = follow and true or false end
--- the raid notes and their sharing, as Notes/Data.lua and Notes/Comm.lua give them
+-- the raid notes and their sharing, as CRT_Modules/Notes/Data.lua and CRT_Modules/Notes/Comm.lua give them
 local noteFor, canShare, shared, noteListeners = {}, true, {}, {}
 local noteForCalls, madeNotes = {}, 0
 CRT.Notes = { FindForEncounter = function(_, enc) return noteFor[enc] end, OnChange = function(_, fn) noteListeners[#noteListeners + 1] = fn end,
@@ -106,14 +106,14 @@ CRT.db.timeline.nextId = 13
 assert(load(dbSrc, "Database.lua"))("CowfeeRaidTools", CRT)
 assert(load(refSrc, "Reference.lua"))("CowfeeRaidTools", CRT)
 assert(load(lanesSrc, "Lanes.lua"))("CowfeeRaidTools", CRT)
--- Boss library wiring (Bosses/Registry.lua, then the season pack, then the ADDON_LOADED the game fires once every file has loaded).
+-- Boss library wiring (CRT_Data/Bosses/Registry.lua, then the season pack, then the ADDON_LOADED the game fires once every file has loaded).
 local function loadBosses(CRT, reg, season, nek)
   local real, handler = CreateFrame, nil
   CreateFrame = function() return { RegisterEvent = function() end, UnregisterEvent = function() end, SetScript = function(_, n, fn) if n == "OnEvent" then handler = fn end end } end
-  assert(load(reg, "Bosses/Registry.lua"))("CowfeeRaidTools", CRT)
+  assert(load(reg, "CRT_Data/Bosses/Registry.lua"))("CowfeeRaidTools", CRT)
   CreateFrame = real
-  assert(load(season, "Seasons/Midnight-S1/Season.lua"))("CowfeeRaidTools", CRT)
-  assert(load(nek, "Seasons/Midnight-S1/NekzaliTheSoulcoiler.lua"))("CowfeeRaidTools", CRT)
+  assert(load(season, "CRT_Data/Seasons/Midnight-S1/Season.lua"))("CowfeeRaidTools", CRT)
+  assert(load(nek, "CRT_Data/Seasons/Midnight-S1/NekzaliTheSoulcoiler.lua"))("CowfeeRaidTools", CRT)
   -- the test bosses are in the library too: the boss list shows library bosses only
   for _, b in ipairs({ { 3001, "Alpha" }, { 3002, "Beta" }, { 3003, "Gamma (2)" }, { 4004, "Zork the Late" }, { 5001, "Delta" } }) do
     CRT.Bosses:Register({ encounterID = b[1], name = b[2], season = "midnight-s1" })
@@ -984,7 +984,7 @@ do
   local lines = {}
   local oldPrint = print
   CRT.version = "test"
-  assert(load(slashSrc, "Slash.lua"))("CowfeeRaidTools", CRT)
+  assert(load(slashSrc, "CRT_Core/Slash.lua"))("CowfeeRaidTools", CRT)
   print = function(s) lines[#lines + 1] = s end
   SlashCmdList["COWFEERAIDTOOLS"]("help")
   print = oldPrint

@@ -1,5 +1,5 @@
-// Timeline/Rehearsal.lua: the rehearsal clock and model.
-// Usage: node run_timeline_rehearsal.js Timeline/Rehearsal.lua
+// CRT_Modules/Timeline/Rehearsal.lua: the rehearsal clock and model.
+// Usage: node run_timeline_rehearsal.js CRT_Modules/Timeline/Rehearsal.lua
 const fs = require('fs');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
@@ -8,7 +8,7 @@ local src = ...
 local now = 100
 function GetTime() return now end
 local CRT = {}
-assert(load(src, "Timeline/Rehearsal.lua"))("CowfeeRaidTools", CRT)
+assert(load(src, "CRT_Modules/Timeline/Rehearsal.lua"))("CowfeeRaidTools", CRT)
 local R = CRT.TimelineRehearsal
 assert(R and R.CAST == 5 and R.STRIP_SPAN == 40, "constants")
 local function near(a, b) return math.abs(a - b) < 1e-9 end

@@ -1,4 +1,4 @@
-// LootMaster/Score.lua: Raider Score from the Late Tracker's saved nights. Usage: node run_lootmaster_score.js <addon folder>
+// CRT_Modules/LootMaster/Score.lua: Raider Score from the Late Tracker's saved nights. Usage: node run_lootmaster_score.js <addon folder>
 const fs = require('fs');
 const path = require('path');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
@@ -14,7 +14,7 @@ local NOW = 1790000000
 GetTime = function() return 0 end
 time = function() return NOW end
 geterrorhandler = function() return print end
--- The real Late Tracker (Late/Data.lua), so the score reads nights through the tracker's own rule.
+-- The real Late Tracker (CRT_Modules/Late/Data.lua), so the score reads nights through the tracker's own rule.
 date = os.date
 format = string.format
 function IsInGroup() return false end
@@ -33,7 +33,7 @@ CRT.Groups = { NUM_SLOTS = 40, Find = function(_, id) return id == 1 and layout 
   ReadRoster = function() local out = {} for _, k in ipairs(roster) do out[#out+1] = { key = k } end return out end,
   OnChange = function() end, Normalize = function(k) return k end,
   MakeLookup = function(r) local m = {} for _, e in ipairs(r) do m[e.key:lower()] = e end return function(k) return m[k:lower()] end end }
-assert(load(lateSrc, "Late/Data.lua"))("CowfeeRaidTools", CRT)
+assert(load(lateSrc, "CRT_Modules/Late/Data.lua"))("CowfeeRaidTools", CRT)
 local Late = CRT.Late
 assert(load(dataSrc, "Data.lua"))("CowfeeRaidTools", CRT)
 assert(load(scoreSrc, "Score.lua"))("CowfeeRaidTools", CRT)
@@ -140,5 +140,5 @@ if fails > 0 then error("failures") end
 `;
 const dir = process.argv[2];
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
-for (const f of ['LootMaster/Data.lua', 'LootMaster/Score.lua', 'Late/Data.lua']) lua.lua_pushstring(L, to_luastring(fs.existsSync(path.join(dir, f)) ? fs.readFileSync(path.join(dir, f), 'utf8') : 'error("missing")'));
+for (const f of ['CRT_Modules/LootMaster/Data.lua', 'CRT_Modules/LootMaster/Score.lua', 'CRT_Modules/Late/Data.lua']) lua.lua_pushstring(L, to_luastring(fs.existsSync(path.join(dir, f)) ? fs.readFileSync(path.join(dir, f), 'utf8') : 'error("missing")'));
 if (lua.lua_pcall(L, 3, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }

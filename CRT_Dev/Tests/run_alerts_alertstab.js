@@ -1,7 +1,7 @@
-// The Alerts tab of Raid Notes (Notes/AlertsTab.lua) with the real Notes/Page.lua, Notes/Settings.lua,
-// Alerts/Areas.lua and the four area files, on mock frames.
-// Usage: node run_alerts_alertstab.js Alerts/Rules.lua Alerts/Engine.lua Notes/Settings.lua Notes/AlertsTab.lua
-//   Notes/Page.lua Alerts/Areas.lua Alerts/Bars.lua Alerts/Texts.lua Alerts/Icons.lua Alerts/Circles.lua
+// The Alerts tab of Raid Notes (CRT_Modules/Notes/AlertsTab.lua) with the real CRT_Modules/Notes/Page.lua, CRT_Modules/Notes/Settings.lua,
+// CRT_Modules/Alerts/Areas.lua and the four area files, on mock frames.
+// Usage: node run_alerts_alertstab.js CRT_Modules/Alerts/Rules.lua CRT_Modules/Alerts/Engine.lua CRT_Modules/Notes/Settings.lua CRT_Modules/Notes/AlertsTab.lua
+//   CRT_Modules/Notes/Page.lua CRT_Modules/Alerts/Areas.lua CRT_Modules/Alerts/Bars.lua CRT_Modules/Alerts/Texts.lua CRT_Modules/Alerts/Icons.lua CRT_Modules/Alerts/Circles.lua
 const fs = require('fs');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
@@ -84,7 +84,7 @@ local function defaults() return {
   noteLines = { text = false, icon = false, circle = false },
   reminders = {}, phases = {}, overrides = {}, nextId = 1 } end
 
-local CRT = { NoteTargets = { List = function() return {} end, Get = function() return nil end, Share = function() end }, -- Integrations/NoteTargets.lua: no outside note addons here
+local CRT = { NoteTargets = { List = function() return {} end, Get = function() return nil end, Share = function() end }, -- CRT_Core/Integrations/NoteTargets.lua: no outside note addons here
   Bosses = { OnRouteChange = function() end, RouteIndex = function() end }, db = { alerts = defaults(), notes = {}, window = { point = "CENTER", x = 10, y = 20, scale = 100 } } }
 CRT.Timeline = { readable = function(v) local ok, s = pcall(issecretvalue, v); return ok and not s end }
 local fontList = { { name = "Friz Quadrata", path = "Fonts\\\\FRIZQT__.TTF" } }
@@ -101,13 +101,13 @@ CRT.UI = { PAGE_W = 1026, PAGE_H = 560,
   RegisterPage = function(_, key, title, fn) pages[key] = fn end,
   RegisterTab = function(_, b) tabs[#tabs + 1] = b end,
   SetTabSelected = function(_, b, on) rawset(b, "selected", on) end,
-  -- As UI/Panel.lua: the page is built the first time it is shown, then shown.
+  -- As CRT_Core/UI/Panel.lua: the page is built the first time it is shown, then shown.
   Show = function(_, key)
     shownPages[#shownPages + 1] = key
     if not pagePf then pagePf = mock("Frame") pagePf.shown = false pages[key](pagePf) end
     pagePf:Show()
   end,
-  -- As UI/Panel.lua: the window at its saved place.
+  -- As CRT_Core/UI/Panel.lua: the window at its saved place.
   ApplyWindowPosition = function(self)
     local f, w = self.frame, CRT.db.window
     f:ClearAllPoints()
@@ -144,7 +144,7 @@ local alertSettings = { enabled = true, seconds = 10, tts = true, ttsSeconds = 3
 local win = { shown = true, locked = true, fontSize = 14, alpha = 100, bgAlpha = 50, font = "Friz Quadrata", hidePassed = true, onlyMe = false }
 local listeners = {}
 CRT.Notes = {
-  CanEditRaid = function() return true end, -- Notes/Data.lua: solo, you may change the raid note
+  CanEditRaid = function() return true end, -- CRT_Modules/Notes/Data.lua: solo, you may change the raid note
   WindowSettings = function() return win end, Alert = function() return alertSettings end,
   Set = function(_, k, f, v) local t = k == "alert" and alertSettings or win t[f] = v for _, fn in ipairs(listeners) do fn() end end,
   TrustedOnly = function() return true end, ShowOutsideRaid = function() return true end, OnChange = function(_, fn) listeners[#listeners + 1] = fn end,
@@ -158,9 +158,9 @@ CRT.NotePhases = { Build = function() end }
 CRT.NoteAlert = { Speak = function() end }
 
 local function loadSource(i, src)
-  if src:find("function UI.PickColor", 1, true) then -- the real UI/Controls.lua: only PickColor is taken, the harness keeps its own Dropdown and Slider
+  if src:find("function UI.PickColor", 1, true) then -- the real CRT_Core/UI/Controls.lua: only PickColor is taken, the harness keeps its own Dropdown and Slider
     local tmp = { UI = {} }
-    assert(load(src, "UI/Controls.lua"))("CowfeeRaidTools", tmp)
+    assert(load(src, "CRT_Core/UI/Controls.lua"))("CowfeeRaidTools", tmp)
     CRT.UI.PickColor = tmp.UI.PickColor
   else
     assert(load(src, "src" .. i))("CowfeeRaidTools", CRT)
@@ -471,7 +471,7 @@ check("alertstab: fits PAGE_W and PAGE_H", function()
   local heading
   for _, f in ipairs(fontStrings) do if f.text == "Configuration" then heading = f end end
   local root = heading.parent
-  local W, H = CRT.UI.PAGE_W, CRT.UI.PAGE_H - 66 -- the tab sits under the tabs (Notes/Page.lua)
+  local W, H = CRT.UI.PAGE_W, CRT.UI.PAGE_H - 66 -- the tab sits under the tabs (CRT_Modules/Notes/Page.lua)
   local function fx(p) if p:find("LEFT") then return 0 elseif p:find("RIGHT") then return 1 end return 0.5 end
   local function fy(p) if p:find("TOP") then return 0 elseif p:find("BOTTOM") then return 1 end return 0.5 end
   local function width(m)

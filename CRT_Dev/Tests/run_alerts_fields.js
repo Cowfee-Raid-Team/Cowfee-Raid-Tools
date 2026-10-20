@@ -1,5 +1,5 @@
 // Alerts stage 2a fields: text/icon/circle outputs, glow, sound, linger, icon ID, Rules.Area, Rules.SpeechItems, Speech.SOUNDS.
-// Usage: node run_alerts_fields.js Timeline/Data.lua Timeline/Database.lua Timeline/Reference.lua Timeline/Lanes.lua Alerts/Rules.lua Alerts/Engine.lua Alerts/Reminders.lua Alerts/Speech.lua
+// Usage: node run_alerts_fields.js CRT_Modules/Timeline/Data.lua CRT_Modules/Timeline/Database.lua CRT_Modules/Timeline/Reference.lua CRT_Modules/Timeline/Lanes.lua CRT_Modules/Alerts/Rules.lua CRT_Modules/Alerts/Engine.lua CRT_Modules/Alerts/Reminders.lua CRT_Modules/Alerts/Speech.lua
 const fs = require('fs');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
@@ -150,7 +150,7 @@ do
 end
 
 do
-  -- the sound list now lives in the sound engine (Sound/Engine.lua): CRT.Sound:Choices
+  -- the sound list now lives in the sound engine (CRT_Core/Sound/Engine.lua): CRT.Sound:Choices
   local list = CRT.Sound:Choices()
   assert(type(list) == "table" and #list >= 5 and #list <= 12, "sounds list size " .. #list)
   assert(list[1].key == "kit:RAID_WARNING" and type(list[1].label) == "string", "entry shape")

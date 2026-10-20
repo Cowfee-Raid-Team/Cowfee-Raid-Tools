@@ -1,5 +1,5 @@
-// Alerts/Cooldowns.lua: the built-in healer cooldowns and raid defensives the Timeline's Cooldowns row lists.
-// Usage: node run_alerts_cooldowns.js Alerts/CooldownData.lua Alerts/Cooldowns.lua
+// CRT_Modules/Alerts/Cooldowns.lua: the built-in healer cooldowns and raid defensives the Timeline's Cooldowns row lists.
+// Usage: node run_alerts_cooldowns.js CRT_Modules/Alerts/CooldownData.lua CRT_Modules/Alerts/Cooldowns.lua
 const fs = require('fs');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
@@ -28,9 +28,9 @@ LOCALIZED_CLASS_NAMES_MALE = { SHAMAN = "Shaman", PRIEST = "Priest", DRUID = "Dr
 local CRT = { db = { alerts = { cooldownFilter = "mine" } },
   Timeline = { readable = function(v) return not issecretvalue(v) end } }
 -- the season data loads first, as in the .toc
-assert(load(dataSrc, "Alerts/CooldownData.lua"))("CowfeeRaidTools", CRT)
+assert(load(dataSrc, "CRT_Modules/Alerts/CooldownData.lua"))("CowfeeRaidTools", CRT)
 assert(type(CRT.AlertCooldownData) == "table" and #CRT.AlertCooldownData == 33, "the data file holds the list")
-assert(load(cdSrc, "Alerts/Cooldowns.lua"))("CowfeeRaidTools", CRT)
+assert(load(cdSrc, "CRT_Modules/Alerts/Cooldowns.lua"))("CowfeeRaidTools", CRT)
 local C = assert(CRT.AlertCooldowns, "CRT.AlertCooldowns")
 local function ids(list) local out = {} for i, e in ipairs(list) do out[i] = e.spellID end return table.concat(out, ",") end
 local function find(list, id) for _, e in ipairs(list) do if e.spellID == id then return e end end end

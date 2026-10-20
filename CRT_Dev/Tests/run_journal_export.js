@@ -1,5 +1,5 @@
-// Timeline/JournalExport.lua: the reference text it writes for the boss shown in the Encounter Journal, which
-// the real Timeline/Reference.lua reads (every ability a # line until it has times), and Run's checks.
+// CRT_Modules/Timeline/JournalExport.lua: the reference text it writes for the boss shown in the Encounter Journal, which
+// the real CRT_Modules/Timeline/Reference.lua reads (every ability a # line until it has times), and Run's checks.
 // Usage: node run_journal_export.js <addon folder>
 const fs = require('fs');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
@@ -71,5 +71,5 @@ print(fails == 0 and "all passed" or (fails .. " failed"))
 if fails > 0 then error(fails .. " failed", 0) end
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
-for (const f of ['Timeline/Reference.lua', 'Timeline/JournalExport.lua']) lua.lua_pushstring(L, to_luastring(fs.readFileSync(process.argv[2] + '/' + f, 'utf8')));
+for (const f of ['CRT_Modules/Timeline/Reference.lua', 'CRT_Modules/Timeline/JournalExport.lua']) lua.lua_pushstring(L, to_luastring(fs.readFileSync(process.argv[2] + '/' + f, 'utf8')));
 if (lua.lua_pcall(L, 2, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }

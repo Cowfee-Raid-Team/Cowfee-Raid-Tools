@@ -1,4 +1,4 @@
-// Alerts/Engine.lua: blocks, run start/stop, phase clock, timed lines, listeners.
+// CRT_Modules/Alerts/Engine.lua: blocks, run start/stop, phase clock, timed lines, listeners.
 const fs = require('fs');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
@@ -14,8 +14,8 @@ local function wipe(t) for k in pairs(t) do t[k] = nil end return t end
 local function defaults() return { bars = { shown = true, noteLines = true, cap = 5, ahead = 20, width = 240, height = 20 },
   reminders = {}, phases = {}, overrides = {}, nextId = 1 } end
 local CRT = { db = { alerts = defaults() } }
-assert(load(rulesSrc, "Alerts/Rules.lua"))("CowfeeRaidTools", CRT)
-assert(load(engineSrc, "Alerts/Engine.lua"))("CowfeeRaidTools", CRT)
+assert(load(rulesSrc, "CRT_Modules/Alerts/Rules.lua"))("CowfeeRaidTools", CRT)
+assert(load(engineSrc, "CRT_Modules/Alerts/Engine.lua"))("CowfeeRaidTools", CRT)
 local A = CRT.Alerts
 assert(A and type(A.HandleEvent) == "function", "Alerts and HandleEvent exist")
 local H = A.HandleEvent

@@ -1,6 +1,7 @@
 // Lua 5.1 syntax check for addon files, since the WoW client is the only real Lua runtime here.
 // Usage: NODE_PATH=<folder with node_modules/luaparse> node lua-syntax-check.cjs <addon folder>
-// In the repository it is Tests/lua-syntax-check.cjs, run by Tests/test.sh (npm install in Tests/ once).
+// In the repository it is CRT_Dev/Tests/lua-syntax-check.cjs, run by CRT_Dev/Tests/test.sh (npm install in
+// CRT_Dev/Tests/ once).
 // Catches syntax errors only. Wrong API names and runtime errors still need the game.
 const luaparse = require('luaparse');
 const fs = require('fs');
@@ -10,7 +11,8 @@ let bad = 0;
 function walk(dir) {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     const p = path.join(dir, entry.name);
-    // other checkouts (.claude/worktrees), Git, packages and the test fixtures are not the addon
+    // other checkouts (.claude/worktrees), Git, packages and the test fixtures (CRT_Dev/Tests) are not the
+    // addon; CRT_Dev/Dev is in the .toc, so it is checked
     if (entry.isDirectory()) { if (!['.claude', '.git', 'node_modules', 'Tests', '.release'].includes(entry.name)) walk(p); continue; }
     if (!p.endsWith('.lua')) continue;
     try {

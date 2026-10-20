@@ -1,4 +1,4 @@
-// Notes/Data.lua: Notes:List() follows the raid route by each note's EncounterID, Mythic before
+// CRT_Modules/Notes/Data.lua: Notes:List() follows the raid route by each note's EncounterID, Mythic before
 // Heroic, notes for bosses outside the route last by name.
 const fs = require('fs');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
@@ -31,5 +31,5 @@ print((got == want and "PASS " or "FAIL ") .. "notes in route order: " .. got)
 print(got == want and "all passed" or "1 failed")
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
-for (const f of ['Bosses/Registry.lua', 'Seasons/Midnight-S1/Season.lua', 'Notes/Data.lua']) lua.lua_pushstring(L, to_luastring(fs.readFileSync(process.argv[2] + '/' + f, 'utf8')));
+for (const f of ['CRT_Data/Bosses/Registry.lua', 'CRT_Data/Seasons/Midnight-S1/Season.lua', 'CRT_Modules/Notes/Data.lua']) lua.lua_pushstring(L, to_luastring(fs.readFileSync(process.argv[2] + '/' + f, 'utf8')));
 if (lua.lua_pcall(L, 3, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }

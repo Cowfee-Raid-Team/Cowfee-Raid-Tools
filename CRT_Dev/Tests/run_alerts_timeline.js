@@ -1,5 +1,5 @@
 // Timeline double-click to reminder editor, and /crt reminders.
-// Usage: node run_alerts_timeline.js Timeline/Data.lua Timeline/Database.lua Timeline/Reference.lua Timeline/Lanes.lua Timeline/View.lua Alerts/Rules.lua Alerts/Engine.lua Alerts/Reminders.lua Slash.lua
+// Usage: node run_alerts_timeline.js CRT_Modules/Timeline/Data.lua CRT_Modules/Timeline/Database.lua CRT_Modules/Timeline/Reference.lua CRT_Modules/Timeline/Lanes.lua CRT_Modules/Timeline/View.lua CRT_Modules/Alerts/Rules.lua CRT_Modules/Alerts/Engine.lua CRT_Modules/Alerts/Reminders.lua CRT_Core/Slash.lua
 const fs = require('fs');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
@@ -69,10 +69,10 @@ CRT.TimelineJournal = { ResolveID = function(_, k, r) if type(k) == "number" the
   Rows = function() return {} end,
   IsHidden = function(_, enc, id) return hidden[id] and true or false end,
 }
-assert(load(dataSrc, "Timeline/Data.lua"))("CowfeeRaidTools", CRT)
-assert(load(dbSrc, "Timeline/Database.lua"))("CowfeeRaidTools", CRT)
-assert(load(refSrc, "Timeline/Reference.lua"))("CowfeeRaidTools", CRT)
-assert(load(lanesSrc, "Timeline/Lanes.lua"))("CowfeeRaidTools", CRT)
+assert(load(dataSrc, "CRT_Modules/Timeline/Data.lua"))("CowfeeRaidTools", CRT)
+assert(load(dbSrc, "CRT_Modules/Timeline/Database.lua"))("CowfeeRaidTools", CRT)
+assert(load(refSrc, "CRT_Modules/Timeline/Reference.lua"))("CowfeeRaidTools", CRT)
+assert(load(lanesSrc, "CRT_Modules/Timeline/Lanes.lua"))("CowfeeRaidTools", CRT)
 local printed = {}
 function CRT:Print(m) printed[#printed + 1] = m end
 local function wipe(t) for k in pairs(t) do t[k] = nil end return t end
@@ -80,10 +80,10 @@ CRT.db.alerts = { bars = {}, reminders = {}, phases = {}, overrides = {}, nextId
 function GetTime() return 100 end
 function issecretvalue() return false end
 function geterrorhandler() return function() end end
-assert(load(viewSrc, "Timeline/View.lua"))("CowfeeRaidTools", CRT)
-assert(load(rulesSrc, "Alerts/Rules.lua"))("CowfeeRaidTools", CRT)
-assert(load(engineSrc, "Alerts/Engine.lua"))("CowfeeRaidTools", CRT)
-assert(load(remSrc, "Alerts/Reminders.lua"))("CowfeeRaidTools", CRT)
+assert(load(viewSrc, "CRT_Modules/Timeline/View.lua"))("CowfeeRaidTools", CRT)
+assert(load(rulesSrc, "CRT_Modules/Alerts/Rules.lua"))("CowfeeRaidTools", CRT)
+assert(load(engineSrc, "CRT_Modules/Alerts/Engine.lua"))("CowfeeRaidTools", CRT)
+assert(load(remSrc, "CRT_Modules/Alerts/Reminders.lua"))("CowfeeRaidTools", CRT)
 local opened = {}
 CRT.AlertEditor = { Open = function(_, enc, id, prefill) opened[#opened + 1] = { enc = enc, id = id, prefill = prefill } end }
 local View = CRT.TimelineView
@@ -219,7 +219,7 @@ do
   local out = {}
   local realPrint = print
   print = function(s) out[#out + 1] = s end
-  assert(load(slashSrc, "Slash.lua"))("CowfeeRaidTools", CRT)
+  assert(load(slashSrc, "CRT_Core/Slash.lua"))("CowfeeRaidTools", CRT)
   SlashCmdList["COWFEERAIDTOOLS"]("reminders")
   SlashCmdList["COWFEERAIDTOOLS"]("help")
   print = realPrint

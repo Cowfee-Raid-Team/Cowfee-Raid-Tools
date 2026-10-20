@@ -1,6 +1,6 @@
 // Timeline: the saved alerts strip under the track (chips, drag a chip onto the track, chip menu, "+"),
 // and the track's right-click menu (New alert here, Place a saved alert), and the Cooldowns row under the templates.
-// Usage: node run_alerts_strip.js Timeline/Data.lua Timeline/Database.lua Timeline/Reference.lua Timeline/Lanes.lua Alerts/Rules.lua Alerts/Engine.lua Notes/Parse.lua Notes/Data.lua Alerts/Reminders.lua Alerts/Saved.lua Timeline/View.lua Bosses/Registry.lua Seasons/Midnight-S1/Season.lua Seasons/Midnight-S1/NekzaliTheSoulcoiler.lua UI/Panel.lua Alerts/Cooldowns.lua UI/Controls.lua Alerts/CooldownData.lua Groups/Data.lua Alerts/Draft.lua Alerts/Roster.lua Sound/Engine.lua
+// Usage: node run_alerts_strip.js CRT_Modules/Timeline/Data.lua CRT_Modules/Timeline/Database.lua CRT_Modules/Timeline/Reference.lua CRT_Modules/Timeline/Lanes.lua CRT_Modules/Alerts/Rules.lua CRT_Modules/Alerts/Engine.lua CRT_Modules/Notes/Parse.lua CRT_Modules/Notes/Data.lua CRT_Modules/Alerts/Reminders.lua CRT_Modules/Alerts/Saved.lua CRT_Modules/Timeline/View.lua CRT_Data/Bosses/Registry.lua CRT_Data/Seasons/Midnight-S1/Season.lua CRT_Data/Seasons/Midnight-S1/NekzaliTheSoulcoiler.lua CRT_Core/UI/Panel.lua CRT_Modules/Alerts/Cooldowns.lua CRT_Core/UI/Controls.lua CRT_Modules/Alerts/CooldownData.lua CRT_Modules/Groups/Data.lua CRT_Modules/Alerts/Draft.lua CRT_Modules/Alerts/Roster.lua CRT_Core/Sound/Engine.lua
 const fs = require('fs');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
@@ -177,40 +177,40 @@ CRT.TimelineJournal = { ResolveID = function(_, k, r) if type(k) == "number" the
   IsHidden = function() return false end,
 }
 CRT.db.alerts = { bars = {}, reminders = {}, phases = {}, overrides = {}, nextId = 1, saved = {}, nextSavedId = 1, starters = { healthstone = true, healthpotion = true, gate = true }, cooldownFilter = "mine" }
--- UI/Panel.lua loads first, as in the .toc (the popup helpers), then UI/Controls.lua (UI.Dropdown)
-assert(load(panelSrc, "UI/Panel.lua"))("CowfeeRaidTools", CRT)
-assert(load(controlsSrc, "UI/Controls.lua"))("CowfeeRaidTools", CRT)
--- Groups/Data.lua loads early, as in the .toc (the Raid Groups layouts and the live roster)
-assert(load(groupsSrc, "Groups/Data.lua"))("CowfeeRaidTools", CRT)
-assert(load(rosterSrc, "Alerts/Roster.lua"))("CowfeeRaidTools", CRT)
-assert(load(dataSrc, "Timeline/Data.lua"))("CowfeeRaidTools", CRT)
-assert(load(dbSrc, "Timeline/Database.lua"))("CowfeeRaidTools", CRT)
-assert(load(refSrc, "Timeline/Reference.lua"))("CowfeeRaidTools", CRT)
-assert(load(lanesSrc, "Timeline/Lanes.lua"))("CowfeeRaidTools", CRT)
+-- CRT_Core/UI/Panel.lua loads first, as in the .toc (the popup helpers), then CRT_Core/UI/Controls.lua (UI.Dropdown)
+assert(load(panelSrc, "CRT_Core/UI/Panel.lua"))("CowfeeRaidTools", CRT)
+assert(load(controlsSrc, "CRT_Core/UI/Controls.lua"))("CowfeeRaidTools", CRT)
+-- CRT_Modules/Groups/Data.lua loads early, as in the .toc (the Raid Groups layouts and the live roster)
+assert(load(groupsSrc, "CRT_Modules/Groups/Data.lua"))("CowfeeRaidTools", CRT)
+assert(load(rosterSrc, "CRT_Modules/Alerts/Roster.lua"))("CowfeeRaidTools", CRT)
+assert(load(dataSrc, "CRT_Modules/Timeline/Data.lua"))("CowfeeRaidTools", CRT)
+assert(load(dbSrc, "CRT_Modules/Timeline/Database.lua"))("CowfeeRaidTools", CRT)
+assert(load(refSrc, "CRT_Modules/Timeline/Reference.lua"))("CowfeeRaidTools", CRT)
+assert(load(lanesSrc, "CRT_Modules/Timeline/Lanes.lua"))("CowfeeRaidTools", CRT)
 local function loadBosses(CRT, reg, season, nek)
   local real, handler = CreateFrame, nil
   CreateFrame = function() return { RegisterEvent = function() end, UnregisterEvent = function() end, SetScript = function(_, n, fn) if n == "OnEvent" then handler = fn end end } end
-  assert(load(reg, "Bosses/Registry.lua"))("CowfeeRaidTools", CRT)
+  assert(load(reg, "CRT_Data/Bosses/Registry.lua"))("CowfeeRaidTools", CRT)
   CreateFrame = real
-  assert(load(season, "Seasons/Midnight-S1/Season.lua"))("CowfeeRaidTools", CRT)
-  assert(load(nek, "Seasons/Midnight-S1/NekzaliTheSoulcoiler.lua"))("CowfeeRaidTools", CRT)
+  assert(load(season, "CRT_Data/Seasons/Midnight-S1/Season.lua"))("CowfeeRaidTools", CRT)
+  assert(load(nek, "CRT_Data/Seasons/Midnight-S1/NekzaliTheSoulcoiler.lua"))("CowfeeRaidTools", CRT)
   handler({ UnregisterEvent = function() end }, "ADDON_LOADED", "CowfeeRaidTools")
 end
 loadBosses(CRT, regSrc, seasonSrc, nekSrc)
-assert(load(rulesSrc, "Alerts/Rules.lua"))("CowfeeRaidTools", CRT)
-assert(load(engineSrc, "Alerts/Engine.lua"))("CowfeeRaidTools", CRT)
-assert(load(parseSrc, "Notes/Parse.lua"))("CowfeeRaidTools", CRT)
-assert(load(notesSrc, "Notes/Data.lua"))("CowfeeRaidTools", CRT)
-assert(load(remSrc, "Alerts/Reminders.lua"))("CowfeeRaidTools", CRT)
+assert(load(rulesSrc, "CRT_Modules/Alerts/Rules.lua"))("CowfeeRaidTools", CRT)
+assert(load(engineSrc, "CRT_Modules/Alerts/Engine.lua"))("CowfeeRaidTools", CRT)
+assert(load(parseSrc, "CRT_Modules/Notes/Parse.lua"))("CowfeeRaidTools", CRT)
+assert(load(notesSrc, "CRT_Modules/Notes/Data.lua"))("CowfeeRaidTools", CRT)
+assert(load(remSrc, "CRT_Modules/Alerts/Reminders.lua"))("CowfeeRaidTools", CRT)
 -- CooldownData.lua and Cooldowns.lua load before View.lua, as in the .toc
-assert(load(cdDataSrc, "Alerts/CooldownData.lua"))("CowfeeRaidTools", CRT)
-assert(load(cdSrc, "Alerts/Cooldowns.lua"))("CowfeeRaidTools", CRT)
-assert(load(viewSrc, "Timeline/View.lua"))("CowfeeRaidTools", CRT)
+assert(load(cdDataSrc, "CRT_Modules/Alerts/CooldownData.lua"))("CowfeeRaidTools", CRT)
+assert(load(cdSrc, "CRT_Modules/Alerts/Cooldowns.lua"))("CowfeeRaidTools", CRT)
+assert(load(viewSrc, "CRT_Modules/Timeline/View.lua"))("CowfeeRaidTools", CRT)
 -- Draft.lua (the alert draft and its saves, frame-free) loads after View.lua and before Saved.lua, as in the .toc
-assert(load(soundSrc, "Sound/Engine.lua"))("CowfeeRaidTools", CRT) -- the sound engine, before the files that use CRT.Sound
-assert(load(draftSrc, "Alerts/Draft.lua"))("CowfeeRaidTools", CRT)
+assert(load(soundSrc, "CRT_Core/Sound/Engine.lua"))("CowfeeRaidTools", CRT) -- the sound engine, before the files that use CRT.Sound
+assert(load(draftSrc, "CRT_Modules/Alerts/Draft.lua"))("CowfeeRaidTools", CRT)
 -- Saved.lua loads after View.lua, as in the .toc
-assert(load(savedSrc, "Alerts/Saved.lua"))("CowfeeRaidTools", CRT)
+assert(load(savedSrc, "CRT_Modules/Alerts/Saved.lua"))("CowfeeRaidTools", CRT)
 local opened, editedSaved = {}, {}
 CRT.AlertEditor = {
   Open = function(_, enc, id, prefill) opened[#opened + 1] = { enc = enc, id = id, prefill = prefill } end,
@@ -867,7 +867,7 @@ do
 end
 print("ok cooldowns: filter saved and redraws the row")
 
--- a dropped cooldown is saved at once (Alerts/Draft.lua's cooldown defaults): no editor
+-- a dropped cooldown is saved at once (CRT_Modules/Alerts/Draft.lua's cooldown defaults): no editor
 local R, N, D = CRT.AlertReminders, CRT.Notes, CRT.AlertDraft
 local function clearSaves()
   CRT.db.alerts.reminders = {} CRT.db.alerts.nextId = 1

@@ -1,6 +1,6 @@
 // Alerts stage 2a Task 2: display fields on raid note lines (show, tts, count, sound, glow, warn, linger, icon),
 // Parser.FormatLine, line numbers, NoteEngine.ItemFor, and class tags.
-// Usage: node run_alerts_notefields.js Alerts/Rules.lua Alerts/Engine.lua Alerts/Speech.lua Notes/Parse.lua Notes/Data.lua Notes/Engine.lua
+// Usage: node run_alerts_notefields.js CRT_Modules/Alerts/Rules.lua CRT_Modules/Alerts/Engine.lua CRT_Modules/Alerts/Speech.lua CRT_Modules/Notes/Parse.lua CRT_Modules/Notes/Data.lua CRT_Modules/Notes/Engine.lua
 const fs = require('fs');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
@@ -94,7 +94,7 @@ local function check(name, fn)
   if ok then print("ok " .. name) else print("FAIL " .. name .. ": " .. tostring(err)); checks.failed = (checks.failed or 0) + 1 end
 end
 
--- What a note item looked like before display fields (copied from Notes/Engine.lua at c63e59f).
+-- What a note item looked like before display fields (copied from CRT_Modules/Notes/Engine.lua at c63e59f).
 local function todayItem(t, index, mine)
   local s = Notes:Alert() or {}
   local bars = (A:Settings() or {}).bars or {}
@@ -397,7 +397,7 @@ assert(#errors == 0, "errors: " .. #errors)
 if checks.failed then error(checks.failed .. " failed") end
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
-const names = ['Alerts/Rules.lua', 'Alerts/Engine.lua', 'Alerts/Speech.lua', 'Notes/Parse.lua', 'Notes/Data.lua', 'Notes/Engine.lua'];
+const names = ['CRT_Modules/Alerts/Rules.lua', 'CRT_Modules/Alerts/Engine.lua', 'CRT_Modules/Alerts/Speech.lua', 'CRT_Modules/Notes/Parse.lua', 'CRT_Modules/Notes/Data.lua', 'CRT_Modules/Notes/Engine.lua'];
 const files = process.argv.slice(2);
 if (files.length !== names.length) { console.error('usage: node run_alerts_notefields.js ' + names.join(' ')); process.exit(2); }
 files.forEach((p, i) => { lua.lua_pushstring(L, to_luastring(names[i])); lua.lua_pushstring(L, to_luastring(fs.readFileSync(p, 'utf8'))); });

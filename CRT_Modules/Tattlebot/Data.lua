@@ -943,7 +943,7 @@ function Tattle:ScanText()
     end
     local lines = {
         format("-- Damage taken in the last fight (%s), most first. Copy the lines you want into a", scan.duration and (scan.duration .. " s") or "length unknown"),
-        "-- boss's mechanics in Tattlebot/Database.lua.",
+        "-- boss's mechanics in CRT_Modules/Tattlebot/Database.lua.",
     }
     if scan.boss then
         lines[#lines + 1] = format("-- The fight was %s, encounterID = %s", scan.boss.name or "?", tostring(scan.boss.encounterID or "?"))

@@ -204,7 +204,7 @@ end
 -- keys while typing, move one step. There are no < > buttons. The game's slider stays for the Classic
 -- look, and the look button switches between the two live (UI.skinned).
 -- Rounded corners: UI.RoundRect, below.
-local DISC = "Interface\\AddOns\\CowfeeRaidTools\\Media\\Disc"
+local DISC = "Interface\\AddOns\\" .. ADDON .. "\\CRT_Media\\Media\\Disc"
 local TRACK_H, TRACK_R = 4, 2
 local KNOB_H, KNOB_R, KNOB_MIN_W, KNOB_PAD = 22, 5, 38, 14
 local KNOB_TEXT_PAD = 8 -- the knob is at least this much taller than its font
@@ -220,8 +220,8 @@ local QUARTERS = {
 }
 
 -- A rounded rectangle drawn by owner's textures over anchor (a frame or a texture), inset pixels in
--- from its edges, with corners of the given radius: a quarter of Media/Disc.tga in each corner and
--- plain colour between them. height, when given and no more than two radii (a pill-ended bar), leaves
+-- from its edges, with corners of the given radius: a quarter of CRT_Media/Media/Disc.tga in each corner
+-- and plain colour between them. height, when given and no more than two radii (a pill-ended bar), leaves
 -- out the side pieces, which would have no height. Colour it with UI.PaintShape.
 function UI.RoundRect(owner, anchor, layer, sublevel, radius, inset, height)
     inset = inset or 0

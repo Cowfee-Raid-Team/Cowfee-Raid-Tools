@@ -1,4 +1,4 @@
-// UI/Controls.lua: UI.FitText shrinks text up to two sizes to fit its clip frame, then marks the rest
+// CRT_Core/UI/Controls.lua: UI.FitText shrinks text up to two sizes to fit its clip frame, then marks the rest
 // to slide on hover; UI.ClipText's OnUpdate slides it while hovered and back after.
 const fs = require('fs');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
@@ -75,7 +75,7 @@ check("empty text: nothing to slide", t.over == 0)
 print(fails == 0 and "all passed" or (fails .. " failed"))
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
-const src = fs.readFileSync(process.argv[2] + '/UI/Controls.lua', 'utf8');
+const src = fs.readFileSync(process.argv[2] + '/CRT_Core/UI/Controls.lua', 'utf8');
 // Only the helpers at the end of Controls.lua are under test; the file's top needs CRT.UI only.
 lua.lua_pushstring(L, to_luastring(src));
 if (lua.lua_pcall(L, 1, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }

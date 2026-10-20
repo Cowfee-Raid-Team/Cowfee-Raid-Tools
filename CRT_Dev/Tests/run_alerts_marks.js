@@ -1,5 +1,5 @@
 // Timeline: drop a note by double-clicking the track, and saved notes drawn as flag markers.
-// Usage: node run_alerts_marks.js Timeline/Data.lua Timeline/Database.lua Timeline/Reference.lua Timeline/Lanes.lua Alerts/Rules.lua Alerts/Engine.lua Notes/Parse.lua Notes/Data.lua Alerts/Reminders.lua Timeline/View.lua
+// Usage: node run_alerts_marks.js CRT_Modules/Timeline/Data.lua CRT_Modules/Timeline/Database.lua CRT_Modules/Timeline/Reference.lua CRT_Modules/Timeline/Lanes.lua CRT_Modules/Alerts/Rules.lua CRT_Modules/Alerts/Engine.lua CRT_Modules/Notes/Parse.lua CRT_Modules/Notes/Data.lua CRT_Modules/Alerts/Reminders.lua CRT_Modules/Timeline/View.lua
 const fs = require('fs');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
@@ -107,27 +107,27 @@ CRT.TimelineJournal = { ResolveID = function(_, k, r) if type(k) == "number" the
   IsHidden = function() return false end,
 }
 CRT.db.alerts = { bars = {}, reminders = {}, phases = {}, overrides = {}, nextId = 1 }
-assert(load(dataSrc, "Timeline/Data.lua"))("CowfeeRaidTools", CRT)
-assert(load(dbSrc, "Timeline/Database.lua"))("CowfeeRaidTools", CRT)
-assert(load(refSrc, "Timeline/Reference.lua"))("CowfeeRaidTools", CRT)
-assert(load(lanesSrc, "Timeline/Lanes.lua"))("CowfeeRaidTools", CRT)
--- Boss library wiring (Bosses/Registry.lua, then the season pack, then the ADDON_LOADED the game fires once every file has loaded).
+assert(load(dataSrc, "CRT_Modules/Timeline/Data.lua"))("CowfeeRaidTools", CRT)
+assert(load(dbSrc, "CRT_Modules/Timeline/Database.lua"))("CowfeeRaidTools", CRT)
+assert(load(refSrc, "CRT_Modules/Timeline/Reference.lua"))("CowfeeRaidTools", CRT)
+assert(load(lanesSrc, "CRT_Modules/Timeline/Lanes.lua"))("CowfeeRaidTools", CRT)
+-- Boss library wiring (CRT_Data/Bosses/Registry.lua, then the season pack, then the ADDON_LOADED the game fires once every file has loaded).
 local function loadBosses(CRT, reg, season, nek)
   local real, handler = CreateFrame, nil
   CreateFrame = function() return { RegisterEvent = function() end, UnregisterEvent = function() end, SetScript = function(_, n, fn) if n == "OnEvent" then handler = fn end end } end
-  assert(load(reg, "Bosses/Registry.lua"))("CowfeeRaidTools", CRT)
+  assert(load(reg, "CRT_Data/Bosses/Registry.lua"))("CowfeeRaidTools", CRT)
   CreateFrame = real
-  assert(load(season, "Seasons/Midnight-S1/Season.lua"))("CowfeeRaidTools", CRT)
-  assert(load(nek, "Seasons/Midnight-S1/NekzaliTheSoulcoiler.lua"))("CowfeeRaidTools", CRT)
+  assert(load(season, "CRT_Data/Seasons/Midnight-S1/Season.lua"))("CowfeeRaidTools", CRT)
+  assert(load(nek, "CRT_Data/Seasons/Midnight-S1/NekzaliTheSoulcoiler.lua"))("CowfeeRaidTools", CRT)
   handler({ UnregisterEvent = function() end }, "ADDON_LOADED", "CowfeeRaidTools")
 end
 loadBosses(CRT, regSrc, seasonSrc, nekSrc)
-assert(load(rulesSrc, "Alerts/Rules.lua"))("CowfeeRaidTools", CRT)
-assert(load(engineSrc, "Alerts/Engine.lua"))("CowfeeRaidTools", CRT)
-assert(load(parseSrc, "Notes/Parse.lua"))("CowfeeRaidTools", CRT)
-assert(load(notesSrc, "Notes/Data.lua"))("CowfeeRaidTools", CRT)
-assert(load(remSrc, "Alerts/Reminders.lua"))("CowfeeRaidTools", CRT)
-assert(load(viewSrc, "Timeline/View.lua"))("CowfeeRaidTools", CRT)
+assert(load(rulesSrc, "CRT_Modules/Alerts/Rules.lua"))("CowfeeRaidTools", CRT)
+assert(load(engineSrc, "CRT_Modules/Alerts/Engine.lua"))("CowfeeRaidTools", CRT)
+assert(load(parseSrc, "CRT_Modules/Notes/Parse.lua"))("CowfeeRaidTools", CRT)
+assert(load(notesSrc, "CRT_Modules/Notes/Data.lua"))("CowfeeRaidTools", CRT)
+assert(load(remSrc, "CRT_Modules/Alerts/Reminders.lua"))("CowfeeRaidTools", CRT)
+assert(load(viewSrc, "CRT_Modules/Timeline/View.lua"))("CowfeeRaidTools", CRT)
 local opened, notesOpened = {}, {}
 CRT.AlertEditor = {
   Open = function(_, enc, id, prefill) opened[#opened + 1] = { enc = enc, id = id, prefill = prefill } end,
@@ -1280,7 +1280,7 @@ end
 do
   local savedList = CRT.db.notes.list
   local realCD = CRT.AlertCooldowns
-  -- Alerts/Cooldowns.lua's Length, as the list would give it: 4242 lasts 60 s, 5151 30 s, anything else unknown
+  -- CRT_Modules/Alerts/Cooldowns.lua's Length, as the list would give it: 4242 lasts 60 s, 5151 30 s, anything else unknown
   local lengths = { [4242] = 60, [5151] = 30 }
   CRT.AlertCooldowns = { Length = function(_, id) return lengths[id] end, List = function() return {} end, Filter = function() return "mine" end }
   local caramel, cream, red = CRT.MOCHA.caramel, CRT.MOCHA.cream, { 0.89, 0.29, 0.29 }

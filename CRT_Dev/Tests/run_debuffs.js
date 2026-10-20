@@ -1,5 +1,5 @@
-// Debuff panel settings and look: loads Core.lua (for the defaults), Debuffs/Data.lua, Debuffs/Panel.lua
-// and Debuffs/Page.lua on mock frames. Checks the clamps, the defaults, the dispel colors (never from a
+// Debuff panel settings and look: loads CRT_Core/Core.lua (for the defaults), CRT_Modules/Debuffs/Data.lua, CRT_Modules/Debuffs/Panel.lua
+// and CRT_Modules/Debuffs/Page.lua on mock frames. Checks the clamps, the defaults, the dispel colors (never from a
 // secret value), the layout signature, how a container button's dispel textures are wired, and the
 // tab's controls.
 //   node run_debuffs.js <addon folder>
@@ -93,7 +93,7 @@ function CreateFrame(kind, name, parent, template)
 end
 
 local CRT = {}
-assert(load(coreSrc, "Core.lua"))("CowfeeRaidTools", CRT)
+assert(load(coreSrc, "CRT_Core/Core.lua"))("CowfeeRaidTools", CRT)
 local defaults = CRT.defaults.debuffs
 local function fresh()
   local copy = {}
@@ -512,7 +512,7 @@ if failed > 0 then error("debuff checks failed") end
 `;
 const dir = process.argv[2];
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
-for (const f of ['Core.lua', 'Debuffs/Data.lua', 'Debuffs/Panel.lua', 'Debuffs/Page.lua']) {
+for (const f of ['CRT_Core/Core.lua', 'CRT_Modules/Debuffs/Data.lua', 'CRT_Modules/Debuffs/Panel.lua', 'CRT_Modules/Debuffs/Page.lua']) {
   lua.lua_pushstring(L, to_luastring(fs.readFileSync(path.join(dir, f), 'utf8')));
 }
 if (lua.lua_pcall(L, 4, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }

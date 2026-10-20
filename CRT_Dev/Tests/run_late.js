@@ -1,4 +1,4 @@
-// Runs Late/Data.lua through a simulated raid night with stubbed game functions.
+// Runs CRT_Modules/Late/Data.lua through a simulated raid night with stubbed game functions.
 const fs = require('fs');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate();

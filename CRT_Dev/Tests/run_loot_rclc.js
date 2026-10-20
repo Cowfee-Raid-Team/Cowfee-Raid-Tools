@@ -1,4 +1,4 @@
-// Loot/RCLC.lua: reading RCLootCouncil's saved awards into Loot History, with stubbed game functions.
+// CRT_Modules/Loot/RCLC.lua: reading RCLootCouncil's saved awards into Loot History, with stubbed game functions.
 // Usage: node run_loot_rclc.js <addon folder>. The fixture below is made up, shaped like the saved data.
 const fs = require('fs');
 const path = require('path');
@@ -124,6 +124,6 @@ if fails > 0 then error("failures") end
 `;
 const dir = process.argv[2];
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
-lua.lua_pushstring(L, to_luastring(fs.readFileSync(path.join(dir, 'Loot/Store.lua'), 'utf8')));
-lua.lua_pushstring(L, to_luastring(fs.readFileSync(path.join(dir, 'Loot/RCLC.lua'), 'utf8')));
+lua.lua_pushstring(L, to_luastring(fs.readFileSync(path.join(dir, 'CRT_Modules/Loot/Store.lua'), 'utf8')));
+lua.lua_pushstring(L, to_luastring(fs.readFileSync(path.join(dir, 'CRT_Modules/Loot/RCLC.lua'), 'utf8')));
 if (lua.lua_pcall(L, 2, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }

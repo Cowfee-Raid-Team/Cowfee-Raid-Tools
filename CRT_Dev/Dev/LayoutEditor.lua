@@ -12,7 +12,7 @@ local ADDON, CRT = ...
 -- (base). If the code has since moved it, for example because the change was written in, the change
 -- is out of date and is skipped with a chat message, so it is never applied twice.
 --
--- This file never ships: the .toc line that loads it is inside a do-not-package block, and the Dev
+-- This file never ships: the .toc line that loads it is inside a do-not-package block, and the CRT_Dev
 -- folder is in .pkgmeta's ignore list, so release zips have neither. It is off in combat.
 
 local UI = CRT.UI

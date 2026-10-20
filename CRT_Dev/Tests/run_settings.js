@@ -1,5 +1,5 @@
-// Loads Core.lua, UI/Panel.lua, UI/Controls.lua (stubbed templates), UI/SettingsPage.lua and
-// Notes/Alert.lua on mock frames, then changes fonts, layers and style, and lays the alert out on
+// Loads CRT_Core/Core.lua, CRT_Core/UI/Panel.lua, CRT_Core/UI/Controls.lua (stubbed templates), CRT_Core/UI/SettingsPage.lua and
+// CRT_Modules/Notes/Alert.lua on mock frames, then changes fonts, layers and style, and lays the alert out on
 // each side.
 const fs = require('fs');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
@@ -71,8 +71,8 @@ local lsm = { List = function() return { "Arial Narrow", "Expressway" } end, Fet
 LibStub = { GetLibrary = function(_, name) if name == "LibSharedMedia-3.0" then return lsm end end }
 function CreateFont(name) local o = fontObject() fontObjects[name] = o _G[name] = o return o end
 local CRT = {}
-assert(load(coreSrc, "Core.lua"))("CowfeeRaidTools", CRT)
-assert(load(profilesSrc, "Profiles.lua"))("CowfeeRaidTools", CRT)
+assert(load(coreSrc, "CRT_Core/Core.lua"))("CowfeeRaidTools", CRT)
+assert(load(profilesSrc, "CRT_Core/Profiles.lua"))("CowfeeRaidTools", CRT)
 -- ADDON_LOADED.
 CRTDB = nil
 for _, f in ipairs(frames) do if rawget(f, "OnEvent") then f.OnEvent(f, "ADDON_LOADED", "CowfeeRaidTools") end end
@@ -91,7 +91,7 @@ function CreateMinimalSliderFormatter(_, fn) return fn end
 assert(load(controlsSrc, "Controls.lua"))("CowfeeRaidTools", CRT)
 CRT.Notes = { Alert = function() return CRT.db.notes.alert end, SpellInfo = function() return { icon = 1, name = "Avenging Wrath" } end }
 CRT.NoteEngine = { running = false }
--- Notes/Alert.lua's preview reads CRT.Alerts.running (set by Alerts/Engine.lua in the game)
+-- CRT_Modules/Notes/Alert.lua's preview reads CRT.Alerts.running (set by CRT_Modules/Alerts/Engine.lua in the game)
 CRT.Alerts = CRT.Alerts or { running = false }
 assert(load(pageSrc, "SettingsPage.lua"))("CowfeeRaidTools", CRT)
 UI:RegisterPage("devtest", "Development", function() end)
@@ -276,5 +276,5 @@ if failCount > 0 then print(failCount .. " failed") end
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 const d = process.argv[2];
-for (const p of ['Core.lua', 'UI/Panel.lua', 'UI/Controls.lua', 'UI/SettingsPage.lua', 'Notes/Alert.lua', 'Profiles.lua']) lua.lua_pushstring(L, to_luastring(fs.readFileSync(d + '/' + p, 'utf8')));
+for (const p of ['CRT_Core/Core.lua', 'CRT_Core/UI/Panel.lua', 'CRT_Core/UI/Controls.lua', 'CRT_Core/UI/SettingsPage.lua', 'CRT_Modules/Notes/Alert.lua', 'CRT_Core/Profiles.lua']) lua.lua_pushstring(L, to_luastring(fs.readFileSync(d + '/' + p, 'utf8')));
 if (lua.lua_pcall(L, 6, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }

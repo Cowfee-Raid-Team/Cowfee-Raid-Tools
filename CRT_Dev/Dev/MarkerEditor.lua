@@ -6,7 +6,7 @@ local ADDON, CRT = ...
 -- used in place of the shipped display while they exist, so a display can be tried in a real pull
 -- before it ships. Delete drops a draft.
 --
--- This file never ships: its .toc line is inside the do-not-package block, and the Dev folder is in
+-- This file never ships: its .toc line is inside the do-not-package block, and the CRT_Dev folder is in
 -- .pkgmeta's ignore list.
 
 local UI = CRT.UI
@@ -80,7 +80,7 @@ local function exportText()
     for i = 1, 8 do
         macros[#macros + 1] = "/raid {rt" .. i .. "}"
     end
-    return "-- Paste into CRT.MarkerDisplayDB.displays in Markers/Database.lua:\n" .. line .. "\n\n-- Macros, one per marker:\n" .. table.concat(macros, "\n")
+    return "-- Paste into CRT.MarkerDisplayDB.displays in CRT_Modules/Markers/Database.lua:\n" .. line .. "\n\n-- Macros, one per marker:\n" .. table.concat(macros, "\n")
 end
 
 local function add(row, y)

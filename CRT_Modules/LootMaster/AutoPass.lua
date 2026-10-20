@@ -4,11 +4,11 @@ local ADDON, CRT = ...
 -- Design: decisions/2026-10-18 Cowfee Raid Tools Loot Master.md ("Auto-pass reliability") in the vault.
 -- It reads no game state and no global, and changes nothing it is given: the caller collects every fact
 -- (LootMaster/Looting.lua, LM:LootingState) and the harness tries every combination
--- (Tests/run_lootmaster_autopass.js). Any doubt is a no, so the game's own roll frame stays up.
+-- (CRT_Dev/Tests/run_lootmaster_autopass.js). Any doubt is a no, so the game's own roll frame stays up.
 --
--- This file is the only place allowed to call RollOnLoot (the lint in Tests/run_all.sh fails the build if
--- it appears in any other file but the dev probe). It doesn't call it yet: that waits for the in-game
--- proofs (START_LOOT_ROLL in a raid, a pass from an event, CANCEL_LOOT_ROLL closing the frame).
+-- This file is the only place allowed to call RollOnLoot (the lint in CRT_Dev/Tests/run_all.sh fails the
+-- build if it appears in any other file but the dev probe). It doesn't call it yet: that waits for the
+-- in-game proofs (START_LOOT_ROLL in a raid, a pass from an event, CANCEL_LOOT_ROLL closing the frame).
 --
 -- state: test (a test session is running), me and leader (full names; leader nil out of a group),
 --   myInstance (your raid instance's key, nil outside a raid instance), finder (false only when you are

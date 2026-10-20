@@ -1,4 +1,4 @@
-// Loads UI/Controls.lua with stand-ins for WowStyle1DropdownTemplate and
+// Loads CRT_Core/UI/Controls.lua with stand-ins for WowStyle1DropdownTemplate and
 // MinimalSliderWithSteppersTemplate that behave like the game's (a radio menu built by SetupMenu's
 // generator; a slider whose SetValue fires OnValueChanged), then picks choices and drags values.
 const fs = require('fs');
@@ -366,5 +366,5 @@ print(fails .. " failed")
 if fails > 0 then error(fails .. " slider checks failed") end
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
-lua.lua_pushstring(L, to_luastring(fs.readFileSync(process.argv[2] + '/UI/Controls.lua', 'utf8')));
+lua.lua_pushstring(L, to_luastring(fs.readFileSync(process.argv[2] + '/CRT_Core/UI/Controls.lua', 'utf8')));
 if (lua.lua_pcall(L, 1, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }

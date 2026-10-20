@@ -17,13 +17,14 @@ Cowfee Raid Tools - readme.md
 Cowfee Raid Tools - UI Text Map.md
 Code map/
 
-# Your own low-health sounds stay out of the repository
-Sounds/*
-!Sounds/README.txt
+# Your own sounds stay out of the repository (/Sounds/ is their place from before CRT_Media)
+CRT_Media/Sounds/*
+!CRT_Media/Sounds/README.txt
+/Sounds/
 
 # Claude tooling and the factory stay on this PC only (backed up to the vault: Files/CRT factory backup)
 .claude/
 factory/
 
 # The test run's output stays local
-Tests/last-run.txt
+CRT_Dev/Tests/last-run.txt

@@ -1,4 +1,4 @@
-// Timeline/Journal.lua: ability rows from a mocked Encounter Journal plus own spells.
+// CRT_Modules/Timeline/Journal.lua: ability rows from a mocked Encounter Journal plus own spells.
 const fs = require('fs');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
@@ -41,7 +41,7 @@ local CRT = { db = { timeline = defaults() }, Timeline = {} }
 local fired = 0
 function CRT.Timeline:Settings() return CRT.db.timeline end
 function CRT.Timeline:Fire() fired = fired + 1 end
-assert(load(src, "Timeline/Journal.lua"))("CowfeeRaidTools", CRT)
+assert(load(src, "CRT_Modules/Timeline/Journal.lua"))("CowfeeRaidTools", CRT)
 local J = CRT.TimelineJournal
 local function ids(rows) local t = {} for i, r in ipairs(rows) do t[i] = r.spellID end return table.concat(t, ",") end
 

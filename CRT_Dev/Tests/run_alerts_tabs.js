@@ -1,5 +1,5 @@
-// Notes/Reminders.lua + Notes/Phases.lua + Notes/Page.lua: the Reminders and Phases tabs, with mock frames.
-// Usage: node run_alerts_tabs.js Timeline/Data.lua Timeline/Database.lua Timeline/Reference.lua Timeline/Lanes.lua Alerts/Rules.lua Alerts/Engine.lua Alerts/Reminders.lua Alerts/PhaseDatabase.lua Alerts/Phases.lua Alerts/Draft.lua Alerts/SpellLookup.lua Notes/Reminders.lua Notes/Phases.lua Notes/Page.lua
+// CRT_Modules/Notes/Reminders.lua + CRT_Modules/Notes/Phases.lua + CRT_Modules/Notes/Page.lua: the Reminders and Phases tabs, with mock frames.
+// Usage: node run_alerts_tabs.js CRT_Modules/Timeline/Data.lua CRT_Modules/Timeline/Database.lua CRT_Modules/Timeline/Reference.lua CRT_Modules/Timeline/Lanes.lua CRT_Modules/Alerts/Rules.lua CRT_Modules/Alerts/Engine.lua CRT_Modules/Alerts/Reminders.lua CRT_Modules/Alerts/PhaseDatabase.lua CRT_Modules/Alerts/Phases.lua CRT_Modules/Alerts/Draft.lua CRT_Modules/Alerts/SpellLookup.lua CRT_Modules/Notes/Reminders.lua CRT_Modules/Notes/Phases.lua CRT_Modules/Notes/Page.lua
 // The Mech Alerts list and panel themselves are tested in run_mechalerts.js.
 const fs = require('fs');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
@@ -83,7 +83,7 @@ CRT.UI.SoundDropdown = function(parent, label, opts) local o = {} for k, v in pa
   if opts.help then rawset(r, "help", CRT.UI.Help(parent, label, "sound help")) end
   return r end
 CRT.Notes = {
-  CanEditRaid = function() return true end, -- Notes/Data.lua: solo, you may change the raid note
+  CanEditRaid = function() return true end, -- CRT_Modules/Notes/Data.lua: solo, you may change the raid note
   OnChange = function() end, List = function() return {} end, ListStyle = function() return "grouped" end, ListDifficulty = function() return "All" end, ListFolded = function() return false end, SetListFolded = function() end, SetListDifficulty = function() end, SetListStyle = function() end, DifficultyGroup = function() return "Other" end, DIFFICULTIES = { "Mythic", "Heroic", "Normal" }, ShortName = function(n) return n end, ViaLabel = function(v) return v end, SourceLabel = function() return nil end, Get = function() return nil end,
   Personal = function() return "" end,
 }
@@ -99,7 +99,7 @@ CRT.NoteAlertsTab = { Build = function() alertsTabBuilt = alertsTabBuilt + 1 end
 local journalRows = { { spellID = 777, name = "Real Name", icon = "tex777" }, { spellID = 888, name = "Other Spell", icon = "tex888" } }
 local raidList = {}
 CRT.TimelineJournal = { Rows = function(self, id) return journalRows end, RaidBosses = function() return raidList end }
--- Bosses/Registry.lua: the boss library's route, the one ordered boss list (raid headings, then bosses)
+-- CRT_Data/Bosses/Registry.lua: the boss library's route, the one ordered boss list (raid headings, then bosses)
 local routeFns = {}
 local route = { { key = "raid:test", label = "Test Raid", title = true }, { key = 9001, label = "Test Boss" }, { key = 5555, label = "Raid Boss" } } -- the phase tests work on Test Boss, first in the route
 CRT.Bosses = { Options = function() return route end, OnRouteChange = function(self, fn) routeFns[#routeFns + 1] = fn end,

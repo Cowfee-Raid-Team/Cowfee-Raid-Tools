@@ -1,5 +1,5 @@
-// Timeline/View.lua: ticks, time math, lanes, and one build of the canvas on mock frames.
-// Usage: node run_timeline_view.js Timeline/Data.lua Timeline/Database.lua Timeline/Reference.lua Timeline/Lanes.lua Timeline/View.lua
+// CRT_Modules/Timeline/View.lua: ticks, time math, lanes, and one build of the canvas on mock frames.
+// Usage: node run_timeline_view.js CRT_Modules/Timeline/Data.lua CRT_Modules/Timeline/Database.lua CRT_Modules/Timeline/Reference.lua CRT_Modules/Timeline/Lanes.lua CRT_Modules/Timeline/View.lua
 const fs = require('fs');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
@@ -71,22 +71,22 @@ CRT.TimelineJournal = { ResolveID = function(_, k, r) if type(k) == "number" the
   Rows = function() return {} end,
   IsHidden = function(_, enc, id) return hidden[id] and true or false end,
 }
-assert(load(dataSrc, "Timeline/Data.lua"))("CowfeeRaidTools", CRT)
-assert(load(dbSrc, "Timeline/Database.lua"))("CowfeeRaidTools", CRT)
-assert(load(refSrc, "Timeline/Reference.lua"))("CowfeeRaidTools", CRT)
-assert(load(lanesSrc, "Timeline/Lanes.lua"))("CowfeeRaidTools", CRT)
--- Boss library wiring (Bosses/Registry.lua, then the season pack, then the ADDON_LOADED the game fires once every file has loaded).
+assert(load(dataSrc, "CRT_Modules/Timeline/Data.lua"))("CowfeeRaidTools", CRT)
+assert(load(dbSrc, "CRT_Modules/Timeline/Database.lua"))("CowfeeRaidTools", CRT)
+assert(load(refSrc, "CRT_Modules/Timeline/Reference.lua"))("CowfeeRaidTools", CRT)
+assert(load(lanesSrc, "CRT_Modules/Timeline/Lanes.lua"))("CowfeeRaidTools", CRT)
+-- Boss library wiring (CRT_Data/Bosses/Registry.lua, then the season pack, then the ADDON_LOADED the game fires once every file has loaded).
 local function loadBosses(CRT, reg, season, nek)
   local real, handler = CreateFrame, nil
   CreateFrame = function() return { RegisterEvent = function() end, UnregisterEvent = function() end, SetScript = function(_, n, fn) if n == "OnEvent" then handler = fn end end } end
-  assert(load(reg, "Bosses/Registry.lua"))("CowfeeRaidTools", CRT)
+  assert(load(reg, "CRT_Data/Bosses/Registry.lua"))("CowfeeRaidTools", CRT)
   CreateFrame = real
-  assert(load(season, "Seasons/Midnight-S1/Season.lua"))("CowfeeRaidTools", CRT)
-  assert(load(nek, "Seasons/Midnight-S1/NekzaliTheSoulcoiler.lua"))("CowfeeRaidTools", CRT)
+  assert(load(season, "CRT_Data/Seasons/Midnight-S1/Season.lua"))("CowfeeRaidTools", CRT)
+  assert(load(nek, "CRT_Data/Seasons/Midnight-S1/NekzaliTheSoulcoiler.lua"))("CowfeeRaidTools", CRT)
   handler({ UnregisterEvent = function() end }, "ADDON_LOADED", "CowfeeRaidTools")
 end
 loadBosses(CRT, regSrc, seasonSrc, nekSrc)
-assert(load(viewSrc, "Timeline/View.lua"))("CowfeeRaidTools", CRT)
+assert(load(viewSrc, "CRT_Modules/Timeline/View.lua"))("CowfeeRaidTools", CRT)
 local View = CRT.TimelineView
 local T = CRT.Timeline
 local S = CRT.db.timeline
@@ -559,7 +559,7 @@ do
 end
 print("ok the rehearsal playhead")
 do
-  -- Ctrl+Z and Ctrl+Y go to Timeline/Undo.lua and are kept; other keys pass through
+  -- Ctrl+Z and Ctrl+Y go to CRT_Modules/Timeline/Undo.lua and are kept; other keys pass through
   local calls, watched = {}, {}
   CRT.TimelineUndo = { Undo = function() calls[#calls + 1] = "undo" end, Redo = function() calls[#calls + 1] = "redo" end,
     Watch = function(_, f) watched[#watched + 1] = f end }

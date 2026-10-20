@@ -1,4 +1,4 @@
-// LootMaster/Comm.lua (prefix CRTLootRemaster): a session alone (messages handed straight back) and in a raid (messages
+// CRT_Modules/LootMaster/Comm.lua (prefix CRTLootRemaster): a session alone (messages handed straight back) and in a raid (messages
 // caught and delivered by hand), the loot authority list, held messages, silent rolls, /reload, and the
 // items a raider can't use. Usage: node run_lootmaster_comm.js <addon folder>
 const fs = require('fs');
@@ -371,5 +371,5 @@ if fails > 0 then error("failures") end
 `;
 const dir = process.argv[2];
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
-for (const f of ['LootMaster/Data.lua', 'LootMaster/Comm.lua']) lua.lua_pushstring(L, to_luastring(fs.readFileSync(path.join(dir, f), 'utf8')));
+for (const f of ['CRT_Modules/LootMaster/Data.lua', 'CRT_Modules/LootMaster/Comm.lua']) lua.lua_pushstring(L, to_luastring(fs.readFileSync(path.join(dir, f), 'utf8')));
 if (lua.lua_pcall(L, 2, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }

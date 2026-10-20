@@ -1,11 +1,11 @@
-// Alerts/Rules.lua: priority, duplicate/grouping lines, alert pick, bars, speech due, speech behind.
+// CRT_Modules/Alerts/Rules.lua: priority, duplicate/grouping lines, alert pick, bars, speech due, speech behind.
 const fs = require('fs');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
 const harness = `
 local src = ...
 local CRT = {}
-assert(load(src, "Alerts/Rules.lua"))("CowfeeRaidTools", CRT)
+assert(load(src, "CRT_Modules/Alerts/Rules.lua"))("CowfeeRaidTools", CRT)
 local R = CRT.AlertRules
 assert(R, "CRT.AlertRules exists")
 assert(R.DUPLICATE == 2 and R.GROUP == 1.5 and R.SPEECH_BEHIND == 1.5 and R.SPEECH_TIMEOUT == 4, "constants")

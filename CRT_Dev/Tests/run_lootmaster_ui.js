@@ -1,4 +1,4 @@
-// UI/Panel.lua's UI.PanelButton, UI/Window.lua's title bar badge and LootMaster/Tabs.lua's item tabs, with stand-in frames that remember
+// CRT_Core/UI/Panel.lua's UI.PanelButton, CRT_Core/UI/Window.lua's title bar badge and CRT_Modules/LootMaster/Tabs.lua's item tabs, with stand-in frames that remember
 // what was set on them. Usage: node run_lootmaster_ui.js <addon folder>
 const fs = require('fs');
 const path = require('path');
@@ -272,5 +272,5 @@ if fails > 0 then error("failures") end
 `;
 const dir = process.argv[2];
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
-for (const f of ['UI/Panel.lua', 'UI/Window.lua', 'LootMaster/Tabs.lua', 'LootMaster/Popup.lua']) lua.lua_pushstring(L, to_luastring(fs.readFileSync(path.join(dir, f), 'utf8')));
+for (const f of ['CRT_Core/UI/Panel.lua', 'CRT_Core/UI/Window.lua', 'CRT_Modules/LootMaster/Tabs.lua', 'CRT_Modules/LootMaster/Popup.lua']) lua.lua_pushstring(L, to_luastring(fs.readFileSync(path.join(dir, f), 'utf8')));
 if (lua.lua_pcall(L, 4, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }

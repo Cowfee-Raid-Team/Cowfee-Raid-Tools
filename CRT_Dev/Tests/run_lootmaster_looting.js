@@ -1,4 +1,4 @@
-// LootMaster/Looting.lua: CRT Looting on and off. One Lua state plays the leader and the raiders in turn
+// CRT_Modules/LootMaster/Looting.lua: CRT Looting on and off. One Lua state plays the leader and the raiders in turn
 // (who you are is swapped), with the messages caught and delivered by hand: an older client drops the new
 // kinds, the instance prompt (who is asked and when), on, off and the heartbeat, raiders taking them only
 // from the current raid leader, wipes (the leader out of the instance for up to 10 minutes), finder groups
@@ -602,7 +602,7 @@ if fails > 0 then error("failures") end
 `;
 const dir = process.argv[2];
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
-for (const f of ['LootMaster/Data.lua', 'LootMaster/Comm.lua', 'LootMaster/AutoPass.lua', 'LootMaster/Looting.lua']) {
+for (const f of ['CRT_Modules/LootMaster/Data.lua', 'CRT_Modules/LootMaster/Comm.lua', 'CRT_Modules/LootMaster/AutoPass.lua', 'CRT_Modules/LootMaster/Looting.lua']) {
   const p = path.join(dir, f);
   lua.lua_pushstring(L, to_luastring(fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : 'error("missing ' + f + '")'));
 }

@@ -1,8 +1,8 @@
-// Task 3: the note timers on the alerts engine. Runs the old Notes/Engine.lua + Notes/Alert.lua (from main)
+// Task 3: the note timers on the alerts engine. Runs the old CRT_Modules/Notes/Engine.lua + CRT_Modules/Notes/Alert.lua (from main)
 // and the new ones (on CRT.Alerts) in two separate Lua states with the same mocked clock, and compares
 // what the player sees: the alert frame (shown, label, countdown), the timers window and the spoken text.
-// Args: old_Engine.lua old_Alert.lua Alerts/Rules.lua Alerts/Engine.lua Notes/Parse.lua Notes/Data.lua
-//       Notes/Engine.lua Notes/Window.lua Notes/Alert.lua  Alerts/Speech.lua (last, optional, loaded after Alerts/Engine.lua)
+// Args: old_Engine.lua old_Alert.lua CRT_Modules/Alerts/Rules.lua CRT_Modules/Alerts/Engine.lua CRT_Modules/Notes/Parse.lua CRT_Modules/Notes/Data.lua
+//       CRT_Modules/Notes/Engine.lua CRT_Modules/Notes/Window.lua CRT_Modules/Notes/Alert.lua  CRT_Modules/Alerts/Speech.lua (last, optional, loaded after CRT_Modules/Alerts/Engine.lua)
 const fs = require('fs');
 const path = require('path');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
@@ -411,10 +411,10 @@ function check(name, fn) {
   try { fn(); console.log('ok ' + name); } catch (e) { failed++; console.log('FAIL ' + name + ': ' + e.message); }
 }
 
-const oldR = runState('old', [['Notes/Parse.lua', parse], ['Notes/Data.lua', data], ['Notes/Engine.lua', oldEngine], ['Notes/Window.lua', windowSrc], ['Notes/Alert.lua', oldAlert]]);
+const oldR = runState('old', [['CRT_Modules/Notes/Parse.lua', parse], ['CRT_Modules/Notes/Data.lua', data], ['CRT_Modules/Notes/Engine.lua', oldEngine], ['CRT_Modules/Notes/Window.lua', windowSrc], ['CRT_Modules/Notes/Alert.lua', oldAlert]]);
 let newR, newErr;
 try {
-  newR = runState('new', [['Sound/Engine.lua', soundEngine], ['Alerts/Rules.lua', rules], ['Alerts/Engine.lua', alertsEngine], ['Alerts/Speech.lua', speech], ['Notes/Parse.lua', parse], ['Notes/Data.lua', data], ['Notes/Engine.lua', engine], ['Notes/Window.lua', windowSrc], ['Notes/Alert.lua', alert]]);
+  newR = runState('new', [['CRT_Core/Sound/Engine.lua', soundEngine], ['CRT_Modules/Alerts/Rules.lua', rules], ['CRT_Modules/Alerts/Engine.lua', alertsEngine], ['CRT_Modules/Alerts/Speech.lua', speech], ['CRT_Modules/Notes/Parse.lua', parse], ['CRT_Modules/Notes/Data.lua', data], ['CRT_Modules/Notes/Engine.lua', engine], ['CRT_Modules/Notes/Window.lua', windowSrc], ['CRT_Modules/Notes/Alert.lua', alert]]);
 } catch (e) { newErr = e; void 0; }
 
 // The spoken count (said=) is a running total; once B's Next phase masks lines, it no longer matches.

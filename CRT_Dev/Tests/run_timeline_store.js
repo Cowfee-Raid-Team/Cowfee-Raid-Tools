@@ -1,4 +1,4 @@
-// Timeline/Data.lua store: saving, pruning, queries, death filter, profile reset.
+// CRT_Modules/Timeline/Data.lua store: saving, pruning, queries, death filter, profile reset.
 const fs = require('fs');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
@@ -13,7 +13,7 @@ local function defaults()
     overlayOn = false, hideEmpty = false, nextId = 1 }
 end
 local CRT = { db = { timeline = defaults() } }
-assert(load(src, "Timeline/Data.lua"))("CowfeeRaidTools", CRT)
+assert(load(src, "CRT_Modules/Timeline/Data.lua"))("CowfeeRaidTools", CRT)
 local T = CRT.Timeline
 local fired = 0
 T:OnChange(function() fired = fired + 1 end)

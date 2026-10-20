@@ -1,4 +1,4 @@
-// Builds the Raid Notes page (Notes/Settings.lua and Notes/Page.lua) on mock frames and switches tabs.
+// Builds the Raid Notes page (CRT_Modules/Notes/Settings.lua and CRT_Modules/Notes/Page.lua) on mock frames and switches tabs.
 const fs = require('fs');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
@@ -41,7 +41,7 @@ local CRT = {
   Bosses = { OnRouteChange = function() end, RouteIndex = function() end },
   UI = { PAGE_W = 1026, PAGE_H = 560, Help = function() return mock() end, Dropdown = function(_, _, o) local m = mock() rawset(m, "refresh", function() if o.enabledIf then rawset(m, "enabled", o.enabledIf() and true or false) end end) return m end, Slider = function(_, t, o) sliderLabels[t] = o local m = mock() rawset(m, "refresh", function() if o.enabledIf then rawset(m, "enabled", o.enabledIf() and true or false) end end) return m end,  RegisterLayer = function() end, RegisterPage = function(_, key, title, fn) pages[key] = fn end, Show = function() end, SetFrameTitle = function() end, RegisterTab = function() end, SetPreviews = function(_, on) previewsOn = on end, SetTabSelected = function() end },
   Notes = {
-    CanEditRaid = function() return true end, -- Notes/Data.lua: solo, you may change the raid note
+    CanEditRaid = function() return true end, -- CRT_Modules/Notes/Data.lua: solo, you may change the raid note
     WindowSettings = function() return win end, Alert = function() return alertSettings end, Set = function(_, k, f, v) print("Set", k, f, v); local t = k == "alert" and alertSettings or win; t[f] = v; for _, fn in ipairs(listeners) do fn() end end,
     TrustedOnly = function() return true end, ShowOutsideRaid = function() return true end, OnChange = function(_, fn) listeners[#listeners+1] = fn end,
     List = function() return {} end, ListStyle = function() return "grouped" end, ListDifficulty = function() return "All" end, ListFolded = function() return false end, SetListFolded = function() end, SetListDifficulty = function() end, SetListStyle = function() end, DifficultyGroup = function() return "Other" end, DIFFICULTIES = { "Mythic", "Heroic", "Normal" }, ShortName = function(n) return n end, ViaLabel = function(v) return v end, SourceLabel = function() return nil end, Active = function() return nil end, Get = function() return nil end, Personal = function() return "my note" end,

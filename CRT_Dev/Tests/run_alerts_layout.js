@@ -1,7 +1,7 @@
 // Alerts stage 2a final fixes: the four alert areas' default places don't overlap each other, drag boxes
-// included. Reads each file's DEFAULT_POSITION and lays out a rough box from the area defaults in Core.lua
+// included. Reads each file's DEFAULT_POSITION and lays out a rough box from the area defaults in CRT_Core/Core.lua
 // (a full cap of widgets growing their default way, and the drag box on the other side).
-// Usage: node run_alerts_layout.js Alerts/Areas.lua Alerts/Icons.lua Alerts/Texts.lua Alerts/Bars.lua Alerts/Circles.lua Notes/Alert.lua
+// Usage: node run_alerts_layout.js CRT_Modules/Alerts/Areas.lua CRT_Modules/Alerts/Icons.lua CRT_Modules/Alerts/Texts.lua CRT_Modules/Alerts/Bars.lua CRT_Modules/Alerts/Circles.lua CRT_Modules/Notes/Alert.lua
 const fs = require('fs');
 const [areasF, iconsF, textsF, barsF, circlesF, alertF] = process.argv.slice(2);
 if (!alertF) { console.error('usage: node run_alerts_layout.js Areas Icons Texts Bars Circles NoteAlert'); process.exit(2); }
@@ -39,7 +39,7 @@ const boxes = [
   box('icons', pos(iconsF), 44 + 6 + TEXT_W + 4, 44, 5, 'down'),
   // texts: 36 px font, a line like "Stack on the boss" about 320 wide; cap 3 down
   box('texts', pos(textsF), 320, 40, 3, 'down'),
-  // the Next spell alert (Notes/Alert.lua): up to ~400 wide, two lines of text, its drag box above
+  // the Next spell alert (CRT_Modules/Notes/Alert.lua): up to ~400 wide, two lines of text, its drag box above
   box('next spell alert', pos(alertF), 400, 56, 1, 'down', 300),
   // bars: 240 x 20, cap 5 down
   box('bars', pos(barsF), 240, 20, 5, 'down', 240),

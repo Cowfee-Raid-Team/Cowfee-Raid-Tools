@@ -1,6 +1,6 @@
-// Timeline/RehearsalWindow.lua on mock frames (stubs in the style of run_timeline_page.js), with the
-// real Timeline/Rehearsal.lua and a stub Lanes.Build that records its call.
-// Usage: node run_timeline_rehearsalwin.js Timeline/Rehearsal.lua Timeline/RehearsalWindow.lua
+// CRT_Modules/Timeline/RehearsalWindow.lua on mock frames (stubs in the style of run_timeline_page.js), with the
+// real CRT_Modules/Timeline/Rehearsal.lua and a stub Lanes.Build that records its call.
+// Usage: node run_timeline_rehearsalwin.js CRT_Modules/Timeline/Rehearsal.lua CRT_Modules/Timeline/RehearsalWindow.lua
 const fs = require('fs');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
@@ -65,8 +65,8 @@ local lanes = {
 }
 local extra = { length = 100, phases = { { t = 0, label = "P1" }, { t = 50, label = "P2" } } }
 CRT.TimelineLanes = { Build = function(...) lanesCall = { n = select("#", ...), ... } return lanes, {}, extra end }
-assert(load(rehSrc, "Timeline/Rehearsal.lua"))("CowfeeRaidTools", CRT)
-assert(load(winSrc, "Timeline/RehearsalWindow.lua"))("CowfeeRaidTools", CRT)
+assert(load(rehSrc, "CRT_Modules/Timeline/Rehearsal.lua"))("CowfeeRaidTools", CRT)
+assert(load(winSrc, "CRT_Modules/Timeline/RehearsalWindow.lua"))("CowfeeRaidTools", CRT)
 local RW = CRT.TimelineRehearsalWindow
 assert(RW, "module exposed as CRT.TimelineRehearsalWindow")
 local function near(a, b) return math.abs(a - b) < 1e-6 end
@@ -349,7 +349,7 @@ end
 ok("over at the length")
 
 -- The alerts engine (Task 4) ------------------------------------------------------------------------
--- a stub Alerts that records its calls, and the phase numbers as Alerts/Reminders.lua reads them
+-- a stub Alerts that records its calls, and the phase numbers as CRT_Modules/Alerts/Reminders.lua reads them
 local acalls = {}
 local A = { running = false, rehearsal = false, base = 0 }
 CRT.Alerts = A
@@ -596,7 +596,7 @@ do
     if eid == 9999 then return nil end
     return { base = base, encounterID = eid, group = group, bossName = "Nek'zali", difficultyName = "Heroic" }
   end
-  -- as Timeline/Data.lua's: any name with "mythic" in it, any case
+  -- as CRT_Modules/Timeline/Data.lua's: any name with "mythic" in it, any case
   CRT.Timeline.GroupFor = function(_, name)
     return type(name) == "string" and name:lower():find("mythic", 1, true) and "mythic" or "nh"
   end

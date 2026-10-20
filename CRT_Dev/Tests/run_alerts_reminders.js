@@ -1,18 +1,18 @@
-// Alerts/Reminders.lua: your own reminders, as a block on the alerts engine.
-// Usage: node run_alerts_reminders.js Timeline/Data.lua Timeline/Database.lua Timeline/Reference.lua Timeline/Lanes.lua Alerts/Rules.lua Alerts/Engine.lua Alerts/Reminders.lua
+// CRT_Modules/Alerts/Reminders.lua: your own reminders, as a block on the alerts engine.
+// Usage: node run_alerts_reminders.js CRT_Modules/Timeline/Data.lua CRT_Modules/Timeline/Database.lua CRT_Modules/Timeline/Reference.lua CRT_Modules/Timeline/Lanes.lua CRT_Modules/Alerts/Rules.lua CRT_Modules/Alerts/Engine.lua CRT_Modules/Alerts/Reminders.lua
 const fs = require('fs');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
 const harness = `
 local sources = { ... }
--- Boss library wiring (Bosses/Registry.lua, then the season pack, then the ADDON_LOADED the game fires once every file has loaded).
+-- Boss library wiring (CRT_Data/Bosses/Registry.lua, then the season pack, then the ADDON_LOADED the game fires once every file has loaded).
 local function loadBosses(CRT, reg, season, nek)
   local real, handler = CreateFrame, nil
   CreateFrame = function() return { RegisterEvent = function() end, UnregisterEvent = function() end, SetScript = function(_, n, fn) if n == "OnEvent" then handler = fn end end } end
-  assert(load(reg, "Bosses/Registry.lua"))("CowfeeRaidTools", CRT)
+  assert(load(reg, "CRT_Data/Bosses/Registry.lua"))("CowfeeRaidTools", CRT)
   CreateFrame = real
-  assert(load(season, "Seasons/Midnight-S1/Season.lua"))("CowfeeRaidTools", CRT)
-  assert(load(nek, "Seasons/Midnight-S1/NekzaliTheSoulcoiler.lua"))("CowfeeRaidTools", CRT)
+  assert(load(season, "CRT_Data/Seasons/Midnight-S1/Season.lua"))("CowfeeRaidTools", CRT)
+  assert(load(nek, "CRT_Data/Seasons/Midnight-S1/NekzaliTheSoulcoiler.lua"))("CowfeeRaidTools", CRT)
   handler({ UnregisterEvent = function() end }, "ADDON_LOADED", "CowfeeRaidTools")
 end
 local nek, season, reg = table.remove(sources), table.remove(sources), table.remove(sources)

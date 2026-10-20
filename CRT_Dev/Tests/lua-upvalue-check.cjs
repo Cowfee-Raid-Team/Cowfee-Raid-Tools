@@ -19,7 +19,7 @@ const WARN = Math.min(50, LIMIT);
 function files(dir) {
   const out = [];
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
-    // Tests/ holds old copies kept as fixtures, not addon code
+    // CRT_Dev/Tests holds old copies kept as fixtures, not addon code (CRT_Dev/Dev is checked)
     if (e.name.startsWith('.') || e.name === 'node_modules' || e.name === 'Tests') continue;
     const p = path.join(dir, e.name);
     if (e.isDirectory()) out.push(...files(p));

@@ -1,4 +1,4 @@
-// LootMaster/Sync.lua: the raid leader's Sync Master Loot. One Lua state plays every client in turn (who
+// CRT_Modules/LootMaster/Sync.lua: the raid leader's Sync Master Loot. One Lua state plays every client in turn (who
 // you are and your saved settings are swapped), with the messages caught and delivered by hand: an older
 // client drops the new message kind, the round trip, who may send and who takes it, bad values cleaned,
 // the split into messages that fit, the "who has CRT" ask and the status line. The loot filter's F part:
@@ -81,7 +81,7 @@ local function settings()
 end
 local DB = { Solex = settings(), Halo = settings(), Quick = settings(), Arrow = settings() }
 local CRT = { db = { lootmaster = DB.Solex } }
--- Core.lua's loot filter defaults (run_lootmaster_filter.js checks Core.lua's own)
+-- CRT_Core/Core.lua's loot filter defaults (run_lootmaster_filter.js checks CRT_Core/Core.lua's own)
 CRT.defaults = { lootmaster = { filter = { boss = true, trash = false, quality = 4, ilvl = 0,
   kinds = { bop = true, tier = true, boe = false, wue = false, toy = false, mount = false, cosmetic = false, other = false } } } }
 local function be(name) ME = name CRT.db.lootmaster = DB[name] end
@@ -503,7 +503,7 @@ if fails > 0 then error("failures") end
 `;
 const dir = process.argv[2];
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
-for (const f of ['LootMaster/Data.lua', 'LootMaster/Comm.lua', 'LootMaster/Sync.lua', 'LootMaster/Filter.lua', 'Tests/old_Sync.lua']) {
+for (const f of ['CRT_Modules/LootMaster/Data.lua', 'CRT_Modules/LootMaster/Comm.lua', 'CRT_Modules/LootMaster/Sync.lua', 'CRT_Modules/LootMaster/Filter.lua', 'CRT_Dev/Tests/old_Sync.lua']) {
   const p = path.join(dir, f);
   lua.lua_pushstring(L, to_luastring(fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : 'error("missing ' + f + '")'));
 }

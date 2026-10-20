@@ -1,4 +1,4 @@
-// Runs Dev/TimelineProbe.lua with mock game calls: one raid boss pull with a secret spell ID.
+// Runs CRT_Dev/Dev/TimelineProbe.lua with mock game calls: one raid boss pull with a secret spell ID.
 const fs = require('fs');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);

@@ -1,4 +1,4 @@
-// Bosses/Registry.lua: the raid progression route (Route, RouteList, RouteIndex, OnRouteChange), from
+// CRT_Data/Bosses/Registry.lua: the raid progression route (Route, RouteList, RouteIndex, OnRouteChange), from
 // the season's raids, with the dev's order laid over it.
 const fs = require('fs');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
@@ -62,5 +62,5 @@ print(fails == 0 and "all passed" or (fails .. " failed"))
 if fails > 0 then error(fails .. " failed", 0) end
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
-for (const f of ['Bosses/Registry.lua', 'Seasons/Midnight-S1/Season.lua']) lua.lua_pushstring(L, to_luastring(fs.readFileSync(process.argv[2] + '/' + f, 'utf8')));
+for (const f of ['CRT_Data/Bosses/Registry.lua', 'CRT_Data/Seasons/Midnight-S1/Season.lua']) lua.lua_pushstring(L, to_luastring(fs.readFileSync(process.argv[2] + '/' + f, 'utf8')));
 if (lua.lua_pcall(L, 2, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
