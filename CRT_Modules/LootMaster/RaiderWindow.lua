@@ -13,6 +13,7 @@ local UI = CRT.UI
 local L = {
     width = 820, height = 380, minWidth = 640, minHeight = 260,
     left = LM.TAB_COLUMN + 14, headerH = 50, rowH = 22,
+    headingH = 20, -- the column headings, above the rows
 }
 
 local COLS = {
@@ -148,14 +149,17 @@ local function build()
     header.info:SetPoint("TOPLEFT", header.name, "BOTTOMLEFT", 0, -4)
     header.info:SetTextColor(0.7, 0.7, 0.7)
     UI.Help(header, TEXT.title, TEXT.help):SetPoint("LEFT", header.name, "RIGHT", 4, 0)
+    -- the headings and the rows clip at the same edge when the window is narrow (LM.ListArea)
+    local area = LM.ListArea(c, L.left, -L.headerH - 4)
     for _, col in ipairs(COLS) do
-        local h = c:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
-        h:SetPoint("TOPLEFT", L.left + col.x, -L.headerH - 4)
+        local h = area:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
+        h:SetPoint("TOPLEFT", col.x, 0)
         h:SetText(col.title)
     end
-    local box = CreateFrame("Frame", nil, c, "WowScrollBoxList")
-    box:SetPoint("TOPLEFT", L.left, -L.headerH - 24)
-    box:SetPoint("BOTTOMRIGHT", -20, 0)
+    local box = CreateFrame("Frame", nil, area, "WowScrollBoxList")
+    box:SetPoint("TOPLEFT", 0, -L.headingH)
+    box:SetPoint("BOTTOMRIGHT", 0, 0)
+    -- the scroll bar is outside the clipped area, so it always shows
     local bar = CreateFrame("EventFrame", nil, c, "MinimalScrollBar")
     bar:SetPoint("TOPLEFT", box, "TOPRIGHT", 6, 0)
     bar:SetPoint("BOTTOMLEFT", box, "BOTTOMRIGHT", 6, 0)
