@@ -253,10 +253,11 @@ function UI.RoundRect(owner, anchor, layer, sublevel, radius, inset, height)
     return shape
 end
 
--- Colours a UI.RoundRect shape: color is a CRT.MOCHA key ("walnut") or { r, g, b [, a] }.
-function UI.PaintShape(shape, color)
+-- Colours a UI.RoundRect shape: color is a CRT.MOCHA key ("walnut") or { r, g, b [, a] }; alpha, when
+-- given, is used in place of the colour's own (a faded, disabled control).
+function UI.PaintShape(shape, color, alpha)
     local c = type(color) == "table" and color or CRT.MOCHA[color]
-    local a = c[4] or 1
+    local a = alpha or c[4] or 1
     for _, t in ipairs(shape.corners) do
         t:SetVertexColor(c[1], c[2], c[3], a)
     end
@@ -290,7 +291,8 @@ end
 local function drawKnob(m, s)
     local text = s.format(s.current)
     m.text:SetText(text)
-    m.text:SetTextColor(1, 1, 1)
+    local white = CRT.MOCHA.walnutText
+    m.text:SetTextColor(white[1], white[2], white[3])
     m.widest = math.max(m.widest or 0, m.text:GetUnboundedStringWidth() or 0)
     local knobW = math.min(m.trackW, math.max(KNOB_MIN_W, math.ceil(m.widest) + KNOB_PAD))
     local span = s.high - s.low
@@ -314,7 +316,8 @@ local function restyleKnob(m, s)
     UI.PaintShape(m.face, "walnut")
     local shine = CRT.MOCHA.walnutShine
     m.shine:SetColorTexture(shine[1], shine[2], shine[3])
-    m.edit:SetTextColor(1, 1, 1)
+    local white = CRT.MOCHA.walnutText
+    m.edit:SetTextColor(white[1], white[2], white[3])
     local _, fontHeight = m.text:GetFont()
     m.knobH = math.max(KNOB_H, math.ceil(tonumber(fontHeight) or 0) + KNOB_TEXT_PAD)
     m.knob:SetHeight(m.knobH)

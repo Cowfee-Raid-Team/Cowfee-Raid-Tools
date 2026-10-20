@@ -594,16 +594,11 @@ local CHECK_ART = { "GetNormalTexture", "GetPushedTexture", "GetHighlightTexture
     "GetDisabledCheckedTexture", "GetDisabledTexture" }
 local TICK = (CRT.MEDIA or ("Interface\\AddOns\\" .. ADDON .. "\\CRT_Media\\Media\\")) .. "Check" -- the fallback is for test harnesses without Core.lua
 
--- A MOCHA colour with an alpha, for UI.PaintShape.
-local function tone(key, alpha)
-    local c = CRT.MOCHA[key]
-    return { c[1], c[2], c[3], alpha }
-end
-
 local function paintCheck(cb)
     local s = cb.crtCheck
     local on = cb:GetChecked() and true or false
-    local alpha = cb:IsEnabled() and 1 or CHECK_OFF_ALPHA
+    local enabled = cb:IsEnabled() and true or false
+    local alpha = enabled and 1 or CHECK_OFF_ALPHA
     for _, t in ipairs(s.textures) do
         t:SetShown(s.modern)
     end
@@ -612,10 +607,11 @@ local function paintCheck(cb)
     if not s.modern then
         return
     end
-    UI.PaintShape(s.box.edge, tone(s.hover and "caramel" or (on and "walnutEdge" or "mocha"), alpha))
-    UI.PaintShape(s.box.face, tone(on and "walnut" or "roast", alpha))
+    -- only a box that can be clicked lights up under the mouse
+    UI.PaintShape(s.box.edge, (s.hover and enabled) and "caramel" or (on and "walnutEdge" or "mocha"), alpha)
+    UI.PaintShape(s.box.face, on and "walnut" or "roast", alpha)
     s.shine:SetColorTexture(mocha("walnutShine", alpha))
-    s.tick:SetVertexColor(1, 1, 1, alpha)
+    s.tick:SetVertexColor(mocha("tick", alpha))
 end
 
 function UI:SkinCheckButton(cb)

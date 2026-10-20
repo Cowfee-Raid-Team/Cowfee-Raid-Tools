@@ -151,7 +151,7 @@ print("stepper click: saved " .. scale)
 -- The look switch. A slider made in Classic is the game's slider and nothing else.
 local fails = 0
 local function check(ok, what) if not ok then fails = fails + 1 print("FAIL " .. what) end end
-CRT.MOCHA = { edge = { 0.3, 0.2, 0.2 }, caramel = { 0.8, 0.6, 0.4 }, walnut = { 0.29, 0.2, 0.14 }, walnutEdge = { 0.1, 0.07, 0.05 }, walnutShine = { 0.48, 0.35, 0.24 } }
+CRT.MOCHA = { edge = { 0.3, 0.2, 0.2 }, caramel = { 0.8, 0.6, 0.4 }, walnut = { 0.29, 0.2, 0.14 }, walnutEdge = { 0.1, 0.07, 0.05 }, walnutShine = { 0.48, 0.35, 0.24 }, walnutText = { 1, 1, 1 } }
 local modern = false
 UI.skinned = {}
 function UI:IsModern() return modern end

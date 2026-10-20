@@ -405,6 +405,8 @@ CRT.MOCHA = {
     walnut = { 0.29, 0.204, 0.141 }, -- a slider's knob and a ticked checkbox (#4a3424)
     walnutEdge = { 0.102, 0.071, 0.047 }, -- their 1 px edge (#1a120c)
     walnutShine = { 0.478, 0.353, 0.243 }, -- the soft highlight inside their top edge (#7a5a3e)
+    walnutText = { 1, 1, 1 }, -- the knob's value and number box (white)
+    tick = { 1, 1, 1 }, -- a ticked checkbox's tick (white)
 }
 -- The Modern look's font, when the font setting is the default.
 CRT.MODERN_FONT = "Fonts\\ARIALN.TTF"
