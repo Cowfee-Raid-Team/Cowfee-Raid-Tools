@@ -69,7 +69,9 @@ function UI.MenuOnTop(root)
     end
 end
 
-function UI.ContextMenu(owner, fill)
+-- anchor, when given, is { point, relativeTo, relativePoint, x, y }: the menu opens there instead of at
+-- the mouse (the title bar's theme menu sits under its button).
+function UI.ContextMenu(owner, fill, anchor)
     if not (MenuUtil and MenuUtil.CreateContextMenu) then
         return nil
     end
@@ -77,6 +79,12 @@ function UI.ContextMenu(owner, fill)
         UI.MenuOnTop(root)
         fill(root)
     end)
+    if menu and anchor and menu.ClearAllPoints then
+        pcall(function()
+            menu:ClearAllPoints()
+            menu:SetPoint(anchor[1], anchor[2], anchor[3], anchor[4] or 0, anchor[5] or 0)
+        end)
+    end
     if menu and menu.SetFrameStrata then
         if not menu.crtMenuStrata then
             menu.crtMenuStrata = menu:GetFrameStrata()
@@ -129,17 +137,18 @@ end
 --            in that font's own gold) where the template puts it, centred; the badge sits at the left
 --            end, where the main window shows its version. A strip with no window template under it
 --            (opts.framed false, such as the raider popup's) draws the template's title tile itself.
---   Modern   a mocha strip lighter than the window, a caramel line under it, the title in larger bold
---            text on the left with the badge after it.
+--   Modern   the theme's strip (stripTop to stripBottom), lighter than the window, a caramel line under
+--            it, the title in larger bold cream text on the left with the badge after it.
 -- UI.TitleStrip(parent, height, opts): opts.framed when parent is a BasicFrameTemplate window (UI.Window).
 -- strip:SetTitle(text), strip:SetBadge(text or nil, note, colors): colors is { bg, edge, text }; without
 -- it the badge is the orange TEST one. STRIP.neutral is the window's gold text on a dark badge. A note
--- shows with or without a badge. Its colours and Classic places are in STRIP.
+-- shows with or without a badge. Its colours and Classic places are in STRIP. A colour written as a
+-- string is a CRT.MOCHA key, so it follows the theme (UI.StripColor reads either kind).
 local STRIP = {
-    top = { 0.353, 0.247, 0.173 }, bottom = { 0.227, 0.165, 0.122 }, line = { 0.78, 0.56, 0.36 },
+    top = "stripTop", bottom = "stripBottom", line = "caramel",
     badgeBg = { 0.35, 0.16, 0.06 }, badgeEdge = { 0.63, 0.34, 0.12 }, badgeText = { 1, 0.81, 0.6 },
-    title = { 0.95, 0.90, 0.84 }, note = { 0.80, 0.71, 0.60 },
-    neutral = { bg = { 0.11, 0.078, 0.063 }, edge = { 0.30, 0.235, 0.188 }, text = { 0.87, 0.73, 0.56 } },
+    title = "cream", note = "note",
+    neutral = { bg = "espresso", edge = "edge", text = "latte" },
     modernFont = "CRTFontLarge",
     -- Classic, from BasicFrameTemplate: TitleText inherits GameFontNormal, anchored TOP x -6, y -4;
     -- TitleBg is the _UI-Frame-TitleTileBg atlas, tiled across
@@ -151,6 +160,42 @@ local STRIP = {
 }
 STRIP.warning = { bg = STRIP.badgeBg, edge = STRIP.badgeEdge, text = STRIP.badgeText }
 UI.TITLE_STRIP = STRIP
+
+-- A STRIP colour as r, g, b: a CRT.MOCHA key (the theme in use) or { r, g, b }. A key the palette
+-- lacks gives grey.
+function UI.StripColor(c)
+    if type(c) == "string" then
+        c = CRT.MOCHA and CRT.MOCHA[c]
+    end
+    if type(c) ~= "table" then
+        return 0.5, 0.5, 0.5
+    end
+    return c[1], c[2], c[3]
+end
+local stripColor = UI.StripColor
+
+-- The strip's own colours, painted again when the theme changes; the badge keeps the colours it was
+-- given, so a theme colour (STRIP.neutral) follows too.
+local function paintStrip(s)
+    local tr, tg, tb = stripColor(STRIP.top)
+    local br, bgr, bb = stripColor(STRIP.bottom)
+    s.bg:SetColorTexture(1, 1, 1, 1)
+    local ok = pcall(s.bg.SetGradient, s.bg, "VERTICAL", CreateColor(br, bgr, bb, 1), CreateColor(tr, tg, tb, 1))
+    if not ok then
+        s.bg:SetColorTexture(tr, tg, tb, 1)
+    end
+    local lr, lg, lb = stripColor(STRIP.line)
+    s.line:SetColorTexture(lr, lg, lb, 1)
+    s.note:SetTextColor(stripColor(STRIP.note))
+    local c = s.badgeColors
+    if c then
+        local r, g, b = stripColor(c.bg)
+        s.badge:SetBackdropColor(r, g, b, 1)
+        r, g, b = stripColor(c.edge)
+        s.badge:SetBackdropBorderColor(r, g, b, 1)
+        s.badge.text:SetTextColor(stripColor(c.text))
+    end
+end
 
 local function shownWidth(r, pad)
     if not r:IsShown() then
@@ -198,12 +243,13 @@ local function styleStrip(s)
     s.bg:SetShown(modern)
     s.line:SetShown(modern)
     s.bar:SetShown(not modern and not s.framed)
+    paintStrip(s)
     local font = _G[modern and STRIP.modernFont or STRIP.classicFont]
     if font then
         s.title:SetFontObject(font)
     end
     if modern then
-        s.title:SetTextColor(STRIP.title[1], STRIP.title[2], STRIP.title[3])
+        s.title:SetTextColor(stripColor(STRIP.title))
     elseif font and font.GetTextColor then
         -- the font's own colour, set again because Modern set its own on this font string
         s.title:SetTextColor(font:GetTextColor())
@@ -222,13 +268,7 @@ function UI.TitleStrip(parent, height, opts)
     s:SetHeight(height or 24)
     local bg = s:CreateTexture(nil, "BACKGROUND")
     bg:SetAllPoints()
-    bg:SetColorTexture(1, 1, 1, 1)
-    local ok = pcall(bg.SetGradient, bg, "VERTICAL", CreateColor(STRIP.bottom[1], STRIP.bottom[2], STRIP.bottom[3], 1),
-        CreateColor(STRIP.top[1], STRIP.top[2], STRIP.top[3], 1))
-    if not ok then
-        bg:SetColorTexture(STRIP.top[1], STRIP.top[2], STRIP.top[3], 1)
-    end
-    s.bg = bg
+    s.bg = bg -- painted by paintStrip
     -- Classic, with no window template under it: the template's title tile
     local bar = s:CreateTexture(nil, "BACKGROUND")
     bar:SetAllPoints()
@@ -238,7 +278,6 @@ function UI.TitleStrip(parent, height, opts)
     end
     s.bar = bar
     local line = s:CreateTexture(nil, "BORDER")
-    line:SetColorTexture(STRIP.line[1], STRIP.line[2], STRIP.line[3], 1)
     line:SetHeight(2)
     line:SetPoint("BOTTOMLEFT")
     line:SetPoint("BOTTOMRIGHT")
@@ -249,19 +288,17 @@ function UI.TitleStrip(parent, height, opts)
     s.badge.text = s.badge:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     s.badge.text:SetPoint("CENTER")
     s.note = s:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    s.note:SetTextColor(STRIP.note[1], STRIP.note[2], STRIP.note[3])
     s.badge:Hide()
     s.note:Hide()
+    s.badgeColors = false -- the colours SetBadge was given, painted again by paintStrip
     function s:SetTitle(text)
         self.title:SetText(text or "")
         layoutStrip(self)
     end
     function s:SetBadge(text, note, colors)
         if text and text ~= "" then
-            local c = colors or STRIP.warning
-            self.badge:SetBackdropColor(c.bg[1], c.bg[2], c.bg[3], 1)
-            self.badge:SetBackdropBorderColor(c.edge[1], c.edge[2], c.edge[3], 1)
-            self.badge.text:SetTextColor(c.text[1], c.text[2], c.text[3])
+            self.badgeColors = colors or STRIP.warning
+            paintStrip(self)
             self.badge.text:SetText(text)
             self.badge:SetSize(self.badge.text:GetStringWidth() + 12, 16)
             self.badge:Show()

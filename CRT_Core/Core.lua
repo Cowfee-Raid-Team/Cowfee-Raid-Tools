@@ -14,9 +14,11 @@ local defaults = {
     -- 100). An old profile may still hold style, a window style choice that is no longer read. layers holds a
     -- frame strata for each kind of window moved off its default (UI.LAYERS in UI/Panel.lua).
     -- soundChannel is the game sound channel every sound the addon plays goes through (CRT:PlaySound).
-    -- modern is the Modern look (UI:SetModern in UI/Panel.lua, the title bar's UI button); off is Classic.
+    -- theme is the look picked from the title bar (UI:SetTheme in UI/Panel.lua, CRT.THEME_LIST in Themes.lua);
+    -- modern is kept in step with it: off for "blizzard" (Classic), on for the others. Data from before themes
+    -- has no theme: CRT:ResolveTheme gives it one from modern before these defaults are filled in.
     -- hideRealms leaves realm names out of the Late Tracker and Tattlebot, on screen, in chat and in exports.
-    ui = { font = "default", outline = "", textSize = 100, bgAlpha = 100, layers = {}, soundChannel = "Master", hideRealms = false, modern = false },
+    ui = { font = "default", outline = "", textSize = 100, bgAlpha = 100, layers = {}, soundChannel = "Master", hideRealms = false, modern = false, theme = "blizzard" },
     lastPage = "groups",
     -- The minimap button (UI/Minimap.lua): angle is its place around the minimap, in degrees.
     minimap = { hide = false, angle = 225 },
@@ -291,7 +293,7 @@ local defaults = {
     pace = { disabled = {}, own = {}, shared = {}, use = {}, shown = true },
     alerts = {
         bars = { shown = true, noteLines = true, cap = 5, ahead = 20, width = 240, height = 20, font = "Friz Quadrata", fontSize = 13,
-            barColor = { 0.44, 0.31, 0.22, 1 }, bgColor = { 0, 0, 0, 0.6 }, textColor = { 0.95, 0.90, 0.84, 1 } },
+            barColor = { 0.44, 0.31, 0.22, 1 }, bgColor = { 0, 0, 0, 0.6 }, textColor = { 0.95, 0.90, 0.84, 1 } }, -- saved, the player's to change: not a theme colour
         areas = {
             icons = { shown = true, cap = 5, size = 44, font = "Friz Quadrata", fontSize = 20, outline = "OUTLINE", grow = "down", showText = true, fade = true },
             texts = { shown = true, cap = 3, font = "Friz Quadrata", fontSize = 36, outline = "THICKOUTLINE", grow = "down", align = "CENTER" },
@@ -392,22 +394,8 @@ function CRT:FontPath(name)
     return nil
 end
 
--- The Modern look's coffee colors, { r, g, b }. UI/Panel.lua paints the window with them and
--- CRT:ApplyFonts colors the text.
-CRT.MOCHA = {
-    espresso = { 0.11, 0.078, 0.063 }, -- the window background
-    roast = { 0.165, 0.122, 0.098 }, -- menu blocks, fields and buttons
-    edge = { 0.30, 0.235, 0.188 }, -- borders
-    mocha = { 0.44, 0.31, 0.22 }, -- the selected page and tab
-    caramel = { 0.78, 0.56, 0.36 }, -- lines and accents
-    latte = { 0.87, 0.73, 0.56 }, -- headings and button text (the game's gold text)
-    cream = { 0.95, 0.90, 0.84 }, -- body text (the game's white text)
-    walnut = { 0.29, 0.204, 0.141 }, -- a slider's knob and a ticked checkbox (#4a3424)
-    walnutEdge = { 0.102, 0.071, 0.047 }, -- their 1 px edge (#1a120c)
-    walnutShine = { 0.478, 0.353, 0.243 }, -- the soft highlight inside their top edge (#7a5a3e)
-    walnutText = { 1, 1, 1 }, -- the knob's value and number box (white)
-    tick = { 1, 1, 1 }, -- a ticked checkbox's tick (white)
-}
+-- The Modern colours are CRT.MOCHA, the theme in use (Themes.lua). UI/Panel.lua paints the windows with
+-- them and CRT:ApplyFonts colours the text.
 -- The Modern look's font, when the font setting is the default.
 CRT.MODERN_FONT = "Fonts\\ARIALN.TTF"
 
@@ -551,7 +539,12 @@ frame:SetScript("OnEvent", function(self, event, arg1)
         CRTDB = CRTDB or {}
         -- Puts this character's profile on top of CRTDB before anything reads it.
         CRT.Profiles:Load()
+        -- before the defaults, so data from before themes keeps its look
+        if type(CRTDB.ui) == "table" then
+            CRT:ResolveTheme(CRTDB.ui)
+        end
         copyDefaults(defaults, CRTDB)
+        CRT:UseTheme(CRT:ResolveTheme(CRTDB.ui))
         -- once: the old default of axis labels every 30 seconds becomes Auto, which follows the zoom
         local tl = CRTDB.timeline
         if tl and not tl.gridAutoOnce then
