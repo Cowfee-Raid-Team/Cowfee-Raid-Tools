@@ -172,7 +172,6 @@ local function initRow(row, r)
         row.diff:SetPoint("LEFT", gx + 44, 0)
         row.sel = row:CreateTexture(nil, "BACKGROUND")
         row.sel:SetAllPoints()
-        row.sel:SetColorTexture(0.78, 0.56, 0.36, 0.18)
         local hl = row:CreateTexture(nil, "HIGHLIGHT")
         hl:SetAllPoints()
         hl:SetColorTexture(1, 1, 1, 0.06)
@@ -260,6 +259,8 @@ local function initRow(row, r)
         cols.roll:SetText("")
     end
     cols.score:SetText(r.score and tostring(r.score) or "—")
+    local accent = CRT.MOCHA.caramel -- a picked raider, in the theme's accent
+    row.sel:SetColorTexture(accent[1], accent[2], accent[3], 0.18)
     row.sel:SetShown(selected[r.name] and true or false)
 end
 
@@ -396,7 +397,10 @@ local function refresh()
     else
         header.info:SetText(it.ilvl and ("Item level " .. it.ilvl) or "")
     end
-    header.answered:SetText(string.format(TEXT.answered, s:AnswerCount(current))) -- the same count as the tab
+    -- the same count as the tab; everyone in, matcha in a Modern theme
+    local answered, expected = s:AnswerCount(current)
+    local count = string.format(TEXT.answered, answered, expected)
+    header.answered:SetText((expected > 0 and answered >= expected) and UI.GoodText(count) or count)
     local rows = s:Rows(current, LM.Score)
     local sort = CRT.db.lootmaster.sort
     if sort.looterKey then

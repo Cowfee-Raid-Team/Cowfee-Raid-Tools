@@ -851,7 +851,8 @@ end
 -- opts.backToDefault a third click goes back to the list's own order. cols: { { key, x, w, title } };
 -- the headings sit at opts.x (default 0) + col.x, opts.y. A column with sortable = false is plain.
 -- opts.get() returns key, dir (dir 1 or -1, key nil for the default order); opts.set(key, dir).
--- Returns { refresh = function }, which redraws the arrows.
+-- Returns { refresh = function }, which redraws the arrows. The headings are latte and the sorted one
+-- light cream, with a caramel arrow (CRT.MOCHA, read on each refresh so they follow the theme).
 function UI.SortHeaders(parent, cols, opts)
     local x0, y = opts.x or 0, opts.y or 0
     local buttons = {}
@@ -860,7 +861,13 @@ function UI.SortHeaders(parent, cols, opts)
         for _, b in ipairs(buttons) do
             local on = b.col.key == key
             b.arrow:SetText(on and (dir < 0 and "v" or "^") or "")
-            b.text:SetTextColor(on and 1 or 0.87, on and 0.95 or 0.73, on and 0.85 or 0.56)
+            local caramel, latte = CRT.MOCHA.caramel, CRT.MOCHA.latte
+            b.arrow:SetTextColor(caramel[1], caramel[2], caramel[3])
+            if on then
+                b.text:SetTextColor(1, 0.95, 0.85)
+            else
+                b.text:SetTextColor(latte[1], latte[2], latte[3])
+            end
         end
     end
     for _, col in ipairs(cols) do
@@ -873,7 +880,6 @@ function UI.SortHeaders(parent, cols, opts)
         b.text:SetText(col.title)
         b.arrow = b:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
         b.arrow:SetPoint("LEFT", b.text, "RIGHT", 3, 0)
-        b.arrow:SetTextColor(0.78, 0.56, 0.36)
         if col.sortable ~= false then
             local hl = b:CreateTexture(nil, "HIGHLIGHT")
             hl:SetAllPoints()

@@ -37,7 +37,6 @@ function LM.ItemTabs(parent, opts)
         t:SetPoint("TOPLEFT", 0, -(i - 1) * (L.height + L.gap))
         t.sel = t:CreateTexture(nil, "BACKGROUND")
         t.sel:SetAllPoints()
-        t.sel:SetColorTexture(0.78, 0.56, 0.36, 0.12)
         local hl = t:CreateTexture(nil, "HIGHLIGHT")
         hl:SetAllPoints()
         hl:SetColorTexture(1, 1, 1, 0.05)
@@ -117,6 +116,8 @@ function LM.ItemTabs(parent, opts)
             t.index = i
             t.icon:SetTexture(C_Item.GetItemIconByID(it.itemString or "") or 134400)
             local on = i == current
+            local accent = CRT.MOCHA.caramel -- the picked item, in the theme's accent
+            t.sel:SetColorTexture(accent[1], accent[2], accent[3], 0.12)
             t.sel:SetShown(on)
             t.frame:SetBackdropBorderColor(on and 0.78 or 0.3, on and 0.56 or 0.24, on and 0.36 or 0.19, 1)
             if it.award then
