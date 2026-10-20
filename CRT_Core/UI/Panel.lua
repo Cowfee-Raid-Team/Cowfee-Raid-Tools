@@ -423,6 +423,34 @@ function UI:RegisterThemed(f, classic)
     self:ApplyThemed(f)
 end
 
+-- The game's grey stone, the group-loot roll frame's background (GroupLootFrameTemplate's Background in
+-- Blizzard_UIPanels_Game/Mainline/GroupLootFrame.xml, live): a part of Interface\LootFrame\LootToast cut
+-- out by texture coordinates, stretched over the frame. For Default: Blizzard surfaces drawn like the
+-- roll frame (the raider loot popup's items). UI.Stone(frame, layer, sublevel, inset) returns the texture,
+-- covering the frame less inset on each side (default 0), on layer (default "BACKGROUND") and sublevel
+-- (default 0); show or hide it with the look. The game draws the roll frame's border about 4.5 px outside
+-- the stone, so a frame with that border insets the stone by about 4.
+-- UI.LootToastPiece(frame, layer, coords, sublevel) is any other part of the same texture, unanchored.
+UI.STONE = {
+    file = "Interface\\LootFrame\\LootToast",
+    coords = { 0.28222656, 0.55273438, 0.30859375, 0.57031250 },
+}
+
+function UI.LootToastPiece(frame, layer, coords, sublevel)
+    local t = frame:CreateTexture(nil, layer or "BACKGROUND", nil, sublevel or 0)
+    t:SetTexture(UI.STONE.file)
+    t:SetTexCoord(coords[1], coords[2], coords[3], coords[4])
+    return t
+end
+
+function UI.Stone(frame, layer, sublevel, inset)
+    local t = UI.LootToastPiece(frame, layer, UI.STONE.coords, sublevel)
+    inset = inset or 0
+    t:SetPoint("TOPLEFT", inset, -inset)
+    t:SetPoint("BOTTOMRIGHT", -inset, inset)
+    return t
+end
+
 -- Floating windows: a window of its own made from BasicFrameTemplateWithInset, such as the alert
 -- editor, its export box, the dev tools and the text and import dialogs. Classic shows the template's
 -- own art; Modern a flat espresso background with an edge border, a caramel line under the title and

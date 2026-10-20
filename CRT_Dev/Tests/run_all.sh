@@ -73,6 +73,7 @@ g "RollOnLoot only in the auto-pass gate" && { bad=$(grep -rlnE "RollOnLoot|Conf
 g "lootmaster score" && { node run_lootmaster_score.js "$W" 2>&1 | tail -6; echo "exit ${PIPESTATUS[0]}"; }
 g "lootmaster ui" && { node run_lootmaster_ui.js "$W" 2>&1 | tail -6; echo "exit ${PIPESTATUS[0]}"; }
 g "lootmaster windows" && { node run_lootmaster_windows.js "$W" 2>&1 | tail -8; echo "exit ${PIPESTATUS[0]}"; }
+g "lootmaster popup" && { node run_lootmaster_popup.js "$W" 2>&1 | tail -12; echo "exit ${PIPESTATUS[0]}"; }
 g "lootmaster filter" && { node run_lootmaster_filter.js "$W" 2>&1 | tail -6; echo "exit ${PIPESTATUS[0]}"; }
 g "debuffs" && { node run_debuffs.js "$W" 2>&1 | tail -12; echo "exit ${PIPESTATUS[0]}"; }
 g "late data" && { node run_late.js "$W/CRT_Modules/Late/Data.lua" 2>&1 | tail -6; echo "exit ${PIPESTATUS[0]}"; }

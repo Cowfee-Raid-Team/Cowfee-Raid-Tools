@@ -6,25 +6,68 @@ local ADDON, CRT = ...
 -- you can still change your mind. Each panel's background is its timer: the lighter part shrinks as the
 -- answer time runs out, and the panel closes itself at the end. Close it sooner with its X or a
 -- right-click. The looter can show a panel again or ask you to roll again, which restarts its timer.
+-- In Default: Blizzard each panel looks like the game's group-loot roll frame and the whole popup sits in
+-- the main window's frame, sized to what shows; the other themes draw it flat in their colours.
 -- The panels hang from one overlay (UI.Window kind "overlay"): drag any panel to move them all; the
 -- place is kept in CRTDB lootmaster.popup. Sizes and the gap are in L, for the dev layout tools later.
 
 local LM = CRT.LootMaster
 local UI = CRT.UI
 
+-- Each panel is laid out like the game's group-loot roll frame: the item icon in its slot at the top left,
+-- the name in a dark name plate beside it, the detail line under the plate, the X at the top right, then
+-- the answer buttons and Notes along the bottom.
 local L = {
-    width = 480,
-    panelH = 104,
+    width = 520, -- 8 answers of 12 letters (LM.LABEL_MAX), each with an icon, fit in two rows
+    panelH = 116, -- the Notes row clear of the border ring at the bottom
     gap = 4, -- between panels
     headerH = 26, -- the title bar above the panels
     autoH = 22, -- the line saying which items were answered for you
-    pad = 8,
+    -- Default: Blizzard: one window frame around the title bar, the auto line and the items, which sit in
+    -- its inset (BasicFrameTemplateWithInset's is 4 in from the left, 6 from the right, 4 above the bottom)
+    insetLeft = 4,
+    insetRight = 6,
+    frameBottom = 6, -- under the last item
+
+    pad = 12, -- the buttons, Notes and detail line clear of the border ring
+    stoneInset = 4, -- the stone and the timer, inside the border (the game draws it about 4.5 px outside)
     icon = 36,
+    iconInset = 12, -- the icon's top left, inside the roll frame's border
+    slot = 44, -- the slot border around the icon (the roll frame draws 42 around a 34 icon)
+    plateGap = 10, -- icon to name plate
+    plateH = 24,
+    plateCap = 12, -- the name plate's end pieces (16 by 32 in the game's art, drawn at the plate's height)
+    plateRight = 40, -- room for the X right of the plate, clear of the border ring
+    close = 24, -- the X (the roll frame draws its 32)
+    namePad = 8, -- the name inside the plate
+    detailGap = 4, -- plate to the detail line
+    buttonsTop = 58, -- the first row of answer buttons, from the panel's top
+    borderCorner = 20, -- the roll frame border's corners, kept unstretched
     showButtonH = 22, -- the Show button on the auto line, as tall as the answer buttons
     button = { h = 22, gap = 4, minGap = 2, rowGap = 4 }, -- widths come from each label (LM.ButtonWidth)
     noteW = 190,
     fadeAlpha = 0.55, -- an answered panel
     timerAlpha = 0.07, -- the lighter part of the background, the time left
+}
+
+-- The game's roll-frame art (Blizzard_UIPanels_Game/Mainline/GroupLootFrame.xml, live): the border and
+-- the item name plate are parts of one texture, cut out by texture coordinates; the slot border is an
+-- atlas per item quality (Blizzard_Colors ColorConstants.lua LOOT_BORDER_BY_QUALITY). Shown in Default:
+-- Blizzard only; the other themes draw the panel flat in their own colours.
+local ART = {
+    file = UI.STONE.file, -- LootToast, 1024 by 256; every piece is cut by UI.LootToastPiece
+    texW = 1024,
+    texH = 256,
+    -- (its stone background is the shared UI.Stone)
+    border = { 0.00097656, 0.28027344, 0.43750000, 0.73437500 }, -- GroupLootFrameTemplate's Border
+    -- the roll frame's X: its PassButton (LootRollButtonTemplate, 32 by 32)
+    closeUp = "lootroll-toast-icon-pass-up",
+    closeHighlight = "lootroll-toast-icon-pass-highlight",
+    closeDown = "lootroll-toast-icon-pass-down",
+    plateLeft = { 0.79101563, 0.80664063, 0.57421875, 0.69921875 }, -- MasterLooterFrame's NameBorderLeft
+    plateMid = { 0.75, 0.764648438, 0.80859375, 0.93359375 }, -- NameBorderMid
+    plateRight = { 0.73242188, 0.74804688, 0.80859375, 0.93359375 }, -- NameBorderRight
+    slotDefault = "loottoast-itemborder-green", -- the roll frame's own default, for an unknown quality
 }
 
 local TEXT = {
@@ -84,7 +127,7 @@ end
 
 -- Panels -----------------------------------------------------------------------------------------------
 
-local anchor, header, autoLine
+local anchor, chrome, header, autoLine
 local panels = {} -- by item index
 local loading = {} -- item IDs asked of the game once each
 
@@ -97,6 +140,131 @@ local function colors()
         return CRT.MOCHA.espresso, CRT.MOCHA.edge
     end
     return { 0.05, 0.05, 0.05 }, { 0.3, 0.3, 0.3 }
+end
+
+-- The item's quality (Uncommon until the game has the item, as the roll frame does), its colour and its
+-- slot border atlas, through the game's ColorManager when it is there.
+local UNCOMMON = Enum and Enum.ItemQuality and Enum.ItemQuality.Uncommon or 2
+
+local function qualityOf(itemString)
+    local ok, _, _, q = pcall(C_Item.GetItemInfo, itemString or "")
+    return ok and type(q) == "number" and q or UNCOMMON
+end
+
+local function qualityColor(q)
+    local ok, c = pcall(function()
+        return ColorManager and ColorManager.GetColorDataForItemQuality and ColorManager.GetColorDataForItemQuality(q)
+    end)
+    c = ok and c or (ITEM_QUALITY_COLORS and ITEM_QUALITY_COLORS[q])
+    if type(c) == "table" and c.r then
+        return c.r, c.g, c.b
+    end
+    return 1, 1, 1
+end
+
+local function slotAtlas(q)
+    local ok, atlas = pcall(function()
+        return ColorManager and ColorManager.GetAtlasDataForLootBorderItemQuality and ColorManager.GetAtlasDataForLootBorderItemQuality(q)
+    end)
+    atlas = ok and atlas or (LOOT_BORDER_BY_QUALITY and LOOT_BORDER_BY_QUALITY[q])
+    return type(atlas) == "string" and atlas or ART.slotDefault
+end
+
+-- a part of LootToast cut out by its coordinates, the same way as the stone (CRT_Core/UI/Panel.lua)
+local artPiece = UI.LootToastPiece
+
+-- The roll frame's border as eight pieces around the panel: the corners keep their size, the edges
+-- stretch, so the art holds its shape on a panel wider and taller than the game's frame.
+local function rollBorder(p)
+    local b, c = ART.border, L.borderCorner
+    local cu, cv = c / ART.texW, c / ART.texH
+    local u0, u1, v0, v1 = b[1], b[2], b[3], b[4]
+    local pieces = {
+        { "TOPLEFT", { u0, u0 + cu, v0, v0 + cv } },
+        { "TOPRIGHT", { u1 - cu, u1, v0, v0 + cv } },
+        { "BOTTOMLEFT", { u0, u0 + cu, v1 - cv, v1 } },
+        { "BOTTOMRIGHT", { u1 - cu, u1, v1 - cv, v1 } },
+        { "TOP", { u0 + cu, u1 - cu, v0, v0 + cv } },
+        { "BOTTOM", { u0 + cu, u1 - cu, v1 - cv, v1 } },
+        { "LEFT", { u0, u0 + cu, v0 + cv, v1 - cv } },
+        { "RIGHT", { u1 - cu, u1, v0 + cv, v1 - cv } },
+    }
+    local out = {}
+    for i, piece in ipairs(pieces) do
+        local t = artPiece(p, "BORDER", piece[2])
+        local where = piece[1]
+        if i <= 4 then
+            t:SetSize(c, c)
+            t:SetPoint(where)
+        elseif where == "TOP" or where == "BOTTOM" then
+            t:SetHeight(c)
+            t:SetPoint(where .. "LEFT", c, 0)
+            t:SetPoint(where .. "RIGHT", -c, 0)
+        else
+            t:SetWidth(c)
+            t:SetPoint("TOP" .. where, 0, -c)
+            t:SetPoint("BOTTOM" .. where, 0, c)
+        end
+        out[i] = t
+    end
+    return out
+end
+
+-- The item slot and the name plate: the game's art in Default: Blizzard, flat parts in the theme's
+-- colours elsewhere. Built once per panel; paintArt switches them with the theme.
+local function itemArt(p)
+    p.slot = p:CreateTexture(nil, "OVERLAY")
+    p.slot:SetSize(L.slot, L.slot)
+    p.slot:SetPoint("CENTER", p.icon)
+    p.slotFlat = CreateFrame("Frame", nil, p, "BackdropTemplate")
+    p.slotFlat:SetPoint("TOPLEFT", p.icon, -1, 1)
+    p.slotFlat:SetPoint("BOTTOMRIGHT", p.icon, 1, -1)
+    p.slotFlat:SetBackdrop({ edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
+
+    local left = artPiece(p, "ARTWORK", ART.plateLeft)
+    left:SetSize(L.plateCap, L.plateH)
+    left:SetPoint("TOPLEFT", p.icon, "TOPRIGHT", L.plateGap, 0)
+    local right = artPiece(p, "ARTWORK", ART.plateRight)
+    right:SetSize(L.plateCap, L.plateH)
+    right:SetPoint("TOPRIGHT", -L.plateRight, -L.iconInset)
+    local mid = artPiece(p, "ARTWORK", ART.plateMid)
+    mid:SetPoint("TOPLEFT", left, "TOPRIGHT")
+    mid:SetPoint("BOTTOMRIGHT", right, "BOTTOMLEFT")
+    p.plate = { left, mid, right }
+    p.plateFlat = p:CreateTexture(nil, "ARTWORK")
+    p.plateFlat:SetPoint("TOPLEFT", left)
+    p.plateFlat:SetPoint("BOTTOMRIGHT", right)
+    UI.Tint(p.plateFlat, "SetColorTexture", "roast", 1)
+end
+
+local function paintArt(p, itemString)
+    local classic = not UI:IsModern()
+    local q = qualityOf(itemString)
+    local r, g, b = qualityColor(q)
+    for _, t in ipairs(p.rollBorder) do
+        t:SetShown(classic)
+        t:SetVertexColor(r, g, b) -- as the roll frame colours its border
+    end
+    for _, t in ipairs(p.plate) do
+        t:SetShown(classic)
+    end
+    p.slot:SetAtlas(slotAtlas(q))
+    p.slot:SetShown(classic)
+    p.stone:SetShown(classic)
+    local inset = classic and L.stoneInset or 1
+    if p.timerInset ~= inset then
+        p.timerInset = inset
+        p.timer:ClearAllPoints()
+        p.timer:SetPoint("TOPLEFT", inset, -inset)
+        p.timer:SetPoint("BOTTOMLEFT", inset, inset)
+    end
+    p.plateFlat:SetShown(not classic)
+    p.slotFlat:SetShown(not classic)
+    p.slotFlat:SetBackdropBorderColor(r, g, b, 1)
+    local bg, edge = colors()
+    -- Default: Blizzard: the stone and the border art take the flat fill's and edge's place
+    p:SetBackdropColor(bg[1], bg[2], bg[3], classic and 0 or 0.92)
+    p:SetBackdropBorderColor(edge[1], edge[2], edge[3], classic and 0 or 1)
 end
 
 -- A response button: a dark fill in the response's colour, its edge and text brighter, and its icon
@@ -197,11 +365,13 @@ local function panel(index)
         return p
     end
     p = CreateFrame("Frame", nil, anchor, "BackdropTemplate")
+    p:SetFrameLevel(chrome:GetFrameLevel() + 2) -- over the window frame
     p:SetSize(L.width, L.panelH)
     p:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
+    -- Default: Blizzard: the roll frame's stone, the timer lighter over it
+    p.stone = UI.Stone(p, "BACKGROUND", 0, L.stoneInset)
+    -- placed by paintArt: on the stone in Default: Blizzard, inside the 1 px edge elsewhere
     p.timer = p:CreateTexture(nil, "BACKGROUND", nil, 2)
-    p.timer:SetPoint("TOPLEFT", 1, -1)
-    p.timer:SetPoint("BOTTOMLEFT", 1, 1)
     p.timer:SetColorTexture(1, 1, 1, L.timerAlpha)
     p:EnableMouse(true)
     p:RegisterForDrag("LeftButton")
@@ -217,9 +387,11 @@ local function panel(index)
         end
     end)
 
+    p.rollBorder = rollBorder(p)
     p.icon = p:CreateTexture(nil, "ARTWORK")
     p.icon:SetSize(L.icon, L.icon)
-    p.icon:SetPoint("TOPLEFT", L.pad, -L.pad)
+    p.icon:SetPoint("TOPLEFT", L.iconInset, -L.iconInset)
+    itemArt(p)
     local hover = CreateFrame("Frame", nil, p)
     hover:SetAllPoints(p.icon)
     hover:SetScript("OnEnter", function(self)
@@ -231,31 +403,37 @@ local function panel(index)
         GameTooltip:Hide()
     end)
 
-    p.close = CreateFrame("Button", nil, p, "UIPanelCloseButton")
-    p.close:SetSize(20, 20)
-    p.close:SetPoint("TOPRIGHT", -2, -2)
+    -- the roll frame's X (its Pass button's art) in Default: Blizzard; the flat X elsewhere (SkinCloseButton)
+    p.close = CreateFrame("Button", nil, p)
+    p.close:SetNormalAtlas(ART.closeUp)
+    p.close:SetHighlightAtlas(ART.closeHighlight, "ADD")
+    p.close:SetPushedAtlas(ART.closeDown)
+    p.close:SetSize(L.close, L.close)
+    -- level with the name plate, inside the border
+    p.close:SetPoint("TOPRIGHT", -(L.plateRight - L.close) / 2, -(L.iconInset + (L.plateH - L.close) / 2))
     UI:SkinCloseButton(p.close)
     p.close:SetScript("OnClick", function()
         closePanel(p.index)
     end)
-    p.time = p:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    p.time:SetPoint("RIGHT", p.close, "LEFT", -4, 0)
-    p.time:SetTextColor(0.8, 0.8, 0.8)
+    -- the name in the plate; under it the detail line, the time left at its right end
     p.name = p:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
-    p.name:SetPoint("TOPLEFT", p.icon, "TOPRIGHT", 8, 0)
-    p.name:SetPoint("RIGHT", p.time, "LEFT", -8, 0)
+    p.name:SetPoint("LEFT", p.plate[1], "LEFT", L.namePad, 0)
+    p.name:SetPoint("RIGHT", p.plate[3], "RIGHT", -L.namePad, 0)
     p.name:SetJustifyH("LEFT")
     p.name:SetWordWrap(false)
+    p.time = p:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    p.time:SetPoint("TOPRIGHT", -L.pad - 4, -(L.iconInset + L.plateH + L.detailGap))
+    p.time:SetTextColor(0.8, 0.8, 0.8)
     p.detail = p:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    p.detail:SetPoint("TOPLEFT", p.name, "BOTTOMLEFT", 0, -4)
-    p.detail:SetPoint("RIGHT", -L.pad, 0)
+    p.detail:SetPoint("TOPLEFT", p.plate[1], "BOTTOMLEFT", 0, -L.detailGap)
+    p.detail:SetPoint("RIGHT", p.time, "LEFT", -8, 0)
     p.detail:SetJustifyH("LEFT")
     p.detail:SetWordWrap(false)
     p.detail:SetTextColor(0.75, 0.75, 0.75)
 
     p.buttons = {}
 
-    local rowY = -(L.pad + L.icon + 6 + L.button.h + 8)
+    local rowY = -(L.buttonsTop + L.button.h + 8)
     p.notesLabel = p:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     p.notesLabel:SetPoint("TOPLEFT", L.pad, rowY - 3)
     p.notesLabel:SetText(TEXT.notes)
@@ -302,7 +480,7 @@ local function setButtons(p, responses)
     end
     -- one row with a gap, a tighter gap, or more rows: never overlapping, never past the panel's edge
     local pos, rows = LM.ButtonLayout(widths, L.width - 2 * L.pad, L.button.gap, L.button.minGap)
-    local top = -(L.pad + L.icon + 6)
+    local top = -L.buttonsTop
     for k, b in ipairs(p.buttons) do
         b:SetPoint("TOPLEFT", L.pad + pos[k].x, top - (pos[k].row - 1) * (L.button.h + L.button.rowGap))
     end
@@ -316,9 +494,7 @@ end
 local function fill(p, index, it, mine, inc)
     p.index, p.itemString = index, it.itemString
     setButtons(p, inc.responses)
-    local bg, edge = colors()
-    p:SetBackdropColor(bg[1], bg[2], bg[3], 0.92)
-    p:SetBackdropBorderColor(edge[1], edge[2], edge[3], 1)
+    paintArt(p, it.itemString)
     p.icon:SetTexture(C_Item.GetItemIconByID(it.itemString or "") or 134400)
     p.name:SetText(itemText(it))
     -- the detail line reads your gear: worked out when the item changes, not on every timer tick
@@ -375,9 +551,27 @@ local function build()
         return
     end
     anchor = UI.Window("CowfeeRaidToolsLootPopup", { kind = "overlay", width = L.width, height = 40, saved = settings })
-    header = UI.TitleStrip(anchor, L.headerH)
-    header:SetPoint("TOPLEFT")
-    header:SetWidth(L.width)
+    -- Default: Blizzard: the whole popup sits in the main window's frame art (the window template, kept
+    -- as UI:StyleWindow keeps it), sized to what shows (refresh); the other themes hide it and keep their
+    -- flat strip. Its X is hidden: an item closes on its own X, the stack when every item is closed.
+    chrome = CreateFrame("Frame", nil, anchor, UI.WINDOW_DEFAULTS.template)
+    UI:StyleWindow(chrome)
+    chrome:SetPoint("TOPLEFT")
+    if chrome.CloseButton then
+        chrome.CloseButton:Hide()
+    end
+    chrome:EnableMouse(true)
+    chrome:RegisterForDrag("LeftButton")
+    chrome:SetScript("OnDragStart", function()
+        anchor:StartDrag()
+    end)
+    chrome:SetScript("OnDragStop", function()
+        anchor:StopDrag()
+    end)
+    -- framed: in Default: Blizzard the template draws the title tile and the title sits where it does
+    -- on the main window
+    header = UI.TitleStrip(anchor, L.headerH, { framed = true })
+    header:SetFrameLevel(chrome:GetFrameLevel() + 2)
     header:EnableMouse(true)
     header:RegisterForDrag("LeftButton")
     header:SetScript("OnDragStart", function()
@@ -395,7 +589,8 @@ local function build()
     header.answers:SetPoint("RIGHT", header.help, "LEFT", -6, 0)
     -- "N items you can't use were answered Transmog for you. Show": shown only when there are any
     autoLine = CreateFrame("Frame", nil, anchor, "BackdropTemplate")
-    autoLine:SetSize(L.width, L.autoH)
+    autoLine:SetFrameLevel(chrome:GetFrameLevel() + 2)
+    autoLine:SetHeight(L.autoH)
     autoLine:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8" })
     autoLine:SetBackdropColor(0, 0, 0, 0.75)
     autoLine.text = autoLine:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
@@ -416,7 +611,7 @@ local function build()
         for _, p in pairs(panels) do
             if p:IsShown() and inc.items[p.index] then
                 local left = timeLeft(inc.items[p.index], inc)
-                p.timer:SetWidth(math.max(0.01, (L.width - 2) * math.max(0, left) / (inc.seconds or 60)))
+                p.timer:SetWidth(math.max(0.01, (L.width - 2 * (p.timerInset or 1)) * math.max(0, left) / (inc.seconds or 60)))
             end
         end
         elapsed = elapsed + dt
@@ -445,6 +640,15 @@ local function refresh()
     end
     local open = openItems(inc)
     local shown = {}
+    local classic = not UI:IsModern()
+    -- Default: Blizzard: one window frame around everything, the title bar inside its border as on
+    -- UI.Window and the auto line and items inside its inset; the other themes: flat, full width
+    local x = classic and L.insetLeft or 0
+    local outerW = L.width + (classic and (L.insetLeft + L.insetRight) or 0)
+    anchor:SetWidth(outerW)
+    header:ClearAllPoints()
+    header:SetPoint("TOPLEFT", classic and 1 or 0, classic and -1 or 0)
+    header:SetSize(outerW - (classic and 2 or 0), L.headerH - (classic and 2 or 0))
     local y = L.headerH + L.gap -- panels can be taller when their buttons wrap, so they stack by height
     local auto, autoKey = 0, nil
     for _, mine in pairs(inc.mine) do
@@ -457,14 +661,15 @@ local function refresh()
         local r = LM.ResponseOf(inc.byKey, autoKey)
         autoLine.text:SetText(string.format(auto == 1 and TEXT.autoOne or TEXT.autoMany, auto, r and r.label or "Transmog"))
         autoLine:ClearAllPoints()
-        autoLine:SetPoint("TOPLEFT", 0, -y)
+        autoLine:SetPoint("TOPLEFT", x, -y)
+        autoLine:SetWidth(L.width)
         y = y + L.autoH + L.gap
     end
     for _, index in ipairs(open) do
         local p = panel(index)
         fill(p, index, inc.items[index], inc.mine[index], inc)
         p:ClearAllPoints()
-        p:SetPoint("TOPLEFT", 0, -y)
+        p:SetPoint("TOPLEFT", x, -y)
         y = y + p:GetHeight() + L.gap
         p.time:SetText(string.format(TEXT.timeLeft, math.ceil(timeLeft(inc.items[index], inc))))
         p:Show()
@@ -475,7 +680,11 @@ local function refresh()
             p:Hide()
         end
     end
-    anchor:SetHeight(math.max(y, L.headerH + L.gap + L.panelH))
+    -- the frame ends just under the last thing shown, so it grows and shrinks with the items
+    local outerH = y - L.gap + (classic and L.frameBottom or 0)
+    chrome:SetShown(classic)
+    chrome:SetSize(outerW, outerH)
+    anchor:SetHeight(outerH)
     if #open == 0 then
         anchor:Hide()
     end

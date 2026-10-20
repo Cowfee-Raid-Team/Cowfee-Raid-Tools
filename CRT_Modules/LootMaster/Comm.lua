@@ -1045,7 +1045,8 @@ HANDLERS.B = function(f, sender)
         local index = tonumber(e[1])
         if index and index <= LM.MAX_RESPONSES and e[2] and e[2] ~= "" and not inc.responses[index] then
             local r = { key = e[2], color = Wire.ParseColor(e[3]), weight = tonumber(e[4]) or 0,
-                icon = e[5] ~= "" and e[5] or nil, label = e[6] or e[2] }
+                -- a looter on an older version may send longer labels: cut to what the popup lays out
+                icon = e[5] ~= "" and e[5] or nil, label = LM.CutLetters(e[6] or e[2], LM.LABEL_MAX) }
             inc.responses[index] = r
             inc.byKey[r.key] = r
         end

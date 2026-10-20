@@ -111,11 +111,11 @@ eq(#outbox, 0, "old client: nothing answered")
 
 assert(load(syncSrc, "Sync.lua"))("CowfeeRaidTools", CRT)
 
--- the leader's settings: 8 buttons with long labels, a long award message in a multibyte script, every other synced field changed
+-- the leader's settings: 8 buttons with the longest labels (12 letters, in a multibyte script), a long award message in a multibyte script, every other synced field changed
 be("Solex")
 local S = DB.Solex
 S.responses = {}
-for i = 1, 7 do S.responses[i] = { key = "k" .. i, label = string.rep("Lbl" .. i, 4), color = { 0.1 * i, 0.5, 1 }, weight = 100 - i * 10, icon = i == 1 and "need" or nil } end
+for i = 1, 7 do S.responses[i] = { key = "k" .. i, label = string.rep("\\208\\159", 11) .. i, color = { 0.1 * i, 0.5, 1 }, weight = 100 - i * 10, icon = i == 1 and "need" or nil } end
 S.responses[8] = { key = "pass", label = "Transmog", color = { 0.5, 0.5, 0.5 }, weight = 0 }
 S.responseSeconds = 95
 S.awardMessage = string.rep("\\208\\159", 150) .. " %i to %p, %r; %v"
@@ -172,7 +172,7 @@ local scoreBefore = scoreChanged
 deliver(box, "Solex-Sargeras")
 local H = DB.Halo
 eq(#H.responses, 8, "round trip: 8 buttons")
-eq(H.responses[1].label, ("Lbl1"):rep(4), "round trip: a 16 letter label")
+eq(H.responses[1].label, string.rep("\\208\\159", 11) .. "1", "round trip: a 12 letter label in another script, whole")
 eq(H.responses[1].icon, "need", "round trip: the icon")
 eq(H.responses[3].weight, 70, "round trip: weights")
 eq(string.format("%.1f", H.responses[2].color[1]), "0.2", "round trip: colours")
@@ -289,7 +289,7 @@ eq(H.score.weeks, 1, "clean: weeks at least 1")
 eq(H.awardMessage, LM.AWARD_DEFAULT, "clean: no award message is the default")
 eq(H.responses[1].weight, 100, "clean: weight at most 100")
 eq(H.responses[1].icon, nil, "clean: an unknown icon is dropped")
-eq(#H.responses[1].label, LM.LABEL_MAX, "clean: label cut to 16")
+eq(#H.responses[1].label, LM.LABEL_MAX, "clean: label cut to 12")
 eq(H.responses[2].key, "x", "clean: a repeated key is dropped")
 eq(H.responses[#H.responses].key, "pass", "clean: Pass added last")
 eq(#H.authority.names, LM.AUTHORITY_MAX, "clean: at most 6 names, a repeat dropped")
