@@ -132,7 +132,27 @@ function CRT:Print(m) print("  [print] " .. tostring(m)) end
 assert(load(dataSrc, "Data.lua"))("CowfeeRaidTools", CRT)
 local Debuffs = CRT.Debuffs
 
--- Defaults.
+-- Defaults. New players get the big number on the icon and the thick frame.
+check("default timer is on the icon (center)", defaults.timerPosition == "center", defaults.timerPosition)
+check("default border size is 2 (a 5 px frame on each side)", defaults.borderScale == 2, defaults.borderScale)
+check("the unused dispelBorder default stays, since saved data only grows", defaults.dispelBorder == false)
+-- Loading saved data fills only what is missing: a player's saved timer and border stay as they are.
+local coreEvents
+for _, f in ipairs(frames) do if rawget(f, "OnEvent") then coreEvents = f end end
+local savedDb = CRT.db
+CRT.Profiles = { Load = function() end }
+CRT.ResolveTheme = function(_, ui) return ui and ui.theme end
+CRT.UseTheme = function() end
+CRT.ApplyFonts = function() end
+CRTDB = { debuffs = { timerPosition = "below", borderScale = 1 } }
+coreEvents.OnEvent(coreEvents, "ADDON_LOADED", "CowfeeRaidTools")
+check("a saved timer position is kept", CRTDB.debuffs.timerPosition == "below", CRTDB.debuffs.timerPosition)
+check("a saved border size is kept", CRTDB.debuffs.borderScale == 1, CRTDB.debuffs.borderScale)
+check("a missing setting gets its default", CRTDB.debuffs.spacing == 4 and CRTDB.debuffs.size == 44)
+CRTDB = { debuffs = {} }
+coreEvents.OnEvent(coreEvents, "ADDON_LOADED", "CowfeeRaidTools")
+check("a new player starts with the timer on the icon and border size 2", CRTDB.debuffs.timerPosition == "center" and CRTDB.debuffs.borderScale == 2)
+CRT.db, CRTDB = savedDb, nil
 check("default dispel icon scale is 0.35", defaults.dispelIconScale == 0.35, defaults.dispelIconScale)
 check("default dispel glow is off", defaults.dispelGlow == false, tostring(defaults.dispelGlow))
 CRT.db.debuffs.dispelIconScale = nil
