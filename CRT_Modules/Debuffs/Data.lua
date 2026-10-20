@@ -1,6 +1,6 @@
 local ADDON, CRT = ...
 
--- Settings for the in-combat debuff panel, saved per player in CRTDB.debuffs:
+-- Settings for the debuff panel (shown in and out of combat while enabled), saved per player in CRTDB.debuffs:
 --   enabled, size (icon size), maxCount (how many at once), dispelIcon, maxDuration (seconds; debuffs
 --   longer than this are left out, 0 shows every length) and privateSlots (the game's boss debuff
 --   slots as a second row, a fallback).
@@ -99,7 +99,8 @@ function Debuffs:SetDispelIconScale(scale)
 end
 
 -- Debuffs longer than this many seconds are left out (the container's candidate filter maxDuration),
--- so long ones such as a lockout don't fill the panel. 0 shows every length.
+-- so long ones such as a lockout don't fill the panel. The game keeps one exactly this long and leaves
+-- out permanent ones (duration 0) whenever a limit is set. 0 passes no limit and shows every length.
 function Debuffs:MaxDuration()
     return tonumber(ddb().maxDuration) or 0
 end

@@ -342,6 +342,63 @@ CRT.db.debuffs.borderScale, CRT.db.debuffs.spacing = 1, 4
 Debuffs:Fire()
 check("the group's spacing is the step less the icon", groupOpts.layout.elementSpacing == 5 + 4, groupOpts.layout.elementSpacing)
 
+-- Where the panel shows: everywhere, in and out of combat, hidden only by the settings. The game's
+-- candidate filter rule for the fields the panel uses, as in Blizzard_AuraContainerUtil.lua
+-- (DoesAuraPassCandidateFilters): a duration above maxDuration, or a permanent one (0), is left out
+-- when maxDuration is set.
+local function passes(filters, aura)
+  if filters.isFromPlayerOrPlayerPet ~= nil and aura.isFromPlayerOrPlayerPet ~= filters.isFromPlayerOrPlayerPet then return false end
+  if filters.maxDuration ~= nil and (aura.duration > filters.maxDuration or aura.duration == 0) then return false end
+  return true
+end
+local containerFrame
+for _, f in ipairs(frames) do if f.kind == "AuraContainer" then containerFrame = f end end
+IsInRaid = function() return false end
+IsInGroup = function() return false end
+IsInInstance = function() return false, "none" end
+local function tick() panelFrame.OnUpdate(panelFrame, 0.01) end
+local function realRowShown() return panelFrame:GetAlpha() == 1 and containerFrame:GetAlpha() == 1 end
+CRT.db.debuffs.maxDuration = defaults.maxDuration
+local minute = { duration = 60, isFromPlayerOrPlayerPet = false }
+tick()
+check("a 60 s debuff passes the default filters", passes(Debuffs:CandidateFilters(), minute))
+check("out of combat, solo in the open world, the panel shows its debuffs", realRowShown(), panelFrame:GetAlpha())
+events.OnEvent(events, "PLAYER_REGEN_DISABLED") tick()
+check("in combat the panel shows", realRowShown(), panelFrame:GetAlpha())
+events.OnEvent(events, "PLAYER_REGEN_ENABLED") tick()
+check("after combat the panel still shows", realRowShown(), panelFrame:GetAlpha())
+IsInRaid = function() return true end
+IsInInstance = function() return true, "raid" end
+tick()
+check("in a raid the panel shows", realRowShown(), panelFrame:GetAlpha())
+IsInRaid = function() return false end
+IsInInstance = function() return false, "none" end
+Debuffs:SetEnabled(false) tick()
+check("turned off, the panel is hidden", panelFrame:GetAlpha() == 0, panelFrame:GetAlpha())
+Debuffs:SetEnabled(true) tick()
+check("turned on again, it shows", realRowShown(), panelFrame:GetAlpha())
+check("a debuff you cast is left out", not passes(Debuffs:CandidateFilters(), { duration = 10, isFromPlayerOrPlayerPet = true }))
+
+-- The time filter at its edge.
+Debuffs:SetMaxDuration(60)
+local f60 = Debuffs:CandidateFilters()
+check("limit 60: a 60 s debuff shows", passes(f60, { duration = 60, isFromPlayerOrPlayerPet = false }))
+check("limit 60: a 60.0 s debuff shows", passes(f60, { duration = 60.0, isFromPlayerOrPlayerPet = false }))
+check("limit 60: a 59.9 s debuff shows", passes(f60, { duration = 59.9, isFromPlayerOrPlayerPet = false }))
+check("limit 60: a 60.5 s debuff is hidden", not passes(f60, { duration = 60.5, isFromPlayerOrPlayerPet = false }))
+check("limit 60: a permanent debuff is hidden", not passes(f60, { duration = 0, isFromPlayerOrPlayerPet = false }))
+Debuffs:SetMaxDuration(30)
+check("limit 30: the 60 s debuff is hidden", not passes(Debuffs:CandidateFilters(), minute))
+check("limit 30: a 20 s debuff shows", passes(Debuffs:CandidateFilters(), { duration = 20, isFromPlayerOrPlayerPet = false }))
+Debuffs:SetMaxDuration(60.7)
+check("a limit with decimals is whole seconds", Debuffs:MaxDuration() == 60, Debuffs:MaxDuration())
+Debuffs:SetMaxDuration(0)
+local fOff = Debuffs:CandidateFilters()
+check("limit Off: no duration filter is passed", fOff.maxDuration == nil, tostring(fOff.maxDuration))
+check("limit Off: a 10 min debuff shows", passes(fOff, { duration = 600, isFromPlayerOrPlayerPet = false }))
+check("limit Off: a permanent debuff shows", passes(fOff, { duration = 0, isFromPlayerOrPlayerPet = false }))
+Debuffs:SetMaxDuration(defaults.maxDuration)
+
 -- The preview tiles color their border only where the sample's type is known.
 Debuffs:SetDispelBorder(true)
 Debuffs:SetMaxCount(8)
@@ -408,6 +465,13 @@ check("dispel icon size shows a percent", ds and ds.opts.format(35) == "35%")
 -- the duration shows minutes, so a typed number is minutes too
 local du = sliders["Hide debuffs longer than"]
 check("duration typed in minutes", du and du.opts.toDisplay and du.opts.toDisplay(300) == 5 and du.opts.fromDisplay(4.5) == 270)
+check("the duration's (?) says what happens to debuffs with no end time", helps["Hide debuffs longer than"] ~= nil and helps["Hide debuffs longer than"]:find("no end time") ~= nil)
+local onBox
+for _, f in ipairs(frames) do
+  local l = rawget(f, "label")
+  if f.kind == "CheckButton" and l and rawget(l, "text") == "Show the debuff panel" then onBox = f end
+end
+check("the on box reads Show the debuff panel, not in combat only", onBox ~= nil)
 check("other sliders type what they show", ds and ds.opts.toDisplay == nil and sliders["Spacing"] and sliders["Spacing"].opts.toDisplay == nil)
 local sp = sliders["Spacing"]
 check("spacing slider is 0 to 20", sp and sp.opts.min == 0 and sp.opts.max == 20)
