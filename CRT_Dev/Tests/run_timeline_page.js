@@ -67,6 +67,16 @@ local CRT = { db = { timeline = { record = true, minPull = 15, keep = 10, bosses
   MOCHA = { espresso = { 0.1, 0.1, 0.1 }, edge = { 0.3, 0.3, 0.3 }, caramel = { 0.78, 0.56, 0.36 }, latte = { 0.87, 0.73, 0.56 }, cream = { 0.95, 0.9, 0.84 } },
 }
 function CRT:Print(m) printed[#printed+1] = m end
+-- the shared window helper (CRT_Core/UI/Window.lua): records what it was asked for; like it, puts the frame on its layer
+windowsMade = {}
+function CRT.UI.Window(name, o)
+  local w = mock("window") w.content = mock() w.placed = 0
+  rawset(w, "Place", function(self) self.placed = self.placed + 1 end)
+  rawset(w, "SetBackdropColor", function(self) self.flatPainted = true end)
+  windowsMade[#windowsMade + 1] = { name = name, opts = o, frame = w }
+  CRT.UI:RegisterLayer(o.layer or "popups", w)
+  return w
+end
 local customAdded = {}
 journalHidden = {}
 CRT.TimelineJournal = { ResolveID = function(_, k, r) if type(k) == "number" then return k end if r and type(r.encounterID) == "number" then return r.encounterID end end, Rows = function() return rowsList end, AddCustom = function(_, e, s) customAdded[#customAdded+1] = s end,
@@ -879,6 +889,29 @@ do
   diffDD.opts.set("nh")
 end
 print("ok closing a Show on the Timeline goes back")
+do
+  -- the pop-out is a UI.Window pop-out, so it has the game's window art in Default: Blizzard and the theme in
+  -- the Modern themes (UI:StyleWindow restyles it on a theme change), never a flat black box of its own
+  local made
+  for _, m in ipairs(windowsMade) do if m.name == "CowfeeRaidToolsTimelineWindow" then assert(not made, "the pop-out is made once") made = m end end
+  assert(made, "the pop-out is made by UI.Window, keeping its global name")
+  local o = made.opts
+  assert(o.kind == "popout" and o.layer == "timeline" and o.title == "Timeline", "pop-out: kind popout, the timeline layer, its title")
+  assert(o.minWidth == 760 and o.minHeight == 360 and o.width == 1200 and o.height == 600, "pop-out: MIN_W and MIN_H kept, 1200 x 600 by default")
+  assert(type(o.saved) == "function" and o.saved() == CRT.db.timeline.popout, "pop-out: its place and size stay in timeline.popout")
+  assert(o.escape ~= false, "pop-out: Escape closes it")
+  local w = made.frame
+  assert(popFrame == w, "pop-out: on the timeline layer")
+  assert(not rawget(w, "flatPainted"),"pop-out: no backdrop colours of its own (the old flat black look)")
+  local before = w.placed
+  CRT.TimelinePopout()
+  assert(w.placed == before + 1, "pop-out: put at its saved place each time it opens")
+  assert(reparented and reparented.parent == w.content, "pop-out: the Review tab moves into the window's content")
+  w:Hide() w.OnHide()
+  assert(reparented.parent ~= w.content, "pop-out: closing puts the Review tab back")
+  diffDD.opts.set("nh")
+end
+print("ok the pop-out is a UI.Window")
 
 -- Rehearse (Task 4) ------------------------------------------------------------------------------------
 local RW, Run = CRT.TimelineRehearsalWindow, CRT.TimelineRehearsalRun
