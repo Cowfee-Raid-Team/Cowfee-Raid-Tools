@@ -434,6 +434,7 @@ local function responseRow(f, i)
         end
     end)
     r.label:SetPoint("LEFT", r.swatch, "RIGHT", 10, 0)
+    -- 12 letters (LM.LABEL_MAX), so all 8 buttons fit on the raider popup in two rows
     r.label:SetMaxLetters(LM.LABEL_MAX)
     r.weight = editBox(r, L.weight, function(text)
         if r.key and tonumber(text) then

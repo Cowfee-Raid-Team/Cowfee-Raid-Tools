@@ -34,7 +34,9 @@ LM.RESTORE_HOURS = 3 -- a saved session older than this is not restored after a 
 LM.BOSS_SECONDS = 600 -- a session started this soon after a boss kill shows the boss's name
 LM.MAX_ITEMS = 8
 LM.MAX_RESPONSES = 8
-LM.LABEL_MAX = 16 -- letters in a button's label
+-- Letters in a button's label: 8 answers of 12 letters, each with an icon, fit on the raider popup in two
+-- rows (Popup.lua). A longer label, saved or received, is cut by CleanResponses.
+LM.LABEL_MAX = 12
 LM.WEIGHT_MAX = 100
 
 -- The icons a response button can show: Blizzard's group loot icons, each seen in game with
@@ -165,6 +167,24 @@ local function copyResponse(r)
     }
 end
 
+-- The first n letters of a text, counted as the label box counts them (SetMaxLetters): a letter in
+-- another script takes several bytes and is never cut in half.
+function LM.CutLetters(text, n)
+    text = tostring(text)
+    local count = 0
+    for i = 1, #text do
+        local b = text:byte(i)
+        -- a byte that starts a letter: plain ASCII, or the lead byte of a longer one
+        if b < 128 or b >= 192 then
+            count = count + 1
+            if count > n then
+                return text:sub(1, i - 1)
+            end
+        end
+    end
+    return text
+end
+
 -- A response set made safe: known fields only, at most MAX_RESPONSES, one Pass, last, weighing 0.
 function LM.CleanResponses(list)
     local out, seen, pass = {}, {}, nil
@@ -172,7 +192,7 @@ function LM.CleanResponses(list)
         if type(r) == "table" and type(r.key) == "string" and r.key ~= "" and not seen[r.key] then
             seen[r.key] = true
             local c = copyResponse(r)
-            c.label = tostring(c.label or c.key):sub(1, LM.LABEL_MAX)
+            c.label = LM.CutLetters(c.label or c.key, LM.LABEL_MAX)
             c.weight = math.max(0, math.min(LM.WEIGHT_MAX, math.floor(tonumber(c.weight) or 0)))
             local ic = LM.Icon(c.icon) -- only known icons; an old typed path or name is matched or dropped
             c.icon = ic and ic.key or nil
