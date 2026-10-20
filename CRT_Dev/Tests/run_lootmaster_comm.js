@@ -363,6 +363,20 @@ eq(sb and sb.boss, nil, "boss: a kill dated in the future is ignored")
 LM:End()
 deliver("Solex-Sargeras")
 LM.incoming = nil
+
+-- a looter on an older version (16-letter labels) sends a long label: the raider cuts it to 12
+GROUP = { names = { "Solex-Sargeras", "Halo-Sargeras" }, leader = "Solex-Sargeras" }
+outbox = {}
+CRT.db.lootmaster.responses = { { key = "long", label = "Sixteen letters!", color = { 1, 1, 1 }, weight = 50 }, { key = "pass", label = "Pass", color = { 0.5, 0.5, 0.5 }, weight = 0 } }
+LM.LABEL_MAX = 16
+LM:Start({ { itemString = "item:111" } }, true)
+LM.LABEL_MAX = 12
+deliver("Solex-Sargeras")
+eq(LM.incoming and LM.incoming.byKey.long and LM.incoming.byKey.long.label, "Sixteen lett", "an older looter's long label is cut to 12")
+LM:End()
+deliver("Solex-Sargeras")
+CRT.db.lootmaster.responses = nil
+LM.incoming = nil
 GROUP = nil
 outbox = {}
 
