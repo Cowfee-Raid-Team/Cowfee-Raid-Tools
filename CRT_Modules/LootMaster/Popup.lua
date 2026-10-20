@@ -56,10 +56,10 @@ local L = {
 -- atlas per item quality (Blizzard_Colors ColorConstants.lua LOOT_BORDER_BY_QUALITY). Shown in Default:
 -- Blizzard only; the other themes draw the panel flat in their own colours.
 local ART = {
-    file = UI.STONE.file, -- LootToast, 1024 by 256; every piece is cut by UI.LootToastPiece
+    file = UI.LOOT_TOAST, -- LootToast, 1024 by 256; every piece is cut by UI.LootToastPiece
     texW = 1024,
     texH = 256,
-    -- (its stone background is the shared UI.Stone)
+    -- (its stone background is the shared UI.Stone, the tiled marble)
     border = { 0.00097656, 0.28027344, 0.43750000, 0.73437500 }, -- GroupLootFrameTemplate's Border
     -- the roll frame's X: its PassButton (LootRollButtonTemplate, 32 by 32)
     closeUp = "lootroll-toast-icon-pass-up",
