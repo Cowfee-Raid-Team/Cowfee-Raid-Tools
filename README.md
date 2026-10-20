@@ -15,7 +15,7 @@
 Cowfee Raid Tools is a World of Warcraft addon for raid leaders, officers and raiders. Type `/crt` to open one panel with a page for each tool.
 
 > [!NOTE]
-> **Beta.** Raid Groups has been used in its author's raids. The other pages (Ready Check, Debuffs, Raid Notes, Late Tracker, Tattlebot, Timeline) are new and have not been tested in a live raid yet. Applying a layout moves real players, so try it on a small group first, and please report anything odd.
+> **Beta.** MasterLooter is in Beta Testing to get confirmation of logic.
 
 ## Contents
 
