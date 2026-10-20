@@ -1,6 +1,7 @@
 // CRT_Core/UI/Panel.lua's UI:SkinCheckButton: the Modern checkbox (a walnut box with a white tick when
 // ticked, roast with a mocha edge when not) over a UICheckButtonTemplate stand-in, the look switch,
-// SkinTree finding checkboxes on a page and in a window, and CRT.MOCHA's walnut colours from Core.lua.
+// SkinTree finding checkboxes on a page and in a window, and CRT.MOCHA's walnut colours (Themes.lua, in
+// Beanworks: Cowfee).
 // Usage: node run_checkbox.js <addon folder>
 const fs = require('fs');
 const path = require('path');
@@ -92,7 +93,8 @@ hooksecurefunc = function(t, name, hook)
 end
 
 local CRT = { db = { ui = { modern = false, layers = {} } } }
-assert(load(mochaSrc, "Core.lua (CRT.MOCHA)"))(CRT)
+assert(load(mochaSrc, "Themes.lua"))("CowfeeRaidTools", CRT)
+CRT:UseTheme("cowfee")
 assert(load(panelSrc, "Panel.lua"))("CowfeeRaidTools", CRT)
 assert(load(controlsSrc, "Controls.lua"))("CowfeeRaidTools", CRT)
 local UI = CRT.UI
@@ -141,7 +143,7 @@ check(s.size == 16 and s.radius == 4, "a 16 px box with 4 px corners")
 -- SetChecked from a page's refresh: walnut, a dark edge, the top highlight and a white tick.
 cb:SetChecked(true)
 check(near(s.box.face.fills[1].rgb, M.walnut), "ticked: a walnut fill")
-check(near(s.box.edge.fills[1].rgb, M.walnutEdge), "ticked: a dark walnut edge")
+check(near(s.box.edge.fills[1].rgb, M.checkEdge) and near(M.checkEdge, M.walnutEdge), "ticked: a dark walnut edge (MOCHA.checkEdge)")
 check(s.shine.shown and near(s.shine.rgb, M.walnutShine), "ticked: a soft highlight inside the top edge")
 check(s.tick.shown and near(s.tick.rgb, M.tick), "ticked: a MOCHA.tick (white) tick")
 check(type(s.tick.file) == "string" and s.tick.file:find("CRT_Media\\\\Media\\\\Check$") ~= nil, "the tick is CRT_Media/Media/Check.tga: " .. tostring(s.tick.file))
@@ -167,7 +169,7 @@ cb:SetChecked(true)
 cb:SetEnabled(false)
 check(s.box.face.fills[1].a == 0.4 and s.tick.a == 0.4, "disabled: the box and tick at 40%")
 cb.scripts.OnEnter(cb)
-check(near(s.box.edge.fills[1].rgb, M.walnutEdge), "hover on a disabled box leaves its edge alone")
+check(near(s.box.edge.fills[1].rgb, M.checkEdge), "hover on a disabled box leaves its edge alone")
 cb.scripts.OnLeave(cb)
 cb:Click()
 check(cb:GetChecked() == true, "a disabled box ignores clicks")
@@ -229,12 +231,8 @@ if fails > 0 then error(fails .. " checkbox checks failed") end
 `;
 const root = process.argv[2];
 const read = (p) => fs.readFileSync(path.join(root, p), 'utf8');
-// CRT.MOCHA's table from Core.lua, run on its own (the rest of Core.lua needs the game)
-const core = read('CRT_Core/Core.lua');
-const mocha = core.match(/CRT\.MOCHA = \{[\s\S]*?\n\}/);
-if (!mocha) { console.error('LUA ERROR: CRT.MOCHA not found in Core.lua'); process.exit(1); }
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 lua.lua_pushstring(L, to_luastring(read('CRT_Core/UI/Panel.lua')));
 lua.lua_pushstring(L, to_luastring(read('CRT_Core/UI/Controls.lua')));
-lua.lua_pushstring(L, to_luastring('local CRT = ...\n' + mocha[0]));
+lua.lua_pushstring(L, to_luastring(read('CRT_Core/Themes.lua')));
 if (lua.lua_pcall(L, 3, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }

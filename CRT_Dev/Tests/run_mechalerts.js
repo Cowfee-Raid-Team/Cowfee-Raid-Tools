@@ -106,7 +106,7 @@ local CRT = {
 function CRT:Print(m) printed[#printed + 1] = m end
 CRT.MOCHA = { espresso = { 0.11, 0.078, 0.063 }, roast = { 0.165, 0.122, 0.098 }, edge = { 0.3, 0.235, 0.188 },
   mocha = { 0.44, 0.31, 0.22 }, caramel = { 0.78, 0.56, 0.36 }, latte = { 0.87, 0.73, 0.56 }, cream = { 0.95, 0.9, 0.84 } }
-CRT.UI = { PAGE_W = 1026, PAGE_H = 560,
+CRT.UI = { Tint = function(r, m, k, a) local c = CRT.MOCHA[k] r[m](r, c[1], c[2], c[3], a or 1) end, OnTheme = function() end, PAGE_W = 1026, PAGE_H = 560,
   IsModern = function() return true end,
   RegisterTab = function() end, SetTabSelected = function() end, RegisterPage = function() end,
   Show = function() end, SetFrameTitle = function() end, RegisterLayer = function() end, RegisterPreview = function() end,

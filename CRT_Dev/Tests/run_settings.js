@@ -1,11 +1,11 @@
-// Loads CRT_Core/Core.lua, CRT_Core/UI/Panel.lua, CRT_Core/UI/Controls.lua (stubbed templates), CRT_Core/UI/SettingsPage.lua and
+// Loads CRT_Core/Core.lua, CRT_Core/Themes.lua, CRT_Core/UI/Panel.lua, CRT_Core/UI/Controls.lua (stubbed templates), CRT_Core/UI/SettingsPage.lua and
 // CRT_Modules/Notes/Alert.lua on mock frames, then changes fonts, layers and style, and lays the alert out on
 // each side.
 const fs = require('fs');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
 const harness = `
-local coreSrc, panelSrc, controlsSrc, pageSrc, alertSrc, profilesSrc = ...
+local coreSrc, panelSrc, controlsSrc, pageSrc, alertSrc, profilesSrc, themesSrc = ...
 -- FAIL lines are counted, and the count printed last, so a failure shows past the runner's tail
 local failCount, rawPrint = 0, print
 print = function(s, ...) if type(s) == "string" and s:find("^FAIL ") then failCount = failCount + 1 end rawPrint(s, ...) end
@@ -72,12 +72,27 @@ LibStub = { GetLibrary = function(_, name) if name == "LibSharedMedia-3.0" then 
 function CreateFont(name) local o = fontObject() fontObjects[name] = o _G[name] = o return o end
 local CRT = {}
 assert(load(coreSrc, "CRT_Core/Core.lua"))("CowfeeRaidTools", CRT)
+assert(load(themesSrc, "CRT_Core/Themes.lua"))("CowfeeRaidTools", CRT)
 assert(load(profilesSrc, "CRT_Core/Profiles.lua"))("CowfeeRaidTools", CRT)
 -- the shipped textures' folder, set once in Core.lua
 if CRT.MEDIA == "Interface\\\\AddOns\\\\CowfeeRaidTools\\\\CRT_Media\\\\Media\\\\" then print("ok CRT.MEDIA") else print("FAIL CRT.MEDIA: " .. tostring(CRT.MEDIA)) end
--- ADDON_LOADED.
-CRTDB = nil
+-- ADDON_LOADED, with data saved before themes: the Modern look on and no theme loads as Beanworks: Cowfee.
+CRTDB = { ui = { modern = true } }
 for _, f in ipairs(frames) do if rawget(f, "OnEvent") then f.OnEvent(f, "ADDON_LOADED", "CowfeeRaidTools") end end
+do
+  local ui, want, same = CRT.db.ui, CRT.THEMES.cowfee, true
+  for _, k in ipairs(CRT.THEME_KEYS) do
+    local a, b = CRT.MOCHA[k], want[k]
+    if math.abs(a[1] - b[1]) > 0.001 or math.abs(a[2] - b[2]) > 0.001 or math.abs(a[3] - b[3]) > 0.001 then same = false end
+  end
+  if ui.theme == "cowfee" and ui.modern == true and same then print("ok old Modern data loads as cowfee, CRT.MOCHA its palette")
+  else print("FAIL old Modern data: theme " .. tostring(ui.theme) .. ", modern " .. tostring(ui.modern) .. ", palette " .. tostring(same)) end
+end
+-- the rest starts from a fresh install in Classic
+CRT.db.ui.theme, CRT.db.ui.modern = "blizzard", false
+CRT:UseTheme("blizzard")
+CRT:ApplyFonts()
+if CRT.db.ui.theme ~= "blizzard" then print("FAIL back to Classic") end
 local function fontLine(name) local o = fontObjects[name] return name .. " " .. o.path .. " " .. o.size .. " '" .. o.flags .. "'" end
 print("loaded: " .. fontLine("CRTFontNormal") .. ", ui.font " .. CRT.db.ui.font)
 CRT.db.ui.font = "Arial Narrow" CRT.db.ui.outline = "OUTLINE" CRT.db.ui.textSize = 125 CRT:ApplyFonts()
@@ -125,29 +140,43 @@ if not f.art[1].shown or f.flatBg.shown or UI:IsModern() then print("FAIL a save
 if UI.IsFlat then print("FAIL UI:IsFlat is gone: only Classic and Modern are left") end
 print("old minimal 50%: art shown " .. tostring(f.art[1].shown) .. ", art alpha " .. tostring(f.art[1].alpha) .. ", flat shown " .. tostring(f.flatBg.shown))
 
--- The look toggle in the title bar: a header button whose label shows the look; a click switches it
--- live, fonts and all, as the old checkbox did.
+-- The theme button in the title bar: a header button whose label is the theme; a click opens the theme
+-- menu (UI.ContextMenu, from Window.lua, stood in for here) and a pick switches it live, fonts and all.
 do
   local lb = UI.lookButton
+  local menu
+  UI.ContextMenu = function(owner, fill, anchor)
+    local root = { radios = {} }
+    function root:CreateRadio(text, isSelected, setSelected) self.radios[#self.radios + 1] = { text = text, pick = setSelected } end
+    fill(root)
+    menu = { owner = owner, root = root, anchor = anchor }
+  end
+  local function pick(name)
+    menu = nil
+    lb.OnClick(lb)
+    for _, r in ipairs(menu and menu.root.radios or {}) do if r.text == name then r.pick() return end end
+    print("FAIL the theme menu has no " .. name)
+  end
   if not lb then
-    print("FAIL no look toggle in the title bar")
+    print("FAIL no theme button in the title bar")
   else
-    if not headerMade[lb] then print("FAIL the look toggle is not a UI.HeaderButton") end
-    if lb.text ~= "UI: Classic" then print("FAIL toggle label in Classic: " .. tostring(lb.text)) end
+    if not headerMade[lb] then print("FAIL the theme button is not a UI.HeaderButton") end
+    if lb.text ~= "Default: Blizzard" then print("FAIL theme label in Classic: " .. tostring(lb.text)) end
     local before = fontObjects.CRTFontNormal.path
-    lb.OnClick(lb)
-    if not CRT.db.ui.modern then print("FAIL a click turns Modern on") end
-    if lb.text ~= "UI: Modern" then print("FAIL toggle label in Modern: " .. tostring(lb.text)) end
-    if not f.titleLine.shown or f.art[1].shown then print("FAIL a click applies the Modern look at once") end
-    if fontObjects.CRTFontNormal.path == before then print("FAIL a click applies the Modern fonts at once") end
-    lb.OnClick(lb)
-    if CRT.db.ui.modern or lb.text ~= "UI: Classic" or f.titleLine.shown or not f.art[1].shown then print("FAIL a second click goes back to Classic") end
-    if fontObjects.CRTFontNormal.path ~= before then print("FAIL a second click puts the Classic fonts back") end
-    -- a look set another way (a profile switch) shows on the button with the next ApplyStyle
-    CRT.db.ui.modern = true UI:ApplyStyle()
-    if lb.text ~= "UI: Modern" then print("FAIL toggle label follows ApplyStyle") end
-    CRT.db.ui.modern = false CRT:ApplyFonts() UI:ApplyStyle()
-    print("look toggle: " .. lb.text)
+    pick("Beanworks: Cowfee")
+    if not (menu and menu.owner == lb and menu.anchor and menu.anchor[2] == lb) then print("FAIL the theme menu opens under the button") end
+    if not CRT.db.ui.modern or CRT.db.ui.theme ~= "cowfee" then print("FAIL picking Beanworks: Cowfee turns Modern on") end
+    if lb.text ~= "Beanworks: Cowfee" then print("FAIL theme label in Modern: " .. tostring(lb.text)) end
+    if not f.titleLine.shown or f.art[1].shown then print("FAIL a pick applies the Modern look at once") end
+    if fontObjects.CRTFontNormal.path == before then print("FAIL a pick applies the Modern fonts at once") end
+    pick("Default: Blizzard")
+    if CRT.db.ui.modern or lb.text ~= "Default: Blizzard" or f.titleLine.shown or not f.art[1].shown then print("FAIL picking Default: Blizzard goes back to Classic") end
+    if fontObjects.CRTFontNormal.path ~= before then print("FAIL Default: Blizzard puts the Classic fonts back") end
+    -- a theme set another way (a profile switch) shows on the button with the next ApplyStyle
+    CRT.db.ui.theme = "nitro" CRT.db.ui.modern = true UI:ApplyStyle()
+    if lb.text ~= "Blackout: Nitro" then print("FAIL theme label follows ApplyStyle") end
+    CRT.db.ui.theme = "blizzard" CRT.db.ui.modern = false CRT:ApplyFonts() UI:ApplyStyle()
+    print("theme button: " .. lb.text)
     -- the toggle is sized once per ApplyStyle, and again after a font change (its label's width moves)
     local realSkin, skins = lb.crtSkin, 0
     lb.crtSkin = function(...) skins = skins + 1 return realSkin(...) end
@@ -278,5 +307,5 @@ if failCount > 0 then print(failCount .. " failed") end
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 const d = process.argv[2];
-for (const p of ['CRT_Core/Core.lua', 'CRT_Core/UI/Panel.lua', 'CRT_Core/UI/Controls.lua', 'CRT_Core/UI/SettingsPage.lua', 'CRT_Modules/Notes/Alert.lua', 'CRT_Core/Profiles.lua']) lua.lua_pushstring(L, to_luastring(fs.readFileSync(d + '/' + p, 'utf8')));
-if (lua.lua_pcall(L, 6, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
+for (const p of ['CRT_Core/Core.lua', 'CRT_Core/UI/Panel.lua', 'CRT_Core/UI/Controls.lua', 'CRT_Core/UI/SettingsPage.lua', 'CRT_Modules/Notes/Alert.lua', 'CRT_Core/Profiles.lua', 'CRT_Core/Themes.lua']) lua.lua_pushstring(L, to_luastring(fs.readFileSync(d + '/' + p, 'utf8')));
+if (lua.lua_pcall(L, 7, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }

@@ -242,13 +242,16 @@ layerEvents:SetScript("OnEvent", function()
 end)
 
 -- Window style ------------------------------------------------------------------------------------
--- Two looks, switched with the "UI: Classic" / "UI: Modern" button in the main window's title bar
--- (CRTDB.ui.modern, UI:SetModern):
---   Classic  the window template's own art, the game's red buttons and dropdowns, the menu as one list
---   Modern   coffee colors (CRT.MOCHA in Core.lua): an espresso window with caramel lines under the
---            title and beside the menu, the menu in grouped blocks (UI.MENU_GROUPS) with the
---            selected page in mocha, mocha page tabs, flat dropdowns and buttons, and Arial Narrow
---            text unless another font is picked (CRT:ApplyFonts)
+-- Two looks, in four themes picked from the theme button in the main window's title bar (CRTDB.ui.theme,
+-- UI:SetTheme; the themes and their palettes are in Themes.lua):
+--   Classic  Default: Blizzard. The window template's own art, the game's red buttons and dropdowns,
+--            the menu as one list
+--   Modern   every other theme, in its palette (CRT.MOCHA): an espresso window with caramel lines under
+--            the title and beside the menu, the menu in grouped blocks (UI.MENU_GROUPS) with the
+--            selected page in mocha (and a caramel bar on its left in a theme with menuBar), mocha page
+--            tabs, flat dropdowns and buttons, and Arial Narrow text unless another font is picked
+--            (CRT:ApplyFonts)
+-- UI:IsModern() is whether the theme is a Modern one (CRTDB.ui.modern, kept in step with the theme).
 -- bgAlpha fades whichever background is showing, never the text or buttons.
 
 local function mocha(key, alpha)
@@ -268,11 +271,122 @@ function UI:IsModern()
     return CRT.db and CRT.db.ui and CRT.db.ui.modern and true or false
 end
 
--- Switches the look live: fonts, every window and control, and the title bar toggle's label.
-function UI:SetModern(on)
-    CRT.db.ui.modern = on and true or false
+-- The theme in use, a key from CRT.THEME_LIST.
+function UI:Theme()
+    local ui = CRT.db and CRT.db.ui
+    return ui and CRT:ThemeInfo(ui.theme) and ui.theme or (self:IsModern() and CRT.THEME_MODERN or CRT.THEME_CLASSIC)
+end
+
+-- Repainting on a theme change. A part colored from CRT.MOCHA once, when it is made, is colored with
+-- UI.Tint(region, method, key, alpha) instead: method is the setter ("SetColorTexture", "SetTextColor",
+-- "SetVertexColor", "SetBackdropColor" or "SetBackdropBorderColor"), key a CRT.MOCHA key. A region keeps
+-- one entry per setter. UI:SetTheme paints every tinted part again. A surface that reads CRT.MOCHA when
+-- it draws registers UI:OnTheme(fn) and redraws there.
+local tinted = setmetatable({}, { __mode = "k" })
+local themeHooks = {}
+
+local function paintTint(region, method, t)
+    local c = CRT.MOCHA[t.key]
+    if c and region[method] then
+        region[method](region, c[1], c[2], c[3], t.alpha or 1)
+    end
+end
+
+function UI.Tint(region, method, key, alpha)
+    local list = tinted[region]
+    if not list then
+        list = {}
+        tinted[region] = list
+    end
+    local t = { key = key, alpha = alpha }
+    list[method] = t
+    paintTint(region, method, t)
+end
+
+function UI:OnTheme(fn)
+    themeHooks[#themeHooks + 1] = fn
+end
+
+-- Runs after a theme change: the tinted parts, the OnTheme hooks, then the page in view and every open
+-- window with a refresh function are refreshed (a page's OnShow script is its refresh), so text colored
+-- when it is written (UI.GoodText) follows too. A failing hook never stops the others.
+function UI:RepaintTheme()
+    for region, list in pairs(tinted) do
+        for method, t in pairs(list) do
+            paintTint(region, method, t)
+        end
+    end
+    for _, fn in ipairs(themeHooks) do
+        local ok, err = pcall(fn)
+        if not ok and geterrorhandler then
+            geterrorhandler()(err)
+        end
+    end
+    local page = self.frame and self.frame:IsShown() and CRT.db.lastPage and self.pages[CRT.db.lastPage]
+    local onShow = page and page.frame and page.frame:IsShown() and page.frame:GetScript("OnShow")
+    if onShow then
+        pcall(onShow, page.frame)
+    end
+    for _, w in ipairs(self.windows) do
+        if type(w.refresh) == "function" and w:IsShown() then
+            pcall(w.refresh, w)
+        end
+    end
+end
+
+-- Switches the theme live: saves it (and ui.modern with it), fills CRT.MOCHA with its palette, then
+-- redraws the fonts, every window and control, the theme button's label and everything that follows
+-- the theme (UI:RepaintTheme).
+function UI:SetTheme(key)
+    local ui = CRT.db.ui
+    ui.theme = key
+    CRT:UseTheme(CRT:ResolveTheme(ui))
     CRT:ApplyFonts()
     self:ApplyStyle()
+    self:RepaintTheme()
+end
+
+-- A compatibility shim for callers from before themes, which only knew on and off: on keeps a Modern
+-- theme in use or takes Beanworks: Cowfee; off is Default: Blizzard.
+function UI:SetModern(on)
+    if on then
+        self:SetTheme(self:IsModern() and self:Theme() or CRT.THEME_MODERN)
+    else
+        self:SetTheme(CRT.THEME_CLASSIC)
+    end
+end
+
+-- The theme's name, for the theme button's label.
+function UI:ThemeName()
+    local info = CRT:ThemeInfo(self:Theme())
+    return info and info.name or ""
+end
+
+-- The title bar's theme menu: one entry per theme, in CRT.THEME_LIST's order, the one in use ticked.
+function UI:FillThemeMenu(root)
+    for _, info in ipairs(CRT.THEME_LIST) do
+        root:CreateRadio(info.name, function()
+            return UI:Theme() == info.key
+        end, function()
+            UI:SetTheme(info.key)
+        end)
+    end
+end
+
+-- Text in a good state (synced, answered, on): matcha in a Modern theme; in Classic the classic color
+-- (a hex such as "80ff80"), or as it is without one.
+function UI.GoodText(text, classic)
+    local hex
+    if UI:IsModern() then
+        local c = CRT.MOCHA.matcha
+        hex = string.format("%02x%02x%02x", math.floor(c[1] * 255 + 0.5), math.floor(c[2] * 255 + 0.5), math.floor(c[3] * 255 + 0.5))
+    else
+        hex = classic
+    end
+    if not hex then
+        return text
+    end
+    return "|cff" .. hex .. text .. "|r"
 end
 
 -- Backdrop frames outside the main window that follow the look: your bar, its drag and Close bars,
@@ -377,16 +491,19 @@ function UI:ApplyStyle()
     for _, window in ipairs(self.windows) do
         self:ApplyWindow(window)
     end
+    -- the theme button's label; the skinned controls below size it
+    if self.lookButton then
+        self.lookButton:SetText(self:ThemeName())
+    end
     local f = self.frame
     if not f then
+        for _, control in ipairs(self.skinned) do
+            control.crtSkin(self:IsModern())
+        end
         return
     end
     local s = CRT.db.ui
     local modern = self:IsModern()
-    -- the toggle's label; the skinned controls below size it
-    if self.lookButton then
-        self.lookButton:SetText(modern and "UI: Modern" or "UI: Classic")
-    end
     -- Opacity (bgAlpha) fades the whole window, text and buttons too, never below 30%. The window's
     -- own art and colours stay solid underneath.
     f:SetAlpha(math.max(30, math.min(100, s.bgAlpha or 100)) / 100)
@@ -583,9 +700,9 @@ end
 
 -- A UICheckButtonTemplate checkbox. Modern hides the template's art and draws a CHECK_SIZE box with
 -- rounded corners (UI.RoundRect) in its centre: unticked, a roast fill with a mocha edge; ticked, the
--- slider knob's bevelled walnut (a dark edge, a soft line inside the top edge) with a white tick
--- (CRT_Media/Media/Check.tga). The edge turns caramel under the mouse; a disabled box is faded to
--- CHECK_OFF_ALPHA. Classic shows the template's art again. The page's label and click are untouched.
+-- slider knob's bevelled walnut (a checkEdge edge, a soft line inside the top edge) with a tick
+-- (CRT_Media/Media/Check.tga) in the theme's tick color. The edge turns caramel under the mouse; a
+-- disabled box is faded to CHECK_OFF_ALPHA. Classic shows the template's art again. The page's label and click are untouched.
 -- The box follows SetChecked, clicks, SetEnabled / Enable / Disable and the mouse through hooks, so
 -- pages call nothing new. cb.crtCheck keeps the parts.
 local CHECK_SIZE, CHECK_R, CHECK_TICK = 16, 4, 12
@@ -608,7 +725,7 @@ local function paintCheck(cb)
         return
     end
     -- only a box that can be clicked lights up under the mouse
-    UI.PaintShape(s.box.edge, (s.hover and enabled) and "caramel" or (on and "walnutEdge" or "mocha"), alpha)
+    UI.PaintShape(s.box.edge, (s.hover and enabled) and "caramel" or (on and "checkEdge" or "mocha"), alpha)
     UI.PaintShape(s.box.face, on and "walnut" or "roast", alpha)
     s.shine:SetColorTexture(mocha("walnutShine", alpha))
     s.tick:SetVertexColor(mocha("tick", alpha))
@@ -695,6 +812,7 @@ end
 
 -- The menu: one list in Classic, grouped blocks in Modern, in the same order (UI.MENU_GROUPS).
 local MENU_ROW, MENU_GAP = 30, 2
+local MENU_BAR_W = 2 -- the selected page's accent bar on its left, in a theme with menuBar
 
 local function menuGroups()
     local groups, placed = {}, {}
@@ -789,6 +907,9 @@ end
 function UI:StyleMenuButton(b, selected)
     b.selected = selected and true or false
     b.sel:SetShown(b.selected)
+    local theme = CRT.theme
+    b.bar:SetShown(b.selected and self:IsModern() and theme and theme.menuBar and true or false)
+    b.bar:SetColorTexture(mocha("caramel"))
     if self:IsModern() then
         b.sel:SetColorTexture(mocha("mocha", 0.95))
         if b.selected then
@@ -1095,6 +1216,23 @@ function UI.PopupEditBox(dialog)
     return dialog.GetEditBox and dialog:GetEditBox() or dialog.EditBox or dialog.editBox
 end
 
+-- The theme button, left of Minimize (UI.lookButton): its label is the theme in use, and a click opens
+-- the theme menu (UI:FillThemeMenu) under it. 18 high, like Previews, to fit inside the title bar.
+-- ApplyStyle keeps the label.
+function UI:MakeThemeButton(parent)
+    local lb
+    lb = UI.HeaderButton(parent, self:ThemeName(), function()
+        UI.ContextMenu(lb, function(root)
+            UI:FillThemeMenu(root)
+        end, { "TOPRIGHT", lb, "BOTTOMRIGHT", 0, -2 })
+    end, {
+        flatH = 18, classicH = 18,
+        tipTitle = "Theme", tipText = "Pick the theme: Default: Blizzard is the game's own look; the others are flat, in their own colors.",
+    })
+    self.lookButton = lb
+    return lb
+end
+
 local function createMenuButton(parent, page, index)
     local b = CreateFrame("Button", nil, parent)
     b:SetHeight(30) -- placed by UI:LayoutMenu
@@ -1103,6 +1241,13 @@ local function createMenuButton(parent, page, index)
     b.sel:SetAllPoints()
     b.sel:SetColorTexture(1, 0.82, 0, 0.18)
     b.sel:Hide()
+
+    -- the blackouts' accent bar on the selected page's left (UI:StyleMenuButton)
+    b.bar = b:CreateTexture(nil, "ARTWORK")
+    b.bar:SetPoint("TOPLEFT")
+    b.bar:SetPoint("BOTTOMLEFT")
+    b.bar:SetWidth(MENU_BAR_W)
+    b.bar:Hide()
 
     b.hl = b:CreateTexture(nil, "HIGHLIGHT")
     b.hl:SetAllPoints()
@@ -1264,16 +1409,8 @@ function UI:Create()
     end)
     f.minimizeButton = mb
 
-    -- The look toggle, left of Minimize: its label is the look in use, and a click switches to the
-    -- other one. 18 high, like Previews, to fit inside the title bar. ApplyStyle keeps the label.
-    local lb = UI.HeaderButton(f, "UI: Classic", function()
-        UI:SetModern(not UI:IsModern())
-    end, {
-        flatH = 18, classicH = 18,
-        tipTitle = "Look", tipText = "Switch between the Classic and Modern look.",
-    })
+    local lb = UI:MakeThemeButton(f)
     lb:SetPoint("RIGHT", mb, "LEFT", -4, 0)
-    UI.lookButton = lb
 
     -- The title bar: drag it to move the window, double-click it to minimize or restore.
     local titleBar = CreateFrame("Button", nil, f)

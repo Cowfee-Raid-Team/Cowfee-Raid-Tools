@@ -75,6 +75,17 @@ local function mocha(key, alpha)
     return c[1], c[2], c[3], alpha or 1
 end
 
+-- Colors a part made once from the theme, and again when the theme changes (UI.Tint). What is drawn
+-- each frame reads mocha() instead.
+local function themed(region, method, key, alpha)
+    local UI = CRT.UI
+    if UI and UI.Tint then
+        UI.Tint(region, method, key, alpha)
+    else
+        region[method](region, mocha(key, alpha))
+    end
+end
+
 -- timeline.rehearsal, made when first needed.
 local function saved()
     local db = CRT.Timeline:Settings()
@@ -227,14 +238,14 @@ local function buildNext(f)
     local head = fontString(f, "CRTFontSmall")
     head:SetPoint("TOPLEFT", f, "TOPLEFT", PAD, -104)
     head:SetText(TEXT.nextUp)
-    head:SetTextColor(mocha("latte"))
+    themed(head, "SetTextColor", "latte")
     -- "Testing: <alert>" on the right of the heading while a Test button's rehearsal plays
     f.testing = fontString(f, "CRTFontSmall")
     f.testing:SetPoint("TOPRIGHT", f, "TOPRIGHT", -PAD, -104)
     f.testing:SetPoint("LEFT", head, "RIGHT", 30, 0)
     f.testing:SetJustifyH("RIGHT")
     f.testing:SetWordWrap(false)
-    f.testing:SetTextColor(mocha("caramel"))
+    themed(f.testing, "SetTextColor", "caramel")
     f.nextHead = head
     f.next = {}
     for i = 1, NEXT_N do
@@ -275,7 +286,7 @@ local function buildStrip(f)
     strip.nowLine = strip:CreateTexture(nil, "OVERLAY")
     strip.nowLine:SetPoint("TOPLEFT", strip, "TOPLEFT", math.floor(INNER / 3) - 1, 0)
     strip.nowLine:SetSize(2, STRIP_H)
-    strip.nowLine:SetColorTexture(mocha("cream", 0.9))
+    themed(strip.nowLine, "SetColorTexture", "cream", 0.9)
     -- the time over the now line, outside the strip so it isn't clipped
     strip.nowText = fontString(f, "CRTFontSmall")
     strip.nowText:SetPoint("BOTTOM", strip, "TOPLEFT", math.floor(INNER / 3), 2)

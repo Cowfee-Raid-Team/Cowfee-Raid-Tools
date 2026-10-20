@@ -229,7 +229,8 @@ local function buildTonight(f)
     end)
     toggle:SetPoint("TOPLEFT", looting, "BOTTOMLEFT", 4, -8) -- under the line, however many lines it takes
     refreshers[#refreshers + 1] = function()
-        looting:SetText((LM:LootingStatus()))
+        local line, on = LM:LootingStatus()
+        looting:SetText(on and UI.GoodText(line) or line) -- on: matcha in a Modern theme
         local leader = IsInGroup() and UnitIsGroupLeader("player")
         toggle:SetShown(leader and true or false)
         toggle:SetText(LM:LootingOn() and TEXT.turnOff or TEXT.turnOn)
@@ -605,7 +606,7 @@ local function buildSync(f)
         typed.showHint()
         button:SetEnabled(on and not LM:SyncBlocked())
         cover:SetShown(on and LM:SyncBlocked() ~= nil)
-        status:SetText(LM:SyncStatus() or "")
+        status:SetText(LM:SyncStatus(UI.GoodText) or "")
         if on and f:IsVisible() then
             LM:SyncPing() -- who has CRT, for the list (at most every SYNC_PING_SECONDS)
         end

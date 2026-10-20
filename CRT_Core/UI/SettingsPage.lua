@@ -237,7 +237,7 @@ end
 local function buildLeft(pf)
     local x = LEFT_X
 
-    heading(pf, x, -44, "Window", "The UI button in the title bar switches between the Classic and Modern look. Modern gives the whole addon coffee colors, flat dropdowns and buttons, the menu in grouped blocks, and Arial Narrow text when the font below is Default.\n\nWindow Scale applies when you let go, press Enter, or stop turning the wheel. Ctrl + mouse wheel over the window also changes it.\n\nOpacity fades the whole window, text and buttons included, down to 30%.")
+    heading(pf, x, -44, "Window", "The theme button in the title bar picks the theme. Default: Blizzard is the game's own look. Blackout: Midnight, Blackout: Nitro and Beanworks: Cowfee give the whole addon their own colors, flat dropdowns and buttons, the menu in grouped blocks, and Arial Narrow text when the font below is Default.\n\nWindow Scale applies when you let go, press Enter, or stop turning the wheel. Ctrl + mouse wheel over the window also changes it.\n\nOpacity fades the whole window, text and buttons included, down to 30%.")
     add(UI.Slider(pf, "Window scale", {
         min = UI.MIN_SCALE,
         max = UI.MAX_SCALE,

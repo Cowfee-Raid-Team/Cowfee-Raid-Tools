@@ -30,9 +30,10 @@ local TEXT = {
 
 local ICON_GAP = 4 -- between the icon and the text, and at the edges
 local MORE_GAP = 2
-local DEFAULT_BAR_COLOR = { 0.44, 0.31, 0.22, 1 }
+-- the saved colours' defaults (CRT_Core/Core.lua), the player's to change, so they don't follow the theme
+local DEFAULT_BAR_COLOR = { 0.44, 0.31, 0.22, 1 } -- not a theme colour
 local DEFAULT_BG_COLOR = { 0, 0, 0, 0.6 }
-local DEFAULT_TEXT_COLOR = { 0.95, 0.90, 0.84, 1 }
+local DEFAULT_TEXT_COLOR = { 0.95, 0.90, 0.84, 1 } -- not a theme colour
 local DEFAULT_FONT_NAME = "Friz Quadrata"
 local DEFAULT_FONT_SIZE = 13
 local MIN_FONT, MAX_FONT = 8, 24

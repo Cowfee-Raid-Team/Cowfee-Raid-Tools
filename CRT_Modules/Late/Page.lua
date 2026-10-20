@@ -117,7 +117,7 @@ local function onTimeLine(names)
     if #names == 0 then
         return nil
     end
-    return "|cff80ff80On time (" .. #names .. "):|r " .. table.concat(names, ", ")
+    return UI.GoodText("On time (" .. #names .. "):", "80ff80") .. " " .. table.concat(names, ", ")
 end
 
 local function tonightLines(night, now)
@@ -647,7 +647,7 @@ local function statusText(night, p, now)
     elseif Late.IsLate(night, p) then
         return "|cffffd100" .. minutes(Late.Seconds(night, p)) .. " late|r"
     end
-    return "|cff80ff80on time|r"
+    return UI.GoodText("on time", "80ff80")
 end
 
 -- Group members who are not on tonight's list, for the Add dropdown.

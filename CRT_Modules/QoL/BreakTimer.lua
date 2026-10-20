@@ -28,8 +28,13 @@ local BRIDGE_WAIT = 1.5 -- seconds to collect the formats a break arrived in bef
 local BAR_W, BAR_H = 300, 30
 local OVER_SHOWN = 6 -- seconds "Break's over" stays up
 local LAST_MINUTE = 60 -- seconds left when the bar turns red
-local COLOR_BAR = { 0.78, 0.56, 0.36, 1 }
 local COLOR_LAST = { 0.85, 0.27, 0.2, 1 }
+
+-- The bar's color until the last minute: the theme's accent (CRT.MOCHA.caramel).
+local function barColor()
+    local c = CRT.MOCHA.caramel
+    return c[1], c[2], c[3], 1
+end
 
 local send = (C_ChatInfo and C_ChatInfo.SendChatMessage) or SendChatMessage
 
@@ -111,7 +116,7 @@ local function build()
     bar:SetSize(BAR_W, BAR_H)
     bar:SetPoint("TOP")
     bar:SetStatusBarTexture("Interface\\Buttons\\WHITE8X8")
-    bar:SetStatusBarColor(unpack(COLOR_BAR))
+    bar:SetStatusBarColor(barColor())
     local bg = bar:CreateTexture(nil, "BACKGROUND")
     bg:SetAllPoints()
     bg:SetColorTexture(0, 0, 0, 0.75)
@@ -198,7 +203,7 @@ onUpdate = function(_, dt)
     if left <= LAST_MINUTE then
         bar:SetStatusBarColor(unpack(COLOR_LAST))
     else
-        bar:SetStatusBarColor(unpack(COLOR_BAR))
+        bar:SetStatusBarColor(barColor())
     end
     timeText:SetText(clock(left))
 end
@@ -411,7 +416,7 @@ UI:RegisterPreview("break", function(on)
         label:SetText("Break")
         timeText:SetText("7:30")
         endsText:SetText("Break ends at: 20:10")
-        bar:SetStatusBarColor(unpack(COLOR_BAR))
+        bar:SetStatusBarColor(barColor())
         bar:SetMinMaxValues(0, 600)
         bar:SetValue(450)
         frame:Show()
