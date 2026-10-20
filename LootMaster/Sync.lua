@@ -10,16 +10,18 @@ local ADDON, CRT = ...
 -- kind it doesn't know (Comm.lua's receive), so it ignores every M. Parts of one sync share its id:
 --   H  the header: version, then how many N, B, A and T parts' entries follow, then responseSeconds,
 --      awardChannel, noRoll, the score weights (LM.SCORE_WEIGHTS order), the authority leader flag (1/0)
---      and (added after 0.27) how many F parts follow (1). A header without it (an older leader) has none, and the
+--      and (since 0.28) how many F parts follow (1). A header without it (an older leader) has none, and the
 --      receiver keeps its own filter.
 --   N  who it is for, packed (Wire.Pack): index, Name-Realm
 --   B  the buttons, packed like a session's B: index, key, colour, weight, icon, label
 --   A  the authority names, packed: index, Name-Realm
 --   T  the award message in pieces, so commas and long texts come through: index, text
---   F  the loot filter (LootMaster/Filter.lua), added after 0.27: boss (1/0), trash (1/0), quality, item level, and
+--   F  the loot filter (LootMaster/Filter.lua), since 0.28: boss (1/0), trash (1/0), quality, item level, and
 --      the ticked kinds' keys joined by commas. An older receiver drops a part it doesn't know (below), and
 --      the extra header field, so it still applies the rest.
---   P  the leader asks who has a CRT that takes a sync; K is the answer, and also "applied" after a sync
+--   P  the leader asks who has a CRT that takes a sync; K is the answer, and also "applied" after a sync. From
+--      0.28 K carries the sender's version, so the leader can tell who took the loot filter (an older K has
+--      none: that CRT is older than LM.FILTER_SYNC_SINCE and dropped the F part)
 -- A receiver keeps the parts until all are in (in any order), then applies them only when the sender is
 -- its current raid leader and it is named in N. Every value is cleaned with the Settings tab's own rules,
 -- and a Send to the receiver can't post to (LM.CanPostTo) becomes Raid. Parts still missing SYNC_KEEP seconds
@@ -103,7 +105,7 @@ function LM:SyncMessages(id, recipients)
 end
 
 -- The last sync you sent: { id, sent = { names in the group }, missing = { names not in it },
--- acked = { [name] = true }, done }.
+-- acked = { [name] = the version their K gave, "" for none }, done }.
 LM.syncOut = nil
 -- Group members whose CRT answered an ask or a sync: { [Name-Realm] = true }.
 LM.syncCapable = {}
@@ -125,10 +127,13 @@ function LM:SyncStatus()
     if not o.done then
         return string.format("Sending to %s...", short(o.sent))
     end
-    local reached, missed = {}, {}
+    local reached, missed, old = {}, {}, {}
     for _, n in ipairs(o.sent) do
         if o.acked[n] then
             reached[#reached + 1] = n
+            if not LM.VersionAtLeast(o.acked[n], LM.FILTER_SYNC_SINCE) then
+                old[#old + 1] = n
+            end
         else
             missed[#missed + 1] = n
         end
@@ -144,6 +149,9 @@ function LM:SyncStatus()
     end
     if #missed > 0 then
         text = text .. "\nNot reached: " .. short(missed) .. "."
+    end
+    if #old > 0 then
+        text = text .. "\nSynced, but their CRT is too old for the loot filter: " .. short(old) .. "."
     end
     return text
 end
@@ -365,7 +373,7 @@ local function apply(p)
     if LM.ScoreChanged then
         LM.ScoreChanged()
     end
-    LM.SendText(Wire.Encode("M", { p.id .. ":K" }))
+    LM.SendText(Wire.Encode("M", { p.id .. ":K", LM.VERSION }))
     local line = string.format("Loot Master settings synced from %s.", Ambiguate(p.from, "short"))
     if closed then
         line = line .. string.format(" Send to: %s isn't open to you, so Raid.", LM.PlaceName(closed))
@@ -386,7 +394,7 @@ LM.Handle("M", function(f, sender)
         LM.syncCapable[sender] = true
         local o = LM.syncOut
         if o and o.id == id then
-            o.acked[sender] = true
+            o.acked[sender] = f[2] or "" -- the version; none from a CRT older than 0.28
             LM:Fire("sync") -- a late answer updates the line too
         end
         return
@@ -395,7 +403,7 @@ LM.Handle("M", function(f, sender)
         return -- only from your current raid leader (your own come back to you in a raid)
     end
     if part == "P" then
-        LM.SendText(Wire.Encode("M", { id .. ":K" }))
+        LM.SendText(Wire.Encode("M", { id .. ":K", LM.VERSION }))
         return
     end
     local read = PARTS[part]

@@ -84,10 +84,20 @@ end
 
 -- The picks: items that pass your loot filter (LootMaster/Filter.lua; a sample counts as boss loot), those
 -- the game described in full first, then those let through on a part it couldn't read; then others when too
--- few pass. Returns the items and how many passed.
+-- few pass. The pool is shuffled and read only until count items pass in full, so a long Loot History
+-- isn't read item by item (a token's tooltip each). Returns the items and how many passed.
 local function samples(count, random)
+    random = random or math.random
+    local order = pool(count)
+    for i = #order, 2, -1 do
+        local j = random(i)
+        order[i], order[j] = order[j], order[i]
+    end
     local filter, pass, unread, rest = LM:Filter(), {}, {}, {}
-    for _, e in ipairs(pool(count)) do
+    for _, e in ipairs(order) do
+        if #pass >= count then
+            break
+        end
         local ok, why = LM.PassesFilter(LM.ItemFacts(e.itemString, "boss"), filter)
         if ok and why == "unreadable" then
             unread[#unread + 1] = e
