@@ -1808,6 +1808,63 @@ do
 end
 print("ok bands: a chip drag looks things up only when they change")
 
+do
+  -- the chips follow the theme: Default: Blizzard the roll frame's grey stone, a Modern theme its own
+  -- flat colour; a theme switch repaints them at once (template chips, the + chip, cooldowns, the ghost)
+  local UI = CRT.UI
+  CRT.db.ui.modern = false
+  local v = newView()
+  local function look(c, what)
+    assert(c.stone and c.bg, what .. ": a stone and a flat background")
+    return c.stone:IsShown(), c.bg:IsShown()
+  end
+  local function all() local out = chips(v) out[#out + 1] = v.plus for _, c in ipairs(cdChips(v)) do out[#out + 1] = c end return out end
+  assert(#cdChips(v) > 0, "some cooldown chips")
+  for i, c in ipairs(all()) do
+    local stone, flat = look(c, "chip " .. i)
+    assert(stone and not flat, "Default: Blizzard: chip " .. i .. " on the stone")
+    assert(c.stone.texture == UI.STONE.file, "chip " .. i .. ": the shared stone texture")
+  end
+  local m = chipFor(v, soakID)
+  assert(m.edge.color[1] == 1 and m.edge.color[2] == 0, "the coloured edge stays on the stone")
+  assert(m.name:GetText() == "Soak" and m.icon:IsShown(), "the name and icon stay")
+  -- the ghost too
+  cx, cy = 150, 150 m.OnMouseDown(m, "LeftButton") cx, cy = 400, 150 v.frame.OnUpdate(v.frame)
+  assert(v.chipGhost.stone:IsShown() and not v.chipGhost.bg:IsShown(), "the ghost on the stone")
+  v:CancelChipMove()
+  -- a Modern theme: no game art, the theme's roast; repainted live
+  local roast = CRT.MOCHA.roast
+  local keep = { roast[1], roast[2], roast[3] }
+  roast[1], roast[2], roast[3] = 0.2, 0.3, 0.4
+  CRT.db.ui.modern = true
+  UI:RepaintTheme()
+  for i, c in ipairs(all()) do
+    local stone, flat = look(c, "chip " .. i)
+    assert(flat and not stone, "Modern: chip " .. i .. " flat, no stone")
+    assert(c.bg.color[1] == 0.2 and c.bg.color[3] == 0.4, "chip " .. i .. ": the theme's roast")
+  end
+  cx, cy = 150, 150 m.OnMouseDown(m, "LeftButton") cx, cy = 400, 150 v.frame.OnUpdate(v.frame)
+  assert(not v.chipGhost.stone:IsShown() and v.chipGhost.bg:IsShown(), "the ghost flat in Modern")
+  v:CancelChipMove()
+  -- back: the stone again
+  roast[1], roast[2], roast[3] = keep[1], keep[2], keep[3]
+  CRT.db.ui.modern = false
+  UI:RepaintTheme()
+  for i, c in ipairs(all()) do
+    local stone, flat = look(c, "chip " .. i)
+    assert(stone and not flat, "back to Default: Blizzard: chip " .. i .. " on the stone")
+  end
+  -- a chip made while Modern is flat from the start
+  CRT.db.ui.modern = true
+  local late = S:Save(nil, { name = "Zz late", text = "x", outputs = { alert = true } })
+  local lc = chipFor(v, late)
+  assert(lc.bg:IsShown() and not lc.stone:IsShown(), "a new chip in Modern: flat")
+  S:Delete(late)
+  CRT.db.ui.modern = false
+  UI:RepaintTheme()
+end
+print("ok theme: chips on the stone in Default: Blizzard, flat in Modern, repainted live")
+
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 lua.lua_checkstack(L, 40); // 22 sources and the chunk: past the default 20 slots
