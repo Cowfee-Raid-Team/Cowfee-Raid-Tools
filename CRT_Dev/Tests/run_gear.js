@@ -195,6 +195,20 @@ eq(Gear:Mine(11), nil, "a failing game call reads as empty, no error")
 GetInventoryItemLink = function(_, slot) return LINKS[slot] end
 onEvent(nil, "PLAYER_EQUIPMENT_CHANGED", 11, false)
 eq(Gear:Mine(11).id, 602, "and reads again after")
+-- ForItem reads its slots live: a slot empty at login, or changed with no event (an upgrade, a gem),
+-- is still right when you answer
+LINKS[16] = nil
+onEvent(nil, "PLAYER_ENTERING_WORLD", false, true)
+eq(#Gear:ForItem("item:502"), 0, "live: the main hand empty at login")
+local STAFF = "|cffa335ee|Hitem:605::::::::90:577|h[Staff]|h|r"
+LINKS[16], ILVL[STAFF] = STAFF, 291
+local live = Gear:ForItem("item:502")
+eq(#live, 1, "live: the main hand that arrived with no event")
+eq(live[1] and live[1].ilvl, 291, "live: its item level")
+local UP = "|cffa335ee|Hitem:602::::::::90:577::28:1:13578::::::|h[New Ring]|h|r"
+LINKS[11], ILVL[UP] = UP, 304
+eq(Gear:ForItem("item:500")[2].ilvl, 304, "live: a ring upgraded with no event")
+eq(Gear:Mine(11).ilvl, 304, "live: and the cache keeps it")
 
 -- 6. Other players: Remember, Of, When
 eq(Gear:When("Quick-Sargeras"), nil, "never remembered")
