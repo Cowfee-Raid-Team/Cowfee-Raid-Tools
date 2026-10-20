@@ -402,8 +402,11 @@ CRT.MOCHA = {
     caramel = { 0.78, 0.56, 0.36 }, -- lines and accents
     latte = { 0.87, 0.73, 0.56 }, -- headings and button text (the game's gold text)
     cream = { 0.95, 0.90, 0.84 }, -- body text (the game's white text)
-    foam = { 0.965, 0.937, 0.886 }, -- a slider's knob (#f6efe2)
-    bean = { 0.231, 0.165, 0.11 }, -- dark roast: text on foam (#3b2a1c)
+    walnut = { 0.29, 0.204, 0.141 }, -- a slider's knob and a ticked checkbox (#4a3424)
+    walnutEdge = { 0.102, 0.071, 0.047 }, -- their 1 px edge (#1a120c)
+    walnutShine = { 0.478, 0.353, 0.243 }, -- the soft highlight inside their top edge (#7a5a3e)
+    walnutText = { 1, 1, 1 }, -- the knob's value and number box (white)
+    tick = { 1, 1, 1 }, -- a ticked checkbox's tick (white)
 }
 -- The Modern look's font, when the font setting is the default.
 CRT.MODERN_FONT = "Fonts\\ARIALN.TTF"

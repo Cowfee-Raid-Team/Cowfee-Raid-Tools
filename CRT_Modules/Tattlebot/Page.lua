@@ -689,6 +689,7 @@ local function getMechRow(i)
             refresh()
         end
     end)
+    UI:SkinCheckButton(row.check) -- rows are made after the page is skinned
     row.text = row:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     row.text:SetPoint("RIGHT", row.remove, "LEFT", -6, 0)
     row.text:SetJustifyH("LEFT")

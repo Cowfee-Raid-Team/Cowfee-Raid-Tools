@@ -318,6 +318,10 @@ local function makeCheck(parent, label, get, set)
     check.refresh = function()
         check:SetChecked(get() and true or false)
     end
+    -- an area's own rows are made the first time it shows, after the page is skinned
+    if UI and UI.SkinCheckButton then
+        UI:SkinCheckButton(check)
+    end
     return check
 end
 

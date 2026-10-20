@@ -35,15 +35,15 @@ fi
 export NODE_PATH="$mods"
 
 ONLY="$only" bash "$here/run_all.sh" "$root" > "$out" 2>&1
-groups=$(grep -c '^== ' "$out")
+groups=$(grep -ac '^== ' "$out") # -a: a harness may print NUL bytes; without it grep reads the log as binary and misses lines
 if [ -n "$only" ] && [ "$groups" = "0" ]; then
     echo "No test group named \"$only\". The groups are:"
     { grep -oE 'g "[^"$]+"' "$here/run_all.sh" | sed 's/^g "//; s/"$//'; echo "store, record, journal, reference, probe, lanes, view, page (Timeline)"; } | paste -sd '|' | sed 's/|/, /g'
     exit 2
 fi
-passed=$(grep -cE '^(ok|PASS) ' "$out")
+passed=$(grep -acE '^(ok|PASS) ' "$out")
 # a group fails on a FAIL line, a Lua error, a non-zero exit, or an "N failed" summary with N > 0
-fails=$(grep -nE '^FAIL |LUA ERROR|^exit [1-9]|^[0-9]+ passed, [1-9][0-9]* failed|^[1-9][0-9]* failed' "$out")
+fails=$(grep -anE '^FAIL |LUA ERROR|^exit [1-9]|^[0-9]+ passed, [1-9][0-9]* failed|^[1-9][0-9]* failed' "$out")
 
 syntax=$(cd "$root" && node "$here/lua-syntax-check.cjs" . 2>&1 | grep -v '^OK')
 
