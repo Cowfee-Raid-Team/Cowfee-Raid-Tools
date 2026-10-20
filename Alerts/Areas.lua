@@ -448,6 +448,8 @@ function Panel:Slider(label, opts)
             max = opts.max,
             step = opts.step,
             format = opts.format,
+            toDisplay = opts.toDisplay,
+            fromDisplay = opts.fromDisplay,
             onRelease = opts.onRelease,
             width = opts.width or PANEL_CONTROL_WIDTH,
             labelWidth = opts.labelWidth or PANEL_LABEL_WIDTH,

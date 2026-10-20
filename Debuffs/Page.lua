@@ -213,6 +213,13 @@ local function build(pf)
             end
             return v % 60 == 0 and format("%d min", v / 60) or format("%d:%02d", math.floor(v / 60), v % 60)
         end,
+        -- typed in minutes, as shown (4.5 is 4:30)
+        toDisplay = function(v)
+            return v / 60
+        end,
+        fromDisplay = function(n)
+            return n * 60
+        end,
         get = function()
             return Debuffs:MaxDuration()
         end,

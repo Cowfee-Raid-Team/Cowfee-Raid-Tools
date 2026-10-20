@@ -14,6 +14,15 @@ local View = CRT.TimelineView
 local ReferencePage = CRT.TimelineReferencePage
 local UI = CRT.UI
 
+-- The span sliders show minutes and seconds (View.Format), so a typed number is minutes.
+local function toMinutes(seconds)
+    return seconds / 60
+end
+
+local function fromMinutes(minutes)
+    return minutes * 60
+end
+
 local ReviewTab = {}
 CRT.TimelineReviewTab = ReviewTab
 
@@ -143,7 +152,7 @@ function ReviewTab.Build(f, ctx)
 
     -- Zoom: the mouse wheel writes span without telling the page, so refresh re-reads it here.
     place(UI.Slider(f, "Time visible", {
-        min = 60, max = 600, step = 30, format = View.Format,
+        min = 60, max = 600, step = 30, format = View.Format, toDisplay = toMinutes, fromDisplay = fromMinutes,
         labelWidth = 80, width = 160,
         get = function()
             return settings().span
