@@ -229,6 +229,12 @@ local strip
 for _, f in ipairs(frames) do if rawget(f, "framed") ~= nil and f.parent == anchor then strip = f end end
 check(strip and strip.framed and not strip.bar.shown, "classic: the strip lets the template draw the title tile")
 eq(strip and strip.points[1][2], 1, "classic: the strip 1 in from the frame's edge")
+-- the title bar, right to left: its X, All Loot Rolls, then the (i), each on the bar's centre line
+local x = strip and rawget(strip, "close")
+check(x and x.template == "UIPanelCloseButton" and x.parent == strip, "title bar: an X in every theme")
+check(x and x.points[1][1] == "RIGHT" and x.points[1][3] == nil or (x and x.points[1][2] == -2), "title bar: the X at the right")
+check(strip.answers.points[1][2] == x and strip.answers.points[1][1] == "RIGHT" and strip.answers.points[1][5] == 0, "title bar: All Loot Rolls left of the X, centred")
+check(strip.help.points[1][2] == strip.answers and strip.help.points[1][3] == "LEFT" and strip.help.points[1][5] == 0, "title bar: the (i) left of All Loot Rolls, centred")
 -- the frame holds the title bar and both items, with no gap under the last and nothing outside it
 local p2 = panels[2]
 local function fits(what, items)
@@ -337,6 +343,10 @@ eq(p.h, twoRows + 22 + 4, "three rows: the item one row taller")
 fits("three rows", { p, p2, p3 })
 LETTER = 7.5
 
+rawget(strip, "close").scripts.OnClick()
+local allClosed = true
+for i in pairs(LM.incoming.items) do if not (LM.incoming.mine[i] and LM.incoming.mine[i].closed) then allClosed = false end end
+check(allClosed, "the title bar's X closes every item")
 print(string.format("%d passed, %d failed", passes, fails))
 if fails > 0 then error("failures") end
 `;

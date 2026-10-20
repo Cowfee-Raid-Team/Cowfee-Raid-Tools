@@ -22,6 +22,7 @@ local L = {
     panelH = 116, -- the Notes row clear of the border ring at the bottom
     gap = 4, -- between panels
     headerH = 26, -- the title bar above the panels
+    headerClose = 22, -- the title bar's X
     autoH = 22, -- the line saying which items were answered for you
     -- Default: Blizzard: one window frame around the title bar, the auto line and the items, which sit in
     -- its inset (BasicFrameTemplateWithInset's is 4 in from the left, 6 from the right, 4 above the bottom)
@@ -359,6 +360,20 @@ local function closePanel(index)
     LM:Fire("incoming")
 end
 
+-- Closes every item at once (the title bar's X); Show again on the looter's side brings them back.
+function LM:ClosePopup()
+    local inc = LM.incoming
+    if inc then
+        for i = 1, LM.MAX_ITEMS do
+            if inc.items[i] then
+                inc.mine[i] = inc.mine[i] or {}
+                inc.mine[i].closed = true
+            end
+        end
+    end
+    LM:Fire("incoming")
+end
+
 local function panel(index)
     local p = panels[index]
     if p then
@@ -553,7 +568,7 @@ local function build()
     anchor = UI.Window("CowfeeRaidToolsLootPopup", { kind = "overlay", width = L.width, height = 40, saved = settings })
     -- Default: Blizzard: the whole popup sits in the main window's frame art (the window template, kept
     -- as UI:StyleWindow keeps it), sized to what shows (refresh); the other themes hide it and keep their
-    -- flat strip. Its X is hidden: an item closes on its own X, the stack when every item is closed.
+    -- flat strip. Its own X is hidden: the title bar has one X for every theme (header.close).
     chrome = CreateFrame("Frame", nil, anchor, UI.WINDOW_DEFAULTS.template)
     UI:StyleWindow(chrome)
     chrome:SetPoint("TOPLEFT")
@@ -580,13 +595,22 @@ local function build()
     header:SetScript("OnDragStop", function()
         anchor:StopDrag()
     end)
-    header.help = UI.Help(header, TEXT.title, TEXT.help)
-    header.help:SetPoint("RIGHT", -6, 0)
+    -- the title bar, right to left: the X (closes every item), All Loot Rolls, then the (i), all on the
+    -- bar's centre line
+    header.close = CreateFrame("Button", nil, header, "UIPanelCloseButton")
+    header.close:SetSize(L.headerClose, L.headerClose)
+    header.close:SetPoint("RIGHT", -2, 0)
+    header.close:SetScript("OnClick", function()
+        LM:ClosePopup()
+    end)
+    UI:SkinCloseButton(header.close)
     -- everyone's answers and rolls, read only (LootMaster/RaiderWindow.lua)
     header.answers = UI.HeaderButton(header, TEXT.answers, function()
         LM:ShowAnswers()
     end)
-    header.answers:SetPoint("RIGHT", header.help, "LEFT", -6, 0)
+    header.answers:SetPoint("RIGHT", header.close, "LEFT", -4, 0)
+    header.help = UI.Help(header, TEXT.title, TEXT.help)
+    header.help:SetPoint("RIGHT", header.answers, "LEFT", -6, 0)
     -- "N items you can't use were answered Transmog for you. Show": shown only when there are any
     autoLine = CreateFrame("Frame", nil, anchor, "BackdropTemplate")
     autoLine:SetFrameLevel(chrome:GetFrameLevel() + 2)
