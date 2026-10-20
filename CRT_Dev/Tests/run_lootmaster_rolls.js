@@ -10,7 +10,7 @@ const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate();
 lualib.luaL_openlibs(L);
 const harness = `
-local dataSrc, commSrc, gateSrc, lootingSrc, rollsSrc = ...
+local dataSrc, commSrc, gateSrc, lootingSrc, bossSrc, rollsSrc = ...
 local fails, passes = 0, 0
 local function check(ok, what) if ok then passes = passes + 1 else fails = fails + 1 print("FAIL " .. what) end end
 local function eq(a, b, what) check(a == b, what .. " (got " .. tostring(a) .. ", want " .. tostring(b) .. ")") end
@@ -48,6 +48,10 @@ local WHERE = { inside = true, kind = "raid", difficulty = 16, id = 2810 }
 IsInInstance = function() return WHERE.inside, WHERE.kind end
 GetInstanceInfo = function() return "A Raid", WHERE.kind, WHERE.difficulty, "Mythic", 20, 0, false, WHERE.id, 20, nil end
 local HERE = "2810-16"
+local function goOut() WHERE.inside, WHERE.kind = false, "none" end
+local function goIn() WHERE.inside, WHERE.kind = true, "raid" end
+local HISTORY = {}
+C_LootHistory = { GetSortedInfoForDrop = function(enc, list) return HISTORY[enc .. ":" .. list] end }
 -- timers run when their time comes (advance)
 local timers, tickers = {}, {}
 C_Timer = {
@@ -84,6 +88,10 @@ local function item(id, name, can)
   return ITEMS[id].link
 end
 GetLootRollItemLink = function(id) return ITEMS[id] and ITEMS[id].link end
+local TIMELEFT = {}
+GetLootRollTimeLeft = function(id) return TIMELEFT[id] or 60000 end
+local SECRET = setmetatable({}, { __eq = function() error("compared a secret value") end })
+issecretvalue = function(v) return rawequal(v, SECRET) end
 GetLootRollItemInfo = function(id)
   local it = ITEMS[id]
   if not it then return nil end
@@ -110,13 +118,18 @@ local LM = CRT.LootMaster
 assert(load(commSrc, "Comm.lua"))("CowfeeRaidTools", CRT)
 assert(load(gateSrc, "AutoPass.lua"))("CowfeeRaidTools", CRT)
 assert(load(lootingSrc, "Looting.lua"))("CowfeeRaidTools", CRT)
+assert(load(bossSrc, "BossLoot.lua"))("CowfeeRaidTools", CRT)
 assert(load(rollsSrc, "Rolls.lua"))("CowfeeRaidTools", CRT)
 -- the loot filter: an item named "Junk" fails it
 local filtered = {}
 function LM:FilterLoot(itemString, source, link)
   filtered[#filtered + 1] = { itemString = itemString, source = source, link = link }
-  return not link:find("Junk", 1, true)
+  if link:find("Junk", 1, true) then return false, "quality" end
+  return true
 end
+local BL = LM.BossLoot
+local blFired = {}
+LM:OnChange(function(what, sub) if what == "bossloot" then blFired[#blFired + 1] = sub end end)
 LM.AskLooting = function() end
 local function msg(text, sender) onEvent("CHAT_MSG_ADDON", LM.PREFIX, text, "RAID", sender) end
 local function deliver(box, sender) for _, text in ipairs(box) do msg(text, sender) end end
@@ -128,7 +141,6 @@ local V = LM.VERSION
 eq(LM.VERSION, "0.29.0", "version 0.29.0")
 eq(LM.LOOTING_SINCE, "0.29.0", "a raider passes only for a leader whose CRT rolls (0.29.0)")
 eq(LM.CLOSE_SECONDS, 3, "the game gets 3 s to close a roll")
-eq(LM.COLLECT_SECONDS, 2, "the session starts 2 s after the last roll")
 
 -- the leader enters and says Yes; the raider hears it
 ME = "Solex"
@@ -237,7 +249,8 @@ onEvent("START_LOOT_ROLL", 20, 60000, 1)
 eq(rollsOf(20), 0, "a kill in another instance: no pass")
 eq(#printed, 0, "a kill in another instance: nothing said")
 
--- 6. The leader: Need, else Greed, else Transmog; confirms only its own rolls
+-- 6. The leader: Need, else Greed, else Transmog; confirms only its own rolls; each boss roll on the Boss loot list
+eq(#BL:Rows(), 0, "a raider's rolls never fill the boss loot list")
 ME = "Solex"
 kill("Big Boss")
 printed = {}
@@ -245,8 +258,18 @@ local helm = item(21, "Helm", "ngt")
 onEvent("START_LOOT_ROLL", 21, 60000, 1)
 eq(select(2, rollsOf(21)), 1, "leader: Need when allowed")
 eq(lastPrint(), "CRT Looting rolled Need on " .. helm .. ".", "leader: the rolled line")
+eq(blFired[1], "open", "window: opens on the first leader roll")
+local row = BL:Row(21)
+eq(row and row.status, "rolling", "row: rolling")
+eq(row and row.rollType, 1, "row: rolled Need")
+eq(row and row.ticked, true, "row: pre-ticked, it passed the filter")
+eq(row and row.itemString, "item:5021::::::::80", "row: the item string, its empty tail dropped")
+eq(row and row.ilvl, 250, "row: the item level")
+eq(BL.boss, "Big Boss", "window: the boss")
+eq(BL.difficulty, "Mythic", "window: the difficulty")
 onEvent("START_LOOT_ROLL", 21, 60000, 1)
 eq(rollsOf(21), 1, "leader: the same roll again isn't rolled again")
+eq(#BL:Rows(), 1, "row: once")
 onEvent("CONFIRM_LOOT_ROLL", 21, 1, "bop")
 eq(confirmsOf(21), 1, "leader: CRT's own roll confirmed")
 onEvent("CONFIRM_LOOT_ROLL", 21, 1, "bop")
@@ -262,89 +285,226 @@ local junk = item(23, "Junk Shoulders", "t")
 onEvent("START_LOOT_ROLL", 23, 60000, 1)
 eq(select(2, rollsOf(23)), 4, "leader: Transmog when only that is allowed")
 eq(lastPrint(), "CRT Looting rolled Transmog on " .. junk .. ".", "leader: the Transmog line")
+eq(BL:Row(23).ticked, false, "row: not ticked when it fails the filter")
+eq(BL:Row(23).why, "quality", "row: the filter's reason")
 local chest = item(24, "Chest", "")
 onEvent("START_LOOT_ROLL", 24, 60000, 1)
 eq(rollsOf(24), 0, "leader: no roll when none is allowed")
-eq(lastPrint(), "CRT Looting didn't roll on " .. chest .. ": the game allows no Need, Greed or Transmog on it, so roll it yourself.", "leader: said why")
--- a confirm the game asks for inside the roll call
+eq(lastPrint(), "CRT Looting: you can't roll on " .. chest .. " (the game allows no Need, Greed or Transmog on it); tell the raid to roll on it.", "can't roll: the warning")
+eq(BL:Row(24).status, "cant", "can't roll: a red row")
+eq(BL:Row(24).ticked, false, "can't roll: unticked")
+BL:SetTicked(24, true)
+eq(BL:Row(24).ticked, false, "can't roll: can't be ticked")
 item(25, "Trinket", "n")
 CONFIRM_INSIDE[25] = true
 onEvent("START_LOOT_ROLL", 25, 60000, 1)
 eq(confirmsOf(25), 1, "leader: a confirm asked inside the call is answered")
--- a roll you made yourself is never confirmed
 onEvent("CONFIRM_LOOT_ROLL", 99, 1, "bop")
 eq(confirmsOf(99), 0, "leader: a roll you made by hand isn't confirmed")
 for _, id in ipairs({ 21, 22, 23, 25 }) do onEvent("CANCEL_LOOT_ROLL", id) end
 
--- 7. The session: 2 s after the last roll, the items that pass the filter, not a test
-eq(LM.current, nil, "session: none yet")
-advance(1.9)
-eq(LM.current, nil, "session: not before 2 s")
-advance(0.2)
-check(LM.current ~= nil, "session: started after 2 s")
+-- 7. Nothing starts by itself; who won; Start sends only the ticked items you won
+advance(5)
+eq(LM.current, nil, "nothing starts a session by itself")
+local ticked, total, rolling = BL:Counts()
+eq(ticked, 3, "counts: 3 ticked")
+eq(total, 5, "counts: 5 rows")
+eq(rolling, 3, "counts: 3 ticked still rolling")
+eq(select(2, BL:CanStart()), "rolling", "Start waits while a ticked row is still rolling")
+eq((BL:Start()), false, "Start: refused")
+HISTORY["3001:1"] = { itemHyperlink = helm, winner = { playerName = "Solex", isSelf = true }, allPassed = false }
+onEvent("LOOT_HISTORY_UPDATE_DROP", 3001, 1)
+eq(BL:Row(21).status, "won", "won: from the loot history")
+onEvent("ENCOUNTER_LOOT_RECEIVED", 3001, 5022, legs, 1, "Quick", "MAGE")
+eq(BL:Row(22).status, "lost", "won by someone else")
+eq(BL:Row(22).winner, "Quick", "won by: the name")
+eq(BL:Row(22).ticked, false, "won by someone else: unticked")
+BL:SetTicked(22, true)
+eq(BL:Row(22).ticked, false, "won by someone else: can't be ticked")
+HISTORY["3001:3"] = { itemHyperlink = junk, allPassed = true }
+onEvent("LOOT_HISTORY_UPDATE_DROP", 3001, 3)
+eq(BL:Row(23).status, "nowinner", "everyone passed")
+onEvent("ENCOUNTER_LOOT_RECEIVED", 3001, 5025, ITEMS[25].link, 1, "Solex-Sargeras", "PALADIN")
+eq(BL:Row(25).status, "won", "won: from the receive event")
+eq(select(4, BL:Counts()), 2, "counts: 2 ticked won")
+eq((BL:CanStart()), true, "Start: ready")
+eq(BL:Start(), 2, "Start: 2 items")
 local s = LM.current
 eq(s and s.test, false, "session: not a test")
-eq(s and #s.items, 3, "session: the three items that pass the filter")
-eq(s and s.items[1].itemString, "item:5021::::::::80", "session: the item string, its empty tail dropped")
-eq(s and s.items[1].link, helm, "session: the link")
-eq(s and s.items[1].ilvl, 250, "session: the item level")
+eq(s and #s.items, 2, "session: only the ticked items you won")
+eq(s and s.items[1].link, helm, "session: the helm")
+eq(s and s.items[2].link, ITEMS[25].link, "session: the trinket")
 eq(s and s.boss, "Big Boss", "session: the boss")
-eq(filtered[1] and filtered[1].source, "boss", "session: filtered as boss loot")
-eq(#filtered, 4, "session: each rolled item through the filter once")
--- nothing passes: said, no session
-filtered = {}
-kill("Third Boss")
-printed = {}
-item(31, "Junk Ring", "n")
+eq(#BL:Rows(), 3, "Start: the sent rows leave the list")
+eq(select(2, BL:CanStart()), "session", "Start waits while a session is running")
+LM:End()
+blFired = {}
+BL:Clear()
+eq(#BL:Rows(), 0, "Clear: empty")
+eq(blFired[1], "cleared", "Clear: the window is told")
+-- a winner that can't be read stays rolling
+kill()
+local staff = item(31, "Staff", "n")
 onEvent("START_LOOT_ROLL", 31, 60000, 1)
 onEvent("CANCEL_LOOT_ROLL", 31)
-advance(2)
-eq(lastPrint(), "No loot passed the loot filter for Third Boss.", "session: nothing passed the filter")
-eq(LM.current, s, "session: no new one")
--- a session already running: the new items wait until it ends
-printed = {}
-local staff = item(32, "Staff", "n")
-onEvent("START_LOOT_ROLL", 32, 60000, 1)
-onEvent("CANCEL_LOOT_ROLL", 32)
-advance(2)
-eq(LM.current, s, "running: the new items wait")
-eq(lastPrint(), "Loot Master: the boss loot starts once the running session ends.", "running: said")
-LM:End()
-check(LM.current ~= nil and LM.current ~= s, "running: the waiting session starts when it ends")
-eq(LM.current and #LM.current.items, 1, "running: with the waiting item")
-eq(LM.current and LM.current.items[1].link, staff, "running: the staff")
-LM:End()
--- a test session: the leader doesn't roll, and the boss loot isn't mixed into it
-LM:Start({ { itemString = "item:5001", link = "x" } }, true)
-kill()
-printed = {}
-local orb = item(41, "Orb", "n")
-onEvent("START_LOOT_ROLL", 41, 60000, 1)
-eq(rollsOf(41), 0, "leader, test running: no roll")
-eq(lastPrint(), "CRT Looting didn't roll on " .. orb .. ": a test session is running, so roll it yourself.", "leader, test running: said")
-advance(3)
-eq(LM.current and LM.current.test, true, "leader, test running: still only the test")
-LM:End()
--- the leader's CRT Looting off: nothing at all
-LM:SetLooting(false, "off")
-take()
-printed = {}
-item(42, "Dagger", "n")
-onEvent("START_LOOT_ROLL", 42, 60000, 1)
-advance(3)
-eq(rollsOf(42), 0, "leader off: no roll")
-eq(#printed, 0, "leader off: nothing said")
-eq(LM.current, nil, "leader off: no session")
--- more than 8 items: a second session after the first
-LM:SetLooting(true)
-take()
-kill()
-for id = 51, 60 do item(id, "Piece" .. id, "n") onEvent("START_LOOT_ROLL", id, 60000, 1) onEvent("CANCEL_LOOT_ROLL", id) end
-advance(2)
+HISTORY["3001:5"] = { itemHyperlink = staff, winner = { playerName = SECRET, isSelf = SECRET } }
+onEvent("LOOT_HISTORY_UPDATE_DROP", 3001, 5)
+eq(BL:Row(31).status, "rolling", "a winner that can't be read: still rolling")
+-- each row leaves 10 minutes after its kill
+advance(LM.BOSS_SECONDS - 10)
+eq(#BL:Rows(), 1, "expiry: not before 10 minutes")
+advance(11)
+eq(#BL:Rows(), 0, "expiry: gone 10 minutes after the kill")
+-- more than 8: a second session after the first; one that waited too long is dropped
+local function tenWon(base)
+  kill()
+  for id = base, base + 9 do
+    item(id, "Piece" .. id, "n") onEvent("START_LOOT_ROLL", id, 60000, 1) onEvent("CANCEL_LOOT_ROLL", id)
+    HISTORY["3001:" .. id] = { itemHyperlink = ITEMS[id].link, winner = { playerName = "Solex", isSelf = true } }
+    onEvent("LOOT_HISTORY_UPDATE_DROP", 3001, id)
+  end
+end
+tenWon(51)
+eq(BL:Start(), 10, "ten items: sent")
 eq(LM.current and #LM.current.items, 8, "ten items: the first session has 8")
 LM:End()
 eq(LM.current and #LM.current.items, 2, "ten items: the second has 2")
 LM:End()
+tenWon(61)
+BL:Start()
+advance(LM.BOSS_SECONDS + 1)
+LM:End()
+eq(LM.current, nil, "a waiting session over 10 minutes old: dropped")
+eq(lastPrint(), "Loot Master dropped the waiting boss loot: it waited over 10 minutes.", "dropped: said")
+
+-- 8. A confirm is answered only for CRT's own roll, made, still open, within 3 s
+kill("Fourth Boss")
+printed = {}
+ROLL_ERROR[71] = true
+item(71, "Plate", "n")
+onEvent("START_LOOT_ROLL", 71, 60000, 1)
+ROLL_ERROR[71] = nil
+check((printed[1] or ""):find("^CRT Looting couldn't roll on") ~= nil, "failed roll: said")
+eq(BL:Row(71) and BL:Row(71).status, "cant", "failed roll: a red row")
+onEvent("CONFIRM_LOOT_ROLL", 71, 1, "bop") -- the player's own Need, by hand
+eq(confirmsOf(71), 0, "failed roll: the confirm of the hand roll isn't answered")
+local mail = item(72, "Mail", "n")
+onEvent("START_LOOT_ROLL", 72, 60000, 1)
+advance(3)
+eq(lastPrint(), "CRT Looting couldn't roll on " .. mail .. " (the game kept the roll open), so roll it yourself.", "kept open: said")
+onEvent("CONFIRM_LOOT_ROLL", 72, 1, "bop")
+eq(confirmsOf(72), 0, "kept open: a confirm after it isn't answered")
+item(73, "Wrist", "n")
+onEvent("START_LOOT_ROLL", 73, 60000, 1)
+onEvent("CANCEL_LOOT_ROLL", 73)
+advance(3.5)
+onEvent("CONFIRM_LOOT_ROLL", 73, 1, "bop")
+eq(confirmsOf(73), 0, "a confirm over 3 s after CRT's roll isn't answered")
+item(74, "Waist", "n")
+onEvent("START_LOOT_ROLL", 74, 60000, 1)
+advance(1)
+onEvent("CONFIRM_LOOT_ROLL", 74, 1, "bop")
+eq(confirmsOf(74), 1, "a confirm within 3 s is answered")
+onEvent("CANCEL_LOOT_ROLL", 74)
+advance(3)
+BL:Clear()
+
+-- 9. A roll with no readable link: said, not on the list; a secret name is never compared
+kill("Fifth Boss")
+item(75, "Ghost", "n")
+ITEMS[75].link = nil
+onEvent("START_LOOT_ROLL", 75, 60000, 1)
+eq(lastPrint(), "Loot Master couldn't read the link of Ghost, so it isn't on the boss loot list.", "no link: said")
+eq(#BL:Rows(), 0, "no link: no row")
+onEvent("CANCEL_LOOT_ROLL", 75)
+item(76, "x", "n")
+ITEMS[76].link, ITEMS[76].name = nil, SECRET
+printed = {}
+onEvent("START_LOOT_ROLL", 76, 60000, 1)
+eq(rollsOf(76), 0, "secret name: no roll (the game's roll info can't be read)")
+eq(printed[1], "CRT Looting: you can't roll on an item (the game didn't say which rolls you may make); tell the raid to roll on it.", "secret name: warned")
+advance(3)
+
+-- 10. The leader's "didn't roll" line: once per kill per reason (here, no loot authority)
+local function count(pat) local c = 0 for _, l in ipairs(printed) do if l:find(pat, 1, true) then c = c + 1 end end return c end
+CRT.db.lootmaster.authority.leader = false
+kill("Sixth Boss")
+printed = {}
+local sash = item(81, "Sash", "n")
+item(82, "Hood", "n")
+onEvent("START_LOOT_ROLL", 81, 60000, 1)
+onEvent("START_LOOT_ROLL", 82, 60000, 1)
+eq(rollsOf(81) + rollsOf(82), 0, "no loot authority: no roll")
+eq(count("didn't roll on"), 1, "leader: one line per kill per reason")
+eq(printed[1], "CRT Looting didn't roll on " .. sash .. ": your loot authority setting doesn't let you run loot, so roll it yourself.", "no loot authority: said")
+eq(#BL:Rows(), 0, "no loot authority: no rows")
+kill("Seventh Boss")
+item(83, "Mask", "n")
+onEvent("START_LOOT_ROLL", 83, 60000, 1)
+eq(count("didn't roll on"), 2, "leader: a new kill, a new line")
+CRT.db.lootmaster.authority.leader = true
+advance(3)
+
+-- 11. The list empties when CRT Looting turns off, and on leaving the instance
+kill()
+item(91, "Gauntlet", "n")
+onEvent("START_LOOT_ROLL", 91, 60000, 1)
+onEvent("CANCEL_LOOT_ROLL", 91)
+eq(#BL:Rows(), 1, "a row")
+LM:SetLooting(false, "off")
+take()
+eq(#BL:Rows(), 0, "CRT Looting off: empty")
+eq(lastPrint(), "Loot Master cleared the boss loot list: CRT Looting is off.", "CRT Looting off: said")
+LM:SetLooting(true)
+take()
+kill()
+item(92, "Girdle", "n")
+onEvent("START_LOOT_ROLL", 92, 60000, 1)
+onEvent("CANCEL_LOOT_ROLL", 92)
+eq(#BL:Rows(), 1, "a row again")
+goOut()
+onEvent("PLAYER_ENTERING_WORLD", false, false)
+eq(#BL:Rows(), 0, "leaving the instance: empty")
+goIn()
+onEvent("PLAYER_ENTERING_WORLD", false, false)
+take()
+eq(LM:LootingOn(), true, "back in after a wipe: still on")
+
+-- 13. The heartbeat race: a roll refused only for a quiet leader is tried once more on the leader's next word
+ME = "Halo"
+local H = { "H|" .. V .. "|" .. HERE .. "|" .. HERE .. "|0" }
+deliver(H, "Solex-Sargeras")
+kill()
+NOW = NOW + 91
+printed = {}
+local gem = item(101, "Gem", "n")
+onEvent("START_LOOT_ROLL", 101, 60000, 1)
+eq(rollsOf(101), 0, "quiet: no pass yet")
+eq(lastPrint(), "CRT Looting didn't pass " .. gem .. ": no word from the raid leader for 90 seconds, so roll it yourself.", "quiet: said")
+deliver(H, "Solex-Sargeras")
+eq(rollsOf(101), 1, "quiet: passed on the next heartbeat")
+eq(lastPrint(), "CRT Looting passed " .. gem .. " for Solex.", "quiet: the passed line")
+deliver(H, "Solex-Sargeras")
+eq(rollsOf(101), 1, "quiet: tried once only")
+onEvent("CANCEL_LOOT_ROLL", 101)
+NOW = NOW + 91
+item(102, "Shard", "n")
+onEvent("START_LOOT_ROLL", 102, 60000, 1)
+onEvent("CANCEL_LOOT_ROLL", 102) -- you rolled it yourself
+item(103, "Dust", "n")
+TIMELEFT[103] = 0
+onEvent("START_LOOT_ROLL", 103, 60000, 1)
+deliver(H, "Solex-Sargeras")
+eq(rollsOf(102), 0, "quiet: a roll you made yourself isn't passed later")
+eq(rollsOf(103), 0, "quiet: a roll with no time left isn't passed")
+NOW = NOW + 91
+item(104, "Ore", "n")
+onEvent("START_LOOT_ROLL", 104, 60000, 1)
+deliver({ "F|" .. V .. "|off" }, "Solex-Sargeras")
+eq(rollsOf(104), 0, "quiet: the next word says off: no pass")
+deliver(ON, "Solex-Sargeras")
+eq(rollsOf(104), 0, "quiet: tried once only, even after off")
+advance(3)
 
 print(string.format("%d passed, %d failed", passes, fails))
 if fails > 0 then error("failures") end
@@ -352,7 +512,7 @@ if fails > 0 then error("failures") end
 const dir = process.argv[2];
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 const files = ['CRT_Modules/LootMaster/Data.lua', 'CRT_Modules/LootMaster/Comm.lua', 'CRT_Modules/LootMaster/AutoPass.lua',
-  'CRT_Modules/LootMaster/Looting.lua', 'CRT_Modules/LootMaster/Rolls.lua'];
+  'CRT_Modules/LootMaster/Looting.lua', 'CRT_Modules/LootMaster/BossLoot.lua', 'CRT_Modules/LootMaster/Rolls.lua'];
 for (const f of files) {
   const p = path.join(dir, f);
   lua.lua_pushstring(L, to_luastring(fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : 'error("missing ' + f + '")'));

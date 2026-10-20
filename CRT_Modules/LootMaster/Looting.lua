@@ -314,6 +314,7 @@ function LM:LootingState()
         yesInstance = h.yes, leaderOnline = online(leader and LM.UnitOf(leader)), leaderInstance = h.here,
         leaderOpenWorld = h.world == true, leaderAway = away, heartbeatAt = h.on and h.at or nil, now = now, passed = passed,
         leading = own.on == true, leadingInstance = own.on and own.instance or nil, rolled = rolled,
+        canLoot = LM:CanLoot() == true,
     }
 end
 
@@ -397,6 +398,7 @@ local function hear(entry)
         watchTicker = C_Timer.NewTicker(LM.LOOTING_TICK, watch)
     end
     LM:Fire("looting")
+    LM:Fire("heard") -- a roll refused for a quiet leader is tried once more (LootMaster/Rolls.lua)
 end
 
 LM.Handle("O", function(f, sender)

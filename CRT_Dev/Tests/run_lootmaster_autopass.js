@@ -195,7 +195,7 @@ eq(AutoPass.ROLL_NAME[4], "Transmog", "transmog's name")
 local function leaderGood()
   local state = {
     test = false, me = "Solex-Sargeras", leader = "Solex-Sargeras", myInstance = HERE,
-    leading = true, leadingInstance = HERE, rolled = { [3] = { type = 1 } },
+    leading = true, leadingInstance = HERE, canLoot = true, rolled = { [3] = { type = 1 } },
   }
   local roll = { id = 7, test = false, instance = HERE, bossInstance = HERE }
   local info = { canNeed = true, canGreed = true, canTransmog = true }
@@ -208,6 +208,7 @@ local LCHECKS = {
   { "notleader", function(s, r, i) s.me = "Halo-Sargeras" end },
   { "off", function(s, r, i) s.leading = false end },
   { "instance", function(s, r, i) s.leadingInstance = ELSEWHERE end },
+  { "authority", function(s, r, i) s.canLoot = false end },
   { "noroll", function(s, r, i) r.id = nil end },
   { "once", function(s, r, i) s.rolled[r.id or 7] = { type = 2 } end },
   { "rollplace", function(s, r, i) r.instance = ELSEWHERE end },
@@ -268,6 +269,8 @@ eq(select(2, lroll(function(st) st.me = nil end)), "notleader", "leader: your na
 eq(select(2, lroll(function(st) st.leader = nil end)), "notleader", "leader: no leader (not in a group)")
 eq(select(2, lroll(function(st) st.leading = "yes" end)), "off", "leader: on must be exactly true")
 eq(select(2, lroll(function(st) st.leadingInstance = nil end)), "instance", "leader: no Yes instance")
+eq(select(2, lroll(function(st) st.canLoot = nil end)), "authority", "leader: loot authority unknown: refused")
+eq(select(2, lroll(function(st) st.canLoot = 1 end)), "authority", "leader: loot authority must be exactly true")
 eq(select(2, lroll(function(st) st.rolled = nil end)), "need", "leader: no rolled list: none rolled yet")
 eq(select(2, lroll(function(st, ro) ro.id = "7" end)), "noroll", "leader: a roll id that isn't a number")
 eq(select(2, AutoPass:LeaderRoll(nil, nil, nil)), "nostate", "leader: nothing: no state")
@@ -281,6 +284,7 @@ for _, c in ipairs(LCHECKS) do
   check(type(AutoPass.LEADER_WHY[c[1]]) == "string" and AutoPass.LEADER_WHY[c[1]] ~= "", "leader words for " .. c[1])
 end
 check(type(AutoPass.LEADER_WHY.cant) == "string", "leader words for cant")
+eq(AutoPass.CLOSE_SECONDS, 3, "the game gets 3 s to close a roll; a confirm later than that isn't answered")
 
 print(string.format("%d passed, %d failed", passes, fails))
 if fails > 0 then error("failures") end

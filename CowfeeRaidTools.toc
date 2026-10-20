@@ -72,6 +72,7 @@ CRT_Modules\LootMaster\Comm.lua
 CRT_Modules\LootMaster\Sync.lua
 CRT_Modules\LootMaster\AutoPass.lua
 CRT_Modules\LootMaster\Looting.lua
+CRT_Modules\LootMaster\BossLoot.lua
 CRT_Modules\LootMaster\Rolls.lua
 CRT_Modules\LootMaster\Tabs.lua
 CRT_Modules\LootMaster\Popup.lua

@@ -165,6 +165,7 @@ AutoPass.LEADER_WHY = {
     notleader = "you are not the raid leader",
     off = "your CRT Looting is off",
     instance = "you said Yes for another instance",
+    authority = "your loot authority setting doesn't let you run loot",
     noroll = AutoPass.WHY.noroll,
     once = "CRT rolled on it already",
     rollplace = AutoPass.WHY.rollplace,
@@ -175,7 +176,9 @@ AutoPass.LEADER_WHY = {
 
 -- The raid leader's roll, when its raiders pass: Need when the game allows it, else Greed, else
 -- Transmog. state (LM:LootingState): test, me, leader, myInstance, leading (your own CRT Looting is on),
--- leadingInstance (the instance you said Yes for), rolled ({ [rollID] = { type } }). roll: as ShouldPass's.
+-- leadingInstance (the instance you said Yes for), canLoot (exactly true when your own loot authority lets
+-- you run loot, LM:CanLoot), rolled ({ [rollID] = { type, at, failed, kept, confirmed } }). roll: as
+-- ShouldPass's.
 -- info: canNeed, canGreed, canTransmog (exactly true when allowed). Returns the roll type and its key
 -- ("need", "greed", "transmog"), or false and the first reason that fails (LEADER_WHY). A test is a no
 -- before anything else. The same boss and instance checks as ShouldPass, so the leader rolls on what its
@@ -198,6 +201,9 @@ function AutoPass:LeaderRoll(state, roll, info)
     end
     if state.leadingInstance ~= state.myInstance then
         return false, "instance"
+    end
+    if not isTrue(state.canLoot) then
+        return false, "authority"
     end
     if type(roll) ~= "table" or type(roll.id) ~= "number" then
         return false, "noroll"
@@ -245,27 +251,37 @@ function AutoPass:Pass(rollID, passed)
 end
 
 -- The leader's roll of rollType (Need, Greed or Transmog only). rolled: the state's rolled list (required).
-function AutoPass:Roll(rollID, rollType, rolled)
+-- now: GetTime() seconds, kept as the roll's time for Confirm. A call that fails marks the roll failed, so
+-- a roll you then make by hand is never confirmed by CRT.
+function AutoPass:Roll(rollID, rollType, rolled, now)
     if type(rollID) ~= "number" or type(rolled) ~= "table" or not self.ROLL_NAME[rollType] then
         return false, "noroll"
     end
     if rolled[rollID] ~= nil then
         return false, "once"
     end
-    rolled[rollID] = { type = rollType }
+    local mine = { type = rollType, at = now }
+    rolled[rollID] = mine
     local ok, err = pcall(RollOnLoot, rollID, rollType)
     if not ok then
+        mine.failed = true
         return false, tostring(err)
     end
     return true
 end
 
--- Confirms a roll the game asks about (CONFIRM_LOOT_ROLL), only when CRT made it with this same type and
+AutoPass.CLOSE_SECONDS = 3 -- seconds the game gets to close a roll CRT made; a confirm after that isn't CRT's
+
+-- Confirms a roll the game asks about (CONFIRM_LOOT_ROLL), only when CRT's own call made it (not failed,
+-- not reported kept open) with this same type, within CLOSE_SECONDS of it (now: GetTime() seconds), and
 -- hasn't confirmed it yet: a roll you made by hand is never confirmed. Returns true, or false and
 -- "notmine", "type" (CRT made it with another type), "once" or the error.
-function AutoPass:Confirm(rollID, rollType, rolled)
+function AutoPass:Confirm(rollID, rollType, rolled, now)
     local mine = type(rolled) == "table" and type(rollID) == "number" and rolled[rollID] or nil
-    if type(mine) ~= "table" then
+    if type(mine) ~= "table" or mine.failed or mine.kept then
+        return false, "notmine"
+    end
+    if type(now) ~= "number" or type(mine.at) ~= "number" or now < mine.at or now - mine.at > self.CLOSE_SECONDS then
         return false, "notmine"
     end
     if mine.type ~= rollType then
