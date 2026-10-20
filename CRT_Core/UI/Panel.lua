@@ -581,8 +581,106 @@ function UI.PanelButton(parent, label, height, onClick)
     return b
 end
 
--- Skins every panel button under a frame. Pages call nothing themselves: the panel runs this when a
--- page is built or shown, and when a page tab changes, so buttons made later are caught too.
+-- A UICheckButtonTemplate checkbox. Modern hides the template's art and draws a CHECK_SIZE box with
+-- rounded corners (UI.RoundRect) in its centre: unticked, a roast fill with a mocha edge; ticked, the
+-- slider knob's bevelled walnut (a dark edge, a soft line inside the top edge) with a white tick
+-- (CRT_Media/Media/Check.tga). The edge turns caramel under the mouse; a disabled box is faded to
+-- CHECK_OFF_ALPHA. Classic shows the template's art again. The page's label and click are untouched.
+-- The box follows SetChecked, clicks, SetEnabled / Enable / Disable and the mouse through hooks, so
+-- pages call nothing new. cb.crtCheck keeps the parts.
+local CHECK_SIZE, CHECK_R, CHECK_TICK = 16, 4, 12
+local CHECK_OFF_ALPHA = 0.4
+local CHECK_ART = { "GetNormalTexture", "GetPushedTexture", "GetHighlightTexture", "GetCheckedTexture",
+    "GetDisabledCheckedTexture", "GetDisabledTexture" }
+local TICK = (CRT.MEDIA or ("Interface\\AddOns\\" .. ADDON .. "\\CRT_Media\\Media\\")) .. "Check" -- the fallback is for test harnesses without Core.lua
+
+-- A MOCHA colour with an alpha, for UI.PaintShape.
+local function tone(key, alpha)
+    local c = CRT.MOCHA[key]
+    return { c[1], c[2], c[3], alpha }
+end
+
+local function paintCheck(cb)
+    local s = cb.crtCheck
+    local on = cb:GetChecked() and true or false
+    local alpha = cb:IsEnabled() and 1 or CHECK_OFF_ALPHA
+    for _, t in ipairs(s.textures) do
+        t:SetShown(s.modern)
+    end
+    s.shine:SetShown(s.modern and on)
+    s.tick:SetShown(s.modern and on)
+    if not s.modern then
+        return
+    end
+    UI.PaintShape(s.box.edge, tone(s.hover and "caramel" or (on and "walnutEdge" or "mocha"), alpha))
+    UI.PaintShape(s.box.face, tone(on and "walnut" or "roast", alpha))
+    s.shine:SetColorTexture(mocha("walnutShine", alpha))
+    s.tick:SetVertexColor(1, 1, 1, alpha)
+end
+
+function UI:SkinCheckButton(cb)
+    if type(cb) ~= "table" or cb.crtSkin then
+        return
+    end
+    -- the box's area, a hidden texture the shapes are drawn over
+    local area = cb:CreateTexture(nil, "BACKGROUND")
+    area:SetSize(CHECK_SIZE, CHECK_SIZE)
+    area:SetPoint("CENTER")
+    area:Hide()
+    local s = { size = CHECK_SIZE, radius = CHECK_R, modern = false, hover = false, textures = {} }
+    s.box = { edge = UI.RoundRect(cb, area, "ARTWORK", 0, CHECK_R, 0), face = UI.RoundRect(cb, area, "ARTWORK", 1, CHECK_R - 1, 1) }
+    s.shine = cb:CreateTexture(nil, "ARTWORK", nil, 2)
+    s.shine:SetPoint("TOPLEFT", area, "TOPLEFT", CHECK_R, -1)
+    s.shine:SetPoint("TOPRIGHT", area, "TOPRIGHT", -CHECK_R, -1)
+    s.shine:SetHeight(1)
+    s.tick = cb:CreateTexture(nil, "OVERLAY")
+    s.tick:SetTexture(TICK)
+    s.tick:SetSize(CHECK_TICK, CHECK_TICK)
+    s.tick:SetPoint("CENTER", area, "CENTER")
+    for _, shape in ipairs({ s.box.edge, s.box.face }) do
+        for _, list in ipairs({ shape.corners, shape.fills }) do
+            for _, t in ipairs(list) do
+                s.textures[#s.textures + 1] = t
+            end
+        end
+    end
+    cb.crtCheck = s
+
+    local function paint()
+        paintCheck(cb)
+    end
+    for _, method in ipairs({ "SetChecked", "SetEnabled", "Enable", "Disable" }) do
+        hooksecurefunc(cb, method, paint)
+    end
+    cb:HookScript("PostClick", paint)
+    cb:HookScript("OnShow", paint)
+    cb:HookScript("OnEnter", function()
+        s.hover = true
+        paint()
+    end)
+    cb:HookScript("OnLeave", function()
+        s.hover = false
+        paint()
+    end)
+
+    cb.crtSkin = function(modern)
+        s.modern = modern and true or false
+        for _, get in ipairs(CHECK_ART) do
+            local texture = cb[get] and cb[get](cb)
+            if texture then
+                texture:SetAlpha(modern and 0 or 1)
+            end
+        end
+        paint()
+    end
+    self.skinned[#self.skinned + 1] = cb
+    cb.crtSkin(self:IsModern())
+end
+
+-- Skins every panel button, dropdown and checkbox under a frame. Pages call nothing themselves: the
+-- panel runs this when a page is built or shown, and when a page tab changes, so controls made later
+-- are caught too. A checkbox has the template's pushed and disabled-checked art, which a radio button
+-- (UIRadioButtonTemplate) has not, so radio buttons keep the game's look.
 function UI:SkinTree(frame)
     for _, child in ipairs({ frame:GetChildren() }) do
         if not child.crtSkin then
@@ -590,6 +688,9 @@ function UI:SkinTree(frame)
                 self:SkinButton(child)
             elseif child.Background and child.Arrow and child.SetupMenu then
                 self:SkinDropdown(child)
+            elseif child.GetObjectType and child:GetObjectType() == "CheckButton" and child:GetPushedTexture()
+                and child:GetDisabledCheckedTexture() then
+                self:SkinCheckButton(child)
             end
         end
         self:SkinTree(child)
