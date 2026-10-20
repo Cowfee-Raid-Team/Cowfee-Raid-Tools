@@ -123,17 +123,26 @@ for _, k in ipairs(LM.FILTER_KINDS) do
   end
 end
 eq((LM.PassesFilter(facts({ source = "trash" }), filt({ trash = true, boss = false }))), true, "trash only: trash passes")
+-- a part that can't be read is skipped: the item is let through on it (Alex: "Let it through")
 ok, why = LM.PassesFilter(nil, filt())
-eq(ok, false, "no facts: left out") eq(why, "unreadable", "no facts: why")
+eq(ok, true, "no facts: let through") eq(why, "unreadable", "no facts: why")
 ok, why = LM.PassesFilter(facts({ source = "chest" }), filt())
-eq(why, "unreadable", "an unknown source: left out")
+eq(ok, true, "an unknown source: let through") eq(why, "unreadable", "an unknown source: why")
+ok, why = LM.PassesFilter(facts({ source = "chest", quality = 2 }), filt())
+eq(ok, false, "an unknown source: the readable quality still counts") eq(why, "quality", "an unknown source: left out for its quality")
 local noQuality, noIlvl = facts(), facts()
 noQuality.quality, noIlvl.ilvl = nil, nil
 ok, why = LM.PassesFilter(noQuality, filt())
-eq(why, "unreadable", "no quality: left out")
+eq(ok, true, "no quality: let through") eq(why, "unreadable", "no quality: why")
+ok, why = LM.PassesFilter(noQuality, filt({ boss = false }))
+eq(ok, false, "no quality: the readable source still counts") eq(why, "source", "no quality: left out for its source")
 ok, why = LM.PassesFilter(noIlvl, filt({ ilvl = 200 }))
-eq(why, "unreadable", "no item level with a minimum: left out")
+eq(ok, true, "no item level with a minimum: let through") eq(why, "unreadable", "no item level: why")
 eq((LM.PassesFilter(noIlvl, filt({ ilvl = 0 }))), true, "no item level with Any: passes")
+ok, why = LM.PassesFilter(facts({ isToy = true, kindUnknown = true }), filt())
+eq(ok, true, "kind unknown: let through, whatever the kinds ticked") eq(why, "unreadable", "kind unknown: why")
+ok, why = LM.PassesFilter(facts({ kindUnknown = true, quality = 3 }), filt())
+eq(ok, false, "kind unknown: the readable quality still counts")
 
 -- 4. Cleaning (the tab and a sync use it)
 local c = LM.CleanFilter({ boss = "yes", trash = true, quality = 7, ilvl = 1003, kinds = { toy = true, bogus = true, bop = 1 } }, D)
@@ -192,7 +201,7 @@ C_TooltipInfo = { GetHyperlink = function(s) if broken.tooltip == "error" then e
   if it.classes then lines[#lines + 1] = { leftText = "Classes: Warrior, Paladin, Death Knight" } end return { lines = lines } end }
 local function kindOf(id, source)
   local f, w = LM.ItemFacts("item:" .. id .. "::::", source or "boss")
-  return f and LM.ItemKind(f) or nil, f, w
+  return (f and not f.kindUnknown) and LM.ItemKind(f) or nil, f, w
 end
 eq(kindOf(101), "bop", "game: BoP plate")
 eq(kindOf(102), "boe", "game: BoE sword")
@@ -216,58 +225,87 @@ eq(f101.quality, 4, "game: quality")
 eq(f101.source, "boss", "game: the source given")
 local _, ft = kindOf(101, "trash")
 eq(ft.source, "trash", "game: trash")
--- unreadable: left out, with why
-local function why(id, source) local _, f, w = kindOf(id, source) return f, w end
-local f0, w0 = LM.ItemFacts("item:101", nil)
-eq(f0, nil, "unreadable: no source") eq(w0, LM.FILTER_WHY.source, "unreadable: no source, why")
+-- unreadable: the facts that can be read are kept, the rest listed in f.unreadable
+local function has(list, w) for _, x in ipairs(list) do if x == w then return true end end return false end
+local function why(id, source) local _, f = kindOf(id, source) return f end
+local f0 = LM.ItemFacts("item:101", nil)
+eq(f0.source, nil, "unreadable: no source") check(has(f0.unreadable, LM.FILTER_WHY.source), "unreadable: no source, why")
+eq(f0.quality, 4, "unreadable: no source, the quality still read")
+eq(f0.kindUnknown, nil, "unreadable: no source, the kind still known")
 ITEMS[101].uncached = true
-f0, w0 = why(101)
-eq(f0, nil, "unreadable: not loaded") eq(w0, LM.FILTER_WHY.notLoaded, "unreadable: not loaded, why")
+f0 = why(101)
+eq(f0.quality, nil, "unreadable: not loaded, no quality") eq(f0.kindUnknown, true, "unreadable: not loaded, kind unknown")
+check(has(f0.unreadable, LM.FILTER_WHY.notLoaded), "unreadable: not loaded, why")
+eq(f0.source, "boss", "unreadable: not loaded, the source still known")
+eq(f0.ilvl, 266, "unreadable: not loaded, the item level still read when the game gives it")
 ITEMS[101].uncached = nil
-f0, w0 = why(999)
-eq(f0, nil, "unreadable: an unknown item")
+f0 = why(999)
+eq(f0.kindUnknown, true, "unreadable: an unknown item")
 f0 = LM.ItemFacts("garbage", "boss")
-eq(f0, nil, "unreadable: not an item string")
+eq(f0.kindUnknown, true, "unreadable: not an item string")
 for _, case in ipairs({ { "GetToyInfo", "toy" }, { "GetMountFromItem", "mount" }, { "GetPetInfoByItemID", "pet" }, { "IsCosmeticItem", "cosmetic" } }) do
   for _, how in ipairs({ "error", "secret" }) do
     broken[case[1]] = how
-    f0, w0 = why(101)
-    eq(f0, nil, "unreadable: " .. case[1] .. " " .. how)
-    eq(w0, LM.FILTER_WHY[case[2]], "unreadable: " .. case[1] .. " " .. how .. ", why")
+    f0 = why(101)
+    eq(f0.kindUnknown, true, "unreadable: " .. case[1] .. " " .. how .. ", kind unknown")
+    check(has(f0.unreadable, LM.FILTER_WHY[case[2]]), "unreadable: " .. case[1] .. " " .. how .. ", why")
+    eq(f0.quality, 4, "unreadable: " .. case[1] .. " " .. how .. ", quality still read")
     broken[case[1]] = nil
   end
 end
 local saveToy = C_ToyBox
 C_ToyBox = nil
-f0, w0 = why(101)
-eq(w0, LM.FILTER_WHY.toy, "unreadable: no toy API at all")
+f0 = why(101)
+check(has(f0.unreadable, LM.FILTER_WHY.toy), "unreadable: no toy API at all")
 C_ToyBox = saveToy
 broken.quality = "secret"
-f0, w0 = why(101)
-eq(f0, nil, "unreadable: a secret quality") eq(w0, LM.FILTER_WHY.notLoaded, "unreadable: a secret quality, why")
+f0 = why(101)
+eq(f0.quality, nil, "unreadable: a secret quality is never kept") check(has(f0.unreadable, LM.FILTER_WHY.notLoaded), "unreadable: a secret quality, why")
 broken.quality = nil
 broken.IsItemBindToAccountUntilEquip = "error"
 eq(kindOf(101), "bop", "the second warbound word failing changes nothing (bindType says it)")
 broken.IsItemBindToAccountUntilEquip = nil
 broken.tooltip = "error"
-f0, w0 = why(106)
-eq(f0, nil, "unreadable: a Miscellaneous item with no tooltip") eq(w0, LM.FILTER_WHY.token, "unreadable: tooltip, why")
+f0 = why(106)
+eq(f0.kindUnknown, true, "unreadable: a Miscellaneous item with no tooltip") check(has(f0.unreadable, LM.FILTER_WHY.token), "unreadable: tooltip, why")
 eq(kindOf(101), "bop", "gear needs no tooltip")
 eq(kindOf(107), "toy", "a toy needs no tooltip")
 broken.tooltip = "nil"
-eq((why(113)), nil, "unreadable: tooltip data missing")
+eq(why(113).kindUnknown, true, "unreadable: tooltip data missing")
 broken.tooltip = nil
--- LM:FilterLoot: the leader is told what was left out and why
-printed = {}
+-- LM:FilterLoot: each unreadable case is let through, and the leader is told what couldn't be read
+local function loot(id, source, link) printed = {} local a, b = LM:FilterLoot("item:" .. id, source, link) return a, b end
 ITEMS[101].uncached = true
-ok, why = LM:FilterLoot("item:101", "boss", "[Plate Helm]")
-eq(ok, false, "FilterLoot: unreadable left out") eq(why, "unreadable", "FilterLoot: why")
-eq(printed[1], "Loot Master left out [Plate Helm]: the game hadn't loaded its details.", "FilterLoot: a chat line")
+ok, why = loot(101, "boss", "[Plate Helm]")
+eq(ok, true, "FilterLoot: not loaded, let through") eq(why, "unreadable", "FilterLoot: why")
+eq(printed[1], "Loot Master couldn't read [Plate Helm] (its details, not loaded yet), so it's included.", "FilterLoot: a chat line")
+ok = loot(101, "trash")
+eq(ok, false, "FilterLoot: not loaded, but trash with trash off is still left out")
+eq(#printed, 0, "FilterLoot: no chat line when left out")
 ITEMS[101].uncached = nil
-printed = {}
-eq((LM:FilterLoot("item:101", "boss")), true, "FilterLoot: a boss BoP epic passes with the defaults")
-eq((LM:FilterLoot("item:107", "boss")), false, "FilterLoot: a toy is left out with the defaults")
-eq((LM:FilterLoot("item:101", "trash")), false, "FilterLoot: trash is left out with the defaults")
+eq((loot(107, nil, "[Toy]")), false, "FilterLoot: no source, a toy is still left out by its kind")
+eq((loot(101, nil, "[Helm]")), true, "FilterLoot: no source, BoP gear let through")
+eq(printed[1], "Loot Master couldn't read [Helm] (where it dropped), so it's included.", "FilterLoot: no source, the chat line")
+for _, case in ipairs({ { "GetToyInfo", "toy" }, { "GetMountFromItem", "mount" }, { "GetPetInfoByItemID", "pet" }, { "IsCosmeticItem", "cosmetic" } }) do
+  for _, how in ipairs({ "error", "secret" }) do
+    broken[case[1]] = how
+    eq((loot(102, "boss", "[Sword]")), true, "FilterLoot: " .. case[1] .. " " .. how .. ", BoE gear let through")
+    eq(printed[1], "Loot Master couldn't read [Sword] (" .. LM.FILTER_WHY[case[2]] .. "), so it's included.", "FilterLoot: " .. case[1] .. " " .. how .. ", the chat line")
+    broken[case[1]] = nil
+  end
+end
+broken.quality = "secret"
+eq((loot(101, "boss")), true, "FilterLoot: a secret quality, let through")
+broken.quality = nil
+broken.tooltip = "error"
+eq((loot(106, "boss")), true, "FilterLoot: a token whose tooltip can't be read, let through")
+eq((loot(113, "boss")), true, "FilterLoot: junk whose tooltip can't be read, let through")
+broken.tooltip = nil
+eq((loot(113, "boss")), false, "FilterLoot: the same junk, read, is left out")
+eq((loot(101, "boss")), true, "FilterLoot: a boss BoP epic passes with the defaults")
+eq(#printed, 0, "FilterLoot: no chat line when everything was read")
+eq((loot(107, "boss")), false, "FilterLoot: a toy is left out with the defaults")
+eq((loot(101, "trash")), false, "FilterLoot: trash is left out with the defaults")
 eq(#printed, 0, "FilterLoot: no chat line for an item the filter leaves out")
 
 -- 6. /crt loot test samples items that pass the filter, else fills with others and says so
@@ -307,11 +345,16 @@ LM:Test(2, seeded(5))
 eq(#started, 2, "test, trash only: still two items")
 eq(printed[1], "Loot Master test: none of your sample items pass the loot filter, so the test uses others.", "test: samples count as boss loot, so none pass")
 CRT.db.lootmaster.filter = deepCopy(D)
-ITEMS[101].uncached, ITEMS[105].uncached, ITEMS[106].uncached = true, true, true
-printed = {}
+-- an item the game can't read is let through, after those it read in full
+only("toy")
+ITEMS[101].uncached = true
 LM:Test(2, seeded(5))
-eq(printed[1], "Loot Master test: none of your sample items pass the loot filter, so the test uses others.", "test: items the game can't read don't pass")
-ITEMS[101].uncached, ITEMS[105].uncached, ITEMS[106].uncached = nil, nil, nil
+eq(kindsOf(started)[1], "toy", "test: the toy read in full first")
+eq(idOf(started[2].itemString), 101, "test: then the item that couldn't be read (let through)")
+printed = {}
+LM:Test(3, seeded(5))
+eq(printed[1], "Loot Master test: only 2 of your sample items pass the loot filter, so the test adds 1 other.", "test: the unread item counts as passing")
+ITEMS[101].uncached = nil
 
 -- 7. The Loot filter tab: its checkboxes, quality dropdown, item level slider and Defaults
 local fired = {}

@@ -7,9 +7,11 @@ local ADDON, CRT = ...
 --   quality       the lowest quality (Enum.ItemQuality: 2 Uncommon, 3 Rare, 4 Epic, 5 Legendary)
 --   ilvl          the lowest item level, 0 for any
 --   kinds[key]    the kinds of items that pass (LM.FILTER_KINDS); every item is one kind (LM.ItemKind)
--- LM.ItemFacts reads an item's facts from the game, and LM.PassesFilter decides with no game calls. An item
--- whose facts can't be read fails closed: it is left out, and LM:FilterLoot says so in chat. /crt loot test
--- samples items that pass (LootMaster/Test.lua); the session start from real loot is to call LM:FilterLoot.
+-- LM.ItemFacts reads an item's facts from the game, and LM.PassesFilter decides with no game calls. A part of
+-- the filter whose fact can't be read (not loaded yet, a secret value, a failing call) is skipped, so such an
+-- item is let through (Alex, 2026-10-19: "Let it through"), and LM:FilterLoot says so in chat. The parts that
+-- can be read still count. /crt loot test samples items that pass (LootMaster/Test.lua); the session start
+-- from real loot is to call LM:FilterLoot.
 -- Sync Master Loot sends it as its F part (LootMaster/Sync.lua), cleaned on receipt by LM.CleanFilter.
 --
 -- The game's facts, each checked on warcraft.wiki.gg (2026-10-19):
@@ -126,14 +128,16 @@ function LM.ItemKind(f)
     return "other"
 end
 
--- Whether an item with these facts (LM.ItemFacts) opens a session under filter. Pure. Returns true, or
--- false and why: "unreadable" (no facts, or one missing), "source", "quality", "ilvl" or "kind"; the item's
--- kind third when it is known.
+-- Whether an item with these facts (LM.ItemFacts) opens a session under filter. Pure. A part whose fact is
+-- missing (facts.source not "boss" or "trash", no quality, no item level, facts.kindUnknown) is skipped:
+-- the item is let through on it. Returns true, or false and why ("source", "quality", "ilvl" or "kind"); a
+-- pass with a part skipped gives "unreadable" as why. The item's kind third when it is known.
 function LM.PassesFilter(facts, filter)
     if type(facts) ~= "table" then
-        return false, "unreadable"
+        return true, "unreadable"
     end
     filter = LM.CleanFilter(filter)
+    local skipped = false
     if facts.source == "boss" then
         if not filter.boss then
             return false, "source"
@@ -143,39 +147,42 @@ function LM.PassesFilter(facts, filter)
             return false, "source"
         end
     else
-        return false, "unreadable"
+        skipped = true
     end
     if type(facts.quality) ~= "number" then
-        return false, "unreadable"
-    end
-    if facts.quality < filter.quality then
+        skipped = true
+    elseif facts.quality < filter.quality then
         return false, "quality"
     end
     if filter.ilvl > 0 then
         if type(facts.ilvl) ~= "number" then
-            return false, "unreadable"
-        end
-        if facts.ilvl < filter.ilvl then
+            skipped = true
+        elseif facts.ilvl < filter.ilvl then
             return false, "ilvl"
         end
+    end
+    if facts.kindUnknown then
+        return true, "unreadable"
     end
     local kind = LM.ItemKind(facts)
     if not filter.kinds[kind] then
         return false, "kind", kind
     end
-    return true, nil, kind
+    return true, skipped and "unreadable" or nil, kind
 end
 
 -- Reading the facts --------------------------------------------------------------------------------------
 
+-- What couldn't be read, as the chat line names it: "couldn't read [item] (<these, joined>)".
 LM.FILTER_WHY = {
-    source = "where it dropped is unknown",
-    notLoaded = "the game hadn't loaded its details",
-    toy = "the game didn't say if it is a toy",
-    mount = "the game didn't say if it is a mount",
-    pet = "the game didn't say if it is a pet",
-    cosmetic = "the game didn't say if it is a cosmetic",
-    token = "the game didn't give its tooltip, so CRT can't tell if it is a tier token",
+    source = "where it dropped",
+    notLoaded = "its details, not loaded yet",
+    ilvl = "its item level",
+    toy = "whether it is a toy",
+    mount = "whether it is a mount",
+    pet = "whether it is a pet",
+    cosmetic = "whether it is a cosmetic",
+    token = "its tooltip, for a tier token",
 }
 local WHY = LM.FILTER_WHY
 
@@ -218,47 +225,67 @@ local function hasClassesLine(itemString)
 end
 
 -- An item's facts for LM.PassesFilter, from the game: source ("boss" or "trash", given by the caller),
--- quality, ilvl, classID, subClassID, bindType, setID, isToy, isMount, isPet, isCosmetic, isToken. Returns
--- nil and why (LM.FILTER_WHY) when any of them can't be read.
+-- quality, ilvl, classID, subClassID, bindType, setID, isToy, isMount, isPet, isCosmetic, isToken. Always a
+-- table: what can't be read is left nil with its reason in facts.unreadable (LM.FILTER_WHY), and
+-- facts.kindUnknown is set when the item's kind can't be told.
 function LM.ItemFacts(itemString, source)
-    if source ~= "boss" and source ~= "trash" then
-        return nil, WHY.source
+    local f = { unreadable = {} }
+    local function miss(why)
+        f.unreadable[#f.unreadable + 1] = why
+    end
+    if source == "boss" or source == "trash" then
+        f.source = source
+    else
+        miss(WHY.source)
     end
     local itemID = tonumber(tostring(itemString or ""):match("item:(%d+)"))
-    if not (itemID and C_Item) then
-        return nil, WHY.notLoaded
+    local ok, quality, baseIlvl, classID, subClassID, bindType, setID, _
+    if itemID and C_Item then
+        ok, _, _, quality, baseIlvl, _, _, _, _, _, _, _, classID, subClassID, bindType, _, setID =
+            pcall(C_Item.GetItemInfo, itemString)
     end
-    local ok, _, _, quality, baseIlvl, _, _, _, _, _, _, _, classID, subClassID, bindType, _, setID =
-        pcall(C_Item.GetItemInfo, itemString)
     if not ok or type(quality) ~= "number" or type(classID) ~= "number" or type(bindType) ~= "number"
         or secret(quality) or secret(classID) or secret(subClassID) or secret(bindType) or secret(setID) then
-        return nil, WHY.notLoaded
+        miss(WHY.notLoaded)
+        f.kindUnknown = true
+        if itemID then
+            local okL, ilvl = ask(C_Item and C_Item.GetDetailedItemLevelInfo, itemString)
+            f.ilvl = (okL and type(ilvl) == "number") and ilvl or nil
+        end
+        return f
     end
-    local f = { source = source, quality = quality, classID = classID, subClassID = subClassID,
-        bindType = bindType, setID = type(setID) == "number" and setID or nil }
+    f.quality, f.classID, f.subClassID, f.bindType = quality, classID, subClassID, bindType
+    f.setID = type(setID) == "number" and setID or nil
     local okL, ilvl = ask(C_Item.GetDetailedItemLevelInfo, itemString)
     f.ilvl = (okL and type(ilvl) == "number") and ilvl or (not secret(baseIlvl) and tonumber(baseIlvl)) or nil
+    if not f.ilvl then
+        miss(WHY.ilvl)
+    end
 
     local okT, toyID, toyName = ask(C_ToyBox and C_ToyBox.GetToyInfo, itemID)
-    if not okT then
-        return nil, WHY.toy
+    if okT then
+        f.isToy = toyID ~= nil and toyName ~= nil -- as Blizzard's toy box reads it
+    else
+        miss(WHY.toy)
     end
-    f.isToy = toyID ~= nil and toyName ~= nil -- as Blizzard's toy box reads it
     local okM, mountID = ask(C_MountJournal and C_MountJournal.GetMountFromItem, itemID)
-    if not okM then
-        return nil, WHY.mount
+    if okM then
+        f.isMount = mountID ~= nil or (classID == ITEM_CLASS.MISC and subClassID == MISC_MOUNT)
+    else
+        miss(WHY.mount)
     end
-    f.isMount = mountID ~= nil or (classID == ITEM_CLASS.MISC and subClassID == MISC_MOUNT)
     local okP, petName = ask(C_PetJournal and C_PetJournal.GetPetInfoByItemID, itemID)
-    if not okP then
-        return nil, WHY.pet
+    if okP then
+        f.isPet = petName ~= nil or classID == ITEM_CLASS.BATTLE_PET or (classID == ITEM_CLASS.MISC and subClassID == MISC_PET)
+    else
+        miss(WHY.pet)
     end
-    f.isPet = petName ~= nil or classID == ITEM_CLASS.BATTLE_PET or (classID == ITEM_CLASS.MISC and subClassID == MISC_PET)
     local okC, cosmetic = ask(C_Item.IsCosmeticItem, itemString)
-    if not okC then
-        return nil, WHY.cosmetic
+    if okC then
+        f.isCosmetic = cosmetic == true or (classID == ITEM_CLASS.ARMOR and subClassID == ARMOR_COSMETIC)
+    else
+        miss(WHY.cosmetic)
     end
-    f.isCosmetic = cosmetic == true or (classID == ITEM_CLASS.ARMOR and subClassID == ARMOR_COSMETIC)
     -- warbound until equipped: bindType says it; this second word is only taken when it says yes
     if f.bindType ~= BIND_WUE and (classID == ITEM_CLASS.WEAPON or classID == ITEM_CLASS.ARMOR) then
         local okW, wue = ask(C_Item.IsItemBindToAccountUntilEquip, itemString)
@@ -266,24 +293,32 @@ function LM.ItemFacts(itemString, source)
             f.bindType = BIND_WUE
         end
     end
+    local tokenRead = true
     f.isToken = false
     if classID == ITEM_CLASS.MISC and not (f.isMount or f.isPet or f.isToy) then
         local classes = hasClassesLine(itemString)
         if classes == nil then
-            return nil, WHY.token
+            tokenRead = false
+            miss(WHY.token)
+        else
+            f.isToken = classes
         end
-        f.isToken = classes
+    end
+    if not (okT and okM and okP and okC and tokenRead) then
+        f.kindUnknown = true
     end
     return f
 end
 
--- Whether an item that dropped (source "boss" or "trash") opens a session under your filter. One that
--- can't be read is left out, and the leader is told in chat which and why. Returns as LM.PassesFilter.
+-- Whether an item that dropped (source "boss" or "trash") opens a session under your filter. A part that
+-- can't be read is skipped, so the item is let through on it; when it is let through with something
+-- unread, the leader is told in chat what. Returns as LM.PassesFilter.
 function LM:FilterLoot(itemString, source, link)
-    local facts, why = LM.ItemFacts(itemString, source)
-    if not facts then
-        CRT:Print(string.format("Loot Master left out %s: %s.", link or itemString or "?", why))
-        return false, "unreadable"
+    local facts = LM.ItemFacts(itemString, source)
+    local pass, why, kind = LM.PassesFilter(facts, self:Filter())
+    if pass and #facts.unreadable > 0 then
+        CRT:Print(string.format("Loot Master couldn't read %s (%s), so it's included.", link or itemString or "?",
+            table.concat(facts.unreadable, "; ")))
     end
-    return LM.PassesFilter(facts, self:Filter())
+    return pass, why, kind
 end

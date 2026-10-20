@@ -82,14 +82,16 @@ local function pool(count)
     return out
 end
 
--- The picks: items that pass your loot filter first (LootMaster/Filter.lua; a sample counts as boss loot,
--- and one the game can't read doesn't pass), then others when too few do. Returns the items and how many
--- passed.
+-- The picks: items that pass your loot filter (LootMaster/Filter.lua; a sample counts as boss loot), those
+-- the game described in full first, then those let through on a part it couldn't read; then others when too
+-- few pass. Returns the items and how many passed.
 local function samples(count, random)
-    local filter, pass, rest = LM:Filter(), {}, {}
+    local filter, pass, unread, rest = LM:Filter(), {}, {}, {}
     for _, e in ipairs(pool(count)) do
-        local facts = LM.ItemFacts(e.itemString, "boss")
-        if facts and LM.PassesFilter(facts, filter) then
+        local ok, why = LM.PassesFilter(LM.ItemFacts(e.itemString, "boss"), filter)
+        if ok and why == "unreadable" then
+            unread[#unread + 1] = e
+        elseif ok then
             pass[#pass + 1] = e
         else
             rest[#rest + 1] = e
@@ -97,9 +99,14 @@ local function samples(count, random)
     end
     local picked = LM.PickSamples(pass, count, random)
     local passed = #picked
-    if passed < count then
-        for _, e in ipairs(LM.PickSamples(rest, count - passed, random)) do
-            picked[#picked + 1] = e
+    for _, list in ipairs({ unread, rest }) do
+        if list == rest then
+            passed = #picked
+        end
+        if #picked < count then
+            for _, e in ipairs(LM.PickSamples(list, count - #picked, random)) do
+                picked[#picked + 1] = e
+            end
         end
     end
     local out = {}
@@ -116,8 +123,8 @@ function LM:Test(count, random)
     if passed == 0 then
         CRT:Print("Loot Master test: none of your sample items pass the loot filter, so the test uses others.")
     elseif passed < #items then
-        CRT:Print(string.format("Loot Master test: only %d of your sample items %s the loot filter, so the test adds %d others.",
-            passed, passed == 1 and "passes" or "pass", #items - passed))
+        CRT:Print(string.format("Loot Master test: only %d of your sample items %s the loot filter, so the test adds %d %s.",
+            passed, passed == 1 and "passes" or "pass", #items - passed, #items - passed == 1 and "other" or "others"))
     end
     local s = self:Start(items, true)
     if s then
