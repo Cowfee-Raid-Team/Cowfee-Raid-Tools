@@ -13,7 +13,7 @@ local L = { width = 360, height = 112, buttonH = 24, buttonMinW = 80, gap = 12, 
 local TEXT = {
     title = "CRT Looting",
     question = "Use CRT Looting in this instance?",
-    help = "Yes turns CRT Looting on for everyone in the raid with CRT. Their CRT passes the game's roll on boss loot, and yours rolls Need (else Greed, else Transmog), so you get each item to give out. Then a loot session starts with the items that pass your loot filter. It stays on through a wipe (up to 10 minutes in the open world) until you enter any other instance, /reload or turn it off on Loot Master > Tonight. No leaves it off. Raiders can't change it.",
+    help = "Yes turns CRT Looting on for everyone in the raid with CRT. For 10 minutes after each boss kill, their CRT passes the game's loot rolls (trash too), and yours rolls Need (else Greed, else Transmog), so you get the items. The Boss loot window then lists them: tick the ones to give out and click Start session. It stays on through a wipe (up to 10 minutes in the open world) until you enter any other instance, /reload or turn it off on Loot Master > Tonight. No leaves it off. Raiders can't change it.",
     yes = "Yes",
     no = "No",
 }

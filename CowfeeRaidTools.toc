@@ -77,6 +77,7 @@ CRT_Modules\LootMaster\Rolls.lua
 CRT_Modules\LootMaster\Tabs.lua
 CRT_Modules\LootMaster\Popup.lua
 CRT_Modules\LootMaster\Window.lua
+CRT_Modules\LootMaster\BossLootWindow.lua
 CRT_Modules\LootMaster\RaiderWindow.lua
 CRT_Modules\LootMaster\Trade.lua
 CRT_Modules\LootMaster\Test.lua

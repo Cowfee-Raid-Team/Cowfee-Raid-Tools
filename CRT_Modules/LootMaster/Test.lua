@@ -13,6 +13,7 @@ local ADDON, CRT = ...
 --   /crt loot popup          show your raider popup again
 --   /crt loot answers        everyone's answers and rolls (the raider window)
 --   /crt loot end            end the session
+--   /crt loot boss           the raid leader's Boss loot window (LootMaster/BossLootWindow.lua)
 --   /crt loot settings       open the Loot Master page (also /crt loot master)
 
 local LM = CRT.LootMaster
@@ -156,6 +157,8 @@ function LM:Command(msg)
         self:ShowAnswers()
     elseif verb == "end" then
         self:End()
+    elseif verb == "boss" then
+        self:ShowBossLoot()
     elseif verb == "settings" or verb == "master" then
         CRT.UI:Show("lootmaster")
     else
