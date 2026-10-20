@@ -163,10 +163,7 @@ local function initRow(row, r)
         row.gear = {}
         local gx = COLS[5].x
         for i = 1, 2 do
-            local t = row:CreateTexture(nil, "OVERLAY")
-            t:SetSize(16, 16)
-            t:SetPoint("LEFT", gx + (i - 1) * 20, 0)
-            row.gear[i] = t
+            row.gear[i] = LM.GearIcon(row, gx + (i - 1) * 20)
         end
         row.diff = row:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
         row.diff:SetPoint("LEFT", gx + 44, 0)
@@ -239,11 +236,9 @@ local function initRow(row, r)
     cols.role:SetText(ROLE_TEXT[r.role or "N"] or "")
     cols.response:SetText(responseCell(r, LM.current))
     cols.ilvl:SetText(r.ilvl and string.format("%.0f", r.ilvl) or "")
+    local item = LM.current and LM.current.items[current]
     for i, t in ipairs(row.gear) do
-        local g = r.gear[i]
-        local icon = g and g.id and C_Item.GetItemIconByID(g.id)
-        t:SetTexture(icon)
-        t:SetShown(icon ~= nil)
+        LM.SetGear(t, r.gear[i], r.name == LM:Me() and item and item.itemString or nil)
     end
     if r.diff then
         row.diff:SetText(r.diff > 0 and ("|cff1eff00+" .. r.diff .. "|r") or (r.diff < 0 and ("|cffff4040" .. r.diff .. "|r") or "0"))
