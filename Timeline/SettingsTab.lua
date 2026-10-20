@@ -14,6 +14,15 @@ local View = CRT.TimelineView
 local Lanes = CRT.TimelineLanes
 local UI = CRT.UI
 
+-- The span sliders show minutes and seconds (View.Format), so a typed number is minutes.
+local function toMinutes(seconds)
+    return seconds / 60
+end
+
+local function fromMinutes(minutes)
+    return minutes * 60
+end
+
 local SettingsTab = {}
 CRT.TimelineSettingsTab = SettingsTab
 
@@ -107,9 +116,12 @@ function SettingsTab.Build(f, ctx)
         return place(UI.Slider(parent, text, opts), parent, x, y)
     end
 
-    local function settingSlider(parent, x, y, text, field, low, high, step, format)
+    -- minutes: the value is seconds shown as minutes and seconds, and typed in minutes
+    local function settingSlider(parent, x, y, text, field, low, high, step, format, minutes)
         return slider(parent, x, y, text, {
             min = low, max = high, step = step, format = format,
+            toDisplay = minutes and toMinutes or nil,
+            fromDisplay = minutes and fromMinutes or nil,
             get = function()
                 return settings()[field]
             end,
@@ -238,7 +250,7 @@ function SettingsTab.Build(f, ctx)
     -- View
     label(f, "View"):SetPoint("TOPLEFT", f, "TOPLEFT", 8, -8)
     UI.Help(f, "View", "How much time is visible at once (the mouse wheel over the timeline zooms too), how often the time axis is labelled, and how big the cast icons are. Auto labels the axis more often as you zoom in: every 5 seconds zoomed all the way in, up to every minute zoomed out."):SetPoint("TOPLEFT", f, "TOPLEFT", 60, -9)
-    settingSlider(f, 8, -26, "Seconds visible", "span", 60, 600, 30, View.Format)
+    settingSlider(f, 8, -26, "Seconds visible", "span", 60, 600, 30, View.Format, true)
     place(UI.Dropdown(f, "Axis labels every", {
         options = GRIDS,
         labelWidth = 120,

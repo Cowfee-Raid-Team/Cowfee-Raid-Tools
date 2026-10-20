@@ -239,6 +239,14 @@ assert(T:Settings().span == 120 and view.span == 120, "zoom slider sets span and
 T:Settings().span = 90
 assert(zoom.opts.get() == 90, "zoom slider re-reads span")
 assert(find(sliders, "Seconds visible"), "settings tab keeps its span slider")
+-- both span sliders show m:ss, so a typed number is minutes
+for _, label in ipairs({ "Time visible", "Seconds visible" }) do
+  local o = find(sliders, label).opts
+  assert(o.toDisplay and o.toDisplay(90) == 1.5 and o.fromDisplay(2.5) == 150, label .. " is typed in minutes")
+end
+for _, sl in ipairs(sliders) do
+  if sl.text ~= "Time visible" and sl.text ~= "Seconds visible" then assert(sl.opts.toDisplay == nil, sl.text .. " types what it shows") end
+end
 print("ok zoom slider")
 
 -- new row lines are skinned

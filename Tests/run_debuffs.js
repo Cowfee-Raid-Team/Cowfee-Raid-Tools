@@ -405,6 +405,10 @@ check("icon size slider goes to 128", sliders["Icon size"] and sliders["Icon siz
 local ds = sliders["Dispel icon size"]
 check("dispel icon size slider is 20 to 100", ds and ds.opts.min == 20 and ds.opts.max == 100)
 check("dispel icon size shows a percent", ds and ds.opts.format(35) == "35%")
+-- the duration shows minutes, so a typed number is minutes too
+local du = sliders["Hide debuffs longer than"]
+check("duration typed in minutes", du and du.opts.toDisplay and du.opts.toDisplay(300) == 5 and du.opts.fromDisplay(4.5) == 270)
+check("other sliders type what they show", ds and ds.opts.toDisplay == nil and sliders["Spacing"] and sliders["Spacing"].opts.toDisplay == nil)
 local sp = sliders["Spacing"]
 check("spacing slider is 0 to 20", sp and sp.opts.min == 0 and sp.opts.max == 20)
 check("spacing slider reads the setting", sp and sp.opts.get() == 4)
