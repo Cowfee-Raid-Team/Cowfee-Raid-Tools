@@ -6,10 +6,11 @@ local ADDON, CRT = ...
 --   slots as a second row, a fallback).
 --   dispelIconScale is that icon's size, a fraction of the debuff icon (0.2 to 1).
 --   The look: swipe, swipeEdge, timerPosition, timerX, timerY, borderScale, spacing (pixels between two
---   icons' borders, 0 to 20; the border's width is added to it), dispelBorder (the border colored by
---   dispel type) and dispelGlow (a soft glow around that border).
---   A reverse option existed until 0.13.0, and includeRegular (the old optional second row) until the
---   AuraContainer became the panel. Their saved values may remain and are ignored.
+--   icons' borders, 0 to 20; the border's width is added to it) and dispelGlow (a soft glow around a
+--   dispellable debuff's frame).
+--   A reverse option existed until 0.13.0, includeRegular (the old optional second row) until the
+--   AuraContainer became the panel, and dispelBorder (a box for the border colored by dispel type)
+--   until the frame always took that color. Their saved values may remain and are ignored.
 --   position = { point, relativePoint, x, y } once the panel has been moved.
 -- Each player has their own copy in their own saved variables, so nothing is shared between players.
 
@@ -158,9 +159,10 @@ end
 -- each one (icon, time, stacks, dispel type) without handing the values to addon code, so the panel
 -- also works in combat, when debuff details are secret. The look is ours: the swipe and its edge, the
 -- timer as text beside or on the icon or as countdown numbers on the swipe (never both), the dispel
--- type icon, and a border of 5 x borderScale pixels around the icon, which can take the color of the
--- debuff's dispel type, with a glow. The game colors that border itself, so the addon never sees the
--- type in combat.
+-- type icon, and a dark frame of 5 x borderScale pixels around the icon, which takes the color of a
+-- dispellable debuff's dispel type, with an optional glow. The game colors that frame itself, so the
+-- addon never sees the type in combat. The frame's bevel, the countdown's font and colors are in
+-- Panel.lua's LOOK table.
 
 Debuffs.TIMER_POSITIONS = {
     { key = "below", label = "Below the icon" },
@@ -243,19 +245,10 @@ function Debuffs:Step(size)
     return size + self:Edge() + self:Spacing()
 end
 
--- The border colored by dispel type, and the glow around it. The glow only shows with the colored
--- border, so DispelGlow is false while the border is off.
-function Debuffs:DispelBorder()
-    return ddb().dispelBorder and true or false
-end
-
-function Debuffs:SetDispelBorder(value)
-    ddb().dispelBorder = value and true or false
-    self:Fire()
-end
-
+-- The glow around a dispellable debuff's frame, in its dispel type's color. The frame itself always
+-- takes that color (Panel.lua), so the glow depends on no other setting.
 function Debuffs:DispelGlow()
-    return (ddb().dispelBorder and ddb().dispelGlow) and true or false
+    return ddb().dispelGlow and true or false
 end
 
 function Debuffs:SetDispelGlow(value)
@@ -263,8 +256,9 @@ function Debuffs:SetDispelGlow(value)
     self:Fire()
 end
 
--- The border's color on a debuff with no dispel type, or with the colored border off.
-Debuffs.BORDER_COLOR = { 0, 0, 0, 1 }
+-- The frame's color on a debuff with no dispel type: dark, so it reads on any background and in
+-- every theme.
+Debuffs.BORDER_COLOR = { 0.05, 0.05, 0.05, 1 }
 
 -- The dispel types that color the border, each with its color for when the game doesn't give its own.
 -- Panel.lua hands these colors to the game, which colors the container's borders in combat; the
@@ -306,8 +300,7 @@ function Debuffs:LookSignature()
     local timerPoint, _, timerX, timerY = self:TimerAnchor()
     return table.concat({ tostring(self:PrivateSlots()), self:Size(), self:MaxCount(), tostring(self:DispelIcon()), self:DispelIconScale(),
         tostring(self:Get("swipe")), tostring(self:Get("swipeEdge")), tostring(self:SwipeNumbers()), tostring(timerPoint), tostring(timerX),
-        tostring(timerY), tostring(self:Get("borderScale")), tostring(self:DispelBorder()), tostring(ddb().dispelGlow and true or false),
-        self:Spacing() }, ":")
+        tostring(timerY), tostring(self:Get("borderScale")), tostring(self:DispelGlow()), self:Spacing() }, ":")
 end
 
 -- The saved position, or the default one in the upper middle of the screen.

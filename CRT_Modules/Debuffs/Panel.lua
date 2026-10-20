@@ -10,10 +10,15 @@ local ADDON, CRT = ...
 -- filters keep only debuffs not cast by you or your pet, no longer than Hide debuffs longer than, and
 -- none of the excluded lockouts (Debuffs.EXCLUDED_SPELLS), shortest first.
 --
--- The border colored by dispel type and its glow are textures handed to the game the same way as the
--- dispel type icon (AddDispelTypeTexture, PreserveAsset style, with a customDispelColorMap): the game
--- shows them only on a debuff with a dispel type and tints them that type's color from the map. The
--- preview tiles color theirs from their samples' known types (Debuffs:DispelColor).
+-- The look (the LOOK table below): a dark frame with a thin bevel inside it, a big yellow countdown in
+-- the middle and white stacks at the bottom right, both with an outline. The countdown is the
+-- button's own text, which the game fills through a number formatter with the panel's rules, so it
+-- keeps counting in combat, when the time left is secret. The preview tiles format their own.
+--
+-- The frame's dispel color and its glow are textures handed to the game the same way as the dispel
+-- type icon (AddDispelTypeTexture, PreserveAsset style, with a customDispelColorMap): the game shows
+-- them only on a debuff with a dispel type and tints them that type's color from the map, over the
+-- dark frame. The preview tiles color theirs from their samples' known types (Debuffs:DispelColor).
 --
 -- Icons sit Debuffs:Step(size) apart: the icon, the border's width and the Spacing setting, so two
 -- borders never overlap. The glow adds no space: it is on a frame inside its button, raised above every
@@ -44,11 +49,33 @@ local CONTAINER_ADDON = "Blizzard_AuraContainer"
 local TEMPLATES = { "CustomAuraContainerTemplate, DisableUntrustedLayoutScriptsTemplate", "CustomAuraContainerTemplate" }
 local GROUP = "debuffs"
 local MAX_SLOTS = 8
-local SLOT_ROW_OFFSET = 24 -- gap above the boss debuff slots, which leaves room for the row's timer text
+local SLOT_ROW_OFFSET = 24 -- the least gap above the boss debuff slots, which leaves room for the row's timer text
 local REFRESH_SECONDS = 0.5
-local TIMER_FONT = "CRTFontSmall"
-local COUNT_FONT = "CRTFontHighlight"
 local WHITE = "Interface\\Buttons\\WHITE8X8"
+
+-- The look of each debuff, the container's buttons and the preview tiles alike. The frame's own
+-- color is Debuffs.BORDER_COLOR and its width the Border size setting (Debuffs:Edge).
+local LOOK = {
+    -- The countdown and stacks font: the General Settings font, or the game's own when that is the
+    -- default. Sizes are a fraction of the icon size, so the text grows with the icon.
+    font = "Fonts\\FRIZQT__.TTF",
+    timerScale = 0.45, -- the countdown on the icon
+    besideScale = 0.3, -- the countdown beside it (above, below, left or right), kept smaller
+    stackScale = 0.3,
+    minTimer = 10, -- the smallest sizes, so the text stays readable on a small icon
+    minStack = 9,
+    thickFrom = 16, -- a countdown this size or bigger gets the thick outline, a smaller one the thin
+    timerColor = { 1, 0.82, 0 }, -- yellow
+    stackColor = { 1, 1, 1 },
+    stackInset = 2, -- pixels from the icon's bottom right corner
+    -- A thin light line just outside the icon, inside the frame, so the frame looks bevelled. It is
+    -- see-through, so on a dispel color it lightens that color. No bevel on a frame thinner than
+    -- bevelMinEdge (the Border size in pixels, both sides together).
+    bevelColor = { 1, 1, 1, 0.22 },
+    bevelWidth = 1,
+    bevelMinEdge = 4,
+}
+Panel.LOOK = LOOK
 -- The glow around a dispel type's border: the game's white glow for a new item in the bags, drawn
 -- additively, so the dispel type's color tints it cleanly. Without the atlas there is no glow: a plain
 -- square drawn above the icon would tint the whole icon.
@@ -129,12 +156,17 @@ local function rowWidth()
     return (count - 1) * Debuffs:Step(size) + size, size
 end
 
+-- The gap above the boss debuff slots: room for the row's timer text, which grows with the icon.
+local function slotRowOffset()
+    return math.max(SLOT_ROW_OFFSET, Panel.TimerFontSize(Debuffs:Size()) + 6)
+end
+
 -- The whole panel: the container's row, and the slot row under it when that is on.
 local function panelSize()
     local width, size = rowWidth()
     local height = size
     if Debuffs:PrivateSlots() then
-        height = height + SLOT_ROW_OFFSET + size
+        height = height + slotRowOffset() + size
     end
     return width, height, size
 end
@@ -174,7 +206,7 @@ local function addAnchors()
         return
     end
 
-    local top = -(size + SLOT_ROW_OFFSET)
+    local top = -(size + slotRowOffset())
     for index = 1, MAX_SLOTS do
         local slot = slots[index]
         if not slot then
@@ -221,6 +253,59 @@ local function addAnchors()
 end
 
 -- The look of one debuff, shared by the container's buttons and the preview tiles -------------
+
+-- The countdown's text for seconds left: whole seconds with no unit under a minute (rounded up, so
+-- the last second reads 1), m:ss from 60 seconds. The game's formatter (timeFormatter) follows the
+-- same rules for the real debuffs. A time between 59 and 60 reads 59, as the formatter clamps it.
+-- nil for a secret or missing value, which is never compared.
+function Panel.FormatTime(seconds)
+    if isSecret(seconds) or type(seconds) ~= "number" then
+        return nil
+    end
+    if seconds >= 60 then
+        local whole = math.ceil(seconds)
+        return format("%d:%02d", math.floor(whole / 60), whole % 60)
+    end
+    return tostring(math.max(0, math.min(59, math.ceil(seconds))))
+end
+
+-- The stacks' text, as the game fills it: the count from 2 up, nothing for one stack.
+function Panel.StackText(count)
+    if isSecret(count) or type(count) ~= "number" or count < 2 then
+        return ""
+    end
+    return tostring(count)
+end
+
+-- The countdown's font size for an icon size: big on the icon, smaller beside it.
+function Panel.TimerFontSize(size)
+    local scale = Debuffs:Get("timerPosition") == "center" and LOOK.timerScale or LOOK.besideScale
+    return math.max(LOOK.minTimer, math.floor(size * scale + 0.5))
+end
+
+function Panel.StackFontSize(size)
+    return math.max(LOOK.minStack, math.floor(size * LOOK.stackScale + 0.5))
+end
+
+-- The General Settings font's file, or the game's own font when that is the default.
+local function fontPath()
+    local ui = CRT.db and CRT.db.ui
+    local path = ui and CRT.FontPath and CRT:FontPath(ui.font)
+    return path or LOOK.font
+end
+
+-- The countdown's and the stacks' font, size and color. The game may have made a text's color secret
+-- once it fills it, so each call is guarded.
+local function styleText(parts, size)
+    local path = fontPath()
+    local timerSize = Panel.TimerFontSize(size)
+    pcall(parts.time.SetFont, parts.time, path, timerSize, timerSize >= LOOK.thickFrom and "THICKOUTLINE" or "OUTLINE")
+    local c = LOOK.timerColor
+    pcall(parts.time.SetTextColor, parts.time, c[1], c[2], c[3])
+    pcall(parts.count.SetFont, parts.count, path, Panel.StackFontSize(size), "OUTLINE")
+    c = LOOK.stackColor
+    pcall(parts.count.SetTextColor, parts.count, c[1], c[2], c[3])
+end
 
 local function applyCooldownLook(cooldown)
     pcall(cooldown.SetDrawSwipe, cooldown, Debuffs:Get("swipe") and true or false)
@@ -273,6 +358,10 @@ local function makeParts(owner)
     parts.dispelBorder:SetPoint("CENTER")
     parts.dispelBorder:SetTexture(WHITE)
     parts.dispelBorder:Hide()
+    parts.bevel = owner:CreateTexture(nil, "BACKGROUND", nil, 2)
+    parts.bevel:SetPoint("CENTER")
+    local b = LOOK.bevelColor
+    parts.bevel:SetColorTexture(b[1], b[2], b[3], b[4])
     parts.icon = owner:CreateTexture(nil, "ARTWORK")
     parts.icon:SetAllPoints()
     parts.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
@@ -290,10 +379,12 @@ local function makeParts(owner)
     if level then
         pcall(parts.over.SetFrameLevel, parts.over, level + TEXT_LEVEL) -- raiseParts keeps it there
     end
-    parts.time = parts.over:CreateFontString(nil, "OVERLAY", TIMER_FONT)
-    parts.time:SetTextColor(1, 1, 1)
-    parts.count = parts.over:CreateFontString(nil, "OVERLAY", COUNT_FONT)
-    parts.count:SetPoint("BOTTOMRIGHT", -2, 2)
+    -- Made from the addon's fonts, then given the look's font, size and color (styleText).
+    parts.time = parts.over:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    parts.count = parts.over:CreateFontString(nil, "OVERLAY", "CRTFontHighlight")
+    parts.count:SetPoint("BOTTOMRIGHT", -LOOK.stackInset, LOOK.stackInset)
+    parts.count:SetJustifyH("RIGHT")
+    styleText(parts, Debuffs:Size())
     parts.dispel = parts.over:CreateTexture(nil, "OVERLAY")
     parts.dispel:SetPoint("TOPRIGHT", -1, -1)
     return parts
@@ -312,7 +403,7 @@ local function raiseParts(owner, parts)
     pcall(parts.over.SetFrameLevel, parts.over, level + TEXT_LEVEL)
 end
 
--- Size, border, swipe and where the timer text goes, the same for a button and a tile.
+-- Size, frame, swipe, text and where the timer text goes, the same for a button and a tile.
 local function layoutParts(owner, parts, size)
     pcall(owner.SetSize, owner, size, size) -- a container button may be set up in combat
     raiseParts(owner, parts)
@@ -321,6 +412,9 @@ local function layoutParts(owner, parts, size)
     local plain = Debuffs.BORDER_COLOR
     parts.border:SetColorTexture(plain[1], plain[2], plain[3], plain[4])
     parts.border:SetShown(edge > 0)
+    local bevel = size + 2 * LOOK.bevelWidth
+    parts.bevel:SetSize(bevel, bevel)
+    parts.bevel:SetShown(edge >= LOOK.bevelMinEdge)
     parts.dispelBorder:SetSize(size + edge, size + edge)
     local glow = size + edge + 2 * math.max(4, math.floor(size * 0.2))
     parts.glow:SetSize(glow, glow)
@@ -329,6 +423,7 @@ local function layoutParts(owner, parts, size)
     if parts.cooldown then
         applyCooldownLook(parts.cooldown)
     end
+    styleText(parts, size)
     local timerPoint, timerRelative, timerX, timerY = Debuffs:TimerAnchor()
     parts.time:ClearAllPoints()
     if timerPoint then
@@ -337,19 +432,43 @@ local function layoutParts(owner, parts, size)
     return timerPoint ~= nil
 end
 
--- The timer text as whole seconds, through the game's number formatter when it has one.
-local formatter
+-- The timer text for the real debuffs, through the game's number formatter (C_StringUtil, 12.0.5),
+-- with Panel.FormatTime's rules: whole seconds rounded up and held at 59 under a minute, then minutes
+-- and seconds, each part rounded down from the whole seconds (NumericRuleFormatComponent's div and
+-- mod). The game runs it on the secret time left, so the addon never sees the number. Without
+-- minutes and seconds (an older client refusing the components) it falls back to seconds only, and
+-- without the formatter to the game's own text.
+local formatter, formatterNote
+local function timeBreakpoints(withMinutes)
+    local rounding = Enum and Enum.NumericRuleFormatRounding
+    local up, down = rounding and rounding.Up, rounding and rounding.Down
+    local seconds = { threshold = 0, step = 1, rounding = up, format = "%.0f" }
+    if not withMinutes then
+        return { seconds }
+    end
+    seconds.max = 59
+    return { seconds, { threshold = 60, step = 1, rounding = up, format = "%.0f:%02.0f", components = {
+        { div = 60, step = 1, rounding = down },
+        { mod = 60, step = 1, rounding = down },
+    } } }
+end
+
 local function timeFormatter()
     if formatter == nil then
         formatter = false
         if C_StringUtil and C_StringUtil.CreateNumericRuleFormatter then
             local ok, f = pcall(C_StringUtil.CreateNumericRuleFormatter)
             if ok and f then
-                local rounding = Enum.NumericRuleFormatRounding and Enum.NumericRuleFormatRounding.Up
-                if pcall(f.SetBreakpoints, f, { { threshold = 0, step = 1, rounding = rounding, format = "%.0f s" } }) then
-                    formatter = f
+                if pcall(f.SetBreakpoints, f, timeBreakpoints(true)) then
+                    formatter, formatterNote = f, "m:ss from a minute"
+                elseif pcall(f.SetBreakpoints, f, timeBreakpoints(false)) then
+                    formatter, formatterNote = f, "seconds only"
+                    note("the time formatter refused minutes and seconds, so long debuffs show seconds")
                 end
             end
+        end
+        if not formatter then
+            note("the game's number formatter is missing, so the timer uses the game's own text")
         end
     end
     return formatter or nil
@@ -390,15 +509,15 @@ local function hidePart(texture)
     pcall(texture.Hide, texture)
 end
 
--- The border colored by dispel type, and its glow, on a container button. The game fills both: it
--- shows them only on a debuff that has a dispel type, tinted that type's color from the color map.
--- Both need a border size above 0.
+-- The frame's dispel color, and its glow, on a container button. The game fills both: it shows them
+-- only on a debuff that has a dispel type, tinted that type's color from the color map, so a debuff
+-- with none keeps the dark frame. Both need a border size above 0.
 local function wireDispelBorder(button, parts)
     local style = dispelStyle("PreserveAsset")
     local edge = Debuffs:Edge()
     local options = { style = style, showWhenHarmful = true, showWhenHelpful = false, showWithoutDispelType = false,
         customDispelColorMap = dispelColorMap() }
-    if Debuffs:DispelBorder() and edge > 0 and style ~= nil then
+    if edge > 0 and style ~= nil then
         try("button", button, "AddDispelTypeTexture", parts.dispelBorder, options)
     else
         hidePart(parts.dispelBorder)
@@ -414,7 +533,7 @@ end
 -- calls), so a setting turned off stops showing at once.
 local function wireButton(button, parts)
     if forbidden(button) or forbidden(parts.icon) or forbidden(parts.border) or forbidden(parts.over) or forbidden(parts.dispelBorder)
-        or forbidden(parts.glowFrame) or forbidden(parts.glow) then
+        or forbidden(parts.bevel) or forbidden(parts.glowFrame) or forbidden(parts.glow) then
         dirty[button] = true
         skipped = skipped + 1
         pendingApply = true
@@ -573,8 +692,9 @@ end
 -- Sample debuffs in the same parts, size, spacing and look as the container's buttons, so the panel
 -- can be placed and sized out of combat.
 
--- left is the seconds remaining when the preview starts. Each sample runs for SAMPLE_SECONDS, then
--- starts over, so the swipe and the timer keep moving.
+-- left is the seconds remaining when the preview starts. Each sample runs for SAMPLE_SECONDS (or its
+-- own length), then starts over, so the swipe and the timer keep moving. One runs over a minute, to
+-- show the m:ss countdown.
 local SAMPLE_SECONDS = 30
 local SAMPLES = {
     { spell = 589, left = 12, dispel = "Magic" },
@@ -583,9 +703,10 @@ local SAMPLES = {
     { spell = 703, left = 27, dispel = "Poison" },
     { spell = 348, left = 5, dispel = "Disease" },
     { spell = 686, left = 17, stacks = 2, dispel = "Magic" },
-    { spell = 980, left = 24 },
+    { spell = 980, left = 103, length = 120 },
     { spell = 1022, left = 9, dispel = "Curse" },
 }
+Panel.SAMPLES = SAMPLES
 -- The game's raid frame dispel type icons, for the samples.
 local DISPEL_ICONS = {
     Magic = "Interface\\RaidFrame\\Raid-Icon-DebuffMagic",
@@ -621,7 +742,7 @@ local function updateTiles()
             tile:SetPoint("TOPLEFT", frame, "TOPLEFT", (index - 1) * Debuffs:Step(size), 0)
             local timerShown = layoutParts(tile, parts, size)
             parts.icon:SetTexture(sampleIcon(sample.spell))
-            parts.count:SetText(sample.stacks or "")
+            parts.count:SetText(Panel.StackText(sample.stacks))
             parts.time:SetShown(timerShown)
             if parts.cooldown then
                 parts.cooldown:SetShown(Debuffs:Get("swipe") or Debuffs:SwipeNumbers())
@@ -629,18 +750,21 @@ local function updateTiles()
             local dispel = Debuffs:DispelIcon() and sample.dispel and DISPEL_ICONS[sample.dispel]
             parts.dispel:SetTexture(dispel or nil)
             parts.dispel:SetShown(dispel and true or false)
-            -- The samples' dispel types are the addon's own, so their border is colored here.
+            -- The samples' dispel types are the addon's own, so their frame is colored here.
             local typed = sample.dispel ~= nil
             local edge = Debuffs:Edge()
             local r, g, b = Debuffs:DispelColor(sample.dispel)
             parts.dispelBorder:SetVertexColor(r, g, b, 1)
-            parts.dispelBorder:SetShown(Debuffs:DispelBorder() and typed and edge > 0)
+            parts.dispelBorder:SetShown(typed and edge > 0)
             parts.glow:SetVertexColor(r, g, b, 1)
             parts.glow:SetShown(Debuffs:DispelGlow() and typed and edge > 0 and hasGlowAtlas())
             if not tile.endsAt then
+                tile.length = sample.length or SAMPLE_SECONDS
                 tile.endsAt = GetTime() + sample.left
+                tile.timeText = Panel.FormatTime(sample.left)
+                parts.time:SetText(tile.timeText)
                 if parts.cooldown then
-                    parts.cooldown:SetCooldown(tile.endsAt - SAMPLE_SECONDS, SAMPLE_SECONDS)
+                    parts.cooldown:SetCooldown(tile.endsAt - tile.length, tile.length)
                 end
             end
             tile:Show()
@@ -660,12 +784,17 @@ local function tickTiles()
     for _, tile in ipairs(tiles) do
         if tile:IsShown() and tile.endsAt then
             if tile.endsAt <= now then
-                tile.endsAt = now + SAMPLE_SECONDS
+                tile.endsAt = now + tile.length
                 if tile.parts.cooldown then
-                    tile.parts.cooldown:SetCooldown(now, SAMPLE_SECONDS)
+                    tile.parts.cooldown:SetCooldown(now, tile.length)
                 end
             end
-            tile.parts.time:SetText(math.ceil(tile.endsAt - now) .. " s")
+            -- Set only when the text changes: once a second, or less from a minute up.
+            local text = Panel.FormatTime(tile.endsAt - now)
+            if text ~= tile.timeText then
+                tile.timeText = text
+                tile.parts.time:SetText(text)
+            end
         end
     end
 end
@@ -702,12 +831,13 @@ local function updateVisibility()
     end
 end
 
--- The drag handle sits above the icons, or above their timer text when it is placed above them.
+-- The drag handle sits above the icons, or above their timer text when it is placed above them (the
+-- text grows with the icon).
 local function placeHandle()
     if not handle then
         return
     end
-    local lift = Debuffs:Get("timerPosition") == "above" and 18 or 0
+    local lift = Debuffs:Get("timerPosition") == "above" and (Panel.TimerFontSize(Debuffs:Size()) + 4) or 0
     handle:ClearAllPoints()
     handle:SetPoint("BOTTOMLEFT", frame, "TOPLEFT", 0, 2 + lift)
     handle:SetPoint("BOTTOMRIGHT", frame, "TOPRIGHT", 0, 2 + lift)
@@ -897,9 +1027,11 @@ function Panel:InfoText()
     add(format("Settings: size %d, max %d, dispel icon %s, dispel icon size %d%%, hide longer than %s, boss debuff slots %s", Debuffs:Size(), Debuffs:MaxCount(),
         tostring(Debuffs:DispelIcon()), math.floor(Debuffs:DispelIconScale() * 100 + 0.5), Debuffs:MaxDuration() > 0 and (Debuffs:MaxDuration() .. " s") or "off",
         tostring(Debuffs:PrivateSlots())))
-    add(format("Look: swipe %s, edge %s, countdown numbers %s, timer %s (%s, %s), border %s, spacing %d (%g px from icon to icon), dispel border %s, glow %s", tostring(Debuffs:Get("swipe")),
+    add(format("Look: swipe %s, edge %s, countdown numbers %s, timer %s (%s, %s), border %s, spacing %d (%g px from icon to icon), frame colored by dispel type, glow %s", tostring(Debuffs:Get("swipe")),
         tostring(Debuffs:Get("swipeEdge")), tostring(Debuffs:SwipeNumbers()), tostring(Debuffs:Get("timerPosition")), tostring(Debuffs:Get("timerX")),
-        tostring(Debuffs:Get("timerY")), tostring(Debuffs:Get("borderScale")), Debuffs:Spacing(), Debuffs:Step(Debuffs:Size()), tostring(Debuffs:DispelBorder()), tostring(Debuffs:DispelGlow())))
+        tostring(Debuffs:Get("timerY")), tostring(Debuffs:Get("borderScale")), Debuffs:Spacing(), Debuffs:Step(Debuffs:Size()), tostring(Debuffs:DispelGlow())))
+    add(format("Text: countdown %d px, stacks %d px, font %s, time format %s", Panel.TimerFontSize(Debuffs:Size()), Panel.StackFontSize(Debuffs:Size()),
+        fontPath(), tostring(timeFormatter() and formatterNote or "the game's own")))
     if frame then
         local point, _, relativePoint, x, y = frame:GetPoint()
         add(format("Panel: alpha %s, shown %s, effective alpha %s, size %s x %s, at %s %s %s,%s",

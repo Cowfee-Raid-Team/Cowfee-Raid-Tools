@@ -16,12 +16,15 @@ local function check(name, cond, detail)
 end
 
 -- A mock frame, region or font object: any method is a no-op unless defined here.
+regions = {} -- every texture and font string made
 local function mock(kind)
   local m = { kind = kind, shown = true, pts = {}, calls = {} }
   return setmetatable(m, { __index = function(t, k)
+    -- A field the addon keeps on a frame (lowercase, such as a tile's endsAt) is nil until set, as in the game.
+    if type(k) == "string" and k:match("^%l") then return nil end
     if k == "CreateFontString" or k == "CreateTexture" then return function(self, _, layer, _, sub)
       local r = mock(k == "CreateTexture" and "Texture" or "FontString") rawset(r, "layer", layer) rawset(r, "sublevel", sub)
-      rawset(r, "parent", self) return r end end
+      rawset(r, "parent", self) regions[#regions + 1] = r return r end end
     if k == "SetScript" then return function(self, n, fn) rawset(self, n, fn) end end
     if k == "Show" then return function(self) self.shown = true end end
     if k == "Hide" then return function(self) self.shown = false end end
@@ -40,6 +43,8 @@ local function mock(kind)
     if k == "GetAlpha" then return function(self) return rawget(self, "alpha") or 1 end end
     if k == "SetAtlas" then return function(self, a) rawset(self, "atlas", a) end end
     if k == "SetBlendMode" then return function(self, b) rawset(self, "blend", b) end end
+    if k == "SetFont" then return function(self, p, size, flags) rawset(self, "font", { path = p, size = size, flags = flags }) return true end end
+    if k == "SetTextColor" then return function(self, r, g, b) rawset(self, "textColor", { r, g, b }) end end
     if k == "GetFont" then return function() return "f", 12, "" end end
     if k == "GetTextColor" then return function() return 1, 1, 1 end end
     -- A frame's level is its own when set, else one above its parent's, as in the game.
@@ -78,7 +83,15 @@ GetBuildInfo = function() return "12.1.5", "1", "", 120105 end
 C_AddOns = { IsAddOnLoaded = function() return true end }
 C_UnitAuras = {}
 C_Spell = { GetSpellTexture = function(id) return "icon" .. id end }
-Enum = { CustomAuraButtonDispelTypeTextureStyle = { Border = 0, BorderWithIcon = 1, Icon = 2, PreserveAsset = 3, CustomAsset = 4 } }
+Enum = { CustomAuraButtonDispelTypeTextureStyle = { Border = 0, BorderWithIcon = 1, Icon = 2, PreserveAsset = 3, CustomAsset = 4 },
+  NumericRuleFormatRounding = { Nearest = 0, Up = 1, Down = 2 } }
+-- The game's number formatter (NumericRuleFormatterSharedDocumentation.lua): records its breakpoints.
+local formatters = {}
+C_StringUtil = { CreateNumericRuleFormatter = function()
+  local f = { SetBreakpoints = function(self, list) self.breakpoints = list end }
+  formatters[#formatters + 1] = f
+  return f
+end }
 
 -- Frames: an AuraContainer records its group options, so the test can make a button through them.
 local frames, groupOpts = {}, nil
@@ -121,7 +134,6 @@ local Debuffs = CRT.Debuffs
 
 -- Defaults.
 check("default dispel icon scale is 0.35", defaults.dispelIconScale == 0.35, defaults.dispelIconScale)
-check("default dispel border is off", defaults.dispelBorder == false, tostring(defaults.dispelBorder))
 check("default dispel glow is off", defaults.dispelGlow == false, tostring(defaults.dispelGlow))
 CRT.db.debuffs.dispelIconScale = nil
 check("old saved data without a dispel scale reads 0.35", Debuffs:DispelIconScale() == 0.35, Debuffs:DispelIconScale())
@@ -138,9 +150,9 @@ Debuffs:SetDispelIconScale(0.05) check("dispel scale clamps to 0.2", Debuffs:Dis
 Debuffs:SetDispelIconScale(0.7) check("dispel scale 0.7 is kept", math.abs(Debuffs:DispelIconScale() - 0.7) < 1e-9, Debuffs:DispelIconScale())
 Debuffs:SetDispelIconScale("x") check("dispel scale ignores junk", math.abs(Debuffs:DispelIconScale() - 0.7) < 1e-9, Debuffs:DispelIconScale())
 Debuffs:SetDispelIconScale(0.35)
-Debuffs:SetDispelBorder(1) check("dispel border saves true", CRT.db.debuffs.dispelBorder == true)
+Debuffs:SetDispelGlow(1) check("dispel glow saves true, with no other box", CRT.db.debuffs.dispelGlow == true and Debuffs:DispelGlow() == true)
 Debuffs:SetDispelGlow(nil) check("dispel glow saves false", CRT.db.debuffs.dispelGlow == false)
-Debuffs:SetDispelBorder(false)
+check("the old colored border box is gone: the frame always takes the dispel color", Debuffs.SetDispelBorder == nil and Debuffs.DispelBorder == nil)
 
 -- Colors: the fallback table without the game's colors, then the game's own.
 local function same(a, b) return math.abs(a - b) < 1e-6 end
@@ -184,7 +196,7 @@ local function changes(field, value)
   return before ~= after
 end
 check("signature changes with dispelIconScale", changes("dispelIconScale", 0.7))
-check("signature changes with dispelBorder", changes("dispelBorder", true))
+check("an old saved dispelBorder value changes nothing", not changes("dispelBorder", true))
 check("signature changes with dispelGlow", changes("dispelGlow", true))
 check("signature changes with size", changes("size", 60))
 check("signature changes with spacing", changes("spacing", 10))
@@ -240,10 +252,11 @@ local function glowTex()
   for _, a in ipairs(added) do if a.tex.sublevel == -1 then return a.tex end end
 end
 groupOpts.initializeFrame(button)
-check("all off: no dispel textures", #added == 0, styles())
+check("all off: only the frame, which takes the dispel color", styles() == "3", styles())
 Debuffs:SetDispelIcon(true)
-check("dispel icon: one Icon texture", styles() == "2", styles())
-local icon = added[1].tex
+check("dispel icon: an Icon texture beside the frame", styles() == "2,3", styles())
+local icon
+for _, a in ipairs(added) do if a.opts.style == 2 then icon = a.tex end end
 check("dispel icon is 35% of 44 (15 px)", icon.w == 15, icon.w)
 Debuffs:SetDispelIconScale(0.7)
 check("dispel icon at 70% of 44 (30 px)", icon.w == 30, icon.w)
@@ -251,9 +264,7 @@ Debuffs:SetDispelIconScale(0.2)
 check("dispel icon keeps its 10 px minimum", icon.w == 10, icon.w)
 Debuffs:SetDispelIcon(false)
 Debuffs:SetDispelGlow(true)
-check("glow alone, without the border, adds nothing", #added == 0, styles())
-Debuffs:SetDispelBorder(true)
-check("border and glow: two PreserveAsset textures", styles() == "3,3", styles())
+check("frame and glow: two PreserveAsset textures", styles() == "3,3", styles())
 for _, a in ipairs(added) do
   check("dispel border texture skips debuffs with no type", not a.opts.showWithoutDispelType and a.opts.showWhenHarmful == true)
   local map = a.opts.customDispelColorMap
@@ -271,17 +282,111 @@ for _, a in ipairs(added) do
 end
 check("the glow uses the white bag glow atlas, drawn additively", glowTex() and glowTex().atlas == "bags-glow-white" and glowTex().blend == "ADD")
 Debuffs:Set("borderScale", 0)
-check("border size 0: neither the border nor the glow is added", #added == 0, styles())
+check("border size 0: neither the frame nor the glow is added", #added == 0, styles())
 Debuffs:Set("borderScale", 1)
 Debuffs:SetDispelGlow(false)
-check("border only: one PreserveAsset texture", styles() == "3", styles())
+check("glow off: the frame alone", styles() == "3", styles())
 local borderTex = added[1].tex
-check("the dispel border is the base border's size", borderTex.w == 44 + 5 and borderTex.shown)
+check("the dispel frame is the dark frame's size", borderTex.w == 44 + 5 and borderTex.shown)
 Debuffs:Set("borderScale", 0)
-check("border size 0 hides the dispel border too", #added == 0 and not borderTex.shown, styles())
+check("border size 0 hides the dispel frame too", #added == 0 and not borderTex.shown, styles())
 Debuffs:Set("borderScale", 1)
-Debuffs:SetDispelBorder(false)
-check("border off: hidden and not registered", #added == 0 and not borderTex.shown, styles())
+
+-- The look of a button: a dark frame with a thin bevel inside it, a big yellow countdown with an
+-- outline in the middle, and white stacks with an outline at the bottom right.
+local timeFS, countFS
+rawset(button, "SetDurationText", function(self, fs) timeFS = fs end)
+rawset(button, "SetApplicationCount", function(self, fs) countFS = fs end)
+Debuffs:Set("timerPosition", "center")
+check("the countdown and stacks are handed to the game", timeFS ~= nil and countFS ~= nil)
+local L = Panel.LOOK
+check("the look is a table at the top of Panel.lua", type(L) == "table" and type(L.timerColor) == "table" and type(L.font) == "string")
+if timeFS and countFS then
+  check("the countdown is yellow", timeFS.textColor and timeFS.textColor[1] == L.timerColor[1] and timeFS.textColor[2] == L.timerColor[2] and timeFS.textColor[3] == L.timerColor[3]
+    and timeFS.textColor[1] > 0.9 and timeFS.textColor[2] > 0.7 and timeFS.textColor[3] < 0.3)
+  check("the countdown has an outline", timeFS.font and timeFS.font.flags:find("OUTLINE") ~= nil, timeFS.font and timeFS.font.flags)
+  check("the countdown is in the middle of the icon", timeFS.pts[1] and timeFS.pts[1][1] == "CENTER" and timeFS.pts[1][3] == "CENTER")
+  check("the stacks are white with an outline", countFS.textColor and countFS.textColor[1] == 1 and countFS.textColor[2] == 1 and countFS.textColor[3] == 1
+    and countFS.font and countFS.font.flags:find("OUTLINE") ~= nil)
+  check("the stacks sit at the bottom right", countFS.pts[1] and countFS.pts[1][1] == "BOTTOMRIGHT")
+  local small = timeFS.font.size
+  Debuffs:SetSize(88)
+  local big = timeFS.font.size
+  check("the countdown grows with the icon size", big > small and big == Panel.TimerFontSize(88) and small == Panel.TimerFontSize(44), small .. " -> " .. big)
+  check("the countdown is big: nearly half the icon", Panel.TimerFontSize(44) >= 18 and Panel.TimerFontSize(88) >= 36, Panel.TimerFontSize(44))
+  check("a big countdown has a thick outline", timeFS.font.flags == "THICKOUTLINE", timeFS.font.flags)
+  check("the stacks grow with the icon size too", countFS.font.size == Panel.StackFontSize(88) and Panel.StackFontSize(88) > Panel.StackFontSize(44))
+  Debuffs:SetSize(24)
+  check("the countdown stays readable on the smallest icon", timeFS.font.size >= 10, timeFS.font.size)
+  Debuffs:SetSize(44)
+  local onIcon = timeFS.font.size
+  Debuffs:Set("timerPosition", "below")
+  check("beside the icon the number is smaller than on it, so it doesn't crowd the row", timeFS.font.size < onIcon and timeFS.font.size >= 10, onIcon .. " / " .. timeFS.font.size)
+  Debuffs:Set("timerPosition", "center")
+  check("the font is the game's own when the addon font is the default", timeFS.font.path == L.font, timeFS.font.path)
+end
+-- The button's own textures, found by what they were drawn with.
+local function texturesOf(owner, test)
+  for _, r in ipairs(regions) do
+    if rawget(r, "parent") == owner and r.kind == "Texture" and test(r) then return r end
+  end
+end
+local bevel = texturesOf(button, function(r) local c = rawget(r, "color") return c and c[1] == L.bevelColor[1] and c[4] == L.bevelColor[4] end)
+check("the frame has a thin bevel inside it", bevel ~= nil and bevel.w == 44 + 2 * L.bevelWidth and bevel.shown, bevel and bevel.w)
+local frameTex = texturesOf(button, function(r) local c = rawget(r, "color") return c and c[4] == 1 and r.layer == "BACKGROUND" and r ~= bevel end)
+check("the frame is dark", frameTex and frameTex.color[1] < 0.15 and frameTex.color[2] < 0.15 and frameTex.color[3] < 0.15 and frameTex.shown)
+check("the frame is the icon plus the border's width", frameTex and frameTex.w == 44 + 5, frameTex and frameTex.w)
+Debuffs:Set("borderScale", 0.5)
+check("no bevel on a frame too thin for one", bevel and not bevel.shown)
+Debuffs:Set("borderScale", 1)
+
+-- The countdown's text: seconds with no "s" under a minute, m:ss from 60 s.
+local cases = { { 9, "9" }, { 8.2, "9" }, { 59, "59" }, { 59.5, "59" }, { 60, "1:00" }, { 103, "1:43" }, { 102.4, "1:43" }, { 600, "10:00" }, { 0.3, "1" } }
+for _, c in ipairs(cases) do
+  check("the time " .. c[1] .. " reads " .. c[2], Panel.FormatTime(c[1]) == c[2], Panel.FormatTime(c[1]))
+end
+check("a secret time is never compared, and gives no text", Panel.FormatTime(SECRET) == nil)
+check("a stack of 3 reads 3", Panel.StackText(3) == "3")
+check("one stack shows nothing, like the game", Panel.StackText(1) == "" and Panel.StackText(nil) == "" and Panel.StackText(0) == "")
+check("a secret stack count is never compared", Panel.StackText(SECRET) == "")
+
+-- The game's formatter for the real debuffs: the same text, from the breakpoints the panel gives it.
+-- Rules as documented: the input is stepped and rounded, clamped to min/max, then each component is
+-- divided (div) and/or reduced (mod), stepped and rounded, and formatted.
+local fmt = formatters[#formatters]
+check("the game's formatter was given breakpoints", fmt and type(fmt.breakpoints) == "table" and #fmt.breakpoints >= 2)
+local function roundStep(v, step, rounding)
+  if not step then return v end
+  local q = v / step
+  if rounding == 1 then q = math.ceil(q) elseif rounding == 2 then q = math.floor(q) else q = math.floor(q + 0.5) end
+  return q * step
+end
+local function gameFormat(list, value)
+  local rule
+  for _, bp in ipairs(list) do if value >= bp.threshold and (not rule or bp.threshold >= rule.threshold) then rule = bp end end
+  local v = roundStep(value, rule.step, rule.rounding)
+  if rule.min and v < rule.min then v = rule.min end
+  if rule.max and v > rule.max then v = rule.max end
+  if not rule.components then return string.format(rule.format, v) end
+  local vals = {}
+  for _, comp in ipairs(rule.components) do
+    local x = v
+    if comp.div then x = x / comp.div end
+    if comp.mod then x = x % comp.mod end
+    vals[#vals + 1] = roundStep(x, comp.step, comp.rounding)
+  end
+  return string.format(rule.format, (table.unpack or unpack)(vals))
+end
+if fmt and fmt.breakpoints then
+  for _, c in ipairs(cases) do
+    local ok, text = pcall(gameFormat, fmt.breakpoints, c[1])
+    check("the game's formatter reads " .. c[1] .. " as " .. c[2], ok and text == c[2], text)
+  end
+  for _, bp in ipairs(fmt.breakpoints) do
+    check("no breakpoint adds an s", not bp.format:find("s"), bp.format)
+  end
+end
+Debuffs:Set("timerPosition", defaults.timerPosition)
 
 -- The glow sits on its own frame inside the button, above every button and its swipe, and below its
 -- own button's timer and stacks.
@@ -292,7 +397,7 @@ rawset(button2, "SetIcon", function() end)
 rawset(button2, "ClearDispelTypeTextures", function() end)
 rawset(button2, "AddDispelTypeTexture", function() end)
 rawset(button2, "SetDurationText", function(self, fs) timeText[self] = fs end)
-Debuffs:SetDispelBorder(true) Debuffs:SetDispelGlow(true)
+Debuffs:SetDispelGlow(true)
 groupOpts.initializeFrame(button2)
 local glow = glowTex()
 check("the glow is handed to the game", glow ~= nil)
@@ -315,7 +420,7 @@ if glow then
   check("its own timer and stacks stay above the glow", text ~= nil and text:GetFrameLevel() > level, text and text:GetFrameLevel())
   check("the glow's frame never takes the mouse", rawget(holder, "mouse") == false)
 end
-Debuffs:SetDispelBorder(false) Debuffs:SetDispelGlow(false)
+Debuffs:SetDispelGlow(false)
 
 -- The timer and stacks are raised when the parts are made, even if the button can't be wired yet.
 local button3 = mock("AuraButton")
@@ -400,7 +505,6 @@ check("limit Off: a permanent debuff shows", passes(fOff, { duration = 0, isFrom
 Debuffs:SetMaxDuration(defaults.maxDuration)
 
 -- The preview tiles color their border only where the sample's type is known.
-Debuffs:SetDispelBorder(true)
 Debuffs:SetMaxCount(8)
 Panel:SetPreview(true)
 check("the panel reports its preview", Panel:IsPreviewing() == true)
@@ -413,8 +517,35 @@ for _, f in ipairs(frames) do
     if not parts.dispelBorder.shown then plain = plain + 1 end
   end
 end
-check("6 sample tiles with a dispel type get a colored border", colored == 6, colored)
-check("2 sample tiles without one keep the plain border", plain == 2, plain)
+check("6 sample tiles with a dispel type get a colored frame", colored == 6, colored)
+check("2 sample tiles without one keep the dark frame", plain == 2, plain)
+-- Each sample's frame: its dispel type's color, else dark; the big yellow number and the stacks.
+local tilesByIndex = {}
+for _, f in ipairs(frames) do if rawget(f, "parts") and f.shown and f.pts[1] then tilesByIndex[#tilesByIndex + 1] = f end end
+table.sort(tilesByIndex, function(a, b) return a.pts[1][4] < b.pts[1][4] end)
+local samples = Panel.SAMPLES
+local colorsOK, darkOK, textOK, stacksOK = true, true, true, true
+for i, tile in ipairs(tilesByIndex) do
+  local s, p = samples[i], rawget(tile, "parts")
+  if s.dispel then
+    local r, g, b = Debuffs:DispelColor(s.dispel)
+    local v = p.dispelBorder.vertex
+    if not (p.dispelBorder.shown and v and v[1] == r and v[2] == g and v[3] == b) then colorsOK = false end
+  else
+    local c = p.border.color
+    if p.dispelBorder.shown or not (c and c[1] == Debuffs.BORDER_COLOR[1] and c[2] == Debuffs.BORDER_COLOR[2] and c[3] == Debuffs.BORDER_COLOR[3]) then darkOK = false end
+  end
+  if p.count.text ~= Panel.StackText(s.stacks) then stacksOK = false end
+end
+check("a dispellable sample's frame is its dispel type's color", colorsOK and #tilesByIndex == 8, #tilesByIndex)
+check("a sample with no dispel type keeps the dark frame", darkOK)
+check("the samples' stacks read as the game shows them", stacksOK)
+panelFrame.OnUpdate(panelFrame, 1)
+for i, tile in ipairs(tilesByIndex) do
+  local want = Panel.FormatTime(samples[i].left)
+  if rawget(tile, "parts").time.text ~= want then textOK = false print("  tile " .. i .. ": " .. tostring(rawget(tile, "parts").time.text) .. " not " .. want) end
+end
+check("the samples' countdown reads like the real one, with no s", textOK)
 local tileXs = {}
 for _, f in ipairs(frames) do
   if rawget(f, "parts") and f.shown and f.pts[1] then tileXs[#tileXs + 1] = f.pts[1][4] end
@@ -449,10 +580,9 @@ Debuffs:Set("borderScale", 1)
 Debuffs:SetDispelGlow(false)
 Panel:SetPreview(false)
 check("the preview stops", Panel:IsPreviewing() == false)
-Debuffs:SetDispelBorder(false)
 Debuffs:SetMaxCount(4)
 local info = Panel:InfoText()
-check("diagnostics list the new settings", info:find("dispel icon size 20%%") and info:find("dispel border false") and info:find("glow false") and info:find("spacing 4"), info:match("Settings:[^\\n]*"))
+check("diagnostics list the new settings", info:find("dispel icon size 20%%") and info:find("frame colored by dispel type") and info:find("glow false") and info:find("spacing 4"), info:match("Settings:[^\\n]*"))
 
 -- The tab.
 assert(load(pageSrc, "Page.lua"))("CowfeeRaidTools", CRT)
@@ -488,7 +618,6 @@ Debuffs:SetDispelIcon(false)
 check("dispel icon size is off while the dispel icon is off", ds.opts.enabledIf() == false)
 Debuffs:SetDispelIcon(true)
 check("dispel icon size is on with the dispel icon", ds.opts.enabledIf() == true)
-check("the dispel border has a (?) help", helps["Color the border by dispel type"] ~= nil)
 
 -- The look boxes save through Debuffs' setters.
 local function findCheck(label)
@@ -498,14 +627,13 @@ local function findCheck(label)
   end
 end
 local borderBox, glowBox = findCheck("Color the border by dispel type"), findCheck("Glow on dispellable debuffs")
-check("the border and glow boxes exist", borderBox ~= nil and glowBox ~= nil)
+check("the colored border box is gone, the glow box stays", borderBox == nil and glowBox ~= nil)
+check("the glow box has a (?) help that says the frame takes the dispel color", helps["Glow on dispellable debuffs"] ~= nil and helps["Glow on dispellable debuffs"]:find("frame") ~= nil)
+check("the Look help describes the frame and the countdown", helps["Look"] ~= nil and helps["Look"]:find("frame") ~= nil and helps["Look"]:find("yellow") ~= nil)
 rawset(glowBox, "GetChecked", function() return true end)
 glowBox.OnClick(glowBox)
-check("glow ticked with the border off: saved, but no glow", CRT.db.debuffs.dispelGlow == true and Debuffs:DispelGlow() == false)
-rawset(borderBox, "GetChecked", function() return true end)
-borderBox.OnClick(borderBox)
-check("border ticked: the glow is on", Debuffs:DispelBorder() == true and Debuffs:DispelGlow() == true)
-Debuffs:SetDispelBorder(false) Debuffs:SetDispelGlow(false)
+check("glow ticked: saved and on", CRT.db.debuffs.dispelGlow == true and Debuffs:DispelGlow() == true)
+Debuffs:SetDispelGlow(false)
 
 -- Preview debuffs: only this panel, its label, combat, and closing the tab.
 local pb
@@ -549,7 +677,7 @@ local Panel2 = CRT.DebuffPanel
 for i = before + 1, #frames do if rawget(frames[i], "OnEvent") then events = frames[i] end end
 events.OnEvent(events, "PLAYER_LOGIN")
 check("no glow atlas: a second panel is built", groupOpts ~= nil and #frames > before + 1)
-Debuffs:SetDispelBorder(true) Debuffs:SetDispelGlow(true)
+Debuffs:SetDispelGlow(true)
 added = {}
 local button4 = mock("AuraButton")
 rawset(button4, "SetIcon", function() end)
@@ -569,7 +697,7 @@ end
 check("no glow atlas: no preview tile shows a glow", tilesSeen == 8 and plainGlows == 0, tilesSeen .. " tiles, " .. plainGlows .. " glowing")
 Panel2:SetPreview(false)
 check("no glow atlas: the diagnostics say so", Panel2:InfoText():find("glow atlas") ~= nil)
-Debuffs:SetDispelBorder(false) Debuffs:SetDispelGlow(false) Debuffs:SetMaxCount(4)
+Debuffs:SetDispelGlow(false) Debuffs:SetMaxCount(4)
 
 print(passed .. " passed, " .. failed .. " failed")
 if failed > 0 then error("debuff checks failed") end
