@@ -11,7 +11,10 @@ local ADDON, CRT = ...
 --   looter: S session (id, test, item count, version, seconds, button count, auto-answer), B buttons and
 --           I items (packed, several a message), Q show an item again to a raider, L a roll the looter's
 --           CRT drew for a raider (silent: no /roll in chat), A an item given out, E end
---   raider: K hello, Y ready (every item and button arrived), R answer
+--   raider: K hello, Y ready (every item and button arrived), R answer, G the full equipped items behind an
+--           answer (sent after its R: "G|<id>:<item index>|<piece>;<piece>", each piece CRT.Gear.Encode's
+--           "<slot>~<item string>~<item level>", split so each message is 255 bytes or less). R still carries
+--           "id:ilvl" for each piece, so a looter older than 0.30.0 drops G and shows the items by ID.
 --   leader: U who may run loot (the raid leader's list; raiders trust only that), M Sync Master Loot
 --           (LootMaster/Sync.lua, its own handler through LM.Handle); O on, F off and H heartbeat for
 --           CRT Looting (LootMaster/Looting.lua)
@@ -704,6 +707,27 @@ end
 
 -- The raider -----------------------------------------------------------------------------------------
 
+-- The full equipped items behind an answer, after its R: G parts (CRT.Gear.PackMany, then Wire.Pack, so
+-- each is one message of 255 bytes or less). A piece too long for a message is left out: the looter keeps
+-- its item ID from the R.
+local GEAR_HEAD = 3 -- "G|" and the "|" after "<id>:<item index>"
+local function sendGear(id, index, gear)
+    local Gear = CRT.Gear
+    if not Gear then
+        return
+    end
+    local head = tostring(id) .. ":" .. tostring(index)
+    for _, chunk in ipairs((Gear.PackMany(gear, 255 - GEAR_HEAD - #head))) do
+        local entries = {}
+        for i, text in ipairs(chunk) do
+            entries[i] = { text }
+        end
+        for _, text in ipairs((Wire.Pack("G", head, entries))) do
+            sendText(text)
+        end
+    end
+end
+
 -- Your answer for an item, to everyone. The looter's CRT draws your roll and sends it back.
 function LM:Answer(index, response, note)
     local inc = self.incoming
@@ -720,6 +744,7 @@ function LM:Answer(index, response, note)
     local _, classFile = UnitClass("player")
     send("R", { inc.id, index, response, self:MyRole(), classFile or "", self:MyItemLevel(),
         Wire.GearText(gear[1]), Wire.GearText(gear[2]), "", "", note or "" })
+    sendGear(inc.id, index, gear)
     self:Fire("incoming")
     save()
 end
@@ -873,6 +898,7 @@ local function judge(inc, index, loaded)
         closed = not LM:Settings().showAllItems }
     send("R", { inc.id, index, response, LM:MyRole(), classFile or "", LM:MyItemLevel(),
         Wire.GearText(gear[1]), Wire.GearText(gear[2]), why, detail or "", "" })
+    sendGear(inc.id, index, gear)
 end
 
 -- Checks every item of a session, then calls done once: when all are judged, or after SPEC_WAIT.
@@ -1145,6 +1171,37 @@ HANDLERS.R = function(f, sender)
         drawRoll(s, sender, index, false)
         LM:Fire("session")
         save()
+    end
+end
+
+-- G: a raider's full equipped items for their answer. Only the sender's own answer is filled, and only
+-- one that exists in that session for that item; the pieces are also kept in the gear engine.
+HANDLERS.G = function(f, sender)
+    local id, index = tostring(f[1] or ""):match("^([^:]+):(%d+)$")
+    index = tonumber(index)
+    if not (id and index and sender) then
+        return
+    end
+    local pieces = {}
+    for _, e in ipairs(Wire.Unpack(f[2])) do
+        pieces[#pieces + 1] = CRT.Gear and CRT.Gear.Decode(e[1]) or nil
+    end
+    if #pieces == 0 then
+        return
+    end
+    local s, inc = LM.current, LM.incoming
+    local merged = false
+    if inc and inc.id == id and inc.view and inc.view:MergeGear(sender, index, pieces) then
+        merged = true
+        LM:Fire("incoming")
+    end
+    if s and s.id == id and s:MergeGear(sender, index, pieces) then
+        merged = true
+        LM:Fire("session")
+        save()
+    end
+    if merged then
+        CRT.Gear:Remember(sender, pieces, "lootmaster")
     end
 end
 

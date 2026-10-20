@@ -138,7 +138,7 @@ local function lastPrint() return printed[#printed] end
 local function kill(name) CLOCK = CLOCK + 5 onEvent("ENCOUNTER_END", 3001, name or "Big Boss", 16, 20, 1) take() end
 local V = LM.VERSION
 
-eq(LM.VERSION, "0.29.0", "version 0.29.0")
+eq(LM.VERSION, "0.30.0", "version 0.30.0")
 eq(LM.LOOTING_SINCE, "0.29.0", "a raider passes only for a leader whose CRT rolls (0.29.0)")
 eq(LM.CLOSE_SECONDS, 3, "the game gets 3 s to close a roll")
 

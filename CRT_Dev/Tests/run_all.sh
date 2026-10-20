@@ -63,6 +63,7 @@ g "gear" && { node run_gear.js "$W" 2>&1 | tail -12; echo "exit ${PIPESTATUS[0]}
 g "loot rclc" && { node run_loot_rclc.js "$W" 2>&1 | tail -6; echo "exit ${PIPESTATUS[0]}"; }
 g "lootmaster data" && { node run_lootmaster_data.js "$W" 2>&1 | tail -6; echo "exit ${PIPESTATUS[0]}"; }
 g "lootmaster comm" && { node run_lootmaster_comm.js "$W" 2>&1 | tail -6; echo "exit ${PIPESTATUS[0]}"; }
+g "lootmaster gear" && { node run_lootmaster_gear.js "$W" 2>&1 | tail -12; echo "exit ${PIPESTATUS[0]}"; }
 g "lootmaster sync" && { node run_lootmaster_sync.js "$W" 2>&1 | tail -6; echo "exit ${PIPESTATUS[0]}"; }
 g "lootmaster autopass" && { node run_lootmaster_autopass.js "$W" 2>&1 | tail -6; echo "exit ${PIPESTATUS[0]}"; }
 g "lootmaster looting" && { node run_lootmaster_looting.js "$W" 2>&1 | tail -6; echo "exit ${PIPESTATUS[0]}"; }

@@ -6,20 +6,21 @@ local ADDON, CRT = ...
 -- A session is one boss's items (or a test's sample items), run by the raid leader, the looter:
 --   items     { itemString, link, ilvl, award = { name, response } }
 --   players   by full name: { name, crt (nil until known, then true or false), class, role,
---             answers[itemIndex] = { response, note, roll, gear = { { id, ilvl } }, ilvl, state, asked } }
+--             answers[itemIndex] = { response, note, roll, gear = { { id, ilvl, itemString, slot } }, ilvl, state, asked } }
+--             (itemString and slot only once the raider's G part arrived: Session:MergeGear)
 -- An answer's state: waiting (has CRT, no answer yet), answered, reroll (asked to roll again), timeout
 -- (no answer in the session's seconds), nocrt (never said hello). A raider's roll is the first one seen for that
 -- item; a later one never replaces it, so nobody rolls again for a better number unless asked.
 --
 -- Messages (prefix LM.PREFIX, fields split by "|", see Wire): the looter sends S (session), I (item),
 -- B (a response button), Q (show the popup again), X (roll again), A (award), E (end); raiders send K
--- (hello), R (answer), L (roll).
+-- (hello), R (answer), G (the full equipped items behind an answer), L (roll).
 
 local LM = { listeners = {} }
 CRT.LootMaster = LM
 
 LM.PREFIX = "CRTLootRemaster" -- since 0.25 (0.24 was CRTLoot1). A new protocol gets a new word, never a number: a prefix is 16 characters at most
-LM.VERSION = "0.29.0"
+LM.VERSION = "0.30.0" -- 0.30.0: raiders send their full equipped items (G, LootMaster/Comm.lua)
 -- The oldest leader's CRT a raider's auto-pass gate trusts (LootMaster/AutoPass.lua): 0.29.0 is the first
 -- whose leader rolls Need, Greed or Transmog (LootMaster/Rolls.lua), so no raider passes for a leader who
 -- doesn't roll.
@@ -412,16 +413,9 @@ function LM:Fire(what, ...)
     end
 end
 
--- Where each kind of gear is worn, for the raider's "what I have" (C_Item.GetItemInfoInstant's equip
--- location). Rings, trinkets and one-handers compare against both slots.
-LM.SLOTS = {
-    INVTYPE_HEAD = { 1 }, INVTYPE_NECK = { 2 }, INVTYPE_SHOULDER = { 3 }, INVTYPE_CHEST = { 5 },
-    INVTYPE_ROBE = { 5 }, INVTYPE_WAIST = { 6 }, INVTYPE_LEGS = { 7 }, INVTYPE_FEET = { 8 },
-    INVTYPE_WRIST = { 9 }, INVTYPE_HAND = { 10 }, INVTYPE_FINGER = { 11, 12 }, INVTYPE_TRINKET = { 13, 14 },
-    INVTYPE_CLOAK = { 15 }, INVTYPE_WEAPON = { 16, 17 }, INVTYPE_2HWEAPON = { 16 },
-    INVTYPE_WEAPONMAINHAND = { 16 }, INVTYPE_WEAPONOFFHAND = { 17 }, INVTYPE_HOLDABLE = { 17 },
-    INVTYPE_SHIELD = { 17 }, INVTYPE_RANGED = { 16 }, INVTYPE_RANGEDRIGHT = { 16 },
-}
+-- Where each kind of gear is worn: the gear engine's map (CRT_Core/Gear.lua), kept under its old name for
+-- older callers. New code asks CRT.Gear.SLOTS_FOR(equipLoc).
+LM.SLOTS = CRT.Gear and CRT.Gear.EQUIP_LOCS or {}
 
 -- The session ---------------------------------------------------------------------------------------
 
@@ -679,6 +673,34 @@ function Session:Answer(name, index, fields)
     a.autoWhy, a.autoDetail = fields.auto and (fields.autoWhy or "spec") or nil, fields.auto and fields.autoDetail or nil
     a.state = "answered"
     return true
+end
+
+-- A raider's full equipped items for an answer (pieces from CRT.Gear.Decode: { slot, id, itemString, ilvl }):
+-- each fills the answer's matching ID-only piece (same item ID, the same item level first), so the windows
+-- can show the exact item. Only an answer that exists counts, and only the raider's own (name is the sender).
+-- A piece matching none is left out. Returns whether any piece was filled.
+function Session:MergeGear(name, index, pieces)
+    local p = self.players[name]
+    local a = p and self.items[index] and p.answers[index]
+    if not (a and a.response and type(a.gear) == "table" and type(pieces) == "table") then
+        return false
+    end
+    local merged, used = false, {}
+    for _, piece in ipairs(pieces) do
+        local pick
+        for _, g in ipairs(a.gear) do
+            if g.id == piece.id and not used[g] and (not pick or (g.ilvl == piece.ilvl and pick.ilvl ~= piece.ilvl)) then
+                pick = g
+            end
+        end
+        if pick then
+            used[pick] = true
+            pick.itemString, pick.slot = piece.itemString, piece.slot
+            pick.ilvl = piece.ilvl or pick.ilvl
+            merged = true
+        end
+    end
+    return merged
 end
 
 -- Rolls are silent: the looter's CRT draws them (Comm.lua) and sends them to everyone. A raider's roll is
