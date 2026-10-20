@@ -367,7 +367,6 @@ end
 -- The Review tab then shows a note and a button to bring it back, and closing the window (its X,
 -- Escape or Dock) puts it back. Its size and position are saved in timeline.popout.
 
-local GRIP = "Interface\\ChatFrame\\UI-ChatIM-SizeGrabber"
 local MIN_W, MIN_H = 760, 360
 local popWin, popButton, dockedNote
 local popped = false
@@ -379,107 +378,20 @@ local function popSettings()
     return s.popout
 end
 
-local function placePopout()
-    local p = popSettings()
-    popWin:ClearAllPoints()
-    if p.point then
-        popWin:SetPoint(p.point, UIParent, p.relativePoint or p.point, p.x or 0, p.y or 0)
-    else
-        popWin:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
-    end
-    popWin:SetSize(math.max(MIN_W, p.width or 1200), math.max(MIN_H, p.height or 600))
-end
-
--- The window's colours follow the Modern or Classic look.
-local function stylePopout()
-    if UI:IsModern() then
-        local c, e = CRT.MOCHA.espresso, CRT.MOCHA.edge
-        popWin:SetBackdropColor(c[1], c[2], c[3], 0.96)
-        popWin:SetBackdropBorderColor(e[1], e[2], e[3], 1)
-    else
-        popWin:SetBackdropColor(0, 0, 0, 0.9)
-        popWin:SetBackdropBorderColor(GRAY[1], GRAY[2], GRAY[3], 1)
-    end
-end
-
 local dock
 
+-- The window is a UI.Window pop-out: the game's window art in Default: Blizzard and the theme in the
+-- Modern themes (UI:StyleWindow, restyled on a theme change), the shared title strip with Reset and
+-- the close X, the resize grip, Escape to close, and its place and size kept in timeline.popout. A
+-- place saved before the window used the helper (any point, with its relativePoint) loads as it was.
 local function buildPopout()
     if popWin then
         return
     end
-    popWin = CreateFrame("Frame", "CowfeeRaidToolsTimelineWindow", UIParent, "BackdropTemplate")
-    popWin:SetBackdrop(BACKDROP)
-    popWin:SetClampedToScreen(true)
-    popWin:SetMovable(true)
-    popWin:SetResizable(true)
-    if popWin.SetResizeBounds then
-        popWin:SetResizeBounds(MIN_W, MIN_H)
-    end
-    popWin:EnableMouse(true)
-    UI:RegisterLayer("timeline", popWin)
-    UI:OnTheme(stylePopout) -- its colors follow a new theme too
-    tinsert(UISpecialFrames, "CowfeeRaidToolsTimelineWindow")
-
-    -- The header: drag it to move the window.
-    local header = CreateFrame("Frame", nil, popWin)
-    header:SetPoint("TOPLEFT", 1, -1)
-    header:SetPoint("TOPRIGHT", -1, -1)
-    header:SetHeight(24)
-    header:EnableMouse(true)
-    header:RegisterForDrag("LeftButton")
-    local headerBg = header:CreateTexture(nil, "BACKGROUND")
-    headerBg:SetAllPoints()
-    headerBg:SetColorTexture(1, 1, 1, 0.05)
-    local title = label(header, "Timeline", "CRTFontNormal")
-    title:SetPoint("LEFT", 8, 0)
-    local function save()
-        local point, _, relativePoint, x, y = popWin:GetPoint()
-        local p = popSettings()
-        p.point, p.relativePoint, p.x, p.y = point, relativePoint, x, y
-        p.width = math.floor(popWin:GetWidth() + 0.5)
-        p.height = math.floor(popWin:GetHeight() + 0.5)
-    end
-    header:SetScript("OnDragStart", function()
-        popWin:StartMoving(true)
-    end)
-    header:SetScript("OnDragStop", function()
-        popWin:StopMovingOrSizing()
-        save()
-    end)
-
-    local close = CreateFrame("Button", nil, header, "UIPanelCloseButton")
-    close:SetSize(22, 22)
-    close:SetPoint("RIGHT", -1, 0)
-    UI:SkinCloseButton(close)
-    close:SetScript("OnClick", function()
-        popWin:Hide()
-    end)
-    local reset = UI.ResetButton(header, function()
-        local p = popSettings()
-        p.point, p.relativePoint, p.x, p.y = nil, nil, nil, nil
-        p.width, p.height = 1200, 600
-        placePopout()
-    end)
-    reset:SetPoint("RIGHT", close, "LEFT", -4, 0)
-
-    popWin.content = CreateFrame("Frame", nil, popWin)
-    popWin.content:SetPoint("TOPLEFT", 4, -30)
-    popWin.content:SetPoint("BOTTOMRIGHT", -4, 18)
-
-    local grip = CreateFrame("Button", nil, popWin)
-    grip:SetSize(16, 16)
-    grip:SetPoint("BOTTOMRIGHT", -2, 2)
-    grip:SetNormalTexture(GRIP .. "-Up")
-    grip:SetHighlightTexture(GRIP .. "-Highlight")
-    grip:SetPushedTexture(GRIP .. "-Down")
-    grip:SetScript("OnMouseDown", function()
-        popWin:StartSizing("BOTTOMRIGHT")
-    end)
-    grip:SetScript("OnMouseUp", function()
-        popWin:StopMovingOrSizing()
-        save()
-    end)
+    popWin = UI.Window("CowfeeRaidToolsTimelineWindow", {
+        kind = "popout", title = "Timeline", layer = "timeline", saved = popSettings,
+        width = 1200, height = 600, minWidth = MIN_W, minHeight = MIN_H,
+    })
 
     -- Closing the window, however it closes, puts the Review tab back, and ends a Show on the
     -- Timeline's light. Opened by Show on the Timeline, the main window goes back to the page it
@@ -519,9 +431,8 @@ end
 local function popOut()
     buildPopout()
     popped = true
-    placePopout()
-    stylePopout()
     popWin:SetScale(UI:Scale() / 100)
+    popWin:Place()
     reviewFrame:SetParent(popWin.content)
     reviewFrame:ClearAllPoints()
     reviewFrame:SetAllPoints(popWin.content)

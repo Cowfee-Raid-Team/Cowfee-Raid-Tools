@@ -39,13 +39,23 @@ local function savedOf(opts)
     return opts.saved and opts.saved() or nil
 end
 
+-- The place is kept as the window's top left from the screen's top left, in the window's own units: a
+-- scaled window (SetScale) measures the screen's height in its units too. A table that already keeps a
+-- relativePoint (one saved before the window used this helper) keeps it, as TOPLEFT.
 local function save(f, opts)
     local s = savedOf(opts)
     local left, top = f:GetLeft(), f:GetTop()
     if not (s and left and top) then
         return
     end
-    s.point, s.x, s.y = "TOPLEFT", left, top - (UIParent:GetHeight() or 0)
+    local scale = f.GetScale and f:GetScale() or 1
+    if not scale or scale <= 0 then
+        scale = 1
+    end
+    s.point, s.x, s.y = "TOPLEFT", left, top - (UIParent:GetHeight() or 0) / scale
+    if s.relativePoint ~= nil then
+        s.relativePoint = "TOPLEFT"
+    end
     if opts.kind == "popout" then
         s.width = math.floor(f:GetWidth() + 0.5)
         s.height = math.floor(f:GetHeight() + 0.5)
@@ -378,11 +388,13 @@ function UI.Window(name, opts)
     local w, h = opts.width or DEFAULTS.width, opts.height or DEFAULTS.height
     local minW, minH = opts.minWidth or DEFAULTS.minWidth, opts.minHeight or DEFAULTS.minHeight
 
+    -- A place saved before the window used this helper (any point, with its relativePoint) is put
+    -- back as it was; the helper's own saves are TOPLEFT to TOPLEFT.
     function f:Place()
         local s = savedOf(opts)
         self:ClearAllPoints()
         if s and s.point then
-            self:SetPoint("TOPLEFT", UIParent, "TOPLEFT", s.x or 0, s.y or 0)
+            self:SetPoint(s.point, UIParent, s.relativePoint or s.point, s.x or 0, s.y or 0)
         else
             self:SetPoint("CENTER")
         end
@@ -415,7 +427,7 @@ function UI.Window(name, opts)
         local reset = UI.ResetButton(strip, function()
             local s = savedOf(opts)
             if s then
-                s.point, s.x, s.y, s.width, s.height = nil, nil, nil, nil, nil
+                s.point, s.relativePoint, s.x, s.y, s.width, s.height = nil, nil, nil, nil, nil, nil
             end
             f:Place()
         end)

@@ -258,6 +258,35 @@ check(near(fs.title.color, { 1, 0.82, 0 }), "classic again: gold")
 check(not fs.bg.shown and own.bar.shown, "classic again: the strip art switches back")
 look("modern")
 
+-- a window's saved place: one saved before the helper (any point, with its relativePoint, as the Timeline
+-- pop-out kept it) loads as it was; the helper's saves are TOPLEFT to TOPLEFT, in the window's own units
+local kept = { point = "CENTER", relativePoint = "BOTTOM", x = 10, y = 20, width = 900, height = 500 }
+local pw = UI.Window("TestPlaced", { kind = "popout", saved = function() return kept end, width = 1200, height = 600, minWidth = 760, minHeight = 360 })
+p = point(pw)
+check(p[1] == "CENTER" and p[2] == UIParent and p[3] == "BOTTOM" and p[4] == 10 and p[5] == 20, "window: an old saved place loads as it was")
+check(pw.w == 900 and pw.h == 500, "window: an old saved size loads as it was")
+-- dragged on a window scaled to 80%: the screen's height is measured in the window's units
+UIParent.GetHeight = function() return 1000 end
+pw.GetLeft, pw.GetTop, pw.GetScale = function() return 100 end, function() return 700 end, function() return 0.8 end
+pw.GetWidth, pw.GetHeight = function() return 1000.4 end, function() return 450 end
+pw.scripts.OnDragStop(pw)
+check(kept.point == "TOPLEFT" and kept.relativePoint == "TOPLEFT" and kept.x == 100 and math.abs(kept.y - (700 - 1000 / 0.8)) < 0.001, "window: saved TOPLEFT in its own units (got " .. tostring(kept.point) .. " " .. tostring(kept.relativePoint) .. " " .. tostring(kept.x) .. " " .. tostring(kept.y) .. ")")
+check(kept.width == 1000 and kept.height == 450, "window: its size saved")
+pw:Place()
+p = point(pw)
+check(p[1] == "TOPLEFT" and p[3] == "TOPLEFT" and p[4] == 100 and math.abs(p[5] + 550) < 0.001, "window: placed where it was saved")
+-- a window that never kept a relativePoint does not get one
+local plain = {}
+local qw = UI.Window("TestPlain", { kind = "popout", saved = function() return plain end })
+qw.GetLeft, qw.GetTop, qw.GetHeight = function() return 5 end, function() return 900 end, function() return 420 end
+qw.scripts.OnDragStop(qw)
+check(plain.point == "TOPLEFT" and plain.relativePoint == nil and plain.y == -100, "window: unscaled, no relativePoint added")
+-- Reset forgets the place and size, the relativePoint too
+pw.reset.scripts.OnClick(pw.reset)
+check(kept.point == nil and kept.relativePoint == nil and kept.width == nil, "window: Reset forgets the saved place")
+p = point(pw)
+check(p[1] == "CENTER" and pw.w == 1200 and pw.h == 600, "window: Reset puts it in the middle at its default size")
+
 -- the item tabs: "X/Y answered", orange when the time ran out with answers missing
 local tabs = LM.ItemTabs(mock(), {})
 local counts = { { 3, 5, false }, { 3, 5, true }, { 5, 5, true }, { 0, 0, false } }

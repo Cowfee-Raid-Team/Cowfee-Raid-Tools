@@ -42,6 +42,7 @@ local function frame(kind, parent, template)
   local f = { kind = kind, children = {}, textures = {}, scripts = {}, shown = true, enabled = true, checked = false, points = {} }
   local m = {
     GetObjectType = function(self) return self.kind end,
+    GetFrameLevel = function() return 1 end,
     GetChildren = function(self) return unpack(self.children) end,
     GetRegions = function(self) return unpack(self.textures) end,
     CreateTexture = function(self, _, layer) return texture(self, layer) end,
@@ -200,6 +201,9 @@ UI:SkinEditBox(edit)
 cb:SetChecked(true)
 local win = CreateFrame("Frame", nil, nil, "BasicFrameTemplateWithInset")
 UI:StyleWindow(win)
+-- a pop-out made by the shared helper (the Timeline window is one): it follows the theme like any window
+UISpecialFrames, tinsert = {}, table.insert
+local popout = UI.Window("TestPopout", { kind = "popout", title = "Timeline", layer = "timeline" })
 local strip = UI.TitleStrip(frame("Frame", nil), 24)
 strip:SetBadge("Boss", "a note", UI.TITLE_STRIP.neutral)
 local kept = M.caramel -- a table a caller kept from CRT.MOCHA
@@ -241,6 +245,7 @@ for i, w in ipairs(want) do
   if w[3] then
     check(editBg.shown and near(editBg.rgb, pal.roast), key .. ": an edit box re-skins to its roast")
     check(win.crtBg.shown and near(win.crtBg.rgb, pal.espresso), key .. ": a window re-skins to its espresso")
+    check(popout.crtBg.shown and near(popout.crtBg.rgb, pal.espresso) and not popout.crtArt[1].shown, key .. ": a UI.Window pop-out re-skins to its espresso, no template art")
     check(near(cb.crtCheck.box.edge.fills[1].rgb, pal.checkEdge) and near(cb.crtCheck.tick.rgb, pal.tick), key .. ": a ticked box has its edge and tick")
     check(near(cb.crtCheck.box.face.fills[1].rgb, pal.walnut), key .. ": a ticked box has the knob colour")
     check(near(strip.line.rgb, pal.caramel) and near(strip.title.rgb, pal.cream), key .. ": a title strip's line and title")
@@ -249,6 +254,7 @@ for i, w in ipairs(want) do
   else
     check(not editBg.shown and edit.Left.alpha == 1, "Default: Blizzard: the edit box has the game's art")
     check(not win.crtBg.shown and win.crtArt[1].shown, "Default: Blizzard: the window has the template's art")
+    check(not popout.crtBg.shown and popout.crtArt[1].shown, "Default: Blizzard: a UI.Window pop-out has the template's art")
     check(cb.art.Normal.alpha == 1, "Default: Blizzard: the checkbox has the game's art")
   end
 end
