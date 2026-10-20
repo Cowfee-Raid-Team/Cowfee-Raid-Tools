@@ -105,6 +105,7 @@ CRT_UI = {
   PanelButton = function(parent, label, h, onClick) local b = mock() b.label, b.onClick = label, onClick buttons[label] = b return b end,
   SkinCheckButton = function(self, cb) cb.skinned = true end,
   Help = function() return mock() end,
+  Tint = function(region, method, key) region.tint = { method = method, key = key } end,
   GoodText = function(text, classic) if MODERN then return "|cff8fa876" .. text .. "|r" end return "|cff" .. classic .. text .. "|r" end,
 }
 local CRT = { UI = CRT_UI, MOCHA = { caramel = { 0.886, 0.631, 0.294 }, note = { 0.80, 0.71, 0.60 }, matcha = { 0.561, 0.659, 0.463 } },
@@ -139,7 +140,7 @@ eq(win.strip.badge, "Big Boss · Mythic", "the badge: boss and difficulty")
 eq(win.strip.badgeColors, CRT_UI.TITLE_STRIP.neutral, "a neutral badge")
 bindBox()
 BL:Add(2, link(102, "Junk Cloak"), { status = "rolling", rollType = 2 }, kill)
-BL:Add(3, link(103, "Ring"), { status = "cant", reason = "the game allows no Need, Greed or Transmog on it" }, kill)
+BL:Add(3, link(103, "Ring"), { status = "cant", reason = "the game doesn't allow it" }, kill)
 local r1, r2, r3 = rowFrames[1], rowFrames[2], rowFrames[3]
 eq(r1.check.checked, true, "row 1: ticked by the filter")
 eq(r1.check.enabled, true, "row 1: can be ticked")
@@ -151,7 +152,9 @@ eq(r1.icon.texture, 133000, "row 1: the icon")
 eq(r2.check.checked, false, "row 2: not ticked, the filter left it out")
 eq(r2.detail.text, "Not in your loot filter: below the lowest quality", "row 2: why")
 eq(r3.check.enabled, false, "row 3: can't roll: can't be ticked")
-eq(r3.status.text, "|cffff4040Can't roll: the game allows no Need, Greed or Transmog on it. Tell the raid to roll on it.|r", "row 3: red")
+eq(r3.status.text, "|cffff4040Can't roll: the game doesn't allow it. Tell the raid.|r", "row 3: red, short enough for the row")
+eq(r1.detail.tint and r1.detail.tint.key, "note", "detail: the theme's note colour")
+eq(r1.detail.tint and r1.detail.tint.method, "SetTextColor", "detail: as text colour")
 eq(r3.icon.desaturated, true, "row 3: a grey icon")
 local footer = buttons["Start session"]
 eq(footer.enabled, false, "Start: waits while a ticked row rolls")

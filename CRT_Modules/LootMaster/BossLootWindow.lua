@@ -27,7 +27,7 @@ local TEXT = {
     won = "Won · you rolled %s",
     lost = "Won by %s",
     nowinner = "Nobody won it: everyone passed",
-    cant = "Can't roll: %s. Tell the raid to roll on it.",
+    cant = "Can't roll: %s. Tell the raid.",
     notFilter = "Not in your loot filter: %s",
     ilvl = "Item level %d",
 }
@@ -123,6 +123,7 @@ local function initRow(row, r)
         row.detail:SetPoint("RIGHT", row.status, "LEFT", -8, 0)
         row.detail:SetJustifyH("LEFT")
         row.detail:SetWordWrap(false)
+        UI.Tint(row.detail, "SetTextColor", "note") -- muted, and follows the theme
         local hl = row:CreateTexture(nil, "HIGHLIGHT")
         hl:SetAllPoints()
         hl:SetColorTexture(1, 1, 1, 0.06)
@@ -145,7 +146,6 @@ local function initRow(row, r)
     row.icon:SetDesaturated(not BL.Tickable(r))
     row.name:SetText(r.link)
     row.detail:SetText(LM.BossLootDetail(r))
-    row.detail:SetTextColor(0.7, 0.7, 0.7)
     row.status:SetText(LM.BossLootStatus(r))
 end
 

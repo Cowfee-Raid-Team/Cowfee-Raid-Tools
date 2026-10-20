@@ -42,6 +42,7 @@ local TEXT = {
     passKept = "CRT Looting couldn't pass %s (the game kept the roll open), so roll it yourself.",
     passFailed = "CRT Looting couldn't pass %s (%s), so roll it yourself.",
     notPassed = "CRT Looting didn't pass %s: %s, so roll it yourself.",
+    waitingWord = "CRT Looting is waiting for word from the raid leader on %s; roll it yourself if you'd rather not wait.",
     rolled = "CRT Looting rolled %s on %s.",
     rollKept = "CRT Looting couldn't roll on %s (the game kept the roll open), so roll it yourself.",
     rollFailed = "CRT Looting couldn't roll on %s (%s), so roll it yourself.",
@@ -57,6 +58,9 @@ local open = {} -- rolls CRT passed or rolled, waiting for the game to close the
 local toldKill -- the kill (its time) a raider was last told about a roll CRT didn't pass
 local toldLeader = {} -- the leader's "didn't roll" lines said: { [reason] = the kill's time }
 local quiet = {} -- a raider's rolls refused only for a quiet leader: { [rollID] = { roll, text } }
+
+-- The short word a red Boss loot row shows (the whole reason goes to chat).
+local SHORT = { cant = "the game doesn't allow it", noinfo = "no roll info", failed = "the roll call failed" }
 
 local function secret(v)
     return issecretvalue and issecretvalue(v) or false
@@ -135,6 +139,11 @@ local function raiderRoll(rollID, roll, kill, state)
     end
     if why == "quiet" then
         quiet[rollID] = { roll = roll, text = text }
+        -- tried again on the leader's next word, so said for each roll, not once per kill
+        if LM:LootingHeardOn() and bossRoll(roll) then
+            CRT:Print(TEXT.waitingWord:format(text))
+        end
+        return
     end
     -- said once per kill, only while the leader's word is on, only for a boss's roll here
     if why == "once" or not LM:LootingHeardOn() or not bossRoll(roll) or (kill and toldKill == kill.at) then
@@ -192,7 +201,7 @@ local function leaderRoll(rollID, roll, kill, state)
             addRow(rollID, text, link, { status = "rolling", rollType = rollType }, kill)
         elseif err ~= "once" then
             CRT:Print(TEXT.rollFailed:format(text, err))
-            addRow(rollID, text, link, { status = "cant", reason = err }, kill)
+            addRow(rollID, text, link, { status = "cant", reason = SHORT.failed }, kill)
         end
         return
     end
@@ -200,9 +209,8 @@ local function leaderRoll(rollID, roll, kill, state)
         return
     end
     if why == "cant" or why == "noinfo" then
-        local reason = AutoPass.LEADER_WHY[why]
-        CRT:Print(TEXT.cantRoll:format(text, reason))
-        addRow(rollID, text, link, { status = "cant", reason = reason }, kill)
+        CRT:Print(TEXT.cantRoll:format(text, AutoPass.LEADER_WHY[why]))
+        addRow(rollID, text, link, { status = "cant", reason = SHORT[why] }, kill)
         return
     end
     tellLeader(why, kill, TEXT.notRolled:format(text, AutoPass.LEADER_WHY[why] or why))

@@ -381,18 +381,19 @@ end
 -- The boss in the title bar: each computer keeps its own last kill (ENCOUNTER_END: encounterID,
 -- encounterName, difficultyID, groupSize, success), so no message carries it; everyone in the session was
 -- in the fight. The kill is kept in CRTDBChar.lootmaster.lastKill ({ name, at = time(), instance = the
--- raid instance's key, LM.InstanceKey, or nil outside one }), so a /reload between the kill and the
+-- raid instance's key, LM.InstanceKey, or nil outside one; encounterID }), so a /reload between the kill and the
 -- session keeps it. A session started within BOSS_SECONDS of it keeps the name (s.boss, inc.boss), saved
 -- with the session for a /reload. A test never has one. The game's loot rolls (LootMaster/Rolls.lua) count
 -- as a boss's within BOSS_SECONDS of a kill in the same instance.
-local function noteEncounter(name, success)
-    if issecretvalue and (issecretvalue(name) or issecretvalue(success)) then
+local function noteEncounter(encounterID, name, success)
+    if issecretvalue and (issecretvalue(encounterID) or issecretvalue(name) or issecretvalue(success)) then
         return
     end
     if type(name) == "string" and name ~= "" and success == 1 then
         CRTDBChar = CRTDBChar or {}
         CRTDBChar.lootmaster = CRTDBChar.lootmaster or {}
-        CRTDBChar.lootmaster.lastKill = { name = name, at = time(), instance = LM.InstanceKey and LM.InstanceKey() or nil }
+        CRTDBChar.lootmaster.lastKill = { name = name, at = time(), instance = LM.InstanceKey and LM.InstanceKey() or nil,
+            encounterID = type(encounterID) == "number" and encounterID or nil }
     end
 end
 
@@ -1231,7 +1232,7 @@ events:SetScript("OnEvent", function(_, event, a1, a2, a3, a4, a5)
         save()
     elseif event == "ENCOUNTER_END" or event == "PLAYER_REGEN_ENABLED" then
         if event == "ENCOUNTER_END" then
-            noteEncounter(a2, a5)
+            noteEncounter(a1, a2, a5)
         end
         resume()
     elseif not rosterPending then

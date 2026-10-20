@@ -292,6 +292,7 @@ onEvent("START_LOOT_ROLL", 24, 60000, 1)
 eq(rollsOf(24), 0, "leader: no roll when none is allowed")
 eq(lastPrint(), "CRT Looting: you can't roll on " .. chest .. " (the game allows no Need, Greed or Transmog on it); tell the raid to roll on it.", "can't roll: the warning")
 eq(BL:Row(24).status, "cant", "can't roll: a red row")
+eq(BL:Row(24).reason, "the game doesn't allow it", "can't roll: a short word in the row")
 eq(BL:Row(24).ticked, false, "can't roll: unticked")
 BL:SetTicked(24, true)
 eq(BL:Row(24).ticked, false, "can't roll: can't be ticked")
@@ -386,6 +387,8 @@ onEvent("START_LOOT_ROLL", 71, 60000, 1)
 ROLL_ERROR[71] = nil
 check((printed[1] or ""):find("^CRT Looting couldn't roll on") ~= nil, "failed roll: said")
 eq(BL:Row(71) and BL:Row(71).status, "cant", "failed roll: a red row")
+eq(BL:Row(71) and BL:Row(71).reason, "the roll call failed", "failed roll: a short word in the row, the error only in chat")
+check((printed[1] or ""):find("blocked", 1, true) ~= nil, "failed roll: the error in chat")
 onEvent("CONFIRM_LOOT_ROLL", 71, 1, "bop") -- the player's own Need, by hand
 eq(confirmsOf(71), 0, "failed roll: the confirm of the hand roll isn't answered")
 local mail = item(72, "Mail", "n")
@@ -470,6 +473,55 @@ onEvent("PLAYER_ENTERING_WORLD", false, false)
 take()
 eq(LM:LootingOn(), true, "back in after a wipe: still on")
 
+-- 12. Each drop's result counts once, for its own boss; the badge follows the newest kill; a failed start keeps the rows
+ME = "Solex"
+kill("Twin Boss")
+eq(BL.boss, nil, "an empty list: no boss yet")
+local twin = item(201, "Twin", "n")
+item(202, "Twin", "n")
+ITEMS[202].link = twin
+onEvent("START_LOOT_ROLL", 201, 60000, 1)
+onEvent("START_LOOT_ROLL", 202, 60000, 1)
+onEvent("CANCEL_LOOT_ROLL", 201) onEvent("CANCEL_LOOT_ROLL", 202)
+eq(BL.boss, "Twin Boss", "badge: the kill's boss")
+HISTORY["3001:7"] = { itemHyperlink = twin, winner = { playerName = "Solex", isSelf = true } }
+onEvent("LOOT_HISTORY_UPDATE_DROP", 3001, 7)
+eq(BL:Row(201).status, "won", "twins: drop A won")
+onEvent("ENCOUNTER_LOOT_RECEIVED", 3001, 5201, twin, 1, "Solex", "PALADIN")
+eq(BL:Row(202).status, "rolling", "twins: drop A's receive event isn't applied again")
+onEvent("LOOT_HISTORY_UPDATE_DROP", 3001, 7)
+eq(BL:Row(202).status, "rolling", "twins: a repeated history update changes nothing")
+HISTORY["4002:8"] = { itemHyperlink = twin, winner = { playerName = "Quick", isSelf = false } }
+onEvent("LOOT_HISTORY_UPDATE_DROP", 4002, 8)
+eq(BL:Row(202).status, "rolling", "another boss's drop isn't this one's")
+HISTORY["3001:8"] = { itemHyperlink = twin, winner = { playerName = "Quick", isSelf = false } }
+onEvent("LOOT_HISTORY_UPDATE_DROP", 3001, 8)
+eq(BL:Row(202).status, "lost", "twins: drop B won by someone else")
+onEvent("ENCOUNTER_LOOT_RECEIVED", 3001, 5201, twin, 1, "Quick", "MAGE")
+eq(BL:Row(201).status, "won", "twins: drop B's receive event changes nothing")
+-- the receive event alone (no history yet) still tells
+kill("Next Boss")
+local orb2 = item(203, "Orb", "n")
+onEvent("START_LOOT_ROLL", 203, 60000, 1)
+onEvent("CANCEL_LOOT_ROLL", 203)
+eq(BL.boss, "Next Boss", "badge: a new kill's rows show the new boss")
+onEvent("ENCOUNTER_LOOT_RECEIVED", 3001, 5203, orb2, 1, "Solex", "PALADIN")
+eq(BL:Row(203).status, "won", "receive event first: won")
+HISTORY["3001:9"] = { itemHyperlink = orb2, winner = { playerName = "Solex", isSelf = true } }
+onEvent("LOOT_HISTORY_UPDATE_DROP", 3001, 9)
+eq(BL:Row(203).status, "won", "the same drop from the history: no change")
+-- LM:Start refuses (no loot authority): the rows stay
+CRT.db.lootmaster.authority.leader = false
+eq((BL:Start()), false, "a failed start: refused")
+eq(BL:Row(201) ~= nil and BL:Row(203) ~= nil, true, "a failed start: the rows stay")
+eq(LM.current, nil, "a failed start: no session")
+CRT.db.lootmaster.authority.leader = true
+-- won rows that expire: said
+printed = {}
+advance(LM.BOSS_SECONDS + 1)
+eq(#BL:Rows(), 0, "expired")
+eq(lastPrint(), "Loot Master: 2 won items left the boss loot list 10 minutes after the kill, with no session started.", "expired won rows: said")
+
 -- 13. The heartbeat race: a roll refused only for a quiet leader is tried once more on the leader's next word
 ME = "Halo"
 local H = { "H|" .. V .. "|" .. HERE .. "|" .. HERE .. "|0" }
@@ -480,7 +532,7 @@ printed = {}
 local gem = item(101, "Gem", "n")
 onEvent("START_LOOT_ROLL", 101, 60000, 1)
 eq(rollsOf(101), 0, "quiet: no pass yet")
-eq(lastPrint(), "CRT Looting didn't pass " .. gem .. ": no word from the raid leader for 90 seconds, so roll it yourself.", "quiet: said")
+eq(lastPrint(), "CRT Looting is waiting for word from the raid leader on " .. gem .. "; roll it yourself if you'd rather not wait.", "quiet: said")
 deliver(H, "Solex-Sargeras")
 eq(rollsOf(101), 1, "quiet: passed on the next heartbeat")
 eq(lastPrint(), "CRT Looting passed " .. gem .. " for Solex.", "quiet: the passed line")
@@ -504,6 +556,14 @@ deliver({ "F|" .. V .. "|off" }, "Solex-Sargeras")
 eq(rollsOf(104), 0, "quiet: the next word says off: no pass")
 deliver(ON, "Solex-Sargeras")
 eq(rollsOf(104), 0, "quiet: tried once only, even after off")
+advance(3)
+-- a loading screen forgets the rolls waiting for word
+NOW = NOW + 91
+item(105, "Bone", "n")
+onEvent("START_LOOT_ROLL", 105, 60000, 1)
+onEvent("PLAYER_ENTERING_WORLD", false, false)
+deliver(H, "Solex-Sargeras")
+eq(rollsOf(105), 0, "quiet: a loading screen forgets it")
 advance(3)
 
 print(string.format("%d passed, %d failed", passes, fails))
