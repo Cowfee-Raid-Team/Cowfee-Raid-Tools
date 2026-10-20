@@ -11,6 +11,7 @@
 
 CRT_Core\Core.lua
 CRT_Core\Themes.lua
+CRT_Core\Gear.lua
 CRT_Core\Profiles.lua
 CRT_Data\Bosses\Registry.lua
 CRT_Core\Slash.lua
