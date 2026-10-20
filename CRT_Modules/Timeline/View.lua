@@ -2062,9 +2062,7 @@ end
 -- in the theme's roast for the others; chipLook shows the one the theme uses.
 local function chipBackground(c)
     local UI = CRT.UI
-    if UI and UI.Stone then
-        c.stone = UI.Stone(c, "BACKGROUND", 0)
-    end
+    c.stone = UI and UI.Stone and UI.Stone(c, "BACKGROUND", 0) or false
     c.bg = c:CreateTexture(nil, "BACKGROUND", nil, 1)
     c.bg:SetAllPoints()
     themed(c.bg, "SetColorTexture", "roast", 0.9)
@@ -2074,7 +2072,7 @@ end
 -- the flat one. Run on each fill and each redraw, so a theme switch shows at once.
 local function chipLook(c)
     local UI = CRT.UI
-    local stone = c.stone ~= nil and not (UI and UI.IsModern and UI:IsModern())
+    local stone = c.stone and not (UI and UI.IsModern and UI:IsModern())
     if c.stone then
         c.stone:SetShown(stone)
     end
