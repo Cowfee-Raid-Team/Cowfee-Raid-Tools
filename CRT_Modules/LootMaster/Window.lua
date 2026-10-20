@@ -304,6 +304,7 @@ local function build()
     divider:SetPoint("TOPLEFT", LM.TAB_COLUMN + 6, 0)
     divider:SetPoint("BOTTOMLEFT", LM.TAB_COLUMN + 6, 0)
     tabs = LM.ItemTabs(c, {
+        window = win,
         onSelect = function(index)
             current = index
             wipe(selected)

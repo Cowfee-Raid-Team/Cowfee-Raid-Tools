@@ -128,6 +128,7 @@ local function build()
     })
     local c = win.content
     tabs = LM.ItemTabs(c, {
+        window = win,
         onSelect = function(index)
             current = index
             LM:Fire("incoming")
