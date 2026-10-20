@@ -3,7 +3,6 @@ package-as: CowfeeRaidTools
 ignore:
   - README.md
   - docs
-  - "Cowfee Raid Tools - Architecture.md"
   - CRT_Dev
   - factory
   - .claude
