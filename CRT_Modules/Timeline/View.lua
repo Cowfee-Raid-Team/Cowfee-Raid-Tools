@@ -2058,11 +2058,31 @@ local function hoverLight(b)
     hl:SetColorTexture(1, 1, 1, 0.12)
 end
 
--- The chip parts: a background, the colored left edge, the icon and the name.
-local function chipParts(c)
-    c.bg = c:CreateTexture(nil, "BACKGROUND")
+-- A chip's two backgrounds: the roll frame's grey stone (UI.Stone) for Default: Blizzard and a flat one
+-- in the theme's roast for the others; chipLook shows the one the theme uses.
+local function chipBackground(c)
+    local UI = CRT.UI
+    c.stone = UI and UI.Stone and UI.Stone(c, "BACKGROUND", 0) or false
+    c.bg = c:CreateTexture(nil, "BACKGROUND", nil, 1)
     c.bg:SetAllPoints()
     themed(c.bg, "SetColorTexture", "roast", 0.9)
+end
+
+-- Shows a chip's (or the + chip's) background for the theme in use: the stone in Default: Blizzard, else
+-- the flat one. Run on each fill and each redraw, so a theme switch shows at once.
+local function chipLook(c)
+    local UI = CRT.UI
+    local stone = c.stone and not (UI and UI.IsModern and UI:IsModern())
+    if c.stone then
+        c.stone:SetShown(stone)
+    end
+    c.bg:SetShown(not stone)
+end
+
+-- The chip parts: a background, the colored left edge, the icon and the name (shadowed, to read on
+-- the stone).
+local function chipParts(c)
+    chipBackground(c)
     c.edge = c:CreateTexture(nil, "ARTWORK")
     c.edge:SetPoint("TOPLEFT", c, "TOPLEFT", 0, 0)
     c.edge:SetPoint("BOTTOMLEFT", c, "BOTTOMLEFT", 0, 0)
@@ -2073,12 +2093,15 @@ local function chipParts(c)
     c.name = c:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     c.name:SetJustifyH("LEFT")
     c.name:SetWordWrap(false)
+    c.name:SetShadowColor(0, 0, 0, 1)
+    c.name:SetShadowOffset(1, -1)
     themed(c.name, "SetTextColor", "cream")
 end
 
 -- Paints a chip (or the ghost): its name, the icon tex untinted, or with none the Personal notes icon
 -- tinted by tint ({ r, g, b }); the edge in edge ({ r, g, b, a }). Returns its width.
 local function paintChip(c, name, tex, tint, edge)
+    chipLook(c)
     if tex then
         c.icon:SetTexture(tex)
         c.icon:SetVertexColor(1, 1, 1)
@@ -2225,9 +2248,7 @@ function Methods:BuildStrip()
 
     local plus = CreateFrame("Button", nil, row)
     plus:SetSize(PLUS_W, CHIP_H)
-    plus.bg = plus:CreateTexture(nil, "BACKGROUND")
-    plus.bg:SetAllPoints()
-    themed(plus.bg, "SetColorTexture", "roast", 0.9)
+    chipBackground(plus)
     plus.text = plus:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
     plus.text:SetPoint("CENTER", plus, "CENTER", 0, 0)
     plus.text:SetText("+")
@@ -2435,6 +2456,7 @@ function Methods:DrawStrip()
         put(c, fillChip(c, e.s))
     end
     hideFrom(self.chips, #list + 1)
+    chipLook(self.plus)
     self.chipRows = put(self.plus, PLUS_W) -- the + chip last
     self.chipRow:SetSize(width < math.huge and width or 1, rowsHeight(self.chipRows))
     self:DrawCooldowns()
