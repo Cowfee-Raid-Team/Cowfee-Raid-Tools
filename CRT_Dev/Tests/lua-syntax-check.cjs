@@ -13,7 +13,11 @@ function walk(dir) {
     const p = path.join(dir, entry.name);
     // other checkouts (.claude/worktrees), Git, packages and the test fixtures (CRT_Dev/Tests) are not the
     // addon; CRT_Dev/Dev is in the .toc, so it is checked
-    if (entry.isDirectory()) { if (!['.claude', '.git', 'node_modules', 'Tests', '.release'].includes(entry.name)) walk(p); continue; }
+    if (entry.isDirectory()) {
+      const rel = path.relative(process.argv[2], p).split(path.sep).join('/');
+      if (!['.claude', '.git', 'node_modules', '.release'].includes(entry.name) && rel !== 'CRT_Dev/Tests') walk(p);
+      continue;
+    }
     if (!p.endsWith('.lua')) continue;
     try {
       luaparse.parse(fs.readFileSync(p, 'utf8'), { luaVersion: '5.1' });

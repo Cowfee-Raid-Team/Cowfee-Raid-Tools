@@ -204,7 +204,7 @@ end
 -- keys while typing, move one step. There are no < > buttons. The game's slider stays for the Classic
 -- look, and the look button switches between the two live (UI.skinned).
 -- Rounded corners: UI.RoundRect, below.
-local DISC = "Interface\\AddOns\\" .. ADDON .. "\\CRT_Media\\Media\\Disc"
+local DISC = (CRT.MEDIA or ("Interface\\AddOns\\" .. ADDON .. "\\CRT_Media\\Media\\")) .. "Disc" -- the fallback is for test harnesses without Core.lua
 local TRACK_H, TRACK_R = 4, 2
 local KNOB_H, KNOB_R, KNOB_MIN_W, KNOB_PAD = 22, 5, 38, 14
 local KNOB_TEXT_PAD = 8 -- the knob is at least this much taller than its font

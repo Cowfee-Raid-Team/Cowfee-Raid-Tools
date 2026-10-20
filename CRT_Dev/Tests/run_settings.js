@@ -73,6 +73,8 @@ function CreateFont(name) local o = fontObject() fontObjects[name] = o _G[name] 
 local CRT = {}
 assert(load(coreSrc, "CRT_Core/Core.lua"))("CowfeeRaidTools", CRT)
 assert(load(profilesSrc, "CRT_Core/Profiles.lua"))("CowfeeRaidTools", CRT)
+-- the shipped textures' folder, set once in Core.lua
+if CRT.MEDIA == "Interface\\\\AddOns\\\\CowfeeRaidTools\\\\CRT_Media\\\\Media\\\\" then print("ok CRT.MEDIA") else print("FAIL CRT.MEDIA: " .. tostring(CRT.MEDIA)) end
 -- ADDON_LOADED.
 CRTDB = nil
 for _, f in ipairs(frames) do if rawget(f, "OnEvent") then f.OnEvent(f, "ADDON_LOADED", "CowfeeRaidTools") end end

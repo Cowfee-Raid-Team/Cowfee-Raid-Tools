@@ -31,7 +31,7 @@ local TEXT = {
 
 -- Tune the look in game here.
 -- The swipe and the faint ring: 256 px white rings, outer radius 126 px, 12 / 22 / 36 px wide (make_rings.js).
-local MEDIA = "Interface\\AddOns\\" .. ADDON .. "\\CRT_Media\\Media\\"
+local MEDIA = CRT.MEDIA or ("Interface\\AddOns\\" .. ADDON .. "\\CRT_Media\\Media\\") -- the fallback is for test harnesses without Core.lua
 local RING_TEXTURES = {
     thin = MEDIA .. "RingThin",
     medium = MEDIA .. "RingMedium",

@@ -7,7 +7,7 @@ local ADDON, CRT = ...
 --   lsm:<name>         a sound another addon shares through LibSharedMedia-3.0 (the library isn't shipped)
 --   crt:<name>         a sound shipped with the addon (none yet: Sound.BUNDLED)
 --   file:<name>        your own .ogg or .mp3 file, in the CowfeeRaidTools_Media companion addon's Sounds
---                      folder (or, from before it, this addon's own Sounds folder)
+--                      folder (or, from before it, this addon's own CRT_Media\Sounds folder)
 --   tts:<text>         text to speech
 -- Older saved values (a bare kit name such as RAID_WARNING, "none") are read through Sound.Normalize.
 --
@@ -28,11 +28,10 @@ CRT.Sound = Sound
 
 Sound.MEDIA_ADDON = "CowfeeRaidTools_Media"
 Sound.MEDIA_FOLDER = "Interface\\AddOns\\CowfeeRaidTools_Media\\Sounds\\"
--- The addon's own Sounds folder, from before the companion addon. It moved into CRT_Media; the old place
--- at the addon's top (OLD_LEGACY_FOLDER) is still tried so files nobody moved keep playing.
+-- The addon's own Sounds folder, from before the companion addon, now in CRT_Media.
 Sound.LEGACY_FOLDER = "Interface\\AddOns\\" .. ADDON .. "\\CRT_Media\\Sounds\\"
-Sound.OLD_LEGACY_FOLDER = "Interface\\AddOns\\" .. ADDON .. "\\Sounds\\"
-Sound.BUNDLED_FOLDER = "Interface\\AddOns\\" .. ADDON .. "\\CRT_Media\\Media\\Sounds\\"
+-- the fallback is for test harnesses without Core.lua
+Sound.BUNDLED_FOLDER = (CRT.MEDIA or ("Interface\\AddOns\\" .. ADDON .. "\\CRT_Media\\Media\\")) .. "Sounds\\"
 Sound.LSM_PREFIX = "CRT: "
 
 -- The game sounds to choose from, by SOUNDKIT name (checked in the game's SoundKitConstants, with the
@@ -180,7 +179,7 @@ function Sound:Resolve(ref)
         if rest == "" or rest:find("[/\\]") then
             return nil
         end
-        return { kind = "file", paths = { Sound.MEDIA_FOLDER .. rest, Sound.LEGACY_FOLDER .. rest, Sound.OLD_LEGACY_FOLDER .. rest } }
+        return { kind = "file", paths = { Sound.MEDIA_FOLDER .. rest, Sound.LEGACY_FOLDER .. rest } }
     elseif kind == "tts" then
         return { kind = "tts", text = rest }
     end

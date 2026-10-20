@@ -10,7 +10,7 @@ local Minimap_ = {}
 CRT.MinimapButton = Minimap_
 
 -- The addon's own coffee cup, a round 128 x 128 TGA in CRT_Media/Media.
-local ICON = "Interface\\AddOns\\" .. ADDON .. "\\CRT_Media\\Media\\Icon"
+local ICON = (CRT.MEDIA or ("Interface\\AddOns\\" .. ADDON .. "\\CRT_Media\\Media\\")) .. "Icon" -- the fallback is for test harnesses without Core.lua
 
 local button
 

@@ -1,6 +1,6 @@
 local ADDON, CRT = ...
 
--- DEVELOPER ONLY. /crt dev seasons: the season packs (Seasons/<season>/), which of them load, and
+-- DEVELOPER ONLY. /crt dev seasons: the season packs (CRT_Data/Seasons/<season>/), which of them load, and
 -- purging a season's saved data. See the vault note "Cowfee Raid Tools - Boss Library Design".
 --   Load      Current season only (the default) or All seasons, saved in CRTDB.dev.seasons.load.
 --             Changing it reloads the interface, since the library fills the features at load.

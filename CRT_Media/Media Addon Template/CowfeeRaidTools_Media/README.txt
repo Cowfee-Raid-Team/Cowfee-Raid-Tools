@@ -13,6 +13,5 @@ Set it up once:
 Instead of step 3 you can type a file's name on Cowfee Raid Tools' Quality of Life > Sounds tab. That
 tab has a Test button for each file, which says whether the game found it.
 
-Files in the old places, Interface\AddOns\CowfeeRaidTools\CRT_Media\Sounds and
-Interface\AddOns\CowfeeRaidTools\Sounds, still play, but updating the addon removes those folders, so
-move them here.
+Files in the old place, Interface\AddOns\CowfeeRaidTools\CRT_Media\Sounds, still play, but updating
+the addon removes that folder, so move them here.

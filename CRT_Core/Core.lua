@@ -2,6 +2,8 @@ local ADDON, CRT = ...
 
 _G.CRT = CRT
 CRT.name = ADDON
+-- The shipped textures' folder (CRT_Media/Media), for every file that loads one.
+CRT.MEDIA = "Interface\\AddOns\\" .. ADDON .. "\\CRT_Media\\Media\\"
 CRT.version = (C_AddOns and C_AddOns.GetAddOnMetadata and C_AddOns.GetAddOnMetadata(ADDON, "Version")) or "dev"
 
 local defaults = {

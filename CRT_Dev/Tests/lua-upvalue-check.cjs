@@ -20,8 +20,8 @@ function files(dir) {
   const out = [];
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
     // CRT_Dev/Tests holds old copies kept as fixtures, not addon code (CRT_Dev/Dev is checked)
-    if (e.name.startsWith('.') || e.name === 'node_modules' || e.name === 'Tests') continue;
     const p = path.join(dir, e.name);
+    if (e.name.startsWith('.') || e.name === 'node_modules' || path.relative(root, p).split(path.sep).join('/') === 'CRT_Dev/Tests') continue;
     if (e.isDirectory()) out.push(...files(p));
     else if (e.name.endsWith('.lua')) out.push(p);
   }
