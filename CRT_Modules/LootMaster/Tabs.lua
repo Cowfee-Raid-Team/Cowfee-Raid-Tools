@@ -10,6 +10,7 @@ local ADDON, CRT = ...
 --         window (the frame the tooltip sits left of; the parent if not given)
 --   tabs:Update(items, current, count(index) -> answered, expected, late (Session:AnswerCount),
 --               classOf(name) -> class file)
+-- Also here, for both windows: LM.ListArea (the clipped headings and rows) and LM.GearIcon / LM.SetGear.
 
 local LM = CRT.LootMaster
 
@@ -22,6 +23,20 @@ LM.TAB_LATE_COLOR = { 1, 0.54, 0.25 } -- the count when someone ran out of time
 
 local function classColor(file)
     return file and (C_ClassColor and C_ClassColor.GetClassColor(file) or RAID_CLASS_COLORS[file]) or nil
+end
+
+-- The list area of a loot window (both windows): the column headings and the rows in one frame that clips
+-- its children (Frame:SetClipsChildren). The columns keep their x; a window made narrower than them cuts
+-- headings and cells off at the same edge, so they stay lined up. It ends rightGap from the parent's right
+-- edge, so the scroll bar beside it is never cut off.
+--   local area = LM.ListArea(parent, x, y, rightGap)
+LM.LIST_SCROLL_GAP = 20 -- room right of the list for the scroll bar
+function LM.ListArea(parent, x, y, rightGap)
+    local area = CreateFrame("Frame", nil, parent)
+    area:SetPoint("TOPLEFT", x, y)
+    area:SetPoint("BOTTOMRIGHT", -(rightGap or LM.LIST_SCROLL_GAP), 0)
+    area:SetClipsChildren(true)
+    return area
 end
 
 -- The gear icons of a loot window row (both windows). The texture sits under a small button that shows the

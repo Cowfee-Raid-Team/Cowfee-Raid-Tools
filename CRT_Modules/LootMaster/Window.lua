@@ -14,6 +14,7 @@ local L = {
     width = 1040, height = 460, minWidth = 760, minHeight = 300,
     left = LM.TAB_COLUMN + 14, -- the item tabs (LootMaster/Tabs.lua), then the list
     headerH = 50, rowH = 22,
+    headingH = 20, -- the column headings, above the rows
 }
 
 -- Columns: x and width inside a row.
@@ -333,8 +334,10 @@ local function build()
     header.answered = header:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     header.answered:SetPoint("RIGHT", endButton, "LEFT", -12, 0)
 
-    sorter = UI.SortHeaders(c, COLS, {
-        x = L.left, y = -L.headerH - 4, backToDefault = true,
+    -- the headings and the rows clip at the same edge when the window is narrow (LM.ListArea)
+    local area = LM.ListArea(c, L.left, -L.headerH - 4)
+    sorter = UI.SortHeaders(area, COLS, {
+        x = 0, y = 0, backToDefault = true,
         get = function()
             local s = CRT.db.lootmaster.sort
             return s.looterKey, s.looterDir or 1
@@ -345,9 +348,10 @@ local function build()
             LM:Fire("session")
         end,
     })
-    local box = CreateFrame("Frame", nil, c, "WowScrollBoxList")
-    box:SetPoint("TOPLEFT", L.left, -L.headerH - 24)
-    box:SetPoint("BOTTOMRIGHT", -20, 0)
+    local box = CreateFrame("Frame", nil, area, "WowScrollBoxList")
+    box:SetPoint("TOPLEFT", 0, -L.headingH)
+    box:SetPoint("BOTTOMRIGHT", 0, 0)
+    -- the scroll bar is outside the clipped area, so it always shows
     local bar = CreateFrame("EventFrame", nil, c, "MinimalScrollBar")
     bar:SetPoint("TOPLEFT", box, "TOPRIGHT", 6, 0)
     bar:SetPoint("BOTTOMLEFT", box, "BOTTOMRIGHT", 6, 0)

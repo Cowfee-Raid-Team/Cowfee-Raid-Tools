@@ -38,6 +38,8 @@ local function texture(owner, layer)
   if owner then owner.textures[#owner.textures + 1] = t end
   return setmetatable(t, { __index = function(_, k) return m[k] or (type(k) == "string" and k:find("^%u") and function() end) or nil end })
 end
+FRAME_PIECES = { "TopLeftCorner", "TopRightCorner", "TopBorder", "BotLeftCorner", "BotRightCorner", "BottomBorder",
+  "LeftBorder", "RightBorder", "Bg", "TitleBg", "TopTileStreaks" }
 local function frame(kind, parent, template)
   local f = { kind = kind, children = {}, textures = {}, scripts = {}, shown = true, enabled = true, checked = false, points = {} }
   local m = {
@@ -86,6 +88,9 @@ local function frame(kind, parent, template)
   elseif template == "BasicFrameTemplateWithInset" then
     f.CloseButton = frame("Button", nil)
     texture(f) -- the template's own art
+    -- and its border and title pieces by name, as the game's BaseBasicFrameTemplate and BasicFrameTemplate
+    -- make them (Blizzard_UIPanelTemplates/Mainline/UIPanelTemplates.xml)
+    for _, key in ipairs(FRAME_PIECES) do f[key] = texture(f) end
   end
   local fields = { Left = true, Middle = true, Right = true, Background = true, Arrow = true, SetupMenu = true, Inset = true, bar = true, fs = true }
   setmetatable(f, { __index = function(_, k) return m[k] or (type(k) == "string" and not fields[k] and k:find("^%u") and function() end) or nil end })
@@ -246,6 +251,9 @@ for i, w in ipairs(want) do
     check(editBg.shown and near(editBg.rgb, pal.roast), key .. ": an edit box re-skins to its roast")
     check(win.crtBg.shown and near(win.crtBg.rgb, pal.espresso), key .. ": a window re-skins to its espresso")
     check(popout.crtBg.shown and near(popout.crtBg.rgb, pal.espresso) and not popout.crtArt[1].shown, key .. ": a UI.Window pop-out re-skins to its espresso, no template art")
+    local anyPiece = false
+    for _, k2 in ipairs(FRAME_PIECES) do if popout[k2].shown then anyPiece = true end end
+    check(not anyPiece and popout.crtEdges[1].shown, key .. ": a UI.Window has its flat edge, none of the template's border")
     check(near(cb.crtCheck.box.edge.fills[1].rgb, pal.checkEdge) and near(cb.crtCheck.tick.rgb, pal.tick), key .. ": a ticked box has its edge and tick")
     check(near(cb.crtCheck.box.face.fills[1].rgb, pal.walnut), key .. ": a ticked box has the knob colour")
     check(near(strip.line.rgb, pal.caramel) and near(strip.title.rgb, pal.cream), key .. ": a title strip's line and title")
@@ -255,6 +263,14 @@ for i, w in ipairs(want) do
     check(not editBg.shown and edit.Left.alpha == 1, "Default: Blizzard: the edit box has the game's art")
     check(not win.crtBg.shown and win.crtArt[1].shown, "Default: Blizzard: the window has the template's art")
     check(not popout.crtBg.shown and popout.crtArt[1].shown, "Default: Blizzard: a UI.Window pop-out has the template's art")
+    -- the metal border and title art, piece by piece, the same as the main window's, and no flat edge over it
+    for _, key in ipairs(FRAME_PIECES) do
+      local t = popout[key]
+      check(t and t.shown and t.alpha == 1, "Default: Blizzard: a UI.Window's " .. key .. " shows")
+    end
+    for _, edge in ipairs(popout.crtEdges) do check(not edge.shown, "Default: Blizzard: no flat 1 px edge on a UI.Window") end
+    check(not popout.crtTitle.shown and not popout.crtTitleLine.shown and not popout.strip.bg.shown and not popout.strip.bar.shown,
+      "Default: Blizzard: nothing of the window or its strip covers the template's title art")
     check(cb.art.Normal.alpha == 1, "Default: Blizzard: the checkbox has the game's art")
   end
 end
