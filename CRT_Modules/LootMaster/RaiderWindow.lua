@@ -94,7 +94,6 @@ local function initRow(row, r)
         row.diff:SetPoint("LEFT", COLS[6].x + 44, 0)
         row.me = row:CreateTexture(nil, "BACKGROUND")
         row.me:SetAllPoints()
-        row.me:SetColorTexture(0.78, 0.56, 0.36, 0.16)
     end
     local inc = LM.incoming
     local cc = classColor(r.class)
@@ -115,6 +114,8 @@ local function initRow(row, r)
     else
         row.diff:SetText("")
     end
+    local accent = CRT.MOCHA.caramel -- your own row, in the theme's accent
+    row.me:SetColorTexture(accent[1], accent[2], accent[3], 0.16)
     row.me:SetShown(r.name == LM:Me())
 end
 
@@ -227,6 +228,8 @@ LM:OnChange(function(what, how)
     end
     refresh()
 end)
+-- a new theme repaints the rows and the tabs
+UI:OnTheme(refresh)
 
 function LM:ShowAnswers()
     if not (self.incoming and self.incoming.view) then

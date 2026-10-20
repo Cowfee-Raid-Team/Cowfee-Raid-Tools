@@ -934,8 +934,7 @@ local function makeRow(parent, i)
     row.dot = frame:CreateTexture(nil, "OVERLAY")
     row.dot:SetSize(L.DOT_SIZE, L.DOT_SIZE)
     row.dot:SetPoint("RIGHT", -8, 0)
-    local caramel = CRT.MOCHA.caramel
-    row.dot:SetColorTexture(caramel[1], caramel[2], caramel[3], 1)
+    UI.Tint(row.dot, "SetColorTexture", "caramel", 1)
     if row.dot.SetMask then
         row.dot:SetMask("Interface\\CharacterFrame\\TempPortraitAlphaMask") -- round
     end
@@ -949,9 +948,13 @@ end
 local function backdrop(f, alpha)
     if f.SetBackdrop then
         f:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
-        local bg, edge = CRT.MOCHA.espresso, CRT.MOCHA.edge
-        f:SetBackdropColor(bg[1] * 0.8, bg[2] * 0.8, bg[3] * 0.8, alpha)
-        f:SetBackdropBorderColor(edge[1], edge[2], edge[3], 1)
+        local function paint()
+            local bg, edge = CRT.MOCHA.espresso, CRT.MOCHA.edge
+            f:SetBackdropColor(bg[1] * 0.8, bg[2] * 0.8, bg[3] * 0.8, alpha)
+            f:SetBackdropBorderColor(edge[1], edge[2], edge[3], 1)
+        end
+        paint()
+        UI:OnTheme(paint) -- a darker espresso, so UI.Tint can't keep it
     end
 end
 
@@ -1355,8 +1358,7 @@ local function build(f)
     f.rows = rows
     thumb = list:CreateTexture(nil, "OVERLAY")
     thumb:SetWidth(L.THUMB_W)
-    local caramel = CRT.MOCHA.caramel
-    thumb:SetColorTexture(caramel[1], caramel[2], caramel[3], 0.7)
+    UI.Tint(thumb, "SetColorTexture", "caramel", 0.7)
     thumb:Hide()
     list:EnableMouseWheel(true)
     list:SetScript("OnMouseWheel", function(_, delta)

@@ -600,7 +600,7 @@ local function scanEntries()
         end
         local mech = tracked[sp.id]
         if mech then
-            tags[#tags + 1] = "|cff80ff80tracked as " .. mech.name .. "|r"
+            tags[#tags + 1] = UI.GoodText("tracked as " .. mech.name, "80ff80")
         end
         local text = format("%s  |cff999999%d|r   |cffff8060%s|r on %d %s%s", sp.name, sp.id, Tattle.Short(sp.damage),
             sp.players, sp.players == 1 and "player" or "players", #tags > 0 and ("   " .. table.concat(tags, ", ")) or "")

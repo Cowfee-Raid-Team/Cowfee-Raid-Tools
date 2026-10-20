@@ -971,9 +971,8 @@ local function buildExport()
     box:SetPoint("TOPLEFT", LEFT + 4, -40)
     box:SetWidth(EXPORT_WIDTH)
     box:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
-    local roast, caramel = CRT.MOCHA.roast, CRT.MOCHA.caramel
-    box:SetBackdropColor(roast[1], roast[2], roast[3], 0.95)
-    box:SetBackdropBorderColor(caramel[1], caramel[2], caramel[3], 1)
+    UI.Tint(box, "SetBackdropColor", "roast", 0.95)
+    UI.Tint(box, "SetBackdropBorderColor", "caramel", 1)
     local scroll = CreateFrame("ScrollFrame", nil, box)
     x.scroll = scroll
     scroll:SetPoint("TOPLEFT", EXPORT_PAD, -EXPORT_PAD)

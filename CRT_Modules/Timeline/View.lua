@@ -177,6 +177,17 @@ local function mocha(key, alpha)
     return c[1], c[2], c[3], alpha or 1
 end
 
+-- Colors a part made once (method "SetColorTexture", "SetTextColor" or "SetVertexColor") from the theme,
+-- and again when the theme changes (UI.Tint). What is drawn on each Refresh reads mocha() instead.
+local function themed(region, method, key, alpha)
+    local UI = CRT.UI
+    if UI and UI.Tint then
+        UI.Tint(region, method, key, alpha)
+    else
+        region[method](region, mocha(key, alpha))
+    end
+end
+
 local function clampSpan(seconds)
     seconds = tonumber(seconds) or 300
     return math.max(MIN_SPAN, math.min(MAX_SPAN, math.floor(seconds + 0.5)))
@@ -440,7 +451,7 @@ function View.Create(parent)
     -- the time under the cursor, in the empty corner above the lane names
     view.hover = f:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     view.hover:SetPoint("TOPLEFT", f, "TOPLEFT", 4, -4)
-    view.hover:SetTextColor(mocha("latte"))
+    themed(view.hover, "SetTextColor", "latte")
 
     -- the axis: a scroll frame that follows the track's sideways scroll
     local axisScroll = CreateFrame("ScrollFrame", nil, f)
@@ -455,7 +466,7 @@ function View.Create(parent)
     base:SetPoint("BOTTOMLEFT", axisScroll, "BOTTOMLEFT")
     base:SetPoint("BOTTOMRIGHT", axisScroll, "BOTTOMRIGHT")
     base:SetHeight(1)
-    base:SetColorTexture(mocha("caramel"))
+    themed(base, "SetColorTexture", "caramel")
 
     view.unknownText = f:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     -- placed above the strip by PlaceStrip, as are the scroll bar and the lanes
@@ -473,11 +484,11 @@ function View.Create(parent)
     bar:SetHeight(BAR_H)
     local barBg = bar:CreateTexture(nil, "BACKGROUND")
     barBg:SetAllPoints()
-    barBg:SetColorTexture(mocha("roast"))
+    themed(barBg, "SetColorTexture", "roast")
     bar:SetThumbTexture("Interface\\Buttons\\WHITE8X8")
     local thumb = bar:GetThumbTexture()
     if thumb then
-        thumb:SetVertexColor(mocha("caramel"))
+        themed(thumb, "SetVertexColor", "caramel")
         thumb:SetSize(40, BAR_H)
     end
     bar:SetMinMaxValues(0, 0)
@@ -507,7 +518,7 @@ function View.Create(parent)
     view.hscroll, view.track = hscroll, track
     view.cursorLine = track:CreateTexture(nil, "OVERLAY")
     view.cursorLine:SetWidth(1)
-    view.cursorLine:SetColorTexture(mocha("cream", 0.5))
+    themed(view.cursorLine, "SetColorTexture", "cream", 0.5)
     view.cursorLine:Hide()
 
     hscroll:EnableMouse(true)
@@ -580,6 +591,15 @@ function View.Create(parent)
     end
     if CRT.Alerts and CRT.Alerts.OnChange then
         CRT.Alerts:OnChange(changed)
+    end
+    -- a new theme: the parts made once repaint themselves (themed); a shown view draws the rest again
+    if CRT.UI and CRT.UI.OnTheme then
+        CRT.UI:OnTheme(function()
+            changed()
+            if f:IsVisible() then
+                view:DrawStrip()
+            end
+        end)
     end
     -- the strip follows the saved alerts
     if CRT.AlertSaved and CRT.AlertSaved.OnChange then
@@ -1368,7 +1388,7 @@ function Methods:Ghost()
         g.head:SetPoint("TOPLEFT", g, "TOPLEFT", inset, -3)
         g.head:SetSize(FLAG_W, FLAG_HEAD)
         g.labelBg = g:CreateTexture(nil, "BACKGROUND")
-        g.labelBg:SetColorTexture(mocha("roast", 0.85))
+        themed(g.labelBg, "SetColorTexture", "roast", 0.85)
         g.label = g:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
         g.labelBg:SetPoint("TOPLEFT", g.label, "TOPLEFT", -3, 2)
         g.labelBg:SetPoint("BOTTOMRIGHT", g.label, "BOTTOMRIGHT", 3, -2)
@@ -2042,7 +2062,7 @@ end
 local function chipParts(c)
     c.bg = c:CreateTexture(nil, "BACKGROUND")
     c.bg:SetAllPoints()
-    c.bg:SetColorTexture(mocha("roast", 0.9))
+    themed(c.bg, "SetColorTexture", "roast", 0.9)
     c.edge = c:CreateTexture(nil, "ARTWORK")
     c.edge:SetPoint("TOPLEFT", c, "TOPLEFT", 0, 0)
     c.edge:SetPoint("BOTTOMLEFT", c, "BOTTOMLEFT", 0, 0)
@@ -2053,7 +2073,7 @@ local function chipParts(c)
     c.name = c:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     c.name:SetJustifyH("LEFT")
     c.name:SetWordWrap(false)
-    c.name:SetTextColor(mocha("cream"))
+    themed(c.name, "SetTextColor", "cream")
 end
 
 -- Paints a chip (or the ghost): its name, the icon tex untinted, or with none the Personal notes icon
@@ -2109,10 +2129,10 @@ function Methods:BuildStrip()
     line:SetPoint("TOPLEFT", strip, "TOPLEFT", 0, 0)
     line:SetPoint("TOPRIGHT", strip, "TOPRIGHT", 0, 0)
     line:SetHeight(1)
-    line:SetColorTexture(mocha("caramel", 0.4))
+    themed(line, "SetColorTexture", "caramel", 0.4)
     strip.label = strip:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     strip.label:SetPoint("LEFT", strip, "TOPLEFT", 4, -STRIP_ROW / 2)
-    strip.label:SetTextColor(mocha("latte"))
+    themed(strip.label, "SetTextColor", "latte")
     strip.label:SetText(TEXT.savedAlerts)
     if CRT.UI and CRT.UI.Help then
         CRT.UI.Help(strip, TEXT.savedAlerts, TEXT.savedHelp):SetPoint("LEFT", strip.label, "RIGHT", 2, 0)
@@ -2134,12 +2154,12 @@ function Methods:BuildStrip()
         local track = strip:CreateTexture(nil, "OVERLAY")
         track:SetWidth(STRIP_IND_W)
         track:SetPoint("TOPRIGHT", scroll, "TOPRIGHT", 0, 0)
-        track:SetColorTexture(mocha("latte", 0.15))
+        themed(track, "SetColorTexture", "latte", 0.15)
         track:Hide()
         local thumb = strip:CreateTexture(nil, "OVERLAY")
         thumb:SetWidth(STRIP_IND_W)
         thumb:SetPoint("TOPRIGHT", scroll, "TOPRIGHT", 0, 0)
-        thumb:SetColorTexture(mocha("caramel"))
+        themed(thumb, "SetColorTexture", "caramel")
         thumb:Hide()
         return { track = track, thumb = thumb }
     end
@@ -2155,7 +2175,7 @@ function Methods:BuildStrip()
     -- the Cooldowns row: label, (?), the filter dropdown, then the chips
     local cdLabel = strip:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     cdLabel:SetPoint("LEFT", strip, "TOPLEFT", 4, -STRIP_ROW - STRIP_ROW / 2)
-    cdLabel:SetTextColor(mocha("latte"))
+    themed(cdLabel, "SetTextColor", "latte")
     cdLabel:SetText(TEXT.cooldowns)
     self.cdLabel = cdLabel
     local after = cdLabel
@@ -2199,7 +2219,7 @@ function Methods:BuildStrip()
     self.cdBar = rowsBar(cdScroll)
     self.cdEmpty = cdRow:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     self.cdEmpty:SetPoint("LEFT", cdRow, "TOPLEFT", 4, -CHIP_H / 2)
-    self.cdEmpty:SetTextColor(mocha("latte", 0.7))
+    themed(self.cdEmpty, "SetTextColor", "latte", 0.7)
     self.cdEmpty:SetText(TEXT.noCooldowns)
     self.cdEmpty:Hide()
 
@@ -2207,11 +2227,11 @@ function Methods:BuildStrip()
     plus:SetSize(PLUS_W, CHIP_H)
     plus.bg = plus:CreateTexture(nil, "BACKGROUND")
     plus.bg:SetAllPoints()
-    plus.bg:SetColorTexture(mocha("roast", 0.9))
+    themed(plus.bg, "SetColorTexture", "roast", 0.9)
     plus.text = plus:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
     plus.text:SetPoint("CENTER", plus, "CENTER", 0, 0)
     plus.text:SetText("+")
-    plus.text:SetTextColor(mocha("caramel"))
+    themed(plus.text, "SetTextColor", "caramel")
     hoverLight(plus)
     plus:SetScript("OnEnter", function(b)
         GameTooltip:SetOwner(b, "ANCHOR_TOP")
@@ -2574,7 +2594,7 @@ function Methods:BandFrame()
         bf = CreateFrame("Frame", nil, self.track)
         bf:SetAllPoints(self.track)
         bf.label = bf:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-        bf.label:SetTextColor(mocha("cream"))
+        themed(bf.label, "SetTextColor", "cream")
         bf.label:Hide()
         self.bandFrame, self.bandLabel, self.bandTex = bf, bf.label, {}
     end
@@ -2835,7 +2855,7 @@ function Methods:DropLine()
         d = CreateFrame("Frame", nil, self.track)
         d:SetWidth(2)
         d.labelBg = d:CreateTexture(nil, "BACKGROUND")
-        d.labelBg:SetColorTexture(mocha("roast", 0.85))
+        themed(d.labelBg, "SetColorTexture", "roast", 0.85)
         d.label = d:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
         d.labelBg:SetPoint("TOPLEFT", d.label, "TOPLEFT", -3, 2)
         d.labelBg:SetPoint("BOTTOMRIGHT", d.label, "BOTTOMRIGHT", 3, -2)
@@ -2860,7 +2880,7 @@ function Methods:DrawDropLine(t, y, soon)
     for i = 1, n do
         local dash = pooled(self.dashes, i, function()
             local tex = d:CreateTexture(nil, "OVERLAY")
-            tex:SetColorTexture(mocha("cream", 0.85))
+            themed(tex, "SetColorTexture", "cream", 0.85)
             tex:SetSize(2, DASH)
             return tex
         end)
@@ -3244,10 +3264,10 @@ function Methods:DrawIgnored(after, rows)
         head.arrow:SetPoint("LEFT", head, "LEFT", 4, 0)
         head.text = head:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
         head.text:SetPoint("LEFT", head, "LEFT", 20, 0)
-        head.text:SetTextColor(mocha("latte"))
+        themed(head.text, "SetTextColor", "latte")
         head.line = self.body:CreateTexture(nil, "ARTWORK")
         head.line:SetHeight(1)
-        head.line:SetColorTexture(mocha("caramel", 0.6))
+        themed(head.line, "SetColorTexture", "caramel", 0.6)
         head:SetScript("OnClick", function()
             CRT.Timeline:Set("ignoredOpen", not settings().ignoredOpen)
         end)
@@ -3334,7 +3354,7 @@ function Methods:DrawAxis(length, height)
         local line = pooled(self.lines, n, function()
             local tex = self.track:CreateTexture(nil, "BACKGROUND")
             tex:SetWidth(1)
-            tex:SetColorTexture(mocha("caramel", 0.25))
+            themed(tex, "SetColorTexture", "caramel", 0.25)
             return tex
         end)
         line:SetPoint("TOPLEFT", self.track, "TOPLEFT", x, 0)
@@ -3342,13 +3362,13 @@ function Methods:DrawAxis(length, height)
         local tick = pooled(self.ticks, n, function()
             local tex = self.axis:CreateTexture(nil, "ARTWORK")
             tex:SetSize(1, 5)
-            tex:SetColorTexture(mocha("caramel"))
+            themed(tex, "SetColorTexture", "caramel")
             return tex
         end)
         tick:SetPoint("BOTTOMLEFT", self.axis, "BOTTOMLEFT", x, 0)
         local text = pooled(self.texts, n, function()
             local fs = self.axis:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-            fs:SetTextColor(mocha("latte"))
+            themed(fs, "SetTextColor", "latte")
             return fs
         end)
         text:SetPoint("BOTTOMLEFT", self.axis, "BOTTOMLEFT", x + 3, 4)
@@ -3390,7 +3410,7 @@ function Methods:DrawPhases(phases, length, height)
             line:SetSize(2, height)
             local text = pooled(self.phaseTexts, n, function()
                 local fs = self.axis:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-                fs:SetTextColor(mocha("latte"))
+                themed(fs, "SetTextColor", "latte")
                 return fs
             end)
             -- the part a chosen order put in this phase is added to the drawn label only: the alerts
@@ -3436,7 +3456,7 @@ function Methods:DrawEndLine(t, length, height)
     end
     if not self.endLine then
         self.endLine = self.track:CreateTexture(nil, "ARTWORK")
-        self.endLine:SetColorTexture(mocha("caramel"))
+        themed(self.endLine, "SetColorTexture", "caramel")
     end
     self.endLine:ClearAllPoints()
     self.endLine:SetPoint("TOPLEFT", self.track, "TOPLEFT", View.TimeToX(math.min(t, length), length, self.trackW) - 1, 0)
@@ -3696,7 +3716,7 @@ function Methods:DrawPlayhead()
         tag:SetHeight(14)
         tag.bg = tag:CreateTexture(nil, "BACKGROUND")
         tag.bg:SetAllPoints()
-        tag.bg:SetColorTexture(mocha("roast", 0.95))
+        themed(tag.bg, "SetColorTexture", "roast", 0.95)
         tag.text = tag:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
         tag.text:SetPoint("CENTER")
         tag.text:SetTextColor(1, 0.82, 0)

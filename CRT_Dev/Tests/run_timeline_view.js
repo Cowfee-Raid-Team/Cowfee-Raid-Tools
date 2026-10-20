@@ -708,6 +708,36 @@ do
   T:SetAbility(9001, 777, "tags", nil)
 end
 print("ok journal icons on the rows")
+
+-- A theme change: the parts made once are tinted through UI.Tint and repaint, and a shown view redraws
+-- through UI:OnTheme. This UI stands in for CRT_Core/UI/Panel.lua's (run_themes.js tests the real one).
+do
+  local tints, hooks = {}, {}
+  local savedUI = CRT.UI
+  local function paint(t) local c = CRT.MOCHA[t[3]] t[1][t[2]](t[1], c[1], c[2], c[3], t[4] or 1) end
+  CRT.UI = { Tint = function(r, m, k, a) local t = { r, m, k, a } tints[#tints + 1] = t paint(t) end,
+    OnTheme = function(_, fn) hooks[#hooks + 1] = fn end }
+  local v = View.Create(mock("Frame"))
+  v:SetData(pull, 3001)
+  v:Refresh()
+  assert(#hooks >= 1, "a view registers UI:OnTheme")
+  local base
+  for _, t in ipairs(tints) do if t[2] == "SetColorTexture" and t[3] == "caramel" and t[4] == nil then base = t[1] break end end
+  assert(base and rawget(base, "color")[1] == CRT.MOCHA.caramel[1], "the axis line is tinted from the theme")
+  local was = { CRT.MOCHA.caramel[1], CRT.MOCHA.caramel[2], CRT.MOCHA.caramel[3] }
+  CRT.MOCHA.caramel[1], CRT.MOCHA.caramel[2], CRT.MOCHA.caramel[3] = 0.5, 0.7, 0.85
+  for _, t in ipairs(tints) do paint(t) end
+  local redrew = false
+  local real = v.Refresh
+  rawset(v, "Refresh", function(self) redrew = true return real(self) end)
+  for _, fn in ipairs(hooks) do fn() end
+  local c = rawget(base, "color")
+  assert(c[1] == 0.5 and c[2] == 0.7 and c[3] == 0.85, "the axis line takes the new theme's caramel")
+  assert(redrew, "a shown view redraws on a theme change")
+  CRT.MOCHA.caramel[1], CRT.MOCHA.caramel[2], CRT.MOCHA.caramel[3] = was[1], was[2], was[3]
+  CRT.UI = savedUI
+end
+print("ok a theme change repaints the view")
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 for (const p of process.argv.slice(2, 10)) {

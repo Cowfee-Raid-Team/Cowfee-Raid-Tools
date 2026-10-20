@@ -114,7 +114,7 @@ local CRT = {
     alerts = { bars = { shown = true, noteLines = true, cap = 5, ahead = 20, width = 240, height = 20 },
       reminders = {}, phases = {}, overrides = {}, nextId = 1 },
   },
-  UI = { RegisterLayer = function() end, RegisterPreview = function(_, k, fn) previewFns[k] = fn end,
+  UI = { Tint = function() end, OnTheme = function() end, RegisterLayer = function() end, RegisterPreview = function(_, k, fn) previewFns[k] = fn end,
     ResetButtonWidth = function() return 44 end, ResetButton = function(p) return newObj("Button", p) end },
   FONTS = {},
   FontPath = function() return "font" end,

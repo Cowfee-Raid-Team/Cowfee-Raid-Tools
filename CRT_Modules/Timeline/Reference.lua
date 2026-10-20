@@ -26,7 +26,7 @@ Reference.TYPES = {
     falloff = { label = "Fall-off damage", color = { 0.49, 0.86, 0.42 } },
     mythic = { label = "Mythic only", color = { 1, 0.6, 0.24 } },
     heroic = { label = "Heroic and higher", color = { 0.77, 0.36, 0.88 } },
-    generic = { label = "Mechanic", color = { 0.95, 0.9, 0.84 } },
+    generic = { label = "Mechanic", color = { 0.95, 0.9, 0.84 } }, -- an ability type's own colour: not a theme colour
     soak = { label = "Soak", color = { 1, 0.5, 0.82 } },
     spread = { label = "Spread out or get away", color = { 1, 0.85, 0.29 } },
     dodge = { label = "Dodge", color = { 0.2, 0.82, 0.78 } },
