@@ -29,6 +29,7 @@ local L = {
     previewLines = 4, -- the award preview is cut after this many lines, so it never reaches Sync
     -- Sync Master Loot, in the second column under the award message: "Sync to", the dropdown, a box
     syncTop = -306, syncLabel = 46, syncPick = 124,
+    tooltipTop = -430, -- Item tooltip, under Sync Master Loot (which ends near -410)
 }
 L.col3W = UI.PAGE_W - L.col3 - 8 -- the third column, to the page's right margin
 L.col2W = L.col3 - L.col2 - 12 -- the second column, with a gap before the third
@@ -86,6 +87,8 @@ local TEXT = {
     channel = "Send to",
     noRoll = "If no roll, %v is",
     preview = "Preview:",
+    tooltip = "Item tooltip",
+    tooltipHelp = "Where the item tooltip opens when you hover an item's icon in the looter window and All Loot Rolls. Default tooltip uses the game's own tooltip position.",
     channels = {
         { key = "RAID", label = "Raid" }, { key = "RAID_WARNING", label = "Raid warning" }, { key = "PARTY", label = "Party" },
         { key = "GUILD", label = "Guild" }, { key = "OFFICER", label = "Officer" }, { key = "SELF", label = "Only you" },
@@ -766,6 +769,26 @@ local function buildSettings(f)
     previewLabel:SetPoint("TOPLEFT", L.col2, -214)
     previewLabel:SetTextColor(0.7, 0.7, 0.7)
     previewLabel:SetText(TEXT.preview)
+    -- Item tooltip: below Sync Master Loot in this column, where there is room
+    heading(f, L.col2, L.tooltipTop, TEXT.tooltip, TEXT.tooltipHelp)
+    local tip = UI.Dropdown(f, "", {
+        width = 150, maxHeight = 300,
+        options = function()
+            local out = {}
+            for _, a in ipairs(LM.TOOLTIP_ANCHORS) do
+                out[#out + 1] = { key = a.key, label = a.label }
+            end
+            return out
+        end,
+        get = function()
+            return LM:TooltipAnchor().key
+        end,
+        set = function(v)
+            LM:Settings().tooltipAnchor = v
+        end,
+    })
+    tip:SetPoint("TOPLEFT", L.col2, L.tooltipTop - 20)
+    refreshers[#refreshers + 1] = tip.refresh
     preview = f:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     preview:SetPoint("TOPLEFT", L.col2, -232)
     preview:SetWidth(285)

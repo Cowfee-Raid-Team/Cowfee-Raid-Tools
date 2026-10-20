@@ -6,7 +6,7 @@ const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate();
 lualib.luaL_openlibs(L);
 const harness = `
-local panelSrc, windowSrc, tabsSrc, popupSrc = ...
+local panelSrc, windowSrc, tabsSrc, popupSrc, dataSrc = ...
 local fails, passes = 0, 0
 local function check(ok, what) if ok then passes = passes + 1 else fails = fails + 1 print("FAIL " .. what) end end
 local function eq(a, b, what) check(a == b, what .. " (got " .. tostring(a) .. ", want " .. tostring(b) .. ")") end
@@ -67,6 +67,9 @@ CRT.MOCHA = { roast = { 0.165, 0.122, 0.098 }, edge = { 0.30, 0.235, 0.188 }, ca
   espresso = { 0.11, 0.078, 0.063 }, latte = { 0.87, 0.73, 0.56 }, stripTop = { 0.35, 0.25, 0.17 }, stripBottom = { 0.23, 0.17, 0.12 }, note = { 0.8, 0.71, 0.6 } }
 assert(load(panelSrc, "Panel.lua"))("CowfeeRaidTools", CRT)
 assert(load(windowSrc, "Window.lua"))("CowfeeRaidTools", CRT)
+assert(load(dataSrc, "Data.lua"))("CowfeeRaidTools", CRT) -- first: it makes CRT.LootMaster
+CRT.db.lootmaster = {}
+CRT.LootMaster.Settings = function() return CRT.db.lootmaster end
 assert(load(tabsSrc, "Tabs.lua"))("CowfeeRaidTools", CRT)
 local itemInfo = {}
 CRT.LootMaster.OnChange = function() end
@@ -295,10 +298,43 @@ eq(picked, 1, "icon click selects the tab")
 tb.frame.scripts.OnDoubleClick(tb.frame, "LeftButton")
 eq(dbl, 1, "icon double-click reaches the tab")
 
+-- the tooltip anchor setting: every key opens in its own spot; Default tooltip uses the game's
+eq(LM.TOOLTIP_ANCHOR_DEFAULT, "left", "tooltip anchor: default is left")
+local order = {}
+for _, a in ipairs(LM.TOOLTIP_ANCHORS) do order[#order + 1] = a.key end
+eq(table.concat(order, ","), "left,right,bottomleft,bottomright,topleft,topright,topcenter,bottomcenter,default", "tooltip anchor: the nine, in Alex's order")
+local want = {
+  left = { "TOPRIGHT", "TOPLEFT", -4 }, right = { "TOPLEFT", "TOPRIGHT", 4 },
+  topleft = { "BOTTOMLEFT", "TOPLEFT", 0, 4 }, topcenter = { "BOTTOM", "TOP", 0, 4 }, topright = { "BOTTOMRIGHT", "TOPRIGHT", 0, 4 },
+  bottomleft = { "TOPLEFT", "BOTTOMLEFT", 0, -4 }, bottomcenter = { "TOP", "BOTTOM", 0, -4 }, bottomright = { "TOPRIGHT", "BOTTOMRIGHT", 0, -4 },
+}
+tb.frame.GetTop = function() return 500 end
+winFrame.GetTop = function() return 600 end
+for key, w in pairs(want) do
+  CRT.db.lootmaster.tooltipAnchor = key
+  got = {}
+  tb.frame.scripts.OnEnter(tb.frame)
+  eq(got.anchor, "ANCHOR_NONE", "tooltip " .. key .. ": placed by hand")
+  eq(got.owner, tb.frame, "tooltip " .. key .. ": owner is the icon")
+  check(got.pt[1] == w[1] and got.pt[2] == winFrame and got.pt[3] == w[2] and got.pt[4] == w[3], "tooltip " .. key .. ": point")
+  eq(got.pt[5], w[4] or -100, "tooltip " .. key .. ": vertical offset")
+end
+CRT.db.lootmaster.tooltipAnchor = "nonsense"
+got = {}
+tb.frame.scripts.OnEnter(tb.frame)
+eq(got.pt[1], "TOPRIGHT", "tooltip: an unknown value is Left")
+local def
+GameTooltip_SetDefaultAnchor = function(tip, owner) def = { tip, owner } end
+CRT.db.lootmaster.tooltipAnchor = "default"
+got = {}
+tb.frame.scripts.OnEnter(tb.frame)
+check(def and def[1] == GameTooltip and def[2] == tb.frame, "tooltip default: the game's own anchor")
+check(got.pt == nil and got.anchor == nil, "tooltip default: nothing placed by hand")
+
 print(string.format("%d passed, %d failed", passes, fails))
 if fails > 0 then error("failures") end
 `;
 const dir = process.argv[2];
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
-for (const f of ['CRT_Core/UI/Panel.lua', 'CRT_Core/UI/Window.lua', 'CRT_Modules/LootMaster/Tabs.lua', 'CRT_Modules/LootMaster/Popup.lua']) lua.lua_pushstring(L, to_luastring(fs.readFileSync(path.join(dir, f), 'utf8')));
-if (lua.lua_pcall(L, 4, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
+for (const f of ['CRT_Core/UI/Panel.lua', 'CRT_Core/UI/Window.lua', 'CRT_Modules/LootMaster/Tabs.lua', 'CRT_Modules/LootMaster/Popup.lua', 'CRT_Modules/LootMaster/Data.lua']) lua.lua_pushstring(L, to_luastring(fs.readFileSync(path.join(dir, f), 'utf8')));
+if (lua.lua_pcall(L, 5, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }

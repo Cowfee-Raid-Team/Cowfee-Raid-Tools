@@ -280,6 +280,34 @@ end
 LM.AWARD_DEFAULT = "%i awarded to %p for %r with a %v roll."
 LM.NO_ROLL_CHOICES = { "-", "0", "no" }
 
+-- Where an item's tooltip opens (Settings tab, a personal choice that is not synced), in the order the
+-- dropdown lists them. point is the tooltip's corner, rel the window's; dx, dy the gap in pixels; level
+-- puts the tooltip level with the hovered icon (the sides only). "default" has no point: the game's own
+-- tooltip position.
+LM.TOOLTIP_ANCHOR_DEFAULT = "left"
+LM.TOOLTIP_ANCHORS = {
+    { key = "left", label = "Left", point = "TOPRIGHT", rel = "TOPLEFT", dx = -4, dy = 0, level = true },
+    { key = "right", label = "Right", point = "TOPLEFT", rel = "TOPRIGHT", dx = 4, dy = 0, level = true },
+    { key = "bottomleft", label = "Bottom left", point = "TOPLEFT", rel = "BOTTOMLEFT", dx = 0, dy = -4 },
+    { key = "bottomright", label = "Bottom right", point = "TOPRIGHT", rel = "BOTTOMRIGHT", dx = 0, dy = -4 },
+    { key = "topleft", label = "Top left", point = "BOTTOMLEFT", rel = "TOPLEFT", dx = 0, dy = 4 },
+    { key = "topright", label = "Top right", point = "BOTTOMRIGHT", rel = "TOPRIGHT", dx = 0, dy = 4 },
+    { key = "topcenter", label = "Top center", point = "BOTTOM", rel = "TOP", dx = 0, dy = 4 },
+    { key = "bottomcenter", label = "Bottom center", point = "TOP", rel = "BOTTOM", dx = 0, dy = -4 },
+    { key = "default", label = "Default tooltip" },
+}
+
+-- The chosen anchor's row; a missing or unknown saved value is Left.
+function LM:TooltipAnchor()
+    local want = self:Settings().tooltipAnchor
+    for _, a in ipairs(LM.TOOLTIP_ANCHORS) do
+        if a.key == want then
+            return a
+        end
+    end
+    return LM.TOOLTIP_ANCHORS[1]
+end
+
 LM.AWARD_MAX = 200 -- letters in the award message
 LM.AWARD_CHANNELS = { "RAID", "RAID_WARNING", "PARTY", "GUILD", "OFFICER", "SELF", "NONE" } -- besides CHANNEL: and COMMUNITY:
 LM.AUTHORITY_MAX = 6 -- named players with loot authority

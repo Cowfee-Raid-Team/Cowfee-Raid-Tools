@@ -208,6 +208,7 @@ local defaults = {
         awardMessage = "%i awarded to %p for %r with a %v roll.",
         awardChannel = "RAID",
         noRoll = "-",
+        tooltipAnchor = "left", -- where an item's tooltip opens (LM.TOOLTIP_ANCHORS); personal, not synced
         showAllItems = false, -- this raider sees every item anyway
         enableInParty = false, -- CRT Looting also in a party group, not only a raid (LootMaster/Looting.lua)
         authority = { leader = true, names = {} }, -- who may run loot (the raid leader's list is the one raiders trust)

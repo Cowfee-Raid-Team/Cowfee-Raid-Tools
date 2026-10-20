@@ -84,14 +84,23 @@ function LM.ItemTabs(parent, opts)
                 t:GetScript("OnDoubleClick")(t, button)
             end)
         end
-        -- the tooltip sits left of the window, level with the hovered icon
+        -- the tooltip opens where the Settings tab says (left of the window, level with the icon, at first)
         t.frame:SetScript("OnEnter", function(icon)
             local it = self.items and self.items[t.index]
             if it then
                 local win = opts.window or parent
-                GameTooltip:SetOwner(icon, "ANCHOR_NONE")
-                local top, winTop = icon:GetTop(), win:GetTop()
-                GameTooltip:SetPoint("TOPRIGHT", win, "TOPLEFT", -4, (top and winTop) and (top - winTop) or 0)
+                local a = LM:TooltipAnchor()
+                if not a.point then
+                    GameTooltip_SetDefaultAnchor(GameTooltip, icon) -- sets the owner itself
+                else
+                    GameTooltip:SetOwner(icon, "ANCHOR_NONE")
+                    local dy = a.dy
+                    if a.level then
+                        local top, winTop = icon:GetTop(), win:GetTop()
+                        dy = (top and winTop) and (top - winTop) or 0
+                    end
+                    GameTooltip:SetPoint(a.point, win, a.rel, a.dx, dy)
+                end
                 pcall(GameTooltip.SetHyperlink, GameTooltip, it.itemString)
                 if it.award and opts.doubleClickHint then
                     GameTooltip:AddLine(" ")
