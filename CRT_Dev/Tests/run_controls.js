@@ -151,7 +151,7 @@ print("stepper click: saved " .. scale)
 -- The look switch. A slider made in Classic is the game's slider and nothing else.
 local fails = 0
 local function check(ok, what) if not ok then fails = fails + 1 print("FAIL " .. what) end end
-CRT.MOCHA = { edge = { 0.3, 0.2, 0.2 }, caramel = { 0.8, 0.6, 0.4 }, foam = { 0.96, 0.94, 0.89 }, bean = { 0.23, 0.17, 0.11 } }
+CRT.MOCHA = { edge = { 0.3, 0.2, 0.2 }, caramel = { 0.8, 0.6, 0.4 }, walnut = { 0.29, 0.2, 0.14 }, walnutEdge = { 0.1, 0.07, 0.05 }, walnutShine = { 0.48, 0.35, 0.24 } }
 local modern = false
 UI.skinned = {}
 function UI:IsModern() return modern end
@@ -181,7 +181,7 @@ check(math.abs(fillAt(47.5) - 244 / 2) < 0.01, "fill at mid: " .. tostring(m.fil
 check(fillAt(90) == 244 - m.knob.width / 2, "fill at max: " .. tostring(m.fillW))
 check(m.knob.x == 244 - m.knob.width, "the knob stays inside the track's end: " .. tostring(m.knob.x))
 hp = 35 h.refresh() hpSets = 0
-print("ok controls: Modern shows the track and the foam knob, filled to the knob's centre")
+print("ok controls: Modern shows the track and the walnut knob, filled to the knob's centre")
 
 -- The wheel moves one step, and stops at the ends.
 m.track.OnMouseWheel(m.track, 1)

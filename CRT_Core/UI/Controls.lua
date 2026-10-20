@@ -5,7 +5,7 @@ local ADDON, CRT = ...
 -- Blizzard_EditMode's EditModeSettingDropdownTemplate and EditModeSettingSliderTemplate:
 --   UI.Dropdown  WowStyle1DropdownTemplate, a dropdown with a radio list of choices
 --   UI.Slider    MinimalSliderWithSteppersTemplate, a bar with < and > steppers and the value on
---                its right, in the Classic look; in Modern, a caramel track and a foam knob that
+--                its right, in the Classic look; in Modern, a caramel track and a walnut knob that
 --                shows the value and takes a typed number
 -- A setting with a few fixed choices is always a dropdown, never a button that cycles through them.
 
@@ -199,7 +199,8 @@ function UI.SoundDropdown(parent, text, opts)
 end
 
 -- The Modern slider. In the Modern look (UI:IsModern) a slider is a mocha track, caramel up to the
--- knob's centre, and a foam knob that shows the value: drag the knob or click the track; click the
+-- knob's centre, and a bevelled walnut knob (a dark edge, a soft line inside its top edge) that shows
+-- the value in white: drag the knob or click the track; click the
 -- knob without dragging (under KNOB_CLICK pixels) to type a number; the mouse wheel, and the arrow
 -- keys while typing, move one step. There are no < > buttons. The game's slider stays for the Classic
 -- look, and the look button switches between the two live (UI.skinned).
@@ -252,7 +253,7 @@ function UI.RoundRect(owner, anchor, layer, sublevel, radius, inset, height)
     return shape
 end
 
--- Colours a UI.RoundRect shape: color is a CRT.MOCHA key ("foam") or { r, g, b [, a] }.
+-- Colours a UI.RoundRect shape: color is a CRT.MOCHA key ("walnut") or { r, g, b [, a] }.
 function UI.PaintShape(shape, color)
     local c = type(color) == "table" and color or CRT.MOCHA[color]
     local a = c[4] or 1
@@ -289,8 +290,7 @@ end
 local function drawKnob(m, s)
     local text = s.format(s.current)
     m.text:SetText(text)
-    local bean = CRT.MOCHA.bean
-    m.text:SetTextColor(bean[1], bean[2], bean[3])
+    m.text:SetTextColor(1, 1, 1)
     m.widest = math.max(m.widest or 0, m.text:GetUnboundedStringWidth() or 0)
     local knobW = math.min(m.trackW, math.max(KNOB_MIN_W, math.ceil(m.widest) + KNOB_PAD))
     local span = s.high - s.low
@@ -310,10 +310,11 @@ end
 local function restyleKnob(m, s)
     UI.PaintShape(m.empty, "edge")
     UI.PaintShape(m.filled, "caramel")
-    UI.PaintShape(m.edge, "caramel")
-    UI.PaintShape(m.face, "foam")
-    local bean = CRT.MOCHA.bean
-    m.edit:SetTextColor(bean[1], bean[2], bean[3])
+    UI.PaintShape(m.edge, "walnutEdge")
+    UI.PaintShape(m.face, "walnut")
+    local shine = CRT.MOCHA.walnutShine
+    m.shine:SetColorTexture(shine[1], shine[2], shine[3])
+    m.edit:SetTextColor(1, 1, 1)
     local _, fontHeight = m.text:GetFont()
     m.knobH = math.max(KNOB_H, math.ceil(tonumber(fontHeight) or 0) + KNOB_TEXT_PAD)
     m.knob:SetHeight(m.knobH)
@@ -490,9 +491,14 @@ local function buildModern(row, s)
     local knob = CreateFrame("Button", nil, track)
     knob:SetHeight(KNOB_H)
     m.knob = knob
-    -- a 1 px caramel edge: the caramel shape, and the foam one 1 px inside it
+    -- a 1 px dark edge: the edge shape, the walnut one 1 px inside it, and a 1 px line just inside the
+    -- top edge, between the corners
     m.edge = UI.RoundRect(knob, knob, "BACKGROUND", 0, KNOB_R, 0)
     m.face = UI.RoundRect(knob, knob, "BACKGROUND", 1, KNOB_R - 1, 1)
+    m.shine = knob:CreateTexture(nil, "BACKGROUND", nil, 2)
+    m.shine:SetPoint("TOPLEFT", knob, "TOPLEFT", KNOB_R, -1)
+    m.shine:SetPoint("TOPRIGHT", knob, "TOPRIGHT", -KNOB_R, -1)
+    m.shine:SetHeight(1)
     m.text = knob:CreateFontString(nil, "OVERLAY", "CRTFontStandard")
     m.text:SetPoint("CENTER", 0, 0)
     m.text:SetWordWrap(false)
