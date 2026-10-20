@@ -25,14 +25,17 @@ local ADDON, CRT = ...
 --   C_Item.IsCosmeticItem(itemInfo): true for a cosmetic item (nil counts as not cosmetic)
 --   C_Item.IsItemBindToAccountUntilEquip(itemInfo): warbound until equipped, besides bindType 9
 --   C_TooltipInfo.GetHyperlink: a "Classes: ..." line (ITEM_CLASSES_ALLOWED) on a Miscellaneous item marks
---     a tier token (tokens have no item class of their own)
+--     a tier token (tokens have no item class of their own). A token for every class has no Classes line and
+--     nothing else in its data says it is one, so it counts as "other" (the Kinds help says so).
+--   A class set's piece: gear with a setID and a Classes line. No API says an item set is a class set:
+--     C_Item.GetItemSetInfo(setID) gives only the set's name, and C_TransmogSets.GetSetInfo (with classMask)
+--     takes a transmog set ID, not an item set's. A set piece without a Classes line counts by its binding.
 
 local LM = CRT.LootMaster
 
 -- The kinds, in the tab's order. Labels are the tab's (FilterTab.lua).
 LM.FILTER_KINDS = { "bop", "tier", "boe", "wue", "toy", "mount", "cosmetic", "other" }
 LM.FILTER_QUALITIES = { 2, 3, 4, 5 } -- the quality dropdown's choices (Enum.ItemQuality)
-LM.LIMITS.filterIlvl = { 0, 1000, 5 } -- the item level slider; 0 is any
 
 -- Enum values, with the wiki's numbers when the enum isn't there (a test, or an older client).
 local ITEM_CLASS = { WEAPON = 2, ARMOR = 4, MISC = 15, BATTLE_PET = 17 } -- Enum.ItemClass
@@ -99,8 +102,8 @@ function LM:SetFilter(t)
     self:Fire("filter")
 end
 
--- The one kind an item is, checked in this order: a toy; a mount or pet; a cosmetic; a tier token or a set
--- piece; then gear (a weapon or armor) by how it binds: on pickup, on equip, warbound until equipped.
+-- The one kind an item is, checked in this order: a toy; a mount or pet; a cosmetic; a tier token or a class
+-- set's piece (isClassSet: a setID and a Classes line); then gear (a weapon or armor) by how it binds: on pickup, on equip, warbound until equipped.
 -- Anything else (recipes, reagents, warbound or unbound gear) is "other". Pure.
 function LM.ItemKind(f)
     if f.isToy then
@@ -113,7 +116,7 @@ function LM.ItemKind(f)
         return "cosmetic"
     end
     local gear = f.classID == ITEM_CLASS.WEAPON or f.classID == ITEM_CLASS.ARMOR
-    if f.isToken or (gear and type(f.setID) == "number" and f.setID > 0) then
+    if f.isToken or (gear and type(f.setID) == "number" and f.setID > 0 and f.isClassSet) then
         return "tier"
     end
     if gear then
@@ -183,6 +186,7 @@ LM.FILTER_WHY = {
     pet = "whether it is a pet",
     cosmetic = "whether it is a cosmetic",
     token = "its tooltip, for a tier token",
+    setPiece = "its tooltip, for a tier set piece",
 }
 local WHY = LM.FILTER_WHY
 
@@ -225,7 +229,8 @@ local function hasClassesLine(itemString)
 end
 
 -- An item's facts for LM.PassesFilter, from the game: source ("boss" or "trash", given by the caller),
--- quality, ilvl, classID, subClassID, bindType, setID, isToy, isMount, isPet, isCosmetic, isToken. Always a
+-- quality, ilvl, classID, subClassID, bindType, setID, isToy, isMount, isPet, isCosmetic, isToken,
+-- isClassSet. Always a
 -- table: what can't be read is left nil with its reason in facts.unreadable (LM.FILTER_WHY), and
 -- facts.kindUnknown is set when the item's kind can't be told.
 function LM.ItemFacts(itemString, source)
@@ -302,6 +307,17 @@ function LM.ItemFacts(itemString, source)
             miss(WHY.token)
         else
             f.isToken = classes
+        end
+    end
+    -- a set piece is tier only when it is a class set's: it has a Classes line too
+    f.isClassSet = false
+    if f.setID and f.setID > 0 and (classID == ITEM_CLASS.WEAPON or classID == ITEM_CLASS.ARMOR) then
+        local classes = hasClassesLine(itemString)
+        if classes == nil then
+            tokenRead = false
+            miss(WHY.setPiece)
+        else
+            f.isClassSet = classes
         end
     end
     if not (okT and okM and okP and okC and tokenRead) then

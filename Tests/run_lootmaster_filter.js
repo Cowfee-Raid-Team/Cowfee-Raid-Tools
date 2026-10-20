@@ -78,7 +78,8 @@ eq(LM.ItemKind(facts({ classID = 2 })), "bop", "kind: a weapon that binds on pic
 eq(LM.ItemKind(facts({ bindType = 2 })), "boe", "kind: bind on equip")
 eq(LM.ItemKind(facts({ bindType = 9 })), "wue", "kind: warbound until equipped")
 eq(LM.ItemKind(facts({ bindType = 8 })), "other", "kind: warbound gear is other")
-eq(LM.ItemKind(facts({ setID = 1700 })), "tier", "kind: a set piece")
+eq(LM.ItemKind(facts({ setID = 1700, isClassSet = true })), "tier", "kind: a class set's piece")
+eq(LM.ItemKind(facts({ setID = 1700, isClassSet = false })), "bop", "kind: a set piece of no class set counts by its binding")
 eq(LM.ItemKind(facts({ setID = 0 })), "bop", "kind: set 0 is no set")
 eq(LM.ItemKind(facts({ classID = 15, subClassID = 0, isToken = true })), "tier", "kind: a tier token")
 eq(LM.ItemKind(facts({ classID = 15, subClassID = 0, isToy = true })), "toy", "kind: a toy")
@@ -108,7 +109,7 @@ eq(ok, false, "under the item level") eq(why, "ilvl", "item level: why")
 eq((LM.PassesFilter(facts({ ilvl = 250 }), filt({ ilvl = 250 }))), true, "at the item level")
 eq((LM.PassesFilter(facts({ ilvl = 251 }), filt({ ilvl = 250 }))), true, "over the item level")
 local kindFacts = {
-  bop = facts(), tier = facts({ setID = 9 }), boe = facts({ bindType = 2 }), wue = facts({ bindType = 9 }),
+  bop = facts(), tier = facts({ setID = 9, isClassSet = true }), boe = facts({ bindType = 2 }), wue = facts({ bindType = 9 }),
   toy = facts({ classID = 15, isToy = true }), mount = facts({ classID = 15, isMount = true }),
   cosmetic = facts({ isCosmetic = true }), other = facts({ classID = 9, bindType = 0 }),
 }
@@ -149,12 +150,14 @@ local c = LM.CleanFilter({ boss = "yes", trash = true, quality = 7, ilvl = 1003,
 eq(c.boss, true, "clean: a non-boolean keeps the fallback")
 eq(c.trash, true, "clean: a boolean kept")
 eq(c.quality, 4, "clean: an unknown quality keeps the fallback")
-eq(c.ilvl, 1000, "clean: item level at most 1000")
+eq(c.ilvl, 500, "clean: item level at most 500")
 eq(c.kinds.toy, true, "clean: a kind kept")
 eq(c.kinds.bogus, nil, "clean: an unknown kind dropped")
 eq(c.kinds.bop, true, "clean: a non-boolean kind keeps the fallback")
 eq(LM.CleanFilter({ ilvl = -5 }, D).ilvl, 0, "clean: item level at least 0")
-eq(LM.CleanFilter({ ilvl = 252 }, D).ilvl, 250, "clean: item level on its 5 step")
+eq(LM.CleanFilter({ ilvl = 252.4 }, D).ilvl, 252, "clean: a whole item level")
+eq(LM.LIMITS.filterIlvl[2], 500, "item level: Data.lua's limit, up to 500")
+eq(LM.LIMITS.filterIlvl[3], 1, "item level: in steps of 1")
 eq(LM.CleanFilter({ quality = "3" }, D).quality, 3, "clean: a quality as text")
 eq(LM.CleanFilter("junk").quality, 4, "clean: not a table is the defaults")
 
@@ -170,7 +173,8 @@ local ITEMS = {
   [102] = { q = 4, ilvl = 263, class = 2, sub = 7, bind = 2 },                     -- sword, BoE
   [103] = { q = 4, ilvl = 263, class = 4, sub = 1, bind = 9 },                     -- cloth, warbound until equipped
   [104] = { q = 4, ilvl = 263, class = 4, sub = 2, bind = 1, wue = true },         -- the second word says warbound until equipped
-  [105] = { q = 4, ilvl = 263, class = 4, sub = 3, bind = 1, set = 1980 },         -- a tier piece
+  [105] = { q = 4, ilvl = 263, class = 4, sub = 3, bind = 1, set = 1980, classes = true }, -- a tier piece
+  [116] = { q = 4, ilvl = 263, class = 4, sub = 3, bind = 1, set = 1981 },         -- a set piece of no class set
   [106] = { q = 4, ilvl = 263, class = 15, sub = 0, bind = 1, classes = true },    -- a tier token
   [107] = { q = 4, ilvl = 1, class = 15, sub = 0, bind = 1, toy = true },          -- a toy
   [108] = { q = 4, ilvl = 1, class = 15, sub = 5, bind = 1, mount = 9001 },        -- a mount
@@ -207,7 +211,8 @@ eq(kindOf(101), "bop", "game: BoP plate")
 eq(kindOf(102), "boe", "game: BoE sword")
 eq(kindOf(103), "wue", "game: warbound until equipped by bindType")
 eq(kindOf(104), "wue", "game: warbound until equipped by C_Item.IsItemBindToAccountUntilEquip")
-eq(kindOf(105), "tier", "game: a set piece")
+eq(kindOf(105), "tier", "game: a class set's piece (a setID and a Classes line)")
+eq(kindOf(116), "bop", "game: a set piece with no Classes line counts by its binding")
 eq(kindOf(106), "tier", "game: a token with a Classes line")
 eq(kindOf(107), "toy", "game: a toy")
 ITEMS[115] = { q = 4, ilvl = 1, class = 15, sub = 4, bind = 1, halfToy = true }
@@ -268,7 +273,9 @@ broken.IsItemBindToAccountUntilEquip = nil
 broken.tooltip = "error"
 f0 = why(106)
 eq(f0.kindUnknown, true, "unreadable: a Miscellaneous item with no tooltip") check(has(f0.unreadable, LM.FILTER_WHY.token), "unreadable: tooltip, why")
-eq(kindOf(101), "bop", "gear needs no tooltip")
+eq(kindOf(101), "bop", "gear with no set needs no tooltip")
+f0 = why(105)
+eq(f0.kindUnknown, true, "unreadable: a set piece with no tooltip") check(has(f0.unreadable, LM.FILTER_WHY.setPiece), "unreadable: set piece tooltip, why")
 eq(kindOf(107), "toy", "a toy needs no tooltip")
 broken.tooltip = "nil"
 eq(why(113).kindUnknown, true, "unreadable: tooltip data missing")
@@ -345,6 +352,20 @@ LM:Test(2, seeded(5))
 eq(#started, 2, "test, trash only: still two items")
 eq(printed[1], "Loot Master test: none of your sample items pass the loot filter, so the test uses others.", "test: samples count as boss loot, so none pass")
 CRT.db.lootmaster.filter = deepCopy(D)
+-- the pool is read only until count items pass
+local reads = 0
+local realInfo = C_Item.GetItemInfo
+C_Item.GetItemInfo = function(...) reads = reads + 1 return realInfo(...) end
+CRT.db.lootmaster.filter = deepCopy(D)
+CRT.db.lootmaster.filter.quality = 2
+for _, x in ipairs(LM.FILTER_KINDS) do CRT.db.lootmaster.filter.kinds[x] = true end
+LM:Test(1, seeded(5))
+eq(reads, 1, "test: with every item passing, one asked, only one item read")
+reads = 0
+only("toy")
+LM:Test(1, seeded(5))
+check(reads <= #HISTORY, "test: reading stops at the toy (" .. reads .. " of " .. #HISTORY .. " read)")
+C_Item.GetItemInfo = realInfo
 -- an item the game can't read is let through, after those it read in full
 only("toy")
 ITEMS[101].uncached = true
@@ -388,6 +409,7 @@ eq(checks[3].text, "Gear that binds on pickup", "tab: the kinds in the mockup's 
 eq(checks[10].text, "Recipes, reagents and other items", "tab: other last")
 for _, h in ipairs(headings) do check(type(h.help) == "string" and #h.help > 20, "tab: (?) help on " .. h.text) end
 eq(#headings, 4, "tab: four headings, each with help")
+check(TEXT.kindsHelp:find("tick that box to be safe", 1, true) ~= nil, "tab: the Kinds help says a token for every class may be in the last box")
 CRT.db.lootmaster.filter = deepCopy(D)
 eq(byText["Boss loot"].get(), true, "tab: boss shows on")
 eq(byText["Toys"].get(), false, "tab: toys shows off")
