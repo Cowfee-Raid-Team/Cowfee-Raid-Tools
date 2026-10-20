@@ -10,7 +10,7 @@ local ADDON, CRT = ...
 --
 --   Gear:Mine(slot)               your piece in a slot, or nil when it is empty
 --   Gear:MineAll()                your pieces, in Gear.SLOTS order (empty slots left out)
---   Gear:ForItem(itemString)      your pieces in the slots that item goes in, lowest item level first
+--   Gear:ForItem(itemString)      your pieces in the slots that item goes in (read live), lowest item level first
 --   Gear:OnChange(fn)             fn(slot) when your piece in a slot changes
 --   Gear:Remember(player, pieces, source), Gear:Of(player, slot), Gear:When(player)
 --                                 other players' pieces, by full Name-Realm, as a feature received them
@@ -266,7 +266,10 @@ function Gear:ForItem(itemString)
     if not ok or secret(equipLoc) then
         return out
     end
+    -- Read live: a slot empty at login, or changed with no PLAYER_EQUIPMENT_CHANGED (an upgrade, a gem),
+    -- would otherwise answer from a stale cache.
     for _, slot in ipairs(Gear.SLOTS_FOR(equipLoc)) do
+        self:Refresh(slot)
         out[#out + 1] = self:Mine(slot)
     end
     table.sort(out, function(a, b)
