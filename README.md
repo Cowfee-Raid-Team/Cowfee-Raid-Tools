@@ -136,7 +136,7 @@ Durability and weapon oils in the window only show for players running Cowfee Ra
 
 ## Tattlebot
 
-`/crt tattle`. After each boss pull, once you are out of combat, Tattlebot reads the game's own damage meter (Damage Taken) and keeps the damage each player took from the boss mechanics it tracks. A mechanic can have several spell IDs, and they are added together, so each mechanic is one line in the report. The game keeps the meter secret during a fight, so nothing is read until combat ends. The meter has damage per spell but no hit count, so Tattlebot reports each player's damage per mechanic and the number of pulls it hit them in. **Tonight** shows tonight's pulls and totals, **History** keeps every night with totals, and both can post to chat or **Export for Discord**. Totals on Tonight and History, the Discord export and chat posts are all by mechanic, most damage first: a table of Mechanic, Player, Pulls hit and Damage, with each mechanic's name on its first row. Damage is added up over every pull, and Pulls hit is how many pulls it hit that player in. Each pull keeps all the damage taken, so a mechanic added partway through a night also counts on that night's earlier pulls. Chat posts list every player, carrying on onto more lines when a mechanic doesn't fit on one. History has a **Season** filter (**All seasons** or **Current night**, which is tonight's night, or the last one saved when none is running) and a **Mechanic** filter: pick a mechanic and Totals becomes its record, with each player's damage from it, how many pulls on its boss it hit them in, and the average per pull it hit. Nights are also labeled with the season named on **Settings**. **Mechanics** has a boss dropdown that shows the mechanics tracked for each boss with their spell IDs, and **Your own spells**, where you can add spell IDs of your own and name the mechanic they belong to. On **Settings**, Tattlebot can also count everything the game marks as avoidable damage, and post each pull's report on its own (to chat only from the raid leader). The shipped list is in `Tattlebot/Database.lua`, grouped by boss and mechanic. To track more on the fly, pick **Last fight** in the Mechanics dropdown (or type `/crt tattle scan`): it lists every spell that damaged the group in the last fight with a check box, so tick the ones to track and press **Add checked**. They are added for that fight's boss, and spells that share a name become one mechanic. Their damage in that fight counts at once: it is filled in on the pull Tattlebot saved for it, or, if there is none (a fight that wasn't a boss, or a training dummy), the fight is saved as a pull of its own. Tracking starts with the fight you scanned.
+`/crt tattle`. After each boss pull, once you are out of combat, Tattlebot reads the game's own damage meter (Damage Taken) and keeps the damage each player took from the boss mechanics it tracks. A mechanic can have several spell IDs, and they are added together, so each mechanic is one line in the report. The game keeps the meter secret during a fight, so nothing is read until combat ends. The meter has damage per spell but no hit count, so Tattlebot reports each player's damage per mechanic and the number of pulls it hit them in. **Tonight** shows tonight's pulls and totals, **History** keeps every night with totals, and both can post to chat or **Export for Discord**. Totals on Tonight and History, the Discord export and chat posts are all by mechanic, most damage first: a table of Mechanic, Player, Pulls hit and Damage, with each mechanic's name on its first row. Damage is added up over every pull, and Pulls hit is how many pulls it hit that player in. Each pull keeps all the damage taken, so a mechanic added partway through a night also counts on that night's earlier pulls. Chat posts list every player, carrying on onto more lines when a mechanic doesn't fit on one. History has a **Season** filter (**All seasons** or **Current night**, which is tonight's night, or the last one saved when none is running) and a **Mechanic** filter: pick a mechanic and Totals becomes its record, with each player's damage from it, how many pulls on its boss it hit them in, and the average per pull it hit. Nights are also labeled with the season named on **Settings**. **Mechanics** has a boss dropdown that shows the mechanics tracked for each boss with their spell IDs, and **Your own spells**, where you can add spell IDs of your own and name the mechanic they belong to. On **Settings**, Tattlebot can also count everything the game marks as avoidable damage, and post each pull's report on its own (to chat only from the raid leader). The shipped list is in `CRT_Modules/Tattlebot/Database.lua`, grouped by boss and mechanic. To track more on the fly, pick **Last fight** in the Mechanics dropdown (or type `/crt tattle scan`): it lists every spell that damaged the group in the last fight with a check box, so tick the ones to track and press **Add checked**. They are added for that fight's boss, and spells that share a name become one mechanic. Their damage in that fight counts at once: it is filled in on the pull Tattlebot saved for it, or, if there is none (a fight that wasn't a boss, or a training dummy), the fight is saved as a pull of its own. Tracking starts with the fight you scanned.
 
 ## Timeline
 
@@ -237,34 +237,45 @@ The addon is plain Lua with no bundled libraries.
 
 ```
 CowfeeRaidTools/
-  CowfeeRaidTools.toc    title, version, interface number, saved variable
-  Core.lua               namespace, saved data defaults, scaled fonts, the Modern colors
-  Profiles.lua           profiles: load, switch, copy, reset, delete, export, import
-  Bosses/Registry.lua    the boss library: every boss's shipped data, read by the features
-  Seasons/               season packs: one file per boss with all its properties
-  Slash.lua              the /crt command
-  UI/Panel.lua           main window, left menu, page registry, previews
-  UI/Controls.lua        Edit Mode style dropdowns and sliders shared by the pages
-  UI/Minimap.lua         the minimap button and the game's addon menu entry
-  UI/SettingsPage.lua    the General Settings page
-  Sounds/                your own low-health sound files (see its README.txt)
-  Groups/                Raid Groups: data, Apply, page
-  Consumables/           your ready check bar and the consumables list
-  ReadyCheck/            the Ready Check page, raid report and ready check window
-  Debuffs/               the debuff panel
-  Notes/                 raid notes: parser, timers, windows, alert, sharing, page and its four tabs
-  Alerts/                the alerts engine: conflict rules, blocks and phase clock, speech queue, reminders,
-                         phase events, templates, the alert areas (icons, texts, bars, circles), the alert
-                         editor
-  Late/                  the Late Tracker
-  Tattlebot/             Tattlebot: the mechanics list, the damage meter reading, page
-  Timeline/              Timeline: the recorded pulls, the Journal ability rows, the reference timelines
-                         (Database.lua, Reference.lua), the lanes, the timeline view, the pages
-                         (Page.lua, ReferencePage.lua)
+  CowfeeRaidTools.toc      title, version, interface number, saved variables, load order
+  CRT_Core/                what every feature uses
+    Core.lua               namespace, saved data defaults, scaled fonts, the Modern colors
+    Profiles.lua           profiles: load, switch, copy, reset, delete, export, import
+    Slash.lua              the /crt command
+    Perf.lua               /crt perf: the addon's CPU cost, from the game's profiler
+    UI/                    main window, left menu, page registry, shared controls and windows, the minimap
+                           button, the General Settings page
+    Sound/                 the sound engine (game sounds, shared sounds, your files, text to speech)
+    Integrations/          sending notes to other note addons, break timers
+  CRT_Modules/             one folder per feature
+    Groups/                Raid Groups: data, Apply, page
+    Consumables/           your ready check bar and the consumables list
+    ReadyCheck/            the Ready Check page, raid report and ready check window
+    Debuffs/               the debuff panel
+    Notes/                 raid notes: parser, timers, windows, alert, sharing, page and its tabs
+    Alerts/                the alerts engine: conflict rules, blocks and phase clock, speech queue, reminders,
+                           phase events, templates, the alert areas (icons, texts, bars, circles), the alert
+                           editor
+    Late/                  the Late Tracker
+    Tattlebot/             Tattlebot: the mechanics list, the damage meter reading, page
+    Timeline/              Timeline: the recorded pulls, the Journal ability rows, the ability timelines
+                           (Database.lua, Reference.lua), the lanes, the timeline view, the pages
+    Loot/, LootMaster/     loot history, and the Loot Master
+    Markers/, Pace/, QoL/  boss markers, raid pace, quality of life
+  CRT_Data/
+    Bosses/Registry.lua    the boss library: every boss's shipped data, read by the features
+    Seasons/               season packs: one file per boss with all its properties
+  CRT_Media/
+    Media/                 textures: the icon, the alert rings, the rounded corner disc
+    Sounds/                the old place for your own sound files (see its README.txt)
+    Media Addon Template/  the CowfeeRaidTools_Media companion addon you copy once for your own sounds
+  CRT_Dev/                 never packaged
+    Dev/                   developer tools (their .toc lines are in the do-not-package block)
+    Tests/                 the test suite: bash CRT_Dev/Tests/test.sh
 ```
 
 - **Releases.** Pushing a tag such as `v0.12.0` runs the GitHub Actions workflow in `.github/workflows/release.yml`, which builds `CowfeeRaidTools-v0.12.0.zip` with the BigWigs packager (`BigWigsMods/packager`) and attaches it to a GitHub release.
-- **Saved data.** Everything lives in the `CRTDB` saved variable. New settings are added as defaults in `Core.lua` so existing saved data keeps loading.
+- **Saved data.** Everything lives in the `CRTDB` saved variable. New settings are added as defaults in `CRT_Core/Core.lua` so existing saved data keeps loading.
 - **After a patch.** Update `## Interface:` in the `.toc` to the new number from `/dump select(4, GetBuildInfo())`.
 
 ## License
