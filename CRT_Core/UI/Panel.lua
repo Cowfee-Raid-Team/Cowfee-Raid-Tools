@@ -177,6 +177,16 @@ function UI:RegisterLayer(key, frame)
     -- a pop-up comes in front of the other pop-ups when clicked
     if key == "popups" then
         frame:SetToplevel(true)
+    elseif key == "panel" or key == "timeline" then
+        -- the main window and the Timeline window come to the front, children and all, when clicked
+        -- or shown, so their frame levels never interleave
+        -- (Raise is a protected function: it can't run in combat on a frame holding secure buttons)
+        pcall(frame.SetToplevel, frame, true)
+        frame:HookScript("OnShow", function(self)
+            if not (InCombatLockdown() and self:IsProtected()) then
+                self:Raise()
+            end
+        end)
     end
 end
 
