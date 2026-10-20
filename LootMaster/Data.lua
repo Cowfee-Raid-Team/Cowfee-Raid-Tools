@@ -19,11 +19,12 @@ local LM = { listeners = {} }
 CRT.LootMaster = LM
 
 LM.PREFIX = "CRTLootRemaster" -- since 0.25 (0.24 was CRTLoot1). A new protocol gets a new word, never a number: a prefix is 16 characters at most
-LM.VERSION = "0.27.0"
+LM.VERSION = "0.28.0"
 -- The oldest leader's CRT a raider's auto-pass gate trusts (LootMaster/AutoPass.lua). The job that makes the
 -- leader roll Need or Greed must raise this to its own version, so no raider passes for a leader who doesn't roll.
 LM.LOOTING_SINCE = "0.27.0"
 LM.LOOTING_AWAY = 600 -- seconds the raid leader may be out of the instance (a wipe) before CRT Looting turns off
+LM.FILTER_SYNC_SINCE = "0.28.0" -- a receiver from this version on takes the loot filter in a sync (LootMaster/Sync.lua)
 LM.AUTO_TMOG_SINCE = "0.26.0" -- a looter from this version on accepts the built-in Transmog (LM.TRANSMOG)
 LM.HELLO_SECONDS = 5 -- after this, raiders who never said hello have no CRT
 LM.READY_SECONDS = 10 -- a raider who said hello but never got everything is sent the session again, once
@@ -287,6 +288,7 @@ LM.AUTHORITY_MAX = 6 -- named players with loot authority
 LM.LIMITS = {
     responseSeconds = { 20, 180, 5 },
     late = { 0, 30, 1 }, per10 = { 0, 10, 1 }, noShow = { 0, 50, 1 }, recover = { 0, 20, 1 }, weeks = { 1, 26, 1 },
+    filterIlvl = { 0, 500, 1 }, -- the Loot filter tab's lowest item level; 0 is any (LootMaster/Filter.lua)
 }
 LM.SCORE_WEIGHTS = { "late", "per10", "noShow", "recover", "weeks" } -- the Raider Score weights, in order
 

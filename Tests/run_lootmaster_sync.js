@@ -1,7 +1,9 @@
 // LootMaster/Sync.lua: the raid leader's Sync Master Loot. One Lua state plays every client in turn (who
 // you are and your saved settings are swapped), with the messages caught and delivered by hand: an older
 // client drops the new message kind, the round trip, who may send and who takes it, bad values cleaned,
-// the split into messages that fit, the "who has CRT" ask and the status line.
+// the split into messages that fit, the "who has CRT" ask and the status line. The loot filter's F part:
+// its round trip, an older leader's sync without it, bad values cleaned, and a 0.27 receiver (old_Sync.lua,
+// Sync.lua as it was before the F part) taking a new sync without an error.
 // Usage: node run_lootmaster_sync.js <addon folder>
 const fs = require('fs');
 const path = require('path');
@@ -9,7 +11,7 @@ const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate();
 lualib.luaL_openlibs(L);
 const harness = `
-local dataSrc, commSrc, syncSrc = ...
+local dataSrc, commSrc, syncSrc, filterSrc, oldSyncSrc = ...
 local fails, passes = 0, 0
 local function check(ok, what) if ok then passes = passes + 1 else fails = fails + 1 print("FAIL " .. what) end end
 local function eq(a, b, what) check(a == b, what .. " (got " .. tostring(a) .. ", want " .. tostring(b) .. ")") end
@@ -79,11 +81,15 @@ local function settings()
 end
 local DB = { Solex = settings(), Halo = settings(), Quick = settings(), Arrow = settings() }
 local CRT = { db = { lootmaster = DB.Solex } }
+-- Core.lua's loot filter defaults (run_lootmaster_filter.js checks Core.lua's own)
+CRT.defaults = { lootmaster = { filter = { boss = true, trash = false, quality = 4, ilvl = 0,
+  kinds = { bop = true, tier = true, boe = false, wue = false, toy = false, mount = false, cosmetic = false, other = false } } } }
 local function be(name) ME = name CRT.db.lootmaster = DB[name] end
 function CRT:Print(m) printed[#printed+1] = m end
 CRT.Groups = { Normalize = function(n) n = strtrim(n) if n == "" then return "" end if not n:find("-") then return n .. "-Sargeras" end return n end }
 assert(load(dataSrc, "Data.lua"))("CowfeeRaidTools", CRT)
 local LM = CRT.LootMaster
+assert(load(filterSrc, "Filter.lua"))("CowfeeRaidTools", CRT)
 local scoreChanged = 0
 LM.ScoreChanged = function() scoreChanged = scoreChanged + 1 end
 assert(load(commSrc, "Comm.lua"))("CowfeeRaidTools", CRT)
@@ -117,6 +123,8 @@ S.awardChannel = "OFFICER"
 S.noRoll = "no"
 S.score = { show = false, late = 9, per10 = 2, noShow = 20, recover = 6, weeks = 12 }
 S.authority = { leader = false, names = { "Halo-Sargeras", "Gone-Sargeras" } }
+S.filter = { boss = true, trash = true, quality = 3, ilvl = 245,
+  kinds = { bop = false, tier = true, boe = true, wue = true, toy = true, mount = false, cosmetic = true, other = false } }
 
 -- 2. Who has CRT: the leader asks, raiders with this version answer
 eq(LM:SyncPing(), true, "ping: the leader asks")
@@ -184,11 +192,23 @@ eq(H.popup.x, 2, "never synced: popup place")
 eq(H.answers.x, 3, "never synced: the raider window's place")
 eq(H.sort.scoreKey, "name", "never synced: sort")
 eq(H.showAllItems, false, "never synced: showAllItems")
+check(H.filter ~= nil and H.filter ~= S.filter, "round trip: the loot filter, a copy")
+eq(H.filter and H.filter.trash, true, "round trip: filter trash loot")
+eq(H.filter and H.filter.boss, true, "round trip: filter boss loot")
+eq(H.filter and H.filter.quality, 3, "round trip: filter quality")
+eq(H.filter and H.filter.ilvl, 245, "round trip: filter item level")
+for k, v in pairs(S.filter.kinds) do eq(H.filter and H.filter.kinds[k], v, "round trip: filter kind " .. k) end
+local fParts = 0
+for _, text in ipairs(box) do if text:find("^M|[%w]+:F|") then fParts = fParts + 1 end end
+eq(fParts, 1, "send: one F part")
 check(H.responses ~= S.responses and H.score ~= S.score, "round trip: copies, not the leader's tables")
 eq(printed[1], "Loot Master settings synced from Solex.", "round trip: told who synced it")
 eq(scoreChanged, scoreBefore + 1, "round trip: Raider Score worked out again")
 local ack = take()
 eq(#ack, 1, "round trip: one answer back")
+eq(ack[1]:match("^M|[%w]+:K|(.*)$"), LM.VERSION, "round trip: the answer carries the version")
+eq(LM.VERSION, "0.28.0", "this version is 0.28.0")
+check(LM.VersionAtLeast(LM.VERSION, LM.FILTER_SYNC_SINCE), "this version takes the loot filter in a sync")
 
 -- 5. Quick, the picked player, isn't on the list: takes it too
 be("Quick")
@@ -215,7 +235,7 @@ eq(printed[1], "Loot Master: Synced to 2 players: Quick, Halo. Not reached: Gone
 -- a named player in the group who never answers (no CRT, or an older one) isn't reached
 LM:SyncTo("Arrow-Kazzak")
 take()
-deliver({ "M|" .. LM.syncOut.id .. ":K" }, "Halo-Sargeras")
+deliver({ "M|" .. LM.syncOut.id .. ":K|0.28.0" }, "Halo-Sargeras")
 runTimers()
 eq(LM:SyncStatus(), "Synced to 1 player: Halo.\\nNot reached: Arrow, Gone.", "status: no answer is not reached")
 -- a typed name that isn't in the group
@@ -290,6 +310,32 @@ deliver({ "M|ord01:N|1,Halo-Sargeras", "M|ord01:T|2|world", "M|ord01:B|1,pass,88
 eq(DB.Halo.responseSeconds, 40, "order: applied once every part is in")
 eq(DB.Halo.awardMessage, "hello world", "order: pieces joined by their number")
 eq(#DB.Halo.authority.names, 0, "order: an empty list empties yours")
+eq(DB.Halo.filter, nil, "an older leader's sync (no F count in its header): your filter untouched")
+-- the F part: waited for when the header counts it, cleaned on receipt
+DB.Halo = settings()
+be("Halo")
+DB.Halo.filter = { boss = true, trash = false, quality = 5, ilvl = 100, kinds = { toy = true } }
+deliver({ "M|fil01:H|0.99.0|1|1|0|0|40|RAID|-|5|1|15|5|8|1|1", "M|fil01:N|1,Halo-Sargeras", "M|fil01:B|1,pass,888888,0,,Pass" }, "Solex-Sargeras")
+eq(DB.Halo.responseSeconds, 60, "filter: a header counting an F part waits for it")
+deliver({ "M|fil01:F|0|1|9|99999|toy, mount,bogus,,other" }, "Solex-Sargeras")
+eq(DB.Halo.responseSeconds, 40, "filter: applied once the F part is in")
+local HF = DB.Halo.filter
+eq(HF.boss, false, "filter clean: boss off")
+eq(HF.trash, true, "filter clean: trash on")
+eq(HF.quality, 5, "filter clean: an unknown quality keeps yours")
+eq(HF.ilvl, 500, "filter clean: item level at most 500")
+eq(HF.kinds.toy, true, "filter clean: a named kind on")
+eq(HF.kinds.mount, true, "filter clean: spaces around a kind trimmed")
+eq(HF.kinds.other, true, "filter clean: the last kind")
+eq(HF.kinds.bop, false, "filter clean: a kind not named is off")
+eq(HF.kinds.bogus, nil, "filter clean: an unknown kind dropped")
+take()
+deliver({ "M|fil02:F|1|0|4|abc|", "M|fil02:N|1,Halo-Sargeras", "M|fil02:B|1,pass,888888,0,,Pass", "M|fil02:H|0.99.0|1|1|0|0|45|RAID|-|5|1|15|5|8|1|1" }, "Solex-Sargeras")
+eq(DB.Halo.responseSeconds, 45, "filter: the F part first still applies")
+eq(DB.Halo.filter.ilvl, 500, "filter clean: an item level that isn't a number keeps yours")
+eq(DB.Halo.filter.quality, 4, "filter: quality 4")
+eq(DB.Halo.filter.kinds.toy, false, "filter: no kinds named, all off")
+take()
 
 -- 10. The Clamp and cleaners on their own
 eq(LM.Clamp("responseSeconds", 62), 60, "clamp: to the 5 s step")
@@ -320,9 +366,22 @@ take()
 runTimers()
 eq(LM:SyncStatus(), "Not synced to anyone.\\nNot reached: Quick, Halo, Gone.", "queue: then the line says who got it")
 fired = {}
-deliver({ "M|" .. id .. ":K" }, "Quick-Sargeras")
+deliver({ "M|" .. id .. ":K|0.28.0" }, "Quick-Sargeras")
 eq(fired[#fired], "sync", "late answer: the page is told")
 eq(LM:SyncStatus(), "Synced to 1 player: Quick.\\nNot reached: Halo, Gone.", "late answer: the line changes")
+-- an answer with no version is from a CRT older than the loot filter: synced, but the status says so
+deliver({ "M|" .. id .. ":K" }, "Halo-Sargeras")
+eq(LM:SyncStatus(), "Synced to 2 players: Quick, Halo.\\nNot reached: Gone.\\nSynced, but their CRT is too old for the loot filter: Halo.", "old answer: too old for the loot filter")
+deliver({ "M|" .. id .. ":K|0.27.0" }, "Halo-Sargeras")
+check(LM:SyncStatus():find("too old for the loot filter: Halo", 1, true) ~= nil, "a 0.27 version: too old for the loot filter")
+deliver({ "M|" .. id .. ":K|0.28.0" }, "Halo-Sargeras")
+eq(LM:SyncStatus(), "Synced to 2 players: Quick, Halo.\\nNot reached: Gone.", "a 0.28 answer: no note")
+-- the ask's answer carries the version too
+be("Halo")
+deliver({ "M|ask01:P" }, "Solex-Sargeras")
+local pong = take()
+eq(pong[1], "M|ask01:K|" .. LM.VERSION, "ask: the answer carries the version")
+be("Solex")
 fired = {}
 deliver({ "M|other:K" }, "Halo-Sargeras")
 eq(#fired, 0, "an answer to another sync changes nothing")
@@ -419,13 +478,33 @@ eq(got, "RAID", "guild channel: Raid when not your guild's")
 eq(line, "Loot Master settings synced from Solex. Send to: that guild channel isn't open to you, so Raid.", "guild channel: said")
 eq((syncSendTo("SELF")), "SELF", "other places: kept")
 
+-- 15. A 0.27 receiver (Sync.lua before the F part) takes a new leader's sync: the F part and the header's
+-- extra field are dropped without an error, and the rest applies
+local before27 = fails
+assert(load(oldSyncSrc, "old_Sync.lua"))("CowfeeRaidTools", CRT)
+DB.Halo = settings()
+be("Halo")
+DB.Halo.filter = { boss = true, trash = false, quality = 5, ilvl = 100, kinds = { toy = true } }
+printed = {}
+deliver(box, "Solex-Sargeras")
+eq(fails, before27, "0.27 receiver: no error")
+eq(DB.Halo.responseSeconds, 95, "0.27 receiver: the rest of the sync applies")
+eq(DB.Halo.awardChannel, "OFFICER", "0.27 receiver: Send to applies")
+eq(DB.Halo.filter.quality, 5, "0.27 receiver: its filter untouched")
+eq(printed[1], "Loot Master settings synced from Solex.", "0.27 receiver: told who synced it")
+local oldAck = take()
+eq(#oldAck, 1, "0.27 receiver: answers that it applied")
+eq(oldAck[1]:find("^M|[%w]+:K$") ~= nil, true, "0.27 receiver: its answer has no version, so the leader says it is too old for the filter")
+deliver({ "M|only1:F|1|1|2|0|toy" }, "Solex-Sargeras")
+eq(fails, before27, "0.27 receiver: an F part alone is dropped without an error")
+
 print(string.format("%d passed, %d failed", passes, fails))
 if fails > 0 then error("failures") end
 `;
 const dir = process.argv[2];
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
-for (const f of ['LootMaster/Data.lua', 'LootMaster/Comm.lua', 'LootMaster/Sync.lua']) {
+for (const f of ['LootMaster/Data.lua', 'LootMaster/Comm.lua', 'LootMaster/Sync.lua', 'LootMaster/Filter.lua', 'Tests/old_Sync.lua']) {
   const p = path.join(dir, f);
   lua.lua_pushstring(L, to_luastring(fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : 'error("missing ' + f + '")'));
 }
-if (lua.lua_pcall(L, 3, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
+if (lua.lua_pcall(L, 5, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }

@@ -65,6 +65,7 @@ Loot\Capture.lua
 Loot\RCLC.lua
 Loot\Page.lua
 LootMaster\Data.lua
+LootMaster\Filter.lua
 LootMaster\Score.lua
 LootMaster\Comm.lua
 LootMaster\Sync.lua
@@ -77,6 +78,7 @@ LootMaster\RaiderWindow.lua
 LootMaster\Trade.lua
 LootMaster\Test.lua
 LootMaster\LootingPrompt.lua
+LootMaster\FilterTab.lua
 LootMaster\Page.lua
 Timeline\Data.lua
 Timeline\Journal.lua

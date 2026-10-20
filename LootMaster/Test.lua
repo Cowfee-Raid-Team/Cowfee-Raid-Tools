@@ -6,7 +6,8 @@ local ADDON, CRT = ...
 -- window and double-click trading all work as in a real session; nothing is passed or written to Loot
 -- History, and the award message is shown only to you. The items are real ones from your own loot: picked at
 -- random from Loot History and RCLootCouncil's awards, so their icons and tooltips work, one per slot (or kind
--- of item) first so each test shows a mix; FALLBACK is only used when you have none.
+-- of item) first so each test shows a mix; FALLBACK is only used when you have none. Items that pass your loot
+-- filter are picked first, and the chat says when too few do.
 --   /crt loot test [count]   start a test (count 1-8, default 4)
 --   /crt loot window         show the looter window again
 --   /crt loot popup          show your raider popup again
@@ -81,18 +82,60 @@ local function pool(count)
     return out
 end
 
+-- The picks: items that pass your loot filter (LootMaster/Filter.lua; a sample counts as boss loot), those
+-- the game described in full first, then those let through on a part it couldn't read; then others when too
+-- few pass. The pool is shuffled and read only until count items pass in full, so a long Loot History
+-- isn't read item by item (a token's tooltip each). Returns the items and how many passed.
 local function samples(count, random)
+    random = random or math.random
+    local order = pool(count)
+    for i = #order, 2, -1 do
+        local j = random(i)
+        order[i], order[j] = order[j], order[i]
+    end
+    local filter, pass, unread, rest = LM:Filter(), {}, {}, {}
+    for _, e in ipairs(order) do
+        if #pass >= count then
+            break
+        end
+        local ok, why = LM.PassesFilter(LM.ItemFacts(e.itemString, "boss"), filter)
+        if ok and why == "unreadable" then
+            unread[#unread + 1] = e
+        elseif ok then
+            pass[#pass + 1] = e
+        else
+            rest[#rest + 1] = e
+        end
+    end
+    local picked = LM.PickSamples(pass, count, random)
+    local passed = #picked
+    for _, list in ipairs({ unread, rest }) do
+        if list == rest then
+            passed = #picked
+        end
+        if #picked < count then
+            for _, e in ipairs(LM.PickSamples(list, count - #picked, random)) do
+                picked[#picked + 1] = e
+            end
+        end
+    end
     local out = {}
-    for i, e in ipairs(LM.PickSamples(pool(count), count, random)) do
+    for i, e in ipairs(picked) do
         out[i] = { itemString = short(e.itemString), link = e.link, ilvl = C_Item.GetDetailedItemLevelInfo(e.link or e.itemString) }
     end
-    return out
+    return out, passed
 end
 
 -- random: optional, for tests (see LM.PickSamples).
 function LM:Test(count, random)
     count = math.max(1, math.min(LM.MAX_ITEMS, tonumber(count) or DEFAULT_COUNT))
-    local items = samples(count, random)
+    local items, passed = samples(count, random)
+    if passed == 0 then
+        CRT:Print("Loot Master test: none of your sample items pass the loot filter, so the test uses others.")
+    elseif passed < #items then
+        CRT:Print(string.format("Loot Master test: only %d of your sample items %s the loot filter, so the test adds %d %s.",
+            passed, passed == 1 and "passes" or "pass", #items - passed, #items - passed == 1 and "other" or "others"))
+    end
     local s = self:Start(items, true)
     if s then
         CRT:Print(string.format("Loot Master test: %d sample items sent to %s. Nothing is passed; you can test trading a given-out item by double-clicking it.",

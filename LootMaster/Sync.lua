@@ -2,18 +2,26 @@ local ADDON, CRT = ...
 
 -- Sync Master Loot: the raid leader sends their Loot Master settings to a player they pick and to every
 -- name on their loot authority list who is in the group (Settings tab). Synced: the response buttons, time
--- to answer, the award message, Send to, the no-roll text, the Raider Score weights and the authority list.
+-- to answer, the award message, Send to, the no-roll text, the Raider Score weights, the loot filter and the
+-- authority list.
 -- Never synced: window places, sort, showAllItems, the Score column switch, anything of a session.
 --
 -- One message kind, M, on LM.PREFIX to the group channel: "M|<id>:<part>|<fields>". An older CRT drops a
 -- kind it doesn't know (Comm.lua's receive), so it ignores every M. Parts of one sync share its id:
 --   H  the header: version, then how many N, B, A and T parts' entries follow, then responseSeconds,
---      awardChannel, noRoll, the score weights (LM.SCORE_WEIGHTS order) and the authority leader flag (1/0)
+--      awardChannel, noRoll, the score weights (LM.SCORE_WEIGHTS order), the authority leader flag (1/0)
+--      and (since 0.28) how many F parts follow (1). A header without it (an older leader) has none, and the
+--      receiver keeps its own filter.
 --   N  who it is for, packed (Wire.Pack): index, Name-Realm
 --   B  the buttons, packed like a session's B: index, key, colour, weight, icon, label
 --   A  the authority names, packed: index, Name-Realm
 --   T  the award message in pieces, so commas and long texts come through: index, text
---   P  the leader asks who has a CRT that takes a sync; K is the answer, and also "applied" after a sync
+--   F  the loot filter (LootMaster/Filter.lua), since 0.28: boss (1/0), trash (1/0), quality, item level, and
+--      the ticked kinds' keys joined by commas. An older receiver drops a part it doesn't know (below), and
+--      the extra header field, so it still applies the rest.
+--   P  the leader asks who has a CRT that takes a sync; K is the answer, and also "applied" after a sync. From
+--      0.28 K carries the sender's version, so the leader can tell who took the loot filter (an older K has
+--      none: that CRT is older than LM.FILTER_SYNC_SINCE and dropped the F part)
 -- A receiver keeps the parts until all are in (in any order), then applies them only when the sender is
 -- its current raid leader and it is named in N. Every value is cleaned with the Settings tab's own rules,
 -- and a Send to the receiver can't post to (LM.CanPostTo) becomes Raid. Parts still missing SYNC_KEEP seconds
@@ -77,6 +85,7 @@ function LM:SyncMessages(id, recipients)
         head[#head + 1] = LM.Clamp(k, score[k])
     end
     head[#head + 1] = leaderOK and 1 or 0
+    head[#head + 1] = 1 -- one F part
     out[#out + 1] = Wire.Encode("M", head)
     pack("N", rec)
     pack("B", buttons)
@@ -84,11 +93,19 @@ function LM:SyncMessages(id, recipients)
     for i, c in ipairs(chunks) do
         out[#out + 1] = Wire.Encode("M", { id .. ":T", i, c })
     end
+    local filter, ticked = self:Filter(), {}
+    for _, k in ipairs(LM.FILTER_KINDS) do
+        if filter.kinds[k] then
+            ticked[#ticked + 1] = k
+        end
+    end
+    out[#out + 1] = Wire.Encode("M", { id .. ":F", filter.boss and 1 or 0, filter.trash and 1 or 0, filter.quality,
+        filter.ilvl, table.concat(ticked, ",") })
     return out
 end
 
 -- The last sync you sent: { id, sent = { names in the group }, missing = { names not in it },
--- acked = { [name] = true }, done }.
+-- acked = { [name] = the version their K gave, "" for none }, done }.
 LM.syncOut = nil
 -- Group members whose CRT answered an ask or a sync: { [Name-Realm] = true }.
 LM.syncCapable = {}
@@ -110,10 +127,13 @@ function LM:SyncStatus()
     if not o.done then
         return string.format("Sending to %s...", short(o.sent))
     end
-    local reached, missed = {}, {}
+    local reached, missed, old = {}, {}, {}
     for _, n in ipairs(o.sent) do
         if o.acked[n] then
             reached[#reached + 1] = n
+            if not LM.VersionAtLeast(o.acked[n], LM.FILTER_SYNC_SINCE) then
+                old[#old + 1] = n
+            end
         else
             missed[#missed + 1] = n
         end
@@ -129,6 +149,9 @@ function LM:SyncStatus()
     end
     if #missed > 0 then
         text = text .. "\nNot reached: " .. short(missed) .. "."
+    end
+    if #old > 0 then
+        text = text .. "\nSynced, but their CRT is too old for the loot filter: " .. short(old) .. "."
     end
     return text
 end
@@ -251,6 +274,7 @@ PARTS.H = function(p, f)
         h.score[k] = f[9 + i]
     end
     h.leader = f[10 + #LM.SCORE_WEIGHTS] ~= "0"
+    h.nFilter = f[11 + #LM.SCORE_WEIGHTS] == "1" and 1 or 0 -- missing from an older leader: no filter
     p.head = h
 end
 
@@ -276,6 +300,19 @@ PARTS.B = list("buttons", function(e)
     return { key = e[2], color = Wire.ParseColor(e[3]), weight = tonumber(e[4]) or 0,
         icon = e[5] ~= "" and e[5] or nil, label = e[6] or e[2] }
 end)
+-- The filter as sent: every kind this version knows is off unless named.
+PARTS.F = function(p, f)
+    local kinds = {}
+    for _, k in ipairs(LM.FILTER_KINDS) do
+        kinds[k] = false
+    end
+    for k in (tostring(f[6] or "") .. ","):gmatch("%s*(.-)%s*,") do
+        if kinds[k] ~= nil then
+            kinds[k] = true
+        end
+    end
+    p.filter = { boss = f[2] == "1", trash = f[3] == "1", quality = f[4], ilvl = f[5], kinds = kinds }
+end
 PARTS.T = function(p, f)
     local i = index(f[2])
     if i then
@@ -286,7 +323,7 @@ end
 local function complete(p)
     local h = p.head
     return h and count(p.rec) >= h.nRec and count(p.buttons) >= h.nButtons and count(p.names) >= h.nNames
-        and count(p.chunks) >= h.nChunks
+        and count(p.chunks) >= h.nChunks and (h.nFilter == 0 or p.filter ~= nil)
 end
 
 -- The values in order, 1 to n (all there: complete() checked).
@@ -330,10 +367,13 @@ local function apply(p)
         end
     end
     set.authority = { leader = h.leader, names = names }
+    if h.nFilter > 0 then
+        set.filter = LM.CleanFilter(p.filter, LM:Filter()) -- a bad quality or item level keeps your own
+    end
     if LM.ScoreChanged then
         LM.ScoreChanged()
     end
-    LM.SendText(Wire.Encode("M", { p.id .. ":K" }))
+    LM.SendText(Wire.Encode("M", { p.id .. ":K", LM.VERSION }))
     local line = string.format("Loot Master settings synced from %s.", Ambiguate(p.from, "short"))
     if closed then
         line = line .. string.format(" Send to: %s isn't open to you, so Raid.", LM.PlaceName(closed))
@@ -341,6 +381,7 @@ local function apply(p)
     CRT:Print(line)
     LM:Fire("responses")
     LM:Fire("authority")
+    LM:Fire("filter")
 end
 
 LM.Handle("M", function(f, sender)
@@ -353,7 +394,7 @@ LM.Handle("M", function(f, sender)
         LM.syncCapable[sender] = true
         local o = LM.syncOut
         if o and o.id == id then
-            o.acked[sender] = true
+            o.acked[sender] = f[2] or "" -- the version; none from a CRT older than 0.28
             LM:Fire("sync") -- a late answer updates the line too
         end
         return
@@ -362,7 +403,7 @@ LM.Handle("M", function(f, sender)
         return -- only from your current raid leader (your own come back to you in a raid)
     end
     if part == "P" then
-        LM.SendText(Wire.Encode("M", { id .. ":K" }))
+        LM.SendText(Wire.Encode("M", { id .. ":K", LM.VERSION }))
         return
     end
     local read = PARTS[part]
