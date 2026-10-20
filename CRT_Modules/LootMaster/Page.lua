@@ -48,7 +48,7 @@ local TEXT = {
     test = "Test", window = "Looter window", popup = "My popup", endSession = "End session",
     items = "Items",
     crtLooting = "CRT Looting",
-    crtLootingHelp = "When CRT Looting is on, every raider with CRT will pass the game's roll so the raid leader gets each boss item to give out. Only the raid leader turns it on or off, for everyone, in a raid instance; CRT asks them on the way in. It starts off after a /reload, until the leader's next word. A wipe keeps it on while the leader is in the open world for up to 10 minutes; entering any other instance turns it off.\n\nThis version shows the state only. It doesn't pass any roll yet.",
+    crtLootingHelp = "When CRT Looting is on, CRT passes your roll on boss loot as soon as the game shows it, and the raid leader's CRT rolls Need (else Greed, else Transmog), so the leader gets each boss item to give out. Only the raid leader turns it on or off, for everyone, in a raid instance; CRT asks them on the way in. It starts off after a /reload, until the leader's next word. A wipe keeps it on while the leader is in the open world for up to 10 minutes; entering any other instance turns it off.\n\nCRT doesn't pass, and you roll yourself, when:\n- a test session is running\n- you aren't in the instance the leader said Yes for\n- the leader turned it off, changed, or is offline\n- the leader is out of the instance, or quiet for 90 seconds\n- the leader's CRT is too old\n- you are in a finder group, or in a party with Enable in party off\n- the loot isn't from a boss killed here in the last 10 minutes\n\nChat says each pass, and why when a boss's loot isn't passed.",
     turnOn = "Turn on", turnOff = "Turn off for everyone",
     awarded = "given to %s (%s)",
     open = "open",
