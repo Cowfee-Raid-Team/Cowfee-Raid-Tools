@@ -24,10 +24,10 @@ fi
 export NODE_PATH="$mods"
 
 bash "$here/run_all.sh" "$root" > "$out" 2>&1
-groups=$(grep -c '^== ' "$out")
-passed=$(grep -cE '^(ok|PASS) ' "$out")
+groups=$(grep -ac '^== ' "$out") # -a: a harness may print NUL bytes; without it grep reads the log as binary and misses lines
+passed=$(grep -acE '^(ok|PASS) ' "$out")
 # a group fails on a FAIL line, a Lua error, a non-zero exit, or an "N failed" summary with N > 0
-fails=$(grep -nE '^FAIL |LUA ERROR|^exit [1-9]|^[0-9]+ passed, [1-9][0-9]* failed|^[1-9][0-9]* failed' "$out")
+fails=$(grep -anE '^FAIL |LUA ERROR|^exit [1-9]|^[0-9]+ passed, [1-9][0-9]* failed|^[1-9][0-9]* failed' "$out")
 
 syntax=$(cd "$root" && node "$here/lua-syntax-check.cjs" . 2>&1 | grep -v '^OK')
 
