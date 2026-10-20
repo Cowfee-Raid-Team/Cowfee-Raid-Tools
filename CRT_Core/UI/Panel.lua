@@ -970,16 +970,77 @@ function UI:SetTabSelected(b, selected)
     end
 end
 
--- A small blue (?) that shows an explanation as a tooltip, used for every bit of extra context so the
+-- A small help icon that shows an explanation as a tooltip, used for every bit of extra context so the
 -- pages stay compact. text is a string, with paragraphs split on blank lines, or a function returning
 -- one, for text that changes. Anchor the returned button beside the heading or control it explains.
+-- Classic draws the game's gold "i" from the Appearances tab (MainHelpPlateButton in
+-- Blizzard_HelpPlate.xml: the "i", the ring and the additive hover glow) at HELP_SCALE, keeping the
+-- template's offsets, without inheriting its 64 px frame or its pulse. Modern draws a thin caramel ring
+-- (CRT_Media/Media/RingMedium.tga) round a caramel "i"; under the mouse it fills caramel
+-- (CRT_Media/Media/Disc.tga) and the "i" turns espresso. Its colours are UI.Tint keys, so a theme
+-- switch repaints them. The hit box is HELP_SIZE in both looks; b.crtHelp keeps the parts.
+UI.HELP_SIZE = 20
+local HELP_SCALE = 0.5 -- of the template's sizes: its visible ring is about 40 px across
+local HELP_MODERN = 16 -- the Modern ring, across
+local HELP_FONT, HELP_FONT_SIZE = "Fonts\\FRIZQT__.TTF", 11 -- a serif "i"
+local HELP_MEDIA = CRT.MEDIA or ("Interface\\AddOns\\" .. ADDON .. "\\CRT_Media\\Media\\") -- the fallback is for test harnesses without Core.lua
+UI.HELP_TEXTURES = {
+    i = "Interface\\common\\help-i",
+    ring = "Interface\\Minimap\\MiniMap-TrackingBorder",
+    glow = "Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight",
+    modernRing = HELP_MEDIA .. "RingMedium",
+    modernFill = HELP_MEDIA .. "Disc",
+}
+
+local function paintHelp(b)
+    local h = b.crtHelp
+    local modern = h.modern
+    h.i:SetShown(not modern)
+    h.ring:SetShown(not modern)
+    h.glow:SetAlpha(modern and 0 or 1)
+    h.circle:SetShown(modern)
+    h.fill:SetShown(modern and h.hover)
+    h.letter:SetShown(modern)
+    UI.Tint(h.letter, "SetTextColor", (modern and h.hover) and "espresso" or "caramel")
+end
+
+local function helpTexture(b, layer, file, size, x, y)
+    local t = b:CreateTexture(nil, layer)
+    t:SetTexture(file)
+    t:SetSize(size, size)
+    t:SetPoint("CENTER", b, "CENTER", x or 0, y or 0)
+    return t
+end
+
 function UI.Help(parent, title, text)
     local b = CreateFrame("Button", nil, parent)
-    b:SetSize(24, 16)
-    local fs = b:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    fs:SetPoint("CENTER")
-    fs:SetText("|cff80c0ff(?)|r")
+    b:SetSize(UI.HELP_SIZE, UI.HELP_SIZE)
+    local T, s = UI.HELP_TEXTURES, HELP_SCALE
+    local h = { modern = false, hover = false }
+    -- Classic: the template's three textures and offsets, scaled
+    h.i = helpTexture(b, "BACKGROUND", T.i, 46 * s)
+    h.ring = helpTexture(b, "BORDER", T.ring, 64 * s, 12 * s, -13 * s)
+    h.glow = helpTexture(b, "HIGHLIGHT", T.glow, 46 * s, -1 * s, 1 * s)
+    h.glow:SetBlendMode("ADD")
+    -- Modern: the fill under the ring, then the "i"
+    h.fill = helpTexture(b, "BACKGROUND", T.modernFill, HELP_MODERN)
+    h.circle = helpTexture(b, "BORDER", T.modernRing, HELP_MODERN)
+    UI.Tint(h.fill, "SetVertexColor", "caramel")
+    UI.Tint(h.circle, "SetVertexColor", "caramel")
+    h.letter = b:CreateFontString(nil, "OVERLAY")
+    h.letter:SetFont(HELP_FONT, HELP_FONT_SIZE, "")
+    h.letter:SetPoint("CENTER", b, "CENTER", 0, 0)
+    h.letter:SetText("i")
+    b.crtHelp = h
+    b.crtSkin = function(modern)
+        h.modern = modern and true or false
+        paintHelp(b)
+    end
+    UI.skinned[#UI.skinned + 1] = b
+    b.crtSkin(UI:IsModern())
     b:SetScript("OnEnter", function(self)
+        h.hover = true
+        paintHelp(self)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
         GameTooltip:SetText(title, 1, 1, 1)
         local body = type(text) == "function" and text() or text or ""
@@ -990,7 +1051,9 @@ function UI.Help(parent, title, text)
         end
         GameTooltip:Show()
     end)
-    b:SetScript("OnLeave", function()
+    b:SetScript("OnLeave", function(self)
+        h.hover = false
+        paintHelp(self)
         GameTooltip:Hide()
     end)
     return b
