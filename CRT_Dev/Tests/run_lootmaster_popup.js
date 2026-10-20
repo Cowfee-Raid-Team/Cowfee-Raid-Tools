@@ -98,8 +98,9 @@ UISpecialFrames, tinsert = {}, table.insert
 -- the game's quality colours and its loot border atlases (Blizzard_Colors: ITEM_QUALITY_COLORS, LOOT_BORDER_BY_QUALITY)
 ITEM_QUALITY_COLORS = { [3] = { r = 0, g = 0.44, b = 0.87 }, [4] = { r = 0.64, g = 0.21, b = 0.93 } }
 LOOT_BORDER_BY_QUALITY = { [2] = "loottoast-itemborder-green", [3] = "loottoast-itemborder-blue", [4] = "loottoast-itemborder-purple" }
-ColorManager = { GetAtlasDataForLootBorderItemQuality = function(q) return LOOT_BORDER_BY_QUALITY[q] end }
-local quality = { ["item:1"] = 4, ["item:2"] = 3 }
+ColorManager = { GetAtlasDataForLootBorderItemQuality = function(q) return LOOT_BORDER_BY_QUALITY[q] end,
+  GetColorDataForItemQuality = function(q) return ITEM_QUALITY_COLORS[q] end }
+local quality = { ["item:1"] = 4, ["item:2"] = 3, ["item:9"] = 99 }
 C_Item = {
   GetItemIconByID = function() return 134400 end,
   GetItemInfo = function(s) if quality[s] then return "Fang", "|cffa335ee[Fang]|r", quality[s] end end,
@@ -166,7 +167,7 @@ for _, b in ipairs(p.buttons) do
   local pt = last(b)
   local x, y = pt[2], pt[3]
   rows[y] = true
-  if x < 0 or x + b.w > p.w - 8 then inside = false end
+  if x < 12 or x + b.w > p.w - 12 then inside = false end
   for _, q in ipairs(placed) do
     if q.y == y and not (q.x + q.w <= x or x + b.w <= q.x) then overlap = true end
   end
@@ -177,7 +178,7 @@ for _ in pairs(rows) do nRows = nRows + 1 end
 eq(#p.buttons, 8, "8 buttons")
 check(p.buttons[1].w >= 12 * LETTER + 14 + 2 * 6, "a button holds its 12 letters and icon (" .. p.buttons[1].w .. ")")
 check(nRows <= 2, "8 buttons of 12 letters fit in 2 rows (got " .. nRows .. ")")
-check(inside, "the buttons stay inside the panel")
+check(inside, "the buttons stay inside the panel, clear of the border ring")
 check(not overlap, "no button overlaps another")
 
 -- Default: Blizzard: the roll frame's art
@@ -197,9 +198,16 @@ check(not p.plateFlat.shown and not p.slotFlat.shown, "classic: no flat plate or
 check(p.stone and p.stone.shown and p.stone.file == "Interface\\\\LootFrame\\\\LootToast" and near(p.stone.coords, { 0.28222656, 0.55273438, 0.30859375 }), "classic: the roll frame's stone background")
 eq(p.bg[4], 0, "classic: no dark flat fill over the stone")
 local own = UI.Stone(mock("Frame"))
-check(own.file == UI.STONE.file and near(own.coords, UI.STONE.coords) and own.all, "UI.Stone: the shared stone, covering its frame")
+check(own.file == UI.STONE.file and near(own.coords, UI.STONE.coords) and own.points[1][1] == "TOPLEFT" and own.points[1][2] == 0 and own.points[2][1] == "BOTTOMRIGHT", "UI.Stone: the shared stone, covering its frame")
 eq(p.edge[4], 0, "classic: the flat edge gives way to the border art")
 check(p.timer.shown ~= false and p.timer.fill and p.timer.fill[4] > 0, "classic: the background timer is still there, lighter over the stone")
+-- the game draws its border about 4.5 px outside the stone: the stone and the timer sit 4 in
+local function at(r, i) local q = r.points[i] return q and (q[1] .. " " .. q[2] .. " " .. q[3]) end
+eq(at(p.stone, 1), "TOPLEFT 4 -4", "classic: the stone 4 in at the top left")
+eq(at(p.stone, 2), "BOTTOMRIGHT -4 4", "classic: and at the bottom right")
+eq(at(p.timer, 1), "TOPLEFT 4 -4", "classic: the timer on the stone, not under the ring")
+eq(at(p.timer, 2), "BOTTOMLEFT 4 4", "classic: the timer's bottom on the stone too")
+check(p.close.points[1][2] <= -8, "the X clear of the border ring (" .. tostring(p.close.points[1][2]) .. ")")
 eq(p.close.normalAtlas, "lootroll-toast-icon-pass-up", "classic: the roll frame's X")
 check(p.close.highlightAtlas == "lootroll-toast-icon-pass-highlight" and p.close.pushedAtlas == "lootroll-toast-icon-pass-down", "classic: the X's hover and pressed art")
 check(rawget(p.close, "template") == nil, "the X is the roll frame's, not the window close button")
@@ -265,6 +273,7 @@ for _, name in ipairs({ "cowfee", "midnight" }) do
   check(strip.points[1][2] == 0 and strip.w == 520 and strip.bg.shown, name .. ": the flat strip full width")
   check(last(p)[2] == 0 and last(p)[3] == -(26 + 4), name .. ": the first item right under the strip, full width")
   eq(anchor.h, 26 + 4 + p.h + 4 + p2.h, name .. ": the popup ends at the last item")
+  eq(at(p.timer, 1), "TOPLEFT 1 -1", name .. ": the timer inside the 1 px edge")
 end
 -- and back to Default: Blizzard
 theme(false)
@@ -298,6 +307,35 @@ check(p.shown and autoFrame.shown == false, "shown again: the closed item is bac
 local p3
 for _, f in ipairs(frames) do if rawget(f, "note") and rawget(f, "buttons") and f ~= p and f ~= p2 then p3 = f end end
 fits("shown again", { p, p2, p3 })
+eq(at(p.timer, 1), "TOPLEFT 4 -4", "classic again: the timer back on the stone")
+
+-- the art's fallbacks: an unknown quality gets the roll frame's own default slot and no colour
+LM.incoming.items[3] = { itemString = "item:9", shownAt = 100 }
+UI:RepaintTheme()
+eq(p3.slot.atlas, "loottoast-itemborder-green", "an unknown quality: the default slot border")
+check(near(p3.rollBorder[1].vertex, { 1, 1, 1 }), "an unknown quality: the border uncoloured")
+-- without the game's ColorManager, or with one that lacks these lookups: the game's tables
+local cm = ColorManager
+for _, what in ipairs({ "no ColorManager", "a ColorManager without the lookups" }) do
+  ColorManager = what == "no ColorManager" and nil or {}
+  UI:RepaintTheme()
+  eq(p.slot.atlas, "loottoast-itemborder-purple", what .. ": the slot from LOOT_BORDER_BY_QUALITY")
+  check(near(p.rollBorder[1].vertex, { 0.64, 0.21, 0.93 }), what .. ": the colour from ITEM_QUALITY_COLORS")
+  eq(p2.slot.atlas, "loottoast-itemborder-blue", what .. ": a rare item still blue")
+end
+ColorManager = cm
+
+-- three rows of buttons (a wider font): the item grows by a row and the frame with it
+local twoRows = p.h
+LETTER = 11
+LM.incoming.responses = LM.CleanResponses(eight)
+UI:RepaintTheme()
+local ys, n3 = {}, 0
+for _, b in ipairs(p.buttons) do local y = last(b)[3] if not ys[y] then ys[y] = true n3 = n3 + 1 end end
+eq(n3, 3, "a wider font: three rows")
+eq(p.h, twoRows + 22 + 4, "three rows: the item one row taller")
+fits("three rows", { p, p2, p3 })
+LETTER = 7.5
 
 print(string.format("%d passed, %d failed", passes, fails))
 if fails > 0 then error("failures") end

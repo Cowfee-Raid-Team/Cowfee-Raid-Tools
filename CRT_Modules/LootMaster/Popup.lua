@@ -19,7 +19,7 @@ local UI = CRT.UI
 -- the answer buttons and Notes along the bottom.
 local L = {
     width = 520, -- 8 answers of 12 letters (LM.LABEL_MAX), each with an icon, fit in two rows
-    panelH = 112,
+    panelH = 116, -- the Notes row clear of the border ring at the bottom
     gap = 4, -- between panels
     headerH = 26, -- the title bar above the panels
     autoH = 22, -- the line saying which items were answered for you
@@ -29,14 +29,15 @@ local L = {
     insetRight = 6,
     frameBottom = 6, -- under the last item
 
-    pad = 8,
+    pad = 12, -- the buttons, Notes and detail line clear of the border ring
+    stoneInset = 4, -- the stone and the timer, inside the border (the game draws it about 4.5 px outside)
     icon = 36,
     iconInset = 12, -- the icon's top left, inside the roll frame's border
     slot = 44, -- the slot border around the icon (the roll frame draws 42 around a 34 icon)
     plateGap = 10, -- icon to name plate
     plateH = 24,
     plateCap = 12, -- the name plate's end pieces (16 by 32 in the game's art, drawn at the plate's height)
-    plateRight = 32, -- room for the X right of the plate
+    plateRight = 40, -- room for the X right of the plate, clear of the border ring
     close = 24, -- the X (the roll frame draws its 32)
     namePad = 8, -- the name inside the plate
     detailGap = 4, -- plate to the detail line
@@ -54,7 +55,7 @@ local L = {
 -- atlas per item quality (Blizzard_Colors ColorConstants.lua LOOT_BORDER_BY_QUALITY). Shown in Default:
 -- Blizzard only; the other themes draw the panel flat in their own colours.
 local ART = {
-    file = "Interface\\LootFrame\\LootToast", -- 1024 by 256
+    file = UI.STONE.file, -- LootToast, 1024 by 256; every piece is cut by UI.LootToastPiece
     texW = 1024,
     texH = 256,
     -- (its stone background is the shared UI.Stone)
@@ -169,12 +170,8 @@ local function slotAtlas(q)
     return type(atlas) == "string" and atlas or ART.slotDefault
 end
 
-local function artPiece(parent, layer, coords)
-    local t = parent:CreateTexture(nil, layer)
-    t:SetTexture(ART.file)
-    t:SetTexCoord(coords[1], coords[2], coords[3], coords[4])
-    return t
-end
+-- a part of LootToast cut out by its coordinates, the same way as the stone (CRT_Core/UI/Panel.lua)
+local artPiece = UI.LootToastPiece
 
 -- The roll frame's border as eight pieces around the panel: the corners keep their size, the edges
 -- stretch, so the art holds its shape on a panel wider and taller than the game's frame.
@@ -254,6 +251,13 @@ local function paintArt(p, itemString)
     p.slot:SetAtlas(slotAtlas(q))
     p.slot:SetShown(classic)
     p.stone:SetShown(classic)
+    local inset = classic and L.stoneInset or 1
+    if p.timerInset ~= inset then
+        p.timerInset = inset
+        p.timer:ClearAllPoints()
+        p.timer:SetPoint("TOPLEFT", inset, -inset)
+        p.timer:SetPoint("BOTTOMLEFT", inset, inset)
+    end
     p.plateFlat:SetShown(not classic)
     p.slotFlat:SetShown(not classic)
     p.slotFlat:SetBackdropBorderColor(r, g, b, 1)
@@ -365,10 +369,9 @@ local function panel(index)
     p:SetSize(L.width, L.panelH)
     p:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
     -- Default: Blizzard: the roll frame's stone, the timer lighter over it
-    p.stone = UI.Stone(p, "BACKGROUND", 0)
+    p.stone = UI.Stone(p, "BACKGROUND", 0, L.stoneInset)
+    -- placed by paintArt: on the stone in Default: Blizzard, inside the 1 px edge elsewhere
     p.timer = p:CreateTexture(nil, "BACKGROUND", nil, 2)
-    p.timer:SetPoint("TOPLEFT", 1, -1)
-    p.timer:SetPoint("BOTTOMLEFT", 1, 1)
     p.timer:SetColorTexture(1, 1, 1, L.timerAlpha)
     p:EnableMouse(true)
     p:RegisterForDrag("LeftButton")
@@ -608,7 +611,7 @@ local function build()
         for _, p in pairs(panels) do
             if p:IsShown() and inc.items[p.index] then
                 local left = timeLeft(inc.items[p.index], inc)
-                p.timer:SetWidth(math.max(0.01, (L.width - 2) * math.max(0, left) / (inc.seconds or 60)))
+                p.timer:SetWidth(math.max(0.01, (L.width - 2 * (p.timerInset or 1)) * math.max(0, left) / (inc.seconds or 60)))
             end
         end
         elapsed = elapsed + dt
