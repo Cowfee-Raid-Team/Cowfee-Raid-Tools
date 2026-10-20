@@ -84,8 +84,9 @@ local defaults = {
             },
         },
     },
-    -- The in-combat debuff panel. Every player has their own copy of these in their own saved
-    -- variables, so nothing here is shared between players. position is added when it is moved.
+    -- The debuff panel, shown in and out of combat while it is on. Every player has their own copy of
+    -- these in their own saved variables, so nothing here is shared between players. position is
+    -- added when it is moved. A new default reaches new players only: a saved value is never changed.
     debuffs = {
         enabled = true,
         size = 44, -- icon size in pixels
@@ -94,19 +95,20 @@ local defaults = {
         dispelIconScale = 0.35, -- that icon's size, as a fraction of the debuff icon (0.2 to 1)
         maxDuration = 300, -- leave out debuffs longer than this many seconds; 0 shows every length
         privateSlots = false, -- also the game's boss debuff slots, as a second row (a fallback)
-        -- The look: only what the game lets an addon pass to its own debuff icons.
+        -- The look: a dark frame, a big yellow countdown on the icon and outlined stacks (fonts,
+        -- colors and sizes in CRT_Modules/Debuffs/Panel.lua's LOOK table).
         swipe = true, -- the dark swipe that sweeps over the icon as the debuff runs out
         swipeEdge = true, -- the bright line on the swipe's edge
-        -- The timer: below, above, left, right or center (the game's timer text there), numbers (the
-        -- game's countdown numbers on the swipe instead) or hidden. A countdownNumbers key saved
-        -- before 0.13.1 may remain and is ignored.
-        timerPosition = "below",
+        -- The timer: center (big, on the icon), below, above, left or right (smaller, beside it),
+        -- numbers (the game's countdown numbers on the swipe instead) or hidden. A countdownNumbers
+        -- key saved before 0.13.1 may remain and is ignored.
+        timerPosition = "center",
         timerX = 0, -- nudges the timer text, in pixels
         timerY = 0,
-        borderScale = 1, -- the game's debuff border is the icon plus 5 x this many pixels, 0 to 6
+        borderScale = 2, -- the frame is the icon plus 5 x this many pixels (half on each side), 0 to 6
         spacing = 4, -- pixels between two icons' borders, 0 to 20; the border's own width is added to it
-        dispelBorder = false, -- color the border by the debuff's dispel type
-        dispelGlow = false, -- and a soft glow around it (only with dispelBorder)
+        dispelBorder = false, -- unused since the frame always takes the dispel color (20261020-debuffs-look); kept, as saved data only grows
+        dispelGlow = false, -- a soft glow in the dispel color around a dispellable debuff's frame
     },
     -- Raid notes. list[id] holds each imported or received note. window and alert hold the
     -- note window and personal alert settings, with position added when they are moved.
