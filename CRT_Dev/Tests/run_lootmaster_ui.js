@@ -6,7 +6,7 @@ const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate();
 lualib.luaL_openlibs(L);
 const harness = `
-local panelSrc, windowSrc, tabsSrc, popupSrc, dataSrc = ...
+local panelSrc, windowSrc, tabsSrc, popupSrc, dataSrc, gearSrc = ...
 local fails, passes = 0, 0
 local function check(ok, what) if ok then passes = passes + 1 else fails = fails + 1 print("FAIL " .. what) end end
 local function eq(a, b, what) check(a == b, what .. " (got " .. tostring(a) .. ", want " .. tostring(b) .. ")") end
@@ -67,7 +67,8 @@ CRT.MOCHA = { roast = { 0.165, 0.122, 0.098 }, edge = { 0.30, 0.235, 0.188 }, ca
   espresso = { 0.11, 0.078, 0.063 }, latte = { 0.87, 0.73, 0.56 }, stripTop = { 0.35, 0.25, 0.17 }, stripBottom = { 0.23, 0.17, 0.12 }, note = { 0.8, 0.71, 0.6 } }
 assert(load(panelSrc, "Panel.lua"))("CowfeeRaidTools", CRT)
 assert(load(windowSrc, "Window.lua"))("CowfeeRaidTools", CRT)
-assert(load(dataSrc, "Data.lua"))("CowfeeRaidTools", CRT) -- first: it makes CRT.LootMaster
+assert(load(gearSrc, "Gear.lua"))("CowfeeRaidTools", CRT) -- the gear engine, before any module, as in the .toc
+assert(load(dataSrc, "Data.lua"))("CowfeeRaidTools", CRT) -- first of Loot Master: it makes CRT.LootMaster
 CRT.db.lootmaster = {}
 CRT.LootMaster.Settings = function() return CRT.db.lootmaster end
 assert(load(tabsSrc, "Tabs.lua"))("CowfeeRaidTools", CRT)
@@ -387,6 +388,17 @@ LM.SetGear(gicon, { id = 77, ilvl = 600 }, "item:1")
 gicon.hit.scripts.OnEnter(gicon.hit)
 eq(tip.link, "item:77::real", "gear tooltip: your own row uses the equipped link")
 check(tip.byID == nil, "gear tooltip: own row does not fall back to the ID")
+eq(tip.lines, "Equipped at item level 600|", "gear tooltip: your own row has the item level line too")
+-- another raider's piece once their G part arrived: the exact item, through the gear engine
+tip = {}
+local FULL = "item:55:7364:213746::::::90:577::28:3:12667:12793:6652"
+LM.SetGear(gicon, { id = 55, ilvl = 610, itemString = FULL, slot = 11 }, nil)
+gicon.hit.scripts.OnEnter(gicon.hit)
+eq(tip.link, FULL, "gear tooltip: a raider's full item by its item string")
+check(tip.byID == nil, "gear tooltip: not by ID when the item string is known")
+eq(tip.lines, "Equipped at item level 610|", "gear tooltip: with the item level line")
+eq(tip.anchor, "ANCHOR_RIGHT", "gear tooltip: right of the icon")
+check(CRT.Gear.ShowTooltip ~= nil, "the gear engine shows it")
 tip = {}
 LM.SetGear(gicon, nil, nil)
 check(not gicon.shown and not gicon.hit.shown, "gear icon: an empty slot hides it")
@@ -398,5 +410,5 @@ if fails > 0 then error("failures") end
 `;
 const dir = process.argv[2];
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
-for (const f of ['CRT_Core/UI/Panel.lua', 'CRT_Core/UI/Window.lua', 'CRT_Modules/LootMaster/Tabs.lua', 'CRT_Modules/LootMaster/Popup.lua', 'CRT_Modules/LootMaster/Data.lua']) lua.lua_pushstring(L, to_luastring(fs.readFileSync(path.join(dir, f), 'utf8')));
-if (lua.lua_pcall(L, 5, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
+for (const f of ['CRT_Core/UI/Panel.lua', 'CRT_Core/UI/Window.lua', 'CRT_Modules/LootMaster/Tabs.lua', 'CRT_Modules/LootMaster/Popup.lua', 'CRT_Modules/LootMaster/Data.lua', 'CRT_Core/Gear.lua']) lua.lua_pushstring(L, to_luastring(fs.readFileSync(path.join(dir, f), 'utf8')));
+if (lua.lua_pcall(L, 6, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }

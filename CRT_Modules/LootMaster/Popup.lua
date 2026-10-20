@@ -76,21 +76,10 @@ function LM:MyItemLevel()
     return equipped and string.format("%.1f", equipped) or ""
 end
 
--- The gear you wear where this item goes: { { id, ilvl, link } }, lowest item level first.
+-- The gear you wear where this item goes: { { slot, id, itemString, link, ilvl } }, lowest item level
+-- first. The gear engine reads it (CRT_Core/Gear.lua).
 function LM:MyGear(itemString)
-    local out = {}
-    local _, _, _, equipLoc = C_Item.GetItemInfoInstant(itemString or "")
-    for _, slot in ipairs(LM.SLOTS[equipLoc] or {}) do
-        local link = GetInventoryItemLink("player", slot)
-        if link then
-            local ilvl = C_Item.GetDetailedItemLevelInfo(link)
-            out[#out + 1] = { id = GetInventoryItemID("player", slot), ilvl = ilvl, link = link }
-        end
-    end
-    table.sort(out, function(a, b)
-        return (a.ilvl or 0) < (b.ilvl or 0)
-    end)
-    return out
+    return CRT.Gear:ForItem(itemString)
 end
 
 -- Panels -----------------------------------------------------------------------------------------------

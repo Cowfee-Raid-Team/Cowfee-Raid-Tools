@@ -27,10 +27,10 @@ end
 -- The gear icons of a loot window row (both windows). The texture sits under a small button that shows the
 -- item's tooltip and hands its clicks to the row, so picking a row and its menu work over the icon too.
 --   local t = LM.GearIcon(row, x)       -- the icon; t.hit is the button over it
---   LM.SetGear(t, g, ownItemString)     -- g = { id, ilvl } or nil; ownItemString only on your own row
--- Another raider's gear arrives as item ID and item level only, so the tooltip is the item by its ID plus
--- an "Equipped at item level" line. On your own row the real equipped link is used.
-local GEAR_TEXT = { equippedAt = "Equipped at item level %d" }
+--   LM.SetGear(t, g, ownItemString)     -- g = { id, ilvl, itemString } or nil; ownItemString only on your own row
+-- The tooltip is the gear engine's (CRT.Gear.ShowTooltip): the exact item once the raider's G part brought
+-- its item string, else the item by its ID; both with an "Equipped at item level" line. On your own row your
+-- real equipped piece is used.
 
 function LM.GearIcon(row, x)
     local t = row:CreateTexture(nil, "OVERLAY")
@@ -51,23 +51,15 @@ function LM.GearIcon(row, x)
         if not g or not g.id then
             return
         end
-        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        local link
-        if self.own then
+        local piece = g
+        if self.own and not g.itemString then
             for _, m in ipairs(LM:MyGear(self.own)) do
-                if m.id == g.id and (not link or math.floor((m.ilvl or 0) + 0.5) == g.ilvl) then
-                    link = m.link
+                if m.id == g.id and (piece == g or math.floor((m.ilvl or 0) + 0.5) == g.ilvl) then
+                    piece = m
                 end
             end
         end
-        local exact = link and pcall(GameTooltip.SetHyperlink, GameTooltip, link)
-        if not exact then
-            GameTooltip:SetItemByID(g.id)
-        end
-        if not exact and g.ilvl and g.ilvl > 0 then
-            GameTooltip:AddLine(string.format(GEAR_TEXT.equippedAt, g.ilvl), 0.85, 0.85, 0.85)
-        end
-        GameTooltip:Show()
+        CRT.Gear.ShowTooltip(self, piece, "ANCHOR_RIGHT")
     end)
     b:SetScript("OnLeave", function()
         GameTooltip:Hide()

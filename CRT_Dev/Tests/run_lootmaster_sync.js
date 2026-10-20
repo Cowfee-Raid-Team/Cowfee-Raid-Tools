@@ -207,7 +207,7 @@ eq(scoreChanged, scoreBefore + 1, "round trip: Raider Score worked out again")
 local ack = take()
 eq(#ack, 1, "round trip: one answer back")
 eq(ack[1]:match("^M|[%w]+:K|(.*)$"), LM.VERSION, "round trip: the answer carries the version")
-eq(LM.VERSION, "0.29.0", "this version is 0.29.0")
+eq(LM.VERSION, "0.30.0", "this version is 0.30.0")
 check(LM.VersionAtLeast(LM.VERSION, LM.FILTER_SYNC_SINCE), "this version takes the loot filter in a sync")
 
 -- 5. Quick, the picked player, isn't on the list: takes it too

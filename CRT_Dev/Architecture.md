@@ -3,7 +3,7 @@ type: reference
 area: wow-addons
 status: active
 created: 2026-10-12
-updated: 2026-10-19
+updated: 2026-10-20
 tags: [wow, addon, lua, architecture]
 ---
 
@@ -21,6 +21,7 @@ Files load in the order the `.toc` lists them. Each file starts with `local ADDO
 |---|---|---|
 | 1 | `CRT_Core/Core.lua` | Creates `CRT`, the default settings, the `CRTDB` saved variable, `CRT:Print`, and the scaled font objects |
 | 1b | `CRT_Core/Themes.lua` | The themes, their palettes and `CRT.MOCHA`, the palette in use |
+| 1c | `CRT_Core/Gear.lua` | The gear engine, `CRT.Gear`: your equipped gear, other players' gear, the wire format and the tooltip |
 | 2 | `CRT_Core/Slash.lua` | The `/crt` command |
 | 3 | `CRT_Core/UI/Panel.lua` | The main window, the left menu and the page registry |
 | 4 | `CRT_Modules/Groups/Data.lua` | Names, rosters, roles, the working grid, saved layouts, export and import |
@@ -189,6 +190,20 @@ Since the alerts engine, `CRT_Modules/Notes/Engine.lua` no longer keeps its own 
 **RCLootCouncil**, read only (`CRT_Modules/Loot/RCLC.lua`, to be removed once Loot Master handles loot itself): `RCLootCouncilLootDB.factionrealm["<Faction> - <Realm>"][winner] = { entry, ... }`, every field listed in the `WIRE` block at the top of the file. `RC.ParseTime` reads both date formats RCLootCouncil has used (`YYYY/MM/DD`, and `DD/MM/YY` in older data). Each award is read into one shape (response, colour, votes, note, roll, item level, owner, instance, the gear replaced, and `candidates` from `sessionResponses`, named through `RC:ResponseName`, which learns response numbers from the awards themselves). An award matching a record (same winner and item ID within 4 hours) goes in `Loot.rc[record]`; the rest go in `RC.unmatched`, newest first. Nothing is saved: a scan runs at login, a minute after new loot, and with Re-scan. Test: `run_loot_rclc.js` in the harness folder.
 
 **The page.** History is a `WowScrollBoxList` with `CreateScrollBoxListLinearView` and `ScrollUtil.InitScrollBoxListWithScrollBar`, so only the visible rows exist; new loot is inserted into the data provider, a change re-initialises the visible rows, and a filter change or delete builds a new provider. A list entry is `{ rec, month }` or `{ award, month }` (an RCLootCouncil award on its own), and `fieldsOf(entry)` reads either into the same fields for the list, filters, summary and export. Columns: date, player, item, boss, difficulty, roll or response, votes, note, and Had (icons of the gear replaced); the tooltip adds every candidate. Filters are dropdowns (player, boss, difficulty, month, roll, and Source: recorded by CRT or RCLootCouncil only) built from the records, plus a search over lowercase item, player and boss names (cached per record, the item's name once the game has loaded it). Export CSV gives the filtered view in the copy box, with date, time, player, class, item ID and name, boss, instance, difficulty, roll, source, and the RCLootCouncil response, votes, roll, item level, note, gear replaced and candidate count. Summary counts each player's items and tier tokens (items the game files as Miscellaneous, Junk) in the same view. `/crt dev loot add`, `fill`, `stats` and `rc` (`CRT_Dev/Dev/Loot.lua`, developer builds only).
+
+## Gear engine
+
+`CRT_Core/Gear.lua` (`CRT.Gear`, loaded after `Themes.lua`, before any module) is the one source of truth for equipped gear. No module reads equipped items on its own; it asks the engine. The engine knows no feature. A piece is `{ slot, id, itemString, link, ilvl }`: `slot` an inventory slot id, `itemString` the link's `item:...` part with its empty tail dropped (bonus IDs, gems, enchant and crafter kept, at most `Gear.ITEM_STRING_MAX` bytes), `link` only on your own pieces, `ilvl` the item level with upgrades.
+
+- **Slots.** `Gear.SLOTS` lists the worn-gear slots (`{ id, key, name }`, the shirt and tabard left out; `name` is the game's `HEADSLOT`-style string). `Gear.EQUIP_LOCS` maps an equip location to its slots, and `Gear.SLOTS_FOR(equipLoc)` returns a copy. `LM.SLOTS` is an alias of `Gear.EQUIP_LOCS` for older callers.
+- **Yours.** `Gear:Mine(slot)`, `Gear:MineAll()` and `Gear:ForItem(itemString)` (your pieces in that item's slots, lowest item level first) read a cache. It fills on first use and on `PLAYER_ENTERING_WORLD`, refreshes one slot on `PLAYER_EQUIPMENT_CHANGED`, and reads a slot again on `ITEM_DATA_LOAD_RESULT` when its item level wasn't loaded (asked with `C_Item.RequestLoadItemDataByID`). Every game call is in pcall and a secret value reads as empty. `Gear:OnChange(fn)` calls `fn(slot)` when a slot's piece changes. `LM:MyGear` is a thin call to `ForItem`.
+- **Other players.** `Gear:Remember(player, pieces, source)` keeps pieces by full Name-Realm and slot, with `time()` and the source (such as `"lootmaster"`); `Gear:Of(player, slot)` and `Gear:When(player)` read them back. Memory only; a CRTDB table would plug in at `Remember` (a comment marks the spot).
+- **Wire format.** `Gear.Encode(piece)` gives `"<slot>~<itemString>~<ilvl>"` (ilvl empty when unknown) and `Gear.Decode(text)` gives `{ slot, id, itemString, ilvl }`; both refuse junk and secret values. `Gear.PackMany(pieces, budget)` returns chunks of encoded texts, each within `budget` bytes joined with one-byte separators, and the pieces left out. One piece is at most 238 bytes, so it always fits a message.
+- **Display.** `Gear.ShowTooltip(owner, piece, anchor)` shows the exact item with `SetHyperlink` on the item string when there is one, else `SetItemByID`, then "Equipped at item level N".
+
+A new feature that needs gear: read your own with `Mine`/`ForItem`/`MineAll` and listen with `OnChange`; to share it, send `Encode`d pieces chunked by `PackMany` under your message's own head, `Decode` them on arrival and `Remember` them with your source name; show any piece with `ShowTooltip`. Tests: `run_gear.js`.
+
+**Loot Master's G part.** After every answer (`R`, still carrying `id:ilvl` per piece) a raider's CRT sends `G|<sessionId>:<itemIndex>|<piece>;<piece>` on the Loot Master prefix through the same queue: `Gear.PackMany` with a budget of 255 minus the head, then `Wire.Pack`, so each message is 255 bytes or less (worst case exactly 255: an 8-character session id, a one-digit item index, a 238-byte piece). The looter and every raider window merge it with `Session:MergeGear`, which fills only the sender's own existing answer for that session and item, matching pieces by item ID (the same item level first), and then `Gear:Remember(sender, pieces, "lootmaster")`. A looter older than 0.30.0 drops the unknown kind; a raider older than 0.30.0 sends none, and its icons keep the tooltip by item ID. Tests: `run_lootmaster_gear.js` (with `CRT_Dev/Tests/old_Comm.lua`, 1.1.0's Comm frozen).
 
 ## Loot Master: CRT Looting
 
