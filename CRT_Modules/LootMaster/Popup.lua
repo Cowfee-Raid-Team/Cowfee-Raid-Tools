@@ -12,19 +12,47 @@ local ADDON, CRT = ...
 local LM = CRT.LootMaster
 local UI = CRT.UI
 
+-- Each panel is laid out like the game's group-loot roll frame: the item icon in its slot at the top left,
+-- the name in a dark name plate beside it, the detail line under the plate, the X at the top right, then
+-- the answer buttons and Notes along the bottom.
 local L = {
-    width = 480,
-    panelH = 104,
+    width = 520, -- 8 answers of 12 letters (LM.LABEL_MAX), each with an icon, fit in two rows
+    panelH = 112,
     gap = 4, -- between panels
     headerH = 26, -- the title bar above the panels
     autoH = 22, -- the line saying which items were answered for you
     pad = 8,
     icon = 36,
+    iconInset = 12, -- the icon's top left, inside the roll frame's border
+    slot = 44, -- the slot border around the icon (the roll frame draws 42 around a 34 icon)
+    plateGap = 10, -- icon to name plate
+    plateH = 24,
+    plateCap = 12, -- the name plate's end pieces (16 by 32 in the game's art, drawn at the plate's height)
+    plateRight = 32, -- room for the X right of the plate
+    namePad = 8, -- the name inside the plate
+    detailGap = 4, -- plate to the detail line
+    buttonsTop = 58, -- the first row of answer buttons, from the panel's top
+    borderCorner = 20, -- the roll frame border's corners, kept unstretched
     showButtonH = 22, -- the Show button on the auto line, as tall as the answer buttons
     button = { h = 22, gap = 4, minGap = 2, rowGap = 4 }, -- widths come from each label (LM.ButtonWidth)
     noteW = 190,
     fadeAlpha = 0.55, -- an answered panel
     timerAlpha = 0.07, -- the lighter part of the background, the time left
+}
+
+-- The game's roll-frame art (Blizzard_UIPanels_Game/Mainline/GroupLootFrame.xml, live): the border and
+-- the item name plate are parts of one texture, cut out by texture coordinates; the slot border is an
+-- atlas per item quality (Blizzard_Colors ColorConstants.lua LOOT_BORDER_BY_QUALITY). Shown in Default:
+-- Blizzard only; the other themes draw the panel flat in their own colours.
+local ART = {
+    file = "Interface\\LootFrame\\LootToast", -- 1024 by 256
+    texW = 1024,
+    texH = 256,
+    border = { 0.00097656, 0.28027344, 0.43750000, 0.73437500 }, -- GroupLootFrameTemplate's Border
+    plateLeft = { 0.79101563, 0.80664063, 0.57421875, 0.69921875 }, -- MasterLooterFrame's NameBorderLeft
+    plateMid = { 0.75, 0.764648438, 0.80859375, 0.93359375 }, -- NameBorderMid
+    plateRight = { 0.73242188, 0.74804688, 0.80859375, 0.93359375 }, -- NameBorderRight
+    slotDefault = "loottoast-itemborder-green", -- the roll frame's own default, for an unknown quality
 }
 
 local TEXT = {
@@ -97,6 +125,127 @@ local function colors()
         return CRT.MOCHA.espresso, CRT.MOCHA.edge
     end
     return { 0.05, 0.05, 0.05 }, { 0.3, 0.3, 0.3 }
+end
+
+-- The item's quality (Uncommon until the game has the item, as the roll frame does), its colour and its
+-- slot border atlas, through the game's ColorManager when it is there.
+local UNCOMMON = Enum and Enum.ItemQuality and Enum.ItemQuality.Uncommon or 2
+
+local function qualityOf(itemString)
+    local ok, _, _, q = pcall(C_Item.GetItemInfo, itemString or "")
+    return ok and type(q) == "number" and q or UNCOMMON
+end
+
+local function qualityColor(q)
+    local ok, c = pcall(function()
+        return ColorManager and ColorManager.GetColorDataForItemQuality and ColorManager.GetColorDataForItemQuality(q)
+    end)
+    c = ok and c or (ITEM_QUALITY_COLORS and ITEM_QUALITY_COLORS[q])
+    if type(c) == "table" and c.r then
+        return c.r, c.g, c.b
+    end
+    return 1, 1, 1
+end
+
+local function slotAtlas(q)
+    local ok, atlas = pcall(function()
+        return ColorManager and ColorManager.GetAtlasDataForLootBorderItemQuality and ColorManager.GetAtlasDataForLootBorderItemQuality(q)
+    end)
+    atlas = ok and atlas or (LOOT_BORDER_BY_QUALITY and LOOT_BORDER_BY_QUALITY[q])
+    return type(atlas) == "string" and atlas or ART.slotDefault
+end
+
+local function artPiece(parent, layer, coords)
+    local t = parent:CreateTexture(nil, layer)
+    t:SetTexture(ART.file)
+    t:SetTexCoord(coords[1], coords[2], coords[3], coords[4])
+    return t
+end
+
+-- The roll frame's border as eight pieces around the panel: the corners keep their size, the edges
+-- stretch, so the art holds its shape on a panel wider and taller than the game's frame.
+local function rollBorder(p)
+    local b, c = ART.border, L.borderCorner
+    local cu, cv = c / ART.texW, c / ART.texH
+    local u0, u1, v0, v1 = b[1], b[2], b[3], b[4]
+    local pieces = {
+        { "TOPLEFT", { u0, u0 + cu, v0, v0 + cv } },
+        { "TOPRIGHT", { u1 - cu, u1, v0, v0 + cv } },
+        { "BOTTOMLEFT", { u0, u0 + cu, v1 - cv, v1 } },
+        { "BOTTOMRIGHT", { u1 - cu, u1, v1 - cv, v1 } },
+        { "TOP", { u0 + cu, u1 - cu, v0, v0 + cv } },
+        { "BOTTOM", { u0 + cu, u1 - cu, v1 - cv, v1 } },
+        { "LEFT", { u0, u0 + cu, v0 + cv, v1 - cv } },
+        { "RIGHT", { u1 - cu, u1, v0 + cv, v1 - cv } },
+    }
+    local out = {}
+    for i, piece in ipairs(pieces) do
+        local t = artPiece(p, "BORDER", piece[2])
+        local where = piece[1]
+        if i <= 4 then
+            t:SetSize(c, c)
+            t:SetPoint(where)
+        elseif where == "TOP" or where == "BOTTOM" then
+            t:SetHeight(c)
+            t:SetPoint(where .. "LEFT", c, 0)
+            t:SetPoint(where .. "RIGHT", -c, 0)
+        else
+            t:SetWidth(c)
+            t:SetPoint("TOP" .. where, 0, -c)
+            t:SetPoint("BOTTOM" .. where, 0, c)
+        end
+        out[i] = t
+    end
+    return out
+end
+
+-- The item slot and the name plate: the game's art in Default: Blizzard, flat parts in the theme's
+-- colours elsewhere. Built once per panel; paintArt switches them with the theme.
+local function itemArt(p)
+    p.slot = p:CreateTexture(nil, "OVERLAY")
+    p.slot:SetSize(L.slot, L.slot)
+    p.slot:SetPoint("CENTER", p.icon)
+    p.slotFlat = CreateFrame("Frame", nil, p, "BackdropTemplate")
+    p.slotFlat:SetPoint("TOPLEFT", p.icon, -1, 1)
+    p.slotFlat:SetPoint("BOTTOMRIGHT", p.icon, 1, -1)
+    p.slotFlat:SetBackdrop({ edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
+
+    local left = artPiece(p, "ARTWORK", ART.plateLeft)
+    left:SetSize(L.plateCap, L.plateH)
+    left:SetPoint("TOPLEFT", p.icon, "TOPRIGHT", L.plateGap, 0)
+    local right = artPiece(p, "ARTWORK", ART.plateRight)
+    right:SetSize(L.plateCap, L.plateH)
+    right:SetPoint("TOPRIGHT", -L.plateRight, -L.iconInset)
+    local mid = artPiece(p, "ARTWORK", ART.plateMid)
+    mid:SetPoint("TOPLEFT", left, "TOPRIGHT")
+    mid:SetPoint("BOTTOMRIGHT", right, "BOTTOMLEFT")
+    p.plate = { left, mid, right }
+    p.plateFlat = p:CreateTexture(nil, "ARTWORK")
+    p.plateFlat:SetPoint("TOPLEFT", left)
+    p.plateFlat:SetPoint("BOTTOMRIGHT", right)
+    UI.Tint(p.plateFlat, "SetColorTexture", "roast", 1)
+end
+
+local function paintArt(p, itemString)
+    local classic = not UI:IsModern()
+    local q = qualityOf(itemString)
+    local r, g, b = qualityColor(q)
+    for _, t in ipairs(p.rollBorder) do
+        t:SetShown(classic)
+        t:SetVertexColor(r, g, b) -- as the roll frame colours its border
+    end
+    for _, t in ipairs(p.plate) do
+        t:SetShown(classic)
+    end
+    p.slot:SetAtlas(slotAtlas(q))
+    p.slot:SetShown(classic)
+    p.plateFlat:SetShown(not classic)
+    p.slotFlat:SetShown(not classic)
+    p.slotFlat:SetBackdropBorderColor(r, g, b, 1)
+    local bg, edge = colors()
+    p:SetBackdropColor(bg[1], bg[2], bg[3], 0.92)
+    -- Default: Blizzard: the border art takes the flat edge's place
+    p:SetBackdropBorderColor(edge[1], edge[2], edge[3], classic and 0 or 1)
 end
 
 -- A response button: a dark fill in the response's colour, its edge and text brighter, and its icon
@@ -217,9 +366,11 @@ local function panel(index)
         end
     end)
 
+    p.rollBorder = rollBorder(p)
     p.icon = p:CreateTexture(nil, "ARTWORK")
     p.icon:SetSize(L.icon, L.icon)
-    p.icon:SetPoint("TOPLEFT", L.pad, -L.pad)
+    p.icon:SetPoint("TOPLEFT", L.iconInset, -L.iconInset)
+    itemArt(p)
     local hover = CreateFrame("Frame", nil, p)
     hover:SetAllPoints(p.icon)
     hover:SetScript("OnEnter", function(self)
@@ -233,29 +384,31 @@ local function panel(index)
 
     p.close = CreateFrame("Button", nil, p, "UIPanelCloseButton")
     p.close:SetSize(20, 20)
-    p.close:SetPoint("TOPRIGHT", -2, -2)
+    -- level with the name plate, inside the border
+    p.close:SetPoint("TOPRIGHT", -(L.plateRight - 20) / 2, -(L.iconInset + (L.plateH - 20) / 2))
     UI:SkinCloseButton(p.close)
     p.close:SetScript("OnClick", function()
         closePanel(p.index)
     end)
-    p.time = p:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    p.time:SetPoint("RIGHT", p.close, "LEFT", -4, 0)
-    p.time:SetTextColor(0.8, 0.8, 0.8)
+    -- the name in the plate; under it the detail line, the time left at its right end
     p.name = p:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
-    p.name:SetPoint("TOPLEFT", p.icon, "TOPRIGHT", 8, 0)
-    p.name:SetPoint("RIGHT", p.time, "LEFT", -8, 0)
+    p.name:SetPoint("LEFT", p.plate[1], "LEFT", L.namePad, 0)
+    p.name:SetPoint("RIGHT", p.plate[3], "RIGHT", -L.namePad, 0)
     p.name:SetJustifyH("LEFT")
     p.name:SetWordWrap(false)
+    p.time = p:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    p.time:SetPoint("TOPRIGHT", -L.pad - 4, -(L.iconInset + L.plateH + L.detailGap))
+    p.time:SetTextColor(0.8, 0.8, 0.8)
     p.detail = p:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    p.detail:SetPoint("TOPLEFT", p.name, "BOTTOMLEFT", 0, -4)
-    p.detail:SetPoint("RIGHT", -L.pad, 0)
+    p.detail:SetPoint("TOPLEFT", p.plate[1], "BOTTOMLEFT", 0, -L.detailGap)
+    p.detail:SetPoint("RIGHT", p.time, "LEFT", -8, 0)
     p.detail:SetJustifyH("LEFT")
     p.detail:SetWordWrap(false)
     p.detail:SetTextColor(0.75, 0.75, 0.75)
 
     p.buttons = {}
 
-    local rowY = -(L.pad + L.icon + 6 + L.button.h + 8)
+    local rowY = -(L.buttonsTop + L.button.h + 8)
     p.notesLabel = p:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     p.notesLabel:SetPoint("TOPLEFT", L.pad, rowY - 3)
     p.notesLabel:SetText(TEXT.notes)
@@ -302,7 +455,7 @@ local function setButtons(p, responses)
     end
     -- one row with a gap, a tighter gap, or more rows: never overlapping, never past the panel's edge
     local pos, rows = LM.ButtonLayout(widths, L.width - 2 * L.pad, L.button.gap, L.button.minGap)
-    local top = -(L.pad + L.icon + 6)
+    local top = -L.buttonsTop
     for k, b in ipairs(p.buttons) do
         b:SetPoint("TOPLEFT", L.pad + pos[k].x, top - (pos[k].row - 1) * (L.button.h + L.button.rowGap))
     end
@@ -316,9 +469,7 @@ end
 local function fill(p, index, it, mine, inc)
     p.index, p.itemString = index, it.itemString
     setButtons(p, inc.responses)
-    local bg, edge = colors()
-    p:SetBackdropColor(bg[1], bg[2], bg[3], 0.92)
-    p:SetBackdropBorderColor(edge[1], edge[2], edge[3], 1)
+    paintArt(p, it.itemString)
     p.icon:SetTexture(C_Item.GetItemIconByID(it.itemString or "") or 134400)
     p.name:SetText(itemText(it))
     -- the detail line reads your gear: worked out when the item changes, not on every timer tick
