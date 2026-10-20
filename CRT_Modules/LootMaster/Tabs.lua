@@ -24,6 +24,67 @@ local function classColor(file)
     return file and (C_ClassColor and C_ClassColor.GetClassColor(file) or RAID_CLASS_COLORS[file]) or nil
 end
 
+-- The gear icons of a loot window row (both windows). The texture sits under a small button that shows the
+-- item's tooltip and hands its clicks to the row, so picking a row and its menu work over the icon too.
+--   local t = LM.GearIcon(row, x)       -- the icon; t.hit is the button over it
+--   LM.SetGear(t, g, ownItemString)     -- g = { id, ilvl } or nil; ownItemString only on your own row
+-- Another raider's gear arrives as item ID and item level only, so the tooltip is the item by its ID plus
+-- an "Equipped at item level" line. On your own row the real equipped link is used.
+local GEAR_TEXT = { equippedAt = "Equipped at item level %d" }
+
+function LM.GearIcon(row, x)
+    local t = row:CreateTexture(nil, "OVERLAY")
+    t:SetSize(16, 16)
+    t:SetPoint("LEFT", x, 0)
+    local b = CreateFrame("Button", nil, row)
+    b:SetSize(16, 16)
+    b:SetPoint("LEFT", x, 0)
+    b:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    b:SetScript("OnClick", function(_, button)
+        local click = row:GetScript("OnClick")
+        if click then
+            click(row, button)
+        end
+    end)
+    b:SetScript("OnEnter", function(self)
+        local g = self.gear
+        if not g or not g.id then
+            return
+        end
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        local link
+        if self.own then
+            for _, m in ipairs(LM:MyGear(self.own)) do
+                if m.id == g.id and (not link or math.floor((m.ilvl or 0) + 0.5) == g.ilvl) then
+                    link = m.link
+                end
+            end
+        end
+        local exact = link and pcall(GameTooltip.SetHyperlink, GameTooltip, link)
+        if not exact then
+            GameTooltip:SetItemByID(g.id)
+        end
+        if not exact and g.ilvl and g.ilvl > 0 then
+            GameTooltip:AddLine(string.format(GEAR_TEXT.equippedAt, g.ilvl), 0.85, 0.85, 0.85)
+        end
+        GameTooltip:Show()
+    end)
+    b:SetScript("OnLeave", function()
+        GameTooltip:Hide()
+    end)
+    t.hit = b
+    return t
+end
+
+function LM.SetGear(t, g, own)
+    local icon = g and g.id and C_Item.GetItemIconByID(g.id)
+    t:SetTexture(icon)
+    t:SetShown(icon ~= nil)
+    t.hit.gear = icon and g or false
+    t.hit.own = own or false
+    t.hit:SetShown(icon ~= nil)
+end
+
 function LM.ItemTabs(parent, opts)
     local self = { tabs = {}, items = nil }
 

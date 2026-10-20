@@ -360,6 +360,39 @@ tb.frame.scripts.OnEnter(tb.frame)
 check(def and def[1] == GameTooltip and def[2] == tb.frame, "tooltip default: the game's own anchor")
 check(got.pt == nil and got.anchor == nil, "tooltip default: nothing placed by hand")
 
+-- the gear icons: a tooltip by item ID with the item level, the real link on your own row, none when empty
+local tip = {}
+GameTooltip = { SetOwner = function(_, o, a) tip.owner, tip.anchor = o, a end,
+  SetItemByID = function(_, id) tip.byID = id end, SetHyperlink = function(_, l) tip.link = l end,
+  AddLine = function(_, t) tip.lines = (tip.lines or "") .. t .. "|" end,
+  Show = function() tip.shown = true end, Hide = function() tip.shown = false end }
+LM.MyGear = function() return { { id = 77, ilvl = 600, link = "item:77::real" } } end
+local rowClick, rowButton
+local grow = mock()
+grow:SetScript("OnClick", function(_, b) rowClick = b end)
+local gicon = LM.GearIcon(grow, 10)
+LM.SetGear(gicon, { id = 55, ilvl = 610 }, nil)
+check(gicon.shown and gicon.hit.shown, "gear icon: shown with a piece")
+gicon.hit.scripts.OnEnter(gicon.hit)
+eq(tip.byID, 55, "gear tooltip: the item by its ID")
+eq(tip.lines, "Equipped at item level 610|", "gear tooltip: the item level line")
+eq(tip.owner, gicon.hit, "gear tooltip: owned by the icon")
+check(tip.shown, "gear tooltip: shown")
+gicon.hit.scripts.OnLeave()
+check(tip.shown == false, "gear tooltip: hidden on leave")
+gicon.hit.scripts.OnClick(gicon.hit, "RightButton")
+eq(rowClick, "RightButton", "gear icon: a click reaches the row")
+tip = {}
+LM.SetGear(gicon, { id = 77, ilvl = 600 }, "item:1")
+gicon.hit.scripts.OnEnter(gicon.hit)
+eq(tip.link, "item:77::real", "gear tooltip: your own row uses the equipped link")
+check(tip.byID == nil, "gear tooltip: own row does not fall back to the ID")
+tip = {}
+LM.SetGear(gicon, nil, nil)
+check(not gicon.shown and not gicon.hit.shown, "gear icon: an empty slot hides it")
+gicon.hit.scripts.OnEnter(gicon.hit)
+check(tip.owner == nil and not tip.byID, "gear tooltip: none on an empty slot")
+
 print(string.format("%d passed, %d failed", passes, fails))
 if fails > 0 then error("failures") end
 `;
