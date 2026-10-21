@@ -13,9 +13,12 @@ local ADDON, CRT = ...
 --   clearGap   seconds after the last message before it clears, 0 for never
 --   clearFull  seconds after the last slot fills before it clears, 0 for never
 --   clearPhase true to clear when a new phase starts (Alerts/Engine.lua)
+--   hidden     when the game hides chat text (in a raid, and during a boss fight): "fill" (the
+--              default) to fill a slot for any message, or "ignore" to leave hidden messages out
 -- It always clears when the pull starts and when it ends, kill or wipe.
 --
--- Raiders send the markers with macros such as /raid {rt3} (or {diamond}), one per marker.
+-- Raiders send the markers with macros such as /raid {rt3} (or {diamond}), one per marker. A
+-- readable message fills a slot only when it holds a marker code.
 
 -- They ship in each boss's file in the season packs (field markers), and Bosses/Registry.lua puts
 -- the loaded seasons' displays here.
