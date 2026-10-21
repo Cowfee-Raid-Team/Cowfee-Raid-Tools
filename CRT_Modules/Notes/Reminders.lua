@@ -80,6 +80,12 @@ local TEXT = {
     markerTitle = "Marker display",
     markerShow = "Show the marker display: %s",
     markerHelp = "This boss has a marker display: a small window showing the raid markers raiders send with macros such as /raid {rt3}, in order, with who sent each. Untick it to turn it off for this boss. Move the window with Previews.",
+
+    -- the right-click menu of a row while /crt dev is open (developer builds only)
+    hiddenMark = "(hidden) %s",
+    hideMech = "Hide from Mech Alerts for everyone",
+    showMech = "Show again",
+    hideNoTimer = "Hide all with no timer",
 }
 
 -- Layout, from the page's width (UI.PAGE_W) and the tab's height (CRT.NotesPage.TAB_H, under the Raid
@@ -159,6 +165,7 @@ local SEL_MODERN_ALPHA = 0.95
 -- a name in its ability type's colour: mixed this far toward GREY when its reminder is off, and toward WHITE on
 -- the selected row, so it reads on the highlight in every theme
 local TYPE_DIM, TYPE_LIFT = 0.5, 0.5
+local HIDDEN_ALPHA = 0.5 -- a row hidden for everyone, shown with /crt dev open: its icon and name faded
 
 local function lower(s)
     return tostring(s or ""):lower()
@@ -246,43 +253,30 @@ local function pickBoss(bosses)
     return selected, selected and bossName(bosses, selected)
 end
 
--- The ability rows of the boss from the Journal, then the reminders that match none of them, then a
--- new reminder of your own waiting for its first change.
-local function buildItems(enc)
-    local Reminders = CRT.AlertReminders
-    local out = {}
-    if not enc then
-        return out
-    end
-    local journal = {}
+-- The boss's Encounter Journal ability rows ({ name, spellID, icon }), {} when there are none.
+local function journalRows(enc)
     if CRT.TimelineJournal then
         local ok, res = pcall(CRT.TimelineJournal.Rows, CRT.TimelineJournal, enc)
         if ok and type(res) == "table" then
-            journal = res
+            return res
         end
     end
-    local saved = Reminders:List(enc)
-    local used = {}
-    for _, jrow in ipairs(journal) do
-        local item = { ability = jrow, spellID = jrow.spellID }
-        for _, e in ipairs(saved) do
-            if not used[e.id] and e.r.spellID == jrow.spellID then
-                used[e.id] = true
-                item.id, item.r = e.id, e.r
-                break
-            end
-        end
-        out[#out + 1] = item
-    end
-    for _, e in ipairs(saved) do
-        if not used[e.id] then
-            out[#out + 1] = { id = e.id, r = e.r, spellID = e.r.spellID }
-        end
-    end
-    if pendingOwn[enc] then
-        out[#out + 1] = { pending = true }
-    end
-    return out
+    return {}
+end
+
+-- Whether the Development page is open (/crt dev, developer builds only): hidden rows show, and a row's
+-- right-click menu hides or shows them.
+local function devMode()
+    local T = CRT.Timeline
+    return T and T.DevMode and T.DevMode() or false
+end
+
+-- Hidden from the list for everyone (Timeline:MechHidden: the boss file's mechHidden list, and a
+-- developer's own until it ships). Players never see such a row unless they made a reminder on it, or
+-- the Timeline's Make a Mech Alert opened it; with /crt dev open it shows greyed, with a mark.
+local function mechHidden(enc, jrow)
+    local T = CRT.Timeline
+    return T and T.MechHidden and T:MechHidden(enc, jrow.name) or false
 end
 
 -- A row's key, kept per boss: an ability by its spell, a reminder of your own by its id.
@@ -293,6 +287,43 @@ local function itemKey(item)
         return "a:" .. tostring(item.spellID or item.ability.name)
     end
     return "r:" .. tostring(item.id)
+end
+
+-- The ability rows of the boss from the Journal, then the reminders that match none of them, then a
+-- new reminder of your own waiting for its first change.
+local function buildItems(enc)
+    local Reminders = CRT.AlertReminders
+    local out = {}
+    if not enc then
+        return out
+    end
+    local dev = devMode()
+    local saved = Reminders:List(enc)
+    local used = {}
+    for _, jrow in ipairs(journalRows(enc)) do
+        local item = { ability = jrow, spellID = jrow.spellID }
+        for _, e in ipairs(saved) do
+            if not used[e.id] and e.r.spellID == jrow.spellID then
+                used[e.id] = true
+                item.id, item.r = e.id, e.r
+                break
+            end
+        end
+        local hidden = mechHidden(enc, jrow)
+        item.hiddenMark = hidden and dev or nil
+        if not hidden or dev or item.r or picked[enc] == itemKey(item) then
+            out[#out + 1] = item
+        end
+    end
+    for _, e in ipairs(saved) do
+        if not used[e.id] then
+            out[#out + 1] = { id = e.id, r = e.r, spellID = e.r.spellID }
+        end
+    end
+    if pendingOwn[enc] then
+        out[#out + 1] = { pending = true }
+    end
+    return out
 end
 
 local function itemName(item)
@@ -350,7 +381,8 @@ end
 local function itemsFor(enc, name)
     local c = listCache
     local pending = enc and pendingOwn[enc] or false
-    if c and c.enc == enc and c.diff == viewDiff and c.pending == pending then
+    local dev = devMode()
+    if c and c.enc == enc and c.diff == viewDiff and c.pending == pending and c.dev == dev then
         return c.items
     end
     local list = buildItems(enc)
@@ -376,7 +408,7 @@ local function itemsFor(enc, name)
             end
         end
     end
-    listCache = { enc = enc, diff = viewDiff, pending = pending, items = list }
+    listCache = { enc = enc, diff = viewDiff, pending = pending, dev = dev, items = list }
     return list
 end
 
@@ -663,8 +695,16 @@ local function paint(index)
             row.item = item
             row.icon:SetTexture(item.iconTex)
             row.icon:SetShown(item.iconTex ~= nil)
-            row.name:SetText(item.label)
-            row.name:SetTextColor(nameColor(item, on, offset + i == index))
+            row.icon:SetAlpha(item.hiddenMark and HIDDEN_ALPHA or 1)
+            if item.hiddenMark then
+                -- hidden for everyone, shown with /crt dev open: faded, with a mark
+                local m = CRT.PALETTE.muted
+                row.name:SetText(string.format(TEXT.hiddenMark, item.label))
+                row.name:SetTextColor(m[1], m[2], m[3], HIDDEN_ALPHA)
+            else
+                row.name:SetText(item.label)
+                row.name:SetTextColor(nameColor(item, on, offset + i == index))
+            end
             row.check:SetChecked(on)
             row.dot:SetShown(item.has)
             row.sel:SetColorTexture(selColor[1], selColor[2], selColor[3], selColor[4])
@@ -978,6 +1018,56 @@ local function makeEdit(parent, x, y, width, onChange)
     return edit
 end
 
+-- The boss's Journal abilities with no casts on any of its ability timelines (each difficulty's), by
+-- name, as Hide all with no timer hides them. Times a reminder typed itself don't count.
+local function noTimerNames(enc, name)
+    local Reminders = CRT.AlertReminders
+    local refs = bossRefs()
+    local out = {}
+    for _, jrow in ipairs(journalRows(enc)) do
+        local probe = { spellID = jrow.spellID, text = jrow.name, boss = name }
+        local timed = false
+        for _, entry in ipairs(refs) do
+            local ok, found = pcall(Reminders.Times, Reminders, enc, probe, entry.ref)
+            if ok and type(found) == "table" and #found > 0 then
+                timed = true
+                break
+            end
+        end
+        if not timed and jrow.name then
+            out[#out + 1] = jrow.name
+        end
+    end
+    return out
+end
+
+-- A row's right-click menu, only while /crt dev is open (developer builds): hide its ability from Mech
+-- Alerts for everyone or show it again, and hide every ability with no timer. Saved on this computer
+-- until /crt dev mechhidden prints the list for the boss file. Every change redraws the tab through
+-- the Timeline's listeners.
+local function openRowMenu(owner, item)
+    local T = CRT.Timeline
+    local open = rawget(UI, "ContextMenu")
+    local enc, name = pickBoss(bosses())
+    if not (item and enc and open and devMode()) then
+        return
+    end
+    open(owner, function(root)
+        local ability = item.ability
+        if ability and ability.name then
+            root:CreateTitle(ability.name)
+            local hidden = T:MechHidden(enc, ability.name)
+            root:CreateButton(hidden and TEXT.showMech or TEXT.hideMech, function()
+                T:SetMechHidden(enc, ability.name, not hidden)
+            end)
+            root:CreateDivider()
+        end
+        root:CreateButton(TEXT.hideNoTimer, function()
+            T:SetMechHidden(enc, noTimerNames(enc, name), true)
+        end)
+    end)
+end
+
 local function makeRow(parent, i)
     local frame = CreateFrame("Button", nil, parent)
     frame:SetSize(L.ROW_W, L.ROW_H - 2)
@@ -1011,8 +1101,13 @@ local function makeRow(parent, i)
     if row.dot.SetMask then
         row.dot:SetMask("Interface\\CharacterFrame\\TempPortraitAlphaMask") -- round
     end
-    -- a click on the row, outside the tick, selects it
-    frame:SetScript("OnClick", function()
+    -- a click on the row, outside the tick, selects it; a right-click opens its menu (/crt dev open)
+    frame:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    frame:SetScript("OnClick", function(self, button)
+        if button == "RightButton" then
+            openRowMenu(self, row.item)
+            return
+        end
         selectItem(row.item)
     end)
     frame:SetScript("OnEnter", function(self)
@@ -1575,6 +1670,7 @@ CRT.NoteReminders = {
         if spellID then
             picked[encounterID] = "a:" .. tostring(spellID)
             reveal = true
+            listChanged() -- an ability hidden from the list is listed when it is asked for
         end
         CRT.NotesPage.Open("reminders")
         refresh()
