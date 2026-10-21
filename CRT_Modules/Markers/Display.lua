@@ -416,27 +416,29 @@ local function slot(i)
     return s
 end
 
--- The freeform canvas's faint outline, in the theme's border colour: line n, made the first time.
+-- The freeform canvas's faint outline, in the theme's border colour: line n of owner's lines (kept in store),
+-- made the first time.
 local outline = {}
-local function outlineLine(n)
-    local line = outline[n]
+local function outlineLine(owner, store, n)
+    local line = store[n]
     if not line then
-        line = frame:CreateLine(nil, "ARTWORK")
+        line = owner:CreateLine(nil, "ARTWORK")
         line:SetThickness(1)
         UI.Tint(line, "SetColorTexture", "border", 0.8)
-        outline[n] = line
+        store[n] = line
     end
     return line
 end
 
--- Draws the outline for the display's shape (none for a row, column or grid) and hides the rest.
-local function drawOutline(s, g)
+-- Draws the outline for the display's shape (none for a row, column or grid) on owner, the window or the Marker
+-- macros tab's preview, and hides the rest of its lines.
+local function drawOutlineOn(owner, store, s, g)
     local used = 0
     local function segment(x1, y1, x2, y2)
         used = used + 1
-        local line = outlineLine(used)
-        line:SetStartPoint("TOPLEFT", frame, x1, -y1)
-        line:SetEndPoint("TOPLEFT", frame, x2, -y2)
+        local line = outlineLine(owner, store, used)
+        line:SetStartPoint("TOPLEFT", owner, x1, -y1)
+        line:SetEndPoint("TOPLEFT", owner, x2, -y2)
         line:Show()
     end
     if s.layout == "free" and s.shape == "square" then
@@ -453,9 +455,20 @@ local function drawOutline(s, g)
             segment(cx + radius * math.cos(a1), cy + radius * math.sin(a1), cx + radius * math.cos(a2), cy + radius * math.sin(a2))
         end
     end
-    for k = used + 1, #outline do
-        outline[k]:Hide()
+    for k = used + 1, #store do
+        store[k]:Hide()
     end
+end
+
+local function drawOutline(s, g)
+    drawOutlineOn(frame, outline, s, g)
+end
+
+-- For a preview drawn elsewhere: the outline of def's display on owner, its lines kept in store (a table the
+-- caller keeps), placed as Markers.Geometry places the slots.
+function Markers.DrawOutline(owner, store, def)
+    local s = settings(def)
+    drawOutlineOn(owner, store, s, layoutOf(s))
 end
 
 -- Lays the slots out for a display: number above the marker, the sender's name below it.

@@ -4,9 +4,10 @@ local ADDON, CRT = ...
 --   Notes      the list of notes (one per boss), the text of the selected one, importing, sharing with
 --              the group, the roster link to Raid Groups, your personal note, and a test run
 --   Reminders  a boss's Journal abilities and your own reminders (Notes/Reminders.lua)
---   Phases     what starts each phase of a boss (Notes/Phases.lua)
+--   Markers    Marker macros: a boss's marker display and the marker macros (Markers/MacrosTab.lua)
 --   Alerts     where your note lines show and how each kind of alert looks (Notes/AlertsTab.lua)
 --   Settings   the three note windows, your alert's timing and voice, and sharing (Notes/Settings.lua)
+-- (The Phases tab, Notes/Phases.lua, is off the page; see TABS below.)
 -- The note windows and your alert are moved with "Previews".
 
 local Notes = CRT.Notes
@@ -794,6 +795,7 @@ end
 local TABS = {
     { key = "notes", label = "Notes" },
     { key = "reminders", label = "Mech Alerts" },
+    { key = "markers", label = "Marker macros" },
     { key = "alerts", label = "Alert Settings" },
     { key = "settings", label = "Notes Settings" },
 }
@@ -811,6 +813,8 @@ local function selectTab(key)
             buildNotes(tabFrames[key])
         elseif key == "reminders" then
             CRT.NoteReminders.Build(tabFrames[key])
+        elseif key == "markers" then
+            CRT.MarkerMacrosTab.Build(tabFrames[key])
         elseif key == "alerts" then
             CRT.NoteAlertsTab.Build(tabFrames[key])
         else
@@ -831,7 +835,7 @@ local function build(pf)
 
     for i, tab in ipairs(TABS) do
         local b = CreateFrame("Button", nil, pf, "BackdropTemplate")
-        -- Four tabs across the 686 px page, Settings last.
+        -- Five tabs across the page (UI.PAGE_W), Settings last.
         b:SetSize(164, 26)
         b:SetPoint("TOPLEFT", 8 + (i - 1) * 168, -36)
         skin(b, 0.4)
@@ -867,8 +871,8 @@ end
 
 UI:RegisterPage("notes", "Raid Notes", build)
 
--- Opens the Raid Notes page on a tab: "notes", "reminders" (Mech Alerts), "alerts" (Alert Settings) or
--- "settings". TAB_H is a tab's height under the tabs, for the tabs that size themselves from it.
+-- Opens the Raid Notes page on a tab: "notes", "reminders" (Mech Alerts), "markers" (Marker macros), "alerts"
+-- (Alert Settings) or "settings". TAB_H is a tab's height under the tabs, for the tabs that size themselves from it.
 CRT.NotesPage = {
     TAB_H = TAB_H,
     Open = function(tab)

@@ -129,6 +129,7 @@ CRT_Modules\Alerts\Saved.lua
 CRT_Modules\Markers\Database.lua
 CRT_Modules\Markers\Display.lua
 CRT_Modules\Markers\Macros.lua
+CRT_Modules\Markers\MacrosTab.lua
 CRT_Modules\Pace\Database.lua
 CRT_Modules\Pace\Data.lua
 CRT_Modules\Pace\Display.lua
