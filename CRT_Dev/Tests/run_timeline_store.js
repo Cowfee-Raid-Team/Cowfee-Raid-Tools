@@ -107,6 +107,30 @@ do
   assert(not T:Hidden(4001, "Disgusting Fish") and #T:WithoutHidden(lanes, 4001) == 4, "hidden: nothing without the boss library")
 end
 print("ok hidden abilities: shipped, set in dev, left out of the lanes")
+do
+  -- hidden from Mech Alerts: a list of its own (mechHidden), never the timeline's
+  CRT.db = { timeline = defaults() }
+  CRT.Bosses = { Get = function(_, id) if id == 4001 then return { name = "Turtle", hidden = { "Disgusting Fish" }, mechHidden = { "Latent Cultist" } } end end }
+  assert(T:MechHidden(4001, "latent cultist") and not T:MechHidden(4001, "Disgusting Fish") and not T:MechHidden(4002, "Latent Cultist"), "mech hidden: the boss file's mechHidden list, per boss, any case")
+  assert(not T:Hidden(4001, "Latent Cultist"), "mech hidden: not hidden from the timeline")
+  local before = fired
+  T:SetMechHidden(4001, "Shell Spin", true)
+  assert(T:MechHidden(4001, "Shell Spin") and not T:Hidden(4001, "Shell Spin") and fired > before, "mech hidden: set on this computer, the timeline untouched")
+  assert(CRT.db.dev.mechHidden["4001"]["shell spin"] == "Shell Spin" and CRT.db.dev.hiddenAbilities == nil, "mech hidden: saved apart from the timeline's")
+  T:SetMechHidden(4001, "Latent Cultist", false)
+  assert(not T:MechHidden(4001, "Latent Cultist") and CRT.db.dev.mechHidden["4001"]["latent cultist"] == false, "mech hidden: a shipped one shown again")
+  local names = T:MechHiddenNames(4001)
+  assert(#names == 1 and names[1] == "Shell Spin", "mech hidden: the list to ship")
+  before = fired
+  T:SetMechHidden(4001, { "Zed", "Alpha", "Latent Cultist" }, true)
+  assert(fired == before + 1, "mech hidden: many names at once fire once")
+  names = T:MechHiddenNames(4001)
+  assert(#names == 4 and names[1] == "Latent Cultist" and names[2] == "Alpha" and names[3] == "Shell Spin" and names[4] == "Zed", "mech hidden: shipped first, then this computer's sorted: " .. table.concat(names, ","))
+  T:SetMechHidden(4001, { "Zed", "Alpha", "Shell Spin" }, false)
+  assert(CRT.db.dev.mechHidden["4001"] == nil and T:MechHidden(4001, "Latent Cultist"), "mech hidden: back to shipped keeps nothing")
+  CRT.Bosses = nil
+end
+print("ok mech alerts hidden: shipped, set in dev, apart from the timeline")
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 let src; try { src = fs.readFileSync(process.argv[2], 'utf8'); } catch (e) { console.error('cannot read ' + process.argv[2]); process.exit(1); }

@@ -111,9 +111,20 @@ end
 -- shipped hidden), until the list is copied into the boss file (/crt dev hidden prints it). Hidden rows
 -- leave the Review tab, the pop-out and the Rehearsal; alerts, notes and reminders are untouched.
 
-local function shippedHidden(encounterID, key)
+-- The same pattern serves a second list, hidden from the Mech Alerts tab (Notes/Reminders.lua) and not from
+-- the timeline: the boss file's mechHidden list, dev.mechHidden on a developer's computer, printed by
+-- /crt dev mechhidden. Each list is { field in the boss file, store under CRTDB.dev }.
+local HIDDEN = { field = "hidden", store = "hiddenAbilities" }
+local MECH_HIDDEN = { field = "mechHidden", store = "mechHidden" }
+
+local function shippedList(encounterID, list)
     local def = CRT.Bosses and CRT.Bosses.Get and CRT.Bosses:Get(encounterID)
-    for _, name in ipairs(def and type(def.hidden) == "table" and def.hidden or {}) do
+    local names = def and def[list.field]
+    return type(names) == "table" and names or {}
+end
+
+local function shippedHidden(encounterID, key, list)
+    for _, name in ipairs(shippedList(encounterID, list)) do
         if ignoreKey(name) == key then
             return true
         end
@@ -121,65 +132,66 @@ local function shippedHidden(encounterID, key)
     return false
 end
 
-local function devHidden(encounterID, make)
+local function devHidden(encounterID, list, make)
     local db = CRT.db
     if not db then
         return nil
     end
+    local boss = tostring(encounterID)
     if make then
         db.dev = db.dev or {}
-        db.dev.hiddenAbilities = db.dev.hiddenAbilities or {}
-        db.dev.hiddenAbilities[tostring(encounterID)] = db.dev.hiddenAbilities[tostring(encounterID)] or {}
+        db.dev[list.store] = db.dev[list.store] or {}
+        db.dev[list.store][boss] = db.dev[list.store][boss] or {}
     end
-    local all = db.dev and db.dev.hiddenAbilities
-    return all and all[tostring(encounterID)]
+    local all = db.dev and db.dev[list.store]
+    return all and all[boss]
 end
 
-function Timeline:Hidden(encounterID, name)
+local function isHidden(encounterID, name, list)
     if encounterID == nil or name == nil then
         return false
     end
     local key = ignoreKey(name)
-    local mine = devHidden(encounterID)
+    local mine = devHidden(encounterID, list)
     if mine and mine[key] ~= nil then
         return mine[key] ~= false
     end
-    return shippedHidden(encounterID, key)
+    return shippedHidden(encounterID, key, list)
 end
 
--- Developer builds only (the menus offer it in DevMode).
-function Timeline:SetHidden(encounterID, name, on)
-    if encounterID == nil or name == nil then
+-- names: one name or a list of them, saved with one Fire.
+local function setHidden(encounterID, names, on, list)
+    if encounterID == nil or names == nil then
         return
     end
-    local key = ignoreKey(name)
-    local mine = devHidden(encounterID, true)
-    if (on and true or false) == shippedHidden(encounterID, key) then
-        mine[key] = nil -- the same as shipped: nothing to keep
-    else
-        mine[key] = on and name or false
+    local mine = devHidden(encounterID, list, true)
+    for _, name in ipairs(type(names) == "table" and names or { names }) do
+        local key = ignoreKey(name)
+        if (on and true or false) == shippedHidden(encounterID, key, list) then
+            mine[key] = nil -- the same as shipped: nothing to keep
+        else
+            mine[key] = on and name or false
+        end
     end
     if next(mine) == nil then
-        CRT.db.dev.hiddenAbilities[tostring(encounterID)] = nil
+        CRT.db.dev[list.store][tostring(encounterID)] = nil
     end
-    self:Fire()
+    Timeline:Fire()
 end
 
 -- The names hidden for a boss as they should ship: the boss file's list in its order, less any this
 -- computer shows again, then this computer's own.
-function Timeline:HiddenNames(encounterID)
+local function hiddenNames(encounterID, list)
     local out, seen = {}, {}
-    local def = CRT.Bosses and CRT.Bosses.Get and CRT.Bosses:Get(encounterID)
-    for _, name in ipairs(def and type(def.hidden) == "table" and def.hidden or {}) do
+    for _, name in ipairs(shippedList(encounterID, list)) do
         local key = ignoreKey(name)
-        if not seen[key] and self:Hidden(encounterID, name) then
+        if not seen[key] and isHidden(encounterID, name, list) then
             seen[key] = true
             out[#out + 1] = name
         end
     end
-    local mine = devHidden(encounterID)
     local extra = {}
-    for key, name in pairs(mine or {}) do
+    for key, name in pairs(devHidden(encounterID, list) or {}) do
         if name and not seen[key] then
             extra[#extra + 1] = name
         end
@@ -189,6 +201,33 @@ function Timeline:HiddenNames(encounterID)
         out[#out + 1] = name
     end
     return out
+end
+
+function Timeline:Hidden(encounterID, name)
+    return isHidden(encounterID, name, HIDDEN)
+end
+
+-- Developer builds only (the menus offer it in DevMode).
+function Timeline:SetHidden(encounterID, name, on)
+    setHidden(encounterID, name, on, HIDDEN)
+end
+
+function Timeline:HiddenNames(encounterID)
+    return hiddenNames(encounterID, HIDDEN)
+end
+
+-- Hidden from the Mech Alerts list for everyone (players still keep a reminder they made on one).
+function Timeline:MechHidden(encounterID, name)
+    return isHidden(encounterID, name, MECH_HIDDEN)
+end
+
+-- Developer builds only (the Mech Alerts tab's menu offers it in DevMode). names: one or a list.
+function Timeline:SetMechHidden(encounterID, names, on)
+    setHidden(encounterID, names, on, MECH_HIDDEN)
+end
+
+function Timeline:MechHiddenNames(encounterID)
+    return hiddenNames(encounterID, MECH_HIDDEN)
 end
 
 -- lanes without the hidden boss mechanics.
