@@ -25,6 +25,11 @@ local ADDON, CRT = ...
 --
 -- It always clears when a pull starts and when it ends (kill or wipe), and as the display says: after
 -- a gap with no messages, a while after the last slot fills, or when a new phase starts.
+--
+-- Slots fill in order, 1 to N, whatever the layout: a row, a column, a grid, or "free", where each slot
+-- has its own place on a square canvas (places, as fractions of the canvas from its top left, so a new
+-- icon or canvas size keeps the layout). The canvas can show a faint square or circle in the theme's
+-- border colour. A freeform slot without a place takes its place on the ring (circle) or in an even grid.
 
 local Markers = {}
 CRT.MarkerDisplay = Markers
@@ -36,8 +41,14 @@ local CHAT_EVENTS = {
     "CHAT_MSG_INSTANCE_CHAT", "CHAT_MSG_INSTANCE_CHAT_LEADER",
 }
 
-local DEFAULT = { name = "Marker display", slots = 4, layout = "row", iconSize = 40, number = true, names = true, clearGap = 10, clearFull = 0, clearPhase = false, hidden = "fill" }
+local DEFAULT = { name = "Marker display", slots = 4, layout = "row", iconSize = 40, number = true, names = true, clearGap = 10, clearFull = 0, clearPhase = false, hidden = "fill", shape = "square", canvas = 220 }
+Markers.DEFAULT = DEFAULT
+local SHAPES = { square = true, circle = true, none = true }
+local CANVAS_MIN, CANVAS_MAX = 80, 400
+local RING_SEGMENTS = 64 -- the circle outline is drawn as this many short lines
+local GHOST_ALPHA = 0.45 -- a slot's marker while the dev editor shows it to drag
 local SAMPLE = { "{rt1}", "{rt6}", "{rt8}", "{rt7}", "{rt2}", "{rt3}", "{rt4}", "{rt5}" }
+local SAMPLE_NAMES = { "Ashka", "Brenn", "Corvi", "Dalla", "Eskel", "Fira", "Galen", "Hesta" }
 -- The marker names in English, by marker number, for when the game's ICON_TAG_LIST is missing.
 local ICON_NAMES = { star = 1, circle = 2, diamond = 3, triangle = 4, moon = 5, square = 6, cross = 7, x = 7, skull = 8 }
 local IDENTICAL = 4 -- Enum.CollationStrength.Identical (IntlSharedTypesDocumentation.lua), if Enum lacks it
@@ -47,6 +58,7 @@ local slots = {}
 local active -- the display in use: a copy of its settings, with encounterID; nil when none
 local testing = false -- a test from the dev editor, which also listens to /say
 local previewOn = false
+local editorView -- the dev editor's view of its draft, { def, mode }, while it shows one
 local filled = 0
 local token = 0 -- bumped by every message and clear, so an old clear timer does nothing
 local lastPhase
@@ -170,7 +182,90 @@ local function settings(def)
         s[k] = v
     end
     s.slots = math.max(1, math.min(8, math.floor(s.slots or 4)))
+    s.canvas = math.max(CANVAS_MIN, math.min(CANVAS_MAX, math.floor(tonumber(s.canvas) or DEFAULT.canvas)))
+    if not SHAPES[s.shape] then
+        s.shape = DEFAULT.shape
+    end
     return s
+end
+
+-- Freeform places --------------------------------------------------------------------------------
+
+-- A place kept on the canvas: each fraction from 0 to 1, to three decimals; a broken one is the middle.
+function Markers.ClampPlace(x, y)
+    local function clamp(v)
+        v = math.max(0, math.min(1, tonumber(v) or 0.5))
+        return math.floor(v * 1000 + 0.5) / 1000
+    end
+    return clamp(x), clamp(y)
+end
+
+-- n places evenly round the canvas's circle, from the top, clockwise.
+function Markers.RingPlaces(n)
+    local out = {}
+    for i = 1, n do
+        local a = -math.pi / 2 + 2 * math.pi * (i - 1) / n
+        out[i] = { Markers.ClampPlace(0.5 + 0.5 * math.cos(a), 0.5 + 0.5 * math.sin(a)) }
+    end
+    return out
+end
+
+-- n places spread evenly over the canvas in rows, each in the middle of its cell.
+function Markers.GridPlaces(n)
+    local cols = math.ceil(math.sqrt(n))
+    local rows = math.ceil(n / cols)
+    local out = {}
+    for i = 1, n do
+        local col, row = (i - 1) % cols, math.floor((i - 1) / cols)
+        out[i] = { Markers.ClampPlace((col + 0.5) / cols, (row + 0.5) / rows) }
+    end
+    return out
+end
+
+local function place(s, i)
+    local p = type(s.places) == "table" and s.places[i]
+    if type(p) == "table" and tonumber(p[1]) and tonumber(p[2]) then
+        return Markers.ClampPlace(p[1], p[2])
+    end
+    local fallback = (s.shape == "circle" and Markers.RingPlaces or Markers.GridPlaces)(s.slots)[i]
+    return fallback[1], fallback[2]
+end
+
+-- A slot's size: the marker, its number above and its sender's name below.
+local function cellSize(s)
+    local size = math.max(16, math.min(96, s.iconSize))
+    local numberH = s.number and 18 or 0
+    local nameH = s.names and 16 or 0
+    return size, math.max(size + 12, s.names and 80 or 0), numberH + size + nameH + 12, numberH
+end
+
+-- Where a freeform display's canvas sits in its window: half a slot in from each side, so a slot centred
+-- on the canvas's edge still fits.
+local function geometry(s)
+    local size, cellW, cellH, numberH = cellSize(s)
+    return { size = size, cellW = cellW, cellH = cellH, numberH = numberH, canvas = s.canvas,
+        left = 6 + cellW / 2, top = 4 + cellH / 2, width = s.canvas + cellW + 12, height = s.canvas + cellH + 8 }
+end
+
+local function slotCenter(s, g, i)
+    local fx, fy = place(s, i)
+    return g.left + fx * g.canvas, g.top + fy * g.canvas
+end
+
+-- For the dev editor and tests: slot i's place, and its centre in pixels from the window's top left
+-- (y down); PlaceAt is the place under a point given the same way, kept on the canvas.
+function Markers.Place(def, i)
+    return place(settings(def), i)
+end
+
+function Markers.SlotCenter(def, i)
+    local s = settings(def)
+    return slotCenter(s, geometry(s), i)
+end
+
+function Markers.PlaceAt(def, x, y)
+    local g = geometry(settings(def))
+    return Markers.ClampPlace((x - g.left) / g.canvas, (y - g.top) / g.canvas)
 end
 
 -- The window -------------------------------------------------------------------------------------
@@ -259,23 +354,68 @@ local function slot(i)
     return s
 end
 
+-- The freeform canvas's faint outline, in the theme's border colour: line n, made the first time.
+local outline = {}
+local function outlineLine(n)
+    local line = outline[n]
+    if not line then
+        line = frame:CreateLine(nil, "ARTWORK")
+        line:SetThickness(1)
+        UI.Tint(line, "SetColorTexture", "border", 0.8)
+        outline[n] = line
+    end
+    return line
+end
+
+-- Draws the outline for the display's shape (none for a row, column or grid) and hides the rest.
+local function drawOutline(s, g)
+    local used = 0
+    local function segment(x1, y1, x2, y2)
+        used = used + 1
+        local line = outlineLine(used)
+        line:SetStartPoint("TOPLEFT", frame, x1, -y1)
+        line:SetEndPoint("TOPLEFT", frame, x2, -y2)
+        line:Show()
+    end
+    if s.layout == "free" and s.shape == "square" then
+        local l, t, r, b = g.left, g.top, g.left + g.canvas, g.top + g.canvas
+        segment(l, t, r, t)
+        segment(r, t, r, b)
+        segment(r, b, l, b)
+        segment(l, b, l, t)
+    elseif s.layout == "free" and s.shape == "circle" then
+        local radius = g.canvas / 2
+        local cx, cy = g.left + radius, g.top + radius
+        for k = 0, RING_SEGMENTS - 1 do
+            local a1, a2 = 2 * math.pi * k / RING_SEGMENTS, 2 * math.pi * (k + 1) / RING_SEGMENTS
+            segment(cx + radius * math.cos(a1), cy + radius * math.sin(a1), cx + radius * math.cos(a2), cy + radius * math.sin(a2))
+        end
+    end
+    for k = used + 1, #outline do
+        outline[k]:Hide()
+    end
+end
+
 -- Lays the slots out for a display: number above the marker, the sender's name below it.
 local function layout(s)
-    local size = math.max(16, math.min(96, s.iconSize))
+    local g = geometry(s)
     local font = CRT:FontPath(CRT.db.ui.font) or "Fonts\\FRIZQT__.TTF"
-    frame.iconFont:SetFont(font, size, "")
-    local cellW = math.max(size + 12, s.names and 80 or 0)
-    local numberH = s.number and 18 or 0
-    local nameH = s.names and 16 or 0
-    local cellH = numberH + size + nameH + 12
+    frame.iconFont:SetFont(font, g.size, "")
+    local cellW, cellH, numberH = g.cellW, g.cellH, g.numberH
+    local free = s.layout == "free"
     local perRow = (s.layout == "column" and 1) or (s.layout == "grid" and 4) or s.slots
     for i = 1, 8 do
         local c = slot(i)
         if i <= s.slots then
-            local col, row = (i - 1) % perRow, math.floor((i - 1) / perRow)
             c:ClearAllPoints()
             c:SetSize(cellW, cellH)
-            c:SetPoint("TOPLEFT", frame, "TOPLEFT", 6 + col * cellW, -4 - row * cellH)
+            if free then
+                local x, y = slotCenter(s, g, i)
+                c:SetPoint("CENTER", frame, "TOPLEFT", x, -y)
+            else
+                local col, row = (i - 1) % perRow, math.floor((i - 1) / perRow)
+                c:SetPoint("TOPLEFT", frame, "TOPLEFT", 6 + col * cellW, -4 - row * cellH)
+            end
             c.number:SetShown(s.number)
             c.number:SetText(tostring(i))
             c.icon:ClearAllPoints()
@@ -290,9 +430,14 @@ local function layout(s)
             c:Hide()
         end
     end
-    local cols = math.min(perRow, s.slots)
-    local rows = math.ceil(s.slots / perRow)
-    frame:SetSize(12 + cols * cellW, 8 + rows * cellH)
+    if free then
+        frame:SetSize(g.width, g.height)
+    else
+        local cols = math.min(perRow, s.slots)
+        local rows = math.ceil(s.slots / perRow)
+        frame:SetSize(12 + cols * cellW, 8 + rows * cellH)
+    end
+    drawOutline(s, g)
     title:SetText(s.name or DEFAULT.name)
 end
 
@@ -300,9 +445,41 @@ local function clearSlots()
     filled = 0
     for _, c in ipairs(slots) do
         c.icon:SetText("")
+        c.icon:SetAlpha(1)
         c.name:SetText("")
         c.shownText, c.sender = nil, nil
     end
+end
+
+-- Sample markers and names in every slot, for a preview. ghost: faint numbered markers and no names,
+-- for the dev editor's slots to drag.
+local function fillSamples(s, ghost)
+    clearSlots()
+    for i = 1, s.slots do
+        local c = slot(i)
+        c.icon:SetText(withIcons(SAMPLE[i]))
+        c.icon:SetAlpha(ghost and GHOST_ALPHA or 1)
+        c.number:SetShown(ghost or s.number)
+        c.name:SetText(ghost and "" or SAMPLE_NAMES[i])
+        c.name:SetTextColor(1, 1, 1)
+    end
+end
+
+-- The slots stop taking the mouse (the dev editor's drag) when a test or a pull takes the display.
+local function releaseSlots()
+    for _, c in ipairs(slots) do
+        c:EnableMouse(false)
+        c:SetScript("OnUpdate", nil)
+    end
+end
+
+-- The window and slot i's frame, for the dev editor's drag.
+function Markers:Frame()
+    return frame
+end
+
+function Markers:SlotFrame(i)
+    return slots[i]
 end
 
 -- What the filled slots hold, { { text, sender } }, as it was put on screen (secret values stay
@@ -324,7 +501,7 @@ function Markers:Clear()
     token = token + 1
     if frame then
         clearSlots()
-        if not previewOn then
+        if not previewOn and not editorView then
             frame:Hide()
         end
     end
@@ -381,6 +558,8 @@ end
 
 -- Arms a display for the pull. def is a display's settings; nil disarms.
 function Markers:Arm(encounterID, def, test)
+    editorView = nil -- a test or a pull ends the dev editor's view
+    releaseSlots()
     self:Clear()
     lastPhase = nil
     testing = test and true or false
@@ -410,21 +589,17 @@ function Markers:Testing()
 end
 
 -- Previews: the window with sample markers, to place it.
-UI:RegisterPreview("markers", function(on)
+local function preview(on)
     previewOn = on and true or false
     build()
+    if editorView then -- the dev editor's view stays as it is
+        return
+    end
     handle:SetShown(previewOn)
     if previewOn then
         local s = active or settings(nil)
         layout(s)
-        clearSlots()
-        local api = C_ChatInfo and C_ChatInfo.ReplaceIconAndGroupExpressions
-        for i = 1, s.slots do
-            local c = slot(i)
-            c.icon:SetText(api and api(SAMPLE[i]) or SAMPLE[i])
-            c.name:SetText(UnitName("player") or "Name")
-            c.name:SetTextColor(1, 1, 1)
-        end
+        fillSamples(s, false)
         frame:Show()
     else
         clearSlots()
@@ -432,7 +607,44 @@ UI:RegisterPreview("markers", function(on)
             frame:Hide()
         end
     end
-end)
+end
+UI:RegisterPreview("markers", preview)
+
+-- The dev editor's view of the display it is making (Dev/MarkerEditor.lua), with its unsaved settings:
+-- mode "sample" shows it as raiders would see it, with sample markers and names in every slot, and
+-- "ghost" shows each slot as a faint numbered marker, for a freeform display's slots to be dragged.
+-- Called again after every change, so it follows them. def nil ends it, and so does a test or a pull;
+-- while one is armed it doesn't start.
+function Markers:ShowEditorView(def, mode)
+    build()
+    if not def then
+        if editorView then
+            editorView = nil
+            releaseSlots()
+            clearSlots()
+            frame:Hide()
+            handle:Hide()
+            if previewOn then
+                preview(true)
+            end
+        end
+        return
+    end
+    if active then
+        return
+    end
+    editorView = { def = def, mode = mode }
+    local s = settings(def)
+    layout(s)
+    fillSamples(s, mode == "ghost")
+    handle:Show()
+    frame:Show()
+end
+
+-- The editor's view mode, "sample" or "ghost", or nil when it shows none.
+function Markers:EditorView()
+    return editorView and editorView.mode
+end
 
 local events = CreateFrame("Frame")
 events:RegisterEvent("ENCOUNTER_START")
