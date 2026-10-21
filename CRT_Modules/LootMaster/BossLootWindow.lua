@@ -18,7 +18,7 @@ local L = { width = 620, height = 340, minWidth = 480, minHeight = 220, rowH = 4
 
 local TEXT = {
     title = "Boss loot",
-    help = "The boss items CRT rolled on for you, so you choose what goes into the loot session. Nothing starts by itself.\n\nTicked items go into the session; the loot filter ticks them first. Start session sends the ticked items you have won. It waits while a ticked item is still rolling: wait, or untick it.\n\nAn item someone else won, or that nobody won, can't be ticked. Red means CRT couldn't roll on it: tell the raid to roll on it.\n\nThe list empties when you leave the instance, CRT Looting turns off, and 10 minutes after the kill.",
+    help = "The boss items CRT rolled on for you. Tick the ones to give out and press Start session; nothing starts by itself. The loot filter ticks them first, and Start waits while a ticked item is still rolling.\n\nItems someone else won, or nobody won, can't be ticked. Red means CRT couldn't roll on it: tell the raid to roll. The list empties when you leave the instance, turn CRT Looting off, or 10 minutes after the kill.",
     counts = "%d of %d items ticked · %d still rolling",
     session = " · a loot session is running",
     clear = "Clear",

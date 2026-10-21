@@ -14,7 +14,7 @@ CRT.TimelineJournalExport = Export
 
 local TEXT = {
     button = "Export Abilities",
-    tip = "Cowfee Raid Tools: an ability timeline for this boss and difficulty, with every Journal ability and its spell ID, to add the cast times to on the Timeline's Advanced tab.",
+    tip = "Cowfee Raid Tools: writes this boss's abilities as an ability timeline, with every spell, for you to add the cast times on the Timeline's Advanced tab.",
     title = "Abilities for %s (Ctrl+C to copy)",
     send = "Send to Timeline",
     none = "Open a boss in the Journal first.",

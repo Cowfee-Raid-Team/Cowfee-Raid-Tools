@@ -36,7 +36,7 @@ local WIRE = {
 local NSRT = {
     key = "nsrt",
     label = "Northern Sky",
-    help = "Northern Sky (NSRT) puts the note in NSRT's shared reminder note: its timed lines become NSRT reminders and the rest shows in NSRT's note frame, for every raider running NSRT. CRT's own raid note is not changed. In a raid you must be the leader or an assistant; in a party, the leader. It needs a group: NSRT takes a shared note only from a group leader or assistant, so it can't be sent to yourself.",
+    help = "Sends the note to everyone running Northern Sky, as their shared note: timed lines become reminders and the rest shows in their note frame. CRT's own note stays as it is. Only a group leader or assistant can send it, and it needs a group.",
 }
 CRT.NSRT = NSRT
 

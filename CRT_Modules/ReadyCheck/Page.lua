@@ -127,7 +127,7 @@ local function buildAuto(f)
     makeCheck(f, 28, -56, "Only in raids", "raidsOnly", nil, autoOn)
     makeCheck(f, 28, -80, "Not in Raid Finder", "notLFR", nil, autoOn)
     local postTo = makeDropdown(f, 32, -100, "Post to", "output", OUTPUTS, nil, 70, 170)
-    UI.Help(f, "Who posts the report", "The automatic report goes to chat only from whoever started the ready check or pull timer, so it is posted once. Everyone else sees it only in their own chat.\n\nShift-clicked headings in the ready check window also post to this channel, or to raid chat when it is Only me."):SetPoint("LEFT", postTo, "RIGHT", 6, 0)
+    UI.Help(f, "Who posts the report", "The automatic report goes to chat only from whoever started the ready check or pull timer, so it is posted once; everyone else sees it in their own chat. Shift-clicked headings in the ready check window post to this channel too (raid chat when it is Only me)."):SetPoint("LEFT", postTo, "RIGHT", 6, 0)
 
     local include = label(f, "Include in the report")
     include:SetPoint("TOPLEFT", 8, -144)
@@ -138,22 +138,22 @@ local function buildAuto(f)
 
     local counts = label(f, "What counts")
     counts:SetPoint("TOPLEFT", 8, -224)
-    UI.Help(f, "What counts", "Food: any food buff counts, whatever was eaten.\n\nLower quality flasks need those marked in the built-in consumables list. Until they are, no flask is flagged.\n\nNot available: potions and healthstones used in the last fight (the combat log is closed to addons during boss fights in Midnight), and other players' weapon oils and armor kits (they aren't buffs, so the game doesn't show them to addons)."):SetPoint("LEFT", counts, "RIGHT", 6, 0)
+    UI.Help(f, "What counts", "Food: any food buff counts. Lower quality flasks are flagged only once they are in the built-in list. Not available: potions and healthstones used in the last fight, and other players' weapon oils and armour kits, which the game doesn't show to addons."):SetPoint("LEFT", counts, "RIGHT", 6, 0)
     makeDropdown(f, 8, -240, "Flask and oil expiring warning", "flaskWarn", WARNS, nil, 200, 170)
     makeCheck(f, 4, -274, "Count a lower quality flask as a problem", "lowFlask")
     local lock = makeCheck(f, 4, -304, "Lock my Ready button until everyone has my raid buff", "buffLock")
     local fade = makeCheck(f, 4, -334, "Fade out my bar and the ready check window on a pull timer", "fadeOnPull")
-    UI.Help(f, "Fade on a pull timer", "When anyone starts a pull timer, your bar and the ready check window fade out over 2 seconds, so they're gone before the pull. They come back on the next ready check, and Previews keeps them up."):SetPoint("LEFT", fade, "RIGHT", 330, 0)
+    UI.Help(f, "Fade on a pull timer", "When anyone starts a pull timer, your bar and the ready check window fade out over 2 seconds. They come back on the next ready check; Previews keeps them up."):SetPoint("LEFT", fade, "RIGHT", 330, 0)
     -- Early Pull Checker, its own section in the right column under Your bar (below the include
     -- checkboxes, which run under both columns).
     local earlyTitle = label(f, "Early Pull Checker")
     earlyTitle:SetPoint("TOPLEFT", 404, -230)
-    UI.Help(f, "Early Pull Checker", "While a pull timer counts down, the addon watches which group members enter combat and who cast just before. If the fight starts more than half a second before the timer ends, it reports the first players in combat and the last casts before it.\n\nThe game hides which spell other players cast, so only their names and times are listed; your own casts show their spell.\n\nIf the game hides the timer's length in your raid, early and on time can't be told apart and nothing is reported."):SetPoint("LEFT", earlyTitle, "RIGHT", 6, 0)
+    UI.Help(f, "Early Pull Checker", "While a pull timer counts down, CRT watches who enters combat and who cast just before. If the fight starts more than half a second early, it reports the first players in combat and the last casts before it. The game hides other players' spells, so only their names and times show. If the game hides the timer's length, nothing is reported."):SetPoint("LEFT", earlyTitle, "RIGHT", 6, 0)
     makeCheck(f, 400, -250, "Report who starts the fight before the pull timer ends", "earlyPull")
     makeDropdown(f, 428, -276, "Post to", "earlyPullOutput", OUTPUTS, nil, 70, 170, function()
         return settings().earlyPull
     end)
-    UI.Help(f, "Ready button lock", "When a ready check starts and someone in the group is missing your class's raid buff (Arcane Intellect, Fortitude, Battle Shout, Mark of the Wild, Skyfury or Blessing of the Bronze), your Ready button is greyed out until they have it. Hover it to see who.\n\nHold Shift and click Ready to ready anyway, and it unlocks by itself after 10 seconds, in case you can't buff.\n\nOnly players the game lets the addon read count. Anyone offline, out of sight, or whose buffs the game hides never locks you."):SetPoint("LEFT", lock, "RIGHT", 330, 0)
+    UI.Help(f, "Ready button lock", "When a ready check starts and someone is missing your class's raid buff, your Ready button is greyed out until they have it; hover it to see who. Hold Shift and click Ready to ready anyway, and it unlocks by itself after 10 seconds. Players the game won't let the addon read never lock you."):SetPoint("LEFT", lock, "RIGHT", 330, 0)
 
     -- Your bar, top right. The bar itself is arranged on the Your bar tab.
     local Consumables = CRT.Consumables
@@ -204,7 +204,7 @@ local function buildAuto(f)
         return false
     end
     local cauldron = makeCheck(f, 400, -112, "Flasks from a cauldron only (WIP)", "cauldronOnly", bar, wip)
-    UI.Help(f, "Coming soon", "Flasks from a cauldron only: clicking the flask icon would use only the Fleeting flasks a raid cauldron hands out, so your own flasks are saved.\n\nUnlimited rune only: clicking the rune icon would use only an augment rune that is not used up.\n\nBoth wait for the item IDs to be added to the built-in list."):SetPoint("LEFT", cauldron, "RIGHT", 210, 0)
+    UI.Help(f, "Coming soon", "Flasks from a cauldron only: the flask icon would use only Fleeting flasks from a raid cauldron, saving your own. Unlimited rune only: the rune icon would use only an augment rune that isn't used up. Both wait for their item IDs to be added."):SetPoint("LEFT", cauldron, "RIGHT", 210, 0)
     makeCheck(f, 400, -136, "Unlimited augment rune only (WIP)", "unlimitedRune", bar, wip)
 end
 
@@ -259,7 +259,7 @@ local function buildWindow(f)
     local cols = label(f, "Columns: drag a heading to move it, click it to show or hide it.")
     cols:SetPoint("TOPLEFT", 8, -148)
     cols:SetWordWrap(false)
-    UI.Help(f, "The ready check window", "A table of every player's ready answer, consumables and raid buffs. It opens on a ready check, or any time with /crt check, and closes after the time set here or on a right-click. Shift-click a heading in it to post who is missing that to raid chat. Drag it to move it, or use Previews to place it.\n\nIn the table: an icon means they have it, a gold number is minutes left on an expiring flask, x is missing, and ? means the game hid their buffs. Durability and weapon oils only show for players who run Cowfee Raid Tools, since each one sends their own. The game never shows addons another player's weapon oil."):SetPoint("LEFT", cols, "RIGHT", 6, 0)
+    UI.Help(f, "The ready check window", "A table of every player's ready answer, consumables and raid buffs. It opens on a ready check (or any time with /crt check) and closes after the time set here, or on a right-click. Shift-click a heading to post who is missing that to raid chat. Drag it to move it.\n\nAn icon means they have it, a gold number is minutes left on a flask, x is missing, and ? means the game hid their buffs. Durability and weapon oils only show for players running Cowfee Raid Tools."):SetPoint("LEFT", cols, "RIGHT", 6, 0)
 
     -- The same table the window draws, with sample players, in edit mode.
     local box = CreateFrame("Frame", nil, f, "BackdropTemplate")

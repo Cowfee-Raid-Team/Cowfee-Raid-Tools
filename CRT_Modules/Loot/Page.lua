@@ -26,10 +26,10 @@ local MAX_CANDIDATES = 25 -- lines of RCLootCouncil's candidate list in a row's 
 
 local TEXT = {
     title = "Loot History",
-    help = "Every boss item of epic quality or better that someone in your group gets in a raid, recorded on your own computer from what the game reports: who got it, from which boss, on which difficulty, and how they rolled when it was group loot.\n\nWith RCLootCouncil installed, its awards are read in too (read only): the response, the council's votes, the winner's note and the gear they had fill in the matching items, and its awards that match no recorded item are listed as rows of their own. Hover a row for every candidate's response and roll.\n\nRight-click a recorded item to delete it. Settings has what is recorded, how long it is kept, and deleting more.",
-    filtersHelp = "Filters: each dropdown narrows the list; All shows everything. Response lists what the Roll / response column shows, each once: the game's roll types and RCLootCouncil's responses. Source picks items CRT recorded, or RCLootCouncil's awards that CRT did not record. Search matches the item, player and boss names (an item's name shows once the game has loaded it).\n\nExport gives what the list shows now as CSV, to paste into a spreadsheet or Notion.",
+    help = "Every epic or better boss item someone in your group gets in a raid, recorded on your own computer: who got it, from which boss, on which difficulty, and how they rolled.\n\nWith RCLootCouncil installed, its awards are read in too (read only) and fill in the matching items; hover a row for every candidate's response and roll. Right-click an item to delete it. Settings has what is recorded and how long it is kept.",
+    filtersHelp = "Each dropdown narrows the list; All shows everything. Response lists what the Roll / response column shows. Source picks items CRT recorded, or RCLootCouncil's awards CRT didn't record. Search matches the item, player and boss names. Export gives the list as CSV for a spreadsheet.",
     summaryHelp = "For the filters on the History tab: how many items each player got, and how many of them were tier tokens (in gold).",
-    rcHelp = "With RCLootCouncil installed, CRT reads its saved awards: the response and its colour, the council's votes, the winner's note and roll, the gear they had, and every candidate's response, roll and item level. An award that matches a recorded item (same player and item, within a few hours) fills in that item; the others are listed on the History tab as rows of their own. CRT only reads RCLootCouncil's data and never changes or saves it. Re-scan reads it again now.",
+    rcHelp = "With RCLootCouncil installed, CRT reads its saved awards: the response, votes, the winner's note and roll, the gear they had, and every candidate's response. An award that matches a recorded item fills it in; the others are listed as rows of their own. CRT only reads this data and never changes it. Re-scan reads it again now.",
     search = "Search",
     export = "Export CSV",
     count = "%d items",
@@ -650,7 +650,7 @@ local function buildSettings(f)
     local heading = f:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
     heading:SetPoint("TOPLEFT", 8, -8)
     heading:SetText("Recording")
-    UI.Help(f, "Recording", "What is recorded: items from raid bosses, of the quality you pick or better. Tick Dungeons to record dungeon bosses too.\n\nEach player's own computer records what it sees; nothing is shared."):SetPoint("LEFT", heading, "RIGHT", 6, 0)
+    UI.Help(f, "Recording", "Items from raid bosses, of the quality you pick or better; tick Dungeons to record dungeon bosses too. Each player's own computer records what it sees; nothing is shared."):SetPoint("LEFT", heading, "RIGHT", 6, 0)
     local quality = UI.Dropdown(f, "Minimum quality", {
         labelWidth = 110, width = 140,
         options = { { key = 3, label = "Rare" }, { key = 4, label = "Epic" }, { key = 5, label = "Legendary" } },

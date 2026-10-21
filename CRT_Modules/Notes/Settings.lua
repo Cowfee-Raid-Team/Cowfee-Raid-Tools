@@ -12,7 +12,7 @@ local UI = CRT.UI
 -- Every word on this tab, in one place so the wording is easy to change. Keep the keys, change the
 -- text in quotes, save, and /reload.
 local TEXT = {
-    hint = "Untick Locked to drag a window and resize it from its bottom-right corner, then lock it again so clicks pass through. Keep up when empty leaves a window on screen, blank at its own transparency, while it has nothing to show, so a new or cleared note never makes it vanish. Previews shows every window with sample text. Everything here is saved for you.",
+    hint = "Untick Locked to drag a window and resize it from its bottom-right corner, then lock it so clicks pass through. Keep up when empty leaves a window on screen while it has nothing to show. Previews shows every window with sample text.",
 
     -- The three window columns.
     timers = "Timers",
@@ -41,7 +41,7 @@ local TEXT = {
 
     -- All three note windows.
     allWindows = "All note windows",
-    allWindowsHelp = "Settings for the Timers, Assignments and Personal note windows together.\n\nShow outside of raid: untick it to hide all three windows unless you are in a raid instance. They come back when you enter a raid. Previews still shows them, so you can move them.",
+    allWindowsHelp = "Settings for the Timers, Assignments and Personal note windows together. Show outside of raid: untick it to hide all three unless you are in a raid instance. Previews still shows them.",
     showOutsideRaid = "Show outside of raid",
 
     -- Sharing.
@@ -49,7 +49,7 @@ local TEXT = {
     trustedOnly = "Only accept notes from leader or assistants",
     notesList = "Notes list",
     listStyle = "Show notes",
-    listHelp = "How the Notes tab lists your notes.\n\nGrouped headings: every note, under a heading per difficulty that you click to fold.\n\nDropdown: one difficulty at a time, picked in a dropdown over the list.\n\nChips: one difficulty at a time, picked with buttons over the list that count each one's notes.",
+    listHelp = "How the Notes tab lists your notes. Grouped headings: every note under a heading per difficulty. Dropdown: one difficulty at a time, picked above the list. Chips: one difficulty at a time, picked with buttons that count each one's notes.",
     grouped = "Grouped headings",
     dropdown = "Dropdown",
     chips = "Chips",

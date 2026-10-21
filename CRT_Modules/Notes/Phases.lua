@@ -12,7 +12,7 @@ local UI = CRT.UI
 -- text in quotes, save, and /reload.
 local TEXT = {
     title = "Phases",
-    help = "What starts each phase after the first one. The first phase starts with the pull. A phase set to Next phase only starts when you press Next phase on the Notes tab or type /crt note next, which also starts any phase here by hand, whatever its trigger.\n\nA phase appears here when your note or reminders use it, or when it has a trigger.\n\nShipped triggers come with the addon. Change one and it becomes yours; Use shipped puts the shipped one back.",
+    help = "What starts each phase after the first, which starts with the pull. A phase set to Next phase starts only when you press Next phase on the Notes tab or type /crt note next, which can start any phase by hand.\n\nA phase appears here when your note or reminders use it. Shipped triggers come with the addon; change one and it becomes yours, and Use shipped puts it back.",
     boss = "Boss",
     phasePull = "Phase %s \226\128\148 the pull",
     phase = "Phase %s",

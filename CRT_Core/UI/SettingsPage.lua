@@ -238,7 +238,7 @@ end
 local function buildLeft(pf)
     local x = LEFT_X
 
-    heading(pf, x, -44, "Window", "The theme button in the title bar picks the theme. Default: Blizzard is the game's own look. Blackout: Midnight, Blackout: Nitro and Beanworks: Cowfee give the whole addon their own colors, flat dropdowns and buttons, the menu in grouped blocks, and Arial Narrow text when the font below is Default.\n\nWindow Scale applies when you let go, press Enter, or stop turning the wheel. Ctrl + mouse wheel over the window also changes it.\n\nOpacity fades the whole window, text and buttons included, down to 30%.")
+    heading(pf, x, -44, "Window", "The theme button in the title bar picks the look: Default: Blizzard is the game's own, and the others give the whole addon their colours.\n\nWindow Scale applies when you let go or press Enter; Ctrl + mouse wheel over the window changes it too.\n\nOpacity fades the whole window, down to 30%.")
     add(UI.Slider(pf, "Window scale", {
         min = UI.MIN_SCALE,
         max = UI.MAX_SCALE,
@@ -275,7 +275,7 @@ local function buildLeft(pf)
         end,
     }), x, -120)
 
-    heading(pf, x, -164, "Text", "The font, outline and size of every text the addon draws: this window, the note windows and their titles, your next spell alert, and the ready check bar and window.\n\nThe font list has the game's fonts, plus any font other addons share through LibSharedMedia, when one of them is installed. Default is the game's own font in the Classic look and Arial Narrow in the Modern look. The game's font also suits clients in other languages.\n\nChanging the font sets every note window to it too. You can still give a note window its own font on Raid Notes afterwards. Text size is the body text size in points, 8 to 22 pt (14 pt is the default); headings and small text grow or shrink with it. It doesn't change the note windows, which have their own size.\n\nBoss debuff timers are drawn by the game in its own font, which no addon can change, so the debuff preview keeps that font too.")
+    heading(pf, x, -164, "Text", "The font, outline and size of all the addon's text, note windows included.\n\nThe list has the game's fonts and any shared by other addons. Default is the game's font in Default: Blizzard and Arial Narrow in the other themes.\n\nText size is the body text size (8 to 22 pt, 14 by default); headings and small text follow it. Note windows keep their own size, and a note window can still get its own font on Raid Notes. Boss debuff timers keep the game's font.")
     add(UI.Dropdown(pf, "Font", {
         options = fontChoices,
         labelWidth = LABEL_W,
@@ -320,7 +320,7 @@ local function buildLeft(pf)
     }), x, -258)
 
     x = MIDDLE_X
-    heading(pf, x, -44, "Sound", "Every sound the addon plays goes through this game sound channel, so it follows that channel's volume and mute in the game's Sound settings.\n\nTwo sounds are played by the game instead and keep its own outputs: the low-health pulse (Combat Audio Alerts, with its own volume on Quality of Life) and text to speech for your next spell (its volume is on Raid Notes).")
+    heading(pf, x, -44, "Sound", "Every sound the addon plays uses this game sound channel, so it follows that channel's volume and mute.\n\nThe low-health pulse and text to speech are played by the game and have their own volume, on Quality of Life and Raid Notes.")
     add(UI.Dropdown(pf, "Sound channel", {
         options = CRT.SOUND_CHANNELS,
         labelWidth = LABEL_W,
@@ -334,14 +334,14 @@ local function buildLeft(pf)
         end,
     }), x, -62)
 
-    heading(pf, x, -106, "Reports", "Ticked, player names in the Late Tracker and Tattlebot show without their realm: on their pages, in chat posts and in Discord exports. Unticked, a realm only shows for players from another realm, as the game shows it.\n\nThe Raid Groups grid always keeps realms, since it needs them to tell players apart.")
+    heading(pf, x, -106, "Reports", "Ticked, player names in the Late Tracker and Tattlebot show without their realm, on their pages, in chat and in Discord exports. Unticked, a realm shows only for players from another realm. The Raid Groups grid always keeps realms.")
     checkbox(pf, x, -124, "Leave realm names out of reports and Discord exports", function()
         return ui().hideRealms
     end, function(on)
         ui().hideRealms = on
     end)
 
-    heading(pf, x, -184, "Minimap", "Left-click the minimap button to open or close this window, and right-click it for General Settings. Drag it to move it around the minimap.\n\nThe addon is also listed in the game's addon menu beside the minimap, which works with the button hidden.")
+    heading(pf, x, -184, "Minimap", "Left-click the minimap button to open or close this window, right-click it for General Settings, and drag it to move it. The addon is also in the game's addon menu by the minimap, with the button hidden.")
     checkbox(pf, x, -202, "Show the minimap button", function()
         return not CRT.db.minimap.hide
     end, function(on)
@@ -352,7 +352,7 @@ end
 local function buildRight(pf)
     local x = RIGHT_X
 
-    heading(pf, x, -44, "Layers", "Which layer each group of windows is drawn in, from Background (under everything) to Tooltip (over everything). A window in a higher layer always covers one in a lower layer, including the game's own windows in those layers.\n\nAlerts: your next spell, alert bars, icons, texts and circles, and the low-health banner.\nRaid windows: the ready check window, your consumables bar and the debuff panel.\nPop-up windows: the windows that open over the others, such as text to copy, imports and the Late Tracker roster.\n\nMixed means the windows of a group are in different layers; picking one puts them all in it. The game's windows are mostly Medium and High, and dialogs are Dialog. The consumables bar can't change layer during combat, so a change to it waits until combat ends.")
+    heading(pf, x, -44, "Layers", "Which layer each group of windows is drawn in, from Background (under everything) to Tooltip (over everything). A higher layer always covers a lower one, the game's own windows included.\n\nAlerts: your next spell, alert bars, icons, texts, circles and the low-health banner. Raid windows: the ready check window, your consumables bar and the debuff panel. Pop-up windows: text to copy, imports and the Late Tracker roster.\n\nMixed means the group's windows are in different layers; picking one puts them all in it. The consumables bar changes layer after combat.")
     for i, group in ipairs(UI.LAYER_GROUPS) do
         add(UI.Dropdown(pf, group.label, {
             options = function()
@@ -391,7 +391,7 @@ end
 
 local function buildProfiles(pf)
     local x, top = LEFT_X, -44
-    heading(pf, x, top, "Profiles", "A profile holds everything the addon saves: every setting and window position, plus your raid layouts, notes, consumables lists, and the Late Tracker and Tattlebot history.\n\nEach character remembers its own profile. New characters start on the profile picked under New characters.\n\nSwitching, copying or resetting a profile reloads your interface, like /reload.\n\nExport gives the profile as text to share or keep. Import saves pasted text as a new profile.")
+    heading(pf, x, top, "Profiles", "A profile holds everything the addon saves: settings, window positions, raid layouts, notes, consumables lists and the Late Tracker and Tattlebot history. Each character remembers its own; new characters start on the one picked under New characters.\n\nSwitching, copying or resetting a profile reloads your interface. Export gives the profile as text; Import saves pasted text as a new profile.")
 
     local current = pf:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     current:SetPoint("TOPLEFT", x, top - 22)
@@ -541,7 +541,7 @@ local function build(pf)
     local title = pf:CreateFontString(nil, "OVERLAY", "CRTFontLarge")
     title:SetPoint("TOPLEFT", 8, -8)
     title:SetText("General Settings")
-    UI.Help(pf, "General Settings", "Settings for the whole addon. Appearance: the main window, the text everywhere, sound, reports, the minimap button, and which windows are drawn above which. Profiles: saving, sharing and switching everything the addon keeps. Every change applies straight away, except profile changes, which reload your interface."):SetPoint("LEFT", title, "RIGHT", 6, 0)
+    UI.Help(pf, "General Settings", "Settings for the whole addon: the look, text, sound, reports, the minimap button, window layers and profiles. Changes apply at once, except profile changes, which reload your interface."):SetPoint("LEFT", title, "RIGHT", 6, 0)
 
     for i, tab in ipairs(TABS) do
         local b = CreateFrame("Button", nil, pf, "BackdropTemplate")

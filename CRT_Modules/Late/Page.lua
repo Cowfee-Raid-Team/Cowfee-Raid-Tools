@@ -780,7 +780,7 @@ local function getEditor()
     if d.addGroup.Dropdown.SetDefaultText then
         d.addGroup.Dropdown:SetDefaultText("Pick a player")
     end
-    UI.Help(d, "Edit tonight's roster", "Changes the list for tonight only. The expected roster layout on Raid Groups stays as it is, so change it there for future nights.\n\nAdd from group: someone in your group who should count tonight, such as a player on a renamed character. They count as joined now; press On time if they were here from the start.\n\nOn time: counts the player as here from the start, for someone who was here under another name or is excused.\n\nRemove: takes the player off tonight's list, so they don't count as late or missing."):SetPoint("TOPRIGHT", d, "TOPRIGHT", -30, -36)
+    UI.Help(d, "Edit tonight's roster", "Changes tonight's list only; the expected roster on Raid Groups stays as it is.\n\nAdd from group: someone in your group who should count tonight. They count as joined now; press On time if they were here from the start.\n\nOn time: counts the player as here from the start.\n\nRemove: takes the player off tonight's list, so they don't count as late or missing."):SetPoint("TOPRIGHT", d, "TOPRIGHT", -30, -36)
 
     local sync = makeButton(d, "Update from layout", 150, 22)
     editorFont(sync)
@@ -793,7 +793,7 @@ local function getEditor()
             CRT:Print(removed)
         end
     end)
-    tooltip(sync, "Update from layout", "Makes tonight's list match the expected roster layout as it is saved now, without restarting the clock. New names in the layout who are in your group count as on time; names gone from the layout are taken off, unless you added them here. This also happens on its own when you save the layout on Raid Groups.")
+    tooltip(sync, "Update from layout", "Makes tonight's list match the expected roster as saved now, without restarting the clock. New names in your group count as on time; names gone from the layout are taken off, unless you added them here. Saving the layout on Raid Groups does this too.")
 
     local typed = label(d, "Or type a name")
     typed:SetPoint("TOPLEFT", 16, -72)
@@ -882,7 +882,7 @@ local function buildTonight(f)
             CRT:Print(restarting and "Raid night restarted from now." or "Raid night started.")
         end
     end)
-    tooltip(startButton, "Start raid now", "Starts tonight's clock now, for when invites go out. On a raid day it replaces the scheduled start. While a night is running, it restarts it from now and the running night is not saved.")
+    tooltip(startButton, "Start raid now", "Starts tonight's clock now, for when invites go out. On a raid day it replaces the scheduled start. While a night is running, it restarts from now and the running night isn't saved.")
 
     endButton = makeButton(f, "End raid", 100)
     standardFont(endButton)
@@ -899,7 +899,7 @@ local function buildTonight(f)
         local d = getEditor()
         d:SetShown(not d:IsShown())
     end)
-    tooltip(editButton, "Edit roster", "Change tonight's list while the raid runs: add someone from your group or by name, count a player as on time, or take someone off the list. Only tonight changes, not the expected roster layout.")
+    tooltip(editButton, "Edit roster", "Change tonight's list while the raid runs: add someone, count a player as on time, or take someone off. Only tonight changes, not the expected roster.")
 
     -- The expected roster as a grid, then who is missing and who came late in a wide box under it.
     local GRID_TOP = -44
@@ -957,7 +957,7 @@ local function buildHistory(f)
     local exportButton = makeButton(f, "Export for Discord", 190)
     exportButton:SetPoint("BOTTOMLEFT", detailBox, "BOTTOMLEFT", 0, -30)
     exportButton:SetScript("OnClick", export)
-    tooltip(exportButton, "Export for Discord", "Opens a window with the selected totals or night as text, already selected. Press Ctrl+C, then paste it into Discord. The columns line up in Discord's code block.")
+    tooltip(exportButton, "Export for Discord", "Opens the selected totals or night as text, already selected. Press Ctrl+C and paste it into Discord; the columns line up in a code block.")
 
     deleteButton = makeButton(f, "Delete this night", 190)
     deleteButton:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -8, 8)
@@ -1059,7 +1059,7 @@ local function buildSettings(f)
     })
     layoutButton:SetPoint("TOPLEFT", 8, -62)
     controls[#controls + 1] = layoutButton
-    UI.Help(f, "Expected roster", "The active Raid Groups layout: who should be there, in their groups. It is the same as Make active on Raid Groups, where it is marked active. During a raid night, tonight's list follows it: make another layout active, or change this one, and tonight updates, with everyone's clock kept."):SetPoint("LEFT", layoutButton, "RIGHT", 6, 0)
+    UI.Help(f, "Expected roster", "The active Raid Groups layout: who should be there, in their groups (Make active on Raid Groups). During a raid night, tonight's list follows it when you change or switch layouts, with everyone's clock kept."):SetPoint("LEFT", layoutButton, "RIGHT", 6, 0)
 end
 
 local function build(pf)
@@ -1067,7 +1067,7 @@ local function build(pf)
 
     local title = label(pf, "Late Tracker", "CRTFontLarge")
     title:SetPoint("TOPLEFT", 8, -8)
-    UI.Help(pf, "The Late Tracker", "On the Settings tab, tick your raid days and start time, and pick the Raid Groups layout of who should be there. At the start time, anyone in that layout who is not in your group is late, and their clock runs until they join, or until the group disbands.\n\nTonight shows the night as it happens. Start raid now starts a night by hand when invites go out off schedule.\n\nHistory keeps every night, with totals and an export for Discord."):SetPoint("LEFT", title, "RIGHT", 6, 0)
+    UI.Help(pf, "The Late Tracker", "On the Settings tab, tick your raid days and start time and pick the Raid Groups layout of who should be there. At the start time, anyone in that layout who isn't in your group is late until they join.\n\nTonight shows the night as it happens; Start raid now starts one by hand. History keeps every night, with totals and an export for Discord."):SetPoint("LEFT", title, "RIGHT", 6, 0)
 
     for i, tab in ipairs(TABS) do
         local b = CreateFrame("Button", nil, pf, "BackdropTemplate")

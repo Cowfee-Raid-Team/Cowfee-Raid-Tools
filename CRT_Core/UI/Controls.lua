@@ -130,7 +130,7 @@ end
 -- files go, as row.help, for the caller to anchor. opts.playButton true adds a small Play button after the
 -- closed dropdown, as row.play, that plays the chosen sound once (nothing else: no alert, bar or speech).
 UI.SOUND_PLAY_W, UI.SOUND_PLAY_GAP = 44, 6
-UI.SOUND_HELP = "Game sounds, sounds other addons share (through LibSharedMedia), and your own files.\n\nYour own .ogg or .mp3 files go in the CowfeeRaidTools_Media companion addon's Sounds folder: Quality of Life > Sounds says how to set it up, and has a Test button for each file.\n\nPlay in the open list plays a sound on your sound channel (General Settings)."
+UI.SOUND_HELP = "Game sounds, sounds shared by other addons, and your own files.\n\nYour own .ogg or .mp3 files go in the CowfeeRaidTools_Media addon's Sounds folder: Quality of Life > Sounds shows how, with a Test button for each file.\n\nPlay in the list plays the sound on your sound channel (General Settings)."
 
 function UI.SoundDropdown(parent, text, opts)
     local o = {}

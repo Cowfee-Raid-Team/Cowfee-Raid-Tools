@@ -75,7 +75,7 @@ function ReviewTab.Build(f, ctx)
         get = ctx.group,
         set = ctx.selectGroup,
     }), 8, -4)
-    UI.Help(f, "Difficulty", "Normal and Heroic share one schedule, so they are one view, and Mythic is the other. The boss list, the pulls, the ability timelines and the recent pulls show only the difficulty picked here. The page opens on the difficulty, boss and pull you last looked at.\n\nRows and abilities that are Mythic-only never show on Normal/Heroic."):SetPoint("TOPLEFT", f, "TOPLEFT", 176, -8)
+    UI.Help(f, "Difficulty", "Normal and Heroic share one schedule, so they are one view; Mythic is the other. The boss list, pulls and ability timelines show only the difficulty picked here. Mythic-only rows never show on Normal/Heroic."):SetPoint("TOPLEFT", f, "TOPLEFT", 176, -8)
     place(UI.Dropdown(f, "Boss", {
         options = ctx.bossOptions,
         labelWidth = 40,
@@ -104,7 +104,7 @@ function ReviewTab.Build(f, ctx)
         get = ctx.order,
         set = ctx.selectOrder,
     })
-    local orderHelp = UI.Help(f, "Order", "The order your raid takes this boss's parts in, such as which turtle empowers first. Each part's abilities move into the window it now has; abilities shared by every part stay where they are.\n\nThe choice is kept for this boss and difficulty.")
+    local orderHelp = UI.Help(f, "Order", "The order your raid takes this boss's parts in, such as which turtle empowers first. Each part's abilities move to the time it now has. The choice is kept for this boss and difficulty.")
     -- docked: after Time visible (its label, bar and value end near 300)
     local ORDER_W, WIDE_X, NARROW_X, NARROW_Y = 40 + 5 + 140, 640, 320, -64
     local function placeOrder()
@@ -141,10 +141,10 @@ function ReviewTab.Build(f, ctx)
     UI.Help(f, "Deaths from recent pulls", "Draws the deaths of the pulls before this one over it, faded by how old they are, so deaths that repeat stand out. How many pulls it covers is on the Settings tab."):SetPoint("TOPLEFT", f, "TOPLEFT", 440, -40)
 
     tab.unnamedHelp = UI.Help(f, "Unnamed casts", function()
-        local text = "Some boss casts come from the game without a readable spell, so they are drawn in the \"Boss casts (unnamed)\" row with only their time. That is the game hiding the name, not a missing record."
+        local text = "Some boss casts come from the game without a readable spell, so they are drawn in the \"Boss casts (unnamed)\" row with only their time."
         -- a reference has no casts of its own, so the hint is for recorded pulls only
         if tab.view and tab.view:CastCount() == 0 and ctx.pull() and not ctx.showingReference() then
-            text = text .. "\n\nThis pull has no casts at all. The game's Boss Timeline option may be off, so no boss events arrived. Check it in the game's options."
+            text = text .. "\n\nThis pull has no casts at all. The game's Boss Timeline option may be off; check it in the game's options."
         end
         return text
     end)

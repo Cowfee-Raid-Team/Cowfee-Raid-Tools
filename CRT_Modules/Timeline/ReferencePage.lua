@@ -46,9 +46,9 @@ local FORMAT_HELP = "One line per thing:\n\n"
     .. "Encounter: 3001  (the boss's encounter ID, optional)\n"
     .. "Phase: P2 7:20  (a phase line, the label is optional)\n"
     .. "Soulcoil Rite (type raid, lead 7) [spell 123456]: 0:02+45, 1:17, 95\n\n"
-    .. "A time is m:ss or plain seconds, and +N after it draws a bar N seconds long. type says what the ability is, one or more of the words below: the first colors the row, and each other one adds a dot to its name. tags lists the Encounter Journal's icons for it (tank, healer, dps, heroic, mythic, deadly, important, interrupt, magic, curse, poison, disease, enrage, bleed), which the Journal's Export Abilities writes for you. lead N draws the cast line N seconds before each icon, color rrggbb colors the name instead of its type, and [spell N] gives the icon and tooltip; without it the row is matched by name to the boss's Journal abilities. Blank lines and lines starting with # are skipped. Nothing is saved until every line reads.\n\n"
+    .. "A time is m:ss or seconds; +N after it draws a bar N seconds long. type says what the ability is (the words below): the first colours the row, the others add dots. tags lists the Journal's icons for it, which Export Abilities writes for you. lead N draws the cast line N seconds early, color rrggbb overrides the colour, and [spell N] sets the icon and tooltip; without it the row is matched by name. Blank lines and lines starting with # are skipped. Nothing is saved until every line reads.\n\n"
     .. CRT.TimelineReference.Legend()
-    .. "\n\nIcons and the match to a Journal ability come from the Encounter Journal, which is not read in combat, so they can be blank until you are out of combat."
+    .. "\n\nIcons come from the Encounter Journal, which isn't read in combat, so they can be blank until you are out of combat."
 
 local function skin(frame, alpha)
     frame:SetBackdrop(BACKDROP)
@@ -96,7 +96,7 @@ function ReferencePage.Recent(f, width, pullLabel, toggle)
     frame:Hide()
     local title = label(frame, "Recent pulls")
     title:SetPoint("TOPLEFT", 4, 0)
-    UI.Help(frame, "Recent pulls", "This boss's saved pulls. Click one to lay it over the ability timeline: its deaths go in the Deaths row, its casts are drawn as ticks in a row of their own (their spells are usually unreadable), and a line marks where it ended. Click it again to clear it."):SetPoint("LEFT", title, "RIGHT", 4, 0)
+    UI.Help(frame, "Recent pulls", "This boss's saved pulls. Click one to lay it over the ability timeline: its deaths go in the Deaths row, its casts show as ticks in a row of their own, and a line marks where it ended. Click again to clear it."):SetPoint("LEFT", title, "RIGHT", 4, 0)
 
     local recent, lines = {}, {}
     -- pulls newest first, each in a box as the Raid Notes list draws its notes, overlayID the one laid
@@ -485,7 +485,7 @@ function ReferencePage.Build(f, ctx)
         end
         refreshAbilities()
     end)
-    UI.Help(f, "Fill spell IDs", "Adds [spell N] to every line whose name matches one of the boss's Encounter Journal abilities (listed on the right), so its icon and tooltip are fixed in the text. The boss is the one on the Boss line, or the selected boss.\n\nLines that already have a [spell] and lines that match nothing are left as they are. A name that doesn't match can be renamed to the Journal's name, or given [spell N] by hand.\n\nThe Journal is read out of combat with its window closed."):SetPoint("LEFT", fillIDs, "RIGHT", 4, 0)
+    UI.Help(f, "Fill spell IDs", "Adds [spell N] to every line whose name matches one of the boss's Journal abilities, so its icon and tooltip are fixed in the text. Lines that already have one, or match nothing, are left alone: rename those to the Journal's name or add [spell N] by hand. The Journal is read out of combat with its window closed."):SetPoint("LEFT", fillIDs, "RIGHT", 4, 0)
 
     -- Right: the selected boss's references.
     local listLabel = label(f, "")
@@ -561,7 +561,7 @@ function ReferencePage.Build(f, ctx)
     abilitiesLabel:SetWidth(280)
     abilitiesLabel:SetJustifyH("LEFT")
     abilitiesLabel:SetWordWrap(false)
-    UI.Help(f, "Journal abilities", "The boss's abilities in the Encounter Journal, with their spell IDs. An ability line whose name matches one gets its icon and tooltip, or use Fill spell IDs to write the IDs into the text.\n\nClick or right-click an ability to give it a row on the timeline (even with no cast times, so notes, templates and cooldowns can go on it), a type that colors its row, your own name for it, or a Mech Alert. These are only yours: no ability timeline or note changes.\n\nWhile one of your ability timelines is open in the box (Edit, or the Journal's Send to Timeline), this list is that ability timeline: its abilities under its phases. Right-click an ability to add a phase or an intermission before it, and right-click a phase to set when it starts or take it out; the ability timeline's text follows.\n\nThe Journal's spell for an ability is sometimes a summary spell rather than the exact cast, so its ID may differ from what the damage meter shows.\n\nNothing shows in combat or while the Journal window is open."):SetPoint("LEFT", abilitiesLabel, "RIGHT", -4, 0)
+    UI.Help(f, "Journal abilities", "The boss's abilities in the Encounter Journal, with their spell IDs. A line whose name matches one gets its icon and tooltip; Fill spell IDs writes the IDs into the text.\n\nClick or right-click an ability to give it a row on the timeline, a type that colours its row, your own name, or a Mech Alert. These are only yours.\n\nWhile one of your ability timelines is open in the box, this list shows its abilities under its phases: right-click an ability to add a phase or intermission before it, or a phase to set its start or remove it.\n\nNothing shows in combat or while the Journal window is open."):SetPoint("LEFT", abilitiesLabel, "RIGHT", -4, 0)
     local abilitiesNone = label(f, "", "CRTFontSmall")
     abilitiesNone:SetWidth(300)
     abilitiesNone:SetJustifyH("LEFT")
