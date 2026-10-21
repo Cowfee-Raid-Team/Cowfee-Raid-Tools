@@ -95,7 +95,7 @@ end
 
 local function trackingWarning()
     if Tattle.ListSize() == 0 and not Tattle:Settings().avoidable then
-        return "|cffff6060No spells are tracked yet and avoidable damage is off, so nothing is recorded. Add spells on the Mechanics tab.|r"
+        return UI.BadText("No spells are tracked yet and avoidable damage is off, so nothing is recorded. Add spells on the Mechanics tab.")
     end
 end
 
@@ -113,7 +113,7 @@ local function pullLines(pull, index, lines)
     if #extra > 0 then
         bits[1] = bits[1] .. " (" .. table.concat(extra, ", ") .. ")"
     end
-    lines[#lines + 1] = "  |cffffd100" .. bits[1] .. "|r"
+    lines[#lines + 1] = "  " .. UI.HeadingText(bits[1])
     local players = {}
     for key, p in pairs(pull.players) do
         local damage = Tattle.PullDamage(p, pull)
@@ -151,12 +151,12 @@ local function tonightView(night)
         local why = Tattle.Unavailable()
         if why then
             lines[#lines + 1] = ""
-            lines[#lines + 1] = "|cffff6060" .. why .. "|r"
+            lines[#lines + 1] = UI.BadText(why)
         end
         return table.concat(lines, "\n")
     end
-    lines[#lines + 1] = format("Started %s %s, %d %s so far. |cffffd100Tonight's totals|r, all pulls added up:", day(night.startedAt), clock(night.startedAt), #night.pulls, #night.pulls == 1 and "pull" or "pulls")
-    local below = { "|cffffd100Pulls, newest first|r" }
+    lines[#lines + 1] = format("Started %s %s, %d %s so far. %s, all pulls added up:", day(night.startedAt), clock(night.startedAt), #night.pulls, #night.pulls == 1 and "pull" or "pulls", UI.HeadingText("Tonight's totals"))
+    local below = { UI.HeadingText("Pulls, newest first") }
     for i = #night.pulls, 1, -1 do
         pullLines(night.pulls[i], i, below)
     end
@@ -214,11 +214,11 @@ local function nightView(night)
     local mechKey = filterMech()
     local intro = format("%s, %s to %s, %d %s. Ended when %s.", day(night.startedAt), clock(night.startedAt), clock(night.endedAt), #night.pulls, #night.pulls == 1 and "pull" or "pulls", ENDED[night.endReason] or "it ended")
     if mechKey then
-        intro = intro .. " |cffffd100" .. mechText() .. "|r only."
+        intro = intro .. " " .. UI.HeadingText(mechText()) .. " only."
     end
     local below
     if not mechKey then
-        local lines = { "|cffffd100Pulls|r" }
+        local lines = { UI.HeadingText("Pulls") }
         for i, pull in ipairs(night.pulls) do
             pullLines(pull, i, lines)
         end
@@ -238,7 +238,7 @@ local function totalsView()
     local mechKey = filterMech()
     local intro
     if mechKey then
-        intro = format("|cffffd100%s|r, %s, %d %s.", mechText(), seasonText(), #nights, #nights == 1 and "night" or "nights")
+        intro = format("%s, %s, %d %s.", UI.HeadingText(mechText()), seasonText(), #nights, #nights == 1 and "night" or "nights")
     else
         intro = format("All mechanics, %s, %d %s.", seasonText(), #nights, #nights == 1 and "night" or "nights")
     end
@@ -312,10 +312,10 @@ local function showView(view, intro, blocks, below)
             for r, data in ipairs(block.rows) do
                 n = n + 1
                 local row = tableRow(view, n)
-                cell(row.mech, xMech, y, wMech, "LEFT", r == 1 and ("|cffffd100" .. block.name .. "|r") or "")
+                cell(row.mech, xMech, y, wMech, "LEFT", r == 1 and UI.HeadingText(block.name) or "")
                 cell(row.player, xPlayer, y, wPlayer, "LEFT", name(data.key, data.class))
                 cell(row.pulls, xPulls, y, wNum, "RIGHT", tostring(data.hits))
-                cell(row.damage, xDamage, y, wNum, "RIGHT", "|cffff8060" .. Tattle.Short(data.damage) .. "|r")
+                cell(row.damage, xDamage, y, wNum, "RIGHT", UI.BadText(Tattle.Short(data.damage)))
                 y = y - TABLE_ROW_H
             end
         end
@@ -466,7 +466,7 @@ local function getRow(i)
     row:SetPoint("RIGHT", listChild, "RIGHT", 0, 0)
     row.sel = row:CreateTexture(nil, "BACKGROUND")
     row.sel:SetAllPoints()
-    row.sel:SetColorTexture(1, 0.82, 0, 0.18)
+    UI.Tint(row.sel, "SetColorTexture", "heading", 0.18)
     row.hl = row:CreateTexture(nil, "HIGHLIGHT")
     row.hl:SetAllPoints()
     row.hl:SetColorTexture(1, 1, 1, 0.08)
@@ -493,7 +493,7 @@ local function refreshList()
     if selected ~= TOTALS and not inList then
         selected = TOTALS
     end
-    local entries = { { value = TOTALS, text = "|cffffd100Totals (" .. (seasonFilter == NIGHT and "current night" or "all seasons") .. ")|r" } }
+    local entries = { { value = TOTALS, text = UI.HeadingText("Totals (" .. (seasonFilter == NIGHT and "current night" or "all seasons") .. ")") } }
     for i = #history, 1, -1 do
         local night = history[i]
         entries[#entries + 1] = { value = night.id, text = format("%s %s  (%d %s)", day(night.startedAt), clock(night.startedAt), #night.pulls, #night.pulls == 1 and "pull" or "pulls") }
@@ -576,11 +576,11 @@ end
 local function scanEntries()
     local out = {}
     if not scanResult then
-        out[1] = { text = "|cffff6060" .. (scanError or "No fight read yet. Press Rescan after a fight.") .. "|r" }
+        out[1] = { text = UI.BadText(scanError or "No fight read yet. Press Rescan after a fight.") }
         return out
     end
     local where = scanTarget()
-    out[1] = { text = format("|cffffd100Last fight|r: %s%s", where or "not a boss", scanResult.duration and (", " .. duration(scanResult.duration)) or "") }
+    out[1] = { text = format("%s: %s%s", UI.HeadingText("Last fight"), where or "not a boss", scanResult.duration and (", " .. duration(scanResult.duration)) or "") }
     -- Whether spells added now also count on the fight that was scanned.
     local when
     local on = where and ("on " .. where) or "on every boss pull"
@@ -591,7 +591,7 @@ local function scanEntries()
     end
     out[2] = { text = "|cffbbbbbb" .. when .. "|r" }
     if scanError then
-        out[#out + 1] = { text = "|cffff6060" .. scanError .. " Showing the last fight read.|r" }
+        out[#out + 1] = { text = UI.BadText(scanError .. " Showing the last fight read.") }
     end
     local tracked = Tattle.List()
     for _, sp in ipairs(scanResult.spells) do
@@ -601,9 +601,9 @@ local function scanEntries()
         end
         local mech = tracked[sp.id]
         if mech then
-            tags[#tags + 1] = UI.GoodText("tracked as " .. mech.name, "80ff80")
+            tags[#tags + 1] = UI.GoodText("tracked as " .. mech.name)
         end
-        local text = format("%s  |cff999999%d|r   |cffff8060%s|r on %d %s%s", sp.name, sp.id, Tattle.Short(sp.damage),
+        local text = format("%s  |cff999999%d|r   %s on %d %s%s", sp.name, sp.id, UI.BadText(Tattle.Short(sp.damage)),
             sp.players, sp.players == 1 and "player" or "players", #tags > 0 and ("   " .. table.concat(tags, ", ")) or "")
         out[#out + 1] = { text = text, check = sp.id, tracked = mech ~= nil }
     end
@@ -642,7 +642,7 @@ local function mechanicEntries()
         end)
         for _, e in ipairs(list) do
             local where = e.boss ~= "" and ("|cffbbbbbb" .. e.boss .. ":|r ") or "|cffbbbbbbAny boss:|r "
-            local text = format("%s|cffffd100%s|r   %s", where, e.label, idList({ e.id }))
+            local text = format("%s%s   %s", where, UI.HeadingText(e.label), idList({ e.id }))
             -- A spell in the shipped list counts under that list's mechanic instead.
             local tracked = Tattle.List()[e.id]
             if tracked and not tracked.own then
@@ -657,7 +657,7 @@ local function mechanicEntries()
     end
     local boss = Tattle.Bosses()[tonumber(key:match("%d+"))]
     for _, mech in ipairs(boss.mechanics or {}) do
-        out[#out + 1] = { text = format("|cffffd100%s|r   %s", mech.name or "?", idList(mech.spells or {})) }
+        out[#out + 1] = { text = format("%s   %s", UI.HeadingText(mech.name or "?"), idList(mech.spells or {})) }
     end
     if #out == 0 then
         out[1] = { text = "|cff999999No mechanics listed for this boss yet.|r" }
@@ -1174,7 +1174,7 @@ local function build(pf)
         skin(b, 0.4)
         b.sel = b:CreateTexture(nil, "ARTWORK")
         b.sel:SetAllPoints()
-        b.sel:SetColorTexture(1, 0.82, 0, 0.18)
+        b.sel:SetColorTexture(UI.Color("heading", 0.18)) -- UI:RegisterTab styles it from here on
         b.text = b:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
         b.text:SetPoint("CENTER")
         b.text:SetText(tab.label)

@@ -1,14 +1,15 @@
 // CRT_Modules/LootMaster/BossLootWindow.lua: the raid leader's Boss loot window, built on stand-in frames. It opens on the
 // first row of a list and not before; the badge is "<boss> · <difficulty>"; each row's checkbox, icon, link, detail and
-// state (rolling in honey, won in matcha, someone else's muted, can't roll in red) in the Modern and Classic looks; the
+// state (rolling in honey, won in the theme's good, someone else's muted, can't roll in its bad) in the Modern and Classic looks; the
 // footer's counts, Clear and Start session (only enabled when the ticked rows are won and no session runs).
 // Usage: node run_lootmaster_bosswin.js <addon folder>
 const fs = require('fs');
 const path = require('path');
+const themeLua = require('./theme_stub');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate();
 lualib.luaL_openlibs(L);
-const harness = `
+const harness = themeLua(process.argv[2]) + `
 local dataSrc, commSrc, gateSrc, lootingSrc, bossSrc, winSrc = ...
 local fails, passes = 0, 0
 local function check(ok, what) if ok then passes = passes + 1 else fails = fails + 1 print("FAIL " .. what) end end
@@ -106,11 +107,11 @@ CRT_UI = {
   PanelButton = function(parent, label, h, onClick) local b = mock() b.label, b.onClick = label, onClick buttons[label] = b return b end,
   SkinCheckButton = function(self, cb) cb.skinned = true end,
   Help = function() return mock() end,
-  Tint = function(region, method, key) region.tint = { method = method, key = key } end,
-  GoodText = function(text, classic) if MODERN then return "|cff8fa876" .. text .. "|r" end return "|cff" .. classic .. text .. "|r" end,
 }
-local CRT = { UI = CRT_UI, MOCHA = { caramel = { 0.886, 0.631, 0.294 }, note = { 0.80, 0.71, 0.60 }, matcha = { 0.561, 0.659, 0.463 } },
-  db = { lootmaster = { authority = { leader = true, names = {} }, bossLoot = {} } } }
+local CRT = { UI = CRT_UI, db = { lootmaster = { authority = { leader = true, names = {} }, bossLoot = {} } } }
+CRT_THEME(CRT, CRT_UI) -- the colour helpers read the theme's palette
+CRT_UI.Tint = function(region, method, key) region.tint = { method = method, key = key } end
+CRT_UI.SwitchTheme("cowfee")
 CRTDBChar = {}
 local printed = {}
 function CRT:Print(m) printed[#printed + 1] = m end
@@ -153,7 +154,7 @@ eq(r1.icon.texture, 133000, "row 1: the icon")
 eq(r2.check.checked, false, "row 2: not ticked, the filter left it out")
 eq(r2.detail.text, "Not in your loot filter: below the lowest quality", "row 2: why")
 eq(r3.check.enabled, false, "row 3: can't roll: can't be ticked")
-eq(r3.status.text, "|cffff4040Can't roll: the game doesn't allow it. Tell the raid.|r", "row 3: red, short enough for the row")
+eq(r3.status.text, "|cffc8553dCan't roll: the game doesn't allow it. Tell the raid.|r", "row 3: the theme's bad, short enough for the row")
 eq(r1.detail.tint and r1.detail.tint.key, "note", "detail: the theme's note colour")
 eq(r1.detail.tint and r1.detail.tint.method, "SetTextColor", "detail: as text colour")
 eq(r3.icon.desaturated, true, "row 3: a grey icon")
@@ -172,12 +173,17 @@ eq(BL:Row(1).ticked, false, "clicking the box unticks the row")
 eq(footer.enabled, false, "Start: nothing ticked and won")
 r1.check.checked = true
 r1.check.scripts.OnClick(r1.check)
--- Classic colors
+-- Classic colors: a switch to Default: Blizzard redraws the rows in the game's gold, green and red
 MODERN = false
+CRT_UI.SwitchTheme("blizzard")
 BL:Add(4, link(104, "Belt"), { status = "rolling", rollType = 4 }, kill)
-eq(rowFrames[4].status.text, "|cffffd100Rolling… you rolled Transmog|r", "Classic: rolling in gold")
-eq(rowFrames[1].status.text, "|cff80ff80Won · you rolled Need|r", "Classic: won in green")
+eq(rowFrames[4].status.text, "|cff" .. CRT_UI.Hex("heading") .. "Rolling… you rolled Transmog|r", "Classic: rolling in the game's gold")
+eq(rowFrames[1].status.text, "|cff" .. CRT_UI.Hex("matcha") .. "Won · you rolled Need|r", "Classic: won in the game's green")
+eq(rowFrames[3].status.text, "|cff" .. CRT_UI.Hex("bad") .. "Can't roll: the game doesn't allow it. Tell the raid.|r", "Classic: can't roll in the game's red")
+eq(CRT_UI.Hex("bad") .. CRT_UI.Hex("matcha"), "ff202019ff19", "Classic: the game's red and green")
+CRT_UI.SwitchTheme("nitro")
 BL:SetTicked(4, false)
+eq(rowFrames[1].status.text, "|cff8fcfa0Won · you rolled Need|r", "Nitro: won in its good")
 MODERN = true
 footer.onClick()
 check(LM.current ~= nil, "Start session starts the session")

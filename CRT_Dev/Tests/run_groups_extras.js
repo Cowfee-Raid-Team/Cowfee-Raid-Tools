@@ -1,9 +1,10 @@
 // CRT_Modules/Groups/Data.lua and CRT_Modules/Groups/Page.lua on mock frames: the "In group, not in layout" list.
 // usage: node run_groups_extras.js <addon folder>
 const fs = require('fs');
+const themeLua = require('./theme_stub');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
-const harness = `
+const harness = themeLua(process.argv[2]) + `
 local dataSrc, pageSrc = ...
 local buttons = {}
 local function mock(kind)
@@ -19,9 +20,12 @@ local function mock(kind)
     if k == "SetScript" then return function(self, n, fn) rawset(self, n, fn) end end
     if k == "IsMouseOver" then return function(self) return rawget(self, "over") or false end end
     if k == "HasFocus" then return function() return false end end
+    if k == "SetBackdropBorderColor" then return function(self, r, g, b) rawset(self, "border", { r, g, b }) end end
+    if k == "SetFrameStrata" then return function(self, s) rawset(self, "strata", s) end end
     return function() end end })
 end
-function CreateFrame(kind, name) local m = mock(kind) if kind == "Button" then buttons[#buttons + 1] = m end return m end
+local frames = {}
+function CreateFrame(kind, name) local m = mock(kind) frames[#frames + 1] = m if kind == "Button" then buttons[#buttons + 1] = m end return m end
 UIParent = mock()
 format = string.format
 function strtrim(s) return (s:gsub("^%s+", ""):gsub("%s+$", "")) end
@@ -40,6 +44,7 @@ local CRT = { db = { groups = { presets = {}, nextId = 1, keepChanges = false, s
 function CRT:Print(m) print("  [chat] " .. m) end
 local pages = {}
 CRT.UI = { SkinScrollBar = function() end, SlotGrid = function() local g = { slots = {}, labels = {}, blockH = 143, slotW = 188 } for i = 1, 40 do local b = mock() rawset(b, "index", i) rawset(b, "icon", mock()) rawset(b, "text", mock()) rawset(b, "right", mock()) g.slots[i] = b end return g end, FitText = function() end, GoodText = function(t) return t end, ClipText = function() return mock() end, PAGE_W = 1026, PAGE_H = 560, Help = function() return mock() end, RegisterPage = function(_, k, t, fn) pages[k] = fn end }
+CRT_THEME(CRT, CRT.UI)
 assert(load(dataSrc, "Data.lua"))("CowfeeRaidTools", CRT)
 local G = CRT.Groups
 local w = G:Working()
@@ -61,6 +66,17 @@ print("after click: slot 7 = " .. w[7] .. "; list: " .. table.concat(extras(), "
 local row
 for _, b in ipairs(buttons) do if rawget(b, "entry") and b.shown and b.entry.key:find("Newguy") then row = b end end
 row:OnDragStart()
+-- The drag ghost's edge is the theme's heading colour and follows a live switch.
+local ghost
+for _, f in ipairs(frames) do if rawget(f, "strata") == "TOOLTIP" then ghost = f end end
+local function near(c, r, g, b) return c and math.abs(c[1] - r) < 0.003 and math.abs(c[2] - g) < 0.003 and math.abs(c[3] - b) < 0.003 end
+local themeFails = 0
+local function check(ok, what) if ok then print("ok " .. what) else themeFails = themeFails + 1 print("FAIL " .. what) end end
+check(ghost and near(rawget(ghost, "border"), 1, 0.82, 0), "Default: Blizzard: the drag ghost's edge is the game's gold")
+CRT.UI.SwitchTheme("cowfee")
+check(ghost and near(rawget(ghost, "border"), 0xD9 / 255, 0xB4 / 255, 0x8A / 255), "Beanworks: Cowfee: the drag ghost's edge follows the switch")
+CRT.UI.SwitchTheme("blizzard")
+if themeFails > 0 then error(themeFails .. " groups theme checks failed") end
 `;
 const tail = `
 for _, b in ipairs(buttons) do if rawget(b, "index") == 1 then rawset(b, "over", true) end end

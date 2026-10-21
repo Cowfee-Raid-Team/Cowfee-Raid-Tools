@@ -117,7 +117,7 @@ local function onTimeLine(names)
     if #names == 0 then
         return nil
     end
-    return UI.GoodText("On time (" .. #names .. "):", "80ff80") .. " " .. table.concat(names, ", ")
+    return UI.GoodText("On time (" .. #names .. "):") .. " " .. table.concat(names, ", ")
 end
 
 local function tonightLines(night, now)
@@ -130,7 +130,7 @@ local function tonightLines(night, now)
     local missing, late, onTime = {}, {}, {}
     for _, p in ipairs(sortedPlayers(night, now)) do
         if not p.joinedAt then
-            missing[#missing + 1] = format("  %s  |cffff6060%s|r", name(p.key), running(Late.Seconds(night, p, now)))
+            missing[#missing + 1] = format("  %s  %s", name(p.key), UI.BadText(running(Late.Seconds(night, p, now))))
         elseif Late.IsLate(night, p) then
             late[#late + 1] = format("  %s  joined %s, %s late", name(p.key), clock(p.joinedAt), minutes(Late.Seconds(night, p)))
         else
@@ -138,13 +138,13 @@ local function tonightLines(night, now)
         end
     end
     lines[#lines + 1] = ""
-    lines[#lines + 1] = "|cffff6060Not here yet (" .. #missing .. "):|r"
+    lines[#lines + 1] = UI.BadText("Not here yet (" .. #missing .. "):")
     for _, l in ipairs(missing) do
         lines[#lines + 1] = l
     end
     if #late > 0 then
         lines[#lines + 1] = ""
-        lines[#lines + 1] = "|cffffd100Arrived late (" .. #late .. "):|r"
+        lines[#lines + 1] = UI.HeadingText("Arrived late (" .. #late .. "):")
         for _, l in ipairs(late) do
             lines[#lines + 1] = l
         end
@@ -166,7 +166,7 @@ local function nightLines(night)
         local status = Late.Status(night, p)
         if status ~= "ontime" then
             if status == "noshow" then
-                late[#late + 1] = format("  %s  |cffff6060no-show|r, %s until the end", name(p.key), minutes(Late.Seconds(night, p)))
+                late[#late + 1] = format("  %s  %s, %s until the end", name(p.key), UI.BadText("no-show"), minutes(Late.Seconds(night, p)))
             else
                 late[#late + 1] = format("  %s  joined %s, %s late", name(p.key), clock(p.joinedAt), minutes(Late.Seconds(night, p)))
             end
@@ -175,7 +175,7 @@ local function nightLines(night)
         end
     end
     lines[#lines + 1] = ""
-    lines[#lines + 1] = "|cffffd100Late (" .. #late .. "):|r"
+    lines[#lines + 1] = UI.HeadingText("Late (" .. #late .. "):")
     for _, l in ipairs(late) do
         lines[#lines + 1] = l
     end
@@ -348,7 +348,7 @@ local function showTotals()
             place(row.name, 2, y, nameW - 2, "LEFT", name(t.key))
             place(row.late, col(1), y, colW, "CENTER", t.late .. " of " .. t.nights)
             place(row.time, col(2), y, colW, "CENTER", t.late > 0 and minutes(t.seconds) or "-")
-            place(row.never, col(3), y, colW, "CENTER", t.never > 0 and ("|cffff6060" .. t.never .. "|r") or "-")
+            place(row.never, col(3), y, colW, "CENTER", t.never > 0 and UI.BadText(t.never) or "-")
         end
     end
     detailChild:SetHeight(24 + (#list + 1) * TOTAL_ROW_H + 8)
@@ -445,7 +445,7 @@ local function getRow(i)
     row:SetPoint("RIGHT", listChild, "RIGHT", 0, 0)
     row.sel = row:CreateTexture(nil, "BACKGROUND")
     row.sel:SetAllPoints()
-    row.sel:SetColorTexture(1, 0.82, 0, 0.18)
+    UI.Tint(row.sel, "SetColorTexture", "heading", 0.18)
     row.hl = row:CreateTexture(nil, "HIGHLIGHT")
     row.hl:SetAllPoints()
     row.hl:SetColorTexture(1, 1, 1, 0.08)
@@ -467,7 +467,7 @@ local function refreshList()
     if selected ~= TOTALS and not Late:Find(selected) then
         selected = TOTALS
     end
-    local entries = { { value = TOTALS, text = "|cffffd100Totals (all nights)|r" } }
+    local entries = { { value = TOTALS, text = UI.HeadingText("Totals (all nights)") } }
     for i = #history, 1, -1 do
         local night = history[i]
         local count = 0
@@ -565,7 +565,7 @@ local function paintGrid(night, now)
                 b.icon:SetTexture(READY_ICON)
                 b.icon:Show()
                 if Late.IsLate(night, p) then
-                    b.right:SetText("|cffffd100+" .. minutes(Late.Seconds(night, p)) .. "|r")
+                    b.right:SetText(UI.HeadingText("+" .. minutes(Late.Seconds(night, p))))
                 else
                     b.right:SetText("")
                 end
@@ -573,7 +573,7 @@ local function paintGrid(night, now)
                 b.text:SetTextColor(0.6, 0.6, 0.6)
                 b.icon:SetTexture(WAITING_ICON)
                 b.icon:Show()
-                b.right:SetText("|cffff6060" .. running(Late.Seconds(night, p, now)) .. "|r")
+                b.right:SetText(UI.BadText(running(Late.Seconds(night, p, now))))
             end
         end
         UI.FitText(b.text)
@@ -644,11 +644,11 @@ end
 
 local function statusText(night, p, now)
     if not p.joinedAt then
-        return "|cffff6060not here " .. running(Late.Seconds(night, p, now)) .. "|r"
+        return UI.BadText("not here " .. running(Late.Seconds(night, p, now)))
     elseif Late.IsLate(night, p) then
-        return "|cffffd100" .. minutes(Late.Seconds(night, p)) .. " late|r"
+        return UI.HeadingText(minutes(Late.Seconds(night, p)) .. " late")
     end
-    return UI.GoodText("on time", "80ff80")
+    return UI.GoodText("on time")
 end
 
 -- Group members who are not on tonight's list, for the Add dropdown.
@@ -1031,8 +1031,8 @@ local function buildSettings(f)
                 edit:SetTextColor(c, c, c)
             end
             if on then
-                timeLabel:SetTextColor(1, 0.82, 0)
-                colon:SetTextColor(1, 0.82, 0)
+                timeLabel:SetTextColor(UI.Color("heading"))
+                colon:SetTextColor(UI.Color("heading"))
             else
                 timeLabel:SetTextColor(0.5, 0.5, 0.5)
                 colon:SetTextColor(0.5, 0.5, 0.5)
@@ -1076,7 +1076,7 @@ local function build(pf)
         skin(b, 0.4)
         b.sel = b:CreateTexture(nil, "ARTWORK")
         b.sel:SetAllPoints()
-        b.sel:SetColorTexture(1, 0.82, 0, 0.18)
+        b.sel:SetColorTexture(UI.Color("heading", 0.18)) -- UI:RegisterTab styles it from here on
         b.text = b:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
         b.text:SetPoint("CENTER")
         b.text:SetText(tab.label)

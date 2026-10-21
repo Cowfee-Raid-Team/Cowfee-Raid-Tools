@@ -40,9 +40,9 @@ local FILTER_WHY = {
     kind = "its kind is off",
 }
 
--- Classic colors for the states; Modern takes the theme's (CRT.MOCHA).
-local CLASSIC = { rolling = "ffd100", muted = "9d9d9d" }
-local RED = "ff4040"
+-- The muted state's Classic color; Modern takes the theme's note. Won and can't roll are the theme's good
+-- and bad; rolling is the accent in Modern and the game's gold (the heading) in Classic.
+local CLASSIC = { muted = "9d9d9d" }
 
 local win, list, footer
 
@@ -66,15 +66,15 @@ end
 function LM.BossLootStatus(r)
     local roll = LM.AutoPass.ROLL_NAME[r.rollType or 0] or ""
     if r.status == "won" then
-        return UI.GoodText(TEXT.won:format(roll), "80ff80")
+        return UI.GoodText(TEXT.won:format(roll))
     elseif r.status == "lost" then
         return colored(hexOf("note", CLASSIC.muted), TEXT.lost:format(Ambiguate(r.winner or "?", "short")))
     elseif r.status == "nowinner" then
         return colored(hexOf("note", CLASSIC.muted), TEXT.nowinner)
     elseif r.status == "cant" then
-        return colored(RED, TEXT.cant:format(r.reason or "?"))
+        return UI.BadText(TEXT.cant:format(r.reason or "?"))
     end
-    return colored(hexOf("caramel", CLASSIC.rolling), TEXT.rolling:format(roll))
+    return UI.ColorText(TEXT.rolling:format(roll), UI:IsModern() and "caramel" or "heading")
 end
 
 -- The detail under the link: slot and item level, or why the loot filter left it out.

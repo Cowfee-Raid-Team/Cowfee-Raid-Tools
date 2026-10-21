@@ -136,7 +136,7 @@ local function responseCell(r, s)
     if r.state == "nocrt" then
         return "|cffff8a40" .. TEXT.nocrt .. "|r"
     elseif r.state == "timeout" then
-        return "|cffff6040" .. TEXT.timeout .. "|r"
+        return UI.BadText(TEXT.timeout)
     elseif r.state == "loading" then
         return "|cff9c8a78" .. TEXT.loading .. "|r"
     elseif r.response then
@@ -242,7 +242,7 @@ local function initRow(row, r)
         LM.SetGear(t, r.gear[i], r.name == LM:Me() and item and item.itemString or nil)
     end
     if r.diff then
-        row.diff:SetText(r.diff > 0 and ("|cff1eff00+" .. r.diff .. "|r") or (r.diff < 0 and ("|cffff4040" .. r.diff .. "|r") or "0"))
+        row.diff:SetText(r.diff > 0 and UI.GoodText("+" .. r.diff) or (r.diff < 0 and UI.BadText(r.diff) or "0"))
     else
         row.diff:SetText("")
     end

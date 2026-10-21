@@ -4,12 +4,14 @@
 //   CRT_Modules/Alerts/Rules.lua CRT_Modules/Alerts/Engine.lua CRT_Modules/Notes/Parse.lua CRT_Modules/Notes/Data.lua CRT_Modules/Notes/Engine.lua CRT_Modules/Notes/Window.lua
 //   CRT_Modules/Timeline/Data.lua CRT_Modules/Timeline/Database.lua CRT_Modules/Timeline/Reference.lua CRT_Modules/Alerts/Reminders.lua
 const fs = require('fs');
+const path = require('path');
+const themeLua = require('./theme_stub');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 
 const files = process.argv.slice(2);
 if (files.length < 13) { console.error('usage: node run_alerts_personalwin.js <13 files in TOC order>'); process.exit(2); }
 
-const harness = `
+const harness = themeLua(path.resolve(path.dirname(files.find((f) => /Notes[\\/]Window\.lua$/.test(f))), '../..')) + `
 local sources = { ... }
 local clock = 1000
 function GetTime() return clock end
@@ -120,6 +122,7 @@ local CRT = {
   FontPath = function() return "font" end,
   Print = function() end,
 }
+CRT_THEME(CRT, CRT.UI)
 for i = 1, #sources, 2 do
   local before = #all
   assert(load(sources[i + 1], "@" .. sources[i]))("CowfeeRaidTools", CRT)
@@ -156,7 +159,8 @@ local function before(text, a, b)
   assert(j, "missing: " .. b .. "\\nin:\\n" .. text)
   assert(i < j, a .. " not before " .. b .. "\\nin:\\n" .. text)
 end
-local GOLD = "|cffffd100"
+local function GOLD_NOW() return "|cff" .. CRT.UI.Hex("heading") end -- the theme's heading colour
+local GOLD = GOLD_NOW()
 local ICON = "|T131884:0|t "
 
 local results, failures = {}, {}
@@ -334,6 +338,16 @@ test("window: other boss's reminders not shown", function()
   text = show()
   assert(at(text, "Soak") and not at(text, "Elsewhere"), "a test run keeps the note's boss:\\n" .. text)
   A:Stop()
+end)
+
+test("theme: the headings follow a live switch (Blackout: Midnight's heading, then the game's gold again)", function()
+  R:Save(3470, nil, { boss = "Nek'zali the Soulcoiler", text = "Soak", spellID = 31884, times = "P1 0:30" })
+  assert(at(show(), GOLD .. "Phase 1|r"), "the game's gold first")
+  CRT.UI.SwitchTheme("midnight")
+  local text = body.text
+  CRT.UI.SwitchTheme("blizzard")
+  assert(at(text, "|cffbdbdbdPhase 1|r") and at(text, "|cffbdbdbdNek'zali the Soulcoiler|r"), "Midnight's heading, redrawn by the switch:\\n" .. text)
+  assert(GOLD == "|cffffd100", "Default: Blizzard's heading is the game's gold")
 end)
 
 test("window: a run with no reminders is not live", function()
