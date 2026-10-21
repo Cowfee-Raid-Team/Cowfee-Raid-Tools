@@ -3,13 +3,19 @@ local ADDON, CRT = ...
 -- The macro engine, CRT.Macros: makes, rewrites and removes ready-made macros in the game's macro list, safely.
 -- It knows nothing about the features: each one registers a set,
 --   Macros:Register({ key, label, perCharacter, macros = { { name, icon, body }, ... } })
--- (Markers/Macros.lua is the first), and the General Settings page's Macros tab shows each set with its buttons.
+-- (Markers/Macros.lua is the first, shown on Raid Notes > Marker macros, Markers/MacrosTab.lua).
+--
+-- Where they go. A set marked perCharacter goes in the character's macros. Any other set goes in General Macros
+-- (the account's), and when General hasn't room for the missing ones, in the character's macros instead; when
+-- neither has room for all of them alone, General is filled first and the rest go to the character's. When both
+-- together haven't room, none are made and the message says how many slots to free.
 --
 -- Safety. CRT only edits or deletes a macro it made, and only while the player hasn't changed it:
 --   * every name starts with PREFIX ("CRT "), checked when the set registers;
---   * what CRT made is saved in CRTDB.macros.owned[setKey][name] = { body }, shared by every profile (the macro
---     list is the account's, not a profile's; Profiles.lua);
---   * a macro is ours only when its name is in that list and its body is still the one saved there.
+--   * what CRT made in General Macros is saved in CRTDB.macros.owned[setKey][name] = { body }, shared by every
+--     profile (that list is the account's, not a profile's; Profiles.lua); what it made in the character's macros
+--     is saved the same way in CRTDBChar.macros.owned, as each character has its own;
+--   * a macro is ours only when its name is in the list for its place and its body is still the one saved there.
 -- A macro of ours the player edited is "changed": kept and reported. One they renamed no longer has our name, so
 -- it is never found. A macro with one of our names that CRT didn't make is a "conflict": never overwritten.
 --
@@ -50,8 +56,16 @@ local function same(a, b)
     return type(a) == "string" and type(b) == "string" and a:gsub("%s+$", "") == b:gsub("%s+$", "")
 end
 
-local function owned(key)
-    local db = CRT.db.macros
+-- What CRT made of a set: in General Macros (perCharacter false) or in this character's macros (true).
+local function owned(key, perCharacter)
+    local db
+    if perCharacter then
+        CRTDBChar = type(CRTDBChar) == "table" and CRTDBChar or {}
+        CRTDBChar.macros = type(CRTDBChar.macros) == "table" and CRTDBChar.macros or {}
+        db = CRTDBChar.macros
+    else
+        db = CRT.db.macros
+    end
     db.owned = db.owned or {}
     db.owned[key] = db.owned[key] or {}
     return db.owned[key]
@@ -129,37 +143,41 @@ local function readAll()
     return out
 end
 
--- One macro of a set: "ours" (with its slot, and outdated when the set's body has changed since), "changed"
--- (ours, but the player edited it), "conflict" (the player's own, with our name) or "missing".
-local function classify(def, mine, all, perCharacter)
-    local named = false
+-- One macro of a set: "ours" (with its slot, outdated when the set's body has changed since, and whether it is in
+-- the character's macros), "changed" (ours, but the player edited it), "conflict" (the player's own, with our
+-- name) or "missing". A macro is checked against what CRT saved for its own place.
+local function classify(key, def, all)
+    local named, edited = false, false
     for _, m in ipairs(all) do
         if m.name == def.name then
             named = true
-            if mine and m.perCharacter == perCharacter and same(m.body, mine.body) then
-                return "ours", m.slot, not same(mine.body, def.body)
+            local mine = owned(key, m.perCharacter)[def.name]
+            if mine and same(m.body, mine.body) then
+                return "ours", m.slot, not same(mine.body, def.body), m.perCharacter
+            elseif mine then
+                edited = true
             end
         end
     end
     if not named then
         return "missing"
     end
-    return mine and "changed" or "conflict"
+    return edited and "changed" or "conflict"
 end
 
 -- Where a set stands now: { key, label, total, created, outdated, entries, missing, changed, conflicts }; entries
--- holds { def, state, slot, outdated } per macro and the three lists hold names. Nil for an unknown set.
+-- holds { def, state, slot, outdated, perCharacter } per macro and the three lists hold names. Nil for an unknown
+-- set.
 function Macros:Status(key)
     local set = sets[key]
     if not set then
         return nil
     end
-    local mineAll = owned(key)
     local all = readAll()
     local st = { key = key, label = set.label, total = #set.macros, created = 0, outdated = 0, entries = {}, missing = {}, changed = {}, conflicts = {} }
     for _, def in ipairs(set.macros) do
-        local state, slot, outdated = classify(def, mineAll[def.name], all, set.perCharacter and true or false)
-        st.entries[#st.entries + 1] = { def = def, state = state, slot = slot, outdated = outdated }
+        local state, slot, outdated, perCharacter = classify(key, def, all)
+        st.entries[#st.entries + 1] = { def = def, state = state, slot = slot, outdated = outdated, perCharacter = perCharacter }
         if state == "ours" then
             st.created = st.created + 1
             if outdated then
@@ -219,15 +237,51 @@ local function count(n)
     return n == 1 and "1 macro" or (n .. " macros")
 end
 
-local function where(set)
-    return set.perCharacter and "your character's macros" or "General Macros, for all your characters"
+local GENERAL = "General Macros, for all your characters"
+local CHARACTER = "your character's macros"
+
+-- How many of n new macros go in General Macros and how many in the character's, or nil and the free counts
+-- when both together haven't room. A perCharacter set uses only the character's.
+local function placeFor(set, n)
+    local okCount, numAccount, numCharacter = pcall(GetNumMacros)
+    if not okCount then
+        numAccount, numCharacter = 0, 0
+    end
+    local maxAccount, maxCharacter = limits()
+    local freeAccount = math.max(0, maxAccount - (numAccount or 0))
+    local freeCharacter = math.max(0, maxCharacter - (numCharacter or 0))
+    if set.perCharacter then
+        if n <= freeCharacter then
+            return 0, n
+        end
+        return nil, 0, freeCharacter
+    end
+    if n <= freeAccount then
+        return n, 0
+    elseif n <= freeCharacter then
+        return 0, n -- all together in one place
+    elseif n <= freeAccount + freeCharacter then
+        return freeAccount, n - freeAccount
+    end
+    return nil, freeAccount, freeCharacter
+end
+
+-- "made 8 macros in General Macros, ...", or both places when they were split.
+local function madeWhere(general, character)
+    if character == 0 then
+        return count(general) .. " in " .. GENERAL
+    elseif general == 0 then
+        return count(character) .. " in " .. CHARACTER
+    end
+    return count(general) .. " in General Macros and " .. character .. " in " .. CHARACTER
 end
 
 -- Changing them ------------------------------------------------------------------------------------------------
 -- Each returns ok and a message for chat.
 
--- Makes the set's missing macros, all or none: when the list hasn't room for every one, it makes none.
-function Macros:Create(key)
+-- Makes the set's missing macros, or only the one named `only`, all or none: when General Macros and the
+-- character's macros together haven't room for every one, it makes none (see the top of the file).
+function Macros:Create(key, only)
     local set = sets[key]
     if not set then
         return false, "No such macro set."
@@ -236,35 +290,45 @@ function Macros:Create(key)
         return false, COMBAT
     end
     local st = self:Status(key)
-    if #st.missing == 0 then
-        return true, set.label .. ": nothing to make, the " .. count(st.created) .. " made before are still there." .. leftAlone(st)
-    end
-    local numAccount, numCharacter = GetNumMacros()
-    local maxAccount, maxCharacter = limits()
-    local free
-    if set.perCharacter then
-        free = maxCharacter - (numCharacter or 0)
-    else
-        free = maxAccount - (numAccount or 0)
-    end
-    if #st.missing > free then
-        return false, string.format("%s: no macros made. They need %d free macro slots in %s, and %d are free. Delete some macros and try again.", set.label, #st.missing, set.perCharacter and "your character's macros" or "General Macros", math.max(0, free))
-    end
-    local mine = owned(key)
-    local made, failed = 0, {}
+    local todo = {}
     for _, e in ipairs(st.entries) do
-        if e.state == "missing" then
-            local def = e.def
-            local ok, slot = pcall(CreateMacro, def.name, def.icon, def.body, set.perCharacter and true or nil)
-            if ok and slot then
-                mine[def.name] = { body = def.body }
-                made = made + 1
-            else
-                failed[#failed + 1] = def.name
-            end
+        if e.state == "missing" and (only == nil or e.def.name == only) then
+            todo[#todo + 1] = e.def
         end
     end
-    local msg = string.format("%s: made %s in %s.", set.label, count(made), where(set))
+    if #todo == 0 then
+        if only then
+            return true, only .. ": nothing to make, it is already in your macros." .. leftAlone(st)
+        end
+        return true, set.label .. ": nothing to make, the " .. count(st.created) .. " made before are still there." .. leftAlone(st)
+    end
+    local general, character, freeCharacter = placeFor(set, #todo)
+    if not general then
+        local freeGeneral = character
+        if set.perCharacter then
+            return false, string.format("%s: no macros made. They need %d free slots in %s, and %d are free. Delete %d and try again.", set.label, #todo, CHARACTER, freeCharacter, #todo - freeCharacter)
+        end
+        return false, string.format("%s: no macros made. They need %d free macro slots; General Macros has %d free and %s %d. Free %d more and try again.", set.label, #todo, freeGeneral, CHARACTER, freeCharacter, #todo - freeGeneral - freeCharacter)
+    end
+    local madeGeneral, madeCharacter, failed = 0, 0, {}
+    for i, def in ipairs(todo) do
+        local perCharacter = i > general
+        local ok, slot = pcall(CreateMacro, def.name, def.icon, def.body, perCharacter and true or nil)
+        if ok and slot then
+            owned(key, perCharacter)[def.name] = { body = def.body }
+            if perCharacter then
+                madeCharacter = madeCharacter + 1
+            else
+                madeGeneral = madeGeneral + 1
+            end
+        else
+            failed[#failed + 1] = def.name
+        end
+    end
+    local msg = string.format("%s: made %s.", set.label, madeWhere(madeGeneral, madeCharacter))
+    if madeCharacter > 0 and not set.perCharacter then
+        msg = msg .. " General Macros had no room for them, so only this character has those."
+    end
     if #failed > 0 then
         msg = msg .. " The game refused: " .. table.concat(failed, ", ") .. "."
     end
@@ -280,13 +344,12 @@ function Macros:Remove(key)
     if inCombat() then
         return false, COMBAT
     end
-    local mine = owned(key)
     local removed, failed = 0, {}
     for _, def in ipairs(set.macros) do
-        local state, slot = classify(def, mine[def.name], readAll(), set.perCharacter and true or false)
+        local state, slot, _, perCharacter = classify(key, def, readAll())
         if state == "ours" then
             if pcall(DeleteMacro, slot) then
-                mine[def.name] = nil
+                owned(key, perCharacter)[def.name] = nil
                 removed = removed + 1
             else
                 failed[#failed + 1] = def.name
@@ -309,13 +372,12 @@ function Macros:Update(key)
     if inCombat() then
         return false, COMBAT
     end
-    local mine = owned(key)
     local updated, failed = 0, {}
     for _, def in ipairs(set.macros) do
-        local state, slot, outdated = classify(def, mine[def.name], readAll(), set.perCharacter and true or false)
+        local state, slot, outdated, perCharacter = classify(key, def, readAll())
         if state == "ours" and outdated then
             if pcall(EditMacro, slot, nil, nil, def.body) then
-                mine[def.name] = { body = def.body }
+                owned(key, perCharacter)[def.name] = { body = def.body }
                 updated = updated + 1
             else
                 failed[#failed + 1] = def.name
@@ -333,7 +395,7 @@ function Macros:Update(key)
         msg = msg .. " The game refused: " .. table.concat(failed, ", ") .. "."
     end
     if #st.missing > 0 then
-        msg = msg .. " Not made yet: " .. table.concat(st.missing, ", ") .. " (Create macros makes them)."
+        msg = msg .. " Not made yet: " .. table.concat(st.missing, ", ") .. " (Generate all macros makes them)."
     end
     return #failed == 0, msg .. leftAlone(st)
 end

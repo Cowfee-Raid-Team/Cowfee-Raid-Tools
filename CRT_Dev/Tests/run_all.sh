@@ -100,6 +100,7 @@ g "groups extras" && { node run_groups_extras.js "$W" 2>&1 | tail -4; echo "exit
 g "clearprobe" && { node run_clearprobe.js "$W" 2>&1 | tail -60; echo "exit ${PIPESTATUS[0]}"; }
 g "markers" &&{ node run_markers.js "$W" 2>&1 | tail -160; echo "exit ${PIPESTATUS[0]}"; }
 g "macros" && { node run_macros.js "$W" 2>&1 | tail -24; echo "exit ${PIPESTATUS[0]}"; }
+g "marker macros tab" && { node run_markermacros.js "$W" 2>&1 | tail -40; echo "exit ${PIPESTATUS[0]}"; }
 g "Lua 5.1 upvalue limit (60 per function; the harnesses run a newer Lua that allows 255)" && { node lua-upvalue-check.cjs "$W" | grep -v "^OK"; up=${PIPESTATUS[0]}; if [ "$up" = "0" ]; then echo "all passed"; else echo "FAIL a function has more than 60 upvalues"; fi; }
 g "boss route" && { node run_bossroute.js "$W" 2>&1 | tail -1; }
 g "journal export" && { node run_journal_export.js "$W" 2>&1 | tail -2; echo "exit ${PIPESTATUS[0]}"; }

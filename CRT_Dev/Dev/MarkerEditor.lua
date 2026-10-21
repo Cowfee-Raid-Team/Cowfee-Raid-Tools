@@ -1,10 +1,12 @@
 local ADDON, CRT = ...
 
 -- DEVELOPER ONLY. The marker display editor, /crt dev markers: make a boss's marker display
--- (Markers/Display.lua), try it with Test, and Export it as a line to paste into
--- Markers/Database.lua so it ships for everyone. Drafts are saved in CRTDB.dev.markerDisplays and
--- used in place of the shipped display while they exist, so a display can be tried in a real pull
--- before it ships. Delete drops a draft.
+-- (Markers/Display.lua), with its help text (how the marker calls work on that boss, shown on Raid
+-- Notes > Marker macros), try it with Test, and Export it as the boss file's markers and markerHelp
+-- fields (CRT_Data/Seasons/<season>/<Boss>.lua; the crt-season-data skill says how a pasted export is
+-- applied) so it ships for everyone. Drafts are saved in CRTDB.dev.markerDisplays and used in place of
+-- the shipped display while they exist, so a display can be tried in a real pull before it ships.
+-- Delete drops a draft.
 --
 -- Show preview puts the display on screen with sample markers and names, following every change before
 -- it is saved. A Freeform layout shows its slots on screen while the editor is open, each a faint
@@ -60,7 +62,8 @@ local CLEAR_ON_HELP = "Boss moments that clear the display, such as a reset betw
     .. "During a boss fight the game may hide spell IDs and text. Then that entry never fires. Run /crt dev clearprobe on a pull to see what the boss sends readably."
 local CLEAR_ROWS = 8 -- at most this many entries
 local DEFAULT = Markers.DEFAULT
-local FIELDS = { "name", "slots", "layout", "iconSize", "number", "names", "clearGap", "clearFull", "clearPhase", "hidden", "shape", "canvas", "places", "clearOn" }
+-- help is the draft's help text: exported as markerHelp, not a display setting.
+local FIELDS = { "name", "slots", "layout", "iconSize", "number", "names", "clearGap", "clearFull", "clearPhase", "hidden", "shape", "canvas", "places", "help", "clearOn" }
 
 local win
 local controls = {}
@@ -121,6 +124,7 @@ end
 local function loadDraft(id)
     bossID = id
     draft = copyFields((id and Markers:For(id)) or DEFAULT)
+    draft.help = Markers:Help(id)
 end
 
 -- The draft being edited, for tests.
@@ -201,6 +205,9 @@ local function refresh()
     if not win.name:HasFocus() then
         win.name:SetText(draft.name or "")
     end
+    if not win.help:HasFocus() then
+        win.help:SetText(draft.help or "")
+    end
     local shipped = bossID and CRT.MarkerDisplayDB.displays[bossID]
     local hasDraft = bossID and drafts()[bossID]
     win.status:SetText(not bossID and "Pick a boss." or hasDraft and "Saved as a draft (used in place of the shipped one)." or shipped and "This boss's display ships with the addon." or "Not saved.")
@@ -244,10 +251,12 @@ local function clearOnText(list)
     return table.concat(parts, ", ")
 end
 
+-- The export: a comment saying where it goes, the boss file's markers field, and its markerHelp field when
+-- the draft has help text.
 local function exportText()
     local d = draft
-    local line = string.format('[%d] = { name = %q, slots = %d, layout = %q, iconSize = %d, number = %s, names = %s, clearGap = %d, clearFull = %d, clearPhase = %s, hidden = %q',
-        bossID or 0, d.name or "", d.slots, d.layout, d.iconSize, tostring(d.number), tostring(d.names), d.clearGap, d.clearFull, tostring(d.clearPhase), d.hidden or DEFAULT.hidden)
+    local line = string.format('markers = { name = %q, slots = %d, layout = %q, iconSize = %d, number = %s, names = %s, clearGap = %d, clearFull = %d, clearPhase = %s, hidden = %q',
+        d.name or "", d.slots, d.layout, d.iconSize, tostring(d.number), tostring(d.names), d.clearGap, d.clearFull, tostring(d.clearPhase), d.hidden or DEFAULT.hidden)
     if type(d.clearOn) == "table" and #d.clearOn > 0 then
         line = line .. ", clearOn = { " .. clearOnText(d.clearOn) .. " }"
     end
@@ -260,11 +269,14 @@ local function exportText()
         line = line .. string.format(", shape = %q, canvas = %d, places = { %s }", d.shape or DEFAULT.shape, math.floor(d.canvas or DEFAULT.canvas), table.concat(places, ", "))
     end
     line = line .. " },"
-    local macros = {}
-    for i = 1, 8 do
-        macros[#macros + 1] = "/raid {rt" .. i .. "}"
+    local help = type(d.help) == "string" and (d.help:gsub("^%s+", ""):gsub("%s+$", "")) or ""
+    if help ~= "" then
+        line = line .. "\n" .. string.format("markerHelp = %q,", help)
     end
-    return "-- Paste into CRT.MarkerDisplayDB.displays in CRT_Modules/Markers/Database.lua:\n" .. line .. "\n\n-- Macros, one per marker:\n" .. table.concat(macros, "\n")
+    local boss = CRT.Bosses.Get and CRT.Bosses:Get(bossID)
+    local header = string.format("-- Marker display for %s (encounter %d, season %s). Paste into the boss file's markers = { ... }, field\n-- in CRT_Data/Seasons/<season>/<Boss>.lua (not Database.lua), replacing the one there:",
+        boss and boss.name or "this boss", bossID or 0, boss and boss.season or "?")
+    return header .. "\n" .. line
 end
 
 local function add(row, y)
@@ -523,7 +535,7 @@ end
 local function build()
     win = CreateFrame("Frame", "CowfeeRaidToolsMarkerEditor", UIParent, "BasicFrameTemplateWithInset")
     UI:StyleWindow(win)
-    win:SetSize(780, 660)
+    win:SetSize(780, 690) -- the settings on the left, Clear on in a column on the right
     win:SetPoint("CENTER")
     UI:RegisterLayer("popups", win)
     win:SetMovable(true)
@@ -584,8 +596,27 @@ local function build()
     local hiddenHelp = UI.Help(win, "When chat is hidden", HIDDEN_HELP)
     hiddenHelp:SetPoint("LEFT", hiddenRow, "RIGHT", 4, 0)
 
+    -- How the marker calls work on this boss, for Raid Notes > Marker macros (exported as markerHelp).
+    local helpLabel = win:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    helpLabel:SetPoint("TOPLEFT", 14, -522)
+    helpLabel:SetText("Help text")
+    UI.Help(win, "Help text", "How the marker calls work on this boss, in a sentence or two. Raid Notes > Marker macros shows it under How it works on this boss. Export writes it as markerHelp."):SetPoint("LEFT", helpLabel, "RIGHT", 4, 0)
+    win.help = CreateFrame("EditBox", nil, win, "InputBoxTemplate")
+    win.help:SetSize(240, 20)
+    win.help:SetPoint("TOPLEFT", 170, -518)
+    win.help:SetAutoFocus(false)
+    win.help:SetFontObject(CRTFontEdit)
+    win.help:SetMaxLetters(400)
+    win.help:SetScript("OnTextChanged", function(self, user)
+        if user then
+            draft.help = self:GetText()
+        end
+    end)
+    win.help:SetScript("OnEnterPressed", win.help.ClearFocus)
+    win.help:SetScript("OnEscapePressed", win.help.ClearFocus)
+
     win.status = win:CreateFontString(nil, "OVERLAY", "CRTFontDisableSmall")
-    win.status:SetPoint("TOPLEFT", 14, -518)
+    win.status:SetPoint("TOPLEFT", 14, -548)
     win.status:SetWidth(390)
     win.status:SetJustifyH("LEFT")
 

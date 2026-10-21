@@ -159,7 +159,7 @@ end
 
 assert(pages.notes, "notes page registered")
 
-check("tabs: four tabs, settings last", function()
+check("tabs: five tabs, settings last", function()
   for i = #tabs, 1, -1 do tabs[i] = nil end
   local pf = mock("Frame")
   pages.notes(pf)
@@ -170,12 +170,12 @@ check("tabs: four tabs, settings last", function()
   assert(table.concat(kinds, ",") == "Shared,Personal", "the list's tabs: " .. table.concat(kinds, ","))
   local names = {}
   for i, b in ipairs(tabs) do names[i] = b.text.text end
-  assert(table.concat(names, ",") == "Notes,Mech Alerts,Alert Settings,Notes Settings", table.concat(names, ","))
+  assert(table.concat(names, ",") == "Notes,Mech Alerts,Marker macros,Alert Settings,Notes Settings", table.concat(names, ","))
   for i, b in ipairs(tabs) do
     assert(b.w == 164 and b.h == 26, "tab size")
     assert(b.pts[1][2] == 8 + (i - 1) * 168, "tab x " .. tostring(b.pts[1][2]))
   end
-  assert(#tabs == 4 and tabs[4].pts[1][2] + tabs[4].w <= 686, "fits the page")
+  assert(#tabs == 5 and tabs[5].pts[1][2] + tabs[5].w <= CRT.UI.PAGE_W, "fits the page")
 end)
 
 check("tabs: open reminders tab by name", function()
@@ -184,9 +184,9 @@ check("tabs: open reminders tab by name", function()
   assert(dropdowns["Boss"], "reminders tab built a Boss dropdown")
   assert(tabs[2].selected == true and tabs[1].selected == false, "reminders tab selected")
   CRT.NotesPage.Open("alerts")
-  assert(tabs[3].selected == true and alertsTabBuilt == 1, "alerts tab selected and built")
+  assert(tabs[4].selected == true and alertsTabBuilt == 1, "alerts tab selected and built")
   CRT.NotesPage.Open("settings")
-  assert(tabs[4].selected == true and tabs[3].selected == false, "settings tab selected")
+  assert(tabs[5].selected == true and tabs[4].selected == false, "settings tab selected")
   CRT.NotesPage.Open("alerts")
   assert(alertsTabBuilt == 1, "built once")
 end)
