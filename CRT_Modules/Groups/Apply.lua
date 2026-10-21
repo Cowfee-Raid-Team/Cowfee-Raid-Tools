@@ -260,6 +260,50 @@ function Apply:Start(slots)
     step()
 end
 
+-- Moves one raid member into group if it has a free spot, for a player who just joined from an invite
+-- (Groups/Invite.lua). Never moves or swaps anyone else. The name matches as in a layout (resolveLayout).
+-- Returns "moved" (also when they are already there), "full", "combat" (you or they are in combat),
+-- "failed" (the game refused the move), "busy" (Arrange Groups is running and places them), "absent"
+-- (not in the raid) or "denied" (not in a raid, or not the leader or an assist).
+function Apply:MoveOne(key, group)
+    if run then
+        return "busy"
+    end
+    if not IsInRaid() or not (UnitIsGroupLeader("player") or UnitIsGroupAssistant("player")) then
+        return "denied"
+    end
+    if InCombatLockdown() then
+        return "combat"
+    end
+    local members = readRaid()
+    local want = resolveLayout(members, { [(group - 1) * 5 + 1] = key })
+    local player, used = nil, 0
+    for _, m in ipairs(members) do
+        if want[m.key] then
+            player = m
+        end
+        if m.subgroup == group then
+            used = used + 1
+        end
+    end
+    if not player then
+        return "absent"
+    end
+    if player.subgroup == group then
+        return "moved"
+    end
+    if player.combat then
+        return "combat"
+    end
+    if used >= 5 then
+        return "full"
+    end
+    if not pcall(SetRaidSubgroup, player.index, group) then
+        return "failed"
+    end
+    return "moved"
+end
+
 local events = CreateFrame("Frame")
 events:RegisterEvent("GROUP_ROSTER_UPDATE")
 events:RegisterEvent("PLAYER_REGEN_DISABLED")
