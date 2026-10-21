@@ -1,6 +1,6 @@
 local ADDON, CRT = ...
 
--- The row of consumable icons shown above the ready check. A missing or expiring consumable
+-- The row of consumable icons shown on a ready check. A missing or expiring consumable
 -- gets marching ants around its icon. Food, flask, weapon and rune icons are clickable and use the
 -- first listed item in your bags. The potion icon only shows a count and is never used from the row. The icons are drawn by Consumables/Bar.lua, shared with the
 -- bar on the Consumables tab.
@@ -9,6 +9,13 @@ local ADDON, CRT = ...
 -- makes the buttons and their parent frame protected: in combat the row cannot be shown,
 -- hidden or moved and a click action cannot change, so those wait for PLAYER_REGEN_ENABLED.
 -- The row is built at login, out of combat, because secure buttons should be created there.
+--
+-- While the game's ready check window is up the row docks under it, so the two read as one panel, and
+-- it goes away when that window does. The window is ReadyCheckListenerFrame, the part with Ready and
+-- Not Ready, inside ReadyCheckFrame (Blizzard_FrameXML/Mainline/ReadyCheck.xml). The game hides it for
+-- the player who started the check, so that player's row sits at its own saved place. The row is only
+-- anchored to the game's window, never parented to it, and its OnHide is post-hooked, never replaced.
+-- Close shows only for the raid leader.
 
 local Consumables = CRT.Consumables
 local Ants = CRT.Ants
@@ -18,14 +25,33 @@ CRT.ConsumablesDisplay = Display
 
 local REFRESH_SECONDS = 0.5
 local PREVIEW_SECONDS = 20
+local DOCK_GAP = 4 -- pixels between the game's ready check window and the docked row
 
 local frame, handle, closeBar
 local slots = {}
 local dragging -- true while the row is being dragged, so it is not re-anchored under the cursor
 local shownUntil -- time at which a ready check or preview row hides by itself, nil for no limit
-local sawReadyCheckFrame -- true once Blizzard's ready check dialog has been seen on screen
+local sawGameWindow -- true once the game's ready check window has been seen on screen
 local elapsed = 0
 local pendingHide -- a hide that was blocked by combat
+
+-- The game's ready check window when it is on screen, else nil. IsVisible is false while
+-- ReadyCheckFrame, its parent, is hidden, and for the player who started the check.
+local function gameWindow()
+    local window = _G.ReadyCheckListenerFrame
+    if window and window.IsVisible and window:IsVisible() then
+        return window
+    end
+end
+
+-- True when you lead the group. A value the game hides is never compared, and counts as not leading.
+local function isLeader()
+    local ok, leader = pcall(UnitIsGroupLeader, "player")
+    if not ok or (issecretvalue and issecretvalue(leader)) then
+        return false
+    end
+    return leader and true or false
+end
 
 local function showTooltip(self)
     local def = Consumables:Def(self.key)
@@ -93,7 +119,9 @@ local function build()
     handle:Hide()
 
     -- A Close bar under the row, the row's width, for when you're done looking before the check ends.
-    -- Hidden during previews, which have their own drag bar and Reset.
+    -- Only the raid leader gets it: everyone else's row goes with the game's window. Hidden during
+    -- previews, which have their own drag bar and Reset. It hangs below the row, so without it the
+    -- row has no empty space.
     closeBar = CreateFrame("Button", nil, frame, "BackdropTemplate")
     closeBar:SetHeight(20)
     closeBar:SetPoint("TOPLEFT", frame, "BOTTOMLEFT", 0, -2)
@@ -133,6 +161,17 @@ local function build()
         elapsed = 0
         Display:Refresh()
     end)
+
+    -- Go the moment the game's window does (you answered, or the check ended), not at the next refresh.
+    -- A post-hook: the game's own OnHide still runs, and nothing on its frame is changed.
+    local rc = _G.ReadyCheckFrame
+    if rc and rc.HookScript then
+        pcall(rc.HookScript, rc, "OnHide", function()
+            if frame:IsShown() then
+                Display:Refresh()
+            end
+        end)
+    end
     return frame
 end
 
@@ -140,14 +179,16 @@ local function place()
     if InCombatLockdown() or dragging then
         return
     end
-    local rc = _G.ReadyCheckFrame
+    local window = not Display.preview and gameWindow()
     local saved = Consumables:Position()
     frame:ClearAllPoints()
-    if saved then
+    if window then
+        -- Docked under the game's window, centred. Anchored to it, so it follows if the game moves it.
+        frame:SetPoint("TOP", window, "BOTTOM", 0, -DOCK_GAP)
+        sawGameWindow = true
+    elseif saved then
         -- Where the player put it.
         frame:SetPoint(saved.point, UIParent, saved.relativePoint or saved.point, saved.x, saved.y)
-    elseif rc and rc.IsShown and rc:IsShown() then
-        frame:SetPoint("BOTTOM", rc, "TOP", 0, 18)
     else
         frame:SetPoint("TOP", UIParent, "TOP", 0, -200)
     end
@@ -205,20 +246,19 @@ function Display:Refresh()
         return
     end
 
-    -- Hide when the check has timed out, or when Blizzard's dialog was shown and has gone,
-    -- which means you answered it.
-    local rc = _G.ReadyCheckFrame
-    if rc and rc.IsShown then
-        if rc:IsShown() then
-            sawReadyCheckFrame = true
-        elseif sawReadyCheckFrame and not self.preview then
-            return self:Hide()
-        end
+    -- Hide when the check has timed out, or when the game's window was shown and has gone,
+    -- which means you answered it or the check ended.
+    if gameWindow() then
+        sawGameWindow = true
+    elseif sawGameWindow and not self.preview then
+        return self:Hide()
     end
     if shownUntil and GetTime() >= shownUntil then
         return self:Hide()
     end
     place()
+    -- A plain button, not a secure one, so it can change in combat too.
+    closeBar:SetShown(not self.preview and isLeader())
 
     Consumables:RefreshBags()
     for index, key in ipairs(Consumables:Order()) do
@@ -255,10 +295,10 @@ local function show(seconds, preview)
     CRT.UI.CancelFade(frame)
     pendingHide = false
     Display.preview = preview
-    sawReadyCheckFrame = false
+    sawGameWindow = false
     shownUntil = seconds and (GetTime() + seconds) or nil
     handle:SetShown(preview and true or false)
-    closeBar:SetShown(not preview)
+    closeBar:SetShown(not preview and isLeader())
     place()
     frame:Show()
     elapsed = REFRESH_SECONDS
@@ -288,7 +328,7 @@ function Display:SetPreview(on)
     end
 end
 
--- Moves the row back above the ready check dialog.
+-- Moves the row back to its default place, for when the game shows you no ready check window.
 function Display:ResetPosition()
     Consumables:ResetPosition()
     if frame and frame:IsShown() then
