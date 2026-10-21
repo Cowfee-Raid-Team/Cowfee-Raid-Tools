@@ -19,7 +19,7 @@ local ADDON, CRT = ...
 --                      without an id), kept by id so it survives the line moving to another widget.
 --     sample(now)      -> lines for Previews, each with `at` set
 --     settings(panel, s)  adds the area's own rows to its settings on Raid Notes > Alerts with
---                      panel:Dropdown(label, opts), panel:Slider(label, opts), panel:Check(label, get, set, help) (help: an optional (?) tooltip text) and
+--                      panel:Dropdown(label, opts), panel:Slider(label, opts), panel:Check(label, get, set, help, enabledIf) (help: an optional (?) tooltip text; enabledIf: greys it out when false) and
 --                      panel:Color(label, get, set, enabledIf) (a swatch for the game's color picker; get() -> { r, g, b, a },
 --                      set(new table); opts as for UI.Dropdown and UI.Slider, plus opts.help for a (?) after the
 --                      control). Colour rows in a row share a line while they fit. It is called every time the area
@@ -509,15 +509,22 @@ function Panel:Slider(label, opts)
     return slot.row
 end
 
--- help, if given, is a (?) tooltip after the label.
-function Panel:Check(label, get, set, help)
-    local slot = self:NextSlot({ get = get, set = set }, function(slot)
+-- help, if given, is a (?) tooltip after the label. enabledIf(), if given, greys the box out while it is false.
+function Panel:Check(label, get, set, help, enabledIf)
+    local slot = self:NextSlot({ get = get, set = set, enabledIf = enabledIf }, function(slot)
         local check = makeCheck(self.frame, label, function()
             return slot.opts.get()
         end, function(on)
             slot.opts.set(on)
             self:Changed()
         end)
+        local read = check.refresh
+        check.refresh = function()
+            read()
+            local on = not slot.opts.enabledIf or slot.opts.enabledIf() and true or false
+            check:SetEnabled(on)
+            check.label:SetAlpha(on and 1 or 0.5)
+        end
         if help then
             local mark = UI.Help(check, label, help) -- a child of the check, so it hides with its row
             mark:SetPoint("LEFT", check.label, "RIGHT", 6, 0)

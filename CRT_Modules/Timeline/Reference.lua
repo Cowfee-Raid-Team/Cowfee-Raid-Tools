@@ -82,24 +82,25 @@ end
 
 -- The Encounter Journal's icons for an ability, written (tags tank magic). Unlike a type they don't color
 -- the row: they say who it is for and what it is, as the Journal's own icons do. The words are the
--- Journal's icon names (Enum.JournalEncounterIconFlags), and atlas is the Journal's icon for each.
+-- Journal's icon names (Enum.JournalEncounterIconFlags), and atlas is the Journal's icon for each. gameIcon is the
+-- matching Enum.EncounterEventIconmask entry on the game's boss timeline (Alerts/GameTimeline.lua); the rest have none.
 Reference.TAG_ORDER = { "tank", "healer", "dps", "heroic", "mythic", "deadly", "important", "interrupt", "magic",
     "curse", "poison", "disease", "enrage", "bleed" }
 Reference.TAGS = {
-    tank = { label = "Tank", atlas = "icons_16x16_tank" },
-    healer = { label = "Healer", atlas = "icons_16x16_heal" },
-    dps = { label = "Damage dealers", atlas = "icons_16x16_damage" },
+    tank = { label = "Tank", atlas = "icons_16x16_tank", gameIcon = "TankRole" },
+    healer = { label = "Healer", atlas = "icons_16x16_heal", gameIcon = "HealerRole" },
+    dps = { label = "Damage dealers", atlas = "icons_16x16_damage", gameIcon = "DpsRole" },
     heroic = { label = "Heroic", atlas = "icons_16x16_heroic" },
     mythic = { label = "Mythic", atlas = "icons_16x16_mythic" },
-    deadly = { label = "Deadly", atlas = "icons_16x16_deadly" },
+    deadly = { label = "Deadly", atlas = "icons_16x16_deadly", gameIcon = "DeadlyEffect" },
     important = { label = "Important", atlas = "icons_16x16_important" },
     interrupt = { label = "Interruptible", atlas = "icons_16x16_interrupt" },
-    magic = { label = "Magic", atlas = "icons_16x16_magic" },
-    curse = { label = "Curse", atlas = "icons_16x16_curse" },
-    poison = { label = "Poison", atlas = "icons_16x16_poison" },
-    disease = { label = "Disease", atlas = "icons_16x16_disease" },
-    enrage = { label = "Enrage", atlas = "icons_16x16_enrage" },
-    bleed = { label = "Bleed", atlas = "icons_16x16_bleed" },
+    magic = { label = "Magic", atlas = "icons_16x16_magic", gameIcon = "MagicEffect" },
+    curse = { label = "Curse", atlas = "icons_16x16_curse", gameIcon = "CurseEffect" },
+    poison = { label = "Poison", atlas = "icons_16x16_poison", gameIcon = "PoisonEffect" },
+    disease = { label = "Disease", atlas = "icons_16x16_disease", gameIcon = "DiseaseEffect" },
+    enrage = { label = "Enrage", atlas = "icons_16x16_enrage", gameIcon = "EnrageEffect" },
+    bleed = { label = "Bleed", atlas = "icons_16x16_bleed", gameIcon = "BleedEffect" },
 }
 
 -- The Journal's icons that are types too (a dispellable debuff, a Heroic or a Mythic mechanic) are each type's

@@ -313,10 +313,12 @@ local defaults = {
             texts = { shown = true, cap = 3, font = "Friz Quadrata", fontSize = 36, outline = "THICKOUTLINE", grow = "down", align = "CENTER" },
             circles = { shown = true, cap = 3, size = 64, thickness = "medium", ringColor = { 1, 1, 1, 0.9 }, font = "Friz Quadrata", fontSize = 16, grow = "right" },
             -- the timeline (Alerts/TimelineArea.lua): ticks is a list of seconds as text ("3,5"), so an empty list
-            -- stays empty; lineColor is added only when picked (the theme's accent until then)
+            -- stays empty; lineColor is added only when picked (the theme's accent until then). gameMode
+            -- ("standalone", "add" or "replace") and gameAlsoHere are the game's boss timeline (Alerts/GameTimeline.lua)
             timeline = { shown = true, cap = 5, direction = "down", side = "right", length = 300, seconds = 10, size = 32, thickness = 2,
                 showNames = true, showCountdown = true, tenths = 0, badges = true, ticks = "5", nowEffect = "flash", nowText = "NOW!",
-                nowTime = 1, stack = true, font = "Friz Quadrata", fontSize = 14 },
+                nowTime = 1, stack = true, font = "Friz Quadrata", fontSize = 14,
+                gameMode = "standalone", gameAlsoHere = false },
         },
         -- Where the player's own note lines without show: also display (Next spell alert, Bar and speech
         -- keep their own switches); off until chosen.

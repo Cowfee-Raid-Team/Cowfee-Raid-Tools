@@ -199,6 +199,8 @@ SlashCmdList["COWFEERAIDTOOLS"] = function(msg)
         -- dev gear: your items' (or a seen player's) item, enchant, gem and bonus IDs (Dev/GearProbe.lua)
     elseif CRT.BreaksDev and CRT.BreaksDev:Command(msg) then
         -- dev break: the break timer's other-addon formats (Dev/Breaks.lua)
+    elseif CRT.GameTimelineProbe and CRT.GameTimelineProbe:Command(msg) then
+        -- dev gametimeline: add one event to the game's boss timeline and print the result (Dev/GameTimelineProbe.lua)
     elseif msg == "dev layout" then
         if CRT.LayoutCheck then
             CRT.LayoutCheck:Run()

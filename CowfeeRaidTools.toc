@@ -117,6 +117,7 @@ CRT_Modules\Alerts\Bars.lua
 CRT_Modules\Alerts\Texts.lua
 CRT_Modules\Alerts\Icons.lua
 CRT_Modules\Alerts\Circles.lua
+CRT_Modules\Alerts\GameTimeline.lua
 CRT_Modules\Alerts\TimelineArea.lua
 CRT_Modules\Alerts\Draft.lua
 CRT_Modules\Alerts\SpellLookup.lua
@@ -151,6 +152,7 @@ CRT_Data\Seasons\Midnight-S1\Kithix.lua
 #@do-not-package@
 CRT_Dev\Dev\LayoutEditor.lua
 CRT_Dev\Dev\TimelineProbe.lua
+CRT_Dev\Dev\GameTimelineProbe.lua
 CRT_Dev\Dev\MarkerEditor.lua
 CRT_Dev\Dev\SeasonTools.lua
 CRT_Dev\Dev\BossOrder.lua
