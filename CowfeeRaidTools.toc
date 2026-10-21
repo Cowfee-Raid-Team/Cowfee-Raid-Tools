@@ -159,6 +159,7 @@ CRT_Dev\Dev\NoteTargets.lua
 CRT_Dev\Dev\Breaks.lua
 CRT_Dev\Dev\Sound.lua
 CRT_Dev\Dev\LootProbe.lua
+CRT_Dev\Dev\GearProbe.lua
 CRT_Dev\Dev\Loot.lua
 CRT_Dev\Dev\DevPage.lua
 #@end-do-not-package@

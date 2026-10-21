@@ -191,6 +191,8 @@ SlashCmdList["COWFEERAIDTOOLS"] = function(msg)
         -- dev loot: fake records, stats, the RCLootCouncil match report (Dev/Loot.lua)
     elseif CRT.SoundDev and CRT.SoundDev:Command(msg, raw) then
         -- dev sound: play any sound reference, list them (Dev/Sound.lua)
+    elseif CRT.GearProbe and CRT.GearProbe:Command(msg, raw) then
+        -- dev gear: your items' (or a seen player's) item, enchant, gem and bonus IDs (Dev/GearProbe.lua)
     elseif CRT.BreaksDev and CRT.BreaksDev:Command(msg) then
         -- dev break: the break timer's other-addon formats (Dev/Breaks.lua)
     elseif msg == "dev layout" then
