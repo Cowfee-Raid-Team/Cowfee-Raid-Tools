@@ -193,6 +193,8 @@ end
 local UI, GC, Gear = CRT.UI, CRT.GearChecker, CRT.Gear
 local P = GC.Page
 local Lt = GC.PAGE_LAYOUT
+-- Default: Blizzard's bad, warn and good (the game's red, orange and green), the theme the page starts in
+local BAD, WARN, GOOD = CRT.THEMES.blizzard.bad, CRT.THEMES.blizzard.warn, CRT.THEMES.blizzard.matcha
 
 -- the gear: Quick sent theirs (a ring gem missing), Arrow was inspected (no head enchant, a low item)
 Gear:Remember("Quick-Sargeras", { { slot = 1, id = 101, itemString = "item:101:7364", ilvl = 289 }, { slot = 11, id = 111, itemString = "item:111:7364:213746", ilvl = 289 } }, "gearcheck", true)
@@ -243,24 +245,24 @@ eq(rows[1], me, "you first")
 check(near(quick.name.color, { 1, 0.96, 0.41 }), "Quick's name in the rogue colour")
 eq(quick.ilvl.text, string.format("%.1f", 578 / 16), "the average item level")
 eq(quick.issues.text, "1", "Quick: one issue")
-check(near(quick.badge.color, { 0.9, 0.15, 0.15 }), "a red badge with issues")
+check(near(quick.badge.color, BAD), "a red badge with issues")
 eq(arrow.issues.text, "2", "Arrow: a missing enchant and a low item")
 local function cell(f, slot) for _, c in ipairs(f.cells) do if c.slot == slot then return c end end end
 local ring = cell(quick, 11)
 check(ring.icon.shown and ring.icon.file == 5111, "the ring's icon")
 check(near(ring.quality[1].color, { 0.64, 0.21, 0.93 }), "the quality border")
 eq(ring.ilvl.text, "289", "the item level under the icon")
-check(ring.flag[1].shown and near(ring.flag[1].color, { 0.9, 0.15, 0.15 }), "a red outline for a missing gem")
+check(ring.flag[1].shown and near(ring.flag[1].color, BAD), "a red outline for a missing gem")
 check(ring.gems[1].edge.shown and ring.gems[2].edge.shown and not ring.gems[3].edge.shown, "two gem diamonds")
 check(near(ring.gems[1].fill.vertex, { 0.55, 0.8, 1 }), "the first filled")
-check(near(ring.gems[2].edge.vertex, { 0.9, 0.15, 0.15 }), "the second empty with a red edge")
+check(near(ring.gems[2].edge.vertex, BAD), "the second empty with a red edge")
 check(ring.gems[1].edge.rotation and math.abs(ring.gems[1].edge.rotation - math.pi / 4) < 0.001, "diamonds: squares turned 45 degrees")
-check(ring.dot.shown and near(ring.dot.vertex, { 0.3, 0.85, 0.3 }), "an enchanted ring: a green dot")
+check(ring.dot.shown and near(ring.dot.vertex, GOOD), "an enchanted ring: a green dot")
 local head = cell(arrow, 1)
-check(head.dot.shown and near(head.dot.vertex, { 0.9, 0.15, 0.15 }), "no head enchant: a red dot")
-check(head.flag[1].shown and near(head.flag[1].color, { 0.9, 0.15, 0.15 }), "and a red outline")
+check(head.dot.shown and near(head.dot.vertex, BAD), "no head enchant: a red dot")
+check(head.flag[1].shown and near(head.flag[1].color, BAD), "and a red outline")
 local hands = cell(arrow, 10)
-check(hands.flag[1].shown and near(hands.flag[1].color, { 1, 0.55, 0.1 }), "a low item: an orange outline")
+check(hands.flag[1].shown and near(hands.flag[1].color, WARN), "a low item: an orange outline")
 check(not cell(arrow, 2).dot.shown, "a neck has no enchant dot")
 check(not cell(arrow, 2).flag[1].shown, "and no outline")
 check(not cell(quick, 3).icon.shown, "an empty slot shows no icon")
@@ -309,7 +311,7 @@ for _, info in ipairs(CRT.THEME_LIST) do
   local f = drawRows()[2]
   local hcol = P.headers[1].color
   if info.modern then
-    check(near(hcol, CRT.THEMES[info.key].latte), info.key .. ": headings in the theme's latte")
+    check(near(hcol, CRT.THEMES[info.key].heading), info.key .. ": headings in the theme's heading colour")
     check(near(f.bg.color, CRT.THEMES[info.key].roast), info.key .. ": rows in the theme's roast")
     check(near(f.ilvl.color, CRT.THEMES[info.key].cream), info.key .. ": text in the theme's cream")
     check(near(P.chips[1].backdrop, CRT.THEMES[info.key].roast), info.key .. ": the chips follow the theme")
@@ -318,7 +320,17 @@ for _, info in ipairs(CRT.THEME_LIST) do
     check(near(f.bg.color, { 0, 0, 0 }), info.key .. ": the game's dark rows")
     check(near(f.ilvl.color, { 1, 1, 1 }), info.key .. ": white text")
   end
-  check(near(cell(f, 11).flag[1].color, { 0.9, 0.15, 0.15 }), info.key .. ": the red outline stays red")
+  -- missing, low and enchanted in the theme's bad, warn and good (the style guide); the gems' blue, the info
+  -- blue and the track and quality colours are not theme colours
+  local th = CRT.THEMES[info.key]
+  check(near(cell(f, 11).flag[1].color, th.bad), info.key .. ": a missing gem's outline in the theme's bad")
+  check(near(cell(f, 11).gems[2].edge.vertex, th.bad), info.key .. ": an empty socket's edge in the theme's bad")
+  check(near(cell(f, 11).dot.vertex, th.matcha), info.key .. ": an enchanted ring's dot in the theme's good")
+  check(near(cell(f, 11).gems[1].fill.vertex, { 0.55, 0.8, 1 }), info.key .. ": a filled gem keeps its blue")
+  local arrowRow
+  for _, r in ipairs(drawRows()) do if r.data.name == "Arrow-Sargeras" then arrowRow = r end end
+  check(arrowRow and near(cell(arrowRow, 10).flag[1].color, th.warn), info.key .. ": a low item's outline in the theme's warn")
+  check(arrowRow and near(arrowRow.badge.color, th.bad), info.key .. ": the issues badge in the theme's bad")
 end
 UI:SetTheme("blizzard")
 rows = drawRows()
@@ -374,9 +386,9 @@ eq(tip.title, "Arrow", "badge: the player's name")
 check(near(tip.titleColor, { 0.67, 0.83, 0.45 }), "badge: in their class colour")
 eq(#tip.lines, 2, "badge: a line per issue")
 eq(tip.lines[1], "Head |cffa335ee|Hitem:101::::::::90|h[Band]|h|r 289 - missing enchant", "badge: the chat lines' wording")
-check(near(tip.colors[1], { 0.9, 0.15, 0.15 }), "badge: a missing enchant in red")
+check(near(tip.colors[1], BAD), "badge: a missing enchant in red")
 check(tip.lines[2]:find("^Hands .* 270 %- 17 item levels under average$") ~= nil, "badge: the low item, how far under (" .. tostring(tip.lines[2]) .. ")")
-check(near(tip.colors[2], { 1, 0.55, 0.1 }), "badge: a low item in orange")
+check(near(tip.colors[2], WARN), "badge: a low item in orange")
 check(tip.shown, "badge: the tooltip shows")
 arrow.badgeHit.scripts.OnLeave(arrow.badgeHit)
 check(not tip.shown, "badge: gone when the mouse leaves")
