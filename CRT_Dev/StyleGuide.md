@@ -14,7 +14,7 @@ Every theme fills every key in `CRT.THEME_KEYS`. Each key is named for what it c
 | surface | menu blocks, fields, buttons, list rows, an unticked checkbox |
 | border | borders, the empty part of a slider's track, a scroll bar's rail |
 | selected | the selected page and tab, an unticked checkbox's edge |
-| accent | lines, a slider's filled track, hover edges, the Modern help ring, scroll bar thumbs |
+| accent | lines, a slider's filled track, hover edges, the Modern help ring, scroll bar thumbs, the alert timeline's line and its tick marks |
 | label | button text and labels (the game's gold font takes this colour in a Modern theme) |
 | heading | headings, section titles, highlights, a selected row's tint (`UI.HeadingText`) |
 | text | body text (the game's white font takes this colour in a Modern theme) |
@@ -97,6 +97,7 @@ These stay the same in every theme. A hard-coded one that looks like a status or
 | Loot Master's looting line, "Synced to" line and all-answered count | plain in Default: Blizzard, good in a Modern theme, as before themes | Alex, 2026-10-21: excluded from colour changes |
 | Gear Checker's info blue and gem blue | 4DA6FF, 8CCCFF | a season check to know about; a filled socket |
 | Ability types (Timeline rows, every alert) | `Reference.TYPES`, see below | each colour means a kind of ability |
+| The alert timeline's icons and NOW effects | the ability type's colour for an icon's edge and name, the Ring burst and the Text pop; white for the countdown, the Flash and fade, and the edge in the last 3 seconds | the type says what is coming; white reads on any icon. Its line and ticks are the theme's accent (a Line colour you pick only with Use custom colours on) |
 | Chat prints | the addon's print colours | chat, not the window |
 | Loot Master response buttons | the raid leader's response set | see below |
 | Colours a player picks (alert areas, alerts, reminders, ability timeline rows) | saved data, used only with Use custom colours on | see below |
@@ -106,7 +107,7 @@ Response buttons: a raider's popup and All Loot Rolls window colour the buttons 
 
 ## Ability type colours: fixed, not per theme
 
-The Timeline's ability types (`Reference.TYPES` in `CRT_Modules/Timeline/Reference.lua`) colour the ability timeline's rows and every alert: bars, circles, icons, texts and the Next spell alert (which keeps the heading colour when the type is unknown). They are the same in every theme, since each colour means a kind of ability. A new type is added there, with its colour, and to this table. Hex from the code's values (rounded as `Reference.Legend` does).
+The Timeline's ability types (`Reference.TYPES` in `CRT_Modules/Timeline/Reference.lua`) colour the ability timeline's rows and every alert: bars, circles, icons, texts, the alert timeline and the Next spell alert (which keeps the heading colour when the type is unknown). They are the same in every theme, since each colour means a kind of ability. A new type is added there, with its colour, and to this table. Hex from the code's values (rounded as `Reference.Legend` does).
 
 | Type | Colour | Meaning |
 |---|---|---|
@@ -123,7 +124,7 @@ The Timeline's ability types (`Reference.TYPES` in `CRT_Modules/Timeline/Referen
 
 An alert with no known type is drawn in the theme's accent, read when it draws, so it follows a theme switch. How an alert's type is found: `CRT_Modules/Alerts/Colors.lua`.
 
-**Custom colours.** A colour the player picks is used only with Use custom colours on (Raid Notes > Alerts, `alerts.customColors`, off by default): the Bars' Bar colour, Background and Text colour, the Circles' Ring colour, a reminder's or a template's colour, and an ability timeline row's `color rrggbb`. Off, those rows are greyed out (`enabledIf`) and the colours are ignored but stay saved. A raid note line's own colour is the raid leader's shared choice and always shows, as do the Loot Master response colours (see above).
+**Custom colours.** A colour the player picks is used only with Use custom colours on (Raid Notes > Alerts, `alerts.customColors`, off by default): the Bars' Bar colour, Background and Text colour, the Circles' Ring colour, the alert timeline's Line colour, a reminder's or a template's colour, and an ability timeline row's `color rrggbb`. Off, those rows are greyed out (`enabledIf`) and the colours are ignored but stay saved. A raid note line's own colour is the raid leader's shared choice and always shows, as do the Loot Master response colours (see above).
 
 ## Looks that aren't colours
 

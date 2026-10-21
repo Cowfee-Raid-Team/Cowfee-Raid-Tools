@@ -450,6 +450,22 @@ check("timeline: settings rows apply at once", function()
   assert(#errors == 0, tostring(errors[1]))
 end)
 
+check("timeline: a rehearsal moves the icons on its own clock, and a pause holds them", function()
+  pull({ item{ id = "rh", time = 30, text = "Rehearsed" } })
+  local fight = 22
+  A:Start(3001, "Mythic", "rehearsal", { clock = function() return fight end, speed = function() return 1 end })
+  T:Refresh()
+  local w = T:Visible()[1]
+  assert(w and near(last(w)[5], 8 / 10 * 300), "8 s left on the rehearsal's clock: " .. tostring(w and last(w)[5]))
+  clock = clock + 5 -- real time runs on, the rehearsal is paused
+  T:Refresh() T.tl.mover.OnUpdate(T.tl.mover, 0.016)
+  assert(near(last(w)[5], 8 / 10 * 300) and w.count.text == "8", "paused: it holds")
+  fight = 26
+  T.tl.mover.OnUpdate(T.tl.mover, 0.016)
+  assert(near(last(w)[5], 4 / 10 * 300) and w.count.text == "4", "moves with the clock")
+  A:Stop()
+end)
+
 check("timeline: defaults in CRT_Core/Core.lua", function()
   local core = coreSrc
   assert(core:find("timeline = { shown = true", 1, true), "an areas.timeline default")
