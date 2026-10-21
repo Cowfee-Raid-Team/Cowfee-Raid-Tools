@@ -468,15 +468,8 @@ function RehearsalWindow:Open(source)
     end
     local Journal = CRT.TimelineJournal
     local rows = Journal and Journal:Rows(source.encounterID) or {}
-    local lanes, _, extra = CRT.TimelineLanes.Build(source.base, rows, CRT.Timeline:Settings(), source.encounterID, nil, source.group, source.order)
-    -- your labels and ignored mechanics, as the timeline shows them
-    if CRT.Timeline.ApplyAbilities then
-        lanes = CRT.Timeline:ApplyAbilities(lanes, source.encounterID, rows)
-    end
-    if CRT.Timeline.WithoutHidden then
-        lanes = CRT.Timeline:WithoutHidden(lanes, source.encounterID)
-    end
-    lanes = CRT.Timeline:WithoutIgnored(lanes, source.encounterID)
+    -- your labels, hidden abilities and ignored mechanics, as the timeline shows them
+    local lanes, _, extra = CRT.TimelineLanes.AsShown(source.base, rows, CRT.Timeline:Settings(), source.encounterID, nil, source.group, source.order)
     self.source = source
     self.stopAt = nil
     self.model = Rehearsal.Build(lanes, extra)

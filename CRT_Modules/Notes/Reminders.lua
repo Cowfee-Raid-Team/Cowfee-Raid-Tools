@@ -15,7 +15,7 @@ local UI = CRT.UI
 -- text in quotes, save, and /reload.
 local TEXT = {
     title = "Mech Alerts",
-    help = "On the left: the boss's abilities from the Encounter Journal, then your own reminders. Tick an ability to get a reminder for it, with the times from its ability timeline; untick it to turn it off. A dot means the timeline has times for it. Click a row to edit its alert on the right; changes save at once. Your own reminder adds one not tied to an ability.",
+    help = "On the left: the abilities on the ability timeline Times from names, as the Timeline shows it (mechanics you ignored there are left out), then your own reminders. Tick an ability to get a reminder for it, with its times from that timeline; untick it to turn it off. A ticked one that isn't on that timeline stays, marked. A dot means the timeline has times for it. Click a row to edit its alert on the right; changes save at once. Your own reminder adds one not tied to an ability.",
     boss = "Boss",
     difficulty = "Difficulty",
     any = "Any",
@@ -85,7 +85,8 @@ local TEXT = {
     hiddenMark = "(hidden) %s",
     hideMech = "Hide from Mech Alerts for everyone",
     showMech = "Show again",
-    hideNoTimer = "Hide all with no timer",
+    -- an ability with a ticked alert of yours that isn't on the ability timeline on show
+    offTimelineMark = "(not on timeline) %s",
 }
 
 -- Layout, from the page's width (UI.PAGE_W) and the tab's height (CRT.NotesPage.TAB_H, under the Raid
@@ -256,6 +257,33 @@ local function pickBoss(bosses)
     return selected, selected and bossName(bosses, selected)
 end
 
+-- The references of the boss on show, yours first.
+local function bossRefs()
+    local Ref = CRT.TimelineReference
+    if not (Ref and selected) then
+        return {}
+    end
+    if not data.refs[selected] then
+        data.refs[selected] = Ref:ForBoss(selected, bossName(bosses(), selected))
+    end
+    return data.refs[selected]
+end
+
+-- The ability timeline Times from names, the one the list and the times are read from: for a difficulty,
+-- the Timeline's own pick (Timeline:ReferenceFor, that difficulty preferred inside its group), as the
+-- alerts' times pick it; for Any, the boss's first.
+local function shownReference()
+    local refs = bossRefs()
+    local T = CRT.Timeline
+    if viewDiff and T and T.ReferenceFor then
+        local entry = T:ReferenceFor(selected, T:GroupFor(viewDiff), bossName(bosses(), selected), viewDiff, refs)
+        if entry then
+            return entry
+        end
+    end
+    return refs[1]
+end
+
 -- The boss's Encounter Journal ability rows ({ name, spellID, icon }), {} when there are none.
 local function journalRows(enc)
     if CRT.TimelineJournal then
@@ -292,8 +320,46 @@ local function itemKey(item)
     return "r:" .. tostring(item.id)
 end
 
--- The ability rows of the boss from the Journal, then the reminders that match none of them, then a
--- new reminder of your own waiting for its first change.
+-- The ability rows of the ability timeline Times from names, as the Timeline draws them (Lanes.AsShown:
+-- your labels, without its hidden abilities and your ignored mechanics), each with casts on it, in its
+-- order: { name, spellID (nil for a row with no spell), icon }. Rows the Journal doesn't have are in;
+-- Journal abilities with no casts there are not. The one source of the list's abilities.
+local function timelineRows(enc)
+    local entry = shownReference()
+    local T, Lanes, Reference = CRT.Timeline, CRT.TimelineLanes, CRT.TimelineReference
+    if not (entry and T and Lanes and Lanes.AsShown) then
+        return {}
+    end
+    local ref = entry.ref
+    local group = type(ref.difficulty) == "string" and ref.difficulty ~= "" and T:GroupFor(ref.difficulty) or nil
+    -- the raid's chosen order of the boss's parts, as the Timeline lays it out (Page.lua)
+    local order = ref.order and Reference and Reference.ResolveOrder and Reference.ResolveOrder(ref, T:Order(enc, group)) or nil
+    local ok, lanes = pcall(Lanes.AsShown, { reference = ref }, journalRows(enc), T:Settings(), enc, nil, group, order)
+    if not ok then
+        geterrorhandler()(lanes)
+        return {}
+    end
+    local out = {}
+    for _, lane in ipairs(lanes or {}) do
+        if lane.kind == "reference" and type(lane.marks) == "table" and #lane.marks > 0 then
+            local id = lane.spellID
+            out[#out + 1] = { name = T.IgnoreName(lane), spellID = type(id) == "number" and id > 0 and id or nil, icon = lane.icon }
+        end
+    end
+    return out
+end
+
+-- Whether a saved reminder is the one of an ability row: by spell, or for a row with no spell, by name.
+local function reminderOf(r, row)
+    if row.spellID then
+        return r.spellID == row.spellID
+    end
+    return r.spellID == nil and type(r.text) == "string" and lower(r.text) == lower(row.name)
+end
+
+-- The ability rows of the ability timeline (timelineRows), then the Journal abilities not on it that
+-- have a ticked reminder of yours (marked), then the reminders that match none of them, then a new
+-- reminder of your own waiting for its first change.
 local function buildItems(enc)
     local Reminders = CRT.AlertReminders
     local out = {}
@@ -303,21 +369,40 @@ local function buildItems(enc)
     local dev = devMode()
     local saved = Reminders:List(enc)
     local used = {}
-    for _, jrow in ipairs(journalRows(enc)) do
-        local item = { ability = jrow, spellID = jrow.spellID }
+    local function add(row, offTimeline)
+        local item = { ability = row, spellID = row.spellID }
         for _, e in ipairs(saved) do
-            if not used[e.id] and e.r.spellID == jrow.spellID then
-                used[e.id] = true
+            if not used[e.id] and reminderOf(e.r, row) then
                 item.id, item.r = e.id, e.r
                 break
             end
         end
-        local hidden = mechHidden(enc, jrow)
-        item.hiddenMark = hidden and dev or nil
-        -- only a ticked reminder of yours keeps it: never the selection, nor one a change left unticked
+        -- only a ticked reminder of yours keeps a row the list leaves out: never the selection, nor one
+        -- a change left unticked
         local ticked = item.r ~= nil and item.r.enabled ~= false
-        if not hidden or dev or ticked or (opened and opened.enc == enc and opened.key == itemKey(item)) then
-            out[#out + 1] = item
+        local asked = opened and opened.enc == enc and opened.key == itemKey(item)
+        local hidden = mechHidden(enc, row)
+        if item.id then
+            used[item.id] = true -- left out with its row, never listed as a reminder of your own
+        end
+        if offTimeline and not (ticked or asked) then
+            return
+        end
+        if hidden and not (dev or ticked or asked) then
+            return
+        end
+        item.hiddenMark = hidden and dev or nil
+        item.offTimeline = offTimeline or nil
+        out[#out + 1] = item
+    end
+    local listed = {}
+    for _, row in ipairs(timelineRows(enc)) do
+        listed[row.spellID or lower(row.name)] = true
+        add(row, false)
+    end
+    for _, jrow in ipairs(journalRows(enc)) do
+        if jrow.spellID and not listed[jrow.spellID] and not listed[lower(jrow.name)] then
+            add({ name = jrow.name, spellID = jrow.spellID, icon = jrow.icon }, true)
         end
     end
     for _, e in ipairs(saved) do
@@ -415,30 +500,6 @@ local function itemsFor(enc, name)
     end
     listCache = { enc = enc, diff = viewDiff, pending = pending, dev = dev, items = list }
     return list
-end
-
--- The references of the boss on show, yours first.
-local function bossRefs()
-    local Ref = CRT.TimelineReference
-    if not (Ref and selected) then
-        return {}
-    end
-    if not data.refs[selected] then
-        data.refs[selected] = Ref:ForBoss(selected, bossName(bosses(), selected))
-    end
-    return data.refs[selected]
-end
-
-local function shownReference()
-    local refs = bossRefs()
-    if viewDiff then
-        for _, entry in ipairs(refs) do
-            if entry.ref.difficulty and lower(entry.ref.difficulty) == lower(viewDiff) then
-                return entry
-            end
-        end
-    end
-    return refs[1]
 end
 
 -- The panel ---------------------------------------------------------------------------------------
@@ -707,7 +768,7 @@ local function paint(index)
                 row.name:SetText(string.format(TEXT.hiddenMark, item.label))
                 row.name:SetTextColor(m[1], m[2], m[3], HIDDEN_ALPHA)
             else
-                row.name:SetText(item.label)
+                row.name:SetText(item.offTimeline and string.format(TEXT.offTimelineMark, item.label) or item.label)
                 row.name:SetTextColor(nameColor(item, on, offset + i == index))
             end
             row.check:SetChecked(on)
@@ -1026,52 +1087,23 @@ local function makeEdit(parent, x, y, width, onChange)
     return edit
 end
 
--- The boss's Journal abilities with no casts on any of its ability timelines (each difficulty's), by
--- name, as Hide all with no timer hides them. Times a reminder typed itself don't count.
-local function noTimerNames(enc, name)
-    local Reminders = CRT.AlertReminders
-    local refs = bossRefs()
-    local out = {}
-    for _, jrow in ipairs(journalRows(enc)) do
-        local probe = { spellID = jrow.spellID, text = jrow.name, boss = name }
-        local timed = false
-        for _, entry in ipairs(refs) do
-            local ok, found = pcall(Reminders.Times, Reminders, enc, probe, entry.ref)
-            if ok and type(found) == "table" and #found > 0 then
-                timed = true
-                break
-            end
-        end
-        if not timed and jrow.name then
-            out[#out + 1] = jrow.name
-        end
-    end
-    return out
-end
-
--- A row's right-click menu, only while /crt dev is open (developer builds): hide its ability from Mech
--- Alerts for everyone or show it again, and hide every ability with no timer. Saved on this computer
--- until /crt dev mechhidden prints the list for the boss file. Every change redraws the tab through
--- the Timeline's listeners.
+-- A row's right-click menu, only while /crt dev is open (developer builds) and only on an ability: hide it
+-- from Mech Alerts for everyone or show it again. Saved on this computer until /crt dev mechhidden prints
+-- the list for the boss file. Every change redraws the tab through the Timeline's listeners. Abilities
+-- with no casts on the ability timeline are never listed, so they need no hiding.
 local function openRowMenu(owner, item)
     local T = CRT.Timeline
     local open = rawget(UI, "ContextMenu")
-    local enc, name = pickBoss(bosses())
-    if not (item and enc and open and devMode()) then
+    local enc = pickBoss(bosses())
+    local ability = item and item.ability
+    if not (ability and ability.name and enc and open and devMode()) then
         return
     end
     open(owner, function(root)
-        local ability = item.ability
-        if ability and ability.name then
-            root:CreateTitle(ability.name)
-            local hidden = T:MechHidden(enc, ability.name)
-            root:CreateButton(hidden and TEXT.showMech or TEXT.hideMech, function()
-                T:SetMechHidden(enc, ability.name, not hidden)
-            end)
-            root:CreateDivider()
-        end
-        root:CreateButton(TEXT.hideNoTimer, function()
-            T:SetMechHidden(enc, noTimerNames(enc, name), true)
+        root:CreateTitle(ability.name)
+        local hidden = T:MechHidden(enc, ability.name)
+        root:CreateButton(hidden and TEXT.showMech or TEXT.hideMech, function()
+            T:SetMechHidden(enc, ability.name, not hidden)
         end)
     end)
 end
