@@ -2,9 +2,11 @@
 // usage: node run_timeline_page.js <Data.lua> <Database.lua> <Reference.lua> <Lanes.lua> <ReferencePage.lua> <SettingsTab.lua> <Page.lua> <Journal.lua> <Registry.lua> <Season.lua> <Nekzali.lua> <ReviewTab.lua> <Rehearsal.lua> <RehearsalWindow.lua> <CRT_Core/Slash.lua>
 // Journal.lua is loaded on its own CRT table only for its RaidBosses, which the stub Journal hands on.
 const fs = require('fs');
+const path = require('path');
+const themeLua = require('./theme_stub');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
-const harness = `
+const harness = themeLua(process.argv.slice(2)) + `
 local dataSrc, dbSrc, refSrc, lanesSrc, refPageSrc, settingsTabSrc, pageSrc, journalSrc, regSrc, seasonSrc, nekSrc, reviewSrc, rehSrc, rehWinSrc, slashSrc = ...
 local strings, checks, edits, buttons, dropdowns, sliders = {}, {}, {}, {}, {}, {}
 local function mock(kind)
@@ -66,6 +68,7 @@ local CRT = { db = { timeline = { record = true, minPull = 15, keep = 10, bosses
     StyleWindow = function() end, SetFrameTitle = function() end },
   MOCHA = { espresso = { 0.1, 0.1, 0.1 }, edge = { 0.3, 0.3, 0.3 }, caramel = { 0.78, 0.56, 0.36 }, latte = { 0.87, 0.73, 0.56 }, cream = { 0.95, 0.9, 0.84 } },
 }
+CRT_THEME(CRT, CRT.UI)
 function CRT:Print(m) printed[#printed+1] = m end
 -- the shared window helper (CRT_Core/UI/Window.lua): records what it was asked for; like it, puts the frame on its layer
 windowsMade = {}

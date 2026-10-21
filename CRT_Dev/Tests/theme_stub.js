@@ -26,6 +26,7 @@ module.exports = function themeLua(where) {
   if (src.includes(']====]')) throw new Error('theme_stub: Themes.lua holds the long-string closer');
   return `
 function CRT_THEME(CRT, UI)
+  UI = UI or {} -- a harness with no CRT.UI yet takes the palette only
   local own = CRT.MOCHA
   assert(load([====[${src}]====], "Themes.lua"))("CowfeeRaidTools", CRT)
   for k, v in pairs(own or {}) do

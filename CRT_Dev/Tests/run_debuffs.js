@@ -5,9 +5,10 @@
 //   node run_debuffs.js <addon folder>
 const fs = require('fs');
 const path = require('path');
+const themeLua = require('./theme_stub');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
-const harness = `
+const harness = themeLua(process.argv.slice(2)) + `
 local coreSrc, dataSrc, panelSrc, pageSrc = ...
 local passed, failed = 0, 0
 local function check(name, cond, detail)
@@ -150,6 +151,7 @@ CRT.UI = {
   Dropdown = function(p, text, opts) local r = mock("Dropdown") rawset(r, "opts", opts) rawset(r, "refresh", function() end) dropdowns[text] = r return r end,
   Help = function(p, title, text) local h = mock("Help") helps[title] = text return h end,
 }
+CRT_THEME(CRT, CRT.UI)
 function CRT:Print(m) print("  [print] " .. tostring(m)) end
 
 assert(load(dataSrc, "Data.lua"))("CowfeeRaidTools", CRT)
@@ -164,6 +166,7 @@ local coreEvents
 for _, f in ipairs(frames) do if rawget(f, "OnEvent") then coreEvents = f end end
 local savedDb = CRT.db
 CRT.Profiles = { Load = function() end }
+local realUseTheme = CRT.UseTheme -- Themes.lua's, for the theme switch check
 CRT.ResolveTheme = function(_, ui) return ui and ui.theme end
 CRT.UseTheme = function() end
 CRT.ApplyFonts = function() end
@@ -399,6 +402,15 @@ check("the look is a table at the top of Panel.lua", type(L) == "table" and type
 if timeFS and countFS then
   check("the countdown is yellow", timeFS.textColor and timeFS.textColor[1] == L.timerColor[1] and timeFS.textColor[2] == L.timerColor[2] and timeFS.textColor[3] == L.timerColor[3]
     and timeFS.textColor[1] > 0.9 and timeFS.textColor[2] > 0.7 and timeFS.textColor[3] < 0.3)
+  -- a theme switch restyles the buttons: the countdown takes the new heading colour
+  local stubUseTheme = CRT.UseTheme
+  CRT.UseTheme = realUseTheme
+  CRT.UI.SwitchTheme("cowfee")
+  local h = CRT.MOCHA.heading
+  check("a theme switch repaints the countdown in the theme's heading colour", timeFS.textColor and math.abs(timeFS.textColor[1] - 0xD9 / 255) < 1e-6
+    and math.abs(timeFS.textColor[2] - h[2]) < 1e-6, timeFS.textColor and table.concat(timeFS.textColor, ","))
+  CRT.UI.SwitchTheme("blizzard")
+  CRT.UseTheme = stubUseTheme
   check("the countdown has an outline", timeFS.font and timeFS.font.flags:find("OUTLINE") ~= nil, timeFS.font and timeFS.font.flags)
   check("the countdown is in the middle of the icon", timeFS.pts[1] and timeFS.pts[1][1] == "CENTER" and timeFS.pts[1][3] == "CENTER")
   check("the stacks are white with an outline", countFS.textColor and countFS.textColor[1] == 1 and countFS.textColor[2] == 1 and countFS.textColor[3] == 1

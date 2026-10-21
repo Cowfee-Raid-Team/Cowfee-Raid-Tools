@@ -3426,7 +3426,7 @@ function Methods:DrawPhases(phases, length, height)
             -- the line being dragged is gold, the others red (set every draw, since lines are pooled)
             local dragging = self.phaseDrag and (self.pull and self.pull.reference and self.pull.reference.phases[self.phaseDrag.index]) == phase
             if dragging then
-                line:SetColorTexture(1, 0.82, 0, 1)
+                line:SetColorTexture(mocha("heading"))
             else
                 line:SetColorTexture(DEATH_RED[1], DEATH_RED[2], DEATH_RED[3], 1)
             end
@@ -3735,7 +3735,7 @@ function Methods:DrawPlayhead()
     end
     if not self.playLine then
         self.playLine = self.track:CreateTexture(nil, "OVERLAY")
-        self.playLine:SetColorTexture(1, 0.82, 0, 0.9)
+        themed(self.playLine, "SetColorTexture", "heading", 0.9)
         local tag = CreateFrame("Frame", nil, self.axis)
         tag:SetFrameLevel((self.axis:GetFrameLevel() or 0) + 5)
         tag:SetHeight(14)
@@ -3744,7 +3744,7 @@ function Methods:DrawPlayhead()
         themed(tag.bg, "SetColorTexture", "roast", 0.95)
         tag.text = tag:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
         tag.text:SetPoint("CENTER")
-        tag.text:SetTextColor(1, 0.82, 0)
+        themed(tag.text, "SetTextColor", "heading")
         self.playTag = tag
     end
     local length = self.drawLength

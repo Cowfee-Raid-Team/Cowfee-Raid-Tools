@@ -1,9 +1,11 @@
 // CRT_Modules/Timeline/View.lua: ticks, time math, lanes, and one build of the canvas on mock frames.
 // Usage: node run_timeline_view.js CRT_Modules/Timeline/Data.lua CRT_Modules/Timeline/Database.lua CRT_Modules/Timeline/Reference.lua CRT_Modules/Timeline/Lanes.lua CRT_Modules/Timeline/View.lua
 const fs = require('fs');
+const path = require('path');
+const themeLua = require('./theme_stub');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
-const harness = `
+const harness = themeLua(process.argv.slice(2)) + `
 local dataSrc, dbSrc, refSrc, lanesSrc, viewSrc, regSrc, seasonSrc, nekSrc = ...
 local buttons, textures = 0, 0
 local function mock(kind)
@@ -71,6 +73,7 @@ CRT.TimelineJournal = { ResolveID = function(_, k, r) if type(k) == "number" the
   Rows = function() return {} end,
   IsHidden = function(_, enc, id) return hidden[id] and true or false end,
 }
+CRT_THEME(CRT, CRT.UI)
 assert(load(dataSrc, "CRT_Modules/Timeline/Data.lua"))("CowfeeRaidTools", CRT)
 assert(load(dbSrc, "CRT_Modules/Timeline/Database.lua"))("CowfeeRaidTools", CRT)
 assert(load(refSrc, "CRT_Modules/Timeline/Reference.lua"))("CowfeeRaidTools", CRT)

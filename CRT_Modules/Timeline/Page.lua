@@ -845,7 +845,7 @@ local function build(pf)
         skin(b, 0.4)
         b.sel = b:CreateTexture(nil, "ARTWORK")
         b.sel:SetAllPoints()
-        b.sel:SetColorTexture(1, 0.82, 0, 0.18)
+        b.sel:SetColorTexture(UI.Color("heading", 0.18)) -- UI:RegisterTab styles it from here on
         b.text = b:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
         b.text:SetPoint("CENTER")
         b.text:SetText(tab.label)

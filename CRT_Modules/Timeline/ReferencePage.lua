@@ -32,7 +32,7 @@ local GROUP_NAMES = CRT.Timeline.GROUP_NAMES
 local OTHER_GROUP = { nh = "mythic", mythic = "nh" }
 
 local GRAY = { 0.35, 0.35, 0.35 }
-local GOLD = { 1, 0.82, 0 }
+local GOLD = CRT.MOCHA.heading -- the theme's heading colour; refilled in place on a theme switch
 local BACKDROP = {
     bgFile = "Interface\\Buttons\\WHITE8X8",
     edgeFile = "Interface\\Buttons\\WHITE8X8",
@@ -417,10 +417,10 @@ function ReferencePage.Build(f, ctx)
             local where = (here or sameName) and GROUP_NAMES[ctx.difficulty()] or saved.boss
             if saved and saved.warnings then
                 status:SetText("Saved for " .. where .. "\n" .. saved.warnings[1])
-                status:SetTextColor(1, 0.82, 0)
+                status:SetTextColor(UI.Color("heading"))
             else
                 status:SetText("Saved for " .. where)
-                status:SetTextColor(0.4, 1, 0.4)
+                status:SetTextColor(UI.Color("matcha"))
             end
         else
             local shown = {}
@@ -597,7 +597,7 @@ function ReferencePage.Build(f, ctx)
         l:SetHighlightTexture("Interface\\Buttons\\WHITE8X8")
         local hl = l:GetHighlightTexture()
         if hl then
-            hl:SetVertexColor(1, 0.82, 0, 0.12)
+            UI.Tint(hl, "SetVertexColor", "heading", 0.12)
         end
         l:SetScript("OnClick", function(self)
             abilityMenu(self)
@@ -791,7 +791,7 @@ function ReferencePage.Build(f, ctx)
         l.icon:Hide()
         l.name:SetPoint("LEFT", 0, 0)
         l.name:SetText(p.title or p.label or "") -- "Intermission: Ritual of Awakening", not its number
-        l.name:SetTextColor(1, 0.82, 0)
+        l.name:SetTextColor(UI.Color("heading"))
         l.tag:SetText("")
         l.id:SetText(p.pull and "" or (p.t and View.Format(p.t) or TEXT_MENU.noStart))
         l:Show()
