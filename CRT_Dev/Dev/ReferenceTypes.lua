@@ -676,21 +676,35 @@ function Editor:Toggle()
     refresh()
 end
 
--- /crt dev hidden: each boss's hidden abilities as they should ship (Timeline:HiddenNames), as the line to
--- paste into its boss file, for every boss this computer changed.
-function Editor:PrintHidden()
-    local all = CRT.db.dev and CRT.db.dev.hiddenAbilities
+-- Each boss's list of hidden names as it should ship (namesOf(id)), as the line to paste into its boss
+-- file (field = { ... },), for every boss this computer changed (CRTDB.dev[store]); none tells how.
+local function printHiddenList(store, field, namesOf, none)
+    local all = CRT.db.dev and CRT.db.dev[store]
     if not (all and next(all)) then
-        CRT:Print("No hidden abilities changed on this computer. Right-click a row's name on the Timeline with /crt dev open.")
+        CRT:Print(none)
         return
     end
     for boss in pairs(all) do
         local id = tonumber(boss) or boss
         local def = CRT.Bosses:Get(id)
         local names = {}
-        for _, name in ipairs(CRT.Timeline:HiddenNames(id)) do
+        for _, name in ipairs(namesOf(id)) do
             names[#names + 1] = string.format("%q", name)
         end
-        CRT:Print(string.format("%s (%s): hidden = { %s },", def and def.name or "?", tostring(boss), table.concat(names, ", ")))
+        CRT:Print(string.format("%s (%s): %s = { %s },", def and def.name or "?", tostring(boss), field, table.concat(names, ", ")))
     end
+end
+
+-- /crt dev hidden: each boss's abilities hidden from the timeline (Timeline:HiddenNames).
+function Editor:PrintHidden()
+    printHiddenList("hiddenAbilities", "hidden", function(id)
+        return CRT.Timeline:HiddenNames(id)
+    end, "No hidden abilities changed on this computer. Right-click a row's name on the Timeline with /crt dev open.")
+end
+
+-- /crt dev mechhidden: each boss's abilities hidden from the Mech Alerts list (Timeline:MechHiddenNames).
+function Editor:PrintMechHidden()
+    printHiddenList("mechHidden", "mechHidden", function(id)
+        return CRT.Timeline:MechHiddenNames(id)
+    end, "No abilities hidden from Mech Alerts on this computer. Right-click a row on Raid Notes > Mech Alerts with /crt dev open.")
 end

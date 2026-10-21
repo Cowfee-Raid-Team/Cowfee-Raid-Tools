@@ -66,6 +66,21 @@ local lines = E.RemovalLines()
 check("removal lines sorted by boss", #lines == 2 and lines[1] == "CRT_Data/Seasons/Midnight-S1/Kithix.lua; encounter 3513; Mythic; Boss: Kith'ix / Difficulty: Mythic / Length: 7:00" and lines[2] == "Sszorak.lua; encounter 3420; Heroic; Boss: Sszorak / Difficulty: Heroic / Length: 6:32; already gone")
 CRT.db.dev.removedReferences = nil
 check("no removals, no lines", #E.RemovalLines() == 0)
+-- /crt dev mechhidden: the mechHidden line to paste into each changed boss file
+local printed = {}
+CRT.Print = function(_, m) printed[#printed + 1] = m end
+CRT.Timeline.MechHiddenNames = function(_, id) if id == 3513 then return { "Latent Cultist", "Void \\"Rift\\"" } end return {} end
+E:PrintMechHidden()
+check("mech hidden: nothing changed says how", #printed == 1 and printed[1]:find("No abilities hidden from Mech Alerts", 1, true) ~= nil and printed[1]:find("/crt dev", 1, true) ~= nil)
+printed = {}
+CRT.db.dev.mechHidden = { ["3513"] = { ["latent cultist"] = "Latent Cultist" } }
+E:PrintMechHidden()
+check("mech hidden: the boss file line", #printed == 1 and printed[1] == "Kith'ix (3513): mechHidden = { \\"Latent Cultist\\", \\"Void \\\\\\"Rift\\\\\\"\\" },")
+printed = {}
+CRT.db.dev.mechHidden = { ["3513"] = { ["latent cultist"] = false } }
+CRT.Timeline.MechHiddenNames = function() return {} end
+E:PrintMechHidden()
+check("mech hidden: all shown again prints an empty list", #printed == 1 and printed[1] == "Kith'ix (3513): mechHidden = {  },")
 print(fails == 0 and "all passed" or (fails .. " failed"))
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
