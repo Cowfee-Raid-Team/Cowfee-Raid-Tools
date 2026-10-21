@@ -473,7 +473,8 @@ end
 
 -- The pieces another unit wears, read from the game now (for a player being inspected, once the game
 -- has their items: INSPECT_READY), in Gear.SLOTS order, and how many slots hold an item the game has no
--- link for yet. Kept nowhere: hand them to Remember. Your own unit reads your cache instead.
+-- link or no item level for yet (worth reading again shortly). Kept nowhere: hand them to Remember. Your
+-- own unit reads your cache instead.
 function Gear:ReadUnit(unit)
     local out, missing = {}, 0
     if secret(unit) or type(unit) ~= "string" or unit == "" then
@@ -486,6 +487,9 @@ function Gear:ReadUnit(unit)
         local p, waitingFor = read(s.id, unit)
         if p then
             out[#out + 1] = p
+            if p.ilvl == nil then
+                missing = missing + 1
+            end
         elseif waitingFor then
             missing = missing + 1
         end

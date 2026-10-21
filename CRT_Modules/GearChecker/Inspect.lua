@@ -20,7 +20,7 @@ local ADDON, CRT = ...
 local GC = CRT.GearChecker
 local Gear = CRT.Gear
 
-local Inspect = { queue = {}, skipped = {}, current = nil, waiting = false, token = 0 }
+local Inspect = { queue = {}, skipped = {}, current = nil, waiting = false, token = 0, pending = false }
 GC.Inspect = Inspect
 
 Inspect.DELAY = 1.5 -- seconds between two players
@@ -51,14 +51,23 @@ local function gameInspecting()
     return type(f) == "table" and f.IsShown and f:IsShown() and true or false
 end
 
+-- One timer at a time (the pause, the timeout or a retry): Inspect.pending while it waits. A new one, or
+-- cancel(), makes any older one do nothing when it fires.
 local function after(seconds, fn)
     Inspect.token = Inspect.token + 1
+    Inspect.pending = true
     local token = Inspect.token
     C_Timer.After(seconds, function()
         if token == Inspect.token then
+            Inspect.pending = false
             fn()
         end
     end)
+end
+
+local function cancel()
+    Inspect.token = Inspect.token + 1
+    Inspect.pending = false
 end
 
 local function release()
@@ -157,14 +166,16 @@ function Inspect:Queue(names)
             self.queue[#self.queue + 1] = name
         end
     end
-    if not self.current then
+    -- the queue is already going while a player is inspected or a timer (the pause between players, a
+    -- timeout, a retry) waits: that timer moves on to the new names
+    if not self.current and not self.pending then
         step()
     end
 end
 
 function Inspect:Clear()
     wipe(self.queue)
-    self.token = self.token + 1 -- drops any timer still waiting
+    cancel() -- drops any timer still waiting
     release()
 end
 
@@ -173,7 +184,7 @@ function Inspect:OnEvent(event, a1)
     if event == "INSPECT_READY" then
         local cur = self.current
         if cur and cur.guid and not secret(a1) and a1 == cur.guid then
-            self.token = self.token + 1 -- the timeout is no longer needed
+            cancel() -- the timeout is no longer needed
             finish(0)
         end
     elseif event == "PLAYER_REGEN_DISABLED" then
@@ -181,7 +192,7 @@ function Inspect:OnEvent(event, a1)
         local cur = self.current
         if cur then
             table.insert(self.queue, 1, cur.name)
-            self.token = self.token + 1
+            cancel()
             release()
         end
         self.waiting = #self.queue > 0

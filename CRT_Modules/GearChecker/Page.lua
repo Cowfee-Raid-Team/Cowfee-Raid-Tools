@@ -16,8 +16,9 @@ local ADDON, CRT = ...
 -- ChatFrame_OpenChat stay as fallbacks, aliases in Blizzard_DeprecatedChatInfo); InspectUnit(unit) (the game's
 -- inspect window, Blizzard_InspectUI_Bootstrap); IsShiftKeyDown; C_ClassColor.GetClassColor, else
 -- RAID_CLASS_COLORS; C_Item.GetItemQualityByID(itemInfo) and ColorManager.GetColorDataForItemQuality, else
--- ITEM_QUALITY_COLORS; C_Item.GetItemInfoInstant (the icon); TextureBase:SetRotation(radians); the
--- WowScrollBoxList, MinimalScrollBar and ScrollUtil.InitScrollBoxListWithScrollBar as Loot History uses them.
+-- ITEM_QUALITY_COLORS, redrawn on ITEM_DATA_LOAD_RESULT (itemID, success); C_Item.GetItemInfoInstant (the
+-- icon); TextureBase:SetRotation(radians); the WowScrollBoxList, MinimalScrollBar and
+-- ScrollUtil.InitScrollBoxListWithScrollBar as Loot History uses them.
 
 local UI = CRT.UI
 local GC = CRT.GearChecker
@@ -25,7 +26,7 @@ local Gear = CRT.Gear
 
 local TEXT = {
     title = "Gear Checker",
-    help = "Everyone's equipped gear, with what's missing.\n\nA red dot at the top left is a missing enchant, a green one an enchant. The diamonds at the top right are sockets: filled with a gem, or empty with a red edge. A red outline is a missing enchant or gem, an orange one an item 12 or more item levels under the player's average.\n\nRefresh asks every CRT in the group for their gear, then inspects the others, one at a time, in range and out of combat.\n\nHover an item to see it. Shift-click one with an issue to put it in the chat box. Right-click a player to whisper them, post to raid chat or inspect them.",
+    help = "Everyone's equipped gear, with what's missing.\n\nA red dot at the top left is a missing enchant, a green one an enchant. The diamonds at the top right are sockets: filled with a gem, or empty with a red edge. A red outline is a missing enchant or gem, an orange one an item %d or more item levels under the player's average.\n\nRefresh asks every CRT in the group for their gear, then inspects the others, one at a time, in range and out of combat.\n\nHover an item to see it. Shift-click one with an issue to put it in the chat box. Right-click a player to whisper them, post to group chat or inspect them.",
     refresh = "Refresh (%d/%d have CRT)",
     popOut = "Pop out",
     dock = "Dock",
@@ -38,7 +39,7 @@ local TEXT = {
     notSeenWhy = { range = "not seen yet (out of range)", offline = "not seen yet (offline)", cannot = "not seen yet (can't inspect)" },
     shiftClick = "Shift-click to put this in the chat box.",
     whisper = "Whisper %s their issues",
-    post = "Post to raid chat",
+    post = { RAID = "Post to raid chat", PARTY = "Post to party chat", INSTANCE_CHAT = "Post to instance chat" },
     chatBox = "Put in chat box",
     inspect = "Inspect %s",
     empty = "Nothing here",
@@ -106,11 +107,16 @@ end
 
 local UNCOMMON = Enum and Enum.ItemQuality and Enum.ItemQuality.Uncommon or 2
 
+local function secret(v)
+    return issecretvalue and issecretvalue(v) or false
+end
+
+-- The quality's colour; Uncommon until the game has loaded the item (ITEM_DATA_LOAD_RESULT redraws it).
 local function qualityColor(piece)
     local q
     if C_Item and C_Item.GetItemQualityByID then
         local ok, v = pcall(C_Item.GetItemQualityByID, piece.itemString or piece.link or piece.id)
-        q = ok and type(v) == "number" and v or nil
+        q = ok and not secret(v) and type(v) == "number" and v or nil
     end
     q = q or UNCOMMON
     local ok, c = pcall(function()
@@ -167,10 +173,11 @@ function P.OpenMenu(owner, row)
             GC.Say(GC.WhisperLines(row), "WHISPER", row.name)
         end)
         b:SetEnabled(#lines > 0 and not row.me)
-        b = root:CreateButton(TEXT.post, function()
+        local chat = GC.GroupChat()
+        b = root:CreateButton(TEXT.post[chat or "RAID"], function()
             GC.Say(GC.RaidLines(row), GC.GroupChat())
         end)
-        b:SetEnabled(#lines > 0 and GC.GroupChat() ~= nil)
+        b:SetEnabled(#lines > 0 and chat ~= nil)
         b = root:CreateButton(TEXT.chatBox, function()
             P.ToChatBox(GC.ChatBoxText(row))
         end)
@@ -434,6 +441,14 @@ function P.Refresh()
         row.index = i
     end
     P.rows = rows
+    P.shownIds = {}
+    for _, row in ipairs(rows) do
+        for _, piece in ipairs(row.pieces) do
+            if piece.id then
+                P.shownIds[piece.id] = true
+            end
+        end
+    end
     P.box:SetDataProvider(CreateDataProvider(rows), ScrollBoxConstants and ScrollBoxConstants.RetainScrollPosition)
     P.countText:SetText(#rows > 0 and string.format(TEXT.count, #rows) or TEXT.empty)
     local n, m = GC.Comm:Count(GC:Roster())
@@ -472,7 +487,7 @@ local function buildBody(body)
         P.chips[#P.chips + 1] = chip
         x = x + chip:GetWidth() + L.chipGap
     end
-    UI.Help(body, TEXT.title, TEXT.help):SetPoint("LEFT", P.chips[#P.chips], "RIGHT", 8, 0)
+    UI.Help(body, TEXT.title, string.format(TEXT.help, GC.LOW_ILVL)):SetPoint("LEFT", P.chips[#P.chips], "RIGHT", 8, 0)
 
     P.popButton = UI.PanelButton(body, TEXT.popOut, L.buttonH, function()
         P.TogglePopout()
@@ -632,6 +647,29 @@ local function build(page)
     GC:OnChange(P.Refresh)
     UI:OnTheme(P.Refresh)
     P.Refresh()
+end
+
+-- An item shown on the page has loaded (its quality, and so its border colour, comes only then): one
+-- redraw a moment later for all the items that load together.
+P.LOAD_REDRAW = 0.2 -- seconds
+
+function P.OnEvent(event, itemID)
+    if event ~= "ITEM_DATA_LOAD_RESULT" or secret(itemID) or not (P.shownIds and P.shownIds[itemID]) or P.redrawWaiting then
+        return
+    end
+    P.redrawWaiting = true
+    C_Timer.After(P.LOAD_REDRAW, function()
+        P.redrawWaiting = false
+        P.Refresh()
+    end)
+end
+
+if CreateFrame then
+    local events = CreateFrame("Frame")
+    events:RegisterEvent("ITEM_DATA_LOAD_RESULT")
+    events:SetScript("OnEvent", function(_, event, itemID)
+        P.OnEvent(event, itemID)
+    end)
 end
 
 UI:RegisterPage("gearcheck", TEXT.title, build)

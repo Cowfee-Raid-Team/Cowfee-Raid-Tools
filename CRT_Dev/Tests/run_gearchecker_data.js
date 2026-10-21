@@ -150,6 +150,7 @@ remember("Quick", { piece(1, "item:101:7364", 289), piece(11, "item:111:7364:213
 remember("Arrow", { piece(1, "item:101", 280), piece(11, "item:111:7364:213746:213747", 280) }) -- no head enchant
 remember("Far", { piece(1, "item:101:7364", 280) })
 remember("Off", { piece(1, "item:101:7364", 280) })
+Gear:Remember("Halo-Sargeras", { piece(11, "item:111", 280) }, "lootmaster") -- one piece from a loot answer
 local all = GC:Rows("all")
 eq(#all, 6, "everyone: you and the five others")
 eq(all[1].name, "Solex-Sargeras", "you first")
@@ -157,7 +158,9 @@ check(all[1].me and all[1].seen, "your row is seen at once")
 eq(all[1].issues, 0, "your gear has no issue")
 local halo
 for _, row in ipairs(all) do if row.name == "Halo-Sargeras" then halo = row end end
-check(halo and not halo.seen, "a player with no gear yet is not seen")
+check(halo and not halo.seen, "a player with only a loot answer's pieces is not seen")
+eq(halo and #halo.pieces, 0, "and their few pieces aren't shown as a set")
+eq(halo and halo.issues, 0, "nor checked")
 local function names(rows) local out = {} for _, row in ipairs(rows) do out[#out + 1] = (row.name:gsub("%-.*", "")) end return table.concat(out, ",") end
 eq(names(GC:Rows("issues")), "Quick,Arrow", "only issues")
 eq(names(GC:Rows("gems")), "Quick", "missing gems")
@@ -210,6 +213,21 @@ said = {}
 GC.Say({ "x" }, "PARTY")
 eq(said[1] and said[1][2], "PARTY", "the global SendChatMessage when C_ChatInfo has none")
 eq(GC.GroupChat(), "RAID", "the group chat in a raid")
+-- several lines: spaced out, each 255 bytes or less
+said = {}
+local long = "Gear check: Head |cffa335ee|Hitem:101:" .. string.rep("1:", 100) .. "|h[Helm]|h|r 280 - " .. string.rep("missing enchant, ", 3)
+check(#long > 255, "the long line is over the limit (" .. #long .. ")")
+eq(GC.Say({ "a", "b", long }, "PARTY"), 3, "three lines on their way")
+eq(#said, 1, "the first goes now")
+advance(GC.CHAT_GAP)
+eq(#said, 2, "the second a moment later")
+advance(GC.CHAT_GAP)
+eq(#said, 3, "then the third")
+check(said[3] and #said[3][1] <= 255, "a long line is cut to 255 bytes or less")
+check(said[3] and said[3][1]:find("[Helm]", 1, true) and not said[3][1]:find("|H", 1, true), "by naming the item without its link")
+eq(#GC.CapLine(string.rep("x", 400)), 255, "text with no link is cut at 255 bytes")
+eq(GC.CapLine("short"), "short", "a short line is as it was")
+eq(GC.CapLine(string.rep("x", 254) .. "||"), string.rep("x", 254), "no pipe is left at the cut")
 
 -- 6. The inspect queue
 UNITS.raid2.links = { [1] = "|cffa335ee|Hitem:101:7364::::::::ilvl290|h[Helm]|h|r", [2] = "|cffa335ee|Hitem:102::213746|h[ilvl286]|h|r" }
@@ -288,6 +306,27 @@ GC.Comm.sets["Arrow-Sargeras"] = 1
 before = #log.notify
 Inspect:Queue({ "Arrow-Sargeras" })
 eq(#log.notify, before, "their CRT's set came: no inspect")
+-- a name added during the pause between players waits for the pause
+GC.Comm.sets["Arrow-Sargeras"] = nil
+Inspect:Queue({ "Arrow-Sargeras" })
+Inspect:OnEvent("INSPECT_READY", "G3")
+local n0 = #log.notify
+Inspect:Queue({ "Quick-Sargeras" })
+eq(#log.notify, n0, "a name added during the pause doesn't start at once")
+advance(Inspect.DELAY - 0.1)
+eq(#log.notify, n0, "nor before the pause ends")
+advance(0.1)
+eq(#log.notify, n0 + 1, "it goes when the pause ends")
+eq(log.notify[#log.notify], "raid2", "Quick")
+-- an item with no item level yet is read again, as one with no link
+UNITS.raid2.links[3] = "|cffa335ee|Hitem:103|h[Pads]|h|r"
+cleared = log.cleared
+Inspect:OnEvent("INSPECT_READY", "G2")
+eq(log.cleared, cleared, "no item level yet: waits")
+UNITS.raid2.links[3] = "|cffa335ee|Hitem:103|h[ilvl284]|h|r"
+advance(Inspect.RETRY)
+eq(Gear:Of("Quick-Sargeras", 3) and Gear:Of("Quick-Sargeras", 3).ilvl, 284, "the item level read on the second try")
+eq(log.cleared, cleared + 1, "then let go")
 
 print(string.format("%d passed, %d failed", passes, fails))
 if fails > 0 then error("failures") end

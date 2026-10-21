@@ -348,6 +348,11 @@ eq(got[1].itemString, "item:800:7364::::::::90:577", "read unit: the exact item 
 eq(got[1].ilvl, 285, "read unit: its item level")
 eq(got[2].slot, 11, "read unit: in slot order")
 eq(missing, 1, "read unit: a slot with an item but no link yet is counted as missing")
+THEIRS[3] = "|cffa335ee|Hitem:803|h[Pads]|h|r" -- no item level loaded yet
+local got3, missing3 = Gear:ReadUnit("raid3")
+eq(#got3, 3, "read unit: a piece with no item level yet is still read")
+eq(missing3, 2, "read unit: and counted as missing, to be read again")
+THEIRS[3] = nil
 eq(Gear:Mine(1) and Gear:Mine(1).id or nil, nil, "read unit: your own cache is untouched")
 eq(#Gear:ReadUnit(nil), 0, "read unit: no unit")
 

@@ -11,7 +11,8 @@ local ADDON, CRT = ...
 --   G|<version>|<set id>|<part>|<parts>|<pieces>  one part of a whole equipped set: CRT.Gear.Encode's
 --                                                 "<slot>~<item string>~<item level>" joined with ";", split
 --                                                 by CRT.Gear.PackMany so each message is 255 bytes or less.
---                                                 Fields after pieces are for later versions.
+--                                                 Fields after pieces are for later minor versions
+--                                                 (1.1, 1.2); a CRT skips a higher major version (2).
 -- A CRT answers only in a group, at most once per Comm.REPLY_WINDOW (asks in between are answered together
 -- when it ends, and that one answer reaches everyone), and not in combat: an ask then is answered when
 -- combat ends. Sends wait a second on the game's throttle and hold during an encounter's message lockdown,
@@ -147,8 +148,23 @@ local function send(text)
 end
 
 -- The whole equipped set as G messages, each 255 bytes or less; an empty set is one part with no pieces.
+-- A piece too long for a message even on its own goes by its item ID only ("<slot>~item:<id>~<ilvl>"), so
+-- the set stays whole: its slot shows the item, without its enchant or gems.
 function Comm.SetMessages(pieces, setId)
-    local chunks = Gear.PackMany(pieces, Comm.MAX - Comm.HEAD_MAX)
+    local budget = Comm.MAX - Comm.HEAD_MAX
+    local chunks, left = Gear.PackMany(pieces, budget)
+    local byID = {}
+    for _, p in ipairs(left) do
+        local id = type(p) == "table" and (tonumber(p.id) or tonumber(tostring(p.itemString or p.link or ""):match("item:(%d+)")))
+        if id then
+            byID[#byID + 1] = { slot = p.slot, id = id, itemString = "item:" .. id, ilvl = p.ilvl }
+        end
+    end
+    if #byID > 0 then
+        for _, chunk in ipairs((Gear.PackMany(byID, budget))) do
+            chunks[#chunks + 1] = chunk
+        end
+    end
     if #chunks == 0 then
         chunks = { {} }
     end
@@ -234,7 +250,9 @@ function Comm:Receive(text, sender)
     end
     local f = split(text)
     local version = tonumber(f[2])
-    if not version or version < 1 then
+    -- a later minor version ("1.2") only adds fields at the end and is read; a higher major version may
+    -- mean something else by them, so it is left for a CRT that knows it
+    if not version or version < 1 or math.floor(version) > Comm.VERSION then
         return
     end
     if f[1] == "Q" then

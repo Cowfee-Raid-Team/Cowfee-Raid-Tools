@@ -24,7 +24,9 @@ tinsert = table.insert
 UISpecialFrames = {}
 GetTime = function() return 100 end
 time = function() return 1790000000 end
-C_Timer = { After = function() end, NewTicker = function() return { Cancel = function() end } end }
+local timers = {}
+C_Timer = { After = function(_, fn) timers[#timers + 1] = fn end, NewTicker = function() return { Cancel = function() end } end }
+local function flush() local list = timers timers = {} for _, fn in ipairs(list) do fn() end end
 
 -- stand-in regions and frames: setters record, getters answer from what was set; any other method does
 -- nothing, except the names of a template's parts, which a frame has only when its template makes them
@@ -138,20 +140,22 @@ UnitClass = function(unit) local x = u(unit) return x and x[2], x and x[2] end
 UnitIsUnit = function(a, b) return u(a) == u(b) end
 GetNormalizedRealmName = function() return "Sargeras" end
 LE_PARTY_CATEGORY_INSTANCE = 2
-IsInRaid = function() return true end
+local raid = true
+IsInRaid = function() return raid end
 IsInGroup = function(c) return c == nil end
 GetNumGroupMembers = function() return 4 end
 GetNumSubgroupMembers = function() return 0 end
 InCombatLockdown = function() return false end
 RAID_CLASS_COLORS = { ROGUE = { r = 1, g = 0.96, b = 0.41 }, PALADIN = { r = 0.96, g = 0.55, b = 0.73 }, HUNTER = { r = 0.67, g = 0.83, b = 0.45 }, DRUID = { r = 1, g = 0.49, b = 0.04 } }
-ITEM_QUALITY_COLORS = { [4] = { r = 0.64, g = 0.21, b = 0.93 } }
+ITEM_QUALITY_COLORS = { [2] = { r = 0.12, g = 1, b = 0 }, [4] = { r = 0.64, g = 0.21, b = 0.93 } }
+local QUALITY = setmetatable({}, { __index = function() return 4 end })
 local LOC = { [111] = "INVTYPE_FINGER", [101] = "INVTYPE_HEAD" }
 C_Item = {
   GetDetailedItemLevelInfo = function() return 289 end,
   GetItemInfoInstant = function(s) local id = tonumber(tostring(s):match("item:(%d+)") or s) return id, "Armor", "Misc", LOC[id] or "INVTYPE_CHEST", 5000 + (id or 0), 4, 0 end,
   GetItemNumSockets = function(s) return tonumber(s:match("item:(%d+)")) == 111 and 2 or 0 end,
   GetItemInfo = function(s) return "Band", "|cffa335ee|H" .. s .. "|h[Band]|h|r" end,
-  GetItemQualityByID = function() return 4 end,
+  GetItemQualityByID = function(s) return QUALITY[tonumber(tostring(s):match("item:(%d+)") or s)] end,
   RequestLoadItemDataByID = function() end,
 }
 GetInventoryItemLink = function(unit, slot) if unit == "player" and slot == 1 then return "|cffa335ee|Hitem:101:7364|h[Helm]|h|r" end end
@@ -194,7 +198,14 @@ local listed = false
 for _, key in ipairs(UI.MENU_GROUPS[2]) do listed = listed or key == "gearcheck" end
 check(listed, "it sits in the Raid Groups and Ready Check block")
 local page = CreateFrame("Frame") page.w, page.h = UI.PAGE_W, UI.PAGE_H
+GC.LOW_ILVL = 15 -- the help text is built from it
 UI.pages.gearcheck.builder(page)
+GC.LOW_ILVL = 12
+local helpButton
+for _, f in ipairs(made) do if f.crtHelp and f.parent == P.body then helpButton = f end end
+helpButton.scripts.OnEnter(helpButton)
+local helpText = table.concat(tip.lines, " ")
+check(helpText:find("an item 15 or more item levels under", 1, true) ~= nil, "the help says the low item level rule from GC.LOW_ILVL")
 page.scripts.OnShow(page)
 check(P.body ~= nil and P.box ~= nil, "the body and the list are built")
 check(Lt.rowW + Lt.barGap + Lt.barW <= UI.PAGE_W - 16, "a row and the scroll bar fit inside the page (" .. (Lt.rowW + Lt.barGap + Lt.barW) .. ")")
@@ -280,6 +291,32 @@ for _, info in ipairs(CRT.THEME_LIST) do
 end
 UI:SetTheme("blizzard")
 rows = drawRows()
+quick = rowOf("Quick")
+
+-- 4b. The quality border: Uncommon until the item loads, then its own colour, redrawn once it loads
+QUALITY[111] = false
+P.Refresh()
+quick = drawRows()[2]
+check(near(cell(quick, 11).quality[1].color, { 0.12, 1, 0 }), "an item not loaded yet: the Uncommon border")
+timers = {}
+P.OnEvent("ITEM_DATA_LOAD_RESULT", 999)
+eq(#timers, 0, "another item loading: no redraw")
+QUALITY[111] = nil
+P.OnEvent("ITEM_DATA_LOAD_RESULT", 111)
+P.OnEvent("ITEM_DATA_LOAD_RESULT", 101)
+eq(#timers, 1, "a shown item loading: one redraw for the items that load together")
+flush()
+quick = drawRows()[2]
+check(near(cell(quick, 11).quality[1].color, { 0.64, 0.21, 0.93 }), "loaded: its own quality colour")
+issecretvalue = function(v) return v == 777 end
+QUALITY[111] = 777
+P.Refresh()
+quick = drawRows()[2]
+check(near(cell(quick, 11).quality[1].color, { 0.12, 1, 0 }), "a secret quality is never looked up: Uncommon")
+issecretvalue = nil
+QUALITY[111] = nil
+P.Refresh()
+rows = drawRows()
 quick, arrow = rowOf("Quick"), rowOf("Arrow")
 
 -- 5. Hover, shift-click
@@ -308,11 +345,14 @@ eq(items[3].text, "Post to raid chat", "menu: raid chat")
 eq(items[4].text, "Put in chat box", "menu: chat box")
 eq(items[5].text, "Inspect Arrow", "menu: inspect")
 items[2].fn()
-eq(#said, 2, "whisper: a line per issue")
+eq(#said, 1, "whisper: the first line now")
+flush()
+eq(#said, 2, "whisper: a line per issue, the next a moment later")
 check(said[1].chatType == "WHISPER" and said[1].target == "Arrow-Sargeras", "whisper: to Arrow")
 check(said[1].text:find("^Gear check: ") ~= nil, "whisper: the gear check line")
 said = {}
 items[3].fn()
+flush()
 check(#said == 2 and said[1].chatType == "RAID", "raid chat: posted to the raid")
 items[4].fn()
 check(chat.opened[#chat.opened]:find("^%[Arrow%] ") ~= nil, "chat box: the issues to edit first")
@@ -320,6 +360,10 @@ items[5].fn()
 eq(inspected, "raid3", "inspect: the game's inspect window on Arrow")
 cell(quick, 3).scripts.OnClick(cell(quick, 3), "RightButton")
 eq(lastRoot.items[1].title, "Quick", "a right-click on a cell opens its row's menu")
+raid = false
+arrow.scripts.OnClick(arrow, "RightButton")
+eq(lastRoot.items[3].text, "Post to party chat", "in a party: named for party chat")
+raid = true
 me.scripts.OnClick(me, "RightButton")
 check(not lastRoot.items[2].enabled and not lastRoot.items[5].enabled, "your own row: no whisper or inspect")
 

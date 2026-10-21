@@ -228,13 +228,18 @@ end
 -- Rows -------------------------------------------------------------------------------------------------------
 
 -- A member's row: { name, unit, class, me, seen, source, at, avg, pieces, slots = { [slot] = findings },
--- issues, missingGems, missingEnchants }. seen is false for a player whose gear hasn't arrived yet.
+-- issues, missingGems, missingEnchants }. seen is false for a player whose whole set hasn't arrived yet:
+-- only a Gear Checker reply or an inspect is a whole set (GC.WHOLE_SETS); other features remember a few
+-- pieces (Loot Master's answers), which would read as empty slots, so those rows wait for a Refresh.
+GC.WHOLE_SETS = { [GC.SOURCE_REPLY] = true, [GC.SOURCE_INSPECT] = true }
+
 function GC:Row(m)
-    local pieces = m.me and Gear:MineAll() or Gear:OfAll(m.name)
     local at, source = Gear:When(m.name)
-    local row = { name = m.name, unit = m.unit, class = m.class, me = m.me, at = at, source = m.me and "mine" or source,
-        pieces = pieces, slots = {}, issues = 0, missingGems = 0, missingEnchants = 0 }
-    row.seen = m.me and true or at ~= nil
+    local whole = m.me or (source ~= nil and GC.WHOLE_SETS[source] == true)
+    local pieces = m.me and Gear:MineAll() or (whole and Gear:OfAll(m.name)) or {}
+    local row = { name = m.name, unit = m.unit, class = m.class, me = m.me, at = whole and at or nil,
+        source = m.me and "mine" or source, pieces = pieces, slots = {}, issues = 0, missingGems = 0, missingEnchants = 0 }
+    row.seen = whole and true or false
     row.avg = Gear.AverageLevel(pieces)
     local by = {}
     for _, p in ipairs(pieces) do
@@ -377,22 +382,57 @@ local function showError(text)
     end
 end
 
-function GC.Say(lines, chatType, target)
-    local send = (C_ChatInfo and C_ChatInfo.SendChatMessage) or SendChatMessage
-    local locked = chatLocked()
-    if locked then
-        showError(GC.TEXT.locked)
+GC.CHAT_GAP = 0.4 -- seconds between two lines of one whisper or post, so a long list isn't one burst
+
+-- A line within GC.CHAT_MAX bytes: as it is when it fits; else with each item link turned into its plain
+-- [name]; else cut at the limit (any pipe left at the cut is dropped, so no escape code is cut in half).
+function GC.CapLine(line)
+    if #line <= GC.CHAT_MAX then
+        return line
     end
-    local sent = 0
-    for _, line in ipairs(lines) do
-        local ok = not locked and send and pcall(send, line, chatType, nil, target)
-        if ok then
-            sent = sent + 1
-        else
+    local plain = (line:gsub("|c%x%x%x%x%x%x%x%x|H.-|h(%[.-%])|h|r", "%1"))
+    if #plain <= GC.CHAT_MAX then
+        return plain
+    end
+    return (plain:sub(1, GC.CHAT_MAX):gsub("|+$", ""))
+end
+
+local function sendLine(line, chatType, target)
+    local send = (C_ChatInfo and C_ChatInfo.SendChatMessage) or SendChatMessage
+    if chatLocked() then
+        showError(GC.TEXT.locked)
+        CRT:Print(string.format(GC.TEXT.notSent, line))
+        return false
+    end
+    local ok = send and pcall(send, line, chatType, nil, target)
+    if not ok then
+        CRT:Print(string.format(GC.TEXT.notSent, line))
+    end
+    return ok and true or false
+end
+
+-- Returns how many lines went or are on their way (the first goes now, the rest CHAT_GAP apart).
+function GC.Say(lines, chatType, target)
+    if chatLocked() then
+        showError(GC.TEXT.locked)
+        for _, line in ipairs(lines) do
             CRT:Print(string.format(GC.TEXT.notSent, line))
         end
+        return 0
     end
-    return sent
+    local n = 0
+    for i, line in ipairs(lines) do
+        line = GC.CapLine(line)
+        if i == 1 then
+            n = n + (sendLine(line, chatType, target) and 1 or 0)
+        else
+            C_Timer.After((i - 1) * GC.CHAT_GAP, function()
+                sendLine(line, chatType, target)
+            end)
+            n = n + 1
+        end
+    end
+    return n
 end
 
 -- The group channel for chat posts, or nil out of a group.

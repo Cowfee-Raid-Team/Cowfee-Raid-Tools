@@ -221,8 +221,12 @@ for _, junk in ipairs({ "", "G", "G|x", "G|0|1|1|1|1~item:5~1", "G|1|1|3|2|1~ite
 end
 eq(G:Of("Quick-Sargeras", 1).itemString, before, "junk and unknown kinds change nothing")
 eq(#outbox, 0, "and send nothing")
-as(solex, function() solex.GC.Comm:Receive("G|2|77|1|1|1~item:999:5~300|a field for later", "Quick-Sargeras") end)
-eq(G:Of("Quick-Sargeras", 1).itemString, "item:999:5", "a later version's set is read, its extra field left")
+as(solex, function() solex.GC.Comm:Receive("G|2|76|1|1|1~item:998:5~300", "Quick-Sargeras") end)
+eq(G:Of("Quick-Sargeras", 1).itemString, before, "a higher major version is skipped")
+as(solex, function() solex.GC.Comm:Receive("Q|2|76", "Quick-Sargeras") end)
+eq(#outbox, 0, "and its ask isn't answered")
+as(solex, function() solex.GC.Comm:Receive("G|1.2|77|1|1|1~item:999:5~300|a field for later", "Quick-Sargeras") end)
+eq(G:Of("Quick-Sargeras", 1).itemString, "item:999:5", "a later minor version's set is read, its extra field left")
 eq(#G:OfAll("Quick-Sargeras"), 1, "and is a whole set")
 as(solex, function() solex.GC.Comm:Receive("G|1|78|1|2|1~item:111~1", "Quick-Sargeras") end)
 eq(G:Of("Quick-Sargeras", 1).itemString, "item:999:5", "half a set: kept until the rest comes")
@@ -249,6 +253,15 @@ for _, text in ipairs(msgs) do
   for _ in (body .. ";"):gmatch("([^;]+);") do count = count + 1 end
 end
 eq(count, 16, "all 16 pieces are in the messages")
+-- a piece too long for a message on its own goes by its ID, so the set stays whole
+local hugeString = "item:950:7364:213746:213746:213746::::90:577::28" .. string.rep(":12667", 30)
+check(#hugeString <= 230 and #("1~" .. hugeString .. "~289") > 255 - solex.GC.Comm.HEAD_MAX, "a piece too long for a message's room (" .. #hugeString .. ")")
+local withHuge = { { slot = 1, id = 950, itemString = hugeString, ilvl = 289 }, { slot = 2, id = 951, itemString = "item:951:5", ilvl = 288 } }
+local hm = solex.GC.Comm.SetMessages(withHuge, "9")
+local all = table.concat(hm, ";")
+check(all:find("1~item:950~289", 1, true) ~= nil, "the long piece is sent as slot~item:id~ilvl")
+check(all:find("2~item:951:5~288", 1, true) ~= nil, "the others as they are")
+for _, text in ipairs(hm) do check(#text <= 255, "still 255 bytes or less (" .. #text .. ")") end
 local empty = solex.GC.Comm.SetMessages({}, "5")
 eq(#empty == 1 and empty[1], "G|1|5|1|1|", "nothing worn: one empty part")
 
