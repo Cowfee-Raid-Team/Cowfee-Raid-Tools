@@ -394,6 +394,8 @@ local function build(pf)
     track:SetAllPoints()
     track:SetColorTexture(0.2, 0.2, 0.2, 0.6)
     slider:SetThumbTexture("Interface\\Buttons\\WHITE8X8")
+    -- the theme's scroll bar look; Default: Blizzard keeps this grey track and white thumb
+    UI:SkinScrollBar(slider)
     slider:SetScript("OnValueChanged", function(_, v)
         v = math.floor((v or 0) + 0.5)
         if v ~= offset then

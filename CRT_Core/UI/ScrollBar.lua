@@ -1,9 +1,12 @@
 local ADDON, CRT = ...
 local UI = CRT.UI
 
--- Scroll bars, one look per theme. UI:SkinScrollBar(bar) takes either of the game's scroll bars CRT uses
--- and draws the theme's look over it; Default: Blizzard keeps the game's art. A theme picks its look by
--- name with scrollBar in its CRT.THEME_LIST entry (Themes.lua); a theme without one keeps the game's art.
+-- Scroll bars, one look per theme. UI:SkinScrollBar(bar) takes either of the game's scroll bars CRT uses,
+-- or a hand-made vertical Slider (CreateFrame("Slider") with its own track texture and SetThumbTexture,
+-- as the Pace list has), and draws the theme's look over it; Default: Blizzard keeps the bar's own art
+-- (for a hand-made Slider, every texture it had when skinned). Skin a hand-made Slider after its track
+-- and thumb textures are made. A theme picks its look by name with scrollBar in its CRT.THEME_LIST entry
+-- (Themes.lua); a theme without one keeps the bar's own art.
 --   rail     Blackout: Midnight. A thin rail in the edge colour, a square thumb in the accent
 --   framed   Blackout: Nitro. A roast track with a 1 px edge, a solid accent thumb, a faint accent tick
 --            just under the thumb
@@ -12,7 +15,8 @@ local UI = CRT.UI
 -- No look has arrow buttons. The game's own scrolling is untouched: the wheel, dragging the thumb and
 -- clicking the track still scroll, since the skin only hides art and draws textures over it. Hover
 -- lightens the thumb. The bar joins UI.skinned, so a theme switch (UI:SetTheme -> UI:ApplyStyle) redraws
--- it live; colours are read from CRT.MOCHA each time.
+-- it live. Colours are read from CRT.MOCHA each time it paints, not set once through UI.Tint, because the
+-- hovered thumb is repainted lifted toward white and UI.Tint would paint it back to the plain colour.
 --
 -- The game's scroll bars, as Blizzard's UI source defines them (Gethe/wow-ui-source, live):
 --   MinimalScrollBar, an EventFrame: Track (textures Begin, Middle, End), Track.Thumb (an EventButton with
@@ -22,18 +26,23 @@ local UI = CRT.UI
 --   https://github.com/Gethe/wow-ui-source/blob/live/Interface/AddOns/Blizzard_SharedXML/Shared/Scroll/ScrollBar.lua
 --   UIPanelScrollFrameTemplate's ScrollBar ($parentScrollBar), a UIPanelScrollBarTemplate Slider: its
 --   ThumbTexture ($parentThumbTexture) and the ScrollUpButton and ScrollDownButton just past its ends; it
---   has no track art. ScrollFrame_OnScrollRangeChanged shows the two buttons and the thumb again on every
---   range change, so the skin fades the buttons and turns their mouse off rather than hiding them, and its
---   thumb follows the game's thumb texture's Show and Hide.
+--   has no track art. ScrollFrame_OnScrollRangeChanged calls Show on the two buttons and the thumb texture
+--   whenever the bar isn't hidden (a zero range on a scroll frame without scrollBarHideable, and every
+--   non-zero range), then enables or disables the buttons; with scrollBarHideable a zero range hides them
+--   all. So the skin fades the buttons and turns their mouse off rather than hiding them, and its thumb
+--   follows the game's thumb texture's Show and Hide.
 --   https://github.com/Gethe/wow-ui-source/blob/live/Interface/AddOns/Blizzard_SharedXML/SecureScrollTemplates.xml
 --   https://github.com/Gethe/wow-ui-source/blob/live/Interface/AddOns/Blizzard_SharedXML/SecureScrollTemplates.lua
 
--- Each look's sizes (pixels, centred on the bar) and the CRT.MOCHA keys it paints with.
+-- Each look's sizes (pixels, centred on the bar) and the CRT.MOCHA keys it paints with. On a
+-- MinimalScrollBar, which is 8 px wide, the track and thumb are narrowTrack and narrowThumb instead, so
+-- the look stays inside the bar.
 UI.SCROLL_BAR_LOOKS = {
-    rail = { track = 2, thumb = 6, rail = "edge", face = "caramel" },
-    framed = { track = 10, thumb = 6, tickGap = 2, tickAlpha = 0.35, fill = "roast", border = "edge", face = "caramel", tick = "caramel" },
-    rounded = { track = 10, thumb = 8, radius = 4, thumbRadius = 3, fill = "roast", border = "edge", face = "walnut",
-        faceEdge = "walnutEdge", shine = "walnutShine" },
+    rail = { track = 2, thumb = 6, narrowTrack = 2, narrowThumb = 6, rail = "edge", face = "caramel" },
+    framed = { track = 10, thumb = 6, narrowTrack = 8, narrowThumb = 4, tickGap = 2, tickAlpha = 0.35, fill = "roast",
+        border = "edge", face = "caramel", tick = "caramel" },
+    rounded = { track = 10, thumb = 8, narrowTrack = 8, narrowThumb = 6, radius = 4, thumbRadius = 3, fill = "roast",
+        border = "edge", face = "walnut", faceEdge = "walnutEdge", shine = "walnutShine" },
 }
 local LOOKS = UI.SCROLL_BAR_LOOKS
 local HOVER_LIGHTEN = 0.25 -- how far toward white the thumb goes under the mouse
@@ -61,7 +70,7 @@ local function partsOf(bar)
     if isTable(track) and isTable(track.Thumb) and isTable(bar.Back) and isTable(bar.Forward) then
         local thumb = track.Thumb
         local p = { trackOwner = track, trackRegion = track, thumbOwner = thumb, thumbRegion = thumb, hover = thumb,
-            art = {}, buttons = { bar.Back, bar.Forward } }
+            art = {}, buttons = { bar.Back, bar.Forward }, narrow = true }
         for _, part in ipairs({ track.Begin, track.Middle, track.End, thumb.Begin, thumb.Middle, thumb.End }) do
             if isTable(part) then
                 p.art[#p.art + 1] = part
@@ -76,6 +85,18 @@ local function partsOf(bar)
     if isTable(thumb) and isTable(bar.ScrollUpButton) and isTable(bar.ScrollDownButton) then
         return { trackOwner = bar, trackRegion = bar, thumbOwner = bar, thumbRegion = thumb, hover = bar,
             art = { thumb }, buttons = { bar.ScrollUpButton, bar.ScrollDownButton }, gameThumb = thumb }
+    end
+    -- a hand-made vertical Slider: its own textures (the track it drew and the thumb) are its art
+    if isTable(thumb) and type(bar.GetObjectType) == "function" and bar:GetObjectType() == "Slider"
+        and type(bar.GetOrientation) == "function" and bar:GetOrientation() == "VERTICAL" then
+        local p = { trackOwner = bar, trackRegion = bar, thumbOwner = bar, thumbRegion = thumb, hover = bar,
+            art = { thumb }, buttons = {}, gameThumb = thumb }
+        for _, region in ipairs({ bar:GetRegions() }) do
+            if region ~= thumb and region:GetObjectType() == "Texture" then
+                p.art[#p.art + 1] = region
+            end
+        end
+        return p
     end
     return nil
 end
@@ -98,13 +119,14 @@ local function addShape(list, shape)
 end
 
 -- Each builder returns the look: its track and thumb textures (shown and hidden together), the named
--- parts, and paint(lift), which colours it with the thumb lifted toward white by lift.
+-- parts, and paint(lift), which colours it with the thumb lifted toward white by lift. w is the track and
+-- thumb widths for this bar (widths()).
 local build = {}
 
-function build.rail(p, k)
+function build.rail(p, k, w)
     local look = { track = {}, thumb = {} }
-    look.rail = column(p.trackOwner, p.trackRegion, k.track, "BACKGROUND", 1)
-    look.thumbFace = column(p.thumbOwner, p.thumbRegion, k.thumb, "ARTWORK", 1)
+    look.rail = column(p.trackOwner, p.trackRegion, w.track, "BACKGROUND", 1)
+    look.thumbFace = column(p.thumbOwner, p.thumbRegion, w.thumb, "ARTWORK", 1)
     look.track[1], look.thumb[1] = look.rail, look.thumbFace
     function look.paint(lift)
         paintFlat(look.rail, k.rail)
@@ -113,9 +135,9 @@ function build.rail(p, k)
     return look
 end
 
-function build.framed(p, k)
+function build.framed(p, k, w)
     local look = { track = {}, thumb = {}, edges = {} }
-    look.fill = column(p.trackOwner, p.trackRegion, k.track, "BACKGROUND", 1)
+    look.fill = column(p.trackOwner, p.trackRegion, w.track, "BACKGROUND", 1)
     look.track[1] = look.fill
     for _, side in ipairs({ { "TOPLEFT", "TOPRIGHT", true }, { "BOTTOMLEFT", "BOTTOMRIGHT", true }, { "TOPLEFT", "BOTTOMLEFT", false }, { "TOPRIGHT", "BOTTOMRIGHT", false } }) do
         local e = p.trackOwner:CreateTexture(nil, "BACKGROUND", nil, 2)
@@ -129,10 +151,10 @@ function build.framed(p, k)
         look.edges[#look.edges + 1] = e
         look.track[#look.track + 1] = e
     end
-    look.thumbFace = column(p.thumbOwner, p.thumbRegion, k.thumb, "ARTWORK", 1)
+    look.thumbFace = column(p.thumbOwner, p.thumbRegion, w.thumb, "ARTWORK", 1)
     look.tick = p.thumbOwner:CreateTexture(nil, "ARTWORK", nil, 1)
     look.tick:SetPoint("TOP", look.thumbFace, "BOTTOM", 0, -k.tickGap)
-    look.tick:SetSize(k.thumb, 1)
+    look.tick:SetSize(w.thumb, 1)
     look.thumb[1], look.thumb[2] = look.thumbFace, look.tick
     function look.paint(lift)
         paintFlat(look.fill, k.fill)
@@ -145,16 +167,16 @@ function build.framed(p, k)
     return look
 end
 
-function build.rounded(p, k)
+function build.rounded(p, k, w)
     local look = { track = {}, thumb = {} }
     -- hidden areas the rounded shapes are drawn over, as the checkbox does
-    local trackArea = column(p.trackOwner, p.trackRegion, k.track, "BACKGROUND", 0)
+    local trackArea = column(p.trackOwner, p.trackRegion, w.track, "BACKGROUND", 0)
     trackArea:Hide()
     look.trackEdge = UI.RoundRect(p.trackOwner, trackArea, "BACKGROUND", 1, k.radius, 0)
     look.trackFace = UI.RoundRect(p.trackOwner, trackArea, "BACKGROUND", 2, k.radius - 1, 1)
     addShape(look.track, look.trackEdge)
     addShape(look.track, look.trackFace)
-    local thumbArea = column(p.thumbOwner, p.thumbRegion, k.thumb, "ARTWORK", 0)
+    local thumbArea = column(p.thumbOwner, p.thumbRegion, w.thumb, "ARTWORK", 0)
     thumbArea:Hide()
     look.thumbEdge = UI.RoundRect(p.thumbOwner, thumbArea, "ARTWORK", 1, k.thumbRadius, 0)
     look.thumbFace = UI.RoundRect(p.thumbOwner, thumbArea, "ARTWORK", 2, k.thumbRadius - 1, 1)
@@ -175,12 +197,21 @@ function build.rounded(p, k)
     return look
 end
 
--- Shows the look in use (s.style, nil for the game's art) and hides the rest; a look is built the first
--- time it's used.
+-- The track and thumb widths of look k on a bar with parts p: the narrow ones on a MinimalScrollBar.
+local function widths(p, k)
+    if p.narrow then
+        return { track = k.narrowTrack, thumb = k.narrowThumb }
+    end
+    return { track = k.track, thumb = k.thumb }
+end
+
+-- Shows the look in use (s.style, nil for the bar's own art) and hides the rest; a look is built the
+-- first time it's used.
 local function paint(s)
     local style = s.style and LOOKS[s.style] and build[s.style] and s.style or nil
     if style and not s.looks[style] then
-        s.looks[style] = build[style](s.parts, LOOKS[style])
+        local k = LOOKS[style]
+        s.looks[style] = build[style](s.parts, k, widths(s.parts, k))
     end
     local on = style ~= nil
     for _, t in ipairs(s.parts.art) do

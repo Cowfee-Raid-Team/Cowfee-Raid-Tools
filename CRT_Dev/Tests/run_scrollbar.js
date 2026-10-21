@@ -246,6 +246,50 @@ UI:SetTheme("blizzard")
 check(quiet.Back.mouse == false and quiet.Forward.mouse == true, "Default: Blizzard gives each button back its own mouse setting")
 print("ok scrollbar: the theme switch, both ways")
 
+-- Widths: the MinimalScrollBar is 8 px wide, so the framed and rounded tracks are 8 there; the
+-- UIPanelScrollBar (16 px) gets the full 10.
+UI:SetTheme("nitro")
+check(sm.looks.framed.fill.w == 8 and sm.looks.framed.thumbFace.w < 8, "MinimalScrollBar, Nitro: an 8 px track, the thumb inside it")
+check(sp.looks.framed.fill.w == 10, "UIPanelScrollBar, Nitro: a 10 px track")
+UI:SetTheme("cowfee")
+local function areaW(shape) local c = shape.corners[1] local p = c.points[1] return p and p[2] and p[2].w end
+check(areaW(sm.looks.rounded.trackEdge) == 8 and areaW(sm.looks.rounded.thumbEdge) < 8, "MinimalScrollBar, Cowfee: an 8 px track, the thumb inside it")
+check(areaW(sp.looks.rounded.trackEdge) == 10, "UIPanelScrollBar, Cowfee: a 10 px track")
+print("ok scrollbar: the tracks fit their bars")
+
+-- A hand-made vertical Slider (the Pace list): its own track texture and SetThumbTexture thumb are its art.
+UI:SetTheme("blizzard")
+local function handSlider(orientation)
+  local s = frame("Slider", page)
+  s.orientation = orientation
+  s.GetOrientation = function(self) return self.orientation end
+  s.track = s:CreateTexture(nil, "BACKGROUND")
+  s.track:SetColorTexture(0.2, 0.2, 0.2, 0.6) -- not a theme colour: the Pace list's own grey
+  s.thumb = s:CreateTexture(nil, "ARTWORK")
+  s.GetThumbTexture = function(self) return self.thumb end
+  return s
+end
+local hand = handSlider("VERTICAL")
+UI:SkinScrollBar(hand)
+local sh = hand.crtScroll
+check(sh ~= nil, "a hand-made vertical Slider is skinned")
+check(hand.track.alpha == 1 and hand.thumb.alpha == 1 and drawn(hand) == 0, "hand-made Slider, Default: Blizzard: its own track and thumb, nothing drawn")
+for _, case in ipairs({ { "midnight", "rail", "rail" }, { "nitro", "framed", "fill" }, { "cowfee", "rounded", "shine" } }) do
+  UI:SetTheme(case[1])
+  local look = sh.looks[case[2]]
+  check(hand.track.alpha == 0 and hand.thumb.alpha == 0, "hand-made Slider, " .. case[1] .. ": its own track and thumb are hidden")
+  check(look ~= nil and look[case[3]].shown, "hand-made Slider, " .. case[1] .. ": the " .. case[2] .. " look shows")
+end
+hand.thumb:Hide()
+check(not sh.looks.rounded.thumbFace.corners[1].shown, "hand-made Slider: the drawn thumb follows its thumb's Hide")
+hand.thumb:Show()
+UI:SetTheme("blizzard")
+check(hand.track.alpha == 1 and hand.thumb.alpha == 1 and drawn(hand) == 0, "hand-made Slider, back to Default: Blizzard: its own look again")
+local sideways = handSlider("HORIZONTAL")
+UI:SkinScrollBar(sideways)
+check(sideways.crtScroll == nil, "a horizontal Slider is left alone")
+print("ok scrollbar: a hand-made vertical Slider")
+
 print(passes .. " passed, " .. fails .. " failed")
 if fails > 0 then error(fails .. " scroll bar checks failed") end
 `;
@@ -261,9 +305,11 @@ try { scrollSrc = read('CRT_Core/UI/ScrollBar.lua'); } catch (e) { console.log('
 lua.lua_pushstring(L, to_luastring(scrollSrc));
 if (lua.lua_pcall(L, 4, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); ok = false; }
 
-// Every scroll bar in the addon: each CreateFrame from UIPanelScrollFrameTemplate or MinimalScrollBar is
-// followed, within a few lines, by UI:SkinScrollBar on its bar. The known ones are listed so a scan that
-// silently finds nothing fails too.
+// Every scroll bar in the addon (Lua and XML): each CreateFrame from UIPanelScrollFrameTemplate or
+// MinimalScrollBar, and each hand-made vertical Slider, is kept in a variable and followed, within a few
+// lines, by UI:SkinScrollBar on its bar. A scroll bar template the skin doesn't know, one made inline, a
+// hand-made horizontal Slider or one in XML fails unless ALLOW lists it with a reason. The known ones are
+// listed so a scan that silently finds nothing fails too.
 const KNOWN = [
   ['CRT_Core/UI/SettingsPage.lua', 'CowfeeRaidToolsProfileTextScroll'],
   ['CRT_Modules/Groups/Page.lua', 'CowfeeRaidToolsDialogScroll'], // Raid Groups import box
@@ -291,38 +337,73 @@ const KNOWN = [
   ['CRT_Modules/Pace/Page.lua', 'CowfeeRaidToolsPaceTextScroll'],
   ['CRT_Dev/Dev/ReferenceTypes.lua', 'CowfeeRaidToolsReferenceManageScroll'],
   ['CRT_Dev/Dev/ReferenceTypes.lua', 'CowfeeRaidToolsReferenceTypesScroll'],
+  ['CRT_Modules/Pace/Page.lua', 'Slider'], // the Pace list's hand-made vertical Slider
 ];
+// Scroll bars the skin leaves alone on purpose: [file, text on the CreateFrame line, reason].
+const ALLOW = [
+  ['CRT_Modules/Timeline/View.lua', 'local bar = CreateFrame("Slider", nil, f)',
+    'the Timeline\'s sideways bar: horizontal, already roast and caramel from the theme; its look waits on Alex'],
+];
+// The templates the skin knows: a scroll frame's bar is its .ScrollBar, the others are the bar itself.
+const KNOWN_TEMPLATES = { UIPanelScrollFrameTemplate: '.ScrollBar', MinimalScrollBar: '' };
+// Scroll bar templates the skin doesn't know yet: using one fails until its parts are checked in
+// Blizzard's UI source and added to partsOf in CRT_Core/UI/ScrollBar.lua.
+const OTHER_TEMPLATES = ['ScrollFrameTemplate', 'WowTrimScrollBar', 'MinimalScrollBarTemplate', 'UIPanelScrollBarTemplate',
+  'VerticalScrollBarTemplate', 'HorizontalScrollBarTemplate', 'FauxScrollFrameTemplate', 'HybridScrollFrameTemplate',
+  'InputScrollFrameTemplate', 'ScrollingEditBoxTemplate', 'ListScrollFrameTemplate'];
 const WINDOW = 15;
 const files = [];
 (function walk(dir) {
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
     if (e.name === 'node_modules' || e.name === '.claude' || e.name === '.git' || e.name === 'Tests') continue;
     const p = path.join(dir, e.name);
-    if (e.isDirectory()) walk(p); else if (e.name.endsWith('.lua')) files.push(p);
+    if (e.isDirectory()) walk(p); else if (/\.(lua|xml)$/.test(e.name)) files.push(p);
   }
 })(root);
-let sites = 0, skinned = 0;
+let sites = 0, skinned = 0, allowed = 0;
 const seen = new Set();
+const allowUsed = new Set();
+const fail = (msg) => { console.log('FAIL ' + msg); ok = false; };
 for (const file of files) {
   const rel = path.relative(root, file).split(path.sep).join('/');
   const lines = fs.readFileSync(file, 'utf8').split(/\r?\n/);
+  const xml = rel.endsWith('.xml');
   lines.forEach((line, i) => {
-    const m = line.match(/^\s*(?:local\s+)?([\w.]+)\s*=\s*CreateFrame\("(ScrollFrame|EventFrame)",\s*([^,]+),.*"(UIPanelScrollFrameTemplate|MinimalScrollBar)"\)/);
-    if (!m) return;
+    if (/^\s*--/.test(line)) return;
+    const where = rel + ':' + (i + 1);
+    const allow = ALLOW.find((a) => a[0] === rel && line.includes(a[1]));
+    let template = null;
+    for (const t of Object.keys(KNOWN_TEMPLATES).concat(OTHER_TEMPLATES)) {
+      if (line.includes(xml ? 'inherits="' + t + '"' : '"' + t + '"')) { template = t; break; }
+    }
+    // a hand-made Slider: CreateFrame("Slider", name, parent) with no template
+    const bare = !xml && /CreateFrame\("Slider",\s*[^,()]+,\s*[^,()]+\)/.test(line);
+    if (!template && !bare) return;
+    if (!xml && !line.includes('CreateFrame(')) return; // a template name in a string, not a frame being made
     sites++;
-    const v = m[1], minimal = m[4] === 'MinimalScrollBar';
-    const want = minimal ? v : v + '.ScrollBar';
-    const near = lines.slice(i + 1, i + 1 + WINDOW).join('\n');
-    const esc = want.replace(/[.]/g, '\\.');
-    if (new RegExp('UI:SkinScrollBar\\(' + esc + '\\)').test(near)) skinned++;
-    else { console.log('FAIL ' + rel + ':' + (i + 1) + ' ' + m[4] + ' without UI:SkinScrollBar(' + want + ') within ' + WINDOW + ' lines'); ok = false; }
     seen.add(rel + '|' + line);
+    if (allow) { allowed++; allowUsed.add(allow[1]); return; }
+    if (xml) return fail(where + ' a scroll bar template in XML; make it in Lua and skin it with UI:SkinScrollBar');
+    if (template && !(template in KNOWN_TEMPLATES)) {
+      return fail(where + ' ' + template + ': UI:SkinScrollBar only knows MinimalScrollBar, UIPanelScrollFrameTemplate and hand-made vertical Sliders; check its parts in Blizzard\'s UI source and add it to partsOf in CRT_Core/UI/ScrollBar.lua');
+    }
+    const m = line.match(/^\s*(?:local\s+)?([\w.]+)\s*=\s*CreateFrame\(/);
+    if (!m) return fail(where + ' a scroll bar made inline; keep it in a variable and pass it to UI:SkinScrollBar');
+    const after = lines.slice(i + 1, i + 1 + WINDOW).join('\n');
+    if (bare) {
+      const o = lines.slice(i + 1, i + 6).join('\n').match(/SetOrientation\("(\w+)"\)/);
+      if (o && o[1] === 'HORIZONTAL') return fail(where + ' a hand-made horizontal Slider: the skin only does vertical bars; skin it or add it to ALLOW with a reason');
+    }
+    const want = m[1] + (template ? KNOWN_TEMPLATES[template] : '');
+    if (new RegExp('UI:SkinScrollBar\\(' + want.replace(/[.]/g, '\\.') + '\\)').test(after)) skinned++;
+    else fail(where + ' ' + (template || 'a hand-made Slider') + ' without UI:SkinScrollBar(' + want + ') within ' + WINDOW + ' lines');
   });
 }
+for (const a of ALLOW) if (!allowUsed.has(a[1])) fail('the allowed scroll bar in ' + a[0] + ' is gone; take it off ALLOW');
 for (const [f, name] of KNOWN) {
   const hit = [...seen].some((s) => s.startsWith(f + '|') && s.includes('"' + name));
   if (!hit) { console.log('FAIL the known scroll bar ' + name + ' in ' + f + ' was not found'); ok = false; }
 }
 if (sites < KNOWN.length) { console.log('FAIL only ' + sites + ' scroll bars found, ' + KNOWN.length + ' known'); ok = false; }
-console.log((ok ? 'ok' : 'FAIL') + ' scrollbar: ' + skinned + ' of ' + sites + ' scroll bars go through UI:SkinScrollBar');
+console.log((ok ? 'ok' : 'FAIL') + ' scrollbar: ' + skinned + ' of ' + sites + ' scroll bars go through UI:SkinScrollBar, ' + allowed + ' allowed out');
 process.exit(ok ? 0 : 1);
