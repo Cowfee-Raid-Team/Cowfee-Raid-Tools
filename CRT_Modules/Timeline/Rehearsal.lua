@@ -110,24 +110,31 @@ function Rehearsal.Build(lanes, extra)
 end
 
 -- The cast bar at time t: of the casts showing (each shows for CAST seconds, ending on its time),
--- the one that ends first.
+-- the one that ends first, and more: how many others are in their last CAST seconds too.
 function Rehearsal.CastAt(model, t)
     local CAST = Rehearsal.CAST
+    local shown
     for _, c in ipairs(model.casts) do
         if c.t - CAST > t then break end
         if t < c.t then
-            return { cast = c, progress = (t - (c.t - CAST)) / CAST, remaining = c.t - t }
+            if shown then
+                shown.more = shown.more + 1
+            else
+                shown = { cast = c, progress = (t - (c.t - CAST)) / CAST, remaining = c.t - t, more = 0 }
+            end
         end
     end
-    return nil
+    return shown
 end
 
--- The next n casts at or after t, in time order, leaving out skip (the cast the cast bar shows).
-function Rehearsal.NextUp(model, t, n, skip)
+-- The next n casts more than CAST seconds after t, in time order. A cast in its last CAST seconds
+-- belongs to the cast bar (CastAt), so it is never in both, and never counts down here past CAST.
+function Rehearsal.NextUp(model, t, n)
     local out = {}
+    local CAST = Rehearsal.CAST
     for _, c in ipairs(model.casts) do
         if #out >= n then break end
-        if c.t >= t and c ~= skip then out[#out + 1] = c end
+        if c.t - CAST > t then out[#out + 1] = c end
     end
     return out
 end

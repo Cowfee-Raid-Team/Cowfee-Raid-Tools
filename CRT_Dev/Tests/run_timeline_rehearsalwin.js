@@ -133,7 +133,7 @@ ok("cast bar text and fill")
 -- next up lines -----------------------------------------------------------------------------------
 do
   RW:Seek(0)
-  assert(f.next[1].name.text == "Slam" and f.next[1].time.text == "0:10" and f.next[1].icon.tex == "iconSlam", "first")
+  assert(f.next[1].name.text == "Slam" and f.next[1].time.text == "10.0" and f.next[1].icon.tex == "iconSlam", "first")
   assert(f.next[2].name.text == "Pool" and f.next[2].time.text == "0:20", "second")
   assert(f.next[3].name.text == "Slam" and f.next[3].time.text == "0:30", "third")
   RW:Seek(31)
@@ -146,19 +146,101 @@ ok("next up lines")
 -- next up counts down ------------------------------------------------------------------------------
 do
   local count, barW = RW.NEXT_COUNT, RW.NEXT_BAR_W
-  assert(count == 10 and barW and barW > 0, "the countdown window")
+  assert(count == 15 and barW and barW > 0, "the countdown window")
   RW:Seek(4) -- Slam at 10 is 6 s away, Pool at 20 is 16 s away
   assert(f.next[1].time.text == "6.0", "tenths inside the window: " .. tostring(f.next[1].time.text))
-  assert(f.next[1].bar.shown and near(f.next[1].bar.w, barW * 0.8), "the bar fills as the cast nears, full at the cast bar: " .. tostring(f.next[1].bar.w))
+  assert(f.next[1].bar.shown and near(f.next[1].bar.w, barW * 0.9), "the bar fills as the cast nears, full at the cast bar: " .. tostring(f.next[1].bar.w))
   assert(f.next[1].bar.color[1] == 1, "the bar in the cast's color")
   assert(f.next[2].time.text == "0:16" and not f.next[2].bar.shown, "no bar outside the window")
   RW:Seek(4.5)
-  assert(f.next[1].time.text == "5.5" and near(f.next[1].bar.w, barW * 0.9), "nearly there")
+  assert(f.next[1].time.text == "5.5" and near(f.next[1].bar.w, barW * 0.95), "nearly there")
   RW:Seek(9.5) -- Slam is in the cast bar now, so Next up starts at Pool
-  assert(f.castName.text == "Slam" and f.next[1].name.text == "Pool" and f.next[1].time.text == "0:10", "the cast bar's cast leaves Next up: " .. tostring(f.next[1].name.text))
+  assert(f.castName.text == "Slam" and f.next[1].name.text == "Pool" and f.next[1].time.text == "10.5", "the cast bar's cast leaves Next up: " .. tostring(f.next[1].name.text))
   RW:Seek(0)
 end
 ok("next up counts down")
+
+-- one countdown from Next up into the cast bar ------------------------------------------------------
+-- Plain at 60: counting in Next up from 45 to 55, then on the cast bar from 55 to 60, the time only
+-- ever going down and never shown twice.
+local function plainEntries()
+  local where, value, n = nil, nil, 0
+  for _, line in ipairs(f.next) do
+    if line.name.text == "Plain" then
+      n, where, value = n + 1, "next", line.time.text
+    end
+  end
+  if f.castName.text == "Plain" then
+    n, where, value = n + 1, "bar", f.castTime.text
+  end
+  return n, where, value
+end
+do
+  local last
+  for i = 400, 599 do
+    local t = i / 10
+    RW:Seek(t)
+    local n, where, value = plainEntries()
+    assert(n == 1, "one entry for one cast at " .. t .. ": " .. n)
+    if t < 45 then
+      assert(where == "next" and value:find(":") and not f.next[1].bar.shown, "m:ss before 15 s at " .. t .. ": " .. value)
+    elseif t < 55 then
+      assert(where == "next" and f.next[1].bar.shown, "counting in Next up at " .. t)
+    else
+      assert(where == "bar", "on the cast bar from 5 s at " .. t)
+      assert(near(f.castFill.w, math.max(1, RW.CAST_W * (t - 55) / 5)), "the cast bar fills over the same 5 s at " .. t)
+    end
+    if t >= 45 then
+      local v = tonumber(value)
+      assert(v and near(v, tonumber(string.format("%.1f", 60 - t))), "the time left at " .. t .. ": " .. tostring(value))
+      assert(not last or v <= last, "never jumps back up at " .. t .. ": " .. v .. " after " .. tostring(last))
+      last = v
+    end
+  end
+  assert(last == 0.1, "down to the end: " .. tostring(last))
+  RW:Seek(60)
+  assert(plainEntries() == 0, "gone at its time")
+  -- seeking into the middle of each part, then playing on at 2x, pausing and restarting
+  RW:Seek(50)
+  local _, where, value = plainEntries()
+  assert(where == "next" and value == "10.0", "a jump into Next up's countdown: " .. tostring(value))
+  RW:Seek(57.5)
+  _, where, value = plainEntries()
+  assert(where == "bar" and value == "2.5" and near(f.castFill.w, RW.CAST_W * 0.5), "a jump into the cast bar: " .. tostring(value))
+  RW:Seek(53)
+  dropdowns["Speed"].opts.set(2)
+  RW:Play()
+  now = now + 1 -- 55 at 2x
+  f.OnUpdate(f, 0.016)
+  _, where, value = plainEntries()
+  assert(where == "bar" and value == "5.0", "2x reaches the cast bar at 5.0: " .. tostring(where) .. " " .. tostring(value))
+  RW:Pause()
+  now = now + 3
+  f.OnUpdate(f, 0.016)
+  _, where, value = plainEntries()
+  assert(value == "5.0", "paused holds the countdown")
+  RW:Restart()
+  assert(plainEntries() == 0 and f.next[1].name.text == "Slam" and f.next[1].time.text == "10.0" and f.castName.text == "", "restart starts it over")
+  dropdowns["Speed"].opts.set(1)
+end
+ok("one countdown from Next up into the cast bar")
+
+-- several casts within 5 s: the soonest on the cast bar with "+N", none of them in Next up ----------
+do
+  local near62 = { kind = "reference", label = "Near", icon = "iconNear", marks = { { t = 62 } } }
+  table.insert(lanes, near62)
+  RW:Open({ base = base, encounterID = 3470, bossName = "Nek'zali" })
+  RW:Seek(56) -- Plain 4 s away, Near 6 s away
+  assert(f.castName.text == "Plain" and f.next[1].name.text == "Near" and f.next[1].time.text == "6.0", "Near still in Next up")
+  RW:Seek(58) -- both inside 5 s
+  assert(f.castName.text == "Plain  +1" and f.castTime.text == "2.0", "the soonest, and how many more: " .. tostring(f.castName.text))
+  for _, line in ipairs(f.next) do assert(line.name.text ~= "Near" and line.name.text ~= "Plain", "neither in Next up") end
+  RW:Seek(60.5)
+  assert(f.castName.text == "Near" and f.castTime.text == "1.5", "then the next one, its own countdown carried on: " .. tostring(f.castName.text))
+  table.remove(lanes)
+  RW:Open({ base = base, encounterID = 3470, bossName = "Nek'zali" })
+end
+ok("several casts within 5 s")
 
 -- strip marks move with the clock -----------------------------------------------------------------
 local function markAt(t)

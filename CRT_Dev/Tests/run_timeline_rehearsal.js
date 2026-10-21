@@ -101,6 +101,8 @@ do
   r = R.CastAt(mm, 5); assert(r.cast.name == "A" and near(r.progress, 0) and near(r.remaining, 5), "starts at 0")
   r = R.CastAt(mm, 10.5); assert(r.cast.name == "B" and near(r.progress, 0.9), "A is over, B shows")
   assert(R.CastAt(mm, 4.99) == nil, "before")
+  assert(R.CastAt(mm, 9.5).more == 1 and R.CastAt(mm, 10.5).more == 0 and R.CastAt(mm, 5.5).more == 0, "more counts the others in their last 5 s")
+  assert(R.CastAt(mm, 6).more == 1, "B is in its last 5 s at 6")
 end
 ok("cast bar shows the cast ending first")
 
@@ -112,12 +114,14 @@ end
 ok("cast bar empty between casts")
 
 do
-  local mm = { casts = { { t = 1 }, { t = 5 }, { t = 6 }, { t = 7 }, { t = 9 } }, phases = {}, length = 10 }
-  local n = R.NextUp(mm, 5, 3)
-  assert(#n == 3 and n[1].t == 5 and n[2].t == 6 and n[3].t == 7, "next 3 from 5 inclusive")
+  local mm = { casts = { { t = 1 }, { t = 5 }, { t = 6 }, { t = 7 }, { t = 9 }, { t = 12 }, { t = 14 } }, phases = {}, length = 20 }
+  local n = R.NextUp(mm, 0, 3)
+  assert(#n == 3 and n[1].t == 6 and n[2].t == 7 and n[3].t == 9, "next 3 more than 5 s away: " .. tostring(n[1] and n[1].t))
   assert(#R.NextUp(mm, 8, 3) == 1 and #R.NextUp(mm, 0, 0) == 0, "short and zero")
-  local s = R.NextUp(mm, 5, 3, mm.casts[2])
-  assert(#s == 3 and s[1].t == 6 and s[3].t == 9, "the cast bar's cast is left out")
+  -- every cast in its last 5 s is the cast bar's, the one it shows and the ones after it
+  local s = R.NextUp(mm, 4, 3)
+  assert(#s == 2 and s[1].t == 12 and s[2].t == 14 and R.CastAt(mm, 4).cast.t == 5 and R.CastAt(mm, 4).more == 3, "none in both")
+  assert(R.NextUp(mm, 1, 1)[1].t == 7 and R.CastAt(mm, 1).cast.t == 5, "exactly 5 s away is the cast bar's")
 end
 ok("next up gives 3")
 
