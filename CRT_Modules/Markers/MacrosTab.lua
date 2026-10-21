@@ -469,8 +469,9 @@ local function buildMacros()
             cell.button:SetShown(e ~= nil)
             if e then
                 cell.button.icon:SetTexture(e.def.icon)
-                cell.button.icon:SetDesaturated(e.state ~= "ours")
-                cell.button.check:SetShown(e.state == "ours")
+                -- a macro of that name is in the list (ours, edited, or the player's own): a check, and its state
+                cell.button.icon:SetDesaturated(e.state == "missing")
+                cell.button.check:SetShown(e.state ~= "missing")
                 cell.name:SetText(e.def.name)
                 cell.body:SetText(e.def.body)
                 cell.state:SetText(stateText(e))
@@ -493,6 +494,7 @@ local function buildHow()
     text:SetWidth(LEFT_W)
     text:SetJustifyH("LEFT")
     text:SetJustifyV("TOP")
+    text:SetMaxLines(12) -- kept above Your macros
     local how = { text = text }
     how.refresh = function()
         text:SetText(Markers:Help(boss) or TEXT.noHelp)

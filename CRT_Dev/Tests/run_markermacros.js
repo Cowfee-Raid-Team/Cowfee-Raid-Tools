@@ -193,6 +193,7 @@ check(#account == 8 and withText("8 of 8 created") ~= nil, "Generate all macros 
 find("CRT Moon").body = "/raid {rt5} mine"
 button("Generate all macros").OnClick(button("Generate all macros"))
 check(withText("warn:Changed by you") ~= nil and find("CRT Moon").body == "/raid {rt5} mine", "an edited macro shows Changed by you and is kept")
+check(cellButton(5).check.shown and not cellButton(5).icon.desaturated, "an edited macro still shows its check")
 
 -- Remove macros asks first, then removes only ours.
 popup = nil
