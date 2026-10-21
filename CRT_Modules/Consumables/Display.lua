@@ -13,9 +13,11 @@ local ADDON, CRT = ...
 -- While the game's ready check window is up the row docks under it, so the two read as one panel, and
 -- it goes away when that window does. The window is ReadyCheckListenerFrame, the part with Ready and
 -- Not Ready, inside ReadyCheckFrame (Blizzard_FrameXML/Mainline/ReadyCheck.xml). The game hides it for
--- the player who started the check, so that player's row sits at its own saved place. The row is only
--- anchored to the game's window, never parented to it, and its OnHide is post-hooked, never replaced.
--- Close shows only for the raid leader.
+-- the player who started the check, so that player's row sits at its own saved place. The row is never
+-- anchored or parented to the game's window: the row holds secure buttons, and anchoring a protected
+-- frame to another frame makes that frame implicitly protected. Instead, out of combat, the row reads
+-- where the window is and anchors to UIParent at that spot, again each refresh so it follows. The
+-- window's OnHide is post-hooked, never replaced. Close shows only for the raid leader.
 
 local Consumables = CRT.Consumables
 local Ants = CRT.Ants
@@ -44,13 +46,36 @@ local function gameWindow()
     end
 end
 
--- True when you lead the group. A value the game hides is never compared, and counts as not leading.
-local function isLeader()
+-- Whether you lead the group, read when the group or its leader changes and when the row shows,
+-- rather than on every refresh. A value the game hides is never compared, and counts as not leading.
+local leading = false
+local function readLeader()
     local ok, leader = pcall(UnitIsGroupLeader, "player")
     if not ok or (issecretvalue and issecretvalue(leader)) then
-        return false
+        leading = false
+    else
+        leading = leader and true or false
     end
-    return leader and true or false
+end
+
+-- Where the bottom middle of the game's window is, in the row's own units, or nil when the game
+-- gives no usable position. Positions are in each frame's effective scale, so they are converted.
+local function windowBottom(window)
+    local okC, cx = pcall(window.GetCenter, window)
+    local okB, bottom = pcall(window.GetBottom, window)
+    local okS, scale = pcall(window.GetEffectiveScale, window)
+    if not (okC and okB and okS) or type(cx) ~= "number" or type(bottom) ~= "number" or type(scale) ~= "number" then
+        return nil
+    end
+    if issecretvalue and (issecretvalue(cx) or issecretvalue(bottom) or issecretvalue(scale)) then
+        return nil
+    end
+    local own = frame:GetEffectiveScale()
+    if type(own) ~= "number" or own <= 0 then
+        return nil
+    end
+    local ratio = scale / own
+    return cx * ratio, bottom * ratio
 end
 
 local function showTooltip(self)
@@ -180,12 +205,19 @@ local function place()
         return
     end
     local window = not Display.preview and gameWindow()
+    if window then
+        sawGameWindow = true
+    end
+    -- Docked under the game's window, centred, a small gap. Anchored to UIParent at the window's
+    -- spot, never to the window itself; each refresh places it again, so it follows the window.
+    local x, bottom
+    if window then
+        x, bottom = windowBottom(window)
+    end
     local saved = Consumables:Position()
     frame:ClearAllPoints()
-    if window then
-        -- Docked under the game's window, centred. Anchored to it, so it follows if the game moves it.
-        frame:SetPoint("TOP", window, "BOTTOM", 0, -DOCK_GAP)
-        sawGameWindow = true
+    if x then
+        frame:SetPoint("TOP", UIParent, "BOTTOMLEFT", x, bottom - DOCK_GAP)
     elseif saved then
         -- Where the player put it.
         frame:SetPoint(saved.point, UIParent, saved.relativePoint or saved.point, saved.x, saved.y)
@@ -258,7 +290,7 @@ function Display:Refresh()
     end
     place()
     -- A plain button, not a secure one, so it can change in combat too.
-    closeBar:SetShown(not self.preview and isLeader())
+    closeBar:SetShown(not self.preview and leading)
 
     Consumables:RefreshBags()
     for index, key in ipairs(Consumables:Order()) do
@@ -298,7 +330,8 @@ local function show(seconds, preview)
     sawGameWindow = false
     shownUntil = seconds and (GetTime() + seconds) or nil
     handle:SetShown(preview and true or false)
-    closeBar:SetShown(not preview and isLeader())
+    readLeader()
+    closeBar:SetShown(not preview and leading)
     place()
     frame:Show()
     elapsed = REFRESH_SECONDS
@@ -346,6 +379,8 @@ events:RegisterEvent("PLAYER_REGEN_ENABLED")
 events:RegisterEvent("READY_CHECK")
 events:RegisterEvent("READY_CHECK_FINISHED")
 events:RegisterEvent("START_PLAYER_COUNTDOWN")
+events:RegisterEvent("GROUP_ROSTER_UPDATE")
+events:RegisterEvent("PARTY_LEADER_CHANGED")
 -- True when the ready check was started by you. The name can come with a realm, or be hidden from
 -- addons, in which case it does not count as yours.
 local function startedByMe(initiator)
@@ -357,10 +392,14 @@ end
 
 events:SetScript("OnEvent", function(_, event, initiator, timeLeft)
     if event == "PLAYER_LOGIN" then
+        readLeader()
         -- Create the secure buttons now, out of combat.
         if not InCombatLockdown() then
             build()
         end
+    elseif event == "GROUP_ROSTER_UPDATE" or event == "PARTY_LEADER_CHANGED" then
+        -- Only the leader's cache changes here; the Close button follows at the next refresh.
+        readLeader()
     elseif event == "PLAYER_REGEN_ENABLED" then
         if pendingHide then
             hideFrame()

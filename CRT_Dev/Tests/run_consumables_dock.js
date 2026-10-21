@@ -32,8 +32,18 @@ local function mock(kind)
       local f = self
       while f do if not f.shown then return false end f = rawget(f, "parent") end
       return true end end
-    if k == "SetPoint" then return function(self, ...) table.insert(self.pts, { ... }) end end
-    if k == "ClearAllPoints" then return function(self) self.pts = {} end end
+    -- Every anchor ever set is kept in allPts, and moves are counted, so the tests can see what
+    -- the bar was anchored to and whether it was moved at all.
+    if k == "SetPoint" then return function(self, ...)
+      table.insert(self.pts, { ... }) rawset(self, "allPts", rawget(self, "allPts") or {}) table.insert(self.allPts, { ... })
+      rawset(self, "moves", (rawget(self, "moves") or 0) + 1) end end
+    if k == "ClearAllPoints" then return function(self) self.pts = {} rawset(self, "moves", (rawget(self, "moves") or 0) + 1) end end
+    -- Screen position, from the bottom left, in the region's effective scale (its own, else its parent's).
+    if k == "GetEffectiveScale" then return function(self)
+      local p = rawget(self, "parent")
+      return rawget(self, "scale") or (p and p:GetEffectiveScale()) or 1 end end
+    if k == "GetCenter" then return function(self) return rawget(self, "cx"), rawget(self, "cy") end end
+    if k == "GetBottom" then return function(self) return rawget(self, "bottom") end end
     if k == "GetPoint" then return function(self) local p = self.pts[1] if p then return p[1], p[2], p[3], p[4], p[5] end end end
     if k == "SetText" then return function(self, s) rawset(self, "text", s) end end
     return function() end
@@ -62,6 +72,11 @@ GameTooltip = mock("GameTooltip")
 -- ReadyCheckFrame for everyone, and the listener only to players who did not start the check.
 ReadyCheckFrame = mock("Frame") rawset(ReadyCheckFrame, "parent", UIParent) ReadyCheckFrame.shown = false
 ReadyCheckListenerFrame = mock("Frame") rawset(ReadyCheckListenerFrame, "parent", ReadyCheckFrame) ReadyCheckListenerFrame.shown = false
+-- Its place on screen: 323 x 100 around the middle of a 1920 x 1080 screen, in its own units.
+local function placeWindow(cx, bottom)
+  rawset(ReadyCheckListenerFrame, "cx", cx) rawset(ReadyCheckListenerFrame, "cy", bottom + 50) rawset(ReadyCheckListenerFrame, "bottom", bottom)
+end
+placeWindow(960, 480)
 local function gameShows(startedByMe)
   ReadyCheckFrame.shown = true
   ReadyCheckListenerFrame.shown = not startedByMe
@@ -115,9 +130,21 @@ for _, f in ipairs(frames) do if rawget(f, "name") == "CowfeeRaidToolsReadyCheck
 for _, f in ipairs(frames) do if f.kind == "Button" and rawget(f, "parent") == bar and rawget(f, "OnClick") then closeBar = f end end
 check("the bar and its Close button are built at login", bar ~= nil and closeBar ~= nil)
 
+-- Docked: the bar's top middle sits a small gap under the window's bottom middle. The bar is anchored to
+-- UIParent's bottom left (the screen's), at the window's place converted into the bar's own units.
+local function near(a, b) return type(a) == "number" and math.abs(a - b) < 1e-6 end
 local function dockedUnder(win)
   local p = bar.pts[1]
-  return #bar.pts == 1 and p[1] == "TOP" and p[2] == win and p[3] == "BOTTOM" and p[4] == 0 and p[5] < 0 and p[5] >= -8
+  if not (#bar.pts == 1 and p[1] == "TOP" and p[2] == UIParent and p[3] == "BOTTOMLEFT") then return false end
+  local ratio = win:GetEffectiveScale() / bar:GetEffectiveScale()
+  local cx = win:GetCenter()
+  local gap = win:GetBottom() * ratio - p[5]
+  return near(p[4], cx * ratio) and gap > 0 and gap <= 8
+end
+local function where() local p = bar.pts[1] return p and table.concat({ tostring(p[1]), tostring(p[2] == UIParent and "UIParent" or p[2]), tostring(p[3]), tostring(p[4]), tostring(p[5]) }, " ") or "no point" end
+local function anchoredOnlyToUIParent()
+  for _, p in ipairs(rawget(bar, "allPts") or {}) do if p[2] ~= UIParent then return false end end
+  return true
 end
 local function floating()
   local p = bar.pts[1]
@@ -139,8 +166,9 @@ end
 leader = false
 readyCheck("Raidlead", false)
 check("someone else's check: the bar shows", bar.shown)
-check("someone else's check: the bar sits under the game's window, centred", dockedUnder(ReadyCheckListenerFrame), bar.pts[1] and table.concat({ tostring(bar.pts[1][1]), tostring(bar.pts[1][3]), tostring(bar.pts[1][5]) }, " "))
-check("it is anchored to the game's window, never parented to it", rawget(bar, "parent") == UIParent)
+check("someone else's check: the bar sits under the game's window, centred", dockedUnder(ReadyCheckListenerFrame), where())
+check("it is never parented to the game's window", rawget(bar, "parent") == UIParent)
+check("it is anchored to UIParent, never to the game's frames (that would make them protected)", anchoredOnlyToUIParent())
 check("not the leader: no Close", not closeBar.shown)
 tick()
 check("it stays docked as it refreshes", dockedUnder(ReadyCheckListenerFrame))
@@ -155,9 +183,15 @@ finish()
 check("the game's window is hooked, not replaced", rawget(ReadyCheckFrame, "OnHide") == nil and #ReadyCheckFrame.hooks >= 1)
 check("the game's window is never given scripts by the addon", rawget(ReadyCheckListenerFrame, "OnShow") == nil and rawget(ReadyCheckListenerFrame, "OnHide") == nil)
 
--- In combat the hide waits, then happens after combat.
+-- In combat the hide waits, then happens after combat. A docked bar is not moved at all in combat.
 readyCheck("Raidlead", false)
+check("docked again on the next check", dockedUnder(ReadyCheckListenerFrame), where())
 combat = true
+local movesBefore = rawget(bar, "moves")
+placeWindow(700, 300)
+tick()
+check("in combat a refresh doesn't move the docked bar", rawget(bar, "moves") == movesBefore, tostring(rawget(bar, "moves")) .. " vs " .. tostring(movesBefore))
+placeWindow(960, 480)
 ReadyCheckFrame:Hide()
 check("in combat the bar waits to hide", bar.shown)
 combat = false
@@ -195,13 +229,44 @@ check("a hidden leader status gives no Close", not closeBar.shown)
 finish()
 leader = false
 
--- The window moves: the bar is anchored to it, so it follows without being moved itself.
+-- Leadership passes to you during a check: Close follows at the next refresh.
 readyCheck("Raidlead", false)
-local before = bar.pts[1][2]
-ReadyCheckListenerFrame.pts = { { "CENTER", UIParent, "CENTER", 200, 100 } }
+check("not leading yet: no Close", not closeBar.shown)
+leader = true
+events.OnEvent(events, "PARTY_LEADER_CHANGED")
 tick()
-check("the bar follows the game's window", dockedUnder(ReadyCheckListenerFrame) and before == ReadyCheckListenerFrame)
+check("made leader mid-check: Close shows", closeBar.shown)
+leader = false
+events.OnEvent(events, "GROUP_ROSTER_UPDATE")
+tick()
+check("leader passed on: Close goes", not closeBar.shown)
 finish()
+
+-- The window moves: each refresh out of combat places the bar under it again.
+readyCheck("Raidlead", false)
+placeWindow(400, 650)
+tick()
+check("the bar follows the game's window", dockedUnder(ReadyCheckListenerFrame) and near(bar.pts[1][4], 400), where())
+finish()
+placeWindow(960, 480)
+
+-- A UI scale on the bar that differs from the window's: positions are converted between the two.
+rawset(UIParent, "scale", 0.8)
+rawset(ReadyCheckListenerFrame, "scale", 1.2)
+readyCheck("Raidlead", false)
+check("with different scales the bar is still right under the window", dockedUnder(ReadyCheckListenerFrame), where())
+check("with different scales the x is the window's middle converted (960 x 1.2 / 0.8)", bar.pts[1] and near(bar.pts[1][4], 1440), where())
+finish()
+rawset(UIParent, "scale", nil)
+rawset(ReadyCheckListenerFrame, "scale", nil)
+
+-- The game gives the window no position: the bar floats at its own place instead.
+savedPosition = nil
+rawset(ReadyCheckListenerFrame, "cx", nil)
+readyCheck("Raidlead", false)
+check("no window position: the bar floats", floating() and bar.pts[1][1] == "TOP" and bar.pts[1][3] == "TOP", where())
+finish()
+placeWindow(960, 480)
 
 -- Not the leader, your own check (Not when I start it off): floating, no Close, gone when the check ends.
 readyCheck("Me", true)
@@ -220,6 +285,8 @@ tick()
 check("preview: not docked even with the game's window up", floating())
 previews.consumables(false)
 finish()
+
+check("over every check above, the bar was only ever anchored to UIParent", anchoredOnlyToUIParent())
 
 print(passed .. " passed, " .. failed .. " failed")
 if failed > 0 then error("consumables dock checks failed") end
