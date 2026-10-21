@@ -26,6 +26,8 @@ local TEXT = {
     renderHelp = "The note shows as it reads in the game. Click it to see the raw text. Edit it and Save to see it rendered again. Unsaved changes stay in the raw text.\n\nIf you can't change the raid note, the raw text is read-only. Press Escape to go back.\n\nThe personal note works the same way.\n\nPop out editor opens the note's lines in a window. Drag players, roles, groups and classes onto its assignment lines, and players onto its invite list. Timers stay as they are. Only the names change.",
     popOut = "Pop out editor",
     popOutShort = "Pop out",
+    changedUnder = "This note changed while you were typing, so your text was not saved. Click Save again to replace the note with your text, or click another note and back to see the new one.",
+    personalChangedUnder = "Your personal note changed in the note editor while you were typing here, so this was not saved. Click Save again to replace it with this text.",
     saveText = "Save text changes",
     saved = "Saved.",
     sendTo = "Send to",
@@ -632,6 +634,13 @@ local function buildNotes(pf)
                 CRT:Print(why)
                 return
             end
+            -- the note changed (a share, the Timeline, the note editor) while you typed: never written over
+            local record = Notes:Get(selected)
+            if record and editor.loaded ~= nil and (record.raw or "") ~= editor.loaded then
+                editor.loaded = record.raw or "" -- seen: a second Save is your choice to replace it
+                CRT:Print(TEXT.changedUnder)
+                return
+            end
             textBox:Saved()
             editor:ClearFocus()
             Notes:UpdateRaw(selected, editor:GetText())
@@ -707,6 +716,11 @@ local function buildNotes(pf)
     local psave = fitButton(makeButton(pf, "Save personal note", 170))
     psave:SetPoint("TOPLEFT", pbox, "BOTTOMLEFT", 0, -6)
     psave:SetScript("OnClick", function()
+        if personal.loaded ~= nil and Notes:Personal() ~= personal.loaded then
+            personal.loaded = Notes:Personal() -- seen: a second Save is your choice to replace it
+            CRT:Print(TEXT.personalChangedUnder)
+            return
+        end
         personalBox:Saved()
         personal:ClearFocus()
         Notes:SetPersonal(personal:GetText())

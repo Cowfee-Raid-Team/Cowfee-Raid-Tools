@@ -344,6 +344,9 @@ function Editor.DrawRows()
     if not W.session then
         return
     end
+    if W.press then
+        Editor.CancelDrag() -- its chip may be filled with another name
+    end
     local width = W.rowsWidth or 400
     local y = 0
     -- the Timers heading, over the first timed line: they show what the note has, never changed here
@@ -396,6 +399,9 @@ local function heading(n)
 end
 
 function Editor.DrawPalette()
+    if W.press then
+        Editor.CancelDrag() -- its chip is about to be filled with another entry
+    end
     local width = (L.paletteW - UI.ScrollGutter()) - 4
     local sections = Model.Palette(roster(), W.query)
     local used, y = 0, 0
@@ -498,6 +504,11 @@ local function dragUpdate()
         W.driver:Hide()
         return
     end
+    -- the button let go where the chip never heard it (its frame hidden or redrawn): the press ends, no drop
+    if IsMouseButtonDown and not IsMouseButtonDown("LeftButton") then
+        Editor.CancelDrag()
+        return
+    end
     local x, y = cursor()
     if not p.dragging then
         if math.abs(x - p.x) + math.abs(y - p.y) < L.dragStart then
@@ -544,10 +555,8 @@ function chipUp(chip)
     end
     endPress()
     if p.dragging then
-        if not W.session:Drop(rowUnderMouse()) then
-            highlight(nil)
-            return
-        end
+        -- drawn again either way, so a refused drop leaves nothing half shown
+        W.session:Drop(rowUnderMouse())
         changed()
     elseif p.source.token then
         if W.session:PaletteClick(p.source.token, p.source.kind) then
@@ -663,6 +672,11 @@ function Editor.Save()
     end
     local text = s:Text()
     if W.source.personal then
+        if Notes:Personal() ~= s.base then
+            W.notice = UI.BadText(TEXT.changed)
+            Editor.Refresh()
+            return false
+        end
         W.saving = true
         Notes:SetPersonal(text)
         W.saving = false
@@ -721,10 +735,7 @@ local function onHide(win)
     if W.discarding or not (W.session and W.session:Dirty()) then
         return
     end
-    -- unsaved: back up at once, and ask
-    C_Timer.After(0, function()
-        win:Show()
-    end)
+    -- unsaved: back up at once, and ask, the question lifted over the editor (UI.LiftOver)
     if not StaticPopupDialogs[POPUP] then
         StaticPopupDialogs[POPUP] = {
             text = TEXT.discard,
@@ -739,7 +750,10 @@ local function onHide(win)
             end,
         }
     end
-    StaticPopup_Show(POPUP)
+    C_Timer.After(0, function()
+        win:Show()
+        UI.LiftOver(UI.ShownPopup(StaticPopup_Show(POPUP), POPUP))
+    end)
 end
 
 -- Closes the editor and drops what was not saved.
@@ -764,6 +778,7 @@ local function buildPalette(c)
     label:SetText(TEXT.search)
     local search = CreateFrame("EditBox", "CowfeeRaidToolsNoteEditorSearch", right, "InputBoxTemplate")
     search:SetAutoFocus(false)
+    UI:SkinEditBox(search)
     search:SetFontObject(CRTFontHighlight)
     search:SetHeight(L.searchH)
     search:SetPoint("LEFT", label, "RIGHT", 10, 0)
@@ -894,9 +909,11 @@ local function build()
         end
     end)
     win:RegisterEvent("GROUP_ROSTER_UPDATE")
+    -- the group changed: new players in the palette, and a promotion (or demotion) unlocks (or locks) a clean editor
     win:SetScript("OnEvent", function()
         if win:IsShown() then
             Editor.DrawPalette()
+            onNotesChange()
         end
     end)
     UI:OnTheme(function()

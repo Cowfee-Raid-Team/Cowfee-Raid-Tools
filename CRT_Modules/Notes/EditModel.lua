@@ -58,7 +58,10 @@ local NOT_PLAYER = { all = true, everyone = true, raid = true, tank = true, tank
     healers = true, heal = true, dps = true, damager = true, damage = true, melee = true, melees = true,
     ranged = true, range = true }
 
-local LABEL_WORD = "[%w\128-\255][%w\128-\255%-']*" -- a name in free text, as Render.lua reads it
+-- A name in a label line: anything between spaces and commas, so removing one keeps every other mark as written
+-- ("Abu (left), Cheo" removes "(left)" as one word, never a bracket of it).
+local LABEL_WORD = "[^%s,]+"
+local LABEL_MAX_WORDS = 4 -- a label longer than this ("Stack on the boss and then: ...") is a sentence
 
 local function trim(s)
     return (s:gsub("^%s+", ""):gsub("%s+$", ""))
@@ -69,22 +72,8 @@ local function readable(v)
 end
 
 -- The raw text as { text, eol } pieces, cut where Parse cuts its lines; joined they give the text back.
-local function splitLines(raw)
-    local pieces, pos = {}, 1
-    while true do
-        local nl = raw:find("\n", pos, true)
-        if not nl then
-            pieces[#pieces + 1] = { text = raw:sub(pos), eol = "" }
-            return pieces
-        end
-        local text, eol = raw:sub(pos, nl - 1), "\n"
-        if text:sub(-1) == "\r" then
-            text, eol = text:sub(1, -2), "\r\n"
-        end
-        pieces[#pieces + 1] = { text = text, eol = eol }
-        pos = nl + 1
-    end
-end
+-- Notes/Data.lua's, so a note is cut into lines one way.
+local splitLines = CRT.Notes.SplitPieces
 
 -- The game's classes: { label (its name), token (its file name), class }.
 local function classes()
@@ -268,6 +257,25 @@ local function num(n)
     return (("%.10g"):format(n))
 end
 
+-- Whether the part before a line's colon reads as an assignment's label: short, with no markup ("{time:1:30}" and
+-- the other {..} codes of shared notes, "|c" colours), and not a phase heading ("Phase 2: kite adds left").
+local function looksLikeLabel(label)
+    local t = trim(label)
+    if t == "" or t:find("{", 1, true) or t:find("|", 1, true) then
+        return false
+    end
+    local n = 0
+    for _ in t:gmatch("%S+") do
+        n = n + 1
+    end
+    if n > LABEL_MAX_WORDS then
+        return false
+    end
+    local lower = t:lower()
+    return not (lower:match("^phase%s*[%d%.]+$") or lower:match("^p[%d%.]+$") or lower:match("^intermission"))
+end
+Model.LooksLikeLabel = looksLikeLabel
+
 -- A line that is not a timer. Mirrors Render.lua's freeRow: blank, a label ("Melee: names"), a heading (no colon)
 -- or text; with markdown also # heading, --- divider and - bullet (text).
 local function freeRow(row, line, markdown)
@@ -288,7 +296,7 @@ local function freeRow(row, line, markdown)
         end
     end
     local label = t:match("^([^:]+):")
-    if label then
+    if label and looksLikeLabel(label) then
         row.kind, row.label, row.editable = "label", label, true
         row.field = labelField(line)
     elseif t:find(":", 1, true) or t:find("**", 1, true) then
@@ -396,8 +404,9 @@ function Session:Move(i, k, j)
     if i == j or not (self:Editable(i) and self:Editable(j)) then
         return false
     end
+    -- added to j first, removed from i only once it is in: a word j refuses is never lost
     local word = self:Names(i)[k]
-    if not word or not self:Add(j, word) then
+    if not (word and validToken(word)) or not self:Add(j, word) then
         return false
     end
     return self:Remove(i, k)
@@ -469,7 +478,9 @@ function Session:BeginDrag(source)
         return false
     end
     if source.row then
-        if not (self:Editable(source.row) and self:Names(source.row)[source.index]) then
+        -- a word that could not go anywhere (an invite slot holding "Two words", say) is never picked up
+        local word = self:Editable(source.row) and self:Names(source.row)[source.index]
+        if not (word and validToken(word)) then
             return false
         end
     elseif not validToken(source.token) then

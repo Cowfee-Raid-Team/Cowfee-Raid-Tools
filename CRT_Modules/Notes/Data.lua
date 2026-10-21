@@ -544,6 +544,9 @@ local function splitLines(raw)
     end
 end
 
+-- Shared with the note editor (Notes/EditModel.lua), so a note is cut into lines one way.
+Notes.SplitPieces = splitLines
+
 local function joinLines(pieces)
     local out = {}
     for i, piece in ipairs(pieces) do

@@ -82,6 +82,9 @@ UISpecialFrames = {}
 tinsert = table.insert
 CANCEL = "Cancel"
 function GetCursorPosition() return cursor[1], cursor[2] end
+local mouseDown = true -- the left button held; a test lets it go to check a press the chip never hears end
+function IsMouseButtonDown(b) return b == "LeftButton" and mouseDown end
+local lifted
 -- a value the game hides: any string starting SECRET
 function issecretvalue(v) return type(v) == "string" and v:find("^SECRET") ~= nil end
 local inRaid, leader = false, false
@@ -131,6 +134,7 @@ local CRT = {
     RegisterLayer = function() end, RegisterPage = function(_, key, title, fn) pages[key] = fn end, Show = function() end,
     SetFrameTitle = function() end, RegisterTab = function() end, SetTabSelected = function() end, SkinTree = function() end,
     SkinButton = function() end, SkinCheckButton = function() end, PANEL_BUTTON_PAD = 14,
+    SkinEditBox = function(_, e) rawset(e, "skinned", true) end, LiftOver = function(d) lifted = d end, ShownPopup = function(ret) return ret end,
     PanelButtonWidth = function(w) return math.max(40, math.ceil(w or 0) + 28) end },
   Alerts = { Settings = function() return { bars = {} } end, RegisterBlock = function() end, onPull = {}, OnChange = function() end,
     PeekNextPhase = function() return nil end },
@@ -304,6 +308,31 @@ do
   assert(empty:Add(1, "A", "player") and empty:Add(2, "B", "player") and empty:Text() == "invitelist:A;\\ninvitelist:A,B", empty:Text())
 end
 print("ok the invite list: players only, a removed slot stays empty, separators and format as written")
+
+-- 5b. A word no row can take is never lost; label punctuation kept; what counts as an assignment line
+do
+  local s = Model.New("invitelist:Two Words,A|x,Abu;\\nKicks: Cheo")
+  assert(table.concat(s:Names(1), "/") == "Two Words/A|x/Abu", "the invite list's names as written")
+  for k = 1, 2 do
+    assert(not s:BeginDrag({ row = 1, index = k }), "a word no row can take is not picked up (" .. k .. ")")
+    assert(not s:Move(1, k, 2), "and a move refuses it (" .. k .. ")")
+  end
+  assert(table.concat(s:Names(1), "/") == "Two Words/A|x/Abu" and not s:Dirty(), "nothing lost")
+  assert(s:Move(1, 3, 2) and s:LineText(2) == "Kicks: Cheo, Abu" and s:LineText(1) == "invitelist:Two Words,A|x,;", "a good one still moves: " .. s:LineText(1))
+  -- only spaces and commas separate a label's names: removing one keeps every other mark
+  local p = Model.New("Soak: Abu (left), Cheo.\\nKicks: Abu, Cheo.")
+  assert(table.concat(p:Names(1), "/") == "Abu/(left)/Cheo.", table.concat(p:Names(1), "/"))
+  assert(p:Remove(1, 2) and p:LineText(1) == "Soak: Abu, Cheo.", "[" .. p:LineText(1) .. "]")
+  assert(p:Remove(2, 1) and p:LineText(2) == "Kicks: Cheo.", "[" .. p:LineText(2) .. "]")
+  -- a line is an assignment only when its label is short, plain and not a phase heading
+  local kinds = Model.New(table.concat({ "Phase 2: kite adds left", "P1.5: run", "{time:1:30} Abu: soak", "|cffff0000Red|r: Abu",
+    "Stack on the boss and then: spread", "Kick order: Abu", "Soak Circle G1: Cheo" }, "\\n"))
+  local got = {}
+  for i, r in ipairs(kinds.rows) do got[i] = r.kind end
+  assert(table.concat(got, ",") == "text,text,text,text,text,label,label", table.concat(got, ","))
+  assert(not kinds:Add(1, "Abu") and not kinds:Add(3, "Abu") and kinds:Add(6, "Cheo"), "only the real labels take names")
+end
+print("ok a word no row can take is never lost; label punctuation kept; phase headings and markup lines stay text")
 
 -- 6. Palette tokens: the words the alerts understand
 do
@@ -533,8 +562,9 @@ do
   drag(paletteChip("Gadios"), 8)
   assert(W.session:Dirty(), "an unsaved change")
   W.window:Hide()
-  assert(popups[#popups] == "COWFEE_RAID_TOOLS_NOTE_EDITOR_UNSAVED", "closing asks")
   runTimers()
+  assert(popups[#popups] == "COWFEE_RAID_TOOLS_NOTE_EDITOR_UNSAVED", "closing asks")
+  assert(lifted and lifted.key == "COWFEE_RAID_TOOLS_NOTE_EDITOR_UNSAVED", "the question is lifted over the editor")
   assert(W.window.shown and W.session:Dirty(), "the editor stays up with the change")
   assert(not Editor.Open({ personal = true }), "the personal note waits")
   StaticPopupDialogs.COWFEE_RAID_TOOLS_NOTE_EDITOR_UNSAVED.OnAccept()
@@ -625,6 +655,93 @@ do
   W.window:Hide()
 end
 print("ok a theme switch repaints the editor")
+
+-- 16. A ghost never sticks: the button let go unheard ends the press; a redraw under a press ends it
+do
+  local pop = button("Pop out editor")
+  pop.scripts.OnClick(pop)
+  assert(W.search.skinned, "the Search box is skinned")
+  local before = W.session:Text()
+  local chip = paletteChip("Gadios")
+  cursor = { 10, 10 }
+  chip.scripts.OnMouseDown(chip, "LeftButton")
+  cursor = { 80, 10 }
+  W.driver.scripts.OnUpdate(W.driver)
+  assert(W.ghost.shown, "dragging")
+  mouseDown = false -- let go where the chip never heard it
+  W.driver.scripts.OnUpdate(W.driver)
+  mouseDown = true
+  assert(not W.ghost.shown and not W.driver.shown and W.press == nil and W.session.drag == nil, "the press ends, the ghost goes")
+  assert(W.session:Text() == before, "and nothing is dropped")
+  -- a roster change redraws the palette under a press: the press ends
+  chip = paletteChip("Gadios")
+  chip.scripts.OnMouseDown(chip, "LeftButton")
+  cursor = { 150, 10 }
+  W.driver.scripts.OnUpdate(W.driver)
+  assert(W.ghost.shown, "dragging again")
+  W.window.scripts.OnEvent(W.window, "GROUP_ROSTER_UPDATE")
+  assert(not W.ghost.shown and W.press == nil, "a redraw ends it")
+  chip.scripts.OnMouseUp(chip, "LeftButton")
+  assert(W.session:Text() == before, "the late button up drops nothing")
+  -- a refused drop still redraws: the rows drawn again
+  local draws = 0
+  local old = Editor.DrawRows
+  Editor.DrawRows = function() draws = draws + 1 return old() end
+  drag(paletteChip("tank"), 12)
+  Editor.DrawRows = old
+  assert(draws > 0 and W.session:Text() == before, "a refused drop redraws, changes nothing")
+  W.window:Hide()
+end
+print("ok a ghost never sticks: a button let go unheard or a redraw ends the press; a refused drop redraws")
+
+-- 17. A promotion unlocks a clean read-only editor on the roster event alone
+do
+  inRaid, leader = true, false
+  local pop = button("Pop out editor")
+  pop.scripts.OnClick(pop)
+  assert(W.session.readOnly, "read-only")
+  leader = true
+  W.window.scripts.OnEvent(W.window, "GROUP_ROSTER_UPDATE")
+  assert(not W.session.readOnly and W.quick:IsEnabled(), "unlocked by GROUP_ROSTER_UPDATE")
+  W.window:Hide()
+  inRaid, leader = false, false
+end
+print("ok a promotion unlocks the editor on GROUP_ROSTER_UPDATE")
+
+-- 18. Changed while open or typed: the editor's personal Save and the page's raw Saves never write over it
+do
+  Notes:SetPersonal("Tanks: Abu")
+  local pp = button("Pop out")
+  pp.scripts.OnClick(pp)
+  drag(paletteChip("Gadios"), 1)
+  Notes:SetPersonal("Tanks: Abu\\nNew: line")
+  W.save.scripts.OnClick(W.save)
+  assert(Notes:Personal() == "Tanks: Abu\\nNew: line" and W.status:GetText():find("changed since you opened it", 1, true), "the editor's personal Save refuses")
+  StaticPopupDialogs.COWFEE_RAID_TOOLS_NOTE_EDITOR_UNSAVED.OnAccept()
+  -- the page's Note text: typed, then the note changes underneath
+  local editor, personal
+  for _, e in ipairs(edits) do if rawget(e, "multi") then if not editor then editor = e elseif not personal then personal = e end end end
+  redraw()
+  local current = Notes:Get(id).raw
+  editor:SetText(current .. "\\r\\nTyped: here")
+  Notes:UpdateRaw(id, current .. "\\r\\nShared: meanwhile")
+  local save = button("Save text changes")
+  save.scripts.OnClick(save)
+  assert(Notes:Get(id).raw == current .. "\\r\\nShared: meanwhile", "the first Save doesn't write over the change")
+  assert(printed[#printed]:find("changed while you were typing", 1, true), "and says so")
+  save.scripts.OnClick(save)
+  assert(Notes:Get(id).raw == current .. "\\r\\nTyped: here", "a second Save replaces it, by choice")
+  -- the personal box: the same
+  redraw()
+  personal:SetText(Notes:Personal() .. "\\nMine: typed")
+  Notes:SetPersonal("Other: text")
+  local psave = button("Save personal note")
+  psave.scripts.OnClick(psave)
+  assert(Notes:Personal() == "Other: text" and printed[#printed]:find("changed in the note editor", 1, true), "the personal Save refuses first")
+  psave.scripts.OnClick(psave)
+  assert(Notes:Personal():find("Mine: typed", 1, true), "then replaces it")
+end
+print("ok a note changed while open or typed is never written over without a second Save")
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 const files = process.argv.slice(2, 10);
