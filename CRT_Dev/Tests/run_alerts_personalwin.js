@@ -11,7 +11,7 @@ const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const files = process.argv.slice(2);
 if (files.length < 13) { console.error('usage: node run_alerts_personalwin.js <13 files in TOC order>'); process.exit(2); }
 
-const harness = themeLua(path.resolve(path.dirname(files.find((f) => /Notes[\\/]Window\.lua$/.test(f))), '../..')) + `
+const harness = themeLua(process.argv.slice(2)) + `
 local sources = { ... }
 local clock = 1000
 function GetTime() return clock end

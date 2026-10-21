@@ -4,7 +4,7 @@ const fs = require('fs');
 const themeLua = require('./theme_stub');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
-const harness = themeLua(process.argv[2]) + `
+const harness = themeLua(process.argv.slice(2)) + `
 local dataSrc, pageSrc = ...
 local buttons = {}
 local function mock(kind)

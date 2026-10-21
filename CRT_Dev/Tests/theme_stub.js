@@ -4,13 +4,25 @@
 // UI.ColorText, UI.GoodText, UI.BadText, UI.HeadingText, UI.Tint, UI.ThemedText and UI:OnTheme. UI.SwitchTheme(key)
 // stands in for UI:SetTheme: it refills CRT.MOCHA and repaints tinted parts, themed texts and the hooks, so a harness
 // can check a module follows a live switch. run_themes.js tests the real helpers.
-// Usage, in a harness: const themeLua = require('./theme_stub'); put ${themeLua(root)} in the Lua source, then call
-// CRT_THEME(CRT, CRT.UI) before loading the module files.
+// Usage, in a harness: const themeLua = require('./theme_stub'); put themeLua(where) before the Lua source, then call
+// CRT_THEME(CRT, CRT.UI) before loading the module files. where is the addon folder, a file in it, or a list of files
+// (the harness's arguments): the folder holding CRT_Core/Themes.lua is found from them.
 const fs = require('fs');
 const path = require('path');
 
-module.exports = function themeLua(root) {
-  const src = fs.readFileSync(path.join(root, 'CRT_Core/Themes.lua'), 'utf8');
+function findRoot(where) {
+  for (const p of [].concat(where)) {
+    let d = path.resolve(p);
+    for (let i = 0; i < 8; i++) {
+      if (fs.existsSync(path.join(d, 'CRT_Core', 'Themes.lua'))) return d;
+      d = path.dirname(d);
+    }
+  }
+  throw new Error('theme_stub: no CRT_Core/Themes.lua above ' + [].concat(where).join(', '));
+}
+
+module.exports = function themeLua(where) {
+  const src = fs.readFileSync(path.join(findRoot(where), 'CRT_Core/Themes.lua'), 'utf8');
   if (src.includes(']====]')) throw new Error('theme_stub: Themes.lua holds the long-string closer');
   return `
 function CRT_THEME(CRT, UI)

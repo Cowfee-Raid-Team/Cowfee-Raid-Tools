@@ -1,8 +1,10 @@
 // Builds the Raid Notes page (CRT_Modules/Notes/Settings.lua and CRT_Modules/Notes/Page.lua) on mock frames and switches tabs.
 const fs = require('fs');
+const path = require('path');
+const themeLua = require('./theme_stub');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
-const harness = `
+const harness = themeLua(process.argv.slice(2)) + `
 local settingsSrc, pageSrc = ...
 local created = 0
 local function mock()
@@ -52,6 +54,7 @@ local CRT = {
   NoteComm = { Sharing = function() return nil end },
   NoteWindow = { FONTS = { { name = "Friz Quadrata" } } },
 }
+CRT_THEME(CRT, CRT.UI)
 assert(load(settingsSrc, "Settings.lua"))("CowfeeRaidTools", CRT)
 assert(load(pageSrc, "Page.lua"))("CowfeeRaidTools", CRT)
 local pf = mock()

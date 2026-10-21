@@ -25,7 +25,7 @@ const noteText = read(path.join(__dirname, 'sample_note.txt')).replace(/\r/g, ''
   'time:57;ph:1;tag:Cheoeqar;text:Short line;\n' +
   'time:44;ph:1.5;tag:Cheoeqar;text:Later phase text;dur:8;');
 
-const harness = themeLua(path.resolve(path.dirname(windowSrc), '../..')) + `
+const harness = themeLua(process.argv.slice(2)) + `
 local mode, noteText = ...
 -- A note with only ph:2 lines: today its first phase (2) starts at the pull.
 local ph2Text = [[

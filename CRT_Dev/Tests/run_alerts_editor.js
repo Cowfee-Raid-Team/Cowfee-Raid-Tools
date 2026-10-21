@@ -4,9 +4,11 @@
 //   CRT_Modules/Timeline/Lanes.lua CRT_Modules/Alerts/Rules.lua CRT_Modules/Alerts/Engine.lua CRT_Modules/Alerts/Speech.lua CRT_Modules/Notes/Parse.lua CRT_Modules/Notes/Data.lua
 //   CRT_Modules/Notes/Engine.lua CRT_Modules/Alerts/Reminders.lua CRT_Modules/Alerts/Editor.lua
 const fs = require('fs');
+const path = require('path');
+const themeLua = require('./theme_stub');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
-const harness = `
+const harness = themeLua(process.argv.slice(2)) + `
 local sources = { ... }
 local frames, fontStrings = {}, {}
 local NOT_METHODS = { Left = true, Middle = true, Right = true, Background = true, Arrow = true, SetupMenu = true, CloseButton = true, tex = true }
@@ -148,8 +150,7 @@ local CRT = {
     notes = { list = {}, nextId = 1, alert = { enabled = true, tts = true, seconds = 10, ttsSeconds = 3 } },
   },
 }
-CRT.MOCHA = { espresso = { 0.11, 0.078, 0.063 }, roast = { 0.165, 0.122, 0.098 }, edge = { 0.3, 0.235, 0.188 },
-  mocha = { 0.44, 0.31, 0.22 }, caramel = { 0.78, 0.56, 0.36 }, latte = { 0.87, 0.73, 0.56 }, cream = { 0.95, 0.9, 0.84 } }
+CRT_THEME(CRT, {}) -- CRT_Core/Themes.lua's palette, Default: Blizzard to start; Panel.lua's own helpers read it
 local printed = {}
 function CRT:Print(m) printed[#printed + 1] = m end
 function CRT:PlaySound() end
@@ -334,7 +335,14 @@ do
   E:Open(ENC, nil, { text = "X" })
   local w = win()
   typeInto(w.timeEdit, "0:xx")
-  assert(message():find("bad time", 1, true) and message():find("ff6060", 1, true), "error in red: " .. message())
+  assert(message():find("bad time", 1, true) and message():find("|cff" .. UI.Hex("bad"), 1, true) and UI.Hex("bad") == "ff2020", "error in the game's red: " .. message())
+  -- the theme's own bad colour, read when the message is written
+  CRT:UseTheme("cowfee")
+  typeInto(w.timeEdit, "0:yy")
+  local themed = message()
+  CRT:UseTheme("blizzard")
+  assert(themed:find("|cffc8553d", 1, true), "Beanworks: Cowfee: the error in its bad colour: " .. themed)
+  typeInto(w.timeEdit, "0:xx")
   assert(w.saveBtn.enabled, "save stays enabled")
   click(w.saveBtn)
   assert(R:Get(ENC, 1) == nil and w.shown, "nothing saved, window stays")

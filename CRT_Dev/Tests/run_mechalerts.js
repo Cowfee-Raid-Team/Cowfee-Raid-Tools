@@ -5,9 +5,11 @@
 //   CRT_Modules/Alerts/Rules.lua CRT_Modules/Alerts/Engine.lua CRT_Modules/Alerts/Speech.lua CRT_Modules/Alerts/Reminders.lua CRT_Modules/Alerts/Draft.lua
 //   CRT_Modules/Alerts/SpellLookup.lua CRT_Modules/Alerts/Editor.lua CRT_Modules/Notes/Reminders.lua
 const fs = require('fs');
+const path = require('path');
+const themeLua = require('./theme_stub');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
-const harness = `
+const harness = themeLua(process.argv.slice(2)) + `
 local sources = { ... }
 local made = {}
 local function mock(kind, parent, template)
@@ -143,6 +145,7 @@ local route = { { key = "raid:test", label = "Test Raid", title = true }, { key 
 CRT.Bosses = { Options = function() return route end, OnRouteChange = function(self, fn) routeFns[#routeFns + 1] = fn end,
   FirstKey = function(o) for _, x in ipairs(o) do if not x.title then return x.key end end end }
 
+CRT_THEME(CRT, CRT.UI)
 local function loadSource(i, src)
   if src:find("function UI.PickColor", 1, true) then -- the real CRT_Core/UI/Controls.lua: only PickColor is taken, the harness keeps its own Dropdown and Slider
     local tmp = { UI = {} }
@@ -336,7 +339,7 @@ check("mech: a change in the panel saves the reminder", function()
   -- nothing to show: a small red line, and the saved reminder stays as it was
   setCheck(p.checks.alert, false)
   setCheck(p.also.speak, false)
-  assert(p.message.shown and p.message.text:find("nothing", 1, true) and p.message.text:find("|cffff6060", 1, true), "red line: " .. tostring(p.message.text))
+  assert(p.message.shown and p.message.text:find("nothing", 1, true) and p.message.text:find("|cff" .. CRT.UI.Hex("bad"), 1, true), "red line: " .. tostring(p.message.text))
   assert(R:Get(ENC, id).outputs.alert == false and R:Get(ENC, id).outputs.speech == true, "the change that left nothing is not saved")
   setCheck(p.checks.alert, true)
   assert(p.message.text == "" and R:Get(ENC, id).outputs.alert == true and R:Get(ENC, id).outputs.speech == false, "saved again, line cleared")
@@ -591,7 +594,7 @@ check("mech: your own reminder takes typed times", function()
   typeInto(p.timesEdit, "P1 0:30, soon")
   p.timesEdit.OnEnterPressed(p.timesEdit)
   local _, err = R.ParseTimes("P1 0:30, soon")
-  assert(p.message.text:find("|cffff6060", 1, true) and p.message.text:find(err, 1, true), "red line: " .. tostring(p.message.text))
+  assert(p.message.text:find("|cff" .. CRT.UI.Hex("bad"), 1, true) and p.message.text:find(err, 1, true), "red line: " .. tostring(p.message.text))
   assert(R:Get(ENC, id).times == "P1 0:30, 1:15; P2 0:20", "bad times not saved")
   -- typed times over the reference show read only, as the list's times do
   R:Save(ENC, nil, { spellID = 777, boss = "Test Boss", text = "Real Name", times = "P1 0:05" })

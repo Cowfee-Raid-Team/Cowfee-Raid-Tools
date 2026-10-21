@@ -151,9 +151,8 @@ local WHITE = { 1, 1, 1 }
 local GREY = { 0.5, 0.5, 0.5 }
 local TIMES_GREY = { 0.55, 0.5, 0.45 }
 -- the selected row: the colour of a selected tab (UI:StyleTab), Classic and Modern
-local SEL_CLASSIC = { 1, 0.82, 0, 0.18 }
+local SEL_CLASSIC_ALPHA = 0.18 -- over the heading colour (the game's gold)
 local SEL_MODERN_ALPHA = 0.95
-local RED = "|cffff6060%s|r"
 
 local function lower(s)
     return tostring(s or ""):lower()
@@ -476,7 +475,7 @@ local function drawPanel()
     if own then
         setBox(panel.timesEdit, d.keptTimes)
     end
-    panel.message:SetText(notice and RED:format(notice) or "")
+    panel.message:SetText(notice and UI.BadText(notice) or "")
 end
 
 local saveTyped
@@ -580,7 +579,8 @@ local function paint(index)
     end
     reveal = false
     offset = math.max(0, math.min(offset, maxOffset))
-    local selColor = SEL_CLASSIC
+    local h = CRT.MOCHA.heading
+    local selColor = { h[1], h[2], h[3], SEL_CLASSIC_ALPHA }
     if UI:IsModern() then
         local m = CRT.MOCHA.mocha
         selColor = { m[1], m[2], m[3], SEL_MODERN_ALPHA }

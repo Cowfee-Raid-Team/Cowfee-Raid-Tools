@@ -56,7 +56,7 @@ local function shareHelp()
     local parts = { TEXT.crtHelp }
     for _, target in ipairs(Targets:List()) do
         local available, why = target.IsAvailable()
-        parts[#parts + 1] = target.help .. (available and "" or ("\n|cffff8080Not available: " .. why .. "|r"))
+        parts[#parts + 1] = target.help .. (available and "" or ("\n" .. UI.BadText("Not available: " .. why)))
     end
     parts[#parts + 1] = TEXT.allHelp
     return table.concat(parts, "\n\n")
@@ -75,7 +75,7 @@ local TEXT_W = RIGHT_X - 14 - TEXT_X
 local TAB_H = UI.PAGE_H - 66
 
 local GRAY = { 0.35, 0.35, 0.35 }
-local GOLD = { 1, 0.82, 0 }
+local GOLD = CRT.MOCHA.heading -- the theme's heading colour; refilled in place on a theme switch
 local listKind = "shared" -- the Notes list's tab: "shared" (the raid's notes) or "personal" (your copies)
 local BACKDROP = {
     bgFile = "Interface\\Buttons\\WHITE8X8",
@@ -295,9 +295,9 @@ refresh = function()
         local entry = item and item.entry
         row.heading = item and item.heading or nil
         if item and item.heading then
-            -- a difficulty heading: gold, no box, click to fold it
+            -- a difficulty heading: the theme's heading colour, no box, click to fold it
             row.text:SetText((item.folded and "> " or "v ") .. item.heading .. " (" .. item.count .. ")")
-            row.text:SetTextColor(1, 0.82, 0)
+            row.text:SetTextColor(UI.Color("heading"))
             row:SetBackdropColor(0, 0, 0, 0)
             row:SetBackdropBorderColor(0, 0, 0, 0)
             row.id = nil
@@ -310,7 +310,7 @@ refresh = function()
             local label = (r.name or "Note") .. ((r.difficulty and not item.short) and (" (" .. r.difficulty .. ")") or "")
                 .. ((not r.personal) and Notes.SourceLabel(r) and (" - " .. Notes.SourceLabel(r)) or "")
             if entry.id == activeId then
-                label = label .. "  |cff55dd55active|r"
+                label = label .. "  " .. UI.GoodText("active")
             end
             row.text:SetText(label)
             row.id = entry.id
@@ -388,7 +388,7 @@ local function buildNotes(pf)
         skin(b, 0.4)
         b.sel = b:CreateTexture(nil, "ARTWORK")
         b.sel:SetAllPoints()
-        b.sel:SetColorTexture(1, 0.82, 0, 0.18)
+        b.sel:SetColorTexture(UI.Color("heading", 0.18)) -- UI:RegisterTab styles it from here on
         b.text = b:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
         b.text:SetPoint("CENTER")
         b.text:SetText(kind == "shared" and TEXT.shared or TEXT.personal)
@@ -431,7 +431,7 @@ local function buildNotes(pf)
         skin(c, 0.4)
         c.sel = c:CreateTexture(nil, "ARTWORK")
         c.sel:SetAllPoints()
-        c.sel:SetColorTexture(1, 0.82, 0, 0.18)
+        c.sel:SetColorTexture(UI.Color("heading", 0.18)) -- UI:RegisterTab styles it from here on
         c.text = c:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
         c.text:SetPoint("CENTER")
         c:SetFontString(c.text)
@@ -765,7 +765,7 @@ local function build(pf)
         skin(b, 0.4)
         b.sel = b:CreateTexture(nil, "ARTWORK")
         b.sel:SetAllPoints()
-        b.sel:SetColorTexture(1, 0.82, 0, 0.18)
+        b.sel:SetColorTexture(UI.Color("heading", 0.18)) -- UI:RegisterTab styles it from here on
         b.text = b:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
         b.text:SetPoint("CENTER")
         b.text:SetText(tab.label)

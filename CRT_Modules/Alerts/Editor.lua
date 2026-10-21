@@ -525,7 +525,7 @@ local function refresh(rows)
     frame.sourceText:SetText(sourceLine())
     frame.savesText:SetText(savesToLine())
     local message = timeError(false) or notice
-    frame.messageText:SetText(message and ("|cffff6060" .. message .. "|r") or "")
+    frame.messageText:SetText(message and UI.BadText(message) or "")
     frame.deleteBtn:SetShown(not locked and ctx ~= nil and (ctx.id ~= nil or ctx.noteID ~= nil or ctx.savedID ~= nil))
 end
 
