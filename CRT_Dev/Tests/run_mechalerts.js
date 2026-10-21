@@ -1167,6 +1167,12 @@ check("mech: hidden from the list for everyone, set in /crt dev", function()
   CRT.NoteReminders.Refresh()
   assert(names(f) == "Real Name,Other Spell,Third Thing", "your own reminder keeps its row: " .. names(f))
   assert(R:Get(ENC, id).enabled == true, "and stays on")
+  -- unticked, it no longer keeps the row (a panel change on a row makes an unticked reminder too)
+  local r = R:Get(ENC, id)
+  r.enabled = false
+  R:Save(ENC, id, r)
+  CRT.NoteReminders.Refresh()
+  assert(names(f) == "Real Name,Third Thing", "an unticked reminder keeps no hidden row: " .. names(f))
   reset()
   CRT.NoteReminders.Refresh()
   assert(names(f) == "Real Name,Third Thing", "deleted: gone again")
@@ -1175,7 +1181,17 @@ check("mech: hidden from the list for everyone, set in /crt dev", function()
   CRT.NoteReminders.Open(ENC, 888)
   assert(names(f) == "Real Name,Other Spell,Third Thing" and f.rows[2].sel.shown and f.panel.name.text == "Other Spell", "asked for: listed and selected: " .. names(f))
   CRT.NotesPage.Open = nil
+  -- only while that open lasts: another row picked, it goes
   click(f.rows[1].frame)
+  CRT.NoteReminders.Refresh()
+  assert(names(f) == "Real Name,Third Thing" and f.rows[1].sel.shown, "another row picked: gone: " .. names(f))
+  -- or the tab closed
+  CRT.NotesPage.Open = function() end
+  CRT.NoteReminders.Open(ENC, 888)
+  CRT.NotesPage.Open = nil
+  f:Hide()
+  f:Show()
+  assert(names(f) == "Real Name,Third Thing" and f.rows[1].sel.shown, "the tab closed and opened: gone, the first row selected: " .. names(f))
 
   -- /crt dev open: hidden rows show greyed, with a mark
   CRT.UI.pages = { dev = { hidden = false } }
@@ -1207,10 +1223,14 @@ check("mech: hidden from the list for everyone, set in /crt dev", function()
   local list = T:MechHiddenNames(ENC)
   assert(#list == 1 and list[1] == "Other Spell", "the list to ship: " .. table.concat(list, ","))
 
-  -- /crt dev closed again: gone for you too
+  -- /crt dev closed again: gone for you too, even the selected one (the first row is selected instead)
+  click(f.rows[2].frame)
+  assert(f.rows[2].sel.shown and f.panel.name.text == "Other Spell", "the hidden row selected in dev")
   CRT.UI.pages.dev.hidden = true
-  CRT.NoteReminders.Refresh()
+  f:Hide()
+  f:Show()
   assert(names(f) == "Real Name,Third Thing", "dev closed: " .. names(f))
+  assert(f.rows[1].sel.shown and f.panel.name.text == "Real Name", "the first shown row selected")
 
   CRT.UI.pages, CRT.UI.ContextMenu, CRT.db.dev = nil, nil, nil
   Ref:Delete(normal)
