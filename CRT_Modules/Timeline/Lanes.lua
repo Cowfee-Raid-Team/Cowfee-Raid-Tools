@@ -197,7 +197,7 @@ local function referenceLanes(ref, rows, settings, encounterID, overlay, group, 
                     end
                 end
                 lanes[#lanes + 1] = {
-                    key = "ref:" .. row.name, label = row.name, color = row.color, lead = row.lead, kind = "reference",
+                    key = "ref:" .. row.name, label = row.name, color = CRT.TimelineReference.RowColor(row), lead = row.lead, kind = "reference",
                     types = row.types, spellID = spellID, icon = icon or UNNAMED_ICON, marks = marks,
                     tags = row.tags or (match and match.tags) or nil, -- the Journal's icons
                 }

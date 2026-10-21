@@ -8,7 +8,8 @@ local ADDON, CRT = ...
 -- which belong to a boss (List, Find, ForBoss, BossKey). The text is one line per thing:
 --   Boss: Name            (required)   Difficulty: Mythic   Length: 9:48   Encounter: 3001
 --   Phase: [label] time   a phase line, the time is the last word
---   Name [spell N] (type raid soak, lead N, color rrggbb): time, time+bar, ...   an ability row
+--   Name [spell N] (type raid soak, lead N, color rrggbb): time, time+bar, ...   an ability row (its color shows
+--                                                   only with Use custom colours on: Reference.RowColor)
 --   Order: Empowered 1, Empowered 2 = Gebbo, Nama   phases whose parts the raid picks the order of,
 --                                                   with rows tagged (part Gebbo); see Chosen order
 -- A time is m:ss or plain seconds. Blank lines and lines starting with # are skipped. Every line
@@ -70,6 +71,23 @@ local function settings()
     return CRT.Timeline:Settings()
 end
 
+-- The colour a row is drawn in: its first type's, as the alerts use. A row's own (color rrggbb) colour is a
+-- custom colour: it shows only with Use custom colours on (Raid Notes > Alerts, Alerts:CustomColors), else the
+-- row keeps its type's colour, or none. A row made by hand, with no ownColor, keeps its color.
+function Reference.RowColor(row)
+    if not row then
+        return nil
+    end
+    if row.ownColor then
+        local Alerts = CRT.Alerts
+        if Alerts and Alerts.CustomColors and Alerts:CustomColors() then
+            return row.ownColor
+        end
+        return row.typeColor
+    end
+    return row.color
+end
+
 -- Lowercase, trimmed, curly apostrophes folded to a plain one (pasted text brings them).
 local function fold(s)
     return (s:gsub("\226\128\153", "'"):gsub("\226\128\152", "'"))
@@ -121,6 +139,7 @@ local function readOptions(row, text)
                     tonumber(hex:sub(3, 4), 16) / 255,
                     tonumber(hex:sub(5, 6), 16) / 255,
                 }
+                row.ownColor = row.color -- drawn only with Use custom colours on (Reference.RowColor)
             elseif key == "part" then
                 -- which part of an Order line the row belongs to (checked against it after reading)
                 row.part = trim(arg)
@@ -206,9 +225,10 @@ local function readAbility(line)
                 return nil, err
             end
             -- the first type colors the row, unless a color was given
-            if not row.color and row.types and row.types[1] then
+            if row.types and row.types[1] then
                 local c = Reference.TYPES[row.types[1]].color
-                row.color = { c[1], c[2], c[3] }
+                row.typeColor = { c[1], c[2], c[3] }
+                row.color = row.color or row.typeColor
             end
             return row
         else
