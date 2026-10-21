@@ -56,6 +56,12 @@ Reference.TAGS = {
     bleed = { label = "Bleed", atlas = "icons_16x16_bleed" },
 }
 
+-- The Journal's icons that are types too: a dispellable debuff, a Heroic or a Mythic mechanic. The Journal export
+-- writes them as the row's types (Timeline/JournalExport.lua), and an alert with no other type takes the first of
+-- its spell's icons that is one (Alerts/Colors.lua).
+Reference.TAG_TYPES = { magic = "dispel", curse = "dispel", poison = "dispel", disease = "dispel", heroic = "heroic",
+    mythic = "mythic" }
+
 -- The type colors as tooltip text, one line per type in its own color: "Soak (soak)".
 function Reference.Legend()
     local lines = {}

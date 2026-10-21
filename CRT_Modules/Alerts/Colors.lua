@@ -7,8 +7,8 @@ local ADDON, CRT = ...
 --   2. the boss's ability timeline: the row of the alert's spell (by spell ID, else by the spell's name or the
 --      alert's text, as reminders find their times) and its first, main type. The difficulty's own ability
 --      timelines are asked first, then the boss's others.
---   3. the Encounter Journal's icons for the spell (TAG_TYPES): a dispel icon is dispel, the Mythic and Heroic
---      icons are mythic and heroic, the first of them in Reference.TYPE_ORDER
+--   3. the Encounter Journal's icons for the spell (Reference.TAG_TYPES): a dispel icon is dispel, the Mythic and
+--      Heroic icons are mythic and heroic; the first icon that is a type, as the Journal export writes it
 -- With no known type an alert is drawn in the theme's accent (caramel). Which colour wins over the type's
 -- (the raid leader's note colour, and yours with Use custom colours on) is Alerts:OwnColor (Alerts/Engine.lua).
 -- Alerts:Start stamps each item's type as item.abilityType; the areas look the colour up as they draw
@@ -19,16 +19,6 @@ local ADDON, CRT = ...
 
 local Colors = {}
 CRT.AlertColors = Colors
-
--- The Journal's icon words (Reference.TAGS) that say an ability's type.
-Colors.TAG_TYPES = {
-    magic = "dispel",
-    curse = "dispel",
-    poison = "dispel",
-    disease = "dispel",
-    mythic = "mythic",
-    heroic = "heroic",
-}
 
 local ACCENT = "caramel" -- the style guide's accent
 
@@ -115,7 +105,7 @@ end
 -- kept once read), so in a pull this works for a boss whose rows the Timeline already read.
 local function journalType(encounterID, spellID)
     local Journal, Reference = CRT.TimelineJournal, CRT.TimelineReference
-    if not (spellID and Journal and Journal.Rows and Reference) then
+    if not (spellID and Journal and Journal.Rows and Reference and Reference.TAG_TYPES) then
         return nil
     end
     local ok, rows = pcall(Journal.Rows, Journal, encounterID)
@@ -124,16 +114,10 @@ local function journalType(encounterID, spellID)
     end
     for _, row in ipairs(rows) do
         if row.spellID == spellID then
-            local has = {}
             for _, tag in ipairs(type(row.tags) == "table" and row.tags or {}) do
-                local t = Colors.TAG_TYPES[tag]
-                if t then
-                    has[t] = true
-                end
-            end
-            for _, key in ipairs(Reference.TYPE_ORDER) do
-                if has[key] then
-                    return key
+                local t = Reference.TAG_TYPES[tag]
+                if known(t) then
+                    return t
                 end
             end
             return nil
