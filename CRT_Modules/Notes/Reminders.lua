@@ -211,6 +211,9 @@ local listening = false
 -- Per boss, for the session: the key of the last selected row, and whether a new reminder of your own
 -- waits for its first change.
 local picked, pendingOwn = {}, {}
+-- The row the Timeline's Make a Mech Alert opened ({ enc, key }), listed even when hidden from the list,
+-- until another row or boss is picked or the tab closes.
+local opened
 -- The panel's alert: the row's key and item, the boss, and the draft with where it came from (ctx).
 local cur = {}
 local notice -- the last save's problem, shown in red until a change saves
@@ -311,7 +314,9 @@ local function buildItems(enc)
         end
         local hidden = mechHidden(enc, jrow)
         item.hiddenMark = hidden and dev or nil
-        if not hidden or dev or item.r or picked[enc] == itemKey(item) then
+        -- only a ticked reminder of yours keeps it: never the selection, nor one a change left unticked
+        local ticked = item.r ~= nil and item.r.enabled ~= false
+        if not hidden or dev or ticked or (opened and opened.enc == enc and opened.key == itemKey(item)) then
             out[#out + 1] = item
         end
     end
@@ -794,6 +799,9 @@ local function selectItem(item)
     local W = CRT.TimelineRehearsalWindow
     if W and W.EndTest and picked[enc] ~= itemKey(item) then
         W:EndTest()
+    end
+    if opened and opened.key ~= itemKey(item) then
+        opened = nil -- the row Make a Mech Alert opened, if hidden, leaves the list when it is rebuilt
     end
     picked[enc] = itemKey(item)
     local index = selectedIndex(enc)
@@ -1439,7 +1447,7 @@ local function build(f)
     L.MAX_ROWS = math.floor((L.LIST_H - 4) / L.ROW_H)
     L.PANEL_H = tabH + L.LIST_TOP - L.PAD
     selected, viewDiff, offset = nil, nil, 0
-    cur, notice, picked, pendingOwn = {}, nil, {}, {}
+    cur, notice, picked, pendingOwn, opened = {}, nil, {}, {}, nil
     allChanged()
 
     local title = f:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
@@ -1462,7 +1470,7 @@ local function build(f)
                 return -- a raid heading is not a boss
             end
             saveTyped()
-            selected, viewDiff, offset = key, nil, 0
+            selected, viewDiff, offset, opened = key, nil, 0, nil
             reveal = true
             refresh()
         end,
@@ -1599,6 +1607,7 @@ local function build(f)
     -- closed or another tab picked: typing waiting is saved, and the boxes let go
     f:SetScript("OnHide", function()
         saveTyped()
+        opened = nil -- a row Make a Mech Alert opened is listed only while that open lasts
         for _, edit in ipairs({ panel.textEdit, panel.timesEdit, panel.idEdit }) do
             edit:ClearFocus()
         end
@@ -1666,13 +1675,18 @@ CRT.NoteReminders = {
         if saveTyped then
             saveTyped() -- typing waiting to save belongs to the row it was typed on
         end
-        selected, viewDiff = encounterID, nil
+        selected, viewDiff, opened = encounterID, nil, nil
         if spellID then
             picked[encounterID] = "a:" .. tostring(spellID)
             reveal = true
-            listChanged() -- an ability hidden from the list is listed when it is asked for
         end
         CRT.NotesPage.Open("reminders")
+        if spellID then
+            -- an ability hidden from the list is listed while this open lasts (set after the tab shows,
+            -- whose OnHide ends it)
+            opened = { enc = encounterID, key = picked[encounterID] }
+            listChanged()
+        end
         refresh()
     end,
     Refresh = function()
