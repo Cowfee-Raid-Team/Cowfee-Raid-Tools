@@ -2,9 +2,10 @@ local ADDON, CRT = ...
 
 -- The pop-out note editor: a note's assignments as rows of names, changed by drag and drop, opened from Raid Notes
 -- (the Pop out editor buttons by the Note text and the Personal note). Left, the note's lines in their own order
--- (Notes/EditModel.lua); right, a palette: Search, the group's players, General, Groups and Classes. Drag a chip
--- onto a row to add it, a row's chip onto another row to move it, x removes it; with Quick fill on, click a row,
--- then click chips to append them. Raw text shows the note as it will be saved. Only names change: Save writes the
+-- (Notes/EditModel.lua); right, a palette: Search, the group's players, General, Groups and Classes. Only the
+-- assignment lines ("Label: names") and the invite list (players only) take names; the timed lines are shown
+-- dimmed under a Timers heading and never change (Alex, 2026-10-21). Drag a chip onto a row to add it, a row's
+-- chip onto another row to move it, x removes it; with Quick fill on, click a row, then click chips to add them. Raw text shows the note as it will be saved. Only names change: Save writes the
 -- raw text through Notes:UpdateRaw (Notes:SetPersonal for the personal note), so sharing works as before.
 --   Editor.Open({ id = noteId }) or Editor.Open({ personal = true })
 -- A raid note opens read-only for anyone who can't change it (Notes:CanEditRaid); a personal note never is. A drag
@@ -37,22 +38,25 @@ local TEXT = {
     changed = "This note changed since you opened it. Close the editor and open it again.",
     otherOpen = "Save or close the note editor first.",
     spell = "Spell %s",
-    invite = "Invite list (%d)",
+    invite = "Invite list (%d):",
+    timers = "Timers (from the note, not editable here)",
     discard = "Close the note editor without saving your changes?",
     discardButton = "Discard",
     helpTitle = "Note editor",
-    help = "Drag a player, role, group or class from the right onto a line to add it. Drag a name from one line to "
-        .. "another to move it. Click x to remove it. Escape cancels a drag.\n\n"
+    help = "Drag a player, role, group or class from the right onto an assignment line (\"Label: names\") to add "
+        .. "it. Drag a name from one line to another to move it. Click x to remove it. Escape cancels a drag.\n\n"
+        .. "The invite list takes players only. Removing a player leaves their slot empty, so the others keep "
+        .. "their groups.\n\n"
         .. "Quick fill: click a line, then click names on the right to add them to it.\n\n"
-        .. "Only names change. Times, phases, text and colours stay as written. Raw text shows the note as it will "
-        .. "be saved.",
+        .. "Timers are shown as the note has them and can't be changed here. Only names change. Raw text shows "
+        .. "the note as it will be saved.",
 }
 
 local L = {
     width = 900, height = 580, minWidth = 680, minHeight = 420,
     paletteW = 270, gap = 10, footerH = 28, rawH = 150, searchH = 22,
     rowGap = 4, chipH = 18, chipGap = 4, chipPad = 6, iconW = 16, removeW = 14,
-    timeW = 36, phaseW = 32, infoH = 18, labelMax = 0.35, headingH = 20, blankH = 8, sectionGap = 8,
+    timeW = 36, phaseW = 32, infoH = 18, timerAlpha = 0.5, labelMax = 0.35, headingH = 20, blankH = 8, sectionGap = 8,
     dragStart = 4, -- pixels the mouse moves with the button down before a press becomes a drag
 }
 
@@ -218,7 +222,8 @@ local function rowFrame(i)
     return f
 end
 
--- The text a timer row shows after its phase: the spell's name (or its ID until the game has it), then its text.
+-- The text a timer row shows after its phase: its names, then the spell's name (or its ID until the game has it)
+-- and its text. Shown only: a timed line is never changed here.
 local function timerInfo(row)
     local t = row.timer
     local out = t.text or ""
@@ -226,6 +231,9 @@ local function timerInfo(row)
         local info = Notes:SpellInfo(t.spellId)
         local name = info and info.name or string.format(TEXT.spell, tostring(t.spellId))
         out = (out ~= "") and (name .. " - " .. out) or name
+    end
+    if row.tags and #row.tags > 0 then
+        out = table.concat(row.tags, ", ") .. "  " .. out
     end
     return out
 end
@@ -255,6 +263,13 @@ local function drawRow(f, i, row, width)
     f.index, f.kind = i, row.kind
     f:EnableMouse(row.editable == true)
     local kind = row.kind
+    -- a timed line is shown dimmed, under the Timers heading: no drop target, nothing to drag or remove
+    f:SetAlpha(kind == "timer" and L.timerAlpha or 1)
+    if kind ~= "label" and kind ~= "invite" then
+        for _, chip in ipairs(f.chips) do
+            chip:Hide()
+        end
+    end
     local height
     if kind == "timer" then
         f.time:SetText(row.time)
@@ -281,10 +296,10 @@ local function drawRow(f, i, row, width)
         f.info:SetWidth(math.max(20, width - x - right))
         f.info:SetText(timerInfo(row))
         f.info:Show()
-        height = L.infoH + rowChips(f, i, row, 4 + L.timeW, width - 4, L.infoH) + L.rowGap
-    elseif kind == "label" then
+        height = L.infoH
+    elseif kind == "label" or kind == "invite" then
         f.label:SetWidth(0)
-        f.label:SetText(row.label .. ":")
+        f.label:SetText(kind == "invite" and string.format(TEXT.invite, #W.session:Names(i)) or (row.label .. ":"))
         local w = math.min(math.ceil(f.label:GetStringWidth() or 0), math.floor(width * L.labelMax))
         f.label:SetWidth(w)
         f.label:ClearAllPoints()
@@ -292,17 +307,12 @@ local function drawRow(f, i, row, width)
         f.label:Show()
         height = rowChips(f, i, row, 4 + w + 8, width - 4, 2) + L.rowGap
     else
-        for _, chip in ipairs(f.chips) do
-            chip:Hide()
-        end
         if kind == "blank" then
             height = L.blankH
         else
             local text = row.text or ""
             local font = "CRTFontDisableSmall"
-            if kind == "invite" then
-                text = string.format(TEXT.invite, row.count or 0)
-            elseif kind == "heading" or kind == "header" then
+            if kind == "heading" or kind == "header" then
                 font = "CRTFontNormal"
             end
             f.heading:SetFontObject(_G[font] or font)
@@ -336,7 +346,20 @@ function Editor.DrawRows()
     end
     local width = W.rowsWidth or 400
     local y = 0
+    -- the Timers heading, over the first timed line: they show what the note has, never changed here
+    if not W.timerHeading then
+        W.timerHeading = W.rowsChild:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
+    end
+    W.timerHeading:Hide()
     for i, row in ipairs(W.session.rows) do
+        if row.kind == "timer" and not W.timerHeading:IsShown() then
+            W.timerHeading:ClearAllPoints()
+            W.timerHeading:SetPoint("TOPLEFT", 4, -(y + 2))
+            W.timerHeading:SetText(TEXT.timers)
+            W.timerHeading:SetTextColor(UI.Color("muted"))
+            W.timerHeading:Show()
+            y = y + L.headingH
+        end
         local f = rowFrame(i)
         local h = drawRow(f, i, row, width)
         f:ClearAllPoints()
@@ -390,7 +413,7 @@ function Editor.DrawPalette()
             local chip = W.paletteChips[used] or makeChip(W.paletteChild)
             W.paletteChips[used] = chip
             local icon = section.key == "players" or section.key == "classes"
-            widths[#widths + 1] = fillChip(chip, entry, { token = entry.token }, false, icon)
+            widths[#widths + 1] = fillChip(chip, entry, { token = entry.token, kind = section.kind }, false, icon)
             list[#list + 1] = chip
         end
         y = y + flow(list, widths, 2, width, y) + L.sectionGap
@@ -527,7 +550,7 @@ function chipUp(chip)
         end
         changed()
     elseif p.source.token then
-        if W.session:PaletteClick(p.source.token) then
+        if W.session:PaletteClick(p.source.token, p.source.kind) then
             changed()
         end
     elseif W.session.quickFill then

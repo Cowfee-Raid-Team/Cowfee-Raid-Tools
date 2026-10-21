@@ -2,24 +2,26 @@ local ADDON, CRT = ...
 
 -- The assignments of a note as rows of names, for the pop-out note editor (Notes/EditorWindow.lua). No frames.
 -- The raw text stays the one source: an edit changes only names, and Text() gives the raw text back with every
--- other byte as written (times, phases, text, colours, unknown fields, spacing, line ends, line order, the
--- invite list). A line whose names are back to what they were is written exactly as it was.
+-- other byte as written (times, phases, text, colours, unknown fields, spacing, line ends, line order). A line
+-- whose names are back to what they were is written exactly as it was.
 --   Model.New(text, opts)       a session over the text. opts: markdown (the personal note), readOnly
 --   s.rows                      the note's lines in their own order (see rowFor)
---   s:Add(i, token)             appends a name or tag word to row i
+--   s:Add(i, token, kind)       appends a name or tag word to row i; kind is the palette chip's ("player",
+--                               "general", "group", "class"), nil for a name from a row
 --   s:Remove(i, k)              removes row i's k-th name
---   s:Move(i, k, j)             moves row i's k-th name to the end of row j
+--   s:Move(i, k, j)             moves row i's k-th name to row j
 --   s:Text(), s:Dirty()         the raw text now, and whether it differs from the text opened
---   s:SetQuickFill(on), s:Select(i), s:PaletteClick(token)   Quick fill: a click on a chip appends it to the row
---   s:BeginDrag(source), s:Drop(i), s:CancelDrag()            a drag: { token } from the palette, { row, index }
---                                                             from a row
+--   s:SetQuickFill(on), s:Select(i), s:PaletteClick(token, kind)   Quick fill: a click on a chip adds it to the row
+--   s:BeginDrag(source), s:Drop(i), s:CancelDrag()   a drag: { token, kind } from the palette, { row, index } from a row
 --   Model.Palette(roster, query)  the palette's sections: Players, General, Groups and Classes
--- Where the names are:
---   a timed line   the words of its tag: field (the last one, as the parser reads it), separated by spaces. A line
---                  with no tag: gets "tag:<names>;" after its time: and ph: fields once it has a name.
+-- Where the names are (Alex, 2026-10-21: only the text assignments and the invite list; the timed lines, cooldowns
+-- included, are left alone for now):
 --   a label line   "Label: names" (a line of free text with a colon), its words after the colon, kept with the
 --                  commas and spaces between them as written; a new name takes the line's own separator.
--- Every other line (the header, headings, text, a timer the parser could not read, the invite list) is shown as
+--   the invite     "invitelist:A,B,,C;", its comma-separated slots in group order. Only players: a removed name
+--   list           leaves its slot empty, so everyone after it keeps their group; a new one fills the first empty
+--                  slot, else goes on the end. The spaces in a slot and everything around the list stay as written.
+-- Every other line (the header, the timed lines, headings, text, a timer the parser could not read) is shown as
 -- written and never changes.
 
 local Model = {}
@@ -50,7 +52,12 @@ Model.GENERAL = {
 }
 Model.GROUPS = 8
 
-local TAG_WORD = "%S+" -- the parser's tag words (Parse.lua: words)
+-- Words that name a role, everyone or a raid group rather than a player (Notes/Engine.lua's tag words): never put
+-- in the invite list.
+local NOT_PLAYER = { all = true, everyone = true, raid = true, tank = true, tanks = true, healer = true,
+    healers = true, heal = true, dps = true, damager = true, damage = true, melee = true, melees = true,
+    ranged = true, range = true }
+
 local LABEL_WORD = "[%w\128-\255][%w\128-\255%-']*" -- a name in free text, as Render.lua reads it
 
 local function trim(s)
@@ -79,14 +86,44 @@ local function splitLines(raw)
     end
 end
 
--- Names fields ------------------------------------------------------------------------------------------------
+-- The game's classes: { label (its name), token (its file name), class }.
+local function classes()
+    local out = {}
+    local n = GetNumClasses and GetNumClasses() or 0
+    for i = 1, n do
+        local ok, name, file = pcall(GetClassInfo, i)
+        if ok and readable(name) and readable(file) and type(name) == "string" and type(file) == "string"
+            and name ~= "" and file ~= "" then
+            out[#out + 1] = { label = name, token = file, class = file }
+        end
+    end
+    return out
+end
 
--- A run of names inside a line: before .. open .. lead .. names (each after its separator) .. trail .. close .. after.
--- open and close are empty, or (a timed line with no tag: yet) the "tag:" and ";" a first name brings.
-local function field(before, value, after, pattern, defaultSep)
-    local f = { before = before, after = after, open = "", close = "", items = {}, lead = "", trail = "" }
+-- Whether a word names a role, everyone, a raid group or a class, not a player.
+local function notPlayer(word)
+    local lower = word:lower()
+    if NOT_PLAYER[lower] or lower:match("^g%d$") or lower:match("^grp%d$") or lower:match("^group%d$") then
+        return true
+    end
+    for _, c in ipairs(classes()) do
+        if lower == c.token:lower() or lower == (c.label:gsub("%s+", "")):lower() then
+            return true
+        end
+    end
+    return false
+end
+Model.NotPlayer = notPlayer
+
+-- Label fields -----------------------------------------------------------------------------------------------
+
+-- The names of a label line: before .. lead .. names (each after its separator) .. trail.
+local function labelField(line)
+    local colon = line:find(":", 1, true)
+    local value = line:sub(colon + 1)
+    local f = { kind = "label", before = line:sub(1, colon), items = {}, lead = "", trail = "" }
     local pos = 1
-    for start, word, stop in value:gmatch("()(" .. pattern .. ")()") do
+    for start, word, stop in value:gmatch("()(" .. LABEL_WORD .. ")()") do
         local sep = value:sub(pos, start - 1)
         if #f.items == 0 then
             f.lead = sep
@@ -99,68 +136,130 @@ local function field(before, value, after, pattern, defaultSep)
     else
         f.trail = value:sub(pos)
     end
-    f.sep = (f.items[2] and f.items[2].sep) or defaultSep
+    f.sep = (f.items[2] and f.items[2].sep) or ", "
     return f
 end
 
-local function fieldText(f)
-    local out = { f.lead }
-    for k, item in ipairs(f.items) do
-        out[#out + 1] = (k > 1 and item.sep or "") .. item.word
-    end
-    return f.before .. f.open .. table.concat(out) .. f.trail .. f.close .. f.after
-end
+-- Invite fields ----------------------------------------------------------------------------------------------
 
--- The "key:value" parts of a line, split at ";" as the parser splits them: { key (lower case), from, to }, from
--- and to the value's first and last byte.
-local function parts(line)
-    local out, pos = {}, 1
-    while pos <= #line + 1 do
-        local semi = line:find(";", pos, true)
-        local stop = (semi or (#line + 1)) - 1
-        local part = line:sub(pos, stop)
-        local key, colon = part:match("^%s*([^:]+)():")
-        if key then
-            out[#out + 1] = { key = trim(key):lower(), from = pos + colon, to = stop, semi = semi }
-        end
-        if not semi then
+-- The slots of an invite list: before ("invitelist:") .. slots joined by "," .. after (the closing ";" and any
+-- spaces). Each slot { lead, name, trail }; an empty slot has name "".
+local function inviteField(line)
+    local colon = line:find(":", 1, true)
+    local rest = line:sub(colon + 1)
+    local close = rest:find(";%s*$")
+    local value = close and rest:sub(1, close - 1) or rest
+    local f = { kind = "invite", before = line:sub(1, colon), after = close and rest:sub(close) or "", slots = {} }
+    local pos = 1
+    while true do
+        local comma = value:find(",", pos, true)
+        local entry = value:sub(pos, (comma or 0) - 1)
+        local lead, name, trail = entry:match("^(%s*)(.-)(%s*)$")
+        f.slots[#f.slots + 1] = { lead = lead, name = name, trail = trail }
+        if not comma then
             break
         end
-        pos = semi + 1
+        pos = comma + 1
+    end
+    return f
+end
+
+-- Fields, either kind -----------------------------------------------------------------------------------------
+
+local function names(f)
+    local out = {}
+    if f.kind == "invite" then
+        for _, slot in ipairs(f.slots) do
+            if slot.name ~= "" then
+                out[#out + 1] = slot.name
+            end
+        end
+    else
+        for k, item in ipairs(f.items) do
+            out[k] = item.word
+        end
     end
     return out
 end
 
--- The names of a timed line: its last tag: field, or, with none, where one goes (after time: and ph:).
-local function tagField(line)
-    local list = parts(line)
-    local tag, anchor
-    for _, p in ipairs(list) do
-        if p.key == "tag" then
-            tag = p
-        elseif p.key == "time" or p.key == "ph" then
-            anchor = anchor or p
-            if p.from > anchor.from then
-                anchor = p
-            end
+local function has(f, token)
+    local lower = token:lower()
+    for _, name in ipairs(names(f)) do
+        if name:lower() == lower then
+            return true
         end
     end
-    if tag then
-        return field(line:sub(1, tag.from - 1), line:sub(tag.from, tag.to), line:sub(tag.to + 1), TAG_WORD, " ")
-    end
-    local at = anchor and (anchor.semi or #line) or #line
-    local f = field(line:sub(1, at), "", line:sub(at + 1), TAG_WORD, " ")
-    -- after a field that ends the line with no ";": ";tag:names"
-    local closed = anchor and anchor.semi or (line:sub(-1) == ";") or line == ""
-    f.open, f.close = closed and "tag:" or ";tag:", closed and ";" or ""
-    f.bare = true -- open and close only once it has a name
-    return f
+    return false
 end
 
--- The names of a label line: the words after its first colon.
-local function labelField(line)
-    local colon = line:find(":", 1, true)
-    return field(line:sub(1, colon), line:sub(colon + 1), "", LABEL_WORD, ", ")
+local function add(f, token)
+    if f.kind == "invite" then
+        for _, slot in ipairs(f.slots) do
+            if slot.name == "" then
+                slot.name = token
+                return
+            end
+        end
+        f.slots[#f.slots + 1] = { lead = "", name = token, trail = "" }
+        return
+    end
+    if #f.items == 0 and f.lead == "" then
+        f.lead = " " -- "Kicks:" becomes "Kicks: Name"
+    end
+    f.items[#f.items + 1] = { word = token, sep = f.sep }
+end
+
+-- Removes the k-th name: a label's with the separator before it (the first name: the one after it goes); an
+-- invite list's leaves its slot empty.
+local function remove(f, k)
+    if f.kind == "invite" then
+        local n = 0
+        for _, slot in ipairs(f.slots) do
+            if slot.name ~= "" then
+                n = n + 1
+                if n == k then
+                    slot.name = ""
+                    return true
+                end
+            end
+        end
+        return false
+    end
+    if not f.items[k] then
+        return false
+    end
+    table.remove(f.items, k)
+    if k == 1 and f.items[1] then
+        f.items[1].sep = ""
+    end
+    return true
+end
+
+-- The field's names, slot by slot (an invite list's empty slots as ""), to tell whether they changed.
+local function shape(f)
+    if f.kind ~= "invite" then
+        return names(f)
+    end
+    local out = {}
+    for i, slot in ipairs(f.slots) do
+        out[i] = slot.name
+    end
+    return out
+end
+
+local function fieldText(f)
+    if f.kind == "invite" then
+        local out = {}
+        for i, slot in ipairs(f.slots) do
+            out[i] = slot.lead .. slot.name .. slot.trail
+        end
+        return f.before .. table.concat(out, ",") .. f.after
+    end
+    local out = { f.lead }
+    for k, item in ipairs(f.items) do
+        out[#out + 1] = (k > 1 and item.sep or "") .. item.word
+    end
+    return f.before .. table.concat(out) .. f.trail
 end
 
 -- Rows ----------------------------------------------------------------------------------------------------------
@@ -199,41 +298,32 @@ local function freeRow(row, line, markdown)
     end
 end
 
--- One row per line of the text: { kind, line (its number), raw (as written), editable, names (current) } and, by
--- kind: timer { time, ph, timer (the parsed timer), display }, label { label }, heading / text / unread { text }.
--- Kinds: header, timer, unread (starts like a timer, no time the parser reads), invite, label, heading, text, blank.
+-- One row per line of the text: { kind, line (its number), raw (as written), editable } and, by kind: timer { time,
+-- ph, timer (the parsed timer), tags (its names, shown only), display }, label { label }, heading / text / unread
+-- { text }. Kinds: header, timer, unread (starts like a timer, no time the parser reads), invite, label, heading,
+-- text, blank. Only label and invite rows take names.
 local function rowFor(lineNo, raw, timer, markdown)
     local row = { line = lineNo, raw = raw }
     local lower = trim(raw):lower()
     if timer then
-        row.kind, row.editable, row.timer = "timer", true, timer
+        row.kind, row.timer, row.tags = "timer", timer, timer.tags or {}
         local t = math.max(0, timer.time)
         row.time = string.format("%d:%02d", math.floor(t / 60), math.floor(t % 60))
         row.ph = num(timer.ph or 1)
         local display = Parser.Field(raw, "displaytype")
         row.display = (display and display ~= "") and display or nil
-        row.field = tagField(raw)
     elseif lower:find("^encounterid:") then
         row.kind, row.text = "header", trim(raw)
     elseif lower:find("^invitelist:") then
-        local list = trim(raw):match("^[^:]+:(.*)$") or ""
-        local n = 0
-        for name in list:gsub(";%s*$", ""):gmatch("[^,]+") do
-            if trim(name) ~= "" then
-                n = n + 1
-            end
-        end
-        row.kind, row.count = "invite", n
+        row.kind, row.editable = "invite", true
+        row.field = inviteField(raw)
     elseif lower:find("^time:") or (lower:find("^ph:%s*[%d%.]+%s*;") and lower:find(";%s*time:")) then
         row.kind, row.text = "unread", trim(raw)
     else
         freeRow(row, raw, markdown)
     end
     if row.field then
-        row.original = {}
-        for k, item in ipairs(row.field.items) do
-            row.original[k] = item.word
-        end
+        row.original = shape(row.field)
     end
     return row
 end
@@ -258,14 +348,10 @@ function Model.New(text, opts)
     return s
 end
 
--- Row i's names now (a copy).
+-- Row i's names now (a copy; an invite list's without its empty slots).
 function Session:Names(i)
     local row = self.rows[i]
-    local out = {}
-    for k, item in ipairs(row and row.field and row.field.items or {}) do
-        out[k] = item.word
-    end
-    return out
+    return (row and row.field) and names(row.field) or {}
 end
 
 -- Whether row i takes names.
@@ -280,18 +366,9 @@ local function validToken(token)
 end
 Model.ValidToken = validToken
 
-local function has(f, token)
-    local lower = token:lower()
-    for _, item in ipairs(f.items) do
-        if item.word:lower() == lower then
-            return true
-        end
-    end
-    return false
-end
-
--- Appends a name to row i. False when the row takes no names, the token isn't one word, or the row has it already.
-function Session:Add(i, token)
+-- Adds a name to row i. False when the row takes no names, the token isn't one word, the row has it already, or
+-- (the invite list) it is not a player.
+function Session:Add(i, token, kind)
     if not (self:Editable(i) and validToken(token)) then
         return false
     end
@@ -299,49 +376,40 @@ function Session:Add(i, token)
     if has(f, token) then
         return false
     end
-    if #f.items == 0 and f.lead == "" and self.rows[i].kind == "label" then
-        f.lead = " " -- "Kicks:" becomes "Kicks: Name"
+    if f.kind == "invite" and ((kind ~= nil and kind ~= "player") or notPlayer(token)) then
+        return false
     end
-    f.items[#f.items + 1] = { word = token, sep = f.sep }
+    add(f, token)
     return true
 end
 
--- Removes row i's k-th name, with the separator before it (the first name: the one after it goes).
+-- Removes row i's k-th name.
 function Session:Remove(i, k)
     if not self:Editable(i) then
         return false
     end
-    local items = self.rows[i].field.items
-    if not items[k] then
-        return false
-    end
-    table.remove(items, k)
-    if k == 1 and items[1] then
-        items[1].sep = ""
-    end
-    return true
+    return remove(self.rows[i].field, k)
 end
 
--- Moves row i's k-th name to the end of row j. Nothing changes when j can't take it.
+-- Moves row i's k-th name to row j. Nothing changes when j can't take it.
 function Session:Move(i, k, j)
     if i == j or not (self:Editable(i) and self:Editable(j)) then
         return false
     end
-    local item = self.rows[i].field.items[k]
-    if not item or has(self.rows[j].field, item.word) then
+    local word = self:Names(i)[k]
+    if not word or not self:Add(j, word) then
         return false
     end
-    self:Remove(i, k)
-    return self:Add(j, item.word)
+    return self:Remove(i, k)
 end
 
 local function changed(row)
-    local items = row.field.items
-    if #items ~= #row.original then
+    local now = shape(row.field)
+    if #now ~= #row.original then
         return true
     end
-    for k, item in ipairs(items) do
-        if item.word ~= row.original[k] then
+    for k, name in ipairs(now) do
+        if name ~= row.original[k] then
             return true
         end
     end
@@ -354,11 +422,7 @@ function Session:LineText(i)
     if not (row and row.field and changed(row)) then
         return row and row.raw or nil
     end
-    local f = row.field
-    if f.bare and #f.items == 0 then
-        return row.raw
-    end
-    return fieldText(f)
+    return fieldText(row.field)
 end
 
 function Session:Text()
@@ -388,28 +452,27 @@ function Session:Select(i)
     return self.selected
 end
 
--- A click on a palette chip: with Quick fill on and a row selected, the chip's token is appended to it.
-function Session:PaletteClick(token)
+-- A click on a palette chip: with Quick fill on and a row selected, the chip's token is added to it.
+function Session:PaletteClick(token, kind)
     if self.quickFill and self.selected then
-        return self:Add(self.selected, token)
+        return self:Add(self.selected, token, kind)
     end
     return false
 end
 
 -- Drag and drop -------------------------------------------------------------------------------------------------
 
--- source: { token = "Name" } (a palette chip) or { row = i, index = k } (a row's chip). Nothing in read-only.
+-- source: { token = "Name", kind } (a palette chip) or { row = i, index = k } (a row's chip). Nothing in read-only.
 function Session:BeginDrag(source)
+    self.drag = nil
     if self.readOnly or type(source) ~= "table" then
-        self.drag = nil
         return false
     end
-    if source.row and not (self:Editable(source.row) and self.rows[source.row].field.items[source.index]) then
-        self.drag = nil
-        return false
-    end
-    if not source.row and not validToken(source.token) then
-        self.drag = nil
+    if source.row then
+        if not (self:Editable(source.row) and self:Names(source.row)[source.index]) then
+            return false
+        end
+    elseif not validToken(source.token) then
         return false
     end
     self.drag = source
@@ -426,7 +489,7 @@ function Session:Drop(i)
     if d.row then
         return self:Move(d.row, d.index, i)
     end
-    return self:Add(i, d.token)
+    return self:Add(i, d.token, d.kind)
 end
 
 function Session:CancelDrag()
@@ -456,21 +519,10 @@ local function matches(entry, query)
     return entry.label:lower():find(q, 1, true) ~= nil or entry.token:lower():find(q, 1, true) ~= nil
 end
 
--- The game's classes: { label (its name), token (its file name), class }.
-local function classes()
-    local out = {}
-    local n = GetNumClasses and GetNumClasses() or 0
-    for i = 1, n do
-        local ok, name, file = pcall(GetClassInfo, i)
-        if ok and readable(name) and readable(file) and type(name) == "string" and type(file) == "string"
-            and name ~= "" and file ~= "" then
-            out[#out + 1] = { label = name, token = file, class = file }
-        end
-    end
-    return out
-end
+-- The chip kind of each section, which a drop on the invite list checks (only "player" goes there).
+local SECTION_KIND = { players = "player", general = "general", groups = "group", classes = "class" }
 
--- roster: Groups:ReadRoster()'s { key, subgroup, class, role } (nil: none). Returns { { key, title, entries } }:
+-- roster: Groups:ReadRoster()'s { key, subgroup, class, role } (nil: none). Returns { { key, kind, entries } }:
 -- players (by role: tanks, healers, damage, then unknown; each by name), general, groups and classes, each entry
 -- { label, token, class, role }. query keeps the entries whose label or token holds it (any case).
 function Model.Palette(roster, query)
@@ -503,6 +555,7 @@ function Model.Palette(roster, query)
         { key = "classes", entries = classes() },
     }
     for _, section in ipairs(sections) do
+        section.kind = SECTION_KIND[section.key]
         local kept = {}
         for _, e in ipairs(section.entries) do
             if matches(e, query) then
