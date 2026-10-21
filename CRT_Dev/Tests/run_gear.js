@@ -275,6 +275,82 @@ eq(Gear.ShowTooltip(owner, {}), false, "tooltip: nothing to show")
 eq(tip.owner, nil, "tooltip: not opened")
 eq(Gear.ShowTooltip(owner, nil), false, "tooltip: nil piece")
 
+-- 8. Replace-all Remember and OfAll
+CLOCK = CLOCK + 60
+Gear:Remember("Rune-Sargeras", { { slot = 1, id = 11, ilvl = 280 }, { slot = 11, id = 12, ilvl = 281 }, { slot = 16, id = 13 } }, "inspect")
+local all = Gear:OfAll("Rune-Sargeras")
+eq(#all, 3, "of all: every remembered piece")
+eq(all[1].slot .. "," .. all[2].slot .. "," .. all[3].slot, "1,11,16", "of all: in slot order")
+all[1].id = 99
+eq(Gear:OfAll("Rune-Sargeras")[1].id, 11, "of all: copies")
+eq(#Gear:OfAll("Nobody-Sargeras"), 0, "of all: no one is an empty list")
+check(Gear:Remember("Rune-Sargeras", { { slot = 1, id = 21, ilvl = 290 } }, "gearcheck", true), "replace: stored")
+eq(#Gear:OfAll("Rune-Sargeras"), 1, "replace: the slots not sent are gone (an emptied slot)")
+eq(Gear:Of("Rune-Sargeras", 11), nil, "replace: the old ring is forgotten")
+eq(Gear:Of("Rune-Sargeras", 1).id, 21, "replace: the new head")
+eq(select(2, Gear:When("Rune-Sargeras")), "gearcheck", "replace: the source")
+eq(Gear:Remember("Rune-Sargeras", { { slot = 4, id = 1 } }, "x", true), false, "replace: nothing valid keeps what was there")
+eq(Gear:Of("Rune-Sargeras", 1).id, 21, "replace: still the head")
+
+-- 9. Parts: the enchant and gems in an item string
+local pt = Gear.Parts("item:600:7364:213746::213747:::90:577")
+eq(pt and pt.id, 600, "parts: the item ID")
+eq(pt and pt.enchant, 7364, "parts: the enchant ID")
+eq(pt and pt.gems[1], 213746, "parts: the first gem")
+eq(pt and pt.gems[2], nil, "parts: an empty socket field")
+eq(pt and pt.gems[3], 213747, "parts: the third gem")
+eq(pt and pt.gemCount, 2, "parts: two gems")
+local bare = Gear.Parts("item:7")
+check(bare and bare.enchant == nil and bare.gemCount == 0, "parts: an item with nothing in it")
+eq(Gear.Parts("|cffa335ee|Hitem:8:55|h[x]|h|r").enchant, 55, "parts: from a link")
+eq(Gear.Parts(nil), nil, "parts: nil")
+eq(Gear.Parts("spell:5"), nil, "parts: not an item")
+eq(Gear.Parts("item:9:0:0").enchant, nil, "parts: a zero is no enchant")
+
+-- 10. Sockets (C_Item.GetItemNumSockets, as Blizzard's own inspect frame reads them)
+C_Item.GetItemNumSockets = function(s) if s == "item:600:1" then return 2 elseif s == "item:601" then error("boom") end return 0 end
+eq(Gear.Sockets("item:600:1"), 2, "sockets: the count")
+eq(Gear.Sockets("item:602"), 0, "sockets: none")
+eq(Gear.Sockets("item:601"), nil, "sockets: a failing call is unknown")
+eq(Gear.Sockets(nil), nil, "sockets: no item")
+issecretvalue = function(v) return v == 7777 end
+C_Item.GetItemNumSockets = function() return 7777 end
+eq(Gear.Sockets("item:600"), nil, "sockets: a secret count is unknown")
+issecretvalue = nil
+C_Item.GetItemNumSockets = nil
+eq(Gear.Sockets("item:600"), nil, "sockets: no game call is unknown")
+
+-- 11. Weapons and the average item level
+check(Gear.IsWeapon("INVTYPE_WEAPON") and Gear.IsWeapon("INVTYPE_2HWEAPON") and Gear.IsWeapon("INVTYPE_WEAPONOFFHAND"), "weapons: one- and two-handers")
+check(not Gear.IsWeapon("INVTYPE_SHIELD") and not Gear.IsWeapon("INVTYPE_HOLDABLE") and not Gear.IsWeapon(nil), "weapons: not a shield or an off-hand item")
+local set = {}
+for i, s in ipairs(Gear.SLOTS) do set[i] = { slot = s.id, id = 1000 + i, ilvl = 280 } end
+eq(Gear.AverageLevel(set), 280, "average: every slot at 280")
+set[15] = { slot = 16, id = 502, itemString = "item:502", ilvl = 296 } -- a two-hander
+table.remove(set, 16) -- and no off hand
+eq(Gear.AverageLevel(set), 282, "average: a two-hander with no off hand counts twice")
+table.remove(set, 1)
+eq(Gear.AverageLevel(set), 264.5, "average: an empty slot counts 0")
+eq(Gear.AverageLevel({}), nil, "average: no pieces")
+eq(Gear.AverageLevel({ { slot = 1, id = 1 } }), nil, "average: no item level read")
+
+-- 12. ReadUnit: another player's gear while inspected (the same reads as yours, any unit)
+local THEIRS = { [1] = "|cffa335ee|Hitem:800:7364::::::::90:577|h[Their Hat]|h|r", [11] = "|cffa335ee|Hitem:801|h[Ring]|h|r" }
+ILVL[THEIRS[1]], ILVL[THEIRS[11]] = 285, 279
+GetInventoryItemLink = function(unit, slot) if unit == "raid3" then return THEIRS[slot] end return LINKS[slot] end
+GetInventoryItemID = function(unit, slot)
+  if unit == "raid3" then if slot == 12 then return 802 end local l = THEIRS[slot] return l and tonumber(l:match("item:(%d+)")) end
+  local l = LINKS[slot] return l and tonumber(l:match("item:(%d+)"))
+end
+local got, missing = Gear:ReadUnit("raid3")
+eq(#got, 2, "read unit: the two linked pieces")
+eq(got[1].itemString, "item:800:7364::::::::90:577", "read unit: the exact item string")
+eq(got[1].ilvl, 285, "read unit: its item level")
+eq(got[2].slot, 11, "read unit: in slot order")
+eq(missing, 1, "read unit: a slot with an item but no link yet is counted as missing")
+eq(Gear:Mine(1) and Gear:Mine(1).id or nil, nil, "read unit: your own cache is untouched")
+eq(#Gear:ReadUnit(nil), 0, "read unit: no unit")
+
 print(string.format("%d passed, %d failed", passes, fails))
 if fails > 0 then error("failures") end
 `;
