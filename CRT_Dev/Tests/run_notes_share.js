@@ -173,7 +173,12 @@ assert(editor:IsEnabled() and save:IsEnabled() and not lockHelp:IsShown(), "solo
 -- a raid member: read-only, greyed, the (?) gives the reason; a click anyway is refused
 inRaid, leader = true, false
 redraw()
-assert(not editor:IsEnabled() and not save:IsEnabled(), "member: text read-only and Save greyed")
+assert(not save:IsEnabled(), "member: Save greyed")
+-- the raw text stays selectable but read-only: typing is undone at once (Notes/Render.lua)
+local loadedText = editor:GetText()
+editor:SetText(loadedText .. "typed")
+editor.OnTextChanged(editor, true)
+assert(editor:GetText() == loadedText, "member: typing in the raw text is undone")
 assert(lockHelp:IsShown() and helpText() == REASON, "member: (?) with the reason: " .. tostring(helpText()))
 local before = Notes:Get(id).raw
 editor:SetText(before .. "time:90;text:Mine;\\n")
@@ -189,7 +194,7 @@ assert(Notes:Get(id).raw:find("text:Mine;", 1, true) and lastPrint() == "Saved."
 -- demoted again: the next redraw locks it
 leader = false
 redraw()
-assert(not editor:IsEnabled() and not save:IsEnabled() and lockHelp:IsShown(), "demoted: locked on redraw")
+assert(not save:IsEnabled() and lockHelp:IsShown(), "demoted: locked on redraw")
 inRaid = false
 redraw()
 print("ok raid notes: only the leader or an assistant saves the note text")

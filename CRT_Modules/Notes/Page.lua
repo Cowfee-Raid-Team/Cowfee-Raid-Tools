@@ -23,7 +23,7 @@ local TEXT = {
     otherDifficulty = "Other",
     kindHelp = "Shared: the raid's notes, one per guild. A share from your guild replaces its note for that boss; one from another guild or a pickup group is kept apart. The newest share is the note in use and runs on the pull.\n\nPersonal: your own lines for a boss, kept on this computer. They run on every pull alongside the shared note, and a share never touches them.",
     noteText = "Note text",
-    renderHelp = "The note shows as it reads in the game. Click it to edit the raw text, and Save to see it rendered again. Unsaved changes stay in the raw text.\n\nThe personal note works the same way.",
+    renderHelp = "The note shows as it reads in the game. Click it to see the raw text. Edit it and Save to see it rendered again. Unsaved changes stay in the raw text.\n\nIf you can't change the raid note, the raw text is read-only. Press Escape to go back.\n\nThe personal note works the same way.",
     saveText = "Save text changes",
     saved = "Saved.",
     sendTo = "Send to",
@@ -576,7 +576,7 @@ local function buildNotes(pf)
     end)
     scroll:SetScrollChild(editor)
     clickToType(box, scroll, editor)
-    -- the note rendered over the box; a click shows the raw text, when you may change it
+    -- the note rendered over the box; a click shows the raw text, read-only when you may not change it
     local Render = CRT.NoteRender
     local textView = Render.View(box, {
         key = "Text",
@@ -609,8 +609,9 @@ local function buildNotes(pf)
         end
     end)
 
-    -- Only the raid leader or an assistant changes the raid note (P4): for anyone else the text is
-    -- read-only and Save is greyed, with a (?) saying why. Set again at every redraw and show, so a
+    -- Only the raid leader or an assistant changes the raid note (P4): for anyone else the raw text is
+    -- read-only (it can be selected and copied, typing is undone: Render.Bind) and Save is greyed, with a
+    -- (?) saying why. Set again at every redraw and show, so a
     -- promotion unlocks it. Import, Use this note and Delete stay: they choose which note you hold.
     -- The (?) on how the rendered note works comes first, the lock's (?) after it.
     local renderHelp = UI.Help(pf, TEXT.noteText, TEXT.renderHelp)
@@ -622,7 +623,6 @@ local function buildNotes(pf)
     lockHelp:SetPoint("LEFT", renderHelp, "RIGHT", 4, 0)
     lockHelp.refresh = function()
         local allowed = Notes:CanEditRaid()
-        editor:SetEnabled(allowed and true or false)
         save:SetEnabled(allowed and true or false)
         lockHelp:SetShown(not allowed)
     end
