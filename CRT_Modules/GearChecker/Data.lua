@@ -11,14 +11,22 @@ local ADDON, CRT = ...
 --   GC:Roster()                  the group: { name, unit, class, me }, you first
 --   GC:Row(member), GC:Rows(filter)   a member's checked gear; the rows a filter shows
 --   GC.SlotLine, GC.WhisperLines, GC.RaidLines, GC.ChatBoxText   a row's issues as chat text
+--   GC.IssueLines(row)           the issues badge's tooltip: a line per issue, red or orange
+--   GC.SendTargets(row), GC.Send(row, target)   where a row's issues can go (the menu), and sending them
 --   GC.Say(lines, chatType, target)   sends lines to chat, only from a click; prints what can't go
+--   GC.ToChatBox(text), GC.OpenChat(text)   text into the chat box, to edit and send
 --   GC:OnChange(fn), GC:Fire()   the page redraws when gear arrives
 --
--- Game calls (warcraft.wiki.gg and Blizzard's UI source, live, read 2026-10-20): UnitFullName, UnitClass,
--- UnitIsUnit, IsInRaid, GetNumGroupMembers, GetNumSubgroupMembers; C_Item.GetItemInfo(item) (its second
--- return is the link, once the item is loaded) and C_Item.RequestLoadItemDataByID; C_ChatInfo.SendChatMessage
--- (message, chatType, languageID, target), else the global SendChatMessage, and
--- C_ChatInfo.InChatMessagingLockdown. Each in pcall; secret values are never compared.
+-- Game calls (warcraft.wiki.gg and Blizzard's UI source, live, read 2026-10-20 and 2026-10-21): UnitFullName,
+-- UnitClass, UnitIsUnit, IsInRaid, GetNumGroupMembers, GetNumSubgroupMembers; C_Item.GetItemInfo(item) (its
+-- second return is the link, once the item is loaded) and C_Item.RequestLoadItemDataByID;
+-- C_ChatInfo.SendChatMessage(message, chatType, languageID, target), else the global SendChatMessage (SAY and
+-- YELL need a hardware event in the open world, CHANNEL always), and C_ChatInfo.InChatMessagingLockdown;
+-- IsInInstance; IsInGuild, C_GuildInfo.CanSpeakInGuildChat, GetGuildInfo("player") (rank index from 0) and
+-- C_GuildInfo.GuildControlGetRankFlags(rankOrder from 1) (index 4, Officerchat Speak); ChatFrameUtil.OpenChat,
+-- .GetActiveWindow and .InsertLink (the older ChatFrame_OpenChat, ChatEdit_GetActiveWindow and
+-- ChatEdit_InsertLink as fallbacks); the chat box reads a leading "/s " as Say when Enter sends it
+-- (ChatFrameEditBox's SendText parses it). Each in pcall; secret values are never compared.
 
 local Gear = CRT.Gear
 local GC = { listeners = {} }
@@ -38,7 +46,7 @@ GC.TEXT = {
     missingEnchant = "missing enchant",
     missingGem = "missing gem",
     missingGems = "missing %d gems",
-    low = "low item level",
+    low = "%d item levels under average",
     line = "[%s] %s %s %s - %s", -- name, slot, item link, item level, what is wrong
     whisper = "Gear check: %s %s %s - %s", -- slot, item link, item level, what is wrong
     more = "(+%d more)",
@@ -139,13 +147,14 @@ function GC.CheckSlot(slot, piece, rules, avg)
     local ilvl = type(piece.ilvl) == "number" and not secret(piece.ilvl) and piece.ilvl or nil
     if ilvl and avg and ilvl <= avg - GC.LOW_ILVL then
         r.low = true
+        r.under = math.floor(avg - ilvl) -- whole item levels under the average
         r.issues = r.issues + 1
     end
     return r
 end
 
--- What is wrong with a slot, in words ("missing enchant, missing 2 gems"), or nil.
-function GC.Problems(r)
+-- A slot's missing enchant and gems in words ("missing enchant, missing 2 gems"), or nil.
+local function missingWords(r)
     local words = {}
     if r.missingEnchant then
         words[#words + 1] = GC.TEXT.missingEnchant
@@ -155,10 +164,20 @@ function GC.Problems(r)
     elseif r.emptySockets > 1 then
         words[#words + 1] = string.format(GC.TEXT.missingGems, r.emptySockets)
     end
-    if r.low then
-        words[#words + 1] = GC.TEXT.low
-    end
     return #words > 0 and table.concat(words, ", ") or nil
+end
+
+local function lowWords(r)
+    return r.low and string.format(GC.TEXT.low, r.under or GC.LOW_ILVL) or nil
+end
+
+-- What is wrong with a slot, in words ("missing enchant, 14 item levels under average"), or nil.
+function GC.Problems(r)
+    local missing, low = missingWords(r), lowWords(r)
+    if missing and low then
+        return missing .. ", " .. low
+    end
+    return missing or low
 end
 
 -- The group ------------------------------------------------------------------------------------------------
@@ -346,22 +365,75 @@ function GC.RaidLines(row)
     end)
 end
 
+-- The issues badge's tooltip: { text, kind } per issue, "Head [item] 285 - missing enchant" ("bad", red) or
+-- "... - 14 item levels under average" ("low", orange); a slot with both has a line of each. {} with no
+-- issue, nil for a player not seen yet.
+function GC.IssueLines(row)
+    if not row.seen then
+        return nil
+    end
+    local out = {}
+    for _, s in ipairs(Gear.SLOTS) do
+        local r = row.slots[s.id]
+        if r and r.piece then
+            local head = string.format("%s %s %s - ", slotName(r.slot), GC.ItemLink(r.piece), tostring(r.piece.ilvl or "?"))
+            local missing, low = missingWords(r), lowWords(r)
+            if missing then
+                out[#out + 1] = { text = head .. missing, kind = "bad" }
+            end
+            if low then
+                out[#out + 1] = { text = head .. low, kind = "low" }
+            end
+        end
+    end
+    return out
+end
+
 GC.CHAT_MAX = 255 -- bytes a chat message may hold
 
--- One line for the chat box, to edit before sending: the slot lines joined, as many as fit in a message,
--- then how many were left out.
-function GC.ChatBoxText(row)
-    local lines = GC.RaidLines(row)
+-- Lines joined into one message of max bytes or less (GC.CHAT_MAX by default): as many as fit, then how
+-- many were left out.
+function GC.JoinLines(lines, max)
+    max = max or GC.CHAT_MAX
     local text = ""
     for i, line in ipairs(lines) do
         local candidate = text == "" and line or (text .. " " .. line)
         local tail = i < #lines and (" " .. string.format(GC.TEXT.more, #lines - i)) or ""
-        if #candidate + #tail > GC.CHAT_MAX and text ~= "" then
+        if #candidate + #tail > max and text ~= "" then
             return text .. " " .. string.format(GC.TEXT.more, #lines - i + 1)
         end
         text = candidate
     end
     return text
+end
+
+-- One line for the chat box, to edit before sending: the slot lines joined.
+function GC.ChatBoxText(row)
+    return GC.JoinLines(GC.RaidLines(row))
+end
+
+-- The chat box ------------------------------------------------------------------------------------------------
+
+-- Text into a new chat box, for the player to edit and send.
+function GC.OpenChat(text)
+    local open = (ChatFrameUtil and ChatFrameUtil.OpenChat) or ChatFrame_OpenChat
+    return open and pcall(open, text) or false
+end
+
+-- Text into the chat box: into the one being typed in, else a new one opened with it (as the game's own
+-- ChatFrameUtil.LinkItem does).
+function GC.ToChatBox(text)
+    if not text or text == "" then
+        return false
+    end
+    local util = ChatFrameUtil
+    local getActive = (util and util.GetActiveWindow) or ChatEdit_GetActiveWindow
+    local insert = (util and util.InsertLink) or ChatEdit_InsertLink
+    local okA, active = pcall(getActive or function() end)
+    if okA and active and insert then
+        return pcall(insert, text)
+    end
+    return GC.OpenChat(text)
 end
 
 -- Chat ------------------------------------------------------------------------------------------------------------
@@ -411,8 +483,44 @@ local function sendLine(line, chatType, target)
     return ok and true or false
 end
 
--- Returns how many lines went or are on their way (the first goes now, the rest CHAT_GAP apart).
+-- Chat types the game sends only from a key press or click: Say and Yell in the open world, a channel
+-- everywhere (the SendChatMessage page's HW column). "Open world" is anything but these instances; a housing
+-- neighborhood or house, or a place the game won't say, counts as the world.
+GC.HARDWARE = { SAY = "world", YELL = "world", CHANNEL = "always" }
+GC.FREE_INSTANCES = { party = true, raid = true, pvp = true, arena = true, scenario = true }
+GC.SLASH = { SAY = SLASH_SAY1 or "/s", YELL = SLASH_YELL1 or "/y" } -- the game's own, in the client's language
+
+function GC.NeedsHardware(chatType)
+    local rule = GC.HARDWARE[chatType]
+    if rule == "always" then
+        return true
+    elseif rule ~= "world" then
+        return false
+    end
+    if not IsInInstance then
+        return true
+    end
+    local ok, inside, kind = pcall(IsInInstance)
+    if not ok or secret(inside) or secret(kind) then
+        return true
+    end
+    return not (inside and GC.FREE_INSTANCES[kind] == true)
+end
+
+-- Returns how many lines went or are on their way (the first goes now, the rest CHAT_GAP apart). No lines
+-- send nothing. A chat type that needs a key press here can't take the spaced lines (only the first would
+-- come from the click), so every line goes, joined, into a new chat box after its slash command, for the
+-- player to send with Enter: then it returns 0, "chatbox".
 function GC.Say(lines, chatType, target)
+    if #lines == 0 then
+        return 0
+    end
+    if GC.NeedsHardware(chatType) then
+        local slash = GC.SLASH[chatType]
+        local prefix = slash and (slash .. " ") or ""
+        GC.OpenChat(prefix .. GC.JoinLines(lines, GC.CHAT_MAX - #prefix))
+        return 0, "chatbox"
+    end
     if chatLocked() then
         showError(GC.TEXT.locked)
         for _, line in ipairs(lines) do
@@ -445,4 +553,58 @@ function GC.GroupChat()
         return "PARTY"
     end
     return nil
+end
+
+-- Whether you can speak in guild chat: in a guild, and your rank may. Anything unreadable is no.
+function GC.CanGuild()
+    if not (IsInGuild and IsInGuild() and C_GuildInfo and C_GuildInfo.CanSpeakInGuildChat) then
+        return false
+    end
+    local ok, can = pcall(C_GuildInfo.CanSpeakInGuildChat)
+    return ok and can == true
+end
+
+-- Whether you can speak in officer chat: your rank's Officerchat Speak flag (index 4 of
+-- C_GuildInfo.GuildControlGetRankFlags, whose ranks count from 1; GetGuildInfo's index counts from 0).
+-- Anything unreadable is no.
+GC.OFFICER_SPEAK = 4
+
+function GC.CanOfficer()
+    if not (IsInGuild and IsInGuild() and GetGuildInfo and C_GuildInfo and C_GuildInfo.GuildControlGetRankFlags) then
+        return false
+    end
+    local okR, _, _, rank = pcall(GetGuildInfo, "player")
+    if not okR or secret(rank) or type(rank) ~= "number" then
+        return false
+    end
+    local ok, flags = pcall(C_GuildInfo.GuildControlGetRankFlags, rank + 1)
+    return ok and type(flags) == "table" and flags[GC.OFFICER_SPEAK] == true
+end
+
+-- Where a row's issues can go, in the menu's order: the group channel (in a group), Guild and Officer (when
+-- you may speak there), a whisper to the player (not on your own row), Say. Each { chatType, target }.
+function GC.SendTargets(row)
+    local out = {}
+    local group = GC.GroupChat()
+    if group then
+        out[#out + 1] = { chatType = group }
+    end
+    if GC.CanGuild() then
+        out[#out + 1] = { chatType = "GUILD" }
+    end
+    if GC.CanOfficer() then
+        out[#out + 1] = { chatType = "OFFICER" }
+    end
+    if not row.me then
+        out[#out + 1] = { chatType = "WHISPER", target = row.name }
+    end
+    out[#out + 1] = { chatType = "SAY" }
+    return out
+end
+
+-- Sends a row's issues to a target (GC.SendTargets) through GC.Say: the player's own lines in a whisper,
+-- the named lines anywhere else.
+function GC.Send(row, t)
+    local lines = t.chatType == "WHISPER" and GC.WhisperLines(row) or GC.RaidLines(row)
+    return GC.Say(lines, t.chatType, t.target)
 end
