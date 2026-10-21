@@ -173,6 +173,18 @@ eq(quick.missingGems, 1, "Quick: one gem")
 eq(quick.class, "ROGUE", "Quick: the class from the group")
 eq(math.floor(quick.avg * 16 + 0.5), 578, "Quick: the average from the pieces")
 
+-- 3b. Which cells a filter shows: every cell under Everyone, only the cells with that kind of issue otherwise
+local function rowNamed(n) for _, row in ipairs(GC:Rows("all")) do if row.name == n .. "-Sargeras" then return row end end end
+local qr, ar = rowNamed("Quick"), rowNamed("Arrow")
+check(GC.CellShows(qr.slots[1], "all") and GC.CellShows(qr.slots[11], "all") and GC.CellShows(qr.slots[3], "all"), "everyone: every cell, empty slots too")
+check(not GC.CellShows(qr.slots[1], "issues") and GC.CellShows(qr.slots[11], "issues"), "only issues: only the ring with its missing gem")
+check(not GC.CellShows(qr.slots[3], "issues"), "only issues: an empty slot is drawn empty")
+check(GC.CellShows(qr.slots[11], "gems") and not GC.CellShows(ar.slots[1], "gems") and not GC.CellShows(qr.slots[1], "gems"), "missing gems: the cells with an empty socket only")
+check(GC.CellShows(ar.slots[1], "enchants") and not GC.CellShows(qr.slots[11], "enchants") and not GC.CellShows(ar.slots[11], "enchants"), "missing enchants: the cells with no enchant only")
+local lowSlot = GC.CheckSlot(9, piece(9, "item:109", 260), R, 280)
+check(GC.CellShows(lowSlot, "issues") and not GC.CellShows(lowSlot, "gems") and not GC.CellShows(lowSlot, "enchants"), "a low item: shown under Only issues, not under gems or enchants")
+check(not GC.CellShows(nil, "issues") and GC.CellShows(nil, "all"), "no findings: only Everyone draws it")
+
 -- 4. Chat text
 local arrow = GC:Rows("enchants")[1]
 local line = GC.SlotLine(quick, quick.slots[11])

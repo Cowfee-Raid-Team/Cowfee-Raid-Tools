@@ -4,7 +4,8 @@ local ADDON, CRT = ...
 -- issues count and a cell per gear slot (all 16 fit the page, so nothing scrolls sideways): the item's
 -- icon in its quality's border, its item level, gem diamonds at the top right (filled, or empty with a red
 -- edge) and, on a slot that takes an enchant, a dot at the top left (green, or red when missing). A missing
--- enchant or gem outlines the cell red, a low item orange. Filter chips pick who shows; Refresh asks the
+-- enchant or gem outlines the cell red, a low item orange. Filter chips pick who shows, and on an issue
+-- filter each row draws only the cells with that issue (GC.CellShows), the rest empty; Refresh asks the
 -- group's CRTs and inspects the rest (Comm.lua, Inspect.lua), and says how many have CRT. Hover a cell for
 -- the exact item, or the issues badge for the list of issues; shift-click an item with an issue to put it in
 -- the chat box; right-click a row to send its issues to a channel or a whisper, put them in the chat box or
@@ -308,8 +309,12 @@ local function makeCell(rowFrame, i)
     return c
 end
 
--- One slot of a row, painted from its findings.
-local function paintCell(c, row, r)
+-- One slot of a row, painted from its findings. A cell the filter doesn't draw (GC.CellShows) is painted as an
+-- empty slot, so the columns stay under their headings; it has no tooltip, but a right-click is still the row's.
+local function paintCell(c, row, r, shown)
+    if not shown then
+        r = nil
+    end
     c.row, c.result = row, r
     local piece = r and r.piece
     local e = COLORS.emptyCell
@@ -443,8 +448,10 @@ function P.InitRow(f, row)
     local why = not row.seen and GC.Inspect and GC.Inspect.skipped[row.name]
     f.notSeen:SetText(row.seen and "" or (why and TEXT.notSeenWhy[why] or TEXT.notSeen))
     f.notSeen:SetTextColor(0.6, 0.6, 0.6)
+    local filter = P.filter or "all"
     for i, s in ipairs(Gear.SLOTS) do
-        paintCell(f.cells[i], row, row.slots[s.id])
+        local r = row.slots[s.id]
+        paintCell(f.cells[i], row, r, GC.CellShows(r, filter))
     end
 end
 
@@ -480,6 +487,7 @@ function P.Refresh()
     end
     P.dirty = false
     local filter = settings().filter or "all"
+    P.filter = filter -- the rows' cells are drawn for it (P.InitRow)
     local rows = GC:Rows(filter)
     for i, row in ipairs(rows) do
         row.index = i

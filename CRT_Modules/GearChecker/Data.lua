@@ -10,6 +10,7 @@ local ADDON, CRT = ...
 --   GC.CheckSlot(slot, piece, rules, avg)   one slot's findings: missing enchant, empty sockets, low
 --   GC:Roster()                  the group: { name, unit, class, me }, you first
 --   GC:Row(member), GC:Rows(filter)   a member's checked gear; the rows a filter shows
+--   GC.CellShows(findings, filter)   whether a filter draws a slot's cell (issue filters: only problem cells)
 --   GC.SlotLine, GC.WhisperLines, GC.RaidLines, GC.ChatBoxText   a row's issues as chat text
 --   GC.IssueLines(row)           the issues badge's tooltip: a line per issue, red or orange
 --   GC.SendTargets(row), GC.Send(row, target)   where a row's issues can go (the menu), and sending them
@@ -286,6 +287,24 @@ function GC.Passes(row, filter)
         return row.missingGems > 0
     elseif filter == "enchants" then
         return row.missingEnchants > 0
+    end
+    return true
+end
+
+-- Whether a filter draws a slot's cell: every cell under Everyone; under the others only the cells with that
+-- kind of issue (Only issues: any, low items too), so a row shows just what to fix. The rest are drawn empty.
+function GC.CellShows(r, filter)
+    if filter == nil or filter == "all" then
+        return true
+    end
+    if type(r) ~= "table" or r.empty then
+        return false
+    elseif filter == "issues" then
+        return r.issues > 0
+    elseif filter == "gems" then
+        return r.emptySockets > 0
+    elseif filter == "enchants" then
+        return r.missingEnchant == true
     end
     return true
 end
