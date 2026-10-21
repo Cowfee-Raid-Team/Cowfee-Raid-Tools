@@ -2,8 +2,9 @@
 // (Themes.lua, Panel.lua, Controls.lua, Window.lua, ScrollBar.lua): it fits the page area; the chips, the
 // Refresh label with the CRT count and its width; the rows (name in class colour, average, the issues
 // badge, the cells' quality border, red and orange outlines, enchant dots and gem diamonds, not seen yet);
-// the filters; the page in each theme and a live theme switch; hover, shift-click and the right-click menu
-// (whisper, raid, chat box, inspect); and the pop-out window saving its place and size.
+// the filters; the page in each theme and a live theme switch; hover, shift-click, the issues badge's
+// tooltip and the right-click menu (the Send issues to submenu per group, guild and officer rights, Say in
+// the world into the chat box, chat box, inspect); and the pop-out window saving its place and size.
 // Usage: node run_gearchecker_page.js <addon folder>
 const fs = require('fs');
 const path = require('path');
@@ -116,21 +117,31 @@ ScrollBoxConstants = { RetainScrollPosition = true }
 CreateScrollBoxListLinearView = function() local v = region("View") function v:SetElementInitializer(kind, fn) list.init = fn end function v:SetElementExtent(h) list.extent = h end return v end
 ScrollUtil = { InitScrollBoxListWithScrollBar = function(box) function box:SetDataProvider(p) list.rows = p end end }
 local function drawRows() local frames = {} for i, row in ipairs(list.rows or {}) do local f = CreateFrame("Button") list.init(f, row) frames[i] = f end return frames end
--- the menu: records the entries
+-- the menu: records the entries; a button is a submenu too
 local lastRoot
+local function menuNode(t, fn)
+  local n = { text = t, fn = fn, enabled = true, items = {} }
+  function n:AddMenuAcquiredCallback() end
+  function n:CreateTitle(x) self.items[#self.items + 1] = { title = x } end
+  function n:CreateDivider() end
+  function n:CreateButton(x, f) local b = menuNode(x, f) self.items[#self.items + 1] = b return b end
+  function n:SetEnabled(on) self.enabled = on end
+  function n:SetTooltip(f) local t = { lines = {} } function t:AddLine(x) self.lines[#self.lines + 1] = x end f(t, self) self.tooltip = table.concat(t.lines, " ") end
+  return n
+end
+GameTooltip_SetTitle = function(t, x) t:AddLine(x) end
+GameTooltip_AddNormalLine = function(t, x) t:AddLine(x) end
 MenuUtil = { CreateContextMenu = function(owner, generator)
-  local root = { items = {} }
-  function root:AddMenuAcquiredCallback() end
-  function root:CreateTitle(t) self.items[#self.items + 1] = { title = t } end
-  function root:CreateDivider() end
-  function root:CreateButton(t, fn) local b = { text = t, fn = fn, enabled = true } function b:SetEnabled(on) self.enabled = on end self.items[#self.items + 1] = b return b end
+  local root = menuNode()
   generator(owner, root)
   lastRoot = root
   return region("Frame")
 end }
 local tip = {}
 GameTooltip = { SetOwner = function() tip = { lines = {} } end, SetHyperlink = function(_, s) tip.link = s end, SetItemByID = function(_, id) tip.byID = id end,
-  AddLine = function(_, t) tip.lines[#tip.lines + 1] = t end, Show = function() tip.shown = true end, Hide = function() tip.shown = false end, SetText = function() end }
+  AddLine = function(_, t, r, g, b) tip.lines[#tip.lines + 1] = t tip.colors = tip.colors or {} tip.colors[#tip.lines] = { r, g, b } end,
+  Show = function() tip.shown = true end, Hide = function() tip.shown = false end,
+  SetText = function(_, t, r, g, b) tip.title = t tip.titleColor = { r, g, b } end }
 
 -- the game: a raid of four, you, Quick (CRT), Arrow (inspected), Halo (not seen)
 local UNITS = { raid1 = { "Solex", "PALADIN" }, raid2 = { "Quick", "ROGUE" }, raid3 = { "Arrow", "HUNTER" }, raid4 = { "Halo", "DRUID" } }
@@ -336,36 +347,95 @@ local opened = #chat.opened
 ring.scripts.OnClick(ring, "LeftButton")
 eq(#chat.opened, opened, "a plain click puts nothing in chat")
 
+-- 5b. Hovering the issues badge lists the issues
+check(arrow.badgeHit ~= nil and arrow.badgeHit.w == Lt.badgeW and arrow.badgeHit.h == Lt.badgeH, "the hover area is the badge's size")
+arrow.badgeHit.scripts.OnEnter(arrow.badgeHit)
+eq(tip.title, "Arrow", "badge: the player's name")
+check(near(tip.titleColor, { 0.67, 0.83, 0.45 }), "badge: in their class colour")
+eq(#tip.lines, 2, "badge: a line per issue")
+eq(tip.lines[1], "Head |cffa335ee|Hitem:101|h[Band]|h|r 289 - missing enchant", "badge: the chat lines' wording")
+check(near(tip.colors[1], { 0.9, 0.15, 0.15 }), "badge: a missing enchant in red")
+check(tip.lines[2]:find("^Hands .* 270 %- 17 item levels under average$") ~= nil, "badge: the low item, how far under (" .. tostring(tip.lines[2]) .. ")")
+check(near(tip.colors[2], { 1, 0.55, 0.1 }), "badge: a low item in orange")
+check(tip.shown, "badge: the tooltip shows")
+arrow.badgeHit.scripts.OnLeave(arrow.badgeHit)
+check(not tip.shown, "badge: gone when the mouse leaves")
+me.badgeHit.scripts.OnEnter(me.badgeHit)
+check(#tip.lines == 1 and tip.lines[1] == "No issues", "badge: no issues")
+halo.badgeHit.scripts.OnEnter(halo.badgeHit)
+check(#tip.lines == 1 and tip.lines[1] == "Not seen yet", "badge: not seen yet")
+arrow.badgeHit.scripts.OnClick(arrow.badgeHit, "RightButton")
+eq(lastRoot.items[1].title, "Arrow", "a right-click on the badge opens its row's menu")
+
 -- 6. The right-click menu
+IsInGuild = function() return true end
+GetGuildInfo = function() return "Cowfee", "Officer", 1 end
+C_GuildInfo = { CanSpeakInGuildChat = function() return true end, GuildControlGetRankFlags = function() return { true, true, true, true } end }
+IsInInstance = function() return true, "raid" end
 arrow.scripts.OnClick(arrow, "RightButton")
 local items = lastRoot.items
 eq(items[1].title, "Arrow", "menu: the player's name")
-eq(items[2].text, "Whisper Arrow their issues", "menu: whisper")
-eq(items[3].text, "Post to raid chat", "menu: raid chat")
-eq(items[4].text, "Put in chat box", "menu: chat box")
-eq(items[5].text, "Inspect Arrow", "menu: inspect")
-items[2].fn()
+eq(items[2].text, "Send issues to", "menu: send issues to")
+eq(items[3].text, "Put in chat box", "menu: chat box")
+eq(items[4].text, "Inspect Arrow", "menu: inspect")
+local sub = items[2].items
+local labels = {}
+for _, b in ipairs(sub) do labels[#labels + 1] = b.text end
+eq(table.concat(labels, "|"), "Raid|Guild|Officer|Whisper Arrow|Say", "send to: the raid, Guild, Officer, a whisper, Say")
+check(items[2].enabled, "send to: there are issues to send")
+local function pick(text) for _, b in ipairs(lastRoot.items[2].items) do if b.text == text then return b end end end
+said = {}
+pick("Whisper Arrow").fn()
 eq(#said, 1, "whisper: the first line now")
 flush()
 eq(#said, 2, "whisper: a line per issue, the next a moment later")
 check(said[1].chatType == "WHISPER" and said[1].target == "Arrow-Sargeras", "whisper: to Arrow")
 check(said[1].text:find("^Gear check: ") ~= nil, "whisper: the gear check line")
+for _, ch in ipairs({ { "Raid", "RAID" }, { "Guild", "GUILD" }, { "Officer", "OFFICER" }, { "Say", "SAY" } }) do
+  said = {}
+  pick(ch[1]).fn()
+  flush()
+  check(#said == 2 and said[1].chatType == ch[2] and said[2].chatType == ch[2] and said[1].text:find("^%[Arrow%] ") ~= nil, ch[1] .. ": the lines go there")
+end
+check(pick("Say").tooltip == nil, "say in an instance: no note")
+IsInInstance = function() return false, "none" end
+arrow.scripts.OnClick(arrow, "RightButton")
+check(pick("Say").tooltip ~= nil and pick("Say").tooltip:find("chat box", 1, true) ~= nil, "say in the world: its tooltip says it goes to the chat box")
 said = {}
-items[3].fn()
+local openedBefore = #chat.opened
+pick("Say").fn()
 flush()
-check(#said == 2 and said[1].chatType == "RAID", "raid chat: posted to the raid")
-items[4].fn()
+eq(#said, 0, "say in the world: nothing sent the game would block")
+check(#chat.opened == openedBefore + 1 and chat.opened[#chat.opened]:find("^/s %[Arrow%] ") ~= nil, "say in the world: the lines in a chat box, to send with Enter")
+IsInInstance = function() return true, "raid" end
+lastRoot.items[3].fn()
 check(chat.opened[#chat.opened]:find("^%[Arrow%] ") ~= nil, "chat box: the issues to edit first")
-items[5].fn()
+lastRoot.items[4].fn()
 eq(inspected, "raid3", "inspect: the game's inspect window on Arrow")
 cell(quick, 3).scripts.OnClick(cell(quick, 3), "RightButton")
 eq(lastRoot.items[1].title, "Quick", "a right-click on a cell opens its row's menu")
+C_GuildInfo.GuildControlGetRankFlags = function() return { true, true, true, false } end
 raid = false
 arrow.scripts.OnClick(arrow, "RightButton")
-eq(lastRoot.items[3].text, "Post to party chat", "in a party: named for party chat")
+labels = {}
+for _, b in ipairs(lastRoot.items[2].items) do labels[#labels + 1] = b.text end
+eq(table.concat(labels, "|"), "Party|Guild|Whisper Arrow|Say", "in a party, a rank that can't speak in officer chat: Party, no Officer")
+IsInGroup = function() return false end
+IsInGuild = function() return false end
+arrow.scripts.OnClick(arrow, "RightButton")
+labels = {}
+for _, b in ipairs(lastRoot.items[2].items) do labels[#labels + 1] = b.text end
+eq(table.concat(labels, "|"), "Whisper Arrow|Say", "out of a group and a guild: a whisper and Say")
+IsInGroup = function(c) return c == nil end
+IsInGuild = function() return true end
 raid = true
 me.scripts.OnClick(me, "RightButton")
-check(not lastRoot.items[2].enabled and not lastRoot.items[5].enabled, "your own row: no whisper or inspect")
+check(not lastRoot.items[4].enabled, "your own row: no inspect")
+labels = {}
+for _, b in ipairs(lastRoot.items[2].items) do labels[#labels + 1] = b.text end
+check(not table.concat(labels, "|"):find("Whisper", 1, true), "your own row: no whisper")
+check(not lastRoot.items[2].enabled and not lastRoot.items[3].enabled, "no issues: send and chat box greyed")
+check(lastRoot.items[2].tooltip ~= nil and lastRoot.items[2].tooltip:find("No issues", 1, true) ~= nil, "no issues: the tooltip says so")
 
 -- 7. The pop-out window keeps its place and size
 P.popButton:Click()
