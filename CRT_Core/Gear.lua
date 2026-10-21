@@ -18,7 +18,7 @@ local ADDON, CRT = ...
 --   Gear:ReadUnit(unit)           the pieces another unit wears, read now (an inspected player)
 --   Gear.Encode(piece), Gear.Decode(text)    "<slot>~<itemString>~<ilvl>", for any message
 --   Gear.PackMany(pieces, budget) encoded pieces in chunks that each fit a byte budget
---   Gear.Parts(itemString)        the enchant and gem IDs written in an item string
+--   Gear.Parts(itemString)        the enchant, gem and bonus IDs written in an item string
 --   Gear.Sockets(itemString)      how many sockets the item has
 --   Gear.IsWeapon(equipLoc), Gear.AverageLevel(pieces)   a weapon's equip location; the equipped item level
 --   Gear.ShowTooltip(owner, piece, anchor)   the exact item when its item string is known, else by ID
@@ -188,10 +188,13 @@ end
 
 -- What an item string holds ---------------------------------------------------------------------------------
 
--- An item string's fields, from the ItemLink page (warcraft.wiki.gg): item:itemID:enchantID:gemID1:gemID2:
--- gemID3:gemID4:suffixID:... An empty field (or a 0) is nothing set.
+-- An item string's fields, from the ItemLink page (warcraft.wiki.gg, read 2026-10-21): item:itemID:enchantID:
+-- gemID1:gemID2:gemID3:gemID4:suffixID:uniqueID:linkLevel:specializationID:modifiersMask:itemContext:
+-- numBonusIDs[:bonusID1:...]:numModifiers[:type:value...]:... An empty field (or a 0) is nothing set.
 -- Gear.Parts(itemString or link): { id, enchant (nil when none), gems = { [1..4] = gem item ID or nil },
--- gemCount }, or nil for anything that isn't an item.
+-- gemCount, bonusIds = { in order }, bonus = { [bonusID] = true } }, or nil for anything that isn't an item.
+Gear.MAX_BONUS_IDS = 32 -- a count past this is junk; real items carry well under it
+
 function Gear.Parts(link)
     local s = Gear.ItemString(link)
     if not s then
@@ -205,11 +208,19 @@ function Gear.Parts(link)
         local n = tonumber(f[i] or "")
         return (n and n > 0) and n or nil
     end
-    local out = { id = num(2), enchant = num(3), gems = {}, gemCount = 0 }
+    local out = { id = num(2), enchant = num(3), gems = {}, gemCount = 0, bonusIds = {}, bonus = {} }
     for g = 1, 4 do
         out.gems[g] = num(3 + g)
         if out.gems[g] then
             out.gemCount = out.gemCount + 1
+        end
+    end
+    -- f[1] is "item", so itemContext is f[13] and numBonusIDs f[14]
+    for i = 1, math.min(num(14) or 0, Gear.MAX_BONUS_IDS) do
+        local id = num(14 + i)
+        if id then
+            out.bonusIds[#out.bonusIds + 1] = id
+            out.bonus[id] = true
         end
     end
     return out

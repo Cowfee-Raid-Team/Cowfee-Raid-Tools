@@ -306,6 +306,14 @@ eq(Gear.Parts("|cffa335ee|Hitem:8:55|h[x]|h|r").enchant, 55, "parts: from a link
 eq(Gear.Parts(nil), nil, "parts: nil")
 eq(Gear.Parts("spell:5"), nil, "parts: not an item")
 eq(Gear.Parts("item:9:0:0").enchant, nil, "parts: a zero is no enchant")
+-- bonus IDs: after itemContext, numBonusIDs then that many IDs (the wiki's ItemLink page)
+local lp = Gear.Parts(LONG)
+eq(lp and table.concat(lp.bonusIds, ","), "12667,12793,6652,13577,13333,10354", "parts: the six bonus IDs of a real item string")
+check(lp and lp.bonus[12793] and lp.bonus[10354] and not lp.bonus[2], "parts: the bonus IDs as a set, not the modifiers after them")
+eq(#Gear.Parts("item:7").bonusIds, 0, "parts: no bonus IDs")
+eq(#Gear.Parts("item:7::::::::90:577::28:0").bonusIds, 0, "parts: a count of 0")
+eq(table.concat(Gear.Parts("item:7::::::::90:577::28:3:11:12").bonusIds, ","), "11,12", "parts: a count longer than the string reads what is there")
+eq(#Gear.Parts("item:7::::::::90:577::28:x:11").bonusIds, 0, "parts: a count that isn't a number")
 
 -- 10. Sockets (C_Item.GetItemNumSockets, as Blizzard's own inspect frame reads them)
 C_Item.GetItemNumSockets = function(s) if s == "item:600:1" then return 2 elseif s == "item:601" then error("boom") end return 0 end
