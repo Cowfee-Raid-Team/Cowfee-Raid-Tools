@@ -32,6 +32,7 @@ local function mock(kind, name)
     if k == "EnableMouse" then return function(self, on) rawset(self, "mouse", on and true or false) end end
     if k == "SetMultiLine" then return function(self, v) rawset(self, "multi", v) end end
     if k == "SetTexture" then return function(self, v) rawset(self, "texture", v) end end
+    if k == "SetTextColor" then return function(self, r, g, b, a) rawset(self, "textColor", { r, g, b, a }) end end
     if k == "SetColorTexture" then return function(self, r, g, b, a) rawset(self, "color", { r, g, b, a }) end end
     if k == "SetHeight" then return function(self, h) rawset(self, "height", h) end end
     if k == "GetStringHeight" then return function(self) return 12 end end
@@ -56,11 +57,15 @@ UIParent = mock()
 UISpecialFrames = {}
 tinsert = table.insert
 CANCEL = "Cancel"
-function IsInGroup() return false end
-function IsInRaid() return false end
-function UnitIsGroupLeader() return false end
+-- a value the game hides: any string starting SECRET
+function issecretvalue(v) return type(v) == "string" and v:find("^SECRET") ~= nil end
+local inRaid, leader = false, false
+function IsInGroup() return inRaid end
+function IsInRaid() return inRaid end
+function UnitIsGroupLeader() return leader end
 function UnitIsGroupAssistant() return false end
-function UnitName(u) if u == "player" then return "Gadios" end end
+local myName = "Gadios"
+function UnitName(u) if u == "player" then return myName end end
 function GetTime() return 100 end
 function InCombatLockdown() return false end
 local afters = {}
@@ -71,7 +76,7 @@ C_ChatInfo = { RegisterAddonMessagePrefix = function() end, SendAddonMessage = f
 local loaded, requested = { [64843] = true }, {}
 C_Spell = {
   GetSpellInfo = function(id) if loaded[id] then return { name = "Spell name " .. id, iconID = 1000 + id } end end,
-  RequestLoadSpellData = function(id) requested[id] = true end,
+  RequestLoadSpellData = function(id) requested[id] = (requested[id] or 0) + 1 end,
 }
 -- not theme colours: the game's class colours
 RAID_CLASS_COLORS = { MAGE = { colorStr = "ff3fc7eb" }, PRIEST = { colorStr = "ffffffff" }, ROGUE = { colorStr = "fffff468" }, PALADIN = { colorStr = "fff48cba" } }
@@ -202,6 +207,9 @@ do
   assert(classOf("Rixxy") == "PRIEST", "then the guild")
   assert(classOf("Old") == "PALADIN", "then names seen before")
   assert(classOf("Nobody") == nil and classOf("Abu-OtherRealm") == nil, "else plain")
+  -- a name or class the game hides is skipped, never compared
+  local hidden = Render.ClassLookup({ { { key = "SECRETkey", class = "MAGE" }, { key = "Vis-Sargeras", class = "SECRETclass" } } })
+  assert(hidden("SECRETkey") == nil and hidden("Vis") == nil, "secret keys and classes are skipped")
   -- the sources from the game: the live group and guild (Groups), the class cache, Loot Master's session
   CRT.Groups.ReadRoster = function() return { { key = "Abu-Sargeras", class = "MAGE" } } end
   CRT.Groups.ReadGuild = function() return { { key = "Abu-Sargeras", class = "PRIEST" }, { key = "Gil-Sargeras", class = "PRIEST" } } end
@@ -324,6 +332,91 @@ do
   assert(textView.draws == draws + 1, "the next refresh draws it again, for the class colours")
 end
 print("ok a spell loaded later refreshes its row; a theme switch repaints")
+
+-- 8. A spell that never loads: asked once, the redraws settle, it keeps showing its ID
+do
+  local fail, empty = 77777, 66666
+  local text = "time:1;ph:1;spellid:" .. fail .. ";\\ntime:2;ph:1;spellid:" .. empty .. ";"
+  textView:SetText(text)
+  assert(requested[fail] == 1 and requested[empty] == 1, "each asked for once")
+  local frame = events.SPELL_DATA_LOAD_RESULT
+  local draws = textView.draws
+  -- the load failed: nothing to draw, never asked again
+  frame.scripts.OnEvent(frame, "SPELL_DATA_LOAD_RESULT", fail, false)
+  runTimers()
+  assert(textView.draws == draws, "a failed load draws nothing")
+  -- loaded, but the game still gives no name: one more draw, then never asked again
+  frame.scripts.OnEvent(frame, "SPELL_DATA_LOAD_RESULT", empty, true)
+  runTimers()
+  assert(textView.draws == draws + 1, "a load draws once")
+  for _ = 1, 3 do
+    frame.scripts.OnEvent(frame, "SPELL_DATA_LOAD_RESULT", empty, true)
+    frame.scripts.OnEvent(frame, "SPELL_DATA_LOAD_RESULT", fail, true)
+    runTimers()
+    CRT.UI.SwitchTheme("midnight")
+  end
+  assert(requested[fail] == 1 and requested[empty] == 1, "never asked again: " .. requested[fail] .. ", " .. requested[empty])
+  assert(#afters == 0, "no redraw left waiting")
+  assert(find(textView.rows, "timer", 1).text == "Spell " .. fail and find(textView.rows, "timer", 2).text == "Spell " .. empty, "both keep showing their ID")
+  textView:SetText(Notes:Get(id).raw)
+end
+print("ok a spell that fails to load, or loads with no name, is asked for once and the redraws settle")
+
+-- 9. Muted texts follow the theme; a view off screen waits; one class lookup per change for both views
+do
+  local header = textView.pool[1]
+  assert(header.rowKind == "header" and header.muted.shown, "the header's small line")
+  local m = CRT.PALETTE.muted
+  CRT.UI.SwitchTheme("cowfee")
+  local c = header.muted.textColor
+  assert(c and c[1] == m[1] and c[2] == m[2] and c[3] == m[3], "the header's small line in the theme's muted colour")
+  -- the page closed: a switch draws nothing until it shows again
+  local draws = textView.draws
+  pf.shown = false
+  CRT.UI.SwitchTheme("nitro")
+  assert(textView.draws == draws, "a view off screen is not drawn on a switch")
+  pf.shown = true
+  redraw()
+  assert(textView.draws == draws + 1, "it draws when the page refreshes again")
+  -- both views read the group once per change
+  local reads = 0
+  CRT.Groups.ReadRoster = function() reads = reads + 1 return {} end
+  CRT.UI.SwitchTheme("cowfee")
+  assert(reads == 1, "one roster read for both views: " .. reads)
+  CRT.Groups.ReadRoster = nil
+end
+print("ok muted texts follow the theme; views off screen wait; one class lookup for both views")
+
+-- 10. A raider who can't change the raid note: the raw text read-only, Escape renders it again
+do
+  inRaid, leader = true, false
+  redraw()
+  local save
+  for _, b in ipairs(buttons) do if rawget(b, "text") == "Save text changes" then save = b end end
+  assert(textView.frame.shown and not save:IsEnabled(), "rendered, Save greyed")
+  textView.frame.scripts.OnMouseDown(textView.frame)
+  assert(rawShown(textView, textScroll) and editor:HasFocus(), "a click shows the raw text to read")
+  local before = editor:GetText()
+  editor:SetText(before .. "typed")
+  editor.scripts.OnTextChanged(editor, true)
+  assert(editor:GetText() == before, "typing is undone: read-only")
+  editor.scripts.OnEscapePressed(editor)
+  assert(textView.frame.shown and not textScroll.shown, "Escape renders it again")
+  inRaid, leader = false, false
+  redraw()
+end
+print("ok a raider who can't edit reads the raw text, read-only")
+
+-- 11. Your name hidden by the game: never compared, so nothing is marked as you
+do
+  myName = "SECRETname"
+  CRT.UI.SwitchTheme("midnight")
+  for _, r in ipairs(textView.rows) do
+    for _, n in ipairs(r.names or {}) do assert(not n.me, "nothing marked as you") end
+  end
+  myName = "Gadios"
+end
+print("ok a hidden name is skipped")
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 for (const f of process.argv.slice(2, 7)) {

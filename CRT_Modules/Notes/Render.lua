@@ -361,7 +361,23 @@ local TIME_W = 34
 local CHIP_W = 32
 local LABEL_MAX = 0.4 -- a label takes at most this share of the row
 
-local spellWait = {} -- spell ID -> true while a view shows its ID and waits for the game to load it
+-- A spell the views show by its ID until the game loads it: spellState[id] is "asked" once its data is
+-- asked for, "loaded" when the game says it loaded (one more draw), and "failed" when the load failed or
+-- the spell still has no name after it. A spell is asked for once: a failed one keeps showing "Spell <ID>".
+local spellState = {}
+
+-- What a draw does for a spell row still showing its ID.
+local function askSpell(spellId)
+    local state = spellState[spellId]
+    if state == nil then
+        spellState[spellId] = "asked"
+        if C_Spell and C_Spell.RequestLoadSpellData then
+            pcall(C_Spell.RequestLoadSpellData, spellId)
+        end
+    elseif state == "loaded" then
+        spellState[spellId] = "failed" -- loaded, but still no name: never asked again
+    end
+end
 
 local function makeRow(view, i)
     local row = CreateFrame("Button", nil, view.child)
@@ -381,6 +397,7 @@ local function makeRow(view, i)
     row.label:SetWordWrap(false)
     row.small = row:CreateFontString(nil, "OVERLAY", "CRTFontDisableSmall")
     row.small:SetJustifyH("RIGHT")
+    UI.Tint(row.small, "SetTextColor", "muted")
     row.text = row:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     row.text:SetJustifyH("LEFT")
     row.text:SetJustifyV("TOP")
@@ -394,6 +411,7 @@ local function makeRow(view, i)
     row.muted:SetWidth(view.width)
     row.muted:SetJustifyH("LEFT")
     row.muted:SetWordWrap(false)
+    UI.Tint(row.muted, "SetTextColor", "muted")
     row.divider = row:CreateTexture(nil, "ARTWORK")
     row.divider:SetHeight(1)
     row.divider:SetPoint("LEFT", 0, 0)
@@ -512,7 +530,7 @@ function Render.View(parent, opts)
     -- Draws the rows of the text last given, again only when something changed.
     function view:Redraw()
         local extra = opts.context and opts.context() or {}
-        local ctx = { classOf = Render.ClassLookup(), inviteOpen = self.inviteOpen, rosterLinked = extra.rosterLinked,
+        local ctx = { classOf = Render.SharedLookup(), inviteOpen = self.inviteOpen, rosterLinked = extra.rosterLinked,
             markdown = extra.markdown, spell = function(id)
                 return CRT.Notes:SpellInfo(id)
             end }
@@ -531,11 +549,8 @@ function Render.View(parent, opts)
             row:SetHeight(h)
             row:Show()
             y = y + h
-            if data.pending and data.spellId and not spellWait[data.spellId] then
-                spellWait[data.spellId] = true
-                if C_Spell and C_Spell.RequestLoadSpellData then
-                    pcall(C_Spell.RequestLoadSpellData, data.spellId)
-                end
+            if data.pending and data.spellId then
+                askSpell(data.spellId)
             end
         end
         for i = #self.rows + 1, #self.pool do
@@ -561,8 +576,10 @@ function Render.View(parent, opts)
 end
 
 -- One box of the page: the view over its raw edit box. The box shows rendered unless its edit box has the
--- focus or holds typing not yet saved; a click on the view shows the raw text with the focus, when
--- canEdit() allows. Escape or losing the focus with nothing typed shows it rendered again.
+-- focus or holds typing not yet saved; a click on the view shows the raw text with the focus. When
+-- canEdit() says no (a raider who can't change the raid note) the raw text is read-only: it can be
+-- selected and copied, and any typing is undone at once. Escape or losing the focus with nothing typed
+-- shows it rendered again.
 --   pair:Update(saved, owner, contextKey)  the saved text of the note owner (a new owner drops the typing)
 --   pair:Saved()                           call before saving: the typed text becomes the loaded text
 function Render.Bind(view, scroll, edit, canEdit)
@@ -576,9 +593,6 @@ function Render.Bind(view, scroll, edit, canEdit)
         return edit:GetText() ~= (edit.loaded or "")
     end
     function pair:Raw()
-        if canEdit and not canEdit() then
-            return
-        end
         view.frame:Hide()
         scroll:Show()
         edit:SetFocus()
@@ -608,6 +622,12 @@ function Render.Bind(view, scroll, edit, canEdit)
     function pair:Saved()
         edit.loaded = edit:GetText()
     end
+    -- read-only: typing (userInput) puts the loaded text back; the page's own SetText calls pass through
+    edit:SetScript("OnTextChanged", function(self, userInput)
+        if userInput and canEdit and not canEdit() and self:GetText() ~= (self.loaded or "") then
+            self:SetText(self.loaded or "")
+        end
+    end)
     edit:SetScript("OnEditFocusLost", function()
         if not pair:Dirty() then
             rendered()
@@ -620,12 +640,22 @@ end
 
 Render.version = 1
 
+-- One name -> class lookup for every view, built again only when the version changes (a roster change,
+-- a theme switch, a spell loaded), so the two boxes of the page read the group and guild once.
+local sharedLookup, lookupVersion
+function Render.SharedLookup()
+    if not sharedLookup or lookupVersion ~= Render.version then
+        sharedLookup, lookupVersion = Render.ClassLookup(), Render.version
+    end
+    return sharedLookup
+end
+
 -- Every view draws again: on a theme switch (the heading colour, the chips) and when a spell it waits on
--- has loaded. A hidden view draws when it is next shown.
+-- has loaded. A view not on screen (its page or tab closed) draws when it is next shown.
 local function redrawAll()
     Render.version = Render.version + 1
     for _, view in pairs(Render.views) do
-        if view.text and view.frame:IsShown() then
+        if view.text and view.frame:IsVisible() then
             view:SetText(view.text, view.contextKey)
         end
     end
@@ -638,16 +668,20 @@ local pendingRedraw = false
 local events = CreateFrame("Frame")
 events:RegisterEvent("SPELL_DATA_LOAD_RESULT")
 events:RegisterEvent("GROUP_ROSTER_UPDATE")
-events:SetScript("OnEvent", function(_, event, spellID)
+events:SetScript("OnEvent", function(_, event, spellID, success)
     if event == "GROUP_ROSTER_UPDATE" then
         -- the class colours may change: each view draws again the next time the page shows or refreshes it
         Render.version = Render.version + 1
         return
     end
-    if not (readable(spellID) and spellWait[spellID]) then
+    if not (readable(spellID) and readable(success) and spellState[spellID] == "asked") then
         return
     end
-    spellWait[spellID] = nil
+    if not success then
+        spellState[spellID] = "failed" -- its row already shows "Spell <ID>": nothing to draw
+        return
+    end
+    spellState[spellID] = "loaded"
     -- several spells load together: one redraw for them
     if not pendingRedraw then
         pendingRedraw = true
