@@ -33,7 +33,7 @@ local WIRE = {
 local MRT = {
     key = "mrt",
     label = "MRT",
-    help = "MRT (Method Raid Tools) replaces MRT's raid note: timed lines become {time:} countdowns, a line for a role, group or class shows only to them, and the rest is plain text, for every raider running MRT. CRT's own raid note is not changed. In a raid you must be the leader or an assistant (MRT's receivers ignore anyone else by default); in a party, anyone can send. Out of a group it goes only to your own MRT, to try a note.",
+    help = "Sends the note to everyone running MRT, as their raid note: timed lines become countdowns, and lines for a role, group or class show only to them. CRT's own note stays as it is. In a raid, only the leader or an assistant can send; in a party, anyone. Out of a group it goes to your own MRT, to try it.",
 }
 CRT.MRTTarget = MRT
 

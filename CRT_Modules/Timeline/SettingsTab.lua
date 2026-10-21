@@ -249,7 +249,7 @@ function SettingsTab.Build(f, ctx)
 
     -- View
     label(f, "View"):SetPoint("TOPLEFT", f, "TOPLEFT", 8, -8)
-    UI.Help(f, "View", "How much time is visible at once (the mouse wheel over the timeline zooms too), how often the time axis is labelled, and how big the cast icons are. Auto labels the axis more often as you zoom in: every 5 seconds zoomed all the way in, up to every minute zoomed out."):SetPoint("TOPLEFT", f, "TOPLEFT", 60, -9)
+    UI.Help(f, "View", "How much time is visible at once (the mouse wheel zooms too), how often the time axis is labelled, and how big the cast icons are. Auto labels the axis more often as you zoom in."):SetPoint("TOPLEFT", f, "TOPLEFT", 60, -9)
     settingSlider(f, 8, -26, "Seconds visible", "span", 60, 600, 30, View.Format, true)
     place(UI.Dropdown(f, "Axis labels every", {
         options = GRIDS,
@@ -266,7 +266,7 @@ function SettingsTab.Build(f, ctx)
 
     -- Rows
     label(f, "Rows"):SetPoint("TOPLEFT", f, "TOPLEFT", 8, -132)
-    UI.Help(f, "Rows", "The rows come from the boss's Encounter Journal abilities, then your own. Untick a row to hide it. Add a spell by its ID (the number in its Wowhead address) to track a cast the Journal does not list. The Journal is read out of combat with the Journal window closed.\n\nWith an ability timeline shown, its own rows are listed instead, and unticking one hides it by name. Adding a spell works for recorded pulls only.\n\nAn ability timeline row gets its icon, and its match to a Journal ability, from the Encounter Journal, which is not read in combat; they can be blank until you are out of combat."):SetPoint("TOPLEFT", f, "TOPLEFT", 54, -133)
+    UI.Help(f, "Rows", "The rows come from the boss's Encounter Journal abilities, then your own. Untick a row to hide it. Add a spell by its ID to track a cast the Journal doesn't list; that works for recorded pulls only. With an ability timeline shown, its own rows are listed instead. Icons come from the Journal, which isn't read in combat, so they can be blank until you are out of combat."):SetPoint("TOPLEFT", f, "TOPLEFT", 54, -133)
     bossLabel = label(f, "", "CRTFontSmall")
     bossLabel:SetPoint("TOPLEFT", f, "TOPLEFT", 8, -154)
     checkbox(f, 8, -172, "Hide rows with no casts in this pull", function()
@@ -301,7 +301,7 @@ function SettingsTab.Build(f, ctx)
 
     -- Deaths
     label(f, "Deaths"):SetPoint("TOPLEFT", f, "TOPLEFT", RIGHT_X, -8)
-    UI.Help(f, "Deaths", "Whether the deaths share one row or each player gets a row, which roles to show, and whether to show only the first few deaths (0 shows all). With \"Deaths from recent pulls\" on, the overlay covers this many pulls, the shown one included."):SetPoint("TOPLEFT", f, "TOPLEFT", RIGHT_X + 60, -9)
+    UI.Help(f, "Deaths", "Whether deaths share one row or each player gets a row, which roles show, and whether only the first few deaths show (0 shows all). With Deaths from recent pulls on, the overlay covers this many pulls."):SetPoint("TOPLEFT", f, "TOPLEFT", RIGHT_X + 60, -9)
     place(UI.Dropdown(f, "Death rows", {
         options = DEATH_ROWS,
         labelWidth = 120,

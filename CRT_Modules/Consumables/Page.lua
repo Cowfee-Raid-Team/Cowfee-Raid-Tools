@@ -93,7 +93,7 @@ local function buildBar(pf)
     local label = pf:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
     label:SetPoint("TOPLEFT", 8, -44)
     label:SetText("Your bar")
-    UI.Help(pf, "Your bar", "Your own bar of consumable icons that appears during a ready check. It uses a built-in list of consumables kept up to date with the addon. You can add your own, and choose the order.\n\nDrag an item from your bags onto an icon to add it. Click an icon to see its items. Drag the rows below to change the order.\n\nWhether it shows, and when it warns, are on the Settings tab."):SetPoint("LEFT", label, "RIGHT", 6, 0)
+    UI.Help(pf, "Your bar", "Your own bar of consumable icons, shown during a ready check. It starts with a built-in list: drag an item from your bags onto an icon to add it, click an icon to see its items, and drag the rows below to change the order. When it shows is on the Settings tab."):SetPoint("LEFT", label, "RIGHT", 6, 0)
 
     local count = #Consumables.CATEGORIES
     barFrame = CreateFrame("Frame", nil, pf, "BackdropTemplate")

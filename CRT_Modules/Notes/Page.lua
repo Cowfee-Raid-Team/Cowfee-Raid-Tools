@@ -21,7 +21,7 @@ local TEXT = {
     difficulty = "Difficulty",
     allDifficulties = "All",
     otherDifficulty = "Other",
-    kindHelp = "Shared: the raid's notes, kept one per guild. A share from someone in a guild replaces that guild's note for the boss, and a share from another guild (a pickup group) is a note of its own, so it never replaces yours. Each says who sent it at the bottom. The newest share is the note in use, and the shared note in use runs on the pull.\n\nPersonal: your own lines for a boss, only on this computer. They run on every pull of that boss, alongside the shared note, and a share never touches them. Make my personal note (on the Shared tab) starts one for the selected note's boss; type your lines under its first line and save",
+    kindHelp = "Shared: the raid's notes, one per guild. A share from your guild replaces your guild's note for that boss; a share from another guild or a pickup group is kept apart. The newest share is the note in use and runs on the pull.\n\nPersonal: your own lines for a boss, kept on this computer. They run on every pull of that boss alongside the shared note, and a share never touches them. Make my personal note starts one for the selected boss.",
     noteText = "Note text",
     saveText = "Save text changes",
     saved = "Saved.",
@@ -379,7 +379,7 @@ local function buildNotes(pf)
     local listLabel = pf:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
     listLabel:SetPoint("TOPLEFT", 8, -14)
     listLabel:SetText("Notes")
-    UI.Help(pf, "Raid notes", "Import a note, share it with the raid before the pull, and its timers count down from the start of the fight. The note's other text goes to the Assignments window.\n\nWindow, alert timing and sharing settings are on the Notes Settings tab; where your note lines show is on the Alert Settings tab, and your alerts for boss mechanics are on Mech Alerts."):SetPoint("LEFT", listLabel, "RIGHT", 6, 0)
+    UI.Help(pf, "Raid notes", "Import a note and share it with the raid before the pull; its timers count down from the start of the fight, and its other text goes to the Assignments window. Window, timing and sharing settings are on Notes Settings; where your lines show is on Alert Settings; boss mechanic alerts are on Mech Alerts."):SetPoint("LEFT", listLabel, "RIGHT", 6, 0)
     -- Shared and Personal: which notes the list shows
     for i, kind in ipairs({ "shared", "personal" }) do
         local b = CreateFrame("Button", nil, pf, "BackdropTemplate")
@@ -667,7 +667,7 @@ local function buildNotes(pf)
     local firstText = pf:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     firstText:SetPoint("LEFT", first, "RIGHT", 2, 0)
     firstText:SetText("Display my notes first")
-    UI.Help(pf, "Display my notes first", "Shows what you typed in your personal note above your Mech Alerts reminders in the personal note window, instead of under them.\n\nFormatting you can use in your note:\n# Heading\n**bold**\n- a bullet\n--- a divider line\n\nA raid note pasted in (an EncounterID:… header with time:…;ph:… lines) shows as the boss and its timed lines, by phase."):SetPoint("LEFT", firstText, "RIGHT", 4, 0)
+    UI.Help(pf, "Display my notes first", "Shows your personal note above your Mech Alerts reminders instead of under them.\n\nFormatting: # Heading, **bold**, - a bullet, --- a divider line. A pasted raid note shows as the boss and its timed lines, by phase."):SetPoint("LEFT", firstText, "RIGHT", 4, 0)
     first:SetScript("OnClick", function(self)
         Notes:SetPersonalFirst(self:GetChecked())
     end)
@@ -681,7 +681,7 @@ local function buildNotes(pf)
     local runLabel = pf:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
     runLabel:SetPoint("TOPLEFT", RIGHT_X, top)
     runLabel:SetText("Try it")
-    UI.Help(pf, "Try it", "Test run starts the selected note now, as if the boss was pulled. Later phases start with Next phase, which shows the phase it starts next, including intermissions such as 1.5. It also works on a pull with only reminders. Stop ends it."):SetPoint("LEFT", runLabel, "RIGHT", 6, 0)
+    UI.Help(pf, "Try it", "Test run starts the selected note now, as if the boss was pulled. Next phase starts the next phase, intermissions included. Stop ends it."):SetPoint("LEFT", runLabel, "RIGHT", 6, 0)
 
     local testRun = makeButton(pf, "Test run", 100)
     testRun:SetPoint("TOPLEFT", RIGHT_X, top - 24)

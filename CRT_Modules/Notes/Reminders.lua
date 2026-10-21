@@ -15,7 +15,7 @@ local UI = CRT.UI
 -- text in quotes, save, and /reload.
 local TEXT = {
     title = "Mech Alerts",
-    help = "On the left are the boss's abilities from the Encounter Journal, then your own reminders that are not tied to an ability. Tick one to get a reminder for it, with the times of the boss's ability timeline; untick it to turn the reminder off. It is kept, and ticking it again brings it back. A small dot means the ability timeline has times for it.\n\nClick a row to see its alert on the right. Every change there is saved at once; the first change on an ability makes its reminder. Your own reminder adds one that is not tied to an ability, and Delete removes one of yours. The boss's abilities can't be deleted: untick one to turn its reminder off.\n\nDouble-click an ability's row on the Timeline page to open it in the pop-out editor.\n\nThe abilities are read from the Encounter Journal, out of combat only.",
+    help = "On the left: the boss's abilities from the Encounter Journal, then your own reminders. Tick an ability to get a reminder for it, with the times from the boss's ability timeline; untick it to turn it off (it is kept). A dot means the timeline has times for it.\n\nClick a row to edit its alert on the right; changes save at once. Your own reminder adds one not tied to an ability, and Delete removes one of yours. The abilities are read from the Journal out of combat only.",
     boss = "Boss",
     difficulty = "Difficulty",
     any = "Any",
@@ -32,13 +32,13 @@ local TEXT = {
     asMine = "Only me",
     raidNoteHelp = "Raid note lines have one time each: make them on the Timeline.",
     triggers = "Triggers",
-    triggersHelp = "Show from: how many seconds before each time the alert shows. Linger: how long it stays after 0.\n\nThe times come from the boss's ability timeline (Times from, above), and are already counted from the start of their phase.",
+    triggersHelp = "Show from: how many seconds before each time the alert shows. Linger: how long it stays after 0. The times come from the boss's ability timeline, counted from the start of each phase.",
     showFrom = "Show from",
     linger = "Linger",
     seconds = "%d s",
     noTimes = "No times on the ability timeline for this mechanic.",
     times = "Times",
-    timesHelp = "This alert has no times on the boss's ability timeline, so type its own: the phase, then minutes:seconds from the start of that phase, as in P1 0:30, 1:15; P2 0:20. A time with no phase is in phase 1.\n\nSaved when you press Enter, leave the box or stop typing.",
+    timesHelp = "This alert has no times on the ability timeline, so type its own: the phase, then minutes:seconds from the start of that phase, as in P1 0:30, 1:15; P2 0:20. No phase means phase 1. Saved when you press Enter or leave the box.",
     badTimes = "The times don't read: %s",
     showOnTimeline = "Show on the Timeline",
     notOnTimeline = "That mechanic isn't on the Timeline for this boss yet.",
@@ -61,13 +61,13 @@ local TEXT = {
     icon = "Icon",
     iconSpell = "Spell",
     iconID = "Icon ID",
-    iconHelp = "Spell: type the spell's ID. The alert shows its icon and, with no text, its name.\n\nIcon ID: type an icon's file ID to show that icon instead.\n\nOr type a spell name (3 letters or more) to search this boss's abilities and your own spells (a close spelling works too), then click one or press Enter for the top match.",
+    iconHelp = "Spell: type the spell's ID; the alert shows its icon and, with no text, its name. Icon ID: an icon's file ID to show that icon instead. Or type a spell name (3 letters or more) to search this boss's abilities and your own spells; a close spelling works too.",
     color = "Color",
     colorDefault = "Default",
     sound = "Sound",
     soundNone = "None",
     auraSound = "Also when it lands on me",
-    auraSoundHelp = "Plays the sound whenever this ability's debuff is put on you, even in combat. The game plays it itself, so it also works for boss debuffs hidden from addons.\n\nIt needs the alert's spell and a sound. Your own files and shared sounds work; whether the game takes one of its own sounds here isn't confirmed, so if one stays silent, pick a file.",
+    auraSoundHelp = "Plays the sound whenever this ability's debuff lands on you, even in combat. The game plays it itself, so it works for boss debuffs hidden from addons. It needs the alert's spell and a sound; if a game sound stays silent, pick a file.",
     test = "Test",
     template = "Save as template",
     delete = "Delete",
@@ -76,7 +76,7 @@ local TEXT = {
 
     markerTitle = "Marker display",
     markerShow = "Show the marker display: %s",
-    markerHelp = "This boss has a marker display: a small window that shows the raid markers raiders send with their macros, such as /raid {rt3}, in the order they are sent, with who sent each one. Untick it to turn it off for you on this boss.\n\nAny message in group chat fills a slot, because the game hides chat text from addons inside raids. Move the window with Previews.",
+    markerHelp = "This boss has a marker display: a small window showing the raid markers raiders send with macros such as /raid {rt3}, in order, with who sent each. Untick it to turn it off for this boss. Any group chat message fills a slot, since the game hides chat text from addons in raids. Move the window with Previews.",
 }
 
 -- Layout, from the page's width (UI.PAGE_W) and the tab's height (CRT.NotesPage.TAB_H, under the Raid

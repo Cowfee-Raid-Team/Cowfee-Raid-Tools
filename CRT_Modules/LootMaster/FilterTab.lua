@@ -17,7 +17,7 @@ local L = {
 
 local TEXT = {
     where = "Where it dropped",
-    whereHelp = "Boss loot is what a boss drops. Trash loot is what any other enemy in the instance drops.\n\nAn item opens a loot session only when it passes every part of this filter: where it dropped, its quality, its item level and its kind. A part the game can't tell CRT about is skipped, so the item is let through on it, and the chat says so. The filter is the Loot Master's own; Loot History keeps its own lowest quality.\n\n/crt loot test picks sample items that pass it. Sync Master Loot sends it with your other settings.",
+    whereHelp = "Boss loot drops from a boss; trash loot from any other enemy in the instance.\n\nAn item opens a loot session only when it passes every part of this filter: where it dropped, its quality, its item level and its kind. A part the game can't tell CRT about is let through, and chat says so. /crt loot test uses items that pass it, and Sync Master Loot sends it with your other settings.",
     boss = "Boss loot", trash = "Trash loot",
     quality = "Quality",
     qualityHelp = "The lowest quality that opens a session.",
@@ -28,7 +28,7 @@ local TEXT = {
     atLeast = "At least",
     any = "Any",
     kinds = "Kinds of items",
-    kindsHelp = "Tick the kinds of items that open a session. Each item counts as one kind, checked in this order: a toy; a mount or pet; a cosmetic; a tier token or set piece; then gear by how it binds (on pickup, on equip, or warbound until equipped). Anything else, such as recipes, reagents and warbound gear, is in the last box.\n\nA tier token counts as one when it names its classes. A token for every class names none, so it may show as Recipes, reagents and other items: tick that box to be safe. A set piece counts as tier when it belongs to a class set.\n\nWhen the game can't tell CRT what an item is (it hasn't loaded yet, for example), CRT lets it through and says so in chat.",
+    kindsHelp = "Tick the kinds of items that open a session. Each item counts as one kind, checked in this order: toy; mount or pet; cosmetic; tier token or set piece; then gear by how it binds. Everything else (recipes, reagents, warbound gear) is in the last box.\n\nA tier token for every class names no classes, so it may land in Recipes, reagents and other items: tick that box to be safe. When the game can't tell CRT what an item is yet, it is let through and chat says so.",
     kindLabels = {
         bop = "Gear that binds on pickup",
         tier = "Tier tokens and set pieces",
