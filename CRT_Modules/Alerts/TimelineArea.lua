@@ -345,11 +345,12 @@ local function draw(w, line, now, s)
     w.badgeCount = n
 end
 
--- The countdown on the icon: whole seconds, rounded up, or tenths under the tenths setting.
+-- The countdown on the icon: whole seconds, rounded up, or tenths under the tenths setting, rounded down so it
+-- never reads the threshold itself (2.96 under 3 is 2.9, not 3.0).
 local function countdown(remaining, s)
     local tenths = clamp(s.tenths, "tenths")
     if tenths > 0 and remaining < tenths then
-        return format("%.1f", remaining)
+        return format("%.1f", math.floor(remaining * 10) / 10)
     end
     return tostring(math.ceil(remaining))
 end
@@ -475,12 +476,19 @@ local function paintTrack(area, tl, s, vertical, length)
     return c
 end
 
--- The diamond ticks and their seconds, on the side away from the names.
+-- The diamond ticks and their seconds, on the side away from the names. Placed again only when the ticks, the
+-- seconds on the line, the direction, the length, the names' side or the colour changed.
 local function placeTicks(area, tl, s, direction, length, color)
     local list = Timeline.Ticks(s)
     local window = clamp(s.seconds, "seconds")
     local vertical = DIRS[direction].vertical
     local positive = namesPositive(s)
+    local key = table.concat(list, ",") .. "|" .. window .. "|" .. direction .. "|" .. length .. "|" .. tostring(positive)
+        .. "|" .. color[1] .. "," .. color[2] .. "," .. color[3]
+    if tl.tickKey == key then
+        return
+    end
+    tl.tickKey = key
     for i = 1, MAX_TICKS do
         local t = tl.ticks[i]
         local sec = list[i]
@@ -543,15 +551,18 @@ local function assignLanes(area, tl, n, now, s)
     end
 end
 
+-- Moves every icon on the line to where it is now (run every frame, inside pcall).
+local function moveAll(area)
+    local s = area:Settings()
+    local now, direction = clockOf(area), dirOf(s)
+    for i = 1, area.count do
+        place(area, area.pool[i], now, s, direction)
+    end
+end
+
 local function onUpdate(mover)
     local area = mover.area
-    local ok, err = pcall(function()
-        local s = area:Settings()
-        local now, direction = clockOf(area), dirOf(s)
-        for i = 1, area.count do
-            place(area, area.pool[i], now, s, direction)
-        end
-    end)
+    local ok, err = pcall(moveAll, area)
     if not ok then
         -- a failure each frame would flood: stop moving until the next redraw, and say it once
         mover:SetScript("OnUpdate", nil)

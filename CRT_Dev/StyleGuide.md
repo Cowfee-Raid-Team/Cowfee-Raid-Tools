@@ -98,7 +98,7 @@ These stay the same in every theme. A hard-coded one that looks like a status or
 | Loot Master's looting line, "Synced to" line and all-answered count | plain in Default: Blizzard, good in a Modern theme, as before themes | Alex, 2026-10-21: excluded from colour changes |
 | Gear Checker's info blue and gem blue | 4DA6FF, 8CCCFF | a season check to know about; a filled socket |
 | Ability types (Timeline rows, Mech Alerts names, every alert) | `Reference.ABILITY_TYPES`, see below | each colour means a kind of ability |
-| The alert timeline's icons and NOW effects | the ability type's colour for an icon's edge and name, the Ring burst and the Text pop; white for the countdown, the Flash and fade, and the edge in the last 3 seconds | the type says what is coming; white reads on any icon. Its line and ticks are the theme's accent (a Line colour you pick only with Use custom colours on) |
+| The alert timeline's icons and NOW effects | the alert's colour (as on the bars: its ability type's, a raid note line's own, yours with Use custom colours on) for an icon's edge and name, the Ring burst and the Text pop; white for the countdown, the Flash and fade, and the edge in the last 3 seconds | the type says what is coming; white reads on any icon. Its line and ticks are the theme's accent (a Line colour you pick only with Use custom colours on) |
 | Chat prints | the addon's print colours | chat, not the window |
 | Loot Master response buttons | the raid leader's response set | see below |
 | Colours a player picks (alert areas, alerts, reminders, ability timeline rows) | saved data, used only with Use custom colours on | see below |

@@ -37,6 +37,7 @@ local function mock(kind, parent, template)
       rawset(self, "text", s)
       if self.kind == "EditBox" and rawget(self, "OnTextChanged") then self.OnTextChanged(self, false) end end end
     if k == "GetText" then return function(self) return self.text end end
+    if k == "GetUnboundedStringWidth" then return function(self) return #(rawget(self, "text") or "") * 6 end end
     if k == "SetChecked" then return function(self, on) rawset(self, "checked", on and true or false) end end
     if k == "GetChecked" then return function(self) return self.checked end end
     if k == "SetEnabled" then return function(self, on) rawset(self, "enabled", on and true or false) end end
@@ -603,6 +604,29 @@ do
   typeInto(w.timeEdit, "1:o5")
   assert(E:Export() == nil and not x.shown and message():find("bad time", 1, true), "bad time, no export")
   print("ok editor: export shows the note line")
+end
+
+-- a raid note line shown only on the Alert timeline warns that older CRTs won't see it
+do
+  reset()
+  E:Open(ENC, nil, { text = "Draft", times = "P1 0:30" })
+  local w = win()
+  for _, k in ipairs({ "alert", "text", "icon", "bar", "circle" }) do setCheck(w.checks[k], false) end
+  setCheck(w.checks.timeline, true)
+  assert(message() == "", "Only me: no warning: " .. message())
+  pick("Save as", "note")
+  assert(message():find("older CRT", 1, true) and message():find("|cff" .. UI.Hex("warn"), 1, true), "warned, in the warn colour: " .. message())
+  setCheck(w.checks.text, true)
+  assert(message() == "", "another display too: no warning")
+  -- the Show as labels fit the window, each after the one before it
+  local right = 0
+  for _, k in ipairs({ "alert", "text", "icon", "bar", "circle", "timeline" }) do
+    local x = w.checks[k].pts[#w.checks[k].pts][2] -- lay: SetPoint("TOPLEFT", x, y)
+    assert(x > right, k .. " after the one before it")
+    right = x + 26 + #w.checks[k].label.text * 6
+  end
+  assert(right <= 600 - 16, "the last label ends inside the window: " .. right)
+  print("ok editor: Alert timeline only on a raid note line warns")
 end
 
 -- test shows every ticked display, saving nothing

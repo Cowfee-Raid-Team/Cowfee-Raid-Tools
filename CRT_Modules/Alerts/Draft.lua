@@ -30,6 +30,7 @@ local TEXT = {
     stale = "This note line was changed elsewhere, such as by a new share. Close the editor and open it again.",
     noBoss = "This boss has no encounter ID, so it can't have a raid note line.",
     noteFailed = "The note line could not be saved.",
+    timelineOnly = "Only the Alert timeline shows this line. Raiders on an older CRT won't see it.",
 }
 Draft.TEXT = TEXT
 
@@ -282,6 +283,20 @@ function Draft.TimeError(ctx, draft, strict)
         return string.format(TEXT.badTime, text)
     end
     return nil
+end
+
+-- Whether the draft is a raid note line whose only display is the alert timeline (show:timeline). A CRT from
+-- before the alert timeline reads that show: list as empty, so raiders still on one see nothing of the line.
+function Draft.TimelineOnlyNote(draft)
+    if not (draft and draft.saveAs == "note" and draft.show and draft.show.timeline) then
+        return false
+    end
+    for _, k in ipairs(SHOW_KEYS) do
+        if k ~= "timeline" and draft.show[k] then
+            return false
+        end
+    end
+    return true
 end
 
 -- Whether the draft shows or says anything.

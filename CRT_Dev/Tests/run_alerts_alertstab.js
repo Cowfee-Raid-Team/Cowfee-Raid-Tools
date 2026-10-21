@@ -319,7 +319,7 @@ check("tab: routing checkboxes bind the saved fields", function()
     { "Icon", function() return db.noteLines.icon end },
     { "Bar", function() return db.bars.noteLines end },
     { "Circle", function() return db.noteLines.circle end },
-    { "Timeline", function() return db.noteLines.timeline end },
+    { "Alert timeline", function() return db.noteLines.timeline end },
     { "Read them out (text to speech)", function() return alertSettings.tts end },
   }
   for _, c in ipairs(cases) do
@@ -409,7 +409,7 @@ check("tab: configuration dropdown swaps rows", function()
   assert(help, "Configuration (?)")
   local d = configDropdown()
   local k, l = keys(d)
-  assert(l == "Icons,Texts,Bars,Circles,Timeline", l)
+  assert(l == "Icons,Texts,Bars,Circles,Alert timeline", l)
   d.opts.set("icons")
   local show = checks("Show these alerts")
   assert(show and show.shown and show.checked, "Show these alerts")
@@ -592,6 +592,32 @@ check("alertstab: a long list of settings scrolls, a short one does not", functi
   scroll.vscroll = 120
   d.opts.set("icons")
   assert(child.h <= scroll.h and not scroll.ScrollBar.shown and scroll.vscroll == 0, "the icons fit: no bar, back at the top")
+  -- the bars' rows (the most of the other areas) fit too: no bar
+  d.opts.set("bars")
+  assert(child.h <= scroll.h and not scroll.ScrollBar.shown, "the bars fit with no scroll bar: " .. child.h .. " in " .. scroll.h)
+end)
+
+check("alertstab: a slider row's (?) sits inside the scroll frame", function()
+  CRT.NotesPage.Open("alerts")
+  local scroll = created.CowfeeRaidToolsAlertSettingsScroll
+  local found = 0
+  for _, key in ipairs({ "bars", "timeline", "icons", "texts", "circles" }) do
+    configDropdown().opts.set(key)
+    for _, r in ipairs(sliders) do
+      local help = rawget(r, "help")
+      if help and r.shown and r.parent == scroll.scrollChild then
+        local p = r.pts[#r.pts]
+        local hp = help.pts[#help.pts]
+        local o = r.opts
+        local rowRight = p[4] + (o.labelWidth or 140) + 5 + (o.width or 200) + 44
+        assert(hp[1] == "LEFT" and hp[2] == r and hp[3] == "RIGHT", key .. ": the (?) after the row")
+        local right = rowRight + hp[4] + 20 -- UI.HELP_SIZE
+        assert(right <= scroll.w, key .. ": " .. r.label .. "'s (?) ends at " .. right .. ", the scroll frame at " .. scroll.w)
+        found = found + 1
+      end
+    end
+  end
+  assert(found > 0, "a slider row with a (?) was checked")
 end)
 
 if fail > 0 then error(fail .. " failed") end

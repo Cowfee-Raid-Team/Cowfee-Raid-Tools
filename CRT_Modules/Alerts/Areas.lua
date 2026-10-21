@@ -656,6 +656,8 @@ function Areas.Panel(parent, onChange)
     local frame = CreateFrame("Frame", nil, parent)
     frame:SetSize(PANEL_WIDTH, ROW_HEIGHT)
     local panel = setmetatable({ frame = frame, rows = {}, cursor = 0, onChange = onChange }, Panel)
+    -- the rows' width with a (?) after a control: what a parent that clips the panel must leave room for
+    panel.fullWidth = PANEL_WIDTH + HELP_GAP + (UI.HELP_SIZE or 20)
     return panel
 end
 

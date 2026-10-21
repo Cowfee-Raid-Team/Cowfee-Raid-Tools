@@ -30,7 +30,7 @@ local TEXT = {
     icon = "Icon",
     bar = "Bar",
     circle = "Circle",
-    timeline = "Timeline",
+    timeline = "Alert timeline",
     speech = "Read them out (text to speech)",
     speechHelp = "Reads your note lines out wherever they show, with or without the Next spell alert, and plays their sounds.\n\n"
         .. "It is also the switch for all speech: turning it off silences your reminders' speech too.",
@@ -53,7 +53,7 @@ local TEXT = {
     texts = "Texts",
     bars = "Bars",
     circles = "Circles",
-    timelineArea = "Timeline",
+    timelineArea = "Alert timeline",
 }
 
 -- The areas in the dropdown, in this order.
@@ -71,8 +71,8 @@ local DEFAULT_KIND = "icons"
 local COLUMN_GAP = 16
 local RIGHT_X = math.floor(UI.PAGE_W / 2) + COLUMN_GAP / 2
 local TAB_H = UI.PAGE_H - 66
-local ROWS_TOP = 72      -- the rows start this far down the tab, under the dropdown
-local ROWS_BOTTOM = 8    -- and end this far above its bottom
+local ROWS_TOP = 68      -- the rows start this far down the tab, under the dropdown
+local ROWS_BOTTOM = 4    -- and end this far above its bottom: room for the bars' 13 rows without scrolling
 local TEST_ICONS = { 136243, 135808, 136116 }
 local TEST_TIMES = { 8, 12, 16 } -- seconds until each test alert reaches 0
 local TEST_HOLD = 1
@@ -295,7 +295,10 @@ local function build(pf)
     scroll.scrollBarHideable = true -- the template hides the bar when nothing scrolls
     scroll:SetPoint("TOPLEFT", RIGHT_X, -ROWS_TOP)
     panel = CRT.AlertAreas.Panel(scroll, refresh)
-    scroll:SetSize(panel.frame:GetWidth(), TAB_H - ROWS_TOP - ROWS_BOTTOM)
+    -- as wide as the rows and the (?) after a control, so the scroll frame never clips one
+    local width = panel.fullWidth or panel.frame:GetWidth()
+    panel.frame:SetWidth(width)
+    scroll:SetSize(width, TAB_H - ROWS_TOP - ROWS_BOTTOM)
     scroll:SetScrollChild(panel.frame)
     rowsScroll = scroll
 
