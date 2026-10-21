@@ -62,6 +62,7 @@ g "two looks, no third" && { bad=$(grep -rnE 'IsFlat|ui\.style|"minimal"|Minimal
 g "fit text" && { node run_fittext.js "$W" 2>&1 | tail -1; }
 g "gear" && { node run_gear.js "$W" 2>&1 | tail -12; echo "exit ${PIPESTATUS[0]}"; }
 g "gearchecker data" && { node run_gearchecker_data.js "$W" 2>&1 | tail -12; echo "exit ${PIPESTATUS[0]}"; }
+g "gearchecker comm" && { node run_gearchecker_comm.js "$W" 2>&1 | tail -12; echo "exit ${PIPESTATUS[0]}"; }
 g "loot rclc" && { node run_loot_rclc.js "$W" 2>&1 | tail -6; echo "exit ${PIPESTATUS[0]}"; }
 g "lootmaster data" && { node run_lootmaster_data.js "$W" 2>&1 | tail -6; echo "exit ${PIPESTATUS[0]}"; }
 g "lootmaster comm" && { node run_lootmaster_comm.js "$W" 2>&1 | tail -6; echo "exit ${PIPESTATUS[0]}"; }
