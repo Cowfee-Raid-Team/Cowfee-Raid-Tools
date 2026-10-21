@@ -124,7 +124,7 @@ local TEXT = {
     shows = "Shows: %s",
     showsNothing = "Shows nothing",
     readOut = "read out",
-    outputs = { alert = "Alert", text = "Text", icon = "Icon", bar = "Bar", circle = "Circle" },
+    outputs = { alert = "Alert", text = "Text", icon = "Icon", bar = "Bar", circle = "Circle", timeline = "Timeline" },
     raidNoteFor = "Raid note for %s",
     placeAt = "Place at %s",
     edit = "Edit",
@@ -2016,7 +2016,7 @@ local function chipEnter(c)
         GameTooltip:AddLine(s.text, 1, 1, 1)
     end
     local shows = {}
-    for _, k in ipairs({ "alert", "text", "icon", "bar", "circle" }) do
+    for _, k in ipairs({ "alert", "text", "icon", "bar", "circle", "timeline" }) do
         if s.outputs and s.outputs[k] then
             shows[#shows + 1] = TEXT.outputs[k]
         end

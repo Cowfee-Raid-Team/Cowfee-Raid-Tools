@@ -4,7 +4,7 @@ local ADDON, CRT = ...
 -- timeline (the cast schedule of one ability, converted to a phase and seconds into it) or from times
 -- you type, and it runs on the alerts engine as the "mine" block beside the raid note. A reminder is
 -- saved in CRT.db.alerts.reminders[encounterID][id] as
---   { boss, spellID, text, times, outputs = { alert, bar, speech, text, icon, circle }, warn, speech,
+--   { boss, spellID, text, times, outputs = { alert, bar, speech, text, icon, circle, timeline }, warn, speech,
 --     priority, difficulty, enabled, linger, sound, auraSound, glow, iconID, color, speakAt }
 -- auraSound true also plays the sound when the spell's aura is put on you (Sound/Auras.lua).
 -- where `times` is typed text ("P1 0:02, 1:17; P2 +0:18") or nil for the reference, `speech` is
@@ -516,7 +516,8 @@ function Reminders:Items(encounterID, id, r)
             glow = r.glow and true or nil,
             outputs = { alert = o.alert and true or false, bar = o.bar and true or false,
                 speech = o.speech and true or false, text = o.text and true or false,
-                icon = o.icon and true or false, circle = o.circle and true or false },
+                icon = o.icon and true or false, circle = o.circle and true or false,
+                timeline = o.timeline and true or false },
             speech = speechList(r, text),
         }
     end

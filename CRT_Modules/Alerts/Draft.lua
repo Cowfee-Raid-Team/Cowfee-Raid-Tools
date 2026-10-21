@@ -6,7 +6,7 @@ local ADDON, CRT = ...
 --   ctx    where the draft came from: { encounterID, id (a reminder) and reminder (its saved copy) },
 --          and for the editor also a note line (noteID, line, expected) or a saved alert (savedMode)
 --   draft  { saveAs, tag, difficulty, ph, timeText, timeTouched, keptTimes, spellID, iconType, iconID,
---          text, color, show = { alert, text, icon, bar, circle }, speak, speakAt, count, glow, sound,
+--          text, color, show = { alert, text, icon, bar, circle, timeline }, speak, speakAt, count, glow, sound,
 --          warn, linger, boss, baseDifficulty, difficultyTouched }
 --          speakAt is nil (Speak at: On show) or "zero" (At 0), as a reminder keeps it
 -- Every function takes ctx and the draft it works on; none keeps either.
@@ -33,7 +33,7 @@ local TEXT = {
 }
 Draft.TEXT = TEXT
 
-local SHOW_KEYS = { "alert", "text", "icon", "bar", "circle" }
+local SHOW_KEYS = { "alert", "text", "icon", "bar", "circle", "timeline" }
 Draft.SHOW_KEYS = SHOW_KEYS
 local DEFAULT_WARN = 5
 
@@ -219,7 +219,7 @@ end
 -- cooldown has its own. No sound and the default colour are nil, which a table can't hold:
 -- Draft.ForCooldown clears them.
 function Draft.CooldownDefaults()
-    return { show = { alert = false, text = true, icon = false, bar = false, circle = false }, speak = true,
+    return { show = { alert = false, text = true, icon = false, bar = false, circle = false, timeline = false }, speak = true,
         speakAt = "zero", count = false, glow = false, warn = COOLDOWN_WARN, linger = COOLDOWN_LINGER,
         iconType = "spell" }
 end

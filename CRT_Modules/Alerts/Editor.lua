@@ -75,6 +75,7 @@ local TEXT = {
     showIcon = "Icon",
     bar = "Bar",
     circle = "Circle",
+    timeline = "Timeline",
     also = "Also",
     speak = "Speak the text",
     count = "Count down 3 2 1",
@@ -1454,7 +1455,8 @@ local function build()
     makeLabel(f, TEXT.showAs, LEFT, -246 - ROW1_EXTRA)
     f.checks = {}
     for _, spec in ipairs({ { "alert", TEXT.nextSpell, FIELD_X }, { "text", TEXT.showText, 226 },
-        { "icon", TEXT.showIcon, 296 }, { "bar", TEXT.bar, 366 }, { "circle", TEXT.circle, 430 } }) do
+        { "icon", TEXT.showIcon, 296 }, { "bar", TEXT.bar, 366 }, { "circle", TEXT.circle, 430 },
+        { "timeline", TEXT.timeline, 500 } }) do
         local key = spec[1]
         f.checks[key] = makeCheck(f, spec[2], spec[3], -240 - ROW1_EXTRA, setter(function(on) draft.show[key] = on end))
     end

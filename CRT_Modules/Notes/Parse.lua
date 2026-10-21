@@ -10,7 +10,7 @@ local ADDON, CRT = ...
 -- Any other line is free text shown under the timers. A tag is one or more player names, role words
 -- (tank, healer, dps, melee, ranged, all) or class names, separated by spaces.
 -- A timed line may also say how it shows. Without show: it shows as it always has.
---   show:icon,text;   only these displays: alert, text, icon, bar, circle
+--   show:icon,text;   only these displays: alert, text, icon, bar, circle, timeline
 --   tts:1; count:1;   read the line out; count down 3, 2, 1
 --   ttsat:0;          read the line out at its time, not when it shows (absent: when it shows)
 --   sound:RAID_WARNING; glow:1; warn:6; linger:3; icon:135940;
@@ -51,7 +51,7 @@ local function color(s)
     return nil
 end
 
-local SHOW_WORDS = { "alert", "text", "icon", "bar", "circle" }
+local SHOW_WORDS = { "alert", "text", "icon", "bar", "circle", "timeline" }
 local IS_SHOW_WORD = {}
 for _, w in ipairs(SHOW_WORDS) do
     IS_SHOW_WORD[w] = true

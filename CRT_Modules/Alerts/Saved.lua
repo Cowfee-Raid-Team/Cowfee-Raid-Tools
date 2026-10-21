@@ -2,7 +2,7 @@ local ADDON, CRT = ...
 
 -- Saved alerts: one alert's setup without its time, kept to place on any boss's Timeline or to open in
 -- the alert editor. Stored in CRT.db.alerts.saved[id] (ids from nextSavedId) as
---   { name, saveAs, tags, spellID, iconID, text, color, outputs = { alert, text, icon, bar, circle, speech },
+--   { name, saveAs, tags, spellID, iconID, text, color, outputs = { alert, text, icon, bar, circle, timeline, speech },
 --     speech, speakAt, sound, glow, warn, linger }
 -- where `tags` are the words of the editor's For choice, `saveAs` is "note" or "mine", and `speech` is
 -- "text", "textcount" or "count" and `speakAt` nil or "zero" as a reminder keeps them. The time, phase,
@@ -25,7 +25,7 @@ local Alerts = CRT.Alerts
 local Saved = {}
 CRT.AlertSaved = Saved
 
-local OUTPUT_KEYS = { "alert", "text", "icon", "bar", "circle", "speech" }
+local OUTPUT_KEYS = { "alert", "text", "icon", "bar", "circle", "timeline", "speech" }
 local listeners = {}
 
 -- Each: key (never reused), the fields Saved:Save takes, and pin for the ones listed first. Defaults as a
