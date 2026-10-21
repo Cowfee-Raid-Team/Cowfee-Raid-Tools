@@ -167,18 +167,19 @@ local function palette(key, list)
 end
 palette("cowfee", { background = "17110E", surface = "2B1E17", border = "5A4231", selected = "8C4F2B", accent = "E2A14B", label = "D9B48A",
   heading = "D9B48A", text = "F4EBDD", good = "8FA876", warn = "F2C14E", bad = "C8553D", knob = "4A3424", knobBorder = "1A120C", knobShine = "7A5A3E", knobText = { 1, 1, 1 },
-  check = { 1, 1, 1 }, checkBorder = "1A120C" })
+  check = { 1, 1, 1 }, checkBorder = "1A120C", outline = "17110E" })
 palette("midnight", { background = "050505", surface = "121212", border = "2E2E2E", selected = "2A2A2A", accent = "E6E6E6", label = "BDBDBD",
-  heading = "BDBDBD", text = "F2F2F2", good = "7FBF7F", warn = "E6B450", bad = "E06C6C", knob = "1E1E1E", knobBorder = "000000", knobShine = "3A3A3A", check = "E6E6E6", checkBorder = "E6E6E6" })
+  heading = "BDBDBD", text = "F2F2F2", good = "7FBF7F", warn = "E6B450", bad = "E06C6C", knob = "1E1E1E", knobBorder = "000000", knobShine = "3A3A3A", check = "E6E6E6", checkBorder = "E6E6E6", outline = "000000" })
 palette("nitro", { background = "06080A", surface = "11151A", border = "28313B", selected = "1E2A36", accent = "7FB3D9", label = "A9BBCB",
-  heading = "A9BBCB", text = "EEF2F5", good = "8FCFA0", warn = "F0C060", bad = "FF7F6B", knob = "18202A", knobBorder = "000000", knobShine = "34414F", check = "7FB3D9", checkBorder = "7FB3D9" })
+  heading = "A9BBCB", text = "EEF2F5", good = "8FCFA0", warn = "F0C060", bad = "FF7F6B", knob = "18202A", knobBorder = "000000", knobShine = "34414F", check = "7FB3D9", checkBorder = "7FB3D9", outline = "000000" })
 -- Default: Blizzard keeps the colours from before themes, so what reads CRT.PALETTE in Classic is unchanged;
 -- its heading, good, warn and bad are the game's gold, green, orange and red (the fallbacks, with no game globals here).
 local old = { background = { 0.11, 0.078, 0.063 }, surface = { 0.165, 0.122, 0.098 }, border = { 0.30, 0.235, 0.188 }, selected = { 0.44, 0.31, 0.22 },
   accent = { 0.78, 0.56, 0.36 }, label = { 0.87, 0.73, 0.56 }, text = { 0.95, 0.90, 0.84 }, heading = { 1, 0.82, 0 }, good = "19FF19",
   warn = "FF8040", bad = "FF2020", knob = "4A3424",
   knobBorder = "1A120C", knobShine = "7A5A3E", knobText = { 1, 1, 1 }, check = { 1, 1, 1 }, checkBorder = "1A120C",
-  titleTop = { 0.353, 0.247, 0.173 }, titleBottom = { 0.227, 0.165, 0.122 }, muted = { 0.80, 0.71, 0.60 } }
+  titleTop = { 0.353, 0.247, 0.173 }, titleBottom = { 0.227, 0.165, 0.122 }, muted = { 0.80, 0.71, 0.60 },
+  outline = "1A120C" } -- the darkest colour (the knob's edge), for the alert bars' Border
 for _, key in ipairs(CRT.THEME_KEYS) do check(old[key] ~= nil, "the test knows blizzard's old " .. key) end
 palette("blizzard", old)
 print("ok themes: the palettes")

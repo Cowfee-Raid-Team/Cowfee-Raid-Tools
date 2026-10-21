@@ -47,8 +47,10 @@ CRT.THEME_MODERN = "cowfee" -- old saved data with the Modern look on
 --   checkBorder  a ticked checkbox's edge
 --   titleTop, titleBottom   a window title bar's gradient (UI.TitleStrip)
 --   muted        quiet text: the small note beside a window's title, a roll someone else won
+--   outline      a dark edge that must stand out on any fill: the alert bars' Border; the theme's darkest colour
 CRT.THEME_KEYS = { "background", "surface", "border", "selected", "accent", "label", "heading", "text", "good",
-    "warn", "bad", "knob", "knobBorder", "knobShine", "knobText", "check", "checkBorder", "titleTop", "titleBottom", "muted" }
+    "warn", "bad", "knob", "knobBorder", "knobShine", "knobText", "check", "checkBorder", "titleTop", "titleBottom", "muted",
+    "outline" }
 
 local function hex(h)
     return { tonumber(h:sub(1, 2), 16) / 255, tonumber(h:sub(3, 4), 16) / 255, tonumber(h:sub(5, 6), 16) / 255 }
@@ -90,6 +92,7 @@ CRT.THEMES = {
         titleTop = { 0.353, 0.247, 0.173 },
         titleBottom = { 0.227, 0.165, 0.122 },
         muted = { 0.80, 0.71, 0.60 },
+        outline = hex("1A120C"),
     },
     midnight = {
         background = hex("050505"),
@@ -112,6 +115,7 @@ CRT.THEMES = {
         titleTop = hex("1C1C1C"),
         titleBottom = hex("0E0E0E"),
         muted = hex("9E9E9E"),
+        outline = hex("000000"),
     },
     nitro = {
         background = hex("06080A"),
@@ -134,6 +138,7 @@ CRT.THEMES = {
         titleTop = hex("1A2430"),
         titleBottom = hex("0E1319"),
         muted = hex("8A9DB0"),
+        outline = hex("000000"),
     },
     cowfee = {
         background = hex("17110E"), -- Cold Brew
@@ -156,6 +161,7 @@ CRT.THEMES = {
         titleTop = { 0.353, 0.247, 0.173 },
         titleBottom = { 0.227, 0.165, 0.122 },
         muted = { 0.80, 0.71, 0.60 },
+        outline = hex("17110E"), -- Cold Brew, the background
     },
 }
 

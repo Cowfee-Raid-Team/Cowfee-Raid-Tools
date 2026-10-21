@@ -12,7 +12,7 @@ Every theme fills every key in `CRT.THEME_KEYS`. Each key is named for what it c
 |---|---|
 | background | the window background |
 | surface | menu blocks, fields, buttons, list rows, an unticked checkbox |
-| border | borders, the empty part of a slider's track, a scroll bar's rail, the alert bars' Border |
+| border | borders, the empty part of a slider's track, a scroll bar's rail |
 | selected | the selected page and tab, an unticked checkbox's edge |
 | accent | lines, a slider's filled track, hover edges, the Modern help ring, scroll bar thumbs, the alert timeline's line and its tick marks |
 | label | button text and labels (the game's gold font takes this colour in a Modern theme) |
@@ -29,6 +29,7 @@ Every theme fills every key in `CRT.THEME_KEYS`. Each key is named for what it c
 | checkBorder | a ticked checkbox's edge |
 | titleTop, titleBottom | a window title strip's gradient, top and bottom |
 | muted | quiet text: the small note beside a window's title, a roll someone else won |
+| outline | a dark edge that must show on any fill: the alert bars' Border, drawn fully opaque. Always the theme's darkest colour |
 
 The four status keys mean the same thing on every page and overlay: heading for titles, good for good, warn for in between, bad for bad. Pick by meaning, never by the colour a theme happens to give.
 
@@ -58,8 +59,9 @@ Hex per theme, in menu order. "Game" means Default: Blizzard reads the game's ow
 | titleTop | 5A3F2C | 1C1C1C | 1A2430 | 5A3F2C |
 | titleBottom | 3A2A1F | 0E0E0E | 0E1319 | 3A2A1F |
 | muted | CCB599 | 9E9E9E | 8A9DB0 | CCB599 |
+| outline | 1A120C | 000000 | 000000 | 17110E |
 
-Default: Blizzard is the Classic look: the game's art draws the windows, so most of its column is only read by the few surfaces that use `CRT.PALETTE` in both looks. Those values are the colours from before themes and never change. Its heading, good, warn and bad are the game's own text colours.
+Default: Blizzard is the Classic look: the game's art draws the windows, so most of its column is only read by the few surfaces that use `CRT.PALETTE` in both looks. Those values are the colours from before themes and never change (outline came later: its darkest colour, as in every theme). Its heading, good, warn and bad are the game's own text colours.
 
 ## The helpers
 
@@ -79,7 +81,7 @@ Rules:
 - Pages refresh on a switch (their OnShow), so text a page's refresh writes with the helpers follows by itself.
 - Overlays (note windows, alerts, your bar, the ready check window, warnings) don't: each needs a `UI.Tint`, a `UI.ThemedText` or an `UI:OnTheme` hook. `run_themes.js` checks they have one.
 - An `UI:OnTheme` hook only recolours CRT's own textures and font strings. It never re-anchors, shows, hides or re-wires a secure or game-owned frame, since a theme can change in combat.
-- Borders on overlays follow the theme too: the alert bars' Border is the `border` key (`UI.Tint`), never a fixed black.
+- Borders on overlays follow the theme too: the alert bars' Border is the `outline` key at full opacity (`UI.Tint`), never a fixed black. A new theme's outline is its darkest colour; `run_alerts_bars.js` checks that, and the contrast script checks it against every bar fill.
 - A tab's `.sel` texture: colour it once with `UI.Color("heading", 0.18)`, never `UI.Tint`, because `UI:StyleTab` restyles it.
 - Skinned game templates (buttons, checkboxes, edit boxes, dropdowns, scroll bars) follow through `UI.skinned`.
 

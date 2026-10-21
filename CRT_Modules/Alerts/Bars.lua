@@ -6,7 +6,7 @@ local ADDON, CRT = ...
 -- CRT.db.alerts.bars (shown, cap, ahead, width, height, spacing, border, grow, noteLines, font, fontSize, barColor,
 -- bgColor, textColor, showType) and open from the area's gear.
 -- Spacing is the gap between two bars' borders and Border a line around each bar, outside it, in the theme's
--- border colour; a bar's step is its height + spacing + 2 * border, so No border and 0 touch. All three are
+-- outline colour (its darkest, fully opaque, so the edge shows on any fill); a bar's step is its height + spacing + 2 * border, so No border and 0 touch. All three are
 -- whole screen pixels (Bars.Metrics), so touching bars leave no seam. A bar is in its ability type's colour (Areas.DrawColor); the Bar,
 -- Background and Text colours apply only with Use custom colours on (alerts.customColors), and then a line's own
 -- colour still wins over the Bar colour. Off, they stay saved and their rows grey out.
@@ -38,7 +38,7 @@ local TEXT = {
     spacing = "Spacing",
     spacingHelp = "The gap between two bars. A border adds to it, so borders never overlap. With No border and 0, the bars touch.",
     border = "Border",
-    borderHelp = "A dark line around each bar, in the theme's border colour.",
+    borderHelp = "A dark line around each bar, in the theme's darkest colour.",
     noBorder = "No border",
     thin = "Thin (1 px)",
     thick = "Thick (2 px)",
@@ -70,7 +70,7 @@ local DEFAULT_SPACING = 4 -- the gap bars had before the setting (Areas.lua's GA
 local MAX_SPACING = 20
 local BORDER_WIDTH = { none = 0, thin = 1, thick = 2 }
 local DEFAULT_BORDER = "none" -- bars had no border before the setting
-local BORDER_COLOR = "border" -- the theme's border colour (CRT_Dev/StyleGuide.md)
+local BORDER_COLOR = "outline" -- the theme's darkest colour, drawn opaque (CRT_Dev/StyleGuide.md)
 local BORDER_OPTIONS = {
     { key = "none", label = TEXT.noBorder },
     { key = "thin", label = TEXT.thin },
@@ -261,7 +261,7 @@ local function make(parent)
     bar.edges = {}
     for i = 1, 4 do
         local t = bar:CreateTexture(nil, "BACKGROUND")
-        UI.Tint(t, "SetColorTexture", BORDER_COLOR)
+        UI.Tint(t, "SetColorTexture", BORDER_COLOR, 1)
         t:Hide()
         bar.edges[i] = t
     end
