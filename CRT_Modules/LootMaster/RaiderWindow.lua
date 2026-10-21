@@ -57,7 +57,7 @@ end
 
 local function answerText(r, view)
     if r.state == "nocrt" then
-        return "|cffff8a40" .. TEXT.nocrt .. "|r"
+        return UI.WarnText(TEXT.nocrt)
     elseif r.state == "timeout" then
         return "|cff9c8a78" .. TEXT.timeout .. "|r"
     elseif r.state == "loading" then

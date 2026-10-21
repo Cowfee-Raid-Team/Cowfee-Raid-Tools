@@ -391,11 +391,13 @@ function UI:FillThemeMenu(root)
 end
 
 -- The theme's colours by palette key, for code that colours a part itself. Every theme has its own
--- heading, good (matcha) and bad colour; Default: Blizzard's are the game's gold, green and red.
+-- heading, good (matcha), warn and bad colour; Default: Blizzard's are the game's gold, green, orange and
+-- red. CRT_Dev/StyleGuide.md says which to use where.
 --   UI.Color(key, alpha)    r, g, b, a for SetTextColor, SetVertexColor or SetColorTexture
 --   UI.Hex(key)             "rrggbb" for |cff markup
 --   UI.ColorText(text, key) the text in that colour
 --   UI.GoodText(text)       good states: synced, answered, on, ready
+--   UI.WarnText(text)       in-between states: running low, worn, arrived late, a middling score
 --   UI.BadText(text)        bad states: late, failed, missing, can't
 --   UI.HeadingText(text)    a heading or section title written in a string
 -- A part coloured once, when it is made, follows a switch through UI.Tint (one colour) or UI.ThemedText
@@ -417,6 +419,10 @@ end
 
 function UI.GoodText(text)
     return UI.ColorText(text, "matcha")
+end
+
+function UI.WarnText(text)
+    return UI.ColorText(text, "warn")
 end
 
 function UI.BadText(text)

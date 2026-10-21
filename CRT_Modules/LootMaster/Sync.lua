@@ -119,7 +119,7 @@ local function short(list)
 end
 
 -- The status line for the last sync, or nil before the first. good, when given, wraps the "Synced to"
--- sentence (UI.GoodText on the page, so it is the theme's good colour).
+-- sentence (UI.GoodText on the page in a Modern theme, so it is matcha there; plain in Default: Blizzard).
 function LM:SyncStatus(good)
     local o = self.syncOut
     if not o then

@@ -298,7 +298,7 @@ check("a theme switch repaints the bar's icons", applied > 0, applied)
 previews.consumables(false)
 CRT.UI.SwitchTheme("blizzard")
 
--- CRT_Modules/Consumables/Bar.lua: missing and running low in the theme's bad and heading colours.
+-- CRT_Modules/Consumables/Bar.lua: missing and running low in the theme's bad and warn colours.
 do
   local ants = {}
   format = format or string.format
@@ -308,13 +308,13 @@ do
   local function fs() local f = mock("FontString") rawset(f, "SetTextColor", function(self, r, g, b) rawset(self, "rgb", { r, g, b }) end) return f end
   local slot = mock("Button")
   rawset(slot, "icon", mock("Texture")) rawset(slot, "time", fs()) rawset(slot, "count", fs()) rawset(slot, "tag", fs())
-  local function same(c, key) local m = CRT.MOCHA[key] return c and math.abs(c[1] - m[1]) < 1e-6 and math.abs(c[2] - m[2]) < 1e-6 and math.abs(c[3] - m[3]) < 1e-6 end
-  for _, theme in ipairs({ "blizzard", "cowfee" }) do
+  local function same(c, key) local m = CRT.MOCHA[key] return c and m and math.abs(c[1] - m[1]) < 1e-6 and math.abs(c[2] - m[2]) < 1e-6 and math.abs(c[3] - m[3]) < 1e-6 end
+  for _, theme in ipairs({ "blizzard", "midnight", "nitro", "cowfee" }) do
     CRT.UI.SwitchTheme(theme)
     B.ConsumablesBar.Apply(slot, { state = "missing", count = 0 })
     check(theme .. ": missing ants and none left in the bad colour", same(ants[slot], "bad") and same(rawget(slot.count, "rgb"), "bad"))
     B.ConsumablesBar.Apply(slot, { state = "low", left = 60 })
-    check(theme .. ": running low in the heading colour", same(ants[slot], "heading") and same(rawget(slot.time, "rgb"), "heading"))
+    check(theme .. ": running low in the warn colour", same(ants[slot], "warn") and same(rawget(slot.time, "rgb"), "warn"))
   end
   CRT.UI.SwitchTheme("blizzard")
   check("Default: Blizzard: missing is the game's red", CRT.UI.Hex("bad") == "ff2020")

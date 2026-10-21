@@ -312,7 +312,7 @@ function GC.TrackWords(info)
 end
 
 -- A track's colour: the game's colour for its item quality (Gear.QualityColor), else its own colour, else
--- white.
+-- white. The same in every theme: not a theme colour.
 function GC.TrackColor(track)
     local r, g, b = Gear.QualityColor(type(track) == "table" and track.quality or nil)
     if r then

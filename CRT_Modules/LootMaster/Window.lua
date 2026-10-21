@@ -134,7 +134,7 @@ end
 
 local function responseCell(r, s)
     if r.state == "nocrt" then
-        return "|cffff8a40" .. TEXT.nocrt .. "|r"
+        return UI.WarnText(TEXT.nocrt)
     elseif r.state == "timeout" then
         return UI.BadText(TEXT.timeout)
     elseif r.state == "loading" then
@@ -397,10 +397,11 @@ local function refresh()
     else
         header.info:SetText(it.ilvl and ("Item level " .. it.ilvl) or "")
     end
-    -- the same count as the tab; everyone in, the theme's good colour
+    -- the same count as the tab; everyone in: matcha in a Modern theme, plain in Default: Blizzard, as
+    -- before themes
     local answered, expected = s:AnswerCount(current)
     local count = string.format(TEXT.answered, answered, expected)
-    header.answered:SetText((expected > 0 and answered >= expected) and UI.GoodText(count) or count)
+    header.answered:SetText((expected > 0 and answered >= expected) and UI:IsModern() and UI.GoodText(count) or count) -- not a theme colour
     local rows = s:Rows(current, LM.Score)
     local sort = CRT.db.lootmaster.sort
     if sort.looterKey then

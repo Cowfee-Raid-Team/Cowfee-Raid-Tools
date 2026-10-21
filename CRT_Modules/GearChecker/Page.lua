@@ -80,13 +80,14 @@ L.cellsX = L.nameW + L.ilvlW + L.issuesW + L.tracksW -- where the first cell sta
 L.rowW = L.cellsX + #Gear.SLOTS * L.cellW
 GC.PAGE_LAYOUT = L
 
--- Data colours, the same in every theme (not theme colours).
+-- Missing, low and enchanted in the theme's bad, warn and good colours (CRT.MOCHA's tables, refilled on a
+-- theme switch; the page redraws when shown). The rest are data colours, the same in every theme.
 local COLORS = {
-    bad = { 0.9, 0.15, 0.15 },
-    low = { 1, 0.55, 0.1 },
-    info = { 0.3, 0.65, 1 }, -- a season check to know about, not to fix
-    good = { 0.3, 0.85, 0.3 },
-    gem = { 0.55, 0.8, 1 },
+    bad = CRT.MOCHA.bad,
+    low = CRT.MOCHA.warn, -- an item well under the player's average
+    good = CRT.MOCHA.matcha,
+    info = { 0.3, 0.65, 1 }, -- a season check to know about, not to fix: not a theme colour
+    gem = { 0.55, 0.8, 1 }, -- a filled socket: not a theme colour
     socket = { 0.08, 0.08, 0.08 },
     emptyCell = { 0, 0, 0, 0.35 },
 }
@@ -100,14 +101,16 @@ GC.Page = P
 
 -- Colours by look -------------------------------------------------------------------------------------------
 
--- A text colour: the theme's in Modern, the game's in Default: Blizzard (gold headings, white text).
+-- A text colour: headings in the theme's heading colour (the game's gold in Default: Blizzard); other
+-- text the theme's cream in Modern, white in Default: Blizzard.
 local function textColor(kind)
-    if UI:IsModern() then
-        local c = CRT.MOCHA[kind == "heading" and "latte" or "cream"]
-        return c[1], c[2], c[3]
-    end
     if kind == "heading" then
-        return 1, 0.82, 0
+        local r, g, b = UI.Color("heading")
+        return r, g, b
+    end
+    if UI:IsModern() then
+        local r, g, b = UI.Color("cream")
+        return r, g, b
     end
     return 1, 1, 1
 end
@@ -135,6 +138,7 @@ local function secret(v)
 end
 
 -- The quality's colour; Uncommon until the game has loaded the item (ITEM_DATA_LOAD_RESULT redraws it).
+-- The game's item quality colour, the same in every theme: not a theme colour.
 local function qualityColor(piece)
     local q
     if C_Item and C_Item.GetItemQualityByID then

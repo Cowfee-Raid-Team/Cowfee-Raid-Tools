@@ -143,7 +143,7 @@ for _, info in ipairs(CRT.THEME_LIST) do
       info.key .. " has " .. key)
   end
 end
-for _, key in ipairs({ "espresso", "roast", "edge", "mocha", "caramel", "latte", "heading", "cream", "matcha", "bad", "walnut", "walnutEdge", "walnutShine", "walnutText", "tick" }) do
+for _, key in ipairs({ "espresso", "roast", "edge", "mocha", "caramel", "latte", "heading", "cream", "matcha", "warn", "bad", "walnut","walnutEdge", "walnutShine", "walnutText", "tick" }) do
   local listed = false
   for _, k in ipairs(CRT.THEME_KEYS) do if k == key then listed = true end end
   check(listed, "THEME_KEYS has " .. key)
@@ -166,17 +166,17 @@ local function palette(key, list)
   end
 end
 palette("cowfee", { espresso = "17110E", roast = "2B1E17", edge = "5A4231", mocha = "8C4F2B", caramel = "E2A14B", latte = "D9B48A",
-  heading = "D9B48A", cream = "F4EBDD", matcha = "8FA876", bad = "C8553D", walnut = "4A3424", walnutEdge = "1A120C", walnutShine = "7A5A3E", walnutText = { 1, 1, 1 },
+  heading = "D9B48A", cream = "F4EBDD", matcha = "8FA876", warn = "F2C14E", bad = "C8553D", walnut = "4A3424", walnutEdge = "1A120C", walnutShine = "7A5A3E", walnutText = { 1, 1, 1 },
   tick = { 1, 1, 1 }, checkEdge = "1A120C" })
 palette("midnight", { espresso = "050505", roast = "121212", edge = "2E2E2E", mocha = "2A2A2A", caramel = "E6E6E6", latte = "BDBDBD",
-  heading = "BDBDBD", cream = "F2F2F2", matcha = "7FBF7F", bad = "E06C6C", walnut = "1E1E1E", walnutEdge = "000000", walnutShine = "3A3A3A", tick = "E6E6E6", checkEdge = "E6E6E6" })
+  heading = "BDBDBD", cream = "F2F2F2", matcha = "7FBF7F", warn = "E6B450", bad = "E06C6C", walnut = "1E1E1E", walnutEdge = "000000", walnutShine = "3A3A3A", tick = "E6E6E6", checkEdge = "E6E6E6" })
 palette("nitro", { espresso = "06080A", roast = "11151A", edge = "28313B", mocha = "1E2A36", caramel = "7FB3D9", latte = "A9BBCB",
-  heading = "A9BBCB", cream = "EEF2F5", matcha = "8FCFA0", bad = "FF7F6B", walnut = "18202A", walnutEdge = "000000", walnutShine = "34414F", tick = "7FB3D9", checkEdge = "7FB3D9" })
+  heading = "A9BBCB", cream = "EEF2F5", matcha = "8FCFA0", warn = "F0C060", bad = "FF7F6B", walnut = "18202A", walnutEdge = "000000", walnutShine = "34414F", tick = "7FB3D9", checkEdge = "7FB3D9" })
 -- Default: Blizzard keeps the colours from before themes, so what reads CRT.MOCHA in Classic is unchanged;
--- its heading, good and bad are the game's gold, green and red (the fallbacks, with no game globals here).
+-- its heading, good, warn and bad are the game's gold, green, orange and red (the fallbacks, with no game globals here).
 local old = { espresso = { 0.11, 0.078, 0.063 }, roast = { 0.165, 0.122, 0.098 }, edge = { 0.30, 0.235, 0.188 }, mocha = { 0.44, 0.31, 0.22 },
   caramel = { 0.78, 0.56, 0.36 }, latte = { 0.87, 0.73, 0.56 }, cream = { 0.95, 0.90, 0.84 }, heading = { 1, 0.82, 0 }, matcha = "19FF19",
-  bad = "FF2020", walnut = "4A3424",
+  warn = "FF8040", bad = "FF2020", walnut = "4A3424",
   walnutEdge = "1A120C", walnutShine = "7A5A3E", walnutText = { 1, 1, 1 }, tick = { 1, 1, 1 }, checkEdge = "1A120C",
   stripTop = { 0.353, 0.247, 0.173 }, stripBottom = { 0.227, 0.165, 0.122 }, note = { 0.80, 0.71, 0.60 } }
 for _, key in ipairs(CRT.THEME_KEYS) do check(old[key] ~= nil, "the test knows blizzard's old " .. key) end
@@ -343,16 +343,19 @@ for _, w in ipairs(want) do
 end
 print("ok themes: the blackouts' menu bar")
 
--- One heading, good and bad colour per theme, the same everywhere in it (the mockup Alex approved).
+-- One heading, good, warn and bad colour per theme, the same everywhere in it (the mockup Alex approved; warn
+-- from the style guide job).
 local mock = {
-  blizzard = { heading = "ffd100", good = "19ff19", bad = "ff2020" },
-  cowfee = { heading = "d9b48a", good = "8fa876", bad = "c8553d" },
-  midnight = { heading = "bdbdbd", good = "7fbf7f", bad = "e06c6c" },
-  nitro = { heading = "a9bbcb", good = "8fcfa0", bad = "ff7f6b" },
+  blizzard = { heading = "ffd100", good = "19ff19", warn = "ff8040", bad = "ff2020" },
+  cowfee = { heading = "d9b48a", good = "8fa876", warn = "f2c14e", bad = "c8553d" },
+  midnight = { heading = "bdbdbd", good = "7fbf7f", warn = "e6b450", bad = "e06c6c" },
+  nitro = { heading = "a9bbcb", good = "8fcfa0", warn = "f0c060", bad = "ff7f6b" },
 }
 for key, m in pairs(mock) do
   UI:SetTheme(key)
   check(UI.GoodText("on") == "|cff" .. m.good .. "on|r", key .. ": good text: " .. UI.GoodText("on"))
+  check(UI.WarnText and UI.WarnText("low") == "|cff" .. m.warn .. "low|r", key .. ": warn text: " .. tostring(UI.WarnText and UI.WarnText("low")))
+  check(m.warn ~= m.heading and m.warn ~= m.bad and m.warn ~= m.good, key .. ": warn is its own colour")
   check(UI.BadText("late") == "|cff" .. m.bad .. "late|r", key .. ": bad text: " .. UI.BadText("late"))
   check(UI.HeadingText("Raid") == "|cff" .. m.heading .. "Raid|r", key .. ": heading text: " .. UI.HeadingText("Raid"))
   check(UI.Hex("bad") == m.bad and UI.ColorText("x", "matcha") == "|cff" .. m.good .. "x|r", key .. ": UI.Hex and UI.ColorText")
@@ -361,7 +364,7 @@ for key, m in pairs(mock) do
   local _, _, _, a2 = UI.Color("bad", 0.5)
   check(a2 == 0.5, key .. ": UI.Color passes the alpha on")
 end
-print("ok themes: one heading, good and bad colour per theme")
+print("ok themes: one heading, good, warn and bad colour per theme")
 
 -- A live switch repaints a tinted heading and a UI.ThemedText line.
 do
@@ -384,19 +387,23 @@ print("ok themes: a live switch repaints headings and themed texts")
 
 -- Themes.lua reads the game's own text colours when the game has them.
 do
-  local saved = { NORMAL_FONT_COLOR, GREEN_FONT_COLOR, RED_FONT_COLOR }
+  local saved = { NORMAL_FONT_COLOR, GREEN_FONT_COLOR, RED_FONT_COLOR, ORANGE_FONT_COLOR }
   local function color(r, g, b) return { GetRGB = function() return r, g, b end } end
   NORMAL_FONT_COLOR, GREEN_FONT_COLOR, RED_FONT_COLOR = color(1, 0.824, 0), color(0.098, 1, 0.098), color(1, 0.125, 0.125)
+  ORANGE_FONT_COLOR = color(1, 0.5, 0.25)
   local C2 = { db = { ui = {} } }
   assert(load(themesSrc, "Themes.lua"))("CowfeeRaidTools", C2)
   local b = C2.THEMES.blizzard
   check(near(b.heading, { 1, 0.824, 0 }) and near(b.matcha, { 0.098, 1, 0.098 }) and near(b.bad, { 1, 0.125, 0.125 }),
     "Default: Blizzard reads NORMAL_FONT_COLOR, GREEN_FONT_COLOR and RED_FONT_COLOR")
+  check(near(b.warn, { 1, 0.5, 0.25 }), "Default: Blizzard's warn reads ORANGE_FONT_COLOR")
   GREEN_FONT_COLOR = { GetRGB = function() error("no") end }
+  ORANGE_FONT_COLOR = nil
   C2 = { db = { ui = {} } }
   assert(load(themesSrc, "Themes.lua"))("CowfeeRaidTools", C2)
   check(near(C2.THEMES.blizzard.matcha, hex("19FF19")), "a broken game colour falls back")
-  NORMAL_FONT_COLOR, GREEN_FONT_COLOR, RED_FONT_COLOR = saved[1], saved[2], saved[3]
+  check(near(C2.THEMES.blizzard.warn, hex("FF8040")), "no ORANGE_FONT_COLOR: warn falls back to the game's orange")
+  NORMAL_FONT_COLOR, GREEN_FONT_COLOR, RED_FONT_COLOR, ORANGE_FONT_COLOR = saved[1], saved[2], saved[3], saved[4]
 end
 print("ok themes: the game's own colours")
 
@@ -416,6 +423,41 @@ for (const [file, what] of [
 ]) {
   if (read(file).includes('UI.GoodText')) console.log('ok themes: ' + file + ' uses UI.GoodText (' + what + ')');
   else { console.log('FAIL ' + file + ' does not use UI.GoodText (' + what + ')'); srcFails++; }
+}
+// The style guide (CRT_Dev/StyleGuide.md): warning states in the theme's warn colour; the colours that are not the
+// theme's stay as they were; a raider's response buttons come only from the looter's set. Each is one line of code.
+for (const [file, re, what] of [
+  ['CRT_Modules/Consumables/Bar.lua', /^\s*low = CRT\.MOCHA\.warn,/m, 'your bar: running low ants in warn'],
+  ['CRT_Modules/Consumables/Bar.lua', /slot\.time:SetTextColor\(CRT\.UI\.Color\("warn"\)\)/, 'your bar: the running low time in warn'],
+  ['CRT_Modules/ReadyCheck/Window.lua', /percent < 80 and CRT\.UI\.WarnText\(text\)/, 'ready check window: durability under 80% in warn'],
+  ['CRT_Modules/ReadyCheck/Window.lua', /cell\.text:SetText\(CRT\.UI\.WarnText\(c\.left/, 'ready check window: a buff running low in warn'],
+  ['CRT_Modules/ReadyCheck/BuffLock.lua', /UI\.Tint\(cover\.hint, "SetTextColor", "warn"\)/, 'the buff lock hint in warn'],
+  ['CRT_Modules/LootMaster/Page.lua', /s >= 70 and UI\.WarnText\(s\)/, 'Loot Master: scores 70-89 in warn'],
+  ['CRT_Modules/LootMaster/Window.lua', /return UI\.WarnText\(TEXT\.nocrt\)/, 'Loot Master: no CRT in warn'],
+  ['CRT_Modules/LootMaster/RaiderWindow.lua', /return UI\.WarnText\(TEXT\.nocrt\)/, 'All Loot Rolls: no CRT in warn'],
+  ['CRT_Modules/Late/Page.lua', /UI\.WarnText\("Arrived late \("/, 'Late Tracker: Arrived late in warn'],
+  ['CRT_Modules/Late/Page.lua', /UI\.WarnText\("Late \("/, 'Late Tracker: a past night\'s Late in warn'],
+  ['CRT_Modules/Late/Page.lua', /UI\.WarnText\("\+" \.\. minutes/, 'Late Tracker: the grid\'s minutes late in warn'],
+  ['CRT_Modules/Late/Page.lua', /UI\.WarnText\(minutes\(Late\.Seconds\(night, p\)\) \.\. " late"\)/, 'Late Tracker: a player\'s minutes late in warn'],
+  ['CRT_Modules/Timeline/ReferencePage.lua', /saved\.warnings\[1\]\)\s*\n\s*status:SetTextColor\(UI\.Color\("warn"\)\)/, 'ability timeline: saved with warnings in warn'],
+  ['CRT_Modules/Tattlebot/Page.lua', /"\|cffff8060" \.\. Tattle\.Short\(data\.damage\) \.\. "\|r".*not a theme colour/, 'Tattlebot: the totals\' damage orange again'],
+  ['CRT_Modules/Tattlebot/Page.lua', /\|cffff8060%s\|r on %d.*not a theme colour/, 'Tattlebot: the scan\'s damage orange again'],
+  ['CRT_Modules/LootMaster/Page.lua', /looting:SetText\(on and UI:IsModern\(\) and UI\.GoodText\(line\) or line\).*not a theme colour/, 'Loot Master: the looting line as before themes'],
+  ['CRT_Modules/LootMaster/Page.lua', /LM:SyncStatus\(UI:IsModern\(\) and UI\.GoodText or nil\).*not a theme colour/, 'Loot Master: the synced to line as before themes'],
+  ['CRT_Modules/LootMaster/Window.lua', /answered >= expected\) and UI:IsModern\(\) and UI\.GoodText\(count\) or count\).*not a theme colour/, 'Loot Master: the all-answered count as before themes'],
+  ['CRT_Modules/GearChecker/Page.lua', /^\s*low = CRT\.MOCHA\.warn,/m, 'Gear Checker: a low item in warn'],
+  ['CRT_Modules/GearChecker/Page.lua', /^\s*bad = CRT\.MOCHA\.bad,/m, 'Gear Checker: missing in the theme\'s bad'],
+  ['CRT_Modules/GearChecker/Page.lua', /^\s*good = CRT\.MOCHA\.matcha,/m, 'Gear Checker: enchanted in the theme\'s good'],
+]) {
+  if (re.test(read(file))) console.log('ok themes: ' + what);
+  else { console.log('FAIL ' + file + ': ' + what); srcFails++; }
+}
+if (/BadText\(Tattle\.Short/.test(read('CRT_Modules/Tattlebot/Page.lua'))) { console.log('FAIL Tattlebot damage is not a theme colour'); srcFails++; }
+// A raider's popup and All Loot Rolls window colour the buttons from the session the looter sent (Comm.lua's B part),
+// never from the raider's own saved set.
+for (const file of ['CRT_Modules/LootMaster/Popup.lua', 'CRT_Modules/LootMaster/RaiderWindow.lua']) {
+  if (/LM:Responses?\(/.test(read(file))) { console.log('FAIL ' + file + ' reads your own response set'); srcFails++; }
+  else console.log('ok themes: ' + file + ' takes its response colours from the looter\'s session');
 }
 // Overlays are not refreshed with the page in view, so each repaints on a theme switch itself: an OnTheme hook,
 // a UI.Tint or a UI.ThemedText. (Live switches are checked in the harnesses that build them: run_latepage,

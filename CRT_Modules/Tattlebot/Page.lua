@@ -315,7 +315,7 @@ local function showView(view, intro, blocks, below)
                 cell(row.mech, xMech, y, wMech, "LEFT", r == 1 and UI.HeadingText(block.name) or "")
                 cell(row.player, xPlayer, y, wPlayer, "LEFT", name(data.key, data.class))
                 cell(row.pulls, xPulls, y, wNum, "RIGHT", tostring(data.hits))
-                cell(row.damage, xDamage, y, wNum, "RIGHT", UI.BadText(Tattle.Short(data.damage)))
+                cell(row.damage, xDamage, y, wNum, "RIGHT", "|cffff8060" .. Tattle.Short(data.damage) .. "|r") -- damage orange: not a theme colour
                 y = y - TABLE_ROW_H
             end
         end
@@ -603,7 +603,7 @@ local function scanEntries()
         if mech then
             tags[#tags + 1] = UI.GoodText("tracked as " .. mech.name)
         end
-        local text = format("%s  |cff999999%d|r   %s on %d %s%s", sp.name, sp.id, UI.BadText(Tattle.Short(sp.damage)),
+        local text = format("%s  |cff999999%d|r   |cffff8060%s|r on %d %s%s", sp.name, sp.id, Tattle.Short(sp.damage), -- damage orange: not a theme colour
             sp.players, sp.players == 1 and "player" or "players", #tags > 0 and ("   " .. table.concat(tags, ", ")) or "")
         out[#out + 1] = { text = text, check = sp.id, tracked = mech ~= nil }
     end

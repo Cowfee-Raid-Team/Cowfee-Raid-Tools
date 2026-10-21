@@ -568,7 +568,7 @@ local function drawCell(cell, c)
         cell.icon:Show()
         if c.state == "low" then
             cell.icon:SetVertexColor(1, 0.6, 0.6)
-            cell.text:SetText(CRT.UI.HeadingText(c.left and math.max(1, math.floor(c.left / 60 + 0.5)) or "!"))
+            cell.text:SetText(CRT.UI.WarnText(c.left and math.max(1, math.floor(c.left / 60 + 0.5)) or "!"))
         else
             cell.icon:SetVertexColor(1, 1, 1)
         end
@@ -585,9 +585,9 @@ local function drawDurability(cell, percent)
         cell.text:SetText("")
         return
     end
-    -- under 50% the theme's bad colour, under 80% its heading colour (the game's red and gold in Classic)
+    -- under 50% the theme's bad colour, under 80% its warn colour (the game's red and orange in Classic)
     local text = percent .. "%"
-    cell.text:SetText(percent < 50 and CRT.UI.BadText(text) or (percent < 80 and CRT.UI.HeadingText(text) or text))
+    cell.text:SetText(percent < 50 and CRT.UI.BadText(text) or (percent < 80 and CRT.UI.WarnText(text) or text))
 end
 
 -- members: { name, class, ready, dur, cells[key] }. columns: the columns in order. dim[key] fades a
@@ -939,7 +939,7 @@ function Window:Apply()
     end
 end
 
--- A theme switch redraws the window, so its cells take the theme's heading and bad colours.
+-- A theme switch redraws the window, so its cells take the theme's warn and bad colours.
 CRT.UI:OnTheme(function()
     Window:Apply()
 end)
