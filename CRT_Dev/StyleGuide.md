@@ -12,7 +12,7 @@ Every theme fills every key in `CRT.THEME_KEYS`. Each key is named for what it c
 |---|---|
 | background | the window background |
 | surface | menu blocks, fields, buttons, list rows, an unticked checkbox |
-| border | borders, the empty part of a slider's track, a scroll bar's rail |
+| border | borders, the empty part of a slider's track, a scroll bar's rail, the alert bars' Border |
 | selected | the selected page and tab, an unticked checkbox's edge |
 | accent | lines, a slider's filled track, hover edges, the Modern help ring, scroll bar thumbs |
 | label | button text and labels (the game's gold font takes this colour in a Modern theme) |
@@ -79,6 +79,7 @@ Rules:
 - Pages refresh on a switch (their OnShow), so text a page's refresh writes with the helpers follows by itself.
 - Overlays (note windows, alerts, your bar, the ready check window, warnings) don't: each needs a `UI.Tint`, a `UI.ThemedText` or an `UI:OnTheme` hook. `run_themes.js` checks they have one.
 - An `UI:OnTheme` hook only recolours CRT's own textures and font strings. It never re-anchors, shows, hides or re-wires a secure or game-owned frame, since a theme can change in combat.
+- Borders on overlays follow the theme too: the alert bars' Border is the `border` key (`UI.Tint`), never a fixed black.
 - A tab's `.sel` texture: colour it once with `UI.Color("heading", 0.18)`, never `UI.Tint`, because `UI:StyleTab` restyles it.
 - Skinned game templates (buttons, checkboxes, edit boxes, dropdowns, scroll bars) follow through `UI.skinned`.
 
