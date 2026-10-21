@@ -87,6 +87,11 @@ local TEXT = {
     atZero = "At 0",
     fromPrefix = "From ",
     timesPrefix = "Times: ",
+    castsPrefix = "Casts: ",
+    castsHelpTitle = "Casts",
+    castsHelp = "This alert follows its ability's casts on the ability timeline, so it has no time of its own.\n\n"
+        .. "On the Timeline, drag a flag to move that cast's alert, delete it to turn that cast off, or "
+        .. "Alt+drag a flag next to it to turn it back on.",
     noTimes = "No times",
     delete = "Delete",
     deleteConfirm = "Delete this alert?",
@@ -438,16 +443,33 @@ end
 
 -- Showing the draft -------------------------------------------------------------------------------
 
+-- The difficulty group the previews read the ability timeline for (Draft.PreviewGroup).
+local function previewGroup()
+    return Draft.PreviewGroup(draft)
+end
+
+-- An alert on a boss ability's casts, as Mech Alerts lists them: each with its shift, and "(off)" for a
+-- cast turned off. The saved reminder's shifts and off ride on the draft's probe.
+local function castsLine()
+    local probe = timesProbe()
+    local saved = ctx and ctx.reminder
+    if saved then
+        probe.shifts, probe.off = saved.shifts, saved.off
+    end
+    local list = Reminders.AllCasts(ctx and ctx.encounterID, probe, nil, previewGroup())
+    return #list > 0 and Reminders.FormatCasts(list) or TEXT.noTimes
+end
+
 -- Where the times come from while a reminder's own are kept (also when it moves to the raid note).
 local function sourceLine()
     if not keepsTimes() then
         return ""
     end
-    local list, source = Reminders:Times(ctx and ctx.encounterID, timesProbe())
+    local list, source = Reminders:Times(ctx and ctx.encounterID, timesProbe(), nil, previewGroup())
     if source == "typed" then
         return TEXT.timesPrefix .. draft.keptTimes
     elseif source == "reference" and #list > 0 then
-        local ref = Reminders.ReferenceFor(ctx and ctx.encounterID, timesProbe())
+        local ref = Reminders.ReferenceFor(ctx and ctx.encounterID, timesProbe(), previewGroup())
         if ref then
             return TEXT.fromPrefix .. CRT.TimelineReference.Label(ref)
         end
@@ -505,11 +527,16 @@ local function refresh(rows)
         rows = true
     end
     frame.forRow:SetShown(draft.saveAs == "note")
-    frame.relativeRow:SetShown(not savedMode)
+    -- an alert on a boss ability (Only me) follows its casts: its casts in place of Relative to and Time
+    local casts = not savedMode and Draft.FollowsCasts(ctx, draft)
+    frame.relativeRow:SetShown(not savedMode and not casts)
     frame.difficultyRow:SetShown(not savedMode)
-    frame.timeLabel:SetShown(not savedMode)
-    frame.timeEdit:SetShown(not savedMode)
-    frame.timeHelp:SetShown(not savedMode)
+    frame.timeLabel:SetShown(not savedMode and not casts)
+    frame.timeEdit:SetShown(not savedMode and not casts)
+    frame.timeHelp:SetShown(not savedMode and not casts)
+    frame.castsText:SetShown(casts)
+    frame.castsHelp:SetShown(casts)
+    frame.castsText:SetText(casts and (TEXT.castsPrefix .. castsLine()) or "")
     local locked = readOnly()
     frame.saveSavedBtn:SetShown(not savedMode and not locked)
     frame.exportBtn:SetShown(not savedMode) -- a saved alert has no time to write a note line with
@@ -552,7 +579,7 @@ local function refresh(rows)
     frame.also.glow:SetChecked(draft.glow and true or false)
     local c = draft.color or { 1, 1, 1 }
     frame.colorSwatch.tex:SetColorTexture(c[1], c[2], c[3], 1)
-    frame.sourceText:SetText(sourceLine())
+    frame.sourceText:SetText(casts and "" or sourceLine())
     frame.savesText:SetText(savesToLine())
     local message = timeError(false) or notice
     if message then
@@ -732,8 +759,9 @@ end
 -- The draft's test items: a note line's through the note block's own builder (block "note"), a
 -- reminder's through Reminders:Items (ids "mine:test:n"). Returns items, the lowest phase and its first
 -- time, or nil when a reminder has no times. A saved alert has no time: ten seconds from the start.
--- Only the editor's own draft is ever a raid note line (noteTimers reads it).
-local function testItemsFor(c, d)
+-- Only the editor's own draft is ever a raid note line (noteTimers reads it). group and ref (optional) are
+-- the difficulty group and the ability timeline the Rehearsal plays, so the test reads its casts.
+local function testItemsFor(c, d, group, ref)
     local items, list = {}, {}
     if d.saveAs == "note" then
         for i, t in ipairs(noteTimers()) do
@@ -751,11 +779,11 @@ local function testItemsFor(c, d)
         if c.savedMode then
             r.times = Reminders.FormatTimes({ { ph = 1, t = TEST_LEAD } })
         end
-        list = Reminders:Times(c.encounterID, r)
+        list = Reminders:Times(c.encounterID, r, ref, group)
         if #list == 0 then
             return nil
         end
-        items = Reminders:Items(c.encounterID, "test", r)
+        items = Reminders:Items(c.encounterID, "test", r, group, ref)
     end
     local lowest, first = firstTime(list)
     return items, lowest, first
@@ -790,11 +818,11 @@ local function rehearse(c, d)
     if not (W and W.OpenAt) or c.savedMode or type(c.encounterID) ~= "number" then
         return false
     end
-    local first, difficulty = Draft.FirstFightTime(c, d)
+    local first, difficulty, ref, group = Draft.FirstFightTime(c, d)
     if not first then
         return false
     end
-    local items = testItemsFor(c, d)
+    local items = testItemsFor(c, d, group, ref)
     if not items or #items == 0 then
         return false
     end
@@ -805,6 +833,7 @@ local function rehearse(c, d)
     local lead = (type(d.warn) == "number" and d.warn > 0) and d.warn or REHEARSAL_LEAD
     local after = math.max(REHEARSAL_AFTER, type(d.linger) == "number" and d.linger or 0)
     local ok, why = W:OpenAt(c.encounterID, difficulty, first - lead, {
+        group = group,
         testing = testLabel(d),
         stopAt = first + after,
         alerts = { extra = items, replaces = savedIdentity(c) },
@@ -833,7 +862,7 @@ local function runTest(c, d)
     if rehearse(c, d) then
         return true
     end
-    local items, lowest, first = testItemsFor(c, d)
+    local items, lowest, first = testItemsFor(c, d, Draft.PreviewGroup(d))
     if not items then
         return false
     end
@@ -1374,6 +1403,14 @@ local function build()
     f.sourceText:SetWidth(WIDTH - 360 - LEFT)
     f.sourceText:SetJustifyH("LEFT")
     f.sourceText:SetWordWrap(false)
+    -- in their place for an alert on a boss ability (Draft.FollowsCasts): its casts, read only
+    f.castsText = f:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    lay(f.castsText, LEFT, -74 - ROW1_EXTRA)
+    f.castsText:SetWidth(WIDTH - 2 * LEFT - 24)
+    f.castsText:SetJustifyH("LEFT")
+    f.castsText:SetWordWrap(false)
+    f.castsHelp = UI.Help(f, TEXT.castsHelpTitle, TEXT.castsHelp)
+    f.castsHelp:SetPoint("TOPRIGHT", -LEFT, -72 - ROW1_EXTRA)
 
     -- Show from, Linger
     row(UI.Slider(f, TEXT.showFrom, {
@@ -1637,7 +1674,7 @@ local function show()
     setTitle()
     applyLayout(ctx.savedMode == true)
     if not ctx.savedMode and not draft.timeTouched then
-        local ph, t = firstTime((Reminders:Times(ctx.encounterID, timesProbe())))
+        local ph, t = firstTime((Reminders:Times(ctx.encounterID, timesProbe(), nil, previewGroup())))
         if ph then
             draft.ph, draft.timeText = ph, clock(t, true)
         end

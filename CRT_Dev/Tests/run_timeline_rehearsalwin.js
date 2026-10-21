@@ -121,7 +121,7 @@ do
   assert(near(f.castFill.w, RW.CAST_W * 0.5) and f.castFill.shown, "half filled: " .. tostring(f.castFill.w))
   assert(f.castFill.color[1] == 1 and f.castFill.color[2] == 0, "lane color")
   RW:Seek(18.75)
-  assert(f.castName.text == "Pool" and near(f.castFill.w, RW.CAST_W * 0.75), "3/4 filled")
+  assert(f.castName.text == "Pool" and near(f.castFill.w, RW.CAST_W * 0.25), "1.25 of 5 s left: a quarter, emptying as the alert bars do")
   assert(near(f.castFill.color[1], 1) and near(f.castFill.color[2], 0.5) and near(f.castFill.color[3], 0.82), "no lane color: the type color")
   RW:Seek(59)
   assert(f.castName.text == "Plain" and near(f.castFill.color[1], 0.78), "no type: accent")
@@ -133,7 +133,7 @@ ok("cast bar text and fill")
 -- next up lines -----------------------------------------------------------------------------------
 do
   RW:Seek(0)
-  assert(f.next[1].name.text == "Slam" and f.next[1].time.text == "0:10" and f.next[1].icon.tex == "iconSlam", "first")
+  assert(f.next[1].name.text == "Slam" and f.next[1].time.text == "10.0" and f.next[1].icon.tex == "iconSlam", "first")
   assert(f.next[2].name.text == "Pool" and f.next[2].time.text == "0:20", "second")
   assert(f.next[3].name.text == "Slam" and f.next[3].time.text == "0:30", "third")
   RW:Seek(31)
@@ -146,19 +146,113 @@ ok("next up lines")
 -- next up counts down ------------------------------------------------------------------------------
 do
   local count, barW = RW.NEXT_COUNT, RW.NEXT_BAR_W
-  assert(count == 10 and barW and barW > 0, "the countdown window")
+  assert(count == 15 and barW and barW > 0, "the countdown window")
   RW:Seek(4) -- Slam at 10 is 6 s away, Pool at 20 is 16 s away
   assert(f.next[1].time.text == "6.0", "tenths inside the window: " .. tostring(f.next[1].time.text))
-  assert(f.next[1].bar.shown and near(f.next[1].bar.w, barW * 0.8), "the bar fills as the cast nears, full at the cast bar: " .. tostring(f.next[1].bar.w))
+  assert(f.next[1].bar.shown and near(f.next[1].bar.w, barW * 6 / 15), "the bar is the time left out of 15 s: " .. tostring(f.next[1].bar.w))
   assert(f.next[1].bar.color[1] == 1, "the bar in the cast's color")
   assert(f.next[2].time.text == "0:16" and not f.next[2].bar.shown, "no bar outside the window")
   RW:Seek(4.5)
-  assert(f.next[1].time.text == "5.5" and near(f.next[1].bar.w, barW * 0.9), "nearly there")
+  assert(f.next[1].time.text == "5.5" and near(f.next[1].bar.w, barW * 5.5 / 15), "nearly there")
   RW:Seek(9.5) -- Slam is in the cast bar now, so Next up starts at Pool
-  assert(f.castName.text == "Slam" and f.next[1].name.text == "Pool" and f.next[1].time.text == "0:10", "the cast bar's cast leaves Next up: " .. tostring(f.next[1].name.text))
+  assert(f.castName.text == "Slam" and f.next[1].name.text == "Pool" and f.next[1].time.text == "10.5", "the cast bar's cast leaves Next up: " .. tostring(f.next[1].name.text))
   RW:Seek(0)
 end
 ok("next up counts down")
+
+-- one countdown from Next up into the cast bar ------------------------------------------------------
+-- Plain at 60: counting in Next up from 45 to 55, then on the cast bar from 55 to 60, the time only
+-- ever going down and never shown twice.
+local function plainEntries()
+  local where, value, n = nil, nil, 0
+  for _, line in ipairs(f.next) do
+    if line.name.text == "Plain" then
+      n, where, value = n + 1, "next", line.time.text
+    end
+  end
+  if f.castName.text == "Plain" then
+    n, where, value = n + 1, "bar", f.castTime.text
+  end
+  return n, where, value
+end
+do
+  local last
+  for i = 400, 599 do
+    local t = i / 10
+    RW:Seek(t)
+    local n, where, value = plainEntries()
+    assert(n == 1, "one entry for one cast at " .. t .. ": " .. n)
+    if t < 45 then
+      assert(where == "next" and value:find(":") and not f.next[1].bar.shown, "m:ss before 15 s at " .. t .. ": " .. value)
+    elseif t < 55 then
+      assert(where == "next" and f.next[1].bar.shown, "counting in Next up at " .. t)
+    else
+      assert(where == "bar", "on the cast bar from 5 s at " .. t)
+      assert(near(f.castFill.w, math.max(1, RW.CAST_W * (60 - t) / 5)), "the cast bar's fill is its time left over the same 5 s at " .. t)
+    end
+    if t >= 45 then
+      local v = tonumber(value)
+      assert(v and near(v, tonumber(string.format("%.1f", 60 - t))), "the time left at " .. t .. ": " .. tostring(value))
+      assert(not last or v <= last, "never jumps back up at " .. t .. ": " .. v .. " after " .. tostring(last))
+      last = v
+    end
+  end
+  assert(last == 0.1, "down to the end: " .. tostring(last))
+  RW:Seek(60)
+  assert(plainEntries() == 0, "gone at its time")
+  -- seeking into the middle of each part, then playing on at 2x, pausing and restarting
+  RW:Seek(50)
+  local _, where, value = plainEntries()
+  assert(where == "next" and value == "10.0", "a jump into Next up's countdown: " .. tostring(value))
+  RW:Seek(57.5)
+  _, where, value = plainEntries()
+  assert(where == "bar" and value == "2.5" and near(f.castFill.w, RW.CAST_W * 0.5), "a jump into the cast bar: " .. tostring(value))
+  RW:Seek(53)
+  dropdowns["Speed"].opts.set(2)
+  RW:Play()
+  now = now + 1 -- 55 at 2x
+  f.OnUpdate(f, 0.016)
+  _, where, value = plainEntries()
+  assert(where == "bar" and value == "5.0", "2x reaches the cast bar at 5.0: " .. tostring(where) .. " " .. tostring(value))
+  RW:Pause()
+  now = now + 3
+  f.OnUpdate(f, 0.016)
+  _, where, value = plainEntries()
+  assert(value == "5.0", "paused holds the countdown")
+  RW:Restart()
+  assert(plainEntries() == 0 and f.next[1].name.text == "Slam" and f.next[1].time.text == "10.0" and f.castName.text == "", "restart starts it over")
+  dropdowns["Speed"].opts.set(1)
+end
+ok("one countdown from Next up into the cast bar")
+
+-- several casts within 5 s: up to 3 bars stacked, soonest on top; a fourth waits in Next up -------------
+do
+  assert(#f.casts == 3, "three cast bars")
+  local y1, y2, y3 = f.casts[1].bg.pt[5], f.casts[2].bg.pt[5], f.casts[3].bg.pt[5]
+  assert(y1 == -76 and y2 == -100 and y3 == -124, "stacked under each other: " .. y1 .. " " .. y2 .. " " .. y3)
+  assert(f.nextHead.pt[5] < y3 - 20 and f.strip.pt[5] < f.next[3].icon.pt[5] and f.play.pt[5] < f.strip.pt[5] - 68, "everything under them moved down")
+  local extra = {
+    { kind = "reference", label = "Near", icon = "iconNear", marks = { { t = 62 } } },
+    { kind = "reference", label = "Third", icon = "iconThird", marks = { { t = 63 } } },
+    { kind = "reference", label = "Fourth", icon = "iconFourth", marks = { { t = 64 } } },
+  }
+  for _, l in ipairs(extra) do table.insert(lanes, l) end
+  RW:Open({ base = base, encounterID = 3470, bossName = "Nek'zali" })
+  RW:Seek(56) -- Plain 4 s away, Near 6 s away
+  assert(f.casts[1].name.text == "Plain" and f.casts[2].name.text == "" and f.next[1].name.text == "Near" and f.next[1].time.text == "6.0", "Near still in Next up")
+  RW:Seek(59.5) -- all four inside 5 s
+  local names = f.casts[1].name.text .. "," .. f.casts[2].name.text .. "," .. f.casts[3].name.text
+  assert(names == "Plain,Near,Third", "three stacked, soonest on top: " .. names)
+  assert(f.casts[2].time.text == "2.5" and f.casts[3].time.text == "3.5" and near(f.casts[2].fill.w, RW.CAST_W * 0.5), "each its own countdown")
+  assert(f.next[1].name.text == "Fourth" and f.next[1].time.text == "4.5", "the fourth waits in Next up: " .. tostring(f.next[1].name.text))
+  for _, line in ipairs(f.next) do assert(line.name.text ~= "Near" and line.name.text ~= "Plain" and line.name.text ~= "Third", "none in both") end
+  RW:Seek(60.5)
+  names = f.casts[1].name.text .. "," .. f.casts[2].name.text .. "," .. f.casts[3].name.text
+  assert(names == "Near,Third,Fourth" and f.casts[3].time.text == "3.5", "a bar frees: the fourth moves up, its countdown carried on: " .. names)
+  for _ = 1, #extra do table.remove(lanes) end
+  RW:Open({ base = base, encounterID = 3470, bossName = "Nek'zali" })
+end
+ok("several casts within 5 s")
 
 -- strip marks move with the clock -----------------------------------------------------------------
 local function markAt(t)
@@ -695,6 +789,30 @@ do
   CRT.Timeline.RehearsalSourceFor = nil
 end
 ok("open at stops at stopAt")
+
+-- EndTest: picking another alert ends the test, so the window never says "Testing:" an alert you left --
+do
+  CRT.Timeline.RehearsalSourceFor = function(_, eid, group)
+    return { base = base, encounterID = eid, group = group, bossName = "Nek'zali", difficultyName = "Heroic" }
+  end
+  local alerts = { extra = { { id = "draft" } } }
+  RW:OpenAt(3470, "Heroic", 10, { testing = "Hungering Pyre", stopAt = 14, alerts = alerts })
+  assert(f.testing.text == "Testing: Hungering Pyre", "testing")
+  acalls = {}
+  RW:EndTest()
+  assert(f.testing.text == "", "the testing line goes: " .. tostring(f.testing.text))
+  assert(kinds() == "stop,start" and acalls[2][5].extra == nil and acalls[2].at == RW:Now(), "the run starts again at the clock without the draft: " .. kinds())
+  assert(RW.stopAt == nil and RW.clock:Playing(), "no pause left, and it plays on")
+  acalls = {}
+  RW:EndTest()
+  assert(#acalls == 0, "no test: nothing")
+  RW:Close()
+  acalls = {}
+  RW:EndTest()
+  assert(#acalls == 0, "closed: nothing")
+  CRT.Timeline.RehearsalSourceFor = nil
+end
+ok("end test clears the testing line")
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 for (const p of process.argv.slice(2, 4)) {

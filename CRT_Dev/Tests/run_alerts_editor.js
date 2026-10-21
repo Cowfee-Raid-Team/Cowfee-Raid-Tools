@@ -1859,6 +1859,34 @@ do
   print("ok speak at: a dropped cooldown speaks at 0")
 end
 
+-- an alert on a boss ability shows its casts, not a Time of its own; your own reminder keeps the Time
+do
+  reset()
+  local w = win()
+  E:Open(ENC, nil, { spellID = 777, text = "Ability", boss = "Test Boss" })
+  w = win()
+  assert(not w.timeEdit.shown and not w.relativeRow.shown and not w.timeLabel.shown and not w.timeHelp.shown, "no free Time on an ability")
+  assert(w.castsText.shown and w.castsHelp.shown and w.castsText.text == "Casts: P1 0:45", "its casts, Normal/Heroic outside a raid: " .. tostring(w.castsText.text))
+  -- in a Mythic raid, by the difficulty's ID: the Mythic casts
+  GetInstanceInfo = function() return "Raid", "raid", 16, "Mythisch" end
+  E:Open(ENC, nil, { spellID = 777, text = "Ability", boss = "Test Boss" })
+  assert(w.castsText.text == "Casts: P1 0:30; P2 +0:20", "Mythic by the raid's ID: " .. tostring(w.castsText.text))
+  GetInstanceInfo = nil
+  -- a saved one, with a dragged shift and a cast turned off, on Mythic
+  local id = R:Save(ENC, nil, { spellID = 777, text = "Ability", boss = "Test Boss", difficulty = "Mythic" })
+  local saved = R:Get(ENC, id)
+  saved.shifts, saved.off = { mythic = { ["P1@0:30"] = 2 } }, { mythic = { ["P2@0:20"] = true } }
+  E:Open(ENC, id)
+  assert(w.castsText.text == "Casts: P1 0:32 (+2 s); P2 +0:20 (off)", "shifts and on/off: " .. tostring(w.castsText.text))
+  assert(w.sourceText.text == "", "no second line beside them")
+  -- as a raid note line, or your own reminder: the Time is back
+  pick("Save as", "note")
+  assert(w.timeEdit.shown and not w.castsText.shown, "a raid note line has its one time")
+  E:Open(ENC, nil, { text = "Own", boss = "Test Boss", times = "P1 0:10" })
+  assert(w.timeEdit.shown and w.relativeRow.shown and not w.castsText.shown, "your own reminder keeps its Time")
+  print("ok editor: an ability's alert shows its casts, your own reminder its Time")
+end
+
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 const files = process.argv.slice(2);

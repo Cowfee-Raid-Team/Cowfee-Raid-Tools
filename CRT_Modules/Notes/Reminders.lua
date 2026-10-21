@@ -327,9 +327,16 @@ local function timesFor(enc, r)
     if not r.difficulty then
         r.difficulty = viewDiff
     end
-    local found, source, err = Reminders:Times(enc, r)
+    -- the difficulty on show picks the ability timeline (Any: the boss's first, as Times from shows)
+    local T = CRT.Timeline
+    local group = viewDiff and T and T.GroupOf and T:GroupOf(nil, viewDiff) or nil
+    local found, source, err = Reminders:Times(enc, r, nil, group)
     if #found > 0 then
-        return Reminders.FormatTimes(found), true
+        -- an ability's casts, each with any shift its flag was dragged by, and those turned off
+        if Reminders.FollowsCasts(enc, r, nil, group) then
+            return Reminders.FormatCasts(Reminders.AllCasts(enc, r, nil, group)), true
+        end
+        return (source == "reference" and Reminders.FormatCasts or Reminders.FormatTimes)(found), true
     end
     if source == "typed" and err then
         return err, false
@@ -742,6 +749,11 @@ local function selectItem(item)
     local enc, name = pickBoss(bosses())
     if not (enc and item and items) then
         return
+    end
+    -- another alert: a Test's rehearsal of the one you left stops being a test
+    local W = CRT.TimelineRehearsalWindow
+    if W and W.EndTest and picked[enc] ~= itemKey(item) then
+        W:EndTest()
     end
     picked[enc] = itemKey(item)
     local index = selectedIndex(enc)

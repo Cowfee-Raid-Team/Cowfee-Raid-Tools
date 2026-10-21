@@ -565,21 +565,17 @@ end
 -- Test buttons (RehearsalWindow:OpenAt); the page's own selection is left alone.
 function Timeline:RehearsalSourceFor(encounterID, group)
     group = group == "mythic" and "mythic" or "nh"
-    local bosses, name = {}, nil
+    local name
     for _, option in ipairs(CRT.Bosses:Options()) do
-        if not option.title then
-            bosses[#bosses + 1] = { key = option.key, name = option.label }
-            if option.key == encounterID then
-                name = option.label
-            end
+        if not option.title and option.key == encounterID then
+            name = option.label
         end
     end
     local base, pull
-    for _, entry in ipairs(Reference:ForGroup(Reference:List(), group)) do
-        if Reference:BossKey(entry, bosses) == encounterID then
-            base = { reference = entry.ref }
-            break
-        end
+    -- the one picker the alerts use too (Timeline:ReferenceFor)
+    local entry = Timeline:ReferenceFor(encounterID, group, name)
+    if entry then
+        base = { reference = entry.ref }
     end
     if not base then
         pull = Timeline:Pulls(encounterID, group)[1]

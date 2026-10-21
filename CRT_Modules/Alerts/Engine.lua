@@ -226,15 +226,33 @@ end
 -- opts.blocks limits which blocks run; opts.filter(blockKey, item) -> bool keeps only some items.
 -- The chosen order of a boss whose reference has an Order line (Timeline:OrderShift): a function that
 -- moves a line for one part's spell with that part, or nil when there is nothing to move.
-local function orderShift(encounterID, difficultyName)
+local function orderShift(encounterID, group)
     local Timeline = CRT.Timeline
-    if type(encounterID) ~= "number" or not (Timeline and Timeline.OrderShift and Timeline.GroupFor) then
+    if type(encounterID) ~= "number" or not (Timeline and Timeline.OrderShift) then
         return nil
     end
     local ok, shift = pcall(function()
-        return Timeline:OrderShift(encounterID, Timeline:GroupFor(difficultyName))
+        return Timeline:OrderShift(encounterID, group or "nh")
     end)
     return ok and type(shift) == "function" and shift or nil
+end
+
+-- The difficulty group of a run ("mythic" or "nh"): the one it was started with (a rehearsal's), else
+-- by its difficultyID (the same on every client language), else by its difficulty's name; nil when the
+-- run has none of them. Which ability timeline the run's alerts read (Timeline:ReferenceFor).
+function Alerts:RunGroup(run)
+    run = run or self.run
+    if type(run) ~= "table" then
+        return nil
+    end
+    if run.group == "mythic" or run.group == "nh" then
+        return run.group
+    end
+    local Timeline = CRT.Timeline
+    if Timeline and Timeline.GroupOf then
+        return Timeline:GroupOf(run.difficultyID, run.difficultyName)
+    end
+    return nil
 end
 
 -- A line's time in the run's chosen order: a phase 1 line (seconds from the pull) for one part's spell
@@ -388,6 +406,21 @@ function Alerts:Start(encounterID, difficultyName, reason, opts)
     end
     local run = { encounterID = encounterID, difficultyName = difficultyName, reason = reason,
         bossName = type(opts) == "table" and type(opts.bossName) == "string" and opts.bossName or nil }
+    -- opts.difficultyID (the pull's, read only when not secret) and opts.group (a rehearsal's) set the
+    -- run's difficulty group (RunGroup)
+    if type(opts) == "table" then
+        local id = opts.difficultyID
+        if not (issecretvalue and issecretvalue(id)) and type(id) == "number" then
+            run.difficultyID = id
+        end
+        if opts.group == "mythic" or opts.group == "nh" then
+            run.group = opts.group
+        end
+        -- a rehearsal's ability timeline: the reminders read the casts the window plays
+        if reason == "rehearsal" and type(opts.reference) == "table" then
+            run.reference = opts.reference
+        end
+    end
     if reason == "rehearsal" then
         local o = type(opts) == "table" and opts or {}
         local at = ask(o.clock) or 0
@@ -404,7 +437,7 @@ function Alerts:Start(encounterID, difficultyName, reason, opts)
     self.running = true
     self.starts, self.skipped = {}, {}
     self.items = {}
-    run.shift = orderShift(encounterID, difficultyName)
+    run.shift = orderShift(encounterID, self:RunGroup(run))
     changed(self)
     if reason == "encounter" then
         for _, fn in ipairs(self.onPull) do
@@ -606,7 +639,12 @@ function Alerts.HandleEvent(event, ...)
         if type(encounterName) == "string" and not (issecretvalue and issecretvalue(encounterName)) then
             boss = encounterName
         end
-        Alerts:Start(encounterID, name, "encounter", boss and { bossName = boss } or nil)
+        -- the difficulty's ID groups the run the same on every client language (Alerts:RunGroup)
+        local id
+        if not (issecretvalue and issecretvalue(difficultyID)) and type(difficultyID) == "number" then
+            id = difficultyID
+        end
+        Alerts:Start(encounterID, name, "encounter", { bossName = boss, difficultyID = id })
     elseif event == "ENCOUNTER_END" then
         if Alerts.running and Alerts.run.reason == "encounter" then
             Alerts:Stop()

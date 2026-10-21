@@ -612,10 +612,12 @@ check("mech: your own reminder takes typed times", function()
   local _, err = R.ParseTimes("P1 0:30, soon")
   assert(p.message.text:find("|cff" .. CRT.UI.Hex("bad"), 1, true) and p.message.text:find(err, 1, true), "red line: " .. tostring(p.message.text))
   assert(R:Get(ENC, id).times == "P1 0:30, 1:15; P2 0:20", "bad times not saved")
-  -- typed times over the reference show read only, as the list's times do
-  R:Save(ENC, nil, { spellID = 777, boss = "Test Boss", text = "Real Name", times = "P1 0:05" })
+  -- a boss ability's alert follows its casts: typed times saved onto it are kept aside, never used
+  local aid = R:Save(ENC, nil, { spellID = 777, boss = "Test Boss", text = "Real Name", times = "P1 0:05" })
   click(f.rows[1].frame)
-  assert(p.times.shown and not p.timesEdit.shown and p.times.text:find("0:05", 1, true), "typed over the reference: " .. tostring(p.times.text))
+  assert(p.times.shown and not p.timesEdit.shown and not p.times.text:find("0:05", 1, true), "the casts, read only: " .. tostring(p.times.text))
+  local a = R:Get(ENC, aid)
+  assert(a.times == nil and a.timesBackup == "P1 0:05" and a.timesUnmatched == "P1 0:05", "kept aside, far from any cast")
   assert(#errors == 0, tostring(errors[1]))
 end)
 
@@ -936,6 +938,19 @@ check("mech: test with no Show from starts 8 s before, a long Linger stops later
   assert(#errors == 0, tostring(errors[1]))
 end)
 
+check("mech: picking another alert ends the test in the Rehearsal", function()
+  local f = fresh()
+  local ended = 0
+  click(f.rows[1].frame)
+  CRT.TimelineRehearsalWindow = { EndTest = function() ended = ended + 1 end }
+  click(f.rows[1].frame)
+  assert(ended == 0, "the same row: the test goes on")
+  click(f.rows[2].frame)
+  CRT.TimelineRehearsalWindow = nil
+  assert(ended == 1, "another row ends it: " .. ended)
+  assert(#errors == 0, tostring(errors[1]))
+end)
+
 check("mech: test plays the countdown and stops 3 s after", function()
   local f = fresh()
   local p = f.panel
@@ -965,9 +980,10 @@ check("mech: test passes the current draft, saved one replaced", function()
   CRT.TimelineRehearsalWindow = nil
   assert(R:Get(ENC, id).text == "Soak", "the typing is saved first")
   local o = opened[1] and opened[1].opts
-  assert(o and o.alerts and type(o.alerts.extra) == "table" and #o.alerts.extra == 2, "the draft's items: " .. tostring(o and o.alerts and o.alerts.extra and #o.alerts.extra))
+  -- the times of the ability timeline the Rehearsal plays (Heroic 0:45), not another difficulty's
+  assert(o and o.alerts and type(o.alerts.extra) == "table" and #o.alerts.extra == 1, "the draft's items: " .. tostring(o and o.alerts and o.alerts.extra and #o.alerts.extra))
   local it = o.alerts.extra[1]
-  assert(it.text == "Soak" and it.id == "mine:test:1" and it.ph == 1 and it.time == 30, "the draft as typed: " .. tostring(it.text) .. " " .. tostring(it.id))
+  assert(it.text == "Soak" and it.id == "mine:test:1" and it.ph == 1 and it.time == 45, "the draft as typed, at Heroic's time: " .. tostring(it.text) .. " " .. tostring(it.time))
   assert(o.alerts.replaces and o.alerts.replaces.block == "mine" and o.alerts.replaces.id == id, "the saved one is replaced")
   assert(o.testing == "Soak", "label follows the text")
   assert(#errors == 0, tostring(errors[1]))

@@ -394,11 +394,14 @@ local function plannedLines(encounterID, list, record)
     local R = CRT.AlertReminders
     local difficulty = record and type(record.difficulty) == "string" and record.difficulty:lower() or nil
     local items = {}
+    -- the note's difficulty group picks the ability timeline an "any difficulty" reminder reads
+    local T = CRT.Timeline
+    local group = difficulty and T and T.GroupOf and T:GroupOf(nil, record.difficulty) or nil
     for _, e in ipairs(list) do
         local r = R:Effective("mine", e.id, e.r)
         local diff = type(r.difficulty) == "string" and r.difficulty:lower() or nil
         if r.enabled ~= false and not (diff and difficulty and diff ~= difficulty) then
-            for _, it in ipairs(R:Items(encounterID, e.id, r)) do
+            for _, it in ipairs(R:Items(encounterID, e.id, r, group)) do
                 items[#items + 1] = it
             end
         end

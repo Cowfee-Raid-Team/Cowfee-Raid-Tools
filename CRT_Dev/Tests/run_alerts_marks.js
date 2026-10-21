@@ -359,7 +359,7 @@ addNote(3, "EncounterID:9999;Name:Other\\ntime:5;ph:1;text:Not here;", 9999, nil
 
 do
   local v = View.Create(mock("Frame"))
-  CRT.AlertReminders:Save(3001, nil, { spellID = 4242, times = "P1 0:40", boss = "Nek" })
+  CRT.AlertReminders:Save(3001, nil, { spellID = 4343, times = "P1 0:40", boss = "Nek" })
   CRT.AlertReminders:Save(3001, nil, { text = "Free one", times = "P2 +0:30", boss = "Nek" })
   v:SetData({ reference = ref }, 3001, nil, "Nek")
   local list = flags(v)
@@ -419,7 +419,7 @@ do
   -- a failing redraw goes to the error handler and the save still happens
   local realRefresh = v.Refresh
   v.Refresh = function() error("boom") end
-  local nid = CRT.AlertReminders:Save(3001, nil, { spellID = 4242, times = "P1 0:41", boss = "Nek" })
+  local nid = CRT.AlertReminders:Save(3001, nil, { spellID = 4343, times = "P1 0:41", boss = "Nek" })
   assert(CRT.AlertReminders:Get(3001, nid) and #handled == 1 and tostring(handled[1]):find("boom"), "listener error handled")
   CRT.AlertReminders:Delete(3001, nid)
   for i = #handled, 1, -1 do handled[i] = nil end
@@ -427,7 +427,7 @@ do
   v:Refresh()
   assert(#flags(v) == 2, "back to two")
   v.frame:Hide()
-  CRT.AlertReminders:Save(3001, nil, { spellID = 4242, times = "P1 0:40", boss = "Nek" })
+  CRT.AlertReminders:Save(3001, nil, { spellID = 4343, times = "P1 0:40", boss = "Nek" })
   assert(#flags(v) == 2, "hidden view does not redraw")
   v.frame:Show()
   CRT.db.alerts.reminders = {}
@@ -469,7 +469,7 @@ end
 print("ok marks: phase 2 skipped on a recorded pull")
 
 do
-  local id = CRT.AlertReminders:Save(3001, nil, { spellID = 4242, times = "P1 0:40", boss = "Nek" })
+  local id = CRT.AlertReminders:Save(3001, nil, { spellID = 4343, times = "P1 0:40", boss = "Nek" })
   local v = View.Create(mock("Frame"))
   v:SetData({ reference = ref }, 3001, nil, "Nek")
   reset()
@@ -506,7 +506,7 @@ do
     CRT.db.alerts.reminders = {}
     CRT.db.notes.list[1] = { raw = rawNote, encounterID = 3001, difficulty = "Heroic", name = "Nek" }
     CRT.db.notes.list[2] = nil
-    local id = reminderTimes and CRT.AlertReminders:Save(3001, nil, { spellID = 4242, text = "Mine", times = reminderTimes, boss = "Nek", priority = "high" })
+    local id = reminderTimes and CRT.AlertReminders:Save(3001, nil, { spellID = 4343, text = "Mine", times = reminderTimes, boss = "Nek", priority = "high" })
     local v = View.Create(mock("Frame"))
     v:SetData({ reference = ref }, 3001, nil, "Nek")
     reset()
@@ -533,9 +533,10 @@ do
     drag(v, f, 100.04)
     assert(timesOf(id) == "P1 0:40; P2 +0:40", "moved the second time: " .. tostring(timesOf(id)))
     local r = CRT.AlertReminders:Get(3001, id)
-    assert(r.priority == "high" and r.text == "Mine" and r.spellID == 4242, "other fields unchanged")
+    assert(r.priority == "high" and r.text == "Mine" and r.spellID == 4343, "other fields unchanged")
     assert(flagAt(v, 100, true) and not flagAt(v, 50, true), "the flag redrew at the new time")
-    -- a reference-timed reminder becomes typed (the registered Nek'zali reference, row "Essence Rend")
+    -- a reminder on a spell-less ability row (matched by name: the registered Nek'zali reference's
+    -- "Essence Rend", no spell in this Journal) follows its casts: a drag shifts that one cast
     CRT.db.alerts.reminders = {}
     local rid = CRT.AlertReminders:Save(3001, nil, { text = "Essence Rend", boss = "Nek'zali the Soulcoiler" })
     local nv = View.Create(mock("Frame"))
@@ -546,8 +547,11 @@ do
     local rf = flagAt(nv, first, true)
     assert(rf and rf.mark.index == 1, "reference time flag")
     drag(nv, rf, 30)
-    local want = CRT.AlertReminders.FormatTimes((function() local l = { { ph = 1, t = 30 } } for i = 2, #rtimes do l[i] = rtimes[i] end return l end)())
-    assert(timesOf(rid) == want, "reference reminder now typed: " .. tostring(timesOf(rid)) .. " vs " .. want)
+    local rr = CRT.AlertReminders:Get(3001, rid)
+    assert(rr.times == nil and rr.shifts and rr.shifts.mythic and rr.shifts.mythic["P1@0:20"] == 10,
+      "a shift on that cast, no typed times: " .. tostring(rr.times))
+    local after = CRT.AlertReminders:Times(3001, rr)
+    assert(#after == #rtimes and after[1].t == 30 and after[2].t == rtimes[2].t, "every cast still followed, the first moved")
     -- dragged to the left edge lands at 0
     CRT.db.alerts.reminders = {}
     local cid = CRT.AlertReminders:Save(3001, nil, { text = "C", times = "P1 0:40", boss = "Nek" })
@@ -847,11 +851,11 @@ do
     CRT.Timeline.OrderShift = function(_, eid)
       if eid ~= 3001 then return nil end
       return function(spellID, text, t)
-        if spellID == 4242 then return t + 10 end
+        if spellID == 4242 or spellID == 4343 then return t + 10 end
         if text == "Other" then return false end
         return t
       end, function(spellID, text, t)
-        if spellID == 4242 then return t - 10 end
+        if spellID == 4242 or spellID == 4343 then return t - 10 end
         return t
       end
     end
@@ -873,7 +877,7 @@ do
     v:Refresh()
     local accent, text = CRT.PALETTE.accent, CRT.PALETTE.text
     local rem = flagAt(v, 40, true)
-    assert(rem.icon.shown and rem.icon.tex == "tex4242", "reminder with a spell shows its icon: " .. tostring(rem.icon.tex))
+    assert(rem.icon.shown and rem.icon.tex == "tex4343", "reminder with a spell shows its icon: " .. tostring(rem.icon.tex))
     assert(rem.edge.shown and rem.edge.color[1] == text[1] and rem.edge.color[2] == text[2], "text-coloured edge on your reminder")
     assert(rem.head.shown == false, "no flag head under an icon")
     assert(rem.icon.w == 18 and rem.icon.h == 18 and rem.w == 20 and rem.h == 20, "the icon sits inside the 20 x 20 button")
@@ -984,7 +988,7 @@ do
     assert(popups[1].text:find("Delete your reminder", 1, true), "single time: delete the reminder: " .. popups[1].text)
     popups[1].callback()
     assert(CRT.AlertReminders:Get(3001, id) == nil and not flagAt(v, 40, true), "reminder deleted")
-    -- a reference-timed reminder with several times becomes typed, minus the one
+    -- a reminder on an ability row with several casts: the delete turns that cast off, the others stay
     CRT.db.alerts.reminders = {}
     local rid = CRT.AlertReminders:Save(3001, nil, { text = "Essence Rend", boss = "Nek'zali the Soulcoiler" })
     local nv = View.Create(mock("Frame"))
@@ -996,7 +1000,9 @@ do
     popups[1].callback()
     local want = {}
     for i = 2, #rtimes do want[#want + 1] = rtimes[i] end
-    assert(timesOf(rid) == CRT.AlertReminders.FormatTimes(want), "reference reminder keeps the others as typed times: " .. tostring(timesOf(rid)))
+    local rr = CRT.AlertReminders:Get(3001, rid)
+    assert(rr.times == nil and rr.off and rr.off.mythic and rr.off.mythic["P1@0:20"] == true, "that cast off, no typed times")
+    assert(CRT.AlertReminders.FormatTimes(CRT.AlertReminders:Times(3001, rr)) == CRT.AlertReminders.FormatTimes(want), "the others stay")
     assert(not Rem:RemoveTime(3001, rid, 99) and not Rem:RemoveTime(3001, 12345, 1), "bad index or id refused")
     CRT.db.alerts.reminders = {}
     local one = Rem:Save(3001, nil, { text = "One", times = "P1 0:40", boss = "Nek" })
@@ -1061,7 +1067,7 @@ do
         assert(f.mark.row ~= personal, "a raid note line never on Personal notes")
       end
     end
-    assert(flagAt(v, 40, true).mark.spellID == 4242 and flagAt(v, 40, true).icon.tex == "tex4242", "with its spell icon")
+    assert(flagAt(v, 40, true).mark.spellID == 4343 and flagAt(v, 40, true).icon.tex == "tex4343", "with its spell icon")
     assert(flagAt(v, 20, false).mark.row == soul, "the raid line stays on its spell row")
     assert(flagAt(v, 45, false).mark.row == laneIndex(v, "Notes"), "a text raid line stays on Notes")
     -- the (?) on its label
@@ -1072,7 +1078,7 @@ do
     drag(v, flagAt(v, 40, true), 100)
     assert(timesOf(id) == "P2 +0:40" and flagAt(v, 100, true).mark.row == personal, "moved, still on Personal notes")
     local r = CRT.AlertReminders:Get(3001, id)
-    assert(r.spellID == 4242 and r.text == "Mine" and r.priority == "high", "only the time changed")
+    assert(r.spellID == 4343 and r.text == "Mine" and r.priority == "high", "only the time changed")
   end
   print("ok personal: only on its row")
 
@@ -1406,7 +1412,7 @@ do
       "time:40;ph:2;spellid:4242;tag:Mage;", -- 100: another target
       "time:10;ph:2;spellid:5151;tag:Abu;", -- 70: another spell
       "time:90;ph:2;spellid:4242;tag:Abu;", -- 150: up again exactly then
-    }, { { spellID = 4242, times = "P1 0:30, 0:45" } })
+    }, { { spellID = 5151, times = "P1 0:30, 0:45" } })
     click(v, flagAt(v, 90, false))
     assert(bandAt(v, 180, 220, red), "after: red from the selected cast to the one inside")
     assert(bandAt(v, 100, 180, red), "before: red from the one inside to the selected cast")
@@ -1615,6 +1621,78 @@ do
   CRT.db.notes.list = savedList
   CRT.db.alerts.reminders = {}
 end
+
+-- One source: an "any difficulty" alert on a boss ability draws its flags on the casts of the ability
+-- timeline the view shows, or for a pull, of the view's difficulty group; never another group's
+do
+  local savedList, savedRefs, savedNext = CRT.db.notes.list, CRT.db.timeline.references, CRT.db.timeline.nextRef
+  CRT.db.notes.list = {}
+  CRT.db.timeline.references, CRT.db.timeline.nextRef = {}, 1
+  local R = CRT.AlertReminders
+  -- your own Heroic one is listed first
+  R.ResetMigration()
+  CRT.TimelineReference:Add("Boss: Nek\\nEncounter: 3001\\nDifficulty: Heroic\\nLength: 3:00\\nSoulcoil [spell 4242]: 0:20, 1:40")
+  CRT.TimelineReference:Add("Boss: Nek\\nEncounter: 3001\\nDifficulty: Mythic\\nLength: 3:00\\nSoulcoil [spell 4242]: 0:12, 1:22, 2:02")
+  local mythic
+  for _, e in ipairs(CRT.TimelineReference:List()) do if e.ref.difficulty == "Mythic" and e.ref.encounterID == 3001 then mythic = e.ref end end
+  CRT.db.alerts.reminders = {}
+  local id = R:Save(3001, nil, { spellID = 4242, boss = "Nek" })
+  local function mine(v)
+    local out = {}
+    for _, f in ipairs(flags(v)) do if f.mark.mine then out[#out + 1] = f.mark.t end end
+    table.sort(out)
+    for i, t in ipairs(out) do out[i] = string.format("%g", t) end
+    return table.concat(out, ",")
+  end
+  local v = View.Create(mock("Frame"))
+  v:SetData({ reference = mythic }, 3001, nil, "Nek", "mythic")
+  assert(mine(v) == "12,82,122", "a Mythic view shows the Mythic casts: " .. mine(v))
+  -- a recorded Mythic pull: the Mythic ability timeline, picked by the view's group
+  local pull = { id = 7, encounterID = 3001, length = 200, casts = {}, deaths = {}, difficultyID = 16 }
+  v:SetData(pull, 3001, nil, "Nek", "mythic")
+  assert(mine(v) == "12,82,122", "a Mythic pull shows the Mythic casts, not your Heroic ones: " .. mine(v))
+  v:SetData(pull, 3001, nil, "Nek", "nh")
+  assert(mine(v) == "20,100", "a Heroic pull shows the Heroic casts: " .. mine(v))
+  -- a drag on the Mythic view shifts that Mythic cast, read back the same way; the delete turns it off
+  v:SetData({ reference = mythic }, 3001, nil, "Nek", "mythic")
+  local ref, group = v:ReminderSource(R:Get(3001, id))
+  assert(ref == mythic and group == "mythic", "one source for reads and writes")
+  assert(R:SetTime(3001, id, 2, 1, 80, ref, group), "moved")
+  local r = R:Get(3001, id)
+  assert(r.shifts and r.shifts.mythic and r.shifts.mythic["P1@1:22"] == -2 and r.shifts.nh == nil and r.times == nil, "a shift on the second cast, no typed times")
+  v:Refresh()
+  assert(mine(v) == "12,80,122", "drawn shifted: " .. mine(v))
+  v:SetData(pull, 3001, nil, "Nek", "nh")
+  assert(mine(v) == "20,100", "a drag on Mythic leaves Heroic as it was: " .. mine(v))
+  v:SetData({ reference = mythic }, 3001, nil, "Nek", "mythic")
+  assert(R:RemoveTime(3001, id, 3, ref, group) and R:Get(3001, id).off.mythic["P1@2:02"] == true, "deleted: the third cast off")
+  v:Refresh()
+  assert(mine(v) == "12,80", "and gone: " .. mine(v))
+  assert(R:AddTime(3001, id, 1, 125, ref, group) and R:Get(3001, id).off == nil, "an added time turns the nearest cast back on")
+  -- a note or reminder of its own difficulty shows only on a view of its group, as in a pull
+  CRT.db.alerts.reminders = {}
+  R:Save(3001, nil, { text = "Heroic own", times = "P1 0:50", boss = "Nek", difficulty = "Heroic" })
+  R:Save(3001, nil, { text = "Mythic own", times = "P1 0:55", boss = "Nek", difficulty = "Mythic" })
+  CRT.db.notes.list = {
+    [1] = { raw = "EncounterID:3001;Difficulty:Heroic;Name:Nek\\ntime:40;ph:1;text:Heroic line;", encounterID = 3001, difficulty = "Heroic", name = "Nek" },
+    [2] = { raw = "EncounterID:3001;Difficulty:Mythic;Name:Nek\\ntime:45;ph:1;text:Mythic line;", encounterID = 3001, difficulty = "Mythic", name = "Nek" },
+  }
+  local function texts(view)
+    local out = {}
+    for _, f in ipairs(flags(view)) do out[#out + 1] = tostring(f.mark.text) end
+    table.sort(out)
+    return table.concat(out, ",")
+  end
+  v:SetData({ reference = mythic }, 3001, nil, "Nek", "mythic")
+  assert(texts(v) == "Mythic line,Mythic own", "a Mythic view: only Mythic's own and any: " .. texts(v))
+  v:SetData(pull, 3001, nil, "Nek", "nh")
+  assert(texts(v) == "Heroic line,Heroic own", "a Heroic view: only Heroic's: " .. texts(v))
+  v:SetData(pull, 3001, nil, "Nek")
+  assert(texts(v) == "Heroic line,Heroic own,Mythic line,Mythic own", "no group: everything: " .. texts(v))
+  CRT.db.alerts.reminders = {}
+  CRT.db.notes.list, CRT.db.timeline.references, CRT.db.timeline.nextRef = savedList, savedRefs, savedNext
+end
+print("ok one source: flags follow the view's ability timeline and difficulty group")
 
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
