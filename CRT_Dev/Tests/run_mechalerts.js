@@ -139,7 +139,8 @@ CRT.Notes.Active = function() return "n1", activeRecord end
 CRT.NotesPage = { TAB_H = CRT.UI.PAGE_H - 66 } -- CRT_Modules/Notes/Page.lua: a tab's height under the tabs
 local journalRows = { { spellID = 777, name = "Real Name", icon = "tex777" }, { spellID = 888, name = "Other Spell", icon = "tex888" } }
 local raidList = { { encounterID = 5555, name = "Raid Boss" } }
-CRT.TimelineJournal = { Rows = function(self, id) if id == 9001 then return journalRows end return {} end, RaidBosses = function() return raidList end }
+CRT.TimelineJournal = { Rows = function(self, id) if id == 9001 then return journalRows end return {} end, RaidBosses = function() return raidList end,
+  IsHidden = function() return false end } -- CRT_Modules/Timeline/Journal.lua: rows you took off the Timeline's Advanced list
 -- CRT_Data/Bosses/Registry.lua: the boss library's route, the one ordered boss list (raid headings, then bosses)
 local routeFns = {}
 local route = { { key = "raid:test", label = "Test Raid", title = true }, { key = 5555, label = "Raid Boss" }, { key = 9001, label = "Test Boss" } }
@@ -165,7 +166,7 @@ for i, src in ipairs(sources) do
 end
 local R, A, Ref, E = CRT.AlertReminders, CRT.Alerts, CRT.TimelineReference, CRT.AlertEditor
 assert(CRT.AlertDraft and CRT.AlertSpellLookup, "the draft core and the spell lookup")
-assert(Ref:Add("Boss: Test Boss\\nDifficulty: Mythic\\nEncounter: 9001\\nLength: 3:00\\nPhase: P2 2:00\\nReal Name: 0:30, 2:20"))
+assert(Ref:Add("Boss: Test Boss\\nDifficulty: Mythic\\nEncounter: 9001\\nLength: 3:00\\nPhase: P2 2:00\\nReal Name: 0:30, 2:20\\nOther Spell: 1:00"))
 assert(Ref:Add("Boss: Test Boss\\nDifficulty: Heroic\\nEncounter: 9001\\nLength: 2:00\\nReal Name: 0:45"))
 local ENC = 9001
 local showCalls, showResult = {}, true
@@ -211,7 +212,7 @@ check("mech: list rows with tick, icon, name, dot", function()
   assert(r1.check.kind == "CheckButton" and r1.check.checked == false, "a tick, off with no reminder")
   assert(r1.icon.texture == "tex777" and r1.icon.shown, "the icon")
   assert(r1.dot.shown, "the reference has times for Real Name")
-  assert(r2.name.text == "Other Spell" and not r2.dot.shown, "no dot without times")
+  assert(r2.name.text == "Other Spell" and r2.dot.shown, "the second row on the ability timeline")
   assert(not f.rows[3].frame.shown, "no third row")
   -- the name is cut with ... inside the list
   assert(r1.name.wordWrap == false and r1.name.w > 0, "single line, fixed width")
@@ -394,7 +395,7 @@ check("mech: times line is read-only", function()
   assert(t.wordWrap == false and t.w > 0, "one line, cut with ...")
   assert(t.textColor and t.textColor[1] < 0.8, "greyed")
   click(f.rows[2].frame)
-  assert(t.text == "No times on the ability timeline for this mechanic.", t.text)
+  assert(t.text:find("P1 1:00", 1, true), "the second row's casts: " .. t.text)
   assert(not dropdowns["Relative to"] and not dropdowns["Time"], "no Relative to")
   assert(#errors == 0, tostring(errors[1]))
 end)
@@ -1124,6 +1125,62 @@ check("mech: ability names in their type colour, with a type tooltip", function(
   assert(#errors == 0, tostring(errors[1]))
 end)
 
+-- The list is the rows of the ability timeline Times from names, as the Timeline shows them: with rows the
+-- Journal doesn't have, without abilities that have no casts there, mechanics you ignored, the Timeline's
+-- hidden rows, Mythic-only rows on Normal and Heroic, and the Mech Alerts hidden list on top. A ticked
+-- reminder of yours keeps its row, marked when it is not on that timeline.
+check("mech: the list follows the ability timeline", function()
+  local T = CRT.Timeline
+  local library = CRT.Bosses
+  CRT.Bosses = setmetatable({ Get = function(_, id) if id == ENC then return { encounterID = ENC, name = "Test Boss",
+    hidden = { "Timeline Hidden" } } end end }, { __index = library })
+  journalRows[3] = { spellID = 999, name = "Third Thing", icon = "tex999" } -- in the Journal, not on the timeline
+  local normal = assert(Ref:Add("Boss: Test Boss\\nDifficulty: Normal\\nEncounter: 9001\\nLength: 3:00\\nPhase: P2 2:00\\n"
+    .. "Real Name: 0:20\\nExtra Add: 0:50\\nIgnored Thing: 1:00\\nTimeline Hidden: 1:10\\nMythic Bit (type mythic): 1:30\\nOther Spell: 2:00+30"))
+  T:SetIgnored(ENC, "Ignored Thing", true)
+  local function names(f)
+    local out = {}
+    for _, row in ipairs(f.rows) do if row.frame.shown then out[#out + 1] = row.name.text end end
+    return table.concat(out, ",")
+  end
+  local f = fresh()
+  -- Any: the timeline Times from shows (the boss's first, the Mythic one)
+  assert(names(f) == "Real Name,Other Spell", "Any: the Mythic timeline's rows: " .. names(f))
+  dropdowns["Difficulty"].opts.set("Normal")
+  assert(dropdowns["Times from"].opts.get() == normal, "Times from names the Normal timeline")
+  assert(names(f) == "Real Name,Extra Add,Other Spell", "Normal: its rows in order, less ignored, hidden, Mythic-only: " .. names(f))
+  -- a row the Journal doesn't have: its own alert, matched by name, following its casts
+  local extra = f.rows[2]
+  assert(extra.dot.shown and extra.icon.shown, "a timeline row with no Journal row")
+  click(extra.frame)
+  assert(f.panel.times.text:find("P1 0:50", 1, true), "its casts: " .. tostring(f.panel.times.text))
+  setCheck(extra.check, true)
+  local r = only()
+  assert(r.text == "Extra Add" and r.spellID == nil and r.enabled == true, "ticked by name")
+  assert(names(f) == "Real Name,Extra Add,Other Spell" and f.rows[2].check.checked, "one row, ticked: " .. names(f))
+  -- the Mech Alerts hidden list on top
+  CRT.db.dev = { mechHidden = { [tostring(ENC)] = { ["other spell"] = "Other Spell" } } }
+  CRT.NoteReminders.Refresh()
+  assert(names(f) == "Real Name,Extra Add", "mechHidden on top: " .. names(f))
+  CRT.db.dev = nil
+  -- a ticked alert of yours on an ability not on this timeline: kept, marked; unticked: not listed
+  local id = R:Save(ENC, nil, { spellID = 999, boss = "Test Boss", text = "Third Thing", enabled = true })
+  CRT.NoteReminders.Refresh()
+  assert(names(f) == "Real Name,Extra Add,Other Spell,(not on timeline) Third Thing", "ticked, off the timeline: " .. names(f))
+  local third = R:Get(ENC, id)
+  third.enabled = false
+  R:Save(ENC, id, third)
+  CRT.NoteReminders.Refresh()
+  assert(names(f) == "Real Name,Extra Add,Other Spell", "unticked, off the timeline: " .. names(f))
+  dropdowns["Difficulty"].opts.set("any")
+  T:SetIgnored(ENC, "Ignored Thing", false)
+  Ref:Delete(normal)
+  journalRows[3] = nil
+  CRT.Bosses = library
+  reset()
+  assert(#errors == 0, tostring(errors[1]))
+end)
+
 -- Abilities hidden from Mech Alerts for everyone: the boss file's mechHidden list and a developer's own
 -- (Timeline:SetMechHidden), set from a row's right-click menu while /crt dev is open.
 check("mech: hidden from the list for everyone, set in /crt dev", function()
@@ -1131,10 +1188,6 @@ check("mech: hidden from the list for everyone, set in /crt dev", function()
   CRT.db.dev = nil
   local library = CRT.Bosses
   CRT.Bosses = setmetatable({ Get = function(_, id) if id == ENC then return { encounterID = ENC, name = "Test Boss", mechHidden = { "Other Spell" } } end end }, { __index = library })
-  journalRows[3] = { spellID = 999, name = "Third Thing", icon = "tex999" }
-  CRT.TimelineJournal.CachedRows = nil
-  -- times for Third Thing only on a Normal ability timeline, not the first of its difficulty group
-  local normal = assert(Ref:Add("Boss: Test Boss\\nDifficulty: Normal\\nEncounter: 9001\\nLength: 1:00\\nThird Thing: 0:20"))
   local menus = {}
   local function menuRoot()
     local root = { items = {} }
@@ -1157,7 +1210,7 @@ check("mech: hidden from the list for everyone, set in /crt dev", function()
 
   -- a player: the shipped hidden ability is gone, and right-click opens nothing
   local f = fresh()
-  assert(names(f) == "Real Name,Third Thing", "players: no hidden rows: " .. names(f))
+  assert(names(f) == "Real Name", "players: no hidden rows: " .. names(f))
   assert(not T:Hidden(ENC, "Other Spell"), "the timeline keeps it")
   local before = #menus
   f.rows[1].frame.OnClick(f.rows[1].frame, "RightButton")
@@ -1165,33 +1218,33 @@ check("mech: hidden from the list for everyone, set in /crt dev", function()
   -- a reminder you made on it stays listed, and keeps working
   local id = R:Save(ENC, nil, { spellID = 888, boss = "Test Boss", text = "Other Spell", enabled = true })
   CRT.NoteReminders.Refresh()
-  assert(names(f) == "Real Name,Other Spell,Third Thing", "your own reminder keeps its row: " .. names(f))
+  assert(names(f) == "Real Name,Other Spell", "your own reminder keeps its row: " .. names(f))
   assert(R:Get(ENC, id).enabled == true, "and stays on")
   -- unticked, it no longer keeps the row (a panel change on a row makes an unticked reminder too)
   local r = R:Get(ENC, id)
   r.enabled = false
   R:Save(ENC, id, r)
   CRT.NoteReminders.Refresh()
-  assert(names(f) == "Real Name,Third Thing", "an unticked reminder keeps no hidden row: " .. names(f))
+  assert(names(f) == "Real Name", "an unticked reminder keeps no hidden row: " .. names(f))
   reset()
   CRT.NoteReminders.Refresh()
-  assert(names(f) == "Real Name,Third Thing", "deleted: gone again")
+  assert(names(f) == "Real Name", "deleted: gone again")
   -- the Timeline's Make a Mech Alert on it opens it all the same
   CRT.NotesPage.Open = function() end
   CRT.NoteReminders.Open(ENC, 888)
-  assert(names(f) == "Real Name,Other Spell,Third Thing" and f.rows[2].sel.shown and f.panel.name.text == "Other Spell", "asked for: listed and selected: " .. names(f))
+  assert(names(f) == "Real Name,Other Spell" and f.rows[2].sel.shown and f.panel.name.text == "Other Spell", "asked for: listed and selected: " .. names(f))
   CRT.NotesPage.Open = nil
   -- only while that open lasts: another row picked, it goes
   click(f.rows[1].frame)
   CRT.NoteReminders.Refresh()
-  assert(names(f) == "Real Name,Third Thing" and f.rows[1].sel.shown, "another row picked: gone: " .. names(f))
+  assert(names(f) == "Real Name" and f.rows[1].sel.shown, "another row picked: gone: " .. names(f))
   -- or the tab closed
   CRT.NotesPage.Open = function() end
   CRT.NoteReminders.Open(ENC, 888)
   CRT.NotesPage.Open = nil
   f:Hide()
   f:Show()
-  assert(names(f) == "Real Name,Third Thing" and f.rows[1].sel.shown, "the tab closed and opened: gone, the first row selected: " .. names(f))
+  assert(names(f) == "Real Name" and f.rows[1].sel.shown, "the tab closed and opened: gone, the first row selected: " .. names(f))
 
   -- /crt dev open: hidden rows show greyed, with a mark
   CRT.UI.pages = { dev = { hidden = false } }
@@ -1203,25 +1256,23 @@ check("mech: hidden from the list for everyone, set in /crt dev", function()
   assert(f.rows[1].name.text == "Real Name", "dev: a shown row has no mark")
 
   -- right-click: hide and show again, and nothing else selected
-  click(f.rows[3].frame)
+  click(f.rows[2].frame)
   local m = rightClick(f.rows[1])
   assert(m.owner == f.rows[1].frame and m.items[1].title == "Real Name", "the menu's title is the ability")
   pick(m, "Hide from Mech Alerts for everyone").fn()
   assert(T:MechHidden(ENC, "Real Name") and not T:Hidden(ENC, "Real Name"), "hidden from Mech Alerts only")
   assert(CRT.db.dev.mechHidden[tostring(ENC)]["real name"] == "Real Name", "saved on this computer")
-  assert(f.rows[1].name.text == "(hidden) Real Name" and f.rows[3].sel.shown, "redrawn, the selection kept")
+  assert(f.rows[1].name.text == "(hidden) Real Name" and f.rows[2].sel.shown, "redrawn, the selection kept")
   pick(rightClick(f.rows[1]), "Show again").fn()
   assert(not T:MechHidden(ENC, "Real Name") and f.rows[1].name.text == "Real Name", "shown again")
   pick(rightClick(f.rows[2]), "Show again").fn()
   assert(not T:MechHidden(ENC, "Other Spell") and CRT.db.dev.mechHidden[tostring(ENC)]["other spell"] == false, "a shipped one shown again")
 
-  -- Hide all with no timer: every ability with no casts on any of the boss's ability timelines
-  pick(rightClick(f.rows[1]), "Hide all with no timer").fn()
-  assert(T:MechHidden(ENC, "Other Spell"), "no casts anywhere: hidden")
-  assert(not T:MechHidden(ENC, "Real Name"), "casts: kept")
-  assert(not T:MechHidden(ENC, "Third Thing"), "casts on another difficulty's timeline only: kept")
+  -- no bulk Hide all with no timer: abilities with no casts are never listed
+  for _, it in ipairs(rightClick(f.rows[1]).items) do assert(it.text ~= "Hide all with no timer", "no bulk hide") end
+  pick(rightClick(f.rows[2]), "Hide from Mech Alerts for everyone").fn()
   local list = T:MechHiddenNames(ENC)
-  assert(#list == 1 and list[1] == "Other Spell", "the list to ship: " .. table.concat(list, ","))
+  assert(#list == 1 and list[1] == "Other Spell" and CRT.db.dev.mechHidden[tostring(ENC)] == nil, "back to the shipped list: " .. table.concat(list, ","))
 
   -- /crt dev closed again: gone for you too, even the selected one (the first row is selected instead)
   click(f.rows[2].frame)
@@ -1229,13 +1280,10 @@ check("mech: hidden from the list for everyone, set in /crt dev", function()
   CRT.UI.pages.dev.hidden = true
   f:Hide()
   f:Show()
-  assert(names(f) == "Real Name,Third Thing", "dev closed: " .. names(f))
+  assert(names(f) == "Real Name", "dev closed: " .. names(f))
   assert(f.rows[1].sel.shown and f.panel.name.text == "Real Name", "the first shown row selected")
 
   CRT.UI.pages, CRT.UI.ContextMenu, CRT.db.dev = nil, nil, nil
-  Ref:Delete(normal)
-  journalRows[3] = nil
-  CRT.TimelineJournal.CachedRows = nil
   CRT.Bosses = library
   reset()
   assert(#errors == 0, tostring(errors[1]))

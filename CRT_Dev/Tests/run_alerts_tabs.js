@@ -100,7 +100,8 @@ local alertsTabBuilt = 0
 CRT.NoteAlertsTab = { Build = function() alertsTabBuilt = alertsTabBuilt + 1 end, Select = function() end }
 local journalRows = { { spellID = 777, name = "Real Name", icon = "tex777" }, { spellID = 888, name = "Other Spell", icon = "tex888" } }
 local raidList = {}
-CRT.TimelineJournal = { Rows = function(self, id) return journalRows end, RaidBosses = function() return raidList end }
+CRT.TimelineJournal = { Rows = function(self, id) return journalRows end, RaidBosses = function() return raidList end,
+  IsHidden = function() return false end } -- CRT_Modules/Timeline/Journal.lua: rows you took off the Timeline's Advanced list
 -- CRT_Data/Bosses/Registry.lua: the boss library's route, the one ordered boss list (raid headings, then bosses)
 local routeFns = {}
 local route = { { key = "raid:test", label = "Test Raid", title = true }, { key = 9001, label = "Test Boss" }, { key = 5555, label = "Raid Boss" } } -- the phase tests work on Test Boss, first in the route
