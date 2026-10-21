@@ -1,8 +1,8 @@
 local ADDON, CRT = ...
 
 -- Profiles. A profile is a full copy of the addon's saved data: every setting, plus the raid layouts,
--- notes, consumables lists, and the Late Tracker and Tattlebot history. The class and role caches are
--- shared by every profile.
+-- notes, consumables lists, and the Late Tracker and Tattlebot history. The class and role caches, and the
+-- list of macros the addon made (Macros.lua: the game's macro list is the account's), are shared by every profile.
 --
 -- The active profile lives at the top of CRTDB, under the same keys as before profiles existed, so no
 -- stored field moved. The others wait in CRTDB.profiles[name]. Each character remembers its profile in
@@ -14,7 +14,7 @@ local Profiles = {}
 CRT.Profiles = Profiles
 
 local DEFAULT = "Default"
-local SHARED = { classCache = true, roleCache = true }
+local SHARED = { classCache = true, roleCache = true, macros = true }
 local EXPORT_PREFIX = "CRTP1:"
 
 -- The top-level keys a profile holds: every key in the defaults, except the shared caches.

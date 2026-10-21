@@ -24,6 +24,9 @@ local defaults = {
     minimap = { hide = false, angle = 225 },
     classCache = {},
     roleCache = {},
+    -- The macros the addon made (Macros.lua): owned[setKey][name] = { body } for each one, so only those are ever
+    -- edited or removed. Shared by every profile, like the game's macro list (Profiles.lua).
+    macros = { owned = {} },
     groups = {
         -- active is the id of the layout the raid runs with (Groups:Active), which the Late Tracker
         -- expects; selected is the layout being edited.

@@ -16,6 +16,7 @@ CRT_Core\Profiles.lua
 CRT_Data\Bosses\Registry.lua
 CRT_Core\Slash.lua
 CRT_Core\Perf.lua
+CRT_Core\Macros.lua
 CRT_Core\Sound\Engine.lua
 CRT_Core\Sound\Auras.lua
 CRT_Core\UI\Panel.lua
@@ -127,6 +128,7 @@ CRT_Modules\Alerts\Editor.lua
 CRT_Modules\Alerts\Saved.lua
 CRT_Modules\Markers\Database.lua
 CRT_Modules\Markers\Display.lua
+CRT_Modules\Markers\Macros.lua
 CRT_Modules\Pace\Database.lua
 CRT_Modules\Pace\Data.lua
 CRT_Modules\Pace\Display.lua
