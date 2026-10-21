@@ -31,7 +31,7 @@ local function mock(kind)
     if k == "SetShown" then return function(self, on) self.shown = on and true or false end end
     if k == "IsShown" then return function(self) return self.shown end end
     if k == "SetSize" then return function(self, w, h) rawset(self, "w", w) rawset(self, "h", h) end end
-    if k == "SetPoint" then return function(self, ...) table.insert(self.pts, { ... }) end end
+    if k == "SetPoint" then return function(self, ...) table.insert(self.pts, { ... }) rawset(self, "setPoints", (rawget(self, "setPoints") or 0) + 1) end end
     if k == "ClearAllPoints" then return function(self) self.pts = {} end end
     if k == "SetText" then return function(self, s) rawset(self, "text", s) end end
     if k == "GetText" then return function(self) return rawget(self, "text") end end
@@ -53,7 +53,11 @@ local function mock(kind)
       local p = rawget(self, "parent")
       return rawget(self, "level") or (p and p:GetFrameLevel() + 1) or 1 end end
     if k == "EnableMouse" then return function(self, on) rawset(self, "mouse", on) end end
-    if k == "GetPoint" then return function() return "CENTER", nil, "CENTER", 0, 0 end end
+    -- A frame's first point as set, or the middle of its parent before it has one.
+    if k == "GetPoint" then return function(self)
+      local p = self.pts[1]
+      if p then return p[1], p[2], p[3], p[4], p[5] end
+      return "CENTER", nil, "CENTER", 0, 0 end end
     if k == "IsForbidden" then return function(self) return forbidTextures and self.kind == "Texture" or false end end
     if k == "SetEnabled" then return function(self, on) rawset(self, "enabled", on) end end
     return function() end
@@ -68,6 +72,7 @@ for _, n in ipairs({ "GameFontNormal", "GameFontHighlight", "GameFontDisable", "
   "GameFontNormalLarge", "GameFontNormalSmall", "ChatFontNormal" }) do _G[n] = mock("Font") end
 CRTFontNormal, CRTFontHighlight, CRTFontDisable = mock("Font"), mock("Font"), mock("Font")
 UIParent = mock("UIParent")
+rawset(UIParent, "w", 1920) rawset(UIParent, "h", 1080)
 local SECRET = setmetatable({}, { __eq = function() error("compared a secret value") end,
   __lt = function() error("compared a secret value") end, __le = function() error("compared a secret value") end,
   __concat = function() error("joined a secret value") end })
@@ -110,6 +115,7 @@ function CreateFrame(kind, name, parent, template)
     rawset(f, "AddAuraGroup", function(self, key, filter, opts) groupOpts = opts return true end)
     -- The flow layout calls (Blizzard_AuraContainerFlowLayout.lua), as last set.
     rawset(f, "SetFlowLayoutAnchorPoint", function(self, point) rawset(self, "flowPoint", point) end)
+    rawset(f, "SetFlowLayoutAxis", function(self, axis) rawset(self, "flowAxis", axis) end)
     rawset(f, "SetFlowLayoutGrowthDirection", function(self, h, v) rawset(self, "flowH", h) rawset(self, "flowV", v) end)
   end
   return f
@@ -274,12 +280,41 @@ end
 CRT.db.debuffs.borderScale, CRT.db.debuffs.spacing = 1, 4
 check("signature is stable", Debuffs:LookSignature() == Debuffs:LookSignature())
 
--- The panel: build it, then make a container button through the group's initializeFrame.
+-- Where a frame is on screen, from its one point, its size and UIParent's (1920 x 1080): left, right,
+-- top and bottom, as the game would place it.
+local function fraction(point)
+  local fx = point:find("LEFT") and 0 or point:find("RIGHT") and 1 or 0.5
+  local fy = point:find("BOTTOM") and 0 or point:find("TOP") and 1 or 0.5
+  return fx, fy
+end
+local function edges(f)
+  if #f.pts ~= 1 then return nil end
+  local p = f.pts[1]
+  local fx, fy = fraction(p[1])
+  local rx, ry = fraction(p[3])
+  local left = rx * UIParent.w + p[4] - fx * f.w
+  local bottom = ry * UIParent.h + p[5] - fy * f.h
+  return left, left + f.w, bottom + f.h, bottom
+end
+local function near(a, b) return a ~= nil and b ~= nil and math.abs(a - b) < 1e-6 end
+
+-- The panel: build it, then make a container button through the group's initializeFrame. A position
+-- saved before the panel kept a fixed corner (any point) loads where it was.
+CRT.db.debuffs.position = { point = "BOTTOMLEFT", relativePoint = "BOTTOMLEFT", x = 300, y = 200 }
 assert(load(panelSrc, "Panel.lua"))("CowfeeRaidTools", CRT)
 local Panel = CRT.DebuffPanel
 local events
 for _, f in ipairs(frames) do if rawget(f, "OnEvent") then events = f end end
 events.OnEvent(events, "PLAYER_LOGIN")
+do
+  local panel
+  for _, f in ipairs(frames) do if rawget(f, "name") == "CowfeeRaidToolsDebuffPanel" then panel = f end end
+  local left, right, top, bottom = edges(panel)
+  check("an old saved position loads where it was", near(left, 300) and near(bottom, 200), tostring(left) .. "," .. tostring(bottom))
+  local saved = CRT.db.debuffs.position
+  check("and is saved again from the panel's top left", saved.point == "TOPLEFT" and saved.relativePoint == "BOTTOMLEFT"
+    and near(saved.x, 300) and near(saved.y, 200 + panel.h), saved.point .. " " .. saved.x .. "," .. saved.y)
+end
 check("the container's group was added", groupOpts ~= nil and type(groupOpts.initializeFrame) == "function")
 local added = {}
 local button = mock("AuraButton")
@@ -507,7 +542,11 @@ do
   local step = Debuffs:Step(44)
   check("left to right: the row grows right from the top left", box.flowPoint == "TOPLEFT" and box.flowH == 1 and box.flowV == -1, tostring(box.flowPoint) .. " " .. tostring(box.flowH))
   check("left to right: the container sits at the panel's top left", pointIs(box, "TOPLEFT", 0))
-  local panelAt = table.concat(panelFrame.pts[#panelFrame.pts], ",", 3)
+  local atLeft, atRight, atTop = edges(panelFrame)
+  local function notMoved()
+    local l, r, t = edges(panelFrame)
+    return near(l, atLeft) and near(r, atRight) and near(t, atTop)
+  end
   Debuffs:SetPrivateSlots(true)
   local slotsRight = anchorArgs[1] and anchorArgs[2] and anchorArgs[1].parent.pts[1][1] == "TOPLEFT" and anchorArgs[1].parent.pts[1][4] == 0
     and anchorArgs[2].parent.pts[1][4] == step
@@ -518,7 +557,9 @@ do
   local s1, s2 = anchorArgs[1].parent, anchorArgs[2].parent
   check("right to left: boss debuff slot 1 at the right end, slot 2 one step left", s1.pts[1][1] == "TOPRIGHT" and s1.pts[1][3] == "TOPRIGHT" and s1.pts[1][4] == 0
     and s2.pts[1][1] == "TOPRIGHT" and s2.pts[1][4] == -step, s2.pts[1] and s2.pts[1][4])
-  check("switching direction doesn't move the panel", table.concat(panelFrame.pts[#panelFrame.pts], ",", 3) == panelAt and panelFrame.w == 3 * step + 44)
+  check("switching direction doesn't move the panel", notMoved() and panelFrame.w == 3 * step + 44, table.concat({ edges(panelFrame) }, ","))
+  check("right to left: the panel is held by its top right", panelFrame.pts[1][1] == "TOPRIGHT" and CRT.db.debuffs.position.point == "TOPRIGHT",
+    panelFrame.pts[1][1] .. " " .. CRT.db.debuffs.position.point)
   -- The preview: sample 1 next to the right end, each next one a step to its left.
   Panel:SetPreview(true)
   local order, n = true, 0
@@ -543,8 +584,69 @@ do
   events.OnEvent(events, "PLAYER_REGEN_ENABLED")
   check("after combat the row grows right again", box.flowPoint == "TOPLEFT" and box.flowH == 1 and pointIs(box, "TOPLEFT", 0))
   check("after combat the slots are back at the left end", s1.pts[1][1] == "TOPLEFT" and s2.pts[1][4] == step)
-  check("and the panel never moved", table.concat(panelFrame.pts[#panelFrame.pts], ",", 3) == panelAt)
+  check("and the panel never moved", notMoved() and panelFrame.pts[1][1] == "TOPLEFT", table.concat({ edges(panelFrame) }, ","))
   Debuffs:SetPrivateSlots(false)
+  -- Without AnchorUtil the flow layout uses the game's own values (Blizzard_SharedXMLBase/AnchorUtil.lua).
+  local savedAnchorUtil = AnchorUtil
+  AnchorUtil = nil
+  Debuffs:SetGrow("left")
+  check("no AnchorUtil: right to left still grows left from the top right", box.flowPoint == "TOPRIGHT" and box.flowH == -1 and box.flowV == -1 and box.flowAxis == 0,
+    tostring(box.flowPoint) .. " " .. tostring(box.flowH) .. " " .. tostring(box.flowV) .. " " .. tostring(box.flowAxis))
+  Debuffs:SetGrow("right")
+  check("no AnchorUtil: left to right grows right from the top left", box.flowPoint == "TOPLEFT" and box.flowH == 1 and box.flowV == -1 and box.flowAxis == 0,
+    tostring(box.flowPoint) .. " " .. tostring(box.flowH))
+  AnchorUtil = savedAnchorUtil
+end
+
+-- The panel keeps its fixed end: the right one with right to left, the left one with left to right,
+-- whatever the icon size, count, spacing or border size. In combat a change waits, as before.
+do
+  Debuffs:SetGrow("left")
+  local _, right, top = edges(panelFrame)
+  local w = panelFrame.w
+  Debuffs:SetSize(80)
+  local _, r2, t2 = edges(panelFrame)
+  check("right to left: a bigger icon keeps the right end", panelFrame.w > w and near(r2, right) and near(t2, top), tostring(r2) .. " vs " .. tostring(right))
+  Debuffs:SetMaxCount(7)
+  local _, r3 = edges(panelFrame)
+  check("right to left: more icons keep the right end", near(r3, right), tostring(r3) .. " vs " .. tostring(right))
+  Debuffs:SetSpacing(12) Debuffs:Set("borderScale", 3)
+  local _, r4 = edges(panelFrame)
+  check("right to left: spacing and border size keep the right end", near(r4, right), tostring(r4) .. " vs " .. tostring(right))
+  combat = true
+  local wBefore = panelFrame.w
+  Debuffs:SetSize(30)
+  check("in combat the size change waits", panelFrame.w == wBefore, panelFrame.w)
+  combat = false
+  events.OnEvent(events, "PLAYER_REGEN_ENABLED")
+  local _, r5 = edges(panelFrame)
+  check("after combat the smaller panel keeps the right end", panelFrame.w < wBefore and near(r5, right), tostring(r5) .. " vs " .. tostring(right))
+  Debuffs:SetGrow("right")
+  local left = edges(panelFrame)
+  check("switching to left to right after a resize doesn't move it", near(select(2, edges(panelFrame)), right))
+  Debuffs:SetSize(70) Debuffs:SetMaxCount(2)
+  local l2 = edges(panelFrame)
+  check("left to right: the left end stays put", near(l2, left), tostring(l2) .. " vs " .. tostring(left))
+  -- A drag: the game leaves the panel at whatever point it likes; it is saved from the fixed corner.
+  local handleFrame
+  for _, f in ipairs(frames) do if rawget(f, "OnDragStop") then handleFrame = f end end
+  Debuffs:SetGrow("left")
+  panelFrame.pts = { { "CENTER", UIParent, "CENTER", 40, -20 } }
+  local dl, dr, dt = edges(panelFrame)
+  handleFrame.OnDragStop(handleFrame)
+  local saved = CRT.db.debuffs.position
+  local nl, nr, nt = edges(panelFrame)
+  check("a drag with right to left saves the top right", saved.point == "TOPRIGHT" and saved.relativePoint == "CENTER", saved.point)
+  check("and the panel stays where it was dropped", near(nl, dl) and near(nr, dr) and near(nt, dt), tostring(nr) .. " vs " .. tostring(dr))
+  Debuffs:Fire() -- as after a /reload: the saved position is applied as it is
+  local _, rr = edges(panelFrame)
+  check("the saved drag comes back in the same place", near(rr, dr) and panelFrame.pts[1][1] == "TOPRIGHT")
+  Debuffs:SetGrow("right")
+  panelFrame.pts = { { "BOTTOMRIGHT", UIParent, "BOTTOMRIGHT", -100, 50 } }
+  dl = edges(panelFrame)
+  handleFrame.OnDragStop(handleFrame)
+  check("a drag with left to right saves the top left", CRT.db.debuffs.position.point == "TOPLEFT" and near(edges(panelFrame), dl), CRT.db.debuffs.position.point)
+  Debuffs:SetSize(44) Debuffs:SetMaxCount(4) Debuffs:SetSpacing(4) Debuffs:Set("borderScale", 1)
 end
 
 -- Where the panel shows: everywhere, in and out of combat, hidden only by the settings. The game's
@@ -786,6 +888,9 @@ local Panel2 = CRT.DebuffPanel
 for i = before + 1, #frames do if rawget(frames[i], "OnEvent") then events = frames[i] end end
 events.OnEvent(events, "PLAYER_LOGIN")
 check("no glow atlas: a second panel is built", groupOpts ~= nil and #frames > before + 1)
+local box2
+for i = before + 1, #frames do if frames[i].kind == "AuraContainer" then box2 = frames[i] end end
+check("a new container is anchored once, by its flow layout", box2 and rawget(box2, "setPoints") == 1 and #box2.pts == 1, box2 and rawget(box2, "setPoints"))
 Debuffs:SetDispelGlow(true)
 added = {}
 local button4 = mock("AuraButton")

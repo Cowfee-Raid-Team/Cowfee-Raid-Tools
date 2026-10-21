@@ -26,7 +26,8 @@ local ADDON, CRT = ...
 -- dispel texture that is inside the button (AuraContainerUtil.ValidateInboundScriptObject), so the glow
 -- can't move to one shared frame above the row. The timer and stacks sit one level above the glow.
 -- The row grows from the panel's left end or, with Grow set to right to left, from its right end; the
--- container, the boss debuff slots and the preview tiles all follow it (rowPoint).
+-- container, the boss debuff slots and the preview tiles all follow it (rowPoint). The panel is held
+-- on screen by that same end, so a change of icon size or count moves only its other end.
 --
 -- The game's boss debuff slots (C_UnitAuras.AddPrivateAuraAnchor, where the game draws a private aura
 -- itself) are kept as an optional second row, off by default, in case boss mechanic debuffs don't
@@ -89,6 +90,7 @@ local GLOW_LEVEL = 20
 local TEXT_LEVEL = 21
 
 local frame, container, handle
+local frameWidth, frameHeight = 0, 0 -- the panel's size as last set, to turn a position into its fixed corner
 local slots = {} -- one frame per private aura slot
 local anchorIds = {} -- the private aura anchors added for those slots
 local tiles = {} -- preview tiles
@@ -182,6 +184,12 @@ local function panelSize()
         height = height + slotRowOffset() + size
     end
     return width, height, size
+end
+
+-- Sizes the panel to its rows, keeping the size for the position (applyPosition).
+local function sizeFrame()
+    frameWidth, frameHeight = panelSize()
+    frame:SetSize(frameWidth, frameHeight)
 end
 
 -- Boss debuff slots (optional second row) ---------------------------------------------------
@@ -685,7 +693,6 @@ local function createContainer()
     if not container then
         return false
     end
-    container:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
     try("container", container, "SetUnit", "player")
     local method, direction = sortOptions()
     report.created = try("container", container, "AddAuraGroup", GROUP, "HARMFUL", {
@@ -709,8 +716,7 @@ local function layout()
     if not frame or not safeToWire() then
         return
     end
-    local width, height = panelSize()
-    frame:SetSize(width, height)
+    sizeFrame()
     addAnchors()
     applyContainerLayout()
 end
@@ -828,9 +834,39 @@ local function tickTiles()
 end
 
 -- Position and visibility -----------------------------------------------------------
+-- The panel is held by the corner its row grows from (rowPoint(1)): its top left for left to right,
+-- its top right for right to left, so a change of width moves only the other end. A position saved
+-- at any other point (one from before, a drag, or the other Grow) is turned into that corner, at the
+-- same place on screen, and saved again.
+
+-- How far a point is across and up a frame, as fractions of its width and height.
+local function pointFraction(point)
+    point = type(point) == "string" and point or "CENTER"
+    local fx = point:find("LEFT") and 0 or point:find("RIGHT") and 1 or 0.5
+    local fy = point:find("BOTTOM") and 0 or point:find("TOP") and 1 or 0.5
+    return fx, fy
+end
+
+-- The same place for a panel width by height, held by corner instead of point. The point on the
+-- screen it is measured from (relativePoint) stays, so no screen size is needed.
+local function toCorner(point, relativePoint, x, y, corner, width, height)
+    local fx, fy = pointFraction(point)
+    local cx, cy = pointFraction(corner)
+    return { point = corner, relativePoint = relativePoint or point, x = (tonumber(x) or 0) + (cx - fx) * width, y = (tonumber(y) or 0) + (cy - fy) * height }
+end
+
+-- Saves a position from the panel's fixed corner, for the panel's current size.
+local function saveAtCorner(point, relativePoint, x, y)
+    local at = toCorner(point, relativePoint, x, y, rowPoint(1), frameWidth, frameHeight)
+    Debuffs:SavePosition(at.point, at.relativePoint, at.x, at.y)
+    return at
+end
 
 local function applyPosition()
     local saved = Debuffs:Position()
+    if saved.point ~= rowPoint(1) then
+        saved = saveAtCorner(saved.point, saved.relativePoint, saved.x, saved.y)
+    end
     frame:ClearAllPoints()
     frame:SetPoint(saved.point, UIParent, saved.relativePoint or saved.point, saved.x, saved.y)
 end
@@ -944,8 +980,7 @@ local function build()
     CRT.UI:RegisterLayer("debuffs", frame)
     frame:SetMovable(true)
     frame:SetClampedToScreen(true)
-    local width, height = panelSize()
-    frame:SetSize(width, height)
+    sizeFrame()
     applyPosition()
     frame:SetAlpha(0)
 
@@ -975,8 +1010,11 @@ local function build()
     handle:SetScript("OnDragStop", function()
         frame:StopMovingOrSizing()
         dragging = false
+        -- The game leaves the panel at a point of its choosing; it is saved and held from its fixed corner.
         local point, _, relativePoint, x, y = frame:GetPoint()
-        Debuffs:SavePosition(point, relativePoint, x, y)
+        local at = saveAtCorner(point, relativePoint, x, y)
+        frame:ClearAllPoints()
+        frame:SetPoint(at.point, UIParent, at.relativePoint, at.x, at.y)
     end)
     handle:Hide()
     placeHandle()
