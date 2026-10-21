@@ -138,7 +138,7 @@ end
 
 local function colors()
     if UI:IsModern() then
-        return CRT.MOCHA.espresso, CRT.MOCHA.edge
+        return CRT.PALETTE.background, CRT.PALETTE.border
     end
     return { 0.05, 0.05, 0.05 }, { 0.3, 0.3, 0.3 }
 end
@@ -235,7 +235,7 @@ local function itemArt(p)
     p.plateFlat = p:CreateTexture(nil, "ARTWORK")
     p.plateFlat:SetPoint("TOPLEFT", left)
     p.plateFlat:SetPoint("BOTTOMRIGHT", right)
-    UI.Tint(p.plateFlat, "SetColorTexture", "roast", 1)
+    UI.Tint(p.plateFlat, "SetColorTexture", "surface", 1)
 end
 
 local function paintArt(p, itemString)

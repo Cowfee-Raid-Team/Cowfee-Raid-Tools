@@ -53,7 +53,7 @@ ScrollUtil = { InitScrollBoxListWithScrollBar = function() end }
 
 -- the UI helpers the windows call, recording what they were given
 local sortParent, sortOpts
-local CRT = { db = { lootmaster = { window = {}, answers = {}, sort = {} } }, MOCHA = { caramel = { 1, 1, 1 }, edge = { 1, 1, 1 }, cream = { 1, 1, 1 } } }
+local CRT = { db = { lootmaster = { window = {}, answers = {}, sort = {} } }, PALETTE = { accent = { 1, 1, 1 }, border = { 1, 1, 1 }, text = { 1, 1, 1 } } }
 CRT.UI = {
   ContextMenu = function() end,
   SkinScrollBar = function() end,

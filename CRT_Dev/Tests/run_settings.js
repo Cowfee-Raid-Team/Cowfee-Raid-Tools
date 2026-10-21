@@ -83,10 +83,10 @@ for _, f in ipairs(frames) do if rawget(f, "OnEvent") then f.OnEvent(f, "ADDON_L
 do
   local ui, want, same = CRT.db.ui, CRT.THEMES.cowfee, true
   for _, k in ipairs(CRT.THEME_KEYS) do
-    local a, b = CRT.MOCHA[k], want[k]
+    local a, b = CRT.PALETTE[k], want[k]
     if math.abs(a[1] - b[1]) > 0.001 or math.abs(a[2] - b[2]) > 0.001 or math.abs(a[3] - b[3]) > 0.001 then same = false end
   end
-  if ui.theme == "cowfee" and ui.modern == true and same then print("ok old Modern data loads as cowfee, CRT.MOCHA its palette")
+  if ui.theme == "cowfee" and ui.modern == true and same then print("ok old Modern data loads as cowfee, CRT.PALETTE its palette")
   else print("FAIL old Modern data: theme " .. tostring(ui.theme) .. ", modern " .. tostring(ui.modern) .. ", palette " .. tostring(same)) end
 end
 -- the rest starts from a fresh install in Classic
@@ -244,7 +244,7 @@ do
     if not (d.line.w == 2 and d.line.shown ~= false and c and c[1] > c[3] and c[1] < 0.7 and d.shadow.shown and d.shadow.w == 1 and d.shadow.color[1] < c[1]) then print("FAIL Default: Blizzard divider is a 2 px gold-brown line with a darker 1 px shadow") end
     for _, key in ipairs({ "midnight", "nitro", "cowfee" }) do
       CRT.db.ui.theme, CRT.db.ui.modern = key, true CRT:UseTheme(key) UI:ApplyStyle()
-      if not (d.line.w == 1 and not d.shadow.shown and near(d.line.color, CRT.THEMES[key].edge)) then print("FAIL " .. key .. " divider is 1 px in the edge colour") end
+      if not (d.line.w == 1 and not d.shadow.shown and near(d.line.color, CRT.THEMES[key].border)) then print("FAIL " .. key .. " divider is 1 px in the edge colour") end
     end
     CRT.db.ui.theme, CRT.db.ui.modern = "blizzard", false CRT:UseTheme("blizzard") UI:ApplyStyle()
     if d.line.w ~= 2 then print("FAIL the divider repaints back to Blizzard") end

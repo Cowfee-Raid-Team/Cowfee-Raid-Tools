@@ -1,6 +1,6 @@
-// CRT_Core/UI/Panel.lua's UI:SkinCheckButton: the Modern checkbox (a walnut box with a white tick when
-// ticked, roast with a mocha edge when not) over a UICheckButtonTemplate stand-in, the look switch,
-// SkinTree finding checkboxes on a page and in a window, and CRT.MOCHA's walnut colours (Themes.lua, in
+// CRT_Core/UI/Panel.lua's UI:SkinCheckButton: the Modern checkbox (a knob box with a white tick when
+// ticked, surface with a selected edge when not) over a UICheckButtonTemplate stand-in, the look switch,
+// SkinTree finding checkboxes on a page and in a window, and CRT.PALETTE's knob colours (Themes.lua, in
 // Beanworks: Cowfee).
 // Usage: node run_checkbox.js <addon folder>
 const fs = require('fs');
@@ -98,19 +98,19 @@ CRT:UseTheme("cowfee")
 assert(load(panelSrc, "Panel.lua"))("CowfeeRaidTools", CRT)
 assert(load(controlsSrc, "Controls.lua"))("CowfeeRaidTools", CRT)
 local UI = CRT.UI
-local M = CRT.MOCHA
+local M = CRT.PALETTE
 local function look(modern)
   CRT.db.ui.modern = modern
   for _, c in ipairs(UI.skinned) do c.crtSkin(modern) end
 end
 
--- CRT.MOCHA's walnut colours, shared by the slider knob and the checkbox
-check(near(M.walnut, hex("4a3424")), "MOCHA.walnut is #4a3424")
-check(near(M.walnutEdge, hex("1a120c")), "MOCHA.walnutEdge is #1a120c")
-check(near(M.walnutShine, hex("7a5a3e")), "MOCHA.walnutShine is #7a5a3e")
-check(near(M.walnutText, { 1, 1, 1 }), "MOCHA.walnutText is white")
-check(near(M.tick, { 1, 1, 1 }), "MOCHA.tick is white")
-print("ok checkbox: the walnut colours are in CRT.MOCHA")
+-- CRT.PALETTE's knob colours, shared by the slider knob and the checkbox
+check(near(M.knob, hex("4a3424")), "PALETTE.knob is #4a3424")
+check(near(M.knobBorder, hex("1a120c")), "PALETTE.knobBorder is #1a120c")
+check(near(M.knobShine, hex("7a5a3e")), "PALETTE.knobShine is #7a5a3e")
+check(near(M.knobText, { 1, 1, 1 }), "PALETTE.knobText is white")
+check(near(M.check, { 1, 1, 1 }), "PALETTE.check is white")
+print("ok checkbox: the knob colours are in CRT.PALETTE")
 
 -- A checkbox skinned in Classic keeps the game's art and draws nothing of its own.
 local page = frame("Frame", nil)
@@ -130,25 +130,25 @@ local function anyShown(list) for _, t in ipairs(list) do if t.shown then return
 check(allArt(1), "Classic: the template's art shows")
 check(not anyShown(s.textures), "Classic: the Modern box is hidden")
 
--- Modern, unticked: the art is hidden; a roast box with a mocha edge, no tick, no highlight.
+-- Modern, unticked: the art is hidden; a surface box with a selected edge, no tick, no highlight.
 look(true)
 check(allArt(0), "Modern: every piece of the template's art is hidden")
 check(s.box.edge.corners[1].shown and s.box.face.fills[1].shown, "Modern: the box shows")
-check(near(s.box.face.fills[1].rgb, M.roast) and near(s.box.face.corners[1].rgb, M.roast), "unticked: a roast fill")
-check(near(s.box.edge.fills[1].rgb, M.mocha), "unticked: a mocha edge")
+check(near(s.box.face.fills[1].rgb, M.surface) and near(s.box.face.corners[1].rgb, M.surface), "unticked: a surface fill")
+check(near(s.box.edge.fills[1].rgb, M.selected), "unticked: a selected edge")
 check(not s.tick.shown and not s.shine.shown, "unticked: no tick, no highlight")
 -- 16 px with corners of about 4 px
 check(s.size == 16 and s.radius == 4, "a 16 px box with 4 px corners")
 
--- SetChecked from a page's refresh: walnut, a dark edge, the top highlight and a white tick.
+-- SetChecked from a page's refresh: the knob colour, a dark edge, the top highlight and a white tick.
 cb:SetChecked(true)
-check(near(s.box.face.fills[1].rgb, M.walnut), "ticked: a walnut fill")
-check(near(s.box.edge.fills[1].rgb, M.checkEdge) and near(M.checkEdge, M.walnutEdge), "ticked: a dark walnut edge (MOCHA.checkEdge)")
-check(s.shine.shown and near(s.shine.rgb, M.walnutShine), "ticked: a soft highlight inside the top edge")
-check(s.tick.shown and near(s.tick.rgb, M.tick), "ticked: a MOCHA.tick (white) tick")
+check(near(s.box.face.fills[1].rgb, M.knob), "ticked: a knob fill")
+check(near(s.box.edge.fills[1].rgb, M.checkBorder) and near(M.checkBorder, M.knobBorder), "ticked: a dark edge (PALETTE.checkBorder)")
+check(s.shine.shown and near(s.shine.rgb, M.knobShine), "ticked: a soft highlight inside the top edge")
+check(s.tick.shown and near(s.tick.rgb, M.check), "ticked: a PALETTE.check (white) tick")
 check(type(s.tick.file) == "string" and s.tick.file:find("CRT_Media\\\\Media\\\\Check$") ~= nil, "the tick is CRT_Media/Media/Check.tga: " .. tostring(s.tick.file))
 cb:SetChecked(false)
-check(not s.tick.shown and near(s.box.face.fills[1].rgb, M.roast), "unticked again by SetChecked")
+check(not s.tick.shown and near(s.box.face.fills[1].rgb, M.surface), "unticked again by SetChecked")
 
 -- A click toggles it, and the page's own OnClick still runs.
 local saved
@@ -160,16 +160,16 @@ check(saved == false and not s.tick.shown, "a second click unticks it")
 
 -- Hover brightens the edge; leaving puts it back.
 cb.scripts.OnEnter(cb)
-check(near(s.box.edge.fills[1].rgb, M.caramel), "hover: a caramel edge")
+check(near(s.box.edge.fills[1].rgb, M.accent), "hover: an accent edge")
 cb.scripts.OnLeave(cb)
-check(near(s.box.edge.fills[1].rgb, M.mocha), "leave: the mocha edge again")
+check(near(s.box.edge.fills[1].rgb, M.selected), "leave: the selected edge again")
 
 -- Disabled: the box at about 40%, ticked or not; enabled again, solid.
 cb:SetChecked(true)
 cb:SetEnabled(false)
 check(s.box.face.fills[1].a == 0.4 and s.tick.a == 0.4, "disabled: the box and tick at 40%")
 cb.scripts.OnEnter(cb)
-check(near(s.box.edge.fills[1].rgb, M.checkEdge), "hover on a disabled box leaves its edge alone")
+check(near(s.box.edge.fills[1].rgb, M.checkBorder), "hover on a disabled box leaves its edge alone")
 cb.scripts.OnLeave(cb)
 cb:Click()
 check(cb:GetChecked() == true, "a disabled box ignores clicks")
@@ -185,7 +185,7 @@ look(false)
 check(allArt(1) and not anyShown(s.textures), "Classic again: the game's art, no box")
 cb:SetChecked(false)
 look(true)
-check(not s.tick.shown and near(s.box.face.fills[1].rgb, M.roast), "back to Modern: the state set in Classic")
+check(not s.tick.shown and near(s.box.face.fills[1].rgb, M.surface), "back to Modern: the state set in Classic")
 print("ok checkbox: the look button switches it live")
 
 -- SkinTree: a page's checkboxes are skinned, nested ones too; a radio button is left alone.
@@ -207,23 +207,23 @@ win:Show()
 check(wc.crtCheck ~= nil and wc.art.Checked.alpha == 0, "a window's checkbox is skinned when it shows")
 print("ok checkbox: SkinTree finds checkboxes on a page and in a window")
 
--- The Modern slider knob: bevelled walnut with white text.
+-- The Modern slider knob: bevelled, with white text.
 local value = 5
 local slider = UI.Slider(frame("Frame", nil), "Count", { min = 1, max = 10, get = function() return value end, set = function(v) value = v end })
 local k = slider.modern
 check(k ~= nil, "a slider made in Modern has its knob")
-check(near(k.face.fills[1].rgb, M.walnut) and near(k.face.corners[1].rgb, M.walnut), "the knob is walnut")
-check(near(k.edge.fills[1].rgb, M.walnutEdge), "the knob has a dark walnut edge")
-check(k.shine ~= nil and near(k.shine.rgb, M.walnutShine), "the knob has a soft highlight inside its top edge")
-check(near(k.text.rgb, M.walnutText), "the knob's value is MOCHA.walnutText (white)")
-check(near(k.edit.textRGB, M.walnutText), "the number box's text is MOCHA.walnutText")
-print("ok checkbox: the slider knob is bevelled walnut with white text")
+check(near(k.face.fills[1].rgb, M.knob) and near(k.face.corners[1].rgb, M.knob), "the knob is the knob colour")
+check(near(k.edge.fills[1].rgb, M.knobBorder), "the knob has a dark edge")
+check(k.shine ~= nil and near(k.shine.rgb, M.knobShine), "the knob has a soft highlight inside its top edge")
+check(near(k.text.rgb, M.knobText), "the knob's value is PALETTE.knobText (white)")
+check(near(k.edit.textRGB, M.knobText), "the number box's text is PALETTE.knobText")
+print("ok checkbox: the slider knob is bevelled, with white text")
 
--- UI.PaintShape(shape, key, alpha): a MOCHA key at an alpha
+-- UI.PaintShape(shape, key, alpha): a PALETTE key at an alpha
 local shape = UI.RoundRect(frame("Frame", nil), {}, "ARTWORK", 0, 4, 0)
-UI.PaintShape(shape, "walnut", 0.4)
-check(near(shape.fills[1].rgb, M.walnut) and shape.fills[1].a == 0.4 and shape.corners[1].a == 0.4, "PaintShape takes an alpha")
-UI.PaintShape(shape, "walnut")
+UI.PaintShape(shape, "knob", 0.4)
+check(near(shape.fills[1].rgb, M.knob) and shape.fills[1].a == 0.4 and shape.corners[1].a == 0.4, "PaintShape takes an alpha")
+UI.PaintShape(shape, "knob")
 check(shape.fills[1].a == 1, "PaintShape without an alpha is solid")
 
 print(passes .. " passed, " .. fails .. " failed")

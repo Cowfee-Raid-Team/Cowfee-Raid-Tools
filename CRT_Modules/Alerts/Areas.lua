@@ -19,7 +19,7 @@ local ADDON, CRT = ...
 --                      without an id), kept by id so it survives the line moving to another widget.
 --     sample(now)      -> lines for Previews, each with `at` set
 --     settings(panel, s)  adds the area's own rows to its settings on Raid Notes > Alerts with
---                      panel:Dropdown(label, opts), panel:Slider(label, opts), panel:Check(label, get, set) and
+--                      panel:Dropdown(label, opts), panel:Slider(label, opts), panel:Check(label, get, set, help) (help: an optional (?) tooltip text) and
 --                      panel:Color(label, get, set, enabledIf) (a swatch for the game's color picker; get() -> { r, g, b, a },
 --                      set(new table); opts as for UI.Dropdown and UI.Slider). It is called every time the area
 --                      shows there; the rows are made the first time and reused after. A change refreshes the
@@ -327,6 +327,7 @@ local function makeCheck(parent, label, get, set)
     local text = check:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     text:SetPoint("LEFT", check, "RIGHT", 2, 0)
     text:SetText(label)
+    check.label = text
     check:SetScript("OnClick", function(self)
         set(self:GetChecked() and true or false)
     end)
@@ -487,14 +488,21 @@ function Panel:Slider(label, opts)
     return slot.row
 end
 
-function Panel:Check(label, get, set)
+-- help, if given, is a (?) tooltip after the label.
+function Panel:Check(label, get, set, help)
     local slot = self:NextSlot({ get = get, set = set }, function(slot)
-        return makeCheck(self.frame, label, function()
+        local check = makeCheck(self.frame, label, function()
             return slot.opts.get()
         end, function(on)
             slot.opts.set(on)
             self:Changed()
         end)
+        if help then
+            local mark = UI.Help(check, label, help) -- a child of the check, so it hides with its row
+            mark:SetPoint("LEFT", check.label, "RIGHT", 6, 0)
+            check.help = mark
+        end
+        return check
     end)
     return slot.row
 end
@@ -684,7 +692,7 @@ function Area:Build()
     handle:SetPoint("BOTTOM", frame, "TOP", 0, 2)
     self.handleBelow = false
     handle:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
-    UI.Tint(handle, "SetBackdropColor", "roast", 0.9) -- the theme's field colour under its heading-coloured edge
+    UI.Tint(handle, "SetBackdropColor", "surface", 0.9) -- the theme's field colour under its heading-coloured edge
     UI.Tint(handle, "SetBackdropBorderColor", "heading")
     handle:EnableMouse(true)
     handle:RegisterForDrag("LeftButton")

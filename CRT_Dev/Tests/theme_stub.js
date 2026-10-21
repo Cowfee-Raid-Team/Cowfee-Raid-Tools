@@ -1,9 +1,9 @@
 // The theme for harnesses that load a page or window with a stubbed CRT.UI: themeLua(where) returns Lua code that
-// defines CRT_THEME(CRT, UI). It loads CRT_Core/Themes.lua into CRT (keeping any colours the harness set on CRT.MOCHA)
+// defines CRT_THEME(CRT, UI). It loads CRT_Core/Themes.lua into CRT (keeping any colours the harness set on CRT.PALETTE)
 // and the real colour helpers from CRT_Core/UI/Panel.lua (the code between its [theme helpers] and [/theme helpers]
 // markers) onto UI: UI.Color, UI.Hex, UI.ColorText, UI.GoodText, UI.WarnText, UI.BadText, UI.HeadingText and UI.ThemedText. UI.Tint
 // and UI:OnTheme are small stand-ins with the same behaviour. UI.SwitchTheme(key) stands in for UI:SetTheme: it refills
-// CRT.MOCHA and repaints tinted parts, themed texts and the hooks, so a harness can check a module follows a live switch.
+// CRT.PALETTE and repaints tinted parts, themed texts and the hooks, so a harness can check a module follows a live switch.
 // run_themes.js tests the real UI:SetTheme.
 // Usage, in a harness: const themeLua = require('./theme_stub'); put themeLua(where) before the Lua source, then call
 // CRT_THEME(CRT, CRT.UI) before loading the module files. where is the addon folder, a file in it, or a list of files
@@ -39,18 +39,18 @@ module.exports = function themeLua(where) {
   return `
 function CRT_THEME(CRT, UI)
   UI = UI or {} -- a harness with no CRT.UI yet takes the palette only
-  local own = CRT.MOCHA
+  local own = CRT.PALETTE
   assert(load([====[${src}]====], "Themes.lua"))("CowfeeRaidTools", CRT)
   for k, v in pairs(own or {}) do
-    local m = CRT.MOCHA[k]
-    if m then m[1], m[2], m[3] = v[1], v[2], v[3] else CRT.MOCHA[k] = v end
+    local m = CRT.PALETTE[k]
+    if m then m[1], m[2], m[3] = v[1], v[2], v[3] else CRT.PALETTE[k] = v end
   end
   local tinted, hooks = {}, {}
   local themedTexts = {}
   -- Panel.lua's helpers, run with its upvalues: UI, CRT and themedTexts
   assert(load("local UI, CRT, themedTexts = ... " .. [====[${helpers}]====], "Panel.lua theme helpers"))(UI, CRT, themedTexts)
   local function paint(region, method, t)
-    local c = CRT.MOCHA[t.key]
+    local c = CRT.PALETTE[t.key]
     if c and region[method] then region[method](region, c[1], c[2], c[3], t.alpha or 1) end
   end
   function UI.Tint(region, method, key, alpha)

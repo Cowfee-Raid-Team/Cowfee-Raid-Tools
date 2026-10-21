@@ -32,7 +32,7 @@ local GROUP_NAMES = CRT.Timeline.GROUP_NAMES
 local OTHER_GROUP = { nh = "mythic", mythic = "nh" }
 
 local GRAY = { 0.35, 0.35, 0.35 }
-local GOLD = CRT.MOCHA.heading -- the theme's heading colour; refilled in place on a theme switch
+local GOLD = CRT.PALETTE.heading -- the theme's heading colour; refilled in place on a theme switch
 local BACKDROP = {
     bgFile = "Interface\\Buttons\\WHITE8X8",
     edgeFile = "Interface\\Buttons\\WHITE8X8",
@@ -420,7 +420,7 @@ function ReferencePage.Build(f, ctx)
                 status:SetTextColor(UI.Color("warn")) -- saved, with something to look at: in between
             else
                 status:SetText("Saved for " .. where)
-                status:SetTextColor(UI.Color("matcha"))
+                status:SetTextColor(UI.Color("good"))
             end
         else
             local shown = {}
@@ -451,7 +451,7 @@ function ReferencePage.Build(f, ctx)
         end
         status:SetText("Copied to " .. GROUP_NAMES[group]
             .. (removed > 0 and (" (" .. removed .. " Mythic-only row" .. (removed == 1 and "" or "s") .. " left out)") or ""))
-        status:SetTextColor(UI.Color("matcha"))
+        status:SetTextColor(UI.Color("good"))
     end
 
     -- The boss whose Journal abilities fit the box: its Boss and Encounter lines when it has them,
@@ -481,7 +481,7 @@ function ReferencePage.Build(f, ctx)
             edit:SetText(text)
             status:SetText(n > 0 and ("Added " .. n .. " spell ID" .. (n == 1 and "" or "s") .. ". Save to keep them.")
                 or "No more lines match a Journal ability.")
-            status:SetTextColor(UI.Color("matcha"))
+            status:SetTextColor(UI.Color("good"))
         end
         refreshAbilities()
     end)

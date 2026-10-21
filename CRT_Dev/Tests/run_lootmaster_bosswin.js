@@ -93,7 +93,7 @@ end
 local MODERN = true
 local made, buttons = {}, {}
 CRT_UI = {
-  TITLE_STRIP = { neutral = { bg = "espresso" } },
+  TITLE_STRIP = { neutral = { bg = "background" } },
   SkinScrollBar = function() end,
   IsModern = function() return MODERN end,
   Window = function(name, opts)
@@ -155,14 +155,14 @@ eq(r2.check.checked, false, "row 2: not ticked, the filter left it out")
 eq(r2.detail.text, "Not in your loot filter: below the lowest quality", "row 2: why")
 eq(r3.check.enabled, false, "row 3: can't roll: can't be ticked")
 eq(r3.status.text, "|cffc8553dCan't roll: the game doesn't allow it. Tell the raid.|r", "row 3: the theme's bad, short enough for the row")
-eq(r1.detail.tint and r1.detail.tint.key, "note", "detail: the theme's note colour")
+eq(r1.detail.tint and r1.detail.tint.key, "muted", "detail: the theme's muted colour")
 eq(r1.detail.tint and r1.detail.tint.method, "SetTextColor", "detail: as text colour")
 eq(r3.icon.desaturated, true, "row 3: a grey icon")
 local footer = buttons["Start session"]
 eq(footer.enabled, false, "Start: waits while a ticked row rolls")
 -- 2. Won, lost; clicking a box; Start
 BL:Result(link(101, "Helm"), "Solex", true, false)
-eq(r1.status.text, "|cff8fa876Won · you rolled Need|r", "row 1: won, in matcha")
+eq(r1.status.text, "|cff8fa876Won · you rolled Need|r", "row 1: won, in good")
 eq(footer.enabled, true, "Start: ready once the ticked rows are won")
 BL:Result(link(102, "Junk Cloak"), "Quick-Sargeras", false, false)
 eq(r2.status.text, "|cffccb599Won by Quick|r", "row 2: won by someone else, muted")
@@ -178,9 +178,9 @@ MODERN = false
 CRT_UI.SwitchTheme("blizzard")
 BL:Add(4, link(104, "Belt"), { status = "rolling", rollType = 4 }, kill)
 eq(rowFrames[4].status.text, "|cff" .. CRT_UI.Hex("heading") .. "Rolling… you rolled Transmog|r", "Classic: rolling in the game's gold")
-eq(rowFrames[1].status.text, "|cff" .. CRT_UI.Hex("matcha") .. "Won · you rolled Need|r", "Classic: won in the game's green")
+eq(rowFrames[1].status.text, "|cff" .. CRT_UI.Hex("good") .. "Won · you rolled Need|r", "Classic: won in the game's green")
 eq(rowFrames[3].status.text, "|cff" .. CRT_UI.Hex("bad") .. "Can't roll: the game doesn't allow it. Tell the raid.|r", "Classic: can't roll in the game's red")
-eq(CRT_UI.Hex("bad") .. CRT_UI.Hex("matcha"), "ff202019ff19", "Classic: the game's red and green")
+eq(CRT_UI.Hex("bad") .. CRT_UI.Hex("good"), "ff202019ff19", "Classic: the game's red and green")
 CRT_UI.SwitchTheme("nitro")
 BL:SetTicked(4, false)
 eq(rowFrames[1].status.text, "|cff8fcfa0Won · you rolled Need|r", "Nitro: won in its good")

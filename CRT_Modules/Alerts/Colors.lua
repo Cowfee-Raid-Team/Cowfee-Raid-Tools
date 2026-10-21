@@ -10,7 +10,7 @@ local ADDON, CRT = ...
 --   3. the Encounter Journal's icons for the spell (Reference.TAG_TYPES): a dispel icon is dispel, the Mythic and
 --      Heroic icons are mythic and heroic; the first icon that is a type, as the Journal export writes it. Only
 --      rows the Timeline already read this session (Journal:CachedRows): the Journal is never walked at a pull.
--- With no known type an alert is drawn in the theme's accent (caramel). Which colour wins over the type's
+-- With no known type an alert is drawn in the theme's accent. Which colour wins over the type's
 -- (the raid leader's note colour, and yours with Use custom colours on) is Alerts:OwnColor (Alerts/Engine.lua).
 -- Alerts:Start stamps each item's type as item.abilityType; the areas look the colour up as they draw
 -- (Areas.DrawColor), so a theme switch follows. Nothing here is saved.
@@ -22,7 +22,7 @@ local ADDON, CRT = ...
 local Colors = {}
 CRT.AlertColors = Colors
 
-local ACCENT = "caramel" -- the style guide's accent
+local ACCENT = "accent" -- the style guide's accent
 
 local function readable(v)
     local T = CRT.Timeline
@@ -168,7 +168,7 @@ function Colors.TypeColor(key)
     if t then
         return t.color
     end
-    return CRT.MOCHA and CRT.MOCHA[ACCENT] or nil
+    return CRT.PALETTE and CRT.PALETTE[ACCENT] or nil
 end
 
 -- A known type's colour, or nil (no accent): for a display with its own default, such as the Next spell alert.

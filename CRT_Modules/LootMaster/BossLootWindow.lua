@@ -7,7 +7,7 @@ local ADDON, CRT = ...
 -- it from the corner, Reset puts it back; its place is kept in CRTDB lootmaster.bossLoot.
 -- Each row: a checkbox (in the next session; pre-ticked by the loot filter), the item's icon, link and
 -- detail (slot and item level, or why the filter left it out), and its state on the right: rolling
--- (honey), won (matcha), won by someone else or nobody (muted), or can't roll (red). Footer: the counts,
+-- (honey), won (good), won by someone else or nobody (muted), or can't roll (red). Footer: the counts,
 -- Clear, and Start session (only the ticked items you have won; it waits while a ticked one still rolls).
 
 local LM = CRT.LootMaster
@@ -54,7 +54,7 @@ local function hexOf(key, classic)
     if not UI:IsModern() then
         return classic
     end
-    local c = CRT.MOCHA[key]
+    local c = CRT.PALETTE[key]
     return string.format("%02x%02x%02x", math.floor(c[1] * 255 + 0.5), math.floor(c[2] * 255 + 0.5), math.floor(c[3] * 255 + 0.5))
 end
 
@@ -68,13 +68,13 @@ function LM.BossLootStatus(r)
     if r.status == "won" then
         return UI.GoodText(TEXT.won:format(roll))
     elseif r.status == "lost" then
-        return colored(hexOf("note", CLASSIC.muted), TEXT.lost:format(Ambiguate(r.winner or "?", "short")))
+        return colored(hexOf("muted", CLASSIC.muted), TEXT.lost:format(Ambiguate(r.winner or "?", "short")))
     elseif r.status == "nowinner" then
-        return colored(hexOf("note", CLASSIC.muted), TEXT.nowinner)
+        return colored(hexOf("muted", CLASSIC.muted), TEXT.nowinner)
     elseif r.status == "cant" then
         return UI.BadText(TEXT.cant:format(r.reason or "?"))
     end
-    return UI.ColorText(TEXT.rolling:format(roll), UI:IsModern() and "caramel" or "heading")
+    return UI.ColorText(TEXT.rolling:format(roll), UI:IsModern() and "accent" or "heading")
 end
 
 -- The detail under the link: slot and item level, or why the loot filter left it out.
@@ -123,7 +123,7 @@ local function initRow(row, r)
         row.detail:SetPoint("RIGHT", row.status, "LEFT", -8, 0)
         row.detail:SetJustifyH("LEFT")
         row.detail:SetWordWrap(false)
-        UI.Tint(row.detail, "SetTextColor", "note") -- muted, and follows the theme
+        UI.Tint(row.detail, "SetTextColor", "muted") -- muted, and follows the theme
         local hl = row:CreateTexture(nil, "HIGHLIGHT")
         hl:SetAllPoints()
         hl:SetColorTexture(1, 1, 1, 0.06)

@@ -117,7 +117,7 @@ end
 
 local printed = {}
 local CRT = {
-  MOCHA = { caramel = { 0.78, 0.56, 0.36 } },
+  PALETTE = { accent = { 0.78, 0.56, 0.36 } },
   db = {
     ui = { outline = "" }, classCache = {},
     notes = {

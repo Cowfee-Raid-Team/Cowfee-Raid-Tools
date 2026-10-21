@@ -307,7 +307,7 @@ local defaults = {
     pace = { disabled = {}, own = {}, shared = {}, use = {}, shown = true },
     alerts = {
         bars = { shown = true, noteLines = true, cap = 5, ahead = 20, width = 240, height = 20, font = "Friz Quadrata", fontSize = 13,
-            barColor = { 0.44, 0.31, 0.22, 1 }, bgColor = { 0, 0, 0, 0.6 }, textColor = { 0.95, 0.90, 0.84, 1 } }, -- saved, the player's to change: not a theme colour
+            barColor = { 0.44, 0.31, 0.22, 1 }, bgColor = { 0, 0, 0, 0.6 }, textColor = { 0.95, 0.90, 0.84, 1 }, showType = true }, -- saved, the player's to change: not a theme colour
         areas = {
             icons = { shown = true, cap = 5, size = 44, font = "Friz Quadrata", fontSize = 20, outline = "OUTLINE", grow = "down", showText = true, fade = true },
             texts = { shown = true, cap = 3, font = "Friz Quadrata", fontSize = 36, outline = "THICKOUTLINE", grow = "down", align = "CENTER" },
@@ -411,7 +411,7 @@ function CRT:FontPath(name)
     return nil
 end
 
--- The Modern colours are CRT.MOCHA, the theme in use (Themes.lua). UI/Panel.lua paints the windows with
+-- The Modern colours are CRT.PALETTE, the theme in use (Themes.lua). UI/Panel.lua paints the windows with
 -- them and CRT:ApplyFonts colours the text.
 -- The Modern look's font, when the font setting is the default.
 CRT.MODERN_FONT = "Fonts\\ARIALN.TTF"
@@ -460,10 +460,10 @@ function CRT:ApplyFonts()
         end
         local size = f.size * factor * (modernDefault and 1.1 or 1)
         f.object:SetFont(path, math.max(f.min or 0, math.floor(size + 0.5)), flags)
-        -- Modern: the game's gold text turns latte and its white text cream; grey stays grey.
+        -- Modern: the game's gold text turns the label colour and its white text the text colour; grey stays grey.
         local r, g, b = f.color[1], f.color[2], f.color[3]
         if modern and r and r > 0.9 then
-            local c = (g > 0.9 and b > 0.9) and self.MOCHA.cream or (b < 0.2 and self.MOCHA.latte) or nil
+            local c = (g > 0.9 and b > 0.9) and self.PALETTE.text or (b < 0.2 and self.PALETTE.label) or nil
             if c then
                 r, g, b = c[1], c[2], c[3]
             end

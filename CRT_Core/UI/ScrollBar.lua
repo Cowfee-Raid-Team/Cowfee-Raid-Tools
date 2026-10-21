@@ -8,14 +8,14 @@ local UI = CRT.UI
 -- and thumb textures are made. A theme picks its look by name with scrollBar in its CRT.THEME_LIST entry
 -- (Themes.lua); a theme without one keeps the bar's own art.
 --   rail     Blackout: Midnight. A thin rail in the edge colour, a square thumb in the accent
---   framed   Blackout: Nitro. A roast track with a 1 px edge, a solid accent thumb, a faint accent tick
+--   framed   Blackout: Nitro. A surface track with a 1 px border, a solid accent thumb, a faint accent tick
 --            just under the thumb
---   rounded  Beanworks: Cowfee. A rounded roast track with an edge border, and the slider knob's rounded
---            walnut thumb with its top shine (UI.RoundRect, UI.PaintShape)
+--   rounded  Beanworks: Cowfee. A rounded surface track with a border, and the slider knob's rounded
+--            knob thumb with its top shine (UI.RoundRect, UI.PaintShape)
 -- No look has arrow buttons. The game's own scrolling is untouched: the wheel, dragging the thumb and
 -- clicking the track still scroll, since the skin only hides art and draws textures over it. Hover
 -- lightens the thumb. The bar joins UI.skinned, so a theme switch (UI:SetTheme -> UI:ApplyStyle) redraws
--- it live. Colours are read from CRT.MOCHA each time it paints, not set once through UI.Tint, because the
+-- it live. Colours are read from CRT.PALETTE each time it paints, not set once through UI.Tint, because the
 -- hovered thumb is repainted lifted toward white and UI.Tint would paint it back to the plain colour.
 --
 -- The game's scroll bars, as Blizzard's UI source defines them (Gethe/wow-ui-source, live):
@@ -34,15 +34,15 @@ local UI = CRT.UI
 --   https://github.com/Gethe/wow-ui-source/blob/live/Interface/AddOns/Blizzard_SharedXML/SecureScrollTemplates.xml
 --   https://github.com/Gethe/wow-ui-source/blob/live/Interface/AddOns/Blizzard_SharedXML/SecureScrollTemplates.lua
 
--- Each look's sizes (pixels, centred on the bar) and the CRT.MOCHA keys it paints with. On a
+-- Each look's sizes (pixels, centred on the bar) and the CRT.PALETTE keys it paints with. On a
 -- MinimalScrollBar, which is 8 px wide, the track and thumb are narrowTrack and narrowThumb instead, so
 -- the look stays inside the bar.
 UI.SCROLL_BAR_LOOKS = {
-    rail = { track = 2, thumb = 6, narrowTrack = 2, narrowThumb = 6, rail = "edge", face = "caramel" },
-    framed = { track = 10, thumb = 6, narrowTrack = 8, narrowThumb = 4, tickGap = 2, tickAlpha = 0.35, fill = "roast",
-        border = "edge", face = "caramel", tick = "caramel" },
-    rounded = { track = 10, thumb = 8, narrowTrack = 8, narrowThumb = 6, radius = 4, thumbRadius = 3, fill = "roast",
-        border = "edge", face = "walnut", faceEdge = "walnutEdge", shine = "walnutShine" },
+    rail = { track = 2, thumb = 6, narrowTrack = 2, narrowThumb = 6, rail = "border", face = "accent" },
+    framed = { track = 10, thumb = 6, narrowTrack = 8, narrowThumb = 4, tickGap = 2, tickAlpha = 0.35, fill = "surface",
+        border = "border", face = "accent", tick = "accent" },
+    rounded = { track = 10, thumb = 8, narrowTrack = 8, narrowThumb = 6, radius = 4, thumbRadius = 3, fill = "surface",
+        border = "border", face = "knob", faceEdge = "knobBorder", shine = "knobShine" },
 }
 local LOOKS = UI.SCROLL_BAR_LOOKS
 
@@ -65,14 +65,14 @@ end
 
 local HOVER_LIGHTEN = 0.25 -- how far toward white the thumb goes under the mouse
 
-local function mochaOf(key, lift)
-    local c = CRT.MOCHA[key]
+local function colorOf(key, lift)
+    local c = CRT.PALETTE[key]
     lift = lift or 0
     return { c[1] + (1 - c[1]) * lift, c[2] + (1 - c[2]) * lift, c[3] + (1 - c[3]) * lift }
 end
 
 local function paintFlat(t, key, alpha, lift)
-    local c = mochaOf(key, lift)
+    local c = colorOf(key, lift)
     t:SetColorTexture(c[1], c[2], c[3], alpha or 1)
 end
 
@@ -209,7 +209,7 @@ function build.rounded(p, k, w)
         UI.PaintShape(look.trackEdge, k.border)
         UI.PaintShape(look.trackFace, k.fill)
         UI.PaintShape(look.thumbEdge, k.faceEdge)
-        UI.PaintShape(look.thumbFace, mochaOf(k.face, lift))
+        UI.PaintShape(look.thumbFace, colorOf(k.face, lift))
         paintFlat(look.shine, k.shine, 1, lift)
     end
     return look

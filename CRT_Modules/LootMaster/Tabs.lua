@@ -193,17 +193,17 @@ function LM.ItemTabs(parent, opts)
             t.index = i
             t.icon:SetTexture(C_Item.GetItemIconByID(it.itemString or "") or 134400)
             local on = i == current
-            local accent = CRT.MOCHA.caramel -- the picked item, in the theme's accent
+            local accent = CRT.PALETTE.accent -- the picked item, in the theme's accent
             t.sel:SetColorTexture(accent[1], accent[2], accent[3], 0.12)
             t.sel:SetShown(on)
-            local border = on and accent or CRT.MOCHA.edge -- the picked item's in the accent
+            local border = on and accent or CRT.PALETTE.border -- the picked item's in the accent
             t.frame:SetBackdropBorderColor(border[1], border[2], border[3], 1)
             if it.award then
                 local c = classColor(classOf and classOf(it.award.name))
                 t.label:SetText(TEXT.given)
                 t.name:SetText(Ambiguate(it.award.name, "short"))
-                local cream = CRT.MOCHA.cream -- no class known
-                t.name:SetTextColor(c and c.r or cream[1], c and c.g or cream[2], c and c.b or cream[3])
+                local text = CRT.PALETTE.text -- no class known
+                t.name:SetTextColor(c and c.r or text[1], c and c.g or text[2], c and c.b or text[3])
             else
                 t.label:SetText(TEXT.open)
                 local x, y, late

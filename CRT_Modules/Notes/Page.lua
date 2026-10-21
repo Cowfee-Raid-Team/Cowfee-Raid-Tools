@@ -76,7 +76,7 @@ local TEXT_W = RIGHT_X - 14 - TEXT_X
 local TAB_H = UI.PAGE_H - 66
 
 local GRAY = { 0.35, 0.35, 0.35 }
-local GOLD = CRT.MOCHA.heading -- the theme's heading colour; refilled in place on a theme switch
+local GOLD = CRT.PALETTE.heading -- the theme's heading colour; refilled in place on a theme switch
 local listKind = "shared" -- the Notes list's tab: "shared" (the raid's notes) or "personal" (your copies)
 local BACKDROP = {
     bgFile = "Interface\\Buttons\\WHITE8X8",

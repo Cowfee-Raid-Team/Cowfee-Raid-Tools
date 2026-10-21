@@ -256,16 +256,16 @@ end)
 -- UI:SetTheme; the themes and their palettes are in Themes.lua):
 --   Classic  Default: Blizzard. The window template's own art, the game's red buttons and dropdowns,
 --            the menu as one list
---   Modern   every other theme, in its palette (CRT.MOCHA): an espresso window with caramel lines under
+--   Modern   every other theme, in its palette (CRT.PALETTE): a background-coloured window with accent lines under
 --            the title and beside the menu, the menu in grouped blocks (UI.MENU_GROUPS) with the
---            selected page in mocha (and a caramel bar on its left in a theme with menuBar), mocha page
+--            selected page in the selected colour (and an accent bar on its left in a theme with menuBar), selected page
 --            tabs, flat dropdowns and buttons, and Arial Narrow text unless another font is picked
 --            (CRT:ApplyFonts)
 -- UI:IsModern() is whether the theme is a Modern one (CRTDB.ui.modern, kept in step with the theme).
 -- bgAlpha fades whichever background is showing, never the text or buttons.
 
-local function mocha(key, alpha)
-    local c = CRT.MOCHA[key]
+local function rgba(key, alpha)
+    local c = CRT.PALETTE[key]
     return c[1], c[2], c[3], alpha or 1
 end
 
@@ -287,17 +287,17 @@ function UI:Theme()
     return ui and CRT:ThemeInfo(ui.theme) and ui.theme or (self:IsModern() and CRT.THEME_MODERN or CRT.THEME_CLASSIC)
 end
 
--- Repainting on a theme change. A part colored from CRT.MOCHA once, when it is made, is colored with
+-- Repainting on a theme change. A part colored from CRT.PALETTE once, when it is made, is colored with
 -- UI.Tint(region, method, key, alpha) instead: method is the setter ("SetColorTexture", "SetTextColor",
--- "SetVertexColor", "SetBackdropColor" or "SetBackdropBorderColor"), key a CRT.MOCHA key. A region keeps
--- one entry per setter. UI:SetTheme paints every tinted part again. A surface that reads CRT.MOCHA when
+-- "SetVertexColor", "SetBackdropColor" or "SetBackdropBorderColor"), key a CRT.PALETTE key. A region keeps
+-- one entry per setter. UI:SetTheme paints every tinted part again. A surface that reads CRT.PALETTE when
 -- it draws registers UI:OnTheme(fn) and redraws there.
 local tinted = setmetatable({}, { __mode = "k" })
 local themedTexts = setmetatable({}, { __mode = "k" }) -- UI.ThemedText: font string -> its text builder
 local themeHooks = {}
 
 local function paintTint(region, method, t)
-    local c = CRT.MOCHA[t.key]
+    local c = CRT.PALETTE[t.key]
     if c and region[method] then
         region[method](region, c[1], c[2], c[3], t.alpha or 1)
     end
@@ -351,7 +351,7 @@ function UI:RepaintTheme()
     end
 end
 
--- Switches the theme live: saves it (and ui.modern with it), fills CRT.MOCHA with its palette, then
+-- Switches the theme live: saves it (and ui.modern with it), fills CRT.PALETTE with its palette, then
 -- redraws the fonts, every window and control, the theme button's label and everything that follows
 -- the theme (UI:RepaintTheme).
 function UI:SetTheme(key)
@@ -391,7 +391,7 @@ function UI:FillThemeMenu(root)
 end
 
 -- The theme's colours by palette key, for code that colours a part itself. Every theme has its own
--- heading, good (matcha), warn and bad colour; Default: Blizzard's are the game's gold, green, orange and
+-- heading, good, warn and bad colour; Default: Blizzard's are the game's gold, green, orange and
 -- red. CRT_Dev/StyleGuide.md says which to use where.
 --   UI.Color(key, alpha)    r, g, b, a for SetTextColor, SetVertexColor or SetColorTexture
 --   UI.Hex(key)             "rrggbb" for |cff markup
@@ -404,12 +404,12 @@ end
 -- (a text built from these helpers).
 -- [theme helpers] CRT_Dev/Tests/theme_stub.js loads the code from here to [/theme helpers] into harnesses.
 function UI.Color(key, alpha)
-    local c = CRT.MOCHA[key] or CRT.MOCHA.cream
+    local c = CRT.PALETTE[key] or CRT.PALETTE.text
     return c[1], c[2], c[3], alpha or 1
 end
 
 function UI.Hex(key)
-    local c = CRT.MOCHA[key] or CRT.MOCHA.cream
+    local c = CRT.PALETTE[key] or CRT.PALETTE.text
     return string.format("%02x%02x%02x", math.floor(c[1] * 255 + 0.5), math.floor(c[2] * 255 + 0.5), math.floor(c[3] * 255 + 0.5))
 end
 
@@ -418,7 +418,7 @@ function UI.ColorText(text, key)
 end
 
 function UI.GoodText(text)
-    return UI.ColorText(text, "matcha")
+    return UI.ColorText(text, "good")
 end
 
 function UI.WarnText(text)
@@ -444,14 +444,14 @@ end
 -- [/theme helpers]
 
 -- Backdrop frames outside the main window that follow the look: your bar, its drag and Close bars,
--- and the ready check window. Each keeps its Classic colours; in Modern its background turns espresso
--- (keeping its own opacity) and its outline caramel.
+-- and the ready check window. Each keeps its Classic colours; in Modern its background turns the theme's background
+-- (keeping its own opacity) and its outline the accent.
 UI.themed = {}
 
 function UI:ApplyThemed(f)
     local c = f.crtClassic
     if self:IsModern() then
-        local bg, edge = CRT.MOCHA.espresso, CRT.MOCHA.caramel
+        local bg, edge = CRT.PALETTE.background, CRT.PALETTE.accent
         f:SetBackdropColor(bg[1], bg[2], bg[3], c.bg[4])
         f:SetBackdropBorderColor(edge[1], edge[2], edge[3], 1)
     else
@@ -501,7 +501,7 @@ end
 
 -- Floating windows: a window of its own made from BasicFrameTemplateWithInset, such as the alert
 -- editor, its export box, the dev tools and the text and import dialogs. Classic shows the template's
--- own art; Modern a flat espresso background with an edge border, a caramel line under the title and
+-- own art; Modern a flat background with a border, an accent line under the title and
 -- the plain X.
 -- Call StyleWindow right after CreateFrame, before adding anything, so only the template's own
 -- textures count as its art. Its buttons and dropdowns are skinned now and each time it shows.
@@ -514,14 +514,14 @@ function UI:ApplyWindow(f)
     end
     f.crtBg:SetShown(modern)
     f.crtTitle:SetShown(modern)
-    f.crtBg:SetColorTexture(mocha("espresso", 0.96))
-    f.crtTitle:SetColorTexture(mocha("espresso"))
+    f.crtBg:SetColorTexture(rgba("background", 0.96))
+    f.crtTitle:SetColorTexture(rgba("background"))
     for _, edge in ipairs(f.crtEdges) do
         edge:SetShown(modern)
-        edge:SetColorTexture(mocha("edge"))
+        edge:SetColorTexture(rgba("border"))
     end
     f.crtTitleLine:SetShown(modern)
-    f.crtTitleLine:SetColorTexture(mocha("caramel"))
+    f.crtTitleLine:SetColorTexture(rgba("accent"))
     -- the template's inset (its own frame on some clients) is part of the Classic art
     if type(f.Inset) == "table" and f.Inset.SetShown then
         f.Inset:SetShown(not modern)
@@ -571,13 +571,13 @@ function UI:StyleWindow(f)
 end
 
 -- The vertical divider between the menu and the page area, in the 8 px gap between them.
--- Sizes in px; colours are { r, g, b, a }, or a CRT.MOCHA key. Default: Blizzard draws a dark gold-brown
+-- Sizes in px; colours are { r, g, b, a }, or a CRT.PALETTE key. Default: Blizzard draws a dark gold-brown
 -- line like the game's frame trim with a darker shadow beside it; the Modern themes draw one thin line
 -- in their edge colour.
 local DIVIDER = {
     left = 2, -- px from the menu's right edge to the line's left
     classic = { width = 2, color = { 0.45, 0.33, 0.12, 1 }, shadowWidth = 1, shadow = { 0.05, 0.03, 0.01, 0.9 } },
-    modern = { width = 1, key = "edge" },
+    modern = { width = 1, key = "border" },
 }
 
 function UI:StyleDivider(alpha)
@@ -590,7 +590,7 @@ function UI:StyleDivider(alpha)
     local look = modern and DIVIDER.modern or DIVIDER.classic
     d.line:SetWidth(look.width)
     if look.key then
-        d.line:SetColorTexture(mocha(look.key, alpha))
+        d.line:SetColorTexture(rgba(look.key, alpha))
     else
         local c = look.color
         d.line:SetColorTexture(c[1], c[2], c[3], c[4] * alpha)
@@ -634,12 +634,12 @@ function UI:ApplyStyle()
     for _, texture in ipairs(f.flat) do
         texture:SetShown(modern)
     end
-    f.flatBg:SetColorTexture(mocha("espresso", 0.96 * alpha))
-    f.flatTitle:SetColorTexture(mocha("espresso", alpha))
+    f.flatBg:SetColorTexture(rgba("background", 0.96 * alpha))
+    f.flatTitle:SetColorTexture(rgba("background", alpha))
     for _, edge in ipairs(f.flatEdges) do
-        edge:SetColorTexture(mocha("edge", alpha))
+        edge:SetColorTexture(rgba("border", alpha))
     end
-    f.titleLine:SetColorTexture(mocha("caramel", alpha))
+    f.titleLine:SetColorTexture(rgba("accent", alpha))
     f.titleLine:SetShown(modern)
     self:StyleDivider(alpha)
     self:LayoutMenu()
@@ -679,10 +679,10 @@ end
 
 local function setFlat(bg, edges, shown, fill)
     bg:SetShown(shown)
-    bg:SetColorTexture(mocha(fill or "roast"))
+    bg:SetColorTexture(rgba(fill or "surface"))
     for _, e in ipairs(edges) do
         e:SetShown(shown)
-        e:SetColorTexture(mocha("edge"))
+        e:SetColorTexture(rgba("border"))
     end
 end
 
@@ -701,7 +701,7 @@ function UI:SkinDropdown(d)
         d.Arrow:SetAlpha(modern and 0 or 1)
         setFlat(bg, edges, modern)
         arrow:SetShown(modern)
-        arrow:SetVertexColor(mocha("caramel"))
+        arrow:SetVertexColor(rgba("accent"))
     end
     self.skinned[#self.skinned + 1] = d
     d.crtSkin(self:IsModern())
@@ -738,7 +738,7 @@ end
 
 -- A UIPanelButtonTemplate button: its Left, Middle and Right art and its red highlight.
 -- A close button (UIPanelCloseButton, or the window template's own): in Modern, a plain X in place
--- of the game's red and gold button art, cream and turning caramel on hover.
+-- of the game's red and gold button art, the text colour, turning the accent on hover.
 function UI:SkinCloseButton(b)
     if type(b) ~= "table" or b.crtSkin then
         return
@@ -749,7 +749,7 @@ function UI:SkinCloseButton(b)
     x:SetText("X")
     local hover = false
     local function color()
-        x:SetTextColor(mocha(hover and "caramel" or "cream"))
+        x:SetTextColor(rgba(hover and "accent" or "text"))
     end
     b:HookScript("OnEnter", function()
         hover = true
@@ -817,9 +817,9 @@ function UI.PanelButton(parent, label, height, onClick)
 end
 
 -- A UICheckButtonTemplate checkbox. Modern hides the template's art and draws a CHECK_SIZE box with
--- rounded corners (UI.RoundRect) in its centre: unticked, a roast fill with a mocha edge; ticked, the
--- slider knob's bevelled walnut (a checkEdge edge, a soft line inside the top edge) with a tick
--- (CRT_Media/Media/Check.tga) in the theme's tick color. The edge turns caramel under the mouse; a
+-- rounded corners (UI.RoundRect) in its centre: unticked, a surface fill with a selected edge; ticked, the
+-- slider knob's bevelled look in the knob colour (a checkBorder edge, a soft line inside the top edge) with a tick
+-- (CRT_Media/Media/Check.tga) in the theme's check color. The edge turns the accent under the mouse; a
 -- disabled box is faded to CHECK_OFF_ALPHA. Classic shows the template's art again. The page's label and click are untouched.
 -- The box follows SetChecked, clicks, SetEnabled / Enable / Disable and the mouse through hooks, so
 -- pages call nothing new. cb.crtCheck keeps the parts.
@@ -843,10 +843,10 @@ local function paintCheck(cb)
         return
     end
     -- only a box that can be clicked lights up under the mouse
-    UI.PaintShape(s.box.edge, (s.hover and enabled) and "caramel" or (on and "checkEdge" or "mocha"), alpha)
-    UI.PaintShape(s.box.face, on and "walnut" or "roast", alpha)
-    s.shine:SetColorTexture(mocha("walnutShine", alpha))
-    s.tick:SetVertexColor(mocha("tick", alpha))
+    UI.PaintShape(s.box.edge, (s.hover and enabled) and "accent" or (on and "checkBorder" or "selected"), alpha)
+    UI.PaintShape(s.box.face, on and "knob" or "surface", alpha)
+    s.shine:SetColorTexture(rgba("knobShine", alpha))
+    s.tick:SetVertexColor(rgba("check", alpha))
 end
 
 function UI:SkinCheckButton(cb)
@@ -994,7 +994,7 @@ function UI:LayoutMenu()
                     bg = menu:CreateTexture(nil, "BACKGROUND", nil, -1)
                     menu.blocks[g] = bg
                 end
-                bg:SetColorTexture(mocha("roast", 0.95))
+                bg:SetColorTexture(rgba("surface", 0.95))
                 bg:ClearAllPoints()
                 bg:SetPoint("TOPLEFT", menu, "TOPLEFT", 0, y)
                 bg:SetPoint("TOPRIGHT", menu, "TOPRIGHT", -6, y)
@@ -1027,13 +1027,13 @@ function UI:StyleMenuButton(b, selected)
     b.sel:SetShown(b.selected)
     local theme = CRT.theme
     b.bar:SetShown(b.selected and self:IsModern() and theme and theme.menuBar and true or false)
-    b.bar:SetColorTexture(mocha("caramel"))
+    b.bar:SetColorTexture(rgba("accent"))
     if self:IsModern() then
-        b.sel:SetColorTexture(mocha("mocha", 0.95))
+        b.sel:SetColorTexture(rgba("selected", 0.95))
         if b.selected then
-            b.text:SetTextColor(mocha("cream"))
+            b.text:SetTextColor(rgba("text"))
         else
-            b.text:SetTextColor(mocha("latte"))
+            b.text:SetTextColor(rgba("label"))
         end
     else
         b.sel:SetColorTexture(1, 0.82, 0, 0.18)
@@ -1059,8 +1059,8 @@ function UI:StyleTab(b, selected)
     b.sel:SetShown(b.selected)
     local modern = self:IsModern()
     if modern then
-        b.sel:SetColorTexture(mocha("mocha", 0.95))
-        b.text:SetTextColor(mocha(b.selected and "cream" or "latte"))
+        b.sel:SetColorTexture(rgba("selected", 0.95))
+        b.text:SetTextColor(rgba(b.selected and "text" or "label"))
     else
         b.sel:SetColorTexture(1, 0.82, 0, 0.18)
         if b.selected then
@@ -1071,8 +1071,8 @@ function UI:StyleTab(b, selected)
     end
     if b.SetBackdropBorderColor then
         if modern then
-            b:SetBackdropColor(mocha("roast", 0.95))
-            b:SetBackdropBorderColor(mocha("edge"))
+            b:SetBackdropColor(rgba("surface", 0.95))
+            b:SetBackdropBorderColor(rgba("border"))
         else
             b:SetBackdropColor(0, 0, 0, 0.4)
             b:SetBackdropBorderColor(0.35, 0.35, 0.35, 1)
@@ -1093,9 +1093,9 @@ end
 -- one, for text that changes. Anchor the returned button beside the heading or control it explains.
 -- Classic draws the game's gold "i" from the Appearances tab (MainHelpPlateButton in
 -- Blizzard_HelpPlate.xml: the "i", the ring and the additive hover glow) at HELP_SCALE, keeping the
--- template's offsets, without inheriting its 64 px frame or its pulse. Modern draws a thin caramel ring
--- (CRT_Media/Media/RingMedium.tga) round a caramel "i"; under the mouse it fills caramel
--- (CRT_Media/Media/Disc.tga) and the "i" turns espresso. Its colours are UI.Tint keys, so a theme
+-- template's offsets, without inheriting its 64 px frame or its pulse. Modern draws a thin accent ring
+-- (CRT_Media/Media/RingMedium.tga) round an accent "i"; under the mouse it fills with the accent
+-- (CRT_Media/Media/Disc.tga) and the "i" turns the background colour. Its colours are UI.Tint keys, so a theme
 -- switch repaints them. The hit box is HELP_SIZE in both looks; b.crtHelp keeps the parts.
 UI.HELP_SIZE = 20
 local HELP_SCALE = 0.5 -- of the template's sizes: its visible ring is about 40 px across
@@ -1119,7 +1119,7 @@ local function paintHelp(b)
     h.circle:SetShown(modern)
     h.fill:SetShown(modern and h.hover)
     h.letter:SetShown(modern)
-    UI.Tint(h.letter, "SetTextColor", (modern and h.hover) and "espresso" or "caramel")
+    UI.Tint(h.letter, "SetTextColor", (modern and h.hover) and "background" or "accent")
 end
 
 local function helpTexture(b, layer, file, size, x, y)
@@ -1143,8 +1143,8 @@ function UI.Help(parent, title, text)
     -- Modern: the fill under the ring, then the "i"
     h.fill = helpTexture(b, "BACKGROUND", T.modernFill, HELP_MODERN)
     h.circle = helpTexture(b, "BORDER", T.modernRing, HELP_MODERN)
-    UI.Tint(h.fill, "SetVertexColor", "caramel")
-    UI.Tint(h.circle, "SetVertexColor", "caramel")
+    UI.Tint(h.fill, "SetVertexColor", "accent")
+    UI.Tint(h.circle, "SetVertexColor", "accent")
     h.letter = b:CreateFontString(nil, "OVERLAY")
     h.letter:SetFont(HELP_FONT, HELP_FONT_SIZE, "")
     h.letter:SetPoint("CENTER", b, "CENTER", 0, 0)
@@ -1702,7 +1702,7 @@ function UI:StyleMinimizeButton()
     local modern = self:IsModern()
     local r, g, b
     if modern then
-        local c = CRT.MOCHA[mb.hover and "caramel" or "cream"]
+        local c = CRT.PALETTE[mb.hover and "accent" or "text"]
         r, g, b = c[1], c[2], c[3]
         mb:SetBackdropColor(0, 0, 0, 0)
         mb:SetBackdropBorderColor(0, 0, 0, 0)

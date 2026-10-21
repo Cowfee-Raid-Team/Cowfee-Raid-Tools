@@ -828,7 +828,7 @@ do
   E:Open(ENC, nil, { text = "Look" })
   local w = win()
   assert(w.crtBg and w.crtBg.shown and w.crtTitleLine.shown, "Modern: flat background and title line")
-  assert(w.crtBg.color[1] == CRT.MOCHA.espresso[1] and w.crtTitleLine.color[1] == CRT.MOCHA.caramel[1], "espresso and caramel")
+  assert(w.crtBg.color[1] == CRT.PALETTE.background[1] and w.crtTitleLine.color[1] == CRT.PALETTE.accent[1], "background and accent")
   for _, t in ipairs(w.crtArt) do assert(t.shown == false, "template art hidden") end
   assert(w.Inset.shown == false, "Modern hides the inset")
   assert(#w.crtArt == 2, "only the template's own art: " .. #w.crtArt)

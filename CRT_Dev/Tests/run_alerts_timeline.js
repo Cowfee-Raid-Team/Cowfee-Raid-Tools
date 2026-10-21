@@ -61,7 +61,7 @@ local CRT = {
   db = { timeline = { record = true, minPull = 15, keep = 10, bosses = {}, rows = {}, span = 300, grid = 30, iconSize = 22,
     deathRows = "combined", roles = { TANK = true, HEALER = true, DAMAGER = true }, firstDeaths = 0, overlay = 3,
     overlayOn = false, hideEmpty = true, nextId = 1 } },
-  MOCHA = { caramel = { 0.78, 0.56, 0.36 }, latte = { 0.87, 0.73, 0.56 }, roast = { 0.165, 0.122, 0.098 }, cream = { 0.95, 0.90, 0.84 } },
+  PALETTE = { accent = { 0.78, 0.56, 0.36 }, label = { 0.87, 0.73, 0.56 }, surface = { 0.165, 0.122, 0.098 }, text = { 0.95, 0.90, 0.84 } },
   Groups = { ClassColor = function() return 1, 1, 1 end },
 }
 local hidden = {}
