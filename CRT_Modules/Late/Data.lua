@@ -142,6 +142,10 @@ function Late:Start(how, startedAt)
         night.players[#night.players + 1] = { key = key }
     end
     s.current = night
+    -- Last night's invites and their states don't carry over (Groups/Invite.lua).
+    if CRT.Invite then
+        CRT.Invite:Reset()
+    end
     -- A start by hand on a raid day replaces that day's scheduled start.
     s.lastAuto = dayKey(startedAt)
     self:Scan(startedAt)
@@ -165,6 +169,9 @@ function Late:End(reason, at)
     end
     s.history[#s.history + 1] = night
     s.current = nil
+    if CRT.Invite then
+        CRT.Invite:Reset()
+    end
     self:Fire()
 end
 

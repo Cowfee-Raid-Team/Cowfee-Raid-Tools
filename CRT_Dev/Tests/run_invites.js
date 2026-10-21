@@ -16,9 +16,20 @@ local G = { mode = "raid", raid = {}, leader = true, assist = false, combat = fa
 local frames = {}
 function CreateFrame() local f = { events = {} } function f:RegisterEvent(e) self.events[e] = true end function f:SetScript(n, fn) self[n] = fn end frames[#frames + 1] = f return f end
 local function fire(event, ...) for _, f in ipairs(frames) do if f.events[event] and f.OnEvent then f.OnEvent(f, event, ...) end end end
+-- Timers keep their delay: flush() runs the short ones (a roster read, a move's roster update) until none
+-- are left, and runLong() runs the long ones once (a move's check, an invite's timeout).
 local timers = {}
-C_Timer = { After = function(_, fn) timers[#timers + 1] = fn end }
-local function flush() for _ = 1, 10 do local t = timers timers = {} if #t == 0 then return end for _, fn in ipairs(t) do fn() end end end
+C_Timer = { After = function(d, fn) timers[#timers + 1] = { d = d, fn = fn } end }
+local function flush()
+  for _ = 1, 20 do
+    local run, keep = {}, {}
+    for _, t in ipairs(timers) do if t.d <= 1 then run[#run + 1] = t else keep[#keep + 1] = t end end
+    timers = keep
+    if #run == 0 then return end
+    for _, t in ipairs(run) do t.fn() end
+  end
+end
+local function runLong() local t = timers timers = {} for _, x in ipairs(t) do x.fn() end flush() end
 format = string.format
 tinsert = table.insert
 function strtrim(s) return (s:gsub("^%s+", ""):gsub("%s+$", "")) end
@@ -45,7 +56,16 @@ C_PartyInfo = {
   InviteUnit = function(name) invites[#invites + 1] = name end,
   ConvertToRaid = function() converts = converts + 1 end,
 }
-SetRaidSubgroup = function(i, g) sets[#sets + 1] = { i, g, G.raid[i][1] } G.raid[i][2] = g end
+-- A move lands with a roster update a moment later, unless G.refuse (the server drops it) or G.late (the
+-- harness applies it by hand with land()).
+local held = {}
+SetRaidSubgroup = function(i, g)
+  sets[#sets + 1] = { i, g, G.raid[i][1] }
+  if G.refuse then return end
+  if G.late then held[#held + 1] = { i, g } return end
+  C_Timer.After(0.2, function() G.raid[i][2] = g fire("GROUP_ROSTER_UPDATE") end)
+end
+local function land() for _, h in ipairs(held) do G.raid[h[1]][2] = h[2] end held = {} fire("GROUP_ROSTER_UPDATE") flush() end
 SwapRaidSubgroup = function() swaps = swaps + 1 end
 ERR_DECLINE_GROUP_S = "%s declines your group invitation."
 ERR_BAD_PLAYER_NAME_S = "Cannot find player '%s'."
@@ -63,8 +83,8 @@ check(Invite ~= nil and type(Invite.Send) == "function", "CRT.Invite:Send exists
 check(type(Apply.MoveOne) == "function", "CRT.Apply:MoveOne exists")
 
 local function reset(mode, raid)
-  G.mode, G.raid, G.leader, G.assist, G.combat = mode, raid, true, false, false
-  invites, converts, sets, swaps, timers = {}, 0, {}, 0, {}
+  G.mode, G.raid, G.leader, G.assist, G.combat, G.refuse, G.late = mode, raid, true, false, false, false, false
+  invites, converts, sets, swaps, timers, held = {}, 0, {}, 0, {}, {}
   Invite:Reset()
 end
 local function has(list, x) for _, v in ipairs(list) do if v == x then return true end end return false end
@@ -186,9 +206,12 @@ check(#sets == 0, "and not moved later either")
 
 -- 8. Apply:MoveOne on its own.
 reset("raid", { { "Solex", 1 }, { "Abu-KelThuzad", 2 }, { "New", 1 } })
-check(Apply:MoveOne("New-Area52", 4) == "moved" and #sets == 1 and sets[1][1] == 3, "MoveOne moves the one player into a free group")
+check(Apply:MoveOne("New-Area52", 4) == "sent" and #sets == 1 and sets[1][1] == 3, "MoveOne asks to move the one player into a free group")
+flush()
 check(Apply:MoveOne("New-Area52", 4) == "moved" and #sets == 1, "already there: no second move")
 check(Apply:MoveOne("Nobody-Area52", 4) == "absent", "someone not in the raid: absent")
+check(Apply:MoveOne("New-Stormrage", 4) == "absent", "matches the exact Name-Realm only, never a same-named player")
+check(Apply:MoveOne("Solex-Area52", 2, { [2] = 4 }) == "full" and #sets == 1, "moves already on their way count: 1 in group 2 plus 4 moving is full")
 G.combat = true
 check(Apply:MoveOne("Abu-KelThuzad", 4) == "combat" and #sets == 1, "in combat: no move")
 G.combat = false
@@ -196,6 +219,76 @@ G.raid[2][3] = true
 check(Apply:MoveOne("Abu-KelThuzad", 4) == "combat", "the player in combat: no move")
 G.leader = false
 check(Apply:MoveOne("Solex-Area52", 4) == "denied", "not lead or assist: denied")
+
+-- 9. Moves are async: two joiners for one free spot, a move that lands late, a move the server drops.
+reset("raid", { { "Solex", 1 }, { "G3a", 3 }, { "G3b", 3 }, { "G3c", 3 }, { "G3d", 3 } })
+layout = slotsWith({ [11] = "Ann-Area52", [12] = "Bob-Area52" })
+Invite:Send({ "Ann-Area52", "Bob-Area52" }, layout, "Main Raid")
+G.late = true
+G.raid[6] = { "Ann", 1 } G.raid[7] = { "Bob", 1 }
+fire("GROUP_ROSTER_UPDATE") flush()
+check(#sets == 1 and sets[1][3] == "Ann", "two join for group 3's last spot: only one move is asked for (" .. #sets .. ")")
+check(state("Ann-Area52") == "moving" and plain(Invite:StateText("Ann-Area52", now)) == "moving to 3", "Ann is moving, not yet moved: " .. plain(Invite:StateText("Ann-Area52", now)))
+check(Invite:Entry("Bob-Area52").stayed == "group 3 is full", "Bob stays: the moving Ann takes the spot")
+land()
+check(state("Ann-Area52") == "moved" and plain(Invite:StateText("Ann-Area52", now)) == "moved to 3", "the roster shows Ann in group 3: moved")
+reset("raid", { { "Solex", 1 } })
+Invite:Send({ "Cat-Area52" }, slotsWith({ [16] = "Cat-Area52" }), "Main Raid")
+G.refuse = true
+G.raid[2] = { "Cat", 1 }
+fire("GROUP_ROSTER_UPDATE") flush()
+check(state("Cat-Area52") == "moving", "a move the server drops: still moving at first")
+runLong()
+check(state("Cat-Area52") == "joined" and Invite:Entry("Cat-Area52").stayed == "the move didn't go through", "then stays, saying the move didn't go through")
+check(plain(Invite:StateText("Cat-Area52", now)) == "stayed in 1", "row: stayed in 1")
+
+-- 10. Unanswered invites time out: no answer, the room comes back, and a solo queue doesn't stall.
+reset("raid", { { "Solex", 1 } })
+Invite:Send({ "Quiet-Area52" }, nil)
+now = now + 121
+runLong()
+check(state("Quiet-Area52") == "failed" and Invite:Entry("Quiet-Area52").reason == "no answer", "no answer after the timeout")
+check(plain(Invite:StateText("Quiet-Area52", now)) == "no answer", "row: no answer")
+reset("solo", { { "Solex", 1 } })
+Invite:Send({ "A-Area52", "B-Area52", "C-Area52", "D-Area52", "E-Area52", "F-Area52" }, nil)
+check(#invites == 4, "solo: four go out")
+now = now + 121
+runLong()
+check(state("A-Area52") == "failed" and #invites == 6 and state("F-Area52") == "invited", "after the four time out, the two waiting go out (" .. #invites .. ")")
+
+-- 11. Joiners match by exact Name-Realm; a move that can't be made yet is retried only for a short while.
+reset("raid", { { "Solex", 1 } })
+Invite:Send({ "Busy-Stormrage" }, slotsWith({ [6] = "Busy-Stormrage" }), "Main Raid")
+G.raid[2] = { "Busy", 1 }
+fire("GROUP_ROSTER_UPDATE") flush()
+check(state("Busy-Stormrage") == "invited" and #sets == 0, "a same-named player from another realm isn't taken for the invited one")
+reset("raid", { { "Solex", 1 } })
+Invite:Send({ "Dan-Area52" }, slotsWith({ [6] = "Dan-Area52" }), "Main Raid")
+G.leader = false
+G.raid[2] = { "Dan", 1 }
+fire("GROUP_ROSTER_UPDATE") flush()
+check(state("Dan-Area52") == "joined" and not Invite:Entry("Dan-Area52").stayed, "can't move yet (not lead): tried again on the next roster change")
+now = now + 31
+fire("GROUP_ROSTER_UPDATE") flush()
+check(Invite:Entry("Dan-Area52").stayed == "the move didn't go through", "past the retry window: stays, and is no longer tried")
+G.leader = true
+fire("GROUP_ROSTER_UPDATE") flush()
+check(#sets == 0, "not moved later")
+
+-- 12. pump checks it may still invite; %1$s placeholders match too.
+reset("solo", { { "Solex", 1 } })
+Invite:Send({ "A-Area52", "B-Area52", "C-Area52", "D-Area52", "E-Area52" }, nil)
+G.mode, G.leader = "raid", false
+G.raid[2] = { "A", 1 }
+fire("GROUP_ROSTER_UPDATE") flush()
+check(#invites == 4 and state("E-Area52") == "waiting", "no longer lead or assist: the waiting invite isn't sent")
+reset("raid", { { "Solex", 1 } })
+Invite:Send({ "Eve-Area52" }, nil)
+local oldDecline = ERR_DECLINE_GROUP_S
+ERR_DECLINE_GROUP_S = "%1$s declines your group invitation."
+fire("CHAT_MSG_SYSTEM", "Eve declines your group invitation.")
+ERR_DECLINE_GROUP_S = oldDecline
+check(state("Eve-Area52") == "declined", "a %1$s placeholder matches")
 
 print(passed .. " passed, " .. fails .. " failed")
 if fails > 0 then error(fails .. " invite checks failed") end

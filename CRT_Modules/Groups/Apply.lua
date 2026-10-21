@@ -261,11 +261,14 @@ function Apply:Start(slots)
 end
 
 -- Moves one raid member into group if it has a free spot, for a player who just joined from an invite
--- (Groups/Invite.lua). Never moves or swaps anyone else. The name matches as in a layout (resolveLayout).
--- Returns "moved" (also when they are already there), "full", "combat" (you or they are in combat),
--- "failed" (the game refused the move), "busy" (Arrange Groups is running and places them), "absent"
--- (not in the raid) or "denied" (not in a raid, or not the leader or an assist).
-function Apply:MoveOne(key, group)
+-- (Groups/Invite.lua). Never moves or swaps anyone else. key must be the exact Name-Realm. pending, when
+-- given, is { [group] = moves already asked for into it }, which count as taken spots: a move lands later,
+-- with a roster update, so the roster read here doesn't show it yet.
+-- Returns "sent" (the move was asked for; the roster shows later whether it landed), "moved" (they are
+-- already there), "full", "combat" (you or they are in combat), "failed" (the game refused the call),
+-- "busy" (Arrange Groups is running and places them), "absent" (not in the raid) or "denied" (not in a
+-- raid, or not the leader or an assist).
+function Apply:MoveOne(key, group, pending)
     if run then
         return "busy"
     end
@@ -276,10 +279,10 @@ function Apply:MoveOne(key, group)
         return "combat"
     end
     local members = readRaid()
-    local want = resolveLayout(members, { [(group - 1) * 5 + 1] = key })
-    local player, used = nil, 0
+    local lower = Groups.Normalize(key):lower()
+    local player, used = nil, (pending and pending[group]) or 0
     for _, m in ipairs(members) do
-        if want[m.key] then
+        if m.key == lower then
             player = m
         end
         if m.subgroup == group then
@@ -301,7 +304,7 @@ function Apply:MoveOne(key, group)
     if not pcall(SetRaidSubgroup, player.index, group) then
         return "failed"
     end
-    return "moved"
+    return "sent"
 end
 
 local events = CreateFrame("Frame")

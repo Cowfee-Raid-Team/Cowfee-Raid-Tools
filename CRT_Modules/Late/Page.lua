@@ -596,11 +596,16 @@ local function openRowMenu(slot)
     end
     UI.ContextMenu(slot, function(root)
         root:CreateTitle(Groups.ReportName(p.key))
-        local canInvite = CRT.Invite.CanInvite()
+        local canInvite, why = CRT.Invite.CanInvite()
         local b = root:CreateButton(format(INVITE_TEXT.invite, p.key), function()
             invite({ p.key })
         end)
         b:SetEnabled(canInvite and true or false)
+        if not canInvite and b.SetTooltip and GameTooltip_AddNormalLine then
+            b:SetTooltip(function(tooltip)
+                GameTooltip_AddNormalLine(tooltip, why)
+            end)
+        end
         if not p.idle then
             root:CreateButton(INVITE_TEXT.onTime, function()
                 Late:SetOnTime(p.key)
@@ -1031,6 +1036,7 @@ local function buildTonight(f)
     inviteStatus:SetJustifyH("LEFT")
     inviteStatus:SetJustifyV("MIDDLE")
     inviteStatus:SetWordWrap(true)
+    inviteStatus:SetMaxLines(2) -- fits beside the buttons, above the grid
     CRT.Invite:OnChange(function()
         if page and page:IsShown() then
             refreshTonight()

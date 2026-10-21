@@ -6,8 +6,10 @@ local ADDON, CRT = ...
 -- spot; anyone else is never moved. Only out of combat, and only as the leader or an assist (or with no
 -- group, where you become the leader). A party becomes a raid before a sixth person is needed: with no
 -- group, PARTY_SIZE - 1 invites go out, and the rest once the group is a raid.
--- Each name has a state: waiting (not sent yet), invited, joined, moved, declined or failed (with a
--- reason). Declines and "player not found" come from the game's system messages (CHAT_MSG_SYSTEM).
+-- Each name has a state: waiting (not sent yet), invited, joined, moving (a move was asked for), moved
+-- (the roster shows them in their group), declined or failed (with a reason). Declines and "player not
+-- found" come from the game's system messages (CHAT_MSG_SYSTEM); an invite with no answer after
+-- INVITE_TIMEOUT fails with "no answer". Joiners match by their exact Name-Realm only.
 
 local Groups = CRT.Groups
 local UI = CRT.UI
@@ -18,6 +20,11 @@ CRT.Invite = Invite
 local MAX_RAID = 40
 local PARTY_SIZE = 5
 local ROSTER_DELAY = 0.5 -- seconds after a roster change before reading who joined, so the groups are filled in
+-- Seconds before an unanswered invite counts as "no answer", freeing its spot. The game's own invite
+-- timeout is about two minutes; confirm in game.
+local INVITE_TIMEOUT = 120
+local MOVE_CHECK = 3 -- seconds after asking for a move before a roster that doesn't show it means it failed
+local MOVE_RETRY = 30 -- seconds after a join that a move which can't be made yet (not lead, Arrange Groups running) is tried again
 
 local TEXT = {
     combat = "Invites wait until combat ends.",
@@ -38,12 +45,14 @@ local TEXT = {
     ignoring = "ignoring you",
     declined = "declined",
     noInvite = "the game didn't take the invite",
+    noAnswer = "no answer",
     groupFull = "group %d is full",
     inCombat = "you were in combat",
     moveFailed = "the move didn't go through",
     -- a row's state on the Late Tracker
     stateWaiting = "waiting",
     stateInvited = "invited %s",
+    stateMoving = "moving to %d",
     stateMoved = "moved to %d",
     stateJoined = "joined",
     stateStayed = "stayed in %d",
@@ -80,9 +89,10 @@ function Invite:Fire()
     end
 end
 
--- Forgets every invite (for tests and a new night).
+-- Forgets every invite: when a Late Tracker night starts or ends, and in tests.
 function Invite:Reset()
     entries, order, batch, refusal, converting = {}, {}, nil, nil, false
+    self:Fire()
 end
 
 function Invite:Entry(key)
@@ -140,10 +150,32 @@ local function count(state)
     return n
 end
 
+local pump
+
+-- Invites nobody answered within INVITE_TIMEOUT fail with "no answer", which frees their spot, so the
+-- waiting ones can go out. Returns whether any did.
+local function expire()
+    local now, changed = time(), false
+    for _, lower in ipairs(order) do
+        local e = entries[lower]
+        if e.state == "invited" and now - (e.at or now) >= INVITE_TIMEOUT then
+            e.state, e.reason = "failed", TEXT.noAnswer
+            changed = true
+        end
+    end
+    return changed
+end
+
 local function sendOne(e)
     local fn = (C_PartyInfo and C_PartyInfo.InviteUnit) or InviteUnit
     if fn and pcall(fn, e.key) then
         e.state, e.at = "invited", time()
+        C_Timer.After(INVITE_TIMEOUT + 1, function()
+            if expire() then
+                pump()
+                Invite:Fire()
+            end
+        end)
     else
         e.state, e.reason = "failed", TEXT.noInvite
     end
@@ -158,11 +190,13 @@ local function convert()
 end
 
 -- Sends the waiting invites the group has room for, converting a party to a raid first when it would
--- need a sixth person. Called after a Send and on every roster change.
-local function pump()
-    if InCombatLockdown() then
+-- need a sixth person. Called after a Send, on every roster change and when invites time out. Sends
+-- nothing while you may not invite (combat, or no longer the leader or an assist).
+pump = function()
+    if not Invite.CanInvite() then
         return
     end
+    expire()
     local waiting = {}
     for _, lower in ipairs(order) do
         if entries[lower].state == "waiting" then
@@ -201,6 +235,7 @@ function Invite:Send(fullNames, layoutSlots, from)
         return nil, why
     end
     refusal = nil
+    expire()
     local lookup = Groups.MakeLookup(Groups:ReadRoster())
     local list, seen = {}, {}
     for _, name in ipairs(fullNames or {}) do
@@ -245,40 +280,96 @@ end
 
 -- Answers and joins ------------------------------------------------------------------------------------
 
--- After a roster change: who joined, and moving them into their layout group.
+-- Your group by exact Name-Realm (lowercase): joiners are never matched by a bare name, so a same-named
+-- player from another realm isn't taken for the one invited.
+local function rosterByKey()
+    local out = {}
+    for _, m in ipairs(Groups:ReadRoster()) do
+        out[m.key:lower()] = m
+    end
+    return out
+end
+
+-- A move that was asked for and that the roster doesn't show MOVE_CHECK seconds later didn't go
+-- through: the player stays where they joined.
+local function checkMove(e, token)
+    C_Timer.After(MOVE_CHECK, function()
+        if e.state ~= "moving" or e.moveToken ~= token then
+            return
+        end
+        local member = rosterByKey()[e.key:lower()]
+        if member and member.subgroup == e.group then
+            e.state = "moved"
+        else
+            e.state, e.stayed = "joined", TEXT.moveFailed
+            e.subgroup = member and member.subgroup or e.subgroup
+        end
+        Invite:Fire()
+    end)
+end
+
+-- Asks Apply:MoveOne to move a joined player into their group. pending counts the moves on their way
+-- into each group, which the roster doesn't show yet.
+local function tryMove(e, member, pending)
+    local result = CRT.Apply:MoveOne(e.key, e.group, pending)
+    if result == "sent" then
+        e.state = "moving"
+        e.moveToken = (e.moveToken or 0) + 1
+        pending[e.group] = (pending[e.group] or 0) + 1
+        checkMove(e, e.moveToken)
+    elseif result == "moved" then
+        e.state = "moved"
+    elseif result == "full" then
+        e.stayed = format(TEXT.groupFull, e.group)
+    elseif result == "combat" then
+        e.stayed = TEXT.inCombat
+    elseif result == "failed" or time() - (e.joinedAt or 0) > MOVE_RETRY then
+        e.stayed = TEXT.moveFailed
+    end -- busy, absent or denied: tried again on roster changes for MOVE_RETRY seconds after the join
+    if e.stayed then
+        e.subgroup = member.subgroup
+    end
+end
+
+-- After a roster change: who joined, whose move landed, and moving the new ones into their layout group.
 function Invite:Update()
     converting = false
-    local lookup = Groups.MakeLookup(Groups:ReadRoster())
+    local roster = rosterByKey()
+    local pending = {}
     for _, lower in ipairs(order) do
         local e = entries[lower]
-        local member = lookup(e.key)
-        if member and e.state ~= "joined" and e.state ~= "moved" then
-            e.state, e.reason, e.subgroup = "joined", nil, member.subgroup
+        local member = roster[lower]
+        if e.state == "moving" then
+            if member and member.subgroup == e.group then
+                e.state = "moved"
+            else
+                pending[e.group] = (pending[e.group] or 0) + 1
+            end
+        end
+    end
+    for _, lower in ipairs(order) do
+        local e = entries[lower]
+        local member = roster[lower]
+        if member and e.state ~= "joined" and e.state ~= "moving" and e.state ~= "moved" then
+            e.state, e.reason, e.subgroup, e.joinedAt = "joined", nil, member.subgroup, time()
         end
         if member and e.state == "joined" and e.group and not e.stayed and IsInRaid() then
-            local result = CRT.Apply:MoveOne(e.key, e.group)
-            if result == "moved" then
-                e.state = "moved"
-            elseif result == "full" then
-                e.stayed, e.subgroup = format(TEXT.groupFull, e.group), member.subgroup
-            elseif result == "combat" then
-                e.stayed, e.subgroup = TEXT.inCombat, member.subgroup
-            elseif result == "failed" then
-                e.stayed, e.subgroup = TEXT.moveFailed, member.subgroup
-            end -- busy, absent or denied: tried again on the next roster change
+            tryMove(e, member, pending)
         end
     end
     pump()
     self:Fire()
 end
 
--- "%s declines your group invitation." -> "^(.+) declines your group invitation%.$"
+-- "%s declines your group invitation." -> "^(.+) declines your group invitation%.$". A numbered
+-- placeholder ("%1$s", used by some client languages) works the same.
 local function answerPattern(fmt)
     if type(fmt) ~= "string" then
         return nil
     end
-    local escaped = fmt:gsub("([%(%)%.%%%+%-%*%?%[%]%^%$])", "%%%1")
-    escaped = escaped:gsub("%%%%s", "(.+)")
+    local marked = fmt:gsub("%%%d*%$?s", "\001")
+    local escaped = marked:gsub("([%(%)%.%%%+%-%*%?%[%]%^%$])", "%%%1")
+    escaped = escaped:gsub("\001", "(.+)")
     return "^" .. escaped .. "$"
 end
 
@@ -307,7 +398,10 @@ function Invite:OnSystemMessage(text)
         return
     end
     for _, answer in ipairs(ANSWERS) do
-        answer.pattern = answer.pattern or answerPattern(_G[answer.global])
+        local fmt = _G[answer.global]
+        if answer.fmt ~= fmt then
+            answer.fmt, answer.pattern = fmt, answerPattern(fmt)
+        end
         local name = answer.pattern and text:match(answer.pattern)
         local e = name and invitedEntry(name)
         if e then
@@ -338,6 +432,8 @@ function Invite:StateText(key, now)
         return UI.ColorText(format(TEXT.stateInvited, clock((now or time()) - (e.at or 0))), "accent")
     elseif e.state == "declined" or e.state == "failed" then
         return UI.BadText(e.reason or TEXT.declined)
+    elseif e.state == "moving" then
+        return UI.ColorText(format(TEXT.stateMoving, e.group), "accent")
     elseif e.state == "moved" then
         return UI.GoodText(format(TEXT.stateMoved, e.group))
     elseif e.stayed then

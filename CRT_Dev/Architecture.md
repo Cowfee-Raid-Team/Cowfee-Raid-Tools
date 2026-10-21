@@ -27,7 +27,7 @@ Files load in the order the `.toc` lists them. Each file starts with `local ADDO
 | 3 | `CRT_Core/UI/Panel.lua` | The main window, the left menu and the page registry |
 | 4 | `CRT_Modules/Groups/Data.lua` | Names, rosters, roles, the working grid, saved layouts, export and import |
 | 5 | `CRT_Modules/Groups/Apply.lua` | Moves the live raid into the grid's layout; `Apply:MoveOne` moves one player who joined into their group when it has a free spot |
-| 5b | `CRT_Modules/Groups/Invite.lua` | `CRT.Invite`, the shared invites for Raid Groups and the Late Tracker: invites by Name-Realm, skips members, makes a party a raid before a sixth person, stops at 40, only out of combat as leader or assist, keeps each name's state from the game's system messages, and moves each one who joins with `Apply:MoveOne` |
+| 5b | `CRT_Modules/Groups/Invite.lua` | `CRT.Invite`, the shared invites for Raid Groups and the Late Tracker: invites by Name-Realm, skips members, makes a party a raid before a sixth person, stops at 40, only out of combat as leader or assist, keeps each name's state from the game's system messages (an invite unanswered after `INVITE_TIMEOUT` fails with "no answer"), and moves each one who joins, matched by exact Name-Realm, with `Apply:MoveOne`. Moves land later, so a moved player is "moving" until the roster shows them in their group, and moves on their way count as taken spots |
 | 6 | `CRT_Modules/Groups/Page.lua` | The Raid Groups page: grid, picker, dialogs, Quick Load list, buttons |
 
 `CowfeeRaidTools.toc` holds the title, version, `## Interface:` number and `## SavedVariables: CRTDB`.

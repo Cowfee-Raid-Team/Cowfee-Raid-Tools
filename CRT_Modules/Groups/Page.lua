@@ -15,6 +15,7 @@ local GRID_TOP = -52
 local PICK_ROWS = 10
 local ROW_H = 22
 local LIST_ROW_H = 26 -- a Quick Load box (24) and the gap under it
+local INVITE_STATUS_LINES = 3 -- the invite status line, between the grid and Use This Group
 
 local GRAY = { 0.35, 0.35, 0.35 }
 -- The theme's good and heading colours; CRT.PALETTE's tables are refilled on a theme switch, so these follow.
@@ -59,6 +60,13 @@ local function styleButton(b)
     b:SetNormalFontObject(CRTFontNormal)
     b:SetHighlightFontObject(CRTFontHighlight)
     b:SetDisabledFontObject(CRTFontDisable)
+    return b
+end
+
+local function makeButton(parent, label, width, height)
+    local b = styleButton(CreateFrame("Button", nil, parent, "UIPanelButtonTemplate"))
+    b:SetSize(width, height or 26)
+    b:SetText(label)
     return b
 end
 
@@ -619,9 +627,7 @@ end
 
 -- The Invite missing button beside anchor (Use This Group's (?)), and the status line above that row.
 local function buildInvites(pf, anchor)
-    inviteButton = styleButton(CreateFrame("Button", nil, pf, "UIPanelButtonTemplate"))
-    inviteButton:SetSize(120, 32)
-    inviteButton:SetText(format(TEXT.inviteMissing, 0))
+    inviteButton = makeButton(pf, format(TEXT.inviteMissing, 0), 120, 32)
     inviteButton:SetPoint("LEFT", anchor, "RIGHT", 10, 0)
     inviteButton:SetScript("OnClick", function()
         inviteKeys(CRT.Invite.Missing(Groups:Working()))
@@ -646,6 +652,7 @@ local function buildInvites(pf, anchor)
     inviteStatus:SetJustifyH("LEFT")
     inviteStatus:SetJustifyV("BOTTOM")
     inviteStatus:SetWordWrap(true)
+    inviteStatus:SetMaxLines(INVITE_STATUS_LINES) -- a long list of failures can't grow into the grid
     CRT.Invite:OnChange(refreshInvites)
 end
 
@@ -767,13 +774,6 @@ refresh = function()
 end
 
 -- Page ------------------------------------------------------------------------
-
-local function makeButton(parent, label, width, height)
-    local b = styleButton(CreateFrame("Button", nil, parent, "UIPanelButtonTemplate"))
-    b:SetSize(width, height or 26)
-    b:SetText(label)
-    return b
-end
 
 local function buildPage(pf)
     page = pf

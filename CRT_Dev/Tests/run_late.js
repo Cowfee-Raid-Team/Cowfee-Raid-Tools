@@ -18,7 +18,8 @@ C_Timer = { After = function(s, fn) pending[#pending+1] = fn end, NewTicker = fu
 local handler
 function CreateFrame() return { RegisterEvent = function() end, SetScript = function(_, _, fn) handler = fn end } end
 local printed = {}
-local CRT = { db = { groups = { selected = 7 }, late = { days = { [4] = true }, hour = 20, minute = 0, grace = 0, history = {}, nextId = 1, lastAuto = "" } } }
+local resets = 0
+local CRT ={ db = { groups = { selected = 7 }, late = { days = { [4] = true }, hour = 20, minute = 0, grace = 0, history = {}, nextId = 1, lastAuto = "" } } }
 function CRT:Print(m) print("  [print] " .. m) end
 local layout = { id = 7, name = "Mythic main", slots = {} }
 for i, n in ipairs({ "Gadios-Area52", "Sixz-Area52", "Abu-Area52", "Cheoeqar-Area52", "Djaztech-Area52" }) do layout.slots[i] = n end
@@ -28,6 +29,7 @@ CRT.Groups = { NUM_SLOTS = 40, Find = function(_, id) return id == 7 and layout 
   OnChange = function(_, fn) groupsChanged = fn end,
   Normalize = function(k) if k ~= "" and not k:find("-") then return k .. "-Area52" end return k end,
   MakeLookup = function(r) local m = {} for _, e in ipairs(r) do m[e.key:lower()] = e end return function(k) return m[k:lower()] end end }
+CRT.Invite = { Reset = function() resets = resets + 1 end }
 assert(load(src, "Data.lua"))("CowfeeRaidTools", CRT)
 local Late = CRT.Late
 local s = CRT.db.late
@@ -107,6 +109,10 @@ local tot = {} for _, t in ipairs(Late:Totals()) do tot[t.key] = t end
 eq(tot["Gadios-Area52"].late, 0, "totals: on time")
 eq(tot["Sixz-Area52"].late, 1, "totals: late once") eq(tot["Sixz-Area52"].never, 0, "totals: late is not a no-show") eq(tot["Sixz-Area52"].seconds, 25 * 60, "totals: 25 minutes")
 eq(tot["Abu-Area52"].never, 1, "totals: one no-show") eq(tot["Abu-Area52"].late, 1, "totals: a no-show counts in Late too") eq(tot["Abu-Area52"].nights, 2, "totals: two nights")
+-- A night's start and end forget the invites (Groups/Invite.lua).
+local r0 = resets
+NOW = NOW + 60 Late:Start("button", NOW) eq(resets, r0 + 1, "a night's start resets the invites")
+Late:End("button", NOW + 60) eq(resets, r0 + 2, "its end resets them too")
 print(string.format("%d passed, %d failed", passes, fails))
 if fails > 0 then error("failures") end
 `;

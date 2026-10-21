@@ -24,6 +24,7 @@ local function mock(kind)
     if k == "SetBackdropBorderColor" then return function(self, r, g, b) rawset(self, "border", { r, g, b }) end end
     if k == "SetFrameStrata" then return function(self, s) rawset(self, "strata", s) end end
     if k == "SetEnabled" then return function(self, on) rawset(self, "enabled", on) end end
+    if k == "SetMaxLines" then return function(self, n) rawset(self, "maxLines", n) end end
     return function() end end })
 end
 local frames = {}
@@ -128,8 +129,9 @@ check(#invites == 2 and invites[1] == "Gadios-Area52" and invites[2] == "Mesmert
 local summary = plain(CRT.Invite:Summary())
 check(summary:find('Invited 2 from "Main Raid". Each one moves to their group when they join.', 1, true) == 1, "status: " .. summary)
 local statusShown = false
-for _, s in ipairs(strings) do if rawget(s, "text") == CRT.Invite:Summary() then statusShown = true end end
+for _, s in ipairs(strings) do if rawget(s, "text") == CRT.Invite:Summary() then statusShown = s end end
 check(statusShown, "the page's status line shows it")
+check(statusShown and rawget(statusShown, "maxLines") == 3, "the status line is capped at 3 lines, so it can't grow into the grid")
 -- Right-click a filled slot: a menu with Invite Name-Realm and Clear slot.
 local function openMenu(index)
   menus = {}

@@ -143,6 +143,15 @@ slot(7).OnEnter(slot(7))
 check(tip[2] == "Only the raid leader or an assist can invite.", "a row's tooltip says why: " .. tostring(tip[2]))
 slot(7).OnClick(slot(7), "LeftButton")
 check(#sent == 0, "and clicking a row invites nobody")
+-- The greyed Invite in the row menu gives the same reason in its tooltip.
+GameTooltip_AddNormalLine = function(t, s) t[#t + 1] = s end
+menus, items = {}, {}
+slot(7).OnClick(slot(7), "RightButton")
+root.CreateButton = function(_, label, fn) local it = { label = label, fn = fn, enabled = true } function it:SetEnabled(on) self.enabled = on end function it:SetTooltip(f) self.tip = f end items[#items + 1] = it return it end
+if menus[1] then menus[1].fill(root) end
+local lines = {}
+if items[1] and items[1].tip then items[1].tip(lines) end
+check(items[1] and items[1].enabled == false and lines[1] == "Only the raid leader or an assist can invite.", "the greyed menu Invite says why: " .. tostring(lines[1]))
 if fails > 0 then error(fails .. " late page checks failed") end
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
