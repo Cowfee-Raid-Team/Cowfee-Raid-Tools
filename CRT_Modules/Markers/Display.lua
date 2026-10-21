@@ -6,12 +6,22 @@ local ADDON, CRT = ...
 -- in the dev editor, CRTDB.dev.markerDisplays), and each player can turn it off per boss on the Raid
 -- Notes Reminders tab (CRTDB.markers.disabled[encounterID]).
 --
+-- A readable message fills a slot only when it holds a raid marker code ({rt1} to {rt8}, or a name
+-- such as {skull}, any case), and the slot shows only its marker icons, not the rest of the text.
+-- The codes are the game's own: ICON_TAG_LIST in Blizzard's ChatFrameConstants.lua, with the English
+-- names from warcraft.wiki.gg's Raid target icons page when that table is missing.
+--
 -- Inside a raid, and during a boss fight, the game hides chat text and sender names from addons
--- (they arrive as secret values). The addon never reads them: each message fills the next slot, its
--- marker codes are turned into icons by the game's C_ChatInfo.ReplaceIconAndGroupExpressions, which
--- accepts the hidden text, and the result and the sender's name are put on screen as they are. So
--- any message in group chat fills a slot, which is why the display is for moments when nobody chats.
--- Outside raids the text is readable, and names are shown short and in class color.
+-- (they arrive as secret values). The addon can't read, search or compare them, and no game function
+-- answers "does this hidden text hold a marker" with a readable value (checked 2026-10-21 in the live
+-- API documentation: C_ChatInfo, C_StringUtil, C_Intl, C_Secrets). So a hidden message's marker codes
+-- are turned into icons by C_ChatInfo.ReplaceIconAndGroupExpressions, which accepts the hidden text,
+-- and the result, typos and all, is put on screen as it is. The display's hidden setting decides
+-- whether hidden messages fill slots at all: "fill" (the default) or "ignore". One try first:
+-- C_Intl.CompareStrings accepts hidden text, and if it ever answers readably whether the icon
+-- replacement changed the message, that answer decides instead. Its documentation doesn't say whether
+-- the answer is hidden too, so a hidden or refused answer just leaves it to the setting.
+-- Outside raids names are shown short and in class color.
 --
 -- It always clears when a pull starts and when it ends (kill or wipe), and as the display says: after
 -- a gap with no messages, a while after the last slot fills, or when a new phase starts.
@@ -26,8 +36,11 @@ local CHAT_EVENTS = {
     "CHAT_MSG_INSTANCE_CHAT", "CHAT_MSG_INSTANCE_CHAT_LEADER",
 }
 
-local DEFAULT = { name = "Marker display", slots = 4, layout = "row", iconSize = 40, number = true, names = true, clearGap = 10, clearFull = 0, clearPhase = false }
+local DEFAULT = { name = "Marker display", slots = 4, layout = "row", iconSize = 40, number = true, names = true, clearGap = 10, clearFull = 0, clearPhase = false, hidden = "fill" }
 local SAMPLE = { "{rt1}", "{rt6}", "{rt8}", "{rt7}", "{rt2}", "{rt3}", "{rt4}", "{rt5}" }
+-- The marker names in English, by marker number, for when the game's ICON_TAG_LIST is missing.
+local ICON_NAMES = { star = 1, circle = 2, diamond = 3, triangle = 4, moon = 5, square = 6, cross = 7, x = 7, skull = 8 }
+local IDENTICAL = 4 -- Enum.CollationStrength.Identical (IntlSharedTypesDocumentation.lua), if Enum lacks it
 
 local frame, handle, title
 local slots = {}
@@ -42,8 +55,85 @@ local function db()
     return CRT.db.markers
 end
 
+-- The secret test comes first: comparing a secret value, even with nil, is not allowed.
 local function readable(v)
-    return v ~= nil and not (issecretvalue and issecretvalue(v))
+    if issecretvalue and issecretvalue(v) then
+        return false
+    end
+    return v ~= nil
+end
+
+-- Every marker code the game turns into an icon, lower case without braces, to its marker number.
+local function markerTags()
+    local tags = {}
+    for i = 1, 8 do
+        tags["rt" .. i] = i
+    end
+    local game = type(ICON_TAG_LIST) == "table" and ICON_TAG_LIST or ICON_NAMES
+    for tag, i in pairs(game) do
+        if type(tag) == "string" and type(i) == "number" and i >= 1 and i <= 8 then
+            tags[(tag:lower():gsub("[{}]", ""))] = i
+        end
+    end
+    return tags
+end
+
+-- The raid markers in a readable message, in order, as marker numbers: "go {star} {X}" is { 1, 7 }.
+function Markers.FindMarkers(text)
+    local found, tags = {}, markerTags()
+    for code in text:gmatch("{([^{}]*)}") do
+        local i = tags[code:lower()]
+        if i then
+            found[#found + 1] = i
+        end
+    end
+    return found
+end
+
+-- The game's icon replacement, or the text as it is when it refuses.
+local function withIcons(text, noGroups)
+    local api = C_ChatInfo and C_ChatInfo.ReplaceIconAndGroupExpressions
+    if api then
+        local ok, out = pcall(api, text, false, noGroups)
+        if ok and out then
+            return out
+        end
+    end
+    return text
+end
+
+-- Whether a hidden message holds a marker: true or false when the game answers readably that the icon
+-- replacement changed it, nil when it can't tell (the usual case).
+local function hiddenHasMarker(text)
+    local compare = C_Intl and C_Intl.CompareStrings
+    if not compare then
+        return nil
+    end
+    local strength = Enum and Enum.CollationStrength and Enum.CollationStrength.Identical or IDENTICAL
+    local ok, result = pcall(compare, text, withIcons(text, true), strength)
+    if not ok or not readable(result) or type(result) ~= "number" then
+        return nil
+    end
+    return result ~= 0
+end
+
+-- What a message puts in its slot, or nil when it fills none.
+local function slotText(text, hidden)
+    if readable(text) then
+        if type(text) ~= "string" then
+            return nil
+        end
+        local codes = {}
+        for _, i in ipairs(Markers.FindMarkers(text)) do
+            codes[#codes + 1] = "{rt" .. i .. "}"
+        end
+        return #codes > 0 and withIcons(table.concat(codes, " ")) or nil
+    end
+    local has = hiddenHasMarker(text)
+    if has == false or (has == nil and hidden == "ignore") then
+        return nil
+    end
+    return withIcons(text)
 end
 
 -- Every display: the shipped ones, with any made in the dev editor over them.
@@ -252,23 +342,19 @@ local function clearAfter(seconds)
     end)
 end
 
--- A chat message while a display is armed: it fills the next slot.
+-- A chat message while a display is armed: a marker fills the next slot (see the top of the file).
 local function onMessage(text, sender)
     if not active or filled >= active.slots then
+        return
+    end
+    local shown = slotText(text, active.hidden)
+    if not shown then -- a test, not a comparison: shown may be secret
         return
     end
     build()
     filled = filled + 1
     token = token + 1
     local c = slot(filled)
-    local shown = text
-    local api = C_ChatInfo and C_ChatInfo.ReplaceIconAndGroupExpressions
-    if api then
-        local ok, out = pcall(api, text)
-        if ok and out then
-            shown = out
-        end
-    end
     -- The text may be secret; putting it on screen is allowed, and pcall keeps a refusal harmless.
     pcall(c.icon.SetText, c.icon, shown)
     c.shownText, c.sender = shown, sender
