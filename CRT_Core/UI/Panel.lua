@@ -526,6 +526,39 @@ function UI:StyleWindow(f)
     self:SkinTree(f)
 end
 
+-- The vertical divider between the menu and the page area, in the 8 px gap between them.
+-- Sizes in px; colours are { r, g, b, a }, or a CRT.MOCHA key. Default: Blizzard draws a dark gold-brown
+-- line like the game's frame trim with a darker shadow beside it; the Modern themes draw one thin line
+-- in their edge colour.
+local DIVIDER = {
+    left = 2, -- px from the menu's right edge to the line's left
+    classic = { width = 2, color = { 0.45, 0.33, 0.12, 1 }, shadowWidth = 1, shadow = { 0.05, 0.03, 0.01, 0.9 } },
+    modern = { width = 1, key = "edge" },
+}
+
+function UI:StyleDivider(alpha)
+    local f = self.frame
+    local d = f and f.divider
+    if not d then
+        return
+    end
+    local modern = self:IsModern()
+    local look = modern and DIVIDER.modern or DIVIDER.classic
+    d.line:SetWidth(look.width)
+    if look.key then
+        d.line:SetColorTexture(mocha(look.key, alpha))
+    else
+        local c = look.color
+        d.line:SetColorTexture(c[1], c[2], c[3], c[4] * alpha)
+    end
+    d.shadow:SetShown(not modern)
+    if not modern then
+        local c = look.shadow
+        d.shadow:SetWidth(look.shadowWidth)
+        d.shadow:SetColorTexture(c[1], c[2], c[3], c[4] * alpha)
+    end
+end
+
 function UI:ApplyStyle()
     for _, themed in ipairs(self.themed) do
         self:ApplyThemed(themed)
@@ -564,8 +597,7 @@ function UI:ApplyStyle()
     end
     f.titleLine:SetColorTexture(mocha("caramel", alpha))
     f.titleLine:SetShown(modern)
-    f.menuLine:SetColorTexture(mocha("caramel", alpha))
-    f.menuLine:SetShown(modern)
+    self:StyleDivider(alpha)
     self:LayoutMenu()
     self:StyleMinimizeButton()
     for _, b in ipairs(self.tabs) do
@@ -1551,11 +1583,15 @@ function UI:Create()
     menu:SetWidth(MENU_W)
     menu.blocks = {}
     f.menu = menu
-    -- The Modern look's teal line on the menu's right edge.
-    f.menuLine = menu:CreateTexture(nil, "BORDER")
-    f.menuLine:SetPoint("TOPRIGHT", 0, 0)
-    f.menuLine:SetPoint("BOTTOMRIGHT", 0, 0)
-    f.menuLine:SetWidth(2)
+    -- The divider in the gap right of the menu: the line, then (Default: Blizzard) its shadow beside it.
+    -- Both stay inside the 8 px gap and follow the menu's height (UI:StyleDivider sizes and colours them).
+    local line = f:CreateTexture(nil, "BORDER")
+    line:SetPoint("TOPLEFT", menu, "TOPRIGHT", DIVIDER.left, 0)
+    line:SetPoint("BOTTOMLEFT", menu, "BOTTOMRIGHT", DIVIDER.left, 0)
+    local shadow = f:CreateTexture(nil, "BORDER")
+    shadow:SetPoint("TOPLEFT", line, "TOPRIGHT", 0, 0)
+    shadow:SetPoint("BOTTOMLEFT", line, "BOTTOMRIGHT", 0, 0)
+    f.divider = { line = line, shadow = shadow }
 
     local content = CreateFrame("Frame", nil, f)
     content:SetPoint("TOPLEFT", menu, "TOPRIGHT", 8, 0)

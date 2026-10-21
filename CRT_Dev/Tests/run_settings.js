@@ -31,6 +31,7 @@ local function mock(kind)
     if k == "IsProtected" then return function(self) return rawget(self, "protected") or false end end
     if k == "SetAlpha" then return function(self, a) rawset(self, "alpha", a) end end
     if k == "SetSize" then return function(self, w, h) rawset(self, "w", w) rawset(self, "h", h) end end
+    if k == "SetWidth" then return function(self, w) rawset(self, "w", w) end end
     if k == "SetPoint" then return function(self, ...) table.insert(self.pts, { ... }) end end
     if k == "ClearAllPoints" then return function(self) self.pts = {} end end
     if k == "SetText" then return function(self, s) rawset(self, "text", s) end end
@@ -221,13 +222,35 @@ local pb = UI.pages.settings.button
 local tab = mock("Button") rawset(tab, "sel", mock("Texture")) rawset(tab, "text", mock("FontString"))
 UI:RegisterTab(tab)
 CRT.db.ui.modern = true UI:ApplyStyle()
-print("modern: art shown " .. tostring(f.art[1].shown) .. ", flat " .. tostring(f.flatBg.shown) .. ", title line " .. tostring(f.titleLine.shown) .. ", menu line " .. tostring(f.menuLine.shown) .. ", menu block " .. tostring(f.menu.blocks[1] and f.menu.blocks[1].shown) .. ", button text at " .. tostring(pb.text.pts[1][1]) .. ", tab teal " .. tostring(tab.sel.color[2] > tab.sel.color[1]))
+print("modern: art shown " .. tostring(f.art[1].shown) .. ", flat " .. tostring(f.flatBg.shown) .. ", title line " .. tostring(f.titleLine.shown) .. ", divider " .. tostring(f.divider.line.shown) .. ", menu block " .. tostring(f.menu.blocks[1] and f.menu.blocks[1].shown) .. ", button text at " .. tostring(pb.text.pts[1][1]) .. ", tab teal " .. tostring(tab.sel.color[2] > tab.sel.color[1]))
 print("modern font: " .. fontLine("CRTFontNormal") .. ", color " .. string.format("%.2f %.2f %.2f", CRT.db.ui.modern and 0 or 0, 0, 0))
 CRT.db.ui.font = "default" CRT:ApplyFonts() print("modern default font: " .. fontLine("CRTFontNormal")) CRT.db.ui.font = "Expressway"
 CRT:ApplyFonts() print("after ApplyFonts in modern: " .. fontLine("CRTFontNormal") .. string.format(", color %.2f %.2f %.2f", fontObjects.CRTFontNormal.color[1], fontObjects.CRTFontNormal.color[2], fontObjects.CRTFontNormal.color[3]))
 CRT.db.ui.modern = false CRT:ApplyFonts() UI:ApplyStyle()
 print("classic font: " .. fontLine("CRTFontNormal") .. string.format(", color %.2f %.2f %.2f", fontObjects.CRTFontNormal.color[1], fontObjects.CRTFontNormal.color[2], fontObjects.CRTFontNormal.color[3]))
 print("classic: title line " .. tostring(f.titleLine.shown) .. ", menu block " .. tostring(f.menu.blocks[1].shown) .. ", button text at " .. tostring(pb.text.pts[1][1]) .. ", tab gold " .. tostring(tab.sel.color[1] == 1))
+-- The divider between the menu and the page area: one line, in the gap, full menu height, repainted per theme.
+do
+  local d = f.divider
+  local function near(c, want) return c and math.abs(c[1] - want[1]) < 0.003 and math.abs(c[2] - want[2]) < 0.003 and math.abs(c[3] - want[3]) < 0.003 end
+  if not (d and d.line and d.shadow) then print("FAIL the main window has no divider") else
+    local p1, p2 = d.line.pts[1], d.line.pts[2]
+    if not (p1 and p2 and p1[1] == "TOPLEFT" and p1[2] == f.menu and p1[3] == "TOPRIGHT" and p2[1] == "BOTTOMLEFT" and p2[2] == f.menu and p2[3] == "BOTTOMRIGHT" and p1[4] >= 0 and p1[5] == 0 and p2[5] == 0) then
+      print("FAIL the divider hugs the menu's right edge for its full height") end
+    local cp = f.content.pts[1]
+    if not (cp and cp[2] == f.menu and cp[4] > p1[4] + 3) then print("FAIL the divider (with its shadow) fits in the gap before the page") end
+    CRT.db.ui.theme, CRT.db.ui.modern = "blizzard", false UI:ApplyStyle()
+    local c = d.line.color
+    if not (d.line.w == 2 and d.line.shown ~= false and c and c[1] > c[3] and c[1] < 0.7 and d.shadow.shown and d.shadow.w == 1 and d.shadow.color[1] < c[1]) then print("FAIL Default: Blizzard divider is a 2 px gold-brown line with a darker 1 px shadow") end
+    for _, key in ipairs({ "midnight", "nitro", "cowfee" }) do
+      CRT.db.ui.theme, CRT.db.ui.modern = key, true CRT:UseTheme(key) UI:ApplyStyle()
+      if not (d.line.w == 1 and not d.shadow.shown and near(d.line.color, CRT.THEMES[key].edge)) then print("FAIL " .. key .. " divider is 1 px in the edge colour") end
+    end
+    CRT.db.ui.theme, CRT.db.ui.modern = "blizzard", false CRT:UseTheme("blizzard") UI:ApplyStyle()
+    if d.line.w ~= 2 then print("FAIL the divider repaints back to Blizzard") end
+    print("divider checked")
+  end
+end
 -- Minimize: this check was removed on the alerts branch before main gained UI:SetMinimized (2026-10-15);
 -- the minimize session should restore it here.
 -- Fade out over 2 seconds.
