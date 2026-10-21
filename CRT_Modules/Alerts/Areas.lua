@@ -6,7 +6,7 @@ local ADDON, CRT = ...
 --
 --   Areas.New(def) -> area, with def = {
 --     key              names the area: its frame is CowfeeRaidToolsAlert<Key>, its preview "alert<key>"
---     output           the entry output it shows: "text", "icon", "circle" or "bar" (see Rules.Area)
+--     output           the entry output it shows: "text", "icon", "circle", "bar" or "timeline" (see Rules.Area)
 --     layer            its UI.LAYERS key
 --     title            its name, on the drag box
 --     settingsKey      its settings are CRT.db.alerts.areas[settingsKey]: shown, cap, grow, position, and
@@ -36,6 +36,11 @@ local ADDON, CRT = ...
 --                      (lines beyond the cap included), such as for a "+N more" line
 --     align(s)         -> "LEFT", "CENTER" or "RIGHT": with grow up or down, the widgets line up on that
 --                      edge of a box HANDLE_MIN_WIDTH wide around the saved center
+--   Optional, for an area that places its widgets itself (the timeline):
+--     layout(area, n, now, s) -> width, height, below: called after every draw, even with nothing to show,
+--                      instead of the grow chain. It anchors area.pool[1..n] itself and gives the area's
+--                      size (centered on the saved position) and whether the drag box sits below it.
+--     noGrow           true: the settings have no Grow row (the area has its own direction)
 --     space(s, frame)  -> gap, inset: the space between two widgets' borders and the width of the border
 --                      each draws outside itself (the bars' Spacing and Border); default GAP and 0. Two
 --                      widgets' frames are gap + 2 * inset apart, and the area takes the border in.
@@ -582,6 +587,7 @@ local function buildCommon(panel)
             end,
         }),
     }
+    panel.growRow = panel.common[3]
     for _, row in ipairs(panel.common) do
         row:Hide()
     end
@@ -612,8 +618,13 @@ function Panel:Select(area)
     end
     local y = 0
     for _, row in ipairs(self.common) do
-        self:Place(row, y)
-        y = y - ROW_HEIGHT
+        -- an area with its own direction (def.noGrow) has no Grow row
+        if row == self.growRow and area.def.noGrow then
+            row:Hide()
+        else
+            self:Place(row, y)
+            y = y - ROW_HEIGHT
+        end
     end
     -- A colour row after another goes beside it while both fit the panel's width, so the rows fit the tab.
     local colorW = PANEL_LABEL_WIDTH + COLOR_GAP + COLOR_SWATCH
@@ -645,10 +656,12 @@ function Areas.Panel(parent, onChange)
     local frame = CreateFrame("Frame", nil, parent)
     frame:SetSize(PANEL_WIDTH, ROW_HEIGHT)
     local panel = setmetatable({ frame = frame, rows = {}, cursor = 0, onChange = onChange }, Panel)
+    -- the rows' width with a (?) after a control: what a parent that clips the panel must leave room for
+    panel.fullWidth = PANEL_WIDTH + HELP_GAP + (UI.HELP_SIZE or 20)
     return panel
 end
 
--- The area with this key ("icons", "texts", "bars" or "circles"), or nil.
+-- The area with this key ("icons", "texts", "bars", "circles" or "timeline"), or nil.
 function Areas.Find(key)
     for _, area in ipairs(Areas.list) do
         if area.def.key == key then
@@ -827,11 +840,13 @@ function Area:Draw(lines, now, s, more)
             end
         end
         def.draw(w, line, now, s, at)
-        w:ClearAllPoints()
-        if i == 1 then
-            w:SetPoint(point, frame, point, ix, iy)
-        else
-            w:SetPoint(point, pool[i - 1], relative, g[3] * step, g[4] * step)
+        if not def.layout then
+            w:ClearAllPoints()
+            if i == 1 then
+                w:SetPoint(point, frame, point, ix, iy)
+            else
+                w:SetPoint(point, pool[i - 1], relative, g[3] * step, g[4] * step)
+            end
         end
         w:Show()
         Areas.Glow(w, line.glow == true and now >= line.at)
@@ -854,7 +869,15 @@ function Area:Draw(lines, now, s, more)
 
     self.count = n
     self.more = (more or 0) + (#lines - n)
-    if n > 0 then
+    local below = grow == "up"
+    if def.layout then
+        -- the area places its widgets itself, and is the size it says
+        local width, height
+        width, height, below = def.layout(self, n, now, s)
+        frame:SetSize(width, height)
+        self.handle:SetWidth(math.max(self.handleMin or HANDLE_MIN_WIDTH, width))
+        below = below and true or false
+    elseif n > 0 then
         -- The area is the first widget's size and its border, so that widget sits on the saved center. With an
         -- alignment it is as wide as the drag box, so the aligned edge stays put as the texts change.
         local width, height = pool[1]:GetWidth(), pool[1]:GetHeight()
@@ -866,7 +889,6 @@ function Area:Draw(lines, now, s, more)
         self.handle:SetWidth(math.max(self.handleMin or HANDLE_MIN_WIDTH, width))
     end
     -- The drag box sits on the side the widgets don't grow into.
-    local below = grow == "up"
     if self.handleBelow ~= below then
         self.handleBelow = below
         self.handle:ClearAllPoints()

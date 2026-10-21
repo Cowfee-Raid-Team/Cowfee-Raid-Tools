@@ -117,6 +117,7 @@ CRT_Modules\Alerts\Bars.lua
 CRT_Modules\Alerts\Texts.lua
 CRT_Modules\Alerts\Icons.lua
 CRT_Modules\Alerts\Circles.lua
+CRT_Modules\Alerts\TimelineArea.lua
 CRT_Modules\Alerts\Draft.lua
 CRT_Modules\Alerts\SpellLookup.lua
 CRT_Modules\Alerts\Editor.lua

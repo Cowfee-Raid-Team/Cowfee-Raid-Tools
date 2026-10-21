@@ -43,12 +43,13 @@ local TEXT = {
     showOnTimeline = "Show on the Timeline",
     notOnTimeline = "That mechanic isn't on the Timeline for this boss yet.",
     showAs = "Show as",
-    showAsHelp = "Where the alert shows: the Next spell alert, the alert areas (Text, Icon, Bar, Circle), and whether it is read out. Alert Settings sets how each area looks.",
+    showAsHelp = "Where the alert shows: the Next spell alert, the alert areas (Text, Icon, Bar, Circle, Alert timeline), and whether it is read out. Alert Settings sets how each area looks.",
     nextSpell = "Next spell alert",
     showText = "Text",
     showIcon = "Icon",
     bar = "Bar",
     circle = "Circle",
+    timeline = "Alert timeline",
     also = "Also",
     speak = "Speak the text",
     count = "Count down 3 2 1",
@@ -1114,7 +1115,7 @@ local function buildPanel(f)
     heading(p, TEXT.showAs, L.INSET, L.COL_Y, TEXT.showAsHelp)
     panel.checks = {}
     for _, spec in ipairs({ { "alert", TEXT.nextSpell, 0, 1 }, { "text", TEXT.showText, 1, 1 }, { "icon", TEXT.showIcon, 2, 1 },
-        { "bar", TEXT.bar, 0, 2 }, { "circle", TEXT.circle, 1, 2 } }) do
+        { "bar", TEXT.bar, 0, 2 }, { "circle", TEXT.circle, 1, 2 }, { "timeline", TEXT.timeline, 2, 2 } }) do
         local key = spec[1]
         local x = L.INSET - 4 + spec[3] * (spec[3] == 2 and L.CHECK_STEP_NARROW or L.CHECK_STEP)
         panel.checks[key] = makeCheck(p, spec[2], x, L.COL_Y - 20 - (spec[4] - 1) * 26, change(function(on)

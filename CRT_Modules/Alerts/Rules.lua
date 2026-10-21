@@ -3,7 +3,7 @@ local ADDON, CRT = ...
 -- The conflict rules for alerts: which entries show, which merge into one line, and what is due now.
 -- Pure functions with no game calls, so the engine, speech queue and bars all share one set of rules.
 -- An entry is { block, id, at, spellID, text, icon, color, priority, hold, warn, glow, sound,
---               outputs = { alert, bar, speech, text, icon, circle }, speech = { { at, text } } },
+--               outputs = { alert, bar, speech, text, icon, circle, timeline }, speech = { { at, text } } },
 -- with `at` the GetTime() it is due.
 -- A line is an entry plus `members`, the original entries it stands for. Blocks never compete with
 -- each other: duplicates and grouping only apply inside one block listed in `groupBlocks`.
@@ -46,7 +46,7 @@ local function dupKey(e)
     return "t" .. tostring(e.text)
 end
 
-local OUTPUTS = { "alert", "bar", "speech", "text", "icon", "circle" }
+local OUTPUTS = { "alert", "bar", "speech", "text", "icon", "circle", "timeline" }
 
 -- A line standing for one entry, copied so the input is never changed.
 local function newLine(e)
@@ -132,7 +132,7 @@ function Rules.Bars(lines, now, ahead, cap)
     return out, #list - #out
 end
 
--- Lines for the text, icon and circle areas: those with `output` on, from `warn` seconds before they are
+-- Lines for the text, icon, circle and timeline areas: those with `output` on, from `warn` seconds before they are
 -- due until `hold` seconds after, soonest first, at most `cap`. Second value: how many were left out.
 function Rules.Area(lines, now, output, cap)
     local list = {}

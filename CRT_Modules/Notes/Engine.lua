@@ -382,6 +382,7 @@ function Engine.ItemFor(t, index, mine)
             icon = show.icon and true or false,
             bar = show.bar and true or false,
             circle = show.circle and true or false,
+            timeline = show.timeline and true or false,
             speech = speaks,
         }
         item.warn = t.warn or s.seconds or 10
@@ -403,7 +404,7 @@ function Engine.ItemFor(t, index, mine)
     -- Where else the player sends their own note lines (Raid Notes > Alerts); each is off unless chosen,
     -- so the outputs stay as they were for anyone who has not.
     local routing = type(settings.noteLines) == "table" and settings.noteLines or {}
-    for _, area in ipairs({ "text", "icon", "circle" }) do
+    for _, area in ipairs({ "text", "icon", "circle", "timeline" }) do
         if routing[area] then
             item.outputs[area] = true
         end
