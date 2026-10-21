@@ -987,6 +987,16 @@ function Methods:ReminderSource(r)
     return ref, self.group
 end
 
+-- Whether a note or reminder of difficulty d (a Difficulty line's text, nil for any) shows on this view,
+-- as the alerts' difficulty check runs it in a pull: any difficulty does, and one of its own only on a
+-- view of its difficulty group (a view with no group shows everything).
+function Methods:ShowsDifficulty(d)
+    if not (self.group and type(d) == "string" and d ~= "") then
+        return true
+    end
+    return CRT.Timeline:GroupFor(d) == self.group
+end
+
 function Methods:ReminderTimes(encounterID, r)
     local ref, group = self:ReminderSource(r)
     return CRT.AlertReminders:Times(encounterID, r, ref, group)
@@ -1199,7 +1209,7 @@ function Methods:NoteAndReminderMarks(lanes, length)
     end
     if Notes and Notes.List then
         for _, n in ipairs(Notes:List()) do
-            if n.record.encounterID == encounterID and runs[n.id] then
+            if n.record.encounterID == encounterID and runs[n.id] and self:ShowsDifficulty(n.record.difficulty) then
                 local note = Notes:Parsed(n.id)
                 local rawLines = Notes:RawLines(n.id) -- the lines as drawn, so a move can tell one has changed
                 for _, timer in ipairs(note and note.timers or {}) do
@@ -1213,7 +1223,8 @@ function Methods:NoteAndReminderMarks(lanes, length)
     end
     for _, e in ipairs(Reminders:List(encounterID)) do
         -- a reminder turned off (its tick on Mech Alerts) doesn't fire, so it isn't drawn either
-        if e.r.enabled ~= false then
+        -- nor one of another difficulty group than the view's
+        if e.r.enabled ~= false and self:ShowsDifficulty(e.r.difficulty) then
             for index, at in ipairs((self:ReminderTimes(encounterID, e.r))) do
                 add({ ph = at.ph, time = at.t, mine = true, encounterID = encounterID, id = e.id, index = index,
                     kind = "mine" }, e.r.spellID, e.r.text, e.r.iconID)

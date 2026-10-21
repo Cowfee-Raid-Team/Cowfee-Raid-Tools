@@ -369,7 +369,8 @@ function Draft.SaveMine(ctx, draft)
             return false, TEXT.stale
         end
     end
-    local id = Reminders:Save(encounterID, ctx.id, Draft.BuildReminder(ctx, draft))
+    -- the group the editor's casts line showed, so typed times land on that row (Reminders:Save)
+    local id = Reminders:Save(encounterID, ctx.id, Draft.BuildReminder(ctx, draft), Draft.PreviewGroup(draft))
     if not id then
         return false, TEXT.saveFailed
     end

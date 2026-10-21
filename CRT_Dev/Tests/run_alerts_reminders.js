@@ -97,7 +97,8 @@ end
 
 do
   fresh()
-  local id = R:Save(3001, nil, { boss = NEK, text = "Soulcoil Rite", times = "P1 0:30" })
+  -- your own reminder (its text names no ability row) keeps typed times
+  local id = R:Save(3001, nil, { boss = NEK, text = "Soak call", times = "P1 0:30" })
   assert(id == 1 and CRT.db.alerts.nextId == 2 and R:Get(3001, id).warn == 5 and R:Get(3001, id).speech == "text"
     and R:Get(3001, id).enabled == true and R:Get(3001, id).priority == "normal", "save defaults")
   R:Save(3001, nil, { boss = NEK, text = "Soulcoil Rite", spellID = 0 })
@@ -362,7 +363,7 @@ do
   print("ok one source: the alert's time left equals the cast bar's")
 end
 
--- Typed times on a boss ability's alert move onto its casts once, kept aside, never deleted
+-- Typed times on a boss ability's alert move onto its casts once, out of combat after login, kept aside
 do
   fresh()
   local said = {}
@@ -373,13 +374,29 @@ do
       priority = "normal", spellID = 1284103, outputs = { bar = true, alert = true } },
     -- one time near a cast, one near none (5:00: the casts are at 2:58 and 8:13)
     [5] = { text = "Possession Barrage", boss = NEK, times = "P1 1:13, 5:00", spellID = 1284103 },
-    -- your own reminder (no spell) keeps its typed times
+    -- your own reminder (no spell, its text names no row) keeps its typed times
     [6] = { text = "Gate", boss = NEK, times = "P1 0:10.8" },
+    -- no spell, but named after a spell-less row ("Soulcoil Rite" has none in this Journal): it follows too
+    [7] = { text = "Soulcoil Rite", boss = NEK, times = "P1 1:16" },
   } }
-  CRT.db.alerts.nextId = 7
-  R.ResetMigration()
-  R:List(3001)
+  CRT.db.alerts.nextId = 8
   local all = CRT.db.alerts.reminders[3001]
+  -- never at a pull: a run reads the reminders without moving anything
+  R.ResetMigration()
+  A:Start(3001, "Mythic", "encounter", { difficultyID = 16 })
+  A:Stop(true)
+  assert(all[4].times == "P1 0:33" and all[4].timesMigrated == nil, "nothing moved at the pull")
+  -- in combat it waits; out of combat it runs once, quietly for undo, then fires the change event
+  local quietRuns, fired = 0, 0
+  CRT.TimelineUndo = { Quietly = function(_, fn) quietRuns = quietRuns + 1 fn() end }
+  local stop = A:OnChange(function() fired = fired + 1 end)
+  InCombatLockdown = function() return true end
+  R.MigratePass()
+  assert(all[4].times == "P1 0:33" and quietRuns == 0, "waits for combat to end")
+  InCombatLockdown = function() return false end
+  R.MigratePass()
+  assert(quietRuns == 1 and fired >= 1, "ran once, outside undo, and fired: " .. quietRuns .. " " .. fired)
+  CRT.TimelineUndo = nil
   local a = all[4]
   assert(a.times == nil and a.timesBackup == "P1 0:33" and a.timesMigrated == true, "kept aside: " .. tostring(a.timesBackup))
   assert(a.shifts == nil and a.timesUnmatched == nil, "0:33 snaps onto the 0:36 cast, no shift")
@@ -387,26 +404,65 @@ do
   local list, source = R:Times(3001, a)
   assert(source == "reference" and #list == 8 and list[1].t == 36 and list[1].shift == nil and list[2].t == 72,
     "follows every cast of the timeline, on the casts: " .. #list .. " " .. tostring(list[1] and list[1].t))
+  assert(list[1].key == "P1@0:36" and list[6].key == "P2@0:53", "stable keys: " .. tostring(list[1].key) .. " " .. tostring(list[6].key))
   assert(R.FormatCasts(list):find("^P1 0:36, 1:12, ") ~= nil, "the list: the casts: " .. R.FormatCasts(list))
-  -- a shift only comes from dragging a flag afterwards, and the list shows it
+  -- a shift only comes from dragging a flag afterwards, for that group and cast, and the list shows it
   assert(R:SetTime(3001, 4, 1, 1, 33), "dragged")
-  local moved = R:Times(3001, all[4])
-  assert(all[4].shifts[1] == -3 and moved[1].t == 33 and R.FormatCasts(moved):find("^P1 0:33 %(%-3 s%), 1:12, ") ~= nil, "a dragged shift: " .. R.FormatCasts(moved))
   all = CRT.db.alerts.reminders[3001]
+  local moved = R:Times(3001, all[4])
+  assert(all[4].shifts.mythic["P1@0:36"] == -3 and moved[1].t == 33 and R.FormatCasts(moved):find("^P1 0:33 %(%-3 s%), 1:12, ") ~= nil,
+    "a dragged shift: " .. R.FormatCasts(moved))
   local b = all[5]
   assert(b.timesBackup == "P1 1:13, 5:00" and b.shifts == nil and b.timesUnmatched == "P1 5:00", "one snapped, one kept as unmatched")
   assert(#said == 1 and said[1]:find("Possession Barrage", 1, true) and said[1]:find("5:00", 1, true), "said once in chat: " .. tostring(said[1]))
   assert(all[6].times == "P1 0:10.8" and all[6].timesBackup == nil and all[6].timesMigrated == nil, "your own reminder untouched")
+  assert(all[7].times == nil and all[7].timesBackup == "P1 1:16" and #R:Times(3001, all[7]) == 6, "a spell-less row's alert follows its casts")
   -- only once
+  R.MigratePass()
   R.ResetMigration()
-  R:List(3001)
-  assert(#said == 1 and all[4].timesBackup == "P1 0:33" and all[4].shifts[1] == -3, "nothing moves twice, the drag kept")
-  -- a time saved onto an ability later (a double-click on a cast) becomes a shift the same way
-  local id = R:Save(3001, nil, { text = "Possession Barrage", boss = NEK, spellID = 1284103, times = "P1 1:47" })
+  R.MigratePass()
+  assert(#said == 1 and all[4].timesBackup == "P1 0:33" and all[4].shifts.mythic["P1@0:36"] == -3, "nothing moves twice, the drag kept")
+  -- Save never loses typed times: on the caller's group's row, the rest kept and said, timesBackup only added to
+  local id = R:Save(3001, nil, { text = "Possession Barrage", boss = NEK, spellID = 1284103, times = "P1 1:47" }, "mythic")
   local n = R:Get(3001, id)
-  assert(n.times == nil and n.shifts == nil and #R:Times(3001, n) == 8, "on the 1:47 cast: no shift, every cast")
+  assert(n.times == nil and n.shifts == nil and n.timesBackup == "P1 1:47" and #R:Times(3001, n) == 8, "on the 1:47 cast: no shift, every cast")
+  local again = {}
+  for k, v in pairs(n) do again[k] = v end
+  again.times = "P1 4:00"
+  R:Save(3001, id, again, "mythic")
+  n = R:Get(3001, id)
+  assert(n.timesBackup == "P1 1:47; P1 4:00" and n.timesUnmatched == "P1 4:00" and #said == 2, "added, never overwritten: " .. tostring(n.timesBackup))
   CRT.Print = nil
   print("ok typed times on an ability move onto its casts once")
+end
+
+-- Shifts and turned-off casts are per difficulty group and per cast, by the cast's written time in its phase
+do
+  fresh()
+  CRT.db.timeline.references, CRT.db.timeline.nextRef = {}, 1
+  local key = CRT.TimelineReference:Add(table.concat({ "Boss: " .. NEK, "Difficulty: Heroic", "Length: 9:48",
+    "Possession Barrage (type falloff): 0:33, 1:12, 2:00" }, "\\n"))
+  local id = R:Save(3001, nil, { text = "Possession Barrage", boss = NEK, spellID = 1284103 })
+  -- a drag on Heroic's 1:12 cast
+  assert(R:SetTime(3001, id, 2, 1, 70, nil, "nh"), "dragged on Heroic")
+  local r = R:Get(3001, id)
+  assert(r.shifts.nh["P1@1:12"] == -2 and r.shifts.mythic == nil, "Heroic's own: " .. tostring(r.shifts.nh["P1@1:12"]))
+  local function at(group, i) return R:Times(3001, R:Get(3001, id), nil, group)[i].t end
+  assert(at("nh", 2) == 70 and at("mythic", 2) == 72, "Mythic's 1:12 cast as it was")
+  assert(R:RemoveTime(3001, id, 3, nil, "mythic"), "a Mythic cast off")
+  assert(#R:Times(3001, R:Get(3001, id), nil, "mythic") == 7 and #R:Times(3001, R:Get(3001, id), nil, "nh") == 3, "off on Mythic only")
+  -- a season update adds a cast before it: the shift stays on the 1:12 cast
+  CRT.TimelineReference:Update(key, table.concat({ "Boss: " .. NEK, "Difficulty: Heroic", "Length: 9:48",
+    "Possession Barrage (type falloff): 0:20, 0:33, 1:12, 2:00" }, "\\n"))
+  local list = R:Times(3001, R:Get(3001, id), nil, "nh")
+  assert(#list == 4 and list[1].t == 20 and list[2].t == 33 and list[3].t == 70 and list[3].shift == -2, "the shift stayed on its cast")
+  -- a reminder on any difficulty is matched against both groups' rows: 2:58 is only Mythic's cast
+  local anyR = { text = "Possession Barrage", boss = NEK, spellID = 1284103, times = "P1 2:58, 0:34" }
+  assert(R.MigrateOne(3001, anyR) == nil and anyR.timesUnmatched == nil and anyR.timesBackup == "P1 2:58, 0:34", "both matched")
+  local heroicOnly = { text = "Possession Barrage", boss = NEK, spellID = 1284103, times = "P1 2:58", difficulty = "Heroic" }
+  assert(R.MigrateOne(3001, heroicOnly) == "P1 2:58", "a Heroic reminder: Heroic's row only")
+  CRT.db.timeline.references = {}
+  print("ok shifts and off are per group and per cast")
 end
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }

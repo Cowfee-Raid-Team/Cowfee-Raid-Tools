@@ -1851,7 +1851,7 @@ do
   -- a saved one, with a dragged shift and a cast turned off, on Mythic
   local id = R:Save(ENC, nil, { spellID = 777, text = "Ability", boss = "Test Boss", difficulty = "Mythic" })
   local saved = R:Get(ENC, id)
-  saved.shifts, saved.off = { [1] = 2 }, { [2] = true }
+  saved.shifts, saved.off = { mythic = { ["P1@0:30"] = 2 } }, { mythic = { ["P2@0:20"] = true } }
   E:Open(ENC, id)
   assert(w.castsText.text == "Casts: P1 0:32 (+2 s); P2 +0:20 (off)", "shifts and on/off: " .. tostring(w.castsText.text))
   assert(w.sourceText.text == "", "no second line beside them")
