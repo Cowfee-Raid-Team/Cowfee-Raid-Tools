@@ -77,6 +77,7 @@ g "lootmaster windows" && { node run_lootmaster_windows.js "$W" 2>&1 | tail -8; 
 g "lootmaster popup" && { node run_lootmaster_popup.js "$W" 2>&1 | tail -12; echo "exit ${PIPESTATUS[0]}"; }
 g "lootmaster filter" && { node run_lootmaster_filter.js "$W" 2>&1 | tail -6; echo "exit ${PIPESTATUS[0]}"; }
 g "debuffs" && { node run_debuffs.js "$W" 2>&1 | tail -12; echo "exit ${PIPESTATUS[0]}"; }
+g "consumables dock" && { node run_consumables_dock.js "$W" 2>&1 | tail -12; echo "exit ${PIPESTATUS[0]}"; }
 g "late data" && { node run_late.js "$W/CRT_Modules/Late/Data.lua" 2>&1 | tail -6; echo "exit ${PIPESTATUS[0]}"; }
 g "late page" && { node run_latepage.js "$W/CRT_Modules/Late/Data.lua" "$W/CRT_Modules/Late/Page.lua" 2>&1 | tail -2; echo "exit ${PIPESTATUS[0]}"; }
 g "groups extras" && { node run_groups_extras.js "$W" 2>&1 | tail -2; echo "exit ${PIPESTATUS[0]}"; }
