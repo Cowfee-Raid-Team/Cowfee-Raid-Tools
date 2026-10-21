@@ -20,8 +20,16 @@ local LAYOUTS = {
     { key = "column", label = "Column (top to bottom)" },
     { key = "grid", label = "Grid (rows of four)" },
 }
-local DEFAULT = { name = "Marker display", slots = 4, layout = "row", iconSize = 40, number = true, names = true, clearGap = 10, clearFull = 0, clearPhase = false }
-local FIELDS = { "name", "slots", "layout", "iconSize", "number", "names", "clearGap", "clearFull", "clearPhase" }
+local HIDDEN = {
+    { key = "fill", label = "Fill a slot for any message" },
+    { key = "ignore", label = "Ignore hidden messages" },
+}
+local HIDDEN_HELP = "In a raid and during a boss fight, the game hides chat text from addons. The addon can't read it, so it can't tell a marker from a typo.\n\n"
+    .. "Fill a slot for any message: every group chat message fills a slot. Its marker codes still show as icons, but any other text shows too.\n\n"
+    .. "Ignore hidden messages: hidden messages fill nothing. Inside a raid the text is always hidden, so the display stays empty there.\n\n"
+    .. "When the text can be read, only a marker code fills a slot, and only its icon shows."
+local DEFAULT = { name = "Marker display", slots = 4, layout = "row", iconSize = 40, number = true, names = true, clearGap = 10, clearFull = 0, clearPhase = false, hidden = "fill" }
+local FIELDS = { "name", "slots", "layout", "iconSize", "number", "names", "clearGap", "clearFull", "clearPhase", "hidden" }
 
 local win
 local controls = {}
@@ -74,8 +82,8 @@ end
 
 local function exportText()
     local d = draft
-    local line = string.format('[%d] = { name = %q, slots = %d, layout = %q, iconSize = %d, number = %s, names = %s, clearGap = %d, clearFull = %d, clearPhase = %s },',
-        bossID or 0, d.name or "", d.slots, d.layout, d.iconSize, tostring(d.number), tostring(d.names), d.clearGap, d.clearFull, tostring(d.clearPhase))
+    local line = string.format('[%d] = { name = %q, slots = %d, layout = %q, iconSize = %d, number = %s, names = %s, clearGap = %d, clearFull = %d, clearPhase = %s, hidden = %q },',
+        bossID or 0, d.name or "", d.slots, d.layout, d.iconSize, tostring(d.number), tostring(d.names), d.clearGap, d.clearFull, tostring(d.clearPhase), d.hidden or DEFAULT.hidden)
     local macros = {}
     for i = 1, 8 do
         macros[#macros + 1] = "/raid {rt" .. i .. "}"
@@ -131,7 +139,7 @@ end
 local function build()
     win = CreateFrame("Frame", "CowfeeRaidToolsMarkerEditor", UIParent, "BasicFrameTemplateWithInset")
     UI:StyleWindow(win)
-    win:SetSize(420, 520)
+    win:SetSize(420, 550)
     win:SetPoint("CENTER")
     UI:RegisterLayer("popups", win)
     win:SetMovable(true)
@@ -186,8 +194,18 @@ local function build()
     slider("After the last slot fills", "clearFull", 0, 60, -308, seconds)
     check("When a new phase starts", "clearPhase", -344)
 
+    local hiddenRow = add(UI.Dropdown(win, "When chat is hidden", { options = HIDDEN, labelWidth = 150, width = 200,
+        get = function()
+            return draft.hidden
+        end,
+        set = function(key)
+            draft.hidden = key
+        end }), -380)
+    local hiddenHelp = UI.Help(win, "When chat is hidden", HIDDEN_HELP)
+    hiddenHelp:SetPoint("LEFT", hiddenRow, "RIGHT", 4, 0)
+
     win.status = win:CreateFontString(nil, "OVERLAY", "CRTFontDisableSmall")
-    win.status:SetPoint("TOPLEFT", 14, -380)
+    win.status:SetPoint("TOPLEFT", 14, -416)
     win.status:SetWidth(390)
     win.status:SetJustifyH("LEFT")
 
