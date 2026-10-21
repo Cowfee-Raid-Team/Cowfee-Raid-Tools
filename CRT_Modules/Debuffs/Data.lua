@@ -12,7 +12,9 @@ local ADDON, CRT = ...
 --   A reverse option existed until 0.13.0, includeRegular (the old optional second row) until the
 --   AuraContainer became the panel, and dispelBorder (a box for the border colored by dispel type)
 --   until the frame always took that color. Their saved values may remain and are ignored.
---   position = { point, relativePoint, x, y } once the panel has been moved.
+--   position = { point, relativePoint, x, y } once the panel has been moved. Panel.lua saves it from
+--   the corner the row grows from (TOPLEFT or TOPRIGHT) and turns one saved at any other point into
+--   that corner the first time it applies it.
 -- Each player has their own copy in their own saved variables, so nothing is shared between players.
 
 local Debuffs = { listeners = {} }
