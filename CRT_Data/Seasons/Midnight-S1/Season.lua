@@ -30,5 +30,5 @@ CRT.Bosses:Season({
             },
         },
     },
-    -- The season's other data has a file per topic in this folder (Bosses:SeasonData): GearChecks.lua.
+    -- The season's other data has a file per topic in this folder (Bosses:SeasonData): GearChecks.lua, Tracks.lua.
 })

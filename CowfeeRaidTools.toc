@@ -134,6 +134,7 @@ CRT_Core\UI\Minimap.lua
 CRT_Core\UI\SettingsPage.lua
 CRT_Data\Seasons\Midnight-S1\Season.lua
 CRT_Data\Seasons\Midnight-S1\GearChecks.lua
+CRT_Data\Seasons\Midnight-S1\Tracks.lua
 CRT_Data\Seasons\Midnight-S1\NekzaliTheSoulcoiler.lua
 CRT_Data\Seasons\Midnight-S1\Sszorak.lua
 CRT_Data\Seasons\Midnight-S1\EntombedSentinels.lua

@@ -66,7 +66,7 @@ end
 -- Season data that isn't about one boss: one file per topic in the pack's folder (Seasons/<pack>/<Topic>.lua),
 -- each a Bosses:SeasonData(seasonKey, topic, data) call, listed in the .toc after the pack's Season.lua and before its boss files
 -- (the store works in any order, but every pack keeps this one).
--- Each topic is read through its own accessor below (GearChecks), never by name in feature code. A pack
+-- Each topic is read through its own accessor below (GearChecks, Tracks), never by name in feature code. A pack
 -- may also write a topic as a field of its Season.lua; the topic file wins.
 function Bosses:SeasonData(seasonKey, topic, data)
     assert(type(seasonKey) == "string" and type(topic) == "string", "season data needs a season key and a topic")
@@ -93,6 +93,12 @@ end
 -- so a new season brings its own and no feature code names a slot rule or a season item.
 function Bosses:GearChecks()
     return self:Topic("gearChecks")
+end
+
+-- The current season's upgrade tracks (topic tracks: the tracks in order, lowest first, and which bonus ID
+-- puts an item on which track and rank), for the Gear Checker; nil when the season has none.
+function Bosses:Tracks()
+    return self:Topic("tracks")
 end
 
 function Bosses:Get(encounterID)
