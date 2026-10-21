@@ -34,7 +34,7 @@ CRT.Bosses:SeasonData("midnight-s1", "gearChecks", {
             kind = "itemIds",
             severity = "info",
             ids = {
-                -- TODO ids: ask Alex or /crt dev probe
+                -- TODO ids: ask Alex or /crt dev gear
                 -- (/crt dev gear prints each item's ID and bonus IDs; then check kind, severity and help fit)
             },
         },
@@ -45,7 +45,7 @@ CRT.Bosses:SeasonData("midnight-s1", "gearChecks", {
             kind = "itemIds", -- change to bonusIds if a voidcore shows as a bonus ID on the item
             severity = "info",
             ids = {
-                -- TODO ids: ask Alex or /crt dev probe
+                -- TODO ids: ask Alex or /crt dev gear
                 -- (/crt dev gear prints each item's ID and bonus IDs; then check kind, severity and help fit)
             },
         },

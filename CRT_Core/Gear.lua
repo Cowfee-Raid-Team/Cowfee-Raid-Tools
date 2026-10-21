@@ -22,6 +22,7 @@ local ADDON, CRT = ...
 --   Gear.Sockets(itemString)      how many sockets the item has
 --   Gear.IsWeapon(equipLoc), Gear.AverageLevel(pieces)   a weapon's equip location; the equipped item level
 --   Gear.ShowTooltip(owner, piece, anchor)   the exact item when its item string is known, else by ID
+--   Gear.QualityColor(quality)    the game's r, g, b for an item quality (Enum.ItemQuality), or nil
 --
 -- Game calls (warcraft.wiki.gg, read 2026-10-20): GetInventoryItemLink(unit, slot) -> link or nil;
 -- GetInventoryItemID(unit, slot) -> id or nil; C_Item.GetDetailedItemLevelInfo(link) -> actual item level
@@ -545,4 +546,24 @@ function Gear.ShowTooltip(owner, piece, anchor)
     end
     GameTooltip:Show()
     return exact
+end
+
+-- The game's colour for an item quality (Enum.ItemQuality): ColorManager.GetColorDataForItemQuality(quality)
+-- (12.0, in pcall), else the older ITEM_QUALITY_COLORS table. Returns r, g, b, or nil for a quality the game
+-- has no colour for, or a secret one (never looked up).
+function Gear.QualityColor(quality)
+    if type(quality) ~= "number" or (issecretvalue and issecretvalue(quality)) then
+        return nil
+    end
+    local get = ColorManager and ColorManager.GetColorDataForItemQuality
+    local c
+    if get then
+        local ok, data = pcall(get, quality)
+        c = ok and data or nil
+    end
+    c = c or (ITEM_QUALITY_COLORS and ITEM_QUALITY_COLORS[quality])
+    if type(c) == "table" and c.r then
+        return c.r, c.g, c.b
+    end
+    return nil
 end

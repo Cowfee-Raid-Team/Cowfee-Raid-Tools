@@ -364,6 +364,21 @@ THEIRS[3] = nil
 eq(Gear:Mine(1) and Gear:Mine(1).id or nil, nil, "read unit: your own cache is untouched")
 eq(#Gear:ReadUnit(nil), 0, "read unit: no unit")
 
+-- the game's colour for an item quality: ColorManager first, else ITEM_QUALITY_COLORS, else nil
+ITEM_QUALITY_COLORS = { [4] = { r = 0.64, g = 0.21, b = 0.93 } }
+local qr, qg, qb = Gear.QualityColor(4)
+eq(qr .. "/" .. qg .. "/" .. qb, "0.64/0.21/0.93", "quality colour: the game's table when there is no ColorManager")
+eq(Gear.QualityColor(9), nil, "quality colour: an unknown quality has none")
+eq(Gear.QualityColor(nil), nil, "quality colour: no quality, none")
+ColorManager = { GetColorDataForItemQuality = function(q) return q == 4 and { r = 0.6, g = 0.2, b = 0.9 } or nil end }
+eq(select(1, Gear.QualityColor(4)), 0.6, "quality colour: ColorManager's when it has one")
+eq(select(1, Gear.QualityColor(4)), 0.6, "quality colour: the same again")
+ColorManager = { GetColorDataForItemQuality = function() error("not yet") end }
+eq(select(1, Gear.QualityColor(4)), 0.64, "quality colour: a ColorManager error falls back to the table")
+issecretvalue = function(v) return v == 4 end
+eq(Gear.QualityColor(4), nil, "quality colour: a secret quality is never looked up")
+issecretvalue, ColorManager, ITEM_QUALITY_COLORS = nil, nil, nil
+
 print(string.format("%d passed, %d failed", passes, fails))
 if fails > 0 then error("failures") end
 `;

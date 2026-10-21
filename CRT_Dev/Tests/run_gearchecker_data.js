@@ -11,7 +11,7 @@ const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate();
 lualib.luaL_openlibs(L);
 const harness = `
-local gearSrc, registrySrc, seasonSrc, gearChecksSrc, dataSrc, inspectSrc, commSrc = ...
+local gearSrc, registrySrc, seasonSrc, gearChecksSrc, tracksSrc, dataSrc, inspectSrc, commSrc = ...
 local fails, passes = 0, 0
 local function check(ok, what) if ok then passes = passes + 1 else fails = fails + 1 print("FAIL " .. what) end end
 local function eq(a, b, what) check(a == b, what .. " (got " .. tostring(a) .. ", want " .. tostring(b) .. ")") end
@@ -92,6 +92,7 @@ for name, src in pairs({ Gear = gearSrc }) do assert(load(src, name))("CowfeeRai
 assert(load(registrySrc, "Registry.lua"))("CowfeeRaidTools", CRT)
 assert(load(seasonSrc, "Season.lua"))("CowfeeRaidTools", CRT)
 assert(load(gearChecksSrc, "GearChecks.lua"))("CowfeeRaidTools", CRT)
+assert(load(tracksSrc, "Tracks.lua"))("CowfeeRaidTools", CRT)
 assert(load(dataSrc, "Data.lua"))("CowfeeRaidTools", CRT)
 assert(load(inspectSrc, "Inspect.lua"))("CowfeeRaidTools", CRT)
 assert(load(commSrc, "Comm.lua"))("CowfeeRaidTools", CRT)
@@ -359,10 +360,22 @@ check(shipped and type(shipped.checks) == "table" and #shipped.checks >= 2, "the
 check(shipped and shipped.enchant and shipped.enchant[1] == 1, "and its enchant rules, moved there from Season.lua")
 eq(#GC:SeasonChecks(), 0, "the shipped checks have no IDs yet: none is active")
 eq(#GC:Filters(), 4, "so no extra filters")
+local shippedTracks = B:Tracks()
+check(shippedTracks and type(shippedTracks.list) == "table" and #shippedTracks.list >= 5, "the season's tracks topic lists its tracks")
+local tl = {}
+for _, t in ipairs(shippedTracks and shippedTracks.list or {}) do
+  tl[#tl + 1] = t.letter
+  check(type(t.key) == "string" and type(t.label) == "string" and (type(t.quality) == "number" or type(t.color) == "table"), "shipped track " .. tostring(t.key) .. ": a key, a label and a colour")
+end
+eq(table.concat(tl), "EAVCHM", "the shipped tracks, lowest first")
+eq(shippedTracks and next(shippedTracks.bonus), nil, "the shipped bonus ID map is empty until filled from the game")
+check(not GC:Tracks().usable and GC:FilterKey("below") == "all", "so no Below chip yet")
 -- a season with no gear rules at all
 B.seasons["midnight-s1"].current = false
 B:Season({ key = "test-s8", name = "Plain", order = 8, current = true })
 eq(B:GearChecks(), nil, "a season without gear data: the accessor gives nothing")
+eq(B:Tracks(), nil, "nor tracks")
+check(GC:Tracks() and #GC:Tracks().list == 0 and not GC:Tracks().usable, "no tracks: an empty list")
 eq(#GC:SeasonChecks(), 0, "no checks")
 eq(#GC:Filters(), 4, "no extra filters")
 B.seasons["test-s8"].current = false
@@ -404,10 +417,13 @@ local function keys(r) local out = {} for _, c in ipairs(r.checks) do out[#out +
 -- itemIds, flagging each match
 r = GC.CheckSlot(1, piece(1, "item:101:7364", 280), R9, 280)
 eq(keys(r), "cursed", "itemIds: the item is one of them")
-eq(r.issues, 1, "itemIds: one issue")
-eq(GC.Problems(r), "Cursed", "itemIds: the check's label in the words")
-check(GC.CellShows(r, "check:cursed") and GC.CellShows(r, "issues") and not GC.CellShows(r, "check:glow") and not GC.CellShows(r, "enchants"), "itemIds: drawn under its own filter and Only issues only")
+eq(r.issues, 0, "info: a check to know about is no issue")
+eq(GC.Problems(r), nil, "info: not in the issue words (chat, whispers)")
+eq(GC.Notes(r), "Cursed", "info: the check's label in the note words")
+check(GC.CellShows(r, "check:cursed") and not GC.CellShows(r, "issues") and not GC.CellShows(r, "check:glow") and not GC.CellShows(r, "enchants"), "info: drawn under its own filter only, not Only issues")
 eq(GC.TopCheck(r).key, "cursed", "itemIds: the cell's tag")
+r = GC.CheckSlot(5, piece(5, bonusString(105, "", { 5001 }), 280), R9, 280)
+check(r.issues == 1 and GC.Problems(r) == "Glow" and GC.Notes(r) == nil, "a low check still counts, in the issue words")
 r = GC.CheckSlot(3, piece(3, "item:103", 280), R9, 280)
 check(keys(r) == "" and r.issues == 0 and GC.TopCheck(r) == nil, "itemIds: another item, no finding")
 r = GC.CheckSlot(1, { slot = 1, id = 101, ilvl = 280 }, R9, 280)
@@ -423,7 +439,7 @@ r = GC.CheckSlot(1, piece(1, "item:101:9999", 280), R9, 280)
 eq(keys(r), "cursed,rune", "enchantIds: an enchant not on the list")
 eq(GC.TopCheck(r).key, "rune", "the tag shows the most severe check (bad over info)")
 r = GC.CheckSlot(1, piece(1, "item:101::::::::90", 280), R9, 280)
-check(keys(r) == "cursed" and r.missingEnchant and r.issues == 2, "enchantIds: no enchant is the enchant rule's issue, not the check's")
+check(keys(r) == "cursed" and r.missingEnchant and r.issues == 1, "enchantIds: no enchant is the enchant rule's issue, not the check's (and cursed is info)")
 r = GC.CheckSlot(16, piece(16, "item:116:9999", 280), R9, 280)
 eq(keys(r), "", "enchantIds: only on the check's slots")
 -- missingBonus
@@ -444,7 +460,7 @@ remember("Quick", { piece(1, "item:101:7364", 289), piece(11, "item:111:7364", 2
 local q9 = rowNamed("Quick")
 eq(q9.checkHits.cursed, 1, "row: the cursed head")
 eq(q9.checkHits.pair, 1, "row: one of two of the pair is an issue")
-eq(q9.issues, 2, "row: both count in Issues")
+eq(q9.issues, 1, "row: the pair counts in Issues, the info check doesn't")
 check(not q9.slots[11].checks[1], "require: the ring itself is no issue")
 check(GC.CellShows(q9.slots[11], "check:pair") and not GC.CellShows(q9.slots[1], "check:pair"), "require: its filter draws the matching item")
 check(not GC.CellShows(q9.slots[11], "issues"), "require: the matching item is no issue on its own")
@@ -467,19 +483,104 @@ local qnames = names(GC:Rows("check:pair"))
 check(qnames:find("Quick", 1, true) ~= nil, "require: Quick under the check's filter")
 eq(names(GC:Rows("check:glow")), "", "a check nobody trips: no rows")
 local qt = GC.IssueLines(q9)
-eq(#qt, 2, "tooltip: a line per check issue")
-eq(qt[1].text .. "|" .. qt[1].kind, "Head |cffa335ee|Hitem:101:7364|h[Helm]|h|r 289 - Cursed|info", "tooltip: the slot's check, in its severity")
-eq(qt[2].text .. "|" .. qt[2].kind, "Pair: 1 of 2 worn|bad", "tooltip: the row's check last")
+eq(#qt, 1, "tooltip: a line per check issue, the info check not among them")
+eq(qt[1].text .. "|" .. qt[1].kind, "Pair: 1 of 2 worn|bad", "tooltip: the row's check")
+local qn = GC.NoteLines(q9)
+eq(#qn, 1, "not an issue: the info check")
+eq(qn[1].text .. "|" .. qn[1].kind, "Head |cffa335ee|Hitem:101:7364|h[Helm]|h|r 289 - Cursed|info", "not an issue: the slot's check, in its severity")
 local ql = GC.RaidLines(q9)
+eq(#ql, 1, "raid lines: no line for the info check")
 eq(ql[#ql], "[Quick] Pair: 1 of 2 worn", "raid lines: the row's check")
-eq(ql[1], "[Quick] Head |cffa335ee|Hitem:101:7364|h[Helm]|h|r 289 - Cursed", "raid lines: the slot's check")
 local qw = GC.WhisperLines(q9)
+eq(#qw, 1, "whisper: no line for the info check")
 eq(qw[#qw], "Gear check: Pair: 1 of 2 worn", "whisper: the row's check")
+check(GC.Passes(q9, "check:cursed"), "info: its own chip still lists the row")
+-- an info check short of its require: a note, not an issue
+B:SeasonData("test-s9", "gearChecks", { checks = { { key = "set", label = "Set", kind = "itemIds", ids = { 111, 112 }, require = 2, severity = "info", slots = { 11, 12 } } } })
+q9 = rowNamed("Quick")
+check(q9.issues == 0 and #q9.rowFindings == 1 and GC.Passes(q9, "check:set") and not GC.Passes(q9, "issues"), "info require: a shortfall is no issue, but its chip lists the row")
+check(not GC.CellShows(q9.slots[11], "issues", q9), "info require: Only issues doesn't draw its items")
+eq(#GC.IssueLines(q9) .. "/" .. #GC.NoteLines(q9), "0/1", "info require: in the notes, not the issues")
+eq(#GC.RaidLines(q9), 0, "info require: nothing to post")
+B:SeasonData("test-s9", "gearChecks", { enchant = { 1 }, checks = {
+  { key = "cursed", label = "Cursed", kind = "itemIds", ids = { 101 }, severity = "info" },
+  { key = "pair", label = "Pair", kind = "itemIds", ids = { 111, 112 }, require = 2, slots = { 11, 12 } },
+} })
 remember("Quick", { piece(1, "item:103:7364", 289), piece(11, "item:111:7364", 289), piece(12, "item:112:7364", 289) })
 q9 = rowNamed("Quick")
 check(q9.issues == 0 and (q9.checkHits.pair or 0) == 0, "require: both worn, no issue")
 check(GC.CellShows(q9.slots[11], "check:pair") and GC.CellShows(q9.slots[12], "check:pair"), "require: its filter still draws them")
 check(not GC.Passes(q9, "check:pair"), "require: but the row doesn't show under it")
+
+-- 5f. Upgrade tracks, from the season's data only: read from bonus IDs, the cell's tag, the row's counts, Below
+ITEM_QUALITY_COLORS = { [2] = { r = 0.12, g = 1, b = 0 }, [3] = { r = 0, g = 0.44, b = 0.87 }, [4] = { r = 0.64, g = 0.21, b = 0.93 } }
+B:SeasonData("test-s9", "tracks", { default = "hero", list = {
+  { key = "vet", label = "Veteran", letter = "V", quality = 2 },
+  { key = "champion", label = "Champion", letter = "C", quality = 3 },
+  { key = "hero", label = "Hero", letter = "H", quality = 4 },
+  { key = "myth", label = "Myth", letter = "M", color = { 1, 0.5, 0 } },
+  { label = "No key", letter = "X" },
+}, bonus = { [7001] = { track = "champion", rank = 4, max = 6 }, [7002] = { track = "hero", rank = 2, max = 6 },
+  [7003] = { track = "myth", rank = 1, max = 6 }, [7004] = { track = "hero", rank = 6, max = 6 }, [7009] = { track = "nope", rank = 1, max = 6 } } })
+local T = GC:Tracks()
+local tk = {} for _, t in ipairs(T.list) do tk[#tk + 1] = t.key end
+eq(table.concat(tk, ","), "vet,champion,hero,myth", "tracks: the season's list in its order, a track with no key left out")
+check(T.usable, "tracks: usable once a bonus ID is known")
+local info = GC.TrackOf(Gear.Parts(bonusString(101, "", { 9, 7001 })))
+eq(info and (info.track.key .. " " .. info.rank .. "/" .. info.max), "champion 4/6", "tracks: a known bonus ID gives the track and rank")
+eq(GC.TrackTag(info), "C4", "tracks: the cell's tag, letter and rank")
+eq(GC.TrackWords(info), "Champion 4/6", "tracks: in words")
+eq(GC.TrackOf(Gear.Parts(bonusString(101, "", { 9 }))), nil, "tracks: no known bonus ID, no track")
+eq(GC.TrackOf(Gear.Parts(bonusString(101, "", { 7009 }))), nil, "tracks: a bonus ID on a track the list doesn't have, no track")
+eq(GC.TrackOf(nil), nil, "tracks: an ID-only piece has no track")
+local cr = { GC.TrackColor(T.byKey.hero) }
+check(math.abs(cr[1] - 0.64) < 0.001 and math.abs(cr[3] - 0.93) < 0.001, "tracks: a track's colour from the game's item quality colour")
+cr = { GC.TrackColor(T.byKey.myth) }
+check(cr[1] == 1 and cr[2] == 0.5 and cr[3] == 0, "tracks: else the data's own colour")
+r = GC.CheckSlot(1, piece(1, bonusString(101, "7364", { 7002 }), 289), GC:Rules(), 289)
+eq(r.track and r.track.track.key, "hero", "tracks: a slot knows its piece's track")
+r = GC.CheckSlot(1, piece(1, "item:101", 289), GC:Rules(), 289)
+check(r.unknown and r.track == nil, "tracks: a bare item:<id> shows no track")
+r = GC.CheckSlot(1, { slot = 1, id = 101, ilvl = 289 }, GC:Rules(), 289)
+eq(r.track, nil, "tracks: nor a piece known only by its ID")
+-- a row: Myth, Hero, Hero, Champion and an unknown piece
+B:SeasonData("test-s9", "gearChecks", { enchant = { 1 }, checks = { { key = "cursed", label = "Cursed", kind = "itemIds", ids = { 101 }, severity = "info" } } })
+NAMES[121] = "Band"
+remember("Quick", { piece(1, bonusString(122, "7364", { 7002 }), 289), piece(2, bonusString(120, "", { 7003 }), 289),
+  piece(3, bonusString(103, "", { 7004 }), 289), piece(11, bonusString(121, "7364", { 7001 }), 289), piece(5, "item:105", 289) })
+q9 = rowNamed("Quick")
+eq(q9.trackCounts.hero .. "/" .. q9.trackCounts.champion .. "/" .. q9.trackCounts.myth, "2/1/1", "row: the pieces on each track")
+eq(GC.TrackText(q9), "1M 2H 1C", "row: the Tracks column, highest first")
+eq(GC.TrackText({ trackCounts = {} }), "", "row: no known tracks, empty")
+eq(GC.TrackText(q9, false, 2), "1M 2H +", "row: only room for two, the lowest track dropped with a +")
+eq(GC.TrackText(q9, false, 3), "1M 2H 1C", "row: room for all three, no +")
+local ts = {}
+for _, p in ipairs(GC.TrackCounts(q9)) do ts[#ts + 1] = p.n .. " " .. p.track.label end
+eq(table.concat(ts, ", "), "1 Myth, 2 Hero, 1 Champion", "row: the full counts for the badge's tooltip, highest first")
+eq(q9.issues, 0, "below: an item below the track is no issue")
+eq(q9.below, 1, "below Hero (the season's default): the Champion ring")
+check(GC.CellShows(q9.slots[11], "below") and not GC.CellShows(q9.slots[1], "below") and not GC.CellShows(q9.slots[2], "below") and not GC.CellShows(q9.slots[5], "below"), "below: only the cells under the track are drawn")
+check(GC.Passes(q9, "below") and not GC.Passes(q9, "issues"), "below: the row shows under Below, not under Only issues")
+local bf = GC:Filters()
+eq(bf[#bf].key .. "=" .. bf[#bf].label, "below=Below Hero", "below: the last chip, named for the track")
+eq(GC:FilterKey("below"), "below", "below: a saved Below filter is kept while the season has tracks")
+local nl = GC.NoteLines(q9)
+eq(#nl, 1, "below: a note line for the lower item")
+eq(nl[1] and (nl[1].text .. "|" .. nl[1].kind), "Finger |cffa335ee|H" .. bonusString(121, "7364", { 7001 }) .. "|h[Band]|h|r 289 - Champion 4/6|track", "below: Slot [item] - Champion 4/6")
+check(nl[1] and nl[1].track == T.byKey.champion, "below: in its track's colour")
+eq(#GC.RaidLines(q9) + #GC.WhisperLines(q9), 0, "below: never in chat")
+CRT.db.gearChecker.belowTrack = "myth"
+q9 = rowNamed("Quick")
+eq(q9.below, 3, "below Myth: the two Hero items and the Champion ring")
+eq(GC:Filters()[#GC:Filters()].label, "Below Myth", "below: the chip names the saved track")
+CRT.db.gearChecker.belowTrack = "gone"
+eq(GC:BelowTrack().key, "hero", "below: a saved track the season doesn't have is the season's default")
+CRT.db.gearChecker.belowTrack = nil
+local bc = {} for _, t in ipairs(GC:BelowChoices()) do bc[#bc + 1] = t.label end
+eq(table.concat(bc, ","), "Champion,Hero,Myth", "below: the choices, every track but the lowest")
+B:SeasonData("test-s9", "tracks", { list = T.source.list, bonus = {} })
+check(not GC:Tracks().usable and GC:FilterKey("below") == "all", "no bonus IDs: no Below chip, a saved Below is Everyone")
+eq(GC:Filters()[#GC:Filters()].key, "check:cursed", "no bonus IDs: the season checks are the last chips")
 -- back to the shipped season
 B.seasons["test-s9"].current = false
 B.seasons["midnight-s1"].current = true
@@ -591,7 +692,7 @@ if fails > 0 then error("failures") end
 const dir = process.argv[2];
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 const files = ['CRT_Core/Gear.lua', 'CRT_Data/Bosses/Registry.lua', 'CRT_Data/Seasons/Midnight-S1/Season.lua',
-  'CRT_Data/Seasons/Midnight-S1/GearChecks.lua', 'CRT_Modules/GearChecker/Data.lua', 'CRT_Modules/GearChecker/Inspect.lua',
+  'CRT_Data/Seasons/Midnight-S1/GearChecks.lua', 'CRT_Data/Seasons/Midnight-S1/Tracks.lua', 'CRT_Modules/GearChecker/Data.lua', 'CRT_Modules/GearChecker/Inspect.lua',
   'CRT_Modules/GearChecker/Comm.lua'];
 for (const f of files) lua.lua_pushstring(L, to_luastring(fs.readFileSync(path.join(dir, f), 'utf8')));
 if (lua.lua_pcall(L, files.length, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
