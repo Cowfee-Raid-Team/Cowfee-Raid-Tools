@@ -23,7 +23,11 @@ local TEXT = {
     otherDifficulty = "Other",
     kindHelp = "Shared: the raid's notes, one per guild. A share from your guild replaces its note for that boss; one from another guild or a pickup group is kept apart. The newest share is the note in use and runs on the pull.\n\nPersonal: your own lines for a boss, kept on this computer. They run on every pull alongside the shared note, and a share never touches them.",
     noteText = "Note text",
-    renderHelp = "The note shows as it reads in the game. Click it to see the raw text. Edit it and Save to see it rendered again. Unsaved changes stay in the raw text.\n\nIf you can't change the raid note, the raw text is read-only. Press Escape to go back.\n\nThe personal note works the same way.",
+    renderHelp = "The note shows as it reads in the game. Click it to see the raw text. Edit it and Save to see it rendered again. Unsaved changes stay in the raw text.\n\nIf you can't change the raid note, the raw text is read-only. Press Escape to go back.\n\nThe personal note works the same way.\n\nPop out editor opens the note's lines in a window. Drag players, roles, groups and classes onto its assignment lines, and players onto its invite list. Timers stay as they are. Only the names change.",
+    popOut = "Pop out editor",
+    popOutShort = "Pop out",
+    changedUnder = "This note changed while you were typing, so your text was not saved. Click Save again to replace the note with your text, or click another note and back to see the new one.",
+    personalChangedUnder = "Your personal note changed in the note editor while you were typing here, so this was not saved. Click Save again to replace it with this text.",
     saveText = "Save text changes",
     saved = "Saved.",
     sendTo = "Send to",
@@ -131,6 +135,21 @@ local function makeButton(parent, label, width, height)
     b:SetSize(width, height or 24)
     b:SetText(label)
     return b
+end
+
+-- A button as wide as its label (UI.PanelButtonWidth: the label and the template's end caps).
+local function fitButton(b)
+    local fs = b.GetFontString and b:GetFontString()
+    local w = fs and fs:GetStringWidth() or 0
+    b:SetWidth(UI.PanelButtonWidth and UI.PanelButtonWidth(w) or (math.ceil(w) + 28))
+    return b
+end
+
+-- Opens the pop-out note editor (Notes/EditorWindow.lua) on a note, or { personal = true }.
+local function openEditor(source)
+    if CRT.NoteEditor then
+        CRT.NoteEditor.Open(source)
+    end
 end
 
 -- Import dialog: paste a note. -------------------------------------------------------------
@@ -591,6 +610,19 @@ local function buildNotes(pf)
     textBox = Render.Bind(textView, scroll, editor, function()
         return (Notes:CanEditRaid())
     end)
+    -- Pop out editor, over the box's right end: the selected note's names to drag and drop (read-only for a raider
+    -- who can't change the raid note, as the raw text is)
+    local popOut = fitButton(makeButton(pf, TEXT.popOut, 120, 20))
+    popOut:SetPoint("BOTTOMRIGHT", box, "TOPRIGHT", 0, 3)
+    popOut:SetScript("OnClick", function()
+        if selected then
+            openEditor({ id = selected })
+        end
+    end)
+    popOut.refresh = function()
+        popOut:SetEnabled(selected ~= nil and CRT.NoteEditor ~= nil)
+    end
+    controls[#controls + 1] = popOut
 
     local save = makeButton(pf, TEXT.saveText, 170)
     save:SetPoint("TOPRIGHT", box, "BOTTOMRIGHT", 0, -6)
@@ -600,6 +632,13 @@ local function buildNotes(pf)
             local allowed, why = Notes:CanEditRaid()
             if not allowed then
                 CRT:Print(why)
+                return
+            end
+            -- the note changed (a share, the Timeline, the note editor) while you typed: never written over
+            local record = Notes:Get(selected)
+            if record and editor.loaded ~= nil and (record.raw or "") ~= editor.loaded then
+                editor.loaded = record.raw or "" -- seen: a second Save is your choice to replace it
+                CRT:Print(TEXT.changedUnder)
                 return
             end
             textBox:Saved()
@@ -674,13 +713,24 @@ local function buildNotes(pf)
     end
     controls[#controls + 1] = personal
 
-    local psave = makeButton(pf, "Save personal note", 170)
+    local psave = fitButton(makeButton(pf, "Save personal note", 170))
     psave:SetPoint("TOPLEFT", pbox, "BOTTOMLEFT", 0, -6)
     psave:SetScript("OnClick", function()
+        if personal.loaded ~= nil and Notes:Personal() ~= personal.loaded then
+            personal.loaded = Notes:Personal() -- seen: a second Save is your choice to replace it
+            CRT:Print(TEXT.personalChangedUnder)
+            return
+        end
         personalBox:Saved()
         personal:ClearFocus()
         Notes:SetPersonal(personal:GetText())
         CRT:Print("Personal note saved.")
+    end)
+    -- the short label, so both buttons fit the column; right-aligned to the box, never past the page
+    local ppop = fitButton(makeButton(pf, TEXT.popOutShort, 80))
+    ppop:SetPoint("TOPRIGHT", pbox, "BOTTOMRIGHT", 0, -6)
+    ppop:SetScript("OnClick", function()
+        openEditor({ personal = true })
     end)
     -- Display my notes first: what you typed above your Mech Alerts reminders in the personal window
     local first = CreateFrame("CheckButton", nil, pf, "UICheckButtonTemplate")
