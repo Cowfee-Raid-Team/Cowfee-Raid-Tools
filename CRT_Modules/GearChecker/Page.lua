@@ -4,7 +4,8 @@ local ADDON, CRT = ...
 -- issues count and a cell per gear slot (all 16 fit the page, so nothing scrolls sideways): the item's
 -- icon in its quality's border, its item level, gem diamonds at the top right (filled, or empty with a red
 -- edge) and, on a slot that takes an enchant, a dot at the top left (green, or red when missing). A missing
--- enchant or gem outlines the cell red, a low item orange. Filter chips pick who shows; Refresh asks the
+-- enchant or gem outlines the cell red, a low item orange. Filter chips pick who shows, and on an issue
+-- filter each row draws only the cells with that issue (GC.CellShows), the rest empty; Refresh asks the
 -- group's CRTs and inspects the rest (Comm.lua, Inspect.lua), and says how many have CRT. Hover a cell for
 -- the exact item, or the issues badge for the list of issues; shift-click an item with an issue to put it in
 -- the chat box; right-click a row to send its issues to a channel or a whisper, put them in the chat box or
@@ -27,7 +28,7 @@ local Gear = CRT.Gear
 
 local TEXT = {
     title = "Gear Checker",
-    help = "Everyone's equipped gear, with what's missing.\n\nA red dot at the top left is a missing enchant, a green one an enchant. The diamonds at the top right are sockets: filled with a gem, or empty with a red edge. A red outline is a missing enchant or gem, an orange one an item %d or more item levels under the player's average.\n\nRefresh asks every CRT in the group for their gear, then inspects the others, one at a time, in range and out of combat.\n\nHover an item to see it, or a player's issues count to list their issues. Shift-click an item with an issue to put it in the chat box. Right-click a player to send their issues to a chat channel or whisper, put them in the chat box or inspect them.",
+    help = "Shows everyone's gear and what needs fixing: red for a missing enchant or gem, orange for an item %d or more item levels under the player's average, and a small square for this season's checks (blue is just to know). Pick a filter at the top to see only those items, press Refresh to check the group again, and right-click a player to send them their issues.",
     refresh = "Refresh (%d/%d have CRT)",
     popOut = "Pop out",
     dock = "Dock",
@@ -55,7 +56,9 @@ local TEXT = {
 -- Sizes in pixels. A row is NAME + ILVL + ISSUES + 16 cells; with the scroll bar it fits UI.PAGE_W.
 local L = {
     chipH = 24, chipPad = 12, chipGap = 4, buttonH = 24,
-    headY = -34, listY = -52,
+    chipsW = 600, -- chips run to here, then on to another row (Refresh and Pop out sit to the right)
+    headY = -34, listY = -52, -- with one row of chips; each more row moves them down chipH + chipGap
+    tag = 7, -- a season check's square at the icon's bottom right
     nameW = 130, ilvlW = 40, issuesW = 40, cellW = 48, rowH = 46,
     icon = 30, edge = 2, gem = 7, gemInner = 5, gemGap = 1, dot = 8, badgeW = 26, badgeH = 16,
     barGap = UI.SCROLL_GAP, barW = 8, -- the gap before the bar: the shared scroll bar gap
@@ -68,6 +71,7 @@ GC.PAGE_LAYOUT = L
 local COLORS = {
     bad = { 0.9, 0.15, 0.15 },
     low = { 1, 0.55, 0.1 },
+    info = { 0.3, 0.65, 1 }, -- a season check to know about, not to fix
     good = { 0.3, 0.85, 0.3 },
     gem = { 0.55, 0.8, 1 },
     socket = { 0.08, 0.08, 0.08 },
@@ -243,6 +247,17 @@ local function diamond(owner, size, layer, sublevel)
     return t
 end
 
+-- The colour of a slot's worst finding: red for a missing enchant or gem, orange for a low item, a season
+-- check's own (GC.SEVERITY orders them).
+local function findingColor(r)
+    local worst = (r.missingEnchant or r.emptySockets > 0) and "bad" or (r.low and "low") or nil
+    local top = GC.TopCheck(r)
+    if top and (not worst or GC.SEVERITY[top.severity] > GC.SEVERITY[worst]) then
+        worst = top.severity
+    end
+    return COLORS[worst or "bad"] or COLORS.bad
+end
+
 local function cellEnter(cell)
     local r = cell.result
     if not (r and r.piece) then
@@ -251,7 +266,8 @@ local function cellEnter(cell)
     Gear.ShowTooltip(cell, r.piece)
     local problems = GC.Problems(r)
     if problems and GameTooltip then
-        GameTooltip:AddLine(problems, COLORS.bad[1], COLORS.bad[2], COLORS.bad[3], true)
+        local c = findingColor(r)
+        GameTooltip:AddLine(problems, c[1], c[2], c[3], true)
         GameTooltip:AddLine(TEXT.shiftClick, 0.6, 0.6, 0.6, true)
         GameTooltip:Show()
     end
@@ -302,14 +318,21 @@ local function makeCell(rowFrame, i)
         fill:SetPoint("CENTER", edge, "CENTER")
         c.gems[g] = { edge = edge, fill = fill }
     end
+    c.tag = c:CreateTexture(nil, "OVERLAY", nil, 6) -- a season check, in its severity's colour
+    c.tag:SetSize(L.tag, L.tag)
+    c.tag:SetPoint("CENTER", c.back, "BOTTOMRIGHT", -1, 1)
     c:SetScript("OnEnter", cellEnter)
     c:SetScript("OnLeave", cellLeave)
     c:SetScript("OnClick", cellClick)
     return c
 end
 
--- One slot of a row, painted from its findings.
-local function paintCell(c, row, r)
+-- One slot of a row, painted from its findings. A cell the filter doesn't draw (GC.CellShows) is painted as an
+-- empty slot, so the columns stay under their headings; it has no tooltip, but a right-click is still the row's.
+local function paintCell(c, row, r, shown)
+    if not shown then
+        r = nil
+    end
     c.row, c.result = row, r
     local piece = r and r.piece
     local e = COLORS.emptyCell
@@ -328,10 +351,16 @@ local function paintCell(c, row, r)
     if flag then
         paintLines(c.flag, flag[1], flag[2], flag[3])
     end
-    local dot = piece and r.needsEnchant and piece.itemString and (r.missingEnchant and COLORS.bad or COLORS.good) or nil
+    local dot = piece and r.needsEnchant and not r.unknown and (r.missingEnchant and COLORS.bad or COLORS.good) or nil
     c.dot:SetShown(dot ~= nil)
     if dot then
         c.dot:SetVertexColor(dot[1], dot[2], dot[3], 1)
+    end
+    local top = piece and GC.TopCheck(r)
+    c.tag:SetShown(top ~= nil)
+    if top then
+        local t = COLORS[top.severity] or COLORS.bad
+        c.tag:SetColorTexture(t[1], t[2], t[3], 1)
     end
     local sockets = piece and math.min(3, r.sockets or 0) or 0
     for g, d in ipairs(c.gems) do
@@ -362,7 +391,8 @@ local function rowClick(frame, button)
 end
 
 -- The issues badge's tooltip: the player's name in their class colour, then a line per issue (red for a
--- missing enchant or gem, orange for a low item), or No issues, or Not seen yet.
+-- missing enchant or gem, orange for a low item, a season check in its severity's colour), or No issues,
+-- or Not seen yet.
 local function badgeEnter(hit)
     local row = hit:GetParent().data
     if not (row and GameTooltip) then
@@ -377,7 +407,7 @@ local function badgeEnter(hit)
         GameTooltip:AddLine(TEXT.noIssues, COLORS.good[1], COLORS.good[2], COLORS.good[3])
     end
     for _, line in ipairs(lines or {}) do
-        local c = line.kind == "low" and COLORS.low or COLORS.bad
+        local c = COLORS[line.kind] or COLORS.bad
         GameTooltip:AddLine(line.text, c[1], c[2], c[3])
     end
     GameTooltip:Show()
@@ -443,8 +473,10 @@ function P.InitRow(f, row)
     local why = not row.seen and GC.Inspect and GC.Inspect.skipped[row.name]
     f.notSeen:SetText(row.seen and "" or (why and TEXT.notSeenWhy[why] or TEXT.notSeen))
     f.notSeen:SetTextColor(0.6, 0.6, 0.6)
+    local filter = P.filter or "all"
     for i, s in ipairs(Gear.SLOTS) do
-        paintCell(f.cells[i], row, row.slots[s.id])
+        local r = row.slots[s.id]
+        paintCell(f.cells[i], row, r, GC.CellShows(r, filter, row))
     end
 end
 
@@ -465,7 +497,7 @@ local function paintHeaders()
     end
     P.countText:SetTextColor(textColor("text"))
     for _, chip in ipairs(P.chips) do
-        UI:StyleTab(chip, chip.key == settings().filter)
+        UI:StyleTab(chip, chip.key == P.filter)
     end
 end
 
@@ -479,7 +511,8 @@ function P.Refresh()
         return
     end
     P.dirty = false
-    local filter = settings().filter or "all"
+    local filter = GC:FilterKey(settings().filter or "all") -- a check the season no longer has: Everyone
+    P.filter = filter -- the rows' cells are drawn for it (P.InitRow)
     local rows = GC:Rows(filter)
     for i, row in ipairs(rows) do
         row.index = i
@@ -506,7 +539,17 @@ local function selectFilter(key)
     P.Refresh()
 end
 
-local function makeChip(parent, filter, x)
+-- A season check's chip shows its help on hover.
+local function chipEnter(b)
+    if b.help and GameTooltip then
+        GameTooltip:SetOwner(b, "ANCHOR_BOTTOM")
+        GameTooltip:SetText(b.label)
+        GameTooltip:AddLine(b.help, 1, 1, 1, true)
+        GameTooltip:Show()
+    end
+end
+
+local function makeChip(parent, filter)
     local b = CreateFrame("Button", nil, parent, "BackdropTemplate")
     b:SetBackdrop({ bgFile = WHITE, edgeFile = WHITE, edgeSize = 1 })
     b.sel = b:CreateTexture(nil, "ARTWORK")
@@ -515,22 +558,35 @@ local function makeChip(parent, filter, x)
     b.text:SetPoint("CENTER")
     b.text:SetText(filter.label)
     b:SetSize(math.ceil(b.text:GetStringWidth() or 0) + 2 * L.chipPad, L.chipH)
-    b:SetPoint("TOPLEFT", x, 0)
-    b.key = filter.key
+    b.key, b.label, b.help = filter.key, filter.label, filter.help
     b:SetScript("OnClick", function()
         selectFilter(filter.key)
     end)
+    b:SetScript("OnEnter", chipEnter)
+    b:SetScript("OnLeave", cellLeave)
     UI:RegisterTab(b)
     return b
 end
 
-local function buildBody(body)
-    local x = 0
-    for _, filter in ipairs(GC.FILTERS) do
-        local chip = makeChip(body, filter, x)
+-- The chips (GC:Filters: the four, then one per season check) from the left, on as many rows as they need
+-- to stay left of L.chipsW. Returns how far the rows below move down.
+local function layChips(body)
+    local x, y = 0, 0
+    for _, filter in ipairs(GC:Filters()) do
+        local chip = makeChip(body, filter)
+        if x > 0 and x + chip:GetWidth() > L.chipsW then
+            x, y = 0, y - (L.chipH + L.chipGap)
+        end
+        chip:SetPoint("TOPLEFT", x, y)
         P.chips[#P.chips + 1] = chip
         x = x + chip:GetWidth() + L.chipGap
     end
+    return y
+end
+
+local function buildBody(body)
+    local down = layChips(body)
+    P.chipsDown = down
     UI.Help(body, TEXT.title, string.format(TEXT.help, GC.LOW_ILVL)):SetPoint("LEFT", P.chips[#P.chips], "RIGHT", 8, 0)
 
     P.popButton = UI.PanelButton(body, TEXT.popOut, L.buttonH, function()
@@ -547,7 +603,7 @@ local function buildBody(body)
     -- the column headings, over the list's columns
     local function heading(text, x0, w, justify)
         local h = body:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-        h:SetPoint("TOPLEFT", x0, L.headY)
+        h:SetPoint("TOPLEFT", x0, L.headY + down)
         h:SetWidth(w)
         h:SetJustifyH(justify or "CENTER")
         h:SetWordWrap(false)
@@ -563,7 +619,7 @@ local function buildBody(body)
     end
 
     local box = CreateFrame("Frame", nil, body, "WowScrollBoxList")
-    box:SetPoint("TOPLEFT", 0, L.listY)
+    box:SetPoint("TOPLEFT", 0, L.listY + down)
     box:SetPoint("BOTTOMLEFT", 0, 0)
     box:SetWidth(L.rowW)
     local bar = CreateFrame("EventFrame", nil, body, "MinimalScrollBar")

@@ -11,7 +11,7 @@ const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate();
 lualib.luaL_openlibs(L);
 const harness = `
-local gearSrc, registrySrc, seasonSrc, dataSrc, inspectSrc, commSrc = ...
+local gearSrc, registrySrc, seasonSrc, gearChecksSrc, dataSrc, inspectSrc, commSrc = ...
 local fails, passes = 0, 0
 local function check(ok, what) if ok then passes = passes + 1 else fails = fails + 1 print("FAIL " .. what) end end
 local function eq(a, b, what) check(a == b, what .. " (got " .. tostring(a) .. ", want " .. tostring(b) .. ")") end
@@ -91,6 +91,7 @@ function CRT:Print(t) printed[#printed + 1] = t end
 for name, src in pairs({ Gear = gearSrc }) do assert(load(src, name))("CowfeeRaidTools", CRT) end
 assert(load(registrySrc, "Registry.lua"))("CowfeeRaidTools", CRT)
 assert(load(seasonSrc, "Season.lua"))("CowfeeRaidTools", CRT)
+assert(load(gearChecksSrc, "GearChecks.lua"))("CowfeeRaidTools", CRT)
 assert(load(dataSrc, "Data.lua"))("CowfeeRaidTools", CRT)
 assert(load(inspectSrc, "Inspect.lua"))("CowfeeRaidTools", CRT)
 assert(load(commSrc, "Comm.lua"))("CowfeeRaidTools", CRT)
@@ -109,10 +110,10 @@ eq(GC.LOW_ILVL, 12, "low: 12 levels under the average")
 local function piece(slot, s, ilvl) return { slot = slot, id = tonumber(s:match("item:(%d+)")), itemString = s, ilvl = ilvl } end
 local r = GC.CheckSlot(1, piece(1, "item:101:7364", 280), R, 280)
 check(r.needsEnchant and not r.missingEnchant and r.issues == 0, "enchanted head: no issue")
-r = GC.CheckSlot(1, piece(1, "item:101", 280), R, 280)
+r = GC.CheckSlot(1, piece(1, "item:101::::::::90", 280), R, 280)
 check(r.missingEnchant and r.issues == 1, "head with no enchant: missing enchant")
 eq(GC.Problems(r), "missing enchant", "the words")
-r = GC.CheckSlot(2, piece(2, "item:102:::::", 280), R, 280)
+r = GC.CheckSlot(2, piece(2, "item:102::::::::90", 280), R, 280)
 check(not r.needsEnchant and not r.missingEnchant, "a neck needs no enchant")
 eq(r.emptySockets, 2, "a neck with two empty sockets")
 eq(GC.Problems(r), "missing 2 gems", "two gems missing")
@@ -121,11 +122,11 @@ eq(r.sockets .. "/" .. r.gems .. "/" .. r.emptySockets, "2/1/1", "a ring with on
 eq(GC.Problems(r), "missing gem", "one gem missing")
 r = GC.CheckSlot(11, piece(11, "item:111:7364:213746:213747", 280), R, 280)
 check(r.issues == 0 and r.gems == 2, "a ring with both gems and an enchant: no issue")
-r = GC.CheckSlot(17, piece(17, "item:117", 280), R, 280)
+r = GC.CheckSlot(17, piece(17, "item:117::::::::90", 280), R, 280)
 check(not r.needsEnchant and r.issues == 0, "an off-hand shield takes no enchant")
-r = GC.CheckSlot(17, piece(17, "item:119", 280), R, 280)
+r = GC.CheckSlot(17, piece(17, "item:119::::::::90", 280), R, 280)
 check(not r.needsEnchant, "nor an off-hand held item")
-r = GC.CheckSlot(17, piece(17, "item:118", 280), R, 280)
+r = GC.CheckSlot(17, piece(17, "item:118::::::::90", 280), R, 280)
 check(r.missingEnchant, "an off-hand weapon needs one")
 r = GC.CheckSlot(9, piece(9, "item:109", 268), R, 280)
 check(r.low and r.issues == 1, "12 under the average is low")
@@ -136,11 +137,19 @@ r = GC.CheckSlot(9, piece(9, "item:109", 269), R, 280)
 check(not r.low, "11 under is not")
 r = GC.CheckSlot(1, { slot = 1, id = 101, ilvl = 280 }, R, 280)
 check(r.needsEnchant and not r.missingEnchant and r.issues == 0, "an ID-only piece is never flagged for enchant or gems")
+-- a bare item:<id> (an ID-only piece, as Comm.SetMessages sends one too long for a message) says nothing
+r = GC.CheckSlot(1, piece(1, "item:101", 280), R, 280)
+check(r.unknown and r.needsEnchant and not r.missingEnchant and r.issues == 0, "a bare item:<id> head: never a missing enchant")
+r = GC.CheckSlot(2, piece(2, "item:102", 280), R, 280)
+check(r.unknown and r.emptySockets == 0 and r.issues == 0, "a bare item:<id> neck with sockets: never a missing gem")
+eq(GC.PartsOf({ itemString = "item:101::::::::90" }).id, 101, "a real item string has parts")
+eq(GC.PartsOf({ itemString = "item:101" }), nil, "a bare one has none")
+eq(GC.PartsOf({ id = 101 }), nil, "nor a piece with no item string")
 r = GC.CheckSlot(1, nil, R, 280)
 check(r.empty and r.issues == 0, "an empty slot")
 local sockets = C_Item.GetItemNumSockets
 C_Item.GetItemNumSockets = function() error("no") end
-r = GC.CheckSlot(2, piece(2, "item:102", 280), R, 280)
+r = GC.CheckSlot(2, piece(2, "item:102::::::::90", 280), R, 280)
 eq(r.emptySockets, 0, "sockets the game can't count: no finding")
 C_Item.GetItemNumSockets = sockets
 
@@ -150,7 +159,7 @@ MINE[11] = "|cffa335ee|Hitem:111:7364:213746:213747|h[ilvl280]|h|r"
 Gear:Refresh()
 local function remember(name, list) Gear:Remember(name .. "-Sargeras", list, "gearcheck", true) end
 remember("Quick", { piece(1, "item:101:7364", 289), piece(11, "item:111:7364:213746", 289) }) -- a ring gem missing
-remember("Arrow", { piece(1, "item:101", 280), piece(11, "item:111:7364:213746:213747", 280) }) -- no head enchant
+remember("Arrow", { piece(1, "item:101::::::::90", 280), piece(11, "item:111:7364:213746:213747", 280) }) -- no head enchant
 remember("Far", { piece(1, "item:101:7364", 280) })
 remember("Off", { piece(1, "item:101:7364", 280) })
 Gear:Remember("Halo-Sargeras", { piece(11, "item:111", 280) }, "lootmaster") -- one piece from a loot answer
@@ -173,6 +182,18 @@ eq(quick.missingGems, 1, "Quick: one gem")
 eq(quick.class, "ROGUE", "Quick: the class from the group")
 eq(math.floor(quick.avg * 16 + 0.5), 578, "Quick: the average from the pieces")
 
+-- 3b. Which cells a filter shows: every cell under Everyone, only the cells with that kind of issue otherwise
+local function rowNamed(n) for _, row in ipairs(GC:Rows("all")) do if row.name == n .. "-Sargeras" then return row end end end
+local qr, ar = rowNamed("Quick"), rowNamed("Arrow")
+check(GC.CellShows(qr.slots[1], "all") and GC.CellShows(qr.slots[11], "all") and GC.CellShows(qr.slots[3], "all"), "everyone: every cell, empty slots too")
+check(not GC.CellShows(qr.slots[1], "issues") and GC.CellShows(qr.slots[11], "issues"), "only issues: only the ring with its missing gem")
+check(not GC.CellShows(qr.slots[3], "issues"), "only issues: an empty slot is drawn empty")
+check(GC.CellShows(qr.slots[11], "gems") and not GC.CellShows(ar.slots[1], "gems") and not GC.CellShows(qr.slots[1], "gems"), "missing gems: the cells with an empty socket only")
+check(GC.CellShows(ar.slots[1], "enchants") and not GC.CellShows(qr.slots[11], "enchants") and not GC.CellShows(ar.slots[11], "enchants"), "missing enchants: the cells with no enchant only")
+local lowSlot = GC.CheckSlot(9, piece(9, "item:109", 260), R, 280)
+check(GC.CellShows(lowSlot, "issues") and not GC.CellShows(lowSlot, "gems") and not GC.CellShows(lowSlot, "enchants"), "a low item: shown under Only issues, not under gems or enchants")
+check(not GC.CellShows(nil, "issues") and GC.CellShows(nil, "all"), "no findings: only Everyone draws it")
+
 -- 4. Chat text
 local arrow = GC:Rows("enchants")[1]
 local line = GC.SlotLine(quick, quick.slots[11])
@@ -180,13 +201,13 @@ eq(line, "[Quick] Finger |cffa335ee|Hitem:111:7364:213746|h[Band]|h|r 289 - miss
 eq(GC.SlotLine(quick, quick.slots[1]), nil, "shift-click: a slot with no issue has no line")
 local w = GC.WhisperLines(arrow)
 eq(#w, 1, "whisper: one line per slot with an issue")
-eq(w[1], "Gear check: Head |cffa335ee|Hitem:101|h[Helm]|h|r 280 - missing enchant", "whisper: the slot, the item and what is missing")
+eq(w[1], "Gear check: Head |cffa335ee|Hitem:101::::::::90|h[Helm]|h|r 280 - missing enchant", "whisper: the slot, the item and what is missing")
 eq(GC.RaidLines(quick)[1], line, "raid: the shift-click line")
 NAMES[111] = nil
 check(GC.SlotLine(quick, quick.slots[11]):find("[item 111]", 1, true) ~= nil, "an item the game hasn't loaded is named by its ID")
 NAMES[111] = "Band"
 local many = { name = "Many-Sargeras", slots = {} }
-for _, s in ipairs(Gear.SLOTS) do many.slots[s.id] = GC.CheckSlot(s.id, piece(s.id, "item:111", 280), R, 280) end
+for _, s in ipairs(Gear.SLOTS) do many.slots[s.id] = GC.CheckSlot(s.id, piece(s.id, "item:111::::::::90", 280), R, 280) end
 local box = GC.ChatBoxText(many)
 check(#box <= 255, "chat box: one message (" .. #box .. ")")
 check(box:find("%(%+%d+ more%)$") ~= nil, "chat box: says how many were left out")
@@ -235,15 +256,15 @@ eq(GC.CapLine(string.rep("x", 254) .. "||"), string.rep("x", 254), "no pipe is l
 -- 5b. The issues tooltip's lines: one per issue, red for missing, orange for low
 local tipLines = GC.IssueLines(arrow)
 eq(#tipLines, 1, "tooltip: Arrow's one issue")
-eq(tipLines[1].text, "Head |cffa335ee|Hitem:101|h[Helm]|h|r 280 - missing enchant", "tooltip: the slot, the item and what is missing")
+eq(tipLines[1].text, "Head |cffa335ee|Hitem:101::::::::90|h[Helm]|h|r 280 - missing enchant", "tooltip: the slot, the item and what is missing")
 eq(tipLines[1].kind, "bad", "tooltip: a missing enchant is red")
 local mixed = { name = "Mix-Sargeras", seen = true, slots = {} }
-mixed.slots[1] = GC.CheckSlot(1, piece(1, "item:101", 260), R, 280)
+mixed.slots[1] = GC.CheckSlot(1, piece(1, "item:101::::::::90", 260), R, 280)
 mixed.slots[11] = GC.CheckSlot(11, piece(11, "item:111:7364", 280), R, 280)
 tipLines = GC.IssueLines(mixed)
 eq(#tipLines, 3, "tooltip: a missing enchant and a low item on one slot are two lines, and the gems a third")
-eq(tipLines[1].text .. "|" .. tipLines[1].kind, "Head |cffa335ee|Hitem:101|h[Helm]|h|r 260 - missing enchant|bad", "tooltip: the enchant first")
-eq(tipLines[2].text .. "|" .. tipLines[2].kind, "Head |cffa335ee|Hitem:101|h[Helm]|h|r 260 - 20 item levels under average|low", "tooltip: then the low item, orange")
+eq(tipLines[1].text .. "|" .. tipLines[1].kind, "Head |cffa335ee|Hitem:101::::::::90|h[Helm]|h|r 260 - missing enchant|bad", "tooltip: the enchant first")
+eq(tipLines[2].text .. "|" .. tipLines[2].kind, "Head |cffa335ee|Hitem:101::::::::90|h[Helm]|h|r 260 - 20 item levels under average|low", "tooltip: then the low item, orange")
 eq(tipLines[3].text .. "|" .. tipLines[3].kind, "Finger |cffa335ee|Hitem:111:7364|h[Band]|h|r 280 - missing 2 gems|bad", "tooltip: the gems, red")
 eq(#GC.IssueLines(all[1]), 0, "tooltip: no issues, no lines")
 eq(GC.IssueLines(halo), nil, "tooltip: not seen yet, nothing known")
@@ -331,6 +352,140 @@ said, opened = {}, {}
 eq(GC.Send({ name = "Ok-Sargeras", seen = true, slots = {} }, { chatType = "GUILD" }), 0, "no issues: nothing sent")
 eq(#said + #opened, 0, "no issues: no chat call, no chat box")
 
+-- 5e. Season checks, from the season's data only
+local B = CRT.Bosses
+local shipped = B:GearChecks()
+check(shipped and type(shipped.checks) == "table" and #shipped.checks >= 2, "the season's topic file declares its checks")
+check(shipped and shipped.enchant and shipped.enchant[1] == 1, "and its enchant rules, moved there from Season.lua")
+eq(#GC:SeasonChecks(), 0, "the shipped checks have no IDs yet: none is active")
+eq(#GC:Filters(), 4, "so no extra filters")
+-- a season with no gear rules at all
+B.seasons["midnight-s1"].current = false
+B:Season({ key = "test-s8", name = "Plain", order = 8, current = true })
+eq(B:GearChecks(), nil, "a season without gear data: the accessor gives nothing")
+eq(#GC:SeasonChecks(), 0, "no checks")
+eq(#GC:Filters(), 4, "no extra filters")
+B.seasons["test-s8"].current = false
+-- a season that writes its rules in Season.lua: still read; a topic file wins over it
+B:Season({ key = "test-s7", name = "Old", order = 7, current = true, gearChecks = { enchant = { 5 } } })
+check(B:GearChecks() and B:GearChecks().enchant[1] == 5, "a Season.lua field is read as the topic")
+B:SeasonData("test-s7", "gearChecks", { enchant = { 7 } })
+eq(B:GearChecks().enchant[1], 7, "the topic file wins")
+B.seasons["test-s7"].current = false
+-- a season with one check of each kind
+local function bonusString(id, enchant, bonuses)
+  return "item:" .. id .. ":" .. (enchant or "") .. string.rep(":", 11) .. #bonuses .. (#bonuses > 0 and (":" .. table.concat(bonuses, ":")) or "")
+end
+eq(table.concat(Gear.Parts(bonusString(105, "", { 5001, 9 })).bonusIds, ","), "5001,9", "the test item strings carry their bonus IDs")
+B:Season({ key = "test-s9", name = "Checks", order = 9, current = true })
+B:SeasonData("test-s9", "gearChecks", { enchant = { 1 }, checks = {
+  { key = "cursed", label = "Cursed", help = "Shows who wears a cursed item. Click it to see only those items.", kind = "itemIds", ids = { 101 }, severity = "info" },
+  { key = "pair", label = "Pair", kind = "itemIds", ids = { 111, 112 }, require = 2, slots = { 11, 12 } },
+  { key = "glow", label = "Glow", kind = "bonusIds", ids = { 5001 }, severity = "low" },
+  { key = "rune", label = "Wrong enchant", kind = "enchantIds", ids = { 7364 }, slots = { 1 } },
+  { key = "track", label = "No track", kind = "missingBonus", ids = { 6001, 6002 }, slots = { 2 } },
+  { key = "none", label = "None yet", kind = "itemIds", ids = {} },
+  { key = "odd", label = "Odd", kind = "nonsense", ids = { 1 } },
+  { label = "No key", kind = "itemIds", ids = { 1 } },
+  { key = "cursed", label = "Twice", kind = "itemIds", ids = { 1 } },
+} })
+local active = {}
+for _, c in ipairs(GC:SeasonChecks()) do active[#active + 1] = c.key end
+eq(table.concat(active, ","), "cursed,pair,glow,rune,track", "active: the checks with a known kind, a key and IDs, each key once")
+local fl = {}
+for _, f in ipairs(GC:Filters()) do fl[#fl + 1] = f.key .. "=" .. f.label end
+eq(table.concat(fl, ","), "all=Everyone,issues=Only issues,gems=Missing gems,enchants=Missing enchants,check:cursed=Cursed,check:pair=Pair,check:glow=Glow,check:rune=Wrong enchant,check:track=No track", "a filter per check, after Missing enchants, labelled from the data")
+eq(GC:Filters()[5].help, "Shows who wears a cursed item. Click it to see only those items.", "a check's filter carries its help")
+eq(GC:FilterKey("check:glow"), "check:glow", "a saved check filter that exists is kept")
+eq(GC:FilterKey("check:gone"), "all", "a saved filter of a check the season no longer has is Everyone")
+eq(GC:FilterKey(nil), "all", "no saved filter is Everyone")
+local R9 = GC:Rules()
+local function keys(r) local out = {} for _, c in ipairs(r.checks) do out[#out + 1] = c.key end return table.concat(out, ",") end
+-- itemIds, flagging each match
+r = GC.CheckSlot(1, piece(1, "item:101:7364", 280), R9, 280)
+eq(keys(r), "cursed", "itemIds: the item is one of them")
+eq(r.issues, 1, "itemIds: one issue")
+eq(GC.Problems(r), "Cursed", "itemIds: the check's label in the words")
+check(GC.CellShows(r, "check:cursed") and GC.CellShows(r, "issues") and not GC.CellShows(r, "check:glow") and not GC.CellShows(r, "enchants"), "itemIds: drawn under its own filter and Only issues only")
+eq(GC.TopCheck(r).key, "cursed", "itemIds: the cell's tag")
+r = GC.CheckSlot(3, piece(3, "item:103", 280), R9, 280)
+check(keys(r) == "" and r.issues == 0 and GC.TopCheck(r) == nil, "itemIds: another item, no finding")
+r = GC.CheckSlot(1, { slot = 1, id = 101, ilvl = 280 }, R9, 280)
+eq(keys(r), "cursed", "itemIds: an ID-only piece still matches by its ID")
+-- bonusIds
+r = GC.CheckSlot(5, piece(5, bonusString(105, "", { 9, 5001 }), 280), R9, 280)
+eq(keys(r), "glow", "bonusIds: the item carries one")
+eq(GC.TopCheck(r).severity, "low", "bonusIds: its severity")
+r = GC.CheckSlot(5, piece(5, bonusString(105, "", { 9 }), 280), R9, 280)
+eq(keys(r), "", "bonusIds: none of them, no finding")
+-- enchantIds
+r = GC.CheckSlot(1, piece(1, "item:101:9999", 280), R9, 280)
+eq(keys(r), "cursed,rune", "enchantIds: an enchant not on the list")
+eq(GC.TopCheck(r).key, "rune", "the tag shows the most severe check (bad over info)")
+r = GC.CheckSlot(1, piece(1, "item:101::::::::90", 280), R9, 280)
+check(keys(r) == "cursed" and r.missingEnchant and r.issues == 2, "enchantIds: no enchant is the enchant rule's issue, not the check's")
+r = GC.CheckSlot(16, piece(16, "item:116:9999", 280), R9, 280)
+eq(keys(r), "", "enchantIds: only on the check's slots")
+-- missingBonus
+r = GC.CheckSlot(2, piece(2, bonusString(102, "", { 6002 }), 280), R9, 280)
+eq(keys(r), "", "missingBonus: the item carries one")
+r = GC.CheckSlot(2, piece(2, "item:102::::::::90", 280), R9, 280)
+eq(keys(r), "track", "missingBonus: none of them")
+r = GC.CheckSlot(2, { slot = 2, id = 102, ilvl = 280 }, R9, 280)
+eq(keys(r), "", "missingBonus: an ID-only piece can't tell, no finding")
+r = GC.CheckSlot(2, piece(2, "item:102", 280), R9, 280)
+eq(keys(r), "", "missingBonus: a bare item:<id> can't tell either")
+r = GC.CheckSlot(1, piece(1, "item:101", 280), R9, 280)
+check(keys(r) == "cursed" and not r.missingEnchant, "a bare item:<id>: itemIds still matches by ID, the enchant rule says nothing")
+r = GC.CheckSlot(3, piece(3, "item:103", 280), R9, 280)
+eq(keys(r), "", "missingBonus: only on the check's slots")
+-- itemIds with require: fewer than that many is one issue on the row
+remember("Quick", { piece(1, "item:101:7364", 289), piece(11, "item:111:7364", 289) })
+local q9 = rowNamed("Quick")
+eq(q9.checkHits.cursed, 1, "row: the cursed head")
+eq(q9.checkHits.pair, 1, "row: one of two of the pair is an issue")
+eq(q9.issues, 2, "row: both count in Issues")
+check(not q9.slots[11].checks[1], "require: the ring itself is no issue")
+check(GC.CellShows(q9.slots[11], "check:pair") and not GC.CellShows(q9.slots[1], "check:pair"), "require: its filter draws the matching item")
+check(not GC.CellShows(q9.slots[11], "issues"), "require: the matching item is no issue on its own")
+check(GC.CellShows(q9.slots[11], "issues", q9), "require: but Only issues draws it on a row short of the check")
+-- bonusIds with require: an ID-only piece may hold the bonus, so it never makes a shortfall
+B:SeasonData("test-s9", "gearChecks", { checks = { { key = "glow2", label = "Glow", kind = "bonusIds", ids = { 5001 }, require = 2, slots = { 1, 3 } } } })
+remember("Quick", { piece(1, bonusString(101, "", { 5001 }), 289), piece(3, "item:103", 289) })
+q9 = rowNamed("Quick")
+check(q9.issues == 0 and #q9.rowFindings == 0, "bonusIds require: one match and a bare item:<id> is no shortfall")
+remember("Quick", { piece(1, bonusString(101, "", { 5001 }), 289), piece(3, bonusString(103, "", { 9 }), 289) })
+q9 = rowNamed("Quick")
+eq(#q9.rowFindings, 1, "bonusIds require: one match and a known miss is")
+B:SeasonData("test-s9", "gearChecks", { enchant = { 1 }, checks = {
+  { key = "cursed", label = "Cursed", kind = "itemIds", ids = { 101 }, severity = "info" },
+  { key = "pair", label = "Pair", kind = "itemIds", ids = { 111, 112 }, require = 2, slots = { 11, 12 } },
+} })
+remember("Quick", { piece(1, "item:101:7364", 289), piece(11, "item:111:7364", 289) })
+q9 = rowNamed("Quick")
+local qnames = names(GC:Rows("check:pair"))
+check(qnames:find("Quick", 1, true) ~= nil, "require: Quick under the check's filter")
+eq(names(GC:Rows("check:glow")), "", "a check nobody trips: no rows")
+local qt = GC.IssueLines(q9)
+eq(#qt, 2, "tooltip: a line per check issue")
+eq(qt[1].text .. "|" .. qt[1].kind, "Head |cffa335ee|Hitem:101:7364|h[Helm]|h|r 289 - Cursed|info", "tooltip: the slot's check, in its severity")
+eq(qt[2].text .. "|" .. qt[2].kind, "Pair: 1 of 2 worn|bad", "tooltip: the row's check last")
+local ql = GC.RaidLines(q9)
+eq(ql[#ql], "[Quick] Pair: 1 of 2 worn", "raid lines: the row's check")
+eq(ql[1], "[Quick] Head |cffa335ee|Hitem:101:7364|h[Helm]|h|r 289 - Cursed", "raid lines: the slot's check")
+local qw = GC.WhisperLines(q9)
+eq(qw[#qw], "Gear check: Pair: 1 of 2 worn", "whisper: the row's check")
+remember("Quick", { piece(1, "item:103:7364", 289), piece(11, "item:111:7364", 289), piece(12, "item:112:7364", 289) })
+q9 = rowNamed("Quick")
+check(q9.issues == 0 and (q9.checkHits.pair or 0) == 0, "require: both worn, no issue")
+check(GC.CellShows(q9.slots[11], "check:pair") and GC.CellShows(q9.slots[12], "check:pair"), "require: its filter still draws them")
+check(not GC.Passes(q9, "check:pair"), "require: but the row doesn't show under it")
+-- back to the shipped season
+B.seasons["test-s9"].current = false
+B.seasons["midnight-s1"].current = true
+eq(#GC:Filters(), 4, "the shipped season again: four filters")
+remember("Quick", { piece(1, "item:101:7364", 289), piece(11, "item:111:7364:213746", 289) })
+
 -- 6. The inspect queue
 UNITS.raid2.links = { [1] = "|cffa335ee|Hitem:101:7364::::::::ilvl290|h[Helm]|h|r", [2] = "|cffa335ee|Hitem:102::213746|h[ilvl286]|h|r" }
 UNITS.raid3.links = { [1] = "|cffa335ee|Hitem:101::::::::ilvl281|h[Helm]|h|r" }
@@ -373,7 +528,7 @@ combat = true
 Inspect:OnEvent("PLAYER_REGEN_DISABLED")
 eq(log.cleared, 3, "combat starts mid-inspect: let go")
 Inspect:OnEvent("INSPECT_READY", "G3")
-eq(Gear:Of("Arrow-Sargeras", 1).itemString, "item:101", "combat: an answer that comes anyway is ignored (Arrow's last reply stays)")
+eq(Gear:Of("Arrow-Sargeras", 1).itemString, "item:101::::::::90", "combat: an answer that comes anyway is ignored (Arrow's last reply stays)")
 advance(10)
 eq(#log.notify, 3, "combat: nothing in the meantime")
 combat = false
@@ -435,8 +590,8 @@ if fails > 0 then error("failures") end
 `;
 const dir = process.argv[2];
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
-for (const f of ['CRT_Core/Gear.lua', 'CRT_Data/Bosses/Registry.lua', 'CRT_Data/Seasons/Midnight-S1/Season.lua',
-  'CRT_Modules/GearChecker/Data.lua', 'CRT_Modules/GearChecker/Inspect.lua', 'CRT_Modules/GearChecker/Comm.lua']) {
-  lua.lua_pushstring(L, to_luastring(fs.readFileSync(path.join(dir, f), 'utf8')));
-}
-if (lua.lua_pcall(L, 6, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
+const files = ['CRT_Core/Gear.lua', 'CRT_Data/Bosses/Registry.lua', 'CRT_Data/Seasons/Midnight-S1/Season.lua',
+  'CRT_Data/Seasons/Midnight-S1/GearChecks.lua', 'CRT_Modules/GearChecker/Data.lua', 'CRT_Modules/GearChecker/Inspect.lua',
+  'CRT_Modules/GearChecker/Comm.lua'];
+for (const f of files) lua.lua_pushstring(L, to_luastring(fs.readFileSync(path.join(dir, f), 'utf8')));
+if (lua.lua_pcall(L, files.length, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }

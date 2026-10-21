@@ -197,7 +197,7 @@ Gear:Remember("Quick-Sargeras", { { slot = 1, id = 101, itemString = "item:101:7
 GC.Comm.crt["Quick-Sargeras"], GC.Comm.sets["Quick-Sargeras"] = true, 1
 local arrowSet = {}
 for i, s in ipairs(Gear.SLOTS) do arrowSet[i] = { slot = s.id, id = 200 + i, itemString = "item:" .. (200 + i) .. ":7364", ilvl = 289 } end
-arrowSet[1] = { slot = 1, id = 101, itemString = "item:101", ilvl = 289 } -- no enchant
+arrowSet[1] = { slot = 1, id = 101, itemString = "item:101::::::::90", ilvl = 289 } -- no enchant
 arrowSet[9] = { slot = 10, id = 210, itemString = "item:210", ilvl = 270 } -- hands, 19 under
 Gear:Remember("Arrow-Sargeras", arrowSet, "inspect", true)
 CRT.Bosses = { GearChecks = function() return { enchant = { 1, 3, 5, 7, 8, 11, 12, 16, 17 }, enchantWeaponOnly = { 17 }, sockets = true } end }
@@ -276,8 +276,26 @@ check(P.chips[3].selected and not P.chips[1].selected, "the chip picked looks se
 P.chips[4]:Click()
 rows = drawRows()
 eq(#rows == 1 and rows[1].data.name, "Arrow-Sargeras", "missing enchants: Arrow")
+arrow = rows[1]
+check(cell(arrow, 1).icon.shown and cell(arrow, 1).ilvl.text == "289", "missing enchants: Arrow's head is drawn")
+check(not cell(arrow, 10).icon.shown and cell(arrow, 10).ilvl.text == "" and not cell(arrow, 10).flag[1].shown, "missing enchants: the low hands are drawn empty")
+check(not cell(arrow, 2).icon.shown and cell(arrow, 2).ilvl.text == "", "missing enchants: a slot with no issue is drawn empty")
+check(cell(arrow, 2).shown and cell(arrow, 2).back.shown, "the columns stay in place: the cell is there, only empty")
+P.chips[3]:Click()
+rows = drawRows()
+check(cell(rows[1], 11).icon.shown and not cell(rows[1], 1).icon.shown, "missing gems: only Quick's ring")
 P.chips[2]:Click()
-eq(#drawRows(), 2, "only issues: Quick and Arrow")
+rows = drawRows()
+eq(#rows, 2, "only issues: Quick and Arrow")
+quick, arrow = rowOf("Quick"), rowOf("Arrow")
+check(cell(quick, 11).icon.shown and not cell(quick, 1).icon.shown, "only issues: Quick's ring, not the enchanted head")
+check(cell(arrow, 1).icon.shown and cell(arrow, 10).icon.shown and cell(arrow, 10).flag[1].shown, "only issues: Arrow's head and the low hands")
+check(not cell(arrow, 2).icon.shown and not cell(arrow, 2).dot.shown, "only issues: a fine slot is drawn empty")
+GameTooltip:Hide()
+cell(arrow, 2).scripts.OnEnter(cell(arrow, 2))
+check(not tip.shown, "a cell drawn empty has no tooltip")
+cell(arrow, 2).scripts.OnClick(cell(arrow, 2), "RightButton")
+eq(lastRoot.items[1].title, "Arrow", "a right-click on an empty cell still opens the row's menu")
 P.chips[1]:Click()
 rows = drawRows()
 eq(#rows, 4, "everyone again")
@@ -353,7 +371,7 @@ arrow.badgeHit.scripts.OnEnter(arrow.badgeHit)
 eq(tip.title, "Arrow", "badge: the player's name")
 check(near(tip.titleColor, { 0.67, 0.83, 0.45 }), "badge: in their class colour")
 eq(#tip.lines, 2, "badge: a line per issue")
-eq(tip.lines[1], "Head |cffa335ee|Hitem:101|h[Band]|h|r 289 - missing enchant", "badge: the chat lines' wording")
+eq(tip.lines[1], "Head |cffa335ee|Hitem:101::::::::90|h[Band]|h|r 289 - missing enchant", "badge: the chat lines' wording")
 check(near(tip.colors[1], { 0.9, 0.15, 0.15 }), "badge: a missing enchant in red")
 check(tip.lines[2]:find("^Hands .* 270 %- 17 item levels under average$") ~= nil, "badge: the low item, how far under (" .. tostring(tip.lines[2]) .. ")")
 check(near(tip.colors[2], { 1, 0.55, 0.1 }), "badge: a low item in orange")
@@ -462,6 +480,61 @@ check(win.w == 1100 and win.h == 520, "at its size")
 local minW = Lt.popMinW - 16
 check(minW >= Lt.rowW + Lt.barGap + Lt.barW, "the window's smallest size still fits a whole row")
 P.popButton:Click()
+
+-- 8. Season checks, from the season's data only: a chip each, on a second row when the first is full, the
+-- cell's tag, the issues count and the badge's lines. The page is built again on a season that has them.
+local CHECKS = { enchant = { 1, 3, 5, 7, 8, 11, 12, 16, 17 }, enchantWeaponOnly = { 17 }, sockets = true, checks = {
+  { key = "cursed", label = "Cursed", help = "Shows who wears a cursed item. Click it to see only those items.", kind = "itemIds", ids = { 101 }, severity = "info" },
+  { key = "glow", label = "Glowing gear", kind = "bonusIds", ids = { 5001 }, severity = "low" },
+  { key = "c3", label = "Check three", kind = "itemIds", ids = { 999 } },
+  { key = "c4", label = "Check four", kind = "itemIds", ids = { 998 } },
+  { key = "c5", label = "Check five", kind = "itemIds", ids = { 997 } },
+  { key = "none", label = "No IDs yet", kind = "itemIds", ids = {} },
+} }
+CRT.Bosses = { GearChecks = function() return CHECKS end }
+CRT.db.gearChecker.filter = "check:gone"
+assert(load(pageSrc))("CowfeeRaidTools", CRT)
+P = GC.Page
+local page2 = CreateFrame("Frame") page2.w, page2.h = UI.PAGE_W, UI.PAGE_H
+UI.pages.gearcheck.builder(page2)
+page2.scripts.OnShow(page2)
+labels = {}
+for _, c in ipairs(P.chips) do labels[#labels + 1] = c.text.text end
+eq(table.concat(labels, "|"), "Everyone|Only issues|Missing gems|Missing enchants|Cursed|Glowing gear|Check three|Check four|Check five", "a chip per season check with IDs, after Missing enchants")
+local rowsY, wraps = {}, 0
+for _, c in ipairs(P.chips) do
+  local pt = c.points[1]
+  check(pt[2] + c.w <= Lt.chipsW, c.text.text .. ": left of the buttons (" .. (pt[2] + c.w) .. ")")
+  rowsY[pt[3]] = true
+end
+for _ in pairs(rowsY) do wraps = wraps + 1 end
+eq(wraps, 2, "the chips take two rows")
+eq(P.chips[7].points[1][2] .. "/" .. P.chips[7].points[1][3], "0/" .. -(Lt.chipH + Lt.chipGap), "the second row starts at the left")
+eq(P.headers[1].points[1][3], Lt.headY - (Lt.chipH + Lt.chipGap), "the headings move down a row")
+eq(P.box.points[1][3], Lt.listY - (Lt.chipH + Lt.chipGap), "and the list")
+check(P.chips[1].selected, "a saved filter of a check the season no longer has: Everyone")
+P.chips[5].scripts.OnEnter(P.chips[5])
+check(tip.title == "Cursed" and tip.lines[1] == "Shows who wears a cursed item. Click it to see only those items.", "a check's chip: its help on hover")
+rows = drawRows()
+arrow, quick = rowOf("Arrow"), rowOf("Quick")
+eq(arrow.issues.text, "3", "Arrow: the season check counts in Issues")
+local ahead = cell(arrow, 1)
+check(ahead.tag.shown and near(ahead.tag.color, { 0.3, 0.65, 1 }), "a cursed head: a blue tag")
+check(not cell(arrow, 2).tag.shown, "no check: no tag")
+arrow.badgeHit.scripts.OnEnter(arrow.badgeHit)
+eq(#tip.lines, 3, "badge: the check's line too")
+eq(tip.lines[2], "Head |cffa335ee|Hitem:101::::::::90|h[Band]|h|r 289 - Cursed", "badge: the check's label, with its slot's other lines")
+check(near(tip.colors[2], { 0.3, 0.65, 1 }), "badge: in the check's colour")
+P.chips[5]:Click()
+rows = drawRows()
+eq(#rows, 3, "Cursed: the three wearing one")
+arrow = rowOf("Arrow")
+check(cell(arrow, 1).icon.shown and not cell(arrow, 10).icon.shown, "Cursed: only the cursed item is drawn")
+P.chips[2]:Click()
+rows = drawRows()
+me = rowOf("Solex")
+check(me ~= nil and cell(me, 1).icon.shown and cell(me, 1).tag.shown, "only issues: a season check's cell is drawn")
+CRT.Bosses = { GearChecks = function() return { enchant = { 1 } } end }
 
 print(string.format("%d passed, %d failed", passes, fails))
 if fails > 0 then error("failures") end
