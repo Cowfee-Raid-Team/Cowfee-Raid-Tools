@@ -23,6 +23,7 @@ local TEXT = {
     otherDifficulty = "Other",
     kindHelp = "Shared: the raid's notes, one per guild. A share from your guild replaces its note for that boss; one from another guild or a pickup group is kept apart. The newest share is the note in use and runs on the pull.\n\nPersonal: your own lines for a boss, kept on this computer. They run on every pull alongside the shared note, and a share never touches them.",
     noteText = "Note text",
+    renderHelp = "The note shows as it reads in the game. Click it to see the raw text. Edit it and Save to see it rendered again. Unsaved changes stay in the raw text.\n\nIf you can't change the raid note, the raw text is read-only. Press Escape to go back.\n\nThe personal note works the same way.",
     saveText = "Save text changes",
     saved = "Saved.",
     sendTo = "Send to",
@@ -84,6 +85,7 @@ local BACKDROP = {
 }
 
 local page, rows, editor, status, selected = nil, {}, nil, nil, nil
+local textBox -- the note text: rendered, or its raw edit box (Render.Bind)
 -- The active note the page last followed. When the active note changes (shared from here or the
 -- Timeline, received from the raid leader, or made from the Timeline), the page selects it, so the
 -- text shown is the note that runs; clicking another note still shows that one until the next change.
@@ -322,21 +324,11 @@ refresh = function()
         end
     end
 
-    -- The note's text, as saved. A box with the keyboard focus keeps it until something else takes it,
-    -- so focus alone can't mean "being typed in": the box follows the saved text whenever it holds
-    -- no unsaved typing (its text is still what it last loaded), so a line moved, copied or deleted
-    -- on the Timeline shows here at once. Unsaved typing is never replaced.
-    local raw = record and record.raw or ""
-    if not editor:HasFocus() or editor:GetText() == editor.loaded then
-        if editor:GetText() ~= raw then
-            local cursor = editor:GetCursorPosition() or 0
-            editor:SetText(raw)
-            if editor:HasFocus() then
-                editor:SetCursorPosition(math.min(cursor, #raw))
-            end
-        end
-        editor.loaded = raw
-    end
+    -- The note's text, as saved, shown rendered (Notes/Render.lua) until clicked. The raw box follows the
+    -- saved text whenever it holds no unsaved typing, so a line moved, copied or deleted on the Timeline
+    -- shows here at once. Unsaved typing stays, raw, until it is saved or another note is picked.
+    local rosterLinked = record and record.presetId and CRT.Groups:Find(record.presetId) and true or false
+    textBox:Update(record and record.raw or "", id, rosterLinked)
 
     local lines = {}
     if record then
@@ -584,6 +576,21 @@ local function buildNotes(pf)
     end)
     scroll:SetScrollChild(editor)
     clickToType(box, scroll, editor)
+    -- the note rendered over the box; a click shows the raw text, read-only when you may not change it
+    local Render = CRT.NoteRender
+    local textView = Render.View(box, {
+        key = "Text",
+        width = TEXT_W - 6 - (4 + UI.ScrollGutter()), -- the view's scroll frame, inside the box (Render.View)
+        onClick = function()
+            textBox:Raw()
+        end,
+        context = function()
+            return { rosterLinked = textBox.contextKey }
+        end,
+    })
+    textBox = Render.Bind(textView, scroll, editor, function()
+        return (Notes:CanEditRaid())
+    end)
 
     local save = makeButton(pf, TEXT.saveText, 170)
     save:SetPoint("TOPRIGHT", box, "BOTTOMRIGHT", 0, -6)
@@ -595,24 +602,27 @@ local function buildNotes(pf)
                 CRT:Print(why)
                 return
             end
+            textBox:Saved()
             editor:ClearFocus()
-            editor.loaded = editor:GetText()
             Notes:UpdateRaw(selected, editor:GetText())
             CRT:Print(TEXT.saved)
         end
     end)
 
-    -- Only the raid leader or an assistant changes the raid note (P4): for anyone else the text is
-    -- read-only and Save is greyed, with a (?) saying why. Set again at every redraw and show, so a
+    -- Only the raid leader or an assistant changes the raid note (P4): for anyone else the raw text is
+    -- read-only (it can be selected and copied, typing is undone: Render.Bind) and Save is greyed, with a
+    -- (?) saying why. Set again at every redraw and show, so a
     -- promotion unlocks it. Import, Use this note and Delete stay: they choose which note you hold.
+    -- The (?) on how the rendered note works comes first, the lock's (?) after it.
+    local renderHelp = UI.Help(pf, TEXT.noteText, TEXT.renderHelp)
+    renderHelp:SetPoint("LEFT", textLabel, "RIGHT", 6, 0)
     local lockHelp = UI.Help(pf, TEXT.noteText, function()
         local _, why = Notes:CanEditRaid()
         return why or ""
     end)
-    lockHelp:SetPoint("LEFT", textLabel, "RIGHT", 6, 0)
+    lockHelp:SetPoint("LEFT", renderHelp, "RIGHT", 4, 0)
     lockHelp.refresh = function()
         local allowed = Notes:CanEditRaid()
-        editor:SetEnabled(allowed and true or false)
         save:SetEnabled(allowed and true or false)
         lockHelp:SetShown(not allowed)
     end
@@ -646,16 +656,28 @@ local function buildNotes(pf)
     end)
     pscroll:SetScrollChild(personal)
     clickToType(pbox, pscroll, personal)
+    -- rendered like the note text, with the personal note's markdown
+    local personalBox
+    local personalView = Render.View(pbox, {
+        key = "Personal",
+        width = RIGHT_W - 6 - (4 + UI.ScrollGutter()),
+        onClick = function()
+            personalBox:Raw()
+        end,
+        context = function()
+            return { markdown = true }
+        end,
+    })
+    personalBox = Render.Bind(personalView, pscroll, personal)
     personal.refresh = function()
-        if not personal:HasFocus() then
-            personal:SetText(Notes:Personal())
-        end
+        personalBox:Update(Notes:Personal(), "personal")
     end
     controls[#controls + 1] = personal
 
     local psave = makeButton(pf, "Save personal note", 170)
     psave:SetPoint("TOPLEFT", pbox, "BOTTOMLEFT", 0, -6)
     psave:SetScript("OnClick", function()
+        personalBox:Saved()
         personal:ClearFocus()
         Notes:SetPersonal(personal:GetText())
         CRT:Print("Personal note saved.")

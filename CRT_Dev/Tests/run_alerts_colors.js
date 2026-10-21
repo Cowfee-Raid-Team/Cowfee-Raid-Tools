@@ -266,6 +266,25 @@ check("colors: a reference row's own colour only with the box", function()
   CRT.db.alerts.customColors = false
 end)
 
+-- Every type of an ability, the main one first, for a list of the boss's abilities (the Mech Alerts list): the
+-- boss's ability timelines are read once for the whole list.
+check("colors: every type of an ability, main first, the boss read once", function()
+  local forBoss, reads = Ref.ForBoss, 0
+  Ref.ForBoss = function(...) reads = reads + 1 return forBoss(...) end
+  local typesOf = C.Types(3001, NEK, "Mythic")
+  local function list(spell, text) return table.concat(typesOf(spell, text), " ") end
+  assert(list(nil, "Corpse Blight") == "heroic raid", "the timeline row's types in order: " .. list(nil, "Corpse Blight"))
+  assert(list(5002, "Hungering Pyre") == "soak", "by spell: " .. list(5002, "Hungering Pyre"))
+  assert(list(8002, "Mythic Curse") == "mythic dispel", "the Journal's icons, each type once: " .. list(8002, "Mythic Curse"))
+  assert(list(9999, "Nothing Known") == "", "none known: an empty list")
+  assert(reads == 1, "the boss read once: " .. reads)
+  T:SetAbility(3001, 5001, "type", "raid")
+  assert(table.concat(C.Types(3001, NEK, "Mythic")(5001, "Grasping Depths"), " ") == "raid", "your label is the one type")
+  T:SetAbility(3001, 5001, "type", nil)
+  assert(#C.Types(3001, NEK)(SECRET, SECRET) == 0 and #errors == 0, "secret values give none")
+  Ref.ForBoss = forBoss
+end)
+
 check("colors: no errors raised", function()
   assert(#errors == 0, tostring(errors[1]))
 end)

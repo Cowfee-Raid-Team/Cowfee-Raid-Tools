@@ -603,6 +603,128 @@ A:Settings().bars.showType = false B:Refresh()
 assert(lb.text.w > 150, "no type: more room for the text: " .. lb.text.w)
 assert(#errors == 0, tostring(errors[1]))
 print("ok bars: long text is cut before the type")
+
+-- Spacing and Border: each bar's step is its height + spacing + 2 * border, with the border drawn outside it
+local three = { item{ id = "s1", time = 5, text = "One" }, item{ id = "s2", time = 6, text = "Two" }, item{ id = "s3", time = 7, text = "Three" } }
+local function lastPoint(m) return m.pts[#m.pts] end
+local function edgesShown(bar) local n = 0 for _, t in ipairs(bar.edges) do if t.shown then n = n + 1 end end return n end
+-- defaults keep today's layout: 4 px apart, no border, the area the first bar's size
+pull(three)
+start() B:Refresh()
+assert(CRT.db.alerts.bars.spacing == nil and CRT.db.alerts.bars.border == nil, "the harness's old save has neither field")
+local p1, p2 = lastPoint(B.pool[1]), lastPoint(B.pool[2])
+assert(p1[1] == "TOP" and p1[2] == win and p1[3] == "TOP" and p1[4] == 0 and p1[5] == 0, "default: the first bar at the area's top")
+assert(p2[1] == "TOP" and p2[2] == B.pool[1] and p2[3] == "BOTTOM" and p2[4] == 0 and p2[5] == -4, "default: 4 px apart, as before: " .. tostring(p2[5]))
+assert(win.w == 240 and win.h == 20, "default: the area is one bar's size")
+assert(edgesShown(B.pool[1]) == 0, "default: no border")
+-- every border and spacing, growing down and up
+for _, grow in ipairs({ "down", "up" }) do
+  for border, bw in pairs({ none = 0, thin = 1, thick = 2 }) do
+    for _, spacing in ipairs({ 0, 4, 20 }) do
+      pull(three)
+      local bs = A:Settings().bars
+      bs.grow, bs.border, bs.spacing = grow, border, spacing
+      start() B:Refresh()
+      local tag = grow .. "/" .. border .. "/" .. spacing
+      local first, second, third = lastPoint(B.pool[1]), lastPoint(B.pool[2]), lastPoint(B.pool[3])
+      local sign = grow == "down" and -1 or 1
+      local edge = grow == "down" and "TOP" or "BOTTOM"
+      assert(first[1] == edge and first[2] == win and first[3] == edge and first[4] == 0 and first[5] == sign * bw, tag .. ": the first bar sits its border inside the area")
+      assert(second[2] == B.pool[1] and second[5] == sign * (spacing + 2 * bw) and third[5] == sign * (spacing + 2 * bw), tag .. ": bar to bar is spacing + 2 * border: " .. tostring(second[5]))
+      -- the step from one bar's top to the next is the height + spacing + 2 * border
+      assert(B.pool[1].h + math.abs(second[5]) == 20 + spacing + 2 * bw, tag .. ": step")
+      assert(win.w == 240 + 2 * bw and win.h == 20 + 2 * bw, tag .. ": the area takes the border in: " .. win.w .. "x" .. win.h)
+      assert(edgesShown(B.pool[2]) == (bw > 0 and 4 or 0), tag .. ": a border on each bar")
+      if bw > 0 then
+        local e = B.pool[2].edges
+        assert(e[1].h == bw and e[2].h == bw and e[3].w == bw and e[4].w == bw, tag .. ": border width")
+        assert(e[1].pts[1][2] == B.pool[2] and e[1].pts[1][3] == "TOPLEFT" and e[1].pts[1][4] == -bw, tag .. ": outside its own bar")
+        local c = CRT.PALETTE.border
+        assert(near(e[1].color, c[1], c[2], c[3], 1), tag .. ": in the theme's border colour")
+      end
+    end
+  end
+end
+-- no border and no spacing: the bars touch, one bar's bottom on the next one's top
+pull(three)
+A:Settings().bars.border, A:Settings().bars.spacing = "none", 0
+start() B:Refresh()
+p2 = lastPoint(B.pool[2])
+assert(p2[1] == "TOP" and p2[3] == "BOTTOM" and p2[4] == 0 and p2[5] == 0, "no gap at 0 and No border")
+-- the drag box takes the border in, and the theme recolours the border
+A:Settings().bars.border = "thick" B:Refresh()
+assert(handle.w >= 244, "drag box at least as wide as the bar and its border: " .. handle.w)
+CRT.UI.SwitchTheme("nitro")
+assert(near(B.pool[1].edges[1].color, CRT.PALETTE.border[1], CRT.PALETTE.border[2], CRT.PALETTE.border[3]), "border follows the theme")
+CRT.UI.SwitchTheme("blizzard")
+-- the +N more line clears the last bar's border
+pull(notes)
+A:Settings().bars.border = "thick"
+start() B:Refresh()
+moreShown = nil
+for _, f in ipairs(fontStrings) do if f.text == "+2 more" and f.shown then moreShown = f end end
+local mp = lastPoint(moreShown)
+assert(mp[2] == B.pool[5] and mp[5] == -(2 + 2), "+N more under the border: " .. tostring(mp[5]))
+-- bad saved values fall back
+pull(three)
+A:Settings().bars.border, A:Settings().bars.spacing = "huge", -3
+start() B:Refresh()
+assert(lastPoint(B.pool[2])[5] == 0 and edgesShown(B.pool[1]) == 0, "unknown border is none, spacing clamps at 0")
+A:Settings().bars.spacing = 99 B:Refresh()
+assert(lastPoint(B.pool[2])[5] == -20, "spacing clamps at 20")
+assert(#errors == 0, tostring(errors[1]))
+print("ok bars: spacing and border")
+
+-- pixel-snapped: height, spacing and border are whole screen pixels at the bars' scale
+-- (PixelUtil.GetNearestPixelSize, here with one pixel 0.6 UI units)
+PixelUtil = { GetNearestPixelSize = function(v, scale, minPixels)
+  local px = math.floor(v * scale / 0.6 + 0.5)
+  if minPixels and px < minPixels then px = minPixels end
+  return px * 0.6 / scale
+end }
+local M = B.Metrics
+local bwid, h, gap, bw = M({ width = 240, height = 20, spacing = 0, border = "none" }, 1)
+assert(math.abs(bwid - 240) < 1e-9 and math.abs(h - 19.8) < 1e-9 and gap == 0 and bw == 0, "snapped height, no gap: " .. h)
+bwid, h, gap, bw = M({ height = 20, spacing = 4, border = "thin" }, 1)
+assert(math.abs(gap - 4.2) < 1e-9 and math.abs(bw - 1.2) < 1e-9, "spacing and border in whole pixels: " .. gap .. " " .. bw)
+bwid, h, gap, bw = M({ height = 20, spacing = 0, border = "thin" }, 0.25)
+assert(math.abs(bw - 2.4) < 1e-9, "a thin border is never under one pixel")
+-- and the area uses them
+pull(three)
+A:Settings().bars.border, A:Settings().bars.spacing = "thin", 4
+start()
+rawset(win, "GetEffectiveScale", function() return 1 end)
+for _, bar in ipairs(B.pool) do rawset(bar, "GetEffectiveScale", function() return 1 end) end
+B:Refresh()
+assert(math.abs(B.pool[1].h - 19.8) < 1e-9 and math.abs(lastPoint(B.pool[2])[5] + (4.2 + 2 * 1.2)) < 1e-9, "the area lays out on whole pixels")
+PixelUtil = nil
+rawset(win, "GetEffectiveScale", nil)
+assert(#errors == 0, tostring(errors[1]))
+print("ok bars: pixel-snapped")
+
+-- the Spacing and Border rows, with their (?)
+pull(three)
+start() B:Refresh() panel:Select(B)
+local spacingRow, borderRow = sliders["Spacing"], dropdowns["Border"]
+assert(spacingRow and spacingRow.opts.min == 0 and spacingRow.opts.max == 20 and spacingRow.value == 4, "Spacing 0-20, 4 by default")
+assert(borderRow and borderRow.value == "none", "Border: none by default")
+local labels = {}
+for i, o in ipairs(borderRow.opts.options()) do labels[i] = o.key .. "=" .. o.label end
+assert(table.concat(labels, ",") == "none=No border,thin=Thin (1 px),thick=Thick (2 px)", table.concat(labels, ","))
+assert(spacingRow.help and borderRow.help, "a (?) on each")
+-- two colour rows share a line, so the rows still fit the tab
+for _, f in ipairs(frames) do if rawget(f, "colorLabel") and f.shown then swatches[f.colorLabel] = f end end
+local bp, gp, tp = lastPoint(swatches["Bar colour"]), lastPoint(swatches["Background"]), lastPoint(swatches["Text colour"])
+assert(bp[4] == 0 and gp[4] > 0 and gp[5] == bp[5], "Bar colour and Background on one line")
+assert(tp[4] == 0 and tp[5] == bp[5] - 32, "Text colour on the next")
+assert(72 + panel.frame.h <= 560 - 66, "the rows end inside the tab (Notes/AlertsTab.lua puts them 72 down): " .. panel.frame.h)
+spacingRow.opts.set(0) borderRow.opts.set("thick")
+assert(A:Settings().bars.spacing == 0 and A:Settings().bars.border == "thick" and lastPoint(B.pool[2])[5] == -4, "applied at once")
+A:Settings().bars.shown = false
+assert(spacingRow.opts.enabledIf() == false and borderRow.opts.enabledIf() == false, "grey with bars off")
+A:Settings().bars.shown = true
+assert(#errors == 0, tostring(errors[1]))
+print("ok bars: spacing and border rows")
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 for (let i = 2; i < 8; i++) {

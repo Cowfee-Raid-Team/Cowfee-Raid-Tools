@@ -75,6 +75,8 @@ local TEXT = {
     deleteConfirm = "Delete reminder '%s'?",
     noTest = "Nothing to test: this alert has no times.",
 
+    noType = "No type yet. Set one on the Timeline's Advanced tab: click the ability, then Set type.",
+
     markerTitle = "Marker display",
     markerShow = "Show the marker display: %s",
     markerHelp = "This boss has a marker display: a small window showing the raid markers raiders send with macros such as /raid {rt3}, in order, with who sent each. Untick it to turn it off for this boss. Move the window with Previews.",
@@ -154,6 +156,9 @@ local TIMES_GREY = { 0.55, 0.5, 0.45 }
 -- the selected row: the colour of a selected tab (UI:StyleTab), Classic and Modern
 local SEL_CLASSIC_ALPHA = 0.18 -- over the heading colour (the game's gold)
 local SEL_MODERN_ALPHA = 0.95
+-- a name in its ability type's colour: mixed this far toward GREY when its reminder is off, and toward WHITE on
+-- the selected row, so it reads on the highlight in every theme
+local TYPE_DIM, TYPE_LIFT = 0.5, 0.5
 
 local function lower(s)
     return tostring(s or ""):lower()
@@ -342,11 +347,14 @@ local function itemsFor(enc, name)
         return c.items
     end
     local list = buildItems(enc)
+    -- each row's ability types, main first, found as its alerts' colour is (Alerts/Colors.lua)
+    local typesOf = CRT.AlertColors and CRT.AlertColors.Types(enc, name, viewDiff)
     for _, item in ipairs(list) do
         if item.pending then
             item.label, item.has, item.refHas = TEXT.unnamed, false, false
         else
             item.label = itemName(item)
+            item.types = typesOf and typesOf(item.spellID, item.label) or nil
             item.iconTex = itemIcon(item)
             -- the game had not loaded the spell yet: asked again when the row is painted
             item.unloaded = item.spellID ~= nil and (item.label == TEXT.unnamed or item.iconTex == nil) or nil
@@ -573,6 +581,50 @@ local function selectedIndex(enc)
     return index
 end
 
+local function mix(c, to, t)
+    return c[1] + (to[1] - c[1]) * t, c[2] + (to[2] - c[2]) * t, c[3] + (to[3] - c[3]) * t
+end
+
+-- A row name's colour: its main ability type's (Timeline/Reference.lua ABILITY_TYPES), dimmed when its reminder
+-- is off and lifted on the selected row; with no known type the theme's text colour, or GREY when off.
+local function nameColor(item, on, isSelected)
+    local Colors = CRT.AlertColors
+    local c = item.types and item.types[1] and Colors and Colors.KnownTypeColor(item.types[1])
+    if not c then
+        c = on and CRT.PALETTE.text or GREY
+        return c[1], c[2], c[3]
+    end
+    if not on then
+        c = { mix(c, GREY, TYPE_DIM) }
+    end
+    if isSelected then
+        return mix(c, WHITE, TYPE_LIFT)
+    end
+    return c[1], c[2], c[3]
+end
+
+-- Hovering a row's name: the name, then each of its ability types in its colour, the main one first.
+local function typeTip(owner, item)
+    if not (item and not item.pending and GameTooltip) then
+        return
+    end
+    GameTooltip:SetOwner(owner, "ANCHOR_RIGHT")
+    GameTooltip:SetText(item.label or TEXT.unnamed, 1, 1, 1)
+    local Reference = CRT.TimelineReference
+    local any = false
+    for _, key in ipairs(item.types or {}) do
+        local line, c = Reference.TypeLine(key)
+        if line then
+            GameTooltip:AddLine(line, c[1], c[2], c[3], true)
+            any = true
+        end
+    end
+    if not any then
+        GameTooltip:AddLine(TEXT.noType, 1, 1, 1, true)
+    end
+    GameTooltip:Show()
+end
+
 -- The visible rows from the list as it is: text, icons and colours only, no lookups. A scroll is only this.
 local function paint(index)
     local maxOffset = math.max(0, #items - L.MAX_ROWS)
@@ -605,8 +657,7 @@ local function paint(index)
             row.icon:SetTexture(item.iconTex)
             row.icon:SetShown(item.iconTex ~= nil)
             row.name:SetText(item.label)
-            local color = on and WHITE or GREY
-            row.name:SetTextColor(color[1], color[2], color[3])
+            row.name:SetTextColor(nameColor(item, on, offset + i == index))
             row.check:SetChecked(on)
             row.dot:SetShown(item.has)
             row.sel:SetColorTexture(selColor[1], selColor[2], selColor[3], selColor[4])
@@ -951,6 +1002,12 @@ local function makeRow(parent, i)
     -- a click on the row, outside the tick, selects it
     frame:SetScript("OnClick", function()
         selectItem(row.item)
+    end)
+    frame:SetScript("OnEnter", function(self)
+        typeTip(self, row.item)
+    end)
+    frame:SetScript("OnLeave", function()
+        GameTooltip:Hide()
     end)
     return row
 end

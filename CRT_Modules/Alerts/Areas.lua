@@ -21,7 +21,8 @@ local ADDON, CRT = ...
 --     settings(panel, s)  adds the area's own rows to its settings on Raid Notes > Alerts with
 --                      panel:Dropdown(label, opts), panel:Slider(label, opts), panel:Check(label, get, set, help) (help: an optional (?) tooltip text) and
 --                      panel:Color(label, get, set, enabledIf) (a swatch for the game's color picker; get() -> { r, g, b, a },
---                      set(new table); opts as for UI.Dropdown and UI.Slider). It is called every time the area
+--                      set(new table); opts as for UI.Dropdown and UI.Slider, plus opts.help for a (?) after the
+--                      control). Colour rows in a row share a line while they fit. It is called every time the area
 --                      shows there; the rows are made the first time and reused after. A change refreshes the
 --                      area at once.
 --   Optional:
@@ -40,10 +41,13 @@ local ADDON, CRT = ...
 --                      instead of the grow chain. It anchors area.pool[1..n] itself and gives the area's
 --                      size (centered on the saved position) and whether the drag box sits below it.
 --     noGrow           true: the settings have no Grow row (the area has its own direction)
+--     space(s, frame)  -> gap, inset: the space between two widgets' borders and the width of the border
+--                      each draws outside itself (the bars' Spacing and Border); default GAP and 0. Two
+--                      widgets' frames are gap + 2 * inset apart, and the area takes the border in.
 --   }
 --
 -- An area shows its lines soonest first, at most `cap` (1-10), the rest after the first in the `grow`
--- direction, 4 px apart. The first is centered on the saved position; with def.align and grow up or
+-- direction, 4 px apart unless def.space says otherwise. The first is centered on the saved position; with def.align and grow up or
 -- down, it sits on that edge of a box HANDLE_MIN_WIDTH wide centered there instead. A line glows while
 -- line.glow and now >= at. The drag box (title, settings button, reset) shows only with Previews, above
 -- the area, or below it when it grows up. Every area refreshes from one ticker every 0.1 s, and only
@@ -108,14 +112,17 @@ local ROW_HEIGHT = 32
 -- The settings panel's rows: label and control, unless a row asks for others, to fit half the tab.
 local PANEL_LABEL_WIDTH, PANEL_CONTROL_WIDTH = 120, 180
 local COLOR_GAP, COLOR_SWATCH = 5, 40 -- a color row's swatch, after a label as wide as the others'
+local COLOR_ROW_GAP = 10 -- between two colour rows on one line
 local SLIDER_VALUE_WIDTH = 44 -- a slider's value beside its bar (UI/Controls.lua VALUE_W)
+local PANEL_WIDTH = PANEL_LABEL_WIDTH + COLOR_GAP + PANEL_CONTROL_WIDTH + SLIDER_VALUE_WIDTH
+local HELP_GAP = 4 -- between a row's control and its (?)
 
--- Each direction: the point a widget anchors by, the point of the one before it, and the gap's offset.
+-- Each direction: the point a widget anchors by, the point of the one before it, and which way the next goes.
 local GROW = {
-    down = { "TOP", "BOTTOM", 0, -GAP },
-    up = { "BOTTOM", "TOP", 0, GAP },
-    left = { "RIGHT", "LEFT", -GAP, 0 },
-    right = { "LEFT", "RIGHT", GAP, 0 },
+    down = { "TOP", "BOTTOM", 0, -1 },
+    up = { "BOTTOM", "TOP", 0, 1 },
+    left = { "RIGHT", "LEFT", -1, 0 },
+    right = { "LEFT", "RIGHT", 1, 0 },
 }
 -- With an alignment, the vertical directions anchor by that edge instead of the middle.
 local ALIGNED = {
@@ -439,9 +446,18 @@ function Panel:NextSlot(opts, make)
     return slot
 end
 
+-- opts.help: a (?) after the row's control, a child of the row so it hides with it.
+local function addHelp(row, label, help)
+    if help then
+        row.help = UI.Help(row, label, help)
+        row.help:SetPoint("LEFT", row, "RIGHT", HELP_GAP, 0)
+    end
+    return row
+end
+
 function Panel:Dropdown(label, opts)
     local slot = self:NextSlot(opts, function(slot)
-        return UI.Dropdown(self.frame, label, {
+        return addHelp(UI.Dropdown(self.frame, label, {
             options = function()
                 local o = slot.opts.options
                 return type(o) == "function" and o() or o
@@ -461,14 +477,14 @@ function Panel:Dropdown(label, opts)
             decorate = opts.decorate and function(button, option)
                 return slot.opts.decorate and slot.opts.decorate(button, option)
             end,
-        })
+        }), label, opts.help)
     end)
     return slot.row
 end
 
 function Panel:Slider(label, opts)
     local slot = self:NextSlot(opts, function(slot)
-        return UI.Slider(self.frame, label, {
+        return addHelp(UI.Slider(self.frame, label, {
             min = opts.min,
             max = opts.max,
             step = opts.step,
@@ -488,7 +504,7 @@ function Panel:Slider(label, opts)
             enabledIf = function()
                 return not slot.opts.enabledIf or slot.opts.enabledIf()
             end,
-        })
+        }), label, opts.help)
     end)
     return slot.row
 end
@@ -521,13 +537,13 @@ function Panel:Color(label, get, set, enabledIf)
     return slot.row
 end
 
-function Panel:Place(row, y)
+function Panel:Place(row, y, x)
     row:ClearAllPoints()
     if row.labelText then
         -- A checkbox is smaller than its row, so it sits in the middle of it.
         row:SetPoint("TOPLEFT", self.frame, "TOPLEFT", -4, y - (ROW_HEIGHT - 24) / 2)
     else
-        row:SetPoint("TOPLEFT", self.frame, "TOPLEFT", 0, y)
+        row:SetPoint("TOPLEFT", self.frame, "TOPLEFT", x or 0, y)
     end
     row:Show()
 end
@@ -610,9 +626,21 @@ function Panel:Select(area)
             y = y - ROW_HEIGHT
         end
     end
+    -- A colour row after another goes beside it while both fit the panel's width, so the rows fit the tab.
+    local colorW = PANEL_LABEL_WIDTH + COLOR_GAP + COLOR_SWATCH
+    local x, lastColor = 0, false
     for i = 1, self.cursor do
-        self:Place(rows[i].row, y)
+        local row = rows[i].row
+        local isColor = row.colorLabel ~= nil
+        if isColor and lastColor and x + COLOR_ROW_GAP + colorW * 2 <= PANEL_WIDTH then
+            x = x + colorW + COLOR_ROW_GAP
+            y = y + ROW_HEIGHT -- back onto the line just placed
+        else
+            x = 0
+        end
+        self:Place(row, y, x)
         y = y - ROW_HEIGHT
+        lastColor = isColor
     end
     self.frame:SetHeight(-y)
     self:Refresh()
@@ -626,7 +654,7 @@ end
 -- onChange() is called after any change made on it.
 function Areas.Panel(parent, onChange)
     local frame = CreateFrame("Frame", nil, parent)
-    frame:SetSize(PANEL_LABEL_WIDTH + COLOR_GAP + PANEL_CONTROL_WIDTH + SLIDER_VALUE_WIDTH, ROW_HEIGHT)
+    frame:SetSize(PANEL_WIDTH, ROW_HEIGHT)
     local panel = setmetatable({ frame = frame, rows = {}, cursor = 0, onChange = onChange }, Panel)
     return panel
 end
@@ -765,6 +793,16 @@ function Area:Draw(lines, now, s, more)
     if align then
         point, relative = align[1], align[2]
     end
+    -- Two widgets' frames are the gap and both their borders apart; the first sits its border in from the
+    -- area's edge it anchors by, so the area holds the border and its center stays the first widget's.
+    local gap, inset = GAP, 0
+    if def.space then
+        gap, inset = def.space(s, frame)
+        gap, inset = number(gap, GAP), number(inset, 0)
+    end
+    local step = gap + 2 * inset
+    local ix = point:find("LEFT") and inset or point:find("RIGHT") and -inset or 0
+    local iy = point:find("TOP") and -inset or point:find("BOTTOM") and inset or 0
 
     -- When each line id first showed, kept by id so it survives the line moving to another widget, and
     -- forgotten when a new run starts. A rehearsal that starts part-way into a line's lead counts it as
@@ -803,9 +841,9 @@ function Area:Draw(lines, now, s, more)
         if not def.layout then
             w:ClearAllPoints()
             if i == 1 then
-                w:SetPoint(point, frame, point, 0, 0)
+                w:SetPoint(point, frame, point, ix, iy)
             else
-                w:SetPoint(point, pool[i - 1], relative, g[3], g[4])
+                w:SetPoint(point, pool[i - 1], relative, g[3] * step, g[4] * step)
             end
         end
         w:Show()
@@ -838,12 +876,13 @@ function Area:Draw(lines, now, s, more)
         self.handle:SetWidth(math.max(self.handleMin or HANDLE_MIN_WIDTH, width))
         below = below and true or false
     elseif n > 0 then
-        -- The area is the first widget's size, so that widget sits on the saved center. With an
+        -- The area is the first widget's size and its border, so that widget sits on the saved center. With an
         -- alignment it is as wide as the drag box, so the aligned edge stays put as the texts change.
         local width, height = pool[1]:GetWidth(), pool[1]:GetHeight()
         if align then
             width = HANDLE_MIN_WIDTH
         end
+        width, height = width + 2 * inset, height + 2 * inset
         frame:SetSize(width, height)
         self.handle:SetWidth(math.max(self.handleMin or HANDLE_MIN_WIDTH, width))
     end

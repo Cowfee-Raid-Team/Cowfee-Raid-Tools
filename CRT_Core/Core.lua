@@ -306,7 +306,7 @@ local defaults = {
     -- and use[encounterID] = "own" uses your own plan in place of it.
     pace = { disabled = {}, own = {}, shared = {}, use = {}, shown = true },
     alerts = {
-        bars = { shown = true, noteLines = true, cap = 5, ahead = 20, width = 240, height = 20, font = "Friz Quadrata", fontSize = 13,
+        bars = { shown = true, noteLines = true, cap = 5, ahead = 20, width = 240, height = 20, spacing = 4, border = "none", font = "Friz Quadrata", fontSize = 13,
             barColor = { 0.44, 0.31, 0.22, 1 }, bgColor = { 0, 0, 0, 0.6 }, textColor = { 0.95, 0.90, 0.84, 1 }, showType = true }, -- saved, the player's to change: not a theme colour
         areas = {
             icons = { shown = true, cap = 5, size = 44, font = "Friz Quadrata", fontSize = 20, outline = "OUTLINE", grow = "down", showText = true, fade = true },

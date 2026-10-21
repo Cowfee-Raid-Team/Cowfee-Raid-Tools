@@ -243,8 +243,7 @@ function AbilityMenu.Fill(root, boss, row, hideName)
         end)
         for _, key in ipairs(Reference.TYPE_ORDER) do
             local t = Reference.TYPES[key]
-            local hex = string.format("%02x%02x%02x", t.color[1] * 255, t.color[2] * 255, t.color[3] * 255)
-            types:CreateRadio("|cff" .. hex .. key:sub(1, 1):upper() .. key:sub(2) .. "|r  " .. t.label, function()
+            types:CreateRadio("|cff" .. t.hex .. t.label .. "|r  " .. t.desc, function()
                 return get("type") == key
             end, function()
                 Timeline:SetAbility(boss, spellID, "type", key)

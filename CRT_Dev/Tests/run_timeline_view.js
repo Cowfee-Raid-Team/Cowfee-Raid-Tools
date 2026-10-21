@@ -288,9 +288,9 @@ do
   end
   refView:SetData({ reference = nekzali }, "ref:x")
   local tip = tipFor("Soulcoil Rite", 2)
-  assert(tip == "SetText:Soulcoil Rite|AddLine:Planned at 0:02|AddLine:Lasts 45s|AddLine:Raid-wide damage, unavoidable|Show:nil", "reference tooltip: name, planned, lasts, type: " .. tip)
+  assert(tip == "SetText:Soulcoil Rite|AddLine:Planned at 0:02|AddLine:Lasts 45s|AddLine:Raid damage: raid-wide damage, unavoidable|Show:nil", "reference tooltip: name, planned, lasts, type: " .. tip)
   tip = tipFor("Possession Barrage", 36)
-  assert(tip == "SetText:Possession Barrage|AddLine:Planned at 0:36|AddLine:Cast starts 7s before|AddLine:Fall-off damage|Show:nil", "reference tooltip: lead, type: " .. tip)
+  assert(tip == "SetText:Possession Barrage|AddLine:Planned at 0:36|AddLine:Cast starts 7s before|AddLine:Fall-off: damage that drops the farther you stand|Show:nil", "reference tooltip: lead, type: " .. tip)
   local given = { boss = "G", length = 60, phases = {}, rows = { { name = "X", spellID = 4242, casts = { { t = 10 } } } } }
   refView:SetData({ reference = given }, "ref:g")
   tip = tipFor("X", 10)
@@ -384,7 +384,7 @@ do
   for _, b in ipairs(v.icons) do if b:IsShown() and b.lane == la.lane then icon = b end end
   icon.OnEnter(icon)
   local all = table.concat(said, "|")
-  assert(all:find("AddLine:Mythic only", 1, true) and all:find("AddLine:Soak", 1, true) and all:find("AddLine:Spread out or get away", 1, true), "types: icon tooltip lists every type: " .. all)
+  assert(all:find("AddLine:Mythic: Mythic only", 1, true) and all:find("AddLine:Soak: stack to share the damage", 1, true) and all:find("AddLine:Spread: spread out or get away", 1, true), "types: icon tooltip lists every type: " .. all)
   said = {}
   la.OnEnter(la)
   all = table.concat(said, "|")
