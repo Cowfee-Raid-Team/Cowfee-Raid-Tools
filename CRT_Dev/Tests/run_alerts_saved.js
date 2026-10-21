@@ -155,8 +155,8 @@ local CRT = {
     notes = { list = {}, nextId = 1, alert = { enabled = true, tts = true, seconds = 10, ttsSeconds = 3 } },
   },
 }
-CRT.MOCHA = { espresso = { 0.11, 0.078, 0.063 }, roast = { 0.165, 0.122, 0.098 }, edge = { 0.3, 0.235, 0.188 },
-  mocha = { 0.44, 0.31, 0.22 }, caramel = { 0.78, 0.56, 0.36 }, latte = { 0.87, 0.73, 0.56 }, cream = { 0.95, 0.9, 0.84 } }
+CRT.PALETTE = { background = { 0.11, 0.078, 0.063 }, surface = { 0.165, 0.122, 0.098 }, border = { 0.3, 0.235, 0.188 },
+  selected = { 0.44, 0.31, 0.22 }, accent = { 0.78, 0.56, 0.36 }, label = { 0.87, 0.73, 0.56 }, text = { 0.95, 0.9, 0.84 } }
 local printed = {}
 function CRT:Print(m) printed[#printed + 1] = m end
 function CRT:PlaySound() end

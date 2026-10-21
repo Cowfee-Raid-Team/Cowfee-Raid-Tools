@@ -66,7 +66,7 @@ local CRT = { db = { timeline = { record = true, minPull = 15, keep = 10, bosses
     IsModern = function() return true end, Scale = function() return 100 end, RegisterLayer = function(_, k, f) layered = k if k == "timeline" then popFrame = f end end, SelectPage = function(_, k) selectedPage = k end,
     ResetButtonWidth = function() return 44 end, ResetButton = function() return mock() end, Show = function() end, SkinCloseButton = function() end,
     StyleWindow = function() end, SetFrameTitle = function() end },
-  MOCHA = { espresso = { 0.1, 0.1, 0.1 }, edge = { 0.3, 0.3, 0.3 }, caramel = { 0.78, 0.56, 0.36 }, latte = { 0.87, 0.73, 0.56 }, cream = { 0.95, 0.9, 0.84 } },
+  PALETTE = { background = { 0.1, 0.1, 0.1 }, border = { 0.3, 0.3, 0.3 }, accent = { 0.78, 0.56, 0.36 }, label = { 0.87, 0.73, 0.56 }, text = { 0.95, 0.9, 0.84 } },
 }
 CRT_THEME(CRT, CRT.UI)
 function CRT:Print(m) printed[#printed+1] = m end

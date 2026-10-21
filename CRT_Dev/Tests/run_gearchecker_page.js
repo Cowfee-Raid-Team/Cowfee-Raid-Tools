@@ -194,7 +194,7 @@ local UI, GC, Gear = CRT.UI, CRT.GearChecker, CRT.Gear
 local P = GC.Page
 local Lt = GC.PAGE_LAYOUT
 -- Default: Blizzard's bad, warn and good (the game's red, orange and green), the theme the page starts in
-local BAD, WARN, GOOD = CRT.THEMES.blizzard.bad, CRT.THEMES.blizzard.warn, CRT.THEMES.blizzard.matcha
+local BAD, WARN, GOOD = CRT.THEMES.blizzard.bad, CRT.THEMES.blizzard.warn, CRT.THEMES.blizzard.good
 
 -- the gear: Quick sent theirs (a ring gem missing), Arrow was inspected (no head enchant, a low item)
 Gear:Remember("Quick-Sargeras", { { slot = 1, id = 101, itemString = "item:101:7364", ilvl = 289 }, { slot = 11, id = 111, itemString = "item:111:7364:213746", ilvl = 289 } }, "gearcheck", true)
@@ -312,9 +312,9 @@ for _, info in ipairs(CRT.THEME_LIST) do
   local hcol = P.headers[1].color
   if info.modern then
     check(near(hcol, CRT.THEMES[info.key].heading), info.key .. ": headings in the theme's heading colour")
-    check(near(f.bg.color, CRT.THEMES[info.key].roast), info.key .. ": rows in the theme's roast")
-    check(near(f.ilvl.color, CRT.THEMES[info.key].cream), info.key .. ": text in the theme's cream")
-    check(near(P.chips[1].backdrop, CRT.THEMES[info.key].roast), info.key .. ": the chips follow the theme")
+    check(near(f.bg.color, CRT.THEMES[info.key].surface), info.key .. ": rows in the theme's surface")
+    check(near(f.ilvl.color, CRT.THEMES[info.key].text), info.key .. ": text in the theme's text")
+    check(near(P.chips[1].backdrop, CRT.THEMES[info.key].surface), info.key .. ": the chips follow the theme")
   else
     check(near(hcol, { 1, 0.82, 0 }), info.key .. ": the game's gold headings")
     check(near(f.bg.color, { 0, 0, 0 }), info.key .. ": the game's dark rows")
@@ -325,7 +325,7 @@ for _, info in ipairs(CRT.THEME_LIST) do
   local th = CRT.THEMES[info.key]
   check(near(cell(f, 11).flag[1].color, th.bad), info.key .. ": a missing gem's outline in the theme's bad")
   check(near(cell(f, 11).gems[2].edge.vertex, th.bad), info.key .. ": an empty socket's edge in the theme's bad")
-  check(near(cell(f, 11).dot.vertex, th.matcha), info.key .. ": an enchanted ring's dot in the theme's good")
+  check(near(cell(f, 11).dot.vertex, th.good), info.key .. ": an enchanted ring's dot in the theme's good")
   check(near(cell(f, 11).gems[1].fill.vertex, { 0.55, 0.8, 1 }), info.key .. ": a filled gem keeps its blue")
   local arrowRow
   for _, r in ipairs(drawRows()) do if r.data.name == "Arrow-Sargeras" then arrowRow = r end end

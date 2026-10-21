@@ -66,7 +66,7 @@ local noteText = "EncounterID:3001;Difficulty:Mythic;Name:Nek note\\n"
   .. "time:10;ph:1;tag:everyone;spellid:5001;\\n"
   .. "time:20;ph:1;tag:everyone;text:Hungering Pyre;colors:1 0 0;\\n"
 local CRT = {
-  MOCHA = { caramel = { 0.78, 0.56, 0.36 } }, -- the theme's accent (the harness's own; Themes.lua fills it in the game)
+  PALETTE = { accent = { 0.78, 0.56, 0.36 } }, -- the theme's accent (the harness's own; Themes.lua fills it in the game)
   db = {
     ui = {}, classCache = {},
     timeline = { references = {}, nextRef = 1, record = false, rows = {}, bosses = {} },
@@ -226,7 +226,7 @@ check("colors: no known type is the theme's accent", function()
   pull()
   local it = itemBy(function(x) return x.block == "mine" end)
   assert(it and it.abilityType == nil, "no type")
-  assert(drawn(it) == CRT.MOCHA.caramel, "the accent, read live so a theme switch follows")
+  assert(drawn(it) == CRT.PALETTE.accent, "the accent, read live so a theme switch follows")
   -- a secret spell is never compared and gives no type
   assert(C.TypeOf(3001, SECRET, SECRET, NEK, "Mythic") == nil and #errors == 0, "secret values")
   A:Stop()

@@ -530,15 +530,15 @@ start() B:Refresh()
 local byText = {}
 for i, v in ipairs(B:Visible()) do byText[v.text] = B.pool[i] end
 assert(near(byText.Leader.fill.color, 1, 0, 0, 0.9), "off: the raid note's own colour still wins")
-assert(near(byText.Mine.fill.color, CRT.MOCHA.caramel[1], CRT.MOCHA.caramel[2], CRT.MOCHA.caramel[3], 0.9), "off: your reminder's colour is ignored, no type gives the accent")
+assert(near(byText.Mine.fill.color, CRT.PALETTE.accent[1], CRT.PALETTE.accent[2], CRT.PALETTE.accent[3], 0.9), "off: your reminder's colour is ignored, no type gives the accent")
 local dc = TYPES.dispel.color
 assert(near(byText.Typed.fill.color, dc[1], dc[2], dc[3], 0.9), "off: a typed bar in its type's colour")
-assert(near(byText.Plain.fill.color, CRT.MOCHA.caramel[1], CRT.MOCHA.caramel[2], CRT.MOCHA.caramel[3]), "off: no type, the theme's accent")
+assert(near(byText.Plain.fill.color, CRT.PALETTE.accent[1], CRT.PALETTE.accent[2], CRT.PALETTE.accent[3]), "off: no type, the theme's accent")
 assert(near(byText.Plain.bg.color, 0, 0, 0, 0.6) and near(byText.Plain.text.textColor, 0.95, 0.90, 0.84, 1), "off: background and text colours are the defaults")
 assert(near(bs.barColor, 0.1, 0.2, 0.3, 0.8) and near(bs.bgColor, 0.5, 0.6, 0.7, 0.4) and near(bs.textColor, 0.9, 0.8, 0.7, 0.6), "off: your colours stay saved")
 -- a theme switch repaints the accent at the next draw
 CRT.UI.SwitchTheme("nitro") B:Refresh()
-assert(near(byText.Plain.fill.color, CRT.MOCHA.caramel[1], CRT.MOCHA.caramel[2], CRT.MOCHA.caramel[3]), "off: the accent follows the theme")
+assert(near(byText.Plain.fill.color, CRT.PALETTE.accent[1], CRT.PALETTE.accent[2], CRT.PALETTE.accent[3]), "off: the accent follows the theme")
 CRT.UI.SwitchTheme("blizzard")
 -- the colour rows grey out while off, and come back on
 panel:Select(B)

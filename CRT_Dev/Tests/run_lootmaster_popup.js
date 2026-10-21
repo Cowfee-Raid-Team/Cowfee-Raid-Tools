@@ -113,14 +113,14 @@ Ambiguate = function(n) return n end
 UIParent = mock()
 local CRT = { LootMaster = {}, db = { ui = { modern = false, layers = {} }, lootmaster = { popup = {} } } }
 CRT.Print = function() end
--- each theme's palette as CRT:UseTheme fills CRT.MOCHA (only the keys the popup and the strip read)
+-- each theme's palette as CRT:UseTheme fills CRT.PALETTE (only the keys the popup and the strip read)
 local PALETTES = {
-  cowfee = { espresso = { 0.11, 0.078, 0.063 }, edge = { 0.30, 0.235, 0.188 }, roast = { 0.165, 0.122, 0.098 } },
-  midnight = { espresso = { 0.04, 0.04, 0.04 }, edge = { 0.25, 0.25, 0.25 }, roast = { 0.09, 0.09, 0.09 } },
+  cowfee = { background = { 0.11, 0.078, 0.063 }, border = { 0.30, 0.235, 0.188 }, surface = { 0.165, 0.122, 0.098 } },
+  midnight = { background = { 0.04, 0.04, 0.04 }, border = { 0.25, 0.25, 0.25 }, surface = { 0.09, 0.09, 0.09 } },
 }
-CRT.MOCHA = { caramel = { 0.78, 0.56, 0.36 }, cream = { 0.95, 0.90, 0.84 }, latte = { 0.87, 0.73, 0.56 },
-  stripTop = { 0.35, 0.25, 0.17 }, stripBottom = { 0.23, 0.17, 0.12 }, note = { 0.8, 0.71, 0.6 } }
-local function palette(name) for k, v in pairs(PALETTES[name]) do CRT.MOCHA[k] = v end end
+CRT.PALETTE = { accent = { 0.78, 0.56, 0.36 }, text = { 0.95, 0.90, 0.84 }, label = { 0.87, 0.73, 0.56 },
+  titleTop = { 0.35, 0.25, 0.17 }, titleBottom = { 0.23, 0.17, 0.12 }, muted = { 0.8, 0.71, 0.6 } }
+local function palette(name) for k, v in pairs(PALETTES[name]) do CRT.PALETTE[k] = v end end
 palette("cowfee")
 assert(load(panelSrc, "Panel.lua"))("CowfeeRaidTools", CRT)
 assert(load(windowSrc, "Window.lua"))("CowfeeRaidTools", CRT)
@@ -276,8 +276,8 @@ for _, name in ipairs({ "cowfee", "midnight" }) do
   local pal = PALETTES[name]
   check(allShown(p.rollBorder, false), name .. ": no game border")
   check(not p.slot.shown and allShown(p.plate, false) and not p.stone.shown, name .. ": no game slot, plate or stone")
-  check(p.plateFlat.shown and near(p.plateFlat.fill, pal.roast), name .. ": a flat plate in the theme's field colour")
-  check(near(p.bg, pal.espresso) and p.bg[4] > 0.9 and near(p.edge, pal.edge) and p.edge[4] == 1, name .. ": the panel in the theme's colours")
+  check(p.plateFlat.shown and near(p.plateFlat.fill, pal.surface), name .. ": a flat plate in the theme's field colour")
+  check(near(p.bg, pal.background) and p.bg[4] > 0.9 and near(p.edge, pal.border) and p.edge[4] == 1, name .. ": the panel in the theme's colours")
   check(p.slotFlat.shown and near(p.slotFlat.edge, { 0.64, 0.21, 0.93 }), name .. ": the slot edge in the quality colour")
   check(not chrome.shown, name .. ": no window frame, the flat strip only")
   check(strip.points[1][2] == 0 and strip.w == 520 and strip.bg.shown, name .. ": the flat strip full width")

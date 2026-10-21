@@ -166,7 +166,7 @@ local CRT = {
     overlayOn = false, hideEmpty = true, nextId = 1 },
     notes = { list = {}, nextId = 1, alert = {}, window = {} },
     groups = { presets = {}, nextId = 1, working = {} }, classCache = {}, roleCache = {}, ui = {} },
-  MOCHA = { caramel = { 0.78, 0.56, 0.36 }, latte = { 0.87, 0.73, 0.56 }, roast = { 0.165, 0.122, 0.098 }, cream = { 0.95, 0.90, 0.84 } },
+  PALETTE = { accent = { 0.78, 0.56, 0.36 }, label = { 0.87, 0.73, 0.56 }, surface = { 0.165, 0.122, 0.098 }, text = { 0.95, 0.90, 0.84 } },
   Groups = { ClassColor = function() return 1, 1, 1 end },
 }
 local printed = {}
@@ -279,8 +279,8 @@ do
   assert(list[2].icon:IsShown() and list[2].icon.texture == NOTE_ICON, "no spell: the note icon")
   local c = list[3].edge.color
   assert(c[1] == 1 and c[2] == 0 and c[3] == 0, "the saved alert's colour on the edge")
-  local car = CRT.MOCHA.caramel
-  assert(list[1].edge.color[1] == car[1] and list[1].edge.color[2] == car[2], "no colour: caramel edge")
+  local car = CRT.PALETTE.accent
+  assert(list[1].edge.color[1] == car[1] and list[1].edge.color[2] == car[2], "no colour: accent edge")
   -- laid out left to right without overlap, the + chip after the last
   for i = 2, #list do
     assert(list[i].pt[4] >= list[i - 1].pt[4] + list[i - 1].w, "chip " .. i .. " right of chip " .. (i - 1))
@@ -326,8 +326,8 @@ do
   assert(g and s, "both chips")
   assert(g.icon:IsShown() and g.icon.texture == NOTE_ICON and g.name:GetText() == "Gone spell", "missing spell: name, the note icon")
   assert(s.icon:IsShown() and s.icon.texture == NOTE_ICON, "secret icon: the note icon, never the secret")
-  local car = CRT.MOCHA.caramel
-  assert(g.icon.vcolor[1] == car[1] and s.icon.vcolor[2] == car[2], "no colour: tinted caramel")
+  local car = CRT.PALETTE.accent
+  assert(g.icon.vcolor[1] == car[1] and s.icon.vcolor[2] == car[2], "no colour: tinted accent")
   assert(g.name.pt[4] > 16, "the name after the icon: " .. tostring(g.name.pt[4]))
   -- dropping it still works and keeps its own spell
   dragChip(v, g, screenX(v, 40), laneY(laneIndex(v, "Plain")))
@@ -774,10 +774,10 @@ print("ok templates: strip and editor say Templates and Save As Template")
 do
   local green = S:Save(nil, { name = "B green", text = "Green", color = { 0, 1, 0, 1 }, outputs = { alert = true } })
   local v = newView()
-  local car = CRT.MOCHA.caramel
+  local car = CRT.PALETTE.accent
   local m = chipFor(v, moveID)
   assert(m.icon:IsShown() and m.icon.texture == NOTE_ICON, "no spell: the Personal notes icon")
-  assert(m.icon.vcolor[1] == car[1] and m.icon.vcolor[2] == car[2] and m.icon.vcolor[3] == car[3], "no colour: caramel tint")
+  assert(m.icon.vcolor[1] == car[1] and m.icon.vcolor[2] == car[2] and m.icon.vcolor[3] == car[3], "no colour: accent tint")
   local g = chipFor(v, green)
   assert(g.icon.texture == NOTE_ICON and g.icon.vcolor[1] == 0 and g.icon.vcolor[2] == 1 and g.icon.vcolor[3] == 0, "tinted in its colour")
   assert(g.name.pt[4] == m.name.pt[4], "names start after the icon on every chip")
@@ -1012,7 +1012,7 @@ do
     and not s.outputs.circle, "shows Text and speaks")
   assert(s.speech == "text" and s.warn == 5 and s.linger == nil and s.glow == nil and s.sound == nil and s.iconID == nil,
     "the cooldown defaults: " .. tostring(s.speech) .. " " .. tostring(s.warn))
-  assert(s.color == nil, "default colour (its chip tints caramel as any uncoloured template)")
+  assert(s.color == nil, "default colour (its chip tints accent as any uncoloured template)")
   assert(chipFor(v, made.id), "its chip shows on the templates row")
   assert(#opened == 0 and #editedSaved == 0, "nothing opened")
   -- the built-in cooldown is unchanged: still listed, still read-only
@@ -1686,7 +1686,7 @@ do
   -- a chip held over the track shows the bands of its spell's cooldown on the lane under the cursor
   clearSaves()
   local v = newView()
-  local red, cream, caramel = { 0.89, 0.29, 0.29 }, CRT.MOCHA.cream, CRT.MOCHA.caramel
+  local red, text, accent = { 0.89, 0.29, 0.29 }, CRT.PALETTE.text, CRT.PALETTE.accent
   local function shown() local out = {} for _, t in ipairs(v.bandTex or {}) do if t:IsShown() then out[#out + 1] = t end end return out end
   local function same(c, want) return c and math.abs(c[1] - want[1]) < 1e-6 and math.abs(c[2] - want[2]) < 1e-6 and math.abs(c[3] - want[3]) < 1e-6 end
   local function bandAt(x0, x1, color)
@@ -1702,7 +1702,7 @@ do
   local c = cdChipFor(v, 108280)
   dragChip(v, c, screenX(v, 70), laneY(plain), { check = function()
     -- 1:10, so -1:50 to 1:10 and 1:10 to 4:10, clamped to the 3:00 view (x = 2t)
-    local before, after = bandAt(0, 140, cream), bandAt(140, 360, cream)
+    local before, after = bandAt(0, 140, text), bandAt(140, 360, text)
     assert(before and after, "both bands, in your own colour")
     assert(before.pts.TOPLEFT[5] == rowY(plain) and after.pts.TOPLEFT[5] == rowY(plain), "on the lane under the cursor")
     assert(bandAt(40, 140, red), "your 0:20 Healing Tide is inside: red")
@@ -1729,7 +1729,7 @@ do
   GetSpellBaseCooldown = function(id) if id == 777 then return 45000 end return 0 end
   CRT.AlertCooldowns:ResetLengths() -- lengths asked during earlier drags are remembered
   dragChip(v, chipFor(v, soakID), screenX(v, 70), laneY(plain), { check = function()
-    assert(bandAt(50, 140, caramel) and bandAt(140, 230, caramel), "the template's spell: 45 s each way")
+    assert(bandAt(50, 140, accent) and bandAt(140, 230, accent), "the template's spell: 45 s each way")
     assert(v.bandLabel:IsShown() and v.bandLabel:GetText() == "0:45", "its length: " .. tostring(v.bandLabel:GetText()))
     assert(v.dropLine.label:GetText() == "Place at 1:10", "nothing too soon")
   end })
@@ -1832,22 +1832,22 @@ do
   cx, cy = 150, 150 m.OnMouseDown(m, "LeftButton") cx, cy = 400, 150 v.frame.OnUpdate(v.frame)
   assert(v.chipGhost.stone:IsShown() and not v.chipGhost.bg:IsShown(), "the ghost on the stone")
   v:CancelChipMove()
-  -- a Modern theme: no game art, the theme's roast; repainted live
-  local roast = CRT.MOCHA.roast
-  local keep = { roast[1], roast[2], roast[3] }
-  roast[1], roast[2], roast[3] = 0.2, 0.3, 0.4
+  -- a Modern theme: no game art, the theme's surface; repainted live
+  local surface = CRT.PALETTE.surface
+  local keep = { surface[1], surface[2], surface[3] }
+  surface[1], surface[2], surface[3] = 0.2, 0.3, 0.4
   CRT.db.ui.modern = true
   UI:RepaintTheme()
   for i, c in ipairs(all()) do
     local stone, flat = look(c, "chip " .. i)
     assert(flat and not stone, "Modern: chip " .. i .. " flat, no stone")
-    assert(c.bg.color[1] == 0.2 and c.bg.color[3] == 0.4, "chip " .. i .. ": the theme's roast")
+    assert(c.bg.color[1] == 0.2 and c.bg.color[3] == 0.4, "chip " .. i .. ": the theme's surface")
   end
   cx, cy = 150, 150 m.OnMouseDown(m, "LeftButton") cx, cy = 400, 150 v.frame.OnUpdate(v.frame)
   assert(not v.chipGhost.stone:IsShown() and v.chipGhost.bg:IsShown(), "the ghost flat in Modern")
   v:CancelChipMove()
   -- back: the stone again
-  roast[1], roast[2], roast[3] = keep[1], keep[2], keep[3]
+  surface[1], surface[2], surface[3] = keep[1], keep[2], keep[3]
   CRT.db.ui.modern = false
   UI:RepaintTheme()
   for i, c in ipairs(all()) do

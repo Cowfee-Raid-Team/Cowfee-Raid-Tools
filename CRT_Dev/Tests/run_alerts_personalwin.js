@@ -100,7 +100,7 @@ end
 local previewFns = {}
 local noteText = "EncounterID:3470;Difficulty:Mythic;Name:Nek'zali\\ntime:10;ph:1;tag:Rixxy;text:Raid line;\\n"
 local CRT = {
-  MOCHA = { caramel = { 0.78, 0.56, 0.36 } },
+  PALETTE = { accent = { 0.78, 0.56, 0.36 } },
   db = {
     ui = { outline = "" }, classCache = {},
     timeline = { references = {}, nextRef = 1, record = false, rows = {}, bosses = {}, keep = 5 },

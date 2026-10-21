@@ -107,9 +107,9 @@ local CRT = {
   },
 }
 function CRT:Print(m) printed[#printed + 1] = m end
-CRT.MOCHA = { espresso = { 0.11, 0.078, 0.063 }, roast = { 0.165, 0.122, 0.098 }, edge = { 0.3, 0.235, 0.188 },
-  mocha = { 0.44, 0.31, 0.22 }, caramel = { 0.78, 0.56, 0.36 }, latte = { 0.87, 0.73, 0.56 }, cream = { 0.95, 0.9, 0.84 } }
-CRT.UI = { Tint = function(r, m, k, a) local c = CRT.MOCHA[k] r[m](r, c[1], c[2], c[3], a or 1) end, OnTheme = function() end, PAGE_W = 1026, PAGE_H = 560,
+CRT.PALETTE = { background = { 0.11, 0.078, 0.063 }, surface = { 0.165, 0.122, 0.098 }, border = { 0.3, 0.235, 0.188 },
+  selected = { 0.44, 0.31, 0.22 }, accent = { 0.78, 0.56, 0.36 }, label = { 0.87, 0.73, 0.56 }, text = { 0.95, 0.9, 0.84 } }
+CRT.UI = { Tint = function(r, m, k, a) local c = CRT.PALETTE[k] r[m](r, c[1], c[2], c[3], a or 1) end, OnTheme = function() end, PAGE_W = 1026, PAGE_H = 560,
   IsModern = function() return true end,
   RegisterTab = function() end, SetTabSelected = function() end, RegisterPage = function() end,
   Show = function() end, SetFrameTitle = function() end, RegisterLayer = function() end, RegisterPreview = function() end,
@@ -219,7 +219,7 @@ check("mech: list rows with tick, icon, name, dot", function()
   assert(f.list.w >= 230 and f.list.w <= 270, "about 250 wide: " .. f.list.w)
   for _, row in ipairs(f.rows) do assert(not row.edit, "no Edit buttons") end
   local dot = r1.dot.color
-  assert(dot and math.abs(dot[1] - CRT.MOCHA.caramel[1]) < 1e-6, "a caramel dot")
+  assert(dot and math.abs(dot[1] - CRT.PALETTE.accent[1]) < 1e-6, "an accent dot")
   -- a long list scrolls with the wheel
   for i = 1, 30 do R:Save(ENC, nil, { text = "mine " .. i, times = "P1 0:" .. string.format("%02d", i), boss = "Test Boss" }) end
   CRT.NoteReminders.Refresh()
@@ -234,7 +234,7 @@ check("mech: list rows with tick, icon, name, dot", function()
   assert(#errors == 0, tostring(errors[1]))
 end)
 
--- The list's scroll bar is its own thin thumb at its right edge, the same in every theme (a caramel tint):
+-- The list's scroll bar is its own thin thumb at its right edge, the same in every theme (an accent tint):
 -- every row, and so its selection, highlight (both SetAllPoints) and dot, ends UI.SCROLL_GAP before it.
 check("mech: no row runs under the list's scroll bar", function()
   local f = fresh()
@@ -263,7 +263,7 @@ check("mech: click selects, panel shows its fields", function()
   -- first open: the first row is selected
   assert(f.rows[1].sel.shown and not f.rows[2].sel.shown, "first row selected")
   local sc = f.rows[1].sel.color
-  assert(sc and math.abs(sc[1] - CRT.MOCHA.mocha[1]) < 1e-6, "the selected-tab colour")
+  assert(sc and math.abs(sc[1] - CRT.PALETTE.selected[1]) < 1e-6, "the selected-tab colour")
   assert(p.name.text == "Real Name" and p.icon.texture == "tex777" and p.icon.w == 28, "header")
   assert(p.textEdit.text == "Real Name" and p.idEdit.text == "777", "look boxes")
   -- a click on the row, outside the tick, selects it

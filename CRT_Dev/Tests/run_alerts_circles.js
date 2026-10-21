@@ -441,7 +441,7 @@ print("ok circles: ring colour row and picker")
 -- own colour still wins.
 local function near(c, r, g, b, a) return c and math.abs(c[1] - r) < 1e-6 and math.abs(c[2] - g) < 1e-6 and math.abs(c[3] - b) < 1e-6 and (a == nil or math.abs((c[4] or 1) - a) < 1e-6) end
 local soak = CRT.TimelineReference.TYPES.soak.color
-local accent = CRT.MOCHA.caramel
+local accent = CRT.PALETTE.accent
 pull({ item{ id = "s", time = 5, text = "Soak", abilityType = "soak", color = { 0, 1, 0 } }, item{ id = "u", time = 6, text = "Unknown" } })
 CRT.db.alerts.customColors = false
 CRT.db.alerts.areas.circles.ringColor = { 0.2, 0.4, 0.6, 0.5 }

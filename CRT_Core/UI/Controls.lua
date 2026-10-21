@@ -5,7 +5,7 @@ local ADDON, CRT = ...
 -- Blizzard_EditMode's EditModeSettingDropdownTemplate and EditModeSettingSliderTemplate:
 --   UI.Dropdown  WowStyle1DropdownTemplate, a dropdown with a radio list of choices
 --   UI.Slider    MinimalSliderWithSteppersTemplate, a bar with < and > steppers and the value on
---                its right, in the Classic look; in Modern, a caramel track and a walnut knob that
+--                its right, in the Classic look; in Modern, an accent track and a knob that
 --                shows the value and takes a typed number
 -- A setting with a few fixed choices is always a dropdown, never a button that cycles through them.
 
@@ -198,8 +198,8 @@ function UI.SoundDropdown(parent, text, opts)
     return row
 end
 
--- The Modern slider. In the Modern look (UI:IsModern) a slider is a mocha track, caramel up to the
--- knob's centre, and a bevelled walnut knob (a dark edge, a soft line inside its top edge) that shows
+-- The Modern slider. In the Modern look (UI:IsModern) a slider is a border-coloured track, accent up to the
+-- knob's centre, and a bevelled knob (a dark edge, a soft line inside its top edge) that shows
 -- the value in white: drag the knob or click the track; click the
 -- knob without dragging (under KNOB_CLICK pixels) to type a number; the mouse wheel, and the arrow
 -- keys while typing, move one step. There are no < > buttons. The game's slider stays for the Classic
@@ -253,10 +253,10 @@ function UI.RoundRect(owner, anchor, layer, sublevel, radius, inset, height)
     return shape
 end
 
--- Colours a UI.RoundRect shape: color is a CRT.MOCHA key ("walnut") or { r, g, b [, a] }; alpha, when
+-- Colours a UI.RoundRect shape: color is a CRT.PALETTE key ("knob") or { r, g, b [, a] }; alpha, when
 -- given, is used in place of the colour's own (a faded, disabled control).
 function UI.PaintShape(shape, color, alpha)
-    local c = type(color) == "table" and color or CRT.MOCHA[color]
+    local c = type(color) == "table" and color or CRT.PALETTE[color]
     local a = alpha or c[4] or 1
     for _, t in ipairs(shape.corners) do
         t:SetVertexColor(c[1], c[2], c[3], a)
@@ -291,7 +291,7 @@ end
 local function drawKnob(m, s)
     local text = s.format(s.current)
     m.text:SetText(text)
-    local white = CRT.MOCHA.walnutText
+    local white = CRT.PALETTE.knobText
     m.text:SetTextColor(white[1], white[2], white[3])
     m.widest = math.max(m.widest or 0, m.text:GetUnboundedStringWidth() or 0)
     local knobW = math.min(m.trackW, math.max(KNOB_MIN_W, math.ceil(m.widest) + KNOB_PAD))
@@ -310,13 +310,13 @@ end
 -- Colours, and the knob's size again, after a look or font change: as wide as the widest of the
 -- values at the two ends, so it keeps its size while it moves, and tall enough for the font.
 local function restyleKnob(m, s)
-    UI.PaintShape(m.empty, "edge")
-    UI.PaintShape(m.filled, "caramel")
-    UI.PaintShape(m.edge, "walnutEdge")
-    UI.PaintShape(m.face, "walnut")
-    local shine = CRT.MOCHA.walnutShine
+    UI.PaintShape(m.empty, "border")
+    UI.PaintShape(m.filled, "accent")
+    UI.PaintShape(m.edge, "knobBorder")
+    UI.PaintShape(m.face, "knob")
+    local shine = CRT.PALETTE.knobShine
     m.shine:SetColorTexture(shine[1], shine[2], shine[3])
-    local white = CRT.MOCHA.walnutText
+    local white = CRT.PALETTE.knobText
     m.edit:SetTextColor(white[1], white[2], white[3])
     local _, fontHeight = m.text:GetFont()
     m.knobH = math.max(KNOB_H, math.ceil(tonumber(fontHeight) or 0) + KNOB_TEXT_PAD)
@@ -494,7 +494,7 @@ local function buildModern(row, s)
     local knob = CreateFrame("Button", nil, track)
     knob:SetHeight(KNOB_H)
     m.knob = knob
-    -- a 1 px dark edge: the edge shape, the walnut one 1 px inside it, and a 1 px line just inside the
+    -- a 1 px dark edge: the edge shape, the knob one 1 px inside it, and a 1 px line just inside the
     -- top edge, between the corners
     m.edge = UI.RoundRect(knob, knob, "BACKGROUND", 0, KNOB_R, 0)
     m.face = UI.RoundRect(knob, knob, "BACKGROUND", 1, KNOB_R - 1, 1)
@@ -851,8 +851,8 @@ end
 -- opts.backToDefault a third click goes back to the list's own order. cols: { { key, x, w, title } };
 -- the headings sit at opts.x (default 0) + col.x, opts.y. A column with sortable = false is plain.
 -- opts.get() returns key, dir (dir 1 or -1, key nil for the default order); opts.set(key, dir).
--- Returns { refresh = function }, which redraws the arrows. The headings are latte and the sorted one
--- light cream, with a caramel arrow (CRT.MOCHA, read on each refresh so they follow the theme).
+-- Returns { refresh = function }, which redraws the arrows. The headings are the label colour and the sorted one
+-- light cream, with an accent arrow (CRT.PALETTE, read on each refresh so they follow the theme).
 function UI.SortHeaders(parent, cols, opts)
     local x0, y = opts.x or 0, opts.y or 0
     local buttons = {}
@@ -861,12 +861,12 @@ function UI.SortHeaders(parent, cols, opts)
         for _, b in ipairs(buttons) do
             local on = b.col.key == key
             b.arrow:SetText(on and (dir < 0 and "v" or "^") or "")
-            local caramel, latte = CRT.MOCHA.caramel, CRT.MOCHA.latte
-            b.arrow:SetTextColor(caramel[1], caramel[2], caramel[3])
+            local accent, label = CRT.PALETTE.accent, CRT.PALETTE.label
+            b.arrow:SetTextColor(accent[1], accent[2], accent[3])
             if on then
                 b.text:SetTextColor(1, 0.95, 0.85)
             else
-                b.text:SetTextColor(latte[1], latte[2], latte[3])
+                b.text:SetTextColor(label[1], label[2], label[3])
             end
         end
     end

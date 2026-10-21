@@ -110,7 +110,7 @@ local function initRow(row, r)
     else
         row.diff:SetText("")
     end
-    local accent = CRT.MOCHA.caramel -- your own row, in the theme's accent
+    local accent = CRT.PALETTE.accent -- your own row, in the theme's accent
     row.me:SetColorTexture(accent[1], accent[2], accent[3], 0.16)
     row.me:SetShown(r.name == LM:Me())
 end

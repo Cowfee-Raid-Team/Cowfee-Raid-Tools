@@ -70,19 +70,19 @@ local TEXT = {
     noSource = "Rehearsal has no ability timeline or recorded pull for this boss.",
 }
 
-local function mocha(key, alpha)
-    local c = CRT.MOCHA[key]
+local function rgba(key, alpha)
+    local c = CRT.PALETTE[key]
     return c[1], c[2], c[3], alpha or 1
 end
 
 -- Colors a part made once from the theme, and again when the theme changes (UI.Tint). What is drawn
--- each frame reads mocha() instead.
+-- each frame reads rgba() instead.
 local function themed(region, method, key, alpha)
     local UI = CRT.UI
     if UI and UI.Tint then
         UI.Tint(region, method, key, alpha)
     else
-        region[method](region, mocha(key, alpha))
+        region[method](region, rgba(key, alpha))
     end
 end
 
@@ -118,7 +118,7 @@ local function hook(name, ...)
 end
 
 -- A cast's color: its lane's, else the type color of the lane's first type (as the Timeline view
--- colors a reference row), else caramel (the view's color for a row without one).
+-- colors a reference row), else the accent (the view's color for a row without one).
 local function castColor(cast)
     if cast.color then
         return cast.color
@@ -130,7 +130,7 @@ local function castColor(cast)
     if t then
         return t.color
     end
-    return CRT.MOCHA.caramel
+    return CRT.PALETTE.accent
 end
 RehearsalWindow.CastColor = castColor
 
@@ -238,14 +238,14 @@ local function buildNext(f)
     local head = fontString(f, "CRTFontSmall")
     head:SetPoint("TOPLEFT", f, "TOPLEFT", PAD, -104)
     head:SetText(TEXT.nextUp)
-    themed(head, "SetTextColor", "latte")
+    themed(head, "SetTextColor", "label")
     -- "Testing: <alert>" on the right of the heading while a Test button's rehearsal plays
     f.testing = fontString(f, "CRTFontSmall")
     f.testing:SetPoint("TOPRIGHT", f, "TOPRIGHT", -PAD, -104)
     f.testing:SetPoint("LEFT", head, "RIGHT", 30, 0)
     f.testing:SetJustifyH("RIGHT")
     f.testing:SetWordWrap(false)
-    themed(f.testing, "SetTextColor", "caramel")
+    themed(f.testing, "SetTextColor", "accent")
     f.nextHead = head
     f.next = {}
     for i = 1, NEXT_N do
@@ -286,7 +286,7 @@ local function buildStrip(f)
     strip.nowLine = strip:CreateTexture(nil, "OVERLAY")
     strip.nowLine:SetPoint("TOPLEFT", strip, "TOPLEFT", math.floor(INNER / 3) - 1, 0)
     strip.nowLine:SetSize(2, STRIP_H)
-    themed(strip.nowLine, "SetColorTexture", "cream", 0.9)
+    themed(strip.nowLine, "SetColorTexture", "text", 0.9)
     -- the time over the now line, outside the strip so it isn't clipped
     strip.nowText = fontString(f, "CRTFontSmall")
     strip.nowText:SetPoint("BOTTOM", strip, "TOPLEFT", math.floor(INNER / 3), 2)
@@ -700,7 +700,7 @@ function RehearsalWindow:DrawStrip(now)
             p = p + 1
             local x = (ph.t - left) / span * INNER
             local line = pooled(strip.phaseLines, p, strip, "BORDER")
-            line:SetColorTexture(mocha("caramel", 0.7))
+            line:SetColorTexture(rgba("accent", 0.7))
             line:ClearAllPoints()
             line:SetPoint("TOPLEFT", strip, "TOPLEFT", x, 0)
             line:SetSize(1, STRIP_H)
@@ -710,7 +710,7 @@ function RehearsalWindow:DrawStrip(now)
             label:ClearAllPoints()
             label:SetPoint("TOPLEFT", strip, "TOPLEFT", x + 3, -1)
             label:SetText(ph.title or ph.label or "") -- the stage's name when it has one
-            label:SetTextColor(mocha("latte"))
+            label:SetTextColor(rgba("label"))
             label:Show()
         end
     end
@@ -725,7 +725,7 @@ function RehearsalWindow:DrawStrip(now)
         k = k + 1
         local x = (t - left) / span * INNER
         local line = pooled(strip.ticks, k, strip, "BORDER")
-        line:SetColorTexture(mocha("cream", 0.15))
+        line:SetColorTexture(rgba("text", 0.15))
         line:ClearAllPoints()
         line:SetPoint("TOPLEFT", strip, "TOPLEFT", x, -STRIP_LABEL_H)
         line:SetSize(1, STRIP_H - STRIP_LABEL_H)
@@ -735,7 +735,7 @@ function RehearsalWindow:DrawStrip(now)
         label:ClearAllPoints()
         label:SetPoint("BOTTOMLEFT", strip, "TOPLEFT", x + 3, -STRIP_H + 1)
         label:SetText(fmt(t))
-        label:SetTextColor(mocha("latte"))
+        label:SetTextColor(rgba("label"))
         label:Show()
     end
     for i = k + 1, #strip.ticks do

@@ -20,7 +20,7 @@ local RIGHT_X = 316
 local REFRESH_SECONDS = 0.5
 
 local GRAY = { 0.35, 0.35, 0.35 }
-local GOLD = CRT.MOCHA.heading -- the theme's heading colour; refilled in place on a theme switch
+local GOLD = CRT.PALETTE.heading -- the theme's heading colour; refilled in place on a theme switch
 
 local BACKDROP = {
     bgFile = "Interface\\Buttons\\WHITE8X8",

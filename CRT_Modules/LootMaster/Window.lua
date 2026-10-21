@@ -255,7 +255,7 @@ local function initRow(row, r)
         cols.roll:SetText("")
     end
     cols.score:SetText(r.score and tostring(r.score) or "—")
-    local accent = CRT.MOCHA.caramel -- a picked raider, in the theme's accent
+    local accent = CRT.PALETTE.accent -- a picked raider, in the theme's accent
     row.sel:SetColorTexture(accent[1], accent[2], accent[3], 0.18)
     row.sel:SetShown(selected[r.name] and true or false)
 end
@@ -397,7 +397,7 @@ local function refresh()
     else
         header.info:SetText(it.ilvl and ("Item level " .. it.ilvl) or "")
     end
-    -- the same count as the tab; everyone in: matcha in a Modern theme, plain in Default: Blizzard, as
+    -- the same count as the tab; everyone in: the good colour in a Modern theme, plain in Default: Blizzard, as
     -- before themes
     local answered, expected = s:AnswerCount(current)
     local count = string.format(TEXT.answered, answered, expected)

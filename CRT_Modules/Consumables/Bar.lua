@@ -14,10 +14,10 @@ Bar.PAD = 6
 
 local BORDER = { 0.35, 0.35, 0.35 }
 -- Missing in the theme's bad colour, running low in its warn colour (the game's red and orange in
--- Default: Blizzard). CRT.MOCHA's tables are refilled on a theme switch; the bar's refresh repaints.
+-- Default: Blizzard). CRT.PALETTE's tables are refilled on a theme switch; the bar's refresh repaints.
 local ANT_COLORS = {
-    missing = CRT.MOCHA.bad,
-    low = CRT.MOCHA.warn,
+    missing = CRT.PALETTE.bad,
+    low = CRT.PALETTE.warn,
 }
 
 local BACKDROP = {

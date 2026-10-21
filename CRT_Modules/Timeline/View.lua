@@ -172,19 +172,19 @@ local function settings()
     return CRT.Timeline:Settings()
 end
 
-local function mocha(key, alpha)
-    local c = CRT.MOCHA[key]
+local function rgba(key, alpha)
+    local c = CRT.PALETTE[key]
     return c[1], c[2], c[3], alpha or 1
 end
 
 -- Colors a part made once (method "SetColorTexture", "SetTextColor" or "SetVertexColor") from the theme,
--- and again when the theme changes (UI.Tint). What is drawn on each Refresh reads mocha() instead.
+-- and again when the theme changes (UI.Tint). What is drawn on each Refresh reads rgba() instead.
 local function themed(region, method, key, alpha)
     local UI = CRT.UI
     if UI and UI.Tint then
         UI.Tint(region, method, key, alpha)
     else
-        region[method](region, mocha(key, alpha))
+        region[method](region, rgba(key, alpha))
     end
 end
 
@@ -451,7 +451,7 @@ function View.Create(parent)
     -- the time under the cursor, in the empty corner above the lane names
     view.hover = f:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     view.hover:SetPoint("TOPLEFT", f, "TOPLEFT", 4, -4)
-    themed(view.hover, "SetTextColor", "latte")
+    themed(view.hover, "SetTextColor", "label")
 
     -- the axis: a scroll frame that follows the track's sideways scroll
     local axisScroll = CreateFrame("ScrollFrame", nil, f)
@@ -466,7 +466,7 @@ function View.Create(parent)
     base:SetPoint("BOTTOMLEFT", axisScroll, "BOTTOMLEFT")
     base:SetPoint("BOTTOMRIGHT", axisScroll, "BOTTOMRIGHT")
     base:SetHeight(1)
-    themed(base, "SetColorTexture", "caramel")
+    themed(base, "SetColorTexture", "accent")
 
     view.unknownText = f:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     -- placed above the strip by PlaceStrip, as are the scroll bar and the lanes
@@ -484,11 +484,11 @@ function View.Create(parent)
     bar:SetHeight(BAR_H)
     local barBg = bar:CreateTexture(nil, "BACKGROUND")
     barBg:SetAllPoints()
-    themed(barBg, "SetColorTexture", "roast")
+    themed(barBg, "SetColorTexture", "surface")
     bar:SetThumbTexture("Interface\\Buttons\\WHITE8X8")
     local thumb = bar:GetThumbTexture()
     if thumb then
-        themed(thumb, "SetVertexColor", "caramel")
+        themed(thumb, "SetVertexColor", "accent")
         thumb:SetSize(40, BAR_H)
     end
     bar:SetMinMaxValues(0, 0)
@@ -521,7 +521,7 @@ function View.Create(parent)
     view.hscroll, view.track = hscroll, track
     view.cursorLine = track:CreateTexture(nil, "OVERLAY")
     view.cursorLine:SetWidth(1)
-    themed(view.cursorLine, "SetColorTexture", "cream", 0.5)
+    themed(view.cursorLine, "SetColorTexture", "text", 0.5)
     view.cursorLine:Hide()
 
     hscroll:EnableMouse(true)
@@ -1254,7 +1254,7 @@ function Methods:Flag(n)
             tex:Hide()
             f.sel[i] = tex
         end
-        -- inside it a thin dark border, so the outline shows on a cream flag as well as a caramel one
+        -- inside it a thin dark border, so the outline shows on a text-coloured flag as well as an accent one
         f.selIn = {}
         local w = SELECT_W
         for i, side in ipairs({ { "TOPLEFT", "TOPRIGHT", 0, -w }, { "BOTTOMLEFT", "BOTTOMRIGHT", 0, w },
@@ -1391,7 +1391,7 @@ function Methods:Ghost()
         g.head:SetPoint("TOPLEFT", g, "TOPLEFT", inset, -3)
         g.head:SetSize(FLAG_W, FLAG_HEAD)
         g.labelBg = g:CreateTexture(nil, "BACKGROUND")
-        themed(g.labelBg, "SetColorTexture", "roast", 0.85)
+        themed(g.labelBg, "SetColorTexture", "surface", 0.85)
         g.label = g:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
         g.labelBg:SetPoint("TOPLEFT", g.label, "TOPLEFT", -3, 2)
         g.labelBg:SetPoint("BOTTOMRIGHT", g.label, "BOTTOMRIGHT", 3, -2)
@@ -1455,9 +1455,9 @@ function Methods:UpdateMove()
     local t = self:MoveTarget(mv)
     local g = self:Ghost()
     local x = View.TimeToX(t, math.max(1, self.extra.length or 0), self.trackW) - 1 - (FLAG_BTN_W - FLAG_W) / 2
-    local key = m.mine and "cream" or "caramel"
-    g.head:SetColorTexture(mocha(key, 0.6))
-    g.pole:SetColorTexture(mocha(key, 0.6))
+    local key = m.mine and "text" or "accent"
+    g.head:SetColorTexture(rgba(key, 0.6))
+    g.pole:SetColorTexture(rgba(key, 0.6))
     g:ClearAllPoints()
     g:SetPoint("TOPLEFT", self.track, "TOPLEFT", x, -(m.row - 1) * ROW_H)
     g:SetFrameLevel((mv.f:GetFrameLevel() or 0) + 1)
@@ -1985,14 +1985,14 @@ local function chipIcon(s)
     return nil
 end
 
--- A chip's edge color: the template's color, else caramel.
+-- A chip's edge color: the template's color, else the accent.
 local function chipColor(s)
     local c = s.color
     if type(c) == "table" and readable(c[1]) and type(c[1]) == "number" and type(c[2]) == "number"
         and type(c[3]) == "number" then
         return c[1], c[2], c[3], 1
     end
-    return mocha("caramel")
+    return rgba("accent")
 end
 
 -- A font string's width as its text would draw: a width set earlier caps GetStringWidth.
@@ -2062,13 +2062,13 @@ local function hoverLight(b)
 end
 
 -- A chip's two backgrounds: the roll frame's grey stone (UI.Stone) for Default: Blizzard and a flat one
--- in the theme's roast for the others; chipLook shows the one the theme uses.
+-- in the theme's surface for the others; chipLook shows the one the theme uses.
 local function chipBackground(c)
     local UI = CRT.UI
     c.stone = UI and UI.Stone and UI.Stone(c, "BACKGROUND", 0) or false
     c.bg = c:CreateTexture(nil, "BACKGROUND", nil, 1)
     c.bg:SetAllPoints()
-    themed(c.bg, "SetColorTexture", "roast", 0.9)
+    themed(c.bg, "SetColorTexture", "surface", 0.9)
 end
 
 -- Shows a chip's (or the + chip's) background for the theme in use: the stone in Default: Blizzard, else
@@ -2098,7 +2098,7 @@ local function chipParts(c)
     c.name:SetWordWrap(false)
     c.name:SetShadowColor(0, 0, 0, 1)
     c.name:SetShadowOffset(1, -1)
-    themed(c.name, "SetTextColor", "cream")
+    themed(c.name, "SetTextColor", "text")
 end
 
 -- Paints a chip (or the ghost): its name, the icon tex untinted, or with none the Personal notes icon
@@ -2138,7 +2138,7 @@ local function fillCooldownChip(c, e)
     if not (tex ~= nil and readable(tex) and (type(tex) == "number" or type(tex) == "string")) then
         tex = nil
     end
-    return paintChip(c, e.name, tex, { mocha("caramel") }, { mocha("latte", 0.6) })
+    return paintChip(c, e.name, tex, { rgba("accent") }, { rgba("label", 0.6) })
 end
 
 -- The strip along the bottom: two groups of chips. The templates: their label (with help) and the
@@ -2155,10 +2155,10 @@ function Methods:BuildStrip()
     line:SetPoint("TOPLEFT", strip, "TOPLEFT", 0, 0)
     line:SetPoint("TOPRIGHT", strip, "TOPRIGHT", 0, 0)
     line:SetHeight(1)
-    themed(line, "SetColorTexture", "caramel", 0.4)
+    themed(line, "SetColorTexture", "accent", 0.4)
     strip.label = strip:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     strip.label:SetPoint("LEFT", strip, "TOPLEFT", 4, -STRIP_ROW / 2)
-    themed(strip.label, "SetTextColor", "latte")
+    themed(strip.label, "SetTextColor", "label")
     strip.label:SetText(TEXT.savedAlerts)
     if CRT.UI and CRT.UI.Help then
         CRT.UI.Help(strip, TEXT.savedAlerts, TEXT.savedHelp):SetPoint("LEFT", strip.label, "RIGHT", 2, 0)
@@ -2180,12 +2180,12 @@ function Methods:BuildStrip()
         local track = strip:CreateTexture(nil, "OVERLAY")
         track:SetWidth(STRIP_IND_W)
         track:SetPoint("TOPRIGHT", scroll, "TOPRIGHT", 0, 0)
-        themed(track, "SetColorTexture", "latte", 0.15)
+        themed(track, "SetColorTexture", "label", 0.15)
         track:Hide()
         local thumb = strip:CreateTexture(nil, "OVERLAY")
         thumb:SetWidth(STRIP_IND_W)
         thumb:SetPoint("TOPRIGHT", scroll, "TOPRIGHT", 0, 0)
-        themed(thumb, "SetColorTexture", "caramel")
+        themed(thumb, "SetColorTexture", "accent")
         thumb:Hide()
         return { track = track, thumb = thumb }
     end
@@ -2201,7 +2201,7 @@ function Methods:BuildStrip()
     -- the Cooldowns row: label, (?), the filter dropdown, then the chips
     local cdLabel = strip:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     cdLabel:SetPoint("LEFT", strip, "TOPLEFT", 4, -STRIP_ROW - STRIP_ROW / 2)
-    themed(cdLabel, "SetTextColor", "latte")
+    themed(cdLabel, "SetTextColor", "label")
     cdLabel:SetText(TEXT.cooldowns)
     self.cdLabel = cdLabel
     local after = cdLabel
@@ -2245,7 +2245,7 @@ function Methods:BuildStrip()
     self.cdBar = rowsBar(cdScroll)
     self.cdEmpty = cdRow:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     self.cdEmpty:SetPoint("LEFT", cdRow, "TOPLEFT", 4, -CHIP_H / 2)
-    themed(self.cdEmpty, "SetTextColor", "latte", 0.7)
+    themed(self.cdEmpty, "SetTextColor", "label", 0.7)
     self.cdEmpty:SetText(TEXT.noCooldowns)
     self.cdEmpty:Hide()
 
@@ -2255,7 +2255,7 @@ function Methods:BuildStrip()
     plus.text = plus:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
     plus.text:SetPoint("CENTER", plus, "CENTER", 0, 0)
     plus.text:SetText("+")
-    themed(plus.text, "SetTextColor", "caramel")
+    themed(plus.text, "SetTextColor", "accent")
     hoverLight(plus)
     plus:SetScript("OnEnter", function(b)
         GameTooltip:SetOwner(b, "ANCHOR_TOP")
@@ -2569,7 +2569,7 @@ end
 -- and others, the other casts' times (OtherCasts when nil). extra is one more cast's time: the grabbed one
 -- while Alt adds a time and leaves it there.
 function Methods:BandSpec(m, t, row, others, extra)
-    return { t = t or m.t, row = row or m.row, spellID = m.spellID, key = m.mine and "cream" or "caramel",
+    return { t = t or m.t, row = row or m.row, spellID = m.spellID, key = m.mine and "text" or "accent",
         others = others or self:OtherCasts(m), extra = extra }
 end
 
@@ -2619,7 +2619,7 @@ function Methods:BandFrame()
         bf = CreateFrame("Frame", nil, self.track)
         bf:SetAllPoints(self.track)
         bf.label = bf:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-        themed(bf.label, "SetTextColor", "cream")
+        themed(bf.label, "SetTextColor", "text")
         bf.label:Hide()
         self.bandFrame, self.bandLabel, self.bandTex = bf, bf.label, {}
     end
@@ -2656,7 +2656,7 @@ function Methods:DrawBands(spec)
         end
         local t = spec.t
         local lo, hi = t - cd, t + cd
-        local r, g, b = mocha(spec.key)
+        local r, g, b = rgba(spec.key)
         put(x(lo), x(t), r, g, b, BAND_ALPHA, 0)
         put(x(t), x(hi), r, g, b, BAND_ALPHA, 0)
         -- the farthest other cast inside each band: red from it to the selected cast
@@ -2880,7 +2880,7 @@ function Methods:DropLine()
         d = CreateFrame("Frame", nil, self.track)
         d:SetWidth(2)
         d.labelBg = d:CreateTexture(nil, "BACKGROUND")
-        themed(d.labelBg, "SetColorTexture", "roast", 0.85)
+        themed(d.labelBg, "SetColorTexture", "surface", 0.85)
         d.label = d:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
         d.labelBg:SetPoint("TOPLEFT", d.label, "TOPLEFT", -3, 2)
         d.labelBg:SetPoint("BOTTOMRIGHT", d.label, "BOTTOMRIGHT", 3, -2)
@@ -2905,7 +2905,7 @@ function Methods:DrawDropLine(t, y, soon)
     for i = 1, n do
         local dash = pooled(self.dashes, i, function()
             local tex = d:CreateTexture(nil, "OVERLAY")
-            themed(tex, "SetColorTexture", "cream", 0.85)
+            themed(tex, "SetColorTexture", "text", 0.85)
             tex:SetSize(2, DASH)
             return tex
         end)
@@ -3166,7 +3166,7 @@ function Methods:TrackMenu(x, y)
     end)
 end
 
--- Draws the markers above the icons: raid note lines in caramel, your reminders in cream. A button
+-- Draws the markers above the icons: raid note lines in the accent, your reminders in the text colour. A button
 -- sits a level above every cast icon, so a flag over an icon is the one clicked.
 function Methods:DrawMarks(length)
     local level = (self.track:GetFrameLevel() or 0) + 8
@@ -3177,12 +3177,12 @@ function Methods:DrawMarks(length)
         f:ClearAllPoints()
         f:SetPoint("TOPLEFT", self.track, "TOPLEFT", View.TimeToX(m.t, length, self.trackW) - 1 - (FLAG_BTN_W - FLAG_W) / 2, -(m.row - 1) * ROW_H)
         f:SetFrameLevel(level)
-        local key = m.mine and "cream" or "caramel"
-        f.pole:SetColorTexture(mocha(key))
-        f.head:SetColorTexture(mocha(key))
+        local key = m.mine and "text" or "accent"
+        f.pole:SetColorTexture(rgba(key))
+        f.head:SetColorTexture(rgba(key))
         local icon = chipIcon(m)
         f.icon:SetTexture(icon)
-        f.edge:SetColorTexture(mocha(key))
+        f.edge:SetColorTexture(rgba(key))
         f.icon:SetShown(icon ~= nil)
         f.edge:SetShown(icon ~= nil)
         f.head:SetShown(icon == nil)
@@ -3195,7 +3195,7 @@ function Methods:Label(n)
         local l = CreateFrame("Button", nil, self.body)
         l:SetSize(LABEL_W - 4, ROW_H)
         l.stripe = self.body:CreateTexture(nil, "BACKGROUND")
-        l.stripe:SetColorTexture(mocha("cream", 0.04))
+        l.stripe:SetColorTexture(rgba("text", 0.04))
         -- a boss mechanic's show tick: unticked, it goes to Ignored mechanics (Timeline:SetIgnored)
         l.check = CreateFrame("CheckButton", nil, l, "UICheckButtonTemplate")
         l.check:SetSize(18, 18)
@@ -3289,10 +3289,10 @@ function Methods:DrawIgnored(after, rows)
         head.arrow:SetPoint("LEFT", head, "LEFT", 4, 0)
         head.text = head:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
         head.text:SetPoint("LEFT", head, "LEFT", 20, 0)
-        themed(head.text, "SetTextColor", "latte")
+        themed(head.text, "SetTextColor", "label")
         head.line = self.body:CreateTexture(nil, "ARTWORK")
         head.line:SetHeight(1)
-        themed(head.line, "SetColorTexture", "caramel", 0.6)
+        themed(head.line, "SetColorTexture", "accent", 0.6)
         head:SetScript("OnClick", function()
             CRT.Timeline:Set("ignoredOpen", not settings().ignoredOpen)
         end)
@@ -3318,7 +3318,7 @@ function Methods:DrawIgnored(after, rows)
         l:SetPoint("TOPLEFT", self.body, "TOPLEFT", 2, ly)
         l.stripe:SetPoint("TOPLEFT", self.body, "TOPLEFT", 0, ly)
         l.stripe:SetPoint("BOTTOMRIGHT", self.body, "TOPRIGHT", 0, ly - ROW_H)
-        l.stripe:SetColorTexture(mocha("cream", 0.02))
+        l.stripe:SetColorTexture(rgba("text", 0.02))
         l.stripe:Show()
         for d = 1, MAX_DOTS do
             l.dots[d]:Hide()
@@ -3333,7 +3333,7 @@ function Methods:DrawIgnored(after, rows)
         l.icon:SetAlpha(0.6)
         l.text:SetPoint("RIGHT", l, "RIGHT", -2, 0)
         l.text:SetText(lane.label or "")
-        l.text:SetTextColor(mocha("latte"))
+        l.text:SetTextColor(rgba("label"))
         l:Show()
     end
     return #self.ignoredLanes
@@ -3379,7 +3379,7 @@ function Methods:DrawAxis(length, height)
         local line = pooled(self.lines, n, function()
             local tex = self.track:CreateTexture(nil, "BACKGROUND")
             tex:SetWidth(1)
-            themed(tex, "SetColorTexture", "caramel", 0.25)
+            themed(tex, "SetColorTexture", "accent", 0.25)
             return tex
         end)
         line:SetPoint("TOPLEFT", self.track, "TOPLEFT", x, 0)
@@ -3387,13 +3387,13 @@ function Methods:DrawAxis(length, height)
         local tick = pooled(self.ticks, n, function()
             local tex = self.axis:CreateTexture(nil, "ARTWORK")
             tex:SetSize(1, 5)
-            themed(tex, "SetColorTexture", "caramel")
+            themed(tex, "SetColorTexture", "accent")
             return tex
         end)
         tick:SetPoint("BOTTOMLEFT", self.axis, "BOTTOMLEFT", x, 0)
         local text = pooled(self.texts, n, function()
             local fs = self.axis:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-            themed(fs, "SetTextColor", "latte")
+            themed(fs, "SetTextColor", "label")
             return fs
         end)
         text:SetPoint("BOTTOMLEFT", self.axis, "BOTTOMLEFT", x + 3, 4)
@@ -3426,7 +3426,7 @@ function Methods:DrawPhases(phases, length, height)
             -- the line being dragged is the theme's heading colour, the others red (set every draw, since lines are pooled)
             local dragging = self.phaseDrag and (self.pull and self.pull.reference and self.pull.reference.phases[self.phaseDrag.index]) == phase
             if dragging then
-                line:SetColorTexture(mocha("heading"))
+                line:SetColorTexture(rgba("heading"))
             else
                 line:SetColorTexture(DEATH_RED[1], DEATH_RED[2], DEATH_RED[3], 1)
             end
@@ -3435,7 +3435,7 @@ function Methods:DrawPhases(phases, length, height)
             line:SetSize(2, height)
             local text = pooled(self.phaseTexts, n, function()
                 local fs = self.axis:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-                themed(fs, "SetTextColor", "latte")
+                themed(fs, "SetTextColor", "label")
                 return fs
             end)
             -- the part a chosen order put in this phase is added to the drawn label only: the alerts
@@ -3481,7 +3481,7 @@ function Methods:DrawEndLine(t, length, height)
     end
     if not self.endLine then
         self.endLine = self.track:CreateTexture(nil, "ARTWORK")
-        themed(self.endLine, "SetColorTexture", "caramel")
+        themed(self.endLine, "SetColorTexture", "accent")
     end
     self.endLine:ClearAllPoints()
     self.endLine:SetPoint("TOPLEFT", self.track, "TOPLEFT", View.TimeToX(math.min(t, length), length, self.trackW) - 1, 0)
@@ -3501,7 +3501,7 @@ function Methods:DrawPlan(lane, mid, length, bars, leads)
             if c then
                 bar:SetColorTexture(c[1], c[2], c[3], BAR_ALPHA)
             else
-                bar:SetColorTexture(mocha("caramel", BAR_ALPHA))
+                bar:SetColorTexture(rgba("accent", BAR_ALPHA))
             end
             bar:ClearAllPoints()
             bar:SetSize(math.max(1, View.TimeToX(math.min(mark.t + mark.dur, length), length, self.trackW) - x), DUR_H)
@@ -3519,12 +3519,12 @@ function Methods:DrawPlan(lane, mid, length, bars, leads)
     return bars, leads
 end
 
--- An overlaid pull's casts: small caramel bars with no tooltip, since their spells are unknown.
+-- An overlaid pull's casts: small accent bars with no tooltip, since their spells are unknown.
 -- Returns the new count of ticks used.
 function Methods:DrawTicks(lane, mid, length, ticks)
     for _, mark in ipairs(lane.marks) do
         ticks = ticks + 1
-        local tick = self:Tex(self.pullTicks, ticks, "ARTWORK", mocha("caramel"))
+        local tick = self:Tex(self.pullTicks, ticks, "ARTWORK", rgba("accent"))
         tick:ClearAllPoints()
         tick:SetSize(TICK_W, TICK_H)
         tick:SetPoint("CENTER", self.track, "TOPLEFT", View.TimeToX(mark.t, length, self.trackW), mid)
@@ -3601,7 +3601,7 @@ function Methods:Refresh()
         if tint then
             l.stripe:SetColorTexture(tint[1], tint[2], tint[3], TINT_ALPHA)
         else
-            l.stripe:SetColorTexture(mocha("cream", 0.04))
+            l.stripe:SetColorTexture(rgba("text", 0.04))
         end
         l.stripe:SetShown(tint and true or i % 2 == 0)
         -- the extra types (after the first, which colors the row) as dots: types 2 up to MAX_DOTS + 1 in reading order, the leftmost dot being type 2
@@ -3646,9 +3646,9 @@ function Methods:Refresh()
         elseif lane.color then
             l.text:SetTextColor(lane.color[1], lane.color[2], lane.color[3])
         elseif lane.kind == "ticks" then
-            l.text:SetTextColor(mocha("latte"))
+            l.text:SetTextColor(rgba("label"))
         else
-            l.text:SetTextColor(mocha("cream"))
+            l.text:SetTextColor(rgba("text"))
         end
         local mid = y - ROW_H / 2
         if lane.kind == "reference" then
@@ -3741,7 +3741,7 @@ function Methods:DrawPlayhead()
         tag:SetHeight(14)
         tag.bg = tag:CreateTexture(nil, "BACKGROUND")
         tag.bg:SetAllPoints()
-        themed(tag.bg, "SetColorTexture", "roast", 0.95)
+        themed(tag.bg, "SetColorTexture", "surface", 0.95)
         tag.text = tag:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
         tag.text:SetPoint("CENTER")
         themed(tag.text, "SetTextColor", "heading")

@@ -163,7 +163,7 @@ local noteText = table.concat({
   "time:44;ph:1;text:For no one;",
 }, "\\n")
 local CRT = {
-  MOCHA = { caramel = { 0.78, 0.56, 0.36 } },
+  PALETTE = { accent = { 0.78, 0.56, 0.36 } },
   db = {
     ui = { outline = "" }, classCache = {}, roleCache = {},
     groups = { presets = {}, working = {}, active = nil },

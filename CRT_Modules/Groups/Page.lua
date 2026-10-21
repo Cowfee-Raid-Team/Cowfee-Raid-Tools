@@ -17,9 +17,9 @@ local ROW_H = 22
 local LIST_ROW_H = 26 -- a Quick Load box (24) and the gap under it
 
 local GRAY = { 0.35, 0.35, 0.35 }
--- The theme's good and heading colours; CRT.MOCHA's tables are refilled on a theme switch, so these follow.
-local GREEN = CRT.MOCHA.matcha
-local GOLD = CRT.MOCHA.heading
+-- The theme's good and heading colours; CRT.PALETTE's tables are refilled on a theme switch, so these follow.
+local GREEN = CRT.PALETTE.good
+local GOLD = CRT.PALETTE.heading
 local ABSENT_BORDER = { 0.65, 0.25, 0.35 }
 local ABSENT_TEXT = { 0.5, 0.5, 0.5 }
 

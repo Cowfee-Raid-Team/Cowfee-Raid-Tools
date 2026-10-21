@@ -96,7 +96,7 @@ local CRT = {
     deathRows = "combined", roles = { TANK = true, HEALER = true, DAMAGER = true }, firstDeaths = 0, overlay = 3,
     overlayOn = false, hideEmpty = true, nextId = 1 },
     notes = { list = {}, nextId = 1, alert = {}, window = {} } },
-  MOCHA = { caramel = { 0.78, 0.56, 0.36 }, latte = { 0.87, 0.73, 0.56 }, roast = { 0.165, 0.122, 0.098 }, cream = { 0.95, 0.90, 0.84 } },
+  PALETTE = { accent = { 0.78, 0.56, 0.36 }, label = { 0.87, 0.73, 0.56 }, surface = { 0.165, 0.122, 0.098 }, text = { 0.95, 0.90, 0.84 } },
   Groups = { ClassColor = function() return 1, 1, 1 end },
 }
 local printed = {}
@@ -368,7 +368,7 @@ do
   local notesLane = laneIndex(v, "Notes")
   local personal = laneIndex(v, "Personal notes")
   assert(notesLane == #v.lanes - 1 and personal == #v.lanes, "a Notes lane at the bottom, then Personal notes")
-  local caramel, cream = CRT.MOCHA.caramel, CRT.MOCHA.cream
+  local accent, text = CRT.PALETTE.accent, CRT.PALETTE.text
   local function check(t, mine, row, color, what)
     local f = flagAt(v, t, mine)
     assert(f, what .. ": no marker")
@@ -383,11 +383,11 @@ do
     assert(rawget(f, "hl"), what .. ": hover highlight")
     return f
   end
-  check(20, false, soul, caramel, "heroic spell line")
-  check(25, false, soul, caramel, "mythic spell line")
-  check(75, false, notesLane, caramel, "text line in P2")
-  check(40, true, personal, cream, "reminder with a spell on Personal notes")
-  check(90, true, personal, cream, "reminder without a spell on Personal notes")
+  check(20, false, soul, accent, "heroic spell line")
+  check(25, false, soul, accent, "mythic spell line")
+  check(75, false, notesLane, accent, "text line in P2")
+  check(40, true, personal, text, "reminder with a spell on Personal notes")
+  check(90, true, personal, text, "reminder without a spell on Personal notes")
   -- a marker over a cast icon stays the one clicked: its level is above every icon's
   local topIcon = 0
   for _, b in ipairs(v.icons) do if b.level and b.level > topIcon then topIcon = b.level end end
@@ -871,14 +871,14 @@ do
     local v, id = setup("P1 0:40")
     CRT.AlertReminders:Save(3001, nil, { text = "By icon", times = "P1 0:55", boss = "Nek", iconID = 135940 })
     v:Refresh()
-    local caramel, cream = CRT.MOCHA.caramel, CRT.MOCHA.cream
+    local accent, text = CRT.PALETTE.accent, CRT.PALETTE.text
     local rem = flagAt(v, 40, true)
     assert(rem.icon.shown and rem.icon.tex == "tex4242", "reminder with a spell shows its icon: " .. tostring(rem.icon.tex))
-    assert(rem.edge.shown and rem.edge.color[1] == cream[1] and rem.edge.color[2] == cream[2], "cream edge on your reminder")
+    assert(rem.edge.shown and rem.edge.color[1] == text[1] and rem.edge.color[2] == text[2], "text-coloured edge on your reminder")
     assert(rem.head.shown == false, "no flag head under an icon")
     assert(rem.icon.w == 18 and rem.icon.h == 18 and rem.w == 20 and rem.h == 20, "the icon sits inside the 20 x 20 button")
     local note = flagAt(v, 20, false)
-    assert(note.icon.shown and note.icon.tex == "tex4242" and note.edge.color[1] == caramel[1] and note.edge.color[2] == caramel[2], "raid note line with a spell: icon, caramel edge")
+    assert(note.icon.shown and note.icon.tex == "tex4242" and note.edge.color[1] == accent[1] and note.edge.color[2] == accent[2], "raid note line with a spell: icon, accent edge")
     local plain = flagAt(v, 45, false)
     assert(plain.mark.spellID == nil and plain.icon.shown == false and plain.edge.shown == false and plain.head.shown ~= false, "a text line keeps the plain flag")
     local byIcon = flagAt(v, 55, true)
@@ -1283,7 +1283,7 @@ do
   -- CRT_Modules/Alerts/Cooldowns.lua's Length, as the list would give it: 4242 lasts 60 s, 5151 30 s, anything else unknown
   local lengths = { [4242] = 60, [5151] = 30 }
   CRT.AlertCooldowns = { Length = function(_, id) return lengths[id] end, List = function() return {} end, Filter = function() return "mine" end }
-  local caramel, cream, red = CRT.MOCHA.caramel, CRT.MOCHA.cream, { 0.89, 0.29, 0.29 }
+  local accent, text, red = CRT.PALETTE.accent, CRT.PALETTE.text, { 0.89, 0.29, 0.29 }
   local HEAD = "EncounterID:3001;Difficulty:Heroic;Name:Nek\\n"
   local function setup(lines, rems)
     CRT.db.notes.list = { [1] = { raw = HEAD .. table.concat(lines or {}, "\\n"), encounterID = 3001, difficulty = "Heroic", name = "Nek" } }
@@ -1317,8 +1317,8 @@ do
     local sc = f.sel[1].color
     assert(math.abs(sc[1] - 0xF3 / 255) < 1e-6 and math.abs(sc[2] - 0xEC / 255) < 1e-6 and math.abs(sc[3] - 0xE0 / 255) < 1e-6, "the outline is F3ECE0")
     local row = laneIndex(v, "Soulcoil")
-    local before = bandAt(v, 60, 180, caramel)
-    local after = bandAt(v, 180, 300, caramel)
+    local before = bandAt(v, 60, 180, accent)
+    local after = bandAt(v, 180, 300, accent)
     assert(before and after, "before 0:30-1:30 and after 1:30-2:30 on its row")
     assert(math.abs(before.color[4] - 0.25) < 1e-6 and after.color[4] == before.color[4], "see-through: " .. tostring(before.color[4]))
     assert(before.pt[5] == -(row - 1) * 30 - 2 and before.h == 26 and after.pt[5] == before.pt[5], "on the flag's own row: " .. tostring(before.pt[5]))
@@ -1339,7 +1339,7 @@ do
     click(v, b)
     assert(outlined(b) and not outlined(a), "the selection moved")
     local personal = laneIndex(v, "Personal notes")
-    assert(bandAt(v, 0, 40, cream) and bandAt(v, 40, 100, cream), "the reminder's bands, in its own colour, clamped at 0")
+    assert(bandAt(v, 0, 40, text) and bandAt(v, 40, 100, text), "the reminder's bands, in its own colour, clamped at 0")
     assert(not bandAt(v, 60, 180), "the first flag's bands are gone")
     assert(shown(v)[1].pt[5] == -(personal - 1) * 30 - 2, "on the Personal notes row")
     -- a click on empty track clears
@@ -1368,7 +1368,7 @@ do
     local id = f.mark.id
     click(v, f)
     v:Refresh()
-    assert(outlined(flagAt(v, 20, true)) and bandAt(v, 0, 40, cream), "kept on a redraw")
+    assert(outlined(flagAt(v, 20, true)) and bandAt(v, 0, 40, text), "kept on a redraw")
     -- another alert takes the flag's place in the pool: the outline follows the alert, not the button
     CRT.db.notes.list[1].raw = HEAD .. "time:5;ph:1;spellid:4242;tag:Abu;\\ntime:30;ph:2;spellid:4242;tag:Abu;"
     v:Refresh()
@@ -1569,7 +1569,7 @@ do
   print("ok bands: a drag finds the other casts once")
 
   do
-    -- (fix 6) a dark inner border under the outline, so it shows on a cream flag
+    -- (fix 6) a dark inner border under the outline, so it shows on a text-coloured flag
     local v = setup(nil, { { spellID = 5151, times = "P1 0:20" } })
     local f = flagAt(v, 20, true)
     click(v, f)

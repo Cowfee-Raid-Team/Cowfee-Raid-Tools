@@ -2,7 +2,7 @@
 // over stand-ins of the game's two scroll bars, MinimalScrollBar and UIPanelScrollFrameTemplate's
 // UIPanelScrollBarTemplate: Default: Blizzard keeps the game's art, Blackout: Midnight a grey rail with a
 // square accent thumb, Blackout: Nitro a framed track with an accent thumb and a faint tick under it,
-// Beanworks: Cowfee a rounded track with the rounded walnut thumb; no arrow buttons in the Modern themes;
+// Beanworks: Cowfee a rounded track with the rounded knob thumb; no arrow buttons in the Modern themes;
 // hover lightens the thumb; a live theme switch both ways. Then a scan of the addon: every scroll bar
 // made from those templates goes through UI:SkinScrollBar.
 // Usage: node run_scrollbar.js <addon folder>
@@ -98,7 +98,7 @@ assert(load(panelSrc, "Panel.lua"))("CowfeeRaidTools", CRT)
 assert(load(controlsSrc, "Controls.lua"))("CowfeeRaidTools", CRT)
 assert(load(scrollSrc, "ScrollBar.lua"))("CowfeeRaidTools", CRT)
 local UI = CRT.UI
-local M = CRT.MOCHA
+local M = CRT.PALETTE
 UI.pages = UI.pages or {}
 
 check(type(UI.SkinScrollBar) == "function", "UI:SkinScrollBar exists")
@@ -160,12 +160,12 @@ for _, case in ipairs({ { mini, "MinimalScrollBar" }, { panel, "UIPanelScrollBar
   check(look ~= nil and bar.crtScroll.style == "rail", name .. ": Midnight uses the rail")
   check(artHidden(bar), name .. ", Midnight: the game's track and thumb are hidden")
   check(buttonsHidden(bar), name .. ", Midnight: no arrow buttons (faded, no clicks)")
-  check(look.rail.shown and look.rail.w == 2 and near(look.rail.rgb, M.edge), name .. ", Midnight: a 2 px edge grey rail")
-  check(look.thumbFace.shown and near(look.thumbFace.rgb, M.caramel) and near(M.caramel, CRT.THEMES.midnight.caramel), name .. ", Midnight: an accent (white) thumb")
+  check(look.rail.shown and look.rail.w == 2 and near(look.rail.rgb, M.border), name .. ", Midnight: a 2 px edge grey rail")
+  check(look.thumbFace.shown and near(look.thumbFace.rgb, M.accent) and near(M.accent, CRT.THEMES.midnight.accent), name .. ", Midnight: an accent (white) thumb")
   check(look.thumbFace.file == nil and look.thumbFace.w == UI.SCROLL_BAR_LOOKS.rail.thumb, name .. ", Midnight: a square thumb, a flat colour of its own width")
 end
 
--- Blackout: Nitro: a framed track (roast fill, 1 px edge), a solid accent-blue thumb, a faint tick under it.
+-- Blackout: Nitro: a framed track (surface fill, 1 px border), a solid accent-blue thumb, a faint tick under it.
 UI:SetTheme("nitro")
 for _, case in ipairs({ { mini, "MinimalScrollBar" }, { panel, "UIPanelScrollBar" } }) do
   local bar, name = case[1], case[2]
@@ -173,17 +173,17 @@ for _, case in ipairs({ { mini, "MinimalScrollBar" }, { panel, "UIPanelScrollBar
   check(look ~= nil and bar.crtScroll.style == "framed", name .. ": Nitro uses the framed track")
   check(not bar.crtScroll.looks.rail.rail.shown and not bar.crtScroll.looks.rail.thumbFace.shown, name .. ", Nitro: the Midnight rail is hidden")
   check(artHidden(bar) and buttonsHidden(bar), name .. ", Nitro: the game's art and the arrow buttons are hidden")
-  check(look.fill.shown and near(look.fill.rgb, M.roast), name .. ", Nitro: a roast track")
+  check(look.fill.shown and near(look.fill.rgb, M.surface), name .. ", Nitro: a surface track")
   local edgesOk = #look.edges == 4
-  for _, e in ipairs(look.edges) do edgesOk = edgesOk and e.shown and near(e.rgb, M.edge) end
+  for _, e in ipairs(look.edges) do edgesOk = edgesOk and e.shown and near(e.rgb, M.border) end
   check(edgesOk, name .. ", Nitro: a 1 px edge around the track")
-  check(look.thumbFace.shown and near(look.thumbFace.rgb, M.caramel) and near(M.caramel, CRT.THEMES.nitro.caramel), name .. ", Nitro: an accent-blue thumb")
-  check(look.tick.shown and near(look.tick.rgb, M.caramel) and look.tick.a < 0.6 and look.tick.h == 1, name .. ", Nitro: a faint accent tick under the thumb")
+  check(look.thumbFace.shown and near(look.thumbFace.rgb, M.accent) and near(M.accent, CRT.THEMES.nitro.accent), name .. ", Nitro: an accent-blue thumb")
+  check(look.tick.shown and near(look.tick.rgb, M.accent) and look.tick.a < 0.6 and look.tick.h == 1, name .. ", Nitro: a faint accent tick under the thumb")
   local p = look.tick.points[1]
   check(p and p[1] == "TOP" and p[3] == "BOTTOM", name .. ", Nitro: the tick sits just under the thumb")
 end
 
--- Beanworks: Cowfee: a rounded roast track with an edge border, the rounded walnut thumb with its top shine.
+-- Beanworks: Cowfee: a rounded surface track with a border, the rounded knob thumb with its top shine.
 UI:SetTheme("cowfee")
 for _, case in ipairs({ { mini, "MinimalScrollBar" }, { panel, "UIPanelScrollBar" } }) do
   local bar, name = case[1], case[2]
@@ -191,30 +191,30 @@ for _, case in ipairs({ { mini, "MinimalScrollBar" }, { panel, "UIPanelScrollBar
   check(look ~= nil and bar.crtScroll.style == "rounded", name .. ": Cowfee uses the rounded look")
   check(not bar.crtScroll.looks.framed.fill.shown and not bar.crtScroll.looks.framed.tick.shown, name .. ", Cowfee: the Nitro track is hidden")
   check(artHidden(bar) and buttonsHidden(bar), name .. ", Cowfee: the game's art and the arrow buttons are hidden")
-  check(look.trackEdge.corners[1].shown and near(look.trackEdge.fills[1].rgb, M.edge) and near(look.trackEdge.corners[1].rgb, M.edge), name .. ", Cowfee: an edge border, rounded")
-  check(near(look.trackFace.fills[1].rgb, M.roast), name .. ", Cowfee: a roast track")
-  check(look.thumbFace.corners[1].shown and near(look.thumbFace.fills[1].rgb, M.walnut) and near(look.thumbFace.corners[1].rgb, M.walnut), name .. ", Cowfee: a rounded walnut thumb")
-  check(near(look.thumbEdge.fills[1].rgb, M.walnutEdge), name .. ", Cowfee: the knob's dark walnut edge")
-  check(look.shine.shown and near(look.shine.rgb, M.walnutShine), name .. ", Cowfee: the top shine")
+  check(look.trackEdge.corners[1].shown and near(look.trackEdge.fills[1].rgb, M.border) and near(look.trackEdge.corners[1].rgb, M.border), name .. ", Cowfee: an edge border, rounded")
+  check(near(look.trackFace.fills[1].rgb, M.surface), name .. ", Cowfee: a surface track")
+  check(look.thumbFace.corners[1].shown and near(look.thumbFace.fills[1].rgb, M.knob) and near(look.thumbFace.corners[1].rgb, M.knob), name .. ", Cowfee: a rounded knob thumb")
+  check(near(look.thumbEdge.fills[1].rgb, M.knobBorder), name .. ", Cowfee: the knob's dark edge")
+  check(look.shine.shown and near(look.shine.rgb, M.knobShine), name .. ", Cowfee: the top shine")
 end
 
 -- Hover lightens the thumb; leaving puts it back. The MinimalScrollBar's thumb is its own button; the
 -- UIPanelScrollBar's thumb is a texture, so the whole bar is the hover area.
-local walnut = { M.walnut[1], M.walnut[2], M.walnut[3] }
+local knob = { M.knob[1], M.knob[2], M.knob[3] }
 mini.Track.Thumb.scripts.OnEnter(mini.Track.Thumb)
 local lit = sm.looks.rounded.thumbFace.fills[1].rgb
-check(lit[1] > walnut[1] and lit[2] > walnut[2] and lit[3] > walnut[3], "hover on the thumb lightens it")
+check(lit[1] > knob[1] and lit[2] > knob[2] and lit[3] > knob[3], "hover on the thumb lightens it")
 mini.Track.Thumb.scripts.OnLeave(mini.Track.Thumb)
-check(near(sm.looks.rounded.thumbFace.fills[1].rgb, walnut), "leaving puts the thumb's colour back")
+check(near(sm.looks.rounded.thumbFace.fills[1].rgb, knob), "leaving puts the thumb's colour back")
 panel.scripts.OnEnter(panel)
 lit = sp.looks.rounded.thumbFace.fills[1].rgb
-check(lit[1] > walnut[1], "UIPanelScrollBar: hover lightens its thumb")
+check(lit[1] > knob[1], "UIPanelScrollBar: hover lightens its thumb")
 panel.scripts.OnLeave(panel)
-check(near(sp.looks.rounded.thumbFace.fills[1].rgb, walnut), "UIPanelScrollBar: leaving puts it back")
+check(near(sp.looks.rounded.thumbFace.fills[1].rgb, knob), "UIPanelScrollBar: leaving puts it back")
 UI:SetTheme("midnight")
 panel.scripts.OnEnter(panel)
 lit = sp.looks.rail.thumbFace.rgb
-check(lit[1] > M.caramel[1], "Midnight: hover lightens the white thumb too")
+check(lit[1] > M.accent[1], "Midnight: hover lightens the white thumb too")
 panel.scripts.OnLeave(panel)
 print("ok scrollbar: hover lightens the thumb")
 
@@ -377,7 +377,7 @@ const KNOWN = [
 // Scroll bars the skin leaves alone on purpose: [file, text on the CreateFrame line, reason].
 const ALLOW = [
   ['CRT_Modules/Timeline/View.lua', 'local bar = CreateFrame("Slider", nil, f)',
-    'the Timeline\'s sideways bar: horizontal, already roast and caramel from the theme; its look waits on Alex'],
+    'the Timeline\'s sideways bar: horizontal, already surface and accent from the theme; its look waits on Alex'],
 ];
 // The templates the skin knows: a scroll frame's bar is its .ScrollBar, the others are the bar itself.
 const KNOWN_TEMPLATES = { UIPanelScrollFrameTemplate: '.ScrollBar', MinimalScrollBar: '' };
