@@ -382,7 +382,7 @@ local fired = {}
 LM:OnChange(function(what) fired[#fired + 1] = what end)
 local drops, sliders, buttons, helps = {}, {}, {}, {}
 CRT.UI = {
-  PAGE_W = 1026, PAGE_H = 560,
+  PAGE_W = 1026, PAGE_H = 560, SkinScrollBar = function() end,
   Dropdown = function(p, text, opts) local r = mock("Dropdown") rawset(r, "opts", opts) rawset(r, "refresh", function() end) rawset(r, "Dropdown", mock("DropdownButton")) drops[#drops + 1] = r return r end,
   Slider = function(p, text, opts) local r = mock("Slider") rawset(r, "opts", opts) rawset(r, "text", text) rawset(r, "refresh", function() end) sliders[#sliders + 1] = r return r end,
   PanelButton = function(p, label, h, fn) local b = mock("Button") rawset(b, "label", label) rawset(b, "click", fn) rawset(b, "h", h) buttons[#buttons + 1] = b return b end,
