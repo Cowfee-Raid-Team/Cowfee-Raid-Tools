@@ -359,6 +359,7 @@ const KNOWN = [
   ['CRT_Modules/Timeline/SettingsTab.lua', 'CowfeeRaidToolsTimelineRowsScroll'],
   ['CRT_Modules/Timeline/ReferencePage.lua', 'CowfeeRaidToolsTimelineReferenceScroll'],
   ['CRT_Modules/Timeline/ReferencePage.lua', 'CowfeeRaidToolsTimelineAbilitiesScroll'],
+  ['CRT_Modules/Notes/AlertsTab.lua', 'CowfeeRaidToolsAlertSettingsScroll'], // an alert area's settings rows
   ['CRT_Modules/Notes/Page.lua', 'CowfeeRaidToolsNoteImportScroll'],
   ['CRT_Modules/Notes/Page.lua', 'CowfeeRaidToolsNotesListScroll'],
   ['CRT_Modules/Notes/Page.lua', 'CowfeeRaidToolsNoteTextScroll'],

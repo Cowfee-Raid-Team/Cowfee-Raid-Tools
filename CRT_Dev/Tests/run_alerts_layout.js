@@ -1,10 +1,10 @@
 // Alerts stage 2a final fixes: the four alert areas' default places don't overlap each other, drag boxes
 // included. Reads each file's DEFAULT_POSITION and lays out a rough box from the area defaults in CRT_Core/Core.lua
 // (a full cap of widgets growing their default way, and the drag box on the other side).
-// Usage: node run_alerts_layout.js CRT_Modules/Alerts/Areas.lua CRT_Modules/Alerts/Icons.lua CRT_Modules/Alerts/Texts.lua CRT_Modules/Alerts/Bars.lua CRT_Modules/Alerts/Circles.lua CRT_Modules/Notes/Alert.lua
+// Usage: node run_alerts_layout.js CRT_Modules/Alerts/Areas.lua CRT_Modules/Alerts/Icons.lua CRT_Modules/Alerts/Texts.lua CRT_Modules/Alerts/Bars.lua CRT_Modules/Alerts/Circles.lua CRT_Modules/Notes/Alert.lua CRT_Modules/Alerts/TimelineArea.lua
 const fs = require('fs');
-const [areasF, iconsF, textsF, barsF, circlesF, alertF] = process.argv.slice(2);
-if (!alertF) { console.error('usage: node run_alerts_layout.js Areas Icons Texts Bars Circles NoteAlert'); process.exit(2); }
+const [areasF, iconsF, textsF, barsF, circlesF, alertF, timelineF] = process.argv.slice(2);
+if (!timelineF) { console.error('usage: node run_alerts_layout.js Areas Icons Texts Bars Circles NoteAlert TimelineArea'); process.exit(2); }
 
 function num(src, name) {
   const m = src.match(new RegExp('local ' + name + '\\s*=\\s*(-?\\d+)'));
@@ -46,6 +46,13 @@ const boxes = [
   // circles: 64 px ring with its text under it, cap 3 right; centred on the character by default (0, -40)
   box('circles', pos(circlesF), Math.max(64, TEXT_W * 0.6), 64 + 2 + 18, 3, 'right'),
 ];
+// the timeline (CRT_Core/Core.lua defaults): a 300 px line straight down, 32 px icons, four Journal icons and a name on
+// the right (an icon stacked aside and the tick labels on the left), its drag box above
+{
+  const p = pos(timelineF), half = 300 / 2, icon = 32, badges = 4 * 15;
+  const right = p.x + icon / 2 + 5 + badges + 5 + TEXT_W, left = p.x - icon / 2 - 4 - icon - 5 - TEXT_W / 2;
+  boxes.push({ name: 'timeline', left: Math.min(left, p.x - HANDLE_W / 2), right: Math.max(right, p.x + HANDLE_W / 2), top: p.y + half + icon / 2 + 2 + HANDLE_H, bottom: p.y - half - icon / 2 });
+}
 
 let failed = 0;
 function check(name, fn) {
