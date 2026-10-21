@@ -6,8 +6,9 @@ local ADDON, CRT = ...
 -- edge) and, on a slot that takes an enchant, a dot at the top left (green, or red when missing). A missing
 -- enchant or gem outlines the cell red, a low item orange. Filter chips pick who shows; Refresh asks the
 -- group's CRTs and inspects the rest (Comm.lua, Inspect.lua), and says how many have CRT. Hover a cell for
--- the exact item, shift-click one with an issue to put it in the chat box, right-click a row to whisper,
--- post or inspect. Pop out moves the whole page into a window of its own (UI.Window "popout", its place and
+-- the exact item, or the issues badge for the list of issues; shift-click an item with an issue to put it in
+-- the chat box; right-click a row to send its issues to a channel or a whisper, put them in the chat box or
+-- inspect. Pop out moves the whole page into a window of its own (UI.Window "popout", its place and
 -- size in CRTDB.gearChecker.popout), as the Timeline's does; closing it puts it back.
 -- The rows are worked out once per change (GC:Rows) and a scroll only repaints the visible ones.
 --
@@ -26,7 +27,7 @@ local Gear = CRT.Gear
 
 local TEXT = {
     title = "Gear Checker",
-    help = "Everyone's equipped gear, with what's missing.\n\nA red dot at the top left is a missing enchant, a green one an enchant. The diamonds at the top right are sockets: filled with a gem, or empty with a red edge. A red outline is a missing enchant or gem, an orange one an item %d or more item levels under the player's average.\n\nRefresh asks every CRT in the group for their gear, then inspects the others, one at a time, in range and out of combat.\n\nHover an item to see it. Shift-click one with an issue to put it in the chat box. Right-click a player to whisper them, post to group chat or inspect them.",
+    help = "Everyone's equipped gear, with what's missing.\n\nA red dot at the top left is a missing enchant, a green one an enchant. The diamonds at the top right are sockets: filled with a gem, or empty with a red edge. A red outline is a missing enchant or gem, an orange one an item %d or more item levels under the player's average.\n\nRefresh asks every CRT in the group for their gear, then inspects the others, one at a time, in range and out of combat.\n\nHover an item to see it, or a player's issues count to list their issues. Shift-click an item with an issue to put it in the chat box. Right-click a player to send their issues to a chat channel or whisper, put them in the chat box or inspect them.",
     refresh = "Refresh (%d/%d have CRT)",
     popOut = "Pop out",
     dock = "Dock",
@@ -38,8 +39,13 @@ local TEXT = {
     notSeen = "not seen yet",
     notSeenWhy = { range = "not seen yet (out of range)", offline = "not seen yet (offline)", cannot = "not seen yet (can't inspect)" },
     shiftClick = "Shift-click to put this in the chat box.",
-    whisper = "Whisper %s their issues",
-    post = { RAID = "Post to raid chat", PARTY = "Post to party chat", INSTANCE_CHAT = "Post to instance chat" },
+    sendTo = "Send issues to",
+    channel = { RAID = "Raid", PARTY = "Party", INSTANCE_CHAT = "Instance", GUILD = "Guild", OFFICER = "Officer", SAY = "Say" },
+    whisper = "Whisper %s",
+    sayWorld = "Out in the world, the game only lets you say this yourself. It goes into the chat box: press Enter to send it.",
+    noIssues = "No issues",
+    noIssuesToSend = "No issues to send.",
+    tipNotSeen = "Not seen yet",
     chatBox = "Put in chat box",
     inspect = "Inspect %s",
     empty = "Nothing here",
@@ -139,46 +145,50 @@ end
 
 -- Chat ---------------------------------------------------------------------------------------------------------
 
--- Text into the chat box: into the one being typed in, else a new one opened with it (as the game's own
--- ChatFrameUtil.LinkItem does), for the player to edit and send.
-function P.ToChatBox(text)
-    if not text or text == "" then
-        return false
-    end
-    local util = ChatFrameUtil
-    local getActive = (util and util.GetActiveWindow) or ChatEdit_GetActiveWindow
-    local insert = (util and util.InsertLink) or ChatEdit_InsertLink
-    local open = (util and util.OpenChat) or ChatFrame_OpenChat
-    local okA, active = pcall(getActive or function() end)
-    if okA and active and insert then
-        return pcall(insert, text)
-    end
-    if open then
-        return pcall(open, text)
-    end
-    return false
-end
+-- Text into the chat box (GC.ToChatBox), for the player to edit and send.
+P.ToChatBox = GC.ToChatBox
 
 local function shortName(name)
     return Ambiguate and Ambiguate(name or "", "short") or name
 end
 
--- The row's right-click menu (UI.ContextMenu lifts it above every window).
+-- A menu entry's tooltip, when the game's menu has them.
+local function menuTooltip(description, text)
+    if description and description.SetTooltip and GameTooltip_AddNormalLine then
+        description:SetTooltip(function(tooltip)
+            GameTooltip_AddNormalLine(tooltip, text)
+        end)
+    end
+end
+
+local function targetLabel(t, who)
+    if t.chatType == "WHISPER" then
+        return string.format(TEXT.whisper, who)
+    end
+    return TEXT.channel[t.chatType] or t.chatType
+end
+
+-- The row's right-click menu (UI.ContextMenu lifts it above every window, submenus too): Send issues to
+-- (GC.SendTargets, each sent through GC.Say), Put in chat box, Inspect. With no issues the first two are greyed.
 function P.OpenMenu(owner, row)
     UI.ContextMenu(owner, function(root)
         local who = shortName(row.name)
         root:CreateTitle(who)
-        local lines = GC.WhisperLines(row)
-        local b = root:CreateButton(string.format(TEXT.whisper, who), function()
-            GC.Say(GC.WhisperLines(row), "WHISPER", row.name)
-        end)
-        b:SetEnabled(#lines > 0 and not row.me)
-        local chat = GC.GroupChat()
-        b = root:CreateButton(TEXT.post[chat or "RAID"], function()
-            GC.Say(GC.RaidLines(row), GC.GroupChat())
-        end)
-        b:SetEnabled(#lines > 0 and chat ~= nil)
-        b = root:CreateButton(TEXT.chatBox, function()
+        local lines = GC.RaidLines(row)
+        local send = root:CreateButton(TEXT.sendTo)
+        for _, t in ipairs(GC.SendTargets(row)) do
+            local entry = send:CreateButton(targetLabel(t, who), function()
+                GC.Send(row, t)
+            end)
+            if GC.NeedsHardware(t.chatType) then
+                menuTooltip(entry, TEXT.sayWorld)
+            end
+        end
+        send:SetEnabled(#lines > 0)
+        if #lines == 0 then
+            menuTooltip(send, TEXT.noIssuesToSend)
+        end
+        local b = root:CreateButton(TEXT.chatBox, function()
             P.ToChatBox(GC.ChatBoxText(row))
         end)
         b:SetEnabled(#lines > 0)
@@ -351,6 +361,32 @@ local function rowClick(frame, button)
     end
 end
 
+-- The issues badge's tooltip: the player's name in their class colour, then a line per issue (red for a
+-- missing enchant or gem, orange for a low item), or No issues, or Not seen yet.
+local function badgeEnter(hit)
+    local row = hit:GetParent().data
+    if not (row and GameTooltip) then
+        return
+    end
+    GameTooltip:SetOwner(hit, "ANCHOR_RIGHT")
+    GameTooltip:SetText(shortName(row.name), classColor(row.class))
+    local lines = GC.IssueLines(row)
+    if not lines then
+        GameTooltip:AddLine(TEXT.tipNotSeen, 0.6, 0.6, 0.6)
+    elseif #lines == 0 then
+        GameTooltip:AddLine(TEXT.noIssues, COLORS.good[1], COLORS.good[2], COLORS.good[3])
+    end
+    for _, line in ipairs(lines or {}) do
+        local c = line.kind == "low" and COLORS.low or COLORS.bad
+        GameTooltip:AddLine(line.text, c[1], c[2], c[3])
+    end
+    GameTooltip:Show()
+end
+
+local function badgeClick(hit, button)
+    rowClick(hit:GetParent(), button)
+end
+
 local function buildRow(f)
     f:RegisterForClicks("RightButtonUp")
     f:SetScript("OnClick", rowClick)
@@ -369,6 +405,14 @@ local function buildRow(f)
     f.badge:SetPoint("LEFT", L.nameW + L.ilvlW + (L.issuesW - L.badgeW) / 2, 0)
     f.issues = f:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     f.issues:SetPoint("CENTER", f.badge, "CENTER")
+    -- the badge's hover area, the badge's size; a right-click there is the row's
+    f.badgeHit = CreateFrame("Button", nil, f)
+    f.badgeHit:SetSize(L.badgeW, L.badgeH)
+    f.badgeHit:SetPoint("CENTER", f.badge, "CENTER")
+    f.badgeHit:RegisterForClicks("RightButtonUp")
+    f.badgeHit:SetScript("OnEnter", badgeEnter)
+    f.badgeHit:SetScript("OnLeave", cellLeave)
+    f.badgeHit:SetScript("OnClick", badgeClick)
     f.notSeen = f:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     f.notSeen:SetPoint("LEFT", L.nameW + L.ilvlW + L.issuesW + 8, 0)
     f.cells = {}

@@ -1,7 +1,8 @@
 // Gear Checker's rules, rows and inspect queue (CRT_Modules/GearChecker/Data.lua and Inspect.lua, with the
 // gear engine and the season's gearChecks): missing enchants and gems, a slot that needs no enchant, an
 // off hand that is a shield, low item levels, the filters, the shift-click, whisper, raid and chat box
-// text, the chat sends (and the encounter lockdown), and the inspect queue (one at a time, never in combat,
+// text, the issues tooltip's lines, where the issues can go (group, guild, officer rights), each channel's
+// send and Say in the open world, the chat sends (and the encounter lockdown), and the inspect queue (one at a time, never in combat,
 // out of range and offline skipped, a timeout, an item not loaded yet, the game's own inspect window).
 // Usage: node run_gearchecker_data.js <addon folder>
 const fs = require('fs');
@@ -128,7 +129,9 @@ r = GC.CheckSlot(17, piece(17, "item:118", 280), R, 280)
 check(r.missingEnchant, "an off-hand weapon needs one")
 r = GC.CheckSlot(9, piece(9, "item:109", 268), R, 280)
 check(r.low and r.issues == 1, "12 under the average is low")
-eq(GC.Problems(r), "low item level", "the words")
+eq(GC.Problems(r), "12 item levels under average", "the words: how far under")
+r = GC.CheckSlot(9, piece(9, "item:109", 260), R, 280.6)
+eq(GC.Problems(r), "20 item levels under average", "whole item levels under")
 r = GC.CheckSlot(9, piece(9, "item:109", 269), R, 280)
 check(not r.low, "11 under is not")
 r = GC.CheckSlot(1, { slot = 1, id = 101, ilvl = 280 }, R, 280)
@@ -228,6 +231,105 @@ check(said[3] and said[3][1]:find("[Helm]", 1, true) and not said[3][1]:find("|H
 eq(#GC.CapLine(string.rep("x", 400)), 255, "text with no link is cut at 255 bytes")
 eq(GC.CapLine("short"), "short", "a short line is as it was")
 eq(GC.CapLine(string.rep("x", 254) .. "||"), string.rep("x", 254), "no pipe is left at the cut")
+
+-- 5b. The issues tooltip's lines: one per issue, red for missing, orange for low
+local tipLines = GC.IssueLines(arrow)
+eq(#tipLines, 1, "tooltip: Arrow's one issue")
+eq(tipLines[1].text, "Head |cffa335ee|Hitem:101|h[Helm]|h|r 280 - missing enchant", "tooltip: the slot, the item and what is missing")
+eq(tipLines[1].kind, "bad", "tooltip: a missing enchant is red")
+local mixed = { name = "Mix-Sargeras", seen = true, slots = {} }
+mixed.slots[1] = GC.CheckSlot(1, piece(1, "item:101", 260), R, 280)
+mixed.slots[11] = GC.CheckSlot(11, piece(11, "item:111:7364", 280), R, 280)
+tipLines = GC.IssueLines(mixed)
+eq(#tipLines, 3, "tooltip: a missing enchant and a low item on one slot are two lines, and the gems a third")
+eq(tipLines[1].text .. "|" .. tipLines[1].kind, "Head |cffa335ee|Hitem:101|h[Helm]|h|r 260 - missing enchant|bad", "tooltip: the enchant first")
+eq(tipLines[2].text .. "|" .. tipLines[2].kind, "Head |cffa335ee|Hitem:101|h[Helm]|h|r 260 - 20 item levels under average|low", "tooltip: then the low item, orange")
+eq(tipLines[3].text .. "|" .. tipLines[3].kind, "Finger |cffa335ee|Hitem:111:7364|h[Band]|h|r 280 - missing 2 gems|bad", "tooltip: the gems, red")
+eq(#GC.IssueLines(all[1]), 0, "tooltip: no issues, no lines")
+eq(GC.IssueLines(halo), nil, "tooltip: not seen yet, nothing known")
+
+-- 5c. Where the issues can go: the group, Guild and Officer when you may speak there, a whisper, Say
+local GUILD = { in_ = false, speak = true, rank = 2, flags = {} }
+IsInGuild = function() return GUILD.in_ end
+GetGuildInfo = function(unit) if GUILD.in_ and unit == "player" then return "Cowfee", "Raider", GUILD.rank end end
+C_GuildInfo = { CanSpeakInGuildChat = function() return GUILD.speak end,
+  GuildControlGetRankFlags = function(order) GUILD.asked = order return GUILD.flags end }
+local function targets(row) local out = {} for _, t in ipairs(GC.SendTargets(row)) do out[#out + 1] = t.chatType .. (t.target and (":" .. t.target) or "") end return table.concat(out, ",") end
+eq(targets(arrow), "RAID,WHISPER:Arrow-Sargeras,SAY", "send to: no guild, a raid")
+GUILD.in_ = true
+eq(targets(arrow), "RAID,GUILD,WHISPER:Arrow-Sargeras,SAY", "send to: in a guild, Guild")
+eq(GUILD.asked, 3, "officer: your rank's flags (GetGuildInfo counts from 0, the flags from 1)")
+GUILD.flags = { [3] = true }
+check(not GC.CanOfficer(), "officer: reading officer chat isn't speaking there")
+GUILD.flags = { [4] = true }
+eq(targets(arrow), "RAID,GUILD,OFFICER,WHISPER:Arrow-Sargeras,SAY", "send to: a rank that speaks in officer chat, Officer")
+GUILD.speak = false
+eq(targets(arrow), "RAID,OFFICER,WHISPER:Arrow-Sargeras,SAY", "send to: a rank muted in guild chat, no Guild")
+GUILD.speak = true
+C_GuildInfo.GuildControlGetRankFlags = function() error("no rank yet") end
+check(not GC.CanOfficer(), "officer: flags the game can't give are no")
+C_GuildInfo.GuildControlGetRankFlags = function() return GUILD.flags end
+issecretvalue = function(v) return v == 2 end
+check(not GC.CanOfficer(), "officer: a secret rank is never used")
+issecretvalue = nil
+eq(targets(all[1]), "RAID,GUILD,OFFICER,SAY", "send to: your own row, no whisper")
+inRaid = false
+eq(targets(arrow), "GUILD,OFFICER,WHISPER:Arrow-Sargeras,SAY", "send to: out of a group, no group channel")
+local party = true
+IsInGroup = function(category) return party and category == nil end
+eq(targets(arrow):match("^[^,]+"), "PARTY", "send to: a party")
+IsInGroup = function(category) return category == LE_PARTY_CATEGORY_INSTANCE or category == nil end
+eq(targets(arrow):match("^[^,]+"), "INSTANCE_CHAT", "send to: an instance group")
+inRaid = true
+IsInGroup = function(category) return inRaid and category == nil end
+GUILD.in_ = false
+check(not GC.CanGuild() and not GC.CanOfficer(), "out of a guild: neither")
+
+-- 5d. Each channel's send, and Say in the open world (the game takes it only from a key press or click)
+said, timers = {}, {}
+C_ChatInfo.SendChatMessage = function(text, chatType, lang, target) said[#said + 1] = { text, chatType, target } end
+local WHERE = { inside = true, kind = "raid" }
+IsInInstance = function() return WHERE.inside, WHERE.kind end
+local opened = {}
+ChatFrameUtil = { OpenChat = function(t) opened[#opened + 1] = t end, GetActiveWindow = function() end, InsertLink = function() end }
+for _, ch in ipairs({ "RAID", "GUILD", "OFFICER", "SAY" }) do
+  said = {}
+  eq(GC.Send(mixed, { chatType = ch }), 2, ch .. ": both slots' lines on their way")
+  advance(GC.CHAT_GAP)
+  check(#said == 2 and said[1][2] == ch and said[2][2] == ch, ch .. ": sent there, spaced out")
+  check(said[1] and said[1][1]:find("^%[Mix%] Head ") ~= nil, ch .. ": the named lines")
+end
+said = {}
+GC.Send(mixed, { chatType = "WHISPER", target = "Mix-Sargeras" })
+advance(GC.CHAT_GAP)
+check(#said == 2 and said[1][2] == "WHISPER" and said[1][3] == "Mix-Sargeras" and said[1][1]:find("^Gear check: ") ~= nil, "whisper: the player's own lines to them")
+check(not GC.NeedsHardware("SAY") and not GC.NeedsHardware("GUILD"), "in a raid instance: Say needs no key press")
+WHERE.inside, WHERE.kind = false, "none"
+check(GC.NeedsHardware("SAY") and GC.NeedsHardware("YELL"), "the open world: Say and Yell need a key press")
+check(not GC.NeedsHardware("GUILD") and not GC.NeedsHardware("OFFICER") and not GC.NeedsHardware("WHISPER") and not GC.NeedsHardware("RAID"), "the open world: the others don't")
+check(GC.NeedsHardware("CHANNEL"), "a channel always does")
+WHERE.inside, WHERE.kind = true, "neighborhood"
+check(GC.NeedsHardware("SAY"), "a housing neighborhood counts as the world")
+issecretvalue = function(v) return v == "raid" end
+WHERE.inside, WHERE.kind = true, "raid"
+check(GC.NeedsHardware("SAY"), "a secret instance type: treated as the world")
+issecretvalue = nil
+WHERE.inside, WHERE.kind = false, "none"
+said, timers, opened = {}, {}, {}
+local sent, how = GC.Send(mixed, { chatType = "SAY" })
+advance(GC.CHAT_GAP * 3)
+eq(#said, 0, "say in the world: no send the game would block")
+eq(sent .. "/" .. tostring(how), "0/chatbox", "say in the world: it goes to the chat box")
+check(opened[1] and opened[1]:find("^/s %[Mix%] Head ") ~= nil, "say in the world: every line in a new chat box after /s, to send with Enter")
+check(opened[1] and opened[1]:find("missing 2 gems", 1, true) ~= nil, "with the last line too")
+check(#opened[1] <= 255, "and it fits the chat box (" .. #opened[1] .. ")")
+opened = {}
+GC.Say(GC.RaidLines(many), "SAY")
+check(opened[1] and #opened[1] <= 255 and opened[1]:find("%(%+%d+ more%)$") ~= nil, "a long list: as many as fit, then how many were left out")
+WHERE.inside, WHERE.kind = true, "raid"
+said, opened = {}, {}
+eq(GC.Send({ name = "Ok-Sargeras", seen = true, slots = {} }, { chatType = "GUILD" }), 0, "no issues: nothing sent")
+eq(#said + #opened, 0, "no issues: no chat call, no chat box")
 
 -- 6. The inspect queue
 UNITS.raid2.links = { [1] = "|cffa335ee|Hitem:101:7364::::::::ilvl290|h[Helm]|h|r", [2] = "|cffa335ee|Hitem:102::213746|h[ilvl286]|h|r" }
