@@ -307,7 +307,7 @@ local defaults = {
     pace = { disabled = {}, own = {}, shared = {}, use = {}, shown = true },
     alerts = {
         bars = { shown = true, noteLines = true, cap = 5, ahead = 20, width = 240, height = 20, font = "Friz Quadrata", fontSize = 13,
-            barColor = { 0.44, 0.31, 0.22, 1 }, bgColor = { 0, 0, 0, 0.6 }, textColor = { 0.95, 0.90, 0.84, 1 } }, -- saved, the player's to change: not a theme colour
+            barColor = { 0.44, 0.31, 0.22, 1 }, bgColor = { 0, 0, 0, 0.6 }, textColor = { 0.95, 0.90, 0.84, 1 }, showType = true }, -- saved, the player's to change: not a theme colour
         areas = {
             icons = { shown = true, cap = 5, size = 44, font = "Friz Quadrata", fontSize = 20, outline = "OUTLINE", grow = "down", showText = true, fade = true },
             texts = { shown = true, cap = 3, font = "Friz Quadrata", fontSize = 36, outline = "THICKOUTLINE", grow = "down", align = "CENTER" },
