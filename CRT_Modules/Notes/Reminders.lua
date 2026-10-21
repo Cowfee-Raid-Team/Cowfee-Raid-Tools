@@ -691,6 +691,11 @@ local function selectItem(item)
     if not (enc and item and items) then
         return
     end
+    -- another alert: a Test's rehearsal of the one you left stops being a test
+    local W = CRT.TimelineRehearsalWindow
+    if W and W.EndTest and picked[enc] ~= itemKey(item) then
+        W:EndTest()
+    end
     picked[enc] = itemKey(item)
     local index = selectedIndex(enc)
     paint(index)

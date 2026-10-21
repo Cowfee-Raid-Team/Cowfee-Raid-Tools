@@ -121,7 +121,7 @@ do
   assert(near(f.castFill.w, RW.CAST_W * 0.5) and f.castFill.shown, "half filled: " .. tostring(f.castFill.w))
   assert(f.castFill.color[1] == 1 and f.castFill.color[2] == 0, "lane color")
   RW:Seek(18.75)
-  assert(f.castName.text == "Pool" and near(f.castFill.w, RW.CAST_W * 0.75), "3/4 filled")
+  assert(f.castName.text == "Pool" and near(f.castFill.w, RW.CAST_W * 0.25), "1.25 of 5 s left: a quarter, emptying as the alert bars do")
   assert(near(f.castFill.color[1], 1) and near(f.castFill.color[2], 0.5) and near(f.castFill.color[3], 0.82), "no lane color: the type color")
   RW:Seek(59)
   assert(f.castName.text == "Plain" and near(f.castFill.color[1], 0.78), "no type: accent")
@@ -149,11 +149,11 @@ do
   assert(count == 15 and barW and barW > 0, "the countdown window")
   RW:Seek(4) -- Slam at 10 is 6 s away, Pool at 20 is 16 s away
   assert(f.next[1].time.text == "6.0", "tenths inside the window: " .. tostring(f.next[1].time.text))
-  assert(f.next[1].bar.shown and near(f.next[1].bar.w, barW * 0.9), "the bar fills as the cast nears, full at the cast bar: " .. tostring(f.next[1].bar.w))
+  assert(f.next[1].bar.shown and near(f.next[1].bar.w, barW * 6 / 15), "the bar is the time left out of 15 s: " .. tostring(f.next[1].bar.w))
   assert(f.next[1].bar.color[1] == 1, "the bar in the cast's color")
   assert(f.next[2].time.text == "0:16" and not f.next[2].bar.shown, "no bar outside the window")
   RW:Seek(4.5)
-  assert(f.next[1].time.text == "5.5" and near(f.next[1].bar.w, barW * 0.95), "nearly there")
+  assert(f.next[1].time.text == "5.5" and near(f.next[1].bar.w, barW * 5.5 / 15), "nearly there")
   RW:Seek(9.5) -- Slam is in the cast bar now, so Next up starts at Pool
   assert(f.castName.text == "Slam" and f.next[1].name.text == "Pool" and f.next[1].time.text == "10.5", "the cast bar's cast leaves Next up: " .. tostring(f.next[1].name.text))
   RW:Seek(0)
@@ -188,7 +188,7 @@ do
       assert(where == "next" and f.next[1].bar.shown, "counting in Next up at " .. t)
     else
       assert(where == "bar", "on the cast bar from 5 s at " .. t)
-      assert(near(f.castFill.w, math.max(1, RW.CAST_W * (t - 55) / 5)), "the cast bar fills over the same 5 s at " .. t)
+      assert(near(f.castFill.w, math.max(1, RW.CAST_W * (60 - t) / 5)), "the cast bar's fill is its time left over the same 5 s at " .. t)
     end
     if t >= 45 then
       local v = tonumber(value)
@@ -206,8 +206,7 @@ do
   assert(where == "next" and value == "10.0", "a jump into Next up's countdown: " .. tostring(value))
   RW:Seek(57.5)
   _, where, value = plainEntries()
-  assert(where == "bar" and value == "2.5" and near(f.castFill.w, RW.CAST_W * 0.5), "a jump into the cast bar: " .. tostring(value))
-  RW:Seek(53)
+  assert(where == "bar" and value == "2.5" and near(f.castFill.w, RW.CAST_W * 0.5), "a jump into the cast bar: " .. tostring(value))  RW:Seek(53)
   dropdowns["Speed"].opts.set(2)
   RW:Play()
   now = now + 1 -- 55 at 2x
@@ -777,6 +776,30 @@ do
   CRT.Timeline.RehearsalSourceFor = nil
 end
 ok("open at stops at stopAt")
+
+-- EndTest: picking another alert ends the test, so the window never says "Testing:" an alert you left --
+do
+  CRT.Timeline.RehearsalSourceFor = function(_, eid, group)
+    return { base = base, encounterID = eid, group = group, bossName = "Nek'zali", difficultyName = "Heroic" }
+  end
+  local alerts = { extra = { { id = "draft" } } }
+  RW:OpenAt(3470, "Heroic", 10, { testing = "Hungering Pyre", stopAt = 14, alerts = alerts })
+  assert(f.testing.text == "Testing: Hungering Pyre", "testing")
+  acalls = {}
+  RW:EndTest()
+  assert(f.testing.text == "", "the testing line goes: " .. tostring(f.testing.text))
+  assert(kinds() == "stop,start" and acalls[2][5].extra == nil and acalls[2].at == RW:Now(), "the run starts again at the clock without the draft: " .. kinds())
+  assert(RW.stopAt == nil and RW.clock:Playing(), "no pause left, and it plays on")
+  acalls = {}
+  RW:EndTest()
+  assert(#acalls == 0, "no test: nothing")
+  RW:Close()
+  acalls = {}
+  RW:EndTest()
+  assert(#acalls == 0, "closed: nothing")
+  CRT.Timeline.RehearsalSourceFor = nil
+end
+ok("end test clears the testing line")
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 for (const p of process.argv.slice(2, 4)) {

@@ -931,6 +931,19 @@ check("mech: test with no Show from starts 8 s before, a long Linger stops later
   assert(#errors == 0, tostring(errors[1]))
 end)
 
+check("mech: picking another alert ends the test in the Rehearsal", function()
+  local f = fresh()
+  local ended = 0
+  click(f.rows[1].frame)
+  CRT.TimelineRehearsalWindow = { EndTest = function() ended = ended + 1 end }
+  click(f.rows[1].frame)
+  assert(ended == 0, "the same row: the test goes on")
+  click(f.rows[2].frame)
+  CRT.TimelineRehearsalWindow = nil
+  assert(ended == 1, "another row ends it: " .. ended)
+  assert(#errors == 0, tostring(errors[1]))
+end)
+
 check("mech: test plays the countdown and stops 3 s after", function()
   local f = fresh()
   local p = f.panel
@@ -960,9 +973,10 @@ check("mech: test passes the current draft, saved one replaced", function()
   CRT.TimelineRehearsalWindow = nil
   assert(R:Get(ENC, id).text == "Soak", "the typing is saved first")
   local o = opened[1] and opened[1].opts
-  assert(o and o.alerts and type(o.alerts.extra) == "table" and #o.alerts.extra == 2, "the draft's items: " .. tostring(o and o.alerts and o.alerts.extra and #o.alerts.extra))
+  -- the times of the ability timeline the Rehearsal plays (Heroic 0:45), not another difficulty's
+  assert(o and o.alerts and type(o.alerts.extra) == "table" and #o.alerts.extra == 1, "the draft's items: " .. tostring(o and o.alerts and o.alerts.extra and #o.alerts.extra))
   local it = o.alerts.extra[1]
-  assert(it.text == "Soak" and it.id == "mine:test:1" and it.ph == 1 and it.time == 30, "the draft as typed: " .. tostring(it.text) .. " " .. tostring(it.id))
+  assert(it.text == "Soak" and it.id == "mine:test:1" and it.ph == 1 and it.time == 45, "the draft as typed, at Heroic's time: " .. tostring(it.text) .. " " .. tostring(it.time))
   assert(o.alerts.replaces and o.alerts.replaces.block == "mine" and o.alerts.replaces.id == id, "the saved one is replaced")
   assert(o.testing == "Soak", "label follows the text")
   assert(#errors == 0, tostring(errors[1]))

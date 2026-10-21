@@ -4,7 +4,7 @@ local ADDON, CRT = ...
 -- A separate pop-up, movable by its title, that stays open while the Timeline is closed. Top to
 -- bottom: the title "Rehearsal · <boss>" with its close button; the boss panel (the name, a health
 -- bar draining evenly from 100% at the pull to 0% at the fight's length, and the percentage); the
--- cast bar (the cast showing now, its icon and name, filling over its last Rehearsal.CAST seconds); Next up
+-- cast bar (the cast showing now, its icon and name, emptying over its last Rehearsal.CAST seconds); Next up
 -- (the next 3 casts counting down to them, until they move into the cast bar); the strip (STRIP_SPAN seconds of the fight's casts in their
 -- type colors scrolling under a fixed "now" line a third of the way across, the time over that line,
 -- the phase lines and their labels, and a faint line every 30 seconds labelled along the bottom; a
@@ -29,9 +29,10 @@ local CAST_H = 20
 local CAST_W = INNER - CAST_H - 4
 local NEXT_N = 3
 local NEXT_H = 18
-local NEXT_COUNT = 15 -- seconds before a cast its Next up line counts down in tenths and fills its bar,
--- full when the cast moves into the cast bar Rehearsal.CAST seconds before it, which carries the same
--- countdown on to 0 (one countdown per cast: Rehearsal.NextUp leaves out every cast the bar owns)
+local NEXT_COUNT = 15 -- seconds before a cast its Next up line counts down in tenths, its bar the time
+-- left out of NEXT_COUNT, until the cast moves into the cast bar Rehearsal.CAST seconds before it, which
+-- carries the same countdown on to 0 (one countdown per cast: Rehearsal.NextUp leaves out every cast the
+-- bar owns)
 local NEXT_BAR_W = INNER - 20
 local STRIP_H = 68
 local STRIP_LABEL_H = 14 -- the phase labels' row at the top of the strip
@@ -255,7 +256,7 @@ local function buildNext(f)
         line.icon = f:CreateTexture(nil, "ARTWORK")
         line.icon:SetPoint("TOPLEFT", f, "TOPLEFT", PAD, y)
         line.icon:SetSize(16, 16)
-        -- behind the name: fills in the cast's color over the last NEXT_COUNT seconds before it
+        -- behind the name: the time left in the cast's color over the last NEXT_COUNT seconds before it
         line.bar = f:CreateTexture(nil, "BORDER")
         line.bar:SetPoint("TOPLEFT", f, "TOPLEFT", PAD + 20, y)
         line.bar:SetHeight(16)
@@ -781,7 +782,8 @@ function RehearsalWindow:Redraw()
         f.castName:SetText(name)
         f.castTime:SetText(string.format("%.1f", shown.remaining))
         f.castFill:SetColorTexture(col[1], col[2], col[3], 0.85)
-        f.castFill:SetWidth(math.max(1, CAST_W * shown.progress))
+        -- the fill is the time left, emptying to 0 at the cast as the alert bars do
+        f.castFill:SetWidth(math.max(1, CAST_W * (1 - shown.progress)))
         f.castFill:Show()
     else
         f.castIcon:Hide()
@@ -792,20 +794,20 @@ function RehearsalWindow:Redraw()
 
     -- Next up: the casts more than Rehearsal.CAST seconds away, so none of the cast bar's
     local list = Rehearsal.NextUp(model, now, NEXT_N)
-    local fillSpan = NEXT_COUNT - Rehearsal.CAST
     for i, line in ipairs(f.next) do
         local c = list[i]
         if c then
             line.icon:SetTexture(c.icon or ICON)
             line.icon:Show()
             line.name:SetText(c.name or "")
-            -- counts down to the cast: m:ss, then tenths with a filling bar over the last NEXT_COUNT seconds
+            -- counts down to the cast: m:ss, then tenths over the last NEXT_COUNT seconds with a bar
+            -- of the time left out of NEXT_COUNT, emptying as the cast nears
             local left = math.max(0, c.t - now)
             if left <= NEXT_COUNT then
                 local col = castColor(c)
                 line.time:SetText(string.format("%.1f", left))
                 line.bar:SetColorTexture(col[1], col[2], col[3], 0.45)
-                local fill = math.max(0, math.min(1, (NEXT_COUNT - left) / fillSpan))
+                local fill = math.max(0, math.min(1, left / NEXT_COUNT))
                 line.bar:SetWidth(math.max(1, NEXT_BAR_W * fill))
                 line.bar:Show()
             else
@@ -990,6 +992,22 @@ function RehearsalWindow:OpenAt(encounterID, difficultyName, t, opts)
     self.stopAt = tonumber(opts.stopAt)
     self:Play()
     return true
+end
+
+-- Ends a Test's rehearsal (OpenAt) when another alert is picked: the "Testing:" line goes, the pause
+-- at stopAt is dropped, and the run starts again at the clock without the tested draft, playing on as
+-- a plain Rehearse. Nothing when the window is closed or not testing.
+function RehearsalWindow:EndTest()
+    local s = self.open and self.source
+    if not (s and (s.testing or s.alerts)) then
+        return
+    end
+    s.testing, s.alerts = nil, nil
+    self.stopAt = nil
+    if self.frame then
+        self.frame.testing:SetText("")
+    end
+    hook("onSeek", self:Now())
 end
 
 -- Sets the window's hooks to the engine (done once here; the harness sets them again).
