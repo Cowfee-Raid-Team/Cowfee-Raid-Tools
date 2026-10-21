@@ -66,6 +66,7 @@ local function reset()
   account, char = {}, {}
   combat = false
   CRT.db.macros.owned = {}
+  CRTDBChar = {}
 end
 
 -- A frame stand-in for the engine's event frame.
@@ -187,18 +188,68 @@ do
   check(not M:Update("markers") or find("CRT Star").body == "/raid {rt1} on me", "update: the edited CRT Star is not rewritten")
 end
 
--- Not enough room: none made, and how many slots are needed.
+-- General Macros without room: all 8 go to the character's macros together.
+local function fillAccount(n) for i = 1, n do playerMacro(string.format("Mine %03d", i), "/say " .. i) end end
+local function fillChar(n) for i = 1, n do playerMacro(string.format("Char %03d", i), "/say c" .. i, true) end end
 do
   reset()
-  for i = 1, 115 do playerMacro(string.format("Mine %03d", i), "/say " .. i) end
+  fillAccount(115)
+  local ok, msg = M:Create("markers")
+  check(ok and #account == 115 and #char == 8, "general full: all 8 made in the character's macros (account " .. #account .. ", char " .. #char .. ")")
+  check(type(msg) == "string" and msg:find("character", 1, true) ~= nil, "general full: the message says where (" .. tostring(msg) .. ")")
+  local st = M:Status("markers")
+  check(st.created == 8 and #st.missing == 0, "general full: all 8 count as ours")
+  check(st.entries[1].perCharacter == true, "general full: an entry says it lives in the character's macros")
+  check(CRTDBChar.macros and CRTDBChar.macros.owned.markers["CRT Star"] and not (CRT.db.macros.owned.markers or {})["CRT Star"], "general full: ownership kept per character (CRTDBChar), not in the account list")
+  -- the player edits one in the character list: changed, kept by Remove
+  find("CRT Moon", char).body = "/say mine"
+  check(#M:Status("markers").changed == 1, "character macro edited: changed by you")
+  M:Remove("markers")
+  check(#char == 1 and char[1].name == "CRT Moon" and #account == 115, "remove takes only ours from the character's macros")
+end
+
+-- Neither list has room for all 8 alone: split, General first, then the character's; all 8 made.
+do
+  reset()
+  fillAccount(117) -- 3 free
+  fillChar(25)     -- 5 free
+  local ok, msg = M:Create("markers")
+  check(ok and #account == 120 and #char == 30, "split: 3 in General, 5 in the character's macros")
+  check(M:Status("markers").created == 8, "split: all 8 are ours")
+  check(type(msg) == "string" and msg:find("3", 1, true) and msg:find("5", 1, true), "split: the message gives both counts (" .. tostring(msg) .. ")")
+  local ok2 = M:Remove("markers")
+  check(ok2 and #account == 117 and #char == 25 and M:Status("markers").created == 0, "split: remove takes ours from both places")
+end
+
+-- Both lists together have no room: none made, and how many to free.
+do
+  reset()
+  fillAccount(117) -- 3 free
+  fillChar(27)     -- 3 free
   local before = calls
   local ok, msg = M:Create("markers")
-  check(not ok and #account == 115 and calls == before, "limit: with 5 slots free none of the 8 are made")
-  check(type(msg) == "string" and msg:find("8", 1, true) and msg:find("5", 1, true), "limit: the message says 8 needed, 5 free (" .. tostring(msg) .. ")")
-  -- room for exactly the missing ones
-  for i = 1, 3 do table.remove(account) end
-  ok = M:Create("markers")
-  check(ok and #account == 120, "limit: with 8 free all 8 are made")
+  check(not ok and calls == before and #account == 117 and #char == 27, "both full: none of the 8 are made")
+  check(type(msg) == "string" and msg:find("2", 1, true) ~= nil and msg:lower():find("free", 1, true) ~= nil, "both full: the message says to free 2 (" .. tostring(msg) .. ")")
+end
+
+-- One macro at a time: Create with a name makes just that one.
+do
+  reset()
+  local ok, msg = M:Create("markers", "CRT Diamond")
+  check(ok and #account == 1 and account[1].name == "CRT Diamond", "one: only CRT Diamond is made")
+  check(M:Status("markers").created == 1, "one: status counts 1")
+  M:Create("markers", "CRT Diamond")
+  check(#account == 1, "one again: nothing new")
+  M:Create("markers")
+  check(#account == 8, "generate all after one: the other 7 are made")
+end
+
+-- Old saved data (no place recorded) still reads as General Macros.
+do
+  reset()
+  M:Create("markers")
+  for _, rec in pairs(CRT.db.macros.owned.markers) do rec.perCharacter = nil end
+  check(M:Status("markers").created == 8, "old ownership records still count as ours")
 end
 
 -- Combat: nothing changes, and it says why.
