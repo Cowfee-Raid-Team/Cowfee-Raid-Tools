@@ -238,7 +238,7 @@ end
 local function buildLeft(pf)
     local x = LEFT_X
 
-    heading(pf, x, -44, "Window", "The theme button in the title bar picks the look: Default: Blizzard is the game's own, and the others give the whole addon their colours.\n\nWindow Scale applies when you let go or press Enter; Ctrl + mouse wheel over the window changes it too.\n\nOpacity fades the whole window, down to 30%.")
+    heading(pf, x, -44, "Window", "The theme button in the title bar picks the look. Window Scale applies when you let go or press Enter (Ctrl + mouse wheel over the window works too). Opacity fades the whole window, down to 30%.")
     add(UI.Slider(pf, "Window scale", {
         min = UI.MIN_SCALE,
         max = UI.MAX_SCALE,
@@ -275,7 +275,7 @@ local function buildLeft(pf)
         end,
     }), x, -120)
 
-    heading(pf, x, -164, "Text", "The font, outline and size of all the addon's text, note windows included.\n\nThe list has the game's fonts and any shared by other addons. Default is the game's font in Default: Blizzard and Arial Narrow in the other themes.\n\nText size is the body text size (8 to 22 pt, 14 by default); headings and small text follow it. Note windows keep their own size, and a note window can still get its own font on Raid Notes. Boss debuff timers keep the game's font.")
+    heading(pf, x, -164, "Text", "The font, outline and size of the addon's text, note windows included. Default is the game's font in Default: Blizzard and Arial Narrow in the other themes; fonts shared by other addons are listed too. Text size is the body size (8 to 22 pt); headings and small text follow it. Note windows keep their own size and can get their own font on Raid Notes.")
     add(UI.Dropdown(pf, "Font", {
         options = fontChoices,
         labelWidth = LABEL_W,
@@ -320,7 +320,7 @@ local function buildLeft(pf)
     }), x, -258)
 
     x = MIDDLE_X
-    heading(pf, x, -44, "Sound", "Every sound the addon plays uses this game sound channel, so it follows that channel's volume and mute.\n\nThe low-health pulse and text to speech are played by the game and have their own volume, on Quality of Life and Raid Notes.")
+    heading(pf, x, -44, "Sound", "Every sound the addon plays uses this game sound channel and follows its volume and mute. The low-health pulse and text to speech have their own volume, on Quality of Life and Raid Notes.")
     add(UI.Dropdown(pf, "Sound channel", {
         options = CRT.SOUND_CHANNELS,
         labelWidth = LABEL_W,
@@ -334,7 +334,7 @@ local function buildLeft(pf)
         end,
     }), x, -62)
 
-    heading(pf, x, -106, "Reports", "Ticked, player names in the Late Tracker and Tattlebot show without their realm, on their pages, in chat and in Discord exports. Unticked, a realm shows only for players from another realm. The Raid Groups grid always keeps realms.")
+    heading(pf, x, -106, "Reports", "Ticked, player names in the Late Tracker and Tattlebot show without their realm, in chat and exports too. Unticked, a realm shows only for players from another realm. The Raid Groups grid always keeps realms.")
     checkbox(pf, x, -124, "Leave realm names out of reports and Discord exports", function()
         return ui().hideRealms
     end, function(on)
@@ -352,7 +352,7 @@ end
 local function buildRight(pf)
     local x = RIGHT_X
 
-    heading(pf, x, -44, "Layers", "Which layer each group of windows is drawn in, from Background (under everything) to Tooltip (over everything). A higher layer always covers a lower one, the game's own windows included.\n\nAlerts: your next spell, alert bars, icons, texts, circles and the low-health banner. Raid windows: the ready check window, your consumables bar and the debuff panel. Pop-up windows: text to copy, imports and the Late Tracker roster.\n\nMixed means the group's windows are in different layers; picking one puts them all in it. The consumables bar changes layer after combat.")
+    heading(pf, x, -44, "Layers", "Which layer each group of windows is drawn in, from Background (under everything) to Tooltip (over everything); a higher layer covers a lower one, the game's windows included.\n\nAlerts: alert bars, icons, texts, circles and the low-health banner. Raid windows: the ready check window, your consumables bar and the debuff panel. Pop-up windows: text to copy, imports and the Late Tracker roster.\n\nMixed means the group's windows differ; picking one puts them all in it.")
     for i, group in ipairs(UI.LAYER_GROUPS) do
         add(UI.Dropdown(pf, group.label, {
             options = function()
@@ -391,7 +391,7 @@ end
 
 local function buildProfiles(pf)
     local x, top = LEFT_X, -44
-    heading(pf, x, top, "Profiles", "A profile holds everything the addon saves: settings, window positions, raid layouts, notes, consumables lists and the Late Tracker and Tattlebot history. Each character remembers its own; new characters start on the one picked under New characters.\n\nSwitching, copying or resetting a profile reloads your interface. Export gives the profile as text; Import saves pasted text as a new profile.")
+    heading(pf, x, top, "Profiles", "A profile holds everything the addon saves: settings, window positions, layouts, notes, consumables lists and history. Each character remembers its own; new characters start on the one under New characters. Switching, copying or resetting a profile reloads your interface. Export gives it as text; Import saves pasted text as a new profile.")
 
     local current = pf:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     current:SetPoint("TOPLEFT", x, top - 22)

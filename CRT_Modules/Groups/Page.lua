@@ -852,7 +852,7 @@ local function buildPage(pf)
             CRT:Print("Pick a saved layout in Quick Load first.")
         end
     end)
-    UI.Help(pf, "Use This Group", "Makes the open layout the raid's active roster, marked active in Quick Load. The Late Tracker expects the people in it. During a raid night, using or changing a layout updates tonight's list at once; everyone's clock keeps running."):SetPoint("LEFT", useGroup, "RIGHT", 6, 0)
+    UI.Help(pf, "Use This Group", "Makes the open layout the raid's active roster, marked active in Quick Load; the Late Tracker expects the people in it. During a raid night, tonight's list updates at once and everyone's clock keeps running."):SetPoint("LEFT", useGroup, "RIGHT", 6, 0)
 
     local apply = makeButton(pf, "Arrange Groups", 2 * SLOT_W + COL_GAP, 32)
     apply:SetPoint("BOTTOMLEFT", pf, "BOTTOMLEFT", 8, 8)

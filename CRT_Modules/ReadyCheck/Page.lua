@@ -127,7 +127,7 @@ local function buildAuto(f)
     makeCheck(f, 28, -56, "Only in raids", "raidsOnly", nil, autoOn)
     makeCheck(f, 28, -80, "Not in Raid Finder", "notLFR", nil, autoOn)
     local postTo = makeDropdown(f, 32, -100, "Post to", "output", OUTPUTS, nil, 70, 170)
-    UI.Help(f, "Who posts the report", "The automatic report goes to chat only from whoever started the ready check or pull timer, so it is posted once; everyone else sees it in their own chat. Shift-clicked headings in the ready check window post to this channel too (raid chat when it is Only me)."):SetPoint("LEFT", postTo, "RIGHT", 6, 0)
+    UI.Help(f, "Who posts the report", "The report goes to chat only from whoever started the ready check or pull timer, so it is posted once; everyone else sees it in their own chat. Shift-clicked headings in the ready check window post here too."):SetPoint("LEFT", postTo, "RIGHT", 6, 0)
 
     local include = label(f, "Include in the report")
     include:SetPoint("TOPLEFT", 8, -144)
@@ -138,7 +138,7 @@ local function buildAuto(f)
 
     local counts = label(f, "What counts")
     counts:SetPoint("TOPLEFT", 8, -224)
-    UI.Help(f, "What counts", "Food: any food buff counts. Lower quality flasks are flagged only once they are in the built-in list. Not available: potions and healthstones used in the last fight, and other players' weapon oils and armour kits, which the game doesn't show to addons."):SetPoint("LEFT", counts, "RIGHT", 6, 0)
+    UI.Help(f, "What counts", "Food: any food buff counts. Lower quality flasks are flagged only once they are in the built-in list. Not available: potions and healthstones used in the last fight, and other players' weapon oils and armour kits."):SetPoint("LEFT", counts, "RIGHT", 6, 0)
     makeDropdown(f, 8, -240, "Flask and oil expiring warning", "flaskWarn", WARNS, nil, 200, 170)
     makeCheck(f, 4, -274, "Count a lower quality flask as a problem", "lowFlask")
     local lock = makeCheck(f, 4, -304, "Lock my Ready button until everyone has my raid buff", "buffLock")
@@ -148,12 +148,12 @@ local function buildAuto(f)
     -- checkboxes, which run under both columns).
     local earlyTitle = label(f, "Early Pull Checker")
     earlyTitle:SetPoint("TOPLEFT", 404, -230)
-    UI.Help(f, "Early Pull Checker", "While a pull timer counts down, CRT watches who enters combat and who cast just before. If the fight starts more than half a second early, it reports the first players in combat and the last casts before it. The game hides other players' spells, so only their names and times show. If the game hides the timer's length, nothing is reported."):SetPoint("LEFT", earlyTitle, "RIGHT", 6, 0)
+    UI.Help(f, "Early Pull Checker", "While a pull timer counts down, CRT watches who enters combat and who cast just before. If the fight starts more than half a second early, it reports the first players in combat and the last casts. Only their names and times show, since the game hides other players' spells."):SetPoint("LEFT", earlyTitle, "RIGHT", 6, 0)
     makeCheck(f, 400, -250, "Report who starts the fight before the pull timer ends", "earlyPull")
     makeDropdown(f, 428, -276, "Post to", "earlyPullOutput", OUTPUTS, nil, 70, 170, function()
         return settings().earlyPull
     end)
-    UI.Help(f, "Ready button lock", "When a ready check starts and someone is missing your class's raid buff, your Ready button is greyed out until they have it; hover it to see who. Hold Shift and click Ready to ready anyway, and it unlocks by itself after 10 seconds. Players the game won't let the addon read never lock you."):SetPoint("LEFT", lock, "RIGHT", 330, 0)
+    UI.Help(f, "Ready button lock", "When a ready check starts and someone is missing your class's raid buff, your Ready button is greyed out until they have it; hover it to see who. Hold Shift and click Ready to ready anyway; it also unlocks by itself after 10 seconds."):SetPoint("LEFT", lock, "RIGHT", 330, 0)
 
     -- Your bar, top right. The bar itself is arranged on the Your bar tab.
     local Consumables = CRT.Consumables
@@ -204,7 +204,7 @@ local function buildAuto(f)
         return false
     end
     local cauldron = makeCheck(f, 400, -112, "Flasks from a cauldron only (WIP)", "cauldronOnly", bar, wip)
-    UI.Help(f, "Coming soon", "Flasks from a cauldron only: the flask icon would use only Fleeting flasks from a raid cauldron, saving your own. Unlimited rune only: the rune icon would use only an augment rune that isn't used up. Both wait for their item IDs to be added."):SetPoint("LEFT", cauldron, "RIGHT", 210, 0)
+    UI.Help(f, "Coming soon", "Flasks from a cauldron only: clicking the flask icon would use only a raid cauldron's Fleeting flasks. Unlimited rune only: the rune icon would use only a rune that isn't used up. Both wait for their item IDs."):SetPoint("LEFT", cauldron, "RIGHT", 210, 0)
     makeCheck(f, 400, -136, "Unlimited augment rune only (WIP)", "unlimitedRune", bar, wip)
 end
 
@@ -259,7 +259,7 @@ local function buildWindow(f)
     local cols = label(f, "Columns: drag a heading to move it, click it to show or hide it.")
     cols:SetPoint("TOPLEFT", 8, -148)
     cols:SetWordWrap(false)
-    UI.Help(f, "The ready check window", "A table of every player's ready answer, consumables and raid buffs. It opens on a ready check (or any time with /crt check) and closes after the time set here, or on a right-click. Shift-click a heading to post who is missing that to raid chat. Drag it to move it.\n\nAn icon means they have it, a gold number is minutes left on a flask, x is missing, and ? means the game hid their buffs. Durability and weapon oils only show for players running Cowfee Raid Tools."):SetPoint("LEFT", cols, "RIGHT", 6, 0)
+    UI.Help(f, "The ready check window", "A table of every player's ready answer, consumables and raid buffs. It opens on a ready check (or with /crt check) and closes after the time set here, or on a right-click. Shift-click a heading to post who is missing that to raid chat.\n\nAn icon means they have it, a gold number is minutes left on a flask, x is missing, and ? means the game hid their buffs. Durability and weapon oils show only for players running CRT."):SetPoint("LEFT", cols, "RIGHT", 6, 0)
 
     -- The same table the window draws, with sample players, in edit mode.
     local box = CreateFrame("Frame", nil, f, "BackdropTemplate")

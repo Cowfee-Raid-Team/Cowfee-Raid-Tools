@@ -21,7 +21,7 @@ local TEXT = {
     difficulty = "Difficulty",
     allDifficulties = "All",
     otherDifficulty = "Other",
-    kindHelp = "Shared: the raid's notes, one per guild. A share from your guild replaces your guild's note for that boss; a share from another guild or a pickup group is kept apart. The newest share is the note in use and runs on the pull.\n\nPersonal: your own lines for a boss, kept on this computer. They run on every pull of that boss alongside the shared note, and a share never touches them. Make my personal note starts one for the selected boss.",
+    kindHelp = "Shared: the raid's notes, one per guild. A share from your guild replaces its note for that boss; one from another guild or a pickup group is kept apart. The newest share is the note in use and runs on the pull.\n\nPersonal: your own lines for a boss, kept on this computer. They run on every pull alongside the shared note, and a share never touches them.",
     noteText = "Note text",
     saveText = "Save text changes",
     saved = "Saved.",
@@ -379,7 +379,7 @@ local function buildNotes(pf)
     local listLabel = pf:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
     listLabel:SetPoint("TOPLEFT", 8, -14)
     listLabel:SetText("Notes")
-    UI.Help(pf, "Raid notes", "Import a note and share it with the raid before the pull; its timers count down from the start of the fight, and its other text goes to the Assignments window. Window, timing and sharing settings are on Notes Settings; where your lines show is on Alert Settings; boss mechanic alerts are on Mech Alerts."):SetPoint("LEFT", listLabel, "RIGHT", 6, 0)
+    UI.Help(pf, "Raid notes", "Import a note and share it with the raid before the pull; its timers count down from the start of the fight, and its other text goes to the Assignments window. Notes Settings has the windows and sharing; Alert Settings has where your lines show; Mech Alerts has boss mechanic alerts."):SetPoint("LEFT", listLabel, "RIGHT", 6, 0)
     -- Shared and Personal: which notes the list shows
     for i, kind in ipairs({ "shared", "personal" }) do
         local b = CreateFrame("Button", nil, pf, "BackdropTemplate")

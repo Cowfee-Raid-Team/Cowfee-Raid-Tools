@@ -85,7 +85,7 @@ local TEXT = {
         spec = "Your specs can't use this", classes = "This is for other classes",
         armor = "Not your armor type", weapon = "Your class can't use this weapon type",
     },
-    help = "Pick an answer for each item. It goes to the looter, who gives the item out; every answer gets a roll from 1 to 100, drawn by the looter's CRT and shown in everyone's loot window (no /roll in chat). You can change your answer until the time runs out: the lighter part of the background is the time left. Close an item with its X or a right-click; drag any item to move them all.",
+    help = "Pick an answer for each item. It goes to the looter, who gives the item out; every answer gets a roll from 1 to 100, drawn by the looter's CRT and shown in everyone's loot window (no /roll in chat). You can change your answer until the time runs out. Close an item with its X or a right-click; drag any item to move them all.",
     have = "You have: ",
     nothing = "nothing in that slot",
     sent = "Sent %s",

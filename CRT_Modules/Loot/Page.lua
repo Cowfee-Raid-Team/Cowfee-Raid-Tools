@@ -26,10 +26,10 @@ local MAX_CANDIDATES = 25 -- lines of RCLootCouncil's candidate list in a row's 
 
 local TEXT = {
     title = "Loot History",
-    help = "Every epic or better boss item someone in your group gets in a raid, recorded on your own computer: who got it, from which boss, on which difficulty, and how they rolled.\n\nWith RCLootCouncil installed, its awards are read in too (read only) and fill in the matching items; hover a row for every candidate's response and roll. Right-click an item to delete it. Settings has what is recorded and how long it is kept.",
-    filtersHelp = "Each dropdown narrows the list; All shows everything. Response lists what the Roll / response column shows. Source picks items CRT recorded, or RCLootCouncil's awards CRT didn't record. Search matches the item, player and boss names. Export gives the list as CSV for a spreadsheet.",
+    help = "Every epic or better boss item someone in your group gets in a raid, recorded on your own computer: who got it, from which boss, on which difficulty, and how they rolled. With RCLootCouncil installed, its awards are read in too; hover a row for every candidate's response. Right-click an item to delete it.",
+    filtersHelp = "Each dropdown narrows the list; All shows everything. Response lists what the Roll / response column shows. Source picks items CRT recorded or RCLootCouncil's awards. Search matches item, player and boss names. Export gives the list as CSV.",
     summaryHelp = "For the filters on the History tab: how many items each player got, and how many of them were tier tokens (in gold).",
-    rcHelp = "With RCLootCouncil installed, CRT reads its saved awards: the response, votes, the winner's note and roll, the gear they had, and every candidate's response. An award that matches a recorded item fills it in; the others are listed as rows of their own. CRT only reads this data and never changes it. Re-scan reads it again now.",
+    rcHelp = "With RCLootCouncil installed, CRT reads its saved awards: the response, votes, the winner's note and roll, and every candidate's response. An award that matches a recorded item fills it in; the others are listed on their own. CRT never changes that data. Re-scan reads it again now.",
     search = "Search",
     export = "Export CSV",
     count = "%d items",

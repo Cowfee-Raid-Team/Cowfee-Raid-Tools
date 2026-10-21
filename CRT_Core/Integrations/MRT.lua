@@ -33,7 +33,7 @@ local WIRE = {
 local MRT = {
     key = "mrt",
     label = "MRT",
-    help = "Sends the note to everyone running MRT, as their raid note: timed lines become countdowns, and lines for a role, group or class show only to them. CRT's own note stays as it is. In a raid, only the leader or an assistant can send; in a party, anyone. Out of a group it goes to your own MRT, to try it.",
+    help = "Sends the note to everyone running MRT as their raid note: timed lines become countdowns, and role, group or class lines show only to those players. In a raid only the leader or an assistant can send; out of a group it goes to your own MRT, to try it.",
 }
 CRT.MRTTarget = MRT
 

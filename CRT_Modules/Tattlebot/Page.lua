@@ -857,7 +857,7 @@ local function buildHistory(f)
     })
     mechDropdown:SetPoint("LEFT", seasonDropdown, "RIGHT", 16, 0)
     controls[#controls + 1] = mechDropdown
-    UI.Help(f, "History filters", "Season picks what is added up: All seasons is every saved night; Current night is tonight's, or the last saved one. Mechanic narrows Totals, each night and the export to one mechanic: each player's damage from it, how many pulls it hit them in, and the average per hit pull."):SetPoint("LEFT", mechDropdown, "RIGHT", 6, 0)
+    UI.Help(f, "History filters", "Season picks what is added up: every saved night, or the current one. Mechanic narrows Totals, each night and the export to one mechanic: each player's damage from it, the pulls it hit them in, and the average per hit."):SetPoint("LEFT", mechDropdown, "RIGHT", 6, 0)
 
     local listBox = CreateFrame("Frame", nil, f, "BackdropTemplate")
     listBox:SetPoint("TOPLEFT", 8, -40)
@@ -1030,7 +1030,7 @@ local function buildMechanics(f)
     })
     bossDropdown:SetPoint("TOPLEFT", 8, -8)
     controls[#controls + 1] = bossDropdown
-    UI.Help(f, "Tracked mechanics", "Last fight lists every spell that damaged the group in the last fight: tick the ones to track and press Add checked. A boss shows the mechanics that ship with the addon. Your own spells lists the ones you added, by spell ID. All the IDs of one mechanic are added together in reports, so each mechanic is one line. /crt tattle scan opens Last fight."):SetPoint("LEFT", bossDropdown, "RIGHT", 6, 0)
+    UI.Help(f, "Tracked mechanics", "Last fight lists every spell that damaged the group in the last fight: tick the ones to track and press Add checked. A boss shows the mechanics that ship with the addon; Your own spells lists the ones you added. All the IDs of one mechanic count as one line in reports."):SetPoint("LEFT", bossDropdown, "RIGHT", 6, 0)
 
     local count = label(f, "", "CRTFontSmall")
     count:SetPoint("TOPRIGHT", -12, -16)
@@ -1071,7 +1071,7 @@ local function buildMechanics(f)
     end)
     scanBar.add = makeButton(scanBar, "Add checked", 130)
     scanBar.add:SetPoint("LEFT", mechEdit, "RIGHT", 8, 0)
-    UI.Help(scanBar, "Add checked", "Adds the ticked spells to Your own spells for the fight's boss, so History counts them against its pulls, this fight included. A fight that wasn't a boss adds them for every boss. Leave Mechanic empty to use each spell's own name; type a name to group every ticked spell under it."):SetPoint("LEFT", scanBar.add, "RIGHT", 6, 0)
+    UI.Help(scanBar, "Add checked", "Adds the ticked spells to Your own spells for the fight's boss, so History counts them, this fight included. Leave Mechanic empty to use each spell's own name, or type a name to group them under it."):SetPoint("LEFT", scanBar.add, "RIGHT", 6, 0)
     scanBar.add:SetScript("OnClick", function()
         if not scanResult then
             return
@@ -1165,7 +1165,7 @@ local function build(pf)
 
     local title = label(pf, "Tattlebot", "CRTFontLarge")
     title:SetPoint("TOPLEFT", 8, -8)
-    UI.Help(pf, "Tattlebot", "After each boss pull, once you are out of combat, Tattlebot reads the game's damage meter and keeps the damage each player took from the mechanics in its list: damage per mechanic and the number of pulls it hit them in. Tonight shows tonight's pulls; History keeps every night, with totals and an export for Discord. Nothing can be read during a fight."):SetPoint("LEFT", title, "RIGHT", 6, 0)
+    UI.Help(pf, "Tattlebot", "After each boss pull, once you are out of combat, Tattlebot reads the game's damage meter and keeps the damage each player took from the mechanics in its list, and the pulls it hit them in. Tonight shows tonight's pulls; History keeps every night, with an export for Discord."):SetPoint("LEFT", title, "RIGHT", 6, 0)
 
     for i, tab in ipairs(TABS) do
         local b = CreateFrame("Button", nil, pf, "BackdropTemplate")

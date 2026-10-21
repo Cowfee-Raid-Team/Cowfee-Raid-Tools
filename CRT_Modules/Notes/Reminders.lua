@@ -15,7 +15,7 @@ local UI = CRT.UI
 -- text in quotes, save, and /reload.
 local TEXT = {
     title = "Mech Alerts",
-    help = "On the left: the boss's abilities from the Encounter Journal, then your own reminders. Tick an ability to get a reminder for it, with the times from the boss's ability timeline; untick it to turn it off (it is kept). A dot means the timeline has times for it.\n\nClick a row to edit its alert on the right; changes save at once. Your own reminder adds one not tied to an ability, and Delete removes one of yours. The abilities are read from the Journal out of combat only.",
+    help = "On the left: the boss's abilities from the Encounter Journal, then your own reminders. Tick an ability to get a reminder for it, with the times from its ability timeline; untick it to turn it off. A dot means the timeline has times for it. Click a row to edit its alert on the right; changes save at once. Your own reminder adds one not tied to an ability.",
     boss = "Boss",
     difficulty = "Difficulty",
     any = "Any",
@@ -61,13 +61,13 @@ local TEXT = {
     icon = "Icon",
     iconSpell = "Spell",
     iconID = "Icon ID",
-    iconHelp = "Spell: type the spell's ID; the alert shows its icon and, with no text, its name. Icon ID: an icon's file ID to show that icon instead. Or type a spell name (3 letters or more) to search this boss's abilities and your own spells; a close spelling works too.",
+    iconHelp = "Spell: the spell's ID; the alert shows its icon and, with no text, its name. Icon ID: an icon's file ID instead. Or type a spell name (3 letters or more) to search this boss's abilities and your spells; a close spelling works too.",
     color = "Color",
     colorDefault = "Default",
     sound = "Sound",
     soundNone = "None",
     auraSound = "Also when it lands on me",
-    auraSoundHelp = "Plays the sound whenever this ability's debuff lands on you, even in combat. The game plays it itself, so it works for boss debuffs hidden from addons. It needs the alert's spell and a sound; if a game sound stays silent, pick a file.",
+    auraSoundHelp = "Plays the sound whenever this ability's debuff lands on you, even in combat; the game plays it itself, so it works for hidden boss debuffs. It needs the alert's spell and a sound. If a game sound stays silent, pick a file.",
     test = "Test",
     template = "Save as template",
     delete = "Delete",
@@ -76,7 +76,7 @@ local TEXT = {
 
     markerTitle = "Marker display",
     markerShow = "Show the marker display: %s",
-    markerHelp = "This boss has a marker display: a small window showing the raid markers raiders send with macros such as /raid {rt3}, in order, with who sent each. Untick it to turn it off for this boss. Any group chat message fills a slot, since the game hides chat text from addons in raids. Move the window with Previews.",
+    markerHelp = "This boss has a marker display: a small window showing the raid markers raiders send with macros such as /raid {rt3}, in order, with who sent each. Untick it to turn it off for this boss. Move the window with Previews.",
 }
 
 -- Layout, from the page's width (UI.PAGE_W) and the tab's height (CRT.NotesPage.TAB_H, under the Raid

@@ -12,7 +12,7 @@ local UI = CRT.UI
 -- Every word on this tab, in one place so the wording is easy to change. Keep the keys, change the
 -- text in quotes, save, and /reload.
 local TEXT = {
-    hint = "Untick Locked to drag a window and resize it from its bottom-right corner, then lock it so clicks pass through. Keep up when empty leaves a window on screen while it has nothing to show. Previews shows every window with sample text.",
+    hint = "Untick Locked to drag a window and resize it from its corner, then lock it so clicks pass through. Keep up when empty leaves a window on screen with nothing to show. Previews shows every window with sample text.",
 
     -- The three window columns.
     timers = "Timers",
@@ -49,7 +49,7 @@ local TEXT = {
     trustedOnly = "Only accept notes from leader or assistants",
     notesList = "Notes list",
     listStyle = "Show notes",
-    listHelp = "How the Notes tab lists your notes. Grouped headings: every note under a heading per difficulty. Dropdown: one difficulty at a time, picked above the list. Chips: one difficulty at a time, picked with buttons that count each one's notes.",
+    listHelp = "How the Notes tab lists notes: Grouped headings puts every note under its difficulty; Dropdown and Chips show one difficulty at a time, picked above the list.",
     grouped = "Grouped headings",
     dropdown = "Dropdown",
     chips = "Chips",

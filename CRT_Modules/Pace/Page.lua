@@ -10,7 +10,7 @@ local UI = CRT.UI
 
 local TEXT = {
     title = "Pace",
-    help = "Where a boss's health should be as the fight goes, so you can see in the pull whether the raid is ahead or behind.\n\nBy phase (the default), a row's seconds count from when its phase starts; By time, from the pull. Between two rows the expected health runs in a straight line.\n\nIn the pull, the pace window shows each boss's health with a tick where it should be, and AHEAD or BEHIND. The game hides boss health from addons in combat, so it does the comparing itself and the addon can't announce it. Move the window with Previews.",
+    help = "Where a boss's health should be as the fight goes, so you can see in the pull whether the raid is ahead or behind. By phase counts a row's seconds from its phase start; By time from the pull. Between rows the expected health runs in a straight line. In the pull, the pace window shows each boss's health with a tick where it should be, and AHEAD or BEHIND. The game hides boss health from addons in combat, so the addon can't announce it. Move the window with Previews.",
     boss = "Boss",
     mode = "Times",
     showBoss = "Show the pace window for this boss",
@@ -35,7 +35,7 @@ local TEXT = {
     useOwn = "Your own plan",
     share = "Share to raid",
     shareAll = "Share all",
-    shareHelp = "Share to raid sends this boss's plan to everyone in the group with the addon; Share all sends every boss that has one. Only the raid leader or an assistant can share. A shared plan is saved as the raid's plan and becomes the plan in use; anyone can switch a boss to their own plan under Plan in use. Share before the pull: addon messages are blocked during a boss fight.",
+    shareHelp = "Share to raid sends this boss's plan to everyone in the group with the addon; Share all sends every boss. Only the raid leader or an assistant can share. A shared plan becomes the plan in use; anyone can switch a boss back to their own plan under Plan in use. Share before the pull.",
 }
 
 local MODES = { { key = "phase", label = "By phase (seconds into each phase)" }, { key = "time", label = "By time from the pull" } }

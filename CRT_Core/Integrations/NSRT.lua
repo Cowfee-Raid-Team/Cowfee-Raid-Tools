@@ -36,7 +36,7 @@ local WIRE = {
 local NSRT = {
     key = "nsrt",
     label = "Northern Sky",
-    help = "Sends the note to everyone running Northern Sky, as their shared note: timed lines become reminders and the rest shows in their note frame. CRT's own note stays as it is. Only a group leader or assistant can send it, and it needs a group.",
+    help = "Sends the note to everyone running Northern Sky as their shared note: timed lines become reminders, the rest shows in their note frame. Only a group leader or assistant can send it.",
 }
 CRT.NSRT = NSRT
 

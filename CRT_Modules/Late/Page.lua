@@ -780,7 +780,7 @@ local function getEditor()
     if d.addGroup.Dropdown.SetDefaultText then
         d.addGroup.Dropdown:SetDefaultText("Pick a player")
     end
-    UI.Help(d, "Edit tonight's roster", "Changes tonight's list only; the expected roster on Raid Groups stays as it is.\n\nAdd from group: someone in your group who should count tonight. They count as joined now; press On time if they were here from the start.\n\nOn time: counts the player as here from the start.\n\nRemove: takes the player off tonight's list, so they don't count as late or missing."):SetPoint("TOPRIGHT", d, "TOPRIGHT", -30, -36)
+    UI.Help(d, "Edit tonight's roster", "Changes tonight's list only; the expected roster on Raid Groups stays as it is. Add from group: someone who should count tonight (press On time if they were here from the start). On time: counts a player as here from the start. Remove: takes them off tonight's list."):SetPoint("TOPRIGHT", d, "TOPRIGHT", -30, -36)
 
     local sync = makeButton(d, "Update from layout", 150, 22)
     editorFont(sync)
@@ -793,7 +793,7 @@ local function getEditor()
             CRT:Print(removed)
         end
     end)
-    tooltip(sync, "Update from layout", "Makes tonight's list match the expected roster as saved now, without restarting the clock. New names in your group count as on time; names gone from the layout are taken off, unless you added them here. Saving the layout on Raid Groups does this too.")
+    tooltip(sync, "Update from layout", "Makes tonight's list match the expected roster as saved now, without restarting the clock. New names in your group count as on time; names gone from the layout are taken off unless you added them here.")
 
     local typed = label(d, "Or type a name")
     typed:SetPoint("TOPLEFT", 16, -72)
@@ -1067,7 +1067,7 @@ local function build(pf)
 
     local title = label(pf, "Late Tracker", "CRTFontLarge")
     title:SetPoint("TOPLEFT", 8, -8)
-    UI.Help(pf, "The Late Tracker", "On the Settings tab, tick your raid days and start time and pick the Raid Groups layout of who should be there. At the start time, anyone in that layout who isn't in your group is late until they join.\n\nTonight shows the night as it happens; Start raid now starts one by hand. History keeps every night, with totals and an export for Discord."):SetPoint("LEFT", title, "RIGHT", 6, 0)
+    UI.Help(pf, "The Late Tracker", "On the Settings tab, tick your raid days and start time and pick the Raid Groups layout of who should be there. At the start time, anyone in it who isn't in your group is late until they join. Tonight shows the night as it happens; History keeps every night, with an export for Discord."):SetPoint("LEFT", title, "RIGHT", 6, 0)
 
     for i, tab in ipairs(TABS) do
         local b = CreateFrame("Button", nil, pf, "BackdropTemplate")

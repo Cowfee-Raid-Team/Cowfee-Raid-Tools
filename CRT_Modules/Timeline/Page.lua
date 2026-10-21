@@ -27,16 +27,16 @@ local EMPTY_ALL = "No boss pulls recorded yet"
 
 local TEXT = {
     shareNote = "Share note",
-    shareHelp = "Sends this boss's raid note to everyone in the group with the addon, with every line added or moved here, and makes it everyone's active note. When the boss has no raid note yet, one is made first. Only the raid leader or an assistant can send it; anyone else just makes it their own active note. Notes can't be sent during a boss fight.",
+    shareHelp = "Sends this boss's raid note to everyone in the group with the addon, with every line added or moved here, and makes it everyone's active note. Only the raid leader or an assistant can send it; anyone else just sets their own active note. Notes can't be sent during a boss fight.",
     noNote = "This boss has no encounter ID yet, so no raid note can be made for it.",
     made = "Made a raid note for %s. It is on Raid Notes.",
     phaseCopy = "Moved the phase line in an ability timeline of your own (shipped ability timelines never change). It is listed as yours.",
     rehearse = "Rehearse",
-    advancedBlurb = "An ability timeline is a boss's planned cast times, typed or pasted as text on the left. The Review tab draws it, your alerts and Mech Alerts take their times from it, and the Rehearsal plays it. The boss's Journal abilities are on the right: right-click one to give it a row, a type, your own name, or a Mech Alert.",
+    advancedBlurb = "An ability timeline is a boss's planned cast times, typed or pasted as text on the left. The Review tab draws it, alerts take their times from it, and the Rehearsal plays it. Right-click a Journal ability on the right to give it a row, a type, your own name, or a Mech Alert.",
     play = "Play",
     pause = "Pause",
-    playHelp = "Plays the rehearsal of this fight with a gold line moving across the timeline, so you can watch the whole fight and its cooldowns from above while the Rehearsal window shows it as you would see it. Play and Pause here and in that window run the same fight.",
-    rehearseHelp = "Plays this fight out in a window of its own, a stand-in boss frame and cast bar, with your real alerts firing on time from your notes and assigned cooldowns. It plays what is shown here. It can't start in combat and stops if combat begins; nothing is sent to the group. /crt timeline rehearse does the same.",
+    playHelp = "Plays the rehearsal with a gold line moving across the timeline, so you can watch the whole fight and its cooldowns from above while the Rehearsal window shows it as you would see it.",
+    rehearseHelp = "Plays this fight out in a window of its own, a stand-in boss frame and cast bar, with your real alerts firing on time. It can't start in combat and stops if combat begins; nothing is sent to the group. /crt timeline rehearse does the same.",
     noRehearse = "Nothing to rehearse: pick a boss's ability timeline or pull on the Timeline's Review tab.",
 }
 
@@ -836,7 +836,7 @@ local function build(pf)
 
     local title = label(pf, "Timeline", "CRTFontLarge")
     title:SetPoint("TOPLEFT", 8, -8)
-    UI.Help(pf, "The Timeline", "Every raid boss pull is saved on its own: the boss's casts and players' deaths. Pick a boss and a pull on the Review tab; scroll the wheel to zoom, right-drag to move along, Shift + wheel to scroll the rows.\n\nAn ability timeline is the boss's planned timeline, listed first in the pull list; a recent pull can be laid over it. Paste your own on the Advanced tab.\n\nThe red lines are phase changes: Shift-drag one to move it (its casts and note lines move with it), and right-click a moved line to put it back. A move on a shipped timeline makes a copy of your own.\n\nSettings has the view, rows, deaths filters and recording.\n\nA row's colour says what the ability is (a dot for each extra type):\n" .. CRT.TimelineReference.Legend()):SetPoint("LEFT", title, "RIGHT", 6, 0)
+    UI.Help(pf, "The Timeline", "Every raid boss pull is saved on its own: the boss's casts and players' deaths. Pick a boss and a pull on the Review tab; scroll the wheel to zoom, right-drag to move along, Shift + wheel to scroll the rows.\n\nAn ability timeline is the boss's planned timeline, listed first in the pull list; paste your own on the Advanced tab.\n\nThe red lines are phase changes: Shift-drag one to move it, right-click a moved line to put it back.\n\nA row's colour says what the ability is (a dot for each extra type):\n" .. CRT.TimelineReference.Legend()):SetPoint("LEFT", title, "RIGHT", 6, 0)
 
     for i, tab in ipairs(TABS) do
         local b = CreateFrame("Button", nil, pf, "BackdropTemplate")
