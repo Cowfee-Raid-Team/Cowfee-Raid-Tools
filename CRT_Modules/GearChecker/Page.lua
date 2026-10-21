@@ -8,8 +8,9 @@ local ADDON, CRT = ...
 -- enchant, a dot at the bottom left (green, or red when missing). A missing enchant or gem outlines the
 -- cell red, a low item orange. Filter chips pick who shows, and on an issue filter each row draws only the
 -- cells with that issue (GC.CellShows), the rest empty; the Below chip does the same for items under a
--- track picked from its arrow's menu (CRTDB.gearChecker.belowTrack). Refresh asks the group's CRTs and
--- inspects the rest (Comm.lua, Inspect.lua), and says how many have CRT. Hover a cell for the exact item,
+-- track picked from its arrow's menu (CRTDB.gearChecker.belowTrack). Refresh reads your own gear again, asks
+-- the group's CRTs and inspects the rest (Comm.lua, Inspect.lua), and says how many have CRT; opening the
+-- page reads your own gear again too. Hover a cell for the exact item,
 -- or the issues badge for the list of issues and, under Not an issue, the info checks and items below the
 -- track; shift-click an item with an issue to put it in
 -- the chat box; right-click a row to send its issues to a channel or a whisper, put them in the chat box or
@@ -643,6 +644,13 @@ function P.Refresh()
     paintHeaders()
 end
 
+-- The page or the pop-out opening: your own slots read again first (an enchant or a gem put on since
+-- changes a link with no event of its own), then the rows.
+function P.Open()
+    Gear:Refresh()
+    P.Refresh()
+end
+
 local function selectFilter(key)
     settings().filter = key
     P.Refresh()
@@ -854,7 +862,7 @@ function P.PopOut()
     sizeButton(P.popButton)
     P.window:Show()
     UI:SkinTree(P.window)
-    P.Refresh()
+    P.Open()
 end
 
 function P.TogglePopout()
@@ -907,7 +915,7 @@ local function build(page)
             P.refreshedOnce = true
             GC:Refresh() -- the first time the page shows: ask the group and inspect the rest
         end
-        P.Refresh()
+        P.Open()
     end)
     GC:OnChange(P.Refresh)
     UI:OnTheme(P.Refresh)
