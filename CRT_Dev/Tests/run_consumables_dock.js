@@ -5,10 +5,11 @@
 //   node run_consumables_dock.js <addon folder>
 const fs = require('fs');
 const path = require('path');
+const themeLua = require('./theme_stub');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
-const harness = `
-local displaySrc = ...
+const harness = themeLua(process.argv.slice(2)) + `
+local displaySrc, barSrc = ...
 local passed, failed = 0, 0
 local function check(name, cond, detail)
   if cond then passed = passed + 1 print("ok " .. name)
@@ -110,7 +111,7 @@ CRT.Ants = { Update = function() end }
 CRT.ConsumablesBar = {
   Size = function() return 100, 40 end, BACKDROP = {},
   CreateSlot = function(parent) local s = mock("Button") rawset(s, "parent", parent) return s end,
-  Apply = function() end, AddStatusLines = function() end,
+  Apply = function() applied = (applied or 0) + 1 end, AddStatusLines = function() end,
 }
 local previews = {}
 CRT.UI = {
@@ -119,6 +120,7 @@ CRT.UI = {
   CancelFade = function() end, FadeOut = function() end,
   RegisterPreview = function(_, key, fn) previews[key] = fn end,
 }
+CRT_THEME(CRT, CRT.UI)
 
 assert(load(displaySrc, "Display.lua"))("CowfeeRaidTools", CRT)
 local Display = CRT.ConsumablesDisplay
@@ -288,10 +290,41 @@ finish()
 
 check("over every check above, the bar was only ever anchored to UIParent", anchoredOnlyToUIParent())
 
+-- A theme switch repaints the bar on screen (Display:Refresh runs Bar.Apply on every icon).
+previews.consumables(true)
+applied = 0
+CRT.UI.SwitchTheme("nitro")
+check("a theme switch repaints the bar's icons", applied > 0, applied)
+previews.consumables(false)
+CRT.UI.SwitchTheme("blizzard")
+
+-- CRT_Modules/Consumables/Bar.lua: missing and running low in the theme's bad and heading colours.
+do
+  local ants = {}
+  format = format or string.format
+  local B = { MOCHA = CRT.MOCHA, UI = CRT.UI, Consumables = { QUESTION_MARK = 1 },
+    Ants = { Start = function(_, slot, r, g, b) ants[slot] = { r, g, b } end, Stop = function(_, slot) ants[slot] = nil end, Attach = function() end } }
+  assert(load(barSrc, "Bar.lua"))("CowfeeRaidTools", B)
+  local function fs() local f = mock("FontString") rawset(f, "SetTextColor", function(self, r, g, b) rawset(self, "rgb", { r, g, b }) end) return f end
+  local slot = mock("Button")
+  rawset(slot, "icon", mock("Texture")) rawset(slot, "time", fs()) rawset(slot, "count", fs()) rawset(slot, "tag", fs())
+  local function same(c, key) local m = CRT.MOCHA[key] return c and math.abs(c[1] - m[1]) < 1e-6 and math.abs(c[2] - m[2]) < 1e-6 and math.abs(c[3] - m[3]) < 1e-6 end
+  for _, theme in ipairs({ "blizzard", "cowfee" }) do
+    CRT.UI.SwitchTheme(theme)
+    B.ConsumablesBar.Apply(slot, { state = "missing", count = 0 })
+    check(theme .. ": missing ants and none left in the bad colour", same(ants[slot], "bad") and same(rawget(slot.count, "rgb"), "bad"))
+    B.ConsumablesBar.Apply(slot, { state = "low", left = 60 })
+    check(theme .. ": running low in the heading colour", same(ants[slot], "heading") and same(rawget(slot.time, "rgb"), "heading"))
+  end
+  CRT.UI.SwitchTheme("blizzard")
+  check("Default: Blizzard: missing is the game's red", CRT.UI.Hex("bad") == "ff2020")
+end
+
 print(passed .. " passed, " .. failed .. " failed")
 if failed > 0 then error("consumables dock checks failed") end
 `;
 const dir = process.argv[2];
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 lua.lua_pushstring(L, to_luastring(fs.readFileSync(path.join(dir, 'CRT_Modules/Consumables/Display.lua'), 'utf8')));
-if (lua.lua_pcall(L, 1, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
+lua.lua_pushstring(L, to_luastring(fs.readFileSync(path.join(dir, 'CRT_Modules/Consumables/Bar.lua'), 'utf8')));
+if (lua.lua_pcall(L, 2, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
