@@ -97,8 +97,8 @@ local defaults = {
         privateSlots = false, -- also the game's boss debuff slots, as a second row (a fallback)
         -- The look: a dark frame, a big yellow countdown on the icon and outlined stacks (fonts,
         -- colors and sizes in CRT_Modules/Debuffs/Panel.lua's LOOK table).
-        swipe = true, -- the dark swipe that sweeps over the icon as the debuff runs out
-        swipeEdge = true, -- the bright line on the swipe's edge
+        swipe = true, -- the muted dark swipe that grows over the icon as the debuff runs out
+        swipeEdge = false, -- the bright line on the swipe's edge; off by default since 20261020-debuffs-swipe (a saved true stays)
         -- The timer: center (big, on the icon), below, above, left or right (smaller, beside it),
         -- numbers (the game's countdown numbers on the swipe instead) or hidden. A countdownNumbers
         -- key saved before 0.13.1 may remain and is ignored.

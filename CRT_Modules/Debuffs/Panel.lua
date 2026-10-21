@@ -77,6 +77,9 @@ local LOOK = {
     bevelColor = { 1, 1, 1, 0.22 },
     bevelWidth = 1,
     bevelMinEdge = 4,
+    -- The swipe's fill: a muted black. The swipe runs reversed from the action bar's, so a fresh
+    -- debuff is fully lit and the dark part grows until it covers the icon as the debuff ends.
+    swipeColor = { 0, 0, 0, 0.6 },
 }
 Panel.LOOK = LOOK
 -- The glow around a dispel type's border: the game's white glow for a new item in the bags, drawn
@@ -329,8 +332,14 @@ local function styleText(parts, size)
     pcall(parts.count.SetTextColor, parts.count, c[1], c[2], c[3])
 end
 
+-- The swipe: the game's cooldown drives it from the debuff's own time, so the addon never reads the
+-- time. Reversed (the dark part grows), the look's muted color, the edge line only when the Bright
+-- edge box is ticked, and no bling when it ends.
 local function applyCooldownLook(cooldown)
     pcall(cooldown.SetDrawSwipe, cooldown, Debuffs:Get("swipe") and true or false)
+    pcall(cooldown.SetReverse, cooldown, true)
+    local c = LOOK.swipeColor
+    pcall(cooldown.SetSwipeColor, cooldown, c[1], c[2], c[3], c[4])
     pcall(cooldown.SetDrawEdge, cooldown, (Debuffs:Get("swipe") and Debuffs:Get("swipeEdge")) and true or false)
     pcall(cooldown.SetDrawBling, cooldown, false)
     pcall(cooldown.SetHideCountdownNumbers, cooldown, not Debuffs:SwipeNumbers())
