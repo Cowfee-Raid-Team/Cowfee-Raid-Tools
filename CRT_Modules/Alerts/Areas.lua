@@ -669,7 +669,7 @@ function Area:Build()
     handle:SetPoint("BOTTOM", frame, "TOP", 0, 2)
     self.handleBelow = false
     handle:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
-    handle:SetBackdropColor(0.3, 0.25, 0.05, 0.9)
+    UI.Tint(handle, "SetBackdropColor", "roast", 0.9) -- the theme's field colour under its heading-coloured edge
     UI.Tint(handle, "SetBackdropBorderColor", "heading")
     handle:EnableMouse(true)
     handle:RegisterForDrag("LeftButton")

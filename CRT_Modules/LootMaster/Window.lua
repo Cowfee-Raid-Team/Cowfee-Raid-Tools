@@ -397,7 +397,7 @@ local function refresh()
     else
         header.info:SetText(it.ilvl and ("Item level " .. it.ilvl) or "")
     end
-    -- the same count as the tab; everyone in, matcha in a Modern theme
+    -- the same count as the tab; everyone in, the theme's good colour
     local answered, expected = s:AnswerCount(current)
     local count = string.format(TEXT.answered, answered, expected)
     header.answered:SetText((expected > 0 and answered >= expected) and UI.GoodText(count) or count)

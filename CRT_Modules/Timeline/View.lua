@@ -3423,7 +3423,7 @@ function Methods:DrawPhases(phases, length, height)
             n = n + 1
             local x = View.TimeToX(phase.t, length, self.trackW)
             local line = self:Tex(self.phaseLines, n, "ARTWORK", DEATH_RED[1], DEATH_RED[2], DEATH_RED[3], 1)
-            -- the line being dragged is gold, the others red (set every draw, since lines are pooled)
+            -- the line being dragged is the theme's heading colour, the others red (set every draw, since lines are pooled)
             local dragging = self.phaseDrag and (self.pull and self.pull.reference and self.pull.reference.phases[self.phaseDrag.index]) == phase
             if dragging then
                 line:SetColorTexture(mocha("heading"))

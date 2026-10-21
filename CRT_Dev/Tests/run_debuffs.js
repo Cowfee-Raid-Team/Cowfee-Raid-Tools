@@ -402,13 +402,13 @@ check("the look is a table at the top of Panel.lua", type(L) == "table" and type
 if timeFS and countFS then
   check("the countdown is yellow", timeFS.textColor and timeFS.textColor[1] == L.timerColor[1] and timeFS.textColor[2] == L.timerColor[2] and timeFS.textColor[3] == L.timerColor[3]
     and timeFS.textColor[1] > 0.9 and timeFS.textColor[2] > 0.7 and timeFS.textColor[3] < 0.3)
-  -- a theme switch restyles the buttons: the countdown takes the new heading colour
+  -- the approved yellow in every theme: a switch to Beanworks: Cowfee and a restyle keep it
   local stubUseTheme = CRT.UseTheme
   CRT.UseTheme = realUseTheme
   CRT.UI.SwitchTheme("cowfee")
-  local h = CRT.MOCHA.heading
-  check("a theme switch repaints the countdown in the theme's heading colour", timeFS.textColor and math.abs(timeFS.textColor[1] - 0xD9 / 255) < 1e-6
-    and math.abs(timeFS.textColor[2] - h[2]) < 1e-6, timeFS.textColor and table.concat(timeFS.textColor, ","))
+  Debuffs:Set("timerPosition", "center")
+  check("the countdown stays the approved yellow in a Modern theme", timeFS.textColor and timeFS.textColor[1] == 1 and timeFS.textColor[2] == 0.82
+    and timeFS.textColor[3] == 0, timeFS.textColor and table.concat(timeFS.textColor, ","))
   CRT.UI.SwitchTheme("blizzard")
   CRT.UseTheme = stubUseTheme
   check("the countdown has an outline", timeFS.font and timeFS.font.flags:find("OUTLINE") ~= nil, timeFS.font and timeFS.font.flags)

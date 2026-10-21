@@ -117,7 +117,7 @@ function ReferencePage.Recent(f, width, pullLabel, toggle)
                 line.title:SetWordWrap(false)
                 line.deaths = label(line, "", "CRTFontSmall")
                 line.deaths:SetPoint("TOPLEFT", 8, -17)
-                line.deaths:SetTextColor(1, 0.3, 0.3)
+                UI.Tint(line.deaths, "SetTextColor", "bad") -- deaths: the theme's bad colour
                 line:SetScript("OnClick", function(self)
                     toggle(self.pullID)
                 end)
@@ -428,7 +428,7 @@ function ReferencePage.Build(f, ctx)
                 shown[i] = errors[i]
             end
             status:SetText(table.concat(shown, "\n"))
-            status:SetTextColor(1, 0.3, 0.3)
+            status:SetTextColor(UI.Color("bad"))
         end
         showMode()
     end)
@@ -446,12 +446,12 @@ function ReferencePage.Build(f, ctx)
         local key = Reference:Add(text)
         if not key then
             status:SetText("Nothing to copy: every row is Mythic-only")
-            status:SetTextColor(1, 0.3, 0.3)
+            status:SetTextColor(UI.Color("bad"))
             return
         end
         status:SetText("Copied to " .. GROUP_NAMES[group]
             .. (removed > 0 and (" (" .. removed .. " Mythic-only row" .. (removed == 1 and "" or "s") .. " left out)") or ""))
-        status:SetTextColor(0.4, 1, 0.4)
+        status:SetTextColor(UI.Color("matcha"))
     end
 
     -- The boss whose Journal abilities fit the box: its Boss and Encounter lines when it has them,
@@ -475,13 +475,13 @@ function ReferencePage.Build(f, ctx)
         local rows = id and Journal:Rows(id) or {}
         if #rows == 0 then
             status:SetText("No Journal abilities found for " .. (name or "this boss") .. ".")
-            status:SetTextColor(1, 0.3, 0.3)
+            status:SetTextColor(UI.Color("bad"))
         else
             local text, n = Reference.FillSpellIDs(edit:GetText(), rows)
             edit:SetText(text)
             status:SetText(n > 0 and ("Added " .. n .. " spell ID" .. (n == 1 and "" or "s") .. ". Save to keep them.")
                 or "No more lines match a Journal ability.")
-            status:SetTextColor(0.4, 1, 0.4)
+            status:SetTextColor(UI.Color("matcha"))
         end
         refreshAbilities()
     end)
@@ -640,7 +640,7 @@ function ReferencePage.Build(f, ctx)
             ctx.refresh()
         else
             status:SetText(errors and errors[1] or "")
-            status:SetTextColor(1, 0.3, 0.3)
+            status:SetTextColor(UI.Color("bad"))
         end
     end
 
@@ -699,7 +699,7 @@ function ReferencePage.Build(f, ctx)
         askPhaseStart(string.format(TEXT_MENU.phasePrompt, label), "", function(timeText)
             if timeText ~= "" and not Reference.ParseTime(timeText) then
                 status:SetText("Not a time: " .. timeText)
-                status:SetTextColor(1, 0.3, 0.3)
+                status:SetTextColor(UI.Color("bad"))
                 return
             end
             applyText(Reference.InsertLine(entry.text, before, Reference.PhaseLine(label, timeText, title)))
@@ -718,7 +718,7 @@ function ReferencePage.Build(f, ctx)
                 askPhaseStart(string.format(TEXT_MENU.phasePrompt, p.title or p.label or ""), p.t and View.Format(p.t) or "", function(timeText)
                     if timeText ~= "" and not Reference.ParseTime(timeText) then
                         status:SetText("Not a time: " .. timeText)
-                        status:SetTextColor(1, 0.3, 0.3)
+                        status:SetTextColor(UI.Color("bad"))
                         return
                     end
                     applyText(Reference.ReplaceLine(entry.text, p.line, Reference.PhaseLine(p.label or "P2", timeText, p.title)))

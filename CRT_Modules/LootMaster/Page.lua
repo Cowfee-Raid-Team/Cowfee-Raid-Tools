@@ -233,7 +233,7 @@ local function buildTonight(f)
     toggle:SetPoint("TOPLEFT", looting, "BOTTOMLEFT", 4, -8) -- under the line, however many lines it takes
     refreshers[#refreshers + 1] = function()
         local line, on = LM:LootingStatus()
-        looting:SetText(on and UI.GoodText(line) or line) -- on: matcha in a Modern theme
+        looting:SetText(on and UI.GoodText(line) or line) -- on: the theme's good colour
         local leader = IsInGroup() and UnitIsGroupLeader("player")
         toggle:SetShown(leader and true or false)
         toggle:SetText(LM:LootingOn() and TEXT.turnOff or TEXT.turnOn)

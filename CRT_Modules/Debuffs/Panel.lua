@@ -68,7 +68,7 @@ local LOOK = {
     minTimer = 10, -- the smallest sizes, so the text stays readable on a small icon
     minStack = 9,
     thickFrom = 16, -- a countdown this size or bigger gets the thick outline, a smaller one the thin
-    timerColor = CRT.MOCHA.heading, -- the theme's heading colour (the game's gold in Default: Blizzard)
+    timerColor = { 1, 0.82, 0 }, -- the approved big yellow countdown, readable on icons in every theme: not a theme colour
     stackColor = { 1, 1, 1 },
     stackInset = 2, -- pixels from the icon's bottom right corner
     -- A thin light line just outside the icon, inside the frame, so the frame looks bevelled. It is
@@ -1233,18 +1233,4 @@ end
 
 CRT.UI:RegisterPreview("debuffs", function(on)
     Panel:ShowPreview(on)
-end)
-
--- A theme switch restyles the countdown and stacks of every button and preview tile, so the countdown
--- takes the new heading colour. Only the addon's own font strings change, so it is safe in combat too.
-CRT.UI:OnTheme(function()
-    local size = Debuffs:Size()
-    for _, parts in pairs(buttons) do
-        styleText(parts, size)
-    end
-    for _, tile in pairs(tiles) do
-        if tile.parts then
-            styleText(tile.parts, size)
-        end
-    end
 end)

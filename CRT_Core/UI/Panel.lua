@@ -400,6 +400,7 @@ end
 --   UI.HeadingText(text)    a heading or section title written in a string
 -- A part coloured once, when it is made, follows a switch through UI.Tint (one colour) or UI.ThemedText
 -- (a text built from these helpers).
+-- [theme helpers] CRT_Dev/Tests/theme_stub.js loads the code from here to [/theme helpers] into harnesses.
 function UI.Color(key, alpha)
     local c = CRT.MOCHA[key] or CRT.MOCHA.cream
     return c[1], c[2], c[3], alpha or 1
@@ -427,11 +428,14 @@ function UI.HeadingText(text)
 end
 
 -- Sets a font string's text to build() now and again after every theme switch, for a text written once
--- with colour markup from the helpers above.
+-- with colour markup from the helpers above. UI.ThemedText(fs, nil) stops that and leaves the text as it is.
 function UI.ThemedText(fs, build)
     themedTexts[fs] = build
-    fs:SetText(build())
+    if build then
+        fs:SetText(build())
+    end
 end
+-- [/theme helpers]
 
 -- Backdrop frames outside the main window that follow the look: your bar, its drag and Close bars,
 -- and the ready check window. Each keeps its Classic colours; in Modern its background turns espresso

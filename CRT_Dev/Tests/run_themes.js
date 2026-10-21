@@ -374,6 +374,11 @@ do
   UI:SetTheme("nitro")
   check(near(head.rgb, hex("A9BBCB")), "Nitro: the tinted heading repaints")
   check(line.text == "|cff8fcfa0Ready|r |cffff7f6bMissing|r", "Nitro: the themed text is rebuilt: " .. tostring(line.text))
+  -- UI.ThemedText(fs, nil) stops it: the text stays as it is and a switch no longer rebuilds it
+  UI.ThemedText(line, nil)
+  line:SetText("plain")
+  UI:SetTheme("cowfee")
+  check(line.text == "plain", "an unregistered themed text is left alone: " .. tostring(line.text))
 end
 print("ok themes: a live switch repaints headings and themed texts")
 
@@ -414,12 +419,12 @@ for (const [file, what] of [
 }
 // Overlays are not refreshed with the page in view, so each repaints on a theme switch itself: an OnTheme hook,
 // a UI.Tint or a UI.ThemedText. (Live switches are checked in the harnesses that build them: run_latepage,
-// run_groups_extras, run_lootmaster_bosswin, run_alerts_personalwin, run_alerts_editor, run_consumables_dock, run_debuffs.)
+// run_groups_extras, run_lootmaster_bosswin, run_alerts_personalwin, run_alerts_editor, run_consumables_dock. The debuff
+// panel has no theme colour: its countdown is the approved yellow in every theme.)
 for (const [file, what] of [
   ['CRT_Modules/Notes/Window.lua', 'the note windows'],
   ['CRT_Modules/Notes/Alert.lua', 'the next-spell alert'],
   ['CRT_Modules/Consumables/Display.lua', 'your bar'],
-  ['CRT_Modules/Debuffs/Panel.lua', 'the debuff panel'],
   ['CRT_Modules/ReadyCheck/BuffLock.lua', 'the buff lock hint'],
   ['CRT_Modules/ReadyCheck/Window.lua', 'the ready check window'],
   ['CRT_Modules/QoL/LowHealth.lua', 'the low-health warning'],
