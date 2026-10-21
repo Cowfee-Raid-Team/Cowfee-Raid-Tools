@@ -1,7 +1,7 @@
 // The theme for harnesses that load a page or window with a stubbed CRT.UI: themeLua(where) returns Lua code that
 // defines CRT_THEME(CRT, UI). It loads CRT_Core/Themes.lua into CRT (keeping any colours the harness set on CRT.MOCHA)
 // and the real colour helpers from CRT_Core/UI/Panel.lua (the code between its [theme helpers] and [/theme helpers]
-// markers) onto UI: UI.Color, UI.Hex, UI.ColorText, UI.GoodText, UI.BadText, UI.HeadingText and UI.ThemedText. UI.Tint
+// markers) onto UI: UI.Color, UI.Hex, UI.ColorText, UI.GoodText, UI.WarnText, UI.BadText, UI.HeadingText and UI.ThemedText. UI.Tint
 // and UI:OnTheme are small stand-ins with the same behaviour. UI.SwitchTheme(key) stands in for UI:SetTheme: it refills
 // CRT.MOCHA and repaints tinted parts, themed texts and the hooks, so a harness can check a module follows a live switch.
 // run_themes.js tests the real UI:SetTheme.

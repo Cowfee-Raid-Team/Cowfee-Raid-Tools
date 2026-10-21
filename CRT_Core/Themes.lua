@@ -7,13 +7,15 @@ local ADDON, CRT = ...
 -- so UI:IsModern() keeps working.
 --   blizzard  Default: Blizzard, the game's own art (Classic). Its palette is the colors from before
 --             themes, for the few things that read CRT.MOCHA in either look, so Classic stays as it was;
---             heading, matcha and bad are the game's gold, green and red text.
+--             heading, matcha, warn and bad are the game's gold, green, orange and red text.
 --   midnight  Blackout: Midnight, Modern in black and greys with a white accent.
 --   nitro     Blackout: Nitro, Modern in blue-black with a blue accent.
 --   cowfee    Beanworks: Cowfee, Modern in coffee colors; the Modern theme old saved data loads as.
 -- menuBar draws a 2 px accent bar on the left of the selected menu page.
 -- scrollBar names the theme's scroll bar look in UI.SCROLL_BAR_LOOKS (UI/ScrollBar.lua): "rail",
 -- "framed" or "rounded"; without one, scroll bars keep the game's art.
+-- CRT_Dev/StyleGuide.md has every theme's values side by side, the helpers, and the colours that are not
+-- the theme's; a new theme fills one column there and one palette here.
 
 -- The menu's entries, in this order.
 CRT.THEME_LIST = {
@@ -35,6 +37,7 @@ CRT.THEME_MODERN = "cowfee" -- old saved data with the Modern look on
 --   heading      headings and section titles (UI.HeadingText); the game's gold in Default: Blizzard
 --   cream        body text (the game's white text)
 --   matcha       good states: synced, answered, on, ready (UI.GoodText)
+--   warn         in-between states: running low, worn, arrived late, a middling score (UI.WarnText)
 --   bad          bad states: late, failed, missing, can't (UI.BadText)
 --   walnut       a slider's knob and a ticked checkbox
 --   walnutEdge   the knob's 1 px edge
@@ -44,8 +47,8 @@ CRT.THEME_MODERN = "cowfee" -- old saved data with the Modern look on
 --   checkEdge    a ticked checkbox's edge
 --   stripTop, stripBottom   a window title bar's gradient (UI.TitleStrip)
 --   note         the small note beside a window's title
-CRT.THEME_KEYS = { "espresso", "roast", "edge", "mocha", "caramel", "latte", "heading", "cream", "matcha", "bad",
-    "walnut", "walnutEdge", "walnutShine", "walnutText", "tick", "checkEdge", "stripTop", "stripBottom", "note" }
+CRT.THEME_KEYS = { "espresso", "roast", "edge", "mocha", "caramel", "latte", "heading", "cream", "matcha", "warn",
+    "bad", "walnut", "walnutEdge", "walnutShine", "walnutText", "tick", "checkEdge", "stripTop", "stripBottom", "note" }
 
 local function hex(h)
     return { tonumber(h:sub(1, 2), 16) / 255, tonumber(h:sub(3, 4), 16) / 255, tonumber(h:sub(5, 6), 16) / 255 }
@@ -76,6 +79,7 @@ CRT.THEMES = {
         heading = gameColor("NORMAL_FONT_COLOR", { 1, 0.82, 0 }), -- the game's gold
         cream = { 0.95, 0.90, 0.84 },
         matcha = gameColor("GREEN_FONT_COLOR", hex("19FF19")), -- the game's green
+        warn = gameColor("ORANGE_FONT_COLOR", hex("FF8040")), -- the game's orange
         bad = gameColor("RED_FONT_COLOR", hex("FF2020")), -- the game's red
         walnut = hex("4A3424"),
         walnutEdge = hex("1A120C"),
@@ -97,6 +101,7 @@ CRT.THEMES = {
         heading = hex("BDBDBD"),
         cream = hex("F2F2F2"),
         matcha = hex("7FBF7F"),
+        warn = hex("E6B450"),
         bad = hex("E06C6C"),
         walnut = hex("1E1E1E"),
         walnutEdge = hex("000000"),
@@ -118,6 +123,7 @@ CRT.THEMES = {
         heading = hex("A9BBCB"),
         cream = hex("EEF2F5"),
         matcha = hex("8FCFA0"),
+        warn = hex("F0C060"),
         bad = hex("FF7F6B"),
         walnut = hex("18202A"),
         walnutEdge = hex("000000"),
@@ -139,6 +145,7 @@ CRT.THEMES = {
         heading = hex("D9B48A"), -- Hazelnut
         cream = hex("F4EBDD"), -- Cream
         matcha = hex("8FA876"), -- Matcha
+        warn = hex("F2C14E"),
         bad = hex("C8553D"),
         walnut = hex("4A3424"),
         walnutEdge = hex("1A120C"),
