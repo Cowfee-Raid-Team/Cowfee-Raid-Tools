@@ -21,7 +21,7 @@ local ADDON, CRT = ...
 -- .InsertLink(text) and .OpenChat(text) (12.0; the older ChatEdit_GetActiveWindow, ChatEdit_InsertLink and
 -- ChatFrame_OpenChat stay as fallbacks, aliases in Blizzard_DeprecatedChatInfo); InspectUnit(unit) (the game's
 -- inspect window, Blizzard_InspectUI_Bootstrap); IsShiftKeyDown; C_ClassColor.GetClassColor, else
--- RAID_CLASS_COLORS; C_Item.GetItemQualityByID(itemInfo) and ColorManager.GetColorDataForItemQuality, else
+-- RAID_CLASS_COLORS; C_Item.GetItemQualityByID(itemInfo) and its colour from Gear.QualityColor (ColorManager, else
 -- ITEM_QUALITY_COLORS, redrawn on ITEM_DATA_LOAD_RESULT (itemID, success); C_Item.GetItemInfoInstant (the
 -- icon); TextureBase:SetRotation(radians); the WowScrollBoxList, MinimalScrollBar and
 -- ScrollUtil.InitScrollBoxListWithScrollBar as Loot History uses them.
@@ -139,13 +139,9 @@ local function qualityColor(piece)
         local ok, v = pcall(C_Item.GetItemQualityByID, piece.itemString or piece.link or piece.id)
         q = ok and not secret(v) and type(v) == "number" and v or nil
     end
-    q = q or UNCOMMON
-    local ok, c = pcall(function()
-        return ColorManager and ColorManager.GetColorDataForItemQuality and ColorManager.GetColorDataForItemQuality(q)
-    end)
-    c = ok and c or (ITEM_QUALITY_COLORS and ITEM_QUALITY_COLORS[q])
-    if type(c) == "table" and c.r then
-        return c.r, c.g, c.b
+    local r, g, b = Gear.QualityColor(q or UNCOMMON)
+    if r then
+        return r, g, b
     end
     return 1, 1, 1
 end

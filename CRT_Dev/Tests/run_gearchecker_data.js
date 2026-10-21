@@ -552,6 +552,11 @@ q9 = rowNamed("Quick")
 eq(q9.trackCounts.hero .. "/" .. q9.trackCounts.champion .. "/" .. q9.trackCounts.myth, "2/1/1", "row: the pieces on each track")
 eq(GC.TrackText(q9), "1M 2H 1C", "row: the Tracks column, highest first")
 eq(GC.TrackText({ trackCounts = {} }), "", "row: no known tracks, empty")
+eq(GC.TrackText(q9, false, 2), "1M 2H +", "row: only room for two, the lowest track dropped with a +")
+eq(GC.TrackText(q9, false, 3), "1M 2H 1C", "row: room for all three, no +")
+local ts = {}
+for _, p in ipairs(GC.TrackCounts(q9)) do ts[#ts + 1] = p.n .. " " .. p.track.label end
+eq(table.concat(ts, ", "), "1 Myth, 2 Hero, 1 Champion", "row: the full counts for the badge's tooltip, highest first")
 eq(q9.issues, 0, "below: an item below the track is no issue")
 eq(q9.below, 1, "below Hero (the season's default): the Champion ring")
 check(GC.CellShows(q9.slots[11], "below") and not GC.CellShows(q9.slots[1], "below") and not GC.CellShows(q9.slots[2], "below") and not GC.CellShows(q9.slots[5], "below"), "below: only the cells under the track are drawn")

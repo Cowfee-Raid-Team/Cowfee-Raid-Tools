@@ -13,7 +13,8 @@ local ADDON, CRT = ...
 --   GC.CheckTrips(check, piece, parts), GC.TopCheck(findings)   one check on one piece; a cell's tag
 --   GC:Tracks(), GC.TrackOf(parts), GC:BelowTrack(), GC:BelowChoices()   the season's upgrade tracks; a
 --                                piece's track and rank from its bonus IDs; the Below chip's track and choices
---   GC.TrackTag, GC.TrackWords, GC.TrackColor, GC.TrackText(row)   a track as "H4", "Hero 4/6", its colour;
+--   GC.TrackTag, GC.TrackWords, GC.TrackColor, GC.TrackCounts(row), GC.TrackText(row, colored, keep)   a
+--                                track as "H4", "Hero 4/6", its colour; a row's pieces per track;
 --                                the Tracks column ("3M 3H")
 --   GC.CheckSlot(slot, piece, rules, avg)   one slot's findings: missing enchant, empty sockets, low
 --   GC:Roster()                  the group: { name, unit, class, me }, you first
@@ -310,17 +311,12 @@ function GC.TrackWords(info)
     return string.format(GC.TEXT.trackRankOnly, info.track.label, info.rank)
 end
 
--- A track's colour: the game's colour for its item quality, else its own colour, else white.
+-- A track's colour: the game's colour for its item quality (Gear.QualityColor), else its own colour, else
+-- white.
 function GC.TrackColor(track)
-    local q = type(track) == "table" and track.quality
-    if q then
-        local ok, c = pcall(function()
-            return ColorManager and ColorManager.GetColorDataForItemQuality and ColorManager.GetColorDataForItemQuality(q)
-        end)
-        c = ok and c or (ITEM_QUALITY_COLORS and ITEM_QUALITY_COLORS[q])
-        if type(c) == "table" and c.r then
-            return c.r, c.g, c.b
-        end
+    local r, g, b = Gear.QualityColor(type(track) == "table" and track.quality or nil)
+    if r then
+        return r, g, b
     end
     local own = type(track) == "table" and track.color
     if type(own) == "table" and own[1] then
@@ -348,21 +344,39 @@ function GC:BelowChoices()
     return out
 end
 
--- A row's Tracks column: how many pieces on each track, highest first ("3M 3H"); "" with none known.
--- colored wraps each in its track's colour.
-function GC.TrackText(row, colored)
+-- A row's pieces per track, highest track first: { { track, n }, ... }, only the tracks it wears.
+function GC.TrackCounts(row)
     local list, out = GC:Tracks().list, {}
     for i = #list, 1, -1 do
         local t = list[i]
         local n = row.trackCounts and row.trackCounts[t.key] or 0
         if n > 0 then
-            local text = n .. t.letter
-            if colored then
-                local r, g, b = GC.TrackColor(t)
-                text = string.format("|cff%02x%02x%02x%s|r", math.floor(r * 255 + 0.5), math.floor(g * 255 + 0.5), math.floor(b * 255 + 0.5), text)
-            end
-            out[#out + 1] = text
+            out[#out + 1] = { track = t, n = n }
         end
+    end
+    return out
+end
+
+-- Text in a track's colour.
+function GC.InTrackColor(track, text)
+    local r, g, b = GC.TrackColor(track)
+    return string.format("|cff%02x%02x%02x%s|r", math.floor(r * 255 + 0.5), math.floor(g * 255 + 0.5), math.floor(b * 255 + 0.5), text)
+end
+
+GC.TRACK_MORE = "+" -- after the Tracks column's counts when the lowest tracks didn't fit
+
+-- A row's Tracks column: how many pieces on each track, highest first ("3M 3H"); "" with none known.
+-- colored wraps each in its track's colour; keep (optional) shows only the highest that many, then a "+".
+function GC.TrackText(row, colored, keep)
+    local out = {}
+    local counts = GC.TrackCounts(row)
+    for i, p in ipairs(counts) do
+        if keep and i > keep then
+            out[#out + 1] = GC.TRACK_MORE
+            break
+        end
+        local text = p.n .. p.track.letter
+        out[#out + 1] = colored and GC.InTrackColor(p.track, text) or text
     end
     return table.concat(out, " ")
 end
