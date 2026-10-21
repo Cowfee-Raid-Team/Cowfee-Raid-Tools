@@ -1,5 +1,5 @@
 // CRT_Core/UI/Panel.lua's UI.Help: in Classic the game's gold "i" (MainHelpPlateButton's three textures,
-// scaled), in Modern a caramel ring that fills caramel under the mouse with an espresso "i"; the look
+// scaled), in Modern an accent ring that fills accent under the mouse with a background-coloured "i"; the look
 // switch swaps them live, a theme switch repaints the Modern colours, the tooltip is unchanged and the
 // hit box is the same size in both looks.
 // Usage: node run_help.js <addon folder>
@@ -68,7 +68,7 @@ assert(load(mochaSrc, "Themes.lua"))("CowfeeRaidTools", CRT)
 CRT:UseTheme("cowfee")
 assert(load(panelSrc, "Panel.lua"))("CowfeeRaidTools", CRT)
 local UI = CRT.UI
-local M = CRT.MOCHA
+local M = CRT.PALETTE
 local function look(modern)
   CRT.db.ui.modern = modern
   for _, c in ipairs(UI.skinned) do c.crtSkin(modern) end
@@ -109,31 +109,31 @@ check(GameTooltip.lines[1] == "Count 2", "a function's text is read each time")
 live.scripts.OnLeave(live)
 print("ok help: the tooltip is unchanged")
 
--- Modern: a caramel ring round a caramel "i", the same hit box
+-- Modern: an accent ring round an accent "i", the same hit box
 look(true)
 check(not h.i.shown and not h.ring.shown and h.glow.alpha == 0, "Modern: the gold \\"i\\", ring and glow are hidden")
 check(h.circle.shown and h.letter.shown and not h.fill.shown, "Modern: the ring and its \\"i\\" show, unfilled")
 check(type(h.circle.file) == "string" and h.circle.file:find("CRT_Media\\\\Media\\\\Ring") ~= nil, "the ring is a CRT ring texture: " .. tostring(h.circle.file))
 check(type(h.fill.file) == "string" and h.fill.file:find("CRT_Media\\\\Media\\\\Disc$") ~= nil, "the fill is CRT_Media/Media/Disc.tga: " .. tostring(h.fill.file))
 check(h.circle.w == 16 and h.fill.w == 16, "a 16 px ring")
-check(near(h.circle.rgb, M.caramel) and near(h.letter.textRGB, M.caramel), "a caramel ring and \\"i\\"")
+check(near(h.circle.rgb, M.accent) and near(h.letter.textRGB, M.accent), "an accent ring and \\"i\\"")
 check(h.letter.text == "i" and h.letter.font ~= nil, "the \\"i\\" has its own font")
 check(b.w == 20 and b.h == 20, "the hit box is unchanged by the look")
 b.scripts.OnEnter(b)
-check(h.fill.shown and near(h.fill.rgb, M.caramel), "hover: it fills caramel")
-check(near(h.letter.textRGB, M.espresso), "hover: the \\"i\\" turns espresso")
+check(h.fill.shown and near(h.fill.rgb, M.accent), "hover: it fills accent")
+check(near(h.letter.textRGB, M.background), "hover: the \\"i\\" turns background")
 b.scripts.OnLeave(b)
-check(not h.fill.shown and near(h.letter.textRGB, M.caramel), "leave: the ring again")
-print("ok help: Modern is a caramel ring that fills on hover")
+check(not h.fill.shown and near(h.letter.textRGB, M.accent), "leave: the ring again")
+print("ok help: Modern is an accent ring that fills on hover")
 
 -- a theme switch repaints the Modern colours
-local cowfee = { M.caramel[1], M.caramel[2], M.caramel[3] }
+local cowfee = { M.accent[1], M.accent[2], M.accent[3] }
 CRT:UseTheme("nitro")
-check(not near(CRT.MOCHA.caramel, cowfee), "the test themes have different caramels")
+check(not near(CRT.PALETTE.accent, cowfee), "the test themes have different accents")
 UI:RepaintTheme()
-check(near(h.circle.rgb, CRT.MOCHA.caramel) and near(h.letter.textRGB, CRT.MOCHA.caramel), "another theme: its caramel")
+check(near(h.circle.rgb, CRT.PALETTE.accent) and near(h.letter.textRGB, CRT.PALETTE.accent), "another theme: its accent")
 b.scripts.OnEnter(b)
-check(near(h.fill.rgb, CRT.MOCHA.caramel) and near(h.letter.textRGB, CRT.MOCHA.espresso), "another theme: its hover colours")
+check(near(h.fill.rgb, CRT.PALETTE.accent) and near(h.letter.textRGB, CRT.PALETTE.background), "another theme: its hover colours")
 b.scripts.OnLeave(b)
 CRT:UseTheme("cowfee")
 UI:RepaintTheme()
@@ -142,7 +142,7 @@ UI:RepaintTheme()
 look(false)
 check(h.i.shown and h.ring.shown and h.glow.alpha == 1 and not h.circle.shown and not h.letter.shown, "Classic again: the gold \\"i\\"")
 b.scripts.OnEnter(b)
-check(not h.fill.shown, "Classic hover: no caramel fill")
+check(not h.fill.shown, "Classic hover: no accent fill")
 b.scripts.OnLeave(b)
 -- one made in Modern is Modern at once
 look(true)

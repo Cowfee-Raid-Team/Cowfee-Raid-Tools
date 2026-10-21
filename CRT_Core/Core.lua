@@ -411,7 +411,7 @@ function CRT:FontPath(name)
     return nil
 end
 
--- The Modern colours are CRT.MOCHA, the theme in use (Themes.lua). UI/Panel.lua paints the windows with
+-- The Modern colours are CRT.PALETTE, the theme in use (Themes.lua). UI/Panel.lua paints the windows with
 -- them and CRT:ApplyFonts colours the text.
 -- The Modern look's font, when the font setting is the default.
 CRT.MODERN_FONT = "Fonts\\ARIALN.TTF"
@@ -460,10 +460,10 @@ function CRT:ApplyFonts()
         end
         local size = f.size * factor * (modernDefault and 1.1 or 1)
         f.object:SetFont(path, math.max(f.min or 0, math.floor(size + 0.5)), flags)
-        -- Modern: the game's gold text turns latte and its white text cream; grey stays grey.
+        -- Modern: the game's gold text turns the label colour and its white text the text colour; grey stays grey.
         local r, g, b = f.color[1], f.color[2], f.color[3]
         if modern and r and r > 0.9 then
-            local c = (g > 0.9 and b > 0.9) and self.MOCHA.cream or (b < 0.2 and self.MOCHA.latte) or nil
+            local c = (g > 0.9 and b > 0.9) and self.PALETTE.text or (b < 0.2 and self.PALETTE.label) or nil
             if c then
                 r, g, b = c[1], c[2], c[3]
             end

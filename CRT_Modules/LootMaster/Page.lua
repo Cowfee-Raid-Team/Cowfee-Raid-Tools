@@ -233,7 +233,7 @@ local function buildTonight(f)
     toggle:SetPoint("TOPLEFT", looting, "BOTTOMLEFT", 4, -8) -- under the line, however many lines it takes
     refreshers[#refreshers + 1] = function()
         local line, on = LM:LootingStatus()
-        -- on: matcha in a Modern theme, plain in Default: Blizzard, as before themes: not a theme colour
+        -- on: the good colour in a Modern theme, plain in Default: Blizzard, as before themes: not a theme colour
         looting:SetText(on and UI:IsModern() and UI.GoodText(line) or line) -- not a theme colour
         local leader = IsInGroup() and UnitIsGroupLeader("player")
         toggle:SetShown(leader and true or false)
@@ -612,7 +612,7 @@ local function buildSync(f)
         typed.showHint()
         button:SetEnabled(on and not LM:SyncBlocked())
         cover:SetShown(on and LM:SyncBlocked() ~= nil)
-        -- "Synced to": matcha in a Modern theme, plain in Default: Blizzard, as before themes
+        -- "Synced to": the good colour in a Modern theme, plain in Default: Blizzard, as before themes
         status:SetText(LM:SyncStatus(UI:IsModern() and UI.GoodText or nil) or "") -- not a theme colour
         if on and f:IsVisible() then
             LM:SyncPing() -- who has CRT, for the list (at most every SYNC_PING_SECONDS)

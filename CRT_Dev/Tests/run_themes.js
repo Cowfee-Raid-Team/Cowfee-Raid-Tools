@@ -1,7 +1,7 @@
 // CRT_Core/Themes.lua and the theme switch in CRT_Core/UI/Panel.lua: every theme has every palette key,
 // the four themes in the menu's order, old saved data mapped to a theme, picking a theme from the title
-// bar's button (UI.ContextMenu under it) saving ui.theme and ui.modern and refilling CRT.MOCHA, the
-// button's label, the live re-skin, the blackouts' menu bar, matcha text (UI.GoodText), and the pages
+// bar's button (UI.ContextMenu under it) saving ui.theme and ui.modern and refilling CRT.PALETTE, the
+// button's label, the live re-skin, the blackouts' menu bar, good text (UI.GoodText), and the pages
 // that use it.
 // Usage: node run_themes.js <addon folder>
 const fs = require('fs');
@@ -130,7 +130,7 @@ assert(load(panelSrc, "Panel.lua"))("CowfeeRaidTools", CRT)
 assert(load(controlsSrc, "Controls.lua"))("CowfeeRaidTools", CRT)
 assert(load(windowSrc, "Window.lua"))("CowfeeRaidTools", CRT)
 local UI = CRT.UI
-local M = CRT.MOCHA
+local M = CRT.PALETTE
 
 -- Every theme has every key, as { r, g, b } from 0 to 1.
 check(#CRT.THEME_KEYS >= 13, "the palette keys are listed")
@@ -143,7 +143,7 @@ for _, info in ipairs(CRT.THEME_LIST) do
       info.key .. " has " .. key)
   end
 end
-for _, key in ipairs({ "espresso", "roast", "edge", "mocha", "caramel", "latte", "heading", "cream", "matcha", "warn", "bad", "walnut","walnutEdge", "walnutShine", "walnutText", "tick" }) do
+for _, key in ipairs({ "background", "surface", "border", "selected", "accent", "label", "heading", "text", "good", "warn", "bad", "knob", "knobBorder", "knobShine", "knobText", "check" }) do
   local listed = false
   for _, k in ipairs(CRT.THEME_KEYS) do if k == key then listed = true end end
   check(listed, "THEME_KEYS has " .. key)
@@ -165,20 +165,20 @@ local function palette(key, list)
     check(near(CRT.THEMES[key][k], type(h) == "string" and hex(h) or h), key .. "." .. k .. " is " .. (type(h) == "string" and ("#" .. h) or "white"))
   end
 end
-palette("cowfee", { espresso = "17110E", roast = "2B1E17", edge = "5A4231", mocha = "8C4F2B", caramel = "E2A14B", latte = "D9B48A",
-  heading = "D9B48A", cream = "F4EBDD", matcha = "8FA876", warn = "F2C14E", bad = "C8553D", walnut = "4A3424", walnutEdge = "1A120C", walnutShine = "7A5A3E", walnutText = { 1, 1, 1 },
-  tick = { 1, 1, 1 }, checkEdge = "1A120C" })
-palette("midnight", { espresso = "050505", roast = "121212", edge = "2E2E2E", mocha = "2A2A2A", caramel = "E6E6E6", latte = "BDBDBD",
-  heading = "BDBDBD", cream = "F2F2F2", matcha = "7FBF7F", warn = "E6B450", bad = "E06C6C", walnut = "1E1E1E", walnutEdge = "000000", walnutShine = "3A3A3A", tick = "E6E6E6", checkEdge = "E6E6E6" })
-palette("nitro", { espresso = "06080A", roast = "11151A", edge = "28313B", mocha = "1E2A36", caramel = "7FB3D9", latte = "A9BBCB",
-  heading = "A9BBCB", cream = "EEF2F5", matcha = "8FCFA0", warn = "F0C060", bad = "FF7F6B", walnut = "18202A", walnutEdge = "000000", walnutShine = "34414F", tick = "7FB3D9", checkEdge = "7FB3D9" })
--- Default: Blizzard keeps the colours from before themes, so what reads CRT.MOCHA in Classic is unchanged;
+palette("cowfee", { background = "17110E", surface = "2B1E17", border = "5A4231", selected = "8C4F2B", accent = "E2A14B", label = "D9B48A",
+  heading = "D9B48A", text = "F4EBDD", good = "8FA876", warn = "F2C14E", bad = "C8553D", knob = "4A3424", knobBorder = "1A120C", knobShine = "7A5A3E", knobText = { 1, 1, 1 },
+  check = { 1, 1, 1 }, checkBorder = "1A120C" })
+palette("midnight", { background = "050505", surface = "121212", border = "2E2E2E", selected = "2A2A2A", accent = "E6E6E6", label = "BDBDBD",
+  heading = "BDBDBD", text = "F2F2F2", good = "7FBF7F", warn = "E6B450", bad = "E06C6C", knob = "1E1E1E", knobBorder = "000000", knobShine = "3A3A3A", check = "E6E6E6", checkBorder = "E6E6E6" })
+palette("nitro", { background = "06080A", surface = "11151A", border = "28313B", selected = "1E2A36", accent = "7FB3D9", label = "A9BBCB",
+  heading = "A9BBCB", text = "EEF2F5", good = "8FCFA0", warn = "F0C060", bad = "FF7F6B", knob = "18202A", knobBorder = "000000", knobShine = "34414F", check = "7FB3D9", checkBorder = "7FB3D9" })
+-- Default: Blizzard keeps the colours from before themes, so what reads CRT.PALETTE in Classic is unchanged;
 -- its heading, good, warn and bad are the game's gold, green, orange and red (the fallbacks, with no game globals here).
-local old = { espresso = { 0.11, 0.078, 0.063 }, roast = { 0.165, 0.122, 0.098 }, edge = { 0.30, 0.235, 0.188 }, mocha = { 0.44, 0.31, 0.22 },
-  caramel = { 0.78, 0.56, 0.36 }, latte = { 0.87, 0.73, 0.56 }, cream = { 0.95, 0.90, 0.84 }, heading = { 1, 0.82, 0 }, matcha = "19FF19",
-  warn = "FF8040", bad = "FF2020", walnut = "4A3424",
-  walnutEdge = "1A120C", walnutShine = "7A5A3E", walnutText = { 1, 1, 1 }, tick = { 1, 1, 1 }, checkEdge = "1A120C",
-  stripTop = { 0.353, 0.247, 0.173 }, stripBottom = { 0.227, 0.165, 0.122 }, note = { 0.80, 0.71, 0.60 } }
+local old = { background = { 0.11, 0.078, 0.063 }, surface = { 0.165, 0.122, 0.098 }, border = { 0.30, 0.235, 0.188 }, selected = { 0.44, 0.31, 0.22 },
+  accent = { 0.78, 0.56, 0.36 }, label = { 0.87, 0.73, 0.56 }, text = { 0.95, 0.90, 0.84 }, heading = { 1, 0.82, 0 }, good = "19FF19",
+  warn = "FF8040", bad = "FF2020", knob = "4A3424",
+  knobBorder = "1A120C", knobShine = "7A5A3E", knobText = { 1, 1, 1 }, check = { 1, 1, 1 }, checkBorder = "1A120C",
+  titleTop = { 0.353, 0.247, 0.173 }, titleBottom = { 0.227, 0.165, 0.122 }, muted = { 0.80, 0.71, 0.60 } }
 for _, key in ipairs(CRT.THEME_KEYS) do check(old[key] ~= nil, "the test knows blizzard's old " .. key) end
 palette("blizzard", old)
 print("ok themes: the palettes")
@@ -213,7 +213,7 @@ UISpecialFrames, tinsert = {}, table.insert
 local popout = UI.Window("TestPopout", { kind = "popout", title = "Timeline", layer = "timeline" })
 local strip = UI.TitleStrip(frame("Frame", nil), 24)
 strip:SetBadge("Boss", "a note", UI.TITLE_STRIP.neutral)
-local kept = M.caramel -- a table a caller kept from CRT.MOCHA
+local kept = M.accent -- a table a caller kept from CRT.PALETTE
 local editBg = edit.textures[1]
 
 -- The title bar's theme button.
@@ -233,7 +233,7 @@ local p = lastMenu and lastMenu.points[1]
 check(p and p[1] == "TOPRIGHT" and p[2] == lb and p[3] == "BOTTOMRIGHT", "the menu opens under the button")
 print("ok themes: the title bar's theme menu")
 
--- Picking each theme saves it, sets modern, refills CRT.MOCHA, relabels the button and re-skins live.
+-- Picking each theme saves it, sets modern, refills CRT.PALETTE, relabels the button and re-skins live.
 for i, w in ipairs(want) do
   local before = fontsApplied
   lb:Click()
@@ -244,23 +244,23 @@ for i, w in ipairs(want) do
   check(UI:Theme() == key and UI:IsModern() == w[3], "UI:Theme and UI:IsModern follow " .. key)
   local same = true
   for _, k2 in ipairs(CRT.THEME_KEYS) do if not near(M[k2], pal[k2]) then same = false end end
-  check(same, "CRT.MOCHA is " .. key .. "'s palette")
-  check(CRT.MOCHA == M and M.caramel == kept and near(kept, pal.caramel), "CRT.MOCHA's tables are refilled, so kept ones follow")
+  check(same, "CRT.PALETTE is " .. key .. "'s palette")
+  check(CRT.PALETTE == M and M.accent == kept and near(kept, pal.accent), "CRT.PALETTE's tables are refilled, so kept ones follow")
   check(lb.text == w[2], "the button's label is " .. w[2])
   check(fontsApplied > before, "the fonts are applied again")
   check(lastMenu.root.radios[i].isSelected(), w[2] .. " is ticked in the menu")
   if w[3] then
-    check(editBg.shown and near(editBg.rgb, pal.roast), key .. ": an edit box re-skins to its roast")
-    check(win.crtBg.shown and near(win.crtBg.rgb, pal.espresso), key .. ": a window re-skins to its espresso")
-    check(popout.crtBg.shown and near(popout.crtBg.rgb, pal.espresso) and not popout.crtArt[1].shown, key .. ": a UI.Window pop-out re-skins to its espresso, no template art")
+    check(editBg.shown and near(editBg.rgb, pal.surface), key .. ": an edit box re-skins to its surface")
+    check(win.crtBg.shown and near(win.crtBg.rgb, pal.background), key .. ": a window re-skins to its background")
+    check(popout.crtBg.shown and near(popout.crtBg.rgb, pal.background) and not popout.crtArt[1].shown, key .. ": a UI.Window pop-out re-skins to its background, no template art")
     local anyPiece = false
     for _, k2 in ipairs(FRAME_PIECES) do if popout[k2].shown then anyPiece = true end end
     check(not anyPiece and popout.crtEdges[1].shown, key .. ": a UI.Window has its flat edge, none of the template's border")
-    check(near(cb.crtCheck.box.edge.fills[1].rgb, pal.checkEdge) and near(cb.crtCheck.tick.rgb, pal.tick), key .. ": a ticked box has its edge and tick")
-    check(near(cb.crtCheck.box.face.fills[1].rgb, pal.walnut), key .. ": a ticked box has the knob colour")
-    check(near(strip.line.rgb, pal.caramel) and near(strip.title.rgb, pal.cream), key .. ": a title strip's line and title")
-    check(near(strip.badge.backdrop, pal.espresso) and near(strip.badge.text.rgb, pal.latte), key .. ": the neutral badge follows the theme")
-    check(near(strip.bg.gradient[2], pal.stripTop) and near(strip.bg.gradient[1], pal.stripBottom), key .. ": the strip's gradient")
+    check(near(cb.crtCheck.box.edge.fills[1].rgb, pal.checkBorder) and near(cb.crtCheck.tick.rgb, pal.check), key .. ": a ticked box has its edge and tick")
+    check(near(cb.crtCheck.box.face.fills[1].rgb, pal.knob), key .. ": a ticked box has the knob colour")
+    check(near(strip.line.rgb, pal.accent) and near(strip.title.rgb, pal.text), key .. ": a title strip's line and title")
+    check(near(strip.badge.backdrop, pal.background) and near(strip.badge.text.rgb, pal.label), key .. ": the neutral badge follows the theme")
+    check(near(strip.bg.gradient[2], pal.titleTop) and near(strip.bg.gradient[1], pal.titleBottom), key .. ": the strip's gradient")
   else
     check(not editBg.shown and edit.Left.alpha == 1, "Default: Blizzard: the edit box has the game's art")
     check(not win.crtBg.shown and win.crtArt[1].shown, "Default: Blizzard: the window has the template's art")
@@ -283,9 +283,9 @@ print("ok themes: picking each theme saves it and re-skins live")
 do
   local tex = texture(nil)
   local box = frame("Frame", nil)
-  UI.Tint(tex, "SetColorTexture", "caramel", 0.4)
-  UI.Tint(box, "SetBackdropColor", "roast", 0.9)
-  UI.Tint(box, "SetBackdropBorderColor", "edge")
+  UI.Tint(tex, "SetColorTexture", "accent", 0.4)
+  UI.Tint(box, "SetBackdropColor", "surface", 0.9)
+  UI.Tint(box, "SetBackdropBorderColor", "border")
   local hooked, pageRefreshed, winRefreshed = 0, 0, 0
   UI:OnTheme(function() hooked = hooked + 1 end)
   UI:OnTheme(function() error("a broken hook") end)
@@ -305,13 +305,13 @@ do
   w.refresh = function() winRefreshed = winRefreshed + 1 end
   UI:SetTheme("nitro")
   local n = CRT.THEMES.nitro
-  check(near(tex.rgb, n.caramel) and tex.a == 0.4, "a tinted texture takes the new caramel at its alpha")
-  check(near(box.backdrop, n.roast) and near(box.border, n.edge), "a tinted backdrop takes both its colors")
+  check(near(tex.rgb, n.accent) and tex.a == 0.4, "a tinted texture takes the new accent at its alpha")
+  check(near(box.backdrop, n.surface) and near(box.border, n.border), "a tinted backdrop takes both its colors")
   check(hooked == 1, "UI:OnTheme hooks run, even after a broken one")
   check(pageRefreshed == 1, "the page in view refreshes")
   check(winRefreshed == 1, "an open window with a refresh refreshes")
   UI:SetTheme("midnight")
-  check(near(tex.rgb, CRT.THEMES.midnight.caramel), "and again on the next theme")
+  check(near(tex.rgb, CRT.THEMES.midnight.accent), "and again on the next theme")
   UI.frame, UI.pages.demo, w.refresh = nil, nil, nil
 end
 print("ok themes: a theme change repaints tinted parts, hooks, the page and windows")
@@ -333,7 +333,7 @@ for _, w in ipairs(want) do
   UI:StyleMenuButton(b, true)
   local barOn = b.bar and b.bar.shown
   if w[1] == "midnight" or w[1] == "nitro" then
-    check(barOn and near(b.bar.rgb, CRT.THEMES[w[1]].caramel), w[2] .. ": the selected page has the accent bar")
+    check(barOn and near(b.bar.rgb, CRT.THEMES[w[1]].accent), w[2] .. ": the selected page has the accent bar")
     local other = menuButton()
     UI:StyleMenuButton(other, false)
     check(not other.bar.shown, w[2] .. ": only the selected page has it")
@@ -358,7 +358,7 @@ for key, m in pairs(mock) do
   check(m.warn ~= m.heading and m.warn ~= m.bad and m.warn ~= m.good, key .. ": warn is its own colour")
   check(UI.BadText("late") == "|cff" .. m.bad .. "late|r", key .. ": bad text: " .. UI.BadText("late"))
   check(UI.HeadingText("Raid") == "|cff" .. m.heading .. "Raid|r", key .. ": heading text: " .. UI.HeadingText("Raid"))
-  check(UI.Hex("bad") == m.bad and UI.ColorText("x", "matcha") == "|cff" .. m.good .. "x|r", key .. ": UI.Hex and UI.ColorText")
+  check(UI.Hex("bad") == m.bad and UI.ColorText("x", "good") == "|cff" .. m.good .. "x|r", key .. ": UI.Hex and UI.ColorText")
   local r, g, b, a = UI.Color("heading")
   check(near({ r, g, b }, hex(m.heading)) and a == 1, key .. ": UI.Color gives the heading")
   local _, _, _, a2 = UI.Color("bad", 0.5)
@@ -394,14 +394,14 @@ do
   local C2 = { db = { ui = {} } }
   assert(load(themesSrc, "Themes.lua"))("CowfeeRaidTools", C2)
   local b = C2.THEMES.blizzard
-  check(near(b.heading, { 1, 0.824, 0 }) and near(b.matcha, { 0.098, 1, 0.098 }) and near(b.bad, { 1, 0.125, 0.125 }),
+  check(near(b.heading, { 1, 0.824, 0 }) and near(b.good, { 0.098, 1, 0.098 }) and near(b.bad, { 1, 0.125, 0.125 }),
     "Default: Blizzard reads NORMAL_FONT_COLOR, GREEN_FONT_COLOR and RED_FONT_COLOR")
   check(near(b.warn, { 1, 0.5, 0.25 }), "Default: Blizzard's warn reads ORANGE_FONT_COLOR")
   GREEN_FONT_COLOR = { GetRGB = function() error("no") end }
   ORANGE_FONT_COLOR = nil
   C2 = { db = { ui = {} } }
   assert(load(themesSrc, "Themes.lua"))("CowfeeRaidTools", C2)
-  check(near(C2.THEMES.blizzard.matcha, hex("19FF19")), "a broken game colour falls back")
+  check(near(C2.THEMES.blizzard.good, hex("19FF19")), "a broken game colour falls back")
   check(near(C2.THEMES.blizzard.warn, hex("FF8040")), "no ORANGE_FONT_COLOR: warn falls back to the game's orange")
   NORMAL_FONT_COLOR, GREEN_FONT_COLOR, RED_FONT_COLOR, ORANGE_FONT_COLOR = saved[1], saved[2], saved[3], saved[4]
 end
@@ -412,7 +412,7 @@ if fails > 0 then error(fails .. " theme checks failed") end
 `;
 const root = process.argv[2];
 const read = (p) => fs.readFileSync(path.join(root, p), 'utf8');
-// The pages that show a good state use UI.GoodText (matcha in a Modern theme).
+// The pages that show a good state use UI.GoodText (good in a Modern theme).
 let srcFails = 0;
 for (const [file, what] of [
   ['CRT_Modules/Groups/Page.lua', 'the active layout'],
@@ -427,7 +427,7 @@ for (const [file, what] of [
 // The style guide (CRT_Dev/StyleGuide.md): warning states in the theme's warn colour; the colours that are not the
 // theme's stay as they were; a raider's response buttons come only from the looter's set. Each is one line of code.
 for (const [file, re, what] of [
-  ['CRT_Modules/Consumables/Bar.lua', /^\s*low = CRT\.MOCHA\.warn,/m, 'your bar: running low ants in warn'],
+  ['CRT_Modules/Consumables/Bar.lua', /^\s*low = CRT\.PALETTE\.warn,/m, 'your bar: running low ants in warn'],
   ['CRT_Modules/Consumables/Bar.lua', /slot\.time:SetTextColor\(CRT\.UI\.Color\("warn"\)\)/, 'your bar: the running low time in warn'],
   ['CRT_Modules/ReadyCheck/Window.lua', /percent < 80 and CRT\.UI\.WarnText\(text\)/, 'ready check window: durability under 80% in warn'],
   ['CRT_Modules/ReadyCheck/Window.lua', /cell\.text:SetText\(CRT\.UI\.WarnText\(c\.left/, 'ready check window: a buff running low in warn'],
@@ -445,9 +445,9 @@ for (const [file, re, what] of [
   ['CRT_Modules/LootMaster/Page.lua', /looting:SetText\(on and UI:IsModern\(\) and UI\.GoodText\(line\) or line\).*not a theme colour/, 'Loot Master: the looting line as before themes'],
   ['CRT_Modules/LootMaster/Page.lua', /LM:SyncStatus\(UI:IsModern\(\) and UI\.GoodText or nil\).*not a theme colour/, 'Loot Master: the synced to line as before themes'],
   ['CRT_Modules/LootMaster/Window.lua', /answered >= expected\) and UI:IsModern\(\) and UI\.GoodText\(count\) or count\).*not a theme colour/, 'Loot Master: the all-answered count as before themes'],
-  ['CRT_Modules/GearChecker/Page.lua', /^\s*low = CRT\.MOCHA\.warn,/m, 'Gear Checker: a low item in warn'],
-  ['CRT_Modules/GearChecker/Page.lua', /^\s*bad = CRT\.MOCHA\.bad,/m, 'Gear Checker: missing in the theme\'s bad'],
-  ['CRT_Modules/GearChecker/Page.lua', /^\s*good = CRT\.MOCHA\.matcha,/m, 'Gear Checker: enchanted in the theme\'s good'],
+  ['CRT_Modules/GearChecker/Page.lua', /^\s*low = CRT\.PALETTE\.warn,/m, 'Gear Checker: a low item in warn'],
+  ['CRT_Modules/GearChecker/Page.lua', /^\s*bad = CRT\.PALETTE\.bad,/m, 'Gear Checker: missing in the theme\'s bad'],
+  ['CRT_Modules/GearChecker/Page.lua', /^\s*good = CRT\.PALETTE\.good,/m, 'Gear Checker: enchanted in the theme\'s good'],
 ]) {
   if (re.test(read(file))) console.log('ok themes: ' + what);
   else { console.log('FAIL ' + file + ': ' + what); srcFails++; }
@@ -476,7 +476,7 @@ for (const [file, what] of [
   if (/OnTheme\(|UI\.Tint\(|UI\.ThemedText\(/.test(read(file))) console.log('ok themes: ' + file + ' repaints on a theme switch (' + what + ')');
   else { console.log('FAIL ' + file + ' has no theme hook (' + what + ')'); srcFails++; }
 }
-// The toc loads Themes.lua right after Core.lua, before anything reads CRT.MOCHA.
+// The toc loads Themes.lua right after Core.lua, before anything reads CRT.PALETTE.
 const toc = read('CowfeeRaidTools.toc').split(/\r?\n/);
 const core = toc.indexOf('CRT_Core\\Core.lua');
 if (core >= 0 && toc[core + 1] === 'CRT_Core\\Themes.lua') console.log('ok themes: the toc loads Themes.lua after Core.lua');

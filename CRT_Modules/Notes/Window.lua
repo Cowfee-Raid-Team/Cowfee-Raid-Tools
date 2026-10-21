@@ -628,13 +628,13 @@ local function createWindow(key, defaultPosition, build)
     frame:RegisterForDrag("LeftButton")
     w.frame = frame
 
-    -- The "note updated" stamp: a caramel layer over the whole window, under the text, that appears at
+    -- The "note updated" stamp: an accent layer over the whole window, under the text, that appears at
     -- FLASH_ALPHA, holds for a moment and fades away to the window's own background, whatever its color
     -- or transparency. NoteWindow:Flash() plays it when a shared note arrives or is sent.
     -- on ARTWORK: above the backdrop's own background, whatever layer it uses, and under the text
     local flash = frame:CreateTexture(nil, "ARTWORK")
     flash:SetAllPoints()
-    CRT.UI.Tint(flash, "SetColorTexture", "caramel", FLASH_ALPHA)
+    CRT.UI.Tint(flash, "SetColorTexture", "accent", FLASH_ALPHA)
     flash:SetAlpha(0)
     local stamp = flash:CreateAnimationGroup()
     local fade = stamp:CreateAnimation("Alpha")
@@ -736,7 +736,7 @@ local function createWindow(key, defaultPosition, build)
         -- unlocked, an edge in the theme's good colour shows where to drag; locked, no edge at all, so the
         -- window is seamless
         if open then
-            frame:SetBackdropBorderColor(CRT.UI.Color("matcha"))
+            frame:SetBackdropBorderColor(CRT.UI.Color("good"))
         else
             frame:SetBackdropBorderColor(0, 0, 0, 0)
         end

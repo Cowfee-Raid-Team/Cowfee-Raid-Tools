@@ -63,8 +63,8 @@ C_Item = { GetItemIconByID = function() return 134400 end }
 Ambiguate = function(n) return (n:gsub("%-.*$", "")) end
 RAID_CLASS_COLORS = { MAGE = { r = 0.25, g = 0.78, b = 0.92 } }
 local CRT = { LootMaster = {}, db = { ui = { modern = true, layers = {} } } }
-CRT.MOCHA = { roast = { 0.165, 0.122, 0.098 }, edge = { 0.30, 0.235, 0.188 }, caramel = { 0.78, 0.56, 0.36 }, cream = { 0.95, 0.90, 0.84 },
-  espresso = { 0.11, 0.078, 0.063 }, latte = { 0.87, 0.73, 0.56 }, stripTop = { 0.35, 0.25, 0.17 }, stripBottom = { 0.23, 0.17, 0.12 }, note = { 0.8, 0.71, 0.6 } }
+CRT.PALETTE = { surface = { 0.165, 0.122, 0.098 }, border = { 0.30, 0.235, 0.188 }, accent = { 0.78, 0.56, 0.36 }, text = { 0.95, 0.90, 0.84 },
+  background = { 0.11, 0.078, 0.063 }, label = { 0.87, 0.73, 0.56 }, titleTop = { 0.35, 0.25, 0.17 }, titleBottom = { 0.23, 0.17, 0.12 }, muted = { 0.8, 0.71, 0.6 } }
 assert(load(panelSrc, "Panel.lua"))("CowfeeRaidTools", CRT)
 assert(load(windowSrc, "Window.lua"))("CowfeeRaidTools", CRT)
 assert(load(gearSrc, "Gear.lua"))("CowfeeRaidTools", CRT) -- the gear engine, before any module, as in the .toc
@@ -80,7 +80,7 @@ UIParent = mock()
 assert(load(popupSrc, "Popup.lua"))("CowfeeRaidTools", CRT)
 local UI, LM = CRT.UI, CRT.LootMaster
 local STRIP = UI.TITLE_STRIP
--- a STRIP colour as { r, g, b }: a CRT.MOCHA key (the theme) or a colour of its own
+-- a STRIP colour as { r, g, b }: a CRT.PALETTE key (the theme) or a colour of its own
 local function col(c) return { UI.StripColor(c) } end
 
 -- a panel button outside a panel page: sized from its label, skinned so it follows the look
@@ -170,7 +170,7 @@ check(near(s.badge.bg, STRIP.badgeBg) and near(s.badge.edge, STRIP.badgeEdge) an
 s:SetBadge("Plexus Sentinel", nil, STRIP.neutral)
 eq(s.badge.text.text, "Plexus Sentinel", "badge: a boss's name")
 check(near(s.badge.bg, col(STRIP.neutral.bg)) and near(s.badge.edge, col(STRIP.neutral.edge)) and near(s.badge.text.color, col(STRIP.neutral.text)), "badge: the neutral colours")
-check(near(col(STRIP.neutral.bg), CRT.MOCHA.espresso) and near(col(STRIP.neutral.text), CRT.MOCHA.latte), "badge: neutral is the theme's espresso and latte")
+check(near(col(STRIP.neutral.bg), CRT.PALETTE.background) and near(col(STRIP.neutral.text), CRT.PALETTE.label), "badge: neutral is the theme's background and label")
 check(not near(col(STRIP.neutral.text), STRIP.badgeText), "badge: neutral text is not the TEST colour")
 eq(s.note.text, "", "badge: no note")
 s:SetBadge("TEST", "again")
@@ -180,7 +180,7 @@ check(not s.badge.shown and not s.note.shown, "badge: nothing hides it")
 
 -- the title strip per look. Classic is the main window's title bar (BasicFrameTemplate: GameFontNormal
 -- centred at the frame's TOP -6, -4, the game's dark title tile, the badge at the left end); Modern the
--- espresso strip with the larger cream title on the left. A look switch re-styles a strip made earlier.
+-- background strip with the larger text-coloured title on the left. A look switch re-styles a strip made earlier.
 local function point(r) return r.points and r.points[#r.points] or {} end
 look("classic")
 local parent = mock()
@@ -191,7 +191,7 @@ eq(fs.title.font, GameFontNormal, "classic: the main window's title font")
 check(near(fs.title.color, { 1, 0.82, 0 }), "classic: the title font's own gold")
 local p = point(fs.title)
 check(p[1] == "TOP" and p[2] == parent and p[3] == "TOP" and p[4] == -6 and p[5] == -4, "classic framed: the title where the window template puts its own")
-check(not fs.bg.shown and not fs.line.shown, "classic: no espresso strip or caramel line")
+check(not fs.bg.shown and not fs.line.shown, "classic: no background strip or accent line")
 check(not fs.bar.shown, "classic framed: the window's own title bar shows, no second one")
 fs:SetBadge("TEST", "nothing is passed")
 p = point(fs.badge)
@@ -233,8 +233,8 @@ check(p[1] == "CENTER" and p[2] == own, "classic own strip: the title centred")
 look("modern")
 for _, st in ipairs({ fs, own }) do
   eq(st.title.font, CRTFontLarge, "modern: the larger title font")
-  check(near(st.title.color, col(STRIP.title)) and near(st.title.color, CRT.MOCHA.cream), "modern: the cream title")
-  check(st.bg.shown and st.line.shown and not st.bar.shown, "modern: the espresso strip and caramel line")
+  check(near(st.title.color, col(STRIP.title)) and near(st.title.color, CRT.PALETTE.text), "modern: the text-coloured title")
+  check(st.bg.shown and st.line.shown and not st.bar.shown, "modern: the background strip and accent line")
   p = point(st.title)
   check(p[1] == "LEFT" and p[2] == st and p[4] == 10, "modern: the title on the left")
 end

@@ -80,12 +80,12 @@ L.cellsX = L.nameW + L.ilvlW + L.issuesW + L.tracksW -- where the first cell sta
 L.rowW = L.cellsX + #Gear.SLOTS * L.cellW
 GC.PAGE_LAYOUT = L
 
--- Missing, low and enchanted in the theme's bad, warn and good colours (CRT.MOCHA's tables, refilled on a
+-- Missing, low and enchanted in the theme's bad, warn and good colours (CRT.PALETTE's tables, refilled on a
 -- theme switch; the page redraws when shown). The rest are data colours, the same in every theme.
 local COLORS = {
-    bad = CRT.MOCHA.bad,
-    low = CRT.MOCHA.warn, -- an item well under the player's average
-    good = CRT.MOCHA.matcha,
+    bad = CRT.PALETTE.bad,
+    low = CRT.PALETTE.warn, -- an item well under the player's average
+    good = CRT.PALETTE.good,
     info = { 0.3, 0.65, 1 }, -- a season check to know about, not to fix: not a theme colour
     gem = { 0.55, 0.8, 1 }, -- a filled socket: not a theme colour
     socket = { 0.08, 0.08, 0.08 },
@@ -102,14 +102,14 @@ GC.Page = P
 -- Colours by look -------------------------------------------------------------------------------------------
 
 -- A text colour: headings in the theme's heading colour (the game's gold in Default: Blizzard); other
--- text the theme's cream in Modern, white in Default: Blizzard.
+-- text the theme's text colour in Modern, white in Default: Blizzard.
 local function textColor(kind)
     if kind == "heading" then
         local r, g, b = UI.Color("heading")
         return r, g, b
     end
     if UI:IsModern() then
-        local r, g, b = UI.Color("cream")
+        local r, g, b = UI.Color("text")
         return r, g, b
     end
     return 1, 1, 1
@@ -117,7 +117,7 @@ end
 
 local function rowColor(odd)
     if UI:IsModern() then
-        local c = CRT.MOCHA.roast
+        local c = CRT.PALETTE.surface
         return c[1], c[2], c[3], odd and 0.85 or 0.55
     end
     return 0, 0, 0, odd and 0.35 or 0.2

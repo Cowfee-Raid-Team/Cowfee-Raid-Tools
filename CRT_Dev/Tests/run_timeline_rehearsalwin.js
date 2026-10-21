@@ -48,7 +48,7 @@ local dropdowns, helps, titles, styled, layers = {}, {}, {}, 0, {}
 local lanesCall
 local CRT = {
   db = { timeline = { span = 300 } },
-  MOCHA = { espresso = { 0.1, 0.1, 0.1 }, roast = { 0.2, 0.2, 0.2 }, edge = { 0.3, 0.3, 0.3 }, caramel = { 0.78, 0.56, 0.36 }, latte = { 0.87, 0.73, 0.56 }, cream = { 0.95, 0.9, 0.84 } },
+  PALETTE = { background = { 0.1, 0.1, 0.1 }, surface = { 0.2, 0.2, 0.2 }, border = { 0.3, 0.3, 0.3 }, accent = { 0.78, 0.56, 0.36 }, label = { 0.87, 0.73, 0.56 }, text = { 0.95, 0.9, 0.84 } },
   UI = { Help = function(_, title, text) helps[title] = text local m = mock() helpFrames[title] = m return m end,
     Dropdown = function(_, text, o) local m = mock() m.opts, m.label = o, text dropdowns[text] = m rawset(m, "refresh", function() end) return m end,
     StyleWindow = function() styled = styled + 1 end, RegisterLayer = function(_, k) layers[#layers + 1] = k end,
@@ -124,7 +124,7 @@ do
   assert(f.castName.text == "Pool" and near(f.castFill.w, RW.CAST_W * 0.75), "3/4 filled")
   assert(near(f.castFill.color[1], 1) and near(f.castFill.color[2], 0.5) and near(f.castFill.color[3], 0.82), "no lane color: the type color")
   RW:Seek(59)
-  assert(f.castName.text == "Plain" and near(f.castFill.color[1], 0.78), "no type: caramel")
+  assert(f.castName.text == "Plain" and near(f.castFill.color[1], 0.78), "no type: accent")
   RW:Seek(12)
   assert(f.castName.text == "" and not f.castFill.shown and not f.castIcon.shown, "nothing casting: empty")
 end

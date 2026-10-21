@@ -65,7 +65,7 @@ local CRT = {
   db = { timeline = { record = true, minPull = 15, keep = 10, bosses = {}, rows = {}, span = 300, grid = 30, iconSize = 22,
     deathRows = "combined", roles = { TANK = true, HEALER = true, DAMAGER = true }, firstDeaths = 0, overlay = 3,
     overlayOn = false, hideEmpty = true, nextId = 1 } },
-  MOCHA = { caramel = { 0.78, 0.56, 0.36 }, latte = { 0.87, 0.73, 0.56 }, roast = { 0.165, 0.122, 0.098 }, cream = { 0.95, 0.90, 0.84 } },
+  PALETTE = { accent = { 0.78, 0.56, 0.36 }, label = { 0.87, 0.73, 0.56 }, surface = { 0.165, 0.122, 0.098 }, text = { 0.95, 0.90, 0.84 } },
   Groups = { ClassColor = function() return 1, 1, 1 end },
 }
 local hidden = {}
@@ -717,7 +717,7 @@ print("ok journal icons on the rows")
 do
   local tints, hooks = {}, {}
   local savedUI = CRT.UI
-  local function paint(t) local c = CRT.MOCHA[t[3]] t[1][t[2]](t[1], c[1], c[2], c[3], t[4] or 1) end
+  local function paint(t) local c = CRT.PALETTE[t[3]] t[1][t[2]](t[1], c[1], c[2], c[3], t[4] or 1) end
   CRT.UI = { Tint = function(r, m, k, a) local t = { r, m, k, a } tints[#tints + 1] = t paint(t) end,
     OnTheme = function(_, fn) hooks[#hooks + 1] = fn end }
   local v = View.Create(mock("Frame"))
@@ -725,19 +725,19 @@ do
   v:Refresh()
   assert(#hooks >= 1, "a view registers UI:OnTheme")
   local base
-  for _, t in ipairs(tints) do if t[2] == "SetColorTexture" and t[3] == "caramel" and t[4] == nil then base = t[1] break end end
-  assert(base and rawget(base, "color")[1] == CRT.MOCHA.caramel[1], "the axis line is tinted from the theme")
-  local was = { CRT.MOCHA.caramel[1], CRT.MOCHA.caramel[2], CRT.MOCHA.caramel[3] }
-  CRT.MOCHA.caramel[1], CRT.MOCHA.caramel[2], CRT.MOCHA.caramel[3] = 0.5, 0.7, 0.85
+  for _, t in ipairs(tints) do if t[2] == "SetColorTexture" and t[3] == "accent" and t[4] == nil then base = t[1] break end end
+  assert(base and rawget(base, "color")[1] == CRT.PALETTE.accent[1], "the axis line is tinted from the theme")
+  local was = { CRT.PALETTE.accent[1], CRT.PALETTE.accent[2], CRT.PALETTE.accent[3] }
+  CRT.PALETTE.accent[1], CRT.PALETTE.accent[2], CRT.PALETTE.accent[3] = 0.5, 0.7, 0.85
   for _, t in ipairs(tints) do paint(t) end
   local redrew = false
   local real = v.Refresh
   rawset(v, "Refresh", function(self) redrew = true return real(self) end)
   for _, fn in ipairs(hooks) do fn() end
   local c = rawget(base, "color")
-  assert(c[1] == 0.5 and c[2] == 0.7 and c[3] == 0.85, "the axis line takes the new theme's caramel")
+  assert(c[1] == 0.5 and c[2] == 0.7 and c[3] == 0.85, "the axis line takes the new theme's accent")
   assert(redrew, "a shown view redraws on a theme change")
-  CRT.MOCHA.caramel[1], CRT.MOCHA.caramel[2], CRT.MOCHA.caramel[3] = was[1], was[2], was[3]
+  CRT.PALETTE.accent[1], CRT.PALETTE.accent[2], CRT.PALETTE.accent[3] = was[1], was[2], was[3]
   CRT.UI = savedUI
 end
 print("ok a theme change repaints the view")

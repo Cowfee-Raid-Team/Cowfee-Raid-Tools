@@ -302,13 +302,13 @@ CRT.UI.SwitchTheme("blizzard")
 do
   local ants = {}
   format = format or string.format
-  local B = { MOCHA = CRT.MOCHA, UI = CRT.UI, Consumables = { QUESTION_MARK = 1 },
+  local B = { PALETTE = CRT.PALETTE, UI = CRT.UI, Consumables = { QUESTION_MARK = 1 },
     Ants = { Start = function(_, slot, r, g, b) ants[slot] = { r, g, b } end, Stop = function(_, slot) ants[slot] = nil end, Attach = function() end } }
   assert(load(barSrc, "Bar.lua"))("CowfeeRaidTools", B)
   local function fs() local f = mock("FontString") rawset(f, "SetTextColor", function(self, r, g, b) rawset(self, "rgb", { r, g, b }) end) return f end
   local slot = mock("Button")
   rawset(slot, "icon", mock("Texture")) rawset(slot, "time", fs()) rawset(slot, "count", fs()) rawset(slot, "tag", fs())
-  local function same(c, key) local m = CRT.MOCHA[key] return c and m and math.abs(c[1] - m[1]) < 1e-6 and math.abs(c[2] - m[2]) < 1e-6 and math.abs(c[3] - m[3]) < 1e-6 end
+  local function same(c, key) local m = CRT.PALETTE[key] return c and m and math.abs(c[1] - m[1]) < 1e-6 and math.abs(c[2] - m[2]) < 1e-6 and math.abs(c[3] - m[3]) < 1e-6 end
   for _, theme in ipairs({ "blizzard", "midnight", "nitro", "cowfee" }) do
     CRT.UI.SwitchTheme(theme)
     B.ConsumablesBar.Apply(slot, { state = "missing", count = 0 })

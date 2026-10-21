@@ -168,18 +168,18 @@ end
 --            in that font's own gold) where the template puts it, centred; the badge sits at the left
 --            end, where the main window shows its version. A strip with no window template under it
 --            (opts.framed false, such as the raider popup's) draws the template's title tile itself.
---   Modern   the theme's strip (stripTop to stripBottom), lighter than the window, a caramel line under
---            it, the title in larger bold cream text on the left with the badge after it.
+--   Modern   the theme's strip (titleTop to titleBottom), lighter than the window, an accent line under
+--            it, the title in larger bold text colour on the left with the badge after it.
 -- UI.TitleStrip(parent, height, opts): opts.framed when parent is a BasicFrameTemplate window (UI.Window).
 -- strip:SetTitle(text), strip:SetBadge(text or nil, note, colors): colors is { bg, edge, text }; without
 -- it the badge is the orange TEST one. STRIP.neutral is the window's gold text on a dark badge. A note
 -- shows with or without a badge. Its colours and Classic places are in STRIP. A colour written as a
--- string is a CRT.MOCHA key, so it follows the theme (UI.StripColor reads either kind).
+-- string is a CRT.PALETTE key, so it follows the theme (UI.StripColor reads either kind).
 local STRIP = {
-    top = "stripTop", bottom = "stripBottom", line = "caramel",
+    top = "titleTop", bottom = "titleBottom", line = "accent",
     badgeBg = { 0.35, 0.16, 0.06 }, badgeEdge = { 0.63, 0.34, 0.12 }, badgeText = { 1, 0.81, 0.6 },
-    title = "cream", note = "note",
-    neutral = { bg = "espresso", edge = "edge", text = "latte" },
+    title = "text", note = "muted",
+    neutral = { bg = "background", edge = "border", text = "label" },
     modernFont = "CRTFontLarge",
     -- Classic, from BasicFrameTemplate: TitleText inherits GameFontNormal, anchored TOP x -6, y -4;
     -- TitleBg is the _UI-Frame-TitleTileBg atlas, tiled across
@@ -192,11 +192,11 @@ local STRIP = {
 STRIP.warning = { bg = STRIP.badgeBg, edge = STRIP.badgeEdge, text = STRIP.badgeText }
 UI.TITLE_STRIP = STRIP
 
--- A STRIP color as r, g, b: a CRT.MOCHA key (the theme in use) or { r, g, b }. A key the palette
+-- A STRIP color as r, g, b: a CRT.PALETTE key (the theme in use) or { r, g, b }. A key the palette
 -- lacks gives grey.
 function UI.StripColor(c)
     if type(c) == "string" then
-        c = CRT.MOCHA and CRT.MOCHA[c]
+        c = CRT.PALETTE and CRT.PALETTE[c]
     end
     if type(c) ~= "table" then
         return 0.5, 0.5, 0.5
