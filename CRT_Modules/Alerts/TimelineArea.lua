@@ -5,7 +5,8 @@ local ADDON, CRT = ...
 -- Mythic...) when the boss data has them, and a diamond tick with its seconds (5 s by default). At 0 the icon
 -- plays a NOW effect: Flash and fade, Ring burst, a text pop, Slide off, or None. It shows every line whose
 -- outputs.timeline is on (the alert editor's and Mech Alerts' Timeline box, and Raid Notes > Alerts' routing of
--- your note lines). This is CRT's own area; it never touches the game's boss timeline.
+-- your note lines). This is CRT's own area; sending the same lines to the game's boss timeline, Show in and
+-- Replace the game's timeline are Alerts/GameTimeline.lua's, and their rows come last in these settings.
 -- Built on Alerts/Areas.lua with its own layout (def.layout): the area is the track's box, centred on the saved
 -- position, and the widgets (one icon each, pooled) are placed along it. Settings: CRT.db.alerts.areas.timeline
 -- (defaults in CRT_Core/Core.lua): direction (down, up, left, right: where the icons go), side (right or left of a
@@ -606,17 +607,19 @@ local function layout(area, n, now, s)
     return length, size, false
 end
 
--- The lines on the line: those with outputs.timeline on, from `seconds` before 0 until the NOW effect ends.
+-- The lines on the line: those with outputs.timeline on, from `seconds` before 0 until the NOW effect ends, less
+-- those Show in sends only to the game's timeline (Alerts/GameTimeline.lua).
 local function byTime(a, b)
     return a.at < b.at
 end
 
 local function lines(now, s, cap)
     local window, after = clamp(s.seconds, "seconds"), afterZero(s)
+    local Game = CRT.AlertGameTimeline
     local list = {}
     for _, line in ipairs(Alerts:Lines(now)) do
         local o = line.outputs
-        if o and o.timeline and line.at - now <= window and now < line.at + after then
+        if o and o.timeline and line.at - now <= window and now < line.at + after and (not Game or Game.ShowsHere(line)) then
             list[#list + 1] = line
         end
     end
@@ -802,6 +805,10 @@ end
 local function settings(panel, s)
     settingsLine(panel, s)
     settingsLook(panel, s)
+    -- Send to the game's timeline, Show in, Replace the game's timeline (Alerts/GameTimeline.lua)
+    if CRT.AlertGameTimeline then
+        CRT.AlertGameTimeline.SettingsRows(panel, s)
+    end
 end
 
 local area = Areas.New({
