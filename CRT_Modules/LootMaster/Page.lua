@@ -233,7 +233,8 @@ local function buildTonight(f)
     toggle:SetPoint("TOPLEFT", looting, "BOTTOMLEFT", 4, -8) -- under the line, however many lines it takes
     refreshers[#refreshers + 1] = function()
         local line, on = LM:LootingStatus()
-        looting:SetText(on and UI.GoodText(line) or line) -- on: the theme's good colour
+        -- on: matcha in a Modern theme, plain in Default: Blizzard, as before themes: not a theme colour
+        looting:SetText(on and UI:IsModern() and UI.GoodText(line) or line) -- not a theme colour
         local leader = IsInGroup() and UnitIsGroupLeader("player")
         toggle:SetShown(leader and true or false)
         toggle:SetText(LM:LootingOn() and TEXT.turnOff or TEXT.turnOn)
@@ -355,7 +356,7 @@ local function buildScore(f)
         end
         row.cols.name:SetText(Ambiguate(t.name, "short"))
         local s = t.score
-        row.cols.score:SetText(s >= 90 and UI.GoodText(s) or (s >= 70 and UI.HeadingText(s) or UI.BadText(s)))
+        row.cols.score:SetText(s >= 90 and UI.GoodText(s) or (s >= 70 and UI.WarnText(s) or UI.BadText(s)))
         row.cols.nights:SetText(t.nights)
         row.cols.late:SetText(t.late)
         row.cols.never:SetText(t.never)
@@ -611,7 +612,8 @@ local function buildSync(f)
         typed.showHint()
         button:SetEnabled(on and not LM:SyncBlocked())
         cover:SetShown(on and LM:SyncBlocked() ~= nil)
-        status:SetText(LM:SyncStatus(UI.GoodText) or "")
+        -- "Synced to": matcha in a Modern theme, plain in Default: Blizzard, as before themes
+        status:SetText(LM:SyncStatus(UI:IsModern() and UI.GoodText or nil) or "") -- not a theme colour
         if on and f:IsVisible() then
             LM:SyncPing() -- who has CRT, for the list (at most every SYNC_PING_SECONDS)
         end

@@ -417,7 +417,7 @@ function ReferencePage.Build(f, ctx)
             local where = (here or sameName) and GROUP_NAMES[ctx.difficulty()] or saved.boss
             if saved and saved.warnings then
                 status:SetText("Saved for " .. where .. "\n" .. saved.warnings[1])
-                status:SetTextColor(UI.Color("heading"))
+                status:SetTextColor(UI.Color("warn")) -- saved, with something to look at: in between
             else
                 status:SetText("Saved for " .. where)
                 status:SetTextColor(UI.Color("matcha"))

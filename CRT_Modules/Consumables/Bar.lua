@@ -13,11 +13,11 @@ Bar.GAP = 6
 Bar.PAD = 6
 
 local BORDER = { 0.35, 0.35, 0.35 }
--- Missing in the theme's bad colour, running low in its heading colour (the game's red and gold in
+-- Missing in the theme's bad colour, running low in its warn colour (the game's red and orange in
 -- Default: Blizzard). CRT.MOCHA's tables are refilled on a theme switch; the bar's refresh repaints.
 local ANT_COLORS = {
     missing = CRT.MOCHA.bad,
-    low = CRT.MOCHA.heading,
+    low = CRT.MOCHA.warn,
 }
 
 local BACKDROP = {
@@ -150,7 +150,7 @@ function Bar.Apply(slot, status)
         slot.time:SetText("")
     end
     if status.state == "low" then
-        slot.time:SetTextColor(CRT.UI.Color("heading"))
+        slot.time:SetTextColor(CRT.UI.Color("warn"))
     else
         slot.time:SetTextColor(1, 1, 1)
     end

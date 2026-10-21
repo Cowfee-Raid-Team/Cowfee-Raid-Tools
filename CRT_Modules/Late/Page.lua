@@ -144,7 +144,7 @@ local function tonightLines(night, now)
     end
     if #late > 0 then
         lines[#lines + 1] = ""
-        lines[#lines + 1] = UI.HeadingText("Arrived late (" .. #late .. "):")
+        lines[#lines + 1] = UI.WarnText("Arrived late (" .. #late .. "):")
         for _, l in ipairs(late) do
             lines[#lines + 1] = l
         end
@@ -175,7 +175,7 @@ local function nightLines(night)
         end
     end
     lines[#lines + 1] = ""
-    lines[#lines + 1] = UI.HeadingText("Late (" .. #late .. "):")
+    lines[#lines + 1] = UI.WarnText("Late (" .. #late .. "):")
     for _, l in ipairs(late) do
         lines[#lines + 1] = l
     end
@@ -565,7 +565,7 @@ local function paintGrid(night, now)
                 b.icon:SetTexture(READY_ICON)
                 b.icon:Show()
                 if Late.IsLate(night, p) then
-                    b.right:SetText(UI.HeadingText("+" .. minutes(Late.Seconds(night, p))))
+                    b.right:SetText(UI.WarnText("+" .. minutes(Late.Seconds(night, p))))
                 else
                     b.right:SetText("")
                 end
@@ -646,7 +646,7 @@ local function statusText(night, p, now)
     if not p.joinedAt then
         return UI.BadText("not here " .. running(Late.Seconds(night, p, now)))
     elseif Late.IsLate(night, p) then
-        return UI.HeadingText(minutes(Late.Seconds(night, p)) .. " late")
+        return UI.WarnText(minutes(Late.Seconds(night, p)) .. " late")
     end
     return UI.GoodText("on time")
 end
