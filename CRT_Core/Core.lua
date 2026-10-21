@@ -107,6 +107,7 @@ local defaults = {
         timerY = 0,
         borderScale = 2, -- the frame is the icon plus 5 x this many pixels (half on each side), 0 to 6
         spacing = 4, -- pixels between two icons' borders, 0 to 20; the border's own width is added to it
+        grow = "right", -- the row grows "right" (left to right) or "left" (right to left, from the panel's right end)
         dispelBorder = false, -- unused since the frame always takes the dispel color (20261020-debuffs-look); kept, as saved data only grows
         dispelGlow = false, -- a soft glow in the dispel color around a dispellable debuff's frame
     },
