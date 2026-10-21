@@ -7,6 +7,7 @@ local ADDON, CRT = ...
 --   phases      -> CRT.AlertPhaseDB[encounterID] (the alerts engine's phase triggers)
 --   mechanics   -> CRT.TattleDB.bosses           (Tattlebot's tracked mechanics)
 --   markers     -> CRT.MarkerDisplayDB.displays  (marker displays)
+--   markerHelp  -> CRT.MarkerDisplayDB.help      (how the marker calls work on the boss, one string)
 --   pace        -> CRT.PaceDB.bosses             (pace plans)
 -- Features that don't depend on a boss (the Late Tracker, Raid Groups, ready checks, consumables)
 -- never read it. A season's own facts that aren't about a boss (the Gear Checker's enchant, socket and
@@ -286,6 +287,7 @@ function Bosses:Build()
     local phases = CRT.AlertPhaseDB
     local tattle = CRT.TattleDB and CRT.TattleDB.bosses
     local markers = CRT.MarkerDisplayDB and CRT.MarkerDisplayDB.displays
+    local markerHelp = CRT.MarkerDisplayDB and CRT.MarkerDisplayDB.help
     local pace = CRT.PaceDB and CRT.PaceDB.bosses
     for _, def in ipairs(self:RouteList()) do
         if seasonLoaded(def.season) then
@@ -304,6 +306,9 @@ function Bosses:Build()
             end
             if markers and def.markers then
                 markers[id] = def.markers
+            end
+            if markerHelp and type(def.markerHelp) == "string" then
+                markerHelp[id] = def.markerHelp
             end
             if pace and def.pace then
                 pace[id] = def.pace

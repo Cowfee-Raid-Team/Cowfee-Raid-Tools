@@ -241,8 +241,41 @@ check(shownLines() == 0, "none: no outline")
 FREE.shape = "circle"
 fire("ENCOUNTER_END")
 
+-- Geometry: the same places the window uses, for the Marker macros tab's preview.
+do
+  local g = M.Geometry({ slots = 4 })
+  check(g.width == 332 and g.height == 94 and g.cells[2].point == "TOPLEFT" and g.cells[2].x == 86 and g.cells[2].y == 4, "Geometry: a row's size and slot 2, as the window lays it out")
+  g = M.Geometry(FREE)
+  local fx1, fy1 = M.SlotCenter(FREE, 1)
+  check(g.cells[1].point == "CENTER" and near(g.cells[1].x, fx1) and near(g.cells[1].y, fy1) and near(g.width, 292), "Geometry: a freeform slot's centre and the window's width")
+  local mark, name = M.SampleSlot(1)
+  check(mark == icon(1) and type(name) == "string" and name ~= "", "SampleSlot gives a sample marker and name")
+  check(M.Settings({}).slots == 4 and M.Settings({}).clearGap == 10, "Settings fills in the defaults")
+end
+
+-- Listeners hear a fill, a clear and a disarm.
+do
+  CRT.MarkerDisplayDB.displays[ENC] = { name = "Test", slots = 4 }
+  local heard = 0
+  M:OnChange(function() heard = heard + 1 end)
+  pull()
+  local afterPull = heard
+  say("{rt1}")
+  check(heard > afterPull, "a fill tells the listeners")
+  local n = heard
+  M:Clear()
+  check(heard > n, "a clear tells the listeners")
+  fire("ENCOUNTER_END")
+end
+
+-- Help text: shipped in MarkerDisplayDB.help, nil when a boss has none.
+CRT.MarkerDisplayDB.help[ENC] = "Shipped help."
+check(M:Help(ENC) == "Shipped help." and M:Help(9999) == nil, "Help: the shipped text, or nil")
+CRT.MarkerDisplayDB.help[ENC] = nil
+
 -- The dev editor (loaded like the game would in a dev build).
-CRT.Bosses = { Options = function() return { { key = ENC, label = "Boss" } } end, FirstKey = function(list) return list[1].key end }
+CRT.Bosses = { Options = function() return { { key = ENC, label = "Boss" } } end, FirstKey = function(list) return list[1].key end,
+  Get = function(_, id) if id == ENC then return { encounterID = ENC, name = "Test Boss", season = "test-s1" } end end }
 assert(load(editorSrc, "MarkerEditor.lua"))("CowfeeRaidTools", CRT)
 local E = CRT.MarkerEditor
 CRT.MarkerDisplayDB.displays[ENC] = { name = "Shipped", slots = 4 }
@@ -292,16 +325,30 @@ d.places[1] = { 0.5, 0.1 }
 
 -- Export, then read the line back as the boss file would.
 win.export.OnClick(win.export)
-local line = exported:match("\\n(%[%d+%] = [^\\n]+)")
+local line = exported:match("\\n(markers = [^\\n]+)")
 check(line and line:find('layout = "free"', 1, true) and line:find('shape = "circle"', 1, true) and line:find("canvas = 200", 1, true), "Export writes the layout, shape and canvas")
 check(line and line:find("places = { { 0.5, 0.1 }, { 1, 0.5 }", 1, true), "Export writes the places: " .. tostring(line))
-local back = line and load("return { " .. line .. " }")()[ENC]
+local header = exported:match("^(.-)\\nmarkers = ")
+check(header and header:find("markers = { ... },", 1, true) and header:find("CRT_Data/Seasons/<season>/<Boss>.lua", 1, true) and header:find("not Database.lua", 1, true) and header:find("Test Boss", 1, true) and header:find(tostring(ENC), 1, true),
+  "Export's header says to paste into the boss file's markers field, not Database.lua: " .. tostring(header))
+check(not exported:find("Database.lua:", 1, true) and not exported:find("%[%d+%] = {"), "Export no longer writes a Database.lua line")
+check(not exported:find("markerHelp", 1, true), "no help text: no markerHelp line")
+local back = line and load("return { " .. line .. " }")().markers
 check(back and same(back.places, d.places), "the exported places read back the same")
 x, y = M.SlotCenter(back, 1)
 check(near(x, 146) and near(y, 67), "a shipped freeform display puts its slots at the exported places")
 
+-- Help text: typed into its box, exported as markerHelp, read back as Lua.
+win.help:SetText("Each player in a ring calls their marker.")
+win.help.OnTextChanged(win.help, true)
+win.export.OnClick(win.export)
+local helpLine = exported:match("\\n(markerHelp = [^\\n]+)")
+check(helpLine == 'markerHelp = "Each player in a ring calls their marker.",', "Export writes markerHelp when the draft has help: " .. tostring(helpLine))
+check(helpLine and load("return { " .. helpLine .. " }")().markerHelp == "Each player in a ring calls their marker.", "the exported markerHelp reads back")
+
 -- Save draft, then pick the boss again: the places come back, as a copy.
 win.save.OnClick(win.save)
+check(M:Help(ENC) == "Each player in a ring calls their marker.", "a saved draft's help text is the boss's help")
 local saved = CRT.db.dev.markerDisplays[ENC]
 check(saved and saved.places ~= d.places and same(saved.places, d.places), "Save draft keeps a copy of the places")
 dropdowns["Boss"].set(ENC)
