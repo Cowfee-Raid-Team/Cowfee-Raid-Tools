@@ -20,7 +20,7 @@ local RIGHT_X = 316
 local REFRESH_SECONDS = 0.5
 
 local GRAY = { 0.35, 0.35, 0.35 }
-local GOLD = { 1, 0.82, 0 }
+local GOLD = CRT.MOCHA.heading -- the theme's heading colour; refilled in place on a theme switch
 
 local BACKDROP = {
     bgFile = "Interface\\Buttons\\WHITE8X8",
@@ -298,12 +298,12 @@ local function refreshItems()
         row.icon:SetTexture(Consumables:ItemIcon(entry.item))
         local name = Consumables:ItemName(entry)
         if entry.user then
-            name = name .. "  |cffffd100(yours)|r"
+            name = name .. "  " .. UI.HeadingText("(yours)")
         end
         row.text:SetText(name)
         local count = Consumables:ItemCount(entry.item)
         if count > 0 then
-            row.side:SetText("|cff55dd55x" .. count .. " in bags|r")
+            row.side:SetText(UI.GoodText("x" .. count .. " in bags"))
         else
             row.side:SetText("|cff888888none|r")
         end
@@ -360,7 +360,7 @@ local function build(pf)
     marker:SetHeight(2)
     local line = marker:CreateTexture(nil, "OVERLAY")
     line:SetAllPoints()
-    line:SetColorTexture(GOLD[1], GOLD[2], GOLD[3], 1)
+    UI.Tint(line, "SetColorTexture", "heading")
     marker:Hide()
 
     local preview = makeButton(pf, "Preview on screen", 160)

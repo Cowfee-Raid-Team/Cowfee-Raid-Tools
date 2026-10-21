@@ -94,7 +94,7 @@ local HANDLE_RESET_RIGHT = 2  -- Reset's right edge, from the drag box's right
 local HANDLE_TITLE_GAP = 4    -- between the title and the settings button
 local GLOW_SIZE = 2      -- the border's thickness
 local GLOW_OUTSET = 3    -- how far it sits outside the widget
-local GLOW_COLOR = { 1, 0.82, 0 }
+local GLOW_COLOR = "heading" -- the theme's heading colour (the game's gold in Default: Blizzard)
 local GLOW_PULSE = 0.4   -- seconds from bright to faint
 local GLOW_FAINT = 0.25
 local ROW_HEIGHT = 32
@@ -268,7 +268,7 @@ function Areas.Glow(widget, on)
         border:SetFrameLevel((widget:GetFrameLevel() or 1) + 5)
         local function edge(from, to, width, height)
             local t = border:CreateTexture(nil, "OVERLAY")
-            t:SetColorTexture(GLOW_COLOR[1], GLOW_COLOR[2], GLOW_COLOR[3], 1)
+            UI.Tint(t, "SetColorTexture", GLOW_COLOR)
             t:SetPoint(from)
             t:SetPoint(to)
             if width then
@@ -669,8 +669,8 @@ function Area:Build()
     handle:SetPoint("BOTTOM", frame, "TOP", 0, 2)
     self.handleBelow = false
     handle:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
-    handle:SetBackdropColor(0.3, 0.25, 0.05, 0.9)
-    handle:SetBackdropBorderColor(1, 0.82, 0, 1)
+    UI.Tint(handle, "SetBackdropColor", "roast", 0.9) -- the theme's field colour under its heading-coloured edge
+    UI.Tint(handle, "SetBackdropBorderColor", "heading")
     handle:EnableMouse(true)
     handle:RegisterForDrag("LeftButton")
     local title = handle:CreateFontString(nil, "OVERLAY", "CRTFontSmall")

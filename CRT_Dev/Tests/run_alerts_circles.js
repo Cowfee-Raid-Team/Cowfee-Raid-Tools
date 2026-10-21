@@ -1,9 +1,11 @@
 // CRT_Modules/Alerts/Circles.lua: the circles area (ring, seconds, text), with mock frames.
 // Usage: node run_alerts_circles.js CRT_Modules/Alerts/Rules.lua CRT_Modules/Alerts/Engine.lua CRT_Modules/Alerts/Areas.lua CRT_Modules/Alerts/Circles.lua
 const fs = require('fs');
+const path = require('path');
+const themeLua = require('./theme_stub');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
-const harness = `
+const harness = themeLua(process.argv.slice(2)) + `
 local rulesSrc, engineSrc, areasSrc, circlesSrc, controlsSrc = ...
 local RING = "Interface\\\\AddOns\\\\CowfeeRaidTools\\\\CRT_Media\\\\Media\\\\"
 local frames, fontStrings = {}, {}
@@ -140,6 +142,7 @@ local spells = { [100] = { name = "Spell Name", icon = 555 } }
 CRT.Notes = { SpellInfo = function(_, id) return spells[id] end }
 assert(load(rulesSrc, "Rules"))("CowfeeRaidTools", CRT)
 assert(load(engineSrc, "Engine"))("CowfeeRaidTools", CRT)
+CRT_THEME(CRT, CRT.UI)
 assert(load(areasSrc, "Areas"))("CowfeeRaidTools", CRT)
 assert(load(circlesSrc, "Circles"))("CowfeeRaidTools", CRT)
 do -- the real CRT_Core/UI/Controls.lua: only PickColor is taken, the harness keeps its own Dropdown and Slider
@@ -437,7 +440,6 @@ for (let i = 2; i < 7; i++) {
 if (lua.lua_pcall(L, 5, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
 
 // The ring textures: header bytes, a clear centre and an opaque ring
-const path = require('path');
 const media = path.join(path.dirname(path.dirname(path.dirname(path.resolve(process.argv[5])))), 'CRT_Media', 'Media');
 for (const [name, width] of [['RingThin', 12], ['RingMedium', 22], ['RingThick', 36]]) {
   const b = fs.readFileSync(path.join(media, name + '.tga'));

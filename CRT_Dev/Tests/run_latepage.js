@@ -1,8 +1,10 @@
 // Builds CRT_Modules/Late/Page.lua on mock frames with two saved nights and prints the totals table rows.
 const fs = require('fs');
+const path = require('path');
+const themeLua = require('./theme_stub');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
-const harness = `
+const harness = themeLua(process.argv.slice(2)) + `
 local dataSrc, pageSrc = ...
 local strings = {}
 local function mock()
@@ -35,6 +37,7 @@ local CRT = { db = { late = { days = {}, hour = 20, minute = 0, grace = 0, histo
   Groups = { NUM_SLOTS = 40, Active = function() return nil end, Find = function() return nil end, OnChange = function() end, ReportName = function(k) return (k:gsub("%-.*", "")) end, Normalize = function(k) return k end, ReadRoster = function() return {} end, ClassColor = function() return 1, 1, 1 end, Display = function(k) return k end, Presets = function() return {} end, Find = function() return nil end, OnChange = function() end },
 }
 function CRT:Print(m) print(m) end
+CRT_THEME(CRT, CRT.UI)
 local function at(h, m) return os.time({ year = 2026, month = 10, day = 14, hour = h, min = m }) end
 CRT.db.late.history = {
   { id = 1, startedAt = at(20, 0), endedAt = at(22, 0), how = "schedule", endReason = "disband", layout = "Main", grace = 0,
@@ -58,6 +61,21 @@ for _, s in ipairs(strings) do
 end
 local ys = {} for y in pairs(rows) do ys[#ys+1] = y end table.sort(ys, function(a, b) return a > b end)
 for _, y in ipairs(ys) do print(y, table.concat(rows[y], " | ")) end
+-- The no-show count is the theme's bad colour, and follows a live switch (the page in view refreshes on a switch).
+local function noShowCell()
+  for _, s in ipairs(strings) do
+    local t = rawget(s, "text")
+    if s.shown and type(t) == "string" and t:find("^|cff%x%x%x%x%x%x1|r$") then return t end
+  end
+end
+local fails = 0
+local function check(ok, what) if ok then print("ok " .. what) else fails = fails + 1 print("FAIL " .. what) end end
+check(noShowCell() == "|cffff20201|r", "Default: Blizzard: the no-show count is the game's red: " .. tostring(noShowCell()))
+CRT.UI.SwitchTheme("nitro")
+pf:Show()
+check(noShowCell() == "|cffff7f6b1|r", "Nitro: the no-show count follows the switch: " .. tostring(noShowCell()))
+CRT.UI.SwitchTheme("blizzard")
+if fails > 0 then error(fails .. " late page checks failed") end
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 lua.lua_pushstring(L, to_luastring(fs.readFileSync(process.argv[2], 'utf8')));

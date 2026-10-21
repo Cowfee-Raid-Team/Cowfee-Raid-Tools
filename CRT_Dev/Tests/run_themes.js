@@ -143,7 +143,7 @@ for _, info in ipairs(CRT.THEME_LIST) do
       info.key .. " has " .. key)
   end
 end
-for _, key in ipairs({ "espresso", "roast", "edge", "mocha", "caramel", "latte", "cream", "matcha", "walnut", "walnutEdge", "walnutShine", "walnutText", "tick" }) do
+for _, key in ipairs({ "espresso", "roast", "edge", "mocha", "caramel", "latte", "heading", "cream", "matcha", "bad", "walnut", "walnutEdge", "walnutShine", "walnutText", "tick" }) do
   local listed = false
   for _, k in ipairs(CRT.THEME_KEYS) do if k == key then listed = true end end
   check(listed, "THEME_KEYS has " .. key)
@@ -166,15 +166,17 @@ local function palette(key, list)
   end
 end
 palette("cowfee", { espresso = "17110E", roast = "2B1E17", edge = "5A4231", mocha = "8C4F2B", caramel = "E2A14B", latte = "D9B48A",
-  cream = "F4EBDD", matcha = "8FA876", walnut = "4A3424", walnutEdge = "1A120C", walnutShine = "7A5A3E", walnutText = { 1, 1, 1 },
+  heading = "D9B48A", cream = "F4EBDD", matcha = "8FA876", bad = "C8553D", walnut = "4A3424", walnutEdge = "1A120C", walnutShine = "7A5A3E", walnutText = { 1, 1, 1 },
   tick = { 1, 1, 1 }, checkEdge = "1A120C" })
 palette("midnight", { espresso = "050505", roast = "121212", edge = "2E2E2E", mocha = "2A2A2A", caramel = "E6E6E6", latte = "BDBDBD",
-  cream = "F2F2F2", matcha = "7FBF7F", walnut = "1E1E1E", walnutEdge = "000000", walnutShine = "3A3A3A", tick = "E6E6E6", checkEdge = "E6E6E6" })
+  heading = "BDBDBD", cream = "F2F2F2", matcha = "7FBF7F", bad = "E06C6C", walnut = "1E1E1E", walnutEdge = "000000", walnutShine = "3A3A3A", tick = "E6E6E6", checkEdge = "E6E6E6" })
 palette("nitro", { espresso = "06080A", roast = "11151A", edge = "28313B", mocha = "1E2A36", caramel = "7FB3D9", latte = "A9BBCB",
-  cream = "EEF2F5", matcha = "8FCFA0", walnut = "18202A", walnutEdge = "000000", walnutShine = "34414F", tick = "7FB3D9", checkEdge = "7FB3D9" })
--- Default: Blizzard keeps the colours from before themes, so what reads CRT.MOCHA in Classic is unchanged.
+  heading = "A9BBCB", cream = "EEF2F5", matcha = "8FCFA0", bad = "FF7F6B", walnut = "18202A", walnutEdge = "000000", walnutShine = "34414F", tick = "7FB3D9", checkEdge = "7FB3D9" })
+-- Default: Blizzard keeps the colours from before themes, so what reads CRT.MOCHA in Classic is unchanged;
+-- its heading, good and bad are the game's gold, green and red (the fallbacks, with no game globals here).
 local old = { espresso = { 0.11, 0.078, 0.063 }, roast = { 0.165, 0.122, 0.098 }, edge = { 0.30, 0.235, 0.188 }, mocha = { 0.44, 0.31, 0.22 },
-  caramel = { 0.78, 0.56, 0.36 }, latte = { 0.87, 0.73, 0.56 }, cream = { 0.95, 0.90, 0.84 }, matcha = "8FA876", walnut = "4A3424",
+  caramel = { 0.78, 0.56, 0.36 }, latte = { 0.87, 0.73, 0.56 }, cream = { 0.95, 0.90, 0.84 }, heading = { 1, 0.82, 0 }, matcha = "19FF19",
+  bad = "FF2020", walnut = "4A3424",
   walnutEdge = "1A120C", walnutShine = "7A5A3E", walnutText = { 1, 1, 1 }, tick = { 1, 1, 1 }, checkEdge = "1A120C",
   stripTop = { 0.353, 0.247, 0.173 }, stripBottom = { 0.227, 0.165, 0.122 }, note = { 0.80, 0.71, 0.60 } }
 for _, key in ipairs(CRT.THEME_KEYS) do check(old[key] ~= nil, "the test knows blizzard's old " .. key) end
@@ -341,15 +343,62 @@ for _, w in ipairs(want) do
 end
 print("ok themes: the blackouts' menu bar")
 
--- Matcha text for good states.
-UI:SetTheme("cowfee")
-check(UI.GoodText("on", "80ff80") == "|cff8fa876on|r", "Modern: good text is matcha: " .. UI.GoodText("on", "80ff80"))
-UI:SetTheme("nitro")
-check(UI.GoodText("on") == "|cff8fcfa0on|r", "Nitro: its own matcha")
-UI:SetTheme("blizzard")
-check(UI.GoodText("on", "80ff80") == "|cff80ff80on|r", "Classic keeps its green")
-check(UI.GoodText("on") == "on", "Classic with no colour leaves the text as it is")
-print("ok themes: matcha for good states")
+-- One heading, good and bad colour per theme, the same everywhere in it (the mockup Alex approved).
+local mock = {
+  blizzard = { heading = "ffd100", good = "19ff19", bad = "ff2020" },
+  cowfee = { heading = "d9b48a", good = "8fa876", bad = "c8553d" },
+  midnight = { heading = "bdbdbd", good = "7fbf7f", bad = "e06c6c" },
+  nitro = { heading = "a9bbcb", good = "8fcfa0", bad = "ff7f6b" },
+}
+for key, m in pairs(mock) do
+  UI:SetTheme(key)
+  check(UI.GoodText("on") == "|cff" .. m.good .. "on|r", key .. ": good text: " .. UI.GoodText("on"))
+  check(UI.BadText("late") == "|cff" .. m.bad .. "late|r", key .. ": bad text: " .. UI.BadText("late"))
+  check(UI.HeadingText("Raid") == "|cff" .. m.heading .. "Raid|r", key .. ": heading text: " .. UI.HeadingText("Raid"))
+  check(UI.Hex("bad") == m.bad and UI.ColorText("x", "matcha") == "|cff" .. m.good .. "x|r", key .. ": UI.Hex and UI.ColorText")
+  local r, g, b, a = UI.Color("heading")
+  check(near({ r, g, b }, hex(m.heading)) and a == 1, key .. ": UI.Color gives the heading")
+  local _, _, _, a2 = UI.Color("bad", 0.5)
+  check(a2 == 0.5, key .. ": UI.Color passes the alpha on")
+end
+print("ok themes: one heading, good and bad colour per theme")
+
+-- A live switch repaints a tinted heading and a UI.ThemedText line.
+do
+  UI:SetTheme("blizzard")
+  local head, line = texture(nil), texture(nil)
+  UI.Tint(head, "SetTextColor", "heading")
+  UI.ThemedText(line, function() return UI.GoodText("Ready") .. " " .. UI.BadText("Missing") end)
+  check(near(head.rgb, { 1, 0.82, 0 }), "Default: Blizzard: a tinted heading is the game's gold")
+  check(line.text == "|cff19ff19Ready|r |cffff2020Missing|r", "Default: Blizzard: a themed text: " .. tostring(line.text))
+  UI:SetTheme("nitro")
+  check(near(head.rgb, hex("A9BBCB")), "Nitro: the tinted heading repaints")
+  check(line.text == "|cff8fcfa0Ready|r |cffff7f6bMissing|r", "Nitro: the themed text is rebuilt: " .. tostring(line.text))
+  -- UI.ThemedText(fs, nil) stops it: the text stays as it is and a switch no longer rebuilds it
+  UI.ThemedText(line, nil)
+  line:SetText("plain")
+  UI:SetTheme("cowfee")
+  check(line.text == "plain", "an unregistered themed text is left alone: " .. tostring(line.text))
+end
+print("ok themes: a live switch repaints headings and themed texts")
+
+-- Themes.lua reads the game's own text colours when the game has them.
+do
+  local saved = { NORMAL_FONT_COLOR, GREEN_FONT_COLOR, RED_FONT_COLOR }
+  local function color(r, g, b) return { GetRGB = function() return r, g, b end } end
+  NORMAL_FONT_COLOR, GREEN_FONT_COLOR, RED_FONT_COLOR = color(1, 0.824, 0), color(0.098, 1, 0.098), color(1, 0.125, 0.125)
+  local C2 = { db = { ui = {} } }
+  assert(load(themesSrc, "Themes.lua"))("CowfeeRaidTools", C2)
+  local b = C2.THEMES.blizzard
+  check(near(b.heading, { 1, 0.824, 0 }) and near(b.matcha, { 0.098, 1, 0.098 }) and near(b.bad, { 1, 0.125, 0.125 }),
+    "Default: Blizzard reads NORMAL_FONT_COLOR, GREEN_FONT_COLOR and RED_FONT_COLOR")
+  GREEN_FONT_COLOR = { GetRGB = function() error("no") end }
+  C2 = { db = { ui = {} } }
+  assert(load(themesSrc, "Themes.lua"))("CowfeeRaidTools", C2)
+  check(near(C2.THEMES.blizzard.matcha, hex("19FF19")), "a broken game colour falls back")
+  NORMAL_FONT_COLOR, GREEN_FONT_COLOR, RED_FONT_COLOR = saved[1], saved[2], saved[3]
+end
+print("ok themes: the game's own colours")
 
 print(passes .. " passed, " .. fails .. " failed")
 if fails > 0 then error(fails .. " theme checks failed") end
@@ -367,6 +416,23 @@ for (const [file, what] of [
 ]) {
   if (read(file).includes('UI.GoodText')) console.log('ok themes: ' + file + ' uses UI.GoodText (' + what + ')');
   else { console.log('FAIL ' + file + ' does not use UI.GoodText (' + what + ')'); srcFails++; }
+}
+// Overlays are not refreshed with the page in view, so each repaints on a theme switch itself: an OnTheme hook,
+// a UI.Tint or a UI.ThemedText. (Live switches are checked in the harnesses that build them: run_latepage,
+// run_groups_extras, run_lootmaster_bosswin, run_alerts_personalwin, run_alerts_editor, run_consumables_dock. The debuff
+// panel has no theme colour: its countdown is the approved yellow in every theme.)
+for (const [file, what] of [
+  ['CRT_Modules/Notes/Window.lua', 'the note windows'],
+  ['CRT_Modules/Notes/Alert.lua', 'the next-spell alert'],
+  ['CRT_Modules/Consumables/Display.lua', 'your bar'],
+  ['CRT_Modules/ReadyCheck/BuffLock.lua', 'the buff lock hint'],
+  ['CRT_Modules/ReadyCheck/Window.lua', 'the ready check window'],
+  ['CRT_Modules/QoL/LowHealth.lua', 'the low-health warning'],
+  ['CRT_Modules/Pace/Display.lua', 'the pace bars'],
+  ['CRT_Modules/Alerts/Areas.lua', 'the alert areas'],
+]) {
+  if (/OnTheme\(|UI\.Tint\(|UI\.ThemedText\(/.test(read(file))) console.log('ok themes: ' + file + ' repaints on a theme switch (' + what + ')');
+  else { console.log('FAIL ' + file + ' has no theme hook (' + what + ')'); srcFails++; }
 }
 // The toc loads Themes.lua right after Core.lua, before anything reads CRT.MOCHA.
 const toc = read('CowfeeRaidTools.toc').split(/\r?\n/);

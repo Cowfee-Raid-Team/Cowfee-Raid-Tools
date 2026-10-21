@@ -107,7 +107,7 @@ local function buildCover(yes)
     end)
     cover.hint = cover:CreateFontString(nil, "OVERLAY", "CRTFontButtonSmall")
     cover.hint:SetPoint("TOP", yes, "BOTTOM", 0, -1)
-    cover.hint:SetTextColor(1, 0.82, 0)
+    CRT.UI.Tint(cover.hint, "SetTextColor", "heading") -- the theme's heading colour, repainted on a switch
     cover:SetScript("OnUpdate", function(self, dt)
         if not lockedUntil then
             return

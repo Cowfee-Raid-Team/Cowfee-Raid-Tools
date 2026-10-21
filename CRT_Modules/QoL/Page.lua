@@ -181,7 +181,7 @@ local function buildLowHealth(pf, top)
             hit.crtToken = token
             local function show()
                 if Sound:IsPreviewing(choiceKey, outputKey) then
-                    label:SetText("|cffff6060Stop|r")
+                    label:SetText(UI.BadText("Stop"))
                 else
                     label:SetText("|cff80c0ffPlay|r")
                 end
@@ -375,7 +375,7 @@ local function buildSounds(pf, top)
         row.test:SetScript("OnClick", function()
             if row.file then
                 local played, message = Engine:TestFile(row.file)
-                results[row.file] = played and "|cff60ff60played|r" or "|cffff6060not found|r"
+                results[row.file] = played and UI.GoodText("played") or UI.BadText("not found")
                 CRT:Print(message)
                 refresh()
             end
@@ -394,7 +394,7 @@ local function buildSounds(pf, top)
     controls[#controls + 1] = {
         refresh = function()
             local loaded = C_AddOns and C_AddOns.IsAddOnLoaded and C_AddOns.IsAddOnLoaded(Engine.MEDIA_ADDON)
-            media:SetText(string.format(TEXT.soundsMedia, loaded and "|cff60ff60loaded|r" or "|cffff8080not installed|r (see the (?))"))
+            media:SetText(string.format(TEXT.soundsMedia, loaded and UI.GoodText("loaded") or (UI.BadText("not installed") .. " (see the (?))")))
             local files = Engine:CustomFiles()
             empty:SetShown(#files == 0)
             for i, row in ipairs(rows) do
@@ -445,7 +445,7 @@ local function buildBreak(pf, top)
         local lines = { TEXT.breakAlsoNote }
         for _, f in ipairs(Formats.FORMATS) do
             local ok, note = Formats.Available(f)
-            lines[#lines + 1] = f.label .. ": " .. (ok and (note or "loaded here") or ("|cffff8080" .. note .. "|r"))
+            lines[#lines + 1] = f.label .. ": " .. (ok and (note or "loaded here") or UI.BadText(note))
         end
         return table.concat(lines, "\n\n")
     end):SetPoint("LEFT", also, "RIGHT", 6, 0)

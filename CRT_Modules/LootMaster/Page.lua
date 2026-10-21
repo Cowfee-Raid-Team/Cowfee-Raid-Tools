@@ -233,7 +233,7 @@ local function buildTonight(f)
     toggle:SetPoint("TOPLEFT", looting, "BOTTOMLEFT", 4, -8) -- under the line, however many lines it takes
     refreshers[#refreshers + 1] = function()
         local line, on = LM:LootingStatus()
-        looting:SetText(on and UI.GoodText(line) or line) -- on: matcha in a Modern theme
+        looting:SetText(on and UI.GoodText(line) or line) -- on: the theme's good colour
         local leader = IsInGroup() and UnitIsGroupLeader("player")
         toggle:SetShown(leader and true or false)
         toggle:SetText(LM:LootingOn() and TEXT.turnOff or TEXT.turnOn)
@@ -355,7 +355,7 @@ local function buildScore(f)
         end
         row.cols.name:SetText(Ambiguate(t.name, "short"))
         local s = t.score
-        row.cols.score:SetText(s >= 90 and ("|cff1eff00" .. s .. "|r") or (s >= 70 and ("|cffffd100" .. s .. "|r") or ("|cffff6040" .. s .. "|r")))
+        row.cols.score:SetText(s >= 90 and UI.GoodText(s) or (s >= 70 and UI.HeadingText(s) or UI.BadText(s)))
         row.cols.nights:SetText(t.nights)
         row.cols.late:SetText(t.late)
         row.cols.never:SetText(t.never)
@@ -983,7 +983,7 @@ local function build(pf)
         skin(b, 0.4)
         b.sel = b:CreateTexture(nil, "ARTWORK")
         b.sel:SetAllPoints()
-        b.sel:SetColorTexture(1, 0.82, 0, 0.18)
+        b.sel:SetColorTexture(UI.Color("heading", 0.18)) -- UI:RegisterTab styles it from here on
         b.text = b:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
         b.text:SetPoint("CENTER")
         b.text:SetText(tab.label)

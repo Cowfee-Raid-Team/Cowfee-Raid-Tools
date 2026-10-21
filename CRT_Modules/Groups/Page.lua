@@ -17,8 +17,9 @@ local ROW_H = 22
 local LIST_ROW_H = 26 -- a Quick Load box (24) and the gap under it
 
 local GRAY = { 0.35, 0.35, 0.35 }
-local GREEN = { 0.3, 1, 0.3 }
-local GOLD = { 1, 0.82, 0 }
+-- The theme's good and heading colours; CRT.MOCHA's tables are refilled on a theme switch, so these follow.
+local GREEN = CRT.MOCHA.matcha
+local GOLD = CRT.MOCHA.heading
 local ABSENT_BORDER = { 0.65, 0.25, 0.35 }
 local ABSENT_TEXT = { 0.5, 0.5, 0.5 }
 
@@ -363,7 +364,7 @@ local function getGhost()
     ghost:SetSize(SLOT_W, SLOT_H)
     ghost:SetFrameStrata("TOOLTIP")
     skin(ghost, 0.9)
-    setBorder(ghost, GOLD)
+    UI.Tint(ghost, "SetBackdropBorderColor", "heading")
     ghost.text = ghost:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     ghost.text:SetPoint("LEFT", 6, 0)
     ghost:Hide()
@@ -584,7 +585,7 @@ local function refreshPresets()
         end
         b.presetId = preset.id
         b.text:SetText(preset.name)
-        b.active:SetText(UI.GoodText("active", "40ff40"))
+        b.active:SetText(UI.GoodText("active"))
         b.active:SetShown(preset.id == Groups:Active())
         setBorder(b, preset.id == g.selected and GOLD or GRAY)
         b:Show()
@@ -822,9 +823,9 @@ local function buildPage(pf)
         local preset = g.selected and Groups:Find(g.selected)
         local message = "This replaces everything in the grid with your current group."
         if preset and g.keepChanges then
-            message = message .. format('\n\nKeep changes is on, so the saved layout "|cffffd100%s|r" will be overwritten too.', preset.name)
+            message = message .. format('\n\nKeep changes is on, so the saved layout "%s" will be overwritten too.', UI.HeadingText(preset.name))
         elseif preset then
-            message = message .. format('\n\nThe saved layout "|cffffd100%s|r" is not changed until you save it.', preset.name)
+            message = message .. format('\n\nThe saved layout "%s" is not changed until you save it.', UI.HeadingText(preset.name))
         end
         openDialog("confirm", "Replace the grid?", message, "Replace", function()
             Groups:ReplaceWorking(slots)

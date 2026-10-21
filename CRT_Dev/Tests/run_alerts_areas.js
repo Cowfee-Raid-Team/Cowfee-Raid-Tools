@@ -1,9 +1,11 @@
 // CRT_Modules/Alerts/Areas.lua and CRT_Modules/Alerts/Texts.lua: the shared area builder and the big-text area, with mock frames.
 // Usage: node run_alerts_areas.js CRT_Modules/Alerts/Rules.lua CRT_Modules/Alerts/Engine.lua CRT_Modules/Alerts/Areas.lua CRT_Modules/Alerts/Texts.lua
 const fs = require('fs');
+const path = require('path');
+const themeLua = require('./theme_stub');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
-const harness = `
+const harness = themeLua(process.argv.slice(2)) + `
 local rulesSrc, engineSrc, areasSrc, textsSrc = ...
 local frames, fontStrings = {}, {}
 local hides = 0
@@ -115,6 +117,7 @@ local spells = { [100] = { name = "Spell Name", icon = 555 } }
 CRT.Notes = { SpellInfo = function(_, id) return spells[id] end }
 assert(load(rulesSrc, "Rules"))("CowfeeRaidTools", CRT)
 assert(load(engineSrc, "Engine"))("CowfeeRaidTools", CRT)
+CRT_THEME(CRT, CRT.UI)
 assert(load(areasSrc, "Areas"))("CowfeeRaidTools", CRT)
 assert(load(textsSrc, "Texts"))("CowfeeRaidTools", CRT)
 local A, Areas, T = CRT.Alerts, CRT.AlertAreas, CRT.AlertTexts

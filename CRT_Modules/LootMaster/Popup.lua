@@ -322,7 +322,7 @@ local function detailText(it)
     local _, _, subType, equipLoc, _, classID, subClassID = C_Item.GetItemInfoInstant(it.itemString or "")
     local parts = {}
     if it.ilvl then
-        parts[#parts + 1] = "|cff1eff00" .. it.ilvl .. "|r"
+        parts[#parts + 1] = "|cff1eff00" .. it.ilvl .. "|r" -- the item level in the game's item green: not a theme colour
     end
     -- an item with no slot (INVTYPE_NON_EQUIP_IGNORE has an empty name) shows its subtype alone, if useful
     local slot = equipLoc and equipLoc ~= "" and _G[equipLoc]

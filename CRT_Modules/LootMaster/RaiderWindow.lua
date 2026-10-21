@@ -106,7 +106,7 @@ local function initRow(row, r)
         LM.SetGear(t, r.gear[i], r.name == LM:Me() and item and item.itemString or nil)
     end
     if r.diff then
-        row.diff:SetText(r.diff > 0 and ("|cff1eff00+" .. r.diff .. "|r") or (r.diff < 0 and ("|cffff4040" .. r.diff .. "|r") or "0"))
+        row.diff:SetText(r.diff > 0 and UI.GoodText("+" .. r.diff) or (r.diff < 0 and UI.BadText(r.diff) or "0"))
     else
         row.diff:SetText("")
     end

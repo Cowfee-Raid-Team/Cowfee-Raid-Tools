@@ -97,7 +97,7 @@ local function show(iconTexture, text, time, color)
     if color then
         label:SetTextColor(color[1], color[2], color[3])
     else
-        label:SetTextColor(1, 0.82, 0)
+        label:SetTextColor(CRT.UI.Color("heading"))
     end
     countdown:SetText(time)
     layout()
@@ -199,8 +199,8 @@ local function build()
     handle:SetHeight(20)
     handle:SetPoint("BOTTOM", frame, "TOP", 0, 2)
     handle:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
-    handle:SetBackdropColor(0.3, 0.25, 0.05, 0.9)
-    handle:SetBackdropBorderColor(1, 0.82, 0, 1)
+    CRT.UI.Tint(handle, "SetBackdropColor", "roast", 0.9) -- the theme's field colour under its heading-coloured edge
+    CRT.UI.Tint(handle, "SetBackdropBorderColor", "heading")
     handle:EnableMouse(true)
     handle:RegisterForDrag("LeftButton")
     local text = handle:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
@@ -244,6 +244,12 @@ end)
 ticker:RegisterEvent("PLAYER_LOGIN")
 ticker:SetScript("OnEvent", function()
     build()
+end)
+
+-- A theme switch draws the alert again on its next update, so a line with no colour of its own takes the
+-- new heading colour.
+CRT.UI:OnTheme(function()
+    drawn = nil
 end)
 
 CRT.UI:RegisterPreview("alert", function(on)

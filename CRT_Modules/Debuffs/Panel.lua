@@ -68,7 +68,7 @@ local LOOK = {
     minTimer = 10, -- the smallest sizes, so the text stays readable on a small icon
     minStack = 9,
     thickFrom = 16, -- a countdown this size or bigger gets the thick outline, a smaller one the thin
-    timerColor = { 1, 0.82, 0 }, -- yellow
+    timerColor = { 1, 0.82, 0 }, -- the approved big yellow countdown, readable on icons in every theme: not a theme colour
     stackColor = { 1, 1, 1 },
     stackInset = 2, -- pixels from the icon's bottom right corner
     -- A thin light line just outside the icon, inside the frame, so the frame looks bevelled. It is

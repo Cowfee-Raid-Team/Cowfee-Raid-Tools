@@ -62,6 +62,11 @@ local function fmtTime(seconds)
     return format("%d:%02d", math.floor(seconds / 60), math.floor(seconds % 60))
 end
 
+-- Headings and your own lines, in the theme's heading colour (the game's gold in Default: Blizzard).
+local function gold(text)
+    return CRT.UI.HeadingText(text)
+end
+
 local function hex(color)
     if not color then
         return "ffffff"
@@ -113,7 +118,7 @@ end
 local function timerLine(item, seconds)
     local time = fmtTime(seconds)
     if Engine:IsMine(item) then
-        return "|cffffd100> " .. time .. "|r  " .. describe(item) .. "  " .. names(item)
+        return gold("> " .. time) .. "  " .. describe(item) .. "  " .. names(item)
     end
     return "|cffaaaaaa" .. time .. "|r  " .. describe(item) .. "  " .. names(item)
 end
@@ -131,15 +136,15 @@ local function textLine(line, noHeading)
             mine = true
         end
         if word:lower() == myName then
-            return "|cffffd100" .. word .. "|r"
+            return gold(word)
         end
         return colorName(word)
     end)
     if not noHeading and not line:find(":", 1, true) then
-        colored = "|cffffd100" .. colored .. "|r"
+        colored = gold(colored)
     end
     if mine then
-        return "|cffffd100> |r" .. colored
+        return gold("> ") .. colored
     end
     return colored
 end
@@ -167,7 +172,7 @@ local BULLET = "  \226\128\162 "
 local function markdownLine(line)
     local heading = line:match("^%s*#+%s+(.-)%s*$")
     if heading then
-        return "|cffffd100" .. heading .. "|r", true
+        return gold(heading), true
     end
     if line:match("^%s*%-%-%-+%s*$") or line:match("^%s*%*%*%*+%s*$") then
         return "|cff806040" .. string.rep("-", 30) .. "|r", true
@@ -228,7 +233,7 @@ local function timersText()
     local record, note = timersNote()
     if not note then
         if previewOn then
-            return "|cffffd100> 0:03|r  Avenging Wrath  Crazyoio\n|cffaaaaaa0:06|r  Sample spell  Cheoeqar\n|cffaaaaaa0:48|r  |cff00ffffGroup 1 go in|r  Cheoeqar Djaztech", "Raid note (sample)", true
+            return gold("> 0:03") .. "  Avenging Wrath  Crazyoio\n|cffaaaaaa0:06|r  Sample spell  Cheoeqar\n|cffaaaaaa0:48|r  |cff00ffffGroup 1 go in|r  Cheoeqar Djaztech", "Raid note (sample)", true
         end
         return "No note loaded.", "Raid note", false
     end
@@ -248,7 +253,7 @@ local function timersText()
         return not onlyMe or Engine:IsForMe(item)
     end
     if onlyMe and not as then
-        heading = heading .. "   |cffffd100only me|r"
+        heading = heading .. "   " .. gold("only me")
     end
     if Engine.running and Engine:Note() == note then
         heading = heading .. "   Phase " .. tostring(Engine:CurrentPhase()) .. "   " .. fmtTime(Engine:Elapsed() or 0)
@@ -273,7 +278,7 @@ local function timersText()
         for _, item in ipairs(note.timers) do
             if shown(item) then
                 if item.ph ~= lastPhase then
-                    lines[#lines + 1] = "|cffffd100Phase " .. item.ph .. "|r"
+                    lines[#lines + 1] = gold("Phase " .. item.ph)
                     lastPhase = item.ph
                 end
                 lines[#lines + 1] = timerLine(item, item.time)
@@ -375,13 +380,13 @@ local function reminderLine(item, seconds, isNext)
     local icon = item.icon and ("|T" .. tostring(item.icon) .. ":0|t ") or ""
     local text = icon .. tostring(item.text or TEXT.reminder)
     if isNext then
-        return "|cffffd100> " .. fmtTime(seconds) .. "|r  " .. text
+        return gold("> " .. fmtTime(seconds)) .. "  " .. text
     end
     return "|cffaaaaaa" .. fmtTime(seconds) .. "|r  " .. text
 end
 
 local function phaseHeading(ph)
-    return "|cffffd100" .. format(TEXT.phase, tostring(ph)) .. "|r"
+    return gold(format(TEXT.phase, tostring(ph)))
 end
 
 -- Out of a run: every time of every turned-on reminder (of the note's difficulty, or any), by phase.
@@ -490,7 +495,7 @@ local function remindersBlock()
     if #lines == 0 then
         return nil
     end
-    table.insert(lines, 1, "|cffffd100" .. bossName(encounterID, list, record) .. "|r")
+    table.insert(lines, 1, gold(bossName(encounterID, list, record)))
     return table.concat(lines, "\n")
 end
 
@@ -525,7 +530,7 @@ local function personalNoteBlock(text)
     end
     local out = {}
     if note.name or note.difficulty then
-        out[#out + 1] = "|cffffd100" .. (note.name or "") .. "|r"
+        out[#out + 1] = gold(note.name or "")
             .. (note.difficulty and ("|cffaaaaaa (" .. note.difficulty .. ")|r") or "")
     end
     local timers = {}
@@ -543,7 +548,7 @@ local function personalNoteBlock(text)
     for _, t in ipairs(timers) do
         if multi and t.ph ~= shownPh then
             shownPh = t.ph
-            out[#out + 1] = "|cffffd100Phase " .. tostring(t.ph or 1) .. "|r"
+            out[#out + 1] = gold("Phase " .. tostring(t.ph or 1))
         end
         out[#out + 1] = timerLine(t, t.time or 0)
     end
@@ -728,9 +733,10 @@ local function createWindow(key, defaultPosition, build)
         local bg = (settings.bgAlpha or 50) / 100
         frame:SetBackdropColor(0, 0, 0, bg)
         local open = unlocked()
-        -- unlocked, a green edge shows where to drag; locked, no edge at all, so the window is seamless
+        -- unlocked, an edge in the theme's good colour shows where to drag; locked, no edge at all, so the
+        -- window is seamless
         if open then
-            frame:SetBackdropBorderColor(0.3, 0.9, 0.3, 1)
+            frame:SetBackdropBorderColor(CRT.UI.Color("matcha"))
         else
             frame:SetBackdropBorderColor(0, 0, 0, 0)
         end
@@ -881,6 +887,14 @@ end)
 if CRT.Alerts then
     CRT.Alerts:OnChange(changed)
 end
+
+-- A theme switch redraws the windows, so their headings, your lines and the unlocked edge follow it.
+CRT.UI:OnTheme(function()
+    changed()
+    if built then
+        styleAll()
+    end
+end)
 
 CRT.UI:RegisterPreview("note", function(on)
     build()

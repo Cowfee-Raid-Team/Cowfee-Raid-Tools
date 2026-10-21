@@ -360,7 +360,7 @@ function Window.NewTable(parent, edit, onEdit, onShiftClick)
     local t = setmetatable({ parent = parent, edit = edit, onEdit = onEdit, onShiftClick = onShiftClick, rows = {}, headers = {}, count = 0, rowCount = 0 }, Table)
     if edit then
         t.marker = parent:CreateTexture(nil, "OVERLAY")
-        t.marker:SetColorTexture(1, 0.82, 0, 1)
+        CRT.UI.Tint(t.marker, "SetColorTexture", "heading")
         t.marker:SetWidth(2)
         t.marker:Hide()
     end
@@ -387,7 +387,7 @@ end
 
 local function headerDragStart(self)
     self.owner.dragKey = self.key
-    self.text:SetTextColor(1, 0.82, 0)
+    self.text:SetTextColor(CRT.UI.Color("heading"))
 end
 
 local function headerDragStop(self)
@@ -568,12 +568,12 @@ local function drawCell(cell, c)
         cell.icon:Show()
         if c.state == "low" then
             cell.icon:SetVertexColor(1, 0.6, 0.6)
-            cell.text:SetText(c.left and ("|cffffd100" .. math.max(1, math.floor(c.left / 60 + 0.5)) .. "|r") or "|cffffd100!|r")
+            cell.text:SetText(CRT.UI.HeadingText(c.left and math.max(1, math.floor(c.left / 60 + 0.5)) or "!"))
         else
             cell.icon:SetVertexColor(1, 1, 1)
         end
     elseif c.state == "missing" then
-        cell.text:SetText("|cffff4040x|r")
+        cell.text:SetText(CRT.UI.BadText("x"))
     elseif c.state == "unknown" then
         cell.text:SetText("|cff888888?|r")
     end
@@ -585,8 +585,9 @@ local function drawDurability(cell, percent)
         cell.text:SetText("")
         return
     end
-    local color = percent < 50 and "ff4040" or (percent < 80 and "ffd100" or "ffffff")
-    cell.text:SetText("|cff" .. color .. percent .. "%|r")
+    -- under 50% the theme's bad colour, under 80% its heading colour (the game's red and gold in Classic)
+    local text = percent .. "%"
+    cell.text:SetText(percent < 50 and CRT.UI.BadText(text) or (percent < 80 and CRT.UI.HeadingText(text) or text))
 end
 
 -- members: { name, class, ready, dur, cells[key] }. columns: the columns in order. dim[key] fades a
@@ -937,6 +938,11 @@ function Window:Apply()
         self:Refresh()
     end
 end
+
+-- A theme switch redraws the window, so its cells take the theme's heading and bad colours.
+CRT.UI:OnTheme(function()
+    Window:Apply()
+end)
 
 CRT.UI:RegisterPreview("readycheckwindow", function(on)
     if not frame then

@@ -4,9 +4,11 @@
 // Timeline writes show in the Raid Notes text.
 // Usage: node run_notes_share.js <Parse.lua> <Data.lua> <Comm.lua> <Settings.lua> <Page.lua>
 const fs = require('fs');
+const path = require('path');
+const themeLua = require('./theme_stub');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
-const harness = `
+const harness = themeLua(process.argv.slice(2)) + `
 local parseSrc, dataSrc, commSrc, settingsSrc, pageSrc = ...
 local edits, buttons, helps = {}, {}, {}
 local function mock(kind)
@@ -68,6 +70,7 @@ local CRT = {
   Groups = { Find = function() return nil end },
 }
 function CRT:Print(m) printed[#printed + 1] = m end
+CRT_THEME(CRT, CRT.UI)
 assert(load(parseSrc, "Parse.lua"))("CowfeeRaidTools", CRT)
 assert(load(dataSrc, "Data.lua"))("CowfeeRaidTools", CRT)
 assert(load(commSrc, "Comm.lua"))("CowfeeRaidTools", CRT)

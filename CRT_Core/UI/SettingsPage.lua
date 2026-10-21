@@ -396,7 +396,7 @@ local function buildProfiles(pf)
     local current = pf:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     current:SetPoint("TOPLEFT", x, top - 22)
     current.refresh = function()
-        current:SetText("Current profile: |cffffd100" .. Profiles:Current() .. "|r")
+        current:SetText("Current profile: " .. UI.HeadingText(Profiles:Current()))
     end
     controls[#controls + 1] = current
 

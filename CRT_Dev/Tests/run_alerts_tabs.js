@@ -2,9 +2,11 @@
 // Usage: node run_alerts_tabs.js CRT_Modules/Timeline/Data.lua CRT_Modules/Timeline/Database.lua CRT_Modules/Timeline/Reference.lua CRT_Modules/Timeline/Lanes.lua CRT_Modules/Alerts/Rules.lua CRT_Modules/Alerts/Engine.lua CRT_Modules/Alerts/Reminders.lua CRT_Modules/Alerts/PhaseDatabase.lua CRT_Modules/Alerts/Phases.lua CRT_Modules/Alerts/Draft.lua CRT_Modules/Alerts/SpellLookup.lua CRT_Modules/Notes/Reminders.lua CRT_Modules/Notes/Phases.lua CRT_Modules/Notes/Page.lua
 // The Mech Alerts list and panel themselves are tested in run_mechalerts.js.
 const fs = require('fs');
+const path = require('path');
+const themeLua = require('./theme_stub');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
-const harness = `
+const harness = themeLua(process.argv.slice(2)) + `
 local sources = { ... }
 local function wipe(t) for k in pairs(t) do t[k] = nil end return t end
 local made = {}
@@ -107,6 +109,7 @@ CRT.Bosses = { Options = function() return route end, OnRouteChange = function(s
 local opened = {}
 CRT.AlertEditor = { Open = function(self, enc, id, prefill) opened[#opened + 1] = { enc = enc, id = id, prefill = prefill } end }
 
+CRT_THEME(CRT, CRT.UI)
 for i, src in ipairs(sources) do
   if src:find("function UI:SkinScrollBar", 1, true) then -- the real CRT_Core/UI/ScrollBar.lua: only the gutter rule is taken
     local tmp = { UI = {} }

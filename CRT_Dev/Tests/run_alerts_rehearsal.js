@@ -7,12 +7,14 @@
 //   CRT_Modules/Timeline/Database.lua CRT_Modules/Timeline/Reference.lua CRT_Modules/Alerts/Roster.lua CRT_Modules/Alerts/Reminders.lua CRT_Modules/Alerts/Areas.lua
 //   CRT_Modules/Alerts/Bars.lua CRT_Modules/Alerts/Icons.lua
 const fs = require('fs');
+const path = require('path');
+const themeLua = require('./theme_stub');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 
 const files = process.argv.slice(2);
 if (files.length < 19) { console.error('usage: node run_alerts_rehearsal.js <19 files in TOC order>'); process.exit(2); }
 
-const harness = `
+const harness = themeLua(process.argv.slice(2)) + `
 local sources = { ... }
 local clock = 1000
 function GetTime() return clock end
@@ -187,6 +189,7 @@ local CRT = {
   Print = function() end,
   PlaySound = function(_, kit) played[#played + 1] = kit end,
 }
+CRT_THEME(CRT, CRT.UI)
 for i = 1, #sources, 2 do
   local before = #all
   assert(load(sources[i + 1], "@" .. sources[i]))("CowfeeRaidTools", CRT)

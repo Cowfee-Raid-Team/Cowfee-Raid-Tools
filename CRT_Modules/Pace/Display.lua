@@ -105,10 +105,14 @@ local function bar(i)
     b.tick:SetColorTexture(1, 1, 1, 1)
     b.ahead = b:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     b.ahead:SetPoint("RIGHT", b.state, "LEFT", -4, 0)
-    b.ahead:SetText("|cff60ff60AHEAD|r")
+    UI.ThemedText(b.ahead, function()
+        return UI.GoodText("AHEAD")
+    end)
     b.behind = b:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     b.behind:SetPoint("RIGHT", b.state, "LEFT", -4, 0)
-    b.behind:SetText("|cffff6060BEHIND|r")
+    UI.ThemedText(b.behind, function()
+        return UI.BadText("BEHIND")
+    end)
     bars[i] = b
     return b
 end

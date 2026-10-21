@@ -4,10 +4,11 @@
 // on stand-in frames, placed before Settings. Usage: node run_lootmaster_filter.js <addon folder>
 const fs = require('fs');
 const path = require('path');
+const themeLua = require('./theme_stub');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate();
 lualib.luaL_openlibs(L);
-const harness = `
+const harness = themeLua(process.argv.slice(2)) + `
 local coreSrc, dataSrc, filterSrc, testSrc, tabSrc, pageSrc = ...
 local fails, passes = 0, 0
 local function check(ok, what) if ok then passes = passes + 1 else fails = fails + 1 print("FAIL " .. what) end end
@@ -467,6 +468,7 @@ LM.AUTHORITY_MAX = LM.AUTHORITY_MAX or 6
 CRT.UI.SortHeaders = function() return { refresh = function() end } end
 CRT.UI.SkinEditBox = function() end
 CRT.UI.SkinCloseButton = function() end
+CRT_THEME(CRT, CRT.UI)
 CreateScrollBoxListLinearView = function() return mock("View") end
 ScrollUtil = { InitScrollBoxListWithScrollBar = function() end }
 assert(load(pageSrc, "Page.lua"))("CowfeeRaidTools", CRT)

@@ -332,7 +332,7 @@ local function showTooltip(row)
         if f.source == "rc" then
             GameTooltip:AddLine(TEXT.rcRow, 0.7, 0.7, 0.7)
         end
-        local rgb = rc.color or { 1, 0.82, 0 }
+        local rgb = rc.color or { 1, 0.82, 0 } -- a tooltip line, in the game's gold: not a theme colour
         GameTooltip:AddDoubleLine("RCLootCouncil", rc.response or "?", 1, 0.82, 0, rgb[1], rgb[2], rgb[3])
         if rc.votes then
             GameTooltip:AddDoubleLine("Votes", tostring(rc.votes), 1, 1, 1, 1, 1, 1)
@@ -594,7 +594,7 @@ local function buildSummary(f)
         local c = fileColor(e.classFile)
         row.name:SetTextColor(c and c.r or 1, c and c.g or 1, c and c.b or 1)
         row.items:SetText(e.items .. " items")
-        row.tokens:SetText(e.tokens > 0 and ("|cffffd100" .. e.tokens .. " tier|r") or "")
+        row.tokens:SetText(e.tokens > 0 and UI.HeadingText(e.tokens .. " tier") or "")
     end)
     ScrollUtil.InitScrollBoxListWithScrollBar(box, bar, v)
     summary = {
@@ -790,7 +790,7 @@ local function build(pf)
         skin(b, 0.4)
         b.sel = b:CreateTexture(nil, "ARTWORK")
         b.sel:SetAllPoints()
-        b.sel:SetColorTexture(1, 0.82, 0, 0.18)
+        b.sel:SetColorTexture(UI.Color("heading", 0.18)) -- UI:RegisterTab styles it from here on
         b.text = b:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
         b.text:SetPoint("CENTER")
         b.text:SetText(tab.label)

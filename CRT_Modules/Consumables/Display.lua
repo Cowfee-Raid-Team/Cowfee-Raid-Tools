@@ -369,6 +369,12 @@ function Display:ResetPosition()
     end
 end
 
+-- A theme switch repaints the bar: the ants and the running-low and none-left numbers take the theme's
+-- colours (Bar.Apply).
+CRT.UI:OnTheme(function()
+    Display:Refresh()
+end)
+
 CRT.UI:RegisterPreview("consumables", function(on)
     Display:SetPreview(on)
 end)

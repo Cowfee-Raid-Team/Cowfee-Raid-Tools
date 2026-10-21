@@ -3,9 +3,11 @@
 // Usage: node run_alerts_alertstab.js CRT_Modules/Alerts/Rules.lua CRT_Modules/Alerts/Engine.lua CRT_Modules/Notes/Settings.lua CRT_Modules/Notes/AlertsTab.lua
 //   CRT_Modules/Notes/Page.lua CRT_Modules/Alerts/Areas.lua CRT_Modules/Alerts/Bars.lua CRT_Modules/Alerts/Texts.lua CRT_Modules/Alerts/Icons.lua CRT_Modules/Alerts/Circles.lua
 const fs = require('fs');
+const path = require('path');
+const themeLua = require('./theme_stub');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
-const harness = `
+const harness = themeLua(process.argv.slice(2)) + `
 local sources = { ... }
 local frames, fontStrings = {}, {}
 local function mock(kind, parent, template)
@@ -157,6 +159,7 @@ CRT.NoteReminders = { Build = function() end }
 CRT.NotePhases = { Build = function() end }
 CRT.NoteAlert = { Speak = function() end }
 
+CRT_THEME(CRT, CRT.UI)
 local function loadSource(i, src)
   if src:find("function UI.PickColor", 1, true) then -- the real CRT_Core/UI/Controls.lua: only PickColor is taken, the harness keeps its own Dropdown and Slider
     local tmp = { UI = {} }

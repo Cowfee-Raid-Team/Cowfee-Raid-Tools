@@ -5,6 +5,7 @@
 //       CRT_Modules/Notes/Engine.lua CRT_Modules/Notes/Window.lua CRT_Modules/Notes/Alert.lua  CRT_Modules/Alerts/Speech.lua (last, optional, loaded after CRT_Modules/Alerts/Engine.lua)
 const fs = require('fs');
 const path = require('path');
+const themeLua = require('./theme_stub');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 
 const a = process.argv.slice(2);
@@ -24,7 +25,7 @@ const noteText = read(path.join(__dirname, 'sample_note.txt')).replace(/\r/g, ''
   'time:57;ph:1;tag:Cheoeqar;text:Short line;\n' +
   'time:44;ph:1.5;tag:Cheoeqar;text:Later phase text;dur:8;');
 
-const harness = `
+const harness = themeLua(process.argv.slice(2)) + `
 local mode, noteText = ...
 -- A note with only ph:2 lines: today its first phase (2) starts at the pull.
 local ph2Text = [[
@@ -138,6 +139,7 @@ local CRT = {
   FontPath = function() return "font" end,
   Print = function(_, m) printed[#printed + 1] = m end,
 }
+CRT_THEME(CRT, CRT.UI)
 for i = 1, #files, 2 do
   assert(load(files[i + 1], "@" .. files[i]))("CowfeeRaidTools", CRT)
 end
