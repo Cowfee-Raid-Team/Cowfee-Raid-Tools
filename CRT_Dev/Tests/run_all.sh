@@ -47,6 +47,7 @@ g "checkbox" && { node run_checkbox.js "$WA" 2>&1 | tail -30; echo "exit ${PIPES
 g "toplevel" && { node run_toplevel.js "$WA" 2>&1 | tail -30; echo "exit ${PIPESTATUS[0]}"; }
 g "help" && { node run_help.js "$WA" 2>&1 | tail -30; echo "exit ${PIPESTATUS[0]}"; }
 g "themes" && { node run_themes.js "$WA" 2>&1 | tail -30; echo "exit ${PIPESTATUS[0]}"; }
+g "scrollbar" && { node run_scrollbar.js "$WA" 2>&1 | tail -40; echo "exit ${PIPESTATUS[0]}"; }
 # The colours from before themes live only in CRT_Core/Themes.lua (the Default: Blizzard palette): code reads CRT.MOCHA. A saved
 # colour's default or a data colour that matches one by chance says "not a theme colour" on its line.
 g "old Modern colours only in Themes.lua" && { bad=$(grep -rniE '1c1410|2a1f19|4d3c30|70503a|c78f5c|deba8f|f2e6d6|0\.11, *0\.078, *0\.063|0\.165, *0\.122, *0\.098|0\.30?, *0\.235, *0\.188|0\.44, *0\.31, *0\.22|0\.78, *0\.56, *0\.36|0\.87, *0\.73, *0\.56|0\.95, *0\.90?, *0\.84' --include=*.lua --exclude-dir=.claude --exclude-dir=node_modules "$W" | grep -vE "$NOT_TESTS" | grep -v "Themes\.lua:" | grep -v "not a theme colour"); if [ -n "$bad" ]; then echo "FAIL an old Modern colour outside CRT_Core/Themes.lua (read CRT.MOCHA):"; echo "$bad"; else echo "all passed"; fi; }

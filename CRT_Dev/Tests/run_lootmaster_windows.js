@@ -56,6 +56,7 @@ local sortParent, sortOpts
 local CRT = { db = { lootmaster = { window = {}, answers = {}, sort = {} } }, MOCHA = { caramel = { 1, 1, 1 }, edge = { 1, 1, 1 }, cream = { 1, 1, 1 } } }
 CRT.UI = {
   ContextMenu = function() end,
+  SkinScrollBar = function() end,
   Window = function(name) local w = mock("Frame", nil) w.name = name w.content = mock("Frame", w)
     w.strip = { SetTitle = function() end, SetBadge = function() end } return w end,
   Help = function(parent) return mock("Button", parent) end,

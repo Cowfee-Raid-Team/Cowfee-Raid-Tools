@@ -353,6 +353,7 @@ local function build()
     box:SetPoint("BOTTOMRIGHT", 0, 0)
     -- the scroll bar is outside the clipped area, so it always shows
     local bar = CreateFrame("EventFrame", nil, c, "MinimalScrollBar")
+    UI:SkinScrollBar(bar)
     bar:SetPoint("TOPLEFT", box, "TOPRIGHT", 6, 0)
     bar:SetPoint("BOTTOMLEFT", box, "BOTTOMRIGHT", 6, 0)
     local v = CreateScrollBoxListLinearView()

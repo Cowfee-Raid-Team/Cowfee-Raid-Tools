@@ -502,6 +502,9 @@ function View.Create(parent)
 
     -- the lanes: an up and down scroll frame holding the name column and the sideways track
     local vscroll = CreateFrame("ScrollFrame", "CowfeeRaidToolsTimelineView" .. count, f, "UIPanelScrollFrameTemplate")
+    if CRT.UI and CRT.UI.SkinScrollBar then
+        CRT.UI:SkinScrollBar(vscroll.ScrollBar)
+    end
     vscroll:SetPoint("TOPLEFT", f, "TOPLEFT", 0, -AXIS_H)
     vscroll:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -SCROLLBAR_W, view.stripH + UNKNOWN_H + BAR_H + 4)
     local body = CreateFrame("Frame", nil, vscroll)

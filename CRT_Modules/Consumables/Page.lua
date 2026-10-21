@@ -396,6 +396,7 @@ local function build(pf)
     end)
 
     local scroll = CreateFrame("ScrollFrame", "CowfeeRaidToolsConsumableScroll", box, "UIPanelScrollFrameTemplate")
+    UI:SkinScrollBar(scroll.ScrollBar)
     scroll:SetPoint("TOPLEFT", 4, -4)
     scroll:SetPoint("BOTTOMRIGHT", -26, 4)
     itemChild = CreateFrame("Frame", nil, scroll)

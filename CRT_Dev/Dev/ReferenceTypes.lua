@@ -508,6 +508,7 @@ local function buildManage()
     UI.Help(manage, "Manage ability timelines", "Every ability timeline of this boss, yours and shipped.\n\nDelete removes one of your copies; Delete all my copies removes every copy of yours for this boss. The shipped ones stay.\n\nThe game can't change the addon's files, so a shipped one is removed in two steps. Remove from addon hides it on this computer at once and marks it for removal; Keep undoes that. Export removals (or /crt dev removed) lists the marks: paste them to Claude, who deletes those blocks from the boss files. Opening this panel clears marks whose blocks are already gone.\n\nA marked one also leaves the alerts and notes on this computer, as a preview of the deletion."):SetPoint("LEFT", manage.heading, "RIGHT", 6, 0)
 
     local scroll = CreateFrame("ScrollFrame", "CowfeeRaidToolsReferenceManageScroll", manage, "UIPanelScrollFrameTemplate")
+    UI:SkinScrollBar(scroll.ScrollBar)
     scroll:SetPoint("TOPLEFT", 14, -60)
     scroll:SetPoint("BOTTOMRIGHT", -32, 46)
     manage.list = CreateFrame("Frame", nil, scroll)
@@ -649,6 +650,7 @@ local function build()
 
     -- Only the abilities scroll; the picker, headers, status line and buttons stay put.
     win.scroll = CreateFrame("ScrollFrame", "CowfeeRaidToolsReferenceTypesScroll", win, "UIPanelScrollFrameTemplate")
+    UI:SkinScrollBar(win.scroll.ScrollBar)
     win.scroll:SetPoint("TOPLEFT", 14, -LIST_TOP)
     win.scroll:SetPoint("BOTTOMRIGHT", -32, LIST_BOTTOM)
     win.list = CreateFrame("Frame", nil, win.scroll)

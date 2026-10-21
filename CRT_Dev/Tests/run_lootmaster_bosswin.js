@@ -93,6 +93,7 @@ local MODERN = true
 local made, buttons = {}, {}
 CRT_UI = {
   TITLE_STRIP = { neutral = { bg = "espresso" } },
+  SkinScrollBar = function() end,
   IsModern = function() return MODERN end,
   Window = function(name, opts)
     local w = mock()

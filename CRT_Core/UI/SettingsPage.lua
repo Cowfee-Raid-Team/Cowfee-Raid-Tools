@@ -165,6 +165,7 @@ local function getTextDialog()
     d.name:SetFontObject(CRTFontEdit)
 
     d.scroll = CreateFrame("ScrollFrame", "CowfeeRaidToolsProfileTextScroll", d, "UIPanelScrollFrameTemplate")
+    UI:SkinScrollBar(d.scroll.ScrollBar)
     d.scroll:SetPoint("BOTTOMRIGHT", -34, 46)
     d.edit = CreateFrame("EditBox", nil, d.scroll)
     d.edit:SetMultiLine(true)

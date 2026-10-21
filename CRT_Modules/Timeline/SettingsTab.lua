@@ -292,6 +292,7 @@ function SettingsTab.Build(f, ctx)
     label(f, "spell ID", "CRTFontSmall"):SetPoint("LEFT", addButton, "RIGHT", 8, 0)
 
     local scroll = CreateFrame("ScrollFrame", "CowfeeRaidToolsTimelineRowsScroll", f, "UIPanelScrollFrameTemplate")
+    UI:SkinScrollBar(scroll.ScrollBar)
     scroll:SetPoint("TOPLEFT", f, "TOPLEFT", 8, -232)
     scroll:SetPoint("BOTTOMRIGHT", f, "BOTTOMLEFT", 330, 8)
     rowsChild = CreateFrame("Frame", nil, scroll)
