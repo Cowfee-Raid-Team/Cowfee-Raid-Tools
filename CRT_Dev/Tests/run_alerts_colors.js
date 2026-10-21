@@ -220,6 +220,28 @@ check("colors: the type lookup never walks the Journal during a run", function()
   A:Stop()
 end)
 
+check("colors: each item gets its Journal icons, from the cached rows only", function()
+  CRT.db.alerts.reminders = {}
+  T:SetAbility(3001, 8002, "type", "spread") -- a type of its own still gets the icons
+  R:Save(3001, nil, { boss = NEK, spellID = 8001, text = "Bolt", times = "P1 0:11" })
+  R:Save(3001, nil, { boss = NEK, spellID = 8002, text = "Curse", times = "P1 0:12" })
+  R:Save(3001, nil, { boss = NEK, spellID = 5003, text = "Rend", times = "P1 0:13" })
+  pull()
+  local function tagsOf(text) local it = itemBy(function(x) return x.text == text end) return it and it.abilityTags and table.concat(it.abilityTags, ",") end
+  assert(tagsOf("Bolt") == "tank,magic", "the Journal's icons: " .. tostring(tagsOf("Bolt")))
+  assert(tagsOf("Curse") == "mythic,curse", "with a labelled type too: " .. tostring(tagsOf("Curse")))
+  assert(tagsOf("Rend") == nil, "none known: none")
+  -- not read this session: no icons, and no walk
+  journalCached = false
+  for _, it in ipairs(A.items) do it.abilityType = nil it.abilityTags = nil end
+  local before = rowsCalls
+  C.Stamp(A.items, A.run)
+  assert(rowsCalls == before and tagsOf("Bolt") == nil, "uncached: no icons, no walk")
+  journalCached = true
+  T:SetAbility(3001, 8002, "type", nil)
+  A:Stop()
+end)
+
 check("colors: no known type is the theme's accent", function()
   CRT.db.alerts.reminders = {}
   R:Save(3001, nil, { boss = NEK, spellID = 9999, text = "Nothing Known", times = "P1 0:10", color = { 0, 1, 0, 1 } })

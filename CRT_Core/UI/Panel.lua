@@ -107,6 +107,7 @@ UI.LAYERS = {
     { key = "alerticons", label = "Alert icons", default = "HIGH" },
     { key = "alerttexts", label = "Alert texts", default = "HIGH" },
     { key = "alertcircles", label = "Alert circles", default = "HIGH" },
+    { key = "alerttimeline", label = "Alert timeline", default = "HIGH" },
     { key = "readycheck", label = "Ready check window", default = "HIGH" },
     { key = "bar", label = "Your consumables bar", default = "HIGH" },
     { key = "debuffs", label = "Debuff panel", default = "HIGH" },
@@ -204,7 +205,7 @@ UI.LAYER_GROUPS = {
     { key = "panel", label = "Main window", layers = { "panel" } },
     { key = "notes", label = "Note windows", layers = { "notes" } },
     { key = "timeline", label = "Timeline window", layers = { "timeline" } },
-    { key = "alerts", label = "Alerts", layers = { "alert", "alertbars", "alerticons", "alerttexts", "alertcircles", "lowhealth" } },
+    { key = "alerts", label = "Alerts", layers = { "alert", "alertbars", "alerticons", "alerttexts", "alertcircles", "alerttimeline", "lowhealth" } },
     { key = "raid", label = "Raid windows", layers = { "readycheck", "bar", "debuffs" } },
     { key = "popups", label = "Pop-up windows", layers = { "popups" } },
 }

@@ -17,7 +17,8 @@ local ADDON, CRT = ...
 --   Colors.TypeOf(encounterID, spellID, text, bossName, difficultyName) -> a type key, or nil
 --   Colors.TypeColor(key) -> { r, g, b }: the type's colour, else the theme's accent (nil with no theme loaded)
 --   Colors.KnownTypeColor(key) -> { r, g, b } of a known type, else nil
---   Colors.Stamp(items, run) sets abilityType on each item of a run that has no known type of its own
+--   Colors.Stamp(items, run) sets abilityType on each item of a run that has no known type of its own, and
+--     abilityTags, the ability's Journal icons from the same row (or the cached Journal row), for the timeline area
 
 local Colors = {}
 CRT.AlertColors = Colors
@@ -135,6 +136,23 @@ local function journalType(ctx, spellID)
     return nil
 end
 
+-- The Journal's icons of an ability (Reference.TAGS words), as the Timeline's rows show them: the ability timeline
+-- row's own (tags ...), else the cached Journal row's for its spell. Nil when none is known.
+local function tagsIn(ctx, row, spell)
+    if row and type(row.tags) == "table" and #row.tags > 0 then
+        return row.tags
+    end
+    if spell then
+        for _, r in ipairs(ctx.rows) do
+            if r.spellID == spell then
+                return type(r.tags) == "table" and #r.tags > 0 and r.tags or nil
+            end
+        end
+    end
+    return nil
+end
+
+-- The ability's type and its Journal icons.
 local function typeIn(ctx, spellID, text)
     if not (readable(spellID) and type(spellID) == "number" and spellID > 0) then
         spellID = nil
@@ -144,22 +162,23 @@ local function typeIn(ctx, spellID, text)
     end
     local row, rowSpell = referenceRow(ctx, spellID, text)
     local spell = spellID or rowSpell
+    local tags = tagsIn(ctx, row, spell)
     local t = labelType(ctx.encounterID, spell)
     if t then
-        return t
+        return t, tags
     end
     local main = row and type(row.types) == "table" and row.types[1]
     if known(main) then
-        return main
+        return main, tags
     end
-    return journalType(ctx, spell)
+    return journalType(ctx, spell), tags
 end
 
 function Colors.TypeOf(encounterID, spellID, text, bossName, difficultyName)
     if not CRT.TimelineReference then
         return nil
     end
-    return typeIn(bossContext(encounterID, bossName, difficultyName), spellID, text)
+    return (typeIn(bossContext(encounterID, bossName, difficultyName), spellID, text))
 end
 
 function Colors.TypeColor(key)
@@ -176,8 +195,10 @@ function Colors.KnownTypeColor(key)
     return known(key) and CRT.TimelineReference.TYPES[key].color or nil
 end
 
--- Every item of a run gets its ability type (nil when none is known). The boss's references and cached Journal
--- rows are read once, and each spell and text asked once. An item whose block already named a known type keeps it.
+-- Every item of a run gets its ability type (nil when none is known) and its Journal icons (abilityTags, a list of
+-- Reference.TAGS words, nil when none is known; the timeline area shows them). The boss's references and cached
+-- Journal rows are read once, and each spell and text asked once. An item whose block already named a known type
+-- keeps it, and one that already has its icons keeps them.
 function Colors.Stamp(items, run)
     if type(items) ~= "table" or type(run) ~= "table" or not CRT.TimelineReference then
         return
@@ -185,16 +206,22 @@ function Colors.Stamp(items, run)
     local ctx
     local cache = {}
     for _, it in ipairs(items) do
-        if type(it) == "table" and not known(it.abilityType) then
+        if type(it) == "table" and not (known(it.abilityType) and type(it.abilityTags) == "table") then
             -- a value the game hides is never turned into a string
             local spell = readable(it.spellID) and type(it.spellID) == "number" and it.spellID or 0
             local text = readable(it.text) and type(it.text) == "string" and it.text or ""
             local key = spell .. "|" .. text
             if cache[key] == nil then
                 ctx = ctx or bossContext(run.encounterID, run.bossName, run.difficultyName)
-                cache[key] = typeIn(ctx, it.spellID, it.text) or false
+                local t, tags = typeIn(ctx, it.spellID, it.text)
+                cache[key] = { t = t, tags = tags }
             end
-            it.abilityType = cache[key] or nil
+            if not known(it.abilityType) then
+                it.abilityType = cache[key].t
+            end
+            if type(it.abilityTags) ~= "table" then
+                it.abilityTags = cache[key].tags
+            end
         end
     end
 end
