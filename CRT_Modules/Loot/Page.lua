@@ -332,7 +332,7 @@ local function showTooltip(row)
         if f.source == "rc" then
             GameTooltip:AddLine(TEXT.rcRow, 0.7, 0.7, 0.7)
         end
-        local rgb = rc.color or { 1, 0.82, 0 }
+        local rgb = rc.color or { 1, 0.82, 0 } -- a tooltip line, in the game's gold: not a theme colour
         GameTooltip:AddDoubleLine("RCLootCouncil", rc.response or "?", 1, 0.82, 0, rgb[1], rgb[2], rgb[3])
         if rc.votes then
             GameTooltip:AddDoubleLine("Votes", tostring(rc.votes), 1, 1, 1, 1, 1, 1)

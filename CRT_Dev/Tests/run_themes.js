@@ -412,6 +412,23 @@ for (const [file, what] of [
   if (read(file).includes('UI.GoodText')) console.log('ok themes: ' + file + ' uses UI.GoodText (' + what + ')');
   else { console.log('FAIL ' + file + ' does not use UI.GoodText (' + what + ')'); srcFails++; }
 }
+// Overlays are not refreshed with the page in view, so each repaints on a theme switch itself: an OnTheme hook,
+// a UI.Tint or a UI.ThemedText. (Live switches are checked in the harnesses that build them: run_latepage,
+// run_groups_extras, run_lootmaster_bosswin, run_alerts_personalwin, run_alerts_editor, run_consumables_dock, run_debuffs.)
+for (const [file, what] of [
+  ['CRT_Modules/Notes/Window.lua', 'the note windows'],
+  ['CRT_Modules/Notes/Alert.lua', 'the next-spell alert'],
+  ['CRT_Modules/Consumables/Display.lua', 'your bar'],
+  ['CRT_Modules/Debuffs/Panel.lua', 'the debuff panel'],
+  ['CRT_Modules/ReadyCheck/BuffLock.lua', 'the buff lock hint'],
+  ['CRT_Modules/ReadyCheck/Window.lua', 'the ready check window'],
+  ['CRT_Modules/QoL/LowHealth.lua', 'the low-health warning'],
+  ['CRT_Modules/Pace/Display.lua', 'the pace bars'],
+  ['CRT_Modules/Alerts/Areas.lua', 'the alert areas'],
+]) {
+  if (/OnTheme\(|UI\.Tint\(|UI\.ThemedText\(/.test(read(file))) console.log('ok themes: ' + file + ' repaints on a theme switch (' + what + ')');
+  else { console.log('FAIL ' + file + ' has no theme hook (' + what + ')'); srcFails++; }
+}
 // The toc loads Themes.lua right after Core.lua, before anything reads CRT.MOCHA.
 const toc = read('CowfeeRaidTools.toc').split(/\r?\n/);
 const core = toc.indexOf('CRT_Core\\Core.lua');
