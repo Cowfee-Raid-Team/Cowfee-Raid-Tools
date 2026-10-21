@@ -664,6 +664,29 @@ check(not tip.lines[#tip.lines]:find("^Tracks"), "badge: no tracks known, no Tra
 CRT.db.gearChecker.filter = "all"
 CRT.Bosses = { GearChecks = function() return { enchant = { 1 } } end }
 
+-- 10. Your own row follows an enchant put on with no event (no reload): Refresh reads your slots at once,
+-- and so does the page each time it opens
+local HELM = "|cffa335ee|Hitem:101::::::::90:577|h[Helm]|h|r"
+GetInventoryItemLink = function(unit, slot) if unit == "player" and slot == 1 then return HELM end end
+Gear:Refresh()
+P.Refresh()
+rows = drawRows() me = rowOf("Solex")
+eq(me.issues.text, "1", "your helm with no enchant: an issue")
+HELM = "|cffa335ee|Hitem:101:7364:::::::90:577|h[Helm]|h|r" -- enchanted: the game sends no PLAYER_EQUIPMENT_CHANGED
+P.refreshButton:Click()
+rows = drawRows() me = rowOf("Solex")
+eq(me.issues.text, "0", "Refresh: the enchant shows at once")
+HELM = "|cffa335ee|Hitem:101::::::::90:577|h[Helm]|h|r"
+page3:Hide()
+page3:Show()
+rows = drawRows() me = rowOf("Solex")
+eq(me.issues.text, "1", "the page opening reads your slots again")
+HELM = "|cffa335ee|Hitem:101:7364:::::::90:577|h[Helm]|h|r"
+P.popButton:Click()
+rows = drawRows() me = rowOf("Solex")
+eq(me.issues.text, "0", "popping out reads them too")
+P.popButton:Click()
+
 print(string.format("%d passed, %d failed", passes, fails))
 if fails > 0 then error("failures") end
 `;

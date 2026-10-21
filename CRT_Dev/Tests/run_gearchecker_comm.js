@@ -265,6 +265,42 @@ for _, text in ipairs(hm) do check(#text <= 255, "still 255 bytes or less (" .. 
 local empty = solex.GC.Comm.SetMessages({}, "5")
 eq(#empty == 1 and empty[1], "G|1|5|1|1|", "nothing worn: one empty part")
 
+-- 10. Refresh: your own slots read again at once (an enchant changes a link with no event), then the
+-- group asked, then whoever has no set from the last Comm.STALE seconds inspected
+local queued
+solex.GC.Inspect.Queue = function(_, names) queued = table.concat(names, ",") end
+outbox, timers = {}, {}
+advance(60)
+as(solex, function() solex.CRT.Gear:Refresh() end)
+GEAR.Solex[1] = GEAR.Solex[1]:gsub("item:601:7364", "item:601:9999")
+eq(solex.CRT.Gear:Mine(1).itemString:match("^item:%d+:(%d+)"), "7364", "refresh: the cache still has the old enchant")
+local fired = {}
+solex.GC:OnChange(function(what) fired[#fired + 1] = what end)
+as(solex, function() solex.GC:Refresh() end)
+eq(solex.CRT.Gear:Mine(1).itemString:match("^item:%d+:(%d+)"), "9999", "refresh: your new enchant, read at once")
+check(table.concat(fired, ","):find("mine", 1, true) ~= nil, "refresh: the page is told your gear changed")
+eq(kinds(), "Q", "refresh: the group is asked")
+outbox = {}
+as(solex, function() advance(solex.GC.Comm.REPLY_WAIT) end)
+eq(queued, "Quick-Sargeras,Old-Sargeras", "refresh: no answer, Quick's set older than Comm.STALE: both inspected")
+-- Quick answers this time: a fresh set, not inspected; someone inspected moments ago isn't either
+advance(30)
+solex.CRT.Gear:Remember("Old-Sargeras", { { slot = 1, id = 5 } }, solex.GC.SOURCE_INSPECT, true)
+queued = nil
+as(solex, function() solex.GC:Refresh() end)
+deliver()
+as(solex, function() advance(solex.GC.Comm.REPLY_WAIT) end)
+eq(queued, "", "refresh: a fresh answer and a fresh inspect: no one inspected")
+advance(solex.GC.Comm.STALE)
+as(solex, function() solex.GC:Refresh() end)
+outbox = {}
+as(solex, function() advance(solex.GC.Comm.REPLY_WAIT) end)
+eq(queued, "Quick-Sargeras,Old-Sargeras", "refresh: both stale again: both inspected")
+solex.CRT.Gear:Remember("Old-Sargeras", { { slot = 1, id = 5 } }, "lootmaster")
+advance(solex.GC.Comm.STALE)
+as(solex, function() solex.GC:Refresh() deliver() advance(solex.GC.Comm.REPLY_WAIT) end)
+eq(queued, "Old-Sargeras", "refresh: a part set from another feature is no whole set: inspected")
+
 print(string.format("%d passed, %d failed", passes, fails))
 if fails > 0 then error("failures") end
 `;

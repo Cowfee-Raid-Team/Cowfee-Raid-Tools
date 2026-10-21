@@ -21,7 +21,7 @@ local ADDON, CRT = ...
 -- Game calls (warcraft.wiki.gg, read 2026-10-14 and 2026-10-20): C_ChatInfo.RegisterAddonMessagePrefix,
 -- C_ChatInfo.SendAddonMessage(prefix, message, chatType) -> Enum.SendAddonMessageResult (255 bytes a
 -- message, 16 for the prefix), CHAT_MSG_ADDON (prefix, text, channel, sender), IsInGroup, IsInRaid,
--- InCombatLockdown, PLAYER_REGEN_ENABLED, C_Timer.After, GetTime.
+-- InCombatLockdown, PLAYER_REGEN_ENABLED, C_Timer.After, GetTime, time.
 
 local GC = CRT.GearChecker
 local Gear = CRT.Gear
@@ -35,6 +35,7 @@ Comm.MAX = 255 -- bytes a message may hold
 Comm.REPLY_WINDOW = 10 -- seconds: a CRT answers at most once in this time
 Comm.REQUEST_GAP = 5 -- seconds between two asks of your own
 Comm.REPLY_WAIT = 3 -- seconds after an ask before those who didn't answer are inspected
+Comm.STALE = 30 -- seconds: a Refresh inspects a player whose whole set is older than this
 Comm.HEAD_MAX = 24 -- the longest "G|<version>|<set id>|<part>|<parts>|" head, so PackMany leaves it room
 
 local RESULT = Enum and Enum.SendAddonMessageResult or {}
@@ -299,14 +300,23 @@ function Comm:Count(roster)
     return n, #roster
 end
 
--- Refresh: asks every CRT in the group, then inspects those who didn't answer within REPLY_WAIT (or
--- everyone but you, out of a group's messages). Inspect.lua waits out combat on its own.
+-- Whether a player's whole set (their CRT's answer or an inspect) came less than Comm.STALE seconds ago.
+local function fresh(name)
+    local at, source = Gear:When(name)
+    return type(at) == "number" and GC.WHOLE_SETS[source] == true and time() - at < Comm.STALE
+end
+
+-- Refresh: reads your own slots again now (an enchant or a gem changes a link with no event of its own),
+-- asks every CRT in the group, then inspects those with no whole set from the last Comm.STALE seconds
+-- once REPLY_WAIT is over (everyone but you, out of a group's messages). Inspect.lua waits out combat
+-- on its own.
 function GC:Refresh()
+    Gear:Refresh()
     Comm:Request()
     C_Timer.After(Comm.REPLY_WAIT, function()
         local names = {}
         for _, m in ipairs(GC:Roster()) do
-            if not m.me and not Comm:HasSet(m.name) then
+            if not m.me and not fresh(m.name) then
                 names[#names + 1] = m.name
             end
         end

@@ -29,6 +29,9 @@ C_Item = {
     return id, "Armor", "Misc", loc, 0, 4, 0
   end,
 }
+local timers = {}
+C_Timer = { After = function(s, fn) timers[#timers + 1] = { s = s, fn = fn } end }
+local function flush() local list = timers timers = {} for _, t in ipairs(list) do t.fn() end end
 local onEvent, registered = nil, {}
 CreateFrame = function() return { RegisterEvent = function(_, e) registered[e] = true end, SetScript = function(_, _, fn) onEvent = fn end } end
 local CRT = {}
@@ -209,6 +212,60 @@ local UP = "|cffa335ee|Hitem:602::::::::90:577::28:1:13578::::::|h[New Ring]|h|r
 LINKS[11], ILVL[UP] = UP, 304
 eq(Gear:ForItem("item:500")[2].ilvl, 304, "live: a ring upgraded with no event")
 eq(Gear:Mine(11).ilvl, 304, "live: and the cache keeps it")
+
+-- 5b. An enchant or a gem on a worn item changes its link with no PLAYER_EQUIPMENT_CHANGED: the cache stays
+-- stale until a full Refresh, or until the events that come with it (UNIT_INVENTORY_CHANGED for you,
+-- ENCHANT_SPELL_COMPLETED, SOCKET_INFO_SUCCESS) read every slot again, once per burst
+check(registered.UNIT_INVENTORY_CHANGED and registered.ENCHANT_SPELL_COMPLETED and registered.SOCKET_INFO_SUCCESS, "listens for the events of a worn item's link changing")
+local HAT = "|cff0070dd|Hitem:700::::::::90:577|h[Hat]|h|r"
+LINKS[1], ILVL[HAT] = HAT, 250
+Gear:Refresh()
+eq(Gear:Mine(1).itemString, "item:700::::::::90:577", "enchant: the hat before")
+local HAT2 = "|cff0070dd|Hitem:700:7364:::::::90:577|h[Hat]|h|r"
+LINKS[1], ILVL[HAT2] = HAT2, 250
+eq(Gear:Mine(1).itemString, "item:700::::::::90:577", "enchant: no event yet, the cache is stale (the bug)")
+changes = {}
+check(Gear:Refresh(), "enchant: a full Refresh sees the change")
+eq(Gear:Mine(1).itemString, "item:700:7364:::::::90:577", "enchant: the hat with its enchant")
+eq(table.concat(changes, ","), "1", "enchant: OnChange for the head")
+-- the events: another unit's inventory is not yours
+GetInventoryItemLink = function(_, slot) reads = reads + 1 return LINKS[slot] end
+LINKS[1] = HAT
+timers = {}
+onEvent(nil, "UNIT_INVENTORY_CHANGED", "target")
+eq(#timers, 0, "inventory: another unit's change reads nothing")
+issecretvalue = function(v) return v == "SECRET" end
+onEvent(nil, "UNIT_INVENTORY_CHANGED", "SECRET")
+issecretvalue = nil
+eq(#timers, 0, "inventory: a secret unit reads nothing")
+before = reads
+onEvent(nil, "UNIT_INVENTORY_CHANGED", "player")
+onEvent(nil, "UNIT_INVENTORY_CHANGED", "player")
+onEvent(nil, "ENCHANT_SPELL_COMPLETED", true, nil)
+eq(#timers, 1, "throttle: a burst of events waits for one read")
+eq(timers[1] and timers[1].s, Gear.SETTLE, "throttle: a moment later")
+eq(reads, before, "throttle: nothing read yet")
+changes = {}
+flush()
+eq(Gear:Mine(1).itemString, "item:700::::::::90:577", "inventory: the read sees the change")
+eq(table.concat(changes, ","), "1", "inventory: OnChange for it")
+eq(reads - before, #Gear.SLOTS, "throttle: one read of every slot for the burst")
+LINKS[1] = HAT2
+onEvent(nil, "SOCKET_INFO_SUCCESS")
+eq(#timers, 1, "socket: a gem put in reads again")
+flush()
+eq(Gear:Mine(1).itemString, "item:700:7364:::::::90:577", "socket: the cache follows")
+onEvent(nil, "ENCHANT_SPELL_COMPLETED", false, nil)
+eq(#timers, 1, "enchant event: read even when it says it failed (cheap, and the item may still have changed)")
+flush()
+local keepTimer = C_Timer
+C_Timer = nil
+LINKS[1] = HAT
+onEvent(nil, "UNIT_INVENTORY_CHANGED", "player")
+eq(Gear:Mine(1).itemString, "item:700::::::::90:577", "no timer: read at once")
+C_Timer = keepTimer
+LINKS[1] = nil
+Gear:Refresh()
 
 -- 6. Other players: Remember, Of, When
 eq(Gear:When("Quick-Sargeras"), nil, "never remembered")

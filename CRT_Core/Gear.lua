@@ -11,6 +11,7 @@ local ADDON, CRT = ...
 --   Gear:Mine(slot)               your piece in a slot, or nil when it is empty
 --   Gear:MineAll()                your pieces, in Gear.SLOTS order (empty slots left out)
 --   Gear:ForItem(itemString)      your pieces in the slots that item goes in (read live), lowest item level first
+--   Gear:Refresh(slot)            reads your slot (every slot without one) from the game now, before a page draws
 --   Gear:OnChange(fn)             fn(slot) when your piece in a slot changes
 --   Gear:Remember(player, pieces, source, replace), Gear:Of(player, slot), Gear:OfAll(player), Gear:When(player)
 --                                 other players' pieces, by full Name-Realm, as a feature received them
@@ -31,6 +32,9 @@ local ADDON, CRT = ...
 -- takes a full link or only its "item:..." part; GameTooltip:SetItemByID(itemID). C_Item.GetItemNumSockets
 -- (itemInfo) -> socketCount (ItemDocumentation.lua, live), which Blizzard's own inspect frame calls on an
 -- inspected player's link (PaperDollItemSocketDisplayMixin:SetItem, PaperDollFrame.lua). Each is called in pcall.
+-- Read 2026-10-21 (warcraft.wiki.gg and Blizzard_APIDocumentationGenerated, live): UNIT_INVENTORY_CHANGED
+-- (unitTarget), also for new items in your bags; ENCHANT_SPELL_COMPLETED (successful, enchantedItem?)
+-- (SpellDocumentation.lua); SOCKET_INFO_SUCCESS, no payload (ItemSocketInfoDocumentation.lua); C_Timer.After.
 
 local Gear = { others = {}, listeners = {} }
 CRT.Gear = Gear
@@ -401,9 +405,36 @@ function Gear:OnChange(fn)
     self.listeners[#self.listeners + 1] = fn
 end
 
+-- An enchant, a gem or an upgrade on a worn item changes its link with no PLAYER_EQUIPMENT_CHANGED. These
+-- events come with it (and with much else: UNIT_INVENTORY_CHANGED also fires for a new item in your bags),
+-- so a burst of them reads every slot once, Gear.SETTLE seconds after the first; the link is new by then.
+Gear.SETTLE = 0.5 -- seconds
+local settling = false
+
+local function settle()
+    if settling then
+        return
+    end
+    if not (C_Timer and C_Timer.After) then
+        Gear:Refresh()
+        return
+    end
+    settling = true
+    C_Timer.After(Gear.SETTLE, function()
+        settling = false
+        Gear:Refresh()
+    end)
+end
+
 -- The game's events (also called by the tests).
 function Gear:OnEvent(event, a1)
-    if event == "PLAYER_EQUIPMENT_CHANGED" then
+    if event == "UNIT_INVENTORY_CHANGED" then
+        if not secret(a1) and a1 == "player" then
+            settle()
+        end
+    elseif event == "ENCHANT_SPELL_COMPLETED" or event == "SOCKET_INFO_SUCCESS" then
+        settle()
+    elseif event == "PLAYER_EQUIPMENT_CHANGED" then
         local slot = not secret(a1) and type(a1) == "number" and SLOT[a1] and a1 or nil
         if ready and slot then
             self:Refresh(slot)
@@ -430,6 +461,9 @@ if CreateFrame then
     events:RegisterEvent("PLAYER_ENTERING_WORLD")
     events:RegisterEvent("PLAYER_EQUIPMENT_CHANGED")
     events:RegisterEvent("ITEM_DATA_LOAD_RESULT")
+    events:RegisterEvent("UNIT_INVENTORY_CHANGED")
+    events:RegisterEvent("ENCHANT_SPELL_COMPLETED")
+    events:RegisterEvent("SOCKET_INFO_SUCCESS")
     events:SetScript("OnEvent", function(_, event, a1)
         Gear:OnEvent(event, a1)
     end)
