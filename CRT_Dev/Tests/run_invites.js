@@ -7,7 +7,7 @@ const themeLua = require('./theme_stub');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
 const harness = themeLua(process.argv.slice(2)) + `
-local dataSrc, applySrc, inviteSrc = ...
+local dataSrc, applySrc, inviteSrc, lateSrc = ...
 local fails, passed = 0, 0
 local function check(ok, what) if ok then passed = passed + 1 print("ok " .. what) else fails = fails + 1 print("FAIL " .. what) end end
 
@@ -72,12 +72,15 @@ ERR_BAD_PLAYER_NAME_S = "Cannot find player '%s'."
 ERR_ALREADY_IN_GROUP_S = "%s is already in a group."
 ERR_IGNORING_YOU_S = "%s is ignoring you."
 
-local CRT = { db = { groups = { presets = {}, nextId = 1, working = {} }, classCache = {}, roleCache = {}, ui = {} }, UI = {} }
+date = os.date
+local CRT = { db = { groups = { presets = {}, nextId = 1, working = {} }, classCache = {}, roleCache = {}, ui = {},
+  late = { days = {}, hour = 20, minute = 0, grace = 0, history = {}, nextId = 1, lastAuto = "" } }, UI = {} }
 function CRT:Print(m) print("  [chat] " .. m) end
 CRT_THEME(CRT, CRT.UI)
 assert(load(dataSrc, "Data.lua"))("CowfeeRaidTools", CRT)
 assert(load(applySrc, "Apply.lua"))("CowfeeRaidTools", CRT)
 assert(load(inviteSrc, "Invite.lua"))("CowfeeRaidTools", CRT)
+assert(load(lateSrc, "Late/Data.lua"))("CowfeeRaidTools", CRT)
 local Invite, Apply = CRT.Invite, CRT.Apply
 check(Invite ~= nil and type(Invite.Send) == "function", "CRT.Invite:Send exists")
 check(type(Apply.MoveOne) == "function", "CRT.Apply:MoveOne exists")
@@ -190,19 +193,59 @@ s = plain(Invite:Summary())
 check(s:find("Left where they joined: Gadios (group 2 is full).", 1, true) ~= nil, "status says the group was full: " .. s)
 check(swaps == 0, "nobody is ever swapped")
 for i = 1, 6 do check(G.raid[i][2] == (i == 1 and 1 or 2), "member " .. G.raid[i][1] .. " untouched") end
--- In combat when they join: left where they joined, and said so.
-reset("raid", { { "Solex", 1 } })
+-- In combat when they join: they wait, and move once combat ends.
+reset("raid", { { "Solex", 1 }, { "Other", 2 } })
 Invite:Send({ "Late-Area52" }, slotsWith({ [21] = "Late-Area52" }), "Main Raid")
 check(plain(Invite:Summary()) == "Invited Late. They move to group 5 when they join.", "one invite's status: " .. plain(Invite:Summary()))
-G.raid[2] = { "Late", 1 }
+G.raid[3] = { "Late", 1 }
+G.combat = true
+fire("PLAYER_REGEN_DISABLED")
+fire("GROUP_ROSTER_UPDATE") flush()
+check(#sets == 0 and state("Late-Area52") == "joined" and not Invite:Entry("Late-Area52").stayed, "joined in combat: not moved yet, and not left for good")
+check(plain(Invite:StateText("Late-Area52", now)) == "moves after combat", "row: " .. plain(Invite:StateText("Late-Area52", now)))
+now = now + 60 -- a long fight: the retry window starts when combat ends, not at the join
+G.combat = false
+s = plain(Invite:Summary())
+check(s:find("Moving when combat ends: Late.", 1, true) ~= nil, "status says they move after combat: " .. s)
+fire("PLAYER_REGEN_ENABLED") flush()
+check(#sets == 1 and sets[1][3] == "Late" and sets[1][2] == 5 and state("Late-Area52") == "moved", "combat ends: Late moves to group 5 (" .. #sets .. " moves)")
+check(G.raid[1][2] == 1 and G.raid[2][2] == 2, "nobody else moved")
+-- They are in combat themselves: tried again on the next roster read after their combat clears.
+reset("raid", { { "Solex", 1 } })
+Invite:Send({ "Fighter-Area52" }, slotsWith({ [21] = "Fighter-Area52" }), "Main Raid")
+G.raid[2] = { "Fighter", 1, true }
+fire("GROUP_ROSTER_UPDATE") flush()
+check(#sets == 0 and not Invite:Entry("Fighter-Area52").stayed, "they joined in combat: waiting")
+G.raid[2][3] = false
+fire("GROUP_ROSTER_UPDATE") flush()
+check(#sets == 1 and state("Fighter-Area52") == "moved", "their combat cleared: moved on the next roster read")
+-- A full group by the time combat ends: they stay, with the usual reason.
+reset("raid", { { "Solex", 1 }, { "F1", 5 }, { "F2", 5 }, { "F3", 5 }, { "F4", 5 } })
+Invite:Send({ "Slow-Area52" }, slotsWith({ [21] = "Slow-Area52" }), "Main Raid")
+G.raid[6] = { "Slow", 1 }
 G.combat = true
 fire("GROUP_ROSTER_UPDATE") flush()
+G.raid[7] = { "Walkin", 5 }
 G.combat = false
-check(#sets == 0 and state("Late-Area52") == "joined", "joined in combat: not moved")
-s = plain(Invite:Summary())
-check(s:find("Left where they joined: Late (you were in combat).", 1, true) ~= nil, "status says combat: " .. s)
+fire("PLAYER_REGEN_ENABLED") flush()
+check(#sets == 0 and Invite:Entry("Slow-Area52").stayed == "group 5 is full", "group 5 filled up during combat: Slow stays (" .. tostring(Invite:Entry("Slow-Area52").stayed) .. ")")
+for i = 1, 7 do check(G.raid[i][2] == ({ 1, 5, 5, 5, 5, 1, 5 })[i], "member " .. G.raid[i][1] .. " untouched") end
+
+-- A night's start drops only finished invites: open ones keep going and still move (Late/Data.lua).
+reset("raid", { { "Solex", 1 } })
+CRT.db.late = { days = {}, hour = 20, minute = 0, grace = 0, history = {}, nextId = 1, lastAuto = "" }
+date = os.date
+CRT.Groups:SetActive(CRT.Groups:CreatePreset("Main", slotsWith({ [1] = "Solex-Area52", [16] = "Open-Area52", [17] = "Nope-Area52" })))
+Invite:Send({ "Open-Area52", "Nope-Area52" }, CRT.Groups:Find(CRT.Groups:Active()).slots, "Main")
+fire("CHAT_MSG_SYSTEM", "Nope declines your group invitation.")
+CRT.Late:Start("button", now)
+check(Invite:Entry("Nope-Area52") == nil, "the start drops the finished (declined) invite")
+check(state("Open-Area52") == "invited", "and keeps the open one")
+G.raid[2] = { "Open", 1 }
 fire("GROUP_ROSTER_UPDATE") flush()
-check(#sets == 0, "and not moved later either")
+check(state("Open-Area52") == "moved" and sets[1] and sets[1][2] == 4, "who joins after the start still moves to their group")
+CRT.Late:End("button", now)
+check(Invite:Entry("Open-Area52") == nil, "the night's end forgets every invite")
 
 -- 8. Apply:MoveOne on its own.
 reset("raid", { { "Solex", 1 }, { "Abu-KelThuzad", 2 }, { "New", 1 } })
@@ -241,6 +284,9 @@ check(state("Cat-Area52") == "moving", "a move the server drops: still moving at
 runLong()
 check(state("Cat-Area52") == "joined" and Invite:Entry("Cat-Area52").stayed == "the move didn't go through", "then stays, saying the move didn't go through")
 check(plain(Invite:StateText("Cat-Area52", now)) == "stayed in 1", "row: stayed in 1")
+G.raid[2][2] = 4
+fire("GROUP_ROSTER_UPDATE") flush()
+check(state("Cat-Area52") == "moved" and not Invite:Entry("Cat-Area52").stayed, "the move lands after the check after all: moved")
 
 -- 10. Unanswered invites time out: no answer, the room comes back, and a solo queue doesn't stall.
 reset("raid", { { "Solex", 1 } })
@@ -282,6 +328,9 @@ G.mode, G.leader = "raid", false
 G.raid[2] = { "A", 1 }
 fire("GROUP_ROSTER_UPDATE") flush()
 check(#invites == 4 and state("E-Area52") == "waiting", "no longer lead or assist: the waiting invite isn't sent")
+now = now + 31
+runLong()
+check(state("E-Area52") == "failed" and Invite:Entry("E-Area52").reason == "Only the raid leader or an assist can invite.", "and after the retry window it fails with why, instead of waiting forever")
 reset("raid", { { "Solex", 1 } })
 Invite:Send({ "Eve-Area52" }, nil)
 local oldDecline = ERR_DECLINE_GROUP_S
@@ -296,5 +345,5 @@ if fails > 0 then error(fails .. " invite checks failed") end
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 const d = process.argv[2];
 const read = (f) => fs.existsSync(d + '/' + f) ? fs.readFileSync(d + '/' + f, 'utf8') : 'error("missing ' + f + '")';
-for (const f of ['CRT_Modules/Groups/Data.lua', 'CRT_Modules/Groups/Apply.lua', 'CRT_Modules/Groups/Invite.lua']) lua.lua_pushstring(L, to_luastring(read(f)));
-if (lua.lua_pcall(L, 3, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
+for (const f of ['CRT_Modules/Groups/Data.lua', 'CRT_Modules/Groups/Apply.lua', 'CRT_Modules/Groups/Invite.lua', 'CRT_Modules/Late/Data.lua']) lua.lua_pushstring(L, to_luastring(read(f)));
+if (lua.lua_pcall(L, 4, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }

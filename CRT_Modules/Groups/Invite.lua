@@ -9,7 +9,8 @@ local ADDON, CRT = ...
 -- Each name has a state: waiting (not sent yet), invited, joined, moving (a move was asked for), moved
 -- (the roster shows them in their group), declined or failed (with a reason). Declines and "player not
 -- found" come from the game's system messages (CHAT_MSG_SYSTEM); an invite with no answer after
--- INVITE_TIMEOUT fails with "no answer". Joiners match by their exact Name-Realm only.
+-- INVITE_TIMEOUT fails with "no answer". Joiners match by their exact Name-Realm only. A player who
+-- joins while you or they are in combat is moved once combat ends.
 
 local Groups = CRT.Groups
 local UI = CRT.UI
@@ -24,7 +25,11 @@ local ROSTER_DELAY = 0.5 -- seconds after a roster change before reading who joi
 -- timeout is about two minutes; confirm in game.
 local INVITE_TIMEOUT = 120
 local MOVE_CHECK = 3 -- seconds after asking for a move before a roster that doesn't show it means it failed
-local MOVE_RETRY = 30 -- seconds after a join that a move which can't be made yet (not lead, Arrange Groups running) is tried again
+-- Seconds that a move which can't be made yet (not lead, Arrange Groups running, they're in combat) is
+-- tried again, from the join or from the end of combat; also how long an invite waits while you
+-- aren't the leader or an assist before it fails.
+local MOVE_RETRY = 30
+local COMBAT_RECHECK = 5 -- seconds between tries to move a joiner who is in combat themselves
 
 local TEXT = {
     combat = "Invites wait until combat ends.",
@@ -37,6 +42,7 @@ local TEXT = {
     waiting = "%d more go out once the group is a raid.",
     notComing = "Not coming: %s.",
     stayed = "Left where they joined: %s.",
+    afterCombat = "Moving when combat ends: %s.",
     nameReason = "%s (%s)",
     -- reasons
     raidFull = "the raid is full",
@@ -47,7 +53,7 @@ local TEXT = {
     noInvite = "the game didn't take the invite",
     noAnswer = "no answer",
     groupFull = "group %d is full",
-    inCombat = "you were in combat",
+    inCombat = "they stayed in combat",
     moveFailed = "the move didn't go through",
     -- a row's state on the Late Tracker
     stateWaiting = "waiting",
@@ -56,6 +62,7 @@ local TEXT = {
     stateMoved = "moved to %d",
     stateJoined = "joined",
     stateStayed = "stayed in %d",
+    stateAfterCombat = "moves after combat",
 }
 Invite.TEXT = TEXT
 
@@ -71,6 +78,8 @@ local entries, order = {}, {} -- lower key -> entry, and the keys in the order t
 local batch -- the last Send: { keys = { lower, ... }, from = label }
 local refusal -- the reason the last Send was refused, shown until the next one
 local converting = false -- ConvertToRaid was called and the roster hasn't changed since
+local blockedSince, blockedTimer -- when pump first found you not the leader or an assist, and its timer
+local recheckTimer -- a timer to try moves again while a joiner is in combat themselves
 
 local function isTrue(v)
     if issecretvalue and issecretvalue(v) then
@@ -89,9 +98,40 @@ function Invite:Fire()
     end
 end
 
--- Forgets every invite: when a Late Tracker night starts or ends, and in tests.
+-- Forgets every invite: when a Late Tracker night ends, and in tests.
 function Invite:Reset()
     entries, order, batch, refusal, converting = {}, {}, nil, nil, false
+    blockedSince, blockedTimer, recheckTimer = nil, false, false -- an old timer still firing only finds nothing to do
+    self:Fire()
+end
+
+-- Whether an entry is done: moved, declined, failed, or left where they joined.
+local function finished(e)
+    return e.state == "moved" or e.state == "declined" or e.state == "failed" or (e.state == "joined" and e.stayed ~= nil)
+end
+
+-- Forgets only the finished invites, keeping waiting, invited, moving and joined-not-moved ones, so they
+-- still go out and move: when a Late Tracker night starts.
+function Invite:Prune()
+    local keep = {}
+    for _, lower in ipairs(order) do
+        if finished(entries[lower]) then
+            entries[lower] = nil
+        else
+            keep[#keep + 1] = lower
+        end
+    end
+    order = keep
+    if batch then
+        local keys = {}
+        for _, lower in ipairs(batch.keys) do
+            if entries[lower] then
+                keys[#keys + 1] = lower
+            end
+        end
+        batch.keys = keys
+    end
+    refusal = nil
     self:Fire()
 end
 
@@ -189,13 +229,40 @@ local function convert()
     end
 end
 
+-- While you aren't the leader or an assist, waiting invites can't go out: after MOVE_RETRY seconds of
+-- that they fail with the reason, instead of waiting forever. A timer checks again once.
+local function failBlocked()
+    local now = time()
+    blockedSince = blockedSince or now
+    if now - blockedSince > MOVE_RETRY then
+        for _, lower in ipairs(order) do
+            local e = entries[lower]
+            if e.state == "waiting" then
+                e.state, e.reason = "failed", TEXT.notLead
+            end
+        end
+    elseif not blockedTimer then
+        blockedTimer = true
+        C_Timer.After(MOVE_RETRY + 1, function()
+            blockedTimer = false
+            pump()
+            Invite:Fire()
+        end)
+    end
+end
+
 -- Sends the waiting invites the group has room for, converting a party to a raid first when it would
 -- need a sixth person. Called after a Send, on every roster change and when invites time out. Sends
 -- nothing while you may not invite (combat, or no longer the leader or an assist).
 pump = function()
-    if not Invite.CanInvite() then
+    local ok, why = Invite.CanInvite()
+    if not ok then
+        if why == TEXT.notLead then
+            failBlocked()
+        end
         return
     end
+    blockedSince = nil
     expire()
     local waiting = {}
     for _, lower in ipairs(order) do
@@ -236,6 +303,8 @@ function Invite:Send(fullNames, layoutSlots, from)
     end
     refusal = nil
     expire()
+    -- Skipping members uses MakeLookup on purpose: a bare own-realm name counts as here, as the grid
+    -- shows it. Joins (Invite:Update) match the exact Name-Realm only.
     local lookup = Groups.MakeLookup(Groups:ReadRoster())
     local list, seen = {}, {}
     for _, name in ipairs(fullNames or {}) do
@@ -322,10 +391,27 @@ local function tryMove(e, member, pending)
     elseif result == "full" then
         e.stayed = format(TEXT.groupFull, e.group)
     elseif result == "combat" then
-        e.stayed = TEXT.inCombat
-    elseif result == "failed" or time() - (e.joinedAt or 0) > MOVE_RETRY then
+        -- Not left for good: moved once combat ends. While you are in combat the retry window waits for
+        -- PLAYER_REGEN_ENABLED; while only they are, it runs from now and a timer tries again.
+        e.afterCombat = true
+        if not InCombatLockdown() then
+            e.retryFrom = e.retryFrom or time()
+            if time() - e.retryFrom > MOVE_RETRY then
+                e.stayed = TEXT.inCombat
+            elseif not recheckTimer then
+                recheckTimer = true
+                C_Timer.After(COMBAT_RECHECK, function()
+                    recheckTimer = false
+                    Invite:Update()
+                end)
+            end
+        end
+    elseif result == "failed" or time() - (e.retryFrom or e.joinedAt or 0) > MOVE_RETRY then
         e.stayed = TEXT.moveFailed
-    end -- busy, absent or denied: tried again on roster changes for MOVE_RETRY seconds after the join
+    end -- busy, absent or denied: tried again on roster changes for MOVE_RETRY seconds
+    if result ~= "combat" or e.stayed then
+        e.afterCombat = nil
+    end
     if e.stayed then
         e.subgroup = member.subgroup
     end
@@ -353,7 +439,9 @@ function Invite:Update()
         if member and e.state ~= "joined" and e.state ~= "moving" and e.state ~= "moved" then
             e.state, e.reason, e.subgroup, e.joinedAt = "joined", nil, member.subgroup, time()
         end
-        if member and e.state == "joined" and e.group and not e.stayed and IsInRaid() then
+        if member and e.state == "joined" and e.stayed and member.subgroup == e.group then
+            e.state, e.stayed = "moved", nil -- a move that landed after its check after all
+        elseif member and e.state == "joined" and e.group and not e.stayed and IsInRaid() then
             tryMove(e, member, pending)
         end
     end
@@ -438,6 +526,8 @@ function Invite:StateText(key, now)
         return UI.GoodText(format(TEXT.stateMoved, e.group))
     elseif e.stayed then
         return UI.ColorText(format(TEXT.stateStayed, e.subgroup or 1), "muted")
+    elseif e.afterCombat then
+        return UI.ColorText(TEXT.stateAfterCombat, "muted")
     end
     return UI.GoodText(TEXT.stateJoined)
 end
@@ -454,7 +544,7 @@ function Invite:Summary()
     if not batch or #batch.keys == 0 then
         return ""
     end
-    local sent, waiting, notComing, stayed = 0, 0, {}, {}
+    local sent, waiting, notComing, stayed, later = 0, 0, {}, {}, {}
     for _, lower in ipairs(batch.keys) do
         local e = entries[lower]
         local name = Groups.Display(e.key)
@@ -469,6 +559,8 @@ function Invite:Summary()
         end
         if e.stayed then
             stayed[#stayed + 1] = format(TEXT.nameReason, name, e.stayed)
+        elseif e.afterCombat and e.state == "joined" then
+            later[#later + 1] = name
         end
     end
     local lines = {}
@@ -486,6 +578,9 @@ function Invite:Summary()
     if #notComing > 0 then
         lines[#lines + 1] = UI.BadText(format(TEXT.notComing, table.concat(notComing, ", ")))
     end
+    if #later > 0 then
+        lines[#lines + 1] = UI.ColorText(format(TEXT.afterCombat, table.concat(later, ", ")), "muted")
+    end
     if #stayed > 0 then
         lines[#lines + 1] = UI.ColorText(format(TEXT.stayed, table.concat(stayed, ", ")), "muted")
     end
@@ -495,6 +590,31 @@ end
 -- Events -----------------------------------------------------------------------------------------------
 
 local rosterToken = 0
+
+-- Reads the roster ROSTER_DELAY seconds from now (the last call wins), then runs Invite:Update.
+local function updateSoon()
+    rosterToken = rosterToken + 1
+    local token = rosterToken
+    C_Timer.After(ROSTER_DELAY, function()
+        if token == rosterToken then
+            Invite:Update()
+        end
+    end)
+end
+
+-- Combat ended: the players who joined during it get their move now, and their retry window starts.
+local function afterCombat()
+    local now = time()
+    for _, lower in ipairs(order) do
+        local e = entries[lower]
+        if e.afterCombat then
+            e.retryFrom = now
+        end
+    end
+    pump()
+    updateSoon()
+end
+
 local events = CreateFrame("Frame")
 events:RegisterEvent("GROUP_ROSTER_UPDATE")
 events:RegisterEvent("PARTY_LEADER_CHANGED")
@@ -505,15 +625,9 @@ events:SetScript("OnEvent", function(_, event, text)
     if event == "CHAT_MSG_SYSTEM" then
         Invite:OnSystemMessage(text)
     elseif event == "GROUP_ROSTER_UPDATE" then
-        rosterToken = rosterToken + 1
-        local token = rosterToken
-        C_Timer.After(ROSTER_DELAY, function()
-            if token == rosterToken then
-                Invite:Update()
-            end
-        end)
+        updateSoon()
     elseif event == "PLAYER_REGEN_ENABLED" then
-        pump()
+        afterCombat()
         Invite:Fire()
     else
         Invite:Fire() -- who may invite changed: the pages grey or ungrey their buttons

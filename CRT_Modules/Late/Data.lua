@@ -142,9 +142,10 @@ function Late:Start(how, startedAt)
         night.players[#night.players + 1] = { key = key }
     end
     s.current = night
-    -- Last night's invites and their states don't carry over (Groups/Invite.lua).
+    -- Finished invites don't carry over (Groups/Invite.lua); open ones keep going, so a player invited
+    -- before the start still moves to their group when they join.
     if CRT.Invite then
-        CRT.Invite:Reset()
+        CRT.Invite:Prune()
     end
     -- A start by hand on a raid day replaces that day's scheduled start.
     s.lastAuto = dayKey(startedAt)
