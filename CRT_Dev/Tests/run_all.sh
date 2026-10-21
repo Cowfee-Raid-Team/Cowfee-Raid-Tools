@@ -61,6 +61,7 @@ g "drag starts from the mouse" && { bad=$(grep -rn "StartMoving" --include=*.lua
 g "two looks, no third" && { bad=$(grep -rnE 'IsFlat|ui\.style|"minimal"|Minimal black' --include=*.lua --exclude-dir=.claude --exclude-dir=node_modules "$W" | grep -vE "$NOT_TESTS"); if [ -n "$bad" ]; then echo "FAIL code still reads the removed third look:"; echo "$bad"; else echo "all passed"; fi; }
 g "fit text" && { node run_fittext.js "$W" 2>&1 | tail -1; }
 g "gear" && { node run_gear.js "$W" 2>&1 | tail -12; echo "exit ${PIPESTATUS[0]}"; }
+g "gearchecker data" && { node run_gearchecker_data.js "$W" 2>&1 | tail -12; echo "exit ${PIPESTATUS[0]}"; }
 g "loot rclc" && { node run_loot_rclc.js "$W" 2>&1 | tail -6; echo "exit ${PIPESTATUS[0]}"; }
 g "lootmaster data" && { node run_lootmaster_data.js "$W" 2>&1 | tail -6; echo "exit ${PIPESTATUS[0]}"; }
 g "lootmaster comm" && { node run_lootmaster_comm.js "$W" 2>&1 | tail -6; echo "exit ${PIPESTATUS[0]}"; }
