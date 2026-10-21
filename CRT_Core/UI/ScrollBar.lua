@@ -45,6 +45,24 @@ UI.SCROLL_BAR_LOOKS = {
         border = "edge", face = "walnut", faceEdge = "walnutEdge", shine = "walnutShine" },
 }
 local LOOKS = UI.SCROLL_BAR_LOOKS
+
+-- The room a list keeps right of its rows for its scroll bar, so no row, highlight or marker runs under
+-- the bar. It is the same in every theme, so a theme switch never moves a row: each look above fits
+-- inside its bar, and the widest art is the game's own in Default: Blizzard, UIPanelScrollBarTemplate's
+-- 18 px thumb and arrow buttons centred on its 16 px bar (SecureScrollTemplates.xml,
+-- SecureUIPanelTemplates.xml), so 1 px each side of it.
+--   UI.SCROLL_GAP       between a list's rows and the left edge of its bar
+--   UI.ScrollGutter(w)  the gap and a bar w pixels wide; with no w, the game's widest bar (UI.SCROLL_BAR_W)
+-- A scroll frame or scroll box clips its rows at its own edge, and its bar sits outside it, the gap to
+-- its right (UIPanelScrollFrameTemplate puts its bar there; a MinimalScrollBar is anchored there), so its
+-- rows only have to stay inside it. A list that draws its bar inside itself, or beside rows it doesn't
+-- clip, ends its rows UI.ScrollGutter(the bar's width) short of where the bar ends.
+UI.SCROLL_GAP = 6
+UI.SCROLL_BAR_W = 18
+function UI.ScrollGutter(width)
+    return UI.SCROLL_GAP + (width or UI.SCROLL_BAR_W)
+end
+
 local HOVER_LIGHTEN = 0.25 -- how far toward white the thumb goes under the mouse
 
 local function mochaOf(key, lift)

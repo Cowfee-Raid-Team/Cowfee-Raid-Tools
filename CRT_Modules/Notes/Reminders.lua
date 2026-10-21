@@ -96,11 +96,14 @@ L.ROW_H = 24
 L.OWN_H = 24
 L.OWN_GAP = 6
 -- L.LIST_H, L.MAX_ROWS, L.PANEL_H: from the tab's height, set in build
-L.ROW_W = L.LIST_W - 4
+L.ROW_X = 2
+L.THUMB_W = 3 -- the list's scroll bar, a thin thumb THUMB_INSET in from its right edge
+L.THUMB_INSET = 1
+-- the rows end the scroll gutter (UI/ScrollBar.lua) short of the thumb's outer edge, so no row runs under it
+L.ROW_W = L.LIST_W - L.ROW_X - UI.ScrollGutter(L.THUMB_W + L.THUMB_INSET)
 L.NAME_X = 50
 L.DOT_SIZE = 6
 L.NAME_W = L.ROW_W - L.NAME_X - L.DOT_SIZE - 12
-L.THUMB_W = 3
 L.PANEL_GAP = 12
 L.PANEL_X = L.PAD + L.LIST_W + L.PANEL_GAP
 L.PANEL_W = UI.PAGE_W - L.PAD - L.PANEL_X
@@ -612,7 +615,7 @@ local function paint(index)
         local h = math.max(12, math.floor(L.LIST_H * L.MAX_ROWS / #items))
         thumb:SetHeight(h)
         thumb:ClearAllPoints()
-        thumb:SetPoint("TOPRIGHT", list, "TOPRIGHT", -1, -math.floor((L.LIST_H - h) * offset / maxOffset))
+        thumb:SetPoint("TOPRIGHT", list, "TOPRIGHT", -L.THUMB_INSET, -math.floor((L.LIST_H - h) * offset / maxOffset))
         thumb:Show()
     else
         thumb:Hide()
@@ -908,7 +911,7 @@ end
 local function makeRow(parent, i)
     local frame = CreateFrame("Button", nil, parent)
     frame:SetSize(L.ROW_W, L.ROW_H - 2)
-    frame:SetPoint("TOPLEFT", 2, -2 - (i - 1) * L.ROW_H)
+    frame:SetPoint("TOPLEFT", L.ROW_X, -2 - (i - 1) * L.ROW_H)
     local row = { frame = frame }
     row.sel = frame:CreateTexture(nil, "BACKGROUND")
     row.sel:SetAllPoints()
@@ -1360,6 +1363,7 @@ local function build(f)
     thumb:SetWidth(L.THUMB_W)
     UI.Tint(thumb, "SetColorTexture", "caramel", 0.7)
     thumb:Hide()
+    f.thumb = thumb
     list:EnableMouseWheel(true)
     list:SetScript("OnMouseWheel", function(_, delta)
         scrollBy(delta > 0 and -1 or 1)

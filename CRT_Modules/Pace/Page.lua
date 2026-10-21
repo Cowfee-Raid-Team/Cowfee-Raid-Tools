@@ -386,7 +386,7 @@ local function build(pf)
     slider = CreateFrame("Slider", nil, pf)
     slider:SetOrientation("VERTICAL")
     slider:SetSize(10, MAX_ROWS * ROW_H)
-    slider:SetPoint("TOPLEFT", LIST_X + LIST_W + 6, LIST_TOP)
+    slider:SetPoint("TOPLEFT", LIST_X + LIST_W + UI.SCROLL_GAP, LIST_TOP) -- the rows are LIST_W wide from LIST_X
     slider:SetMinMaxValues(0, 0)
     slider:SetValueStep(1)
     slider:SetObeyStepOnDrag(true)

@@ -290,6 +290,32 @@ UI:SkinScrollBar(sideways)
 check(sideways.crtScroll == nil, "a horizontal Slider is left alone")
 print("ok scrollbar: a hand-made vertical Slider")
 
+-- The gutter: the room a list keeps right of its rows for its bar, one rule, the same in every theme.
+check(UI.SCROLL_GAP == 6 and UI.SCROLL_BAR_W == 18, "the gap is 6 px; the widest bar's art is 18 px")
+check(type(UI.ScrollGutter) == "function" and UI.ScrollGutter() == 24 and UI.ScrollGutter(4) == 10, "UI.ScrollGutter: the gap and the bar's width, the game's widest bar by default")
+-- How far each theme's drawing starts right of its bar's left edge, on each kind of bar (negative: left of
+-- it). Default: Blizzard is the game's art: UIPanelScrollBarTemplate's 18 px thumb and arrow buttons centred
+-- on its 16 px bar (SecureScrollTemplates.xml, SecureUIPanelTemplates.xml); MinimalScrollBar's art inside its
+-- 8 px; a hand-made Slider's own textures fill it (the Pace list's 10 px). The scan below checks each list's
+-- rows against these.
+local BAR_W = { panel = 16, minimal = 8, hand = 10 }
+local DEFAULT_ART = { panel = 18, minimal = 8, hand = 10 }
+local insets = {}
+for _, info in ipairs(CRT.THEME_LIST) do
+  for kind, barW in pairs(BAR_W) do
+    local art = DEFAULT_ART[kind]
+    local k = info.scrollBar and UI.SCROLL_BAR_LOOKS[info.scrollBar]
+    if k then
+      art = kind == "minimal" and math.max(k.narrowTrack, k.narrowThumb) or math.max(k.track, k.thumb)
+    end
+    check(art <= UI.SCROLL_BAR_W, info.key .. ", " .. kind .. " bar: its look fits the gutter (" .. art .. " px)")
+    insets[#insets + 1] = kind .. " " .. info.key .. " " .. ((barW - art) / 2)
+  end
+end
+SCROLL_INSETS = table.concat(insets, ";")
+SCROLL_GAP = UI.SCROLL_GAP
+print("ok scrollbar: the gutter is the same in every theme")
+
 print(passes .. " passed, " .. fails .. " failed")
 if fails > 0 then error(fails .. " scroll bar checks failed") end
 `;
@@ -304,6 +330,14 @@ let scrollSrc = '';
 try { scrollSrc = read('CRT_Core/UI/ScrollBar.lua'); } catch (e) { console.log('FAIL CRT_Core/UI/ScrollBar.lua is missing'); ok = false; }
 lua.lua_pushstring(L, to_luastring(scrollSrc));
 if (lua.lua_pcall(L, 4, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); ok = false; }
+// each theme's inset on each kind of bar, and the gap, from the checks above
+const luaGlobal = (name) => { lua.lua_getglobal(L, to_luastring(name)); const v = lua.lua_isnil(L, -1) ? null : lua.lua_tojsstring(L, -1); lua.lua_pop(L, 1); return v; };
+const INSETS = {};
+for (const part of (luaGlobal('SCROLL_INSETS') || '').split(';').filter(Boolean)) {
+  const [kind, theme, inset] = part.split(' ');
+  (INSETS[kind] = INSETS[kind] || {})[theme] = Number(inset);
+}
+const GAP = Number(luaGlobal('SCROLL_GAP'));
 
 // Every scroll bar in the addon (Lua and XML): each CreateFrame from UIPanelScrollFrameTemplate or
 // MinimalScrollBar, and each hand-made vertical Slider, is kept in a variable and followed, within a few
@@ -352,6 +386,49 @@ const OTHER_TEMPLATES = ['ScrollFrameTemplate', 'WowTrimScrollBar', 'MinimalScro
   'VerticalScrollBarTemplate', 'HorizontalScrollBarTemplate', 'FauxScrollFrameTemplate', 'HybridScrollFrameTemplate',
   'InputScrollFrameTemplate', 'ScrollingEditBoxTemplate', 'ListScrollFrameTemplate'];
 const WINDOW = 15;
+// The gutter, per list: how far right of the edge its rows end at the bar's left edge starts, then each
+// theme's drawing (INSETS); the rows' right edge must be left of the drawing in every theme.
+//   UIPanelScrollFrameTemplate: the scroll frame clips its rows at its right edge, and the template puts
+//     its bar 6 px right of it (SecureScrollTemplates.xml: TOPLEFT to TOPRIGHT, x 6); a list that moves
+//     the bar fails, so its new place gets checked here first.
+//   MinimalScrollBar: a scroll box (WowScrollBox, WowScrollBoxList) clips its rows; the bar is anchored
+//     TOPLEFT to the box's TOPRIGHT, x pixels right of it.
+//   A hand-made Slider: its rows aren't clipped; it's placed UI.SCROLL_GAP right of a sum ending in the
+//     rows' width (... + LIST_W + UI.SCROLL_GAP), and the rows are that wide.
+const TEMPLATE_GAP = 6;
+let clear = 0;
+const reEsc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+function gutter(where, text, after, name, template, bare) {
+  let kind, offset;
+  if (template === 'UIPanelScrollFrameTemplate') {
+    kind = 'panel';
+    if (new RegExp(reEsc(name) + '\\.ScrollBar:(SetPoint|ClearAllPoints|SetAllPoints|SetWidth|SetSize)\\(').test(text)) {
+      return fail(where + ' moves the scroll frame\'s bar; check its rows stay clear of it and teach the gutter check its place');
+    }
+    offset = TEMPLATE_GAP;
+  } else if (template === 'MinimalScrollBar') {
+    kind = 'minimal';
+    const a = after.match(new RegExp(reEsc(name) + ':SetPoint\\("TOPLEFT",\\s*(\\w+),\\s*"TOPRIGHT",\\s*(-?\\d+)'));
+    if (!a) return fail(where + ' a MinimalScrollBar not anchored TOPLEFT to its scroll box\'s TOPRIGHT; check its rows stay clear of it');
+    if (!new RegExp(reEsc(a[1]) + '\\s*=\\s*CreateFrame\\("Frame",\\s*nil,\\s*[\\w.]+,\\s*"WowScrollBox(List)?"\\)').test(text)) {
+      return fail(where + ' the bar hangs off ' + a[1] + ', which is not a scroll box, so its rows are not clipped before the bar');
+    }
+    offset = Number(a[2]);
+  } else if (bare) {
+    kind = 'hand';
+    const a = after.match(new RegExp(reEsc(name) + ':SetPoint\\("TOPLEFT",[^,]*\\+\\s*(\\w+)\\s*\\+\\s*UI\\.SCROLL_GAP\\s*,'));
+    if (!a) return fail(where + ' a hand-made Slider not placed UI.SCROLL_GAP right of its rows (... + LIST_W + UI.SCROLL_GAP)');
+    if (!new RegExp(':SetSize\\(' + reEsc(a[1]) + ',').test(text)) return fail(where + ' no row is ' + a[1] + ' wide, the width the bar is placed after');
+    offset = GAP;
+  } else return;
+  if (!(offset >= GAP)) fail(where + ' its bar is ' + offset + ' px from its rows, under the ' + GAP + ' px gap (UI.SCROLL_GAP)');
+  const themes = INSETS[kind] || {};
+  if (!Object.keys(themes).length) return fail(where + ' no theme insets for a ' + kind + ' bar');
+  for (const [theme, inset] of Object.entries(themes)) {
+    if (!(offset + inset >= 1)) return fail(where + ', ' + theme + ': the bar\'s drawing starts ' + (offset + inset) + ' px from the rows\' right edge, over them');
+  }
+  clear++;
+}
 const files = [];
 (function walk(dir) {
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -397,8 +474,10 @@ for (const file of files) {
     const want = m[1] + (template ? KNOWN_TEMPLATES[template] : '');
     if (new RegExp('UI:SkinScrollBar\\(' + want.replace(/[.]/g, '\\.') + '\\)').test(after)) skinned++;
     else fail(where + ' ' + (template || 'a hand-made Slider') + ' without UI:SkinScrollBar(' + want + ') within ' + WINDOW + ' lines');
+    gutter(where, lines.join('\n'), after, m[1], template, bare);
   });
 }
+console.log((ok ? 'ok' : 'FAIL') + ' scrollbar: ' + clear + ' lists keep their rows clear of their bar in ' + Object.keys(INSETS.panel || {}).length + ' themes');
 for (const a of ALLOW) if (!allowUsed.has(a[1])) fail('the allowed scroll bar in ' + a[0] + ' is gone; take it off ALLOW');
 for (const [f, name] of KNOWN) {
   const hit = [...seen].some((s) => s.startsWith(f + '|') && s.includes('"' + name));

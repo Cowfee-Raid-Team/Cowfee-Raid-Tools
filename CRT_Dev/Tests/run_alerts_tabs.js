@@ -108,7 +108,13 @@ local opened = {}
 CRT.AlertEditor = { Open = function(self, enc, id, prefill) opened[#opened + 1] = { enc = enc, id = id, prefill = prefill } end }
 
 for i, src in ipairs(sources) do
-  assert(load(src, "src" .. i))("CowfeeRaidTools", CRT)
+  if src:find("function UI:SkinScrollBar", 1, true) then -- the real CRT_Core/UI/ScrollBar.lua: only the gutter rule is taken
+    local tmp = { UI = {} }
+    assert(load(src, "CRT_Core/UI/ScrollBar.lua"))("CowfeeRaidTools", tmp)
+    CRT.UI.SCROLL_GAP, CRT.UI.SCROLL_BAR_W, CRT.UI.ScrollGutter = tmp.UI.SCROLL_GAP, tmp.UI.SCROLL_BAR_W, tmp.UI.ScrollGutter
+  else
+    assert(load(src, "src" .. i))("CowfeeRaidTools", CRT)
+  end
 end
 CRT.AlertEditor.Open = function(self, enc, id, prefill) opened[#opened + 1] = { enc = enc, id = id, prefill = prefill } end
 local R, P, A, Ref = CRT.AlertReminders, CRT.AlertPhases, CRT.Alerts, CRT.TimelineReference
