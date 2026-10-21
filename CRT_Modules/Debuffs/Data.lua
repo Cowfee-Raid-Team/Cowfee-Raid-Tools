@@ -8,6 +8,7 @@ local ADDON, CRT = ...
 --   The look: swipe, swipeEdge, timerPosition, timerX, timerY, borderScale, spacing (pixels between two
 --   icons' borders, 0 to 20; the border's width is added to it) and dispelGlow (a soft glow around a
 --   dispellable debuff's frame).
+--   grow is "right" (left to right) or "left" (right to left, from the panel's right end).
 --   A reverse option existed until 0.13.0, includeRegular (the old optional second row) until the
 --   AuraContainer became the panel, and dispelBorder (a box for the border colored by dispel type)
 --   until the frame always took that color. Their saved values may remain and are ignored.
@@ -245,6 +246,25 @@ function Debuffs:Step(size)
     return size + self:Edge() + self:Spacing()
 end
 
+-- Which way the row grows: "right" puts the first debuff at the panel's left end and the next ones to
+-- its right; "left" puts it at the right end and the next ones to its left. Anything else, such as
+-- saved data from before this setting, reads as "right".
+Debuffs.GROW_DIRECTIONS = {
+    { key = "right", label = "Left to right" },
+    { key = "left", label = "Right to left" },
+}
+
+function Debuffs:Grow()
+    return ddb().grow == "left" and "left" or "right"
+end
+
+function Debuffs:SetGrow(direction)
+    if direction == "left" or direction == "right" then
+        ddb().grow = direction
+    end
+    self:Fire()
+end
+
 -- The glow around a dispellable debuff's frame, in its dispel type's color. The frame itself always
 -- takes that color (Panel.lua), so the glow depends on no other setting.
 function Debuffs:DispelGlow()
@@ -300,7 +320,7 @@ function Debuffs:LookSignature()
     local timerPoint, _, timerX, timerY = self:TimerAnchor()
     return table.concat({ tostring(self:PrivateSlots()), self:Size(), self:MaxCount(), tostring(self:DispelIcon()), self:DispelIconScale(),
         tostring(self:Get("swipe")), tostring(self:Get("swipeEdge")), tostring(self:SwipeNumbers()), tostring(timerPoint), tostring(timerX),
-        tostring(timerY), tostring(self:Get("borderScale")), tostring(self:DispelGlow()), self:Spacing() }, ":")
+        tostring(timerY), tostring(self:Get("borderScale")), tostring(self:DispelGlow()), self:Spacing(), self:Grow() }, ":")
 end
 
 -- The saved position, or the default one in the upper middle of the screen.

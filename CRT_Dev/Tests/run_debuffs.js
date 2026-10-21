@@ -81,7 +81,14 @@ UnitAffectingCombat = function() return false end
 GetTime = function() return 100 end
 GetBuildInfo = function() return "12.1.5", "1", "", 120105 end
 C_AddOns = { IsAddOnLoaded = function() return true end }
-C_UnitAuras = {}
+-- The boss debuff slots: each anchor's arguments, by aura index.
+local anchorArgs, nextAnchor = {}, 0
+C_UnitAuras = {
+  AddPrivateAuraAnchor = function(args) nextAnchor = nextAnchor + 1 anchorArgs[args.auraIndex] = args return nextAnchor end,
+  RemovePrivateAuraAnchor = function() end,
+}
+-- The game's flow layout values, as in Blizzard_SharedXMLBase/AnchorUtil.lua (live).
+AnchorUtil = { FlowLayoutAxis = { Horizontal = 0, Vertical = 1 }, FlowDirection = { Left = -1, Right = 1, Up = 1, Down = -1 } }
 C_Spell = { GetSpellTexture = function(id) return "icon" .. id end }
 Enum = { CustomAuraButtonDispelTypeTextureStyle = { Border = 0, BorderWithIcon = 1, Icon = 2, PreserveAsset = 3, CustomAsset = 4 },
   NumericRuleFormatRounding = { Nearest = 0, Up = 1, Down = 2 } }
@@ -101,6 +108,9 @@ function CreateFrame(kind, name, parent, template)
   frames[#frames + 1] = f
   if kind == "AuraContainer" then
     rawset(f, "AddAuraGroup", function(self, key, filter, opts) groupOpts = opts return true end)
+    -- The flow layout calls (Blizzard_AuraContainerFlowLayout.lua), as last set.
+    rawset(f, "SetFlowLayoutAnchorPoint", function(self, point) rawset(self, "flowPoint", point) end)
+    rawset(f, "SetFlowLayoutGrowthDirection", function(self, h, v) rawset(self, "flowH", h) rawset(self, "flowV", v) end)
   end
   return f
 end
@@ -116,7 +126,7 @@ end
 CRT.db = { debuffs = fresh() }
 
 -- UI stubs: sliders, dropdowns and help icons record their options.
-local sliders, helps, previewFns = {}, {}, {}
+local sliders, dropdowns, helps, previewFns = {}, {}, {}, {}
 CRT.UI = {
   PAGE_W = 1026, PAGE_H = 560, previewing = false,
   RegisterLayer = function() end,
@@ -124,7 +134,7 @@ CRT.UI = {
   SetPreviews = function() end,
   ResetButtonWidth = function() return 44 end, ResetButton = function() return mock("Button") end,
   Slider = function(p, text, opts) local r = mock("Slider") rawset(r, "opts", opts) rawset(r, "refresh", function() end) sliders[text] = r return r end,
-  Dropdown = function(p, text, opts) local r = mock("Dropdown") rawset(r, "refresh", function() end) return r end,
+  Dropdown = function(p, text, opts) local r = mock("Dropdown") rawset(r, "opts", opts) rawset(r, "refresh", function() end) dropdowns[text] = r return r end,
   Help = function(p, title, text) local h = mock("Help") helps[title] = text return h end,
 }
 function CRT:Print(m) print("  [print] " .. tostring(m)) end
@@ -152,6 +162,10 @@ check("a missing setting gets its default", CRTDB.debuffs.spacing == 4 and CRTDB
 CRTDB = { debuffs = {} }
 coreEvents.OnEvent(coreEvents, "ADDON_LOADED", "CowfeeRaidTools")
 check("a new player starts with the timer on the icon and border size 2", CRTDB.debuffs.timerPosition == "center" and CRTDB.debuffs.borderScale == 2)
+check("default grow is left to right", defaults.grow == "right" and CRTDB.debuffs.grow == "right", tostring(defaults.grow))
+CRTDB = { debuffs = { grow = "left" } }
+coreEvents.OnEvent(coreEvents, "ADDON_LOADED", "CowfeeRaidTools")
+check("a saved grow direction is kept", CRTDB.debuffs.grow == "left", CRTDB.debuffs.grow)
 CRT.db, CRTDB = savedDb, nil
 check("default dispel icon scale is 0.35", defaults.dispelIconScale == 0.35, defaults.dispelIconScale)
 check("default dispel glow is off", defaults.dispelGlow == false, tostring(defaults.dispelGlow))
@@ -220,6 +234,20 @@ check("an old saved dispelBorder value changes nothing", not changes("dispelBord
 check("signature changes with dispelGlow", changes("dispelGlow", true))
 check("signature changes with size", changes("size", 60))
 check("signature changes with spacing", changes("spacing", 10))
+check("signature changes with grow", changes("grow", "left"))
+
+-- Grow: right (left to right, the default) or left (right to left).
+check("grow reads right by default", Debuffs:Grow() == "right", Debuffs:Grow())
+CRT.db.debuffs.grow = nil
+check("old saved data without a grow reads right", Debuffs:Grow() == "right", Debuffs:Grow())
+Debuffs:SetGrow("left") check("grow left saves", CRT.db.debuffs.grow == "left" and Debuffs:Grow() == "left")
+Debuffs:SetGrow("up") check("grow ignores junk", Debuffs:Grow() == "left", Debuffs:Grow())
+CRT.db.debuffs.grow = "sideways"
+check("a junk saved grow reads right", Debuffs:Grow() == "right", Debuffs:Grow())
+Debuffs:SetGrow("right")
+local growKeys = {}
+for _, o in ipairs(Debuffs.GROW_DIRECTIONS or {}) do growKeys[#growKeys + 1] = o.key .. "=" .. o.label end
+check("the grow choices", table.concat(growKeys, ",") == "right=Left to right,left=Right to left", table.concat(growKeys, ","))
 
 -- Spacing: the gap between two icons' borders, 0 to 20, default 4.
 check("default spacing is 4", defaults.spacing == 4 and Debuffs:Spacing() == 4, tostring(defaults.spacing))
@@ -467,6 +495,58 @@ CRT.db.debuffs.borderScale, CRT.db.debuffs.spacing = 1, 4
 Debuffs:Fire()
 check("the group's spacing is the step less the icon", groupOpts.layout.elementSpacing == 5 + 4, groupOpts.layout.elementSpacing)
 
+-- Grow: the container's flow layout, its anchor, the boss debuff slots and the preview tiles all
+-- start at the panel's left end (right) or its right end (left). The panel itself never moves.
+do
+  local box
+  for _, f in ipairs(frames) do if f.kind == "AuraContainer" then box = f end end
+  local function pointIs(region, point, x)
+    local p = region.pts[1]
+    return #region.pts == 1 and p[1] == point and p[2] == panelFrame and p[3] == point and p[4] == x and p[5] == 0
+  end
+  local step = Debuffs:Step(44)
+  check("left to right: the row grows right from the top left", box.flowPoint == "TOPLEFT" and box.flowH == 1 and box.flowV == -1, tostring(box.flowPoint) .. " " .. tostring(box.flowH))
+  check("left to right: the container sits at the panel's top left", pointIs(box, "TOPLEFT", 0))
+  local panelAt = table.concat(panelFrame.pts[#panelFrame.pts], ",", 3)
+  Debuffs:SetPrivateSlots(true)
+  local slotsRight = anchorArgs[1] and anchorArgs[2] and anchorArgs[1].parent.pts[1][1] == "TOPLEFT" and anchorArgs[1].parent.pts[1][4] == 0
+    and anchorArgs[2].parent.pts[1][4] == step
+  check("left to right: boss debuff slot 1 at the left end, slot 2 one step right", slotsRight)
+  Debuffs:SetGrow("left")
+  check("right to left: the row grows left from the top right", box.flowPoint == "TOPRIGHT" and box.flowH == AnchorUtil.FlowDirection.Left and box.flowV == -1, tostring(box.flowPoint) .. " " .. tostring(box.flowH))
+  check("right to left: the container sits at the panel's top right", pointIs(box, "TOPRIGHT", 0), box.pts[1] and box.pts[1][1])
+  local s1, s2 = anchorArgs[1].parent, anchorArgs[2].parent
+  check("right to left: boss debuff slot 1 at the right end, slot 2 one step left", s1.pts[1][1] == "TOPRIGHT" and s1.pts[1][3] == "TOPRIGHT" and s1.pts[1][4] == 0
+    and s2.pts[1][1] == "TOPRIGHT" and s2.pts[1][4] == -step, s2.pts[1] and s2.pts[1][4])
+  check("switching direction doesn't move the panel", table.concat(panelFrame.pts[#panelFrame.pts], ",", 3) == panelAt and panelFrame.w == 3 * step + 44)
+  -- The preview: sample 1 next to the right end, each next one a step to its left.
+  Panel:SetPreview(true)
+  local order, n = true, 0
+  for _, f in ipairs(frames) do
+    local parts = rawget(f, "parts")
+    if parts and f.shown then
+      n = n + 1
+      local p = f.pts[1]
+      if not (p and p[1] == "TOPRIGHT" and p[2] == panelFrame and p[3] == "TOPRIGHT") then order = false end
+    end
+  end
+  local xs = {}
+  for _, f in ipairs(frames) do if rawget(f, "parts") and f.shown then xs[#xs + 1] = f.pts[1][4] end end
+  check("right to left: the preview tiles run from the right end, one step apart", order and n == 4 and xs[1] == 0 and xs[2] == -step and xs[3] == -2 * step and xs[4] == -3 * step, table.concat(xs, ","))
+  Panel:SetPreview(false)
+  -- In combat the switch waits, like every other layout change, and applies when combat ends.
+  combat = true
+  Debuffs:SetGrow("right")
+  check("in combat the row keeps growing left", box.flowPoint == "TOPRIGHT" and box.flowH == -1 and pointIs(box, "TOPRIGHT", 0))
+  check("in combat the slots stay put", s1.pts[1][1] == "TOPRIGHT")
+  combat = false
+  events.OnEvent(events, "PLAYER_REGEN_ENABLED")
+  check("after combat the row grows right again", box.flowPoint == "TOPLEFT" and box.flowH == 1 and pointIs(box, "TOPLEFT", 0))
+  check("after combat the slots are back at the left end", s1.pts[1][1] == "TOPLEFT" and s2.pts[1][4] == step)
+  check("and the panel never moved", table.concat(panelFrame.pts[#panelFrame.pts], ",", 3) == panelAt)
+  Debuffs:SetPrivateSlots(false)
+end
+
 -- Where the panel shows: everywhere, in and out of combat, hidden only by the settings. The game's
 -- candidate filter rule for the fields the panel uses, as in Blizzard_AuraContainerUtil.lua
 -- (DoesAuraPassCandidateFilters): a duration above maxDuration, or a permanent one (0), is left out
@@ -630,6 +710,15 @@ if sp then sp.opts.set(12) end
 check("spacing slider saves", Debuffs:Spacing() == 12, Debuffs:Spacing())
 Debuffs:SetSpacing(4)
 check("spacing has a (?) help that mentions the border", helps["Spacing"] ~= nil and helps["Spacing"]:find("border") ~= nil)
+local gd = dropdowns["Grow"]
+check("a Grow dropdown with the two directions", gd and gd.opts.options == Debuffs.GROW_DIRECTIONS)
+check("Grow reads the setting", gd and gd.opts.get() == "right", gd and gd.opts.get())
+if gd then gd.opts.set("left") end
+check("Grow saves", Debuffs:Grow() == "left", Debuffs:Grow())
+if gd then gd.opts.set("right") end
+check("the Look help explains Grow", helps["Look"] ~= nil and helps["Look"]:find("Grow:") ~= nil and helps["Look"]:find("Right to left") ~= nil)
+local gx, gy = gd and gd.pts[1] and gd.pts[1][2], gd and gd.pts[1] and gd.pts[1][3]
+check("Grow sits in the Look column, inside the page", gx == 440 and gy and gy < 0 and gy > -CRT.UI.PAGE_H, tostring(gx) .. "," .. tostring(gy))
 Debuffs:SetDispelIconScale(0.35)
 check("dispel icon size reads the saved scale", ds and ds.opts.get() == 35, ds and ds.opts.get())
 ds.opts.set(70)

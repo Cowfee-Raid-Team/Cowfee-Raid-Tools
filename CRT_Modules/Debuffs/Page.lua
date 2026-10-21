@@ -53,17 +53,26 @@ end
 local LOOK_X = 440
 local LEFT_TEXT_W = 390
 
--- A dropdown for one look setting, in the Edit Mode style (UI/Controls.lua).
-local function lookDropdown(pf, yOffset, text, field, choices)
+-- A dropdown for one look setting, in the Edit Mode style (UI/Controls.lua). getter and setter, when
+-- given, read and save it through Debuffs (such as Debuffs.Grow and Debuffs.SetGrow) instead of Get
+-- and Set.
+local function lookDropdown(pf, yOffset, text, field, choices, getter, setter)
     local row = UI.Dropdown(pf, text, {
         options = choices,
         labelWidth = 80,
         width = 150,
         get = function()
+            if getter then
+                return getter(Debuffs)
+            end
             return Debuffs:Get(field)
         end,
         set = function(key)
-            Debuffs:Set(field, key)
+            if setter then
+                setter(Debuffs, key)
+            else
+                Debuffs:Set(field, key)
+            end
         end,
         enabledIf = function()
             return Debuffs:Enabled()
@@ -261,7 +270,7 @@ local function build(pf)
     local lookTitle = pf:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
     lookTitle:SetPoint("TOPLEFT", LOOK_X, -8)
     lookTitle:SetText("Look")
-    UI.Help(pf, "Look", "How each debuff in the panel looks: a dark frame around the icon, a yellow countdown and the stacks at the bottom right. A debuff you can dispel gets a frame in its dispel type's color.\n\nTimer: where the countdown goes. On the icon it is big, beside the icon smaller, and it grows with the icon size. It shows seconds, then minutes and seconds from one minute up. Swipe numbers shows the game's countdown numbers on the swipe instead, never both.\n\nBorder size: the frame's width, 5 pixels for each step; 0 has none.\n\nThe countdown and stacks use the addon's font from the General Settings page.\n\nPress Preview debuffs to see each change as you make it."):SetPoint("LEFT", lookTitle, "RIGHT", 6, 0)
+    UI.Help(pf, "Look", "How each debuff in the panel looks: a dark frame around the icon, a yellow countdown and the stacks at the bottom right. A debuff you can dispel gets a frame in its dispel type's color.\n\nTimer: where the countdown goes. On the icon it is big, beside the icon smaller, and it grows with the icon size. It shows seconds, then minutes and seconds from one minute up. Swipe numbers shows the game's countdown numbers on the swipe instead, never both.\n\nBorder size: the frame's width, 5 pixels for each step; 0 has none.\n\nGrow: which way the row fills. Left to right starts at the left end of the drag bar. Right to left starts at its right end. The panel stays where you put it, and the boss debuff slots follow the same way.\n\nThe countdown and stacks use the addon's font from the General Settings page.\n\nPress Preview debuffs to see each change as you make it."):SetPoint("LEFT", lookTitle, "RIGHT", 6, 0)
 
     local timer = lookDropdown(pf, -26, "Timer", "timerPosition", Debuffs.TIMER_POSITIONS)
     local nudgeX = nudgeBox(pf, timer, "Nudge X", "timerX")
@@ -295,7 +304,8 @@ local function build(pf)
     spacing:SetPoint("TOPLEFT", LOOK_X, -140)
     look[#look + 1] = spacing
     UI.Help(pf, "Spacing", "The gap between two debuffs' borders. The border's width is added on top automatically, so borders never overlap at any border size. At 0 the borders touch.\n\nThe glow adds no space: it draws over the debuffs beside it."):SetPoint("LEFT", spacing, "RIGHT", 4, 0)
-    local glow = lookCheck(pf, "Glow on dispellable debuffs", -176, "dispelGlow", LOOK_X - 4, nil, Debuffs.SetDispelGlow)
+    lookDropdown(pf, -168, "Grow", "grow", Debuffs.GROW_DIRECTIONS, Debuffs.Grow, Debuffs.SetGrow)
+    local glow = lookCheck(pf, "Glow on dispellable debuffs", -204, "dispelGlow", LOOK_X - 4, nil, Debuffs.SetDispelGlow)
     UI.Help(pf, "Glow on dispellable debuffs", "A debuff with a dispel type always gets a frame in its color: Magic blue, Poison green, Curse purple, Disease brown, and Bleed in the game's bleed color. This works in combat. Other debuffs keep the dark frame.\n\nThe glow adds a soft light in the same color around that frame.\n\nThe colored frame and the glow need a border size above 0. The boss debuff slots row is drawn by the game and isn't colored."):SetPoint("LEFT", glow.label, "RIGHT", 4, 0)
 
     pf:SetScript("OnShow", refresh)
