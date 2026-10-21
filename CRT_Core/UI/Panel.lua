@@ -293,6 +293,7 @@ end
 -- one entry per setter. UI:SetTheme paints every tinted part again. A surface that reads CRT.MOCHA when
 -- it draws registers UI:OnTheme(fn) and redraws there.
 local tinted = setmetatable({}, { __mode = "k" })
+local themedTexts = setmetatable({}, { __mode = "k" }) -- UI.ThemedText: font string -> its text builder
 local themeHooks = {}
 
 local function paintTint(region, method, t)
@@ -324,6 +325,12 @@ function UI:RepaintTheme()
     for region, list in pairs(tinted) do
         for method, t in pairs(list) do
             paintTint(region, method, t)
+        end
+    end
+    for fs, build in pairs(themedTexts) do
+        local ok, text = pcall(build)
+        if ok then
+            fs:SetText(text)
         end
     end
     for _, fn in ipairs(themeHooks) do
@@ -383,20 +390,47 @@ function UI:FillThemeMenu(root)
     end
 end
 
--- Text in a good state (synced, answered, on): matcha in a Modern theme; in Classic the classic color
--- (a hex such as "80ff80"), or as it is without one.
-function UI.GoodText(text, classic)
-    local hex
-    if UI:IsModern() then
-        local c = CRT.MOCHA.matcha
-        hex = string.format("%02x%02x%02x", math.floor(c[1] * 255 + 0.5), math.floor(c[2] * 255 + 0.5), math.floor(c[3] * 255 + 0.5))
-    else
-        hex = classic
-    end
-    if not hex then
-        return text
-    end
-    return "|cff" .. hex .. text .. "|r"
+-- The theme's colours by palette key, for code that colours a part itself. Every theme has its own
+-- heading, good (matcha) and bad colour; Default: Blizzard's are the game's gold, green and red.
+--   UI.Color(key, alpha)    r, g, b, a for SetTextColor, SetVertexColor or SetColorTexture
+--   UI.Hex(key)             "rrggbb" for |cff markup
+--   UI.ColorText(text, key) the text in that colour
+--   UI.GoodText(text)       good states: synced, answered, on, ready
+--   UI.BadText(text)        bad states: late, failed, missing, can't
+--   UI.HeadingText(text)    a heading or section title written in a string
+-- A part coloured once, when it is made, follows a switch through UI.Tint (one colour) or UI.ThemedText
+-- (a text built from these helpers).
+function UI.Color(key, alpha)
+    local c = CRT.MOCHA[key] or CRT.MOCHA.cream
+    return c[1], c[2], c[3], alpha or 1
+end
+
+function UI.Hex(key)
+    local c = CRT.MOCHA[key] or CRT.MOCHA.cream
+    return string.format("%02x%02x%02x", math.floor(c[1] * 255 + 0.5), math.floor(c[2] * 255 + 0.5), math.floor(c[3] * 255 + 0.5))
+end
+
+function UI.ColorText(text, key)
+    return "|cff" .. UI.Hex(key) .. text .. "|r"
+end
+
+function UI.GoodText(text)
+    return UI.ColorText(text, "matcha")
+end
+
+function UI.BadText(text)
+    return UI.ColorText(text, "bad")
+end
+
+function UI.HeadingText(text)
+    return UI.ColorText(text, "heading")
+end
+
+-- Sets a font string's text to build() now and again after every theme switch, for a text written once
+-- with colour markup from the helpers above.
+function UI.ThemedText(fs, build)
+    themedTexts[fs] = build
+    fs:SetText(build())
 end
 
 -- Backdrop frames outside the main window that follow the look: your bar, its drag and Close bars,
