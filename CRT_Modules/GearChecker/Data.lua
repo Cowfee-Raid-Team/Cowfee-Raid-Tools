@@ -98,11 +98,11 @@ end
 -- The season's rules: { enchant = { [slot] = true }, weaponOnly = { [slot] = true }, sockets = { [slot] =
 -- true } }. A season with none checks nothing but item levels.
 function GC:Rules()
-    local def = CRT.Bosses and CRT.Bosses.GearChecks and CRT.Bosses:GearChecks() or nil
-    if self.rulesOf ~= def or not self.rules then
-        def = type(def) == "table" and def or {}
+    local src = CRT.Bosses and CRT.Bosses.GearChecks and CRT.Bosses:GearChecks() or nil
+    if self.rulesOf ~= src or not self.rules then
+        local def = type(src) == "table" and src or {}
         self.rules = { enchant = slotSet(def.enchant), weaponOnly = slotSet(def.enchantWeaponOnly), sockets = slotSet(def.sockets) }
-        self.rulesOf = def
+        self.rulesOf = src -- worked out again only when the season's table changes
     end
     return self.rules
 end
