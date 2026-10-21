@@ -12,17 +12,24 @@ local ADDON, CRT = ...
 --   Gear:MineAll()                your pieces, in Gear.SLOTS order (empty slots left out)
 --   Gear:ForItem(itemString)      your pieces in the slots that item goes in (read live), lowest item level first
 --   Gear:OnChange(fn)             fn(slot) when your piece in a slot changes
---   Gear:Remember(player, pieces, source), Gear:Of(player, slot), Gear:When(player)
+--   Gear:Remember(player, pieces, source, replace), Gear:Of(player, slot), Gear:OfAll(player), Gear:When(player)
 --                                 other players' pieces, by full Name-Realm, as a feature received them
+--                                 (replace: the pieces are the whole set, so slots left out are empty)
+--   Gear:ReadUnit(unit)           the pieces another unit wears, read now (an inspected player)
 --   Gear.Encode(piece), Gear.Decode(text)    "<slot>~<itemString>~<ilvl>", for any message
 --   Gear.PackMany(pieces, budget) encoded pieces in chunks that each fit a byte budget
+--   Gear.Parts(itemString)        the enchant and gem IDs written in an item string
+--   Gear.Sockets(itemString)      how many sockets the item has
+--   Gear.IsWeapon(equipLoc), Gear.AverageLevel(pieces)   a weapon's equip location; the equipped item level
 --   Gear.ShowTooltip(owner, piece, anchor)   the exact item when its item string is known, else by ID
 --
 -- Game calls (warcraft.wiki.gg, read 2026-10-20): GetInventoryItemLink(unit, slot) -> link or nil;
 -- GetInventoryItemID(unit, slot) -> id or nil; C_Item.GetDetailedItemLevelInfo(link) -> actual item level
 -- (may return nothing); C_Item.RequestLoadItemDataByID(id) fires ITEM_DATA_LOAD_RESULT (itemID, success);
 -- PLAYER_EQUIPMENT_CHANGED (equipmentSlot, hasCurrent); PLAYER_ENTERING_WORLD; GameTooltip:SetHyperlink
--- takes a full link or only its "item:..." part; GameTooltip:SetItemByID(itemID). Each is called in pcall.
+-- takes a full link or only its "item:..." part; GameTooltip:SetItemByID(itemID). C_Item.GetItemNumSockets
+-- (itemInfo) -> socketCount (ItemDocumentation.lua, live), which Blizzard's own inspect frame calls on an
+-- inspected player's link (PaperDollItemSocketDisplayMixin:SetItem, PaperDollFrame.lua). Each is called in pcall.
 
 local Gear = { others = {}, listeners = {} }
 CRT.Gear = Gear
@@ -179,6 +186,100 @@ function Gear.PackMany(pieces, budget)
     return chunks, left
 end
 
+-- What an item string holds ---------------------------------------------------------------------------------
+
+-- An item string's fields, from the ItemLink page (warcraft.wiki.gg): item:itemID:enchantID:gemID1:gemID2:
+-- gemID3:gemID4:suffixID:... An empty field (or a 0) is nothing set.
+-- Gear.Parts(itemString or link): { id, enchant (nil when none), gems = { [1..4] = gem item ID or nil },
+-- gemCount }, or nil for anything that isn't an item.
+function Gear.Parts(link)
+    local s = Gear.ItemString(link)
+    if not s then
+        return nil
+    end
+    local f = {}
+    for field in (s .. ":"):gmatch("([^:]*):") do
+        f[#f + 1] = field
+    end
+    local function num(i)
+        local n = tonumber(f[i] or "")
+        return (n and n > 0) and n or nil
+    end
+    local out = { id = num(2), enchant = num(3), gems = {}, gemCount = 0 }
+    for g = 1, 4 do
+        out.gems[g] = num(3 + g)
+        if out.gems[g] then
+            out.gemCount = out.gemCount + 1
+        end
+    end
+    return out
+end
+
+-- How many sockets an item has (C_Item.GetItemNumSockets on its item string, so sockets added by bonus IDs
+-- should count), or nil when the game can't say.
+function Gear.Sockets(link)
+    local s = Gear.ItemString(link)
+    if not (s and C_Item and C_Item.GetItemNumSockets) then
+        return nil
+    end
+    local ok, n = pcall(C_Item.GetItemNumSockets, s)
+    if not ok then
+        return nil
+    end
+    return wholeNumber(n)
+end
+
+-- The equip locations of weapons (the game's INVTYPE names); a shield or an off-hand item is not one.
+Gear.WEAPON_LOCS = {
+    INVTYPE_WEAPON = true, INVTYPE_2HWEAPON = true, INVTYPE_WEAPONMAINHAND = true, INVTYPE_WEAPONOFFHAND = true,
+    INVTYPE_RANGED = true, INVTYPE_RANGEDRIGHT = true,
+}
+-- The ones that take both hands, so an empty off hand counts as the same item
+Gear.TWO_HAND_LOCS = { INVTYPE_2HWEAPON = true, INVTYPE_RANGED = true, INVTYPE_RANGEDRIGHT = true }
+
+function Gear.IsWeapon(equipLoc)
+    return type(equipLoc) == "string" and Gear.WEAPON_LOCS[equipLoc] == true
+end
+
+-- A piece's equip location (C_Item.GetItemInfoInstant, which needs no loaded item), or nil.
+function Gear.EquipLoc(piece)
+    local key = type(piece) == "table" and (Gear.ItemString(piece.itemString) or Gear.ItemString(piece.link) or wholeNumber(piece.id))
+    if not key or not (C_Item and C_Item.GetItemInfoInstant) then
+        return nil
+    end
+    local ok, _, _, _, loc = pcall(C_Item.GetItemInfoInstant, key)
+    if not ok or secret(loc) or type(loc) ~= "string" then
+        return nil
+    end
+    return loc
+end
+
+-- The equipped item level of a set of pieces, as the character sheet counts it: every worn slot's item
+-- level over the 16 slots, an empty one counting 0 and a two-hander with the off hand empty counting twice.
+-- nil when no piece has an item level.
+function Gear.AverageLevel(pieces)
+    local sum, any, offHand, twoHand = 0, false, false, nil
+    for _, p in ipairs(type(pieces) == "table" and pieces or {}) do
+        local ilvl = type(p) == "table" and wholeNumber(p.ilvl)
+        if ilvl then
+            sum, any = sum + ilvl, true
+            if p.slot == 16 and Gear.TWO_HAND_LOCS[Gear.EquipLoc(p) or ""] then
+                twoHand = ilvl
+            end
+        end
+        if type(p) == "table" and p.slot == 17 then
+            offHand = true
+        end
+    end
+    if not any then
+        return nil
+    end
+    if twoHand and not offHand then
+        sum = sum + twoHand
+    end
+    return sum / #Gear.SLOTS
+end
+
 -- Your gear ------------------------------------------------------------------------------------------------
 
 local mine, ready = {}, false -- by slot id; ready once every slot has been read
@@ -191,20 +292,26 @@ local function copy(p)
     return { slot = p.slot, id = p.id, itemString = p.itemString, link = p.link, ilvl = p.ilvl }
 end
 
-local function read(slot)
-    local okL, link = pcall(GetInventoryItemLink, "player", slot)
-    if not okL or secret(link) or type(link) ~= "string" then
-        return nil
-    end
-    local okI, id = pcall(GetInventoryItemID, "player", slot)
+-- One slot of a unit (yours unless unit is given): the piece, or nil and whether the slot holds an item the
+-- game has no link for yet (an inspected player's item not loaded).
+local function read(slot, unit)
+    unit = unit or "player"
+    local okL, link = pcall(GetInventoryItemLink, unit, slot)
+    local okI, id = pcall(GetInventoryItemID, unit, slot)
     if not okI or secret(id) or type(id) ~= "number" then
-        id = tonumber(link:match("item:(%d+)"))
+        id = nil
     end
+    if not okL or secret(link) or type(link) ~= "string" then
+        return nil, id ~= nil
+    end
+    id = id or tonumber(link:match("item:(%d+)"))
     local okV, ilvl = pcall(C_Item.GetDetailedItemLevelInfo, link)
     if not okV or secret(ilvl) or type(ilvl) ~= "number" then
         ilvl = nil
         if id and C_Item.RequestLoadItemDataByID then
-            waiting[id] = true -- read again on ITEM_DATA_LOAD_RESULT
+            if unit == "player" then
+                waiting[id] = true -- read again on ITEM_DATA_LOAD_RESULT
+            end
             pcall(C_Item.RequestLoadItemDataByID, id)
         end
     end
@@ -321,11 +428,13 @@ end
 -- Kept in memory only, by full Name-Realm: { slots = { [slot] = piece }, at = time(), source }. A later
 -- save in CRTDB would plug in here (a table under CRTDB with its default in CRT_Core/Core.lua), loaded
 -- into Gear.others at login; it isn't built yet.
-function Gear:Remember(player, pieces, source)
+-- With replace, pieces is the player's whole equipped set (an inspect, or a full set sent by their CRT), so
+-- a slot it leaves out is empty now; without it, only the slots given change.
+function Gear:Remember(player, pieces, source, replace)
     if secret(player) or type(player) ~= "string" or player == "" or type(pieces) ~= "table" then
         return false
     end
-    local rec = self.others[player] or { slots = {} }
+    local rec = (not replace and self.others[player]) or { slots = {} }
     local n = 0
     for _, p in ipairs(pieces) do
         local slot = type(p) == "table" and slotOf(p.slot)
@@ -347,6 +456,45 @@ end
 function Gear:Of(player, slot)
     local rec = self.others[player]
     return rec and copy(rec.slots[slot]) or nil
+end
+
+-- Every piece remembered for a player, copies in Gear.SLOTS order (an empty list when none).
+function Gear:OfAll(player)
+    local rec, out = self.others[player], {}
+    if rec then
+        for _, s in ipairs(Gear.SLOTS) do
+            if rec.slots[s.id] then
+                out[#out + 1] = copy(rec.slots[s.id])
+            end
+        end
+    end
+    return out
+end
+
+-- The pieces another unit wears, read from the game now (for a player being inspected, once the game
+-- has their items: INSPECT_READY), in Gear.SLOTS order, and how many slots hold an item the game has no
+-- link or no item level for yet (worth reading again shortly). Kept nowhere: hand them to Remember. Your
+-- own unit reads your cache instead.
+function Gear:ReadUnit(unit)
+    local out, missing = {}, 0
+    if secret(unit) or type(unit) ~= "string" or unit == "" then
+        return out, 0
+    end
+    if unit == "player" then
+        return self:MineAll(), 0
+    end
+    for _, s in ipairs(Gear.SLOTS) do
+        local p, waitingFor = read(s.id, unit)
+        if p then
+            out[#out + 1] = p
+            if p.ilvl == nil then
+                missing = missing + 1
+            end
+        elseif waitingFor then
+            missing = missing + 1
+        end
+    end
+    return out, missing
 end
 
 -- When a player's gear was last remembered (time()) and from where; nil when never.

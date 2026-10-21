@@ -30,4 +30,16 @@ CRT.Bosses:Season({
             },
         },
     },
+    -- The Gear Checker's rules for this season (read through CRT.Bosses:GearChecks()), by inventory slot
+    -- (CRT.Gear.SLOTS). enchant: the slots that take a permanent enchant this season (Midnight's
+    -- enchanting formulas have helm, shoulder, chest, boot, ring and weapon enchants on warcraft.wiki.gg,
+    -- read 2026-10-20, and tailoring's spellthreads enchant legs). enchantWeaponOnly: of those, the slots
+    -- that need one only when the item there is a weapon (an off-hand shield or held item takes none).
+    -- sockets: the slots where an empty socket counts as a missing gem; true is every slot, since the
+    -- item's own socket count decides.
+    gearChecks = {
+        enchant = { 1, 3, 5, 7, 8, 11, 12, 16, 17 },
+        enchantWeaponOnly = { 17 },
+        sockets = true,
+    },
 })

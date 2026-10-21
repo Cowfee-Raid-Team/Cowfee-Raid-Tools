@@ -19,6 +19,7 @@ local function printHelp()
     print("  |cffffd100/crt tattle post|r, |cffffd100night|r, |cffffd100end|r - post the last pull or tonight's totals, or end the night")
     print("  |cffffd100/crt tattle scan|r - pick spells to track from the last fight (|cffffd100/crt tattle scan text|r for the plain list)")
     print("  |cffffd100/crt tattle export|r - the Tattlebot totals as text to paste into Discord")
+    print("  |cffffd100/crt gear|r - open the Gear Checker: everyone's gear, gems and enchants (|cffffd100/crt gear pop|r opens it in its own window)")
     print("  |cffffd100/crt loot|r - open Loot History: who got which boss item, with filters and a CSV export")
     print("  |cffffd100/crt loot test|r - try Loot Master with sample items: the looter window for you, the popup for everyone with CRT (|cffffd100window|r, |cffffd100popup|r, |cffffd100end|r)")
     print("  |cffffd100/crt pace|r - open the Pace page: where each boss's health should be")
@@ -110,6 +111,10 @@ SlashCmdList["COWFEERAIDTOOLS"] = function(msg)
         CRT.TimelinePopout()
     elseif msg == "timeline rehearse" then
         CRT.Timeline:Rehearse()
+    elseif msg == "gear" then
+        CRT.UI:Show("gearcheck")
+    elseif msg == "gear pop" then
+        CRT.GearChecker.Popout()
     elseif msg == "loot" then
         CRT.UI:Show("loot")
     elseif msg:match("^loot%s") and CRT.LootMaster and CRT.LootMaster:Command(msg) then

@@ -224,6 +224,12 @@ local defaults = {
             kinds = { bop = true, tier = true, boe = false, wue = false, toy = false, mount = false, cosmetic = false, other = false },
         },
     },
+    -- Gear Checker (GearChecker/): filter, the chip picked on the page (all, issues, gems, enchants);
+    -- popout, the pop-out window's place and size once moved (UI.Window keeps point, x, y, width, height).
+    gearChecker = {
+        filter = "all",
+        popout = {},
+    },
     -- The sound engine (Sound/Engine.lua): custom, your own sound file names typed on Quality of Life >
     -- Sounds (the companion addon CowfeeRaidTools_Media lists more in its Sounds.lua).
     sound = {

@@ -63,6 +63,10 @@ CRT_Modules\Late\Page.lua
 CRT_Modules\Tattlebot\Database.lua
 CRT_Modules\Tattlebot\Data.lua
 CRT_Modules\Tattlebot\Page.lua
+CRT_Modules\GearChecker\Data.lua
+CRT_Modules\GearChecker\Inspect.lua
+CRT_Modules\GearChecker\Comm.lua
+CRT_Modules\GearChecker\Page.lua
 CRT_Modules\Loot\Store.lua
 CRT_Modules\Loot\Capture.lua
 CRT_Modules\Loot\RCLC.lua

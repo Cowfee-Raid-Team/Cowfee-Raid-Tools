@@ -272,7 +272,7 @@ end
 -- The Modern menu's blocks, top to bottom. A page not listed joins the last block.
 UI.MENU_GROUPS = {
     { "settings", "qol" },
-    { "groups", "readycheck" },
+    { "groups", "readycheck", "gearcheck" },
     { "notes", "timeline", "pace" },
     { "late", "tattle", "loot" },
 }

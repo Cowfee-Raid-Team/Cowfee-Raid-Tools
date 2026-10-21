@@ -9,7 +9,8 @@ local ADDON, CRT = ...
 --   markers     -> CRT.MarkerDisplayDB.displays  (marker displays)
 --   pace        -> CRT.PaceDB.bosses             (pace plans)
 -- Features that don't depend on a boss (the Late Tracker, Raid Groups, ready checks, consumables)
--- never read it. Which seasons load is a dev-only choice (Dev/SeasonTools.lua, CRTDB.dev.seasons):
+-- never read it. A season's own facts that aren't about a boss (the Gear Checker's enchant and socket
+-- rules) are read through Bosses:GearChecks(). Which seasons load is a dev-only choice (Dev/SeasonTools.lua, CRTDB.dev.seasons):
 -- the current season only, by default, or all. See the vault note "Cowfee Raid Tools - Boss Library
 -- Design".
 
@@ -59,6 +60,14 @@ function Bosses:Register(def)
         self.order[#self.order + 1] = def.encounterID
     end
     self.bosses[def.encounterID] = def
+end
+
+-- The current season's gear rules (its Season.lua's gearChecks: which slots take an enchant and where an
+-- empty socket counts), for the Gear Checker; nil when the season has none. Season data, so a new season
+-- brings its own and no feature code names a slot rule.
+function Bosses:GearChecks()
+    local def = self:Current()
+    return def and type(def.gearChecks) == "table" and def.gearChecks or nil
 end
 
 function Bosses:Get(encounterID)
