@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.1.1 (2026-10-21)
+
+- **Gear Checker** (new page): every raider's gear, gems, enchants and upgrade tracks, with filters, issue tooltips and a right-click to send issues to chat. Pop it out into its own window.
+- **Alert timeline** (new alert area): icons slide down a line to a NOW effect, with many look options. Standalone by default, or add your alerts to the game's boss timeline, or replace it.
+- **Alerts:** every alert takes its ability's type colour (custom colours behind a checkbox), bars name the type, and bars get spacing and border settings.
+- **One source for boss timers:** Mech Alerts, the Timeline, rehearsals and alerts all use the same casts. Mech Alerts lists the timeline's abilities in their type colours.
+- **Rehearsal:** one continuous countdown from Next up to the cast bar, with up to three cast bars.
+- **Raid Notes:** notes show rendered with class-coloured names and spell icons (click to edit the raw text), and a pop-out editor to drag names onto assignment lines and the invite list.
+- **Loot Master:** the raider popup looks like the game's loot roll frame; the gear column shows your full equipped items.
+- **Debuffs:** shown everywhere, a new icon look, a muted swipe, and grow left or right.
+- **Ready Check:** your bar sits under the game's ready check window; Close for the raid leader only.
+- **Themes:** one heading, good, warning and bad colour per theme, themed scroll bars and a menu divider.
+
 ## 1.1.0 (2026-10-20)
 
 - CRT Looting passes for real: while it's on, raiders' boss rolls are passed as soon as the loot window shows, and chat says what happened.
