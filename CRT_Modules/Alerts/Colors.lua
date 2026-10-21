@@ -1,8 +1,9 @@
 local ADDON, CRT = ...
 
 -- Alert colours from the ability's type. Every alert (bar, circle, icon and text) is drawn in the colour of its
--- ability's type, the Timeline's ability types (Timeline/Reference.lua Reference.TYPES: dispel blue, soak pink,
--- Mythic only orange, ...). The type is found from the boss data the Timeline already has, in this order:
+-- ability's type, the Timeline's ability types (the one table, Reference.ABILITY_TYPES in Timeline/Reference.lua:
+-- dispel blue, soak pink, Mythic only orange, ...). The type is found from the boss data the Timeline already has,
+-- in this order:
 --   1. your own label for the ability on the Timeline (Timeline:Ability(boss, spell).type)
 --   2. the boss's ability timeline: the row of the alert's spell (by spell ID, else by the spell's name or the
 --      alert's text, as reminders find their times) and its first, main type. The difficulty's own ability
@@ -15,6 +16,7 @@ local ADDON, CRT = ...
 -- Alerts:Start stamps each item's type as item.abilityType; the areas look the colour up as they draw
 -- (Areas.DrawColor), so a theme switch follows. Nothing here is saved.
 --   Colors.TypeOf(encounterID, spellID, text, bossName, difficultyName) -> a type key, or nil
+--   Colors.Types(encounterID, bossName, difficultyName) -> typesOf(spellID, text) -> every type key, main first
 --   Colors.TypeColor(key) -> { r, g, b }: the type's colour, else the theme's accent (nil with no theme loaded)
 --   Colors.KnownTypeColor(key) -> { r, g, b } of a known type, else nil
 --   Colors.Stamp(items, run) sets abilityType on each item of a run that has no known type of its own
@@ -115,27 +117,32 @@ local function labelType(encounterID, spellID)
     return ok and type(a) == "table" and known(a.type) and a.type or nil
 end
 
--- The type the Journal's icons give a spell of the boss, from the rows the Timeline already read this session.
-local function journalType(ctx, spellID)
+-- The types the Journal's icons give a spell of the boss, in its icons' order, each once, from the rows the
+-- Timeline already read this session.
+local function journalTypes(ctx, spellID)
     local Reference = CRT.TimelineReference
+    local out, seen = {}, {}
     if not (spellID and Reference.TAG_TYPES) then
-        return nil
+        return out
     end
     for _, row in ipairs(ctx.rows) do
         if row.spellID == spellID then
             for _, tag in ipairs(type(row.tags) == "table" and row.tags or {}) do
                 local t = Reference.TAG_TYPES[tag]
-                if known(t) then
-                    return t
+                if known(t) and not seen[t] then
+                    seen[t] = true
+                    out[#out + 1] = t
                 end
             end
-            return nil
+            return out
         end
     end
-    return nil
+    return out
 end
 
-local function typeIn(ctx, spellID, text)
+-- Every type of an ability, its main one first: your own label's (the one type), else the ability timeline row's
+-- known types, else the Journal icons'. An empty list when none is known.
+local function typesIn(ctx, spellID, text)
     if not (readable(spellID) and type(spellID) == "number" and spellID > 0) then
         spellID = nil
     end
@@ -146,13 +153,22 @@ local function typeIn(ctx, spellID, text)
     local spell = spellID or rowSpell
     local t = labelType(ctx.encounterID, spell)
     if t then
-        return t
+        return { t }
     end
-    local main = row and type(row.types) == "table" and row.types[1]
-    if known(main) then
-        return main
+    local out = {}
+    for _, key in ipairs(row and type(row.types) == "table" and row.types or {}) do
+        if known(key) then
+            out[#out + 1] = key
+        end
     end
-    return journalType(ctx, spell)
+    if out[1] then
+        return out
+    end
+    return journalTypes(ctx, spell)
+end
+
+local function typeIn(ctx, spellID, text)
+    return typesIn(ctx, spellID, text)[1]
 end
 
 function Colors.TypeOf(encounterID, spellID, text, bossName, difficultyName)
@@ -160,6 +176,20 @@ function Colors.TypeOf(encounterID, spellID, text, bossName, difficultyName)
         return nil
     end
     return typeIn(bossContext(encounterID, bossName, difficultyName), spellID, text)
+end
+
+-- A lookup of every type of the boss's abilities, the boss read once: Colors.Types(encounterID, bossName,
+-- difficultyName) returns typesOf(spellID, text) -> { key, ... }, the main type first, empty when none is known.
+-- For a list of the boss's abilities (the Mech Alerts list), where TypeOf would read the boss for each row.
+function Colors.Types(encounterID, bossName, difficultyName)
+    local ctx
+    return function(spellID, text)
+        if not CRT.TimelineReference then
+            return {}
+        end
+        ctx = ctx or bossContext(encounterID, bossName, difficultyName)
+        return typesIn(ctx, spellID, text)
+    end
 end
 
 function Colors.TypeColor(key)
