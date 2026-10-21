@@ -433,11 +433,13 @@ CRT.FONT_SCALE = 1.2
 local fonts = {} -- { object, path, size, flags }: each font object and the game font it started as
 
 -- minSize, when given, is the smallest it is ever drawn, whatever the text size setting (a small font that
--- must stay readable).
-local function makeFont(name, source, scale, minSize)
+-- must stay readable). outline, when given ("OUTLINE"), replaces the source's flags: an outlined font keeps
+-- its outline unless the General Settings outline picks another.
+local function makeFont(name, source, scale, minSize, outline)
     local font = CreateFont(name)
     font:CopyFontObject(source)
     local path, size, flags = font:GetFont()
+    flags = outline or flags
     size = math.max(minSize or 0, math.floor(size * (scale or CRT.FONT_SCALE) + 0.5))
     -- SetFont's third argument is no longer optional (12.0.5), so pass "" when there are no flags.
     font:SetFont(path, size, flags or "")
@@ -520,6 +522,8 @@ makeFont("CRTFontDisableSmall", GameFontDisableSmall)
 -- a step under the small text, for fine print such as the Raid Notes note's details
 makeFont("CRTFontDisableTiny", GameFontDisableSmall, CRT.FONT_SCALE * 0.85)
 makeFont("CRTFontLarge", GameFontNormalLarge)
+-- the large font outlined, for text drawn over a coloured bar in any theme (the break timer)
+makeFont("CRTFontLargeOutline", GameFontNormalLarge, nil, nil, "OUTLINE")
 -- The game's own sizes, unscaled, for the small title-bar and page buttons, the standard buttons,
 -- the dropdown and slider text, and the edit boxes. They follow the General Settings font too.
 makeFont("CRTFontButtonSmall", GameFontNormalSmall, 1)

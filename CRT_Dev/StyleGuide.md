@@ -14,13 +14,13 @@ Every theme fills every key in `CRT.THEME_KEYS`. Each key is named for what it c
 | surface | menu blocks, fields, buttons, list rows, an unticked checkbox |
 | border | borders, the empty part of a slider's track, a scroll bar's rail |
 | selected | the selected page and tab, an unticked checkbox's edge |
-| accent | lines, a slider's filled track, hover edges, the Modern help ring, scroll bar thumbs, the alert timeline's line and its tick marks |
+| accent | lines, a slider's filled track, hover edges, the Modern help ring, scroll bar thumbs, the alert timeline's line and its tick marks, the break timer's bar |
 | label | button text and labels (the game's gold font takes this colour in a Modern theme) |
 | heading | headings, section titles, highlights, a selected row's tint (`UI.HeadingText`) |
 | text | body text (the game's white font takes this colour in a Modern theme) |
 | good | good: synced, answered, on, ready, in bags (`UI.GoodText`) |
 | warn | in between: running low, worn, arrived late, a middling score, No CRT (`UI.WarnText`) |
-| bad | bad: missing, late, failed, can't, not here (`UI.BadText`) |
+| bad | bad: missing, late, failed, can't, not here (`UI.BadText`), the break timer's bar in its last minute |
 | knob | a slider's knob, a ticked checkbox, the rounded scroll bar's thumb |
 | knobBorder | the knob's and the rounded scroll bar thumb's 1 px edge |
 | knobShine | the soft highlight inside the knob's and ticked box's top edge |

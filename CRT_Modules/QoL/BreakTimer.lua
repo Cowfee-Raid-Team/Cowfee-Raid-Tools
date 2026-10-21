@@ -27,14 +27,11 @@ local DEDUPE = 3 -- seconds apart that two breaks' ends may be and still be one 
 local BRIDGE_WAIT = 1.5 -- seconds to collect the formats a break arrived in before bridging it
 local BAR_W, BAR_H = 300, 30
 local OVER_SHOWN = 6 -- seconds "Break's over" stays up
-local LAST_MINUTE = 60 -- seconds left when the bar turns red
-local COLOR_LAST = { 0.85, 0.27, 0.2, 1 }
-
--- The bar's color until the last minute: the theme's accent (CRT.PALETTE.accent).
-local function barColor()
-    local c = CRT.PALETTE.accent
-    return c[1], c[2], c[3], 1
-end
+local LAST_MINUTE = 60 -- seconds left when the bar turns the theme's bad colour
+-- The colours follow the theme (CRT_Dev/StyleGuide.md): the bar is the accent, the bad colour in the last
+-- minute; the texts are the text colour, outlined (CRTFontLargeOutline) so they read on a light accent too.
+-- Each is a UI.Tint, so a theme switch repaints it at once, whatever the window is showing.
+local BAR_KEY, LAST_KEY, TEXT_KEY = "accent", "bad", "text"
 
 local send = (C_ChatInfo and C_ChatInfo.SendChatMessage) or SendChatMessage
 
@@ -44,6 +41,23 @@ end
 
 local frame, handle, bar, label, timeText, endsText
 local previewOn = false
+local barKey -- the palette key the bar is tinted with
+
+-- Tints the bar with a palette key; only a change of key registers it again.
+local function setBarColor(key)
+    if barKey ~= key then
+        barKey = key
+        UI.Tint(bar, "SetStatusBarColor", key, 1)
+    end
+end
+
+-- A big outlined text on the window, in the theme's text colour.
+local function bigText(parent)
+    local fs = parent:CreateFontString(nil, "OVERLAY", "CRTFontLargeOutline")
+    UI.Tint(fs, "SetTextColor", TEXT_KEY)
+    fs:SetShadowOffset(1, -1)
+    return fs
+end
 
 local function db()
     return CRT.db.qol.breakTimer
@@ -116,23 +130,17 @@ local function build()
     bar:SetSize(BAR_W, BAR_H)
     bar:SetPoint("TOP")
     bar:SetStatusBarTexture("Interface\\Buttons\\WHITE8X8")
-    bar:SetStatusBarColor(barColor())
+    setBarColor(BAR_KEY)
     local bg = bar:CreateTexture(nil, "BACKGROUND")
     bg:SetAllPoints()
     bg:SetColorTexture(0, 0, 0, 0.75)
 
-    label = bar:CreateFontString(nil, "OVERLAY", "CRTFontLarge")
+    label = bigText(bar)
     label:SetPoint("LEFT", 6, 0)
-    label:SetTextColor(1, 1, 1)
-    label:SetShadowOffset(1, -1)
-    timeText = bar:CreateFontString(nil, "OVERLAY", "CRTFontLarge")
+    timeText = bigText(bar)
     timeText:SetPoint("RIGHT", -6, 0)
-    timeText:SetTextColor(1, 1, 1)
-    timeText:SetShadowOffset(1, -1)
-    endsText = frame:CreateFontString(nil, "OVERLAY", "CRTFontLarge")
+    endsText = bigText(frame)
     endsText:SetPoint("TOP", bar, "BOTTOM", 0, -4)
-    endsText:SetTextColor(1, 1, 1)
-    endsText:SetShadowOffset(1, -1)
 
     handle = CreateFrame("Frame", nil, frame, "BackdropTemplate")
     handle:SetHeight(20)
@@ -199,12 +207,8 @@ onUpdate = function(_, dt)
     end
     bar:SetMinMaxValues(0, math.max(1, s.total or left))
     bar:SetValue(left)
-    -- The last minute turns the bar red, so raiders know to get back.
-    if left <= LAST_MINUTE then
-        bar:SetStatusBarColor(unpack(COLOR_LAST))
-    else
-        bar:SetStatusBarColor(barColor())
-    end
+    -- The last minute turns the bar the theme's bad colour, so raiders know to get back.
+    setBarColor(left <= LAST_MINUTE and LAST_KEY or BAR_KEY)
     timeText:SetText(clock(left))
 end
 
@@ -212,6 +216,7 @@ local function show()
     build()
     local s = db()
     overAt = nil
+    setBarColor(BAR_KEY)
     label:SetText("Break" .. (s.from and (" - " .. Ambiguate(s.from, "short")) or ""))
     -- The clock time it ends, for raiders who missed the raid warning.
     endsText:SetText(s.endsAt and ("Break ends at: " .. date("%H:%M", s.endsAt)) or "")
@@ -416,7 +421,7 @@ UI:RegisterPreview("break", function(on)
         label:SetText("Break")
         timeText:SetText("7:30")
         endsText:SetText("Break ends at: 20:10")
-        bar:SetStatusBarColor(barColor())
+        setBarColor(BAR_KEY)
         bar:SetMinMaxValues(0, 600)
         bar:SetValue(450)
         frame:Show()
@@ -424,6 +429,11 @@ UI:RegisterPreview("break", function(on)
         frame:Hide()
     end
 end)
+
+-- For the tests: the window's parts once it is built.
+function Break.Parts()
+    return { frame = frame, bar = bar, label = label, timeText = timeText, endsText = endsText }
+end
 
 local events = CreateFrame("Frame")
 events:RegisterEvent("PLAYER_LOGIN")

@@ -461,7 +461,7 @@ for (const file of ['CRT_Modules/LootMaster/Popup.lua', 'CRT_Modules/LootMaster/
   else console.log('ok themes: ' + file + ' takes its response colours from the looter\'s session');
 }
 // Overlays are not refreshed with the page in view, so each repaints on a theme switch itself: an OnTheme hook,
-// a UI.Tint or a UI.ThemedText. (Live switches are checked in the harnesses that build them: run_latepage,
+// a UI.Tint or a UI.ThemedText. (Live switches are checked in the harnesses that build them: run_breaktimer, run_latepage,
 // run_groups_extras, run_lootmaster_bosswin, run_alerts_personalwin, run_alerts_editor, run_consumables_dock. The debuff
 // panel has no theme colour: its countdown is the approved yellow in every theme.)
 for (const [file, what] of [
@@ -471,6 +471,7 @@ for (const [file, what] of [
   ['CRT_Modules/ReadyCheck/BuffLock.lua', 'the buff lock hint'],
   ['CRT_Modules/ReadyCheck/Window.lua', 'the ready check window'],
   ['CRT_Modules/QoL/LowHealth.lua', 'the low-health warning'],
+  ['CRT_Modules/QoL/BreakTimer.lua', 'the break timer'],
   ['CRT_Modules/Pace/Display.lua', 'the pace bars'],
   ['CRT_Modules/Alerts/Areas.lua', 'the alert areas'],
 ]) {

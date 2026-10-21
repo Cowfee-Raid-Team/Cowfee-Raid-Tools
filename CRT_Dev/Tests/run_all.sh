@@ -50,6 +50,7 @@ g "checkbox" && { node run_checkbox.js "$WA" 2>&1 | tail -30; echo "exit ${PIPES
 g "toplevel" && { node run_toplevel.js "$WA" 2>&1 | tail -30; echo "exit ${PIPESTATUS[0]}"; }
 g "help" && { node run_help.js "$WA" 2>&1 | tail -30; echo "exit ${PIPESTATUS[0]}"; }
 g "themes" && { node run_themes.js "$WA" 2>&1 | tail -30; echo "exit ${PIPESTATUS[0]}"; }
+g "break timer" && { node run_breaktimer.js "$WA" 2>&1 | tail -40; echo "exit ${PIPESTATUS[0]}"; }
 g "palette" && { node run_palette.js "$WA" 2>&1 | tail -40; echo "exit ${PIPESTATUS[0]}"; }
 g "scrollbar" && { node run_scrollbar.js "$WA" 2>&1 | tail -40; echo "exit ${PIPESTATUS[0]}"; }
 # The colours from before themes live only in CRT_Core/Themes.lua (the Default: Blizzard palette): code reads CRT.PALETTE. A saved
