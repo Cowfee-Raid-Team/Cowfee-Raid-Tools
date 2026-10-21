@@ -25,6 +25,8 @@ local ADDON, CRT = ...
 -- button (GLOW_LEVEL), so it draws over its neighbours instead of under them. The game only takes a
 -- dispel texture that is inside the button (AuraContainerUtil.ValidateInboundScriptObject), so the glow
 -- can't move to one shared frame above the row. The timer and stacks sit one level above the glow.
+-- The row grows from the panel's left end or, with Grow set to right to left, from its right end; the
+-- container, the boss debuff slots and the preview tiles all follow it (rowPoint).
 --
 -- The game's boss debuff slots (C_UnitAuras.AddPrivateAuraAnchor, where the game draws a private aura
 -- itself) are kept as an optional second row, off by default, in case boss mechanic debuffs don't
@@ -156,6 +158,17 @@ local function rowWidth()
     return (count - 1) * Debuffs:Step(size) + size, size
 end
 
+-- Where the index-th icon of a row sits on the panel, for the Grow setting: from the top left going
+-- right, or from the top right going left. Returns the point (on the icon and the panel alike) and x.
+-- The panel itself stays where it was placed, so switching direction never moves it.
+local function rowPoint(index)
+    local x = (index - 1) * Debuffs:Step(Debuffs:Size())
+    if Debuffs:Grow() == "left" then
+        return "TOPRIGHT", -x
+    end
+    return "TOPLEFT", x
+end
+
 -- The gap above the boss debuff slots: room for the row's timer text, which grows with the icon.
 local function slotRowOffset()
     return math.max(SLOT_ROW_OFFSET, Panel.TimerFontSize(Debuffs:Size()) + 6)
@@ -216,7 +229,8 @@ local function addAnchors()
         if index <= count then
             slot:SetSize(size, size)
             slot:ClearAllPoints()
-            slot:SetPoint("TOPLEFT", frame, "TOPLEFT", (index - 1) * Debuffs:Step(size), top)
+            local point, x = rowPoint(index)
+            slot:SetPoint(point, frame, point, x, top)
             slot:Show()
             local args = {
                 unitToken = "player",
@@ -614,23 +628,36 @@ local function groupLayout()
     return { elementWidth = size, elementHeight = size, elementSpacing = Debuffs:Step(size) - size }
 end
 
--- The flow layout: one row from the top left, growing right.
+-- The flow layout: one row from the top left growing right, or from the top right growing left (the
+-- Grow setting). The game's flow layout (AnchorUtil.ApplyFlowLayout) anchors each button to the
+-- container's anchor point and then sizes the container to its buttons, so for "left" the container
+-- is held by its top right corner too, keeping the first debuff at the panel's right end.
 local function applyContainerLayout()
     if not container or not safeToWire() or forbidden(container) then
         return
     end
     local width, size = rowWidth()
-    local signature = width .. ":" .. size
+    local grow = Debuffs:Grow()
+    local signature = width .. ":" .. size .. ":" .. grow
     if signature == appliedContainer then
         return
     end
     appliedContainer = signature
+    local point = rowPoint(1)
+    container:ClearAllPoints()
+    container:SetPoint(point, frame, point, 0, 0)
     container:SetSize(width, size)
     local axis = AnchorUtil and AnchorUtil.FlowLayoutAxis and AnchorUtil.FlowLayoutAxis.Horizontal or 0
     local flow = AnchorUtil and AnchorUtil.FlowDirection
+    local horizontal
+    if grow == "left" then
+        horizontal = flow and flow.Left or -1
+    else
+        horizontal = flow and flow.Right or 1
+    end
     try("container", container, "SetFlowLayoutAxis", axis)
-    try("container", container, "SetFlowLayoutAnchorPoint", "TOPLEFT")
-    try("container", container, "SetFlowLayoutGrowthDirection", flow and flow.Right or 1, flow and flow.Down or -1)
+    try("container", container, "SetFlowLayoutAnchorPoint", point)
+    try("container", container, "SetFlowLayoutGrowthDirection", horizontal, flow and flow.Down or -1)
     try("container", container, "SetFlowLayoutMaximumLineSize", width)
     try("container", container, "SetAuraGroupLayout", GROUP, groupLayout())
 end
@@ -739,7 +766,8 @@ local function updateTiles()
         if previewOn and index <= count then
             local sample, parts = SAMPLES[index], tile.parts
             tile:ClearAllPoints()
-            tile:SetPoint("TOPLEFT", frame, "TOPLEFT", (index - 1) * Debuffs:Step(size), 0)
+            local point, x = rowPoint(index)
+            tile:SetPoint(point, frame, point, x, 0)
             local timerShown = layoutParts(tile, parts, size)
             parts.icon:SetTexture(sampleIcon(sample.spell))
             parts.count:SetText(Panel.StackText(sample.stacks))
@@ -1024,9 +1052,9 @@ function Panel:InfoText()
     end
     add("Encounter in progress: " .. tostring(encounterActive()) .. " (flag " .. tostring(encounter) .. "), safe to set up buttons: " .. tostring(safeToWire())
         .. ", settings waiting: " .. tostring(pendingApply) .. ", forbidden buttons skipped: " .. skipped .. " (" .. dirtyCount .. " waiting)")
-    add(format("Settings: size %d, max %d, dispel icon %s, dispel icon size %d%%, hide longer than %s, boss debuff slots %s", Debuffs:Size(), Debuffs:MaxCount(),
+    add(format("Settings: size %d, max %d, dispel icon %s, dispel icon size %d%%, hide longer than %s, boss debuff slots %s, grow %s", Debuffs:Size(), Debuffs:MaxCount(),
         tostring(Debuffs:DispelIcon()), math.floor(Debuffs:DispelIconScale() * 100 + 0.5), Debuffs:MaxDuration() > 0 and (Debuffs:MaxDuration() .. " s") or "off",
-        tostring(Debuffs:PrivateSlots())))
+        tostring(Debuffs:PrivateSlots()), Debuffs:Grow()))
     add(format("Look: swipe %s, edge %s, countdown numbers %s, timer %s (%s, %s), border %s, spacing %d (%g px from icon to icon), frame colored by dispel type, glow %s", tostring(Debuffs:Get("swipe")),
         tostring(Debuffs:Get("swipeEdge")), tostring(Debuffs:SwipeNumbers()), tostring(Debuffs:Get("timerPosition")), tostring(Debuffs:Get("timerX")),
         tostring(Debuffs:Get("timerY")), tostring(Debuffs:Get("borderScale")), Debuffs:Spacing(), Debuffs:Step(Debuffs:Size()), tostring(Debuffs:DispelGlow())))
