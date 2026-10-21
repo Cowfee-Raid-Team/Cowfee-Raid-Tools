@@ -291,6 +291,68 @@ check("game timeline: Show in", function()
   s().gameReplace = false G:ApplyReplace()
 end)
 
+check("game timeline: nothing sent while the game's view type is None, and it shows here", function()
+  pull({ item{ id = "v", time = 4, text = "None view" } }, { gameShowIn = "game" })
+  api.view = 0 -- another addon replacing it, or our Replace waiting for combat
+  start()
+  assert(count(api.added) == 0 and shownNames() == "None view", "falls back to this timeline")
+end)
+
+check("game timeline: a line not sent yet shows here, so it is never on neither", function()
+  pull({ item{ id = "l", time = 8, text = "Early" } }, { gameShowIn = "game" })
+  G.LEAD = 5 -- shorter than the area's 10 seconds on the line
+  start()
+  assert(count(api.added) == 0 and shownNames() == "Early", "within the area's seconds but not sent: here")
+  clock = 103.5 G:Sync()
+  assert(count(api.added) == 1 and shownNames() == "", "sent: only there")
+  clock = 108.2 G:Sync()
+  assert(#api.finished == 1 and shownNames() == "", "finished there: not back here")
+  G.LEAD = 30
+end)
+
+check("game timeline: the Journal tags' game icons live on Reference.TAGS", function()
+  local Ref = CRT.TimelineReference
+  assert(Ref.TAGS.tank.gameIcon == "TankRole" and Ref.TAGS.magic.gameIcon == "MagicEffect" and Ref.TAGS.mythic.gameIcon == nil, "on the tags")
+  local r = G.Request({ id = "q", at = 0, text = "Q", abilityTags = { "healer", "dps", "deadly", "heroic", "healer" } }, 5)
+  assert(r.icons == 256 + 512 + 1, "healer, dps and deadly once each: " .. tostring(r.icons))
+end)
+
+check("game timeline: after a /reload mid-pull, what was left is taken back at the end", function()
+  pull({ item{ id = "k", time = 4, text = "Kept" } })
+  CRTDBChar = {}
+  start()
+  local id = api.order[1]
+  assert(CRTDBChar.gameTimelineSent[id] == "Kept", "the sent ID is kept for the session")
+  A:Stop()
+  assert(next(CRTDBChar.gameTimelineSent) == nil, "and forgotten once taken back")
+  -- the UI before the reload left two IDs; one is now another addon's event
+  resetApi()
+  api.added[55] = { overrideName = "Old" }
+  api.added[56] = { overrideName = "Someone else's" }
+  CRTDBChar.gameTimelineSent = { [55] = "Old", [56] = "Old too" }
+  G.frame.OnEvent(G.frame, "PLAYER_ENTERING_WORLD", false, true)
+  G.frame.OnEvent(G.frame, "ENCOUNTER_END", 3001, "Boss", 16, 20, 0)
+  assert(#api.canceled == 1 and api.canceled[1] == 55, "only ours: " .. table.concat(api.canceled, ","))
+  assert(next(CRTDBChar.gameTimelineSent) == nil, "the list is cleared")
+  -- a real login starts empty
+  CRTDBChar.gameTimelineSent = { [57] = "Stale" }
+  G.frame.OnEvent(G.frame, "PLAYER_ENTERING_WORLD", true, false)
+  assert(next(CRTDBChar.gameTimelineSent) == nil, "cleared at login")
+  G.frame.OnEvent(G.frame, "ENCOUNTER_END", 3001, "Boss", 16, 20, 0)
+  assert(#api.canceled == 1, "nothing to take back after a login")
+end)
+
+check("game timeline: Replace puts back another addon's override", function()
+  pull({}, { gameReplace = true })
+  EncounterTimeline.attrs.overrideViewType = 1
+  G:ApplyReplace()
+  assert(EncounterTimeline.attrs.overrideViewType == 0 and api.view == 0, "replaced")
+  s().gameReplace = false
+  G:ApplyReplace()
+  assert(EncounterTimeline.attrs.overrideViewType == 1 and api.view == 1, "theirs again: " .. tostring(EncounterTimeline.attrs.overrideViewType))
+  EncounterTimeline.attrs.overrideViewType = nil
+end)
+
 check("game timeline: Replace the game's timeline", function()
   pull({}, { gameReplace = false })
   G.frame.OnEvent(G.frame, "PLAYER_LOGIN")
@@ -374,6 +436,7 @@ check("game timeline: the dev probe adds one script event and prints it", functi
   assert(id and near(api.added[id].duration, 12) and api.added[id].spellID == 100, "one event of 12 s")
   local all = table.concat(printed, "\\n")
   assert(all:find("event " .. id, 1, true) and all:find("view type", 1, true), "prints the result: " .. all)
+  assert(all:find("/console taintLog 1", 1, true), "and how to check for taint")
   P:Command("dev gametimeline cancel", "dev gametimeline cancel")
   assert(api.canceled[#api.canceled] == id, "cancel takes it back")
   assert(not P:Command("dev other", "dev other"), "other commands pass")

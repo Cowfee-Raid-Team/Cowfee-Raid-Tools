@@ -5,7 +5,7 @@ local ADDON, CRT = ...
 -- came back: the event ID, its info and state read back (each value readable or secret), whether the game's
 -- timeline is on, its view type, our override, and whether an encounter is going. It answers whether a script event
 -- shows outside an encounter, and whether a spell ID of 0 is taken. /crt dev gametimeline cancel takes the last one
--- back. This file never ships: its .toc line is inside the do-not-package block.
+-- back. It also prints how to check for taint (/console taintLog 1). This file never ships: its .toc line is inside the do-not-package block.
 
 local Probe = {}
 CRT.GameTimelineProbe = Probe
@@ -96,6 +96,7 @@ function Probe:Command(msg)
     seconds = tonumber(seconds) or DEFAULT_SECONDS
     spellID = tonumber(spellID)
     CRT:Print("Game timeline probe:")
+    print("  Taint check: /console taintLog 1, /reload, run this and a pull, then read Logs\\taint.log for CowfeeRaidTools.")
     status(C)
     add(C, seconds, spellID)
     status(C)
