@@ -291,7 +291,8 @@ do
   -- the main window, with what UI:ApplyStyle paints
   local mf = frame("Frame", nil)
   mf.art, mf.flat, mf.flatEdges = {}, {}, {}
-  mf.flatBg, mf.flatTitle, mf.titleLine, mf.menuLine = texture(nil), texture(nil), texture(nil), texture(nil)
+  mf.flatBg, mf.flatTitle, mf.titleLine = texture(nil), texture(nil), texture(nil)
+  mf.divider = { line = texture(nil), shadow = texture(nil) }
   mf.menu = { blocks = {} }
   UI.frame = mf
   local pf = frame("Frame", nil)
