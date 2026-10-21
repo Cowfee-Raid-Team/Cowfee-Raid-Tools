@@ -448,6 +448,26 @@ local function castSource(encounterID, r, ref, group)
     return nil
 end
 
+-- Whether a reminder (or a draft's probe) is on a boss ability whose casts it follows (see Times).
+function Reminders.FollowsCasts(encounterID, r, ref, group)
+    return type(r) == "table" and castSource(encounterID, r, ref, group) ~= nil
+end
+
+-- Every cast a reminder on a boss ability follows, turned off ones too ({ ph, t, cast, shift, off }),
+-- for the alert editor's list; {} when it follows none.
+function Reminders.AllCasts(encounterID, r, ref, group)
+    local cref, row = castSource(encounterID, r, ref, group)
+    if not row then
+        return {}
+    end
+    local list = Reminders.FromReference(cref, row, { shifts = r.shifts })
+    local off = type(r.off) == "table" and r.off or {}
+    for _, e in ipairs(list) do
+        e.off = off[e.cast] and true or nil
+    end
+    return list
+end
+
 -- The times of a reminder: { { ph, t } } and where they came from ("typed", "reference" or "none").
 -- A reminder on a boss ability with a row on the ability timeline takes that row's casts, each with its
 -- cast number and any shift (FromReference); typed times are only read when the timeline has no row for
@@ -625,8 +645,9 @@ end
 -- Older reminders on a boss ability could hold typed times (a flag dragged, a time typed). Once, the
 -- first time a boss's reminders are listed, each such reminder follows its casts instead: the typed
 -- text moves to timesBackup (kept, never deleted), a typed time within MIGRATE_WINDOW seconds of a cast
--- becomes that cast's shift, and those that match no cast are kept as timesUnmatched and named in chat.
--- Only fields are added; nothing else changes. timesMigrated marks it done.
+-- snaps onto that cast with no shift (shifts only come from dragging a flag afterwards), and those that
+-- match no cast are kept as timesUnmatched and named in chat. Only fields are added; nothing else
+-- changes. timesMigrated marks it done.
 
 local MIGRATE_WINDOW = 5
 Reminders.MIGRATE_WINDOW = MIGRATE_WINDOW
@@ -645,8 +666,9 @@ function Reminders.MigrateOne(encounterID, r, again)
     if not (row and typed) then
         return false
     end
+    -- a typed time near a cast came from a double-click by it, not an offset: it snaps onto the cast
     local casts = Reminders.FromReference(ref, row)
-    local shifts, claimed, unmatched = {}, {}, {}
+    local claimed, unmatched = {}, {}
     for _, e in ipairs(typed) do
         local at = Reminders.AbsoluteTime(ref, e.ph, e.t)
         local best, bestGap
@@ -659,17 +681,12 @@ function Reminders.MigrateOne(encounterID, r, again)
         end
         if best then
             claimed[best.cast] = true
-            local shift = tenthOf(at - Reminders.AbsoluteTime(ref, best.ph, best.t))
-            if shift ~= 0 then
-                shifts[best.cast] = shift
-            end
         else
             unmatched[#unmatched + 1] = e
         end
     end
     r.timesBackup = r.timesBackup or r.times
     r.times = nil
-    r.shifts = next(shifts) and shifts or nil
     r.timesMigrated = true
     if #unmatched > 0 then
         r.timesUnmatched = Reminders.FormatTimes(unmatched)
@@ -700,7 +717,7 @@ function Reminders.ResetMigration()
 end
 
 -- The Mech Alerts list's text of a reminder's times: as FormatTimes, each shifted cast followed by its
--- shift ("P1 0:33 (-3 s)").
+-- shift ("P1 0:33 (-3 s)"), and one turned off (AllCasts) by "(off)".
 function Reminders.FormatCasts(list)
     local phases, byPhase = {}, {}
     for _, e in ipairs(list or {}) do
@@ -712,6 +729,9 @@ function Reminders.FormatCasts(list)
         local s = (e.ph == 1 and "" or "+") .. clock(e.t)
         if e.shift then
             s = s .. string.format(" (%s%g s)", e.shift > 0 and "+" or "", e.shift)
+        end
+        if e.off then
+            s = s .. " (off)"
         end
         g[#g + 1] = s
     end

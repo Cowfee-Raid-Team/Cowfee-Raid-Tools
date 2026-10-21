@@ -998,7 +998,8 @@ function RehearsalWindow:OpenAt(encounterID, difficultyName, t, opts)
         return false, why
     end
     -- the group as the engine's order shift picks it; no difficulty from the caller keeps the source's
-    local group = CRT.Timeline:GroupFor(difficultyName)
+    -- opts.group (the editor's, from the raid's difficulty ID) wins over the name, which may be translated
+    local group = (opts.group == "mythic" or opts.group == "nh") and opts.group or CRT.Timeline:GroupFor(difficultyName)
     local source = CRT.Timeline.RehearsalSourceFor and CRT.Timeline:RehearsalSourceFor(encounterID, group)
     if not source then
         return false, TEXT.noSource

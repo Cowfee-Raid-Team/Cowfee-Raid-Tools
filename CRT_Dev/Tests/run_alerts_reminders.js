@@ -382,20 +382,25 @@ do
   local all = CRT.db.alerts.reminders[3001]
   local a = all[4]
   assert(a.times == nil and a.timesBackup == "P1 0:33" and a.timesMigrated == true, "kept aside: " .. tostring(a.timesBackup))
-  assert(a.shifts and a.shifts[1] == -3 and a.timesUnmatched == nil, "0:33 is the 0:36 cast, 3 s early")
+  assert(a.shifts == nil and a.timesUnmatched == nil, "0:33 snaps onto the 0:36 cast, no shift")
   assert(a.enabled == false and a.text == "Possession Barrage" and a.warn == 5, "every other field as it was")
   local list, source = R:Times(3001, a)
-  assert(source == "reference" and #list == 8 and list[1].t == 33 and list[1].shift == -3 and list[2].t == 72 and list[2].shift == nil,
-    "follows every cast of the timeline: " .. #list)
-  assert(R.FormatCasts(list):find("^P1 0:33 %(%-3 s%), 1:12, ") ~= nil, "the list shows the shift: " .. R.FormatCasts(list))
+  assert(source == "reference" and #list == 8 and list[1].t == 36 and list[1].shift == nil and list[2].t == 72,
+    "follows every cast of the timeline, on the casts: " .. #list .. " " .. tostring(list[1] and list[1].t))
+  assert(R.FormatCasts(list):find("^P1 0:36, 1:12, ") ~= nil, "the list: the casts: " .. R.FormatCasts(list))
+  -- a shift only comes from dragging a flag afterwards, and the list shows it
+  assert(R:SetTime(3001, 4, 1, 1, 33), "dragged")
+  local moved = R:Times(3001, all[4])
+  assert(all[4].shifts[1] == -3 and moved[1].t == 33 and R.FormatCasts(moved):find("^P1 0:33 %(%-3 s%), 1:12, ") ~= nil, "a dragged shift: " .. R.FormatCasts(moved))
+  all = CRT.db.alerts.reminders[3001]
   local b = all[5]
-  assert(b.timesBackup == "P1 1:13, 5:00" and b.shifts[2] == 1 and b.timesUnmatched == "P1 5:00", "one shifted, one kept as unmatched")
+  assert(b.timesBackup == "P1 1:13, 5:00" and b.shifts == nil and b.timesUnmatched == "P1 5:00", "one snapped, one kept as unmatched")
   assert(#said == 1 and said[1]:find("Possession Barrage", 1, true) and said[1]:find("5:00", 1, true), "said once in chat: " .. tostring(said[1]))
   assert(all[6].times == "P1 0:10.8" and all[6].timesBackup == nil and all[6].timesMigrated == nil, "your own reminder untouched")
   -- only once
   R.ResetMigration()
   R:List(3001)
-  assert(#said == 1 and all[4].timesBackup == "P1 0:33" and all[4].shifts[1] == -3, "nothing moves twice")
+  assert(#said == 1 and all[4].timesBackup == "P1 0:33" and all[4].shifts[1] == -3, "nothing moves twice, the drag kept")
   -- a time saved onto an ability later (a double-click on a cast) becomes a shift the same way
   local id = R:Save(3001, nil, { text = "Possession Barrage", boss = NEK, spellID = 1284103, times = "P1 1:47" })
   local n = R:Get(3001, id)

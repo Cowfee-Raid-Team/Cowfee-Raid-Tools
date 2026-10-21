@@ -424,10 +424,32 @@ function Draft.KeptFields(ctx)
     return ctx and ctx.expected and CRT.NoteParser.UnknownFields(ctx.expected) or ""
 end
 
+-- The difficulty group the editor's previews read an ability timeline for, as the Rehearsal its Test
+-- opens would: the draft's difficulty's, else the raid you are in (by its difficulty ID, the same on every
+-- client language), else Normal/Heroic.
+function Draft.PreviewGroup(draft)
+    local T = CRT.Timeline
+    if not (T and T.GroupOf) then
+        return nil
+    end
+    if draft and type(draft.difficulty) == "string" and trim(draft.difficulty) ~= "" then
+        return T:GroupOf(nil, draft.difficulty)
+    end
+    return T:GroupOf(Draft.CurrentDifficultyID(), nil) or "nh"
+end
+
+-- Whether the draft, as Only me, is an alert on a boss ability that follows its casts (no Time of its own).
+function Draft.FollowsCasts(ctx, draft)
+    if not (ctx and draft) or ctx.savedMode or draft.saveAs ~= "mine" or not Reminders.FollowsCasts then
+        return false
+    end
+    return Reminders.FollowsCasts(ctx.encounterID, Draft.TimesProbe(draft), nil, Draft.PreviewGroup(draft))
+end
+
 -- The times of a reminder moving to the raid note (Draft.KeepsTimes), or nil.
 function Draft.KeptTimeList(ctx, draft)
     if Draft.KeepsTimes(ctx, draft) then
-        local list = Reminders:Times(ctx.encounterID, Draft.TimesProbe(draft))
+        local list = Reminders:Times(ctx.encounterID, Draft.TimesProbe(draft), nil, Draft.PreviewGroup(draft))
         if #list > 0 then
             return list
         end
@@ -481,7 +503,7 @@ function Draft.FirstFightTime(ctx, draft)
     end
     local enc = ctx.encounterID
     local difficulty = draft.difficulty or Draft.CurrentDifficulty()
-    local group = T:GroupFor(difficulty)
+    local group = Draft.PreviewGroup(draft) or T:GroupFor(difficulty)
     local ok, source = pcall(T.RehearsalSourceFor, T, enc, group)
     if not (ok and type(source) == "table" and type(source.base) == "table") then
         return nil
@@ -519,6 +541,18 @@ function Draft.FirstFightTime(ctx, draft)
     end
     -- the group and the reference the window plays, so the test's items read the same casts
     return first, difficulty, ref, group
+end
+
+-- The raid difficulty's ID you are in now (DifficultyID), or nil outside a raid or when it can't be read.
+function Draft.CurrentDifficultyID()
+    if not GetInstanceInfo then
+        return nil
+    end
+    local ok, _, kind, difficultyID = pcall(GetInstanceInfo)
+    if ok and Draft.readable(kind) and kind == "raid" and Draft.readable(difficultyID) and type(difficultyID) == "number" then
+        return difficultyID
+    end
+    return nil
 end
 
 -- The raid difficulty you are in now, by the name a pull there gets (GetDifficultyInfo, as the engine

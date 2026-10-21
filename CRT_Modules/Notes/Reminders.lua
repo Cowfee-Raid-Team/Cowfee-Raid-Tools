@@ -326,7 +326,10 @@ local function timesFor(enc, r)
     local group = viewDiff and T and T.GroupOf and T:GroupOf(nil, viewDiff) or nil
     local found, source, err = Reminders:Times(enc, r, nil, group)
     if #found > 0 then
-        -- an ability's casts, each with any shift its flag was dragged by
+        -- an ability's casts, each with any shift its flag was dragged by, and those turned off
+        if Reminders.FollowsCasts(enc, r, nil, group) then
+            return Reminders.FormatCasts(Reminders.AllCasts(enc, r, nil, group)), true
+        end
         return (source == "reference" and Reminders.FormatCasts or Reminders.FormatTimes)(found), true
     end
     if source == "typed" and err then
