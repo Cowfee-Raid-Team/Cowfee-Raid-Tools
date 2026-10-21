@@ -2,14 +2,14 @@
 // Page.lua. A note made for a boss gets its header and shows on Raid Notes; Share always makes the note
 // active here (sent to the group only when allowed); the Raid Notes page follows the active note; lines the
 // Timeline writes show in the Raid Notes text.
-// Usage: node run_notes_share.js <Parse.lua> <Data.lua> <Comm.lua> <Settings.lua> <Page.lua>
+// Usage: node run_notes_share.js <Parse.lua> <Data.lua> <Comm.lua> <Settings.lua> <Page.lua> <Render.lua>
 const fs = require('fs');
 const path = require('path');
 const themeLua = require('./theme_stub');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
 const harness = themeLua(process.argv.slice(2)) + `
-local parseSrc, dataSrc, commSrc, settingsSrc, pageSrc = ...
+local parseSrc, dataSrc, commSrc, settingsSrc, pageSrc, renderSrc = ...
 local edits, buttons, helps = {}, {}, {}
 local function mock(kind)
   local m = { shown = false, kind = kind }
@@ -60,7 +60,7 @@ local CRT = {
     window = { shown = true, locked = true, hidePassed = true, onlyMe = false, fontSize = 14, alpha = 100, bgAlpha = 50, font = "Friz Quadrata" },
     assignments = { shown = true, locked = true, fontSize = 14, alpha = 100, bgAlpha = 50 },
     alert = { enabled = true, seconds = 10, tts = true, ttsSeconds = 3, ttsVolume = 100 } } },
-  UI = { PAGE_W = 1026, PAGE_H = 560, SkinScrollBar = function() end, Help = function(parent, title, text) local m = mock() rawset(m, "helpTitle", title) rawset(m, "helpText", text) helps[#helps + 1] = m return m end, Dropdown = function() local m = mock() rawset(m, "refresh", function() end) return m end, Slider = function() local m = mock() rawset(m, "refresh", function() end) return m end, RegisterLayer = function() end, RegisterPage = function(_, key, title, fn) pages[key] = fn end, Show = function() end, SetFrameTitle = function() end, RegisterTab = function() end, SetTabSelected = function() end, SkinTree = function() end },
+  UI = { PAGE_W = 1026, PAGE_H = 560, SkinScrollBar = function() end, ScrollGutter = function(w) return 6 + (w or 18) end, Help = function(parent, title, text) local m = mock() rawset(m, "helpTitle", title) rawset(m, "helpText", text) helps[#helps + 1] = m return m end, Dropdown = function() local m = mock() rawset(m, "refresh", function() end) return m end, Slider = function() local m = mock() rawset(m, "refresh", function() end) return m end, RegisterLayer = function() end, RegisterPage = function(_, key, title, fn) pages[key] = fn end, Show = function() end, SetFrameTitle = function() end, RegisterTab = function() end, SetTabSelected = function() end, SkinTree = function() end },
   Alerts = { Settings = function() return { bars = { shown = true, noteLines = true, cap = 5, ahead = 20, width = 240, height = 20 } } end },
   AlertBars = { Refresh = function() end, Test = function() end },
   NoteReminders = { Build = function() end }, NotePhases = { Build = function() end },
@@ -76,6 +76,7 @@ assert(load(dataSrc, "Data.lua"))("CowfeeRaidTools", CRT)
 assert(load(commSrc, "Comm.lua"))("CowfeeRaidTools", CRT)
 assert(load(settingsSrc, "Settings.lua"))("CowfeeRaidTools", CRT)
 assert(load(pageSrc, "Page.lua"))("CowfeeRaidTools", CRT)
+assert(load(renderSrc, "Render.lua"))("CowfeeRaidTools", CRT)
 local Notes, Comm = CRT.Notes, CRT.NoteComm
 local function lastPrint() return printed[#printed] or "" end
 
@@ -354,8 +355,8 @@ end
 print("ok a long notes list: a row for every note, all selectable")
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
-for (const f of process.argv.slice(2, 7)) {
+for (const f of process.argv.slice(2, 8)) {
   let src; try { src = fs.readFileSync(f, 'utf8'); } catch (e) { console.error('cannot read ' + f); process.exit(1); }
   lua.lua_pushstring(L, to_luastring(src));
 }
-if (lua.lua_pcall(L, 5, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
+if (lua.lua_pcall(L, 6, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
