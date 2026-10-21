@@ -361,6 +361,82 @@ check("timeline: stacked icons move aside, away from the names", function()
   assert(last(T:Visible()[2])[4] == 0, "stacking off: on the line")
 end)
 
+-- Bug 20261021-timeline-side: a name switched sides near the end. Lanes were worked out again every redraw from
+-- where the icons were then, so an icon reaching the end beside one still playing its NOW effect there stepped
+-- aside (its name flipped), and stepped back once that one was gone; a stacked icon went back to the line (and its
+-- name with it) as soon as the icon before it finished.
+check("timeline: a name keeps its side from entry through the NOW effect", function()
+  local mover
+  -- each line's name anchor and its icon's distance from the line, every 0.05 s of its life
+  local function run(list, settings)
+    pull(list, settings)
+    start()
+    local sides = {}
+    while clock < 109 do
+      T:Refresh()
+      mover = T.tl.mover
+      if rawget(mover, "OnUpdate") then mover.OnUpdate(mover, 0.016) end
+      local vertical = s().direction == "down" or s().direction == "up"
+      for _, w in ipairs(T:Visible()) do
+        local p, icon = last(w.name), last(w)
+        local across = vertical and icon[4] or icon[5]
+        local seen = sides[w.line.id] or {}
+        sides[w.line.id] = seen
+        seen[#seen + 1] = { name = p[1], across = across, at = clock }
+      end
+      clock = clock + 0.05
+    end
+    return sides
+  end
+  local function steady(sides, id, label)
+    local seen = sides[id]
+    assert(seen and #seen > 100, label .. " " .. id .. ": shown its whole life")
+    for _, x in ipairs(seen) do
+      assert(x.name == seen[1].name and near(x.across, seen[1].across), label .. " " .. id .. ": " .. seen[1].name .. " " .. seen[1].across
+        .. " became " .. x.name .. " " .. x.across .. " at " .. x.at)
+    end
+    return seen[1]
+  end
+  local NEAR = { down = "LEFT", up = "LEFT", left = "BOTTOM", right = "BOTTOM" } -- the name's own point on the positive side
+  local FAR = { down = "RIGHT", up = "RIGHT", left = "TOP", right = "TOP" }
+  for _, direction in ipairs({ "down", "up", "left", "right" }) do
+    for _, side in ipairs({ "right", "left" }) do
+      local chosen = side == "right" and NEAR[direction] or FAR[direction]
+      local outer = side == "right" and FAR[direction] or NEAR[direction]
+      for _, stack in ipairs({ true, false }) do
+        for _, effect in ipairs({ "flash", "pop", "ring", "slide" }) do
+          local label = direction .. "/" .. side .. "/" .. tostring(stack) .. "/" .. effect
+          -- 1.5 s apart: never over each other in flight, but the second reaches the end while the first's NOW plays there
+          local sides = run({ item{ id = "a", time = 5, text = "First" }, item{ id = "b", time = 6.5, text = "Second" } },
+            { direction = direction, side = side, stack = stack, nowEffect = effect, nowTime = 1 })
+          for _, id in ipairs({ "a", "b" }) do
+            local x = steady(sides, id, label)
+            assert(x.name == chosen and x.across == 0, label .. " " .. id .. ": on the line, the name on the chosen side: " .. x.name)
+          end
+          -- three close ones: the second is stacked from the start and stays there when the first finishes
+          sides = run({ item{ id = "p", time = 5, text = "One" }, item{ id = "q", time = 5.5, text = "Two" }, item{ id = "r", time = 6, text = "Three" } },
+            { direction = direction, side = side, stack = stack, nowEffect = effect, nowTime = 1 })
+          local p, q, r = steady(sides, "p", label), steady(sides, "q", label), steady(sides, "r", label)
+          assert(p.name == chosen and p.across == 0 and r.name == chosen and r.across == 0, label .. ": the first and third on the line")
+          if stack then
+            assert(q.name == outer and q.across ~= 0, label .. ": the second beside it, its name outside")
+          else
+            assert(q.name == chosen and q.across == 0, label .. ": stacking off, the second on the line")
+          end
+        end
+      end
+    end
+  end
+  -- a pooled widget that held a stacked icon carries nothing over to the next one
+  run({ item{ id = "p", time = 5, text = "One" }, item{ id = "q", time = 5.5, text = "Two" } })
+  pull({ item{ id = "z", time = 5, text = "Alone" }, item{ id = "y", time = 9, text = "Later" } })
+  start() T:Refresh()
+  for _, w in ipairs(T:Visible()) do
+    assert(last(w.name)[1] == "LEFT" and last(w)[4] == 0, w.line.id .. ": a fresh icon on the line, its name on the right")
+  end
+  assert(#errors == 0, tostring(errors[1]))
+end)
+
 check("timeline: colour rules", function()
   local soak, dispel = Ref.TYPES.soak.color, Ref.TYPES.dispel.color
   pull({ item{ id = "k1", time = 8, text = "Soak", abilityType = "soak", color = { 0, 1, 0 } }, item{ id = "k2", time = 9.5, text = "None" } })
