@@ -7,11 +7,13 @@ local ADDON, CRT = ...
 --               size of every text the addon draws with its shared fonts, CRT:ApplyFonts in Core.lua).
 --               Middle: Sound, Reports and the Minimap button. Right: Layers (which frame strata each
 --               group of windows is drawn in, UI:SetLayer in UI/Panel.lua)
+--   Macros      a row per macro set (Macros.lua): its status, Create macros, Update and Remove macros
 --   Profiles    Profiles.lua
 -- Named Addon Settings before 0.16.0. Its key is still "settings".
 
 local UI = CRT.UI
 local Profiles = CRT.Profiles
+local Macros = CRT.Macros
 
 -- The columns of the Appearance tab, a third of the page each (UI.PAGE_W): a slider row is LABEL_W + 5
 -- + CONTROL_W plus its value, about 330, and a dropdown row about 285.
@@ -517,8 +519,103 @@ local function buildProfiles(pf)
     import:SetScript("OnClick", showImport)
 end
 
+-- The Macros tab: a row per macro set the features registered (Macros.lua), with its status and buttons. Every
+-- change refuses in combat, so the buttons grey out then, with the reason in their tooltip.
+local MACRO_ROW_H = 34
+local MACRO_STATUS_X = 200 -- the status line, after the set's name
+local MACRO_BUTTONS_X = 470 -- the buttons, after the status line
+
+local function macroButton(pf, label, tip, onClick)
+    local b = UI.HeaderButton(pf, label, onClick)
+    b:SetMotionScriptsWhileDisabled(true)
+    b:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:SetText(label, 1, 1, 1)
+        GameTooltip:AddLine(tip, 0.85, 0.85, 0.85, true)
+        if Macros:InCombat() then
+            GameTooltip:AddLine("Not in combat: the game doesn't let addons change macros during a fight.", 1, 0.55, 0.1, true)
+        end
+        GameTooltip:Show()
+    end)
+    b:SetScript("OnLeave", function()
+        GameTooltip:Hide()
+    end)
+    return b
+end
+
+local function runMacros(action, key)
+    local _, message = Macros[action](Macros, key)
+    if message then
+        CRT:Print(message)
+    end
+    refresh()
+end
+
+local function macroStatus(key)
+    local st = Macros:Status(key)
+    local text = Macros:StatusText(key)
+    if #st.changed > 0 or #st.conflicts > 0 or st.outdated > 0 then
+        return UI.WarnText(text)
+    elseif st.created == st.total then
+        return UI.GoodText(text)
+    end
+    return text
+end
+
+local function buildMacros(pf)
+    local x, top = LEFT_X, -44
+    heading(pf, x, top, "Macros", "Ready-made macros for the addon's features, put in the game's macro list (Esc > Macros) under General Macros, so all your characters get them. Drag one to an action bar to use it.\n\nCreate macros makes the ones that are missing. Update rewrites the addon's macros when a new version changes them. Remove macros deletes only the macros the addon made.\n\nA macro you edited or renamed is never changed or removed, and neither is your own macro with the same name. Nothing is made when your macro list hasn't room for the whole set.\n\nNot in combat: the game doesn't let addons change macros during a fight.")
+    for i, set in ipairs(Macros:Sets()) do
+        local key, y = set.key, top - 30 - (i - 1) * MACRO_ROW_H
+        local label = pf:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
+        label:SetPoint("TOPLEFT", x, y)
+        label:SetWidth(MACRO_STATUS_X - 10)
+        label:SetJustifyH("LEFT")
+        label:SetWordWrap(false)
+        label:SetText(set.label)
+        local status = pf:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+        status:SetPoint("TOPLEFT", x + MACRO_STATUS_X, y - 2)
+        status:SetWidth(MACRO_BUTTONS_X - MACRO_STATUS_X - 10)
+        status:SetJustifyH("LEFT")
+        status:SetWordWrap(false)
+
+        local create = macroButton(pf, "Create macros", "Makes this set's missing macros.", function()
+            runMacros("Create", key)
+        end)
+        create:SetPoint("TOPLEFT", x + MACRO_BUTTONS_X, y + 2)
+        local update = macroButton(pf, "Update", "Rewrites the addon's macros in this set that a newer version changed. Macros you edited stay as they are.", function()
+            runMacros("Update", key)
+        end)
+        update:SetPoint("LEFT", create, "RIGHT", 6, 0)
+        local remove = macroButton(pf, "Remove macros", "Deletes the macros in this set that the addon made. Macros you edited or renamed stay.", function()
+            UI.LiftOver(UI.ShownPopup(StaticPopup_ShowCustomGenericConfirmation({
+                text = "Remove the %s macros the addon made? Macros you edited or renamed stay.",
+                text_arg1 = set.label,
+                acceptText = "Remove macros",
+                cancelText = CANCEL,
+                showAlert = true,
+                callback = function()
+                    runMacros("Remove", key)
+                end,
+            }), "GENERIC_CONFIRMATION"))
+        end)
+        remove:SetPoint("LEFT", update, "RIGHT", 6, 0)
+
+        status.refresh = function()
+            status:SetText(macroStatus(key))
+            local free = not Macros:InCombat()
+            create:SetEnabled(free)
+            update:SetEnabled(free)
+            remove:SetEnabled(free)
+        end
+        controls[#controls + 1] = status
+    end
+    Macros:OnChange(refresh)
+end
+
 local TABS = {
     { key = "appearance", label = "Appearance" },
+    { key = "macros", label = "Macros" },
     { key = "profiles", label = "Profiles" },
 }
 local tabButtons, tabFrames = {}, {}
@@ -541,7 +638,7 @@ local function build(pf)
     local title = pf:CreateFontString(nil, "OVERLAY", "CRTFontLarge")
     title:SetPoint("TOPLEFT", 8, -8)
     title:SetText("General Settings")
-    UI.Help(pf, "General Settings", "Settings for the whole addon: the look, text, sound, reports, the minimap button, window layers and profiles. Changes apply at once, except profile changes, which reload your interface."):SetPoint("LEFT", title, "RIGHT", 6, 0)
+    UI.Help(pf, "General Settings", "Settings for the whole addon: the look, text, sound, reports, the minimap button, window layers, macros and profiles. Changes apply at once, except profile changes, which reload your interface."):SetPoint("LEFT", title, "RIGHT", 6, 0)
 
     for i, tab in ipairs(TABS) do
         local b = CreateFrame("Button", nil, pf, "BackdropTemplate")
@@ -574,6 +671,7 @@ local function build(pf)
 
     buildLeft(tabFrames.appearance)
     buildRight(tabFrames.appearance)
+    buildMacros(tabFrames.macros)
     buildProfiles(tabFrames.profiles)
     selectTab(CRT.db.ui.settingsTab)
 

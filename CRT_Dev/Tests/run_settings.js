@@ -5,7 +5,7 @@ const fs = require('fs');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
 const harness = `
-local coreSrc, panelSrc, controlsSrc, pageSrc, alertSrc, profilesSrc, themesSrc = ...
+local coreSrc, panelSrc, controlsSrc, pageSrc, alertSrc, profilesSrc, themesSrc, macrosSrc = ...
 -- FAIL lines are counted, and the count printed last, so a failure shows past the runner's tail
 local failCount, rawPrint = 0, print
 print = function(s, ...) if type(s) == "string" and s:find("^FAIL ") then failCount = failCount + 1 end rawPrint(s, ...) end
@@ -39,6 +39,7 @@ local function mock(kind)
     if k == "GetFont" then return function() return "f", 20, "" end end
     if k == "GetCenter" then return function() return 500, 400 end end
     if k == "SetColorTexture" then return function(self, r, g, b, a) rawset(self, "color", { r, g, b, a }) end end
+    if k == "SetEnabled" then return function(self, on) rawset(self, "enabled", on and true or false) end end
     return function() end end })
 end
 function CreateFrame(kind, name, parent, template) local f = mock(kind) if template == "BasicFrameTemplateWithInset" then f:CreateTexture() f:CreateTexture() end return f end
@@ -111,6 +112,16 @@ CRT.Notes = { Alert = function() return CRT.db.notes.alert end, SpellInfo = func
 CRT.NoteEngine = { running = false }
 -- CRT_Modules/Notes/Alert.lua's preview reads CRT.Alerts.running (set by CRT_Modules/Alerts/Engine.lua in the game)
 CRT.Alerts = CRT.Alerts or { running = false }
+-- The macro engine, with a one-macro set and a small stand-in for the game's macro list.
+local gameMacros = {}
+function GetNumMacros() return #gameMacros, 0 end
+function GetMacroInfo(i) local m = gameMacros[i] if m then return m.name, m.icon, m.body end end
+function CreateMacro(name, icon, body) if combat then error("blocked") end gameMacros[#gameMacros + 1] = { name = name, icon = icon, body = body } return #gameMacros end
+function DeleteMacro(i) if combat then error("blocked") end table.remove(gameMacros, i) end
+function EditMacro(i, _, _, body) if combat then error("blocked") end gameMacros[i].body = body return i end
+assert(load(macrosSrc, "CRT_Core/Macros.lua"))("CowfeeRaidTools", CRT)
+if not (CRT.db.macros and type(CRT.db.macros.owned) == "table") then print("FAIL CRTDB.macros.owned has a default") end
+CRT.Macros:Register({ key = "test", label = "Test calls", macros = { { name = "CRT Test", icon = 134400, body = "/say test" } } })
 assert(load(pageSrc, "SettingsPage.lua"))("CowfeeRaidTools", CRT)
 UI:RegisterPage("devtest", "Development", function() end)
 UI:SetPageHidden("devtest", true, true)
@@ -215,6 +226,45 @@ print("same font again: popup " .. tostring(popup))
 print("settings page built: " .. tostring(UI.pages.settings.frame ~= nil) .. ", title " .. UI.pages.settings.title .. ", profile " .. CRT.Profiles:Current() .. ", minimap " .. tostring(CRT.db.minimap.angle))
 local opts = {} for _, o in ipairs(dropdowns["Use profile"].options()) do opts[#opts + 1] = o.label end
 print("use profile choices: " .. table.concat(opts, ", ") .. "; copy from enabled " .. tostring(dropdowns["Copy from"].enabledIf()))
+
+-- The Macros tab: a row per macro set with its status, Create macros, Update and Remove macros (which asks first),
+-- greyed in combat.
+do
+  local function textOf(fr) local t = rawget(fr, "text") return type(t) == "string" and t or "" end
+  local function findText(want, kind) for _, fr in ipairs(frames) do if (not kind or fr.kind == kind) and textOf(fr) == want then return fr end end end
+  local function findWith(part) for _, fr in ipairs(frames) do if fr.kind == "FontString" and textOf(fr):find(part, 1, true) then return fr end end end
+  local tabLabels = {}
+  for _, fr in ipairs(frames) do
+    local t = textOf(fr)
+    if fr.kind == "FontString" and rawget(fr, "font") == "CRTFontNormal" and (t == "Appearance" or t == "Macros" or t == "Profiles") then tabLabels[#tabLabels + 1] = t end
+  end
+  -- the tab labels are made first; the tabs' own headings come after
+  tabLabels = { tabLabels[1], tabLabels[2], tabLabels[3] }
+  if table.concat(tabLabels, ",") ~= "Appearance,Macros,Profiles" then print("FAIL General Settings tabs are Appearance, Macros, Profiles (got " .. table.concat(tabLabels, ",") .. ")") end
+  if not findText("Test calls", "FontString") then print("FAIL the Macros tab has a row for each set") end
+  local create, update, remove = findText("Create macros", "Button"), findText("Update", "Button"), findText("Remove macros", "Button")
+  if not (create and update and remove) then print("FAIL the Macros row has Create macros, Update and Remove macros")
+  else
+    UI:SelectPage("settings")
+    if not findText("none", "FontString") then print("FAIL the row's status says none before any are made") end
+    create.OnClick(create)
+    if #gameMacros ~= 1 or not findWith("1 of 1 created") then print("FAIL Create macros makes the set and the status follows") end
+    popup = nil
+    remove.OnClick(remove)
+    if not popup or #gameMacros ~= 1 then print("FAIL Remove macros asks first")
+    else
+      popup.callback()
+      if #gameMacros ~= 0 or not findText("none", "FontString") then print("FAIL accepting the question removes them") end
+    end
+    combat = true
+    for _, fr in ipairs(frames) do if rawget(fr, "OnEvent") then pcall(fr.OnEvent, fr, "PLAYER_REGEN_DISABLED") end end
+    if create.enabled ~= false or update.enabled ~= false or remove.enabled ~= false then print("FAIL the macro buttons are greyed in combat") end
+    combat = false
+    for _, fr in ipairs(frames) do if rawget(fr, "OnEvent") then pcall(fr.OnEvent, fr, "PLAYER_REGEN_ENABLED") end end
+    if create.enabled ~= true then print("FAIL the macro buttons come back after combat") end
+    print("macros tab checked")
+  end
+end
 
 -- Modern look.
 if k == nil then end
@@ -330,5 +380,5 @@ if failCount > 0 then print(failCount .. " failed") end
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 const d = process.argv[2];
-for (const p of ['CRT_Core/Core.lua', 'CRT_Core/UI/Panel.lua', 'CRT_Core/UI/Controls.lua', 'CRT_Core/UI/SettingsPage.lua', 'CRT_Modules/Notes/Alert.lua', 'CRT_Core/Profiles.lua', 'CRT_Core/Themes.lua']) lua.lua_pushstring(L, to_luastring(fs.readFileSync(d + '/' + p, 'utf8')));
-if (lua.lua_pcall(L, 7, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
+for (const p of ['CRT_Core/Core.lua', 'CRT_Core/UI/Panel.lua', 'CRT_Core/UI/Controls.lua', 'CRT_Core/UI/SettingsPage.lua', 'CRT_Modules/Notes/Alert.lua', 'CRT_Core/Profiles.lua', 'CRT_Core/Themes.lua', 'CRT_Core/Macros.lua']) lua.lua_pushstring(L, to_luastring(fs.readFileSync(d + '/' + p, 'utf8')));
+if (lua.lua_pcall(L, 8, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
