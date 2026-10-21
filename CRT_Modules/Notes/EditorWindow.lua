@@ -2,7 +2,8 @@ local ADDON, CRT = ...
 
 -- The pop-out note editor: a note's assignments as rows of names, changed by drag and drop, opened from Raid Notes
 -- (the Pop out editor buttons by the Note text and the Personal note). Left, the note's lines in their own order
--- (Notes/EditModel.lua); right, a palette: Search, the group's players, General, Groups and Classes. Only the
+-- (Notes/EditModel.lua); right, a palette: Search, Players from (the current group, the note's invite list or a
+-- saved Raid Groups layout, Alex 2026-10-21), the players, General, Groups and Classes. Only the
 -- assignment lines ("Label: names") and the invite list (players only) take names; the timed lines are shown
 -- dimmed under a Timers heading and never change (Alex, 2026-10-21). Drag a chip onto a row to add it, a row's
 -- chip onto another row to move it, x removes it; with Quick fill on, click a row, then click chips to add them. Raw text shows the note as it will be saved. Only names change: Save writes the
@@ -25,6 +26,7 @@ local TEXT = {
     personalTitle = "Personal note editor",
     untitled = "Note",
     search = "Search",
+    playersFrom = "Players from",
     sections = { players = "Players", general = "General", groups = "Groups", classes = "Classes" },
     quickFill = "Quick fill",
     rawText = "Raw text",
@@ -48,13 +50,17 @@ local TEXT = {
         .. "The invite list takes players only. Removing a player leaves their slot empty, so the others keep "
         .. "their groups.\n\n"
         .. "Quick fill: click a line, then click names on the right to add them to it.\n\n"
+        .. "Players from picks the players listed on the right: your current group, this note's invite list, or a "
+        .. "saved Raid Groups layout. A note linked to a layout shows that layout first, and picks it when you're "
+        .. "not in a group.\n\n"
         .. "Timers are shown as the note has them and can't be changed here. Only names change. Raw text shows "
         .. "the note as it will be saved.",
 }
 
 local L = {
     width = 900, height = 580, minWidth = 680, minHeight = 420,
-    paletteW = 270, gap = 10, footerH = 28, rawH = 150, searchH = 22,
+    paletteW = 270, gap = 10, footerH = 28, rawH = 150, searchH = 22, fromH = 32, fromLabelW = 78,
+    fromGap = 5, -- UI.Dropdown's gap between its label and the dropdown (UI/Controls.lua)
     rowGap = 4, chipH = 18, chipGap = 4, chipPad = 6, iconW = 16, removeW = 14,
     timeW = 36, phaseW = 32, infoH = 18, timerAlpha = 0.5, labelMax = 0.35, headingH = 20, blankH = 8, sectionGap = 8,
     dragStart = 4, -- pixels the mouse moves with the button down before a press becomes a drag
@@ -63,8 +69,10 @@ local L = {
 local POPUP = "COWFEE_RAID_TOOLS_NOTE_EDITOR_UNSAVED"
 local BACKDROP = { bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 }
 
--- The editor's state: the window and its parts, the session (Model.New) and where it came from.
-local W = { rowFrames = {}, paletteChips = {}, headings = {} }
+-- The editor's state: the window and its parts, the session (Model.New) and where it came from. playersFrom: where
+-- the palette's Players come from (Model.SOURCE_GROUP, Model.SOURCE_INVITE or a layout's id); picked: the choice
+-- made in the dropdown for each note ("personal" for the personal note), kept until the game is reloaded.
+local W = { rowFrames = {}, paletteChips = {}, headings = {}, picked = {} }
 Editor.state = W
 
 local function readable(v)
@@ -389,6 +397,120 @@ local function roster()
     return ok and type(list) == "table" and list or {}
 end
 
+-- Players from: a saved Raid Groups layout by its id (Groups:Find), or nil.
+local function findLayout(id)
+    local Groups = CRT.Groups
+    if id == nil or not (Groups and Groups.Find) then
+        return nil
+    end
+    local preset = Groups:Find(id)
+    return type(preset) == "table" and preset or nil
+end
+
+-- The layout the open note is linked to (its invite list became it on import), if it still exists.
+local function linkedLayout()
+    if not W.source or W.source.personal then
+        return nil
+    end
+    local record = Notes:Get(W.source.id)
+    local id = record and record.presetId
+    return findLayout(id) and id or nil
+end
+
+local function pickKey()
+    return W.source and (W.source.personal and "personal" or W.source.id)
+end
+
+-- The choices of the Players from dropdown (Model.Sources).
+local function sourceChoices()
+    local Groups = CRT.Groups
+    local ok, layouts = false, nil
+    if Groups and Groups.Presets then
+        ok, layouts = pcall(Groups.Presets, Groups)
+    end
+    -- the personal note has no invite list
+    local personal = W.source and W.source.personal
+    return Model.Sources(ok and type(layouts) == "table" and layouts or {}, linkedLayout(), personal)
+end
+
+-- Whether a source can still be listed for the open note: the group, the invite list (not the personal note's), or a
+-- layout that still exists.
+local function validSource(from)
+    if from == Model.SOURCE_GROUP then
+        return true
+    elseif from == Model.SOURCE_INVITE then
+        return not (W.source and W.source.personal)
+    end
+    return from ~= nil and findLayout(from) ~= nil
+end
+
+-- Where the Players come from for the open note, worked out once as it opens: the choice made for it, else its
+-- linked layout when you're not in a group, else the current group.
+local function openSource()
+    local key = pickKey()
+    local from = key ~= nil and W.picked[key] or nil
+    if not validSource(from) then
+        if key ~= nil then
+            W.picked[key] = nil
+        end
+        from = Model.DefaultSource(linkedLayout(), IsInGroup and IsInGroup() or false)
+    end
+    W.playersFrom = from
+end
+
+-- A layout changed: the source stays as it is unless it was a layout deleted since, which falls back as on opening.
+local function keepSource()
+    if not validSource(W.playersFrom) then
+        openSource()
+    end
+end
+
+-- A player's class: the one stored for that name (Raid Groups keeps it), else the shared class lookup Render uses.
+local function playerClass(name)
+    local cache = CRT.db and CRT.db.classCache
+    local Groups = CRT.Groups
+    if cache then
+        local class = cache[name:lower()]
+        if not class and Groups and Groups.Normalize then
+            local ok, key = pcall(Groups.Normalize, name)
+            class = ok and type(key) == "string" and cache[key:lower()] or nil
+        end
+        if class then
+            return class
+        end
+    end
+    return W.classOf and W.classOf(name) or nil
+end
+
+-- A player's last role seen (Groups.CachedRole), for the role order.
+local function playerRole(name)
+    local Groups = CRT.Groups
+    if not (Groups and Groups.CachedRole) then
+        return nil
+    end
+    local role = Groups.CachedRole(name)
+    if not role and Groups.Normalize then
+        local ok, key = pcall(Groups.Normalize, name)
+        role = ok and type(key) == "string" and Groups.CachedRole(key) or nil
+    end
+    return role
+end
+
+-- The palette's players from the source picked.
+local function sourceRoster()
+    local from = W.playersFrom or Model.SOURCE_GROUP
+    if from == Model.SOURCE_GROUP then
+        return roster()
+    end
+    -- memoised by Render until the names it knows change
+    W.classOf = CRT.NoteRender and CRT.NoteRender.SharedLookup and CRT.NoteRender.SharedLookup() or nil
+    if from == Model.SOURCE_INVITE then
+        return Model.Roster(W.session and W.session:InviteNames() or {}, playerClass, playerRole)
+    end
+    local preset = findLayout(from)
+    return Model.Roster(preset and preset.slots or {}, playerClass, playerRole)
+end
+
 local function heading(n)
     local h = W.headings[n]
     if not h then
@@ -403,7 +525,7 @@ function Editor.DrawPalette()
         Editor.CancelDrag() -- its chip is about to be filled with another entry
     end
     local width = (L.paletteW - UI.ScrollGutter()) - 4
-    local sections = Model.Palette(roster(), W.query)
+    local sections = Model.Palette(sourceRoster(), W.query)
     local used, y = 0, 0
     for n, section in ipairs(sections) do
         local h = heading(n)
@@ -544,8 +666,16 @@ function chipDown(chip, button)
     W.driver:Show()
 end
 
+-- The palette lists the invite list as it is now: drawn again when the session's names change.
+local function followInvite()
+    if W.playersFrom == Model.SOURCE_INVITE then
+        Editor.DrawPalette()
+    end
+end
+
 local function changed()
     Editor.Refresh()
+    followInvite()
 end
 
 function chipUp(chip)
@@ -710,6 +840,7 @@ function Editor.Save()
     loadSession()
     W.session:SetQuickFill(quick)
     Editor.Refresh()
+    followInvite()
     return true
 end
 
@@ -727,6 +858,7 @@ local function onNotesChange()
         loadSession()
         W.session:SetQuickFill(quick and editable)
         Editor.Refresh()
+        followInvite()
     end
 end
 
@@ -793,9 +925,28 @@ local function buildPalette(c)
         self:ClearFocus()
     end)
     W.search = search
+    -- Players from: the group, the note's invite list or a saved Raid Groups layout
+    local from = UI.Dropdown(right, TEXT.playersFrom, {
+        labelWidth = L.fromLabelW, width = L.paletteW - L.fromLabelW - L.fromGap - 4,
+        options = sourceChoices,
+        get = function()
+            return W.playersFrom
+        end,
+        set = function(key)
+            local pick = pickKey()
+            if pick ~= nil then
+                W.picked[pick] = key
+            end
+            W.playersFrom = key
+            Editor.DrawPalette()
+            W.from.refresh()
+        end,
+    })
+    from:SetPoint("TOPLEFT", 2, -(L.searchH + 6))
+    W.from = from
     local scroll = CreateFrame("ScrollFrame", "CowfeeRaidToolsNoteEditorPalette", right, "UIPanelScrollFrameTemplate")
     UI:SkinScrollBar(scroll.ScrollBar)
-    scroll:SetPoint("TOPLEFT", 0, -(L.searchH + 8))
+    scroll:SetPoint("TOPLEFT", 0, -(L.searchH + 6 + L.fromH + 2))
     scroll:SetPoint("BOTTOMRIGHT", -UI.ScrollGutter(), 0)
     W.paletteChild = CreateFrame("Frame", nil, scroll)
     W.paletteChild:SetSize(L.paletteW - UI.ScrollGutter(), 1)
@@ -909,13 +1060,30 @@ local function build()
         end
     end)
     win:RegisterEvent("GROUP_ROSTER_UPDATE")
-    -- the group changed: new players in the palette, and a promotion (or demotion) unlocks (or locks) a clean editor
+    -- the group changed: new players in the palette (when it lists the group), and a promotion (or demotion) unlocks
+    -- (or locks) a clean editor
     win:SetScript("OnEvent", function()
         if win:IsShown() then
-            Editor.DrawPalette()
+            if W.playersFrom == Model.SOURCE_GROUP then
+                Editor.DrawPalette()
+            end
             onNotesChange()
         end
     end)
+    -- a layout saved, renamed, changed or deleted: the dropdown's choices, and the palette when it lists a layout
+    if CRT.Groups and CRT.Groups.OnChange then
+        CRT.Groups:OnChange(function()
+            if not (win:IsShown() and W.session) then
+                return
+            end
+            local before = W.playersFrom
+            keepSource()
+            W.from.refresh()
+            if (before ~= Model.SOURCE_GROUP and before ~= Model.SOURCE_INVITE) or W.playersFrom ~= before then
+                Editor.DrawPalette()
+            end
+        end)
+    end
     UI:OnTheme(function()
         if win:IsShown() then
             win.refresh()
@@ -940,7 +1108,9 @@ function Editor.Open(source)
     if not (same and W.window:IsShown() and W.session) then
         W.source = { id = source.id, personal = source.personal and true or nil }
         loadSession()
+        openSource() -- worked out once for this open; a layout edit later never changes it
     end
+    W.from.refresh()
     W.window:Show()
     if W.window.Raise then
         W.window:Raise()

@@ -14,6 +14,8 @@ local ADDON, CRT = ...
 --   s:SetQuickFill(on), s:Select(i), s:PaletteClick(token, kind)   Quick fill: a click on a chip adds it to the row
 --   s:BeginDrag(source), s:Drop(i), s:CancelDrag()   a drag: { token, kind } from the palette, { row, index } from a row
 --   Model.Palette(roster, query)  the palette's sections: Players, General, Groups and Classes
+--   Model.Sources(layouts, linkedId, noInvite), Model.DefaultSource(linkedId, inGroup), Model.Roster(names, classOf, roleOf)
+--                               where the Players come from: the group, the note's invite list or a Raid Groups layout
 -- Where the names are (Alex, 2026-10-21: only the text assignments and the invite list; the timed lines, cooldowns
 -- included, are left alone for now):
 --   a label line   "Label: names" (a line of free text with a colon), its words after the colon, kept with the
@@ -37,6 +39,8 @@ local TEXT = {
     melee = "Melee",
     ranged = "Ranged",
     group = "Group %d",
+    fromGroup = "Current group",
+    fromInvite = "This note's invite list",
 }
 
 -- The tag words the alerts understand (Notes/Engine.lua: IsMine, groupTag and the class words), which the
@@ -446,6 +450,22 @@ function Session:Dirty()
     return self:Text() ~= self.base
 end
 
+-- The players in the note's invite list now (every invite line's, each once, in order), edits included.
+function Session:InviteNames()
+    local out, seen = {}, {}
+    for i, row in ipairs(self.rows) do
+        if row.kind == "invite" then
+            for _, name in ipairs(self:Names(i)) do
+                if not seen[name:lower()] then
+                    seen[name:lower()] = true
+                    out[#out + 1] = name
+                end
+            end
+        end
+    end
+    return out
+end
+
 -- Quick fill ----------------------------------------------------------------------------------------------------
 
 function Session:SetQuickFill(on)
@@ -576,4 +596,59 @@ function Model.Palette(roster, query)
         section.entries = kept
     end
     return sections
+end
+
+-- Players from -----------------------------------------------------------------------------------------------------
+
+-- The source keys besides a layout's id (a Raid Groups layout is picked by its own id).
+Model.SOURCE_GROUP = "group"
+Model.SOURCE_INVITE = "invite"
+
+-- The "Players from" choices: { key, label }: the current group, the note's invite list, then every saved layout
+-- (layouts: Groups:Presets(), { id, name }) by name, the note's linked layout (linkedId) first. noInvite leaves the
+-- invite list out (the personal note has none).
+function Model.Sources(layouts, linkedId, noInvite)
+    local out = { { key = Model.SOURCE_GROUP, label = TEXT.fromGroup } }
+    if not noInvite then
+        out[#out + 1] = { key = Model.SOURCE_INVITE, label = TEXT.fromInvite }
+    end
+    local linked, rest = nil, {}
+    for _, p in ipairs(layouts or {}) do
+        if type(p) == "table" and p.id ~= nil and type(p.name) == "string" then
+            local entry = { key = p.id, label = p.name }
+            if linkedId ~= nil and p.id == linkedId then
+                linked = entry
+            else
+                rest[#rest + 1] = entry
+            end
+        end
+    end
+    if linked then
+        out[#out + 1] = linked
+    end
+    for _, entry in ipairs(rest) do
+        out[#out + 1] = entry
+    end
+    return out
+end
+
+-- The choice a note opens with: its linked layout when you're not in a group, else the current group.
+function Model.DefaultSource(linkedId, inGroup)
+    if linkedId ~= nil and not inGroup then
+        return linkedId
+    end
+    return Model.SOURCE_GROUP
+end
+
+-- A roster for Palette from a list of names (a layout's slots, "" for an empty one, or the invite list): each
+-- name once, its class from classOf(name) and its role from roleOf(name) when known (both may be nil).
+function Model.Roster(names, classOf, roleOf)
+    local out, seen = {}, {}
+    for _, key in ipairs(names or {}) do
+        if type(key) == "string" and readable(key) and key ~= "" and not seen[key:lower()] then
+            seen[key:lower()] = true
+            out[#out + 1] = { key = key, class = classOf and classOf(key) or nil, role = roleOf and roleOf(key) or nil }
+        end
+    end
+    return out
 end

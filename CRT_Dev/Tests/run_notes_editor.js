@@ -8,7 +8,8 @@
 //   The window: the Pop out editor buttons, timers dimmed under their heading, rows and palette chips, a drag
 //   with the mouse handlers and Escape,
 //   Quick fill, the raw text, Save through Notes:UpdateRaw, the unsaved warning, the permission gate and the
-//   personal note.
+//   personal note. Players from: the current group, the note's invite list or a saved Raid Groups layout (the
+//   linked one first, picked when solo), class colours, search, the tokens written, and when the list redraws.
 // Usage: node run_notes_editor.js <Parse.lua> <Data.lua> <Engine.lua> <EditModel.lua> <Render.lua> <EditorWindow.lua> <Settings.lua> <Page.lua>
 const fs = require('fs');
 const themeLua = require('./theme_stub');
@@ -129,7 +130,7 @@ local CRT = {
     alert = { enabled = true, seconds = 10, tts = true, ttsSeconds = 3, ttsVolume = 100 } } },
   UI = { PAGE_W = 1026, PAGE_H = 560, SkinScrollBar = function() end, ScrollGutter = function(w) return 6 + (w or 18) end,
     Help = function(parent, title, text) local m = mock() rawset(m, "helpTitle", title) rawset(m, "helpText", text) return m end,
-    Dropdown = function() local m = mock() rawset(m, "refresh", function() end) return m end,
+    Dropdown = function(_, label, opts) local m = mock() rawset(m, "label", label) rawset(m, "opts", opts) rawset(m, "refresh", function() end) return m end,
     Slider = function() local m = mock() rawset(m, "refresh", function() end) return m end,
     RegisterLayer = function() end, RegisterPage = function(_, key, title, fn) pages[key] = fn end, Show = function() end,
     SetFrameTitle = function() end, RegisterTab = function() end, SetTabSelected = function() end, SkinTree = function() end,
@@ -144,9 +145,19 @@ local CRT = {
   NoteWindow = { FONTS = { { name = "Friz Quadrata" } }, Flash = function() end },
   NoteComm = { Sharing = function() return nil end, Share = function() end },
   NoteTargets = { List = function() return {} end, Get = function() return nil end },
-  Groups = { NUM_SLOTS = 40, Normalize = function(n) return n end, CreatePreset = function() return "roster1" end,
-    Find = function(_, id) return id == "roster1" and {} or nil end },
+  Groups = { NUM_SLOTS = 40, Normalize = function(n) if n ~= "" and not n:find("-", 1, true) then return n .. "-Sargeras" end return n end, CreatePreset = function() return "roster1" end, listeners = {} },
 }
+-- saved Raid Groups layouts: the note's imported invite list (roster1) and another, by name
+local PRESETS = {
+  { id = 7, name = "Alt team", slots = { "Zed-Sargeras", "Bob-Other", "", "Abu-Sargeras", "zed-sargeras", "Plain-Nowhere", "" } },
+  { id = "roster1", name = "Nek'zali Mythic roster", slots = { "Abu-Sargeras", "Gadios-Sargeras", "Rixxy-Sargeras", "Kip-Sargeras", "" } },
+}
+function CRT.Groups:Presets() return PRESETS end
+function CRT.Groups:Find(id) for i, p in ipairs(PRESETS) do if p.id == id then return p, i end end end
+function CRT.Groups:OnChange(fn) self.listeners[#self.listeners + 1] = fn end
+function CRT.Groups:Fire() for _, fn in ipairs(self.listeners) do fn() end end
+CRT.db.roleCache = {}
+function CRT.Groups.CachedRole(key) return key and CRT.db.roleCache[key:lower()] end
 function CRT:Print(msg) printed[#printed + 1] = msg end
 -- the window helper: a frame with content, Place and a strip with SetTitle
 function CRT.UI.Window(name, opts)
@@ -661,6 +672,7 @@ do
   local pop = button("Pop out editor")
   pop.scripts.OnClick(pop)
   assert(W.search.skinned, "the Search box is skinned")
+  W.from.opts.set("group") -- the palette lists the group, so a roster change redraws it
   local before = W.session:Text()
   local chip = paletteChip("Gadios")
   cursor = { 10, 10 }
@@ -742,6 +754,122 @@ do
   assert(Notes:Personal():find("Mine: typed", 1, true), "then replaces it")
 end
 print("ok a note changed while open or typed is never written over without a second Save")
+
+-- 19. Players from: the current group, the note's invite list or a saved Raid Groups layout
+do
+  -- the model: the choices (the linked layout first), the default, a roster from names
+  local function keysOf(list) local out = {} for i, o in ipairs(list) do out[i] = tostring(o.key) end return table.concat(out, ",") end
+  assert(keysOf(Model.Sources(PRESETS)) == "group,invite,7,roster1", keysOf(Model.Sources(PRESETS)))
+  local src = Model.Sources(PRESETS, "roster1")
+  assert(keysOf(src) == "group,invite,roster1,7" and src[1].label == "Current group" and src[2].label == "This note's invite list"
+    and src[3].label == "Nek'zali Mythic roster", "the linked layout listed first: " .. keysOf(src))
+  assert(Model.DefaultSource(7, false) == 7 and Model.DefaultSource(7, true) == "group" and Model.DefaultSource(nil, false) == "group", "the default")
+  local r = Model.Roster({ "A-X", "", "a-x", "B", "SECRETz" }, function(n) return n == "B" and "MAGE" or nil end, function() return "TANK" end)
+  assert(#r == 2 and r[1].key == "A-X" and r[1].class == nil and r[2].class == "MAGE" and r[2].role == "TANK", "each name once, class and role")
+
+  -- the window: solo, a note linked to a layout opens on that layout
+  inRaid, leader = false, false
+  local id2 = Notes:Import("EncounterID:3471;Difficulty:Heroic;Name:Other\\ninvitelist:Abu-Sargeras,Kip-Sargeras,Wren-Elsewhere;\\nSoak: Abu")
+  Notes:Get(id2).presetId = 7
+  CRT.db.classCache["zed-sargeras"] = "WARRIOR"
+  CRT.db.classCache["bob-other"] = "ROGUE" -- known only from the stored class
+  CRT.db.classCache["abu-sargeras"] = nil -- known only from the group
+  CRT.db.roleCache["abu-sargeras"] = "TANK"
+  CRT.db.roleCache["zed-sargeras"] = "DAMAGER"
+  assert(Editor.Open({ id = id2 }), "opens")
+  assert(W.from.label == "Players from", "the Players from dropdown")
+  assert(W.from.opts.get() == 7 and W.playersFrom == 7, "the linked layout picked when solo")
+  assert(keysOf(W.from.opts.options()) == "group,invite,7,roster1", "the linked layout listed first")
+  local function players()
+    local out = {}
+    for _, c in ipairs(W.paletteChips) do if c.shown and c.source and c.source.kind == "player" then out[#out + 1] = c.token end end
+    return table.concat(out, ",")
+  end
+  assert(players() == "Abu,Zed,Bob-Other,Plain-Nowhere", "the layout's players by role then name, own realm dropped: " .. players())
+  local function colour(token) return paletteChip(token).text.textColor end
+  assert(colour("Zed")[1] == RAID_CLASS_COLORS.WARRIOR.r and colour("Bob-Other")[1] == RAID_CLASS_COLORS.ROGUE.r, "class colours from the stored class")
+  assert(colour("Abu")[1] == RAID_CLASS_COLORS.MAGE.r and rawget(paletteChip("Abu").icon, "atlas") == "classicon-MAGE", "else the shared lookup, with the class icon")
+  assert(not paletteChip("Plain-Nowhere").icon.shown and colour("Plain-Nowhere")[1] == CRT.PALETTE.text[1], "else plain")
+  assert(not paletteChip("Gadios"), "not the group's players")
+  -- search
+  W.search:SetText("ze")
+  W.search.scripts.OnTextChanged(W.search, true)
+  assert(players() == "Zed", "search filters them: " .. players())
+  W.search:SetText("")
+  W.search.scripts.OnTextChanged(W.search, true)
+  -- the names written as the note's token rules say
+  drag(paletteChip("Zed"), 3)
+  drag(paletteChip("Bob-Other"), 3)
+  assert(W.session:LineText(3) == "Soak: Abu, Zed, Bob-Other", W.session:LineText(3))
+  drag(paletteChip("Zed"), 2)
+  assert(W.session:LineText(2) == "invitelist:Abu-Sargeras,Kip-Sargeras,Wren-Elsewhere,Zed;", W.session:LineText(2))
+
+  -- the invite list as it is now, edits included
+  W.from.opts.set("invite")
+  assert(W.playersFrom == "invite" and players() == "Abu,Zed,Kip,Wren-Elsewhere", "the invite list's players: " .. players())
+  assert(colour("Kip")[1] == RAID_CLASS_COLORS.WARRIOR.r, "a class from the group")
+  local x = W.rowFrames[2].chips[2].remove
+  x.scripts.OnClick(x)
+  assert(players() == "Abu,Zed,Wren-Elsewhere", "follows an edit: " .. players())
+  local paints = 0
+  local oldDraw = Editor.DrawPalette
+  Editor.DrawPalette = function() paints = paints + 1 return oldDraw() end
+  Editor.Refresh()
+  Editor.DrawPalette = oldDraw
+  assert(paints == 0, "Refresh itself never draws the palette; its callers do")
+  -- the choice is kept for this note
+  W.save.scripts.OnClick(W.save)
+  W.window:Hide()
+  assert(Editor.Open({ id = id2 }) and W.playersFrom == "invite", "remembered on reopening")
+  -- the current group
+  W.from.opts.set("group")
+  assert(players() == "Abu,Gadios,Kip,Rixxy", "the group's players: " .. players())
+
+  -- the roster event redraws only when the group is listed
+  local draws = 0
+  local old = Editor.DrawPalette
+  Editor.DrawPalette = function() draws = draws + 1 return old() end
+  W.window.scripts.OnEvent(W.window, "GROUP_ROSTER_UPDATE")
+  assert(draws == 1, "group picked: redrawn")
+  W.from.opts.set(7)
+  draws = 0
+  W.window.scripts.OnEvent(W.window, "GROUP_ROSTER_UPDATE")
+  assert(draws == 0, "a layout picked: not redrawn")
+  Editor.DrawPalette = old
+  -- a layout changed, renamed, then deleted
+  PRESETS[1].slots[3] = "Newbie-Sargeras"
+  PRESETS[1].name = "Alt team B"
+  CRT.Groups:Fire()
+  assert(paletteChip("Newbie") and players():find("Newbie", 1, true), "a changed layout redraws: " .. players())
+  assert(W.from.opts.options()[3].label == "Alt team B", "renamed in the dropdown")
+  local alt = table.remove(PRESETS, 1)
+  CRT.Groups:Fire()
+  assert(W.playersFrom == "group" and keysOf(W.from.opts.options()) == "group,invite,roster1", "a deleted layout falls back to the group")
+  assert(players() == "Abu,Gadios,Kip,Rixxy", "and the palette follows: " .. players())
+  table.insert(PRESETS, 1, alt)
+  W.window:Hide()
+
+  -- in a group, a note opens on the current group (nothing picked for it yet)
+  W.picked[id2] = nil
+  inRaid, leader = true, true
+  assert(Editor.Open({ id = id2 }) and W.playersFrom == "group", "in a group: the current group")
+  W.window:Hide()
+  inRaid, leader = false, false
+  W.picked[id2] = nil
+  assert(Editor.Open({ id = id2 }) and W.playersFrom == 7, "solo again: the linked layout")
+  -- worked out once on opening: joining a group and an unrelated layout edit leave it
+  inRaid = true
+  PRESETS[2].name = "Renamed roster"
+  CRT.Groups:Fire()
+  assert(W.playersFrom == 7, "a layout edit doesn't recompute the default")
+  inRaid = false
+  W.window:Hide()
+  -- the personal note has no invite list to pick
+  assert(keysOf(Model.Sources(PRESETS, nil, true)) == "group,7,roster1", "noInvite")
+  assert(Editor.Open({ personal = true }) and keysOf(W.from.opts.options()) == "group,7,roster1" and W.playersFrom == "group", "the personal note's choices")
+  W.window:Hide()
+end
+print("ok Players from: the group, the invite list or a layout (linked one first and picked when solo), class colours, search, tokens, refresh")
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 const files = process.argv.slice(2, 10);
