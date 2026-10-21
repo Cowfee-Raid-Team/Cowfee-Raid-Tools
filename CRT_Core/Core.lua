@@ -157,6 +157,7 @@ local defaults = {
             font = "Friz Quadrata",
         },
         personalText = "",
+        editor = {}, -- the pop-out note editor's place and size once moved (Notes/EditorWindow.lua, UI.Window)
         alert = {
             enabled = true,
             seconds = 10, -- show your next spell this many seconds early

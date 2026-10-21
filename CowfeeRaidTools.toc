@@ -59,6 +59,7 @@ CRT_Modules\Notes\Phases.lua
 CRT_Modules\Notes\AlertsTab.lua
 CRT_Modules\Notes\Render.lua
 CRT_Modules\Notes\EditModel.lua
+CRT_Modules\Notes\EditorWindow.lua
 CRT_Modules\Notes\Page.lua
 CRT_Modules\Late\Data.lua
 CRT_Modules\Late\Page.lua

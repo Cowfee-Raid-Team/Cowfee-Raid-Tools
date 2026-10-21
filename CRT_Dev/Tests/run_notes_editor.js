@@ -24,7 +24,7 @@ local function mock(kind, name)
     if k == "CreateTexture" then return function(self) local f = mock("Texture") rawset(f, "parent", self) return f end end
     if k == "SetText" then return function(self, s) rawset(self, "text", s) end end
     if k == "GetText" then return function(self) return rawget(self, "text") or "" end end
-    if k == "Show" then return function(self) local was = self.shown self.shown = true if not was and self.scripts.OnShow then self.scripts.OnShow(self) end end end
+    if k == "Show" then return function(self) self.shown = true if self.scripts.OnShow then self.scripts.OnShow(self) end end end
     if k == "Hide" then return function(self) local was = self.shown self.shown = false if was and self.scripts.OnHide then self.scripts.OnHide(self) end end end
     if k == "SetShown" then return function(self, on) if on then self:Show() else self:Hide() end end end
     if k == "IsShown" then return function(self) return self.shown end end
@@ -129,7 +129,8 @@ local CRT = {
     SetFrameTitle = function() end, RegisterTab = function() end, SetTabSelected = function() end, SkinTree = function() end,
     SkinButton = function() end, SkinCheckButton = function() end, PANEL_BUTTON_PAD = 14,
     PanelButtonWidth = function(w) return math.max(40, math.ceil(w or 0) + 28) end },
-  Alerts = { Settings = function() return { bars = {} } end, RegisterBlock = function() end, onPull = {}, OnChange = function() end },
+  Alerts = { Settings = function() return { bars = {} } end, RegisterBlock = function() end, onPull = {}, OnChange = function() end,
+    PeekNextPhase = function() return nil end },
   AlertRules = {},
   NoteReminders = { Build = function() end }, NotePhases = { Build = function() end },
   NoteAlertsTab = { Build = function() end, Select = function() end },
@@ -340,6 +341,242 @@ do
   assert(r:Text() == NOTE, "and the text is as written")
 end
 print("ok Quick fill, drag, drag cancel and read-only")
+
+-- The window --------------------------------------------------------------------------------------------------
+if not windowSrc then return end
+CRT.UI.PanelButton = function(parent, label, h, fn)
+  local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate") b:SetText(label) b:SetScript("OnClick", fn) return b
+end
+assert(load(renderSrc, "Render.lua"))("CowfeeRaidTools", CRT)
+assert(load(windowSrc, "EditorWindow.lua"))("CowfeeRaidTools", CRT)
+assert(load(settingsSrc, "Settings.lua"))("CowfeeRaidTools", CRT)
+assert(load(pageSrc, "Page.lua"))("CowfeeRaidTools", CRT)
+local Editor = CRT.NoteEditor
+assert(Editor and Editor.Open and Editor.state, "CRT.NoteEditor with Open")
+CRT.Groups.ReadRoster = function() return { { key = "Abu-Sargeras", class = "MAGE", role = "TANK" }, { key = "Gadios-Sargeras", class = "PRIEST", role = "HEALER" },
+  { key = "Rixxy-Sargeras", class = "ROGUE", role = "DAMAGER" } } end
+local id = Notes:Import(NOTE)
+Notes:SetActive(id)
+local pf = mock()
+pages.notes(pf)
+pf:Show()
+CRT.NotesPage.Open("notes")
+local function redraw() for _, fn in ipairs(Notes.listeners) do fn() end end
+local function button(text) for _, b in ipairs(buttons) do if rawget(b, "text") == text then return b end end end
+local W = Editor.state
+local function paletteChip(token) for _, c in ipairs(W.paletteChips) do if c.shown and c.token == token then return c end end end
+local function shownRows() local n = 0 for _, f in ipairs(W.rowFrames) do if f.shown then n = n + 1 end end return n end
+-- a press on a chip, the mouse moved and over row rowIndex (nil: over no row), then let go
+local function drag(chip, rowIndex)
+  cursor = { 100, 100 }
+  chip.scripts.OnMouseDown(chip, "LeftButton")
+  cursor = { 130, 140 }
+  if W.driver.shown then W.driver.scripts.OnUpdate(W.driver) end
+  for i, f in ipairs(W.rowFrames) do rawset(f, "over", i == rowIndex) end
+  rawset(W.rowsScroll, "over", rowIndex ~= nil)
+  if W.driver.shown then W.driver.scripts.OnUpdate(W.driver) end
+  chip.scripts.OnMouseUp(chip, "LeftButton")
+  for _, f in ipairs(W.rowFrames) do rawset(f, "over", false) end
+end
+local function click(chip) cursor = { 50, 50 } chip.scripts.OnMouseDown(chip, "LeftButton") if W.driver.shown then W.driver.scripts.OnUpdate(W.driver) end chip.scripts.OnMouseUp(chip, "LeftButton") end
+
+-- 7. Pop out editor: rows in the note's order, the palette, a drag adds and moves, x removes
+do
+  local pop = button("Pop out editor")
+  assert(pop and pop:IsEnabled(), "a Pop out editor button by the Note text")
+  assert(button("Pop out"), "and one by the Personal note")
+  pop.scripts.OnClick(pop)
+  assert(W.window.shown and W.session and W.session.base == NOTE and not W.session.readOnly, "it opens the selected note, editable")
+  assert(rawget(W.window, "title"):find("Nek'zali", 1, true), "titled with the note")
+  assert(W.window.opts.kind == "popout" and W.window.opts.layer == "popups" and W.window.opts.saved() == CRT.db.notes.editor, "a pop-out on the popups layer, its place saved in notes.editor")
+  assert(shownRows() == #W.session.rows, "a row per line")
+  local chips = W.rowFrames[2].chips
+  assert(chips[1].shown and chips[1].text:GetText() == "Abu" and chips[2].text:GetText() == "Gadios" and chips[1].remove.shown, "row 2's names as removable chips")
+  assert(chips[1].text.textColor[1] == RAID_CLASS_COLORS.MAGE.r, "a chip in its class colour")
+  for _, token in ipairs({ "Abu", "Gadios", "Rixxy", "everyone", "tank", "Group1", "Group8", "WARRIOR", "DEATHKNIGHT" }) do
+    assert(paletteChip(token), "a palette chip for " .. token)
+  end
+  assert(rawget(paletteChip("Abu").icon, "atlas") == "classicon-MAGE" and paletteChip("Abu").icon.shown, "a player's class icon")
+  assert(paletteChip("DEATHKNIGHT").text:GetText() == "Death Knight", "a class by its name")
+  -- a palette chip dragged onto the timer with no tag
+  drag(paletteChip("Rixxy"), 4)
+  assert(table.concat(W.session:Names(4), " ") == "Rixxy", "dropped on row 4")
+  assert(W.raw:GetText():find("ph:1.5;time:5;tag:Rixxy;spellid:99999;", 1, true), "the raw text follows at once")
+  assert(W.save:IsEnabled() and W.status:GetText():find("Unsaved", 1, true), "Save on, unsaved changes said")
+  -- a row's chip dragged onto another row moves it
+  drag(W.rowFrames[2].chips[2], 7)
+  assert(table.concat(W.session:Names(7), " ") == "Cheoeqar Abu Gadios" and table.concat(W.session:Names(2), " ") == "Abu", "Gadios moved from row 2 to row 7")
+  -- dropped outside every row: nothing
+  local before = W.session:Text()
+  drag(paletteChip("tank"), nil)
+  assert(W.session:Text() == before and not W.ghost.shown, "a drop outside the rows does nothing")
+  -- x removes
+  local x = W.rowFrames[7].chips[1].remove
+  x.scripts.OnClick(x)
+  assert(table.concat(W.session:Names(7), " ") == "Abu Gadios", "x removes Cheoeqar")
+end
+print("ok the window: rows, palette chips with class colours and icons, drag adds and moves, x removes")
+
+-- 8. Escape cancels a drag; a press that doesn't move is a click; Quick fill
+do
+  local before = W.session:Text()
+  local chip = paletteChip("healer")
+  cursor = { 10, 10 }
+  chip.scripts.OnMouseDown(chip, "LeftButton")
+  cursor = { 60, 10 }
+  W.driver.scripts.OnUpdate(W.driver)
+  assert(W.ghost.shown and W.session.drag and rawget(W.driver, "keyboard"), "dragging, with the keys caught for Escape")
+  rawset(W.rowFrames[4], "over", true) rawset(W.rowsScroll, "over", true)
+  W.driver.scripts.OnKeyDown(W.driver, "ESCAPE")
+  assert(not W.ghost.shown and not W.driver.shown and W.session.drag == nil and not rawget(W.driver, "keyboard"), "Escape ends it")
+  chip.scripts.OnMouseUp(chip, "LeftButton")
+  rawset(W.rowFrames[4], "over", false)
+  assert(W.session:Text() == before, "and the button let go drops nothing")
+  -- Quick fill off: a click on a chip adds nothing
+  click(paletteChip("Group2"))
+  assert(W.session:Text() == before, "a click without Quick fill adds nothing")
+  W.quick:SetChecked(true)
+  W.quick.scripts.OnClick(W.quick)
+  assert(W.session.quickFill, "Quick fill on")
+  W.rowFrames[8].scripts.OnMouseDown(W.rowFrames[8])
+  assert(W.session.selected == 8, "a click on a line selects it")
+  click(paletteChip("Group2"))
+  click(paletteChip("Rixxy"))
+  assert(table.concat(W.session:Names(8), " ") == "Group2 Rixxy", "clicks fill it: " .. table.concat(W.session:Names(8), " "))
+  assert(W.raw:GetText():find("Kicks G1: Group2, Rixxy", 1, true), "the raw text: " .. W.raw:GetText())
+  W.quick:SetChecked(false)
+  W.quick.scripts.OnClick(W.quick)
+  -- the raw text box is read-only, and Raw text shows and hides it
+  local text = W.raw:GetText()
+  W.raw:SetText("typed")
+  W.raw.scripts.OnTextChanged(W.raw, true)
+  assert(W.raw:GetText() == text, "typing in the raw text is undone")
+  assert(not W.rawBox.shown and rawget(W.rawButton, "text") == "Raw text", "the raw text hidden at first")
+  W.rawButton.scripts.OnClick(W.rawButton)
+  assert(W.rawBox.shown and rawget(W.rawButton, "text") == "Hide raw text", "Raw text shows it")
+end
+print("ok Escape cancels a drag, a click is not a drag, Quick fill, the raw text read-only")
+
+-- 9. Save: through Notes:UpdateRaw, only the names changed
+do
+  local expected = W.session:Text()
+  W.save.scripts.OnClick(W.save)
+  local saved = Notes:Get(id).raw
+  assert(saved == expected, "the note holds the editor's text")
+  onlyChanged(NOTE:gsub("\\r", ""), saved:gsub("\\r", ""), { 2, 4, 7, 8 })
+  assert(select(2, saved:gsub("\\r\\n", "")) == select(2, NOTE:gsub("\\r\\n", "")), "line ends kept")
+  assert(not W.session:Dirty() and W.session.base == saved and not W.save:IsEnabled(), "a clean session after Save")
+  local parsed = Notes:Parsed(id)
+  local found = false
+  for _, t in ipairs(parsed.timers) do if t.line == 4 and t.tags[1] == "Rixxy" then found = true end end
+  assert(found, "the stored note's timers have the new name, for the alerts and sharing")
+  assert(CRT.NoteRender.views.Text.text == saved, "the page's rendered note shows it")
+end
+print("ok Save writes the raw text through Notes:UpdateRaw; only names changed")
+
+-- 10. Unsaved changes warn on close; a clean close doesn't
+do
+  local kept = Notes:Get(id).raw
+  W.window:Hide()
+  assert(#popups == 0, "a clean close asks nothing")
+  local pop = button("Pop out editor")
+  pop.scripts.OnClick(pop)
+  drag(paletteChip("Abu"), 5)
+  assert(W.session:Dirty(), "an unsaved change")
+  W.window:Hide()
+  assert(popups[#popups] == "COWFEE_RAID_TOOLS_NOTE_EDITOR_UNSAVED", "closing asks")
+  runTimers()
+  assert(W.window.shown and W.session:Dirty(), "the editor stays up with the change")
+  -- another note can't take the window while it has unsaved changes
+  assert(not Editor.Open({ personal = true }), "the personal note waits")
+  StaticPopupDialogs.COWFEE_RAID_TOOLS_NOTE_EDITOR_UNSAVED.OnAccept()
+  assert(not W.window.shown and W.session == nil, "Discard closes it")
+  runTimers()
+  assert(not W.window.shown, "and it stays closed")
+  assert(Notes:Get(id).raw == kept, "nothing saved")
+end
+print("ok unsaved changes warn on close")
+
+-- 11. Following changes from elsewhere; a note changed under unsaved edits is not overwritten
+do
+  local pop = button("Pop out editor")
+  pop.scripts.OnClick(pop)
+  local newer = Notes:Get(id).raw .. "\\r\\nHealers: Gadios"
+  Notes:UpdateRaw(id, newer)
+  assert(W.session.base == newer and W.session.rows[#W.session.rows].label == "Healers", "a clean editor follows a change")
+  drag(paletteChip("Abu"), #W.session.rows)
+  Notes:UpdateRaw(id, newer .. "\\r\\nShared: by someone")
+  assert(W.session:Dirty() and W.session.base == newer, "unsaved edits are kept")
+  W.save.scripts.OnClick(W.save)
+  assert(Notes:Get(id).raw == newer .. "\\r\\nShared: by someone", "Save doesn't overwrite the newer note")
+  assert(W.status:GetText():find("changed since you opened it", 1, true), "and says why")
+  StaticPopupDialogs.COWFEE_RAID_TOOLS_NOTE_EDITOR_UNSAVED.OnAccept()
+end
+print("ok a clean editor follows changes; a note changed under unsaved edits is not overwritten")
+
+-- 12. A raider who can't change the raid note: read-only
+do
+  inRaid, leader = true, false
+  redraw()
+  local pop = button("Pop out editor")
+  pop.scripts.OnClick(pop)
+  assert(W.window.shown and W.session.readOnly, "it opens read-only")
+  assert(not W.save:IsEnabled() and not W.quick:IsEnabled(), "Save and Quick fill greyed")
+  assert(not W.rowFrames[2].chips[1].remove.shown, "no x on the chips")
+  assert(W.status:GetText():find("Only the raid leader", 1, true), "the status says why")
+  local before = Notes:Get(id).raw
+  drag(paletteChip("Abu"), 5)
+  assert(not W.session:Dirty() and not W.driver.shown, "a drag doesn't start")
+  assert(not Editor.Save() and Notes:Get(id).raw == before, "Save writes nothing")
+  -- promoted: the clean editor becomes editable
+  leader = true
+  redraw()
+  assert(not W.session.readOnly and W.save and W.quick:IsEnabled(), "a promotion unlocks it")
+  -- lost the right with unsaved changes: Save asks again and writes nothing
+  drag(paletteChip("Rixxy"), 5)
+  leader = false
+  assert(not Editor.Save() and Notes:Get(id).raw == before, "Save asks CanEditRaid again")
+  StaticPopupDialogs.COWFEE_RAID_TOOLS_NOTE_EDITOR_UNSAVED.OnAccept()
+  inRaid, leader = false, false
+  redraw()
+end
+print("ok read-only for a raider who can't change the raid note; Save asks again")
+
+-- 13. The personal note: its own editor, saved with Notes:SetPersonal, markdown lines as written
+do
+  Notes:SetPersonal("# Mine\\nTanks: Abu\\n- Gadios: a bullet\\ntime:10;ph:1;spellid:64843;")
+  inRaid, leader = true, false -- a personal note is yours, whatever your rank
+  local pp = button("Pop out")
+  pp.scripts.OnClick(pp)
+  assert(W.window.shown and W.source.personal and not W.session.readOnly, "the personal note opens, editable")
+  assert(rawget(W.window, "title") == "Personal note editor", "titled")
+  assert(W.session.rows[1].kind == "heading" and W.session.rows[3].kind == "text" and W.session.rows[2].kind == "label", "# heading and - bullet as written, a label takes names")
+  drag(paletteChip("Gadios"), 2)
+  drag(paletteChip("dps"), 4)
+  W.save.scripts.OnClick(W.save)
+  assert(Notes:Personal() == "# Mine\\nTanks: Abu, Gadios\\n- Gadios: a bullet\\ntime:10;ph:1;tag:dps;spellid:64843;", "saved: " .. Notes:Personal())
+  assert(not W.session:Dirty(), "clean after Save")
+  W.window:Hide()
+  inRaid, leader = false, false
+end
+print("ok the personal note: opened, edited and saved with only names changed")
+
+-- 14. A theme switch repaints the open editor
+do
+  local pop = button("Pop out editor")
+  pop.scripts.OnClick(pop)
+  CRT.UI.SwitchTheme("nitro")
+  local chip = W.rowFrames[2].chips[1]
+  local b = CRT.PALETTE.border
+  local got = rawget(chip, "border")
+  assert(got and got[1] == b[1] and got[2] == b[2] and got[3] == b[3], "a chip's edge in the theme's border colour")
+  CRT.UI.SwitchTheme("cowfee")
+  b = CRT.PALETTE.border
+  got = rawget(chip, "border")
+  assert(got[1] == b[1] and got[2] == b[2], "and again after another switch")
+  W.window:Hide()
+end
+print("ok a theme switch repaints the editor")
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 const files = process.argv.slice(2, 10);
