@@ -25,7 +25,7 @@ CRT.Bosses:SeasonData("midnight-s1", "tracks", {
         { key = "myth", label = "Myth", letter = "M", quality = 5 },
     },
     bonus = {
-        -- TODO ids: ask Alex or /crt dev probe
+        -- TODO ids: ask Alex or /crt dev gear
         -- (/crt dev gear prints each item's bonus IDs and the track this map gives it; wear or inspect one item
         -- per track and rank, and the bonus ID that changes with the rank is the one; never guess)
     },

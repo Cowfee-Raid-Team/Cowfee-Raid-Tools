@@ -589,6 +589,15 @@ local dp = qhead.dot.points[1]
 check(dp[2] == qhead.back and dp[3] == "BOTTOMLEFT", "the enchant dot moved to the icon's bottom left")
 check(qhead.tag.points[1][3] == "BOTTOMRIGHT", "the season check's square stays at the bottom right")
 check(qhead.gems[1].edge.points[1][3] == "TOPRIGHT", "the gem diamonds stay at the top right")
+-- nothing overlaps, whatever the font: the diamonds run down the icon's right edge, the tag is capped left of them
+local half = Lt.gem * math.sqrt(2) / 2
+for g = 1, 3 do
+  local p = qhead.gems[g].edge.points[1]
+  check(p[2] == qhead.back and p[3] == "TOPRIGHT" and p[4] == -1 and p[5] == -1 - (g - 1) * (Lt.gem + Lt.gemGap), "gem " .. g .. ": in one column at the right edge")
+end
+check(1 + 2 * (Lt.gem + Lt.gemGap) + half < Lt.icon - 1 - Lt.tag / 2, "the third diamond ends above the season square")
+eq(qhead.trackTag.w, Lt.trackMaxW, "the tag can't grow past its width, at any font size")
+check(Lt.trackX + Lt.trackMaxW + 1 < Lt.icon - 1 - half, "the tag and its backing end left of the diamonds' column")
 check(qhead.dot.shown, "the enchant dot still shows")
 check(not cell(quick, 3).trackTag.shown, "an item with no known track: no tag")
 check(not cell(quick, 5).trackTag.shown, "an empty slot: no tag")
@@ -621,6 +630,25 @@ check(cell(quick, 11).icon.shown and cell(quick, 1).icon.shown and not cell(quic
 lastRoot = nil
 belowChip.scripts.OnClick(belowChip, "RightButton")
 check(lastRoot ~= nil and #lastRoot.items > 0, "a right-click on the chip opens the menu too")
+-- a player on more tracks than the column holds: the lowest dropped with a +, the full counts in the badge
+TRACKS.bonus[7005] = { track = "veteran", rank = 3, max = 6 }
+TRACKS = { default = TRACKS.default, list = TRACKS.list, bonus = TRACKS.bonus } -- a new table, as a reload gives
+Gear:Remember("Quick-Sargeras", { { slot = 1, id = 101, itemString = bonusString(101, "7364", { 7002 }), ilvl = 289 },
+  { slot = 2, id = 102, itemString = bonusString(102, "", { 7003 }), ilvl = 289 },
+  { slot = 11, id = 111, itemString = ringString, ilvl = 289 }, { slot = 3, id = 103, itemString = bonusString(103, "", { 7005 }), ilvl = 289 } }, "gearcheck", true)
+CRT.db.gearChecker.filter = "all"
+P.Refresh()
+rows = drawRows()
+quick = rowOf("Quick")
+plain = (quick.tracks.text or ""):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+eq(plain, "1M 1H 1C +", "four tracks in a narrow column: the lowest dropped, with a +")
+check(#plain * 6 <= Lt.tracksW, "and what is left fits the column")
+quick.badgeHit.scripts.OnEnter(quick.badgeHit)
+local last = (tip.lines[#tip.lines] or ""):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+eq(last, "Tracks: 1 Myth, 1 Hero, 1 Champion, 1 Veteran", "badge: the full counts per track")
+me = rowOf("Solex")
+me.badgeHit.scripts.OnEnter(me.badgeHit)
+check(not tip.lines[#tip.lines]:find("^Tracks"), "badge: no tracks known, no Tracks line")
 CRT.db.gearChecker.filter = "all"
 CRT.Bosses = { GearChecks = function() return { enchant = { 1 } } end }
 
