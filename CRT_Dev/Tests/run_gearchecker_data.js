@@ -11,7 +11,7 @@ const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate();
 lualib.luaL_openlibs(L);
 const harness = `
-local gearSrc, registrySrc, seasonSrc, dataSrc, inspectSrc, commSrc = ...
+local gearSrc, registrySrc, seasonSrc, gearChecksSrc, dataSrc, inspectSrc, commSrc = ...
 local fails, passes = 0, 0
 local function check(ok, what) if ok then passes = passes + 1 else fails = fails + 1 print("FAIL " .. what) end end
 local function eq(a, b, what) check(a == b, what .. " (got " .. tostring(a) .. ", want " .. tostring(b) .. ")") end
@@ -91,6 +91,7 @@ function CRT:Print(t) printed[#printed + 1] = t end
 for name, src in pairs({ Gear = gearSrc }) do assert(load(src, name))("CowfeeRaidTools", CRT) end
 assert(load(registrySrc, "Registry.lua"))("CowfeeRaidTools", CRT)
 assert(load(seasonSrc, "Season.lua"))("CowfeeRaidTools", CRT)
+assert(load(gearChecksSrc, "GearChecks.lua"))("CowfeeRaidTools", CRT)
 assert(load(dataSrc, "Data.lua"))("CowfeeRaidTools", CRT)
 assert(load(inspectSrc, "Inspect.lua"))("CowfeeRaidTools", CRT)
 assert(load(commSrc, "Comm.lua"))("CowfeeRaidTools", CRT)
@@ -343,6 +344,121 @@ said, opened = {}, {}
 eq(GC.Send({ name = "Ok-Sargeras", seen = true, slots = {} }, { chatType = "GUILD" }), 0, "no issues: nothing sent")
 eq(#said + #opened, 0, "no issues: no chat call, no chat box")
 
+-- 5e. Season checks, from the season's data only
+local B = CRT.Bosses
+local shipped = B:GearChecks()
+check(shipped and type(shipped.checks) == "table" and #shipped.checks >= 2, "the season's topic file declares its checks")
+check(shipped and shipped.enchant and shipped.enchant[1] == 1, "and its enchant rules, moved there from Season.lua")
+eq(#GC:SeasonChecks(), 0, "the shipped checks have no IDs yet: none is active")
+eq(#GC:Filters(), 4, "so no extra filters")
+-- a season with no gear rules at all
+B.seasons["midnight-s1"].current = false
+B:Season({ key = "test-s8", name = "Plain", order = 8, current = true })
+eq(B:GearChecks(), nil, "a season without gear data: the accessor gives nothing")
+eq(#GC:SeasonChecks(), 0, "no checks")
+eq(#GC:Filters(), 4, "no extra filters")
+B.seasons["test-s8"].current = false
+-- a season that writes its rules in Season.lua: still read; a topic file wins over it
+B:Season({ key = "test-s7", name = "Old", order = 7, current = true, gearChecks = { enchant = { 5 } } })
+check(B:GearChecks() and B:GearChecks().enchant[1] == 5, "a Season.lua field is read as the topic")
+B:SeasonData("test-s7", "gearChecks", { enchant = { 7 } })
+eq(B:GearChecks().enchant[1], 7, "the topic file wins")
+B.seasons["test-s7"].current = false
+-- a season with one check of each kind
+local function bonusString(id, enchant, bonuses)
+  return "item:" .. id .. ":" .. (enchant or "") .. string.rep(":", 11) .. #bonuses .. (#bonuses > 0 and (":" .. table.concat(bonuses, ":")) or "")
+end
+eq(table.concat(Gear.Parts(bonusString(105, "", { 5001, 9 })).bonusIds, ","), "5001,9", "the test item strings carry their bonus IDs")
+B:Season({ key = "test-s9", name = "Checks", order = 9, current = true })
+B:SeasonData("test-s9", "gearChecks", { enchant = { 1 }, checks = {
+  { key = "cursed", label = "Cursed", help = "Who wears a cursed item.", kind = "itemIds", ids = { 101 }, severity = "info" },
+  { key = "pair", label = "Pair", kind = "itemIds", ids = { 111, 112 }, require = 2, slots = { 11, 12 } },
+  { key = "glow", label = "Glow", kind = "bonusIds", ids = { 5001 }, severity = "low" },
+  { key = "rune", label = "Wrong enchant", kind = "enchantIds", ids = { 7364 }, slots = { 1 } },
+  { key = "track", label = "No track", kind = "missingBonus", ids = { 6001, 6002 }, slots = { 2 } },
+  { key = "none", label = "None yet", kind = "itemIds", ids = {} },
+  { key = "odd", label = "Odd", kind = "nonsense", ids = { 1 } },
+  { label = "No key", kind = "itemIds", ids = { 1 } },
+  { key = "cursed", label = "Twice", kind = "itemIds", ids = { 1 } },
+} })
+local active = {}
+for _, c in ipairs(GC:SeasonChecks()) do active[#active + 1] = c.key end
+eq(table.concat(active, ","), "cursed,pair,glow,rune,track", "active: the checks with a known kind, a key and IDs, each key once")
+local fl = {}
+for _, f in ipairs(GC:Filters()) do fl[#fl + 1] = f.key .. "=" .. f.label end
+eq(table.concat(fl, ","), "all=Everyone,issues=Only issues,gems=Missing gems,enchants=Missing enchants,check:cursed=Cursed,check:pair=Pair,check:glow=Glow,check:rune=Wrong enchant,check:track=No track", "a filter per check, after Missing enchants, labelled from the data")
+eq(GC:Filters()[5].help, "Who wears a cursed item.", "a check's filter carries its help")
+eq(GC:FilterKey("check:glow"), "check:glow", "a saved check filter that exists is kept")
+eq(GC:FilterKey("check:gone"), "all", "a saved filter of a check the season no longer has is Everyone")
+eq(GC:FilterKey(nil), "all", "no saved filter is Everyone")
+local R9 = GC:Rules()
+local function keys(r) local out = {} for _, c in ipairs(r.checks) do out[#out + 1] = c.key end return table.concat(out, ",") end
+-- itemIds, flagging each match
+r = GC.CheckSlot(1, piece(1, "item:101:7364", 280), R9, 280)
+eq(keys(r), "cursed", "itemIds: the item is one of them")
+eq(r.issues, 1, "itemIds: one issue")
+eq(GC.Problems(r), "Cursed", "itemIds: the check's label in the words")
+check(GC.CellShows(r, "check:cursed") and GC.CellShows(r, "issues") and not GC.CellShows(r, "check:glow") and not GC.CellShows(r, "enchants"), "itemIds: drawn under its own filter and Only issues only")
+eq(GC.TopCheck(r).key, "cursed", "itemIds: the cell's tag")
+r = GC.CheckSlot(3, piece(3, "item:103", 280), R9, 280)
+check(keys(r) == "" and r.issues == 0 and GC.TopCheck(r) == nil, "itemIds: another item, no finding")
+r = GC.CheckSlot(1, { slot = 1, id = 101, ilvl = 280 }, R9, 280)
+eq(keys(r), "cursed", "itemIds: an ID-only piece still matches by its ID")
+-- bonusIds
+r = GC.CheckSlot(5, piece(5, bonusString(105, "", { 9, 5001 }), 280), R9, 280)
+eq(keys(r), "glow", "bonusIds: the item carries one")
+eq(GC.TopCheck(r).severity, "low", "bonusIds: its severity")
+r = GC.CheckSlot(5, piece(5, bonusString(105, "", { 9 }), 280), R9, 280)
+eq(keys(r), "", "bonusIds: none of them, no finding")
+-- enchantIds
+r = GC.CheckSlot(1, piece(1, "item:101:9999", 280), R9, 280)
+eq(keys(r), "cursed,rune", "enchantIds: an enchant not on the list")
+eq(GC.TopCheck(r).key, "rune", "the tag shows the most severe check (bad over info)")
+r = GC.CheckSlot(1, piece(1, "item:101", 280), R9, 280)
+check(keys(r) == "cursed" and r.missingEnchant and r.issues == 2, "enchantIds: no enchant is the enchant rule's issue, not the check's")
+r = GC.CheckSlot(16, piece(16, "item:116:9999", 280), R9, 280)
+eq(keys(r), "", "enchantIds: only on the check's slots")
+-- missingBonus
+r = GC.CheckSlot(2, piece(2, bonusString(102, "", { 6002 }), 280), R9, 280)
+eq(keys(r), "", "missingBonus: the item carries one")
+r = GC.CheckSlot(2, piece(2, "item:102", 280), R9, 280)
+eq(keys(r), "track", "missingBonus: none of them")
+r = GC.CheckSlot(2, { slot = 2, id = 102, ilvl = 280 }, R9, 280)
+eq(keys(r), "", "missingBonus: an ID-only piece can't tell, no finding")
+r = GC.CheckSlot(3, piece(3, "item:103", 280), R9, 280)
+eq(keys(r), "", "missingBonus: only on the check's slots")
+-- itemIds with require: fewer than that many is one issue on the row
+remember("Quick", { piece(1, "item:101:7364", 289), piece(11, "item:111:7364", 289) })
+local q9 = rowNamed("Quick")
+eq(q9.checkHits.cursed, 1, "row: the cursed head")
+eq(q9.checkHits.pair, 1, "row: one of two of the pair is an issue")
+eq(q9.issues, 2, "row: both count in Issues")
+check(not q9.slots[11].checks[1], "require: the ring itself is no issue")
+check(GC.CellShows(q9.slots[11], "check:pair") and not GC.CellShows(q9.slots[1], "check:pair"), "require: its filter draws the matching item")
+check(not GC.CellShows(q9.slots[11], "issues"), "require: the matching item is no issue on its own")
+local qnames = names(GC:Rows("check:pair"))
+check(qnames:find("Quick", 1, true) ~= nil, "require: Quick under the check's filter")
+eq(names(GC:Rows("check:glow")), "", "a check nobody trips: no rows")
+local qt = GC.IssueLines(q9)
+eq(#qt, 2, "tooltip: a line per check issue")
+eq(qt[1].text .. "|" .. qt[1].kind, "Head |cffa335ee|Hitem:101:7364|h[Helm]|h|r 289 - Cursed|info", "tooltip: the slot's check, in its severity")
+eq(qt[2].text .. "|" .. qt[2].kind, "Pair: 1 of 2 worn|bad", "tooltip: the row's check last")
+local ql = GC.RaidLines(q9)
+eq(ql[#ql], "[Quick] Pair: 1 of 2 worn", "raid lines: the row's check")
+eq(ql[1], "[Quick] Head |cffa335ee|Hitem:101:7364|h[Helm]|h|r 289 - Cursed", "raid lines: the slot's check")
+local qw = GC.WhisperLines(q9)
+eq(qw[#qw], "Gear check: Pair: 1 of 2 worn", "whisper: the row's check")
+remember("Quick", { piece(1, "item:103:7364", 289), piece(11, "item:111:7364", 289), piece(12, "item:112:7364", 289) })
+q9 = rowNamed("Quick")
+check(q9.issues == 0 and (q9.checkHits.pair or 0) == 0, "require: both worn, no issue")
+check(GC.CellShows(q9.slots[11], "check:pair") and GC.CellShows(q9.slots[12], "check:pair"), "require: its filter still draws them")
+check(not GC.Passes(q9, "check:pair"), "require: but the row doesn't show under it")
+-- back to the shipped season
+B.seasons["test-s9"].current = false
+B.seasons["midnight-s1"].current = true
+eq(#GC:Filters(), 4, "the shipped season again: four filters")
+remember("Quick", { piece(1, "item:101:7364", 289), piece(11, "item:111:7364:213746", 289) })
+
 -- 6. The inspect queue
 UNITS.raid2.links = { [1] = "|cffa335ee|Hitem:101:7364::::::::ilvl290|h[Helm]|h|r", [2] = "|cffa335ee|Hitem:102::213746|h[ilvl286]|h|r" }
 UNITS.raid3.links = { [1] = "|cffa335ee|Hitem:101::::::::ilvl281|h[Helm]|h|r" }
@@ -447,8 +563,8 @@ if fails > 0 then error("failures") end
 `;
 const dir = process.argv[2];
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
-for (const f of ['CRT_Core/Gear.lua', 'CRT_Data/Bosses/Registry.lua', 'CRT_Data/Seasons/Midnight-S1/Season.lua',
-  'CRT_Modules/GearChecker/Data.lua', 'CRT_Modules/GearChecker/Inspect.lua', 'CRT_Modules/GearChecker/Comm.lua']) {
-  lua.lua_pushstring(L, to_luastring(fs.readFileSync(path.join(dir, f), 'utf8')));
-}
-if (lua.lua_pcall(L, 6, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
+const files = ['CRT_Core/Gear.lua', 'CRT_Data/Bosses/Registry.lua', 'CRT_Data/Seasons/Midnight-S1/Season.lua',
+  'CRT_Data/Seasons/Midnight-S1/GearChecks.lua', 'CRT_Modules/GearChecker/Data.lua', 'CRT_Modules/GearChecker/Inspect.lua',
+  'CRT_Modules/GearChecker/Comm.lua'];
+for (const f of files) lua.lua_pushstring(L, to_luastring(fs.readFileSync(path.join(dir, f), 'utf8')));
+if (lua.lua_pcall(L, files.length, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
