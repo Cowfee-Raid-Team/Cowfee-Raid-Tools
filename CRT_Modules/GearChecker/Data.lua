@@ -4,19 +4,28 @@ local ADDON, CRT = ...
 -- This file has the rules and the rows, no frames. Gear comes only from CRT.Gear: yours from Gear:MineAll,
 -- everyone else's from what Comm.lua (their CRT's reply) or Inspect.lua (the game's inspect) handed to
 -- Gear:Remember. Which slots take an enchant, where sockets count and the season's own checks are season
--- data (the season pack's GearChecks.lua), read through CRT.Bosses:GearChecks(); nothing here names a slot
--- rule or a season item.
+-- data (the season pack's GearChecks.lua), read through CRT.Bosses:GearChecks(); the upgrade tracks and
+-- the bonus IDs that set them are the pack's Tracks.lua, read through CRT.Bosses:Tracks(). Nothing here
+-- names a slot rule, a track or a season item.
 --
 --   GC:Rules()                   the season's rules as sets by slot, and its usable checks
 --   GC:SeasonChecks(), GC:Filters(), GC:FilterKey(saved)   the season checks; the chips' filters, a check's last
 --   GC.CheckTrips(check, piece, parts), GC.TopCheck(findings)   one check on one piece; a cell's tag
+--   GC:Tracks(), GC.TrackOf(parts), GC:BelowTrack(), GC:BelowChoices()   the season's upgrade tracks; a
+--                                piece's track and rank from its bonus IDs; the Below chip's track and choices
+--   GC.TrackTag, GC.TrackWords, GC.TrackColor, GC.TrackText(row)   a track as "H4", "Hero 4/6", its colour;
+--                                the Tracks column ("3M 3H")
 --   GC.CheckSlot(slot, piece, rules, avg)   one slot's findings: missing enchant, empty sockets, low
 --   GC:Roster()                  the group: { name, unit, class, me }, you first
 --   GC:Row(member), GC:Rows(filter)   a member's checked gear; the rows a filter shows
 --   GC.PartsOf(piece)            Gear.Parts of a piece, nil when it is known only by its ID
 --   GC.CellShows(findings, filter, row)   whether a filter draws a slot's cell (issue filters: only problem cells)
 --   GC.SlotLine, GC.WhisperLines, GC.RaidLines, GC.ChatBoxText   a row's issues as chat text
---   GC.IssueLines(row)           the issues badge's tooltip: a line per issue, red or orange
+--   GC.IssueLines(row), GC.NoteLines(row)   the issues badge's tooltip: a line per issue, red or orange; and
+--                                its Not an issue part (info checks, items below the Below track)
+--
+-- Info checks (severity info) and items below the Below track are to know, not to fix: they never count in
+-- Issues, never show under Only issues and never go to chat.
 --   GC.SendTargets(row), GC.Send(row, target)   where a row's issues can go (the menu), and sending them
 --   GC.Say(lines, chatType, target)   sends lines to chat, only from a click; prints what can't go
 --   GC.ToChatBox(text), GC.OpenChat(text)   text into the chat box, to edit and send
@@ -61,6 +70,10 @@ GC.TEXT = {
     locked = "Chat is locked during the boss encounter.",
     notSent = "Gear Checker (only you see this): %s",
     item = "[item %d]",
+    trackRank = "%s %d/%d", -- a track's label, the rank, the track's last rank
+    trackRankOnly = "%s %d",
+    below = "Below %s", -- the Below chip, with the picked track's label
+    belowHelp = "Shows who wears an item below the track you pick. Click it to see only those items, and click its arrow to pick the track.",
 }
 
 local function secret(v)
@@ -118,7 +131,8 @@ end
 --   enchantIds    a slot's enchant is not one of ids (a slot with no enchant is the enchant rule's issue)
 --   missingBonus  an item carries none of ids as a bonus ID (needs the item string, so an ID-only piece
 --                 is never flagged)
--- severity is bad (the default), low or info; slots defaults to every slot. require (itemIds and bonusIds):
+-- severity is bad (the default), low or info (to know, not to fix: never an issue, only its own chip and a
+-- Not an issue line); slots defaults to every slot. require (itemIds and bonusIds):
 -- fewer than that many matching slots is one issue on the row, instead of an issue per match.
 GC.CHECK_KINDS = { itemIds = true, bonusIds = true, enchantIds = true, missingBonus = true }
 GC.COUNTING_KINDS = { itemIds = true, bonusIds = true } -- the kinds require works with
@@ -160,6 +174,7 @@ function GC:Rules()
             checks = checkList(def.checks) }
         self.rulesOf = src -- worked out again only when the season's table changes
     end
+    self.rules.tracks = self:Tracks() -- its own topic, so read each time (cached by GC:Tracks)
     return self.rules
 end
 
@@ -176,6 +191,10 @@ function GC:Filters()
     end
     for _, c in ipairs(self:SeasonChecks()) do
         out[#out + 1] = { key = GC.CHECK_FILTER .. c.key, label = c.label, help = c.help, check = c }
+    end
+    local below = self:Tracks().usable and self:BelowTrack()
+    if below then
+        out[#out + 1] = { key = GC.BELOW, label = string.format(GC.TEXT.below, below.label), help = GC.TEXT.belowHelp, below = true }
     end
     return out
 end
@@ -221,6 +240,133 @@ function GC.TopCheck(r)
     return top
 end
 
+-- Whether a season check is only to know about (info): never an issue.
+function GC.IsNote(c)
+    return c.severity == "info"
+end
+
+-- Upgrade tracks ----------------------------------------------------------------------------------------------
+
+GC.BELOW = "below" -- the Below <track> chip's filter key
+
+-- The season's tracks (its tracks topic), checked: { list = { track, ... } lowest first, each { key, label,
+-- letter, quality, color, order }; byKey; bonus = { [bonus ID] = { track, rank, max } }; default (a key);
+-- usable, true once a bonus ID is known; source, the season's own table }. A track with no key, or a bonus ID
+-- on a track the list doesn't have, is left out. A season with none has an empty list.
+function GC:Tracks()
+    local src = CRT.Bosses and CRT.Bosses.Tracks and CRT.Bosses:Tracks() or nil
+    if self.tracksOf ~= src or not self.tracks then
+        local def = type(src) == "table" and src or {}
+        local out = { list = {}, byKey = {}, bonus = {}, usable = false, source = def, default = def.default }
+        for _, t in ipairs(type(def.list) == "table" and def.list or {}) do
+            if type(t) == "table" and type(t.key) == "string" and not out.byKey[t.key] then
+                local track = { key = t.key, label = type(t.label) == "string" and t.label or t.key,
+                    letter = type(t.letter) == "string" and t.letter or t.key:sub(1, 1):upper(),
+                    quality = tonumber(t.quality), color = type(t.color) == "table" and t.color or nil }
+                out.list[#out.list + 1] = track
+                track.order = #out.list
+                out.byKey[t.key] = track
+            end
+        end
+        for id, b in pairs(type(def.bonus) == "table" and def.bonus or {}) do
+            local track = type(id) == "number" and type(b) == "table" and out.byKey[b.track]
+            local rank = track and tonumber(b.rank)
+            if rank then
+                out.bonus[id] = { track = track, rank = math.floor(rank), max = tonumber(b.max) and math.floor(tonumber(b.max)) or nil }
+                out.usable = true
+            end
+        end
+        self.tracks, self.tracksOf = out, src -- worked out again only when the season's table changes
+    end
+    return self.tracks
+end
+
+-- A piece's track from its bonus IDs (parts: Gear.Parts of it): { track, rank, max }, or nil when none of its
+-- bonus IDs is on the season's map, or the piece is known only by its ID (parts nil). Never from tooltip
+-- text, which is in the client's language.
+function GC.TrackOf(parts, tracks)
+    if not parts then
+        return nil
+    end
+    tracks = tracks or GC:Tracks()
+    for _, id in ipairs(parts.bonusIds or {}) do
+        if tracks.bonus[id] then
+            return tracks.bonus[id]
+        end
+    end
+    return nil
+end
+
+-- A cell's tag: the track's letter and the rank ("H4").
+function GC.TrackTag(info)
+    return info.track.letter .. info.rank
+end
+
+-- A track in words: "Champion 4/6" (or "Champion 4" when the map gives no last rank).
+function GC.TrackWords(info)
+    if info.max then
+        return string.format(GC.TEXT.trackRank, info.track.label, info.rank, info.max)
+    end
+    return string.format(GC.TEXT.trackRankOnly, info.track.label, info.rank)
+end
+
+-- A track's colour: the game's colour for its item quality, else its own colour, else white.
+function GC.TrackColor(track)
+    local q = type(track) == "table" and track.quality
+    if q then
+        local ok, c = pcall(function()
+            return ColorManager and ColorManager.GetColorDataForItemQuality and ColorManager.GetColorDataForItemQuality(q)
+        end)
+        c = ok and c or (ITEM_QUALITY_COLORS and ITEM_QUALITY_COLORS[q])
+        if type(c) == "table" and c.r then
+            return c.r, c.g, c.b
+        end
+    end
+    local own = type(track) == "table" and track.color
+    if type(own) == "table" and own[1] then
+        return own[1], own[2], own[3]
+    end
+    return 1, 1, 1
+end
+
+-- The track the Below chip lists items under: the saved one (CRTDB.gearChecker.belowTrack), else the
+-- season's default, else its highest; nil with no tracks.
+function GC:BelowTrack()
+    local t = self:Tracks()
+    local s = self:Settings()
+    return (s and t.byKey[s.belowTrack]) or t.byKey[t.default] or t.list[#t.list]
+end
+
+-- The tracks the Below chip's menu offers: all but the lowest (nothing is below it).
+function GC:BelowChoices()
+    local out = {}
+    for i, t in ipairs(self:Tracks().list) do
+        if i > 1 then
+            out[#out + 1] = t
+        end
+    end
+    return out
+end
+
+-- A row's Tracks column: how many pieces on each track, highest first ("3M 3H"); "" with none known.
+-- colored wraps each in its track's colour.
+function GC.TrackText(row, colored)
+    local list, out = GC:Tracks().list, {}
+    for i = #list, 1, -1 do
+        local t = list[i]
+        local n = row.trackCounts and row.trackCounts[t.key] or 0
+        if n > 0 then
+            local text = n .. t.letter
+            if colored then
+                local r, g, b = GC.TrackColor(t)
+                text = string.format("|cff%02x%02x%02x%s|r", math.floor(r * 255 + 0.5), math.floor(g * 255 + 0.5), math.floor(b * 255 + 0.5), text)
+            end
+            out[#out + 1] = text
+        end
+    end
+    return table.concat(out, " ")
+end
+
 -- What a piece's item string holds (Gear.Parts), or nil when it is known only by its ID: no item string, or
 -- a bare "item:<id>" (a piece too long for a message goes as one, Comm.SetMessages). A real item string
 -- always carries more fields (its link level at least), so a bare one says nothing about enchant, gems or
@@ -236,10 +382,10 @@ end
 
 -- One slot's findings for a piece (nil for an empty slot), given the rules and the player's average item
 -- level: { slot, piece, empty, unknown, needsEnchant, missingEnchant, sockets, gems, emptySockets, low,
--- checks, matched, issues }. checks: the season checks tripped here, each an issue; matched: [key] = true
--- for a counting check's match (GC:Row counts those). A piece known only by its ID (unknown, GC.PartsOf)
--- can't show an enchant, gems or bonus IDs, so it is never flagged for them; a socket count the game can't
--- give is no finding.
+-- checks, matched, track, issues }. checks: the season checks tripped here, each an issue but an info one;
+-- matched: [key] = true for a counting check's match (GC:Row counts those); track: its upgrade track
+-- (GC.TrackOf). A piece known only by its ID (unknown, GC.PartsOf) can't show an enchant, gems or bonus IDs,
+-- so it is never flagged for them and has no track; a socket count the game can't give is no finding.
 function GC.CheckSlot(slot, piece, rules, avg)
     local r = { slot = slot, piece = piece, issues = 0, gems = 0, sockets = 0, emptySockets = 0, checks = {}, matched = {} }
     if type(piece) ~= "table" then
@@ -278,10 +424,11 @@ function GC.CheckSlot(slot, piece, rules, avg)
                 r.matched[c.key] = true
             else
                 r.checks[#r.checks + 1] = c
-                r.issues = r.issues + 1
+                r.issues = r.issues + (GC.IsNote(c) and 0 or 1)
             end
         end
     end
+    r.track = GC.TrackOf(parts, rules.tracks)
     return r
 end
 
@@ -303,16 +450,25 @@ local function lowWords(r)
     return r.low and string.format(GC.TEXT.low, r.under or GC.LOW_ILVL) or nil
 end
 
--- The season checks tripped on a slot, by their labels ("Venomcursed"), or nil.
-local function checkWords(r)
+-- The season checks tripped on a slot, by their labels ("Venomcursed"), or nil: the issues, or with notes
+-- true the info ones.
+local function checkWords(r, notes)
     local words = {}
     for _, c in ipairs(r.checks or {}) do
-        words[#words + 1] = c.label
+        if GC.IsNote(c) == (notes == true) then
+            words[#words + 1] = c.label
+        end
     end
     return #words > 0 and table.concat(words, ", ") or nil
 end
 
--- What is wrong with a slot, in words ("missing enchant, 14 item levels under average, Venomcursed"), or nil.
+-- The info checks on a slot, in words ("Venomcursed"), or nil: to know, never in chat.
+function GC.Notes(r)
+    return checkWords(r, true)
+end
+
+-- What is wrong with a slot, in words ("missing enchant, 14 item levels under average, Wrong enchant"), or
+-- nil. Info checks are not in it (GC.Notes).
 function GC.Problems(r)
     local words = {}
     for _, w in ipairs({ missingWords(r) or false, lowWords(r) or false, checkWords(r) or false }) do
@@ -395,8 +551,9 @@ end
 -- Rows -------------------------------------------------------------------------------------------------------
 
 -- A member's row: { name, unit, class, me, seen, source, at, avg, pieces, slots = { [slot] = findings },
--- issues, missingGems, missingEnchants, checkHits = { [check key] = issues }, rowFindings = { { check, have,
--- need } } (a counting check short of its require) }. seen is false for a player whose whole set hasn't arrived yet:
+-- issues, missingGems, missingEnchants, checkHits = { [check key] = hits }, rowFindings = { { check, have,
+-- need } } (a counting check short of its require), trackCounts = { [track key] = pieces }, below (pieces
+-- under the Below chip's track, each slot's findings marked below) }. seen is false for a player whose whole set hasn't arrived yet:
 -- only a Gear Checker reply or an inspect is a whole set (GC.WHOLE_SETS); other features remember a few
 -- pieces (Loot Master's answers), which would read as empty slots, so those rows wait for a Refresh.
 GC.WHOLE_SETS = { [GC.SOURCE_REPLY] = true, [GC.SOURCE_INSPECT] = true }
@@ -418,6 +575,8 @@ function GC:Row(m)
         end
     end
     local rules = self:Rules()
+    local below = rules.tracks.usable and self:BelowTrack() or nil
+    row.trackCounts, row.below = {}, 0
     for _, s in ipairs(Gear.SLOTS) do
         local r = self.CheckSlot(s.id, by[s.id], rules, row.avg)
         row.slots[s.id] = r
@@ -426,6 +585,14 @@ function GC:Row(m)
         row.missingEnchants = row.missingEnchants + (r.missingEnchant and 1 or 0)
         for _, c in ipairs(r.checks) do
             row.checkHits[c.key] = (row.checkHits[c.key] or 0) + 1
+        end
+        if r.track then
+            local key = r.track.track.key
+            row.trackCounts[key] = (row.trackCounts[key] or 0) + 1
+            if below and r.track.track.order < below.order then
+                r.below = true -- under the Below chip's track: to know, not an issue
+                row.below = row.below + 1
+            end
         end
     end
     if row.seen then
@@ -441,7 +608,7 @@ function GC:Row(m)
                 if have + maybe < c.require then
                     row.rowFindings[#row.rowFindings + 1] = { check = c, have = have, need = c.require }
                     row.checkHits[c.key] = (row.checkHits[c.key] or 0) + 1
-                    row.issues = row.issues + 1
+                    row.issues = row.issues + (GC.IsNote(c) and 0 or 1)
                 end
             end
         end
@@ -460,6 +627,8 @@ function GC.Passes(row, filter)
         return row.missingGems > 0
     elseif filter == "enchants" then
         return row.missingEnchants > 0
+    elseif filter == GC.BELOW then
+        return (row.below or 0) > 0
     end
     return true
 end
@@ -489,7 +658,7 @@ function GC.CellShows(r, filter, row)
         end
         -- a row short of a counting check's require: its matching items show what it has
         for _, f in ipairs(type(row) == "table" and row.rowFindings or {}) do
-            if r.matched and r.matched[f.check.key] then
+            if not GC.IsNote(f.check) and r.matched and r.matched[f.check.key] then
                 return true
             end
         end
@@ -498,6 +667,8 @@ function GC.CellShows(r, filter, row)
         return r.emptySockets > 0
     elseif filter == "enchants" then
         return r.missingEnchant == true
+    elseif filter == GC.BELOW then
+        return r.below == true
     end
     return true
 end
@@ -563,10 +734,13 @@ local function eachIssue(row, fn)
     return out
 end
 
--- Adds a line per row issue (GC.RowProblem) to a list of lines, each written with fmt.
+-- Adds a line per row issue (GC.RowProblem) to a list of lines, each written with fmt. An info check's is
+-- no issue, so it never goes to chat.
 local function addRowLines(out, row, fmt, name)
     for _, f in ipairs(row.rowFindings or {}) do
-        if name then
+        if GC.IsNote(f.check) then
+            -- to know, not to send
+        elseif name then
             out[#out + 1] = string.format(fmt, name, GC.RowProblem(f))
         else
             out[#out + 1] = string.format(fmt, GC.RowProblem(f))
@@ -591,10 +765,15 @@ function GC.RaidLines(row)
     return addRowLines(out, row, GC.TEXT.rowLine, shortName(row.name))
 end
 
+-- A slot's line start in the badge's tooltip: "Head [item] 285 - ".
+local function lineHead(r)
+    return string.format("%s %s %s - ", slotName(r.slot), GC.ItemLink(r.piece), tostring(r.piece.ilvl or "?"))
+end
+
 -- The issues badge's tooltip: { text, kind } per issue, "Head [item] 285 - missing enchant" ("bad", red),
--- "... - 14 item levels under average" ("low", orange), "... - Venomcursed" (the season check's severity:
--- bad, low or info); a slot with several has a line of each. Then the row's own ("Pair: 1 of 2 worn"). {}
--- with no issue, nil for a player not seen yet.
+-- "... - 14 item levels under average" ("low", orange), "... - Wrong enchant" (the season check's severity,
+-- bad or low); a slot with several has a line of each. Then the row's own ("Pair: 1 of 2 worn"). {} with no
+-- issue, nil for a player not seen yet. Info checks are in GC.NoteLines.
 function GC.IssueLines(row)
     if not row.seen then
         return nil
@@ -603,7 +782,7 @@ function GC.IssueLines(row)
     for _, s in ipairs(Gear.SLOTS) do
         local r = row.slots[s.id]
         if r and r.piece then
-            local head = string.format("%s %s %s - ", slotName(r.slot), GC.ItemLink(r.piece), tostring(r.piece.ilvl or "?"))
+            local head = lineHead(r)
             local missing, low = missingWords(r), lowWords(r)
             if missing then
                 out[#out + 1] = { text = head .. missing, kind = "bad" }
@@ -612,12 +791,46 @@ function GC.IssueLines(row)
                 out[#out + 1] = { text = head .. low, kind = "low" }
             end
             for _, c in ipairs(r.checks or {}) do
-                out[#out + 1] = { text = head .. c.label, kind = c.severity }
+                if not GC.IsNote(c) then
+                    out[#out + 1] = { text = head .. c.label, kind = c.severity }
+                end
             end
         end
     end
     for _, f in ipairs(row.rowFindings or {}) do
-        out[#out + 1] = { text = GC.RowProblem(f), kind = f.check.severity }
+        if not GC.IsNote(f.check) then
+            out[#out + 1] = { text = GC.RowProblem(f), kind = f.check.severity }
+        end
+    end
+    return out
+end
+
+-- The badge tooltip's Not an issue part: { text, kind, track } per thing to know. An info check on a slot
+-- ("Head [item] 285 - Venomcursed", kind "info"), an item under the Below chip's track ("Hands [item] 280 -
+-- Champion 4/6", kind "track", in its track's colour), then the row's own info checks. {} with none, nil for
+-- a player not seen yet.
+function GC.NoteLines(row)
+    if not row.seen then
+        return nil
+    end
+    local out = {}
+    for _, s in ipairs(Gear.SLOTS) do
+        local r = row.slots[s.id]
+        if r and r.piece then
+            for _, c in ipairs(r.checks or {}) do
+                if GC.IsNote(c) then
+                    out[#out + 1] = { text = lineHead(r) .. c.label, kind = c.severity }
+                end
+            end
+            if r.below and r.track then
+                out[#out + 1] = { text = lineHead(r) .. GC.TrackWords(r.track), kind = "track", track = r.track.track }
+            end
+        end
+    end
+    for _, f in ipairs(row.rowFindings or {}) do
+        if GC.IsNote(f.check) then
+            out[#out + 1] = { text = GC.RowProblem(f), kind = f.check.severity }
+        end
     end
     return out
 end
