@@ -64,7 +64,8 @@ function Bosses:Register(def)
 end
 
 -- Season data that isn't about one boss: one file per topic in the pack's folder (Seasons/<pack>/<Topic>.lua),
--- each a Bosses:SeasonData(seasonKey, topic, data) call, listed in the .toc after the pack's Season.lua.
+-- each a Bosses:SeasonData(seasonKey, topic, data) call, listed in the .toc after the pack's Season.lua and before its boss files
+-- (the store works in any order, but every pack keeps this one).
 -- Each topic is read through its own accessor below (GearChecks), never by name in feature code. A pack
 -- may also write a topic as a field of its Season.lua; the topic file wins.
 function Bosses:SeasonData(seasonKey, topic, data)

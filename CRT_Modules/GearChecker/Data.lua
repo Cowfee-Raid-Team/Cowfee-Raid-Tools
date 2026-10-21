@@ -13,7 +13,8 @@ local ADDON, CRT = ...
 --   GC.CheckSlot(slot, piece, rules, avg)   one slot's findings: missing enchant, empty sockets, low
 --   GC:Roster()                  the group: { name, unit, class, me }, you first
 --   GC:Row(member), GC:Rows(filter)   a member's checked gear; the rows a filter shows
---   GC.CellShows(findings, filter)   whether a filter draws a slot's cell (issue filters: only problem cells)
+--   GC.PartsOf(piece)            Gear.Parts of a piece, nil when it is known only by its ID
+--   GC.CellShows(findings, filter, row)   whether a filter draws a slot's cell (issue filters: only problem cells)
 --   GC.SlotLine, GC.WhisperLines, GC.RaidLines, GC.ChatBoxText   a row's issues as chat text
 --   GC.IssueLines(row)           the issues badge's tooltip: a line per issue, red or orange
 --   GC.SendTargets(row), GC.Send(row, target)   where a row's issues can go (the menu), and sending them
@@ -220,18 +221,33 @@ function GC.TopCheck(r)
     return top
 end
 
+-- What a piece's item string holds (Gear.Parts), or nil when it is known only by its ID: no item string, or
+-- a bare "item:<id>" (a piece too long for a message goes as one, Comm.SetMessages). A real item string
+-- always carries more fields (its link level at least), so a bare one says nothing about enchant, gems or
+-- bonus IDs.
+function GC.PartsOf(piece)
+    local s = type(piece) == "table" and (piece.itemString or piece.link)
+    local own = Gear.ItemString(s)
+    if not own or own:match("^item:%d+$") then
+        return nil
+    end
+    return Gear.Parts(own)
+end
+
 -- One slot's findings for a piece (nil for an empty slot), given the rules and the player's average item
--- level: { slot, piece, empty, needsEnchant, missingEnchant, sockets, gems, emptySockets, low, checks,
--- matched, issues }. checks: the season checks tripped here, each an issue; matched: [key] = true for a
--- counting check's match (GC:Row counts those). A piece known only by its ID (no item string) can't show
--- an enchant or gems, so it is never flagged for them; a socket count the game can't give is no finding.
+-- level: { slot, piece, empty, unknown, needsEnchant, missingEnchant, sockets, gems, emptySockets, low,
+-- checks, matched, issues }. checks: the season checks tripped here, each an issue; matched: [key] = true
+-- for a counting check's match (GC:Row counts those). A piece known only by its ID (unknown, GC.PartsOf)
+-- can't show an enchant, gems or bonus IDs, so it is never flagged for them; a socket count the game can't
+-- give is no finding.
 function GC.CheckSlot(slot, piece, rules, avg)
     local r = { slot = slot, piece = piece, issues = 0, gems = 0, sockets = 0, emptySockets = 0, checks = {}, matched = {} }
     if type(piece) ~= "table" then
         r.empty = true
         return r
     end
-    local parts = Gear.Parts(piece.itemString or piece.link)
+    local parts = GC.PartsOf(piece)
+    r.unknown = parts == nil
     if rules.enchant[slot] and (not rules.weaponOnly[slot] or Gear.IsWeapon(Gear.EquipLoc(piece))) then
         r.needsEnchant = true
         if parts and not parts.enchant then
@@ -415,11 +431,14 @@ function GC:Row(m)
     if row.seen then
         for _, c in ipairs(rules.checks) do
             if c.require then
-                local have = 0
+                -- a bonus ID check can't read an ID-only piece, so it may hold one: never a shortfall for it
+                local have, maybe = 0, 0
                 for _, s in ipairs(Gear.SLOTS) do
-                    have = have + (row.slots[s.id].matched[c.key] and 1 or 0)
+                    local sr = row.slots[s.id]
+                    have = have + (sr.matched[c.key] and 1 or 0)
+                    maybe = maybe + ((c.kind == "bonusIds" and c.slots[s.id] and sr.unknown) and 1 or 0)
                 end
-                if have < c.require then
+                if have + maybe < c.require then
                     row.rowFindings[#row.rowFindings + 1] = { check = c, have = have, need = c.require }
                     row.checkHits[c.key] = (row.checkHits[c.key] or 0) + 1
                     row.issues = row.issues + 1
@@ -447,9 +466,9 @@ end
 
 -- Whether a filter draws a slot's cell: every cell under Everyone; under the others only the cells with that
 -- kind of issue (Only issues: any, low items and season checks too), so a row shows just what to fix. Under
--- a counting check's filter its matching items are drawn too, so a row short of them shows what it has.
--- The rest are drawn empty.
-function GC.CellShows(r, filter)
+-- a counting check's filter its matching items are drawn too, and under Only issues when the row (row,
+-- optional) is short of that check, so a row short of them shows what it has. The rest are drawn empty.
+function GC.CellShows(r, filter, row)
     if filter == nil or filter == "all" then
         return true
     end
@@ -465,7 +484,16 @@ function GC.CellShows(r, filter)
         end
         return r.matched ~= nil and r.matched[check] == true
     elseif filter == "issues" then
-        return r.issues > 0
+        if r.issues > 0 then
+            return true
+        end
+        -- a row short of a counting check's require: its matching items show what it has
+        for _, f in ipairs(type(row) == "table" and row.rowFindings or {}) do
+            if r.matched and r.matched[f.check.key] then
+                return true
+            end
+        end
+        return false
     elseif filter == "gems" then
         return r.emptySockets > 0
     elseif filter == "enchants" then

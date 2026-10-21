@@ -35,7 +35,7 @@ eq(printed[4], "  Neck: item 102, enchant -, gems -, bonus -", "nothing in it: d
 printed = {}
 Gear:Remember("Quick-Sargeras", { { slot = 2, id = 102, itemString = "item:102" } }, "gearcheck", true)
 check(Probe:Command("dev gear quick", "dev gear Quick"), "dev gear <name>")
-eq(printed[1], "Gear probe: Quick-Sargeras (1 items). Paste the IDs into the season's GearChecks.lua.", "a seen player, by short name")
+eq(printed[1], "Gear probe: Quick-Sargeras (1 item). Paste the IDs into the season's GearChecks.lua.", "a seen player, by short name")
 printed = {}
 Probe:Command("dev gear nobody", "dev gear Nobody")
 eq(printed[1], "Gear probe: nothing known for Nobody. Refresh the Gear Checker first.", "a player not seen")

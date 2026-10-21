@@ -28,7 +28,7 @@ local Gear = CRT.Gear
 
 local TEXT = {
     title = "Gear Checker",
-    help = "Everyone's equipped gear, with what's missing.\n\nA red dot at the top left is a missing enchant, a green one an enchant. The diamonds at the top right are sockets: filled with a gem, or empty with a red edge. A red outline is a missing enchant or gem, an orange one an item %d or more item levels under the player's average. A square at the bottom right is a season check: blue is just to know, orange or red needs a fix.\n\nThe issue filters show only the items with that issue.\n\nRefresh asks every CRT in the group for their gear, then inspects the others, one at a time, in range and out of combat.\n\nHover an item to see it, or a player's issues count to list their issues. Shift-click an item with an issue to put it in the chat box. Right-click a player to send their issues to a chat channel or whisper, put them in the chat box or inspect them.",
+    help = "Shows everyone's gear and what needs fixing: red for a missing enchant or gem, orange for an item %d or more item levels under the player's average, and a small square for this season's checks (blue is just to know). Pick a filter at the top to see only those items, press Refresh to check the group again, and right-click a player to send them their issues.",
     refresh = "Refresh (%d/%d have CRT)",
     popOut = "Pop out",
     dock = "Dock",
@@ -351,7 +351,7 @@ local function paintCell(c, row, r, shown)
     if flag then
         paintLines(c.flag, flag[1], flag[2], flag[3])
     end
-    local dot = piece and r.needsEnchant and piece.itemString and (r.missingEnchant and COLORS.bad or COLORS.good) or nil
+    local dot = piece and r.needsEnchant and not r.unknown and (r.missingEnchant and COLORS.bad or COLORS.good) or nil
     c.dot:SetShown(dot ~= nil)
     if dot then
         c.dot:SetVertexColor(dot[1], dot[2], dot[3], 1)
@@ -476,7 +476,7 @@ function P.InitRow(f, row)
     local filter = P.filter or "all"
     for i, s in ipairs(Gear.SLOTS) do
         local r = row.slots[s.id]
-        paintCell(f.cells[i], row, r, GC.CellShows(r, filter))
+        paintCell(f.cells[i], row, r, GC.CellShows(r, filter, row))
     end
 end
 
