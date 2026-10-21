@@ -60,6 +60,7 @@ local TEXT = {
 local L = {
     width = 900, height = 580, minWidth = 680, minHeight = 420,
     paletteW = 270, gap = 10, footerH = 28, rawH = 150, searchH = 22, fromH = 32, fromLabelW = 78,
+    fromGap = 5, -- UI.Dropdown's gap between its label and the dropdown (UI/Controls.lua)
     rowGap = 4, chipH = 18, chipGap = 4, chipPad = 6, iconW = 16, removeW = 14,
     timeW = 36, phaseW = 32, infoH = 18, timerAlpha = 0.5, labelMax = 0.35, headingH = 20, blankH = 8, sectionGap = 8,
     dragStart = 4, -- pixels the mouse moves with the button down before a press becomes a drag
@@ -427,22 +428,41 @@ local function sourceChoices()
     if Groups and Groups.Presets then
         ok, layouts = pcall(Groups.Presets, Groups)
     end
-    return Model.Sources(ok and type(layouts) == "table" and layouts or {}, linkedLayout())
+    -- the personal note has no invite list
+    local personal = W.source and W.source.personal
+    return Model.Sources(ok and type(layouts) == "table" and layouts or {}, linkedLayout(), personal)
 end
 
--- Where the Players come from for the open note: the choice made for it, else its linked layout when you're not in
--- a group, else the current group. A layout deleted since falls back the same way.
-local function settleSource()
+-- Whether a source can still be listed for the open note: the group, the invite list (not the personal note's), or a
+-- layout that still exists.
+local function validSource(from)
+    if from == Model.SOURCE_GROUP then
+        return true
+    elseif from == Model.SOURCE_INVITE then
+        return not (W.source and W.source.personal)
+    end
+    return from ~= nil and findLayout(from) ~= nil
+end
+
+-- Where the Players come from for the open note, worked out once as it opens: the choice made for it, else its
+-- linked layout when you're not in a group, else the current group.
+local function openSource()
     local key = pickKey()
     local from = key ~= nil and W.picked[key] or nil
-    if from ~= nil and from ~= Model.SOURCE_GROUP and from ~= Model.SOURCE_INVITE and not findLayout(from) then
-        W.picked[key], from = nil, nil
-    end
-    if from == nil then
+    if not validSource(from) then
+        if key ~= nil then
+            W.picked[key] = nil
+        end
         from = Model.DefaultSource(linkedLayout(), IsInGroup and IsInGroup() or false)
     end
     W.playersFrom = from
-    return from
+end
+
+-- A layout changed: the source stays as it is unless it was a layout deleted since, which falls back as on opening.
+local function keepSource()
+    if not validSource(W.playersFrom) then
+        openSource()
+    end
 end
 
 -- A player's class: the one stored for that name (Raid Groups keeps it), else the shared class lookup Render uses.
@@ -482,9 +502,8 @@ local function sourceRoster()
     if from == Model.SOURCE_GROUP then
         return roster()
     end
-    if not W.classOf then
-        W.classOf = CRT.NoteRender and CRT.NoteRender.SharedLookup and CRT.NoteRender.SharedLookup() or nil
-    end
+    -- memoised by Render until the names it knows change
+    W.classOf = CRT.NoteRender and CRT.NoteRender.SharedLookup and CRT.NoteRender.SharedLookup() or nil
     if from == Model.SOURCE_INVITE then
         return Model.Roster(W.session and W.session:InviteNames() or {}, playerClass, playerRole)
     end
@@ -647,8 +666,16 @@ function chipDown(chip, button)
     W.driver:Show()
 end
 
+-- The palette lists the invite list as it is now: drawn again when the session's names change.
+local function followInvite()
+    if W.playersFrom == Model.SOURCE_INVITE then
+        Editor.DrawPalette()
+    end
+end
+
 local function changed()
     Editor.Refresh()
+    followInvite()
 end
 
 function chipUp(chip)
@@ -718,9 +745,6 @@ function Editor.Refresh()
     W.rowsWidth = math.max(200, width)
     W.rowsChild:SetWidth(W.rowsWidth)
     Editor.DrawRows()
-    if W.playersFrom == Model.SOURCE_INVITE then
-        Editor.DrawPalette() -- the palette lists the invite list as it is now
-    end
     local text = W.session:Text()
     if W.raw:GetText() ~= text then
         W.raw:SetText(text)
@@ -816,6 +840,7 @@ function Editor.Save()
     loadSession()
     W.session:SetQuickFill(quick)
     Editor.Refresh()
+    followInvite()
     return true
 end
 
@@ -833,6 +858,7 @@ local function onNotesChange()
         loadSession()
         W.session:SetQuickFill(quick and editable)
         Editor.Refresh()
+        followInvite()
     end
 end
 
@@ -901,7 +927,7 @@ local function buildPalette(c)
     W.search = search
     -- Players from: the group, the note's invite list or a saved Raid Groups layout
     local from = UI.Dropdown(right, TEXT.playersFrom, {
-        labelWidth = L.fromLabelW, width = L.paletteW - L.fromLabelW - 5 - 4,
+        labelWidth = L.fromLabelW, width = L.paletteW - L.fromLabelW - L.fromGap - 4,
         options = sourceChoices,
         get = function()
             return W.playersFrom
@@ -911,7 +937,7 @@ local function buildPalette(c)
             if pick ~= nil then
                 W.picked[pick] = key
             end
-            settleSource()
+            W.playersFrom = key
             Editor.DrawPalette()
             W.from.refresh()
         end,
@@ -1051,7 +1077,7 @@ local function build()
                 return
             end
             local before = W.playersFrom
-            settleSource()
+            keepSource()
             W.from.refresh()
             if (before ~= Model.SOURCE_GROUP and before ~= Model.SOURCE_INVITE) or W.playersFrom ~= before then
                 Editor.DrawPalette()
@@ -1082,8 +1108,8 @@ function Editor.Open(source)
     if not (same and W.window:IsShown() and W.session) then
         W.source = { id = source.id, personal = source.personal and true or nil }
         loadSession()
+        openSource() -- worked out once for this open; a layout edit later never changes it
     end
-    settleSource()
     W.from.refresh()
     W.window:Show()
     if W.window.Raise then

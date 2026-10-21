@@ -14,7 +14,7 @@ local ADDON, CRT = ...
 --   s:SetQuickFill(on), s:Select(i), s:PaletteClick(token, kind)   Quick fill: a click on a chip adds it to the row
 --   s:BeginDrag(source), s:Drop(i), s:CancelDrag()   a drag: { token, kind } from the palette, { row, index } from a row
 --   Model.Palette(roster, query)  the palette's sections: Players, General, Groups and Classes
---   Model.Sources(layouts, linkedId), Model.DefaultSource(linkedId, inGroup), Model.Roster(names, classOf, roleOf)
+--   Model.Sources(layouts, linkedId, noInvite), Model.DefaultSource(linkedId, inGroup), Model.Roster(names, classOf, roleOf)
 --                               where the Players come from: the group, the note's invite list or a Raid Groups layout
 -- Where the names are (Alex, 2026-10-21: only the text assignments and the invite list; the timed lines, cooldowns
 -- included, are left alone for now):
@@ -605,12 +605,13 @@ Model.SOURCE_GROUP = "group"
 Model.SOURCE_INVITE = "invite"
 
 -- The "Players from" choices: { key, label }: the current group, the note's invite list, then every saved layout
--- (layouts: Groups:Presets(), { id, name }) by name, the note's linked layout (linkedId) first.
-function Model.Sources(layouts, linkedId)
-    local out = {
-        { key = Model.SOURCE_GROUP, label = TEXT.fromGroup },
-        { key = Model.SOURCE_INVITE, label = TEXT.fromInvite },
-    }
+-- (layouts: Groups:Presets(), { id, name }) by name, the note's linked layout (linkedId) first. noInvite leaves the
+-- invite list out (the personal note has none).
+function Model.Sources(layouts, linkedId, noInvite)
+    local out = { { key = Model.SOURCE_GROUP, label = TEXT.fromGroup } }
+    if not noInvite then
+        out[#out + 1] = { key = Model.SOURCE_INVITE, label = TEXT.fromInvite }
+    end
     local linked, rest = nil, {}
     for _, p in ipairs(layouts or {}) do
         if type(p) == "table" and p.id ~= nil and type(p.name) == "string" then

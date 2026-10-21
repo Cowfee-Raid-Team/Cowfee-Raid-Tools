@@ -811,6 +811,12 @@ do
   local x = W.rowFrames[2].chips[2].remove
   x.scripts.OnClick(x)
   assert(players() == "Abu,Zed,Wren-Elsewhere", "follows an edit: " .. players())
+  local paints = 0
+  local oldDraw = Editor.DrawPalette
+  Editor.DrawPalette = function() paints = paints + 1 return oldDraw() end
+  Editor.Refresh()
+  Editor.DrawPalette = oldDraw
+  assert(paints == 0, "Refresh itself never draws the palette; its callers do")
   -- the choice is kept for this note
   W.save.scripts.OnClick(W.save)
   W.window:Hide()
@@ -851,6 +857,16 @@ do
   inRaid, leader = false, false
   W.picked[id2] = nil
   assert(Editor.Open({ id = id2 }) and W.playersFrom == 7, "solo again: the linked layout")
+  -- worked out once on opening: joining a group and an unrelated layout edit leave it
+  inRaid = true
+  PRESETS[2].name = "Renamed roster"
+  CRT.Groups:Fire()
+  assert(W.playersFrom == 7, "a layout edit doesn't recompute the default")
+  inRaid = false
+  W.window:Hide()
+  -- the personal note has no invite list to pick
+  assert(keysOf(Model.Sources(PRESETS, nil, true)) == "group,7,roster1", "noInvite")
+  assert(Editor.Open({ personal = true }) and keysOf(W.from.opts.options()) == "group,7,roster1" and W.playersFrom == "group", "the personal note's choices")
   W.window:Hide()
 end
 print("ok Players from: the group, the invite list or a layout (linked one first and picked when solo), class colours, search, tokens, refresh")
