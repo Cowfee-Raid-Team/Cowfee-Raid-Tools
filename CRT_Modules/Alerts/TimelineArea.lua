@@ -449,7 +449,7 @@ local function parts(area)
     if tl then
         return tl
     end
-    tl = { ticks = {}, lanes = {} }
+    tl = { ticks = {} }
     tl.track = area.frame:CreateTexture(nil, "BACKGROUND")
     tl.mover = CreateFrame("Frame", nil, area.frame)
     tl.mover.area = area
@@ -520,32 +520,72 @@ local function placeTicks(area, tl, s, direction, length, color)
     end
 end
 
--- Stacking: soonest first, an icon that would cover the one before it in its lane moves to the next lane, beside
--- the line on the side away from the names.
-local function assignLanes(area, tl, n, now, s)
-    local lanes = tl.lanes
-    for k in pairs(lanes) do
-        lanes[k] = nil
+-- A line's own key for its lane: its id and time, so the lane follows the line from widget to widget.
+local function laneKey(line)
+    if line.id == nil then
+        return line
     end
+    return tostring(line.id) .. "@" .. tostring(line.at)
+end
+
+-- Stacking: an icon that would cover another in its lane in flight moves to the next lane, beside the line on the
+-- side away from the names. Icons all move at one speed, so two that overlap do so for the whole flight: each
+-- icon's lane is chosen once, from the times, when it first shows, and kept until it's gone. Never from where the
+-- icons are at the moment: one holding at the end for its NOW effect would push the next aside just before its
+-- own 0, and one finishing would pull the icon beside it back onto the line (and its name across).
+local function assignLanes(area, tl, n, s)
     local size = clamp(s.size, "size")
     local window, length = clamp(s.seconds, "seconds"), clamp(s.length, "length")
     local stack = s.stack ~= false
     local away = namesPositive(s) and -1 or 1
+    -- a change to what the lanes depend on lays them all out again
+    local sig = tostring(stack) .. "|" .. size .. "|" .. window .. "|" .. length
+    local laneOf = tl.laneOf
+    if not laneOf or tl.laneSig ~= sig then
+        laneOf = {}
+        tl.laneOf, tl.laneSig = laneOf, sig
+    end
+    local apart = (size + LANE_GAP) * window / length -- seconds between two icons that just clear each other
+    local keys, live = {}, {}
+    for i = 1, n do
+        local key = laneKey(area.pool[i].line)
+        keys[i] = key
+        live[key] = true
+    end
+    for key in pairs(laneOf) do
+        if not live[key] then
+            laneOf[key] = nil
+        end
+    end
+    -- soonest first (the lines come sorted), each new icon tested against every icon already given a lane
+    for i = 1, n do
+        local line, key = area.pool[i].line, keys[i]
+        if not laneOf[key] then
+            local lane = 0
+            if stack then
+                lane = nil
+                for k = 0, MAX_LANES - 1 do
+                    local free = true
+                    for j = 1, n do
+                        local other = keys[j]
+                        if j ~= i and laneOf[other] == k and math.abs(area.pool[j].line.at - line.at) < apart then
+                            free = false
+                            break
+                        end
+                    end
+                    if free then
+                        lane = k
+                        break
+                    end
+                end
+                lane = lane or 0 -- a third overlapping icon shares the first lane
+            end
+            laneOf[key] = lane
+        end
+    end
     for i = 1, n do
         local w = area.pool[i]
-        local d = math.max(0, math.min(w.line.at - now, window)) / window * length
-        local lane = 0
-        if stack then
-            lane = nil
-            for k = 0, MAX_LANES - 1 do
-                if lanes[k] == nil or math.abs(d - lanes[k]) >= size + LANE_GAP then
-                    lane = k
-                    break
-                end
-            end
-            lane = lane or 0
-        end
-        lanes[lane] = d
+        local lane = laneOf[keys[i]]
         w.lane = lane
         w.across = away * lane * (size + LANE_GAP)
     end
@@ -581,7 +621,7 @@ local function layout(area, n, now, s)
     local length, size = clamp(s.length, "length"), clamp(s.size, "size")
     local color = paintTrack(area, tl, s, vertical, length)
     placeTicks(area, tl, s, direction, length, color)
-    assignLanes(area, tl, n, now, s)
+    assignLanes(area, tl, n, s)
     local positive = namesPositive(s)
     local badgeSize = clamp(s.fontSize, "fontSize")
     for i = 1, n do
