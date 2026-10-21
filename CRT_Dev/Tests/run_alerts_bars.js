@@ -557,6 +557,52 @@ A:Settings().customColors = false
 local samples = B.def.sample(500)
 assert(samples[1].abilityType == "dispel" and samples[2].abilityType == "soak" and samples[3].abilityType == "mythic", "preview types")
 print("ok bars: previews in type colours")
+
+-- the ability type after the text, whatever colour the bar uses
+A:Settings().customColors = true
+pull({ item{ id = "t1", time = 5, text = "Hungering Pyre", abilityType = "soak" },
+       item{ id = "t2", time = 6, text = "Own colour", abilityType = "mythic", color = { 1, 0, 0 } },
+       item{ id = "t3", time = 7, text = "Unknown" },
+       item{ id = "t4", time = 8, text = "Odd", abilityType = "nonsense" } })
+start() B:Refresh()
+v = B:Visible()
+assert(v[1].text == "Hungering Pyre" and v[1].kind == " (soak)" and B.pool[1].kind.text == " (soak)" and B.pool[1].kind.shown, "typed bar names its type")
+assert(v[2].kind == " (mythic)", "shown with the line's own colour too")
+assert(v[3].kind == nil and not B.pool[3].kind.shown and B.pool[3].kind.text == "", "no type known: text unchanged")
+assert(v[4].kind == nil, "an unknown type key is not shown")
+A:Settings().customColors = false B:Refresh()
+assert(B:Visible()[1].kind == " (soak)", "shown with type colours too")
+-- the setting, on by default and saved
+assert(CRT.db.alerts.bars.showType == nil or CRT.db.alerts.bars.showType == true)
+panel:Select(B)
+local box
+for _, f in ipairs(frames) do if rawget(f, "labelText") == "Show the ability type" then box = f end end
+assert(box and box.help, "checkbox with a (?) help")
+box.refresh() assert(box.checked == true, "on by default")
+box.OnClick({ GetChecked = function() return false end })
+assert(A:Settings().bars.showType == false and B:Visible()[1].kind == nil and not B.pool[1].kind.shown, "off: names only")
+box.refresh() assert(box.checked == false)
+A:Settings().bars.showType = true B:Refresh()
+assert(B:Visible()[1].kind == " (soak)", "on again")
+print("ok bars: the ability type after the text")
+
+-- a long text is cut before the type; the type and the seconds stay
+A:Settings().bars.width = 240 A:Settings().bars.fontSize = 13
+pull({ item{ id = "long", time = 5, text = "A very long ability name that cannot fit", abilityType = "soak" },
+       item{ id = "short", time = 6, text = "Pyre", abilityType = "soak" } })
+start() B:Refresh()
+local lb, sb = B.pool[1], B.pool[2]
+local timeW = #lb.time.text * 6
+assert(lb.text.w >= 1 and lb.text.w + #" (soak)" * 6 + timeW + 12 <= 240, "long text leaves room: " .. lb.text.w)
+assert(lb.kind.shown and lb.kind.text == " (soak)", "the type stays whole")
+local kp = lb.kind.pts[#lb.kind.pts]
+assert(kp[1] == "LEFT" and kp[2] == lb.text and kp[3] == "RIGHT", "the type follows the cut text")
+assert(sb.text.w == #"Pyre" * 6 + 2, "a short text is not stretched: " .. sb.text.w)
+-- with the type off, the whole room is the text's
+A:Settings().bars.showType = false B:Refresh()
+assert(lb.text.w > 150, "no type: more room for the text: " .. lb.text.w)
+assert(#errors == 0, tostring(errors[1]))
+print("ok bars: long text is cut before the type")
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 for (let i = 2; i < 8; i++) {

@@ -4,9 +4,11 @@ local ADDON, CRT = ...
 -- a fill that empties as the time nears. It shows your note lines and your reminders (every line whose
 -- outputs.bar is on) from the alerts engine. Built on Alerts/Areas.lua; the settings stay in
 -- CRT.db.alerts.bars (shown, cap, ahead, width, height, grow, noteLines, font, fontSize, barColor, bgColor,
--- textColor) and open from the area's gear. A bar is in its ability type's colour (Areas.DrawColor); the Bar,
+-- textColor, showType) and open from the area's gear. A bar is in its ability type's colour (Areas.DrawColor); the Bar,
 -- Background and Text colours apply only with Use custom colours on (alerts.customColors), and then a line's own
 -- colour still wins over the Bar colour. Off, they stay saved and their rows grey out.
+-- With showType on (the default) a bar whose alert has a known ability type shows it after the text: "Hungering Pyre
+-- (soak)"; a long text is cut with an ellipsis before the type, so the type and the seconds stay in view.
 -- A bar starts full: its fill runs over the time left when it first showed, at most `ahead`.
 
 local Areas = CRT.AlertAreas
@@ -27,6 +29,9 @@ local TEXT = {
     textColor = "Text colour",
     sampleBar = "Sample bar %d",
     testBar = "Test bar %d",
+    showType = "Show the ability type",
+    showTypeHelp = "Adds the ability's type after its name on a bar, such as Hungering Pyre (soak). A long name is cut short so the type and the seconds stay in view.",
+    typeFormat = " (%s)",
 }
 
 local ICON_GAP = 4 -- between the icon and the text, and at the edges
@@ -121,6 +126,17 @@ local function timeText(remaining)
     return format("%d", math.floor(remaining))
 end
 
+-- " (soak)": the line's main ability type named after its text, whatever colour the bar uses; nil with no known
+-- type or with Show the ability type off. The type's key is the word, as the Timeline's ability types are named.
+local function typeWord(line, s)
+    local Reference = CRT.TimelineReference
+    local key = line.abilityType
+    if s.showType == false or type(key) ~= "string" or not (Reference and Reference.TYPES[key]) then
+        return nil
+    end
+    return format(TEXT.typeFormat, key)
+end
+
 -- What one bar shows. The fill is over the time left when the line first showed, at most `ahead`.
 local function row(line, now, ahead, shownAt, s)
     local total = math.min(ahead, line.at - (shownAt or now))
@@ -129,6 +145,7 @@ local function row(line, now, ahead, shownAt, s)
     color = color or DEFAULT_BAR_COLOR
     return {
         text = Areas.LineText(line),
+        kind = typeWord(line, s),
         time = timeText(line.at - now),
         icon = Areas.LineIcon(line),
         lineColor = from ~= "custom" and color or nil,
@@ -152,6 +169,11 @@ local function make(parent)
     bar.text:SetJustifyH("LEFT")
     bar.text:SetWordWrap(false)
     bar.text:SetShadowOffset(1, -1)
+    -- the " (type)" after the text: its own string, so a long text is cut short before it, never the type
+    bar.kind = bar:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
+    bar.kind:SetJustifyH("LEFT")
+    bar.kind:SetWordWrap(false)
+    bar.kind:SetShadowOffset(1, -1)
     return bar
 end
 
@@ -188,10 +210,20 @@ local function draw(bar, line, now, s, shownAt)
     bar.fill:SetShown(fillWidth > 0)
 
     bar.time:SetText(r.time)
+    bar.text:SetText(r.text)
+    bar.kind:SetText(r.kind or "")
+    bar.kind:SetShown(r.kind ~= nil)
+    bar.kind:SetTextColor(tc[1], tc[2], tc[3], tc[4] or 1)
+    Areas.SetFont(bar.kind, fontName(s), size, FONT_OUTLINE)
+    -- The text gets what is left after the seconds and the type; past that the game cuts it with an ellipsis.
+    local kindWidth = r.kind and bar.kind:GetUnboundedStringWidth() or 0
+    local room = width - left - ICON_GAP - bar.time:GetUnboundedStringWidth() - ICON_GAP * 2 - kindWidth
+    local textWidth = math.max(1, math.min(bar.text:GetUnboundedStringWidth() + 2, room))
     bar.text:ClearAllPoints()
     bar.text:SetPoint("LEFT", left + ICON_GAP, 0)
-    bar.text:SetPoint("RIGHT", bar.time, "LEFT", -ICON_GAP, 0)
-    bar.text:SetText(r.text)
+    bar.text:SetWidth(textWidth)
+    bar.kind:ClearAllPoints()
+    bar.kind:SetPoint("LEFT", bar.text, "RIGHT", 0, 0)
 end
 
 -- The lines the bars show: those due within `ahead`, soonest first, and how many the cap left out.
@@ -317,6 +349,11 @@ local function settingsRows(panel, s)
         end,
         enabledIf = on,
     })
+    panel:Check(TEXT.showType, function()
+        return s.showType ~= false
+    end, function(on)
+        s.showType = on
+    end, TEXT.showTypeHelp)
     -- greyed and unused without Use custom colours; what is saved stays
     local function custom()
         return on() and Areas.CustomColors()
