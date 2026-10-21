@@ -118,7 +118,8 @@ function Consumables:SetLowMinutes(minutes)
     self:Fire()
 end
 
--- Where the ready check bar sits. Without a saved position it goes above the ready check dialog.
+-- Where the ready check bar sits when the game shows no ready check window (it docks under that
+-- window otherwise). Without a saved position it goes near the top of the screen.
 function Consumables:Position()
     return cdb().position
 end
