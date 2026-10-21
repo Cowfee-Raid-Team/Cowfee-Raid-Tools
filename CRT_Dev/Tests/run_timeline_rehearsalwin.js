@@ -206,7 +206,8 @@ do
   assert(where == "next" and value == "10.0", "a jump into Next up's countdown: " .. tostring(value))
   RW:Seek(57.5)
   _, where, value = plainEntries()
-  assert(where == "bar" and value == "2.5" and near(f.castFill.w, RW.CAST_W * 0.5), "a jump into the cast bar: " .. tostring(value))  RW:Seek(53)
+  assert(where == "bar" and value == "2.5" and near(f.castFill.w, RW.CAST_W * 0.5), "a jump into the cast bar: " .. tostring(value))
+  RW:Seek(53)
   dropdowns["Speed"].opts.set(2)
   RW:Play()
   now = now + 1 -- 55 at 2x
@@ -224,19 +225,31 @@ do
 end
 ok("one countdown from Next up into the cast bar")
 
--- several casts within 5 s: the soonest on the cast bar with "+N", none of them in Next up ----------
+-- several casts within 5 s: up to 3 bars stacked, soonest on top; a fourth waits in Next up -------------
 do
-  local near62 = { kind = "reference", label = "Near", icon = "iconNear", marks = { { t = 62 } } }
-  table.insert(lanes, near62)
+  assert(#f.casts == 3, "three cast bars")
+  local y1, y2, y3 = f.casts[1].bg.pt[5], f.casts[2].bg.pt[5], f.casts[3].bg.pt[5]
+  assert(y1 == -76 and y2 == -100 and y3 == -124, "stacked under each other: " .. y1 .. " " .. y2 .. " " .. y3)
+  assert(f.nextHead.pt[5] < y3 - 20 and f.strip.pt[5] < f.next[3].icon.pt[5] and f.play.pt[5] < f.strip.pt[5] - 68, "everything under them moved down")
+  local extra = {
+    { kind = "reference", label = "Near", icon = "iconNear", marks = { { t = 62 } } },
+    { kind = "reference", label = "Third", icon = "iconThird", marks = { { t = 63 } } },
+    { kind = "reference", label = "Fourth", icon = "iconFourth", marks = { { t = 64 } } },
+  }
+  for _, l in ipairs(extra) do table.insert(lanes, l) end
   RW:Open({ base = base, encounterID = 3470, bossName = "Nek'zali" })
   RW:Seek(56) -- Plain 4 s away, Near 6 s away
-  assert(f.castName.text == "Plain" and f.next[1].name.text == "Near" and f.next[1].time.text == "6.0", "Near still in Next up")
-  RW:Seek(58) -- both inside 5 s
-  assert(f.castName.text == "Plain  +1" and f.castTime.text == "2.0", "the soonest, and how many more: " .. tostring(f.castName.text))
-  for _, line in ipairs(f.next) do assert(line.name.text ~= "Near" and line.name.text ~= "Plain", "neither in Next up") end
+  assert(f.casts[1].name.text == "Plain" and f.casts[2].name.text == "" and f.next[1].name.text == "Near" and f.next[1].time.text == "6.0", "Near still in Next up")
+  RW:Seek(59.5) -- all four inside 5 s
+  local names = f.casts[1].name.text .. "," .. f.casts[2].name.text .. "," .. f.casts[3].name.text
+  assert(names == "Plain,Near,Third", "three stacked, soonest on top: " .. names)
+  assert(f.casts[2].time.text == "2.5" and f.casts[3].time.text == "3.5" and near(f.casts[2].fill.w, RW.CAST_W * 0.5), "each its own countdown")
+  assert(f.next[1].name.text == "Fourth" and f.next[1].time.text == "4.5", "the fourth waits in Next up: " .. tostring(f.next[1].name.text))
+  for _, line in ipairs(f.next) do assert(line.name.text ~= "Near" and line.name.text ~= "Plain" and line.name.text ~= "Third", "none in both") end
   RW:Seek(60.5)
-  assert(f.castName.text == "Near" and f.castTime.text == "1.5", "then the next one, its own countdown carried on: " .. tostring(f.castName.text))
-  table.remove(lanes)
+  names = f.casts[1].name.text .. "," .. f.casts[2].name.text .. "," .. f.casts[3].name.text
+  assert(names == "Near,Third,Fourth" and f.casts[3].time.text == "3.5", "a bar frees: the fourth moves up, its countdown carried on: " .. names)
+  for _ = 1, #extra do table.remove(lanes) end
   RW:Open({ base = base, encounterID = 3470, bossName = "Nek'zali" })
 end
 ok("several casts within 5 s")

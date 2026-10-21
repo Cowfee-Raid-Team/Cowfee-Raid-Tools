@@ -10,6 +10,7 @@ local Rehearsal = {}
 CRT.TimelineRehearsal = Rehearsal
 
 Rehearsal.CAST = 5         -- seconds a fake cast bar shows, ending on the cast's time
+Rehearsal.CAST_ROWS = 3    -- cast bars stacked at most; a fourth cast that close waits in Next up
 Rehearsal.STRIP_SPAN = 40  -- seconds the strip shows, "now" a third of the way across
 
 local Clock = {}
@@ -109,32 +110,44 @@ function Rehearsal.Build(lanes, extra)
     return { casts = casts, phases = phases, length = length }
 end
 
--- The cast bar at time t: of the casts showing (each shows for CAST seconds, ending on its time),
--- the one that ends first, and more: how many others are in their last CAST seconds too.
-function Rehearsal.CastAt(model, t)
+-- The cast bars at time t: the casts in their last CAST seconds (each shows for CAST seconds, ending on
+-- its time), soonest first, at most CAST_ROWS of them; a later one waits in Next up for a free bar.
+-- Each { cast, progress, remaining }.
+function Rehearsal.CastsAt(model, t)
     local CAST = Rehearsal.CAST
-    local shown
+    local out = {}
     for _, c in ipairs(model.casts) do
-        if c.t - CAST > t then break end
+        if c.t - CAST > t or #out >= Rehearsal.CAST_ROWS then break end
         if t < c.t then
-            if shown then
-                shown.more = shown.more + 1
-            else
-                shown = { cast = c, progress = (t - (c.t - CAST)) / CAST, remaining = c.t - t, more = 0 }
-            end
+            out[#out + 1] = { cast = c, progress = (t - (c.t - CAST)) / CAST, remaining = c.t - t }
         end
     end
-    return shown
+    return out
 end
 
--- The next n casts more than CAST seconds after t, in time order. A cast in its last CAST seconds
--- belongs to the cast bar (CastAt), so it is never in both, and never counts down here past CAST.
+-- The top cast bar at time t (the soonest of CastsAt), or nil.
+function Rehearsal.CastAt(model, t)
+    return Rehearsal.CastsAt(model, t)[1]
+end
+
+-- The next n casts after t that no cast bar shows, in time order: those more than CAST seconds away,
+-- and any in their last CAST seconds past the CAST_ROWS bars. A cast is never in both, so it counts down
+-- once: in Next up, then on its bar.
 function Rehearsal.NextUp(model, t, n)
     local out = {}
     local CAST = Rehearsal.CAST
+    local onBars = 0
     for _, c in ipairs(model.casts) do
         if #out >= n then break end
-        if c.t - CAST > t then out[#out + 1] = c end
+        if c.t - CAST > t then
+            out[#out + 1] = c
+        elseif t < c.t then
+            if onBars < Rehearsal.CAST_ROWS then
+                onBars = onBars + 1
+            else
+                out[#out + 1] = c
+            end
+        end
     end
     return out
 end

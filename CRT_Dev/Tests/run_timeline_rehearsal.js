@@ -101,8 +101,9 @@ do
   r = R.CastAt(mm, 5); assert(r.cast.name == "A" and near(r.progress, 0) and near(r.remaining, 5), "starts at 0")
   r = R.CastAt(mm, 10.5); assert(r.cast.name == "B" and near(r.progress, 0.9), "A is over, B shows")
   assert(R.CastAt(mm, 4.99) == nil, "before")
-  assert(R.CastAt(mm, 9.5).more == 1 and R.CastAt(mm, 10.5).more == 0 and R.CastAt(mm, 5.5).more == 0, "more counts the others in their last 5 s")
-  assert(R.CastAt(mm, 6).more == 1, "B is in its last 5 s at 6")
+  local s = R.CastsAt(mm, 9.5)
+  assert(#s == 2 and s[1].cast.name == "A" and s[2].cast.name == "B" and near(s[2].remaining, 1.5), "stacked, soonest first")
+  assert(#R.CastsAt(mm, 10.5) == 1 and #R.CastsAt(mm, 5.5) == 1 and #R.CastsAt(mm, 6) == 2, "only those in their last 5 s")
 end
 ok("cast bar shows the cast ending first")
 
@@ -118,9 +119,11 @@ do
   local n = R.NextUp(mm, 0, 3)
   assert(#n == 3 and n[1].t == 6 and n[2].t == 7 and n[3].t == 9, "next 3 more than 5 s away: " .. tostring(n[1] and n[1].t))
   assert(#R.NextUp(mm, 8, 3) == 1 and #R.NextUp(mm, 0, 0) == 0, "short and zero")
-  -- every cast in its last 5 s is the cast bar's, the one it shows and the ones after it
+  -- the 3 bars take the first three casts in their last 5 s; a fourth waits in Next up
   local s = R.NextUp(mm, 4, 3)
-  assert(#s == 2 and s[1].t == 12 and s[2].t == 14 and R.CastAt(mm, 4).cast.t == 5 and R.CastAt(mm, 4).more == 3, "none in both")
+  local bars = R.CastsAt(mm, 4)
+  assert(#bars == 3 and bars[1].cast.t == 5 and bars[3].cast.t == 7, "three bars: " .. #bars)
+  assert(#s == 3 and s[1].t == 9 and s[2].t == 12 and s[3].t == 14, "the fourth waits, none in both: " .. tostring(s[1] and s[1].t))
   assert(R.NextUp(mm, 1, 1)[1].t == 7 and R.CastAt(mm, 1).cast.t == 5, "exactly 5 s away is the cast bar's")
 end
 ok("next up gives 3")

@@ -4,7 +4,8 @@ local ADDON, CRT = ...
 -- A separate pop-up, movable by its title, that stays open while the Timeline is closed. Top to
 -- bottom: the title "Rehearsal · <boss>" with its close button; the boss panel (the name, a health
 -- bar draining evenly from 100% at the pull to 0% at the fight's length, and the percentage); the
--- cast bar (the cast showing now, its icon and name, emptying over its last Rehearsal.CAST seconds); Next up
+-- cast bars (up to Rehearsal.CAST_ROWS casts stacked, soonest on top, each with its icon and name,
+-- emptying over its last Rehearsal.CAST seconds); Next up
 -- (the next 3 casts counting down to them, until they move into the cast bar); the strip (STRIP_SPAN seconds of the fight's casts in their
 -- type colors scrolling under a fixed "now" line a third of the way across, the time over that line,
 -- the phase lines and their labels, and a faint line every 30 seconds labelled along the bottom; a
@@ -23,10 +24,15 @@ CRT.TimelineRehearsalWindow = RehearsalWindow
 
 local W, PAD = 360, 12
 local INNER = W - PAD * 2
-local H = 338
 local BAR_H = 16
 local CAST_H = 20
 local CAST_W = INNER - CAST_H - 4
+local CAST_TOP = -76 -- the first cast bar, under the boss panel
+local CAST_GAP = 4 -- between stacked cast bars
+local CAST_ROWS = Rehearsal.CAST_ROWS
+-- the room the stacked cast bars take beyond one bar: everything under them sits this much lower
+local CAST_GROW = (CAST_ROWS - 1) * (CAST_H + CAST_GAP)
+local H = 338 + CAST_GROW
 local NEXT_N = 3
 local NEXT_H = 18
 local NEXT_COUNT = 15 -- seconds before a cast its Next up line counts down in tenths, its bar the time
@@ -37,7 +43,7 @@ local NEXT_BAR_W = INNER - 20
 local STRIP_H = 68
 local STRIP_LABEL_H = 14 -- the phase labels' row at the top of the strip
 local STRIP_TICK_H = 12 -- the 30-second labels' row at the bottom of the strip
-local STRIP_TOP = -192 -- under the time shown over the now line
+local STRIP_TOP = -192 - CAST_GROW -- under the time shown over the now line
 local TICK = 30 -- seconds between the strip's time lines
 local DRAG_MIN = 3 -- pixels a press moves before it is a drag, not a click
 local MARK_W = 3
@@ -212,24 +218,34 @@ local function buildBoss(f)
     f.healthText:SetPoint("CENTER", f.healthBg, "CENTER", 0, 0)
 end
 
+-- CAST_ROWS cast bars stacked from CAST_TOP, the soonest cast on top. f.casts[i] = { icon, bg, fill,
+-- name, time }; f.castIcon, castBg, castFill, castName and castTime are the top one's.
 local function buildCast(f)
-    f.castIcon = f:CreateTexture(nil, "ARTWORK")
-    f.castIcon:SetPoint("TOPLEFT", f, "TOPLEFT", PAD, -76)
-    f.castIcon:SetSize(CAST_H, CAST_H)
-    f.castBg = f:CreateTexture(nil, "BORDER")
-    f.castBg:SetPoint("TOPLEFT", f, "TOPLEFT", PAD + CAST_H + 4, -76)
-    f.castBg:SetSize(CAST_W, CAST_H)
-    f.castBg:SetColorTexture(0, 0, 0, 0.5)
-    f.castFill = f:CreateTexture(nil, "ARTWORK")
-    f.castFill:SetPoint("TOPLEFT", f.castBg, "TOPLEFT", 0, 0)
-    f.castFill:SetHeight(CAST_H)
-    f.castName = fontString(f, "CRTFontSmall")
-    f.castName:SetPoint("LEFT", f.castBg, "LEFT", 4, 0)
-    f.castName:SetPoint("RIGHT", f.castBg, "RIGHT", -40, 0)
-    f.castName:SetJustifyH("LEFT")
-    f.castName:SetWordWrap(false)
-    f.castTime = fontString(f, "CRTFontSmall")
-    f.castTime:SetPoint("RIGHT", f.castBg, "RIGHT", -4, 0)
+    f.casts = {}
+    for i = 1, CAST_ROWS do
+        local y = CAST_TOP - (i - 1) * (CAST_H + CAST_GAP)
+        local row = {}
+        row.icon = f:CreateTexture(nil, "ARTWORK")
+        row.icon:SetPoint("TOPLEFT", f, "TOPLEFT", PAD, y)
+        row.icon:SetSize(CAST_H, CAST_H)
+        row.bg = f:CreateTexture(nil, "BORDER")
+        row.bg:SetPoint("TOPLEFT", f, "TOPLEFT", PAD + CAST_H + 4, y)
+        row.bg:SetSize(CAST_W, CAST_H)
+        row.bg:SetColorTexture(0, 0, 0, 0.5)
+        row.fill = f:CreateTexture(nil, "ARTWORK")
+        row.fill:SetPoint("TOPLEFT", row.bg, "TOPLEFT", 0, 0)
+        row.fill:SetHeight(CAST_H)
+        row.name = fontString(f, "CRTFontSmall")
+        row.name:SetPoint("LEFT", row.bg, "LEFT", 4, 0)
+        row.name:SetPoint("RIGHT", row.bg, "RIGHT", -40, 0)
+        row.name:SetJustifyH("LEFT")
+        row.name:SetWordWrap(false)
+        row.time = fontString(f, "CRTFontSmall")
+        row.time:SetPoint("RIGHT", row.bg, "RIGHT", -4, 0)
+        f.casts[i] = row
+    end
+    local top = f.casts[1]
+    f.castIcon, f.castBg, f.castFill, f.castName, f.castTime = top.icon, top.bg, top.fill, top.name, top.time
     f.over = fontString(f, "CRTFontNormal")
     f.over:SetPoint("CENTER", f.castBg, "CENTER", -(CAST_H + 4) / 2, 0)
     f.over:SetText(TEXT.over)
@@ -238,12 +254,12 @@ end
 
 local function buildNext(f)
     local head = fontString(f, "CRTFontSmall")
-    head:SetPoint("TOPLEFT", f, "TOPLEFT", PAD, -104)
+    head:SetPoint("TOPLEFT", f, "TOPLEFT", PAD, -104 - CAST_GROW)
     head:SetText(TEXT.nextUp)
     themed(head, "SetTextColor", "label")
     -- "Testing: <alert>" on the right of the heading while a Test button's rehearsal plays
     f.testing = fontString(f, "CRTFontSmall")
-    f.testing:SetPoint("TOPRIGHT", f, "TOPRIGHT", -PAD, -104)
+    f.testing:SetPoint("TOPRIGHT", f, "TOPRIGHT", -PAD, -104 - CAST_GROW)
     f.testing:SetPoint("LEFT", head, "RIGHT", 30, 0)
     f.testing:SetJustifyH("RIGHT")
     f.testing:SetWordWrap(false)
@@ -251,7 +267,7 @@ local function buildNext(f)
     f.nextHead = head
     f.next = {}
     for i = 1, NEXT_N do
-        local y = -120 - (i - 1) * NEXT_H
+        local y = -120 - CAST_GROW - (i - 1) * NEXT_H
         local line = {}
         line.icon = f:CreateTexture(nil, "ARTWORK")
         line.icon:SetPoint("TOPLEFT", f, "TOPLEFT", PAD, y)
@@ -339,7 +355,7 @@ end
 local function buildControls(f)
     local UI = CRT.UI
     f.play = button(f, TEXT.play, 70)
-    f.play:SetPoint("TOPLEFT", f, "TOPLEFT", PAD, -270)
+    f.play:SetPoint("TOPLEFT", f, "TOPLEFT", PAD, -270 - CAST_GROW)
     f.play:SetScript("OnClick", function()
         RehearsalWindow:TogglePlay()
     end)
@@ -366,7 +382,7 @@ local function buildControls(f)
             RehearsalWindow:SetSpeed(key)
         end,
     })
-    f.speed:SetPoint("TOPLEFT", f, "TOPLEFT", PAD, -296)
+    f.speed:SetPoint("TOPLEFT", f, "TOPLEFT", PAD, -296 - CAST_GROW)
     f.as = UI.Dropdown(f, TEXT.as, {
         options = asOptions,
         labelWidth = 70,
@@ -768,31 +784,30 @@ function RehearsalWindow:Redraw()
     -- the cast bar, or "Rehearsal over" at the length
     local over = length > 0 and now >= length
     f.over:SetShown(over)
-    local shown = not over and Rehearsal.CastAt(model, now)
-    if shown then
-        local c = shown.cast
-        local col = castColor(c)
-        f.castIcon:SetTexture(c.icon or ICON)
-        f.castIcon:Show()
-        -- one bar: the soonest cast, and "+N" for the others also in their last seconds
-        local name = c.name or ""
-        if (shown.more or 0) > 0 then
-            name = name .. "  +" .. shown.more
+    -- up to CAST_ROWS cast bars, the soonest on top
+    local bars = over and {} or Rehearsal.CastsAt(model, now)
+    for i, row in ipairs(f.casts) do
+        local shown = bars[i]
+        if shown then
+            local c = shown.cast
+            local col = castColor(c)
+            row.icon:SetTexture(c.icon or ICON)
+            row.icon:Show()
+            row.name:SetText(c.name or "")
+            row.time:SetText(string.format("%.1f", shown.remaining))
+            row.fill:SetColorTexture(col[1], col[2], col[3], 0.85)
+            -- the fill is the time left, emptying to 0 at the cast as the alert bars do
+            row.fill:SetWidth(math.max(1, CAST_W * (1 - shown.progress)))
+            row.fill:Show()
+        else
+            row.icon:Hide()
+            row.name:SetText("")
+            row.time:SetText("")
+            row.fill:Hide()
         end
-        f.castName:SetText(name)
-        f.castTime:SetText(string.format("%.1f", shown.remaining))
-        f.castFill:SetColorTexture(col[1], col[2], col[3], 0.85)
-        -- the fill is the time left, emptying to 0 at the cast as the alert bars do
-        f.castFill:SetWidth(math.max(1, CAST_W * (1 - shown.progress)))
-        f.castFill:Show()
-    else
-        f.castIcon:Hide()
-        f.castName:SetText("")
-        f.castTime:SetText("")
-        f.castFill:Hide()
     end
 
-    -- Next up: the casts more than Rehearsal.CAST seconds away, so none of the cast bar's
+    -- Next up: the casts no cast bar shows (Rehearsal.NextUp)
     local list = Rehearsal.NextUp(model, now, NEXT_N)
     for i, line in ipairs(f.next) do
         local c = list[i]
@@ -883,6 +898,9 @@ local function startRun(Alerts)
             return W:Speed()
         end,
         as = W:As(),
+        -- the difficulty group and the ability timeline the window plays, so the alerts read the same casts
+        group = source.group,
+        reference = source.base and source.base.reference or nil,
     }
     -- a Test button's extra opts (the tested alert as it stands, what it replaces) ride on every start
     for k, v in pairs(source.alerts or {}) do
