@@ -5,8 +5,8 @@ local ADDON, CRT = ...
 -- Mythic...) when the boss data has them, and a diamond tick with its seconds (5 s by default). At 0 the icon
 -- plays a NOW effect: Flash and fade, Ring burst, a text pop, Slide off, or None. It shows every line whose
 -- outputs.timeline is on (the alert editor's and Mech Alerts' Timeline box, and Raid Notes > Alerts' routing of
--- your note lines). This is CRT's own area; sending the same lines to the game's boss timeline, Show in and
--- Replace the game's timeline are Alerts/GameTimeline.lua's, and their rows come last in these settings.
+-- your note lines). This is CRT's own area; the Mode (Standalone, Add to the game's boss timeline, Replace the game's
+-- timeline) is Alerts/GameTimeline.lua's, and its rows come last in these settings.
 -- Built on Alerts/Areas.lua with its own layout (def.layout): the area is the track's box, centred on the saved
 -- position, and the widgets (one icon each, pooled) are placed along it. Settings: CRT.db.alerts.areas.timeline
 -- (defaults in CRT_Core/Core.lua): direction (down, up, left, right: where the icons go), side (right or left of a
@@ -23,6 +23,7 @@ local ADDON, CRT = ...
 --   Timeline.Offset(direction, d, across) -> anchor, x, y: where a point d px from the line's end sits, across px
 --                     to the side (the names' side is positive), as SetPoint("CENTER", area.frame, anchor, x, y)
 --   Timeline.Effect(kind, t, duration) -> alpha, flash, ring, ringScale, popScale: a NOW effect t seconds after 0
+--   Timeline.Seconds(s) -> the seconds on the line, 5 to 60
 --   Timeline.Ticks(s) -> the tick seconds shown on the line, in order
 --   Timeline.Badges(line) -> the line's Journal icons (Reference.TAG_ORDER keys) in the Journal's order
 
@@ -83,7 +84,7 @@ local DEFAULT_POSITION = { point = "CENTER", relativePoint = "CENTER", x = 420, 
 local DEFAULTS = { direction = "down", side = "right", length = 300, seconds = 10, size = 32, thickness = 2,
     tenths = 0, ticks = "5", nowEffect = "flash", nowText = "NOW!", nowTime = 1, font = "Friz Quadrata", fontSize = 14 }
 local LIMITS = { -- min, max, step of each slider
-    length = { 120, 600, 10 }, seconds = { 5, 30, 1 }, size = { 20, 64, 1 }, thickness = { 1, 6, 1 },
+    length = { 120, 600, 10 }, seconds = { 5, 60, 1 }, size = { 20, 64, 1 }, thickness = { 1, 6, 1 },
     tenths = { 0, 5, 1 }, nowTime = { 0.5, 3, 0.5 }, fontSize = { 10, 24, 1 },
 }
 local TRIM = { 0.07, 0.93, 0.07, 0.93 }
@@ -216,6 +217,11 @@ function Timeline.Effect(kind, t, duration)
         return 1 - p, 0, 0, 1, 1
     end
     return 1 - p, math.max(0, 1 - p / FLASH_PART), 0, 1, 1
+end
+
+-- The seconds on the line (5 to 60). The game's timeline is sent lines this far ahead too (Alerts/GameTimeline.lua).
+function Timeline.Seconds(s)
+    return clamp(s.seconds, "seconds")
 end
 
 function Timeline.Ticks(s)
@@ -608,7 +614,7 @@ local function layout(area, n, now, s)
 end
 
 -- The lines on the line: those with outputs.timeline on, from `seconds` before 0 until the NOW effect ends, less
--- those Show in sends only to the game's timeline (Alerts/GameTimeline.lua).
+-- those the game's timeline shows instead (Mode Add without Also show the Alert timeline, Alerts/GameTimeline.lua).
 local function byTime(a, b)
     return a.at < b.at
 end
@@ -805,7 +811,7 @@ end
 local function settings(panel, s)
     settingsLine(panel, s)
     settingsLook(panel, s)
-    -- Send to the game's timeline, Show in, Replace the game's timeline (Alerts/GameTimeline.lua)
+    -- Mode and Also show the Alert timeline (Alerts/GameTimeline.lua)
     if CRT.AlertGameTimeline then
         CRT.AlertGameTimeline.SettingsRows(panel, s)
     end

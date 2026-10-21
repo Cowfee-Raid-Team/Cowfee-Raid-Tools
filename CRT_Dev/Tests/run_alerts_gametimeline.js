@@ -43,6 +43,7 @@ local function mock(kind, parent, template)
     if k == "SetPoint" then return function(self, ...) table.insert(self.pts, { ... }) end end
     if k == "ClearAllPoints" then return function(self) self.pts = {} end end
     if k == "GetCenter" then return function(self) if self == UIParent then return 480, 300 end return 530, 450 end end
+    if k == "SetEnabled" then return function(self, on) rawset(self, "enabledState", on and true or false) end end
     if k == "GetFrameLevel" then return function() return 1 end end
     return function() end end })
 end
@@ -121,7 +122,7 @@ local function defaults() return {
   areas = {
     timeline = { shown = true, cap = 5, direction = "down", side = "right", length = 300, seconds = 10, size = 32, thickness = 2,
       showNames = true, showCountdown = true, tenths = 0, badges = true, ticks = "5", nowEffect = "flash", nowText = "NOW!",
-      nowTime = 1, stack = true, font = "Friz Quadrata", fontSize = 14, gameSend = true, gameShowIn = "both", gameReplace = false },
+      nowTime = 1, stack = true, font = "Friz Quadrata", fontSize = 14, gameMode = "standalone", gameAlsoHere = false },
   },
   customColors = false,
   reminders = {}, phases = {}, overrides = {}, nextId = 1 } end
@@ -199,30 +200,60 @@ local function shownNames()
   return table.concat(names, ",")
 end
 
-check("game timeline: a pull sends each timeline alert as it comes within reach", function()
+local ADD = { gameMode = "add" }
+local function with(extra) local t = { gameMode = "add" } for k, v in pairs(extra) do t[k] = v end return t end
+
+check("game timeline: Standalone, the default, sends nothing and leaves the game's timeline alone", function()
+  pull({ item{ id = "st", time = 4, text = "Alone" } })
+  G.frame.OnEvent(G.frame, "PLAYER_LOGIN")
+  start()
+  assert(G.Mode(s()) == "standalone", "the default")
+  assert(count(api.added) == 0 and #api.viewSets == 0 and EncounterTimeline.attrs.overrideViewType == nil, "untouched")
+  assert(shownNames() == "Alone", "on the Alert timeline")
+end)
+
+check("game timeline: Add sends each timeline alert the area's seconds ahead", function()
   pull({ item{ id = "a", time = 8, text = "Soak", spellID = 100, abilityTags = { "tank", "magic", "mythic" }, priority = 33 },
     item{ id = "b", time = 50, text = "Later", icon = 777 },
-    item{ id = "c", time = 6, text = "Bar only", outputs = { bar = true } } })
+    item{ id = "c", time = 6, text = "Bar only", outputs = { bar = true } } }, ADD)
   start()
   assert(count(api.added) == 1, "one sent at the pull: " .. count(api.added))
   local r = api.added[api.order[1]]
   assert(near(r.duration, 8) and r.overrideName == "Soak" and r.spellID == 100 and r.iconFileID == 555, "duration, name, spell, icon")
   assert(r.icons == 128 + 8, "tank and magic, Mythic has no game icon: " .. tostring(r.icons))
   assert(r.severity == 2 and r.maxQueueDuration == 0 and r.paused == false, "high priority: High")
-  -- the later one is sent once it is within reach, with the time left
-  clock = 100 + 50 - G.LEAD + 1
-  G:Sync()
+  -- the later one is sent once it is within the area's 10 seconds, with the time left
+  clock = 100 + 50 - 10 - 0.5 G:Sync()
+  assert(count(api.added) == 1, "not before")
+  clock = 100 + 50 - 10 + 1 G:Sync()
   assert(count(api.added) == 2, "the second sent within reach")
   local r2 = api.added[api.order[2]]
-  assert(near(r2.duration, G.LEAD - 1) and r2.iconFileID == 777 and r2.spellID == 0 and r2.severity == 1 and r2.icons == nil, "its own icon, no spell, Medium, no icons")
+  assert(near(r2.duration, 9) and r2.iconFileID == 777 and r2.spellID == 0 and r2.severity == 1 and r2.icons == nil, "its own icon, no spell, Medium, no icons")
   G:Sync()
   assert(count(api.added) == 2, "never sent twice")
   assert(rawget(G.frame, "OnUpdate"), "the check runs while alerts are coming")
   assert(#errors == 0, tostring(errors[1]))
 end)
 
+check("game timeline: up to 60 seconds ahead, and no more than At once at a time", function()
+  pull({ item{ id = "f1", time = 55, text = "Far" }, item{ id = "f2", time = 70, text = "Farther" } }, with{ seconds = 90 })
+  assert(T.Seconds(s()) == 60, "Seconds on the line stops at 60")
+  start()
+  assert(count(api.added) == 1 and near(api.added[api.order[1]].duration, 55), "55 s ahead sent at the pull")
+  clock = 111 G:Sync()
+  assert(count(api.added) == 2 and near(api.added[api.order[2]].duration, 59), "the next at 60 s")
+  -- At once 2: the third waits, and shows on the Alert timeline meanwhile
+  pull({ item{ id = "c1", time = 3, text = "One" }, item{ id = "c2", time = 4, text = "Two" }, item{ id = "c3", time = 5, text = "Three" } }, with{ cap = 2 })
+  start()
+  assert(count(api.added) == 2 and api.added[api.order[1]].overrideName == "One" and api.added[api.order[2]].overrideName == "Two", "the soonest two")
+  assert(shownNames() == "Three", "the one waiting shows here")
+  clock = 103.1 G:Sync()
+  assert(count(api.added) == 3 and api.added[api.order[3]].overrideName == "Three", "sent once the first is done")
+  assert(shownNames() == "", "and only there")
+end)
+
 check("game timeline: finished at 0, canceled at the end of the pull and when a phase cuts it", function()
-  pull({ item{ id = "a", time = 5, text = "One" }, item{ id = "b", time = 9, text = "Two" } })
+  pull({ item{ id = "a", time = 5, text = "One" }, item{ id = "b", time = 9, text = "Two" } }, ADD)
   start()
   local first, second = api.order[1], api.order[2]
   clock = 105.1 G:Sync()
@@ -232,7 +263,7 @@ check("game timeline: finished at 0, canceled at the end of the pull and when a 
   assert(not api.cancelAll, "never every addon's events")
   assert(rawget(G.frame, "OnUpdate") == nil, "the check stops with the run")
   -- a phase cut
-  pull({ item{ id = "p1", ph = 1, time = 20, text = "Cut" }, item{ id = "p2", ph = 2, time = 3, text = "P2" } })
+  pull({ item{ id = "p1", ph = 1, time = 20, text = "Cut" }, item{ id = "p2", ph = 2, time = 3, text = "P2" } }, with{ seconds = 30 })
   start()
   local cut = api.order[1]
   assert(api.added[cut].overrideName == "Cut", "phase 1 sent")
@@ -242,11 +273,11 @@ check("game timeline: finished at 0, canceled at the end of the pull and when a 
 end)
 
 check("game timeline: never a secret value, and a failed add shows here instead", function()
-  pull({ item{ id = "s", time = 4, text = SECRET, spellID = SECRET, icon = SECRET } })
+  pull({ item{ id = "s", time = 4, text = SECRET, spellID = SECRET, icon = SECRET } }, ADD)
   start()
   local r = api.added[api.order[1]]
   assert(r and r.overrideName == "" and r.spellID == 0 and r.iconFileID == G.QUESTION_ICON, "secrets left out")
-  pull({ item{ id = "f", time = 4, text = "Fails" } }, { gameShowIn = "game" })
+  pull({ item{ id = "f", time = 4, text = "Fails" } }, ADD)
   api.failNext = true
   start()
   assert(count(api.added) == 0 and #errors == 0, "a failed add is no error")
@@ -254,60 +285,45 @@ check("game timeline: never a secret value, and a failed add shows here instead"
   errors = {}
 end)
 
-check("game timeline: not in a rehearsal, with Send off, or with the game's timeline off", function()
-  pull({ item{ id = "r", time = 4, text = "Rehearsed" } })
+check("game timeline: not in a rehearsal or with the game's timeline off, and a Mode change takes back", function()
+  pull({ item{ id = "r", time = 4, text = "Rehearsed" } }, ADD)
   local fight = 0
   A:Start(3001, "Mythic", "rehearsal", { clock = function() return fight end, speed = function() return 1 end })
   G:Sync()
   assert(count(api.added) == 0, "a rehearsal sends nothing")
   assert(shownNames() == "Rehearsed", "it shows here")
-  pull({ item{ id = "o", time = 4, text = "Off" } }, { gameSend = false })
-  start()
-  assert(count(api.added) == 0, "Send off")
-  pull({ item{ id = "d", time = 4, text = "Disabled" } }, { gameShowIn = "game" })
+  pull({ item{ id = "d", time = 4, text = "Disabled" } }, ADD)
   api.enabled = false
   start()
   assert(count(api.added) == 0, "the game's timeline turned off")
   assert(shownNames() == "Disabled", "then everything shows here")
-  -- turned off mid-pull: what was sent is taken back
-  pull({ item{ id = "m", time = 4, text = "Mid" } })
+  pull({ item{ id = "m", time = 4, text = "Mid" } }, ADD)
   start()
   assert(count(api.added) == 1)
-  s().gameSend = false
+  s().gameMode = "standalone"
   G:Sync()
   assert(api.canceled[1] == api.order[1], "taken back")
 end)
 
-check("game timeline: Show in", function()
-  pull({ item{ id = "x", time = 4, text = "Both" } })
+check("game timeline: Add, with and without Also show the Alert timeline, and Replace", function()
+  pull({ item{ id = "x", time = 4, text = "Both" } }, with{ gameAlsoHere = true })
   start()
-  assert(count(api.added) == 1 and shownNames() == "Both", "Both timelines: here too")
-  pull({ item{ id = "y", time = 4, text = "Game" } }, { gameShowIn = "game" })
+  assert(count(api.added) == 1 and shownNames() == "Both", "Also show on: here too")
+  pull({ item{ id = "y", time = 4, text = "Game" } }, ADD)
   start()
-  assert(count(api.added) == 1 and shownNames() == "", "The game's timeline only: not here")
-  pull({ item{ id = "z", time = 4, text = "Replaced" } }, { gameShowIn = "game", gameReplace = true })
+  assert(count(api.added) == 1 and shownNames() == "", "Also show off: only there")
+  pull({ item{ id = "z", time = 4, text = "Replaced" } }, { gameMode = "replace" })
+  G:ApplyReplace()
   start()
-  assert(count(api.added) == 0 and shownNames() == "Replaced", "replacing: nothing sent, all here")
-  s().gameReplace = false G:ApplyReplace()
+  assert(count(api.added) == 0 and shownNames() == "Replaced", "Replace: nothing sent, all here")
+  s().gameMode = "standalone" G:ApplyReplace()
 end)
 
 check("game timeline: nothing sent while the game's view type is None, and it shows here", function()
-  pull({ item{ id = "v", time = 4, text = "None view" } }, { gameShowIn = "game" })
+  pull({ item{ id = "v", time = 4, text = "None view" } }, ADD)
   api.view = 0 -- another addon replacing it, or our Replace waiting for combat
   start()
   assert(count(api.added) == 0 and shownNames() == "None view", "falls back to this timeline")
-end)
-
-check("game timeline: a line not sent yet shows here, so it is never on neither", function()
-  pull({ item{ id = "l", time = 8, text = "Early" } }, { gameShowIn = "game" })
-  G.LEAD = 5 -- shorter than the area's 10 seconds on the line
-  start()
-  assert(count(api.added) == 0 and shownNames() == "Early", "within the area's seconds but not sent: here")
-  clock = 103.5 G:Sync()
-  assert(count(api.added) == 1 and shownNames() == "", "sent: only there")
-  clock = 108.2 G:Sync()
-  assert(#api.finished == 1 and shownNames() == "", "finished there: not back here")
-  G.LEAD = 30
 end)
 
 check("game timeline: the Journal tags' game icons live on Reference.TAGS", function()
@@ -318,7 +334,7 @@ check("game timeline: the Journal tags' game icons live on Reference.TAGS", func
 end)
 
 check("game timeline: after a /reload mid-pull, what was left is taken back at the end", function()
-  pull({ item{ id = "k", time = 4, text = "Kept" } })
+  pull({ item{ id = "k", time = 4, text = "Kept" } }, ADD)
   CRTDBChar = {}
   start()
   local id = api.order[1]
@@ -343,35 +359,35 @@ check("game timeline: after a /reload mid-pull, what was left is taken back at t
 end)
 
 check("game timeline: Replace puts back another addon's override", function()
-  pull({}, { gameReplace = true })
+  pull({}, { gameMode = "replace" })
   EncounterTimeline.attrs.overrideViewType = 1
   G:ApplyReplace()
   assert(EncounterTimeline.attrs.overrideViewType == 0 and api.view == 0, "replaced")
-  s().gameReplace = false
+  s().gameMode = "add"
   G:ApplyReplace()
   assert(EncounterTimeline.attrs.overrideViewType == 1 and api.view == 1, "theirs again: " .. tostring(EncounterTimeline.attrs.overrideViewType))
   EncounterTimeline.attrs.overrideViewType = nil
 end)
 
 check("game timeline: Replace the game's timeline", function()
-  pull({}, { gameReplace = false })
+  pull({}, ADD)
   G.frame.OnEvent(G.frame, "PLAYER_LOGIN")
-  assert(EncounterTimeline.attrs.overrideViewType == nil and #api.viewSets == 0, "off: the game's timeline is never touched")
-  s().gameReplace = true
+  assert(EncounterTimeline.attrs.overrideViewType == nil and #api.viewSets == 0, "never chosen: the game's timeline is never touched")
+  s().gameMode = "replace"
   G.frame.OnEvent(G.frame, "PLAYER_LOGIN")
-  assert(EncounterTimeline.attrs.overrideViewType == 0 and api.view == 0, "on at load: the override and view type None")
-  s().gameReplace = false
+  assert(EncounterTimeline.attrs.overrideViewType == 0 and api.view == 0, "at load: the override and view type None")
+  s().gameMode = "standalone"
   G:ApplyReplace()
-  assert(EncounterTimeline.attrs.overrideViewType == nil and api.view == editModeView, "off: back to the Edit Mode choice")
+  assert(EncounterTimeline.attrs.overrideViewType == nil and api.view == editModeView, "left: back to the Edit Mode choice")
   -- in combat it waits
   combat = true
-  s().gameReplace = true
+  s().gameMode = "replace"
   G:ApplyReplace()
   assert(api.view == editModeView and G.frame.ev_PLAYER_REGEN_ENABLED, "waits for the end of combat")
   combat = false
   G.frame.OnEvent(G.frame, "PLAYER_REGEN_ENABLED")
   assert(api.view == 0 and EncounterTimeline.attrs.overrideViewType == 0, "applied after combat")
-  s().gameReplace = false G:ApplyReplace()
+  s().gameMode = "standalone" G:ApplyReplace()
   assert(EncounterTimeline.hides == 0 and EncounterTimeline.anchors == 0, "never hidden or moved")
   -- another addon's override is left alone when ours was never set
   EncounterTimeline.attrs.overrideViewType = 1
@@ -380,52 +396,48 @@ check("game timeline: Replace the game's timeline", function()
   EncounterTimeline.attrs.overrideViewType = nil
 end)
 
-check("game timeline: the settings rows on the Alert timeline area", function()
+check("game timeline: the Mode rows on the Alert timeline area", function()
   pull({})
   panel:Select(T)
-  local checks = {}
-  for _, f in ipairs(frames) do if rawget(f, "labelText") and f.shown then checks[f.labelText] = f end end
-  local send, replace = checks["Send to the game's timeline"], checks["Replace the game's timeline"]
-  assert(send and replace, "the two boxes")
-  assert(dropdowns["Show in"] and dropdowns["Show in"].shown, "the Show in dropdown")
+  local also
+  for _, f in ipairs(frames) do if rawget(f, "labelText") == "Also show the Alert timeline" and f.shown then also = f end end
+  local mode = dropdowns["Mode"]
+  assert(mode and mode.shown and also, "the Mode dropdown and the box")
   local keys = {}
-  for _, o in ipairs(dropdowns["Show in"].list) do keys[#keys + 1] = o.key end
-  assert(table.concat(keys, ",") == "both,game", table.concat(keys, ","))
-  assert(dropdowns["Show in"].value == "both" and send.checked and not replace.checked, "the defaults")
+  for _, o in ipairs(mode.list) do keys[#keys + 1] = o.key .. "=" .. o.label end
+  assert(table.concat(keys, ",") == "standalone=Standalone,add=Add to the game's timeline,replace=Replace the game's timeline", table.concat(keys, ","))
+  assert(mode.value == "standalone" and not also.checked, "the defaults")
+  assert(also.enabledState == false, "Also show greys out outside Add")
   local helps = {}
   for _, f in ipairs(frames) do if rawget(f, "helpTitle") then helps[f.helpTitle] = true end end
-  assert(helps["Send to the game's timeline"] and helps["Show in"] and helps["Replace the game's timeline"], "a (?) on each")
-  send:SetChecked(false) send.OnClick(send)
-  assert(s().gameSend == false, "Send saved")
-  dropdowns["Show in"].refresh()
-  assert(dropdowns["Show in"].enabled == false, "Show in greys out with Send off")
-  send:SetChecked(true) send.OnClick(send)
-  replace:SetChecked(true) replace.OnClick(replace)
-  assert(s().gameReplace == true and api.view == 0, "Replace applies at once")
-  dropdowns["Show in"].refresh()
-  assert(dropdowns["Show in"].enabled == false, "and greys Show in")
-  replace:SetChecked(false) replace.OnClick(replace)
-  assert(api.view == editModeView, "and comes back")
-  dropdowns["Show in"].opts.set("game")
-  assert(s().gameShowIn == "game", "Show in saved")
+  assert(helps["Mode"] and helps["Also show the Alert timeline"], "a (?) on each")
+  assert(sliders["Seconds on the line"].opts.max == 60, "Seconds on the line goes to 60")
+  mode.opts.set("replace")
+  assert(s().gameMode == "replace" and api.view == 0, "Replace applies at once")
+  mode.opts.set("add")
+  assert(api.view == editModeView and also.enabledState == true, "back, and Also show can be ticked")
+  also:SetChecked(true) also.OnClick(also)
+  assert(s().gameAlsoHere == true, "Also show saved")
   assert(#errors == 0, tostring(errors[1]))
 end)
 
 check("game timeline: older clients without the API", function()
   local saved = C_EncounterTimeline
   C_EncounterTimeline = nil
-  pull({ item{ id = "n", time = 4, text = "Old" } }, { gameShowIn = "game", gameReplace = true })
-  start()
+  pull({ item{ id = "n", time = 4, text = "Old" } }, { gameMode = "replace" })
   G:ApplyReplace()
+  s().gameMode = "add"
+  start()
   assert(shownNames() == "Old" and #errors == 0, "shows here, no error")
   C_EncounterTimeline = saved
-  s().gameReplace = false
+  s().gameMode = "standalone"
 end)
 
 check("game timeline: defaults in CRT_Core/Core.lua", function()
-  for _, k in ipairs({ "gameSend = true", 'gameShowIn = "both"', "gameReplace = false" }) do
+  for _, k in ipairs({ 'gameMode = "standalone"', "gameAlsoHere = false" }) do
     assert(CORE_SRC:find(k, 1, true), "default " .. k)
   end
+  assert(not CORE_SRC:find("gameSend", 1, true) and not CORE_SRC:find("gameReplace", 1, true), "the old settings never shipped")
 end)
 
 check("game timeline: the dev probe adds one script event and prints it", function()

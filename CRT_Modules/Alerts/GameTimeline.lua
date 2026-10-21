@@ -1,32 +1,35 @@
 local ADDON, CRT = ...
 
--- The game's boss timeline (Blizzard_EncounterTimeline): our alerts in it, and the choice to replace it.
--- Sending: in a pull or a quick test, every line whose outputs.timeline is on is added to the game's timeline as a
--- script event (C_EncounterTimeline.AddScriptEvent) once it is Game.LEAD seconds away, with its spell, icon, name,
--- Journal icons (the icons mask: each of line.abilityTags with a gameIcon in Reference.TAGS) and a severity from its
--- priority. At its time it is finished (FinishScriptEvent); a line that goes away first (a later phase cut it, the
--- pull ended or wiped, Send was turned off) is canceled (CancelScriptEvent). Only our own event IDs are touched, never
--- CancelAllScriptEvents, which would take other addons' events too. Never in a rehearsal: its clock pauses, jumps and
--- runs at 2x or 4x, and a script event counts down on real time. Every value passed is read through
--- CRT.Timeline.readable first, so nothing secret reaches the API; a secret name, spell or icon is left out.
--- Nothing is sent while the game's timeline shows nothing: Send off, Replace on, a rehearsal, the game's timeline
--- turned off in its options (IsFeatureEnabled), or its view type None (another addon replacing it, or our Replace
--- still waiting for combat to end).
--- Show in: "both" (default) shows those lines here and there; "game" leaves off our area (TimelineArea asks
--- Game.ShowsHere) only the lines that are on the game's timeline now or finished there, so a line not sent yet, or
--- one the game refused, still shows here and nothing falls between the two. Whenever nothing is sent, everything
--- shows here.
+-- The game's boss timeline (Blizzard_EncounterTimeline) and our Alert timeline: the Mode on the Alert timeline area.
+--   Standalone (default)            our Alert timeline only. Nothing is sent and the game's timeline is never touched.
+--   Add to the game's timeline      our alerts are sent into the game's timeline. Our Alert timeline shows them too
+--                                   only with Also show the Alert timeline on (off by default).
+--   Replace the game's timeline     the game's display is turned off, and our Alert timeline shows everything.
+-- Sending (Add): in a pull or a quick test, every line whose outputs.timeline is on is added to the game's timeline
+-- as a script event (C_EncounterTimeline.AddScriptEvent) once it is the area's Seconds on the line away (5 to 60,
+-- TimelineArea's Timeline.Seconds), with its spell, icon, name, Journal icons (the icons mask: each of
+-- line.abilityTags with a gameIcon in Reference.TAGS) and a severity from its priority. At most the area's At once
+-- count of lines is on the game's timeline at a time, soonest first. At its time a line is finished
+-- (FinishScriptEvent); a line that goes away first (a later phase cut it, the pull ended or wiped, the Mode changed)
+-- is canceled (CancelScriptEvent). Only our own event IDs are touched, never CancelAllScriptEvents, which would take
+-- other addons' events too. Never in a rehearsal: its clock pauses, jumps and runs at 2x or 4x, and a script event
+-- counts down on real time. Every value passed is read through CRT.Timeline.readable first, so nothing secret
+-- reaches the API; a secret name, spell or icon is left out.
+-- Nothing is sent while the game's timeline shows nothing: a rehearsal, the game's timeline turned off in its
+-- options (IsFeatureEnabled), or its view type None (another addon replacing it). Then, and for any line not on the
+-- game's timeline (not sent yet, or refused), our Alert timeline shows the line even with Also show off
+-- (TimelineArea asks Game.ShowsHere), so no alert is on neither.
 -- A /reload mid-pull: the event IDs on the game's timeline are kept in CRTDBChar.gameTimelineSent (id -> name),
 -- cleared at a real login. After a reload they are taken back at ENCOUNTER_END or at the next run's start, each only
 -- when the game still has it as a script event of that name (the name may be secret in a fight: then the ID alone).
 -- Replace: the game's supported route, EncounterTimeline:SetAttribute("overrideViewType", None) and
 -- C_EncounterTimeline.SetViewType(None) (EncounterTimelineMixin:UpdateSystemSettingViewType reads the attribute over
--- the Edit Mode choice). Any override another addon had set is remembered, and turning Replace off puts it back
--- (or clears ours), then the frame's own UpdateSystemSettingViewType sets the view type again. The game's frames are
+-- the Edit Mode choice). Any override another addon had set is remembered, and leaving Replace puts it back (or
+-- clears ours), then the frame's own UpdateSystemSettingViewType sets the view type again. The game's frames are
 -- never hidden, moved or re-skinned. Applied at login, out of combat only (it waits for PLAYER_REGEN_ENABLED), and
--- the game's timeline is never touched for a player who never turned it on.
--- Settings, on the Alert timeline area (CRT.db.alerts.areas.timeline, defaults in CRT_Core/Core.lua): gameSend,
--- gameShowIn ("both" or "game") and gameReplace.
+-- the game's timeline is never touched for a player who never chose Replace.
+-- Settings, on the Alert timeline area (CRT.db.alerts.areas.timeline, defaults in CRT_Core/Core.lua): gameMode
+-- ("standalone", "add" or "replace") and gameAlsoHere.
 -- Sources: Gethe/wow-ui-source live, Blizzard_APIDocumentationGenerated/EncounterTimelineDocumentation.lua and
 -- Blizzard_EncounterTimeline/EncounterTimeline.lua. The dev probe is CRT_Dev/Dev/GameTimelineProbe.lua.
 --   Game:Sync()           sends, finishes and cancels to match the run now (on every engine change, and while
@@ -34,23 +37,24 @@ local ADDON, CRT = ...
 --   Game.ShowsHere(line)  -> whether our area shows the line
 --   Game.Request(line, seconds) -> the AddScriptEvent table for a line due in `seconds`
 --   Game:ApplyReplace()   sets or undoes Replace as saved; false when it has to wait or the game has no timeline
+--   Game.Mode(s)          -> "standalone", "add" or "replace"
 
 local Alerts = CRT.Alerts
 local Areas = CRT.AlertAreas
 
 local TEXT = {
-    send = "Send to the game's timeline",
-    sendHelp = "Your alerts that show on this timeline also show on the game's boss timeline, beside the boss's own abilities. Only in a pull or a quick test. A Rehearsal can pause and run fast, and the game's timeline can't.",
-    showIn = "Show in",
-    showInHelp = "Both timelines shows each alert here and on the game's timeline. With The game's timeline only, this timeline leaves out what is on the game's timeline. When the game's timeline is off or hidden, everything shows here.",
-    both = "Both timelines",
-    gameOnly = "The game's timeline only",
+    mode = "Mode",
+    modeHelp = "Standalone shows your alerts on this timeline only. Add to the game's timeline puts them on the game's boss timeline too. Replace the game's timeline hides the game's one, so only this one shows. In combat, Replace waits until combat ends.",
+    standalone = "Standalone",
+    add = "Add to the game's timeline",
     replace = "Replace the game's timeline",
-    replaceHelp = "Hides the game's boss timeline, the boss's own abilities too, so only this one shows. Nothing is sent there while it is on. Turn it off to get the game's timeline back as Edit Mode has it. In combat, the change waits until combat ends.",
+    alsoHere = "Also show the Alert timeline",
+    alsoHereHelp = "Shows your alerts here as well as on the game's timeline. Off, an alert shows here only when the game's timeline can't show it.",
 }
 
--- Tune in game. LEAD may be shorter than the area's Seconds on the line: a line not sent yet shows here.
-local LEAD = 30   -- seconds before its time a line is sent: the game's timeline shows about this far ahead
+-- Tune in game.
+local DEFAULT_LEAD = 10 -- seconds ahead when the area's Seconds on the line can't be read (its default)
+local DEFAULT_CAP = 5   -- lines on the game's timeline at a time when the area's At once can't be read
 local TICK = 0.2  -- seconds between checks while lines are coming
 local QUESTION_ICON = 134400 -- INV_Misc_QuestionMark: an alert with no icon (the request needs a file ID)
 local ATTRIBUTE = "overrideViewType"
@@ -61,10 +65,12 @@ local SEVERITY_FALLBACK = { Low = 0, Medium = 1, High = 2 }
 local SEVERITY_BY_LEVEL = { [1] = "Low", [2] = "Medium", [3] = "High" } -- Rules.Priority's level: the last digit
 local ICON_FALLBACK = { DeadlyEffect = 1, EnrageEffect = 2, BleedEffect = 4, MagicEffect = 8, DiseaseEffect = 16,
     CurseEffect = 32, PoisonEffect = 64, TankRole = 128, HealerRole = 256, DpsRole = 512 }
-local SHOW_IN_OPTIONS = { { key = "both", label = TEXT.both }, { key = "game", label = TEXT.gameOnly } }
+local MODES = { standalone = true, add = true, replace = true }
+local MODE_OPTIONS = { { key = "standalone", label = TEXT.standalone }, { key = "add", label = TEXT.add },
+    { key = "replace", label = TEXT.replace } }
 local EMPTY = {}
 
-local Game = { LEAD = LEAD, QUESTION_ICON = QUESTION_ICON, TEXT = TEXT }
+local Game = { QUESTION_ICON = QUESTION_ICON, TEXT = TEXT }
 CRT.AlertGameTimeline = Game
 
 local sent = {}    -- line key -> the game's event ID, while it is on the game's timeline
@@ -88,8 +94,25 @@ local function settings()
     return areas and areas.timeline or EMPTY
 end
 
-local function showIn(s)
-    return s.gameShowIn == "game" and "game" or "both"
+local function modeOf(s)
+    return MODES[s.gameMode] and s.gameMode or "standalone"
+end
+
+Game.Mode = modeOf
+
+-- How far ahead lines are sent: the area's Seconds on the line.
+local function leadOf(s)
+    local T = CRT.AlertTimeline
+    if T and T.Seconds then
+        return T.Seconds(s)
+    end
+    return type(s.seconds) == "number" and s.seconds or DEFAULT_LEAD
+end
+
+-- How many lines may be on the game's timeline at a time: the area's At once (1 to 10).
+local function capOf(s)
+    local n = type(s.cap) == "number" and math.floor(s.cap) or DEFAULT_CAP
+    return math.max(1, math.min(10, n))
 end
 
 -- The API table when this client has the game's timeline, else nil.
@@ -131,7 +154,7 @@ end
 -- Whether lines are being sent now, and the API when they are.
 local function sending()
     local s = settings()
-    if s.gameSend == false or s.gameReplace == true or not Alerts.running or Alerts:IsRehearsal() then
+    if modeOf(s) ~= "add" or not Alerts.running or Alerts:IsRehearsal() then
         return nil
     end
     local C = api()
@@ -292,33 +315,58 @@ local function add(C, line, key, seconds)
     return false
 end
 
+local function byTime(a, b)
+    return a.at < b.at
+end
+
+-- The run's timeline lines, soonest first.
+local function timelineLines(now)
+    local list = {}
+    for _, line in ipairs(Alerts:Lines(now)) do
+        local o = line.outputs
+        if o and o.timeline and type(line.at) == "number" then
+            list[#list + 1] = line
+        end
+    end
+    table.sort(list, byTime)
+    return list
+end
+
 function Game:Sync()
     local C = sending()
     newRun(C)
     local now = GetTime()
-    local lead = type(Game.LEAD) == "number" and Game.LEAD or LEAD
+    local s = settings()
+    local lead, cap = leadOf(s), capOf(s)
     local keep, coming = {}, false
     if C then
-        for _, line in ipairs(Alerts:Lines(now)) do
-            local o = line.outputs
-            if o and o.timeline and type(line.at) == "number" then
-                local key = keyOf(line)
-                local left = line.at - now
-                if sent[key] then
-                    if left <= 0 then
-                        call(C, "FinishScriptEvent", sent[key])
-                        forget(sent[key])
-                        sent[key] = nil
-                        done[key] = true
-                    else
-                        keep[key] = true
-                    end
-                elseif left > 0 and not done[key] and not failed[key] then
-                    if left > lead then
-                        coming = true
-                    elseif add(C, line, key, left) then
-                        keep[key] = true
-                    end
+        local list = timelineLines(now)
+        -- first what is on the game's timeline: finished at its time, else kept
+        local live = 0
+        for _, line in ipairs(list) do
+            local key = keyOf(line)
+            if sent[key] then
+                if line.at - now <= 0 then
+                    call(C, "FinishScriptEvent", sent[key])
+                    forget(sent[key])
+                    sent[key] = nil
+                    done[key] = true
+                else
+                    keep[key] = true
+                    live = live + 1
+                end
+            end
+        end
+        -- then the soonest new lines within reach, while there is room under At once
+        for _, line in ipairs(list) do
+            local key = keyOf(line)
+            local left = line.at - now
+            if not keep[key] and left > 0 and not done[key] and not failed[key] then
+                if left > lead or live >= cap then
+                    coming = true
+                elseif add(C, line, key, left) then
+                    keep[key] = true
+                    live = live + 1
                 end
             end
         end
@@ -334,10 +382,11 @@ function Game:Sync()
     setTicking(C ~= nil and (next(sent) ~= nil or coming))
 end
 
--- With The game's timeline only, our area leaves out a line only while it is on the game's timeline or after it
--- finished there.
+-- In Add without Also show the Alert timeline, our area leaves out a line only while it is on the game's timeline
+-- or after it finished there.
 function Game.ShowsHere(line)
-    if showIn(settings()) ~= "game" or not sending() then
+    local s = settings()
+    if modeOf(s) ~= "add" or s.gameAlsoHere == true or not sending() then
         return true
     end
     local key = keyOf(line)
@@ -370,9 +419,9 @@ local function getAttribute(frame)
 end
 
 function Game:ApplyReplace()
-    local want = settings().gameReplace == true
+    local want = modeOf(settings()) == "replace"
     if not want and not self.replaced then
-        return true -- never turned on: the game's timeline is left as it is
+        return true -- Replace never chosen: the game's timeline is left as it is
     end
     local frame, C = EncounterTimeline, C_EncounterTimeline
     if type(frame) ~= "table" or type(frame.SetAttribute) ~= "function" or type(C) ~= "table" or type(C.SetViewType) ~= "function" then
@@ -385,7 +434,7 @@ function Game:ApplyReplace()
     local none = viewNone()
     if want then
         if not self.replaced then
-            -- another addon's override, put back when Replace is turned off
+            -- another addon's override, put back when the Mode leaves Replace
             local ok, before = getAttribute(frame)
             self.before = (ok and before ~= none) and before or nil
         end
@@ -409,32 +458,25 @@ end
 
 -- The rows on the Alert timeline area's settings (TimelineArea's settings call this).
 function Game.SettingsRows(panel, s)
-    panel:Check(TEXT.send, function()
-        return s.gameSend ~= false
-    end, function(on)
-        s.gameSend = on
-        Game:Sync()
-    end, TEXT.sendHelp)
-    panel:Dropdown(TEXT.showIn, {
-        options = SHOW_IN_OPTIONS,
+    panel:Dropdown(TEXT.mode, {
+        options = MODE_OPTIONS,
         get = function()
-            return showIn(s)
+            return modeOf(s)
         end,
         set = function(key)
-            s.gameShowIn = key
+            s.gameMode = key
+            Game:ApplyReplace()
+            Game:Sync()
         end,
-        enabledIf = function()
-            return s.gameSend ~= false and s.gameReplace ~= true
-        end,
-        help = TEXT.showInHelp,
+        help = TEXT.modeHelp,
     })
-    panel:Check(TEXT.replace, function()
-        return s.gameReplace == true
+    panel:Check(TEXT.alsoHere, function()
+        return s.gameAlsoHere == true
     end, function(on)
-        s.gameReplace = on
-        Game:ApplyReplace()
-        Game:Sync()
-    end, TEXT.replaceHelp)
+        s.gameAlsoHere = on
+    end, TEXT.alsoHereHelp, function()
+        return modeOf(s) == "add"
+    end)
 end
 
 local frame = CreateFrame("Frame")
