@@ -6,7 +6,13 @@ local ADDON, CRT = ...
 --
 --   name       what the display is called, shown on its drag bar and the Reminders tab
 --   slots      how many messages it shows, 1 to 8, in the order they are sent
---   layout     "row" (left to right), "column" (top to bottom) or "grid" (rows of four)
+--   layout     "row" (left to right), "column" (top to bottom), "grid" (rows of four) or "free"
+--              (each slot at its own place on a canvas, below)
+--   shape      free only: the faint outline behind the slots, "square" (default), "circle" or "none"
+--   canvas     free only: the canvas's width and height in pixels, 80 to 400 (default 220)
+--   places     free only: each slot's place, { { x, y }, ... } in slot order, as fractions of the
+--              canvas from its top left (0 to 1), so the icon and canvas sizes keep the layout. A slot
+--              without one sits on the ring (circle) or in an even grid
 --   iconSize   the marker's size in pixels
 --   number     true to show the slot number above each marker
 --   names      true to show who sent it under each marker
