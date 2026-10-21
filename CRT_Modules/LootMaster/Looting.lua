@@ -7,10 +7,16 @@ local ADDON, CRT = ...
 -- Raiders can't change it. A party group counts only with "Enable in party" (Settings), on both sides; a
 -- finder group never does.
 --
--- The on state lives in memory only, never saved: a login or /reload starts it off (the leader's first
--- loading screen tells raiders so). A wipe keeps it on: the leader may be in the open world (dead,
--- released, running back) for up to LM.LOOTING_AWAY seconds, and isn't asked again on the way back in. It
--- turns off when the leader stays out longer, enters any other instance (a dungeon, delve, scenario,
+-- The leader's Yes is saved (CRTDB lootmaster.looting: on, the instance, who said it, and at, when it was
+-- last confirmed: on Yes and each heartbeat in that instance), so it stays on through a /reload or login
+-- until it is turned off or a safety off happens. The leader's first loading screen brings it back on,
+-- with no prompt, an O and a heartbeat, when it is still the leader, the same character, in that instance
+-- (or in the open world, a wipe's run back, the time away counted from at) and within LM.LOOTING_AWAY of
+-- at; otherwise the saved state is cleared and raiders are told it starts off ("reload"). Raiders save
+-- nothing: after their own /reload they are off until the leader's next O or heartbeat.
+-- A wipe keeps it on: the leader may be in the open world (dead, released, running back) for up to
+-- LM.LOOTING_AWAY seconds, and isn't asked again on the way back in. It turns off (and the saved state is
+-- cleared) when the leader stays out longer, enters any other instance (a dungeon, delve, scenario,
 -- battleground, arena, house or another raid), leaves the group, loses the lead, or turns it off. Only
 -- IsInInstance's "none" is the open world.
 --
@@ -19,7 +25,8 @@ local ADDON, CRT = ...
 --   F|<version>|<why>                            off: no (said No), off (turned off), instance (entered
 --                                                another instance), away (out too long), lead (can't
 --                                                lead it any more), party (Enable in party turned off),
---                                                reload (the leader's login or /reload)
+--                                                reload (the leader's login or /reload, when its
+--                                                saved Yes doesn't bring it back on)
 --   H|<version>|<instance>|<instance>|<seconds>  the heartbeat, every HEARTBEAT_SECONDS while on: the
 --                                                instance it said Yes for, where the leader is now (that
 --                                                instance, or "world" for the open world), and the
@@ -53,6 +60,7 @@ local TEXT = {
     offWhy = "off: %s",
     saidNo = "you said No",
     turnedOn = "CRT Looting: on for everyone in the raid with CRT.",
+    stillOn = "CRT Looting: still on for everyone in the raid with CRT.",
     turnedOff = "CRT Looting: off for everyone.",
     instance = "CRT Looting: off, you entered another instance.",
     away = "CRT Looting: off, you were out of the instance for over 10 minutes.",
@@ -162,6 +170,31 @@ end
 
 -- Leader -----------------------------------------------------------------------------------------------
 
+-- The leader's saved Yes (CRTDB lootmaster.looting; its default is in CRT_Core/Core.lua), made if missing.
+local function saved()
+    local set = LM:Settings()
+    if type(set) ~= "table" then
+        return nil
+    end
+    if type(set.looting) ~= "table" then
+        set.looting = {}
+    end
+    return set.looting
+end
+
+-- Saves the leader's on state (own) now, or clears it when off.
+local function save()
+    local s = saved()
+    if not s then
+        return
+    end
+    if own.on then
+        s.on, s.instance, s.at, s.who = true, own.instance, time(), LM:Me()
+    else
+        s.on, s.instance, s.at, s.who = false, "", 0, ""
+    end
+end
+
 local function stopBeat()
     if beatTicker then
         beatTicker:Cancel()
@@ -182,6 +215,7 @@ function LM:SetLooting(on, why, words)
             return false
         end
         own.on, own.instance, own.why, own.awaySince = true, LM.InstanceKey(), nil, nil
+        save()
         LM.SendText(Wire.Encode("O", { LM.VERSION, own.instance }))
         if not beatTicker then
             beatTicker = C_Timer.NewTicker(LM.HEARTBEAT_SECONDS, beat)
@@ -190,6 +224,7 @@ function LM:SetLooting(on, why, words)
     else
         why = why or "off"
         own.on, own.instance, own.why, own.awaySince = false, nil, why, nil
+        save()
         stopBeat()
         LM.SendText(Wire.Encode("F", { LM.VERSION, why }))
         local line = TEXT.turnedOff
@@ -226,10 +261,13 @@ beat = function()
         LM:SetLooting(false, "away")
         return
     end
+    local where = place()
+    if where == own.instance then
+        save() -- confirmed again: in the instance it was said Yes for (in an encounter too)
+    end
     if LM.ChatLocked() then
         return -- held messages would pile up; ENCOUNTER_END sends a fresh one
     end
-    local where = place()
     LM.SendText(Wire.Encode("H", { LM.VERSION, own.instance, where ~= "elsewhere" and where or "", math.floor(away) }))
 end
 
@@ -443,15 +481,44 @@ local function maybeAsk()
     end
 end
 
--- A loading screen or a new zone. The leader's first one after loading tells raiders it starts off.
--- In the open world the leader stays on (a wipe) and its heartbeat says so; any other instance turns it
--- off. Raiders keep the leader's word: the gate checks where they are.
+-- The first loading screen after a login or /reload: the saved Yes brings it back on (an O when in its
+-- instance; zoned sends the heartbeat) if this character said it, still leads, is in that instance or
+-- the open world, and was last confirmed within LM.LOOTING_AWAY. Otherwise the saved state is cleared.
+-- Returns whether it is on again.
+local function resume(key, where)
+    local s = saved()
+    if not s or s.on ~= true then
+        return false
+    end
+    local age = type(s.at) == "number" and time() - s.at or nil
+    local ok = canLead() and s.who == LM:Me() and type(s.instance) == "string" and s.instance ~= ""
+        and (key == s.instance or where == "world") and age ~= nil and age >= 0 and age <= LM.LOOTING_AWAY
+    if not ok then
+        save() -- own is still off: clears it
+        return false
+    end
+    own.on, own.instance, own.why = true, s.instance, nil
+    own.awaySince = key ~= s.instance and (GetTime() - age) or nil
+    askedFor = s.instance -- not asked there again, even after a later Turn off
+    if key == s.instance and not LM.ChatLocked() then
+        LM.SendText(Wire.Encode("O", { LM.VERSION, own.instance }))
+    end
+    if not beatTicker then
+        beatTicker = C_Timer.NewTicker(LM.HEARTBEAT_SECONDS, beat)
+    end
+    CRT:Print(TEXT.stillOn)
+    return true
+end
+
+-- A loading screen or a new zone. The leader's first one after loading brings a saved Yes back on, or
+-- tells raiders it starts off. In the open world the leader stays on (a wipe) and its heartbeat says so;
+-- any other instance turns it off. Raiders keep the leader's word: the gate checks where they are.
 local function zoned()
     local key, where = LM.InstanceKey(), place()
     if where == lastPlace then
         return
     end
-    if lastPlace == false and canLead() then
+    if lastPlace == false and not resume(key, where) and canLead() then
         LM.SendText(Wire.Encode("F", { LM.VERSION, "reload" }))
     end
     lastKey, lastPlace = key, where

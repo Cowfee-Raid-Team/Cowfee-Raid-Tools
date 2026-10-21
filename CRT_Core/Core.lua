@@ -211,7 +211,10 @@ local defaults = {
         popup = {},
         answers = {}, -- the raider window's place and size
         bossLoot = {}, -- the leader's Boss loot window's place and size
-        lootingPrompt = {}, -- the place of the leader's "Use CRT Looting in this instance?" (never the on state: that is never saved)
+        lootingPrompt = {}, -- the place of the leader's "Use CRT Looting in this instance?"
+        -- the leader's Yes, kept through a /reload (LootMaster/Looting.lua): on, the instance key it was
+        -- said for, at (time() it was last confirmed) and who (the character that said it)
+        looting = { on = false, instance = "", at = 0, who = "" },
         responseSeconds = 60,
         score = { show = true, late = 5, per10 = 1, noShow = 15, recover = 5, weeks = 8 },
         awardMessage = "%i awarded to %p for %r with a %v roll.",
