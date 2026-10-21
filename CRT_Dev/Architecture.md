@@ -23,6 +23,7 @@ Files load in the order the `.toc` lists them. Each file starts with `local ADDO
 | 1b | `CRT_Core/Themes.lua` | The themes, their palettes and `CRT.PALETTE`, the palette in use |
 | 1c | `CRT_Core/Gear.lua` | The gear engine, `CRT.Gear`: your equipped gear, other players' gear, the wire format and the tooltip |
 | 2 | `CRT_Core/Slash.lua` | The `/crt` command |
+| 2b | `CRT_Core/Macros.lua` | The macro engine, `CRT.Macros`: features register macro sets (`Markers/Macros.lua` is the first); it creates, updates and removes them in the game's General Macros, touching only macros it made that the player hasn't changed (`CRTDB.macros.owned`, shared by every profile). General Settings > Macros shows them |
 | 3 | `CRT_Core/UI/Panel.lua` | The main window, the left menu and the page registry |
 | 4 | `CRT_Modules/Groups/Data.lua` | Names, rosters, roles, the working grid, saved layouts, export and import |
 | 5 | `CRT_Modules/Groups/Apply.lua` | Moves the live raid into the grid's layout |
