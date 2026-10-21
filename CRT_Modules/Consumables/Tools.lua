@@ -32,6 +32,7 @@ local function getWindow()
     w:Hide()
 
     local scroll = CreateFrame("ScrollFrame", "CowfeeRaidToolsTextWindowScroll", w, "UIPanelScrollFrameTemplate")
+    UI:SkinScrollBar(scroll.ScrollBar)
     scroll:SetPoint("TOPLEFT", 14, -34)
     scroll:SetPoint("BOTTOMRIGHT", -34, 14)
     w.scroll = scroll

@@ -55,7 +55,7 @@ rowsList = {}
 local function opts(o) return type(o.options) == "function" and o.options() or o.options end
 local CRT = { db = { timeline = { record = true, minPull = 15, keep = 10, bosses = {}, rows = {}, span = 300, grid = 30, iconSize = 22,
     deathRows = "combined", roles = { TANK = true, HEALER = true, DAMAGER = true }, firstDeaths = 0, overlay = 3, overlayOn = false, hideEmpty = false, nextId = 1 } },
-  UI = { Tint = function() end, OnTheme = function() end, PAGE_W = 1026, PAGE_H = 560, Help = function(_, title, text) helps[title] = text return mock() end,
+  UI = { Tint = function() end, OnTheme = function() end, SkinScrollBar = function() end, PAGE_W = 1026, PAGE_H = 560, Help = function(_, title, text) helps[title] = text return mock() end,
     Dropdown = function(_, text, o) local m = mock() m.opts, m.text = o, text dropdowns[#dropdowns+1] = m rawset(m, "refresh", function() end) return m end,
     Slider = function(_, text, o) local m = mock() m.opts, m.text = o, text sliders[#sliders+1] = m rawset(m, "refresh", function() end) return m end,
     SkinTree = function(_, f) skinCalls = skinCalls + 1 end,

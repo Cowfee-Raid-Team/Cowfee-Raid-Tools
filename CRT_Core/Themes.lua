@@ -11,13 +11,15 @@ local ADDON, CRT = ...
 --   nitro     Blackout: Nitro, Modern in blue-black with a blue accent.
 --   cowfee    Beanworks: Cowfee, Modern in coffee colors; the Modern theme old saved data loads as.
 -- menuBar draws a 2 px accent bar on the left of the selected menu page.
+-- scrollBar names the theme's scroll bar look in UI.SCROLL_BAR_LOOKS (UI/ScrollBar.lua): "rail",
+-- "framed" or "rounded"; without one, scroll bars keep the game's art.
 
 -- The menu's entries, in this order.
 CRT.THEME_LIST = {
     { key = "blizzard", name = "Default: Blizzard", modern = false },
-    { key = "midnight", name = "Blackout: Midnight", modern = true, menuBar = true },
-    { key = "nitro", name = "Blackout: Nitro", modern = true, menuBar = true },
-    { key = "cowfee", name = "Beanworks: Cowfee", modern = true },
+    { key = "midnight", name = "Blackout: Midnight", modern = true, menuBar = true, scrollBar = "rail" },
+    { key = "nitro", name = "Blackout: Nitro", modern = true, menuBar = true, scrollBar = "framed" },
+    { key = "cowfee", name = "Beanworks: Cowfee", modern = true, scrollBar = "rounded" },
 }
 CRT.THEME_CLASSIC = "blizzard"
 CRT.THEME_MODERN = "cowfee" -- old saved data with the Modern look on

@@ -97,7 +97,7 @@ local dropdowns, sliders = {}, {}
 local shownPages = {}
 local pagePf
 local previewsOn = false
-CRT.UI = { PAGE_W = 1026, PAGE_H = 560,
+CRT.UI = { PAGE_W = 1026, PAGE_H = 560, SkinScrollBar = function() end,
   RegisterPage = function(_, key, title, fn) pages[key] = fn end,
   RegisterTab = function(_, b) tabs[#tabs + 1] = b end,
   SetTabSelected = function(_, b, on) rawset(b, "selected", on) end,
