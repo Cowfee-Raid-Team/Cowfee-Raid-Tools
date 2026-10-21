@@ -3,7 +3,7 @@
 // CRT_Modules/Alerts/Editor.lua on mock frames.
 // Usage: node run_mechalerts.js CRT_Modules/Timeline/Data.lua CRT_Modules/Timeline/Database.lua CRT_Modules/Timeline/Reference.lua CRT_Modules/Timeline/Lanes.lua
 //   CRT_Modules/Alerts/Rules.lua CRT_Modules/Alerts/Engine.lua CRT_Modules/Alerts/Speech.lua CRT_Modules/Alerts/Reminders.lua CRT_Modules/Alerts/Draft.lua
-//   CRT_Modules/Alerts/SpellLookup.lua CRT_Modules/Alerts/Editor.lua CRT_Modules/Notes/Reminders.lua
+//   CRT_Modules/Alerts/SpellLookup.lua CRT_Modules/Alerts/Editor.lua CRT_Modules/Alerts/Colors.lua CRT_Modules/Notes/Reminders.lua
 const fs = require('fs');
 const path = require('path');
 const themeLua = require('./theme_stub');
@@ -1041,6 +1041,65 @@ check("speak at: Mech Alerts panel has it too", function()
   assert(row.opts.enabledIf() == true, "back on")
   row.opts.set("show")
   assert(R:Get(ENC, id).speakAt == nil, "On show saved as nothing")
+  assert(#errors == 0, tostring(errors[1]))
+end)
+
+-- Each ability's name in its main type's colour (Reference.ABILITY_TYPES, found as alerts find it: your label, the
+-- ability timeline's row, the Journal's icons), dimmed when its reminder is off, lifted on the selected row so it
+-- reads on the highlight; no type keeps the text colour. Hovering a name lists its types, the main one first.
+check("mech: ability names in their type colour, with a type tooltip", function()
+  local T, Ref = CRT.Timeline, CRT.TimelineReference
+  local said = {}
+  GameTooltip = setmetatable({}, { __index = function(_, k)
+    return function(_, a, r, g, b) said[#said + 1] = { k, a, r and { r, g, b } } end end })
+  journalRows[2].tags = { "tank", "magic", "mythic" }
+  CRT.TimelineJournal.CachedRows = function(_, id) if id == ENC then return journalRows end end
+  T:SetAbility(ENC, 777, "type", "soak")
+  local f = fresh()
+  R:Save(ENC, nil, { text = "mine", times = "P1 0:10", boss = "Test Boss" })
+  setCheck(f.rows[2].check, true)
+  CRT.NoteReminders.Refresh()
+  local r1, r2, r3 = f.rows[1], f.rows[2], f.rows[3]
+  local soak, dispel, text = Ref.TYPES.soak.color, Ref.TYPES.dispel.color, CRT.PALETTE.text
+  local function near(c, w) return c and math.abs(c[1] - w[1]) < 1e-6 and math.abs(c[2] - w[2]) < 1e-6 and math.abs(c[3] - w[3]) < 1e-6 end
+  assert(r2.name.text == "Other Spell" and r2.check.checked and not r2.sel.shown, "Other Spell: ticked, not selected")
+  assert(near(r2.name.textColor, dispel), "a magic icon: the name in dispel blue")
+  assert(r3.name.text == "mine" and near(r3.name.textColor, text), "no type: the theme's text colour")
+  -- the selected row (Real Name, unticked): soak, dimmed, then lifted toward white
+  local c1 = r1.name.textColor
+  assert(r1.sel.shown and not r1.check.checked, "Real Name selected, unticked")
+  assert(c1[1] > c1[2] and c1[3] > c1[2] and not near(c1, soak), "still pink, changed for the highlight: " .. table.concat(c1, ","))
+  -- selected and ticked: lighter than the type's own colour, same hue
+  click(r2.frame)
+  local c2 = r2.name.textColor
+  assert(c2[1] >= dispel[1] and c2[2] >= dispel[2] and c2[3] >= dispel[3] and c2[3] > c2[1], "lifted on the selection: " .. table.concat(c2, ","))
+  -- unticked and not selected: the type's colour dimmed toward grey, not lost
+  click(r1.frame)
+  setCheck(r2.check, false)
+  local d = r2.name.textColor
+  assert(not r2.check.checked and not r2.sel.shown, "Other Spell unticked")
+  assert(d[3] > d[1] + 0.1 and d[3] < dispel[3] and math.abs(d[1] - 0.5) < math.abs(dispel[1] - 0.5), "dimmed blue: " .. table.concat(d, ","))
+  -- the tooltip: the name, then each type in its colour, the main one first
+  assert(r2.frame.OnEnter and r2.frame.OnLeave, "the row has a tooltip")
+  r2.frame.OnEnter(r2.frame)
+  local names = {}
+  for _, s in ipairs(said) do names[#names + 1] = s[1] .. ":" .. tostring(s[2]) end
+  local all = table.concat(names, "|")
+  assert(all == "SetOwner:" .. tostring(r2.frame) .. "|SetText:Other Spell|AddLine:Dispel: a debuff to dispel|AddLine:Mythic: Mythic only|Show:nil", all)
+  assert(near(said[3][3], dispel) and near(said[4][3], Ref.TYPES.mythic.color), "each line in its type's colour")
+  said = {}
+  r1.frame.OnEnter(r1.frame)
+  assert(said[3][2] == "Soak: stack to share the damage" and near(said[3][3], soak) and #said == 4, "your label: its one type")
+  said = {}
+  r3.frame.OnEnter(r3.frame)
+  assert(said[2][2] == "mine" and said[3][2]:find("^No type yet") and said[3][2]:find("Set type", 1, true), "no type: how to set one: " .. tostring(said[3][2]))
+  said = {}
+  r3.frame.OnLeave(r3.frame)
+  assert(said[1][1] == "Hide", "leaving hides it")
+  T:SetAbility(ENC, 777, "type", nil)
+  journalRows[2].tags = nil
+  CRT.TimelineJournal.CachedRows = nil
+  GameTooltip = nil
   assert(#errors == 0, tostring(errors[1]))
 end)
 

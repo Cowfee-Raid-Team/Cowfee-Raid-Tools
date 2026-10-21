@@ -18,21 +18,67 @@ local ADDON, CRT = ...
 local Reference = {}
 CRT.TimelineReference = Reference
 
--- What an ability is, written (type raid) or (type mythic soak). The first type colors the row; the
--- others show as dots on its label, and the tooltip lists them all. No type means a plain mechanic.
-Reference.TYPE_ORDER = { "dispel", "raid", "falloff", "mythic", "heroic", "generic", "soak", "spread", "dodge", "heavydot" }
-Reference.TYPES = {
-    dispel = { label = "Dispellable debuff", color = { 0.29, 0.64, 1 } },
-    raid = { label = "Raid-wide damage, unavoidable", color = { 1, 0.31, 0.31 } },
-    falloff = { label = "Fall-off damage", color = { 0.49, 0.86, 0.42 } },
-    mythic = { label = "Mythic only", color = { 1, 0.6, 0.24 } },
-    heroic = { label = "Heroic and higher", color = { 0.77, 0.36, 0.88 } },
-    generic = { label = "Mechanic", color = { 0.95, 0.9, 0.84 } }, -- an ability type's own colour: not a theme colour
-    soak = { label = "Soak", color = { 1, 0.5, 0.82 } },
-    spread = { label = "Spread out or get away", color = { 1, 0.85, 0.29 } },
-    dodge = { label = "Dodge", color = { 0.2, 0.82, 0.78 } },
-    heavydot = { label = "Heavy damage over time", color = { 0.75, 0.92, 0.25 } },
+-- Ability types ----------------------------------------------------------------------------------------
+-- What an ability is, written (type raid) or (type mythic soak) in an ability timeline. The first type is
+-- its main one: it colours the row, the alerts and the ability's name in the Mech Alerts list. The others
+-- show as dots on the row's label, and the tooltips list them all. No type means a plain mechanic.
+--
+-- THE ONE TABLE OF ABILITY TYPES. Everything that shows or reads a type reads this table: the Timeline's
+-- rows, legend and Set type menu, every alert's colour, the Mech Alerts list and its tooltips, and the
+-- Journal export. Edit it here, then /reload; nothing else needs changing.
+--   Recolour a type: change its hex (rrggbb).
+--   Reword one: label is the short name in menus and tooltips, desc the one line after it ("Soak: ...").
+--   Add a type: add a line where it should sit in menus and the legend. key is the word written in an
+--     ability timeline, (type key): lowercase letters, never reused. tags: the Encounter Journal icons that
+--     mean this type (Reference.TAGS below), so the Journal export and alerts with no type of their own use it.
+--   Rename a key: change it here and add old = "new" to TYPE_ALIASES, so labels you saved and ability
+--     timelines written with the old word keep working.
+--   Remove a type: the same as a rename, with the alias pointing at the type that replaces it.
+-- The "ability types" test checks the table and that no other file writes a type's colour.
+Reference.ABILITY_TYPES = {
+    { key = "dispel", label = "Dispel", hex = "4AA3FF", desc = "a debuff to dispel", tags = { "magic", "curse", "poison", "disease" } },
+    { key = "raid", label = "Raid damage", hex = "FF4F4F", desc = "raid-wide damage, unavoidable" },
+    { key = "falloff", label = "Fall-off", hex = "7DDB6B", desc = "damage that drops the farther you stand" },
+    { key = "mythic", label = "Mythic", hex = "FF993D", desc = "Mythic only", tags = { "mythic" } },
+    { key = "heroic", label = "Heroic", hex = "C45CE0", desc = "Heroic and higher", tags = { "heroic" } },
+    { key = "generic", label = "Mechanic", hex = "F2E6D6", desc = "a mechanic with no other type" }, -- not a theme colour
+    { key = "soak", label = "Soak", hex = "FF80D1", desc = "stack to share the damage" },
+    { key = "spread", label = "Spread", hex = "FFD94A", desc = "spread out or get away" },
+    { key = "dodge", label = "Dodge", hex = "33D1C7", desc = "move out of it" },
+    { key = "heavydot", label = "Heavy DoT", hex = "BFEB40", desc = "heavy damage over time" },
 }
+-- Old keys still read, each to the type that replaced it: old = "new".
+Reference.TYPE_ALIASES = {}
+
+-- Built from the table above, never edited by hand:
+--   TYPE_ORDER: the keys in menu order; TYPES[key]: { key, label, desc, hex, color = { r, g, b } }, an old key
+--   from TYPE_ALIASES giving its new type's entry; TAG_TYPES[tag]: the type a Journal icon means.
+Reference.TYPE_ORDER, Reference.TYPES, Reference.TAG_TYPES = {}, {}, {}
+for _, def in ipairs(Reference.ABILITY_TYPES) do
+    local hex = type(def.hex) == "string" and def.hex:match("^#?(%x%x%x%x%x%x)$")
+    local entry = {
+        key = def.key, label = def.label, desc = def.desc, hex = hex and hex:upper() or "FFFFFF",
+        color = hex and { tonumber(hex:sub(1, 2), 16) / 255, tonumber(hex:sub(3, 4), 16) / 255, tonumber(hex:sub(5, 6), 16) / 255 }
+            or { 1, 1, 1 }, -- a mistyped hex: the test reports it
+    }
+    Reference.TYPE_ORDER[#Reference.TYPE_ORDER + 1] = def.key
+    Reference.TYPES[def.key] = entry
+    for _, tag in ipairs(def.tags or {}) do
+        Reference.TAG_TYPES[tag] = Reference.TAG_TYPES[tag] or def.key
+    end
+end
+for old, new in pairs(Reference.TYPE_ALIASES) do
+    Reference.TYPES[old] = Reference.TYPES[old] or Reference.TYPES[new]
+end
+
+-- A type's line for a tooltip or menu, "Soak: stack to share the damage", and its colour; nil for no type.
+function Reference.TypeLine(key)
+    local t = type(key) == "string" and Reference.TYPES[key]
+    if not t then
+        return nil
+    end
+    return t.label .. ": " .. t.desc, t.color
+end
 
 -- The Encounter Journal's icons for an ability, written (tags tank magic). Unlike a type they don't color
 -- the row: they say who it is for and what it is, as the Journal's own icons do. The words are the
@@ -56,19 +102,17 @@ Reference.TAGS = {
     bleed = { label = "Bleed", atlas = "icons_16x16_bleed" },
 }
 
--- The Journal's icons that are types too: a dispellable debuff, a Heroic or a Mythic mechanic. The Journal export
--- writes them as the row's types (Timeline/JournalExport.lua), and an alert with no other type takes the first of
--- its spell's icons that is one (Alerts/Colors.lua).
-Reference.TAG_TYPES = { magic = "dispel", curse = "dispel", poison = "dispel", disease = "dispel", heroic = "heroic",
-    mythic = "mythic" }
+-- The Journal's icons that are types too (a dispellable debuff, a Heroic or a Mythic mechanic) are each type's
+-- tags in ABILITY_TYPES, read as Reference.TAG_TYPES: the Journal export writes them as the row's types
+-- (Timeline/JournalExport.lua), and an alert with no other type takes the first of its spell's icons that is
+-- one (Alerts/Colors.lua).
 
--- The type colors as tooltip text, one line per type in its own color: "Soak (soak)".
+-- The type colours as tooltip text, one line per type in its own colour: "Soak (soak): stack to share the damage".
 function Reference.Legend()
     local lines = {}
     for _, key in ipairs(Reference.TYPE_ORDER) do
         local t = Reference.TYPES[key]
-        local r, g, b = math.floor(t.color[1] * 255 + 0.5), math.floor(t.color[2] * 255 + 0.5), math.floor(t.color[3] * 255 + 0.5)
-        lines[#lines + 1] = string.format("|cff%02x%02x%02x%s (%s)|r", r, g, b, t.label, key)
+        lines[#lines + 1] = string.format("|cff%s%s (%s): %s|r", t.hex, t.label, key, t.desc)
     end
     return table.concat(lines, "\n")
 end
@@ -165,7 +209,7 @@ local function readOptions(row, text)
                     if not Reference.TYPES[word] then
                         return "unknown type '" .. word .. "' (use " .. table.concat(Reference.TYPE_ORDER, ", ") .. ")"
                     end
-                    row.types[#row.types + 1] = word
+                    row.types[#row.types + 1] = Reference.TYPES[word].key -- an old key (TYPE_ALIASES) reads as its new one
                 end
             else
                 return "unknown option '" .. opt .. "'"

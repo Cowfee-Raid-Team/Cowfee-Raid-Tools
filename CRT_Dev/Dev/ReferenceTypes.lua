@@ -178,17 +178,11 @@ end
 
 local MAIN_OPTIONS = { { key = "none", label = "None" } }
 for _, key in ipairs(Reference.TYPE_ORDER) do
-    local t = Reference.TYPES[key]
-    local c = t.color
-    MAIN_OPTIONS[#MAIN_OPTIONS + 1] = {
-        key = key,
-        label = string.format("|cff%02x%02x%02x%s|r", math.floor(c[1] * 255 + 0.5), math.floor(c[2] * 255 + 0.5), math.floor(c[3] * 255 + 0.5), key),
-    }
+    MAIN_OPTIONS[#MAIN_OPTIONS + 1] = { key = key, label = "|cff" .. Reference.TYPES[key].hex .. key .. "|r" }
 end
 
 local function colored(key)
-    local c = Reference.TYPES[key].color
-    return string.format("|cff%02x%02x%02x%s|r", math.floor(c[1] * 255 + 0.5), math.floor(c[2] * 255 + 0.5), math.floor(c[3] * 255 + 0.5), key)
+    return "|cff" .. Reference.TYPES[key].hex .. key .. "|r"
 end
 
 local refresh

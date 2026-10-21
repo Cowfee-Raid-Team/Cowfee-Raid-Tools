@@ -278,13 +278,16 @@ local function spellTip(spellID, fallback)
     end
 end
 
--- The type lines of a reference ability ("Soak", "Mythic only"), each in its type's color.
+-- The type lines of a reference ability ("Soak: stack to share the damage"), each in its type's color.
 local function addTypes(lane)
     local Reference = CRT.TimelineReference
+    if not Reference then
+        return
+    end
     for _, key in ipairs(lane.types or {}) do
-        local t = Reference and Reference.TYPES[key]
-        if t then
-            GameTooltip:AddLine(t.label, t.color[1], t.color[2], t.color[3])
+        local line, c = Reference.TypeLine(key)
+        if line then
+            GameTooltip:AddLine(line, c[1], c[2], c[3], true)
         end
     end
 end
