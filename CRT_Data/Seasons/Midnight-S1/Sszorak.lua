@@ -12,6 +12,8 @@ CRT.Bosses:Register({
     encounterID = 3420,
     name = "Sszorak",
     season = "midnight-s1",
+    -- The marker display (Markers/Display.lua), exported from /crt dev markers on 2026-10-21.
+    markers = { name = "Marker display", slots = 4, layout = "row", iconSize = 52, number = true, names = true, clearGap = 10, clearFull = 0, clearPhase = true, hidden = "fill" },
     references = {
         [[
 Boss: Sszorak
