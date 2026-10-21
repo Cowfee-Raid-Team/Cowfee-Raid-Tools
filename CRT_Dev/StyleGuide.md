@@ -12,9 +12,9 @@ Every theme fills every key in `CRT.THEME_KEYS`. Each key is named for what it c
 |---|---|
 | background | the window background |
 | surface | menu blocks, fields, buttons, list rows, an unticked checkbox |
-| border | borders, the empty part of a slider's track, a scroll bar's rail |
+| border | borders, the empty part of a slider's track, a scroll bar's rail, the alert bars' Border |
 | selected | the selected page and tab, an unticked checkbox's edge |
-| accent | lines, a slider's filled track, hover edges, the Modern help ring, scroll bar thumbs |
+| accent | lines, a slider's filled track, hover edges, the Modern help ring, scroll bar thumbs, the alert timeline's line and its tick marks |
 | label | button text and labels (the game's gold font takes this colour in a Modern theme) |
 | heading | headings, section titles, highlights, a selected row's tint (`UI.HeadingText`) |
 | text | body text (the game's white font takes this colour in a Modern theme) |
@@ -79,6 +79,7 @@ Rules:
 - Pages refresh on a switch (their OnShow), so text a page's refresh writes with the helpers follows by itself.
 - Overlays (note windows, alerts, your bar, the ready check window, warnings) don't: each needs a `UI.Tint`, a `UI.ThemedText` or an `UI:OnTheme` hook. `run_themes.js` checks they have one.
 - An `UI:OnTheme` hook only recolours CRT's own textures and font strings. It never re-anchors, shows, hides or re-wires a secure or game-owned frame, since a theme can change in combat.
+- Borders on overlays follow the theme too: the alert bars' Border is the `border` key (`UI.Tint`), never a fixed black.
 - A tab's `.sel` texture: colour it once with `UI.Color("heading", 0.18)`, never `UI.Tint`, because `UI:StyleTab` restyles it.
 - Skinned game templates (buttons, checkboxes, edit boxes, dropdowns, scroll bars) follow through `UI.skinned`.
 
@@ -96,7 +97,8 @@ These stay the same in every theme. A hard-coded one that looks like a status or
 | Tattlebot damage numbers | orange FF8060 | Alex, 2026-10-21: not part of the style guide |
 | Loot Master's looting line, "Synced to" line and all-answered count | plain in Default: Blizzard, good in a Modern theme, as before themes | Alex, 2026-10-21: excluded from colour changes |
 | Gear Checker's info blue and gem blue | 4DA6FF, 8CCCFF | a season check to know about; a filled socket |
-| Ability types (Timeline rows, every alert) | `Reference.TYPES`, see below | each colour means a kind of ability |
+| Ability types (Timeline rows, Mech Alerts names, every alert) | `Reference.ABILITY_TYPES`, see below | each colour means a kind of ability |
+| The alert timeline's icons and NOW effects | the alert's colour (as on the bars: its ability type's, a raid note line's own, yours with Use custom colours on) for an icon's edge and name, the Ring burst and the Text pop; white for the countdown, the Flash and fade, and the edge in the last 3 seconds | the type says what is coming; white reads on any icon. Its line and ticks are the theme's accent (a Line colour you pick only with Use custom colours on) |
 | Chat prints | the addon's print colours | chat, not the window |
 | Loot Master response buttons | the raid leader's response set | see below |
 | Colours a player picks (alert areas, alerts, reminders, ability timeline rows) | saved data, used only with Use custom colours on | see below |
@@ -106,24 +108,13 @@ Response buttons: a raider's popup and All Loot Rolls window colour the buttons 
 
 ## Ability type colours: fixed, not per theme
 
-The Timeline's ability types (`Reference.TYPES` in `CRT_Modules/Timeline/Reference.lua`) colour the ability timeline's rows and every alert: bars, circles, icons, texts and the Next spell alert (which keeps the heading colour when the type is unknown). They are the same in every theme, since each colour means a kind of ability. A new type is added there, with its colour, and to this table. Hex from the code's values (rounded as `Reference.Legend` does).
+The Timeline's ability types colour the ability timeline's rows, the ability names in the Mech Alerts list and every alert: bars, circles, icons, texts, the alert timeline and the Next spell alert (which keeps the heading colour when the type is unknown). They are the same in every theme, since each colour means a kind of ability.
 
-| Type | Colour | Meaning |
-|---|---|---|
-| dispel | 4AA3FF | dispellable debuff |
-| raid | FF4F4F | raid-wide damage, unavoidable |
-| falloff | 7DDB6B | fall-off damage |
-| mythic | FF993D | Mythic only |
-| heroic | C45CE0 | Heroic and higher |
-| generic | F2E6D6 | a mechanic |
-| soak | FF80D1 | soak |
-| spread | FFD94A | spread out or get away |
-| dodge | 33D1C7 | dodge |
-| heavydot | BFEB40 | heavy damage over time |
+The types live in one table, `Reference.ABILITY_TYPES` at the top of `CRT_Modules/Timeline/Reference.lua`: each type's key, label, colour (rrggbb), one-line description and the Journal icons that mean it, in menu order. Its comment says how to add, reword, recolour, rename or remove a type. Every reader (`Reference.TYPES`, `TYPE_ORDER`, `TAG_TYPES`, the legend, the Set type menu, `Alerts/Colors.lua`, the Mech Alerts list, the Journal export) builds from it, so this guide keeps no copy of the colours. The "ability types" test checks the table and fails if another file writes a type's colour. The vault's timeline-reference skill points to the same table.
 
-An alert with no known type is drawn in the theme's accent, read when it draws, so it follows a theme switch. How an alert's type is found: `CRT_Modules/Alerts/Colors.lua`.
+An alert with no known type is drawn in the theme's accent, read when it draws, so it follows a theme switch. In the Mech Alerts list an ability with no known type keeps the text colour. How an alert's type is found: `CRT_Modules/Alerts/Colors.lua`.
 
-**Custom colours.** A colour the player picks is used only with Use custom colours on (Raid Notes > Alerts, `alerts.customColors`, off by default): the Bars' Bar colour, Background and Text colour, the Circles' Ring colour, a reminder's or a template's colour, and an ability timeline row's `color rrggbb`. Off, those rows are greyed out (`enabledIf`) and the colours are ignored but stay saved. A raid note line's own colour is the raid leader's shared choice and always shows, as do the Loot Master response colours (see above).
+**Custom colours.** A colour the player picks is used only with Use custom colours on (Raid Notes > Alerts, `alerts.customColors`, off by default): the Bars' Bar colour, Background and Text colour, the Circles' Ring colour, the alert timeline's Line colour, a reminder's or a template's colour, and an ability timeline row's `color rrggbb`. Off, those rows are greyed out (`enabledIf`) and the colours are ignored but stay saved. A raid note line's own colour is the raid leader's shared choice and always shows, as do the Loot Master response colours (see above).
 
 ## Looks that aren't colours
 

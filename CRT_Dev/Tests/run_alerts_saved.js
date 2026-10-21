@@ -233,7 +233,7 @@ S:OnChange(function() savedFires = savedFires + 1 end)
 
 local function full()
   return { name = "Soak", text = "Soak now", spellID = 777, iconID = 135940, saveAs = "note", tags = { "tank", "G1" },
-    color = { 1, 0.5, 0, 1 }, outputs = { alert = true, bar = false, text = true, icon = true, circle = true, speech = true },
+    color = { 1, 0.5, 0, 1 }, outputs = { alert = true, bar = false, text = true, icon = true, circle = true, timeline = true, speech = true },
     speech = "textcount", sound = "RAID_WARNING", glow = true, warn = 8, linger = 3,
     -- what a saved alert never keeps
     times = "P2 +1:30", ph = 2, time = 5, phase = 2, encounterID = ENC, boss = "Test Boss", difficulty = "Mythic",
@@ -251,7 +251,7 @@ do
   local s = S:Get(id)
   assert(s.name == "Soak" and s.text == "Soak now" and s.spellID == 777 and s.iconID == 135940 and s.saveAs == "note", "fields")
   assert(#s.tags == 2 and s.tags[1] == "tank" and s.tags[2] == "G1", "tags")
-  assert(s.outputs.alert and not s.outputs.bar and s.outputs.text and s.outputs.icon and s.outputs.circle and s.outputs.speech, "outputs")
+  assert(s.outputs.alert and not s.outputs.bar and s.outputs.text and s.outputs.icon and s.outputs.circle and s.outputs.timeline and s.outputs.speech, "outputs")
   assert(s.speech == "textcount" and s.sound == "RAID_WARNING" and s.glow == true and s.warn == 8 and s.linger == 3, "speech, sound, glow, warn, linger")
   assert(s.color[1] == 1 and s.color[2] == 0.5 and s.color[3] == 0, "colour")
   for _, k in ipairs({ "times", "ph", "time", "phase", "encounterID", "boss", "difficulty", "enabled", "priority", "id", "reminder" }) do

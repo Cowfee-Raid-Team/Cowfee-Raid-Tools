@@ -124,7 +124,7 @@ local TEXT = {
     shows = "Shows: %s",
     showsNothing = "Shows nothing",
     readOut = "read out",
-    outputs = { alert = "Alert", text = "Text", icon = "Icon", bar = "Bar", circle = "Circle" },
+    outputs = { alert = "Alert", text = "Text", icon = "Icon", bar = "Bar", circle = "Circle", timeline = "Alert timeline" },
     raidNoteFor = "Raid note for %s",
     placeAt = "Place at %s",
     edit = "Edit",
@@ -278,13 +278,16 @@ local function spellTip(spellID, fallback)
     end
 end
 
--- The type lines of a reference ability ("Soak", "Mythic only"), each in its type's color.
+-- The type lines of a reference ability ("Soak: stack to share the damage"), each in its type's color.
 local function addTypes(lane)
     local Reference = CRT.TimelineReference
+    if not Reference then
+        return
+    end
     for _, key in ipairs(lane.types or {}) do
-        local t = Reference and Reference.TYPES[key]
-        if t then
-            GameTooltip:AddLine(t.label, t.color[1], t.color[2], t.color[3])
+        local line, c = Reference.TypeLine(key)
+        if line then
+            GameTooltip:AddLine(line, c[1], c[2], c[3], true)
         end
     end
 end
@@ -2048,7 +2051,7 @@ local function chipEnter(c)
         GameTooltip:AddLine(s.text, 1, 1, 1)
     end
     local shows = {}
-    for _, k in ipairs({ "alert", "text", "icon", "bar", "circle" }) do
+    for _, k in ipairs({ "alert", "text", "icon", "bar", "circle", "timeline" }) do
         if s.outputs and s.outputs[k] then
             shows[#shows + 1] = TEXT.outputs[k]
         end

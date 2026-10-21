@@ -296,7 +296,7 @@ local defaults = {
     -- Alerts. Reminders, phase events and bar settings for the alerts engine (Alerts/Engine.lua).
     -- reminders are the player's own timed reminders, phases the phase events they set up, overrides
     -- their changes to shared packs, and nextId numbers them. The bars window position is added when moved.
-    -- areas are the icon, text and circle areas' settings (Alerts/Areas.lua); position is added when moved.
+    -- areas are the icon, text, circle and timeline areas' settings (Alerts/Areas.lua); position is added when moved.
     -- Marker displays (Markers/Display.lua): disabled[encounterID] is true for a boss whose display
     -- you turned off on the Reminders tab; position is added when the window is moved.
     markers = { disabled = {} },
@@ -306,16 +306,21 @@ local defaults = {
     -- and use[encounterID] = "own" uses your own plan in place of it.
     pace = { disabled = {}, own = {}, shared = {}, use = {}, shown = true },
     alerts = {
-        bars = { shown = true, noteLines = true, cap = 5, ahead = 20, width = 240, height = 20, font = "Friz Quadrata", fontSize = 13,
+        bars = { shown = true, noteLines = true, cap = 5, ahead = 20, width = 240, height = 20, spacing = 4, border = "none", font = "Friz Quadrata", fontSize = 13,
             barColor = { 0.44, 0.31, 0.22, 1 }, bgColor = { 0, 0, 0, 0.6 }, textColor = { 0.95, 0.90, 0.84, 1 }, showType = true }, -- saved, the player's to change: not a theme colour
         areas = {
             icons = { shown = true, cap = 5, size = 44, font = "Friz Quadrata", fontSize = 20, outline = "OUTLINE", grow = "down", showText = true, fade = true },
             texts = { shown = true, cap = 3, font = "Friz Quadrata", fontSize = 36, outline = "THICKOUTLINE", grow = "down", align = "CENTER" },
             circles = { shown = true, cap = 3, size = 64, thickness = "medium", ringColor = { 1, 1, 1, 0.9 }, font = "Friz Quadrata", fontSize = 16, grow = "right" },
+            -- the timeline (Alerts/TimelineArea.lua): ticks is a list of seconds as text ("3,5"), so an empty list
+            -- stays empty; lineColor is added only when picked (the theme's accent until then)
+            timeline = { shown = true, cap = 5, direction = "down", side = "right", length = 300, seconds = 10, size = 32, thickness = 2,
+                showNames = true, showCountdown = true, tenths = 0, badges = true, ticks = "5", nowEffect = "flash", nowText = "NOW!",
+                nowTime = 1, stack = true, font = "Friz Quadrata", fontSize = 14 },
         },
         -- Where the player's own note lines without show: also display (Next spell alert, Bar and speech
         -- keep their own switches); off until chosen.
-        noteLines = { text = false, icon = false, circle = false },
+        noteLines = { text = false, icon = false, circle = false, timeline = false },
         -- Use custom colours (Raid Notes > Alerts): off, every alert is in its ability type's colour and your own
         -- colours (the areas', your reminders') stay saved but unused. A raid note's colour always shows.
         customColors = false,

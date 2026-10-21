@@ -294,7 +294,7 @@ do
   local legend = R.Legend()
   local n = 0
   for line in (legend .. "\\n"):gmatch("([^\\n]*)\\n") do n = n + 1 assert(line:find("^|cff%x%x%x%x%x%x"), "types: legend line colored: " .. line) end
-  assert(n == 10 and legend:find("Soak %(soak%)") and legend:find("Dodge %(dodge%)") and legend:find("Heavy damage over time %(heavydot%)"), "types: legend has the ten types")
+  assert(n == 10 and legend:find("Soak %(soak%)") and legend:find("Dodge %(dodge%)") and legend:find("Heavy DoT %(heavydot%): heavy damage over time"), "types: legend has the ten types")
   print("ok ability types")
 end
 

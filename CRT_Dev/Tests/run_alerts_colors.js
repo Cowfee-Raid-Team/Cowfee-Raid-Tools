@@ -220,6 +220,28 @@ check("colors: the type lookup never walks the Journal during a run", function()
   A:Stop()
 end)
 
+check("colors: each item gets its Journal icons, from the cached rows only", function()
+  CRT.db.alerts.reminders = {}
+  T:SetAbility(3001, 8002, "type", "spread") -- a type of its own still gets the icons
+  R:Save(3001, nil, { boss = NEK, spellID = 8001, text = "Bolt", times = "P1 0:11" })
+  R:Save(3001, nil, { boss = NEK, spellID = 8002, text = "Curse", times = "P1 0:12" })
+  R:Save(3001, nil, { boss = NEK, spellID = 5003, text = "Rend", times = "P1 0:13" })
+  pull()
+  local function tagsOf(text) local it = itemBy(function(x) return x.text == text end) return it and it.abilityTags and table.concat(it.abilityTags, ",") end
+  assert(tagsOf("Bolt") == "tank,magic", "the Journal's icons: " .. tostring(tagsOf("Bolt")))
+  assert(tagsOf("Curse") == "mythic,curse", "with a labelled type too: " .. tostring(tagsOf("Curse")))
+  assert(tagsOf("Rend") == nil, "none known: none")
+  -- not read this session: no icons, and no walk
+  journalCached = false
+  for _, it in ipairs(A.items) do it.abilityType = nil it.abilityTags = nil end
+  local before = rowsCalls
+  C.Stamp(A.items, A.run)
+  assert(rowsCalls == before and tagsOf("Bolt") == nil, "uncached: no icons, no walk")
+  journalCached = true
+  T:SetAbility(3001, 8002, "type", nil)
+  A:Stop()
+end)
+
 check("colors: no known type is the theme's accent", function()
   CRT.db.alerts.reminders = {}
   R:Save(3001, nil, { boss = NEK, spellID = 9999, text = "Nothing Known", times = "P1 0:10", color = { 0, 1, 0, 1 } })
@@ -242,6 +264,25 @@ check("colors: a reference row's own colour only with the box", function()
   assert(same(Ref.RowColor(a), { 0x11 / 255, 0x22 / 255, 0x33 / 255 }) and same(Ref.RowColor(b), { 0x44 / 255, 0x55 / 255, 0x66 / 255 }), "on: the row's own colour")
   assert(same(Ref.RowColor(c), TYPES.raid.color), "on: a type alone keeps it")
   CRT.db.alerts.customColors = false
+end)
+
+-- Every type of an ability, the main one first, for a list of the boss's abilities (the Mech Alerts list): the
+-- boss's ability timelines are read once for the whole list.
+check("colors: every type of an ability, main first, the boss read once", function()
+  local forBoss, reads = Ref.ForBoss, 0
+  Ref.ForBoss = function(...) reads = reads + 1 return forBoss(...) end
+  local typesOf = C.Types(3001, NEK, "Mythic")
+  local function list(spell, text) return table.concat(typesOf(spell, text), " ") end
+  assert(list(nil, "Corpse Blight") == "heroic raid", "the timeline row's types in order: " .. list(nil, "Corpse Blight"))
+  assert(list(5002, "Hungering Pyre") == "soak", "by spell: " .. list(5002, "Hungering Pyre"))
+  assert(list(8002, "Mythic Curse") == "mythic dispel", "the Journal's icons, each type once: " .. list(8002, "Mythic Curse"))
+  assert(list(9999, "Nothing Known") == "", "none known: an empty list")
+  assert(reads == 1, "the boss read once: " .. reads)
+  T:SetAbility(3001, 5001, "type", "raid")
+  assert(table.concat(C.Types(3001, NEK, "Mythic")(5001, "Grasping Depths"), " ") == "raid", "your label is the one type")
+  T:SetAbility(3001, 5001, "type", nil)
+  assert(#C.Types(3001, NEK)(SECRET, SECRET) == 0 and #errors == 0, "secret values give none")
+  Ref.ForBoss = forBoss
 end)
 
 check("colors: no errors raised", function()

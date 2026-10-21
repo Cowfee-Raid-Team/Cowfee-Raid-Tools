@@ -57,6 +57,7 @@ CRT_Modules\Notes\Settings.lua
 CRT_Modules\Notes\Reminders.lua
 CRT_Modules\Notes\Phases.lua
 CRT_Modules\Notes\AlertsTab.lua
+CRT_Modules\Notes\Render.lua
 CRT_Modules\Notes\Page.lua
 CRT_Modules\Late\Data.lua
 CRT_Modules\Late\Page.lua
@@ -116,6 +117,7 @@ CRT_Modules\Alerts\Bars.lua
 CRT_Modules\Alerts\Texts.lua
 CRT_Modules\Alerts\Icons.lua
 CRT_Modules\Alerts\Circles.lua
+CRT_Modules\Alerts\TimelineArea.lua
 CRT_Modules\Alerts\Draft.lua
 CRT_Modules\Alerts\SpellLookup.lua
 CRT_Modules\Alerts\Editor.lua

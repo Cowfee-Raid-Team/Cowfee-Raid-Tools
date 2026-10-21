@@ -10,7 +10,7 @@ local ADDON, CRT = ...
 -- Any other line is free text shown under the timers. A tag is one or more player names, role words
 -- (tank, healer, dps, melee, ranged, all) or class names, separated by spaces.
 -- A timed line may also say how it shows. Without show: it shows as it always has.
---   show:icon,text;   only these displays: alert, text, icon, bar, circle
+--   show:icon,text;   only these displays: alert, text, icon, bar, circle, timeline
 --   tts:1; count:1;   read the line out; count down 3, 2, 1
 --   ttsat:0;          read the line out at its time, not when it shows (absent: when it shows)
 --   sound:RAID_WARNING; glow:1; warn:6; linger:3; icon:135940;
@@ -51,7 +51,7 @@ local function color(s)
     return nil
 end
 
-local SHOW_WORDS = { "alert", "text", "icon", "bar", "circle" }
+local SHOW_WORDS = { "alert", "text", "icon", "bar", "circle", "timeline" }
 local IS_SHOW_WORD = {}
 for _, w in ipairs(SHOW_WORDS) do
     IS_SHOW_WORD[w] = true
@@ -91,14 +91,15 @@ local function nameList(s)
     return names
 end
 
--- Returns { encounterID, difficulty, name, timers = {...}, phases = {...}, lines = {...}, invite = {...} }.
+-- Returns { encounterID, difficulty, name, timers = {...}, phases = {...}, lines = {...}, invite = {...},
+-- unread = {...} }, unread the lines that start like a timer but have no time it can read, as written.
 -- Each timer is { time, ph, tags, kind = "spell" or "text", spellId, text, dur, color, line } with `line`
 -- its line number in the text, and, when the line has them: show (a set), tts, speakAt ("zero" for
 -- ttsat:0), count, glow (true),
 -- sound (the text as written; the sound engine plays it if it names a sound, see Sound/Engine.lua), warn, linger
 -- (seconds) and iconID.
 function Parser.Parse(text)
-    local note = { timers = {}, phases = {}, lines = {}, invite = nil }
+    local note = { timers = {}, phases = {}, lines = {}, invite = nil, unread = {} }
     local phaseSeen = {}
     local lineNo = 0
 
@@ -143,6 +144,8 @@ function Parser.Parse(text)
                     phaseSeen[item.ph] = true
                     note.phases[#note.phases + 1] = item.ph
                 end
+            else
+                note.unread[#note.unread + 1] = line
             end
         elseif lower:find("^invitelist:") then
             local list = line:match("^[^:]+:(.*)$") or ""
@@ -172,6 +175,20 @@ function Parser.Parse(text)
     end
     note.lines = cleaned
     return note
+end
+
+-- The note's lines as written, by line number (a timer's `line`), split as Parse splits them.
+function Parser.SplitLines(text)
+    local out = {}
+    for raw in ((text or "") .. "\n"):gmatch("(.-)\r?\n") do
+        out[#out + 1] = raw
+    end
+    return out
+end
+
+-- One field of a line, read as Parse reads it (the key in any case), or nil: Field(line, "displaytype").
+function Parser.Field(line, key)
+    return fields(line or "")[key:lower()]
 end
 
 -- A number as short as it can be written: 34, 1.5, -5.

@@ -37,6 +37,7 @@ local function mock(kind, parent, template)
       rawset(self, "text", s)
       if self.kind == "EditBox" and rawget(self, "OnTextChanged") then self.OnTextChanged(self, false) end end end
     if k == "GetText" then return function(self) return self.text end end
+    if k == "GetUnboundedStringWidth" then return function(self) return #(rawget(self, "text") or "") * 6 end end
     if k == "SetChecked" then return function(self, on) rawset(self, "checked", on and true or false) end end
     if k == "GetChecked" then return function(self) return self.checked end end
     if k == "SetEnabled" then return function(self, on) rawset(self, "enabled", on and true or false) end end
@@ -261,7 +262,7 @@ do
   pick("Relative to", 2)
   typeInto(w.timeEdit, "1:30")
   setCheck(w.checks.bar, false)
-  setCheck(w.checks.text, true) setCheck(w.checks.icon, true) setCheck(w.checks.circle, true)
+  setCheck(w.checks.text, true) setCheck(w.checks.icon, true) setCheck(w.checks.circle, true) setCheck(w.checks.timeline, true)
   setCheck(w.also.count, true) setCheck(w.also.glow, true)
   pick("Sound", "kit:RAID_WARNING")
   sliders["Show from"].opts.set(8) sliders["Linger"].opts.set(3)
@@ -298,7 +299,7 @@ do
   local r = R:Get(ENC, 1)
   assert(r, "saved as 1")
   assert(r.text == "Soak now" and r.times == "P2 +1:30" and r.spellID == 777 and r.boss == "Test Boss", tostring(r.times))
-  assert(r.outputs.bar == false and r.outputs.alert == true and r.outputs.text and r.outputs.icon and r.outputs.circle, "outputs")
+  assert(r.outputs.bar == false and r.outputs.alert == true and r.outputs.text and r.outputs.icon and r.outputs.circle and r.outputs.timeline, "outputs")
   assert(r.outputs.speech == true and r.speech == "textcount", "speak + count")
   print("DBGSND", tostring(r.sound), tostring(r.warn), tostring(r.linger), tostring(r.glow), tostring(r.iconID)) assert(r.warn == 8 and r.linger == 3 and r.sound == "kit:RAID_WARNING" and r.glow == true and r.iconID == 135940, "new fields")
   assert(r.color[1] == 1 and r.color[2] == 0.5 and r.color[3] == 0, "color")
@@ -605,16 +606,39 @@ do
   print("ok editor: export shows the note line")
 end
 
+-- a raid note line shown only on the Alert timeline warns that older CRTs won't see it
+do
+  reset()
+  E:Open(ENC, nil, { text = "Draft", times = "P1 0:30" })
+  local w = win()
+  for _, k in ipairs({ "alert", "text", "icon", "bar", "circle" }) do setCheck(w.checks[k], false) end
+  setCheck(w.checks.timeline, true)
+  assert(message() == "", "Only me: no warning: " .. message())
+  pick("Save as", "note")
+  assert(message():find("older CRT", 1, true) and message():find("|cff" .. UI.Hex("warn"), 1, true), "warned, in the warn colour: " .. message())
+  setCheck(w.checks.text, true)
+  assert(message() == "", "another display too: no warning")
+  -- the Show as labels fit the window, each after the one before it
+  local right = 0
+  for _, k in ipairs({ "alert", "text", "icon", "bar", "circle", "timeline" }) do
+    local x = w.checks[k].pts[#w.checks[k].pts][2] -- lay: SetPoint("TOPLEFT", x, y)
+    assert(x > right, k .. " after the one before it")
+    right = x + 26 + #w.checks[k].label.text * 6
+  end
+  assert(right <= 600 - 16, "the last label ends inside the window: " .. right)
+  print("ok editor: Alert timeline only on a raid note line warns")
+end
+
 -- test shows every ticked display, saving nothing
 do
   reset()
   E:Open(ENC, nil, { text = "Draft", times = "P1 0:30" })
   local w = win()
-  for _, k in ipairs({ "alert", "text", "icon", "bar", "circle" }) do setCheck(w.checks[k], true) end
+  for _, k in ipairs({ "alert", "text", "icon", "bar", "circle", "timeline" }) do setCheck(w.checks[k], true) end
   click(w.testBtn)
   assert(A.running and A.run.reason == "test" and #A.items == 1)
   local o = A.items[1].outputs
-  assert(o.alert and o.text and o.icon and o.bar and o.circle and o.speech, "every display")
+  assert(o.alert and o.text and o.icon and o.bar and o.circle and o.timeline and o.speech, "every display")
   assert(A.items[1].block == "minetest")
   A:Stop(true)
   -- a note line draft runs through the note block's item builder, as a note item

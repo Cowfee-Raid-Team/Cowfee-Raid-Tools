@@ -47,6 +47,8 @@ local function mock(kind, parent, template)
     if k == "GetCenter" then return function() return 480, 300 end end
     if k == "SetColorTexture" or k == "SetVertexColor" then return function(self, r, g, b, a) rawset(self, "color", { r, g, b, a }) end end
     if k == "GetFrameLevel" then return function() return 1 end end
+    if k == "SetScrollChild" then return function(self, c) rawset(self, "scrollChild", c) end end
+    if k == "SetVerticalScroll" then return function(self, v) rawset(self, "vscroll", v) end end
     return function() end end })
 end
 UIParent = mock("Frame")
@@ -58,6 +60,8 @@ function CreateFrame(kind, name, parent, template)
   made = made + 1
   local f = mock(kind, parent, template)
   if template == "CooldownFrameTemplate" then rawset(f, "allPoints", parent) end
+  -- the template's bar (Blizzard_SharedXML/SecureScrollTemplates.xml): a child of the scroll frame
+  if template == "UIPanelScrollFrameTemplate" then rawset(f, "ScrollBar", mock("Slider", f)) end
   if name then created[name] = f end
   return f
 end
@@ -99,7 +103,7 @@ local dropdowns, sliders = {}, {}
 local shownPages = {}
 local pagePf
 local previewsOn = false
-CRT.UI = { PAGE_W = 1026, PAGE_H = 560, SkinScrollBar = function() end,
+CRT.UI = { PAGE_W = 1026, PAGE_H = 560, SkinScrollBar = function() end, ScrollGutter = function(w) return 6 + (w or 18) end,
   RegisterPage = function(_, key, title, fn) pages[key] = fn end,
   RegisterTab = function(_, b) tabs[#tabs + 1] = b end,
   SetTabSelected = function(_, b, on) rawset(b, "selected", on) end,
@@ -197,7 +201,7 @@ end
 local function click(b) b.OnClick(b) end
 local function keys(r) local o = r.opts.options local list = type(o) == "function" and o() or o local k, l = {}, {} for i, x in ipairs(list) do k[i] = x.key l[i] = x.label end return table.concat(k, ","), table.concat(l, ",") end
 local function configDropdown()
-  for _, r in ipairs(dropdowns) do if keys(r) == "icons,texts,bars,circles" then return r end end
+  for _, r in ipairs(dropdowns) do if keys(r) == "icons,texts,bars,circles,timeline" then return r end end
 end
 local function tabFrame(name)
   for _, b in ipairs(tabs) do if b.text.text == name then return b end end
@@ -315,6 +319,7 @@ check("tab: routing checkboxes bind the saved fields", function()
     { "Icon", function() return db.noteLines.icon end },
     { "Bar", function() return db.bars.noteLines end },
     { "Circle", function() return db.noteLines.circle end },
+    { "Alert timeline", function() return db.noteLines.timeline end },
     { "Read them out (text to speech)", function() return alertSettings.tts end },
   }
   for _, c in ipairs(cases) do
@@ -366,7 +371,7 @@ check("tab: routing checkboxes bind the saved fields", function()
   assert(previewsOn == true, "Previews on")
   CRT.UI:SetPreviews(false)
   click(testBtn)
-  for _, key in ipairs({ "AlertIcons", "AlertTexts", "AlertBars", "AlertCircles" }) do
+  for _, key in ipairs({ "AlertIcons", "AlertTexts", "AlertBars", "AlertCircles", "AlertTimeline" }) do
     assert(#CRT[key]:Visible() == 3, key .. " tests three lines: " .. #CRT[key]:Visible())
   end
   assert(#errors == 0, tostring(errors[1]))
@@ -404,7 +409,7 @@ check("tab: configuration dropdown swaps rows", function()
   assert(help, "Configuration (?)")
   local d = configDropdown()
   local k, l = keys(d)
-  assert(l == "Icons,Texts,Bars,Circles", l)
+  assert(l == "Icons,Texts,Bars,Circles,Alert timeline", l)
   d.opts.set("icons")
   local show = checks("Show these alerts")
   assert(show and show.shown and show.checked, "Show these alerts")
@@ -542,12 +547,20 @@ check("alertstab: fits PAGE_W and PAGE_H", function()
     while f and f ~= root do if not f.shown then return false end f = f.parent end
     return true
   end
-  for _, key in ipairs({ "icons", "texts", "bars", "circles" }) do
+  -- the area's rows sit in a scroll frame, which clips them: the scroll frame itself must fit
+  local scroll = created.CowfeeRaidToolsAlertSettingsScroll
+  assert(scroll, "the rows' scroll frame")
+  local function clipped(m)
+    local f = m.parent
+    while f do if f == scroll then return true end f = f.parent end
+    return false
+  end
+  for _, key in ipairs({ "icons", "texts", "bars", "circles", "timeline" }) do
     configDropdown().opts.set(key)
     rects = {}
     local n = 0
     for _, m in ipairs(frames) do
-      if inside(m) and visible(m) and #m.pts > 0 then
+      if inside(m) and visible(m) and #m.pts > 0 and not clipped(m) then
         local r = rect(m)
         n = n + 1
         local name = tostring(rawget(m, "label") or rawget(m, "text") or m.kind)
@@ -561,6 +574,50 @@ check("alertstab: fits PAGE_W and PAGE_H", function()
   -- the two columns spread over the page: Configuration starts in its right half
   rects = {}
   assert(rect(heading)[1] >= W / 2, "the right column starts at half the page: " .. rect(heading)[1])
+  -- the scroll frame's bar sits 6 px right of it (the template), about 20 px wide: inside the page too
+  local r = rect(scroll)
+  assert(r[3] + 6 + 20 <= W, "the scroll bar fits: " .. r[3])
+end)
+
+check("alertstab: a long list of settings scrolls, a short one does not", function()
+  CRT.NotesPage.Open("alerts")
+  local scroll = created.CowfeeRaidToolsAlertSettingsScroll
+  assert(scroll.template == "UIPanelScrollFrameTemplate" and scroll.scrollChild and scroll.scrollChild.parent == scroll, "the rows are its scroll child")
+  local d = configDropdown()
+  d.opts.set("timeline")
+  local child = scroll.scrollChild
+  assert(child.h > scroll.h and scroll.ScrollBar.shown, "the timeline's rows are taller than the tab: they scroll (" .. child.h .. " in " .. scroll.h .. ")")
+  local dir = row(dropdowns, "Direction")
+  assert(dir and dir.shown and not row(dropdowns, "Grow").shown, "its rows, without Grow")
+  scroll.vscroll = 120
+  d.opts.set("icons")
+  assert(child.h <= scroll.h and not scroll.ScrollBar.shown and scroll.vscroll == 0, "the icons fit: no bar, back at the top")
+  -- the bars' rows (the most of the other areas) fit too: no bar
+  d.opts.set("bars")
+  assert(child.h <= scroll.h and not scroll.ScrollBar.shown, "the bars fit with no scroll bar: " .. child.h .. " in " .. scroll.h)
+end)
+
+check("alertstab: a slider row's (?) sits inside the scroll frame", function()
+  CRT.NotesPage.Open("alerts")
+  local scroll = created.CowfeeRaidToolsAlertSettingsScroll
+  local found = 0
+  for _, key in ipairs({ "bars", "timeline", "icons", "texts", "circles" }) do
+    configDropdown().opts.set(key)
+    for _, r in ipairs(sliders) do
+      local help = rawget(r, "help")
+      if help and r.shown and r.parent == scroll.scrollChild then
+        local p = r.pts[#r.pts]
+        local hp = help.pts[#help.pts]
+        local o = r.opts
+        local rowRight = p[4] + (o.labelWidth or 140) + 5 + (o.width or 200) + 44
+        assert(hp[1] == "LEFT" and hp[2] == r and hp[3] == "RIGHT", key .. ": the (?) after the row")
+        local right = rowRight + hp[4] + 20 -- UI.HELP_SIZE
+        assert(right <= scroll.w, key .. ": " .. r.label .. "'s (?) ends at " .. right .. ", the scroll frame at " .. scroll.w)
+        found = found + 1
+      end
+    end
+  end
+  assert(found > 0, "a slider row with a (?) was checked")
 end)
 
 if fail > 0 then error(fail .. " failed") end

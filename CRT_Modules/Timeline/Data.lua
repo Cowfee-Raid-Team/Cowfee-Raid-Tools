@@ -327,9 +327,10 @@ end
 -- (Alerts/Colors.lua) and the chosen order (OrderShift): the boss's first reference of the group, yours
 -- first as Reference:List orders them. A reference with no Encounter: line is the boss's by name:
 -- bossName, else the boss library's name for encounterID, else the name its pulls were saved under.
--- prefer (optional) is a Difficulty line's text ("Normal") that wins inside the group. The entry
--- ({ key, ref, own, ... }) or nil.
-function Timeline:ReferenceFor(encounterID, group, bossName, prefer)
+-- prefer (optional) is a Difficulty line's text ("Normal") that wins inside the group. found (optional)
+-- is the boss's references a caller already read (Reference:ForBoss), so the boss is read once. The
+-- entry ({ key, ref, own, ... }) or nil.
+function Timeline:ReferenceFor(encounterID, group, bossName, prefer, found)
     local Reference = CRT.TimelineReference
     if not Reference then
         return nil
@@ -340,7 +341,10 @@ function Timeline:ReferenceFor(encounterID, group, bossName, prefer)
         local boss = tdb().bosses and tdb().bosses[encounterID]
         name = (def and def.name) or (boss and boss.name) or nil
     end
-    local list = Reference:ForGroup(Reference:ForBoss(encounterID, name), group == "mythic" and "mythic" or "nh")
+    if type(found) ~= "table" then
+        found = Reference:ForBoss(encounterID, name)
+    end
+    local list = Reference:ForGroup(found, group == "mythic" and "mythic" or "nh")
     if type(prefer) == "string" then
         local want = prefer:lower()
         for _, entry in ipairs(list) do

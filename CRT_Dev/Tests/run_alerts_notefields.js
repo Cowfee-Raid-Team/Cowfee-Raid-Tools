@@ -166,16 +166,16 @@ check("note lines: show field picks outputs", function()
   assert(t3.tts == nil and t3.glow == nil and t3.count == true, "0 and no are not true")
   local s = Notes:Alert()
   local i1 = E.ItemFor(t1, 1, true)
-  same(i1.outputs, { alert = false, text = true, icon = true, bar = false, circle = false, speech = true }, "outputs 1")
+  same(i1.outputs, { alert = false, text = true, icon = true, bar = false, circle = false, timeline = false, speech = true }, "outputs 1")
   same(i1.speech, Rules.SpeechItems("Spell1022", 6, true, true), "speech 1")
   assert(i1.warn == 6 and i1.hold == 3 and i1.icon == 12345 and i1.sound == "RAID_WARNING" and i1.glow == true, "fields 1")
   assert(i1.text == "Spell1022" and i1.priority == Rules.Priority(2, "normal"), "text and rank 1")
   local i2 = E.ItemFor(t2, 2, true)
-  same(i2.outputs, { alert = true, text = false, icon = false, bar = true, circle = false, speech = false }, "outputs 2")
+  same(i2.outputs, { alert = true, text = false, icon = false, bar = true, circle = false, timeline = false, speech = false }, "outputs 2")
   assert(i2.warn == s.seconds and i2.hold == 8 and i2.icon == nil and i2.sound == nil and i2.glow == nil, "fields 2")
   same(i2.speech, {}, "no speech 2")
   local i3 = E.ItemFor(t3, 3, true)
-  same(i3.outputs, { alert = false, text = false, icon = false, bar = false, circle = true, speech = true }, "outputs 3")
+  same(i3.outputs, { alert = false, text = false, icon = false, bar = false, circle = true, timeline = false, speech = true }, "outputs 3")
   same(i3.speech, Rules.SpeechItems("Quiet", 10, false, true), "count only")
   assert(i3.hold == 0.5, "hold at least half a second")
   -- Someone else's line: no outputs even with show.
@@ -235,7 +235,29 @@ end)
 check("routing: show line ignores routing", function()
   CRT.db.alerts.noteLines = { text = true, icon = true, circle = true }
   local t = P.Parse("time:30;ph:1;tag:Cheoeqar;text:Soak;show:alert,bar;").timers[1]
-  same(E.ItemFor(t, 1, true).outputs, { alert = true, text = false, icon = false, bar = true, circle = false, speech = false }, "show outputs only")
+  same(E.ItemFor(t, 1, true).outputs, { alert = true, text = false, icon = false, bar = true, circle = false, timeline = false, speech = false }, "show outputs only")
+  CRT.db.alerts.noteLines = nil
+end)
+
+check("timeline: a note line's show:timeline and the routing", function()
+  local t = P.Parse("time:30;ph:1;tag:Cheoeqar;text:Soak;show:timeline,alert;").timers[1]
+  same(t.show, { timeline = true, alert = true }, "show:timeline reads")
+  local it = E.ItemFor(t, 1, true)
+  assert(it.outputs.timeline == true and it.outputs.alert == true and not it.outputs.bar, "the timeline output")
+  local line = P.FormatLine(t)
+  assert(line:find("show:alert,timeline;", 1, true), "written back: " .. line)
+  -- a plain line goes there only when routed
+  CRT.db.alerts.noteLines = { text = false, icon = false, circle = false }
+  local plain = P.Parse("time:20;ph:1;tag:Cheoeqar;text:Move out;").timers[1]
+  assert(not E.ItemFor(plain, 1, true).outputs.timeline, "an older save without the box: not on the timeline")
+  CRT.db.alerts.noteLines = { text = false, icon = false, circle = false, timeline = true }
+  assert(E.ItemFor(plain, 1, true).outputs.timeline == true, "routed to the timeline")
+  E:Start(P.Parse("time:20;ph:1;tag:Cheoeqar;text:Move out;"), "test")
+  local lines = A:Lines(clock + 15)
+  local found = false
+  for _, l in ipairs(lines) do if l.outputs.timeline then found = true end end
+  assert(found, "the run's lines carry it")
+  E:Stop()
   CRT.db.alerts.noteLines = nil
 end)
 

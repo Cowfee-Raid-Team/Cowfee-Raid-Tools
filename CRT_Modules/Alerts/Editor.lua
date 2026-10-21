@@ -75,6 +75,7 @@ local TEXT = {
     showIcon = "Icon",
     bar = "Bar",
     circle = "Circle",
+    timeline = "Alert timeline",
     also = "Also",
     speak = "Speak the text",
     count = "Count down 3 2 1",
@@ -139,6 +140,8 @@ local SHOW_KEYS = Draft.SHOW_KEYS
 local LEFT = 16
 local MENU_MAX_HEIGHT = 400 -- the For and Sound menus scroll past this (a full raid is taller than the screen)
 local FIELD_X = 91 -- where the boxes and checkboxes of the labelled rows start
+local SHOW_CHECK_W = 26 -- a Show as box and the gap before its label
+local SHOW_GAP = 10     -- between one Show as label and the next box
 local SAVED_SHIFT = 48 -- a saved alert has no Relative to / Time row or Saves to line: the rows below move up by this
 local ROW1_EXTRA = 14 -- room under the first row for the Saves to line; every row below moves down by it
 local EXPORT_CHROME = 56 -- the copy window above and below its text box
@@ -579,7 +582,14 @@ local function refresh(rows)
     frame.sourceText:SetText(casts and "" or sourceLine())
     frame.savesText:SetText(savesToLine())
     local message = timeError(false) or notice
-    frame.messageText:SetText(message and UI.BadText(message) or "")
+    if message then
+        frame.messageText:SetText(UI.BadText(message))
+    elseif Draft.TimelineOnlyNote(draft) then
+        -- a warning, not an error: it still saves
+        frame.messageText:SetText(UI.WarnText(Draft.TEXT.timelineOnly))
+    else
+        frame.messageText:SetText("")
+    end
     frame.deleteBtn:SetShown(not locked and ctx ~= nil and (ctx.id ~= nil or ctx.noteID ~= nil or ctx.savedID ~= nil))
 end
 
@@ -1489,11 +1499,17 @@ local function build()
 
     -- Show as
     makeLabel(f, TEXT.showAs, LEFT, -246 - ROW1_EXTRA)
+    -- one row, each box after the one before it by its label's width, so six fit the window
     f.checks = {}
-    for _, spec in ipairs({ { "alert", TEXT.nextSpell, FIELD_X }, { "text", TEXT.showText, 226 },
-        { "icon", TEXT.showIcon, 296 }, { "bar", TEXT.bar, 366 }, { "circle", TEXT.circle, 430 } }) do
+    local showX = FIELD_X
+    for _, spec in ipairs({ { "alert", TEXT.nextSpell }, { "text", TEXT.showText }, { "icon", TEXT.showIcon },
+        { "bar", TEXT.bar }, { "circle", TEXT.circle }, { "timeline", TEXT.timeline } }) do
         local key = spec[1]
-        f.checks[key] = makeCheck(f, spec[2], spec[3], -240 - ROW1_EXTRA, setter(function(on) draft.show[key] = on end))
+        local check = makeCheck(f, spec[2], showX, -240 - ROW1_EXTRA, setter(function(on) draft.show[key] = on end))
+        f.checks[key] = check
+        local fs = check.label
+        local words = fs.GetUnboundedStringWidth and fs:GetUnboundedStringWidth() or fs:GetStringWidth()
+        showX = showX + SHOW_CHECK_W + math.ceil(tonumber(words) or 0) + SHOW_GAP
     end
 
     -- Also

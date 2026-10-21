@@ -1,15 +1,16 @@
 local ADDON, CRT = ...
 
 -- The Alerts tab of the Raid Notes page (Notes/Page.lua builds it into its tab).
---   Left   where your own note lines go: the Next spell alert, the texts, icons, bars and circles, and
+--   Left   where your own note lines go: the Next spell alert, the texts, icons, bars, circles and timeline, and
 --          whether they are read out. Each uses a switch kept elsewhere: the alert and speech in
 --          CRTDB.notes.alert (enabled, tts), the bars in alerts.bars.noteLines, the rest in
 --          alerts.noteLines. A note line with its own show: keeps its displays (see Notes/Engine.lua).
 --          Under it, Colours (Use custom colours, alerts.customColors, the one switch for your own alert colours:
 --          the areas' colour rows, your reminders' and templates' colour; see Alerts/Colors.lua), then Previews
 --          and a test of every area.
---   Right  Configuration, from half the page: a dropdown of the four alert areas and the chosen one's
---          settings, drawn by Alerts/Areas.lua's panel from each area's def.settings. The choice is kept
+--   Right  Configuration, from half the page: a dropdown of the five alert areas and the chosen one's
+--          settings, drawn by Alerts/Areas.lua's panel from each area's def.settings, in a scroll frame
+--          (CowfeeRaidToolsAlertSettingsScroll) for an area with more rows than fit. The choice is kept
 --          for the session.
 -- The ⚙ on each area's drag box opens this tab on that area (CRT.NoteAlertsTab.Select).
 -- The areas load after this file, so they are only looked up once the tab is built.
@@ -29,6 +30,7 @@ local TEXT = {
     icon = "Icon",
     bar = "Bar",
     circle = "Circle",
+    timeline = "Alert timeline",
     speech = "Read them out (text to speech)",
     speechHelp = "Reads your note lines out wherever they show, with or without the Next spell alert, and plays their sounds.\n\n"
         .. "It is also the switch for all speech: turning it off silences your reminders' speech too.",
@@ -51,6 +53,7 @@ local TEXT = {
     texts = "Texts",
     bars = "Bars",
     circles = "Circles",
+    timelineArea = "Alert timeline",
 }
 
 -- The areas in the dropdown, in this order.
@@ -59,12 +62,17 @@ local KINDS = {
     { key = "texts", label = TEXT.texts },
     { key = "bars", label = TEXT.bars },
     { key = "circles", label = TEXT.circles },
+    { key = "timeline", label = TEXT.timelineArea },
 }
 local DEFAULT_KIND = "icons"
 -- Two columns, each half of the page (UI.PAGE_W): where your note lines go on the left, Configuration
--- on the right. The tab is UI.PAGE_H - 66 high under the tabs; the tallest area's rows end well above it.
+-- on the right. The tab is UI.PAGE_H - 66 high under the tabs (Notes/Page.lua); an area's rows that run
+-- taller than the room under the dropdown scroll (the timeline has many).
 local COLUMN_GAP = 16
 local RIGHT_X = math.floor(UI.PAGE_W / 2) + COLUMN_GAP / 2
+local TAB_H = UI.PAGE_H - 66
+local ROWS_TOP = 68      -- the rows start this far down the tab, under the dropdown
+local ROWS_BOTTOM = 4    -- and end this far above its bottom: room for the bars' 13 rows without scrolling
 local TEST_ICONS = { 136243, 135808, 136116 }
 local TEST_TIMES = { 8, 12, 16 } -- seconds until each test alert reaches 0
 local TEST_HOLD = 1
@@ -72,7 +80,7 @@ local TEST_HOLD = 1
 local WHITE = { 1, 1, 1 }
 local GREY = { 0.5, 0.5, 0.5 }
 
-local tab, panel, kindDrop
+local tab, panel, kindDrop, rowsScroll
 local selected = DEFAULT_KIND
 local controls = {}
 
@@ -127,7 +135,7 @@ end
 local function routing()
     local alerts = alertSettings()
     if type(alerts.noteLines) ~= "table" then
-        alerts.noteLines = { text = false, icon = false, circle = false }
+        alerts.noteLines = { text = false, icon = false, circle = false, timeline = false }
     end
     return alerts.noteLines
 end
@@ -163,6 +171,14 @@ local function show(key)
         return
     end
     panel:Select(area)
+    -- back to the top, and the scroll bar only when the rows are taller than the room
+    if rowsScroll then
+        local tall = panel.frame:GetHeight() > rowsScroll:GetHeight()
+        rowsScroll:SetVerticalScroll(0)
+        if rowsScroll.ScrollBar then
+            rowsScroll.ScrollBar:SetShown(tall)
+        end
+    end
     if kindDrop then
         kindDrop.refresh()
     end
@@ -223,6 +239,7 @@ local function build(pf)
         end
     end)
     makeCheck(pf, 4, nextRow(), TEXT.circle, areaOn("circles"), route("circle"))
+    makeCheck(pf, 4, nextRow(), TEXT.timeline, areaOn("timeline"), route("timeline"))
     local speech = makeCheck(pf, 4, nextRow(), TEXT.speech, nil, alertField("tts"))
     UI.Help(pf, TEXT.speech, TEXT.speechHelp):SetPoint("LEFT", speech.label, "RIGHT", 6, 0)
 
@@ -272,8 +289,18 @@ local function build(pf)
         set = show,
     })
     kindDrop:SetPoint("TOPLEFT", RIGHT_X - 4, -32)
-    panel = CRT.AlertAreas.Panel(pf, refresh)
-    panel.frame:SetPoint("TOPLEFT", RIGHT_X, -72)
+    -- The chosen area's rows, in a scroll frame that clips them to the tab; its bar shows only when needed.
+    local scroll = CreateFrame("ScrollFrame", "CowfeeRaidToolsAlertSettingsScroll", pf, "UIPanelScrollFrameTemplate")
+    UI:SkinScrollBar(scroll.ScrollBar)
+    scroll.scrollBarHideable = true -- the template hides the bar when nothing scrolls
+    scroll:SetPoint("TOPLEFT", RIGHT_X, -ROWS_TOP)
+    panel = CRT.AlertAreas.Panel(scroll, refresh)
+    -- as wide as the rows and the (?) after a control, so the scroll frame never clips one
+    local width = panel.fullWidth or panel.frame:GetWidth()
+    panel.frame:SetWidth(width)
+    scroll:SetSize(width, TAB_H - ROWS_TOP - ROWS_BOTTOM)
+    scroll:SetScrollChild(panel.frame)
+    rowsScroll = scroll
 
     pf:SetScript("OnShow", function()
         show(selected)
@@ -283,8 +310,8 @@ local function build(pf)
     show(selected)
 end
 
--- Built into the Alerts tab by Notes/Page.lua. Select(key) picks an area ("icons", "texts", "bars" or
--- "circles") for when the tab shows, and shows it at once if the tab is built.
+-- Built into the Alerts tab by Notes/Page.lua. Select(key) picks an area ("icons", "texts", "bars",
+-- "circles" or "timeline") for when the tab shows, and shows it at once if the tab is built.
 CRT.NoteAlertsTab = {
     Build = build,
     Select = function(key)
