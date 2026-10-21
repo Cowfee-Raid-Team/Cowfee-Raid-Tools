@@ -148,6 +148,10 @@ local function loadSource(i, src)
     local tmp = { UI = {} }
     assert(load(src, "CRT_Core/UI/Controls.lua"))("CowfeeRaidTools", tmp)
     CRT.UI.PickColor = tmp.UI.PickColor
+  elseif src:find("function UI:SkinScrollBar", 1, true) then -- the real CRT_Core/UI/ScrollBar.lua: only the gutter rule is taken
+    local tmp = { UI = {} }
+    assert(load(src, "CRT_Core/UI/ScrollBar.lua"))("CowfeeRaidTools", tmp)
+    CRT.UI.SCROLL_GAP, CRT.UI.SCROLL_BAR_W, CRT.UI.ScrollGutter = tmp.UI.SCROLL_GAP, tmp.UI.SCROLL_BAR_W, tmp.UI.ScrollGutter
   else
     assert(load(src, "src" .. i))("CowfeeRaidTools", CRT)
   end
@@ -223,6 +227,29 @@ check("mech: list rows with tick, icon, name, dot", function()
   assert(f.rows[1].name.text ~= "Real Name", "scrolled down")
   f.list.OnMouseWheel(f.list, 1)
   assert(f.rows[1].name.text == "Real Name", "and back up")
+  assert(#errors == 0, tostring(errors[1]))
+end)
+
+-- The list's scroll bar is its own thin thumb at its right edge, the same in every theme (a caramel tint):
+-- every row, and so its selection, highlight (both SetAllPoints) and dot, ends UI.SCROLL_GAP before it.
+check("mech: no row runs under the list's scroll bar", function()
+  local f = fresh()
+  for i = 1, 30 do R:Save(ENC, nil, { text = "mine " .. i, times = "P1 0:" .. string.format("%02d", i), boss = "Test Boss" }) end
+  CRT.NoteReminders.Refresh()
+  local thumb = f.thumb
+  assert(thumb and thumb.shown, "a long list shows its scroll bar")
+  local p = thumb.pts[#thumb.pts]
+  assert(p[1] == "TOPRIGHT" and p[2] == f.list and p[3] == "TOPRIGHT", "the bar hangs from the list's right edge")
+  local barLeft = f.list.w + p[4] - thumb.w
+  for i, row in ipairs(f.rows) do
+    local rp = row.frame.pts[1]
+    assert(rp[1] == "TOPLEFT" and type(rp[2]) == "number", "row " .. i .. " placed from the list's left")
+    local right = rp[2] + row.frame.w
+    assert(right + CRT.UI.SCROLL_GAP <= barLeft, "row " .. i .. " ends at " .. right .. ", the bar starts at " .. barLeft)
+    assert(row.sel.allPoints, "row " .. i .. ": the selection is the row's own size")
+    local dp = row.dot.pts[1]
+    assert(dp[1] == "RIGHT" and type(dp[2]) == "number" and dp[2] <= 0, "row " .. i .. ": the dot sits inside the row")
+  end
   assert(#errors == 0, tostring(errors[1]))
 end)
 
