@@ -1,5 +1,5 @@
 // The dev gear probe (CRT_Dev/Dev/GearProbe.lua, /crt dev gear): your items' and a seen player's item, enchant,
-// gem and bonus IDs, which season checks each trips, and the slash command routing.
+// gem and bonus IDs, the upgrade track the season maps them to, which season checks each trips, and the slash command routing.
 // Usage: node run_gearprobe.js <addon folder>
 const fs = require('fs');
 const path = require('path');
@@ -26,16 +26,17 @@ for _, src in ipairs({ gearSrc, registrySrc, dataSrc, probeSrc }) do assert(load
 local Probe, Gear, B = CRT.GearProbe, CRT.Gear, CRT.Bosses
 B:Season({ key = "t", name = "T", order = 1, current = true })
 B:SeasonData("t", "gearChecks", { checks = { { key = "glow", label = "Glow", kind = "bonusIds", ids = { 5001 } } } })
+B:SeasonData("t", "tracks", { list = { { key = "hero", label = "Hero", letter = "H", quality = 4 } }, bonus = { [5001] = { track = "hero", rank = 4, max = 6 } } })
 
 check(Probe:Command("dev gear", "dev gear"), "dev gear is its command")
-eq(printed[1], "Gear probe: you (2 items). Paste the IDs into the season's GearChecks.lua.", "the heading")
-eq(printed[2], "  Head: item 101, enchant 7364, gems 213746, bonus 5001,9 | trips: glow", "your head: every ID, and the check it trips")
+eq(printed[1], "Gear probe: you (2 items). Paste the IDs into the season's GearChecks.lua or Tracks.lua.", "the heading")
+eq(printed[2], "  Head: item 101, enchant 7364, gems 213746, bonus 5001,9, track Hero 4/6 | trips: glow", "your head: every ID, the track the map gives, and the check it trips")
 eq(printed[3], "    item:101:7364:213746:::::::::28:2:5001:9", "and its item string")
-eq(printed[4], "  Neck: item 102, enchant -, gems -, bonus -", "nothing in it: dashes")
+eq(printed[4], "  Neck: item 102, enchant -, gems -, bonus -, track unknown", "nothing in it: dashes, and no track")
 printed = {}
 Gear:Remember("Quick-Sargeras", { { slot = 2, id = 102, itemString = "item:102" } }, "gearcheck", true)
 check(Probe:Command("dev gear quick", "dev gear Quick"), "dev gear <name>")
-eq(printed[1], "Gear probe: Quick-Sargeras (1 item). Paste the IDs into the season's GearChecks.lua.", "a seen player, by short name")
+eq(printed[1], "Gear probe: Quick-Sargeras (1 item). Paste the IDs into the season's GearChecks.lua or Tracks.lua.", "a seen player, by short name")
 printed = {}
 Probe:Command("dev gear nobody", "dev gear Nobody")
 eq(printed[1], "Gear probe: nothing known for Nobody. Refresh the Gear Checker first.", "a player not seen")

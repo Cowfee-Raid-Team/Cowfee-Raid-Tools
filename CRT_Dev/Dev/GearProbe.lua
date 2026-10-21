@@ -4,16 +4,19 @@ local ADDON, CRT = ...
 -- GearChecks.lua. This file never ships: its .toc line is inside the do-not-package block.
 --   /crt dev gear          your equipped items: slot, item ID, enchant, gems and bonus IDs, and the item string
 --   /crt dev gear <name>   the same for a player the Gear Checker has seen (a reply or an inspect), by name
--- Each line also says which of the season's checks the item trips. Reads only CRT.Gear; nothing is saved.
+-- Each line also says the upgrade track the season's Tracks.lua maps the bonus IDs to ("unknown" when none
+-- is on the map, so a new track's bonus ID shows up here) and which of the season's checks the item trips.
+-- Reads only CRT.Gear; nothing is saved.
 
 local Gear = CRT.Gear
 local Probe = {}
 CRT.GearProbe = Probe
 
 Probe.TEXT = {
-    head = "Gear probe: %s (%d %s). Paste the IDs into the season's GearChecks.lua.",
+    head = "Gear probe: %s (%d %s). Paste the IDs into the season's GearChecks.lua or Tracks.lua.",
     none = "Gear probe: nothing known for %s. Refresh the Gear Checker first.",
-    line = "  %s: item %s, enchant %s, gems %s, bonus %s%s",
+    line = "  %s: item %s, enchant %s, gems %s, bonus %s, track %s%s",
+    unknownTrack = "unknown",
     trips = " | trips: %s",
     raw = "    %s",
 }
@@ -44,8 +47,10 @@ function Probe.Lines(who, pieces)
             end
         end
         local slot = Gear.Slot(p.slot)
+        local track = CRT.GearChecker.TrackOf(parts)
         out[#out + 1] = string.format(Probe.TEXT.line, slot and slot.name or tostring(p.slot), tostring(p.id or "?"),
             tostring(parts and parts.enchant or "-"), list(gems), list(parts and parts.bonusIds),
+            track and CRT.GearChecker.TrackWords(track) or Probe.TEXT.unknownTrack,
             #trips > 0 and string.format(Probe.TEXT.trips, table.concat(trips, ",")) or "")
         out[#out + 1] = string.format(Probe.TEXT.raw, tostring(p.itemString or "(no item string)"))
     end
