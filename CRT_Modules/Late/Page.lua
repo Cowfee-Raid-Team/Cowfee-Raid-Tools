@@ -495,12 +495,119 @@ end
 -- The expected roster as its 8 groups (UI.SlotGrid, the same grid as Raid Groups), each player with a
 -- ready check icon: ready once they are in your group, a ? while they are not. A late arrival shows how
 -- late on the right, and someone not here yet their running time. Players added by hand fill the empty
--- slots after the layout's. Clicking a ? counts that player as here on time (Late:SetOnTime).
+-- slots after the layout's. Clicking a ? invites that player; right-clicking it can also count them as
+-- here on time (Late:SetOnTime).
 
 local READY_ICON = "Interface\\RaidFrame\\ReadyCheck-Ready"
 local WAITING_ICON = "Interface\\RaidFrame\\ReadyCheck-Waiting"
-local GRID_RIGHT_W = 60 -- room for "+12 min" or "1:04:30"
+local GRID_RIGHT_W = 110 -- room for "invited 1:20  1:04:30" or "moved to 3  +12 min"
 local tonightGrid
+
+-- A sample night shown instead of the real one, set by /crt dev late (Dev/LateTest.lua). Display only:
+-- it is never saved, and the buttons still act on the real night.
+local previewNight
+
+-- Invites (Groups/Invite.lua): clicking a row that isn't here invites that player by the Name-Realm in the
+-- expected roster, and they move to its group when they join. Invite all not here does everyone.
+local INVITE_TEXT = {
+    all = "Invite all not here (%d)",
+    allBody = "Invites everyone on tonight's list who isn't in your group. Each one moves to their group in the expected roster when they join, if it has a free spot.",
+    click = "Click to invite %s. They move to group %d when they join.",
+    clickFree = "Click to invite %s.",
+    onTimeHint = "Right-click to count them as here on time, such as for someone on another character or excused.",
+    invite = "Invite %s",
+    onTime = "Count as here on time",
+}
+local inviteAllButton, inviteStatus
+
+-- The expected roster's slots, which give each player their group.
+local function expectedSlots()
+    local preset = Groups:Find(Groups:Active())
+    return preset and preset.slots
+end
+
+local function expectedName()
+    local night = Late:Current()
+    local preset = Groups:Find(Groups:Active())
+    return (night and night.layout) or (preset and preset.name)
+end
+
+-- Who isn't here: tonight's players who haven't joined (with no night running, the expected roster) and
+-- aren't in your group now, in list order.
+local function notHere()
+    local lookup = Groups.MakeLookup(Groups:ReadRoster())
+    local night = Late:Current()
+    local out = {}
+    if night then
+        for _, p in ipairs(night.players) do
+            if not p.joinedAt and not lookup(p.key) then
+                out[#out + 1] = p.key
+            end
+        end
+    else
+        for _, key in ipairs(Groups:ActiveNames()) do
+            if not lookup(key) then
+                out[#out + 1] = key
+            end
+        end
+    end
+    return out
+end
+
+-- A grid row's player who can be invited: not here yet, and not the sample night.
+local function invitable(p)
+    if not p or previewNight or p.joinedAt then
+        return false
+    end
+    return not Groups.MakeLookup(Groups:ReadRoster())(p.key)
+end
+
+local function invite(keys)
+    CRT.Invite:Send(keys, expectedSlots(), expectedName())
+end
+
+-- The invite's state on a row (invited 1:20, declined, moved to 3), before the late time, if any.
+local function withInvite(p, late, now)
+    local entry = CRT.Invite:Entry(p.key)
+    local state = entry and not (entry.state == "joined" and not entry.stayed) and CRT.Invite:StateText(p.key, now)
+    if state and late ~= "" then
+        return state .. "  " .. late
+    end
+    return state or late
+end
+
+local function refreshInvites()
+    if not inviteAllButton then
+        return
+    end
+    local n = #notHere()
+    inviteAllButton:SetText(format(INVITE_TEXT.all, n))
+    local fs = inviteAllButton:GetFontString()
+    inviteAllButton:SetWidth(UI.PanelButtonWidth(fs and fs:GetStringWidth() or 0))
+    inviteAllButton:SetEnabled((CRT.Invite.CanInvite() and n > 0) and true or false)
+    inviteStatus:SetText(CRT.Invite:Summary())
+end
+
+-- A row's right-click menu: invite them, or count them as here on time (for a running night).
+local function openRowMenu(slot)
+    local p = slot.player
+    if not invitable(p) then
+        return
+    end
+    UI.ContextMenu(slot, function(root)
+        root:CreateTitle(Groups.ReportName(p.key))
+        local canInvite = CRT.Invite.CanInvite()
+        local b = root:CreateButton(format(INVITE_TEXT.invite, p.key), function()
+            invite({ p.key })
+        end)
+        b:SetEnabled(canInvite and true or false)
+        if not p.idle then
+            root:CreateButton(INVITE_TEXT.onTime, function()
+                Late:SetOnTime(p.key)
+            end)
+        end
+    end)
+end
 
 -- The player at each grid slot: the layout's slots, then players added by hand in the empty ones.
 -- Without a running night, the layout's names with no status.
@@ -559,21 +666,21 @@ local function paintGrid(night, now)
             if p.idle then
                 b.text:SetTextColor(0.6, 0.6, 0.6)
                 b.icon:Hide()
-                b.right:SetText("")
+                b.right:SetText(withInvite(p, "", now))
             elseif p.joinedAt then
                 b.text:SetTextColor(Groups.ClassColor(p.key))
                 b.icon:SetTexture(READY_ICON)
                 b.icon:Show()
                 if Late.IsLate(night, p) then
-                    b.right:SetText(UI.WarnText("+" .. minutes(Late.Seconds(night, p))))
+                    b.right:SetText(withInvite(p, UI.WarnText("+" .. minutes(Late.Seconds(night, p))), now))
                 else
-                    b.right:SetText("")
+                    b.right:SetText(withInvite(p, "", now))
                 end
             else
                 b.text:SetTextColor(0.6, 0.6, 0.6)
                 b.icon:SetTexture(WAITING_ICON)
                 b.icon:Show()
-                b.right:SetText(UI.BadText(running(Late.Seconds(night, p, now))))
+                b.right:SetText(withInvite(p, UI.BadText(running(Late.Seconds(night, p, now))), now))
             end
         end
         UI.FitText(b.text)
@@ -582,14 +689,11 @@ end
 
 -- Refresh ----------------------------------------------------------------
 
--- A sample night shown instead of the real one, set by /crt dev late (Dev/LateTest.lua). Display only:
--- it is never saved, and the buttons still act on the real night.
-local previewNight
-
 local function refreshTonight()
     local night = previewNight or Late:Current()
     local now = time()
     paintGrid(night, now)
+    refreshInvites()
     if previewNight then
         setText(tonightText, tonightChild, "|cff5aa9ffSample night from /crt dev late (not saved; type it again to go back).|r\n" .. tonightLines(night, now))
     elseif night then
@@ -901,31 +1005,72 @@ local function buildTonight(f)
     end)
     tooltip(editButton, "Edit roster", "Change tonight's list while the raid runs: add someone, count a player as on time, or take someone off. Only tonight changes, not the expected roster.")
 
+    inviteAllButton = makeButton(f, format(INVITE_TEXT.all, 0), 160)
+    standardFont(inviteAllButton)
+    inviteAllButton:SetPoint("LEFT", editButton, "RIGHT", 4, 0)
+    inviteAllButton:SetScript("OnClick", function()
+        invite(notHere())
+    end)
+    if inviteAllButton.SetMotionScriptsWhileDisabled then
+        inviteAllButton:SetMotionScriptsWhileDisabled(true) -- the tooltip says why while it is greyed
+    end
+    inviteAllButton:SetScript("OnEnter", function(self)
+        local ok, why = CRT.Invite.CanInvite()
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:SetText(self:GetText(), 1, 1, 1)
+        GameTooltip:AddLine(ok and INVITE_TEXT.allBody or why, 0.8, 0.8, 0.8, true)
+        GameTooltip:Show()
+    end)
+    inviteAllButton:SetScript("OnLeave", function()
+        GameTooltip:Hide()
+    end)
+    inviteStatus = f:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    inviteStatus:SetPoint("LEFT", inviteAllButton, "RIGHT", 10, 0)
+    inviteStatus:SetPoint("RIGHT", f, "RIGHT", -8, 0)
+    inviteStatus:SetHeight(34)
+    inviteStatus:SetJustifyH("LEFT")
+    inviteStatus:SetJustifyV("MIDDLE")
+    inviteStatus:SetWordWrap(true)
+    CRT.Invite:OnChange(function()
+        if page and page:IsShown() then
+            refreshTonight()
+        end
+    end)
+
     -- The expected roster as a grid, then who is missing and who came late in a wide box under it.
     local GRID_TOP = -44
     tonightGrid = UI.SlotGrid(f, { cols = 4, x = 8, top = GRID_TOP, width = UI.PAGE_W - 16, rightW = GRID_RIGHT_W, skin = skin })
     for _, b in ipairs(tonightGrid.slots) do
+        b:RegisterForClicks("LeftButtonUp", "RightButtonUp")
         b:SetScript("OnEnter", function(self)
             local p = self.player
-            if not p or p.idle then
+            local canInvite = invitable(p)
+            if not p or (p.idle and not canInvite) then
                 return
             end
             GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
             GameTooltip:SetText(Groups.ReportName(p.key), 1, 1, 1)
             if p.joinedAt then
                 GameTooltip:AddLine("In the group since " .. clock(p.joinedAt) .. ".", 0.8, 0.8, 0.8, true)
-            else
-                GameTooltip:AddLine("Not in the group yet. Click to count them as here on time, such as for someone on another character or excused.", 0.8, 0.8, 0.8, true)
+            elseif canInvite then
+                local ok, why = CRT.Invite.CanInvite()
+                local group = CRT.Invite.GroupOf(expectedSlots(), p.key)
+                local line = (not ok and why) or (group and format(INVITE_TEXT.click, p.key, group)) or format(INVITE_TEXT.clickFree, p.key)
+                GameTooltip:AddLine(line, 0.8, 0.8, 0.8, true)
+                if not p.idle then
+                    GameTooltip:AddLine(INVITE_TEXT.onTimeHint, 0.8, 0.8, 0.8, true)
+                end
             end
             GameTooltip:Show()
         end)
         b:SetScript("OnLeave", function()
             GameTooltip:Hide()
         end)
-        b:SetScript("OnClick", function(self)
-            local p = self.player
-            if p and not p.idle and not p.joinedAt then
-                Late:SetOnTime(p.key)
+        b:SetScript("OnClick", function(self, button)
+            if button == "RightButton" then
+                openRowMenu(self)
+            elseif invitable(self.player) and CRT.Invite.CanInvite() then
+                invite({ self.player.key })
             end
         end)
     end

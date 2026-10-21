@@ -22,9 +22,19 @@ local function mock()
     if k == "GetStringHeight" then return function() return 14 end end
     if k == "SetScript" then return function(self, name, fn) rawset(self, name, fn) end end
     if k == "SetPoint" then return function(self, p, x, y) if type(x) == "number" then rawset(self, "x", x) rawset(self, "y", y) end end end
+    if k == "SetEnabled" then return function(self, on) rawset(self, "enabled", on) end end
+    if k == "Enable" then return function(self) rawset(self, "enabled", true) end end
+    if k == "Disable" then return function(self) rawset(self, "enabled", false) end end
+    if k == "GetText" then return function(self) return rawget(self, "text") end end
     return function() end end })
 end
-function CreateFrame() return mock() end
+local frames = {}
+function CreateFrame() local f = mock() frames[#frames + 1] = f return f end
+local tip = {}
+GameTooltip = { SetOwner = function() tip = {} end, SetText = function(_, s) tip[#tip + 1] = s end, AddLine = function(_, s) tip[#tip + 1] = s end, Show = function() end, Hide = function() end }
+local menus, gridRef = {}, nil
+local sent, states, canInvite, inviteWhy = {}, {}, true, nil
+InCombatLockdown = function() return false end
 format = string.format
 date = os.date
 time = function(t) if t then return os.time(t) end return os.time({ year = 2026, month = 10, day = 14, hour = 23, min = 0 }) end
@@ -33,8 +43,12 @@ C_Timer = { After = function() end, NewTicker = function() end }
 RAID_CLASS_COLORS = {}
 local pages = {}
 local CRT = { db = { late = { days = {}, hour = 20, minute = 0, grace = 0, history = {}, nextId = 3, lastAuto = "" } },
-  UI = { SlotGrid = function() local g = { slots = {}, labels = {}, blockH = 143, slotW = 188 } for i = 1, 40 do local b = mock() rawset(b, "index", i) rawset(b, "icon", mock()) rawset(b, "text", mock()) rawset(b, "right", mock()) g.slots[i] = b end return g end, FitText = function() end, GoodText = function(t) return t end, ClipText = function() return mock() end, PAGE_W = 1026, PAGE_H = 560, Help = function() return mock() end, Dropdown = function(_, _, o) local m = mock() rawset(m, "refresh", function() if o.enabledIf then rawset(m, "enabled", o.enabledIf() and true or false) end end) return m end, Slider = function(_, _, o) local m = mock() rawset(m, "refresh", function() if o.enabledIf then rawset(m, "enabled", o.enabledIf() and true or false) end end) return m end,  RegisterLayer = function() end, RegisterPage = function(_, key, title, fn) pages[key] = fn end, RegisterTab = function() end, SetTabSelected = function() end, SkinTree = function() end, SkinScrollBar = function() end, SetFrameTitle = function() end },
-  Groups = { NUM_SLOTS = 40, Active = function() return nil end, Find = function() return nil end, OnChange = function() end, ReportName = function(k) return (k:gsub("%-.*", "")) end, Normalize = function(k) return k end, ReadRoster = function() return {} end, ClassColor = function() return 1, 1, 1 end, Display = function(k) return k end, Presets = function() return {} end, Find = function() return nil end, OnChange = function() end },
+  UI = { SlotGrid = function() local g = { slots = {}, labels = {}, blockH = 143, slotW = 188 } for i = 1, 40 do local b = mock() rawset(b, "index", i) rawset(b, "icon", mock()) rawset(b, "text", mock()) rawset(b, "right", mock()) g.slots[i] = b end gridRef = g return g end, FitText = function() end, GoodText = function(t) return t end, ClipText = function() return mock() end, PAGE_W = 1026, PAGE_H = 560, Help = function() return mock() end, Dropdown = function(_, _, o) local m = mock() rawset(m, "refresh", function() if o.enabledIf then rawset(m, "enabled", o.enabledIf() and true or false) end end) return m end, Slider = function(_, _, o) local m = mock() rawset(m, "refresh", function() if o.enabledIf then rawset(m, "enabled", o.enabledIf() and true or false) end end) return m end,  RegisterLayer = function() end, RegisterPage = function(_, key, title, fn) pages[key] = fn end, RegisterTab = function() end, SetTabSelected = function() end, SkinTree = function() end, SkinScrollBar = function() end, SetFrameTitle = function() end,
+    PanelButtonWidth = function(w) return w + 28 end, ContextMenu = function(owner, fill) menus[#menus + 1] = { owner = owner, fill = fill } end },
+  Invite = { CanInvite = function() return canInvite, inviteWhy end, Send = function(_, names, slots, from) sent[#sent + 1] = { names = names, slots = slots, from = from } return #names end,
+    StateText = function(_, key) return states[key] end, Entry = function(_, key) return states[key] and { state = "invited" } end, Summary = function() return "SUMMARY" end, OnChange = function() end,
+    GroupOf = function(slots, key) for i = 1, 40 do if slots[i] == key then return math.ceil(i / 5) end end end },
+  Groups = { MakeLookup = function() return function() return nil end end, ActiveNames = function() return {} end, NUM_SLOTS = 40, Active = function() return nil end, Find = function() return nil end, OnChange = function() end, ReportName = function(k) return (k:gsub("%-.*", "")) end, Normalize = function(k) return k end, ReadRoster = function() return {} end, ClassColor = function() return 1, 1, 1 end, Display = function(k) return k end, Presets = function() return {} end, Find = function() return nil end, OnChange = function() end },
 }
 function CRT:Print(m) print(m) end
 CRT_THEME(CRT, CRT.UI)
@@ -75,6 +89,60 @@ CRT.UI.SwitchTheme("nitro")
 pf:Show()
 check(noShowCell() == "|cffff7f6b1|r", "Nitro: the no-show count follows the switch: " .. tostring(noShowCell()))
 CRT.UI.SwitchTheme("blizzard")
+
+-- Invites on the Tonight tab: click a row that isn't here to invite them, Invite all not here, greyed states.
+local preset = { id = 7, name = "Main", slots = {} }
+for i = 1, 40 do preset.slots[i] = "" end
+preset.slots[1] = "Mesmertism-Stormrage" preset.slots[2] = "Gadios-Silvermoon" preset.slots[7] = "Balevolence-Stormrage"
+CRT.Groups.Active = function() return 7 end
+CRT.Groups.Find = function(_, id) if id == 7 then return preset end end
+CRT.Groups.ActiveNames = function() return { "Mesmertism-Stormrage", "Gadios-Silvermoon", "Balevolence-Stormrage" } end
+CRT.db.late.current = { id = 9, startedAt = time() - 600, how = "button", layout = "Main", grace = 0,
+  players = { { key = "Mesmertism-Stormrage" }, { key = "Gadios-Silvermoon", joinedAt = time() - 600 }, { key = "Balevolence-Stormrage" } } }
+canInvite, inviteWhy = true, nil
+states["Balevolence-Stormrage"] = "invited 0:42"
+pf:Show()
+local function slot(i) return gridRef.slots[i] end
+local function plain(s) return (tostring(s or ""):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")) end
+check(plain(slot(7).right.text) == "invited 0:42  10:00", "an invited row shows the invite next to the late time: " .. plain(slot(7).right.text))
+check(plain(slot(1).right.text) == "10:00", "a row not invited shows its late time only: " .. plain(slot(1).right.text))
+slot(1).OnEnter(slot(1))
+check(tip[2] == "Click to invite Mesmertism-Stormrage. They move to group 1 when they join.", "the row's tooltip: " .. tostring(tip[2]))
+slot(1).OnClick(slot(1), "LeftButton")
+check(#sent == 1 and sent[1].names[1] == "Mesmertism-Stormrage" and sent[1].slots == preset.slots and sent[1].from == "Main", "clicking the row invites by Name-Realm from tonight's layout")
+sent = {}
+slot(2).OnClick(slot(2), "LeftButton")
+check(#sent == 0, "clicking someone who is here invites nobody")
+local inviteAll
+for _, f in ipairs(frames) do if type(rawget(f, "text")) == "string" and f.text:find("^Invite all not here") then inviteAll = f end end
+check(inviteAll and inviteAll.text == "Invite all not here (2)", "the button counts the two not here: " .. tostring(inviteAll and inviteAll.text))
+check(inviteAll and inviteAll.enabled == true, "and is enabled")
+inviteAll.OnClick(inviteAll)
+check(#sent == 1 and #sent[1].names == 2 and sent[1].names[1] == "Mesmertism-Stormrage" and sent[1].names[2] == "Balevolence-Stormrage", "Invite all not here invites both")
+local statusShown = false
+for _, s in ipairs(strings) do if rawget(s, "text") == "SUMMARY" then statusShown = true end end
+check(statusShown, "the status line shows the invite summary")
+-- Right-click: Invite, or count them as here on time.
+menus = {}
+slot(1).OnClick(slot(1), "RightButton")
+local items = {}
+local root = { CreateTitle = function() end, CreateButton = function(_, label, fn) local it = { label = label, fn = fn, enabled = true } function it:SetEnabled(on) self.enabled = on end items[#items + 1] = it return it end }
+if menus[1] then menus[1].fill(root) end
+check(items[1] and items[1].label == "Invite Mesmertism-Stormrage", "right-click menu: Invite Mesmertism-Stormrage")
+check(items[2] and items[2].label == "Count as here on time", "and Count as here on time")
+if items[2] then items[2].fn() end
+check(CRT.db.late.current.players[1].joinedAt ~= nil, "which counts them as here on time")
+-- Not lead or assist: greyed with the reason; in combat the status says invites wait.
+canInvite, inviteWhy = false, "Only the raid leader or an assist can invite."
+sent = {}
+pf:Show()
+check(inviteAll.enabled == false, "not lead or assist: Invite all is greyed")
+inviteAll.OnEnter(inviteAll)
+check(tip[2] == "Only the raid leader or an assist can invite.", "its tooltip says why: " .. tostring(tip[2]))
+slot(7).OnEnter(slot(7))
+check(tip[2] == "Only the raid leader or an assist can invite.", "a row's tooltip says why: " .. tostring(tip[2]))
+slot(7).OnClick(slot(7), "LeftButton")
+check(#sent == 0, "and clicking a row invites nobody")
 if fails > 0 then error(fails .. " late page checks failed") end
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
