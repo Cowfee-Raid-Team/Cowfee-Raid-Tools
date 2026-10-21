@@ -24,7 +24,8 @@ local ADDON, CRT = ...
 -- Outside raids names are shown short and in class color.
 --
 -- It always clears when a pull starts and when it ends (kill or wipe), and as the display says: after
--- a gap with no messages, a while after the last slot fills, or when a new phase starts.
+-- a gap with no messages, a while after the last slot fills, when a new phase starts, or at a boss
+-- moment in its clearOn list (Markers/ClearOn.lua).
 --
 -- Slots fill in order, 1 to N, whatever the layout: a row, a column, a grid, or "free", where each slot
 -- has its own place on a square canvas (places, as fractions of the canvas from its top left, so a new
@@ -629,13 +630,16 @@ function Markers:Arm(encounterID, def, test)
     testing = test and true or false
     if not def then
         active = nil
-        changed()
-        return
+    else
+        build()
+        active = settings(def)
+        active.encounterID = encounterID
+        layout(active)
     end
-    build()
-    active = settings(def)
-    active.encounterID = encounterID
-    layout(active)
+    -- The display's own boss moments (clearOn), listened to only while it is armed (Markers/ClearOn.lua).
+    if CRT.MarkerClearOn then
+        CRT.MarkerClearOn:Arm(active)
+    end
     changed()
 end
 

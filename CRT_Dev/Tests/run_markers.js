@@ -8,7 +8,7 @@ const fs = require('fs');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
 const harness = `
-local dbSrc, displaySrc, editorSrc = ...
+local dbSrc, displaySrc, editorSrc, clearOnSrc = ...
 local fails, passes = 0, 0
 local function check(ok, what) if ok then passes = passes + 1 print("ok " .. what) else fails = fails + 1 print("FAIL " .. what) end end
 
@@ -42,6 +42,8 @@ local function mock(kind)
     if k == "IsShown" then return function(self) return rawget(self, "shown") end end
     if k == "SetScript" then return function(self, n, fn) rawset(self, n, fn) end end
     if k == "RegisterEvent" then return function(self, e) rawget(self, "events")[e] = true end end
+    if k == "UnregisterEvent" then return function(self, e) rawget(self, "events")[e] = nil end end
+    if k == "UnregisterAllEvents" then return function(self) rawset(self, "events", {}) end end
     if k == "GetPoint" then return function() return "CENTER", nil, "CENTER", 0, 0 end end
     if k == "SetPoint" then return function(self, ...) rawset(self, "point", { ... }) end end
     if k == "SetSize" then return function(self, w, h) rawset(self, "w", w) rawset(self, "h", h) end end
@@ -98,6 +100,7 @@ local exported
 CRT.ConsumablesTools = { ShowText = function(_, title, text) exported = text end }
 assert(load(dbSrc, "Database.lua"))("CowfeeRaidTools", CRT)
 assert(load(displaySrc, "Display.lua"))("CowfeeRaidTools", CRT)
+assert(load(clearOnSrc, "ClearOn.lua"))("CowfeeRaidTools", CRT)
 local M = CRT.MarkerDisplay
 
 local events
@@ -241,6 +244,90 @@ check(shownLines() == 0, "none: no outline")
 FREE.shape = "circle"
 fire("ENCOUNTER_END")
 
+-- Clear on (Markers/ClearOn.lua): a boss moment in the display's clearOn list clears it. Secret payloads match
+-- nothing and raise no error.
+local CO = CRT.MarkerClearOn
+local states = {}
+C_EncounterTimeline = { GetEventState = function(id) return states[id] end }
+CRT.MarkerDisplayDB.displays[ENC] = { name = "Test", slots = 4, clearOn = {
+  { event = "cast", spellID = 111 },
+  { event = "cast", spellID = 112, when = "start" },
+  { event = "timeline", spellID = 222 },
+  { event = "timeline", spellID = 223, when = "start" },
+  { event = "emote", contains = "Arena RESETS" },
+  { event = "targetable" },
+  { event = "cast" }, { event = "emote", contains = " " }, { event = "nope", spellID = 1 }, { event = "timeline", spellID = 1.5 },
+} }
+pull()
+check(#CO:Entries() == 6, "clearOn: entries without a spell ID or text, or of an unknown kind, are left out")
+local coFrame
+for _, f in ipairs(frames) do if rawget(f, "events").UNIT_TARGETABLE_CHANGED then coFrame = f end end
+check(coFrame ~= nil and coFrame.events.UNIT_SPELLCAST_SUCCEEDED and coFrame.events.CHAT_MSG_RAID_BOSS_EMOTE and coFrame.events.ENCOUNTER_TIMELINE_EVENT_ADDED, "clearOn: armed, it listens to the events its entries need")
+local function co(e, ...) if coFrame then local ok, err = pcall(coFrame.OnEvent, coFrame, e, ...) if not ok then check(false, e .. " raised an error: " .. tostring(err)) end end end
+local function clears(what, ...)
+  pull() say("{rt1}")
+  local before = #M:Filled()
+  co(...)
+  check(before == 1 and #M:Filled() == 0, "clears: " .. what)
+end
+local function keeps(what, ...)
+  pull() say("{rt1}")
+  co(...)
+  check(#M:Filled() == 1, "keeps: " .. what)
+end
+clears("a boss's cast succeeds", "UNIT_SPELLCAST_SUCCEEDED", "boss1", "Cast-1", 111)
+keeps("that cast only starts (the entry waits for success)", "UNIT_SPELLCAST_START", "boss1", "Cast-1", 111)
+clears("a when = start cast starts", "UNIT_SPELLCAST_START", "boss2", "Cast-2", 112)
+clears("a when = start channel starts", "UNIT_SPELLCAST_CHANNEL_START", "boss5", "Cast-2", 112)
+keeps("another unit casts it", "UNIT_SPELLCAST_SUCCEEDED", "raid3", "Cast-1", 111)
+keeps("another spell", "UNIT_SPELLCAST_SUCCEEDED", "boss1", "Cast-1", 999)
+keeps("a secret spell ID", "UNIT_SPELLCAST_SUCCEEDED", "boss1", secret("Cast-1"), secret(111))
+keeps("a secret unit", "UNIT_SPELLCAST_SUCCEEDED", secret("boss1"), "Cast-1", 111)
+pull() say("{rt1}")
+co("ENCOUNTER_TIMELINE_EVENT_ADDED", { id = 5, source = 0, spellID = 222 })
+check(#M:Filled() == 1, "keeps: a timeline event is added (the entry waits for it to finish)")
+states[5] = 2
+co("ENCOUNTER_TIMELINE_EVENT_STATE_CHANGED", 5)
+check(#M:Filled() == 0, "clears: the timeline event finishes")
+pull() say("{rt1}")
+co("ENCOUNTER_TIMELINE_EVENT_ADDED", { id = 6, source = 0, spellID = 222 })
+states[6] = 3
+co("ENCOUNTER_TIMELINE_EVENT_STATE_CHANGED", 6)
+check(#M:Filled() == 1, "keeps: the timeline event is canceled")
+clears("a when = start timeline event is added", "ENCOUNTER_TIMELINE_EVENT_ADDED", { id = 7, source = 0, spellID = 223 })
+keeps("a script event (CRT's own alerts) with that spell", "ENCOUNTER_TIMELINE_EVENT_ADDED", { id = 8, source = 1, spellID = 223 })
+pull() say("{rt1}")
+co("ENCOUNTER_TIMELINE_EVENT_ADDED", { id = 9, source = 0, spellID = secret(222) })
+states[9] = 2
+co("ENCOUNTER_TIMELINE_EVENT_STATE_CHANGED", 9)
+check(#M:Filled() == 1, "keeps: a timeline event whose spell is secret")
+keeps("a secret timeline info table", "ENCOUNTER_TIMELINE_EVENT_ADDED", secret({ id = 10, source = 0, spellID = 223 }))
+pull() say("{rt1}")
+co("ENCOUNTER_TIMELINE_EVENT_ADDED", { id = 11, source = 0, spellID = 222 })
+co("ENCOUNTER_TIMELINE_EVENT_REMOVED", 11)
+states[11] = 2
+co("ENCOUNTER_TIMELINE_EVENT_STATE_CHANGED", 11)
+check(#M:Filled() == 1, "keeps: a removed timeline event is forgotten")
+clears("a boss emote holding the text, any case", "CHAT_MSG_RAID_BOSS_EMOTE", "The arena resets!", "Sszorak")
+clears("the same on RAID_BOSS_EMOTE", "RAID_BOSS_EMOTE", "|cffff0000The ARENA resets|r", "Sszorak")
+clears("a boss yell", "CHAT_MSG_MONSTER_YELL", "Now the arena resets.", "Sszorak")
+keeps("an emote without the text", "CHAT_MSG_RAID_BOSS_EMOTE", "The boss roars.", "Sszorak")
+keeps("a secret emote", "CHAT_MSG_RAID_BOSS_EMOTE", secret("The arena resets!"), secret("Sszorak"))
+clears("a boss becomes untargetable", "UNIT_TARGETABLE_CHANGED", "boss1")
+keeps("a nameplate unit changes", "UNIT_TARGETABLE_CHANGED", "nameplate3")
+keeps("a secret unit changes", "UNIT_TARGETABLE_CHANGED", secret("boss1"))
+fire("ENCOUNTER_END")
+check(next(coFrame.events) == nil and #CO:Entries() == 0, "clearOn: the pull's end stops listening")
+CRT.MarkerDisplayDB.displays[ENC] = { name = "Test", slots = 4, clearOn = { { event = "emote", contains = "resets" } } }
+pull()
+check(coFrame.events.CHAT_MSG_MONSTER_YELL and not coFrame.events.UNIT_SPELLCAST_SUCCEEDED and not coFrame.events.UNIT_TARGETABLE_CHANGED, "clearOn: only the kinds it holds are listened to")
+CRT.MarkerDisplayDB.displays[ENC] = { name = "Test", slots = 4 }
+pull()
+say("{rt1}")
+co("UNIT_TARGETABLE_CHANGED", "boss1")
+check(next(coFrame.events) == nil and #M:Filled() == 1, "a display without clearOn listens to nothing and keeps its markers")
+fire("ENCOUNTER_END")
+
 -- Geometry: the same places the window uses, for the Marker macros tab's preview.
 do
   local g = M.Geometry({ slots = 4 })
@@ -372,6 +459,42 @@ check(M:EditorView() == nil and not M:Frame().shown, "closing the editor hides t
 dropdowns["Layout"].set("row")
 win.export.OnClick(win.export)
 check(not exported:find("places", 1, true) and not exported:find("shape", 1, true), "a row display's export has no canvas fields")
+check(not exported:find("clearOn", 1, true), "a display without clearOn exports none")
+
+-- Clear on in the editor: add entries, see them listed, remove one, then Export and Save draft keep them.
+win:Show()
+win.OnShow(win)
+dropdowns["Clear on"].set("cast")
+win.clearValue:SetText("1234")
+dropdowns["When"].set("start")
+win.clearAdd.OnClick(win.clearAdd)
+local list = E:Draft().clearOn
+check(list and #list == 1 and list[1].event == "cast" and list[1].spellID == 1234 and list[1].when == "start", "Add puts a boss cast in the draft's clearOn")
+check(win.clearValue:GetText() == "", "the box empties after Add")
+win.clearValue:SetText("abc")
+win.clearAdd.OnClick(win.clearAdd)
+check(#E:Draft().clearOn == 1, "a spell ID that isn't a number is not added")
+check(not dropdowns["When"].enabledIf or dropdowns["When"].enabledIf(), "When is on for a cast")
+dropdowns["Clear on"].set("emote")
+check(dropdowns["When"].enabledIf and not dropdowns["When"].enabledIf(), "When is greyed out for an emote")
+win.clearValue:SetText("The arena resets")
+win.clearAdd.OnClick(win.clearAdd)
+dropdowns["Clear on"].set("targetable")
+win.clearAdd.OnClick(win.clearAdd)
+list = E:Draft().clearOn
+check(#list == 3 and list[2].contains == "The arena resets" and list[3].event == "targetable", "an emote and a targetable change are added")
+check(win.clearRows[1].label.text == "Boss cast 1234 (when it starts)" and win.clearRows[3].shown and not win.clearRows[4].shown, "the list shows each entry, one row each")
+win.clearRows[1].remove.OnClick(win.clearRows[1].remove)
+list = E:Draft().clearOn
+check(#list == 2 and list[1].event == "emote" and not win.clearRows[3].shown, "Remove drops that entry")
+win.export.OnClick(win.export)
+line = exported:match("\\n(markers = [^\\n]+)")
+check(line and line:find('clearOn = { { event = "emote", contains = "The arena resets" }, { event = "targetable" } }', 1, true), "Export writes clearOn inside the markers line: " .. tostring(line))
+back = line and load("return { " .. line .. " }")().markers
+check(back and #back.clearOn == 2 and CRT.MarkerClearOn.Valid(back.clearOn[1]) and CRT.MarkerClearOn.Valid(back.clearOn[2]), "the exported clearOn reads back as working entries")
+win.save.OnClick(win.save)
+saved = CRT.db.dev.markerDisplays[ENC]
+check(saved.clearOn ~= list and saved.clearOn[1] ~= list[1] and saved.clearOn[1].contains == "The arena resets", "Save draft keeps a copy of clearOn")
 
 print(passes .. " passed, " .. fails .. " failed")
 `;
@@ -380,4 +503,5 @@ const d = process.argv[2];
 lua.lua_pushstring(L, to_luastring(fs.readFileSync(d + '/CRT_Modules/Markers/Database.lua', 'utf8')));
 lua.lua_pushstring(L, to_luastring(fs.readFileSync(d + '/CRT_Modules/Markers/Display.lua', 'utf8')));
 lua.lua_pushstring(L, to_luastring(fs.readFileSync(d + '/CRT_Dev/Dev/MarkerEditor.lua', 'utf8')));
-if (lua.lua_pcall(L, 3, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
+lua.lua_pushstring(L, to_luastring(fs.readFileSync(d + '/CRT_Modules/Markers/ClearOn.lua', 'utf8')));
+if (lua.lua_pcall(L, 4, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }

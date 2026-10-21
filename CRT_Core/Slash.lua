@@ -201,6 +201,8 @@ SlashCmdList["COWFEERAIDTOOLS"] = function(msg)
         -- dev break: the break timer's other-addon formats (Dev/Breaks.lua)
     elseif CRT.GameTimelineProbe and CRT.GameTimelineProbe:Command(msg) then
         -- dev gametimeline: add one event to the game's boss timeline and print the result (Dev/GameTimelineProbe.lua)
+    elseif CRT.ClearProbe and CRT.ClearProbe:Command(msg) then
+        -- dev clearprobe on, off, show: log a pull's possible reset moments for a marker display (Dev/ClearProbe.lua)
     elseif msg == "dev layout" then
         if CRT.LayoutCheck then
             CRT.LayoutCheck:Run()

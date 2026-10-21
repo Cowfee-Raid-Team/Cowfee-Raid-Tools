@@ -44,9 +44,26 @@ local HIDDEN_HELP = "In a raid and during a boss fight, the game hides chat text
 local FREE_HELP = "Freeform: drag each numbered slot to its place on the canvas. Slot 1 fills first, then slot 2, and so on.\n\n"
     .. "Shape draws a faint square or circle behind the slots. Canvas size sets how big it is; the slots keep their places when it or the icon size changes.\n\n"
     .. "Snap to ring spaces the slots evenly on the circle. Spread evenly puts them in a grid."
+local CLEAR_KINDS = {
+    { key = "timeline", label = "Timeline spell" },
+    { key = "cast", label = "Boss cast" },
+    { key = "emote", label = "Boss emote or yell" },
+    { key = "targetable", label = "Boss targetable change" },
+}
+local CLEAR_WHEN = {
+    { key = "end", label = "When it finishes" },
+    { key = "start", label = "When it starts" },
+}
+local CLEAR_ON_HELP = "Boss moments that clear the display, such as a reset between phases. The first one to happen clears it.\n\n"
+    .. "Timeline spell: an event on the game's boss timeline for this spell ID.\n\n"
+    .. "Boss cast: boss1 to boss5 casts this spell ID.\n\n"
+    .. "Boss emote or yell: the boss's emote, yell or say holds this text (any case).\n\n"
+    .. "Boss targetable change: a boss becomes targetable or untargetable.\n\n"
+    .. "During a boss fight the game may hide spell IDs and text. Then that entry never fires. Run /crt dev clearprobe on a pull to see what the boss sends readably."
+local CLEAR_ROWS = 8 -- at most this many entries
 local DEFAULT = Markers.DEFAULT
 -- help is the draft's help text: exported as markerHelp, not a display setting.
-local FIELDS = { "name", "slots", "layout", "iconSize", "number", "names", "clearGap", "clearFull", "clearPhase", "hidden", "shape", "canvas", "places", "help" }
+local FIELDS = { "name", "slots", "layout", "iconSize", "number", "names", "clearGap", "clearFull", "clearPhase", "hidden", "shape", "canvas", "places", "help", "clearOn" }
 
 local win
 local controls = {}
@@ -71,7 +88,22 @@ local function copyPlaces(places)
     return out
 end
 
--- A display's fields, with the defaults for missing ones and its own copy of the places.
+local function copyClearOn(list)
+    if type(list) ~= "table" then
+        return nil
+    end
+    local out = {}
+    for _, e in ipairs(list) do
+        local c = {}
+        for k, v in pairs(e) do
+            c[k] = v
+        end
+        out[#out + 1] = c
+    end
+    return out
+end
+
+-- A display's fields, with the defaults for missing ones and its own copy of the places and clearOn.
 local function copyFields(src)
     local out = {}
     for _, f in ipairs(FIELDS) do
@@ -79,7 +111,12 @@ local function copyFields(src)
         if v == nil then
             v = DEFAULT[f]
         end
-        out[f] = (f == "places") and copyPlaces(v) or v
+        if f == "places" then
+            v = copyPlaces(v)
+        elseif f == "clearOn" then
+            v = copyClearOn(v)
+        end
+        out[f] = v
     end
     return out
 end
@@ -195,12 +232,34 @@ local function fraction(v)
     return (string.format("%.3f", v):gsub("0+$", ""):gsub("%.$", ""))
 end
 
+-- The clearOn entries as Lua, for Export: { event = "cast", spellID = 123, when = "start" }, ...
+local function clearOnText(list)
+    local parts = {}
+    for _, e in ipairs(list) do
+        local s = string.format("{ event = %q", e.event)
+        if e.spellID then
+            s = s .. ", spellID = " .. e.spellID
+        end
+        if e.when then
+            s = s .. string.format(", when = %q", e.when)
+        end
+        if e.contains then
+            s = s .. string.format(", contains = %q", e.contains)
+        end
+        parts[#parts + 1] = s .. " }"
+    end
+    return table.concat(parts, ", ")
+end
+
 -- The export: a comment saying where it goes, the boss file's markers field, and its markerHelp field when
 -- the draft has help text.
 local function exportText()
     local d = draft
     local line = string.format('markers = { name = %q, slots = %d, layout = %q, iconSize = %d, number = %s, names = %s, clearGap = %d, clearFull = %d, clearPhase = %s, hidden = %q',
         d.name or "", d.slots, d.layout, d.iconSize, tostring(d.number), tostring(d.names), d.clearGap, d.clearFull, tostring(d.clearPhase), d.hidden or DEFAULT.hidden)
+    if type(d.clearOn) == "table" and #d.clearOn > 0 then
+        line = line .. ", clearOn = { " .. clearOnText(d.clearOn) .. " }"
+    end
     if d.layout == "free" then
         local places = {}
         for i = 1, d.slots do
@@ -368,10 +427,115 @@ local function buildButtons()
     end)
 end
 
+-- Clear on, in the right-hand column: pick a kind, type its spell ID or text, Add; each entry is listed
+-- with a Remove button. The entries go in the draft's clearOn (Markers/ClearOn.lua).
+local addKind, addWhen = "cast", "end"
+
+local function buildClearOn()
+    local x = 434
+    local title = win:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
+    title:SetPoint("TOPLEFT", x, -34)
+    title:SetText("Clear on a boss moment")
+    UI.Help(win, "Clear on a boss moment", CLEAR_ON_HELP):SetPoint("LEFT", title, "RIGHT", 4, 0)
+
+    local function place(row, y)
+        row:SetPoint("TOPLEFT", x, y)
+        controls[#controls + 1] = row
+    end
+    place(UI.Dropdown(win, "Clear on", { options = CLEAR_KINDS, labelWidth = 110, width = 200,
+        get = function()
+            return addKind
+        end,
+        set = function(key)
+            addKind = key
+            refresh()
+        end }), -60)
+
+    local valueLabel = win:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    valueLabel:SetPoint("TOPLEFT", x, -100)
+    valueLabel:SetText("Spell ID or text")
+    win.clearValue = CreateFrame("EditBox", nil, win, "InputBoxTemplate")
+    win.clearValue:SetSize(196, 20)
+    win.clearValue:SetPoint("TOPLEFT", x + 116, -96)
+    win.clearValue:SetAutoFocus(false)
+    win.clearValue:SetFontObject(CRTFontEdit)
+    win.clearValue:SetScript("OnEnterPressed", win.clearValue.ClearFocus)
+
+    place(UI.Dropdown(win, "When", { options = CLEAR_WHEN, labelWidth = 110, width = 200,
+        enabledIf = function()
+            return addKind == "timeline" or addKind == "cast"
+        end,
+        get = function()
+            return addWhen
+        end,
+        set = function(key)
+            addWhen = key
+        end }), -124)
+
+    win.clearAdd = button("Add")
+    win.clearAdd:SetPoint("TOPLEFT", x, -162)
+    win.clearAdd:SetScript("OnClick", function()
+        local text = win.clearValue:GetText() or ""
+        local spell = addKind == "timeline" or addKind == "cast"
+        local entry = CRT.MarkerClearOn.Valid({ event = addKind, spellID = spell and tonumber(text) or nil,
+            when = spell and addWhen or nil, contains = addKind == "emote" and text or nil })
+        if not entry then
+            CRT:Print(spell and "Type the spell ID, a whole number." or "Type the text to look for.")
+            return
+        end
+        draft.clearOn = draft.clearOn or {}
+        if #draft.clearOn >= CLEAR_ROWS then
+            CRT:Print("At most " .. CLEAR_ROWS .. " boss moments.")
+            return
+        end
+        draft.clearOn[#draft.clearOn + 1] = entry
+        win.clearValue:SetText("")
+        win.clearValue:ClearFocus()
+        refresh()
+    end)
+
+    -- The entries, one row each.
+    win.clearRows = {}
+    for i = 1, CLEAR_ROWS do
+        local row = CreateFrame("Frame", nil, win)
+        row:SetSize(330, 24)
+        row:SetPoint("TOPLEFT", x, -196 - (i - 1) * 26)
+        row.remove = button("Remove")
+        row.remove:SetParent(row)
+        row.remove:SetPoint("RIGHT", row, "RIGHT", 0, 0)
+        row.remove:SetScript("OnClick", function()
+            if draft.clearOn and draft.clearOn[i] then
+                table.remove(draft.clearOn, i)
+                if #draft.clearOn == 0 then
+                    draft.clearOn = nil
+                end
+                refresh()
+            end
+        end)
+        row.label = row:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+        row.label:SetPoint("LEFT", 0, 0)
+        row.label:SetPoint("RIGHT", row.remove, "LEFT", -6, 0)
+        row.label:SetJustifyH("LEFT")
+        row.label:SetWordWrap(false)
+        row:Hide()
+        win.clearRows[i] = row
+    end
+    controls[#controls + 1] = { refresh = function()
+        local list = draft.clearOn or {}
+        for i, row in ipairs(win.clearRows) do
+            local e = list[i] and CRT.MarkerClearOn.Valid(list[i])
+            row:SetShown(e ~= nil)
+            if e then
+                row.label:SetText(CRT.MarkerClearOn.Describe(e))
+            end
+        end
+    end }
+end
+
 local function build()
     win = CreateFrame("Frame", "CowfeeRaidToolsMarkerEditor", UIParent, "BasicFrameTemplateWithInset")
     UI:StyleWindow(win)
-    win:SetSize(420, 690)
+    win:SetSize(780, 690) -- the settings on the left, Clear on in a column on the right
     win:SetPoint("CENTER")
     UI:RegisterLayer("popups", win)
     win:SetMovable(true)
@@ -457,6 +621,7 @@ local function build()
     win.status:SetJustifyH("LEFT")
 
     buildButtons()
+    buildClearOn()
 
     win:SetScript("OnShow", function()
         updateView()
