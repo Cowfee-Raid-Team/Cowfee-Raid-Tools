@@ -312,6 +312,20 @@ do
   S.overlayOn, S.deathRows, S.bosses[3001] = saved[1], saved[2], saved[3]
 end
 print("ok overlay deaths stay in group")
+do
+  -- AsShown: the lanes as the Timeline shows them, hidden abilities out, ignored ones apart
+  local ref = assert(CRT.TimelineReference.Parse("Boss: Shown\\nLength: 2:00\\nSlam: 0:10\\nPool: 0:20\\nFish: 0:30"))
+  CRT.Bosses = { Get = function(_, id) if id == 3001 then return { name = "Shown", hidden = { "Fish" } } end end }
+  CRT.Timeline:SetIgnored(3001, "Pool", true)
+  local lanes, _, extra, ignored = Lanes.AsShown({ reference = ref }, {}, S, 3001)
+  local labels = {}
+  for _, l in ipairs(lanes) do if l.kind == "reference" then labels[#labels + 1] = l.label end end
+  assert(table.concat(labels, ",") == "Slam", "AsShown: hidden and ignored left out: " .. table.concat(labels, ","))
+  assert(#ignored == 1 and ignored[1].label == "Pool" and extra.length == 120, "AsShown: the ignored apart, extra kept")
+  CRT.Timeline:SetIgnored(3001, "Pool", false)
+  CRT.Bosses = nil
+end
+print("ok lanes as shown")
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 const srcs = process.argv.slice(2).map(f => { try { return fs.readFileSync(f, 'utf8'); } catch (e) { console.error('cannot read ' + f); process.exit(1); } });

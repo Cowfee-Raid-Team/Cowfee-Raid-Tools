@@ -1,5 +1,5 @@
 // CRT_Modules/Timeline/RehearsalWindow.lua on mock frames (stubs in the style of run_timeline_page.js), with the
-// real CRT_Modules/Timeline/Rehearsal.lua and a stub Lanes.Build that records its call.
+// real CRT_Modules/Timeline/Rehearsal.lua and a stub Lanes.AsShown that records its call.
 // Usage: node run_timeline_rehearsalwin.js CRT_Modules/Timeline/Rehearsal.lua CRT_Modules/Timeline/RehearsalWindow.lua
 const fs = require('fs');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
@@ -64,7 +64,8 @@ local lanes = {
   { kind = "reference", label = "Plain", icon = "iconPlain", marks = { { t = 60 } } },
 }
 local extra = { length = 100, phases = { { t = 0, label = "P1" }, { t = 50, label = "P2" } } }
-CRT.TimelineLanes = { Build = function(...) lanesCall = { n = select("#", ...), ... } return lanes, {}, extra end }
+-- Lanes.AsShown: the lanes as the Timeline shows them (Build with your labels, hidden and ignored left out)
+CRT.TimelineLanes = { AsShown = function(...) lanesCall = { n = select("#", ...), ... } return lanes, {}, extra, {} end }
 assert(load(rehSrc, "CRT_Modules/Timeline/Rehearsal.lua"))("CowfeeRaidTools", CRT)
 assert(load(winSrc, "CRT_Modules/Timeline/RehearsalWindow.lua"))("CowfeeRaidTools", CRT)
 local RW = CRT.TimelineRehearsalWindow

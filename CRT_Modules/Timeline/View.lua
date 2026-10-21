@@ -3573,12 +3573,9 @@ function Methods:Refresh()
     local extra
     if pull then
         local rows = CRT.TimelineJournal:Rows(self.encounterID)
-        self.lanes, self.unknown, extra = View.Lanes(pull, rows, s, self.encounterID, self.overlay, self.group, self.order)
-        -- your labels for Journal abilities (rows, types, names), then your ignored mechanics, which are
-        -- drawn only in their own list under the lanes (DrawIgnored)
-        self.lanes = CRT.Timeline:ApplyAbilities(self.lanes, self.encounterID, rows)
-        self.lanes = CRT.Timeline:WithoutHidden(self.lanes, self.encounterID)
-        self.lanes, self.ignoredLanes = CRT.Timeline:WithoutIgnored(self.lanes, self.encounterID)
+        -- with your labels for Journal abilities (rows, types, names), without the hidden abilities, and
+        -- your ignored mechanics apart, drawn only in their own list under the lanes (DrawIgnored)
+        self.lanes, self.unknown, extra, self.ignoredLanes = CRT.TimelineLanes.AsShown(pull, rows, s, self.encounterID, self.overlay, self.group, self.order)
     else
         self.lanes, self.unknown, self.ignoredLanes = {}, {}, {}
     end
