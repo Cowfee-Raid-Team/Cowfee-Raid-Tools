@@ -464,6 +464,12 @@ local function drawPanel()
     panel.auraSound.label:SetTextColor(auraOK and 1 or 0.5, auraOK and 1 or 0.5, auraOK and 1 or 0.5)
     local c = d.color or WHITE
     panel.colorSwatch.tex:SetColorTexture(c[1], c[2], c[3], 1)
+    -- your reminder's colour is greyed and unused without Use custom colours (Raid Notes > Alerts); it stays saved
+    local colourOn = CRT.Alerts:CustomColors()
+    panel.colorSwatch:SetEnabled(colourOn)
+    panel.colorDefault:SetEnabled(colourOn)
+    panel.colorSwatch:SetAlpha(colourOn and 1 or 0.4)
+    panel.colorLabel:SetAlpha(colourOn and 1 or 0.5)
     -- the selected row's times, as the list read them; typed times over the reference stay read only
     local text = item and item.timesRaw
     panel.times:SetText(text and text:gsub("; ", " · ") or TEXT.noTimes)
@@ -818,7 +824,7 @@ end
 
 -- The game's color picker on the draft's color; Cancel puts the old one back.
 local function pickColor()
-    if not (cur.draft and ColorPickerFrame) then
+    if not (cur.draft and ColorPickerFrame) or not CRT.Alerts:CustomColors() then
         return
     end
     local target = cur.draft -- a picker left open never writes into the next alert
@@ -1142,7 +1148,7 @@ local function buildPanel(f)
         end,
     })
     panel.lookup = panel.lookupCtl.list
-    label(p, TEXT.color, L.COL2_X, L.COL_Y - 86)
+    panel.colorLabel = label(p, TEXT.color, L.COL2_X, L.COL_Y - 86)
     panel.colorSwatch = CreateFrame("Button", nil, p)
     panel.colorSwatch:SetSize(20, 20)
     panel.colorSwatch:SetPoint("TOPLEFT", L.COL2_X + L.LABEL_W + 4, L.COL_Y - 82)
@@ -1156,7 +1162,9 @@ local function buildPanel(f)
     panel.colorDefault = makeButton(p, TEXT.colorDefault, L.DEFAULT_W)
     panel.colorDefault:SetPoint("TOPLEFT", L.COL2_X + L.LABEL_W + 32, L.COL_Y - 81)
     panel.colorDefault:SetScript("OnClick", change(function()
-        cur.draft.color = nil
+        if CRT.Alerts:CustomColors() then
+            cur.draft.color = nil
+        end
     end))
     panel.sound = row(UI.SoundDropdown(p, TEXT.sound, {
         labelWidth = L.LABEL_W, width = L.SOUND_W, maxHeight = L.MENU_MAX_H, playButton = true,

@@ -55,8 +55,10 @@ local ADDON, CRT = ...
 --   Areas.Find(key)       the area with that def.key
 --   Areas.Glow(widget, on)  a pulsing border on a widget's own frame
 --   Areas.Swipe(w, line, total, now)  sets the countdown swipe on w.cooldown (icons, circles), see below
---   Areas.LineText(line), Areas.LineIcon(line), Areas.LineColor(line), Areas.SetFont(fontString, name,
+--   Areas.LineText(line), Areas.LineIcon(line), Areas.SetFont(fontString, name,
 --     size, outline): what a line shows, with values the game hides left out, and the area's font.
+--   Areas.DrawColor(line, custom), Areas.CustomColors(): the colour a line is drawn in (its ability type's
+--     unless a colour of its own may win) and whether your own colours apply.
 
 local Alerts = CRT.Alerts
 local Rules = CRT.AlertRules
@@ -180,13 +182,26 @@ function Areas.LineIcon(line)
     return nil
 end
 
--- The line's { r, g, b }, or nil.
-function Areas.LineColor(line)
-    local c = line.color
-    if readable(c) and type(c) == "table" and type(c[1]) == "number" and type(c[2]) == "number" and type(c[3]) == "number" then
-        return c
+-- The colour a line is drawn in. Its own colour when it may be drawn (Alerts:OwnColor: a raid note line's always,
+-- yours with Use custom colours on); else `custom`, the area's own colour (the bars' Bar colour, the ring
+-- colour), with Use custom colours on; else its ability type's colour, or the theme's accent with no known type
+-- (Alerts/Colors.lua). The second result says which: "own", "custom" or "type". Nil only with no theme loaded.
+function Areas.DrawColor(line, custom)
+    local own = Alerts.OwnColor and Alerts:OwnColor(line)
+    if own then
+        return own, "own"
     end
-    return nil
+    if custom and Alerts.CustomColors and Alerts:CustomColors() then
+        return custom, "custom"
+    end
+    local Colors = CRT.AlertColors
+    return Colors and Colors.TypeColor(line.abilityType) or nil, "type"
+end
+
+-- Whether your own colours apply (Use custom colours on Raid Notes > Alerts): an area's colour rows grey out
+-- without it.
+function Areas.CustomColors()
+    return Alerts.CustomColors and Alerts:CustomColors() or false
 end
 
 -- Sets a font string to a font from CRT:FontList (Friz Quadrata when the name is gone), only when it

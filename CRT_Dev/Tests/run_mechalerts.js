@@ -102,7 +102,8 @@ local CRT = {
   db = {
     timeline = { references = {}, nextRef = 1, record = true, rows = {}, bosses = {} },
     alerts = { bars = { shown = true, noteLines = true, cap = 5, ahead = 20, width = 240, height = 20 },
-      reminders = {}, phases = {}, overrides = {}, nextId = 1 },
+      reminders = {}, phases = {}, overrides = {}, nextId = 1,
+      customColors = true }, -- the checks were written for your own colours: Use custom colours on
   },
 }
 function CRT:Print(m) printed[#printed + 1] = m end
@@ -335,6 +336,16 @@ check("mech: a change in the panel saves the reminder", function()
   assert(R:Get(ENC, id).color[1] == 0.2, "colour saved")
   click(p.colorDefault)
   assert(R:Get(ENC, id).color == nil, "Default clears it")
+  -- Use custom colours off: the Color row is greyed and changes nothing; the saved colour stays
+  click(p.colorSwatch) picker.r, picker.g, picker.b = 0.3, 0.3, 0.3 picker.info.swatchFunc()
+  CRT.db.alerts.customColors = false
+  setCheck(p.also.glow, false) setCheck(p.also.glow, true) -- any change redraws the panel
+  assert(p.colorSwatch.enabled == false and p.colorDefault.enabled == false, "off: the colour row is greyed")
+  click(p.colorDefault)
+  assert(R:Get(ENC, id).color and R:Get(ENC, id).color[1] == 0.3, "off: Default changes nothing, the colour stays saved")
+  CRT.db.alerts.customColors = true
+  click(p.colorDefault)
+  assert(R:Get(ENC, id).color == nil and p.colorSwatch.enabled == true, "on: open again")
   assert(only() and #R:List(ENC) == 1, "still one reminder")
   -- nothing to show: a small red line, and the saved reminder stays as it was
   setCheck(p.checks.alert, false)

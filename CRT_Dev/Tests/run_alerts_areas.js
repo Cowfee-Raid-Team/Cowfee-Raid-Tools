@@ -87,6 +87,7 @@ local function defaults() return {
     texts = { shown = true, cap = 3, font = "Friz Quadrata", fontSize = 36, outline = "THICKOUTLINE", grow = "down", align = "CENTER" },
     circles = { shown = true, cap = 3, size = 64, fontSize = 16, grow = "right" },
   },
+  customColors = true, -- the checks were written for the player's own colours: Use custom colours on
   reminders = {}, phases = {}, overrides = {}, nextId = 1 } end
 local previews, layers, resets, dropdowns, sliders = {}, {}, 0, {}, {}
 local dropdownsMade, slidersMade = 0, 0
@@ -297,6 +298,10 @@ T:Refresh()
 assert(shownTexts() == "Near (2.3)", "tenths under 10: " .. shownTexts())
 local w = T:Visible()[1]
 assert(w.text.textColor[1] == 1 and w.text.textColor[2] == 0, "line color")
+-- Use custom colours off: your own line colour is ignored (no type here, and no Colors.lua loaded: white)
+A:Settings().customColors = false T:Refresh()
+assert(T:Visible()[1].text.textColor[2] == 1, "own colour ignored with custom colours off")
+A:Settings().customColors = true T:Refresh()
 clock = 100
 T:Refresh()
 assert(shownTexts() == "Near (5.0)", shownTexts())

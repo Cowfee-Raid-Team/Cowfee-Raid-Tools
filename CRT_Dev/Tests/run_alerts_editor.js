@@ -146,7 +146,8 @@ local CRT = {
     window = { scale = 100 },
     timeline = { references = {}, nextRef = 1, record = true, rows = {} },
     alerts = { bars = { shown = true, noteLines = true, cap = 5, ahead = 20, width = 240, height = 20 },
-      reminders = {}, phases = {}, overrides = {}, nextId = 1 },
+      reminders = {}, phases = {}, overrides = {}, nextId = 1,
+      customColors = true }, -- the checks were written for your own colours: Use custom colours on
     notes = { list = {}, nextId = 1, alert = { enabled = true, tts = true, seconds = 10, ttsSeconds = 3 } },
   },
 }
@@ -266,6 +267,23 @@ do
   sliders["Show from"].opts.set(8) sliders["Linger"].opts.set(3)
   pick("Icon", "id") typeInto(w.idEdit, "135940")
   assert(w.iconPreview.texture == 135940, "icon ID preview")
+  -- Use custom colours off: your own alert's Color is greyed and does nothing; a raid note line's stays open
+  CRT.db.alerts.customColors = false
+  typeInto(w.textEdit, "  Soak now ")
+  assert(w.colorSwatch.enabled == false and w.colorDefault.enabled == false, "off: your alert's colour is greyed")
+  click(w.colorSwatch)
+  assert(ColorPickerFrame.strata ~= "FULLSCREEN_DIALOG", "off: the swatch opens no picker")
+  pick("Save as", "note")
+  assert(w.colorSwatch.enabled == true and w.colorDefault.enabled == true, "a raid note line's colour is the leader's: open")
+  pick("Save as", "mine")
+  CRT.db.alerts.customColors = true
+  typeInto(w.textEdit, "  Soak now ")
+  assert(w.colorSwatch.enabled == true, "on: open again")
+  -- the box changing while the editor is open greys the row at once (the alerts' change)
+  CRT.db.alerts.customColors = false CRT.Alerts:Fire()
+  assert(w.colorSwatch.enabled == false, "unticked with the editor open: greyed at once")
+  CRT.db.alerts.customColors = true CRT.Alerts:Fire()
+  assert(w.colorSwatch.enabled == true, "ticked again: open at once")
   click(w.colorSwatch)
   assert(ColorPickerFrame.strata == "FULLSCREEN_DIALOG" and ColorPickerFrame.raised, "colour picker above the editor")
   ColorPickerFrame:Hide()

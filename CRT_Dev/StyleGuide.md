@@ -96,12 +96,34 @@ These stay the same in every theme. A hard-coded one that looks like a status or
 | Tattlebot damage numbers | orange FF8060 | Alex, 2026-10-21: not part of the style guide |
 | Loot Master's looting line, "Synced to" line and all-answered count | plain in Default: Blizzard, matcha in a Modern theme, as before themes | Alex, 2026-10-21: excluded from colour changes |
 | Gear Checker's info blue and gem blue | 4DA6FF, 8CCCFF | a season check to know about; a filled socket |
-| Ability types on the Timeline | `Reference.TYPES` | each colour means a kind of ability |
+| Ability types (Timeline rows, every alert) | `Reference.TYPES`, see below | each colour means a kind of ability |
 | Chat prints | the addon's print colours | chat, not the window |
 | Loot Master response buttons | the raid leader's response set | see below |
-| Colours a player picks (alert areas, alerts, reminders, ability timeline rows) | saved data | see below |
+| Colours a player picks (alert areas, alerts, reminders, ability timeline rows) | saved data, used only with Use custom colours on | see below |
+| A raid note line's colour (`colors:`) | the raid leader's | their shared choice: always shown |
 
 Response buttons: a raider's popup and All Loot Rolls window colour the buttons from the session the looter sends (Comm.lua's B part), never from the raider's own saved set. A raider's own set is used only for sessions they run, and Sync Master Loot replaces it with the raid leader's.
+
+## Ability type colours: fixed, not per theme
+
+The Timeline's ability types (`Reference.TYPES` in `CRT_Modules/Timeline/Reference.lua`) colour the ability timeline's rows and every alert: bars, circles, icons, texts and the Next spell alert (which keeps the heading colour when the type is unknown). They are the same in every theme, since each colour means a kind of ability. A new type is added there, with its colour, and to this table. Hex from the code's values (rounded as `Reference.Legend` does).
+
+| Type | Colour | Meaning |
+|---|---|---|
+| dispel | 4AA3FF | dispellable debuff |
+| raid | FF4F4F | raid-wide damage, unavoidable |
+| falloff | 7DDB6B | fall-off damage |
+| mythic | FF993D | Mythic only |
+| heroic | C45CE0 | Heroic and higher |
+| generic | F2E6D6 | a mechanic |
+| soak | FF80D1 | soak |
+| spread | FFD94A | spread out or get away |
+| dodge | 33D1C7 | dodge |
+| heavydot | BFEB40 | heavy damage over time |
+
+An alert with no known type is drawn in the theme's accent (caramel), read when it draws, so it follows a theme switch. How an alert's type is found: `CRT_Modules/Alerts/Colors.lua`.
+
+**Custom colours.** A colour the player picks is used only with Use custom colours on (Raid Notes > Alerts, `alerts.customColors`, off by default): the Bars' Bar colour, Background and Text colour, the Circles' Ring colour, a reminder's or a template's colour, and an ability timeline row's `color rrggbb`. Off, those rows are greyed out (`enabledIf`) and the colours are ignored but stay saved. A raid note line's own colour is the raid leader's shared choice and always shows, as do the Loot Master response colours (see above).
 
 ## Looks that aren't colours
 

@@ -32,6 +32,7 @@ local TEXT_GAP = 6        -- between the icon and its text
 local PAD = 4             -- after the text
 local DEFAULT_POSITION = { point = "CENTER", relativePoint = "CENTER", x = -300, y = 100 }
 local WHITE = { 1, 1, 1 }
+local SAMPLE_TYPES = { "spread", "generic", "soak" } -- the Previews' alerts: Spread, Stack on the boss, Soak
 -- Spell icons for the preview.
 local SAMPLE_ICONS = { 136243, 135808, 136116 }
 local SAMPLE_GAP = 1      -- seconds between preview ticks that mean it was turned off
@@ -169,7 +170,7 @@ local function draw(w, line, now, s, shownAt)
             w.text:SetPoint("LEFT", w, "LEFT", size + TEXT_GAP, 0) -- right of the icon square, on the widget
         end
         w.text:SetText(Areas.LineText(line))
-        local c = Areas.LineColor(line) or WHITE
+        local c = Areas.DrawColor(line) or WHITE -- its ability type's colour, unless its own may win
         w.text:SetTextColor(c[1], c[2], c[3])
         w.text:Show()
         local words = math.ceil(textWidth(w.text))
@@ -191,9 +192,9 @@ local function sample(now)
     end
     sampleLast = now
     return {
-        { id = "sample1", text = TEXT.sampleNow, icon = SAMPLE_ICONS[1], at = sampleBase, warn = 8, glow = true },
-        { id = "sample2", text = TEXT.sampleSoon, icon = SAMPLE_ICONS[2], at = sampleBase + 5, warn = 8 },
-        { id = "sample3", text = TEXT.sampleLater, icon = SAMPLE_ICONS[3], at = sampleBase + 12, warn = 12 },
+        { id = "sample1", text = TEXT.sampleNow, icon = SAMPLE_ICONS[1], at = sampleBase, warn = 8, glow = true, abilityType = SAMPLE_TYPES[1] },
+        { id = "sample2", text = TEXT.sampleSoon, icon = SAMPLE_ICONS[2], at = sampleBase + 5, warn = 8, abilityType = SAMPLE_TYPES[2] },
+        { id = "sample3", text = TEXT.sampleLater, icon = SAMPLE_ICONS[3], at = sampleBase + 12, warn = 12, abilityType = SAMPLE_TYPES[3] },
     }
 end
 

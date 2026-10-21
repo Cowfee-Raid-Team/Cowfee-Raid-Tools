@@ -350,10 +350,11 @@ end
 Reminders.SpellName = spellName
 
 -- The row of a reference for a reminder: by spell ID (a row's own [spell] or its Journal spell), else
--- by name (the spell's name or the reminder's text).
-local function rowFor(ref, encounterID, r)
-    local rows
-    if CRT.TimelineJournal then
+-- by name (the spell's name or the reminder's text). journalRows (optional) are the boss's Journal rows to match
+-- spells with, in place of asking the Journal (the alerts' type colours pass only rows already read).
+local function rowFor(ref, encounterID, r, journalRows)
+    local rows = journalRows
+    if not rows and CRT.TimelineJournal then
         local ok, res = pcall(CRT.TimelineJournal.Rows, CRT.TimelineJournal, encounterID)
         rows = ok and res or nil
     end
@@ -380,6 +381,8 @@ local function rowFor(ref, encounterID, r)
         end
     end
 end
+
+Reminders.RowFor = rowFor
 
 -- The times of a reminder: { { ph, t } } and where they came from ("typed", "reference" or "none").
 -- Typed text that does not read gives {}, "typed" and the message. `ref` (optional) is the reference a

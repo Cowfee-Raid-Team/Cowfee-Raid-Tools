@@ -72,6 +72,22 @@ do
 end
 print("ok reference lanes in order")
 
+do -- a row's own (color rrggbb) colour is drawn only with Use custom colours on; else its type's colour
+  local parsed = CRT.TimelineReference.Parse("Boss: Nek\\nGrasping Depths (type soak, color 112233): 0:10\\nInvoke (color 445566): 0:20")
+  local saved = ref.rows
+  ref.rows = parsed.rows
+  local custom = false
+  CRT.Alerts = { CustomColors = function() return custom end }
+  local lanes = build()
+  assert(lanes[2].color[1] == CRT.TimelineReference.TYPES.soak.color[1] and lanes[3].color == nil, "off: the type's colour, or none")
+  custom = true
+  lanes = build()
+  assert(math.abs(lanes[2].color[1] - 0x11 / 255) < 1e-6 and math.abs(lanes[3].color[1] - 0x44 / 255) < 1e-6, "on: the row's own colour")
+  CRT.Alerts = nil
+  ref.rows = saved
+end
+print("ok reference lanes: own colour only with custom colours")
+
 do
   local lanes = build()
   assert(lanes[2].spellID == 5001 and lanes[2].icon == "texG", "journal name match: grasping")

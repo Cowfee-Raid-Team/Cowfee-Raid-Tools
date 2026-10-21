@@ -372,6 +372,28 @@ check("tab: routing checkboxes bind the saved fields", function()
   assert(#errors == 0, tostring(errors[1]))
 end)
 
+check("tab: Use custom colours, off by default, greys the colour rows", function()
+  CRT.NotesPage.Open("alerts")
+  local db = CRT.db.alerts
+  local heading
+  for _, f in ipairs(fontStrings) do if f.text == "Colours" then heading = f end end
+  assert(heading, "a Colours heading")
+  local help
+  for _, f in ipairs(frames) do if rawget(f, "helpTitle") == "Colours" then help = f end end
+  assert(help and help.helpText:find("ability type") and help.helpText:find("raid leader"), "its (?) says type colours, and that the leader's note colour shows")
+  local b = checks("Use custom colours")
+  assert(b and b.checked == false and not db.customColors, "a checkbox, off")
+  configDropdown().opts.set("bars")
+  local swatch
+  for _, f in ipairs(frames) do if rawget(f, "colorLabel") == "Bar colour" and f.shown then swatch = f.swatch end end
+  assert(swatch and swatch.enabled == false, "off: Bar colour greyed")
+  b:SetChecked(true) click(b)
+  assert(db.customColors == true, "ticking saves it")
+  assert(swatch.enabled ~= false, "on: Bar colour usable")
+  b:SetChecked(false) click(b)
+  assert(db.customColors == false and swatch.enabled == false, "unticked: greyed again")
+end)
+
 check("tab: configuration dropdown swaps rows", function()
   CRT.NotesPage.Open("alerts")
   local heading

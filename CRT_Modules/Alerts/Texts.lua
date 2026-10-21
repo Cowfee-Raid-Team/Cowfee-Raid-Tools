@@ -29,6 +29,7 @@ local NOW_BELOW = 0.1  -- under this many seconds left reads NOW: tenths are cut
 local MIN_SIZE, MAX_SIZE, DEFAULT_SIZE = 12, 72, 36
 local DEFAULT_POSITION = { point = "CENTER", relativePoint = "CENTER", x = 400, y = 300 }
 local WHITE = { 1, 1, 1 }
+local SAMPLE_TYPES = { "spread", "generic", "soak" } -- the Previews' alerts: Spread, Stack on the boss, Soak
 local ALIGNS = { LEFT = true, CENTER = true, RIGHT = true }
 
 local OUTLINE_OPTIONS = {
@@ -98,15 +99,15 @@ local function draw(w, line, now, s)
     local text, time = Areas.LineText(line), seconds(line.at - now)
     w.text:SetText(text ~= "" and (text .. " (" .. time .. ")") or time)
     w:SetSize(math.ceil(textWidth(w.text)) + PAD, size + PAD)
-    local c = Areas.LineColor(line) or WHITE
+    local c = Areas.DrawColor(line) or WHITE -- its ability type's colour, unless its own may win
     w.text:SetTextColor(c[1], c[2], c[3])
 end
 
 local function sample(now)
     return {
-        { text = TEXT.sampleNow, at = now, glow = true },
-        { text = TEXT.sampleSoon, at = now + 5 },
-        { text = TEXT.sampleLater, at = now + 12 },
+        { text = TEXT.sampleNow, at = now, glow = true, abilityType = SAMPLE_TYPES[1] },
+        { text = TEXT.sampleSoon, at = now + 5, abilityType = SAMPLE_TYPES[2] },
+        { text = TEXT.sampleLater, at = now + 12, abilityType = SAMPLE_TYPES[3] },
     }
 end
 

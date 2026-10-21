@@ -4,8 +4,9 @@ local ADDON, CRT = ...
 -- a fill that empties as the time nears. It shows your note lines and your reminders (every line whose
 -- outputs.bar is on) from the alerts engine. Built on Alerts/Areas.lua; the settings stay in
 -- CRT.db.alerts.bars (shown, cap, ahead, width, height, grow, noteLines, font, fontSize, barColor, bgColor,
--- textColor) and open from the area's gear. A line's own colour wins over barColor; the background and the
--- text colours always come from the area.
+-- textColor) and open from the area's gear. A bar is in its ability type's colour (Areas.DrawColor); the Bar,
+-- Background and Text colours apply only with Use custom colours on (alerts.customColors), and then a line's own
+-- colour still wins over the Bar colour. Off, they stay saved and their rows grey out.
 -- A bar starts full: its fill runs over the time left when it first showed, at most `ahead`.
 
 local Areas = CRT.AlertAreas
@@ -38,7 +39,8 @@ local DEFAULT_FONT_NAME = "Friz Quadrata"
 local DEFAULT_FONT_SIZE = 13
 local MIN_FONT, MAX_FONT = 8, 24
 local FONT_OUTLINE = "OUTLINE"
-local LINE_ALPHA = 0.9 -- the fill of an alert that brings its own colour
+local LINE_ALPHA = 0.9 -- the fill of an alert in its own or its type's colour
+local SAMPLE_TYPES = { "dispel", "soak", "mythic" } -- the Previews' bars show three ability types' colours
 -- The first bar's centre. The old window was centred here, three sample bars tall, so this is its top.
 local DEFAULT_POSITION = { point = "CENTER", relativePoint = "CENTER", x = 0, y = 142 }
 local SAMPLE_SPELL = 31884
@@ -94,6 +96,11 @@ local function colorOf(c, default)
     return default
 end
 
+-- A saved colour of the area, used only with Use custom colours on; the default otherwise.
+local function customOf(c, default)
+    return Areas.CustomColors() and colorOf(c, default) or default
+end
+
 local function fontName(s)
     return type(s.font) == "string" and s.font or DEFAULT_FONT_NAME
 end
@@ -118,12 +125,14 @@ end
 local function row(line, now, ahead, shownAt, s)
     local total = math.min(ahead, line.at - (shownAt or now))
     local fraction = total > 0 and (line.at - now) / total or 0
+    local color, from = Areas.DrawColor(line, colorOf(s.barColor, DEFAULT_BAR_COLOR))
+    color = color or DEFAULT_BAR_COLOR
     return {
         text = Areas.LineText(line),
         time = timeText(line.at - now),
         icon = Areas.LineIcon(line),
-        lineColor = Areas.LineColor(line),
-        color = Areas.LineColor(line) or colorOf(s.barColor, DEFAULT_BAR_COLOR),
+        lineColor = from ~= "custom" and color or nil,
+        color = color,
         fraction = math.max(0, math.min(1, fraction)),
     }
 end
@@ -150,8 +159,8 @@ local function draw(bar, line, now, s, shownAt)
     local width = math.max(60, number(s.width, 240))
     local height = math.max(8, number(s.height, 20))
     local r = row(line, now, aheadOf(s), shownAt, s)
-    local bg = colorOf(s.bgColor, DEFAULT_BG_COLOR)
-    local tc = colorOf(s.textColor, DEFAULT_TEXT_COLOR)
+    local bg = customOf(s.bgColor, DEFAULT_BG_COLOR)
+    local tc = customOf(s.textColor, DEFAULT_TEXT_COLOR)
     local size = math.max(1, math.min(fontSize(s), height - 2)) -- text may not outgrow a small bar
     bar.row = r
     bar:SetSize(width, height)
@@ -211,7 +220,7 @@ local function after(area, n, more)
         moreText:SetPoint("TOPLEFT", area.pool[n], "BOTTOMLEFT", ICON_GAP, -MORE_GAP)
     end
     local s = Bars:Settings()
-    local tc = colorOf(s.textColor, DEFAULT_TEXT_COLOR)
+    local tc = customOf(s.textColor, DEFAULT_TEXT_COLOR)
     Areas.SetFont(moreText, fontName(s), fontSize(s), FONT_OUTLINE)
     moreText:SetTextColor(tc[1], tc[2], tc[3], tc[4] or 1)
     moreText:SetText(format(TEXT.more, more))
@@ -235,6 +244,7 @@ local function sample(now)
             id = "sample" .. i .. "#" .. sampleCycle,
             text = i == 1 and info and info.name or format(TEXT.sampleBar, i),
             icon = i == 1 and info and info.icon or nil,
+            abilityType = SAMPLE_TYPES[i],
             at = sampleBase + remaining,
         }
     end
@@ -307,12 +317,16 @@ local function settingsRows(panel, s)
         end,
         enabledIf = on,
     })
+    -- greyed and unused without Use custom colours; what is saved stays
+    local function custom()
+        return on() and Areas.CustomColors()
+    end
     local function colorRow(label, key, default)
         panel:Color(label, function()
             return colorOf(s[key], default)
         end, function(c)
             s[key] = c
-        end, on)
+        end, custom)
     end
     colorRow(TEXT.barColor, "barColor", DEFAULT_BAR_COLOR)
     colorRow(TEXT.bgColor, "bgColor", DEFAULT_BG_COLOR)

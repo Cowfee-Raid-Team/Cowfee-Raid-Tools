@@ -316,6 +316,9 @@ local defaults = {
         -- Where the player's own note lines without show: also display (Next spell alert, Bar and speech
         -- keep their own switches); off until chosen.
         noteLines = { text = false, icon = false, circle = false },
+        -- Use custom colours (Raid Notes > Alerts): off, every alert is in its ability type's colour and your own
+        -- colours (the areas', your reminders') stay saved but unused. A raid note's colour always shows.
+        customColors = false,
         speechNotice = false, -- the one-time "your note lines are now read out" line has been shown
         reminders = {},
         phases = {},

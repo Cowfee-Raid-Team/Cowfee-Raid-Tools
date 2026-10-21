@@ -106,6 +106,7 @@ local function defaults() return {
     texts = { shown = true, cap = 3, font = "Friz Quadrata", fontSize = 36, outline = "THICKOUTLINE", grow = "down", align = "CENTER" },
     circles = { shown = true, cap = 3, size = 64, fontSize = 16, grow = "right" },
   },
+  customColors = true, -- the checks were written for the player's own colours: Use custom colours on
   reminders = {}, phases = {}, overrides = {}, nextId = 1 } end
 local previews, layers, resets, dropdowns, sliders = {}, {}, 0, {}, {}
 local dropdownsMade, slidersMade = 0, 0
@@ -181,6 +182,10 @@ assert(w and w.icon.texture == 4444 and w.icon.shown, "icon texture")
 assert(w.icon.w == 44 and w.icon.h == 44, "icon size")
 assert(w.seconds.text == "5", "seconds: " .. tostring(w.seconds.text))
 assert(w.text.text == "Soak" and w.text.shown and w.text.textColor[1] == 1 and w.text.textColor[2] == 0, "text and colour")
+-- Use custom colours off: your own line colour is ignored (no type here, and no Colors.lua loaded: white)
+A:Settings().customColors = false I:Refresh()
+assert(I:Visible()[1].text.textColor[2] == 1, "own colour ignored with custom colours off")
+A:Settings().customColors = true I:Refresh()
 assert(w.seconds.fontSize == 22, "seconds at half the icon: " .. tostring(w.seconds.fontSize))
 assert(w.text.fontSize == 20 and w.text.fontPath == "Fonts\\\\FRIZQT__.TTF" and w.text.fontFlags == "OUTLINE", "area font")
 assert(w.w == 44 + 6 + #"Soak" * 6 + 4, "widget as wide as icon and words: " .. w.w)

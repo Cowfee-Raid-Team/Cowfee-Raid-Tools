@@ -5,7 +5,9 @@ local ADDON, CRT = ...
 --          whether they are read out. Each uses a switch kept elsewhere: the alert and speech in
 --          CRTDB.notes.alert (enabled, tts), the bars in alerts.bars.noteLines, the rest in
 --          alerts.noteLines. A note line with its own show: keeps its displays (see Notes/Engine.lua).
---          Under it, Previews and a test of every area.
+--          Under it, Colours (Use custom colours, alerts.customColors, the one switch for your own alert colours:
+--          the areas' colour rows, your reminders' and templates' colour; see Alerts/Colors.lua), then Previews
+--          and a test of every area.
 --   Right  Configuration, from half the page: a dropdown of the four alert areas and the chosen one's
 --          settings, drawn by Alerts/Areas.lua's panel from each area's def.settings. The choice is kept
 --          for the session.
@@ -30,6 +32,12 @@ local TEXT = {
     speech = "Read them out (text to speech)",
     speechHelp = "Reads your note lines out wherever they show, with or without the Next spell alert, and plays their sounds.\n\n"
         .. "It is also the switch for all speech: turning it off silences your reminders' speech too.",
+
+    colours = "Colours",
+    coloursHelp = "Each alert shows in the colour of its ability type, as on the Timeline: dispel blue, soak pink, Mythic only orange.\n\n"
+        .. "Tick Use custom colours to use your own bar, ring and alert colours instead. Unticked, they stay saved.\n\n"
+        .. "A colour the raid leader put on a raid note line always shows.",
+    custom = "Use custom colours",
 
     tryIt = "Try it",
     tryHelp = "Previews shows every alert with samples, so you can drag them into place; the cog on each opens its settings here. Test all areas counts three test alerts down in each.",
@@ -217,6 +225,26 @@ local function build(pf)
     makeCheck(pf, 4, nextRow(), TEXT.circle, areaOn("circles"), route("circle"))
     local speech = makeCheck(pf, 4, nextRow(), TEXT.speech, nil, alertField("tts"))
     UI.Help(pf, TEXT.speech, TEXT.speechHelp):SetPoint("LEFT", speech.label, "RIGHT", 6, 0)
+
+    -- Colours: the one switch for your own alert colours
+    local colourTop = y - 20
+    local colourTitle = heading(pf, 8, colourTop, TEXT.colours)
+    UI.Help(pf, TEXT.colours, TEXT.coloursHelp):SetPoint("LEFT", colourTitle, "RIGHT", 6, 0)
+    y = colourTop - 24
+    makeCheck(pf, 4, nextRow(), TEXT.custom, nil, function()
+        return CRT.Alerts:CustomColors()
+    end, function(value)
+        alertSettings().customColors = value and true or false
+        refresh()
+        -- the areas, the Timeline's rows and any open alert redraw in the new colours
+        for _, area in ipairs(CRT.AlertAreas and CRT.AlertAreas.list or {}) do
+            area:Refresh()
+        end
+        CRT.Alerts:Fire()
+        if CRT.Timeline and CRT.Timeline.Fire then
+            CRT.Timeline:Fire()
+        end
+    end)
 
     local tryTop = y - 20
     local tryTitle = heading(pf, 8, tryTop, TEXT.tryIt)

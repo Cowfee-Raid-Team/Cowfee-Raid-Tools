@@ -27,8 +27,7 @@ local TEXT = {
 }
 
 -- The Journal's icons that are reference types too: a dispellable debuff, a Heroic or a Mythic mechanic.
-local TYPE_OF_TAG = { magic = "dispel", curse = "dispel", poison = "dispel", disease = "dispel", heroic = "heroic",
-    mythic = "mythic" }
+local TYPE_OF_TAG = CRT.TimelineReference.TAG_TYPES
 
 -- " (type dispel, tags magic healer)" for an ability's Journal icons, the types once each; "" with none.
 function Export.Options(tags)

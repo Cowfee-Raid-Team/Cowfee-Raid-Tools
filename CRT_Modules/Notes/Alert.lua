@@ -104,6 +104,18 @@ local function show(iconTexture, text, time, color)
     frame:Show()
 end
 
+-- The alert's colour, as every alert display draws it: a colour of its own when it may show (a raid note line's
+-- always, yours with Use custom colours on: Alerts:OwnColor), else its ability type's (Alerts/Colors.lua). Nil
+-- (the heading colour) when neither is known.
+local function lineColor(line)
+    local Alerts, Colors = CRT.Alerts, CRT.AlertColors
+    local own = Alerts.OwnColor and Alerts:OwnColor(line)
+    if own then
+        return own
+    end
+    return Colors and Colors.KnownTypeColor(line.abilityType) or nil
+end
+
 local function countdownText(remaining)
     if remaining <= 0 then
         return "NOW"
@@ -142,7 +154,8 @@ function Alert:Refresh()
         -- A note's spell line shows the spell's own name, as it always did. A line with show:
         -- (ownLabel) shows its own text, icon and colour below, like a reminder.
         local info = Notes:SpellInfo(best.spellID)
-        show(info and info.icon or best.icon, info and info.name or best.text or ("Spell " .. best.spellID), countdownText(remaining))
+        show(info and info.icon or best.icon, info and info.name or best.text or ("Spell " .. best.spellID), countdownText(remaining),
+            lineColor(best))
     else
         -- Any other line (a reminder, or a merged "Soak + Defensive") shows its own text, with the
         -- spell's icon when the line has none of its own.
@@ -151,7 +164,7 @@ function Alert:Refresh()
             local info = Notes:SpellInfo(best.spellID)
             icon = info and info.icon
         end
-        show(icon, best.text or "", countdownText(remaining), best.color)
+        show(icon, best.text or "", countdownText(remaining), lineColor(best))
     end
 end
 

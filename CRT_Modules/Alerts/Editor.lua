@@ -187,6 +187,12 @@ local function editable()
     return not readOnly()
 end
 
+-- The Color row: a raid note line's colour is the raid leader's and always shows; your own alert's (Only me, as
+-- a reminder or a template) only with Use custom colours on (Alerts:CustomColors), so it is greyed without.
+local function colourEditable()
+    return (draft ~= nil and draft.saveAs == "note") or CRT.Alerts:CustomColors()
+end
+
 -- "m:ss" for whole seconds; a note line's time with a fraction stays plain seconds.
 local function clock(t, exact)
     if exact and t ~= math.floor(t) then
@@ -462,6 +468,26 @@ local function savesToLine()
     return string.format(TEXT.savesTo, name)
 end
 
+-- The Color row: a raid note line's colour is the raid leader's; yours (Only me) is greyed and unused without Use
+-- custom colours, and kept as saved.
+local function colourRow()
+    if not (frame and draft) then
+        return
+    end
+    local colourOn = not readOnly() and colourEditable()
+    frame.colorSwatch:SetEnabled(colourOn)
+    frame.colorDefault:SetEnabled(colourOn)
+    frame.colorSwatch:SetAlpha(colourOn and 1 or 0.4)
+    frame.colorLabel:SetAlpha(colourOn and 1 or 0.5)
+end
+
+-- Use custom colours ticked or unticked (Raid Notes > Alerts fires the alerts' change) greys the open editor's row.
+CRT.Alerts:OnChange(function()
+    if frame and frame:IsShown() then
+        colourRow()
+    end
+end)
+
 -- Everything on the window from the draft, except the boxes being typed in. `rows` also redraws the
 -- dropdowns and sliders (on open and when one of them is set), so typing never rebuilds their menus.
 local function refresh(rows)
@@ -490,9 +516,10 @@ local function refresh(rows)
     frame.copyBtn:SetEnabled(locked and type(ctx.encounterID) == "number")
     -- why Raid note is greyed out (a saved alert may keep Raid note: it changes no note by itself)
     frame.saveAsHelp:SetShown(not savedMode and not canEditRaid())
-    for _, el in ipairs({ frame.textEdit, frame.timeEdit, frame.idEdit, frame.colorSwatch, frame.colorDefault }) do
+    for _, el in ipairs({ frame.textEdit, frame.timeEdit, frame.idEdit }) do
         el:SetEnabled(not locked)
     end
+    colourRow()
     if locked then
         frame.lookupCtl:Hide()
     end
@@ -1163,7 +1190,7 @@ end
 
 -- The game's color picker on the draft's color; Cancel puts the old one back.
 local function pickColor()
-    if not (draft and ColorPickerFrame) or readOnly() then
+    if not (draft and ColorPickerFrame) or readOnly() or not colourEditable() then
         return
     end
     -- the alert open now: a picker left open never writes into the next one
@@ -1403,7 +1430,7 @@ local function build()
     end)
 
     -- Color: a swatch that opens the game's color picker, and Default for none
-    makeLabel(f, TEXT.color, LEFT, -210 - ROW1_EXTRA)
+    f.colorLabel = makeLabel(f, TEXT.color, LEFT, -210 - ROW1_EXTRA)
     f.colorSwatch = CreateFrame("Button", nil, f)
     f.colorSwatch:SetSize(20, 20)
     lay(f.colorSwatch, FIELD_X, -206 - ROW1_EXTRA)
@@ -1417,7 +1444,7 @@ local function build()
     f.colorDefault = makeButton(f, TEXT.colorDefault, 80)
     lay(f.colorDefault, FIELD_X + 28, -204 - ROW1_EXTRA)
     f.colorDefault:SetScript("OnClick", function()
-        if draft and not readOnly() then
+        if draft and not readOnly() and colourEditable() then
             draft.color = nil
             changed()
         end

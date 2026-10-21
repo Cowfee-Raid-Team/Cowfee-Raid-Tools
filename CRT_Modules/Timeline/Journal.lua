@@ -368,6 +368,12 @@ function Journal:Rows(encounterID)
     return rows
 end
 
+-- The rows of a boss already read this session, or nil. Never walks the Journal, so it is safe at a pull's
+-- start, when combat may not be set yet (the alerts' type colours read it).
+function Journal:CachedRows(encounterID)
+    return cache[encounterID]
+end
+
 -- The dungeon encounter id of a boss found in the Journal by its name, or nil. Looked up out of
 -- combat with the Journal closed; a name that is not found is tried again after a zone change.
 function Journal:EncounterByName(name)
