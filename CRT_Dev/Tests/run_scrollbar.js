@@ -363,6 +363,7 @@ const KNOWN = [
   ['CRT_Modules/Notes/Page.lua', 'CowfeeRaidToolsNotesListScroll'],
   ['CRT_Modules/Notes/Page.lua', 'CowfeeRaidToolsNoteTextScroll'],
   ['CRT_Modules/Notes/Page.lua', 'CowfeeRaidToolsPersonalNoteScroll'],
+  ['CRT_Modules/Notes/Render.lua', 'CowfeeRaidToolsNoteView'], // the rendered note text and personal note
   ['CRT_Modules/Late/Page.lua', 'CowfeeRaidToolsLateRosterScroll'],
   ['CRT_Modules/Late/Page.lua', 'CowfeeRaidToolsLateListScroll'],
   ['CRT_Modules/Tattlebot/Page.lua', 'CowfeeRaidToolsTattleListScroll'],

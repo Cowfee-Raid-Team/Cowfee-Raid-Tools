@@ -1,11 +1,11 @@
-// Builds the Raid Notes page (CRT_Modules/Notes/Settings.lua and CRT_Modules/Notes/Page.lua) on mock frames and switches tabs.
+// Builds the Raid Notes page (CRT_Modules/Notes/Settings.lua and CRT_Modules/Notes/Page.lua, with Parse.lua and Render.lua for the rendered note) on mock frames and switches tabs.
 const fs = require('fs');
 const path = require('path');
 const themeLua = require('./theme_stub');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
 const harness = themeLua(process.argv.slice(2)) + `
-local settingsSrc, pageSrc = ...
+local settingsSrc, pageSrc, parseSrc, renderSrc = ...
 local created = 0
 local allTexts = {}
 local function mock()
@@ -35,7 +35,7 @@ local alertSettings = { enabled = true, seconds = 10, tts = true, ttsSeconds = 3
 local win = { shown = true, locked = true, fontSize = 14, alpha = 100, bgAlpha = 50, font = "Friz Quadrata", hidePassed = true, onlyMe = false }
 local CRT = {
   Bosses = { OnRouteChange = function() end, RouteIndex = function() end },
-  UI = { PAGE_W = 1026, PAGE_H = 560, SkinScrollBar = function() end, Help = function() return mock() end, Dropdown = function(_, _, o) local m = mock() rawset(m, "refresh", function() if o.enabledIf then rawset(m, "enabled", o.enabledIf() and true or false) end end) return m end, Slider = function(_, _, o) local m = mock() rawset(m, "refresh", function() if o.enabledIf then rawset(m, "enabled", o.enabledIf() and true or false) end end) return m end,  RegisterLayer = function() end, RegisterPage = function(_, key, title, fn) pages[key] = fn end, Show = function() end, SetFrameTitle = function() end, RegisterTab = function() end, SetTabSelected = function() end },
+  UI = { PAGE_W = 1026, PAGE_H = 560, SkinScrollBar = function() end, ScrollGutter = function(w) return 6 + (w or 18) end, Help = function() return mock() end, Dropdown = function(_, _, o) local m = mock() rawset(m, "refresh", function() if o.enabledIf then rawset(m, "enabled", o.enabledIf() and true or false) end end) return m end, Slider = function(_, _, o) local m = mock() rawset(m, "refresh", function() if o.enabledIf then rawset(m, "enabled", o.enabledIf() and true or false) end end) return m end,  RegisterLayer = function() end, RegisterPage = function(_, key, title, fn) pages[key] = fn end, Show = function() end, SetFrameTitle = function() end, RegisterTab = function() end, SetTabSelected = function() end },
   Notes = {
     CanEditRaid = function() return true end, -- CRT_Modules/Notes/Data.lua: solo, you may change the raid note
     WindowSettings = function() return win end, Alert = function() return alertSettings end, Set = function(_, k, f, v) end,
@@ -54,6 +54,8 @@ local CRT = {
 CRT_THEME(CRT, CRT.UI)
 assert(load(settingsSrc, "Settings.lua"))("CowfeeRaidTools", CRT)
 assert(load(pageSrc, "Page.lua"))("CowfeeRaidTools", CRT)
+assert(load(parseSrc, "Parse.lua"))("CowfeeRaidTools", CRT)
+assert(load(renderSrc, "Render.lua"))("CowfeeRaidTools", CRT)
 local pf = mock()
 pages.notes(pf)
 pf:Show()
@@ -72,4 +74,6 @@ print("refresh ok, listeners: " .. #listeners)
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 lua.lua_pushstring(L, to_luastring(fs.readFileSync(process.argv[2], 'utf8')));
 lua.lua_pushstring(L, to_luastring(fs.readFileSync(process.argv[3], 'utf8')));
-if (lua.lua_pcall(L, 2, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
+lua.lua_pushstring(L, to_luastring(fs.readFileSync(process.argv[4], 'utf8')));
+lua.lua_pushstring(L, to_luastring(fs.readFileSync(process.argv[5], 'utf8')));
+if (lua.lua_pcall(L, 4, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
