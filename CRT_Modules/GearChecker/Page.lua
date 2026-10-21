@@ -1,13 +1,17 @@
 local ADDON, CRT = ...
 
 -- The Gear Checker page: one row per group member with their name (class colour), average item level, an
--- issues count and a cell per gear slot (all 16 fit the page, so nothing scrolls sideways): the item's
--- icon in its quality's border, its item level, gem diamonds at the top right (filled, or empty with a red
--- edge) and, on a slot that takes an enchant, a dot at the top left (green, or red when missing). A missing
--- enchant or gem outlines the cell red, a low item orange. Filter chips pick who shows, and on an issue
--- filter each row draws only the cells with that issue (GC.CellShows), the rest empty; Refresh asks the
--- group's CRTs and inspects the rest (Comm.lua, Inspect.lua), and says how many have CRT. Hover a cell for
--- the exact item, or the issues badge for the list of issues; shift-click an item with an issue to put it in
+-- issues count, the Tracks column (pieces per upgrade track, "3M 3H") and a cell per gear slot (all 16 fit
+-- the page, so nothing scrolls sideways): the item's icon in its quality's border, its item level, its
+-- track and rank at the top left ("H4", in the track's colour), gem diamonds at the top right (filled, or
+-- empty with a red edge), a season check's square at the bottom right and, on a slot that takes an
+-- enchant, a dot at the bottom left (green, or red when missing). A missing enchant or gem outlines the
+-- cell red, a low item orange. Filter chips pick who shows, and on an issue filter each row draws only the
+-- cells with that issue (GC.CellShows), the rest empty; the Below chip does the same for items under a
+-- track picked from its arrow's menu (CRTDB.gearChecker.belowTrack). Refresh asks the group's CRTs and
+-- inspects the rest (Comm.lua, Inspect.lua), and says how many have CRT. Hover a cell for the exact item,
+-- or the issues badge for the list of issues and, under Not an issue, the info checks and items below the
+-- track; shift-click an item with an issue to put it in
 -- the chat box; right-click a row to send its issues to a channel or a whisper, put them in the chat box or
 -- inspect. Pop out moves the whole page into a window of its own (UI.Window "popout", its place and
 -- size in CRTDB.gearChecker.popout), as the Timeline's does; closing it puts it back.
@@ -28,7 +32,7 @@ local Gear = CRT.Gear
 
 local TEXT = {
     title = "Gear Checker",
-    help = "Shows everyone's gear and what needs fixing: red for a missing enchant or gem, orange for an item %d or more item levels under the player's average, and a small square for this season's checks (blue is just to know). Pick a filter at the top to see only those items, press Refresh to check the group again, and right-click a player to send them their issues.",
+    help = "Shows everyone's gear and what needs fixing: red for a missing enchant or gem, orange for an item %d or more item levels under the player's average, and a small square for this season's checks (blue is just to know and isn't counted). The tag at an item's top left is its upgrade track and rank, like H4 for Hero 4. Pick a filter at the top to see only those items, press Refresh to check the group again, and right-click a player to send them their issues.",
     refresh = "Refresh (%d/%d have CRT)",
     popOut = "Pop out",
     dock = "Dock",
@@ -37,6 +41,9 @@ local TEXT = {
     name = "Name",
     ilvl = "iLvl",
     issues = "Issues",
+    tracks = "Tracks",
+    notAnIssue = "Not an issue",
+    belowMenu = "List items below",
     notSeen = "not seen yet",
     notSeenWhy = { range = "not seen yet (out of range)", offline = "not seen yet (offline)", cannot = "not seen yet (can't inspect)" },
     shiftClick = "Shift-click to put this in the chat box.",
@@ -53,18 +60,22 @@ local TEXT = {
     count = "%d shown",
 }
 
--- Sizes in pixels. A row is NAME + ILVL + ISSUES + 16 cells; with the scroll bar it fits UI.PAGE_W.
+-- Sizes in pixels. A row is NAME + ILVL + ISSUES + TRACKS + 16 cells; with the scroll bar it fits UI.PAGE_W
+-- and the pop-out at its smallest (popMinW).
 local L = {
     chipH = 24, chipPad = 12, chipGap = 4, buttonH = 24,
     chipsW = 600, -- chips run to here, then on to another row (Refresh and Pop out sit to the right)
+    chipArrow = 12, chipArrowH = 8, -- the Below chip's arrow, at its right
     headY = -34, listY = -52, -- with one row of chips; each more row moves them down chipH + chipGap
     tag = 7, -- a season check's square at the icon's bottom right
-    nameW = 130, ilvlW = 40, issuesW = 40, cellW = 48, rowH = 46,
+    trackX = -3, trackY = 2, -- the track tag's top left, from the icon's (a little out, clear of the gems)
+    nameW = 98, ilvlW = 40, issuesW = 40, tracksW = 64, cellW = 47, rowH = 46,
     icon = 30, edge = 2, gem = 7, gemInner = 5, gemGap = 1, dot = 8, badgeW = 26, badgeH = 16,
     barGap = UI.SCROLL_GAP, barW = 8, -- the gap before the bar: the shared scroll bar gap
     popW = 1040, popH = 560, popMinW = 1024, popMinH = 300,
 }
-L.rowW = L.nameW + L.ilvlW + L.issuesW + #Gear.SLOTS * L.cellW
+L.cellsX = L.nameW + L.ilvlW + L.issuesW + L.tracksW -- where the first cell starts
+L.rowW = L.cellsX + #Gear.SLOTS * L.cellW
 GC.PAGE_LAYOUT = L
 
 -- Data colours, the same in every theme (not theme colours).
@@ -247,28 +258,40 @@ local function diamond(owner, size, layer, sublevel)
     return t
 end
 
--- The colour of a slot's worst finding: red for a missing enchant or gem, orange for a low item, a season
--- check's own (GC.SEVERITY orders them).
+-- The colour of a slot's worst issue: red for a missing enchant or gem, orange for a low item, a season
+-- check's own (GC.SEVERITY orders them; an info check is no issue).
 local function findingColor(r)
     local worst = (r.missingEnchant or r.emptySockets > 0) and "bad" or (r.low and "low") or nil
-    local top = GC.TopCheck(r)
-    if top and (not worst or GC.SEVERITY[top.severity] > GC.SEVERITY[worst]) then
-        worst = top.severity
+    for _, c in ipairs(r.checks or {}) do
+        if not GC.IsNote(c) and (not worst or GC.SEVERITY[c.severity] > GC.SEVERITY[worst]) then
+            worst = c.severity
+        end
     end
     return COLORS[worst or "bad"] or COLORS.bad
 end
 
+-- The item's tooltip, then its issues in their colour (and the shift-click hint), then its info checks in blue.
 local function cellEnter(cell)
     local r = cell.result
     if not (r and r.piece) then
         return
     end
     Gear.ShowTooltip(cell, r.piece)
-    local problems = GC.Problems(r)
-    if problems and GameTooltip then
+    if not GameTooltip then
+        return
+    end
+    local problems, notes = GC.Problems(r), GC.Notes(r)
+    if problems then
         local c = findingColor(r)
         GameTooltip:AddLine(problems, c[1], c[2], c[3], true)
+    end
+    if notes then
+        GameTooltip:AddLine(notes, COLORS.info[1], COLORS.info[2], COLORS.info[3], true)
+    end
+    if problems then
         GameTooltip:AddLine(TEXT.shiftClick, 0.6, 0.6, 0.6, true)
+    end
+    if problems or notes then
         GameTooltip:Show()
     end
 end
@@ -294,7 +317,7 @@ end
 local function makeCell(rowFrame, i)
     local c = CreateFrame("Button", nil, rowFrame)
     c:SetSize(L.cellW, L.rowH)
-    c:SetPoint("LEFT", rowFrame, "LEFT", L.nameW + L.ilvlW + L.issuesW + (i - 1) * L.cellW, 0)
+    c:SetPoint("LEFT", rowFrame, "LEFT", L.cellsX + (i - 1) * L.cellW, 0)
     c:RegisterForClicks("LeftButtonUp", "RightButtonUp")
     c.slot = Gear.SLOTS[i].id
     c.back = c:CreateTexture(nil, "BACKGROUND", nil, 1)
@@ -306,10 +329,17 @@ local function makeCell(rowFrame, i)
     c.flag = outline(c, c.back, L.edge, "OVERLAY", 1) -- red (missing) or orange (low), over the quality
     c.ilvl = c:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     c.ilvl:SetPoint("TOP", c.back, "BOTTOM", 0, -1)
-    c.dot = c:CreateTexture(nil, "OVERLAY", nil, 3)
+    c.dot = c:CreateTexture(nil, "OVERLAY", nil, 3) -- the enchant dot, bottom left (the track tag has the top left)
     c.dot:SetTexture(DISC)
     c.dot:SetSize(L.dot, L.dot)
-    c.dot:SetPoint("CENTER", c.back, "TOPLEFT", 1, -1)
+    c.dot:SetPoint("CENTER", c.back, "BOTTOMLEFT", 1, 1)
+    -- the upgrade track and rank ("H4"), in the track's colour, over a dark backing so it reads on any icon
+    c.trackBack = c:CreateTexture(nil, "OVERLAY", nil, 6)
+    c.trackTag = c:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    c.trackTag:SetDrawLayer("OVERLAY", 7) -- above its backing
+    c.trackTag:SetPoint("TOPLEFT", c.back, "TOPLEFT", L.trackX, L.trackY)
+    c.trackBack:SetPoint("TOPLEFT", c.trackTag, "TOPLEFT", -1, 1)
+    c.trackBack:SetPoint("BOTTOMRIGHT", c.trackTag, "BOTTOMRIGHT", 1, -1)
     c.gems = {}
     for g = 1, 3 do
         local edge = diamond(c, L.gem, "OVERLAY", 4)
@@ -356,6 +386,14 @@ local function paintCell(c, row, r, shown)
     if dot then
         c.dot:SetVertexColor(dot[1], dot[2], dot[3], 1)
     end
+    local track = piece and r.track or nil
+    c.trackTag:SetShown(track ~= nil)
+    c.trackBack:SetShown(track ~= nil)
+    c.trackTag:SetText(track and GC.TrackTag(track) or "")
+    if track then
+        c.trackTag:SetTextColor(GC.TrackColor(track.track))
+        c.trackBack:SetColorTexture(0, 0, 0, 0.7)
+    end
     local top = piece and GC.TopCheck(r)
     c.tag:SetShown(top ~= nil)
     if top then
@@ -392,7 +430,8 @@ end
 
 -- The issues badge's tooltip: the player's name in their class colour, then a line per issue (red for a
 -- missing enchant or gem, orange for a low item, a season check in its severity's colour), or No issues,
--- or Not seen yet.
+-- or Not seen yet. Then, under Not an issue, the info checks (blue) and the items below the Below chip's
+-- track (in the track's colour).
 local function badgeEnter(hit)
     local row = hit:GetParent().data
     if not (row and GameTooltip) then
@@ -409,6 +448,18 @@ local function badgeEnter(hit)
     for _, line in ipairs(lines or {}) do
         local c = COLORS[line.kind] or COLORS.bad
         GameTooltip:AddLine(line.text, c[1], c[2], c[3])
+    end
+    local notes = GC.NoteLines(row) or {}
+    if #notes > 0 then
+        GameTooltip:AddLine(TEXT.notAnIssue, textColor("heading"))
+    end
+    for _, line in ipairs(notes) do
+        if line.track then
+            GameTooltip:AddLine(line.text, GC.TrackColor(line.track))
+        else
+            local c = COLORS[line.kind] or COLORS.info
+            GameTooltip:AddLine(line.text, c[1], c[2], c[3])
+        end
     end
     GameTooltip:Show()
 end
@@ -443,6 +494,11 @@ local function buildRow(f)
     f.badgeHit:SetScript("OnEnter", badgeEnter)
     f.badgeHit:SetScript("OnLeave", cellLeave)
     f.badgeHit:SetScript("OnClick", badgeClick)
+    -- the Tracks column: pieces per track, highest first, each in its track's colour
+    f.tracks = f:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    f.tracks:SetPoint("LEFT", L.nameW + L.ilvlW + L.issuesW, 0)
+    f.tracks:SetWidth(L.tracksW)
+    f.tracks:SetWordWrap(false)
     f.notSeen = f:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     f.notSeen:SetPoint("LEFT", L.nameW + L.ilvlW + L.issuesW + 8, 0)
     f.cells = {}
@@ -470,6 +526,7 @@ function P.InitRow(f, row)
         f.issues:SetText(tostring(row.issues))
         f.issues:SetTextColor(1, 1, 1)
     end
+    f.tracks:SetText(row.seen and GC.TrackText(row, true) or "")
     local why = not row.seen and GC.Inspect and GC.Inspect.skipped[row.name]
     f.notSeen:SetText(row.seen and "" or (why and TEXT.notSeenWhy[why] or TEXT.notSeen))
     f.notSeen:SetTextColor(0.6, 0.6, 0.6)
@@ -486,6 +543,12 @@ local function settings()
     return GC:Settings()
 end
 
+-- The Below chip's label for the track picked now ("Below Hero").
+local function belowLabel()
+    local t = GC:BelowTrack()
+    return string.format(GC.TEXT.below, t and t.label or "")
+end
+
 local function sizeButton(b)
     local fs = b:GetFontString()
     b:SetWidth(UI.PanelButtonWidth(fs and fs:GetStringWidth() or 0))
@@ -498,6 +561,11 @@ local function paintHeaders()
     P.countText:SetTextColor(textColor("text"))
     for _, chip in ipairs(P.chips) do
         UI:StyleTab(chip, chip.key == P.filter)
+        if chip.below then
+            chip.label = belowLabel()
+            chip.text:SetText(chip.label)
+            chip.arrow.icon:SetVertexColor(textColor("text"))
+        end
     end
 end
 
@@ -549,6 +617,54 @@ local function chipEnter(b)
     end
 end
 
+-- The Below chip's menu (UI.ContextMenu, above every window): a choice per track but the lowest, the saved
+-- one picked. A pick is saved (CRTDB.gearChecker.belowTrack) and turns the Below filter on.
+function P.OpenBelowMenu(owner)
+    UI.ContextMenu(owner, function(root)
+        root:CreateTitle(TEXT.belowMenu)
+        for _, t in ipairs(GC:BelowChoices()) do
+            root:CreateRadio(t.label, function(key)
+                local below = GC:BelowTrack()
+                return below ~= nil and below.key == key
+            end, function(key)
+                settings().belowTrack = key
+                selectFilter(GC.BELOW)
+            end, t.key)
+        end
+    end)
+end
+
+-- The Below chip: wide enough for its longest label, with an arrow at its right that opens its menu (so
+-- does a right-click on the chip); a left-click turns the filter on.
+local function makeBelowParts(b)
+    local widest = 0
+    for _, t in ipairs(GC:BelowChoices()) do
+        b.text:SetText(string.format(GC.TEXT.below, t.label))
+        widest = math.max(widest, math.ceil(b.text:GetStringWidth() or 0))
+    end
+    b.text:SetText(belowLabel())
+    b.text:ClearAllPoints()
+    b.text:SetPoint("CENTER", -L.chipArrow / 2, 0)
+    b:SetSize(widest + 2 * L.chipPad + L.chipArrow, L.chipH)
+    b.below = true
+    b:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    local arrow = CreateFrame("Button", nil, b)
+    arrow:SetSize(L.chipArrow + L.chipPad / 2, L.chipH)
+    arrow:SetPoint("RIGHT", b, "RIGHT", 0, 0)
+    arrow.icon = arrow:CreateTexture(nil, "OVERLAY")
+    arrow.icon:SetAtlas("auctionhouse-ui-dropdown-arrow-down")
+    arrow.icon:SetSize(L.chipArrow, L.chipArrowH)
+    arrow.icon:SetPoint("CENTER", -2, 0)
+    arrow:SetScript("OnClick", function()
+        P.OpenBelowMenu(arrow)
+    end)
+    arrow:SetScript("OnEnter", function()
+        chipEnter(b)
+    end)
+    arrow:SetScript("OnLeave", cellLeave)
+    b.arrow = arrow
+end
+
 local function makeChip(parent, filter)
     local b = CreateFrame("Button", nil, parent, "BackdropTemplate")
     b:SetBackdrop({ bgFile = WHITE, edgeFile = WHITE, edgeSize = 1 })
@@ -559,8 +675,15 @@ local function makeChip(parent, filter)
     b.text:SetText(filter.label)
     b:SetSize(math.ceil(b.text:GetStringWidth() or 0) + 2 * L.chipPad, L.chipH)
     b.key, b.label, b.help = filter.key, filter.label, filter.help
-    b:SetScript("OnClick", function()
-        selectFilter(filter.key)
+    if filter.below then
+        makeBelowParts(b)
+    end
+    b:SetScript("OnClick", function(_, button)
+        if b.below and button == "RightButton" then
+            P.OpenBelowMenu(b)
+        else
+            selectFilter(filter.key)
+        end
     end)
     b:SetScript("OnEnter", chipEnter)
     b:SetScript("OnLeave", cellLeave)
@@ -614,8 +737,9 @@ local function buildBody(body)
     heading(TEXT.name, 6, L.nameW - 6, "LEFT")
     heading(TEXT.ilvl, L.nameW, L.ilvlW)
     heading(TEXT.issues, L.nameW + L.ilvlW, L.issuesW)
+    heading(TEXT.tracks, L.nameW + L.ilvlW + L.issuesW, L.tracksW)
     for i, s in ipairs(Gear.SLOTS) do
-        heading(s.name, L.nameW + L.ilvlW + L.issuesW + (i - 1) * L.cellW, L.cellW)
+        heading(s.name, L.cellsX + (i - 1) * L.cellW, L.cellW)
     end
 
     local box = CreateFrame("Frame", nil, body, "WowScrollBoxList")

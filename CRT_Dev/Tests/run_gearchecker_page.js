@@ -2,7 +2,8 @@
 // (Themes.lua, Panel.lua, Controls.lua, Window.lua, ScrollBar.lua): it fits the page area; the chips, the
 // Refresh label with the CRT count and its width; the rows (name in class colour, average, the issues
 // badge, the cells' quality border, red and orange outlines, enchant dots and gem diamonds, not seen yet);
-// the filters; the page in each theme and a live theme switch; hover, shift-click, the issues badge's
+// the filters; the season checks (info ones not counted), the upgrade tracks (tag, Tracks column, Below
+// chip and its menu, Not an issue lines); the page in each theme and a live theme switch; hover, shift-click, the issues badge's
 // tooltip and the right-click menu (the Send issues to submenu per group, guild and officer rights, Say in
 // the world into the chat box, chat box, inspect); and the pop-out window saving its place and size.
 // Usage: node run_gearchecker_page.js <addon folder>
@@ -126,6 +127,7 @@ local function menuNode(t, fn)
   function n:CreateDivider() end
   function n:CreateButton(x, f) local b = menuNode(x, f) self.items[#self.items + 1] = b return b end
   function n:SetEnabled(on) self.enabled = on end
+  function n:CreateRadio(x, isSel, setSel, data) local b = menuNode(x, function() setSel(data) end) b.radio, b.selected = true, isSel(data) self.items[#self.items + 1] = b return b end
   function n:SetTooltip(f) local t = { lines = {} } function t:AddLine(x) self.lines[#self.lines + 1] = x end f(t, self) self.tooltip = table.concat(t.lines, " ") end
   return n
 end
@@ -158,7 +160,7 @@ GetNumGroupMembers = function() return 4 end
 GetNumSubgroupMembers = function() return 0 end
 InCombatLockdown = function() return false end
 RAID_CLASS_COLORS = { ROGUE = { r = 1, g = 0.96, b = 0.41 }, PALADIN = { r = 0.96, g = 0.55, b = 0.73 }, HUNTER = { r = 0.67, g = 0.83, b = 0.45 }, DRUID = { r = 1, g = 0.49, b = 0.04 } }
-ITEM_QUALITY_COLORS = { [2] = { r = 0.12, g = 1, b = 0 }, [4] = { r = 0.64, g = 0.21, b = 0.93 } }
+ITEM_QUALITY_COLORS = { [2] = { r = 0.12, g = 1, b = 0 }, [3] = { r = 0, g = 0.44, b = 0.87 }, [4] = { r = 0.64, g = 0.21, b = 0.93 } }
 local QUALITY = setmetatable({}, { __index = function() return 4 end })
 local LOC = { [111] = "INVTYPE_FINGER", [101] = "INVTYPE_HEAD" }
 C_Item = {
@@ -220,7 +222,7 @@ check(helpText:find("an item 15 or more item levels under", 1, true) ~= nil, "th
 page.scripts.OnShow(page)
 check(P.body ~= nil and P.box ~= nil, "the body and the list are built")
 check(Lt.rowW + Lt.barGap + Lt.barW <= UI.PAGE_W - 16, "a row and the scroll bar fit inside the page (" .. (Lt.rowW + Lt.barGap + Lt.barW) .. ")")
-eq(Lt.rowW, Lt.nameW + Lt.ilvlW + Lt.issuesW + 16 * Lt.cellW, "all 16 slots in a row")
+eq(Lt.rowW, Lt.nameW + Lt.ilvlW + Lt.issuesW + Lt.tracksW + 16 * Lt.cellW, "all 16 slots and the Tracks column in a row")
 check(P.bar.crtScroll ~= nil, "the scroll bar goes through UI:SkinScrollBar")
 local chipW = 0
 for _, c in ipairs(P.chips) do chipW = chipW + c.w + Lt.chipGap end
@@ -517,14 +519,18 @@ P.chips[5].scripts.OnEnter(P.chips[5])
 check(tip.title == "Cursed" and tip.lines[1] == "Shows who wears a cursed item. Click it to see only those items.", "a check's chip: its help on hover")
 rows = drawRows()
 arrow, quick = rowOf("Arrow"), rowOf("Quick")
-eq(arrow.issues.text, "3", "Arrow: the season check counts in Issues")
+eq(arrow.issues.text, "2", "Arrow: an info check does not count in Issues")
 local ahead = cell(arrow, 1)
 check(ahead.tag.shown and near(ahead.tag.color, { 0.3, 0.65, 1 }), "a cursed head: a blue tag")
 check(not cell(arrow, 2).tag.shown, "no check: no tag")
 arrow.badgeHit.scripts.OnEnter(arrow.badgeHit)
-eq(#tip.lines, 3, "badge: the check's line too")
-eq(tip.lines[2], "Head |cffa335ee|Hitem:101::::::::90|h[Band]|h|r 289 - Cursed", "badge: the check's label, with its slot's other lines")
-check(near(tip.colors[2], { 0.3, 0.65, 1 }), "badge: in the check's colour")
+eq(#tip.lines, 4, "badge: the two issues, then a Not an issue part with the info check")
+eq(tip.lines[1] .. "|" .. tip.lines[2]:match("^%a+"), "Head |cffa335ee|Hitem:101::::::::90|h[Band]|h|r 289 - missing enchant|Hands", "badge: the issues first")
+eq(tip.lines[3], "Not an issue", "badge: then the Not an issue heading")
+eq(tip.lines[4], "Head |cffa335ee|Hitem:101::::::::90|h[Band]|h|r 289 - Cursed", "badge: the info check's line under it")
+check(near(tip.colors[4], { 0.3, 0.65, 1 }), "badge: in the check's colour")
+ahead.scripts.OnEnter(ahead)
+check(tip.lines[2] == "missing enchant" and tip.lines[3] == "Cursed" and near(tip.colors[3], { 0.3, 0.65, 1 }), "cell hover: the issue, then the info check in blue")
 P.chips[5]:Click()
 rows = drawRows()
 eq(#rows, 3, "Cursed: the three wearing one")
@@ -532,8 +538,90 @@ arrow = rowOf("Arrow")
 check(cell(arrow, 1).icon.shown and not cell(arrow, 10).icon.shown, "Cursed: only the cursed item is drawn")
 P.chips[2]:Click()
 rows = drawRows()
+eq(rowOf("Solex"), nil, "only issues: a row with only an info check is not listed")
+P.chips[5]:Click()
+rows = drawRows()
 me = rowOf("Solex")
-check(me ~= nil and cell(me, 1).icon.shown and cell(me, 1).tag.shown, "only issues: a season check's cell is drawn")
+check(me ~= nil and cell(me, 1).icon.shown and cell(me, 1).tag.shown, "its own chip: the info check's cell is drawn, with its square")
+
+-- 9. Upgrade tracks: the cell's tag and where the dot moved, the Tracks column, the Below chip and its menu,
+-- the saved pick, and the badge's Not an issue lines. The page is built again on a season with tracks.
+local TRACKS = { default = "hero", list = {
+  { key = "veteran", label = "Veteran", letter = "V", quality = 2 },
+  { key = "champion", label = "Champion", letter = "C", quality = 3 },
+  { key = "hero", label = "Hero", letter = "H", quality = 4 },
+  { key = "myth", label = "Myth", letter = "M", color = { 1, 0.5, 0 } },
+}, bonus = { [7001] = { track = "champion", rank = 4, max = 6 }, [7002] = { track = "hero", rank = 2, max = 6 }, [7003] = { track = "myth", rank = 1, max = 6 } } }
+CRT.Bosses = { GearChecks = function() return { enchant = { 1 } } end, Tracks = function() return TRACKS end }
+local function bonusString(id, enchant, bonuses) return "item:" .. id .. ":" .. (enchant or "") .. string.rep(":", 11) .. #bonuses .. ":" .. table.concat(bonuses, ":") end
+local ringString = "item:111:7364:213746:213747:::::::::1:7001"
+Gear:Remember("Quick-Sargeras", { { slot = 1, id = 101, itemString = bonusString(101, "7364", { 7002 }), ilvl = 289 },
+  { slot = 2, id = 102, itemString = bonusString(102, "", { 7003 }), ilvl = 289 },
+  { slot = 11, id = 111, itemString = ringString, ilvl = 289 }, { slot = 3, id = 103, itemString = "item:103", ilvl = 289 } }, "gearcheck", true)
+CRT.db.gearChecker.filter = "all"
+CRT.db.gearChecker.belowTrack = "hero"
+assert(load(pageSrc))("CowfeeRaidTools", CRT)
+P = GC.Page
+local page3 = CreateFrame("Frame") page3.w, page3.h = UI.PAGE_W, UI.PAGE_H
+UI.pages.gearcheck.builder(page3)
+page3.scripts.OnShow(page3)
+local belowChip = P.chips[#P.chips]
+eq(belowChip.text.text, "Below Hero", "below: the last chip names the saved track")
+check(belowChip.arrow ~= nil and belowChip.arrow.shown, "below: the chip has an arrow to pick the track")
+check(belowChip.w >= #"Below Champion" * 6 + 2 * Lt.chipPad, "below: wide enough for the longest track's label")
+check(belowChip.points[1][2] + belowChip.w <= Lt.chipsW, "below: left of the buttons")
+local tracksHead
+for _, h in ipairs(P.headers) do if h.text == "Tracks" then tracksHead = h end end
+check(tracksHead ~= nil and tracksHead.points[1][2] == Lt.nameW + Lt.ilvlW + Lt.issuesW, "the Tracks heading, after Issues")
+rows = drawRows()
+quick = rowOf("Quick")
+local plain = (quick.tracks.text or ""):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+eq(plain, "1M 1H 1C", "the Tracks column: a count per track, highest first")
+check(quick.tracks.text:find("|cffa336ed1H|r", 1, true) ~= nil, "the Tracks column: each in its track's colour (" .. quick.tracks.text .. ")")
+eq(quick.tracks.points[1][2], Lt.nameW + Lt.ilvlW + Lt.issuesW, "the Tracks column sits after Issues")
+eq(quick.issues.text, "0", "below or not, a track is no issue")
+local qhead = cell(quick, 1)
+check(qhead.trackTag.shown and qhead.trackTag.text == "H2", "a cell's track tag: letter and rank")
+check(near(qhead.trackTag.color, { 0.64, 0.21, 0.93 }), "the tag in its track's colour")
+local tp = qhead.trackTag.points[1]
+check(tp[1] == "TOPLEFT" and tp[2] == qhead.back and tp[3] == "TOPLEFT", "the tag at the icon's top left")
+local dp = qhead.dot.points[1]
+check(dp[2] == qhead.back and dp[3] == "BOTTOMLEFT", "the enchant dot moved to the icon's bottom left")
+check(qhead.tag.points[1][3] == "BOTTOMRIGHT", "the season check's square stays at the bottom right")
+check(qhead.gems[1].edge.points[1][3] == "TOPRIGHT", "the gem diamonds stay at the top right")
+check(qhead.dot.shown, "the enchant dot still shows")
+check(not cell(quick, 3).trackTag.shown, "an item with no known track: no tag")
+check(not cell(quick, 5).trackTag.shown, "an empty slot: no tag")
+check(cell(quick, 11).trackTag.text == "C4" and near(cell(quick, 11).trackTag.color, { 0, 0.44, 0.87 }), "the ring: C4 in the Champion colour")
+-- the badge's Not an issue part: the item below Hero
+quick.badgeHit.scripts.OnEnter(quick.badgeHit)
+eq(tip.lines[1], "No issues", "badge: no issues")
+eq(tip.lines[2], "Not an issue", "badge: the Not an issue heading")
+eq(tip.lines[3], "Finger |cffa335ee|H" .. ringString .. "|h[Band]|h|r 289 - Champion 4/6", "badge: Slot [item] - Champion 4/6")
+check(near(tip.colors[3], { 0, 0.44, 0.87 }), "badge: in the track's colour")
+-- the Below chip: only the rows and cells under the track
+belowChip:Click()
+eq(CRT.db.gearChecker.filter, "below", "below: the chip saves its filter")
+rows = drawRows()
+eq(#rows, 1, "below Hero: only Quick")
+quick = rowOf("Quick")
+check(cell(quick, 11).icon.shown and not cell(quick, 1).icon.shown and not cell(quick, 2).icon.shown, "below Hero: only the Champion ring is drawn")
+check(belowChip.selected, "below: the chip looks selected")
+-- its menu: the tracks but the lowest, the saved one ticked; a pick is saved and the chip renamed
+belowChip.arrow:Click()
+labels = {}
+for _, b in ipairs(lastRoot.items) do if b.radio then labels[#labels + 1] = b.text .. (b.selected and "*" or "") end end
+eq(table.concat(labels, "|"), "Champion|Hero*|Myth", "below menu: a choice per track but the lowest, the saved one picked")
+for _, b in ipairs(lastRoot.items) do if b.text == "Myth" then b.fn() end end
+eq(CRT.db.gearChecker.belowTrack, "myth", "below menu: the pick is saved")
+eq(belowChip.text.text, "Below Myth", "below menu: the chip names it")
+rows = drawRows()
+quick = rowOf("Quick")
+check(cell(quick, 11).icon.shown and cell(quick, 1).icon.shown and not cell(quick, 2).icon.shown, "below Myth: the Hero head too, not the Myth neck")
+lastRoot = nil
+belowChip.scripts.OnClick(belowChip, "RightButton")
+check(lastRoot ~= nil and #lastRoot.items > 0, "a right-click on the chip opens the menu too")
+CRT.db.gearChecker.filter = "all"
 CRT.Bosses = { GearChecks = function() return { enchant = { 1 } } end }
 
 print(string.format("%d passed, %d failed", passes, fails))
