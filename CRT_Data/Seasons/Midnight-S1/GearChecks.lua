@@ -30,7 +30,7 @@ CRT.Bosses:SeasonData("midnight-s1", "gearChecks", {
         {
             key = "venomcursed",
             label = "Venomcursed",
-            help = "Who wears a Venomcursed item.",
+            help = "Shows who wears a Venomcursed item. Click it to see only those items.",
             kind = "itemIds",
             severity = "info",
             ids = {
@@ -41,7 +41,7 @@ CRT.Bosses:SeasonData("midnight-s1", "gearChecks", {
         {
             key = "voidcore",
             label = "Voidcores",
-            help = "Who wears an item with a voidcore.",
+            help = "Shows who has a voidcore in their gear. Click it to see only those items.",
             kind = "itemIds", -- change to bonusIds if a voidcore shows as a bonus ID on the item
             severity = "info",
             ids = {

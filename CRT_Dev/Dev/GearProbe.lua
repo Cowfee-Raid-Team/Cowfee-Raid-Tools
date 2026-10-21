@@ -11,7 +11,7 @@ local Probe = {}
 CRT.GearProbe = Probe
 
 Probe.TEXT = {
-    head = "Gear probe: %s (%d items). Paste the IDs into the season's GearChecks.lua.",
+    head = "Gear probe: %s (%d %s). Paste the IDs into the season's GearChecks.lua.",
     none = "Gear probe: nothing known for %s. Refresh the Gear Checker first.",
     line = "  %s: item %s, enchant %s, gems %s, bonus %s%s",
     trips = " | trips: %s",
@@ -27,10 +27,10 @@ function Probe.Lines(who, pieces)
     if #pieces == 0 then
         return { string.format(Probe.TEXT.none, who) }
     end
-    local out = { string.format(Probe.TEXT.head, who, #pieces) }
+    local out = { string.format(Probe.TEXT.head, who, #pieces, #pieces == 1 and "item" or "items") }
     local rules = CRT.GearChecker and CRT.GearChecker:Rules()
     for _, p in ipairs(pieces) do
-        local parts = Gear.Parts(p.itemString or p.link)
+        local parts = CRT.GearChecker.PartsOf(p)
         local gems = {}
         for g = 1, 4 do
             if parts and parts.gems[g] then
