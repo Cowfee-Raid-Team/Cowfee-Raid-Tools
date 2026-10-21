@@ -17,7 +17,7 @@ let passes = 0, fails = 0;
 function check(ok, what) { if (ok) passes++; else { fails++; console.log('FAIL ' + what); } }
 
 const KEYS = ['background', 'surface', 'border', 'selected', 'accent', 'label', 'heading', 'text', 'good', 'warn', 'bad',
-  'knob', 'knobBorder', 'knobShine', 'knobText', 'check', 'checkBorder', 'titleTop', 'titleBottom', 'muted'];
+  'knob', 'knobBorder', 'knobShine', 'knobText', 'check', 'checkBorder', 'titleTop', 'titleBottom', 'muted', 'outline'];
 // The old name of each key, for the lint.
 const OLD = {
   espresso: 'background', roast: 'surface', edge: 'border', mocha: 'selected', caramel: 'accent', latte: 'label',
@@ -50,6 +50,7 @@ const SNAPSHOT = {
     titleTop: [0.353, 0.247, 0.173],
     titleBottom: [0.227, 0.165, 0.122],
     muted: [0.8, 0.71, 0.6],
+    outline: [0.10196078431372549, 0.07058823529411765, 0.047058823529411764],
   },
   midnight: {
     background: [0.0196078431372549, 0.0196078431372549, 0.0196078431372549],
@@ -72,6 +73,7 @@ const SNAPSHOT = {
     titleTop: [0.10980392156862745, 0.10980392156862745, 0.10980392156862745],
     titleBottom: [0.054901960784313725, 0.054901960784313725, 0.054901960784313725],
     muted: [0.6196078431372549, 0.6196078431372549, 0.6196078431372549],
+    outline: [0, 0, 0],
   },
   nitro: {
     background: [0.023529411764705882, 0.03137254901960784, 0.0392156862745098],
@@ -94,6 +96,7 @@ const SNAPSHOT = {
     titleTop: [0.10196078431372549, 0.1411764705882353, 0.18823529411764706],
     titleBottom: [0.054901960784313725, 0.07450980392156863, 0.09803921568627451],
     muted: [0.5411764705882353, 0.615686274509804, 0.6901960784313725],
+    outline: [0, 0, 0],
   },
   cowfee: {
     background: [0.09019607843137255, 0.06666666666666667, 0.054901960784313725],
@@ -116,6 +119,7 @@ const SNAPSHOT = {
     titleTop: [0.353, 0.247, 0.173],
     titleBottom: [0.227, 0.165, 0.122],
     muted: [0.8, 0.71, 0.6],
+    outline: [0.09019607843137255, 0.06666666666666667, 0.054901960784313725],
   },
 };
 

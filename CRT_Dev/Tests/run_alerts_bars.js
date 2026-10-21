@@ -639,8 +639,8 @@ for _, grow in ipairs({ "down", "up" }) do
         local e = B.pool[2].edges
         assert(e[1].h == bw and e[2].h == bw and e[3].w == bw and e[4].w == bw, tag .. ": border width")
         assert(e[1].pts[1][2] == B.pool[2] and e[1].pts[1][3] == "TOPLEFT" and e[1].pts[1][4] == -bw, tag .. ": outside its own bar")
-        local c = CRT.PALETTE.border
-        assert(near(e[1].color, c[1], c[2], c[3], 1), tag .. ": in the theme's border colour")
+        local c = CRT.PALETTE.outline
+        assert(c and near(e[1].color, c[1], c[2], c[3], 1), tag .. ": in the theme's outline colour, fully opaque")
       end
     end
   end
@@ -654,9 +654,19 @@ assert(p2[1] == "TOP" and p2[3] == "BOTTOM" and p2[4] == 0 and p2[5] == 0, "no g
 -- the drag box takes the border in, and the theme recolours the border
 A:Settings().bars.border = "thick" B:Refresh()
 assert(handle.w >= 244, "drag box at least as wide as the bar and its border: " .. handle.w)
-CRT.UI.SwitchTheme("nitro")
-assert(near(B.pool[1].edges[1].color, CRT.PALETTE.border[1], CRT.PALETTE.border[2], CRT.PALETTE.border[3]), "border follows the theme")
-CRT.UI.SwitchTheme("blizzard")
+-- in every theme the border is the theme's darkest colour (its outline key), fully opaque, repainted on a switch
+local function lum(c) return 0.2126 * c[1] + 0.7152 * c[2] + 0.0722 * c[3] end
+for _, theme in ipairs({ "midnight", "nitro", "cowfee", "blizzard" }) do
+  CRT.UI.SwitchTheme(theme)
+  local o = CRT.PALETTE.outline
+  assert(o, theme .. ": the palette has an outline key")
+  for key, c in pairs(CRT.PALETTE) do
+    assert(lum(o) <= lum(c) + 1e-9, theme .. ": the outline is no lighter than " .. key)
+  end
+  for i = 1, 4 do
+    assert(near(B.pool[1].edges[i].color, o[1], o[2], o[3], 1), theme .. ": border edge " .. i .. " is the outline, opaque")
+  end
+end
 -- the +N more line clears the last bar's border
 pull(notes)
 A:Settings().bars.border = "thick"
