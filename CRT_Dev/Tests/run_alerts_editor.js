@@ -279,6 +279,11 @@ do
   CRT.db.alerts.customColors = true
   typeInto(w.textEdit, "  Soak now ")
   assert(w.colorSwatch.enabled == true, "on: open again")
+  -- the box changing while the editor is open greys the row at once (the alerts' change)
+  CRT.db.alerts.customColors = false CRT.Alerts:Fire()
+  assert(w.colorSwatch.enabled == false, "unticked with the editor open: greyed at once")
+  CRT.db.alerts.customColors = true CRT.Alerts:Fire()
+  assert(w.colorSwatch.enabled == true, "ticked again: open at once")
   click(w.colorSwatch)
   assert(ColorPickerFrame.strata == "FULLSCREEN_DIALOG" and ColorPickerFrame.raised, "colour picker above the editor")
   ColorPickerFrame:Hide()

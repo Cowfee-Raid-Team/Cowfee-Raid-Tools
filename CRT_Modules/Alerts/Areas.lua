@@ -55,7 +55,7 @@ local ADDON, CRT = ...
 --   Areas.Find(key)       the area with that def.key
 --   Areas.Glow(widget, on)  a pulsing border on a widget's own frame
 --   Areas.Swipe(w, line, total, now)  sets the countdown swipe on w.cooldown (icons, circles), see below
---   Areas.LineText(line), Areas.LineIcon(line), Areas.LineColor(line), Areas.SetFont(fontString, name,
+--   Areas.LineText(line), Areas.LineIcon(line), Areas.SetFont(fontString, name,
 --     size, outline): what a line shows, with values the game hides left out, and the area's font.
 --   Areas.DrawColor(line, custom), Areas.CustomColors(): the colour a line is drawn in (its ability type's
 --     unless a colour of its own may win) and whether your own colours apply.
@@ -178,15 +178,6 @@ function Areas.LineIcon(line)
         if info and readable(info.icon) and (type(info.icon) == "number" or type(info.icon) == "string") then
             return info.icon
         end
-    end
-    return nil
-end
-
--- The line's { r, g, b }, or nil.
-function Areas.LineColor(line)
-    local c = line.color
-    if readable(c) and type(c) == "table" and type(c[1]) == "number" and type(c[2]) == "number" and type(c[3]) == "number" then
-        return c
     end
     return nil
 end

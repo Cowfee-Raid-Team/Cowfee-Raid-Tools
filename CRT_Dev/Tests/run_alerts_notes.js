@@ -386,6 +386,28 @@ if mode == "new" then
   CRT.NoteAlert:Refresh()
   assert(alertFrame.shown and label.text == "Spell31884" and alertIcon.texture == 131884, "no show: keeps the spell: " .. tostring(label.text))
   fire("ENCOUNTER_END", 3472)
+  -- the Next spell alert is in the alert's ability type colour (Use custom colours off), like every display; a
+  -- raid note line's own colour still wins, and with no known type it keeps the heading colour
+  local SOAK = { 1, 0.5, 0.82 }
+  local knownType = true
+  CRT.AlertColors = {
+    Stamp = function(items) for _, it in ipairs(items) do if it.spellID == 31884 then it.abilityType = "soak" end end end,
+    KnownTypeColor = function(key) return knownType and key == "soak" and SOAK or nil end,
+  }
+  pullAt = 33000; clock = pullAt
+  fire("ENCOUNTER_START", 3472, "Show boss", 16)
+  clock = pullAt + 1
+  CRT.NoteAlert:Refresh()
+  assert(label.text == "Dodge now" and label.color[1] == 1 and label.color[2] == 0, "a note line's own colour wins over its type")
+  clock = pullAt + 25
+  CRT.NoteAlert:Refresh()
+  assert(label.text == "Spell31884" and label.color[1] == 1 and label.color[2] == 0.5 and label.color[3] == 0.82, "type colour on the alert: " .. table.concat(label.color, ","))
+  knownType = false
+  CRT.NoteAlert:Refresh()
+  local hr, hg, hb = CRT.UI.Color("heading")
+  assert(label.color[1] == hr and label.color[2] == hg and label.color[3] == hb, "no known type: the heading colour")
+  fire("ENCOUNTER_END", 3472)
+  CRT.AlertColors = nil
   results.ownLabel = true
 end
 

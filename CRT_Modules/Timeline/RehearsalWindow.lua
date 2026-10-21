@@ -882,6 +882,12 @@ local function startRun(Alerts)
             opts[k] = v
         end
     end
+    -- the boss's name finds an ability timeline with no Encounter: line, for the alerts' type colours
+    local ref = source.base and source.base.reference
+    local bossName = ref and ref.boss or source.bossName
+    if opts.bossName == nil and type(bossName) == "string" then
+        opts.bossName = bossName
+    end
     Alerts:Start(source.encounterID, source.difficultyName, "rehearsal", opts)
     Run.started = true
     startPhases(Alerts, nil, W:Now())

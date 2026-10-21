@@ -468,6 +468,26 @@ local function savesToLine()
     return string.format(TEXT.savesTo, name)
 end
 
+-- The Color row: a raid note line's colour is the raid leader's; yours (Only me) is greyed and unused without Use
+-- custom colours, and kept as saved.
+local function colourRow()
+    if not (frame and draft) then
+        return
+    end
+    local colourOn = not readOnly() and colourEditable()
+    frame.colorSwatch:SetEnabled(colourOn)
+    frame.colorDefault:SetEnabled(colourOn)
+    frame.colorSwatch:SetAlpha(colourOn and 1 or 0.4)
+    frame.colorLabel:SetAlpha(colourOn and 1 or 0.5)
+end
+
+-- Use custom colours ticked or unticked (Raid Notes > Alerts fires the alerts' change) greys the open editor's row.
+CRT.Alerts:OnChange(function()
+    if frame and frame:IsShown() then
+        colourRow()
+    end
+end)
+
 -- Everything on the window from the draft, except the boxes being typed in. `rows` also redraws the
 -- dropdowns and sliders (on open and when one of them is set), so typing never rebuilds their menus.
 local function refresh(rows)
@@ -499,13 +519,7 @@ local function refresh(rows)
     for _, el in ipairs({ frame.textEdit, frame.timeEdit, frame.idEdit }) do
         el:SetEnabled(not locked)
     end
-    -- the colour: a raid note line's is the raid leader's; yours (Only me) is greyed and unused without Use
-    -- custom colours, and kept as saved
-    local colourOn = not locked and colourEditable()
-    frame.colorSwatch:SetEnabled(colourOn)
-    frame.colorDefault:SetEnabled(colourOn)
-    frame.colorSwatch:SetAlpha(colourOn and 1 or 0.4)
-    frame.colorLabel:SetAlpha(colourOn and 1 or 0.5)
+    colourRow()
     if locked then
         frame.lookupCtl:Hide()
     end

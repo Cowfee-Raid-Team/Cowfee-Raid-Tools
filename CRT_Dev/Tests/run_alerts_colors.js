@@ -92,7 +92,10 @@ local journalRows = {
   { spellID = 8001, name = "Magic Bolt", tags = { "tank", "magic" } },
   { spellID = 8002, name = "Mythic Curse", tags = { "mythic", "curse" } },
 }
-CRT.TimelineJournal = { Rows = function() return journalRows end, IsHidden = function() return false end }
+-- Rows walks the Journal (counted); CachedRows only gives what was read already (journalCached says whether it was).
+local rowsCalls, journalCached = 0, true
+CRT.TimelineJournal = { Rows = function() rowsCalls = rowsCalls + 1 return journalRows end, IsHidden = function() return false end,
+  CachedRows = function() return journalCached and journalRows or nil end }
 for i, src in ipairs(sources) do
   assert(load(src, "src" .. i))("CowfeeRaidTools", CRT)
 end
@@ -193,6 +196,27 @@ check("colors: your label, then the Journal's icons", function()
   assert(typeOf("Bolt") == "dispel", "a magic icon is dispel: " .. tostring(typeOf("Bolt")))
   assert(typeOf("Curse") == "mythic", "the first icon that is a type, as the Journal export writes it: " .. tostring(typeOf("Curse")))
   T:SetAbility(3001, 7001, "type", nil) T:SetAbility(3001, 5001, "type", nil)
+  A:Stop()
+end)
+
+check("colors: the type lookup never walks the Journal during a run", function()
+  CRT.db.alerts.reminders = {}
+  R:Save(3001, nil, { boss = NEK, spellID = 8001, text = "Bolt", times = "P1 0:11" })
+  R:Save(3001, nil, { boss = NEK, spellID = 5001, text = "Depths", times = "P1 0:13" })
+  pull()
+  for _, it in ipairs(A.items) do it.abilityType = nil end
+  local before = rowsCalls
+  C.Stamp(A.items, A.run)
+  assert(rowsCalls == before, "Stamp asked the Journal: " .. (rowsCalls - before))
+  local function typeOf(text) local it = itemBy(function(x) return x.text == text end) return it and it.abilityType end
+  assert(typeOf("Bolt") == "dispel" and typeOf("Depths") == "mythic", "cached rows still give the types")
+  -- rows not read yet this session: no Journal type, and still no walk
+  journalCached = false
+  for _, it in ipairs(A.items) do it.abilityType = nil end
+  before = rowsCalls
+  C.Stamp(A.items, A.run)
+  assert(rowsCalls == before and typeOf("Bolt") == nil, "uncached: no walk, no Journal type")
+  journalCached = true
   A:Stop()
 end)
 

@@ -106,7 +106,7 @@ Response buttons: a raider's popup and All Loot Rolls window colour the buttons 
 
 ## Ability type colours: fixed, not per theme
 
-The Timeline's ability types (`Reference.TYPES` in `CRT_Modules/Timeline/Reference.lua`) colour the ability timeline's rows and every alert: bars, circles, icons and texts. They are the same in every theme, since each colour means a kind of ability. A new type is added there, with its colour, and to this table. Hex from the code's values (rounded as `Reference.Legend` does).
+The Timeline's ability types (`Reference.TYPES` in `CRT_Modules/Timeline/Reference.lua`) colour the ability timeline's rows and every alert: bars, circles, icons, texts and the Next spell alert (which keeps the heading colour when the type is unknown). They are the same in every theme, since each colour means a kind of ability. A new type is added there, with its colour, and to this table. Hex from the code's values (rounded as `Reference.Legend` does).
 
 | Type | Colour | Meaning |
 |---|---|---|

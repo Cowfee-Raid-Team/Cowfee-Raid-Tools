@@ -8,13 +8,15 @@ local ADDON, CRT = ...
 --      alert's text, as reminders find their times) and its first, main type. The difficulty's own ability
 --      timelines are asked first, then the boss's others.
 --   3. the Encounter Journal's icons for the spell (Reference.TAG_TYPES): a dispel icon is dispel, the Mythic and
---      Heroic icons are mythic and heroic; the first icon that is a type, as the Journal export writes it
+--      Heroic icons are mythic and heroic; the first icon that is a type, as the Journal export writes it. Only
+--      rows the Timeline already read this session (Journal:CachedRows): the Journal is never walked at a pull.
 -- With no known type an alert is drawn in the theme's accent (caramel). Which colour wins over the type's
 -- (the raid leader's note colour, and yours with Use custom colours on) is Alerts:OwnColor (Alerts/Engine.lua).
 -- Alerts:Start stamps each item's type as item.abilityType; the areas look the colour up as they draw
 -- (Areas.DrawColor), so a theme switch follows. Nothing here is saved.
 --   Colors.TypeOf(encounterID, spellID, text, bossName, difficultyName) -> a type key, or nil
 --   Colors.TypeColor(key) -> { r, g, b }: the type's colour, else the theme's accent (nil with no theme loaded)
+--   Colors.KnownTypeColor(key) -> { r, g, b } of a known type, else nil
 --   Colors.Stamp(items, run) sets abilityType on each item of a run that has no known type of its own
 
 local Colors = {}
@@ -70,20 +72,32 @@ local function references(encounterID, bossName, difficultyName)
     return out
 end
 
--- The reference row of the alert's ability, and its spell (its own [spell], else the Journal's of its name).
-local function referenceRow(encounterID, spellID, text, bossName, difficultyName)
+-- What one lookup needs about the boss, read once per run: its references and the Journal rows already read this
+-- session. The Journal is never walked here: a run starts at the pull, when combat may not be set yet.
+local function bossContext(encounterID, bossName, difficultyName)
+    local Journal = CRT.TimelineJournal
+    local rows
+    if Journal and Journal.CachedRows then
+        local ok, res = pcall(Journal.CachedRows, Journal, encounterID)
+        rows = ok and type(res) == "table" and res or nil
+    end
+    return { encounterID = encounterID, refs = references(encounterID, bossName, difficultyName), rows = rows or {} }
+end
+
+-- The reference row of the alert's ability, and its spell (its own [spell], else the cached Journal row's of its name).
+local function referenceRow(ctx, spellID, text)
     local Reminders = CRT.AlertReminders
-    if not (CRT.TimelineReference and Reminders and Reminders.RowFor) then
+    if not (Reminders and Reminders.RowFor) then
         return nil
     end
     local want = { spellID = spellID, text = text }
-    for _, entry in ipairs(references(encounterID, bossName, difficultyName)) do
-        local ok, row = pcall(Reminders.RowFor, entry.ref, encounterID, want)
+    for _, entry in ipairs(ctx.refs) do
+        local ok, row = pcall(Reminders.RowFor, entry.ref, ctx.encounterID, want, ctx.rows)
         if ok and row then
             local Lanes = CRT.TimelineLanes
             local okS, id = false, nil
             if Lanes and Lanes.RowSpell then
-                okS, id = pcall(Lanes.RowSpell, row, encounterID)
+                okS, id = pcall(Lanes.RowSpell, row, ctx.encounterID, ctx.rows)
             end
             return row, okS and type(id) == "number" and id > 0 and id or nil
         end
@@ -101,18 +115,13 @@ local function labelType(encounterID, spellID)
     return ok and type(a) == "table" and known(a.type) and a.type or nil
 end
 
--- The type the Journal's icons give a spell of the boss. Journal:Rows only answers out of combat (its rows are
--- kept once read), so in a pull this works for a boss whose rows the Timeline already read.
-local function journalType(encounterID, spellID)
-    local Journal, Reference = CRT.TimelineJournal, CRT.TimelineReference
-    if not (spellID and Journal and Journal.Rows and Reference and Reference.TAG_TYPES) then
+-- The type the Journal's icons give a spell of the boss, from the rows the Timeline already read this session.
+local function journalType(ctx, spellID)
+    local Reference = CRT.TimelineReference
+    if not (spellID and Reference.TAG_TYPES) then
         return nil
     end
-    local ok, rows = pcall(Journal.Rows, Journal, encounterID)
-    if not ok or type(rows) ~= "table" then
-        return nil
-    end
-    for _, row in ipairs(rows) do
+    for _, row in ipairs(ctx.rows) do
         if row.spellID == spellID then
             for _, tag in ipairs(type(row.tags) == "table" and row.tags or {}) do
                 local t = Reference.TAG_TYPES[tag]
@@ -126,19 +135,16 @@ local function journalType(encounterID, spellID)
     return nil
 end
 
-function Colors.TypeOf(encounterID, spellID, text, bossName, difficultyName)
-    if not CRT.TimelineReference then
-        return nil
-    end
+local function typeIn(ctx, spellID, text)
     if not (readable(spellID) and type(spellID) == "number" and spellID > 0) then
         spellID = nil
     end
     if not (readable(text) and type(text) == "string") then
         text = nil
     end
-    local row, rowSpell = referenceRow(encounterID, spellID, text, bossName, difficultyName)
+    local row, rowSpell = referenceRow(ctx, spellID, text)
     local spell = spellID or rowSpell
-    local t = labelType(encounterID, spell)
+    local t = labelType(ctx.encounterID, spell)
     if t then
         return t
     end
@@ -146,7 +152,14 @@ function Colors.TypeOf(encounterID, spellID, text, bossName, difficultyName)
     if known(main) then
         return main
     end
-    return journalType(encounterID, spell)
+    return journalType(ctx, spell)
+end
+
+function Colors.TypeOf(encounterID, spellID, text, bossName, difficultyName)
+    if not CRT.TimelineReference then
+        return nil
+    end
+    return typeIn(bossContext(encounterID, bossName, difficultyName), spellID, text)
 end
 
 function Colors.TypeColor(key)
@@ -158,12 +171,18 @@ function Colors.TypeColor(key)
     return CRT.MOCHA and CRT.MOCHA[ACCENT] or nil
 end
 
--- Every item of a run gets its ability type (nil when none is known). Asked once per spell and text. An item
--- whose block already named a known type keeps it.
+-- A known type's colour, or nil (no accent): for a display with its own default, such as the Next spell alert.
+function Colors.KnownTypeColor(key)
+    return known(key) and CRT.TimelineReference.TYPES[key].color or nil
+end
+
+-- Every item of a run gets its ability type (nil when none is known). The boss's references and cached Journal
+-- rows are read once, and each spell and text asked once. An item whose block already named a known type keeps it.
 function Colors.Stamp(items, run)
-    if type(items) ~= "table" or type(run) ~= "table" then
+    if type(items) ~= "table" or type(run) ~= "table" or not CRT.TimelineReference then
         return
     end
+    local ctx
     local cache = {}
     for _, it in ipairs(items) do
         if type(it) == "table" and not known(it.abilityType) then
@@ -172,7 +191,8 @@ function Colors.Stamp(items, run)
             local text = readable(it.text) and type(it.text) == "string" and it.text or ""
             local key = spell .. "|" .. text
             if cache[key] == nil then
-                cache[key] = Colors.TypeOf(run.encounterID, it.spellID, it.text, run.bossName, run.difficultyName) or false
+                ctx = ctx or bossContext(run.encounterID, run.bossName, run.difficultyName)
+                cache[key] = typeIn(ctx, it.spellID, it.text) or false
             end
             it.abilityType = cache[key] or nil
         end
