@@ -354,6 +354,7 @@ const KNOWN = [
   ['CRT_Modules/LootMaster/RaiderWindow.lua', 'MinimalScrollBar'], // All Loot Rolls
   ['CRT_Modules/LootMaster/BossLootWindow.lua', 'MinimalScrollBar'],
   ['CRT_Modules/Loot/Page.lua', 'MinimalScrollBar'],
+  ['CRT_Modules/GearChecker/Page.lua', 'MinimalScrollBar'], // the Gear Checker list
   ['CRT_Modules/Timeline/View.lua', 'CowfeeRaidToolsTimelineView'],
   ['CRT_Modules/Timeline/SettingsTab.lua', 'CowfeeRaidToolsTimelineRowsScroll'],
   ['CRT_Modules/Timeline/ReferencePage.lua', 'CowfeeRaidToolsTimelineReferenceScroll'],
@@ -408,12 +409,12 @@ function gutter(where, text, after, name, template, bare) {
     offset = TEMPLATE_GAP;
   } else if (template === 'MinimalScrollBar') {
     kind = 'minimal';
-    const a = after.match(new RegExp(reEsc(name) + ':SetPoint\\("TOPLEFT",\\s*(\\w+),\\s*"TOPRIGHT",\\s*(-?\\d+)'));
+    const a = after.match(new RegExp(reEsc(name) + ':SetPoint\\("TOPLEFT",\\s*(\\w+),\\s*"TOPRIGHT",\\s*(-?\\d+|UI\\.SCROLL_GAP)'));
     if (!a) return fail(where + ' a MinimalScrollBar not anchored TOPLEFT to its scroll box\'s TOPRIGHT; check its rows stay clear of it');
     if (!new RegExp(reEsc(a[1]) + '\\s*=\\s*CreateFrame\\("Frame",\\s*nil,\\s*[\\w.]+,\\s*"WowScrollBox(List)?"\\)').test(text)) {
       return fail(where + ' the bar hangs off ' + a[1] + ', which is not a scroll box, so its rows are not clipped before the bar');
     }
-    offset = Number(a[2]);
+    offset = a[2] === 'UI.SCROLL_GAP' ? GAP : Number(a[2]);
   } else if (bare) {
     kind = 'hand';
     const a = after.match(new RegExp(reEsc(name) + ':SetPoint\\("TOPLEFT",[^,]*\\+\\s*(\\w+)\\s*\\+\\s*UI\\.SCROLL_GAP\\s*,'));

@@ -52,7 +52,7 @@ local L = {
     headY = -34, listY = -52,
     nameW = 130, ilvlW = 40, issuesW = 40, cellW = 48, rowH = 46,
     icon = 30, edge = 2, gem = 7, gemInner = 5, gemGap = 1, dot = 8, badgeW = 26, badgeH = 16,
-    barGap = 6, barW = 8,
+    barGap = UI.SCROLL_GAP, barW = 8, -- the gap before the bar: the shared scroll bar gap
     popW = 1040, popH = 560, popMinW = 1024, popMinH = 300,
 }
 L.rowW = L.nameW + L.ilvlW + L.issuesW + #Gear.SLOTS * L.cellW
@@ -524,8 +524,8 @@ local function buildBody(body)
     box:SetWidth(L.rowW)
     local bar = CreateFrame("EventFrame", nil, body, "MinimalScrollBar")
     UI:SkinScrollBar(bar)
-    bar:SetPoint("TOPLEFT", box, "TOPRIGHT", L.barGap, 0)
-    bar:SetPoint("BOTTOMLEFT", box, "BOTTOMRIGHT", L.barGap, 0)
+    bar:SetPoint("TOPLEFT", box, "TOPRIGHT", UI.SCROLL_GAP, 0)
+    bar:SetPoint("BOTTOMLEFT", box, "BOTTOMRIGHT", UI.SCROLL_GAP, 0)
     local view = CreateScrollBoxListLinearView()
     view:SetElementExtent(L.rowH)
     view:SetElementInitializer("Button", P.InitRow)
