@@ -169,6 +169,10 @@ SlashCmdList["COWFEERAIDTOOLS"] = function(msg)
         if CRT.ReferenceTypes then
             CRT.ReferenceTypes:PrintHidden()
         end
+    elseif msg == "dev mechhidden" then
+        if CRT.ReferenceTypes then
+            CRT.ReferenceTypes:PrintMechHidden()
+        end
     elseif msg == "dev removed" then
         if CRT.ReferenceTypes then
             CRT.ReferenceTypes:PrintRemoved()
