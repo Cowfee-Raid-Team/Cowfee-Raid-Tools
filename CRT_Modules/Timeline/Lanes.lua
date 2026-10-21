@@ -117,6 +117,33 @@ function Lanes.RowSpell(row, encounterID, rows)
     return 0
 end
 
+-- Moved phase lines: a cast belongs to the phase it was planned in (by the planned phase times),
+-- moves by as much as that phase's line moved, and is hidden (not dropped from the reference) while
+-- it would land at or after the next phase's start. With no moved line every cast stays where it is.
+-- Returns place(t): a written cast time to where it lands now, or nil when hidden. The one rule for
+-- where a reference's casts land: the Timeline's rows, the Rehearsal and the alerts' reference times
+-- (Alerts/Reminders.lua FromReference) all go through it, so they always agree.
+function Lanes.Placer(ref)
+    local phases = ref and ref.phases or {}
+    return function(t)
+        local k = 0
+        for i, phase in ipairs(phases) do
+            if t >= (phase.planned or phase.t) then
+                k = i
+            end
+        end
+        local shifted = t
+        if k > 0 then
+            shifted = t + (phases[k].t - (phases[k].planned or phases[k].t))
+        end
+        local nextPhase = phases[k + 1]
+        if nextPhase and shifted >= nextPhase.t then
+            return nil
+        end
+        return shifted
+    end
+end
+
 -- The lanes of a reference timeline: deaths (from the overlay pull only), one lane per reference
 -- row in file order, and with an overlay a row of ticks for that pull's casts. A row gets its
 -- spell and icon from its own [spell], else from the Journal row of the same name.
@@ -147,27 +174,8 @@ local function referenceLanes(ref, rows, settings, encounterID, overlay, group, 
     local mine = settings.rows and settings.rows[encounterID]
     local hiddenNames = mine and mine.hiddenNames
 
-    -- Moved phase lines: a cast belongs to the phase it was planned in (by the planned phase times),
-    -- moves by as much as that phase's line moved, and is hidden (not dropped from the reference) while
-    -- it would land at or after the next phase's start. With no moved line every cast stays where it is.
     local phases = ref.phases or {}
-    local function place(t)
-        local k = 0
-        for i, phase in ipairs(phases) do
-            if t >= (phase.planned or phase.t) then
-                k = i
-            end
-        end
-        local shifted = t
-        if k > 0 then
-            shifted = t + (phases[k].t - (phases[k].planned or phases[k].t))
-        end
-        local nextPhase = phases[k + 1]
-        if nextPhase and shifted >= nextPhase.t then
-            return nil
-        end
-        return shifted
-    end
+    local place = Lanes.Placer(ref)
     -- a chosen order (see Reference.PartMover) moves a part's casts to its new window first
     local move, parts = CRT.TimelineReference.PartMover(ref, order)
     local maskedCasts = 0

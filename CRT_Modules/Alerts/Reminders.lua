@@ -102,15 +102,25 @@ function Reminders.PhaseCut(ref, ph)
     return cut
 end
 
--- The casts of a reference row as { ph, t }, each through PhaseAt.
+-- The casts of a reference row as { ph, t }, each where the Timeline draws it (Lanes.Placer: a moved
+-- phase line moves its casts, and hides those it pushes past the next phase), then through PhaseAt.
+-- So a time counts from where its phase line is now, and lands on the row's cast.
 function Reminders.FromReference(ref, row)
     local out = {}
     if not (ref and row) then
         return out
     end
+    local Lanes = CRT.TimelineLanes
+    local place = Lanes and Lanes.Placer and Lanes.Placer(ref)
     for _, cast in ipairs(row.casts or {}) do
-        local ph, t = Reminders.PhaseAt(ref, cast.t)
-        out[#out + 1] = { ph = ph, t = t }
+        local at = cast.t
+        if place then
+            at = place(at)
+        end
+        if at then
+            local ph, t = Reminders.PhaseAt(ref, at)
+            out[#out + 1] = { ph = ph, t = t }
+        end
     end
     return out
 end
@@ -314,8 +324,10 @@ local function lower(s)
     return trim(s):lower()
 end
 
--- The reference of the boss to use: the one of the reminder's difficulty, else the first.
-local function referenceFor(encounterID, r)
+-- The reference of the boss to use: the one of the reminder's difficulty; else, given the difficulty
+-- of the run (difficultyName), the first of that difficulty group, as the Timeline and the Rehearsal
+-- pick it (Timeline:RehearsalSourceFor); else the first.
+local function referenceFor(encounterID, r, difficultyName)
     local ref = CRT.TimelineReference
     if not ref then
         return nil
@@ -329,6 +341,13 @@ local function referenceFor(encounterID, r)
             if entry.ref.difficulty and lower(entry.ref.difficulty) == lower(r.difficulty) then
                 return entry.ref
             end
+        end
+    end
+    local T = CRT.Timeline
+    if type(difficultyName) == "string" and trim(difficultyName) ~= "" and T and T.GroupFor and ref.ForGroup then
+        local inGroup = ref:ForGroup(found, T:GroupFor(difficultyName))
+        if inGroup[1] then
+            return inGroup[1].ref
         end
     end
     return found[1].ref
@@ -387,7 +406,8 @@ Reminders.RowFor = rowFor
 -- The times of a reminder: { { ph, t } } and where they came from ("typed", "reference" or "none").
 -- Typed text that does not read gives {}, "typed" and the message. `ref` (optional) is the reference a
 -- reminder that follows one is read from, in place of its own (the Rehearsal's, for the editor's Test).
-function Reminders:Times(encounterID, r, ref)
+-- difficultyName (optional) is the run's, which picks the reference of a reminder on any difficulty.
+function Reminders:Times(encounterID, r, ref, difficultyName)
     if type(r.times) == "string" and trim(r.times) ~= "" then
         local list, err = Reminders.ParseTimes(r.times)
         if not list then
@@ -395,7 +415,7 @@ function Reminders:Times(encounterID, r, ref)
         end
         return list, "typed"
     end
-    ref = ref or referenceFor(encounterID, r)
+    ref = ref or referenceFor(encounterID, r, difficultyName)
     local row = ref and rowFor(ref, encounterID, r)
     if row then
         return Reminders.FromReference(ref, row), "reference"
@@ -476,10 +496,10 @@ end
 
 -- The alert items of one reminder (r with any overrides already laid over it), one per time. Used by
 -- the block and by the editor's Test, which runs a reminder that is not saved.
--- difficulty is not checked here; the block does that.
-function Reminders:Items(encounterID, id, r)
+-- difficulty is not checked here; the block does that. difficultyName (optional) is the run's (see Times).
+function Reminders:Items(encounterID, id, r, difficultyName)
     local out = {}
-    local times = Reminders:Times(encounterID, r)
+    local times = Reminders:Times(encounterID, r, nil, difficultyName)
     local icon
     if type(r.iconID) == "number" and r.iconID > 0 then
         icon = r.iconID
@@ -531,7 +551,7 @@ local function entries(run)
     for _, e in ipairs(Reminders:List(run.encounterID)) do
         local r = Reminders:Effective(BLOCK, e.id, e.r)
         if r.enabled ~= false and matchesDifficulty(r, run) then
-            for _, item in ipairs(Reminders:Items(run.encounterID, e.id, r)) do
+            for _, item in ipairs(Reminders:Items(run.encounterID, e.id, r, run.difficultyName)) do
                 out[#out + 1] = item
             end
         end

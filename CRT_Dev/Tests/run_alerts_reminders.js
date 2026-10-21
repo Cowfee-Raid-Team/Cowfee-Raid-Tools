@@ -251,6 +251,100 @@ do
   assert(Rules.SpeechItems("x", 5, true, false, true)[1].offset == 0 and Rules.SpeechItems("x", 5, true, false)[1].offset == 5, "SpeechItems")
   print("ok speak at: at 0 speaks at the cast, on show at the warning")
 end
+
+-- One source of truth: a reminder that follows an ability timeline gets the same cast times the
+-- Timeline's row (and the Rehearsal, built from those lanes) shows, and its alert counts down to the
+-- same moment as the Rehearsal's cast bar.
+local HEROIC_REF = table.concat({
+  "Boss: " .. NEK, "Difficulty: Heroic", "Length: 9:48",
+  "Phase: P1.5 3:17", "Phase: P2 7:10 (planned 7:20)",
+  "Soulcoil Rite (type raid): 0:02, 1:17, 7:38, 8:26",
+  "Possession Barrage (type falloff, lead 7): 0:33, 1:12, 8:13",
+}, "\\n")
+local function laneTimes(ref, name, group)
+  local lanes = CRT.TimelineLanes.Build({ reference = ref }, journalRows, CRT.db.timeline, 3001, nil, group)
+  for _, lane in ipairs(lanes) do
+    if lane.label == name then
+      local out = {}
+      for i, m in ipairs(lane.marks) do out[i] = m.t end
+      return out
+    end
+  end
+  return {}
+end
+local function absolute(ref, list)
+  local out = {}
+  for i, e in ipairs(list) do out[i] = R.AbsoluteTime(ref, e.ph, e.t) end
+  table.sort(out)
+  return out
+end
+local function same(a, b) return table.concat(a, ",") == table.concat(b, ",") end
+local function ownRef(text)
+  CRT.db.timeline.references = {}
+  CRT.db.timeline.nextRef = 1
+  local key = CRT.TimelineReference:Add(text)
+  return CRT.TimelineReference:Find(key).ref
+end
+
+do
+  fresh()
+  local ref = ownRef(HEROIC_REF)
+  local id = R:Save(3001, nil, { boss = NEK, text = "Soulcoil Rite", difficulty = "Heroic" })
+  local list, source = R:Times(3001, R:Get(3001, id))
+  local row = laneTimes(ref, "Soulcoil Rite", "nh")
+  assert(source == "reference" and same(absolute(ref, list), row),
+    "the moved P2 line moves the alerts' times as it moves the row: " .. table.concat(absolute(ref, list), ",") .. " vs " .. table.concat(row, ","))
+  assert(row[3] == 448, "7:38 moves 10 s earlier with its P2 line: " .. tostring(row[3]))
+  CRT.db.timeline.references = {}
+  print("ok one source: a moved phase line moves the alert times with the row")
+end
+
+do
+  fresh()
+  ownRef(HEROIC_REF)
+  local shipped
+  for _, e in ipairs(CRT.TimelineReference:List()) do if not e.own then shipped = e.ref end end
+  -- Difficulty Any: each run reads the ability timeline of its own difficulty, as the Timeline and the Rehearsal show it
+  R:Save(3001, nil, { boss = NEK, text = "Possession Barrage" })
+  local function firstTime(run)
+    local t
+    for _, it in ipairs(block(run)) do if it.ph == 1 and (not t or it.time < t) then t = it.time end end
+    return t
+  end
+  assert(firstTime({ encounterID = 3001, difficultyName = "Heroic" }) == 33, "Heroic reads the Heroic timeline")
+  assert(firstTime({ encounterID = 3001, difficultyName = "Mythic" }) == 36,
+    "Mythic reads the Mythic timeline, not your Heroic one: " .. tostring(firstTime({ encounterID = 3001, difficultyName = "Mythic" })))
+  assert(same(absolute(shipped, R:Times(3001, { boss = NEK, text = "Possession Barrage" }, nil, "Mythic")), laneTimes(shipped, "Possession Barrage", "mythic")),
+    "the Mythic list matches the Mythic row")
+  CRT.db.timeline.references = {}
+  print("ok one source: a reminder on Any reads the run's difficulty")
+end
+
+do
+  fresh()
+  local ref = ownRef(HEROIC_REF)
+  R:Save(3001, nil, { boss = NEK, text = "Soulcoil Rite", difficulty = "Heroic", outputs = { bar = true } })
+  -- a rehearsal run as the window drives it: phases start at their lines
+  local fight = 0
+  A:Start(3001, "Heroic", "rehearsal", { clock = function() return fight end, speed = function() return 1 end })
+  for _, cast in ipairs(laneTimes(ref, "Soulcoil Rite", "nh")) do
+    for _, before in ipairs({ 4.5, 2.5, 0.5 }) do
+      fight = cast - before
+      for _, p in ipairs(ref.phases) do
+        local n = R.PhaseNumber(p.label)
+        if n and n ~= 1 and p.t <= fight and not A:PhaseStart(n) then A:StartPhase(n, "rehearsal", A:TimeAt(p.t)) end
+      end
+      local found
+      for _, l in ipairs(A:Lines(A:Now())) do
+        if l.block == "mine" and math.abs((l.at - A:Now()) - before) < 1e-6 then found = l end
+      end
+      assert(found, "the alert counts down with the cast bar: " .. before .. " s before the cast at " .. cast)
+    end
+  end
+  A:Stop(true)
+  CRT.db.timeline.references = {}
+  print("ok one source: the alert's time left equals the cast bar's")
+end
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 const files = process.argv.slice(2);
