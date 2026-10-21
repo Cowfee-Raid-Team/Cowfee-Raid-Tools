@@ -412,6 +412,42 @@ check(M:EditorView() == nil and not M:Frame().shown, "closing the editor hides t
 dropdowns["Layout"].set("row")
 win.export.OnClick(win.export)
 check(not exported:find("places", 1, true) and not exported:find("shape", 1, true), "a row display's export has no canvas fields")
+check(not exported:find("clearOn", 1, true), "a display without clearOn exports none")
+
+-- Clear on in the editor: add entries, see them listed, remove one, then Export and Save draft keep them.
+win:Show()
+win.OnShow(win)
+dropdowns["Clear on"].set("cast")
+win.clearValue:SetText("1234")
+dropdowns["When"].set("start")
+win.clearAdd.OnClick(win.clearAdd)
+local list = E:Draft().clearOn
+check(list and #list == 1 and list[1].event == "cast" and list[1].spellID == 1234 and list[1].when == "start", "Add puts a boss cast in the draft's clearOn")
+check(win.clearValue:GetText() == "", "the box empties after Add")
+win.clearValue:SetText("abc")
+win.clearAdd.OnClick(win.clearAdd)
+check(#E:Draft().clearOn == 1, "a spell ID that isn't a number is not added")
+check(not dropdowns["When"].enabledIf or dropdowns["When"].enabledIf(), "When is on for a cast")
+dropdowns["Clear on"].set("emote")
+check(dropdowns["When"].enabledIf and not dropdowns["When"].enabledIf(), "When is greyed out for an emote")
+win.clearValue:SetText("The arena resets")
+win.clearAdd.OnClick(win.clearAdd)
+dropdowns["Clear on"].set("targetable")
+win.clearAdd.OnClick(win.clearAdd)
+list = E:Draft().clearOn
+check(#list == 3 and list[2].contains == "The arena resets" and list[3].event == "targetable", "an emote and a targetable change are added")
+check(win.clearRows[1].label.text == "Boss cast 1234 (when it starts)" and win.clearRows[3].shown and not win.clearRows[4].shown, "the list shows each entry, one row each")
+win.clearRows[1].remove.OnClick(win.clearRows[1].remove)
+list = E:Draft().clearOn
+check(#list == 2 and list[1].event == "emote" and not win.clearRows[3].shown, "Remove drops that entry")
+win.export.OnClick(win.export)
+line = exported:match("\\n(%[%d+%] = [^\\n]+)")
+check(line and line:find('clearOn = { { event = "emote", contains = "The arena resets" }, { event = "targetable" } }', 1, true), "Export writes clearOn: " .. tostring(line))
+back = line and load("return { " .. line .. " }")()[ENC]
+check(back and #back.clearOn == 2 and CRT.MarkerClearOn.Valid(back.clearOn[1]) and CRT.MarkerClearOn.Valid(back.clearOn[2]), "the exported clearOn reads back as working entries")
+win.save.OnClick(win.save)
+saved = CRT.db.dev.markerDisplays[ENC]
+check(saved.clearOn ~= list and saved.clearOn[1] ~= list[1] and saved.clearOn[1].contains == "The arena resets", "Save draft keeps a copy of clearOn")
 
 print(passes .. " passed, " .. fails .. " failed")
 `;
