@@ -15,11 +15,12 @@ local Engine = CRT.NoteEngine
 local NoteWindow = { windows = {} }
 CRT.NoteWindow = NoteWindow
 
--- Whether the note windows may show where you are: always, unless "Show outside of raid" is unticked
--- (Notes Settings) and you are not in a raid instance. Dungeons, delves, battlegrounds and the open
+-- Whether the note windows may show where you are: in a raid instance, or anywhere when "Show outside of
+-- raid" is ticked (Notes Settings, off by default), or during a rehearsal you started. Dungeons, delves, battlegrounds and the open
 -- world all count as outside.
 function NoteWindow.AllowedHere()
-    if Notes:ShowOutsideRaid() then
+    local Alerts = CRT.Alerts
+    if Notes:ShowOutsideRaid() or (Alerts and Alerts.IsRehearsal and Alerts:IsRehearsal()) then
         return true
     end
     local _, instanceType = IsInInstance()

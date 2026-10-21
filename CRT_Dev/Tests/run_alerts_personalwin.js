@@ -148,7 +148,7 @@ local function fresh()
   CRT.db.alerts.nextId = 1
   CRT.db.notes.active = 1
   CRT.db.notes.personalText = "Heal CDs: Cheoeqar"
-  CRT.db.notes.showOutsideRaid = nil
+  CRT.db.notes.showOutsideRaid = true
   instType = "none"
   A:Fire()
 end
@@ -387,9 +387,13 @@ end)
 
 test("show outside of raid: hides the note windows in the open world, not in a raid or a preview", function()
   local assign = named.CowfeeRaidToolsNote_assignments
-  assert(NW.AllowedHere(), "old saved data (no setting) counts as on")
+  CRT.db.notes.showOutsideRaid = nil
+  assert(not NW.AllowedHere(), "no setting counts as off")
+  CRT.db.notes.showOutsideRaid = true
+  Notes:Fire()
+  assert(NW.AllowedHere(), "ticked: allowed outside")
   show()
-  assert(win.shown, "shown outside a raid by default")
+  assert(win.shown, "shown outside a raid when ticked")
   CRT.db.notes.showOutsideRaid = false
   Notes:Fire()
   assert(not NW.AllowedHere(), "not allowed in the open world")

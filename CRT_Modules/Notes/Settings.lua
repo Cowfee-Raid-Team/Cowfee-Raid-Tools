@@ -41,7 +41,7 @@ local TEXT = {
 
     -- All three note windows.
     allWindows = "All note windows",
-    allWindowsHelp = "Settings for the Timers, Assignments and Personal note windows together. Show outside of raid: untick it to hide all three unless you are in a raid instance. Previews still shows them.",
+    allWindowsHelp = "Settings for the Timers, Assignments and Personal note windows together. Show outside of raid: tick it to show all three outside a raid instance too; off, they show only in a raid. Previews still shows them.",
     showOutsideRaid = "Show outside of raid",
 
     -- Sharing.

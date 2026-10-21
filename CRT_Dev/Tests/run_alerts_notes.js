@@ -47,6 +47,7 @@ function UnitGroupRolesAssigned() return "DAMAGER" end
 C_SpecializationInfo = { GetSpecialization = function() return 1 end,
   GetSpecializationInfo = function() return 62, "Arcane", "", 0, "DAMAGER" end }
 function IsInRaid() return false end
+function IsInInstance() return true, "raid" end
 function GetNumGroupMembers() return 1 end
 function UnitIsUnit() return false end
 function GetDifficultyInfo(id) return ({ [16] = "Mythic" })[id] end

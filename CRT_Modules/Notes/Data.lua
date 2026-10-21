@@ -139,9 +139,9 @@ function Notes:Alert()
     return ndb().alert
 end
 
--- Whether the note windows show outside a raid instance (Notes Settings). On unless unticked.
+-- Whether the note windows show outside a raid instance (Notes Settings). Off unless ticked.
 function Notes:ShowOutsideRaid()
-    return ndb().showOutsideRaid ~= false
+    return ndb().showOutsideRaid == true
 end
 
 function Notes:TrustedOnly()

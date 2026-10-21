@@ -40,6 +40,7 @@ C_SpecializationInfo = { GetSpecialization = function() return 1 end,
 local raid = nil -- { { name, subgroup, classFile } } while in a raid
 function IsInRaid() return raid ~= nil end
 function IsInGroup() return raid ~= nil end
+function IsInInstance() return false, "none" end
 function GetNumGroupMembers() return raid and #raid or 1 end
 function GetNumSubgroupMembers() return 0 end
 function GetRaidRosterInfo(i) local r = raid and raid[i] if r then return r[1], 0, r[2], 80, r[3], r[3] end end
@@ -249,6 +250,7 @@ local function fresh()
   CRT.db.groups.presets, CRT.db.groups.active = {}, nil
   CRT.db.classCache = {}
   CRT.db.notes.alert.tts = true
+  CRT.db.notes.showOutsideRaid = true -- these checks are about the run, not where the windows may show
   wipe(said) stops = 0 wipe(sent) wipe(played)
   Speech:Reset()
   frame(0.2) -- the areas and speech settle on "no run"
