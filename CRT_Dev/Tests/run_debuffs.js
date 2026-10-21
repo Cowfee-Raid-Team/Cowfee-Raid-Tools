@@ -117,6 +117,13 @@ function CreateFrame(kind, name, parent, template)
     rawset(f, "SetFlowLayoutAnchorPoint", function(self, point) rawset(self, "flowPoint", point) end)
     rawset(f, "SetFlowLayoutAxis", function(self, axis) rawset(self, "flowAxis", axis) end)
     rawset(f, "SetFlowLayoutGrowthDirection", function(self, h, v) rawset(self, "flowH", h) rawset(self, "flowV", v) end)
+  elseif kind == "Cooldown" then
+    -- The swipe's look, as last set (Cooldown widget API).
+    rawset(f, "SetReverse", function(self, on) rawset(self, "reversed", on) end)
+    rawset(f, "SetSwipeColor", function(self, r, g, b, a) rawset(self, "swipeColor", { r, g, b, a }) end)
+    rawset(f, "SetDrawEdge", function(self, on) rawset(self, "drawEdge", on) end)
+    rawset(f, "SetDrawBling", function(self, on) rawset(self, "drawBling", on) end)
+    rawset(f, "SetDrawSwipe", function(self, on) rawset(self, "drawSwipe", on) end)
   end
   return f
 end
@@ -175,6 +182,11 @@ check("a saved grow direction is kept", CRTDB.debuffs.grow == "left", CRTDB.debu
 CRT.db, CRTDB = savedDb, nil
 check("default dispel icon scale is 0.35", defaults.dispelIconScale == 0.35, defaults.dispelIconScale)
 check("default dispel glow is off", defaults.dispelGlow == false, tostring(defaults.dispelGlow))
+check("default swipe has no bright edge line", defaults.swipe == true and defaults.swipeEdge == false, tostring(defaults.swipeEdge))
+CRTDB = { debuffs = { swipeEdge = true } }
+coreEvents.OnEvent(coreEvents, "ADDON_LOADED", "CowfeeRaidTools")
+check("a saved bright edge stays on", CRTDB.debuffs.swipeEdge == true, tostring(CRTDB.debuffs.swipeEdge))
+CRT.db, CRTDB = savedDb, nil
 CRT.db.debuffs.dispelIconScale = nil
 check("old saved data without a dispel scale reads 0.35", Debuffs:DispelIconScale() == 0.35, Debuffs:DispelIconScale())
 CRT.db.debuffs = fresh()
@@ -422,6 +434,44 @@ check("the frame is the icon plus the border's width", frameTex and frameTex.w =
 Debuffs:Set("borderScale", 0.5)
 check("no bevel on a frame too thin for one", bevel and not bevel.shown)
 Debuffs:Set("borderScale", 1)
+
+-- The swipe: reversed from the action bar (a fresh debuff is lit and darkens as it runs out), a
+-- muted dark fill from the look, no bright edge line by default and no bling at the end.
+local function cooldownOf(owner)
+  for _, f in ipairs(frames) do
+    if f.kind == "Cooldown" and rawget(f, "parent") == owner then return f end
+  end
+end
+local function mutedSwipe(cd)
+  local c, want = cd and rawget(cd, "swipeColor"), L.swipeColor
+  return cd ~= nil and type(want) == "table" and c ~= nil and c[1] == want[1] and c[2] == want[2] and c[3] == want[3] and c[4] == want[4]
+end
+check("the look's swipe color is a muted black", type(L.swipeColor) == "table" and L.swipeColor[1] == 0 and L.swipeColor[2] == 0 and L.swipeColor[3] == 0
+  and math.abs(L.swipeColor[4] - 0.6) < 1e-9)
+local buttonCD = cooldownOf(button)
+check("a button's swipe is reversed: it darkens as the debuff runs out", buttonCD and rawget(buttonCD, "reversed") == true)
+check("a button's swipe has the muted color", mutedSwipe(buttonCD))
+check("a button's swipe has no edge line by default", buttonCD and rawget(buttonCD, "drawEdge") == false)
+check("a button's swipe has no bling", buttonCD and rawget(buttonCD, "drawBling") == false)
+Debuffs:Set("swipeEdge", true)
+check("the bright edge box still turns the line on", buttonCD and rawget(buttonCD, "drawEdge") == true)
+Debuffs:Set("swipeEdge", defaults.swipeEdge)
+Panel:SetPreview(true)
+local tileCD
+for _, f in ipairs(frames) do
+  if rawget(f, "parts") and f.shown then tileCD = cooldownOf(f) break end
+end
+check("a preview tile's swipe is reversed, muted, with no edge or bling", tileCD and rawget(tileCD, "reversed") == true and mutedSwipe(tileCD)
+  and rawget(tileCD, "drawEdge") == false and rawget(tileCD, "drawBling") == false)
+Panel:SetPreview(false)
+-- The boss debuff slots: the game draws their swipe, and takes only whether it has an edge.
+Debuffs:SetPrivateSlots(true)
+check("a boss debuff slot has no swipe edge by default", anchorArgs[1] and anchorArgs[1].showCooldownEdge == false and anchorArgs[1].showCooldownFrame == true)
+Debuffs:Set("swipeEdge", true)
+check("the bright edge box turns a slot's edge on", anchorArgs[1] and anchorArgs[1].showCooldownEdge == true)
+Debuffs:Set("swipeEdge", defaults.swipeEdge)
+check("a slot is given only fields the game documents", anchorArgs[1] and anchorArgs[1].reverse == nil and anchorArgs[1].swipeColor == nil)
+Debuffs:SetPrivateSlots(false)
 
 -- The countdown's text: seconds with no "s" under a minute, m:ss from 60 s.
 local cases = { { 9, "9" }, { 8.2, "9" }, { 59, "59" }, { 59.5, "59" }, { 60, "1:00" }, { 103, "1:43" }, { 102.4, "1:43" }, { 600, "10:00" }, { 0.3, "1" } }
