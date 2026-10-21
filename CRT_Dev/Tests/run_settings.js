@@ -227,43 +227,20 @@ print("settings page built: " .. tostring(UI.pages.settings.frame ~= nil) .. ", 
 local opts = {} for _, o in ipairs(dropdowns["Use profile"].options()) do opts[#opts + 1] = o.label end
 print("use profile choices: " .. table.concat(opts, ", ") .. "; copy from enabled " .. tostring(dropdowns["Copy from"].enabledIf()))
 
--- The Macros tab: a row per macro set with its status, Create macros, Update and Remove macros (which asks first),
--- greyed in combat.
+-- The tabs: Appearance and Profiles. The macros moved to Raid Notes > Marker macros (Markers/MacrosTab.lua).
 do
   local function textOf(fr) local t = rawget(fr, "text") return type(t) == "string" and t or "" end
   local function findText(want, kind) for _, fr in ipairs(frames) do if (not kind or fr.kind == kind) and textOf(fr) == want then return fr end end end
-  local function findWith(part) for _, fr in ipairs(frames) do if fr.kind == "FontString" and textOf(fr):find(part, 1, true) then return fr end end end
   local tabLabels = {}
   for _, fr in ipairs(frames) do
     local t = textOf(fr)
     if fr.kind == "FontString" and rawget(fr, "font") == "CRTFontNormal" and (t == "Appearance" or t == "Macros" or t == "Profiles") then tabLabels[#tabLabels + 1] = t end
   end
   -- the tab labels are made first; the tabs' own headings come after
-  tabLabels = { tabLabels[1], tabLabels[2], tabLabels[3] }
-  if table.concat(tabLabels, ",") ~= "Appearance,Macros,Profiles" then print("FAIL General Settings tabs are Appearance, Macros, Profiles (got " .. table.concat(tabLabels, ",") .. ")") end
-  if not findText("Test calls", "FontString") then print("FAIL the Macros tab has a row for each set") end
-  local create, update, remove = findText("Create macros", "Button"), findText("Update", "Button"), findText("Remove macros", "Button")
-  if not (create and update and remove) then print("FAIL the Macros row has Create macros, Update and Remove macros")
-  else
-    UI:SelectPage("settings")
-    if not findText("none", "FontString") then print("FAIL the row's status says none before any are made") end
-    create.OnClick(create)
-    if #gameMacros ~= 1 or not findWith("1 of 1 created") then print("FAIL Create macros makes the set and the status follows") end
-    popup = nil
-    remove.OnClick(remove)
-    if not popup or #gameMacros ~= 1 then print("FAIL Remove macros asks first")
-    else
-      popup.callback()
-      if #gameMacros ~= 0 or not findText("none", "FontString") then print("FAIL accepting the question removes them") end
-    end
-    combat = true
-    for _, fr in ipairs(frames) do if rawget(fr, "OnEvent") then pcall(fr.OnEvent, fr, "PLAYER_REGEN_DISABLED") end end
-    if create.enabled ~= false or update.enabled ~= false or remove.enabled ~= false then print("FAIL the macro buttons are greyed in combat") end
-    combat = false
-    for _, fr in ipairs(frames) do if rawget(fr, "OnEvent") then pcall(fr.OnEvent, fr, "PLAYER_REGEN_ENABLED") end end
-    if create.enabled ~= true then print("FAIL the macro buttons come back after combat") end
-    print("macros tab checked")
-  end
+  tabLabels = { tabLabels[1], tabLabels[2] }
+  if table.concat(tabLabels, ",") ~= "Appearance,Profiles" then print("FAIL General Settings tabs are Appearance, Profiles (got " .. table.concat(tabLabels, ",") .. ")") end
+  if findText("Test calls", "FontString") or findText("Create macros", "Button") then print("FAIL General Settings has no macro rows any more") end
+  print("macros tab gone")
 end
 
 -- Modern look.

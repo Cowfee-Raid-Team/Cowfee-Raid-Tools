@@ -165,6 +165,30 @@ function Markers:For(encounterID)
     return encounterID and self:Displays()[encounterID] or nil
 end
 
+-- How the marker calls work on a boss, in a sentence or two (the boss file's markerHelp, or a dev draft's help),
+-- or nil when it has none.
+function Markers:Help(encounterID)
+    local dev = CRT.db.dev and CRT.db.dev.markerDisplays
+    local draft = encounterID and dev and dev[encounterID]
+    if draft and type(draft.help) == "string" and draft.help ~= "" then
+        return draft.help
+    end
+    local help = encounterID and CRT.MarkerDisplayDB.help and CRT.MarkerDisplayDB.help[encounterID]
+    return type(help) == "string" and help ~= "" and help or nil
+end
+
+-- fn() runs whenever the display's slots change: a slot fills, it clears, or a display is armed or disarmed.
+local listeners = {}
+function Markers:OnChange(fn)
+    listeners[#listeners + 1] = fn
+end
+
+local function changed()
+    for _, fn in ipairs(listeners) do
+        pcall(fn)
+    end
+end
+
 function Markers:Enabled(encounterID)
     return not db().disabled[encounterID]
 end
@@ -268,6 +292,44 @@ function Markers.PlaceAt(def, x, y)
     return Markers.ClampPlace((x - g.left) / g.canvas, (y - g.top) / g.canvas)
 end
 
+-- Where everything sits for a display, as the window draws it and the Marker macros tab's preview copies it
+-- (Markers/MacrosTab.lua): the geometry above plus the window's width and height, and cells[i] = { point, x, y }
+-- for slot i, in pixels from the window's top left (y down): a freeform slot's centre ("CENTER"), any other's top
+-- left corner ("TOPLEFT").
+local function layoutOf(s)
+    local g = geometry(s)
+    g.cells = {}
+    if s.layout == "free" then
+        for i = 1, s.slots do
+            local x, y = slotCenter(s, g, i)
+            g.cells[i] = { point = "CENTER", x = x, y = y }
+        end
+        return g
+    end
+    local perRow = (s.layout == "column" and 1) or (s.layout == "grid" and 4) or s.slots
+    for i = 1, s.slots do
+        local col, row = (i - 1) % perRow, math.floor((i - 1) / perRow)
+        g.cells[i] = { point = "TOPLEFT", x = 6 + col * g.cellW, y = 4 + row * g.cellH }
+    end
+    g.width = 12 + math.min(perRow, s.slots) * g.cellW
+    g.height = 8 + math.ceil(s.slots / perRow) * g.cellH
+    return g
+end
+
+function Markers.Geometry(def)
+    return layoutOf(settings(def))
+end
+
+-- A display's settings with the defaults filled in, for pages that describe it.
+function Markers.Settings(def)
+    return settings(def)
+end
+
+-- Slot i's sample marker (as icon markup) and sample sender name, for previews.
+function Markers.SampleSlot(i)
+    return withIcons(SAMPLE[i] or SAMPLE[1]), SAMPLE_NAMES[i] or SAMPLE_NAMES[1]
+end
+
 -- The window -------------------------------------------------------------------------------------
 
 local function savePosition()
@@ -354,27 +416,29 @@ local function slot(i)
     return s
 end
 
--- The freeform canvas's faint outline, in the theme's border colour: line n, made the first time.
+-- The freeform canvas's faint outline, in the theme's border colour: line n of owner's lines (kept in store),
+-- made the first time.
 local outline = {}
-local function outlineLine(n)
-    local line = outline[n]
+local function outlineLine(owner, store, n)
+    local line = store[n]
     if not line then
-        line = frame:CreateLine(nil, "ARTWORK")
+        line = owner:CreateLine(nil, "ARTWORK")
         line:SetThickness(1)
         UI.Tint(line, "SetColorTexture", "border", 0.8)
-        outline[n] = line
+        store[n] = line
     end
     return line
 end
 
--- Draws the outline for the display's shape (none for a row, column or grid) and hides the rest.
-local function drawOutline(s, g)
+-- Draws the outline for the display's shape (none for a row, column or grid) on owner, the window or the Marker
+-- macros tab's preview, and hides the rest of its lines.
+local function drawOutlineOn(owner, store, s, g)
     local used = 0
     local function segment(x1, y1, x2, y2)
         used = used + 1
-        local line = outlineLine(used)
-        line:SetStartPoint("TOPLEFT", frame, x1, -y1)
-        line:SetEndPoint("TOPLEFT", frame, x2, -y2)
+        local line = outlineLine(owner, store, used)
+        line:SetStartPoint("TOPLEFT", owner, x1, -y1)
+        line:SetEndPoint("TOPLEFT", owner, x2, -y2)
         line:Show()
     end
     if s.layout == "free" and s.shape == "square" then
@@ -391,31 +455,35 @@ local function drawOutline(s, g)
             segment(cx + radius * math.cos(a1), cy + radius * math.sin(a1), cx + radius * math.cos(a2), cy + radius * math.sin(a2))
         end
     end
-    for k = used + 1, #outline do
-        outline[k]:Hide()
+    for k = used + 1, #store do
+        store[k]:Hide()
     end
+end
+
+local function drawOutline(s, g)
+    drawOutlineOn(frame, outline, s, g)
+end
+
+-- For a preview drawn elsewhere: the outline of def's display on owner, its lines kept in store (a table the
+-- caller keeps), placed as Markers.Geometry places the slots.
+function Markers.DrawOutline(owner, store, def)
+    local s = settings(def)
+    drawOutlineOn(owner, store, s, layoutOf(s))
 end
 
 -- Lays the slots out for a display: number above the marker, the sender's name below it.
 local function layout(s)
-    local g = geometry(s)
+    local g = layoutOf(s)
     local font = CRT:FontPath(CRT.db.ui.font) or "Fonts\\FRIZQT__.TTF"
     frame.iconFont:SetFont(font, g.size, "")
     local cellW, cellH, numberH = g.cellW, g.cellH, g.numberH
-    local free = s.layout == "free"
-    local perRow = (s.layout == "column" and 1) or (s.layout == "grid" and 4) or s.slots
     for i = 1, 8 do
         local c = slot(i)
         if i <= s.slots then
             c:ClearAllPoints()
             c:SetSize(cellW, cellH)
-            if free then
-                local x, y = slotCenter(s, g, i)
-                c:SetPoint("CENTER", frame, "TOPLEFT", x, -y)
-            else
-                local col, row = (i - 1) % perRow, math.floor((i - 1) / perRow)
-                c:SetPoint("TOPLEFT", frame, "TOPLEFT", 6 + col * cellW, -4 - row * cellH)
-            end
+            local cell = g.cells[i]
+            c:SetPoint(cell.point, frame, "TOPLEFT", cell.x, -cell.y)
             c.number:SetShown(s.number)
             c.number:SetText(tostring(i))
             c.icon:ClearAllPoints()
@@ -430,13 +498,7 @@ local function layout(s)
             c:Hide()
         end
     end
-    if free then
-        frame:SetSize(g.width, g.height)
-    else
-        local cols = math.min(perRow, s.slots)
-        local rows = math.ceil(s.slots / perRow)
-        frame:SetSize(12 + cols * cellW, 8 + rows * cellH)
-    end
+    frame:SetSize(g.width, g.height)
     drawOutline(s, g)
     title:SetText(s.name or DEFAULT.name)
 end
@@ -505,6 +567,7 @@ function Markers:Clear()
             frame:Hide()
         end
     end
+    changed()
 end
 
 local function clearAfter(seconds)
@@ -554,6 +617,7 @@ local function onMessage(text, sender)
     if filled >= active.slots then
         clearAfter(active.clearFull)
     end
+    changed()
 end
 
 -- Arms a display for the pull. def is a display's settings; nil disarms.
@@ -565,19 +629,22 @@ function Markers:Arm(encounterID, def, test)
     testing = test and true or false
     if not def then
         active = nil
+        changed()
         return
     end
     build()
     active = settings(def)
     active.encounterID = encounterID
     layout(active)
+    changed()
 end
 
--- The dev editor's Test: arms a display outside a pull, also listening to /say, until stopped.
+-- A test (Raid Notes > Marker macros, or the dev editor): arms a display outside a pull, also listening to /say,
+-- until stopped.
 function Markers:Test(def)
     if def then
         self:Arm(nil, def, true)
-        CRT:Print("Marker display test: send markers in /say, party or raid chat, such as {rt3}. Stop it in the dev editor.")
+        CRT:Print("Marker display test: send markers in /say, party or raid chat, such as {rt3}. Stop test ends it.")
     else
         self:Arm(nil, nil)
         CRT:Print("Marker display test stopped.")

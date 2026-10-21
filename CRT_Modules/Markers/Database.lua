@@ -27,8 +27,10 @@ local ADDON, CRT = ...
 -- readable message fills a slot only when it holds a marker code.
 
 -- They ship in each boss's file in the season packs (field markers), and Bosses/Registry.lua puts
--- the loaded seasons' displays here.
+-- the loaded seasons' displays here. A boss file may also give markerHelp: a sentence or two on how
+-- the marker calls work on that boss, shown on Raid Notes > Marker macros (help, by encounter ID).
 
 CRT.MarkerDisplayDB = {
     displays = {},
+    help = {},
 }

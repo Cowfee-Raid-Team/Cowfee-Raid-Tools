@@ -8,11 +8,12 @@ const harness = themeLua(process.argv.slice(2)) + `
 local settingsSrc, pageSrc, parseSrc, renderSrc = ...
 local created = 0
 local allTexts = {}
+textOrder = {}
 local function mock()
   local m = { shown = false }
   return setmetatable(m, { __index = function(t, k)
     if k == "CreateFontString" or k == "CreateTexture" then return function() created = created + 1 return mock() end end
-    if k == "SetText" then return function(self, s) self.text = s allTexts[tostring(s)] = true end end
+    if k == "SetText" then return function(self, s) self.text = s allTexts[tostring(s)] = true textOrder[#textOrder + 1] = tostring(s) end end
     if k == "Show" then return function(self) self.shown = true if rawget(self, "OnShow") then self.OnShow(self) end end end
     if k == "Hide" then return function(self) self.shown = false end end
     if k == "SetShown" then return function(self, on) if on then self:Show() else self:Hide() end end end
@@ -48,6 +49,7 @@ local CRT = {
   NotePhases = { Build = function() builtTabs[#builtTabs + 1] = 'phases' end },
   NoteEngine = { running = false, PeekNextPhase = function() return nil end },
   NoteAlertsTab = { Build = function() builtTabs[#builtTabs + 1] = 'alerts' end, Select = function() end },
+  MarkerMacrosTab = { Build = function() builtTabs[#builtTabs + 1] = 'markers' end },
   NoteComm = { Sharing = function() return nil end },
   NoteWindow = { FONTS = { { name = "Friz Quadrata" } } },
 }
@@ -65,8 +67,18 @@ print("settings tab built, total: " .. created)
 CRT.NotesPage.Open("reminders")
 CRT.NotesPage.Open("phases") -- no Phases tab any more: falls back to Notes, builds nothing
 CRT.NotesPage.Open("alerts")
-assert(table.concat(builtTabs, ",") == "reminders,alerts", "four tabs built by name, no Phases")
+CRT.NotesPage.Open("markers")
+assert(table.concat(builtTabs, ",") == "reminders,alerts,markers", "five tabs built by name, no Phases (got " .. table.concat(builtTabs, ",") .. ")")
 assert(allTexts["Notes Settings"] and not allTexts["Settings"], "the settings tab is named Notes Settings")
+-- the tab labels, in order: Marker macros before Alert Settings, Notes Settings last
+do
+  local labels = {}
+  local want = { Notes = true, ["Mech Alerts"] = true, ["Marker macros"] = true, ["Alert Settings"] = true, ["Notes Settings"] = true }
+  for _, t in ipairs(textOrder) do if want[t] then labels[#labels + 1] = t want[t] = nil end end
+  local got = table.concat(labels, ",")
+  assert(got == "Notes,Mech Alerts,Marker macros,Alert Settings,Notes Settings", "tabs in order, Marker macros before Alert Settings (got " .. got .. ")")
+  print("tab order: " .. got)
+end
 CRT.NotesPage.Open("notes")
 for _, fn in ipairs(listeners) do fn() end
 print("refresh ok, listeners: " .. #listeners)
