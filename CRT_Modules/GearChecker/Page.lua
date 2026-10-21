@@ -3,7 +3,7 @@ local ADDON, CRT = ...
 -- The Gear Checker page: one row per group member with their name (class colour), average item level, an
 -- issues count, the Tracks column (pieces per upgrade track, "3M 3H") and a cell per gear slot (all 16 fit
 -- the page, so nothing scrolls sideways): the item's icon in its quality's border, its item level, its
--- track and rank at the top left ("H4", in the track's colour), gem diamonds at the top right (filled, or
+-- track and rank at the top left ("H4", in the track's colour), gem diamonds down the right edge (filled, or
 -- empty with a red edge), a season check's square at the bottom right and, on a slot that takes an
 -- enchant, a dot at the bottom left (green, or red when missing). A missing enchant or gem outlines the
 -- cell red, a low item orange. Filter chips pick who shows, and on an issue filter each row draws only the
@@ -21,8 +21,8 @@ local ADDON, CRT = ...
 -- .InsertLink(text) and .OpenChat(text) (12.0; the older ChatEdit_GetActiveWindow, ChatEdit_InsertLink and
 -- ChatFrame_OpenChat stay as fallbacks, aliases in Blizzard_DeprecatedChatInfo); InspectUnit(unit) (the game's
 -- inspect window, Blizzard_InspectUI_Bootstrap); IsShiftKeyDown; C_ClassColor.GetClassColor, else
--- RAID_CLASS_COLORS; C_Item.GetItemQualityByID(itemInfo) and ColorManager.GetColorDataForItemQuality, else
--- ITEM_QUALITY_COLORS, redrawn on ITEM_DATA_LOAD_RESULT (itemID, success); C_Item.GetItemInfoInstant (the
+-- RAID_CLASS_COLORS; C_Item.GetItemQualityByID(itemInfo) and its colour from Gear.QualityColor (ColorManager, else
+-- ITEM_QUALITY_COLORS), redrawn on ITEM_DATA_LOAD_RESULT (itemID, success); C_Item.GetItemInfoInstant (the
 -- icon); TextureBase:SetRotation(radians); the WowScrollBoxList, MinimalScrollBar and
 -- ScrollUtil.InitScrollBoxListWithScrollBar as Loot History uses them.
 
@@ -32,7 +32,7 @@ local Gear = CRT.Gear
 
 local TEXT = {
     title = "Gear Checker",
-    help = "Shows everyone's gear and what needs fixing: red for a missing enchant or gem, orange for an item %d or more item levels under the player's average, and a small square for this season's checks (blue is just to know and isn't counted). The tag at an item's top left is its upgrade track and rank, like H4 for Hero 4. Pick a filter at the top to see only those items, press Refresh to check the group again, and right-click a player to send them their issues.",
+    help = "Shows everyone's gear and what to fix: red for a missing enchant or gem, orange for an item %d or more item levels under their average, and a small square for a season check (blue is just to know). A tag like H4 is the item's upgrade track and rank. Pick a filter to see only those items, and right-click a player to send them their issues.",
     refresh = "Refresh (%d/%d have CRT)",
     popOut = "Pop out",
     dock = "Dock",
@@ -42,6 +42,7 @@ local TEXT = {
     ilvl = "iLvl",
     issues = "Issues",
     tracks = "Tracks",
+    tracksTip = "Tracks: %s", -- each track's count and name, highest first
     notAnIssue = "Not an issue",
     belowMenu = "List items below",
     notSeen = "not seen yet",
@@ -68,7 +69,8 @@ local L = {
     chipArrow = 12, chipArrowH = 8, -- the Below chip's arrow, at its right
     headY = -34, listY = -52, -- with one row of chips; each more row moves them down chipH + chipGap
     tag = 7, -- a season check's square at the icon's bottom right
-    trackX = -3, trackY = 2, -- the track tag's top left, from the icon's (a little out, clear of the gems)
+    trackX = -3, trackY = 2, -- the track tag's top left, from the icon's (a little out to the left)
+    trackMaxW = 24, -- the tag's widest: it ends left of the gem column (L.icon - 1 - the diamond's half width)
     nameW = 98, ilvlW = 40, issuesW = 40, tracksW = 64, cellW = 47, rowH = 46,
     icon = 30, edge = 2, gem = 7, gemInner = 5, gemGap = 1, dot = 8, badgeW = 26, badgeH = 16,
     barGap = UI.SCROLL_GAP, barW = 8, -- the gap before the bar: the shared scroll bar gap
@@ -139,13 +141,9 @@ local function qualityColor(piece)
         local ok, v = pcall(C_Item.GetItemQualityByID, piece.itemString or piece.link or piece.id)
         q = ok and not secret(v) and type(v) == "number" and v or nil
     end
-    q = q or UNCOMMON
-    local ok, c = pcall(function()
-        return ColorManager and ColorManager.GetColorDataForItemQuality and ColorManager.GetColorDataForItemQuality(q)
-    end)
-    c = ok and c or (ITEM_QUALITY_COLORS and ITEM_QUALITY_COLORS[q])
-    if type(c) == "table" and c.r then
-        return c.r, c.g, c.b
+    local r, g, b = Gear.QualityColor(q or UNCOMMON)
+    if r then
+        return r, g, b
     end
     return 1, 1, 1
 end
@@ -338,13 +336,17 @@ local function makeCell(rowFrame, i)
     c.trackTag = c:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     c.trackTag:SetDrawLayer("OVERLAY", 7) -- above its backing
     c.trackTag:SetPoint("TOPLEFT", c.back, "TOPLEFT", L.trackX, L.trackY)
+    c.trackTag:SetWidth(L.trackMaxW) -- a larger font cuts the text short instead of reaching the gems
+    c.trackTag:SetJustifyH("LEFT")
+    c.trackTag:SetWordWrap(false)
     c.trackBack:SetPoint("TOPLEFT", c.trackTag, "TOPLEFT", -1, 1)
-    c.trackBack:SetPoint("BOTTOMRIGHT", c.trackTag, "BOTTOMRIGHT", 1, -1)
+    c.trackBack:SetPoint("BOTTOMLEFT", c.trackTag, "BOTTOMLEFT", -1, -1)
     c.gems = {}
     for g = 1, 3 do
         local edge = diamond(c, L.gem, "OVERLAY", 4)
         local fill = diamond(c, L.gemInner, "OVERLAY", 5)
-        edge:SetPoint("CENTER", c.back, "TOPRIGHT", -1 - (g - 1) * (L.gem + L.gemGap), -1)
+        -- one column down the right edge, so the track tag at the top left never meets them
+        edge:SetPoint("CENTER", c.back, "TOPRIGHT", -1, -1 - (g - 1) * (L.gem + L.gemGap))
         fill:SetPoint("CENTER", edge, "CENTER")
         c.gems[g] = { edge = edge, fill = fill }
     end
@@ -393,6 +395,7 @@ local function paintCell(c, row, r, shown)
     if track then
         c.trackTag:SetTextColor(GC.TrackColor(track.track))
         c.trackBack:SetColorTexture(0, 0, 0, 0.7)
+        c.trackBack:SetWidth(math.min(c.trackTag:GetStringWidth() or 0, L.trackMaxW) + 2) -- as wide as the text
     end
     local top = piece and GC.TopCheck(r)
     c.tag:SetShown(top ~= nil)
@@ -449,6 +452,15 @@ local function badgeEnter(hit)
         local c = COLORS[line.kind] or COLORS.bad
         GameTooltip:AddLine(line.text, c[1], c[2], c[3])
     end
+    local trackLine
+    local counts = row.seen and GC.TrackCounts(row) or {}
+    if #counts > 0 then
+        local parts = {}
+        for _, p in ipairs(counts) do
+            parts[#parts + 1] = GC.InTrackColor(p.track, p.n .. " " .. p.track.label)
+        end
+        trackLine = string.format(TEXT.tracksTip, table.concat(parts, ", "))
+    end
     local notes = GC.NoteLines(row) or {}
     if #notes > 0 then
         GameTooltip:AddLine(TEXT.notAnIssue, textColor("heading"))
@@ -460,6 +472,9 @@ local function badgeEnter(hit)
             local c = COLORS[line.kind] or COLORS.info
             GameTooltip:AddLine(line.text, c[1], c[2], c[3])
         end
+    end
+    if trackLine then
+        GameTooltip:AddLine(trackLine, textColor("heading"))
     end
     GameTooltip:Show()
 end
@@ -507,6 +522,28 @@ local function buildRow(f)
     end
 end
 
+-- The Tracks column's text: every track's count when it fits, else the highest that fit and a "+" (the
+-- badge's tooltip has them all). Measured on the plain text, then shown in the tracks' colours.
+local function textWidth(fs)
+    return (fs.GetUnboundedStringWidth and fs:GetUnboundedStringWidth()) or fs:GetStringWidth() or 0
+end
+
+function P.SetTracks(fs, row)
+    if not row.seen then
+        fs:SetText("")
+        return
+    end
+    local keep = #GC.TrackCounts(row)
+    while keep > 1 do
+        fs:SetText(GC.TrackText(row, false, keep))
+        if textWidth(fs) <= L.tracksW then
+            break
+        end
+        keep = keep - 1
+    end
+    fs:SetText(GC.TrackText(row, true, keep))
+end
+
 function P.InitRow(f, row)
     if not f.cells then
         buildRow(f)
@@ -526,7 +563,7 @@ function P.InitRow(f, row)
         f.issues:SetText(tostring(row.issues))
         f.issues:SetTextColor(1, 1, 1)
     end
-    f.tracks:SetText(row.seen and GC.TrackText(row, true) or "")
+    P.SetTracks(f.tracks, row)
     local why = not row.seen and GC.Inspect and GC.Inspect.skipped[row.name]
     f.notSeen:SetText(row.seen and "" or (why and TEXT.notSeenWhy[why] or TEXT.notSeen))
     f.notSeen:SetTextColor(0.6, 0.6, 0.6)
