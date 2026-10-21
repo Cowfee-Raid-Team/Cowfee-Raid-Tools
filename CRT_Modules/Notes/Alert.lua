@@ -151,7 +151,9 @@ function Alert:Refresh()
             local info = Notes:SpellInfo(best.spellID)
             icon = info and info.icon
         end
-        show(icon, best.text or "", countdownText(remaining), best.color)
+        -- a reminder's own colour only with Use custom colours on (Alerts:OwnColor); a raid note's always
+        local Alerts = CRT.Alerts
+        show(icon, best.text or "", countdownText(remaining), Alerts.OwnColor and Alerts:OwnColor(best) or nil)
     end
 end
 

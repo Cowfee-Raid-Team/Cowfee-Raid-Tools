@@ -60,6 +60,32 @@ function Alerts:Settings()
     return CRT.db.alerts
 end
 
+-- Colours. An alert is drawn in its ability type's colour (Alerts/Colors.lua stamps the type on each item at
+-- Start). Your own colours (an alert's colour on your reminders and personal note, and the areas' Bar, Background,
+-- Text and Ring colours) only apply with Use custom colours on (alerts.customColors, Raid Notes > Alerts); off,
+-- they stay saved and unused. A raid note line's colour is the raid leader's shared choice, so it always wins.
+function Alerts:CustomColors()
+    local s = self:Settings()
+    return type(s) == "table" and s.customColors == true
+end
+
+-- The colour of a line's own that may be drawn, or nil: a raid note line's always, any other only with
+-- custom colours on. Values the game hides are never drawn.
+function Alerts:OwnColor(line)
+    local c = line and line.color
+    local T = CRT.Timeline
+    if T and T.readable and not T.readable(c) then
+        return nil
+    end
+    if type(c) ~= "table" or type(c[1]) ~= "number" or type(c[2]) ~= "number" or type(c[3]) ~= "number" then
+        return nil
+    end
+    if line.block == "note" or self:CustomColors() then
+        return c
+    end
+    return nil
+end
+
 function Alerts:OnChange(fn)
     self.listeners[#self.listeners + 1] = fn
 end
@@ -360,7 +386,8 @@ function Alerts:Start(encounterID, difficultyName, reason, opts)
     if self.running then
         self:Stop(true)
     end
-    local run = { encounterID = encounterID, difficultyName = difficultyName, reason = reason }
+    local run = { encounterID = encounterID, difficultyName = difficultyName, reason = reason,
+        bossName = type(opts) == "table" and type(opts.bossName) == "string" and opts.bossName or nil }
     if reason == "rehearsal" then
         local o = type(opts) == "table" and opts or {}
         local at = ask(o.clock) or 0
@@ -393,6 +420,10 @@ function Alerts:Start(encounterID, difficultyName, reason, opts)
     local ok, err = pcall(function()
         if self.run == run then
             self.items = self:Collect(run, opts)
+            -- each item's ability type, for its colour (Alerts/Colors.lua, loaded later)
+            if CRT.AlertColors then
+                safe(CRT.AlertColors.Stamp, self.items, run)
+            end
             changed(self)
             local first = run.rehearsal and run.rehearsal.base or GetTime()
             self:StartPhase(self:Phases()[1], "start", opts and type(opts.firstAt) == "number" and opts.firstAt or first)
@@ -562,7 +593,7 @@ end
 
 function Alerts.HandleEvent(event, ...)
     if event == "ENCOUNTER_START" then
-        local encounterID, _, difficultyID = ...
+        local encounterID, encounterName, difficultyID = ...
         local name
         if GetDifficultyInfo then
             local ok, n = pcall(GetDifficultyInfo, difficultyID)
@@ -570,7 +601,12 @@ function Alerts.HandleEvent(event, ...)
                 name = n
             end
         end
-        Alerts:Start(encounterID, name, "encounter")
+        -- the boss's name finds a reference that has no Encounter: line (for the alerts' ability types)
+        local boss
+        if type(encounterName) == "string" and not (issecretvalue and issecretvalue(encounterName)) then
+            boss = encounterName
+        end
+        Alerts:Start(encounterID, name, "encounter", boss and { bossName = boss } or nil)
     elseif event == "ENCOUNTER_END" then
         if Alerts.running and Alerts.run.reason == "encounter" then
             Alerts:Stop()

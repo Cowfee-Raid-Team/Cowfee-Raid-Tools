@@ -1,12 +1,12 @@
 // CRT_Modules/Alerts/Circles.lua: the circles area (ring, seconds, text), with mock frames.
-// Usage: node run_alerts_circles.js CRT_Modules/Alerts/Rules.lua CRT_Modules/Alerts/Engine.lua CRT_Modules/Alerts/Areas.lua CRT_Modules/Alerts/Circles.lua
+// Usage: node run_alerts_circles.js CRT_Modules/Alerts/Rules.lua CRT_Modules/Alerts/Engine.lua CRT_Modules/Alerts/Areas.lua CRT_Modules/Alerts/Circles.lua CRT_Core/UI/Controls.lua CRT_Modules/Timeline/Reference.lua CRT_Modules/Alerts/Colors.lua
 const fs = require('fs');
 const path = require('path');
 const themeLua = require('./theme_stub');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
 const harness = themeLua(process.argv.slice(2)) + `
-local rulesSrc, engineSrc, areasSrc, circlesSrc, controlsSrc = ...
+local rulesSrc, engineSrc, areasSrc, circlesSrc, controlsSrc, referenceSrc, colorsSrc = ...
 local RING = "Interface\\\\AddOns\\\\CowfeeRaidTools\\\\CRT_Media\\\\Media\\\\"
 local frames, fontStrings = {}, {}
 local hides = 0
@@ -61,6 +61,7 @@ local function mock(kind, parent, template)
     if k == "SetColorTexture" or k == "SetVertexColor" then return function(self, r, g, b, a) rawset(self, "color", { r, g, b, a }) end end
     if k == "SetBackdropColor" then return function(self, r, g, b, a) rawset(self, "color", { r, g, b, a }) end end
     if k == "GetFrameLevel" then return function() return 1 end end
+    if k == "SetEnabled" then return function(self, on) rawset(self, "enabledState", on and true or false) end end
     return function() end end })
 end
 UIParent = mock("Frame")
@@ -112,6 +113,8 @@ local function defaults() return {
     texts = { shown = true, cap = 3, font = "Friz Quadrata", fontSize = 36, outline = "THICKOUTLINE", grow = "down", align = "CENTER" },
     circles = { shown = true, cap = 3, size = 64, fontSize = 16, grow = "right", thickness = "medium", ringColor = { 1, 1, 1, 0.9 }, font = "Friz Quadrata" },
   },
+  -- the checks below were written for the player's own colours: Use custom colours on (its off side is at the end)
+  customColors = true,
   reminders = {}, phases = {}, overrides = {}, nextId = 1 } end
 local previews, layers, resets, dropdowns, sliders = {}, {}, 0, {}, {}
 local dropdownsMade, slidersMade = 0, 0
@@ -142,6 +145,8 @@ local spells = { [100] = { name = "Spell Name", icon = 555 } }
 CRT.Notes = { SpellInfo = function(_, id) return spells[id] end }
 assert(load(rulesSrc, "Rules"))("CowfeeRaidTools", CRT)
 assert(load(engineSrc, "Engine"))("CowfeeRaidTools", CRT)
+assert(load(referenceSrc, "Reference"))("CowfeeRaidTools", CRT)
+assert(load(colorsSrc, "Colors"))("CowfeeRaidTools", CRT)
 CRT_THEME(CRT, CRT.UI)
 assert(load(areasSrc, "Areas"))("CowfeeRaidTools", CRT)
 assert(load(circlesSrc, "Circles"))("CowfeeRaidTools", CRT)
@@ -430,14 +435,49 @@ stale.swatchFunc()
 assert(CRT.db.alerts.areas.circles.ringColor[1] == 1 and oldTable.ringColor[1] == 0, "stale picker writes to the table it opened on")
 assert(#errors == 0, tostring(errors[1]))
 print("ok circles: ring colour row and picker")
+
+-- Use custom colours off (the default): the ring and the text are in the ability type's colour (the accent with no
+-- known type) at the default opacity; the Ring colour is ignored and greyed but stays saved; a raid note line's
+-- own colour still wins.
+local function near(c, r, g, b, a) return c and math.abs(c[1] - r) < 1e-6 and math.abs(c[2] - g) < 1e-6 and math.abs(c[3] - b) < 1e-6 and (a == nil or math.abs((c[4] or 1) - a) < 1e-6) end
+local soak = CRT.TimelineReference.TYPES.soak.color
+local accent = CRT.MOCHA.caramel
+pull({ item{ id = "s", time = 5, text = "Soak", abilityType = "soak", color = { 0, 1, 0 } }, item{ id = "u", time = 6, text = "Unknown" } })
+CRT.db.alerts.customColors = false
+CRT.db.alerts.areas.circles.ringColor = { 0.2, 0.4, 0.6, 0.5 }
+start() I:Refresh()
+local ws, wu = I:Visible()[1], I:Visible()[2]
+assert(near(ws.cooldown.swipeColor, soak[1], soak[2], soak[3], 0.9), "off: the ring in the soak colour, your reminder's colour ignored: " .. table.concat(ws.cooldown.swipeColor, ","))
+assert(near(ws.text.textColor, soak[1], soak[2], soak[3]), "off: the text in the type colour")
+assert(near(wu.cooldown.swipeColor, accent[1], accent[2], accent[3], 0.9), "off: no type, the theme's accent")
+assert(near(CRT.db.alerts.areas.circles.ringColor, 0.2, 0.4, 0.6, 0.5), "off: the ring colour stays saved")
+panel:Select(I)
+assert(ringRow.swatch.enabledState == false, "off: the Ring colour row is greyed")
+-- the raid leader's note colour wins either way
+A:RegisterBlock("note", { label = "Raid note", group = false, Entries = function()
+  return { item{ id = "lead", time = 4, text = "Leader", color = { 1, 0, 0 }, abilityType = "soak" } }
+end })
+start() I:Refresh()
+local wl = I:Visible()[1]
+assert(wl.text.text == "Leader" and near(wl.cooldown.swipeColor, 1, 0, 0, 0.9) and near(wl.text.textColor, 1, 0, 0), "off: the leader's colour wins")
+-- on again: your colours apply
+CRT.db.alerts.customColors = true
+panel:Select(I) I:Refresh()
+assert(ringRow.swatch.enabledState == true, "on: the row is back")
+ws, wu = I:Visible()[2], I:Visible()[3]
+assert(near(ws.cooldown.swipeColor, 0, 1, 0, 0.5) and near(wu.cooldown.swipeColor, 0.2, 0.4, 0.6, 0.5), "on: your alert colour, else the ring colour")
+assert(near(wu.text.textColor, accent[1], accent[2], accent[3]), "on: a text with no colour of its own keeps its type's")
+A:RegisterBlock("note", { label = "Raid note", group = false, Entries = function() return {} end })
+assert(#errors == 0, tostring(errors[1]))
+print("ok circles: type colours, ring colour only with the box")
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
-for (let i = 2; i < 7; i++) {
+for (let i = 2; i < 9; i++) {
   let src = '';
   try { src = fs.readFileSync(process.argv[i], 'utf8'); } catch (e) { console.error('missing ' + process.argv[i]); process.exit(1); }
   lua.lua_pushstring(L, to_luastring(src));
 }
-if (lua.lua_pcall(L, 5, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
+if (lua.lua_pcall(L, 7, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
 
 // The ring textures: header bytes, a clear centre and an opaque ring
 const media = path.join(path.dirname(path.dirname(path.dirname(path.resolve(process.argv[5])))), 'CRT_Media', 'Media');

@@ -106,6 +106,7 @@ CRT_Modules\Timeline\ReviewTab.lua
 CRT_Modules\Timeline\SettingsTab.lua
 CRT_Modules\Timeline\Page.lua
 CRT_Modules\Alerts\Reminders.lua
+CRT_Modules\Alerts\Colors.lua
 CRT_Modules\Timeline\Undo.lua
 CRT_Modules\Timeline\JournalExport.lua
 CRT_Modules\Alerts\PhaseDatabase.lua

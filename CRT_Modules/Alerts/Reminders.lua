@@ -381,6 +381,8 @@ local function rowFor(ref, encounterID, r)
     end
 end
 
+Reminders.RowFor = rowFor
+
 -- The times of a reminder: { { ph, t } } and where they came from ("typed", "reference" or "none").
 -- Typed text that does not read gives {}, "typed" and the message. `ref` (optional) is the reference a
 -- reminder that follows one is read from, in place of its own (the Rehearsal's, for the editor's Test).

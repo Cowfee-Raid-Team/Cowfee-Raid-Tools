@@ -1,12 +1,12 @@
 // CRT_Modules/Alerts/Bars.lua: the alert bars on the area builder, with mock frames.
-// Usage: node run_alerts_bars.js CRT_Modules/Alerts/Rules.lua CRT_Modules/Alerts/Engine.lua CRT_Modules/Alerts/Areas.lua CRT_Modules/Alerts/Bars.lua
+// Usage: node run_alerts_bars.js CRT_Modules/Alerts/Rules.lua CRT_Modules/Alerts/Engine.lua CRT_Modules/Alerts/Areas.lua CRT_Modules/Alerts/Bars.lua CRT_Modules/Timeline/Reference.lua CRT_Modules/Alerts/Colors.lua
 const fs = require('fs');
 const path = require('path');
 const themeLua = require('./theme_stub');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
 const harness = themeLua(process.argv.slice(2)) + `
-local rulesSrc, engineSrc, areasSrc, barsSrc = ...
+local rulesSrc, engineSrc, areasSrc, barsSrc, referenceSrc, colorsSrc = ...
 local frames, fontStrings = {}, {}
 local hides = 0
 local function mock(kind, parent, template)
@@ -100,6 +100,8 @@ local function defaults() return {
     texts = { shown = true, cap = 3, font = "Friz Quadrata", fontSize = 36, outline = "THICKOUTLINE", grow = "down", align = "CENTER" },
     circles = { shown = true, cap = 3, size = 64, fontSize = 16, grow = "right" },
   },
+  -- the checks below were written for the player's own colours: Use custom colours on (its off side is at the end)
+  customColors = true,
   reminders = {}, phases = {}, overrides = {}, nextId = 1 } end
 local previews, layers, resets, dropdowns, sliders = {}, {}, 0, {}, {}
 local dropdownsMade, slidersMade = 0, 0
@@ -130,6 +132,8 @@ local spells = { [100] = { name = "Spell Name", icon = 555 } }
 CRT.Notes = { SpellInfo = function(_, id) return spells[id] end }
 assert(load(rulesSrc, "Rules"))("CowfeeRaidTools", CRT)
 assert(load(engineSrc, "Engine"))("CowfeeRaidTools", CRT)
+assert(load(referenceSrc, "Reference"))("CowfeeRaidTools", CRT)
+assert(load(colorsSrc, "Colors"))("CowfeeRaidTools", CRT)
 CRT_THEME(CRT, CRT.UI)
 assert(load(areasSrc, "Areas"))("CowfeeRaidTools", CRT)
 assert(load(barsSrc, "Bars"))("CowfeeRaidTools", CRT)
@@ -511,11 +515,53 @@ local before = made
 for i = 1, 30 do clock = 100 + i * 0.1 B:Refresh() end
 assert(made == before, "nothing created per refresh")
 print("ok bars: made does not grow")
+
+-- Use custom colours off (the default): every bar is in its ability type's colour, the theme's accent with no
+-- known type; your Bar, Background and Text colours are ignored and greyed but stay saved; a raid note line's
+-- own colour (the raid leader's) still wins, yours (a reminder's) does not.
+local TYPES = CRT.TimelineReference.TYPES
+pull({ item{ id = "lead", time = 5, text = "Leader", color = { 1, 0, 0 }, abilityType = "soak" } },
+  { item{ id = "mine", time = 6, text = "Mine", color = { 0, 1, 0 } }, item{ id = "typed", time = 7, text = "Typed", abilityType = "dispel" },
+    item{ id = "plain", time = 8, text = "Plain" } })
+bs = A:Settings().bars
+A:Settings().customColors = false
+bs.barColor = { 0.1, 0.2, 0.3, 0.8 } bs.bgColor = { 0.5, 0.6, 0.7, 0.4 } bs.textColor = { 0.9, 0.8, 0.7, 0.6 }
+start() B:Refresh()
+local byText = {}
+for i, v in ipairs(B:Visible()) do byText[v.text] = B.pool[i] end
+assert(near(byText.Leader.fill.color, 1, 0, 0, 0.9), "off: the raid note's own colour still wins")
+assert(near(byText.Mine.fill.color, CRT.MOCHA.caramel[1], CRT.MOCHA.caramel[2], CRT.MOCHA.caramel[3], 0.9), "off: your reminder's colour is ignored, no type gives the accent")
+local dc = TYPES.dispel.color
+assert(near(byText.Typed.fill.color, dc[1], dc[2], dc[3], 0.9), "off: a typed bar in its type's colour")
+assert(near(byText.Plain.fill.color, CRT.MOCHA.caramel[1], CRT.MOCHA.caramel[2], CRT.MOCHA.caramel[3]), "off: no type, the theme's accent")
+assert(near(byText.Plain.bg.color, 0, 0, 0, 0.6) and near(byText.Plain.text.textColor, 0.95, 0.90, 0.84, 1), "off: background and text colours are the defaults")
+assert(near(bs.barColor, 0.1, 0.2, 0.3, 0.8) and near(bs.bgColor, 0.5, 0.6, 0.7, 0.4) and near(bs.textColor, 0.9, 0.8, 0.7, 0.6), "off: your colours stay saved")
+-- a theme switch repaints the accent at the next draw
+CRT.UI.SwitchTheme("nitro") B:Refresh()
+assert(near(byText.Plain.fill.color, CRT.MOCHA.caramel[1], CRT.MOCHA.caramel[2], CRT.MOCHA.caramel[3]), "off: the accent follows the theme")
+CRT.UI.SwitchTheme("blizzard")
+-- the colour rows grey out while off, and come back on
+panel:Select(B)
+for _, f in ipairs(frames) do if rawget(f, "colorLabel") then swatches[f.colorLabel] = f end end
+assert(swatches["Bar colour"].swatch.enabledState == false and swatches["Background"].swatch.enabledState == false
+  and swatches["Text colour"].swatch.enabledState == false, "off: the colour rows are greyed")
+A:Settings().customColors = true panel:Select(B) B:Refresh()
+assert(swatches["Bar colour"].swatch.enabledState == true, "on: the colour rows are back")
+assert(near(byText.Mine.fill.color, 0, 1, 0, 0.9) and near(byText.Plain.fill.color, 0.1, 0.2, 0.3, 0.8)
+  and near(byText.Plain.bg.color, 0.5, 0.6, 0.7, 0.4), "on: your saved colours apply again")
+assert(#errors == 0, tostring(errors[1]))
+print("ok bars: type colours, custom colours only with the box")
+
+-- the Previews' bars show three types' colours
+A:Settings().customColors = false
+local samples = B.def.sample(500)
+assert(samples[1].abilityType == "dispel" and samples[2].abilityType == "soak" and samples[3].abilityType == "mythic", "preview types")
+print("ok bars: previews in type colours")
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
-for (let i = 2; i < 6; i++) {
+for (let i = 2; i < 8; i++) {
   let src = '';
   try { src = fs.readFileSync(process.argv[i], 'utf8'); } catch (e) { console.error('missing ' + process.argv[i]); process.exit(1); }
   lua.lua_pushstring(L, to_luastring(src));
 }
-if (lua.lua_pcall(L, 4, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
+if (lua.lua_pcall(L, 6, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }

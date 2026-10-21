@@ -5,7 +5,8 @@ local ADDON, CRT = ...
 -- ringColor, fontSize, font, outline, beside the common shown, cap, grow). The ring is a Cooldown whose swipe
 -- is a ring texture from CRT_Media/Media/ (Thin, Medium or Thick, a see-through centre), so its coloured part
 -- shrinks as the time runs out (REVERSE below) over a faint full ring of the same texture. The centre is left
--- clear.
+-- clear. The ring and the text are in the alert's ability type colour (Areas.DrawColor); the Ring colour applies
+-- only with Use custom colours on (alerts.customColors), and then a line's own colour still wins on the ring.
 
 local Areas = CRT.AlertAreas
 
@@ -53,6 +54,7 @@ local TEXT_GAP = 2           -- between the ring and its text
 -- Over the player's character, a little below the middle of the screen.
 local DEFAULT_POSITION = { point = "CENTER", relativePoint = "CENTER", x = 0, y = -40 }
 local WHITE = { 1, 1, 1 }
+local SAMPLE_TYPES = { "spread", "generic", "soak" } -- the Previews' rings: Spread, Stack on the boss, Soak
 local SAMPLE_GAP = 1         -- seconds between preview ticks that mean it was turned off
 local SAMPLE_SPAN = 14       -- the preview starts over this long after it began
 
@@ -154,14 +156,16 @@ end
 local function draw(w, line, now, s, shownAt)
     local size, textSize = ringSize(s), fontSize(s)
     local at = line.at
-    local c = Areas.LineColor(line) or WHITE
     w.ring:SetSize(size, size)
-    -- an alert's own colour wins on the ring, like on bars; the ring colour setting is for the rest
-    local texture, ring = ringTexture(s), ringColor(s)
-    local r, g, b, a = ring[1], ring[2], ring[3], ring[4]
-    if c ~= WHITE then
-        r, g, b = c[1], c[2], c[3]
-    end
+    -- the ring: the line's own colour when it may win, else the Ring colour with Use custom colours on, else the
+    -- ability type's colour. The opacity is the Ring colour's with custom colours on, the default's otherwise.
+    local texture = ringTexture(s)
+    local custom = Areas.CustomColors()
+    local ring = custom and ringColor(s) or DEFAULT_RING_COLOR
+    local col = Areas.DrawColor(line, ring) or WHITE
+    local r, g, b, a = col[1], col[2], col[3], ring[4]
+    -- the text: the line's own colour when it may win, else its type's
+    local c = Areas.DrawColor(line) or WHITE
     if w.ringTexture ~= texture then
         w.ringTexture = texture
         w.track:SetTexture(texture)
@@ -199,9 +203,9 @@ local function sample(now)
     end
     sampleLast = now
     return {
-        { id = "sample1#" .. sampleCycle, text = TEXT.sampleNow, at = sampleBase, warn = 8, glow = true },
-        { id = "sample2#" .. sampleCycle, text = TEXT.sampleSoon, at = sampleBase + 5, warn = 8 },
-        { id = "sample3#" .. sampleCycle, text = TEXT.sampleLater, at = sampleBase + 12, warn = 12 },
+        { id = "sample1#" .. sampleCycle, text = TEXT.sampleNow, at = sampleBase, warn = 8, glow = true, abilityType = SAMPLE_TYPES[1] },
+        { id = "sample2#" .. sampleCycle, text = TEXT.sampleSoon, at = sampleBase + 5, warn = 8, abilityType = SAMPLE_TYPES[2] },
+        { id = "sample3#" .. sampleCycle, text = TEXT.sampleLater, at = sampleBase + 12, warn = 12, abilityType = SAMPLE_TYPES[3] },
     }
 end
 
@@ -230,7 +234,8 @@ local function settings(panel, s)
     end, function(c)
         s.ringColor = c
     end, function()
-        return s.shown and true or false
+        -- greyed and unused without Use custom colours; what is saved stays
+        return s.shown and Areas.CustomColors() and true or false
     end)
     panel:Dropdown(TEXT.font, {
         -- Read each time the menu opens, so fonts another addon shares later appear.
