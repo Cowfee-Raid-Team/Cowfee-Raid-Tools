@@ -973,6 +973,25 @@ function Methods:OrderShifts()
     return type(shift) == "function" and shift or nil, type(unshift) == "function" and unshift or nil
 end
 
+-- Where a reminder's times are read on this view (Reminders:Times): the ability timeline shown, unless the
+-- reminder has a difficulty of its own that isn't the shown one's, and the view's difficulty group. Every
+-- read and write of a reminder's times here goes through it, so a flag sits on the cast drawn under it.
+function Methods:ReminderSource(r)
+    local ref = self.pull and self.pull.reference
+    if ref and r and r.difficulty then
+        local mine, shown = tostring(r.difficulty):lower(), tostring(ref.difficulty or ""):lower()
+        if mine ~= shown then
+            ref = nil
+        end
+    end
+    return ref, self.group
+end
+
+function Methods:ReminderTimes(encounterID, r)
+    local ref, group = self:ReminderSource(r)
+    return CRT.AlertReminders:Times(encounterID, r, ref, group)
+end
+
 -- A time on screen as the note or reminder stores it: the chosen order moves a part's lines, so a time
 -- picked on a moved cast is put back where the written order has it.
 function Methods:WrittenTime(spellID, text, t)
@@ -1195,7 +1214,7 @@ function Methods:NoteAndReminderMarks(lanes, length)
     for _, e in ipairs(Reminders:List(encounterID)) do
         -- a reminder turned off (its tick on Mech Alerts) doesn't fire, so it isn't drawn either
         if e.r.enabled ~= false then
-            for index, at in ipairs((Reminders:Times(encounterID, e.r))) do
+            for index, at in ipairs((self:ReminderTimes(encounterID, e.r))) do
                 add({ ph = at.ph, time = at.t, mine = true, encounterID = encounterID, id = e.id, index = index,
                     kind = "mine" }, e.r.spellID, e.r.text, e.r.iconID)
             end
@@ -1549,15 +1568,16 @@ function Methods:FinishMove()
     if m.kind == "mine" then
         -- still the time that was grabbed?
         local r = Reminders:Get(m.encounterID, m.id)
-        local cur = r and Reminders:Times(m.encounterID, r)[m.index]
+        local cur = r and self:ReminderTimes(m.encounterID, r)[m.index]
         if not (cur and cur.ph == m.ph and cur.t == m.time) then
             CRT:Print(TEXT.moveRefused)
             return
         end
+        local ref, group = self:ReminderSource(r)
         if add then
-            ok = Reminders:AddTime(m.encounterID, m.id, ph, seconds)
+            ok = Reminders:AddTime(m.encounterID, m.id, ph, seconds, ref, group)
         else
-            ok = Reminders:SetTime(m.encounterID, m.id, m.index, ph, seconds)
+            ok = Reminders:SetTime(m.encounterID, m.id, m.index, ph, seconds, ref, group)
         end
     elseif m.kind == "note" then
         -- asked again at the release: you may have lost the right since the grab
@@ -1928,11 +1948,12 @@ local function deleteMark(self, m)
     else
         local Reminders = CRT.AlertReminders
         local r = Reminders:Get(m.encounterID, m.id)
-        local times = r and Reminders:Times(m.encounterID, r)
+        local times = r and self:ReminderTimes(m.encounterID, r)
         local cur = times and times[m.index]
         if cur and cur.ph == m.ph and cur.t == m.time then
             if #times > 1 then
-                ok = Reminders:RemoveTime(m.encounterID, m.id, m.index)
+                local ref, group = self:ReminderSource(r)
+                ok = Reminders:RemoveTime(m.encounterID, m.id, m.index, ref, group)
             else
                 Reminders:Delete(m.encounterID, m.id)
                 ok = true
@@ -1954,7 +1975,7 @@ local function askDeleteMark(self, m)
         question = string.format(TEXT.deleteNote, tostring(m.text or ""))
     else
         local r = CRT.AlertReminders:Get(m.encounterID, m.id)
-        local times = r and CRT.AlertReminders:Times(m.encounterID, r)
+        local times = r and self:ReminderTimes(m.encounterID, r)
         question = string.format(times and #times > 1 and TEXT.deleteTime or TEXT.deleteReminder, tostring(m.text or ""))
     end
     local UI = CRT.UI

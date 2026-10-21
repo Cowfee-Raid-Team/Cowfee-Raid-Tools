@@ -314,8 +314,24 @@ do
   assert(firstTime({ encounterID = 3001, difficultyName = "Heroic" }) == 33, "Heroic reads the Heroic timeline")
   assert(firstTime({ encounterID = 3001, difficultyName = "Mythic" }) == 36,
     "Mythic reads the Mythic timeline, not your Heroic one: " .. tostring(firstTime({ encounterID = 3001, difficultyName = "Mythic" })))
-  assert(same(absolute(shipped, R:Times(3001, { boss = NEK, text = "Possession Barrage" }, nil, "Mythic")), laneTimes(shipped, "Possession Barrage", "mythic")),
+  assert(same(absolute(shipped, R:Times(3001, { boss = NEK, text = "Possession Barrage" }, nil, "mythic")), laneTimes(shipped, "Possession Barrage", "mythic")),
     "the Mythic list matches the Mythic row")
+  -- the one picker: a reference with no Encounter: line is found by the boss library's name for the ID
+  local T = CRT.Timeline
+  local m, h = T:ReferenceFor(3470, "mythic"), T:ReferenceFor(3470, "nh")
+  assert(m and m.ref == shipped and h and h.own and h.ref.difficulty == "Heroic", "picked by group, by the library's name")
+  assert(T:ReferenceFor(3470, "nh", nil, "Normal").key == h.key, "no Normal one: the group's first")
+  assert(T:GroupOf(16) == "mythic" and T:GroupOf(15, "Mythic") == "nh" and T:GroupOf(nil, "Mythic") == "mythic" and T:GroupOf() == nil, "GroupOf")
+  -- on a client in another language: the pull's difficulty ID decides, not its translated name
+  A:Start(3001, "Mythisch", "encounter", { difficultyID = 16 })
+  assert(A:RunGroup() == "mythic" and firstTime(A.run) == 36, "ID 16 is Mythic whatever its name")
+  A:Start(3001, "Heroisch", "encounter", { difficultyID = 15 })
+  assert(A:RunGroup() == "nh" and firstTime(A.run) == 33, "ID 15 is Normal/Heroic")
+  R:Save(3001, nil, { boss = NEK, text = "Only mythic", times = "10", difficulty = "Mythic" })
+  local function has(run, text) for _, it in ipairs(block(run)) do if it.text == text then return true end end return false end
+  assert(has({ encounterID = 3001, difficultyName = "Mythisch", difficultyID = 16 }, "Only mythic")
+    and not has({ encounterID = 3001, difficultyName = "Heroisch", difficultyID = 15 }, "Only mythic"), "a reminder's own difficulty by ID too")
+  A:Stop(true)
   CRT.db.timeline.references = {}
   print("ok one source: a reminder on Any reads the run's difficulty")
 end
@@ -344,6 +360,48 @@ do
   A:Stop(true)
   CRT.db.timeline.references = {}
   print("ok one source: the alert's time left equals the cast bar's")
+end
+
+-- Typed times on a boss ability's alert move onto its casts once, kept aside, never deleted
+do
+  fresh()
+  local said = {}
+  CRT.Print = function(_, s) said[#said + 1] = s end
+  CRT.db.alerts.reminders = { [3001] = {
+    -- as Alex's saved Possession Barrage: 0:33, three seconds before the 0:36 cast
+    [4] = { enabled = false, speech = "text", warn = 5, text = "Possession Barrage", boss = NEK, times = "P1 0:33",
+      priority = "normal", spellID = 1284103, outputs = { bar = true, alert = true } },
+    -- one time near a cast, one near none (5:00: the casts are at 2:58 and 8:13)
+    [5] = { text = "Possession Barrage", boss = NEK, times = "P1 1:13, 5:00", spellID = 1284103 },
+    -- your own reminder (no spell) keeps its typed times
+    [6] = { text = "Gate", boss = NEK, times = "P1 0:10.8" },
+  } }
+  CRT.db.alerts.nextId = 7
+  R.ResetMigration()
+  R:List(3001)
+  local all = CRT.db.alerts.reminders[3001]
+  local a = all[4]
+  assert(a.times == nil and a.timesBackup == "P1 0:33" and a.timesMigrated == true, "kept aside: " .. tostring(a.timesBackup))
+  assert(a.shifts and a.shifts[1] == -3 and a.timesUnmatched == nil, "0:33 is the 0:36 cast, 3 s early")
+  assert(a.enabled == false and a.text == "Possession Barrage" and a.warn == 5, "every other field as it was")
+  local list, source = R:Times(3001, a)
+  assert(source == "reference" and #list == 8 and list[1].t == 33 and list[1].shift == -3 and list[2].t == 72 and list[2].shift == nil,
+    "follows every cast of the timeline: " .. #list)
+  assert(R.FormatCasts(list):find("^P1 0:33 %(%-3 s%), 1:12, ") ~= nil, "the list shows the shift: " .. R.FormatCasts(list))
+  local b = all[5]
+  assert(b.timesBackup == "P1 1:13, 5:00" and b.shifts[2] == 1 and b.timesUnmatched == "P1 5:00", "one shifted, one kept as unmatched")
+  assert(#said == 1 and said[1]:find("Possession Barrage", 1, true) and said[1]:find("5:00", 1, true), "said once in chat: " .. tostring(said[1]))
+  assert(all[6].times == "P1 0:10.8" and all[6].timesBackup == nil and all[6].timesMigrated == nil, "your own reminder untouched")
+  -- only once
+  R.ResetMigration()
+  R:List(3001)
+  assert(#said == 1 and all[4].timesBackup == "P1 0:33" and all[4].shifts[1] == -3, "nothing moves twice")
+  -- a time saved onto an ability later (a double-click on a cast) becomes a shift the same way
+  local id = R:Save(3001, nil, { text = "Possession Barrage", boss = NEK, spellID = 1284103, times = "P1 1:47" })
+  local n = R:Get(3001, id)
+  assert(n.times == nil and n.shifts == nil and #R:Times(3001, n) == 8, "on the 1:47 cast: no shift, every cast")
+  CRT.Print = nil
+  print("ok typed times on an ability move onto its casts once")
 end
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }

@@ -9,7 +9,10 @@ local ADDON, CRT = ...
 -- auraSound true also plays the sound when the spell's aura is put on you (Sound/Auras.lua).
 -- where `times` is typed text ("P1 0:02, 1:17; P2 +0:18") or nil for the reference, `speech` is
 -- "text", "textcount" (the text, then 3, 2, 1) or "count", `speakAt` is nil (the text is read out when
--- the alert shows) or "zero" (at its time), and `difficulty` nil means any.
+-- the alert shows) or "zero" (at its time), and `difficulty` nil means any. A reminder on a boss ability
+-- follows its row's casts instead of typed times, and may add `shifts` ({ [cast] = seconds }), `off`
+-- ({ [cast] = true }), and from the one-time move of older typed times `timesBackup`, `timesUnmatched`
+-- and `timesMigrated` (see MigrateOne).
 
 local Alerts = CRT.Alerts
 local Rules = CRT.AlertRules
@@ -18,6 +21,8 @@ local Reminders = {}
 CRT.AlertReminders = Reminders
 
 local BLOCK = "mine"
+-- said once when an older alert's typed times move onto its ability's casts (see MigrateOne)
+local MIGRATE_TEXT = "%s now follows its ability timeline. Times with no cast near them were kept aside: %s"
 
 local function trim(s)
     return (tostring(s or ""):gsub("^%s+", ""):gsub("%s+$", ""))
@@ -104,22 +109,31 @@ end
 
 -- The casts of a reference row as { ph, t }, each where the Timeline draws it (Lanes.Placer: a moved
 -- phase line moves its casts, and hides those it pushes past the next phase), then through PhaseAt.
--- So a time counts from where its phase line is now, and lands on the row's cast.
-function Reminders.FromReference(ref, row)
+-- So a time counts from where its phase line is now, and lands on the row's cast. Each entry also has
+-- cast, the cast's place in the row (1 = its first written cast). r (optional) is a reminder on a boss
+-- ability: its shifts[cast] (seconds, from dragging its flag) move a cast's alert, and its off[cast] (a
+-- deleted time) leaves the cast out; an entry with a shift has it as shift.
+function Reminders.FromReference(ref, row, r)
     local out = {}
     if not (ref and row) then
         return out
     end
     local Lanes = CRT.TimelineLanes
     local place = Lanes and Lanes.Placer and Lanes.Placer(ref)
-    for _, cast in ipairs(row.casts or {}) do
+    local shifts = r and type(r.shifts) == "table" and r.shifts or {}
+    local off = r and type(r.off) == "table" and r.off or {}
+    for i, cast in ipairs(row.casts or {}) do
         local at = cast.t
         if place then
             at = place(at)
         end
-        if at then
+        if at and not off[i] then
             local ph, t = Reminders.PhaseAt(ref, at)
-            out[#out + 1] = { ph = ph, t = t }
+            local shift = tonumber(shifts[i])
+            if shift == 0 then
+                shift = nil
+            end
+            out[#out + 1] = { ph = ph, t = t + (shift or 0), cast = i, shift = shift }
         end
     end
     return out
@@ -235,6 +249,10 @@ end
 
 -- { { id, r } } for a boss, oldest id first.
 function Reminders:List(encounterID)
+    -- the first listing of a boss moves older typed times on its abilities onto the casts (MigrateBoss)
+    if Reminders.MigrateBoss then
+        Reminders.MigrateBoss(encounterID)
+    end
     local out = {}
     local all = store()
     for id, r in pairs(all and all[encounterID] or {}) do
@@ -273,6 +291,10 @@ function Reminders:Save(encounterID, id, r)
     saved.priority = saved.priority or "normal"
     if saved.enabled == nil then
         saved.enabled = true
+    end
+    -- a boss ability's alert follows its casts: typed times saved onto it become shifts (MigrateOne)
+    if Reminders.MigrateOne then
+        pcall(Reminders.MigrateOne, encounterID, saved, true)
     end
     if not id then
         id = db.nextId or 1
@@ -324,15 +346,25 @@ local function lower(s)
     return trim(s):lower()
 end
 
--- The reference of the boss to use: the one of the reminder's difficulty; else, given the difficulty
--- of the run (difficultyName), the first of that difficulty group, as the Timeline and the Rehearsal
--- pick it (Timeline:RehearsalSourceFor); else the first.
-local function referenceFor(encounterID, r, difficultyName)
-    local ref = CRT.TimelineReference
-    if not ref then
+-- The reference of the boss to use, through the one picker the Timeline and the Rehearsal use
+-- (Timeline:ReferenceFor): for the reminder's own difficulty (its Difficulty line's text, preferred inside
+-- its group), else for group (the run's or the view's "mythic" or "nh"). With neither, or nothing in the
+-- group, the reference of the reminder's difficulty, else the boss's first, as before.
+local function referenceFor(encounterID, r, group)
+    local Ref, T = CRT.TimelineReference, CRT.Timeline
+    if not Ref then
         return nil
     end
-    local found = ref:ForBoss(encounterID, r.boss)
+    if r.difficulty and T and T.GroupFor then
+        group = T:GroupFor(r.difficulty)
+    end
+    if (group == "mythic" or group == "nh") and T and T.ReferenceFor then
+        local entry = T:ReferenceFor(encounterID, group, r.boss, r.difficulty)
+        if entry then
+            return entry.ref
+        end
+    end
+    local found = Ref:ForBoss(encounterID, r.boss)
     if #found == 0 then
         return nil
     end
@@ -341,13 +373,6 @@ local function referenceFor(encounterID, r, difficultyName)
             if entry.ref.difficulty and lower(entry.ref.difficulty) == lower(r.difficulty) then
                 return entry.ref
             end
-        end
-    end
-    local T = CRT.Timeline
-    if type(difficultyName) == "string" and trim(difficultyName) ~= "" and T and T.GroupFor and ref.ForGroup then
-        local inGroup = ref:ForGroup(found, T:GroupFor(difficultyName))
-        if inGroup[1] then
-            return inGroup[1].ref
         end
     end
     return found[1].ref
@@ -403,11 +428,38 @@ end
 
 Reminders.RowFor = rowFor
 
+-- A reminder on a boss ability: one with a spell (a Mech Alert's). Its times are always the casts of
+-- its row on the ability timeline (FromReference), never typed ones, so the Timeline, the Rehearsal, the
+-- Mech Alerts list and the alerts agree. Your own reminders (no spell) keep typed times.
+local function onAbility(r)
+    return type(r.spellID) == "number" and r.spellID > 0
+end
+
+-- The reference and row a reminder on a boss ability follows (see Times), or nil.
+local function castSource(encounterID, r, ref, group)
+    if not onAbility(r) then
+        return nil
+    end
+    ref = ref or referenceFor(encounterID, r, group)
+    local row = ref and rowFor(ref, encounterID, r)
+    if row then
+        return ref, row
+    end
+    return nil
+end
+
 -- The times of a reminder: { { ph, t } } and where they came from ("typed", "reference" or "none").
--- Typed text that does not read gives {}, "typed" and the message. `ref` (optional) is the reference a
--- reminder that follows one is read from, in place of its own (the Rehearsal's, for the editor's Test).
--- difficultyName (optional) is the run's, which picks the reference of a reminder on any difficulty.
-function Reminders:Times(encounterID, r, ref, difficultyName)
+-- A reminder on a boss ability with a row on the ability timeline takes that row's casts, each with its
+-- cast number and any shift (FromReference); typed times are only read when the timeline has no row for
+-- it, and for your own reminders. Typed text that does not read gives {}, "typed" and the message.
+-- `ref` (optional) is the reference to read, in place of the reminder's own (the Rehearsal's, the
+-- Timeline view's); group (optional) is the run's or the view's difficulty group ("mythic" or "nh"),
+-- which picks the reference of a reminder on any difficulty (referenceFor).
+function Reminders:Times(encounterID, r, ref, group)
+    local cref, row = castSource(encounterID, r, ref, group)
+    if row then
+        return Reminders.FromReference(cref, row, r), "reference"
+    end
     if type(r.times) == "string" and trim(r.times) ~= "" then
         local list, err = Reminders.ParseTimes(r.times)
         if not list then
@@ -415,8 +467,8 @@ function Reminders:Times(encounterID, r, ref, difficultyName)
         end
         return list, "typed"
     end
-    ref = ref or referenceFor(encounterID, r, difficultyName)
-    local row = ref and rowFor(ref, encounterID, r)
+    ref = ref or referenceFor(encounterID, r, group)
+    row = ref and rowFor(ref, encounterID, r)
     if row then
         return Reminders.FromReference(ref, row), "reference"
     end
@@ -443,9 +495,62 @@ local function writeTimes(encounterID, id, change)
     return Reminders:Save(encounterID, id, saved) ~= nil
 end
 
-function Reminders:SetTime(encounterID, id, index, ph, t)
+-- A change to a reminder on a boss ability: change(saved, list, ref) edits a copy's shifts and off from
+-- the casts Times gives (with the same ref and group), and it is saved. Nil when the reminder follows no
+-- casts (the typed path applies then); false when it can't be read or the change is refused.
+local function writeCasts(encounterID, id, ref, group, change)
+    local r = Reminders:Get(encounterID, id)
+    if not r then
+        return false
+    end
+    local cref, row = castSource(encounterID, r, ref, group)
+    if not row then
+        return nil
+    end
+    local saved = copy(r)
+    saved.shifts = type(saved.shifts) == "table" and saved.shifts or {}
+    saved.off = type(saved.off) == "table" and saved.off or {}
+    if not change(saved, Reminders.FromReference(cref, row, r), cref, row) then
+        return false
+    end
+    if next(saved.shifts) == nil then
+        saved.shifts = nil
+    end
+    if next(saved.off) == nil then
+        saved.off = nil
+    end
+    return Reminders:Save(encounterID, id, saved) ~= nil
+end
+
+local function tenthOf(x)
+    return math.floor(x * 10 + 0.5) / 10
+end
+
+-- Seconds from the pull of a cast's time without its shift, through the same reference.
+local function castAt(ref, e)
+    return Reminders.AbsoluteTime(ref, e.ph, e.t - (e.shift or 0))
+end
+
+-- Moves one time (index in Times' list) to phase ph, t seconds in. On a boss ability this is that cast's
+-- shift, seconds from the cast; otherwise the times are saved as typed. ref and group (optional) are
+-- those the list was read with (see Times), so the index is the same cast.
+function Reminders:SetTime(encounterID, id, index, ph, t, ref, group)
     if type(ph) ~= "number" or type(t) ~= "number" then
         return false
+    end
+    local done = writeCasts(encounterID, id, ref, group, function(saved, list, cref)
+        local e = list[index]
+        local base = e and castAt(cref, e)
+        local to = Reminders.AbsoluteTime(cref, ph, t)
+        if not (base and to) then
+            return false
+        end
+        local shift = tenthOf(to - base)
+        saved.shifts[e.cast] = shift ~= 0 and shift or nil
+        return true
+    end)
+    if done ~= nil then
+        return done
     end
     return writeTimes(encounterID, id, function(list)
         if not list[index] then
@@ -456,9 +561,20 @@ function Reminders:SetTime(encounterID, id, index, ph, t)
     end)
 end
 
--- Takes one time out of a reminder that has several, saving the rest as typed times like SetTime. False
--- for a reminder with a single time (delete the reminder instead) or an index it doesn't have.
-function Reminders:RemoveTime(encounterID, id, index)
+-- Takes one time out of a reminder that has several. On a boss ability this turns that cast off;
+-- otherwise the rest are saved as typed times. False for a reminder with a single time (delete the
+-- reminder instead) or an index it doesn't have.
+function Reminders:RemoveTime(encounterID, id, index, ref, group)
+    local done = writeCasts(encounterID, id, ref, group, function(saved, list)
+        if #list < 2 or not list[index] then
+            return false
+        end
+        saved.off[list[index].cast] = true
+        return true
+    end)
+    if done ~= nil then
+        return done
+    end
     return writeTimes(encounterID, id, function(list)
         if #list < 2 or not list[index] then
             return false
@@ -468,9 +584,36 @@ function Reminders:RemoveTime(encounterID, id, index)
     end)
 end
 
-function Reminders:AddTime(encounterID, id, ph, t)
+-- Adds a time. On a boss ability this turns back on the cast turned off nearest to it (false when none
+-- is off: every cast already has its alert); otherwise the time is added to the typed ones.
+function Reminders:AddTime(encounterID, id, ph, t, ref, group)
     if type(ph) ~= "number" or type(t) ~= "number" then
         return false
+    end
+    local done = writeCasts(encounterID, id, ref, group, function(saved, _, cref, row)
+        local at = Reminders.AbsoluteTime(cref, ph, t)
+        if not at then
+            return false
+        end
+        local all = Reminders.FromReference(cref, row, { shifts = saved.shifts })
+        local best, bestGap
+        for _, e in ipairs(all) do
+            local castTime = Reminders.AbsoluteTime(cref, e.ph, e.t)
+            if saved.off[e.cast] and castTime then
+                local gap = math.abs(castTime - at)
+                if not bestGap or gap < bestGap then
+                    best, bestGap = e.cast, gap
+                end
+            end
+        end
+        if not best then
+            return false
+        end
+        saved.off[best] = nil
+        return true
+    end)
+    if done ~= nil then
+        return done
     end
     return writeTimes(encounterID, id, function(list)
         list[#list + 1] = { ph = ph, t = t }
@@ -478,14 +621,123 @@ function Reminders:AddTime(encounterID, id, ph, t)
     end)
 end
 
+-- Moving typed times onto the casts ---------------------------------------------------------------
+-- Older reminders on a boss ability could hold typed times (a flag dragged, a time typed). Once, the
+-- first time a boss's reminders are listed, each such reminder follows its casts instead: the typed
+-- text moves to timesBackup (kept, never deleted), a typed time within MIGRATE_WINDOW seconds of a cast
+-- becomes that cast's shift, and those that match no cast are kept as timesUnmatched and named in chat.
+-- Only fields are added; nothing else changes. timesMigrated marks it done.
+
+local MIGRATE_WINDOW = 5
+Reminders.MIGRATE_WINDOW = MIGRATE_WINDOW
+local migratedBosses = {}
+
+-- One reminder's move (r is the stored table, changed in place). Returns the unmatched times' text, or
+-- nil; false when it isn't a typed reminder on a boss ability with a row to follow. again (Save) moves
+-- typed times saved onto an ability since, such as a new alert from a double-click on a cast.
+function Reminders.MigrateOne(encounterID, r, again)
+    if type(r) ~= "table" or (r.timesMigrated and not again) or not onAbility(r)
+        or type(r.times) ~= "string" or trim(r.times) == "" then
+        return false
+    end
+    local ref, row = castSource(encounterID, r, nil, nil)
+    local typed = Reminders.ParseTimes(r.times)
+    if not (row and typed) then
+        return false
+    end
+    local casts = Reminders.FromReference(ref, row)
+    local shifts, claimed, unmatched = {}, {}, {}
+    for _, e in ipairs(typed) do
+        local at = Reminders.AbsoluteTime(ref, e.ph, e.t)
+        local best, bestGap
+        for _, c in ipairs(casts) do
+            local castTime = Reminders.AbsoluteTime(ref, c.ph, c.t)
+            local gap = at and castTime and math.abs(castTime - at)
+            if gap and not claimed[c.cast] and gap <= MIGRATE_WINDOW and (not bestGap or gap < bestGap) then
+                best, bestGap = c, gap
+            end
+        end
+        if best then
+            claimed[best.cast] = true
+            local shift = tenthOf(at - Reminders.AbsoluteTime(ref, best.ph, best.t))
+            if shift ~= 0 then
+                shifts[best.cast] = shift
+            end
+        else
+            unmatched[#unmatched + 1] = e
+        end
+    end
+    r.timesBackup = r.timesBackup or r.times
+    r.times = nil
+    r.shifts = next(shifts) and shifts or nil
+    r.timesMigrated = true
+    if #unmatched > 0 then
+        r.timesUnmatched = Reminders.FormatTimes(unmatched)
+        return r.timesUnmatched
+    end
+    return nil
+end
+
+local function migrateBoss(encounterID)
+    if migratedBosses[encounterID] then
+        return
+    end
+    migratedBosses[encounterID] = true
+    local all = store()
+    for id, r in pairs(all and all[encounterID] or {}) do
+        local ok, unmatched = pcall(Reminders.MigrateOne, encounterID, r)
+        if ok and type(unmatched) == "string" and CRT.Print then
+            local name = trim(r.text) ~= "" and r.text or spellName(r.spellID) or ("Reminder " .. tostring(id))
+            CRT:Print(string.format(MIGRATE_TEXT, name, unmatched))
+        end
+    end
+end
+Reminders.MigrateBoss = migrateBoss
+
+-- A boss's reminders listed again from scratch (the harness, after it swaps the saved data).
+function Reminders.ResetMigration()
+    migratedBosses = {}
+end
+
+-- The Mech Alerts list's text of a reminder's times: as FormatTimes, each shifted cast followed by its
+-- shift ("P1 0:33 (-3 s)").
+function Reminders.FormatCasts(list)
+    local phases, byPhase = {}, {}
+    for _, e in ipairs(list or {}) do
+        if not byPhase[e.ph] then
+            byPhase[e.ph] = {}
+            phases[#phases + 1] = e.ph
+        end
+        local g = byPhase[e.ph]
+        local s = (e.ph == 1 and "" or "+") .. clock(e.t)
+        if e.shift then
+            s = s .. string.format(" (%s%g s)", e.shift > 0 and "+" or "", e.shift)
+        end
+        g[#g + 1] = s
+    end
+    table.sort(phases)
+    local parts = {}
+    for _, ph in ipairs(phases) do
+        parts[#parts + 1] = "P" .. tostring(ph) .. " " .. table.concat(byPhase[ph], ", ")
+    end
+    return table.concat(parts, "; ")
+end
+
 -- The block -----------------------------------------------------------------------------------
 
 -- A run with anyDifficulty (the Phases tab asking which phases a boss has) takes every difficulty.
+-- A reminder's difficulty is a Difficulty line's text; a pull's ID (DifficultyID) matches it on any
+-- client language, where the game's name for it is translated.
+local DIFFICULTY_IDS = { normal = 14, heroic = 15, mythic = 16 }
 local function matchesDifficulty(r, run)
     if not r.difficulty or run.anyDifficulty then
         return true
     end
-    return type(run.difficultyName) == "string" and lower(run.difficultyName) == lower(r.difficulty)
+    if type(run.difficultyName) == "string" and lower(run.difficultyName) == lower(r.difficulty) then
+        return true
+    end
+    local id = DIFFICULTY_IDS[lower(r.difficulty)]
+    return id ~= nil and run.difficultyID == id
 end
 
 local function speechList(r, text)
@@ -496,10 +748,11 @@ end
 
 -- The alert items of one reminder (r with any overrides already laid over it), one per time. Used by
 -- the block and by the editor's Test, which runs a reminder that is not saved.
--- difficulty is not checked here; the block does that. difficultyName (optional) is the run's (see Times).
-function Reminders:Items(encounterID, id, r, difficultyName)
+-- difficulty is not checked here; the block does that. group and ref (optional) are the run's difficulty
+-- group and ability timeline (see Times).
+function Reminders:Items(encounterID, id, r, group, ref)
     local out = {}
-    local times = Reminders:Times(encounterID, r, nil, difficultyName)
+    local times = Reminders:Times(encounterID, r, ref, group)
     local icon
     if type(r.iconID) == "number" and r.iconID > 0 then
         icon = r.iconID
@@ -548,10 +801,12 @@ local function entries(run)
     if not (run and run.encounterID) then
         return out
     end
+    -- the run's difficulty group, and a rehearsal's own ability timeline: the casts the window plays
+    local group = Alerts.RunGroup and Alerts:RunGroup(run) or nil
     for _, e in ipairs(Reminders:List(run.encounterID)) do
         local r = Reminders:Effective(BLOCK, e.id, e.r)
         if r.enabled ~= false and matchesDifficulty(r, run) then
-            for _, item in ipairs(Reminders:Items(run.encounterID, e.id, r, run.difficultyName)) do
+            for _, item in ipairs(Reminders:Items(run.encounterID, e.id, r, group, run.reference)) do
                 out[#out + 1] = item
             end
         end

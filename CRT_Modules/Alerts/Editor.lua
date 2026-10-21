@@ -722,9 +722,9 @@ end
 -- The draft's test items: a note line's through the note block's own builder (block "note"), a
 -- reminder's through Reminders:Items (ids "mine:test:n"). Returns items, the lowest phase and its first
 -- time, or nil when a reminder has no times. A saved alert has no time: ten seconds from the start.
--- Only the editor's own draft is ever a raid note line (noteTimers reads it). difficulty (optional) is the
--- run's, so a reminder on any difficulty reads the ability timeline the Rehearsal plays (Reminders:Times).
-local function testItemsFor(c, d, difficulty)
+-- Only the editor's own draft is ever a raid note line (noteTimers reads it). group and ref (optional) are
+-- the difficulty group and the ability timeline the Rehearsal plays, so the test reads its casts.
+local function testItemsFor(c, d, group, ref)
     local items, list = {}, {}
     if d.saveAs == "note" then
         for i, t in ipairs(noteTimers()) do
@@ -742,11 +742,11 @@ local function testItemsFor(c, d, difficulty)
         if c.savedMode then
             r.times = Reminders.FormatTimes({ { ph = 1, t = TEST_LEAD } })
         end
-        list = Reminders:Times(c.encounterID, r, nil, difficulty)
+        list = Reminders:Times(c.encounterID, r, ref, group)
         if #list == 0 then
             return nil
         end
-        items = Reminders:Items(c.encounterID, "test", r, difficulty)
+        items = Reminders:Items(c.encounterID, "test", r, group, ref)
     end
     local lowest, first = firstTime(list)
     return items, lowest, first
@@ -781,11 +781,11 @@ local function rehearse(c, d)
     if not (W and W.OpenAt) or c.savedMode or type(c.encounterID) ~= "number" then
         return false
     end
-    local first, difficulty = Draft.FirstFightTime(c, d)
+    local first, difficulty, ref, group = Draft.FirstFightTime(c, d)
     if not first then
         return false
     end
-    local items = testItemsFor(c, d, difficulty)
+    local items = testItemsFor(c, d, group, ref)
     if not items or #items == 0 then
         return false
     end

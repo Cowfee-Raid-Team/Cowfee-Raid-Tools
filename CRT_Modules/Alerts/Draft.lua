@@ -517,7 +517,8 @@ function Draft.FirstFightTime(ctx, draft)
             first = s
         end
     end
-    return first, difficulty
+    -- the group and the reference the window plays, so the test's items read the same casts
+    return first, difficulty, ref, group
 end
 
 -- The raid difficulty you are in now, by the name a pull there gets (GetDifficultyInfo, as the engine

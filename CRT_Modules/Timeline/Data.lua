@@ -309,6 +309,49 @@ function Timeline:GroupFor(difficultyName)
     return type(difficultyName) == "string" and difficultyName:lower():find("mythic", 1, true) and "mythic" or "nh"
 end
 
+-- The difficulty group of a run: by its difficultyID (Timeline.DifficultyGroup: 16 is Mythic), which reads
+-- the same on every client language; with no readable ID (older data, a test) by the name (GroupFor), and
+-- nil when there is neither.
+function Timeline:GroupOf(difficultyID, difficultyName)
+    if Timeline.readable(difficultyID) and type(difficultyID) == "number" then
+        return Timeline.DifficultyGroup(difficultyID)
+    end
+    if type(difficultyName) == "string" and difficultyName ~= "" then
+        return self:GroupFor(difficultyName)
+    end
+    return nil
+end
+
+-- The one picker of a boss's ability timeline on a difficulty group, used by the Timeline's alert flags,
+-- the Rehearsal (RehearsalSourceFor), the alerts' times (Alerts/Reminders.lua), their type colours
+-- (Alerts/Colors.lua) and the chosen order (OrderShift): the boss's first reference of the group, yours
+-- first as Reference:List orders them. A reference with no Encounter: line is the boss's by name:
+-- bossName, else the boss library's name for encounterID, else the name its pulls were saved under.
+-- prefer (optional) is a Difficulty line's text ("Normal") that wins inside the group. The entry
+-- ({ key, ref, own, ... }) or nil.
+function Timeline:ReferenceFor(encounterID, group, bossName, prefer)
+    local Reference = CRT.TimelineReference
+    if not Reference then
+        return nil
+    end
+    local name = bossName
+    if type(name) ~= "string" or name == "" then
+        local def = CRT.Bosses and CRT.Bosses.Get and CRT.Bosses:Get(encounterID)
+        local boss = tdb().bosses and tdb().bosses[encounterID]
+        name = (def and def.name) or (boss and boss.name) or nil
+    end
+    local list = Reference:ForGroup(Reference:ForBoss(encounterID, name), group == "mythic" and "mythic" or "nh")
+    if type(prefer) == "string" then
+        local want = prefer:lower()
+        for _, entry in ipairs(list) do
+            if type(entry.ref.difficulty) == "string" and entry.ref.difficulty:lower() == want then
+                return entry
+            end
+        end
+    end
+    return list[1]
+end
+
 -- For the alerts: how the raid's chosen order moves a line's time. Nil when the boss's reference for
 -- the group (your own first, else the shipped one) has no Order line, or the chosen order is the
 -- written one. Otherwise a function(spellID, text, t) giving t moved as Reference.PartMover moves a
@@ -318,13 +361,9 @@ end
 -- written order, or false when t is outside the part's chosen window.
 function Timeline:OrderShift(encounterID, group)
     local Reference = CRT.TimelineReference
-    local ref
-    for _, entry in ipairs(Reference:ForGroup(Reference:ForBoss(encounterID), group or "nh")) do
-        if entry.ref.order then
-            ref = entry.ref
-            break
-        end
-    end
+    -- the reference the Timeline shows for the group (ReferenceFor); its Order line, if it has one
+    local entry = self:ReferenceFor(encounterID, group or "nh")
+    local ref = entry and entry.ref.order and entry.ref or nil
     if not ref then
         return nil
     end

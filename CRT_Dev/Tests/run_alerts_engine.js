@@ -277,6 +277,11 @@ do
   local asked
   CRT.Timeline = {
     GroupFor = function(_, name) return name and name:lower():find("mythic") and "mythic" or "nh" end,
+    -- as CRT_Modules/Timeline/Data.lua's: by the difficulty's ID (16 is Mythic), else by its name
+    GroupOf = function(self, id, name)
+      if type(id) == "number" then return id == 16 and "mythic" or "nh" end
+      return name and self:GroupFor(name) or nil
+    end,
     OrderShift = function(_, eid, group)
       asked = eid .. "/" .. tostring(group)
       if eid ~= 3497 then return nil end

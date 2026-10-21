@@ -47,25 +47,26 @@ local function recordedName(encounterID)
     return boss and type(boss.name) == "string" and boss.name or nil
 end
 
--- The boss's references, the difficulty's own first.
-local function references(encounterID, bossName, difficultyName)
+-- The boss's references: first the one the Timeline and the alerts' times use for the run's difficulty
+-- group (Timeline:ReferenceFor), then the others.
+local function references(encounterID, bossName, group)
     local Reference, T = CRT.TimelineReference, CRT.Timeline
-    local ok, found = pcall(Reference.ForBoss, Reference, encounterID, bossName or recordedName(encounterID))
+    local name = bossName or recordedName(encounterID)
+    local ok, found = pcall(Reference.ForBoss, Reference, encounterID, name)
     if not ok or type(found) ~= "table" then
         return {}
     end
     local out, seen = {}, {}
-    if Reference.ForGroup and T and T.GroupFor then
-        local okG, own = pcall(function()
-            return Reference:ForGroup(found, T:GroupFor(difficultyName))
-        end)
-        for _, entry in ipairs(okG and own or {}) do
-            out[#out + 1] = entry
-            seen[entry] = true
+    if T and T.ReferenceFor then
+        group = group or "nh" -- no difficulty known: Normal/Heroic's, as the Rehearsal opens with none
+        local okP, entry = pcall(T.ReferenceFor, T, encounterID, group, name)
+        if okP and type(entry) == "table" then
+            out[1] = entry
+            seen[entry.key or entry] = true
         end
     end
     for _, entry in ipairs(found) do
-        if not seen[entry] then
+        if not seen[entry.key or entry] then
             out[#out + 1] = entry
         end
     end
@@ -74,14 +75,20 @@ end
 
 -- What one lookup needs about the boss, read once per run: its references and the Journal rows already read this
 -- session. The Journal is never walked here: a run starts at the pull, when combat may not be set yet.
-local function bossContext(encounterID, bossName, difficultyName)
+local function bossContext(encounterID, bossName, group)
     local Journal = CRT.TimelineJournal
     local rows
     if Journal and Journal.CachedRows then
         local ok, res = pcall(Journal.CachedRows, Journal, encounterID)
         rows = ok and type(res) == "table" and res or nil
     end
-    return { encounterID = encounterID, refs = references(encounterID, bossName, difficultyName), rows = rows or {} }
+    return { encounterID = encounterID, refs = references(encounterID, bossName, group), rows = rows or {} }
+end
+
+-- The difficulty group of a difficulty's name (Timeline:GroupOf), or nil.
+local function groupOfName(difficultyName)
+    local T = CRT.Timeline
+    return T and T.GroupOf and T:GroupOf(nil, difficultyName) or nil
 end
 
 -- The reference row of the alert's ability, and its spell (its own [spell], else the cached Journal row's of its name).
@@ -159,7 +166,7 @@ function Colors.TypeOf(encounterID, spellID, text, bossName, difficultyName)
     if not CRT.TimelineReference then
         return nil
     end
-    return typeIn(bossContext(encounterID, bossName, difficultyName), spellID, text)
+    return typeIn(bossContext(encounterID, bossName, groupOfName(difficultyName)), spellID, text)
 end
 
 function Colors.TypeColor(key)
@@ -191,7 +198,9 @@ function Colors.Stamp(items, run)
             local text = readable(it.text) and type(it.text) == "string" and it.text or ""
             local key = spell .. "|" .. text
             if cache[key] == nil then
-                ctx = ctx or bossContext(run.encounterID, run.bossName, run.difficultyName)
+                local A = CRT.Alerts
+                ctx = ctx or bossContext(run.encounterID, run.bossName,
+                    A and A.RunGroup and A:RunGroup(run) or groupOfName(run.difficultyName))
                 cache[key] = typeIn(ctx, it.spellID, it.text) or false
             end
             it.abilityType = cache[key] or nil

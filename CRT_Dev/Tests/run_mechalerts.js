@@ -607,10 +607,12 @@ check("mech: your own reminder takes typed times", function()
   local _, err = R.ParseTimes("P1 0:30, soon")
   assert(p.message.text:find("|cff" .. CRT.UI.Hex("bad"), 1, true) and p.message.text:find(err, 1, true), "red line: " .. tostring(p.message.text))
   assert(R:Get(ENC, id).times == "P1 0:30, 1:15; P2 0:20", "bad times not saved")
-  -- typed times over the reference show read only, as the list's times do
-  R:Save(ENC, nil, { spellID = 777, boss = "Test Boss", text = "Real Name", times = "P1 0:05" })
+  -- a boss ability's alert follows its casts: typed times saved onto it are kept aside, never used
+  local aid = R:Save(ENC, nil, { spellID = 777, boss = "Test Boss", text = "Real Name", times = "P1 0:05" })
   click(f.rows[1].frame)
-  assert(p.times.shown and not p.timesEdit.shown and p.times.text:find("0:05", 1, true), "typed over the reference: " .. tostring(p.times.text))
+  assert(p.times.shown and not p.timesEdit.shown and not p.times.text:find("0:05", 1, true), "the casts, read only: " .. tostring(p.times.text))
+  local a = R:Get(ENC, aid)
+  assert(a.times == nil and a.timesBackup == "P1 0:05" and a.timesUnmatched == "P1 0:05", "kept aside, far from any cast")
   assert(#errors == 0, tostring(errors[1]))
 end)
 
