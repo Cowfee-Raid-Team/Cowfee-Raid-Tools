@@ -8,6 +8,7 @@ local ADDON, CRT = ...
 --   ticked         in the next session; pre-ticked when it passed the filter
 --   status         "rolling" (CRT rolled rollType), "won" (you won it), "lost" (winner won it),
 --                  "nowinner" (everyone passed) or "cant" (CRT couldn't roll: reason)
+--   received       true for an item the game gave you with no roll (rollID is then CRT's own, below 0)
 -- Only a won row can go into a session. Start session (BL:Start) starts LM:Start with the ticked rows you
 -- have won, LM.MAX_ITEMS a session, the rest after it ends. It waits while a ticked row is still rolling,
 -- or a session is running: untick a row to leave it out. Nothing starts a session on its own.
@@ -26,6 +27,14 @@ local ADDON, CRT = ...
 -- the same item string, else the same item ID. Each history drop sets a row once, and the two sources
 -- count against each other per boss and item, so a drop both report sets one row only.
 -- A winner that can't be read (a secret value, a failing call) leaves the row rolling.
+--
+-- Received loot (Alex, 2026-10-21: old raids never started a session). A raid the game runs with no
+-- loot rolls (an old raid on Legacy Loot) hands each item straight to a player, and only
+-- ENCOUNTER_LOOT_RECEIVED tells. While CRT Looting is on and you lead it, an item it says you received
+-- after a kill with no roll goes on the list as won, so Start session can give it out. A kill the game
+-- rolled on (BL:SawRoll, from LootMaster/Rolls.lua) never adds one, so a rolled drop isn't listed twice.
+-- Other players' items are theirs: only what is in your bags can be given out. Whether the game lets you
+-- trade it is the game's rule; the trade says so.
 
 local LM = CRT.LootMaster
 local BL = { rows = {}, waiting = {} }
@@ -67,6 +76,8 @@ end
 -- how many rows a result has set, and how many results each source has given, so the loot history and
 -- the receive event for the same drop count once.
 local applied, fromSource = {}, { history = {}, received = {} }
+local rolledKill -- the kill (its time) the game last started a roll after, while you led CRT Looting
+local nextOwn = 0 -- received rows' rollIDs: -1, -2, … so they never meet the game's
 
 local function changed(what)
     if #BL.rows == 0 then
@@ -137,6 +148,21 @@ function BL:Add(rollID, link, fields, kill)
     self.rows[#self.rows + 1] = r
     C_Timer.After(r.expires - GetTime() + 0.05, expire)
     changed(first and "open" or "changed")
+    return r
+end
+
+-- The game started a roll after this kill (LM:LastKill()): items received from it came from rolls.
+function BL:SawRoll(kill)
+    rolledKill = kill and kill.at or rolledKill
+end
+
+-- An item the game gave you after kill with no roll: a won row, or nil (no link, or already listed).
+function BL:AddReceived(link, kill)
+    nextOwn = nextOwn - 1
+    local r = self:Add(nextOwn, link, { status = "won" }, kill)
+    if r then
+        r.received = true
+    end
     return r
 end
 
@@ -323,13 +349,32 @@ local function fromHistory(encounterID, lootListID)
     end
 end
 
+-- An item the game gave you with no roll, after a kill here while you lead CRT Looting.
+local function receivedDirect(link, encounterID)
+    local kill = LM:LastKill()
+    if not kill or rolledKill == kill.at or not LM:LootingOn() or not LM.InstanceKey() or kill.instance ~= LM.InstanceKey() then
+        return
+    end
+    if kill.encounterID and encounterID and kill.encounterID ~= encounterID then
+        return
+    end
+    BL:AddReceived(link, kill)
+end
+
 local function received(encounterID, _, link, _, playerName)
-    if not readable(encounterID, link, playerName) or #BL.rows == 0 or type(playerName) ~= "string" then
+    if not readable(encounterID, link, playerName) or type(playerName) ~= "string" or type(link) ~= "string" then
         return
     end
     local me = LM:Me()
     local full = LM.FullName(playerName)
-    BL:Result(link, playerName, full ~= nil and full == me, false, type(encounterID) == "number" and encounterID or nil, "received")
+    local isSelf = full ~= nil and full == me
+    local enc = type(encounterID) == "number" and encounterID or nil
+    if #BL.rows > 0 and BL:Result(link, playerName, isSelf, false, enc, "received") then
+        return
+    end
+    if isSelf then
+        receivedDirect(link, enc)
+    end
 end
 
 -- Emptying -------------------------------------------------------------------------------------------

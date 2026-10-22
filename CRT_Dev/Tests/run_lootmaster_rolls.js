@@ -566,6 +566,49 @@ deliver(H, "Solex-Sargeras")
 eq(rollsOf(105), 0, "quiet: a loading screen forgets it")
 advance(3)
 
+-- 14. Received loot: an old raid with no rolls hands items straight out; yours go on the list as won
+ME = "Solex"
+LM:End()
+BL:Clear()
+eq(LM:LootingOn(), true, "received: CRT Looting still on")
+kill("Old Boss")
+local belt = "|cffa335ee|Hitem:6001::::::::80:::::|h[Belt]|h|r"
+onEvent("ENCOUNTER_LOOT_RECEIVED", 3001, 6001, belt, 1, "Quick", "MAGE")
+eq(#BL:Rows(), 0, "received: someone else's item isn't listed")
+onEvent("ENCOUNTER_LOOT_RECEIVED", 3001, 6001, belt, 1, "Solex", "PALADIN")
+local rr = BL:Rows()[1]
+eq(rr and rr.status, "won", "received: yours is won")
+eq(rr and rr.received, true, "received: marked as received")
+eq(rr and rr.ticked, true, "received: ticked when it passes the filter")
+eq(rr and rr.rollID < 0, true, "received: CRT's own rollID, below 0")
+eq(BL.boss, "Old Boss", "received: the badge shows the boss")
+onEvent("ENCOUNTER_LOOT_RECEIVED", 4002, 6002, "|cffa335ee|Hitem:6002::::::::80:::::|h[Ring]|h|r", 1, "Solex", "PALADIN")
+eq(#BL:Rows(), 1, "received: another boss's item isn't this kill's")
+local junk2 = "|cff9d9d9d|Hitem:6003::::::::80:::::|h[Junk Rag]|h|r"
+onEvent("ENCOUNTER_LOOT_RECEIVED", 3001, 6003, junk2, 1, "Solex", "PALADIN")
+eq(BL:Rows()[2] and BL:Rows()[2].ticked, false, "received: the loot filter leaves it unticked")
+eq(BL:Start(), 1, "received: Start sends the ticked won item")
+eq(LM.current and LM.current.items[1].link, belt, "received: the belt is in the session")
+LM:End()
+BL:Clear()
+-- a kill the game rolled on never adds received rows
+kill("Rolled Boss")
+item(301, "Cloak", "n")
+onEvent("START_LOOT_ROLL", 301, 60000, 1)
+onEvent("CANCEL_LOOT_ROLL", 301)
+onEvent("ENCOUNTER_LOOT_RECEIVED", 3001, 6004, "|cffa335ee|Hitem:6004::::::::80:::::|h[Wrist]|h|r", 1, "Solex", "PALADIN")
+eq(#BL:Rows(), 1, "received: a rolled kill adds no received row")
+BL:Clear()
+-- CRT Looting off, or a raider: nothing
+kill("Old Boss")
+LM:SetLooting(false)
+take()
+onEvent("ENCOUNTER_LOOT_RECEIVED", 3001, 6001, belt, 1, "Solex", "PALADIN")
+eq(#BL:Rows(), 0, "received: CRT Looting off adds nothing")
+ME = "Halo"
+onEvent("ENCOUNTER_LOOT_RECEIVED", 3001, 6001, belt, 1, "Halo", "PALADIN")
+eq(#BL:Rows(), 0, "received: a raider adds nothing")
+
 print(string.format("%d passed, %d failed", passes, fails))
 if fails > 0 then error("failures") end
 `;

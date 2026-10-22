@@ -18,13 +18,14 @@ local L = { width = 620, height = 340, minWidth = 480, minHeight = 220, rowH = 4
 
 local TEXT = {
     title = "Boss loot",
-    help = "The boss items CRT rolled on for you. Tick the ones to give out and press Start session; nothing starts by itself. Start waits while a ticked item is still rolling. Items someone else won can't be ticked, and red means CRT couldn't roll on it. The list empties when you leave the instance, turn CRT Looting off, or 10 minutes after the kill.",
+    help = "The boss items CRT rolled on for you, and in old raids with no rolls, the items the game gave you. Tick the ones to give out and press Start session; nothing starts by itself. Start waits while a ticked item is still rolling. Items someone else won can't be ticked, and red means CRT couldn't roll on it. The list empties when you leave the instance, turn CRT Looting off, or 10 minutes after the kill.",
     counts = "%d of %d items ticked · %d still rolling",
     session = " · a loot session is running",
     clear = "Clear",
     start = "Start session",
     rolling = "Rolling… you rolled %s",
     won = "Won · you rolled %s",
+    received = "Yours · the game gave it to you",
     lost = "Won by %s",
     nowinner = "Nobody won it: everyone passed",
     cant = "Can't roll: %s. Tell the raid.",
@@ -65,7 +66,9 @@ end
 -- The state on the right of a row.
 function LM.BossLootStatus(r)
     local roll = LM.AutoPass.ROLL_NAME[r.rollType or 0] or ""
-    if r.status == "won" then
+    if r.status == "won" and r.received then
+        return UI.GoodText(TEXT.received)
+    elseif r.status == "won" then
         return UI.GoodText(TEXT.won:format(roll))
     elseif r.status == "lost" then
         return colored(hexOf("muted", CLASSIC.muted), TEXT.lost:format(Ambiguate(r.winner or "?", "short")))

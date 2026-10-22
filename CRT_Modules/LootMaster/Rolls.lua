@@ -225,6 +225,7 @@ local function started(rollID)
     local roll, kill = rollOf(rollID)
     local state = LM:LootingState()
     if state.me ~= nil and state.me == state.leader then
+        BL:SawRoll(kill) -- this kill's loot is rolled: no received rows for it
         leaderRoll(rollID, roll, kill, state)
     else
         raiderRoll(rollID, roll, kill, state)
