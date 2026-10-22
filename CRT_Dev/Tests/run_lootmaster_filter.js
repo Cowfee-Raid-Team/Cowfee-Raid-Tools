@@ -9,7 +9,7 @@ const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate();
 lualib.luaL_openlibs(L);
 const harness = themeLua(process.argv.slice(2)) + `
-local coreSrc, dataSrc, filterSrc, testSrc, tabSrc, pageSrc = ...
+local coreSrc, dataSrc, filterSrc, testSrc, tabSrc, pageSrc, tooltipSrc = ...
 local fails, passes = 0, 0
 local function check(ok, what) if ok then passes = passes + 1 else fails = fails + 1 print("FAIL " .. what) end end
 local function eq(a, b, what) check(a == b, what .. " (got " .. tostring(a) .. ", want " .. tostring(b) .. ")") end
@@ -384,7 +384,7 @@ LM:OnChange(function(what) fired[#fired + 1] = what end)
 local drops, sliders, buttons, helps = {}, {}, {}, {}
 CRT.UI = {
   PAGE_W = 1026, PAGE_H = 560, SkinScrollBar = function() end,
-  Dropdown = function(p, text, opts) local r = mock("Dropdown") rawset(r, "opts", opts) rawset(r, "refresh", function() end) rawset(r, "Dropdown", mock("DropdownButton")) drops[#drops + 1] = r return r end,
+  Dropdown = function(p, text, opts) local r = mock("Dropdown") rawset(r, "opts", opts) rawset(r, "label", text) rawset(r, "refresh", function() end) rawset(r, "Dropdown", mock("DropdownButton")) drops[#drops + 1] = r return r end,
   Slider = function(p, text, opts) local r = mock("Slider") rawset(r, "opts", opts) rawset(r, "text", text) rawset(r, "refresh", function() end) sliders[#sliders + 1] = r return r end,
   PanelButton = function(p, label, h, fn) local b = mock("Button") rawset(b, "label", label) rawset(b, "click", fn) rawset(b, "h", h) buttons[#buttons + 1] = b return b end,
   Help = function(p, title, text) helps[title] = text return mock("Help") end,
@@ -472,6 +472,7 @@ CRT_THEME(CRT, CRT.UI)
 CreateScrollBoxListLinearView = function() return mock("View") end
 ScrollUtil = { InitScrollBoxListWithScrollBar = function() end }
 LM.BuildAddItem = function() end -- Tonight's Add item (AddItem.lua isn't loaded; run_lootmaster_addend.js tests it)
+assert(load(tooltipSrc, "Tooltip.lua"))("CowfeeRaidTools", CRT) -- UI.TOOLTIP_AREA_POSITIONS for the Settings tab
 assert(load(pageSrc, "Page.lua"))("CowfeeRaidTools", CRT)
 local built = {}
 local realBuild = LM.BuildFilterTab
@@ -486,12 +487,39 @@ eq(labels[3], "Loot filter", "page: Loot filter is the third tab")
 eq(labels[#labels], "Settings", "page: Settings stays last")
 check(built.filter and type(built.filter.heading) == "function" and type(built.filter.check) == "function", "page: the tab gets the page's heading and check helpers")
 
+-- 9. Settings > Tooltips: Tooltip position (every Loot Master tooltip) and Item tabs, each saved in its own field
+local byLabel = {}
+for _, d in ipairs(drops) do if rawget(d, "label") then byLabel[rawget(d, "label")] = d end end
+local pos, tabsDrop = byLabel["Tooltip position"], byLabel["Item tabs"]
+check(pos ~= nil and tabsDrop ~= nil, "settings: the Tooltip position and Item tabs dropdowns")
+if pos and tabsDrop then
+  local keys = {}
+  for _, o in ipairs(pos.opts.options) do keys[#keys + 1] = o.key end
+  eq(table.concat(keys, ","), "general,owner,game,cursor", "settings: Tooltip position's four choices")
+  CRT.db.lootmaster.tooltipPosition = nil
+  eq(pos.opts.get(), "general", "settings: Tooltip position is Use the general setting when unset")
+  pos.opts.set("cursor")
+  eq(CRT.db.lootmaster.tooltipPosition, "cursor", "settings: picking Follow the cursor saves it")
+  eq(pos.opts.get(), "cursor", "settings: and reads it back")
+  local tk = {}
+  for _, o in ipairs(tabsDrop.opts.options()) do tk[#tk + 1] = o.key end
+  eq(tk[1] .. "," .. tk[#tk] .. "," .. #tk, "area,game,10", "settings: Item tabs lists Same as above first, the game's spot last")
+  CRT.db.lootmaster.itemTooltip = nil
+  eq(tabsDrop.opts.get(), "area", "settings: Item tabs is Same as above when unset")
+  tabsDrop.opts.set("right")
+  eq(CRT.db.lootmaster.itemTooltip, "right", "settings: picking Right saves it in itemTooltip")
+  check(CRT.db.lootmaster.tooltipAnchor == nil, "settings: the old field is never written")
+  local p1, p2 = rawget(pos, "pts") and pos.pts[1], rawget(tabsDrop, "pts") and tabsDrop.pts[1]
+  local y1, y2 = p1 and p1[3], p2 and p2[3]
+  check(y1 and y2 and y2 < y1 and y2 - 32 >= -(CRT.UI.PAGE_H - 66), "settings: Item tabs under Tooltip position, its row ending inside the tab (" .. tostring(y2) .. ")")
+end
+
 print(string.format("%d passed, %d failed", passes, fails))
 if fails > 0 then error("failures") end
 `;
 const dir = process.argv[2];
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
-const files = ['CRT_Core/Core.lua', 'CRT_Modules/LootMaster/Data.lua', 'CRT_Modules/LootMaster/Filter.lua', 'CRT_Modules/LootMaster/Test.lua', 'CRT_Modules/LootMaster/FilterTab.lua', 'CRT_Modules/LootMaster/Page.lua'];
+const files = ['CRT_Core/Core.lua', 'CRT_Modules/LootMaster/Data.lua', 'CRT_Modules/LootMaster/Filter.lua', 'CRT_Modules/LootMaster/Test.lua', 'CRT_Modules/LootMaster/FilterTab.lua', 'CRT_Modules/LootMaster/Page.lua', 'CRT_Core/UI/Tooltip.lua'];
 for (const f of files) {
   const p = path.join(dir, f);
   lua.lua_pushstring(L, to_luastring(fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : 'error("missing ' + f + '")'));

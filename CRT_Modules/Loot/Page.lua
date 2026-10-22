@@ -7,7 +7,7 @@ local ADDON, CRT = ...
 --             the response, votes, note and gear columns, and the awards that match nothing are rows of
 --             their own (Source: RCLootCouncil), read from Loot/RCLC.lua and never saved here
 --   Summary   per player, the items and tier tokens in the same filtered view
---   Settings  what is recorded, how long it is kept, RCLootCouncil, and deleting
+--   Settings  what is recorded, how long it is kept, RCLootCouncil, deleting, and where tooltips open
 -- Right-click a recorded row to delete it. The data is in Loot/Store.lua.
 -- A list entry is { rec, month } for a record or { award, month } for an RCLootCouncil award on its own;
 -- fieldsOf(entry) reads either into the same fields, so the list, filters, summary and export share one
@@ -29,6 +29,7 @@ local TEXT = {
     help = "Every epic or better boss item someone in your group gets in a raid, recorded on your own computer: who got it, from which boss, on which difficulty, and how they rolled. With RCLootCouncil installed, its awards are read in too; hover a row for every candidate's response. Right-click an item to delete it.",
     filtersHelp = "Each dropdown narrows the list; All shows everything. Response lists what the Roll / response column shows. Source picks items CRT recorded or RCLootCouncil's awards. Search matches item, player and boss names. Export gives the list as CSV.",
     summaryHelp = "For the filters on the History tab: how many items each player got, and how many of them were tier tokens (in gold).",
+    tooltipHelp = "Where the tooltips on this page open, such as an item's when you hover its row. Use the general setting follows General Settings. Follow the cursor keeps the tooltip at your mouse.",
     rcHelp = "With RCLootCouncil installed, CRT reads its saved awards: the response, votes, the winner's note and roll, and every candidate's response. An award that matches a recorded item fills it in; the others are listed on their own. CRT never changes that data. Re-scan reads it again now.",
     search = "Search",
     export = "Export CSV",
@@ -319,7 +320,7 @@ local function showTooltip(row)
         return
     end
     local f = fieldsOf(e)
-    UI.TooltipOwner(GameTooltip, row, "ANCHOR_CURSOR", nil, nil, UI.TOOLTIP_KEEP) -- follows the cursor on purpose
+    UI.TooltipOwner(GameTooltip, row, "ANCHOR_RIGHT", nil, nil, "loothistory")
     pcall(GameTooltip.SetHyperlink, GameTooltip, f.link or f.itemString)
     GameTooltip:AddLine(" ")
     GameTooltip:AddDoubleLine("When", f.time and date("%Y-%m-%d %H:%M", f.time) or "?", 1, 1, 1, 1, 1, 1)
@@ -748,6 +749,24 @@ local function buildSettings(f)
             CRT:Print("Loot History: deleted everything.")
         end)
     end)
+
+    -- Tooltips: the loothistory area's Tooltip position (UI/Tooltip.lua), for every tooltip on this page
+    local tipHeading = f:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
+    tipHeading:SetPoint("TOPLEFT", 8, -346)
+    tipHeading:SetText("Tooltips")
+    UI.HelpRight(tipHeading, "Tooltips", TEXT.tooltipHelp)
+    local position = UI.Dropdown(f, "Tooltip position", {
+        labelWidth = 110, width = 180,
+        options = UI.TOOLTIP_AREA_POSITIONS,
+        get = function()
+            return UI.TooltipAreaChoice("loothistory")
+        end,
+        set = function(v)
+            s().tooltipPosition = v
+        end,
+    })
+    position:SetPoint("TOPLEFT", 8, -362)
+    controls[#controls + 1] = position
 end
 
 -- The page -----------------------------------------------------------------------------------

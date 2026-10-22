@@ -30,7 +30,9 @@ local L = {
     previewLines = 4, -- the award preview is cut after this many lines, so it never reaches Sync
     -- Sync Master Loot, in the second column under the award message: "Sync to", the dropdown, a box
     syncTop = -306, syncLabel = 46, syncPick = 124,
-    tooltipTop = -430, -- Item tooltip, under Sync Master Loot (which ends near -410)
+    -- Tooltips, under Sync Master Loot (which ends near -410): two dropdown rows, the last ending near -492,
+    -- above the tab's bottom at -494
+    tooltipTop = -416, tooltipLabel = 110, tooltipPick = 160,
     -- Tonight: Held boss loot under the session buttons (at most heldRows rows, then "and N more"), Add
     -- item's 36 px slot and its lines under that, then the session's Items, whose last line ends near -470
     heldTop = -96, heldRow = 36, heldRows = 3, heldW = 600, addTop = -244, addW = 640, itemsTop = -292,
@@ -97,8 +99,10 @@ local TEXT = {
     channel = "Send to",
     noRoll = "If no roll, %v is",
     preview = "Preview:",
-    tooltip = "Item tooltip",
-    tooltipHelp = "Where the item tooltip opens when you hover an item's icon in the looter window and All Loot Rolls. Default tooltip uses the game's own tooltip position.",
+    tooltip = "Tooltips",
+    tooltipHelp = "Tooltip position is where every Loot Master tooltip opens: on this page, in both loot windows, the popup and Boss loot. Use the general setting follows General Settings.\n\nItem tabs is where an item's tooltip opens when you hover its icon in the looter window and All Loot Rolls. Same as above follows Tooltip position; a side puts it next to the window.",
+    tooltipPosition = "Tooltip position",
+    itemTabs = "Item tabs",
     channels = {
         { key = "RAID", label = "Raid" }, { key = "RAID_WARNING", label = "Raid warning" }, { key = "PARTY", label = "Party" },
         { key = "GUILD", label = "Guild" }, { key = "OFFICER", label = "Officer" }, { key = "SELF", label = "Only you" },
@@ -634,7 +638,7 @@ local function buildSync(f)
     button:SetScript("OnEnter", function(self)
         local why = LM:CanSync() and LM:SyncBlocked()
         if why then
-            UI.TooltipOwner(GameTooltip, self, "ANCHOR_RIGHT")
+            UI.TooltipOwner(GameTooltip, self, "ANCHOR_RIGHT", nil, nil, "lootmaster")
             GameTooltip:SetText(TEXT.sync)
             GameTooltip:AddLine(why, 1, 0.82, 0, true)
             GameTooltip:Show()
@@ -831,10 +835,23 @@ local function buildSettings(f)
     previewLabel:SetPoint("TOPLEFT", L.col2, -214)
     previewLabel:SetTextColor(0.7, 0.7, 0.7)
     previewLabel:SetText(TEXT.preview)
-    -- Item tooltip: below Sync Master Loot in this column, where there is room
+    -- Tooltips: below Sync Master Loot in this column, where there is room. Tooltip position is the
+    -- lootmaster area's (UI/Tooltip.lua); Item tabs the item tabs' own (LM.TOOLTIP_ANCHORS).
     heading(f, L.col2, L.tooltipTop, TEXT.tooltip, TEXT.tooltipHelp)
-    local tip = UI.Dropdown(f, "", {
-        width = 150, maxHeight = 300,
+    local position = UI.Dropdown(f, TEXT.tooltipPosition, {
+        labelWidth = L.tooltipLabel, width = L.tooltipPick,
+        options = UI.TOOLTIP_AREA_POSITIONS,
+        get = function()
+            return UI.TooltipAreaChoice("lootmaster")
+        end,
+        set = function(v)
+            LM:Settings().tooltipPosition = v
+        end,
+    })
+    position:SetPoint("TOPLEFT", L.col2, L.tooltipTop - 16)
+    refreshers[#refreshers + 1] = position.refresh
+    local tip = UI.Dropdown(f, TEXT.itemTabs, {
+        labelWidth = L.tooltipLabel, width = L.tooltipPick, maxHeight = 300,
         options = function()
             local out = {}
             for _, a in ipairs(LM.TOOLTIP_ANCHORS) do
@@ -846,10 +863,10 @@ local function buildSettings(f)
             return LM:TooltipAnchor().key
         end,
         set = function(v)
-            LM:Settings().tooltipAnchor = v
+            LM:Settings().itemTooltip = v
         end,
     })
-    tip:SetPoint("TOPLEFT", L.col2, L.tooltipTop - 20)
+    tip:SetPoint("TOPLEFT", L.col2, L.tooltipTop - 44)
     refreshers[#refreshers + 1] = tip.refresh
     preview = f:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     preview:SetPoint("TOPLEFT", L.col2, -232)

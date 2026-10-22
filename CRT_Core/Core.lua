@@ -200,6 +200,7 @@ local defaults = {
         dungeons = false,
         keepMonths = 12,
         rcEnrich = true,
+        tooltipPosition = "general", -- Tooltip position on the Loot History page (UI/Tooltip.lua), personal
     },
     -- Loot Master (LootMaster/): window and popup, where the looter window and the raider popup were
     -- last placed (UI.Window keeps point, x, y, and the window's width and height); responseSeconds,
@@ -219,7 +220,12 @@ local defaults = {
         awardMessage = "%i awarded to %p for %r with a %v roll.",
         awardChannel = "RAID",
         noRoll = "-",
-        tooltipAnchor = "left", -- where an item's tooltip opens (LM.TOOLTIP_ANCHORS); personal, not synced
+        -- Tooltip position for every Loot Master tooltip: "general" (General Settings'), "owner", "game" or
+        -- "cursor" (UI/Tooltip.lua); itemTooltip, the item tabs': "area" (the same), a side of the window or
+        -- "game" (LM.TOOLTIP_ANCHORS). Both personal, not synced. itemTooltip replaced tooltipAnchor, which is
+        -- read once on load (below) and kept.
+        tooltipPosition = "general",
+        itemTooltip = "area",
         showAllItems = false, -- this raider sees every item anyway
         enableInParty = false, -- CRT Looting also in a party group, not only a raid (LootMaster/Looting.lua)
         authority = { leader = true, names = {} }, -- who may run loot (the raid leader's list is the one raiders trust)
@@ -581,6 +587,15 @@ frame:SetScript("OnEvent", function(self, event, arg1)
         -- before the defaults, so data from before themes keeps its look
         if type(CRTDB.ui) == "table" then
             CRT:ResolveTheme(CRTDB.ui)
+        end
+        -- before the defaults, once: the Loot Master item tabs' tooltip setting moved from tooltipAnchor to
+        -- itemTooltip. Left, the old default, becomes "area" (next to the icon, on the window's outer side,
+        -- unless Loot Master's Tooltip position says otherwise); Default tooltip becomes "game"; the other
+        -- sides stay. The old field is kept as it was.
+        local lm = CRTDB.lootmaster
+        if type(lm) == "table" and lm.itemTooltip == nil and type(lm.tooltipAnchor) == "string" then
+            local old = lm.tooltipAnchor
+            lm.itemTooltip = (old == "left" and "area") or (old == "default" and "game") or old
         end
         copyDefaults(defaults, CRTDB)
         CRT:UseTheme(CRT:ResolveTheme(CRTDB.ui))

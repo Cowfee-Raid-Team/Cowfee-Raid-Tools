@@ -301,12 +301,14 @@ end
 LM.AWARD_DEFAULT = "%i awarded to %p for %r with a %v roll."
 LM.NO_ROLL_CHOICES = { "-", "0", "no" }
 
--- Where an item's tooltip opens (Settings tab, a personal choice that is not synced), in the order the
--- dropdown lists them. point is the tooltip's corner, rel the window's; dx, dy the gap in pixels; level
--- puts the tooltip level with the hovered icon (the sides only). "default" has no point: the game's own
--- tooltip position.
-LM.TOOLTIP_ANCHOR_DEFAULT = "left"
+-- Where an item tab's tooltip opens (Settings tab > Tooltips > Item tabs, lootmaster.itemTooltip, a personal
+-- choice that is not synced), in the order the dropdown lists them. "area" has no point: Loot Master's own
+-- Tooltip position (UI/Tooltip.lua's lootmaster area). point is the tooltip's corner, rel the window's; dx,
+-- dy the gap in pixels; level puts the tooltip level with the hovered icon (the sides only). game is the
+-- game's own tooltip spot. Core.lua moved the old setting (lootmaster.tooltipAnchor) here once.
+LM.TOOLTIP_ANCHOR_DEFAULT = "area"
 LM.TOOLTIP_ANCHORS = {
+    { key = "area", label = "Same as above" },
     { key = "left", label = "Left", point = "TOPRIGHT", rel = "TOPLEFT", dx = -4, dy = 0, level = true },
     { key = "right", label = "Right", point = "TOPLEFT", rel = "TOPRIGHT", dx = 4, dy = 0, level = true },
     { key = "bottomleft", label = "Bottom left", point = "TOPLEFT", rel = "BOTTOMLEFT", dx = 0, dy = -4 },
@@ -315,12 +317,12 @@ LM.TOOLTIP_ANCHORS = {
     { key = "topright", label = "Top right", point = "BOTTOMRIGHT", rel = "TOPRIGHT", dx = 0, dy = 4 },
     { key = "topcenter", label = "Top center", point = "BOTTOM", rel = "TOP", dx = 0, dy = 4 },
     { key = "bottomcenter", label = "Bottom center", point = "TOP", rel = "BOTTOM", dx = 0, dy = -4 },
-    { key = "default", label = "Default tooltip" },
+    { key = "game", label = "Game's tooltip spot", game = true },
 }
 
--- The chosen anchor's row; a missing or unknown saved value is Left.
+-- The chosen anchor's row; a missing or unknown saved value is Same as above.
 function LM:TooltipAnchor()
-    local want = self:Settings().tooltipAnchor
+    local want = self:Settings().itemTooltip
     for _, a in ipairs(LM.TOOLTIP_ANCHORS) do
         if a.key == want then
             return a

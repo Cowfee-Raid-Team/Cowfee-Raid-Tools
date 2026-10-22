@@ -306,7 +306,7 @@ check(not near(tabs.tabs[3].name.color, LM.TAB_LATE_COLOR), "tabs: everyone answ
 eq(tabs.tabs[4].name.text, "0/0 answered", "tabs: nobody with CRT yet")
 eq(tabs.tabs[5].name.text, "Quick", "tabs: a given item shows its winner")
 
--- the tooltip: only the icon has it, and it opens left of the window; clicks on the icon reach the tab
+-- the tooltip: only the icon has it; clicks on the icon reach the tab
 local winFrame = mock()
 local got = {}
 GameTooltip = { SetOwner = function(_, o, a) got.owner, got.anchor = o, a end, SetPoint = function(_, ...) got.pt = { ... } end,
@@ -318,9 +318,10 @@ local tb = t2.tabs[1]
 check(tb.frame.scripts.OnEnter ~= nil, "tooltip: the icon has OnEnter")
 check(tb.scripts.OnEnter == nil, "tooltip: the tab body has none")
 tb.frame.scripts.OnEnter(tb.frame)
-eq(got.anchor, "ANCHOR_NONE", "tooltip: placed by hand")
-eq(got.pt[1], "TOPRIGHT", "tooltip: its right edge")
-check(got.pt[2] == winFrame and got.pt[3] == "TOPLEFT", "tooltip: sits at the window's left")
+-- by default the item tabs are like every other Loot Master tooltip: next to the icon, on its outer side
+eq(got.owner, tb.frame, "tooltip: owned by the icon")
+eq(got.anchor, "ANCHOR_LEFT", "tooltip: by default next to the icon, on the window's outer side")
+check(got.pt == nil, "tooltip: by default not placed by hand")
 tb.scripts.OnClick(tb, "LeftButton")
 eq(picked, 1, "tab click selects")
 picked = nil
@@ -329,11 +330,14 @@ eq(picked, 1, "icon click selects the tab")
 tb.frame.scripts.OnDoubleClick(tb.frame, "LeftButton")
 eq(dbl, 1, "icon double-click reaches the tab")
 
--- the tooltip anchor setting: every key opens in its own spot; Default tooltip uses the game's
-eq(LM.TOOLTIP_ANCHOR_DEFAULT, "left", "tooltip anchor: default is left")
+-- Item tabs (lootmaster.itemTooltip): Same as above (Loot Master's Tooltip position), a side of the window, or
+-- the game's tooltip spot
+eq(LM.TOOLTIP_ANCHOR_DEFAULT, "area", "item tabs: the default is Same as above")
 local order = {}
 for _, a in ipairs(LM.TOOLTIP_ANCHORS) do order[#order + 1] = a.key end
-eq(table.concat(order, ","), "left,right,bottomleft,bottomright,topleft,topright,topcenter,bottomcenter,default", "tooltip anchor: the nine, in Alex's order")
+eq(table.concat(order, ","), "area,left,right,bottomleft,bottomright,topleft,topright,topcenter,bottomcenter,game", "item tabs: Same as above, the eight sides in Alex's order, the game's spot")
+eq(LM.TOOLTIP_ANCHORS[1].label, "Same as above", "item tabs: the first choice's label")
+eq(LM.TOOLTIP_ANCHORS[#LM.TOOLTIP_ANCHORS].label, "Game's tooltip spot", "item tabs: the last choice's label")
 local want = {
   left = { "TOPRIGHT", "TOPLEFT", -4 }, right = { "TOPLEFT", "TOPRIGHT", 4 },
   topleft = { "BOTTOMLEFT", "TOPLEFT", 0, 4 }, topcenter = { "BOTTOM", "TOP", 0, 4 }, topright = { "BOTTOMRIGHT", "TOPRIGHT", 0, 4 },
@@ -341,33 +345,53 @@ local want = {
 }
 tb.frame.GetTop = function() return 500 end
 winFrame.GetTop = function() return 600 end
-for key, w in pairs(want) do
-  CRT.db.lootmaster.tooltipAnchor = key
-  got = {}
-  tb.frame.scripts.OnEnter(tb.frame)
-  eq(got.anchor, "ANCHOR_NONE", "tooltip " .. key .. ": placed by hand")
-  eq(got.owner, tb.frame, "tooltip " .. key .. ": owner is the icon")
-  check(got.pt[1] == w[1] and got.pt[2] == winFrame and got.pt[3] == w[2] and got.pt[4] == w[3], "tooltip " .. key .. ": point")
-  eq(got.pt[5], w[4] or -100, "tooltip " .. key .. ": vertical offset")
-end
-CRT.db.lootmaster.tooltipAnchor = "nonsense"
-got = {}
-tb.frame.scripts.OnEnter(tb.frame)
-eq(got.pt[1], "TOPRIGHT", "tooltip: an unknown value is Left")
 local def
 GameTooltip_SetDefaultAnchor = function(tip, owner) def = { tip, owner } end
-CRT.db.lootmaster.tooltipAnchor = "default"
-got = {}
-tb.frame.scripts.OnEnter(tb.frame)
-check(def and def[1] == GameTooltip and def[2] == tb.frame, "tooltip default: the game's own anchor")
-check(got.pt == nil and got.anchor == nil, "tooltip default: nothing placed by hand")
--- an exception: the item tabs keep Loot Master's own setting, even on General Settings' game's tooltip spot
-CRT.db.lootmaster.tooltipAnchor = "left"
-CRT.db.ui.tooltipAnchor = "game"
+for key, w in pairs(want) do
+  for _, general in ipairs({ "owner", "game" }) do
+    -- a side stays where it is whatever General Settings or Loot Master's Tooltip position say
+    CRT.db.ui.tooltipAnchor = general
+    CRT.db.lootmaster.itemTooltip = key
+    CRT.db.lootmaster.tooltipPosition = general == "game" and "cursor" or nil
+    got, def = {}, nil
+    tb.frame.scripts.OnEnter(tb.frame)
+    eq(got.anchor, "ANCHOR_NONE", "tooltip " .. key .. ": placed by hand")
+    eq(got.owner, tb.frame, "tooltip " .. key .. ": owner is the icon")
+    check(def == nil, "tooltip " .. key .. ": not the game's spot")
+    check(got.pt and got.pt[1] == w[1] and got.pt[2] == winFrame and got.pt[3] == w[2] and got.pt[4] == w[3], "tooltip " .. key .. ": point")
+    eq(got.pt and got.pt[5], w[4] or -100, "tooltip " .. key .. ": vertical offset")
+  end
+end
+CRT.db.ui.tooltipAnchor, CRT.db.lootmaster.tooltipPosition = nil, nil
+CRT.db.lootmaster.itemTooltip = "game"
 got, def = {}, nil
 tb.frame.scripts.OnEnter(tb.frame)
-check(def == nil and got.anchor == "ANCHOR_NONE" and got.pt and got.pt[1] == "TOPRIGHT" and got.pt[2] == winFrame, "tooltip exception: the item tabs stay where Loot Master's setting puts them")
-CRT.db.ui.tooltipAnchor = nil
+check(def and def[1] == GameTooltip and def[2] == tb.frame, "item tabs on the game's spot: the game's own anchor")
+check(got.pt == nil, "item tabs on the game's spot: nothing placed by hand")
+-- Same as above: Loot Master's Tooltip position, which is General Settings' unless set
+for _, c in ipairs({
+  { "nonsense", nil, nil, "owner" }, { "area", nil, "game", "game" }, { "area", "general", "game", "game" }, { "area", "owner", "game", "owner" },
+  { "area", "game", nil, "game" }, { "area", "cursor", "game", "cursor" }, { nil, "cursor", nil, "cursor" },
+}) do
+  CRT.db.lootmaster.itemTooltip, CRT.db.lootmaster.tooltipPosition, CRT.db.ui.tooltipAnchor = c[1], c[2], c[3]
+  got, def = {}, nil
+  tb.frame.scripts.OnEnter(tb.frame)
+  local what = "item tabs " .. tostring(c[1]) .. ", Loot Master " .. tostring(c[2]) .. ", general " .. tostring(c[3])
+  if c[4] == "game" then
+    check(def and def[2] == tb.frame and got.pt == nil, what .. ": the game's spot")
+  elseif c[4] == "cursor" then
+    check(def == nil and got.anchor == "ANCHOR_CURSOR" and got.pt == nil, what .. ": follows the cursor")
+  else
+    check(def == nil and got.anchor == "ANCHOR_LEFT" and got.pt == nil, what .. ": next to the icon")
+  end
+end
+CRT.db.lootmaster.itemTooltip, CRT.db.lootmaster.tooltipPosition, CRT.db.ui.tooltipAnchor = nil, nil, nil
+-- the old setting (lootmaster.tooltipAnchor) is not read here: Core.lua moved it to itemTooltip once
+CRT.db.lootmaster.tooltipAnchor = "right"
+got, def = {}, nil
+tb.frame.scripts.OnEnter(tb.frame)
+check(got.pt == nil and got.anchor == "ANCHOR_LEFT", "item tabs: the old tooltipAnchor field is not read")
+CRT.db.lootmaster.tooltipAnchor = nil
 
 -- the gear icons: a tooltip by item ID with the item level, the real link on your own row, none when empty
 local tip = {}
@@ -414,6 +438,17 @@ gicon.hit.scripts.OnEnter(gicon.hit)
 check(def and def[1] == GameTooltip and def[2] == gicon.hit and tip.anchor == nil, "gear tooltip, the game's tooltip spot: GameTooltip_SetDefaultAnchor")
 eq(tip.link, FULL, "gear tooltip, the game's tooltip spot: the same item")
 CRT.db.ui.tooltipAnchor = nil
+-- and they follow Loot Master's own Tooltip position
+tip, def = {}, nil
+CRT.db.lootmaster.tooltipPosition = "game"
+gicon.hit.scripts.OnEnter(gicon.hit)
+check(def and def[2] == gicon.hit and tip.anchor == nil, "gear tooltip, Loot Master on the game's spot: GameTooltip_SetDefaultAnchor")
+tip, def = {}, nil
+CRT.db.lootmaster.tooltipPosition = "cursor"
+CRT.db.ui.tooltipAnchor = "game"
+gicon.hit.scripts.OnEnter(gicon.hit)
+check(def == nil and tip.anchor == "ANCHOR_CURSOR", "gear tooltip, Loot Master following the cursor: over General Settings' game's spot")
+CRT.db.lootmaster.tooltipPosition, CRT.db.ui.tooltipAnchor = nil, nil
 tip = {}
 LM.SetGear(gicon, nil, nil)
 check(not gicon.shown and not gicon.hit.shown, "gear icon: an empty slot hides it")

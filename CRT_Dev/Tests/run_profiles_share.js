@@ -110,6 +110,22 @@ end
 
 -- The allow-list guard. ---------------------------------------------------------------------------
 check(paths0["ui.tooltipAnchor"] ~= nil and paths0["ui.tooltipAnchor"].default == "owner", "Tooltip position (ui.tooltipAnchor) is shared, a plain setting with its default")
+-- the per-area overrides travel with the settings too
+for path, def in pairs({ ["loot.tooltipPosition"] = "general", ["lootmaster.tooltipPosition"] = "general", ["lootmaster.itemTooltip"] = "area" }) do
+  check(paths0[path] ~= nil and paths0[path].default == def, path .. " is shared, a plain setting with its default " .. def)
+end
+check(P.SHARE.lootmaster.tooltipPosition == true and P.SHARE.lootmaster.itemTooltip == true, "the Loot Master overrides are named in the mixed lootmaster rule")
+check(paths0["lootmaster.tooltipAnchor"] == nil, "the old item-tab field is no longer shared (it is read once, into itemTooltip)")
+-- the old Loot Master item-tab setting (lootmaster.tooltipAnchor) moves to lootmaster.itemTooltip once, on load
+for _, c in ipairs({ { "right", "right" }, { "topcenter", "topcenter" }, { "default", "game" }, { "left", "area" }, { nil, "area" } }) do
+  boot({ lootmaster = { tooltipAnchor = c[1] } }, {})
+  check(CRTDB.lootmaster.itemTooltip == c[2], "item tabs: an old " .. tostring(c[1]) .. " becomes " .. c[2] .. " (got " .. tostring(CRTDB.lootmaster.itemTooltip) .. ")")
+  check(CRTDB.lootmaster.tooltipAnchor == c[1], "item tabs: the old field is kept as it was (" .. tostring(c[1]) .. ")")
+end
+boot({ lootmaster = { tooltipAnchor = "right", itemTooltip = "bottomleft" } }, {})
+check(CRTDB.lootmaster.itemTooltip == "bottomleft", "item tabs: the old field is read only once, never over the new one")
+boot({}, {})
+check(CRTDB.lootmaster.itemTooltip == "area" and CRTDB.lootmaster.tooltipPosition == "general" and CRTDB.loot.tooltipPosition == "general", "a fresh install: the defaults")
 check(P.ShareUncovered and #P.ShareUncovered() == 0, "every saved key in Core.lua's defaults is shared or named as not shared" .. (P.ShareUncovered and (": missing " .. table.concat(P.ShareUncovered(), ", ")) or ""))
 if P.ShareUncovered then
   CRT.defaults.brandNew = { x = 1 }
