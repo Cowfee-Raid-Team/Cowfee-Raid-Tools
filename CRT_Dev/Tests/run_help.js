@@ -127,9 +127,8 @@ check(GameTooltip.lines[1] == "Count 2", "a function's text is read each time")
 live.scripts.OnLeave(live)
 print("ok help: the tooltip is unchanged")
 
--- Tooltip position (CRT_Core/UI/Tooltip.lua; run_tooltip_spots.js tests every spot, mode and area): a (?)
--- opens on its own side (ANCHOR_RIGHT) by default, on a picked spot when there is one; on the game's tooltip spot (GameTooltip_SetDefaultAnchor,
--- which sets the owner with ANCHOR_NONE and places it) when picked
+-- Tooltip position (CRT_Core/UI/Tooltip.lua; run_tooltip_spots.js tests every spot, mode and area): a (?) keeps
+-- its tooltip right of it (ANCHOR_RIGHT, UI.TOOLTIP_KEEP) whatever is picked: auto, a spot, or the game's tooltip spot
 local defaults = {}
 GameTooltip_SetDefaultAnchor = function(t, owner) defaults[#defaults + 1] = { t, owner } t:SetOwner(owner, "ANCHOR_NONE") end
 check(UI.TooltipPosition() == "spot", "Tooltip position: next to what you hover when nothing is saved")
@@ -138,16 +137,16 @@ check(#defaults == 0 and GameTooltip.owner == b and GameTooltip.anchor == "ANCHO
 b.scripts.OnLeave(b)
 CRT.db.ui.tooltipMode, CRT.db.ui.tooltipSpot = "spot", "bottom"
 b.scripts.OnEnter(b)
-check(#defaults == 0 and GameTooltip.anchor == "ANCHOR_BOTTOM", "a (?) on the Bottom spot: under the icon")
+check(#defaults == 0 and GameTooltip.owner == b and GameTooltip.anchor == "ANCHOR_RIGHT", "a (?) on the Bottom spot: still right of the icon")
 b.scripts.OnLeave(b)
 CRT.db.ui.tooltipMode = "game"
 b.scripts.OnEnter(b)
-check(#defaults == 1 and defaults[1][1] == GameTooltip and defaults[1][2] == b, "a (?) on the game's tooltip spot: GameTooltip_SetDefaultAnchor(GameTooltip, icon)")
-check(GameTooltip.anchor == "ANCHOR_NONE" and GameTooltip.title == "Title", "the game's spot: placed by the game, the same text")
+check(#defaults == 0 and GameTooltip.owner == b and GameTooltip.anchor == "ANCHOR_RIGHT", "a (?) on the game's tooltip spot: still right of the icon, not the game's spot")
+check(GameTooltip.title == "Title", "the game's spot: the same text")
 b.scripts.OnLeave(b)
 GameTooltip_SetDefaultAnchor = nil
 CRT.db.ui.tooltipMode, CRT.db.ui.tooltipSpot = nil, nil
-print("ok help: the (?) follows Tooltip position")
+print("ok help: the (?) keeps its tooltip right of it")
 
 -- Modern: an accent ring round an accent "i", the same hit box
 look(true)

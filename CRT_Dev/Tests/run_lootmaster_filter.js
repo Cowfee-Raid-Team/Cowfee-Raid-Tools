@@ -511,9 +511,8 @@ if pos and tabsDrop and hover and window then
   pos.opts.set("cursor")
   eq(CRT.db.lootmaster.tooltipMode, "cursor", "settings: picking Follow the cursor saves it")
   eq(pos.opts.get(), "cursor", "settings: and reads it back")
-  eq(hover.opts.area, "lootmaster", "settings: the The window picker is Loot Master's")
   hover.opts.set("bottom")
-  check(CRT.db.lootmaster.tooltipSpot == "bottom" and CRT.db.lootmaster.tooltipMode == "spot", "settings: a spot clicked is Loot Master's own, and picks Next to what you hover")
+  check(CRT.db.lootmaster.tooltipSpot == "bottom" and CRT.db.lootmaster.tooltipMode == "spot", "settings: a spot clicked is Loot Master's own, and picks Outside the window")
   check(CRT.db.lootmaster.tooltipPosition == nil, "settings: the old tooltipPosition field is never written")
   -- Item tabs: Same as above, Next to the window (a side, picked in its picker), Game's tooltip spot
   local tk = {}

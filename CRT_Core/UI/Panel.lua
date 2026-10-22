@@ -517,7 +517,8 @@ end
 UI.windows = {}
 
 -- CRT's windows, for the one lookup of the window something sits in: the main window (UI:Create), every
--- floating window (UI:StyleWindow, so every UI.Window dialog and pop-out) and UI.Window's overlays.
+-- floating window on UIParent (UI:StyleWindow, so every UI.Window dialog and pop-out) and UI.Window's
+-- overlays.
 -- UI.WindowOf(region) walks a frame's (or font string's) parents up to the first of them; nil when it is in
 -- none, such as the minimap button. UI/Tooltip.lua places a picked tooltip spot outside that window.
 local crtWindows = {}
@@ -600,7 +601,11 @@ function UI:StyleWindow(f)
     f.crtTitleLine:SetHeight(1)
     self:SkinCloseButton(f.CloseButton)
     self.windows[#self.windows + 1] = f
-    UI.AddWindow(f)
+    -- a window of its own, on the screen; not a styled frame inside another window (the raider popup's
+    -- frame art), so what is in it is in that window
+    if f:GetParent() == UIParent then
+        UI.AddWindow(f)
+    end
     f:HookScript("OnShow", function()
         UI:SkinTree(f)
     end)
@@ -1353,7 +1358,8 @@ function UI.Help(parent, title, text)
     b:SetScript("OnEnter", function(self)
         h.hover = true
         paintHelp(self)
-        UI.TooltipOwner(GameTooltip, self, "ANCHOR_RIGHT")
+        -- right of the (?), whatever Tooltip position says (UI/Tooltip.lua's UI.TOOLTIP_KEEP)
+        UI.TooltipOwner(GameTooltip, self, "ANCHOR_RIGHT", nil, nil, UI.TOOLTIP_KEEP)
         GameTooltip:SetText(title, 1, 1, 1)
         local body = type(text) == "function" and text() or text or ""
         for paragraph in (body .. "\n\n"):gmatch("(.-)\n\n") do

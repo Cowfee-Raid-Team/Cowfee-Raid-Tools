@@ -136,7 +136,7 @@ print("ok tooltip spots: twelve spots, each placed as the wiki says")
 
 -- 2. General Settings: next to what you hover, the game's spot, follow the cursor
 local keys = {} for _, c in ipairs(UI.TOOLTIP_POSITIONS) do keys[#keys + 1] = c.key .. "=" .. c.label end
-eq(table.concat(keys, ","), "spot=Next to what you hover,game=Game's tooltip spot,cursor=Follow the cursor", "General Settings' three choices")
+eq(table.concat(keys, ","), "spot=Outside the window,game=Game's tooltip spot,cursor=Follow the cursor", "General Settings' three choices")
 CRT.db.ui.tooltipMode, CRT.db.ui.tooltipSpot = nil, nil
 eq(UI.TooltipChoice(nil), "spot", "nothing saved: next to what you hover")
 CRT.db.ui.tooltipMode = "nonsense"
@@ -189,7 +189,7 @@ print("ok tooltip spots: the flags")
 
 -- 4. The areas: their own choice and spot; Use the general setting follows General Settings, spot and all
 keys = {} for _, c in ipairs(UI.TOOLTIP_AREA_POSITIONS) do keys[#keys + 1] = c.key .. "=" .. c.label end
-eq(table.concat(keys, ","), "general=Use the general setting,spot=Next to what you hover,game=Game's tooltip spot,cursor=Follow the cursor", "an area's four choices")
+eq(table.concat(keys, ","), "general=Use the general setting,spot=Outside the window,game=Game's tooltip spot,cursor=Follow the cursor", "an area's four choices")
 check(UI.TOOLTIP_AREAS.loothistory.table == "loot" and UI.TOOLTIP_AREAS.lootmaster.table == "lootmaster", "the areas' tables")
 check(UI.TOOLTIP_AREAS.timeline and UI.TOOLTIP_AREAS.timeline.table == "timeline", "the Timeline area, saved in CRTDB.timeline")
 gameSpot()
@@ -300,7 +300,7 @@ CRT.db.ui.tooltipMode, CRT.db.ui.tooltipSpot = "spot", "bottom"
 GameTooltip = newTip()
 p.spots.rightupper.scripts.OnEnter(p.spots.rightupper)
 check(GameTooltip.title == "Right, upper" and GameTooltip.shown and GameTooltip.owner == p.spots.rightupper, "hovering a spot names it")
-eq(GameTooltip.anchor, "ANCHOR_BOTTOM", "the spot's tooltip opens on the chosen spot, through UI.TooltipOwner")
+check(GameTooltip.anchor == "ANCHOR_RIGHT" and GameTooltip.point == nil, "the spot's own tooltip stays next to it whatever spot is picked (UI.TOOLTIP_KEEP) (got " .. tostring(GameTooltip.anchor) .. ")")
 p.spots.rightupper.scripts.OnLeave(p.spots.rightupper)
 check(not GameTooltip.shown, "leaving hides it")
 -- greyed: faded with a grey label, still clickable
@@ -361,7 +361,7 @@ check(CRT.db.ui.tooltipMode == "cursor" and g.picker.alpha < 1, "general: Follow
 eq(g.row.opts.get(), "cursor", "general: the dropdown reads it back")
 g.row.opts.set("spot")
 g.picker.spots.left.scripts.OnClick(g.picker.spots.left)
-check(CRT.db.ui.tooltipMode == "spot" and CRT.db.ui.tooltipSpot == "auto", "general on Next to what you hover: clicking the lit spot goes back to auto")
+check(CRT.db.ui.tooltipMode == "spot" and CRT.db.ui.tooltipSpot == "auto", "general on Outside the window: clicking the lit spot goes back to auto")
 g.picker.spots.left.scripts.OnClick(g.picker.spots.left)
 CRT.db.lootmaster = { tooltipMode = "general", tooltipSpot = "topright" }
 local a = UI.TooltipPositionSetting(page, "lootmaster", { labelWidth = 110, width = 160, beside = true })
@@ -389,7 +389,7 @@ check(CRT.db.lootmaster.tooltipMode == "general" and a.picker.alpha < 1, "area: 
 GameTooltip = newTip()
 CRT.db.lootmaster.tooltipMode, CRT.db.ui.tooltipMode = "spot", "spot"
 a.picker.spots.top.scripts.OnEnter(a.picker.spots.top)
-eq(GameTooltip.anchor, "ANCHOR_BOTTOMLEFT", "area: its picker's own tooltips follow the area")
+check(GameTooltip.anchor == "ANCHOR_RIGHT" and GameTooltip.owner == a.picker.spots.top and GameTooltip.point == nil, "area: its picker's own tooltips stay next to the spot, not on the area's spot (got " .. tostring(GameTooltip.anchor) .. ")")
 print("ok tooltip spots: the Tooltip position dropdown with its picker")
 
 -- 7. A picked spot sits outside the CRT window that holds what you hover (CRT_Core/UI/Panel.lua's UI.AddWindow and
@@ -476,9 +476,19 @@ check(UI.TooltipOwner(t, row, "ANCHOR_TOP", 0, 6, UI.TOOLTIP_KEEP) == "owner" an
 -- level: the tooltip's top level with what you hover (the Loot Master item tabs' sides)
 row.GetTop, mainWin.GetTop = function() return 300 end, function() return 420 end
 t = newTip()
-realOutside(t, row, mainWin, { point = "TOPRIGHT", rel = "TOPLEFT", dx = -4, dy = 0, level = true })
-check(t.owner == row and t.anchor == "ANCHOR_NONE" and t.point and t.point[1] == "TOPRIGHT" and t.point[2] == mainWin and t.point[3] == "TOPLEFT" and t.point[4] == -4 and t.point[5] == -120, "level: the tooltip's top level with what you hover")
+realOutside(t, row, mainWin, "leftupper", true)
+check(t.owner == row and t.anchor == "ANCHOR_NONE" and t.point and t.point[1] == "TOPRIGHT" and t.point[2] == mainWin and t.point[3] == "TOPLEFT" and t.point[4] == -4 and t.point[5] == -120, "level: Left, upper's place, its top level with what you hover")
 UI.TooltipOutside = realOutside
+-- a (?) keeps its tooltip next to it whatever the setting (UI.TOOLTIP_KEEP), in a window too
+for _, mode in ipairs({ "spot", "game", "cursor" }) do
+  CRT.db.ui.tooltipMode, CRT.db.ui.tooltipSpot = mode, "left"
+  gameSpot() defaults = {}
+  GameTooltip = newTip()
+  local help = UI.Help(object("Frame", mainWin), "Title", "Some help.")
+  help.scripts.OnEnter(help)
+  check(GameTooltip.owner == help and GameTooltip.anchor == "ANCHOR_RIGHT" and GameTooltip.point == nil and #defaults == 0 and GameTooltip.title == "Title", "a (?) on " .. mode .. ": its tooltip right of it (got " .. tostring(GameTooltip.anchor) .. ")")
+  GameTooltip_SetDefaultAnchor = nil
+end
 CRT.db.ui.tooltipMode, CRT.db.ui.tooltipSpot = nil, nil
 print("ok tooltip spots: a picked spot outside the window you are in")
 

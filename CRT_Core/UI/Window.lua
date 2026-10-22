@@ -372,8 +372,7 @@ function UI.Window(name, opts)
     end
     local popout = opts.kind == "popout"
     local f = CreateFrame("Frame", name, UIParent, DEFAULTS.template)
-    UI:StyleWindow(f)
-    UI.AddWindow(f) -- UI:StyleWindow adds it too; said here so every UI.Window is one, styled or not
+    UI:StyleWindow(f) -- also makes it a CRT window (UI.AddWindow)
     UI:RegisterLayer(opts.layer or DEFAULTS.layer, f)
     UI.SetFrameTitle(f, "")
     -- the title bar, over the template's own title area; the close button stays on top of it

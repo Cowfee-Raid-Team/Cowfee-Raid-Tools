@@ -703,7 +703,6 @@ end
 --   spots        optional: the keys to show (the rest are hidden); all twelve by default
 --   enabledIf()  optional: greys the picker (half alpha) while it returns false. A greyed picker still
 --                takes a click, since picking a spot is how the setting that owns it turns spots on
---   area         optional: the tooltip area its own tooltips follow (UI.TooltipOwner)
 -- The picker is UI.SPOT_PICKER_W x UI.SPOT_PICKER_H. Returns the frame, with picker.refresh() and
 -- picker.spots[key] (each spot's button).
 local SPOT_SIZE, SPOT_PAD = 12, 3 -- a spot, and the gap between the spots and the box
@@ -801,7 +800,8 @@ function UI.SpotPicker(parent, opts)
             p.refresh()
         end)
         b:SetScript("OnEnter", function(self)
-            UI.TooltipOwner(GameTooltip, self, "ANCHOR_RIGHT", nil, nil, opts.area)
+            -- right of the spot, whatever spot is picked (UI/Tooltip.lua's UI.TOOLTIP_KEEP)
+            UI.TooltipOwner(GameTooltip, self, "ANCHOR_RIGHT", nil, nil, UI.TOOLTIP_KEEP)
             GameTooltip:SetText(s.label, 1, 1, 1)
             GameTooltip:Show()
         end)

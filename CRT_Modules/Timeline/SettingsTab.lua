@@ -3,10 +3,10 @@ local ADDON, CRT = ...
 -- The Timeline page's Settings tab: the view (how much time is visible, the axis labels, the icon
 -- size), the rows of the selected boss (show or hide each, add a spell of your own), the deaths
 -- filters, recording (with deleting the boss's pulls), and where the Timeline's tooltips open (the
--- timeline area of UI/Tooltip.lua). Every other control writes through Timeline:Set or the Journal's setters. The Timeline page builds it with Build(parent, ctx) and
--- calls tab:Refresh() when anything changes; ctx gives it selectedBoss(), bossName(),
--- showingReference() (a reference rather than a pull is shown), shownReference() (that reference's
--- entry, else nil) and refresh().
+-- timeline area of UI/Tooltip.lua). Every other control writes through Timeline:Set or the Journal's
+-- setters. The Timeline page builds it with Build(parent, ctx) and calls tab:Refresh() when anything
+-- changes; ctx gives it selectedBoss(), bossName(), showingReference() (a reference rather than a pull
+-- is shown), shownReference() (that reference's entry, else nil) and refresh().
 
 local Timeline = CRT.Timeline
 local Journal = CRT.TimelineJournal
@@ -358,7 +358,7 @@ function SettingsTab.Build(f, ctx)
     -- every tooltip on the Review tab, docked or popped out; the picker ends near -404
     local tipHeading = label(f, "Tooltips")
     tipHeading:SetPoint("TOPLEFT", f, "TOPLEFT", RIGHT_X, -292)
-    UI.HelpRight(tipHeading, "Tooltips", "Where the Timeline's tooltips open, such as a cast's or a reminder's when you hover it, on this page or in its pop-out. Use the general setting follows General Settings. Next to what you hover uses the spot you click in the box below, outside the edge of the window you are in; clicking a spot picks it, and clicking it again goes back to each tooltip on its own side. Follow the cursor keeps the tooltip at your mouse.")
+    UI.HelpRight(tipHeading, "Tooltips", "Where the Timeline's tooltips open, such as a cast's or a reminder's when you hover it, on this page or in its pop-out. Use the general setting follows General Settings. Outside the window puts it just past the edge of the window you are in, on the spot you click in the box below; clicking a spot picks it, and clicking it again goes back to each tooltip on its own side. Follow the cursor keeps the tooltip at your mouse.")
     local position = UI.TooltipPositionSetting(f, "timeline", { labelWidth = 120, width = 150 })
     position.row:SetPoint("TOPLEFT", f, "TOPLEFT", RIGHT_X, -310)
     controls[#controls + 1] = position

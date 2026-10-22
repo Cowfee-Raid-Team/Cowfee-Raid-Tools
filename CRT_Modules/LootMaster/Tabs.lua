@@ -162,10 +162,10 @@ function LM.ItemTabs(parent, opts)
                 local a = LM:TooltipAnchor()
                 if a.game then
                     CRT.UI.TooltipOwner(GameTooltip, icon, "ANCHOR_LEFT", nil, nil, CRT.UI.TOOLTIP_GAME)
-                elseif not a.point then
+                elseif not a.window then
                     CRT.UI.TooltipOwner(GameTooltip, icon, "ANCHOR_LEFT", nil, nil, "lootmaster")
                 else
-                    CRT.UI.TooltipOutside(GameTooltip, icon, opts.window or parent, a)
+                    CRT.UI.TooltipOutside(GameTooltip, icon, opts.window or parent, a.window, a.level)
                 end
                 pcall(GameTooltip.SetHyperlink, GameTooltip, it.itemString)
                 if it.award and opts.doubleClickHint then

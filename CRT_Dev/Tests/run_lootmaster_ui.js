@@ -52,7 +52,11 @@ CreateFrame = function(kind, name, parent, template)
     f.GetFontString = function(self) return self.label end
     f.GetObjectType = function() return "Button" end
   end
-  if template == "BasicFrameTemplateWithInset" then f.CloseButton = mock() end
+  if template == "BasicFrameTemplateWithInset" then
+    -- a window: not styled yet (UI:StyleWindow), and it knows its parent (UIParent for a window of its own)
+    f.CloseButton, f.crtArt = mock(), false
+    f.GetParent = function() return parent end
+  end
   return f
 end
 -- the game's font objects the title strip uses, and CRT's
@@ -339,6 +343,13 @@ for _, a in ipairs(LM.TOOLTIP_ANCHORS) do order[#order + 1] = a.key end
 eq(table.concat(order, ","), "area,left,right,bottomleft,bottomright,topleft,topright,topcenter,bottomcenter,game", "item tabs: Same as above, the eight sides in Alex's order, the game's spot")
 eq(LM.TOOLTIP_ANCHORS[1].label, "Same as above", "item tabs: the first choice's label")
 eq(LM.TOOLTIP_ANCHORS[#LM.TOOLTIP_ANCHORS].label, "Game's tooltip spot", "item tabs: the last choice's label")
+-- the sides name a spot's place outside the window (UI.TOOLTIP_SPOTS' window entries), never points of their own
+local spotKeys = {} for _, s in ipairs(UI.TOOLTIP_SPOTS) do spotKeys[s.key] = s.window ~= nil end
+for _, a in ipairs(LM.TOOLTIP_ANCHORS) do
+  if a.key ~= "area" and a.key ~= "game" then
+    check(spotKeys[a.window] == true and a.point == nil and a.rel == nil and a.dx == nil and a.dy == nil, "item tabs " .. a.key .. ": a spot's window place, written once (" .. tostring(a.window) .. ")")
+  end
+end
 local want = {
   left = { "TOPRIGHT", "TOPLEFT", -4 }, right = { "TOPLEFT", "TOPRIGHT", 4 },
   topleft = { "BOTTOMLEFT", "TOPLEFT", 0, 4 }, topcenter = { "BOTTOM", "TOP", 0, 4 }, topright = { "BOTTOMRIGHT", "TOPRIGHT", 0, 4 },
@@ -404,7 +415,7 @@ UI.TooltipOutside = function(...) outsideCalls[#outsideCalls + 1] = { ... } retu
 CRT.db.lootmaster.itemTooltip = "right"
 got = {}
 tb.frame.scripts.OnEnter(tb.frame)
-check(#outsideCalls == 1 and outsideCalls[1][2] == tb.frame and outsideCalls[1][3] == winFrame and outsideCalls[1][4] == LM.TOOLTIP_ANCHORS[3], "item tabs on Right: placed by UI.TooltipOutside, by the window")
+check(#outsideCalls == 1 and outsideCalls[1][2] == tb.frame and outsideCalls[1][3] == winFrame and outsideCalls[1][4] == "rightupper" and outsideCalls[1][5] == true, "item tabs on Right: placed by UI.TooltipOutside, by the window")
 check(got.pt and got.pt[1] == "TOPLEFT" and got.pt[2] == winFrame and got.pt[3] == "TOPRIGHT" and got.pt[4] == 4 and got.pt[5] == -100, "item tabs on Right: still beside the window's right edge, level with the icon")
 -- Same as above with a spot picked, the icon in a CRT window (the looter window): outside that window
 local lootWin = UI.AddWindow(mock())
