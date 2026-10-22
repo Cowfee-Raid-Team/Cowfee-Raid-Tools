@@ -7,10 +7,12 @@ const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
 const harness = themeLua(process.argv.slice(2)) + `
 local settingsSrc, pageSrc, parseSrc, renderSrc = ...
 local created = 0
+local allStrings = {} -- every font string, for where the headings sit
 local function mock()
   local m = { shown = false }
   return setmetatable(m, { __index = function(t, k)
-    if k == "CreateFontString" or k == "CreateTexture" then return function() created = created + 1 return mock() end end
+    if k == "CreateFontString" or k == "CreateTexture" then return function() created = created + 1 local s = mock() allStrings[#allStrings + 1] = s return s end end
+    if k == "SetPoint" then return function(self, ...) rawset(self, "pt", { ... }) end end
     if k == "SetText" then return function(self, s) self.text = s end end
     if k == "GetText" then return function(self) return rawget(self, "typed") end end
     if k == "SetEnabled" then return function(self, on) rawset(self, "enabled", on) end end
@@ -84,6 +86,22 @@ for _, f in ipairs(allFrames) do if f.kind == "CheckButton" then checks = checks
 -- 3 windows (Show, Locked) + Hide lines once passed + Show only me + the sharing switch
 assert(checks == 14, "checkboxes (13 settings, and Display my notes first on the Notes tab): " .. checks)
 print("ok alerts column keeps timing and voice")
+-- All note windows is the first section, at the top left; every other section starts under its check box
+local function at(text)
+  for _, s in ipairs(allStrings) do if rawget(s, "text") == text and rawget(s, "pt") then return s.pt end end
+end
+local function y(pt) return type(pt[3]) == "number" and pt[3] or pt[5] end
+local all = at("All note windows")
+assert(all and all[1] == "TOPLEFT" and all[2] == 8 and all[3] == -14, "All note windows: the first heading, at the top left")
+local outside
+for _, f in ipairs(allFrames) do if f.kind == "CheckButton" and rawget(f, "pt") and y(f.pt) == -34 then outside = f end end
+assert(outside and outside.pt[2] == 4, "Show outside of raid: right under its heading, as in every section")
+for _, heading in ipairs({ "Alerts", "Sharing", "Notes list" }) do
+  local pt = at(heading)
+  assert(pt and y(pt) <= -14 - 56, heading .. " starts under All note windows: " .. tostring(pt and y(pt)))
+end
+assert(y(at("Alerts")) == -70 and y(at("Sharing")) == -270 and y(at("Notes list")) == -326, "the fourth column keeps its row spacing, 56 lower")
+print("ok All note windows comes first")
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 lua.lua_pushstring(L, to_luastring(fs.readFileSync(process.argv[2], 'utf8')));

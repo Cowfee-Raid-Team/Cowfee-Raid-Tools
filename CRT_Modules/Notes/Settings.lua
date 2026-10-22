@@ -55,11 +55,15 @@ local TEXT = {
     chips = "Chips",
 }
 
--- Four columns across the page (UI.PAGE_W): the three note windows, COLUMN_W each, then Alerts and
--- Sharing in what is left. A slider row is 4 + labelWidth + 5 + width + its value (about 44).
+-- Four columns across the page (UI.PAGE_W), under All note windows: the three note windows, COLUMN_W
+-- each, then Alerts and Sharing in what is left. A slider row is 4 + labelWidth + 5 + width + its value
+-- (about 44).
 local COLUMN_W = math.floor((UI.PAGE_W - 16) / 4)
 local ALERTS_X = 8 + 3 * COLUMN_W + 10
 local ALERTS_W = UI.PAGE_W - 8 - ALERTS_X
+-- All note windows comes first, at the top left; the columns start ALL_H under it: its heading and
+-- its check box (20 apart, as in every section), then the 36 a section leaves before the next heading.
+local TOP, ALL_H = -14, 56
 local ICON_POSITIONS = {
     { key = "left", label = "Left" },
     { key = "right", label = "Right" },
@@ -234,9 +238,19 @@ end
 local function build(pf)
     page = pf
 
+    -- one switch for all three note windows
+    local allTitle = heading(pf, 8, TOP, TEXT.allWindows)
+    UI.HelpRight(allTitle, TEXT.allWindows, TEXT.allWindowsHelp)
+    makeCheck(pf, 4, TOP - 20, TEXT.showOutsideRaid, nil, function()
+        return Notes:ShowOutsideRaid()
+    end, function(value)
+        Notes:Set(nil, "showOutsideRaid", value)
+    end)
+    local top = TOP - ALL_H
+
     -- The three note windows.
     for index, def in ipairs(WINDOWS) do
-        buildColumn(pf, index, def, -14)
+        buildColumn(pf, index, def, top)
     end
 
     -- Alerts, then sharing under it, in the fourth column. The seconds row greys out while alerts are off,
@@ -248,7 +262,7 @@ local function build(pf)
     local function speechOn()
         return Notes:Alert().tts and true or false
     end
-    local top, x = -14, ALERTS_X
+    local x = ALERTS_X
     local LABEL, CONTROL = 116, 76 -- a slider row: 4 + LABEL + 5 + CONTROL + its value, inside ALERTS_W
     local alertsTitle = heading(pf, x, top, TEXT.alerts)
     UI.HelpRight(alertsTitle, TEXT.alerts, TEXT.alertsHelp)
@@ -291,15 +305,6 @@ local function build(pf)
     })
     styleRow:SetPoint("TOPLEFT", x, top - 278)
     controls[#controls + 1] = styleRow
-
-    -- one switch for all three note windows
-    local allTitle = heading(pf, x, top - 322, TEXT.allWindows)
-    UI.HelpRight(allTitle, TEXT.allWindows, TEXT.allWindowsHelp)
-    makeCheck(pf, x - 4, top - 342, TEXT.showOutsideRaid, nil, function()
-        return Notes:ShowOutsideRaid()
-    end, function(value)
-        Notes:Set(nil, "showOutsideRaid", value)
-    end)
 
     pf:SetScript("OnShow", refresh)
     Notes:OnChange(refresh)
