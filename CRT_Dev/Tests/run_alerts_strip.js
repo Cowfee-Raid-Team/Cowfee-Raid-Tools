@@ -4,7 +4,7 @@
 const fs = require('fs');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
-const harness = `
+const harness = require('./theme_stub')(process.argv.slice(2)) + `
 local dataSrc, dbSrc, refSrc, lanesSrc, rulesSrc, engineSrc, parseSrc, notesSrc, remSrc, savedSrc, viewSrc, regSrc, seasonSrc, nekSrc, panelSrc, cdSrc, controlsSrc, cdDataSrc, groupsSrc, draftSrc, rosterSrc, soundSrc = ...
 local buttons = 0
 local function mock(kind)
@@ -179,6 +179,7 @@ CRT.TimelineJournal = { ResolveID = function(_, k, r) if type(k) == "number" the
 CRT.db.alerts = { bars = {}, reminders = {}, phases = {}, overrides = {}, nextId = 1, saved = {}, nextSavedId = 1, starters = { healthstone = true, healthpotion = true, gate = true }, cooldownFilter = "mine" }
 -- CRT_Core/UI/Panel.lua loads first, as in the .toc (the popup helpers), then CRT_Core/UI/Controls.lua (UI.Dropdown)
 assert(load(panelSrc, "CRT_Core/UI/Panel.lua"))("CowfeeRaidTools", CRT)
+CRT_TOOLTIP(CRT) -- UI.TooltipOwner, the real CRT_Core/UI/Tooltip.lua
 assert(load(controlsSrc, "CRT_Core/UI/Controls.lua"))("CowfeeRaidTools", CRT)
 -- CRT_Modules/Groups/Data.lua loads early, as in the .toc (the Raid Groups layouts and the live roster)
 assert(load(groupsSrc, "CRT_Modules/Groups/Data.lua"))("CowfeeRaidTools", CRT)

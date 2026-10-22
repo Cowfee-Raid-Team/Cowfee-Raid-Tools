@@ -6,7 +6,7 @@ const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate();
 lualib.luaL_openlibs(L);
 const harness = `
-local panelSrc, windowSrc, tabsSrc, popupSrc, dataSrc, gearSrc = ...
+local panelSrc, windowSrc, tabsSrc, popupSrc, dataSrc, gearSrc, tooltipSrc = ...
 local fails, passes = 0, 0
 local function check(ok, what) if ok then passes = passes + 1 else fails = fails + 1 print("FAIL " .. what) end end
 local function eq(a, b, what) check(a == b, what .. " (got " .. tostring(a) .. ", want " .. tostring(b) .. ")") end
@@ -66,6 +66,7 @@ local CRT = { LootMaster = {}, db = { ui = { modern = true, layers = {} } } }
 CRT.PALETTE = { surface = { 0.165, 0.122, 0.098 }, border = { 0.30, 0.235, 0.188 }, accent = { 0.78, 0.56, 0.36 }, text = { 0.95, 0.90, 0.84 },
   background = { 0.11, 0.078, 0.063 }, label = { 0.87, 0.73, 0.56 }, titleTop = { 0.35, 0.25, 0.17 }, titleBottom = { 0.23, 0.17, 0.12 }, muted = { 0.8, 0.71, 0.6 } }
 assert(load(panelSrc, "Panel.lua"))("CowfeeRaidTools", CRT)
+assert(load(tooltipSrc, "Tooltip.lua"))("CowfeeRaidTools", CRT)
 assert(load(windowSrc, "Window.lua"))("CowfeeRaidTools", CRT)
 assert(load(gearSrc, "Gear.lua"))("CowfeeRaidTools", CRT) -- the gear engine, before any module, as in the .toc
 assert(load(dataSrc, "Data.lua"))("CowfeeRaidTools", CRT) -- first of Loot Master: it makes CRT.LootMaster
@@ -360,6 +361,13 @@ got = {}
 tb.frame.scripts.OnEnter(tb.frame)
 check(def and def[1] == GameTooltip and def[2] == tb.frame, "tooltip default: the game's own anchor")
 check(got.pt == nil and got.anchor == nil, "tooltip default: nothing placed by hand")
+-- an exception: the item tabs keep Loot Master's own setting, even on General Settings' game's tooltip spot
+CRT.db.lootmaster.tooltipAnchor = "left"
+CRT.db.ui.tooltipAnchor = "game"
+got, def = {}, nil
+tb.frame.scripts.OnEnter(tb.frame)
+check(def == nil and got.anchor == "ANCHOR_NONE" and got.pt and got.pt[1] == "TOPRIGHT" and got.pt[2] == winFrame, "tooltip exception: the item tabs stay where Loot Master's setting puts them")
+CRT.db.ui.tooltipAnchor = nil
 
 -- the gear icons: a tooltip by item ID with the item level, the real link on your own row, none when empty
 local tip = {}
@@ -399,6 +407,13 @@ check(tip.byID == nil, "gear tooltip: not by ID when the item string is known")
 eq(tip.lines, "Equipped at item level 610|", "gear tooltip: with the item level line")
 eq(tip.anchor, "ANCHOR_RIGHT", "gear tooltip: right of the icon")
 check(CRT.Gear.ShowTooltip ~= nil, "the gear engine shows it")
+-- Tooltip position, the game's tooltip spot: the gear button's tooltip opens there
+tip, def = {}, nil
+CRT.db.ui.tooltipAnchor = "game"
+gicon.hit.scripts.OnEnter(gicon.hit)
+check(def and def[1] == GameTooltip and def[2] == gicon.hit and tip.anchor == nil, "gear tooltip, the game's tooltip spot: GameTooltip_SetDefaultAnchor")
+eq(tip.link, FULL, "gear tooltip, the game's tooltip spot: the same item")
+CRT.db.ui.tooltipAnchor = nil
 tip = {}
 LM.SetGear(gicon, nil, nil)
 check(not gicon.shown and not gicon.hit.shown, "gear icon: an empty slot hides it")
@@ -410,5 +425,5 @@ if fails > 0 then error("failures") end
 `;
 const dir = process.argv[2];
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
-for (const f of ['CRT_Core/UI/Panel.lua', 'CRT_Core/UI/Window.lua', 'CRT_Modules/LootMaster/Tabs.lua', 'CRT_Modules/LootMaster/Popup.lua', 'CRT_Modules/LootMaster/Data.lua', 'CRT_Core/Gear.lua']) lua.lua_pushstring(L, to_luastring(fs.readFileSync(path.join(dir, f), 'utf8')));
-if (lua.lua_pcall(L, 6, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
+for (const f of ['CRT_Core/UI/Panel.lua', 'CRT_Core/UI/Window.lua', 'CRT_Modules/LootMaster/Tabs.lua', 'CRT_Modules/LootMaster/Popup.lua', 'CRT_Modules/LootMaster/Data.lua', 'CRT_Core/Gear.lua', 'CRT_Core/UI/Tooltip.lua']) lua.lua_pushstring(L, to_luastring(fs.readFileSync(path.join(dir, f), 'utf8')));
+if (lua.lua_pcall(L, 7, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }

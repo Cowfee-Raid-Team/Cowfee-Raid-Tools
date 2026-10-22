@@ -80,7 +80,7 @@ end
 
 local function showTooltip(self)
     local def = Consumables:Def(self.key)
-    GameTooltip:SetOwner(self, "ANCHOR_TOP")
+    CRT.UI.TooltipOwner(GameTooltip, self, "ANCHOR_TOP")
     if self.useItem then
         GameTooltip:SetText(self.useItem.name, 1, 1, 1)
         GameTooltip:AddLine("Click to use (" .. self.useItem.count .. " in your bags)", 0.6, 0.9, 0.6)

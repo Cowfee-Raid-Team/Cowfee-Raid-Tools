@@ -7,7 +7,7 @@
 const fs = require('fs');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
-const harness = `
+const harness = require('./theme_stub')(process.argv.slice(2)) + `
 local engineSrc, setSrc, dbSrc, displaySrc, regSrc, seasonSrc, bossSrc, tabSrc = ...
 local fails, passes = 0, 0
 local function check(ok, what) if ok then passes = passes + 1 print("ok " .. what) else fails = fails + 1 print("FAIL " .. what) end end
@@ -116,6 +116,7 @@ CRT.Bosses:Register({ encounterID = OTHER, name = "Other Boss", season = "midnig
 for _, f in ipairs(frames) do if rawget(f, "events").ADDON_LOADED and rawget(f, "OnEvent") then f.OnEvent(f, "ADDON_LOADED", "CowfeeRaidTools") end end
 check(CRT.MarkerDisplayDB.displays[3420] ~= nil, "the registry ships Sszorak's marker display")
 check(CRT.MarkerDisplayDB.help[OTHER] == "Stand on your marker.", "the registry ships a boss file's markerHelp")
+CRT_TOOLTIP(CRT) -- UI.TooltipOwner, the real CRT_Core/UI/Tooltip.lua
 assert(load(tabSrc, "CRT_Modules/Markers/MacrosTab.lua"))("CowfeeRaidTools", CRT)
 local Tab = CRT.MarkerMacrosTab
 local M = CRT.MarkerDisplay

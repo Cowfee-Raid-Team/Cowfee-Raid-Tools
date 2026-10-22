@@ -196,7 +196,7 @@ local function initRow(row, r)
             if not d or not ((d.note and d.note ~= "") or d.auto) then
                 return
             end
-            GameTooltip:SetOwner(self, "ANCHOR_CURSOR")
+            UI.TooltipOwner(GameTooltip, self, "ANCHOR_CURSOR", nil, nil, UI.TOOLTIP_KEEP) -- follows the cursor on purpose
             GameTooltip:SetText(Ambiguate(d.name, "short"), 1, 1, 1)
             if d.note and d.note ~= "" then
                 GameTooltip:AddLine(d.note, 0.85, 0.85, 0.85, true)

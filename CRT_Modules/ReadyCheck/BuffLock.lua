@@ -79,7 +79,7 @@ function BuffLock:Unlock()
 end
 
 local function showTooltip(self)
-    GameTooltip:SetOwner(self, "ANCHOR_TOP")
+    CRT.UI.TooltipOwner(GameTooltip, self, "ANCHOR_TOP")
     GameTooltip:SetText("Ready is locked", 1, 1, 1)
     for label, names in pairs(missing) do
         GameTooltip:AddLine("Missing your " .. label .. ": " .. table.concat(names, ", "), 1, 0.82, 0, true)

@@ -413,7 +413,7 @@ local function headerUpdate(self)
 end
 
 local function headerEnter(self)
-    GameTooltip:SetOwner(self, "ANCHOR_TOP")
+    CRT.UI.TooltipOwner(GameTooltip, self, "ANCHOR_TOP")
     GameTooltip:SetText(self.label, 1, 1, 1)
     GameTooltip:AddLine("Click to show or hide this column. Drag it left or right to move it.", 0.8, 0.8, 0.8, true)
     GameTooltip:Show()
@@ -453,7 +453,7 @@ function Table:Header(j)
             end
         end)
         h:SetScript("OnEnter", function(self)
-            GameTooltip:SetOwner(self, "ANCHOR_TOP")
+            CRT.UI.TooltipOwner(GameTooltip, self, "ANCHOR_TOP")
             GameTooltip:SetText(self.label, 1, 1, 1)
             if self.key == "durability" then
                 GameTooltip:AddLine("Shift-click to post who is under " .. DURABILITY_LOW .. "% durability to raid chat.", 0.8, 0.8, 0.8, true)
@@ -505,7 +505,7 @@ local function cellEnter(cell)
     if not info then
         return
     end
-    GameTooltip:SetOwner(cell, "ANCHOR_TOP")
+    CRT.UI.TooltipOwner(GameTooltip, cell, "ANCHOR_TOP")
     GameTooltip:SetText(info.player .. ": " .. info.label, 1, 1, 1)
     local c = info.cell
     if info.durability then

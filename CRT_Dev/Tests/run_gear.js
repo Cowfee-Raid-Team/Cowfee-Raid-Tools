@@ -6,7 +6,7 @@ const path = require('path');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate();
 lualib.luaL_openlibs(L);
-const harness = `
+const harness = require('./theme_stub')(process.argv.slice(2)) + `
 local gearSrc = ...
 local fails, passes = 0, 0
 local function check(ok, what) if ok then passes = passes + 1 else fails = fails + 1 print("FAIL " .. what) end end
@@ -34,7 +34,9 @@ C_Timer = { After = function(s, fn) timers[#timers + 1] = { s = s, fn = fn } end
 local function flush() local list = timers timers = {} for _, t in ipairs(list) do t.fn() end end
 local onEvent, registered = nil, {}
 CreateFrame = function() return { RegisterEvent = function(_, e) registered[e] = true end, SetScript = function(_, _, fn) onEvent = fn end } end
-local CRT = {}
+-- Gear.ShowTooltip places its tooltip with UI.TooltipOwner: a CRT.UI with only the real CRT_Core/UI/Tooltip.lua
+local CRT = { UI = {} }
+CRT_TOOLTIP(CRT)
 assert(load(gearSrc, "Gear.lua"))("CowfeeRaidTools", CRT)
 local Gear = CRT.Gear
 check(Gear ~= nil, "CRT.Gear exists")

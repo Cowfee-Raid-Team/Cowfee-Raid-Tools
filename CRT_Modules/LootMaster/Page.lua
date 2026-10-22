@@ -637,7 +637,7 @@ local function buildSync(f)
     button:SetScript("OnEnter", function(self)
         local why = LM:CanSync() and LM:SyncBlocked()
         if why then
-            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            UI.TooltipOwner(GameTooltip, self, "ANCHOR_RIGHT")
             GameTooltip:SetText(TEXT.sync)
             GameTooltip:AddLine(why, 1, 0.82, 0, true)
             GameTooltip:Show()

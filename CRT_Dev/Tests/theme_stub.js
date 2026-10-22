@@ -4,7 +4,8 @@
 // markers) onto UI: UI.Color, UI.Hex, UI.ColorText, UI.GoodText, UI.WarnText, UI.BadText, UI.HeadingText and UI.ThemedText. UI.Tint
 // and UI:OnTheme are small stand-ins with the same behaviour. UI.SwitchTheme(key) stands in for UI:SetTheme: it refills
 // CRT.PALETTE and repaints tinted parts, themed texts and the hooks, so a harness can check a module follows a live switch.
-// run_themes.js tests the real UI:SetTheme.
+// run_themes.js tests the real UI:SetTheme. The real CRT_Core/UI/Tooltip.lua is loaded onto UI too (UI.TooltipOwner), unless
+// the harness already has it; CRT_TOOLTIP(CRT, UI) loads only that, for a harness with no other CRT.UI.
 // Usage, in a harness: const themeLua = require('./theme_stub'); put themeLua(where) before the Lua source, then call
 // CRT_THEME(CRT, CRT.UI) before loading the module files. where is the addon folder, a file in it, or a list of files
 // (the harness's arguments): the folder holding CRT_Core/Themes.lua is found from them.
@@ -35,8 +36,14 @@ module.exports = function themeLua(where) {
   const root = findRoot(where);
   const src = fs.readFileSync(path.join(root, 'CRT_Core/Themes.lua'), 'utf8');
   const helpers = helperBlock(root);
-  for (const s of [src, helpers]) if (s.includes(']====]')) throw new Error('theme_stub: a source holds the long-string closer');
+  const tooltip = fs.readFileSync(path.join(root, 'CRT_Core/UI/Tooltip.lua'), 'utf8');
+  for (const s of [src, helpers, tooltip]) if (s.includes(']====]')) throw new Error('theme_stub: a source holds the long-string closer');
   return `
+-- CRT_TOOLTIP(CRT, UI): the real CRT_Core/UI/Tooltip.lua onto UI (by default CRT.UI); it reads CRT.db when a tooltip opens
+function CRT_TOOLTIP(CRT, UI)
+  UI = UI or CRT.UI
+  assert(load([====[${tooltip}]====], "CRT_Core/UI/Tooltip.lua"))("CowfeeRaidTools", setmetatable({ UI = UI }, { __index = CRT }))
+end
 function CRT_THEME(CRT, UI)
   UI = UI or {} -- a harness with no CRT.UI yet takes the palette only
   local own = CRT.PALETTE
@@ -68,6 +75,10 @@ function CRT_THEME(CRT, UI)
     for region, list in pairs(tinted) do for method, t in pairs(list) do paint(region, method, t) end end
     for fs, build in pairs(themedTexts) do fs:SetText(build()) end
     for _, fn in ipairs(hooks) do fn() end
+  end
+  -- the real CRT_Core/UI/Tooltip.lua (UI.TooltipOwner) onto UI, reading CRT.db when a tooltip opens
+  if not UI.TooltipOwner then
+    CRT_TOOLTIP(CRT, UI)
   end
   -- UI.HelpRight over the harness's own UI.Help stand-in: the icon keeps its target (helpTarget) and
   -- sits HELP_GAP right of it. The real placement (a font string's text edge, a check box's label) is

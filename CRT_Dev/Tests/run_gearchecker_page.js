@@ -13,7 +13,7 @@ const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate();
 lualib.luaL_openlibs(L);
 const harness = `
-local themesSrc, panelSrc, controlsSrc, windowSrc, scrollSrc, gearSrc, dataSrc, inspectSrc, commSrc, pageSrc = ...
+local themesSrc, panelSrc, controlsSrc, windowSrc, scrollSrc, gearSrc, dataSrc, inspectSrc, commSrc, pageSrc, tooltipSrc = ...
 unpack = unpack or table.unpack -- the harness runs Lua 5.3
 local fails, passes = 0, 0
 local function check(ok, what) if ok then passes = passes + 1 else fails = fails + 1 print("FAIL " .. what) end end
@@ -187,7 +187,7 @@ IsShiftKeyDown = function() return shift end
 local CRT = { db = { ui = { modern = false, layers = {}, theme = "blizzard" }, window = { scale = 100 }, gearChecker = { filter = "all", popout = {} } } }
 function CRT:ApplyFonts() end
 function CRT:Print() end
-for _, src in ipairs({ themesSrc, panelSrc, controlsSrc, windowSrc, scrollSrc, gearSrc, dataSrc, inspectSrc, commSrc, pageSrc }) do
+for _, src in ipairs({ themesSrc, panelSrc, tooltipSrc, controlsSrc, windowSrc, scrollSrc, gearSrc, dataSrc, inspectSrc, commSrc, pageSrc }) do
   assert(load(src))("CowfeeRaidTools", CRT)
 end
 local UI, GC, Gear = CRT.UI, CRT.GearChecker, CRT.Gear
@@ -377,6 +377,21 @@ ring = cell(quick, 11)
 ring.scripts.OnEnter(ring)
 eq(tip.link, "item:111:7364:213746", "hover: the exact item")
 check(tip.lines[2] == "missing gem", "hover: what is missing")
+-- Tooltip position: a cell's tooltip is right of the cell, or on the game's tooltip spot when picked
+do
+  local realOwner, owned, spot = GameTooltip.SetOwner, nil, nil
+  GameTooltip.SetOwner = function(self, o, a) owned = { o, a } realOwner(self, o, a) end
+  GameTooltip_SetDefaultAnchor = function(t, o) spot = { t, o } t:SetOwner(o, "ANCHOR_NONE") end
+  ring.scripts.OnEnter(ring)
+  check(spot == nil and owned[1] == ring and owned[2] == "ANCHOR_RIGHT", "cell tooltip, next to what you hover: right of the cell")
+  CRT.db.ui.tooltipAnchor = "game"
+  owned = nil
+  ring.scripts.OnEnter(ring)
+  check(spot and spot[1] == GameTooltip and spot[2] == ring and owned[2] == "ANCHOR_NONE", "cell tooltip, the game's tooltip spot: GameTooltip_SetDefaultAnchor")
+  eq(tip.link, "item:111:7364:213746", "cell tooltip, the game's tooltip spot: the same item")
+  CRT.db.ui.tooltipAnchor = nil
+  GameTooltip.SetOwner, GameTooltip_SetDefaultAnchor = realOwner, nil
+end
 shift = true
 ring.scripts.OnClick(ring, "LeftButton")
 eq(chat.opened[1], "[Quick] Finger |cffa335ee|Hitem:111:7364:213746|h[Band]|h|r 289 - missing gem", "shift-click: the line in a new chat box")
@@ -704,6 +719,6 @@ const dir = process.argv[2];
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 const files = ['CRT_Core/Themes.lua', 'CRT_Core/UI/Panel.lua', 'CRT_Core/UI/Controls.lua', 'CRT_Core/UI/Window.lua', 'CRT_Core/UI/ScrollBar.lua',
   'CRT_Core/Gear.lua', 'CRT_Modules/GearChecker/Data.lua', 'CRT_Modules/GearChecker/Inspect.lua', 'CRT_Modules/GearChecker/Comm.lua',
-  'CRT_Modules/GearChecker/Page.lua'];
+  'CRT_Modules/GearChecker/Page.lua', 'CRT_Core/UI/Tooltip.lua'];
 for (const f of files) lua.lua_pushstring(L, to_luastring(fs.readFileSync(path.join(dir, f), 'utf8')));
 if (lua.lua_pcall(L, files.length, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }

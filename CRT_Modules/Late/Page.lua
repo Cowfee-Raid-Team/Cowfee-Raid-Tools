@@ -56,7 +56,7 @@ end
 
 local function tooltip(frame, title, body)
     frame:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        UI.TooltipOwner(GameTooltip, self, "ANCHOR_TOP")
         GameTooltip:SetText(title, 1, 1, 1)
         GameTooltip:AddLine(body, 0.8, 0.8, 0.8, true)
         GameTooltip:Show()
@@ -1022,7 +1022,7 @@ local function buildTonight(f)
     end
     inviteAllButton:SetScript("OnEnter", function(self)
         local ok, why = CRT.Invite.CanInvite()
-        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        UI.TooltipOwner(GameTooltip, self, "ANCHOR_TOP")
         GameTooltip:SetText(self:GetText(), 1, 1, 1)
         GameTooltip:AddLine(ok and INVITE_TEXT.allBody or why, 0.8, 0.8, 0.8, true)
         GameTooltip:Show()
@@ -1055,7 +1055,7 @@ local function buildTonight(f)
             if not p or (p.idle and not canInvite) then
                 return
             end
-            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            UI.TooltipOwner(GameTooltip, self, "ANCHOR_RIGHT")
             GameTooltip:SetText(Groups.ReportName(p.key), 1, 1, 1)
             if p.joinedAt then
                 GameTooltip:AddLine("In the group since " .. clock(p.joinedAt) .. ".", 0.8, 0.8, 0.8, true)

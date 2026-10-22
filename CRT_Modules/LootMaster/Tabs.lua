@@ -152,16 +152,17 @@ function LM.ItemTabs(parent, opts)
                 t:GetScript("OnDoubleClick")(t, button)
             end)
         end
-        -- the tooltip opens where the Settings tab says (left of the window, level with the icon, at first)
+        -- the tooltip opens where the Settings tab says (left of the window, level with the icon, at first),
+        -- whatever General Settings' Tooltip position says (an exception in UI/Tooltip.lua)
         t.frame:SetScript("OnEnter", function(icon)
             local it = self.items and self.items[t.index]
             if it then
                 local win = opts.window or parent
                 local a = LM:TooltipAnchor()
                 if not a.point then
-                    GameTooltip_SetDefaultAnchor(GameTooltip, icon) -- sets the owner itself
+                    CRT.UI.TooltipOwner(GameTooltip, icon, "ANCHOR_RIGHT", nil, nil, CRT.UI.TOOLTIP_GAME)
                 else
-                    GameTooltip:SetOwner(icon, "ANCHOR_NONE")
+                    CRT.UI.TooltipOwner(GameTooltip, icon, "ANCHOR_NONE", nil, nil, CRT.UI.TOOLTIP_KEEP)
                     local dy = a.dy
                     if a.level then
                         local top, winTop = icon:GetTop(), win:GetTop()
