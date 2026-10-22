@@ -14,7 +14,7 @@ const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate();
 lualib.luaL_openlibs(L);
 const harness = themeLua(process.argv.slice(2)) + `
-local dataSrc, commSrc, gateSrc, lootingSrc, bossSrc, endSrc, winSrc, testSrc, addSrc, pageSrc, windowSrc = ...
+local dataSrc, commSrc, gateSrc, lootingSrc, bossSrc, endSrc, winSrc, testSrc, addSrc, pageSrc, windowSrc, tradeSrc = ...
 local fails, passes = 0, 0
 local function check(ok, what) if ok then passes = passes + 1 else fails = fails + 1 print("FAIL " .. what) end end
 local function eq(a, b, what) check(a == b, what .. " (got " .. tostring(a) .. ", want " .. tostring(b) .. ")") end
@@ -44,10 +44,10 @@ INVTYPE_HEAD = "Head"
 NUM_BAG_SLOTS = 4
 local NAMES = { [201] = "Helm", [202] = "Gloves", [203] = "Ring", [204] = "Cloak", [205] = "Belt", [206] = "Boots",
   [301] = "Bag Helm", [302] = "Bag Ring", [303] = "Old Sword", [304] = "Equipped Cloak", [305] = "Plain Bracers", [306] = "Bank Boots",
-  [307] = "Potion", [308] = "Tier Token", [309] = "Trinket", [310] = "Ore" }
+  [307] = "Potion", [308] = "Tier Token", [309] = "Trinket", [310] = "Ore", [311] = "Flask", [312] = "Bound Phial", [313] = "Toy" }
 -- C_Item.GetItemInfoInstant's equipLoc and classID: gear unless listed here
-local KIND = { [307] = { "", 0 }, [308] = { "", 15 }, [310] = { "", 7 } }
-local BIND = { [303] = 1, [304] = 2 } -- bind on pickup, bind on equip
+local KIND = { [307] = { "", 0 }, [308] = { "", 15 }, [310] = { "", 7 }, [311] = { "", 0 }, [312] = { "", 0 }, [313] = { "", 15 } }
+local BIND = { [303] = 1, [304] = 2, [312] = 0 } -- bind on pickup, bind on equip, no bind type (soulbound by a quest)
 local function link(id, name) return "|cffa335ee|Hitem:" .. id .. "::::::::80:::::|h[" .. (name or NAMES[id]) .. "]|h|r" end
 local function idOf(s) return tonumber(tostring(s or ""):match("item:(%d+)")) end
 C_Item = {
@@ -137,6 +137,8 @@ local function mock()
       SetSize = function(self, w, h) self.w, self.h = w, h end,
       SetPoint = function(self, ...) self.point = { ... } end,
       SetWidth = function(self, v) self.width = v end,
+      SetWordWrap = function(self, v) self.wrap = v end,
+      SetJustifyH = function(self, v) self.justify = v end,
       CreateTexture = function() return mock() end,
       CreateFontString = function() local fsx = mock() texts[#texts + 1] = fsx return fsx end,
       GetStringWidth = function(self) return #(self.text or "") * 6 end,
@@ -198,7 +200,8 @@ assert(load(bossSrc, "BossLoot.lua"))("CowfeeRaidTools", CRT)
 assert(load(endSrc, "EndAll.lua"))("CowfeeRaidTools", CRT)
 assert(load(winSrc, "BossLootWindow.lua"))("CowfeeRaidTools", CRT)
 -- the loot filter (Filter.lua isn't loaded): everything passes but a Belt and the Plain Bracers
-function LM:FilterLoot(s, source, link) if link:find("Belt", 1, true) or link:find("Bracers", 1, true) then return false, "quality" end return true end
+local filtered = {} -- the items the loot filter was asked about
+function LM:FilterLoot(s, source, link) filtered[#filtered + 1] = link if link:find("Belt", 1, true) or link:find("Bracers", 1, true) then return false, "quality" end return true end
 LM.Filter = function() return {} end
 LM.ItemFacts = function(s) return { isToken = idOf(s) == 308 } end -- a tier token: a Miscellaneous item with a Classes line
 LM.PassesFilter = function() return true end
@@ -223,7 +226,20 @@ local okBuild, err = pcall(pageBuild, pf)
 check(okBuild, "the page builds: " .. tostring(err))
 check(slot ~= nil, "Tonight: the Add item slot is built")
 local function lastText(pattern) for i = #texts, 1, -1 do local t = texts[i].text if type(t) == "string" and t:find(pattern, 1, true) then return t end end return nil end
-check(lastText("Add item: drag an item from your bags here, or shift-click it in your bags while this is open. Only items you can still trade.") ~= nil, "Tonight: the Add item line")
+local addLabel
+for i = #texts, 1, -1 do if texts[i].text == "Add item: drag an item from your bags here, or shift-click it." then addLabel = texts[i] break end end
+check(addLabel ~= nil, "Tonight: the Add item line")
+-- the line and the status line under it never overlap (the screenshot: the long line wrapped onto the status)
+check(addLabel and addLabel.wrap == false, "the Add item line is one line, never wrapped")
+check(addLabel and addLabel.width and addLabel.width > #addLabel.text * 6, "the Add item line fits its width (" .. tostring(addLabel and addLabel.width) .. ")")
+local addHelp = helps["Add item"]
+check(addHelp and addHelp:find("Any item you can still trade", 1, true) ~= nil, "the detail is in the (?): any tradeable item")
+check(addHelp and addHelp:find("one copy", 1, true) ~= nil and addHelp:find("split", 1, true) ~= nil, "the (?) says a stack adds one copy, and shift-click on a stack is the game's split")
+local statusLine
+for _, t in ipairs(texts) do if t.point and t.point[2] == addLabel then statusLine = t end end
+check(statusLine ~= nil and statusLine.point[1] == "TOPLEFT" and statusLine.point[3] == "BOTTOMLEFT" and statusLine.point[5] < 0,
+  "the status line is anchored under the Add item line's real bottom")
+check(statusLine and statusLine.wrap == false, "the status line is one line too")
 eq(slot and slot.w, 36, "the slot is 36 px")
 check(slot and type(slot.scripts.OnReceiveDrag) == "function", "the slot takes a drag")
 check(slot and type(slot.scripts.OnMouseUp) == "function", "the slot takes a click with an item on the cursor")
@@ -425,6 +441,10 @@ eq(plain.expires, NOW + LM.TRADE_SECONDS, "not bound: its own end, 2 hours after
 eq(BL.TradeLeft(plain), nil, "not bound: no time left to show")
 check(LM.BossLootDetail(plain):find("Not bound: leaves in 2h 00m", 1, true) ~= nil, "not bound: its own wording (" .. LM.BossLootDetail(plain) .. ")")
 eq(plain.ticked, true, "an item outside the loot filter from your bags is still ticked")
+eq(plain.pass, true, "an item from your bags is the leader's own choice: kept out of the loot filter")
+local askedFilter = false
+for _, l in ipairs(filtered) do if l == link(305) then askedFilter = true end end
+eq(askedFilter, false, "an item from your bags: the loot filter isn't asked (no skip, no chat line)")
 local keptPlain
 for _, c in ipairs(CRTDBChar.lootmaster.bossLootList.rows) do if c.untimed then keptPlain = c end end
 check(keptPlain ~= nil and keptPlain.endsAt == CLOCK + LM.TRADE_SECONDS, "not bound: kept for a /reload with its end")
@@ -483,20 +503,58 @@ NOW = NOW + 601
 runTimers()
 eq(#BL:Rows(), 0, "load: the unbound row leaves at its end")
 eq(CRTDBChar.lootmaster.bossLootList, nil, "load: nothing kept after it left")
--- what goes in: gear and tier tokens only
+-- what goes in: any item you can still trade, gear or not
+put(0, 12, 311, false, nil, nil, 3) -- a stack of 3 flasks
+put(0, 13, 312, true, nil) -- a soulbound phial: no trade time line
+put(0, 14, 313, false, nil) -- a toy
 pickUp(0, 8)
 slot.scripts.OnReceiveDrag(slot)
 eq(#BL:Rows(), 1, "a tier token: added")
+local function countOf(id) local n = 0 for _, row in ipairs(BL:Rows()) do if idOf(row.itemString) == id then n = n + 1 end end return n end
+-- a flask from a stack of 3: one row per drag, up to the 3 you have
+filtered = {}
+for i = 1, 3 do
+  pickUp(0, 12)
+  slot.scripts.OnReceiveDrag(slot)
+  eq(countOf(311), i, "a flask stack: drag " .. i .. " adds one row")
+  check(status():find("Added " .. link(311), 1, true) ~= nil, "a flask stack: drag " .. i .. " says added (" .. status() .. ")")
+  eq(cursor, nil, "a flask stack: the stack goes back to its slot " .. i)
+end
+pickUp(0, 12)
+slot.scripts.OnReceiveDrag(slot)
+eq(countOf(311), 3, "a flask stack: never more rows than the 3 you have")
+check(status():find("it's already in the list", 1, true) ~= nil, "a flask stack: the 4th drag is refused (" .. status() .. ")")
+local flask = BL:Rows()[2]
+eq(flask and flask.untimed, true, "a flask that isn't bound: no trade time")
+eq(flask and flask.ticked, true, "a flask: ticked")
+eq(flask and flask.pass, true, "a flask: not held to the loot filter")
+eq(#filtered, 0, "items from your bags never go through the loot filter")
+-- a potion: a stack of 5 and one alone, 6 in all, each drag one copy
 pickUp(0, 10)
 slot.scripts.OnReceiveDrag(slot)
-eq(#BL:Rows(), 1, "a potion: refused")
-check(status():find("only gear and tier tokens can be added", 1, true) ~= nil, "a potion: the reason (" .. status() .. ")")
-pickUp(0, 11)
-slot.scripts.OnReceiveDrag(slot)
-eq(#BL:Rows(), 1, "a crafting material: refused")
+eq(countOf(307), 1, "a single potion: added")
+for i = 1, 5 do
+  pickUp(0, 7)
+  slot.scripts.OnReceiveDrag(slot)
+end
+eq(countOf(307), 6, "a potion stack: one row per drag, 6 for the 6 you have")
 pickUp(0, 7)
 slot.scripts.OnReceiveDrag(slot)
-eq(#BL:Rows(), 1, "a stack: refused")
+eq(countOf(307), 6, "a potion stack: the 7th drag is refused")
+check(status():find("it's already in the list", 1, true) ~= nil, "a potion stack: the reason (" .. status() .. ")")
+-- a crafting material and a toy go in too
+pickUp(0, 11)
+slot.scripts.OnReceiveDrag(slot)
+eq(countOf(310), 1, "a crafting material: added")
+pickUp(0, 14)
+slot.scripts.OnReceiveDrag(slot)
+eq(countOf(313), 1, "a toy: added")
+-- a bound consumable you can't trade is still refused
+pickUp(0, 13)
+slot.scripts.OnReceiveDrag(slot)
+eq(countOf(312), 0, "a soulbound phial: refused")
+check(status():find("it's soulbound", 1, true) ~= nil, "a soulbound phial: the reason (" .. status() .. ")")
+check(not status():find("gear", 1, true), "no word of gear only")
 BL:Clear()
 pickUp(0, 5)
 slot.scripts.OnMouseUp(slot)
@@ -542,18 +600,21 @@ eq(#BL:Rows(), 2, "shift-click in the bank: not added")
 eq(status(), before, "shift-click in the bank: the status line stays as it was")
 HandleModifiedItemClick(link(302), nil)
 eq(#BL:Rows(), 2, "a modified click on a link with no bag slot (chat, loot): nothing")
--- a stack: left to the game's split, and the line says why
+-- a stack: left to the game's split, with no error (the (?) says to drag a stack)
 original = 0
+before = status()
 shiftClick(0, 7)
 eq(original, 1, "shift-click on a stack: the game's click (its split) still runs")
 eq(#BL:Rows(), 2, "shift-click on a stack: nothing added")
-check(status():find("only gear and tier tokens can be added", 1, true) ~= nil, "shift-click on a stack: the line says why (" .. status() .. ")")
+eq(status(), before, "shift-click on a stack: no error on the status line")
 slot.shown = false
-pickUp(0, 2) ClearCursor() -- nothing changes the line while hidden
-before = status()
 shiftClick(0, 7)
 eq(status(), before, "shift-click on a stack with Tonight hidden: no word")
 slot.shown = true
+-- a single consumable shift-clicks in like gear
+shiftClick(0, 10)
+eq(#BL:Rows(), 3, "shift-click on one potion: added")
+BL.rows[3] = nil
 -- a failing hook body is reported, and the game's click still works
 local realShift, reported = LM.BagShiftClick, {}
 LM.BagShiftClick = function() error("boom") end
@@ -583,6 +644,43 @@ LM:AskEnd()
 popup.callback()
 eq(LM.current, nil, "End all: the real session ends")
 
+-- a flask stack in a session: each row is one copy, and the trade gives one copy (the game's split of 1)
+assert(load(tradeSrc, "Trade.lua"))("CowfeeRaidTools", CRT)
+local tradeEvents
+for _, f in ipairs(frames) do if f.events and f.events.TRADE_SHOW then tradeEvents = f end end
+local picked, split, clicked = {}, {}, {}
+C_Container.PickupContainerItem = function(bag, s) picked[#picked + 1] = bag .. ":" .. s end
+C_Container.SplitContainerItem = function(bag, s, n) split[#split + 1] = bag .. ":" .. s .. "x" .. n end
+InitiateTrade = function() end
+GetTradePlayerItemLink = function() return nil end
+ClickTradeButton = function(i) clicked[#clicked + 1] = i end
+GetUnitName = function() return "Other-Sargeras" end
+local realUnitOf = LM.UnitOf
+LM.UnitOf = function() return "raid2" end
+BL:Clear()
+pickUp(0, 12) slot.scripts.OnReceiveDrag(slot)
+pickUp(0, 12) slot.scripts.OnReceiveDrag(slot)
+pickUp(0, 5) slot.scripts.OnMouseUp(slot)
+eq(BL:Start(), 3, "Start session: two flasks and the bracers")
+local items = LM.current and LM.current.items or {}
+eq(#items, 3, "the session: one item per row")
+eq(idOf(items[1] and items[1].itemString), 311, "the session: the first flask")
+eq(idOf(items[2] and items[2].itemString), 311, "the session: the second flask, its own item")
+LM:Award(1, "Other-Sargeras", LM.current.responses[1].key)
+LM:TradeItem(1)
+tradeEvents.scripts.OnEvent(tradeEvents, "TRADE_SHOW")
+eq(split[1], "0:12x1", "the trade: one flask split off the stack")
+eq(#picked, 0, "the trade: never the whole stack")
+eq(clicked[1], 1, "the trade: into the first free slot")
+LM:Award(3, "Other-Sargeras", LM.current.responses[1].key)
+LM:TradeItem(3)
+tradeEvents.scripts.OnEvent(tradeEvents, "TRADE_SHOW")
+eq(picked[1], "0:5", "the trade: a single item is picked up as it is")
+eq(#split, 1, "the trade: no split for a single item")
+LM.UnitOf = realUnitOf
+LM:AskEnd()
+if popup then popup.callback() end
+
 print(string.format("%d passed, %d failed", passes, fails))
 if fails > 0 then error("failures") end
 `;
@@ -591,7 +689,7 @@ if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.
 const files = ['CRT_Modules/LootMaster/Data.lua', 'CRT_Modules/LootMaster/Comm.lua', 'CRT_Modules/LootMaster/AutoPass.lua',
   'CRT_Modules/LootMaster/Looting.lua', 'CRT_Modules/LootMaster/BossLoot.lua', 'CRT_Modules/LootMaster/EndAll.lua',
   'CRT_Modules/LootMaster/BossLootWindow.lua', 'CRT_Modules/LootMaster/Test.lua', 'CRT_Modules/LootMaster/AddItem.lua',
-  'CRT_Modules/LootMaster/Page.lua', 'CRT_Modules/LootMaster/Window.lua'];
+  'CRT_Modules/LootMaster/Page.lua', 'CRT_Modules/LootMaster/Window.lua', 'CRT_Modules/LootMaster/Trade.lua'];
 for (const f of files) {
   const p = path.join(dir, f);
   lua.lua_pushstring(L, to_luastring(fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : 'error("missing ' + f + '")'));
