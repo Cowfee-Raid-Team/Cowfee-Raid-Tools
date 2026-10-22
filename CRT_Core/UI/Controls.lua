@@ -690,6 +690,136 @@ function UI.Slider(parent, text, opts)
     return row
 end
 
+-- A spot picker: a box standing for something (what you hover, a window) with twelve small square spots
+-- around it, three on each side, as in UI.TOOLTIP_SPOTS (UI/Tooltip.lua). The chosen spot is filled with
+-- the theme's accent (the game's gold in Default: Blizzard); the others are dark squares that light up
+-- under the mouse, and each names itself in a tooltip. opts:
+--   get()        the chosen spot's key (nil for none)
+--   set(key)     called when a spot is clicked
+--   label        the text in the box, such as "What you hover"
+--   spots        optional: the keys to show (the rest are hidden); all twelve by default
+--   enabledIf()  optional: greys the picker while it returns false. A greyed picker still takes a click,
+--                since picking a spot is how the setting that owns it turns spots on
+--   area         optional: the tooltip area its own tooltips follow (UI.TooltipOwner)
+-- The picker is UI.SPOT_PICKER_W x UI.SPOT_PICKER_H. Returns the frame, with picker.refresh() and
+-- picker.spots[key] (each spot's button).
+local SPOT_SIZE, SPOT_PAD = 10, 3 -- a spot, and the gap between the spots and the box
+local SPOT_BOX_W, SPOT_BOX_H = 96, 34
+UI.SPOT_PICKER_W = SPOT_BOX_W + 2 * (SPOT_SIZE + SPOT_PAD)
+UI.SPOT_PICKER_H = SPOT_BOX_H + 2 * (SPOT_SIZE + SPOT_PAD)
+UI.SPOT_PICKER_GAP = 12 -- from a control beside it
+
+-- Each spot's top left corner in the picker: the top and bottom rows at the corners and the middle, the
+-- sides' three spots along the box's height (the upper one level with its top, the lower with its bottom).
+local function spotPlaces()
+    local W, H, S = UI.SPOT_PICKER_W, UI.SPOT_PICKER_H, SPOT_SIZE
+    local top, mid = SPOT_SIZE + SPOT_PAD, (W - S) / 2
+    local sideY = { upper = -top, middle = -(H - S) / 2, lower = -(H - top - S) }
+    return {
+        topleft = { 0, 0 }, top = { mid, 0 }, topright = { W - S, 0 },
+        leftupper = { 0, sideY.upper }, left = { 0, sideY.middle }, leftlower = { 0, sideY.lower },
+        rightupper = { W - S, sideY.upper }, right = { W - S, sideY.middle }, rightlower = { W - S, sideY.lower },
+        bottomleft = { 0, -(H - S) }, bottom = { mid, -(H - S) }, bottomright = { W - S, -(H - S) },
+    }
+end
+
+-- The picker's colours, from the theme each time it is drawn: the chosen spot in the accent (heading, the
+-- game's gold, in Classic), the others and the box dark with an edge.
+local function paintSpotPicker(p)
+    local P = CRT.PALETTE
+    local on = p.enabled
+    local chosen = p.opts.get()
+    local pick = UI:IsModern() and P.accent or P.heading
+    for key, b in pairs(p.spots) do
+        local fill = key == chosen and pick or P.surface
+        b.fill:SetColorTexture(fill[1], fill[2], fill[3], 1)
+        b.edge:SetColorTexture(P.border[1], P.border[2], P.border[3], 1)
+    end
+    p.boxEdge:SetColorTexture(P.border[1], P.border[2], P.border[3], 1)
+    p.boxFill:SetColorTexture(P.background[1], P.background[2], P.background[3], 0.6)
+    if on then
+        p.text:SetTextColor(P.text[1], P.text[2], P.text[3])
+    else
+        p.text:SetTextColor(0.5, 0.5, 0.5)
+    end
+    p:SetAlpha(on and 1 or 0.5)
+end
+
+-- A dark square with a 1 px edge: edge under, fill inset over it.
+local function edgedSquare(f)
+    local edge = f:CreateTexture(nil, "BACKGROUND")
+    edge:SetAllPoints()
+    local fill = f:CreateTexture(nil, "ARTWORK")
+    fill:SetPoint("TOPLEFT", 1, -1)
+    fill:SetPoint("BOTTOMRIGHT", -1, 1)
+    return edge, fill
+end
+
+function UI.SpotPicker(parent, opts)
+    local p = CreateFrame("Frame", nil, parent)
+    p:SetSize(UI.SPOT_PICKER_W, UI.SPOT_PICKER_H)
+    p.opts, p.spots, p.enabled = opts, {}, true
+    local box = CreateFrame("Frame", nil, p)
+    box:SetSize(SPOT_BOX_W, SPOT_BOX_H)
+    box:SetPoint("TOPLEFT", SPOT_SIZE + SPOT_PAD, -(SPOT_SIZE + SPOT_PAD))
+    p.box = box
+    p.boxEdge, p.boxFill = edgedSquare(box)
+    p.text = box:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    p.text:SetPoint("CENTER")
+    p.text:SetWidth(SPOT_BOX_W - 6)
+    p.text:SetJustifyH("CENTER")
+    p.text:SetText(opts.label or "")
+
+    local shown
+    if opts.spots then
+        shown = {}
+        for _, key in ipairs(opts.spots) do
+            shown[key] = true
+        end
+    end
+    local places = spotPlaces()
+    for _, s in ipairs(UI.TOOLTIP_SPOTS or {}) do
+        local b = CreateFrame("Button", nil, p)
+        b:SetSize(SPOT_SIZE, SPOT_SIZE)
+        b:SetPoint("TOPLEFT", places[s.key][1], places[s.key][2])
+        b.key, b.label = s.key, s.label
+        b.edge, b.fill = edgedSquare(b)
+        local hl = b:CreateTexture(nil, "HIGHLIGHT")
+        hl:SetPoint("TOPLEFT", 1, -1)
+        hl:SetPoint("BOTTOMRIGHT", -1, 1)
+        hl:SetColorTexture(1, 1, 1, 0.35)
+        b.highlight = hl
+        b:SetScript("OnClick", function()
+            opts.set(s.key)
+            p.refresh()
+        end)
+        b:SetScript("OnEnter", function(self)
+            UI.TooltipOwner(GameTooltip, self, "ANCHOR_RIGHT", nil, nil, opts.area)
+            GameTooltip:SetText(s.label, 1, 1, 1)
+            GameTooltip:Show()
+        end)
+        b:SetScript("OnLeave", function()
+            GameTooltip:Hide()
+        end)
+        b:SetShown(not shown or shown[s.key] == true)
+        p.spots[s.key] = b
+    end
+
+    p.refresh = function()
+        p.enabled = not opts.enabledIf or (opts.enabledIf() and true or false)
+        paintSpotPicker(p)
+    end
+    -- a look or theme switch repaints it (UI:ApplyStyle runs every crtSkin)
+    p.crtSkin = function()
+        paintSpotPicker(p)
+    end
+    if UI.skinned then
+        UI.skinned[#UI.skinned + 1] = p
+    end
+    p.refresh()
+    return p
+end
+
 -- Text that must stay inside a box it doesn't wrap in, such as a name in a Raid Groups slot.
 -- UI.ClipText(parent, font) makes a clipping frame and a one-line font string inside it; anchor the
 -- frame (frame.clip) where the text goes. UI.FitText(fs) then fits the text: up to FIT_STEPS points

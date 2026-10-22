@@ -153,8 +153,8 @@ function LM.ItemTabs(parent, opts)
             end)
         end
         -- the tooltip opens where the Settings tab's Item tabs says: by default like every Loot Master tooltip
-        -- (next to the icon, on the window's outer side, unless its Tooltip position says otherwise); a side
-        -- of the window or the game's spot whatever the Tooltip positions say (the flags in UI/Tooltip.lua)
+        -- (Loot Master's Tooltip position, on the spot picked for it or General Settings'); a side of the
+        -- window or the game's spot whatever the Tooltip positions say (the flags in UI/Tooltip.lua)
         t.frame:SetScript("OnEnter", function(icon)
             local it = self.items and self.items[t.index]
             if it then

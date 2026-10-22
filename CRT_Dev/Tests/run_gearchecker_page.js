@@ -384,12 +384,12 @@ do
   GameTooltip_SetDefaultAnchor = function(t, o) spot = { t, o } t:SetOwner(o, "ANCHOR_NONE") end
   ring.scripts.OnEnter(ring)
   check(spot == nil and owned[1] == ring and owned[2] == "ANCHOR_RIGHT", "cell tooltip, next to what you hover: right of the cell")
-  CRT.db.ui.tooltipAnchor = "game"
+  CRT.db.ui.tooltipMode = "game"
   owned = nil
   ring.scripts.OnEnter(ring)
   check(spot and spot[1] == GameTooltip and spot[2] == ring and owned[2] == "ANCHOR_NONE", "cell tooltip, the game's tooltip spot: GameTooltip_SetDefaultAnchor")
   eq(tip.link, "item:111:7364:213746", "cell tooltip, the game's tooltip spot: the same item")
-  CRT.db.ui.tooltipAnchor = nil
+  CRT.db.ui.tooltipMode = nil
   GameTooltip.SetOwner, GameTooltip_SetDefaultAnchor = realOwner, nil
 end
 shift = true

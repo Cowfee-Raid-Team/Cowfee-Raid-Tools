@@ -10,7 +10,8 @@ local ADDON, CRT = ...
 --     rollType, lootListID }
 -- itemString is "item:..." from the link (the name comes from the game's item cache when shown).
 -- rollType: 0 or 1 need, 2 transmog, 3 greed, 4 no roll, 5 pass, nil not known (personal loot).
--- Settings are in CRTDB.loot (per profile): minQuality, dungeons, keepMonths, rcEnrich, tooltipPosition.
+-- Settings are in CRTDB.loot (per profile): minQuality, dungeons, keepMonths, rcEnrich, tooltipMode and
+-- tooltipSpot (its Tooltip position, UI/Tooltip.lua).
 -- RCLootCouncil's awards matched to records (Loot/RCLC.lua) are kept only for the session, in
 -- Loot.rc[record], since they can be read again from RCLootCouncil at any time.
 

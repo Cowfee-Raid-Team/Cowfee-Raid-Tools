@@ -5,8 +5,8 @@ local ADDON, CRT = ...
 --   Appearance  three columns. Left: Window (the main window's scale and opacity, UI:ApplyStyle in
 --               UI/Panel.lua; the look is the title bar's UI button) and Text (the font, outline and
 --               size of every text the addon draws with its shared fonts, CRT:ApplyFonts in Core.lua).
---               Middle: Sound, Reports, the Minimap button and Tooltips (where tooltips open, UI.TooltipOwner
---               in UI/Tooltip.lua). Right: Layers (which frame strata each
+--               Middle: Sound, Reports, the Minimap button and Tooltips (where tooltips open, with the spot
+--               picker under the dropdown: UI.TooltipPositionSetting in UI/Tooltip.lua). Right: Layers (which frame strata each
 --               group of windows is drawn in, UI:SetLayer in UI/Panel.lua)
 --   Profiles    Profiles.lua: switch, create, copy, delete and reset profiles; Export (the whole profile),
 --               Export settings only (for raiders), Import (either kind, with a preview) and Undo last import
@@ -527,19 +527,11 @@ local function buildLeft(pf)
         CRT.MinimapButton:SetHidden(not on)
     end)
 
-    heading(pf, x, -246, "Tooltips", "Where the addon's tooltips open. Next to what you hover: beside the button, row or icon under your mouse. Game's tooltip spot: where the game shows its own tooltips, or wherever your UI addon moved them.\n\nLoot History and Loot Master have their own Tooltip position on their Settings tabs. It follows this one until you change it there.\n\nThe button on the Encounter Journal always keeps its tooltip by it.")
-    add(UI.Dropdown(pf, "Tooltip position", {
-        options = UI.TOOLTIP_POSITIONS,
-        labelWidth = LABEL_W,
-        width = CONTROL_W,
-        get = function()
-            return UI.TooltipPosition()
-        end,
-        set = function(key)
-            ui().tooltipAnchor = key
-            refresh()
-        end,
-    }), x, -264)
+    heading(pf, x, -246, "Tooltips", "Where the addon's tooltips open. Next to what you hover: on the spot you click in the box below, beside the button, row or icon under your mouse. Game's tooltip spot: where the game shows its own tooltips, or wherever your UI addon moved them. Follow the cursor: at your mouse.\n\nClicking a spot also picks Next to what you hover.\n\nLoot History and Loot Master have their own Tooltip position on their Settings tabs. It follows this one until you change it there.\n\nThe button on the Encounter Journal always keeps its tooltip by it.")
+    -- the dropdown, and its spot picker under it (UI/Tooltip.lua)
+    local tooltips = UI.TooltipPositionSetting(pf, nil, { labelWidth = LABEL_W, width = CONTROL_W })
+    tooltips.row:SetPoint("TOPLEFT", x, -264)
+    controls[#controls + 1] = tooltips
 end
 
 local function buildRight(pf)

@@ -29,7 +29,7 @@ local TEXT = {
     help = "Every epic or better boss item someone in your group gets in a raid, recorded on your own computer: who got it, from which boss, on which difficulty, and how they rolled. With RCLootCouncil installed, its awards are read in too; hover a row for every candidate's response. Right-click an item to delete it.",
     filtersHelp = "Each dropdown narrows the list; All shows everything. Response lists what the Roll / response column shows. Source picks items CRT recorded or RCLootCouncil's awards. Search matches item, player and boss names. Export gives the list as CSV.",
     summaryHelp = "For the filters on the History tab: how many items each player got, and how many of them were tier tokens (in gold).",
-    tooltipHelp = "Where the tooltips on this page open, such as an item's when you hover its row. Use the general setting follows General Settings. Follow the cursor keeps the tooltip at your mouse.",
+    tooltipHelp = "Where the tooltips on this page open, such as an item's when you hover its row. Use the general setting follows General Settings. Next to what you hover uses the spot you click in the box below; clicking a spot picks it. Follow the cursor keeps the tooltip at your mouse.",
     rcHelp = "With RCLootCouncil installed, CRT reads its saved awards: the response, votes, the winner's note and roll, and every candidate's response. An award that matches a recorded item fills it in; the others are listed on their own. CRT never changes that data. Re-scan reads it again now.",
     search = "Search",
     export = "Export CSV",
@@ -750,22 +750,14 @@ local function buildSettings(f)
         end)
     end)
 
-    -- Tooltips: the loothistory area's Tooltip position (UI/Tooltip.lua), for every tooltip on this page
+    -- Tooltips: the loothistory area's Tooltip position and its spot picker under it (UI/Tooltip.lua), for
+    -- every tooltip on this page; the picker ends near -458, above the tab's bottom at -494
     local tipHeading = f:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
     tipHeading:SetPoint("TOPLEFT", 8, -346)
     tipHeading:SetText("Tooltips")
     UI.HelpRight(tipHeading, "Tooltips", TEXT.tooltipHelp)
-    local position = UI.Dropdown(f, "Tooltip position", {
-        labelWidth = 110, width = 180,
-        options = UI.TOOLTIP_AREA_POSITIONS,
-        get = function()
-            return UI.TooltipAreaChoice("loothistory")
-        end,
-        set = function(v)
-            s().tooltipPosition = v
-        end,
-    })
-    position:SetPoint("TOPLEFT", 8, -362)
+    local position = UI.TooltipPositionSetting(f, "loothistory", { labelWidth = 110, width = 180 })
+    position.row:SetPoint("TOPLEFT", 8, -362)
     controls[#controls + 1] = position
 end
 

@@ -302,21 +302,22 @@ LM.AWARD_DEFAULT = "%i awarded to %p for %r with a %v roll."
 LM.NO_ROLL_CHOICES = { "-", "0", "no" }
 
 -- Where an item tab's tooltip opens (Settings tab > Tooltips > Item tabs, lootmaster.itemTooltip, a personal
--- choice that is not synced), in the order the dropdown lists them. "area" has no point: Loot Master's own
--- Tooltip position (UI/Tooltip.lua's lootmaster area). point is the tooltip's corner, rel the window's; dx,
--- dy the gap in pixels; level puts the tooltip level with the hovered icon (the sides only). game is the
--- game's own tooltip spot. Core.lua moved the old setting (lootmaster.tooltipAnchor) here once.
+-- choice that is not synced). "area" has no point: Loot Master's own Tooltip position (UI/Tooltip.lua's
+-- lootmaster area). point is the tooltip's corner, rel the window's; dx, dy the gap in pixels; level puts the
+-- tooltip level with the hovered icon (the sides only); spot is the side's spot in the Settings tab's spot
+-- picker (UI.TOOLTIP_SPOTS). game is the game's own tooltip spot. Core.lua moved the old setting
+-- (lootmaster.tooltipAnchor) here once.
 LM.TOOLTIP_ANCHOR_DEFAULT = "area"
 LM.TOOLTIP_ANCHORS = {
     { key = "area", label = "Same as above" },
-    { key = "left", label = "Left", point = "TOPRIGHT", rel = "TOPLEFT", dx = -4, dy = 0, level = true },
-    { key = "right", label = "Right", point = "TOPLEFT", rel = "TOPRIGHT", dx = 4, dy = 0, level = true },
-    { key = "bottomleft", label = "Bottom left", point = "TOPLEFT", rel = "BOTTOMLEFT", dx = 0, dy = -4 },
-    { key = "bottomright", label = "Bottom right", point = "TOPRIGHT", rel = "BOTTOMRIGHT", dx = 0, dy = -4 },
-    { key = "topleft", label = "Top left", point = "BOTTOMLEFT", rel = "TOPLEFT", dx = 0, dy = 4 },
-    { key = "topright", label = "Top right", point = "BOTTOMRIGHT", rel = "TOPRIGHT", dx = 0, dy = 4 },
-    { key = "topcenter", label = "Top center", point = "BOTTOM", rel = "TOP", dx = 0, dy = 4 },
-    { key = "bottomcenter", label = "Bottom center", point = "TOP", rel = "BOTTOM", dx = 0, dy = -4 },
+    { key = "left", label = "Left", point = "TOPRIGHT", rel = "TOPLEFT", dx = -4, dy = 0, level = true, spot = "left" },
+    { key = "right", label = "Right", point = "TOPLEFT", rel = "TOPRIGHT", dx = 4, dy = 0, level = true, spot = "right" },
+    { key = "bottomleft", label = "Bottom left", point = "TOPLEFT", rel = "BOTTOMLEFT", dx = 0, dy = -4, spot = "bottomleft" },
+    { key = "bottomright", label = "Bottom right", point = "TOPRIGHT", rel = "BOTTOMRIGHT", dx = 0, dy = -4, spot = "bottomright" },
+    { key = "topleft", label = "Top left", point = "BOTTOMLEFT", rel = "TOPLEFT", dx = 0, dy = 4, spot = "topleft" },
+    { key = "topright", label = "Top right", point = "BOTTOMRIGHT", rel = "TOPRIGHT", dx = 0, dy = 4, spot = "topright" },
+    { key = "topcenter", label = "Top center", point = "BOTTOM", rel = "TOP", dx = 0, dy = 4, spot = "top" },
+    { key = "bottomcenter", label = "Bottom center", point = "TOP", rel = "BOTTOM", dx = 0, dy = -4, spot = "bottom" },
     { key = "game", label = "Game's tooltip spot", game = true },
 }
 
@@ -329,6 +330,62 @@ function LM:TooltipAnchor()
         end
     end
     return LM.TOOLTIP_ANCHORS[1]
+end
+
+-- The Item tabs dropdown's three choices; Next to the window is any side, picked in the spot picker beside it.
+LM.ITEM_TOOLTIP_CHOICES = {
+    { key = "area", label = "Same as above" },
+    { key = "window", label = "Next to the window" },
+    { key = "game", label = "Game's tooltip spot" },
+}
+LM.itemTooltipSide = "left" -- the side Next to the window takes from the dropdown, until one is clicked
+
+-- The picker's spots for the window's sides, in the picker's order.
+function LM.ItemTooltipSpots()
+    local out = {}
+    for _, s in ipairs(CRT.UI and CRT.UI.TOOLTIP_SPOTS or {}) do
+        for _, a in ipairs(LM.TOOLTIP_ANCHORS) do
+            if a.spot == s.key then
+                out[#out + 1] = s.key
+            end
+        end
+    end
+    return out
+end
+
+-- The dropdown's choice: "area", "window" (a side) or "game".
+function LM:ItemTooltipChoice()
+    local a = self:TooltipAnchor()
+    return (a.game and "game") or (a.point and "window") or "area"
+end
+
+-- The chosen side's spot, or nil when the item tabs are not on a side.
+function LM:ItemTooltipSpot()
+    return self:TooltipAnchor().spot
+end
+
+-- From the dropdown: Next to the window keeps the side already saved, else takes the last side clicked in
+-- this session (Left at first).
+function LM:SetItemTooltipChoice(choice)
+    local s = self:Settings()
+    if choice == "window" then
+        if not self:TooltipAnchor().point then
+            s.itemTooltip = LM.itemTooltipSide
+        end
+    elseif choice == "area" or choice == "game" then
+        s.itemTooltip = choice
+    end
+end
+
+-- From the picker: the side with that spot (saved under its own key, as before the picker).
+function LM:SetItemTooltipSpot(spot)
+    for _, a in ipairs(LM.TOOLTIP_ANCHORS) do
+        if a.spot and a.spot == spot then
+            self:Settings().itemTooltip = a.key
+            LM.itemTooltipSide = a.key
+            return
+        end
+    end
 end
 
 LM.AWARD_MAX = 200 -- letters in the award message

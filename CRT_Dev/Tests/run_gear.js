@@ -320,7 +320,10 @@ eq(Gear.ShowTooltip(owner, { id = 55, ilvl = 610 }, "ANCHOR_LEFT"), false, "tool
 eq(tip.byID, 55, "tooltip: SetItemByID")
 eq(tip.link, nil, "tooltip: no hyperlink")
 eq(tip.lines[1], "Equipped at item level 610", "tooltip: the line by ID too")
-eq(tip.anchor, "ANCHOR_LEFT", "tooltip: the anchor asked for")
+eq(tip.anchor, "ANCHOR_RIGHT", "tooltip: on a spot (top right by default), whatever anchor is asked for")
+tip = { lines = {} }
+Gear.ShowTooltip(owner, { id = 55, ilvl = 610 }, "ANCHOR_LEFT", CRT.UI.TOOLTIP_KEEP)
+eq(tip.anchor, "ANCHOR_LEFT", "tooltip: the anchor asked for, with UI.TOOLTIP_KEEP")
 tip = { lines = {} }
 Gear.ShowTooltip(owner, { link = RING1, ilvl = 289 })
 eq(tip.link, "item:600:7364:213746::::::90:577::28:3:12667:12793:6652", "tooltip: a link is shown by its item string")

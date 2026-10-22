@@ -50,7 +50,8 @@ g "controls" && { node run_controls.js "$WA" 2>&1 | tail -40; echo "exit ${PIPES
 g "checkbox" && { node run_checkbox.js "$WA" 2>&1 | tail -30; echo "exit ${PIPESTATUS[0]}"; }
 g "toplevel" && { node run_toplevel.js "$WA" 2>&1 | tail -30; echo "exit ${PIPESTATUS[0]}"; }
 g "help" && { node run_help.js "$WA" 2>&1 | tail -30; echo "exit ${PIPESTATUS[0]}"; }
-g "help icons sit right" && { node run_help.js "$WA" lint 2>&1 | tail -140; echo "exit ${PIPESTATUS[0]}"; }
+g "tooltip spots" && { node run_tooltip_spots.js "$WA" 2>&1 | tail -30; echo "exit ${PIPESTATUS[0]}"; }
+g "help icons sit right" &&{ node run_help.js "$WA" lint 2>&1 | tail -140; echo "exit ${PIPESTATUS[0]}"; }
 g "themes" && { node run_themes.js "$WA" 2>&1 | tail -30; echo "exit ${PIPESTATUS[0]}"; }
 g "menu" && { node run_menu.js "$WA" 2>&1 | tail -30; echo "exit ${PIPESTATUS[0]}"; }
 g "break timer" && { node run_breaktimer.js "$WA" 2>&1 | tail -40; echo "exit ${PIPESTATUS[0]}"; }
