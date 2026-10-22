@@ -9,7 +9,8 @@ local ADDON, CRT = ...
 --           display's test (Markers:Test), which listens to /say, party and raid chat; Stop test ends it
 --   Bottom  Your macros: the Marker calls set (Markers/Macros.lua, made by CRT.Macros), one icon per marker with
 --           its name, body and state. An icon not made yet makes just that macro when clicked; Generate all macros
---           makes the rest (and rewrites ours a newer version changed); Remove macros deletes only ours, after asking
+--           makes the rest (and rewrites ours a newer version changed); Remove macros deletes only ours, after asking.
+--           A made icon drags straight to an action bar (Macros:Pickup puts the macro on the cursor)
 -- While this tab's test runs, clicking an icon sends its marker code to /say instead (C_ChatInfo.SendChatMessage,
 -- else the global SendChatMessage; SAY needs a hardware event in the open world, which a click is), so the display
 -- fills without a group: the macros' /raid only reaches a raid group. Never in combat.
@@ -34,7 +35,7 @@ local TEXT = {
         .. "The macros send to /raid, which only works in a raid group. So while the test runs, click a marker under Your macros to send it to /say, or type /say {rt1}.\n\n"
         .. "Stop test ends it.",
     macros = "Your macros",
-    macrosHelp = "One macro per raid marker, CRT Star to CRT Skull. Each sends its marker to raid chat (/raid {rt1}), where the marker display reads it. Drag them to your action bars from the game's macro window (Esc > Macros).\n\n"
+    macrosHelp = "One macro per raid marker, CRT Star to CRT Skull. Each sends its marker to raid chat (/raid {rt1}), where the marker display reads it. Drag a made one from here straight to your action bars.\n\n"
         .. "Click a marker that isn't made yet to make just that one, or Generate all macros for all eight. They go in General Macros, for all your characters. When General Macros is full they go in this character's macros. When both are too full, nothing is made and chat says how many to free.\n\n"
         .. "Remove macros deletes only the macros the addon made. A macro you edited or renamed, or your own with the same name, is never changed.\n\n"
         .. "Not in combat: the game doesn't let addons change macros during a fight.",
@@ -354,7 +355,7 @@ local function cellTooltip(cell)
             GameTooltip:AddLine(TEXT.combat, 1, 0.55, 0.1, true)
         end
     elseif e.state == "ours" then
-        GameTooltip:AddLine((e.perCharacter and "In this character's macros." or "In General Macros, for all your characters.") .. " Drag it to an action bar from the game's macro window (Esc > Macros).", 0.85, 0.85, 0.85, true)
+        GameTooltip:AddLine((e.perCharacter and "In this character's macros." or "In General Macros, for all your characters.") .. " Drag it to an action bar.", 0.85, 0.85, 0.85, true)
     elseif e.state == "changed" then
         GameTooltip:AddLine("You edited this macro, so the addon leaves it as it is.", 0.85, 0.85, 0.85, true)
     else
@@ -399,6 +400,19 @@ local function makeCell(i)
             sayMarker(e.def)
         elseif e.state == "missing" then
             run("Create", e.def.name)
+        end
+    end)
+    -- a made macro drags onto an action bar: the game's cursor carries it, as from its own macro window
+    b:RegisterForDrag("LeftButton")
+    b:SetScript("OnDragStart", function()
+        local e = cell.entry
+        if not e then
+            return
+        end
+        GameTooltip:Hide()
+        local _, message = Macros:Pickup(SET, e.def.name)
+        if message then
+            CRT:Print(message)
         end
     end)
     b:SetScript("OnEnter", function()
