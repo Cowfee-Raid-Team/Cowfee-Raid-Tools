@@ -5,10 +5,12 @@ local ADDON, CRT = ...
 -- share one copy of it.
 --   ctx    where the draft came from: { encounterID, id (a reminder) and reminder (its saved copy) },
 --          and for the editor also a note line (noteID, line, expected) or a saved alert (savedMode)
---   draft  { saveAs, tag, difficulty, ph, timeText, timeTouched, keptTimes, spellID, iconType, iconID,
+--   draft  { saveAs, tag, group, difficulty, ph, timeText, timeTouched, keptTimes, spellID, iconType, iconID,
 --          text, color, show = { alert, text, icon, bar, circle, timeline }, speak, speakAt, count, glow, sound,
 --          warn, linger, boss, baseDifficulty, difficultyTouched }
 --          speakAt is nil (Speak at: On show) or "zero" (At 0), as a reminder keeps it
+--          group is the difficulty group Only me saves for ("nh" or "mythic", Draft.Group); difficulty
+--          the raid note's Difficulty a note line goes to, or an older reminder's Difficulty text
 -- Every function takes ctx and the draft it works on; none keeps either.
 -- A cooldown dropped on the Timeline (or placed from its menu) is saved at once, without the editor:
 -- Draft.PlaceCooldown, with Draft.CooldownDefaults (the one place those are set). A note line, from the
@@ -160,6 +162,7 @@ end
 -- A saved reminder into the draft. Its times text is kept until Relative to or Time is touched.
 function Draft.FromReminder(draft, r)
     draft.spellID, draft.boss, draft.difficulty = r.spellID, r.boss, r.difficulty
+    draft.group = Reminders.GroupOf(r) -- nil for an older reminder on any difficulty: Draft.Group's default
     draft.text = r.text or ""
     draft.keptTimes = r.times
     local o = r.outputs or {}
@@ -250,7 +253,7 @@ end
 -- The draft as reminder text fields, for Reminders:Times.
 function Draft.TimesProbe(draft)
     return { times = draft.keptTimes, spellID = draft.spellID, text = draft.text, boss = draft.boss,
-        difficulty = draft.difficulty }
+        difficulty = draft.difficulty, group = Draft.Group(draft) }
 end
 
 -- Whether the draft still uses a saved reminder's own times: one being kept, or one moving to the raid
@@ -342,6 +345,11 @@ function Draft.BuildReminder(ctx, draft)
     r.spellID = validID(draft.spellID)
     r.text = trim(draft.text)
     r.difficulty = draft.difficulty
+    -- the group picked (Reminders:Save drops a Difficulty text of another group); an older reminder on any
+    -- difficulty stays so until a group is picked for it, which splits it (Reminders.SplitOne)
+    if draft.group or not (ctx and ctx.id) then
+        r.group = Draft.Group(draft)
+    end
     r.times = reminderTimes(draft)
     r.outputs = r.outputs or {}
     local outputs, speech = Draft.Outputs(draft)
@@ -440,18 +448,49 @@ function Draft.KeptFields(ctx)
     return ctx and ctx.expected and CRT.NoteParser.UnknownFields(ctx.expected) or ""
 end
 
+local GROUPS = { nh = true, mythic = true }
+
+-- The difficulty group of the draft ("nh" or "mythic"): as Only me, the group picked (draft.group); as a
+-- raid note line, its note's Difficulty's (draft.difficulty). Else the other of the two, else the raid you
+-- are in (by its difficulty ID, the same on every client language), else Normal/Heroic. The one group a
+-- reminder from the draft is saved for and its previews read an ability timeline for.
+function Draft.Group(draft)
+    local T = CRT.Timeline
+    local picked = draft and GROUPS[draft.group] and draft.group or nil
+    if picked and draft.saveAs ~= "note" then
+        return picked
+    end
+    if draft and type(draft.difficulty) == "string" and trim(draft.difficulty) ~= "" and T and T.GroupFor then
+        return T:GroupFor(trim(draft.difficulty))
+    end
+    return picked or (T and T.GroupOf and T:GroupOf(Draft.CurrentDifficultyID(), nil)) or "nh"
+end
+
+-- The difficulty choices of your own alert, in the caller's words: Normal/Heroic, then Mythic.
+function Draft.GroupOptions(normalHeroic, mythic)
+    return { { key = "nh", label = normalHeroic }, { key = "mythic", label = mythic } }
+end
+
+-- A difficulty group picked for the draft. A Difficulty text of the other group goes with it.
+function Draft.SetGroup(draft, group)
+    if not (draft and GROUPS[group]) then
+        return
+    end
+    draft.group = group
+    local T = CRT.Timeline
+    if type(draft.difficulty) == "string" and T and T.GroupFor and T:GroupFor(trim(draft.difficulty)) ~= group then
+        draft.difficulty = nil
+    end
+end
+
 -- The difficulty group the editor's previews read an ability timeline for, as the Rehearsal its Test
--- opens would: the draft's difficulty's, else the raid you are in (by its difficulty ID, the same on every
--- client language), else Normal/Heroic.
+-- opens would (Draft.Group); nil without the Timeline.
 function Draft.PreviewGroup(draft)
     local T = CRT.Timeline
     if not (T and T.GroupOf) then
         return nil
     end
-    if draft and type(draft.difficulty) == "string" and trim(draft.difficulty) ~= "" then
-        return T:GroupOf(nil, draft.difficulty)
-    end
-    return T:GroupOf(Draft.CurrentDifficultyID(), nil) or "nh"
+    return Draft.Group(draft)
 end
 
 -- Whether the draft, as Only me, is an alert on a boss ability that follows its casts (no Time of its own).
@@ -689,11 +728,13 @@ end
 
 -- Saves cooldown spellID (named text, or the spell's name) for boss encounterID at once, at ph and
 -- seconds into it, with the cooldown defaults. tag nil: one of your reminders (Only me); a name: a raid
--- note line for that player; "": a raid note line for no one. A true value (the reminder's id for Only
--- me), or false and the message.
-function Draft.PlaceCooldown(encounterID, spellID, text, boss, ph, seconds, tag)
+-- note line for that player; "": a raid note line for no one. group (optional) is the difficulty group
+-- Only me saves it for (the Timeline view's). A true value (the reminder's id for Only me), or false and
+-- the message.
+function Draft.PlaceCooldown(encounterID, spellID, text, boss, ph, seconds, tag, group)
     local ctx = { encounterID = encounterID }
     local draft = Draft.ForCooldown(spellID, text, boss)
+    Draft.SetGroup(draft, group)
     draft.ph = type(ph) == "number" and ph or 1
     draft.timeText = ("%.10g"):format(type(seconds) == "number" and math.max(0, seconds) or 0)
     draft.timeTouched = true

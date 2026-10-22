@@ -924,6 +924,7 @@ end
 
 check("mech: test with no Show from starts 8 s before, a long Linger stops later", function()
   local f = fresh()
+  dropdowns["Difficulty"].opts.set("nh") -- the Heroic timeline's times
   local p = f.panel
   setCheck(f.rows[1].check, true)
   sliders["Show from"].opts.set(0)
@@ -954,6 +955,7 @@ end)
 
 check("mech: test plays the countdown and stops 3 s after", function()
   local f = fresh()
+  dropdowns["Difficulty"].opts.set("nh") -- the Heroic timeline's times
   local p = f.panel
   setCheck(f.rows[1].check, true) -- Real Name follows the reference: Heroic 0:45, Mythic 0:30 and 2:20
   mockWindow(true)
@@ -972,6 +974,7 @@ end)
 
 check("mech: test passes the current draft, saved one replaced", function()
   local f = fresh()
+  dropdowns["Difficulty"].opts.set("nh") -- the Heroic timeline's times
   local p = f.panel
   setCheck(f.rows[1].check, true)
   local _, id = only()
@@ -1144,10 +1147,13 @@ check("mech: the list follows the ability timeline", function()
     return table.concat(out, ",")
   end
   local f = fresh()
-  -- Any: the timeline Times from shows (the boss's first, the Mythic one)
-  assert(names(f) == "Real Name,Other Spell", "Any: the Mythic timeline's rows: " .. names(f))
-  dropdowns["Difficulty"].opts.set("Normal")
-  assert(dropdowns["Times from"].opts.get() == normal, "Times from names the Normal timeline")
+  -- at first the group of the boss's first timeline, the Mythic one
+  assert(names(f) == "Real Name,Other Spell", "the Mythic timeline's rows: " .. names(f))
+  -- Normal/Heroic: its first timeline, then the Normal one picked in Times from
+  dropdowns["Difficulty"].opts.set("nh")
+  assert(dropdowns["Times from"].opts.get() ~= normal and names(f) == "Real Name", "Normal/Heroic: the Heroic timeline first: " .. names(f))
+  dropdowns["Times from"].opts.set(normal)
+  assert(dropdowns["Times from"].opts.get() == normal and dropdowns["Difficulty"].opts.get() == "nh", "Times from names the Normal timeline")
   assert(names(f) == "Real Name,Extra Add,Other Spell", "Normal: its rows in order, less ignored, hidden, Mythic-only: " .. names(f))
   -- a row the Journal doesn't have: its own alert, matched by name, following its casts
   local extra = f.rows[2]
@@ -1172,12 +1178,80 @@ check("mech: the list follows the ability timeline", function()
   R:Save(ENC, id, third)
   CRT.NoteReminders.Refresh()
   assert(names(f) == "Real Name,Extra Add,Other Spell", "unticked, off the timeline: " .. names(f))
-  dropdowns["Difficulty"].opts.set("any")
+  dropdowns["Difficulty"].opts.set("mythic")
   T:SetIgnored(ENC, "Ignored Thing", false)
   Ref:Delete(normal)
   journalRows[3] = nil
   CRT.Bosses = library
   reset()
+  assert(#errors == 0, tostring(errors[1]))
+end)
+
+-- Alerts are saved per difficulty group: the Difficulty dropdown has the Timeline's two groups, no Any; each
+-- shows its own alerts and Times from its own ability timeline, and a change saves for the group on show only.
+check("mech: alerts per difficulty group", function()
+  local f = fresh()
+  local diff = dropdowns["Difficulty"]
+  local opts = diff.opts.options()
+  assert(#opts == 2 and opts[1].key == "nh" and opts[1].label == "Normal/Heroic" and opts[2].key == "mythic" and opts[2].label == "Mythic",
+    "Normal/Heroic and Mythic only")
+  for _, h in ipairs(helps) do assert(not (h.helpText or ""):find("Any", 1, true), "no help names Any: " .. tostring(h.helpText)) end
+  assert(diff.opts.get() == "mythic" and f.rows[1].name.text == "Real Name", "the boss's first timeline's group")
+  -- tick an alert on in Mythic: Normal/Heroic doesn't show it on
+  setCheck(f.rows[1].check, true)
+  local r, id = only()
+  assert(r.group == "mythic" and r.enabled == true, "saved for Mythic")
+  diff.opts.set("nh")
+  assert(diff.value == "nh" and dropdowns["Times from"].opts.get() ~= nil, "Normal/Heroic on show")
+  assert(f.rows[1].name.text == "Real Name" and not f.rows[1].check.checked, "not on in Normal/Heroic")
+  assert(f.panel.times.text:find("0:45", 1, true), "Times from the Heroic timeline: " .. tostring(f.panel.times.text))
+  -- a change here makes Normal/Heroic's own, and leaves Mythic's alone
+  sliders["Show from"].opts.set(9)
+  local list = R:List(ENC)
+  assert(#list == 2 and list[2].r.group == "nh" and list[2].r.warn == 9 and list[2].r.enabled == false, "Normal/Heroic's own, off like its tick")
+  assert(R:Get(ENC, id).warn == 5 and R:Get(ENC, id).enabled == true, "Mythic's untouched")
+  setCheck(f.rows[1].check, true)
+  assert(R:Get(ENC, list[2].id).enabled == true and #R:List(ENC) == 2, "ticked on in Normal/Heroic")
+  setCheck(f.rows[1].check, false)
+  assert(R:Get(ENC, list[2].id).enabled == false and R:Get(ENC, id).enabled == true, "off in Normal/Heroic only")
+  diff.opts.set("mythic")
+  assert(f.rows[1].check.checked and f.panel.showFrom.opts.get() == 5, "Mythic's still on, with its own Show from")
+  -- an older alert on any difficulty shows on in both; turning it off in one splits it
+  reset()
+  local any = R:Save(ENC, nil, { spellID = 777, boss = "Test Boss", text = "Real Name", enabled = true })
+  CRT.NoteReminders.Refresh()
+  assert(f.rows[1].check.checked, "Any: on in Mythic")
+  diff.opts.set("nh")
+  assert(f.rows[1].check.checked, "and on in Normal/Heroic")
+  setCheck(f.rows[1].check, false)
+  local groups = {}
+  for _, e in ipairs(R:List(ENC)) do groups[#groups + 1] = tostring(e.r.group) .. "=" .. tostring(e.r.enabled) end
+  assert(table.concat(groups, ",") == "nh=false,mythic=true", "split, off for Normal/Heroic only: " .. table.concat(groups, ","))
+  assert(R:Get(ENC, any).group == "nh", "the old id is Normal/Heroic's")
+  diff.opts.set("mythic")
+  assert(f.rows[1].check.checked, "still on in Mythic")
+  -- Times from a Heroic timeline puts Normal/Heroic on show
+  local heroic
+  for _, o in ipairs(dropdowns["Times from"].opts.options()) do if o.label:find("Heroic", 1, true) then heroic = o.key end end
+  dropdowns["Times from"].opts.set(heroic)
+  assert(diff.opts.get() == "nh" and not f.rows[1].check.checked, "Normal/Heroic, its alert off")
+  reset()
+  assert(#errors == 0, tostring(errors[1]))
+end)
+
+-- A reminder split into one per group, with "Also when it lands on me", wants one aura sound, not two.
+check("mech: a split reminder's aura sound is wanted once", function()
+  reset()
+  local Au = CRT.SoundAuras
+  local sound = CRT.Sound:Choices({ none = "None" })[2].key
+  local id = R:Save(ENC, nil, { spellID = 777, boss = "Test Boss", text = "Real Name", enabled = true, auraSound = true, sound = sound })
+  assert(R.SplitOne(ENC, id), "split")
+  Au:SyncReminders()
+  local n = 0
+  for key, w in pairs(Au.wanted) do if key:find("^reminder:") then n = n + 1 assert(w.spellID == 777, "its spell") end end
+  assert(n == 1, "one wanted aura sound, got " .. n)
+  reset()
+  Au:SyncReminders()
   assert(#errors == 0, tostring(errors[1]))
 end)
 

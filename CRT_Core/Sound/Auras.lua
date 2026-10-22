@@ -127,7 +127,9 @@ function Sound:RemoveAuraSound(key, batch)
 end
 
 -- Mech Alerts: every reminder that is on, has a spell and a sound, and has "Also when it lands on me"
--- ticked, as an aura sound on you. Rebuilt whenever the reminders change.
+-- ticked, as an aura sound on you. Rebuilt whenever the reminders change. One per spell and sound: the
+-- game plays it whatever the difficulty, so the same alert saved for Normal/Heroic and for Mythic (or on
+-- two bosses) registers once and plays once.
 local REMINDER_PREFIX = "reminder:"
 
 function Auras:SyncReminders()
@@ -137,10 +139,11 @@ function Auras:SyncReminders()
         end
     end
     local db = CRT.Alerts and CRT.Alerts:Settings()
-    for encounterID, list in pairs(db and db.reminders or {}) do
-        for id, r in pairs(list) do
-            if r.auraSound and r.enabled ~= false and r.spellID and Sound.Normalize(r.sound) then
-                Sound:AddAuraSound(REMINDER_PREFIX .. tostring(encounterID) .. ":" .. tostring(id), r.spellID, r.sound,
+    for _, list in pairs(db and db.reminders or {}) do
+        for _, r in pairs(list) do
+            local sound = r.auraSound and r.enabled ~= false and r.spellID and Sound.Normalize(r.sound)
+            if sound then
+                Sound:AddAuraSound(REMINDER_PREFIX .. tostring(r.spellID) .. ":" .. tostring(sound), r.spellID, r.sound,
                     { unit = "player", trigger = "added", batch = true })
             end
         end

@@ -1003,11 +1003,20 @@ end
 
 -- Difficulty ----------------------------------------------------------------------------------------
 -- A reference belongs to one of two groups: "nh" (Normal and Heroic share a schedule) or "mythic".
--- The group comes from its Difficulty line; anything but Mythic, or no line, is "nh".
+-- The group comes from its Difficulty line, through the Timeline's one grouping (Timeline:GroupFor);
+-- anything but Mythic, or no line, is "nh".
 
 function Reference.Group(ref)
-    local d = ref and type(ref.difficulty) == "string" and trim(ref.difficulty):lower()
-    return d == "mythic" and "mythic" or "nh"
+    local d = ref and type(ref.difficulty) == "string" and trim(ref.difficulty) or nil
+    if not d then
+        return "nh"
+    end
+    local T = CRT.Timeline
+    if T and T.GroupFor then
+        return T:GroupFor(d)
+    end
+    -- only without Timeline/Data.lua (a test harness that loads this file alone)
+    return d:lower() == "mythic" and "mythic" or "nh"
 end
 
 -- True for a row marked (type ... mythic ...).

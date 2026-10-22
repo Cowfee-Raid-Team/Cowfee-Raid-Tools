@@ -1673,6 +1673,9 @@ do
   CRT.db.alerts.reminders = {}
   R:Save(3001, nil, { text = "Heroic own", times = "P1 0:50", boss = "Nek", difficulty = "Heroic" })
   R:Save(3001, nil, { text = "Mythic own", times = "P1 0:55", boss = "Nek", difficulty = "Mythic" })
+  -- saved per group, as Mech Alerts and the editor save them now
+  R:Save(3001, nil, { text = "NH group", times = "P1 0:52", boss = "Nek" }, "nh")
+  R:Save(3001, nil, { text = "Mythic group", times = "P1 0:57", boss = "Nek" }, "mythic")
   CRT.db.notes.list = {
     [1] = { raw = "EncounterID:3001;Difficulty:Heroic;Name:Nek\\ntime:40;ph:1;text:Heroic line;", encounterID = 3001, difficulty = "Heroic", name = "Nek" },
     [2] = { raw = "EncounterID:3001;Difficulty:Mythic;Name:Nek\\ntime:45;ph:1;text:Mythic line;", encounterID = 3001, difficulty = "Mythic", name = "Nek" },
@@ -1684,11 +1687,11 @@ do
     return table.concat(out, ",")
   end
   v:SetData({ reference = mythic }, 3001, nil, "Nek", "mythic")
-  assert(texts(v) == "Mythic line,Mythic own", "a Mythic view: only Mythic's own and any: " .. texts(v))
+  assert(texts(v) == "Mythic group,Mythic line,Mythic own", "a Mythic view: only Mythic's own and any: " .. texts(v))
   v:SetData(pull, 3001, nil, "Nek", "nh")
-  assert(texts(v) == "Heroic line,Heroic own", "a Heroic view: only Heroic's: " .. texts(v))
+  assert(texts(v) == "Heroic line,Heroic own,NH group", "a Heroic view: only Heroic's: " .. texts(v))
   v:SetData(pull, 3001, nil, "Nek")
-  assert(texts(v) == "Heroic line,Heroic own,Mythic line,Mythic own", "no group: everything: " .. texts(v))
+  assert(texts(v) == "Heroic line,Heroic own,Mythic group,Mythic line,Mythic own,NH group", "no group: everything: " .. texts(v))
   CRT.db.alerts.reminders = {}
   CRT.db.notes.list, CRT.db.timeline.references, CRT.db.timeline.nextRef = savedList, savedRefs, savedNext
 end

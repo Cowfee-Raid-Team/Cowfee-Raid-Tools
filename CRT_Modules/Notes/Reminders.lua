@@ -15,13 +15,14 @@ local UI = CRT.UI
 -- text in quotes, save, and /reload.
 local TEXT = {
     title = "Mech Alerts",
-    help = "On the left: the abilities on the ability timeline Times from names, as the Timeline shows it (mechanics you ignored there are left out), then your own reminders. Tick an ability to get a reminder for it, with its times from that timeline; untick it to turn it off. A ticked one that isn't on that timeline stays, marked. A dot means the timeline has times for it. Click a row to edit its alert on the right; changes save at once. Your own reminder adds one not tied to an ability.",
+    help = "Alerts are saved per difficulty: Normal/Heroic has one set and Mythic its own. Pick one beside the boss. On the left: the abilities on the ability timeline Times from names, as the Timeline shows it (mechanics you ignored there are left out), then your own reminders. Tick an ability to get a reminder for it, with its times from that timeline; untick it to turn it off. A ticked one that isn't on that timeline stays, marked. A dot means the timeline has times for it. Click a row to edit its alert on the right; changes save at once, for the difficulty on show only. Your own reminder adds one not tied to an ability.",
     boss = "Boss",
     difficulty = "Difficulty",
-    any = "Any",
+    groupNH = "Normal/Heroic",
+    groupMythic = "Mythic",
     timesFrom = "Times from",
     timesFromHelpTitle = "Times from",
-    timesFromHelp = "Which of the boss's ability timelines the times are read from. A reminder with a difficulty of its own, or times you typed, keeps those.",
+    timesFromHelp = "Which of the boss's ability timelines for the difficulty on show the list and its times are read from. Times you typed stay as they are.",
     none = "None on the timeline",
     ownReminder = "Your own reminder",
     unnamed = "Reminder",
@@ -155,7 +156,6 @@ L.SOUND_W = 160
 L.SPEAK_AT_LABEL, L.SPEAK_AT_W = 56, 104 -- Speak at, beside Glow under Count down
 L.BUTTON_H = 22
 L.TYPING_PAUSE = 0.5 -- seconds after the last key before a typed box saves
-local ANY = "any"
 
 local WHITE = { 1, 1, 1 }
 local GREY = { 0.5, 0.5, 0.5 }
@@ -205,7 +205,9 @@ end
 
 -- The tab -----------------------------------------------------------------------------------------
 
-local selected, viewDiff
+-- The boss on show; the difficulty group picked (nil: shownGroup's default); the Difficulty text of the
+-- ability timeline picked in Times from, preferred inside that group (nil: the group's first).
+local selected, viewGroup, viewPrefer
 local tab, rows, items, offset, list, thumb, bossDrop, diffDrop, fromDrop, ownButton, markerCheck
 local panel = {}
 local listening = false
@@ -252,7 +254,7 @@ local function pickBoss(bosses)
         local _, record = CRT.Notes:Active()
         local active = record and record.encounterID
         selected = (active and bossName(bosses, active) and active) or (bosses[1] and bosses[1].key) or nil
-        viewDiff = nil
+        viewPrefer = nil
     end
     return selected, selected and bossName(bosses, selected)
 end
@@ -269,14 +271,30 @@ local function bossRefs()
     return data.refs[selected]
 end
 
--- The ability timeline Times from names, the one the list and the times are read from: for a difficulty,
--- the Timeline's own pick (Timeline:ReferenceFor, that difficulty preferred inside its group), as the
--- alerts' times pick it; for Any, the boss's first.
+-- The difficulty group on show ("nh" or "mythic"), whose alerts the list shows and a change saves: the one
+-- picked, else the raid you are in (by its difficulty ID, the same on every client language), else the
+-- group of the boss's first ability timeline, else Normal/Heroic.
+local function shownGroup()
+    if viewGroup then
+        return viewGroup
+    end
+    local T, Draft, Ref = CRT.Timeline, CRT.AlertDraft, CRT.TimelineReference
+    local current = T and T.GroupOf and Draft and Draft.CurrentDifficultyID and T:GroupOf(Draft.CurrentDifficultyID(), nil)
+    if current then
+        return current
+    end
+    local first = bossRefs()[1]
+    return first and Ref and Ref.Group and Ref.Group(first.ref) or "nh"
+end
+
+-- The ability timeline Times from names, the one the list and the times are read from: the Timeline's own
+-- pick for the group on show (Timeline:ReferenceFor, the one picked in Times from preferred), as the
+-- alerts' times pick it; with none in the group, the boss's first, as a pull then reads.
 local function shownReference()
     local refs = bossRefs()
     local T = CRT.Timeline
-    if viewDiff and T and T.ReferenceFor then
-        local entry = T:ReferenceFor(selected, T:GroupFor(viewDiff), bossName(bosses(), selected), viewDiff, refs)
+    if T and T.ReferenceFor then
+        local entry = T:ReferenceFor(selected, shownGroup(), bossName(bosses(), selected), viewPrefer, refs)
         if entry then
             return entry
         end
@@ -359,7 +377,8 @@ end
 
 -- The ability rows of the ability timeline (timelineRows), then the Journal abilities not on it that
 -- have a ticked reminder of yours (marked), then the reminders that match none of them, then a new
--- reminder of your own waiting for its first change.
+-- reminder of your own waiting for its first change. Only the reminders of the group on show are read
+-- (an older one on any difficulty, not split yet, shows in both).
 local function buildItems(enc)
     local Reminders = CRT.AlertReminders
     local out = {}
@@ -367,7 +386,14 @@ local function buildItems(enc)
         return out
     end
     local dev = devMode()
-    local saved = Reminders:List(enc)
+    local group = shownGroup()
+    local saved = {}
+    for _, e in ipairs(Reminders:List(enc)) do
+        local g = Reminders.GroupOf(e.r)
+        if g == nil or g == group then
+            saved[#saved + 1] = e
+        end
+    end
     local used = {}
     local function add(row, offTimeline)
         local item = { ability = row, spellID = row.spellID }
@@ -442,15 +468,14 @@ local function itemIcon(item)
     return spellTexture(item.spellID)
 end
 
--- What a reminder's times read as for the difficulty on show: the text and whether there are any.
+-- What a reminder's times read as for the difficulty on show: the text and whether there are any. r is
+-- a copy.
 local function timesFor(enc, r)
     local Reminders = CRT.AlertReminders
     if not r.difficulty then
-        r.difficulty = viewDiff
+        r.difficulty = viewPrefer -- the ability timeline picked in Times from, inside the group on show
     end
-    -- the difficulty on show picks the ability timeline (Any: the boss's first, as Times from shows)
-    local T = CRT.Timeline
-    local group = viewDiff and T and T.GroupOf and T:GroupOf(nil, viewDiff) or nil
+    local group = shownGroup()
     local found, source, err = Reminders:Times(enc, r, nil, group)
     if #found > 0 then
         -- an ability's casts, each with any shift its flag was dragged by, and those turned off
@@ -472,12 +497,15 @@ local function itemsFor(enc, name)
     local c = listCache
     local pending = enc and pendingOwn[enc] or false
     local dev = devMode()
-    if c and c.enc == enc and c.diff == viewDiff and c.pending == pending and c.dev == dev then
+    local diff = shownGroup() .. "|" .. tostring(viewPrefer)
+    if c and c.enc == enc and c.diff == diff and c.pending == pending and c.dev == dev then
         return c.items
     end
     local list = buildItems(enc)
-    -- each row's ability types, main first, found as its alerts' colour is (Alerts/Colors.lua)
-    local typesOf = CRT.AlertColors and CRT.AlertColors.Types(enc, name, viewDiff)
+    -- each row's ability types, main first, found as its alerts' colour is (Alerts/Colors.lua), on the
+    -- ability timeline on show
+    local shown = shownReference()
+    local typesOf = CRT.AlertColors and CRT.AlertColors.Types(enc, name, shown and shown.ref.difficulty)
     for _, item in ipairs(list) do
         if item.pending then
             item.label, item.has, item.refHas = TEXT.unnamed, false, false
@@ -498,7 +526,7 @@ local function itemsFor(enc, name)
             end
         end
     end
-    listCache = { enc = enc, diff = viewDiff, pending = pending, dev = dev, items = list }
+    listCache = { enc = enc, diff = diff, pending = pending, dev = dev, items = list }
     return list
 end
 
@@ -615,7 +643,9 @@ local function loadPanel(item, enc, name)
     end
     local key = itemKey(item)
     local Draft = CRT.AlertDraft
-    local same = cur.key == key and cur.enc == enc
+    local group = shownGroup()
+    -- the same ability on another difficulty group is another alert
+    local same = cur.key == key and cur.enc == enc and cur.group == group
     if not same then
         -- typing belongs to the row it was typed on: saved there before the boxes change hands
         saveTyped(true)
@@ -645,6 +675,8 @@ local function loadPanel(item, enc, name)
         cur.ctx = { encounterID = enc, reminder = { enabled = false } }
         cur.draft = Draft.ForSpell(item.spellID, itemName(item), name)
     end
+    -- a change saves for the group on show only (an older alert on any difficulty is split for it)
+    Draft.SetGroup(cur.draft, cur.draft.group or group)
     if not same then
         notice = nil
         typedGen = typedGen + 1
@@ -652,7 +684,7 @@ local function loadPanel(item, enc, name)
             panel.lookupCtl:Hide()
         end
     end
-    cur.key, cur.enc = key, enc
+    cur.key, cur.enc, cur.group = key, enc, group
     setBox(panel.textEdit, cur.draft.text, not same)
     setBox(panel.idEdit, idText(cur.draft), not same)
     setBox(panel.timesEdit, cur.draft.keptTimes, not same)
@@ -948,11 +980,18 @@ local function setEnabled(item, on)
     if item.id then
         local r = Reminders:Get(enc, item.id)
         if r then
+            r = Draft.copy(r)
             r.enabled = on
-            if cur.ctx and cur.ctx.id == item.id and cur.ctx.reminder then
-                cur.ctx.reminder.enabled = on -- the panel's next save keeps the tick
+            -- an older alert on any difficulty: the tick is for the group on show only (Save splits it)
+            if not Reminders.GroupOf(r) then
+                r.group = shownGroup()
             end
-            Reminders:Save(enc, item.id, r)
+            local id = Reminders:Save(enc, item.id, r)
+            if cur.ctx and cur.ctx.id == item.id and cur.ctx.reminder then
+                -- the panel's next save keeps the tick, on the reminder of the group on show
+                cur.ctx.id = id or item.id
+                cur.ctx.reminder = Draft.copy(Reminders:Get(enc, cur.ctx.id)) or cur.ctx.reminder
+            end
         end
     elseif on then
         if itemKey(item) == cur.key and cur.draft and not Draft.Problem(cur.ctx, cur.draft) then
@@ -965,7 +1004,8 @@ local function setEnabled(item, on)
             if item.pending then
                 pendingOwn[enc] = nil -- the new row is made now: listed once, and still selected
             end
-            local id = Reminders:Save(enc, nil, { spellID = item.spellID, boss = name, text = itemName(item), enabled = true })
+            local id = Reminders:Save(enc, nil, { spellID = item.spellID, boss = name, text = itemName(item), enabled = true,
+                group = shownGroup() })
             if wasSelected then
                 followID = id
                 refresh()
@@ -1478,7 +1518,7 @@ local function build(f)
     L.LIST_H = tabH + L.LIST_TOP - L.PAD - L.OWN_H - L.OWN_GAP
     L.MAX_ROWS = math.floor((L.LIST_H - 4) / L.ROW_H)
     L.PANEL_H = tabH + L.LIST_TOP - L.PAD
-    selected, viewDiff, offset = nil, nil, 0
+    selected, viewGroup, viewPrefer, offset = nil, nil, nil, 0
     cur, notice, picked, pendingOwn, opened = {}, nil, {}, {}, nil
     allChanged()
 
@@ -1502,7 +1542,8 @@ local function build(f)
                 return -- a raid heading is not a boss
             end
             saveTyped()
-            selected, viewDiff, offset, opened = key, nil, 0, nil
+            -- the difficulty picked stays for the next boss
+            selected, viewPrefer, offset, opened = key, nil, 0, nil
             reveal = true
             refresh()
         end,
@@ -1512,23 +1553,19 @@ local function build(f)
     diffDrop = UI.Dropdown(f, TEXT.difficulty, {
         labelWidth = L.DIFF_LABEL,
         width = L.DIFF_W,
+        -- the Timeline's two difficulty groups: each has its own alerts
         options = function()
-            local out = { { key = ANY, label = TEXT.any } }
-            local seen = {}
-            for _, entry in ipairs(bossRefs()) do
-                local d = entry.ref.difficulty
-                if type(d) == "string" and d ~= "" and not seen[lower(d)] then
-                    seen[lower(d)] = true
-                    out[#out + 1] = { key = d, label = d }
-                end
-            end
-            return out
+            return CRT.AlertDraft.GroupOptions(TEXT.groupNH, TEXT.groupMythic)
         end,
         get = function()
-            return viewDiff or ANY
+            return shownGroup()
         end,
         set = function(key)
-            viewDiff = key ~= ANY and key or nil
+            if key ~= "nh" and key ~= "mythic" then
+                return
+            end
+            saveTyped() -- typing belongs to the group it was typed on
+            viewGroup, viewPrefer = key, nil
             refresh()
         end,
     })
@@ -1549,10 +1586,14 @@ local function build(f)
             return entry and entry.key
         end,
         set = function(key)
+            local Ref = CRT.TimelineReference
             for _, entry in ipairs(bossRefs()) do
                 if entry.key == key then
                     local d = entry.ref.difficulty
-                    viewDiff = (type(d) == "string" and d ~= "") and d or nil
+                    saveTyped()
+                    -- its difficulty group goes on show, with it preferred inside the group
+                    viewGroup = Ref.Group(entry.ref)
+                    viewPrefer = (type(d) == "string" and d ~= "") and d or nil
                 end
             end
             refresh()
@@ -1707,7 +1748,7 @@ CRT.NoteReminders = {
         if saveTyped then
             saveTyped() -- typing waiting to save belongs to the row it was typed on
         end
-        selected, viewDiff, opened = encounterID, nil, nil
+        selected, viewPrefer, opened = encounterID, nil, nil
         if spellID then
             picked[encounterID] = "a:" .. tostring(spellID)
             reveal = true
