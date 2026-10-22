@@ -109,7 +109,8 @@ UI.LAYERS = {
     { key = "alertcircles", label = "Alert circles", default = "HIGH" },
     { key = "alerttimeline", label = "Alert timeline", default = "HIGH" },
     { key = "readycheck", label = "Ready check window", default = "HIGH" },
-    { key = "bar", label = "Your consumables bar", default = "HIGH" },
+    -- the game's Ready Check window's own layer, so the row above it is never under another panel
+    { key = "bar", label = "Your consumables bar", default = "DIALOG" },
     { key = "debuffs", label = "Debuff panel", default = "HIGH" },
     { key = "lowhealth", label = "Low-health banner", default = "DIALOG" },
     -- At most Fullscreen: the alert editor and the game's dropdown lists sit above it, on Fullscreen
