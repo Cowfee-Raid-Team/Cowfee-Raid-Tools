@@ -4,7 +4,8 @@ local ADDON, CRT = ...
 -- each in the order the Journal walks them, to paste back when an export splits a boss wrong. Without an ID
 -- it is the boss open in the Journal window. Each line: depth (indent), section ID, header type, title,
 -- spell ID, the icon flags as tag words, "hidden" when the Journal leaves it out for its picked difficulty,
--- and "stage" when Journal.FromJournalEncounter takes it as one. Opens in the copy window.
+-- and "stage" when Journal.FromJournalEncounter takes it as one. The first line names the page's layout
+-- (Journal.Layout: overview, abilities for the older raids, or nil when unknown). Opens in the copy window.
 -- This file never ships: its .toc line is inside the do-not-package block.
 
 local Tree = {}
@@ -27,8 +28,8 @@ function Tree:Show(arg)
     end
     local Journal = CRT.TimelineJournal
     local lines = {
-        string.format("%s (Journal %d, encounter %s, difficulty %s)", name, id, tostring(dungeonID),
-            tostring(EJ_GetDifficulty and EJ_GetDifficulty())),
+        string.format("%s (Journal %d, encounter %s, difficulty %s, layout %s)", name, id, tostring(dungeonID),
+            tostring(EJ_GetDifficulty and EJ_GetDifficulty()), tostring(Journal.Layout and Journal.Layout(id))),
         "depth  section  headerType  title  [spell]  {tags}  hidden  stage",
     }
     local visited = {}
