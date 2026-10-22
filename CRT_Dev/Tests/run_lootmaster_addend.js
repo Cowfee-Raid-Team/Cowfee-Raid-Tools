@@ -649,14 +649,22 @@ assert(load(tradeSrc, "Trade.lua"))("CowfeeRaidTools", CRT)
 local tradeEvents
 for _, f in ipairs(frames) do if f.events and f.events.TRADE_SHOW then tradeEvents = f end end
 local picked, split, clicked = {}, {}, {}
-C_Container.PickupContainerItem = function(bag, s) picked[#picked + 1] = bag .. ":" .. s end
-C_Container.SplitContainerItem = function(bag, s, n) split[#split + 1] = bag .. ":" .. s .. "x" .. n end
+-- the game's side: a pickup or split puts the item on the cursor, the trade slot takes it off
+local pickupWorks, splitWorks, tradeTakes, clickFails = true, true, true, false
+C_Container.PickupContainerItem = function(bag, s) picked[#picked + 1] = bag .. ":" .. s if pickupWorks then cursor = BAGS[bag][s].hyperlink end end
+C_Container.SplitContainerItem = function(bag, s, n) split[#split + 1] = bag .. ":" .. s .. "x" .. n if splitWorks then cursor = BAGS[bag][s].hyperlink end end
 InitiateTrade = function() end
 GetTradePlayerItemLink = function() return nil end
-ClickTradeButton = function(i) clicked[#clicked + 1] = i end
+ClickTradeButton = function(i) clicked[#clicked + 1] = i if clickFails then error("boom") end if tradeTakes then cursor = nil end end
 GetUnitName = function() return "Other-Sargeras" end
 local realUnitOf = LM.UnitOf
 LM.UnitOf = function() return "raid2" end
+local function trade(index)
+  printed, picked, split, clicked = {}, {}, {}, {}
+  LM:TradeItem(index)
+  tradeEvents.scripts.OnEvent(tradeEvents, "TRADE_SHOW")
+end
+local function said(words) for _, m in ipairs(printed) do if m:find(words, 1, true) then return true end end return false end
 BL:Clear()
 pickUp(0, 12) slot.scripts.OnReceiveDrag(slot)
 pickUp(0, 12) slot.scripts.OnReceiveDrag(slot)
@@ -667,16 +675,59 @@ eq(#items, 3, "the session: one item per row")
 eq(idOf(items[1] and items[1].itemString), 311, "the session: the first flask")
 eq(idOf(items[2] and items[2].itemString), 311, "the session: the second flask, its own item")
 LM:Award(1, "Other-Sargeras", LM.current.responses[1].key)
-LM:TradeItem(1)
-tradeEvents.scripts.OnEvent(tradeEvents, "TRADE_SHOW")
+LM:Award(3, "Other-Sargeras", LM.current.responses[1].key)
+trade(1)
 eq(split[1], "0:12x1", "the trade: one flask split off the stack")
 eq(#picked, 0, "the trade: never the whole stack")
 eq(clicked[1], 1, "the trade: into the first free slot")
-LM:Award(3, "Other-Sargeras", LM.current.responses[1].key)
-LM:TradeItem(3)
-tradeEvents.scripts.OnEvent(tradeEvents, "TRADE_SHOW")
+check(said("is in the trade window"), "the trade: placed")
+eq(cursor, nil, "the trade: nothing left on the cursor")
+trade(3)
 eq(picked[1], "0:5", "the trade: a single item is picked up as it is")
-eq(#split, 1, "the trade: no split for a single item")
+eq(#split, 0, "the trade: no split for a single item")
+check(said("is in the trade window"), "the trade: the single item placed")
+-- a split that leaves the cursor empty: no click, the failure line, never "placed"
+splitWorks = false
+trade(1)
+eq(#clicked, 0, "a split that put nothing on the cursor: the trade slot isn't clicked")
+check(said("couldn't take one"), "a split that put nothing on the cursor: the failure line")
+check(not said("is in the trade window"), "a split that put nothing on the cursor: not placed")
+splitWorks = true
+-- a pickup that leaves the cursor empty: the same for a single item
+pickupWorks = false
+trade(3)
+eq(#clicked, 0, "a pickup that put nothing on the cursor: the trade slot isn't clicked")
+check(said("couldn't pick up"), "a pickup that put nothing on the cursor: the failure line")
+check(not said("is in the trade window"), "a pickup that put nothing on the cursor: not placed")
+pickupWorks = true
+-- the trade slot leaves the item on the cursor: it goes back to the bags, and the line says so
+tradeTakes = false
+trade(1)
+eq(cursor, nil, "a flask the trade didn't take: the cursor is cleared (back in its slot)")
+check(said("couldn't be put in the trade"), "a flask the trade didn't take: the failure line")
+check(not said("is in the trade window"), "a flask the trade didn't take: not placed")
+trade(3)
+eq(cursor, nil, "a single item the trade didn't take: the cursor is cleared")
+check(said("couldn't be put in the trade"), "a single item the trade didn't take: the failure line")
+tradeTakes = true
+-- an error halfway (the trade slot's call fails with the item on the cursor): the cursor is cleared
+clickFails = true
+trade(1)
+eq(cursor, nil, "an error in the trade with a split flask: the cursor is cleared")
+check(said("could not be opened"), "an error in the trade: said in chat")
+trade(3)
+eq(cursor, nil, "an error in the trade with a single item: the cursor is cleared")
+clickFails = false
+-- a stack size that can't be read: nothing goes in, never the whole stack
+BAGS[0][12].stackCount = nil
+trade(1)
+eq(#picked + #split + #clicked, 0, "an unread stack size: nothing picked up or put in")
+check(said("couldn't read how many"), "an unread stack size: the line says why")
+BAGS[0][12].stackCount = 3
+issecretvalue = function(v) return v == 3 end
+trade(1)
+eq(#picked + #split + #clicked, 0, "a secret stack size: nothing picked up or put in")
+issecretvalue = nil
 LM.UnitOf = realUnitOf
 LM:AskEnd()
 if popup then popup.callback() end

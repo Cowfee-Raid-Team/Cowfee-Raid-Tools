@@ -7,7 +7,7 @@ const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate();
 lualib.luaL_openlibs(L);
 const harness = `
-local panelSrc, windowSrc, popupSrc, dataSrc, gearSrc = ...
+local panelSrc, windowSrc, popupSrc, dataSrc, gearSrc, commSrc = ...
 local fails, passes = 0, 0
 local function check(ok, what) if ok then passes = passes + 1 else fails = fails + 1 print("FAIL " .. what) end end
 local function eq(a, b, what) check(a == b, what .. " (got " .. tostring(a) .. ", want " .. tostring(b) .. ")") end
@@ -354,11 +354,39 @@ eq(p.h, twoRows + 22 + 4, "three rows: the item one row taller")
 fits("three rows", { p, p2, p3 })
 LETTER = 7.5
 
--- a flask (a consumable, no slot) is open to every raider: every button on, no "can't use" line
+-- a flask (a consumable, no slot) is open to every raider: every button on, no "can't use" line. Judged by the
+-- raider's real path (Comm.lua's LM:CheckSpecs and LM.CantUse), next to a tank trinket a mage can't use
 local instant = C_Item.GetItemInfoInstant
-C_Item.GetItemInfoInstant = function(s) if s == "item:5" then return 5, "Consumable", "Flask", "", 0, 0, 3 end return instant(s) end
+C_Item.GetItemInfoInstant = function(s)
+  if s == "item:5" then return 5, "Consumable", "Flask", "", 0, 0, 3 end
+  if s == "item:6" then return 6, "Armor", "Miscellaneous", "INVTYPE_TRINKET", 0, 4, 0 end
+  return instant(s)
+end
+C_Item.GetItemSpecInfo = function() return { 73 } end -- the worst case: the game lists a warrior tank spec for both
+Item = { CreateFromItemID = function() return { IsItemDataCached = function() return true end, ContinueOnItemLoad = function() end } end }
+UnitClass = function() return "Mage", "MAGE" end
+GetNumSpecializations = function() return 3 end
+GetSpecializationInfo = function(i) return ({ 62, 63, 64 })[i] end
+C_ChatInfo = { RegisterAddonMessagePrefix = function() end, SendAddonMessage = function() return 0 end }
+C_Timer = C_Timer or { After = function() end, NewTicker = function() return { Cancel = function() end } end }
+IsInGroup, IsInRaid, GetNumGroupMembers = function() return false end, function() return false end, function() return 0 end
+UnitName = function() return "Solex" end
+GetNormalizedRealmName = function() return "Sargeras" end
+CRTDBChar = CRTDBChar or {}
+local keepAnswer = LM.Answer
+assert(load(commSrc, "Comm.lua"))("CowfeeRaidTools", CRT)
+LM.Answer = keepAnswer
+LM.MyRole = function() return "D" end
+LM.MyItemLevel = function() return "280.0" end
+LM.incoming.autoPass = true
 LM.incoming.items[4] = { itemString = "item:5", ilvl = 90, shownAt = 100 }
-LM.incoming.mine[4] = nil
+LM.incoming.items[5] = { itemString = "item:6", ilvl = 90, shownAt = 100 }
+LM.incoming.mine[4], LM.incoming.mine[5] = nil, nil
+local judged = false
+LM:CheckSpecs(LM.incoming, function() judged = true end)
+check(judged, "the raider's check ran over every item")
+eq(LM.incoming.mine[4], nil, "a flask: not answered for you, even with a spec listed")
+eq(LM.incoming.mine[5] and LM.incoming.mine[5].auto, true, "the tank trinket beside it: answered for a mage (the real path ran)")
 UI:RepaintTheme()
 local pf
 for _, f in ipairs(frames) do if rawget(f, "note") and rawget(f, "buttons") and rawget(f, "itemString") == "item:5" then pf = f end end
@@ -379,5 +407,5 @@ if fails > 0 then error("failures") end
 `;
 const dir = process.argv[2];
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
-for (const f of ['CRT_Core/UI/Panel.lua', 'CRT_Core/UI/Window.lua', 'CRT_Modules/LootMaster/Popup.lua', 'CRT_Modules/LootMaster/Data.lua', 'CRT_Core/Gear.lua']) lua.lua_pushstring(L, to_luastring(fs.readFileSync(path.join(dir, f), 'utf8')));
-if (lua.lua_pcall(L, 5, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
+for (const f of ['CRT_Core/UI/Panel.lua', 'CRT_Core/UI/Window.lua', 'CRT_Modules/LootMaster/Popup.lua', 'CRT_Modules/LootMaster/Data.lua', 'CRT_Core/Gear.lua', 'CRT_Modules/LootMaster/Comm.lua']) lua.lua_pushstring(L, to_luastring(fs.readFileSync(path.join(dir, f), 'utf8')));
+if (lua.lua_pcall(L, 6, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }

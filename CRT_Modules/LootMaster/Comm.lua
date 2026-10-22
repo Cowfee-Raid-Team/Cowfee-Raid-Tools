@@ -843,8 +843,10 @@ end
 -- allow everyone to roll on it"): not gear you wear (a weapon or armor with an equip slot, as
 -- C_Item.GetItemInfoInstant gives them) and no "Classes:" line. A consumable, reagent, toy, mount or pet
 -- is never answered for anyone, even when the game lists specs for it. A tier token has a Classes line, so
--- it is still judged. Pure; anything unread (not a number or a string) is not open, and goes on to the
--- rules, which fail open themselves.
+-- it is still judged. Pure. An item class or equip slot that can't be read (not a number or a string, or
+-- secret) is not open here and goes on to the rules, which fail open themselves. A Classes line that can't
+-- be read (no tooltip data, a secret line: classes nil) counts as no line, so the item is open: like every
+-- rule here, an unclear answer shows the item to the raider, never answers it for them.
 local NOT_WORN = { [""] = true, INVTYPE_NON_EQUIP_IGNORE = true, INVTYPE_BAG = true, INVTYPE_QUIVER = true }
 
 function LM.OpenToAll(itemClass, equipLoc, classes)
