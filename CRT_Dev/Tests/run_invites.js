@@ -219,6 +219,13 @@ check(#sets == 0 and not Invite:Entry("Fighter-Area52").stayed, "they joined in 
 G.raid[2][3] = false
 fire("GROUP_ROSTER_UPDATE") flush()
 check(#sets == 1 and state("Fighter-Area52") == "moved", "their combat cleared: moved on the next roster read")
+-- They stay in combat past the window: the recheck timer gives up and says so.
+reset("raid", { { "Solex", 1 } })
+Invite:Send({ "Brawler-Area52" }, slotsWith({ [21] = "Brawler-Area52" }), "Main Raid")
+G.raid[2] = { "Brawler", 1, true }
+fire("GROUP_ROSTER_UPDATE") flush()
+for _ = 1, 7 do now = now + 5 runLong() end
+check(#sets == 0 and Invite:Entry("Brawler-Area52").stayed == "they stayed in combat", "in combat 35 s after joining: stays, they stayed in combat (" .. tostring(Invite:Entry("Brawler-Area52").stayed) .. ")")
 -- A full group by the time combat ends: they stay, with the usual reason.
 reset("raid", { { "Solex", 1 }, { "F1", 5 }, { "F2", 5 }, { "F3", 5 }, { "F4", 5 } })
 Invite:Send({ "Slow-Area52" }, slotsWith({ [21] = "Slow-Area52" }), "Main Raid")
@@ -238,8 +245,14 @@ date = os.date
 CRT.Groups:SetActive(CRT.Groups:CreatePreset("Main", slotsWith({ [1] = "Solex-Area52", [16] = "Open-Area52", [17] = "Nope-Area52" })))
 Invite:Send({ "Open-Area52", "Nope-Area52" }, CRT.Groups:Find(CRT.Groups:Active()).slots, "Main")
 fire("CHAT_MSG_SYSTEM", "Nope declines your group invitation.")
+Invite:Send({ "Free-Area52" }, nil)
+G.raid[2] = { "Free", 1 }
+fire("GROUP_ROSTER_UPDATE") flush()
+check(state("Free-Area52") == "joined", "a joiner with no layout group: joined")
+G.raid[2] = nil
 CRT.Late:Start("button", now)
 check(Invite:Entry("Nope-Area52") == nil, "the start drops the finished (declined) invite")
+check(Invite:Entry("Free-Area52") == nil, "and a joiner with no group to move to")
 check(state("Open-Area52") == "invited", "and keeps the open one")
 G.raid[2] = { "Open", 1 }
 fire("GROUP_ROSTER_UPDATE") flush()
@@ -330,7 +343,7 @@ fire("GROUP_ROSTER_UPDATE") flush()
 check(#invites == 4 and state("E-Area52") == "waiting", "no longer lead or assist: the waiting invite isn't sent")
 now = now + 31
 runLong()
-check(state("E-Area52") == "failed" and Invite:Entry("E-Area52").reason == "Only the raid leader or an assist can invite.", "and after the retry window it fails with why, instead of waiting forever")
+check(state("E-Area52") == "failed" and Invite:Entry("E-Area52").reason == "you aren't lead or assist", "and after the retry window it fails with why, instead of waiting forever")
 reset("raid", { { "Solex", 1 } })
 Invite:Send({ "Eve-Area52" }, nil)
 local oldDecline = ERR_DECLINE_GROUP_S

@@ -52,6 +52,7 @@ local TEXT = {
     declined = "declined",
     noInvite = "the game didn't take the invite",
     noAnswer = "no answer",
+    notLeadShort = "you aren't lead or assist",
     groupFull = "group %d is full",
     inCombat = "they stayed in combat",
     moveFailed = "the move didn't go through",
@@ -105,9 +106,11 @@ function Invite:Reset()
     self:Fire()
 end
 
--- Whether an entry is done: moved, declined, failed, or left where they joined.
+-- Whether an entry is done: moved, declined, failed, left where they joined, or joined with no layout
+-- group to move to.
 local function finished(e)
-    return e.state == "moved" or e.state == "declined" or e.state == "failed" or (e.state == "joined" and e.stayed ~= nil)
+    return e.state == "moved" or e.state == "declined" or e.state == "failed"
+        or (e.state == "joined" and (e.stayed ~= nil or not e.group))
 end
 
 -- Forgets only the finished invites, keeping waiting, invited, moving and joined-not-moved ones, so they
@@ -238,7 +241,7 @@ local function failBlocked()
         for _, lower in ipairs(order) do
             local e = entries[lower]
             if e.state == "waiting" then
-                e.state, e.reason = "failed", TEXT.notLead
+                e.state, e.reason = "failed", TEXT.notLeadShort
             end
         end
     elseif not blockedTimer then
