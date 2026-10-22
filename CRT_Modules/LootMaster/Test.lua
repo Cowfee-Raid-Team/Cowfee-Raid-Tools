@@ -7,7 +7,8 @@ local ADDON, CRT = ...
 -- History, and the award message is shown only to you. The items are real ones from your own loot: picked at
 -- random from Loot History and RCLootCouncil's awards, so their icons and tooltips work, one per slot (or kind
 -- of item) first so each test shows a mix; FALLBACK is only used when you have none. Items that pass your loot
--- filter are picked first, and the chat says when too few do.
+-- filter are picked first, and the chat says when too few do. Loot Master > Tonight's Test boss kill
+-- (LM:TestBossKill, below) holds samples in Boss loot instead, as a boss kill would.
 --   /crt loot test [count]   start a test (count 1-8, default 4)
 --   /crt loot window         show the looter window again
 --   /crt loot popup          show your raider popup again
@@ -142,6 +143,51 @@ function LM:Test(count, random)
         CRT:Print(string.format("Loot Master test: %d sample items sent to %s. Nothing is passed; you can test trading a given-out item by double-clicking it.",
             #items, IsInGroup() and "the group" or "you (not in a group)"))
     end
+end
+
+-- Test boss kill (Loot Master > Tonight): each click is one boss kill. It adds KILL_ITEMS sample items,
+-- picked as above, to the Boss loot list through BL:AddReceived, the way a kill with no roll adds yours,
+-- flagged test: won, ticked, marked TEST, from "Test boss N". Start session gives them out in a test
+-- session (LootMaster/BossLoot.lua). N counts from 1 again once no TEST rows are held.
+local KILL_ITEMS = { 2, 4 } -- the fewest and most items a test kill drops
+local testKills = 0
+
+local TEXT = {
+    boss = "Test boss %d",
+    unknown = "Item %d",
+    killed = "Loot Master test: %s dropped %d %s. Tick them and press Start session.",
+}
+
+-- A link for the row: the sample's own, else the game's, else one made from the item string (its name
+-- comes once the game has the item).
+local function linkOf(it)
+    if it.link then
+        return it.link
+    end
+    local ok, _, link = pcall(C_Item.GetItemInfo, it.itemString)
+    if ok and type(link) == "string" then
+        return link
+    end
+    return "|cffffffff|H" .. it.itemString -- the game's white item link, not a theme colour .. "|h[" .. TEXT.unknown:format(Loot.ItemID(it.itemString) or 0) .. "]|h|r"
+end
+
+-- random: optional, for tests (see LM.PickSamples). Returns the rows added.
+function LM:TestBossKill(random)
+    random = random or math.random
+    local BL = self.BossLoot
+    if not BL:HasTests() then
+        testKills = 0
+    end
+    testKills = testKills + 1
+    local count = KILL_ITEMS[1] + random(KILL_ITEMS[2] - KILL_ITEMS[1] + 1) - 1
+    local items = samples(count, random)
+    local kill = { name = TEXT.boss:format(testKills), at = time(), test = true }
+    local rows = {}
+    for _, it in ipairs(items) do
+        rows[#rows + 1] = BL:AddReceived(linkOf(it), kill, true)
+    end
+    CRT:Print(TEXT.killed:format(kill.name, #rows, #rows == 1 and "item" or "items"))
+    return rows
 end
 
 -- /crt loot <verb>. Returns true when it handled the command.

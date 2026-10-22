@@ -50,6 +50,15 @@ local ADDON, CRT = ...
 -- rolled on (BL:SawRoll, from LootMaster/Rolls.lua) never adds one, so a rolled drop isn't listed twice.
 -- Other players' items are theirs: only what is in your bags can be given out. Whether the game lets you
 -- trade it is the game's rule; the trade says so.
+--
+-- Test boss kills (Alex, 2026-10-22: "clicking test multiple times to indicate multiple boss kills and
+-- then end session closes out all loot during that session"). Loot Master > Tonight's Test boss kill
+-- (LM:TestBossKill, LootMaster/Test.lua) adds sample items through BL:AddReceived, as a kill with no roll
+-- does, flagged test: each row is won, ticked, has r.test and its kill's boss label (r.boss). A TEST row
+-- leaves LM.BOSS_SECONDS after its kill, has no trade time, is never kept for a /reload and doesn't open
+-- the window. It never goes into a real session: Start session with both kinds ticked starts the real
+-- ones only and says so; one with only TEST rows starts a test session (LM:Start's test). When a test
+-- session ends and no TEST items wait for their turn, the TEST rows go (BL:ClearTests).
 
 local LM = CRT.LootMaster
 local BL = { rows = {}, waiting = {} }
@@ -63,6 +72,7 @@ local TEXT = {
     expired = "Loot Master: %d won %s left the boss loot list: the game's 2 hours to trade %s are over.",
     tooOld = "the game's 2 hours to trade it are over",
     warn = "Loot Master: %s can be traded for about %d more minutes. Start a session soon or it can't be given out.",
+    realOnly = "Loot Master started the real items only. TEST items never go into a real session; they stay in the list.",
 }
 
 local function secret(v)
@@ -98,30 +108,35 @@ local nextOwn = 0 -- received rows' rollIDs: -1, -2, … so they never meet the 
 LM.TRADE_SECONDS = 7200 -- the game's time to trade a looted item to others who could loot it
 LM.TRADE_WARN = 900 -- chat warns this long before a won item's trade time runs out
 
--- Keeps the list and the waiting items for a /reload: each time left as a clock time (time()).
+-- Keeps the list and the waiting items for a /reload: each time left as a clock time (time()). TEST rows
+-- and waiting TEST items are left out, so a /reload drops them.
 local function store()
     CRTDBChar = type(CRTDBChar) == "table" and CRTDBChar or {}
     CRTDBChar.lootmaster = type(CRTDBChar.lootmaster) == "table" and CRTDBChar.lootmaster or {}
-    if #BL.rows == 0 and #BL.waiting == 0 then
-        CRTDBChar.lootmaster.bossLootList = nil
-        return
-    end
     local now, wall = GetTime(), time()
     local rows, waiting = {}, {}
     for _, r in ipairs(BL.rows) do
-        local c = {}
-        for k, v in pairs(r) do
-            c[k] = v
+        if not r.test then
+            local c = {}
+            for k, v in pairs(r) do
+                c[k] = v
+            end
+            c.at, c.expires, c.endsAt = nil, nil, wall + math.floor((r.expires or now) - now + 0.5)
+            rows[#rows + 1] = c
         end
-        c.at, c.expires, c.endsAt = nil, nil, wall + math.floor((r.expires or now) - now + 0.5)
-        rows[#rows + 1] = c
     end
     for _, w in ipairs(BL.waiting) do
-        local items = {}
-        for _, it in ipairs(w.items) do
-            items[#items + 1] = { itemString = it.itemString, link = it.link, ilvl = it.ilvl, endsAt = wall + math.floor((it.expires or now) - now + 0.5) }
+        if not w.test then
+            local items = {}
+            for _, it in ipairs(w.items) do
+                items[#items + 1] = { itemString = it.itemString, link = it.link, ilvl = it.ilvl, endsAt = wall + math.floor((it.expires or now) - now + 0.5) }
+            end
+            waiting[#waiting + 1] = { items = items }
         end
-        waiting[#waiting + 1] = { items = items }
+    end
+    if #rows == 0 and #waiting == 0 then
+        CRTDBChar.lootmaster.bossLootList = nil
+        return
     end
     CRTDBChar.lootmaster.bossLootList = { rows = rows, waiting = waiting, boss = BL.boss, difficulty = BL.difficulty }
 end
@@ -139,9 +154,9 @@ end
 
 local expire -- set below
 
--- Seconds left to trade a won row, or nil for any other row.
+-- Seconds left to trade a won row, or nil for any other row (a TEST row has no trade time).
 function BL.TradeLeft(r)
-    if r.status ~= "won" or not r.expires then
+    if r.status ~= "won" or not r.expires or r.test then
         return nil
     end
     return math.max(0, r.expires - GetTime())
@@ -163,15 +178,17 @@ end
 local function schedule(r)
     local now = GetTime()
     C_Timer.After(math.max(0, r.expires - now) + 0.05, expire)
-    if r.status == "won" and not r.warned then
+    if r.status == "won" and not r.warned and not r.test then
         C_Timer.After(math.max(0, r.expires - LM.TRADE_WARN - now), warn)
     end
 end
 
--- A row is yours now: it stays until its trade time is over.
+-- A row is yours now: it stays until its trade time is over (a TEST row: LM.BOSS_SECONDS, as set by BL:Add).
 local function own(r)
     r.status, r.winner, r.warned = "won", nil, nil
-    r.expires = GetTime() + LM.TRADE_SECONDS
+    if not r.test then
+        r.expires = GetTime() + LM.TRADE_SECONDS
+    end
     schedule(r)
 end
 
@@ -180,7 +197,7 @@ expire = function()
     for _, r in ipairs(BL.rows) do
         if not (r.expires and now >= r.expires) then
             kept[#kept + 1] = r
-        elseif r.status == "won" then
+        elseif r.status == "won" and not r.test then
             won = won + 1
         end
     end
@@ -208,18 +225,32 @@ function BL:Row(rollID)
     return nil
 end
 
--- A boss roll the leader's CRT handled. fields: status ("rolling" or "cant"), rollType, reason. kill:
--- LM:LastKill(). Returns the row, or nil without a link (the caller says so in chat).
+-- Whether the list has a real (not TEST) row.
+local function hasReal()
+    for _, r in ipairs(BL.rows) do
+        if not r.test then
+            return true
+        end
+    end
+    return false
+end
+
+-- A boss roll the leader's CRT handled. fields: status ("rolling" or "cant"), rollType, reason, and test
+-- for a test boss kill's row. kill: LM:LastKill(), or a test kill. Returns the row, or nil without a link
+-- (the caller says so in chat).
 function BL:Add(rollID, link, fields, kill)
     local s = LM.LinkItemString(link)
     if not s or self:Row(rollID) then
         return nil
     end
-    local first = #self.rows == 0
-    -- the badge shows the newest kill's boss
-    self.boss = kill and kill.name or self.boss
-    local ok, _, _, _, difficultyName = pcall(GetInstanceInfo)
-    self.difficulty = (ok and type(difficultyName) == "string" and not secret(difficultyName)) and difficultyName or nil
+    local test = fields.test and true or nil
+    local first = not test and not hasReal() -- a real list's first row opens the window
+    if not test then
+        -- the badge shows the newest real kill's boss
+        self.boss = kill and kill.name or self.boss
+        local ok, _, _, _, difficultyName = pcall(GetInstanceInfo)
+        self.difficulty = (ok and type(difficultyName) == "string" and not secret(difficultyName)) and difficultyName or nil
+    end
     local pass, why = LM:FilterLoot(s, "boss", link)
     local okL, ilvl = pcall(C_Item.GetDetailedItemLevelInfo, link)
     local age = (kill and type(kill.at) == "number") and math.max(0, time() - kill.at) or 0
@@ -228,8 +259,9 @@ function BL:Add(rollID, link, fields, kill)
         at = GetTime(), expires = GetTime() + math.max(0, LM.BOSS_SECONDS - age), pass = pass and true or false, why = why,
         status = fields.status, rollType = fields.rollType, reason = fields.reason, received = fields.received,
         encounterID = kill and kill.encounterID or nil,
+        boss = kill and kill.name or nil, killAt = kill and kill.at or nil, test = test,
     }
-    r.ticked = r.pass and r.status ~= "cant"
+    r.ticked = (r.pass or test) and r.status ~= "cant" -- a TEST row is ticked even outside the filter
     self.rows[#self.rows + 1] = r
     if r.status == "won" then
         own(r)
@@ -246,9 +278,35 @@ function BL:SawRoll(kill)
 end
 
 -- An item the game gave you after kill with no roll: a won row, or nil (no link, or already listed).
-function BL:AddReceived(link, kill)
+-- test: a test boss kill's sample item (LM:TestBossKill), a TEST row.
+function BL:AddReceived(link, kill, test)
     nextOwn = nextOwn - 1
+    if test then
+        return self:Add(nextOwn, link, { status = "won", test = true }, kill)
+    end
     return self:Add(nextOwn, link, { status = "won", received = true }, kill)
+end
+
+-- Whether the list has a TEST row.
+function BL:HasTests()
+    for _, r in ipairs(self.rows) do
+        if r.test then
+            return true
+        end
+    end
+    return false
+end
+
+-- How many kills the rows came from (each kill's boss and time once), and how many rows.
+function BL:Held()
+    local kills, n = {}, 0
+    for _, r in ipairs(self.rows) do
+        local key = tostring(r.boss) .. ":" .. tostring(r.killAt)
+        if not kills[key] then
+            kills[key], n = true, n + 1
+        end
+    end
+    return n, #self.rows
 end
 
 -- Whether a row can be ticked: only one that is yours or may still be.
@@ -307,7 +365,7 @@ startNext = function()
     for _, it in ipairs(w.items) do
         if (it.expires or now + 1) > now then
             items[#items + 1] = it
-        else
+        elseif not w.test then -- a TEST item's 10 minutes are over: dropped without a word
             CRT:Print(TEXT.dropped:format(it.link .. ": " .. TEXT.tooOld))
         end
     end
@@ -320,7 +378,7 @@ startNext = function()
     for _, it in ipairs(items) do
         send[#send + 1] = { itemString = it.itemString, link = it.link, ilvl = it.ilvl }
     end
-    if not LM:Start(send) then
+    if not LM:Start(send, w.test) then
         table.insert(BL.waiting, 1, w) -- LM:Start said why; tried again when a session ends
     end
     changed()
@@ -330,18 +388,32 @@ end
 -- running real session keeps going and these all wait for it. They leave the list once the first session
 -- has started or they are waiting; when LM:Start refuses (it says why), they stay. The Loot Master window
 -- shows either way. Returns the number of items sent, or false and why (BL:CanStart's, or "failed").
+-- TEST rows never mix with real ones: with both ticked only the real ones start, and chat says so; with
+-- only TEST rows ticked it is a test session (sessions and waiting items carry test).
+local starting = false -- while Start ends a running test, so that end doesn't clear the TEST rows
+
 function BL:Start()
     local ok, why = self:CanStart()
     if not ok then
         return false, why
     end
-    local items, kept = {}, {}
+    local real, tests = false, false
     for _, r in ipairs(self.rows) do
         if r.ticked and r.status == "won" then
+            real, tests = real or not r.test, tests or (r.test and true or false)
+        end
+    end
+    local test = not real -- real ones ticked: those only
+    local items, kept = {}, {}
+    for _, r in ipairs(self.rows) do
+        if r.ticked and r.status == "won" and (r.test and true or false) == test then
             items[#items + 1] = { itemString = r.itemString, link = r.link, ilvl = r.ilvl, expires = r.expires }
         else
             kept[#kept + 1] = r
         end
+    end
+    if real and tests then
+        CRT:Print(TEXT.realOnly)
     end
     local chunks = {}
     for i = 1, #items, LM.MAX_ITEMS do
@@ -349,7 +421,7 @@ function BL:Start()
         for j = i, math.min(#items, i + LM.MAX_ITEMS - 1) do
             chunk[#chunk + 1] = items[j]
         end
-        chunks[#chunks + 1] = { items = chunk }
+        chunks[#chunks + 1] = { items = chunk, test = test or nil }
     end
     if self:Busy() then
         self.rows = kept
@@ -365,14 +437,16 @@ function BL:Start()
         return #items
     end
     if LM.current and LM.current.test then
+        starting = true
         LM:End()
+        starting = false
         CRT:Print(TEXT.testEnded)
     end
     local send = {}
     for _, it in ipairs(chunks[1].items) do
         send[#send + 1] = { itemString = it.itemString, link = it.link, ilvl = it.ilvl }
     end
-    if not LM:Start(send) then
+    if not LM:Start(send, test) then
         changed()
         return false, "failed"
     end
@@ -394,6 +468,34 @@ function BL:Clear(why)
         end
         changed("cleared")
     end
+end
+
+-- Removes the TEST rows and the TEST items waiting for their turn; real rows stay.
+function BL:ClearTests()
+    local rows, waiting = {}, {}
+    for _, r in ipairs(self.rows) do
+        if not r.test then
+            rows[#rows + 1] = r
+        end
+    end
+    for _, w in ipairs(self.waiting) do
+        if not w.test then
+            waiting[#waiting + 1] = w
+        end
+    end
+    if #rows ~= #self.rows or #waiting ~= #self.waiting then
+        self.rows, self.waiting = rows, waiting
+        changed(#rows == 0 and "cleared" or "changed")
+    end
+end
+
+local function testsWaiting()
+    for _, w in ipairs(BL.waiting) do
+        if w.test then
+            return true
+        end
+    end
+    return false
 end
 
 -- Results --------------------------------------------------------------------------------------------
@@ -506,8 +608,13 @@ end
 
 -- Emptying -------------------------------------------------------------------------------------------
 
-LM:OnChange(function(what)
+-- A test session's end clears the TEST rows, unless TEST items wait to start next (or Start session ended
+-- it to start another).
+LM:OnChange(function(what, s)
     if what == "ended" then
+        if type(s) == "table" and s.test and not starting and not testsWaiting() then
+            BL:ClearTests()
+        end
         startNext()
     end
 end)
@@ -523,12 +630,12 @@ function BL:Load()
     self.rows, self.waiting = {}, {}
     for _, c in ipairs(type(kept.rows) == "table" and kept.rows or {}) do
         local left = type(c.endsAt) == "number" and c.endsAt - wall or 0
-        if left > 0 and type(c.link) == "string" then
+        if left > 0 and type(c.link) == "string" and not c.test then -- TEST rows are never kept
             nextOwn = nextOwn - 1
             c.rollID, c.at, c.expires, c.endsAt = nextOwn, now, now + left, nil
             self.rows[#self.rows + 1] = c
             schedule(c)
-        elseif c.status == "won" then
+        elseif c.status == "won" and not c.test then
             gone = gone + 1
         end
     end
