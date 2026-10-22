@@ -451,6 +451,26 @@ test("stamp: a cleared note keeps the shared windows up for the stamp, then hide
   Notes:Fire()
 end)
 
+test("assignment lines: your class marks the line, a sentence never does", function()
+  local ORB = { "Orb Soak 1: Demon Hunter Warlock Priest Monk", "Orb Soak 2: Shaman Monk Druid Rogue",
+    "Orb Soak 3: Mage Warlock Death Knight Warrior", "Orb Soak 4: Hunter", "Note: the hunter kites" }
+  local function marked(file)
+    UnitClass = function(u) if u == "player" then return "x", file end end
+    clock = clock + 10
+    local out = {}
+    for i, line in ipairs(ORB) do
+      if NW.FormatText({ line }):find("> ", 1, true) then out[#out + 1] = i end
+    end
+    return table.concat(out, ",")
+  end
+  assert(marked("DEMONHUNTER") == "1", "a Demon Hunter: " .. marked("DEMONHUNTER"))
+  assert(marked("HUNTER") == "4", "a Hunter, not on Demon Hunter nor the sentence: " .. marked("HUNTER"))
+  assert(marked("DEATHKNIGHT") == "3", "a Death Knight: " .. marked("DEATHKNIGHT"))
+  assert(marked("MONK") == "1,2", "a Monk: " .. marked("MONK"))
+  UnitClass = nil
+  clock = clock + 10
+end)
+
 return table.concat(results, "\\n")
 `;
 

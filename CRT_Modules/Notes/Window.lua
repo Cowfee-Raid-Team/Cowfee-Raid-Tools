@@ -125,12 +125,15 @@ local function timerLine(item, seconds)
 end
 
 -- A line of free text: names class colored, your own name in gold, and the line marked with ">" when it
--- names you or your role. A line with no colon is treated as a heading, unless noHeading.
+-- names you or your role, or (an assignment line) your class. A line with no colon is treated as a heading,
+-- unless noHeading.
 local function textLine(line, noHeading)
     if line == "" then
         return ""
     end
-    local mine = false
+    -- an assignment line naming your class is yours too; a sentence never is by class (the guard: the alerts
+    -- notes harness runs this window on a frozen older engine)
+    local mine = Engine.ClassLineIsMine ~= nil and Engine:ClassLineIsMine(line)
     local myName = (UnitName("player") or ""):lower()
     local colored = line:gsub("[%w\128-\255]+", function(word)
         if Engine:WordIsMe(word) then
