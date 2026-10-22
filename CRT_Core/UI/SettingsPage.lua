@@ -527,7 +527,7 @@ local function buildLeft(pf)
         CRT.MinimapButton:SetHidden(not on)
     end)
 
-    heading(pf, x, -246, "Tooltips", "Where the addon's tooltips open. Next to what you hover: on the spot you click in the box below, beside the button, row or icon under your mouse. Game's tooltip spot: where the game shows its own tooltips, or wherever your UI addon moved them. Follow the cursor: at your mouse.\n\nClicking a spot also picks Next to what you hover.\n\nLoot History and Loot Master have their own Tooltip position on their Settings tabs. It follows this one until you change it there.\n\nThe button on the Encounter Journal always keeps its tooltip by it.")
+    heading(pf, x, -246, "Tooltips", "Where the addon's tooltips open. Next to what you hover: on the spot you click in the box below, beside the button, row or icon under your mouse. Game's tooltip spot: where the game shows its own tooltips, or wherever your UI addon moved them. Follow the cursor: at your mouse.\n\nClicking a spot also picks Next to what you hover. With no spot lit, each tooltip opens on its own side; click the lit spot again to go back to that.\n\nLoot History and Loot Master have their own Tooltip position on their Settings tabs. It follows this one until you change it there.\n\nThe button on the Encounter Journal always keeps its tooltip by it.")
     -- the dropdown, and its spot picker under it (UI/Tooltip.lua)
     local tooltips = UI.TooltipPositionSetting(pf, nil, { labelWidth = LABEL_W, width = CONTROL_W })
     tooltips.row:SetPoint("TOPLEFT", x, -264)

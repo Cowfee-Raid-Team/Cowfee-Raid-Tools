@@ -128,13 +128,13 @@ live.scripts.OnLeave(live)
 print("ok help: the tooltip is unchanged")
 
 -- Tooltip position (CRT_Core/UI/Tooltip.lua; run_tooltip_spots.js tests every spot, mode and area): a (?)
--- opens on the general spot, top right by default; on the game's tooltip spot (GameTooltip_SetDefaultAnchor,
+-- opens on its own side (ANCHOR_RIGHT) by default, on a picked spot when there is one; on the game's tooltip spot (GameTooltip_SetDefaultAnchor,
 -- which sets the owner with ANCHOR_NONE and places it) when picked
 local defaults = {}
 GameTooltip_SetDefaultAnchor = function(t, owner) defaults[#defaults + 1] = { t, owner } t:SetOwner(owner, "ANCHOR_NONE") end
 check(UI.TooltipPosition() == "spot", "Tooltip position: next to what you hover when nothing is saved")
 b.scripts.OnEnter(b)
-check(#defaults == 0 and GameTooltip.owner == b and GameTooltip.anchor == "ANCHOR_RIGHT", "a (?) on the default spot: top right of the icon")
+check(#defaults == 0 and GameTooltip.owner == b and GameTooltip.anchor == "ANCHOR_RIGHT", "a (?) on auto, the default: its own side, right of the icon")
 b.scripts.OnLeave(b)
 CRT.db.ui.tooltipMode, CRT.db.ui.tooltipSpot = "spot", "bottom"
 b.scripts.OnEnter(b)

@@ -261,7 +261,7 @@ do
   if helps == 0 or not titled then print("FAIL settings: no (?) right of the General Settings title") end
   print("settings page: " .. helps .. " (?) icons, each just right of what it explains")
 end
--- Tooltip position: a dropdown on Appearance, next to what you hover on the top right spot by default, saved
+-- Tooltip position: a dropdown on Appearance, next to what you hover with each tooltip on its own side (auto) by default, saved
 -- in ui.tooltipMode and ui.tooltipSpot, with the spot picker under it
 do
   local d = dropdowns["Tooltip position"]
@@ -269,7 +269,7 @@ do
     local o = type(d.options) == "function" and d.options() or d.options
     local labels = {} for _, x in ipairs(o) do labels[#labels + 1] = x.key .. "=" .. x.label end
     if table.concat(labels, ",") ~= "spot=Next to what you hover,game=Game's tooltip spot,cursor=Follow the cursor" then print("FAIL Tooltip position choices: " .. table.concat(labels, ",")) end
-    if CRT.defaults.ui.tooltipMode ~= "spot" or CRT.defaults.ui.tooltipSpot ~= "topright" then print("FAIL Core.lua's defaults: ui.tooltipMode spot, ui.tooltipSpot topright: " .. tostring(CRT.defaults.ui.tooltipMode) .. " " .. tostring(CRT.defaults.ui.tooltipSpot)) end
+    if CRT.defaults.ui.tooltipMode ~= "spot" or CRT.defaults.ui.tooltipSpot ~= "auto" then print("FAIL Core.lua's defaults: ui.tooltipMode spot, ui.tooltipSpot auto: " .. tostring(CRT.defaults.ui.tooltipMode) .. " " .. tostring(CRT.defaults.ui.tooltipSpot)) end
     if CRT.defaults.ui.tooltipAnchor ~= nil then print("FAIL the old ui.tooltipAnchor has no default any more") end
     if d.get() ~= "spot" then print("FAIL Tooltip position starts on Next to what you hover: " .. tostring(d.get())) end
     d.set("game")
@@ -278,7 +278,7 @@ do
     if CRT.db.ui.tooltipMode ~= "cursor" or UI.TooltipPosition() ~= "cursor" then print("FAIL picking Follow the cursor saves it") end
     d.set("spot")
     if CRT.db.ui.tooltipMode ~= "spot" or UI.TooltipPosition() ~= "spot" then print("FAIL picking Next to what you hover saves it") end
-    -- the spot picker under it: twelve spots, top right chosen, a click saves the spot
+    -- the spot picker under it: twelve spots, none lit (auto), a click saves the spot
     local picker
     for _, fr in ipairs(frames) do if rawget(fr, "spots") and rawget(fr, "opts") and fr.opts.label == "What you hover" then picker = fr end end
     if not picker then print("FAIL a spot picker under Tooltip position") else
@@ -286,7 +286,7 @@ do
       if n ~= 12 then print("FAIL the picker has twelve spots: " .. n) end
       local p = picker.pts[1] or {}
       if not (p[1] == "TOPLEFT" and p[3] == "BOTTOMLEFT" and p[4] == 125) then print("FAIL the picker sits under the dropdown, past its label") end
-      if picker.opts.get() ~= "topright" then print("FAIL the picker starts on Top right") end
+      if picker.opts.get() ~= "auto" then print("FAIL the picker starts on auto, no spot lit") end
       d.set("game")
       picker.spots.bottom.OnClick(picker.spots.bottom)
       if CRT.db.ui.tooltipSpot ~= "bottom" or CRT.db.ui.tooltipMode ~= "spot" then print("FAIL clicking a spot saves it and picks Next to what you hover") end

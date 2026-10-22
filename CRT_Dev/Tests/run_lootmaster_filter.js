@@ -466,7 +466,7 @@ CreateFrame = function(kind, name, parent, template)
 end
 -- the spot pickers (CRT_Core/UI/Controls.lua's UI.SpotPicker, run_tooltip_spots.js tests it): their options kept
 local pickers = {}
-CRT.UI.SPOT_PICKER_W, CRT.UI.SPOT_PICKER_H, CRT.UI.SPOT_PICKER_GAP = 122, 60, 12
+CRT.UI.SPOT_PICKER_W, CRT.UI.SPOT_PICKER_H, CRT.UI.SPOT_PICKER_GAP = 126, 70, 12
 CRT.UI.SpotPicker = function(p, opts) local r = mock("Picker") rawset(r, "opts", opts) rawset(r, "refresh", function() end) pickers[#pickers + 1] = r return r end
 LM.AUTHORITY_MAX = LM.AUTHORITY_MAX or 6
 CRT.UI.SortHeaders = function() return { refresh = function() end } end
@@ -562,7 +562,7 @@ if pos and tabsDrop and hover and window then
   check(b1 and b2, "layout: each picker beside its dropdown")
   check(x1 == 8 and x2 == 8, "layout: both in the first column")
   check(r1 < 430 and r2 < 430, "layout: the pickers end before the second column (" .. r1 .. ", " .. r2 .. ")")
-  check(top1 <= -340 and bot1 > top2 and bot2 >= bottom, "layout: under the response buttons, one under the other, inside the tab (" .. top1 .. " to " .. bot2 .. ")")
+  check(top1 <= -324 and bot1 > top2 and bot2 >= bottom, "layout: under the response buttons, one under the other, inside the tab (" .. top1 .. " to " .. bot2 .. ")")
   local function textAt(t) for _, fs in ipairs(texts) do if rawget(fs, "text") == t then return fs end end end
   local specs, looting = textAt("Items a raider can't use"), textAt("CRT Looting")
   local sp, lp = specs and specs.pts[1], looting and looting.pts[1]

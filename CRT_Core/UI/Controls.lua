@@ -694,17 +694,20 @@ end
 -- around it, three on each side, as in UI.TOOLTIP_SPOTS (UI/Tooltip.lua). The chosen spot is filled with
 -- the theme's accent (the game's gold in Default: Blizzard); the others are dark squares that light up
 -- under the mouse, and each names itself in a tooltip. opts:
---   get()        the chosen spot's key (nil for none)
+--   get()        the chosen spot's key (nil, or any other value such as "auto", for none lit)
 --   set(key)     called when a spot is clicked
 --   label        the text in the box, such as "What you hover"
+--   emptyLabel   optional: the box's text while no spot is lit, such as "Each on its own side"
+--   clear        optional: clicking the lit spot again calls set(clear), such as "auto"; without it the
+--                lit spot stays
 --   spots        optional: the keys to show (the rest are hidden); all twelve by default
---   enabledIf()  optional: greys the picker while it returns false. A greyed picker still takes a click,
+--   enabledIf()  optional: greys the picker (half alpha) while it returns false. A greyed picker still takes a click,
 --                since picking a spot is how the setting that owns it turns spots on
 --   area         optional: the tooltip area its own tooltips follow (UI.TooltipOwner)
 -- The picker is UI.SPOT_PICKER_W x UI.SPOT_PICKER_H. Returns the frame, with picker.refresh() and
 -- picker.spots[key] (each spot's button).
-local SPOT_SIZE, SPOT_PAD = 10, 3 -- a spot, and the gap between the spots and the box
-local SPOT_BOX_W, SPOT_BOX_H = 96, 34
+local SPOT_SIZE, SPOT_PAD = 12, 3 -- a spot, and the gap between the spots and the box
+local SPOT_BOX_W, SPOT_BOX_H = 96, 40 -- room for a side's three spots, 2 px apart
 UI.SPOT_PICKER_W = SPOT_BOX_W + 2 * (SPOT_SIZE + SPOT_PAD)
 UI.SPOT_PICKER_H = SPOT_BOX_H + 2 * (SPOT_SIZE + SPOT_PAD)
 UI.SPOT_PICKER_GAP = 12 -- from a control beside it
@@ -724,11 +727,14 @@ local function spotPlaces()
 end
 
 -- The picker's colours, from the theme each time it is drawn: the chosen spot in the accent (heading, the
--- game's gold, in Classic), the others and the box dark with an edge.
+-- game's gold, in Classic), the others and the box dark with an edge; the box's text. Greyed is half alpha
+-- on the whole picker, its label in its own colour.
 local function paintSpotPicker(p)
     local P = CRT.PALETTE
     local on = p.enabled
     local chosen = p.opts.get()
+    local lit = p.spots[chosen] ~= nil and p.spots[chosen]:IsShown()
+    p.text:SetText((not lit and p.opts.emptyLabel) or p.opts.label or "")
     local pick = UI:IsModern() and P.accent or P.heading
     for key, b in pairs(p.spots) do
         local fill = key == chosen and pick or P.surface
@@ -737,11 +743,7 @@ local function paintSpotPicker(p)
     end
     p.boxEdge:SetColorTexture(P.border[1], P.border[2], P.border[3], 1)
     p.boxFill:SetColorTexture(P.background[1], P.background[2], P.background[3], 0.6)
-    if on then
-        p.text:SetTextColor(P.text[1], P.text[2], P.text[3])
-    else
-        p.text:SetTextColor(0.5, 0.5, 0.5)
-    end
+    p.text:SetTextColor(P.text[1], P.text[2], P.text[3])
     p:SetAlpha(on and 1 or 0.5)
 end
 
@@ -790,7 +792,11 @@ function UI.SpotPicker(parent, opts)
         hl:SetColorTexture(1, 1, 1, 0.35)
         b.highlight = hl
         b:SetScript("OnClick", function()
-            opts.set(s.key)
+            if opts.clear ~= nil and opts.get() == s.key then
+                opts.set(opts.clear)
+            else
+                opts.set(s.key)
+            end
             p.refresh()
         end)
         b:SetScript("OnEnter", function(self)

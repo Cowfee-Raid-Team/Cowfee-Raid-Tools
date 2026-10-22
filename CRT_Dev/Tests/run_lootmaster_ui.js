@@ -318,9 +318,10 @@ local tb = t2.tabs[1]
 check(tb.frame.scripts.OnEnter ~= nil, "tooltip: the icon has OnEnter")
 check(tb.scripts.OnEnter == nil, "tooltip: the tab body has none")
 tb.frame.scripts.OnEnter(tb.frame)
--- by default the item tabs are like every other Loot Master tooltip: on General Settings' spot, top right
+-- by default the item tabs are like every other Loot Master tooltip: no spot picked (auto), so next to the
+-- icon, on the window's outer side, as before the picker
 eq(got.owner, tb.frame, "tooltip: owned by the icon")
-eq(got.anchor, "ANCHOR_RIGHT", "tooltip: by default on the general spot, top right of the icon")
+eq(got.anchor, "ANCHOR_LEFT", "tooltip: by default next to the icon, on the window's outer side")
 check(got.pt == nil, "tooltip: by default not placed by hand")
 tb.scripts.OnClick(tb, "LeftButton")
 eq(picked, 1, "tab click selects")
@@ -368,17 +369,19 @@ got, def = {}, nil
 tb.frame.scripts.OnEnter(tb.frame)
 check(def and def[1] == GameTooltip and def[2] == tb.frame, "item tabs on the game's spot: the game's own anchor")
 check(got.pt == nil, "item tabs on the game's spot: nothing placed by hand")
--- Same as above: Loot Master's Tooltip position, which is General Settings' unless set; on a spot, Loot
--- Master's own (bottom) or General Settings' (top right)
-CRT.db.lootmaster.tooltipSpot, CRT.db.ui.tooltipSpot = "bottom", nil
+-- Same as above: Loot Master's Tooltip position, which is General Settings' unless set; on auto, the icon's
+-- own ANCHOR_LEFT; a spot picked for Loot Master (bottom) or General Settings (top) wins over it
 for _, c in ipairs({
-  { "nonsense", nil, nil, "ANCHOR_RIGHT" }, { "area", nil, "game", "game" }, { "area", "general", "game", "game" }, { "area", "spot", "game", "ANCHOR_BOTTOM" },
-  { "area", "game", nil, "game" }, { "area", "cursor", "game", "cursor" }, { nil, "cursor", nil, "cursor" }, { "area", "general", "spot", "ANCHOR_RIGHT" },
+  { "nonsense", nil, nil, "ANCHOR_LEFT" }, { "area", nil, "game", "game" }, { "area", "general", "game", "game" }, { "area", "spot", "game", "ANCHOR_LEFT" },
+  { "area", "game", nil, "game" }, { "area", "cursor", "game", "cursor" }, { nil, "cursor", nil, "cursor" }, { "area", "general", "spot", "ANCHOR_LEFT" },
+  { "area", "spot", "spot", "ANCHOR_BOTTOM", "bottom" }, { "area", "spot", nil, "ANCHOR_BOTTOM", "bottom", "top" }, { "area", "general", "spot", "ANCHOR_TOP", "bottom", "top" },
+  { "area", "spot", "spot", "ANCHOR_LEFT", "auto", "top" },
 }) do
   CRT.db.lootmaster.itemTooltip, CRT.db.lootmaster.tooltipMode, CRT.db.ui.tooltipMode = c[1], c[2], c[3]
+  CRT.db.lootmaster.tooltipSpot, CRT.db.ui.tooltipSpot = c[5], c[6]
   got, def = {}, nil
   tb.frame.scripts.OnEnter(tb.frame)
-  local what = "item tabs " .. tostring(c[1]) .. ", Loot Master " .. tostring(c[2]) .. ", general " .. tostring(c[3])
+  local what = "item tabs " .. tostring(c[1]) .. ", Loot Master " .. tostring(c[2]) .. " " .. tostring(c[5]) .. ", general " .. tostring(c[3]) .. " " .. tostring(c[6])
   if c[4] == "game" then
     check(def and def[2] == tb.frame and got.pt == nil, what .. ": the game's spot")
   elseif c[4] == "cursor" then
@@ -387,12 +390,12 @@ for _, c in ipairs({
     check(def == nil and got.anchor == c[4] and got.pt == nil, what .. ": on the spot, " .. c[4] .. " (got " .. tostring(got.anchor) .. ")")
   end
 end
-CRT.db.lootmaster.itemTooltip, CRT.db.lootmaster.tooltipMode, CRT.db.ui.tooltipMode, CRT.db.lootmaster.tooltipSpot = nil, nil, nil, nil
+CRT.db.lootmaster.itemTooltip, CRT.db.lootmaster.tooltipMode, CRT.db.ui.tooltipMode, CRT.db.lootmaster.tooltipSpot, CRT.db.ui.tooltipSpot = nil, nil, nil, nil, nil
 -- the old setting (lootmaster.tooltipAnchor) is not read here: Core.lua moved it to itemTooltip once
 CRT.db.lootmaster.tooltipAnchor = "right"
 got, def = {}, nil
 tb.frame.scripts.OnEnter(tb.frame)
-check(got.pt == nil and got.anchor == "ANCHOR_RIGHT", "item tabs: the old tooltipAnchor field is not read")
+check(got.pt == nil and got.anchor == "ANCHOR_LEFT", "item tabs: the old tooltipAnchor field is not read")
 CRT.db.lootmaster.tooltipAnchor = nil
 
 -- the gear icons: a tooltip by item ID with the item level, the real link on your own row, none when empty

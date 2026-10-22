@@ -4,13 +4,14 @@ local ADDON, CRT = ...
 -- tooltip's own SetOwner (the suite's "tooltips through UI.TooltipOwner" lint):
 --   UI.TooltipOwner(tooltip, owner, anchor, x, y, how)
 -- General Settings > Appearance > Tooltip position picks how (CRTDB.ui.tooltipMode):
---   "spot"   Next to what you hover, on the spot picked in the spot picker under the dropdown
---            (CRTDB.ui.tooltipSpot, a key of UI.TOOLTIP_SPOTS below; the default)
+--   "spot"   Next to what you hover (the default), on CRTDB.ui.tooltipSpot: "auto" (the default), each
+--            tooltip on its own side, the anchor and offsets its caller asks for; or a spot picked in the
+--            spot picker under the dropdown (a key of UI.TOOLTIP_SPOTS below)
 --   "game"   Game's tooltip spot: GameTooltip_SetDefaultAnchor(tooltip, owner) (Blizzard_SharedXML/
 --            SharedTooltipTemplates.lua), where the game opens its own tooltips; the player or a UI addon
 --            may have moved it. Without that function, or if it fails, the tooltip opens on the spot.
 --   "cursor" Follow the cursor: tooltip:SetOwner(owner, "ANCHOR_CURSOR")
--- On a spot, the anchor and offsets a caller passes are not used: the spot is where the player wants it.
+-- On a picked spot, the anchor and offsets a caller passes are not used: the spot is where the player wants it.
 -- Core.lua reads the old setting (ui.tooltipAnchor: "owner", "game") into tooltipMode once.
 -- how, when given, is an area or a flag.
 -- An area (a key of UI.TOOLTIP_AREAS) has its own Tooltip position and spot on its page's Settings tab,
@@ -39,7 +40,8 @@ UI.TOOLTIP_GAME = "game"
 -- warcraft.wiki.gg (API GameTooltip:SetOwner) each is the SetPoint written beside it, so the corners are
 -- the tooltip off the owner's corner. The game has no anchor for the middle of a side, nor for its upper
 -- and lower parts, so those set the owner with ANCHOR_NONE and point the tooltip themselves: point is the
--- tooltip's, rel the owner's. Top right, ANCHOR_RIGHT, is where CRT's tooltips opened before the picker.
+-- tooltip's, rel the owner's. Besides these, a spot setting may be "auto" (UI.TOOLTIP_SPOT_AUTO, the default):
+-- no spot picked, so each tooltip opens on the side its caller asks for, as before the picker.
 UI.TOOLTIP_SPOTS = {
     { key = "topleft", label = "Top left", anchor = "ANCHOR_LEFT" }, -- BOTTOMRIGHT on the owner's TOPLEFT
     { key = "top", label = "Top", anchor = "ANCHOR_TOP" }, -- BOTTOM on TOP
@@ -54,7 +56,8 @@ UI.TOOLTIP_SPOTS = {
     { key = "bottom", label = "Bottom", anchor = "ANCHOR_BOTTOM" }, -- TOP on BOTTOM
     { key = "bottomright", label = "Bottom right", anchor = "ANCHOR_BOTTOMRIGHT" }, -- TOPLEFT on BOTTOMRIGHT
 }
-UI.TOOLTIP_SPOT_DEFAULT = "topright"
+UI.TOOLTIP_SPOT_AUTO = "auto"
+UI.TOOLTIP_SPOT_DEFAULT = UI.TOOLTIP_SPOT_AUTO
 local SPOT = {}
 for _, s in ipairs(UI.TOOLTIP_SPOTS) do
     SPOT[s.key] = s
@@ -84,6 +87,7 @@ local MODE = { spot = true, game = true, cursor = true }
 local TEXT = {
     position = "Tooltip position",
     whatYouHover = "What you hover",
+    auto = "Each on its own side",
 }
 
 -- The saved table for General Settings (area nil) or an area; nil before the saved data loads, or for an
@@ -112,11 +116,12 @@ function UI.TooltipChoice(area)
     return area and "general" or "spot"
 end
 
--- The spot saved for General Settings (area nil) or an area, whatever its mode; the default when unset.
+-- The spot saved for General Settings (area nil) or an area, whatever its mode: a key of UI.TOOLTIP_SPOTS,
+-- or "auto" (also for anything unset or unknown).
 function UI.TooltipChosenSpot(area)
     local t = saved(area)
     local v = t and t.tooltipSpot
-    return SPOT[v] and v or UI.TOOLTIP_SPOT_DEFAULT
+    return SPOT[v] and v or UI.TOOLTIP_SPOT_AUTO
 end
 
 -- Saving a dropdown choice, and a picked spot (which also turns spots on, "Next to what you hover").
@@ -129,7 +134,7 @@ end
 
 function UI.SetTooltipSpot(area, key)
     local t = saved(area)
-    if t and SPOT[key] then
+    if t and (SPOT[key] or key == UI.TOOLTIP_SPOT_AUTO) then
         t.tooltipSpot = key
         t.tooltipMode = "spot"
     end
@@ -145,7 +150,8 @@ function UI.TooltipPosition(area)
     return UI.TooltipChoice(nil)
 end
 
--- The spot a tooltip opens on: the area's own while the area is on "spot", else General Settings'.
+-- The spot a tooltip opens on ("auto" or a key of UI.TOOLTIP_SPOTS): the area's own while the area is on
+-- "spot", else General Settings'.
 function UI.TooltipSpot(area)
     if area and UI.TooltipChoice(area) == "spot" then
         return UI.TooltipChosenSpot(area)
@@ -153,25 +159,28 @@ function UI.TooltipSpot(area)
     return UI.TooltipChosenSpot(nil)
 end
 
--- Places tooltip on a spot of owner, kept on the screen. GameTooltip already is (its SharedTooltipTemplate
--- has clampedToScreen="true", Blizzard_SharedXML/SharedTooltipTemplates.xml); another tooltip frame is
--- clamped here.
-local function placeOnSpot(tooltip, owner, key)
-    local s = SPOT[key] or SPOT[UI.TOOLTIP_SPOT_DEFAULT]
-    if s.anchor then
+-- Places tooltip on a spot of owner. On "auto", the anchor and offsets the caller asked for. Nothing is
+-- clamped here: every CRT tooltip is GameTooltip, which its SharedTooltipTemplate keeps on the screen
+-- (clampedToScreen="true", Blizzard_SharedXML/SharedTooltipTemplates.xml).
+local function placeOnSpot(tooltip, owner, key, anchor, x, y)
+    local s = SPOT[key]
+    if not s then
+        if x or y then
+            tooltip:SetOwner(owner, anchor or "ANCHOR_RIGHT", x or 0, y or 0)
+        else
+            tooltip:SetOwner(owner, anchor or "ANCHOR_RIGHT")
+        end
+    elseif s.anchor then
         tooltip:SetOwner(owner, s.anchor)
     else
         tooltip:SetOwner(owner, "ANCHOR_NONE")
         tooltip:ClearAllPoints()
         tooltip:SetPoint(s.point, owner, s.rel, 0, 0)
     end
-    if tooltip ~= GameTooltip and tooltip.SetClampedToScreen then
-        tooltip:SetClampedToScreen(true)
-    end
 end
 
--- Returns "game" when the game's spot placed it, "cursor" when it follows the cursor, "spot" on a spot,
--- and "owner" for a flag that kept the anchor given.
+-- Returns "game" when the game's spot placed it, "cursor" when it follows the cursor, "spot" next to what
+-- you hover (a picked spot or auto), and "owner" for a flag that kept the anchor given.
 function UI.TooltipOwner(tooltip, owner, anchor, x, y, how)
     local flag = (how == UI.TOOLTIP_KEEP or how == UI.TOOLTIP_GAME) and how or nil
     local mode = flag == UI.TOOLTIP_GAME and "game" or (not flag and UI.TooltipPosition(how)) or nil
@@ -190,13 +199,14 @@ function UI.TooltipOwner(tooltip, owner, anchor, x, y, how)
         tooltip:SetOwner(owner, "ANCHOR_CURSOR")
         return "cursor"
     end
-    placeOnSpot(tooltip, owner, UI.TooltipSpot(how))
+    placeOnSpot(tooltip, owner, UI.TooltipSpot(how), anchor, x, y)
     return "spot"
 end
 
 -- The Tooltip position dropdown and its spot picker under it, for General Settings (area nil) or an
 -- area's Settings tab. The picker is greyed unless the dropdown is on Next to what you hover; picking a
--- spot turns that on. opts: labelWidth, width (the dropdown's), beside (the picker right of the dropdown,
+-- spot turns that on, and clicking the lit spot again goes back to auto (no spot lit, "Each on its own
+-- side"). While an area is on Use the general setting, its picker shows General Settings' spot, in use. opts: labelWidth, width (the dropdown's), beside (the picker right of the dropdown,
 -- for a page with no room under it). Place the dropdown with group.row:SetPoint; the picker follows it.
 -- Returns group = { row, picker, refresh }.
 function UI.TooltipPositionSetting(parent, area, opts)
@@ -217,8 +227,13 @@ function UI.TooltipPositionSetting(parent, area, opts)
     })
     group.picker = UI.SpotPicker(parent, {
         label = TEXT.whatYouHover,
+        emptyLabel = TEXT.auto,
+        clear = UI.TOOLTIP_SPOT_AUTO,
         area = area,
         get = function()
+            if area and UI.TooltipChoice(area) == "general" then
+                return UI.TooltipChosenSpot(nil)
+            end
             return UI.TooltipChosenSpot(area)
         end,
         set = function(key)

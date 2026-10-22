@@ -31,10 +31,10 @@ local L = {
     previewLines = 4, -- the award preview is cut after this many lines, so it never reaches Sync
     -- Sync Master Loot, in the second column under the award message: "Sync to", the dropdown, a box
     syncTop = -306, syncLabel = 46, syncPick = 124,
-    -- Tooltips, in the first column under the response buttons (which end near -322): two dropdown rows, each
-    -- with its spot picker beside it (UI.SPOT_PICKER_H, 60, high), the last ending near -488, above the
-    -- tab's bottom at -494. The pickers end near x 417, before the second column.
-    tooltipTop = -348, tooltipLabel = 110, tooltipPick = 160, tooltipPairGap = 2,
+    -- Tooltips, in the first column under the response buttons (which end near -322 with all eight): two
+    -- dropdown rows, each with its spot picker beside it (UI.SPOT_PICKER_H, 70, high), the last ending near
+    -- -488, above the tab's bottom at -494. The pickers end near x 421, before the second column.
+    tooltipTop = -328, tooltipLabel = 110, tooltipPick = 160, tooltipPairGap = 2,
     -- Items a raider can't use, under Sync Master Loot (which ends near -410), its long line wrapped in two
     specsTop = -416,
     -- CRT Looting, in the third column under Loot authority's Add row (which ends near -440)
@@ -106,7 +106,7 @@ local TEXT = {
     noRoll = "If no roll, %v is",
     preview = "Preview:",
     tooltip = "Tooltips",
-    tooltipHelp = "Tooltip position is where every Loot Master tooltip opens: on this page, in both loot windows, the popup and Boss loot. Use the general setting follows General Settings. Next to what you hover uses the spot you click in the box beside it.\n\nItem tabs is where an item's tooltip opens when you hover its icon in the looter window and All Loot Rolls. Same as above follows Tooltip position. Next to the window puts it on the side of the window you click in the box beside it.\n\nClicking a spot also picks it in the dropdown.",
+    tooltipHelp = "Tooltip position is where every Loot Master tooltip opens: on this page, in both loot windows, the popup and Boss loot. Use the general setting follows General Settings. Next to what you hover uses the spot you click in the box beside it.\n\nItem tabs is where an item's tooltip opens when you hover its icon in the looter window and All Loot Rolls. Same as above follows Tooltip position. Next to the window puts it on the side of the window you click in the box beside it; a corner puts it flush with that corner of the window.\n\nClicking a spot also picks it in the dropdown. For Tooltip position, clicking the lit spot again goes back to each tooltip on its own side.",
     lootWindow = "Loot Master window",
     itemTabs = "Item tabs",
     channels = {

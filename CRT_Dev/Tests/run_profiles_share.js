@@ -110,8 +110,8 @@ end
 
 -- The allow-list guard. ---------------------------------------------------------------------------
 -- Tooltip position and its spot, General Settings' and each area's, travel with the settings
-for path, def in pairs({ ["ui.tooltipMode"] = "spot", ["ui.tooltipSpot"] = "topright", ["loot.tooltipMode"] = "general", ["loot.tooltipSpot"] = "topright",
-    ["lootmaster.tooltipMode"] = "general", ["lootmaster.tooltipSpot"] = "topright", ["lootmaster.itemTooltip"] = "area" }) do
+for path, def in pairs({ ["ui.tooltipMode"] = "spot", ["ui.tooltipSpot"] = "auto", ["loot.tooltipMode"] = "general", ["loot.tooltipSpot"] = "auto",
+    ["lootmaster.tooltipMode"] = "general", ["lootmaster.tooltipSpot"] = "auto", ["lootmaster.itemTooltip"] = "area" }) do
   check(paths0[path] ~= nil and paths0[path].default == def, path .. " is shared, a plain setting with its default " .. def)
 end
 check(P.SHARE.lootmaster.tooltipMode == true and P.SHARE.lootmaster.tooltipSpot == true and P.SHARE.lootmaster.itemTooltip == true, "the Loot Master overrides are named in the mixed lootmaster rule")
@@ -119,10 +119,10 @@ for _, old in ipairs({ "lootmaster.tooltipAnchor", "ui.tooltipAnchor", "loot.too
   check(paths0[old] == nil, old .. ", an old field read once into the new ones, is no longer shared")
 end
 -- the old Tooltip position fields are read once, on load: General Settings' tooltipAnchor ("game" stays the game's
--- spot, anything else is next to what you hover on top right) and each area's tooltipPosition ("owner" is "spot")
+-- spot, anything else is next to what you hover, each on its own side) and each area's tooltipPosition ("owner" is "spot")
 for _, c in ipairs({ { "game", "game" }, { "owner", "spot" }, { "nonsense", "spot" }, { nil, "spot" } }) do
   boot({ ui = { tooltipAnchor = c[1] } }, {})
-  check(CRTDB.ui.tooltipMode == c[2] and CRTDB.ui.tooltipSpot == "topright", "General Settings: an old " .. tostring(c[1]) .. " becomes " .. c[2] .. " on top right (got " .. tostring(CRTDB.ui.tooltipMode) .. " " .. tostring(CRTDB.ui.tooltipSpot) .. ")")
+  check(CRTDB.ui.tooltipMode == c[2] and CRTDB.ui.tooltipSpot == "auto", "General Settings: an old " .. tostring(c[1]) .. " becomes " .. c[2] .. " on auto (got " .. tostring(CRTDB.ui.tooltipMode) .. " " .. tostring(CRTDB.ui.tooltipSpot) .. ")")
   check(CRTDB.ui.tooltipAnchor == c[1], "General Settings: the old field is kept as it was (" .. tostring(c[1]) .. ")")
 end
 boot({ ui = { tooltipAnchor = "game", tooltipMode = "cursor" } }, {})
@@ -130,7 +130,7 @@ check(CRTDB.ui.tooltipMode == "cursor", "General Settings: the old field is read
 for _, tbl in ipairs({ "loot", "lootmaster" }) do
   for _, c in ipairs({ { "owner", "spot" }, { "game", "game" }, { "cursor", "cursor" }, { "general", "general" }, { "nonsense", "general" }, { nil, "general" } }) do
     boot({ [tbl] = { tooltipPosition = c[1] } }, {})
-    check(CRTDB[tbl].tooltipMode == c[2] and CRTDB[tbl].tooltipSpot == "topright", tbl .. ": an old " .. tostring(c[1]) .. " becomes " .. c[2] .. " (got " .. tostring(CRTDB[tbl].tooltipMode) .. ")")
+    check(CRTDB[tbl].tooltipMode == c[2] and CRTDB[tbl].tooltipSpot == "auto", tbl .. ": an old " .. tostring(c[1]) .. " becomes " .. c[2] .. " (got " .. tostring(CRTDB[tbl].tooltipMode) .. ")")
     check(CRTDB[tbl].tooltipPosition == c[1], tbl .. ": the old field is kept as it was")
   end
   boot({ [tbl] = { tooltipPosition = "game", tooltipMode = "spot" } }, {})
@@ -147,7 +147,7 @@ boot({ lootmaster = { tooltipAnchor = "right", itemTooltip = "bottomleft" } }, {
 check(CRTDB.lootmaster.itemTooltip == "bottomleft", "item tabs: the old field is read only once, never over the new one")
 boot({}, {})
 check(CRTDB.lootmaster.itemTooltip == "area" and CRTDB.lootmaster.tooltipMode == "general" and CRTDB.loot.tooltipMode == "general"
-  and CRTDB.ui.tooltipMode == "spot" and CRTDB.ui.tooltipSpot == "topright" and CRTDB.loot.tooltipSpot == "topright" and CRTDB.lootmaster.tooltipSpot == "topright", "a fresh install: the defaults")
+  and CRTDB.ui.tooltipMode == "spot" and CRTDB.ui.tooltipSpot == "auto" and CRTDB.loot.tooltipSpot == "auto" and CRTDB.lootmaster.tooltipSpot == "auto", "a fresh install: the defaults")
 check(CRTDB.ui.tooltipAnchor == nil and CRTDB.loot.tooltipPosition == nil and CRTDB.lootmaster.tooltipPosition == nil, "a fresh install: no old field is written")
 check(P.ShareUncovered and #P.ShareUncovered() == 0, "every saved key in Core.lua's defaults is shared or named as not shared" .. (P.ShareUncovered and (": missing " .. table.concat(P.ShareUncovered(), ", ")) or ""))
 if P.ShareUncovered then

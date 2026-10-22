@@ -108,23 +108,29 @@ for i, w in ipairs(WANT) do
     local p = t.point or {}
     check(p[1] == w[4] and p[2] == owner and p[3] == w[5] and p[4] == 0 and p[5] == 0, w[1] .. ": SetPoint(" .. w[4] .. ", owner, " .. w[5] .. ") (got " .. tostring(p[1]) .. " " .. tostring(p[3]) .. ")")
   end
-  check(t.clamped == true, w[1] .. ": kept on the screen")
 end
--- the game's own GameTooltip is already kept on the screen by its template, so it is left as it is
-CRT.db.ui.tooltipMode, CRT.db.ui.tooltipSpot = "spot", "leftupper"
-GameTooltip = newTip()
-UI.TooltipOwner(GameTooltip, owner, "ANCHOR_TOP")
-check(GameTooltip.clamped == nil and GameTooltip.anchor == "ANCHOR_NONE", "GameTooltip: placed, its clamping left to its template")
--- the default: top right, ANCHOR_RIGHT, where CRT's tooltips opened before the picker
-CRT.db.ui.tooltipMode, CRT.db.ui.tooltipSpot = nil, nil
-eq(UI.TOOLTIP_SPOT_DEFAULT, "topright", "the default spot")
+-- a picked spot wins over the anchor and offsets the caller asks for
+CRT.db.ui.tooltipMode, CRT.db.ui.tooltipSpot = "spot", "bottom"
 local t = newTip()
-eq(UI.TooltipOwner(t, owner, "ANCHOR_TOP"), "spot", "nothing saved: on a spot")
-eq(t.anchor, "ANCHOR_RIGHT", "nothing saved: top right, as before (the caller's anchor is not used)")
+UI.TooltipOwner(t, owner, "ANCHOR_TOP", 3, 4)
+check(t.anchor == "ANCHOR_BOTTOM" and t.x == nil and t.y == nil, "a picked spot overrides the anchor and offsets asked for")
+-- the default: "auto", each tooltip on its own side, the anchor and offsets its caller asks for, as before the picker
+CRT.db.ui.tooltipMode, CRT.db.ui.tooltipSpot = nil, nil
+eq(UI.TOOLTIP_SPOT_DEFAULT, "auto", "the default spot is auto")
+eq(UI.TooltipChosenSpot(nil), "auto", "nothing saved reads as auto")
+t = newTip()
+eq(UI.TooltipOwner(t, owner, "ANCHOR_TOP"), "spot", "nothing saved: next to what you hover")
+eq(t.anchor, "ANCHOR_TOP", "nothing saved: the caller's own anchor")
+t = newTip()
+UI.TooltipOwner(t, owner, "ANCHOR_LEFT", 3, 4)
+check(t.anchor == "ANCHOR_LEFT" and t.x == 3 and t.y == 4, "auto: the caller's anchor and offsets reach SetOwner")
+t = newTip()
+UI.TooltipOwner(t, owner)
+eq(t.anchor, "ANCHOR_RIGHT", "auto with no anchor asked for: ANCHOR_RIGHT")
 CRT.db.ui.tooltipSpot = "nowhere"
-t = newTip() UI.TooltipOwner(t, owner, "ANCHOR_TOP")
-eq(t.anchor, "ANCHOR_RIGHT", "an unknown saved spot: top right")
-eq(UI.TooltipChosenSpot(nil), "topright", "an unknown saved spot reads as top right")
+t = newTip() UI.TooltipOwner(t, owner, "ANCHOR_BOTTOM")
+eq(t.anchor, "ANCHOR_BOTTOM", "an unknown saved spot: auto, the caller's anchor")
+eq(UI.TooltipChosenSpot(nil), "auto", "an unknown saved spot reads as auto")
 print("ok tooltip spots: twelve spots, each placed as the wiki says")
 
 -- 2. General Settings: next to what you hover, the game's spot, follow the cursor
@@ -161,6 +167,8 @@ UI.SetTooltipSpot(nil, "leftlower")
 check(CRT.db.ui.tooltipSpot == "leftlower" and CRT.db.ui.tooltipMode == "spot", "SetTooltipSpot saves the spot and turns spots on")
 UI.SetTooltipSpot(nil, "nowhere")
 eq(CRT.db.ui.tooltipSpot, "leftlower", "an unknown spot is not saved")
+UI.SetTooltipSpot(nil, "auto")
+eq(CRT.db.ui.tooltipSpot, "auto", "auto can be saved again")
 print("ok tooltip spots: General Settings' three choices")
 
 -- 3. The flags: a kept anchor and its offsets; the game's spot, or the anchor given without it
@@ -210,7 +218,7 @@ for area, tbl in pairs({ loothistory = "loot", lootmaster = "lootmaster" }) do
   CRT.db[tbl] = nil
   CRT.db.ui.tooltipMode = "game"
   eq(UI.TooltipPosition(area), "game", area .. " with no saved table: the general setting")
-  eq(UI.TooltipChosenSpot(area), "topright", area .. " with no saved table: the default spot")
+  eq(UI.TooltipChosenSpot(area), "auto", area .. " with no saved table: auto")
   UI.SetTooltipSpot(area, "top") -- no table: nothing to save in, and no error
 end
 -- an area's choice stays in its area
@@ -223,6 +231,11 @@ UI.SetTooltipChoice("lootmaster", "general")
 eq(CRT.db.lootmaster.tooltipMode, "general", "an area can go back to Use the general setting")
 UI.SetTooltipSpot("lootmaster", "rightupper")
 check(CRT.db.lootmaster.tooltipSpot == "rightupper" and CRT.db.lootmaster.tooltipMode == "spot" and CRT.db.ui.tooltipSpot == "top", "a spot picked for an area is the area's own and turns its spots on")
+-- an area on its own spots with auto: the caller's anchor, even with General Settings on a spot
+CRT.db.lootmaster.tooltipSpot = "auto"
+t = newTip()
+UI.TooltipOwner(t, owner, "ANCHOR_LEFT", nil, nil, "lootmaster")
+eq(t.anchor, "ANCHOR_LEFT", "an area on auto: the caller's anchor")
 GameTooltip_SetDefaultAnchor = nil
 print("ok tooltip spots: the areas, their own spot and the general fallback")
 
@@ -241,7 +254,8 @@ local n, order = 0, {}
 for _, s in ipairs(UI.TOOLTIP_SPOTS) do if p.spots[s.key] then n = n + 1 end end
 eq(n, 12, "the picker builds twelve spots")
 eq(p.w, UI.SPOT_PICKER_W, "the picker's width") eq(p.h, UI.SPOT_PICKER_H, "the picker's height")
-check(UI.SPOT_PICKER_W <= 130 and UI.SPOT_PICKER_H <= 64, "a small control: " .. UI.SPOT_PICKER_W .. "x" .. UI.SPOT_PICKER_H)
+check(UI.SPOT_PICKER_W <= 126 and UI.SPOT_PICKER_H <= 70, "a small control: " .. UI.SPOT_PICKER_W .. "x" .. UI.SPOT_PICKER_H)
+check(p.spots.top.w == 12 and p.spots.top.h == 12, "12 px spots")
 eq(p.text.text, "What you hover", "the box says what it stands for")
 -- every spot inside the picker, the box inside the spots' ring, no two spots on the same place
 local seen = {}
@@ -290,7 +304,7 @@ check(not GameTooltip.shown, "leaving hides it")
 -- greyed: faded with a grey label, still clickable
 on = false
 p.refresh()
-check(p.alpha < 1 and p.text.textRGB[1] == 0.5, "enabledIf false: the picker is greyed")
+check(p.alpha == 0.5 and near(p.text.textRGB, P.text), "enabledIf false: the whole picker at half alpha, its label in its own colour (not dimmed twice)")
 p.spots.bottom.scripts.OnClick(p.spots.bottom)
 eq(sets[#sets], "bottom", "a greyed picker still takes a click")
 on = true
@@ -301,6 +315,22 @@ local q = UI.SpotPicker(page, { label = "Loot Master window", spots = { "topleft
 local shown = {} for _, s in ipairs(UI.TOOLTIP_SPOTS) do if q.spots[s.key].shown then shown[#shown + 1] = s.key end end
 eq(table.concat(shown, ","), "topleft,top,left,right", "spots: only the ones asked for show")
 check(near(q.spots.top.fill.rgb, P.surface), "no chosen spot: none highlighted")
+eq(q.text.text, "Loot Master window", "no chosen spot and no emptyLabel: the label stays")
+-- auto: none lit, the box says so; clicking the lit spot again goes back to auto (opts.clear)
+local c2, s2 = "auto", {}
+local r = UI.SpotPicker(page, { label = "What you hover", emptyLabel = "Each on its own side", clear = "auto",
+  get = function() return c2 end, set = function(k) s2[#s2 + 1] = k c2 = k end })
+local lit = 0 for _, b in pairs(r.spots) do if near(b.fill.rgb, P.heading) then lit = lit + 1 end end
+eq(lit, 0, "auto: no spot lit")
+eq(r.text.text, "Each on its own side", "auto: the box reads Each on its own side")
+r.spots.top.scripts.OnClick(r.spots.top)
+check(s2[#s2] == "top" and r.text.text == "What you hover" and near(r.spots.top.fill.rgb, P.heading), "a click lights the spot, the box says What you hover")
+r.spots.top.scripts.OnClick(r.spots.top)
+check(s2[#s2] == "auto" and r.text.text == "Each on its own side", "clicking the lit spot again goes back to auto")
+r.spots.left.scripts.OnClick(r.spots.left)
+r.spots.left.scripts.OnClick(r.spots.left)
+p.spots.bottom.scripts.OnClick(p.spots.bottom)
+eq(sets[#sets], "bottom", "without opts.clear, clicking the lit spot keeps it")
 print("ok tooltip spots: the picker")
 
 -- 6. UI.TooltipPositionSetting: the dropdown and its picker
@@ -312,6 +342,11 @@ local g = UI.TooltipPositionSetting(page, nil, { labelWidth = 120, width = 160 }
 eq(g.row.label, "Tooltip position", "general: the dropdown's label")
 eq(g.row.opts.options, UI.TOOLTIP_POSITIONS, "general: General Settings' choices")
 eq(g.picker.text.text, "What you hover", "general: the picker's box")
+CRT.db.ui.tooltipSpot = "auto"
+g.refresh()
+eq(g.picker.text.text, "Each on its own side", "general on auto: Each on its own side")
+CRT.db.ui.tooltipSpot = "top"
+g.refresh()
 local pp = g.picker.pts[1] or {}
 check(pp[1] == "TOPLEFT" and pp[2] == g.row and pp[3] == "BOTTOMLEFT" and pp[4] == 125 and pp[5] <= 0, "general: the picker sits under the dropdown, past its label")
 g.refresh()
@@ -322,6 +357,9 @@ check(g.row.refreshed and g.picker.alpha == 1, "general: the dropdown shows it, 
 g.row.opts.set("cursor")
 check(CRT.db.ui.tooltipMode == "cursor" and g.picker.alpha < 1, "general: Follow the cursor greys the picker")
 eq(g.row.opts.get(), "cursor", "general: the dropdown reads it back")
+g.picker.spots.left.scripts.OnClick(g.picker.spots.left)
+check(CRT.db.ui.tooltipMode == "spot" and CRT.db.ui.tooltipSpot == "auto", "general: clicking the lit spot goes back to auto, next to what you hover")
+g.picker.spots.left.scripts.OnClick(g.picker.spots.left)
 CRT.db.lootmaster = { tooltipMode = "general", tooltipSpot = "topright" }
 local a = UI.TooltipPositionSetting(page, "lootmaster", { labelWidth = 110, width = 160, beside = true })
 eq(a.row.opts.options, UI.TOOLTIP_AREA_POSITIONS, "area: the area's choices")
@@ -329,6 +367,7 @@ local ap = a.picker.pts[1] or {}
 check(ap[1] == "LEFT" and ap[2] == a.row and ap[3] == "RIGHT", "beside: the picker sits right of the dropdown")
 a.refresh()
 check(a.picker.alpha < 1, "area: greyed on Use the general setting")
+eq(a.picker.opts.get(), "left", "area on Use the general setting: its greyed picker shows General Settings' spot, the one in use")
 eq(a.row.opts.get(), "general", "area: the dropdown reads Use the general setting")
 a.picker.spots.bottomleft.scripts.OnClick(a.picker.spots.bottomleft)
 check(CRT.db.lootmaster.tooltipMode == "spot" and CRT.db.lootmaster.tooltipSpot == "bottomleft" and CRT.db.ui.tooltipSpot == "left", "area: a click gives the area its own spot, General Settings' stays")

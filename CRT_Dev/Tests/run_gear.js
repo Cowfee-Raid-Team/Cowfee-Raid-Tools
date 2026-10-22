@@ -320,7 +320,15 @@ eq(Gear.ShowTooltip(owner, { id = 55, ilvl = 610 }, "ANCHOR_LEFT"), false, "tool
 eq(tip.byID, 55, "tooltip: SetItemByID")
 eq(tip.link, nil, "tooltip: no hyperlink")
 eq(tip.lines[1], "Equipped at item level 610", "tooltip: the line by ID too")
-eq(tip.anchor, "ANCHOR_RIGHT", "tooltip: on a spot (top right by default), whatever anchor is asked for")
+eq(tip.anchor, "ANCHOR_LEFT", "tooltip: the anchor asked for (no spot picked)")
+-- a spot picked in General Settings wins over the anchor asked for
+CRT.db = CRT.db or {}
+local savedUI = CRT.db.ui
+CRT.db.ui = { tooltipMode = "spot", tooltipSpot = "bottom" }
+tip = { lines = {} }
+Gear.ShowTooltip(owner, { id = 55, ilvl = 610 }, "ANCHOR_LEFT")
+eq(tip.anchor, "ANCHOR_BOTTOM", "tooltip: a picked spot wins over the anchor asked for")
+CRT.db.ui = savedUI
 tip = { lines = {} }
 Gear.ShowTooltip(owner, { id = 55, ilvl = 610 }, "ANCHOR_LEFT", CRT.UI.TOOLTIP_KEEP)
 eq(tip.anchor, "ANCHOR_LEFT", "tooltip: the anchor asked for, with UI.TOOLTIP_KEEP")

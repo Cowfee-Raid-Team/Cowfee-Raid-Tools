@@ -171,7 +171,7 @@ CRT_UI = {
   Help = function(p, title, text) helps[title] = text return mock() end,
   Dropdown = function() local d = mock() d.refresh = function() end d.Dropdown = mock() return d end,
   Slider = function() local s = mock() s.refresh = function() end return s end,
-  SpotPicker = function() local s = mock() s.refresh = function() end return s end, SPOT_PICKER_W = 122, SPOT_PICKER_H = 60, SPOT_PICKER_GAP = 12,
+  SpotPicker = function() local s = mock() s.refresh = function() end return s end, SPOT_PICKER_W = 126, SPOT_PICKER_H = 70, SPOT_PICKER_GAP = 12,
   SortHeaders = function() return { refresh = function() end } end,
   RegisterPage = function(_, key, title, build) pageBuild = build end,
   RegisterTab = function() end, SetTabSelected = function() end,

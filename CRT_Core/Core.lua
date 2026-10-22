@@ -18,10 +18,10 @@ local defaults = {
     -- modern is kept in step with it: off for "blizzard" (Classic), on for the others. Data from before themes
     -- has no theme: CRT:ResolveTheme gives it one from modern before these defaults are filled in.
     -- hideRealms leaves realm names out of the Late Tracker and Tattlebot, on screen, in chat and in exports.
-    -- tooltipMode is where the addon's tooltips open: "spot" next to what you hover, on tooltipSpot (a key of
-    -- UI.TOOLTIP_SPOTS), "game" the game's tooltip spot, "cursor" following the cursor (UI.TooltipOwner in
+    -- tooltipMode is where the addon's tooltips open: "spot" next to what you hover, on tooltipSpot ("auto",
+    -- each tooltip on its own side, or a key of UI.TOOLTIP_SPOTS), "game" the game's tooltip spot, "cursor" following the cursor (UI.TooltipOwner in
     -- UI/Tooltip.lua). They replaced tooltipAnchor, which is read once on load (below) and kept.
-    ui = { font = "default", outline = "", textSize = 100, bgAlpha = 100, layers = {}, soundChannel = "Master", hideRealms = false, modern = false, theme = "blizzard", tooltipMode = "spot", tooltipSpot = "topright" },
+    ui = { font = "default", outline = "", textSize = 100, bgAlpha = 100, layers = {}, soundChannel = "Master", hideRealms = false, modern = false, theme = "blizzard", tooltipMode = "spot", tooltipSpot = "auto" },
     lastPage = "groups",
     -- The minimap button (UI/Minimap.lua): angle is its place around the minimap, in degrees.
     minimap = { hide = false, angle = 225 },
@@ -204,7 +204,7 @@ local defaults = {
         -- Tooltip position on the Loot History page (UI/Tooltip.lua): "general" (General Settings'), "spot",
         -- "game" or "cursor", and its own spot; personal. They replaced tooltipPosition, read once (below).
         tooltipMode = "general",
-        tooltipSpot = "topright",
+        tooltipSpot = "auto",
     },
     -- Loot Master (LootMaster/): window and popup, where the looter window and the raider popup were
     -- last placed (UI.Window keeps point, x, y, and the window's width and height); responseSeconds,
@@ -229,7 +229,7 @@ local defaults = {
         -- of the window or "game" (LM.TOOLTIP_ANCHORS). All personal, not synced. itemTooltip replaced
         -- tooltipAnchor, and tooltipMode tooltipPosition; each old field is read once on load (below) and kept.
         tooltipMode = "general",
-        tooltipSpot = "topright",
+        tooltipSpot = "auto",
         itemTooltip = "area",
         showAllItems = false, -- this raider sees every item anyway
         enableInParty = false, -- CRT Looting also in a party group, not only a raid (LootMaster/Looting.lua)
@@ -584,7 +584,7 @@ end
 
 -- Before the defaults, once: Tooltip position moved to tooltipMode and tooltipSpot (UI/Tooltip.lua). General
 -- Settings' old ui.tooltipAnchor: "game" stays the game's spot, anything else is next to what you hover on
--- the default spot (top right, where tooltips opened). An area's old tooltipPosition (Loot History in loot,
+-- the default spot, auto (each tooltip on its own side, as before). An area's old tooltipPosition (Loot History in loot,
 -- Loot Master in lootmaster): "owner" becomes "spot", "general", "game" and "cursor" stay. The old fields
 -- are kept as they were, and never read again once the new one is saved.
 function CRT.ReadOldTooltipSettings(db)
@@ -613,8 +613,8 @@ frame:SetScript("OnEvent", function(self, event, arg1)
             CRT:ResolveTheme(CRTDB.ui)
         end
         -- before the defaults, once: the Loot Master item tabs' tooltip setting moved from tooltipAnchor to
-        -- itemTooltip. Left, the old default, becomes "area" (next to the icon, on the window's outer side,
-        -- unless Loot Master's Tooltip position says otherwise); Default tooltip becomes "game"; the other
+        -- itemTooltip. Left, the old default, becomes "area" (Loot Master's Tooltip position: on auto, the
+        -- default, next to the icon on the window's outer side, as before); Default tooltip becomes "game"; the other
         -- sides stay. The old field is kept as it was.
         local lm = CRTDB.lootmaster
         if type(lm) == "table" and lm.itemTooltip == nil and type(lm.tooltipAnchor) == "string" then
