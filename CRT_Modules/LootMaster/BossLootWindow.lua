@@ -6,9 +6,11 @@ local ADDON, CRT = ...
 -- lead." It opens by itself on the first boss roll of a list. A pop-out made by UI.Window: drag it, resize
 -- it from the corner, Reset puts it back; its place is kept in CRTDB lootmaster.bossLoot.
 -- Each row: a checkbox (in the next session; pre-ticked by the loot filter), the item's icon, link and
--- detail (slot and item level, or why the filter left it out), and its state on the right: rolling
+-- detail (slot and item level, and for an item you have its time left to trade, a warning in its last
+-- LM.TRADE_WARN; or why the filter left it out), and its state on the right: rolling
 -- (honey), won (good), won by someone else or nobody (muted), or can't roll (red). Footer: the counts,
--- Clear, and Start session (only the ticked items you have won; it waits while a ticked one still rolls).
+-- Clear, and Start session (only the ticked items you have won; it waits while a ticked one still rolls,
+-- and queues behind a running session). While shown, it redraws every REDRAW_SECONDS so the times count down.
 
 local LM = CRT.LootMaster
 local UI = CRT.UI
@@ -18,18 +20,21 @@ local L = { width = 620, height = 340, minWidth = 480, minHeight = 220, rowH = 4
 
 local TEXT = {
     title = "Boss loot",
-    help = "The boss items CRT rolled on for you. Tick the ones to give out and press Start session; nothing starts by itself. Start waits while a ticked item is still rolling. Items someone else won can't be ticked, and red means CRT couldn't roll on it. The list empties when you leave the instance, turn CRT Looting off, or 10 minutes after the kill.",
+    help = "The boss items CRT rolled on for you, and in old raids with no rolls, the items the game gave you. Tick the ones to give out and press Start session; nothing starts by itself. Start waits while a ticked item is still rolling. A test session still running is ended first; if a loot session is running, these start when it ends. The Loot Master window opens either way. Items someone else won can't be ticked, and red means CRT couldn't roll on it. The list is kept for the whole raid, through a /reload or leaving the instance. An item you have stays until the game's 2 hours to trade it are over; chat warns 15 minutes before. Other rows leave 10 minutes after the kill.",
     counts = "%d of %d items ticked · %d still rolling",
     session = " · a loot session is running",
     clear = "Clear",
     start = "Start session",
     rolling = "Rolling… you rolled %s",
     won = "Won · you rolled %s",
+    received = "Yours · the game gave it to you",
     lost = "Won by %s",
     nowinner = "Nobody won it: everyone passed",
     cant = "Can't roll: %s. Tell the raid.",
     notFilter = "Not in your loot filter: %s",
     ilvl = "Item level %d",
+    tradeHours = "%dh %02dm left to trade",
+    tradeMinutes = "%dm left to trade",
 }
 
 -- The loot filter's reasons, as the detail line says them (LM.PassesFilter's why).
@@ -65,7 +70,9 @@ end
 -- The state on the right of a row.
 function LM.BossLootStatus(r)
     local roll = LM.AutoPass.ROLL_NAME[r.rollType or 0] or ""
-    if r.status == "won" then
+    if r.status == "won" and r.received then
+        return UI.GoodText(TEXT.received)
+    elseif r.status == "won" then
         return UI.GoodText(TEXT.won:format(roll))
     elseif r.status == "lost" then
         return colored(hexOf("muted", CLASSIC.muted), TEXT.lost:format(Ambiguate(r.winner or "?", "short")))
@@ -90,6 +97,12 @@ function LM.BossLootDetail(r)
     end
     if r.ilvl then
         parts[#parts + 1] = TEXT.ilvl:format(r.ilvl)
+    end
+    local left = BL.TradeLeft(r)
+    if left then
+        local m = math.ceil(left / 60)
+        local text = m >= 60 and TEXT.tradeHours:format(math.floor(m / 60), m % 60) or TEXT.tradeMinutes:format(m)
+        parts[#parts + 1] = left <= LM.TRADE_WARN and UI.WarnText(text) or text
     end
     return table.concat(parts, " · ")
 end
@@ -149,6 +162,9 @@ local function initRow(row, r)
     row.status:SetText(LM.BossLootStatus(r))
 end
 
+local REDRAW_SECONDS = 30
+local redraw -- the countdown's ticker, while the window shows
+
 local function refresh()
     if not win then
         return
@@ -157,8 +173,8 @@ local function refresh()
     win.strip:SetBadge(badge, nil, badge and UI.TITLE_STRIP.neutral or nil)
     list:SetDataProvider(CreateDataProvider(BL:Rows()), ScrollBoxConstants and ScrollBoxConstants.RetainScrollPosition)
     local ticked, total, rolling = BL:Counts()
-    local ok, why = BL:CanStart()
-    footer.counts:SetText(TEXT.counts:format(ticked, total, rolling) .. (why == "session" and TEXT.session or ""))
+    local ok = BL:CanStart()
+    footer.counts:SetText(TEXT.counts:format(ticked, total, rolling) .. (BL:Busy() and TEXT.session or ""))
     footer.start:SetEnabled(ok and true or false)
     footer.clear:SetEnabled(total > 0)
 end
@@ -172,6 +188,15 @@ local function build()
         minWidth = L.minWidth, minHeight = L.minHeight, saved = settings,
     })
     win.refresh = refresh -- a theme change repaints the states (UI:RepaintTheme)
+    win:HookScript("OnShow", function()
+        redraw = redraw or C_Timer.NewTicker(REDRAW_SECONDS, refresh)
+    end)
+    win:HookScript("OnHide", function()
+        if redraw then
+            redraw:Cancel()
+            redraw = nil
+        end
+    end)
     local c = win.content
     footer = CreateFrame("Frame", nil, c)
     footer:SetPoint("BOTTOMLEFT", 0, 0)

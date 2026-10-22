@@ -96,7 +96,7 @@ local function gearOf(p, who) local s = p.LM.current return s.players[who].answe
 -- 1. A new looter and a new raider: the R as before, then G parts with the full rings
 local halo, quick, arrow = boot("Halo", commSrc, true), boot("Quick", commSrc, true), boot("Arrow", oldCommSrc, false)
 raid = { halo, quick, arrow }
-eq(halo.LM.VERSION, "0.30.0", "this Loot Master is 0.30.0")
+eq(halo.LM.VERSION, "0.31.0", "this Loot Master is 0.31.0")
 local s = as(halo, function() return halo.LM:Start({ { itemString = "item:500", ilvl = 300 } }, true) end)
 check(s ~= nil, "the looter starts a session")
 deliver()

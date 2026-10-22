@@ -33,7 +33,7 @@ local function good()
     from = "Solex-Sargeras", version = LM.LOOTING_SINCE, yesInstance = HERE, leaderOnline = true,
     leaderInstance = HERE, heartbeatAt = 1000, now = 1030, passed = { [3] = true },
   }
-  local roll = { id = 7, test = false, instance = HERE, bossInstance = HERE }
+  local roll = { id = 7, test = false, instance = HERE, bossInstance = HERE, inFilter = true }
   return state, roll
 end
 
@@ -57,6 +57,7 @@ local CHECKS = {
   { "once", function(s, r) s.passed[r.id or 7] = true end },
   { "rollplace", function(s, r) r.instance = ELSEWHERE end },
   { "notboss", function(s, r) r.bossInstance = nil end },
+  { "filter", function(s, r) r.inFilter = nil end },
 }
 
 -- 1. All good: pass
@@ -197,7 +198,7 @@ local function leaderGood()
     test = false, me = "Solex-Sargeras", leader = "Solex-Sargeras", myInstance = HERE,
     leading = true, leadingInstance = HERE, canLoot = true, rolled = { [3] = { type = 1 } },
   }
-  local roll = { id = 7, test = false, instance = HERE, bossInstance = HERE }
+  local roll = { id = 7, test = false, instance = HERE, bossInstance = HERE, inFilter = true }
   local info = { canNeed = true, canGreed = true, canTransmog = true }
   return state, roll, info
 end
@@ -213,6 +214,7 @@ local LCHECKS = {
   { "once", function(s, r, i) s.rolled[r.id or 7] = { type = 2 } end },
   { "rollplace", function(s, r, i) r.instance = ELSEWHERE end },
   { "notboss", function(s, r, i) r.bossInstance = nil end },
+  { "filter", function(s, r, i) r.inFilter = false end },
   { "noinfo", function(s, r, i) return "noinfo" end },
 }
 local ln = #LCHECKS

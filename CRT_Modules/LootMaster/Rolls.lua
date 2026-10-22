@@ -12,6 +12,10 @@ local ADDON, CRT = ...
 --     CRT's own call made, with the same type, within CLOSE_SECONDS, and not reported kept open. Each boss
 --     roll goes on the Boss loot list (LootMaster/BossLoot.lua): the leader picks what goes into the
 --     session there. A boss item CRT can't roll on is a red row and a chat warning.
+-- An item outside the leader's loot filter is left to the game's normal roll on both sides (Alex,
+-- 2026-10-21): the leader's CRT doesn't roll on it or list it, and says so; a raider's passes only an item
+-- whose every fact it read and found in the filter its leader sent (LM.StrictlyPasses), so any doubt
+-- leaves the roll to the raider.
 -- A roll counts as a boss's when it starts within LM.BOSS_SECONDS of a kill in the same raid instance
 -- (LM:LastKill). Every pass, roll and refusal is said in chat, so a raid shows what the game did; nothing
 -- is said while CRT Looting is off. The game's roll and confirm calls are made only in AutoPass.lua.
@@ -48,6 +52,7 @@ local TEXT = {
     rollFailed = "CRT Looting couldn't roll on %s (%s), so roll it yourself.",
     notRolled = "CRT Looting didn't roll on %s: %s, so roll it yourself.",
     cantRoll = "CRT Looting: you can't roll on %s (%s); tell the raid to roll on it.",
+    leftNormal = "CRT Looting left %s to the normal roll: it isn't in your loot filter.",
     noLink = "Loot Master couldn't read the link of %s, so it isn't on the boss loot list.",
     confirmType = "CRT Looting didn't confirm %s: the game asked about another kind of roll, so answer it yourself.",
     confirmFailed = "CRT Looting couldn't confirm %s (%s), so answer it yourself.",
@@ -90,6 +95,23 @@ local function rollInfo(rollID)
         return not secret(v) and (v == true or v == 1)
     end
     return { canNeed = yes(canNeed), canGreed = yes(canGreed), canTransmog = yes(canTransmog) }
+end
+
+-- Whether the roll's item is in the leader's loot filter, read only while CRT Looting is on (for you, or
+-- from your leader); false otherwise. The two sides lean opposite ways so a raider never passes what its
+-- leader doesn't roll on: the leader's CRT rolls unless the item is surely outside its own filter
+-- (LM:FilterLoot lets anything unread through, an unreadable link too), and a raider's passes only an item
+-- whose every fact it read and found in the filter its leader sent (LM.StrictlyPasses).
+local function inFilter(rollID, leader, state)
+    if not (leader and state.leading or not leader and LM:LootingHeardOn()) then
+        return false
+    end
+    local ok, link = pcall(GetLootRollItemLink, rollID)
+    local s = ok and not secret(link) and type(link) == "string" and LM.LinkItemString(link) or nil
+    if leader then
+        return not s or LM:FilterLoot(s, "boss", link) == true
+    end
+    return s ~= nil and LM.StrictlyPasses(LM.ItemFacts(s, "boss"), LM:LeaderFilter())
 end
 
 -- The roll as the gates read it.
@@ -162,6 +184,7 @@ local function retryQuiet()
         local okT, left = pcall(GetLootRollTimeLeft, rollID)
         if okT and not secret(left) and type(left) == "number" and left > 0 then
             local state = LM:LootingState()
+            q.roll.inFilter = inFilter(rollID, false, state) -- the filter may have come with this word
             if state.me ~= state.leader and AutoPass:ShouldPass(state, q.roll) then
                 pass(rollID, q.text, state)
             end
@@ -208,6 +231,10 @@ local function leaderRoll(rollID, roll, kill, state)
     if why == "once" or not state.leading or not bossRoll(roll) then
         return
     end
+    if why == "filter" then
+        CRT:Print(TEXT.leftNormal:format(text))
+        return
+    end
     if why == "cant" or why == "noinfo" then
         CRT:Print(TEXT.cantRoll:format(text, AutoPass.LEADER_WHY[why]))
         addRow(rollID, text, link, { status = "cant", reason = SHORT[why] }, kill)
@@ -224,7 +251,10 @@ local function started(rollID)
     end
     local roll, kill = rollOf(rollID)
     local state = LM:LootingState()
-    if state.me ~= nil and state.me == state.leader then
+    local leader = state.me ~= nil and state.me == state.leader
+    roll.inFilter = inFilter(rollID, leader, state)
+    if leader then
+        BL:SawRoll(kill) -- this kill's loot is rolled: no received rows for it
         leaderRoll(rollID, roll, kill, state)
     else
         raiderRoll(rollID, roll, kill, state)

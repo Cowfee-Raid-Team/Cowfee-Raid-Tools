@@ -189,6 +189,22 @@ check(#account == 1, "clicking a made one makes nothing")
 button("Generate all macros").OnClick(button("Generate all macros"))
 check(#account == 8 and withText("8 of 8 created") ~= nil, "Generate all macros makes the rest")
 
+-- Dragging a made icon puts its macro on the cursor, for an action bar; never in combat, never one not made.
+local picked = {}
+function PickupMacro(slot) picked[#picked + 1] = slot end
+cellButton(1).OnDragStart(cellButton(1))
+check(#picked == 1 and GetMacroInfo(picked[1]) == "CRT Star", "dragging CRT Star picks up CRT Star")
+combat = true
+printed = {}
+cellButton(1).OnDragStart(cellButton(1))
+check(#picked == 1 and (printed[1] or ""):find("Not in combat", 1, true) ~= nil, "in combat: no pickup, and chat says why")
+combat = false
+account[#account + 1] = { name = "My Own", icon = 1, body = "/say hi" }
+table.sort(account, function(x, y) return x.name:lower() < y.name:lower() end)
+cellButton(8).OnDragStart(cellButton(8))
+check(#picked == 2 and GetMacroInfo(picked[2]) == "CRT Skull", "the slot is read again after the list moves")
+for i = #account, 1, -1 do if account[i].name == "My Own" then table.remove(account, i) end end
+
 -- Changed and blocked states.
 find("CRT Moon").body = "/raid {rt5} mine"
 button("Generate all macros").OnClick(button("Generate all macros"))

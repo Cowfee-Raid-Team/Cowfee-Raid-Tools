@@ -7,12 +7,13 @@ local ADDON, CRT = ...
 -- Raiders can't change it. A party group counts only with "Enable in party" (Settings), on both sides; a
 -- finder group never does.
 --
--- The leader's Yes is saved (CRTDB lootmaster.looting: on, the instance, who said it, and at, when it was
--- last confirmed: on Yes and each heartbeat in that instance), so it stays on through a /reload or login
--- until it is turned off or a safety off happens. The leader's first loading screen brings it back on,
--- with no prompt, an O and a heartbeat, when it is still the leader, the same character, in that instance
--- (or in the open world, a wipe's run back, the time away counted from at) and within LM.LOOTING_AWAY of
--- at; otherwise the saved state is cleared and raiders are told it starts off ("reload"). Raiders save
+-- The leader's Yes is saved per character (CRTDBChar.lootmaster.looting: on, the instance, and at, when
+-- it was last confirmed: on Yes and each heartbeat in that instance), so it stays on through a /reload or
+-- login until it is turned off or a safety off happens. The leader's first loading screen brings it back
+-- on, with no prompt, an O and a heartbeat, when it is still the leader, in that instance (or in the open
+-- world, a wipe's run back, the time away counted from at) and within LM.LOOTING_AWAY of at; otherwise
+-- the saved state is cleared and raiders are told it starts off ("reload"). When only the lead can't be
+-- told yet (a fresh login), the first group event within LM.RESUME_WAIT seconds decides. Raiders save
 -- nothing: after their own /reload they are off until the leader's next O or heartbeat.
 -- A wipe keeps it on: the leader may be in the open world (dead, released, running back) for up to
 -- LM.LOOTING_AWAY seconds, and isn't asked again on the way back in. It turns off (and the saved state is
@@ -21,16 +22,18 @@ local ADDON, CRT = ...
 -- IsInInstance's "none" is the open world.
 --
 -- Messages, on LM.PREFIX like the rest of Loot Master (an older CRT drops a kind it doesn't know):
---   O|<version>|<instance>                       on: the leader said Yes for this instance
+--   O|<version>|<instance>|<filter>              on: the leader said Yes for this instance
 --   F|<version>|<why>                            off: no (said No), off (turned off), instance (entered
 --                                                another instance), away (out too long), lead (can't
 --                                                lead it any more), party (Enable in party turned off),
 --                                                reload (the leader's login or /reload, when its
 --                                                saved Yes doesn't bring it back on)
---   H|<version>|<instance>|<instance>|<seconds>  the heartbeat, every HEARTBEAT_SECONDS while on: the
---                                                instance it said Yes for, where the leader is now (that
---                                                instance, or "world" for the open world), and the
+--   H|<version>|<instance>|<instance>|<seconds>|<filter>  the heartbeat, every HEARTBEAT_SECONDS while
+--                                                on: the instance it said Yes for, where the leader is now
+--                                                (that instance, or "world" for the open world), and the
 --                                                seconds it has been out
+-- <filter> is the leader's loot filter as five fields (LM.FilterFields, since 0.31.0): a raider's CRT
+-- passes only items in it (LootMaster/Rolls.lua), and none when it is missing or can't be read.
 -- An instance is "<instanceID>-<difficultyID>" (GetInstanceInfo). A raider takes these only from its
 -- current raid leader, and forgets the leader's word when the lead moves or the leader goes offline.
 -- Combat never stops a heartbeat; only the game's chat lockdown (a boss encounter) holds one, and a fresh
@@ -51,6 +54,7 @@ LM.LOOTING_TICK = 5 -- seconds between a raider's checks for a quiet or offline 
 LM.QUIET_GRACE = 10 -- seconds after an encounter before a quiet leader is reported in chat
 LM.BEAT_RETRY = 2 -- seconds between tries of the heartbeat after an encounter, while chat is still locked
 LM.BEAT_RETRIES = 10
+LM.RESUME_WAIT = 5 -- seconds a fresh login waits for the group before a saved Yes is given up
 
 local TEXT = {
     line = "CRT Looting: %s",
@@ -125,6 +129,14 @@ local function place()
     return LM.InstanceKey() or (openWorld() and "world" or "elsewhere")
 end
 
+-- The fields with your loot filter's five after them (O and H).
+local function withFilter(fields)
+    for _, v in ipairs(LM.FilterFields(LM:Filter())) do
+        fields[#fields + 1] = v
+    end
+    return fields
+end
+
 local function isLeader()
     return IsInGroup() and UnitIsGroupLeader("player") and true or false
 end
@@ -170,28 +182,20 @@ end
 
 -- Leader -----------------------------------------------------------------------------------------------
 
--- The leader's saved Yes (CRTDB lootmaster.looting; its default is in CRT_Core/Core.lua), made if missing.
+-- The leader's saved Yes, per character (CRTDBChar.lootmaster.looting: { on, instance, at }), or nil.
 local function saved()
-    local set = LM:Settings()
-    if type(set) ~= "table" then
-        return nil
-    end
-    if type(set.looting) ~= "table" then
-        set.looting = {}
-    end
-    return set.looting
+    local s = CRTDBChar and type(CRTDBChar.lootmaster) == "table" and CRTDBChar.lootmaster.looting
+    return type(s) == "table" and s or nil
 end
 
--- Saves the leader's on state (own) now, or clears it when off.
+-- Saves the leader's on state (own) now, at = time() as its last confirm, or clears it when off.
 local function save()
-    local s = saved()
-    if not s then
-        return
-    end
     if own.on then
-        s.on, s.instance, s.at, s.who = true, own.instance, time(), LM:Me()
-    else
-        s.on, s.instance, s.at, s.who = false, "", 0, ""
+        CRTDBChar = CRTDBChar or {}
+        CRTDBChar.lootmaster = CRTDBChar.lootmaster or {}
+        CRTDBChar.lootmaster.looting = { on = true, instance = own.instance, at = time() }
+    elseif saved() then
+        CRTDBChar.lootmaster.looting = nil
     end
 end
 
@@ -216,7 +220,7 @@ function LM:SetLooting(on, why, words)
         end
         own.on, own.instance, own.why, own.awaySince = true, LM.InstanceKey(), nil, nil
         save()
-        LM.SendText(Wire.Encode("O", { LM.VERSION, own.instance }))
+        LM.SendText(Wire.Encode("O", withFilter({ LM.VERSION, own.instance })))
         if not beatTicker then
             beatTicker = C_Timer.NewTicker(LM.HEARTBEAT_SECONDS, beat)
         end
@@ -268,7 +272,7 @@ beat = function()
     if LM.ChatLocked() then
         return -- held messages would pile up; ENCOUNTER_END sends a fresh one
     end
-    LM.SendText(Wire.Encode("H", { LM.VERSION, own.instance, where ~= "elsewhere" and where or "", math.floor(away) }))
+    LM.SendText(Wire.Encode("H", withFilter({ LM.VERSION, own.instance, where ~= "elsewhere" and where or "", math.floor(away) })))
 end
 
 -- After an encounter: a heartbeat now, or, while chat is still locked, tried again every BEAT_RETRY
@@ -327,6 +331,11 @@ local function checkHeard()
     if not heard then
         stopWatch()
     end
+end
+
+-- The loot filter in the raid leader's last word, or nil (none sent, or it couldn't be read).
+function LM:LeaderFilter()
+    return heard and heard.on and heard.filter or nil
 end
 
 -- Whether a raider's last word from its raid leader said on: CRT Looting is meant to be on, so a roll it
@@ -443,7 +452,8 @@ LM.Handle("O", function(f, sender)
     if not fromLeader(sender) or (f[2] or "") == "" then
         return
     end
-    hear({ from = sender, on = true, version = f[1], yes = f[2], here = f[2], world = false, away = 0, at = GetTime() })
+    hear({ from = sender, on = true, version = f[1], yes = f[2], here = f[2], world = false, away = 0, at = GetTime(),
+        filter = LM.ParseFilterFields(f, 3) })
     report(false)
 end)
 
@@ -454,7 +464,7 @@ LM.Handle("H", function(f, sender)
     local world = f[3] == "world"
     local here = (not world and (f[3] or "") ~= "") and f[3] or nil
     hear({ from = sender, on = true, version = f[1], yes = f[2], here = here, world = world, away = tonumber(f[4]),
-        at = GetTime() })
+        at = GetTime(), filter = LM.ParseFilterFields(f, 5) })
     report(false)
 end)
 
@@ -482,18 +492,22 @@ local function maybeAsk()
 end
 
 -- The first loading screen after a login or /reload: the saved Yes brings it back on (an O when in its
--- instance; zoned sends the heartbeat) if this character said it, still leads, is in that instance or
--- the open world, and was last confirmed within LM.LOOTING_AWAY. Otherwise the saved state is cleared.
--- Returns whether it is on again.
-local function resume(key, where)
+-- instance; the caller sends the heartbeat) if you still lead, are in that instance or the open world,
+-- and it was last confirmed within LM.LOOTING_AWAY. Otherwise the saved state is cleared. Returns
+-- whether it is on again, or "pending" when only the lead can't be read yet (a fresh login's group may
+-- not be known at the first loading screen) and final isn't set.
+local function resume(key, where, final)
     local s = saved()
     if not s or s.on ~= true then
         return false
     end
     local age = type(s.at) == "number" and time() - s.at or nil
-    local ok = canLead() and s.who == LM:Me() and type(s.instance) == "string" and s.instance ~= ""
-        and (key == s.instance or where == "world") and age ~= nil and age >= 0 and age <= LM.LOOTING_AWAY
-    if not ok then
+    local fits = type(s.instance) == "string" and s.instance ~= "" and (key == s.instance or where == "world")
+        and age ~= nil and age >= 0 and age <= LM.LOOTING_AWAY
+    if fits and not canLead() and not final then
+        return "pending"
+    end
+    if not fits or not canLead() then
         save() -- own is still off: clears it
         return false
     end
@@ -501,13 +515,31 @@ local function resume(key, where)
     own.awaySince = key ~= s.instance and (GetTime() - age) or nil
     askedFor = s.instance -- not asked there again, even after a later Turn off
     if key == s.instance and not LM.ChatLocked() then
-        LM.SendText(Wire.Encode("O", { LM.VERSION, own.instance }))
+        LM.SendText(Wire.Encode("O", withFilter({ LM.VERSION, own.instance })))
     end
     if not beatTicker then
         beatTicker = C_Timer.NewTicker(LM.HEARTBEAT_SECONDS, beat)
     end
     CRT:Print(TEXT.stillOn)
     return true
+end
+
+-- A saved Yes waiting for the group (resume's "pending"): the first GROUP_ROSTER_UPDATE or
+-- PARTY_LEADER_CHANGED within LM.RESUME_WAIT seconds of the loading screen settles it, or the wait's end.
+local resuming = false
+
+-- Settles a pending saved Yes: on again with a heartbeat, or cleared (raiders told it starts off).
+local function settleResume()
+    if not resuming then
+        return
+    end
+    resuming = false
+    if resume(LM.InstanceKey(), place(), true) then
+        beat()
+    elseif canLead() then
+        LM.SendText(Wire.Encode("F", { LM.VERSION, "reload" }))
+    end
+    LM:Fire("looting")
 end
 
 -- A loading screen or a new zone. The leader's first one after loading brings a saved Yes back on, or
@@ -518,8 +550,14 @@ local function zoned()
     if where == lastPlace then
         return
     end
-    if lastPlace == false and not resume(key, where) and canLead() then
-        LM.SendText(Wire.Encode("F", { LM.VERSION, "reload" }))
+    if lastPlace == false then
+        local back = resume(key, where)
+        if back == "pending" then
+            resuming = true
+            C_Timer.After(LM.RESUME_WAIT, settleResume)
+        elseif not back and canLead() then
+            LM.SendText(Wire.Encode("F", { LM.VERSION, "reload" }))
+        end
     end
     lastKey, lastPlace = key, where
     if key and key ~= passedIn then
@@ -547,6 +585,7 @@ end
 -- The group changed (or Enable in party did: from "setting"): a leader who can't lead it any more turns
 -- it off, a raider forgets a word that no longer counts.
 local function regrouped(from)
+    settleResume() -- a saved Yes waiting for the group, if any
     if not isLeader() then
         askedFor = nil -- asked again on getting the lead back
     end

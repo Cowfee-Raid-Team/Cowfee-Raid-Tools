@@ -3,7 +3,7 @@
 // kinds, the instance prompt (who is asked and when), on, off and the heartbeat, raiders taking them only
 // from the current raid leader, wipes (the leader out of the instance for up to 10 minutes), finder groups
 // and parties, red error text in a lockdown, the state line in chat and on the page, the gate's state, and
-// the leader's on state kept through a /reload (CRTDB lootmaster.looting) until it is turned off or a
+// the leader's on state kept through a /reload (CRTDBChar lootmaster.looting) until it is turned off or a
 // safety off happens. Usage: node run_lootmaster_looting.js <addon folder>
 const fs = require('fs');
 const path = require('path');
@@ -97,6 +97,11 @@ local function take() local box = outbox outbox = {} return box end
 local function lastPrint() return printed[#printed] end
 local HERE = "2810-16"
 local V = LM.VERSION
+-- the leader's loot filter as O and H carry it (LootMaster/Filter.lua isn't loaded here)
+local FF = "|1|0|4|0|bop,tier"
+function LM:Filter() return { boss = true, trash = false, quality = 4, ilvl = 0, kinds = { bop = true, tier = true } } end
+LM.FilterFields = function() return { 1, 0, 4, 0, "bop,tier" } end
+LM.ParseFilterFields = function(f, first) if f[first] == "1" then return { boss = true } end end
 
 -- 1. An older client (no Looting.lua): the new kinds are dropped without an error
 local before = fails
@@ -232,7 +237,7 @@ eq(LM:SetLooting(true), true, "yes: turned on")
 eq(LM:LootingOn(), true, "yes: on")
 local box = take()
 eq(#box, 1, "yes: one message")
-eq(box[1], "O|" .. V .. "|" .. HERE, "yes: O with the version and the instance")
+eq(box[1], "O|" .. V .. "|" .. HERE .. FF, "yes: O with the version, the instance and the loot filter")
 eq(lastPrint(), "CRT Looting: on for everyone in the raid with CRT.", "yes: said in chat")
 eq(LM:LootingStatus(), "CRT Looting: on for everyone in the raid with CRT", "yes: the leader's line")
 check((fired.looting or 0) > 0, "yes: the page is told")
@@ -240,7 +245,7 @@ eq(live(LM.HEARTBEAT_SECONDS), 1, "yes: one heartbeat ticker")
 eq(LM.HEARTBEAT_SECONDS, 30, "heartbeat every 30 s")
 tick(30)
 local beat = take()
-eq(beat[1], "H|" .. V .. "|" .. HERE .. "|" .. HERE .. "|0", "heartbeat: H with the version, the Yes instance, where the leader is and 0 s away")
+eq(beat[1], "H|" .. V .. "|" .. HERE .. "|" .. HERE .. "|0" .. FF, "heartbeat: H with the version, the Yes instance, where the leader is, 0 s away and the loot filter")
 -- ordinary combat (trash) never stops a heartbeat
 onEvent("PLAYER_REGEN_DISABLED")
 tick(30)
@@ -322,8 +327,9 @@ eq(st.heartbeatAt, NOW, "state: heartbeat time")
 eq(st.now, NOW, "state: now")
 eq(st.test, false, "state: not a test")
 eq(type(st.passed), "table", "state: the passed list")
-local roll = { id = 1, test = false, instance = HERE, bossInstance = HERE }
+local roll = { id = 1, test = false, instance = HERE, bossInstance = HERE, inFilter = true }
 eq((LM.AutoPass:ShouldPass(st, roll)), true, "gate: a boss roll here would pass")
+eq(LM:LeaderFilter() ~= nil, true, "the leader's loot filter came with its word")
 -- the leader goes offline: off, said, and forgotten until its next word
 printed = {}
 OFFLINE.Solex = true
@@ -483,16 +489,16 @@ n = asked
 goOutside()
 onEvent("PLAYER_ENTERING_WORLD", false, false)
 eq(LM:LootingOn(), true, "wipe: still on outside")
-eq(take()[1], "H|" .. V .. "|" .. HERE .. "|world|0", "wipe: a heartbeat straight away says the leader is in the open world")
+eq(take()[1], "H|" .. V .. "|" .. HERE .. "|world|0" .. FF, "wipe: a heartbeat straight away says the leader is in the open world")
 NOW = NOW + 30
 tick(30)
-eq(take()[1], "H|" .. V .. "|" .. HERE .. "|world|30", "wipe: the heartbeat goes on, with the time away")
+eq(take()[1], "H|" .. V .. "|" .. HERE .. "|world|30" .. FF, "wipe: the heartbeat goes on, with the time away")
 eq(LM:LootingStatus(), "CRT Looting: on for everyone in the raid with CRT", "wipe: the leader's line")
 goInside()
 onEvent("PLAYER_ENTERING_WORLD", false, false)
 eq(asked, n, "wipe: not asked again on the way back in")
 eq(LM:LootingOn(), true, "wipe: still on inside")
-eq(take()[1], "H|" .. V .. "|" .. HERE .. "|" .. HERE .. "|0", "wipe: back in, a heartbeat says so")
+eq(take()[1], "H|" .. V .. "|" .. HERE .. "|" .. HERE .. "|0" .. FF, "wipe: back in, a heartbeat says so")
 -- out for over 10 minutes: off
 goOutside()
 onEvent("ZONE_CHANGED_NEW_AREA")
@@ -588,25 +594,26 @@ deliver(take(), "Solex-Sargeras")
 eq(LM:LootingStatus(), "CRT Looting: on for everyone in the raid with CRT", "leader: own O changes nothing")
 eq(select(2, LM.AutoPass:Ready(LM:LootingState())), "looter", "leader: the gate never passes for the looter")
 
--- 7. Saved: the leader's Yes lasts through a /reload, until it is turned off or a safety off happens
+-- 7. Saved per character: the leader's Yes lasts through a /reload, until it is turned off or a safety off happens
 local function keys(t) local out = {} for k in pairs(t or {}) do out[#out + 1] = tostring(k) end table.sort(out) return table.concat(out, ",") end
-eq(keys(CRTDBChar), "lootmaster", "nothing in CRTDBChar but the last kill")
-eq(keys(CRTDBChar.lootmaster), "lastKill", "CRTDBChar lootmaster: only the last kill (Comm.lua's)")
-eq(keys(CRT.db.lootmaster), "authority,enableInParty,looting", "CRTDB lootmaster: one new field, looting")
-local S = CRT.db.lootmaster.looting
-eq(S.on, true, "saved: on")
-eq(S.instance, HERE, "saved: the instance said Yes for")
-eq(S.at, time(), "saved: when it was last confirmed")
-eq(S.who, "Solex-Sargeras", "saved: who said Yes")
+local function S() return CRTDBChar.lootmaster and CRTDBChar.lootmaster.looting end
+eq(keys(CRTDBChar), "lootmaster", "CRTDBChar: only lootmaster")
+eq(keys(CRTDBChar.lootmaster), "lastKill,looting", "CRTDBChar lootmaster: the last kill (Comm.lua's) and the saved Yes")
+eq(keys(CRT.db.lootmaster), "authority,enableInParty", "nothing new in CRTDB lootmaster (a profile key)")
+eq(keys(S()), "at,instance,on", "saved: on, instance and at only")
+eq(S().on, true, "saved: on")
+eq(S().instance, HERE, "saved: the instance said Yes for")
+eq(S().at, time(), "saved: when it was last confirmed")
 -- the heartbeat in the instance confirms it again
 NOW = NOW + 30
 take()
 tick(30)
-eq(S.at, time(), "saved: each heartbeat in the instance confirms it")
+eq(S().at, time(), "saved: each heartbeat in the instance confirms it")
 -- a /reload (or login) as the leader in the same instance: back on, O and a heartbeat, no prompt, no F reload
 local function reload()
   loadLooting()
   LM.AskLooting = function() asked = asked + 1 end
+  timers = {}
   take()
   printed = {}
   onEvent("PLAYER_ENTERING_WORLD", false, true)
@@ -617,17 +624,34 @@ eq(LM:LootingOn(), true, "reload, same instance: back on")
 eq(asked, n, "reload, same instance: not asked")
 box = take()
 eq(#box, 2, "reload, same instance: two messages")
-eq(box[1], "O|" .. V .. "|" .. HERE, "reload, same instance: the O again")
-eq(box[2], "H|" .. V .. "|" .. HERE .. "|" .. HERE .. "|0", "reload, same instance: and a heartbeat")
+eq(box[1], "O|" .. V .. "|" .. HERE .. FF, "reload, same instance: the O again, with the loot filter")
+eq(box[2], "H|" .. V .. "|" .. HERE .. "|" .. HERE .. "|0" .. FF, "reload, same instance: and a heartbeat")
 eq(lastPrint(), "CRT Looting: still on for everyone in the raid with CRT.", "reload, same instance: said in chat")
 eq(LM:LootingStatus(), "CRT Looting: on for everyone in the raid with CRT", "reload, same instance: the leader's line")
 eq(live(LM.HEARTBEAT_SECONDS), 1, "reload, same instance: the heartbeat ticker runs")
 onEvent("GROUP_ROSTER_UPDATE")
 eq(asked, n, "reload, same instance: a roster update doesn't ask either")
+-- a /reload during a boss encounter's chat lockdown: on, but nothing sent until it lifts
+LOCKED = true
+onEvent("ENCOUNTER_START", 1, "Boss", 16, 20)
+reload()
+eq(LM:LootingOn(), true, "reload in a lockdown: back on")
+eq(#outbox, 0, "reload in a lockdown: no O, no F reload, no heartbeat")
+LOCKED = false
+onEvent("ENCOUNTER_END", 1, "Boss", 16, 20, 1)
+box = take()
+eq(#box, 1, "reload in a lockdown: one message when the encounter ends")
+eq(box[1], "H|" .. V .. "|" .. HERE .. "|" .. HERE .. "|0" .. FF, "reload in a lockdown: the heartbeat after ENCOUNTER_END")
+LOCKED = true
+reload()
+eq(#outbox, 0, "reload in a lockdown again: nothing sent")
+LOCKED = false
+onEvent("PLAYER_REGEN_ENABLED")
+box = take()
+eq(box[1], "H|" .. V .. "|" .. HERE .. "|" .. HERE .. "|0" .. FF, "reload in a lockdown: the heartbeat after combat ends")
 -- Turn off for everyone clears it: the next /reload starts off and asks again
 LM:SetLooting(false, "off")
-eq(S.on, false, "turn off: the saved state is cleared")
-eq(S.instance, "", "turn off: no instance kept")
+eq(S(), nil, "turn off: the saved state is cleared")
 n = asked
 reload()
 eq(LM:LootingOn(), false, "turn off, then reload: off")
@@ -638,7 +662,7 @@ LM:SetLooting(true)
 WHERE.difficulty = 15
 reload()
 eq(LM:LootingOn(), false, "login in another instance: off")
-eq(S.on, false, "login in another instance: cleared")
+eq(S(), nil, "login in another instance: cleared")
 WHERE.difficulty = 16
 onEvent("PLAYER_ENTERING_WORLD", false, false)
 reload()
@@ -651,7 +675,7 @@ NOW = NOW + LM.LOOTING_AWAY + 1
 take()
 onEvent("PLAYER_ENTERING_WORLD", false, false)
 eq(LM:LootingOn(), false, "login after the away limit: off")
-eq(S.on, false, "login after the away limit: cleared")
+eq(S(), nil, "login after the away limit: cleared")
 eq(take()[1], "F|" .. V .. "|reload", "login after the away limit: raiders told")
 -- a /reload in the open world on a wipe, within the away limit: on, away counted from the last confirm
 LM:SetLooting(true)
@@ -663,11 +687,11 @@ reload()
 eq(LM:LootingOn(), true, "reload in the open world within the limit: on")
 box = take()
 eq(#box, 1, "reload in the open world: only the heartbeat")
-eq(box[1], "H|" .. V .. "|" .. HERE .. "|world|60", "reload in the open world: a heartbeat with the time away")
+eq(box[1], "H|" .. V .. "|" .. HERE .. "|world|60" .. FF, "reload in the open world: a heartbeat with the time away")
 NOW = NOW + LM.LOOTING_AWAY
 tick(30)
 eq(LM:LootingOn(), false, "reload in the open world: still turned off when out too long")
-eq(S.on, false, "away off: cleared")
+eq(S(), nil, "away off: cleared")
 goInside()
 onEvent("PLAYER_ENTERING_WORLD", false, false)
 take()
@@ -675,36 +699,66 @@ take()
 LM:SetLooting(true)
 GROUP.leader = "Halo-Sargeras"
 onEvent("PARTY_LEADER_CHANGED")
-eq(S.on, false, "lead lost: cleared")
+eq(S(), nil, "lead lost: cleared")
 GROUP.leader = "Solex-Sargeras"
 onEvent("PARTY_LEADER_CHANGED")
 reload()
 eq(LM:LootingOn(), false, "lead lost, then reload: off")
--- not the leader any more at the login: off, cleared
+-- a fresh login where the group isn't known yet: waits for the first group event
 LM:SetLooting(true)
-loadLooting()
-GROUP.leader = "Halo-Sargeras"
-onEvent("PLAYER_ENTERING_WORLD", false, true)
-eq(LM:LootingOn(), false, "login not leading: off")
-eq(S.on, false, "login not leading: cleared")
-GROUP.leader = "Solex-Sargeras"
--- another character on the same account leading there: not its Yes
+local savedGroup = GROUP
+GROUP = nil
+n = asked
 reload()
-LM:SetLooting(true)
-loadLooting()
-ME = "Quick"
-GROUP.leader = "Quick-Sargeras"
+eq(LM:LootingOn(), false, "login, group not known yet: not on yet")
+eq(S() and S().on, true, "login, group not known yet: the saved Yes is kept")
+eq(#outbox, 0, "login, group not known yet: nothing sent")
+eq(asked, n, "login, group not known yet: not asked")
+GROUP = savedGroup
+onEvent("GROUP_ROSTER_UPDATE")
+eq(LM:LootingOn(), true, "login, then the group: back on")
+box = take()
+eq(box[1], "O|" .. V .. "|" .. HERE .. FF, "login, then the group: the O")
+eq(box[2], "H|" .. V .. "|" .. HERE .. "|" .. HERE .. "|0" .. FF, "login, then the group: and a heartbeat")
+eq(asked, n, "login, then the group: not asked")
+runTimers()
+eq(LM:LootingOn(), true, "login, then the group: the wait's end changes nothing")
+eq(#outbox, 0, "login, then the group: nothing more sent")
+-- the first group event says someone else leads: off, cleared, and raiders aren't told by a non-leader
+reload()
 take()
+GROUP.leader = "Halo-Sargeras"
+loadLooting()
+LM.AskLooting = function() asked = asked + 1 end
+timers = {}
 onEvent("PLAYER_ENTERING_WORLD", false, true)
-eq(LM:LootingOn(), false, "another character: off")
-ME = "Solex"
+eq(S() and S().on, true, "login not leading: kept until the group is known")
+onEvent("PARTY_LEADER_CHANGED")
+eq(LM:LootingOn(), false, "login not leading: off")
+eq(S(), nil, "login not leading: cleared")
+eq(#outbox, 0, "login not leading: nothing sent")
 GROUP.leader = "Solex-Sargeras"
+onEvent("PARTY_LEADER_CHANGED")
+-- no group event within the wait: given up at its end (the leader's raiders told it starts off)
+LM:SetLooting(true)
+GROUP = nil
+reload()
+eq(S() and S().on, true, "no group event: kept for the wait")
+eq(LM.RESUME_WAIT, 5, "the wait is 5 seconds")
+GROUP = savedGroup
+GROUP.leader = "Halo-Sargeras"
+runTimers()
+eq(LM:LootingOn(), false, "no group event, not leading at the wait's end: off")
+eq(S(), nil, "no group event: cleared at the wait's end")
+GROUP.leader = "Solex-Sargeras"
+onEvent("PARTY_LEADER_CHANGED")
+take()
 -- another instance while on, and Enable in party turned off: cleared
 reload()
 LM:SetLooting(true)
 WHERE.inside, WHERE.kind = true, "party"
 onEvent("PLAYER_ENTERING_WORLD", false, false)
-eq(S.on, false, "another instance: cleared")
+eq(S(), nil, "another instance: cleared")
 goInside()
 onEvent("PLAYER_ENTERING_WORLD", false, false)
 GROUP.raid = false
@@ -712,21 +766,23 @@ CRT.db.lootmaster.enableInParty = true
 LM:SetLooting(true)
 CRT.db.lootmaster.enableInParty = false
 LM.LootingRecheck("setting")
-eq(S.on, false, "Enable in party turned off: cleared")
+eq(S(), nil, "Enable in party turned off: cleared")
 GROUP.raid = nil
+eq(keys(CRT.db.lootmaster), "authority,enableInParty", "still nothing new in CRTDB lootmaster")
 -- a raider's own /reload: off (the gate fails closed) until it hears the leader again
 LM:SetLooting(true)
 local on = take()
 ME = "Halo"
 deliver(on, "Solex-Sargeras")
 eq(LM:LootingStatus(), "CRT Looting: on (leader Solex)", "raider: on before its reload")
+CRTDBChar.lootmaster.looting = nil -- a raider's own character has no saved Yes
 reload()
 eq(#outbox, 0, "raider reload: sends nothing")
 eq(LM:LootingOn(), false, "raider reload: never leads it")
 eq(LM:LootingStatus(), "CRT Looting: off: the raid leader hasn't turned it on", "raider reload: off")
 eq((LM.AutoPass:Ready(LM:LootingState())), false, "raider reload: the gate says no")
 eq((LM.AutoPass:ShouldPass(LM:LootingState(), roll)), false, "raider reload: a boss roll isn't passed")
-deliver({ "H|" .. V .. "|" .. HERE .. "|" .. HERE .. "|0" }, "Solex-Sargeras")
+deliver({ "H|" .. V .. "|" .. HERE .. "|" .. HERE .. "|0" .. FF }, "Solex-Sargeras")
 eq(LM:LootingStatus(), "CRT Looting: on (leader Solex)", "raider reload: on again from the leader's heartbeat")
 
 print(string.format("%d passed, %d failed", passes, fails))

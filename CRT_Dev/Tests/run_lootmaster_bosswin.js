@@ -163,6 +163,7 @@ eq(footer.enabled, false, "Start: waits while a ticked row rolls")
 -- 2. Won, lost; clicking a box; Start
 BL:Result(link(101, "Helm"), "Solex", true, false)
 eq(r1.status.text, "|cff8fa876Won · you rolled Need|r", "row 1: won, in good")
+eq(r1.detail.text, "Head · Item level 250 · 2h 00m left to trade", "row 1: won, with its time left to trade")
 eq(footer.enabled, true, "Start: ready once the ticked rows are won")
 BL:Result(link(102, "Junk Cloak"), "Quick-Sargeras", false, false)
 eq(r2.status.text, "|cffccb599Won by Quick|r", "row 2: won by someone else, muted")

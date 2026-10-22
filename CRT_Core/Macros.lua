@@ -30,6 +30,8 @@ local ADDON, CRT = ...
 --   DeleteMacro(slot)
 --   Constants.MacroConsts.MAX_ACCOUNT_MACROS (120) and MAX_CHARACTER_MACROS (30)
 --   UPDATE_MACROS fires after a macro changes
+--   PickupMacro(slot) puts the macro on the cursor, as dragging it from the game's macro window does; the player
+--     drops it on an action bar (Macros:Pickup). Not in combat: action bars can't change then
 -- None of them may be called in combat (InCombatLockdown: "Programatic modification of macros or bindings is not
 -- allowed"), so every change refuses then, and the page greys its buttons. Each list keeps its macros sorted by
 -- name, so slots move after every change: the engine reads the list again before each one.
@@ -403,6 +405,32 @@ end
 -- Telling the page -------------------------------------------------------------------------------------------
 
 -- fn() runs when a macro changes or combat starts or ends.
+-- Puts one of the set's macros on the cursor, to drop on an action bar: one that is there with its name (ours, or
+-- ours edited by the player), never the player's own macro that only shares the name. Returns ok and a message.
+function Macros:Pickup(key, name)
+    if inCombat() then
+        return false, "Not in combat: the game doesn't let you change your action bars during a fight."
+    end
+    local st = self:Status(key)
+    for _, e in ipairs(st and st.entries or {}) do
+        if e.def.name == name then
+            if e.state ~= "ours" and e.state ~= "changed" then
+                return false, nil
+            end
+            for _, m in ipairs(readAll()) do
+                if m.name == name then
+                    local ok, err = pcall(PickupMacro, m.slot)
+                    if not ok then
+                        return false, "The game didn't pick up " .. name .. ": " .. tostring(err)
+                    end
+                    return true, nil
+                end
+            end
+        end
+    end
+    return false, nil
+end
+
 function Macros:OnChange(fn)
     listeners[#listeners + 1] = fn
 end

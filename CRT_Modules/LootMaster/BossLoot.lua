@@ -3,17 +3,32 @@ local ADDON, CRT = ...
 -- The raid leader's Boss loot list, with no frames (the window is LootMaster/BossLootWindow.lua). Alex,
 -- 2026-10-20: "all loot is held for rolls until the raid lead clicks 'start session'". One row per boss
 -- roll the leader's CRT handled (LootMaster/Rolls.lua), in the order they started:
---   rollID, link, itemString, ilvl, at (GetTime), expires (GetTime when its kill is LM.BOSS_SECONDS old)
+--   rollID, link, itemString, ilvl, at (GetTime), expires (GetTime when it leaves the list: below)
 --   pass, why      the loot filter's word (LM:FilterLoot as boss loot): passed, else why not
 --   ticked         in the next session; pre-ticked when it passed the filter
 --   status         "rolling" (CRT rolled rollType), "won" (you won it), "lost" (winner won it),
 --                  "nowinner" (everyone passed) or "cant" (CRT couldn't roll: reason)
+--   received       true for an item the game gave you with no roll (rollID is then CRT's own, below 0)
 -- Only a won row can go into a session. Start session (BL:Start) starts LM:Start with the ticked rows you
--- have won, LM.MAX_ITEMS a session, the rest after it ends. It waits while a ticked row is still rolling,
--- or a session is running: untick a row to leave it out. Nothing starts a session on its own.
--- The list empties on Clear, on leaving the instance, when CRT Looting turns off (the lead lost too), and
--- row by row LM.BOSS_SECONDS after its kill. Changes fire LM:Fire("bossloot", what): "open" (the first
--- row of a new list: the window shows), "changed" or "cleared".
+-- have won, LM.MAX_ITEMS a session, the rest after it ends. It waits while a ticked row is still rolling:
+-- untick a row to leave it out. Nothing starts a session on its own. Alex, 2026-10-21: Start session should
+-- work "in all cases": a test session still running is ended first, and a real one keeps going while
+-- these wait their turn; either way the Loot Master window shows.
+--
+-- Loot for the whole raid (Alex, 2026-10-21: "keep items for the whole raid ... expiring on each item's
+-- 2-hour trade timer, and warn me before items run out"). The game lets you trade an item you looted to
+-- players who were also eligible to loot it for 2 hours. So a won row stays until LM.TRADE_SECONDS after
+-- you got it (the result, or the receive event), counted by CRT's clock, not read from the item: the
+-- game's own timer started a moment earlier, so the row leaves a little before the trade really closes.
+-- LM.TRADE_WARN before that, chat warns once per item and the row's time left turns to a warning.
+-- Rows still rolling, won by someone else or nobody, or CRT couldn't roll, leave LM.BOSS_SECONDS after
+-- their kill as before. Items waiting behind a running session (BL.waiting) are dropped one by one when
+-- their own time runs out.
+-- The list and the waiting items are kept per character in CRTDBChar.lootmaster.bossLootList, each row's
+-- time left as a clock time, so a /reload, a logout, leaving the instance or CRT Looting turning off keep
+-- them; they come back at login with their rollIDs renumbered as CRT's own (the game's start again).
+-- Only Clear and the times above empty it. Changes fire LM:Fire("bossloot", what): "open" (the first row
+-- of a new list, or a kept list at login: the window shows), "changed" or "cleared".
 --
 -- Who won, from the game (checked 2026-10-20):
 --   LOOT_HISTORY_UPDATE_DROP (encounterID, lootListID): https://warcraft.wiki.gg/wiki/LOOT_HISTORY_UPDATE_DROP;
@@ -26,6 +41,15 @@ local ADDON, CRT = ...
 -- the same item string, else the same item ID. Each history drop sets a row once, and the two sources
 -- count against each other per boss and item, so a drop both report sets one row only.
 -- A winner that can't be read (a secret value, a failing call) leaves the row rolling.
+--
+-- Received loot (Alex, 2026-10-21: old raids never started a session). A raid the game runs with no
+-- loot rolls (an old raid on Legacy Loot) hands each item straight to a player, and only
+-- ENCOUNTER_LOOT_RECEIVED tells. While CRT Looting is on and you lead it, an item it says you received
+-- after a kill with no roll goes on the list as won, so Start session can give it out, when it is in your
+-- loot filter (one outside it is yours to keep, and isn't listed). A kill the game
+-- rolled on (BL:SawRoll, from LootMaster/Rolls.lua) never adds one, so a rolled drop isn't listed twice.
+-- Other players' items are theirs: only what is in your bags can be given out. Whether the game lets you
+-- trade it is the game's rule; the trade says so.
 
 local LM = CRT.LootMaster
 local BL = { rows = {}, waiting = {} }
@@ -33,11 +57,12 @@ LM.BossLoot = BL
 
 local TEXT = {
     cleared = "Loot Master cleared the boss loot list: %s.",
-    left = "you left the instance",
-    off = "CRT Looting is off",
     dropped = "Loot Master dropped the waiting boss loot: %s.",
-    expired = "Loot Master: %d won %s left the boss loot list 10 minutes after the kill, with no session started.",
-    tooOld = "it waited over 10 minutes",
+    testEnded = "Loot Master ended the test session to start this one.",
+    queued = "Loot Master: %d %s will start when the running session ends.",
+    expired = "Loot Master: %d won %s left the boss loot list: the game's 2 hours to trade %s are over.",
+    tooOld = "the game's 2 hours to trade it are over",
+    warn = "Loot Master: %s can be traded for about %d more minutes. Start a session soon or it can't be given out.",
 }
 
 local function secret(v)
@@ -67,18 +92,90 @@ end
 -- how many rows a result has set, and how many results each source has given, so the loot history and
 -- the receive event for the same drop count once.
 local applied, fromSource = {}, { history = {}, received = {} }
+local rolledKill -- the kill (its time) the game last started a roll after, while you led CRT Looting
+local nextOwn = 0 -- received rows' rollIDs: -1, -2, … so they never meet the game's
+
+LM.TRADE_SECONDS = 7200 -- the game's time to trade a looted item to others who could loot it
+LM.TRADE_WARN = 900 -- chat warns this long before a won item's trade time runs out
+
+-- Keeps the list and the waiting items for a /reload: each time left as a clock time (time()).
+local function store()
+    CRTDBChar = type(CRTDBChar) == "table" and CRTDBChar or {}
+    CRTDBChar.lootmaster = type(CRTDBChar.lootmaster) == "table" and CRTDBChar.lootmaster or {}
+    if #BL.rows == 0 and #BL.waiting == 0 then
+        CRTDBChar.lootmaster.bossLootList = nil
+        return
+    end
+    local now, wall = GetTime(), time()
+    local rows, waiting = {}, {}
+    for _, r in ipairs(BL.rows) do
+        local c = {}
+        for k, v in pairs(r) do
+            c[k] = v
+        end
+        c.at, c.expires, c.endsAt = nil, nil, wall + math.floor((r.expires or now) - now + 0.5)
+        rows[#rows + 1] = c
+    end
+    for _, w in ipairs(BL.waiting) do
+        local items = {}
+        for _, it in ipairs(w.items) do
+            items[#items + 1] = { itemString = it.itemString, link = it.link, ilvl = it.ilvl, endsAt = wall + math.floor((it.expires or now) - now + 0.5) }
+        end
+        waiting[#waiting + 1] = { items = items }
+    end
+    CRTDBChar.lootmaster.bossLootList = { rows = rows, waiting = waiting, boss = BL.boss, difficulty = BL.difficulty }
+end
 
 local function changed(what)
     if #BL.rows == 0 then
         BL.boss, BL.difficulty = nil, nil -- the badge follows the next kill's rows
         applied, fromSource = {}, { history = {}, received = {} }
     end
+    store()
     LM:Fire("bossloot", what or "changed")
 end
 
 -- Expiry ---------------------------------------------------------------------------------------------
 
-local function expire()
+local expire -- set below
+
+-- Seconds left to trade a won row, or nil for any other row.
+function BL.TradeLeft(r)
+    if r.status ~= "won" or not r.expires then
+        return nil
+    end
+    return math.max(0, r.expires - GetTime())
+end
+
+-- Chat warns once per won row when its trade time is nearly over.
+local function warn()
+    for _, r in ipairs(BL.rows) do
+        local left = BL.TradeLeft(r)
+        if left and left > 0 and left <= LM.TRADE_WARN + 1 and not r.warned then
+            r.warned = true
+            CRT:Print(TEXT.warn:format(r.link, math.max(1, math.floor(left / 60 + 0.5))))
+            changed()
+        end
+    end
+end
+
+-- The row's clocks: when it leaves, and the warning before that for a won row.
+local function schedule(r)
+    local now = GetTime()
+    C_Timer.After(math.max(0, r.expires - now) + 0.05, expire)
+    if r.status == "won" and not r.warned then
+        C_Timer.After(math.max(0, r.expires - LM.TRADE_WARN - now), warn)
+    end
+end
+
+-- A row is yours now: it stays until its trade time is over.
+local function own(r)
+    r.status, r.winner, r.warned = "won", nil, nil
+    r.expires = GetTime() + LM.TRADE_SECONDS
+    schedule(r)
+end
+
+expire = function()
     local now, kept, n, won = GetTime(), {}, #BL.rows, 0
     for _, r in ipairs(BL.rows) do
         if not (r.expires and now >= r.expires) then
@@ -90,7 +187,7 @@ local function expire()
     if #kept ~= n then
         BL.rows = kept
         if won > 0 then
-            CRT:Print(TEXT.expired:format(won, won == 1 and "item" or "items"))
+            CRT:Print(TEXT.expired:format(won, won == 1 and "item" or "items", won == 1 and "it" or "them"))
         end
         changed(#kept == 0 and "cleared" or "changed")
     end
@@ -120,7 +217,6 @@ function BL:Add(rollID, link, fields, kill)
     end
     local first = #self.rows == 0
     -- the badge shows the newest kill's boss
-    self.instance = LM.InstanceKey()
     self.boss = kill and kill.name or self.boss
     local ok, _, _, _, difficultyName = pcall(GetInstanceInfo)
     self.difficulty = (ok and type(difficultyName) == "string" and not secret(difficultyName)) and difficultyName or nil
@@ -130,14 +226,29 @@ function BL:Add(rollID, link, fields, kill)
     local r = {
         rollID = rollID, link = link, itemString = s, ilvl = (okL and type(ilvl) == "number" and not secret(ilvl)) and ilvl or nil,
         at = GetTime(), expires = GetTime() + math.max(0, LM.BOSS_SECONDS - age), pass = pass and true or false, why = why,
-        status = fields.status, rollType = fields.rollType, reason = fields.reason,
+        status = fields.status, rollType = fields.rollType, reason = fields.reason, received = fields.received,
         encounterID = kill and kill.encounterID or nil,
     }
     r.ticked = r.pass and r.status ~= "cant"
     self.rows[#self.rows + 1] = r
-    C_Timer.After(r.expires - GetTime() + 0.05, expire)
+    if r.status == "won" then
+        own(r)
+    else
+        schedule(r)
+    end
     changed(first and "open" or "changed")
     return r
+end
+
+-- The game started a roll after this kill (LM:LastKill()): items received from it came from rolls.
+function BL:SawRoll(kill)
+    rolledKill = kill and kill.at or rolledKill
+end
+
+-- An item the game gave you after kill with no roll: a won row, or nil (no link, or already listed).
+function BL:AddReceived(link, kill)
+    nextOwn = nextOwn - 1
+    return self:Add(nextOwn, link, { status = "won", received = true }, kill)
 end
 
 -- Whether a row can be ticked: only one that is yours or may still be.
@@ -169,12 +280,11 @@ function BL:Counts()
     return ticked, #self.rows, rolling, won
 end
 
--- Whether Start session can run now: true, or false and why ("session", "rolling", "none").
+-- Whether Start session can run now: true, or false and why ("rolling", "none"). A running session
+-- doesn't stop it (BL:Start); BL:Busy says one is.
 function BL:CanStart()
     local _, _, rolling, won = self:Counts()
-    if LM.current or #self.waiting > 0 then
-        return false, "session"
-    elseif rolling > 0 then
+    if rolling > 0 then
         return false, "rolling"
     elseif won == 0 then
         return false, "none"
@@ -182,26 +292,44 @@ function BL:CanStart()
     return true
 end
 
-local function startNext()
+-- Whether a real loot session is running or boss loot waits for one: Start session queues behind it.
+function BL:Busy()
+    return (LM.current and not LM.current.test) or #self.waiting > 0
+end
+
+local startNext
+startNext = function()
     if LM.current or #BL.waiting == 0 then
         return
     end
     local w = table.remove(BL.waiting, 1)
-    if GetTime() - w.at > LM.BOSS_SECONDS then
-        BL.waiting = {}
-        CRT:Print(TEXT.dropped:format(TEXT.tooOld))
-        changed()
-        return
+    local items, now = {}, GetTime()
+    for _, it in ipairs(w.items) do
+        if (it.expires or now + 1) > now then
+            items[#items + 1] = it
+        else
+            CRT:Print(TEXT.dropped:format(it.link .. ": " .. TEXT.tooOld))
+        end
     end
-    if not LM:Start(w.items) then
+    if #items == 0 then
+        changed()
+        return startNext()
+    end
+    w.items = items
+    local send = {}
+    for _, it in ipairs(items) do
+        send[#send + 1] = { itemString = it.itemString, link = it.link, ilvl = it.ilvl }
+    end
+    if not LM:Start(send) then
         table.insert(BL.waiting, 1, w) -- LM:Start said why; tried again when a session ends
     end
     changed()
 end
 
--- Start session: the ticked rows you have won, LM.MAX_ITEMS a session. They leave the list once the
--- first session has started; when LM:Start refuses (it says why), they stay. Returns the number of items
--- sent, or false and why (BL:CanStart's, or "failed").
+-- Start session: the ticked rows you have won, LM.MAX_ITEMS a session. A running test is ended first; a
+-- running real session keeps going and these all wait for it. They leave the list once the first session
+-- has started or they are waiting; when LM:Start refuses (it says why), they stay. The Loot Master window
+-- shows either way. Returns the number of items sent, or false and why (BL:CanStart's, or "failed").
 function BL:Start()
     local ok, why = self:CanStart()
     if not ok then
@@ -210,7 +338,7 @@ function BL:Start()
     local items, kept = {}, {}
     for _, r in ipairs(self.rows) do
         if r.ticked and r.status == "won" then
-            items[#items + 1] = { itemString = r.itemString, link = r.link, ilvl = r.ilvl }
+            items[#items + 1] = { itemString = r.itemString, link = r.link, ilvl = r.ilvl, expires = r.expires }
         else
             kept[#kept + 1] = r
         end
@@ -221,9 +349,30 @@ function BL:Start()
         for j = i, math.min(#items, i + LM.MAX_ITEMS - 1) do
             chunk[#chunk + 1] = items[j]
         end
-        chunks[#chunks + 1] = { items = chunk, at = GetTime() }
+        chunks[#chunks + 1] = { items = chunk }
     end
-    if not LM:Start(chunks[1].items) then
+    if self:Busy() then
+        self.rows = kept
+        for _, c in ipairs(chunks) do
+            self.waiting[#self.waiting + 1] = c
+        end
+        CRT:Print(TEXT.queued:format(#items, #items == 1 and "item" or "items"))
+        startNext() -- boss loot left waiting by a refused start goes now, when nothing runs
+        changed()
+        if LM.current then
+            LM:ShowWindow()
+        end
+        return #items
+    end
+    if LM.current and LM.current.test then
+        LM:End()
+        CRT:Print(TEXT.testEnded)
+    end
+    local send = {}
+    for _, it in ipairs(chunks[1].items) do
+        send[#send + 1] = { itemString = it.itemString, link = it.link, ilvl = it.ilvl }
+    end
+    if not LM:Start(send) then
         changed()
         return false, "failed"
     end
@@ -287,7 +436,7 @@ function BL:Result(link, winner, isSelf, allPassed, encounterID, source)
     end
     applied[key] = (applied[key] or 0) + 1
     if isSelf == true then
-        r.status, r.winner = "won", nil
+        own(r)
     elseif allPassed == true then
         r.status, r.ticked = "nowinner", false
     else
@@ -323,13 +472,36 @@ local function fromHistory(encounterID, lootListID)
     end
 end
 
+-- An item the game gave you with no roll, after a kill here while you lead CRT Looting.
+local function receivedDirect(link, encounterID)
+    local kill = LM:LastKill()
+    if not kill or rolledKill == kill.at or not LM:LootingOn() or not LM.InstanceKey() or kill.instance ~= LM.InstanceKey() then
+        return
+    end
+    if kill.encounterID and encounterID and kill.encounterID ~= encounterID then
+        return
+    end
+    local s = LM.LinkItemString(link)
+    if not s or not LM:FilterLoot(s, "boss", link) then
+        return
+    end
+    BL:AddReceived(link, kill)
+end
+
 local function received(encounterID, _, link, _, playerName)
-    if not readable(encounterID, link, playerName) or #BL.rows == 0 or type(playerName) ~= "string" then
+    if not readable(encounterID, link, playerName) or type(playerName) ~= "string" or type(link) ~= "string" then
         return
     end
     local me = LM:Me()
     local full = LM.FullName(playerName)
-    BL:Result(link, playerName, full ~= nil and full == me, false, type(encounterID) == "number" and encounterID or nil, "received")
+    local isSelf = full ~= nil and full == me
+    local enc = type(encounterID) == "number" and encounterID or nil
+    if #BL.rows > 0 and BL:Result(link, playerName, isSelf, false, enc, "received") then
+        return
+    end
+    if isSelf then
+        receivedDirect(link, enc)
+    end
 end
 
 -- Emptying -------------------------------------------------------------------------------------------
@@ -337,13 +509,54 @@ end
 LM:OnChange(function(what)
     if what == "ended" then
         startNext()
-    elseif what == "looting" and not LM:LootingOn() then
-        BL:Clear(TEXT.off)
     end
 end)
 
+-- At login: the kept list back, each row with the time it had left (rows whose time is over are dropped,
+-- won ones said in chat), its rollID CRT's own.
+function BL:Load()
+    local kept = CRTDBChar and type(CRTDBChar.lootmaster) == "table" and CRTDBChar.lootmaster.bossLootList
+    if type(kept) ~= "table" then
+        return
+    end
+    local now, wall, gone = GetTime(), time(), 0
+    self.rows, self.waiting = {}, {}
+    for _, c in ipairs(type(kept.rows) == "table" and kept.rows or {}) do
+        local left = type(c.endsAt) == "number" and c.endsAt - wall or 0
+        if left > 0 and type(c.link) == "string" then
+            nextOwn = nextOwn - 1
+            c.rollID, c.at, c.expires, c.endsAt = nextOwn, now, now + left, nil
+            self.rows[#self.rows + 1] = c
+            schedule(c)
+        elseif c.status == "won" then
+            gone = gone + 1
+        end
+    end
+    for _, w in ipairs(type(kept.waiting) == "table" and kept.waiting or {}) do
+        local items = {}
+        for _, it in ipairs(type(w.items) == "table" and w.items or {}) do
+            local left = type(it.endsAt) == "number" and it.endsAt - wall or 0
+            if left > 0 then
+                items[#items + 1] = { itemString = it.itemString, link = it.link, ilvl = it.ilvl, expires = now + left }
+            else
+                gone = gone + 1
+            end
+        end
+        if #items > 0 then
+            self.waiting[#self.waiting + 1] = { items = items }
+        end
+    end
+    self.boss, self.difficulty = kept.boss, kept.difficulty
+    if gone > 0 then
+        CRT:Print(TEXT.expired:format(gone, gone == 1 and "item" or "items", gone == 1 and "it" or "them"))
+    end
+    warn()
+    changed(#self.rows > 0 and "open" or "changed")
+    startNext()
+end
+
 local events = CreateFrame("Frame")
-for _, e in ipairs({ "PLAYER_ENTERING_WORLD", "ZONE_CHANGED_NEW_AREA", "ENCOUNTER_LOOT_RECEIVED" }) do
+for _, e in ipairs({ "PLAYER_LOGIN", "ENCOUNTER_LOOT_RECEIVED" }) do
     events:RegisterEvent(e)
 end
 pcall(events.RegisterEvent, events, "LOOT_HISTORY_UPDATE_DROP")
@@ -352,7 +565,7 @@ events:SetScript("OnEvent", function(_, event, ...)
         fromHistory(...)
     elseif event == "ENCOUNTER_LOOT_RECEIVED" then
         received(...)
-    elseif (#BL.rows > 0 or #BL.waiting > 0) and LM.InstanceKey() ~= BL.instance then
-        BL:Clear(TEXT.left)
+    elseif event == "PLAYER_LOGIN" then
+        BL:Load()
     end
 end)
