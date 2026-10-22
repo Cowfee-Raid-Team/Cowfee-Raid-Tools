@@ -68,7 +68,7 @@ end
 local ROLE_BLOCK = { tank = "T", healer = "H", heal = "H", dps = "D", damager = "D", damage = "D" }
 
 local classNames -- "PRIEST" -> "Priest" (the game's class name), built on first use
-local function className(word)
+local function className(classFile)
     if not classNames then
         classNames = {}
         for id = 1, GetNumClasses() do
@@ -78,28 +78,36 @@ local function className(word)
             end
         end
     end
-    return classNames[word:upper()]
+    return classNames[classFile]
 end
 
--- What a tag's words ask for: "everyone", a single role, groups, classes, or names.
+-- What a tag's words ask for: "everyone", a single role, groups, classes, or names. A tag holds only tags, so a
+-- class in any spelling is the class, a name of several words as one ("Demon Hunter", "priest"; Notes/Parse.lua's
+-- class words), as CRT's alerts read it.
 local function tagKind(words)
     if #words == 0 then
         return "none"
     end
     local roles, groups, classes, names = {}, {}, {}, {}
-    for _, w in ipairs(words) do
+    local i = 1
+    while i <= #words do
+        local w = words[i]
         local lower = w:lower()
+        local file, n = CRT.NoteParser.ClassAt(words, i)
+        local name = file and className(file)
+        n = name and n or 1
         if lower == "all" or lower == "everyone" then
             return "everyone"
         elseif ROLE_BLOCK[lower] then
             roles[ROLE_BLOCK[lower]] = true
         elseif lower:match("^group[1-8]$") then
             groups[#groups + 1] = lower:sub(-1)
-        elseif className(w) then
-            classes[#classes + 1] = className(w)
+        elseif name then
+            classes[#classes + 1] = name
         else
             names[#names + 1] = w
         end
+        i = i + n
     end
     local roleList = {}
     for letter in pairs(roles) do

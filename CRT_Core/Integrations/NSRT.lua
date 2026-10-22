@@ -66,13 +66,36 @@ local function classID(word)
     return classIDs[word:upper()]
 end
 
--- A CRT tag word in NSRT's words: "all" is "everyone", a class file name is its class ID, and names,
--- roles, melee and ranged are the same in both.
-local function nsrtTag(word)
-    if word:lower() == "all" then
-        return "everyone"
+-- A CRT tag in NSRT's words: "all" is "everyone", a class is its class ID, and names, roles, melee and ranged
+-- are the same in both. A tag holds only tags, so a class in any spelling is the class ("Demon Hunter" as one,
+-- "priest", "deathknight"; Notes/Parse.lua's class words), as CRT's alerts read it.
+local function nsrtTags(value)
+    local out = {}
+    for _, item in ipairs(CRT.NoteParser.ClassRuns(value, "%S+")) do
+        local id = item.class and classID(item.class)
+        out[#out + 1] = id or (item.text:lower() == "all" and "everyone") or item.text
     end
-    return classID(word) or word
+    return table.concat(out, " ")
+end
+
+-- An assignment line ("Orb Soak 1: DEMONHUNTER Warlock") with each class written as NSRT notes name it, the
+-- English name with its spaces ("Demon Hunter"), where Parse.lua's AssignmentClasses counts it as the class; a
+-- player's name ("Deathknight"), a sentence ("the hunter kites") and everything else as written. Any other line
+-- as it is.
+local function assignmentLine(line)
+    local Parser = CRT.NoteParser
+    local label, rest = line:match("^([^:]+:)(.*)$")
+    if not (label and Parser.LooksLikeLabel(label:sub(1, -2))) then
+        return line
+    end
+    local out, pos = {}, 1
+    for _, item in ipairs(Parser.AssignmentClasses(rest)) do
+        out[#out + 1] = rest:sub(pos, item.start - 1)
+        out[#out + 1] = item.counts and Parser.ClassName(item.class) or item.text
+        pos = item.stop
+    end
+    out[#out + 1] = rest:sub(pos)
+    return label .. table.concat(out)
 end
 
 local pairsOf = Targets.Fields
@@ -82,11 +105,7 @@ local function timedLine(line)
     for _, f in ipairs(pairsOf(line)) do
         local k = f.key:lower()
         if k == "tag" then
-            local tags = {}
-            for word in f.value:gmatch("%S+") do
-                tags[#tags + 1] = nsrtTag(word)
-            end
-            out[#out + 1] = "tag:" .. table.concat(tags, " ") .. ";"
+            out[#out + 1] = "tag:" .. nsrtTags(f.value) .. ";"
         elseif not CRT_ONLY[k] then
             out[#out + 1] = f.key .. ":" .. f.value .. ";"
         end
@@ -113,7 +132,7 @@ end
 
 -- The one place a CRT note becomes an NSRT note. Header and timed lines are rewritten, the invite list
 -- is dropped (NSRT has none), and every other line is free text, which NSRT shows in its extra note
--- frame with the same {star} and {rt1} raid icons.
+-- frame with the same {star} and {rt1} raid icons; an assignment line's classes are written by name.
 function NSRT.ToNSRTText(raw)
     local out = {}
     for rawLine in ((raw or "") .. "\n"):gmatch("(.-)\r?\n") do
@@ -124,7 +143,7 @@ function NSRT.ToNSRTText(raw)
         elseif lower:find("^time:") then
             out[#out + 1] = timedLine(line)
         elseif not lower:find("^invitelist:") then
-            out[#out + 1] = line
+            out[#out + 1] = assignmentLine(line)
         end
     end
     while #out > 0 and out[#out] == "" do

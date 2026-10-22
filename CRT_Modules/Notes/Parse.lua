@@ -91,6 +91,266 @@ local function nameList(s)
     return names
 end
 
+-- Class words -------------------------------------------------------------------------------------
+-- The one table of the words that name a class in a note, read by the note editor (EditModel.lua), the
+-- alerts (Engine.lua), the rendered note (Render.lua) and the integrations (Integrations/*.lua):
+--   Parser.ClassName(file)        the name a note writes for a class: "Demon Hunter", with its space
+--   Parser.ClassOf(text)          the class file a class name names in any spelling, or nil
+--   Parser.ClassAt(words, i)      the class the words from i on start with, how many words it takes, and
+--                                 whether it surely is one (see sure)
+--   Parser.ClassRuns(s, pattern)  the words of a line with each class name of several words made one item
+--   Parser.JoinClassWords(words)  the words with each class name of several words made one, "Demon Hunter"
+-- A spelling is matched in any case and with its spaces left out, so "Demon Hunter", "DemonHunter" and
+-- "DEMONHUNTER" (the class file, which the editor used to write) are all the Demon Hunter. A note is shared
+-- across clients, so the name written is the English one, kept here by class file; the client's own class
+-- names are read too. A class the game adds later comes from GetClassInfo, written by the game's name.
+local CLASS_NAMES = {
+    { "WARRIOR", "Warrior" }, { "PALADIN", "Paladin" }, { "HUNTER", "Hunter" }, { "ROGUE", "Rogue" },
+    { "PRIEST", "Priest" }, { "DEATHKNIGHT", "Death Knight" }, { "SHAMAN", "Shaman" }, { "MAGE", "Mage" },
+    { "WARLOCK", "Warlock" }, { "MONK", "Monk" }, { "DRUID", "Druid" }, { "DEMONHUNTER", "Demon Hunter" },
+    { "EVOKER", "Evoker" },
+}
+
+local function readable(v)
+    return not (issecretvalue and issecretvalue(v))
+end
+
+local function spellingKey(s)
+    return (s:gsub("%s+", ""):lower())
+end
+
+-- { byKey = spelling -> file, written = a class name as written (any case kept) -> true, names = file -> name,
+-- most = the most words in a name }
+local classWords
+
+local function buildClassWords()
+    local w = { byKey = {}, written = {}, names = {}, most = 1 }
+    local function add(file, spelling)
+        if readable(spelling) and type(spelling) == "string" and spelling ~= "" then
+            w.most = math.max(w.most, select(2, spelling:gsub("%S+", "")))
+            w.written[spelling] = true
+            local key = spellingKey(spelling)
+            if key ~= "" and w.byKey[key] == nil then
+                w.byKey[key] = file
+            end
+        end
+    end
+    for _, c in ipairs(CLASS_NAMES) do
+        w.names[c[1]] = c[2]
+        add(c[1], c[1])
+        add(c[1], c[2])
+    end
+    local fromGame = false
+    for i = 1, GetNumClasses and GetNumClasses() or 0 do
+        local ok, name, file = pcall(GetClassInfo, i)
+        if ok and readable(file) and type(file) == "string" and file ~= "" then
+            fromGame = true
+            add(file, file)
+            add(file, name)
+            if w.names[file] == nil and readable(name) and type(name) == "string" and name ~= "" then
+                w.names[file] = name
+            end
+        end
+    end
+    for _, list in ipairs({ LOCALIZED_CLASS_NAMES_MALE, LOCALIZED_CLASS_NAMES_FEMALE }) do
+        if type(list) == "table" then
+            for file, name in pairs(list) do
+                if type(file) == "string" then
+                    add(file, name)
+                end
+            end
+        end
+    end
+    -- kept once the game has listed its classes; before that (or with no game) asked again next time
+    classWords = fromGame and w or nil
+    return w
+end
+
+local function classTable()
+    return classWords or buildClassWords()
+end
+
+function Parser.ClassName(file)
+    return type(file) == "string" and classTable().names[file] or nil
+end
+
+function Parser.ClassOf(text)
+    if not (readable(text) and type(text) == "string") then
+        return nil
+    end
+    local key = spellingKey(text)
+    return key ~= "" and classTable().byKey[key] or nil
+end
+
+-- Whether one word that matches a class surely names it: in capitals as a class file is ("DEMONHUNTER"), or a
+-- class name exactly as written ("Hunter", the client's own name). "Deathknight" may be a player and "hunter" a
+-- word of a sentence, so they are matched but not sure. A class name of several words is always sure.
+-- The capitals test is ASCII only (string.upper and %u know no other letters), as every class file is.
+local function sure(w, word)
+    return w.written[word] == true or (word:upper() == word and word:find("%u") ~= nil)
+end
+
+-- The longest run of words from i that names a class, so "Demon Hunter" is never read as Hunter. Returns the
+-- class file, how many words, and whether it surely is the class; nil when the words name none.
+function Parser.ClassAt(words, i)
+    local w = classTable()
+    local joined = ""
+    local best, bestN
+    for n = 1, math.min(w.most, #words - i + 1) do
+        local word = words[i + n - 1]
+        if not (readable(word) and type(word) == "string") then
+            break
+        end
+        joined = joined .. spellingKey(word)
+        local file = w.byKey[joined]
+        if file then
+            best, bestN = file, n
+        end
+    end
+    if not best then
+        return nil
+    end
+    return best, bestN, bestN > 1 or sure(w, words[i])
+end
+
+-- The words of s (each a match of pattern) as items { start, stop (one past its end), text (as written), class
+-- (the class file or nil), sure }, a class name of several words with only spaces between them made one item
+-- ("Demon Hunter"; "Demon, Hunter" and a tab keep two). The note editor, the rendered note and the integrations
+-- cut their lines with it.
+function Parser.ClassRuns(s, pattern)
+    local found = {}
+    for start, word, stop in s:gmatch("()(" .. pattern .. ")()") do
+        found[#found + 1] = { start = start, word = word, stop = stop }
+    end
+    local out, k = {}, 1
+    while k <= #found do
+        local run = { found[k].word }
+        for j = k + 1, #found do
+            if not s:sub(found[j - 1].stop, found[j].start - 1):match("^ +$") then
+                break
+            end
+            run[#run + 1] = found[j].word
+        end
+        local file, n, isSure = Parser.ClassAt(run, 1)
+        n = n or 1
+        local first, last = found[k], found[k + n - 1]
+        out[#out + 1] = { start = first.start, stop = last.stop, text = s:sub(first.start, last.stop - 1), class = file,
+            sure = isSure or false }
+        k = k + n
+    end
+    return out
+end
+
+-- The tag words for a role, everyone or the raid, by what they name (Engine.lua's tokens read them by key), and
+-- every one of them as a set: words that name no player. The note editor keeps them out of the invite list; an
+-- assignment line of them is still a list. "damage" names no player but matches no one in the alerts.
+Parser.ROLE_WORDS = {
+    everyone = { "all", "everyone", "raid" },
+    tank = { "tank", "tanks" },
+    healer = { "healer", "healers", "heal" },
+    dps = { "dps", "damager" },
+    melee = { "melee", "melees" },
+    ranged = { "ranged", "range" },
+}
+Parser.TAG_WORDS = { damage = true }
+for _, list in pairs(Parser.ROLE_WORDS) do
+    for _, w in ipairs(list) do
+        Parser.TAG_WORDS[w] = true
+    end
+end
+-- The words before a raid group's number: "G1", "Grp1", "Group1", or "Group 1" as two words (Engine.lua's groupTag).
+Parser.GROUP_WORDS = { g = true, grp = true, group = true }
+
+-- What a name is in an assignment line: anything between spaces and commas, so "(left)" and "{star}" are items of
+-- their own. One pattern for every reader, so whether a line is a list never depends on who reads it.
+Parser.NAME_WORD = "[^%s,]+"
+
+-- Whether an item of an assignment line is markup or punctuation, which a list and a sentence both hold: a
+-- {..} code ({star}, {rt1}), a |c..|r colour code, a bracketed note ("(left)"), or anything with no letter
+-- (">", "->", "/", "1", "2.").
+local function neutralItem(text)
+    return text:find("^{.*}$") ~= nil or text:find("|c", 1, true) ~= nil or text:find("|r", 1, true) ~= nil
+        or text:find("^%(.*%)$") ~= nil or not (text:find("%a") or text:find("[\128-\255]"))
+end
+
+-- Whether an item of an assignment line is one a list of names holds: a class, a role or everyone word, a group
+-- ("G1", "Group1", "Group 1"), a name-like word, which starts with a capital or with a letter outside ASCII
+-- (whose case can't be told), or markup and punctuation. A lower-case word of any other kind ("the", "kites")
+-- makes the line a sentence.
+local function listItem(item)
+    local lower = item.text:lower()
+    local G = Parser.GROUP_WORDS
+    if item.class or Parser.TAG_WORDS[lower] or G[lower] or lower:match("^g%d$") or lower:match("^grp%d$")
+        or lower:match("^group%d$") or neutralItem(item.text) then
+        return true
+    end
+    return item.text:find("^%u") ~= nil or item.text:find("^[\128-\255]") ~= nil
+end
+
+-- Whether the names of an assignment line (the part after "Label:") are a list of names, every item a listItem
+-- (cut with NAME_WORD), and not a sentence ("Note: the Hunter kites").
+local function isNameList(rest)
+    local items = Parser.ClassRuns(rest, Parser.NAME_WORD)
+    for _, item in ipairs(items) do
+        if not listItem(item) then
+            return false
+        end
+    end
+    return #items > 0
+end
+
+-- The names of an assignment line cut as ClassRuns cuts them with pattern (default NAME_WORD; the rendered note
+-- cuts plain words to colour), each class item with counts: whether it is the class there. A class name of
+-- several words always is. One word is only on a list of names (isNameList, decided with NAME_WORD whatever the
+-- pattern), and only written as a class (sure, or all in lower case: "Soak: priest, monk"), never like a player's
+-- name ("Kicks: Deathknight, Abu"). The rendered note, the integrations and the alerts (an assignment line for
+-- your class) share it.
+function Parser.AssignmentClasses(rest, pattern)
+    local items = Parser.ClassRuns(rest, pattern or Parser.NAME_WORD)
+    local list = isNameList(rest)
+    for _, item in ipairs(items) do
+        local single = not item.text:find(" ", 1, true)
+        item.counts = item.class ~= nil
+            and (not single or (list and (item.sure or item.text:lower() == item.text)))
+    end
+    return items
+end
+
+function Parser.JoinClassWords(words)
+    local out, i = {}, 1
+    while i <= #words do
+        local file, n = Parser.ClassAt(words, i)
+        if file and n > 1 then
+            out[#out + 1] = table.concat(words, " ", i, i + n - 1)
+            i = i + n
+        else
+            out[#out + 1] = words[i]
+            i = i + 1
+        end
+    end
+    return out
+end
+
+-- Whether the part before a line's colon reads as an assignment's label: short, with no markup ("{time:1:30}" and
+-- the other {..} codes of shared notes, "|c" colours), and not a phase heading ("Phase 2: kite adds left"). The note
+-- editor's label lines (EditModel.lua) and the integrations' class names read the same lines.
+local LABEL_MAX_WORDS = 4 -- a label longer than this ("Stack on the boss and then: ...") is a sentence
+function Parser.LooksLikeLabel(label)
+    local t = trim(label)
+    if t == "" or t:find("{", 1, true) or t:find("|", 1, true) then
+        return false
+    end
+    local n = 0
+    for _ in t:gmatch("%S+") do
+        n = n + 1
+    end
+    if n > LABEL_MAX_WORDS then
+        return false
+    end
+    local lower = t:lower()
+    return not (lower:match("^phase%s*[%d%.]+$") or lower:match("^p[%d%.]+$") or lower:match("^intermission"))
+end
+
 -- Returns { encounterID, difficulty, name, timers = {...}, phases = {...}, lines = {...}, invite = {...},
 -- unread = {...} }, unread the lines that start like a timer but have no time it can read, as written.
 -- Each timer is { time, ph, tags, kind = "spell" or "text", spellId, text, dur, color, line } with `line`

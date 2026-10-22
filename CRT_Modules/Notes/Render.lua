@@ -144,16 +144,45 @@ local function nameOf(word, ctx)
     return { text = word, class = ctx.classOf and ctx.classOf(word) or nil, me = ctx.me ~= nil and base == ctx.me }
 end
 
+-- A timer's tag that is a class name as one part in its class colour, a name of several words as one ("Demon
+-- Hunter", Parse.lua's class words). Every tag is a name, so any spelling is the class; a player of that name
+-- keeps the player's colour. Returns the part and how many tags it takes, or nil.
+local function classPart(words, i, ctx)
+    local file, n = CRT.NoteParser.ClassAt(words, i)
+    if not file or (n == 1 and ctx.classOf and ctx.classOf(words[i])) then
+        return nil
+    end
+    return { text = table.concat(words, " ", i, i + n - 1), class = file, me = false }, n
+end
+
+local WORD = "[%w\128-\255][%w\128-\255%-']*"
+
 -- A line of text as parts: each word a name (class and you), the spaces and commas between them as written.
-local function parts(s, ctx, out)
+-- classes: class names count too (an assignment's names), as Parse.lua's AssignmentClasses counts them, so
+-- "Soak: priest, monk" is coloured and "kill the Hunter pet" stays as written. WORD only cuts the words to
+-- colour; whether the line is a list is decided with Parse.lua's NAME_WORD, as the window and bridges decide it.
+local function parts(s, ctx, out, classes)
     out = out or {}
-    local pos = 1
-    for start, word, stop in s:gmatch("()([%w\128-\255][%w\128-\255%-']*)()") do
-        if start > pos then
-            out[#out + 1] = { text = s:sub(pos, start - 1) }
+    local items = {}
+    if classes then
+        items = CRT.NoteParser.AssignmentClasses(s, WORD)
+    else
+        for start, word, stop in s:gmatch("()(" .. WORD .. ")()") do
+            items[#items + 1] = { start = start, stop = stop, text = word }
         end
-        out[#out + 1] = nameOf(word, ctx)
-        pos = stop
+    end
+    local pos = 1
+    for _, item in ipairs(items) do
+        if item.start > pos then
+            out[#out + 1] = { text = s:sub(pos, item.start - 1) }
+        end
+        local player = not item.text:find(" ", 1, true) and ctx.classOf and ctx.classOf(item.text)
+        if item.counts and not player then
+            out[#out + 1] = { text = item.text, class = item.class, me = false } -- the spaces as written
+        else
+            out[#out + 1] = nameOf(item.text, ctx)
+        end
+        pos = item.stop
     end
     if pos <= #s then
         out[#out + 1] = { text = s:sub(pos) }
@@ -162,25 +191,29 @@ local function parts(s, ctx, out)
 end
 
 -- Markdown in the personal note: **bold** spans become parts in the heading colour.
-local function boldParts(s, ctx)
+local function boldParts(s, ctx, classes)
     local out, pos = {}, 1
     while true do
         local a, b, inner = s:find("%*%*(.-)%*%*", pos)
         if not a then
             break
         end
-        parts(s:sub(pos, a - 1), ctx, out)
+        parts(s:sub(pos, a - 1), ctx, out, classes)
         out[#out + 1] = { text = inner, bold = true }
         pos = b + 1
     end
-    return parts(s:sub(pos), ctx, out)
+    return parts(s:sub(pos), ctx, out, classes)
 end
 
 local function timerRow(t, rawLine, ctx)
     local Parser = CRT.NoteParser
     local row = { kind = "timer", time = fmtTime(t.time), phase = "P" .. num(t.ph or 1), color = t.color, names = {} }
-    for _, tag in ipairs(t.tags or {}) do
-        row.names[#row.names + 1] = nameOf(tag, ctx)
+    local tags = t.tags or {}
+    local i = 1
+    while i <= #tags do
+        local part, n = classPart(tags, i, ctx)
+        row.names[#row.names + 1] = part or nameOf(tags[i], ctx)
+        i = i + (n or 1)
     end
     if t.kind == "spell" then
         local info = ctx.spell and ctx.spell(t.spellId)
@@ -224,7 +257,10 @@ local function freeRow(line, ctx)
     end
     local label, rest = line:match("^([^:]+):%s*(.*)$")
     if label and not bullet then
-        return { kind = "label", label = label, parts = ctx.markdown and boldParts(rest, ctx) or parts(rest, ctx) }
+        -- class names coloured only in an assignment's names, never in a sentence
+        local classes = CRT.NoteParser.LooksLikeLabel(label)
+        return { kind = "label", label = label,
+            parts = ctx.markdown and boldParts(rest, ctx, classes) or parts(rest, ctx, nil, classes) }
     end
     if bullet or line:find(":", 1, true) or line:find("**", 1, true) then
         return { kind = "text", parts = ctx.markdown and boldParts(line, ctx) or parts(line, ctx) }

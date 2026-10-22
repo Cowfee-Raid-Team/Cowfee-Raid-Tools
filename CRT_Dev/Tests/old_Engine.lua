@@ -147,6 +147,11 @@ function Engine:WordIsMe(word)
     return tokens()[w] and true or false
 end
 
+-- Test stub: the frozen engine predates assignment lines marked by class, which today's Notes/Window.lua asks.
+function Engine:ClassLineIsMine()
+    return false
+end
+
 function Engine:Note()
     return note
 end
