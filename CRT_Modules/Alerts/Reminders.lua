@@ -353,7 +353,17 @@ function Reminders:Save(encounterID, id, r, group)
     end
     if id and saved.group and all[encounterID] and all[encounterID][id]
         and not Reminders.GroupOf(all[encounterID][id]) then
-        local ids = Reminders.SplitOne(encounterID, id)
+        -- the split is not your step: Ctrl+Z takes back the edit below, never the copy (and so never
+        -- leaves its display overrides behind)
+        local ids
+        local Undo = CRT.TimelineUndo
+        if Undo and Undo.Quietly then
+            Undo:Quietly(function()
+                ids = Reminders.SplitOne(encounterID, id)
+            end)
+        else
+            ids = Reminders.SplitOne(encounterID, id)
+        end
         id = ids and ids[saved.group] or id
     end
     if saved.times ~= nil and trim(saved.times) == "" then

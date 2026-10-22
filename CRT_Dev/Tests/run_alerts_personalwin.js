@@ -205,6 +205,20 @@ test("window: out of a run, only the note's difficulty group", function()
   assert(at(text, "Mythic one") and not at(text, "Heroic one") and not at(text, "Old normal"), "Mythic's only:\\n" .. text)
 end)
 
+test("window: a note of no difficulty lists a split reminder once", function()
+  -- a reminder split into one per group: outside a raid, a note of no difficulty reads Normal/Heroic's
+  local id = R:Save(3470, nil, { boss = "Nek'zali the Soulcoiler", text = "Split one", times = "P1 0:34" })
+  assert(R.SplitOne(3470, id), "split")
+  local was = CRT.db.notes.list[1].difficulty
+  CRT.db.notes.list[1].difficulty = nil
+  Notes:Fire()
+  local text = show()
+  CRT.db.notes.list[1].difficulty = was
+  Notes:Fire()
+  local _, n = text:gsub("Split one", "")
+  assert(n == 1, "listed once, not " .. n .. " times:\\n" .. text)
+end)
+
 test("window: a pasted raid note shows as its boss and timed lines", function()
   CRT.db.notes.active = nil
   CRT.db.notes.personalText = table.concat({

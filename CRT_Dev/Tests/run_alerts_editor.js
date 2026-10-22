@@ -324,7 +324,7 @@ end
 -- a Stage 1 reminder keeps its times text unless Relative to or Time is touched
 do
   reset()
-  R:Save(ENC, nil, { text = "Old", boss = "Test Boss", times = "P1 0:10, 0:20; P2 +0:05", warn = 6, speech = "textcount", priority = "high" })
+  R:Save(ENC, nil, { group = "nh", text = "Old", boss = "Test Boss", times = "P1 0:10, 0:20; P2 +0:05", warn = 6, speech = "textcount", priority = "high" })
   E:Open(ENC, 1)
   local w = win()
   assert(w.timeEdit.text == "0:10" and value("Relative to") == 1, "first time shown")
@@ -335,7 +335,7 @@ do
   local r = R:Get(ENC, 1)
   assert(r.text == "Renamed" and r.times == "P1 0:10, 0:20; P2 +0:05" and r.priority == "high" and r.warn == 6, "times kept: " .. tostring(r.times))
   -- reference times (nil) stay nil
-  R:Save(ENC, nil, { text = "Ability", boss = "Test Boss" })
+  R:Save(ENC, nil, { group = "nh", text = "Ability", boss = "Test Boss" })
   E:Open(ENC, 2)
   assert(w.sourceText.text:find("From Abilities", 1, true), w.sourceText.text)
   click(w.saveBtn)
@@ -513,7 +513,7 @@ end
 -- switching save as moves it
 do
   reset()
-  R:Save(ENC, nil, { text = "Move me", boss = "Test Boss", times = "P1 0:30" })
+  R:Save(ENC, nil, { group = "nh", text = "Move me", boss = "Test Boss", times = "P1 0:30" })
   E:Open(ENC, 1)
   local w = win()
   pick("Save as", "note")
@@ -658,7 +658,7 @@ end
 -- delete asks first
 do
   reset()
-  R:Save(ENC, nil, { text = "gone", times = "5" })
+  R:Save(ENC, nil, { group = "nh", text = "gone", times = "5" })
   E:Open(ENC, 1)
   local w = win()
   click(w.deleteBtn)
@@ -677,7 +677,7 @@ end
 -- test runs only this reminder
 do
   reset()
-  R:Save(ENC, nil, { text = "Other", times = "5" })
+  R:Save(ENC, nil, { group = "nh", text = "Other", times = "5" })
   E:Open(ENC, nil, { text = "Draft", times = "P1 0:30, 1:00; P2 +0:10" })
   local w = win()
   setCheck(w.also.speak, false)
@@ -699,7 +699,7 @@ end
 -- test saves nothing, does nothing on a bad time, and is refused mid-pull
 do
   reset()
-  R:Save(ENC, nil, { text = "Other", times = "5" })
+  R:Save(ENC, nil, { group = "nh", text = "Other", times = "5" })
   local before = #R:List(ENC)
   E:Open(ENC, nil, { text = "Draft", times = "P1 0:30" })
   local w = win()
@@ -771,6 +771,15 @@ do
   local texts = {}
   for _, e in ipairs(R:List(ENC)) do if e.r.text == "a" or e.r.text == "a2" then texts[#texts + 1] = e.r.text .. "=" .. tostring(e.r.group) end end
   assert(table.concat(texts, ",") == "a=nh,a2=mythic", table.concat(texts, ","))
+  -- one still on any difficulty saves what the dropdown shows, untouched: that group's, the other keeps it
+  local still = R:Save(ENC, nil, { text = "s", boss = "Test Boss", times = "5" })
+  E:Open(ENC, still)
+  assert(value("Difficulty") == "nh", "shows Normal/Heroic")
+  typeInto(win().textEdit, "s2")
+  click(win().saveBtn)
+  texts = {}
+  for _, e in ipairs(R:List(ENC)) do if e.r.text == "s" or e.r.text == "s2" then texts[#texts + 1] = e.r.text .. "=" .. tostring(e.r.group) end end
+  assert(table.concat(texts, ",") == "s2=nh,s=mythic", "saved as shown: " .. table.concat(texts, ","))
   print("ok editor: difficulty choices")
 end
 
@@ -903,7 +912,7 @@ end
 -- (S20) a reminder with several times moved to the raid note writes one line per time
 do
   reset()
-  R:Save(ENC, nil, { text = "Many", boss = "Test Boss", times = "P1 0:10, 0:20; P2 +0:05", glow = true,
+  R:Save(ENC, nil, { group = "nh", text = "Many", boss = "Test Boss", times = "P1 0:10, 0:20; P2 +0:05", glow = true,
     outputs = { alert = true, text = true } })
   E:Open(ENC, 1)
   local w = win()
@@ -958,7 +967,7 @@ do
     assert(t.text == "Many" and t.glow and t.show.alert and t.show.text and t.tags[1] == "everyone", "fields " .. i .. ": " .. P.FormatLine(t))
   end
   -- touching the time writes the one typed time
-  R:Save(ENC, nil, { text = "Typed", boss = "Test Boss", times = "P1 0:10, 0:20" })
+  R:Save(ENC, nil, { group = "nh", text = "Typed", boss = "Test Boss", times = "P1 0:10, 0:20" })
   local rid = R:List(ENC)[1].id
   E:Open(ENC, rid)
   pick("Save as", "note")
@@ -1234,7 +1243,7 @@ do
   assert(count == 1 and noteRaw(id) == before, "no note written")
   -- a reminder moved to the raid note
   group.leader = true
-  R:Save(ENC, nil, { text = "Mine", boss = "Test Boss", times = "P1 0:30" })
+  R:Save(ENC, nil, { group = "nh", text = "Mine", boss = "Test Boss", times = "P1 0:30" })
   E:Open(ENC, 1)
   pick("Save as", "note")
   setMember()

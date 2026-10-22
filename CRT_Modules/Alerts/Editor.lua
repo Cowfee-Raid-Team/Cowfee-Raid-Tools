@@ -1722,6 +1722,9 @@ function Editor:Open(encounterID, id, prefill)
         ctx.id = id
         ctx.reminder = copy(saved)
         fromReminder(saved)
+        -- one still on any difficulty saves the group the dropdown shows (Save splits it, so the other
+        -- group keeps it as it was)
+        draft.group = draft.group or Draft.Group(draft)
     else
         prefill = prefill or {}
         if savedAlert then

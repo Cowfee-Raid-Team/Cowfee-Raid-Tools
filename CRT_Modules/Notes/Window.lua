@@ -390,16 +390,21 @@ local function phaseHeading(ph)
     return gold(format(TEXT.phase, tostring(ph)))
 end
 
--- Out of a run: every time of every turned-on reminder (of the note's difficulty group, or every one for a
--- note of no difficulty), by phase.
+-- Out of a run: every time of every turned-on reminder of one difficulty group, by phase: the note's, else
+-- (a note of no difficulty, or none) the raid you are in, else Normal/Heroic. So the two copies of a
+-- reminder split into one per group never both show.
 local function plannedLines(encounterID, list, record)
     local R = CRT.AlertReminders
     local difficulty = record and type(record.difficulty) == "string" and record.difficulty ~= "" and record.difficulty or nil
     local items = {}
-    -- the note's difficulty group: the reminders of that group, and the ability timeline one on any
-    -- difficulty (not split yet) reads
-    local T = CRT.Timeline
+    -- the group: the reminders of that group, and the ability timeline one on any difficulty (not split
+    -- yet) reads
+    local T, Draft = CRT.Timeline, CRT.AlertDraft
     local group = difficulty and T and T.GroupOf and T:GroupOf(nil, difficulty) or nil
+    if not group and T and T.GroupOf and Draft and Draft.CurrentDifficultyID then
+        group = T:GroupOf(Draft.CurrentDifficultyID(), nil)
+    end
+    group = group or "nh"
     for _, e in ipairs(list) do
         local r = R:Effective("mine", e.id, e.r)
         local own = R.GroupOf and R.GroupOf(r) or nil

@@ -343,8 +343,13 @@ function Timeline:SetOrder(encounterID, group, key)
 end
 
 -- The game's own name for Mythic raids (GetDifficultyInfo(16), else PLAYER_DIFFICULTY6), lower case, or nil:
--- what an older reminder saved from the game's words reads as on a client in another language.
+-- what an older reminder saved from the game's words reads as on a client in another language. Read once
+-- a session, the first time the game gives it.
+local mythicName
 local function gameMythicName()
+    if mythicName then
+        return mythicName
+    end
     local name
     if GetDifficultyInfo then
         local ok, n = pcall(GetDifficultyInfo, 16)
@@ -355,7 +360,8 @@ local function gameMythicName()
     if not name and type(PLAYER_DIFFICULTY6) == "string" and PLAYER_DIFFICULTY6 ~= "" then
         name = PLAYER_DIFFICULTY6
     end
-    return name and name:lower() or nil
+    mythicName = name and name:lower() or nil
+    return mythicName
 end
 
 -- The difficulty group of a difficulty's name ("Mythic", "Heroic", "Normal", as notes write it, or the

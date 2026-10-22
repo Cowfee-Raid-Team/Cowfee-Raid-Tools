@@ -1239,6 +1239,22 @@ check("mech: alerts per difficulty group", function()
   assert(#errors == 0, tostring(errors[1]))
 end)
 
+-- A reminder split into one per group, with "Also when it lands on me", wants one aura sound, not two.
+check("mech: a split reminder's aura sound is wanted once", function()
+  reset()
+  local Au = CRT.SoundAuras
+  local sound = CRT.Sound:Choices({ none = "None" })[2].key
+  local id = R:Save(ENC, nil, { spellID = 777, boss = "Test Boss", text = "Real Name", enabled = true, auraSound = true, sound = sound })
+  assert(R.SplitOne(ENC, id), "split")
+  Au:SyncReminders()
+  local n = 0
+  for key, w in pairs(Au.wanted) do if key:find("^reminder:") then n = n + 1 assert(w.spellID == 777, "its spell") end end
+  assert(n == 1, "one wanted aura sound, got " .. n)
+  reset()
+  Au:SyncReminders()
+  assert(#errors == 0, tostring(errors[1]))
+end)
+
 -- Abilities hidden from Mech Alerts for everyone: the boss file's mechHidden list and a developer's own
 -- (Timeline:SetMechHidden), set from a row's right-click menu while /crt dev is open.
 check("mech: hidden from the list for everyone, set in /crt dev", function()

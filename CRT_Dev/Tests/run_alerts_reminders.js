@@ -172,9 +172,14 @@ do
   assert(texts({ encounterID = 3001, difficultyID = 14 }) == "H,N", "and on a Normal pull")
   assert(texts({ encounterID = 3001, difficultyID = 16 }) == "M", "old Mythic on a Mythic pull only")
   -- the game's own word for Mythic, on a client in another language
-  GetDifficultyInfo = function(id) if id == 16 then return "Mythisch" end return "Heroisch" end
+  local asked = 0
+  GetDifficultyInfo = function(id) asked = asked + 1 if id == 16 then return "Mythisch" end return "Heroisch" end
   R:Save(3001, nil, { boss = "b", text = "L", times = "10", difficulty = "Mythisch" })
   assert(texts({ encounterID = 3001, difficultyID = 16 }) == "L,M" and texts({ encounterID = 3001, difficultyID = 15 }) == "H,N", "the game's Mythic word")
+  -- one grouping: an ability timeline's Difficulty line reads the same way
+  assert(CRT.TimelineReference.Group({ difficulty = "Mythisch" }) == "mythic" and CRT.TimelineReference.Group({ difficulty = "Heroic" }) == "nh"
+    and CRT.TimelineReference.Group({}) == "nh", "Reference.Group is the Timeline's grouping")
+  assert(asked == 1, "the game's word asked once a session: " .. asked)
   GetDifficultyInfo = nil
   assert(R.GroupOf({ difficulty = "Heroic" }) == "nh" and R.GroupOf({ group = "mythic", difficulty = "Heroic" }) == "mythic"
     and R.GroupOf({}) == nil and R.GroupOf({ group = "bad" }) == nil, "GroupOf")
@@ -219,7 +224,17 @@ do
   local id = R:Save(3001, nil, { boss = "b", text = "A", times = "10" })
   assert(R:Save(3001, id, { boss = "b", text = "A1", times = "10" }, "mythic") == id and R:Get(3001, id).group == nil,
     "the caller's group alone never changes a saved reminder's")
+  -- the split is not a step of yours: it runs inside the Timeline's undo Quietly, so Ctrl+Z only takes back
+  -- the edit and never leaves the copy's overrides behind
+  local quietSplits = 0
+  CRT.TimelineUndo = { Quietly = function(_, fn, ...)
+    local before = #R:List(3001)
+    fn(...)
+    if #R:List(3001) > before then quietSplits = quietSplits + 1 end
+  end }
   local got = R:Save(3001, id, { boss = "b", text = "A2", times = "10", group = "mythic" })
+  CRT.TimelineUndo = nil
+  assert(quietSplits == 1, "the split ran quietly: " .. quietSplits)
   assert(got ~= id and R:Get(3001, got).text == "A2" and R:Get(3001, got).group == "mythic", "saved for Mythic")
   assert(R:Get(3001, id).text == "A1" and R:Get(3001, id).group == "nh", "Normal/Heroic keeps it")
   print("ok reminders: any difficulty becomes one per group")
