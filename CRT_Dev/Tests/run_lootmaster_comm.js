@@ -203,13 +203,16 @@ GROUP.leader = "Solex-Sargeras"
 GROUP = nil
 LM.authority = nil
 local SPECS = { [111] = { 73, 66, 250 }, [222] = { 62, 73 }, [333] = {}, [444] = nil }
-local cached = { [111] = true, [222] = true, [333] = true, [444] = true, [555] = false, [666] = true, [777] = true, [778] = true, [779] = true, [780] = true, [781] = true }
+local cached = { [111] = true, [222] = true, [333] = true, [444] = true, [555] = false, [666] = true, [777] = true, [778] = true, [779] = true, [780] = true, [781] = true, [901] = true, [902] = true, [903] = true }
 local loadCallbacks = {}
 C_Item.GetItemSpecInfo = function(str) local id = tonumber(str:match("item:(%d+)")) return SPECS[id] end
 C_Item.GetItemInfoInstant = function(str)
   local id = tonumber(str:match("item:(%d+)"))
   if id == 666 then return 666, "Armor", "Leather", "INVTYPE_CHEST", 0, 4, 2 end
   if id == 779 or id == 780 or id == 781 then return id, "Weapon", "One-Handed Swords", "INVTYPE_WEAPON", 0, 2, 7 end
+  if id and id >= 111 and id <= 555 then return id, "Armor", "Miscellaneous", "INVTYPE_TRINKET", 0, 4, 0 end -- trinkets
+  if id == 901 or id == 902 then return id, "Consumable", "Flask", "", 0, 0, 3 end -- a flask and a potion
+  if id == 903 then return id, "Consumable", "Potion", "INVTYPE_NON_EQUIP_IGNORE", 0, 0, 1 end
   return id, "Misc", "Junk", "", 0, 15, 0
 end
 ITEM_CLASSES_ALLOWED = "Classes: %s"
@@ -284,6 +287,50 @@ eq(LM.CantUse("item:780", true), nil, "CantUse: a sword in white is shown")
 issecretvalue = function(v) return v == "secret" end
 eq(LM.CantUse("item:781", true), nil, "CantUse: a secret colour is shown")
 issecretvalue = nil
+
+-- a flask and a potion are open to everyone: no class, spec, armor or weapon rule, even when the game lists
+-- specs for one (the worst case: specs none of yours)
+SPECS[901], SPECS[902], SPECS[903] = { 73 }, nil, { 250 }
+C_Item.GetItemSpecInfo = function(str) local id = tonumber(str:match("item:(%d+)")) return SPECS[id] end
+local CLASS_SPECS = {
+  WARRIOR = { 71, 72, 73 }, PALADIN = { 65, 66, 70 }, HUNTER = { 253, 254, 255 }, ROGUE = { 259, 260, 261 },
+  PRIEST = { 256, 257, 258 }, DEATHKNIGHT = { 250, 251, 252 }, SHAMAN = { 262, 263, 264 }, MAGE = { 62, 63, 64 },
+  WARLOCK = { 265, 266, 267 }, MONK = { 268, 269, 270 }, DRUID = { 102, 103, 104, 105 }, DEMONHUNTER = { 577, 581 },
+  EVOKER = { 1467, 1468, 1473 },
+}
+local realClass, realSpecs, realSpecInfo = UnitClass, GetNumSpecializations, GetSpecializationInfo
+local open = true
+for classFile, specs in pairs(CLASS_SPECS) do
+  UnitClass = function() return classFile, classFile end
+  GetNumSpecializations = function() return #specs end
+  GetSpecializationInfo = function(i) return specs[i] end
+  for _, id in ipairs({ 901, 902, 903 }) do
+    local w = LM.CantUse("item:" .. id, true)
+    if w ~= nil then open = false print("FAIL a consumable answered for " .. classFile .. ": item " .. id .. " " .. tostring(w)) end
+  end
+  -- gear still follows the rules: the tank trinket is answered for a class with no tank spec
+  local gearWhy = LM.CantUse("item:111", true)
+  local tank = classFile == "WARRIOR" or classFile == "PALADIN" or classFile == "DEATHKNIGHT"
+  check((gearWhy == nil) == tank, "gear still judged for " .. classFile .. " (" .. tostring(gearWhy) .. ")")
+end
+check(open, "a flask and a potion: CantUse never answers them, for every class")
+-- a session with a flask and a potion: shown to you, no auto answer, and you can answer Need yourself
+UnitClass = function() return "Mage", "MAGE" end
+GetNumSpecializations = function() return 3 end
+GetSpecializationInfo = function(i) return ({ 62, 63, 64 })[i] end
+local sc = LM:Start({ { itemString = "item:901" }, { itemString = "item:902" }, { itemString = "item:111" } }, true)
+local incC = LM.incoming
+check(incC and incC.checked, "consumables: the popup opens at once")
+eq(incC and incC.mine[1], nil, "a flask: no auto answer, shown to answer")
+eq(incC and incC.mine[2], nil, "a potion: no auto answer, shown to answer")
+eq(incC and incC.mine[3] and incC.mine[3].auto, true, "the tank trinket in the same session: still answered for a mage")
+LM:Answer(1, "bis")
+LM:Answer(2, "bis")
+eq(sc.players["Solex-Sargeras"].answers[1].response, "bis", "a flask: your own answer reaches the looter")
+eq(sc.players["Solex-Sargeras"].answers[1].auto, nil, "a flask: not an automatic answer")
+eq(sc.players["Solex-Sargeras"].answers[2].response, "bis", "a potion: your own answer reaches the looter")
+LM:End()
+UnitClass, GetNumSpecializations, GetSpecializationInfo = realClass, realSpecs, realSpecInfo
 
 -- 6. The auto answer and the looter's version: Halo runs loot, you are a raider
 GROUP = { names = { "Solex-Sargeras", "Halo-Sargeras" }, leader = "Halo-Sargeras" }

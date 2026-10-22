@@ -5,14 +5,17 @@ local ADDON, CRT = ...
 -- a new session"). Loot Master > Tonight has an item slot under Held boss loot (LM.BuildAddItem, placed by
 -- LootMaster/Page.lua). An item goes in by dragging it from your bags onto the slot, or by shift-clicking it
 -- in your bags while the slot is shown (the Tonight tab open) and no chat or other text box has the
--- keyboard. Only gear (armour and weapons anyone could equip) and tier tokens go in, never a stack (a
--- shift-click on a stack is the game's stack split), and only an item you can still trade; the slot's
+-- keyboard. Any item you can still trade goes in, gear or not (Alex, 2026-10-22: "remove the restriction
+-- for non gear and tier items. This would allow me to auction off pots and funny things"); the slot's
 -- status line says why one doesn't. One that does goes through BL:AddFromBags (LootMaster/BossLoot.lua): a
--- real row, won, ticked, "from your bags", kept and given out like any other row. It leaves when the
--- game's trade time for it is over; one that isn't bound has no trade time and leaves LM.TRADE_SECONDS after
--- it was added.
--- An item can't be listed more times than you have it in your bags: rows that are yours or may still be,
--- waiting items and the running session count, matched by item ID and bonus IDs (LM.ItemKey).
+-- real row, won, ticked, "from your bags", kept out of the loot filter (the leader's own choice) and given
+-- out like any other row. It leaves when the game's trade time for it is over; one that isn't bound has no
+-- trade time and leaves LM.TRADE_SECONDS after it was added.
+-- A stack adds one row per drag, each row one copy (Trade.lua splits one off when it is traded). A
+-- shift-click on a stack is the game's stack split, so it adds nothing; the slot's (?) says to drag a stack.
+-- An item can't be listed more times than you have it in your bags (a stack counts each copy): rows that
+-- are yours or may still be, waiting items and the running session count, matched by item ID and bonus IDs
+-- (LM.ItemKey).
 --
 -- From the game (checked 2026-10-22 on warcraft.wiki.gg and Blizzard's UI source, Gethe/wow-ui-source live):
 --   GetCursorInfo() -> "item", itemID, itemLink: https://warcraft.wiki.gg/wiki/API_GetCursorInfo. The
@@ -29,8 +32,7 @@ local ADDON, CRT = ...
 --     GetBagAndSlot: Blizzard_ObjectAPI/Mainline/ItemLocation.lua. A click in a bank bag is left alone.
 --   The item string's fields (https://warcraft.wiki.gg/wiki/ItemLink): 1 itemID, 9 linkLevel, 10
 --     specializationID, 13 numBonusIDs, then the bonus IDs.
---   Gear or token: C_Item.GetItemInfoInstant's equipLoc and classID (Enum.ItemClass Weapon 2, Armor 4); a
---     tier token is LM.ItemFacts's isToken (LootMaster/Filter.lua: a Miscellaneous item with a Classes line).
+--   A stack's size: C_Container.GetContainerItemInfo(bag, slot).stackCount (ContainerDocumentation).
 --   Can it still be traded: C_Container.GetContainerItemInfo(bag, slot).isBound (ContainerDocumentation),
 --     and C_TooltipInfo.GetBagItem(bag, slot) (https://warcraft.wiki.gg/wiki/API_C_TooltipInfo.GetBagItem):
 --     a bound item you can still trade has a line of type Enum.TooltipDataLineType.TradeTimeRemaining (36,
@@ -46,10 +48,15 @@ local ADDON, CRT = ...
 local LM = CRT.LootMaster
 local UI = CRT.UI
 
-local L = { slot = 36, gap = 8 }
+local L = { slot = 36, gap = 8, lineGap = 4 }
 
 local TEXT = {
-    label = "Add item: drag an item from your bags here, or shift-click it in your bags while this is open. Only items you can still trade.",
+    -- one short line: the detail is in its (?), so it never wraps onto the status line under it
+    label = "Add item: drag an item from your bags here, or shift-click it.",
+    helpTitle = "Add item",
+    help = "Drag an item from your bags onto the slot, or shift-click it in your bags while this tab is open.\n\n"
+        .. "Any item you can still trade goes in: gear, tokens, flasks, potions, anything. Each one is open to every raider.\n\n"
+        .. "A stack adds one copy each time you drag it, up to the number you have. Shift-click on a stack opens the game's split instead, so drag stacks.",
     added = "Added %s to Held boss loot.",
     refused = "%s can't be added: %s.",
     that = "That item",
@@ -58,13 +65,9 @@ local TEXT = {
     notInBags = "it isn't in your bags",
     already = "it's already in the list",
     cantRead = "CRT can't read its trade time",
-    notGear = "only gear and tier tokens can be added",
-    notLoaded = "the game hasn't loaded it yet, try again",
 }
 
 local BIND_ON_PICKUP = (Enum and Enum.ItemBind and type(Enum.ItemBind.OnAcquire) == "number") and Enum.ItemBind.OnAcquire or 1
-local ITEM_CLASS = { WEAPON = 2, ARMOR = 4, MISC = 15 } -- Enum.ItemClass
-local NOT_EQUIPPED = { [""] = true, INVTYPE_NON_EQUIP_IGNORE = true, INVTYPE_BAG = true, INVTYPE_QUIVER = true }
 
 -- The client's time formats, by the seconds each unit is worth.
 local UNIT_FORMATS = {
@@ -197,27 +200,6 @@ local function bagInfo(bag, slot)
     return type(info.hyperlink) == "string" and info or nil
 end
 
--- Why the item can't be added for what it is (nil: gear or a tier token, not a stack).
-local function notGear(info)
-    if type(info.stackCount) == "number" and info.stackCount > 1 then
-        return TEXT.notGear
-    end
-    local ok, _, _, _, equipLoc, _, classID = pcall(C_Item.GetItemInfoInstant, info.hyperlink)
-    if not ok or type(classID) ~= "number" or secret(classID) or secret(equipLoc) then
-        return TEXT.notLoaded
-    end
-    if (classID == ITEM_CLASS.WEAPON or classID == ITEM_CLASS.ARMOR) and type(equipLoc) == "string" and not NOT_EQUIPPED[equipLoc] then
-        return nil
-    end
-    if classID == ITEM_CLASS.MISC and LM.ItemFacts then
-        local facts = LM.ItemFacts(LM.LinkItemString(info.hyperlink), "boss")
-        if type(facts) == "table" and facts.isToken == true then
-            return nil
-        end
-    end
-    return TEXT.notGear
-end
-
 -- Whether the item in the bag slot can be added: true, its link, the seconds left (nil: read as
 -- LM.TRADE_SECONDS) and whether it has no trade time (not bound); or false, its link (or nil) and why.
 function LM.BagTradeState(bag, slot)
@@ -229,10 +211,6 @@ function LM.BagTradeState(bag, slot)
         return false, nil, TEXT.notInBags
     end
     local link = info.hyperlink
-    local why = notGear(info)
-    if why then
-        return false, link, why
-    end
     if not info.isBound then
         return true, link, nil, true
     end
@@ -381,8 +359,9 @@ local function typing()
 end
 
 -- After the game's HandleModifiedItemClick(link, itemLocation): a shift-click on a bag item while the slot
--- shows and nothing is typing adds it. A click in the bank is left alone, and so is a stack (the game opens
--- its split): the status line says only gear goes in. Returns true when it tried.
+-- shows and nothing is typing adds it. A click in the bank is left alone, and so is a stack: the game opens
+-- its split, which is no mistake, so the status line stays as it was (the slot's (?) says to drag a stack).
+-- Returns true when it tried.
 function LM:BagShiftClick(link, itemLocation)
     if not (target and target.slot:IsVisible()) then
         return false
@@ -400,8 +379,7 @@ function LM:BagShiftClick(link, itemLocation)
     end
     local info = bagInfo(bag, slot)
     if info and type(info.stackCount) == "number" and info.stackCount > 1 then
-        refuse(info.hyperlink, TEXT.notGear) -- the split is the game's; nothing is added
-        return true
+        return false -- the split is the game's; nothing is added
     end
     self:AddFromBag(bag, slot)
     return true
@@ -426,13 +404,17 @@ function LM.BuildAddItem(parent, x, y, width, skin)
     slot:SetScript("OnMouseUp", function()
         LM:AddFromCursor() -- a click with an item on the cursor drops it here too
     end)
+    -- the line and the status line under it each hold one line at a fixed width, the status anchored to the
+    -- line's own bottom, so neither can run onto the other
     local label = parent:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     label:SetPoint("TOPLEFT", slot, "TOPRIGHT", L.gap, -2)
     label:SetWidth(width)
     label:SetJustifyH("LEFT")
+    label:SetWordWrap(false)
     label:SetText(TEXT.label)
+    UI.HelpRight(label, TEXT.helpTitle, TEXT.help)
     local status = parent:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    status:SetPoint("BOTTOMLEFT", slot, "BOTTOMRIGHT", L.gap, 2)
+    status:SetPoint("TOPLEFT", label, "BOTTOMLEFT", 0, -L.lineGap)
     status:SetWidth(width)
     status:SetJustifyH("LEFT")
     status:SetWordWrap(false)

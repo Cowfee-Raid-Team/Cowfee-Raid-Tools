@@ -280,7 +280,11 @@ function BL:Add(rollID, link, fields, kill)
         local ok, _, _, _, difficultyName = pcall(GetInstanceInfo)
         self.difficulty = (ok and type(difficultyName) == "string" and not secret(difficultyName)) and difficultyName or nil
     end
-    local pass, why = LM:FilterLoot(s, "boss", link)
+    -- an item from your bags is the leader's own choice: the loot filter isn't asked (no skip, no chat line)
+    local pass, why = true, nil
+    if not fields.bags then
+        pass, why = LM:FilterLoot(s, "boss", link)
+    end
     local okL, ilvl = pcall(C_Item.GetDetailedItemLevelInfo, link)
     local age = (kill and type(kill.at) == "number") and math.max(0, time() - kill.at) or 0
     local r = {
