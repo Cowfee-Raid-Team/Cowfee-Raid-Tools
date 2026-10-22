@@ -196,6 +196,15 @@ test("window: lists the boss's reminders by phase", function()
   assert(not at(show(), "Move"), "disabled reminder listed")
 end)
 
+test("window: out of a run, only the note's difficulty group", function()
+  -- the note in use is Mythic: Mythic's own reminders, not Normal/Heroic's (saved per group or as older text)
+  R:Save(3470, nil, { boss = "Nek'zali the Soulcoiler", text = "Mythic one", times = "P1 0:31" }, "mythic")
+  R:Save(3470, nil, { boss = "Nek'zali the Soulcoiler", text = "Heroic one", times = "P1 0:32" }, "nh")
+  R:Save(3470, nil, { boss = "Nek'zali the Soulcoiler", text = "Old normal", times = "P1 0:33", difficulty = "Normal" })
+  local text = show()
+  assert(at(text, "Mythic one") and not at(text, "Heroic one") and not at(text, "Old normal"), "Mythic's only:\\n" .. text)
+end)
+
 test("window: a pasted raid note shows as its boss and timed lines", function()
   CRT.db.notes.active = nil
   CRT.db.notes.personalText = table.concat({

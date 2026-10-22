@@ -977,10 +977,16 @@ function Methods:OrderShifts()
 end
 
 -- Where a reminder's times are read on this view (Reminders:Times): the ability timeline shown, unless the
--- reminder has a difficulty of its own that isn't the shown one's, and the view's difficulty group. Every
--- read and write of a reminder's times here goes through it, so a flag sits on the cast drawn under it.
+-- reminder is for another difficulty group than the shown one's, or an older one's Difficulty text isn't
+-- the shown one's, and the view's difficulty group. Every read and write of a reminder's times here goes
+-- through it, so a flag sits on the cast drawn under it.
 function Methods:ReminderSource(r)
     local ref = self.pull and self.pull.reference
+    local Reminders, Reference = CRT.AlertReminders, CRT.TimelineReference
+    local group = r and Reminders and Reminders.GroupOf and Reminders.GroupOf(r)
+    if ref and group and Reference and Reference.Group and Reference.Group(ref) ~= group then
+        ref = nil
+    end
     if ref and r and r.difficulty then
         local mine, shown = tostring(r.difficulty):lower(), tostring(ref.difficulty or ""):lower()
         if mine ~= shown then
@@ -998,6 +1004,15 @@ function Methods:ShowsDifficulty(d)
         return true
     end
     return CRT.Timeline:GroupFor(d) == self.group
+end
+
+-- Whether a reminder of yours shows on this view: one for the view's difficulty group (Reminders.GroupOf,
+-- as the alerts' check runs it in a pull), or an older one on any difficulty; a view with no group shows
+-- everything.
+function Methods:ShowsReminder(r)
+    local Reminders = CRT.AlertReminders
+    local group = Reminders and Reminders.GroupOf and Reminders.GroupOf(r)
+    return not (self.group and group) or group == self.group
 end
 
 function Methods:ReminderTimes(encounterID, r)
@@ -1035,6 +1050,7 @@ function Methods:OpenAt(t, spellID, text, tag)
         boss = self.bossName,
         saveAs = tag ~= nil and "note" or "mine",
         tag = tag,
+        group = self.group, -- your own alert starts on the view's difficulty group
     })
 end
 
@@ -1227,7 +1243,7 @@ function Methods:NoteAndReminderMarks(lanes, length)
     for _, e in ipairs(Reminders:List(encounterID)) do
         -- a reminder turned off (its tick on Mech Alerts) doesn't fire, so it isn't drawn either
         -- nor one of another difficulty group than the view's
-        if e.r.enabled ~= false and self:ShowsDifficulty(e.r.difficulty) then
+        if e.r.enabled ~= false and self:ShowsReminder(e.r) then
             for index, at in ipairs((self:ReminderTimes(encounterID, e.r))) do
                 add({ ph = at.ph, time = at.t, mine = true, encounterID = encounterID, id = e.id, index = index,
                     kind = "mine" }, e.r.spellID, e.r.text, e.r.iconID)
@@ -1693,6 +1709,7 @@ function Methods:PlaceSaved(id, t, spellID, lane)
         if savedDropMine(lane, prefill.saveAs) then
             prefill.saveAs = "mine"
         end
+        prefill.group = prefill.group or self.group
         CRT.AlertEditor:Open(encounterID, nil, prefill)
     end
 end
@@ -1783,7 +1800,7 @@ function Methods:PlaceCooldownAt(t, e, tag)
     local written = self:WrittenTime(e.spellID, e.name, t)
     local ph, seconds = CRT.AlertReminders.PhaseAt(self.pull and self.pull.reference, tenth(written))
     local called, ok, err = pcall(Draft.PlaceCooldown, encounterID, e.spellID, e.name, self.bossName, ph,
-        tenth(seconds), tag)
+        tenth(seconds), tag, self.group)
     if not called then
         ok, err = false, tostring(ok)
     end
