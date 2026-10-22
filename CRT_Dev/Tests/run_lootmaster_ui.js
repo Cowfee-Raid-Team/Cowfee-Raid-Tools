@@ -52,7 +52,11 @@ CreateFrame = function(kind, name, parent, template)
     f.GetFontString = function(self) return self.label end
     f.GetObjectType = function() return "Button" end
   end
-  if template == "BasicFrameTemplateWithInset" then f.CloseButton = mock() end
+  if template == "BasicFrameTemplateWithInset" then
+    -- a window: not styled yet (UI:StyleWindow), and it knows its parent (UIParent for a window of its own)
+    f.CloseButton, f.crtArt = mock(), false
+    f.GetParent = function() return parent end
+  end
   return f
 end
 -- the game's font objects the title strip uses, and CRT's
@@ -310,7 +314,7 @@ eq(tabs.tabs[5].name.text, "Quick", "tabs: a given item shows its winner")
 local winFrame = mock()
 local got = {}
 GameTooltip = { SetOwner = function(_, o, a) got.owner, got.anchor = o, a end, SetPoint = function(_, ...) got.pt = { ... } end,
-  SetHyperlink = function() end, AddLine = function() end, Show = function() got.shown = true end, Hide = function() got.shown = false end }
+  ClearAllPoints = function() got.pt = nil got.cleared = true end, SetHyperlink = function() end, AddLine = function() end, Show = function() got.shown = true end, Hide = function() got.shown = false end }
 local picked, dbl
 local t2 = LM.ItemTabs(mock(), { window = winFrame, onSelect = function(i) picked = i end, onDoubleClick = function(i) dbl = i end })
 t2:Update({ { itemString = "item:1" } }, 1, nil, nil)
@@ -339,6 +343,13 @@ for _, a in ipairs(LM.TOOLTIP_ANCHORS) do order[#order + 1] = a.key end
 eq(table.concat(order, ","), "area,left,right,bottomleft,bottomright,topleft,topright,topcenter,bottomcenter,game", "item tabs: Same as above, the eight sides in Alex's order, the game's spot")
 eq(LM.TOOLTIP_ANCHORS[1].label, "Same as above", "item tabs: the first choice's label")
 eq(LM.TOOLTIP_ANCHORS[#LM.TOOLTIP_ANCHORS].label, "Game's tooltip spot", "item tabs: the last choice's label")
+-- the sides name a spot's place outside the window (UI.TOOLTIP_SPOTS' window entries), never points of their own
+local spotKeys = {} for _, s in ipairs(UI.TOOLTIP_SPOTS) do spotKeys[s.key] = s.window ~= nil end
+for _, a in ipairs(LM.TOOLTIP_ANCHORS) do
+  if a.key ~= "area" and a.key ~= "game" then
+    check(spotKeys[a.window] == true and a.point == nil and a.rel == nil and a.dx == nil and a.dy == nil, "item tabs " .. a.key .. ": a spot's window place, written once (" .. tostring(a.window) .. ")")
+  end
+end
 local want = {
   left = { "TOPRIGHT", "TOPLEFT", -4 }, right = { "TOPLEFT", "TOPRIGHT", 4 },
   topleft = { "BOTTOMLEFT", "TOPLEFT", 0, 4 }, topcenter = { "BOTTOM", "TOP", 0, 4 }, topright = { "BOTTOMRIGHT", "TOPRIGHT", 0, 4 },
@@ -397,6 +408,39 @@ got, def = {}, nil
 tb.frame.scripts.OnEnter(tb.frame)
 check(got.pt == nil and got.anchor == "ANCHOR_LEFT", "item tabs: the old tooltipAnchor field is not read")
 CRT.db.lootmaster.tooltipAnchor = nil
+-- one placement for both: a side of the window and a picked spot in a CRT window go through UI.TooltipOutside
+local outsideCalls, realOutside = {}, UI.TooltipOutside
+check(type(realOutside) == "function", "UI.TooltipOutside exists")
+UI.TooltipOutside = function(...) outsideCalls[#outsideCalls + 1] = { ... } return realOutside(...) end
+CRT.db.lootmaster.itemTooltip = "right"
+got = {}
+tb.frame.scripts.OnEnter(tb.frame)
+check(#outsideCalls == 1 and outsideCalls[1][2] == tb.frame and outsideCalls[1][3] == winFrame and outsideCalls[1][4] == "rightupper" and outsideCalls[1][5] == true, "item tabs on Right: placed by UI.TooltipOutside, by the window")
+check(got.pt and got.pt[1] == "TOPLEFT" and got.pt[2] == winFrame and got.pt[3] == "TOPRIGHT" and got.pt[4] == 4 and got.pt[5] == -100, "item tabs on Right: still beside the window's right edge, level with the icon")
+-- Same as above with a spot picked, the icon in a CRT window (the looter window): outside that window
+local lootWin = UI.AddWindow(mock())
+tb.frame.GetParent = function() return tb end
+tb.GetParent = function() return lootWin end
+CRT.db.lootmaster.itemTooltip, CRT.db.lootmaster.tooltipMode, CRT.db.lootmaster.tooltipSpot = "area", "spot", "bottom"
+outsideCalls, got = {}, {}
+tb.frame.scripts.OnEnter(tb.frame)
+check(#outsideCalls == 1 and outsideCalls[1][3] == lootWin, "item tabs, Same as above on Bottom: placed by the same UI.TooltipOutside")
+check(got.anchor == "ANCHOR_NONE" and got.pt and got.pt[1] == "TOP" and got.pt[2] == lootWin and got.pt[3] == "BOTTOM" and got.pt[5] == -4, "item tabs, Same as above on Bottom: under the window, not the icon")
+CRT.db.lootmaster.tooltipSpot = "auto"
+outsideCalls, got = {}, {}
+tb.frame.scripts.OnEnter(tb.frame)
+check(#outsideCalls == 0 and got.anchor == "ANCHOR_LEFT" and got.owner == tb.frame, "item tabs, Same as above on auto: next to the icon, as before")
+UI.TooltipOutside = realOutside
+tb.frame.GetParent, tb.GetParent = nil, nil
+CRT.db.lootmaster.itemTooltip, CRT.db.lootmaster.tooltipMode, CRT.db.lootmaster.tooltipSpot = nil, nil, nil
+-- every UI.Window is a CRT window for that lookup: a dialog, a pop-out and an overlay (the raider popup)
+for _, kind in ipairs({ "dialog", "popout", "overlay" }) do
+  local w = UI.Window("TestLookup" .. kind, { kind = kind })
+  local inside = mock()
+  inside.GetParent = function() return w.content end
+  if w.content ~= w then w.content.GetParent = function() return w end end
+  eq(UI.WindowOf(inside), w, "UI.Window " .. kind .. ": the window something inside it is in")
+end
 
 -- the gear icons: a tooltip by item ID with the item level, the real link on your own row, none when empty
 local tip = {}

@@ -111,10 +111,12 @@ end
 -- The allow-list guard. ---------------------------------------------------------------------------
 -- Tooltip position and its spot, General Settings' and each area's, travel with the settings
 for path, def in pairs({ ["ui.tooltipMode"] = "spot", ["ui.tooltipSpot"] = "auto", ["loot.tooltipMode"] = "general", ["loot.tooltipSpot"] = "auto",
-    ["lootmaster.tooltipMode"] = "general", ["lootmaster.tooltipSpot"] = "auto", ["lootmaster.itemTooltip"] = "area" }) do
+    ["lootmaster.tooltipMode"] = "general", ["lootmaster.tooltipSpot"] = "auto", ["lootmaster.itemTooltip"] = "area",
+    ["timeline.tooltipMode"] = "general", ["timeline.tooltipSpot"] = "auto" }) do
   check(paths0[path] ~= nil and paths0[path].default == def, path .. " is shared, a plain setting with its default " .. def)
 end
 check(P.SHARE.lootmaster.tooltipMode == true and P.SHARE.lootmaster.tooltipSpot == true and P.SHARE.lootmaster.itemTooltip == true, "the Loot Master overrides are named in the mixed lootmaster rule")
+check(P.SHARE.timeline.tooltipMode == true and P.SHARE.timeline.tooltipSpot == true, "the Timeline's Tooltip position is named in the mixed timeline rule")
 for _, old in ipairs({ "lootmaster.tooltipAnchor", "ui.tooltipAnchor", "loot.tooltipPosition", "lootmaster.tooltipPosition" }) do
   check(paths0[old] == nil, old .. ", an old field read once into the new ones, is no longer shared")
 end
@@ -147,7 +149,8 @@ boot({ lootmaster = { tooltipAnchor = "right", itemTooltip = "bottomleft" } }, {
 check(CRTDB.lootmaster.itemTooltip == "bottomleft", "item tabs: the old field is read only once, never over the new one")
 boot({}, {})
 check(CRTDB.lootmaster.itemTooltip == "area" and CRTDB.lootmaster.tooltipMode == "general" and CRTDB.loot.tooltipMode == "general"
-  and CRTDB.ui.tooltipMode == "spot" and CRTDB.ui.tooltipSpot == "auto" and CRTDB.loot.tooltipSpot == "auto" and CRTDB.lootmaster.tooltipSpot == "auto", "a fresh install: the defaults")
+  and CRTDB.ui.tooltipMode == "spot" and CRTDB.ui.tooltipSpot == "auto" and CRTDB.loot.tooltipSpot == "auto" and CRTDB.lootmaster.tooltipSpot == "auto"
+  and CRTDB.timeline.tooltipMode == "general" and CRTDB.timeline.tooltipSpot == "auto", "a fresh install: the defaults")
 check(CRTDB.ui.tooltipAnchor == nil and CRTDB.loot.tooltipPosition == nil and CRTDB.lootmaster.tooltipPosition == nil, "a fresh install: no old field is written")
 check(P.ShareUncovered and #P.ShareUncovered() == 0, "every saved key in Core.lua's defaults is shared or named as not shared" .. (P.ShareUncovered and (": missing " .. table.concat(P.ShareUncovered(), ", ")) or ""))
 if P.ShareUncovered then

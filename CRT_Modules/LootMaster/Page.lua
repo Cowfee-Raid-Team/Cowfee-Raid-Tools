@@ -106,7 +106,7 @@ local TEXT = {
     noRoll = "If no roll, %v is",
     preview = "Preview:",
     tooltip = "Tooltips",
-    tooltipHelp = "Tooltip position is where every Loot Master tooltip opens: on this page, in both loot windows, the popup and Boss loot. Use the general setting follows General Settings. Next to what you hover uses the spot you click in the box beside it.\n\nItem tabs is where an item's tooltip opens when you hover its icon in the looter window and All Loot Rolls. Same as above follows Tooltip position. Next to the window puts it on the side of the window you click in the box beside it; a corner puts it flush with that corner of the window.\n\nClicking a spot also picks it in the dropdown. For Tooltip position, clicking the lit spot again goes back to each tooltip on its own side.",
+    tooltipHelp = "Tooltip position is where every Loot Master tooltip opens: on this page, in both loot windows, the popup and Boss loot. Use the general setting follows General Settings. Outside the window puts it just past the edge of the window you are in, on the spot you click in the box beside it.\n\nItem tabs is where an item's tooltip opens when you hover its icon in the looter window and All Loot Rolls. Same as above follows Tooltip position. Next to the window puts it on the side of the window you click in the box beside it; a corner puts it flush with that corner of the window.\n\nClicking a spot also picks it in the dropdown. For Tooltip position, clicking the lit spot again goes back to each tooltip on its own side.",
     lootWindow = "Loot Master window",
     itemTabs = "Item tabs",
     channels = {
@@ -715,7 +715,6 @@ local function buildTooltips(f)
     picker = UI.SpotPicker(f, {
         label = TEXT.lootWindow,
         spots = LM.ItemTooltipSpots(),
-        area = "lootmaster",
         get = function()
             return LM:ItemTooltipSpot()
         end,

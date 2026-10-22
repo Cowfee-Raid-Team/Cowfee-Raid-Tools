@@ -50,6 +50,7 @@ local function mock(kind, parent)
     GetScript = function(self, k) local t = rawget(self, "scripts") return t and t[k] end,
     HookScript = function(self, k, fn) local t = rawget(self, "scripts") or {} rawset(self, "scripts", t) t[k] = t[k] or fn end,
     SetParent = function(self, p) self.parent = p end,
+    GetParent = function(self) return rawget(self, "parent") end,
     SetFontObject = function(self, f) self.font = f end,
     ClearAllPoints = function(self) self.points = {} end,
     SetPoint = function(self, ...) local t = rawget(self, "points") or {} rawset(self, "points", t) t[#t + 1] = { ... } end,
@@ -229,6 +230,10 @@ for _, t in ipairs(chrome and chrome.crtArt or {}) do if not t.shown then artSho
 check(artShown and chrome.TitleBg.shown and chrome.InsetBg.shown, "classic: the border pieces show")
 check(chrome and chrome.shown, "classic: the frame shows")
 check(chrome and not chrome.CloseButton.shown, "classic: the frame's own X is hidden")
+-- the window lookup (UI.WindowOf): the popup is the window, its frame art is not one of its own
+eq(UI.WindowOf(panels[1]), anchor, "the popup: an item panel is in the popup window")
+eq(UI.WindowOf(chrome), anchor, "the popup: its frame art is not a window of its own")
+eq(UI.WindowOf(mock("Button", chrome)), anchor, "the popup: something on its frame art is in the popup window")
 local strip
 for _, f in ipairs(frames) do if rawget(f, "framed") ~= nil and f.parent == anchor then strip = f end end
 check(strip and strip.framed and not strip.bar.shown, "classic: the strip lets the template draw the title tile")

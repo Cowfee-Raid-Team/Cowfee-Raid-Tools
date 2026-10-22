@@ -499,9 +499,9 @@ local pos, tabsDrop = byLabel["Tooltip position"], byLabel["Item tabs"]
 check(pos ~= nil and tabsDrop ~= nil, "settings: the Tooltip position and Item tabs dropdowns")
 local hover, window
 for _, p in ipairs(pickers) do
-  if p.opts.label == "What you hover" then hover = p elseif p.opts.label == "Loot Master window" then window = p end
+  if p.opts.label == "The window" then hover = p elseif p.opts.label == "Loot Master window" then window = p end
 end
-check(hover ~= nil and window ~= nil, "settings: a What you hover picker and a Loot Master window picker")
+check(hover ~= nil and window ~= nil, "settings: a The window picker and a Loot Master window picker")
 if pos and tabsDrop and hover and window then
   local keys = {}
   for _, o in ipairs(pos.opts.options) do keys[#keys + 1] = o.key end
@@ -511,9 +511,8 @@ if pos and tabsDrop and hover and window then
   pos.opts.set("cursor")
   eq(CRT.db.lootmaster.tooltipMode, "cursor", "settings: picking Follow the cursor saves it")
   eq(pos.opts.get(), "cursor", "settings: and reads it back")
-  eq(hover.opts.area, "lootmaster", "settings: the What you hover picker is Loot Master's")
   hover.opts.set("bottom")
-  check(CRT.db.lootmaster.tooltipSpot == "bottom" and CRT.db.lootmaster.tooltipMode == "spot", "settings: a spot clicked is Loot Master's own, and picks Next to what you hover")
+  check(CRT.db.lootmaster.tooltipSpot == "bottom" and CRT.db.lootmaster.tooltipMode == "spot", "settings: a spot clicked is Loot Master's own, and picks Outside the window")
   check(CRT.db.lootmaster.tooltipPosition == nil, "settings: the old tooltipPosition field is never written")
   -- Item tabs: Same as above, Next to the window (a side, picked in its picker), Game's tooltip spot
   local tk = {}

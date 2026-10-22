@@ -153,25 +153,19 @@ function LM.ItemTabs(parent, opts)
             end)
         end
         -- the tooltip opens where the Settings tab's Item tabs says: by default like every Loot Master tooltip
-        -- (Loot Master's Tooltip position, on the spot picked for it or General Settings'); a side of the
-        -- window or the game's spot whatever the Tooltip positions say (the flags in UI/Tooltip.lua)
+        -- (Loot Master's Tooltip position, on the spot picked for it or General Settings', outside the
+        -- window); a side of the window or the game's spot whatever the Tooltip positions say. A side is
+        -- placed by UI.TooltipOutside, the same placement as a picked spot (UI/Tooltip.lua).
         t.frame:SetScript("OnEnter", function(icon)
             local it = self.items and self.items[t.index]
             if it then
-                local win = opts.window or parent
                 local a = LM:TooltipAnchor()
                 if a.game then
                     CRT.UI.TooltipOwner(GameTooltip, icon, "ANCHOR_LEFT", nil, nil, CRT.UI.TOOLTIP_GAME)
-                elseif not a.point then
+                elseif not a.window then
                     CRT.UI.TooltipOwner(GameTooltip, icon, "ANCHOR_LEFT", nil, nil, "lootmaster")
                 else
-                    CRT.UI.TooltipOwner(GameTooltip, icon, "ANCHOR_NONE", nil, nil, CRT.UI.TOOLTIP_KEEP)
-                    local dy = a.dy
-                    if a.level then
-                        local top, winTop = icon:GetTop(), win:GetTop()
-                        dy = (top and winTop) and (top - winTop) or 0
-                    end
-                    GameTooltip:SetPoint(a.point, win, a.rel, a.dx, dy)
+                    CRT.UI.TooltipOutside(GameTooltip, icon, opts.window or parent, a.window, a.level)
                 end
                 pcall(GameTooltip.SetHyperlink, GameTooltip, it.itemString)
                 if it.award and opts.doubleClickHint then

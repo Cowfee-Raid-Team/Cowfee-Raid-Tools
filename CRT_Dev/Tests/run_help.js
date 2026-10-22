@@ -127,9 +127,8 @@ check(GameTooltip.lines[1] == "Count 2", "a function's text is read each time")
 live.scripts.OnLeave(live)
 print("ok help: the tooltip is unchanged")
 
--- Tooltip position (CRT_Core/UI/Tooltip.lua; run_tooltip_spots.js tests every spot, mode and area): a (?)
--- opens on its own side (ANCHOR_RIGHT) by default, on a picked spot when there is one; on the game's tooltip spot (GameTooltip_SetDefaultAnchor,
--- which sets the owner with ANCHOR_NONE and places it) when picked
+-- Tooltip position (CRT_Core/UI/Tooltip.lua; run_tooltip_spots.js tests every spot, mode and area): a (?) keeps
+-- its tooltip right of it (ANCHOR_RIGHT, UI.TOOLTIP_KEEP) whatever is picked: auto, a spot, or the game's tooltip spot
 local defaults = {}
 GameTooltip_SetDefaultAnchor = function(t, owner) defaults[#defaults + 1] = { t, owner } t:SetOwner(owner, "ANCHOR_NONE") end
 check(UI.TooltipPosition() == "spot", "Tooltip position: next to what you hover when nothing is saved")
@@ -138,16 +137,16 @@ check(#defaults == 0 and GameTooltip.owner == b and GameTooltip.anchor == "ANCHO
 b.scripts.OnLeave(b)
 CRT.db.ui.tooltipMode, CRT.db.ui.tooltipSpot = "spot", "bottom"
 b.scripts.OnEnter(b)
-check(#defaults == 0 and GameTooltip.anchor == "ANCHOR_BOTTOM", "a (?) on the Bottom spot: under the icon")
+check(#defaults == 0 and GameTooltip.owner == b and GameTooltip.anchor == "ANCHOR_RIGHT", "a (?) on the Bottom spot: still right of the icon")
 b.scripts.OnLeave(b)
 CRT.db.ui.tooltipMode = "game"
 b.scripts.OnEnter(b)
-check(#defaults == 1 and defaults[1][1] == GameTooltip and defaults[1][2] == b, "a (?) on the game's tooltip spot: GameTooltip_SetDefaultAnchor(GameTooltip, icon)")
-check(GameTooltip.anchor == "ANCHOR_NONE" and GameTooltip.title == "Title", "the game's spot: placed by the game, the same text")
+check(#defaults == 0 and GameTooltip.owner == b and GameTooltip.anchor == "ANCHOR_RIGHT", "a (?) on the game's tooltip spot: still right of the icon, not the game's spot")
+check(GameTooltip.title == "Title", "the game's spot: the same text")
 b.scripts.OnLeave(b)
 GameTooltip_SetDefaultAnchor = nil
 CRT.db.ui.tooltipMode, CRT.db.ui.tooltipSpot = nil, nil
-print("ok help: the (?) follows Tooltip position")
+print("ok help: the (?) keeps its tooltip right of it")
 
 -- Modern: an accent ring round an accent "i", the same hit box
 look(true)
@@ -421,10 +420,10 @@ if (process.argv[3] === 'lint') {
   process.exit(0);
 }
 
-// The areas reach their tooltips: every tooltip on the Loot History page passes "loothistory" and every Loot
-// Master tooltip "lootmaster" to UI.TooltipOwner (or to Gear.ShowTooltip, which passes it on). Only the item
-// tabs' own placements (a side of the window, the game's spot) use a flag; the Encounter Journal button keeps
-// UI.TOOLTIP_KEEP.
+// The areas reach their tooltips: every tooltip on the Loot History page passes "loothistory", every Loot
+// Master tooltip "lootmaster" and every Timeline view tooltip "timeline" to UI.TooltipOwner (or to
+// Gear.ShowTooltip, which passes it on). Only the item tabs' own placements (the game's spot) use a flag; the
+// Encounter Journal button keeps UI.TOOLTIP_KEEP.
 {
   const bad = [];
   const scan = (rel, area, flagsOk) => {
@@ -443,9 +442,11 @@ if (process.argv[3] === 'lint') {
   let lmCalls = 0;
   for (const f of fs.readdirSync(lmDir)) if (f.endsWith('.lua')) lmCalls += scan('CRT_Modules/LootMaster/' + f, 'lootmaster', f === 'Tabs.lua');
   if (lmCalls < 6) bad.push('CRT_Modules/LootMaster: only ' + lmCalls + ' tooltips found');
+  // the Timeline's tooltips (the Review tab's view, docked or popped out) pass "timeline"
+  if (scan('CRT_Modules/Timeline/View.lua', 'timeline', false) < 8) bad.push('CRT_Modules/Timeline/View.lua: fewer Timeline tooltips than the eight it has');
   if (!/TooltipOwner\([^\n]*TOOLTIP_KEEP/.test(read('CRT_Modules/Timeline/JournalExport.lua'))) bad.push('CRT_Modules/Timeline/JournalExport.lua: the Encounter Journal button no longer keeps its anchor');
   if (bad.length) { console.log('FAIL a tooltip that does not follow its area:'); for (const b of bad) console.log(b); process.exitCode = 1; }
-  else console.log('ok help: Loot History and Loot Master tooltips pass their area');
+  else console.log('ok help: Loot History, Loot Master and Timeline tooltips pass their area');
 }
 
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }

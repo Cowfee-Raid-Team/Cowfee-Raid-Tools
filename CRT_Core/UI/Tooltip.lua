@@ -4,9 +4,10 @@ local ADDON, CRT = ...
 -- tooltip's own SetOwner (the suite's "tooltips through UI.TooltipOwner" lint):
 --   UI.TooltipOwner(tooltip, owner, anchor, x, y, how)
 -- General Settings > Appearance > Tooltip position picks how (CRTDB.ui.tooltipMode):
---   "spot"   Next to what you hover (the default), on CRTDB.ui.tooltipSpot: "auto" (the default), each
+--   "spot"   Outside the window (the default), on CRTDB.ui.tooltipSpot: "auto" (the default), each
 --            tooltip on its own side, the anchor and offsets its caller asks for; or a spot picked in the
---            spot picker under the dropdown (a key of UI.TOOLTIP_SPOTS below)
+--            spot picker under the dropdown (a key of UI.TOOLTIP_SPOTS below), outside the edge of the CRT
+--            window you hover in (UI.TooltipOutside), or on what you hover when that is in no CRT window
 --   "game"   Game's tooltip spot: GameTooltip_SetDefaultAnchor(tooltip, owner) (Blizzard_SharedXML/
 --            SharedTooltipTemplates.lua), where the game opens its own tooltips; the player or a UI addon
 --            may have moved it. Without that function, or if it fails, the tooltip opens on the spot.
@@ -20,11 +21,13 @@ local ADDON, CRT = ...
 --   lootmaster   every Loot Master tooltip (LootMaster/: the page, both loot windows, the popup, the item
 --                tabs, Boss loot), in CRTDB.lootmaster. The item tabs have a second choice,
 --                lootmaster.itemTooltip: "Same as above" is this area, a side of the window or the game's
---                spot use the flags below.
+--                spot use the flag below, and a side of the window UI.TooltipOutside.
+--   timeline     every Timeline tooltip on the Review tab, docked or popped out (Timeline/View.lua: the
+--                cells, lanes, reminders and saved alerts), in CRTDB.timeline
 -- Core.lua reads an area's old tooltipPosition ("general", "owner", "game", "cursor") into tooltipMode once.
 -- A flag overrides every setting for the tooltips that must stay where they are:
 --   UI.TOOLTIP_KEEP  always the anchor given:
---     LootMaster/Tabs.lua item tabs on a side of the window: placed by hand next to the window
+--     UI.Help (every (?) icon) and UI.SpotPicker's spots: their tooltip stays right of them
 --     Timeline/JournalExport.lua: its button sits on the game's Encounter Journal, so its tooltip stays by it
 --   UI.TOOLTIP_GAME  always the game's spot: LootMaster/Tabs.lua item tabs on the game's spot
 -- Not here at all: drag ghosts show no tooltip, dropdown and menu entries (element:SetTooltip) are
@@ -36,25 +39,35 @@ UI.TOOLTIP_KEEP = "keep"
 UI.TOOLTIP_GAME = "game"
 
 -- The spot picker's twelve spots (UI.SpotPicker in UI/Controls.lua), in the order it lists them, and how
--- each places the tooltip against what you hover. anchor is a GameTooltip:SetOwner anchor; per
+-- each places the tooltip. window is its place outside the CRT window that holds what you hover (the main
+-- window, a pop-out, any UI.Window: UI.WindowOf in UI/Panel.lua), for UI.TooltipOutside: point is the
+-- tooltip's, rel the window's, dx, dy the gap. The corners and the middles of the sides sit flush with
+-- that corner or the middle of that edge, the upper and lower parts of a side flush with its top or bottom,
+-- like the Loot Master item tabs' sides of the window (LM.TOOLTIP_ANCHORS). Something in no CRT window
+-- (the minimap button) is placed against itself instead: anchor is a GameTooltip:SetOwner anchor; per
 -- warcraft.wiki.gg (API GameTooltip:SetOwner) each is the SetPoint written beside it, so the corners are
 -- the tooltip off the owner's corner. The game has no anchor for the middle of a side, nor for its upper
 -- and lower parts, so those set the owner with ANCHOR_NONE and point the tooltip themselves: point is the
 -- tooltip's, rel the owner's. Besides these, a spot setting may be "auto" (UI.TOOLTIP_SPOT_AUTO, the default):
--- no spot picked, so each tooltip opens on the side its caller asks for, as before the picker.
+-- no spot picked, so each tooltip opens on the side its caller asks for, next to what you hover, as before
+-- the picker.
+local GAP = 4 -- from the window's edge, as the item tabs' sides
+local function outside(point, rel, dx, dy)
+    return { point = point, rel = rel, dx = dx, dy = dy }
+end
 UI.TOOLTIP_SPOTS = {
-    { key = "topleft", label = "Top left", anchor = "ANCHOR_LEFT" }, -- BOTTOMRIGHT on the owner's TOPLEFT
-    { key = "top", label = "Top", anchor = "ANCHOR_TOP" }, -- BOTTOM on TOP
-    { key = "topright", label = "Top right", anchor = "ANCHOR_RIGHT" }, -- BOTTOMLEFT on TOPRIGHT
-    { key = "leftupper", label = "Left, upper", point = "BOTTOMRIGHT", rel = "LEFT" },
-    { key = "left", label = "Left", point = "RIGHT", rel = "LEFT" },
-    { key = "leftlower", label = "Left, lower", point = "TOPRIGHT", rel = "LEFT" },
-    { key = "rightupper", label = "Right, upper", point = "BOTTOMLEFT", rel = "RIGHT" },
-    { key = "right", label = "Right", point = "LEFT", rel = "RIGHT" },
-    { key = "rightlower", label = "Right, lower", point = "TOPLEFT", rel = "RIGHT" },
-    { key = "bottomleft", label = "Bottom left", anchor = "ANCHOR_BOTTOMLEFT" }, -- TOPRIGHT on BOTTOMLEFT
-    { key = "bottom", label = "Bottom", anchor = "ANCHOR_BOTTOM" }, -- TOP on BOTTOM
-    { key = "bottomright", label = "Bottom right", anchor = "ANCHOR_BOTTOMRIGHT" }, -- TOPLEFT on BOTTOMRIGHT
+    { key = "topleft", label = "Top left", anchor = "ANCHOR_LEFT", window = outside("BOTTOMLEFT", "TOPLEFT", 0, GAP) }, -- BOTTOMRIGHT on the owner's TOPLEFT
+    { key = "top", label = "Top", anchor = "ANCHOR_TOP", window = outside("BOTTOM", "TOP", 0, GAP) }, -- BOTTOM on TOP
+    { key = "topright", label = "Top right", anchor = "ANCHOR_RIGHT", window = outside("BOTTOMRIGHT", "TOPRIGHT", 0, GAP) }, -- BOTTOMLEFT on TOPRIGHT
+    { key = "leftupper", label = "Left, upper", point = "BOTTOMRIGHT", rel = "LEFT", window = outside("TOPRIGHT", "TOPLEFT", -GAP, 0) },
+    { key = "left", label = "Left", point = "RIGHT", rel = "LEFT", window = outside("RIGHT", "LEFT", -GAP, 0) },
+    { key = "leftlower", label = "Left, lower", point = "TOPRIGHT", rel = "LEFT", window = outside("BOTTOMRIGHT", "BOTTOMLEFT", -GAP, 0) },
+    { key = "rightupper", label = "Right, upper", point = "BOTTOMLEFT", rel = "RIGHT", window = outside("TOPLEFT", "TOPRIGHT", GAP, 0) },
+    { key = "right", label = "Right", point = "LEFT", rel = "RIGHT", window = outside("LEFT", "RIGHT", GAP, 0) },
+    { key = "rightlower", label = "Right, lower", point = "TOPLEFT", rel = "RIGHT", window = outside("BOTTOMLEFT", "BOTTOMRIGHT", GAP, 0) },
+    { key = "bottomleft", label = "Bottom left", anchor = "ANCHOR_BOTTOMLEFT", window = outside("TOPLEFT", "BOTTOMLEFT", 0, -GAP) }, -- TOPRIGHT on BOTTOMLEFT
+    { key = "bottom", label = "Bottom", anchor = "ANCHOR_BOTTOM", window = outside("TOP", "BOTTOM", 0, -GAP) }, -- TOP on BOTTOM
+    { key = "bottomright", label = "Bottom right", anchor = "ANCHOR_BOTTOMRIGHT", window = outside("TOPRIGHT", "BOTTOMRIGHT", 0, -GAP) }, -- TOPLEFT on BOTTOMRIGHT
 }
 UI.TOOLTIP_SPOT_AUTO = "auto"
 UI.TOOLTIP_SPOT_DEFAULT = UI.TOOLTIP_SPOT_AUTO
@@ -65,14 +78,14 @@ end
 
 -- General Settings' choices, for its dropdown.
 UI.TOOLTIP_POSITIONS = {
-    { key = "spot", label = "Next to what you hover" },
+    { key = "spot", label = "Outside the window" },
     { key = "game", label = "Game's tooltip spot" },
     { key = "cursor", label = "Follow the cursor" },
 }
 -- An area's choices, for the dropdown on its Settings tab.
 UI.TOOLTIP_AREA_POSITIONS = {
     { key = "general", label = "Use the general setting" },
-    { key = "spot", label = "Next to what you hover" },
+    { key = "spot", label = "Outside the window" },
     { key = "game", label = "Game's tooltip spot" },
     { key = "cursor", label = "Follow the cursor" },
 }
@@ -81,12 +94,13 @@ UI.TOOLTIP_AREA_POSITIONS = {
 UI.TOOLTIP_AREAS = {
     loothistory = { table = "loot" },
     lootmaster = { table = "lootmaster" },
+    timeline = { table = "timeline" },
 }
 
 local MODE = { spot = true, game = true, cursor = true }
 local TEXT = {
     position = "Tooltip position",
-    whatYouHover = "What you hover",
+    window = "The window",
     auto = "Each on its own side",
 }
 
@@ -124,7 +138,7 @@ function UI.TooltipChosenSpot(area)
     return SPOT[v] and v or UI.TOOLTIP_SPOT_AUTO
 end
 
--- Saving a dropdown choice, and a picked spot (which also turns spots on, "Next to what you hover").
+-- Saving a dropdown choice, and a picked spot (which also turns spots on, "Outside the window").
 function UI.SetTooltipChoice(area, choice)
     local t = saved(area)
     if t and (MODE[choice] or (area and choice == "general")) then
@@ -159,17 +173,42 @@ function UI.TooltipSpot(area)
     return UI.TooltipChosenSpot(nil)
 end
 
--- Places tooltip on a spot of owner. On "auto", the anchor and offsets the caller asked for. Nothing is
--- clamped here: every CRT tooltip is GameTooltip, which its SharedTooltipTemplate keeps on the screen
--- (clampedToScreen="true", Blizzard_SharedXML/SharedTooltipTemplates.xml).
+-- Places tooltip outside win, a window's edge, owned by owner (what you hover), on the window place of
+-- spot key (UI.TOOLTIP_SPOTS); level puts the tooltip's top level with owner's instead of the place's dy.
+-- The one placement for a picked spot and the Loot Master item tabs' sides (LM.TOOLTIP_ANCHORS name a
+-- spot here), so the places are written once.
+-- The game's item comparisons (ShoppingTooltip1/2) are not moved here: per Gethe/wow-ui-source live,
+-- TooltipComparisonManager:AnchorShoppingTooltips (Blizzard_SharedXMLGame/Tooltip/TooltipComparisonManager.lua)
+-- puts them beside the item tooltip itself, left or right of it; with ANCHOR_NONE it takes the side of the
+-- tooltip with more room on the screen, so a tooltip left of a window in the left half of the screen can
+-- show its comparison to its right, over the window. That is the game's code and left as it is.
+function UI.TooltipOutside(tooltip, owner, win, key, level)
+    local side = SPOT[key].window
+    tooltip:SetOwner(owner, "ANCHOR_NONE")
+    tooltip:ClearAllPoints()
+    local dy = side.dy
+    if level then
+        local top, winTop = owner:GetTop(), win:GetTop()
+        dy = (top and winTop) and (top - winTop) or 0
+    end
+    tooltip:SetPoint(side.point, win, side.rel, side.dx, dy)
+end
+
+-- Places tooltip on a spot: outside the CRT window owner is in, else on owner itself. On "auto", the
+-- anchor and offsets the caller asked for, next to owner. Nothing is clamped here: every CRT tooltip is
+-- GameTooltip, which its SharedTooltipTemplate keeps on the screen (clampedToScreen="true",
+-- Blizzard_SharedXML/SharedTooltipTemplates.xml).
 local function placeOnSpot(tooltip, owner, key, anchor, x, y)
     local s = SPOT[key]
+    local win = s and UI.WindowOf(owner)
     if not s then
         if x or y then
             tooltip:SetOwner(owner, anchor or "ANCHOR_RIGHT", x or 0, y or 0)
         else
             tooltip:SetOwner(owner, anchor or "ANCHOR_RIGHT")
         end
+    elseif win then
+        UI.TooltipOutside(tooltip, owner, win, key)
     elseif s.anchor then
         tooltip:SetOwner(owner, s.anchor)
     else
@@ -179,8 +218,8 @@ local function placeOnSpot(tooltip, owner, key, anchor, x, y)
     end
 end
 
--- Returns "game" when the game's spot placed it, "cursor" when it follows the cursor, "spot" next to what
--- you hover (a picked spot or auto), and "owner" for a flag that kept the anchor given.
+-- Returns "game" when the game's spot placed it, "cursor" when it follows the cursor, "spot" on a spot (a
+-- picked spot, outside the window, or auto), and "owner" for a flag that kept the anchor given.
 function UI.TooltipOwner(tooltip, owner, anchor, x, y, how)
     local flag = (how == UI.TOOLTIP_KEEP or how == UI.TOOLTIP_GAME) and how or nil
     local mode = flag == UI.TOOLTIP_GAME and "game" or (not flag and UI.TooltipPosition(how)) or nil
@@ -204,7 +243,7 @@ function UI.TooltipOwner(tooltip, owner, anchor, x, y, how)
 end
 
 -- The Tooltip position dropdown and its spot picker under it, for General Settings (area nil) or an
--- area's Settings tab. The picker is greyed unless the dropdown is on Next to what you hover; picking a
+-- area's Settings tab. The picker is greyed unless the dropdown is on Outside the window; picking a
 -- spot turns that on, and clicking the lit spot again goes back to auto (no spot lit, "Each on its own
 -- side"); on a greyed picker, a click on the lit spot picks it. While an area is on Use the general
 -- setting, its picker shows General Settings' spot, the one in use. opts: labelWidth, width (the
@@ -227,10 +266,9 @@ function UI.TooltipPositionSetting(parent, area, opts)
         end,
     })
     group.picker = UI.SpotPicker(parent, {
-        label = TEXT.whatYouHover,
+        label = TEXT.window,
         emptyLabel = TEXT.auto,
         clear = UI.TOOLTIP_SPOT_AUTO,
-        area = area,
         get = function()
             if area and UI.TooltipChoice(area) == "general" then
                 return UI.TooltipChosenSpot(nil)

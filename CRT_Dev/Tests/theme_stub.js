@@ -42,6 +42,8 @@ module.exports = function themeLua(where) {
 -- CRT_TOOLTIP(CRT, UI): the real CRT_Core/UI/Tooltip.lua onto UI (by default CRT.UI); it reads CRT.db when a tooltip opens
 function CRT_TOOLTIP(CRT, UI)
   UI = UI or CRT.UI
+  -- CRT_Core/UI/Panel.lua's window lookup, which Tooltip.lua uses: without Panel.lua nothing is in a CRT window
+  if not UI.WindowOf then UI.WindowOf = function() return nil end end
   assert(load([====[${tooltip}]====], "CRT_Core/UI/Tooltip.lua"))("CowfeeRaidTools", setmetatable({ UI = UI }, { __index = CRT }))
 end
 function CRT_THEME(CRT, UI)

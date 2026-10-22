@@ -306,6 +306,10 @@ local defaults = {
         overlay = 3, -- how many pulls the death overlay covers
         overlayOn = false, -- draw the deaths of recent pulls over the shown one
         hideEmpty = false, -- hide rows that have no casts in the shown pull
+        -- Tooltip position for every Timeline tooltip, docked or popped out: "general" (General Settings'),
+        -- "spot", "game" or "cursor" (UI/Tooltip.lua), and its own spot; personal.
+        tooltipMode = "general",
+        tooltipSpot = "auto",
         -- The pop-out window (Timeline/Page.lua): its size, and its position once it is moved.
         popout = { width = 1200, height = 600 },
         references = {}, -- the player's own reference timelines, { id, text, saved } (saved: time() of the last change, optional; Timeline/Reference.lua)

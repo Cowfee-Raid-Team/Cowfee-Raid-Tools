@@ -151,6 +151,8 @@ UI.HeaderButton = function(p, label, fn, opts) local b = realHeaderButton(p, lab
 local f = UI:Create()
 UI.HeaderButton = realHeaderButton
 print("main window layer " .. tostring(f.strata) .. ", art textures " .. #f.art)
+-- the main window is a CRT window for the one window lookup (a picked tooltip spot opens outside it)
+if not (UI.WindowOf and UI.WindowOf(f) == f) then print("FAIL the main window is a CRT window (UI.WindowOf)") end
 local bar = mock("Frame") rawset(bar, "protected", true)
 UI:RegisterLayer("bar", bar)
 UI:SetLayer("panel", "DIALOG")
@@ -268,19 +270,19 @@ do
   if not d then print("FAIL General Settings has a Tooltip position dropdown") else
     local o = type(d.options) == "function" and d.options() or d.options
     local labels = {} for _, x in ipairs(o) do labels[#labels + 1] = x.key .. "=" .. x.label end
-    if table.concat(labels, ",") ~= "spot=Next to what you hover,game=Game's tooltip spot,cursor=Follow the cursor" then print("FAIL Tooltip position choices: " .. table.concat(labels, ",")) end
+    if table.concat(labels, ",") ~= "spot=Outside the window,game=Game's tooltip spot,cursor=Follow the cursor" then print("FAIL Tooltip position choices: " .. table.concat(labels, ",")) end
     if CRT.defaults.ui.tooltipMode ~= "spot" or CRT.defaults.ui.tooltipSpot ~= "auto" then print("FAIL Core.lua's defaults: ui.tooltipMode spot, ui.tooltipSpot auto: " .. tostring(CRT.defaults.ui.tooltipMode) .. " " .. tostring(CRT.defaults.ui.tooltipSpot)) end
     if CRT.defaults.ui.tooltipAnchor ~= nil then print("FAIL the old ui.tooltipAnchor has no default any more") end
-    if d.get() ~= "spot" then print("FAIL Tooltip position starts on Next to what you hover: " .. tostring(d.get())) end
+    if d.get() ~= "spot" then print("FAIL Tooltip position starts on Outside the window: " .. tostring(d.get())) end
     d.set("game")
     if CRT.db.ui.tooltipMode ~= "game" or d.get() ~= "game" or UI.TooltipPosition() ~= "game" then print("FAIL picking Game's tooltip spot saves it") end
     d.set("cursor")
     if CRT.db.ui.tooltipMode ~= "cursor" or UI.TooltipPosition() ~= "cursor" then print("FAIL picking Follow the cursor saves it") end
     d.set("spot")
-    if CRT.db.ui.tooltipMode ~= "spot" or UI.TooltipPosition() ~= "spot" then print("FAIL picking Next to what you hover saves it") end
+    if CRT.db.ui.tooltipMode ~= "spot" or UI.TooltipPosition() ~= "spot" then print("FAIL picking Outside the window saves it") end
     -- the spot picker under it: twelve spots, none lit (auto), a click saves the spot
     local picker
-    for _, fr in ipairs(frames) do if rawget(fr, "spots") and rawget(fr, "opts") and fr.opts.label == "What you hover" then picker = fr end end
+    for _, fr in ipairs(frames) do if rawget(fr, "spots") and rawget(fr, "opts") and fr.opts.label == "The window" then picker = fr end end
     if not picker then print("FAIL a spot picker under Tooltip position") else
       local n = 0 for _ in pairs(picker.spots) do n = n + 1 end
       if n ~= 12 then print("FAIL the picker has twelve spots: " .. n) end
@@ -289,7 +291,7 @@ do
       if picker.opts.get() ~= "auto" then print("FAIL the picker starts on auto, no spot lit") end
       d.set("game")
       picker.spots.bottom.OnClick(picker.spots.bottom)
-      if CRT.db.ui.tooltipSpot ~= "bottom" or CRT.db.ui.tooltipMode ~= "spot" then print("FAIL clicking a spot saves it and picks Next to what you hover") end
+      if CRT.db.ui.tooltipSpot ~= "bottom" or CRT.db.ui.tooltipMode ~= "spot" then print("FAIL clicking a spot saves it and picks Outside the window") end
       -- it stays in the middle column and inside the tab: the row's place, 32 high, then the picker
       local row = p[2]
       local rp = row and row.pts[1] or {}
