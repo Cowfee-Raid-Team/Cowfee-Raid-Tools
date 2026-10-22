@@ -693,7 +693,7 @@ local function shown(v)
     elseif v == false then
         return "off"
     end
-    return tostring(v)
+    return (tostring(v):gsub("|", "||")) -- a | shows as itself, never as a colour or link code
 end
 
 -- What an import would change on the active profile, in path order: { path, text } with text

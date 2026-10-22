@@ -40,9 +40,21 @@ local function mock(kind)
     if k == "GetCenter" then return function() return 500, 400 end end
     if k == "SetColorTexture" then return function(self, r, g, b, a) rawset(self, "color", { r, g, b, a }) end end
     if k == "SetEnabled" then return function(self, on) rawset(self, "enabled", on and true or false) end end
+    if k == "GetText" then return function(self) return rawget(self, "text") end end
+    if k == "SetChecked" then return function(self, on) rawset(self, "checked", on and true or false) end end
+    if k == "GetChecked" then return function(self) return rawget(self, "checked") or false end end
     return function() end end })
 end
-function CreateFrame(kind, name, parent, template) local f = mock(kind) if template == "BasicFrameTemplateWithInset" then f:CreateTexture() f:CreateTexture() end return f end
+function CreateFrame(kind, name, parent, template) local f = mock(kind) rawset(f, "parent", parent) rawset(f, "frameName", name) if template == "BasicFrameTemplateWithInset" then f:CreateTexture() f:CreateTexture() end return f end
+-- The game's encoding API, standing in: the serialized table is kept and handed back.
+local encoded = {}
+C_EncodingUtil = { SerializeCBOR = function(t) encoded[#encoded + 1] = t return "cbor" .. #encoded end, CompressString = function(s) return s end, EncodeBase64 = function(s) return s end,
+  DecodeBase64 = function(s) return s end, DecompressString = function(s) return s end,
+  DeserializeCBOR = function(s) local t = encoded[tonumber(s:match("^cbor(%d+)$") or "")] if not t then error("bad") end return t end }
+reloads = 0
+function ReloadUI() reloads = reloads + 1 end
+function UnitName() return "Solex" end
+date, time = os.date, os.time
 UIParent = mock("UIParent") UISpecialFrames = {}
 function tinsert(t, v) table.insert(t, v) end
 format = string.format
@@ -241,6 +253,57 @@ do
   if table.concat(tabLabels, ",") ~= "Appearance,Profiles" then print("FAIL General Settings tabs are Appearance, Profiles (got " .. table.concat(tabLabels, ",") .. ")") end
   if findText("Test calls", "FontString") or findText("Create macros", "Button") then print("FAIL General Settings has no macro rows any more") end
   print("macros tab gone")
+
+  -- Profiles: Export settings only, the import preview, Keep my window positions, Undo last import.
+  local function button(want, parent)
+    for _, fr in ipairs(frames) do if fr.kind == "Button" and textOf(fr) == want and (not parent or rawget(fr, "parent") == parent) then return fr end end
+  end
+  UI.SkinScrollBar = UI.SkinScrollBar or function() end -- CRT_Core/UI/ScrollBar.lua isn't loaded here
+  local exportShare, undo = button("Export settings only"), button("Undo last import")
+  if not (exportShare and undo) then print("FAIL the Profiles tab has Export settings only and Undo last import buttons") else
+    UI.pages.settings.frame.OnShow()
+    if rawget(undo, "enabled") ~= false then print("FAIL Undo last import is greyed with no backup") end
+    exportShare.OnClick(exportShare)
+    local d
+    for _, fr in ipairs(frames) do if rawget(fr, "frameName") == "CowfeeRaidToolsProfileText" then d = fr end end
+    local text = d and d.edit:GetText() or ""
+    if not (d and d.shown and text:find("^# Cowfee Raid Tools settings\\n# From: Solex, ") and text:find("\\nCRTS1:cbor%d+$")) then print("FAIL Export settings only shows the header and the string: " .. text) end
+    if not (d and button("Select all", d) and findText("Ctrl+C to copy. Settings and window positions only.", "FontString")) then print("FAIL the export has Select all and the copy hint") end
+    if d then
+      d.edit:SetText("typed over") d.edit.OnTextChanged(d.edit, true)
+      if d.edit:GetText() ~= text then print("FAIL the export box is read-only") end
+    end
+    -- The raider's own setting differs, and the import shows it.
+    CRT.db.debuffs.size = 60
+    local imp = button("Import", UI.pages.settings.frame) or button("Import")
+    for _, fr in ipairs(frames) do if fr.kind == "Button" and textOf(fr) == "Import" and rawget(fr, "parent") ~= d then imp = fr end end
+    imp.OnClick(imp)
+    local ok = button("Import", d)
+    d.edit:SetText(text) d.edit.OnTextChanged(d.edit, true)
+    local preview = d.preview and d.preview.text or ""
+    if not (preview:find("From Solex, 1 setting differs from yours:", 1, true) and preview:find("Debuffs > size: 60 -> 44", 1, true)) then print("FAIL the import preview lists what differs: " .. preview) end
+    if not (d.keep and d.keep.shown and rawget(ok, "enabled") ~= false) then print("FAIL a settings string shows Keep my window positions and can be imported") end
+    popup = nil
+    ok.OnClick(ok)
+    if not (popup and string.format(popup.text, popup.text_arg1):find("Solex", 1, true)) then print("FAIL Import asks first") end
+    if CRT.db.debuffs.size ~= 60 or reloads ~= 0 then print("FAIL nothing changes before the confirm") end
+    popup.callback()
+    if CRT.db.debuffs.size ~= 44 or reloads ~= 1 then print("FAIL the confirmed import applies and reloads") end
+    UI.pages.settings.frame.OnShow()
+    if rawget(undo, "enabled") ~= true then print("FAIL Undo last import is enabled with a backup") end
+    undo.OnClick(undo)
+    popup.callback()
+    if CRT.db.debuffs.size ~= 60 or reloads ~= 2 then print("FAIL Undo puts the old setting back and reloads") end
+    -- A damaged string: red text, no import.
+    d.edit:SetText("CRTS1:cbor999") d.edit.OnTextChanged(d.edit, true)
+    preview = d.preview.text or ""
+    if not (preview:find("|cff" .. UI.Hex("bad"), 1, true) and preview:find("damaged", 1, true) and rawget(ok, "enabled") == false) then print("FAIL a damaged string shows red text and can't be imported: " .. preview) end
+    -- A full profile string: a short summary and the name box.
+    d.edit:SetText(CRT.Profiles:Export()) d.edit.OnTextChanged(d.edit, true)
+    if not ((d.preview.text or ""):find("whole profile", 1, true) and d.name.shown and not d.keep.shown) then print("FAIL a full string shows its summary and the name box: " .. tostring(d.preview.text)) end
+    CRT.db.debuffs.size = 44
+    print("profiles tab: export settings only, preview, import and undo checked")
+  end
 end
 
 -- Modern look.

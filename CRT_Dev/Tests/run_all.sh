@@ -14,7 +14,7 @@ for t in "store CRT_Modules/Timeline/Data.lua" "record CRT_Modules/Timeline/Data
 done
 g "profiles" && { node run_profiles.js "$W/CRT_Core/Profiles.lua" 2>&1 | tail -30; echo "exit ${PIPESTATUS[0]}"; }
 g "profiles share" && { node run_profiles_share.js "$W" 2>&1 | tail -40; echo "exit ${PIPESTATUS[0]}"; }
-g "settings" &&{ node run_settings.js "$W" 2>&1 | tail -15; echo "exit ${PIPESTATUS[0]}"; }
+g "settings" && { node run_settings.js "$W" 2>&1 | tail -15; echo "exit ${PIPESTATUS[0]}"; }
 WA="$W"
 # The grep lints below leave out the test fixtures: files under CRT_Dev/Tests, not any folder named Tests
 NOT_TESTS='[/\\]CRT_Dev[/\\]Tests[/\\]'

@@ -7,7 +7,8 @@ local ADDON, CRT = ...
 --               size of every text the addon draws with its shared fonts, CRT:ApplyFonts in Core.lua).
 --               Middle: Sound, Reports and the Minimap button. Right: Layers (which frame strata each
 --               group of windows is drawn in, UI:SetLayer in UI/Panel.lua)
---   Profiles    Profiles.lua
+--   Profiles    Profiles.lua: switch, create, copy, delete and reset profiles; Export (the whole profile),
+--               Export settings only (for raiders), Import (either kind, with a preview) and Undo last import
 -- Named Addon Settings before 0.16.0. Its key is still "settings".
 
 local UI = CRT.UI
@@ -20,6 +21,37 @@ local LEFT_X, MIDDLE_X, RIGHT_X = 10, 10 + COL_W, 10 + 2 * COL_W
 local LABEL_W = 120
 local CONTROL_W = 160
 local CHECK_TEXT_W = COL_W - 40 -- a checkbox's text wraps at this width, inside its column
+
+-- The profile text window: its size, how many differences the import preview lists, and the height
+-- kept under the text box for the preview and the row under it.
+local TEXT_W, TEXT_H = 560, 440
+local PREVIEW_LINES = 6
+local PREVIEW_H = 118 -- room for its first line, PREVIEW_LINES differences, "and N more" and the skipped count
+local IMPORT_BOTTOM = 76 + PREVIEW_H -- the text box's bottom edge when importing
+local EXPORT_BOTTOM = 66 -- and when exporting, over the copy hint
+
+local TEXT = {
+    exportSettings = "Export settings only",
+    undo = "Undo last import",
+    selectAll = "Select all",
+    keep = "Keep my window positions",
+    exportTitle = "Export profile: %s",
+    exportSettingsTitle = "Export settings only: %s",
+    importTitle = "Import (paste the text below)",
+    copyFull = "Ctrl+C to copy. The whole profile: settings, layouts, notes and history.",
+    copySettings = "Ctrl+C to copy. Settings and window positions only.",
+    full = "A whole profile with %d parts: settings, layouts, notes and history. Import saves it as a new profile.",
+    differOne = "From %s, 1 setting differs from yours:",
+    differ = "From %s, %d settings differ from yours:",
+    more = "and %d more",
+    same = "From %s: your settings already match.",
+    skipped = "%d unknown settings are skipped.",
+    confirmImport = "Import the settings from %s onto this profile?\n\nYour current settings are saved first, so Undo last import can put them back. Your interface reloads.",
+    acceptImport = "Import and reload",
+    confirmUndo = "Put back the settings you had before importing from %s?\n\nYour interface reloads.",
+    acceptUndo = "Undo and reload",
+    help = "A profile holds everything the addon saves: settings, window positions, layouts, notes, consumables lists and history. Each character remembers its own; new characters start on the one under New characters. Switching, copying or resetting a profile reloads your interface.\n\nExport gives the whole profile as text, for your own characters: Import saves it as a new profile.\n\nExport settings only gives just settings and window positions, for raiders: Import shows what differs and applies it to this profile, after saving your settings for Undo last import.",
+}
 
 local page
 local controls = {}
@@ -60,13 +92,18 @@ local function add(row, x, y)
     return row
 end
 
+-- Without a width, the button is as wide as its label (UI.PanelButtonWidth).
 local function button(pf, text, width)
     local b = CreateFrame("Button", nil, pf, "UIPanelButtonTemplate")
     b:SetNormalFontObject(CRTFontButtonSmall)
     b:SetHighlightFontObject(CRTFontButtonSmallHighlight)
     b:SetDisabledFontObject(CRTFontButtonSmallDisable)
-    b:SetSize(width, 20)
     b:SetText(text)
+    if not width then
+        local fs = b:GetFontString()
+        width = UI.PanelButtonWidth(fs and fs:GetStringWidth() or 0)
+    end
+    b:SetSize(width, 20)
     return b
 end
 
@@ -111,9 +148,10 @@ local function fontLabel(key)
     return key == "default" and "Default" or key
 end
 
--- Asks in the game's own confirmation box, then runs accept.
+-- Asks in the game's own confirmation box, then runs accept. The box is lifted over the profile text
+-- window, which may be on a high layer.
 local function confirm(text, arg, acceptText, accept)
-    StaticPopup_ShowCustomGenericConfirmation({
+    local ret = StaticPopup_ShowCustomGenericConfirmation({
         text = text,
         text_arg1 = arg,
         acceptText = acceptText,
@@ -121,6 +159,7 @@ local function confirm(text, arg, acceptText, accept)
         showAlert = true,
         callback = accept,
     })
+    UI.LiftOver(UI.ShownPopup(ret, "GENERIC_CONFIRMATION"))
 end
 
 -- The font changes every text in the addon, so it asks first.
@@ -134,9 +173,155 @@ local function confirmFont(key)
     end)
 end
 
--- Profile export and import: one window with a text box, and a name box when importing. ----------
+-- Profile export and import: one window with a text box. Exporting, the box is read-only, with Select
+-- all and a copy hint. Importing, what was pasted is read as it changes (Profiles:Read, which changes
+-- nothing) and a preview shows under the box: red text for a bad string, a summary and a name box for a
+-- whole profile, or what differs and Keep my window positions for a settings string. ---------------
 
 local textDialog
+
+local function previewLines(info, keep)
+    local diff = Profiles:Diff(info, keep)
+    local lines = {}
+    if #diff == 0 then
+        lines[1] = TEXT.same:format(info.from)
+    else
+        lines[1] = #diff == 1 and TEXT.differOne:format(info.from) or TEXT.differ:format(info.from, #diff)
+        for i = 1, math.min(#diff, PREVIEW_LINES) do
+            lines[#lines + 1] = "  " .. diff[i].text
+        end
+        if #diff > PREVIEW_LINES then
+            lines[#lines + 1] = TEXT.more:format(#diff - PREVIEW_LINES)
+        end
+    end
+    if info.unknown > 0 then
+        lines[#lines + 1] = TEXT.skipped:format(info.unknown)
+    end
+    return table.concat(lines, "\n"), #diff > 0
+end
+
+-- Reads the pasted text and shows what an import would do.
+local function updatePreview(d)
+    local text = d.edit:GetText() or ""
+    local info, err
+    if strtrim(text) ~= "" then
+        info, err = Profiles:Read(text)
+    end
+    d.state.info = info
+    local preview, canImport = "", false
+    if err then
+        preview = UI.BadText(err)
+    elseif info and info.kind == "full" then
+        preview, canImport = TEXT.full:format(info.parts), true
+    elseif info then
+        preview, canImport = previewLines(info, d.keep:GetChecked())
+    end
+    d.preview:SetText(preview)
+    local full = info and info.kind == "full" or false
+    d.nameLabel:SetShown(full)
+    d.name:SetShown(full)
+    d.keep:SetShown(info and info.kind == "settings" or false)
+    d.ok:SetEnabled(canImport)
+end
+
+local function importClicked(d)
+    local info = d.state.info
+    if not info then
+        return
+    end
+    if info.kind == "full" then
+        local ok, message = Profiles:Import(d.edit:GetText(), d.name:GetText())
+        if ok then
+            CRT:Print("Imported the profile " .. strtrim(d.name:GetText()) .. ". Pick it under Use profile to switch to it.")
+            d:Hide()
+            refresh()
+        else
+            CRT:Print(message)
+        end
+        return
+    end
+    local keep = d.keep:GetChecked() and true or false
+    confirm(TEXT.confirmImport, info.from, TEXT.acceptImport, function()
+        Profiles:ApplySettings(info, keep)
+    end)
+end
+
+local function buildTextBox(d)
+    d.scroll = CreateFrame("ScrollFrame", "CowfeeRaidToolsProfileTextScroll", d, "UIPanelScrollFrameTemplate")
+    UI:SkinScrollBar(d.scroll.ScrollBar)
+    d.scroll:SetPoint("TOPLEFT", 14, -34)
+    d.edit = CreateFrame("EditBox", nil, d.scroll)
+    d.edit:SetMultiLine(true)
+    d.edit:SetAutoFocus(false)
+    d.edit:SetFontObject(CRTFontEdit)
+    d.edit:SetWidth(TEXT_W - 60)
+    d.edit:SetScript("OnEscapePressed", function()
+        d:Hide()
+    end)
+    -- Exporting, typing is undone, so the string can only be copied.
+    d.edit:SetScript("OnTextChanged", function(self, userInput)
+        if d.state.mode == "import" then
+            updatePreview(d)
+        elseif userInput and d.state.exportText then
+            self:SetText(d.state.exportText)
+            self:HighlightText()
+        end
+    end)
+    d.scroll:SetScrollChild(d.edit)
+
+    d.hint = d:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    d.hint:SetPoint("BOTTOMLEFT", 16, 44)
+    d.hint:SetPoint("BOTTOMRIGHT", -16, 44)
+    d.hint:SetJustifyH("LEFT")
+
+    d.preview = d:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    d.preview:SetPoint("TOPLEFT", d, "BOTTOMLEFT", 16, IMPORT_BOTTOM - 4)
+    d.preview:SetSize(TEXT_W - 32, PREVIEW_H)
+    d.preview:SetJustifyH("LEFT")
+    d.preview:SetJustifyV("TOP")
+end
+
+-- The row over the buttons (the new profile's name for a whole profile, or Keep my window positions),
+-- then the buttons.
+local function buildTextControls(d)
+    d.nameLabel = d:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    d.nameLabel:SetPoint("BOTTOMLEFT", 16, 48)
+    d.nameLabel:SetText("New profile name")
+    d.name = CreateFrame("EditBox", nil, d, "InputBoxTemplate")
+    d.name:SetSize(200, 20)
+    d.name:SetPoint("LEFT", d.nameLabel, "RIGHT", 12, 0)
+    d.name:SetAutoFocus(false)
+    d.name:SetFontObject(CRTFontEdit)
+    d.keep = CreateFrame("CheckButton", nil, d, "UICheckButtonTemplate")
+    d.keep:SetSize(24, 24)
+    d.keep:SetPoint("BOTTOMLEFT", 12, 42)
+    local keepLabel = d.keep:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    keepLabel:SetPoint("LEFT", d.keep, "RIGHT", 2, 0)
+    keepLabel:SetText(TEXT.keep)
+    d.keep:SetScript("OnClick", function()
+        updatePreview(d)
+    end)
+
+    d.ok = button(d, "Import", 110)
+    d.ok:SetHeight(24)
+    d.ok:SetPoint("BOTTOM", -60, 12)
+    d.ok:SetScript("OnClick", function()
+        importClicked(d)
+    end)
+    d.selectAll = button(d, TEXT.selectAll, 110)
+    d.selectAll:SetHeight(24)
+    d.selectAll:SetPoint("BOTTOM", -60, 12)
+    d.selectAll:SetScript("OnClick", function()
+        d.edit:SetFocus()
+        d.edit:HighlightText()
+    end)
+    d.close = button(d, CLOSE, 110)
+    d.close:SetHeight(24)
+    d.close:SetPoint("BOTTOM", 60, 12)
+    d.close:SetScript("OnClick", function()
+        d:Hide()
+    end)
+end
 
 local function getTextDialog()
     if textDialog then
@@ -144,7 +329,7 @@ local function getTextDialog()
     end
     local d = CreateFrame("Frame", "CowfeeRaidToolsProfileText", UIParent, "BasicFrameTemplateWithInset")
     UI:StyleWindow(d)
-    d:SetSize(520, 340)
+    d:SetSize(TEXT_W, TEXT_H)
     d:SetPoint("CENTER")
     UI:RegisterLayer("popups", d)
     d:SetClampedToScreen(true)
@@ -154,50 +339,42 @@ local function getTextDialog()
     d:SetScript("OnDragStart", function(self) self:StartMoving(true) end)
     d:SetScript("OnDragStop", d.StopMovingOrSizing)
     tinsert(UISpecialFrames, "CowfeeRaidToolsProfileText")
-
-    d.nameLabel = d:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    d.nameLabel:SetPoint("TOPLEFT", 16, -36)
-    d.nameLabel:SetText("New profile name")
-    d.name = CreateFrame("EditBox", nil, d, "InputBoxTemplate")
-    d.name:SetSize(200, 20)
-    d.name:SetPoint("LEFT", d.nameLabel, "RIGHT", 12, 0)
-    d.name:SetAutoFocus(false)
-    d.name:SetFontObject(CRTFontEdit)
-
-    d.scroll = CreateFrame("ScrollFrame", "CowfeeRaidToolsProfileTextScroll", d, "UIPanelScrollFrameTemplate")
-    UI:SkinScrollBar(d.scroll.ScrollBar)
-    d.scroll:SetPoint("BOTTOMRIGHT", -34, 46)
-    d.edit = CreateFrame("EditBox", nil, d.scroll)
-    d.edit:SetMultiLine(true)
-    d.edit:SetAutoFocus(false)
-    d.edit:SetFontObject(CRTFontEdit)
-    d.edit:SetWidth(460)
-    d.edit:SetScript("OnEscapePressed", function()
-        d:Hide()
-    end)
-    d.scroll:SetScrollChild(d.edit)
-
-    d.ok = button(d, "Import", 110)
-    d.ok:SetHeight(24)
-    d.ok:SetPoint("BOTTOM", -60, 12)
-    d.ok:SetScript("OnClick", function()
-        local ok, message = Profiles:Import(d.edit:GetText(), d.name:GetText())
-        if ok then
-            CRT:Print("Imported the profile " .. strtrim(d.name:GetText()) .. ". Pick it under Use profile to switch to it.")
-            d:Hide()
-            refresh()
-        else
-            CRT:Print(message)
-        end
-    end)
-    d.close = button(d, CLOSE, 110)
-    d.close:SetHeight(24)
-    d.close:SetScript("OnClick", function()
-        d:Hide()
-    end)
+    -- mode ("export" or "import"), exportText (what the read-only box holds), info (what Profiles:Read gave)
+    d.state = {}
+    buildTextBox(d)
+    buildTextControls(d)
     d:Hide()
     textDialog = d
     return d
+end
+
+-- Puts the window in "export" or "import" mode: which parts show, and where the text box ends.
+local function setMode(d, mode)
+    d.state.mode = mode
+    local import = mode == "import"
+    d.scroll:SetPoint("BOTTOMRIGHT", -34, import and IMPORT_BOTTOM or EXPORT_BOTTOM)
+    d.hint:SetShown(not import)
+    d.preview:SetShown(import)
+    d.preview:SetText("")
+    d.nameLabel:Hide()
+    d.name:Hide()
+    d.keep:Hide()
+    d.keep:SetChecked(false)
+    d.ok:SetShown(import)
+    d.selectAll:SetShown(not import)
+    d.state.info = nil
+end
+
+local function showExportText(title, text, hint)
+    local d = getTextDialog()
+    setMode(d, "export")
+    UI.SetFrameTitle(d, title)
+    d.hint:SetText(hint)
+    d.state.exportText = text
+    d.edit:SetText(text)
+    d:Show()
+    d.edit:SetFocus()
+    d.edit:HighlightText()
 end
 
 local function showExport()
@@ -206,31 +383,28 @@ local function showExport()
         CRT:Print(err)
         return
     end
-    local d = getTextDialog()
-    UI.SetFrameTitle(d, "Export profile: " .. Profiles:Current() .. " (copy the text below)")
-    d.nameLabel:Hide()
-    d.name:Hide()
-    d.ok:Hide()
-    d.close:SetPoint("BOTTOM", 0, 12)
-    d.scroll:SetPoint("TOPLEFT", 14, -34)
-    d.edit:SetText(text)
-    d:Show()
-    d.edit:SetFocus()
-    d.edit:HighlightText()
+    showExportText(TEXT.exportTitle:format(Profiles:Current()), text, TEXT.copyFull)
+end
+
+local function showExportSettings()
+    local text, err = Profiles:ExportSettings()
+    if not text then
+        CRT:Print(err)
+        return
+    end
+    showExportText(TEXT.exportSettingsTitle:format(Profiles:Current()), text, TEXT.copySettings)
 end
 
 local function showImport()
     local d = getTextDialog()
-    UI.SetFrameTitle(d, "Import a profile (paste it below)")
-    d.nameLabel:Show()
-    d.name:Show()
+    d.state.exportText = nil
+    setMode(d, "import")
+    UI.SetFrameTitle(d, TEXT.importTitle)
     d.name:SetText("")
-    d.ok:Show()
-    d.close:SetPoint("BOTTOM", 60, 12)
-    d.scroll:SetPoint("TOPLEFT", 14, -64)
     d.edit:SetText("")
+    d.ok:SetEnabled(false)
     d:Show()
-    d.name:SetFocus()
+    d.edit:SetFocus()
 end
 
 -- The columns. -----------------------------------------------------------------------------------
@@ -391,7 +565,7 @@ end
 
 local function buildProfiles(pf)
     local x, top = LEFT_X, -44
-    heading(pf, x, top, "Profiles", "A profile holds everything the addon saves: settings, window positions, layouts, notes, consumables lists and history. Each character remembers its own; new characters start on the one under New characters. Switching, copying or resetting a profile reloads your interface. Export gives it as text; Import saves pasted text as a new profile.")
+    heading(pf, x, top, "Profiles", TEXT.help)
 
     local current = pf:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     current:SetPoint("TOPLEFT", x, top - 22)
@@ -512,9 +686,25 @@ local function buildProfiles(pf)
     local export = button(pf, "Export", 100)
     export:SetPoint("LEFT", reset, "RIGHT", 6, 0)
     export:SetScript("OnClick", showExport)
+    local exportSettings = button(pf, TEXT.exportSettings)
+    exportSettings:SetPoint("LEFT", export, "RIGHT", 6, 0)
+    exportSettings:SetScript("OnClick", showExportSettings)
     local import = button(pf, "Import", 100)
-    import:SetPoint("LEFT", export, "RIGHT", 6, 0)
+    import:SetPoint("LEFT", exportSettings, "RIGHT", 6, 0)
     import:SetScript("OnClick", showImport)
+
+    -- greyed while this profile has no backup from a settings import
+    local undo = button(pf, TEXT.undo)
+    undo:SetPoint("TOPLEFT", reset, "BOTTOMLEFT", 0, -8)
+    undo:SetScript("OnClick", function()
+        confirm(TEXT.confirmUndo, Profiles:BackupFrom(), TEXT.acceptUndo, function()
+            Profiles:UndoImport()
+        end)
+    end)
+    undo.refresh = function()
+        undo:SetEnabled(Profiles:HasBackup())
+    end
+    controls[#controls + 1] = undo
 end
 
 -- The marker macros, which were on a Macros tab here, are on Raid Notes > Marker macros (Markers/MacrosTab.lua).
