@@ -5,7 +5,7 @@ const fs = require('fs');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
 const harness = `
-local coreSrc, panelSrc, controlsSrc, pageSrc, alertSrc, profilesSrc, themesSrc, macrosSrc = ...
+local coreSrc, panelSrc, controlsSrc, pageSrc, alertSrc, profilesSrc, themesSrc, macrosSrc, windowSrc = ...
 -- FAIL lines are counted, and the count printed last, so a failure shows past the runner's tail
 local failCount, rawPrint = 0, print
 print = function(s, ...) if type(s) == "string" and s:find("^FAIL ") then failCount = failCount + 1 end rawPrint(s, ...) end
@@ -40,9 +40,23 @@ local function mock(kind)
     if k == "GetCenter" then return function() return 500, 400 end end
     if k == "SetColorTexture" then return function(self, r, g, b, a) rawset(self, "color", { r, g, b, a }) end end
     if k == "SetEnabled" then return function(self, on) rawset(self, "enabled", on and true or false) end end
+    if k == "GetText" then return function(self) return rawget(self, "text") end end
+    if k == "GetFrameLevel" then return function() return 1 end end
+    if k == "SetChecked" then return function(self, on) rawset(self, "checked", on and true or false) end end
+    if k == "GetChecked" then return function(self) return rawget(self, "checked") or false end end
     return function() end end })
 end
-function CreateFrame(kind, name, parent, template) local f = mock(kind) if template == "BasicFrameTemplateWithInset" then f:CreateTexture() f:CreateTexture() end return f end
+function CreateFrame(kind, name, parent, template) local f = mock(kind) rawset(f, "parent", parent) rawset(f, "frameName", name) if template == "BasicFrameTemplateWithInset" then f:CreateTexture() f:CreateTexture() if name == "CowfeeRaidToolsProfileText" then rawset(f, "CloseButton", mock("Button")) end end return f end
+-- The game's encoding API, standing in: the serialized table is kept and handed back.
+local encoded = {}
+C_EncodingUtil = { SerializeCBOR = function(t) encoded[#encoded + 1] = t return "cbor" .. #encoded end, CompressString = function(s) return s end, EncodeBase64 = function(s) return s end,
+  DecodeBase64 = function(s) return s end, DecompressString = function(s) return s end,
+  DeserializeCBOR = function(s) local t = encoded[tonumber(s:match("^cbor(%d+)$") or "")] if not t then error("bad") end return t end }
+reloads = 0
+function ReloadUI() reloads = reloads + 1 end
+function UnitName() return "Solex" end
+CreateColor = function(r, g, b, a) return { r = r, g = g, b = b, a = a } end
+date, time = os.date, os.time
 UIParent = mock("UIParent") UISpecialFrames = {}
 function tinsert(t, v) table.insert(t, v) end
 format = string.format
@@ -108,6 +122,7 @@ local UI = CRT.UI
 MinimalSliderWithSteppersMixin = { Label = { Right = 2 }, Event = {} }
 function CreateMinimalSliderFormatter(_, fn) return fn end
 assert(load(controlsSrc, "Controls.lua"))("CowfeeRaidTools", CRT)
+assert(load(windowSrc, "CRT_Core/UI/Window.lua"))("CowfeeRaidTools", CRT)
 CRT.Notes = { Alert = function() return CRT.db.notes.alert end, SpellInfo = function() return { icon = 1, name = "Avenging Wrath" } end }
 CRT.NoteEngine = { running = false }
 -- CRT_Modules/Notes/Alert.lua's preview reads CRT.Alerts.running (set by CRT_Modules/Alerts/Engine.lua in the game)
@@ -241,6 +256,68 @@ do
   if table.concat(tabLabels, ",") ~= "Appearance,Profiles" then print("FAIL General Settings tabs are Appearance, Profiles (got " .. table.concat(tabLabels, ",") .. ")") end
   if findText("Test calls", "FontString") or findText("Create macros", "Button") then print("FAIL General Settings has no macro rows any more") end
   print("macros tab gone")
+
+  -- Profiles: Export settings only, the import preview, Keep my window positions, Undo last import.
+  local function button(want, parent)
+    for _, fr in ipairs(frames) do if fr.kind == "Button" and textOf(fr) == want and (not parent or rawget(fr, "parent") == parent) then return fr end end
+  end
+  UI.SkinScrollBar = UI.SkinScrollBar or function() end -- CRT_Core/UI/ScrollBar.lua isn't loaded here
+  local exportShare, undo = button("Export settings only"), button("Undo last import")
+  if not (exportShare and undo) then print("FAIL the Profiles tab has Export settings only and Undo last import buttons") else
+    UI.pages.settings.frame.OnShow()
+    if rawget(undo, "enabled") ~= false then print("FAIL Undo last import is greyed with no backup") end
+    exportShare.OnClick(exportShare)
+    local d
+    for _, fr in ipairs(frames) do if rawget(fr, "frameName") == "CowfeeRaidToolsProfileText" then d = fr end end
+    local text = d and d.edit:GetText() or ""
+    if not (d and d.shown and text:find("^# Cowfee Raid Tools settings\\n# From: Solex, ") and text:find("\\nCRTS1:cbor%d+$")) then print("FAIL Export settings only shows the header and the string: " .. text) end
+    if not (d and button("Select all", d) and findText("Ctrl+C to copy. Settings and window positions only.", "FontString")) then print("FAIL the export has Select all and the copy hint") end
+    if d and not (d.strip and rawget(d, "frameName") == "CowfeeRaidToolsProfileText") then print("FAIL the profile window is made by UI.Window") end
+    if d then
+      d.edit:SetText("typed over") d.edit.OnTextChanged(d.edit, true)
+      if d.edit:GetText() ~= text then print("FAIL the export box is read-only") end
+    end
+    -- The raider's own setting differs, and the import shows it.
+    CRT.db.debuffs.size = 60
+    local imp = button("Import", UI.pages.settings.frame) or button("Import")
+    for _, fr in ipairs(frames) do if fr.kind == "Button" and textOf(fr) == "Import" and rawget(fr, "parent") ~= d then imp = fr end end
+    imp.OnClick(imp)
+    local ok = button("Import", d)
+    d.edit:SetText(text) d.edit.OnTextChanged(d.edit, true)
+    local preview = d.preview and d.preview.text or ""
+    if not (preview:find("From Solex, 1 setting differs from yours:", 1, true) and preview:find("Debuffs > size: 60 -> 44", 1, true)) then print("FAIL the import preview lists what differs: " .. preview) end
+    if not (d.keep and d.keep.shown and rawget(ok, "enabled") ~= false) then print("FAIL a settings string shows Keep my window positions and can be imported") end
+    if not (d.keep.refresh and d.keep.label and d.keep.label.shown) then print("FAIL Keep my window positions is the page's checkbox, its label shown with it") end
+    d.keep:SetChecked(true) d.keep.OnClick(d.keep)
+    if d.state.keep ~= true then print("FAIL ticking Keep my window positions is kept for the import") end
+    d.keep:SetChecked(false) d.keep.OnClick(d.keep)
+    popup = nil
+    ok.OnClick(ok)
+    if not (popup and string.format(popup.text, popup.text_arg1):find("Solex", 1, true)) then print("FAIL Import asks first") end
+    if CRT.db.debuffs.size ~= 60 or reloads ~= 0 then print("FAIL nothing changes before the confirm") end
+    popup.callback()
+    if CRT.db.debuffs.size ~= 44 or reloads ~= 1 then print("FAIL the confirmed import applies and reloads") end
+    UI.pages.settings.frame.OnShow()
+    if rawget(undo, "enabled") ~= true then print("FAIL Undo last import is enabled with a backup") end
+    undo.OnClick(undo)
+    popup.callback()
+    if CRT.db.debuffs.size ~= 60 or reloads ~= 2 then print("FAIL Undo puts the old setting back and reloads") end
+    -- A damaged string: red text, no import.
+    d.edit:SetText("CRTS1:cbor999") d.edit.OnTextChanged(d.edit, true)
+    preview = d.preview.text or ""
+    if not (preview:find("|cff" .. UI.Hex("bad"), 1, true) and preview:find("damaged", 1, true) and rawget(ok, "enabled") == false) then print("FAIL a damaged string shows red text and can't be imported: " .. preview) end
+    -- A full profile string: a short summary and the name box.
+    d.edit:SetText(CRT.Profiles:Export()) d.edit.OnTextChanged(d.edit, true)
+    if not ((d.preview.text or ""):find("whole profile", 1, true) and d.name.shown and not d.keep.shown) then print("FAIL a full string shows its summary and the name box: " .. tostring(d.preview.text)) end
+    if d.keep.shown or d.keep.label.shown then print("FAIL a full string hides Keep my window positions and its label") end
+    -- a saved value with a wrong shape is left out of the export, and the export says so
+    CRT.db.debuffs.maxCount = "four"
+    exportShare.OnClick(exportShare)
+    if not (findText("Ctrl+C to copy. Settings and window positions only. |cff" .. UI.Hex("warn") .. "1 saved setting had a wrong value and is left out.|r", "FontString")) then print("FAIL the export counts the values it left out") end
+    CRT.db.debuffs.maxCount = 4
+    CRT.db.debuffs.size = 44
+    print("profiles tab: export settings only, preview, import and undo checked")
+  end
 end
 
 -- Modern look.
@@ -357,5 +434,5 @@ if failCount > 0 then print(failCount .. " failed") end
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 const d = process.argv[2];
-for (const p of ['CRT_Core/Core.lua', 'CRT_Core/UI/Panel.lua', 'CRT_Core/UI/Controls.lua', 'CRT_Core/UI/SettingsPage.lua', 'CRT_Modules/Notes/Alert.lua', 'CRT_Core/Profiles.lua', 'CRT_Core/Themes.lua', 'CRT_Core/Macros.lua']) lua.lua_pushstring(L, to_luastring(fs.readFileSync(d + '/' + p, 'utf8')));
-if (lua.lua_pcall(L, 8, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
+for (const p of ['CRT_Core/Core.lua', 'CRT_Core/UI/Panel.lua', 'CRT_Core/UI/Controls.lua', 'CRT_Core/UI/SettingsPage.lua', 'CRT_Modules/Notes/Alert.lua', 'CRT_Core/Profiles.lua', 'CRT_Core/Themes.lua', 'CRT_Core/Macros.lua', 'CRT_Core/UI/Window.lua']) lua.lua_pushstring(L, to_luastring(fs.readFileSync(d + '/' + p, 'utf8')));
+if (lua.lua_pcall(L, 9, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
