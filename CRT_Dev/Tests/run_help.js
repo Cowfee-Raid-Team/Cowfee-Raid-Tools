@@ -421,10 +421,10 @@ if (process.argv[3] === 'lint') {
   process.exit(0);
 }
 
-// The areas reach their tooltips: every tooltip on the Loot History page passes "loothistory" and every Loot
-// Master tooltip "lootmaster" to UI.TooltipOwner (or to Gear.ShowTooltip, which passes it on). Only the item
-// tabs' own placements (a side of the window, the game's spot) use a flag; the Encounter Journal button keeps
-// UI.TOOLTIP_KEEP.
+// The areas reach their tooltips: every tooltip on the Loot History page passes "loothistory", every Loot
+// Master tooltip "lootmaster" and every Timeline view tooltip "timeline" to UI.TooltipOwner (or to
+// Gear.ShowTooltip, which passes it on). Only the item tabs' own placements (the game's spot) use a flag; the
+// Encounter Journal button keeps UI.TOOLTIP_KEEP.
 {
   const bad = [];
   const scan = (rel, area, flagsOk) => {
@@ -443,9 +443,11 @@ if (process.argv[3] === 'lint') {
   let lmCalls = 0;
   for (const f of fs.readdirSync(lmDir)) if (f.endsWith('.lua')) lmCalls += scan('CRT_Modules/LootMaster/' + f, 'lootmaster', f === 'Tabs.lua');
   if (lmCalls < 6) bad.push('CRT_Modules/LootMaster: only ' + lmCalls + ' tooltips found');
+  // the Timeline's tooltips (the Review tab's view, docked or popped out) pass "timeline"
+  if (scan('CRT_Modules/Timeline/View.lua', 'timeline', false) < 8) bad.push('CRT_Modules/Timeline/View.lua: fewer Timeline tooltips than the eight it has');
   if (!/TooltipOwner\([^\n]*TOOLTIP_KEEP/.test(read('CRT_Modules/Timeline/JournalExport.lua'))) bad.push('CRT_Modules/Timeline/JournalExport.lua: the Encounter Journal button no longer keeps its anchor');
   if (bad.length) { console.log('FAIL a tooltip that does not follow its area:'); for (const b of bad) console.log(b); process.exitCode = 1; }
-  else console.log('ok help: Loot History and Loot Master tooltips pass their area');
+  else console.log('ok help: Loot History, Loot Master and Timeline tooltips pass their area');
 }
 
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }

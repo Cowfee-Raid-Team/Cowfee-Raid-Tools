@@ -151,6 +151,8 @@ UI.HeaderButton = function(p, label, fn, opts) local b = realHeaderButton(p, lab
 local f = UI:Create()
 UI.HeaderButton = realHeaderButton
 print("main window layer " .. tostring(f.strata) .. ", art textures " .. #f.art)
+-- the main window is a CRT window for the one window lookup (a picked tooltip spot opens outside it)
+if not (UI.WindowOf and UI.WindowOf(f) == f) then print("FAIL the main window is a CRT window (UI.WindowOf)") end
 local bar = mock("Frame") rawset(bar, "protected", true)
 UI:RegisterLayer("bar", bar)
 UI:SetLayer("panel", "DIALOG")
@@ -280,7 +282,7 @@ do
     if CRT.db.ui.tooltipMode ~= "spot" or UI.TooltipPosition() ~= "spot" then print("FAIL picking Next to what you hover saves it") end
     -- the spot picker under it: twelve spots, none lit (auto), a click saves the spot
     local picker
-    for _, fr in ipairs(frames) do if rawget(fr, "spots") and rawget(fr, "opts") and fr.opts.label == "What you hover" then picker = fr end end
+    for _, fr in ipairs(frames) do if rawget(fr, "spots") and rawget(fr, "opts") and fr.opts.label == "The window" then picker = fr end end
     if not picker then print("FAIL a spot picker under Tooltip position") else
       local n = 0 for _ in pairs(picker.spots) do n = n + 1 end
       if n ~= 12 then print("FAIL the picker has twelve spots: " .. n) end

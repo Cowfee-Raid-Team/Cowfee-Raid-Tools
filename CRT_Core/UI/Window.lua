@@ -3,7 +3,8 @@ local ADDON, CRT = ...
 -- One maker for CRT's windows, so their look and behaviour change in one place:
 --   UI.Window(name, opts) returns a frame styled like the main window (UI:StyleWindow), on a window
 --   layer, clamped to the screen, dragged by its title from where the mouse is (StartMoving(true)),
---   closed by Escape, with its place (and size, for a pop-out) kept in a table you pass.
+--   closed by Escape, with its place (and size, for a pop-out) kept in a table you pass. Every one is a
+--   CRT window for UI.WindowOf (UI/Panel.lua), so a picked tooltip spot opens outside its edge.
 -- opts:
 --   kind       "dialog" (fixed size), "popout" (resizable, with a grip and a Reset button) or "overlay"
 --              (no frame art; its own panels drag it with f:StartDrag() and f:StopDrag())
@@ -138,6 +139,7 @@ end
 local function overlay(name, opts)
     local f = CreateFrame("Frame", name, UIParent)
     UI:RegisterLayer(opts.layer or DEFAULTS.layer, f)
+    UI.AddWindow(f) -- a CRT window, for UI.WindowOf, like every UI.Window
     f:SetClampedToScreen(true)
     f:SetMovable(true)
     f:SetSize(opts.width or DEFAULTS.width, opts.height or DEFAULTS.height)
@@ -371,6 +373,7 @@ function UI.Window(name, opts)
     local popout = opts.kind == "popout"
     local f = CreateFrame("Frame", name, UIParent, DEFAULTS.template)
     UI:StyleWindow(f)
+    UI.AddWindow(f) -- UI:StyleWindow adds it too; said here so every UI.Window is one, styled or not
     UI:RegisterLayer(opts.layer or DEFAULTS.layer, f)
     UI.SetFrameTitle(f, "")
     -- the title bar, over the template's own title area; the close button stays on top of it

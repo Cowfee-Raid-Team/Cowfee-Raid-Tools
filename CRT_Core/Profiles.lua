@@ -94,7 +94,7 @@ Profiles.SHARE = {
     },
     timeline = {
         record = true, minPull = true, keep = true, span = true, grid = true, iconSize = true, deathRows = true, roles = true,
-        firstDeaths = true, overlay = true, overlayOn = true, hideEmpty = true, popout = true,
+        firstDeaths = true, overlay = true, overlayOn = true, hideEmpty = true, popout = true, tooltipMode = true, tooltipSpot = true,
         bosses = false, rows = false, references = false, nextRef = false, nextId = false,
     },
     markers = true,

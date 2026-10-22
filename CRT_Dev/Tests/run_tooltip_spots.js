@@ -3,7 +3,8 @@
 // ANCHOR_NONE and a SetPoint; the game's spot and the cursor; an area's own choice and spot, and its
 // fallback to General Settings; the flags; the picker (twelve spots, a click sets and highlights, greyed
 // but still clickable, a subset, a tooltip naming each spot); and UI.TooltipPositionSetting, the dropdown
-// with its picker under or beside it.
+// with its picker under or beside it; and a picked spot outside the CRT window the hovered frame is in (the
+// window lookup, each spot's points, the fallback to the hovered frame, auto and the other modes unchanged).
 // Usage: node run_tooltip_spots.js <addon folder>
 const fs = require('fs');
 const path = require('path');
@@ -190,8 +191,9 @@ print("ok tooltip spots: the flags")
 keys = {} for _, c in ipairs(UI.TOOLTIP_AREA_POSITIONS) do keys[#keys + 1] = c.key .. "=" .. c.label end
 eq(table.concat(keys, ","), "general=Use the general setting,spot=Next to what you hover,game=Game's tooltip spot,cursor=Follow the cursor", "an area's four choices")
 check(UI.TOOLTIP_AREAS.loothistory.table == "loot" and UI.TOOLTIP_AREAS.lootmaster.table == "lootmaster", "the areas' tables")
+check(UI.TOOLTIP_AREAS.timeline and UI.TOOLTIP_AREAS.timeline.table == "timeline", "the Timeline area, saved in CRTDB.timeline")
 gameSpot()
-for area, tbl in pairs({ loothistory = "loot", lootmaster = "lootmaster" }) do
+for area, tbl in pairs({ loothistory = "loot", lootmaster = "lootmaster", timeline = "timeline" }) do
   for _, general in ipairs({ "spot", "game", "cursor" }) do
     CRT.db.ui.tooltipMode, CRT.db.ui.tooltipSpot = general, "left"
     for _, choice in ipairs({ "unset", "general", "spot", "game", "cursor", "owner", "nonsense" }) do
@@ -341,7 +343,7 @@ CRT.db.ui.tooltipMode, CRT.db.ui.tooltipSpot = "game", "top"
 local g = UI.TooltipPositionSetting(page, nil, { labelWidth = 120, width = 160 })
 eq(g.row.label, "Tooltip position", "general: the dropdown's label")
 eq(g.row.opts.options, UI.TOOLTIP_POSITIONS, "general: General Settings' choices")
-eq(g.picker.text.text, "What you hover", "general: the picker's box")
+eq(g.picker.text.text, "The window", "general: the picker's box")
 CRT.db.ui.tooltipSpot = "auto"
 g.refresh()
 eq(g.picker.text.text, "Each on its own side", "general on auto: Each on its own side")
@@ -389,6 +391,96 @@ CRT.db.lootmaster.tooltipMode, CRT.db.ui.tooltipMode = "spot", "spot"
 a.picker.spots.top.scripts.OnEnter(a.picker.spots.top)
 eq(GameTooltip.anchor, "ANCHOR_BOTTOMLEFT", "area: its picker's own tooltips follow the area")
 print("ok tooltip spots: the Tooltip position dropdown with its picker")
+
+-- 7. A picked spot sits outside the CRT window that holds what you hover (CRT_Core/UI/Panel.lua's UI.AddWindow and
+-- UI.WindowOf, the one window lookup); outside any CRT window it sits on what you hover, as before
+check(type(UI.AddWindow) == "function" and type(UI.WindowOf) == "function" and type(UI.TooltipOutside) == "function", "the window lookup and UI.TooltipOutside exist")
+if not (UI.AddWindow and UI.WindowOf and UI.TooltipOutside) then print(passes .. " passed, " .. fails .. " failed") error("no window lookup") end
+local mainWin, popWin = object("Frame", nil), object("Frame", nil)
+local row = object("Button", object("Frame", object("Frame", mainWin))) -- a row on a page in the main window
+local label = object("FontString", row)
+local deep = object("Button", object("ScrollFrame", object("Frame", popWin))) -- a lane in a pop-out
+local loose = object("Button", object("Frame", nil)) -- a frame in no CRT window, such as the minimap button
+eq(UI.AddWindow(mainWin), mainWin, "UI.AddWindow returns the window")
+UI.AddWindow(popWin)
+eq(UI.WindowOf(row), mainWin, "lookup: a row in the main window")
+eq(UI.WindowOf(label), mainWin, "lookup: a font string in the main window")
+eq(UI.WindowOf(deep), popWin, "lookup: a frame deep in a pop-out")
+eq(UI.WindowOf(mainWin), mainWin, "lookup: the window itself")
+eq(UI.WindowOf(loose), nil, "lookup: in no CRT window")
+eq(UI.WindowOf(nil), nil, "lookup: nothing")
+local chrome = object("Frame", popWin)
+UI.AddWindow(chrome)
+eq(UI.WindowOf(object("Button", chrome)), chrome, "lookup: the nearest CRT window up the parents")
+-- each spot: outside the window's edge, flush with its corner or edge, 4 px off it
+local OUT = {
+  topleft = { "BOTTOMLEFT", "TOPLEFT", 0, 4 }, top = { "BOTTOM", "TOP", 0, 4 }, topright = { "BOTTOMRIGHT", "TOPRIGHT", 0, 4 },
+  leftupper = { "TOPRIGHT", "TOPLEFT", -4, 0 }, left = { "RIGHT", "LEFT", -4, 0 }, leftlower = { "BOTTOMRIGHT", "BOTTOMLEFT", -4, 0 },
+  rightupper = { "TOPLEFT", "TOPRIGHT", 4, 0 }, right = { "LEFT", "RIGHT", 4, 0 }, rightlower = { "BOTTOMLEFT", "BOTTOMRIGHT", 4, 0 },
+  bottomleft = { "TOPLEFT", "BOTTOMLEFT", 0, -4 }, bottom = { "TOP", "BOTTOM", 0, -4 }, bottomright = { "TOPRIGHT", "BOTTOMRIGHT", 0, -4 },
+}
+local outsideCalls = {}
+local realOutside = UI.TooltipOutside
+UI.TooltipOutside = function(...) outsideCalls[#outsideCalls + 1] = { ... } return realOutside(...) end
+GameTooltip_SetDefaultAnchor = nil
+local n7 = 0
+for _, s in ipairs(UI.TOOLTIP_SPOTS) do
+  local w = OUT[s.key]
+  n7 = n7 + 1
+  for _, case in ipairs({ { row, mainWin, "the main window" }, { deep, popWin, "a pop-out" } }) do
+    CRT.db.ui.tooltipMode, CRT.db.ui.tooltipSpot = "spot", s.key
+    outsideCalls = {}
+    t = newTip()
+    local what = s.key .. " in " .. case[3]
+    eq(UI.TooltipOwner(t, case[1], "ANCHOR_TOP", 3, 4), "spot", what .. ": on a spot")
+    check(t.owner == case[1] and t.anchor == "ANCHOR_NONE" and t.cleared, what .. ": owned by what you hover, ANCHOR_NONE, its points cleared")
+    local pt = t.point or {}
+    check(pt[1] == w[1] and pt[2] == case[2] and pt[3] == w[2] and pt[4] == w[3] and pt[5] == w[4], what .. ": SetPoint(" .. w[1] .. ", window, " .. w[2] .. ", " .. w[3] .. ", " .. w[4] .. ") (got " .. tostring(pt[1]) .. " " .. tostring(pt[3]) .. " " .. tostring(pt[4]) .. " " .. tostring(pt[5]) .. ")")
+    check(#outsideCalls == 1 and outsideCalls[1][3] == case[2], what .. ": placed by UI.TooltipOutside")
+  end
+end
+eq(n7, 12, "every spot has a place outside the window")
+-- the same in an area on its own spot (the Timeline's)
+CRT.db.ui.tooltipMode, CRT.db.ui.tooltipSpot = "spot", "auto"
+CRT.db.timeline = { tooltipMode = "spot", tooltipSpot = "rightlower" }
+t = newTip()
+UI.TooltipOwner(t, deep, "ANCHOR_RIGHT", nil, nil, "timeline")
+check(t.point and t.point[1] == "BOTTOMLEFT" and t.point[2] == popWin and t.point[3] == "BOTTOMRIGHT", "the Timeline area's own spot: outside the pop-out")
+CRT.db.timeline = nil
+-- in no CRT window: on what you hover, as before
+CRT.db.ui.tooltipSpot = "topleft"
+outsideCalls = {}
+t = newTip()
+UI.TooltipOwner(t, loose, "ANCHOR_TOP")
+check(t.owner == loose and t.anchor == "ANCHOR_LEFT" and t.point == nil and #outsideCalls == 0, "in no CRT window: the spot on what you hover (ANCHOR_LEFT)")
+CRT.db.ui.tooltipSpot = "left"
+t = newTip()
+UI.TooltipOwner(t, loose, "ANCHOR_TOP")
+check(t.point and t.point[1] == "RIGHT" and t.point[2] == loose and t.point[3] == "LEFT", "in no CRT window: Left is RIGHT on what you hover's LEFT")
+-- auto, the game's spot, the cursor and the flags are unchanged in a window
+CRT.db.ui.tooltipSpot = "auto"
+t = newTip()
+UI.TooltipOwner(t, row, "ANCHOR_LEFT", 3, 4)
+check(t.owner == row and t.anchor == "ANCHOR_LEFT" and t.x == 3 and t.y == 4 and t.point == nil, "auto in a window: the caller's anchor and offsets on what you hover")
+gameSpot() defaults = {}
+CRT.db.ui.tooltipMode, CRT.db.ui.tooltipSpot = "game", "left"
+t = newTip()
+check(UI.TooltipOwner(t, row, "ANCHOR_TOP") == "game" and defaults[1] and defaults[1][2] == row, "the game's spot in a window: GameTooltip_SetDefaultAnchor(tooltip, what you hover)")
+GameTooltip_SetDefaultAnchor = nil
+CRT.db.ui.tooltipMode = "cursor"
+t = newTip()
+check(UI.TooltipOwner(t, row, "ANCHOR_TOP") == "cursor" and t.anchor == "ANCHOR_CURSOR" and t.owner == row, "follow the cursor in a window: unchanged")
+CRT.db.ui.tooltipMode = "spot"
+t = newTip()
+check(UI.TooltipOwner(t, row, "ANCHOR_TOP", 0, 6, UI.TOOLTIP_KEEP) == "owner" and t.anchor == "ANCHOR_TOP" and t.y == 6, "UI.TOOLTIP_KEEP in a window: the anchor given")
+-- level: the tooltip's top level with what you hover (the Loot Master item tabs' sides)
+row.GetTop, mainWin.GetTop = function() return 300 end, function() return 420 end
+t = newTip()
+realOutside(t, row, mainWin, { point = "TOPRIGHT", rel = "TOPLEFT", dx = -4, dy = 0, level = true })
+check(t.owner == row and t.anchor == "ANCHOR_NONE" and t.point and t.point[1] == "TOPRIGHT" and t.point[2] == mainWin and t.point[3] == "TOPLEFT" and t.point[4] == -4 and t.point[5] == -120, "level: the tooltip's top level with what you hover")
+UI.TooltipOutside = realOutside
+CRT.db.ui.tooltipMode, CRT.db.ui.tooltipSpot = nil, nil
+print("ok tooltip spots: a picked spot outside the window you are in")
 
 print(passes .. " passed, " .. fails .. " failed")
 if fails > 0 then error(fails .. " tooltip spot checks failed") end

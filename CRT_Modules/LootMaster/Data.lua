@@ -305,7 +305,8 @@ LM.NO_ROLL_CHOICES = { "-", "0", "no" }
 -- choice that is not synced). "area" has no point: Loot Master's own Tooltip position (UI/Tooltip.lua's
 -- lootmaster area). point is the tooltip's corner, rel the window's; dx, dy the gap in pixels; level puts the
 -- tooltip level with the hovered icon (the sides only); spot is the side's spot in the Settings tab's spot
--- picker (UI.TOOLTIP_SPOTS). game is the game's own tooltip spot. Core.lua moved the old setting
+-- picker (UI.TOOLTIP_SPOTS). A side is placed by UI.TooltipOutside, as a picked spot is (UI/Tooltip.lua).
+-- game is the game's own tooltip spot. Core.lua moved the old setting
 -- (lootmaster.tooltipAnchor) here once.
 LM.TOOLTIP_ANCHOR_DEFAULT = "area"
 LM.TOOLTIP_ANCHORS = {

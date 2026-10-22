@@ -55,6 +55,7 @@ local pages, tabs, printed, helps = {}, {}, {}, {}
 local helpTargets, helpCalls = {}, 0 -- UI.HelpRight's target for each (?), by title; UI.Help calls made outside it
 skinCalls = 0
 rowsList = {}
+tooltipSettings = {}
 local function opts(o) return type(o.options) == "function" and o.options() or o.options end
 local CRT = { db = { timeline = { record = true, minPull = 15, keep = 10, bosses = {}, rows = {}, span = 300, grid = 30, iconSize = 22,
     deathRows = "combined", roles = { TANK = true, HEALER = true, DAMAGER = true }, firstDeaths = 0, overlay = 3, overlayOn = false, hideEmpty = false, nextId = 1 } },
@@ -71,6 +72,10 @@ local CRT = { db = { timeline = { record = true, minPull = 15, keep = 10, bosses
   PALETTE = { background = { 0.1, 0.1, 0.1 }, border = { 0.3, 0.3, 0.3 }, accent = { 0.78, 0.56, 0.36 }, label = { 0.87, 0.73, 0.56 }, text = { 0.95, 0.9, 0.84 } },
 }
 CRT_THEME(CRT, CRT.UI)
+-- over the real UI/Tooltip.lua's (CRT_THEME loads it): the Tooltip position dropdown with its spot picker,
+-- recording the area and the options
+CRT.UI.TooltipPositionSetting = function(parent, area, o) local g = { row = mock(), picker = mock(), area = area, opts = o, parent = parent, refreshed = 0 }
+  g.refresh = function() g.refreshed = g.refreshed + 1 end tooltipSettings[#tooltipSettings + 1] = g return g end
 function CRT:Print(m) printed[#printed+1] = m end
 -- the shared window helper (CRT_Core/UI/Window.lua): records what it was asked for; like it, puts the frame on its layer
 windowsMade = {}
@@ -207,6 +212,28 @@ assert(record, "record checkbox exists")
 record:SetChecked(false) record.OnClick(record)
 assert(T:Settings().record == false, "record checkbox writes setting")
 print("ok record checkbox writes setting")
+
+-- Settings tab > Tooltips: the timeline area's Tooltip position and its picker, under Recording in the right
+-- column, with a (?) on its heading; refreshed with the tab's other controls
+do
+  assert(#tooltipSettings == 1 and tooltipSettings[1].area == "timeline", "the Settings tab has the Timeline's Tooltip position: " .. #tooltipSettings)
+  local g = tooltipSettings[1]
+  assert(helps["Tooltips"] and helpTargets["Tooltips"] and helpTargets["Tooltips"].text == "Tooltips", "the Tooltips heading has a (?)")
+  local hp = helpTargets["Tooltips"].pt or {}
+  local rp = rawget(g.row, "pt") or {}
+  assert(hp[1] == "TOPLEFT" and hp[4] == 360 and rp[1] == "TOPLEFT" and rp[4] == 360 and rp[5] < hp[5], "Tooltips sits in the right column, the dropdown under its heading")
+  local del
+  for _, b in ipairs(buttons) do if b.text == "Delete this boss's pulls" then del = b end end
+  assert(del and del.pt and hp[5] < del.pt[5] - 20, "Tooltips sits under the Delete button")
+  -- under the dropdown (about 30 high), the picker (UI.SPOT_PICKER_H, at most 70) stays inside the tab
+  local labelW = g.opts and g.opts.labelWidth or 140
+  assert(rp[5] - 32 - 70 > -(CRT.UI.PAGE_H - 60) and 360 + labelW + 5 + 126 < CRT.UI.PAGE_W, "the Tooltips picker fits the tab: " .. tostring(rp[5]))
+  local before = g.refreshed
+  tabs[2].OnClick(tabs[2]) -- the Settings tab: its OnShow refreshes every control
+  assert(g.refreshed > before, "the Tooltip position refreshes with the tab")
+  tabs[1].OnClick(tabs[1])
+end
+print("ok Settings tab: the Timeline's Tooltip position")
 
 local edit, add
 for _, e in ipairs(edits) do if rawget(e, "numeric") then edit = e end end
