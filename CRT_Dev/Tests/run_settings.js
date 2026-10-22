@@ -5,7 +5,7 @@ const fs = require('fs');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
 const harness = `
-local coreSrc, panelSrc, controlsSrc, pageSrc, alertSrc, profilesSrc, themesSrc, macrosSrc, windowSrc = ...
+local coreSrc, panelSrc, controlsSrc, pageSrc, alertSrc, profilesSrc, themesSrc, macrosSrc, windowSrc, tooltipSrc = ...
 -- FAIL lines are counted, and the count printed last, so a failure shows past the runner's tail
 local failCount, rawPrint = 0, print
 print = function(s, ...) if type(s) == "string" and s:find("^FAIL ") then failCount = failCount + 1 end rawPrint(s, ...) end
@@ -118,6 +118,7 @@ CRT.db.ui.font = "default" CRT.db.ui.outline = "" CRT.db.ui.textSize = 100 CRT:A
 print("back to default: " .. fontLine("CRTFontNormal"))
 
 assert(load(panelSrc, "Panel.lua"))("CowfeeRaidTools", CRT)
+assert(load(tooltipSrc, "CRT_Core/UI/Tooltip.lua"))("CowfeeRaidTools", CRT)
 local UI = CRT.UI
 -- Controls with simple stand-ins, so the page can build.
 MinimalSliderWithSteppersMixin = { Label = { Right = 2 }, Event = {} }
@@ -259,6 +260,28 @@ do
   end
   if helps == 0 or not titled then print("FAIL settings: no (?) right of the General Settings title") end
   print("settings page: " .. helps .. " (?) icons, each just right of what it explains")
+end
+-- Tooltip position: a dropdown on Appearance, next to what you hover by default, saved in ui.tooltipAnchor
+do
+  local d = dropdowns["Tooltip position"]
+  if not d then print("FAIL General Settings has a Tooltip position dropdown") else
+    local o = type(d.options) == "function" and d.options() or d.options
+    local labels = {} for _, x in ipairs(o) do labels[#labels + 1] = x.key .. "=" .. x.label end
+    if table.concat(labels, ",") ~= "owner=Next to what you hover,game=Game's tooltip spot" then print("FAIL Tooltip position choices: " .. table.concat(labels, ",")) end
+    if CRT.defaults.ui.tooltipAnchor ~= "owner" then print("FAIL Core.lua's default for ui.tooltipAnchor is owner: " .. tostring(CRT.defaults.ui.tooltipAnchor)) end
+    if d.get() ~= "owner" then print("FAIL Tooltip position starts on Next to what you hover: " .. tostring(d.get())) end
+    d.set("game")
+    if CRT.db.ui.tooltipAnchor ~= "game" or d.get() ~= "game" or UI.TooltipPosition() ~= "game" then print("FAIL picking Game's tooltip spot saves it") end
+    d.set("owner")
+    if CRT.db.ui.tooltipAnchor ~= "owner" or UI.TooltipPosition() ~= "owner" then print("FAIL picking Next to what you hover saves it") end
+    local helped = false
+    for _, fr in ipairs(frames) do
+      local t = rawget(fr, "crtHelpText")
+      if rawget(fr, "crtHelp") and t and rawget(t, "text") == "Tooltips" then helped = true end
+    end
+    if not helped then print("FAIL the Tooltips heading has a (?)") end
+    print("tooltip position: " .. table.concat(labels, ", "))
+  end
 end
 local opts = {} for _, o in ipairs(dropdowns["Use profile"].options()) do opts[#opts + 1] = o.label end
 print("use profile choices: " .. table.concat(opts, ", ") .. "; copy from enabled " .. tostring(dropdowns["Copy from"].enabledIf()))
@@ -455,5 +478,5 @@ if failCount > 0 then print(failCount .. " failed") end
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 const d = process.argv[2];
-for (const p of ['CRT_Core/Core.lua', 'CRT_Core/UI/Panel.lua', 'CRT_Core/UI/Controls.lua', 'CRT_Core/UI/SettingsPage.lua', 'CRT_Modules/Notes/Alert.lua', 'CRT_Core/Profiles.lua', 'CRT_Core/Themes.lua', 'CRT_Core/Macros.lua', 'CRT_Core/UI/Window.lua']) lua.lua_pushstring(L, to_luastring(fs.readFileSync(d + '/' + p, 'utf8')));
-if (lua.lua_pcall(L, 9, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
+for (const p of ['CRT_Core/Core.lua', 'CRT_Core/UI/Panel.lua', 'CRT_Core/UI/Controls.lua', 'CRT_Core/UI/SettingsPage.lua', 'CRT_Modules/Notes/Alert.lua', 'CRT_Core/Profiles.lua', 'CRT_Core/Themes.lua', 'CRT_Core/Macros.lua', 'CRT_Core/UI/Window.lua', 'CRT_Core/UI/Tooltip.lua']) lua.lua_pushstring(L, to_luastring(fs.readFileSync(d + '/' + p, 'utf8')));
+if (lua.lua_pcall(L, 10, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }

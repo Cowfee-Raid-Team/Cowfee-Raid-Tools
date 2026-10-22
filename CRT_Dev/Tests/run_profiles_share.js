@@ -109,6 +109,7 @@ local function same(a, b)
 end
 
 -- The allow-list guard. ---------------------------------------------------------------------------
+check(paths0["ui.tooltipAnchor"] ~= nil and paths0["ui.tooltipAnchor"].default == "owner", "Tooltip position (ui.tooltipAnchor) is shared, a plain setting with its default")
 check(P.ShareUncovered and #P.ShareUncovered() == 0, "every saved key in Core.lua's defaults is shared or named as not shared" .. (P.ShareUncovered and (": missing " .. table.concat(P.ShareUncovered(), ", ")) or ""))
 if P.ShareUncovered then
   CRT.defaults.brandNew = { x = 1 }

@@ -18,7 +18,9 @@ local defaults = {
     -- modern is kept in step with it: off for "blizzard" (Classic), on for the others. Data from before themes
     -- has no theme: CRT:ResolveTheme gives it one from modern before these defaults are filled in.
     -- hideRealms leaves realm names out of the Late Tracker and Tattlebot, on screen, in chat and in exports.
-    ui = { font = "default", outline = "", textSize = 100, bgAlpha = 100, layers = {}, soundChannel = "Master", hideRealms = false, modern = false, theme = "blizzard" },
+    -- tooltipAnchor is where the addon's tooltips open: "owner" next to what you hover, "game" the game's
+    -- tooltip spot (UI.TooltipOwner in UI/Tooltip.lua).
+    ui = { font = "default", outline = "", textSize = 100, bgAlpha = 100, layers = {}, soundChannel = "Master", hideRealms = false, modern = false, theme = "blizzard", tooltipAnchor = "owner" },
     lastPage = "groups",
     -- The minimap button (UI/Minimap.lua): angle is its place around the minimap, in degrees.
     minimap = { hide = false, angle = 225 },

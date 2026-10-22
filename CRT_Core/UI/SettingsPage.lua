@@ -5,7 +5,8 @@ local ADDON, CRT = ...
 --   Appearance  three columns. Left: Window (the main window's scale and opacity, UI:ApplyStyle in
 --               UI/Panel.lua; the look is the title bar's UI button) and Text (the font, outline and
 --               size of every text the addon draws with its shared fonts, CRT:ApplyFonts in Core.lua).
---               Middle: Sound, Reports and the Minimap button. Right: Layers (which frame strata each
+--               Middle: Sound, Reports, the Minimap button and Tooltips (where tooltips open, UI.TooltipOwner
+--               in UI/Tooltip.lua). Right: Layers (which frame strata each
 --               group of windows is drawn in, UI:SetLayer in UI/Panel.lua)
 --   Profiles    Profiles.lua: switch, create, copy, delete and reset profiles; Export (the whole profile),
 --               Export settings only (for raiders), Import (either kind, with a preview) and Undo last import
@@ -525,6 +526,20 @@ local function buildLeft(pf)
     end, function(on)
         CRT.MinimapButton:SetHidden(not on)
     end)
+
+    heading(pf, x, -246, "Tooltips", "Where the addon's tooltips open. Next to what you hover: beside the button, row or icon under your mouse. Game's tooltip spot: where the game shows its own tooltips, or wherever your UI addon moved them.\n\nA few always stay put: tooltips that follow your mouse, the Loot Master item tabs (they have their own setting) and the button on the Encounter Journal.")
+    add(UI.Dropdown(pf, "Tooltip position", {
+        options = UI.TOOLTIP_POSITIONS,
+        labelWidth = LABEL_W,
+        width = CONTROL_W,
+        get = function()
+            return UI.TooltipPosition()
+        end,
+        set = function(key)
+            ui().tooltipAnchor = key
+            refresh()
+        end,
+    }), x, -264)
 end
 
 local function buildRight(pf)
@@ -737,7 +752,7 @@ local function build(pf)
     local title = pf:CreateFontString(nil, "OVERLAY", "CRTFontLarge")
     title:SetPoint("TOPLEFT", 8, -8)
     title:SetText("General Settings")
-    UI.HelpRight(title, "General Settings", "Settings for the whole addon: the look, text, sound, reports, the minimap button, window layers and profiles. Changes apply at once, except profile changes, which reload your interface.")
+    UI.HelpRight(title, "General Settings", "Settings for the whole addon: the look, text, sound, reports, the minimap button, where tooltips open, window layers and profiles. Changes apply at once, except profile changes, which reload your interface.")
 
     for i, tab in ipairs(TABS) do
         local b = CreateFrame("Button", nil, pf, "BackdropTemplate")
