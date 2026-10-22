@@ -10,8 +10,10 @@ local ADDON, CRT = ...
 --                  "nowinner" (everyone passed) or "cant" (CRT couldn't roll: reason)
 --   received       true for an item the game gave you with no roll (rollID is then CRT's own, below 0)
 -- Only a won row can go into a session. Start session (BL:Start) starts LM:Start with the ticked rows you
--- have won, LM.MAX_ITEMS a session, the rest after it ends. It waits while a ticked row is still rolling,
--- or a session is running: untick a row to leave it out. Nothing starts a session on its own.
+-- have won, LM.MAX_ITEMS a session, the rest after it ends. It waits while a ticked row is still rolling:
+-- untick a row to leave it out. Nothing starts a session on its own. Alex, 2026-10-21: Start session should
+-- work "in all cases": a test session still running is ended first, and a real one keeps going while
+-- these wait their turn; either way the Loot Master window shows.
 -- The list empties on Clear, on leaving the instance, when CRT Looting turns off (the lead lost too), and
 -- row by row LM.BOSS_SECONDS after its kill. Changes fire LM:Fire("bossloot", what): "open" (the first
 -- row of a new list: the window shows), "changed" or "cleared".
@@ -45,6 +47,8 @@ local TEXT = {
     left = "you left the instance",
     off = "CRT Looting is off",
     dropped = "Loot Master dropped the waiting boss loot: %s.",
+    testEnded = "Loot Master ended the test session to start this one.",
+    queued = "Loot Master: %d %s will start when the running session ends.",
     expired = "Loot Master: %d won %s left the boss loot list 10 minutes after the kill, with no session started.",
     tooOld = "it waited over 10 minutes",
 }
@@ -141,7 +145,7 @@ function BL:Add(rollID, link, fields, kill)
     local r = {
         rollID = rollID, link = link, itemString = s, ilvl = (okL and type(ilvl) == "number" and not secret(ilvl)) and ilvl or nil,
         at = GetTime(), expires = GetTime() + math.max(0, LM.BOSS_SECONDS - age), pass = pass and true or false, why = why,
-        status = fields.status, rollType = fields.rollType, reason = fields.reason,
+        status = fields.status, rollType = fields.rollType, reason = fields.reason, received = fields.received,
         encounterID = kill and kill.encounterID or nil,
     }
     r.ticked = r.pass and r.status ~= "cant"
@@ -159,11 +163,7 @@ end
 -- An item the game gave you after kill with no roll: a won row, or nil (no link, or already listed).
 function BL:AddReceived(link, kill)
     nextOwn = nextOwn - 1
-    local r = self:Add(nextOwn, link, { status = "won" }, kill)
-    if r then
-        r.received = true
-    end
-    return r
+    return self:Add(nextOwn, link, { status = "won", received = true }, kill)
 end
 
 -- Whether a row can be ticked: only one that is yours or may still be.
@@ -195,17 +195,21 @@ function BL:Counts()
     return ticked, #self.rows, rolling, won
 end
 
--- Whether Start session can run now: true, or false and why ("session", "rolling", "none").
+-- Whether Start session can run now: true, or false and why ("rolling", "none"). A running session
+-- doesn't stop it (BL:Start); BL:Busy says one is.
 function BL:CanStart()
     local _, _, rolling, won = self:Counts()
-    if LM.current or #self.waiting > 0 then
-        return false, "session"
-    elseif rolling > 0 then
+    if rolling > 0 then
         return false, "rolling"
     elseif won == 0 then
         return false, "none"
     end
     return true
+end
+
+-- Whether a real loot session is running or boss loot waits for one: Start session queues behind it.
+function BL:Busy()
+    return (LM.current and not LM.current.test) or #self.waiting > 0
 end
 
 local function startNext()
@@ -225,9 +229,10 @@ local function startNext()
     changed()
 end
 
--- Start session: the ticked rows you have won, LM.MAX_ITEMS a session. They leave the list once the
--- first session has started; when LM:Start refuses (it says why), they stay. Returns the number of items
--- sent, or false and why (BL:CanStart's, or "failed").
+-- Start session: the ticked rows you have won, LM.MAX_ITEMS a session. A running test is ended first; a
+-- running real session keeps going and these all wait for it. They leave the list once the first session
+-- has started or they are waiting; when LM:Start refuses (it says why), they stay. The Loot Master window
+-- shows either way. Returns the number of items sent, or false and why (BL:CanStart's, or "failed").
 function BL:Start()
     local ok, why = self:CanStart()
     if not ok then
@@ -248,6 +253,23 @@ function BL:Start()
             chunk[#chunk + 1] = items[j]
         end
         chunks[#chunks + 1] = { items = chunk, at = GetTime() }
+    end
+    if self:Busy() then
+        self.rows = kept
+        for _, c in ipairs(chunks) do
+            self.waiting[#self.waiting + 1] = c
+        end
+        CRT:Print(TEXT.queued:format(#items, #items == 1 and "item" or "items"))
+        startNext() -- boss loot left waiting by a refused start goes now, when nothing runs
+        changed()
+        if LM.current then
+            LM:ShowWindow()
+        end
+        return #items
+    end
+    if LM.current and LM.current.test then
+        LM:End()
+        CRT:Print(TEXT.testEnded)
     end
     if not LM:Start(chunks[1].items) then
         changed()

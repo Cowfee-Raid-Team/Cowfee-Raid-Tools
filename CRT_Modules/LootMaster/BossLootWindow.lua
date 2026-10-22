@@ -8,7 +8,8 @@ local ADDON, CRT = ...
 -- Each row: a checkbox (in the next session; pre-ticked by the loot filter), the item's icon, link and
 -- detail (slot and item level, or why the filter left it out), and its state on the right: rolling
 -- (honey), won (good), won by someone else or nobody (muted), or can't roll (red). Footer: the counts,
--- Clear, and Start session (only the ticked items you have won; it waits while a ticked one still rolls).
+-- Clear, and Start session (only the ticked items you have won; it waits while a ticked one still rolls,
+-- and queues behind a running session).
 
 local LM = CRT.LootMaster
 local UI = CRT.UI
@@ -18,7 +19,7 @@ local L = { width = 620, height = 340, minWidth = 480, minHeight = 220, rowH = 4
 
 local TEXT = {
     title = "Boss loot",
-    help = "The boss items CRT rolled on for you, and in old raids with no rolls, the items the game gave you. Tick the ones to give out and press Start session; nothing starts by itself. Start waits while a ticked item is still rolling. Items someone else won can't be ticked, and red means CRT couldn't roll on it. The list empties when you leave the instance, turn CRT Looting off, or 10 minutes after the kill.",
+    help = "The boss items CRT rolled on for you, and in old raids with no rolls, the items the game gave you. Tick the ones to give out and press Start session; nothing starts by itself. Start waits while a ticked item is still rolling. A test session still running is ended first; if a loot session is running, these start when it ends. The Loot Master window opens either way. Items someone else won can't be ticked, and red means CRT couldn't roll on it. The list empties when you leave the instance, turn CRT Looting off, or 10 minutes after the kill.",
     counts = "%d of %d items ticked · %d still rolling",
     session = " · a loot session is running",
     clear = "Clear",
@@ -160,8 +161,8 @@ local function refresh()
     win.strip:SetBadge(badge, nil, badge and UI.TITLE_STRIP.neutral or nil)
     list:SetDataProvider(CreateDataProvider(BL:Rows()), ScrollBoxConstants and ScrollBoxConstants.RetainScrollPosition)
     local ticked, total, rolling = BL:Counts()
-    local ok, why = BL:CanStart()
-    footer.counts:SetText(TEXT.counts:format(ticked, total, rolling) .. (why == "session" and TEXT.session or ""))
+    local ok = BL:CanStart()
+    footer.counts:SetText(TEXT.counts:format(ticked, total, rolling) .. (BL:Busy() and TEXT.session or ""))
     footer.start:SetEnabled(ok and true or false)
     footer.clear:SetEnabled(total > 0)
 end

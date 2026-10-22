@@ -337,7 +337,7 @@ eq(s and s.items[1].link, helm, "session: the helm")
 eq(s and s.items[2].link, ITEMS[25].link, "session: the trinket")
 eq(s and s.boss, "Big Boss", "session: the boss")
 eq(#BL:Rows(), 3, "Start: the sent rows leave the list")
-eq(select(2, BL:CanStart()), "session", "Start waits while a session is running")
+eq(BL:Busy(), true, "a real session is running: Busy")
 LM:End()
 blFired = {}
 BL:Clear()
@@ -575,7 +575,10 @@ kill("Old Boss")
 local belt = "|cffa335ee|Hitem:6001::::::::80:::::|h[Belt]|h|r"
 onEvent("ENCOUNTER_LOOT_RECEIVED", 3001, 6001, belt, 1, "Quick", "MAGE")
 eq(#BL:Rows(), 0, "received: someone else's item isn't listed")
+local markedWhenDrawn
+LM:OnChange(function(what) if what == "bossloot" and BL:Rows()[1] and markedWhenDrawn == nil then markedWhenDrawn = BL:Rows()[1].received == true end end)
 onEvent("ENCOUNTER_LOOT_RECEIVED", 3001, 6001, belt, 1, "Solex", "PALADIN")
+eq(markedWhenDrawn, true, "received: marked before the window draws it")
 local rr = BL:Rows()[1]
 eq(rr and rr.status, "won", "received: yours is won")
 eq(rr and rr.received, true, "received: marked as received")
@@ -599,6 +602,33 @@ onEvent("CANCEL_LOOT_ROLL", 301)
 onEvent("ENCOUNTER_LOOT_RECEIVED", 3001, 6004, "|cffa335ee|Hitem:6004::::::::80:::::|h[Wrist]|h|r", 1, "Solex", "PALADIN")
 eq(#BL:Rows(), 1, "received: a rolled kill adds no received row")
 BL:Clear()
+-- Start session in all cases: a test running is ended first; a real one keeps going and these wait
+local shown = 0
+LM.ShowWindow = function() shown = shown + 1 end
+kill("Old Boss")
+LM:Start({ { itemString = "item:7001", link = "|cffa335ee|Hitem:7001|h[Test Helm]|h|r" } }, true)
+eq(LM.current and LM.current.test, true, "a test session is running")
+eq(BL:Busy(), false, "a test session doesn't make it Busy")
+onEvent("ENCOUNTER_LOOT_RECEIVED", 3001, 6001, belt, 1, "Solex", "PALADIN")
+eq((BL:CanStart()), true, "Start: ready while a test runs")
+printed = {}
+eq(BL:Start(), 1, "Start over a test: sent")
+eq(LM.current and LM.current.test, false, "the test ended and the real session started")
+eq(LM.current and LM.current.items[1].link, belt, "the real session has the belt")
+eq(printed[1], "Loot Master ended the test session to start this one.", "the test ending is said")
+local first = LM.current
+onEvent("ENCOUNTER_LOOT_RECEIVED", 3001, 6005, "|cffa335ee|Hitem:6005::::::::80:::::|h[Cuffs]|h|r", 1, "Solex", "PALADIN")
+eq((BL:CanStart()), true, "Start: ready while a real session runs")
+eq(BL:Start(), 1, "Start behind a real session: queued")
+eq(LM.current, first, "the running session keeps going")
+eq(#BL:Rows(), 0, "queued rows leave the list")
+eq(lastPrint(), "Loot Master: 1 item will start when the running session ends.", "queued: said")
+eq(shown, 1, "queued: the Loot Master window shows")
+LM:End()
+eq(LM.current and LM.current.items[1].link:find("Cuffs", 1, true) ~= nil, true, "the queued items start when it ends")
+LM:End()
+BL:Clear()
+
 -- CRT Looting off, or a raider: nothing
 kill("Old Boss")
 LM:SetLooting(false)
