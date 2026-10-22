@@ -96,6 +96,11 @@ local function take() local box = outbox outbox = {} return box end
 local function lastPrint() return printed[#printed] end
 local HERE = "2810-16"
 local V = LM.VERSION
+-- the leader's loot filter as O and H carry it (LootMaster/Filter.lua isn't loaded here)
+local FF = "|1|0|4|0|bop,tier"
+function LM:Filter() return { boss = true, trash = false, quality = 4, ilvl = 0, kinds = { bop = true, tier = true } } end
+LM.FilterFields = function() return { 1, 0, 4, 0, "bop,tier" } end
+LM.ParseFilterFields = function(f, first) if f[first] == "1" then return { boss = true } end end
 
 -- 1. An older client (no Looting.lua): the new kinds are dropped without an error
 local before = fails
@@ -231,7 +236,7 @@ eq(LM:SetLooting(true), true, "yes: turned on")
 eq(LM:LootingOn(), true, "yes: on")
 local box = take()
 eq(#box, 1, "yes: one message")
-eq(box[1], "O|" .. V .. "|" .. HERE, "yes: O with the version and the instance")
+eq(box[1], "O|" .. V .. "|" .. HERE .. FF, "yes: O with the version, the instance and the loot filter")
 eq(lastPrint(), "CRT Looting: on for everyone in the raid with CRT.", "yes: said in chat")
 eq(LM:LootingStatus(), "CRT Looting: on for everyone in the raid with CRT", "yes: the leader's line")
 check((fired.looting or 0) > 0, "yes: the page is told")
@@ -239,7 +244,7 @@ eq(live(LM.HEARTBEAT_SECONDS), 1, "yes: one heartbeat ticker")
 eq(LM.HEARTBEAT_SECONDS, 30, "heartbeat every 30 s")
 tick(30)
 local beat = take()
-eq(beat[1], "H|" .. V .. "|" .. HERE .. "|" .. HERE .. "|0", "heartbeat: H with the version, the Yes instance, where the leader is and 0 s away")
+eq(beat[1], "H|" .. V .. "|" .. HERE .. "|" .. HERE .. "|0" .. FF, "heartbeat: H with the version, the Yes instance, where the leader is, 0 s away and the loot filter")
 -- ordinary combat (trash) never stops a heartbeat
 onEvent("PLAYER_REGEN_DISABLED")
 tick(30)
@@ -321,8 +326,9 @@ eq(st.heartbeatAt, NOW, "state: heartbeat time")
 eq(st.now, NOW, "state: now")
 eq(st.test, false, "state: not a test")
 eq(type(st.passed), "table", "state: the passed list")
-local roll = { id = 1, test = false, instance = HERE, bossInstance = HERE }
+local roll = { id = 1, test = false, instance = HERE, bossInstance = HERE, inFilter = true }
 eq((LM.AutoPass:ShouldPass(st, roll)), true, "gate: a boss roll here would pass")
+eq(LM:LeaderFilter() ~= nil, true, "the leader's loot filter came with its word")
 -- the leader goes offline: off, said, and forgotten until its next word
 printed = {}
 OFFLINE.Solex = true
@@ -482,16 +488,16 @@ n = asked
 goOutside()
 onEvent("PLAYER_ENTERING_WORLD", false, false)
 eq(LM:LootingOn(), true, "wipe: still on outside")
-eq(take()[1], "H|" .. V .. "|" .. HERE .. "|world|0", "wipe: a heartbeat straight away says the leader is in the open world")
+eq(take()[1], "H|" .. V .. "|" .. HERE .. "|world|0" .. FF, "wipe: a heartbeat straight away says the leader is in the open world")
 NOW = NOW + 30
 tick(30)
-eq(take()[1], "H|" .. V .. "|" .. HERE .. "|world|30", "wipe: the heartbeat goes on, with the time away")
+eq(take()[1], "H|" .. V .. "|" .. HERE .. "|world|30" .. FF, "wipe: the heartbeat goes on, with the time away")
 eq(LM:LootingStatus(), "CRT Looting: on for everyone in the raid with CRT", "wipe: the leader's line")
 goInside()
 onEvent("PLAYER_ENTERING_WORLD", false, false)
 eq(asked, n, "wipe: not asked again on the way back in")
 eq(LM:LootingOn(), true, "wipe: still on inside")
-eq(take()[1], "H|" .. V .. "|" .. HERE .. "|" .. HERE .. "|0", "wipe: back in, a heartbeat says so")
+eq(take()[1], "H|" .. V .. "|" .. HERE .. "|" .. HERE .. "|0" .. FF, "wipe: back in, a heartbeat says so")
 -- out for over 10 minutes: off
 goOutside()
 onEvent("ZONE_CHANGED_NEW_AREA")

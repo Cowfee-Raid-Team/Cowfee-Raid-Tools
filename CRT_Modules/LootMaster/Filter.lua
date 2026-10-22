@@ -13,6 +13,9 @@ local ADDON, CRT = ...
 -- can be read still count. /crt loot test samples items that pass (LootMaster/Test.lua); the session start
 -- from real loot is to call LM:FilterLoot.
 -- Sync Master Loot sends it as its F part (LootMaster/Sync.lua), cleaned on receipt by LM.CleanFilter.
+-- CRT Looting sends the leader's filter with its O and H messages (LM.FilterFields, LM.ParseFilterFields;
+-- LootMaster/Looting.lua): the leader's CRT rolls only on items in it, and a raider's passes only those
+-- (LootMaster/Rolls.lua). Alex, 2026-10-21: an item outside the filter gets the game's normal roll.
 --
 -- The game's facts, each checked on warcraft.wiki.gg (2026-10-19):
 --   C_Item.GetItemInfo: quality, classID, subclassID, bindType (Enum.ItemBind), setID (an item set's piece);
@@ -89,6 +92,51 @@ function LM.CleanFilter(t, fallback)
         end
     end
     return out
+end
+
+-- A filter as message fields: boss (1/0), trash (1/0), quality, item level, the kinds that pass joined by ",".
+function LM.FilterFields(filter)
+    local kinds = {}
+    for _, k in ipairs(LM.FILTER_KINDS) do
+        if filter.kinds[k] then
+            kinds[#kinds + 1] = k
+        end
+    end
+    return { filter.boss and 1 or 0, filter.trash and 1 or 0, filter.quality, filter.ilvl, table.concat(kinds, ",") }
+end
+
+-- The filter in fields f[first] to f[first + 4] (LM.FilterFields), or nil when any is missing or bad: a raider
+-- takes nothing it can't read, so it passes nothing (an unknown kind is just off).
+function LM.ParseFilterFields(f, first)
+    local boss, trash = tostring(f[first]), tostring(f[first + 1])
+    local quality, ilvl = tonumber(f[first + 2]), tonumber(f[first + 3])
+    local names = f[first + 4]
+    if (boss ~= "0" and boss ~= "1") or (trash ~= "0" and trash ~= "1") or not quality or not ilvl or type(names) ~= "string" then
+        return nil
+    end
+    if not isOne(LM.FILTER_QUALITIES, quality) or ilvl < 0 then
+        return nil
+    end
+    local kinds = {}
+    for _, k in ipairs(LM.FILTER_KINDS) do
+        kinds[k] = false
+    end
+    for k in (names .. ","):gmatch("%s*(.-)%s*,") do
+        if kinds[k] ~= nil then
+            kinds[k] = true
+        end
+    end
+    return { boss = boss == "1", trash = trash == "1", quality = quality, ilvl = ilvl, kinds = kinds }
+end
+
+-- Whether a raider may count an item as in its leader's filter: only when every fact was read and it passes.
+-- Anything unread is a no, unlike LM:FilterLoot's "let it through", so a raider never passes an item its
+-- leader's CRT might not roll on. Pure.
+function LM.StrictlyPasses(facts, filter)
+    if type(facts) ~= "table" or type(filter) ~= "table" or #(facts.unreadable or { true }) > 0 then
+        return false
+    end
+    return LM.PassesFilter(facts, filter) == true
 end
 
 -- Your filter, cleaned (a missing one is the defaults).

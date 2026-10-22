@@ -15,15 +15,17 @@ local ADDON, CRT = ...
 -- IsInInstance's "none" is the open world.
 --
 -- Messages, on LM.PREFIX like the rest of Loot Master (an older CRT drops a kind it doesn't know):
---   O|<version>|<instance>                       on: the leader said Yes for this instance
+--   O|<version>|<instance>|<filter>              on: the leader said Yes for this instance
 --   F|<version>|<why>                            off: no (said No), off (turned off), instance (entered
 --                                                another instance), away (out too long), lead (can't
 --                                                lead it any more), party (Enable in party turned off),
 --                                                reload (the leader's login or /reload)
---   H|<version>|<instance>|<instance>|<seconds>  the heartbeat, every HEARTBEAT_SECONDS while on: the
---                                                instance it said Yes for, where the leader is now (that
---                                                instance, or "world" for the open world), and the
+--   H|<version>|<instance>|<instance>|<seconds>|<filter>  the heartbeat, every HEARTBEAT_SECONDS while
+--                                                on: the instance it said Yes for, where the leader is now
+--                                                (that instance, or "world" for the open world), and the
 --                                                seconds it has been out
+-- <filter> is the leader's loot filter as five fields (LM.FilterFields, since 0.31.0): a raider's CRT
+-- passes only items in it (LootMaster/Rolls.lua), and none when it is missing or can't be read.
 -- An instance is "<instanceID>-<difficultyID>" (GetInstanceInfo). A raider takes these only from its
 -- current raid leader, and forgets the leader's word when the lead moves or the leader goes offline.
 -- Combat never stops a heartbeat; only the game's chat lockdown (a boss encounter) holds one, and a fresh
@@ -117,6 +119,14 @@ local function place()
     return LM.InstanceKey() or (openWorld() and "world" or "elsewhere")
 end
 
+-- The fields with your loot filter's five after them (O and H).
+local function withFilter(fields)
+    for _, v in ipairs(LM.FilterFields(LM:Filter())) do
+        fields[#fields + 1] = v
+    end
+    return fields
+end
+
 local function isLeader()
     return IsInGroup() and UnitIsGroupLeader("player") and true or false
 end
@@ -182,7 +192,7 @@ function LM:SetLooting(on, why, words)
             return false
         end
         own.on, own.instance, own.why, own.awaySince = true, LM.InstanceKey(), nil, nil
-        LM.SendText(Wire.Encode("O", { LM.VERSION, own.instance }))
+        LM.SendText(Wire.Encode("O", withFilter({ LM.VERSION, own.instance })))
         if not beatTicker then
             beatTicker = C_Timer.NewTicker(LM.HEARTBEAT_SECONDS, beat)
         end
@@ -230,7 +240,7 @@ beat = function()
         return -- held messages would pile up; ENCOUNTER_END sends a fresh one
     end
     local where = place()
-    LM.SendText(Wire.Encode("H", { LM.VERSION, own.instance, where ~= "elsewhere" and where or "", math.floor(away) }))
+    LM.SendText(Wire.Encode("H", withFilter({ LM.VERSION, own.instance, where ~= "elsewhere" and where or "", math.floor(away) })))
 end
 
 -- After an encounter: a heartbeat now, or, while chat is still locked, tried again every BEAT_RETRY
@@ -289,6 +299,11 @@ local function checkHeard()
     if not heard then
         stopWatch()
     end
+end
+
+-- The loot filter in the raid leader's last word, or nil (none sent, or it couldn't be read).
+function LM:LeaderFilter()
+    return heard and heard.on and heard.filter or nil
 end
 
 -- Whether a raider's last word from its raid leader said on: CRT Looting is meant to be on, so a roll it
@@ -405,7 +420,8 @@ LM.Handle("O", function(f, sender)
     if not fromLeader(sender) or (f[2] or "") == "" then
         return
     end
-    hear({ from = sender, on = true, version = f[1], yes = f[2], here = f[2], world = false, away = 0, at = GetTime() })
+    hear({ from = sender, on = true, version = f[1], yes = f[2], here = f[2], world = false, away = 0, at = GetTime(),
+        filter = LM.ParseFilterFields(f, 3) })
     report(false)
 end)
 
@@ -416,7 +432,7 @@ LM.Handle("H", function(f, sender)
     local world = f[3] == "world"
     local here = (not world and (f[3] or "") ~= "") and f[3] or nil
     hear({ from = sender, on = true, version = f[1], yes = f[2], here = here, world = world, away = tonumber(f[4]),
-        at = GetTime() })
+        at = GetTime(), filter = LM.ParseFilterFields(f, 5) })
     report(false)
 end)
 

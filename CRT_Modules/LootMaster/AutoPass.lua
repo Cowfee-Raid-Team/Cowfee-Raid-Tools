@@ -33,7 +33,9 @@ local ADDON, CRT = ...
 -- LM.LOOTING_AWAY seconds; a leader in any other instance never does. You must be in the instance it said
 -- Yes for.
 -- roll: id (the rollID), test, instance (your instance's key when it started), bossInstance (the
---   instance key of the boss kill it follows, or nil).
+--   instance key of the boss kill it follows, or nil), inFilter (exactly true when the item is in the
+--   leader's loot filter: for a raider, every fact read against the filter its leader sent; for the leader,
+--   its own LM:FilterLoot). An item outside it gets the game's normal roll on both sides.
 
 local LM = CRT.LootMaster
 local AutoPass = {}
@@ -63,6 +65,7 @@ AutoPass.WHY = {
     once = "this roll was passed already",
     rollplace = "the roll started outside this instance",
     notboss = "the roll isn't from a boss in this instance",
+    filter = "the item isn't in the raid leader's loot filter",
 }
 
 local function isTrue(v)
@@ -148,6 +151,9 @@ function AutoPass:ShouldPass(state, roll)
     if roll.bossInstance ~= state.myInstance then
         return false, "notboss"
     end
+    if roll.inFilter ~= true then
+        return false, "filter"
+    end
     return true, "pass"
 end
 
@@ -170,6 +176,7 @@ AutoPass.LEADER_WHY = {
     once = "CRT rolled on it already",
     rollplace = AutoPass.WHY.rollplace,
     notboss = AutoPass.WHY.notboss,
+    filter = "it isn't in your loot filter",
     noinfo = "the game didn't say which rolls you may make",
     cant = "the game allows no Need, Greed or Transmog on it",
 }
@@ -216,6 +223,9 @@ function AutoPass:LeaderRoll(state, roll, info)
     end
     if roll.bossInstance ~= state.myInstance then
         return false, "notboss"
+    end
+    if roll.inFilter ~= true then
+        return false, "filter"
     end
     if type(info) ~= "table" then
         return false, "noinfo"

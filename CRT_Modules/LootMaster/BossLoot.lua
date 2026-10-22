@@ -45,7 +45,8 @@ local ADDON, CRT = ...
 -- Received loot (Alex, 2026-10-21: old raids never started a session). A raid the game runs with no
 -- loot rolls (an old raid on Legacy Loot) hands each item straight to a player, and only
 -- ENCOUNTER_LOOT_RECEIVED tells. While CRT Looting is on and you lead it, an item it says you received
--- after a kill with no roll goes on the list as won, so Start session can give it out. A kill the game
+-- after a kill with no roll goes on the list as won, so Start session can give it out, when it is in your
+-- loot filter (one outside it is yours to keep, and isn't listed). A kill the game
 -- rolled on (BL:SawRoll, from LootMaster/Rolls.lua) never adds one, so a rolled drop isn't listed twice.
 -- Other players' items are theirs: only what is in your bags can be given out. Whether the game lets you
 -- trade it is the game's rule; the trade says so.
@@ -478,6 +479,10 @@ local function receivedDirect(link, encounterID)
         return
     end
     if kill.encounterID and encounterID and kill.encounterID ~= encounterID then
+        return
+    end
+    local s = LM.LinkItemString(link)
+    if not s or not LM:FilterLoot(s, "boss", link) then
         return
     end
     BL:AddReceived(link, kill)

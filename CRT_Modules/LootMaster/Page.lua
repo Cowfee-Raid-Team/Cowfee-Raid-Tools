@@ -49,7 +49,7 @@ local TEXT = {
     test = "Test", window = "Looter window", popup = "My popup", endSession = "End session",
     items = "Items",
     crtLooting = "CRT Looting",
-    crtLootingHelp = "When CRT Looting is on, for 10 minutes after a boss kill your CRT passes your loot rolls (trash too) and the raid leader's CRT rolls Need, so the leader gets the items to give out. Only the raid leader turns it on or off, for everyone; CRT asks on the way into a raid instance. It starts off after a /reload and turns off when the leader enters another instance.\n\nYou roll yourself when a test session is running, you aren't in the leader's instance, the leader is off, changed, offline or quiet for 90 seconds, the leader's CRT is too old, you are in a finder group, or no boss was killed here in the last 10 minutes. Chat says each pass.",
+    crtLootingHelp = "When CRT Looting is on, for 10 minutes after a boss kill your CRT passes your loot rolls (trash too) and the raid leader's CRT rolls Need, so the leader gets the items to give out. Only items in the raid leader's loot filter: anything else is a normal roll, and so is an item your CRT can't read yet. Only the raid leader turns it on or off, for everyone; CRT asks on the way into a raid instance. It starts off after a /reload and turns off when the leader enters another instance.\n\nYou roll yourself when a test session is running, you aren't in the leader's instance, the leader is off, changed, offline or quiet for 90 seconds, the leader's CRT is too old, you are in a finder group, or no boss was killed here in the last 10 minutes. Chat says each pass.",
     turnOn = "Turn on", turnOff = "Turn off for everyone",
     awarded = "given to %s (%s)",
     open = "open",
