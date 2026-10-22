@@ -25,6 +25,7 @@ CRT_Core\UI\ScrollBar.lua
 CRT_Core\UI\Window.lua
 CRT_Modules\Groups\Data.lua
 CRT_Modules\Groups\Apply.lua
+CRT_Modules\Groups\Invite.lua
 CRT_Modules\Groups\Page.lua
 CRT_Modules\Consumables\Database.lua
 CRT_Modules\Consumables\Data.lua

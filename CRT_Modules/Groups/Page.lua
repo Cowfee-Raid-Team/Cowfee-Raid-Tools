@@ -15,6 +15,7 @@ local GRID_TOP = -52
 local PICK_ROWS = 10
 local ROW_H = 22
 local LIST_ROW_H = 26 -- a Quick Load box (24) and the gap under it
+local INVITE_STATUS_LINES = 3 -- the invite status line, between the grid and Use This Group
 
 local GRAY = { 0.35, 0.35, 0.35 }
 -- The theme's good and heading colours; CRT.PALETTE's tables are refilled on a theme switch, so these follow.
@@ -22,6 +23,15 @@ local GREEN = CRT.PALETTE.good
 local GOLD = CRT.PALETTE.heading
 local ABSENT_BORDER = { 0.65, 0.25, 0.35 }
 local ABSENT_TEXT = { 0.5, 0.5, 0.5 }
+
+local TEXT = {
+    inviteMissing = "Invite missing (%d)",
+    inviteBody = "Invites everyone in this layout who isn't in your group. Each one moves to their group when they join, if it has a free spot.",
+    inviteName = "Invite %s",
+    clearSlot = "Clear slot",
+    unsaved = "Unsaved layout",
+    editHelp = "Click a slot to choose a name, drag to move or swap. Right-click a name to invite that player or clear the slot.",
+}
 
 local ROLE_TEXTURE = "Interface\\LFGFrame\\UI-LFG-ICON-PORTRAITROLES"
 local ROLE_COORDS = {
@@ -50,6 +60,13 @@ local function styleButton(b)
     b:SetNormalFontObject(CRTFontNormal)
     b:SetHighlightFontObject(CRTFontHighlight)
     b:SetDisabledFontObject(CRTFontDisable)
+    return b
+end
+
+local function makeButton(parent, label, width, height)
+    local b = styleButton(CreateFrame("Button", nil, parent, "UIPanelButtonTemplate"))
+    b:SetSize(width, height or 26)
+    b:SetText(label)
     return b
 end
 
@@ -556,6 +573,90 @@ local function refreshExtras(roster, working)
     extraEmpty:SetShown(#extras == 0)
 end
 
+-- Invites -----------------------------------------------------------------------
+-- Invite missing invites everyone in the grid who isn't in your group, and a slot's right-click menu
+-- invites one player (Groups/Invite.lua). Each moves into their group here when they join.
+
+local inviteButton, inviteStatus
+
+local function layoutName()
+    local preset = gdb().selected and Groups:Find(gdb().selected)
+    return preset and preset.name or TEXT.unsaved
+end
+
+local function inviteKeys(keys)
+    CRT.Invite:Send(keys, Groups:Working(), layoutName())
+end
+
+local function refreshInvites()
+    if not inviteButton or not page:IsShown() then
+        return
+    end
+    local missing = CRT.Invite.Missing(Groups:Working())
+    inviteButton:SetText(format(TEXT.inviteMissing, #missing))
+    local fs = inviteButton:GetFontString()
+    inviteButton:SetWidth(UI.PanelButtonWidth(fs and fs:GetStringWidth() or 0))
+    inviteButton:SetEnabled((CRT.Invite.CanInvite() and #missing > 0) and true or false)
+    inviteStatus:SetText(CRT.Invite:Summary())
+end
+
+-- A filled slot's right-click menu: invite the player (greyed while they are in your group or you
+-- can't invite), or clear the slot.
+local function openSlotMenu(slot)
+    local key = Groups:Working()[slot.index]
+    if not key or key == "" then
+        return
+    end
+    UI.ContextMenu(slot, function(root)
+        root:CreateTitle(Groups.Display(key))
+        local canInvite, why = CRT.Invite.CanInvite()
+        local inGroup = Groups.MakeLookup(Groups:ReadRoster())(key) ~= nil
+        local b = root:CreateButton(format(TEXT.inviteName, key), function()
+            inviteKeys({ key })
+        end)
+        b:SetEnabled(canInvite and not inGroup)
+        if not canInvite and b.SetTooltip and GameTooltip_AddNormalLine then
+            b:SetTooltip(function(tooltip)
+                GameTooltip_AddNormalLine(tooltip, why)
+            end)
+        end
+        root:CreateButton(TEXT.clearSlot, function()
+            Groups:SetSlot(slot.index, "")
+        end)
+    end)
+end
+
+-- The Invite missing button beside anchor (Use This Group's (?)), and the status line above that row.
+local function buildInvites(pf, anchor)
+    inviteButton = makeButton(pf, format(TEXT.inviteMissing, 0), 120, 32)
+    inviteButton:SetPoint("LEFT", anchor, "RIGHT", 10, 0)
+    inviteButton:SetScript("OnClick", function()
+        inviteKeys(CRT.Invite.Missing(Groups:Working()))
+    end)
+    if inviteButton.SetMotionScriptsWhileDisabled then
+        inviteButton:SetMotionScriptsWhileDisabled(true) -- the tooltip says why while it is greyed
+    end
+    inviteButton:SetScript("OnEnter", function(self)
+        local ok, why = CRT.Invite.CanInvite()
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:SetText(self:GetText(), 1, 1, 1)
+        GameTooltip:AddLine(ok and TEXT.inviteBody or why, 0.8, 0.8, 0.8, true)
+        GameTooltip:Show()
+    end)
+    inviteButton:SetScript("OnLeave", function()
+        GameTooltip:Hide()
+    end)
+
+    inviteStatus = pf:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    inviteStatus:SetPoint("BOTTOMLEFT", pf, "BOTTOMLEFT", 8, 124)
+    inviteStatus:SetWidth(GRID_COLS * SLOT_W + (GRID_COLS - 1) * COL_GAP)
+    inviteStatus:SetJustifyH("LEFT")
+    inviteStatus:SetJustifyV("BOTTOM")
+    inviteStatus:SetWordWrap(true)
+    inviteStatus:SetMaxLines(INVITE_STATUS_LINES) -- a long list of failures can't grow into the grid
+    CRT.Invite:OnChange(refreshInvites)
+end
+
 -- Refresh ---------------------------------------------------------------------
 
 local function refreshPresets()
@@ -670,16 +771,10 @@ refresh = function()
 
     refreshPresets()
     refreshExtras(roster, working)
+    refreshInvites()
 end
 
 -- Page ------------------------------------------------------------------------
-
-local function makeButton(parent, label, width, height)
-    local b = styleButton(CreateFrame("Button", nil, parent, "UIPanelButtonTemplate"))
-    b:SetSize(width, height or 26)
-    b:SetText(label)
-    return b
-end
 
 local function buildPage(pf)
     page = pf
@@ -774,7 +869,7 @@ local function buildPage(pf)
         end)
         b:SetScript("OnClick", function(self, button)
             if button == "RightButton" then
-                Groups:SetSlot(self.index, "")
+                openSlotMenu(self)
             else
                 openPicker(self)
             end
@@ -784,7 +879,7 @@ local function buildPage(pf)
         slotButtons[index] = b
     end
 
-    local editHelp = UI.Help(pf, "Editing the groups", "Click a slot to choose a name, drag to move or swap, right-click to clear.")
+    local editHelp = UI.Help(pf, "Editing the groups", TEXT.editHelp)
 
     -- Bottom left buttons
     local setRoster = makeButton(pf, "Set current roster", SLOT_W)
@@ -854,7 +949,9 @@ local function buildPage(pf)
             CRT:Print("Pick a saved layout in Quick Load first.")
         end
     end)
-    UI.Help(pf, "Use This Group", "Makes the open layout the raid's active roster, marked active in Quick Load; the Late Tracker expects the people in it. During a raid night, tonight's list updates at once and everyone's clock keeps running."):SetPoint("LEFT", useGroup, "RIGHT", 6, 0)
+    local useHelp = UI.Help(pf, "Use This Group", "Makes the open layout the raid's active roster, marked active in Quick Load; the Late Tracker expects the people in it. During a raid night, tonight's list updates at once and everyone's clock keeps running.")
+    useHelp:SetPoint("LEFT", useGroup, "RIGHT", 6, 0)
+    buildInvites(pf, useHelp)
 
     local apply = makeButton(pf, "Arrange Groups", 2 * SLOT_W + COL_GAP, 32)
     apply:SetPoint("BOTTOMLEFT", pf, "BOTTOMLEFT", 8, 8)

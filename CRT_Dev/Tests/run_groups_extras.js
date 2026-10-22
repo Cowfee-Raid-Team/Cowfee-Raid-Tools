@@ -5,12 +5,13 @@ const themeLua = require('./theme_stub');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
 const harness = themeLua(process.argv.slice(2)) + `
-local dataSrc, pageSrc = ...
-local buttons = {}
+local dataSrc, pageSrc, applySrc, inviteSrc = ...
+local buttons, strings = {}, {}
 local function mock(kind)
   local m = { shown = true, kind = kind }
   return setmetatable(m, { __index = function(t, k)
-    if k == "CreateFontString" or k == "CreateTexture" then return function() return mock("r") end end
+    if k == "CreateFontString" then return function() local s = mock("r") strings[#strings + 1] = s return s end end
+    if k == "CreateTexture" then return function() return mock("r") end end
     if k == "SetText" then return function(self, s) rawset(self, "text", s) end end
     if k == "GetText" then return function(self) return rawget(self, "text") or "" end end
     if k == "Show" then return function(self) rawset(self, "shown", true) end end
@@ -22,6 +23,8 @@ local function mock(kind)
     if k == "HasFocus" then return function() return false end end
     if k == "SetBackdropBorderColor" then return function(self, r, g, b) rawset(self, "border", { r, g, b }) end end
     if k == "SetFrameStrata" then return function(self, s) rawset(self, "strata", s) end end
+    if k == "SetEnabled" then return function(self, on) rawset(self, "enabled", on) end end
+    if k == "SetMaxLines" then return function(self, n) rawset(self, "maxLines", n) end end
     return function() end end })
 end
 local frames = {}
@@ -40,12 +43,27 @@ local raid = { { "Solex", 1, "MAGE" }, { "Abu-KelThuzad", 1, "SHAMAN" }, { "Bale
 GetNumGroupMembers = function() return #raid end
 GetRaidRosterInfo = function(i) local r = raid[i] return r[1], nil, r[2], nil, nil, r[3] end
 GetCursorPosition = function() return 0, 0 end
+local lead, combat, invites = true, false, {}
+IsInGroup = function() return true end
+UnitIsGroupLeader = function() return lead end
+UnitIsGroupAssistant = function() return false end
+InCombatLockdown = function() return combat end
+UnitAffectingCombat = function() return false end
+time = function() return 1000 end
+C_PartyInfo = { InviteUnit = function(n) invites[#invites + 1] = n end, ConvertToRaid = function() end }
+local tip = {}
+GameTooltip = { SetOwner = function() tip = {} end, SetText = function(_, s) tip[#tip + 1] = s end, AddLine = function(_, s) tip[#tip + 1] = s end, Show = function() end, Hide = function() end }
+local menus = {}
+local gridRef
 local CRT = { db = { groups = { presets = {}, nextId = 1, keepChanges = false, source = "raid", working = {} }, classCache = {}, roleCache = {}, ui = {} } }
 function CRT:Print(m) print("  [chat] " .. m) end
 local pages = {}
-CRT.UI = { SkinScrollBar = function() end, SlotGrid = function() local g = { slots = {}, labels = {}, blockH = 143, slotW = 188 } for i = 1, 40 do local b = mock() rawset(b, "index", i) rawset(b, "icon", mock()) rawset(b, "text", mock()) rawset(b, "right", mock()) g.slots[i] = b end return g end, FitText = function() end, GoodText = function(t) return t end, ClipText = function() return mock() end, PAGE_W = 1026, PAGE_H = 560, Help = function() return mock() end, RegisterPage = function(_, k, t, fn) pages[k] = fn end }
+CRT.UI = { SkinScrollBar = function() end, SlotGrid = function() local g = { slots = {}, labels = {}, blockH = 143, slotW = 188 } for i = 1, 40 do local b = mock() rawset(b, "index", i) rawset(b, "icon", mock()) rawset(b, "text", mock()) rawset(b, "right", mock()) g.slots[i] = b end gridRef = g return g end, FitText = function() end, GoodText = function(t) return t end, ClipText = function() return mock() end, PAGE_W = 1026, PAGE_H = 560, Help = function() return mock() end, RegisterPage = function(_, k, t, fn) pages[k] = fn end,
+  PanelButtonWidth = function(w) return w + 28 end, ContextMenu = function(owner, fill) menus[#menus + 1] = { owner = owner, fill = fill } end }
 CRT_THEME(CRT, CRT.UI)
 assert(load(dataSrc, "Data.lua"))("CowfeeRaidTools", CRT)
+assert(load(applySrc, "Apply.lua"))("CowfeeRaidTools", CRT)
+assert(load(inviteSrc, "Invite.lua"))("CowfeeRaidTools", CRT)
 local G = CRT.Groups
 local w = G:Working()
 w[1] = "Solex-Area52" w[2] = "Abu-KelThuzad" w[6] = "Gadios-Area52"
@@ -82,9 +100,68 @@ const tail = `
 for _, b in ipairs(buttons) do if rawget(b, "index") == 1 then rawset(b, "over", true) end end
 row:OnDragStop()
 print("after drag onto slot 1: slot 1 = " .. w[1] .. "; list: " .. table.concat(extras(), ", "))
+
+-- Invites: the Invite missing button, its count, greyed states, the status line and the slot menu.
+local fails = 0
+local function check(ok, what) if ok then print("ok " .. what) else fails = fails + 1 print("FAIL " .. what) end end
+local function plain(s) return (tostring(s or ""):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")) end
+local inviteButton
+for _, b in ipairs(buttons) do if type(rawget(b, "text")) == "string" and b.text:find("^Invite missing") then inviteButton = b end end
+-- The grid now: Solex, Abu (in the raid), Gadios (not), Balevolence (in the raid).
+check(inviteButton and inviteButton.text == "Invite missing (1)", "the button counts the one missing: " .. tostring(inviteButton and inviteButton.text))
+check(inviteButton and inviteButton.enabled == true, "and is enabled for the leader")
+w[16] = "Mesmertism-Stormrage" G:Touch()
+check(inviteButton.text == "Invite missing (2)", "the count follows the grid: " .. inviteButton.text)
+lead = false G:Fire()
+check(inviteButton.enabled == false, "not lead or assist: greyed")
+inviteButton.OnEnter(inviteButton)
+check(tip[2] == "Only the raid leader or an assist can invite.", "the tooltip says why: " .. tostring(tip[2]))
+inviteButton.OnClick(inviteButton)
+check(#invites == 0, "no invites when greyed")
+lead, combat = true, true CRT.Invite:Fire()
+check(inviteButton.enabled == false, "in combat: greyed")
+lead, combat = true, false CRT.Invite:Fire()
+check(inviteButton.enabled == true, "out of combat again: enabled")
+CRT.db.groups.selected = G:CreatePreset("Main Raid", w)
+inviteButton.OnClick(inviteButton)
+check(#invites == 2 and invites[1] == "Gadios-Area52" and invites[2] == "Mesmertism-Stormrage", "Invite missing invites the two by Name-Realm: " .. table.concat(invites, ","))
+-- The status line shows the summary.
+local summary = plain(CRT.Invite:Summary())
+check(summary:find('Invited 2 from "Main Raid". Each one moves to their group when they join.', 1, true) == 1, "status: " .. summary)
+local statusShown = false
+for _, s in ipairs(strings) do if rawget(s, "text") == CRT.Invite:Summary() then statusShown = s end end
+check(statusShown, "the page's status line shows it")
+check(statusShown and rawget(statusShown, "maxLines") == 3, "the status line is capped at 3 lines, so it can't grow into the grid")
+-- Right-click a filled slot: a menu with Invite Name-Realm and Clear slot.
+local function openMenu(index)
+  menus = {}
+  gridRef.slots[index].OnClick(gridRef.slots[index], "RightButton")
+  local m = menus[1]
+  if not m then return nil end
+  local items = {}
+  local root = { CreateTitle = function(_, t) items[#items + 1] = { label = "title:" .. t } end,
+    CreateButton = function(_, label, fn) local it = { label = label, fn = fn, enabled = true } function it:SetEnabled(on) self.enabled = on end items[#items + 1] = it return it end }
+  m.fill(root)
+  return items
+end
+local items = openMenu(6)
+check(items and items[2] and items[2].label == "Invite Gadios-Area52", "slot 6's menu: Invite Gadios-Area52: " .. tostring(items and items[2] and items[2].label))
+check(items and items[3] and items[3].label == "Clear slot", "and Clear slot")
+check(items and items[2].enabled == true, "invite is enabled for someone not in the group")
+invites = {}
+items[2].fn()
+check(#invites == 1 and invites[1] == "Gadios-Area52", "the menu invites that player")
+items = openMenu(1)
+check(items and items[2].label == "Invite Solex-Area52" and items[2].enabled == false, "a player in the group: invite greyed (" .. tostring(items and items[2].label) .. ")")
+items[3].fn()
+check(w[1] == "", "Clear slot clears it")
+check(openMenu(1) == nil, "an empty slot opens no menu")
+if fails > 0 then error(fails .. " groups invite checks failed") end
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness + tail)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 const d = process.argv[2];
 lua.lua_pushstring(L, to_luastring(fs.readFileSync(d + '/CRT_Modules/Groups/Data.lua', 'utf8')));
 lua.lua_pushstring(L, to_luastring(fs.readFileSync(d + '/CRT_Modules/Groups/Page.lua', 'utf8')));
-if (lua.lua_pcall(L, 2, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
+lua.lua_pushstring(L, to_luastring(fs.readFileSync(d + '/CRT_Modules/Groups/Apply.lua', 'utf8')));
+lua.lua_pushstring(L, to_luastring(fs.readFileSync(d + '/CRT_Modules/Groups/Invite.lua', 'utf8')));
+if (lua.lua_pcall(L, 4, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }

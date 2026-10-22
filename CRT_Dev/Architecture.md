@@ -26,7 +26,8 @@ Files load in the order the `.toc` lists them. Each file starts with `local ADDO
 | 2b | `CRT_Core/Macros.lua` | The macro engine, `CRT.Macros`: features register macro sets (`Markers/Macros.lua` is the first); it creates, updates and removes them in the game's General Macros, or the character's macros when General is full, touching only macros it made that the player hasn't changed (`CRTDB.macros.owned`, shared by every profile; `CRTDBChar.macros.owned` for character macros). Raid Notes > Marker macros (`Markers/MacrosTab.lua`) shows the marker set |
 | 3 | `CRT_Core/UI/Panel.lua` | The main window, the left menu and the page registry |
 | 4 | `CRT_Modules/Groups/Data.lua` | Names, rosters, roles, the working grid, saved layouts, export and import |
-| 5 | `CRT_Modules/Groups/Apply.lua` | Moves the live raid into the grid's layout |
+| 5 | `CRT_Modules/Groups/Apply.lua` | Moves the live raid into the grid's layout; `Apply:MoveOne` moves one player who joined into their group when it has a free spot |
+| 5b | `CRT_Modules/Groups/Invite.lua` | `CRT.Invite`, the shared invites for Raid Groups and the Late Tracker: invites by Name-Realm, skips members, makes a party a raid before a sixth person, stops at 40, only out of combat as leader or assist, keeps each name's state from the game's system messages (an invite unanswered after `INVITE_TIMEOUT` fails with "no answer"), and moves each one who joins, matched by exact Name-Realm, with `Apply:MoveOne`. Moves land later, so a moved player is "moving" until the roster shows them in their group, and moves on their way count as taken spots. A player who joins in combat moves when combat ends. A Late Tracker night's start drops only finished invites (`Invite:Prune`); its end forgets them all |
 | 6 | `CRT_Modules/Groups/Page.lua` | The Raid Groups page: grid, picker, dialogs, Quick Load list, buttons |
 
 `CowfeeRaidTools.toc` holds the title, version, `## Interface:` number and `## SavedVariables: CRTDB`.
@@ -70,7 +71,8 @@ A name pasted without a realm is stored with your realm. `Groups.MakeLookup` (gr
 
 | Piece | How it works |
 |---|---|
-| Slots | 40 backdrop buttons. Left-click opens the picker, right-click clears, drag swaps |
+| Slots | 40 backdrop buttons. Left-click opens the picker, right-click opens a menu (Invite Name-Realm, Clear slot), drag swaps |
+| Invites | Invite missing (N), beside Use This Group, invites everyone in the grid who isn't in the group through `CRT.Invite`; the status line above it says what happened. Greyed with a tooltip when you can't invite |
 | Drag and drop | A ghost frame follows the cursor and the drop target is found with `IsMouseOver`, because other frames get no mouse events during a drag |
 | Picker | One shared popup with an edit box and 10 rows, plus a full-screen click catcher that closes it |
 | Dialog | One shared frame for the one-line name prompt and the multi-line Export and Import box |
@@ -188,7 +190,7 @@ Since the alerts engine, `CRT_Modules/Notes/Engine.lua` no longer keeps its own 
 
 ## Late tracker
 
-`CRT_Modules/Late/Data.lua` keeps the schedule and the expected Raid Groups layout in `CRTDB.late`, starts a raid night from the schedule (a 5-second ticker) or from Start raid now, marks players as joined on `GROUP_ROSTER_UPDATE`, ends the night when the group disbands, on End raid or after 8 hours, and adds up the totals. `CRT_Modules/Late/Page.lua` is the Late Tracker page. The running night is stored in saved variables, so a reload does not lose it. See the maintenance skill's `references/late.md`.
+`CRT_Modules/Late/Data.lua` keeps the schedule and the expected Raid Groups layout in `CRTDB.late`, starts a raid night from the schedule (a 5-second ticker) or from Start raid now, marks players as joined on `GROUP_ROSTER_UPDATE`, ends the night when the group disbands, on End raid or after 8 hours, and adds up the totals. `CRT_Modules/Late/Page.lua` is the Late Tracker page. On its Tonight tab, clicking a player who isn't here invites them through `CRT.Invite` (right-click also offers Count as here on time), Invite all not here invites the rest, and each row shows its invite state beside the late time. The running night is stored in saved variables, so a reload does not lose it. See the maintenance skill's `references/late.md`.
 
 ## Tattlebot
 
