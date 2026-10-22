@@ -1220,7 +1220,10 @@ local function placeHelp(b)
         b:SetPoint("LEFT", b.crtHelpTarget, "RIGHT", gap, 0)
         return
     end
-    -- the text's width, inside the box when the box is narrower (a clipped label)
+    -- the text's width, inside the box when the box is narrower (a clipped label). A label sized by two
+    -- anchors (LEFT and RIGHT) has no width until its first layout, so GetWidth is 0 while the page is
+    -- built and the full text width is used; the icon's OnShow places it again once the box has its
+    -- width, so a clipped label's (?) then sits at the box's edge.
     local w = fs:GetStringWidth() or 0
     local box = fs:GetWidth() or 0
     if box > 0 and box < w then

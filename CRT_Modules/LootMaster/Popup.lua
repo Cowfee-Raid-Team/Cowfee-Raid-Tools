@@ -609,7 +609,7 @@ local function build()
         LM:ShowAnswers()
     end)
     header.answers:SetPoint("RIGHT", header.close, "LEFT", -4, 0)
-    header.help = UI.HelpRight(header.title, TEXT.title, TEXT.help, { parent = header })
+    header:SetHelp(TEXT.title, TEXT.help) -- strip.help, right of the title (UI/Window.lua)
     -- "N items you can't use were answered Transmog for you. Show": shown only when there are any
     autoLine = CreateFrame("Frame", nil, anchor, "BackdropTemplate")
     autoLine:SetFrameLevel(chrome:GetFrameLevel() + 2)

@@ -889,7 +889,8 @@ local function getEditor()
     if d.addGroup.Dropdown.SetDefaultText then
         d.addGroup.Dropdown:SetDefaultText("Pick a player")
     end
-    UI.HelpRight(d.addGroup, "Edit tonight's roster", "Changes tonight's list only; the expected roster on Raid Groups stays as it is. Add from group: someone who should count tonight (press On time if they were here from the start). On time: counts a player as here from the start. Remove: takes them off tonight's list.")
+    -- the (?) on the whole window, right of its title (BasicFrameTemplate's TitleText)
+    UI.HelpRight(d.TitleText, "Edit tonight's roster", "Changes tonight's list only; the expected roster on Raid Groups stays as it is. Add from group: someone who should count tonight (press On time if they were here from the start). On time: counts a player as here from the start. Remove: takes them off tonight's list.", { parent = d })
 
     local sync = makeButton(d, "Update from layout", 150, 22)
     editorFont(sync)

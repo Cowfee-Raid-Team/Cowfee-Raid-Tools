@@ -1326,7 +1326,8 @@ local function build()
     -- Save as, For, Difficulty
     -- Raid note is greyed out for anyone who can't change the raid note, with a (?) saying why
     local saveAsRow = row(UI.Dropdown(f, TEXT.saveAs, {
-        labelWidth = 56, width = 104, enabledIf = editable,
+        -- 52 + 5 + 104, then its (?) (UI.HelpRight): it ends 4 before For at 205
+        labelWidth = 52, width = 104, enabledIf = editable,
         options = function()
             local locked = not (ctx and ctx.savedMode) and not canEditRaid()
             return { { key = "note", label = TEXT.asNote, disabled = locked or nil }, { key = "mine", label = TEXT.asMine } }

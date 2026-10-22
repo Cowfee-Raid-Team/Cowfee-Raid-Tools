@@ -7,6 +7,9 @@ const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
 const harness = themeLua(process.argv.slice(2)) + `
 local dataSrc, pageSrc = ...
 local strings = {}
+local lateHelps = {} -- every (?) made
+tinsert = table.insert
+UISpecialFrames = {}
 local function mock()
   local m = { shown = false }
   return setmetatable(m, { __index = function(t, k)
@@ -29,7 +32,10 @@ local function mock()
     return function() end end })
 end
 local frames = {}
-function CreateFrame() local f = mock() frames[#frames + 1] = f return f end
+-- BasicFrameTemplate's TitleText (Blizzard_UIPanelTemplates: a GameFontNormal font string anchored TOP)
+function CreateFrame(_, _, _, template) local f = mock() frames[#frames + 1] = f
+  if template == "BasicFrameTemplateWithInset" then rawset(f, "TitleText", f:CreateFontString()) end
+  return f end
 local tip = {}
 GameTooltip = { SetOwner = function() tip = {} end, SetText = function(_, s) tip[#tip + 1] = s end, AddLine = function(_, s) tip[#tip + 1] = s end, Show = function() end, Hide = function() end }
 local menus, gridRef = {}, nil
@@ -43,7 +49,7 @@ C_Timer = { After = function() end, NewTicker = function() end }
 RAID_CLASS_COLORS = {}
 local pages = {}
 local CRT = { db = { late = { days = {}, hour = 20, minute = 0, grace = 0, history = {}, nextId = 3, lastAuto = "" } },
-  UI = { SlotGrid = function() local g = { slots = {}, labels = {}, blockH = 143, slotW = 188 } for i = 1, 40 do local b = mock() rawset(b, "index", i) rawset(b, "icon", mock()) rawset(b, "text", mock()) rawset(b, "right", mock()) g.slots[i] = b end gridRef = g return g end, FitText = function() end, GoodText = function(t) return t end, ClipText = function() return mock() end, PAGE_W = 1026, PAGE_H = 560, Help = function() return mock() end, Dropdown = function(_, _, o) local m = mock() rawset(m, "refresh", function() if o.enabledIf then rawset(m, "enabled", o.enabledIf() and true or false) end end) return m end, Slider = function(_, _, o) local m = mock() rawset(m, "refresh", function() if o.enabledIf then rawset(m, "enabled", o.enabledIf() and true or false) end end) return m end,  RegisterLayer = function() end, RegisterPage = function(_, key, title, fn) pages[key] = fn end, RegisterTab = function() end, SetTabSelected = function() end, SkinTree = function() end, SkinScrollBar = function() end, SetFrameTitle = function() end,
+  UI = { SlotGrid = function() local g = { slots = {}, labels = {}, blockH = 143, slotW = 188 } for i = 1, 40 do local b = mock() rawset(b, "index", i) rawset(b, "icon", mock()) rawset(b, "text", mock()) rawset(b, "right", mock()) g.slots[i] = b end gridRef = g return g end, FitText = function() end, GoodText = function(t) return t end, ClipText = function() return mock() end, PAGE_W = 1026, PAGE_H = 560, Help = function(_, title) local m = mock() rawset(m, "helpTitle", title) lateHelps[#lateHelps + 1] = m return m end, Dropdown = function(_, _, o) local m = mock() rawset(m, "Dropdown", mock()) rawset(m, "refresh", function() if o.enabledIf then rawset(m, "enabled", o.enabledIf() and true or false) end end) return m end, Slider = function(_, _, o) local m = mock() rawset(m, "refresh", function() if o.enabledIf then rawset(m, "enabled", o.enabledIf() and true or false) end end) return m end,  RegisterLayer = function() end, RegisterPage = function(_, key, title, fn) pages[key] = fn end, RegisterTab = function() end, SetTabSelected = function() end, SkinTree = function() end, SkinScrollBar = function() end, SetFrameTitle = function() end, StyleWindow = function() end,
     PanelButtonWidth = function(w) return w + 28 end, ContextMenu = function(owner, fill) menus[#menus + 1] = { owner = owner, fill = fill } end },
   Invite = { CanInvite = function() return canInvite, inviteWhy end, Send = function(_, names, slots, from) sent[#sent + 1] = { names = names, slots = slots, from = from } return #names end,
     StateText = function(_, key) return states[key] end, Entry = function(_, key) return states[key] and { state = "invited" } end, Summary = function() return "SUMMARY" end, OnChange = function() end,
@@ -152,6 +158,19 @@ if menus[1] then menus[1].fill(root) end
 local lines = {}
 if items[1] and items[1].tip then items[1].tip(lines) end
 check(items[1] and items[1].enabled == false and lines[1] == "Only the raid leader or an assist can invite.", "the greyed menu Invite says why: " .. tostring(lines[1]))
+-- Edit roster opens the roster window; its (?) on the whole window sits right of the window's title
+do
+  local edit
+  for _, f in ipairs(frames) do if rawget(f, "text") == "Edit roster" and rawget(f, "OnClick") then edit = f end end
+  edit.OnClick(edit)
+  local h
+  for _, x in ipairs(lateHelps) do if x.helpTitle == "Edit tonight's roster" then h = x end end
+  local target = h and rawget(h, "helpTarget")
+  local window
+  for _, f in ipairs(frames) do if rawget(f, "TitleText") ~= nil and rawget(f, "TitleText") == target then window = f end end
+  check(window ~= nil, "the roster window's (?) is right of the window's title (its TitleText)")
+  for _, x in ipairs(lateHelps) do check(rawget(x, "helpTarget") ~= nil, "the (?) " .. tostring(x.helpTitle) .. " is placed by UI.HelpRight") end
+end
 if fails > 0 then error(fails .. " late page checks failed") end
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }

@@ -239,18 +239,146 @@ const root = process.argv[2];
 const read = (p) => fs.readFileSync(path.join(root, p), 'utf8');
 
 // node run_help.js <addon folder> lint: every (?) in the addon is placed by UI.HelpRight, so none can
-// drift left of, or far from, what it explains. Outside CRT_Core/UI/Panel.lua (which defines both) no
-// code names UI.Help, and no icon from UI.HelpRight is moved afterwards: not chained
-// (UI.HelpRight(...):SetPoint) and not through the name it was kept in (x = UI.HelpRight(...) ... x:SetPoint).
-// ALLOW lists a place that truly needs its own anchor: [file, the line's text, the reason].
+// drift left of, or far from, what it explains. It fails on
+//   - UI.Help named outside CRT_Core/UI/Panel.lua, which defines both;
+//   - a UI.HelpRight icon anchored again: chained (UI.HelpRight(...):SetPoint), or through the name it
+//     was kept in (x = UI.HelpRight(...) ... x:SetPoint), in the same file;
+//   - an icon kept in a table field (tab.unnamedHelp = UI.HelpRight(...)) and anchored again in any
+//     file, through that field (t.unnamedHelp:SetPoint) or, in a file that reads the field, a local of
+//     the same name (unnamedHelp:SetPoint).
+// Not followed: an icon passed to a function or into a table under another name. Following values
+// across files needs a Lua parser and data flow, too costly for a lint; the review catches those.
+// ALLOW lists a place that truly needs its own anchor: [file, the function it is in, the line's text,
+// the reason]. The function is the nearest "function name(" above the line.
 const ALLOW = [
   // The Timeline's Personal notes lane: its (?) follows whichever row that lane is on as the rows
   // scroll, and stays inside the 166 px name column, so a long name never puts it over the track.
-  ['CRT_Modules/Timeline/View.lua', 'h:ClearAllPoints()', 'the personal lane (?) moves with its row'],
-  ['CRT_Modules/Timeline/View.lua', 'h:SetPoint("LEFT", l, "LEFT", math.min(NAME_X + w + gap', 'the personal lane (?) stays in the name column'],
+  ['CRT_Modules/Timeline/View.lua', 'Methods:DrawPersonalHelp', 'h:ClearAllPoints()', 'the personal lane (?) moves with its row'],
+  ['CRT_Modules/Timeline/View.lua', 'Methods:DrawPersonalHelp', 'h:SetPoint("LEFT", l, "LEFT", math.min(NAME_X + w + gap', 'the personal lane (?) stays in the name column'],
+  // The Marker editor's win.help is its Help text edit box, not a (?); the title strip's (?) is strip.help.
+  ['CRT_Dev/Dev/MarkerEditor.lua', null, 'win.help:SetPoint(', 'win.help is an edit box'],
 ];
+
+// the code with its comments blanked out (strings kept), so a comment can name UI.Help
+function luaCode(src) {
+  let out = '', i = 0;
+  while (i < src.length) {
+    const c = src[i];
+    if (c === '"' || c === "'") {
+      let j = i + 1;
+      while (j < src.length && src[j] !== c && src[j] !== '\n') j += src[j] === '\\' ? 2 : 1;
+      out += src.slice(i, j + 1); i = j + 1;
+    } else if (src.startsWith('--', i)) {
+      const long = src.slice(i + 2).match(/^\[(=*)\[/);
+      const end = long ? src.indexOf(']' + long[1] + ']', i) + long[1].length + 2 : src.indexOf('\n', i);
+      const stop = end < i ? src.length : end;
+      out += src.slice(i, stop).replace(/[^\n]/g, ' '); i = stop;
+    } else { out += c; i++; }
+  }
+  return out;
+}
+// the index just after the ) that closes the ( at open
+function closing(s, open) {
+  let depth = 0;
+  for (let i = open; i < s.length; i++) {
+    const c = s[i];
+    if (c === '"' || c === "'") { i++; while (i < s.length && s[i] !== c) i += s[i] === '\\' ? 2 : 1; continue; }
+    if (c === '(') depth++;
+    else if (c === ')' && --depth === 0) return i + 1;
+  }
+  return s.length;
+}
+const REANCHOR = '\\s*:\\s*(SetPoint|ClearAllPoints|SetAllPoints)\\b';
+const escape = (s) => s.replace(/[.[\]]/g, (c) => '\\' + c);
+
+// sources: { [file]: text }. Returns { bad, calls }.
+function lintSources(sources, allow) {
+  const bad = [];
+  let calls = 0;
+  const parsed = {};
+  for (const rel of Object.keys(sources)) {
+    const raw = sources[rel];
+    const src = luaCode(raw);
+    const lines = raw.split('\n');
+    const lineOf = (i) => src.slice(0, i).split('\n').length;
+    const fnAt = (i) => { let name = null; for (const m of src.slice(0, i).matchAll(/function\s+([\w.:]+)\s*\(/g)) name = m[1]; return name; };
+    const report = (i, what) => {
+      const text = lines[lineOf(i) - 1].trim();
+      if (allow.some(([f, fn, t]) => f === rel && (fn === null || fn === fnAt(i)) && text.includes(t))) return;
+      bad.push(rel + ':' + lineOf(i) + ': ' + what + ': ' + text.slice(0, 140));
+    };
+    parsed[rel] = { src, report };
+  }
+  const fields = new Set(); // icons kept in a table field: the field's name
+  for (const rel of Object.keys(parsed)) {
+    const { src, report } = parsed[rel];
+    if (rel !== 'CRT_Core/UI/Panel.lua') {
+      for (const m of src.matchAll(/\bUI\.Help\b(?![\w])/g)) report(m.index, 'UI.Help outside Panel.lua (use UI.HelpRight)');
+    }
+    for (const m of src.matchAll(/\bUI\.HelpRight\s*\(/g)) {
+      calls++;
+      const after = closing(src, m.index + m[0].length - 1);
+      if (new RegExp('^' + REANCHOR).test(src.slice(after))) report(m.index, 'a UI.HelpRight icon anchored again');
+      const kept = src.slice(0, m.index).match(/([A-Za-z_][\w.]*(?:\[[^\]\n]+\])?)\s*=\s*(?:CRT\.)?$/);
+      if (!kept) continue;
+      for (const k of src.matchAll(new RegExp('(?<![\\w.])' + escape(kept[1]) + REANCHOR, 'g'))) {
+        report(k.index, kept[1] + ' (a UI.HelpRight icon) anchored again');
+      }
+      const field = kept[1].match(/[.:](\w+)$/);
+      if (field) fields.add(field[1]);
+    }
+  }
+  for (const field of fields) {
+    for (const rel of Object.keys(parsed)) {
+      const { src, report } = parsed[rel];
+      // through the field anywhere; through a bare local of its name only in a file that reads the field
+      const readsField = new RegExp('[\\w\\]]\\.' + field + '(?![\\w])').test(src);
+      const owner = readsField ? '(?:[\\w]+(?:\\[[^\\]\\n]+\\])?\\.)*' : '(?:[\\w]+(?:\\[[^\\]\\n]+\\])?\\.)+';
+      for (const k of src.matchAll(new RegExp('(?<![\\w.])' + owner + field + REANCHOR, 'g'))) {
+        report(k.index, field + ' (a UI.HelpRight icon kept in a table field) anchored again');
+      }
+    }
+  }
+  return { bad, calls };
+}
+
 if (process.argv[3] === 'lint') {
-  const files = [];
+  // the lint on itself first: each rule catches what it should, and an allow entry holds only in its function
+  const fixture = {
+    'A.lua': [
+      'local function build(f)',
+      '    tab.unnamedHelp = UI.HelpRight(f, "T", "x")',
+      '    local h = UI.HelpRight(f, "T", "x")',
+      '    h:SetPoint("LEFT")',
+      'end',
+      'function Methods:Draw()',
+      '    h:ClearAllPoints()',
+      'end',
+    ].join('\n'),
+    'B.lua': [
+      'local unnamedHelp = tab.unnamedHelp',
+      'unnamedHelp:SetPoint("TOPLEFT", 1, 2)',
+      'other.tab.unnamedHelp:ClearAllPoints()',
+      'UI.HelpRight(f, "T", "x"):SetPoint("LEFT")',
+      'local b = UI.Help(f, "T", "x") -- UI.Help in a comment is fine',
+    ].join('\n'),
+  };
+  const fixAllow = [['A.lua', 'Methods:Draw', 'h:ClearAllPoints()', 'test']];
+  const got = lintSources(fixture, fixAllow).bad.map((b) => b.split(': ').slice(0, 2).join(': ')); // file:line: what
+  const want = ['A.lua:4: h (a UI.HelpRight icon) anchored again', 'B.lua:5: UI.Help outside Panel.lua (use UI.HelpRight)',
+    'B.lua:4: a UI.HelpRight icon anchored again', 'B.lua:2: unnamedHelp (a UI.HelpRight icon kept in a table field) anchored again',
+    'B.lua:3: unnamedHelp (a UI.HelpRight icon kept in a table field) anchored again'];
+  const missing = want.filter((w) => !got.includes(w));
+  const extra = got.filter((g) => !want.includes(g));
+  // the allow entry is tied to its function: the same line elsewhere still fails
+  const elsewhere = lintSources({ 'A.lua': 'local h = UI.HelpRight(f, "T", "x")\nfunction other()\n    h:ClearAllPoints()\nend' }, fixAllow).bad;
+  if (missing.length || extra.length || elsewhere.length !== 1) {
+    console.log('FAIL the lint on its own fixture: missing ' + JSON.stringify(missing) + ', extra ' + JSON.stringify(extra) + ', outside its function ' + elsewhere.length);
+    process.exit(1);
+  }
+  console.log('ok the lint catches each kind of drift, and an allow entry holds only in its function');
+
+  const sources = {};
   const walk = (dir) => {
     for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
       if (['.git', '.claude', 'node_modules'].includes(e.name)) continue;
@@ -258,66 +386,11 @@ if (process.argv[3] === 'lint') {
       const rel = path.relative(root, p).split(path.sep).join('/');
       if (rel === 'CRT_Dev/Tests') continue;
       if (e.isDirectory()) walk(p);
-      else if (e.name.endsWith('.lua')) files.push(rel);
+      else if (e.name.endsWith('.lua')) sources[rel] = fs.readFileSync(p, 'utf8').replace(/\r\n/g, '\n');
     }
   };
   walk(root);
-  // the code with its comments blanked out (strings kept), so a comment can name UI.Help
-  const code = (src) => {
-    let out = '', i = 0;
-    while (i < src.length) {
-      const c = src[i];
-      if (c === '"' || c === "'") {
-        let j = i + 1;
-        while (j < src.length && src[j] !== c && src[j] !== '\n') j += src[j] === '\\' ? 2 : 1;
-        out += src.slice(i, j + 1); i = j + 1;
-      } else if (src.startsWith('--', i)) {
-        const long = src.slice(i + 2).match(/^\[(=*)\[/);
-        const end = long ? src.indexOf(']' + long[1] + ']', i) + long[1].length + 2 : src.indexOf('\n', i);
-        const stop = end < i ? src.length : end;
-        out += src.slice(i, stop).replace(/[^\n]/g, ' '); i = stop;
-      } else { out += c; i++; }
-    }
-    return out;
-  };
-  // the index just after the ) that closes the ( at open
-  const closing = (s, open) => {
-    let depth = 0;
-    for (let i = open; i < s.length; i++) {
-      const c = s[i];
-      if (c === '"' || c === "'") { i++; while (i < s.length && s[i] !== c) i += s[i] === '\\' ? 2 : 1; continue; }
-      if (c === '(') depth++;
-      else if (c === ')' && --depth === 0) return i + 1;
-    }
-    return s.length;
-  };
-  const bad = [];
-  let calls = 0;
-  for (const rel of files) {
-    const src = code(fs.readFileSync(path.join(root, rel), 'utf8'));
-    const lines = fs.readFileSync(path.join(root, rel), 'utf8').split('\n');
-    const lineOf = (i) => src.slice(0, i).split('\n').length;
-    const report = (i, what) => {
-      const text = lines[lineOf(i) - 1].trim();
-      if (ALLOW.some(([f, t]) => f === rel && text.includes(t))) return;
-      bad.push(rel + ':' + lineOf(i) + ': ' + what + ': ' + text.slice(0, 140));
-    };
-    if (rel !== 'CRT_Core/UI/Panel.lua') {
-      for (const m of src.matchAll(/\bUI\.Help\b(?![\w])/g)) report(m.index, 'UI.Help outside Panel.lua (use UI.HelpRight)');
-    }
-    for (const m of src.matchAll(/\bUI\.HelpRight\s*\(/g)) {
-      calls++;
-      const after = closing(src, m.index + m[0].length - 1);
-      if (/^\s*:\s*(SetPoint|ClearAllPoints|SetAllPoints)\b/.test(src.slice(after))) report(m.index, 'a UI.HelpRight icon anchored again');
-      const kept = src.slice(0, m.index).match(/([A-Za-z_][\w.]*(?:\[[^\]\n]+\])?)\s*=\s*(?:CRT\.)?$/);
-      if (kept) {
-        const name = kept[1].replace(/[.[\]]/g, (c) => '\\' + c);
-        for (const k of src.matchAll(new RegExp('(?<![\\w.])' + name + '\\s*:\\s*(SetPoint|ClearAllPoints|SetAllPoints)\\b', 'g'))) {
-          report(k.index, kept[1] + ' (a UI.HelpRight icon) anchored again');
-        }
-      }
-    }
-  }
+  const { bad, calls } = lintSources(sources, ALLOW);
   if (calls === 0) bad.push('no UI.HelpRight calls found: is the scan looking in the right folder?');
   if (bad.length) { console.log('FAIL a (?) placed outside UI.HelpRight:'); for (const b of bad) console.log(b); process.exit(1); }
   console.log(calls + ' UI.HelpRight calls, every (?) placed by the helper');

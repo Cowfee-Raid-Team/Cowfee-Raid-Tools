@@ -98,7 +98,7 @@ L.TOP_Y = -6 -- the boss, difficulty and reference dropdowns, beside the title
 L.BOSS_X, L.BOSS_LABEL, L.BOSS_W = 130, 34, 190
 L.DIFF_X, L.DIFF_LABEL, L.DIFF_W = 371, 58, 110
 L.FROM_X, L.FROM_LABEL = 556, 66
-L.HELP_ROOM = 30 -- a (?) and its gap
+L.HELP_ROOM = UI.HELP_GAP + UI.HELP_SIZE + 6 -- a (?) after its control (UI.HelpRight), then 6 to the edge
 L.DROP_GAP = 5 -- UI/Controls.lua: between a row's label and its control
 L.FROM_W = UI.PAGE_W - L.FROM_X - L.FROM_LABEL - L.DROP_GAP - L.HELP_ROOM - L.PAD
 L.LIST_TOP = -44
@@ -133,7 +133,7 @@ L.SHOW_MIN, L.SHOW_MAX, L.SHOW_DEFAULT = 1, 60, 5 -- Show from, seconds
 L.LINGER_MIN, L.LINGER_MAX = 0, 10 -- Linger, seconds
 L.SLIDER_GAP = 20 -- between Show from and Linger
 -- The panel's rows, from its top: the header, Triggers and its rows
-L.ICON_Y, L.NAME_Y, L.ALERT_Y, L.SAVE_Y, L.SAVE_HELP_Y = -10, -16, -12, -8, -16
+L.ICON_Y, L.NAME_Y, L.ALERT_Y, L.SAVE_Y = -10, -16, -12, -8
 L.TRIGGERS_Y, L.SLIDERS_Y, L.TIMES_Y, L.TIMES_BOX_Y, L.TIMELINE_Y = -50, -66, -104, -100, -124
 L.TIMELINE_W, L.TEMPLATE_W, L.TEST_W, L.DEFAULT_W = 170, 140, 80, 80
 L.BUTTON_GAP = 8

@@ -234,6 +234,11 @@ do
   assert(w.title == "Alert", w.title)
   assert(w.textEdit.text == "Real Name", "text defaults to the spell name: " .. w.textEdit.text)
   assert(value("Save as") == "mine" and not w.forRow.shown, "Only me, no For row")
+  -- the Save as (?) (UI.HelpRight: HELP_GAP and HELP_SIZE after the row) leaves at least 4 px before For
+  local sa, fr = dropdowns["Save as"], w.forRow
+  local saX, forX = sa.pts[#sa.pts][2], fr.pts[#fr.pts][2]
+  local helpEnd = saX + sa.opts.labelWidth + 5 + sa.opts.width + 4 + 20
+  assert(helpEnd + 4 <= forX, "Save as (?) ends at " .. helpEnd .. ", For starts at " .. forX)
   assert(value("Icon") == "spell" and w.idEdit.text == "777" and w.iconPreview.texture == "tex777" and w.iconPreview.shown, "spell icon")
   assert(w.timeEdit.text == "", "no time")
   assert(not w.deleteBtn.shown, "delete hidden for new")
