@@ -56,6 +56,11 @@ local NOTE = table.concat({
   "Note: the hunter kites",
   "Note: the Hunter kites",
   "Soak: priest, monk",
+  "Soak 1: {star} Abu PRIEST",
+  "Kicks: Abu > MAGE > rogue",
+  "Kicks: 1 mage 2 ROGUE",
+  "Soak: Abu (left), priest",
+  "Soak: |cffff0000Abu|r / priest -> {rt1}",
   "invitelist:Abu,Cheo;",
 }, "\\n")
 
@@ -103,6 +108,11 @@ check("NSRT: classes as class IDs in tags, as English names in assignments", fun
     "Note: the hunter kites",
     "Note: the Hunter kites",
     "Soak: Priest, Monk",
+    "Soak 1: {star} Abu Priest",
+    "Kicks: Abu > Mage > Rogue",
+    "Kicks: 1 Mage 2 Rogue",
+    "Soak: Abu (left), Priest",
+    "Soak: |cffff0000Abu|r / Priest -> {rt1}",
   }, "\\n"))
 end)
 
@@ -125,13 +135,18 @@ check("MRT: a two-word class is one class block", function()
     "Note: the hunter kites",
     "Note: the Hunter kites",
     "Soak: priest, monk",
+    "Soak 1: {star} Abu PRIEST",
+    "Kicks: Abu > MAGE > rogue",
+    "Kicks: 1 mage 2 ROGUE",
+    "Soak: Abu (left), priest",
+    "Soak: |cffff0000Abu|r / priest -> {rt1}",
   }, "\\n"))
 end)
 
 check("assignment lines: which class words count", function()
   local function counted(rest)
     local out = {}
-    for _, item in ipairs(P.AssignmentClasses(rest, "[^%s,]+")) do
+    for _, item in ipairs(P.AssignmentClasses(rest)) do
       if item.counts then out[#out + 1] = item.text .. "=" .. item.class end
     end
     return table.concat(out, ",")
@@ -144,6 +159,17 @@ check("assignment lines: which class words count", function()
   assert(counted(" priest, Abu, tank, Group2, G3, everyone") == "priest=PRIEST", "names, roles and groups keep it a list")
   assert(counted(" priest and Abu") == "", "a short lower-case word is a sentence")
   assert(counted(" kill the demon hunter") == "demon hunter=DEMONHUNTER", "a name of several words is always a class")
+  -- markup and punctuation are neither names nor sentence words
+  assert(counted(" {star} Abu priest") == "priest=PRIEST", "a raid icon")
+  assert(counted(" Abu > mage -> rogue") == "mage=MAGE,rogue=ROGUE", "arrows")
+  assert(counted(" 1 mage 2 rogue") == "mage=MAGE,rogue=ROGUE", "numbers")
+  assert(counted(" Abu (left), priest") == "priest=PRIEST", "a bracketed note")
+  assert(counted(" |cffff0000Abu|r / priest") == "priest=PRIEST", "a colour code and a slash")
+  assert(counted(" {star} the priest") == "", "still a sentence")
+  -- one cut decides the list for every user: the rendered note's word pattern sees the same list
+  local cut = {}
+  for _, item in ipairs(P.AssignmentClasses(" Abu (left), priest", "[%a]+")) do if item.counts then cut[#cut + 1] = item.text end end
+  assert(table.concat(cut, ",") == "priest", "another word pattern, the same list: " .. table.concat(cut, ","))
 end)
 
 if checks.failed then error(checks.failed .. " failed") end

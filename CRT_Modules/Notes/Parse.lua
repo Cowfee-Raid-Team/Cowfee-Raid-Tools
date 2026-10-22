@@ -241,42 +241,73 @@ function Parser.ClassRuns(s, pattern)
     return out
 end
 
--- Words that name a role, everyone or the raid rather than a player (Engine.lua's tag words). The note editor
--- keeps them out of the invite list; an assignment line of them is still a list.
-Parser.TAG_WORDS = { all = true, everyone = true, raid = true, tank = true, tanks = true, healer = true,
-    healers = true, heal = true, dps = true, damager = true, damage = true, melee = true, melees = true,
-    ranged = true, range = true }
-local GROUP_WORDS = { g = true, grp = true, group = true }
+-- The tag words for a role, everyone or the raid, by what they name (Engine.lua's tokens read them by key), and
+-- every one of them as a set: words that name no player. The note editor keeps them out of the invite list; an
+-- assignment line of them is still a list. "damage" names no player but matches no one in the alerts.
+Parser.ROLE_WORDS = {
+    everyone = { "all", "everyone", "raid" },
+    tank = { "tank", "tanks" },
+    healer = { "healer", "healers", "heal" },
+    dps = { "dps", "damager" },
+    melee = { "melee", "melees" },
+    ranged = { "ranged", "range" },
+}
+Parser.TAG_WORDS = { damage = true }
+for _, list in pairs(Parser.ROLE_WORDS) do
+    for _, w in ipairs(list) do
+        Parser.TAG_WORDS[w] = true
+    end
+end
+-- The words before a raid group's number: "G1", "Grp1", "Group1", or "Group 1" as two words (Engine.lua's groupTag).
+Parser.GROUP_WORDS = { g = true, grp = true, group = true }
+
+-- What a name is in an assignment line: anything between spaces and commas, so "(left)" and "{star}" are items of
+-- their own. One pattern for every reader, so whether a line is a list never depends on who reads it.
+Parser.NAME_WORD = "[^%s,]+"
+
+-- Whether an item of an assignment line is markup or punctuation, which a list and a sentence both hold: a
+-- {..} code ({star}, {rt1}), a |c..|r colour code, a bracketed note ("(left)"), or anything with no letter
+-- (">", "->", "/", "1", "2.").
+local function neutralItem(text)
+    return text:find("^{.*}$") ~= nil or text:find("|c", 1, true) ~= nil or text:find("|r", 1, true) ~= nil
+        or text:find("^%(.*%)$") ~= nil or not (text:find("%a") or text:find("[\128-\255]"))
+end
 
 -- Whether an item of an assignment line is one a list of names holds: a class, a role or everyone word, a group
--- ("G1", "Group1", "Group 1") or a name-like word, which starts with a capital or with a letter outside ASCII
--- (whose case can't be told). A lower-case word of any other kind ("the", "kites") makes the line a sentence.
-local function listItem(item, prev)
+-- ("G1", "Group1", "Group 1"), a name-like word, which starts with a capital or with a letter outside ASCII
+-- (whose case can't be told), or markup and punctuation. A lower-case word of any other kind ("the", "kites")
+-- makes the line a sentence.
+local function listItem(item)
     local lower = item.text:lower()
-    if item.class or Parser.TAG_WORDS[lower] or GROUP_WORDS[lower] or lower:match("^g%d$") or lower:match("^grp%d$")
-        or lower:match("^group%d$") then
-        return true
-    end
-    if lower:match("^%d$") and prev and GROUP_WORDS[prev.text:lower()] then
+    local G = Parser.GROUP_WORDS
+    if item.class or Parser.TAG_WORDS[lower] or G[lower] or lower:match("^g%d$") or lower:match("^grp%d$")
+        or lower:match("^group%d$") or neutralItem(item.text) then
         return true
     end
     return item.text:find("^%u") ~= nil or item.text:find("^[\128-\255]") ~= nil
 end
 
--- The names of an assignment line (the part after "Label:") cut as ClassRuns cuts them, each class item with
--- counts: whether it is the class there. A class name of several words always is. One word is only on a list
--- of names (every item a listItem, so "Note: the Hunter kites" is a sentence), and only written as a class
--- (sure, or all in lower case: "Soak: priest, monk"), never like a player's name ("Kicks: Deathknight, Abu").
--- The rendered note, the integrations and the alerts (an assignment line for your class) share it.
-function Parser.AssignmentClasses(rest, pattern)
-    local items = Parser.ClassRuns(rest, pattern)
-    local list = #items > 0
-    for k, item in ipairs(items) do
-        if not listItem(item, items[k - 1]) then
-            list = false
-            break
+-- Whether the names of an assignment line (the part after "Label:") are a list of names, every item a listItem
+-- (cut with NAME_WORD), and not a sentence ("Note: the Hunter kites").
+local function isNameList(rest)
+    local items = Parser.ClassRuns(rest, Parser.NAME_WORD)
+    for _, item in ipairs(items) do
+        if not listItem(item) then
+            return false
         end
     end
+    return #items > 0
+end
+
+-- The names of an assignment line cut as ClassRuns cuts them with pattern (default NAME_WORD; the rendered note
+-- cuts plain words to colour), each class item with counts: whether it is the class there. A class name of
+-- several words always is. One word is only on a list of names (isNameList, decided with NAME_WORD whatever the
+-- pattern), and only written as a class (sure, or all in lower case: "Soak: priest, monk"), never like a player's
+-- name ("Kicks: Deathknight, Abu"). The rendered note, the integrations and the alerts (an assignment line for
+-- your class) share it.
+function Parser.AssignmentClasses(rest, pattern)
+    local items = Parser.ClassRuns(rest, pattern or Parser.NAME_WORD)
+    local list = isNameList(rest)
     for _, item in ipairs(items) do
         local single = not item.text:find(" ", 1, true)
         item.counts = item.class ~= nil

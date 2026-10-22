@@ -50,13 +50,21 @@ local function specIdAndRole()
     return nil, nil
 end
 
+-- Adds the tag words for one of Parse.lua's ROLE_WORDS keys ("everyone", "tank", "melee", ...) to t.
+local function addRoleWords(t, key)
+    for _, w in ipairs(CRT.NoteParser.ROLE_WORDS[key]) do
+        t[w] = true
+    end
+end
+
 -- The words that match you: your name, your role, and melee or ranged.
 local myTokens, tokensAt
 local function tokens()
     if myTokens and tokensAt and GetTime() - tokensAt < TOKEN_SECONDS then
         return myTokens
     end
-    local t = { all = true, everyone = true, raid = true }
+    local t = {}
+    addRoleWords(t, "everyone")
     local name = UnitName("player")
     if name then
         t[name:lower()] = true
@@ -67,16 +75,12 @@ local function tokens()
         role = specRole
     end
     if role == "TANK" then
-        t.tank, t.tanks = true, true
+        addRoleWords(t, "tank")
     elseif role == "HEALER" then
-        t.healer, t.healers, t.heal = true, true, true
+        addRoleWords(t, "healer")
     else
-        t.dps, t.damager = true, true
-        if specId and MELEE_SPECS[specId] then
-            t.melee, t.melees = true, true
-        else
-            t.ranged, t.range = true, true
-        end
+        addRoleWords(t, "dps")
+        addRoleWords(t, (specId and MELEE_SPECS[specId]) and "melee" or "ranged")
     end
     myTokens, tokensAt = t, GetTime()
     return t
@@ -125,9 +129,9 @@ end
 
 -- The group number a tag names: "G1", "Grp1" or "Group1" in one word, or "G", "Grp" or "Group"
 -- followed by a number as the next word, so "Group 1" works too. Returns the number and how many
--- words it used, or nil.
-local GROUP_WORDS = { g = true, grp = true, group = true }
+-- words it used, or nil. The words are Parse.lua's GROUP_WORDS.
 local function groupTag(word, nextWord)
+    local GROUP_WORDS = CRT.NoteParser.GROUP_WORDS
     local prefix, number = word:match("^(%a+)(%d)$")
     if prefix and GROUP_WORDS[prefix] then
         return tonumber(number), 1
@@ -146,7 +150,8 @@ local function previewTokens(name)
     if preview.name == name and preview.at and GetTime() - preview.at < TOKEN_SECONDS then
         return preview.t, preview.class
     end
-    local t = { all = true, everyone = true, raid = true }
+    local t = {}
+    addRoleWords(t, "everyone")
     local short = name:lower():gsub("%-.*$", "")
     t[short] = true
     local Roster = CRT.AlertRoster
@@ -234,7 +239,7 @@ function Engine:ClassLineIsMine(line)
     if not file then
         return false
     end
-    for _, item in ipairs(Parser.AssignmentClasses(rest, "[^%s,]+")) do
+    for _, item in ipairs(Parser.AssignmentClasses(rest)) do
         if item.counts and item.class == file then
             return true
         end

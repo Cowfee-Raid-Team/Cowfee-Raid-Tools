@@ -59,12 +59,12 @@ Model.GROUPS = 8
 
 -- Words that name a role, everyone or a raid group rather than a player (Notes/Engine.lua's tag words): never put
 -- in the invite list.
-local NOT_PLAYER = Parser.TAG_WORDS
+local NOT_PLAYER = Parser.TAG_WORDS -- the shared table in Parse.lua: read it, never write to it
 
 -- A name in a label line: anything between spaces and commas, so removing one keeps every other mark as written
 -- ("Abu (left), Cheo" removes "(left)" as one word, never a bracket of it). A class name of several words with
 -- only spaces between them ("Demon Hunter") is one name.
-local LABEL_WORD = "[^%s,]+"
+local LABEL_WORD = Parser.NAME_WORD
 
 local function trim(s)
     return (s:gsub("^%s+", ""):gsub("%s+$", ""))

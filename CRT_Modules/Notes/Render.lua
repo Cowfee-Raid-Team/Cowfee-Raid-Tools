@@ -159,7 +159,8 @@ local WORD = "[%w\128-\255][%w\128-\255%-']*"
 
 -- A line of text as parts: each word a name (class and you), the spaces and commas between them as written.
 -- classes: class names count too (an assignment's names), as Parse.lua's AssignmentClasses counts them, so
--- "Soak: priest, monk" is coloured and "kill the Hunter pet" stays as written.
+-- "Soak: priest, monk" is coloured and "kill the Hunter pet" stays as written. WORD only cuts the words to
+-- colour; whether the line is a list is decided with Parse.lua's NAME_WORD, as the window and bridges decide it.
 local function parts(s, ctx, out, classes)
     out = out or {}
     local items = {}

@@ -89,7 +89,7 @@ local function assignmentLine(line)
         return line
     end
     local out, pos = {}, 1
-    for _, item in ipairs(Parser.AssignmentClasses(rest, "[^%s,]+")) do
+    for _, item in ipairs(Parser.AssignmentClasses(rest)) do
         out[#out + 1] = rest:sub(pos, item.start - 1)
         out[#out + 1] = item.counts and Parser.ClassName(item.class) or item.text
         pos = item.stop

@@ -210,6 +210,14 @@ do
   local list = Render.Rows("Soak: priest, monk\\nNote: the Hunter kites", ctx())
   assert(classed(find(list, "label", 1)) == "priest=PRIEST,monk=MONK", "a pure list in lower case: " .. classed(find(list, "label", 1)))
   assert(classed(find(list, "label", 2)) == "", "a sentence with a capital: " .. classed(find(list, "label", 2)))
+  -- raid icons, arrows, numbers, brackets and colour codes keep a line a list
+  local marks = Render.Rows(table.concat({ "Soak 1: {star} Abu PRIEST", "Kicks: Abu > MAGE > rogue", "Kicks: 1 mage 2 ROGUE",
+    "Soak: Abu (left), priest", "Soak: |cffff0000Abu|r / priest -> {rt1}" }, "\\n"), ctx())
+  local want = { "PRIEST=PRIEST", "MAGE=MAGE,rogue=ROGUE", "mage=MAGE,ROGUE=ROGUE", "priest=PRIEST", "priest=PRIEST" }
+  for i, w in ipairs(want) do
+    local got = classed(find(marks, "label", i)):gsub("Abu=MAGE,?", "")
+    assert(got == w, "line " .. i .. ": " .. got)
+  end
   -- a player whose name is a class word keeps the player's colour
   local mine = Render.Rows("Soak: Hunter", ctx({ classOf = function(n) return n == "Hunter" and "ROGUE" or nil end }))
   assert(classed(mine[1]) == "Hunter=ROGUE", classed(mine[1]))
