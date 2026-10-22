@@ -28,6 +28,7 @@ local TEXT = {
     rolling = "Rolling… you rolled %s",
     won = "Won · you rolled %s",
     received = "Yours · the game gave it to you",
+    bags = "Yours · from your bags",
     lost = "Won by %s",
     nowinner = "Nobody won it: everyone passed",
     cant = "Can't roll: %s. Tell the raid.",
@@ -74,6 +75,8 @@ function LM.BossLootStatus(r)
     local roll = LM.AutoPass.ROLL_NAME[r.rollType or 0] or ""
     if r.status == "won" and r.test then
         return UI.GoodText(TEXT.testWon)
+    elseif r.status == "won" and r.bags then
+        return UI.GoodText(TEXT.bags)
     elseif r.status == "won" and r.received then
         return UI.GoodText(TEXT.received)
     elseif r.status == "won" then

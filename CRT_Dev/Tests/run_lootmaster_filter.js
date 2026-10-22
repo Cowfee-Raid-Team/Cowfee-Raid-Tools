@@ -471,6 +471,7 @@ CRT.UI.SkinCloseButton = function() end
 CRT_THEME(CRT, CRT.UI)
 CreateScrollBoxListLinearView = function() return mock("View") end
 ScrollUtil = { InitScrollBoxListWithScrollBar = function() end }
+LM.BuildAddItem = function() end -- Tonight's Add item (AddItem.lua isn't loaded; run_lootmaster_addend.js tests it)
 assert(load(pageSrc, "Page.lua"))("CowfeeRaidTools", CRT)
 local built = {}
 local realBuild = LM.BuildFilterTab

@@ -59,7 +59,12 @@ local ADDON, CRT = ...
 -- the window. It never goes into a real session: Start session with both kinds ticked starts the real
 -- ones only and says so; one with only TEST rows starts a test session (LM:Start's test). When a test
 -- session started from them ends and no TEST items wait for their turn, the TEST rows go (BL:ClearTests;
--- Tonight's End session clears them too).
+-- End session clears them too).
+--
+-- Items from your bags (Alex, 2026-10-22: "drag and drop and also shift-click from bags to add to a session
+-- list just in case someone messes it up later"). Loot Master > Tonight's Add item (LootMaster/AddItem.lua)
+-- puts an item you can still trade on the list through BL:AddFromBags: a real row, won, ticked, r.bags
+-- ("from your bags"), leaving when the trade time the game shows for it is over.
 
 local LM = CRT.LootMaster
 local BL = { rows = {}, waiting = {} }
@@ -195,10 +200,11 @@ local function schedule(r)
 end
 
 -- A row is yours now: it stays until its trade time is over (a TEST row: LM.BOSS_SECONDS, as set by BL:Add).
-local function own(r)
+-- seconds: the trade time left, when the game showed it (an item from your bags), else LM.TRADE_SECONDS.
+local function own(r, seconds)
     r.status, r.winner, r.warned = "won", nil, nil
     if not r.test then
-        r.expires = GetTime() + LM.TRADE_SECONDS
+        r.expires = GetTime() + (seconds or LM.TRADE_SECONDS)
     end
     schedule(r)
 end
@@ -237,8 +243,9 @@ function BL:Row(rollID)
 end
 
 -- A boss roll the leader's CRT handled. fields: status ("rolling" or "cant"), rollType, reason, and test
--- for a test boss kill's row. kill: LM:LastKill(), or a test kill. Returns the row, or nil without a link
--- (the caller says so in chat).
+-- for a test boss kill's row; bags and tradeSeconds for an item from your bags. kill: LM:LastKill(), or a
+-- test kill (nil for an item from your bags). Returns the row, or nil without a link (the caller says so
+-- in chat).
 function BL:Add(rollID, link, fields, kill)
     local s = LM.LinkItemString(link)
     if not s or self:Row(rollID) then
@@ -246,7 +253,7 @@ function BL:Add(rollID, link, fields, kill)
     end
     local test = fields.test and true or nil
     local first = not test and not hasReal() -- a real list's first row opens the window
-    if not test then
+    if not test and not fields.bags then -- an item from your bags is no kill's: the badge stays
         -- the badge shows the newest real kill's boss
         self.boss = kill and kill.name or self.boss
         local ok, _, _, _, difficultyName = pcall(GetInstanceInfo)
@@ -258,14 +265,14 @@ function BL:Add(rollID, link, fields, kill)
     local r = {
         rollID = rollID, link = link, itemString = s, ilvl = (okL and type(ilvl) == "number" and not secret(ilvl)) and ilvl or nil,
         at = GetTime(), expires = GetTime() + math.max(0, LM.BOSS_SECONDS - age), pass = pass and true or false, why = why,
-        status = fields.status, rollType = fields.rollType, reason = fields.reason, received = fields.received,
+        status = fields.status, rollType = fields.rollType, reason = fields.reason, received = fields.received, bags = fields.bags,
         encounterID = kill and kill.encounterID or nil,
         boss = kill and kill.name or nil, killAt = kill and kill.at or nil, test = test,
     }
-    r.ticked = (r.pass or test) and r.status ~= "cant" -- a TEST row is ticked even outside the filter
+    r.ticked = (r.pass or test or r.bags) and r.status ~= "cant" -- TEST and bag rows: ticked even outside the filter
     self.rows[#self.rows + 1] = r
     if r.status == "won" then
-        own(r)
+        own(r, fields.tradeSeconds)
     else
         schedule(r)
     end
@@ -286,6 +293,13 @@ function BL:AddReceived(link, kill, test)
         return self:Add(nextOwn, link, { status = "won", test = true }, kill)
     end
     return self:Add(nextOwn, link, { status = "won", received = true }, kill)
+end
+
+-- An item from your bags (Loot Master > Tonight's Add item): a won, ticked real row marked "from your bags",
+-- leaving after seconds (the trade time the game shows for it; nil: LM.TRADE_SECONDS).
+function BL:AddFromBags(link, seconds)
+    nextOwn = nextOwn - 1
+    return self:Add(nextOwn, link, { status = "won", bags = true, tradeSeconds = seconds })
 end
 
 -- Whether the list has a TEST row.
@@ -501,6 +515,23 @@ function BL:Clear(why)
             CRT:Print(TEXT.cleared:format(why))
         end
         changed("cleared")
+    end
+end
+
+-- How many items wait behind the running session, in all the waiting chunks.
+function BL:WaitingCount()
+    local n = 0
+    for _, w in ipairs(self.waiting) do
+        n = n + #w.items
+    end
+    return n
+end
+
+-- Drops every item waiting behind the running session (End all, LootMaster/EndAll.lua); the rows stay.
+function BL:DropWaiting()
+    if #self.waiting > 0 then
+        self.waiting = {}
+        changed(#self.rows == 0 and "cleared" or "changed")
     end
 end
 

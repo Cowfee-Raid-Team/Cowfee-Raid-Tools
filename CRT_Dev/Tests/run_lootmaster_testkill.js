@@ -1,7 +1,8 @@
 // Loot Master > Tonight's Test boss kill (CRT_Modules/LootMaster/Test.lua, BossLoot.lua, BossLootWindow.lua, Page.lua), on
 // stand-in frames: each click adds 2 to 4 sample items to Boss loot as won, ticked TEST rows from "Test boss N", through
 // BL:AddReceived; Held boss loot lists them on Tonight with its count line; Start session (N) starts a test session with the
-// ticked rows (the popups go out, the looter window opens); End session clears the TEST rows and leaves real rows; a mixed
+// ticked rows (the popups go out, the looter window opens); End session asks first (LootMaster/EndAll.lua), then ends the
+// session and the waiting items and clears the TEST rows, leaving real rows; a mixed
 // tick starts the real ones only; TEST rows are never kept for a /reload, have no trade time and nothing reaches Loot History;
 // a real kill's rows are as before.
 // Usage: node run_lootmaster_testkill.js <addon folder>
@@ -12,7 +13,7 @@ const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate();
 lualib.luaL_openlibs(L);
 const harness = themeLua(process.argv.slice(2)) + `
-local dataSrc, commSrc, gateSrc, lootingSrc, bossSrc, winSrc, testSrc, pageSrc = ...
+local dataSrc, commSrc, gateSrc, lootingSrc, bossSrc, endSrc, winSrc, testSrc, addSrc, pageSrc = ...
 local fails, passes = 0, 0
 local function check(ok, what) if ok then passes = passes + 1 else fails = fails + 1 print("FAIL " .. what) end end
 local function eq(a, b, what) check(a == b, what .. " (got " .. tostring(a) .. ", want " .. tostring(b) .. ")") end
@@ -91,6 +92,10 @@ CreateScrollBoxListLinearView = function() return mock() end
 ScrollUtil = { InitScrollBoxListWithScrollBar = function() end }
 CreateDataProvider = function(rows) return rows end
 local made, buttons, helps = {}, {}, {}
+-- the game's confirm dialog: the last one asked is kept, to accept or cancel
+local popup
+StaticPopup_ShowCustomGenericConfirmation = function(data) popup = data return mock() end
+local function acceptPopup() local p = popup popup = nil if p then p.callback() end end
 local pageBuild
 CRT_UI = {
   PAGE_W = 1026, PAGE_H = 560,
@@ -118,6 +123,7 @@ CRT_UI = {
   SortHeaders = function() return { refresh = function() end } end,
   RegisterPage = function(_, key, title, build) pageBuild = build end,
   RegisterTab = function() end, SetTabSelected = function() end,
+  LiftOver = function() end, ShownPopup = function(ret) return ret end,
 }
 local CRT = { UI = CRT_UI, db = { lootmaster = { authority = { leader = true, names = {} }, bossLoot = {}, score = { show = true }, sort = {} } } }
 CRT_THEME(CRT, CRT_UI)
@@ -142,6 +148,7 @@ assert(load(commSrc, "Comm.lua"))("CowfeeRaidTools", CRT)
 assert(load(gateSrc, "AutoPass.lua"))("CowfeeRaidTools", CRT)
 assert(load(lootingSrc, "Looting.lua"))("CowfeeRaidTools", CRT)
 assert(load(bossSrc, "BossLoot.lua"))("CowfeeRaidTools", CRT)
+assert(load(endSrc, "EndAll.lua"))("CowfeeRaidTools", CRT)
 assert(load(winSrc, "BossLootWindow.lua"))("CowfeeRaidTools", CRT)
 -- the loot filter (Filter.lua isn't loaded): everything passes but a Belt, so a test row outside it shows
 function LM:FilterLoot(s, source, link) if link:find("Belt", 1, true) then return false, "quality" end return true end
@@ -149,6 +156,7 @@ LM.Filter = function() return {} end
 LM.ItemFacts = function(s) return s end
 LM.PassesFilter = function(s) return not tostring(s):find("item:205", 1, true), nil end
 assert(load(testSrc, "Test.lua"))("CowfeeRaidTools", CRT)
+assert(load(addSrc, "AddItem.lua"))("CowfeeRaidTools", CRT)
 LM.BuildFilterTab = function() end
 LM.ScoreList = function() return {} end
 -- Sync.lua and Score.lua are not loaded: their parts of the page stand still
@@ -216,8 +224,8 @@ local function shown(text) for _, t in ipairs(texts) do if t.text == text then r
 check(shown(heldStatus), "Tonight: the status says " .. heldStatus)
 local heldShown = 0
 for _, f in ipairs(frames) do if rawget(f, "withBoss") and f.shown then heldShown = heldShown + 1 end end
-eq(heldShown, math.min(4, total), "Tonight: Held boss loot shows the rows, at most 4")
-if total > 4 then check(shown("and " .. (total - 4) .. " more (/crt loot boss shows them all)"), "Tonight: and N more past the cap") end
+eq(heldShown, math.min(3, total), "Tonight: Held boss loot shows the rows, at most 3 (Add item sits under them)")
+if total > 3 then check(shown("and " .. (total - 3) .. " more (/crt loot boss shows them all)"), "Tonight: and N more past the cap") end
 eq(start.enabled, true, "Start session: on")
 check(start.width and start.width >= #start.text * 6, "Start session: as wide as its label")
 -- the Held list's rows are LM.BossLootRow's: find the first by its TEST tag
@@ -280,14 +288,16 @@ printed = {}
 LM:Award(1, "Solex-Sargeras", s.responses[1].key)
 check(printed[#printed] and printed[#printed]:find("only you see this", 1, true) ~= nil, "a test award is shown only to you")
 
--- 3. End session clears the TEST rows (and any waiting), leaves real rows; nothing reached Loot History
+-- 3. End session asks, then ends the session and any waiting, clears the TEST rows, leaves real rows; nothing reached Loot History
 lootRecords = {}
 local real2 = BL:Add(2, link(102, "Real Ring"), { status = "rolling", rollType = 1 }, kill)
+popup = nil
 buttons["End session"].onClick()
-eq(LM.current and LM.current.test and #LM.current.items or 0, (total - 1) > LM.MAX_ITEMS and (total - 1 - LM.MAX_ITEMS) or 0,
-  "End session: waiting TEST items start next, as the queue does")
-if LM.current then buttons["End session"].onClick() end
-eq(LM.current, nil, "End session: no session")
+check(popup ~= nil, "End session with a session running: it asks first")
+check(LM.current ~= nil, "End session: nothing ends before End all")
+acceptPopup()
+eq(LM.current, nil, "End all: no session, and no waiting TEST items started")
+eq(#BL.waiting, 0, "End all: nothing waits")
 eq(BL:HasTests(), false, "End session: the TEST rows are gone")
 eq(BL:Rows()[1], real2, "End session: the real row stays")
 eq(#BL:Rows(), 1, "End session: only the real row")
@@ -357,8 +367,8 @@ if fails > 0 then error("failures") end
 const dir = process.argv[2];
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 const files = ['CRT_Modules/LootMaster/Data.lua', 'CRT_Modules/LootMaster/Comm.lua', 'CRT_Modules/LootMaster/AutoPass.lua',
-  'CRT_Modules/LootMaster/Looting.lua', 'CRT_Modules/LootMaster/BossLoot.lua', 'CRT_Modules/LootMaster/BossLootWindow.lua',
-  'CRT_Modules/LootMaster/Test.lua', 'CRT_Modules/LootMaster/Page.lua'];
+  'CRT_Modules/LootMaster/Looting.lua', 'CRT_Modules/LootMaster/BossLoot.lua', 'CRT_Modules/LootMaster/EndAll.lua', 'CRT_Modules/LootMaster/BossLootWindow.lua',
+  'CRT_Modules/LootMaster/Test.lua', 'CRT_Modules/LootMaster/AddItem.lua', 'CRT_Modules/LootMaster/Page.lua'];
 for (const f of files) {
   const p = path.join(dir, f);
   lua.lua_pushstring(L, to_luastring(fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : 'error("missing ' + f + '")'));
