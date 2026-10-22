@@ -91,6 +91,10 @@ assert(load(coreSrc, "CRT_Core/Core.lua"))("CowfeeRaidTools", CRT)
 function CRT:ResolveTheme(ui) return ui.theme or "blizzard" end
 function CRT:UseTheme() end
 CRT.PALETTE = {}
+-- UI/Panel.lua's layer keys and strata, for the ui.layers check
+CRT.UI = { STRATA = {}, LAYERS = {} }
+for _, s in ipairs({ "BACKGROUND", "LOW", "MEDIUM", "HIGH", "DIALOG", "FULLSCREEN", "FULLSCREEN_DIALOG", "TOOLTIP" }) do table.insert(CRT.UI.STRATA, { key = s }) end
+for _, k in ipairs({ "panel", "notes", "alert", "popups" }) do table.insert(CRT.UI.LAYERS, { key = k }) end
 assert(load(profilesSrc, "CRT_Core/Profiles.lua"))("CowfeeRaidTools", CRT)
 local P = CRT.Profiles
 local function boot(db, char) CRTDB = db CRTDBChar = char for _, f in ipairs(eventFrames) do if f.OnEvent then f.OnEvent(f, "ADDON_LOADED", "CowfeeRaidTools") end end CRT.db = CRTDB end
@@ -108,9 +112,11 @@ check(P.ShareUncovered and #P.ShareUncovered() == 0, "every saved key in Core.lu
 if P.ShareUncovered then
   CRT.defaults.brandNew = { x = 1 }
   CRT.defaults.notes.brandNewToo = true
+  CRT.defaults.qol.lowHealth.brandNewThree = 1
   local miss = table.concat(P.ShareUncovered(), ",")
   check(miss:find("brandNew", 1, true) and miss:find("notes.brandNewToo", 1, true), "a new top-level key, or a new key under a mixed table, fails the guard (" .. miss .. ")")
-  CRT.defaults.brandNew = nil CRT.defaults.notes.brandNewToo = nil
+  check(miss:find("qol.lowHealth.brandNewThree", 1, true), "a new key under a nested table rule fails the guard too")
+  CRT.defaults.brandNew = nil CRT.defaults.notes.brandNewToo = nil CRT.defaults.qol.lowHealth.brandNewThree = nil
 end
 do
   local paths = {}
@@ -121,9 +127,16 @@ do
   for p in pairs(P.LATE_SETTINGS or {}) do if not paths[p] then bad[#bad + 1] = p end end
   check(#bad == 0, "every late setting is a shared path")
   local leaked = {}
-  for p in pairs(paths) do for _, no in ipairs({ "notes.list", "groups.presets", "late.history", "tattle.history", "alerts.reminders", "alerts.saved", "timeline.bosses", "lootmaster.authority", "classCache", "importBackup" }) do
+  for p in pairs(paths) do for _, no in ipairs({ "notes.list", "groups.presets", "late.history", "tattle.history", "alerts.reminders", "alerts.saved", "timeline.bosses", "lootmaster.authority", "classCache", "importBackup",
+      "readycheck.output", "readycheck.earlyPullOutput", "tattle.output", "tattle.autoPost", "tattle.season", "lootmaster.awardChannel", "lootmaster.awardMessage", "lootmaster.responses",
+      "notes.trustedOnly", "sound", "qol.lowHealth.customSounds" }) do
     if p == no or p:sub(1, #no + 1) == no .. "." then leaked[#leaked + 1] = p end end end
-  check(#leaked == 0, "no excluded data is a shared path (" .. table.concat(leaked, ",") .. ")")
+  check(#leaked == 0, "no excluded data, report output, trust setting or sound file name is a shared path (" .. table.concat(leaked, ",") .. ")")
+  local kept = {}
+  for _, want in ipairs({ "consumables.categoryOrder", "consumables.itemOrder", "tattle.custom", "markers.disabled", "alerts.areas.timeline.lineColor", "qol.lowHealth.soundChoice" }) do
+    if not paths[want] then kept[#kept + 1] = want end
+  end
+  check(#kept == 0, "consumables order, Tattlebot spells, marker switches, the timeline line colour and the sound choice are shared (" .. table.concat(kept, ",") .. ")")
 end
 
 -- The sender: a profile with settings, positions and data. --------------------------------------
@@ -138,8 +151,16 @@ db.notes.list[1] = { text = "secret note" } db.notes.personalText = "my secret" 
 db.late.history[1] = { secret = true } db.tattle.history[1] = { secret = true } db.alerts.reminders[1] = { text = "secret reminder" }
 db.alerts.saved[1] = { name = "secret alert" } db.classCache.Someone = "MAGE" db.lootmaster.authority.names.Friend = true
 db.ui.settingsTab = "profiles" db.lastPage = "notes"
-local text, err = P.ExportSettings and P:ExportSettings()
+db.readycheck.output = "raid" db.tattle.output = "officer" db.tattle.autoPost = true db.lootmaster.awardChannel = "GUILD" db.lootmaster.awardMessage = "secret message"
+db.notes.trustedOnly = false db.sound.custom[1] = "secretfile.ogg" db.qol.lowHealth.customSounds[1] = "secretpulse.ogg" db.qol.lowHealth.soundChoice = "file:secretpulse.ogg"
+db.tattle.season = "secret season" db.lootmaster.responses = { { key = "secretneed" } } db.tattle.custom[12345] = "Soak" db.consumables.categoryOrder = { "flask", "food" }
+db.alerts.areas.timeline.lineColor = { 0.2, 0.4, 0.6, 1 }
+-- a saved value without its default's shape is left out and counted
+db.debuffs.maxCount = "four"
+local text, err = P:ExportSettings()
 check(type(text) == "string", "Export settings only gives a string (" .. tostring(err) .. ")")
+check(err == 1, "a saved value with the wrong shape is left out and counted (got " .. tostring(err) .. ")")
+db.debuffs.maxCount = 4
 text = text or ""
 local lines = {} for l in text:gmatch("[^\\n]+") do lines[#lines + 1] = l end
 check(lines[1] == "# Cowfee Raid Tools settings", "first header line")
@@ -152,6 +173,9 @@ local flat = GAME.SerializeCBOR(sent)
 check(not flat:find("secret", 1, true), "no note, layout, history, reminder or saved alert is exported")
 check(not flat:find("Someone", 1, true) and not flat:find("Friend", 1, true), "no class cache or loot authority is exported")
 check(not flat:find("settingsTab", 1, true) and not flat:find("lastPage", 1, true), "no page state is exported")
+check(not flat:find("GUILD", 1, true) and not flat:find("officer", 1, true) and sent.data.readycheck.output == nil and sent.data.tattle.autoPost == nil and sent.data.notes.trustedOnly == nil, "no report output, auto-post or note trust setting is exported")
+check(sent.data.qol.lowHealth.soundChoice == nil and sent.data.sound == nil, "no sound file name, and no sound choice naming your own file, is exported")
+check(sent.data.tattle.custom[12345] == "Soak" and sent.data.consumables.categoryOrder[1] == "flask" and sent.data.alerts.areas.timeline.lineColor[3] == 0.6, "Tattlebot spells, consumables order and the timeline line colour are exported")
 check(sent.data.debuffs and sent.data.debuffs.size == 50 and sent.data.ui.fontSize == 16 and sent.data.alerts.bars.position.x == 10, "settings, a late setting and a position are exported")
 local senderValues = {}
 for _, e in ipairs(P.ShareEntries and P.ShareEntries() or {}) do
@@ -203,7 +227,10 @@ P:ApplySettings(info, false)
 local mismatch = {}
 for _, e in ipairs(P.ShareEntries()) do
   local t = alt for k in e.path:gmatch("[^.]+") do t = type(t) == "table" and t[k] or nil end
-  if not same(t, senderValues[e.path]) then mismatch[#mismatch + 1] = e.path end
+  local sv = senderValues[e.path]
+  if type(sv) == "string" and sv:find("^file:") then
+    if t ~= "pulse" then mismatch[#mismatch + 1] = e.path .. " (the raider's own sound choice stays)" end
+  elseif not same(t, sv) then mismatch[#mismatch + 1] = e.path end
 end
 check(#mismatch == 0, "round trip: every shared setting equals the sender's (" .. table.concat(mismatch, ",") .. ")")
 check(alt.notes.window.position == nil and alt.debuffs.position.x == 3, "positions follow the sender, one the sender never moved goes back to default")
@@ -227,6 +254,19 @@ rejects(craft({ v = 1, kind = "settings", from = "X", data = { readycheck = { wi
 rejects(craft({ v = 1, kind = "settings", from = "X", data = { debuffs = { position = { a = { b = { c = { d = { e = { f = 1 } } } } } } } } }), "a too deep table is rejected", "debuffs.position")
 rejects(craft({ v = 1, kind = "settings", from = "X", data = { ui = { font = string.rep("x", 400) } } }), "an over-long text is rejected", "ui.font")
 rejects(craft({ v = 2, kind = "settings", from = "X", data = {} }), "a newer version is rejected", P.TEXT.newer)
+local function bad(data, name, path) rejects(craft({ v = 1, kind = "settings", from = "X", data = data }), name, path) end
+bad({ alerts = { bars = { barColor = { "red", 0, 0, 1 } } } }, "a colour with a text entry is rejected", "alerts.bars.barColor")
+bad({ alerts = { bars = { textColor = { 1, 1, 1, 1, 1 } } } }, "a colour longer than its default is rejected", "alerts.bars.textColor")
+bad({ alerts = { areas = { circles = { ringColor = { r = 1 } } } } }, "a colour keyed by name is rejected", "alerts.areas.circles.ringColor")
+bad({ alerts = { areas = { timeline = { lineColor = { 2, 0, 0 } } } } }, "a line colour out of 0 to 1 is rejected", "alerts.areas.timeline.lineColor")
+bad({ window = { relativePoint = "MIDDLE" } }, "the main window's relativePoint must be an anchor name", "window.relativePoint")
+bad({ window = { x = "10" } }, "the main window's x must be a number", "window.x")
+bad({ debuffs = { position = { point = "TOP", relativePoint = "SIDEWAYS", x = 1, y = 2 } } }, "a position's relativePoint must be an anchor name", "debuffs.position")
+bad({ debuffs = { position = { point = "TOP", x = 1, y = 2, parent = "UIParent" } } }, "a position with an unknown field is rejected", "debuffs.position")
+bad({ timeline = { popout = { width = "wide", height = 600 } } }, "a window size must be a number", "timeline.popout")
+bad({ ui = { layers = { panel = "ON_TOP" } } }, "a layer must be one of the game's strata", "ui.layers")
+bad({ ui = { layers = { madeUp = "HIGH" } } }, "a layer must be one CRT has", "ui.layers")
+bad({ ui = { fontSize = "big" } }, "a late setting of the wrong type is rejected", "ui.fontSize")
 rejects(craft("just text"), "a payload that isn't a table is rejected", P.TEXT.damaged)
 
 -- Unknown keys are skipped and counted. -----------------------------------------------------------
@@ -237,6 +277,20 @@ do
   if i then P:ApplySettings(i, false) end
   check(alt.debuffs.size == 30 and alt.debuffs.futureKey == nil and alt.somethingNew == nil and alt.notes.list[5] and alt.notes.window.position == nil, "only known settings are applied")
   P:UndoImport()
+  -- kept-back settings in a hand-made string are skipped, never applied
+  local k = P:Read(craft({ v = 1, kind = "settings", from = "X", data = { lootmaster = { responses = { { key = "need" } }, awardChannel = "GUILD" }, readycheck = { output = "raid" }, qol = { lowHealth = { soundChoice = "file:theirs.ogg" } } } }))
+  check(k and k.unknown == 4, "kept-back settings and another's sound file are skipped and counted (got " .. tostring(k and k.unknown) .. ")")
+  if k then P:ApplySettings(k, false) end
+  check(alt.lootmaster.responses == nil and alt.lootmaster.awardChannel == "RAID" and alt.readycheck.output == "self" and alt.qol.lowHealth.soundChoice == "pulse", "kept-back settings stay the raider's own")
+  P:UndoImport()
+end
+
+-- Undo puts the backup back exactly as it was saved, even a value an import would refuse.
+do
+  alt.importBackup = { from = "X", values = { ["ui.layers"] = { oldLayer = "HIGH" }, ["debuffs.size"] = 44 }, unset = {} }
+  P:UndoImport()
+  check(alt.ui.layers.oldLayer == "HIGH" and not P:HasBackup(), "undo restores the backup as saved, without the import's checks")
+  alt.ui.layers.oldLayer = nil
 end
 
 -- The game client without the encoding API. -------------------------------------------------------
@@ -265,6 +319,14 @@ do
   local block = text:match("CRTS1:(%S+)")
   local wrapped = "# Cowfee Raid Tools settings\\n\\nCRTS1:" .. block:sub(1, 40) .. "\\r\\n" .. block:sub(41)
   check(P:Read(wrapped) ~= nil, "a settings string with a line break inside still reads")
+end
+-- Copy from another profile leaves no backup behind: it would undo to that profile's settings.
+do
+  CRTDB.profiles.Other = { debuffs = { size = 33 }, importBackup = { from = "Someone", values = { ["debuffs.size"] = 99 }, unset = {} } }
+  local r = reloads
+  P:CopyFrom("Other")
+  check(CRTDB.debuffs.size == 33 and next(CRTDB.importBackup) == nil and not P:HasBackup() and reloads == r + 1, "Copy from clears the copied import backup")
+  check(CRTDB.profiles.Other.importBackup.from == "Someone", "the other profile keeps its own backup")
 end
 print(okCount .. " passed, " .. failCount .. " failed")
 `;

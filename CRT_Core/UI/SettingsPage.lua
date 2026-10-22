@@ -28,10 +28,17 @@ local TEXT_W, TEXT_H = 560, 440
 local PREVIEW_LINES = 6
 local PREVIEW_H = 118 -- room for its first line, PREVIEW_LINES differences, "and N more" and the skipped count
 local IMPORT_BOTTOM = 76 + PREVIEW_H -- the text box's bottom edge when importing
-local EXPORT_BOTTOM = 66 -- and when exporting, over the copy hint
+local EXPORT_BOTTOM = 76 -- and when exporting, over the copy hint (two lines when values were left out)
+local KEEP_TOP = 66 -- Keep my window positions' top edge, from the window's bottom
 
 local TEXT = {
+    export = "Export",
+    import = "Import",
+    reset = "Reset profile",
+    newName = "New profile name",
     exportSettings = "Export settings only",
+    droppedOne = "1 saved setting had a wrong value and is left out.",
+    dropped = "%d saved settings had a wrong value and are left out.",
     undo = "Undo last import",
     selectAll = "Select all",
     keep = "Keep my window positions",
@@ -50,7 +57,7 @@ local TEXT = {
     acceptImport = "Import and reload",
     confirmUndo = "Put back the settings you had before importing from %s?\n\nYour interface reloads.",
     acceptUndo = "Undo and reload",
-    help = "A profile holds everything the addon saves: settings, window positions, layouts, notes, consumables lists and history. Each character remembers its own; new characters start on the one under New characters. Switching, copying or resetting a profile reloads your interface.\n\nExport gives the whole profile as text, for your own characters: Import saves it as a new profile.\n\nExport settings only gives just settings and window positions, for raiders: Import shows what differs and applies it to this profile, after saving your settings for Undo last import.",
+    help = "A profile holds everything the addon saves: settings, window positions, layouts, notes, consumables lists and history. Each character remembers its own; new characters start on the one under New characters. Switching, copying or resetting a profile reloads your interface.\n\nExport gives the whole profile as text, for your own characters: Import saves it as a new profile.\n\nExport settings only gives just settings and window positions, for raiders (where your reports go, whose notes and loot leaders you trust and your own sound files stay yours): Import shows what differs and applies it to this profile, after saving your settings for Undo last import.",
 }
 
 local page
@@ -122,6 +129,7 @@ local function checkbox(pf, x, y, text, get, set)
     cb.refresh = function()
         cb:SetChecked(get() and true or false)
     end
+    cb.label = label
     controls[#controls + 1] = cb
     return cb
 end
@@ -214,13 +222,15 @@ local function updatePreview(d)
     elseif info and info.kind == "full" then
         preview, canImport = TEXT.full:format(info.parts), true
     elseif info then
-        preview, canImport = previewLines(info, d.keep:GetChecked())
+        preview, canImport = previewLines(info, d.state.keep)
     end
     d.preview:SetText(preview)
     local full = info and info.kind == "full" or false
     d.nameLabel:SetShown(full)
     d.name:SetShown(full)
-    d.keep:SetShown(info and info.kind == "settings" or false)
+    local settings = info and info.kind == "settings" or false
+    d.keep:SetShown(settings)
+    d.keep.label:SetShown(settings)
     d.ok:SetEnabled(canImport)
 end
 
@@ -240,7 +250,7 @@ local function importClicked(d)
         end
         return
     end
-    local keep = d.keep:GetChecked() and true or false
+    local keep = d.state.keep and true or false
     confirm(TEXT.confirmImport, info.from, TEXT.acceptImport, function()
         Profiles:ApplySettings(info, keep)
     end)
@@ -286,23 +296,20 @@ end
 local function buildTextControls(d)
     d.nameLabel = d:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     d.nameLabel:SetPoint("BOTTOMLEFT", 16, 48)
-    d.nameLabel:SetText("New profile name")
+    d.nameLabel:SetText(TEXT.newName)
     d.name = CreateFrame("EditBox", nil, d, "InputBoxTemplate")
     d.name:SetSize(200, 20)
     d.name:SetPoint("LEFT", d.nameLabel, "RIGHT", 12, 0)
     d.name:SetAutoFocus(false)
     d.name:SetFontObject(CRTFontEdit)
-    d.keep = CreateFrame("CheckButton", nil, d, "UICheckButtonTemplate")
-    d.keep:SetSize(24, 24)
-    d.keep:SetPoint("BOTTOMLEFT", 12, 42)
-    local keepLabel = d.keep:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    keepLabel:SetPoint("LEFT", d.keep, "RIGHT", 2, 0)
-    keepLabel:SetText(TEXT.keep)
-    d.keep:SetScript("OnClick", function()
+    d.keep = checkbox(d, 16, -(TEXT_H - KEEP_TOP), TEXT.keep, function()
+        return d.state.keep
+    end, function(on)
+        d.state.keep = on
         updatePreview(d)
     end)
 
-    d.ok = button(d, "Import", 110)
+    d.ok = button(d, TEXT.import, 110)
     d.ok:SetHeight(24)
     d.ok:SetPoint("BOTTOM", -60, 12)
     d.ok:SetScript("OnClick", function()
@@ -327,19 +334,10 @@ local function getTextDialog()
     if textDialog then
         return textDialog
     end
-    local d = CreateFrame("Frame", "CowfeeRaidToolsProfileText", UIParent, "BasicFrameTemplateWithInset")
-    UI:StyleWindow(d)
-    d:SetSize(TEXT_W, TEXT_H)
-    d:SetPoint("CENTER")
-    UI:RegisterLayer("popups", d)
-    d:SetClampedToScreen(true)
-    d:SetMovable(true)
-    d:EnableMouse(true)
-    d:RegisterForDrag("LeftButton")
-    d:SetScript("OnDragStart", function(self) self:StartMoving(true) end)
-    d:SetScript("OnDragStop", d.StopMovingOrSizing)
-    tinsert(UISpecialFrames, "CowfeeRaidToolsProfileText")
-    -- mode ("export" or "import"), exportText (what the read-only box holds), info (what Profiles:Read gave)
+    -- the shared window helper: a pop-up layer, dragged by its title, closed by Escape, opened centred
+    local d = UI.Window("CowfeeRaidToolsProfileText", { kind = "dialog", width = TEXT_W, height = TEXT_H })
+    -- mode ("export" or "import"), exportText (what the read-only box holds), info (what Profiles:Read
+    -- gave), keep (Keep my window positions)
     d.state = {}
     buildTextBox(d)
     buildTextControls(d)
@@ -358,8 +356,10 @@ local function setMode(d, mode)
     d.preview:SetText("")
     d.nameLabel:Hide()
     d.name:Hide()
+    d.state.keep = false
     d.keep:Hide()
-    d.keep:SetChecked(false)
+    d.keep.label:Hide()
+    d.keep.refresh()
     d.ok:SetShown(import)
     d.selectAll:SetShown(not import)
     d.state.info = nil
@@ -368,7 +368,7 @@ end
 local function showExportText(title, text, hint)
     local d = getTextDialog()
     setMode(d, "export")
-    UI.SetFrameTitle(d, title)
+    d.strip:SetTitle(title)
     d.hint:SetText(hint)
     d.state.exportText = text
     d.edit:SetText(text)
@@ -387,19 +387,23 @@ local function showExport()
 end
 
 local function showExportSettings()
-    local text, err = Profiles:ExportSettings()
+    local text, dropped = Profiles:ExportSettings()
     if not text then
-        CRT:Print(err)
+        CRT:Print(dropped)
         return
     end
-    showExportText(TEXT.exportSettingsTitle:format(Profiles:Current()), text, TEXT.copySettings)
+    local hint = TEXT.copySettings
+    if dropped > 0 then
+        hint = hint .. " " .. UI.WarnText(dropped == 1 and TEXT.droppedOne or TEXT.dropped:format(dropped))
+    end
+    showExportText(TEXT.exportSettingsTitle:format(Profiles:Current()), text, hint)
 end
 
 local function showImport()
     local d = getTextDialog()
     d.state.exportText = nil
     setMode(d, "import")
-    UI.SetFrameTitle(d, TEXT.importTitle)
+    d.strip:SetTitle(TEXT.importTitle)
     d.name:SetText("")
     d.edit:SetText("")
     d.ok:SetEnabled(false)
@@ -676,20 +680,20 @@ local function buildProfiles(pf)
         end,
     }), x, top - 164)
 
-    local reset = button(pf, "Reset profile", 100)
+    local reset = button(pf, TEXT.reset, 100)
     reset:SetPoint("TOPLEFT", x, top - 204)
     reset:SetScript("OnClick", function()
         confirm("Put everything in the profile %s back to the defaults, its layouts, notes and history included? This can't be undone.\n\nYour interface reloads.", Profiles:Current(), "Reset and reload", function()
             Profiles:Reset()
         end)
     end)
-    local export = button(pf, "Export", 100)
+    local export = button(pf, TEXT.export, 100)
     export:SetPoint("LEFT", reset, "RIGHT", 6, 0)
     export:SetScript("OnClick", showExport)
     local exportSettings = button(pf, TEXT.exportSettings)
     exportSettings:SetPoint("LEFT", export, "RIGHT", 6, 0)
     exportSettings:SetScript("OnClick", showExportSettings)
-    local import = button(pf, "Import", 100)
+    local import = button(pf, TEXT.import, 100)
     import:SetPoint("LEFT", exportSettings, "RIGHT", 6, 0)
     import:SetScript("OnClick", showImport)
 

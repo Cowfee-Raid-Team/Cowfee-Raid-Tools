@@ -42,9 +42,10 @@ local TEXT = {
 Profiles.TEXT = TEXT
 
 -- What Export settings only carries: settings and window positions, never notes, layouts, saved alerts,
--- reminders, history, caches or state. true takes everything under that key, false nothing, and a table
--- says the same one level down. CRT_Dev/Tests/run_profiles_share.js fails when a top-level key of
--- CRT.defaults, or a key one level under a table here, is missing, so new data is never shared by accident.
+-- reminders, history, caches or state, nor where your reports go, who you trust, or your own sound files.
+-- true takes everything under that key, false nothing, and a table says the same one level down (and
+-- may nest again). CRT_Dev/Tests/run_profiles_share.js fails when a key of CRT.defaults under a table
+-- here (the top level included) is missing, so new data is never shared by accident.
 Profiles.SHARE = {
     window = true, -- the main window's place and scale
     ui = true,
@@ -56,29 +57,40 @@ Profiles.SHARE = {
     groups = { presets = false, nextId = false, working = false, keepChanges = true, source = true },
     consumables = { enabled = true, notStarter = true, lowMinutes = true, categoryOrder = true, itemOrder = true, extra = false, learned = false, position = true },
     readycheck = {
-        tab = false, auto = true, onPull = true, output = true, raidsOnly = true, notLFR = true, include = true, buffLock = true,
-        fadeOnPull = true, earlyPull = true, earlyPullOutput = true, food = true, flaskWarn = true, lowFlask = true, window = true,
+        tab = false, auto = true, onPull = true, raidsOnly = true, notLFR = true, include = true, buffLock = true,
+        fadeOnPull = true, earlyPull = true, food = true, flaskWarn = true, lowFlask = true, window = true,
+        output = false, earlyPullOutput = false, -- where your reports go stays yours
     },
     debuffs = true,
     notes = {
-        list = false, nextId = false, personalText = false, showOutsideRaid = true, trustedOnly = true, shareTarget = true,
+        list = false, nextId = false, personalText = false, showOutsideRaid = true, shareTarget = true,
         window = true, assignments = true, personal = true, editor = true, alert = true,
+        trustedOnly = false, -- whose notes you accept stays yours
     },
-    qol = true,
+    qol = {
+        lowHealth = {
+            enabled = true, threshold = true, sound = true, soundVolume = true, soundChoice = true, soundChannel = true, soundOnce = true,
+            position = true,
+            customSounds = false, -- your own sound files, which a raider doesn't have
+        },
+        breakTimer = true,
+    },
     loot = true,
     lootmaster = {
         window = true, popup = true, answers = true, bossLoot = true, lootingPrompt = true, responseSeconds = true, score = true,
-        awardMessage = true, awardChannel = true, noRoll = true, tooltipAnchor = true, showAllItems = true, enableInParty = true,
-        filter = true, responses = true,
+        noRoll = true, tooltipAnchor = true, showAllItems = true, enableInParty = true, filter = true,
+        awardMessage = false, awardChannel = false, -- what you post, and where
         authority = false, -- who you trust to run loot stays yours
         sort = false,
+        responses = false, -- the response buttons (saved once edited): the leader's own, kept back
     },
     gearChecker = { filter = false, belowTrack = true, popout = true },
-    sound = true,
+    sound = false, -- the names of your own sound files
     late = { days = true, hour = true, minute = true, grace = true, history = false, nextId = false, lastAuto = false },
     tattle = {
-        enabled = true, raidsOnly = true, avoidable = true, autoPost = true, output = true, maxPlayers = true, custom = true,
-        season = true, history = false, nextId = false,
+        enabled = true, raidsOnly = true, avoidable = true, maxPlayers = true, custom = true,
+        output = false, autoPost = false, -- where and whether your reports post
+        season = false, history = false, nextId = false,
     },
     timeline = {
         record = true, minPull = true, keep = true, span = true, grid = true, iconSize = true, deathRows = true, roles = true,
@@ -107,11 +119,28 @@ Profiles.POSITIONS = {
     "alerts.areas.timeline.position",
 }
 
--- Settings saved only once they are set, so they have no default to match: their path and type.
+-- Settings saved only once they are set, so they have no default to match: their path and shape
+-- ("number", or "colour" for { r, g, b [, a] } from 0 to 1). The guard test can't see a setting with no
+-- default, so a new one is shared only when it is added here.
 Profiles.LATE_SETTINGS = {
     ["ui.fontSize"] = "number", -- set from the old textSize the first time the fonts apply (Core.lua)
-    ["lootmaster.responses"] = "table", -- the response buttons, once edited
+    ["alerts.areas.timeline.lineColor"] = "colour", -- saved once picked (Alerts/TimelineArea.lua)
 }
+
+-- What a window position may hold: the anchor points SetPoint takes, and numbers.
+local ANCHORS = {
+    TOPLEFT = true, TOP = true, TOPRIGHT = true, LEFT = true, CENTER = true, RIGHT = true,
+    BOTTOMLEFT = true, BOTTOM = true, BOTTOMRIGHT = true,
+}
+local POSITION_FIELDS = {
+    point = "anchor", relativePoint = "anchor", x = "number", y = "number", width = "number", height = "number", angle = "number",
+}
+local MAX_LIST = 200 -- the most entries one table in a shared setting may hold
+
+-- A string value naming one of your own sound files (Sound/Engine.lua's "file:" keys) is never shared.
+local function ownFile(v)
+    return type(v) == "string" and v:find("^file:") ~= nil
+end
 
 -- The diff preview names a setting by its page, then its saved path.
 local SECTIONS = {
@@ -248,6 +277,7 @@ function Profiles:CopyFrom(name)
         return
     end
     putActive(CRTDB, deepCopy(source))
+    CRTDB.importBackup = {} -- the other profile's backup would undo to its settings, not this one's
     ReloadUI()
 end
 
@@ -415,9 +445,11 @@ local function isPlain(v, depth)
         if depth > MAX_DEPTH then
             return false
         end
+        local n = 0
         for k, x in pairs(v) do
             local kt = type(k)
-            if not ((kt == "string" and #k <= MAX_STRING) or (kt == "number" and isPlain(k, depth))) or not isPlain(x, depth + 1) then
+            n = n + 1
+            if n > MAX_LIST or not ((kt == "string" and #k <= MAX_STRING) or (kt == "number" and isPlain(k, depth))) or not isPlain(x, depth + 1) then
                 return false
             end
         end
@@ -426,14 +458,106 @@ local function isPlain(v, depth)
     return false
 end
 
--- A shared value must be plain and of its default's type. A table that starts empty (a list, a position)
--- has no default inside to match, so only plainness is checked there.
+local function isField(kind, v)
+    if kind == "anchor" then
+        return ANCHORS[v] == true
+    end
+    return type(v) == "number" and isPlain(v, 1)
+end
+
+-- A position: a single field (window.point, window.x, minimap.angle) or a table of point, relativePoint,
+-- x, y, width and height, each an anchor name or a number.
+local function isPosition(entry, v)
+    local kind = POSITION_FIELDS[entry.keys[#entry.keys]]
+    if kind then
+        return isField(kind, v)
+    end
+    if type(v) ~= "table" then
+        return false
+    end
+    for k, x in pairs(v) do
+        local field = POSITION_FIELDS[k]
+        if not field or field == "angle" or not isField(field, x) then
+            return false
+        end
+    end
+    return true
+end
+
+-- A list default ({ r, g, b, a }): the same length or shorter, every entry of the first one's type.
+local function isList(default, v)
+    if type(v) ~= "table" then
+        return false
+    end
+    local want = type(default[1])
+    for k, x in pairs(v) do
+        if type(k) ~= "number" or k < 1 or k > #default or k % 1 ~= 0 or type(x) ~= want or not isPlain(x, 2) then
+            return false
+        end
+    end
+    return true
+end
+
+local function isColour(v)
+    if type(v) ~= "table" or #v < 3 then
+        return false
+    end
+    for k, x in pairs(v) do
+        if type(k) ~= "number" or k < 1 or k > 4 or k % 1 ~= 0 or type(x) ~= "number" or x < 0 or x > 1 then
+            return false
+        end
+    end
+    return true
+end
+
+-- ui.layers: each layer key UI.LAYERS knows, set to one of UI.STRATA (UI/Panel.lua).
+local function isLayers(v)
+    local UI = CRT.UI
+    if type(v) ~= "table" or not (UI and UI.LAYERS and UI.STRATA) then
+        return false
+    end
+    local layers, strata = {}, {}
+    for _, layer in ipairs(UI.LAYERS) do
+        layers[layer.key] = true
+    end
+    for _, s in ipairs(UI.STRATA) do
+        strata[s.key] = true
+    end
+    for k, x in pairs(v) do
+        if not layers[k] or not strata[x] then
+            return false
+        end
+    end
+    return true
+end
+
+-- Shared settings with a shape of their own, by path.
+local SHAPES = { ["ui.layers"] = isLayers }
+
+-- A shared value must be plain and of its default's type, at every level: a list default's entries
+-- too, and a position, ui.layers or a late setting by its own shape. A table that starts empty (a map,
+-- an order) has no default inside to match, so only plainness is checked there.
 local function isValid(entry, v)
+    if not isPlain(v, 1) then
+        return false
+    end
+    if entry.position then
+        return isPosition(entry, v)
+    end
+    if SHAPES[entry.path] then
+        return SHAPES[entry.path](v)
+    end
+    if entry.want == "colour" then
+        return isColour(v)
+    end
     local want = entry.want or (entry.default ~= nil and type(entry.default)) or nil
     if want and type(v) ~= want then
         return false
     end
-    return isPlain(v, 1)
+    if type(entry.default) == "table" and entry.default[1] ~= nil then
+        return isList(entry.default, v)
+    end
+    return true
 end
 
 -- Whether a path is under a true in Profiles.SHARE.
@@ -516,22 +640,22 @@ function Profiles.ShareEntries()
     return list
 end
 
--- The saved keys Profiles.SHARE says nothing about: a top-level key of the defaults, or a key one level
--- under a table entry. The test suite fails on any, so each new key is shared or kept back on purpose.
-function Profiles.ShareUncovered()
-    local missing = {}
-    for key, default in pairs(CRT.defaults) do
-        local rule = Profiles.SHARE[key]
+local function uncovered(missing, defaults, rules, prefix)
+    for key, default in pairs(defaults) do
+        local rule, path = rules[key], prefix .. key
         if rule == nil then
-            missing[#missing + 1] = key
+            missing[#missing + 1] = path
         elseif type(rule) == "table" and type(default) == "table" then
-            for sub in pairs(default) do
-                if rule[sub] == nil then
-                    missing[#missing + 1] = key .. "." .. sub
-                end
-            end
+            uncovered(missing, default, rule, path .. ".")
         end
     end
+end
+
+-- The saved keys Profiles.SHARE says nothing about: a key of the defaults at the top level or under a
+-- table rule. The test suite fails on any, so each new key is shared or kept back on purpose.
+function Profiles.ShareUncovered()
+    local missing = {}
+    uncovered(missing, CRT.defaults, Profiles.SHARE, "")
     table.sort(missing)
     return missing
 end
@@ -545,13 +669,15 @@ local function playerName()
 end
 
 -- The active profile's shared settings as text: the # header lines, then CRTS1: and the block.
--- Positions never moved are listed in unset, so an import can put them back to their default.
+-- Positions never moved are listed in unset, so an import can put them back to their default. Returns
+-- the text and how many saved values were left out for not having their default's shape (0 normally);
+-- a choice of one of your own sound files is left out without counting.
 function Profiles:ExportSettings()
     local E = encoder()
     if not E then
         return nil, TEXT.noApi
     end
-    local data, unset = {}, {}
+    local data, unset, dropped = {}, {}, 0
     for _, entry in ipairs(Profiles.ShareEntries()) do
         local v = getPath(CRTDB, entry.keys)
         if v == nil then
@@ -559,7 +685,11 @@ function Profiles:ExportSettings()
                 unset[#unset + 1] = entry.path
             end
         elseif isValid(entry, v) then
-            setPath(data, entry.keys, deepCopy(v))
+            if not ownFile(v) then
+                setPath(data, entry.keys, deepCopy(v))
+            end
+        else
+            dropped = dropped + 1
         end
     end
     local name, day, version = playerName(), date("%Y-%m-%d"), tostring(CRT.version or "dev")
@@ -570,7 +700,7 @@ function Profiles:ExportSettings()
     if not ok or type(block) ~= "string" then
         return nil, TEXT.damaged
     end
-    return TEXT.header .. "\n" .. TEXT.from:format(name, day, version) .. "\n" .. SHARE_PREFIX .. block
+    return TEXT.header .. "\n" .. TEXT.from:format(name, day, version) .. "\n" .. SHARE_PREFIX .. block, dropped
 end
 
 -- Walks the received data beside the shared entries: counts what CRT doesn't share (skipped) and
@@ -638,7 +768,9 @@ local function readSettings(text)
     local info = { kind = "settings", from = cleanName(payload.from), values = {}, unset = {}, unknown = unknown }
     for _, entry in ipairs(Profiles.ShareEntries()) do
         local v = getPath(payload.data, entry.keys)
-        if v ~= nil then
+        if ownFile(v) then
+            info.unknown = info.unknown + 1 -- the sender's own sound file: this computer doesn't have it
+        elseif v ~= nil then
             info.values[entry.path] = v
         end
     end
@@ -719,12 +851,13 @@ function Profiles:Diff(info, keepPositions)
     return out
 end
 
--- Puts values (path -> value) and unset paths (path -> true) onto the active profile.
-local function put(values, unset, keepPositions)
+-- Puts values (path -> value) and unset paths (path -> true) onto the active profile. A backup (exact)
+-- goes back as it was saved, without the import's checks: it came from this profile.
+local function put(values, unset, keepPositions, exact)
     for _, entry in ipairs(Profiles.ShareEntries()) do
         if not (keepPositions and entry.position) then
             local v = values[entry.path]
-            if v ~= nil and isValid(entry, v) then
+            if v ~= nil and (exact or isValid(entry, v)) then
                 setPath(CRTDB, entry.keys, deepCopy(v))
             elseif v == nil and unset[entry.path] then
                 setPath(CRTDB, entry.keys, nil)
@@ -766,7 +899,7 @@ function Profiles:UndoImport()
         return
     end
     local b = CRTDB.importBackup
-    put(b.values, type(b.unset) == "table" and b.unset or {}, false)
+    put(b.values, type(b.unset) == "table" and b.unset or {}, false, true)
     CRTDB.importBackup = {}
     ReloadUI()
 end
