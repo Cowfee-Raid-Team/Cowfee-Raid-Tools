@@ -104,7 +104,7 @@ function GetRaidRosterInfo(i) if i == 1 then return "Gadios", 2, 3 end end
 function GetTime() return 100 end
 function InCombatLockdown() return combat end
 function Ambiguate(key, mode) return (key:gsub("%-Sargeras$", "")) end
-local CLASSES = { { "Warrior", "WARRIOR" }, { "Priest", "PRIEST" }, { "Death Knight", "DEATHKNIGHT" }, { "SECRETname", "MAGE" } }
+local CLASSES = { { "Warrior", "WARRIOR" }, { "Priest", "PRIEST" }, { "Death Knight", "DEATHKNIGHT" }, { "SECRETname", "MAGE" }, { "Demon Hunter", "DEMONHUNTER" } }
 function GetNumClasses() return #CLASSES end
 function GetClassInfo(i) local c = CLASSES[i] return c[1], c[2], i end
 function GetClassAtlas(file) return "classicon-" .. file end
@@ -345,6 +345,46 @@ do
 end
 print("ok a word no row can take is never lost; label punctuation kept; phase headings and markup lines stay text")
 
+-- 5c. A class name of two words is one name (Alex's Nymrissa note, 2026-10-21)
+do
+  local ORB = table.concat({ "Orb Soak 1: Demon Hunter Warlock Priest Monk", "Orb Soak 2: Shaman Monk Druid Rogue",
+    "Orb Soak 3: Mage Warlock Death Knight Warrior", "Orb Soak 4: Hunter" }, "\\n")
+  local s = Model.New(ORB)
+  assert(table.concat(s:Names(1), "/") == "Demon Hunter/Warlock/Priest/Monk", table.concat(s:Names(1), "/"))
+  assert(table.concat(s:Names(2), "/") == "Shaman/Monk/Druid/Rogue", table.concat(s:Names(2), "/"))
+  assert(table.concat(s:Names(3), "/") == "Mage/Warlock/Death Knight/Warrior", table.concat(s:Names(3), "/"))
+  assert(table.concat(s:Names(4), "/") == "Hunter", "Hunter on its own stays Hunter")
+  assert(s:Text() == ORB and not s:Dirty(), "opened and read: as written")
+  assert(s:Remove(1, 1) and s:LineText(1) == "Orb Soak 1: Warlock Priest Monk", "[" .. s:LineText(1) .. "]")
+  assert(s:Remove(3, 3) and s:LineText(3) == "Orb Soak 3: Mage Warlock Warrior", "[" .. s:LineText(3) .. "]")
+  onlyChanged(ORB, s:Text(), { 1, 3 })
+  -- the one-word spellings in any case; a comma between the words keeps them apart; the spaces as written
+  local o = Model.New("Soak: DemonHunter, DEMONHUNTER deathknight\\nSplit: Demon, Hunter\\nWide: Death   Knight, Abu\\nEnd: Abu demon HUNTER")
+  assert(table.concat(o:Names(1), "/") == "DemonHunter/DEMONHUNTER/deathknight", table.concat(o:Names(1), "/"))
+  assert(table.concat(o:Names(2), "/") == "Demon/Hunter", table.concat(o:Names(2), "/"))
+  assert(table.concat(o:Names(3), "/") == "Death   Knight/Abu", table.concat(o:Names(3), "/"))
+  assert(table.concat(o:Names(4), "/") == "Abu/demon HUNTER", table.concat(o:Names(4), "/"))
+  assert(o:Remove(3, 1) and o:LineText(3) == "Wide: Abu", "[" .. o:LineText(3) .. "]")
+  assert(o:Remove(4, 2) and o:LineText(4) == "End: Abu", "[" .. o:LineText(4) .. "]")
+  -- dragged from the palette it writes the name as notes write it; moved as one; a second spelling is a duplicate
+  local entry
+  for _, e in ipairs(Model.Palette({})[4].entries) do if e.class == "DEMONHUNTER" then entry = e end end
+  assert(entry and entry.token == "Demon Hunter" and entry.label == "Demon Hunter", "the palette's Demon Hunter")
+  local m = Model.New("A: Abu\\nB: Cheo\\nC: DEMONHUNTER\\ninvitelist:Abu;")
+  assert(m:BeginDrag({ token = entry.token, kind = "class" }) and m:Drop(1) and m:LineText(1) == "A: Abu, Demon Hunter", "[" .. m:LineText(1) .. "]")
+  assert(m:BeginDrag({ token = "Death Knight", kind = "class" }) and m:Drop(2) and m:LineText(2) == "B: Cheo, Death Knight", "[" .. m:LineText(2) .. "]")
+  assert(m:BeginDrag({ row = 1, index = 2 }) and m:Drop(2) and m:LineText(2) == "B: Cheo, Death Knight, Demon Hunter" and m:LineText(1) == "A: Abu", "moved as one")
+  assert(not m:Move(2, 3, 3) and m:LineText(3) == "C: DEMONHUNTER", "the same class in another spelling is a duplicate")
+  assert(not m:Move(2, 3, 4) and not m:Add(4, "Demon Hunter") and not m:Add(4, "DemonHunter", "player"), "never in the invite list")
+  assert(m:LineText(4) == "invitelist:Abu;", m:LineText(4))
+  assert(not m:Add(1, "Demon Hunters") and not m:Add(1, "Abu Cheo"), "only a class name may hold a space")
+  for _, w in ipairs({ "Demon Hunter", "DemonHunter", "DEMONHUNTER", "demon hunter", "Death Knight", "DeathKnight", "Hunter", "PRIEST" }) do
+    assert(Model.NotPlayer(w), w .. " is not a player")
+  end
+  assert(not Model.NotPlayer("Demon") and not Model.NotPlayer("Knight") and not Model.NotPlayer("Abu"), "a word that is no class is a name")
+end
+print("ok two-word class names: one chip, removed whole, written with the space, the one-word spellings read")
+
 -- 6. Palette tokens: the words the alerts understand
 do
   local roster = {
@@ -367,7 +407,8 @@ do
   assert(table.concat(g, ",") == "everyone,tank,healer,dps,melee,ranged", table.concat(g, ","))
   assert(#sections[3].entries == 8 and sections[3].entries[1].token == "Group1" and sections[3].entries[8].token == "Group8", "Group1..Group8")
   local c = sections[4].entries
-  assert(#c == 3 and c[3].token == "DEATHKNIGHT" and c[3].label == "Death Knight" and c[3].class == "DEATHKNIGHT", "classes by file name, a hidden class name skipped")
+  assert(#c == 4 and c[3].token == "Death Knight" and c[3].label == "Death Knight" and c[3].class == "DEATHKNIGHT", "classes by name as notes write them, a hidden class name skipped")
+  assert(c[1].token == "Warrior" and c[4].token == "Demon Hunter" and c[4].class == "DEMONHUNTER", "Demon Hunter with its space")
   -- each token is one the alerts read: the player here is a healer priest in raid group 3
   local function mine(word) return Engine:IsMine({ tags = { word } }) end
   inRaid = true
@@ -377,7 +418,7 @@ do
   local found = Model.Palette(roster, "gro")
   assert(#found[3].entries == 8 and #found[1].entries == 0 and #found[2].entries == 0, "search keeps Group1..8 for 'gro'")
   found = Model.Palette(roster, "death")
-  assert(#found[4].entries == 1 and found[4].entries[1].token == "DEATHKNIGHT", "search finds a class by its name")
+  assert(#found[4].entries == 1 and found[4].entries[1].token == "Death Knight", "search finds a class by its name")
 end
 print("ok palette: players by role, general, Group1..8 and classes, each token one the alerts read; search")
 
@@ -468,11 +509,11 @@ do
   assert(chips[1].shown and chips[1].text:GetText() == "Cheoeqar" and chips[2].text:GetText() == "Abu" and chips[1].remove.shown, "row 7's names as removable chips")
   assert(chips[2].text.textColor[1] == RAID_CLASS_COLORS.MAGE.r, "a chip in its class colour")
   assert(chipsShown(W.rowFrames[12]) == 3 and W.rowFrames[12].label:GetText() == "Invite list (3):", "the invite list as player chips")
-  for _, token in ipairs({ "Abu", "Gadios", "Rixxy", "everyone", "tank", "Group1", "Group8", "WARRIOR", "DEATHKNIGHT" }) do
+  for _, token in ipairs({ "Abu", "Gadios", "Rixxy", "everyone", "tank", "Group1", "Group8", "Warrior", "Death Knight" }) do
     assert(paletteChip(token), "a palette chip for " .. token)
   end
   assert(rawget(paletteChip("Abu").icon, "atlas") == "classicon-MAGE" and paletteChip("Abu").icon.shown, "a player's class icon")
-  assert(paletteChip("DEATHKNIGHT").text:GetText() == "Death Knight", "a class by its name")
+  assert(paletteChip("Death Knight").text:GetText() == "Death Knight", "a class by its name")
   -- a drop on a timer is refused
   drag(paletteChip("Rixxy"), 4)
   assert(not W.session:Dirty() and not W.ghost.shown, "a drop on a timed line does nothing")
@@ -488,7 +529,7 @@ do
   local before = W.session:Text()
   drag(paletteChip("tank"), 12)
   drag(paletteChip("Group1"), 12)
-  drag(paletteChip("WARRIOR"), 12)
+  drag(paletteChip("Warrior"), 12)
   assert(W.session:Text() == before, "only players go in the invite list")
   drag(paletteChip("Kip"), 12)
   assert(W.session:LineText(12) == "invitelist:Cheoeqar-Sargeras,Abu-Sargeras,Kip,Gadios-Sargeras;", W.session:LineText(12))

@@ -91,8 +91,8 @@ local function readable(v)
 end
 
 -- Your class as tag words: the class file name and the class's own name, lower-cased with every space
--- removed, so "DEATHKNIGHT" (what the editor writes), "deathknight" and "death knight" all match (and
--- "chevalier de la mort" in French).
+-- removed, so "Death Knight" (what the editor writes), "DEATHKNIGHT", "deathknight" all match (and
+-- "chevalier de la mort" in French). The other spellings are Parse.lua's class words, which IsMine reads.
 -- Only IsMine reads these: a class word is common in ordinary sentences, so it never marks free text as yours.
 local myClasses, classesAt
 local function classTokens()
@@ -184,8 +184,25 @@ local function previewTokens(name)
     return t, classes
 end
 
+-- Whether the tags from i on start with your class's name in this client's language (in classes, its words
+-- joined), which the class words may not know: "Chevalier de la mort" as one word or four.
+local function ownClassName(tags, i, word, classes)
+    if classes[word] then
+        return true
+    end
+    local joined = word
+    for j = i + 1, #tags do
+        joined = joined .. tags[j]:lower()
+        if classes[joined] then
+            return true
+        end
+    end
+    return false
+end
+
 -- Whether a timer is for you: your name, your role, your class, everyone, or your raid group. A name in
--- a tag may carry a realm, which is ignored. A class name of several words may be split over them.
+-- a tag may carry a realm, which is ignored. A class name of several words may be split over them, and is
+-- read as one class first, so "Demon Hunter" is never a Hunter's (Parse.lua's class words).
 -- In a rehearsal, Preview as decides instead: "*" takes every tagged line (an untagged line is for no
 -- one, so it still shows only in the timers window), and a player's name takes their lines.
 function Engine:IsMine(item)
@@ -201,21 +218,23 @@ function Engine:IsMine(item)
         mine, classes = tokens(), classTokens()
     end
     local subgroup
+    local classAt = CRT.NoteParser.ClassAt
     local i = 1
     while i <= #tags do
         local word = tags[i]:lower():gsub("%-.*$", "")
-        if mine[word] or classes[word] then
+        if mine[word] then
             return true
         end
-        local joined = word
-        for j = i + 1, #tags do
-            joined = joined .. tags[j]:lower()
-            if classes[joined] then
+        local class, n = classAt(tags, i)
+        local number, used = groupTag(word, tags[i + 1])
+        if class then
+            if classes[class:lower()] then
                 return true
             end
-        end
-        local number, used = groupTag(word, tags[i + 1])
-        if number then
+            i = i + n -- the whole class name: its last word is not read again as a class of its own
+        elseif ownClassName(tags, i, word, classes) then
+            return true
+        elseif number then
             -- another player's group can't be known, so a group tag never matches them
             if not as then
                 subgroup = subgroup or mySubgroup()

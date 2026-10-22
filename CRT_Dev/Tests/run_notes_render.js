@@ -79,7 +79,8 @@ C_Spell = {
   RequestLoadSpellData = function(id) requested[id] = (requested[id] or 0) + 1 end,
 }
 -- not theme colours: the game's class colours
-RAID_CLASS_COLORS = { MAGE = { colorStr = "ff3fc7eb" }, PRIEST = { colorStr = "ffffffff" }, ROGUE = { colorStr = "fffff468" }, PALADIN = { colorStr = "fff48cba" } }
+RAID_CLASS_COLORS = { MAGE = { colorStr = "ff3fc7eb" }, PRIEST = { colorStr = "ffffffff" }, ROGUE = { colorStr = "fffff468" }, PALADIN = { colorStr = "fff48cba" },
+  DEMONHUNTER = { colorStr = "ffa330c9" }, DEATHKNIGHT = { colorStr = "ffc41e3a" }, HUNTER = { colorStr = "ffaad372" }, WARLOCK = { colorStr = "ff8788ee" } }
 local pages = {}
 local CRT = {
   Bosses = { OnRouteChange = function() end, RouteIndex = function() end },
@@ -182,6 +183,30 @@ do
   assert(#plain == 3 and plain[1].kind == "heading" and plain[2].kind == "label" and plain[3].kind == "text", "no line dropped")
 end
 print("ok label and heading lines, blank lines kept, unknown lines shown as written")
+
+-- 2b. Class names in assignments and tags: each one class, a two-word name coloured as one
+do
+  local rows = Render.Rows(table.concat({ "Orb Soak 1: Demon Hunter Warlock Priest Monk", "Orb Soak 3: Mage Warlock Death Knight Warrior",
+    "Orb Soak 4: Hunter", "Soak: DEMONHUNTER, Abu", "time:5;ph:1;tag:Demon Hunter Abu;text:Orb;" }, "\\n"), ctx())
+  local function classed(row)
+    local out = {}
+    for _, p in ipairs(row.parts) do if p.class then out[#out + 1] = p.text .. "=" .. p.class end end
+    return table.concat(out, ",")
+  end
+  local l1, l3, l4, l5 = find(rows, "label", 1), find(rows, "label", 2), find(rows, "label", 3), find(rows, "label", 4)
+  assert(classed(l1) == "Demon Hunter=DEMONHUNTER,Warlock=WARLOCK,Priest=PRIEST,Monk=MONK", classed(l1))
+  assert(Render.Markup(l1):find("|cffa330c9Demon Hunter|r |cff8788eeWarlock|r", 1, true), Render.Markup(l1))
+  assert(classed(l3) == "Mage=MAGE,Warlock=WARLOCK,Death Knight=DEATHKNIGHT,Warrior=WARRIOR", classed(l3))
+  assert(classed(l4) == "Hunter=HUNTER", "Hunter alone: " .. classed(l4))
+  assert(classed(l5) == "DEMONHUNTER=DEMONHUNTER,Abu=MAGE", "the one-word spelling, a player still by name: " .. classed(l5))
+  local t = find(rows, "timer")
+  assert(#t.names == 2 and t.names[1].text == "Demon Hunter" and t.names[1].class == "DEMONHUNTER" and t.names[2].text == "Abu", "a tag's two words are one name")
+  assert(Render.Markup(t):find("|cffa330c9Demon Hunter|r, |cff3fc7ebAbu|r", 1, true), Render.Markup(t))
+  -- a player whose name is a class word keeps the player's colour
+  local mine = Render.Rows("Soak: Hunter", ctx({ classOf = function(n) return n == "Hunter" and "ROGUE" or nil end }))
+  assert(classed(mine[1]) == "Hunter=ROGUE", classed(mine[1]))
+end
+print("ok class names: one class each, Demon Hunter and Death Knight coloured as one")
 
 -- 3. The invite list: folded to a count, open shows the names
 do

@@ -45,7 +45,8 @@ local TEXT = {
 
 -- The tag words the alerts understand (Notes/Engine.lua: IsMine, groupTag and the class words), which the
 -- Raid Notes integrations also read: "everyone", a role, "Group1".."Group8" in one word (Integrations/MRT.lua
--- reads only that spelling of a group), and a class by its file name ("DEATHKNIGHT").
+-- reads only that spelling of a group), and a class by its name as raiders' notes write it, with its space
+-- ("Death Knight", Parse.lua's class words). Lines written by file name ("DEATHKNIGHT") still read.
 Model.GENERAL = {
     { label = TEXT.everyone, token = "everyone" },
     { label = TEXT.tanks, token = "tank" },
@@ -63,9 +64,9 @@ local NOT_PLAYER = { all = true, everyone = true, raid = true, tank = true, tank
     ranged = true, range = true }
 
 -- A name in a label line: anything between spaces and commas, so removing one keeps every other mark as written
--- ("Abu (left), Cheo" removes "(left)" as one word, never a bracket of it).
+-- ("Abu (left), Cheo" removes "(left)" as one word, never a bracket of it). A class name of several words with
+-- only spaces between them ("Demon Hunter") is one name.
 local LABEL_WORD = "[^%s,]+"
-local LABEL_MAX_WORDS = 4 -- a label longer than this ("Stack on the boss and then: ...") is a sentence
 
 local function trim(s)
     return (s:gsub("^%s+", ""):gsub("%s+$", ""))
@@ -79,7 +80,8 @@ end
 -- Notes/Data.lua's, so a note is cut into lines one way.
 local splitLines = CRT.Notes.SplitPieces
 
--- The game's classes: { label (its name), token (its file name), class }.
+-- The game's classes: { label (its name in the game), token (its name as notes write it, "Demon Hunter"), class
+-- (its file name) }.
 local function classes()
     local out = {}
     local n = GetNumClasses and GetNumClasses() or 0
@@ -87,7 +89,7 @@ local function classes()
         local ok, name, file = pcall(GetClassInfo, i)
         if ok and readable(name) and readable(file) and type(name) == "string" and type(file) == "string"
             and name ~= "" and file ~= "" then
-            out[#out + 1] = { label = name, token = file, class = file }
+            out[#out + 1] = { label = name, token = Parser.ClassName(file) or name, class = file }
         end
     end
     return out
@@ -99,16 +101,38 @@ local function notPlayer(word)
     if NOT_PLAYER[lower] or lower:match("^g%d$") or lower:match("^grp%d$") or lower:match("^group%d$") then
         return true
     end
-    for _, c in ipairs(classes()) do
-        if lower == c.token:lower() or lower == (c.label:gsub("%s+", "")):lower() then
-            return true
-        end
-    end
-    return false
+    return Parser.ClassOf(word) ~= nil
 end
 Model.NotPlayer = notPlayer
 
 -- Label fields -----------------------------------------------------------------------------------------------
+
+-- A label line's words with each class name of several words, spaces only between them, made one item, its
+-- spaces as written: "Demon Hunter" is one name, "Demon, Hunter" two.
+local function joinClasses(items)
+    local out, k = {}, 1
+    while k <= #items do
+        local run = { items[k].word }
+        for j = k + 1, #items do
+            if not items[j].sep:match("^%s+$") then
+                break
+            end
+            run[#run + 1] = items[j].word
+        end
+        local _, n = Parser.ClassAt(run, 1)
+        local item = items[k]
+        if n and n > 1 then
+            local parts = { item.word }
+            for j = k + 1, k + n - 1 do
+                parts[#parts + 1] = items[j].sep .. items[j].word
+            end
+            item = { word = table.concat(parts), sep = item.sep }
+        end
+        out[#out + 1] = item
+        k = k + (n and n > 1 and n or 1)
+    end
+    return out
+end
 
 -- The names of a label line: before .. lead .. names (each after its separator) .. trail.
 local function labelField(line)
@@ -124,6 +148,7 @@ local function labelField(line)
         f.items[#f.items + 1] = { word = word, sep = #f.items == 0 and "" or sep }
         pos = stop
     end
+    f.items = joinClasses(f.items)
     if #f.items == 0 then
         f.lead = value -- the spaces where the names go
     else
@@ -175,10 +200,11 @@ local function names(f)
     return out
 end
 
+-- Whether the field has the token already, a class in any spelling ("DEMONHUNTER" for "Demon Hunter").
 local function has(f, token)
-    local lower = token:lower()
+    local lower, class = token:lower(), Parser.ClassOf(token)
     for _, name in ipairs(names(f)) do
-        if name:lower() == lower then
+        if name:lower() == lower or (class and Parser.ClassOf(name) == class) then
             return true
         end
     end
@@ -261,23 +287,9 @@ local function num(n)
     return (("%.10g"):format(n))
 end
 
--- Whether the part before a line's colon reads as an assignment's label: short, with no markup ("{time:1:30}" and
--- the other {..} codes of shared notes, "|c" colours), and not a phase heading ("Phase 2: kite adds left").
-local function looksLikeLabel(label)
-    local t = trim(label)
-    if t == "" or t:find("{", 1, true) or t:find("|", 1, true) then
-        return false
-    end
-    local n = 0
-    for _ in t:gmatch("%S+") do
-        n = n + 1
-    end
-    if n > LABEL_MAX_WORDS then
-        return false
-    end
-    local lower = t:lower()
-    return not (lower:match("^phase%s*[%d%.]+$") or lower:match("^p[%d%.]+$") or lower:match("^intermission"))
-end
+-- Whether the part before a line's colon reads as an assignment's label (Parse.lua's, which the integrations read
+-- too): short, with no markup, and not a phase heading ("Phase 2: kite adds left").
+local looksLikeLabel = Parser.LooksLikeLabel
 Model.LooksLikeLabel = looksLikeLabel
 
 -- A line that is not a timer. Mirrors Render.lua's freeRow: blank, a label ("Melee: names"), a heading (no colon)
@@ -372,9 +384,16 @@ function Session:Editable(i)
     return not self.readOnly and row ~= nil and row.editable == true
 end
 
--- A token fit to be one name or tag word: no spaces, ";", ":", ",", "|" or line ends.
+-- A token fit to be one name or tag word: no spaces, ";", ":", ",", "|" or line ends. A class name may hold its
+-- spaces ("Demon Hunter").
 local function validToken(token)
-    return type(token) == "string" and readable(token) and token:match("^[^%s;:,|]+$") ~= nil
+    if not (type(token) == "string" and readable(token)) then
+        return false
+    end
+    if token:match("^[^%s;:,|]+$") then
+        return true
+    end
+    return token:match("^[^%s;:,|][^;:,|\r\n]*[^%s;:,|]$") ~= nil and Parser.ClassOf(token) ~= nil
 end
 Model.ValidToken = validToken
 

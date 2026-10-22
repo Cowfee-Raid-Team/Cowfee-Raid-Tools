@@ -241,7 +241,7 @@ local function timerInfo(row)
         out = (out ~= "") and (name .. " - " .. out) or name
     end
     if row.tags and #row.tags > 0 then
-        out = table.concat(row.tags, ", ") .. "  " .. out
+        out = table.concat(CRT.NoteParser.JoinClassWords(row.tags), ", ") .. "  " .. out
     end
     return out
 end
@@ -253,7 +253,8 @@ local function rowChips(f, i, row, x0, width, y0)
     for k, name in ipairs(names) do
         local chip = f.chips[k] or makeChip(f)
         f.chips[k] = chip
-        local class = W.classOf and W.classOf(name) or nil
+        -- a player's class, else the class a class name names ("Demon Hunter")
+        local class = (W.classOf and W.classOf(name)) or CRT.NoteParser.ClassOf(name)
         widths[k] = fillChip(chip, { label = name, class = class, token = name }, { row = i, index = k }, editable, false)
         list[k] = chip
     end

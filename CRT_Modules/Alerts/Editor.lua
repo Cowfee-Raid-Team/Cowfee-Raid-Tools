@@ -318,19 +318,10 @@ local function classes()
     return out
 end
 
--- A one-word tag naming a class, by its file name or its name without spaces (in any case), as the
--- class file name; any other tag as it is.
+-- A tag that is one class name in any spelling ("Demon Hunter", "DEMONHUNTER", Notes/Parse.lua's class
+-- words), as the class file name; any other tag as it is.
 local function classTag(tag)
-    if tag:find("%s") then
-        return tag
-    end
-    local word = tag:lower()
-    for _, c in ipairs(classes()) do
-        if word == c.file:lower() or word == (c.name:gsub("%s+", "")):lower() then
-            return c.file
-        end
-    end
-    return tag
+    return CRT.NoteParser.ClassOf(tag) or tag
 end
 
 -- Who a note line is for, as its tag: everyone, you, a role, a class, a group or a name; and the line's
@@ -1793,8 +1784,8 @@ function Editor:OpenNote(noteID, lineNumber)
     draft.saveAs = "note"
     draft.boss = record.name
     draft.difficulty = record.difficulty
-    -- a one-word class tag reads back as its class choice; a line with no tag as No one
-    draft.tag = #(timer.tags or {}) == 1 and classTag(timer.tags[1]) or table.concat(timer.tags or {}, " ")
+    -- a tag that is one class (one word or "Demon Hunter") reads back as its class choice; no tag as No one
+    draft.tag = classTag(table.concat(timer.tags or {}, " "))
     ctx.untagged = draft.tag == ""
     draft.ph = timer.ph or 1
     draft.timeText = clock(timer.time or 0, true)

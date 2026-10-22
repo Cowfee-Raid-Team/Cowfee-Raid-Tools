@@ -91,6 +91,149 @@ local function nameList(s)
     return names
 end
 
+-- Class words -------------------------------------------------------------------------------------
+-- The one table of the words that name a class in a note, read by the note editor (EditModel.lua), the
+-- alerts (Engine.lua), the rendered note (Render.lua) and the integrations (Integrations/*.lua):
+--   Parser.ClassName(file)        the name a note writes for a class: "Demon Hunter", with its space
+--   Parser.ClassOf(text)          the class file a class name names in any spelling, or nil
+--   Parser.ClassAt(words, i)      the class the words from i on start with, and how many words it takes
+--   Parser.JoinClassWords(words)  the words with each class name of several words made one, "Demon Hunter"
+-- A spelling is matched in any case and with its spaces left out, so "Demon Hunter", "DemonHunter" and
+-- "DEMONHUNTER" (the class file, which the editor used to write) are all the Demon Hunter. A note is shared
+-- across clients, so the name written is the English one, kept here by class file; the client's own class
+-- names are read too. A class the game adds later comes from GetClassInfo, written by the game's name.
+local CLASS_NAMES = {
+    { "WARRIOR", "Warrior" }, { "PALADIN", "Paladin" }, { "HUNTER", "Hunter" }, { "ROGUE", "Rogue" },
+    { "PRIEST", "Priest" }, { "DEATHKNIGHT", "Death Knight" }, { "SHAMAN", "Shaman" }, { "MAGE", "Mage" },
+    { "WARLOCK", "Warlock" }, { "MONK", "Monk" }, { "DRUID", "Druid" }, { "DEMONHUNTER", "Demon Hunter" },
+    { "EVOKER", "Evoker" },
+}
+
+local function readable(v)
+    return not (issecretvalue and issecretvalue(v))
+end
+
+local function spellingKey(s)
+    return (s:gsub("%s+", ""):lower())
+end
+
+local classWords -- { byKey = spelling -> file, names = file -> name, most = the most words in a name }
+
+local function buildClassWords()
+    local w = { byKey = {}, names = {}, most = 1 }
+    local function add(file, spelling)
+        if readable(spelling) and type(spelling) == "string" and spelling ~= "" then
+            local n = select(2, spelling:gsub("%S+", ""))
+            w.most = math.max(w.most, n)
+            for _, lower in ipairs({ string.lower, strlower or string.lower }) do
+                local key = lower((spelling:gsub("%s+", "")))
+                if key ~= "" and w.byKey[key] == nil then
+                    w.byKey[key] = file
+                end
+            end
+        end
+    end
+    for _, c in ipairs(CLASS_NAMES) do
+        w.names[c[1]] = c[2]
+        add(c[1], c[1])
+        add(c[1], c[2])
+    end
+    local fromGame = false
+    for i = 1, GetNumClasses and GetNumClasses() or 0 do
+        local ok, name, file = pcall(GetClassInfo, i)
+        if ok and readable(file) and type(file) == "string" and file ~= "" then
+            fromGame = true
+            add(file, file)
+            add(file, name)
+            if w.names[file] == nil and readable(name) and type(name) == "string" and name ~= "" then
+                w.names[file] = name
+            end
+        end
+    end
+    for _, list in ipairs({ LOCALIZED_CLASS_NAMES_MALE, LOCALIZED_CLASS_NAMES_FEMALE }) do
+        if type(list) == "table" then
+            for file, name in pairs(list) do
+                if type(file) == "string" then
+                    add(file, name)
+                end
+            end
+        end
+    end
+    -- kept once the game has listed its classes; before that (or with no game) asked again next time
+    classWords = fromGame and w or nil
+    return w
+end
+
+local function classTable()
+    return classWords or buildClassWords()
+end
+
+function Parser.ClassName(file)
+    return type(file) == "string" and classTable().names[file] or nil
+end
+
+function Parser.ClassOf(text)
+    if not (readable(text) and type(text) == "string") then
+        return nil
+    end
+    local key = spellingKey(text)
+    return key ~= "" and classTable().byKey[key] or nil
+end
+
+-- The longest run of words from i that names a class, so "Demon Hunter" is never read as Hunter.
+function Parser.ClassAt(words, i)
+    local w = classTable()
+    local joined = ""
+    local best, bestN
+    for n = 1, math.min(w.most, #words - i + 1) do
+        local word = words[i + n - 1]
+        if not (readable(word) and type(word) == "string") then
+            break
+        end
+        joined = joined .. spellingKey(word)
+        local file = w.byKey[joined]
+        if file then
+            best, bestN = file, n
+        end
+    end
+    return best, bestN
+end
+
+function Parser.JoinClassWords(words)
+    local out, i = {}, 1
+    while i <= #words do
+        local file, n = Parser.ClassAt(words, i)
+        if file and n > 1 then
+            out[#out + 1] = table.concat(words, " ", i, i + n - 1)
+            i = i + n
+        else
+            out[#out + 1] = words[i]
+            i = i + 1
+        end
+    end
+    return out
+end
+
+-- Whether the part before a line's colon reads as an assignment's label: short, with no markup ("{time:1:30}" and
+-- the other {..} codes of shared notes, "|c" colours), and not a phase heading ("Phase 2: kite adds left"). The note
+-- editor's label lines (EditModel.lua) and the integrations' class names read the same lines.
+local LABEL_MAX_WORDS = 4 -- a label longer than this ("Stack on the boss and then: ...") is a sentence
+function Parser.LooksLikeLabel(label)
+    local t = trim(label)
+    if t == "" or t:find("{", 1, true) or t:find("|", 1, true) then
+        return false
+    end
+    local n = 0
+    for _ in t:gmatch("%S+") do
+        n = n + 1
+    end
+    if n > LABEL_MAX_WORDS then
+        return false
+    end
+    local lower = t:lower()
+    return not (lower:match("^phase%s*[%d%.]+$") or lower:match("^p[%d%.]+$") or lower:match("^intermission"))
+end
+
 -- Returns { encounterID, difficulty, name, timers = {...}, phases = {...}, lines = {...}, invite = {...},
 -- unread = {...} }, unread the lines that start like a timer but have no time it can read, as written.
 -- Each timer is { time, ph, tags, kind = "spell" or "text", spellId, text, dur, color, line } with `line`

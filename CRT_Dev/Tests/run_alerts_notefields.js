@@ -382,6 +382,28 @@ check("tags: two-word class name", function()
   assert(E:IsMine(t), "parsed two-word tag")
 end)
 
+check("tags: Demon Hunter is one class, never Hunter", function()
+  classLocal, classFile = "Demon Hunter", "DEMONHUNTER"
+  clock = clock + 10
+  for _, tags in ipairs({ { "Demon", "Hunter" }, { "DemonHunter" }, { "DEMONHUNTER" }, { "demonhunter" }, { "Rixxy", "demon", "HUNTER" } }) do
+    assert(E:IsMine({ tags = tags }), "a Demon Hunter: " .. table.concat(tags, " "))
+  end
+  assert(not E:IsMine({ tags = { "Hunter" } }) and not E:IsMine({ tags = { "Demon" } }), "half the name is not a Demon Hunter")
+  assert(E:IsMine(P.Parse("time:5;ph:1;tag:Demon Hunter Warlock;text:Orb;").timers[1]), "parsed")
+  -- a localized client still reads the English and one-word spellings
+  classLocal, classFile = "Chasseur de demons", "DEMONHUNTER"
+  clock = clock + 10
+  assert(E:IsMine({ tags = { "Demon", "Hunter" } }) and E:IsMine({ tags = { "DEMONHUNTER" } }), "English words on another client")
+  assert(E:IsMine({ tags = { "Chasseur", "de", "demons" } }), "the client's own name")
+  classLocal, classFile = "Hunter", "HUNTER"
+  clock = clock + 10
+  assert(not E:IsMine({ tags = { "Demon", "Hunter" } }), "a Hunter is not a Demon Hunter")
+  assert(not E:IsMine({ tags = { "DEMONHUNTER" } }) and not E:IsMine({ tags = { "Death", "Knight" } }), "nor any other class")
+  assert(E:IsMine({ tags = { "Hunter" } }) and E:IsMine({ tags = { "HUNTER" } }), "Hunter is")
+  assert(E:IsMine({ tags = { "Demon", "Hunter", "Hunter" } }) and E:IsMine({ tags = { "Death", "Knight", "Hunter" } }), "Hunter after a two-word class")
+  assert(not E:IsMine(P.Parse("time:5;ph:1;tag:Demon Hunter Warlock;text:Orb;").timers[1]), "parsed, not a Hunter's")
+end)
+
 check("note lines: show line text label wins", function()
   local n = P.Parse(table.concat({
     "time:30;ph:1;tag:Cheoeqar;spellid:1022;text:Soak now;show:icon,text;tts:1;",
