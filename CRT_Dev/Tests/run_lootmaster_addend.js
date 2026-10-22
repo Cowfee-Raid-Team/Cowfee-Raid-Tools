@@ -341,6 +341,10 @@ eq(LM.TradeSecondsFromText(TRADE_TEXT:format("soon")), nil, "trade time: no numb
 local enTemplate, enH, enM = BIND_TRADE_TIME_REMAINING, D_HOURS, D_MINUTES
 BIND_TRADE_TIME_REMAINING, D_HOURS, D_MINUTES = "Handelbar noch %s.", "%d |4Stunde:Stunden;", "%d |4Minute:Minuten;"
 eq(LM.TradeSecondsFromText("Handelbar noch 1 Stunde 5 Minuten."), 3900, "another language: the client's own words")
+local enHA, enMA = HOURS_ABBR, MINUTES_ABBR
+HOURS_ABBR, MINUTES_ABBR = "%d |4Std.:Std.;", "%d |4Min.:Min.;"
+eq(LM.TradeSecondsFromText("Handelbar noch 1 Std. 5 Min.."), 3900, "an abbreviated unit with a full stop: Std.")
+HOURS_ABBR, MINUTES_ABBR = enHA, enMA
 BIND_TRADE_TIME_REMAINING = nil
 eq(LM.TradeSecondsFromText(TRADE_TEXT:format("1 hour")), nil, "no trade line format in the client: not read")
 BIND_TRADE_TIME_REMAINING, D_HOURS, D_MINUTES = enTemplate, enH, enM
@@ -416,28 +420,67 @@ slot.scripts.OnMouseUp(slot)
 eq(#BL:Rows(), 2, "a click with an item on the cursor adds it")
 local plain = BL:Rows()[2]
 eq(plain.untimed, true, "not bound: no trade time")
-eq(plain.expires, nil, "not bound: no expiry of its own")
+eq(plain.expires, NOW + LM.TRADE_SECONDS, "not bound: its own end, 2 hours after it was added")
 eq(BL.TradeLeft(plain), nil, "not bound: no time left to show")
-check(LM.BossLootDetail(plain):find("Not bound: leaves with the other items", 1, true) ~= nil, "not bound: its own wording (" .. LM.BossLootDetail(plain) .. ")")
+check(LM.BossLootDetail(plain):find("Not bound: leaves in 2:00", 1, true) ~= nil, "not bound: its own wording (" .. LM.BossLootDetail(plain) .. ")")
 eq(plain.ticked, true, "an item outside the loot filter from your bags is still ticked")
 local keptPlain
 for _, c in ipairs(CRTDBChar.lootmaster.bossLootList.rows) do if c.untimed then keptPlain = c end end
-check(keptPlain ~= nil and keptPlain.endsAt == nil, "not bound: kept for a /reload with no end time")
+check(keptPlain ~= nil and keptPlain.endsAt == CLOCK + LM.TRADE_SECONDS, "not bound: kept for a /reload with its end")
 -- a trade time line CRT can't read: the full 2 hours
 pickUp(0, 9)
 slot.scripts.OnReceiveDrag(slot)
 eq(#BL:Rows(), 3, "an unread trade time: added")
 eq(BL:Rows()[3] and BL:Rows()[3].expires, NOW + LM.TRADE_SECONDS, "an unread trade time: the full 2 hours")
--- the unbound row leaves with the others: no warning, gone when the last timed row runs out
+-- the unbound row: no warning, a countdown, and it leaves at its own end; the chat line counts it
 NOW = NOW + LM.TRADE_SECONDS - LM.TRADE_WARN + 1
 runTimers()
 local warned = 0
 for _, m in ipairs(printed) do if m:find("Plain Bracers", 1, true) then warned = warned + 1 end end
 eq(warned, 0, "not bound: no trade time warning")
-eq(#BL:Rows(), 3, "not bound: still listed while the others are")
+eq(#BL:Rows(), 3, "not bound: still listed before its end")
+check(LM.BossLootDetail(plain):find("Not bound: leaves in 0:15", 1, true) ~= nil, "not bound: the countdown (" .. LM.BossLootDetail(plain) .. ")")
+printed = {}
 NOW = NOW + LM.TRADE_WARN + 10
 runTimers()
-eq(#BL:Rows(), 0, "not bound: leaves with the other rows")
+eq(#BL:Rows(), 0, "not bound: gone at its end, with the other rows whose time is over")
+check(printed[1] and printed[1]:find("3 won items", 1, true) ~= nil, "the expiry chat line counts the unbound row (" .. tostring(printed[1]) .. ")")
+-- added alone: it still leaves
+BL:Clear()
+pickUp(0, 5)
+slot.scripts.OnMouseUp(slot)
+eq(#BL:Rows(), 1, "not bound alone: added")
+NOW = NOW + LM.TRADE_SECONDS + 1
+runTimers()
+eq(#BL:Rows(), 0, "not bound alone: leaves at its end")
+eq(CRTDBChar.lootmaster.bossLootList, nil, "not bound alone: nothing kept for the next login")
+-- the timed rows leave through Start: the unbound row still leaves at its end
+pickUp(0, 1)
+slot.scripts.OnReceiveDrag(slot)
+pickUp(0, 5)
+slot.scripts.OnMouseUp(slot)
+local alone = BL:Rows()[2]
+BL:SetTicked(alone.rollID, false)
+eq(BL:Start(), 1, "Start: the timed row goes out")
+eq(BL:Rows()[1], alone, "Start: the unbound row stays")
+LM:EndAll()
+NOW = NOW + LM.TRADE_SECONDS + 1
+runTimers()
+eq(#BL:Rows(), 0, "not bound after Start: leaves at its end")
+-- a /reload with only unbound rows saved: back with the time left, and one whose time is over is dropped
+CRTDBChar.lootmaster.bossLootList = { rows = {
+  { link = link(305), itemString = "item:305", status = "won", ticked = true, pass = true, bags = true, untimed = true, endsAt = CLOCK + 600 },
+  { link = link(305), itemString = "item:305", status = "won", ticked = true, pass = true, bags = true, untimed = true, endsAt = CLOCK - 5 },
+}, waiting = {} }
+printed = {}
+BL:Load()
+eq(#BL:Rows(), 1, "load: the unbound row with time left is back")
+eq(BL:Rows()[1] and BL:Rows()[1].expires, NOW + 600, "load: with the time it had left")
+check(printed[1] and printed[1]:find("1 won item", 1, true) ~= nil, "load: the one whose time is over is said in chat (" .. tostring(printed[1]) .. ")")
+NOW = NOW + 601
+runTimers()
+eq(#BL:Rows(), 0, "load: the unbound row leaves at its end")
+eq(CRTDBChar.lootmaster.bossLootList, nil, "load: nothing kept after it left")
 -- what goes in: gear and tier tokens only
 pickUp(0, 8)
 slot.scripts.OnReceiveDrag(slot)

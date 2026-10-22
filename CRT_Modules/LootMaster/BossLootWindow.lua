@@ -36,7 +36,7 @@ local TEXT = {
     ilvl = "Item level %d",
     tradeHours = "%dh %02dm left to trade",
     tradeMinutes = "%dm left to trade",
-    untimed = "Not bound: leaves with the other items",
+    untimed = "Not bound: leaves in %d:%02d",
     test = "TEST",
     testWon = "Yours · a test boss kill",
 }
@@ -110,8 +110,9 @@ function LM.BossLootDetail(r, withBoss)
         parts[#parts + 1] = TEXT.ilvl:format(r.ilvl)
     end
     local left = BL.TradeLeft(r)
-    if r.untimed then
-        parts[#parts + 1] = TEXT.untimed -- no trade time of its own (LootMaster/BossLoot.lua)
+    if r.untimed and r.expires then -- no trade time: its own end (LootMaster/BossLoot.lua)
+        local m = math.ceil(math.max(0, r.expires - GetTime()) / 60)
+        parts[#parts + 1] = TEXT.untimed:format(math.floor(m / 60), m % 60)
     elseif left then
         local m = math.ceil(left / 60)
         local text = m >= 60 and TEXT.tradeHours:format(math.floor(m / 60), m % 60) or TEXT.tradeMinutes:format(m)

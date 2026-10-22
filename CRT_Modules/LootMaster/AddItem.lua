@@ -9,7 +9,8 @@ local ADDON, CRT = ...
 -- shift-click on a stack is the game's stack split), and only an item you can still trade; the slot's
 -- status line says why one doesn't. One that does goes through BL:AddFromBags (LootMaster/BossLoot.lua): a
 -- real row, won, ticked, "from your bags", kept and given out like any other row. It leaves when the
--- game's trade time for it is over; one that isn't bound has no trade time and leaves with the other rows.
+-- game's trade time for it is over; one that isn't bound has no trade time and leaves LM.TRADE_SECONDS after
+-- it was added.
 -- An item can't be listed more times than you have it in your bags: rows that are yours or may still be,
 -- waiting items and the running session count, matched by item ID and bonus IDs (LM.ItemKey).
 --
@@ -93,7 +94,7 @@ end
 local function unitWords()
     local words = {}
     local function add(w, each)
-        w = trim(w):lower()
+        w = trim((w:gsub("%p", ""))):lower() -- "Std." reads as the text's "Std"
         if w ~= "" then
             if words[w] == nil then
                 words[w] = each

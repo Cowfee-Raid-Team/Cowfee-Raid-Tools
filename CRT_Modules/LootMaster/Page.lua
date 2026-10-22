@@ -52,7 +52,7 @@ local TEXT = {
     testTag = "TEST · ",
     testKill = "Test boss kill", start = "Start session (%d)", window = "Looter window", popup = "My popup", endSession = "End session",
     held = "Held boss loot",
-    heldHelp = "The boss items waiting for your next loot session, real and TEST, as in the Boss loot window (/crt loot boss). Tick the ones to give out and press Start session. TEST items never go into a real session: with both kinds ticked, only the real ones start. TEST items go at End session, after a /reload, or 10 minutes after their test kill. Add item puts gear or a tier token from your bags on the list, marked from your bags, if you can still trade it. One that isn't bound has no trade time and leaves with the other items.",
+    heldHelp = "The boss items waiting for your next loot session, real and TEST, as in the Boss loot window (/crt loot boss). Tick the ones to give out and press Start session. TEST items never go into a real session: with both kinds ticked, only the real ones start. TEST items go at End session, after a /reload, or 10 minutes after their test kill. Add item puts gear or a tier token from your bags on the list, marked from your bags, if you can still trade it. One that isn't bound has no trade time and leaves 2 hours after you added it.",
     heldNone = "No boss loot held.",
     heldCount = "%d %s killed, %d %s held",
     heldBoss = "boss", heldBosses = "bosses", heldItem = "item", heldItems = "items",

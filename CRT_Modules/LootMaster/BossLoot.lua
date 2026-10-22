@@ -65,8 +65,8 @@ local ADDON, CRT = ...
 -- list just in case someone messes it up later"). Loot Master > Tonight's Add item (LootMaster/AddItem.lua)
 -- puts an item you can still trade on the list through BL:AddFromBags: a real row, won, ticked, r.bags
 -- ("from your bags"), leaving when the trade time the game shows for it is over. An item that isn't bound
--- has no trade time (r.untimed): no expiry of its own, no warning; it leaves with the other rows, when the
--- last real row with a time runs out (or at Clear).
+-- has no trade time (r.untimed): it gets its own end, LM.TRADE_SECONDS after it was added, kept like any
+-- other row's, and no trade warning.
 --
 -- End all (LootMaster/EndAll.lua) sends the real items waiting behind a session back to the list,
 -- unticked (BL:ReturnWaiting); waiting TEST items are dropped.
@@ -176,9 +176,10 @@ end
 
 local expire -- set below
 
--- Seconds left to trade a won row, or nil for any other row (a TEST row has no trade time).
+-- Seconds left to trade a won row, or nil for any other row (a TEST row and an untimed row have no trade
+-- time).
 function BL.TradeLeft(r)
-    if r.status ~= "won" or not r.expires or r.test then
+    if r.status ~= "won" or not r.expires or r.test or r.untimed then
         return nil
     end
     return math.max(0, r.expires - GetTime())
@@ -199,11 +200,11 @@ end
 -- The row's clocks: when it leaves, and the warning before that for a won row.
 local function schedule(r)
     if not r.expires then
-        return -- an untimed row: it leaves with the other rows (expire)
+        return
     end
     local now = GetTime()
     C_Timer.After(math.max(0, r.expires - now) + 0.05, expire)
-    if r.status == "won" and not r.warned and not r.test then
+    if r.status == "won" and not r.warned and not r.test and not r.untimed then
         C_Timer.After(math.max(0, r.expires - LM.TRADE_WARN - now), warn)
     end
 end
@@ -212,41 +213,20 @@ end
 -- seconds: the trade time left, when the game showed it (an item from your bags), else LM.TRADE_SECONDS.
 local function own(r, seconds)
     r.status, r.winner, r.warned = "won", nil, nil
-    if r.untimed then
-        r.expires = nil -- no trade time: no expiry of its own and no warning
-        return
-    end
     if not r.test then
-        r.expires = GetTime() + (seconds or LM.TRADE_SECONDS)
+        r.expires = GetTime() + ((not r.untimed and seconds) or LM.TRADE_SECONDS) -- untimed: its own end
     end
     schedule(r)
 end
 
 expire = function()
-    local now, kept, n, won, realGone = GetTime(), {}, #BL.rows, 0, false
+    local now, kept, n, won = GetTime(), {}, #BL.rows, 0
     for _, r in ipairs(BL.rows) do
         if not (r.expires and now >= r.expires) then
             kept[#kept + 1] = r
-        else
-            realGone = realGone or not r.test
-            if r.status == "won" and not r.test then
-                won = won + 1
-            end
+        elseif r.status == "won" and not r.test then
+            won = won + 1 -- untimed rows too
         end
-    end
-    -- untimed rows leave with the other rows: when the last real row with a time has just gone
-    local timed = false
-    for _, r in ipairs(kept) do
-        timed = timed or (r.expires ~= nil and not r.test)
-    end
-    if realGone and not timed then
-        local left = {}
-        for _, r in ipairs(kept) do
-            if not r.untimed then
-                left[#left + 1] = r
-            end
-        end
-        kept = left
     end
     if #kept ~= n then
         BL.rows = kept
@@ -582,14 +562,14 @@ function BL:ReturnWaiting()
     local now, back = GetTime(), 0
     for _, w in ipairs(self.waiting) do
         for _, it in ipairs(w.test and {} or w.items) do
-            if it.untimed or (it.expires and it.expires > now) then
+            if it.expires and it.expires > now then
                 local r = it.row
                 if not r then -- kept through a /reload: rebuilt as a won row
                     nextOwn = nextOwn - 1
                     r = { rollID = nextOwn, link = it.link, itemString = it.itemString, ilvl = it.ilvl, pass = true, status = "won",
                         bags = it.bags, untimed = it.untimed, received = not it.bags or nil, at = now }
                 end
-                r.expires = not r.untimed and it.expires or nil
+                r.expires = it.expires
                 r.ticked = false
                 self.rows[#self.rows + 1] = r
                 schedule(r)
@@ -763,9 +743,9 @@ function BL:Load()
     self.rows, self.waiting = {}, {}
     for _, c in ipairs(type(kept.rows) == "table" and kept.rows or {}) do
         local left = type(c.endsAt) == "number" and c.endsAt - wall or 0
-        if (left > 0 or c.untimed) and type(c.link) == "string" and not c.test then -- TEST rows are never kept
+        if left > 0 and type(c.link) == "string" and not c.test then -- TEST rows are never kept
             nextOwn = nextOwn - 1
-            c.rollID, c.at, c.expires, c.endsAt = nextOwn, now, not c.untimed and (now + left) or nil, nil
+            c.rollID, c.at, c.expires, c.endsAt = nextOwn, now, now + left, nil
             self.rows[#self.rows + 1] = c
             schedule(c)
         elseif c.status == "won" and not c.test then
@@ -776,10 +756,8 @@ function BL:Load()
         local items = {}
         for _, it in ipairs(type(w.items) == "table" and w.items or {}) do
             local left = type(it.endsAt) == "number" and it.endsAt - wall or 0
-            if it.untimed then
-                items[#items + 1] = { itemString = it.itemString, link = it.link, ilvl = it.ilvl, untimed = true, bags = it.bags }
-            elseif left > 0 then
-                items[#items + 1] = { itemString = it.itemString, link = it.link, ilvl = it.ilvl, expires = now + left, bags = it.bags }
+            if left > 0 then
+                items[#items + 1] = { itemString = it.itemString, link = it.link, ilvl = it.ilvl, expires = now + left, untimed = it.untimed, bags = it.bags }
             else
                 gone = gone + 1
             end
