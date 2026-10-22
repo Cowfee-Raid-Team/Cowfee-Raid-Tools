@@ -52,12 +52,14 @@ C_Spell = { GetSpellName = function() return nil end }
 local popup
 StaticPopup_ShowCustomGenericConfirmation = function(info) popup = info end
 local pages, tabs, printed, helps = {}, {}, {}, {}
+local helpTargets, helpCalls = {}, 0 -- UI.HelpRight's target for each (?), by title; UI.Help calls made outside it
 skinCalls = 0
 rowsList = {}
 local function opts(o) return type(o.options) == "function" and o.options() or o.options end
 local CRT = { db = { timeline = { record = true, minPull = 15, keep = 10, bosses = {}, rows = {}, span = 300, grid = 30, iconSize = 22,
     deathRows = "combined", roles = { TANK = true, HEALER = true, DAMAGER = true }, firstDeaths = 0, overlay = 3, overlayOn = false, hideEmpty = false, nextId = 1 } },
-  UI = { Tint = function() end, OnTheme = function() end, SkinScrollBar = function() end, PAGE_W = 1026, PAGE_H = 560, Help = function(_, title, text) helps[title] = text return mock() end,
+  UI = { Tint = function() end, OnTheme = function() end, SkinScrollBar = function() end, PAGE_W = 1026, PAGE_H = 560, Help = function(_, title, text) helpCalls = helpCalls + 1 helps[title] = text return mock() end,
+    HelpRight = function(target, title, text) helps[title] = text helpTargets[title] = target return mock() end, HELP_GAP = 4, HELP_SIZE = 20,
     Dropdown = function(_, text, o) local m = mock() m.opts, m.text = o, text dropdowns[#dropdowns+1] = m rawset(m, "refresh", function() end) return m end,
     Slider = function(_, text, o) local m = mock() m.opts, m.text = o, text sliders[#sliders+1] = m rawset(m, "refresh", function() end) return m end,
     SkinTree = function(_, f) skinCalls = skinCalls + 1 end,
@@ -179,6 +181,19 @@ do
   local o = opts(diffDD.opts)
   assert(#o == 2 and o[1].key == "nh" and o[1].label == "Normal/Heroic" and o[2].key == "mythic" and o[2].label == "Mythic", "difficulty options")
   assert(helps["Difficulty"] and helps["Difficulty"]:find("Mythic-only", 1, true), "difficulty has a (?) that explains the split")
+  -- every (?) on the page is UI.HelpRight's, right of the thing it explains
+  assert(helpCalls == 0, "no (?) made outside UI.HelpRight: " .. helpCalls)
+  for title in pairs(helps) do assert(helpTargets[title] ~= nil, "the (?) " .. title .. " has a target") end
+  assert(helpTargets["Difficulty"] == diffDD, "Difficulty's (?) is right of its dropdown")
+  assert(helpTargets["Unnamed casts"] == find(dropdowns, "Pull"), "Unnamed casts' (?) is right of the Pull dropdown")
+  assert(helpTargets["Order"] == find(dropdowns, "Order"), "Order's (?) is right of its dropdown")
+  local deaths = helpTargets["Deaths from recent pulls"]
+  assert(deaths and deaths.kind == "fs" and deaths.text == "Deaths from recent pulls", "the Deaths checkbox's (?) is right of its label's text")
+  assert(helpTargets["Pop out"] and helpTargets["Pop out"].text == "Pop out", "Pop out's (?) is right of its button")
+  local pt = helpTargets["Pop out"].pt
+  assert(pt and pt[1] == "TOPRIGHT" and pt[4] == -8 - 4 - 20, "Pop out stands a (?) in from the right, so its (?) ends at the frame's inset: " .. tostring(pt and pt[4]))
+  assert(helpTargets["Rehearse"] and helpTargets["Rehearse"].pt[2] == helpTargets["Pop out"] and helpTargets["Rehearse"].pt[4] == -(4 + 20 + 6), "Rehearse sits a (?) and a gap left of Pop out")
+  print("ok every (?) on the Review tab is right of what it explains")
   assert(view.group == "nh", "difficulty defaults to Normal/Heroic: the view gets the group")
   local nekOpt
   for _, b in ipairs(opts(find(dropdowns, "Boss").opts)) do if b.key == 3470 then nekOpt = b end end

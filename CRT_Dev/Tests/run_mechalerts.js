@@ -449,6 +449,19 @@ check("mech: raid note option disabled with help", function()
   assert(#R:List(ENC) == 0, "nothing saved")
 end)
 
+check("mech: every (?) is right of what it explains", function()
+  local f = fresh()
+  for _, h in ipairs(helps) do
+    assert(rawget(h, "helpTarget") ~= nil, "the (?) " .. tostring(h.helpTitle) .. " is placed by UI.HelpRight")
+  end
+  local p = f.panel
+  assert(rawget(p.saveAsHelp, "helpTarget") == p.saveAs, "Save as: its (?) is right of the dropdown")
+  assert(rawget(p.timesHelp, "helpTarget") == p.timesEdit, "Times: its (?) is right of the box")
+  local aura
+  for _, h in ipairs(helps) do if rawget(h, "helpTarget") == p.auraSound.label then aura = h end end
+  assert(aura, "the aura sound check's (?) is right of its label's text")
+end)
+
 check("mech: your own reminder button", function()
   local f = fresh()
   click(f.ownButton)

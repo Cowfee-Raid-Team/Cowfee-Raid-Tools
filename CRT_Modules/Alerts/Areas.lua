@@ -115,7 +115,7 @@ local COLOR_GAP, COLOR_SWATCH = 5, 40 -- a color row's swatch, after a label as 
 local COLOR_ROW_GAP = 10 -- between two colour rows on one line
 local SLIDER_VALUE_WIDTH = 44 -- a slider's value beside its bar (UI/Controls.lua VALUE_W)
 local PANEL_WIDTH = PANEL_LABEL_WIDTH + COLOR_GAP + PANEL_CONTROL_WIDTH + SLIDER_VALUE_WIDTH
-local HELP_GAP = 4 -- between a row's control and its (?)
+local HELP_GAP = UI.HELP_GAP or 4 -- between a row's control and its (?), as UI.HelpRight places it
 
 -- Each direction: the point a widget anchors by, the point of the one before it, and which way the next goes.
 local GROW = {
@@ -449,8 +449,7 @@ end
 -- opts.help: a (?) after the row's control, a child of the row so it hides with it.
 local function addHelp(row, label, help)
     if help then
-        row.help = UI.Help(row, label, help)
-        row.help:SetPoint("LEFT", row, "RIGHT", HELP_GAP, 0)
+        row.help = UI.HelpRight(row, label, help, { parent = row })
     end
     return row
 end
@@ -526,9 +525,8 @@ function Panel:Check(label, get, set, help, enabledIf)
             check.label:SetAlpha(on and 1 or 0.5)
         end
         if help then
-            local mark = UI.Help(check, label, help) -- a child of the check, so it hides with its row
-            mark:SetPoint("LEFT", check.label, "RIGHT", 6, 0)
-            check.help = mark
+            -- a child of the check, so it hides with its row
+            check.help = UI.HelpRight(check, label, help, { parent = check })
         end
         return check
     end)

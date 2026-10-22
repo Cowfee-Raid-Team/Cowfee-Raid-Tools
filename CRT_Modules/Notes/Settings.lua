@@ -178,7 +178,7 @@ local function buildColumn(pf, index, def, top)
     local x = 8 + (index - 1) * COLUMN_W
     local title = heading(pf, x, top, def.title)
     if index == 1 then
-        UI.Help(pf, "Note windows", TEXT.hint):SetPoint("LEFT", title, "RIGHT", 6, 0)
+        UI.HelpRight(title, "Note windows", TEXT.hint)
     end
 
     -- Everything below Show this window greys out while the window is hidden.
@@ -251,7 +251,7 @@ local function build(pf)
     local top, x = -14, ALERTS_X
     local LABEL, CONTROL = 116, 76 -- a slider row: 4 + LABEL + 5 + CONTROL + its value, inside ALERTS_W
     local alertsTitle = heading(pf, x, top, TEXT.alerts)
-    UI.Help(pf, TEXT.alerts, TEXT.alertsHelp):SetPoint("LEFT", alertsTitle, "RIGHT", 6, 0)
+    UI.HelpRight(alertsTitle, TEXT.alerts, TEXT.alertsHelp)
     makeNumber(pf, x - 4, top - 22, TEXT.alertSeconds, { low = 1, high = 60, labelWidth = LABEL, width = CONTROL, format = seconds, enabledIf = alertsOn }, alert("seconds"))
     local iconGet, iconSet = alert("iconPosition")
     local iconRow = UI.Dropdown(pf, TEXT.alertIcon, { options = ICON_POSITIONS, labelWidth = LABEL, width = ALERTS_W - LABEL - 5, get = iconGet, set = iconSet, enabledIf = alertsOn })
@@ -277,7 +277,7 @@ local function build(pf)
 
     -- how the Notes tab lists the notes
     local listTitle = heading(pf, x, top - 256, TEXT.notesList)
-    UI.Help(pf, TEXT.notesList, TEXT.listHelp):SetPoint("LEFT", listTitle, "RIGHT", 6, 0)
+    UI.HelpRight(listTitle, TEXT.notesList, TEXT.listHelp)
     local styleRow = UI.Dropdown(pf, TEXT.listStyle, {
         options = { { key = "grouped", label = TEXT.grouped }, { key = "dropdown", label = TEXT.dropdown }, { key = "chips", label = TEXT.chips } },
         labelWidth = 80,
@@ -294,7 +294,7 @@ local function build(pf)
 
     -- one switch for all three note windows
     local allTitle = heading(pf, x, top - 322, TEXT.allWindows)
-    UI.Help(pf, TEXT.allWindows, TEXT.allWindowsHelp):SetPoint("LEFT", allTitle, "RIGHT", 6, 0)
+    UI.HelpRight(allTitle, TEXT.allWindows, TEXT.allWindowsHelp)
     makeCheck(pf, x - 4, top - 342, TEXT.showOutsideRaid, nil, function()
         return Notes:ShowOutsideRaid()
     end, function(value)

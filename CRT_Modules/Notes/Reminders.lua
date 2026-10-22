@@ -1087,7 +1087,7 @@ local function heading(parent, label, x, y, helpText)
     fs:SetPoint("TOPLEFT", x, y)
     fs:SetText(label)
     if helpText then
-        UI.Help(parent, label, helpText):SetPoint("LEFT", fs, "RIGHT", 6, 0)
+        UI.HelpRight(fs, label, helpText)
     end
     return fs
 end
@@ -1252,8 +1252,7 @@ local function buildPanel(f)
         set = function() drawPanel() end,
     }))
     panel.saveAs:SetPoint("TOPLEFT", L.SAVE_X, L.SAVE_Y)
-    panel.saveAsHelp = UI.Help(p, TEXT.asNote, TEXT.raidNoteHelp)
-    panel.saveAsHelp:SetPoint("TOPLEFT", L.SAVE_X + L.SAVE_LABEL + L.DROP_GAP + L.SAVE_W + 2, L.SAVE_HELP_Y)
+    panel.saveAsHelp = UI.HelpRight(panel.saveAs, TEXT.asNote, TEXT.raidNoteHelp)
 
     -- Triggers: Show from, Linger, the times (read only) and Show on the Timeline
     heading(p, TEXT.triggers, L.INSET, L.TRIGGERS_Y, TEXT.triggersHelp)
@@ -1292,8 +1291,7 @@ local function buildPanel(f)
             typing()
         end
     end)
-    panel.timesHelp = UI.Help(p, TEXT.times, TEXT.timesHelp)
-    panel.timesHelp:SetPoint("LEFT", panel.timesEdit, "RIGHT", 2, 0)
+    panel.timesHelp = UI.HelpRight(panel.timesEdit, TEXT.times, TEXT.timesHelp)
     panel.timelineBtn = makeButton(p, TEXT.showOnTimeline, L.TIMELINE_W)
     panel.timelineBtn:SetPoint("TOPLEFT", L.INSET, L.TIMELINE_Y)
     panel.timelineBtn:SetScript("OnClick", showOnTimeline)
@@ -1359,7 +1357,7 @@ local function buildPanel(f)
     panel.idEdit:SetScript("OnEditFocusGained", function()
         lookupFrom = cur.draft and Draft.validID(cur.draft.spellID)
     end)
-    UI.Help(p, TEXT.icon, TEXT.iconHelp):SetPoint("LEFT", panel.idEdit, "RIGHT", 2, 0)
+    UI.HelpRight(panel.idEdit, TEXT.icon, TEXT.iconHelp)
     panel.lookupCtl = CRT.AlertSpellLookup.Attach(panel.idEdit, {
         encounterID = function() return cur.enc end,
         boss = function() return cur.draft and cur.draft.boss end,
@@ -1423,7 +1421,7 @@ local function buildPanel(f)
         cur.draft.auraSound = on
     end))
     panel.auraSound.label:SetWidth(L.COL_W - L.CHECK_SIZE - 30)
-    UI.Help(p, TEXT.auraSound, TEXT.auraSoundHelp):SetPoint("LEFT", panel.auraSound.label, "RIGHT", 2, 0)
+    UI.HelpRight(panel.auraSound.label, TEXT.auraSound, TEXT.auraSoundHelp)
 
     -- A save's problem, in red
     panel.message = p:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
@@ -1525,7 +1523,7 @@ local function build(f)
     local title = f:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
     title:SetPoint("TOPLEFT", L.PAD, -14)
     title:SetText(TEXT.title)
-    UI.Help(f, TEXT.title, TEXT.help):SetPoint("LEFT", title, "RIGHT", 6, 0)
+    UI.HelpRight(title, TEXT.title, TEXT.help)
 
     bossDrop = UI.Dropdown(f, TEXT.boss, {
         labelWidth = L.BOSS_LABEL,
@@ -1600,7 +1598,7 @@ local function build(f)
         end,
     })
     fromDrop:SetPoint("TOPLEFT", L.FROM_X, L.TOP_Y)
-    UI.Help(f, TEXT.timesFromHelpTitle, TEXT.timesFromHelp):SetPoint("LEFT", fromDrop, "RIGHT", 6, 0)
+    UI.HelpRight(fromDrop, TEXT.timesFromHelpTitle, TEXT.timesFromHelp)
 
     -- Left: the list, scrolled with the mouse wheel
     list = CreateFrame("Frame", nil, f, "BackdropTemplate")
@@ -1653,8 +1651,7 @@ local function build(f)
     markerText:SetWidth(L.PANEL_W - L.INSET - L.CHECK_SIZE - 2 - L.HELP_ROOM - L.BUTTONS_W - L.INSET)
     markerText:SetJustifyH("LEFT")
     markerText:SetWordWrap(false)
-    local markerHelp = UI.Help(p, TEXT.markerTitle, TEXT.markerHelp)
-    markerHelp:SetPoint("LEFT", markerText, "RIGHT", 4, 0)
+    local markerHelp = UI.HelpRight(markerText, TEXT.markerTitle, TEXT.markerHelp)
     markerCheck:SetScript("OnClick", function(self)
         local enc = pickBoss(bosses())
         if enc then

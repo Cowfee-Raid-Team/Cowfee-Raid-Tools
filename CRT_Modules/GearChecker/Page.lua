@@ -759,7 +759,7 @@ end
 local function buildBody(body)
     local down = layChips(body)
     P.chipsDown = down
-    UI.Help(body, TEXT.title, string.format(TEXT.help, GC.LOW_ILVL)):SetPoint("LEFT", P.chips[#P.chips], "RIGHT", 8, 0)
+    UI.HelpRight(P.chips[#P.chips], TEXT.title, string.format(TEXT.help, GC.LOW_ILVL))
 
     P.popButton = UI.PanelButton(body, TEXT.popOut, L.buttonH, function()
         P.TogglePopout()

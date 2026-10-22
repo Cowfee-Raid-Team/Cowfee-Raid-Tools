@@ -247,7 +247,7 @@ local function build(pf)
     local title = pf:CreateFontString(nil, "OVERLAY", "CRTFontLarge")
     title:SetPoint("TOPLEFT", 8, -8)
     title:SetText(TEXT.title)
-    UI.Help(pf, TEXT.title, TEXT.help):SetPoint("LEFT", title, "RIGHT", 6, 0)
+    UI.HelpRight(title, TEXT.title, TEXT.help)
 
     local bossRow = UI.Dropdown(pf, TEXT.boss, { options = bosses, labelWidth = 40, width = 260,
         get = function()
@@ -435,8 +435,9 @@ local function build(pf)
         d.edit:HighlightText()
     end)
     -- Sharing, for the raid leader and assistants.
+    -- Share all, Share, then the (?) on both, which ends at the page's right inset
     local share = button(pf, TEXT.share, 120)
-    share:SetPoint("BOTTOMRIGHT", -8, 10)
+    share:SetPoint("BOTTOMRIGHT", -8 - UI.HELP_GAP - UI.HELP_SIZE, 10)
     share:SetScript("OnClick", function()
         if boss() then
             CRT.PaceComm:Share({ boss() })
@@ -447,7 +448,7 @@ local function build(pf)
     shareAll:SetScript("OnClick", function()
         CRT.PaceComm:Share(CRT.PaceComm:AllPlanned())
     end)
-    UI.Help(pf, TEXT.share, TEXT.shareHelp):SetPoint("RIGHT", shareAll, "LEFT", -4, 0)
+    UI.HelpRight(share, TEXT.share, TEXT.shareHelp)
     controls[#controls + 1] = {
         refresh = function()
             local can = CRT.PaceComm:CanShare()

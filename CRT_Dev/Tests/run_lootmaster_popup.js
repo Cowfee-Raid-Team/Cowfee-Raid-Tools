@@ -233,12 +233,13 @@ local strip
 for _, f in ipairs(frames) do if rawget(f, "framed") ~= nil and f.parent == anchor then strip = f end end
 check(strip and strip.framed and not strip.bar.shown, "classic: the strip lets the template draw the title tile")
 eq(strip and strip.points[1][2], 1, "classic: the strip 1 in from the frame's edge")
--- the title bar, right to left: its X, All Loot Rolls, then the (i), each on the bar's centre line
+-- the title bar, right to left: its X and All Loot Rolls, on the bar's centre line; the (i) after the title
 local x = strip and rawget(strip, "close")
 check(x and x.template == "UIPanelCloseButton" and x.parent == strip, "title bar: an X in every theme")
 check(x and x.points[1][1] == "RIGHT" and x.points[1][3] == nil or (x and x.points[1][2] == -2), "title bar: the X at the right")
 check(strip.answers.points[1][2] == x and strip.answers.points[1][1] == "RIGHT" and strip.answers.points[1][5] == 0, "title bar: All Loot Rolls left of the X, centred")
-check(strip.help.points[1][2] == strip.answers and strip.help.points[1][3] == "LEFT" and strip.help.points[1][5] == 0, "title bar: the (i) left of All Loot Rolls, centred")
+local hp = strip.help.points[#strip.help.points]
+check(strip.help.crtHelpText == strip.title and hp[1] == "LEFT" and hp[2] == strip.title and hp[5] == 0, "title bar: the (i) just right of the title's text (UI.HelpRight), centred")
 -- the frame holds the title bar and both items, with no gap under the last and nothing outside it
 local p2 = panels[2]
 local function fits(what, items)

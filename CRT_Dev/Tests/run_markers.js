@@ -95,7 +95,7 @@ CRT.UI = { RegisterThemed = function() end, RegisterLayer = function() end, Regi
   Tint = function(region, method, key, alpha) tints[#tints + 1] = { region = region, method = method, key = key } end,
   Slider = function(_, label, opts) local r = mock() r.refresh = function() end sliders[label] = opts return r end,
   Dropdown = function(_, label, opts) local r = mock() r.refresh = function() end dropdowns[label] = opts return r end,
-  Help = function() return mock() end, StyleWindow = function() end, SetFrameTitle = function() end, SkinTree = function() end }
+  HelpRight = function(target, title, text, opts) local b = (function() return mock() end)(opts and opts.parent or target, title, text) rawset(b, "helpTarget", target) return b end, HELP_GAP = 4, HELP_SIZE = 20, Help = function() return mock() end, StyleWindow = function() end, SetFrameTitle = function() end, SkinTree = function() end }
 local exported
 CRT.ConsumablesTools = { ShowText = function(_, title, text) exported = text end }
 assert(load(dbSrc, "Database.lua"))("CowfeeRaidTools", CRT)

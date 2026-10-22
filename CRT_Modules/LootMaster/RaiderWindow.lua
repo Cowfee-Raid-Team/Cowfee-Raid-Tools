@@ -148,7 +148,7 @@ local function build()
     header.info = header:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     header.info:SetPoint("TOPLEFT", header.name, "BOTTOMLEFT", 0, -4)
     header.info:SetTextColor(0.7, 0.7, 0.7)
-    UI.Help(header, TEXT.title, TEXT.help):SetPoint("LEFT", header.name, "RIGHT", 4, 0)
+    UI.HelpRight(header.name, TEXT.title, TEXT.help)
     -- the headings and the rows clip at the same edge when the window is narrow (LM.ListArea)
     local area = LM.ListArea(c, L.left, -L.headerH - 4)
     for _, col in ipairs(COLS) do

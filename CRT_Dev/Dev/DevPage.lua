@@ -34,7 +34,7 @@ local function heading(pf, x, y, text, help)
     fs:SetPoint("TOPLEFT", x, y)
     fs:SetText(text)
     if help then
-        UI.Help(pf, text, help):SetPoint("LEFT", fs, "RIGHT", 6, 0)
+        UI.HelpRight(fs, text, help)
     end
     return fs
 end
@@ -60,7 +60,7 @@ local function build(pf)
     local title = pf:CreateFontString(nil, "OVERLAY", "CRTFontLarge")
     title:SetPoint("TOPLEFT", 8, -8)
     title:SetText("Development")
-    UI.Help(pf, "Development", "Developer tools. This page is only in a developer build of the addon (from Git); release zips leave it out, along with every tool on it.\n\nThe same tools have slash commands: /crt dev (this page), /crt dev edit, /crt dev reset, /crt dev clear, /crt dev debuffs, /crt dev probe, /crt dev probe show, /crt dev clearprobe, /crt dev markers, /crt dev types, /crt dev removed, /crt dev winlog and /crt dev seasons."):SetPoint("LEFT", title, "RIGHT", 6, 0)
+    UI.HelpRight(title, "Development", "Developer tools. This page is only in a developer build of the addon (from Git); release zips leave it out, along with every tool on it.\n\nThe same tools have slash commands: /crt dev (this page), /crt dev edit, /crt dev reset, /crt dev clear, /crt dev debuffs, /crt dev probe, /crt dev probe show, /crt dev clearprobe, /crt dev markers, /crt dev types, /crt dev removed, /crt dev winlog and /crt dev seasons.")
 
     -- Three columns: tools, more tools, and every window's layer.
     local x, right, third = 8, 360, 700

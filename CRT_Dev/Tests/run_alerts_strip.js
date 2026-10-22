@@ -1112,11 +1112,11 @@ do
   local lp = nd.cdScroll.pts.LEFT
   assert(nd.cdFilter == nil and lp and lp[2] ~= nil and lp[2] ~= nd.cdLabel and lp[3] == "RIGHT", "after the (?)")
   -- no (?) either: after the label
-  local realHelp = CRT.UI.Help
-  CRT.UI.Help = nil
+  local realHelp = CRT.UI.HelpRight
+  CRT.UI.HelpRight = nil
   local nh = newView()
   assert(nh.cdScroll.pts.LEFT[2] == nh.cdLabel, "after the label")
-  CRT.UI.Dropdown, CRT.UI.Help = real, realHelp
+  CRT.UI.Dropdown, CRT.UI.HelpRight = real, realHelp
   assert(#cdChips(nh) == 3, "chips still drawn")
 end
 print("ok cooldowns: chips start after the dropdown")

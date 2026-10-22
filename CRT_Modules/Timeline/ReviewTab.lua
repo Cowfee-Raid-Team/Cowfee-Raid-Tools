@@ -65,7 +65,7 @@ function ReviewTab.Build(f, ctx)
     end
 
     -- Difficulty first: it decides what the Boss and Pull lists hold.
-    place(UI.Dropdown(f, "Difficulty", {
+    local difficulty = place(UI.Dropdown(f, "Difficulty", {
         options = {
             { key = "nh", label = ctx.groups.nh },
             { key = "mythic", label = ctx.groups.mythic },
@@ -75,7 +75,7 @@ function ReviewTab.Build(f, ctx)
         get = ctx.group,
         set = ctx.selectGroup,
     }), 8, -4)
-    UI.Help(f, "Difficulty", "Normal and Heroic share one schedule, so they are one view; Mythic is the other. The boss list, pulls and ability timelines show only the difficulty picked here. Mythic-only rows never show on Normal/Heroic."):SetPoint("TOPLEFT", f, "TOPLEFT", 176, -8)
+    UI.HelpRight(difficulty, "Difficulty", "Normal and Heroic share one schedule, so they are one view; Mythic is the other. The boss list, pulls and ability timelines show only the difficulty picked here. Mythic-only rows never show on Normal/Heroic.")
     place(UI.Dropdown(f, "Boss", {
         options = ctx.bossOptions,
         labelWidth = 40,
@@ -83,7 +83,7 @@ function ReviewTab.Build(f, ctx)
         get = ctx.boss,
         set = ctx.selectBoss,
     }), 200, -4)
-    place(UI.Dropdown(f, "Pull", {
+    local pull = place(UI.Dropdown(f, "Pull", {
         options = ctx.pullOptions,
         labelWidth = 36,
         width = 180,
@@ -94,7 +94,17 @@ function ReviewTab.Build(f, ctx)
         end,
     }), 412, -4)
 
-    -- Order: shown only for a reference with an Order line. It sits beside Pull when the frame is
+    -- The pull's unnamed casts, after the Pull dropdown
+    tab.unnamedHelp = UI.HelpRight(pull, "Unnamed casts", function()
+        local text = "Some boss casts come from the game without a readable spell, so they are drawn in the \"Boss casts (unnamed)\" row with only their time."
+        -- a reference has no casts of its own, so the hint is for recorded pulls only
+        if tab.view and tab.view:CastCount() == 0 and ctx.pull() and not ctx.showingReference() then
+            text = text .. "\n\nThis pull has no casts at all. The game's Boss Timeline option may be off; check it in the game's options."
+        end
+        return text
+    end)
+
+    -- Order: shown only for a reference with an Order line. It sits beside Pull (and its (?)) when the frame is
     -- wide enough (the main panel's page, UI.PAGE_W, is), else on the third row after Time visible,
     -- clear of the second row's (?) icons and of Share note at the right.
     local order = UI.Dropdown(f, "Order", {
@@ -104,15 +114,13 @@ function ReviewTab.Build(f, ctx)
         get = ctx.order,
         set = ctx.selectOrder,
     })
-    local orderHelp = UI.Help(f, "Order", "The order your raid takes this boss's parts in, such as which turtle empowers first. Each part's abilities move to the time it now has. The choice is kept for this boss and difficulty.")
+    local orderHelp = UI.HelpRight(order, "Order", "The order your raid takes this boss's parts in, such as which turtle empowers first. Each part's abilities move to the time it now has. The choice is kept for this boss and difficulty.")
     -- docked: after Time visible (its label, bar and value end near 300)
-    local ORDER_W, WIDE_X, NARROW_X, NARROW_Y = 40 + 5 + 140, 640, 320, -64
+    local ORDER_W, WIDE_X, NARROW_X, NARROW_Y = 40 + 5 + 140, 664, 320, -64
     local function placeOrder()
         local wide = (f:GetWidth() or 0) >= WIDE_X + ORDER_W + 28
         order:ClearAllPoints()
         order:SetPoint("TOPLEFT", f, "TOPLEFT", wide and WIDE_X or NARROW_X, wide and -4 or NARROW_Y)
-        orderHelp:ClearAllPoints()
-        orderHelp:SetPoint("LEFT", order, "RIGHT", 4, 0)
         local shown = ctx.hasOrder()
         order:SetShown(shown)
         orderHelp:SetShown(shown)
@@ -138,17 +146,7 @@ function ReviewTab.Build(f, ctx)
         Timeline:Set("overlayOn", on)
     end)
     overlay.Label:SetWidth(170)
-    UI.Help(f, "Deaths from recent pulls", "Draws the deaths of the pulls before this one over it, faded by how old they are, so deaths that repeat stand out. How many pulls it covers is on the Settings tab."):SetPoint("TOPLEFT", f, "TOPLEFT", 440, -40)
-
-    tab.unnamedHelp = UI.Help(f, "Unnamed casts", function()
-        local text = "Some boss casts come from the game without a readable spell, so they are drawn in the \"Boss casts (unnamed)\" row with only their time."
-        -- a reference has no casts of its own, so the hint is for recorded pulls only
-        if tab.view and tab.view:CastCount() == 0 and ctx.pull() and not ctx.showingReference() then
-            text = text .. "\n\nThis pull has no casts at all. The game's Boss Timeline option may be off; check it in the game's options."
-        end
-        return text
-    end)
-    tab.unnamedHelp:SetPoint("TOPLEFT", f, "TOPLEFT", 470, -40)
+    UI.HelpRight(overlay.Label, "Deaths from recent pulls", "Draws the deaths of the pulls before this one over it, faded by how old they are, so deaths that repeat stand out. How many pulls it covers is on the Settings tab.")
 
     -- Zoom: the mouse wheel writes span without telling the page, so refresh re-reads it here.
     place(UI.Slider(f, "Time visible", {

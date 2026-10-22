@@ -99,7 +99,7 @@ CRT.UI = { PAGE_W = 1026, PAGE_H = 560,
   HeadingText = function(s) return s end, GoodText = function(s) return "good:" .. s end, WarnText = function(s) return "warn:" .. s end, BadText = function(s) return "bad:" .. s end,
   PanelButtonWidth = function(w) return math.ceil(w) + 28 end,
   Dropdown = function(_, label, opts) local r = mock("Dropdown") r.refresh = function() end dropdowns[label] = opts return r end,
-  Help = function(_, title, text) helps[title] = text return mock("Help") end,
+  HelpRight = function(target, title, text, opts) local b = (function(_, title, text) helps[title] = text return mock("Help") end)(opts and opts.parent or target, title, text) rawset(b, "helpTarget", target) return b end, HELP_GAP = 4, HELP_SIZE = 20, Help = function(_, title, text) helps[title] = text return mock("Help") end,
   LiftOver = function() end, ShownPopup = function(ret) return ret end,
 }
 

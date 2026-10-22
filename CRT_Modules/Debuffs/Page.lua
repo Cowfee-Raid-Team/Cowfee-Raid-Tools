@@ -160,8 +160,7 @@ local function build(pf)
     title:SetPoint("TOPLEFT", 8, -8)
     title:SetText("Debuff panel")
 
-    local help = UI.Help(pf, "The debuff panel", "A movable row of the debuffs enemies put on you, shortest first, in and out of combat. Press Preview debuffs to see it with samples and drag it into place. The game fills the row itself, so it works in combat. Your own debuffs, long ones, and lockouts such as Exhaustion are left out.")
-    help:SetPoint("LEFT", title, "RIGHT", 6, 0)
+    UI.HelpRight(title, "The debuff panel", "A movable row of the debuffs enemies put on you, shortest first, in and out of combat. Press Preview debuffs to see it with samples and drag it into place. The game fills the row itself, so it works in combat. Your own debuffs, long ones, and lockouts such as Exhaustion are left out.")
 
     -- Only this panel's preview, not every panel's. It ends when the tab closes, unless Previews is on.
     previewButton = makeButton(pf, PREVIEW_LABEL, 120, 22)
@@ -237,7 +236,7 @@ local function build(pf)
         end,
     })
     durationEdit:SetPoint("TOPLEFT", 8, -112)
-    UI.Help(pf, "Hide debuffs longer than", "Debuffs longer than this are left out, so long ones don't fill the panel. Debuffs with no end time are left out too. Off shows every length. Boss mechanics are short, so 5 minutes keeps them all."):SetPoint("LEFT", durationEdit, "RIGHT", 4, 0)
+    UI.HelpRight(durationEdit, "Hide debuffs longer than", "Debuffs longer than this are left out, so long ones don't fill the panel. Debuffs with no end time are left out too. Off shows every length. Boss mechanics are short, so 5 minutes keeps them all.")
 
     dispelCheck = makeCheck(pf, "Show the dispel type icon on each debuff", -146, function(checked)
         Debuffs:SetDispelIcon(checked)
@@ -264,13 +263,13 @@ local function build(pf)
     end)
     slotsCheck.label:SetWidth(LEFT_TEXT_W - 30)
     slotsCheck.label:SetJustifyH("LEFT")
-    UI.Help(pf, "Boss debuff slots", "A fallback for boss debuffs the game hides from addons: the game draws them itself in a second row under the panel. Only the swipe, timer, dispel icon and border size apply there. Off by default."):SetPoint("LEFT", slotsCheck.label, "RIGHT", 4, 0)
+    UI.HelpRight(slotsCheck.label, "Boss debuff slots", "A fallback for boss debuffs the game hides from addons: the game draws them itself in a second row under the panel. Only the swipe, timer, dispel icon and border size apply there. Off by default.")
 
     -- The look of the boss debuff icons. Preview debuffs shows the changes as you make them.
     local lookTitle = pf:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
     lookTitle:SetPoint("TOPLEFT", LOOK_X, -8)
     lookTitle:SetText("Look")
-    UI.Help(pf, "Look", "Each debuff has a dark frame, a yellow countdown and its stacks; a debuff you can dispel gets a frame in its dispel colour.\n\nTimer: the countdown on the icon or beside it. Swipe numbers puts the game's countdown on the swipe instead.\n\nSwipe: a dark shade grows over the icon as it runs out; Bright edge lights its edge.\n\nBorder size: the frame's width; 0 has none.\n\nGrow: which end of the drag bar the row fills from, Left to right or Right to left.\n\nPress Preview debuffs to see each change."):SetPoint("LEFT", lookTitle, "RIGHT", 6, 0)
+    UI.HelpRight(lookTitle, "Look", "Each debuff has a dark frame, a yellow countdown and its stacks; a debuff you can dispel gets a frame in its dispel colour.\n\nTimer: the countdown on the icon or beside it. Swipe numbers puts the game's countdown on the swipe instead.\n\nSwipe: a dark shade grows over the icon as it runs out; Bright edge lights its edge.\n\nBorder size: the frame's width; 0 has none.\n\nGrow: which end of the drag bar the row fills from, Left to right or Right to left.\n\nPress Preview debuffs to see each change.")
 
     local timer = lookDropdown(pf, -26, "Timer", "timerPosition", Debuffs.TIMER_POSITIONS)
     local nudgeX = nudgeBox(pf, timer, "Nudge X", "timerX")
@@ -303,10 +302,10 @@ local function build(pf)
     })
     spacing:SetPoint("TOPLEFT", LOOK_X, -140)
     look[#look + 1] = spacing
-    UI.Help(pf, "Spacing", "The gap between two debuffs' borders. The border's width is added on top, so borders never overlap; at 0 they touch. The glow adds no space."):SetPoint("LEFT", spacing, "RIGHT", 4, 0)
+    UI.HelpRight(spacing, "Spacing", "The gap between two debuffs' borders. The border's width is added on top, so borders never overlap; at 0 they touch. The glow adds no space.")
     lookDropdown(pf, -168, "Grow", "grow", Debuffs.GROW_DIRECTIONS, Debuffs.Grow, Debuffs.SetGrow)
     local glow = lookCheck(pf, "Glow on dispellable debuffs", -204, "dispelGlow", LOOK_X - 4, nil, Debuffs.SetDispelGlow)
-    UI.Help(pf, "Glow on dispellable debuffs", "A dispellable debuff always gets a frame in its colour: Magic blue, Poison green, Curse purple, Disease brown, Bleed in the game's bleed colour. The glow adds a soft light in the same colour around that frame. Both need a border size above 0."):SetPoint("LEFT", glow.label, "RIGHT", 4, 0)
+    UI.HelpRight(glow.label, "Glow on dispellable debuffs", "A dispellable debuff always gets a frame in its colour: Magic blue, Poison green, Curse purple, Disease brown, Bleed in the game's bleed colour. The glow adds a soft light in the same colour around that frame. Both need a border size above 0.")
 
     pf:SetScript("OnShow", refresh)
     Debuffs:OnChange(refresh)

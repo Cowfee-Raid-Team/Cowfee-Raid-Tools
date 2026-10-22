@@ -1012,7 +1012,7 @@ local function buildFooter(c)
     local quickText = c:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     quickText:SetPoint("LEFT", quick, "RIGHT", 2, 0)
     quickText:SetText(TEXT.quickFill)
-    UI.Help(c, TEXT.helpTitle, TEXT.help):SetPoint("LEFT", quickText, "RIGHT", 6, 0)
+    UI.HelpRight(quickText, TEXT.helpTitle, TEXT.help)
     W.quick = quick
     W.close = UI.PanelButton(c, TEXT.close, 24, function()
         W.window:Hide()

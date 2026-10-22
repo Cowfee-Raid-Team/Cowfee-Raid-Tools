@@ -328,8 +328,7 @@ local function buildStrip(f)
     end)
     f.strip = strip
     -- the (?) sits beside the Next up heading, outside the strip, so no phase label slides under it
-    local help = CRT.UI.Help(f, "Strip", TEXT.stripHelp)
-    help:SetPoint("LEFT", f.nextHead, "RIGHT", 2, 0)
+    CRT.UI.HelpRight(f.nextHead, "Strip", TEXT.stripHelp)
 end
 
 -- Preview as: Me, Everyone, then the players CRT.AlertRoster gives (the selected Raid Groups page's,
@@ -395,8 +394,7 @@ local function buildControls(f)
         end,
     })
     f.as:SetPoint("LEFT", f.speed, "RIGHT", 10, 0)
-    local help = UI.Help(f, TEXT.as, TEXT.asHelp)
-    help:SetPoint("LEFT", f.as, "RIGHT", 0, 0)
+    UI.HelpRight(f.as, TEXT.as, TEXT.asHelp)
 end
 
 -- The window, made once.

@@ -1325,7 +1325,7 @@ local function build()
 
     -- Save as, For, Difficulty
     -- Raid note is greyed out for anyone who can't change the raid note, with a (?) saying why
-    row(UI.Dropdown(f, TEXT.saveAs, {
+    local saveAsRow = row(UI.Dropdown(f, TEXT.saveAs, {
         labelWidth = 56, width = 104, enabledIf = editable,
         options = function()
             local locked = not (ctx and ctx.savedMode) and not canEditRaid()
@@ -1351,8 +1351,7 @@ local function build()
             changed(true)
         end,
     }), LEFT, -30)
-    f.saveAsHelp = UI.Help(f, TEXT.asNote, notAdminReason)
-    f.saveAsHelp:SetPoint("TOPLEFT", LEFT + 56 + 5 + 104, -38)
+    f.saveAsHelp = UI.HelpRight(saveAsRow, TEXT.asNote, notAdminReason)
     f.forRow = row(UI.Dropdown(f, TEXT.forLabel, {
         labelWidth = 30, width = 160, maxHeight = MENU_MAX_HEIGHT, enabledIf = editable,
         options = forOptions,
@@ -1404,8 +1403,7 @@ local function build()
             changed()
         end
     end)
-    f.timeHelp = UI.Help(f, TEXT.timeHelpTitle, TEXT.timeHelp)
-    f.timeHelp:SetPoint("TOPLEFT", 332, -72 - ROW1_EXTRA)
+    f.timeHelp = UI.HelpRight(f.timeEdit, TEXT.timeHelpTitle, TEXT.timeHelp)
     f.sourceText = f:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     f.sourceText:SetPoint("TOPLEFT", 360, -74 - ROW1_EXTRA)
     f.sourceText:SetWidth(WIDTH - 360 - LEFT)
@@ -1417,8 +1415,7 @@ local function build()
     f.castsText:SetWidth(WIDTH - 2 * LEFT - 24)
     f.castsText:SetJustifyH("LEFT")
     f.castsText:SetWordWrap(false)
-    f.castsHelp = UI.Help(f, TEXT.castsHelpTitle, TEXT.castsHelp)
-    f.castsHelp:SetPoint("TOPRIGHT", -LEFT, -72 - ROW1_EXTRA)
+    f.castsHelp = UI.HelpRight(f.castsText, TEXT.castsHelpTitle, TEXT.castsHelp)
 
     -- Show from, Linger
     row(UI.Slider(f, TEXT.showFrom, {
@@ -1454,7 +1451,7 @@ local function build()
     f.idEdit:SetScript("OnEditFocusGained", function()
         lookupFrom = draft and validID(draft.spellID)
     end)
-    lay(UI.Help(f, TEXT.iconHelpTitle, TEXT.iconHelp), 296 + ID_SHIFT, -140 - ROW1_EXTRA)
+    UI.HelpRight(f.idEdit, TEXT.iconHelpTitle, TEXT.iconHelp)
     f.iconPreview = f:CreateTexture(nil, "ARTWORK")
     f.iconPreview:SetSize(24, 24)
     lay(f.iconPreview, 326 + ID_SHIFT, -136 - ROW1_EXTRA)

@@ -127,7 +127,7 @@ end
 -- The sound dropdown every page uses: the sound engine's choices (Sound/Engine.lua), each with a Play
 -- button in the open menu. opts as UI.Dropdown, plus none (a label for a "no sound" choice, key "none")
 -- and filesOnly; options defaults to the engine's list. opts.help true adds the (?) on where your own
--- files go, as row.help, for the caller to anchor. opts.playButton true adds a small Play button after the
+-- files go, as row.help, right of the dropdown (or of its Play button). opts.playButton true adds a small Play button after the
 -- closed dropdown, as row.play, that plays the chosen sound once (nothing else: no alert, bar or speech).
 UI.SOUND_PLAY_W, UI.SOUND_PLAY_GAP = 44, 6
 UI.SOUND_HELP = "Game sounds, sounds shared by other addons, and your own files.\n\nYour own .ogg or .mp3 files go in the CowfeeRaidTools_Media addon's Sounds folder: Quality of Life > Sounds shows how, with a Test button for each file.\n\nPlay in the list plays the sound on your sound channel (General Settings)."
@@ -165,9 +165,6 @@ function UI.SoundDropdown(parent, text, opts)
         return textWidth + 70, 20
     end
     local row = UI.Dropdown(parent, text, o)
-    if opts.help then
-        row.help = UI.Help(parent, text ~= "" and text or "Sound", UI.SOUND_HELP)
-    end
     if opts.playButton then
         local play = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
         play:SetSize(UI.SOUND_PLAY_W, 20)
@@ -194,6 +191,10 @@ function UI.SoundDropdown(parent, text, opts)
             local on = not (opts.enabledIf and not opts.enabledIf()) and key ~= nil and key ~= "none"
             play:SetEnabled(on and true or false)
         end
+    end
+    if opts.help then
+        -- after the closed dropdown, or after its Play button
+        row.help = UI.HelpRight(row.play or row, text ~= "" and text or "Sound", UI.SOUND_HELP, { parent = parent })
     end
     return row
 end

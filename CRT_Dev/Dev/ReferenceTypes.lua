@@ -499,7 +499,7 @@ local function buildManage()
 
     manage.heading = manage:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
     manage.heading:SetPoint("TOPLEFT", 14, -34)
-    UI.Help(manage, "Manage ability timelines", "Every ability timeline of this boss, yours and shipped.\n\nDelete removes one of your copies; Delete all my copies removes every copy of yours for this boss. The shipped ones stay.\n\nThe game can't change the addon's files, so a shipped one is removed in two steps. Remove from addon hides it on this computer at once and marks it for removal; Keep undoes that. Export removals (or /crt dev removed) lists the marks: paste them to Claude, who deletes those blocks from the boss files. Opening this panel clears marks whose blocks are already gone.\n\nA marked one also leaves the alerts and notes on this computer, as a preview of the deletion."):SetPoint("LEFT", manage.heading, "RIGHT", 6, 0)
+    UI.HelpRight(manage.heading, "Manage ability timelines", "Every ability timeline of this boss, yours and shipped.\n\nDelete removes one of your copies; Delete all my copies removes every copy of yours for this boss. The shipped ones stay.\n\nThe game can't change the addon's files, so a shipped one is removed in two steps. Remove from addon hides it on this computer at once and marks it for removal; Keep undoes that. Export removals (or /crt dev removed) lists the marks: paste them to Claude, who deletes those blocks from the boss files. Opening this panel clears marks whose blocks are already gone.\n\nA marked one also leaves the alerts and notes on this computer, as a preview of the deletion.")
 
     local scroll = CreateFrame("ScrollFrame", "CowfeeRaidToolsReferenceManageScroll", manage, "UIPanelScrollFrameTemplate")
     UI:SkinScrollBar(scroll.ScrollBar)
@@ -630,7 +630,7 @@ local function build()
         end,
     })
     win.pick:SetPoint("TOPLEFT", 14, -34)
-    UI.Help(win, "Logged Timeline Ref", "Main colors the ability's row on the Timeline; Also adds a dot per type, and the tooltip lists them all. No type is a plain white row.\n\nSave as my copy to see it on the Timeline, then Export and paste the text to Claude, who ships it in the boss's file.\n\nManage ability timelines lists every ability timeline of this boss: delete your copies, or mark a shipped one for removal.\n\n" .. Reference.Legend()):SetPoint("LEFT", win.pick, "RIGHT", 6, 0)
+    UI.HelpRight(win.pick, "Logged Timeline Ref", "Main colors the ability's row on the Timeline; Also adds a dot per type, and the tooltip lists them all. No type is a plain white row.\n\nSave as my copy to see it on the Timeline, then Export and paste the text to Claude, who ships it in the boss's file.\n\nManage ability timelines lists every ability timeline of this boss: delete your copies, or mark a shipped one for removal.\n\n" .. Reference.Legend())
 
     local head = win:CreateFontString(nil, "OVERLAY", "CRTFontDisableSmall")
     head:SetPoint("TOPLEFT", 14, -72)

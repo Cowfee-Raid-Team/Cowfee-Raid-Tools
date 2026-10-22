@@ -31,7 +31,7 @@ local function build()
     local q = c:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
     q:SetPoint("TOP", -10, L.top)
     q:SetText(TEXT.question)
-    UI.Help(c, TEXT.title, TEXT.help):SetPoint("LEFT", q, "RIGHT", 6, 0)
+    UI.HelpRight(q, TEXT.title, TEXT.help)
     -- in a boss encounter's chat lockdown the answer can't be sent: red error text, and the question stays
     local function answer(on, why)
         if select(2, LM:ChooseLooting(on, why)) ~= "locked" then

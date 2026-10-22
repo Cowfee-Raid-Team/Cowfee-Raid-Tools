@@ -889,7 +889,7 @@ local function getEditor()
     if d.addGroup.Dropdown.SetDefaultText then
         d.addGroup.Dropdown:SetDefaultText("Pick a player")
     end
-    UI.Help(d, "Edit tonight's roster", "Changes tonight's list only; the expected roster on Raid Groups stays as it is. Add from group: someone who should count tonight (press On time if they were here from the start). On time: counts a player as here from the start. Remove: takes them off tonight's list."):SetPoint("TOPRIGHT", d, "TOPRIGHT", -30, -36)
+    UI.HelpRight(d.addGroup, "Edit tonight's roster", "Changes tonight's list only; the expected roster on Raid Groups stays as it is. Add from group: someone who should count tonight (press On time if they were here from the start). On time: counts a player as here from the start. Remove: takes them off tonight's list.")
 
     local sync = makeButton(d, "Update from layout", 150, 22)
     editorFont(sync)
@@ -1171,7 +1171,7 @@ local function buildSettings(f)
     end, function(v)
         Late:Set("minute", v)
     end, 0, 59)
-    UI.Help(f, "Start time", "24-hour time, on this computer's clock.\n\nOnly the schedule uses it, so it greys out while no raid day is ticked. Start raid now does not need it."):SetPoint("LEFT", minute, "RIGHT", 6, 0)
+    UI.HelpRight(minute, "Start time", "24-hour time, on this computer's clock.\n\nOnly the schedule uses it, so it greys out while no raid day is ticked. Start raid now does not need it.")
     -- The start time is only used by the schedule, so it greys out while no raid day is ticked.
     controls[#controls + 1] = {
         refresh = function()
@@ -1210,7 +1210,7 @@ local function buildSettings(f)
     })
     layoutButton:SetPoint("TOPLEFT", 8, -62)
     controls[#controls + 1] = layoutButton
-    UI.Help(f, "Expected roster", "The active Raid Groups layout: who should be there, in their groups (Make active on Raid Groups). During a raid night, tonight's list follows it when you change or switch layouts, with everyone's clock kept."):SetPoint("LEFT", layoutButton, "RIGHT", 6, 0)
+    UI.HelpRight(layoutButton, "Expected roster", "The active Raid Groups layout: who should be there, in their groups (Make active on Raid Groups). During a raid night, tonight's list follows it when you change or switch layouts, with everyone's clock kept.")
 end
 
 local function build(pf)
@@ -1218,7 +1218,7 @@ local function build(pf)
 
     local title = label(pf, "Late Tracker", "CRTFontLarge")
     title:SetPoint("TOPLEFT", 8, -8)
-    UI.Help(pf, "The Late Tracker", "On the Settings tab, tick your raid days and start time and pick the Raid Groups layout of who should be there. At the start time, anyone in it who isn't in your group is late until they join. Tonight shows the night as it happens; History keeps every night, with an export for Discord."):SetPoint("LEFT", title, "RIGHT", 6, 0)
+    UI.HelpRight(title, "The Late Tracker", "On the Settings tab, tick your raid days and start time and pick the Raid Groups layout of who should be there. At the start time, anyone in it who isn't in your group is late until they join. Tonight shows the night as it happens; History keeps every night, with an export for Discord.")
 
     for i, tab in ipairs(TABS) do
         local b = CreateFrame("Button", nil, pf, "BackdropTemplate")

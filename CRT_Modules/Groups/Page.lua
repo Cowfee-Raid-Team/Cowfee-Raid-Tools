@@ -879,7 +879,6 @@ local function buildPage(pf)
         slotButtons[index] = b
     end
 
-    local editHelp = UI.Help(pf, "Editing the groups", TEXT.editHelp)
 
     -- Bottom left buttons
     local setRoster = makeButton(pf, "Set current roster", SLOT_W)
@@ -934,7 +933,7 @@ local function buildPage(pf)
         Groups:ReplaceWorking({})
     end)
 
-    editHelp:SetPoint("LEFT", clear, "RIGHT", 6, 0)
+    UI.HelpRight(clear, "Editing the groups", TEXT.editHelp)
 
     -- Use This Group: the open layout becomes the raid's active roster (tagged active in Quick Load),
     -- which the Late Tracker expects.
@@ -949,8 +948,7 @@ local function buildPage(pf)
             CRT:Print("Pick a saved layout in Quick Load first.")
         end
     end)
-    local useHelp = UI.Help(pf, "Use This Group", "Makes the open layout the raid's active roster, marked active in Quick Load; the Late Tracker expects the people in it. During a raid night, tonight's list updates at once and everyone's clock keeps running.")
-    useHelp:SetPoint("LEFT", useGroup, "RIGHT", 6, 0)
+    local useHelp = UI.HelpRight(useGroup, "Use This Group", "Makes the open layout the raid's active roster, marked active in Quick Load; the Late Tracker expects the people in it. During a raid night, tonight's list updates at once and everyone's clock keeps running.")
     buildInvites(pf, useHelp)
 
     local apply = makeButton(pf, "Arrange Groups", 2 * SLOT_W + COL_GAP, 32)
