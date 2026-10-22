@@ -375,8 +375,16 @@ tenWon(61)
 BL:Start()
 advance(LM.BOSS_SECONDS + 1)
 LM:End()
-eq(LM.current, nil, "a waiting session over 10 minutes old: dropped")
-eq(lastPrint(), "Loot Master dropped the waiting boss loot: it waited over 10 minutes.", "dropped: said")
+eq(LM.current and #LM.current.items, 2, "waiting items still in their trade time: they start")
+LM:End()
+tenWon(611)
+BL:Start()
+advance(LM.TRADE_SECONDS + 1)
+printed = {}
+LM:End()
+eq(LM.current, nil, "waiting items past their trade time: dropped")
+eq(#printed, 2, "dropped: each item said")
+eq(lastPrint(), "Loot Master dropped the waiting boss loot: " .. ITEMS[620].link .. ": the game's 2 hours to trade it are over.", "dropped: said")
 
 -- 8. A confirm is answered only for CRT's own roll, made, still open, within 3 s
 kill("Fourth Boss")
@@ -456,22 +464,22 @@ onEvent("CANCEL_LOOT_ROLL", 91)
 eq(#BL:Rows(), 1, "a row")
 LM:SetLooting(false, "off")
 take()
-eq(#BL:Rows(), 0, "CRT Looting off: empty")
-eq(lastPrint(), "Loot Master cleared the boss loot list: CRT Looting is off.", "CRT Looting off: said")
+eq(#BL:Rows(), 1, "CRT Looting off: the list stays")
 LM:SetLooting(true)
 take()
 kill()
 item(92, "Girdle", "n")
 onEvent("START_LOOT_ROLL", 92, 60000, 1)
 onEvent("CANCEL_LOOT_ROLL", 92)
-eq(#BL:Rows(), 1, "a row again")
+eq(#BL:Rows(), 2, "a second row")
 goOut()
 onEvent("PLAYER_ENTERING_WORLD", false, false)
-eq(#BL:Rows(), 0, "leaving the instance: empty")
+eq(#BL:Rows(), 2, "leaving the instance: the list stays")
 goIn()
 onEvent("PLAYER_ENTERING_WORLD", false, false)
 take()
 eq(LM:LootingOn(), true, "back in after a wipe: still on")
+BL:Clear()
 
 -- 12. Each drop's result counts once, for its own boss; the badge follows the newest kill; a failed start keeps the rows
 ME = "Solex"
@@ -519,8 +527,14 @@ CRT.db.lootmaster.authority.leader = true
 -- won rows that expire: said
 printed = {}
 advance(LM.BOSS_SECONDS + 1)
+eq(#BL:Rows(), 2, "won rows stay past 10 minutes")
+advance(LM.TRADE_SECONDS - LM.BOSS_SECONDS - LM.TRADE_WARN)
+eq(#printed, 2, "15 minutes before: each won row warned once")
+eq(lastPrint(), "Loot Master: " .. orb2 .. " can be traded for about 15 more minutes. Start a session soon or it can't be given out.", "the warning")
+eq(BL.TradeLeft(BL:Row(203)) <= LM.TRADE_WARN, true, "the time left is in the warning")
+advance(LM.TRADE_WARN + 1)
 eq(#BL:Rows(), 0, "expired")
-eq(lastPrint(), "Loot Master: 2 won items left the boss loot list 10 minutes after the kill, with no session started.", "expired won rows: said")
+eq(lastPrint(), "Loot Master: 2 won items left the boss loot list: the game's 2 hours to trade them are over.", "expired won rows: said")
 
 -- 13. The heartbeat race: a roll refused only for a quiet leader is tried once more on the leader's next word
 ME = "Halo"
@@ -628,6 +642,30 @@ LM:End()
 eq(LM.current and LM.current.items[1].link:find("Cuffs", 1, true) ~= nil, true, "the queued items start when it ends")
 LM:End()
 BL:Clear()
+
+-- The list is kept for a /reload: saved per character with each time left as a clock time
+kill("Old Boss")
+local addClock = CLOCK
+onEvent("ENCOUNTER_LOOT_RECEIVED", 3001, 6001, belt, 1, "Solex", "PALADIN")
+advance(600) CLOCK = CLOCK + 600
+local saved = CRTDBChar.lootmaster.bossLootList
+eq(saved and #saved.rows, 1, "saved: the row")
+eq(saved and saved.rows[1].endsAt, addClock + LM.TRADE_SECONDS, "saved: its end as a clock time")
+BL.rows = {}
+NOW, CLOCK = 5, CLOCK + 300 -- a /reload: the game's clock starts again; five minutes went by
+BL:Load()
+local back = BL:Rows()[1]
+eq(back and back.link, belt, "after a /reload: the row is back")
+eq(back and back.rollID < 0, true, "after a /reload: CRT's own rollID")
+eq(back and math.floor(BL.TradeLeft(back) + 0.5), LM.TRADE_SECONDS - 900, "after a /reload: the time it had left")
+eq(back and back.received, true, "after a /reload: still received")
+BL.rows = {}
+CLOCK = CLOCK + LM.TRADE_SECONDS
+printed = {}
+BL:Load()
+eq(#BL:Rows(), 0, "after a long logout: the row's time is over")
+eq(lastPrint(), "Loot Master: 1 won item left the boss loot list: the game's 2 hours to trade it are over.", "after a long logout: said")
+eq(CRTDBChar.lootmaster.bossLootList, nil, "an empty list isn't kept")
 
 -- CRT Looting off, or a raider: nothing
 kill("Old Boss")
