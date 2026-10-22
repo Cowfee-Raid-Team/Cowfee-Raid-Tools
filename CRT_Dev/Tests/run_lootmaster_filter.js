@@ -457,13 +457,17 @@ local pageBuild
 CRT.UI.RegisterPage = function(_, key, title, build) pageBuild = build end
 CRT.UI.RegisterTab = function() end
 CRT.UI.SetTabSelected = function() end
-local tabs = {}
+local tabs, texts = {}, {}
 local realCreate = CreateFrame
 CreateFrame = function(kind, name, parent, template)
   local f = realCreate(kind, name, parent, template)
-  rawset(f, "CreateFontString", function() local fsx = mock("FontString") if kind == "Button" and template == "BackdropTemplate" and parent and rawget(parent, "isPage") then tabs[#tabs + 1] = fsx end return fsx end)
+  rawset(f, "CreateFontString", function() local fsx = mock("FontString") rawset(fsx, "SetWidth", function(self, w) rawset(self, "w", w) end) texts[#texts + 1] = fsx if kind == "Button" and template == "BackdropTemplate" and parent and rawget(parent, "isPage") then tabs[#tabs + 1] = fsx end return fsx end)
   return f
 end
+-- the spot pickers (CRT_Core/UI/Controls.lua's UI.SpotPicker, run_tooltip_spots.js tests it): their options kept
+local pickers = {}
+CRT.UI.SPOT_PICKER_W, CRT.UI.SPOT_PICKER_H, CRT.UI.SPOT_PICKER_GAP = 126, 70, 12
+CRT.UI.SpotPicker = function(p, opts) local r = mock("Picker") rawset(r, "opts", opts) rawset(r, "refresh", function() end) pickers[#pickers + 1] = r return r end
 LM.AUTHORITY_MAX = LM.AUTHORITY_MAX or 6
 CRT.UI.SortHeaders = function() return { refresh = function() end } end
 CRT.UI.SkinEditBox = function() end
@@ -487,31 +491,86 @@ eq(labels[3], "Loot filter", "page: Loot filter is the third tab")
 eq(labels[#labels], "Settings", "page: Settings stays last")
 check(built.filter and type(built.filter.heading) == "function" and type(built.filter.check) == "function", "page: the tab gets the page's heading and check helpers")
 
--- 9. Settings > Tooltips: Tooltip position (every Loot Master tooltip) and Item tabs, each saved in its own field
+-- 9. Settings > Tooltips: Tooltip position (every Loot Master tooltip) and Item tabs, each with its spot picker
+-- beside it, each saved in its own fields; the tab still fits
 local byLabel = {}
 for _, d in ipairs(drops) do if rawget(d, "label") then byLabel[rawget(d, "label")] = d end end
 local pos, tabsDrop = byLabel["Tooltip position"], byLabel["Item tabs"]
 check(pos ~= nil and tabsDrop ~= nil, "settings: the Tooltip position and Item tabs dropdowns")
-if pos and tabsDrop then
+local hover, window
+for _, p in ipairs(pickers) do
+  if p.opts.label == "What you hover" then hover = p elseif p.opts.label == "Loot Master window" then window = p end
+end
+check(hover ~= nil and window ~= nil, "settings: a What you hover picker and a Loot Master window picker")
+if pos and tabsDrop and hover and window then
   local keys = {}
   for _, o in ipairs(pos.opts.options) do keys[#keys + 1] = o.key end
-  eq(table.concat(keys, ","), "general,owner,game,cursor", "settings: Tooltip position's four choices")
-  CRT.db.lootmaster.tooltipPosition = nil
+  eq(table.concat(keys, ","), "general,spot,game,cursor", "settings: Tooltip position's four choices")
+  CRT.db.lootmaster.tooltipMode = nil
   eq(pos.opts.get(), "general", "settings: Tooltip position is Use the general setting when unset")
   pos.opts.set("cursor")
-  eq(CRT.db.lootmaster.tooltipPosition, "cursor", "settings: picking Follow the cursor saves it")
+  eq(CRT.db.lootmaster.tooltipMode, "cursor", "settings: picking Follow the cursor saves it")
   eq(pos.opts.get(), "cursor", "settings: and reads it back")
+  eq(hover.opts.area, "lootmaster", "settings: the What you hover picker is Loot Master's")
+  hover.opts.set("bottom")
+  check(CRT.db.lootmaster.tooltipSpot == "bottom" and CRT.db.lootmaster.tooltipMode == "spot", "settings: a spot clicked is Loot Master's own, and picks Next to what you hover")
+  check(CRT.db.lootmaster.tooltipPosition == nil, "settings: the old tooltipPosition field is never written")
+  -- Item tabs: Same as above, Next to the window (a side, picked in its picker), Game's tooltip spot
   local tk = {}
-  for _, o in ipairs(tabsDrop.opts.options()) do tk[#tk + 1] = o.key end
-  eq(tk[1] .. "," .. tk[#tk] .. "," .. #tk, "area,game,10", "settings: Item tabs lists Same as above first, the game's spot last")
+  for _, o in ipairs(tabsDrop.opts.options) do tk[#tk + 1] = o.key .. "=" .. o.label end
+  eq(table.concat(tk, ","), "area=Same as above,window=Next to the window,game=Game's tooltip spot", "settings: Item tabs' three choices")
+  eq(table.concat(window.opts.spots, ","), "topleft,top,topright,left,right,bottomleft,bottom,bottomright", "settings: the window picker shows the eight sides")
   CRT.db.lootmaster.itemTooltip = nil
   eq(tabsDrop.opts.get(), "area", "settings: Item tabs is Same as above when unset")
-  tabsDrop.opts.set("right")
-  eq(CRT.db.lootmaster.itemTooltip, "right", "settings: picking Right saves it in itemTooltip")
-  check(CRT.db.lootmaster.tooltipAnchor == nil, "settings: the old field is never written")
-  local p1, p2 = rawget(pos, "pts") and pos.pts[1], rawget(tabsDrop, "pts") and tabsDrop.pts[1]
-  local y1, y2 = p1 and p1[3], p2 and p2[3]
-  check(y1 and y2 and y2 < y1 and y2 - 32 >= -(CRT.UI.PAGE_H - 66), "settings: Item tabs under Tooltip position, its row ending inside the tab (" .. tostring(y2) .. ")")
+  check(window.opts.get() == nil and not window.opts.enabledIf(), "settings: Same as above: no side chosen, the picker greyed")
+  tabsDrop.opts.set("window")
+  eq(CRT.db.lootmaster.itemTooltip, "left", "settings: Next to the window starts on Left, the old default side")
+  check(window.opts.get() == "left" and window.opts.enabledIf(), "settings: the picker shows Left, not greyed")
+  window.opts.set("top")
+  eq(CRT.db.lootmaster.itemTooltip, "topcenter", "settings: clicking Top saves the old Top center key")
+  window.opts.set("bottomright")
+  eq(CRT.db.lootmaster.itemTooltip, "bottomright", "settings: clicking Bottom right saves Bottom right")
+  tabsDrop.opts.set("game")
+  check(CRT.db.lootmaster.itemTooltip == "game" and window.opts.get() == nil and not window.opts.enabledIf(), "settings: Game's tooltip spot saves game and greys the picker")
+  tabsDrop.opts.set("window")
+  eq(CRT.db.lootmaster.itemTooltip, "bottomright", "settings: Next to the window again takes the last side clicked")
+  window.opts.set("leftupper")
+  eq(CRT.db.lootmaster.itemTooltip, "bottomright", "settings: a spot the window has no side for changes nothing")
+  tabsDrop.opts.set("area")
+  window.opts.set("right")
+  check(CRT.db.lootmaster.itemTooltip == "right" and tabsDrop.opts.get() == "window", "settings: clicking a side while on Same as above picks Next to the window")
+  -- every saved value from before the picker still reads
+  for _, c in ipairs({ { "left", "left" }, { "right", "right" }, { "topleft", "topleft" }, { "topright", "topright" }, { "topcenter", "top" },
+      { "bottomleft", "bottomleft" }, { "bottomright", "bottomright" }, { "bottomcenter", "bottom" } }) do
+    CRT.db.lootmaster.itemTooltip = c[1]
+    check(tabsDrop.opts.get() == "window" and window.opts.get() == c[2], "settings: an old " .. c[1] .. " is Next to the window, spot " .. c[2])
+  end
+  CRT.db.lootmaster.itemTooltip = "game"
+  eq(tabsDrop.opts.get(), "game", "settings: an old game is Game's tooltip spot")
+  check(CRT.db.lootmaster.tooltipAnchor == nil, "settings: the old item-tab field is never written")
+  -- the layout: both pairs in the first column, the pickers beside their dropdowns and before the second
+  -- column (x 430), the last one inside the tab (-494); Items a raider can't use and CRT Looting moved
+  local bottom = -(CRT.UI.PAGE_H - 66)
+  local function pair(row, picker)
+    local rp, pp = row.pts[1], picker.pts[1]
+    local x, y = rp[2], rp[3]
+    local right = x + 110 + 5 + 160 + pp[4] + CRT.UI.SPOT_PICKER_W
+    return pp[1] == "LEFT" and pp[2] == row and pp[3] == "RIGHT", x, y - 16 + CRT.UI.SPOT_PICKER_H / 2, y - 16 - CRT.UI.SPOT_PICKER_H / 2, right
+  end
+  local b1, x1, top1, bot1, r1 = pair(pos, hover)
+  local b2, x2, top2, bot2, r2 = pair(tabsDrop, window)
+  check(b1 and b2, "layout: each picker beside its dropdown")
+  check(x1 == 8 and x2 == 8, "layout: both in the first column")
+  check(r1 < 430 and r2 < 430, "layout: the pickers end before the second column (" .. r1 .. ", " .. r2 .. ")")
+  check(top1 <= -324 and bot1 > top2 and bot2 >= bottom, "layout: under the response buttons, one under the other, inside the tab (" .. top1 .. " to " .. bot2 .. ")")
+  local function textAt(t) for _, fs in ipairs(texts) do if rawget(fs, "text") == t then return fs end end end
+  local specs, looting = textAt("Items a raider can't use"), textAt("CRT Looting")
+  local sp, lp = specs and specs.pts[1], looting and looting.pts[1]
+  check(sp and sp[2] == 430 and sp[3] == -416, "layout: Items a raider can't use is under Sync Master Loot in the second column")
+  check(lp and lp[2] == 724 and lp[3] - 20 - 24 >= bottom, "layout: CRT Looting is in the third column, its box inside the tab")
+  local showAll = textAt("Show me items I can't use (greyed out, just for you)")
+  check(showAll and rawget(showAll, "w") ~= nil, "layout: its long line wraps inside the second column")
+  print("ok settings tooltips: pickers from " .. top1 .. " to " .. bot2 .. ", right edges " .. r1 .. " and " .. r2)
 end
 
 print(string.format("%d passed, %d failed", passes, fails))

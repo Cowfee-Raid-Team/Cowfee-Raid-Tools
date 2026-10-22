@@ -8,8 +8,9 @@ local ADDON, CRT = ...
 --   Raider Score  every player's score from the Late Tracker's nights (LootMaster/Score.lua)
 --   Loot filter   which items open a loot session (LootMaster/FilterTab.lua, rules in Filter.lua)
 --   Settings      the response buttons raiders see (label, colour, weight, icon, order), how long they
---                 have to answer, the award message, the Raider Score weights, loot authority, and the
---                 leader's Sync Master Loot (LootMaster/Sync.lua)
+--                 have to answer, the award message, the Raider Score weights, loot authority, the
+--                 leader's Sync Master Loot (LootMaster/Sync.lua), and where tooltips open (two
+--                 dropdowns, each with its spot picker)
 -- Laid out for the main window's page area (1026 x 560) with nothing scrolling but the score list.
 -- Layout numbers are in L; wording in TEXT.
 
@@ -30,9 +31,14 @@ local L = {
     previewLines = 4, -- the award preview is cut after this many lines, so it never reaches Sync
     -- Sync Master Loot, in the second column under the award message: "Sync to", the dropdown, a box
     syncTop = -306, syncLabel = 46, syncPick = 124,
-    -- Tooltips, under Sync Master Loot (which ends near -410): two dropdown rows, the last ending near -492,
-    -- above the tab's bottom at -494
-    tooltipTop = -416, tooltipLabel = 110, tooltipPick = 160,
+    -- Tooltips, in the first column under the response buttons (which end near -322 with all eight): two
+    -- dropdown rows, each with its spot picker beside it (UI.SPOT_PICKER_H, 70, high), the last ending near
+    -- -488, above the tab's bottom at -494. The pickers end near x 421, before the second column.
+    tooltipTop = -328, tooltipLabel = 110, tooltipPick = 160, tooltipPairGap = 2,
+    -- Items a raider can't use, under Sync Master Loot (which ends near -410), its long line wrapped in two
+    specsTop = -416,
+    -- CRT Looting, in the third column under Loot authority's Add row (which ends near -440)
+    lootingTop = -446,
     -- Tonight: Held boss loot under the session buttons (at most heldRows rows, then "and N more"), Add
     -- item's 36 px slot and its lines under that, then the session's Items, whose last line ends near -470
     heldTop = -96, heldRow = 36, heldRows = 3, heldW = 600, addTop = -244, addW = 640, itemsTop = -292,
@@ -100,8 +106,8 @@ local TEXT = {
     noRoll = "If no roll, %v is",
     preview = "Preview:",
     tooltip = "Tooltips",
-    tooltipHelp = "Tooltip position is where every Loot Master tooltip opens: on this page, in both loot windows, the popup and Boss loot. Use the general setting follows General Settings.\n\nItem tabs is where an item's tooltip opens when you hover its icon in the looter window and All Loot Rolls. Same as above follows Tooltip position; a side puts it next to the window.",
-    tooltipPosition = "Tooltip position",
+    tooltipHelp = "Tooltip position is where every Loot Master tooltip opens: on this page, in both loot windows, the popup and Boss loot. Use the general setting follows General Settings. Next to what you hover uses the spot you click in the box beside it.\n\nItem tabs is where an item's tooltip opens when you hover its icon in the looter window and All Loot Rolls. Same as above follows Tooltip position. Next to the window puts it on the side of the window you click in the box beside it; a corner puts it flush with that corner of the window.\n\nClicking a spot also picks it in the dropdown. For Tooltip position, clicking the lit spot again goes back to each tooltip on its own side.",
+    lootWindow = "Loot Master window",
     itemTabs = "Item tabs",
     channels = {
         { key = "RAID", label = "Raid" }, { key = "RAID_WARNING", label = "Raid warning" }, { key = "PARTY", label = "Party" },
@@ -682,6 +688,50 @@ local function buildSync(f)
     end
 end
 
+-- Tooltips: Tooltip position, the lootmaster area's (UI/Tooltip.lua), and Item tabs, the item tabs' own
+-- (LM.TOOLTIP_ANCHORS), each with its spot picker beside it.
+local function buildTooltips(f)
+    heading(f, L.col1, L.tooltipTop, TEXT.tooltip, TEXT.tooltipHelp)
+    local pickerTop = L.tooltipTop - 18
+    local rowDrop = (UI.SPOT_PICKER_H - 32) / 2 -- a dropdown row, 32 high, centred on its picker
+    local position = UI.TooltipPositionSetting(f, "lootmaster", { labelWidth = L.tooltipLabel, width = L.tooltipPick, beside = true })
+    position.row:SetPoint("TOPLEFT", L.col1, pickerTop - rowDrop)
+    refreshers[#refreshers + 1] = position.refresh
+    pickerTop = pickerTop - UI.SPOT_PICKER_H - L.tooltipPairGap
+    local picker
+    local tip = UI.Dropdown(f, TEXT.itemTabs, {
+        labelWidth = L.tooltipLabel, width = L.tooltipPick,
+        options = LM.ITEM_TOOLTIP_CHOICES,
+        get = function()
+            return LM:ItemTooltipChoice()
+        end,
+        set = function(v)
+            LM:SetItemTooltipChoice(v)
+            picker.refresh()
+        end,
+    })
+    tip:SetPoint("TOPLEFT", L.col1, pickerTop - rowDrop)
+    -- the window's eight sides; clicking one picks Next to the window
+    picker = UI.SpotPicker(f, {
+        label = TEXT.lootWindow,
+        spots = LM.ItemTooltipSpots(),
+        area = "lootmaster",
+        get = function()
+            return LM:ItemTooltipSpot()
+        end,
+        set = function(spot)
+            LM:SetItemTooltipSpot(spot)
+            tip.refresh()
+        end,
+        enabledIf = function()
+            return LM:ItemTooltipChoice() == "window"
+        end,
+    })
+    picker:SetPoint("LEFT", tip, "RIGHT", UI.SPOT_PICKER_GAP, 0)
+    refreshers[#refreshers + 1] = tip.refresh
+    refreshers[#refreshers + 1] = picker.refresh
+end
+
 local function buildSettings(f)
     heading(f, L.col1, -8, TEXT.responses, TEXT.responsesHelp)
     for _, c in ipairs({ { TEXT.colLabel, 66 }, { TEXT.colWeight, 66 + L.label + 10 }, { TEXT.colIcon, 66 + L.label + 10 + L.weight + 10 } }) do
@@ -731,15 +781,19 @@ local function buildSettings(f)
         reset:SetPoint("LEFT", add, "RIGHT", 6, 0)
     end
 
-    heading(f, L.col1, -350, TEXT.specs, TEXT.specsHelp)
-    check(f, L.col1 - 2, -372, TEXT.showAll, function()
+    buildTooltips(f)
+
+    heading(f, L.col2, L.specsTop, TEXT.specs, TEXT.specsHelp)
+    local showAll = check(f, L.col2 - 2, L.specsTop - 22, TEXT.showAll, function()
         return LM:Settings().showAllItems
     end, function(on)
         LM:Settings().showAllItems = on
     end)
+    showAll.label:SetWidth(L.col2W - 30) -- two lines, inside the column
+    showAll.label:SetJustifyH("LEFT")
 
-    heading(f, L.col1, -404, TEXT.crtLooting, TEXT.partyHelp)
-    check(f, L.col1 - 2, -426, TEXT.enableInParty, function()
+    heading(f, L.col3, L.lootingTop, TEXT.crtLooting, TEXT.partyHelp)
+    check(f, L.col3 - 2, L.lootingTop - 20, TEXT.enableInParty, function()
         return LM:Settings().enableInParty
     end, function(on)
         LM:Settings().enableInParty = on
@@ -835,39 +889,6 @@ local function buildSettings(f)
     previewLabel:SetPoint("TOPLEFT", L.col2, -214)
     previewLabel:SetTextColor(0.7, 0.7, 0.7)
     previewLabel:SetText(TEXT.preview)
-    -- Tooltips: below Sync Master Loot in this column, where there is room. Tooltip position is the
-    -- lootmaster area's (UI/Tooltip.lua); Item tabs the item tabs' own (LM.TOOLTIP_ANCHORS).
-    heading(f, L.col2, L.tooltipTop, TEXT.tooltip, TEXT.tooltipHelp)
-    local position = UI.Dropdown(f, TEXT.tooltipPosition, {
-        labelWidth = L.tooltipLabel, width = L.tooltipPick,
-        options = UI.TOOLTIP_AREA_POSITIONS,
-        get = function()
-            return UI.TooltipAreaChoice("lootmaster")
-        end,
-        set = function(v)
-            LM:Settings().tooltipPosition = v
-        end,
-    })
-    position:SetPoint("TOPLEFT", L.col2, L.tooltipTop - 16)
-    refreshers[#refreshers + 1] = position.refresh
-    local tip = UI.Dropdown(f, TEXT.itemTabs, {
-        labelWidth = L.tooltipLabel, width = L.tooltipPick, maxHeight = 300,
-        options = function()
-            local out = {}
-            for _, a in ipairs(LM.TOOLTIP_ANCHORS) do
-                out[#out + 1] = { key = a.key, label = a.label }
-            end
-            return out
-        end,
-        get = function()
-            return LM:TooltipAnchor().key
-        end,
-        set = function(v)
-            LM:Settings().itemTooltip = v
-        end,
-    })
-    tip:SetPoint("TOPLEFT", L.col2, L.tooltipTop - 44)
-    refreshers[#refreshers + 1] = tip.refresh
     preview = f:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     preview:SetPoint("TOPLEFT", L.col2, -232)
     preview:SetWidth(285)

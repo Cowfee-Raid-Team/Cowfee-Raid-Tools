@@ -127,90 +127,27 @@ check(GameTooltip.lines[1] == "Count 2", "a function's text is read each time")
 live.scripts.OnLeave(live)
 print("ok help: the tooltip is unchanged")
 
--- Tooltip position (CRT_Core/UI/Tooltip.lua): next to what you hover by default; the game's tooltip spot
--- (GameTooltip_SetDefaultAnchor, which sets the owner with ANCHOR_NONE and places it) when picked
+-- Tooltip position (CRT_Core/UI/Tooltip.lua; run_tooltip_spots.js tests every spot, mode and area): a (?)
+-- opens on its own side (ANCHOR_RIGHT) by default, on a picked spot when there is one; on the game's tooltip spot (GameTooltip_SetDefaultAnchor,
+-- which sets the owner with ANCHOR_NONE and places it) when picked
 local defaults = {}
 GameTooltip_SetDefaultAnchor = function(t, owner) defaults[#defaults + 1] = { t, owner } t:SetOwner(owner, "ANCHOR_NONE") end
-check(UI.TooltipPosition() == "owner", "Tooltip position: next to what you hover when nothing is saved")
-check(#UI.TOOLTIP_POSITIONS == 2 and UI.TOOLTIP_POSITIONS[1].key == "owner" and UI.TOOLTIP_POSITIONS[1].label == "Next to what you hover"
-  and UI.TOOLTIP_POSITIONS[2].key == "game" and UI.TOOLTIP_POSITIONS[2].label == "Game's tooltip spot", "Tooltip position: the two choices, in order")
-CRT.db.ui.tooltipAnchor = "owner"
+check(UI.TooltipPosition() == "spot", "Tooltip position: next to what you hover when nothing is saved")
 b.scripts.OnEnter(b)
-check(#defaults == 0 and GameTooltip.owner == b and GameTooltip.anchor == "ANCHOR_RIGHT", "a (?) next to what you hover: right of the icon")
+check(#defaults == 0 and GameTooltip.owner == b and GameTooltip.anchor == "ANCHOR_RIGHT", "a (?) on auto, the default: its own side, right of the icon")
 b.scripts.OnLeave(b)
-CRT.db.ui.tooltipAnchor = "game"
+CRT.db.ui.tooltipMode, CRT.db.ui.tooltipSpot = "spot", "bottom"
+b.scripts.OnEnter(b)
+check(#defaults == 0 and GameTooltip.anchor == "ANCHOR_BOTTOM", "a (?) on the Bottom spot: under the icon")
+b.scripts.OnLeave(b)
+CRT.db.ui.tooltipMode = "game"
 b.scripts.OnEnter(b)
 check(#defaults == 1 and defaults[1][1] == GameTooltip and defaults[1][2] == b, "a (?) on the game's tooltip spot: GameTooltip_SetDefaultAnchor(GameTooltip, icon)")
 check(GameTooltip.anchor == "ANCHOR_NONE" and GameTooltip.title == "Title", "the game's spot: placed by the game, the same text")
 b.scripts.OnLeave(b)
--- an exception keeps its anchor whatever the setting; the other flag always takes the game's spot
-defaults = {}
-local owner = frame("Button", page)
-check(UI.TooltipOwner(GameTooltip, owner, "ANCHOR_CURSOR", nil, nil, UI.TOOLTIP_KEEP) == "owner" and #defaults == 0 and GameTooltip.anchor == "ANCHOR_CURSOR", "UI.TOOLTIP_KEEP: the anchor given, on the game's spot setting too")
-local offset = {}
-local probe = { SetOwner = function(_, o, a, x, y) offset = { o, a, x, y } end }
-CRT.db.ui.tooltipAnchor = "owner"
-UI.TooltipOwner(probe, owner, "ANCHOR_TOP", 0, 6)
-check(offset[1] == owner and offset[2] == "ANCHOR_TOP" and offset[3] == 0 and offset[4] == 6, "the offsets reach SetOwner")
-check(UI.TooltipOwner(GameTooltip, owner, "ANCHOR_NONE", nil, nil, UI.TOOLTIP_GAME) == "game" and #defaults == 1, "UI.TOOLTIP_GAME: the game's spot, on the default setting too")
-CRT.db.ui.tooltipAnchor = "nonsense"
-check(UI.TooltipPosition() == "owner", "an unknown saved value is next to what you hover")
--- without the game's function, or when it fails, the tooltip still opens next to the owner
-CRT.db.ui.tooltipAnchor = "game"
 GameTooltip_SetDefaultAnchor = nil
-check(UI.TooltipOwner(GameTooltip, owner, "ANCHOR_TOP") == "owner" and GameTooltip.owner == owner and GameTooltip.anchor == "ANCHOR_TOP", "no GameTooltip_SetDefaultAnchor: next to the owner")
-GameTooltip_SetDefaultAnchor = function() error("broken") end
-check(UI.TooltipOwner(GameTooltip, owner, "ANCHOR_LEFT") == "owner" and GameTooltip.anchor == "ANCHOR_LEFT", "a failing GameTooltip_SetDefaultAnchor: next to the owner")
-GameTooltip_SetDefaultAnchor = nil
-CRT.db.ui.tooltipAnchor = nil
-print("ok help: Tooltip position, both choices, the flags and the fallback")
-
--- Per area: Loot History (loot.tooltipPosition) and Loot Master (lootmaster.tooltipPosition) each have
--- their own Tooltip position; "general", the default, is General Settings' choice
-local keys, labels = {}, {}
-for _, c in ipairs(UI.TOOLTIP_AREA_POSITIONS or {}) do keys[#keys + 1] = c.key labels[#labels + 1] = c.label end
-check(table.concat(keys, ",") == "general,owner,game,cursor", "area choices: the four, in order (" .. table.concat(keys, ",") .. ")")
-check(table.concat(labels, "|") == "Use the general setting|Next to what you hover|Game's tooltip spot|Follow the cursor", "area choices: their labels")
-check(UI.TOOLTIP_AREAS and UI.TOOLTIP_AREAS.loothistory and UI.TOOLTIP_AREAS.lootmaster, "the two areas: loothistory and lootmaster")
-GameTooltip_SetDefaultAnchor = function(t, o) defaults[#defaults + 1] = { t, o } t:SetOwner(o, "ANCHOR_NONE") end
-local saved = { loothistory = "loot", lootmaster = "lootmaster" }
-for area, tbl in pairs(saved) do
-  for _, general in ipairs({ "owner", "game" }) do
-    CRT.db.ui.tooltipAnchor = general
-    for _, choice in ipairs({ "unset", "general", "owner", "game", "cursor", "nonsense" }) do
-      CRT.db[tbl] = { tooltipPosition = choice ~= "unset" and choice or nil }
-      local want = (choice == "owner" or choice == "game" or choice == "cursor") and choice or general
-      local what = area .. " on " .. choice .. ", general " .. general
-      check(UI.TooltipPosition(area) == want, what .. ": UI.TooltipPosition is " .. want .. " (got " .. tostring(UI.TooltipPosition(area)) .. ")")
-      defaults = {}
-      GameTooltip.anchor = nil
-      local got = UI.TooltipOwner(GameTooltip, owner, "ANCHOR_TOP", nil, nil, area)
-      if want == "game" then
-        check(got == "game" and #defaults == 1 and defaults[1][2] == owner, what .. ": the game's tooltip spot")
-      elseif want == "cursor" then
-        check(got == "cursor" and #defaults == 0 and GameTooltip.owner == owner and GameTooltip.anchor == "ANCHOR_CURSOR", what .. ": follows the cursor")
-      else
-        check(got == "owner" and #defaults == 0 and GameTooltip.owner == owner and GameTooltip.anchor == "ANCHOR_TOP", what .. ": next to what you hover")
-      end
-    end
-  end
-  CRT.db[tbl] = nil
-  CRT.db.ui.tooltipAnchor = "game"
-  check(UI.TooltipPosition(area) == "game", area .. " with no saved table: the general setting")
-end
--- an area's choice stays in its area: the other area and the general tooltips keep the general setting
-CRT.db.ui.tooltipAnchor = "owner"
-CRT.db.loot = { tooltipPosition = "cursor" }
-CRT.db.lootmaster = { tooltipPosition = "game" }
-check(UI.TooltipPosition() == "owner" and UI.TooltipPosition("loothistory") == "cursor" and UI.TooltipPosition("lootmaster") == "game", "each area keeps its own choice")
-check(UI.TooltipPosition("nosucharea") == "owner", "an unknown area: the general setting")
-defaults = {}
-check(UI.TooltipOwner(GameTooltip, owner, "ANCHOR_TOP") == "owner" and GameTooltip.anchor == "ANCHOR_TOP" and #defaults == 0, "no area: the general setting")
-check(UI.TooltipOwner(GameTooltip, owner, "ANCHOR_RIGHT", nil, nil, UI.TOOLTIP_KEEP) == "owner" and GameTooltip.anchor == "ANCHOR_RIGHT", "UI.TOOLTIP_KEEP still keeps its anchor")
-GameTooltip_SetDefaultAnchor = nil
-check(UI.TooltipOwner(GameTooltip, owner, "ANCHOR_TOP", nil, nil, "lootmaster") == "owner" and GameTooltip.anchor == "ANCHOR_TOP", "an area on the game's spot without GameTooltip_SetDefaultAnchor: next to the owner")
-CRT.db.loot, CRT.db.lootmaster, CRT.db.ui.tooltipAnchor = nil, nil, nil
-print("ok help: Tooltip position per area, each choice and the general fallback")
+CRT.db.ui.tooltipMode, CRT.db.ui.tooltipSpot = nil, nil
+print("ok help: the (?) follows Tooltip position")
 
 -- Modern: an accent ring round an accent "i", the same hit box
 look(true)

@@ -1129,7 +1129,7 @@ check("mech: ability names in their type colour, with a type tooltip", function(
   assert(type(CRT.UI.TooltipOwner) == "function", "UI.TooltipOwner (CRT_Core/UI/Tooltip.lua) is loaded")
   local spot
   GameTooltip_SetDefaultAnchor = function(t, o) spot = { t, o } end
-  CRT.db.ui = { tooltipAnchor = "game" }
+  CRT.db.ui = { tooltipMode = "game" }
   said = {}
   r2.frame.OnEnter(r2.frame)
   assert(spot and spot[1] == GameTooltip and spot[2] == r2.frame and said[1][1] == "SetText", "the game's tooltip spot: GameTooltip_SetDefaultAnchor, no SetOwner of its own")

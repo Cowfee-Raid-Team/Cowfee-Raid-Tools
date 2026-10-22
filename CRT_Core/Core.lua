@@ -18,9 +18,11 @@ local defaults = {
     -- modern is kept in step with it: off for "blizzard" (Classic), on for the others. Data from before themes
     -- has no theme: CRT:ResolveTheme gives it one from modern before these defaults are filled in.
     -- hideRealms leaves realm names out of the Late Tracker and Tattlebot, on screen, in chat and in exports.
-    -- tooltipAnchor is where the addon's tooltips open: "owner" next to what you hover, "game" the game's
-    -- tooltip spot (UI.TooltipOwner in UI/Tooltip.lua).
-    ui = { font = "default", outline = "", textSize = 100, bgAlpha = 100, layers = {}, soundChannel = "Master", hideRealms = false, modern = false, theme = "blizzard", tooltipAnchor = "owner" },
+    -- tooltipMode is where the addon's tooltips open: "spot" next to what you hover, on tooltipSpot ("auto",
+    -- each tooltip on its own side, or a key of UI.TOOLTIP_SPOTS), "game" the game's tooltip spot, "cursor"
+    -- following the cursor (UI.TooltipOwner in UI/Tooltip.lua). They replaced tooltipAnchor, which is read
+    -- once on load (below) and kept.
+    ui = { font = "default", outline = "", textSize = 100, bgAlpha = 100, layers = {}, soundChannel = "Master", hideRealms = false, modern = false, theme = "blizzard", tooltipMode = "spot", tooltipSpot = "auto" },
     lastPage = "groups",
     -- The minimap button (UI/Minimap.lua): angle is its place around the minimap, in degrees.
     minimap = { hide = false, angle = 225 },
@@ -200,7 +202,10 @@ local defaults = {
         dungeons = false,
         keepMonths = 12,
         rcEnrich = true,
-        tooltipPosition = "general", -- Tooltip position on the Loot History page (UI/Tooltip.lua), personal
+        -- Tooltip position on the Loot History page (UI/Tooltip.lua): "general" (General Settings'), "spot",
+        -- "game" or "cursor", and its own spot; personal. They replaced tooltipPosition, read once (below).
+        tooltipMode = "general",
+        tooltipSpot = "auto",
     },
     -- Loot Master (LootMaster/): window and popup, where the looter window and the raider popup were
     -- last placed (UI.Window keeps point, x, y, and the window's width and height); responseSeconds,
@@ -220,11 +225,12 @@ local defaults = {
         awardMessage = "%i awarded to %p for %r with a %v roll.",
         awardChannel = "RAID",
         noRoll = "-",
-        -- Tooltip position for every Loot Master tooltip: "general" (General Settings'), "owner", "game" or
-        -- "cursor" (UI/Tooltip.lua); itemTooltip, the item tabs': "area" (the same), a side of the window or
-        -- "game" (LM.TOOLTIP_ANCHORS). Both personal, not synced. itemTooltip replaced tooltipAnchor, which is
-        -- read once on load (below) and kept.
-        tooltipPosition = "general",
+        -- Tooltip position for every Loot Master tooltip: "general" (General Settings'), "spot", "game" or
+        -- "cursor" (UI/Tooltip.lua), and its own spot; itemTooltip, the item tabs': "area" (the same), a side
+        -- of the window or "game" (LM.TOOLTIP_ANCHORS). All personal, not synced. itemTooltip replaced
+        -- tooltipAnchor, and tooltipMode tooltipPosition; each old field is read once on load (below) and kept.
+        tooltipMode = "general",
+        tooltipSpot = "auto",
         itemTooltip = "area",
         showAllItems = false, -- this raider sees every item anyway
         enableInParty = false, -- CRT Looting also in a party group, not only a raid (LootMaster/Looting.lua)
@@ -577,6 +583,25 @@ function CRT:Print(msg)
     print("|cffc8a050Cowfee Raid Tools|r: " .. tostring(msg))
 end
 
+-- Before the defaults, once: Tooltip position moved to tooltipMode and tooltipSpot (UI/Tooltip.lua). General
+-- Settings' old ui.tooltipAnchor: "game" stays the game's spot, anything else is next to what you hover on
+-- the default spot, auto (each tooltip on its own side, as before). An area's old tooltipPosition (Loot
+-- History in loot, Loot Master in lootmaster): "owner" becomes "spot", "general", "game" and "cursor" stay.
+-- The old fields are kept as they were, and never read again once the new one is saved.
+function CRT.ReadOldTooltipSettings(db)
+    local ui = db.ui
+    if type(ui) == "table" and ui.tooltipMode == nil and type(ui.tooltipAnchor) == "string" then
+        ui.tooltipMode = ui.tooltipAnchor == "game" and "game" or "spot"
+    end
+    local area = { owner = "spot", general = "general", game = "game", cursor = "cursor" }
+    for _, key in ipairs({ "loot", "lootmaster" }) do
+        local t = db[key]
+        if type(t) == "table" and t.tooltipMode == nil and area[t.tooltipPosition] then
+            t.tooltipMode = area[t.tooltipPosition]
+        end
+    end
+end
+
 local frame = CreateFrame("Frame")
 frame:RegisterEvent("ADDON_LOADED")
 frame:SetScript("OnEvent", function(self, event, arg1)
@@ -589,14 +614,15 @@ frame:SetScript("OnEvent", function(self, event, arg1)
             CRT:ResolveTheme(CRTDB.ui)
         end
         -- before the defaults, once: the Loot Master item tabs' tooltip setting moved from tooltipAnchor to
-        -- itemTooltip. Left, the old default, becomes "area" (next to the icon, on the window's outer side,
-        -- unless Loot Master's Tooltip position says otherwise); Default tooltip becomes "game"; the other
-        -- sides stay. The old field is kept as it was.
+        -- itemTooltip. Left, the old default, becomes "area" (Loot Master's Tooltip position: on auto, the
+        -- default, next to the icon on the window's outer side, as before); Default tooltip becomes
+        -- "game"; the other sides stay. The old field is kept as it was.
         local lm = CRTDB.lootmaster
         if type(lm) == "table" and lm.itemTooltip == nil and type(lm.tooltipAnchor) == "string" then
             local old = lm.tooltipAnchor
             lm.itemTooltip = (old == "left" and "area") or (old == "default" and "game") or old
         end
+        CRT.ReadOldTooltipSettings(CRTDB)
         copyDefaults(defaults, CRTDB)
         CRT:UseTheme(CRT:ResolveTheme(CRTDB.ui))
         -- once: the old default of axis labels every 30 seconds becomes Auto, which follows the zoom

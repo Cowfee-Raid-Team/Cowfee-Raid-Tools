@@ -75,10 +75,10 @@ Profiles.SHARE = {
         },
         breakTimer = true,
     },
-    loot = true, -- Loot History's settings only (the history is in CRTLootDB), Tooltip position among them
+    loot = true, -- Loot History's settings only (the history is in CRTLootDB), Tooltip position and spot among them
     lootmaster = {
         window = true, popup = true, answers = true, bossLoot = true, lootingPrompt = true, responseSeconds = true, score = true,
-        noRoll = true, tooltipPosition = true, itemTooltip = true, showAllItems = true, enableInParty = true, filter = true,
+        noRoll = true, tooltipMode = true, tooltipSpot = true, itemTooltip = true, showAllItems = true, enableInParty = true, filter = true,
         awardMessage = false, awardChannel = false, -- what you post, and where
         authority = false, -- who you trust to run loot stays yours
         sort = false,
