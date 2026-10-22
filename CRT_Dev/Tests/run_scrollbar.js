@@ -346,6 +346,7 @@ const GAP = Number(luaGlobal('SCROLL_GAP'));
 // listed so a scan that silently finds nothing fails too.
 const KNOWN = [
   ['CRT_Core/UI/SettingsPage.lua', 'CowfeeRaidToolsProfileTextScroll'],
+  ['CRT_Core/UI/Panel.lua', 'CowfeeRaidToolsMenuScroll'], // the main window's menu, when its groups don't fit
   ['CRT_Modules/Groups/Page.lua', 'CowfeeRaidToolsDialogScroll'], // Raid Groups import box
   ['CRT_Modules/Groups/Page.lua', 'CowfeeRaidToolsGroupExtraScroll'],
   ['CRT_Modules/Groups/Page.lua', 'CowfeeRaidToolsPresetScroll'], // Raid Groups Quick Load
