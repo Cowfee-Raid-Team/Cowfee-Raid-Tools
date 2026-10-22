@@ -354,6 +354,22 @@ eq(p.h, twoRows + 22 + 4, "three rows: the item one row taller")
 fits("three rows", { p, p2, p3 })
 LETTER = 7.5
 
+-- a flask (a consumable, no slot) is open to every raider: every button on, no "can't use" line
+local instant = C_Item.GetItemInfoInstant
+C_Item.GetItemInfoInstant = function(s) if s == "item:5" then return 5, "Consumable", "Flask", "", 0, 0, 3 end return instant(s) end
+LM.incoming.items[4] = { itemString = "item:5", ilvl = 90, shownAt = 100 }
+LM.incoming.mine[4] = nil
+UI:RepaintTheme()
+local pf
+for _, f in ipairs(frames) do if rawget(f, "note") and rawget(f, "buttons") and rawget(f, "itemString") == "item:5" then pf = f end end
+check(pf ~= nil and pf.shown, "a flask: its panel shows")
+local allOn = pf ~= nil and #pf.buttons > 0
+for _, b in ipairs(pf and pf.buttons or {}) do if rawget(b, "enabled") == false then allOn = false end end
+check(allOn, "a flask: every answer button is on")
+eq(pf and (rawget(pf.status, "text") or ""), "", "a flask: no answered-for-you line")
+local flaskDetail = LM.DetailText(LM.incoming.items[4])
+check(type(flaskDetail) == "string" and flaskDetail:find("Flask", 1, true) and not flaskDetail:find("can't", 1, true), "a flask: the detail line names it, no can't-use word (" .. tostring(flaskDetail) .. ")")
+C_Item.GetItemInfoInstant = instant
 rawget(strip, "close").scripts.OnClick()
 local allClosed = true
 for i in pairs(LM.incoming.items) do if not (LM.incoming.mine[i] and LM.incoming.mine[i].closed) then allClosed = false end end

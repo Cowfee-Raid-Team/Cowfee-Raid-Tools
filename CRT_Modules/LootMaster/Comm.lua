@@ -839,6 +839,25 @@ local function classNames(classFile)
     return mine, known
 end
 
+-- Whether an item is open to every raider (Alex, 2026-10-22: "if I add something like a flask, it should
+-- allow everyone to roll on it"): not gear you wear (a weapon or armor with an equip slot, as
+-- C_Item.GetItemInfoInstant gives them) and no "Classes:" line. A consumable, reagent, toy, mount or pet
+-- is never answered for anyone, even when the game lists specs for it. A tier token has a Classes line, so
+-- it is still judged. Pure; anything unread (not a number or a string) is not open, and goes on to the
+-- rules, which fail open themselves.
+local NOT_WORN = { [""] = true, INVTYPE_NON_EQUIP_IGNORE = true, INVTYPE_BAG = true, INVTYPE_QUIVER = true }
+
+function LM.OpenToAll(itemClass, equipLoc, classes)
+    if type(itemClass) ~= "number" or type(equipLoc) ~= "string" or secret(itemClass) or secret(equipLoc) then
+        return false
+    end
+    if type(classes) == "table" and #classes > 0 then
+        return false
+    end
+    local gear = itemClass == LM.ITEM_CLASS_WEAPON or itemClass == LM.ITEM_CLASS_ARMOR
+    return not gear or NOT_WORN[equipLoc] == true
+end
+
 -- Why an item can't be used by you: "spec" with the spec IDs, "classes" with the classes it is for,
 -- "armor" with its armor subclass, "weapon" with the weapon type the tooltip shows; nil when it can be, or
 -- when anything is unclear. The probe calls it too (/crt dev loot probe spec), so what it prints is the
@@ -849,14 +868,17 @@ local DETAIL = {
 }
 
 function LM.CantUse(itemString, loaded)
+    local okI, _, _, subType, equipLoc, _, itemClass, subClass = pcall(C_Item.GetItemInfoInstant, itemString)
+    local classes, slotText, slotColor = tooltipFacts(itemString)
+    if okI and LM.OpenToAll(itemClass, equipLoc, classes) then
+        return nil
+    end
     local ok, specs = pcall(C_Item.GetItemSpecInfo, itemString)
     if ok and not secret(specs) and LM.SpecVerdict(specs, mySpecs(), loaded) == "auto" then
         return "spec", table.concat(specs, ",")
     end
-    local okI, _, _, subType, equipLoc, _, itemClass, subClass = pcall(C_Item.GetItemInfoInstant, itemString)
     local _, classFile = UnitClass("player")
     local mine, known = classNames(classFile)
-    local classes, slotText, slotColor = tooltipFacts(itemString)
     local f = {
         loaded = loaded and okI, itemClass = itemClass, subClass = subClass, equipLoc = equipLoc,
         subType = not secret(subType) and subType or nil, myClass = classFile, myClassNames = mine,
