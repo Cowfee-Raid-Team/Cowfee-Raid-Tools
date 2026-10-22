@@ -57,7 +57,7 @@ local TEXT = {
     acceptImport = "Import and reload",
     confirmUndo = "Put back the settings you had before importing from %s?\n\nYour interface reloads.",
     acceptUndo = "Undo and reload",
-    help = "A profile holds everything the addon saves: settings, window positions, layouts, notes, consumables lists and history. Each character remembers its own; new characters start on the one under New characters. Switching, copying or resetting a profile reloads your interface.\n\nExport gives the whole profile as text, for your own characters: Import saves it as a new profile.\n\nExport settings only gives just settings and window positions, for raiders (where your reports go, whose notes and loot leaders you trust and your own sound files stay yours): Import shows what differs and applies it to this profile, after saving your settings for Undo last import.",
+    help = "A profile holds everything the addon saves: settings, window positions, layouts, notes, consumables lists and history. Each character remembers its own; new characters start on the one under New characters. Switching, copying or resetting a profile reloads your interface.\n\nExport gives the whole profile as text, for your own characters: Import saves it as a new profile.\n\nExport settings only gives just settings and window positions, for raiders (where your reports go, whose notes and loot leaders you trust and your own sound files stay yours): Import shows what differs and applies it to this profile, after saving your settings for Undo last import. Keep my window positions keeps where your windows are and the size of your note windows.",
 }
 
 local page

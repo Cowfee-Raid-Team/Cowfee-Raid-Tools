@@ -97,6 +97,7 @@ for _, s in ipairs({ "BACKGROUND", "LOW", "MEDIUM", "HIGH", "DIALOG", "FULLSCREE
 for _, k in ipairs({ "panel", "notes", "alert", "popups" }) do table.insert(CRT.UI.LAYERS, { key = k }) end
 assert(load(profilesSrc, "CRT_Core/Profiles.lua"))("CowfeeRaidTools", CRT)
 local P = CRT.Profiles
+local paths0 = {} for _, e in ipairs(P.ShareEntries()) do paths0[e.path] = e end
 local function boot(db, char) CRTDB = db CRTDBChar = char for _, f in ipairs(eventFrames) do if f.OnEvent then f.OnEvent(f, "ADDON_LOADED", "CowfeeRaidTools") end end CRT.db = CRTDB end
 local function copy(v) if type(v) ~= "table" then return v end local o = {} for k, x in pairs(v) do o[k] = copy(x) end return o end
 local function same(a, b)
@@ -262,12 +263,41 @@ bad({ alerts = { areas = { timeline = { lineColor = { 2, 0, 0 } } } } }, "a line
 bad({ window = { relativePoint = "MIDDLE" } }, "the main window's relativePoint must be an anchor name", "window.relativePoint")
 bad({ window = { x = "10" } }, "the main window's x must be a number", "window.x")
 bad({ debuffs = { position = { point = "TOP", relativePoint = "SIDEWAYS", x = 1, y = 2 } } }, "a position's relativePoint must be an anchor name", "debuffs.position")
-bad({ debuffs = { position = { point = "TOP", x = 1, y = 2, parent = "UIParent" } } }, "a position with an unknown field is rejected", "debuffs.position")
 bad({ timeline = { popout = { width = "wide", height = 600 } } }, "a window size must be a number", "timeline.popout")
 bad({ ui = { layers = { panel = "ON_TOP" } } }, "a layer must be one of the game's strata", "ui.layers")
-bad({ ui = { layers = { madeUp = "HIGH" } } }, "a layer must be one CRT has", "ui.layers")
 bad({ ui = { fontSize = "big" } }, "a late setting of the wrong type is rejected", "ui.fontSize")
 rejects(craft("just text"), "a payload that isn't a table is rejected", P.TEXT.damaged)
+
+-- A newer version's layer or position field is left out and counted, and the rest still applies.
+do
+  local i, e = P:Read(craft({ v = 1, kind = "settings", from = "X", data = { ui = { layers = { madeUp = "HIGH", notes = "LOW" } }, debuffs = { position = { point = "TOP", relativePoint = "TOP", x = 1, y = 2, anchorFrame = "UIParent" } } } }))
+  check(i and i.unknown == 2 and i.values["ui.layers"].notes == "LOW" and i.values["ui.layers"].madeUp == nil and i.values["debuffs.position"].x == 1 and i.values["debuffs.position"].anchorFrame == nil, "an unknown layer key and an unknown position field are skipped and counted (" .. tostring(e or (i and i.unknown)) .. ")")
+  if i then P:ApplySettings(i, false) end
+  check(alt.ui.layers.notes == "LOW" and alt.ui.layers.madeUp == nil and alt.debuffs.position.point == "TOP" and alt.debuffs.position.anchorFrame == nil, "the known layers and position fields apply")
+  P:UndoImport()
+end
+-- The bars position travels with its positionV, so Alerts/Bars.lua doesn't move it a second time.
+do
+  local saved = { point = "CENTER", relativePoint = "CENTER", x = 0, y = 100 }
+  local i = P:Read(craft({ v = 1, kind = "settings", from = "X", data = { alerts = { bars = { position = saved, positionV = 2 } } } }))
+  check(i and i.values["alerts.bars.positionV"] == 2, "positionV is read with the bars position")
+  local quiet = true for _, d in ipairs(i and P:Diff(i, false) or {}) do if d.path == "alerts.bars.positionV" then quiet = false end end
+  check(quiet, "positionV isn't listed in the preview")
+  if i then P:ApplySettings(i, false) end
+  check(alt.alerts.bars.position.y == 100 and alt.alerts.bars.positionV == 2, "applied: the bars position and its positionV")
+  P:UndoImport()
+  check(alt.alerts.bars.positionV == nil, "undo takes positionV back off")
+  check(paths0 and paths0["alerts.bars.positionV"] and paths0["alerts.bars.positionV"].position, "positionV is kept with Keep my window positions")
+end
+-- Keep my window positions keeps the note windows' sizes too.
+do
+  alt.notes.window.width = 500
+  local i = P:Read(craft({ v = 1, kind = "settings", from = "X", data = { notes = { window = { width = 300, fontSize = 20 }, assignments = { height = 100 } } } }))
+  if i then P:ApplySettings(i, true) end
+  check(alt.notes.window.width == 500 and alt.notes.assignments.height == 240 and alt.notes.window.fontSize == 20, "kept: note window sizes stay, other note window settings apply")
+  P:UndoImport()
+  alt.notes.window.width = 420
+end
 
 -- Unknown keys are skipped and counted. -----------------------------------------------------------
 do

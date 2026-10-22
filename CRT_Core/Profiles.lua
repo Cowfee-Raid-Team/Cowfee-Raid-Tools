@@ -107,15 +107,18 @@ Profiles.SHARE = {
 }
 
 -- Window places and sizes: "Keep my window positions" leaves these as they are. Most are saved only once
--- a window is moved, so they are not in the defaults.
+-- a window is moved, so they are not in the defaults. alerts.bars.positionV marks a bars position as
+-- already moved by Alerts/Bars.lua's fix for the old window, so it travels with that position.
 Profiles.POSITIONS = {
     "window.point", "window.relativePoint", "window.x", "window.y", "minimap.angle",
     "consumables.position", "readycheck.window.position", "debuffs.position",
     "notes.window.position", "notes.assignments.position", "notes.personal.position", "notes.alert.position", "notes.editor",
+    "notes.window.width", "notes.window.height", "notes.assignments.width", "notes.assignments.height",
+    "notes.personal.width", "notes.personal.height",
     "qol.lowHealth.position", "qol.breakTimer.position",
     "lootmaster.window", "lootmaster.popup", "lootmaster.answers", "lootmaster.bossLoot", "lootmaster.lootingPrompt",
     "gearChecker.popout", "timeline.popout", "markers.position", "pace.position",
-    "alerts.bars.position", "alerts.areas.icons.position", "alerts.areas.texts.position", "alerts.areas.circles.position",
+    "alerts.bars.position", "alerts.bars.positionV", "alerts.areas.icons.position", "alerts.areas.texts.position", "alerts.areas.circles.position",
     "alerts.areas.timeline.position",
 }
 
@@ -134,13 +137,21 @@ local ANCHORS = {
 }
 local POSITION_FIELDS = {
     point = "anchor", relativePoint = "anchor", x = "number", y = "number", width = "number", height = "number", angle = "number",
+    positionV = "number",
 }
-local MAX_LIST = 200 -- the most entries one table in a shared setting may hold
+-- The fields a position table may hold; positionV and angle are single settings of their own.
+local TABLE_FIELDS = { point = true, relativePoint = true, x = true, y = true, width = true, height = true }
+-- The most entries one table in a shared setting may hold. markers.disabled and pace.disabled grow by
+-- one for each boss switched off, so this leaves room for many seasons of bosses.
+local MAX_LIST = 200
 
 -- A string value naming one of your own sound files (Sound/Engine.lua's "file:" keys) is never shared.
 local function ownFile(v)
     return type(v) == "string" and v:find("^file:") ~= nil
 end
+
+-- Shared but not listed in the import preview: bookkeeping, not a setting anyone picks.
+local QUIET = { ["alerts.bars.positionV"] = true }
 
 -- The diff preview names a setting by its page, then its saved path.
 local SECTIONS = {
@@ -466,22 +477,28 @@ local function isField(kind, v)
 end
 
 -- A position: a single field (window.point, window.x, minimap.angle) or a table of point, relativePoint,
--- x, y, width and height, each an anchor name or a number.
+-- x, y, width and height, each an anchor name or a number. A field this version doesn't know (a newer
+-- one's) is left out and counted; a known field with a bad value rejects it.
+-- Returns ok, the value to use, and how many fields were left out.
 local function isPosition(entry, v)
     local kind = POSITION_FIELDS[entry.keys[#entry.keys]]
     if kind then
-        return isField(kind, v)
+        return isField(kind, v), v, 0
     end
     if type(v) ~= "table" then
         return false
     end
+    local out, dropped = {}, 0
     for k, x in pairs(v) do
-        local field = POSITION_FIELDS[k]
-        if not field or field == "angle" or not isField(field, x) then
+        if not TABLE_FIELDS[k] then
+            dropped = dropped + 1
+        elseif isField(POSITION_FIELDS[k], x) then
+            out[k] = x
+        else
             return false
         end
     end
-    return true
+    return true, out, dropped
 end
 
 -- A list default ({ r, g, b, a }): the same length or shorter, every entry of the first one's type.
@@ -510,7 +527,8 @@ local function isColour(v)
     return true
 end
 
--- ui.layers: each layer key UI.LAYERS knows, set to one of UI.STRATA (UI/Panel.lua).
+-- ui.layers: each layer set to one of UI.STRATA (UI/Panel.lua). A layer key this version doesn't have
+-- (a newer one's) is left out and counted; a strata the game doesn't have rejects it.
 local function isLayers(v)
     local UI = CRT.UI
     if type(v) ~= "table" or not (UI and UI.LAYERS and UI.STRATA) then
@@ -523,12 +541,17 @@ local function isLayers(v)
     for _, s in ipairs(UI.STRATA) do
         strata[s.key] = true
     end
+    local out, dropped = {}, 0
     for k, x in pairs(v) do
-        if not layers[k] or not strata[x] then
+        if not strata[x] then
             return false
+        elseif layers[k] then
+            out[k] = x
+        else
+            dropped = dropped + 1
         end
     end
-    return true
+    return true, out, dropped
 end
 
 -- Shared settings with a shape of their own, by path.
@@ -537,6 +560,8 @@ local SHAPES = { ["ui.layers"] = isLayers }
 -- A shared value must be plain and of its default's type, at every level: a list default's entries
 -- too, and a position, ui.layers or a late setting by its own shape. A table that starts empty (a map,
 -- an order) has no default inside to match, so only plainness is checked there.
+-- Returns ok, the value to use (a position or ui.layers without the parts this version doesn't know),
+-- and how many such parts were left out.
 local function isValid(entry, v)
     if not isPlain(v, 1) then
         return false
@@ -547,17 +572,17 @@ local function isValid(entry, v)
     if SHAPES[entry.path] then
         return SHAPES[entry.path](v)
     end
+    local ok
     if entry.want == "colour" then
-        return isColour(v)
+        ok = isColour(v)
+    else
+        local want = entry.want or (entry.default ~= nil and type(entry.default)) or nil
+        ok = not (want and type(v) ~= want)
+        if ok and type(entry.default) == "table" and entry.default[1] ~= nil then
+            ok = isList(entry.default, v)
+        end
     end
-    local want = entry.want or (entry.default ~= nil and type(entry.default)) or nil
-    if want and type(v) ~= want then
-        return false
-    end
-    if type(entry.default) == "table" and entry.default[1] ~= nil then
-        return isList(entry.default, v)
-    end
-    return true
+    return ok, v, 0
 end
 
 -- Whether a path is under a true in Profiles.SHARE.
@@ -684,12 +709,13 @@ function Profiles:ExportSettings()
             if entry.position then
                 unset[#unset + 1] = entry.path
             end
-        elseif isValid(entry, v) then
-            if not ownFile(v) then
-                setPath(data, entry.keys, deepCopy(v))
-            end
         else
-            dropped = dropped + 1
+            local ok, clean = isValid(entry, v)
+            if not ok then
+                dropped = dropped + 1
+            elseif not ownFile(clean) then
+                setPath(data, entry.keys, deepCopy(clean))
+            end
         end
     end
     local name, day, version = playerName(), date("%Y-%m-%d"), tostring(CRT.version or "dev")
@@ -710,9 +736,12 @@ local function scan(node, prefix, known, inner)
     for k, v in pairs(node) do
         local path = type(k) == "string" and (prefix == "" and k or prefix .. "." .. k) or nil
         if path and known[path] then
-            if not isValid(known[path], v) then
+            local ok, clean, n = isValid(known[path], v)
+            if not ok then
                 return unknown, path
             end
+            node[k] = clean -- without the parts this version doesn't know (an existing key: safe in pairs)
+            unknown = unknown + n
         elseif path and inner[path] then
             if type(v) ~= "table" then
                 return unknown, path
@@ -833,7 +862,7 @@ end
 function Profiles:Diff(info, keepPositions)
     local out = {}
     for _, entry in ipairs(Profiles.ShareEntries()) do
-        if not (keepPositions and entry.position) and (info.values[entry.path] ~= nil or info.unset[entry.path]) then
+        if not (keepPositions and entry.position) and not QUIET[entry.path] and (info.values[entry.path] ~= nil or info.unset[entry.path]) then
             local old, new = getPath(CRTDB, entry.keys), info.values[entry.path]
             if not same(old, new) then
                 local text
@@ -857,10 +886,18 @@ local function put(values, unset, keepPositions, exact)
     for _, entry in ipairs(Profiles.ShareEntries()) do
         if not (keepPositions and entry.position) then
             local v = values[entry.path]
-            if v ~= nil and (exact or isValid(entry, v)) then
-                setPath(CRTDB, entry.keys, deepCopy(v))
-            elseif v == nil and unset[entry.path] then
-                setPath(CRTDB, entry.keys, nil)
+            if v == nil then
+                if unset[entry.path] then
+                    setPath(CRTDB, entry.keys, nil)
+                end
+            else
+                local ok, clean = exact, v
+                if not exact then
+                    ok, clean = isValid(entry, v)
+                end
+                if ok then
+                    setPath(CRTDB, entry.keys, deepCopy(clean))
+                end
             end
         end
     end
