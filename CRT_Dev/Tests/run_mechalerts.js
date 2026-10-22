@@ -1125,6 +1125,15 @@ check("mech: ability names in their type colour, with a type tooltip", function(
   local all = table.concat(names, "|")
   assert(all == "SetOwner:" .. tostring(r2.frame) .. "|SetText:Other Spell|AddLine:Dispel: a debuff to dispel|AddLine:Mythic: Mythic only|Show:nil", all)
   assert(near(said[3][3], dispel) and near(said[4][3], Ref.TYPES.mythic.color), "each line in its type's colour")
+  -- Tooltip position, the game's tooltip spot: the same text where the game shows its tooltips
+  assert(type(CRT.UI.TooltipOwner) == "function", "UI.TooltipOwner (CRT_Core/UI/Tooltip.lua) is loaded")
+  local spot
+  GameTooltip_SetDefaultAnchor = function(t, o) spot = { t, o } end
+  CRT.db.ui = { tooltipAnchor = "game" }
+  said = {}
+  r2.frame.OnEnter(r2.frame)
+  assert(spot and spot[1] == GameTooltip and spot[2] == r2.frame and said[1][1] == "SetText", "the game's tooltip spot: GameTooltip_SetDefaultAnchor, no SetOwner of its own")
+  CRT.db.ui, GameTooltip_SetDefaultAnchor = nil, nil
   said = {}
   r1.frame.OnEnter(r1.frame)
   assert(said[3][2] == "Soak: stack to share the damage" and near(said[3][3], soak) and #said == 4, "your label: its one type")

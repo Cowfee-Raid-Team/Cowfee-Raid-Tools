@@ -74,6 +74,9 @@ CRT.TimelineJournal = { ResolveID = function(_, k, r) if type(k) == "number" the
   IsHidden = function(_, enc, id) return hidden[id] and true or false end,
 }
 CRT_THEME(CRT, CRT.UI)
+-- View.lua places its tooltips with UI.TooltipOwner: a CRT.UI with only the real CRT_Core/UI/Tooltip.lua
+CRT.UI = {}
+CRT_TOOLTIP(CRT)
 assert(load(dataSrc, "CRT_Modules/Timeline/Data.lua"))("CowfeeRaidTools", CRT)
 assert(load(dbSrc, "CRT_Modules/Timeline/Database.lua"))("CowfeeRaidTools", CRT)
 assert(load(refSrc, "CRT_Modules/Timeline/Reference.lua"))("CowfeeRaidTools", CRT)

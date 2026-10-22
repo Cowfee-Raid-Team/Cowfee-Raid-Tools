@@ -745,7 +745,7 @@ local function typeTip(owner, item)
     if not (item and not item.pending and GameTooltip) then
         return
     end
-    GameTooltip:SetOwner(owner, "ANCHOR_RIGHT")
+    UI.TooltipOwner(GameTooltip, owner, "ANCHOR_RIGHT")
     GameTooltip:SetText(item.label or TEXT.unnamed, 1, 1, 1)
     local Reference = CRT.TimelineReference
     local any = false

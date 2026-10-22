@@ -294,7 +294,7 @@ end
 
 local function iconEnter(b)
     local mark, lane = b.mark, b.lane
-    GameTooltip:SetOwner(b, "ANCHOR_RIGHT")
+    CRT.UI.TooltipOwner(GameTooltip, b, "ANCHOR_RIGHT")
     if mark.death then
         local d = mark.death
         GameTooltip:SetText(d.name or "Unknown", CRT.Groups.ClassColor(d.name, d.class))
@@ -358,7 +358,7 @@ end
 -- A marker: the alert's text, who it is for, its phase and time, and where it is saved.
 local function flagEnter(f)
     local m = f.mark
-    GameTooltip:SetOwner(f, "ANCHOR_RIGHT")
+    CRT.UI.TooltipOwner(GameTooltip, f, "ANCHOR_RIGHT")
     GameTooltip:SetText(m.text, 1, 0.82, 0)
     local who = TEXT.onlyMe
     if not m.mine then
@@ -393,14 +393,14 @@ local function labelEnter(l)
     local lane = l.lane
     local tagged = lane and lane.tags and #lane.tags > 0
     if lane and lane.kind == "spell" then
-        GameTooltip:SetOwner(l, "ANCHOR_RIGHT")
+        CRT.UI.TooltipOwner(GameTooltip, l, "ANCHOR_RIGHT")
         spellTip(lane.spellID, lane.label)
         if tagged then
             addTags(lane)
         end
         GameTooltip:Show()
     elseif lane and (lane.kind == "reference" or lane.kind == "journal") and ((lane.types and #lane.types > 0) or tagged) then
-        GameTooltip:SetOwner(l, "ANCHOR_RIGHT")
+        CRT.UI.TooltipOwner(GameTooltip, l, "ANCHOR_RIGHT")
         GameTooltip:SetText(lane.label or "", 1, 0.82, 0)
         addTypes(lane)
         addTags(lane)
@@ -2062,7 +2062,7 @@ local function chipEnter(c)
     if not s then
         return
     end
-    GameTooltip:SetOwner(c, "ANCHOR_TOP")
+    CRT.UI.TooltipOwner(GameTooltip, c, "ANCHOR_TOP")
     GameTooltip:SetText(s.name or TEXT.unnamed, 1, 0.82, 0)
     if type(s.text) == "string" and s.text ~= "" and s.text ~= s.name then
         GameTooltip:AddLine(s.text, 1, 1, 1)
@@ -2099,7 +2099,7 @@ local function cooldownEnter(c)
         return
     end
     local Cooldowns = CRT.AlertCooldowns
-    GameTooltip:SetOwner(c, "ANCHOR_TOP")
+    CRT.UI.TooltipOwner(GameTooltip, c, "ANCHOR_TOP")
     GameTooltip:SetText(e.name, 1, 0.82, 0)
     GameTooltip:AddLine(Cooldowns and Cooldowns.ClassName(e.class) or e.class, 1, 1, 1)
     GameTooltip:AddLine(TEXT.cooldownHint, 0.6, 0.6, 0.6, true)
@@ -2309,7 +2309,7 @@ function Methods:BuildStrip()
     themed(plus.text, "SetTextColor", "accent")
     hoverLight(plus)
     plus:SetScript("OnEnter", function(b)
-        GameTooltip:SetOwner(b, "ANCHOR_TOP")
+        CRT.UI.TooltipOwner(GameTooltip, b, "ANCHOR_TOP")
         GameTooltip:SetText(TEXT.newSaved, 1, 0.82, 0)
         GameTooltip:Show()
     end)
@@ -3257,7 +3257,7 @@ function Methods:Label(n)
             end
         end)
         l.check:SetScript("OnEnter", function(b)
-            GameTooltip:SetOwner(b, "ANCHOR_RIGHT")
+            CRT.UI.TooltipOwner(GameTooltip, b, "ANCHOR_RIGHT")
             GameTooltip:SetText(TEXT.showTip, 1, 1, 1, 1, true)
             GameTooltip:Show()
         end)

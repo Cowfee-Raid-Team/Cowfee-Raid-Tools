@@ -445,7 +445,7 @@ local function badgeEnter(hit)
     if not (row and GameTooltip) then
         return
     end
-    GameTooltip:SetOwner(hit, "ANCHOR_RIGHT")
+    UI.TooltipOwner(GameTooltip, hit, "ANCHOR_RIGHT")
     GameTooltip:SetText(shortName(row.name), classColor(row.class))
     local lines = GC.IssueLines(row)
     if not lines then
@@ -659,7 +659,7 @@ end
 -- A season check's chip shows its help on hover.
 local function chipEnter(b)
     if b.help and GameTooltip then
-        GameTooltip:SetOwner(b, "ANCHOR_BOTTOM")
+        UI.TooltipOwner(GameTooltip, b, "ANCHOR_BOTTOM")
         GameTooltip:SetText(b.label)
         GameTooltip:AddLine(b.help, 1, 1, 1, true)
         GameTooltip:Show()

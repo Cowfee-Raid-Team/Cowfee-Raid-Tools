@@ -32,7 +32,7 @@ end
 
 local function tooltip(frame, title, body)
     frame:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        UI.TooltipOwner(GameTooltip, self, "ANCHOR_TOP")
         GameTooltip:SetText(title, 1, 1, 1)
         GameTooltip:AddLine(body, 0.8, 0.8, 0.8, true)
         GameTooltip:Show()

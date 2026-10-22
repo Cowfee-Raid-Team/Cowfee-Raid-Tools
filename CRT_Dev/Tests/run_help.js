@@ -9,7 +9,7 @@ const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate();
 lualib.luaL_openlibs(L);
 const harness = `
-local panelSrc, mochaSrc = ...
+local panelSrc, mochaSrc, tooltipSrc = ...
 local unpack = unpack or table.unpack -- the harness runs Lua 5.3
 local fails, passes = 0, 0
 local function check(ok, what) if ok then passes = passes + 1 else fails = fails + 1 print("FAIL " .. what) end end
@@ -84,6 +84,7 @@ local CRT = { db = { ui = { modern = false, theme = "blizzard", layers = {} } } 
 assert(load(mochaSrc, "Themes.lua"))("CowfeeRaidTools", CRT)
 CRT:UseTheme("cowfee")
 assert(load(panelSrc, "Panel.lua"))("CowfeeRaidTools", CRT)
+assert(load(tooltipSrc, "Tooltip.lua"))("CowfeeRaidTools", CRT)
 local UI = CRT.UI
 local M = CRT.PALETTE
 local function look(modern)
@@ -125,6 +126,44 @@ live.scripts.OnEnter(live)
 check(GameTooltip.lines[1] == "Count 2", "a function's text is read each time")
 live.scripts.OnLeave(live)
 print("ok help: the tooltip is unchanged")
+
+-- Tooltip position (CRT_Core/UI/Tooltip.lua): next to what you hover by default; the game's tooltip spot
+-- (GameTooltip_SetDefaultAnchor, which sets the owner with ANCHOR_NONE and places it) when picked
+local defaults = {}
+GameTooltip_SetDefaultAnchor = function(t, owner) defaults[#defaults + 1] = { t, owner } t:SetOwner(owner, "ANCHOR_NONE") end
+check(UI.TooltipPosition() == "owner", "Tooltip position: next to what you hover when nothing is saved")
+check(#UI.TOOLTIP_POSITIONS == 2 and UI.TOOLTIP_POSITIONS[1].key == "owner" and UI.TOOLTIP_POSITIONS[1].label == "Next to what you hover"
+  and UI.TOOLTIP_POSITIONS[2].key == "game" and UI.TOOLTIP_POSITIONS[2].label == "Game's tooltip spot", "Tooltip position: the two choices, in order")
+CRT.db.ui.tooltipAnchor = "owner"
+b.scripts.OnEnter(b)
+check(#defaults == 0 and GameTooltip.owner == b and GameTooltip.anchor == "ANCHOR_RIGHT", "a (?) next to what you hover: right of the icon")
+b.scripts.OnLeave(b)
+CRT.db.ui.tooltipAnchor = "game"
+b.scripts.OnEnter(b)
+check(#defaults == 1 and defaults[1][1] == GameTooltip and defaults[1][2] == b, "a (?) on the game's tooltip spot: GameTooltip_SetDefaultAnchor(GameTooltip, icon)")
+check(GameTooltip.anchor == "ANCHOR_NONE" and GameTooltip.title == "Title", "the game's spot: placed by the game, the same text")
+b.scripts.OnLeave(b)
+-- an exception keeps its anchor whatever the setting; the other flag always takes the game's spot
+defaults = {}
+local owner = frame("Button", page)
+check(UI.TooltipOwner(GameTooltip, owner, "ANCHOR_CURSOR", nil, nil, UI.TOOLTIP_KEEP) == "owner" and #defaults == 0 and GameTooltip.anchor == "ANCHOR_CURSOR", "UI.TOOLTIP_KEEP: the anchor given, on the game's spot setting too")
+local offset = {}
+local probe = { SetOwner = function(_, o, a, x, y) offset = { o, a, x, y } end }
+CRT.db.ui.tooltipAnchor = "owner"
+UI.TooltipOwner(probe, owner, "ANCHOR_TOP", 0, 6)
+check(offset[1] == owner and offset[2] == "ANCHOR_TOP" and offset[3] == 0 and offset[4] == 6, "the offsets reach SetOwner")
+check(UI.TooltipOwner(GameTooltip, owner, "ANCHOR_NONE", nil, nil, UI.TOOLTIP_GAME) == "game" and #defaults == 1, "UI.TOOLTIP_GAME: the game's spot, on the default setting too")
+CRT.db.ui.tooltipAnchor = "nonsense"
+check(UI.TooltipPosition() == "owner", "an unknown saved value is next to what you hover")
+-- without the game's function, or when it fails, the tooltip still opens next to the owner
+CRT.db.ui.tooltipAnchor = "game"
+GameTooltip_SetDefaultAnchor = nil
+check(UI.TooltipOwner(GameTooltip, owner, "ANCHOR_TOP") == "owner" and GameTooltip.owner == owner and GameTooltip.anchor == "ANCHOR_TOP", "no GameTooltip_SetDefaultAnchor: next to the owner")
+GameTooltip_SetDefaultAnchor = function() error("broken") end
+check(UI.TooltipOwner(GameTooltip, owner, "ANCHOR_LEFT") == "owner" and GameTooltip.anchor == "ANCHOR_LEFT", "a failing GameTooltip_SetDefaultAnchor: next to the owner")
+GameTooltip_SetDefaultAnchor = nil
+CRT.db.ui.tooltipAnchor = nil
+print("ok help: Tooltip position, both choices, the flags and the fallback")
 
 -- Modern: an accent ring round an accent "i", the same hit box
 look(true)
@@ -401,4 +440,5 @@ if (process.argv[3] === 'lint') {
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 lua.lua_pushstring(L, to_luastring(read('CRT_Core/UI/Panel.lua')));
 lua.lua_pushstring(L, to_luastring(read('CRT_Core/Themes.lua')));
-if (lua.lua_pcall(L, 2, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
+lua.lua_pushstring(L, to_luastring(read('CRT_Core/UI/Tooltip.lua')));
+if (lua.lua_pcall(L, 3, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }

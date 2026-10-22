@@ -3,7 +3,7 @@
 const fs = require('fs');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
-const harness = `
+const harness = require('./theme_stub')(process.argv.slice(2)) + `
 local dataSrc, dbSrc, refSrc, lanesSrc, rulesSrc, engineSrc, parseSrc, notesSrc, remSrc, viewSrc, regSrc, seasonSrc, nekSrc = ...
 local buttons = 0
 local textures = 0 -- every texture made, to tell a pool from one made per frame
@@ -157,6 +157,7 @@ function StaticPopup_ShowCustomGenericConfirmation(info) popups[#popups + 1] = i
 local helps = {}
 CRT.UI = { LiftOver = function(d) lifted[#lifted + 1] = d end, ShownPopup = function(ret, name) return { named = name } end,
   HelpRight = function(target, title, text, opts) local b = (function(parent, title, text) local b = mock("Button") rawset(b, "helpTitle", title) rawset(b, "helpText", text) helps[#helps + 1] = b return b end)(opts and opts.parent or target, title, text) rawset(b, "helpTarget", target) return b end, HELP_GAP = 4, HELP_SIZE = 20, Help = function(parent, title, text) local b = mock("Button") rawset(b, "helpTitle", title) rawset(b, "helpText", text) helps[#helps + 1] = b return b end }
+CRT_TOOLTIP(CRT) -- UI.TooltipOwner, the real CRT_Core/UI/Tooltip.lua
 local View, Rem, Notes = CRT.TimelineView, CRT.AlertReminders, CRT.Notes
 local function reset()
   for i = #opened, 1, -1 do opened[i] = nil end

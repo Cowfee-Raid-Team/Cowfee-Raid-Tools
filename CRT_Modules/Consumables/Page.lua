@@ -69,7 +69,7 @@ end
 
 local function barTooltip(self)
     local def = Consumables:Def(self.key)
-    GameTooltip:SetOwner(self, "ANCHOR_TOP")
+    UI.TooltipOwner(GameTooltip, self, "ANCHOR_TOP")
     GameTooltip:SetText(def and def.label or "", 1, 1, 1)
     Bar.AddStatusLines(self.status)
     GameTooltip:AddLine("Click to see its items.", 0.7, 0.7, 0.7)

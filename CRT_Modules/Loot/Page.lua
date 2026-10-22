@@ -319,7 +319,7 @@ local function showTooltip(row)
         return
     end
     local f = fieldsOf(e)
-    GameTooltip:SetOwner(row, "ANCHOR_CURSOR")
+    UI.TooltipOwner(GameTooltip, row, "ANCHOR_CURSOR", nil, nil, UI.TOOLTIP_KEEP) -- follows the cursor on purpose
     pcall(GameTooltip.SetHyperlink, GameTooltip, f.link or f.itemString)
     GameTooltip:AddLine(" ")
     GameTooltip:AddDoubleLine("When", f.time and date("%Y-%m-%d %H:%M", f.time) or "?", 1, 1, 1, 1, 1, 1)

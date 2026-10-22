@@ -8,7 +8,7 @@ const path = require('path');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate();
 lualib.luaL_openlibs(L);
-const harness = `
+const harness = require('./theme_stub')(process.argv.slice(2)) + `
 local gearSrc, dataSrc, commSrc, oldCommSrc = ...
 local fails, passes = 0, 0
 local function check(ok, what) if ok then passes = passes + 1 else fails = fails + 1 print("FAIL " .. what) end end
@@ -60,7 +60,8 @@ GameTooltip = nil
 
 -- one player's CRT: the gear engine (new only), Data.lua and a Comm.lua
 local function boot(name, comm, new)
-  local CRT = { db = { lootmaster = { authority = { leader = true, names = {} } } } }
+  local CRT = { db = { lootmaster = { authority = { leader = true, names = {} } } }, UI = {} }
+  CRT_TOOLTIP(CRT) -- UI.TooltipOwner, the real CRT_Core/UI/Tooltip.lua, for Gear.ShowTooltip
   function CRT:Print() end
   CRT.Groups = { Normalize = function(n) if not n:find("-") then return n .. "-Sargeras" end return n end }
   if new then assert(load(gearSrc, "Gear.lua"))("CowfeeRaidTools", CRT) end

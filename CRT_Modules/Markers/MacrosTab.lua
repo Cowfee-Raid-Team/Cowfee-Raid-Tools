@@ -344,7 +344,7 @@ local function cellTooltip(cell)
     if not e then
         return
     end
-    GameTooltip:SetOwner(cell.button, "ANCHOR_TOP")
+    UI.TooltipOwner(GameTooltip, cell.button, "ANCHOR_TOP")
     GameTooltip:SetText(e.def.name, 1, 1, 1)
     GameTooltip:AddLine(e.def.body, 0.85, 0.85, 0.85)
     if testingHere() then

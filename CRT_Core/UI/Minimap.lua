@@ -34,7 +34,7 @@ local function onClick(mouseButton)
 end
 
 local function showTooltip(owner)
-    GameTooltip:SetOwner(owner, "ANCHOR_LEFT")
+    UI.TooltipOwner(GameTooltip, owner, "ANCHOR_LEFT")
     GameTooltip:SetText("Cowfee Raid Tools", 1, 0.82, 0)
     GameTooltip:AddLine("v" .. tostring(CRT.version), 0.6, 0.6, 0.6)
     GameTooltip:AddLine("Left-click: open or close", 1, 1, 1)
