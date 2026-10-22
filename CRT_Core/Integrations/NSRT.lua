@@ -66,54 +66,32 @@ local function classID(word)
     return classIDs[word:upper()]
 end
 
--- A CRT tag in NSRT's words: "all" is "everyone", a class (by any of its spellings, "Demon Hunter" as one,
--- Notes/Parse.lua's class words) is its class ID, and names, roles, melee and ranged are the same in both.
+-- A CRT tag in NSRT's words: "all" is "everyone", a class is its class ID, and names, roles, melee and ranged
+-- are the same in both. A class is one only when surely named (Notes/Parse.lua's class words: "Demon Hunter" as
+-- one, "DEMONHUNTER", "Priest"), so a player called "Deathknight" stays a name.
 local function nsrtTags(value)
-    local words, out = {}, {}
-    for word in value:gmatch("%S+") do
-        words[#words + 1] = word
-    end
-    local i = 1
-    while i <= #words do
-        local file, n = CRT.NoteParser.ClassAt(words, i)
-        local id = file and classID(file)
-        if id then
-            out[#out + 1] = id
-            i = i + n
-        else
-            out[#out + 1] = words[i]:lower() == "all" and "everyone" or words[i]
-            i = i + 1
-        end
+    local out = {}
+    for _, item in ipairs(CRT.NoteParser.ClassRuns(value, "%S+")) do
+        local id = item.class and item.sure and classID(item.class)
+        out[#out + 1] = id or (item.text:lower() == "all" and "everyone") or item.text
     end
     return table.concat(out, " ")
 end
 
--- An assignment line ("Orb Soak 1: DEMONHUNTER Warlock") with each class written as NSRT notes name it, the
--- English name with its spaces ("Demon Hunter"); everything else as written. Any other line as it is.
+-- An assignment line ("Orb Soak 1: DEMONHUNTER Warlock") with each surely named class written as NSRT notes
+-- name it, the English name with its spaces ("Demon Hunter"); a single word in mixed or lower case ("Deathknight",
+-- "the hunter kites") and everything else as written. Any other line as it is.
 local function assignmentLine(line)
     local Parser = CRT.NoteParser
     local label, rest = line:match("^([^:]+:)(.*)$")
     if not (label and Parser.LooksLikeLabel(label:sub(1, -2))) then
         return line
     end
-    local found = {}
-    for start, word, stop in rest:gmatch("()([^%s,]+)()") do
-        found[#found + 1] = { start = start, word = word, stop = stop }
-    end
-    local out, pos, k = {}, 1, 1
-    while k <= #found do
-        local run = { found[k].word }
-        for j = k + 1, #found do
-            if not rest:sub(found[j - 1].stop, found[j].start - 1):match("^%s+$") then
-                break
-            end
-            run[#run + 1] = found[j].word
-        end
-        local file, n = Parser.ClassAt(run, 1)
-        n = file and n or 1
-        out[#out + 1] = rest:sub(pos, found[k].start - 1)
-        out[#out + 1] = file and Parser.ClassName(file) or found[k].word
-        pos, k = found[k + n - 1].stop, k + n
+    local out, pos = {}, 1
+    for _, item in ipairs(Parser.ClassRuns(rest, "[^%s,]+")) do
+        out[#out + 1] = rest:sub(pos, item.start - 1)
+        out[#out + 1] = (item.class and item.sure) and Parser.ClassName(item.class) or item.text
+        pos = item.stop
     end
     out[#out + 1] = rest:sub(pos)
     return label .. table.concat(out)

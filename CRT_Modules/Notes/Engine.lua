@@ -90,35 +90,24 @@ local function readable(v)
     return true
 end
 
--- Your class as tag words: the class file name and the class's own name, lower-cased with every space
--- removed, so "Death Knight" (what the editor writes), "DEATHKNIGHT", "deathknight" all match (and
--- "chevalier de la mort" in French). The other spellings are Parse.lua's class words, which IsMine reads.
--- Only IsMine reads these: a class word is common in ordinary sentences, so it never marks free text as yours.
-local myClasses, classesAt
-local function classTokens()
-    if myClasses and classesAt and GetTime() - classesAt < TOKEN_SECONDS then
-        return myClasses
+-- Your class file ("DEATHKNIGHT"). Which words name it ("Death Knight", "DEATHKNIGHT", the client's own name)
+-- is Parse.lua's class words, the one table of them.
+-- Only IsMine and assignment lines read it: a class word is common in ordinary sentences, so it never marks
+-- other free text as yours.
+local myClass, classAt
+local function myClassFile()
+    if classAt and GetTime() - classAt < TOKEN_SECONDS then
+        return myClass
     end
-    local t = {}
+    local file
     if UnitClass then
-        local ok, localized, file = pcall(UnitClass, "player")
-        if ok then
-            for _, v in ipairs({ { localized }, { file } }) do
-                v = v[1]
-                if readable(v) and type(v) == "string" then
-                    local joined = v:gsub("%s+", "")
-                    for _, lower in ipairs({ string.lower, strlower or string.lower }) do
-                        local word = lower(joined)
-                        if word ~= "" then
-                            t[word] = true
-                        end
-                    end
-                end
-            end
+        local ok, _, f = pcall(UnitClass, "player")
+        if ok and readable(f) and type(f) == "string" and f ~= "" then
+            file = f
         end
     end
-    myClasses, classesAt = t, GetTime()
-    return t
+    myClass, classAt = file, GetTime()
+    return file
 end
 
 -- Your raid group number. In a party or solo you count as group 1.
@@ -149,55 +138,24 @@ local function groupTag(word, nextWord)
     return nil
 end
 
--- A class's tag words (its file name and its own name, lower-cased, spaces removed) added to t.
-local function addClassWords(t, file)
-    local names = LOCALIZED_CLASS_NAMES_MALE
-    for _, v in ipairs({ { file }, { names and names[file] } }) do
-        v = v[1]
-        if readable(v) and type(v) == "string" then
-            local word = v:gsub("%s+", ""):lower()
-            if word ~= "" then
-                t[word] = true
-            end
-        end
-    end
-end
-
 -- Preview as (a rehearsal): the words that match another player, their name and, when CRT.AlertRoster
 -- knows it, their class. Their role, spec and group can't be known, so those tags never match them.
 -- Kept for a few seconds per name, as your own are, since the windows ask for every line.
 local preview = {}
 local function previewTokens(name)
     if preview.name == name and preview.at and GetTime() - preview.at < TOKEN_SECONDS then
-        return preview.t, preview.classes
+        return preview.t, preview.class
     end
     local t = { all = true, everyone = true, raid = true }
     local short = name:lower():gsub("%-.*$", "")
     t[short] = true
-    local classes = {}
     local Roster = CRT.AlertRoster
-    local class = Roster and Roster.ClassOf and Roster:ClassOf(name)
-    if class then
-        addClassWords(classes, class)
+    local class = Roster and Roster.ClassOf and Roster:ClassOf(name) or nil
+    if not (readable(class) and type(class) == "string") then
+        class = nil
     end
-    preview.name, preview.at, preview.t, preview.classes = name, GetTime(), t, classes
-    return t, classes
-end
-
--- Whether the tags from i on start with your class's name in this client's language (in classes, its words
--- joined), which the class words may not know: "Chevalier de la mort" as one word or four.
-local function ownClassName(tags, i, word, classes)
-    if classes[word] then
-        return true
-    end
-    local joined = word
-    for j = i + 1, #tags do
-        joined = joined .. tags[j]:lower()
-        if classes[joined] then
-            return true
-        end
-    end
-    return false
+    preview.name, preview.at, preview.t, preview.class = name, GetTime(), t, class
+    return t, class
 end
 
 -- Whether a timer is for you: your name, your role, your class, everyone, or your raid group. A name in
@@ -211,29 +169,27 @@ function Engine:IsMine(item)
     if as == "*" then
         return #tags > 0
     end
-    local mine, classes
+    local mine, myFile
     if as then
-        mine, classes = previewTokens(as)
+        mine, myFile = previewTokens(as)
     else
-        mine, classes = tokens(), classTokens()
+        mine, myFile = tokens(), myClassFile()
     end
     local subgroup
-    local classAt = CRT.NoteParser.ClassAt
+    local classAtWord = CRT.NoteParser.ClassAt
     local i = 1
     while i <= #tags do
         local word = tags[i]:lower():gsub("%-.*$", "")
         if mine[word] then
             return true
         end
-        local class, n = classAt(tags, i)
+        local class, n = classAtWord(tags, i)
         local number, used = groupTag(word, tags[i + 1])
         if class then
-            if classes[class:lower()] then
+            if class == myFile then
                 return true
             end
             i = i + n -- the whole class name: its last word is not read again as a class of its own
-        elseif ownClassName(tags, i, word, classes) then
-            return true
         elseif number then
             -- another player's group can't be known, so a group tag never matches them
             if not as then
@@ -267,6 +223,25 @@ function Engine:WordIsMe(word)
     return tokens()[w] and true or false
 end
 
+-- Whether an assignment line ("Orb Soak 1: Demon Hunter Warlock", a label Parse.lua's LooksLikeLabel takes)
+-- names your class, as your name or role would (Alex, 2026-10-21). Its names are cut as Parse.lua's ClassRuns
+-- cuts them, and only a surely named class counts, so "Demon Hunter" is never a Hunter's and "Note: the hunter
+-- kites" is no one's. A sentence (any other line) is never yours by class.
+function Engine:ClassLineIsMine(line)
+    local Parser = CRT.NoteParser
+    local label, rest = line:match("^([^:]+):(.*)$")
+    local file = label and Parser.LooksLikeLabel(label) and myClassFile()
+    if not file then
+        return false
+    end
+    for _, item in ipairs(Parser.ClassRuns(rest, "[^%s,]+")) do
+        if item.class == file and item.sure then
+            return true
+        end
+    end
+    return false
+end
+
 function Engine:Note()
     return note
 end
@@ -279,7 +254,7 @@ function Engine:Start(parsedNote, reason)
     end
     note = parsedNote
     self.reason = reason
-    myTokens, myClasses = nil, nil
+    myTokens, classAt = nil, nil
     if Alerts.starting then
         noteRunId = Alerts.runId
     else

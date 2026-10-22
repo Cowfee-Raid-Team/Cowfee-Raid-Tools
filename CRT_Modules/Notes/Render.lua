@@ -144,9 +144,9 @@ local function nameOf(word, ctx)
     return { text = word, class = ctx.classOf and ctx.classOf(word) or nil, me = ctx.me ~= nil and base == ctx.me }
 end
 
--- A class name in an assignment (a label's names, a timer's tags) as one part in its class colour, a name of
--- several words as one ("Demon Hunter", Parse.lua's class words). A player of that name keeps the player's colour.
--- Returns the part and how many words it takes, or nil.
+-- A timer's tag that is a class name as one part in its class colour, a name of several words as one ("Demon
+-- Hunter", Parse.lua's class words). Every tag is a name, so any spelling is the class; a player of that name
+-- keeps the player's colour. Returns the part and how many tags it takes, or nil.
 local function classPart(words, i, ctx)
     local file, n = CRT.NoteParser.ClassAt(words, i)
     if not file or (n == 1 and ctx.classOf and ctx.classOf(words[i])) then
@@ -155,41 +155,33 @@ local function classPart(words, i, ctx)
     return { text = table.concat(words, " ", i, i + n - 1), class = file, me = false }, n
 end
 
+local WORD = "[%w\128-\255][%w\128-\255%-']*"
+
 -- A line of text as parts: each word a name (class and you), the spaces and commas between them as written.
--- classes: class names count too (an assignment's names).
+-- classes: class names count too (an assignment's names), cut as Parse.lua's ClassRuns cuts them, and only a
+-- sure one ("Hunter", "DEMONHUNTER", "demon hunter"), so "kill the hunter pet" stays as written.
 local function parts(s, ctx, out, classes)
     out = out or {}
-    local found = {}
-    for start, word, stop in s:gmatch("()([%w\128-\255][%w\128-\255%-']*)()") do
-        found[#found + 1] = { start = start, word = word, stop = stop }
+    local items = {}
+    if classes then
+        items = CRT.NoteParser.ClassRuns(s, WORD)
+    else
+        for start, word, stop in s:gmatch("()(" .. WORD .. ")()") do
+            items[#items + 1] = { start = start, stop = stop, text = word }
+        end
     end
-    local pos, k = 1, 1
-    while k <= #found do
-        local f = found[k]
-        if f.start > pos then
-            out[#out + 1] = { text = s:sub(pos, f.start - 1) }
+    local pos = 1
+    for _, item in ipairs(items) do
+        if item.start > pos then
+            out[#out + 1] = { text = s:sub(pos, item.start - 1) }
         end
-        local part, n
-        if classes then
-            -- the words from k with only spaces between them
-            local run = { f.word }
-            for j = k + 1, #found do
-                if not s:sub(found[j - 1].stop, found[j].start - 1):match("^%s+$") then
-                    break
-                end
-                run[#run + 1] = found[j].word
-            end
-            part, n = classPart(run, 1, ctx)
-        end
-        if part then
-            local last = found[k + n - 1]
-            part.text = s:sub(f.start, last.stop - 1) -- the spaces as written
-            out[#out + 1] = part
-            pos, k = last.stop, k + n
+        local player = not item.text:find(" ", 1, true) and ctx.classOf and ctx.classOf(item.text)
+        if item.class and item.sure and not player then
+            out[#out + 1] = { text = item.text, class = item.class, me = false } -- the spaces as written
         else
-            out[#out + 1] = nameOf(f.word, ctx)
-            pos, k = f.stop, k + 1
+            out[#out + 1] = nameOf(item.text, ctx)
         end
+        pos = item.stop
     end
     if pos <= #s then
         out[#out + 1] = { text = s:sub(pos) }

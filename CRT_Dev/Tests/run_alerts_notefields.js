@@ -38,6 +38,11 @@ function UnitIsUnit() return false end
 function GetDifficultyInfo(id) return ({ [16] = "Mythic" })[id] end
 local classLocal, classFile = "Druid", "DRUID"
 function UnitClass(u) if u == "player" then return classLocal, classFile, 11 end end
+-- the client's class names, as the game lists them for its language (the class words read them)
+local function setClass(localized, file)
+  classLocal, classFile = localized, file
+  LOCALIZED_CLASS_NAMES_MALE = { [file] = localized }
+end
 C_Spell = { GetSpellInfo = function(id) return { name = "Spell" .. id, iconID = 100000 + id } end }
 SOUNDKIT = { RAID_WARNING = 8959, READY_CHECK = 8960 }
 C_TTSSettings = { GetVoiceOptionID = function() return 1 end }
@@ -331,7 +336,7 @@ check("note lines: line numbers kept", function()
 end)
 
 check("tags: class matches timed lines only", function()
-  classLocal, classFile = "Druid", "DRUID"
+  setClass("Druid", "DRUID")
   clock = clock + 10
   assert(E:IsMine({ tags = { "Druid" } }), "Druid")
   assert(E:IsMine({ tags = { "druid" } }), "druid")
@@ -341,7 +346,7 @@ check("tags: class matches timed lines only", function()
   assert(E:WordIsMe("Druid") == false and E:WordIsMe("druid") == false, "class word never marks free text")
   assert(E:WordIsMe("Cheoeqar") == true and E:WordIsMe("ranged") == true, "free text still knows name and role")
   -- A localized name that differs from the class file still works.
-  classLocal, classFile = "Druide", "DRUID"
+  setClass("Druide", "DRUID")
   clock = clock + 10
   assert(E:IsMine({ tags = { "Druide" } }) and E:IsMine({ tags = { "druid" } }), "localized and file name")
   -- No UnitClass: no class words, no error.
@@ -351,7 +356,7 @@ check("tags: class matches timed lines only", function()
   assert(not E:IsMine({ tags = { "Druid" } }), "no class without UnitClass")
   UnitClass = saved
   -- A secret class name is not used.
-  classLocal, classFile = SECRET, "DRUID"
+  setClass(SECRET, "DRUID")
   CRT.Timeline = { readable = function(v) return not issecretvalue(v) end }
   clock = clock + 10
   assert(E:IsMine({ tags = { "druid" } }), "class file still used")
@@ -359,7 +364,7 @@ check("tags: class matches timed lines only", function()
 end)
 
 check("tags: two-word class name", function()
-  classLocal, classFile = "Death Knight", "DEATHKNIGHT"
+  setClass("Death Knight", "DEATHKNIGHT")
   clock = clock + 10
   assert(E:IsMine({ tags = { "Death", "Knight" } }), "Death Knight")
   assert(E:IsMine({ tags = { "deathknight" } }), "deathknight")
@@ -369,7 +374,7 @@ check("tags: two-word class name", function()
   assert(not E:IsMine({ tags = { "Demon", "Hunter" } }), "another two-word class")
   assert(E:WordIsMe("death") == false and E:WordIsMe("knight") == false and E:WordIsMe("deathknight") == false, "free text")
   -- A localized name of any number of words.
-  classLocal, classFile = "Chevalier de la mort", "DEATHKNIGHT"
+  setClass("Chevalier de la mort", "DEATHKNIGHT")
   clock = clock + 10
   assert(E:IsMine({ tags = { "chevalierdelamort" } }), "joined localized name")
   assert(E:IsMine({ tags = { "Chevalier", "de", "la", "mort" } }), "four-word tag")
@@ -383,7 +388,7 @@ check("tags: two-word class name", function()
 end)
 
 check("tags: Demon Hunter is one class, never Hunter", function()
-  classLocal, classFile = "Demon Hunter", "DEMONHUNTER"
+  setClass("Demon Hunter", "DEMONHUNTER")
   clock = clock + 10
   for _, tags in ipairs({ { "Demon", "Hunter" }, { "DemonHunter" }, { "DEMONHUNTER" }, { "demonhunter" }, { "Rixxy", "demon", "HUNTER" } }) do
     assert(E:IsMine({ tags = tags }), "a Demon Hunter: " .. table.concat(tags, " "))
@@ -391,11 +396,11 @@ check("tags: Demon Hunter is one class, never Hunter", function()
   assert(not E:IsMine({ tags = { "Hunter" } }) and not E:IsMine({ tags = { "Demon" } }), "half the name is not a Demon Hunter")
   assert(E:IsMine(P.Parse("time:5;ph:1;tag:Demon Hunter Warlock;text:Orb;").timers[1]), "parsed")
   -- a localized client still reads the English and one-word spellings
-  classLocal, classFile = "Chasseur de demons", "DEMONHUNTER"
+  setClass("Chasseur de demons", "DEMONHUNTER")
   clock = clock + 10
   assert(E:IsMine({ tags = { "Demon", "Hunter" } }) and E:IsMine({ tags = { "DEMONHUNTER" } }), "English words on another client")
   assert(E:IsMine({ tags = { "Chasseur", "de", "demons" } }), "the client's own name")
-  classLocal, classFile = "Hunter", "HUNTER"
+  setClass("Hunter", "HUNTER")
   clock = clock + 10
   assert(not E:IsMine({ tags = { "Demon", "Hunter" } }), "a Hunter is not a Demon Hunter")
   assert(not E:IsMine({ tags = { "DEMONHUNTER" } }) and not E:IsMine({ tags = { "Death", "Knight" } }), "nor any other class")

@@ -44,12 +44,15 @@ local NOTE = table.concat({
   "time:35;tag:Demon Hunter;text:Orb;",
   "time:40;tag:Hunter;text:Trap;",
   "time:45;tag:Death Knight Priest;text:Grip;",
+  "time:50;tag:Deathknight;text:Kick;",
   "Orb Soak 1: Demon Hunter Warlock Priest Monk",
   "Orb Soak 2: Shaman Monk Druid Rogue",
   "Orb Soak 3: Mage Warlock Death Knight Warrior",
   "Orb Soak 4: Hunter",
   "Old: DEMONHUNTER, DeathKnight PRIEST",
   "Phase 2: the DEMONHUNTER kites",
+  "Kicks: Deathknight, Abu",
+  "Note: the hunter kites",
   "invitelist:Abu,Cheo;",
 }, "\\n")
 
@@ -64,6 +67,16 @@ check("class words: one table, every spelling", function()
   file, n = P.ClassAt({ "Demon", "Hunter", "Warlock" }, 2)
   assert(file == "HUNTER" and n == 1, "from the second word it is Hunter")
   assert(P.ClassAt({ "Abu" }, 1) == nil, "a name is no class")
+  -- sure only when it reads as a class name: several words, the capitals of a class file, or the name as written
+  local function strong(words) return select(3, P.ClassAt(words, 1)) end
+  assert(P.ClassAt({ "Deathknight" }, 1) == "DEATHKNIGHT" and not strong({ "Deathknight" }), "a name like a player's is not sure")
+  assert(not strong({ "hunter" }) and not strong({ "demonhunter" }), "lower case alone is not sure")
+  assert(strong({ "DEATHKNIGHT" }) and strong({ "Hunter" }) and strong({ "death", "knight" }) and strong({ "Demon", "Hunter" }), "sure ones")
+  local runs = P.ClassRuns("Demon Hunter, Death   Knight Abu\tHunter Demon\tHunter", "[^%s,]+")
+  local got = {}
+  for i, r in ipairs(runs) do got[i] = r.text .. "=" .. tostring(r.class) end
+  assert(table.concat(got, "/") == "Demon Hunter=DEMONHUNTER/Death   Knight=DEATHKNIGHT/Abu=nil/Hunter=HUNTER/Demon=nil/Hunter=HUNTER", table.concat(got, "/"))
+  assert(runs[2].start == 15 and runs[2].stop == 29, "where each is: " .. runs[2].start .. " " .. runs[2].stop)
   assert(table.concat(P.JoinClassWords({ "Demon", "Hunter", "Abu", "Death", "Knight" }), "/") == "Demon Hunter/Abu/Death Knight", "joined")
 end)
 
@@ -75,12 +88,15 @@ check("NSRT: classes as class IDs in tags, as English names in assignments", fun
     "time:35;tag:12;text:Orb;",
     "time:40;tag:3;text:Trap;",
     "time:45;tag:6 5;text:Grip;",
+    "time:50;tag:Deathknight;text:Kick;",
     "Orb Soak 1: Demon Hunter Warlock Priest Monk",
     "Orb Soak 2: Shaman Monk Druid Rogue",
     "Orb Soak 3: Mage Warlock Death Knight Warrior",
     "Orb Soak 4: Hunter",
-    "Old: Demon Hunter, Death Knight Priest",
+    "Old: Demon Hunter, DeathKnight Priest",
     "Phase 2: the DEMONHUNTER kites",
+    "Kicks: Deathknight, Abu",
+    "Note: the hunter kites",
   }, "\\n"))
 end)
 
@@ -91,12 +107,15 @@ check("MRT: a two-word class is one class block", function()
     "{c:Demon Hunter}{time:0:35} - Orb{/c}",
     "{c:Hunter}{time:0:40} - Trap{/c}",
     "{c:Death Knight,Priest}{time:0:45} - Grip{/c}",
+    "{time:0:50} Deathknight - Kick",
     "Orb Soak 1: Demon Hunter Warlock Priest Monk",
     "Orb Soak 2: Shaman Monk Druid Rogue",
     "Orb Soak 3: Mage Warlock Death Knight Warrior",
     "Orb Soak 4: Hunter",
     "Old: DEMONHUNTER, DeathKnight PRIEST",
     "Phase 2: the DEMONHUNTER kites",
+    "Kicks: Deathknight, Abu",
+    "Note: the hunter kites",
   }, "\\n"))
 end)
 

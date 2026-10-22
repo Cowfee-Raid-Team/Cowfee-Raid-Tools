@@ -378,6 +378,9 @@ do
   assert(not m:Move(2, 3, 4) and not m:Add(4, "Demon Hunter") and not m:Add(4, "DemonHunter", "player"), "never in the invite list")
   assert(m:LineText(4) == "invitelist:Abu;", m:LineText(4))
   assert(not m:Add(1, "Demon Hunters") and not m:Add(1, "Abu Cheo"), "only a class name may hold a space")
+  assert(not m:Add(1, "Death\\tKnight") and not m:Add(1, " Death Knight") and not m:Add(1, "Death Knight "), "only spaces, inside it")
+  local tab = Model.New("Soak: Demon\\tHunter")
+  assert(table.concat(tab:Names(1), "/") == "Demon/Hunter", "a tab keeps two words apart")
   for _, w in ipairs({ "Demon Hunter", "DemonHunter", "DEMONHUNTER", "demon hunter", "Death Knight", "DeathKnight", "Hunter", "PRIEST" }) do
     assert(Model.NotPlayer(w), w .. " is not a player")
   end

@@ -202,6 +202,11 @@ do
   local t = find(rows, "timer")
   assert(#t.names == 2 and t.names[1].text == "Demon Hunter" and t.names[1].class == "DEMONHUNTER" and t.names[2].text == "Abu", "a tag's two words are one name")
   assert(Render.Markup(t):find("|cffa330c9Demon Hunter|r, |cff3fc7ebAbu|r", 1, true), Render.Markup(t))
+  -- a lower-case class word in a sentence stays plain; a tag is a whole name, so any spelling there is the class
+  local plain = Render.Rows("Note: kill the hunter pet\\nSoak: demon hunter, Deathknight\\ntime:5;tag:hunter;text:Trap;", ctx())
+  assert(classed(find(plain, "label", 1)) == "", "a sentence: " .. classed(find(plain, "label", 1)))
+  assert(classed(find(plain, "label", 2)) == "demon hunter=DEMONHUNTER", "two words are sure, a name like a player's is not: " .. classed(find(plain, "label", 2)))
+  assert(find(plain, "timer").names[1].class == "HUNTER", "a tag's hunter")
   -- a player whose name is a class word keeps the player's colour
   local mine = Render.Rows("Soak: Hunter", ctx({ classOf = function(n) return n == "Hunter" and "ROGUE" or nil end }))
   assert(classed(mine[1]) == "Hunter=ROGUE", classed(mine[1]))

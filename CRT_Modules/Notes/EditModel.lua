@@ -107,48 +107,21 @@ Model.NotPlayer = notPlayer
 
 -- Label fields -----------------------------------------------------------------------------------------------
 
--- A label line's words with each class name of several words, spaces only between them, made one item, its
--- spaces as written: "Demon Hunter" is one name, "Demon, Hunter" two.
-local function joinClasses(items)
-    local out, k = {}, 1
-    while k <= #items do
-        local run = { items[k].word }
-        for j = k + 1, #items do
-            if not items[j].sep:match("^%s+$") then
-                break
-            end
-            run[#run + 1] = items[j].word
-        end
-        local _, n = Parser.ClassAt(run, 1)
-        local item = items[k]
-        if n and n > 1 then
-            local parts = { item.word }
-            for j = k + 1, k + n - 1 do
-                parts[#parts + 1] = items[j].sep .. items[j].word
-            end
-            item = { word = table.concat(parts), sep = item.sep }
-        end
-        out[#out + 1] = item
-        k = k + (n and n > 1 and n or 1)
-    end
-    return out
-end
-
 -- The names of a label line: before .. lead .. names (each after its separator) .. trail.
 local function labelField(line)
     local colon = line:find(":", 1, true)
     local value = line:sub(colon + 1)
     local f = { kind = "label", before = line:sub(1, colon), items = {}, lead = "", trail = "" }
     local pos = 1
-    for start, word, stop in value:gmatch("()(" .. LABEL_WORD .. ")()") do
-        local sep = value:sub(pos, start - 1)
+    -- a class name of several words with spaces between them is one name ("Demon Hunter"), as Parse.lua cuts it
+    for _, item in ipairs(Parser.ClassRuns(value, LABEL_WORD)) do
+        local sep = value:sub(pos, item.start - 1)
         if #f.items == 0 then
             f.lead = sep
         end
-        f.items[#f.items + 1] = { word = word, sep = #f.items == 0 and "" or sep }
-        pos = stop
+        f.items[#f.items + 1] = { word = item.text, sep = #f.items == 0 and "" or sep }
+        pos = item.stop
     end
-    f.items = joinClasses(f.items)
     if #f.items == 0 then
         f.lead = value -- the spaces where the names go
     else
@@ -393,7 +366,9 @@ local function validToken(token)
     if token:match("^[^%s;:,|]+$") then
         return true
     end
-    return token:match("^[^%s;:,|][^;:,|\r\n]*[^%s;:,|]$") ~= nil and Parser.ClassOf(token) ~= nil
+    -- spaces only, inside it: never a tab or a space at either end
+    return not token:find("^ ") and not token:find(" $") and token:gsub(" +", ""):match("^[^%s;:,|]+$") ~= nil
+        and Parser.ClassOf(token) ~= nil
 end
 Model.ValidToken = validToken
 

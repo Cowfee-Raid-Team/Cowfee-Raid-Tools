@@ -96,7 +96,9 @@ end
 -- alerts (Engine.lua), the rendered note (Render.lua) and the integrations (Integrations/*.lua):
 --   Parser.ClassName(file)        the name a note writes for a class: "Demon Hunter", with its space
 --   Parser.ClassOf(text)          the class file a class name names in any spelling, or nil
---   Parser.ClassAt(words, i)      the class the words from i on start with, and how many words it takes
+--   Parser.ClassAt(words, i)      the class the words from i on start with, how many words it takes, and
+--                                 whether it surely is one (see sure)
+--   Parser.ClassRuns(s, pattern)  the words of a line with each class name of several words made one item
 --   Parser.JoinClassWords(words)  the words with each class name of several words made one, "Demon Hunter"
 -- A spelling is matched in any case and with its spaces left out, so "Demon Hunter", "DemonHunter" and
 -- "DEMONHUNTER" (the class file, which the editor used to write) are all the Demon Hunter. A note is shared
@@ -117,19 +119,19 @@ local function spellingKey(s)
     return (s:gsub("%s+", ""):lower())
 end
 
-local classWords -- { byKey = spelling -> file, names = file -> name, most = the most words in a name }
+-- { byKey = spelling -> file, written = a class name as written (any case kept) -> true, names = file -> name,
+-- most = the most words in a name }
+local classWords
 
 local function buildClassWords()
-    local w = { byKey = {}, names = {}, most = 1 }
+    local w = { byKey = {}, written = {}, names = {}, most = 1 }
     local function add(file, spelling)
         if readable(spelling) and type(spelling) == "string" and spelling ~= "" then
-            local n = select(2, spelling:gsub("%S+", ""))
-            w.most = math.max(w.most, n)
-            for _, lower in ipairs({ string.lower, strlower or string.lower }) do
-                local key = lower((spelling:gsub("%s+", "")))
-                if key ~= "" and w.byKey[key] == nil then
-                    w.byKey[key] = file
-                end
+            w.most = math.max(w.most, select(2, spelling:gsub("%S+", "")))
+            w.written[spelling] = true
+            local key = spellingKey(spelling)
+            if key ~= "" and w.byKey[key] == nil then
+                w.byKey[key] = file
             end
         end
     end
@@ -180,7 +182,15 @@ function Parser.ClassOf(text)
     return key ~= "" and classTable().byKey[key] or nil
 end
 
--- The longest run of words from i that names a class, so "Demon Hunter" is never read as Hunter.
+-- Whether one word that matches a class surely names it: in capitals as a class file is ("DEMONHUNTER"), or a
+-- class name exactly as written ("Hunter", the client's own name). "Deathknight" may be a player and "hunter" a
+-- word of a sentence, so they are matched but not sure. A class name of several words is always sure.
+local function sure(w, word)
+    return w.written[word] == true or (word:upper() == word and word:find("%u") ~= nil)
+end
+
+-- The longest run of words from i that names a class, so "Demon Hunter" is never read as Hunter. Returns the
+-- class file, how many words, and whether it surely is the class; nil when the words name none.
 function Parser.ClassAt(words, i)
     local w = classTable()
     local joined = ""
@@ -196,7 +206,38 @@ function Parser.ClassAt(words, i)
             best, bestN = file, n
         end
     end
-    return best, bestN
+    if not best then
+        return nil
+    end
+    return best, bestN, bestN > 1 or sure(w, words[i])
+end
+
+-- The words of s (each a match of pattern) as items { start, stop (one past its end), text (as written), class
+-- (the class file or nil), sure }, a class name of several words with only spaces between them made one item
+-- ("Demon Hunter"; "Demon, Hunter" and a tab keep two). The note editor, the rendered note and the integrations
+-- cut their lines with it.
+function Parser.ClassRuns(s, pattern)
+    local found = {}
+    for start, word, stop in s:gmatch("()(" .. pattern .. ")()") do
+        found[#found + 1] = { start = start, word = word, stop = stop }
+    end
+    local out, k = {}, 1
+    while k <= #found do
+        local run = { found[k].word }
+        for j = k + 1, #found do
+            if not s:sub(found[j - 1].stop, found[j].start - 1):match("^ +$") then
+                break
+            end
+            run[#run + 1] = found[j].word
+        end
+        local file, n, isSure = Parser.ClassAt(run, 1)
+        n = n or 1
+        local first, last = found[k], found[k + n - 1]
+        out[#out + 1] = { start = first.start, stop = last.stop, text = s:sub(first.start, last.stop - 1), class = file,
+            sure = isSure or false }
+        k = k + n
+    end
+    return out
 end
 
 function Parser.JoinClassWords(words)
