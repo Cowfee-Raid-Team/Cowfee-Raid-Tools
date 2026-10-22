@@ -269,13 +269,104 @@ function Journal.IsStage(info)
     return headsHeaders
 end
 
+-- Which page a boss has in the Journal, decided the way the Journal window decides it (Blizzard_EncounterJournal,
+-- EncounterJournal_DisplayInstance with EncounterJournal_SearchForOverview): an instance where any boss's root
+-- section is an Overview (headerType EJ_HTYPE_OVERVIEW) gets an Overview tab, and its pages have stages; one
+-- where none is (the raids before Warlords of Draenor) shows a single Abilities tab, its pages a plain tree of
+-- creatures, headers and spells. "overview" or "abilities"; nil when the boss's instance can't be listed (the
+-- bosses are listed by EJ_GetEncounterInfoByIndex, which needs the Journal to have selected an instance once).
+function Journal.Layout(journalEncounterID)
+    if not (journalEncounterID and EJ_GetEncounterInfo and EJ_GetEncounterInfoByIndex and C_EncounterJournal) then
+        return nil
+    end
+    local ok, name, _, _, _, _, journalInstanceID = pcall(EJ_GetEncounterInfo, journalEncounterID)
+    if not ok or not name then
+        return nil
+    end
+    local found, overview = false, false
+    for i = 1, 100 do
+        local okBoss, _, _, bossID, bossRoot
+        if journalInstanceID then
+            okBoss, _, _, bossID, bossRoot = pcall(EJ_GetEncounterInfoByIndex, i, journalInstanceID)
+        else
+            okBoss, _, _, bossID, bossRoot = pcall(EJ_GetEncounterInfoByIndex, i)
+        end
+        if not okBoss or not bossID then
+            break
+        end
+        found = found or bossID == journalEncounterID
+        local root = type(bossRoot) == "number" and bossRoot > 0 and getSection(bossRoot)
+        overview = overview or (root and root.headerType == HTYPE_OVERVIEW) or false
+    end
+    if not found then
+        return nil
+    end
+    return overview and "overview" or "abilities"
+end
+
+-- The rows of a boss with the Abilities page (Journal.Layout): every spell in Journal order, as the Journal walks
+-- its list (EncounterJournal_ToggleHeaders: sections hidden for the picked difficulty left out with what is under
+-- them, and headerType not looked at, since on these pages it is only the section's depth). A section with no
+-- spell that has sections under it is a header (a creature, "Grounded Abilities"), its title in the headers of the
+-- rows under it; one with nothing under it is an entry listed by its title alone. Within one header a spell is
+-- listed once, with its sections' icons merged.
+local function abilitiesRows(rootSectionID)
+    local rows, seen, visited = {}, {}, {}
+    local function walk(id, headers)
+        while id and id ~= 0 and not visited[id] do
+            visited[id] = true
+            local info = getSection(id)
+            if not info then
+                return
+            end
+            if not info.filteredByDifficulty then
+                local spellID = info.spellID
+                local hasSpell = type(spellID) == "number" and spellID > 0
+                local child = info.firstChildSectionID
+                local under = headers
+                if hasSpell or not (child and child ~= 0) then
+                    local key = table.concat(headers, "\n") .. "|" .. (hasSpell and spellID or ("#" .. tostring(info.title)))
+                    if seen[key] then
+                        mergeTags(seen[key], sectionTags(id))
+                    elseif hasSpell or (info.title or "") ~= "" then
+                        local okName, spellName
+                        if hasSpell then
+                            okName, spellName = pcall(C_Spell.GetSpellName, spellID)
+                        end
+                        rows[#rows + 1] = {
+                            spellID = hasSpell and spellID or nil,
+                            name = (okName and spellName) or info.title or "",
+                            icon = info.abilityIcon,
+                            tags = sectionTags(id),
+                            headers = headers,
+                        }
+                        seen[key] = rows[#rows]
+                    end
+                else
+                    under = {}
+                    for i, h in ipairs(headers) do
+                        under[i] = h
+                    end
+                    under[#under + 1] = info.title or ""
+                end
+                walk(child, under)
+            end
+            id = info.siblingSectionID
+        end
+    end
+    walk(rootSectionID, {})
+    return rows
+end
+
 -- A Journal encounter (its Journal ID, as the Journal window shows it): its name, dungeon encounter ID and
 -- ability rows in Journal order, each { spellID, name, icon, tags, stage } with stage the title of its
 -- nearest stage (Journal.IsStage, at any depth), and stages, those titles in order. An ability listed in two
 -- stages is in both; within one stage it is listed once, with its sections' icons merged. A stage header
 -- that has a spell of its own is an ability of that stage too. Sections the Journal leaves out for its picked
 -- difficulty (filteredByDifficulty) are left out with what is under them, and so is the Overview. Read
--- without changing the Journal's selection. Nil when unknown.
+-- without changing the Journal's selection. Nil when unknown. A boss with the older Abilities page
+-- (Journal.Layout) has no stages: its rows come from abilitiesRows, each with headers, the titles of the
+-- headers above it, and "abilities" is returned fifth.
 function Journal.FromJournalEncounter(journalEncounterID)
     if not (journalEncounterID and EJ_GetEncounterInfo and C_EncounterJournal) then
         return nil
@@ -283,6 +374,10 @@ function Journal.FromJournalEncounter(journalEncounterID)
     local ok, name, _, _, rootSectionID, _, _, dungeonEncounterID = pcall(EJ_GetEncounterInfo, journalEncounterID)
     if not ok or not name then
         return nil
+    end
+    if Journal.Layout(journalEncounterID) == "abilities" then
+        local rows = (rootSectionID and rootSectionID > 0) and abilitiesRows(rootSectionID) or {}
+        return name, dungeonEncounterID, rows, {}, "abilities"
     end
     local rows, stages, seen, visited = {}, {}, {}, {}
     local function walk(id, stage)

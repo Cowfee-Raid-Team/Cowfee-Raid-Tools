@@ -1,7 +1,9 @@
 // CRT_Modules/Timeline/Journal.lua's reading of a boss's Journal sections, on a stub Journal shaped like Nek'zali's: an
 // Overview (role summaries that repeat abilities) first, then the stages. The Overview is left out, a spell
 // listed twice keeps one row with both icons, and the stages are listed in order. Also the export's Phase
-// lines from those stages (CRT_Modules/Timeline/JournalExport.lua).
+// lines from those stages (CRT_Modules/Timeline/JournalExport.lua), pinned byte for byte. Then the older raids'
+// Abilities page (Journal.Layout, from the Journal's boss list): Magmaw-shaped and Theralion and Valiona-shaped
+// trees export every spell with "#" header lines.
 // Usage: node run_journal_walk.js <addon folder>
 const fs = require('fs');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
@@ -82,6 +84,95 @@ check("an ability is only listed once within its stage", #nrows == 6)
 check("Journal.IsStage: by title, any numbering and case", J.IsStage({ title = "2. phase two" }) and J.IsStage({ title = "INTERMISSION" }) and not J.IsStage({ title = "Echo of Jawae", spellID = 0, firstChildSectionID = 122 }) and not J.IsStage({ title = "Overview", headerType = 3 }))
 local ntext = CRT.TimelineJournalExport.Build(2800, 16)
 check("the export: the intermission's block, then Phase Two's with its Essence Rend", ntext:find("\nPhase: P1.5 (Intermission: Ritual of Awakening)\nSoul Transfer", 1, true) and ntext:find("\nPhase: P2 (Phase Two: Uncoiling)\nUncoiling [spell 800]:\nEssence Rend [spell 500] (tags healer):", 1, true))
+
+-- A current raid's boss export, pinned byte for byte: the old raids' layout must never change it.
+local function exact(label, got, want)
+  check(label, got == want)
+  if got ~= want then print(string.format("  got  %q", tostring(got))) print(string.format("  want %q", tostring(want))) end
+end
+local HELP = "# From the Encounter Journal. Add each ability's times after its colon, as m:ss or seconds: 0:02, 1:17\n"
+  .. "# A Phase line with no time yet is the stage's start to fill in: Phase: P1.5 3:17 (Intermission: ...)\n"
+local PIN_2700 = "Boss: Nek'zali the Soulcoiler\nDifficulty: Mythic\nEncounter: 3470\n" .. HELP
+  .. "# Stage One: Soulcoiler Initiation\nSoulcoil Rite [spell 400] (tags healer):\nEssence Rend [spell 500] (type dispel, tags magic healer):\n"
+  .. "Phase: P1.5 (Intermission: Ritual of Awakening)\nRitual Burn [spell 600] (type mythic, tags mythic):\n"
+  .. "Phase: P2 (Stage Two: Awakened)\nSoul Transfer [spell 700] (tags tank):"
+local PIN_2800 = "Boss: Nested Boss\nDifficulty: Mythic\nEncounter: 3480\n" .. HELP
+  .. "# Stage One: Soulcoiler Initiation\nEssence Rend [spell 500] (type dispel, tags magic):\nSoulcoil Rite [spell 400]:\n"
+  .. "Phase: P1.5 (Intermission: Ritual of Awakening)\nSoul Transfer [spell 700]:\nHungering Pyre [spell 710]:\n"
+  .. "Phase: P2 (Phase Two: Uncoiling)\nUncoiling [spell 800]:\nEssence Rend [spell 500] (tags healer):"
+exact("a current raid's boss, the Journal's boss list unknown: the export as before", CRT.TimelineJournalExport.Build(2700, 16), PIN_2700)
+exact("a boss with stages a level down, boss list unknown: as before", CRT.TimelineJournalExport.Build(2800, 16), PIN_2800)
+check("no boss list: the layout is unknown", J.Layout(2700) == nil)
+
+-- The Journal's boss lists. Instance 1 is a current raid (a boss with an Overview root); 2 and 3 are older
+-- raids, every boss's page only an Abilities list. Their sections' headerType is their depth, so a spell three
+-- levels down has headerType 3, the Overview's number.
+local BOSSES = { [1] = { 2700, 2800 }, [2] = { 3000 }, [3] = { 3100, 3200 } }
+local INFO = {
+  [2700] = { "Nek'zali the Soulcoiler", 10, 1, 3470 }, [2800] = { "Nested Boss", 100, 1, 3480 },
+  [3000] = { "Magmaw", 300, 2, 1024 }, [3100] = { "Theralion and Valiona", 400, 3, 1032 }, [3200] = { "Halfus Wyrmbreaker", 500, 3, 1030 },
+}
+function EJ_GetEncounterInfo(id) local i = INFO[id] if i then return i[1], "", id, i[2], "", i[3], i[4] end end
+function EJ_GetEncounterInfoByIndex(index, instanceID)
+  local id = (BOSSES[instanceID or 1] or {})[index]
+  if id then local i = INFO[id] return i[1], "", id, i[2], "", i[3], i[4] end
+end
+-- Magmaw: abilities straight under the root, one with an ability of its own under it, an add's header, a
+-- heroic-only header left out, an entry with no spell, and an ability after the add's header
+sec(300, { title = "Magma Spit", spellID = 3001, headerType = 0, siblingSectionID = 301 })
+sec(301, { title = "Lava Spew", spellID = 3002, headerType = 0, siblingSectionID = 302 })   F[301] = { 5 }
+sec(302, { title = "Mangle", spellID = 3003, headerType = 0, firstChildSectionID = 320, siblingSectionID = 303 }) F[302] = { 0 }
+sec(320, { title = "Swelter", spellID = 3004, headerType = 1 })
+sec(303, { title = "Pillar of Flame", spellID = 0, headerType = 0, siblingSectionID = 304 })
+sec(304, { title = "Lava Parasite", spellID = 0, headerType = 0, firstChildSectionID = 340, siblingSectionID = 305 })
+sec(340, { title = "Parasitic Infection", spellID = 3005, headerType = 1 })
+sec(305, { title = "Blazing Bone Construct", spellID = 0, headerType = 0, filteredByDifficulty = true, firstChildSectionID = 350, siblingSectionID = 306 })
+sec(350, { title = "Armageddon", spellID = 3006, headerType = 1 })
+sec(306, { title = "Massive Crash", spellID = 3007, headerType = 0 })
+-- Theralion and Valiona: two creatures, each with Grounded and Airborne headers; a spell a level under another
+-- (headerType 3); a spell listed twice under one header; the same spell under both creatures
+sec(400, { title = "Theralion", spellID = 0, headerType = 0, firstChildSectionID = 410, siblingSectionID = 450 })
+sec(410, { title = "Grounded Abilities", spellID = 0, headerType = 1, firstChildSectionID = 411, siblingSectionID = 420 })
+sec(411, { title = "Engulfing Magic", spellID = 4001, headerType = 2, siblingSectionID = 412 }) F[411] = { 7 }
+sec(412, { title = "Engulfing Magic", spellID = 4001, headerType = 2 })                       F[412] = { 2 }
+sec(420, { title = "Airborne Abilities", spellID = 0, headerType = 1, firstChildSectionID = 421 })
+sec(421, { title = "Fabulous Flames", spellID = 4002, headerType = 2, siblingSectionID = 422 })
+sec(422, { title = "Deep Breath", spellID = 4003, headerType = 2, firstChildSectionID = 423 })
+sec(423, { title = "Twilight Flames", spellID = 4004, headerType = 3 })
+sec(450, { title = "Valiona", spellID = 0, headerType = 0, firstChildSectionID = 460 })
+sec(460, { title = "Grounded Abilities", spellID = 0, headerType = 1, firstChildSectionID = 461, siblingSectionID = 470 })
+sec(461, { title = "Blackout", spellID = 4005, headerType = 2, siblingSectionID = 462 })      F[461] = { 7 }
+sec(462, { title = "Devouring Flames", spellID = 4006, headerType = 2 })
+sec(470, { title = "Airborne Abilities", spellID = 0, headerType = 1, firstChildSectionID = 471 })
+sec(471, { title = "Twilight Meteorite", spellID = 4007, headerType = 2, siblingSectionID = 472 })
+sec(472, { title = "Deep Breath", spellID = 4003, headerType = 2 })
+sec(500, { title = "Shadow Nova", spellID = 5001, headerType = 0 })
+
+check("detection: a current raid's boss has the Overview layout", J.Layout(2700) == "overview")
+check("detection: a boss with no Overview of its own in a current raid still has it", J.Layout(2800) == "overview")
+check("detection: an older raid's bosses have the Abilities layout", J.Layout(3000) == "abilities" and J.Layout(3100) == "abilities" and J.Layout(3200) == "abilities")
+check("detection: a boss its instance's list doesn't hold is unknown", J.Layout(9999) == nil)
+exact("a current raid's boss with the boss list known: the export as before", CRT.TimelineJournalExport.Build(2700, 16), PIN_2700)
+exact("stages a level down with the boss list known: as before", CRT.TimelineJournalExport.Build(2800, 16), PIN_2800)
+
+exact("Magmaw: every ability in Journal order, the add under its header, the boss's name before what follows it",
+  CRT.TimelineJournalExport.Build(3000, 16),
+  "Boss: Magmaw\nDifficulty: Mythic\nEncounter: 1024\n" .. HELP
+  .. "Magma Spit [spell 3001]:\nLava Spew [spell 3002] (tags important):\nMangle [spell 3003] (tags tank):\nSwelter [spell 3004]:\n"
+  .. "Pillar of Flame:\n# Lava Parasite\nParasitic Infection [spell 3005]:\n# Magmaw\nMassive Crash [spell 3007]:")
+exact("Theralion and Valiona: each creature's headers as # lines, no Phase lines",
+  CRT.TimelineJournalExport.Build(3100, 16),
+  "Boss: Theralion and Valiona\nDifficulty: Mythic\nEncounter: 1032\n" .. HELP
+  .. "# Theralion\n# Grounded Abilities\nEngulfing Magic [spell 4001] (type dispel, tags magic healer):\n"
+  .. "# Airborne Abilities\nFabulous Flames [spell 4002]:\nDeep Breath [spell 4003]:\nTwilight Flames [spell 4004]:\n"
+  .. "# Valiona\n# Grounded Abilities\nBlackout [spell 4005] (type dispel, tags magic):\nDevouring Flames [spell 4006]:\n"
+  .. "# Airborne Abilities\nTwilight Meteorite [spell 4007]:\nDeep Breath [spell 4003]:")
+local _, _, orows, ostages = J.FromJournalEncounter(3100)
+check("an older raid's boss has no stages, and its rows no stage", #ostages == 0 and orows[1].stage == nil and #orows == 8)
+local oref, oerrs = CRT.TimelineReference.Parse(CRT.TimelineJournalExport.Build(3100, 16))
+check("its export reads as a reference at once: " .. table.concat(oerrs or {}, "; "), oref and #oref.rows == 8 and #(oref.pending or {}) == 0)
+local mref = CRT.TimelineReference.Parse(CRT.TimelineJournalExport.Build(3000, 16))
+check("Magmaw's export reads too, the entry with no spell a row by name", mref and #mref.rows == 7)
 print(fails == 0 and "all passed" or (fails .. " failed"))
 if fails > 0 then error(fails .. " failed", 0) end
 `;

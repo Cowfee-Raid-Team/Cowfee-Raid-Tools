@@ -50,10 +50,38 @@ function Export.Options(tags)
     return " (" .. table.concat(parts, ", ") .. ")"
 end
 
+-- An ability's line: "Name [spell N] (tags ...):"; an entry the Journal gives no spell is "Name (tags ...):".
+local function abilityLine(row)
+    return row.name .. (row.spellID and (" [spell " .. row.spellID .. "]") or "") .. Export.Options(row.tags) .. ":"
+end
+
+-- A boss with the older Abilities page (raids before Warlords of Draenor): its abilities in Journal order, with a
+-- "#" line for each header above them ("# Theralion", "# Grounded Abilities") as it starts. Back at a shallower
+-- level after a header's abilities, that level's header (the boss's name at the top) is repeated, so an ability
+-- is never read as under the header before it. No header becomes a Phase line.
+local function abilitiesLines(lines, rows, bossName)
+    local shown = {}
+    for _, row in ipairs(rows) do
+        local headers = row.headers or {}
+        local same = 0
+        while same < #headers and same < #shown and headers[same + 1] == shown[same + 1] do
+            same = same + 1
+        end
+        if same == #headers and #headers < #shown then
+            lines[#lines + 1] = "# " .. (headers[#headers] or bossName)
+        end
+        for i = same + 1, #headers do
+            lines[#lines + 1] = "# " .. headers[i]
+        end
+        shown = headers
+        lines[#lines + 1] = abilityLine(row)
+    end
+end
+
 -- The reference text for a Journal encounter at a difficulty ID; nil when the Journal can't say.
 function Export.Build(journalEncounterID, difficultyID)
     local Journal = CRT.TimelineJournal
-    local name, dungeonID, rows, stages = Journal.FromJournalEncounter(journalEncounterID)
+    local name, dungeonID, rows, stages, layout = Journal.FromJournalEncounter(journalEncounterID)
     if not name then
         return nil
     end
@@ -67,6 +95,10 @@ function Export.Build(journalEncounterID, difficultyID)
     end
     for _, help in ipairs(TEXT.help) do
         lines[#lines + 1] = help
+    end
+    if layout == "abilities" then
+        abilitiesLines(lines, rows, name)
+        return table.concat(lines, "\n"), name
     end
     -- each stage with abilities after the first gets a Phase line to fill in: P2, P3 for stages, P1.5 for an
     -- intermission (a stage the export lists no ability under, such as an empty header, isn't counted)
@@ -100,7 +132,7 @@ function Export.Build(journalEncounterID, difficultyID)
                 lines[#lines + 1] = "# " .. row.stage
             end
         end
-        lines[#lines + 1] = row.name .. " [spell " .. row.spellID .. "]" .. Export.Options(row.tags) .. ":"
+        lines[#lines + 1] = abilityLine(row)
     end
     return table.concat(lines, "\n"), name
 end
