@@ -1,5 +1,28 @@
 # Changelog
 
+## 1.1.2 beta 1 (2026-10-22)
+
+- **Menu:** the side menu is in four groups with headers: General, Raid Admin, Bosses and Modules.
+- **Help icons:** every (?) sits just right of what it explains, on every page.
+- **Tooltip position** (General Settings > Appearance): show CRT tooltips next to what you hover, or at the game's own tooltip spot.
+- **Profiles:** Export settings only, for sharing your setup with raiders: no notes, layouts or history, and nothing personal like chat output. Import shows what will change first, keeps a backup, and has Undo.
+- **Invites:** Invite missing on Raid Groups, and click a player who isn't here on the Late Tracker to invite them. Each player moves into their group when they join, after combat if needed.
+- **Loot Master:**
+  - Test boss kill holds test loot on the Tonight tab like a real kill; Start session gives it out.
+  - CRT Looting stays on through a /reload.
+  - The Boss loot list is kept for the whole raid, with each item's 2-hour trade time.
+  - Items outside the raid leader's loot filter get a normal roll.
+- **Mech Alerts:** alerts are saved for Normal/Heroic or Mythic. Old "Any" alerts now show in both.
+- **Raid Notes:**
+  - The note editor can pick its players from the group, the invite list or a Raid Groups layout.
+  - "Demon Hunter" and "Death Knight" are one class everywhere.
+  - An assignment line naming your class counts as yours.
+  - The note windows no longer show outside a raid by default.
+- **Markers:** marker macros on Raid Notes (make, update, drag to your bars), a freeform marker canvas, and marker displays for Sszorak and Nek'zali.
+- **Timeline:** Export Abilities works for raids older than Warlords of Draenor.
+- **Your own sounds** now play only from the CowfeeRaidTools_Media companion addon.
+- **Fixes:** the Raid Groups name picker opens in front, and the ready check consumables bar draws on top.
+
 ## 1.1.1 (2026-10-21)
 
 - **Gear Checker** (new page): every raider's gear, gems, enchants and upgrade tracks, with filters, issue tooltips and a right-click to send issues to chat. Pop it out into its own window.
