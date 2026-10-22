@@ -20,7 +20,7 @@ local L = { width = 620, height = 340, minWidth = 480, minHeight = 220, rowH = 4
 
 local TEXT = {
     title = "Boss loot",
-    help = "The boss items CRT rolled on for you, and in old raids with no rolls, the items the game gave you. Tick the ones to give out and press Start session; nothing starts by itself. Start waits while a ticked item is still rolling. A test session still running is ended first; if a loot session is running, these start when it ends. The Loot Master window opens either way. Items someone else won can't be ticked, and red means CRT couldn't roll on it. The list is kept for the whole raid, through a /reload or leaving the instance. An item you have stays until the game's 2 hours to trade it are over; chat warns 15 minutes before. Other rows leave 10 minutes after the kill.",
+    help = "The boss items CRT rolled on for you, and in old raids with no rolls, the items the game gave you. Tick the ones to give out and press Start session; nothing starts by itself. Start waits while a ticked item is still rolling. A test session still running is ended first; if a loot session is running, these start when it ends. The Loot Master window opens either way. Items someone else won can't be ticked, and red means CRT couldn't roll on it. The list is kept for the whole raid, through a /reload or leaving the instance. An item you have stays until the game's 2 hours to trade it are over; chat warns 15 minutes before. Other rows leave 10 minutes after the kill. TEST items come from Test boss kill on Loot Master > Tonight; they never go into a real session.",
     counts = "%d of %d items ticked · %d still rolling",
     session = " · a loot session is running",
     clear = "Clear",
@@ -35,6 +35,8 @@ local TEXT = {
     ilvl = "Item level %d",
     tradeHours = "%dh %02dm left to trade",
     tradeMinutes = "%dm left to trade",
+    test = "TEST",
+    testWon = "Yours · a test boss kill",
 }
 
 -- The loot filter's reasons, as the detail line says them (LM.PassesFilter's why).
@@ -70,7 +72,9 @@ end
 -- The state on the right of a row.
 function LM.BossLootStatus(r)
     local roll = LM.AutoPass.ROLL_NAME[r.rollType or 0] or ""
-    if r.status == "won" and r.received then
+    if r.status == "won" and r.test then
+        return UI.GoodText(TEXT.testWon)
+    elseif r.status == "won" and r.received then
         return UI.GoodText(TEXT.received)
     elseif r.status == "won" then
         return UI.GoodText(TEXT.won:format(roll))
@@ -84,14 +88,17 @@ function LM.BossLootStatus(r)
     return UI.ColorText(TEXT.rolling:format(roll), UI:IsModern() and "accent" or "heading")
 end
 
--- The detail under the link: slot and item level, or why the loot filter left it out.
-function LM.BossLootDetail(r)
+-- The detail under the link: slot and item level, or why the loot filter left it out. withBoss: the
+-- row's boss first (always for a TEST row, whose boss isn't the window's badge).
+function LM.BossLootDetail(r, withBoss)
+    local boss = (withBoss or r.test) and type(r.boss) == "string" and r.boss or nil
     if not r.pass then
-        return TEXT.notFilter:format(FILTER_WHY[r.why] or tostring(r.why or "?"))
+        local why = TEXT.notFilter:format(FILTER_WHY[r.why] or tostring(r.why or "?"))
+        return boss and (boss .. " · " .. why) or why
     end
     local ok, _, _, _, equipLoc = pcall(C_Item.GetItemInfoInstant, r.link)
     local slot = ok and type(equipLoc) == "string" and equipLoc ~= "" and _G[equipLoc] or nil
-    local parts = {}
+    local parts = { boss }
     if type(slot) == "string" then
         parts[#parts + 1] = slot
     end
@@ -107,7 +114,10 @@ function LM.BossLootDetail(r)
     return table.concat(parts, " · ")
 end
 
-local function initRow(row, r)
+-- Draws one Boss loot row on row (a Button): the checkbox, icon, link (with TEST in the warn colour for a
+-- test boss kill's row), detail and state. The window's list and Loot Master > Tonight's Held boss loot
+-- both use it; row.withBoss puts each row's boss in its detail (Tonight has no badge).
+function LM.BossLootRow(row, r)
     if not row.check then
         row.check = CreateFrame("CheckButton", nil, row, "UICheckButtonTemplate")
         row.check:SetSize(24, 24)
@@ -157,8 +167,14 @@ local function initRow(row, r)
     local okI, _, _, _, _, icon = pcall(C_Item.GetItemInfoInstant, r.link)
     row.icon:SetTexture(okI and icon or 134400)
     row.icon:SetDesaturated(not BL.Tickable(r))
-    row.name:SetText(r.link)
-    row.detail:SetText(LM.BossLootDetail(r))
+    local link = r.link
+    if r.test then
+        -- a sample's link made from its item string gets the item's name once the game has it
+        local okL, _, gameLink = pcall(C_Item.GetItemInfo, r.itemString)
+        link = ((okL and type(gameLink) == "string") and gameLink or link) .. "  " .. UI.WarnText(TEXT.test)
+    end
+    row.name:SetText(link)
+    row.detail:SetText(LM.BossLootDetail(r, row.withBoss))
     row.status:SetText(LM.BossLootStatus(r))
 end
 
@@ -223,7 +239,7 @@ local function build()
     bar:SetPoint("BOTTOMLEFT", box, "BOTTOMRIGHT", 6, 0)
     local v = CreateScrollBoxListLinearView()
     v:SetElementExtent(L.rowH)
-    v:SetElementInitializer("Button", initRow)
+    v:SetElementInitializer("Button", LM.BossLootRow)
     ScrollUtil.InitScrollBoxListWithScrollBar(box, bar, v)
     list = box
 end

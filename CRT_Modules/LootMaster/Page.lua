@@ -1,9 +1,9 @@
 local ADDON, CRT = ...
 
 -- The Loot Master page (/crt lootmaster), with four tabs:
---   Tonight       the running session (or none), and buttons to test, open the looter window, show your
---                 popup and end the session; CRT Looting's state, with the leader's Turn on / Turn off
---                 for everyone (LootMaster/Looting.lua)
+--   Tonight       the running session (or none), and buttons for a test boss kill, Start session, the
+--                 looter window, your popup and End session; Held boss loot (LootMaster/BossLoot.lua);
+--                 CRT Looting's state, with the leader's Turn on / Turn off for everyone (LootMaster/Looting.lua)
 --   Raider Score  every player's score from the Late Tracker's nights (LootMaster/Score.lua)
 --   Loot filter   which items open a loot session (LootMaster/FilterTab.lua, rules in Filter.lua)
 --   Settings      the response buttons raiders see (label, colour, weight, icon, order), how long they
@@ -30,6 +30,9 @@ local L = {
     -- Sync Master Loot, in the second column under the award message: "Sync to", the dropdown, a box
     syncTop = -306, syncLabel = 46, syncPick = 124,
     tooltipTop = -430, -- Item tooltip, under Sync Master Loot (which ends near -410)
+    -- Tonight: Held boss loot under the session buttons (at most heldRows rows, then "and N more"), then
+    -- the session's Items, whose last line ends near -470
+    heldTop = -96, heldRow = 36, heldRows = 4, heldW = 600, itemsTop = -292,
 }
 L.col3W = UI.PAGE_W - L.col3 - 8 -- the third column, to the page's right margin
 L.col2W = L.col3 - L.col2 - 12 -- the second column, with a gap before the third
@@ -42,11 +45,17 @@ local TEXT = {
     filter = "Loot filter",
     settings = "Settings",
     session = "Loot session",
-    sessionHelp = "The session you are running. Test sends sample items marked TEST to you and everyone with CRT; nothing is passed or traded.",
+    sessionHelp = "The session you are running. Test boss kill acts as one boss kill: it adds 2 to 4 sample items marked TEST to Held boss loot. Start session gives out the ticked items, as after a real kill. A session of TEST items is a test: everyone with CRT gets the popup, nothing is passed or saved to Loot History, and only you see the award message. End session also clears the TEST items. /crt loot test starts a test session at once.",
     none = "No loot session is running.",
     running = "%s%d items, %d of %d raiders with CRT, %d answers in",
     testTag = "TEST · ",
-    test = "Test", window = "Looter window", popup = "My popup", endSession = "End session",
+    testKill = "Test boss kill", start = "Start session (%d)", window = "Looter window", popup = "My popup", endSession = "End session",
+    held = "Held boss loot",
+    heldHelp = "The boss items waiting for your next loot session, real and TEST, as in the Boss loot window (/crt loot boss). Tick the ones to give out and press Start session. TEST items never go into a real session: with both kinds ticked, only the real ones start. TEST items go at End session, after a /reload, or 10 minutes after their test kill.",
+    heldNone = "No boss loot held.",
+    heldCount = "%d %s killed, %d %s held",
+    heldBoss = "boss", heldBosses = "bosses", heldItem = "item", heldItems = "items",
+    heldMore = "and %d more (/crt loot boss shows them all)",
     items = "Items",
     crtLooting = "CRT Looting",
     crtLootingHelp = "When CRT Looting is on, for 10 minutes after a boss kill your CRT passes your loot rolls (trash too) and the raid leader's CRT rolls Need, so the leader gets the items to give out. Only items in the raid leader's loot filter: anything else is a normal roll, and so is an item your CRT can't read yet. Only the raid leader turns it on or off, for everyone; CRT asks on the way into a raid instance. It starts off after a /reload and turns off when the leader enters another instance.\n\nYou roll yourself when a test session is running, you aren't in the leader's instance, the leader is off, changed, offline or quiet for 90 seconds, the leader's CRT is too old, you are in a finder group, or no boss was killed here in the last 10 minutes. Chat says each pass.",
@@ -205,17 +214,69 @@ local function buildTonight(f)
     status:SetPoint("TOPLEFT", L.col1, -34)
     status:SetWidth(400)
     status:SetJustifyH("LEFT")
-    local x = L.col1
+    -- the buttons in a row, each as wide as its label (Start session's count changes its width)
+    local start
+    local prev
     for _, spec in ipairs({
-        { TEXT.test, 70, function() LM:Test() end },
-        { TEXT.window, 120, function() LM:ShowWindow() end },
-        { TEXT.popup, 100, function() LM:ShowPopup() end },
-        { TEXT.endSession, 110, function() LM:End() end },
+        { TEXT.testKill, function() LM:TestBossKill() end },
+        { TEXT.start:format(0), function() LM.BossLoot:Start() end },
+        { TEXT.window, function() LM:ShowWindow() end },
+        { TEXT.popup, function() LM:ShowPopup() end },
+        { TEXT.endSession, function()
+            LM:End()
+            if not LM.current and LM.BossLoot then
+                LM.BossLoot:ClearTests() -- no TEST items started next: they go too
+            end
+        end },
     }) do
-        local b = makeButton(f, spec[1], spec[2])
-        b:SetPoint("TOPLEFT", x, -58)
-        b:SetScript("OnClick", spec[3])
-        x = x + spec[2] + 6
+        local b = UI.PanelButton(f, spec[1], 24, spec[2])
+        if prev then
+            b:SetPoint("LEFT", prev, "RIGHT", 6, 0)
+        else
+            b:SetPoint("TOPLEFT", L.col1, -58)
+        end
+        start = start or (spec[1] == TEXT.start:format(0) and b) or nil
+        prev = b
+    end
+    -- Held boss loot: the Boss loot list's rows (LM.BossLootRow), at most L.heldRows
+    local heldHead = heading(f, L.col1, L.heldTop, TEXT.held, TEXT.heldHelp)
+    local heldStatus = f:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    heldStatus:SetPoint("LEFT", heldHead, "RIGHT", 30, 0) -- after the (?) icon
+    local heldRows = {}
+    for i = 1, L.heldRows do
+        local row = CreateFrame("Button", nil, f)
+        row:SetSize(L.heldW, L.heldRow)
+        row:SetPoint("TOPLEFT", L.col1, L.heldTop - 22 - (i - 1) * L.heldRow)
+        row.withBoss = true
+        row:Hide()
+        heldRows[i] = row
+    end
+    local heldMore = f:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    heldMore:SetPoint("TOPLEFT", L.col1 + 4, L.heldTop - 22 - L.heldRows * L.heldRow - 2)
+    UI.Tint(heldMore, "SetTextColor", "muted")
+    refreshers[#refreshers + 1] = function()
+        local BL = LM.BossLoot
+        local rows = BL and BL:Rows() or {}
+        for i, row in ipairs(heldRows) do
+            if rows[i] and LM.BossLootRow then
+                LM.BossLootRow(row, rows[i])
+                row:Show()
+            else
+                row:Hide()
+            end
+        end
+        local more = #rows - L.heldRows
+        heldMore:SetText(more > 0 and TEXT.heldMore:format(more) or "")
+        local bosses, items = 0, 0
+        if BL then
+            bosses, items = BL:Held()
+        end
+        heldStatus:SetText(items == 0 and TEXT.heldNone
+            or TEXT.heldCount:format(bosses, bosses == 1 and TEXT.heldBoss or TEXT.heldBosses, items, items == 1 and TEXT.heldItem or TEXT.heldItems))
+        start:SetText(TEXT.start:format(BL and BL:StartCount() or 0)) -- what Start session would send
+        local fs = start:GetFontString()
+        start:SetWidth(UI.PanelButtonWidth(fs and fs:GetStringWidth() or 0))
+        start:SetEnabled(BL and BL:CanStart() and true or false)
     end
     -- CRT Looting: the state, and the leader's button
     heading(f, L.col3, -8, TEXT.crtLooting, TEXT.crtLootingHelp)
@@ -242,11 +303,11 @@ local function buildTonight(f)
         toggle:SetWidth(UI.PanelButtonWidth(fs and fs:GetStringWidth() or 0))
         toggle:SetEnabled(LM:LootingOn() or (LM:CanRunLooting()) or false)
     end
-    heading(f, L.col1, -100, TEXT.items)
+    heading(f, L.col1, L.itemsTop, TEXT.items)
     local lines = {}
     for i = 1, LM.MAX_ITEMS do
         local fs = f:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-        fs:SetPoint("TOPLEFT", L.col1, -100 - i * 20)
+        fs:SetPoint("TOPLEFT", L.col1, L.itemsTop - i * 20)
         fs:SetWidth(600)
         fs:SetJustifyH("LEFT")
         fs:SetWordWrap(false)
@@ -1014,7 +1075,7 @@ end
 
 LM:OnChange(function(what)
     if what == "responses" or what == "session" or what == "started" or what == "ended" or what == "scores"
-        or what == "authority" or what == "sync" or what == "looting" or what == "filter" then
+        or what == "authority" or what == "sync" or what == "looting" or what == "filter" or what == "bossloot" then
         refresh()
     end
 end)
