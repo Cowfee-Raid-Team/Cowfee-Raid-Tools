@@ -217,9 +217,11 @@ do
   -- a reminder on any difficulty saved for one group is split first: the other group keeps it as it was
   fresh()
   local id = R:Save(3001, nil, { boss = "b", text = "A", times = "10" })
-  local got = R:Save(3001, id, { boss = "b", text = "A2", times = "10" }, "mythic")
+  assert(R:Save(3001, id, { boss = "b", text = "A1", times = "10" }, "mythic") == id and R:Get(3001, id).group == nil,
+    "the caller's group alone never changes a saved reminder's")
+  local got = R:Save(3001, id, { boss = "b", text = "A2", times = "10", group = "mythic" })
   assert(got ~= id and R:Get(3001, got).text == "A2" and R:Get(3001, got).group == "mythic", "saved for Mythic")
-  assert(R:Get(3001, id).text == "A" and R:Get(3001, id).group == "nh", "Normal/Heroic keeps it")
+  assert(R:Get(3001, id).text == "A1" and R:Get(3001, id).group == "nh", "Normal/Heroic keeps it")
   print("ok reminders: any difficulty becomes one per group")
 end
 

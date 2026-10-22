@@ -40,7 +40,9 @@ local TEXT = {
     ranged = "Ranged",
     group = "Group %d",
     difficulty = "Difficulty",
-    any = "Any",
+    groupNH = "Normal/Heroic", -- your own alert's two choices
+    groupMythic = "Mythic",
+    any = "Any", -- a raid note line's: the boss's note with no difficulty
     normal = PLAYER_DIFFICULTY1 or "Normal",
     heroic = PLAYER_DIFFICULTY2 or "Heroic",
     mythic = PLAYER_DIFFICULTY6 or "Mythic",
@@ -131,7 +133,7 @@ local TEST_BLOCK = "minetest"
 local TEST_LEAD = 10 -- a test starts this many seconds before the alert's first time
 local REHEARSAL_LEAD = 8 -- Test opens the Rehearsal this many seconds before the alert's first time, when it has no Show from
 local REHEARSAL_AFTER = 3 -- and pauses it this many seconds after (longer when the alert lingers longer)
-local ANY = "any"    -- the difficulty dropdown's key for "any difficulty" (saved as nil)
+local ANY = "any"    -- a raid note line's difficulty dropdown key for its note with no difficulty (saved as nil)
 local NO_SOUND = Draft.NO_SOUND
 local FRAME_NAME = "CowfeeRaidToolsAlertEditor"
 local EXPORT_NAME = "CowfeeRaidToolsAlertExport"
@@ -372,8 +374,13 @@ local function forOptions()
     return out
 end
 
--- "Any" first, the boss's reference difficulties, the raid difficulties, and the draft's own.
+-- Your own alert (Only me, or a template): Normal/Heroic and Mythic, the Timeline's two groups. A raid
+-- note line, which goes to one of the boss's notes: "Any" first, the boss's reference difficulties, the
+-- raid difficulties, and the draft's own.
 local function difficultyOptions()
+    if not (draft and draft.saveAs == "note") then
+        return Draft.GroupOptions(TEXT.groupNH, TEXT.groupMythic)
+    end
     local out = { { key = ANY, label = TEXT.any } }
     local seen = {}
     local function add(d)
@@ -407,7 +414,8 @@ local function defaultDifficulty()
 end
 
 -- Save as changed, or the editor opened: a draft whose difficulty you haven't picked takes the raid
--- note's default as a note line, and its own (a reminder's, or Any) otherwise.
+-- note's default as a note line, and its own (a reminder's Difficulty text, if any) otherwise. Only me
+-- keeps its difficulty group in draft.group, untouched here.
 local function applyDefaultDifficulty()
     if draft.difficultyTouched or (ctx and ctx.noteID) or draft.baseDifficulty ~= nil then
         return
@@ -1363,8 +1371,17 @@ local function build()
     f.difficultyRow = row(UI.Dropdown(f, TEXT.difficulty, {
         labelWidth = 60, width = 114, enabledIf = editable,
         options = difficultyOptions,
-        get = function() return draft and draft.difficulty or ANY end,
+        get = function()
+            if not (draft and draft.saveAs == "note") then
+                return Draft.Group(draft)
+            end
+            return draft.difficulty or ANY
+        end,
         set = setter(function(v)
+            if draft.saveAs ~= "note" then
+                Draft.SetGroup(draft, v) -- saved for that group only
+                return
+            end
             draft.difficulty = v ~= ANY and v or nil
             draft.difficultyTouched = true
         end),
@@ -1691,9 +1708,10 @@ local function show()
 end
 
 -- Opens the editor for a boss: one of your reminders (id), or a new alert. prefill is { spellID, text,
--- times, boss, ph, time, saveAs, tag, speakAt } from a spell, a Timeline row or a click on the Timeline:
--- time is seconds into phase ph, saveAs "note" or "mine", tag the For of a note line ("" for No one),
--- speakAt "zero" for Speak at: At 0. A new alert from a spell is named after it.
+-- times, boss, ph, time, saveAs, tag, speakAt, group } from a spell, a Timeline row or a click on the
+-- Timeline: time is seconds into phase ph, saveAs "note" or "mine", tag the For of a note line ("" for No
+-- one), speakAt "zero" for Speak at: At 0, group the difficulty group Only me starts on (the Timeline
+-- view's). A new alert from a spell is named after it.
 function Editor:Open(encounterID, id, prefill)
     build()
     ctx = { encounterID = encounterID }
@@ -1734,6 +1752,7 @@ function Editor:Open(encounterID, id, prefill)
         if prefill.speakAt == "zero" then
             draft.speakAt = "zero"
         end
+        Draft.SetGroup(draft, prefill.group)
         Draft.ApplyFor(ctx, draft, prefill.tag) -- For: a player's name, or "" for No one
         if type(prefill.time) == "number" then
             draft.ph = type(prefill.ph) == "number" and prefill.ph or 1
@@ -1827,13 +1846,15 @@ end
 
 -- Copy to my reminders, on a read-only raid note line: the draft becomes a new reminder of your own with
 -- the line's fields (spell, text, colour, displays, speech, sound, glow, Show from, Linger, icon) and
--- its time as "P<ph> <time>", for any difficulty. Nothing is saved until Save. False when not read-only.
+-- its time as "P<ph> <time>", for the difficulty group of the line's note. Nothing is saved until Save.
+-- False when not read-only.
 function Editor:CopyToMine()
     if not (ctx and draft and ctx.readOnly and type(ctx.encounterID) == "number") then
         return false
     end
     local t = parseTime(draft.timeText)
     ctx = { encounterID = ctx.encounterID }
+    draft.group = Draft.Group(draft) -- the note's group, read while it is still a note line
     draft.saveAs = "mine"
     draft.tag = "everyone"
     draft.difficulty, draft.baseDifficulty, draft.difficultyTouched = nil, nil, nil

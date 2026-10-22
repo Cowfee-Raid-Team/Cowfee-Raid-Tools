@@ -241,7 +241,7 @@ do
   assert(sliders["Show from"].opts.get() == 5 and sliders["Show from"].opts.min == 1 and sliders["Show from"].opts.max == 60)
   assert(sliders["Linger"].opts.get() == 0 and sliders["Linger"].opts.min == 0 and sliders["Linger"].opts.max == 10)
   assert(value("Relative to") == 1 and optionList(dropdowns["Relative to"])[1].label == "Pull")
-  assert(value("Difficulty") == "any" and value("Sound") == "none")
+  assert(value("Difficulty") == "nh" and value("Sound") == "none", "Normal/Heroic outside a raid: " .. tostring(value("Difficulty")))
   assert(optionKeys(dropdowns["Sound"]) == "none,kit:RAID_WARNING,kit:READY_CHECK,kit:RAID_BOSS_EMOTE_WARNING,kit:UI_RAID_BOSS_WHISPER_WARNING,kit:ALARM_CLOCK_WARNING_3,kit:PVP_THROUGH_QUEUE,kit:TELL_MESSAGE", optionKeys(dropdowns["Sound"]))
   assert(w.sourceText.text == "No times", "no matching row: " .. w.sourceText.text)
   E:Open(ENC, nil, { spellID = 777, text = "Custom", times = "P1 0:10" })
@@ -293,7 +293,7 @@ do
   assert(ColorPickerFrame.strata == "FULLSCREEN_DIALOG" and #ColorPickerFrame.hooks.OnHide == 1, "lifted again, hooked once")
   ColorPickerFrame:Hide()
   picker.r, picker.g, picker.b = 1, 0.5, 0 picker.info.swatchFunc()
-  pick("Difficulty", "Mythic")
+  pick("Difficulty", "mythic")
   assert(message() == "", message())
   click(w.saveBtn)
   local r = R:Get(ENC, 1)
@@ -303,7 +303,7 @@ do
   assert(r.outputs.speech == true and r.speech == "textcount", "speak + count")
   print("DBGSND", tostring(r.sound), tostring(r.warn), tostring(r.linger), tostring(r.glow), tostring(r.iconID)) assert(r.warn == 8 and r.linger == 3 and r.sound == "kit:RAID_WARNING" and r.glow == true and r.iconID == 135940, "new fields")
   assert(r.color[1] == 1 and r.color[2] == 0.5 and r.color[3] == 0, "color")
-  assert(r.difficulty == "Mythic" and r.priority == "normal" and r.enabled == true)
+  assert(r.group == "mythic" and r.difficulty == nil and r.priority == "normal" and r.enabled == true, "saved for Mythic")
   assert(not w.shown, "closed after save")
   -- edit it again: the fields read back, and the speech mapping follows the boxes
   CRT.db.alerts.reminders[ENC][1].enabled = false
@@ -731,18 +731,46 @@ do
   print("ok editor: test saves nothing")
 end
 
--- difficulty choices
+-- difficulty choices: your own alert has the Timeline's two groups, no Any; a raid note line its notes'
 do
   reset()
   E:Open(ENC, nil, { boss = "Test Boss" })
-  assert(optionKeys(dropdowns["Difficulty"]) == "any,Mythic,Heroic,Normal", optionKeys(dropdowns["Difficulty"]))
+  local row = dropdowns["Difficulty"]
+  assert(optionKeys(row) == "nh,mythic", optionKeys(row))
+  assert(optionList(row)[1].label == "Normal/Heroic" and optionList(row)[2].label == "Mythic", "their words")
+  pick("Save as", "note")
+  assert(optionKeys(row) == "any,Mythic,Heroic,Normal", "a raid note line: " .. optionKeys(row))
+  -- an older reminder's difficulty reads as its group; a pick saves that group only
   R:Save(ENC, nil, { text = "o", boss = "Test Boss", difficulty = "Story" })
   E:Open(ENC, 1)
-  assert(optionKeys(dropdowns["Difficulty"]) == "any,Mythic,Heroic,Normal,Story", optionKeys(dropdowns["Difficulty"]))
-  E:Open(ENC, nil, { text = "z" })
-  pick("Difficulty", "Mythic") pick("Difficulty", "any")
+  assert(optionKeys(row) == "nh,mythic" and value("Difficulty") == "nh", "Story is Normal/Heroic: " .. tostring(value("Difficulty")))
+  pick("Difficulty", "mythic")
   click(win().saveBtn)
-  assert(R:Get(ENC, 2).difficulty == nil, "Any saves nil")
+  assert(R:Get(ENC, 1).group == "mythic" and R:Get(ENC, 1).difficulty == nil, "saved for Mythic")
+  R:Save(ENC, nil, { text = "h", boss = "Test Boss", difficulty = "Heroic" })
+  E:Open(ENC, 2)
+  assert(value("Difficulty") == "nh", "old Heroic: Normal/Heroic")
+  click(win().saveBtn)
+  assert(R:Get(ENC, 2).group == "nh" and R:Get(ENC, 2).difficulty == "Heroic", "kept for Normal/Heroic")
+  -- a new one: Normal/Heroic outside a raid, the raid's group in one, the Timeline view's when it opened it
+  E:Open(ENC, nil, { text = "z", times = "5" })
+  click(win().saveBtn)
+  assert(R:Get(ENC, 3).group == "nh", "new: Normal/Heroic")
+  GetInstanceInfo = function() return "Raid", "raid", 16, "Mythic" end
+  E:Open(ENC, nil, { text = "z", times = "5" })
+  assert(value("Difficulty") == "mythic", "in a Mythic raid")
+  GetInstanceInfo = nil
+  E:Open(ENC, nil, { text = "z", times = "5", group = "mythic" })
+  assert(value("Difficulty") == "mythic", "the view's group")
+  -- an older reminder on any difficulty, opened and saved for one group: the other keeps it
+  local any = R:Save(ENC, nil, { text = "a", boss = "Test Boss", times = "5" })
+  E:Open(ENC, any)
+  pick("Difficulty", "mythic")
+  typeInto(win().textEdit, "a2")
+  click(win().saveBtn)
+  local texts = {}
+  for _, e in ipairs(R:List(ENC)) do if e.r.text == "a" or e.r.text == "a2" then texts[#texts + 1] = e.r.text .. "=" .. tostring(e.r.group) end end
+  assert(table.concat(texts, ",") == "a=nh,a2=mythic", table.concat(texts, ","))
   print("ok editor: difficulty choices")
 end
 
@@ -951,15 +979,15 @@ do
   E:Open(ENC, nil, { text = "x", saveAs = "note", time = 5 })
   local w = win()
   assert(value("Difficulty") == "Heroic" and w.savesText.text == "Saves to: Test Boss (Heroic)", tostring(value("Difficulty")))
-  -- Only me keeps Any, and switching to Raid note takes the default
+  -- Only me has its group, and switching to Raid note takes the default
   E:Open(ENC, nil, { text = "x", time = 5 })
-  assert(value("Difficulty") == "any" and w.savesText.text == "", "only me: Any")
+  assert(value("Difficulty") == "nh" and w.savesText.text == "", "only me: Normal/Heroic")
   pick("Save as", "note")
   assert(value("Difficulty") == "Heroic", "switching to Raid note: " .. tostring(value("Difficulty")))
   pick("Save as", "mine")
-  assert(value("Difficulty") == "any", "and back to Any")
+  assert(value("Difficulty") == "nh", "and back to Normal/Heroic")
   -- a difficulty you picked stays
-  pick("Difficulty", "Normal") pick("Save as", "note")
+  pick("Save as", "note") pick("Difficulty", "Normal") pick("Save as", "mine") pick("Save as", "note")
   assert(value("Difficulty") == "Normal" and w.savesText.text == "Saves to: Test Boss (Heroic)", "picked stays; " .. w.savesText.text)
   -- two notes, outside a raid: Any
   local m = Notes:Import("EncounterID:9001;Difficulty:Mythic;Name:Test Boss\\ntime:1;tag:everyone;text:M;")
@@ -1687,12 +1715,12 @@ do
   E:Open(ENC, nil, { text = "Late", times = "P2 0:10" })
   local w = win()
   mockWindow(true)
-  pick("Difficulty", "Mythic")
+  pick("Difficulty", "mythic")
   click(w.testBtn)
   local c = opened[1]
   assert(c and c.t == 125 and c.diff == "Mythic", "P2 at 2:00 + 0:10, its 5 s Show from early: " .. tostring(c and c.t))
   -- Heroic's reference has no phase 2: no fight time, so the quick test runs
-  pick("Difficulty", "Heroic")
+  pick("Difficulty", "nh")
   click(w.testBtn)
   assert(#opened == 1, "the window not asked without a fight time")
   assert(A.running and A.run.reason == "test", "quick test instead")
@@ -1718,12 +1746,12 @@ do
   -- a recorded pull has no reference: only phase 1 times are placed
   sourceOverride = { base = { id = 1 }, encounterID = ENC, group = "mythic", difficultyName = "Mythic" }
   E:Open(ENC, nil, { text = "Mixed", times = "P1 0:20; P2 0:01" })
-  pick("Difficulty", "Mythic")
+  pick("Difficulty", "mythic")
   click(w.testBtn)
   c = opened[2]
   assert(c and c.t == 15 and c.diff == "Mythic", "phase 1 from the pull, 5 s early: " .. tostring(c and c.t))
   E:Open(ENC, nil, { text = "Later", times = "P2 0:10" })
-  pick("Difficulty", "Mythic")
+  pick("Difficulty", "mythic")
   click(w.testBtn)
   assert(#opened == 2, "a later phase can't be placed on a pull: the window is not asked")
   assert(A.running and A.run.reason == "test", "quick test instead")
@@ -1758,7 +1786,7 @@ do
     end
   end
   E:Open(ENC, nil, { text = "Part", times = "P1 0:30, 1:00; P2 0:05" })
-  pick("Difficulty", "Mythic")
+  pick("Difficulty", "mythic")
   local w = win()
   mockWindow(true)
   click(w.testBtn)
@@ -1767,7 +1795,7 @@ do
   assert(c and c.t == 85, "0:30 moved to 1:30, 1:00 dropped, P2 0:05 is 2:05: " .. tostring(c and c.t))
   -- a line of no part keeps its time
   E:Open(ENC, nil, { text = "Other", times = "P1 0:30" })
-  pick("Difficulty", "Mythic")
+  pick("Difficulty", "mythic")
   click(w.testBtn)
   assert(opened[2] and opened[2].t == 25, "no part: unmoved: " .. tostring(opened[2] and opened[2].t))
   CRT.Timeline.OrderShift = realShift

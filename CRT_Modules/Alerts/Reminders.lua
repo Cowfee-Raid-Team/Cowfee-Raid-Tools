@@ -325,10 +325,10 @@ function Reminders:List(encounterID)
 end
 
 -- Saves a copy of r with the defaults filled in. id nil makes a new reminder. Returns the id. group
--- (optional) is the difficulty group the caller shows the reminder for ("mythic" or "nh"): a reminder
--- with no group of its own is saved for it, and typed times on a boss ability are placed on the row the
--- caller showed (MigrateOne). A saved reminder on any difficulty saved for one group is split first
--- (SplitOne), so the other group keeps it as it was; the id returned is then the one of that group.
+-- (optional) is the difficulty group the caller shows the reminder for ("mythic" or "nh"): a new
+-- reminder with no group of its own is saved for it, and typed times on a boss ability are placed on the
+-- row the caller showed (MigrateOne). A saved reminder on any difficulty saved with a group (r.group) is
+-- split first (SplitOne), so the other group keeps it as it was; the id returned is then that group's.
 function Reminders:Save(encounterID, id, r, group)
     local all = store(true)
     local db = Alerts:Settings()
@@ -344,7 +344,7 @@ function Reminders:Save(encounterID, id, r, group)
     if not GROUPS[saved.group] then
         saved.group = nil
     end
-    if not Reminders.GroupOf(saved) and GROUPS[group] then
+    if id == nil and not Reminders.GroupOf(saved) and GROUPS[group] then
         saved.group = group
     end
     -- an older Difficulty text of another group than the one saved no longer says anything
