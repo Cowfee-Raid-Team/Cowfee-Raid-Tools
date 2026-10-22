@@ -24,6 +24,7 @@ CRT_Core\UI\Tooltip.lua
 CRT_Core\UI\Controls.lua
 CRT_Core\UI\ScrollBar.lua
 CRT_Core\UI\Window.lua
+CRT_Core\UI\ItemSlot.lua
 CRT_Modules\Groups\Data.lua
 CRT_Modules\Groups\Apply.lua
 CRT_Modules\Groups\Invite.lua

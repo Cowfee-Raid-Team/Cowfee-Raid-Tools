@@ -14,7 +14,7 @@ const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate();
 lualib.luaL_openlibs(L);
 const harness = themeLua(process.argv.slice(2)) + `
-local dataSrc, commSrc, gateSrc, lootingSrc, bossSrc, endSrc, winSrc, testSrc, addSrc, pageSrc, windowSrc, tradeSrc = ...
+local dataSrc, commSrc, gateSrc, lootingSrc, bossSrc, endSrc, winSrc, testSrc, addSrc, pageSrc, windowSrc, tradeSrc, slotSrc = ...
 local fails, passes = 0, 0
 local function check(ok, what) if ok then passes = passes + 1 else fails = fails + 1 print("FAIL " .. what) end end
 local function eq(a, b, what) check(a == b, what .. " (got " .. tostring(a) .. ", want " .. tostring(b) .. ")") end
@@ -206,6 +206,7 @@ LM.Filter = function() return {} end
 LM.ItemFacts = function(s) return { isToken = idOf(s) == 308 } end -- a tier token: a Miscellaneous item with a Classes line
 LM.PassesFilter = function() return true end
 assert(load(testSrc, "Test.lua"))("CowfeeRaidTools", CRT)
+assert(load(slotSrc, "ItemSlot.lua"))("CowfeeRaidTools", CRT) -- the shared drop slot (CRT_Core/UI/ItemSlot.lua)
 assert(load(addSrc, "AddItem.lua"))("CowfeeRaidTools", CRT)
 LM.BuildFilterTab = function() end
 LM.ScoreList = function() return {} end
@@ -740,7 +741,7 @@ if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.
 const files = ['CRT_Modules/LootMaster/Data.lua', 'CRT_Modules/LootMaster/Comm.lua', 'CRT_Modules/LootMaster/AutoPass.lua',
   'CRT_Modules/LootMaster/Looting.lua', 'CRT_Modules/LootMaster/BossLoot.lua', 'CRT_Modules/LootMaster/EndAll.lua',
   'CRT_Modules/LootMaster/BossLootWindow.lua', 'CRT_Modules/LootMaster/Test.lua', 'CRT_Modules/LootMaster/AddItem.lua',
-  'CRT_Modules/LootMaster/Page.lua', 'CRT_Modules/LootMaster/Window.lua', 'CRT_Modules/LootMaster/Trade.lua'];
+  'CRT_Modules/LootMaster/Page.lua', 'CRT_Modules/LootMaster/Window.lua', 'CRT_Modules/LootMaster/Trade.lua', 'CRT_Core/UI/ItemSlot.lua'];
 for (const f of files) {
   const p = path.join(dir, f);
   lua.lua_pushstring(L, to_luastring(fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : 'error("missing ' + f + '")'));

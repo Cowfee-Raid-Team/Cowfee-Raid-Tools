@@ -3,7 +3,7 @@ local ADDON, CRT = ...
 -- Add item: items from your bags onto the Boss loot list (Alex, 2026-10-22: "drag and drop and also
 -- shift-click from bags to add to a session list just in case someone messes it up later and wants to start
 -- a new session"). Loot Master > Tonight has an item slot under Held boss loot (LM.BuildAddItem, placed by
--- LootMaster/Page.lua). An item goes in by dragging it from your bags onto the slot, or by shift-clicking it
+-- LootMaster/Page.lua; the slot is the shared UI.ItemDropSlot, UI/ItemSlot.lua). An item goes in by dragging it from your bags onto the slot, or by shift-clicking it
 -- in your bags while the slot is shown (the Tonight tab open) and no chat or other text box has the
 -- keyboard. Any item you can still trade goes in, gear or not (Alex, 2026-10-22: "remove the restriction
 -- for non gear and tier items. This would allow me to auction off pots and funny things"); the slot's
@@ -18,21 +18,9 @@ local ADDON, CRT = ...
 -- (LM.ItemKey).
 --
 -- From the game (checked 2026-10-22 on warcraft.wiki.gg and Blizzard's UI source, Gethe/wow-ui-source live):
---   GetCursorInfo() -> "item", itemID, itemLink: https://warcraft.wiki.gg/wiki/API_GetCursorInfo. The
---     cursor doesn't say which bag slot; the slot the game locked while the item is picked up does
---     (C_Container.GetContainerItemInfo's isLocked), else the first slot with the same link. ClearCursor
---     puts the item back.
---   Shift-click: a bag item button's modified click (ContainerFrameItemButtonMixin:OnModifiedClick,
---     Blizzard_UIPanels_Game/Mainline/ContainerFrame.lua) calls the global HandleModifiedItemClick(link,
---     itemLocation) (Blizzard_ItemButton/Mainline/ItemButtonTemplate.lua), which puts the link in a chat box
---     when one is open (ChatFrameUtil.InsertLink). CRT only hooks it after it ran (hooksecurefunc, never a
---     replacement), inside pcall, and does nothing while ChatFrameUtil.GetActiveWindow() (Blizzard_ChatFrameBase/
---     Shared/ChatFrameUtil.lua) or GetCurrentKeyBoardFocus() (https://warcraft.wiki.gg/wiki/API_GetCurrentKeyBoardFocus)
---     says a text box is typing, so the link goes into chat as usual. ItemLocation:IsBagAndSlot and
---     GetBagAndSlot: Blizzard_ObjectAPI/Mainline/ItemLocation.lua. A click in a bank bag is left alone.
+--   The drop slot, the cursor and the shift-click hook: UI.ItemDropSlot and CRT.Bags (UI/ItemSlot.lua).
 --   The item string's fields (https://warcraft.wiki.gg/wiki/ItemLink): 1 itemID, 9 linkLevel, 10
 --     specializationID, 13 numBonusIDs, then the bonus IDs.
---   A stack's size: C_Container.GetContainerItemInfo(bag, slot).stackCount (ContainerDocumentation).
 --   Can it still be traded: C_Container.GetContainerItemInfo(bag, slot).isBound (ContainerDocumentation),
 --     and C_TooltipInfo.GetBagItem(bag, slot) (https://warcraft.wiki.gg/wiki/API_C_TooltipInfo.GetBagItem):
 --     a bound item you can still trade has a line of type Enum.TooltipDataLineType.TradeTimeRemaining (36,
@@ -47,8 +35,7 @@ local ADDON, CRT = ...
 
 local LM = CRT.LootMaster
 local UI = CRT.UI
-
-local L = { slot = 36, gap = 8, lineGap = 4 }
+local Bags = CRT.Bags
 
 local TEXT = {
     -- one short line: the detail is in its (?), so it never wraps onto the status line under it
@@ -78,14 +65,6 @@ local UNIT_FORMATS = {
 
 local function secret(v)
     return issecretvalue and issecretvalue(v) or false
-end
-
-local function bagsLast()
-    return (NUM_BAG_SLOTS or 4) + 1 -- the bags and the reagent bag, as Trade.lua searches
-end
-
-local function inBags(bag)
-    return type(bag) == "number" and bag >= 0 and bag <= bagsLast()
 end
 
 local function trim(w)
@@ -192,21 +171,13 @@ function LM.ItemKey(s)
     return id .. ":" .. table.concat(bonus, ":")
 end
 
-local function bagInfo(bag, slot)
-    local ok, info = pcall(C_Container.GetContainerItemInfo, bag, slot)
-    if not ok or type(info) ~= "table" or secret(info.hyperlink) or secret(info.isBound) or secret(info.isLocked) or secret(info.stackCount) then
-        return nil
-    end
-    return type(info.hyperlink) == "string" and info or nil
-end
-
 -- Whether the item in the bag slot can be added: true, its link, the seconds left (nil: read as
 -- LM.TRADE_SECONDS) and whether it has no trade time (not bound); or false, its link (or nil) and why.
 function LM.BagTradeState(bag, slot)
-    if not inBags(bag) or type(slot) ~= "number" then
+    if not Bags.InBags(bag) or type(slot) ~= "number" then
         return false, nil, TEXT.notInBags
     end
-    local info = bagInfo(bag, slot)
+    local info = Bags.Info(bag, slot)
     if not info then
         return false, nil, TEXT.notInBags
     end
@@ -234,21 +205,6 @@ function LM.BagTradeState(bag, slot)
     return false, link, TEXT.soulbound
 end
 
--- How many of this item (LM.ItemKey) are in your bags.
-local function copiesInBags(key)
-    local n = 0
-    for bag = 0, bagsLast() do
-        local okN, slots = pcall(C_Container.GetContainerNumSlots, bag)
-        for slot = 1, (okN and type(slots) == "number") and slots or 0 do
-            local info = bagInfo(bag, slot)
-            if info and LM.ItemKey(info.hyperlink) == key then
-                n = n + (type(info.stackCount) == "number" and info.stackCount or 1)
-            end
-        end
-    end
-    return n
-end
-
 -- How many times the item (LM.ItemKey) is listed already: real rows that are yours or may still be (won
 -- or rolling), waiting items, the running real session.
 local function listed(key)
@@ -274,11 +230,11 @@ local function listed(key)
     return n
 end
 
-local target -- the slot and its status line, once Tonight is built
+local target -- the slot (UI.ItemDropSlot), once Tonight is built
 
 local function say(text, good)
     if target then
-        target.status:SetText(good and UI.GoodText(text) or UI.BadText(text))
+        target.Say(text, good)
     end
 end
 
@@ -295,7 +251,7 @@ function LM:AddFromBag(bag, slot)
         return refuse(link, seconds)
     end
     local key = LM.ItemKey(link)
-    if not key or listed(key) >= copiesInBags(key) then
+    if not key or listed(key) >= Bags.Count(key, LM.ItemKey) then
         return refuse(link, TEXT.already)
     end
     local r = self.BossLoot:AddFromBags(link, seconds, untimed)
@@ -306,140 +262,41 @@ function LM:AddFromBag(bag, slot)
     return r
 end
 
--- The bag slot of the item on the cursor (its link): the slot the game locked for it, else the first with
--- the same link.
-local function cursorSlot(link)
-    local first
-    for bag = 0, bagsLast() do
-        local okN, slots = pcall(C_Container.GetContainerNumSlots, bag)
-        for slot = 1, (okN and type(slots) == "number") and slots or 0 do
-            local info = bagInfo(bag, slot)
-            if info and info.hyperlink == link then
-                if info.isLocked then
-                    return bag, slot
-                end
-                first = first or { bag, slot }
-            end
-        end
+-- An item dropped on the slot. Nothing happens without an item on the cursor.
+local function dropped(bag, slot, link)
+    if not bag then
+        return refuse(link, TEXT.notInBags)
     end
-    if first then
-        return first[1], first[2]
+    return LM:AddFromBag(bag, slot)
+end
+
+function LM:AddFromCursor()
+    local link, bag, slot = Bags.TakeCursor()
+    if link then
+        return dropped(bag, slot, link)
     end
     return nil
 end
 
--- An item dropped on the slot. Nothing happens without an item on the cursor.
-function LM:AddFromCursor()
-    local ok, kind, _, link = pcall(GetCursorInfo)
-    if not ok or kind ~= "item" or type(link) ~= "string" or secret(link) then
-        return nil
-    end
-    local bag, slot = cursorSlot(link)
-    ClearCursor() -- the item goes back to its slot
-    if not bag then
-        return refuse(link, TEXT.notInBags)
-    end
-    return self:AddFromBag(bag, slot)
-end
-
--- Whether a text box has the keyboard (an open chat box): a shift-click there links the item instead.
-local function typing()
-    local okF, focus = pcall(GetCurrentKeyBoardFocus)
-    if okF and focus then
-        return true
-    end
-    local util = ChatFrameUtil
-    if util and util.GetActiveWindow then
-        local okA, box = pcall(util.GetActiveWindow)
-        if okA and box then
-            return true
-        end
-    end
-    return false
-end
-
--- After the game's HandleModifiedItemClick(link, itemLocation): a shift-click on a bag item while the slot
--- shows and nothing is typing adds it. A click in the bank is left alone, and so is a stack: the game opens
--- its split, which is no mistake, so the status line stays as it was (the slot's (?) says to drag a stack).
--- Returns true when it tried.
+-- After the game's HandleModifiedItemClick(link, itemLocation) (the shared hook in UI/ItemSlot.lua): a
+-- shift-click on a bag item while the slot shows and nothing is typing adds it; a stack is left to the game's
+-- split. Returns true when it tried.
 function LM:BagShiftClick(link, itemLocation)
-    if not (target and target.slot:IsVisible()) then
-        return false
-    end
-    local okM, chatLink = pcall(IsModifiedClick, "CHATLINK")
-    if not (okM and chatLink) or typing() then
-        return false
-    end
-    if type(itemLocation) ~= "table" or type(itemLocation.IsBagAndSlot) ~= "function" or not itemLocation:IsBagAndSlot() then
-        return false
-    end
-    local bag, slot = itemLocation:GetBagAndSlot()
-    if not inBags(bag) then
-        return false -- the bank: not for Add item
-    end
-    local info = bagInfo(bag, slot)
-    if info and type(info.stackCount) == "number" and info.stackCount > 1 then
-        return false -- the split is the game's; nothing is added
-    end
-    self:AddFromBag(bag, slot)
-    return true
+    return UI.ItemSlotShiftClick(target, link, itemLocation)
 end
 
 -- The slot and its lines at x, y on parent (Tonight's tab frame); width: the lines' width. skin(frame,
 -- alpha): the page's box look.
 function LM.BuildAddItem(parent, x, y, width, skin)
-    local slot = CreateFrame("Button", nil, parent, "BackdropTemplate")
-    slot:SetSize(L.slot, L.slot)
-    slot:SetPoint("TOPLEFT", x, y)
-    skin(slot, 0.35)
-    local plus = slot:CreateFontString(nil, "OVERLAY", "CRTFontLarge")
-    plus:SetPoint("CENTER", 0, 1)
-    plus:SetText("+")
-    local hl = slot:CreateTexture(nil, "HIGHLIGHT")
-    hl:SetAllPoints()
-    hl:SetColorTexture(1, 1, 1, 0.08)
-    slot:SetScript("OnReceiveDrag", function()
-        LM:AddFromCursor()
-    end)
-    slot:SetScript("OnMouseUp", function()
-        LM:AddFromCursor() -- a click with an item on the cursor drops it here too
-    end)
-    -- the line and the status line under it each hold one line at a fixed width, the status anchored to the
-    -- line's own bottom, so neither can run onto the other
-    local label = parent:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    label:SetPoint("TOPLEFT", slot, "TOPRIGHT", L.gap, -2)
-    label:SetWidth(width)
-    label:SetJustifyH("LEFT")
-    label:SetWordWrap(false)
-    label:SetText(TEXT.label)
-    UI.HelpRight(label, TEXT.helpTitle, TEXT.help)
-    local status = parent:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    status:SetPoint("TOPLEFT", label, "BOTTOMLEFT", 0, -L.lineGap)
-    status:SetWidth(width)
-    status:SetJustifyH("LEFT")
-    status:SetWordWrap(false)
-    target = { slot = slot, label = label, status = status }
-    return slot
-end
-
--- The shift-click hook, once the game's function exists (at load, else at login). A failing hook body is
--- reported and never stops the game's click (it has run already).
-local hooked = false
-local function hook()
-    if hooked or not hooksecurefunc or type(HandleModifiedItemClick) ~= "function" then
-        return
-    end
-    hooked = true
-    hooksecurefunc("HandleModifiedItemClick", function(link, itemLocation)
-        local ok, err = pcall(LM.BagShiftClick, LM, link, itemLocation)
-        if not ok and geterrorhandler then
-            pcall(geterrorhandler(), err)
-        end
-    end)
-end
-hook()
-if not hooked then
-    local events = CreateFrame("Frame")
-    events:RegisterEvent("PLAYER_LOGIN")
-    events:SetScript("OnEvent", hook)
+    target = UI.ItemDropSlot(parent, x, y, width, {
+        skin = skin, label = TEXT.label, helpTitle = TEXT.helpTitle, help = TEXT.help,
+        onDrop = dropped,
+        onPick = function(bag, slot)
+            LM:AddFromBag(bag, slot)
+        end,
+        shiftClick = function(link, itemLocation)
+            return LM:BagShiftClick(link, itemLocation)
+        end,
+    })
+    return target
 end
