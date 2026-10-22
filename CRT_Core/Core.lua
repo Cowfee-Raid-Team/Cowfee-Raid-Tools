@@ -342,6 +342,10 @@ local defaults = {
         -- The Timeline's Cooldowns row (Alerts/Cooldowns.lua): which cooldowns it lists.
         cooldownFilter = "mine",
     },
+    -- The settings as they were before the last settings-only import (Profiles:ApplySettings in Profiles.lua):
+    -- { from, saved, values = { [path] = value }, unset = { [path] = true } }, empty when there is none.
+    -- Each profile keeps its own. Undo last import puts it back and empties it.
+    importBackup = {},
 }
 
 -- Profiles.lua reads these to know which keys a profile holds and to start a profile afresh.

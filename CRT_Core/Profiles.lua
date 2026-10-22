@@ -9,6 +9,11 @@ local ADDON, CRT = ...
 -- CRTDBChar.profile (SavedVariablesPerCharacter), and a character with none uses CRTDB.defaultProfile.
 -- The swap happens in CRT.Profiles:Load, as the saved data loads and before anything reads it, so
 -- switching, copying or resetting a profile saves the choice and reloads the interface.
+--
+-- Two kinds of text to share. Export gives the whole profile (CRTP1:), which Import saves as a new
+-- profile: for your own characters. Export settings only (CRTS1:, after a few # header lines) gives only
+-- the paths in Profiles.SHARE below, and Import applies them onto the active profile after a preview,
+-- keeping one backup (CRTDB.importBackup, so each profile has its own) for Undo last import: for raiders.
 
 local Profiles = {}
 CRT.Profiles = Profiles
@@ -16,6 +21,105 @@ CRT.Profiles = Profiles
 local DEFAULT = "Default"
 local SHARED = { classCache = true, roleCache = true, macros = true }
 local EXPORT_PREFIX = "CRTP1:"
+local SHARE_PREFIX = "CRTS1:"
+local SHARE_VERSION = 1
+local MAX_DEPTH = 5 -- a table with no default to match (a position, a list) may nest this deep
+local MAX_STRING = 255 -- the longest text a shared setting may hold
+local MAX_FROM = 48 -- the sender's name, as the preview shows it
+-- Zlib, not the default raw Deflate: its checksum makes a cut-off or changed string fail to decompress.
+local ZLIB = (Enum and Enum.CompressionMethod and Enum.CompressionMethod.Zlib) or 1
+
+local TEXT = {
+    header = "# Cowfee Raid Tools settings",
+    from = "# From: %s, %s, v%s",
+    noApi = "This game client can't read or write profile text.",
+    notOurs = "That isn't a Cowfee Raid Tools profile.",
+    damaged = "The text is damaged or cut off. Copy it again.",
+    newer = "This text is from a newer version of Cowfee Raid Tools. Update the addon first.",
+    badValue = "The text has a wrong value for %s, so nothing was read.",
+    someone = "someone",
+}
+Profiles.TEXT = TEXT
+
+-- What Export settings only carries: settings and window positions, never notes, layouts, saved alerts,
+-- reminders, history, caches or state. true takes everything under that key, false nothing, and a table
+-- says the same one level down. CRT_Dev/Tests/run_profiles_share.js fails when a top-level key of
+-- CRT.defaults, or a key one level under a table here, is missing, so new data is never shared by accident.
+Profiles.SHARE = {
+    window = true, -- the main window's place and scale
+    ui = true,
+    lastPage = false, -- the open page
+    minimap = true,
+    classCache = false,
+    roleCache = false,
+    macros = false, -- the macros the addon made in this account's macro list
+    groups = { presets = false, nextId = false, working = false, keepChanges = true, source = true },
+    consumables = { enabled = true, notStarter = true, lowMinutes = true, categoryOrder = true, itemOrder = true, extra = false, learned = false, position = true },
+    readycheck = {
+        tab = false, auto = true, onPull = true, output = true, raidsOnly = true, notLFR = true, include = true, buffLock = true,
+        fadeOnPull = true, earlyPull = true, earlyPullOutput = true, food = true, flaskWarn = true, lowFlask = true, window = true,
+    },
+    debuffs = true,
+    notes = {
+        list = false, nextId = false, personalText = false, showOutsideRaid = true, trustedOnly = true, shareTarget = true,
+        window = true, assignments = true, personal = true, editor = true, alert = true,
+    },
+    qol = true,
+    loot = true,
+    lootmaster = {
+        window = true, popup = true, answers = true, bossLoot = true, lootingPrompt = true, responseSeconds = true, score = true,
+        awardMessage = true, awardChannel = true, noRoll = true, tooltipAnchor = true, showAllItems = true, enableInParty = true,
+        filter = true, responses = true,
+        authority = false, -- who you trust to run loot stays yours
+        sort = false,
+    },
+    gearChecker = { filter = false, belowTrack = true, popout = true },
+    sound = true,
+    late = { days = true, hour = true, minute = true, grace = true, history = false, nextId = false, lastAuto = false },
+    tattle = {
+        enabled = true, raidsOnly = true, avoidable = true, autoPost = true, output = true, maxPlayers = true, custom = true,
+        season = true, history = false, nextId = false,
+    },
+    timeline = {
+        record = true, minPull = true, keep = true, span = true, grid = true, iconSize = true, deathRows = true, roles = true,
+        firstDeaths = true, overlay = true, overlayOn = true, hideEmpty = true, popout = true,
+        bosses = false, rows = false, references = false, nextRef = false, nextId = false,
+    },
+    markers = true,
+    pace = { disabled = true, shown = true, position = true, own = false, shared = false, use = false },
+    alerts = {
+        bars = true, areas = true, noteLines = true, customColors = true, cooldownFilter = true,
+        speechNotice = false, reminders = false, phases = false, overrides = false, nextId = false, saved = false, nextSavedId = false,
+    },
+    importBackup = false, -- the backup Undo last import puts back
+}
+
+-- Window places and sizes: "Keep my window positions" leaves these as they are. Most are saved only once
+-- a window is moved, so they are not in the defaults.
+Profiles.POSITIONS = {
+    "window.point", "window.relativePoint", "window.x", "window.y", "minimap.angle",
+    "consumables.position", "readycheck.window.position", "debuffs.position",
+    "notes.window.position", "notes.assignments.position", "notes.personal.position", "notes.alert.position", "notes.editor",
+    "qol.lowHealth.position", "qol.breakTimer.position",
+    "lootmaster.window", "lootmaster.popup", "lootmaster.answers", "lootmaster.bossLoot", "lootmaster.lootingPrompt",
+    "gearChecker.popout", "timeline.popout", "markers.position", "pace.position",
+    "alerts.bars.position", "alerts.areas.icons.position", "alerts.areas.texts.position", "alerts.areas.circles.position",
+    "alerts.areas.timeline.position",
+}
+
+-- Settings saved only once they are set, so they have no default to match: their path and type.
+Profiles.LATE_SETTINGS = {
+    ["ui.fontSize"] = "number", -- set from the old textSize the first time the fonts apply (Core.lua)
+    ["lootmaster.responses"] = "table", -- the response buttons, once edited
+}
+
+-- The diff preview names a setting by its page, then its saved path.
+local SECTIONS = {
+    window = "Main window", ui = "General", minimap = "Minimap", groups = "Raid Groups", consumables = "Consumables",
+    readycheck = "Ready Check", debuffs = "Debuffs", notes = "Raid Notes", qol = "Quality of Life", loot = "Loot History",
+    lootmaster = "Loot Master", gearChecker = "Gear Checker", sound = "Sounds", late = "Late Tracker", tattle = "Tattlebot",
+    timeline = "Timeline", markers = "Markers", pace = "Pace", alerts = "Alerts",
+}
 
 -- The top-level keys a profile holds: every key in the defaults, except the shared caches.
 local function profileKeys()
@@ -166,6 +270,7 @@ function Profiles:Delete(name)
 end
 
 -- The active profile as one line of text to share, through the game's own CBOR, deflate and base64.
+-- The import backup stays behind: it would undo to another character's settings.
 function Profiles:Export()
     local E = C_EncodingUtil
     if not (E and E.SerializeCBOR and E.CompressString and E.EncodeBase64) then
@@ -173,7 +278,9 @@ function Profiles:Export()
     end
     local data = {}
     for _, key in ipairs(profileKeys()) do
-        data[key] = CRTDB[key]
+        if key ~= "importBackup" then
+            data[key] = CRTDB[key]
+        end
     end
     local ok, text = pcall(function()
         return E.EncodeBase64(E.CompressString(E.SerializeCBOR({ v = 1, data = data })))
@@ -184,16 +291,19 @@ function Profiles:Export()
     return EXPORT_PREFIX .. text
 end
 
--- Reads an exported profile and saves it as a new profile. Returns true, or nil and the reason.
-function Profiles:Import(text, name)
-    name = strtrim(name or "")
-    text = strtrim(text or "")
-    if name == "" then
-        return nil, "Give the new profile a name."
+-- Pasted text without its # header lines and without the spaces and line breaks a paste can add.
+local function cleanText(text)
+    local out = {}
+    for line in (text or ""):gmatch("[^\r\n]+") do
+        if not line:find("^%s*#") then
+            out[#out + 1] = line
+        end
     end
-    if self:Exists(name) then
-        return nil, "A profile named " .. name .. " already exists."
-    end
+    return (table.concat(out):gsub("%s", ""))
+end
+
+local function decodeFull(text)
+    text = cleanText(text)
     if text:sub(1, #EXPORT_PREFIX) ~= EXPORT_PREFIX then
         return nil, "That isn't a Cowfee Raid Tools profile."
     end
@@ -206,10 +316,457 @@ function Profiles:Import(text, name)
     end
     local data = {}
     for _, key in ipairs(profileKeys()) do
-        if type(decoded.data[key]) == type(CRT.defaults[key]) then
+        if key ~= "importBackup" and type(decoded.data[key]) == type(CRT.defaults[key]) then
             data[key] = decoded.data[key]
         end
     end
+    return data
+end
+
+-- Reads an exported profile and saves it as a new profile. Returns true, or nil and the reason.
+function Profiles:Import(text, name)
+    name = strtrim(name or "")
+    if name == "" then
+        return nil, "Give the new profile a name."
+    end
+    if self:Exists(name) then
+        return nil, "A profile named " .. name .. " already exists."
+    end
+    local data, err = decodeFull(text)
+    if not data then
+        return nil, err
+    end
     CRTDB.profiles[name] = data
     return true
+end
+
+-- Export settings only. ---------------------------------------------------------------------------
+
+local function encoder()
+    local E = C_EncodingUtil
+    if E and E.SerializeCBOR and E.DeserializeCBOR and E.CompressString and E.DecompressString and E.EncodeBase64 and E.DecodeBase64 then
+        return E
+    end
+end
+
+local function splitPath(path)
+    local keys = {}
+    for key in path:gmatch("[^.]+") do
+        keys[#keys + 1] = key
+    end
+    return keys
+end
+
+local function getPath(t, keys)
+    for _, key in ipairs(keys) do
+        if type(t) ~= "table" then
+            return nil
+        end
+        t = t[key]
+    end
+    return t
+end
+
+-- Sets a value, making the tables on the way. Clearing a value never makes them.
+local function setPath(t, keys, value)
+    for i = 1, #keys - 1 do
+        if type(t[keys[i]]) ~= "table" then
+            if value == nil then
+                return
+            end
+            t[keys[i]] = {}
+        end
+        t = t[keys[i]]
+    end
+    t[keys[#keys]] = value
+end
+
+local function same(a, b)
+    if type(a) ~= type(b) then
+        return false
+    end
+    if type(a) ~= "table" then
+        return a == b
+    end
+    for k, v in pairs(a) do
+        if not same(v, b[k]) then
+            return false
+        end
+    end
+    for k in pairs(b) do
+        if a[k] == nil then
+            return false
+        end
+    end
+    return true
+end
+
+-- Only plain saved data: true or false, a finite number, a short text, or a table of those, keyed by
+-- text or number, at most MAX_DEPTH deep.
+local function isPlain(v, depth)
+    local t = type(v)
+    if t == "boolean" then
+        return true
+    elseif t == "number" then
+        return v == v and v ~= math.huge and v ~= -math.huge
+    elseif t == "string" then
+        return #v <= MAX_STRING
+    elseif t == "table" then
+        if depth > MAX_DEPTH then
+            return false
+        end
+        for k, x in pairs(v) do
+            local kt = type(k)
+            if not ((kt == "string" and #k <= MAX_STRING) or (kt == "number" and isPlain(k, depth))) or not isPlain(x, depth + 1) then
+                return false
+            end
+        end
+        return true
+    end
+    return false
+end
+
+-- A shared value must be plain and of its default's type. A table that starts empty (a list, a position)
+-- has no default inside to match, so only plainness is checked there.
+local function isValid(entry, v)
+    local want = entry.want or (entry.default ~= nil and type(entry.default)) or nil
+    if want and type(v) ~= want then
+        return false
+    end
+    return isPlain(v, 1)
+end
+
+-- Whether a path is under a true in Profiles.SHARE.
+local function allowed(keys)
+    local rule = Profiles.SHARE
+    for _, key in ipairs(keys) do
+        if rule == true then
+            return true
+        end
+        if type(rule) ~= "table" then
+            return false
+        end
+        rule = rule[key]
+    end
+    return rule == true
+end
+
+local entriesCache
+
+local function addEntries(list, seen, positions, keys, default, rule)
+    local path = table.concat(keys, ".")
+    if positions[path] then
+        list[#list + 1] = { path = path, keys = keys, default = default, position = true }
+        seen[path] = true
+        return
+    end
+    if not rule then
+        return
+    end
+    -- a list (a colour's { r, g, b, a }) is copied whole, like an empty table
+    if type(default) == "table" and (type(rule) == "table" or (next(default) ~= nil and default[1] == nil)) then
+        for k, v in pairs(default) do
+            local sub = rule == true or rule[k]
+            if sub then
+                local child = {}
+                for i, key in ipairs(keys) do
+                    child[i] = key
+                end
+                child[#child + 1] = k
+                addEntries(list, seen, positions, child, v, sub)
+            end
+        end
+        return
+    end
+    list[#list + 1] = { path = path, keys = keys, default = default }
+    seen[path] = true
+end
+
+-- Every shared setting, one entry per value copied: { path, keys, default, position, want }, sorted by path.
+-- A table that starts empty in the defaults (a list, a map) and a position are copied whole.
+function Profiles.ShareEntries()
+    if entriesCache then
+        return entriesCache
+    end
+    local list, seen, positions = {}, {}, {}
+    for _, path in ipairs(Profiles.POSITIONS) do
+        positions[path] = true
+    end
+    for key, default in pairs(CRT.defaults) do
+        addEntries(list, seen, positions, { key }, default, Profiles.SHARE[key])
+    end
+    for _, path in ipairs(Profiles.POSITIONS) do
+        local keys = splitPath(path)
+        if not seen[path] and allowed(keys) then
+            list[#list + 1] = { path = path, keys = keys, position = true }
+            seen[path] = true
+        end
+    end
+    for path, want in pairs(Profiles.LATE_SETTINGS) do
+        local keys = splitPath(path)
+        if not seen[path] and allowed(keys) then
+            list[#list + 1] = { path = path, keys = keys, want = want }
+            seen[path] = true
+        end
+    end
+    table.sort(list, function(a, b)
+        return a.path < b.path
+    end)
+    entriesCache = list
+    return list
+end
+
+-- The saved keys Profiles.SHARE says nothing about: a top-level key of the defaults, or a key one level
+-- under a table entry. The test suite fails on any, so each new key is shared or kept back on purpose.
+function Profiles.ShareUncovered()
+    local missing = {}
+    for key, default in pairs(CRT.defaults) do
+        local rule = Profiles.SHARE[key]
+        if rule == nil then
+            missing[#missing + 1] = key
+        elseif type(rule) == "table" and type(default) == "table" then
+            for sub in pairs(default) do
+                if rule[sub] == nil then
+                    missing[#missing + 1] = key .. "." .. sub
+                end
+            end
+        end
+    end
+    table.sort(missing)
+    return missing
+end
+
+local function playerName()
+    local ok, name = pcall(UnitName, "player")
+    if not ok or type(name) ~= "string" or (issecretvalue and issecretvalue(name)) then
+        return TEXT.someone
+    end
+    return name
+end
+
+-- The active profile's shared settings as text: the # header lines, then CRTS1: and the block.
+-- Positions never moved are listed in unset, so an import can put them back to their default.
+function Profiles:ExportSettings()
+    local E = encoder()
+    if not E then
+        return nil, TEXT.noApi
+    end
+    local data, unset = {}, {}
+    for _, entry in ipairs(Profiles.ShareEntries()) do
+        local v = getPath(CRTDB, entry.keys)
+        if v == nil then
+            if entry.position then
+                unset[#unset + 1] = entry.path
+            end
+        elseif isValid(entry, v) then
+            setPath(data, entry.keys, deepCopy(v))
+        end
+    end
+    local name, day, version = playerName(), date("%Y-%m-%d"), tostring(CRT.version or "dev")
+    local payload = { v = SHARE_VERSION, kind = "settings", from = name, date = day, version = version, data = data, unset = unset }
+    local ok, block = pcall(function()
+        return E.EncodeBase64(E.CompressString(E.SerializeCBOR(payload), ZLIB))
+    end)
+    if not ok or type(block) ~= "string" then
+        return nil, TEXT.damaged
+    end
+    return TEXT.header .. "\n" .. TEXT.from:format(name, day, version) .. "\n" .. SHARE_PREFIX .. block
+end
+
+-- Walks the received data beside the shared entries: counts what CRT doesn't share (skipped) and
+-- returns the path of the first value of the wrong type, if any.
+local function scan(node, prefix, known, inner)
+    local unknown = 0
+    for k, v in pairs(node) do
+        local path = type(k) == "string" and (prefix == "" and k or prefix .. "." .. k) or nil
+        if path and known[path] then
+            if not isValid(known[path], v) then
+                return unknown, path
+            end
+        elseif path and inner[path] then
+            if type(v) ~= "table" then
+                return unknown, path
+            end
+            local n, bad = scan(v, path, known, inner)
+            unknown = unknown + n
+            if bad then
+                return unknown, bad
+            end
+        else
+            unknown = unknown + 1
+        end
+    end
+    return unknown
+end
+
+local function cleanName(from)
+    if type(from) ~= "string" then
+        return TEXT.someone
+    end
+    from = from:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""):gsub("|", ""):sub(1, MAX_FROM)
+    return from ~= "" and from or TEXT.someone
+end
+
+local function readSettings(text)
+    local E = encoder()
+    if not E then
+        return nil, TEXT.noApi
+    end
+    local ok, payload = pcall(function()
+        return E.DeserializeCBOR(E.DecompressString(E.DecodeBase64(text:sub(#SHARE_PREFIX + 1)), ZLIB))
+    end)
+    if not ok or type(payload) ~= "table" or type(payload.v) ~= "number" then
+        return nil, TEXT.damaged
+    end
+    if payload.v > SHARE_VERSION then
+        return nil, TEXT.newer
+    end
+    if payload.kind ~= "settings" or type(payload.data) ~= "table" then
+        return nil, TEXT.damaged
+    end
+    local known, inner = {}, {}
+    for _, entry in ipairs(Profiles.ShareEntries()) do
+        known[entry.path] = entry
+        for i = 1, #entry.keys - 1 do
+            inner[table.concat(entry.keys, ".", 1, i)] = true
+        end
+    end
+    local unknown, bad = scan(payload.data, "", known, inner)
+    if bad then
+        return nil, TEXT.badValue:format(bad)
+    end
+    local info = { kind = "settings", from = cleanName(payload.from), values = {}, unset = {}, unknown = unknown }
+    for _, entry in ipairs(Profiles.ShareEntries()) do
+        local v = getPath(payload.data, entry.keys)
+        if v ~= nil then
+            info.values[entry.path] = v
+        end
+    end
+    for _, path in ipairs(type(payload.unset) == "table" and payload.unset or {}) do
+        if known[path] and known[path].position and info.values[path] == nil then
+            info.unset[path] = true
+        else
+            info.unknown = info.unknown + 1
+        end
+    end
+    return info
+end
+
+-- Reads pasted text without changing anything. Returns { kind = "settings", from, values, unset,
+-- unknown } for a settings string, { kind = "full", parts } for a whole profile, or nil and the reason.
+function Profiles:Read(text)
+    text = cleanText(text)
+    if text:sub(1, #SHARE_PREFIX) == SHARE_PREFIX then
+        return readSettings(text)
+    end
+    if text:sub(1, #EXPORT_PREFIX) ~= EXPORT_PREFIX then
+        return nil, TEXT.notOurs
+    end
+    if not encoder() then
+        return nil, TEXT.noApi
+    end
+    local data, err = decodeFull(text)
+    if not data then
+        return nil, err
+    end
+    local parts = 0
+    for _ in pairs(data) do
+        parts = parts + 1
+    end
+    return { kind = "full", parts = parts }
+end
+
+local function label(entry)
+    local keys = entry.keys
+    local out = { SECTIONS[keys[1]] or keys[1] }
+    for i = 2, #keys do
+        out[#out + 1] = tostring(keys[i])
+    end
+    return table.concat(out, " > ")
+end
+
+local function shown(v)
+    if v == nil then
+        return "default"
+    elseif v == true then
+        return "on"
+    elseif v == false then
+        return "off"
+    end
+    return tostring(v)
+end
+
+-- What an import would change on the active profile, in path order: { path, text } with text
+-- "label: old -> new" ("label: changed" for a table, "label: back to default" when it is cleared).
+function Profiles:Diff(info, keepPositions)
+    local out = {}
+    for _, entry in ipairs(Profiles.ShareEntries()) do
+        if not (keepPositions and entry.position) and (info.values[entry.path] ~= nil or info.unset[entry.path]) then
+            local old, new = getPath(CRTDB, entry.keys), info.values[entry.path]
+            if not same(old, new) then
+                local text
+                if new == nil then
+                    text = label(entry) .. ": back to default"
+                elseif type(old) == "table" or type(new) == "table" then
+                    text = label(entry) .. ": changed"
+                else
+                    text = label(entry) .. ": " .. shown(old) .. " -> " .. shown(new)
+                end
+                out[#out + 1] = { path = entry.path, text = text }
+            end
+        end
+    end
+    return out
+end
+
+-- Puts values (path -> value) and unset paths (path -> true) onto the active profile.
+local function put(values, unset, keepPositions)
+    for _, entry in ipairs(Profiles.ShareEntries()) do
+        if not (keepPositions and entry.position) then
+            local v = values[entry.path]
+            if v ~= nil and isValid(entry, v) then
+                setPath(CRTDB, entry.keys, deepCopy(v))
+            elseif v == nil and unset[entry.path] then
+                setPath(CRTDB, entry.keys, nil)
+            end
+        end
+    end
+end
+
+-- Applies a read settings string onto the active profile: first one backup of every shared setting as it
+-- is now (replacing the last), then the values, then a reload.
+function Profiles:ApplySettings(info, keepPositions)
+    local backup = { from = info.from, saved = time and time() or 0, values = {}, unset = {} }
+    for _, entry in ipairs(Profiles.ShareEntries()) do
+        local v = getPath(CRTDB, entry.keys)
+        if v == nil then
+            backup.unset[entry.path] = true
+        else
+            backup.values[entry.path] = deepCopy(v)
+        end
+    end
+    CRTDB.importBackup = backup
+    put(info.values, info.unset, keepPositions)
+    ReloadUI()
+end
+
+function Profiles:HasBackup()
+    local b = CRTDB and CRTDB.importBackup
+    return type(b) == "table" and type(b.values) == "table" and next(b.values) ~= nil
+end
+
+-- Whose import the backup was taken before, for the Undo question.
+function Profiles:BackupFrom()
+    return self:HasBackup() and cleanName(CRTDB.importBackup.from) or nil
+end
+
+-- Puts back the settings from before the last import, forgets the backup, and reloads.
+function Profiles:UndoImport()
+    if not self:HasBackup() then
+        return
+    end
+    local b = CRTDB.importBackup
+    put(b.values, type(b.unset) == "table" and b.unset or {}, false)
+    CRTDB.importBackup = {}
+    ReloadUI()
 end
