@@ -28,6 +28,7 @@ local TEXT = {
     rolling = "Rolling… you rolled %s",
     won = "Won · you rolled %s",
     received = "Yours · the game gave it to you",
+    bags = "Yours · from your bags",
     lost = "Won by %s",
     nowinner = "Nobody won it: everyone passed",
     cant = "Can't roll: %s. Tell the raid.",
@@ -35,6 +36,8 @@ local TEXT = {
     ilvl = "Item level %d",
     tradeHours = "%dh %02dm left to trade",
     tradeMinutes = "%dm left to trade",
+    untimedHours = "Not bound: leaves in %dh %02dm",
+    untimedMinutes = "Not bound: leaves in %dm",
     test = "TEST",
     testWon = "Yours · a test boss kill",
 }
@@ -74,6 +77,8 @@ function LM.BossLootStatus(r)
     local roll = LM.AutoPass.ROLL_NAME[r.rollType or 0] or ""
     if r.status == "won" and r.test then
         return UI.GoodText(TEXT.testWon)
+    elseif r.status == "won" and r.bags then
+        return UI.GoodText(TEXT.bags)
     elseif r.status == "won" and r.received then
         return UI.GoodText(TEXT.received)
     elseif r.status == "won" then
@@ -92,7 +97,7 @@ end
 -- row's boss first (always for a TEST row, whose boss isn't the window's badge).
 function LM.BossLootDetail(r, withBoss)
     local boss = (withBoss or r.test) and type(r.boss) == "string" and r.boss or nil
-    if not r.pass then
+    if not r.pass and not r.bags then -- an item you added from your bags is in on purpose
         local why = TEXT.notFilter:format(FILTER_WHY[r.why] or tostring(r.why or "?"))
         return boss and (boss .. " · " .. why) or why
     end
@@ -106,7 +111,10 @@ function LM.BossLootDetail(r, withBoss)
         parts[#parts + 1] = TEXT.ilvl:format(r.ilvl)
     end
     local left = BL.TradeLeft(r)
-    if left then
+    if r.untimed and r.expires then -- no trade time: its own end (LootMaster/BossLoot.lua)
+        local m = math.ceil(math.max(0, r.expires - GetTime()) / 60)
+        parts[#parts + 1] = m >= 60 and TEXT.untimedHours:format(math.floor(m / 60), m % 60) or TEXT.untimedMinutes:format(m)
+    elseif left then
         local m = math.ceil(left / 60)
         local text = m >= 60 and TEXT.tradeHours:format(math.floor(m / 60), m % 60) or TEXT.tradeMinutes:format(m)
         parts[#parts + 1] = left <= LM.TRADE_WARN and UI.WarnText(text) or text

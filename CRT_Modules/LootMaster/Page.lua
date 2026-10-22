@@ -2,7 +2,8 @@ local ADDON, CRT = ...
 
 -- The Loot Master page (/crt lootmaster), with four tabs:
 --   Tonight       the running session (or none), and buttons for a test boss kill, Start session, the
---                 looter window, your popup and End session; Held boss loot (LootMaster/BossLoot.lua);
+--                 looter window, your popup and End session; Held boss loot (LootMaster/BossLoot.lua),
+--                 with Add item under it (LootMaster/AddItem.lua);
 --                 CRT Looting's state, with the leader's Turn on / Turn off for everyone (LootMaster/Looting.lua)
 --   Raider Score  every player's score from the Late Tracker's nights (LootMaster/Score.lua)
 --   Loot filter   which items open a loot session (LootMaster/FilterTab.lua, rules in Filter.lua)
@@ -30,9 +31,9 @@ local L = {
     -- Sync Master Loot, in the second column under the award message: "Sync to", the dropdown, a box
     syncTop = -306, syncLabel = 46, syncPick = 124,
     tooltipTop = -430, -- Item tooltip, under Sync Master Loot (which ends near -410)
-    -- Tonight: Held boss loot under the session buttons (at most heldRows rows, then "and N more"), then
-    -- the session's Items, whose last line ends near -470
-    heldTop = -96, heldRow = 36, heldRows = 4, heldW = 600, itemsTop = -292,
+    -- Tonight: Held boss loot under the session buttons (at most heldRows rows, then "and N more"), Add
+    -- item's 36 px slot and its lines under that, then the session's Items, whose last line ends near -470
+    heldTop = -96, heldRow = 36, heldRows = 3, heldW = 600, addTop = -244, addW = 640, itemsTop = -292,
 }
 L.col3W = UI.PAGE_W - L.col3 - 8 -- the third column, to the page's right margin
 L.col2W = L.col3 - L.col2 - 12 -- the second column, with a gap before the third
@@ -45,13 +46,13 @@ local TEXT = {
     filter = "Loot filter",
     settings = "Settings",
     session = "Loot session",
-    sessionHelp = "The session you are running. Test boss kill acts as one boss kill: it adds 2 to 4 sample items marked TEST to Held boss loot. Start session gives out the ticked items, as after a real kill. A session of TEST items is a test: everyone with CRT gets the popup, nothing is passed or saved to Loot History, and only you see the award message. End session also clears the TEST items. /crt loot test starts a test session at once.",
+    sessionHelp = "The session you are running. Test boss kill acts as one boss kill: it adds 2 to 4 sample items marked TEST to Held boss loot. Start session gives out the ticked items, as after a real kill. A session of TEST items is a test: everyone with CRT gets the popup, nothing is passed or saved to Loot History, and only you see the award message. End session asks first, then ends the session, puts real items waiting to start back in Held boss loot unticked, and clears the TEST items. /crt loot test starts a test session at once.",
     none = "No loot session is running.",
     running = "%s%d items, %d of %d raiders with CRT, %d answers in",
     testTag = "TEST · ",
     testKill = "Test boss kill", start = "Start session (%d)", window = "Looter window", popup = "My popup", endSession = "End session",
     held = "Held boss loot",
-    heldHelp = "The boss items waiting for your next loot session, real and TEST, as in the Boss loot window (/crt loot boss). Tick the ones to give out and press Start session. TEST items never go into a real session: with both kinds ticked, only the real ones start. TEST items go at End session, after a /reload, or 10 minutes after their test kill.",
+    heldHelp = "The boss items waiting for your next loot session, real and TEST, as in the Boss loot window (/crt loot boss). Tick the ones to give out and press Start session. TEST items never go into a real session: with both kinds ticked, only the real ones start. TEST items go at End session, after a /reload, or 10 minutes after their test kill. Add item puts gear or a tier token from your bags on the list, marked from your bags, if you can still trade it. One that isn't bound has no trade time and leaves 2 hours after you added it.",
     heldNone = "No boss loot held.",
     heldCount = "%d %s killed, %d %s held",
     heldBoss = "boss", heldBosses = "bosses", heldItem = "item", heldItems = "items",
@@ -222,12 +223,7 @@ local function buildTonight(f)
         { TEXT.start:format(0), function() LM.BossLoot:Start() end },
         { TEXT.window, function() LM:ShowWindow() end },
         { TEXT.popup, function() LM:ShowPopup() end },
-        { TEXT.endSession, function()
-            LM:End()
-            if not LM.current and LM.BossLoot then
-                LM.BossLoot:ClearTests() -- no TEST items started next: they go too
-            end
-        end },
+        { TEXT.endSession, function() LM:AskEnd() end }, -- asks first, then ends everything (LootMaster/EndAll.lua)
     }) do
         local b = UI.PanelButton(f, spec[1], 24, spec[2])
         if prev then
@@ -254,6 +250,7 @@ local function buildTonight(f)
     local heldMore = f:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     heldMore:SetPoint("TOPLEFT", L.col1 + 4, L.heldTop - 22 - L.heldRows * L.heldRow - 2)
     UI.Tint(heldMore, "SetTextColor", "muted")
+    LM.BuildAddItem(f, L.col1, L.addTop, L.addW, skin) -- Add item: drag or shift-click from your bags
     refreshers[#refreshers + 1] = function()
         local BL = LM.BossLoot
         local rows = BL and BL:Rows() or {}
