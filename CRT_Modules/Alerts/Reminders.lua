@@ -5,11 +5,14 @@ local ADDON, CRT = ...
 -- you type, and it runs on the alerts engine as the "mine" block beside the raid note. A reminder is
 -- saved in CRT.db.alerts.reminders[encounterID][id] as
 --   { boss, spellID, text, times, outputs = { alert, bar, speech, text, icon, circle, timeline }, warn, speech,
---     priority, difficulty, enabled, linger, sound, auraSound, glow, iconID, color, speakAt }
+--     priority, group, difficulty, enabled, linger, sound, auraSound, glow, iconID, color, speakAt }
 -- auraSound true also plays the sound when the spell's aura is put on you (Sound/Auras.lua).
 -- where `times` is typed text ("P1 0:02, 1:17; P2 +0:18") or nil for the reference, `speech` is
 -- "text", "textcount" (the text, then 3, 2, 1) or "count", `speakAt` is nil (the text is read out when
--- the alert shows) or "zero" (at its time), and `difficulty` nil means any. A reminder on a boss ability
+-- the alert shows) or "zero" (at its time). `group` is the difficulty group it is for, "nh" (Normal/Heroic)
+-- or "mythic" (Reminders.GroupOf). Older reminders have instead `difficulty`, a Difficulty line's text
+-- ("Heroic"), read as its group, or neither: any difficulty, until the pass splits them into one per group
+-- (SplitOne, kept as they were in alerts.anyBackup[encounterID][id]). A reminder on a boss ability
 -- follows its row's casts instead of typed times, and may add `shifts` ({ [group] = { [castKey] =
 -- seconds } }, group "mythic" or "nh", castKey such as "P1@0:36": see CastKey), `off` (the same shape,
 -- true for a cast turned off), and from the move of typed times `timesBackup`, `timesUnmatched` and
@@ -130,6 +133,30 @@ function Reminders.CastKey(ref, t)
         end
     end
     return "P" .. tostring(ph) .. "@" .. clock(t - from)
+end
+
+-- The difficulty groups a reminder can be saved for.
+local GROUPS = { nh = true, mythic = true }
+
+-- The difficulty group of a Difficulty line's text, through the Timeline's one grouping (Timeline:GroupFor).
+local function groupOfText(difficulty)
+    local T = CRT.Timeline
+    if type(difficulty) ~= "string" or not readable(difficulty) or trim(difficulty) == "" or not (T and T.GroupFor) then
+        return nil
+    end
+    return T:GroupFor(trim(difficulty))
+end
+
+-- The difficulty group a reminder is for: its group, else the group of an older reminder's difficulty text
+-- ("Normal" and "Heroic" are "nh", "Mythic" is "mythic"), else nil (an older reminder on any difficulty).
+function Reminders.GroupOf(r)
+    if type(r) ~= "table" then
+        return nil
+    end
+    if GROUPS[r.group] then
+        return r.group
+    end
+    return groupOfText(r.difficulty)
 end
 
 -- The difficulty group of a reference ("mythic" or "nh", from its Difficulty line).
@@ -298,8 +325,10 @@ function Reminders:List(encounterID)
 end
 
 -- Saves a copy of r with the defaults filled in. id nil makes a new reminder. Returns the id. group
--- (optional) is the difficulty group the caller shows the reminder for ("mythic" or "nh"), so typed
--- times on a boss ability are placed on the row the caller showed (MigrateOne).
+-- (optional) is the difficulty group the caller shows the reminder for ("mythic" or "nh"): a reminder
+-- with no group of its own is saved for it, and typed times on a boss ability are placed on the row the
+-- caller showed (MigrateOne). A saved reminder on any difficulty saved for one group is split first
+-- (SplitOne), so the other group keeps it as it was; the id returned is then the one of that group.
 function Reminders:Save(encounterID, id, r, group)
     local all = store(true)
     local db = Alerts:Settings()
@@ -311,6 +340,21 @@ function Reminders:Save(encounterID, id, r, group)
         if type(saved[k]) ~= "string" or trim(saved[k]) == "" then
             saved[k] = nil
         end
+    end
+    if not GROUPS[saved.group] then
+        saved.group = nil
+    end
+    if not Reminders.GroupOf(saved) and GROUPS[group] then
+        saved.group = group
+    end
+    -- an older Difficulty text of another group than the one saved no longer says anything
+    if saved.group and saved.difficulty and groupOfText(saved.difficulty) ~= saved.group then
+        saved.difficulty = nil
+    end
+    if id and saved.group and all[encounterID] and all[encounterID][id]
+        and not Reminders.GroupOf(all[encounterID][id]) then
+        local ids = Reminders.SplitOne(encounterID, id)
+        id = ids and ids[saved.group] or id
     end
     if saved.times ~= nil and trim(saved.times) == "" then
         saved.times = nil
@@ -387,19 +431,18 @@ local function lower(s)
 end
 
 -- The reference of the boss to use, through the one picker the Timeline and the Rehearsal use
--- (Timeline:ReferenceFor): for the reminder's own difficulty (its Difficulty line's text, preferred inside
--- its group), else for group (the run's or the view's "mythic" or "nh"). With neither, or nothing in the
--- group, the reference of the reminder's difficulty, else the boss's first, as before.
+-- (Timeline:ReferenceFor): for the reminder's own group (GroupOf; an older reminder's Difficulty text is
+-- preferred inside it), else for group (the run's or the view's "mythic" or "nh"). With neither, or
+-- nothing in the group, the reference of the reminder's difficulty text, else the boss's first, as before.
 local function referenceFor(encounterID, r, group)
     local Ref, T = CRT.TimelineReference, CRT.Timeline
     if not Ref then
         return nil
     end
-    if r.difficulty and T and T.GroupFor then
-        group = T:GroupFor(r.difficulty)
-    end
-    if (group == "mythic" or group == "nh") and T and T.ReferenceFor then
-        local entry = T:ReferenceFor(encounterID, group, r.boss, r.difficulty)
+    group = Reminders.GroupOf(r) or group
+    local prefer = groupOfText(r.difficulty) and r.difficulty or nil
+    if GROUPS[group] and T and T.ReferenceFor then
+        local entry = T:ReferenceFor(encounterID, group, r.boss, prefer)
         if entry then
             return entry.ref
         end
@@ -408,9 +451,9 @@ local function referenceFor(encounterID, r, group)
     if #found == 0 then
         return nil
     end
-    if r.difficulty then
+    if prefer then
         for _, entry in ipairs(found) do
-            if entry.ref.difficulty and lower(entry.ref.difficulty) == lower(r.difficulty) then
+            if entry.ref.difficulty and lower(entry.ref.difficulty) == lower(prefer) then
                 return entry.ref
             end
         end
@@ -737,11 +780,11 @@ function Reminders.MigrateOne(encounterID, r, again, group)
     if not typed then
         return false
     end
-    local T = CRT.Timeline
     local groups
-    if r.difficulty and T and T.GroupFor then
-        groups = { T:GroupFor(r.difficulty) }
-    elseif group == "mythic" or group == "nh" then
+    local own = Reminders.GroupOf(r)
+    if own then
+        groups = { own }
+    elseif GROUPS[group] then
         groups = { group }
     else
         groups = { "nh", "mythic" }
@@ -799,15 +842,71 @@ local function sayUnmatched(id, r, text)
 end
 Reminders.SayUnmatched = sayUnmatched
 
--- The one pass over every boss's reminders. Its changes are not your steps: it runs inside the
--- Timeline's undo Quietly (so Ctrl+Z never puts typed times back), then fires the alerts' change event
--- so every list and window reads the reminders again. Returns how many reminders it moved.
+-- One per difficulty group ------------------------------------------------------------------------
+-- An older reminder could be for any difficulty (no group and no difficulty saved). Once, in the same
+-- pass, each becomes two with the same settings: itself for Normal/Heroic and a copy (a new id, with its
+-- display overrides copied too) for Mythic, so nothing that fired before stops firing. Before the change it
+-- is kept as it was in alerts.anyBackup[encounterID][id], never overwritten. A reminder already for one
+-- group is left alone, so a second pass changes nothing.
+
+-- Splits reminder id of a boss when it is on any difficulty. Returns { nh = id, mythic = copy's id }, or
+-- nil when there is no such reminder or it is already for one group.
+function Reminders.SplitOne(encounterID, id)
+    local all = store()
+    local db = Alerts:Settings()
+    local r = all and type(all[encounterID]) == "table" and all[encounterID][id]
+    if not (db and type(r) == "table") or Reminders.GroupOf(r) then
+        return nil
+    end
+    db.anyBackup = type(db.anyBackup) == "table" and db.anyBackup or {}
+    db.anyBackup[encounterID] = type(db.anyBackup[encounterID]) == "table" and db.anyBackup[encounterID] or {}
+    if db.anyBackup[encounterID][id] == nil then
+        db.anyBackup[encounterID][id] = copy(r)
+    end
+    local other = copy(r)
+    other.group = "mythic"
+    r.group = "nh"
+    local newID = db.nextId or 1
+    db.nextId = newID + 1
+    all[encounterID][newID] = other
+    local over = db.overrides and db.overrides[BLOCK]
+    if type(over) == "table" and over[id] ~= nil then
+        over[newID] = copy(over[id])
+    end
+    return { nh = id, mythic = newID }
+end
+
+-- Every boss's reminders on any difficulty split (SplitOne). Returns how many.
+local function splitAll(all)
+    local n = 0
+    for enc, list in pairs(all) do
+        if type(list) == "table" then
+            local ids = {}
+            for id in pairs(list) do
+                ids[#ids + 1] = id
+            end
+            for _, id in ipairs(ids) do
+                local ok, res = pcall(Reminders.SplitOne, enc, id)
+                if ok and res then
+                    n = n + 1
+                end
+            end
+        end
+    end
+    return n
+end
+
+-- The one pass over every boss's reminders: typed times moved onto the casts (MigrateOne), then each
+-- reminder on any difficulty split into one per group (SplitOne). Its changes are not your steps: it runs
+-- inside the Timeline's undo Quietly (so Ctrl+Z never puts typed times back), then fires the alerts' change
+-- event so every list and window reads the reminders again. Returns how many reminders it moved, then how
+-- many it split.
 function Reminders.MigrateAll()
     local all = store()
     if type(all) ~= "table" then
-        return 0
+        return 0, 0
     end
-    local moved = 0
+    local moved, split = 0, 0
     local function run()
         for enc, list in pairs(all) do
             for id, r in pairs(type(list) == "table" and list or {}) do
@@ -820,7 +919,8 @@ function Reminders.MigrateAll()
                 end
             end
         end
-        if moved > 0 then
+        split = splitAll(all)
+        if moved > 0 or split > 0 then
             Alerts:Fire()
         end
     end
@@ -830,7 +930,7 @@ function Reminders.MigrateAll()
     else
         run()
     end
-    return moved
+    return moved, split
 end
 
 -- When the pass runs: once, at login or on entering the world, out of combat (waiting for combat to end
@@ -893,18 +993,15 @@ end
 -- The block -----------------------------------------------------------------------------------
 
 -- A run with anyDifficulty (the Phases tab asking which phases a boss has) takes every difficulty.
--- A reminder's difficulty is a Difficulty line's text; a pull's ID (DifficultyID) matches it on any
--- client language, where the game's name for it is translated.
-local DIFFICULTY_IDS = { normal = 14, heroic = 15, mythic = 16 }
+-- Otherwise a reminder runs when its group (GroupOf) is the run's (Alerts:RunGroup: the Timeline's group
+-- of the pull's difficulty ID, the same on every client language, else of its name). An older reminder on
+-- any difficulty, not split yet, runs on every one.
 local function matchesDifficulty(r, run)
-    if not r.difficulty or run.anyDifficulty then
+    local want = Reminders.GroupOf(r)
+    if not want or run.anyDifficulty then
         return true
     end
-    if type(run.difficultyName) == "string" and lower(run.difficultyName) == lower(r.difficulty) then
-        return true
-    end
-    local id = DIFFICULTY_IDS[lower(r.difficulty)]
-    return id ~= nil and run.difficultyID == id
+    return Alerts.RunGroup ~= nil and Alerts:RunGroup(run) == want
 end
 
 local function speechList(r, text)

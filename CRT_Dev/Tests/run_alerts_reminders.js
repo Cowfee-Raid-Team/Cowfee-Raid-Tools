@@ -143,6 +143,86 @@ do
   print("ok reminders: difficulty filter")
 end
 
+-- Saved per difficulty group: a reminder's group ("nh" Normal/Heroic or "mythic"), matched through the
+-- Timeline's group of the pull (its difficulty ID first). Older difficulty text reads as its group.
+local function texts(run)
+  local t = {}
+  for _, it in ipairs(block(run)) do t[#t + 1] = it.text end
+  table.sort(t)
+  return table.concat(t, ",")
+end
+do
+  fresh()
+  local nh = R:Save(3001, nil, { boss = "b", text = "nh", times = "10" }, "nh")
+  local my = R:Save(3001, nil, { boss = "b", text = "my", times = "10" }, "mythic")
+  assert(R:Get(3001, nh).group == "nh" and R:Get(3001, my).group == "mythic", "saved with its group")
+  assert(texts({ encounterID = 3001, difficultyID = 15, difficultyName = "Heroisch" }) == "nh", "a Heroic pull: " .. texts({ encounterID = 3001, difficultyID = 15 }))
+  assert(texts({ encounterID = 3001, difficultyID = 14 }) == "nh", "a Normal pull")
+  assert(texts({ encounterID = 3001, difficultyID = 17 }) == "nh", "Raid Finder is in the helper's Normal/Heroic group")
+  assert(texts({ encounterID = 3001, difficultyID = 16, difficultyName = "Mythisch" }) == "my", "a Mythic pull")
+  assert(texts({ encounterID = 3001, difficultyName = "Heroic" }) == "nh" and texts({ encounterID = 3001, difficultyName = "Mythic" }) == "my", "by name with no ID")
+  assert(texts({ encounterID = 3001 }) == "", "a pull of no known difficulty: neither")
+  assert(texts({ encounterID = 3001, anyDifficulty = true }) == "my,nh", "anyDifficulty sees all")
+  -- older saved values
+  fresh()
+  R:Save(3001, nil, { boss = "b", text = "N", times = "10", difficulty = "Normal" })
+  R:Save(3001, nil, { boss = "b", text = "H", times = "10", difficulty = "Heroic" })
+  R:Save(3001, nil, { boss = "b", text = "M", times = "10", difficulty = "Mythic" })
+  assert(texts({ encounterID = 3001, difficultyID = 15 }) == "H,N", "old Normal and Heroic on a Heroic pull: " .. texts({ encounterID = 3001, difficultyID = 15 }))
+  assert(texts({ encounterID = 3001, difficultyID = 14 }) == "H,N", "and on a Normal pull")
+  assert(texts({ encounterID = 3001, difficultyID = 16 }) == "M", "old Mythic on a Mythic pull only")
+  -- the game's own word for Mythic, on a client in another language
+  GetDifficultyInfo = function(id) if id == 16 then return "Mythisch" end return "Heroisch" end
+  R:Save(3001, nil, { boss = "b", text = "L", times = "10", difficulty = "Mythisch" })
+  assert(texts({ encounterID = 3001, difficultyID = 16 }) == "L,M" and texts({ encounterID = 3001, difficultyID = 15 }) == "H,N", "the game's Mythic word")
+  GetDifficultyInfo = nil
+  assert(R.GroupOf({ difficulty = "Heroic" }) == "nh" and R.GroupOf({ group = "mythic", difficulty = "Heroic" }) == "mythic"
+    and R.GroupOf({}) == nil and R.GroupOf({ group = "bad" }) == nil, "GroupOf")
+  -- a group saved over an older difficulty of the other group: the group wins, the text goes
+  local id = R:Save(3001, nil, { boss = "b", text = "x", times = "10", difficulty = "Heroic", group = "mythic" })
+  assert(R:Get(3001, id).group == "mythic" and R:Get(3001, id).difficulty == nil, "group over old text")
+  local keep = R:Save(3001, nil, { boss = "b", text = "y", times = "10", difficulty = "Heroic", group = "nh" })
+  assert(R:Get(3001, keep).difficulty == "Heroic", "text of the same group kept")
+  print("ok reminders: saved per difficulty group")
+end
+
+-- An older reminder on any difficulty (none saved) becomes one per group, once, with a backup.
+do
+  fresh()
+  CRT.db.alerts.anyBackup = nil
+  local any = R:Save(3001, nil, { boss = "b", text = "Any", times = "10", warn = 7 })
+  local only = R:Save(3001, nil, { boss = "b", text = "Only", times = "10" }, "mythic")
+  local old = R:Save(3001, nil, { boss = "b", text = "Old", times = "10", difficulty = "Heroic" })
+  CRT.db.alerts.overrides.mine = { [any] = { warn = 9 } }
+  assert(R:Get(3001, any).group == nil, "saved with no group: any")
+  R.ResetMigration()
+  R.MigratePass()
+  local list = R:List(3001)
+  assert(#list == 4, "one more reminder: " .. #list)
+  local copyID = list[4].id
+  local a1, a2 = R:Get(3001, any), R:Get(3001, copyID)
+  assert(a1.group == "nh" and a2.group == "mythic", "one per group: " .. tostring(a1.group) .. " " .. tostring(a2.group))
+  assert(a2.text == "Any" and a2.warn == 7 and a2.times == "10" and a2.boss == "b" and a2.enabled == true, "the same settings")
+  assert(CRT.db.alerts.overrides.mine[copyID] and CRT.db.alerts.overrides.mine[copyID].warn == 9, "its display overrides too")
+  assert(R:Get(3001, only).group == "mythic" and R:Get(3001, old).group == nil and R:Get(3001, old).difficulty == "Heroic", "single-group reminders untouched")
+  local b = CRT.db.alerts.anyBackup
+  assert(b and b[3001] and b[3001][any] and b[3001][any].text == "Any" and b[3001][any].group == nil and not b[3001][only], "the backup keeps it as it was")
+  assert(texts({ encounterID = 3001, difficultyID = 15 }) == "Any,Old", "a Heroic pull still fires it: " .. texts({ encounterID = 3001, difficultyID = 15 }))
+  assert(texts({ encounterID = 3001, difficultyID = 16 }) == "Any,Only", "and a Mythic pull: " .. texts({ encounterID = 3001, difficultyID = 16 }))
+  -- once: a second pass splits nothing more
+  local nextId = CRT.db.alerts.nextId
+  R.ResetMigration()
+  R.MigratePass()
+  assert(#R:List(3001) == 4 and CRT.db.alerts.nextId == nextId, "runs once")
+  -- a reminder on any difficulty saved for one group is split first: the other group keeps it as it was
+  fresh()
+  local id = R:Save(3001, nil, { boss = "b", text = "A", times = "10" })
+  local got = R:Save(3001, id, { boss = "b", text = "A2", times = "10" }, "mythic")
+  assert(got ~= id and R:Get(3001, got).text == "A2" and R:Get(3001, got).group == "mythic", "saved for Mythic")
+  assert(R:Get(3001, id).text == "A" and R:Get(3001, id).group == "nh", "Normal/Heroic keeps it")
+  print("ok reminders: any difficulty becomes one per group")
+end
+
 do
   fresh()
   local base = { text = "a", warn = 5, outputs = { alert = true, bar = true, speech = false } }
