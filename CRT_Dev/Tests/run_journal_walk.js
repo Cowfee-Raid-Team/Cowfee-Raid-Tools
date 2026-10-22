@@ -113,7 +113,13 @@ local INFO = {
   [3000] = { "Magmaw", 300, 2, 1024 }, [3100] = { "Theralion and Valiona", 400, 3, 1032 }, [3200] = { "Halfus Wyrmbreaker", 500, 3, 1030 },
 }
 function EJ_GetEncounterInfo(id) local i = INFO[id] if i then return i[1], "", id, i[2], "", i[3], i[4] end end
+-- before the Journal has selected an instance this session, listing one by its ID gives nothing
+function EJ_GetEncounterInfoByIndex() return nil end
+check("an instance not listed yet: the layout is unknown", J.Layout(2700) == nil)
+exact("an instance not listed yet: the export as before", CRT.TimelineJournalExport.Build(2700, 16), PIN_2700)
+local calls = 0
 function EJ_GetEncounterInfoByIndex(index, instanceID)
+  calls = calls + 1
   local id = (BOSSES[instanceID or 1] or {})[index]
   if id then local i = INFO[id] return i[1], "", id, i[2], "", i[3], i[4] end
 end
@@ -123,7 +129,11 @@ sec(300, { title = "Magma Spit", spellID = 3001, headerType = 0, siblingSectionI
 sec(301, { title = "Lava Spew", spellID = 3002, headerType = 0, siblingSectionID = 302 })   F[301] = { 5 }
 sec(302, { title = "Mangle", spellID = 3003, headerType = 0, firstChildSectionID = 320, siblingSectionID = 303 }) F[302] = { 0 }
 sec(320, { title = "Swelter", spellID = 3004, headerType = 1 })
-sec(303, { title = "Pillar of Flame", spellID = 0, headerType = 0, siblingSectionID = 304 })
+sec(303, { title = "Pillar of Flame", spellID = 0, headerType = 0, siblingSectionID = 307 })
+-- entries with no spell whose titles the reference reader would reject as ability lines
+sec(307, { title = "Exposed Head (Heroic)", spellID = 0, headerType = 0, siblingSectionID = 308 })
+sec(308, { title = "Phase 2: Molten", spellID = 0, headerType = 0, siblingSectionID = 309 })
+sec(309, { title = "Order", spellID = 0, headerType = 0, siblingSectionID = 304 })
 sec(304, { title = "Lava Parasite", spellID = 0, headerType = 0, firstChildSectionID = 340, siblingSectionID = 305 })
 sec(340, { title = "Parasitic Infection", spellID = 3005, headerType = 1 })
 sec(305, { title = "Blazing Bone Construct", spellID = 0, headerType = 0, filteredByDifficulty = true, firstChildSectionID = 350, siblingSectionID = 306 })
@@ -152,6 +162,7 @@ check("detection: a current raid's boss has the Overview layout", J.Layout(2700)
 check("detection: a boss with no Overview of its own in a current raid still has it", J.Layout(2800) == "overview")
 check("detection: an older raid's bosses have the Abilities layout", J.Layout(3000) == "abilities" and J.Layout(3100) == "abilities" and J.Layout(3200) == "abilities")
 check("detection: a boss its instance's list doesn't hold is unknown", J.Layout(9999) == nil)
+local callsBefore = calls
 exact("a current raid's boss with the boss list known: the export as before", CRT.TimelineJournalExport.Build(2700, 16), PIN_2700)
 exact("stages a level down with the boss list known: as before", CRT.TimelineJournalExport.Build(2800, 16), PIN_2800)
 
@@ -159,7 +170,8 @@ exact("Magmaw: every ability in Journal order, the add under its header, the bos
   CRT.TimelineJournalExport.Build(3000, 16),
   "Boss: Magmaw\nDifficulty: Mythic\nEncounter: 1024\n" .. HELP
   .. "Magma Spit [spell 3001]:\nLava Spew [spell 3002] (tags important):\nMangle [spell 3003] (tags tank):\nSwelter [spell 3004]:\n"
-  .. "Pillar of Flame:\n# Lava Parasite\nParasitic Infection [spell 3005]:\n# Magmaw\nMassive Crash [spell 3007]:")
+  .. "# Pillar of Flame (no spell)\n# Exposed Head (Heroic) (no spell)\n# Phase 2: Molten (no spell)\n# Order (no spell)\n"
+  .. "# Lava Parasite\nParasitic Infection [spell 3005]:\n# Magmaw\nMassive Crash [spell 3007]:")
 exact("Theralion and Valiona: each creature's headers as # lines, no Phase lines",
   CRT.TimelineJournalExport.Build(3100, 16),
   "Boss: Theralion and Valiona\nDifficulty: Mythic\nEncounter: 1032\n" .. HELP
@@ -171,8 +183,10 @@ local _, _, orows, ostages = J.FromJournalEncounter(3100)
 check("an older raid's boss has no stages, and its rows no stage", #ostages == 0 and orows[1].stage == nil and #orows == 8)
 local oref, oerrs = CRT.TimelineReference.Parse(CRT.TimelineJournalExport.Build(3100, 16))
 check("its export reads as a reference at once: " .. table.concat(oerrs or {}, "; "), oref and #oref.rows == 8 and #(oref.pending or {}) == 0)
-local mref = CRT.TimelineReference.Parse(CRT.TimelineJournalExport.Build(3000, 16))
-check("Magmaw's export reads too, the entry with no spell a row by name", mref and #mref.rows == 7)
+local mref, merrs = CRT.TimelineReference.Parse(CRT.TimelineJournalExport.Build(3000, 16))
+check("Magmaw's whole export reads as a reference, the entries with no spell only # lines: " .. table.concat(merrs or {}, "; "), mref and #mref.rows == 6)
+-- the Journal is asked about an instance once per session
+check("an instance's layout is kept: no second listing", calls == callsBefore)
 print(fails == 0 and "all passed" or (fails .. " failed"))
 if fails > 0 then error(fails .. " failed", 0) end
 `;

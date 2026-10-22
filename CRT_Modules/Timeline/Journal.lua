@@ -275,6 +275,9 @@ end
 -- where none is (the raids before Warlords of Draenor) shows a single Abilities tab, its pages a plain tree of
 -- creatures, headers and spells. "overview" or "abilities"; nil when the boss's instance can't be listed (the
 -- bosses are listed by EJ_GetEncounterInfoByIndex, which needs the Journal to have selected an instance once).
+-- An instance's answer and its bosses are kept for the session, once its bosses could be listed.
+local layouts = {} -- [journalInstanceID] = { layout = "overview" or "abilities", bosses = { [journalEncounterID] = true } }
+
 function Journal.Layout(journalEncounterID)
     if not (journalEncounterID and EJ_GetEncounterInfo and EJ_GetEncounterInfoByIndex and C_EncounterJournal) then
         return nil
@@ -283,7 +286,11 @@ function Journal.Layout(journalEncounterID)
     if not ok or not name then
         return nil
     end
-    local found, overview = false, false
+    local known = journalInstanceID and layouts[journalInstanceID]
+    if known then
+        return known.bosses[journalEncounterID] and known.layout or nil
+    end
+    local found, overview, bosses = false, false, {}
     for i = 1, 100 do
         local okBoss, _, _, bossID, bossRoot
         if journalInstanceID then
@@ -295,20 +302,25 @@ function Journal.Layout(journalEncounterID)
             break
         end
         found = found or bossID == journalEncounterID
+        bosses[bossID] = true
         local root = type(bossRoot) == "number" and bossRoot > 0 and getSection(bossRoot)
         overview = overview or (root and root.headerType == HTYPE_OVERVIEW) or false
     end
     if not found then
         return nil
     end
-    return overview and "overview" or "abilities"
+    local layout = overview and "overview" or "abilities"
+    if journalInstanceID then
+        layouts[journalInstanceID] = { layout = layout, bosses = bosses }
+    end
+    return layout
 end
 
 -- The rows of a boss with the Abilities page (Journal.Layout): every spell in Journal order, as the Journal walks
 -- its list (EncounterJournal_ToggleHeaders: sections hidden for the picked difficulty left out with what is under
 -- them, and headerType not looked at, since on these pages it is only the section's depth). A section with no
 -- spell that has sections under it is a header (a creature, "Grounded Abilities"), its title in the headers of the
--- rows under it; one with nothing under it is an entry listed by its title alone. Within one header a spell is
+-- rows under it; one with nothing under it is an entry with no spellID (the export writes it as a "#" line). Within one header a spell is
 -- listed once, with its sections' icons merged.
 local function abilitiesRows(rootSectionID)
     local rows, seen, visited = {}, {}, {}

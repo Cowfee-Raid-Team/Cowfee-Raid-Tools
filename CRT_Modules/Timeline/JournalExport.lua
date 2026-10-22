@@ -50,15 +50,17 @@ function Export.Options(tags)
     return " (" .. table.concat(parts, ", ") .. ")"
 end
 
--- An ability's line: "Name [spell N] (tags ...):"; an entry the Journal gives no spell is "Name (tags ...):".
+-- An ability's line: "Name [spell N] (tags ...):".
 local function abilityLine(row)
-    return row.name .. (row.spellID and (" [spell " .. row.spellID .. "]") or "") .. Export.Options(row.tags) .. ":"
+    return row.name .. " [spell " .. row.spellID .. "]" .. Export.Options(row.tags) .. ":"
 end
 
 -- A boss with the older Abilities page (raids before Warlords of Draenor): its abilities in Journal order, with a
 -- "#" line for each header above them ("# Theralion", "# Grounded Abilities") as it starts. Back at a shallower
 -- level after a header's abilities, that level's header (the boss's name at the top) is repeated, so an ability
--- is never read as under the header before it. No header becomes a Phase line.
+-- is never read as under the header before it. No header becomes a Phase line. An entry the Journal gives no
+-- spell is a "#" line too, "# Pillar of Flame (no spell)": its title could be anything ("Phase 2: Molten",
+-- "Order"), and as an ability line one title the reference reader rejects would fail the whole Send.
 local function abilitiesLines(lines, rows, bossName)
     local shown = {}
     for _, row in ipairs(rows) do
@@ -74,7 +76,11 @@ local function abilitiesLines(lines, rows, bossName)
             lines[#lines + 1] = "# " .. headers[i]
         end
         shown = headers
-        lines[#lines + 1] = abilityLine(row)
+        if row.spellID then
+            lines[#lines + 1] = abilityLine(row)
+        else
+            lines[#lines + 1] = "# " .. row.name .. " (no spell)"
+        end
     end
 end
 
