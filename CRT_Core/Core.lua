@@ -19,8 +19,9 @@ local defaults = {
     -- has no theme: CRT:ResolveTheme gives it one from modern before these defaults are filled in.
     -- hideRealms leaves realm names out of the Late Tracker and Tattlebot, on screen, in chat and in exports.
     -- tooltipMode is where the addon's tooltips open: "spot" next to what you hover, on tooltipSpot ("auto",
-    -- each tooltip on its own side, or a key of UI.TOOLTIP_SPOTS), "game" the game's tooltip spot, "cursor" following the cursor (UI.TooltipOwner in
-    -- UI/Tooltip.lua). They replaced tooltipAnchor, which is read once on load (below) and kept.
+    -- each tooltip on its own side, or a key of UI.TOOLTIP_SPOTS), "game" the game's tooltip spot, "cursor"
+    -- following the cursor (UI.TooltipOwner in UI/Tooltip.lua). They replaced tooltipAnchor, which is read
+    -- once on load (below) and kept.
     ui = { font = "default", outline = "", textSize = 100, bgAlpha = 100, layers = {}, soundChannel = "Master", hideRealms = false, modern = false, theme = "blizzard", tooltipMode = "spot", tooltipSpot = "auto" },
     lastPage = "groups",
     -- The minimap button (UI/Minimap.lua): angle is its place around the minimap, in degrees.
@@ -584,9 +585,9 @@ end
 
 -- Before the defaults, once: Tooltip position moved to tooltipMode and tooltipSpot (UI/Tooltip.lua). General
 -- Settings' old ui.tooltipAnchor: "game" stays the game's spot, anything else is next to what you hover on
--- the default spot, auto (each tooltip on its own side, as before). An area's old tooltipPosition (Loot History in loot,
--- Loot Master in lootmaster): "owner" becomes "spot", "general", "game" and "cursor" stay. The old fields
--- are kept as they were, and never read again once the new one is saved.
+-- the default spot, auto (each tooltip on its own side, as before). An area's old tooltipPosition (Loot
+-- History in loot, Loot Master in lootmaster): "owner" becomes "spot", "general", "game" and "cursor" stay.
+-- The old fields are kept as they were, and never read again once the new one is saved.
 function CRT.ReadOldTooltipSettings(db)
     local ui = db.ui
     if type(ui) == "table" and ui.tooltipMode == nil and type(ui.tooltipAnchor) == "string" then
@@ -614,8 +615,8 @@ frame:SetScript("OnEvent", function(self, event, arg1)
         end
         -- before the defaults, once: the Loot Master item tabs' tooltip setting moved from tooltipAnchor to
         -- itemTooltip. Left, the old default, becomes "area" (Loot Master's Tooltip position: on auto, the
-        -- default, next to the icon on the window's outer side, as before); Default tooltip becomes "game"; the other
-        -- sides stay. The old field is kept as it was.
+        -- default, next to the icon on the window's outer side, as before); Default tooltip becomes
+        -- "game"; the other sides stay. The old field is kept as it was.
         local lm = CRTDB.lootmaster
         if type(lm) == "table" and lm.itemTooltip == nil and type(lm.tooltipAnchor) == "string" then
             local old = lm.tooltipAnchor

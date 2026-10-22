@@ -206,9 +206,10 @@ end
 -- The Tooltip position dropdown and its spot picker under it, for General Settings (area nil) or an
 -- area's Settings tab. The picker is greyed unless the dropdown is on Next to what you hover; picking a
 -- spot turns that on, and clicking the lit spot again goes back to auto (no spot lit, "Each on its own
--- side"). While an area is on Use the general setting, its picker shows General Settings' spot, in use. opts: labelWidth, width (the dropdown's), beside (the picker right of the dropdown,
--- for a page with no room under it). Place the dropdown with group.row:SetPoint; the picker follows it.
--- Returns group = { row, picker, refresh }.
+-- side"); on a greyed picker, a click on the lit spot picks it. While an area is on Use the general
+-- setting, its picker shows General Settings' spot, the one in use. opts: labelWidth, width (the
+-- dropdown's), beside (the picker right of the dropdown, for a page with no room under it). Place the
+-- dropdown with group.row:SetPoint; the picker follows it. Returns group = { row, picker, refresh }.
 function UI.TooltipPositionSetting(parent, area, opts)
     opts = opts or {}
     local labelWidth = opts.labelWidth or 140

@@ -357,8 +357,9 @@ check(g.row.refreshed and g.picker.alpha == 1, "general: the dropdown shows it, 
 g.row.opts.set("cursor")
 check(CRT.db.ui.tooltipMode == "cursor" and g.picker.alpha < 1, "general: Follow the cursor greys the picker")
 eq(g.row.opts.get(), "cursor", "general: the dropdown reads it back")
+g.row.opts.set("spot")
 g.picker.spots.left.scripts.OnClick(g.picker.spots.left)
-check(CRT.db.ui.tooltipMode == "spot" and CRT.db.ui.tooltipSpot == "auto", "general: clicking the lit spot goes back to auto, next to what you hover")
+check(CRT.db.ui.tooltipMode == "spot" and CRT.db.ui.tooltipSpot == "auto", "general on Next to what you hover: clicking the lit spot goes back to auto")
 g.picker.spots.left.scripts.OnClick(g.picker.spots.left)
 CRT.db.lootmaster = { tooltipMode = "general", tooltipSpot = "topright" }
 local a = UI.TooltipPositionSetting(page, "lootmaster", { labelWidth = 110, width = 160, beside = true })
@@ -368,6 +369,16 @@ check(ap[1] == "LEFT" and ap[2] == a.row and ap[3] == "RIGHT", "beside: the pick
 a.refresh()
 check(a.picker.alpha < 1, "area: greyed on Use the general setting")
 eq(a.picker.opts.get(), "left", "area on Use the general setting: its greyed picker shows General Settings' spot, the one in use")
+-- a greyed picker's lit spot picks that spot, never clears it
+a.picker.spots.left.scripts.OnClick(a.picker.spots.left)
+check(CRT.db.lootmaster.tooltipMode == "spot" and CRT.db.lootmaster.tooltipSpot == "left", "greyed area picker: clicking the lit general spot saves it as the area's own")
+CRT.db.lootmaster.tooltipMode, CRT.db.lootmaster.tooltipSpot = "general", "topright"
+CRT.db.ui.tooltipMode, CRT.db.ui.tooltipSpot = "game", "left"
+g.refresh()
+check(g.picker.alpha < 1, "general on the game's spot: greyed")
+g.picker.spots.left.scripts.OnClick(g.picker.spots.left)
+check(CRT.db.ui.tooltipMode == "spot" and CRT.db.ui.tooltipSpot == "left", "greyed general picker: clicking the lit spot turns spots on with that spot")
+a.refresh()
 eq(a.row.opts.get(), "general", "area: the dropdown reads Use the general setting")
 a.picker.spots.bottomleft.scripts.OnClick(a.picker.spots.bottomleft)
 check(CRT.db.lootmaster.tooltipMode == "spot" and CRT.db.lootmaster.tooltipSpot == "bottomleft" and CRT.db.ui.tooltipSpot == "left", "area: a click gives the area its own spot, General Settings' stays")

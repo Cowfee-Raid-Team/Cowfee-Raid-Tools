@@ -698,11 +698,11 @@ end
 --   set(key)     called when a spot is clicked
 --   label        the text in the box, such as "What you hover"
 --   emptyLabel   optional: the box's text while no spot is lit, such as "Each on its own side"
---   clear        optional: clicking the lit spot again calls set(clear), such as "auto"; without it the
---                lit spot stays
+--   clear        optional: clicking the lit spot again calls set(clear), such as "auto"; without it, or
+--                while greyed (the lit spot then picks itself), the lit spot stays
 --   spots        optional: the keys to show (the rest are hidden); all twelve by default
---   enabledIf()  optional: greys the picker (half alpha) while it returns false. A greyed picker still takes a click,
---                since picking a spot is how the setting that owns it turns spots on
+--   enabledIf()  optional: greys the picker (half alpha) while it returns false. A greyed picker still
+--                takes a click, since picking a spot is how the setting that owns it turns spots on
 --   area         optional: the tooltip area its own tooltips follow (UI.TooltipOwner)
 -- The picker is UI.SPOT_PICKER_W x UI.SPOT_PICKER_H. Returns the frame, with picker.refresh() and
 -- picker.spots[key] (each spot's button).
@@ -792,7 +792,8 @@ function UI.SpotPicker(parent, opts)
         hl:SetColorTexture(1, 1, 1, 0.35)
         b.highlight = hl
         b:SetScript("OnClick", function()
-            if opts.clear ~= nil and opts.get() == s.key then
+            -- greyed, the lit spot is only shown (another setting is in use), so a click picks it
+            if opts.clear ~= nil and p.enabled and opts.get() == s.key then
                 opts.set(opts.clear)
             else
                 opts.set(s.key)
