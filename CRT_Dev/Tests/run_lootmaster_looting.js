@@ -3,7 +3,8 @@
 // kinds, the instance prompt (who is asked and when), on, off and the heartbeat, raiders taking them only
 // from the current raid leader, wipes (the leader out of the instance for up to 10 minutes), finder groups
 // and parties, red error text in a lockdown, the state line in chat and on the page, the gate's state, and
-// nothing saved. Usage: node run_lootmaster_looting.js <addon folder>
+// the leader's on state kept through a /reload (CRTDBChar lootmaster.looting) until it is turned off or a
+// safety off happens. Usage: node run_lootmaster_looting.js <addon folder>
 const fs = require('fs');
 const path = require('path');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
@@ -16,7 +17,7 @@ local function check(ok, what) if ok then passes = passes + 1 else fails = fails
 local function eq(a, b, what) check(a == b, what .. " (got " .. tostring(a) .. ", want " .. tostring(b) .. ")") end
 local NOW = 100
 GetTime = function() return NOW end
-time = function() return 1790000000 end
+time = function() return 1790000000 + NOW end -- the clock moves with GetTime
 wipe = function(t) for k in pairs(t) do t[k] = nil end return t end
 strtrim = function(s) return (s:gsub("^%s+", ""):gsub("%s+$", "")) end
 Ambiguate = function(n) return (n:gsub("%-.*$", "")) end
@@ -593,15 +594,196 @@ deliver(take(), "Solex-Sargeras")
 eq(LM:LootingStatus(), "CRT Looting: on for everyone in the raid with CRT", "leader: own O changes nothing")
 eq(select(2, LM.AutoPass:Ready(LM:LootingState())), "looter", "leader: the gate never passes for the looter")
 
--- 7. Memory only: nothing saved, and a /reload starts off
+-- 7. Saved per character: the leader's Yes lasts through a /reload, until it is turned off or a safety off happens
 local function keys(t) local out = {} for k in pairs(t or {}) do out[#out + 1] = tostring(k) end table.sort(out) return table.concat(out, ",") end
-eq(keys(CRTDBChar), "lootmaster", "nothing in CRTDBChar but the last kill")
-eq(keys(CRTDBChar.lootmaster), "lastKill", "CRTDBChar lootmaster: only the last kill (Comm.lua's)")
-eq(keys(CRT.db.lootmaster), "authority,enableInParty", "nothing new in CRTDB lootmaster")
+local function S() return CRTDBChar.lootmaster and CRTDBChar.lootmaster.looting end
+eq(keys(CRTDBChar), "lootmaster", "CRTDBChar: only lootmaster")
+eq(keys(CRTDBChar.lootmaster), "lastKill,looting", "CRTDBChar lootmaster: the last kill (Comm.lua's) and the saved Yes")
+eq(keys(CRT.db.lootmaster), "authority,enableInParty", "nothing new in CRTDB lootmaster (a profile key)")
+eq(keys(S()), "at,instance,on", "saved: on, instance and at only")
+eq(S().on, true, "saved: on")
+eq(S().instance, HERE, "saved: the instance said Yes for")
+eq(S().at, time(), "saved: when it was last confirmed")
+-- the heartbeat in the instance confirms it again
+NOW = NOW + 30
+take()
+tick(30)
+eq(S().at, time(), "saved: each heartbeat in the instance confirms it")
+-- a /reload (or login) as the leader in the same instance: back on, O and a heartbeat, no prompt, no F reload
+local function reload()
+  loadLooting()
+  LM.AskLooting = function() asked = asked + 1 end
+  timers = {}
+  take()
+  printed = {}
+  onEvent("PLAYER_ENTERING_WORLD", false, true)
+end
+n = asked
+reload()
+eq(LM:LootingOn(), true, "reload, same instance: back on")
+eq(asked, n, "reload, same instance: not asked")
+box = take()
+eq(#box, 2, "reload, same instance: two messages")
+eq(box[1], "O|" .. V .. "|" .. HERE .. FF, "reload, same instance: the O again, with the loot filter")
+eq(box[2], "H|" .. V .. "|" .. HERE .. "|" .. HERE .. "|0" .. FF, "reload, same instance: and a heartbeat")
+eq(lastPrint(), "CRT Looting: still on for everyone in the raid with CRT.", "reload, same instance: said in chat")
+eq(LM:LootingStatus(), "CRT Looting: on for everyone in the raid with CRT", "reload, same instance: the leader's line")
+eq(live(LM.HEARTBEAT_SECONDS), 1, "reload, same instance: the heartbeat ticker runs")
+onEvent("GROUP_ROSTER_UPDATE")
+eq(asked, n, "reload, same instance: a roster update doesn't ask either")
+-- a /reload during a boss encounter's chat lockdown: on, but nothing sent until it lifts
+LOCKED = true
+onEvent("ENCOUNTER_START", 1, "Boss", 16, 20)
+reload()
+eq(LM:LootingOn(), true, "reload in a lockdown: back on")
+eq(#outbox, 0, "reload in a lockdown: no O, no F reload, no heartbeat")
+LOCKED = false
+onEvent("ENCOUNTER_END", 1, "Boss", 16, 20, 1)
+box = take()
+eq(#box, 1, "reload in a lockdown: one message when the encounter ends")
+eq(box[1], "H|" .. V .. "|" .. HERE .. "|" .. HERE .. "|0" .. FF, "reload in a lockdown: the heartbeat after ENCOUNTER_END")
+LOCKED = true
+reload()
+eq(#outbox, 0, "reload in a lockdown again: nothing sent")
+LOCKED = false
+onEvent("PLAYER_REGEN_ENABLED")
+box = take()
+eq(box[1], "H|" .. V .. "|" .. HERE .. "|" .. HERE .. "|0" .. FF, "reload in a lockdown: the heartbeat after combat ends")
+-- Turn off for everyone clears it: the next /reload starts off and asks again
+LM:SetLooting(false, "off")
+eq(S(), nil, "turn off: the saved state is cleared")
+n = asked
+reload()
+eq(LM:LootingOn(), false, "turn off, then reload: off")
+eq(take()[1], "F|" .. V .. "|reload", "turn off, then reload: the F reload still goes")
+eq(asked, n + 1, "turn off, then reload: asked again")
+-- a login in another instance: off, cleared
+LM:SetLooting(true)
+WHERE.difficulty = 15
+reload()
+eq(LM:LootingOn(), false, "login in another instance: off")
+eq(S(), nil, "login in another instance: cleared")
+WHERE.difficulty = 16
+onEvent("PLAYER_ENTERING_WORLD", false, false)
+reload()
+eq(LM:LootingOn(), false, "back in the first instance after that: still off")
+-- a login after the away limit since it was last confirmed: off, cleared
+LM:SetLooting(true)
 loadLooting()
-eq(LM:LootingOn(), false, "reload: the leader starts off")
+LM.AskLooting = function() asked = asked + 1 end
+NOW = NOW + LM.LOOTING_AWAY + 1
+take()
+onEvent("PLAYER_ENTERING_WORLD", false, false)
+eq(LM:LootingOn(), false, "login after the away limit: off")
+eq(S(), nil, "login after the away limit: cleared")
+eq(take()[1], "F|" .. V .. "|reload", "login after the away limit: raiders told")
+-- a /reload in the open world on a wipe, within the away limit: on, away counted from the last confirm
+LM:SetLooting(true)
+take()
+goOutside()
+onEvent("PLAYER_ENTERING_WORLD", false, false)
+NOW = NOW + 60
+reload()
+eq(LM:LootingOn(), true, "reload in the open world within the limit: on")
+box = take()
+eq(#box, 1, "reload in the open world: only the heartbeat")
+eq(box[1], "H|" .. V .. "|" .. HERE .. "|world|60" .. FF, "reload in the open world: a heartbeat with the time away")
+NOW = NOW + LM.LOOTING_AWAY
+tick(30)
+eq(LM:LootingOn(), false, "reload in the open world: still turned off when out too long")
+eq(S(), nil, "away off: cleared")
+goInside()
+onEvent("PLAYER_ENTERING_WORLD", false, false)
+take()
+-- losing the lead clears it
+LM:SetLooting(true)
+GROUP.leader = "Halo-Sargeras"
+onEvent("PARTY_LEADER_CHANGED")
+eq(S(), nil, "lead lost: cleared")
+GROUP.leader = "Solex-Sargeras"
+onEvent("PARTY_LEADER_CHANGED")
+reload()
+eq(LM:LootingOn(), false, "lead lost, then reload: off")
+-- a fresh login where the group isn't known yet: waits for the first group event
+LM:SetLooting(true)
+local savedGroup = GROUP
+GROUP = nil
+n = asked
+reload()
+eq(LM:LootingOn(), false, "login, group not known yet: not on yet")
+eq(S() and S().on, true, "login, group not known yet: the saved Yes is kept")
+eq(#outbox, 0, "login, group not known yet: nothing sent")
+eq(asked, n, "login, group not known yet: not asked")
+GROUP = savedGroup
+onEvent("GROUP_ROSTER_UPDATE")
+eq(LM:LootingOn(), true, "login, then the group: back on")
+box = take()
+eq(box[1], "O|" .. V .. "|" .. HERE .. FF, "login, then the group: the O")
+eq(box[2], "H|" .. V .. "|" .. HERE .. "|" .. HERE .. "|0" .. FF, "login, then the group: and a heartbeat")
+eq(asked, n, "login, then the group: not asked")
+runTimers()
+eq(LM:LootingOn(), true, "login, then the group: the wait's end changes nothing")
+eq(#outbox, 0, "login, then the group: nothing more sent")
+-- the first group event says someone else leads: off, cleared, and raiders aren't told by a non-leader
+reload()
+take()
+GROUP.leader = "Halo-Sargeras"
+loadLooting()
+LM.AskLooting = function() asked = asked + 1 end
+timers = {}
+onEvent("PLAYER_ENTERING_WORLD", false, true)
+eq(S() and S().on, true, "login not leading: kept until the group is known")
+onEvent("PARTY_LEADER_CHANGED")
+eq(LM:LootingOn(), false, "login not leading: off")
+eq(S(), nil, "login not leading: cleared")
+eq(#outbox, 0, "login not leading: nothing sent")
+GROUP.leader = "Solex-Sargeras"
+onEvent("PARTY_LEADER_CHANGED")
+-- no group event within the wait: given up at its end (the leader's raiders told it starts off)
+LM:SetLooting(true)
+GROUP = nil
+reload()
+eq(S() and S().on, true, "no group event: kept for the wait")
+eq(LM.RESUME_WAIT, 5, "the wait is 5 seconds")
+GROUP = savedGroup
+GROUP.leader = "Halo-Sargeras"
+runTimers()
+eq(LM:LootingOn(), false, "no group event, not leading at the wait's end: off")
+eq(S(), nil, "no group event: cleared at the wait's end")
+GROUP.leader = "Solex-Sargeras"
+onEvent("PARTY_LEADER_CHANGED")
+take()
+-- another instance while on, and Enable in party turned off: cleared
+reload()
+LM:SetLooting(true)
+WHERE.inside, WHERE.kind = true, "party"
+onEvent("PLAYER_ENTERING_WORLD", false, false)
+eq(S(), nil, "another instance: cleared")
+goInside()
+onEvent("PLAYER_ENTERING_WORLD", false, false)
+GROUP.raid = false
+CRT.db.lootmaster.enableInParty = true
+LM:SetLooting(true)
+CRT.db.lootmaster.enableInParty = false
+LM.LootingRecheck("setting")
+eq(S(), nil, "Enable in party turned off: cleared")
+GROUP.raid = nil
+eq(keys(CRT.db.lootmaster), "authority,enableInParty", "still nothing new in CRTDB lootmaster")
+-- a raider's own /reload: off (the gate fails closed) until it hears the leader again
+LM:SetLooting(true)
+local on = take()
 ME = "Halo"
-eq(LM:LootingStatus(), "CRT Looting: off: the raid leader hasn't turned it on", "reload: a raider starts off")
+deliver(on, "Solex-Sargeras")
+eq(LM:LootingStatus(), "CRT Looting: on (leader Solex)", "raider: on before its reload")
+CRTDBChar.lootmaster.looting = nil -- a raider's own character has no saved Yes
+reload()
+eq(#outbox, 0, "raider reload: sends nothing")
+eq(LM:LootingOn(), false, "raider reload: never leads it")
+eq(LM:LootingStatus(), "CRT Looting: off: the raid leader hasn't turned it on", "raider reload: off")
+eq((LM.AutoPass:Ready(LM:LootingState())), false, "raider reload: the gate says no")
+eq((LM.AutoPass:ShouldPass(LM:LootingState(), roll)), false, "raider reload: a boss roll isn't passed")
+deliver({ "H|" .. V .. "|" .. HERE .. "|" .. HERE .. "|0" .. FF }, "Solex-Sargeras")
+eq(LM:LootingStatus(), "CRT Looting: on (leader Solex)", "raider reload: on again from the leader's heartbeat")
 
 print(string.format("%d passed, %d failed", passes, fails))
 if fails > 0 then error("failures") end
