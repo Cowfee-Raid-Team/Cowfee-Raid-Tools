@@ -58,7 +58,8 @@ local ADDON, CRT = ...
 -- leaves LM.BOSS_SECONDS after its kill, has no trade time, is never kept for a /reload and doesn't open
 -- the window. It never goes into a real session: Start session with both kinds ticked starts the real
 -- ones only and says so; one with only TEST rows starts a test session (LM:Start's test). When a test
--- session ends and no TEST items wait for their turn, the TEST rows go (BL:ClearTests).
+-- session started from them ends and no TEST items wait for their turn, the TEST rows go (BL:ClearTests;
+-- Tonight's End session clears them too).
 
 local LM = CRT.LootMaster
 local BL = { rows = {}, waiting = {} }
@@ -141,8 +142,18 @@ local function store()
     CRTDBChar.lootmaster.bossLootList = { rows = rows, waiting = waiting, boss = BL.boss, difficulty = BL.difficulty }
 end
 
+-- Whether the list has a real (not TEST) row.
+local function hasReal()
+    for _, r in ipairs(BL.rows) do
+        if not r.test then
+            return true
+        end
+    end
+    return false
+end
+
 local function changed(what)
-    if #BL.rows == 0 then
+    if not hasReal() then -- TEST rows have no badge and no results
         BL.boss, BL.difficulty = nil, nil -- the badge follows the next kill's rows
         applied, fromSource = {}, { history = {}, received = {} }
     end
@@ -225,16 +236,6 @@ function BL:Row(rollID)
     return nil
 end
 
--- Whether the list has a real (not TEST) row.
-local function hasReal()
-    for _, r in ipairs(BL.rows) do
-        if not r.test then
-            return true
-        end
-    end
-    return false
-end
-
 -- A boss roll the leader's CRT handled. fields: status ("rolling" or "cant"), rollType, reason, and test
 -- for a test boss kill's row. kill: LM:LastKill(), or a test kill. Returns the row, or nil without a link
 -- (the caller says so in chat).
@@ -297,16 +298,44 @@ function BL:HasTests()
     return false
 end
 
--- How many kills the rows came from (each kill's boss and time once), and how many rows.
+-- How many kills the rows came from (each kill's boss and time once; a row kept from before rows had
+-- them, by its encounterID, or not counted when it has neither), and how many rows.
 function BL:Held()
     local kills, n = {}, 0
     for _, r in ipairs(self.rows) do
-        local key = tostring(r.boss) .. ":" .. tostring(r.killAt)
-        if not kills[key] then
+        local key
+        if r.boss or r.killAt then
+            key = "kill:" .. tostring(r.boss) .. ":" .. tostring(r.killAt)
+        elseif r.encounterID then
+            key = "encounter:" .. tostring(r.encounterID)
+        end
+        if key and not kills[key] then
             kills[key], n = true, n + 1
         end
     end
     return n, #self.rows
+end
+
+-- The rows Start session would send now: the ticked won real rows, or with none, the ticked won TEST
+-- rows (TEST rows never mix with real ones). Returns them and whether they are TEST rows, and whether
+-- TEST rows were ticked beside real ones.
+local function toStart()
+    local real, tests = {}, {}
+    for _, r in ipairs(BL.rows) do
+        if r.ticked and r.status == "won" then
+            local list = r.test and tests or real
+            list[#list + 1] = r
+        end
+    end
+    if #real > 0 then
+        return real, false, #tests > 0
+    end
+    return tests, true, false
+end
+
+-- How many items Start session would send now (Loot Master > Tonight's Start session (N)).
+function BL:StartCount()
+    return #(toStart())
 end
 
 -- Whether a row can be ticked: only one that is yours or may still be.
@@ -378,8 +407,11 @@ startNext = function()
     for _, it in ipairs(items) do
         send[#send + 1] = { itemString = it.itemString, link = it.link, ilvl = it.ilvl }
     end
-    if not LM:Start(send, w.test) then
+    local s = LM:Start(send, w.test)
+    if not s then
         table.insert(BL.waiting, 1, w) -- LM:Start said why; tried again when a session ends
+    elseif w.test then
+        s.fromHeld = true -- started from held TEST rows: its end clears them
     end
     changed()
 end
@@ -397,22 +429,20 @@ function BL:Start()
     if not ok then
         return false, why
     end
-    local real, tests = false, false
-    for _, r in ipairs(self.rows) do
-        if r.ticked and r.status == "won" then
-            real, tests = real or not r.test, tests or (r.test and true or false)
-        end
+    local picked, test, mixed = toStart()
+    local going = {}
+    for _, r in ipairs(picked) do
+        going[r] = true
     end
-    local test = not real -- real ones ticked: those only
     local items, kept = {}, {}
     for _, r in ipairs(self.rows) do
-        if r.ticked and r.status == "won" and (r.test and true or false) == test then
+        if going[r] then
             items[#items + 1] = { itemString = r.itemString, link = r.link, ilvl = r.ilvl, expires = r.expires }
         else
             kept[#kept + 1] = r
         end
     end
-    if real and tests then
+    if mixed then
         CRT:Print(TEXT.realOnly)
     end
     local chunks = {}
@@ -446,9 +476,13 @@ function BL:Start()
     for _, it in ipairs(chunks[1].items) do
         send[#send + 1] = { itemString = it.itemString, link = it.link, ilvl = it.ilvl }
     end
-    if not LM:Start(send, test) then
+    local s = LM:Start(send, test)
+    if not s then
         changed()
         return false, "failed"
+    end
+    if test then
+        s.fromHeld = true -- started from held TEST rows: its end clears them
     end
     self.rows = kept
     for i = 2, #chunks do
@@ -609,10 +643,11 @@ end
 -- Emptying -------------------------------------------------------------------------------------------
 
 -- A test session's end clears the TEST rows, unless TEST items wait to start next (or Start session ended
--- it to start another).
+-- it to start another). Only a session started from held TEST rows: an instant test (/crt loot test)
+-- leaves them; Loot Master > Tonight's End session clears them itself.
 LM:OnChange(function(what, s)
     if what == "ended" then
-        if type(s) == "table" and s.test and not starting and not testsWaiting() then
+        if type(s) == "table" and s.test and s.fromHeld and not starting and not testsWaiting() then
             BL:ClearTests()
         end
         startNext()

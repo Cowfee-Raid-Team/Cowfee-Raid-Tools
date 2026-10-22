@@ -130,9 +130,11 @@ CRT.Groups = { Normalize = function(n) return n end }
 local HISTORY = {}
 for id in pairs(NAMES) do HISTORY[#HISTORY + 1] = { [8] = "item:" .. id .. "::::" } end
 table.sort(HISTORY, function(a, b) return a[8] < b[8] end)
-local lootWrites = 0
+local lootWrites, lootRecords = 0, {}
 CRT.Loot = setmetatable({ R = { ITEM = 8 }, ItemID = function(s) return idOf(s) end,
-  Each = function(_, fn) for _, rec in ipairs(HISTORY) do fn(rec) end end },
+  Each = function(_, fn) for _, rec in ipairs(HISTORY) do fn(rec) end end,
+  -- Loot History's writers (Loot/Store.lua): a record written here fails the checks below
+  Add = function(_, f) lootRecords[#lootRecords + 1] = f end, Update = function(_, rec, f) lootRecords[#lootRecords + 1] = f end },
   { __index = function(_, k) lootWrites = lootWrites + 1 return function() end end })
 assert(load(dataSrc, "Data.lua"))("CowfeeRaidTools", CRT)
 local LM = CRT.LootMaster
@@ -244,6 +246,8 @@ eq(real.ticked, true, "a real row: ticked by the filter as before")
 BL:Result(link(101, "Real Helm"), "Solex", true, false)
 eq(real.expires, NOW + LM.TRADE_SECONDS, "a real won row: its 2 hours to trade as before")
 check(CRTDBChar.lootmaster.bossLootList and #CRTDBChar.lootmaster.bossLootList.rows == 1, "only the real row is kept for a /reload")
+LM:Fire("bossloot", "changed")
+eq(start.text, "Start session (1)", "mixed tick: N counts what Start sends, the real item only")
 printed, sent = {}, {}
 eq(BL:Start(), 1, "mixed tick: one real item started")
 check(LM.current and not LM.current.test, "mixed tick: a real session")
@@ -277,6 +281,7 @@ LM:Award(1, "Solex-Sargeras", s.responses[1].key)
 check(printed[#printed] and printed[#printed]:find("only you see this", 1, true) ~= nil, "a test award is shown only to you")
 
 -- 3. End session clears the TEST rows (and any waiting), leaves real rows; nothing reached Loot History
+lootRecords = {}
 local real2 = BL:Add(2, link(102, "Real Ring"), { status = "rolling", rollType = 1 }, kill)
 buttons["End session"].onClick()
 eq(LM.current and LM.current.test and #LM.current.items or 0, (total - 1) > LM.MAX_ITEMS and (total - 1 - LM.MAX_ITEMS) or 0,
@@ -287,6 +292,8 @@ eq(BL:HasTests(), false, "End session: the TEST rows are gone")
 eq(BL:Rows()[1], real2, "End session: the real row stays")
 eq(#BL:Rows(), 1, "End session: only the real row")
 eq(lootWrites, 0, "nothing reaches Loot History")
+eq(#lootRecords, 0, "ending the test session wrote no Loot History record")
+eq(#HISTORY, 6, "Loot History still holds only its own records")
 -- End session with no session running still clears TEST rows
 LM:TestBossKill(rand)
 check(BL:HasTests(), "a new test kill")
@@ -301,11 +308,48 @@ NOW = NOW + LM.BOSS_SECONDS + 1
 runTimers()
 eq(BL:HasTests(), false, "TEST rows leave after 10 minutes")
 eq(#printed, 0, "no 'trade time over' line for TEST rows")
--- /crt loot test keeps the instant test
+-- /crt loot test keeps the instant test; its end leaves held TEST rows alone
+LM:TestBossKill(rand)
+local heldTests = #BL:Rows()
 fired = {}
 LM:Command("loot test 2")
 check(LM.current and LM.current.test and #LM.current.items == 2, "/crt loot test: an instant test session")
 LM:End()
+check(BL:HasTests(), "an instant test's end leaves held TEST rows")
+eq(#BL:Rows(), heldTests, "an instant test's end: the list as it was")
+eq(#lootRecords, 0, "an instant test wrote no Loot History record")
+buttons["End session"].onClick()
+eq(BL:HasTests(), false, "Tonight's End session clears them")
+-- an empty item cache: a test kill still adds its rows, with a link made from the item string
+local realInfo = C_Item.GetItemInfo
+C_Item.GetItemInfo = function() return nil end
+local cold = LM:TestBossKill(rand)
+check(#cold >= 2 and #cold <= 4, "empty item cache: the kill still adds 2 to 4 rows (" .. #cold .. ")")
+check(cold[1] and cold[1].link:find("|h%[Item %d+%]|h|r$") ~= nil, "empty item cache: a whole link (" .. tostring(cold[1] and cold[1].link) .. ")")
+C_Item.GetItemInfo = realInfo
+buttons["End session"].onClick()
+-- the badge and the result matching start again once no real rows are left (TEST rows don't count)
+BL:Clear()
+BL:Add(3, link(103, "Real Cloak"), { status = "rolling", rollType = 1 }, kill)
+LM:TestBossKill(rand)
+BL:SetTicked(3, false)
+BL:Result(link(103, "Real Cloak"), "Other-Sargeras", false, false)
+eq(BL.boss, "Big Boss", "a real row held: the badge stays")
+local test3 = {}
+for _, r in ipairs(BL:Rows()) do if r.test then test3[#test3 + 1] = r end end
+BL.rows = test3 -- the real row gone (its time over), only TEST rows left
+BL:SetTicked(test3[1].rollID, true)
+eq(BL.boss, nil, "only TEST rows left: the badge is cleared")
+BL:Add(4, link(103, "Real Cloak"), { status = "rolling", rollType = 1 }, kill)
+check(BL:Result(link(103, "Real Cloak"), "Solex", true, false, nil, "received"), "only TEST rows left: a new kill's same item matches again")
+-- Held: an old saved row with no boss or kill time counts by its encounter, or not at all
+BL:Clear()
+BL.rows = { { rollID = -90, status = "won", encounterID = 3001 }, { rollID = -91, status = "won", encounterID = 3002 }, { rollID = -94, status = "won", encounterID = 3002 },
+  { rollID = -92, status = "won" }, { rollID = -93, status = "won", boss = "Big Boss", killAt = CLOCK } }
+local hb, hi = BL:Held()
+eq(hb, 3, "Held: old rows count by encounter; one with neither isn't a boss")
+eq(hi, 5, "Held: every row is an item")
+BL.rows = {}
 
 print(string.format("%d passed, %d failed", passes, fails))
 if fails > 0 then error("failures") end

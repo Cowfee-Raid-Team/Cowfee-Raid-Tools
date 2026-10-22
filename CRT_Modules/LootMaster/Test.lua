@@ -156,6 +156,7 @@ local TEXT = {
     boss = "Test boss %d",
     unknown = "Item %d",
     killed = "Loot Master test: %s dropped %d %s. Tick them and press Start session.",
+    item = "item", items = "items",
 }
 
 -- A link for the row: the sample's own, else the game's, else one made from the item string (its name
@@ -168,7 +169,7 @@ local function linkOf(it)
     if ok and type(link) == "string" then
         return link
     end
-    return "|cffffffff|H" .. it.itemString -- the game's white item link, not a theme colour .. "|h[" .. TEXT.unknown:format(Loot.ItemID(it.itemString) or 0) .. "]|h|r"
+    return "|cffffffff|H" .. it.itemString .. "|h[" .. TEXT.unknown:format(Loot.ItemID(it.itemString) or 0) .. "]|h|r" -- the game's white item link, not a theme colour
 end
 
 -- random: optional, for tests (see LM.PickSamples). Returns the rows added.
@@ -186,7 +187,7 @@ function LM:TestBossKill(random)
     for _, it in ipairs(items) do
         rows[#rows + 1] = BL:AddReceived(linkOf(it), kill, true)
     end
-    CRT:Print(TEXT.killed:format(kill.name, #rows, #rows == 1 and "item" or "items"))
+    CRT:Print(TEXT.killed:format(kill.name, #rows, #rows == 1 and TEXT.item or TEXT.items))
     return rows
 end
 

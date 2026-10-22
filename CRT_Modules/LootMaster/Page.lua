@@ -54,6 +54,7 @@ local TEXT = {
     heldHelp = "The boss items waiting for your next loot session, real and TEST, as in the Boss loot window (/crt loot boss). Tick the ones to give out and press Start session. TEST items never go into a real session: with both kinds ticked, only the real ones start. TEST items go at End session, after a /reload, or 10 minutes after their test kill.",
     heldNone = "No boss loot held.",
     heldCount = "%d %s killed, %d %s held",
+    heldBoss = "boss", heldBosses = "bosses", heldItem = "item", heldItems = "items",
     heldMore = "and %d more (/crt loot boss shows them all)",
     items = "Items",
     crtLooting = "CRT Looting",
@@ -271,9 +272,8 @@ local function buildTonight(f)
             bosses, items = BL:Held()
         end
         heldStatus:SetText(items == 0 and TEXT.heldNone
-            or TEXT.heldCount:format(bosses, bosses == 1 and "boss" or "bosses", items, items == 1 and "item" or "items"))
-        local won = BL and select(4, BL:Counts()) or 0
-        start:SetText(TEXT.start:format(won))
+            or TEXT.heldCount:format(bosses, bosses == 1 and TEXT.heldBoss or TEXT.heldBosses, items, items == 1 and TEXT.heldItem or TEXT.heldItems))
+        start:SetText(TEXT.start:format(BL and BL:StartCount() or 0)) -- what Start session would send
         local fs = start:GetFontString()
         start:SetWidth(UI.PanelButtonWidth(fs and fs:GetStringWidth() or 0))
         start:SetEnabled(BL and BL:CanStart() and true or false)
