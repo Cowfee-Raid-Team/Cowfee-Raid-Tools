@@ -69,6 +69,7 @@ end
 -- nothing has to be put back. Every context menu and dropdown list in the addon goes through it:
 -- UI.ContextMenu here, UI.Dropdown in UI/Controls.lua.
 local MENU_STRATA = "TOOLTIP"
+UI.MENU_STRATA = MENU_STRATA -- for a hand-made list that opens over a window (the Raid Groups name picker)
 function UI.MenuOnTop(root)
     if root and root.AddMenuAcquiredCallback then
         root:AddMenuAcquiredCallback(function(menu)

@@ -255,17 +255,18 @@ local function getPicker()
         return picker
     end
 
-    -- Full-screen click catcher so clicking anywhere else closes the picker.
+    -- Full-screen click catcher so clicking anywhere else closes the picker. Both sit on the menus' strata,
+    -- above the main window on any layer it is set to (General Settings).
     catcher = CreateFrame("Button", nil, UIParent)
     catcher:SetAllPoints(UIParent)
-    catcher:SetFrameStrata("DIALOG")
+    catcher:SetFrameStrata(UI.MENU_STRATA)
     catcher:SetFrameLevel(100)
     catcher:RegisterForClicks("AnyUp")
     catcher:Hide()
 
     picker = CreateFrame("Frame", "CowfeeRaidToolsPicker", UIParent, "BackdropTemplate")
     picker:SetSize(230, 36 + PICK_ROWS * ROW_H + 24)
-    picker:SetFrameStrata("DIALOG")
+    picker:SetFrameStrata(UI.MENU_STRATA)
     picker:SetFrameLevel(110)
     picker:SetClampedToScreen(true)
     picker:EnableMouse(true)
