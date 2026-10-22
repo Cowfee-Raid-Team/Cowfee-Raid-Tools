@@ -77,7 +77,7 @@ g "drag starts from the mouse" && { bad=$(grep -rn "StartMoving" --include=*.lua
 # Every tooltip is placed by UI.TooltipOwner (CRT_Core/UI/Tooltip.lua), so General Settings' Tooltip position reaches it. The
 # exceptions (tooltips that follow the cursor, the Loot Master item tabs, the Encounter Journal button) pass a flag to the
 # helper and are listed in its comment; none call SetOwner or GameTooltip_SetDefaultAnchor themselves.
-g "tooltips through UI.TooltipOwner" && { bad=$(grep -rnE ':SetOwner\(|GameTooltip_SetDefaultAnchor\(' --include=*.lua --exclude-dir=.claude --exclude-dir=node_modules "$W" | sed 's#\\#/#g' | grep -vE "$NOT_TESTS" | grep -v "/CRT_Core/UI/Tooltip\.lua:"); if [ -n "$bad" ]; then echo "FAIL a tooltip placed outside UI.TooltipOwner (CRT_Core/UI/Tooltip.lua):"; echo "$bad"; else echo "all passed"; fi; }
+g "tooltips through UI.TooltipOwner" && { bad=$(grep -rnE '[:.]SetOwner\b|GameTooltip_SetDefaultAnchor\b' --include=*.lua --exclude-dir=.claude --exclude-dir=node_modules "$W" | sed 's#\\#/#g' | grep -vE "$NOT_TESTS" | grep -v "/CRT_Core/UI/Tooltip\.lua:"); if [ -n "$bad" ]; then echo "FAIL a tooltip placed outside UI.TooltipOwner (CRT_Core/UI/Tooltip.lua):"; echo "$bad"; else echo "all passed"; fi; }
 g "two looks, no third" && { bad=$(grep -rnE 'IsFlat|ui\.style|"minimal"|Minimal black' --include=*.lua --exclude-dir=.claude --exclude-dir=node_modules "$W" | grep -vE "$NOT_TESTS"); if [ -n "$bad" ]; then echo "FAIL code still reads the removed third look:"; echo "$bad"; else echo "all passed"; fi; }
 g "fit text" && { node run_fittext.js "$W" 2>&1 | tail -1; }
 g "gear" && { node run_gear.js "$W" 2>&1 | tail -12; echo "exit ${PIPESTATUS[0]}"; }
