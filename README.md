@@ -267,7 +267,6 @@ CowfeeRaidTools/
     Seasons/               season packs: one file per boss with all its properties
   CRT_Media/
     Media/                 textures: the icon, the alert rings, the rounded corner disc
-    Sounds/                the old place for your own sound files (see its README.txt)
     Media Addon Template/  the CowfeeRaidTools_Media companion addon you copy once for your own sounds
   CRT_Dev/                 never packaged
     Dev/                   developer tools (their .toc lines are in the do-not-package block)

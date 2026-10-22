@@ -17,10 +17,9 @@ Cowfee Raid Tools - readme.md
 Cowfee Raid Tools - UI Text Map.md
 Code map/
 
-# Your own sounds stay out of the repository (/Sounds/ is their place from before CRT_Media)
-CRT_Media/Sounds/*
-!CRT_Media/Sounds/README.txt
-/Sounds/
+# Your own sounds stay out of the repository: they belong in the installed companion addon, never in its template
+CRT_Media/Media Addon Template/CowfeeRaidTools_Media/Sounds/*
+!CRT_Media/Media Addon Template/CowfeeRaidTools_Media/Sounds/README.txt
 
 # Claude tooling and the factory stay on this PC only (backed up to the vault: Files/CRT factory backup)
 .claude/

@@ -163,14 +163,13 @@ print("ok speech: one-time notice")
 assert(#errors == 0, table.concat(errors, "; "))
 print("ok speech: tts off, SpeakNow, reset")
 
--- a file: sound is looked for in the companion addon, then CRT_Media\\Sounds, and nowhere else
+-- a file: sound is looked for in the companion addon only (the old CRT_Media\\Sounds is gone)
 local found = CRT.Sound:Resolve("file:horn.ogg")
 local AD = "Interface\\\\AddOns\\\\"
-assert(found and found.kind == "file" and #found.paths == 2, "two places tried")
+assert(found and found.kind == "file" and #found.paths == 1, "one place tried")
 assert(found.paths[1] == AD .. "CowfeeRaidTools_Media\\\\Sounds\\\\horn.ogg", found.paths[1])
-assert(found.paths[2] == AD .. "CowfeeRaidTools\\\\CRT_Media\\\\Sounds\\\\horn.ogg", found.paths[2])
 assert(CRT.Sound.BUNDLED_FOLDER == AD .. "CowfeeRaidTools\\\\CRT_Media\\\\Media\\\\Sounds\\\\", CRT.Sound.BUNDLED_FOLDER)
-print("ok speech: file sounds looked for in the companion addon and CRT_Media")
+print("ok speech: file sounds looked for in the companion addon only")
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 const files = process.argv.slice(2);
