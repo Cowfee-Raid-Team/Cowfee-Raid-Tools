@@ -275,7 +275,8 @@ end
 -- where none is (the raids before Warlords of Draenor) shows a single Abilities tab, its pages a plain tree of
 -- creatures, headers and spells. "overview" or "abilities"; nil when the boss's instance can't be listed (the
 -- bosses are listed by EJ_GetEncounterInfoByIndex, which needs the Journal to have selected an instance once).
--- An instance's answer and its bosses are kept for the session, once its bosses could be listed.
+-- An instance's answer and its bosses are kept for the session, once its bosses could be listed; a boss missing
+-- from the kept list has the instance listed again, and a listing that holds it replaces the kept one.
 local layouts = {} -- [journalInstanceID] = { layout = "overview" or "abilities", bosses = { [journalEncounterID] = true } }
 
 function Journal.Layout(journalEncounterID)
@@ -287,9 +288,10 @@ function Journal.Layout(journalEncounterID)
         return nil
     end
     local known = journalInstanceID and layouts[journalInstanceID]
-    if known then
-        return known.bosses[journalEncounterID] and known.layout or nil
+    if known and known.bosses[journalEncounterID] then
+        return known.layout
     end
+    -- not in the kept list (it may depend on the picked difficulty): the instance is listed again
     local found, overview, bosses = false, false, {}
     for i = 1, 100 do
         local okBoss, _, _, bossID, bossRoot
@@ -320,8 +322,8 @@ end
 -- its list (EncounterJournal_ToggleHeaders: sections hidden for the picked difficulty left out with what is under
 -- them, and headerType not looked at, since on these pages it is only the section's depth). A section with no
 -- spell that has sections under it is a header (a creature, "Grounded Abilities"), its title in the headers of the
--- rows under it; one with nothing under it is an entry with no spellID (the export writes it as a "#" line). Within one header a spell is
--- listed once, with its sections' icons merged.
+-- rows under it; one with nothing under it is an entry with no spellID (the export writes it as a "#" line).
+-- Within one header a spell is listed once, with its sections' icons merged.
 local function abilitiesRows(rootSectionID)
     local rows, seen, visited = {}, {}, {}
     local function walk(id, headers)

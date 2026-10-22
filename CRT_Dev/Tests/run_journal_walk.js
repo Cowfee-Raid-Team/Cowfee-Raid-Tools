@@ -187,6 +187,14 @@ local mref, merrs = CRT.TimelineReference.Parse(CRT.TimelineJournalExport.Build(
 check("Magmaw's whole export reads as a reference, the entries with no spell only # lines: " .. table.concat(merrs or {}, "; "), mref and #mref.rows == 6)
 -- the Journal is asked about an instance once per session
 check("an instance's layout is kept: no second listing", calls == callsBefore)
+-- a boss the kept list doesn't hold (one the list only gives at another difficulty) has the instance listed again
+INFO[3300] = { "Sinestra", 600, 3, 1082 }
+sec(600, { title = "Wrack", spellID = 6001, headerType = 0 })
+check("a boss missing from the kept list, still missing on a new listing: unknown", J.Layout(3300) == nil and calls > callsBefore)
+BOSSES[3][3] = 3300
+check("a boss missing from the kept list, found on a new listing: its layout", J.Layout(3300) == "abilities")
+local callsAfter = calls
+check("the new listing is kept", J.Layout(3300) == "abilities" and J.Layout(3100) == "abilities" and calls == callsAfter)
 print(fails == 0 and "all passed" or (fails .. " failed"))
 if fails > 0 then error(fails .. " failed", 0) end
 `;
