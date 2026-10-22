@@ -36,6 +36,7 @@ local TEXT = {
     ilvl = "Item level %d",
     tradeHours = "%dh %02dm left to trade",
     tradeMinutes = "%dm left to trade",
+    untimed = "Not bound: leaves with the other items",
     test = "TEST",
     testWon = "Yours · a test boss kill",
 }
@@ -95,7 +96,7 @@ end
 -- row's boss first (always for a TEST row, whose boss isn't the window's badge).
 function LM.BossLootDetail(r, withBoss)
     local boss = (withBoss or r.test) and type(r.boss) == "string" and r.boss or nil
-    if not r.pass then
+    if not r.pass and not r.bags then -- an item you added from your bags is in on purpose
         local why = TEXT.notFilter:format(FILTER_WHY[r.why] or tostring(r.why or "?"))
         return boss and (boss .. " · " .. why) or why
     end
@@ -109,7 +110,9 @@ function LM.BossLootDetail(r, withBoss)
         parts[#parts + 1] = TEXT.ilvl:format(r.ilvl)
     end
     local left = BL.TradeLeft(r)
-    if left then
+    if r.untimed then
+        parts[#parts + 1] = TEXT.untimed -- no trade time of its own (LootMaster/BossLoot.lua)
+    elseif left then
         local m = math.ceil(left / 60)
         local text = m >= 60 and TEXT.tradeHours:format(math.floor(m / 60), m % 60) or TEXT.tradeMinutes:format(m)
         parts[#parts + 1] = left <= LM.TRADE_WARN and UI.WarnText(text) or text

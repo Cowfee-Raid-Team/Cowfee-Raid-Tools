@@ -5,10 +5,13 @@ local ADDON, CRT = ...
 -- a new session"). Loot Master > Tonight has an item slot under Held boss loot (LM.BuildAddItem, placed by
 -- LootMaster/Page.lua). An item goes in by dragging it from your bags onto the slot, or by shift-clicking it
 -- in your bags while the slot is shown (the Tonight tab open) and no chat or other text box has the
--- keyboard. Only an item you can still trade goes in; the slot's status line says why one doesn't. One that
--- does goes through BL:AddFromBags (LootMaster/BossLoot.lua): a real row, won, ticked, "from your bags",
--- leaving when the game's trade time for it is over, kept and given out like any other row. An item can't
--- be listed more times than you have it in your bags (rows, waiting items and the running session count).
+-- keyboard. Only gear (armour and weapons anyone could equip) and tier tokens go in, never a stack (a
+-- shift-click on a stack is the game's stack split), and only an item you can still trade; the slot's
+-- status line says why one doesn't. One that does goes through BL:AddFromBags (LootMaster/BossLoot.lua): a
+-- real row, won, ticked, "from your bags", kept and given out like any other row. It leaves when the
+-- game's trade time for it is over; one that isn't bound has no trade time and leaves with the other rows.
+-- An item can't be listed more times than you have it in your bags: rows that are yours or may still be,
+-- waiting items and the running session count, matched by item ID and bonus IDs (LM.ItemKey).
 --
 -- From the game (checked 2026-10-22 on warcraft.wiki.gg and Blizzard's UI source, Gethe/wow-ui-source live):
 --   GetCursorInfo() -> "item", itemID, itemLink: https://warcraft.wiki.gg/wiki/API_GetCursorInfo. The
@@ -19,19 +22,25 @@ local ADDON, CRT = ...
 --     Blizzard_UIPanels_Game/Mainline/ContainerFrame.lua) calls the global HandleModifiedItemClick(link,
 --     itemLocation) (Blizzard_ItemButton/Mainline/ItemButtonTemplate.lua), which puts the link in a chat box
 --     when one is open (ChatFrameUtil.InsertLink). CRT only hooks it after it ran (hooksecurefunc, never a
---     replacement) and does nothing while ChatFrameUtil.GetActiveWindow() (Blizzard_ChatFrameBase/Shared/
---     ChatFrameUtil.lua) or GetCurrentKeyBoardFocus() (https://warcraft.wiki.gg/wiki/API_GetCurrentKeyBoardFocus)
+--     replacement), inside pcall, and does nothing while ChatFrameUtil.GetActiveWindow() (Blizzard_ChatFrameBase/
+--     Shared/ChatFrameUtil.lua) or GetCurrentKeyBoardFocus() (https://warcraft.wiki.gg/wiki/API_GetCurrentKeyBoardFocus)
 --     says a text box is typing, so the link goes into chat as usual. ItemLocation:IsBagAndSlot and
---     GetBagAndSlot: Blizzard_ObjectAPI/Mainline/ItemLocation.lua.
+--     GetBagAndSlot: Blizzard_ObjectAPI/Mainline/ItemLocation.lua. A click in a bank bag is left alone.
+--   The item string's fields (https://warcraft.wiki.gg/wiki/ItemLink): 1 itemID, 9 linkLevel, 10
+--     specializationID, 13 numBonusIDs, then the bonus IDs.
+--   Gear or token: C_Item.GetItemInfoInstant's equipLoc and classID (Enum.ItemClass Weapon 2, Armor 4); a
+--     tier token is LM.ItemFacts's isToken (LootMaster/Filter.lua: a Miscellaneous item with a Classes line).
 --   Can it still be traded: C_Container.GetContainerItemInfo(bag, slot).isBound (ContainerDocumentation),
 --     and C_TooltipInfo.GetBagItem(bag, slot) (https://warcraft.wiki.gg/wiki/API_C_TooltipInfo.GetBagItem):
 --     a bound item you can still trade has a line of type Enum.TooltipDataLineType.TradeTimeRemaining (36,
---     added in 12.0.1; TooltipInfoSharedDocumentation). The game has no API for the time itself, so the
---     time is read from that line's numbers (in English: each number's unit; otherwise the first two
---     numbers as hours and minutes, one alone as minutes), never past LM.TRADE_SECONDS. A bound item without
---     the line can't be traded: a bind-on-pickup one (C_Item.GetItemInfo's 14th return, Enum.ItemBind.
---     OnAcquire = 1) because its trade time is over, any other because it is soulbound. An item that isn't
---     bound can be traded; it stays LM.TRADE_SECONDS like a won drop.
+--     added in 12.0.1; TooltipInfoSharedDocumentation). The game has no API for the time itself. The line is
+--     the client's BIND_TRADE_TIME_REMAINING ("... for the next %s (including time offline).", the client's
+--     GlobalStrings, as extracted in Ketho/BlizzardInterfaceResources); its %s is read with the unit words of
+--     the client's own time formats (D_HOURS, INT_GENERAL_DURATION_HOURS, INT_SPELL_DURATION_HOURS,
+--     HOURS_ABBR and the minute and second ones). Which of them the game fills %s with isn't published, so
+--     every one counts; when the line doesn't read that way the row gets the full LM.TRADE_SECONDS. A bound
+--     item without the line can't be traded: a bind-on-pickup one (C_Item.GetItemInfo's 14th return,
+--     Enum.ItemBind.OnAcquire) because its trade time is over, any other because it is soulbound.
 
 local LM = CRT.LootMaster
 local UI = CRT.UI
@@ -48,10 +57,20 @@ local TEXT = {
     notInBags = "it isn't in your bags",
     already = "it's already in the list",
     cantRead = "CRT can't read its trade time",
+    notGear = "only gear and tier tokens can be added",
+    notLoaded = "the game hasn't loaded it yet, try again",
 }
 
-local BIND_ON_PICKUP = 1 -- Enum.ItemBind.OnAcquire
-local UNITS = { h = 3600, m = 60, s = 1 } -- English time words by their first letter
+local BIND_ON_PICKUP = (Enum and Enum.ItemBind and type(Enum.ItemBind.OnAcquire) == "number") and Enum.ItemBind.OnAcquire or 1
+local ITEM_CLASS = { WEAPON = 2, ARMOR = 4, MISC = 15 } -- Enum.ItemClass
+local NOT_EQUIPPED = { [""] = true, INVTYPE_NON_EQUIP_IGNORE = true, INVTYPE_BAG = true, INVTYPE_QUIVER = true }
+
+-- The client's time formats, by the seconds each unit is worth.
+local UNIT_FORMATS = {
+    { 3600, { "D_HOURS", "INT_GENERAL_DURATION_HOURS", "INT_SPELL_DURATION_HOURS", "HOURS_ABBR" } },
+    { 60, { "D_MINUTES", "INT_GENERAL_DURATION_MIN", "INT_SPELL_DURATION_MIN", "MINUTES_ABBR" } },
+    { 1, { "D_SECONDS", "INT_GENERAL_DURATION_SEC", "INT_SPELL_DURATION_SEC", "SECONDS_ABBR" } },
+}
 
 local function secret(v)
     return issecretvalue and issecretvalue(v) or false
@@ -61,45 +80,147 @@ local function bagsLast()
     return (NUM_BAG_SLOTS or 4) + 1 -- the bags and the reagent bag, as Trade.lua searches
 end
 
--- Seconds left in the trade time line's text, at most LM.TRADE_SECONDS; nil when it holds no number.
-function LM.TradeSecondsFromText(text)
-    if type(text) ~= "string" or secret(text) then
-        return nil
-    end
-    local okL, locale = pcall(GetLocale)
-    local english = okL and type(locale) == "string" and locale:sub(1, 2) == "en"
-    local nums, total, known = {}, 0, true
-    for n, unit in text:gmatch("(%d+)%s*(%a*)") do
-        n = tonumber(n)
-        nums[#nums + 1] = n
-        local each = english and UNITS[unit:sub(1, 1):lower()] or nil
-        if each then
-            total = total + n * each
-        else
-            known = false
+local function inBags(bag)
+    return type(bag) == "number" and bag >= 0 and bag <= bagsLast()
+end
+
+local function trim(w)
+    return (w:gsub("^%s+", ""):gsub("%s+$", ""))
+end
+
+-- The unit words of the client's time formats: "%d |4Hour:Hours;" gives hour and hours. A word two units
+-- share is no unit (false).
+local function unitWords()
+    local words = {}
+    local function add(w, each)
+        w = trim(w):lower()
+        if w ~= "" then
+            if words[w] == nil then
+                words[w] = each
+            elseif words[w] ~= each then
+                words[w] = false
+            end
         end
     end
-    if #nums == 0 then
+    for _, u in ipairs(UNIT_FORMATS) do
+        for _, name in ipairs(u[2]) do
+            local f = _G[name]
+            if type(f) == "string" then
+                f = f:gsub("%%d", "")
+                for forms in f:gmatch("|4([^;]*);") do
+                    for w in (forms .. ":"):gmatch("([^:]*):") do
+                        add(w, u[1])
+                    end
+                end
+                add((f:gsub("|4[^;]*;", "")), u[1])
+            end
+        end
+    end
+    return words
+end
+
+local function escape(s)
+    return (s:gsub("[%^%$%(%)%%%.%[%]%*%+%-%?]", "%%%0"))
+end
+
+-- Seconds left in the trade time line's text, at most LM.TRADE_SECONDS; nil when it doesn't read as the
+-- client's BIND_TRADE_TIME_REMAINING with known time words (the caller then takes LM.TRADE_SECONDS).
+function LM.TradeSecondsFromText(text)
+    local template = BIND_TRADE_TIME_REMAINING
+    if type(text) ~= "string" or secret(text) or type(template) ~= "string" then
         return nil
     end
-    if not known then
-        total = #nums >= 2 and (nums[1] * 3600 + nums[2] * 60) or nums[1] * 60
+    local pre, post = template:match("^(.-)%%s(.*)$")
+    if not pre then
+        return nil
+    end
+    local span = text:match("^" .. escape(pre) .. "(.+)" .. escape(post) .. "$")
+    if not span then
+        return nil
+    end
+    local words, total, found = unitWords(), 0, false
+    local rest = span
+    for n, w in span:gmatch("(%d+)%s*([^%d%s%p]+)") do
+        local each = words[w:lower()]
+        if not each then
+            return nil
+        end
+        total, found = total + tonumber(n) * each, true
+    end
+    rest = rest:gsub("(%d+)%s*([^%d%s%p]+)", "")
+    if not found or rest:find("%d") then
+        return nil -- a number with no word: not read
     end
     return math.max(1, math.min(total, LM.TRADE_SECONDS))
 end
 
+-- An item's key for counting copies: its item ID and bonus IDs (sorted), without the fields that change
+-- with you (linkLevel, specializationID); the item ID alone when the bonus IDs can't be read.
+function LM.ItemKey(s)
+    if type(s) ~= "string" then
+        return nil
+    end
+    local body = s:match("item:([%-%d:]+)")
+    if not body then
+        return nil
+    end
+    local f = {}
+    for v in (body .. ":"):gmatch("([^:]*):") do
+        f[#f + 1] = v
+    end
+    local id = tonumber(f[1])
+    if not id then
+        return nil
+    end
+    local n = tonumber(f[13])
+    if not n or n < 1 then
+        return tostring(id)
+    end
+    local bonus = {}
+    for i = 14, 13 + n do
+        local b = tonumber(f[i])
+        if not b then
+            return tostring(id)
+        end
+        bonus[#bonus + 1] = b
+    end
+    table.sort(bonus)
+    return id .. ":" .. table.concat(bonus, ":")
+end
+
 local function bagInfo(bag, slot)
     local ok, info = pcall(C_Container.GetContainerItemInfo, bag, slot)
-    if not ok or type(info) ~= "table" or secret(info.hyperlink) or secret(info.isBound) or secret(info.isLocked) then
+    if not ok or type(info) ~= "table" or secret(info.hyperlink) or secret(info.isBound) or secret(info.isLocked) or secret(info.stackCount) then
         return nil
     end
     return type(info.hyperlink) == "string" and info or nil
 end
 
--- Whether the item in the bag slot can still be traded: true, its link and the seconds left (nil: no trade
--- time, it isn't bound), or false, its link (or nil) and why.
+-- Why the item can't be added for what it is (nil: gear or a tier token, not a stack).
+local function notGear(info)
+    if type(info.stackCount) == "number" and info.stackCount > 1 then
+        return TEXT.notGear
+    end
+    local ok, _, _, _, equipLoc, _, classID = pcall(C_Item.GetItemInfoInstant, info.hyperlink)
+    if not ok or type(classID) ~= "number" or secret(classID) or secret(equipLoc) then
+        return TEXT.notLoaded
+    end
+    if (classID == ITEM_CLASS.WEAPON or classID == ITEM_CLASS.ARMOR) and type(equipLoc) == "string" and not NOT_EQUIPPED[equipLoc] then
+        return nil
+    end
+    if classID == ITEM_CLASS.MISC and LM.ItemFacts then
+        local facts = LM.ItemFacts(LM.LinkItemString(info.hyperlink), "boss")
+        if type(facts) == "table" and facts.isToken == true then
+            return nil
+        end
+    end
+    return TEXT.notGear
+end
+
+-- Whether the item in the bag slot can be added: true, its link, the seconds left (nil: read as
+-- LM.TRADE_SECONDS) and whether it has no trade time (not bound); or false, its link (or nil) and why.
 function LM.BagTradeState(bag, slot)
-    if type(bag) ~= "number" or type(slot) ~= "number" or bag < 0 or bag > bagsLast() then
+    if not inBags(bag) or type(slot) ~= "number" then
         return false, nil, TEXT.notInBags
     end
     local info = bagInfo(bag, slot)
@@ -107,8 +228,12 @@ function LM.BagTradeState(bag, slot)
         return false, nil, TEXT.notInBags
     end
     local link = info.hyperlink
+    local why = notGear(info)
+    if why then
+        return false, link, why
+    end
     if not info.isBound then
-        return true, link, nil
+        return true, link, nil, true
     end
     local lineType = Enum and Enum.TooltipDataLineType and Enum.TooltipDataLineType.TradeTimeRemaining
     local okT, data = false, nil
@@ -120,49 +245,50 @@ function LM.BagTradeState(bag, slot)
     end
     for _, line in ipairs(data.lines) do
         if type(line) == "table" and not secret(line.type) and line.type == lineType then
-            return true, link, LM.TradeSecondsFromText(line.leftText)
+            return true, link, LM.TradeSecondsFromText(line.leftText), false
         end
     end
     local okI, _, _, _, _, _, _, _, _, _, _, _, _, _, bindType = pcall(C_Item.GetItemInfo, link)
-    if okI and bindType == BIND_ON_PICKUP then
+    if okI and not secret(bindType) and bindType == BIND_ON_PICKUP then
         return false, link, TEXT.tradeOver
     end
     return false, link, TEXT.soulbound
 end
 
--- How many of this item string are in your bags.
-local function copiesInBags(s)
+-- How many of this item (LM.ItemKey) are in your bags.
+local function copiesInBags(key)
     local n = 0
     for bag = 0, bagsLast() do
         local okN, slots = pcall(C_Container.GetContainerNumSlots, bag)
         for slot = 1, (okN and type(slots) == "number") and slots or 0 do
             local info = bagInfo(bag, slot)
-            if info and LM.LinkItemString(info.hyperlink) == s then
-                n = n + (type(info.stackCount) == "number" and not secret(info.stackCount) and info.stackCount or 1)
+            if info and LM.ItemKey(info.hyperlink) == key then
+                n = n + (type(info.stackCount) == "number" and info.stackCount or 1)
             end
         end
     end
     return n
 end
 
--- How many times the item string is listed already: real rows, waiting items, the running real session.
-local function listed(s)
+-- How many times the item (LM.ItemKey) is listed already: real rows that are yours or may still be (won
+-- or rolling), waiting items, the running real session.
+local function listed(key)
     local BL, n = LM.BossLoot, 0
     for _, r in ipairs(BL.rows) do
-        if not r.test and r.itemString == s then
+        if not r.test and BL.Tickable(r) and LM.ItemKey(r.itemString) == key then
             n = n + 1
         end
     end
     for _, w in ipairs(BL.waiting) do
         for _, it in ipairs(w.test and {} or w.items) do
-            if it.itemString == s then
+            if LM.ItemKey(it.itemString) == key then
                 n = n + 1
             end
         end
     end
     local cur = LM.current
     for _, it in ipairs((cur and not cur.test) and cur.items or {}) do
-        if it.itemString == s then
+        if LM.ItemKey(it.itemString) == key then
             n = n + 1
         end
     end
@@ -185,15 +311,15 @@ end
 -- Adds the item in the bag slot to the Boss loot list. Returns the row, or nil and why (the status line
 -- says it).
 function LM:AddFromBag(bag, slot)
-    local ok, link, more = LM.BagTradeState(bag, slot)
+    local ok, link, seconds, untimed = LM.BagTradeState(bag, slot)
     if not ok then
-        return refuse(link, more)
+        return refuse(link, seconds)
     end
-    local s = LM.LinkItemString(link)
-    if not s or listed(s) >= copiesInBags(s) then
+    local key = LM.ItemKey(link)
+    if not key or listed(key) >= copiesInBags(key) then
         return refuse(link, TEXT.already)
     end
-    local r = self.BossLoot:AddFromBags(link, more)
+    local r = self.BossLoot:AddFromBags(link, seconds, untimed)
     if not r then
         return refuse(link, TEXT.already)
     end
@@ -254,7 +380,8 @@ local function typing()
 end
 
 -- After the game's HandleModifiedItemClick(link, itemLocation): a shift-click on a bag item while the slot
--- shows and nothing is typing adds it. Returns true when it tried.
+-- shows and nothing is typing adds it. A click in the bank is left alone, and so is a stack (the game opens
+-- its split): the status line says only gear goes in. Returns true when it tried.
 function LM:BagShiftClick(link, itemLocation)
     if not (target and target.slot:IsVisible()) then
         return false
@@ -267,6 +394,14 @@ function LM:BagShiftClick(link, itemLocation)
         return false
     end
     local bag, slot = itemLocation:GetBagAndSlot()
+    if not inBags(bag) then
+        return false -- the bank: not for Add item
+    end
+    local info = bagInfo(bag, slot)
+    if info and type(info.stackCount) == "number" and info.stackCount > 1 then
+        refuse(info.hyperlink, TEXT.notGear) -- the split is the game's; nothing is added
+        return true
+    end
     self:AddFromBag(bag, slot)
     return true
 end
@@ -304,7 +439,8 @@ function LM.BuildAddItem(parent, x, y, width, skin)
     return slot
 end
 
--- The shift-click hook, once the game's function exists (at load, else at login).
+-- The shift-click hook, once the game's function exists (at load, else at login). A failing hook body is
+-- reported and never stops the game's click (it has run already).
 local hooked = false
 local function hook()
     if hooked or not hooksecurefunc or type(HandleModifiedItemClick) ~= "function" then
@@ -314,7 +450,7 @@ local function hook()
     hooksecurefunc("HandleModifiedItemClick", function(link, itemLocation)
         local ok, err = pcall(LM.BagShiftClick, LM, link, itemLocation)
         if not ok and geterrorhandler then
-            geterrorhandler()(err)
+            pcall(geterrorhandler(), err)
         end
     end)
 end

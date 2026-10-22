@@ -1,7 +1,8 @@
 // Loot Master: End session asks first, and Add item from your bags (CRT_Modules/LootMaster/EndAll.lua, AddItem.lua,
 // BossLoot.lua, Page.lua), on stand-in frames and a stand-in game:
 //   End: the confirm shows with the open counts, only when a session runs or items wait; Cancel changes nothing; End all
-//     ends the session and every waiting chunk; Tonight's button, the looter window's and /crt loot end all ask.
+//     ends the session and every waiting chunk (real waiting items go back to Held boss loot, unticked; TEST ones go);
+//     Tonight's button, the looter window's and /crt loot end all ask.
 //   Add item: a drag adds a tradeable item as a real row (won, ticked, from your bags, its real trade time); a shift-click
 //     in bags adds while Tonight shows, and not when a chat box has the keyboard, the tab is hidden or it isn't a
 //     shift-click; untradeable items are refused with the reason; no duplicates; added rows start a session.
@@ -42,26 +43,40 @@ GetLocale = function() return "enUS" end
 INVTYPE_HEAD = "Head"
 NUM_BAG_SLOTS = 4
 local NAMES = { [201] = "Helm", [202] = "Gloves", [203] = "Ring", [204] = "Cloak", [205] = "Belt", [206] = "Boots",
-  [301] = "Bag Helm", [302] = "Bag Ring", [303] = "Old Sword", [304] = "Equipped Cloak", [305] = "Plain Bracers", [306] = "Bank Boots" }
+  [301] = "Bag Helm", [302] = "Bag Ring", [303] = "Old Sword", [304] = "Equipped Cloak", [305] = "Plain Bracers", [306] = "Bank Boots",
+  [307] = "Potion", [308] = "Tier Token", [309] = "Trinket", [310] = "Ore" }
+-- C_Item.GetItemInfoInstant's equipLoc and classID: gear unless listed here
+local KIND = { [307] = { "", 0 }, [308] = { "", 15 }, [310] = { "", 7 } }
 local BIND = { [303] = 1, [304] = 2 } -- bind on pickup, bind on equip
 local function link(id, name) return "|cffa335ee|Hitem:" .. id .. "::::::::80:::::|h[" .. (name or NAMES[id]) .. "]|h|r" end
 local function idOf(s) return tonumber(tostring(s or ""):match("item:(%d+)")) end
 C_Item = {
   GetItemInfo = function(s) local id = idOf(s) if id and NAMES[id] then return NAMES[id], link(id), 4, 250, 0, "Armor", "Plate", 1, "INVTYPE_HEAD", 133000, 0, 4, 4, BIND[id] or 1 end return nil end,
   GetDetailedItemLevelInfo = function() return 250 end,
-  GetItemInfoInstant = function(s) return idOf(s), "Armor", "Plate", "INVTYPE_HEAD", 133000, 4, 4 end,
+  GetItemInfoInstant = function(s) local k = KIND[idOf(s)] or { "INVTYPE_HEAD", 4 } return idOf(s), "Armor", "Plate", k[1], 133000, k[2], 4 end,
 }
 -- the bags: [bag][slot] = item; a bound item's tooltip has the trade time line when tradeLine is set
 local BAGS = { [0] = {}, [1] = {}, [-1] = {} }
-local function put(bag, slot, id, bound, tradeLine)
-  BAGS[bag][slot] = { hyperlink = link(id), itemID = id, isBound = bound, isLocked = false, stackCount = 1, tradeLine = tradeLine }
+local function put(bag, slot, id, bound, tradeLine, l, stack)
+  BAGS[bag][slot] = { hyperlink = l or link(id), itemID = id, isBound = bound, isLocked = false, stackCount = stack or 1, tradeLine = tradeLine }
 end
+-- the same item with another specializationID (field 10) and bonus IDs (fields 13 on)
+local function linkWith(id, spec, bonus)
+  local b = bonus and (#bonus .. ":" .. table.concat(bonus, ":")) or ""
+  return "|cffa335ee|Hitem:" .. id .. "::::::::80:" .. spec .. "::3:" .. b .. "|h[" .. NAMES[id] .. "]|h|r"
+end
+-- the client's time formats and trade time line (its GlobalStrings, enUS)
+BIND_TRADE_TIME_REMAINING = "You may trade this item with players that were also eligible to loot this item for the next %s (including time offline)."
+D_HOURS, D_MINUTES, D_SECONDS = "%d |4Hour:Hours;", "%d |4Minute:Minutes;", "%d |4Second:Seconds;"
+INT_GENERAL_DURATION_HOURS, INT_GENERAL_DURATION_MIN, INT_GENERAL_DURATION_SEC = "%d |4hour:hours;", "%d |4minute:minutes;", "%d |4second:seconds;"
+INT_SPELL_DURATION_HOURS, INT_SPELL_DURATION_MIN, INT_SPELL_DURATION_SEC = "%d |4hour:hrs;", "%d min", "%d sec"
+HOURS_ABBR, MINUTES_ABBR, SECONDS_ABBR = "%d |4Hr:Hr;", "%d |4Min:Min;", "%d |4Sec:Sec;"
 C_Container = {
   GetContainerNumSlots = function(bag) return BAGS[bag] and 16 or 0 end,
   GetContainerItemInfo = function(bag, slot) local it = BAGS[bag] and BAGS[bag][slot] return it end,
 }
 Enum = { TooltipDataLineType = { ItemName = 22, ItemBinding = 20, TradeTimeRemaining = 36 } }
-local TRADE_TEXT = "You may trade this item with players that were also eligible to loot this item for the next %s."
+local TRADE_TEXT = BIND_TRADE_TIME_REMAINING
 C_TooltipInfo = { GetBagItem = function(bag, slot)
   local it = BAGS[bag] and BAGS[bag][slot]
   if not it then return nil end
@@ -184,7 +199,7 @@ assert(load(winSrc, "BossLootWindow.lua"))("CowfeeRaidTools", CRT)
 -- the loot filter (Filter.lua isn't loaded): everything passes but a Belt and the Plain Bracers
 function LM:FilterLoot(s, source, link) if link:find("Belt", 1, true) or link:find("Bracers", 1, true) then return false, "quality" end return true end
 LM.Filter = function() return {} end
-LM.ItemFacts = function(s) return s end
+LM.ItemFacts = function(s) return { isToken = idOf(s) == 308 } end -- a tier token: a Miscellaneous item with a Classes line
 LM.PassesFilter = function() return true end
 assert(load(testSrc, "Test.lua"))("CowfeeRaidTools", CRT)
 assert(load(addSrc, "AddItem.lua"))("CowfeeRaidTools", CRT)
@@ -214,12 +229,15 @@ check(slot and type(slot.scripts.OnMouseUp) == "function", "the slot takes a cli
 local function status() for i = #texts, 1, -1 do local t = texts[i].text if type(t) == "string" and (t:find("can't be added", 1, true) or t:find("Added ", 1, true)) then return t end end return "" end
 
 -- End: the line under the question --------------------------------------------------------------------------------------
-eq(LM.EndDetail(3, 4), "3 items are still being decided, and 4 more are waiting to start.", "detail: both")
-eq(LM.EndDetail(1, 0), "1 item is still being decided.", "detail: one deciding")
-eq(LM.EndDetail(0, 4), "4 items are waiting to start.", "detail: only waiting")
-eq(LM.EndDetail(0, 1), "1 item is waiting to start.", "detail: one waiting")
-eq(LM.EndDetail(2, 1), "2 items are still being decided, and 1 more is waiting to start.", "detail: one more waiting")
-eq(LM.EndDetail(0, 0), nil, "detail: nothing open")
+eq(LM.EndDetail(3, 4, 0), "3 items are still being decided, and 4 more are waiting and go back to Held boss loot.", "detail: deciding and real waiting")
+eq(LM.EndDetail(3, 0, 4), "3 items are still being decided, and 4 more are waiting to start.", "detail: deciding and TEST waiting")
+eq(LM.EndDetail(1, 0, 0), "1 item is still being decided.", "detail: one deciding")
+eq(LM.EndDetail(0, 4, 0), "4 items are waiting and go back to Held boss loot.", "detail: only real waiting")
+eq(LM.EndDetail(0, 1, 0), "1 item is waiting and goes back to Held boss loot.", "detail: one real waiting")
+eq(LM.EndDetail(0, 0, 1), "1 item is waiting to start.", "detail: one TEST waiting")
+eq(LM.EndDetail(2, 1, 0), "2 items are still being decided, and 1 more is waiting and goes back to Held boss loot.", "detail: one more waiting")
+eq(LM.EndDetail(2, 1, 3), "2 items are still being decided, 3 more are waiting to start, and 1 more is waiting and goes back to Held boss loot.", "detail: all three")
+eq(LM.EndDetail(0, 0, 0), nil, "detail: nothing open")
 
 -- End with nothing running or waiting: no dialog, the TEST rows go
 LM:TestBossKill(function() return 1 end)
@@ -276,20 +294,56 @@ check(popup and popup.text:find("3 items are waiting to start.", 1, true) ~= nil
 popup.callback()
 eq(LM.current, nil, "End all again: no session")
 
+-- End all with a real waiting chunk: its items go back to Held boss loot, unticked, with their times
+local realKill = { name = "Big Boss", at = CLOCK, instance = "2810-16" }
+local realIds = { 201, 202, 203, 204, 206, 201, 202, 203, 204, 206 }
+for _, id in ipairs(realIds) do BL:AddReceived(link(id), realKill) end
+eq(BL:Start(), 10, "real: 10 items started")
+check(LM.current and not LM.current.test, "real: a real session")
+local realWaiting = BL.waiting[1] and BL.waiting[1].items or {}
+eq(#realWaiting, 2, "real: 2 wait")
+local waitExpires = realWaiting[1] and realWaiting[1].expires
+popup = nil
+LM:AskEnd()
+check(popup and popup.text:find("8 items are still being decided, and 2 more are waiting and go back to Held boss loot.", 1, true) ~= nil,
+  "real: the dialog says the waiting items go back (" .. tostring(popup and popup.text) .. ")")
+popup.callback()
+eq(LM.current, nil, "real End all: no session")
+eq(#BL.waiting, 0, "real End all: nothing waits")
+eq(#BL:Rows(), 2, "real End all: the 2 waiting items are back in Held boss loot")
+for i, r in ipairs(BL:Rows()) do
+  eq(r.ticked, false, "real End all: back unticked " .. i)
+  eq(r.status, "won", "real End all: still yours " .. i)
+  eq(r.expires, waitExpires, "real End all: the time it had left " .. i)
+end
+eq(BL:StartCount(), 0, "real End all: Start session waits for a tick")
+NOW = NOW + 1
+runTimers()
+eq(LM.current, nil, "real End all: nothing starts later")
+check(CRTDBChar.lootmaster.bossLootList and #CRTDBChar.lootmaster.bossLootList.rows == 2, "real End all: kept for a /reload")
+BL:Clear()
+
 -- the looter window's End session asks too
 check(windowSrc:find("LM:AskEnd()", 1, true) ~= nil and not windowSrc:find("TEXT.endSession, function()%s*LM:End%(%)"), "the looter window's End session asks first")
 
 -- Add item ------------------------------------------------------------------------------------------------------------
+-- the trade time, read with the client's own time words
 eq(LM.TradeSecondsFromText(TRADE_TEXT:format("1 hour 52 minutes")), 6720, "trade time: 1 hour 52 minutes")
-eq(LM.TradeSecondsFromText(TRADE_TEXT:format("1 hr 5 min")), 3900, "trade time: 1 hr 5 min")
-eq(LM.TradeSecondsFromText(TRADE_TEXT:format("45 min")), 2700, "trade time: 45 min")
+eq(LM.TradeSecondsFromText(TRADE_TEXT:format("1 Hr 5 Min")), 3900, "trade time: 1 Hr 5 Min")
+eq(LM.TradeSecondsFromText(TRADE_TEXT:format("1 hrs 5 min")), 3900, "trade time: 1 hrs 5 min")
+eq(LM.TradeSecondsFromText(TRADE_TEXT:format("45 Minutes")), 2700, "trade time: 45 Minutes")
 eq(LM.TradeSecondsFromText(TRADE_TEXT:format("30 sec")), 30, "trade time: 30 sec")
-eq(LM.TradeSecondsFromText("no time"), nil, "trade time: no number")
-eq(LM.TradeSecondsFromText("3 hours"), LM.TRADE_SECONDS, "trade time: never past 2 hours")
-GetLocale = function() return "deDE" end
-eq(LM.TradeSecondsFromText("1 Stunde 5 Minuten"), 3900, "another language: hours and minutes by position")
-eq(LM.TradeSecondsFromText("40 Minuten"), 2400, "another language: one number is minutes")
-GetLocale = function() return "enUS" end
+eq(LM.TradeSecondsFromText(TRADE_TEXT:format("3 hours")), LM.TRADE_SECONDS, "trade time: never past 2 hours")
+eq(LM.TradeSecondsFromText(TRADE_TEXT:format("1 fortnight")), nil, "trade time: an unknown word is not read")
+eq(LM.TradeSecondsFromText(TRADE_TEXT:format("90")), nil, "trade time: a number with no word is not read")
+eq(LM.TradeSecondsFromText("Something else 1 hour"), nil, "trade time: another line is not read")
+eq(LM.TradeSecondsFromText(TRADE_TEXT:format("soon")), nil, "trade time: no number")
+local enTemplate, enH, enM = BIND_TRADE_TIME_REMAINING, D_HOURS, D_MINUTES
+BIND_TRADE_TIME_REMAINING, D_HOURS, D_MINUTES = "Handelbar noch %s.", "%d |4Stunde:Stunden;", "%d |4Minute:Minuten;"
+eq(LM.TradeSecondsFromText("Handelbar noch 1 Stunde 5 Minuten."), 3900, "another language: the client's own words")
+BIND_TRADE_TIME_REMAINING = nil
+eq(LM.TradeSecondsFromText(TRADE_TEXT:format("1 hour")), nil, "no trade line format in the client: not read")
+BIND_TRADE_TIME_REMAINING, D_HOURS, D_MINUTES = enTemplate, enH, enM
 
 put(0, 1, 301, true, "1 hour 52 minutes") -- a raid drop you can still trade
 put(0, 2, 302, true, "45 min")
@@ -297,6 +351,11 @@ put(0, 3, 303, true, nil) -- bind on pickup, its trade time over
 put(0, 4, 304, true, nil) -- bind on equip, equipped once: soulbound
 put(0, 5, 305, false, nil) -- not bound
 put(-1, 1, 306, true, "1 hour") -- in the bank
+put(0, 7, 307, false, nil, nil, 5) -- a stack of potions
+put(0, 8, 308, true, "1 hour") -- a tier token
+put(0, 9, 309, true, "until later") -- a trade time line CRT can't read
+put(0, 10, 307, false, nil) -- one potion
+put(0, 11, 310, false, nil) -- crafting material
 BL:Clear()
 -- drag and drop
 pickUp(0, 1)
@@ -324,32 +383,97 @@ slot.scripts.OnReceiveDrag(slot)
 eq(#BL:Rows(), 1, "the same item can't be added twice")
 check(status():find("it's already in the list", 1, true) ~= nil, "duplicate: the reason (" .. status() .. ")")
 eq(cursor, nil, "duplicate: the cursor is cleared too")
+-- the same item after a spec change (another specializationID in its link): still the same item
+put(0, 1, 301, true, "1 hour 52 minutes", linkWith(301, 577))
+pickUp(0, 1)
+slot.scripts.OnReceiveDrag(slot)
+eq(#BL:Rows(), 1, "the same item with another specID: refused")
+check(status():find("it's already in the list", 1, true) ~= nil, "another specID: the reason (" .. status() .. ")")
+put(0, 1, 301, true, "1 hour 52 minutes")
+eq(LM.ItemKey(linkWith(301, 577, { 12, 10 })), "301:10:12", "item key: the item ID and its sorted bonus IDs")
+eq(LM.ItemKey(linkWith(301, 0, { 10, 12 })), LM.ItemKey(linkWith(301, 250, { 12, 10 })), "item key: linkLevel and specID left out")
+check(LM.ItemKey(linkWith(301, 0, { 10 })) ~= LM.ItemKey(linkWith(301, 0, { 11 })), "item key: other bonus IDs are another item")
+eq(LM.ItemKey(link(301)), "301", "item key: the item ID when there are no bonus IDs")
+-- a row won by someone else doesn't count: the same item from your bags goes in
+BL:Clear()
+local realKill2 = { name = "Big Boss", at = CLOCK, instance = "2810-16" }
+BL:Add(1, link(301), { status = "rolling", rollType = 1 }, realKill2)
+BL:Result(link(301), "Other-Sargeras", false, false)
+pickUp(0, 1)
+slot.scripts.OnReceiveDrag(slot)
+eq(#BL:Rows(), 2, "a row someone else won doesn't block the item")
+BL:Clear()
+pickUp(0, 1)
+slot.scripts.OnReceiveDrag(slot)
+eq(#BL:Rows(), 1, "added again after Clear")
 -- a click with nothing on the cursor does nothing
 slot.scripts.OnMouseUp(slot)
 eq(#BL:Rows(), 1, "a click with no item does nothing")
--- a click with an item on the cursor drops it
+-- a click with an item on the cursor drops it; an item that isn't bound has no trade time
+printed = {}
 pickUp(0, 5)
 slot.scripts.OnMouseUp(slot)
 eq(#BL:Rows(), 2, "a click with an item on the cursor adds it")
 local plain = BL:Rows()[2]
-eq(plain.expires, NOW + LM.TRADE_SECONDS, "an item that isn't bound: the usual 2 hours")
+eq(plain.untimed, true, "not bound: no trade time")
+eq(plain.expires, nil, "not bound: no expiry of its own")
+eq(BL.TradeLeft(plain), nil, "not bound: no time left to show")
+check(LM.BossLootDetail(plain):find("Not bound: leaves with the other items", 1, true) ~= nil, "not bound: its own wording (" .. LM.BossLootDetail(plain) .. ")")
 eq(plain.ticked, true, "an item outside the loot filter from your bags is still ticked")
+local keptPlain
+for _, c in ipairs(CRTDBChar.lootmaster.bossLootList.rows) do if c.untimed then keptPlain = c end end
+check(keptPlain ~= nil and keptPlain.endsAt == nil, "not bound: kept for a /reload with no end time")
+-- a trade time line CRT can't read: the full 2 hours
+pickUp(0, 9)
+slot.scripts.OnReceiveDrag(slot)
+eq(#BL:Rows(), 3, "an unread trade time: added")
+eq(BL:Rows()[3] and BL:Rows()[3].expires, NOW + LM.TRADE_SECONDS, "an unread trade time: the full 2 hours")
+-- the unbound row leaves with the others: no warning, gone when the last timed row runs out
+NOW = NOW + LM.TRADE_SECONDS - LM.TRADE_WARN + 1
+runTimers()
+local warned = 0
+for _, m in ipairs(printed) do if m:find("Plain Bracers", 1, true) then warned = warned + 1 end end
+eq(warned, 0, "not bound: no trade time warning")
+eq(#BL:Rows(), 3, "not bound: still listed while the others are")
+NOW = NOW + LM.TRADE_WARN + 10
+runTimers()
+eq(#BL:Rows(), 0, "not bound: leaves with the other rows")
+-- what goes in: gear and tier tokens only
+pickUp(0, 8)
+slot.scripts.OnReceiveDrag(slot)
+eq(#BL:Rows(), 1, "a tier token: added")
+pickUp(0, 10)
+slot.scripts.OnReceiveDrag(slot)
+eq(#BL:Rows(), 1, "a potion: refused")
+check(status():find("only gear and tier tokens can be added", 1, true) ~= nil, "a potion: the reason (" .. status() .. ")")
+pickUp(0, 11)
+slot.scripts.OnReceiveDrag(slot)
+eq(#BL:Rows(), 1, "a crafting material: refused")
+pickUp(0, 7)
+slot.scripts.OnReceiveDrag(slot)
+eq(#BL:Rows(), 1, "a stack: refused")
+BL:Clear()
+pickUp(0, 5)
+slot.scripts.OnMouseUp(slot)
 -- untradeable items are refused with the reason
 pickUp(0, 3)
 slot.scripts.OnReceiveDrag(slot)
-eq(#BL:Rows(), 2, "trade time over: refused")
+eq(#BL:Rows(), 1, "trade time over: refused")
 check(status():find("its trade time is over", 1, true) ~= nil, "trade time over: the reason (" .. status() .. ")")
 pickUp(0, 4)
 slot.scripts.OnReceiveDrag(slot)
-eq(#BL:Rows(), 2, "soulbound: refused")
+eq(#BL:Rows(), 1, "soulbound: refused")
 check(status():find("it's soulbound", 1, true) ~= nil, "soulbound: the reason (" .. status() .. ")")
+pickUp(0, 1)
+slot.scripts.OnReceiveDrag(slot)
+eq(#BL:Rows(), 2, "the raid drop again")
 -- shift-click in bags
 slot.shown = true -- Tonight shows
 original = 0
 shiftClick(0, 2)
 eq(original, 1, "shift-click: the game's own click still runs")
 eq(#BL:Rows(), 3, "shift-click with Tonight shown: added")
-eq(BL:Rows()[3].expires, NOW + 2700, "shift-click: the real trade time")
+eq(BL:Rows()[3] and BL:Rows()[3].expires, NOW + 2700, "shift-click: the real trade time")
 BL.rows[3] = nil
 chatBox = mock()
 shiftClick(0, 2)
@@ -367,11 +491,36 @@ modified = false
 HandleModifiedItemClick(BAGS[0][2].hyperlink, location(0, 2))
 eq(#BL:Rows(), 2, "another modified click (not shift): not added")
 modified = true
+local before = status()
 shiftClick(-1, 1)
 eq(#BL:Rows(), 2, "shift-click in the bank: not added")
-check(status():find("it isn't in your bags", 1, true) ~= nil, "bank: the reason (" .. status() .. ")")
+eq(status(), before, "shift-click in the bank: the status line stays as it was")
 HandleModifiedItemClick(link(302), nil)
 eq(#BL:Rows(), 2, "a modified click on a link with no bag slot (chat, loot): nothing")
+-- a stack: left to the game's split, and the line says why
+original = 0
+shiftClick(0, 7)
+eq(original, 1, "shift-click on a stack: the game's click (its split) still runs")
+eq(#BL:Rows(), 2, "shift-click on a stack: nothing added")
+check(status():find("only gear and tier tokens can be added", 1, true) ~= nil, "shift-click on a stack: the line says why (" .. status() .. ")")
+slot.shown = false
+pickUp(0, 2) ClearCursor() -- nothing changes the line while hidden
+before = status()
+shiftClick(0, 7)
+eq(status(), before, "shift-click on a stack with Tonight hidden: no word")
+slot.shown = true
+-- a failing hook body is reported, and the game's click still works
+local realShift, reported = LM.BagShiftClick, {}
+LM.BagShiftClick = function() error("boom") end
+local realHandler = geterrorhandler
+geterrorhandler = function() return function(e) reported[#reported + 1] = e end end
+original = 0
+local okClick, ret = pcall(HandleModifiedItemClick, BAGS[0][2].hyperlink, location(0, 2))
+check(okClick, "a failing hook: the click raises no error")
+eq(original, 1, "a failing hook: the game's click ran")
+eq(ret, false, "a failing hook: the game's answer is kept")
+eq(#reported, 1, "a failing hook: the error is reported")
+geterrorhandler, LM.BagShiftClick = realHandler, realShift
 shiftClick(0, 2)
 eq(#BL:Rows(), 3, "shift-click again: added")
 -- added rows start a session like any other
