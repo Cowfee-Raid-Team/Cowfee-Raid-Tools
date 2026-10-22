@@ -160,7 +160,7 @@ function LM.BossLootRow(row, r)
         hl:SetColorTexture(1, 1, 1, 0.06)
         row:SetScript("OnEnter", function(self)
             if self.data and self.data.link then
-                UI.TooltipOwner(GameTooltip, self, "ANCHOR_RIGHT")
+                UI.TooltipOwner(GameTooltip, self, "ANCHOR_RIGHT", nil, nil, "lootmaster")
                 GameTooltip:SetHyperlink(self.data.link)
                 GameTooltip:Show()
             end

@@ -7,7 +7,7 @@ local ADDON, CRT = ...
 -- winner).
 --   local tabs = LM.ItemTabs(parent, opts)
 --   opts: onSelect(index), onRightClick(tab), onDoubleClick(index), doubleClickHint (tooltip line),
---         window (the frame the tooltip sits left of; the parent if not given)
+--         window (the frame a tooltip on a side of the window sits by; the parent if not given)
 --   tabs:Update(items, current, count(index) -> answered, expected, late (Session:AnswerCount),
 --               classOf(name) -> class file)
 -- Also here, for both windows: LM.ListArea (the clipped headings and rows) and LM.GearIcon / LM.SetGear.
@@ -74,7 +74,7 @@ function LM.GearIcon(row, x)
                 end
             end
         end
-        CRT.Gear.ShowTooltip(self, piece, "ANCHOR_RIGHT")
+        CRT.Gear.ShowTooltip(self, piece, "ANCHOR_RIGHT", "lootmaster")
     end)
     b:SetScript("OnLeave", function()
         GameTooltip:Hide()
@@ -152,15 +152,18 @@ function LM.ItemTabs(parent, opts)
                 t:GetScript("OnDoubleClick")(t, button)
             end)
         end
-        -- the tooltip opens where the Settings tab says (left of the window, level with the icon, at first),
-        -- whatever General Settings' Tooltip position says (an exception in UI/Tooltip.lua)
+        -- the tooltip opens where the Settings tab's Item tabs says: by default like every Loot Master tooltip
+        -- (next to the icon, on the window's outer side, unless its Tooltip position says otherwise); a side
+        -- of the window or the game's spot whatever the Tooltip positions say (the flags in UI/Tooltip.lua)
         t.frame:SetScript("OnEnter", function(icon)
             local it = self.items and self.items[t.index]
             if it then
                 local win = opts.window or parent
                 local a = LM:TooltipAnchor()
-                if not a.point then
-                    CRT.UI.TooltipOwner(GameTooltip, icon, "ANCHOR_RIGHT", nil, nil, CRT.UI.TOOLTIP_GAME)
+                if a.game then
+                    CRT.UI.TooltipOwner(GameTooltip, icon, "ANCHOR_LEFT", nil, nil, CRT.UI.TOOLTIP_GAME)
+                elseif not a.point then
+                    CRT.UI.TooltipOwner(GameTooltip, icon, "ANCHOR_LEFT", nil, nil, "lootmaster")
                 else
                     CRT.UI.TooltipOwner(GameTooltip, icon, "ANCHOR_NONE", nil, nil, CRT.UI.TOOLTIP_KEEP)
                     local dy = a.dy

@@ -557,11 +557,12 @@ end
 Gear.TEXT = { equippedAt = "Equipped at item level %d" }
 
 -- The game tooltip for a piece, owned by owner and placed by UI.TooltipOwner (UI/Tooltip.lua: anchor is used
--- next to what you hover, ANCHOR_RIGHT when nil; the game's tooltip spot ignores it). The
+-- next to what you hover, ANCHOR_RIGHT when nil; the game's tooltip spot ignores it; area, when given, is the
+-- tooltip area whose Tooltip position it follows). The
 -- exact item (upgrades, gems, enchant) when its item string or link is known, else the item by its ID; then
 -- the "Equipped at item level N" line. Returns true when the exact item was shown; false and no tooltip
 -- for a piece with neither.
-function Gear.ShowTooltip(owner, piece, anchor)
+function Gear.ShowTooltip(owner, piece, anchor, area)
     if type(piece) ~= "table" or not GameTooltip then
         return false
     end
@@ -570,7 +571,7 @@ function Gear.ShowTooltip(owner, piece, anchor)
     if not s and not id then
         return false
     end
-    CRT.UI.TooltipOwner(GameTooltip, owner, anchor or "ANCHOR_RIGHT")
+    CRT.UI.TooltipOwner(GameTooltip, owner, anchor or "ANCHOR_RIGHT", nil, nil, area)
     local exact = s and pcall(GameTooltip.SetHyperlink, GameTooltip, s) or false
     if not exact and id then
         pcall(GameTooltip.SetItemByID, GameTooltip, id)

@@ -527,7 +527,7 @@ local function buildLeft(pf)
         CRT.MinimapButton:SetHidden(not on)
     end)
 
-    heading(pf, x, -246, "Tooltips", "Where the addon's tooltips open. Next to what you hover: beside the button, row or icon under your mouse. Game's tooltip spot: where the game shows its own tooltips, or wherever your UI addon moved them.\n\nA few always stay put: tooltips that follow your mouse, the Loot Master item tabs (they have their own setting) and the button on the Encounter Journal.")
+    heading(pf, x, -246, "Tooltips", "Where the addon's tooltips open. Next to what you hover: beside the button, row or icon under your mouse. Game's tooltip spot: where the game shows its own tooltips, or wherever your UI addon moved them.\n\nLoot History and Loot Master have their own Tooltip position on their Settings tabs. It follows this one until you change it there.\n\nThe button on the Encounter Journal always keeps its tooltip by it.")
     add(UI.Dropdown(pf, "Tooltip position", {
         options = UI.TOOLTIP_POSITIONS,
         labelWidth = LABEL_W,

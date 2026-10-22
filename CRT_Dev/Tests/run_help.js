@@ -165,6 +165,53 @@ GameTooltip_SetDefaultAnchor = nil
 CRT.db.ui.tooltipAnchor = nil
 print("ok help: Tooltip position, both choices, the flags and the fallback")
 
+-- Per area: Loot History (loot.tooltipPosition) and Loot Master (lootmaster.tooltipPosition) each have
+-- their own Tooltip position; "general", the default, is General Settings' choice
+local keys, labels = {}, {}
+for _, c in ipairs(UI.TOOLTIP_AREA_POSITIONS or {}) do keys[#keys + 1] = c.key labels[#labels + 1] = c.label end
+check(table.concat(keys, ",") == "general,owner,game,cursor", "area choices: the four, in order (" .. table.concat(keys, ",") .. ")")
+check(table.concat(labels, "|") == "Use the general setting|Next to what you hover|Game's tooltip spot|Follow the cursor", "area choices: their labels")
+check(UI.TOOLTIP_AREAS and UI.TOOLTIP_AREAS.loothistory and UI.TOOLTIP_AREAS.lootmaster, "the two areas: loothistory and lootmaster")
+GameTooltip_SetDefaultAnchor = function(t, o) defaults[#defaults + 1] = { t, o } t:SetOwner(o, "ANCHOR_NONE") end
+local saved = { loothistory = "loot", lootmaster = "lootmaster" }
+for area, tbl in pairs(saved) do
+  for _, general in ipairs({ "owner", "game" }) do
+    CRT.db.ui.tooltipAnchor = general
+    for _, choice in ipairs({ "unset", "general", "owner", "game", "cursor", "nonsense" }) do
+      CRT.db[tbl] = { tooltipPosition = choice ~= "unset" and choice or nil }
+      local want = (choice == "owner" or choice == "game" or choice == "cursor") and choice or general
+      local what = area .. " on " .. choice .. ", general " .. general
+      check(UI.TooltipPosition(area) == want, what .. ": UI.TooltipPosition is " .. want .. " (got " .. tostring(UI.TooltipPosition(area)) .. ")")
+      defaults = {}
+      GameTooltip.anchor = nil
+      local got = UI.TooltipOwner(GameTooltip, owner, "ANCHOR_TOP", nil, nil, area)
+      if want == "game" then
+        check(got == "game" and #defaults == 1 and defaults[1][2] == owner, what .. ": the game's tooltip spot")
+      elseif want == "cursor" then
+        check(got == "cursor" and #defaults == 0 and GameTooltip.owner == owner and GameTooltip.anchor == "ANCHOR_CURSOR", what .. ": follows the cursor")
+      else
+        check(got == "owner" and #defaults == 0 and GameTooltip.owner == owner and GameTooltip.anchor == "ANCHOR_TOP", what .. ": next to what you hover")
+      end
+    end
+  end
+  CRT.db[tbl] = nil
+  CRT.db.ui.tooltipAnchor = "game"
+  check(UI.TooltipPosition(area) == "game", area .. " with no saved table: the general setting")
+end
+-- an area's choice stays in its area: the other area and the general tooltips keep the general setting
+CRT.db.ui.tooltipAnchor = "owner"
+CRT.db.loot = { tooltipPosition = "cursor" }
+CRT.db.lootmaster = { tooltipPosition = "game" }
+check(UI.TooltipPosition() == "owner" and UI.TooltipPosition("loothistory") == "cursor" and UI.TooltipPosition("lootmaster") == "game", "each area keeps its own choice")
+check(UI.TooltipPosition("nosucharea") == "owner", "an unknown area: the general setting")
+defaults = {}
+check(UI.TooltipOwner(GameTooltip, owner, "ANCHOR_TOP") == "owner" and GameTooltip.anchor == "ANCHOR_TOP" and #defaults == 0, "no area: the general setting")
+check(UI.TooltipOwner(GameTooltip, owner, "ANCHOR_RIGHT", nil, nil, UI.TOOLTIP_KEEP) == "owner" and GameTooltip.anchor == "ANCHOR_RIGHT", "UI.TOOLTIP_KEEP still keeps its anchor")
+GameTooltip_SetDefaultAnchor = nil
+check(UI.TooltipOwner(GameTooltip, owner, "ANCHOR_TOP", nil, nil, "lootmaster") == "owner" and GameTooltip.anchor == "ANCHOR_TOP", "an area on the game's spot without GameTooltip_SetDefaultAnchor: next to the owner")
+CRT.db.loot, CRT.db.lootmaster, CRT.db.ui.tooltipAnchor = nil, nil, nil
+print("ok help: Tooltip position per area, each choice and the general fallback")
+
 -- Modern: an accent ring round an accent "i", the same hit box
 look(true)
 check(not h.i.shown and not h.ring.shown and h.glow.alpha == 0, "Modern: the gold \\"i\\", ring and glow are hidden")
@@ -435,6 +482,33 @@ if (process.argv[3] === 'lint') {
   console.log(calls + ' UI.HelpRight calls, every (?) placed by the helper');
   console.log('all passed');
   process.exit(0);
+}
+
+// The areas reach their tooltips: every tooltip on the Loot History page passes "loothistory" and every Loot
+// Master tooltip "lootmaster" to UI.TooltipOwner (or to Gear.ShowTooltip, which passes it on). Only the item
+// tabs' own placements (a side of the window, the game's spot) use a flag; the Encounter Journal button keeps
+// UI.TOOLTIP_KEEP.
+{
+  const bad = [];
+  const scan = (rel, area, flagsOk) => {
+    const lines = read(rel).split(/\r?\n/);
+    let calls = 0;
+    lines.forEach((line, i) => {
+      if (!/TooltipOwner\(|Gear\.ShowTooltip\(/.test(line) || /^\s*--/.test(line)) return;
+      calls++;
+      const flagged = /TOOLTIP_KEEP|TOOLTIP_GAME/.test(line);
+      if (flagged ? !flagsOk : !line.includes('"' + area + '"')) bad.push(rel + ':' + (i + 1) + ': ' + line.trim());
+    });
+    return calls;
+  };
+  if (scan('CRT_Modules/Loot/Page.lua', 'loothistory', false) === 0) bad.push('CRT_Modules/Loot/Page.lua: no tooltip found');
+  const lmDir = path.join(root, 'CRT_Modules/LootMaster');
+  let lmCalls = 0;
+  for (const f of fs.readdirSync(lmDir)) if (f.endsWith('.lua')) lmCalls += scan('CRT_Modules/LootMaster/' + f, 'lootmaster', f === 'Tabs.lua');
+  if (lmCalls < 6) bad.push('CRT_Modules/LootMaster: only ' + lmCalls + ' tooltips found');
+  if (!/TooltipOwner\([^\n]*TOOLTIP_KEEP/.test(read('CRT_Modules/Timeline/JournalExport.lua'))) bad.push('CRT_Modules/Timeline/JournalExport.lua: the Encounter Journal button no longer keeps its anchor');
+  if (bad.length) { console.log('FAIL a tooltip that does not follow its area:'); for (const b of bad) console.log(b); process.exitCode = 1; }
+  else console.log('ok help: Loot History and Loot Master tooltips pass their area');
 }
 
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
