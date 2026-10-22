@@ -67,20 +67,21 @@ local function classID(word)
 end
 
 -- A CRT tag in NSRT's words: "all" is "everyone", a class is its class ID, and names, roles, melee and ranged
--- are the same in both. A class is one only when surely named (Notes/Parse.lua's class words: "Demon Hunter" as
--- one, "DEMONHUNTER", "Priest"), so a player called "Deathknight" stays a name.
+-- are the same in both. A tag holds only tags, so a class in any spelling is the class ("Demon Hunter" as one,
+-- "priest", "deathknight"; Notes/Parse.lua's class words), as CRT's alerts read it.
 local function nsrtTags(value)
     local out = {}
     for _, item in ipairs(CRT.NoteParser.ClassRuns(value, "%S+")) do
-        local id = item.class and item.sure and classID(item.class)
+        local id = item.class and classID(item.class)
         out[#out + 1] = id or (item.text:lower() == "all" and "everyone") or item.text
     end
     return table.concat(out, " ")
 end
 
--- An assignment line ("Orb Soak 1: DEMONHUNTER Warlock") with each surely named class written as NSRT notes
--- name it, the English name with its spaces ("Demon Hunter"); a single word in mixed or lower case ("Deathknight",
--- "the hunter kites") and everything else as written. Any other line as it is.
+-- An assignment line ("Orb Soak 1: DEMONHUNTER Warlock") with each class written as NSRT notes name it, the
+-- English name with its spaces ("Demon Hunter"), where Parse.lua's AssignmentClasses counts it as the class; a
+-- player's name ("Deathknight"), a sentence ("the hunter kites") and everything else as written. Any other line
+-- as it is.
 local function assignmentLine(line)
     local Parser = CRT.NoteParser
     local label, rest = line:match("^([^:]+:)(.*)$")
@@ -88,9 +89,9 @@ local function assignmentLine(line)
         return line
     end
     local out, pos = {}, 1
-    for _, item in ipairs(Parser.ClassRuns(rest, "[^%s,]+")) do
+    for _, item in ipairs(Parser.AssignmentClasses(rest, "[^%s,]+")) do
         out[#out + 1] = rest:sub(pos, item.start - 1)
-        out[#out + 1] = (item.class and item.sure) and Parser.ClassName(item.class) or item.text
+        out[#out + 1] = item.counts and Parser.ClassName(item.class) or item.text
         pos = item.stop
     end
     out[#out + 1] = rest:sub(pos)

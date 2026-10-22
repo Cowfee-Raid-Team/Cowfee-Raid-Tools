@@ -224,9 +224,9 @@ function Engine:WordIsMe(word)
 end
 
 -- Whether an assignment line ("Orb Soak 1: Demon Hunter Warlock", a label Parse.lua's LooksLikeLabel takes)
--- names your class, as your name or role would (Alex, 2026-10-21). Its names are cut as Parse.lua's ClassRuns
--- cuts them, and only a surely named class counts, so "Demon Hunter" is never a Hunter's and "Note: the hunter
--- kites" is no one's. A sentence (any other line) is never yours by class.
+-- names your class, as your name or role would (Alex, 2026-10-21). Its classes are the ones Parse.lua's
+-- AssignmentClasses counts, so "Demon Hunter" is never a Hunter's, "Soak: priest, monk" is a Priest's and
+-- "Note: the Hunter kites" is no one's. Any other line is never yours by class.
 function Engine:ClassLineIsMine(line)
     local Parser = CRT.NoteParser
     local label, rest = line:match("^([^:]+):(.*)$")
@@ -234,8 +234,8 @@ function Engine:ClassLineIsMine(line)
     if not file then
         return false
     end
-    for _, item in ipairs(Parser.ClassRuns(rest, "[^%s,]+")) do
-        if item.class == file and item.sure then
+    for _, item in ipairs(Parser.AssignmentClasses(rest, "[^%s,]+")) do
+        if item.counts and item.class == file then
             return true
         end
     end

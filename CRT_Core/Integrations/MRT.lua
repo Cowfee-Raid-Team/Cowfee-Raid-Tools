@@ -81,9 +81,9 @@ local function className(classFile)
     return classNames[classFile]
 end
 
--- What a tag's words ask for: "everyone", a single role, groups, classes, or names. A class is one only when
--- surely named, a name of several words as one ("Demon Hunter", "DEMONHUNTER", "Priest"; Notes/Parse.lua's
--- class words), so a player called "Deathknight" stays a name.
+-- What a tag's words ask for: "everyone", a single role, groups, classes, or names. A tag holds only tags, so a
+-- class in any spelling is the class, a name of several words as one ("Demon Hunter", "priest"; Notes/Parse.lua's
+-- class words), as CRT's alerts read it.
 local function tagKind(words)
     if #words == 0 then
         return "none"
@@ -93,8 +93,8 @@ local function tagKind(words)
     while i <= #words do
         local w = words[i]
         local lower = w:lower()
-        local file, n, sure = CRT.NoteParser.ClassAt(words, i)
-        local name = file and sure and className(file)
+        local file, n = CRT.NoteParser.ClassAt(words, i)
+        local name = file and className(file)
         n = name and n or 1
         if lower == "all" or lower == "everyone" then
             return "everyone"

@@ -185,6 +185,7 @@ end
 -- Whether one word that matches a class surely names it: in capitals as a class file is ("DEMONHUNTER"), or a
 -- class name exactly as written ("Hunter", the client's own name). "Deathknight" may be a player and "hunter" a
 -- word of a sentence, so they are matched but not sure. A class name of several words is always sure.
+-- The capitals test is ASCII only (string.upper and %u know no other letters), as every class file is.
 local function sure(w, word)
     return w.written[word] == true or (word:upper() == word and word:find("%u") ~= nil)
 end
@@ -238,6 +239,50 @@ function Parser.ClassRuns(s, pattern)
         k = k + n
     end
     return out
+end
+
+-- Words that name a role, everyone or the raid rather than a player (Engine.lua's tag words). The note editor
+-- keeps them out of the invite list; an assignment line of them is still a list.
+Parser.TAG_WORDS = { all = true, everyone = true, raid = true, tank = true, tanks = true, healer = true,
+    healers = true, heal = true, dps = true, damager = true, damage = true, melee = true, melees = true,
+    ranged = true, range = true }
+local GROUP_WORDS = { g = true, grp = true, group = true }
+
+-- Whether an item of an assignment line is one a list of names holds: a class, a role or everyone word, a group
+-- ("G1", "Group1", "Group 1") or a name-like word, which starts with a capital or with a letter outside ASCII
+-- (whose case can't be told). A lower-case word of any other kind ("the", "kites") makes the line a sentence.
+local function listItem(item, prev)
+    local lower = item.text:lower()
+    if item.class or Parser.TAG_WORDS[lower] or GROUP_WORDS[lower] or lower:match("^g%d$") or lower:match("^grp%d$")
+        or lower:match("^group%d$") then
+        return true
+    end
+    if lower:match("^%d$") and prev and GROUP_WORDS[prev.text:lower()] then
+        return true
+    end
+    return item.text:find("^%u") ~= nil or item.text:find("^[\128-\255]") ~= nil
+end
+
+-- The names of an assignment line (the part after "Label:") cut as ClassRuns cuts them, each class item with
+-- counts: whether it is the class there. A class name of several words always is. One word is only on a list
+-- of names (every item a listItem, so "Note: the Hunter kites" is a sentence), and only written as a class
+-- (sure, or all in lower case: "Soak: priest, monk"), never like a player's name ("Kicks: Deathknight, Abu").
+-- The rendered note, the integrations and the alerts (an assignment line for your class) share it.
+function Parser.AssignmentClasses(rest, pattern)
+    local items = Parser.ClassRuns(rest, pattern)
+    local list = #items > 0
+    for k, item in ipairs(items) do
+        if not listItem(item, items[k - 1]) then
+            list = false
+            break
+        end
+    end
+    for _, item in ipairs(items) do
+        local single = not item.text:find(" ", 1, true)
+        item.counts = item.class ~= nil
+            and (not single or (list and (item.sure or item.text:lower() == item.text)))
+    end
+    return items
 end
 
 function Parser.JoinClassWords(words)

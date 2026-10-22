@@ -59,9 +59,7 @@ Model.GROUPS = 8
 
 -- Words that name a role, everyone or a raid group rather than a player (Notes/Engine.lua's tag words): never put
 -- in the invite list.
-local NOT_PLAYER = { all = true, everyone = true, raid = true, tank = true, tanks = true, healer = true,
-    healers = true, heal = true, dps = true, damager = true, damage = true, melee = true, melees = true,
-    ranged = true, range = true }
+local NOT_PLAYER = Parser.TAG_WORDS
 
 -- A name in a label line: anything between spaces and commas, so removing one keeps every other mark as written
 -- ("Abu (left), Cheo" removes "(left)" as one word, never a bracket of it). A class name of several words with

@@ -207,6 +207,9 @@ do
   assert(classed(find(plain, "label", 1)) == "", "a sentence: " .. classed(find(plain, "label", 1)))
   assert(classed(find(plain, "label", 2)) == "demon hunter=DEMONHUNTER", "two words are sure, a name like a player's is not: " .. classed(find(plain, "label", 2)))
   assert(find(plain, "timer").names[1].class == "HUNTER", "a tag's hunter")
+  local list = Render.Rows("Soak: priest, monk\\nNote: the Hunter kites", ctx())
+  assert(classed(find(list, "label", 1)) == "priest=PRIEST,monk=MONK", "a pure list in lower case: " .. classed(find(list, "label", 1)))
+  assert(classed(find(list, "label", 2)) == "", "a sentence with a capital: " .. classed(find(list, "label", 2)))
   -- a player whose name is a class word keeps the player's colour
   local mine = Render.Rows("Soak: Hunter", ctx({ classOf = function(n) return n == "Hunter" and "ROGUE" or nil end }))
   assert(classed(mine[1]) == "Hunter=ROGUE", classed(mine[1]))

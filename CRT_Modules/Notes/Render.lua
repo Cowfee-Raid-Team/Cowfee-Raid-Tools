@@ -158,13 +158,13 @@ end
 local WORD = "[%w\128-\255][%w\128-\255%-']*"
 
 -- A line of text as parts: each word a name (class and you), the spaces and commas between them as written.
--- classes: class names count too (an assignment's names), cut as Parse.lua's ClassRuns cuts them, and only a
--- sure one ("Hunter", "DEMONHUNTER", "demon hunter"), so "kill the hunter pet" stays as written.
+-- classes: class names count too (an assignment's names), as Parse.lua's AssignmentClasses counts them, so
+-- "Soak: priest, monk" is coloured and "kill the Hunter pet" stays as written.
 local function parts(s, ctx, out, classes)
     out = out or {}
     local items = {}
     if classes then
-        items = CRT.NoteParser.ClassRuns(s, WORD)
+        items = CRT.NoteParser.AssignmentClasses(s, WORD)
     else
         for start, word, stop in s:gmatch("()(" .. WORD .. ")()") do
             items[#items + 1] = { start = start, stop = stop, text = word }
@@ -176,7 +176,7 @@ local function parts(s, ctx, out, classes)
             out[#out + 1] = { text = s:sub(pos, item.start - 1) }
         end
         local player = not item.text:find(" ", 1, true) and ctx.classOf and ctx.classOf(item.text)
-        if item.class and item.sure and not player then
+        if item.counts and not player then
             out[#out + 1] = { text = item.text, class = item.class, me = false } -- the spaces as written
         else
             out[#out + 1] = nameOf(item.text, ctx)

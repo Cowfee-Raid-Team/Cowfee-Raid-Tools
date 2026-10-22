@@ -45,6 +45,7 @@ local NOTE = table.concat({
   "time:40;tag:Hunter;text:Trap;",
   "time:45;tag:Death Knight Priest;text:Grip;",
   "time:50;tag:Deathknight;text:Kick;",
+  "time:55;tag:priest;text:Dispel;",
   "Orb Soak 1: Demon Hunter Warlock Priest Monk",
   "Orb Soak 2: Shaman Monk Druid Rogue",
   "Orb Soak 3: Mage Warlock Death Knight Warrior",
@@ -53,6 +54,8 @@ local NOTE = table.concat({
   "Phase 2: the DEMONHUNTER kites",
   "Kicks: Deathknight, Abu",
   "Note: the hunter kites",
+  "Note: the Hunter kites",
+  "Soak: priest, monk",
   "invitelist:Abu,Cheo;",
 }, "\\n")
 
@@ -88,7 +91,8 @@ check("NSRT: classes as class IDs in tags, as English names in assignments", fun
     "time:35;tag:12;text:Orb;",
     "time:40;tag:3;text:Trap;",
     "time:45;tag:6 5;text:Grip;",
-    "time:50;tag:Deathknight;text:Kick;",
+    "time:50;tag:6;text:Kick;",
+    "time:55;tag:5;text:Dispel;",
     "Orb Soak 1: Demon Hunter Warlock Priest Monk",
     "Orb Soak 2: Shaman Monk Druid Rogue",
     "Orb Soak 3: Mage Warlock Death Knight Warrior",
@@ -97,6 +101,8 @@ check("NSRT: classes as class IDs in tags, as English names in assignments", fun
     "Phase 2: the DEMONHUNTER kites",
     "Kicks: Deathknight, Abu",
     "Note: the hunter kites",
+    "Note: the Hunter kites",
+    "Soak: Priest, Monk",
   }, "\\n"))
 end)
 
@@ -107,7 +113,8 @@ check("MRT: a two-word class is one class block", function()
     "{c:Demon Hunter}{time:0:35} - Orb{/c}",
     "{c:Hunter}{time:0:40} - Trap{/c}",
     "{c:Death Knight,Priest}{time:0:45} - Grip{/c}",
-    "{time:0:50} Deathknight - Kick",
+    "{c:Death Knight}{time:0:50} - Kick{/c}",
+    "{c:Priest}{time:0:55} - Dispel{/c}",
     "Orb Soak 1: Demon Hunter Warlock Priest Monk",
     "Orb Soak 2: Shaman Monk Druid Rogue",
     "Orb Soak 3: Mage Warlock Death Knight Warrior",
@@ -116,7 +123,27 @@ check("MRT: a two-word class is one class block", function()
     "Phase 2: the DEMONHUNTER kites",
     "Kicks: Deathknight, Abu",
     "Note: the hunter kites",
+    "Note: the Hunter kites",
+    "Soak: priest, monk",
   }, "\\n"))
+end)
+
+check("assignment lines: which class words count", function()
+  local function counted(rest)
+    local out = {}
+    for _, item in ipairs(P.AssignmentClasses(rest, "[^%s,]+")) do
+      if item.counts then out[#out + 1] = item.text .. "=" .. item.class end
+    end
+    return table.concat(out, ",")
+  end
+  assert(counted(" priest, monk") == "priest=PRIEST,monk=MONK", "a pure list, lower case: " .. counted(" priest, monk"))
+  assert(counted(" the hunter kites") == "", "a sentence")
+  assert(counted(" the Hunter kites") == "", "a sentence with a capital: " .. counted(" the Hunter kites"))
+  assert(counted(" Demon Hunter Warlock Priest Monk") == "Demon Hunter=DEMONHUNTER,Warlock=WARLOCK,Priest=PRIEST,Monk=MONK", "Orb Soak 1")
+  assert(counted(" Deathknight, Abu") == "", "a name like a player's")
+  assert(counted(" priest, Abu, tank, Group2, G3, everyone") == "priest=PRIEST", "names, roles and groups keep it a list")
+  assert(counted(" priest and Abu") == "", "a short lower-case word is a sentence")
+  assert(counted(" kill the demon hunter") == "demon hunter=DEMONHUNTER", "a name of several words is always a class")
 end)
 
 if checks.failed then error(checks.failed .. " failed") end

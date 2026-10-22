@@ -131,9 +131,8 @@ local function textLine(line, noHeading)
     if line == "" then
         return ""
     end
-    -- an assignment line naming your class is yours too; a sentence never is by class (the guard: the alerts
-    -- notes harness runs this window on a frozen older engine)
-    local mine = Engine.ClassLineIsMine ~= nil and Engine:ClassLineIsMine(line)
+    -- an assignment line naming your class is yours too; a sentence never is by class
+    local mine = Engine:ClassLineIsMine(line)
     local myName = (UnitName("player") or ""):lower()
     local colored = line:gsub("[%w\128-\255]+", function(word)
         if Engine:WordIsMe(word) then
