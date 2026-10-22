@@ -46,7 +46,8 @@ local function mock(kind)
     if k == "GetChecked" then return function(self) return rawget(self, "checked") or false end end
     return function() end end })
 end
-function CreateFrame(kind, name, parent, template) local f = mock(kind) rawset(f, "parent", parent) rawset(f, "frameName", name) if template == "BasicFrameTemplateWithInset" then f:CreateTexture() f:CreateTexture() if name == "CowfeeRaidToolsProfileText" then rawset(f, "CloseButton", mock("Button")) end end return f end
+function CreateFrame(kind, name, parent, template) local f = mock(kind) rawset(f, "parent", parent) rawset(f, "frameName", name) if template == "BasicFrameTemplateWithInset" then f:CreateTexture() f:CreateTexture() if name == "CowfeeRaidToolsProfileText" then rawset(f, "CloseButton", mock("Button")) end end
+  if template == "UIPanelScrollFrameTemplate" then rawset(f, "ScrollBar", mock("Slider")) end return f end
 -- The game's encoding API, standing in: the serialized table is kept and handed back.
 local encoded = {}
 C_EncodingUtil = { SerializeCBOR = function(t) encoded[#encoded + 1] = t return "cbor" .. #encoded end, CompressString = function(s) return s end, EncodeBase64 = function(s) return s end,

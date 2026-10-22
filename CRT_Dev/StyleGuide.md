@@ -28,7 +28,7 @@ Every theme fills every key in `CRT.THEME_KEYS`. Each key is named for what it c
 | check | a ticked checkbox's tick |
 | checkBorder | a ticked checkbox's edge |
 | titleTop, titleBottom | a window title strip's gradient, top and bottom |
-| muted | quiet text: the small note beside a window's title, a roll someone else won |
+| muted | quiet text: the small note beside a window's title, a roll someone else won, the Modern menu's group labels |
 | outline | a dark edge that must show on any fill: the alert bars' Border, drawn fully opaque. Always the theme's darkest colour |
 
 The four status keys mean the same thing on every page and overlay: heading for titles, good for good, warn for in between, bad for bad. Pick by meaning, never by the colour a theme happens to give.

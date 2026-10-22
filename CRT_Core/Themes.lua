@@ -46,7 +46,7 @@ CRT.THEME_MODERN = "cowfee" -- old saved data with the Modern look on
 --   check        a ticked checkbox's tick
 --   checkBorder  a ticked checkbox's edge
 --   titleTop, titleBottom   a window title bar's gradient (UI.TitleStrip)
---   muted        quiet text: the small note beside a window's title, a roll someone else won
+--   muted        quiet text: the small note beside a window's title, a roll someone else won, the menu's group labels
 --   outline      a dark edge that must stand out on any fill: the alert bars' Border; the theme's darkest colour
 CRT.THEME_KEYS = { "background", "surface", "border", "selected", "accent", "label", "heading", "text", "good",
     "warn", "bad", "knob", "knobBorder", "knobShine", "knobText", "check", "checkBorder", "titleTop", "titleBottom", "muted",

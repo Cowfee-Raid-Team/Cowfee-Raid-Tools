@@ -257,9 +257,9 @@ end)
 -- Two looks, in four themes picked from the theme button in the main window's title bar (CRTDB.ui.theme,
 -- UI:SetTheme; the themes and their palettes are in Themes.lua):
 --   Classic  Default: Blizzard. The window template's own art, the game's red buttons and dropdowns,
---            the menu as one list
+--            the menu's groups (UI.MENU_GROUPS) under the game's Settings-menu header bars
 --   Modern   every other theme, in its palette (CRT.PALETTE): a background-coloured window with accent lines under
---            the title and beside the menu, the menu in grouped blocks (UI.MENU_GROUPS) with the
+--            the title and beside the menu, the menu in grouped blocks under small labels with the
 --            selected page in the selected colour (and an accent bar on its left in a theme with menuBar), selected page
 --            tabs, flat dropdowns and buttons, and Arial Narrow text unless another font is picked
 --            (CRT:ApplyFonts)
@@ -271,12 +271,19 @@ local function rgba(key, alpha)
     return c[1], c[2], c[3], alpha or 1
 end
 
--- The Modern menu's blocks, top to bottom. A page not listed joins the last block.
+-- The menu's groups, top to bottom, each under its header: its label, then its page keys in order. This is
+-- the one place the menu's order is set. A page not listed joins the last group.
+local TEXT = {
+    general = "General",
+    raidAdmin = "Raid Admin",
+    bosses = "Bosses",
+    modules = "Modules",
+}
 UI.MENU_GROUPS = {
-    { "settings", "qol" },
-    { "groups", "readycheck", "gearcheck" },
-    { "notes", "timeline", "pace" },
-    { "late", "tattle", "loot" },
+    { label = TEXT.general, "settings", "qol" },
+    { label = TEXT.raidAdmin, "readycheck", "groups", "gearcheck", "loot" },
+    { label = TEXT.bosses, "timeline", "notes", "pace" },
+    { label = TEXT.modules, "lootmaster", "late", "tattle" },
 }
 
 function UI:IsModern()
@@ -930,10 +937,47 @@ function UI:SkinTree(frame)
     end
 end
 
--- The menu: one list in Classic, grouped blocks in Modern, in the same order (UI.MENU_GROUPS).
-local MENU_ROW, MENU_GAP = 30, 2
+-- The menu: the groups of UI.MENU_GROUPS, each under its header, placed for both looks by one function
+-- (UI.MenuLayout). Default: Blizzard draws each header as the game's Settings-menu category bar with its
+-- pages as gold entries under it; a Modern theme draws a small muted label over each group's box. When the
+-- groups are taller than the menu, the menu scrolls with the theme's scroll bar.
+-- Every number the menu is placed with, in px:
+--   row, rowGap   a page's button and the space under it
+--   groupGap      between one group's last page and the next group's header
+--   classic       headerGap: between the header bar and its first page; textX: a page's label from the
+--                 left; labelX: the header's label from the left; art: the header's atlas. The game's
+--                 Settings panel gives its headers Options_CategoryHeader_1 to _3 in turn, at the atlas's
+--                 size, 199 x 144 (Gethe/wow-ui-source live, Blizzard_Settings_Shared/Blizzard_CategoryList.lua,
+--                 SettingsCategoryListHeaderMixin:Init). The bar is the art's top 32 px; under it two faint
+--                 lines run down the sides, behind the entries. The menu scales the art to its own width and
+--                 clips it to the bar, so the lines never cross a page, its highlight or the divider.
+--   modern        header: the label's line over each box; pad: inside the box, above the first page and
+--                 below the last; boxRight: the box ends this far from the right; buttonLeft, buttonRight: a
+--                 page's button inside the box; labelX: the label from the left
+UI.MENU_LAYOUT = {
+    row = 30,
+    rowGap = 2,
+    classic = {
+        groupGap = 8,
+        headerGap = 2,
+        textX = 10,
+        labelX = 10,
+        art = { atlas = "Options_CategoryHeader_", count = 3, w = 199, h = 144, bar = 32 },
+    },
+    modern = {
+        groupGap = 8,
+        header = 16,
+        pad = 2,
+        boxRight = 6,
+        buttonLeft = 2,
+        buttonRight = 8,
+        labelX = 4,
+    },
+}
 local MENU_BAR_W = 2 -- the selected page's accent bar on its left, in a theme with menuBar
 
+-- The groups the menu shows, as { label, keys }: the pages in UI.MENU_GROUPS's order, a page not listed in
+-- the last group, hidden pages left out, and a group with no page to show left out.
 local function menuGroups()
     local groups, placed = {}, {}
     for _, group in ipairs(UI.MENU_GROUPS) do
@@ -944,22 +988,122 @@ local function menuGroups()
                 placed[key] = true
             end
         end
-        groups[#groups + 1] = keys
+        groups[#groups + 1] = { label = group.label, keys = keys }
     end
     for _, key in ipairs(UI.order) do
-        if not placed[key] then
-            table.insert(groups[#groups], key)
+        if not placed[key] and groups[#groups] then
+            table.insert(groups[#groups].keys, key)
         end
     end
-    -- Hidden pages leave the menu.
-    for _, keys in ipairs(groups) do
-        for i = #keys, 1, -1 do
-            if UI.pages[keys[i]].hidden then
-                table.remove(keys, i)
+    local shown = {}
+    for _, group in ipairs(groups) do
+        for i = #group.keys, 1, -1 do
+            if UI.pages[group.keys[i]].hidden then
+                table.remove(group.keys, i)
             end
         end
+        if #group.keys > 0 then
+            shown[#shown + 1] = group
+        end
     end
-    return groups
+    return shown
+end
+UI.MenuGroups = menuGroups
+
+-- Where everything in the menu goes, in either look, for groups (menuGroups) in a menu width x height.
+-- y is down from the menu's top, so 0 or less. Returns
+--   width    the room the groups have: the menu's width, less the scroll bar's when it scrolls
+--   height   the groups' whole height
+--   scroll   true when that is more than the menu's height
+--   headers  { label, y, h, art }: art is the header's atlas in Classic, nil in Modern
+--   boxes    { y, h, right } in Modern: each group's box, right its inset from the right
+--   pages    { key, y, left, right }: each page's button, left and right its insets from the edges
+function UI.MenuLayout(groups, modern, width, height)
+    local L = UI.MENU_LAYOUT
+    local look = modern and L.modern or L.classic
+    local step = L.row + L.rowGap
+    local function place(w)
+        local out = { width = w, headers = {}, boxes = {}, pages = {} }
+        local y = 0
+        for i, group in ipairs(groups) do
+            if i > 1 then
+                y = y - look.groupGap
+            end
+            local h, art, left, right = look.header, nil, 0, 0
+            if not modern then
+                local a = look.art
+                h = math.floor(w * a.bar / a.w + 0.5)
+                art = a.atlas .. ((i - 1) % a.count + 1)
+            end
+            out.headers[#out.headers + 1] = { label = group.label, y = y, h = h, art = art }
+            y = y - h
+            if modern then
+                out.boxes[#out.boxes + 1] = { y = y, h = look.pad + #group.keys * step, right = look.boxRight }
+                y = y - look.pad
+                left, right = look.buttonLeft, look.buttonRight
+            else
+                y = y - look.headerGap
+            end
+            for _, key in ipairs(group.keys) do
+                out.pages[#out.pages + 1] = { key = key, y = y, left = left, right = right }
+                y = y - step
+            end
+        end
+        out.height = -y
+        return out
+    end
+    local out = place(width)
+    if math.floor(out.height - height) > 0 then
+        out = place(width - UI.ScrollGutter())
+        out.scroll = true
+    end
+    return out
+end
+
+-- The menu's frames, top left in the main window beside the page area: a scroll frame filling it and the
+-- frame it scrolls (menu.inner), which holds the headers, the Modern boxes and the page buttons. The
+-- scroll bar shows only while the groups don't fit: scrollBarHideable makes the template's
+-- ScrollFrame_OnScrollRangeChanged hide it at no range (Blizzard_SharedXML/SecureScrollTemplates.lua).
+function UI:CreateMenu(f)
+    local menu = CreateFrame("Frame", nil, f)
+    menu:SetPoint("TOPLEFT", f, "TOPLEFT", 8, -32)
+    menu:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 8, 8)
+    menu:SetWidth(MENU_W)
+    menu.blocks, menu.headers = {}, {}
+    local scroll = CreateFrame("ScrollFrame", "CowfeeRaidToolsMenuScroll", menu, "UIPanelScrollFrameTemplate")
+    if UI.SkinScrollBar then
+        UI:SkinScrollBar(scroll.ScrollBar)
+    end
+    scroll:SetPoint("TOPLEFT")
+    scroll:SetPoint("BOTTOMRIGHT")
+    scroll.scrollBarHideable = true
+    if scroll.ScrollBar then
+        scroll.ScrollBar:Hide()
+    end
+    local inner = CreateFrame("Frame", nil, scroll)
+    inner:SetSize(MENU_W, 1)
+    scroll:SetScrollChild(inner)
+    menu.scroll, menu.inner = scroll, inner
+    return menu
+end
+
+-- A group's header, made the first time: a frame that clips to the header's height, with the art and the
+-- label on a child, so Classic's whole atlas shows only its bar.
+local function menuHeader(menu, i)
+    local h = menu.headers[i]
+    if h then
+        return h
+    end
+    h = CreateFrame("Frame", nil, menu.inner)
+    h:SetClipsChildren(true)
+    h.face = CreateFrame("Frame", nil, h)
+    h.face:SetPoint("TOPLEFT")
+    h.art = h.face:CreateTexture(nil, "ARTWORK")
+    h.art:SetPoint("TOPLEFT")
+    h.label = h.face:CreateFontString(nil, "OVERLAY", "CRTFontHighlight")
+    h.label:SetJustifyH("LEFT")
+    menu.headers[i] = h
+    return h
 end
 
 function UI:LayoutMenu()
@@ -967,53 +1111,72 @@ function UI:LayoutMenu()
     if not f then
         return
     end
-    local menu = f.menu
+    local menu, modern = f.menu, self:IsModern()
+    local look = modern and UI.MENU_LAYOUT.modern or UI.MENU_LAYOUT.classic
+    local lay = UI.MenuLayout(menuGroups(), modern, MENU_W, UI.PAGE_H)
+    menu.layout = lay
+    local inner, scroll = menu.inner, menu.scroll
+    inner:SetSize(lay.width, math.max(1, lay.height))
+    scroll:ClearAllPoints()
+    scroll:SetPoint("TOPLEFT")
+    scroll:SetPoint("BOTTOMRIGHT", lay.width - MENU_W, 0)
+    -- the wheel scrolls the menu only while it scrolls, so Ctrl + wheel over it still sizes the window
+    scroll:EnableMouseWheel(lay.scroll and true or false)
+    if not lay.scroll then
+        scroll:SetVerticalScroll(0)
+    end
+    for _, h in ipairs(menu.headers) do
+        h:Hide()
+    end
     for _, bg in ipairs(menu.blocks) do
         bg:Hide()
     end
-    if not self:IsModern() then
-        -- Classic lists the pages in the same order as Modern's blocks, as one list.
-        local order = {}
-        for _, keys in ipairs(menuGroups()) do
-            for _, key in ipairs(keys) do
-                order[#order + 1] = key
-            end
+    for i, item in ipairs(lay.headers) do
+        local h = menuHeader(menu, i)
+        h:ClearAllPoints()
+        h:SetPoint("TOPLEFT", inner, "TOPLEFT", 0, item.y)
+        h:SetSize(lay.width, item.h)
+        h.art:SetShown(item.art ~= nil)
+        h.label:ClearAllPoints()
+        h.label:SetPoint("LEFT", h, "LEFT", look.labelX, 0)
+        if item.art then
+            local artH = lay.width * look.art.h / look.art.w
+            h.art:SetAtlas(item.art)
+            h.art:SetSize(lay.width, artH)
+            h.face:SetSize(lay.width, artH)
+            h.label:SetFontObject("CRTFontHighlight")
+            h.label:SetTextColor(1, 1, 1)
+        else
+            h.face:SetSize(lay.width, item.h)
+            h.label:SetFontObject("CRTFontSmall")
+            h.label:SetTextColor(rgba("muted"))
         end
-        for i, key in ipairs(order) do
-            local b = self.pages[key].button
-            b:ClearAllPoints()
-            b:SetPoint("TOPLEFT", menu, "TOPLEFT", 0, -(i - 1) * 32)
-            b:SetPoint("TOPRIGHT", menu, "TOPRIGHT", 0, -(i - 1) * 32)
-            b.text:ClearAllPoints()
-            b.text:SetPoint("LEFT", 10, 0)
+        h.label:SetText(item.label)
+        h:Show()
+    end
+    for i, box in ipairs(lay.boxes) do
+        local bg = menu.blocks[i]
+        if not bg then
+            bg = inner:CreateTexture(nil, "BACKGROUND", nil, -1)
+            menu.blocks[i] = bg
         end
-    else
-        local y = 0
-        for g, keys in ipairs(menuGroups()) do
-            if #keys > 0 then
-                local bg = menu.blocks[g]
-                if not bg then
-                    bg = menu:CreateTexture(nil, "BACKGROUND", nil, -1)
-                    menu.blocks[g] = bg
-                end
-                bg:SetColorTexture(rgba("surface", 0.95))
-                bg:ClearAllPoints()
-                bg:SetPoint("TOPLEFT", menu, "TOPLEFT", 0, y)
-                bg:SetPoint("TOPRIGHT", menu, "TOPRIGHT", -6, y)
-                bg:SetHeight(#keys * (MENU_ROW + MENU_GAP) + 2)
-                bg:Show()
-                y = y - 2
-                for _, key in ipairs(keys) do
-                    local b = self.pages[key].button
-                    b:ClearAllPoints()
-                    b:SetPoint("TOPLEFT", menu, "TOPLEFT", 2, y)
-                    b:SetPoint("TOPRIGHT", menu, "TOPRIGHT", -8, y)
-                    b.text:ClearAllPoints()
-                    b.text:SetPoint("CENTER")
-                    y = y - (MENU_ROW + MENU_GAP)
-                end
-                y = y - 12
-            end
+        bg:SetColorTexture(rgba("surface", 0.95))
+        bg:ClearAllPoints()
+        bg:SetPoint("TOPLEFT", inner, "TOPLEFT", 0, box.y)
+        bg:SetPoint("TOPRIGHT", inner, "TOPRIGHT", -box.right, box.y)
+        bg:SetHeight(box.h)
+        bg:Show()
+    end
+    for _, p in ipairs(lay.pages) do
+        local b = self.pages[p.key].button
+        b:ClearAllPoints()
+        b:SetPoint("TOPLEFT", inner, "TOPLEFT", p.left, p.y)
+        b:SetPoint("TOPRIGHT", inner, "TOPRIGHT", -p.right, p.y)
+        b.text:ClearAllPoints()
+        if modern then
+            b.text:SetPoint("CENTER")
+        else
+            b.text:SetPoint("LEFT", look.textX, 0)
         end
     end
     for _, page in pairs(self.pages) do
@@ -1507,7 +1670,7 @@ end
 
 local function createMenuButton(parent, page, index)
     local b = CreateFrame("Button", nil, parent)
-    b:SetHeight(30) -- placed by UI:LayoutMenu
+    b:SetHeight(UI.MENU_LAYOUT.row) -- placed by UI:LayoutMenu
 
     b.sel = b:CreateTexture(nil, "BACKGROUND")
     b.sel:SetAllPoints()
@@ -1712,11 +1875,7 @@ function UI:Create()
         end
     end)
 
-    local menu = CreateFrame("Frame", nil, f)
-    menu:SetPoint("TOPLEFT", f, "TOPLEFT", 8, -32)
-    menu:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 8, 8)
-    menu:SetWidth(MENU_W)
-    menu.blocks = {}
+    local menu = UI:CreateMenu(f)
     f.menu = menu
     -- The divider in the gap right of the menu: the line, then (Default: Blizzard) its shadow beside it.
     -- Both stay inside the 8 px gap and follow the menu's height (UI:StyleDivider sizes and colours them).
@@ -1735,7 +1894,7 @@ function UI:Create()
 
     for i, key in ipairs(self.order) do
         local page = self.pages[key]
-        page.button = createMenuButton(menu, page, i)
+        page.button = createMenuButton(menu.inner, page, i)
     end
 
     self.frame = f

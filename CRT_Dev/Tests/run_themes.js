@@ -91,6 +91,8 @@ local function frame(kind, parent, template)
     -- and its border and title pieces by name, as the game's BaseBasicFrameTemplate and BasicFrameTemplate
     -- make them (Blizzard_UIPanelTemplates/Mainline/UIPanelTemplates.xml)
     for _, key in ipairs(FRAME_PIECES) do f[key] = texture(f) end
+  elseif template == "UIPanelScrollFrameTemplate" then
+    f.ScrollBar = frame("Slider", f)
   end
   local fields = { Left = true, Middle = true, Right = true, Background = true, Arrow = true, SetupMenu = true, Inset = true, bar = true, fs = true }
   setmetatable(f, { __index = function(_, k) return m[k] or (type(k) == "string" and not fields[k] and k:find("^%u") and function() end) or nil end })
@@ -296,7 +298,7 @@ do
   mf.art, mf.flat, mf.flatEdges = {}, {}, {}
   mf.flatBg, mf.flatTitle, mf.titleLine = texture(nil), texture(nil), texture(nil)
   mf.divider = { line = texture(nil), shadow = texture(nil) }
-  mf.menu = { blocks = {} }
+  mf.menu = UI:CreateMenu(mf)
   UI.frame = mf
   local pf = frame("Frame", nil)
   pf:SetScript("OnShow", function() pageRefreshed = pageRefreshed + 1 end)
