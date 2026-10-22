@@ -595,8 +595,8 @@ local function build()
     header:SetScript("OnDragStop", function()
         anchor:StopDrag()
     end)
-    -- the title bar, right to left: the X (closes every item), All Loot Rolls, then the (i), all on the
-    -- bar's centre line
+    -- the title bar, right to left: the X (closes every item) and All Loot Rolls, on the bar's centre
+    -- line; the (i) follows the title
     header.close = CreateFrame("Button", nil, header, "UIPanelCloseButton")
     header.close:SetSize(L.headerClose, L.headerClose)
     header.close:SetPoint("RIGHT", -2, 0)
@@ -609,8 +609,7 @@ local function build()
         LM:ShowAnswers()
     end)
     header.answers:SetPoint("RIGHT", header.close, "LEFT", -4, 0)
-    header.help = UI.Help(header, TEXT.title, TEXT.help)
-    header.help:SetPoint("RIGHT", header.answers, "LEFT", -6, 0)
+    header:SetHelp(TEXT.title, TEXT.help) -- strip.help, right of the title (UI/Window.lua)
     -- "N items you can't use were answered Transmog for you. Show": shown only when there are any
     autoLine = CreateFrame("Frame", nil, anchor, "BackdropTemplate")
     autoLine:SetFrameLevel(chrome:GetFrameLevel() + 2)

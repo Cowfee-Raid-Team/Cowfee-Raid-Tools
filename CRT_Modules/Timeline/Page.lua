@@ -659,35 +659,35 @@ local function followRehearsal()
 end
 
 -- The Pop out button on the Review tab, and the note left on the tab while it is popped out.
+-- Right to left: Pop out, Rehearse and Play, each with its (?) just after it (UI.HelpRight), so each
+-- button stands HELP_ROOM left of the next one, and Pop out's (?) ends at the frame's right inset.
 local function buildPopControls()
+    local HELP_ROOM = UI.HELP_GAP + UI.HELP_SIZE + 6 -- a (?) after a button, then the gap to the next
     popButton = button(reviewFrame, "Pop out", 90)
-    popButton:SetPoint("TOPRIGHT", reviewFrame, "TOPRIGHT", -8, -38)
+    popButton:SetPoint("TOPRIGHT", reviewFrame, "TOPRIGHT", -8 - UI.HELP_GAP - UI.HELP_SIZE, -38)
     popButton:SetScript("OnClick", togglePopout)
-    local popHelp = UI.Help(reviewFrame, "Pop out", "Moves the timeline into a window of its own that you can drag and resize. Dock, the window's X or Escape puts it back.")
-    popHelp:SetPoint("RIGHT", popButton, "LEFT", -2, 0)
+    UI.HelpRight(popButton, "Pop out", "Moves the timeline into a window of its own that you can drag and resize. Dock, the window's X or Escape puts it back.")
 
     -- Rehearse: see Timeline:Rehearse above.
     rehearseButton = button(reviewFrame, TEXT.rehearse, 90)
-    rehearseButton:SetPoint("RIGHT", popHelp, "LEFT", -6, 0)
+    rehearseButton:SetPoint("RIGHT", popButton, "LEFT", -HELP_ROOM, 0)
     rehearseButton:SetScript("OnClick", function()
         Timeline:Rehearse()
     end)
-    local rehearseHelp = UI.Help(reviewFrame, TEXT.rehearse, TEXT.rehearseHelp)
-    rehearseHelp:SetPoint("RIGHT", rehearseButton, "LEFT", -2, 0)
+    UI.HelpRight(rehearseButton, TEXT.rehearse, TEXT.rehearseHelp)
 
     -- Play: see playClicked above.
     playButton = button(reviewFrame, TEXT.play, 70)
-    playButton:SetPoint("RIGHT", rehearseHelp, "LEFT", -6, 0)
+    playButton:SetPoint("RIGHT", rehearseButton, "LEFT", -HELP_ROOM, 0)
     playButton:SetScript("OnClick", playClicked)
-    UI.Help(reviewFrame, TEXT.play, TEXT.playHelp):SetPoint("RIGHT", playButton, "LEFT", -2, 0)
+    UI.HelpRight(playButton, TEXT.play, TEXT.playHelp)
     reviewFrame:SetScript("OnUpdate", followRehearsal)
 
     -- Share note: see shareNote above.
     shareButton = button(reviewFrame, TEXT.shareNote, 90)
-    shareButton:SetPoint("TOPRIGHT", reviewFrame, "TOPRIGHT", -8, -66)
+    shareButton:SetPoint("TOPRIGHT", reviewFrame, "TOPRIGHT", -8 - UI.HELP_GAP - UI.HELP_SIZE, -66)
     shareButton:SetScript("OnClick", shareNote)
-    shareHelp = UI.Help(reviewFrame, TEXT.shareNote, TEXT.shareHelp)
-    shareHelp:SetPoint("RIGHT", shareButton, "LEFT", -2, 0)
+    shareHelp = UI.HelpRight(shareButton, TEXT.shareNote, TEXT.shareHelp)
     shareButton:Hide()
     shareHelp:Hide()
 
@@ -832,7 +832,7 @@ local function build(pf)
 
     local title = label(pf, "Timeline", "CRTFontLarge")
     title:SetPoint("TOPLEFT", 8, -8)
-    UI.Help(pf, "The Timeline", "Every raid boss pull is saved on its own: the boss's casts and players' deaths. Pick a boss and a pull on the Review tab; scroll the wheel to zoom, right-drag to move along, Shift + wheel to scroll the rows.\n\nAn ability timeline is the boss's planned timeline, listed first in the pull list; paste your own on the Advanced tab.\n\nThe red lines are phase changes: Shift-drag one to move it, right-click a moved line to put it back.\n\nA row's colour says what the ability is (a dot for each extra type):\n" .. CRT.TimelineReference.Legend()):SetPoint("LEFT", title, "RIGHT", 6, 0)
+    UI.HelpRight(title, "The Timeline", "Every raid boss pull is saved on its own: the boss's casts and players' deaths. Pick a boss and a pull on the Review tab; scroll the wheel to zoom, right-drag to move along, Shift + wheel to scroll the rows.\n\nAn ability timeline is the boss's planned timeline, listed first in the pull list; paste your own on the Advanced tab.\n\nThe red lines are phase changes: Shift-drag one to move it, right-click a moved line to put it back.\n\nA row's colour says what the ability is (a dot for each extra type):\n" .. CRT.TimelineReference.Legend())
 
     for i, tab in ipairs(TABS) do
         local b = CreateFrame("Button", nil, pf, "BackdropTemplate")

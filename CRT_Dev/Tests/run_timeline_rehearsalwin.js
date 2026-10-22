@@ -49,7 +49,7 @@ local lanesCall
 local CRT = {
   db = { timeline = { span = 300 } },
   PALETTE = { background = { 0.1, 0.1, 0.1 }, surface = { 0.2, 0.2, 0.2 }, border = { 0.3, 0.3, 0.3 }, accent = { 0.78, 0.56, 0.36 }, label = { 0.87, 0.73, 0.56 }, text = { 0.95, 0.9, 0.84 } },
-  UI = { Help = function(_, title, text) helps[title] = text local m = mock() helpFrames[title] = m return m end,
+  UI = { HelpRight = function(target, title, text, opts) local b = (function(_, title, text) helps[title] = text local m = mock() helpFrames[title] = m return m end)(opts and opts.parent or target, title, text) rawset(b, "helpTarget", target) return b end, HELP_GAP = 4, HELP_SIZE = 20, Help = function(_, title, text) helps[title] = text local m = mock() helpFrames[title] = m return m end,
     Dropdown = function(_, text, o) local m = mock() m.opts, m.label = o, text dropdowns[text] = m rawset(m, "refresh", function() end) return m end,
     StyleWindow = function() styled = styled + 1 end, RegisterLayer = function(_, k) layers[#layers + 1] = k end,
     SetFrameTitle = function(f, text) titles[#titles + 1] = text end, SkinTree = function() end },
@@ -651,7 +651,7 @@ ok("a second open stops the old run")
 do
   assert(f.strip.clips == true, "the strip clips its phase labels at its edges")
   local h = helpFrames["Strip"]
-  assert(h and h.pt[2] == f.nextHead and h.pt[2] ~= f.strip, "the strip's (?) sits beside Next up, out of the label row")
+  assert(h and rawget(h, "helpTarget") == f.nextHead, "the strip's (?) sits right of Next up (UI.HelpRight), out of the label row")
 end
 ok("strip labels stay inside the strip")
 

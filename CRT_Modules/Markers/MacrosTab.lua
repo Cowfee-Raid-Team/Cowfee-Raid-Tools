@@ -84,7 +84,7 @@ local function heading(x, y, text, title, help)
     local fs = tab:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
     fs:SetPoint("TOPLEFT", x, y)
     fs:SetText(text)
-    UI.Help(tab, title or text, help):SetPoint("LEFT", fs, "RIGHT", 6, 0)
+    UI.HelpRight(fs, title or text, help)
     return fs
 end
 
@@ -281,7 +281,7 @@ local function buildDisplay()
         testBoss = nil
         refresh()
     end)
-    UI.Help(tab, TEXT.test, TEXT.testHelp):SetPoint("LEFT", stop, "RIGHT", 6, 0)
+    UI.HelpRight(stop, TEXT.test, TEXT.testHelp)
     preview.test, preview.stop = test, stop
 
     preview.refresh = function()

@@ -156,7 +156,7 @@ end }
 function StaticPopup_ShowCustomGenericConfirmation(info) popups[#popups + 1] = info return nil end
 local helps = {}
 CRT.UI = { LiftOver = function(d) lifted[#lifted + 1] = d end, ShownPopup = function(ret, name) return { named = name } end,
-  Help = function(parent, title, text) local b = mock("Button") rawset(b, "helpTitle", title) rawset(b, "helpText", text) helps[#helps + 1] = b return b end }
+  HelpRight = function(target, title, text, opts) local b = (function(parent, title, text) local b = mock("Button") rawset(b, "helpTitle", title) rawset(b, "helpText", text) helps[#helps + 1] = b return b end)(opts and opts.parent or target, title, text) rawset(b, "helpTarget", target) return b end, HELP_GAP = 4, HELP_SIZE = 20, Help = function(parent, title, text) local b = mock("Button") rawset(b, "helpTitle", title) rawset(b, "helpText", text) helps[#helps + 1] = b return b end }
 local View, Rem, Notes = CRT.TimelineView, CRT.AlertReminders, CRT.Notes
 local function reset()
   for i = #opened, 1, -1 do opened[i] = nil end
@@ -1269,7 +1269,7 @@ do
     l.text:SetWidth(40)
     v:Refresh()
     local own = #"Personal notes" * 6
-    assert(v.personalHelp.pt[4] == math.min(42 + own, 166 - 4 - 24), "after the whole name: " .. tostring(v.personalHelp.pt[4]))
+    assert(v.personalHelp.pt[4] == math.min(42 + own + 4, 166 - 4 - 24), "after the whole name and UI.HELP_GAP: " .. tostring(v.personalHelp.pt[4]))
     -- a long name stops at the label's right edge
     l.text:SetWidth(nil)
     rawset(l.text, "GetUnboundedStringWidth", function() return 400 end)

@@ -239,6 +239,26 @@ print("  " .. fontLine("CRTFontNormal") .. "; " .. fontLine("CRTFontEdit") .. ";
 popup = nil dropdowns["Font"].set("Expressway")
 print("same font again: popup " .. tostring(popup))
 print("settings page built: " .. tostring(UI.pages.settings.frame ~= nil) .. ", title " .. UI.pages.settings.title .. ", profile " .. CRT.Profiles:Current() .. ", minimap " .. tostring(CRT.db.minimap.angle))
+-- every (?) on the page is UI.HelpRight's: HELP_GAP right of its target, or of its text's right edge
+do
+  local helps, titled = 0, false
+  for _, f in ipairs(frames) do
+    if rawget(f, "crtHelp") then
+      helps = helps + 1
+      local t, fs, p = rawget(f, "crtHelpTarget"), rawget(f, "crtHelpText"), f.pts[#f.pts]
+      local ok = t ~= nil and p ~= nil and p[1] == "LEFT" and p[5] == 0
+      if ok and fs then
+        ok = p[2] == fs and p[3] == "CENTER" and p[4] == fs:GetStringWidth() / 2 + UI.HELP_GAP
+      elseif ok then
+        ok = p[2] == t and p[3] == "RIGHT" and p[4] == UI.HELP_GAP
+      end
+      if not ok then print("FAIL settings: a (?) not just right of what it explains: " .. tostring(t and rawget(t, "text"))) end
+      if fs and rawget(fs, "text") == "General Settings" then titled = true end
+    end
+  end
+  if helps == 0 or not titled then print("FAIL settings: no (?) right of the General Settings title") end
+  print("settings page: " .. helps .. " (?) icons, each just right of what it explains")
+end
 local opts = {} for _, o in ipairs(dropdowns["Use profile"].options()) do opts[#opts + 1] = o.label end
 print("use profile choices: " .. table.concat(opts, ", ") .. "; copy from enabled " .. tostring(dropdowns["Copy from"].enabledIf()))
 

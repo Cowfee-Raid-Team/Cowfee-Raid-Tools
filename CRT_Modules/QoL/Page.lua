@@ -95,7 +95,7 @@ local function buildLowHealth(pf, top)
     local heading = pf:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
     heading:SetPoint("TOPLEFT", 8, top)
     heading:SetText(TEXT.lowHealth .. "  |cff999999" .. TEXT.lowHealthTag .. "|r")
-    UI.Help(pf, TEXT.lowHealth, TEXT.lowHealthNote):SetPoint("LEFT", heading, "RIGHT", 6, 0)
+    UI.HelpRight(heading, TEXT.lowHealth, TEXT.lowHealthNote)
 
     local check = CreateFrame("CheckButton", nil, pf, "UICheckButtonTemplate")
     check:SetSize(24, 24)
@@ -144,9 +144,9 @@ local function buildLowHealth(pf, top)
     local soundText = pf:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     soundText:SetPoint("LEFT", sound, "RIGHT", 1, 0)
     soundText:SetText(TEXT.lowHealthSound)
-    UI.Help(pf, TEXT.lowHealthSound, function()
+    UI.HelpRight(soundText, TEXT.lowHealthSound, function()
         return Sound.WIP and TEXT.lowHealthSoundWIP or TEXT.lowHealthSoundNote
-    end):SetPoint("LEFT", soundText, "RIGHT", 6, 0)
+    end)
     sound:SetScript("OnClick", function(self)
         settings().sound = self:GetChecked() and true or false
         Sound:Apply()
@@ -225,7 +225,7 @@ local function buildLowHealth(pf, top)
     })
     choice:SetPoint("TOPLEFT", 10, top - 100)
     controls[#controls + 1] = choice
-    UI.Help(pf, TEXT.lowHealthChoice, TEXT.lowHealthChoiceNote):SetPoint("LEFT", choice, "RIGHT", 6, 0)
+    UI.HelpRight(choice, TEXT.lowHealthChoice, TEXT.lowHealthChoiceNote)
 
     local output = UI.Dropdown(pf, TEXT.lowHealthOutput, {
         options = Sound.Outputs,
@@ -248,7 +248,7 @@ local function buildLowHealth(pf, top)
     })
     output:SetPoint("TOPLEFT", 10, top - 130)
     controls[#controls + 1] = output
-    UI.Help(pf, TEXT.lowHealthOutput, TEXT.lowHealthOutputNote):SetPoint("LEFT", output, "RIGHT", 6, 0)
+    UI.HelpRight(output, TEXT.lowHealthOutput, TEXT.lowHealthOutputNote)
 
     local volume = UI.Slider(pf, TEXT.lowHealthVolume, {
         min = 0,
@@ -276,7 +276,7 @@ local function buildLowHealth(pf, top)
     local onceText = pf:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     onceText:SetPoint("LEFT", once, "RIGHT", 1, 0)
     onceText:SetText(TEXT.lowHealthOnce)
-    UI.Help(pf, TEXT.lowHealthOnce, TEXT.lowHealthOnceNote):SetPoint("LEFT", onceText, "RIGHT", 6, 0)
+    UI.HelpRight(onceText, TEXT.lowHealthOnce, TEXT.lowHealthOnceNote)
     once:SetScript("OnClick", function(self)
         settings().soundOnce = self:GetChecked() and true or false
         Sound:StopOurs()
@@ -318,7 +318,7 @@ local function buildSounds(pf, top)
     local heading = pf:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
     heading:SetPoint("TOPLEFT", 8, top)
     heading:SetText(TEXT.soundsTitle)
-    UI.Help(pf, TEXT.soundsTitle, TEXT.soundsNote):SetPoint("LEFT", heading, "RIGHT", 6, 0)
+    UI.HelpRight(heading, TEXT.soundsTitle, TEXT.soundsNote)
 
     local media = pf:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     media:SetPoint("TOPLEFT", 10, top - 22)
@@ -435,20 +435,20 @@ local function buildBreak(pf, top)
     local heading = pf:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
     heading:SetPoint("TOPLEFT", 8, top)
     heading:SetText(TEXT.breakTitle)
-    UI.Help(pf, TEXT.breakTitle, TEXT.breakNote):SetPoint("LEFT", heading, "RIGHT", 6, 0)
+    UI.HelpRight(heading, TEXT.breakTitle, TEXT.breakNote)
 
     local also = pf:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     also:SetPoint("TOPLEFT", 8, top - 26)
     also:SetText(TEXT.breakAlso)
     -- The (?) also says, for each format, whether it can be sent from here.
-    UI.Help(pf, TEXT.breakAlso, function()
+    UI.HelpRight(also, TEXT.breakAlso, function()
         local lines = { TEXT.breakAlsoNote }
         for _, f in ipairs(Formats.FORMATS) do
             local ok, note = Formats.Available(f)
             lines[#lines + 1] = f.label .. ": " .. (ok and (note or "loaded here") or UI.BadText(note))
         end
         return table.concat(lines, "\n\n")
-    end):SetPoint("LEFT", also, "RIGHT", 6, 0)
+    end)
 
     local y = top - 44
     for _, f in ipairs(Formats.FORMATS) do
@@ -478,7 +478,7 @@ local function buildBreak(pf, top)
         bridge:SetChecked(CRT.db.qol.breakTimer.bridge and true or false)
     end
     controls[#controls + 1] = bridge
-    UI.Help(pf, TEXT.breakBridge, TEXT.breakBridgeNote):SetPoint("LEFT", bridge.label, "RIGHT", 6, 0)
+    UI.HelpRight(bridge.label, TEXT.breakBridge, TEXT.breakBridgeNote)
 end
 
 -- Tabs: Low health, Debuffs, Break timer and Sounds (the debuff panel, Debuffs/Page.lua). Both are only settings.
@@ -509,7 +509,7 @@ local function build(pf)
     title:SetPoint("TOPLEFT", 8, -8)
     title:SetText(TEXT.title)
 
-    UI.Help(pf, TEXT.title, TEXT.hint):SetPoint("LEFT", title, "RIGHT", 6, 0)
+    UI.HelpRight(title, TEXT.title, TEXT.hint)
 
     for i, tab in ipairs(TABS) do
         local b = CreateFrame("Button", nil, pf, "BackdropTemplate")

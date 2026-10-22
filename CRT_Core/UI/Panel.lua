@@ -1092,7 +1092,7 @@ end
 
 -- A small help icon that shows an explanation as a tooltip, used for every bit of extra context so the
 -- pages stay compact. text is a string, with paragraphs split on blank lines, or a function returning
--- one, for text that changes. Anchor the returned button beside the heading or control it explains.
+-- one, for text that changes. Pages make it with UI.HelpRight (below), which places it.
 -- Classic draws the game's gold "i" from the Appearances tab (MainHelpPlateButton in
 -- Blizzard_HelpPlate.xml: the "i", the ring and the additive hover glow) at HELP_SCALE, keeping the
 -- template's offsets, without inheriting its 64 px frame or its pulse. Modern draws a thin accent ring
@@ -1176,6 +1176,95 @@ function UI.Help(parent, title, text)
         paintHelp(self)
         GameTooltip:Hide()
     end)
+    return b
+end
+
+-- Every (?) sits just right of the thing it explains, UI.HELP_GAP from it and centred on it:
+-- UI.HelpRight(target, title, text, opts) makes the icon (UI.Help) and places it. Pages call this,
+-- never UI.Help with their own SetPoint (the suite's "help icons sit right" lint). The target is
+--   a frame         a heading bar, a control, or a whole Edit Mode style row (UI.Dropdown, UI.Slider:
+--                   the row's right edge is the control's), so the icon is right of the control
+--   a FontString    a heading or a label: the icon follows its text's right edge, whatever its
+--                   justification, and moves when the text changes or the icon shows
+--   a CheckButton   with a label (.label, or the template's .Text): the icon follows the label's text
+-- opts.parent is the icon's parent (by default the target's own, or a check box's own for its label). The icon keeps the target as
+-- b.crtHelpTarget and the font string it follows, if any, as b.crtHelpText.
+UI.HELP_GAP = 4
+
+local function objectType(o)
+    return type(o) == "table" and o.GetObjectType and o:GetObjectType() or nil
+end
+
+local function helpText(target)
+    local kind = objectType(target)
+    if kind == "FontString" then
+        return target
+    end
+    if kind == "CheckButton" then
+        -- a page's own label, or the template's .Text when the page wrote its label there
+        local label = target.label
+        if label == nil and objectType(target.Text) == "FontString" and (target.Text:GetText() or "") ~= "" then
+            label = target.Text
+        end
+        if objectType(label) == "FontString" then
+            return label
+        end
+    end
+    return nil
+end
+
+local function placeHelp(b)
+    local fs, gap = b.crtHelpText, UI.HELP_GAP
+    b:ClearAllPoints()
+    if not fs then
+        b:SetPoint("LEFT", b.crtHelpTarget, "RIGHT", gap, 0)
+        return
+    end
+    -- the text's width, inside the box when the box is narrower (a clipped label). A label sized by two
+    -- anchors (LEFT and RIGHT) has no width until its first layout, so GetWidth is 0 while the page is
+    -- built and the full text width is used; the icon's OnShow places it again once the box has its
+    -- width, so a clipped label's (?) then sits at the box's edge.
+    local w = fs:GetStringWidth() or 0
+    local box = fs:GetWidth() or 0
+    if box > 0 and box < w then
+        w = box
+    end
+    local justify = fs:GetJustifyH()
+    if justify == "RIGHT" then
+        b:SetPoint("LEFT", fs, "RIGHT", gap, 0)
+    elseif justify == "LEFT" then
+        b:SetPoint("LEFT", fs, "LEFT", w + gap, 0)
+    else
+        -- CENTER, the game's default: also a box that fits its text
+        b:SetPoint("LEFT", fs, "CENTER", w / 2 + gap, 0)
+    end
+end
+
+function UI.HelpRight(target, title, text, opts)
+    opts = opts or {}
+    local parent = opts.parent or target:GetParent()
+    -- a check box's label: the icon sits beside the check box, not inside it
+    if not opts.parent and objectType(parent) == "CheckButton" and parent.GetParent then
+        parent = parent:GetParent()
+    end
+    local b = UI.Help(parent, title, text)
+    b.crtHelpTarget = target
+    b.crtHelpText = helpText(target) or false
+    local fs = b.crtHelpText
+    if fs and hooksecurefunc then
+        local function follow()
+            placeHelp(b)
+        end
+        -- new text, or a new font (the look switch changes some), changes the text's width
+        for _, method in ipairs({ "SetText", "SetFormattedText", "SetFontObject", "SetJustifyH" }) do
+            if fs[method] then
+                hooksecurefunc(fs, method, follow)
+            end
+        end
+        -- a font can load after the page is built, which changes the text's width
+        b:SetScript("OnShow", follow)
+    end
+    placeHelp(b)
     return b
 end
 

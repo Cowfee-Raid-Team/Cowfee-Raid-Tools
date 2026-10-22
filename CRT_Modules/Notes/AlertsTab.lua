@@ -204,7 +204,7 @@ local function build(pf)
 
     -- Left: where your note lines go.
     local routeTitle = heading(pf, 8, -14, TEXT.routeTitle)
-    UI.Help(pf, TEXT.routeTitle, TEXT.routeHelp):SetPoint("LEFT", routeTitle, "RIGHT", 6, 0)
+    UI.HelpRight(routeTitle, TEXT.routeTitle, TEXT.routeHelp)
     local function alertField(field)
         return function()
             return Notes:Alert()[field]
@@ -241,12 +241,12 @@ local function build(pf)
     makeCheck(pf, 4, nextRow(), TEXT.circle, areaOn("circles"), route("circle"))
     makeCheck(pf, 4, nextRow(), TEXT.timeline, areaOn("timeline"), route("timeline"))
     local speech = makeCheck(pf, 4, nextRow(), TEXT.speech, nil, alertField("tts"))
-    UI.Help(pf, TEXT.speech, TEXT.speechHelp):SetPoint("LEFT", speech.label, "RIGHT", 6, 0)
+    UI.HelpRight(speech.label, TEXT.speech, TEXT.speechHelp)
 
     -- Colours: the one switch for your own alert colours
     local colourTop = y - 20
     local colourTitle = heading(pf, 8, colourTop, TEXT.colours)
-    UI.Help(pf, TEXT.colours, TEXT.coloursHelp):SetPoint("LEFT", colourTitle, "RIGHT", 6, 0)
+    UI.HelpRight(colourTitle, TEXT.colours, TEXT.coloursHelp)
     y = colourTop - 24
     makeCheck(pf, 4, nextRow(), TEXT.custom, nil, function()
         return CRT.Alerts:CustomColors()
@@ -265,7 +265,7 @@ local function build(pf)
 
     local tryTop = y - 20
     local tryTitle = heading(pf, 8, tryTop, TEXT.tryIt)
-    UI.Help(pf, TEXT.tryIt, TEXT.tryHelp):SetPoint("LEFT", tryTitle, "RIGHT", 6, 0)
+    UI.HelpRight(tryTitle, TEXT.tryIt, TEXT.tryHelp)
     local previews = makeButton(pf, TEXT.previews, 140)
     previews:SetPoint("TOPLEFT", 8, tryTop - 24)
     previews:SetScript("OnClick", function()
@@ -277,7 +277,7 @@ local function build(pf)
 
     -- Right: how each kind of alert looks.
     local configTitle = heading(pf, RIGHT_X, -14, TEXT.config)
-    UI.Help(pf, TEXT.config, TEXT.configHelp):SetPoint("LEFT", configTitle, "RIGHT", 6, 0)
+    UI.HelpRight(configTitle, TEXT.config, TEXT.configHelp)
     -- No label: the heading says what the list is.
     kindDrop = UI.Dropdown(pf, "", {
         options = KINDS,

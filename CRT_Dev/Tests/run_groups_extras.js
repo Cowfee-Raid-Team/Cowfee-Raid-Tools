@@ -7,6 +7,7 @@ const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
 const harness = themeLua(process.argv.slice(2)) + `
 local dataSrc, pageSrc, applySrc, inviteSrc = ...
 local buttons, strings = {}, {}
+local groupHelps = {} -- every (?) the page makes
 local function mock(kind)
   local m = { shown = true, kind = kind }
   return setmetatable(m, { __index = function(t, k)
@@ -58,7 +59,7 @@ local gridRef
 local CRT = { db = { groups = { presets = {}, nextId = 1, keepChanges = false, source = "raid", working = {} }, classCache = {}, roleCache = {}, ui = {} } }
 function CRT:Print(m) print("  [chat] " .. m) end
 local pages = {}
-CRT.UI = { SkinScrollBar = function() end, SlotGrid = function() local g = { slots = {}, labels = {}, blockH = 143, slotW = 188 } for i = 1, 40 do local b = mock() rawset(b, "index", i) rawset(b, "icon", mock()) rawset(b, "text", mock()) rawset(b, "right", mock()) g.slots[i] = b end gridRef = g return g end, FitText = function() end, GoodText = function(t) return t end, ClipText = function() return mock() end, PAGE_W = 1026, PAGE_H = 560, Help = function() return mock() end, RegisterPage = function(_, k, t, fn) pages[k] = fn end,
+CRT.UI = { SkinScrollBar = function() end, SlotGrid = function() local g = { slots = {}, labels = {}, blockH = 143, slotW = 188 } for i = 1, 40 do local b = mock() rawset(b, "index", i) rawset(b, "icon", mock()) rawset(b, "text", mock()) rawset(b, "right", mock()) g.slots[i] = b end gridRef = g return g end, FitText = function() end, GoodText = function(t) return t end, ClipText = function() return mock() end, PAGE_W = 1026, PAGE_H = 560, Help = function(_, title) local m = mock("help") rawset(m, "helpTitle", title) groupHelps[#groupHelps + 1] = m return m end, RegisterPage = function(_, k, t, fn) pages[k] = fn end,
   PanelButtonWidth = function(w) return w + 28 end, ContextMenu = function(owner, fill) menus[#menus + 1] = { owner = owner, fill = fill } end }
 CRT_THEME(CRT, CRT.UI)
 assert(load(dataSrc, "Data.lua"))("CowfeeRaidTools", CRT)
@@ -71,6 +72,17 @@ assert(load(pageSrc, "Page.lua"))("CowfeeRaidTools", CRT)
 local pf = mock()
 pages.groups(pf)
 pf.OnShow(pf)
+-- every (?) is UI.HelpRight's, right of the thing it explains
+do
+  local byTitle = {}
+  for _, h in ipairs(groupHelps) do
+    assert(rawget(h, "helpTarget") ~= nil, "the (?) " .. tostring(h.helpTitle) .. " is placed by UI.HelpRight")
+    byTitle[h.helpTitle] = rawget(h, "helpTarget")
+  end
+  assert(byTitle["Use This Group"] and byTitle["Use This Group"].text == "Use This Group", "Use This Group's (?) is right of its button")
+  assert(byTitle["Editing the groups"] and byTitle["Editing the groups"].text == "Clear grid", "the editing (?) is right of Clear grid, the last grid button")
+  print("ok every (?) on Raid Groups is right of what it explains")
+end
 local function extras()
   local out = {}
   for _, b in ipairs(buttons) do if rawget(b, "entry") and b.shown then out[#out + 1] = b.text.text .. " " .. b.group.text end end

@@ -137,7 +137,7 @@ local function heading(f, x, y, text, help)
     h:SetPoint("TOPLEFT", x, y)
     h:SetText(text)
     if help then
-        UI.Help(f, text, help):SetPoint("LEFT", h, "RIGHT", 6, 0)
+        UI.HelpRight(h, text, help)
     end
     return h
 end
@@ -1038,7 +1038,7 @@ local function build(pf)
     local title = pf:CreateFontString(nil, "OVERLAY", "CRTFontLarge")
     title:SetPoint("TOPLEFT", 8, -8)
     title:SetText(TEXT.title)
-    UI.Help(pf, TEXT.title, TEXT.help):SetPoint("LEFT", title, "RIGHT", 6, 0)
+    UI.HelpRight(title, TEXT.title, TEXT.help)
     for i, tab in ipairs(TABS) do
         local b = CreateFrame("Button", nil, pf, "BackdropTemplate")
         b:SetSize(L.tabW, L.tabH)

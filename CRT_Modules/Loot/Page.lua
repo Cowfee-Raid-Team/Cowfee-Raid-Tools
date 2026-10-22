@@ -524,7 +524,7 @@ local function buildHistory(f)
     local export = makeButton(f, TEXT.export, 110)
     export:SetPoint("LEFT", search, "RIGHT", 12, 0)
     export:SetScript("OnClick", exportCSV)
-    UI.Help(f, "Filters and export", TEXT.filtersHelp):SetPoint("LEFT", export, "RIGHT", 6, 0)
+    UI.HelpRight(export, "Filters and export", TEXT.filtersHelp)
     countText = f:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     countText:SetPoint("LEFT", export, "RIGHT", 40, 0)
 
@@ -568,7 +568,7 @@ local function buildSummary(f)
     local heading = f:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
     heading:SetPoint("TOPLEFT", 8, -8)
     heading:SetText("Items per player")
-    UI.Help(f, "Summary", TEXT.summaryHelp):SetPoint("LEFT", heading, "RIGHT", 6, 0)
+    UI.HelpRight(heading, "Summary", TEXT.summaryHelp)
     local box = CreateFrame("Frame", nil, f, "WowScrollBoxList")
     box:SetPoint("TOPLEFT", 8, -32)
     box:SetSize(420, 1)
@@ -650,7 +650,7 @@ local function buildSettings(f)
     local heading = f:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
     heading:SetPoint("TOPLEFT", 8, -8)
     heading:SetText("Recording")
-    UI.Help(f, "Recording", "Items from raid bosses, of the quality you pick or better; tick Dungeons to record dungeon bosses too. Each player's own computer records what it sees; nothing is shared."):SetPoint("LEFT", heading, "RIGHT", 6, 0)
+    UI.HelpRight(heading, "Recording", "Items from raid bosses, of the quality you pick or better; tick Dungeons to record dungeon bosses too. Each player's own computer records what it sees; nothing is shared.")
     local quality = UI.Dropdown(f, "Minimum quality", {
         labelWidth = 110, width = 140,
         options = { { key = 3, label = "Rare" }, { key = 4, label = "Epic" }, { key = 5, label = "Legendary" } },
@@ -683,12 +683,12 @@ local function buildSettings(f)
     })
     keep:SetPoint("TOPLEFT", 8, -96)
     controls[#controls + 1] = keep
-    UI.Help(f, "Keep", "Older months are removed when you log in. Forever keeps everything."):SetPoint("LEFT", keep, "RIGHT", 4, 0)
+    UI.HelpRight(keep, "Keep", "Older months are removed when you log in. Forever keeps everything.")
 
     local rcHeading = f:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
     rcHeading:SetPoint("TOPLEFT", 8, -144)
     rcHeading:SetText("RCLootCouncil")
-    UI.Help(f, "RCLootCouncil", TEXT.rcHelp):SetPoint("LEFT", rcHeading, "RIGHT", 6, 0)
+    UI.HelpRight(rcHeading, "RCLootCouncil", TEXT.rcHelp)
     check(f, 6, -164, "Show RCLootCouncil's awards", function()
         return s().rcEnrich
     end, function(on)
@@ -710,7 +710,7 @@ local function buildSettings(f)
     local delHeading = f:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
     delHeading:SetPoint("TOPLEFT", 8, -240)
     delHeading:SetText("Deleting")
-    UI.Help(f, "Deleting", "Delete the months before the one you pick, or everything. Single items are deleted with a right-click on the History tab. RCLootCouncil's awards are its own data, so they are never deleted here."):SetPoint("LEFT", delHeading, "RIGHT", 6, 0)
+    UI.HelpRight(delHeading, "Deleting", "Delete the months before the one you pick, or everything. Single items are deleted with a right-click on the History tab. RCLootCouncil's awards are its own data, so they are never deleted here.")
     local before = ALL
     local monthDrop = UI.Dropdown(f, "Before", {
         labelWidth = 50, width = 120,
@@ -781,7 +781,7 @@ local function build(pf)
     local title = pf:CreateFontString(nil, "OVERLAY", "CRTFontLarge")
     title:SetPoint("TOPLEFT", 8, -8)
     title:SetText(TEXT.title)
-    UI.Help(pf, TEXT.title, TEXT.help):SetPoint("LEFT", title, "RIGHT", 6, 0)
+    UI.HelpRight(title, TEXT.title, TEXT.help)
 
     for i, tab in ipairs(TABS) do
         local b = CreateFrame("Button", nil, pf, "BackdropTemplate")

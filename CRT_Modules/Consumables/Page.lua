@@ -93,7 +93,7 @@ local function buildBar(pf)
     local label = pf:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
     label:SetPoint("TOPLEFT", 8, -44)
     label:SetText("Your bar")
-    UI.Help(pf, "Your bar", "Your own bar of consumable icons, shown during a ready check. It starts with a built-in list: drag an item from your bags onto an icon to add it, click an icon to see its items, and drag the rows below to change the order. When it shows is on the Settings tab."):SetPoint("LEFT", label, "RIGHT", 6, 0)
+    UI.HelpRight(label, "Your bar", "Your own bar of consumable icons, shown during a ready check. It starts with a built-in list: drag an item from your bags onto an icon to add it, click an icon to see its items, and drag the rows below to change the order. When it shows is on the Settings tab.")
 
     local count = #Consumables.CATEGORIES
     barFrame = CreateFrame("Frame", nil, pf, "BackdropTemplate")
@@ -382,9 +382,9 @@ local function build(pf)
     itemTitle:SetPoint("TOPLEFT", RIGHT_X, -132)
     -- The item hint depends on the selected category, so the (?) reads it when hovered.
     itemHint = { text = "", SetText = function(self, t) self.text = t end }
-    UI.Help(pf, "Items", function()
+    UI.HelpRight(itemTitle, "Items", function()
         return itemHint.text
-    end):SetPoint("LEFT", itemTitle, "RIGHT", 6, 0)
+    end)
 
     local box = CreateFrame("Frame", nil, pf, "BackdropTemplate")
     box:SetPoint("TOPLEFT", pf, "TOPLEFT", RIGHT_X, -154)

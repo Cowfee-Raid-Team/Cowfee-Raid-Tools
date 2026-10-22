@@ -21,6 +21,7 @@ ScrollBoxConstants = {}
 
 -- stand-in frames: every method works; the ones read back here keep what they were given
 local made = {}
+local helped = {} -- every (?) UI.HelpRight made, in order
 local function mock(kind, parent, template)
   local o = { kind = kind, parent = parent, template = template, points = {}, scripts = {}, shown = false, regions = {} }
   local m = {
@@ -59,7 +60,7 @@ CRT.UI = {
   SkinScrollBar = function() end,
   Window = function(name) local w = mock("Frame", nil) w.name = name w.content = mock("Frame", w)
     w.strip = { SetTitle = function() end, SetBadge = function() end } return w end,
-  Help = function(parent) return mock("Button", parent) end,
+  HelpRight = function(target, title, text, opts) local b = (function(parent) return mock("Button", parent) end)(opts and opts.parent or target, title, text) rawset(b, "helpTarget", target) helped[#helped + 1] = b return b end, HELP_GAP = 4, HELP_SIZE = 20, Help = function(parent) return mock("Button", parent) end,
   HeaderButton = function(parent) return mock("Button", parent) end,
   SortHeaders = function(parent, cols, opts) sortParent, sortOpts = parent, opts return { refresh = function() end } end,
   OnTheme = function() end,
@@ -109,6 +110,7 @@ check(bar and bar.parent ~= area and bar.parent and not bar.parent.clips, "loote
 check(bar and hasPoint(bar, { "TOPLEFT", box, "TOPRIGHT" }), "looter: the scroll bar sits right of the rows")
 check(area and hasPoint(area, { "BOTTOMRIGHT", -LM.LIST_SCROLL_GAP, 0 }), "looter: the clipped frame leaves room for the scroll bar")
 check(box and hasPoint(box, { "TOPLEFT", 0 }) and hasPoint(box, { "BOTTOMRIGHT", 0, 0 }), "looter: the rows fill the clipped frame under the headings")
+check(#helped == 1 and helped[1].helpTarget.kind == "FontString", "looter: its one (?) is right of the item's name in the header")
 
 -- All Loot Rolls
 LM.incoming = { test = true, items = { { itemString = "item:1" } }, view = {
@@ -129,6 +131,7 @@ for _, fs in ipairs(rarea and rarea.regions or {}) do
 end
 check(fixed, "raider: each heading keeps its own x at the clipping frame's top")
 check(rbar and rbar.parent ~= rarea and not rbar.parent.clips, "raider: the scroll bar is outside the clipped frame")
+check(#helped == 2 and helped[2].helpTarget.kind == "FontString", "raider: its one (?) is right of the item's name in the header")
 
 print(string.format("%d passed, %d failed", passes, fails))
 if fails > 0 then error("failures") end

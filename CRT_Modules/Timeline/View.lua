@@ -2212,8 +2212,8 @@ function Methods:BuildStrip()
     strip.label:SetPoint("LEFT", strip, "TOPLEFT", 4, -STRIP_ROW / 2)
     themed(strip.label, "SetTextColor", "label")
     strip.label:SetText(TEXT.savedAlerts)
-    if CRT.UI and CRT.UI.Help then
-        CRT.UI.Help(strip, TEXT.savedAlerts, TEXT.savedHelp):SetPoint("LEFT", strip.label, "RIGHT", 2, 0)
+    if CRT.UI and CRT.UI.HelpRight then
+        CRT.UI.HelpRight(strip.label, TEXT.savedAlerts, TEXT.savedHelp)
     end
     strip:Hide()
     self.strip = strip
@@ -2257,9 +2257,8 @@ function Methods:BuildStrip()
     cdLabel:SetText(TEXT.cooldowns)
     self.cdLabel = cdLabel
     local after = cdLabel
-    if CRT.UI and CRT.UI.Help then
-        after = CRT.UI.Help(strip, TEXT.cooldowns, TEXT.cooldownsHelp)
-        after:SetPoint("LEFT", cdLabel, "RIGHT", 2, 0)
+    if CRT.UI and CRT.UI.HelpRight then
+        after = CRT.UI.HelpRight(cdLabel, TEXT.cooldowns, TEXT.cooldownsHelp)
     end
     local Cooldowns = CRT.AlertCooldowns
     if Cooldowns and CRT.UI and CRT.UI.Dropdown then
@@ -3400,24 +3399,27 @@ function Methods:DrawPersonalHelp(lanes)
             row = i
         end
     end
+    local l = row and self.labels[row]
     local h = self.personalHelp
     if not h then
-        if not (row and CRT.UI and CRT.UI.Help) then
+        if not (l and CRT.UI and CRT.UI.HelpRight) then
             return
         end
-        h = CRT.UI.Help(self.body, TEXT.personal, TEXT.personalHelp)
+        h = CRT.UI.HelpRight(l, TEXT.personal, TEXT.personalHelp, { parent = self.body })
         self.personalHelp = h
     end
-    local l = row and self.labels[row]
     if not l then
         h:Hide()
         return
     end
-    -- its name's own width (a width set by the label's anchors caps GetStringWidth)
+    -- Its own place, not UI.HelpRight's (allowed in the "help icons sit right" lint): the lane moves
+    -- as the rows scroll, and the (?) stays inside the label column, so a long name never puts it
+    -- over the track. Its name's own width (a width set by the label's anchors caps GetStringWidth).
     local w = textWidth(l.text)
+    local gap = CRT.UI.HELP_GAP or 4
     h:ClearAllPoints()
-    -- the name starts NAME_X in (after the tick and the icon); the (?) stays inside the label
-    h:SetPoint("LEFT", l, "LEFT", math.min(NAME_X + w, LABEL_W - 4 - 24), 0)
+    -- the name starts NAME_X in (after the tick and the icon)
+    h:SetPoint("LEFT", l, "LEFT", math.min(NAME_X + w + gap, LABEL_W - 4 - 24), 0)
     h:SetFrameLevel((l:GetFrameLevel() or 0) + 2)
     h:Show()
 end

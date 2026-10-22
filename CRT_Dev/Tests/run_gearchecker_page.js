@@ -218,6 +218,16 @@ UI.pages.gearcheck.builder(page)
 GC.LOW_ILVL = 12
 local helpButton
 for _, f in ipairs(made) do if f.crtHelp and f.parent == P.body then helpButton = f end end
+-- every (?) is UI.HelpRight's: the page's sits HELP_GAP right of the last filter chip, centred on it
+local helps = 0
+for _, f in ipairs(made) do
+  if f.crtHelp then
+    helps = helps + 1
+    local p = f.points[#f.points]
+    check(f.crtHelpTarget ~= nil and p and p[1] == "LEFT" and p[2] == f.crtHelpTarget and p[3] == "RIGHT" and p[4] == UI.HELP_GAP and p[5] == 0, "a (?) is placed by UI.HelpRight, right of its target")
+  end
+end
+check(helps == 1 and helpButton and helpButton.crtHelpTarget == P.chips[#P.chips], "the page's (?) is right of the last filter chip")
 helpButton.scripts.OnEnter(helpButton)
 local helpText = table.concat(tip.lines, " ")
 check(helpText:find("an item 15 or more item levels under", 1, true) ~= nil, "the help says the low item level rule from GC.LOW_ILVL")

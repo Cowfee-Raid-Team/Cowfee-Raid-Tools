@@ -268,7 +268,7 @@ local function build(f)
     local title = f:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
     title:SetPoint("TOPLEFT", 8, -8)
     title:SetText(TEXT.title)
-    UI.Help(f, TEXT.title, TEXT.help):SetPoint("LEFT", title, "RIGHT", 6, 0)
+    UI.HelpRight(title, TEXT.title, TEXT.help)
 
     bossDrop = UI.Dropdown(f, TEXT.boss, {
         labelWidth = 40,

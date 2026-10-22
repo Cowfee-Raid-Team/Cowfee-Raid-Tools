@@ -391,7 +391,7 @@ local function buildNotes(pf)
     local listLabel = pf:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
     listLabel:SetPoint("TOPLEFT", 8, -14)
     listLabel:SetText("Notes")
-    UI.Help(pf, "Raid notes", "Import a note and share it with the raid before the pull; its timers count down from the start of the fight, and its other text goes to the Assignments window. Notes Settings has the windows and sharing; Alert Settings has where your lines show; Mech Alerts has boss mechanic alerts."):SetPoint("LEFT", listLabel, "RIGHT", 6, 0)
+    UI.HelpRight(listLabel, "Raid notes", "Import a note and share it with the raid before the pull; its timers count down from the start of the fight, and its other text goes to the Assignments window. Notes Settings has the windows and sharing; Alert Settings has where your lines show; Mech Alerts has boss mechanic alerts.")
     -- Shared and Personal: which notes the list shows
     for i, kind in ipairs({ "shared", "personal" }) do
         local b = CreateFrame("Button", nil, pf, "BackdropTemplate")
@@ -413,7 +413,7 @@ local function buildNotes(pf)
         kindTabs[kind] = b
     end
     -- the (?) just after the tabs, clear of the Note text heading at TEXT_X
-    UI.Help(pf, TEXT.personal, TEXT.kindHelp):SetPoint("TOPLEFT", 98 + 2 * 72, -12)
+    UI.HelpRight(kindTabs.personal, TEXT.personal, TEXT.kindHelp)
 
     -- the difficulty filter over the list, for the Dropdown and Chips styles (Notes Settings)
     local DIFF_OPTIONS = { { key = "All", label = TEXT.allDifficulties } }
@@ -572,7 +572,7 @@ local function buildNotes(pf)
     end)
     sendTo:SetPoint("TOPLEFT", toPersonal, "BOTTOMLEFT", 0, -4)
     controls[#controls + 1] = sendTo
-    UI.Help(pf, TEXT.sendTo, shareHelp):SetPoint("LEFT", sendTo, "RIGHT", 2, 0)
+    UI.HelpRight(sendTo, TEXT.sendTo, shareHelp)
 
     -- Middle: the note text, editable, down to the Save button at the bottom of the tab.
     local textLabel = pf:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
@@ -654,13 +654,11 @@ local function buildNotes(pf)
     -- (?) saying why. Set again at every redraw and show, so a
     -- promotion unlocks it. Import, Use this note and Delete stay: they choose which note you hold.
     -- The (?) on how the rendered note works comes first, the lock's (?) after it.
-    local renderHelp = UI.Help(pf, TEXT.noteText, TEXT.renderHelp)
-    renderHelp:SetPoint("LEFT", textLabel, "RIGHT", 6, 0)
-    local lockHelp = UI.Help(pf, TEXT.noteText, function()
+    local renderHelp = UI.HelpRight(textLabel, TEXT.noteText, TEXT.renderHelp)
+    local lockHelp = UI.HelpRight(renderHelp, TEXT.noteText, function()
         local _, why = Notes:CanEditRaid()
         return why or ""
     end)
-    lockHelp:SetPoint("LEFT", renderHelp, "RIGHT", 4, 0)
     lockHelp.refresh = function()
         local allowed = Notes:CanEditRaid()
         save:SetEnabled(allowed and true or false)
@@ -740,7 +738,7 @@ local function buildNotes(pf)
     local firstText = pf:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     firstText:SetPoint("LEFT", first, "RIGHT", 2, 0)
     firstText:SetText("Display my notes first")
-    UI.Help(pf, "Display my notes first", "Shows your personal note above your Mech Alerts reminders instead of under them.\n\nFormatting: # Heading, **bold**, - a bullet, --- a divider line. A pasted raid note shows as the boss and its timed lines, by phase."):SetPoint("LEFT", firstText, "RIGHT", 4, 0)
+    UI.HelpRight(firstText, "Display my notes first", "Shows your personal note above your Mech Alerts reminders instead of under them.\n\nFormatting: # Heading, **bold**, - a bullet, --- a divider line. A pasted raid note shows as the boss and its timed lines, by phase.")
     first:SetScript("OnClick", function(self)
         Notes:SetPersonalFirst(self:GetChecked())
     end)
@@ -754,7 +752,7 @@ local function buildNotes(pf)
     local runLabel = pf:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
     runLabel:SetPoint("TOPLEFT", RIGHT_X, top)
     runLabel:SetText("Try it")
-    UI.Help(pf, "Try it", "Test run starts the selected note now, as if the boss was pulled. Next phase starts the next phase, intermissions included. Stop ends it."):SetPoint("LEFT", runLabel, "RIGHT", 6, 0)
+    UI.HelpRight(runLabel, "Try it", "Test run starts the selected note now, as if the boss was pulled. Next phase starts the next phase, intermissions included. Stop ends it.")
 
     local testRun = makeButton(pf, "Test run", 100)
     testRun:SetPoint("TOPLEFT", RIGHT_X, top - 24)

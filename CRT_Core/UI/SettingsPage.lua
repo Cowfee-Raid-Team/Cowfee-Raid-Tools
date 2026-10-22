@@ -88,7 +88,7 @@ local function heading(pf, x, y, text, help)
     fs:SetPoint("TOPLEFT", x - 2, y)
     fs:SetText(text)
     if help then
-        UI.Help(pf, text, help):SetPoint("LEFT", fs, "RIGHT", 6, 0)
+        UI.HelpRight(fs, text, help)
     end
     return fs
 end
@@ -737,7 +737,7 @@ local function build(pf)
     local title = pf:CreateFontString(nil, "OVERLAY", "CRTFontLarge")
     title:SetPoint("TOPLEFT", 8, -8)
     title:SetText("General Settings")
-    UI.Help(pf, "General Settings", "Settings for the whole addon: the look, text, sound, reports, the minimap button, window layers and profiles. Changes apply at once, except profile changes, which reload your interface."):SetPoint("LEFT", title, "RIGHT", 6, 0)
+    UI.HelpRight(title, "General Settings", "Settings for the whole addon: the look, text, sound, reports, the minimap button, window layers and profiles. Changes apply at once, except profile changes, which reload your interface.")
 
     for i, tab in ipairs(TABS) do
         local b = CreateFrame("Button", nil, pf, "BackdropTemplate")

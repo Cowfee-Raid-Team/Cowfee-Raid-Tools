@@ -172,7 +172,8 @@ end
 --   Modern   the theme's strip (titleTop to titleBottom), lighter than the window, an accent line under
 --            it, the title in larger bold text colour on the left with the badge after it.
 -- UI.TitleStrip(parent, height, opts): opts.framed when parent is a BasicFrameTemplate window (UI.Window).
--- strip:SetTitle(text), strip:SetBadge(text or nil, note, colors): colors is { bg, edge, text }; without
+-- strip:SetTitle(text), strip:SetHelp(title, text) (a (?) right of the title: strip.help),
+-- strip:SetBadge(text or nil, note, colors): colors is { bg, edge, text }; without
 -- it the badge is the orange TEST one. STRIP.neutral is the window's gold text on a dark badge. A note
 -- shows with or without a badge. Its colours and Classic places are in STRIP. A colour written as a
 -- string is a CRT.PALETTE key, so it follows the theme (UI.StripColor reads either kind).
@@ -237,7 +238,8 @@ local function shownWidth(r, pad)
 end
 
 -- Places the title, badge and note for the look. In Classic the title is centred unless the badge and
--- note reach it; then it follows them.
+-- note reach it; then it follows them. The (?) (strip:SetHelp) always follows the title's text
+-- (UI.HelpRight); in Modern the badge and note come after it: title, (?), badge, note.
 local function layoutStrip(s)
     local title, badge, note = s.title, s.badge, s.note
     title:ClearAllPoints()
@@ -245,8 +247,9 @@ local function layoutStrip(s)
     note:ClearAllPoints()
     if UI:IsModern() then
         title:SetPoint("LEFT", s, "LEFT", 10, 1)
-        badge:SetPoint("LEFT", title, "RIGHT", STRIP.gap, 0)
-        note:SetPoint("LEFT", badge:IsShown() and badge or title, "RIGHT", STRIP.gap, 0)
+        local afterTitle = s.help or title
+        badge:SetPoint("LEFT", afterTitle, "RIGHT", STRIP.gap, 0)
+        note:SetPoint("LEFT", badge:IsShown() and badge or afterTitle, "RIGHT", STRIP.gap, 0)
         return
     end
     local y = s.framed and STRIP.framedBadgeY or 0
@@ -323,9 +326,18 @@ function UI.TitleStrip(parent, height, opts)
     s.badge:Hide()
     s.note:Hide()
     s.badgeColors = false -- the colors SetBadge was given, painted again by paintStrip
+    s.help = false -- the (?) SetHelp makes
     function s:SetTitle(text)
         self.title:SetText(text or "")
         layoutStrip(self)
+    end
+    -- A (?) on the whole window, right of its title: strip.help. Made once; later calls do nothing.
+    function s:SetHelp(helpTitle, text)
+        if not self.help then
+            self.help = UI.HelpRight(self.title, helpTitle, text, { parent = self })
+            layoutStrip(self)
+        end
+        return self.help
     end
     function s:SetBadge(text, note, colors)
         if text and text ~= "" then

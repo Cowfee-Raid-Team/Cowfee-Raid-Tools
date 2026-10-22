@@ -69,6 +69,25 @@ function CRT_THEME(CRT, UI)
     for fs, build in pairs(themedTexts) do fs:SetText(build()) end
     for _, fn in ipairs(hooks) do fn() end
   end
+  -- UI.HelpRight over the harness's own UI.Help stand-in: the icon keeps its target (helpTarget) and
+  -- sits HELP_GAP right of it. The real placement (a font string's text edge, a check box's label) is
+  -- tested in run_help.js.
+  UI.HELP_GAP = UI.HELP_GAP or 4
+  UI.HELP_SIZE = UI.HELP_SIZE or 20
+  if not UI.HelpRight then
+    function UI.HelpRight(target, title, text, opts)
+      local parent = opts and opts.parent
+      if not parent and type(target) == "table" and target.GetParent then
+        parent = target:GetParent()
+      end
+      local b = UI.Help(type(parent) == "table" and parent or target, title, text)
+      if type(b) == "table" then
+        rawset(b, "helpTarget", target)
+        if b.SetPoint then b:SetPoint("LEFT", target, "RIGHT", UI.HELP_GAP, 0) end
+      end
+      return b
+    end
+  end
 end
 `;
 };

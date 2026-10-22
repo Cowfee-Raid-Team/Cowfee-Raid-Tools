@@ -55,11 +55,15 @@ local TEXT = {
     chips = "Chips",
 }
 
--- Four columns across the page (UI.PAGE_W): the three note windows, COLUMN_W each, then Alerts and
--- Sharing in what is left. A slider row is 4 + labelWidth + 5 + width + its value (about 44).
+-- Four columns across the page (UI.PAGE_W), under All note windows: the three note windows, COLUMN_W
+-- each, then Alerts and Sharing in what is left. A slider row is 4 + labelWidth + 5 + width + its value
+-- (about 44).
 local COLUMN_W = math.floor((UI.PAGE_W - 16) / 4)
 local ALERTS_X = 8 + 3 * COLUMN_W + 10
 local ALERTS_W = UI.PAGE_W - 8 - ALERTS_X
+-- All note windows comes first, at the top left; the columns start ALL_H under it: its heading and
+-- its check box (20 apart, as in every section), then the 36 a section leaves before the next heading.
+local TOP, ALL_H = -14, 56
 local ICON_POSITIONS = {
     { key = "left", label = "Left" },
     { key = "right", label = "Right" },
@@ -178,7 +182,7 @@ local function buildColumn(pf, index, def, top)
     local x = 8 + (index - 1) * COLUMN_W
     local title = heading(pf, x, top, def.title)
     if index == 1 then
-        UI.Help(pf, "Note windows", TEXT.hint):SetPoint("LEFT", title, "RIGHT", 6, 0)
+        UI.HelpRight(title, "Note windows", TEXT.hint)
     end
 
     -- Everything below Show this window greys out while the window is hidden.
@@ -234,9 +238,19 @@ end
 local function build(pf)
     page = pf
 
+    -- one switch for all three note windows
+    local allTitle = heading(pf, 8, TOP, TEXT.allWindows)
+    UI.HelpRight(allTitle, TEXT.allWindows, TEXT.allWindowsHelp)
+    makeCheck(pf, 4, TOP - 20, TEXT.showOutsideRaid, nil, function()
+        return Notes:ShowOutsideRaid()
+    end, function(value)
+        Notes:Set(nil, "showOutsideRaid", value)
+    end)
+    local top = TOP - ALL_H
+
     -- The three note windows.
     for index, def in ipairs(WINDOWS) do
-        buildColumn(pf, index, def, -14)
+        buildColumn(pf, index, def, top)
     end
 
     -- Alerts, then sharing under it, in the fourth column. The seconds row greys out while alerts are off,
@@ -248,10 +262,10 @@ local function build(pf)
     local function speechOn()
         return Notes:Alert().tts and true or false
     end
-    local top, x = -14, ALERTS_X
+    local x = ALERTS_X
     local LABEL, CONTROL = 116, 76 -- a slider row: 4 + LABEL + 5 + CONTROL + its value, inside ALERTS_W
     local alertsTitle = heading(pf, x, top, TEXT.alerts)
-    UI.Help(pf, TEXT.alerts, TEXT.alertsHelp):SetPoint("LEFT", alertsTitle, "RIGHT", 6, 0)
+    UI.HelpRight(alertsTitle, TEXT.alerts, TEXT.alertsHelp)
     makeNumber(pf, x - 4, top - 22, TEXT.alertSeconds, { low = 1, high = 60, labelWidth = LABEL, width = CONTROL, format = seconds, enabledIf = alertsOn }, alert("seconds"))
     local iconGet, iconSet = alert("iconPosition")
     local iconRow = UI.Dropdown(pf, TEXT.alertIcon, { options = ICON_POSITIONS, labelWidth = LABEL, width = ALERTS_W - LABEL - 5, get = iconGet, set = iconSet, enabledIf = alertsOn })
@@ -277,7 +291,7 @@ local function build(pf)
 
     -- how the Notes tab lists the notes
     local listTitle = heading(pf, x, top - 256, TEXT.notesList)
-    UI.Help(pf, TEXT.notesList, TEXT.listHelp):SetPoint("LEFT", listTitle, "RIGHT", 6, 0)
+    UI.HelpRight(listTitle, TEXT.notesList, TEXT.listHelp)
     local styleRow = UI.Dropdown(pf, TEXT.listStyle, {
         options = { { key = "grouped", label = TEXT.grouped }, { key = "dropdown", label = TEXT.dropdown }, { key = "chips", label = TEXT.chips } },
         labelWidth = 80,
@@ -291,15 +305,6 @@ local function build(pf)
     })
     styleRow:SetPoint("TOPLEFT", x, top - 278)
     controls[#controls + 1] = styleRow
-
-    -- one switch for all three note windows
-    local allTitle = heading(pf, x, top - 322, TEXT.allWindows)
-    UI.Help(pf, TEXT.allWindows, TEXT.allWindowsHelp):SetPoint("LEFT", allTitle, "RIGHT", 6, 0)
-    makeCheck(pf, x - 4, top - 342, TEXT.showOutsideRaid, nil, function()
-        return Notes:ShowOutsideRaid()
-    end, function(value)
-        Notes:Set(nil, "showOutsideRaid", value)
-    end)
 
     pf:SetScript("OnShow", refresh)
     Notes:OnChange(refresh)

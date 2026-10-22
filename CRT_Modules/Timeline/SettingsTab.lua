@@ -248,8 +248,9 @@ function SettingsTab.Build(f, ctx)
     end
 
     -- View
-    label(f, "View"):SetPoint("TOPLEFT", f, "TOPLEFT", 8, -8)
-    UI.Help(f, "View", "How much time is visible at once (the mouse wheel zooms too), how often the time axis is labelled, and how big the cast icons are. Auto labels the axis more often as you zoom in."):SetPoint("TOPLEFT", f, "TOPLEFT", 60, -9)
+    local viewHeading = label(f, "View")
+    viewHeading:SetPoint("TOPLEFT", f, "TOPLEFT", 8, -8)
+    UI.HelpRight(viewHeading, "View", "How much time is visible at once (the mouse wheel zooms too), how often the time axis is labelled, and how big the cast icons are. Auto labels the axis more often as you zoom in.")
     settingSlider(f, 8, -26, "Seconds visible", "span", 60, 600, 30, View.Format, true)
     place(UI.Dropdown(f, "Axis labels every", {
         options = GRIDS,
@@ -265,8 +266,9 @@ function SettingsTab.Build(f, ctx)
     settingSlider(f, 8, -90, "Icon size", "iconSize", 16, 32, 1)
 
     -- Rows
-    label(f, "Rows"):SetPoint("TOPLEFT", f, "TOPLEFT", 8, -132)
-    UI.Help(f, "Rows", "The rows come from the boss's Encounter Journal abilities, then your own. Untick a row to hide it. Add a spell by its ID to track a cast the Journal doesn't list (recorded pulls only). With an ability timeline shown, its own rows are listed instead. Icons can be blank in combat, since the Journal isn't read then."):SetPoint("TOPLEFT", f, "TOPLEFT", 54, -133)
+    local rowsHeading = label(f, "Rows")
+    rowsHeading:SetPoint("TOPLEFT", f, "TOPLEFT", 8, -132)
+    UI.HelpRight(rowsHeading, "Rows", "The rows come from the boss's Encounter Journal abilities, then your own. Untick a row to hide it. Add a spell by its ID to track a cast the Journal doesn't list (recorded pulls only). With an ability timeline shown, its own rows are listed instead. Icons can be blank in combat, since the Journal isn't read then.")
     bossLabel = label(f, "", "CRTFontSmall")
     bossLabel:SetPoint("TOPLEFT", f, "TOPLEFT", 8, -154)
     checkbox(f, 8, -172, "Hide rows with no casts in this pull", function()
@@ -300,8 +302,9 @@ function SettingsTab.Build(f, ctx)
     scroll:SetScrollChild(rowsChild)
 
     -- Deaths
-    label(f, "Deaths"):SetPoint("TOPLEFT", f, "TOPLEFT", RIGHT_X, -8)
-    UI.Help(f, "Deaths", "Whether deaths share one row or each player gets a row, which roles show, and whether only the first few deaths show (0 shows all). With Deaths from recent pulls on, the overlay covers this many pulls."):SetPoint("TOPLEFT", f, "TOPLEFT", RIGHT_X + 60, -9)
+    local deathsHeading = label(f, "Deaths")
+    deathsHeading:SetPoint("TOPLEFT", f, "TOPLEFT", RIGHT_X, -8)
+    UI.HelpRight(deathsHeading, "Deaths", "Whether deaths share one row or each player gets a row, which roles show, and whether only the first few deaths show (0 shows all). With Deaths from recent pulls on, the overlay covers this many pulls.")
     place(UI.Dropdown(f, "Death rows", {
         options = DEATH_ROWS,
         labelWidth = 120,
@@ -330,8 +333,9 @@ function SettingsTab.Build(f, ctx)
     settingSlider(f, RIGHT_X, -118, "Overlay pulls", "overlay", 2, 5, 1)
 
     -- Recording
-    label(f, "Recording"):SetPoint("TOPLEFT", f, "TOPLEFT", RIGHT_X, -166)
-    UI.Help(f, "Recording", "Pulls are saved on their own during raid boss fights, ten per boss, the oldest dropped first. Pulls shorter than the shortest pull are not kept."):SetPoint("TOPLEFT", f, "TOPLEFT", RIGHT_X + 82, -167)
+    local recordingHeading = label(f, "Recording")
+    recordingHeading:SetPoint("TOPLEFT", f, "TOPLEFT", RIGHT_X, -166)
+    UI.HelpRight(recordingHeading, "Recording", "Pulls are saved on their own during raid boss fights, ten per boss, the oldest dropped first. Pulls shorter than the shortest pull are not kept.")
     checkbox(f, RIGHT_X, -186, "Record every pull", function()
         return settings().record
     end, function(on)

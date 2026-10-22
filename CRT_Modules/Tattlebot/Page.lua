@@ -857,7 +857,7 @@ local function buildHistory(f)
     })
     mechDropdown:SetPoint("LEFT", seasonDropdown, "RIGHT", 16, 0)
     controls[#controls + 1] = mechDropdown
-    UI.Help(f, "History filters", "Season picks what is added up: every saved night, or the current one. Mechanic narrows Totals, each night and the export to one mechanic: each player's damage from it, the pulls it hit them in, and the average per hit."):SetPoint("LEFT", mechDropdown, "RIGHT", 6, 0)
+    UI.HelpRight(mechDropdown, "History filters", "Season picks what is added up: every saved night, or the current one. Mechanic narrows Totals, each night and the export to one mechanic: each player's damage from it, the pulls it hit them in, and the average per hit.")
 
     local listBox = CreateFrame("Frame", nil, f, "BackdropTemplate")
     listBox:SetPoint("TOPLEFT", 8, -40)
@@ -969,9 +969,9 @@ local function buildSettings(f)
     makeCheck(f, 4, -8, "Read the damage meter after each boss pull", "enabled")
     makeCheck(f, 28, -32, "Only in raids", "raidsOnly", trackingOn)
     local avoidable = makeCheck(f, 28, -56, "Also count damage the game marks avoidable", "avoidable", trackingOn)
-    UI.Help(f, "Avoidable damage", "Also count every spell the game's own damage meter files under Avoidable Damage Taken. The game decides what is avoidable, and not in every kind of content."):SetPoint("LEFT", avoidable.label, "RIGHT", 6, 0)
+    UI.HelpRight(avoidable.label, "Avoidable damage", "Also count every spell the game's own damage meter files under Avoidable Damage Taken. The game decides what is avoidable, and not in every kind of content.")
     local autoPost = makeCheck(f, 28, -80, "Post after each pull", "autoPost", trackingOn)
-    UI.Help(f, "Post after each pull", "Posts the pull's report right after it is read, to the channel below, only if you are the raid leader, so a raid full of this addon posts once. Everyone else sees it in their own chat."):SetPoint("LEFT", autoPost.label, "RIGHT", 6, 0)
+    UI.HelpRight(autoPost.label, "Post after each pull", "Posts the pull's report right after it is read, to the channel below, only if you are the raid leader, so a raid full of this addon posts once. Everyone else sees it in their own chat.")
 
     local postTo = UI.Dropdown(f, "Post to", {
         options = OUTPUTS,
@@ -1011,7 +1011,7 @@ local function buildSettings(f)
         end
     end
     controls[#controls + 1] = season
-    UI.Help(f, "Season", "New nights are saved under this season name. Type a new name and press Enter to start a new season, such as a new raid tier; earlier seasons stay in the history."):SetPoint("LEFT", season, "RIGHT", 6, 0)
+    UI.HelpRight(season, "Season", "New nights are saved under this season name. Type a new name and press Enter to start a new season, such as a new raid tier; earlier seasons stay in the history.")
 end
 
 local function buildMechanics(f)
@@ -1030,7 +1030,7 @@ local function buildMechanics(f)
     })
     bossDropdown:SetPoint("TOPLEFT", 8, -8)
     controls[#controls + 1] = bossDropdown
-    UI.Help(f, "Tracked mechanics", "Last fight lists every spell that damaged the group in the last fight: tick the ones to track and press Add checked. A boss shows the mechanics that ship with the addon; Your own spells lists the ones you added. All the IDs of one mechanic count as one line in reports."):SetPoint("LEFT", bossDropdown, "RIGHT", 6, 0)
+    UI.HelpRight(bossDropdown, "Tracked mechanics", "Last fight lists every spell that damaged the group in the last fight: tick the ones to track and press Add checked. A boss shows the mechanics that ship with the addon; Your own spells lists the ones you added. All the IDs of one mechanic count as one line in reports.")
 
     local count = label(f, "", "CRTFontSmall")
     count:SetPoint("TOPRIGHT", -12, -16)
@@ -1071,7 +1071,7 @@ local function buildMechanics(f)
     end)
     scanBar.add = makeButton(scanBar, "Add checked", 130)
     scanBar.add:SetPoint("LEFT", mechEdit, "RIGHT", 8, 0)
-    UI.Help(scanBar, "Add checked", "Adds the ticked spells to Your own spells for the fight's boss, so History counts them, this fight included. Leave Mechanic empty to use each spell's own name, or type a name to group them under it."):SetPoint("LEFT", scanBar.add, "RIGHT", 6, 0)
+    UI.HelpRight(scanBar.add, "Add checked", "Adds the ticked spells to Your own spells for the fight's boss, so History counts them, this fight included. Leave Mechanic empty to use each spell's own name, or type a name to group them under it.")
     scanBar.add:SetScript("OnClick", function()
         if not scanResult then
             return
@@ -1134,7 +1134,7 @@ local function buildMechanics(f)
     nameEdit:SetPoint("LEFT", nameLabel, "RIGHT", 10, 0)
     local addButton = makeButton(addRow, "Add", 70)
     addButton:SetPoint("LEFT", nameEdit, "RIGHT", 8, 0)
-    UI.Help(addRow, "Add a spell", "Type the spell ID and, if you like, the mechanic it belongs to; spells with the same mechanic name are added together. Left empty, the spell's own name is used."):SetPoint("LEFT", addButton, "RIGHT", 6, 0)
+    UI.HelpRight(addButton, "Add a spell", "Type the spell ID and, if you like, the mechanic it belongs to; spells with the same mechanic name are added together. Left empty, the spell's own name is used.")
     local function add()
         local id = tonumber(idEdit:GetText())
         if not id or id <= 0 then
@@ -1165,7 +1165,7 @@ local function build(pf)
 
     local title = label(pf, "Tattlebot", "CRTFontLarge")
     title:SetPoint("TOPLEFT", 8, -8)
-    UI.Help(pf, "Tattlebot", "After each boss pull, once you are out of combat, Tattlebot reads the game's damage meter and keeps the damage each player took from the mechanics in its list, and the pulls it hit them in. Tonight shows tonight's pulls; History keeps every night, with an export for Discord."):SetPoint("LEFT", title, "RIGHT", 6, 0)
+    UI.HelpRight(title, "Tattlebot", "After each boss pull, once you are out of combat, Tattlebot reads the game's damage meter and keeps the damage each player took from the mechanics in its list, and the pulls it hit them in. Tonight shows tonight's pulls; History keeps every night, with an export for Discord.")
 
     for i, tab in ipairs(TABS) do
         local b = CreateFrame("Button", nil, pf, "BackdropTemplate")

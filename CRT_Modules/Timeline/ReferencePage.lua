@@ -96,7 +96,7 @@ function ReferencePage.Recent(f, width, pullLabel, toggle)
     frame:Hide()
     local title = label(frame, "Recent pulls")
     title:SetPoint("TOPLEFT", 4, 0)
-    UI.Help(frame, "Recent pulls", "This boss's saved pulls. Click one to lay it over the ability timeline: its deaths go in the Deaths row, its casts show as ticks in a row of their own, and a line marks where it ended. Click again to clear it."):SetPoint("LEFT", title, "RIGHT", 4, 0)
+    UI.HelpRight(title, "Recent pulls", "This boss's saved pulls. Click one to lay it over the ability timeline: its deaths go in the Deaths row, its casts show as ticks in a row of their own, and a line marks where it ended. Click again to clear it.")
 
     local recent, lines = {}, {}
     -- pulls newest first, each in a box as the Raid Notes list draws its notes, overlayID the one laid
@@ -318,7 +318,7 @@ function ReferencePage.Build(f, ctx)
     -- Left: the text box, Save and Clear, and the status line.
     local title = label(f, "Abilities Text")
     title:SetPoint("TOPLEFT", f, "TOPLEFT", 8, -8)
-    UI.Help(f, "Abilities Text", FORMAT_HELP):SetPoint("LEFT", title, "RIGHT", 6, 0)
+    UI.HelpRight(title, "Abilities Text", FORMAT_HELP)
     local mode = label(f, "", "CRTFontSmall")
     mode:SetPoint("TOPLEFT", f, "TOPLEFT", 160, -10)
     mode:SetWidth(BOX_W - 152)
@@ -484,7 +484,7 @@ function ReferencePage.Build(f, ctx)
         end
         refreshAbilities()
     end)
-    UI.Help(f, "Fill spell IDs", "Adds [spell N] to every line whose name matches one of the boss's Journal abilities, so its icon and tooltip are fixed. Lines that already have one, or match nothing, are left alone. The Journal is read out of combat with its window closed."):SetPoint("LEFT", fillIDs, "RIGHT", 4, 0)
+    UI.HelpRight(fillIDs, "Fill spell IDs", "Adds [spell N] to every line whose name matches one of the boss's Journal abilities, so its icon and tooltip are fixed. Lines that already have one, or match nothing, are left alone. The Journal is read out of combat with its window closed.")
 
     -- Right: the selected boss's references.
     local listLabel = label(f, "")
@@ -560,7 +560,7 @@ function ReferencePage.Build(f, ctx)
     abilitiesLabel:SetWidth(280)
     abilitiesLabel:SetJustifyH("LEFT")
     abilitiesLabel:SetWordWrap(false)
-    UI.Help(f, "Journal abilities", "The boss's abilities in the Encounter Journal, with their spell IDs; a line whose name matches one gets its icon and tooltip. Click or right-click an ability to give it a row on the timeline, a type, your own name, or a Mech Alert; these are only yours.\n\nWhile one of your ability timelines is open in the box, this list shows its abilities under its phases: right-click to add a phase or intermission, or set a phase's start.\n\nNothing shows in combat or while the Journal window is open."):SetPoint("LEFT", abilitiesLabel, "RIGHT", -4, 0)
+    UI.HelpRight(abilitiesLabel, "Journal abilities", "The boss's abilities in the Encounter Journal, with their spell IDs; a line whose name matches one gets its icon and tooltip. Click or right-click an ability to give it a row on the timeline, a type, your own name, or a Mech Alert; these are only yours.\n\nWhile one of your ability timelines is open in the box, this list shows its abilities under its phases: right-click to add a phase or intermission, or set a phase's start.\n\nNothing shows in combat or while the Journal window is open.")
     local abilitiesNone = label(f, "", "CRTFontSmall")
     abilitiesNone:SetWidth(300)
     abilitiesNone:SetJustifyH("LEFT")
