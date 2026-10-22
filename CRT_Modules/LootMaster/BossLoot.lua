@@ -81,6 +81,7 @@ local TEXT = {
     testEnded = "Loot Master ended the test session to start this one.",
     queued = "Loot Master: %d %s will start when the running session ends.",
     expired = "Loot Master: %d won %s left the boss loot list: the game's 2 hours to trade %s are over.",
+    expiredUnbound = "Loot Master: %d unbound %s left the boss loot list: %s time on the list is over.",
     tooOld = "the game's 2 hours to trade it are over",
     warn = "Loot Master: %s can be traded for about %d more minutes. Start a session soon or it can't be given out.",
     realOnly = "Loot Master started the real items only. TEST items never go into a real session; they stay in the list.",
@@ -176,6 +177,16 @@ end
 
 local expire -- set below
 
+-- The chat lines for won rows that left: those with a trade time, and unbound ones (no trade time).
+local function sayGone(won, unbound)
+    if won > 0 then
+        CRT:Print(TEXT.expired:format(won, won == 1 and "item" or "items", won == 1 and "it" or "them"))
+    end
+    if unbound > 0 then
+        CRT:Print(TEXT.expiredUnbound:format(unbound, unbound == 1 and "item" or "items", unbound == 1 and "its" or "their"))
+    end
+end
+
 -- Seconds left to trade a won row, or nil for any other row (a TEST row and an untimed row have no trade
 -- time).
 function BL.TradeLeft(r)
@@ -220,19 +231,19 @@ local function own(r, seconds)
 end
 
 expire = function()
-    local now, kept, n, won = GetTime(), {}, #BL.rows, 0
+    local now, kept, n, won, unbound = GetTime(), {}, #BL.rows, 0, 0
     for _, r in ipairs(BL.rows) do
         if not (r.expires and now >= r.expires) then
             kept[#kept + 1] = r
+        elseif r.status == "won" and not r.test and r.untimed then
+            unbound = unbound + 1
         elseif r.status == "won" and not r.test then
-            won = won + 1 -- untimed rows too
+            won = won + 1
         end
     end
     if #kept ~= n then
         BL.rows = kept
-        if won > 0 then
-            CRT:Print(TEXT.expired:format(won, won == 1 and "item" or "items", won == 1 and "it" or "them"))
-        end
+        sayGone(won, unbound)
         changed(#kept == 0 and "cleared" or "changed")
     end
 end
@@ -739,7 +750,7 @@ function BL:Load()
     if type(kept) ~= "table" then
         return
     end
-    local now, wall, gone = GetTime(), time(), 0
+    local now, wall, gone, unbound = GetTime(), time(), 0, 0
     self.rows, self.waiting = {}, {}
     for _, c in ipairs(type(kept.rows) == "table" and kept.rows or {}) do
         local left = type(c.endsAt) == "number" and c.endsAt - wall or 0
@@ -748,6 +759,8 @@ function BL:Load()
             c.rollID, c.at, c.expires, c.endsAt = nextOwn, now, now + left, nil
             self.rows[#self.rows + 1] = c
             schedule(c)
+        elseif c.status == "won" and not c.test and c.untimed then
+            unbound = unbound + 1
         elseif c.status == "won" and not c.test then
             gone = gone + 1
         end
@@ -758,6 +771,8 @@ function BL:Load()
             local left = type(it.endsAt) == "number" and it.endsAt - wall or 0
             if left > 0 then
                 items[#items + 1] = { itemString = it.itemString, link = it.link, ilvl = it.ilvl, expires = now + left, untimed = it.untimed, bags = it.bags }
+            elseif it.untimed then
+                unbound = unbound + 1
             else
                 gone = gone + 1
             end
@@ -767,9 +782,7 @@ function BL:Load()
         end
     end
     self.boss, self.difficulty = kept.boss, kept.difficulty
-    if gone > 0 then
-        CRT:Print(TEXT.expired:format(gone, gone == 1 and "item" or "items", gone == 1 and "it" or "them"))
-    end
+    sayGone(gone, unbound)
     warn()
     changed(#self.rows > 0 and "open" or "changed")
     startNext()

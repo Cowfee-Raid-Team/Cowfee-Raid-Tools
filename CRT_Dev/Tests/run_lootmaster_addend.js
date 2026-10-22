@@ -422,7 +422,7 @@ local plain = BL:Rows()[2]
 eq(plain.untimed, true, "not bound: no trade time")
 eq(plain.expires, NOW + LM.TRADE_SECONDS, "not bound: its own end, 2 hours after it was added")
 eq(BL.TradeLeft(plain), nil, "not bound: no time left to show")
-check(LM.BossLootDetail(plain):find("Not bound: leaves in 2:00", 1, true) ~= nil, "not bound: its own wording (" .. LM.BossLootDetail(plain) .. ")")
+check(LM.BossLootDetail(plain):find("Not bound: leaves in 2h 00m", 1, true) ~= nil, "not bound: its own wording (" .. LM.BossLootDetail(plain) .. ")")
 eq(plain.ticked, true, "an item outside the loot filter from your bags is still ticked")
 local keptPlain
 for _, c in ipairs(CRTDBChar.lootmaster.bossLootList.rows) do if c.untimed then keptPlain = c end end
@@ -439,12 +439,13 @@ local warned = 0
 for _, m in ipairs(printed) do if m:find("Plain Bracers", 1, true) then warned = warned + 1 end end
 eq(warned, 0, "not bound: no trade time warning")
 eq(#BL:Rows(), 3, "not bound: still listed before its end")
-check(LM.BossLootDetail(plain):find("Not bound: leaves in 0:15", 1, true) ~= nil, "not bound: the countdown (" .. LM.BossLootDetail(plain) .. ")")
+check(LM.BossLootDetail(plain):find("Not bound: leaves in 15m", 1, true) ~= nil, "not bound: the countdown (" .. LM.BossLootDetail(plain) .. ")")
 printed = {}
 NOW = NOW + LM.TRADE_WARN + 10
 runTimers()
 eq(#BL:Rows(), 0, "not bound: gone at its end, with the other rows whose time is over")
-check(printed[1] and printed[1]:find("3 won items", 1, true) ~= nil, "the expiry chat line counts the unbound row (" .. tostring(printed[1]) .. ")")
+eq(printed[1], "Loot Master: 2 won items left the boss loot list: the game's 2 hours to trade them are over.", "the expiry chat line for the rows with a trade time")
+eq(printed[2], "Loot Master: 1 unbound item left the boss loot list: its time on the list is over.", "the unbound row's own chat line")
 -- added alone: it still leaves
 BL:Clear()
 pickUp(0, 5)
@@ -476,7 +477,7 @@ printed = {}
 BL:Load()
 eq(#BL:Rows(), 1, "load: the unbound row with time left is back")
 eq(BL:Rows()[1] and BL:Rows()[1].expires, NOW + 600, "load: with the time it had left")
-check(printed[1] and printed[1]:find("1 won item", 1, true) ~= nil, "load: the one whose time is over is said in chat (" .. tostring(printed[1]) .. ")")
+eq(printed[1], "Loot Master: 1 unbound item left the boss loot list: its time on the list is over.", "load: the one whose time is over is said in chat")
 NOW = NOW + 601
 runTimers()
 eq(#BL:Rows(), 0, "load: the unbound row leaves at its end")
