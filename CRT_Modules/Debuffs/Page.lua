@@ -15,6 +15,18 @@ local refresh
 local PREVIEW_LABEL, STOP_LABEL = "Preview debuffs", "Stop preview"
 local look = {} -- the Look section's controls, each with refresh(on)
 
+-- The wording of the tooltip settings.
+local TEXT = {
+    tooltips = "Show tooltips on hover",
+    tooltipsHelp = "Hover a debuff on the panel to see its tooltip. It is the game's own tooltip, so it works in combat too.\n\n"
+        .. "On, the icons take the mouse when you hover them. Off, the panel stays click-through, as before.\n\n"
+        .. "Tooltip position picks where it opens: next to the icon, on a spot around it, or at the cursor. "
+        .. "Game's tooltip spot can't be used here, so the tooltip opens next to the icon.\n\n"
+        .. "The boss debuff slots (the second row) are drawn by the game, which decides their tooltips. "
+        .. "A change made in combat applies when combat ends.",
+    tooltipPicker = "The icon",
+}
+
 local function makeButton(parent, label, width, height)
     local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
     b:SetNormalFontObject(CRTFontNormal)
@@ -53,8 +65,11 @@ end
 -- the widest row on the left, the boss debuff slots checkbox, wraps at LEFT_TEXT_W).
 local LOOK_X = 440
 local LEFT_TEXT_W = 390
--- The Ignore these debuffs section starts under both columns.
+-- The Ignore these debuffs section starts under both columns; the tooltip row, last in the Look column,
+-- sits clear of its lists (its spot picker beside the Tooltip position dropdown, at TOOLTIP_POS_X).
 local IGNORE_Y = -246
+local TOOLTIP_Y = -228
+local TOOLTIP_POS_X = 630
 
 -- A dropdown for one look setting, in the Edit Mode style (UI/Controls.lua). getter and setter, when
 -- given, read and save it through Debuffs (such as Debuffs.Grow and Debuffs.SetGrow) instead of Get
@@ -311,6 +326,16 @@ local function build(pf)
     lookDropdown(pf, -168, "Grow", "grow", Debuffs.GROW_DIRECTIONS, Debuffs.Grow, Debuffs.SetGrow)
     local glow = lookCheck(pf, "Glow on dispellable debuffs", -204, "dispelGlow", LOOK_X - 4, nil, Debuffs.SetDispelGlow)
     UI.HelpRight(glow.label, "Glow on dispellable debuffs", "A dispellable debuff always gets a frame in its colour: Magic blue, Poison green, Curse purple, Disease brown, Bleed in the game's bleed colour. The glow adds a soft light in the same colour around that frame. Both need a border size above 0.")
+
+    -- Tooltips on hover (Panel.lua), and where they open: the panel's own Tooltip position (UI/Tooltip.lua).
+    local tips = lookCheck(pf, TEXT.tooltips, TOOLTIP_Y, "tooltips", LOOK_X - 4, nil, Debuffs.SetTooltips)
+    UI.HelpRight(tips.label, TEXT.tooltips, TEXT.tooltipsHelp)
+    local position = UI.TooltipPositionSetting(pf, "debuffs", { labelWidth = 100, width = 140, beside = true, pickerLabel = TEXT.tooltipPicker,
+        enabledIf = function()
+            return Debuffs:Enabled() and Debuffs:Tooltips()
+        end })
+    position.row:SetPoint("TOPLEFT", TOOLTIP_POS_X, TOOLTIP_Y)
+    look[#look + 1] = { refresh = position.refresh }
 
     -- Your own and the built-in ignored debuffs, under both columns (Ignore.lua).
     CRT.DebuffsIgnore.Build(pf, IGNORE_Y)

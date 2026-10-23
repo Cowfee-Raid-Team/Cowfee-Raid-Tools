@@ -12,6 +12,16 @@ local ADDON, CRT = ...
 -- game applies a spell ID filter to a debuff on you only for spells it flags never secret (Data.lua).
 -- Right-clicking an icon to ignore it is Click.lua's.
 --
+-- Tooltips on hover (the Show tooltips on hover box, off by default) are the game's own: an AuraButton
+-- shows its aura's tooltip when hovered (OnEnter_Intrinsic, Blizzard_AuraContainer/Blizzard_AuraButton.lua
+-- and .xml, Gethe live), filled by the game from the aura it holds, so it works in combat with secret
+-- debuff data. Addon code only turns hover on (SetMouseMotionEnabled) and gives the anchor
+-- (SetTooltipAnchorPoint: an anchor name such as ANCHOR_RIGHT and offsets on the button); the tooltip itself is
+-- forbidden to addons. The anchor comes from the "debuffs" tooltip area (UI.TooltipAnchor), with the
+-- game's own side for an aura button (below, to the left) on auto. With the box off, during a preview or
+-- with the panel off, the buttons take no hover and the panel stays click-through. Clicks are never
+-- turned on here. The boss debuff slots are the game's own frames and take no part in this.
+--
 -- The look (the LOOK table below): a dark frame with a thin bevel inside it, a big yellow countdown in
 -- the middle and white stacks at the bottom right, both with an outline. The countdown is the
 -- button's own text, which the game fills through a number formatter with the panel's rules, so it
@@ -126,6 +136,9 @@ local inCombat = false -- set from PLAYER_REGEN_DISABLED/ENABLED, for the diagno
 local elapsed = 0
 local report = { loaded = nil, template = nil, created = false, error = nil, notes = {} }
 local appliedAnchors, appliedContainer -- the settings each part was last built for
+local appliedTooltips -- the hover and tooltip anchor last given to every button
+local TOOLTIP_AREA = "debuffs" -- UI.TOOLTIP_AREAS: the panel's own Tooltip position
+local TOOLTIP_SIDE = "ANCHOR_BOTTOMLEFT" -- on auto: the game's own side for an aura button (Blizzard_AuraButton.xml)
 
 local function isSecret(value)
     return issecretvalue and issecretvalue(value) or false
@@ -583,6 +596,44 @@ local function wireDispelBorder(button, parts)
     end
 end
 
+-- Whether the buttons take hover for the game's tooltip, where it opens (UI.TooltipAnchor), and the two
+-- as one string, to tell when they change.
+local function tooltipState()
+    local on = Debuffs:Tooltips() and Debuffs:Enabled() and not previewOn
+    local anchor, x, y = CRT.UI.TooltipAnchor(TOOLTIP_AREA, TOOLTIP_SIDE, 0, 0, Debuffs:Size())
+    return on, anchor, x, y, table.concat({ tostring(on), anchor, x, y }, ":")
+end
+
+-- Hover on or off for one button, and the anchor of the game's tooltip on it, kept in combat too
+-- (SetHideTooltipInCombat). Hover only: the button's clicks are left as they are.
+local function wireTooltip(button)
+    local on, anchor, x, y = tooltipState()
+    if on then
+        try("button", button, "SetTooltipAnchorPoint", anchor, x, y)
+        try("button", button, "SetHideTooltipInCombat", false)
+    end
+    try("button", button, "SetMouseMotionEnabled", on)
+end
+
+-- Gives every button the hover and anchor again when either has changed (the box, a preview, the panel
+-- turned on or off, the icon size, or a Tooltip position here or on General Settings). Out of combat only,
+-- from layout(). A forbidden button is skipped and the change tried again at the next layout.
+local function applyTooltips()
+    local signature = select(5, tooltipState())
+    if signature == appliedTooltips then
+        return
+    end
+    local all = true
+    for button in pairs(buttons) do
+        if forbidden(button) then
+            all = false
+        else
+            wireTooltip(button)
+        end
+    end
+    appliedTooltips = all and signature or nil
+end
+
 -- Points a container button's parts at the game: what it fills, and what it leaves out (the Clear
 -- calls), so a setting turned off stops showing at once.
 local function wireButton(button, parts)
@@ -623,6 +674,7 @@ local function wireButton(button, parts)
         parts.dispel:Hide()
     end
     wireDispelBorder(button, parts)
+    wireTooltip(button)
     return true
 end
 
@@ -647,7 +699,7 @@ local function initializeButton(button)
         parts = makeParts(button)
         buttons[button] = parts
         try("button", button, "SetIcon", parts.icon)
-        pcall(button.SetMouseMotionEnabled, button, false)
+        pcall(button.SetMouseMotionEnabled, button, false) -- no hover until wireTooltip says so
     end
     wireButton(button, parts)
 end
@@ -751,6 +803,7 @@ local function layout()
     sizeFrame()
     addAnchors()
     applyContainerLayout()
+    applyTooltips()
     notifyLayout()
 end
 
@@ -1123,9 +1176,11 @@ function Panel:InfoText()
     end
     add("Encounter in progress: " .. tostring(encounterActive()) .. " (flag " .. tostring(encounter) .. "), safe to set up buttons: " .. tostring(safeToWire())
         .. ", settings waiting: " .. tostring(pendingApply) .. ", forbidden buttons skipped: " .. skipped .. " (" .. dirtyCount .. " waiting)")
-    add(format("Settings: size %d, max %d, dispel icon %s, dispel icon size %d%%, hide longer than %s, boss debuff slots %s, grow %s", Debuffs:Size(), Debuffs:MaxCount(),
-        tostring(Debuffs:DispelIcon()), math.floor(Debuffs:DispelIconScale() * 100 + 0.5), Debuffs:MaxDuration() > 0 and (Debuffs:MaxDuration() .. " s") or "off",
-        tostring(Debuffs:PrivateSlots()), Debuffs:Grow()))
+    local tipOn, tipAnchor, tipX, tipY = tooltipState()
+    add(format("Settings: size %d, max %d, dispel icon %s, dispel icon size %d%%, hide longer than %s, boss debuff slots %s, grow %s, tooltips %s (hover %s, %s %s,%s)",
+        Debuffs:Size(), Debuffs:MaxCount(), tostring(Debuffs:DispelIcon()), math.floor(Debuffs:DispelIconScale() * 100 + 0.5),
+        Debuffs:MaxDuration() > 0 and (Debuffs:MaxDuration() .. " s") or "off", tostring(Debuffs:PrivateSlots()), Debuffs:Grow(),
+        tostring(Debuffs:Tooltips()), tostring(tipOn), tostring(tipAnchor), tostring(tipX), tostring(tipY)))
     add(format("Look: swipe %s, edge %s, countdown numbers %s, timer %s (%s, %s), border %s, spacing %d (%g px from icon to icon), frame colored by dispel type, glow %s", tostring(Debuffs:Get("swipe")),
         tostring(Debuffs:Get("swipeEdge")), tostring(Debuffs:SwipeNumbers()), tostring(Debuffs:Get("timerPosition")), tostring(Debuffs:Get("timerX")),
         tostring(Debuffs:Get("timerY")), tostring(Debuffs:Get("borderScale")), Debuffs:Spacing(), Debuffs:Step(Debuffs:Size()), tostring(Debuffs:DispelGlow())))
