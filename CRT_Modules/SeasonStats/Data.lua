@@ -116,14 +116,16 @@ local function addKill(c, number, length, at)
 end
 
 -- Counts one saved pull ({ encounterID, name, difficultyID, startedAt, length, kill, number, deaths }, as the
--- Timeline saves it). phase is the furthest phase it reached, when known. Returns the counters, or nil.
-local function add(pull, phase)
+-- Timeline saves it). phase is the furthest phase it reached, when known. useNumber takes the pull's own number
+-- for pulls to first kill (the fill only): the Timeline's counter starts again when its pulls of a boss are
+-- deleted, so a live pull is numbered by these counters' own count. Returns the counters, or nil.
+local function add(pull, phase, useNumber)
     if type(pull) ~= "table" or type(pull.encounterID) ~= "number" then
         return nil
     end
     local c = counters(pull.encounterID, groupOf(pull.difficultyID), pull.name, true)
     c.pulls = c.pulls + 1
-    local number = type(pull.number) == "number" and pull.number or c.pulls
+    local number = useNumber and type(pull.number) == "number" and pull.number or c.pulls
     local length = type(pull.length) == "number" and pull.length or nil
     local at = type(pull.startedAt) == "number" and pull.startedAt or nil
     if length then
@@ -164,7 +166,7 @@ function Stats:Backfill(latest, phase)
     for _, b in ipairs(T:Bosses()) do
         local pulls = T:Pulls(b.encounterID) -- newest first
         for i = #pulls, 1, -1 do
-            add(pulls[i], pulls[i] == latest and phase or nil)
+            add(pulls[i], pulls[i] == latest and phase or nil, true)
         end
         for _, group in ipairs(Stats.GROUPS) do
             local total = T:PullCount(b.encounterID, group)
@@ -434,7 +436,8 @@ function Stats:AvoidableTrend(encounterID, group, max)
     end
     local byKey, list = {}, {}
     for _, p in ipairs(Tattle:BossPulls(encounterID)) do
-        if type(p.at) == "number" and groupOf(p.difficulty) == group then
+        -- a difficulty that wasn't readable (secret, saved as nil) belongs to no group
+        if type(p.at) == "number" and type(p.difficulty) == "number" and groupOf(p.difficulty) == group then
             local key = Stats.NightKey(p.at)
             local night = byKey[key]
             if not night then

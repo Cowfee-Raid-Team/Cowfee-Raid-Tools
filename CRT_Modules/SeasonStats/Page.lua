@@ -21,19 +21,20 @@ local L = {
     causes = 3, avoid = 4,
 }
 
--- The table's columns: key, x, w, title.
+-- The table's columns: key, x, w; each title is TEXT.columns[key].
 local COLS = {
-    { key = "name", x = 0, w = 184, title = "Boss" },
-    { key = "pulls", x = 190, w = 50, title = "Pulls" },
-    { key = "wipes", x = 244, w = 50, title = "Wipes" },
-    { key = "kills", x = 298, w = 44, title = "Kills" },
-    { key = "toKill", x = 346, w = 96, title = "To first kill" },
-    { key = "best", x = 446, w = 62, title = "Best kill" },
-    { key = "first", x = 512, w = 90, title = "First kill" },
+    { key = "name", x = 0, w = 184 },
+    { key = "pulls", x = 190, w = 50 },
+    { key = "wipes", x = 244, w = 50 },
+    { key = "kills", x = 298, w = 44 },
+    { key = "toKill", x = 346, w = 96 },
+    { key = "best", x = 446, w = 62 },
+    { key = "first", x = 512, w = 90 },
 }
 
 local TEXT = {
     title = "Season Stats",
+    columns = { name = "Boss", pulls = "Pulls", wipes = "Wipes", kills = "Kills", toKill = "To first kill", best = "Best kill", first = "First kill" },
     help = "Your raid's season, boss by boss: pulls, wipes and kills on the difficulty you pick.\n\n"
         .. "Every pull the Timeline saves counts, so keep Record on in the Timeline's settings.\n\n"
         .. "Pulls from before Season Stats are filled in once from the Timeline's saved pulls. It keeps only the newest of them, so older pulls count as wipes with no length.\n\n"
@@ -67,6 +68,10 @@ local TEXT = {
     noAvoid = "Tattlebot has no pulls on this boss on this difficulty.",
     pull = "pull", pullsWord = "pulls",
 }
+
+for _, col in ipairs(COLS) do
+    col.title = TEXT.columns[col.key]
+end
 
 local view -- the parts, once built
 local state = { boss = nil, sortKey = nil, sortDir = 1 } -- season and group are set when the page is built

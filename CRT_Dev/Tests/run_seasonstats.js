@@ -192,9 +192,18 @@ eq(night and night.phase, 2, "the night's furthest phase, from the alerts engine
 eq(night and night.longest, 400, "the night's longest pull")
 eq(g.causes[222], 2, "death causes counted by spell")
 eq(g.causes[0], 1, "an unknown cause is kept apart")
+-- deleting the boss's pulls in the Timeline resets its counter: the season's own count goes on, the first kill stays
+local firstAt = g.firstKillAt
+T:DeleteBoss(9101)
+T:SavePull({ encounterID = 9101, name = "Gamma", difficultyID = 16, startedAt = NOW + 60, length = 390, kill = true, casts = {}, deaths = {} })
+g = S:Boss(9101, "mythic")
+eq(g.pulls, 120, "after the Timeline's delete: Season Stats counts on")
+eq(g.firstKillPull, 119, "the first kill's pull number is kept")
+eq(g.firstKillAt, firstAt, "and its date")
+eq(g.kills, 2, "the new kill counts")
 -- a Normal pull of the same boss leaves Mythic alone
 T:SavePull({ encounterID = 9101, name = "Gamma", difficultyID = 14, startedAt = NOW + 600, length = 50, kill = false, casts = {}, deaths = {} })
-eq(S:Boss(9101, "mythic").pulls, 119, "another difficulty leaves Mythic alone")
+eq(S:Boss(9101, "mythic").pulls, 120, "another difficulty leaves Mythic alone")
 eq(S:Boss(9101, "nh") and S:Boss(9101, "nh").pulls, 1, "and counts on its own")
 eq(S:Boss(9101, "nh").nights[S.NightKey(NOW + 600)].phase, nil, "a pull with no alerts run has no phase")
 -- a run whose encounter ID is secret is never compared: no error, no phase
@@ -204,6 +213,22 @@ CRT.Alerts.running, CRT.Alerts.run = false, nil
 check(okSecret, "a secret encounter ID on the alerts run is skipped")
 eq(S.PhaseFor({ encounterID = 9101, startedAt = NOW + 1200 }), nil, "and gives no phase")
 check(changes >= 3, "the page hears of each change")
+
+do
+  -- the first save after an update fills from the Timeline, that pull among them, counted once and with its phase
+  local saved = CRT.db.seasonStats
+  CRT.db.seasonStats = { filled = false, bosses = {} }
+  starts = { [1] = 1000, [2] = 1050, [3] = 1100 }
+  CRT.Alerts.running, CRT.Alerts.run = true, { reason = "encounter", encounterID = 9103 }
+  alertsFire()
+  CRT.Alerts.running, CRT.Alerts.run = false, nil
+  T:SavePull({ encounterID = 9103, name = "Epsilon", difficultyID = 16, startedAt = NOW + 3, length = 250, kill = false, casts = {}, deaths = {} })
+  local ep = S:Boss(9103, "mythic")
+  eq(CRT.db.seasonStats.filled, true, "the first save after an update fills")
+  eq(ep and ep.pulls, 6, "the saved pull is counted once, with the five before it")
+  eq(ep and ep.nights[S.NightKey(NOW + 3)].phase, 3, "and keeps its phase")
+  CRT.db.seasonStats = saved
+end
 
 -- 3. Nights, phases, causes and the deaths trend ----------------------------------------------------------------------
 eq(S.NightKey(os.time({ year = 2026, month = 10, day = 21, hour = 0, min = 30 })), "2026-10-20", "a pull after midnight counts on the night before")
@@ -268,7 +293,7 @@ CRT.db.late.current = nil
 eq(S:RaidNights("test-s1"), 2, "without the running night")
 local card = S:Cards("test-s2", "mythic")
 eq(card.killed .. "/" .. card.bosses, "2/3", "bosses killed of the route")
-eq(card.pulls, 124, "pulls on the difficulty")
+eq(card.pulls, 125, "pulls on the difficulty")
 eq(card.pullTime, 1130 + S:Boss(9101, "mythic").pullTime, "time in pulls")
 eq(card.untimed, 106, "pulls with no length")
 local empty = S:Cards("test-s1", "mythic")
@@ -282,10 +307,12 @@ CRT.db.tattle.history = {
   { id = 1, startedAt = A1, season = "Season 1", pulls = { tpull(A1, 14, 1000, 500), tpull(A1 + 600, 14, 2000, 500), tpull(A1 + 900, 16, 9000, 0) } },
 }
 CRT.db.tattle.current = { id = 2, startedAt = A1 + 2 * DAY, pulls = { tpull(A1 + 2 * DAY, 14, 600, 400) } }
+CRT.db.tattle.history[1].pulls[#CRT.db.tattle.history[1].pulls + 1] = tpull(A1 + 1200, nil, 50000, 0)
 local bp = CRT.Tattle:BossPulls(9001)
-eq(#bp, 4, "Tattle:BossPulls: every pull on the boss, the running night too")
+eq(#bp, 5, "Tattle:BossPulls: every pull on the boss, the running night too")
+check(S:AvoidableTrend(9001, "nh", 4)[2].pulls == 2, "a pull with no readable difficulty is left out of the trend")
 eq(bp[1].damage, 1500, "only the counted damage (a spell Tattlebot doesn't track is left out)")
-eq(bp[4].at, A1 + 2 * DAY, "oldest first")
+eq(bp[5].at, A1 + 2 * DAY, "oldest first")
 eq(#CRT.Tattle:BossPulls(9999), 0, "a boss with no pulls: none")
 local trend = S:AvoidableTrend(9001, "nh", 4)
 eq(trend and #trend, 2, "the trend: one entry per night")
@@ -325,7 +352,7 @@ local dopts = type(dd.opts.options) == "function" and dd.opts.options() or dd.op
 eq(#dopts, 2, "Difficulty: the two groups")
 -- cards
 eq(V.cards.killed.value.text, "2 / 3", "card: bosses killed")
-eq(V.cards.pulls.value.text, "124", "card: pulls")
+eq(V.cards.pulls.value.text, "125", "card: pulls")
 eq(V.cards.nights.value.text, "0", "card: raid nights (none in this season)")
 eq(V.cards.time.value.text, S.Hours(card.pullTime), "card: time in pulls")
 -- the table, route order
@@ -404,6 +431,8 @@ for _, name in ipairs({ "Midnight", "midnight-s1", "Twin Fang", "Nek'zali", "Sea
   check(not dataSrc:find(name, 1, true) and not pageSrc:find(name, 1, true), "no season fact in the feature code: " .. name)
 end
 check(not pageSrc:find("CRTDB", 1, true), "the page saves nothing of its own")
+check(not (pageSrc:match("local COLS = (%b{})") or "title"):find("title", 1, true), "the column titles come from TEXT")
+eq(sorts[1].cols[5].title, "To first kill", "the headers still read their titles")
 
 print(string.format("%d passed, %d failed", passes, fails))
 if fails > 0 then error("failures") end
