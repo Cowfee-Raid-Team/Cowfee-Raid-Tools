@@ -199,6 +199,7 @@ db.readycheck.output = "raid" db.tattle.output = "officer" db.tattle.autoPost = 
 db.notes.trustedOnly = false db.sound.custom[1] = "secretfile.ogg" db.qol.lowHealth.customSounds[1] = "secretpulse.ogg" db.qol.lowHealth.soundChoice = "file:secretpulse.ogg"
 db.tattle.season = "secret season" db.lootmaster.responses = { { key = "secretneed" } } db.tattle.custom[12345] = "Soak" db.consumables.categoryOrder = { "flask", "food" }
 db.alerts.areas.timeline.lineColor = { 0.2, 0.4, 0.6, 1 }
+db.debuffs.ignored[389123] = true db.debuffs.ignored[442611] = true -- your own ignored debuffs travel with the settings
 -- a saved value without its default's shape is left out and counted
 db.debuffs.maxCount = "four"
 local text, err = P:ExportSettings()
@@ -220,6 +221,7 @@ check(not flat:find("settingsTab", 1, true) and not flat:find("lastPage", 1, tru
 check(not flat:find("GUILD", 1, true) and not flat:find("officer", 1, true) and sent.data.readycheck.output == nil and sent.data.tattle.autoPost == nil and sent.data.notes.trustedOnly == nil, "no report output, auto-post or note trust setting is exported")
 check(sent.data.qol.lowHealth.soundChoice == nil and sent.data.sound == nil, "no sound file name, and no sound choice naming your own file, is exported")
 check(sent.data.tattle.custom[12345] == "Soak" and sent.data.consumables.categoryOrder[1] == "flask" and sent.data.alerts.areas.timeline.lineColor[3] == 0.6, "Tattlebot spells, consumables order and the timeline line colour are exported")
+check(sent.data.debuffs and sent.data.debuffs.ignored and sent.data.debuffs.ignored[389123] == true and sent.data.debuffs.ignored[442611] == true, "your ignored debuffs are exported")
 check(sent.data.debuffs and sent.data.debuffs.size == 50 and sent.data.ui.fontSize == 16 and sent.data.alerts.bars.position.x == 10, "settings, a late setting and a position are exported")
 local senderValues = {}
 for _, e in ipairs(P.ShareEntries and P.ShareEntries() or {}) do
@@ -253,6 +255,7 @@ check(#keepDiff < #diff and not keepAll:find("position", 1, true) and keepAll:fi
 if info then P:ApplySettings(info, true) end
 check(reloads == 1, "applying reloads")
 check(alt.debuffs.size == 50 and alt.ui.font == "Morpheus" and alt.ui.fontSize == 16 and alt.readycheck.window.columns.food == false and alt.ui.layers.panel == "DIALOG" and alt.markers.disabled[3001] == true, "applied: the settings match the sender's")
+check(alt.debuffs.ignored[389123] == true and alt.debuffs.ignored[442611] == true, "applied: the sender's ignored debuffs come across")
 check(alt.debuffs.position.x == 7 and alt.notes.window.position.x == 1 and alt.alerts.bars.position == nil, "kept: the raider's window positions stay")
 check(alt.notes.list[5] and alt.notes.list[5].text == "raider note" and alt.notes.list[1] == nil, "the raider's notes are untouched")
 check(P:HasBackup(), "a backup is kept")
@@ -309,6 +312,12 @@ bad({ debuffs = { position = { point = "TOP", relativePoint = "SIDEWAYS", x = 1,
 bad({ timeline = { popout = { width = "wide", height = 600 } } }, "a window size must be a number", "timeline.popout")
 bad({ ui = { layers = { panel = "ON_TOP" } } }, "a layer must be one of the game's strata", "ui.layers")
 bad({ ui = { fontSize = "big" } }, "a late setting of the wrong type is rejected", "ui.fontSize")
+bad({ debuffs = { ignored = { abc = true } } }, "an ignored debuff keyed by text is rejected", "debuffs.ignored")
+bad({ debuffs = { ignored = { [0] = true } } }, "an ignored debuff with spell ID 0 is rejected", "debuffs.ignored")
+bad({ debuffs = { ignored = { [-5] = true } } }, "a negative spell ID is rejected", "debuffs.ignored")
+bad({ debuffs = { ignored = { [12.5] = true } } }, "a spell ID with decimals is rejected", "debuffs.ignored")
+bad({ debuffs = { ignored = { [57723] = "yes" } } }, "an ignored debuff that isn't true is rejected", "debuffs.ignored")
+bad({ debuffs = { ignored = 57723 } }, "an ignored list that isn't a table is rejected", "debuffs.ignored")
 rejects(craft("just text"), "a payload that isn't a table is rejected", P.TEXT.damaged)
 
 -- A newer version's layer or position field is left out and counted, and the rest still applies.

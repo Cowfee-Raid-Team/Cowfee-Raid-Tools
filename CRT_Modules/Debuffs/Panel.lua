@@ -8,7 +8,9 @@ local ADDON, CRT = ...
 -- buttons this addon builds (icon, swipe, time, stacks, dispel type) without handing the values to
 -- addon code, which is how it keeps working in combat, when debuff details are secret. Its candidate
 -- filters keep only debuffs not cast by you or your pet, no longer than Hide debuffs longer than, and
--- none of the excluded lockouts (Debuffs.EXCLUDED_SPELLS), shortest first.
+-- none of the excluded lockouts (Debuffs.EXCLUDED_SPELLS) or your ignored debuffs, shortest first. The
+-- game applies a spell ID filter to a debuff on you only for spells it flags never secret (Data.lua).
+-- Right-clicking an icon to ignore it is Click.lua's.
 --
 -- The look (the LOOK table below): a dark frame with a thin bevel inside it, a big yellow countdown in
 -- the middle and white stacks at the bottom right, both with an outline. The countdown is the
@@ -31,7 +33,9 @@ local ADDON, CRT = ...
 --
 -- The game's boss debuff slots (C_UnitAuras.AddPrivateAuraAnchor, where the game draws a private aura
 -- itself) are kept as an optional second row, off by default, in case boss mechanic debuffs don't
--- reach the container. Whether they do is checked in game.
+-- reach the container. Whether they do is checked in game. The slots can't be filtered: the anchor
+-- takes no spell filter (AddPrivateAuraAnchorArgs), and the game never tells addon code which spell is
+-- in a slot.
 --
 -- The panel is faded with alpha, not hidden, when it is turned off, because showing and hiding frames
 -- can be blocked in combat. The container stays shown and enabled throughout. Positions and
@@ -45,8 +49,20 @@ local ADDON, CRT = ...
 -- the container or a button checks forbidden() first.
 
 local Debuffs = CRT.Debuffs
-local Panel = {}
+local Panel = { layoutListeners = {} }
 CRT.DebuffPanel = Panel
+
+-- fn() runs after each layout, which happens only when it is safe to wire (out of combat, no
+-- encounter): the right-click spots over the icons follow it (Click.lua).
+function Panel:OnLayout(fn)
+    self.layoutListeners[#self.layoutListeners + 1] = fn
+end
+
+local function notifyLayout()
+    for _, fn in ipairs(Panel.layoutListeners) do
+        fn()
+    end
+end
 
 local CONTAINER_ADDON = "Blizzard_AuraContainer"
 local TEMPLATES = { "CustomAuraContainerTemplate, DisableUntrustedLayoutScriptsTemplate", "CustomAuraContainerTemplate" }
@@ -157,6 +173,7 @@ end
 local function safeToWire()
     return not InCombatLockdown() and not encounterActive()
 end
+Panel.SafeToWire = safeToWire
 
 local function rowWidth()
     local size, count = Debuffs:Size(), Debuffs:MaxCount()
@@ -172,6 +189,12 @@ local function rowPoint(index)
         return "TOPRIGHT", -x
     end
     return "TOPLEFT", x
+end
+Panel.RowPoint = rowPoint
+
+-- The panel's frame, or nil before it is built.
+function Panel:Frame()
+    return frame
 end
 
 -- The gap above the boss debuff slots: room for the row's timer text, which grows with the icon.
@@ -728,6 +751,7 @@ local function layout()
     sizeFrame()
     addAnchors()
     applyContainerLayout()
+    notifyLayout()
 end
 
 -- Preview tiles ----------------------------------------------------------------------
@@ -1126,6 +1150,15 @@ function Panel:InfoText()
     add("  created: " .. tostring(container ~= nil) .. (report.template and (" (template " .. report.template .. ")") or "")
         .. ", aura group added: " .. tostring(report.created) .. ", sort: " .. tostring(report.sort))
     add("  group filter: HARMFUL, candidate filters: " .. describe(Debuffs:CandidateFilters(), 2))
+    -- The game leaves out a spell ID only for a spell it flags never secret (Data.lua, Debuffs.CanHide).
+    local hideable = {}
+    for _, list in ipairs({ Debuffs:BuiltInList(), Debuffs:IgnoredList() }) do
+        for _, id in ipairs(list) do
+            local can = Debuffs.CanHide(id)
+            hideable[#hideable + 1] = id .. "=" .. (can == true and "yes" or can == false and "no" or "?")
+        end
+    end
+    add("  the game lets addons hide (never secret): " .. table.concat(hideable, ", "))
     add("  dispel icon style: " .. tostring(dispelStyle()) .. ", dispel border style: " .. tostring(dispelStyle("PreserveAsset")) .. ", time formatter: " .. tostring(timeFormatter() ~= nil))
     if container and forbidden(container) then
         add("  the container is forbidden right now (an encounter), so its frames can't be read")
