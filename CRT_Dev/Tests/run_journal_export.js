@@ -15,11 +15,11 @@ function CRT:Print(m) printed[#printed + 1] = m end
 assert(load(refSrc, "Reference.lua"))("CowfeeRaidTools", CRT)
 CRT.TimelineJournal = { FromJournalEncounter = function(id)
   if id == 2700 then return "Nek'zali the Soulcoiler", 3470, {
-    { name = "Soulcoil Well", spellID = 1284032, tags = {}, stage = "Stage One: Soulcoiler Initiation" },
-    { name = "Soulcoil Rite", spellID = 1284033, tags = { "healer" }, stage = "Stage One: Soulcoiler Initiation" },
-    { name = "Essence Rend", spellID = 1287426, tags = { "magic", "healer" }, stage = "Stage One: Soulcoiler Initiation" },
+    { name = "Soulcoil Well", spellID = 1284032, sectionID = 31, tags = {}, stage = "Stage One: Soulcoiler Initiation" },
+    { name = "Soulcoil Rite", spellID = 1284033, sectionID = 32, tags = { "healer" }, stage = "Stage One: Soulcoiler Initiation" },
+    { name = "Essence Rend", spellID = 1287426, sectionID = 33, tags = { "magic", "healer" }, stage = "Stage One: Soulcoiler Initiation" },
     { name = "Ritual Burn", spellID = 1297624, tags = { "mythic" }, stage = "Intermission: Ritual of Awakening" },
-    { name = "Soul Transfer", spellID = 1292248, tags = { "tank" }, stage = "Stage Two: Awakened" },
+    { name = "Soul Transfer", spellID = 1292248, sectionID = 35, tags = { "tank" }, stage = "Stage Two: Awakened" },
   }, { "Stage One: Soulcoiler Initiation", "Intermission: Ritual of Awakening", "Stage Two: Awakened" } end
 end }
 CRT.ConsumablesTools = { ShowText = function(_, title, text, action) shown = { title = title, text = text, action = action } end }
@@ -33,12 +33,14 @@ local function check(name, ok) print((ok and "ok " or "FAIL ") .. name) if not o
 local text, name = X.Build(2700, 16)
 check("names the boss", name == "Nek'zali the Soulcoiler" and text:find("^Boss: Nek'zali the Soulcoiler\n"))
 check("difficulty and encounter lines", text:find("\nDifficulty: Mythic\n", 1, true) and text:find("\nEncounter: 3470\n", 1, true))
-check("each ability with its spell ID, a real line", text:find("\nSoulcoil Well [spell 1284032]:", 1, true) and text:find("\nSoulcoil Rite [spell 1284033] (tags healer):", 1, true) and not text:find("\n# Soulcoil", 1, true))
-check("the Journal's icons as tags, dispel and Mythic as types too", text:find("\nEssence Rend [spell 1287426] (type dispel, tags magic healer):", 1, true) and text:find("\nRitual Burn [spell 1297624] (type mythic, tags mythic):", 1, true))
+check("each ability with its spell and Journal section IDs, a real line", text:find("\nSoulcoil Well [spell 1284032] [section 31]:", 1, true) and text:find("\nSoulcoil Rite [spell 1284033] [section 32] (tags healer):", 1, true) and not text:find("\n# Soulcoil", 1, true))
+check("the Journal's icons as tags, dispel and Mythic as types too", text:find("\nEssence Rend [spell 1287426] [section 33] (type dispel, tags magic healer):", 1, true) and text:find("\nRitual Burn [spell 1297624] (type mythic, tags mythic):", 1, true))
+check("a row with no section gets no [section]", not text:find("1297624] [section", 1, true))
 check("the first stage a heading, the later ones Phase lines with no time yet", text:find("\n# Stage One: Soulcoiler Initiation\n", 1, true) and text:find("\nPhase: P1.5 (Intermission: Ritual of Awakening)\n", 1, true) and text:find("\nPhase: P2 (Stage Two: Awakened)\n", 1, true) and not text:find("Phase: P1 ", 1, true))
 -- as written it is a reference: it saves at once, abilities without times and phases without a start
 local ref, errs = CRT.TimelineReference.Parse(text)
 check("it reads as a reference at once: " .. table.concat(errs or {}, "; "), ref and ref.boss == "Nek'zali the Soulcoiler" and ref.difficulty == "Mythic" and ref.encounterID == 3470 and #ref.rows == 5)
+check("the sections read back", ref and ref.rows[1].sectionID == 31 and ref.rows[3].sectionID == 33 and ref.rows[4].sectionID == nil)
 check("its rows have no casts yet, typed and tagged", ref and #ref.rows[3].casts == 0 and ref.rows[3].types[1] == "dispel" and ref.rows[3].tags[1] == "magic" and ref.rows[3].tags[2] == "healer")
 check("the stages are phases waiting for a start, drawn nowhere yet", ref and #ref.phases == 0 and #ref.pending == 2 and ref.pending[1].label == "P1.5" and ref.pending[1].title == "Intermission: Ritual of Awakening")
 -- given a start, a phase is drawn

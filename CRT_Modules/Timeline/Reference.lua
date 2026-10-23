@@ -10,6 +10,8 @@ local ADDON, CRT = ...
 --   Phase: [label] time   a phase line, the time is the last word
 --   Name [spell N] (type raid soak, lead N, color rrggbb): time, time+bar, ...   an ability row (its color shows
 --                                                   only with Use custom colours on: Reference.RowColor)
+--   Name [spell N] [section N]: ...                 [section N], in either order with [spell N], is the row's
+--                                                   Encounter Journal section (row.sectionID, AbilityTip's text)
 --   Order: Empowered 1, Empowered 2 = Gebbo, Nama   phases whose parts the raid picks the order of,
 --                                                   with rows tagged (part Gebbo); see Chosen order
 -- A time is m:ss or plain seconds. Blank lines and lines starting with # are skipped. Every line
@@ -242,7 +244,7 @@ local function readTimes(row, text)
     -- no times yet is allowed: the row is drawn empty until they are added (the Journal's export writes these)
 end
 
--- One ability line, "Name [spell N] (options): times". Returns the row, or nil and a reason.
+-- One ability line, "Name [spell N] [section N] (options): times". Returns the row, or nil and a reason.
 local function readAbility(line)
     local name, rest = line:match("^([^:%[%(]+)(.*)$")
     name = name and trim(name)
@@ -255,10 +257,16 @@ local function readAbility(line)
         local first = rest:sub(1, 1)
         if first == "[" then
             local id, after = rest:match("^%[%s*[Ss][Pp][Ee][Ll][Ll]%s+(%d+)%s*%]%s*(.*)$")
-            if not id then
-                return nil, "expected [spell N]"
+            local section, afterSection = rest:match("^%[%s*[Ss][Ee][Cc][Tt][Ii][Oo][Nn]%s+(%d+)%s*%]%s*(.*)$")
+            if id then
+                row.spellID = tonumber(id)
+            elseif section then
+                -- its Encounter Journal section, for the ability tooltip's Journal text (Timeline/AbilityTip.lua)
+                row.sectionID = tonumber(section)
+                after = afterSection
+            else
+                return nil, "expected [spell N] or [section N]"
             end
-            row.spellID = tonumber(id)
             rest = after
         elseif first == "(" then
             local opts, after = rest:match("^%((.-)%)%s*(.*)$")
@@ -820,18 +828,23 @@ function Reference.Header(text)
     return boss, encounterID
 end
 
--- Adds [spell N] to each ability line that has none and whose name matches one of rows (the boss's
--- Journal abilities, { spellID, name }), by name in any case. Every other line is kept as it is.
--- Returns the new text and how many lines got a spell ID.
+-- Adds [spell N] and [section N] to each ability line whose name matches one of rows (the boss's Journal
+-- abilities, { spellID, name, sectionID }), by name in any case: the spell when the line has none, the Journal
+-- section when it has none (the one of the line's own spell, else of the row its name matches). A [spell] or
+-- [section] the line already has is kept, and every other line is kept as it is. Returns the new text and how
+-- many lines got an ID.
 function Reference.FillSpellIDs(text, rows)
     if type(text) ~= "string" then
         return text, 0
     end
-    local byName = {}
+    local byName, sectionOf = {}, {}
     for _, row in ipairs(rows or {}) do
         local key = norm(row.name)
         if key and key ~= "" and type(row.spellID) == "number" and row.spellID > 0 and not byName[key] then
-            byName[key] = row.spellID
+            byName[key] = row
+        end
+        if type(row.spellID) == "number" and type(row.sectionID) == "number" and not sectionOf[row.spellID] then
+            sectionOf[row.spellID] = row.sectionID
         end
     end
     local out, filled = {}, 0
@@ -840,12 +853,23 @@ function Reference.FillSpellIDs(text, rows)
         local line = cr == "" and raw or raw:sub(1, -2)
         local indent, name, rest = line:match("^(%s*)([^:%[%(]+)(.*)$")
         local key = name and line:match("^%s*(%a+)%s*:")
-        local id = name and byName[norm((name:gsub("\194\160", " ")))]
-        if id and not HEADERS[key and key:lower() or ""] and not rest:lower():find("%[%s*spell")
-            and line:sub(#indent + 1, #indent + 1) ~= "#" then
-            rest = trim(rest)
-            line = indent .. trim(name) .. " [spell " .. id .. "]" .. (rest:sub(1, 1) == ":" and "" or " ") .. rest
-            filled = filled + 1
+        if name and not HEADERS[key and key:lower() or ""] and line:sub(#indent + 1, #indent + 1) ~= "#" then
+            local match = byName[norm((name:gsub("\194\160", " ")))]
+            local lower = rest:lower()
+            local own = tonumber(lower:match("%[%s*spell%s+(%d+)%s*%]"))
+            local addSpell = match and not own and match.spellID or nil
+            local section = not lower:find("%[%s*section") and (sectionOf[own or (match and match.spellID) or 0]) or nil
+            if addSpell or section then
+                -- the new IDs go right after the name, or after the line's own [spell N] when it starts with one
+                local head, tail = trim(name), trim(rest)
+                local given, after = tail:match("^(%[%s*[Ss][Pp][Ee][Ll][Ll]%s+%d+%s*%])%s*(.*)$")
+                if given and not addSpell then
+                    head, tail = head .. " " .. given, after
+                end
+                local ids = (addSpell and (" [spell " .. addSpell .. "]") or "") .. (section and (" [section " .. section .. "]") or "")
+                line = indent .. head .. ids .. (tail:sub(1, 1) == ":" and "" or " ") .. tail
+                filled = filled + 1
+            end
         end
         out[#out + 1] = line .. cr
     end

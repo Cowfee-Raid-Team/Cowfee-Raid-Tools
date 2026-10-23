@@ -518,13 +518,13 @@ function ReferencePage.Build(f, ctx)
         else
             local text, n = Reference.FillSpellIDs(edit:GetText(), rows)
             edit:SetText(text)
-            status:SetText(n > 0 and ("Added " .. n .. " spell ID" .. (n == 1 and "" or "s") .. ". Save to keep them.")
+            status:SetText(n > 0 and ("Added IDs to " .. n .. " line" .. (n == 1 and "" or "s") .. ". Save to keep them.")
                 or "No more lines match a Journal ability.")
             status:SetTextColor(UI.Color("good"))
         end
         refreshAbilities()
     end)
-    UI.HelpRight(fillIDs, "Fill spell IDs", "Adds [spell N] to every line whose name matches one of the boss's Journal abilities, so its icon and tooltip are fixed. Lines that already have one, or match nothing, are left alone. The Journal is read out of combat with its window closed.")
+    UI.HelpRight(fillIDs, "Fill spell IDs", "Adds [spell N] and [section N] to every line whose name matches one of the boss's Journal abilities, so its icon, tooltip and Journal text are fixed. IDs a line already has are kept, and lines that match nothing are left alone. The Journal is read out of combat with its window closed.")
 
     -- Right: the selected boss's references.
     local listLabel = label(f, "")

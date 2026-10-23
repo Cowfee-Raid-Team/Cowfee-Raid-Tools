@@ -50,9 +50,11 @@ function Export.Options(tags)
     return " (" .. table.concat(parts, ", ") .. ")"
 end
 
--- An ability's line: "Name [spell N] (tags ...):".
+-- An ability's line: "Name [spell N] [section N] (tags ...):", the section its Journal text is read from by the
+-- ability tooltip (Timeline/AbilityTip.lua).
 local function abilityLine(row)
-    return row.name .. " [spell " .. row.spellID .. "]" .. Export.Options(row.tags) .. ":"
+    local section = type(row.sectionID) == "number" and (" [section " .. row.sectionID .. "]") or ""
+    return row.name .. " [spell " .. row.spellID .. "]" .. section .. Export.Options(row.tags) .. ":"
 end
 
 -- A boss with the older Abilities page (raids before Warlords of Draenor): its abilities in Journal order, with a
