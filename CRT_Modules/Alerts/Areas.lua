@@ -86,6 +86,10 @@ local TEXT = {
     up = "Up",
     left = "Left",
     right = "Right",
+    center = "Center",
+    none = "None",
+    thin = "Outline",
+    thick = "Thick",
 }
 
 local REFRESH_SECONDS = 0.1
@@ -218,15 +222,43 @@ function Areas.CustomColors()
     return Alerts.CustomColors and Alerts:CustomColors() or false
 end
 
--- Sets a font string to a font from CRT:FontList (Friz Quadrata when the name is gone), only when it
--- changed, so a refresh does not look the font up again.
-function Areas.SetFont(fontString, name, size, outline)
+-- The choices every Font, Outline and Align row offers, shared by the areas and the note callout.
+Areas.OUTLINE_OPTIONS = {
+    { key = "", label = TEXT.none },
+    { key = "OUTLINE", label = TEXT.thin },
+    { key = "THICKOUTLINE", label = TEXT.thick },
+}
+Areas.ALIGN_OPTIONS = {
+    { key = "LEFT", label = TEXT.left },
+    { key = "CENTER", label = TEXT.center },
+    { key = "RIGHT", label = TEXT.right },
+}
+Areas.OUTLINES = OUTLINES
+
+-- A Font row's choices: every CRT:FontList font, read each time the menu opens so fonts another addon
+-- shares later appear. defaultLabel, when given, adds a first choice with the key "default" (the addon's
+-- own font, for a display that passes its path to Areas.SetFont).
+function Areas.FontOptions(defaultLabel)
+    local out = {}
+    if defaultLabel then
+        out[1] = { key = "default", label = defaultLabel }
+    end
+    for _, font in ipairs(CRT:FontList()) do
+        out[#out + 1] = { key = font.name, label = font.name }
+    end
+    return out
+end
+
+-- Sets a font string to a font from CRT:FontList, only when it changed, so a refresh does not look the font
+-- up again. A name with no file ("default", or a shared font that is gone) takes fallbackPath when given,
+-- else Friz Quadrata.
+function Areas.SetFont(fontString, name, size, outline, fallbackPath)
     outline = OUTLINES[outline] and outline or ""
-    local key = tostring(name) .. "|" .. size .. "|" .. outline
+    local key = tostring(name) .. "|" .. size .. "|" .. outline .. "|" .. tostring(fallbackPath)
     if fontString.crtFontKey == key then
         return
     end
-    local path = CRT:FontPath(name) or DEFAULT_FONT
+    local path = CRT:FontPath(name) or fallbackPath or DEFAULT_FONT
     fontString:SetFont(path, size, outline)
     -- A file that fails to load leaves the font unset, which GetFont shows.
     if not fontString:GetFont() then

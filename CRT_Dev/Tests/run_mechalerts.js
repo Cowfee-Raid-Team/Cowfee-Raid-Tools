@@ -48,7 +48,7 @@ local function mock(kind, parent, template)
     if k == "SetTextColor" then return function(self, r, g, b) rawset(self, "textColor", { r, g, b }) end end
     if k == "SetWordWrap" then return function(self, on) rawset(self, "wordWrap", on) end end
     -- a font string's words, 6 a letter
-    if k == "GetUnboundedStringWidth" then return function(self) return #(rawget(self, "text") or "") * 6 end end
+    if k == "GetUnboundedStringWidth" then return function(self) return #(rawget(self, "text") or "") * 6 * (TEXT_SCALE or 1) end end
     if k == "SetMultiLine" then return function(self, on) rawset(self, "multiLine", on) end end
     if k == "SetWidth" then return function(self, w) rawset(self, "w", w) end end
     if k == "SetHeight" then return function(self, h) rawset(self, "h", h) end end
@@ -306,19 +306,33 @@ check("mech: Show as names fit the left column, in two rows", function()
   end
   -- the left column: from the panel's inset to half the panel (CRT_Modules/Notes/Reminders.lua L.COL_W)
   local colRight = 12 + math.floor((p.frame.w - 24 - 22) / 2)
-  for _, rowKeys in ipairs({ { "alert", "text" }, { "icon", "bar", "circle", "timeline" } }) do
-    local right, y = 0, nil
-    for _, k in ipairs(rowKeys) do
-      local c = p.checks[k]
-      local pt = c.pts[#c.pts]
-      assert(pt[2] >= right, k .. " starts after the label before it")
-      assert(y == nil or pt[3] == y, k .. " on its row")
-      y = pt[3]
-      assert(c.label.w == #c.label.text * 6, k .. ": its label as wide as its words, never cut")
-      right = pt[2] + 26 + c.label.w
+  -- at the default size every label is as wide as its words; at the largest (about 1.75 times, General
+  -- Settings' 22 in Modern) they are narrowed to fit, measured again on the next draw
+  local function rows(scale, cut)
+    for _, rowKeys in ipairs({ { "alert", "text" }, { "icon", "bar", "circle", "timeline" } }) do
+      local right, y = 0, nil
+      for _, k in ipairs(rowKeys) do
+        local c = p.checks[k]
+        local pt = c.pts[#c.pts]
+        assert(pt[2] >= right, k .. " starts after the label before it (" .. scale .. ")")
+        assert(y == nil or pt[3] == y, k .. " on its row")
+        y = pt[3]
+        local words = math.ceil(#c.label.text * 6 * scale)
+        assert(cut or c.label.w == words, k .. ": its label as wide as its words, never cut")
+        assert(c.label.w <= words and c.label.wordWrap == false, k .. ": one line, never wider than its words")
+        right = pt[2] + 26 + c.label.w
+      end
+      assert(right <= colRight, "the row ends inside the left column at " .. scale .. ": " .. right .. " of " .. colRight)
     end
-    assert(right <= colRight, "the row ends inside the left column: " .. right .. " of " .. colRight)
   end
+  rows(1, false)
+  TEXT_SCALE = 1.75
+  click(f.rows[2].frame)
+  rows(1.75, true)
+  assert(p.checks.alert.label.w < math.ceil(#p.checks.alert.label.text * 6 * 1.75), "cut to fit at the largest size")
+  TEXT_SCALE = nil
+  click(f.rows[1].frame)
+  rows(1, false)
   assert(#errors == 0, tostring(errors[1]))
 end)
 

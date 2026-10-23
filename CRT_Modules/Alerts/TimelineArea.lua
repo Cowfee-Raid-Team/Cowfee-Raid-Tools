@@ -699,14 +699,6 @@ local function sample(now)
     return out
 end
 
-local function fontOptions()
-    local out = {}
-    for _, font in ipairs(CRT:FontList()) do
-        out[#out + 1] = { key = font.name, label = font.name }
-    end
-    return out
-end
-
 local function slider(panel, s, label, key, format)
     local l = LIMITS[key]
     panel:Slider(label, {
@@ -837,7 +829,7 @@ local function settingsLook(panel, s)
     })
     panel:Dropdown(TEXT.font, {
         -- read each time the menu opens, so fonts another addon shares later appear
-        options = fontOptions,
+        options = Areas.FontOptions,
         get = function()
             return fontName(s)
         end,

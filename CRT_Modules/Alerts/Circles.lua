@@ -17,9 +17,6 @@ local TEXT = {
     font = "Font",
     textSize = "Text size",
     outline = "Outline",
-    none = "None",
-    thin = "Outline",
-    thick = "Thick",
     thickness = "Ring thickness",
     ringThin = "Thin",
     ringMedium = "Medium",
@@ -57,12 +54,6 @@ local WHITE = { 1, 1, 1 }
 local SAMPLE_TYPES = { "spread", "generic", "soak" } -- the Previews' rings: Spread, Stack on the boss, Soak
 local SAMPLE_GAP = 1         -- seconds between preview ticks that mean it was turned off
 local SAMPLE_SPAN = 14       -- the preview starts over this long after it began
-
-local OUTLINE_OPTIONS = {
-    { key = "", label = TEXT.none },
-    { key = "OUTLINE", label = TEXT.thin },
-    { key = "THICKOUTLINE", label = TEXT.thick },
-}
 
 local THICKNESS_OPTIONS = {
     { key = "thin", label = TEXT.ringThin },
@@ -238,14 +229,7 @@ local function settings(panel, s)
         return s.shown and Areas.CustomColors() and true or false
     end)
     panel:Dropdown(TEXT.font, {
-        -- Read each time the menu opens, so fonts another addon shares later appear.
-        options = function()
-            local out = {}
-            for _, font in ipairs(CRT:FontList()) do
-                out[#out + 1] = { key = font.name, label = font.name }
-            end
-            return out
-        end,
+        options = Areas.FontOptions,
         get = function()
             return s.font or DEFAULT_FONT_NAME
         end,
@@ -264,7 +248,7 @@ local function settings(panel, s)
         end,
     })
     panel:Dropdown(TEXT.outline, {
-        options = OUTLINE_OPTIONS,
+        options = Areas.OUTLINE_OPTIONS,
         get = function()
             return s.outline or ""
         end,

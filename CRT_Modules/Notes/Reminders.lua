@@ -572,10 +572,29 @@ local function idText(d)
     return id and tostring(id) or ""
 end
 
+-- The Show as boxes in their two rows, by their labels' width, inside the left column at any text size
+-- (Alerts/Draft.lua FlowShowAs). Measured on every draw, so a text size changed since is followed.
+local function placeShowAs()
+    local rows = {}
+    for r, keys in ipairs(CRT.AlertDraft.SHOW_ROWS) do
+        rows[r] = {}
+        for i, key in ipairs(keys) do
+            rows[r][i] = panel.checks[key]
+        end
+    end
+    CRT.AlertDraft.FlowShowAs(rows, L.INSET - 4, L.INSET + L.COL_W, L.CHECK_SIZE + 2, L.SHOW_GAP, function(check, x, r)
+        check:ClearAllPoints()
+        check:SetPoint("TOPLEFT", x, L.COL_Y - 20 - (r - 1) * 26)
+    end)
+end
+
 -- Everything on the panel from the draft, except a box being typed in.
 local function drawPanel()
     if not panel.frame then
         return
+    end
+    if panel.checks then
+        placeShowAs()
     end
     local d = cur.draft
     panel.content:SetShown(d ~= nil)
@@ -1298,24 +1317,18 @@ local function buildPanel(f)
 
     -- Left column: Show as, Also
     heading(p, TEXT.showAs, L.INSET, L.COL_Y, TEXT.showAsHelp)
-    -- two rows: the two long names, then the four short ones, each box after the one before it by its
-    -- label's width
+    -- two rows (Draft.SHOW_ROWS), placed by placeShowAs
     panel.checks = {}
-    for r, specs in ipairs({ { { "alert", TEXT.callout }, { "text", TEXT.showText } },
-        { { "icon", TEXT.showIcon }, { "bar", TEXT.bar }, { "circle", TEXT.circle }, { "timeline", TEXT.timeline } } }) do
-        local x = L.INSET - 4
-        for _, spec in ipairs(specs) do
-            local key = spec[1]
-            local check = makeCheck(p, spec[2], x, L.COL_Y - 20 - (r - 1) * 26, change(function(on)
+    local labels = { alert = TEXT.callout, text = TEXT.showText, icon = TEXT.showIcon, bar = TEXT.bar, circle = TEXT.circle,
+        timeline = TEXT.timeline }
+    for _, keys in ipairs(Draft.SHOW_ROWS) do
+        for _, key in ipairs(keys) do
+            panel.checks[key] = makeCheck(p, labels[key], L.INSET - 4, L.COL_Y, change(function(on)
                 cur.draft.show[key] = on
             end))
-            local fs = check.label
-            local words = math.ceil(tonumber(fs.GetUnboundedStringWidth and fs:GetUnboundedStringWidth() or fs:GetStringWidth()) or 0)
-            fs:SetWidth(words)
-            panel.checks[key] = check
-            x = x + L.CHECK_SIZE + 2 + words + L.SHOW_GAP
         end
     end
+    placeShowAs()
     heading(p, TEXT.also, L.INSET, L.COL_Y - 78)
     panel.also = {
         speak = makeCheck(p, TEXT.speak, L.INSET - 4, L.COL_Y - 98, change(function(on) cur.draft.speak = on end)),

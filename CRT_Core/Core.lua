@@ -613,6 +613,27 @@ function CRT.ReadOldTooltipSettings(db)
     end
 end
 
+-- The note callout's size and outline are new settings (notes.alert.fontSize, outline); before them it was drawn
+-- in the addon's large font. A save from before, one with a notes.alert but no fontSize, keeps that look, once:
+-- CalloutNeedsLook(db), read before the defaults fill in 20, says so, and SeedCalloutLook(db), after
+-- CRT:ApplyFonts has sized the large font to the text size, copies its size and General Settings' outline. A new
+-- install takes the defaults.
+local CALLOUT_OUTLINES = { [""] = true, OUTLINE = true, THICKOUTLINE = true }
+local CALLOUT_MIN, CALLOUT_MAX = 10, 60 -- Notes/Alert.lua's Size range
+
+function CRT.CalloutNeedsLook(db)
+    local notes = db.notes
+    return type(notes) == "table" and type(notes.alert) == "table" and notes.alert.fontSize == nil
+end
+
+function CRT.SeedCalloutLook(db)
+    local alert = db.notes.alert
+    local _, size = CRTFontLarge:GetFont()
+    alert.fontSize = math.max(CALLOUT_MIN, math.min(CALLOUT_MAX, math.floor((tonumber(size) or 20) + 0.5)))
+    local outline = type(db.ui) == "table" and db.ui.outline
+    alert.outline = CALLOUT_OUTLINES[outline] and outline or ""
+end
+
 local frame = CreateFrame("Frame")
 frame:RegisterEvent("ADDON_LOADED")
 frame:SetScript("OnEvent", function(self, event, arg1)
@@ -634,6 +655,7 @@ frame:SetScript("OnEvent", function(self, event, arg1)
             lm.itemTooltip = (old == "left" and "area") or (old == "default" and "game") or old
         end
         CRT.ReadOldTooltipSettings(CRTDB)
+        local seedCallout = CRT.CalloutNeedsLook(CRTDB) -- before the defaults fill in its size
         copyDefaults(defaults, CRTDB)
         CRT:UseTheme(CRT:ResolveTheme(CRTDB.ui))
         -- once: the old default of axis labels every 30 seconds becomes Auto, which follows the zoom
@@ -646,6 +668,9 @@ frame:SetScript("OnEvent", function(self, event, arg1)
         end
         CRT.db = CRTDB
         CRT:ApplyFonts()
+        if seedCallout then
+            CRT.SeedCalloutLook(CRTDB) -- the large font is at the text size now
+        end
         self:UnregisterEvent("ADDON_LOADED")
         self:RegisterEvent("PLAYER_LOGIN")
     elseif event == "PLAYER_LOGIN" then

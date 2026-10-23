@@ -159,6 +159,37 @@ function Draft.SetSpeakAt(draft, key)
     draft.speakAt = key == "zero" and "zero" or nil
 end
 
+-- The Show as boxes, in the rows the alert editor and Mech Alerts lay them out in: the two long names, then
+-- the four short ones.
+Draft.SHOW_ROWS = { { "alert", "text" }, { "icon", "bar", "circle", "timeline" } }
+
+-- Lays Show as boxes out by their labels' width: rows is a list of rows of checks (each with check.label, a
+-- font string beside it), each row from x0, a box boxW wide (with the gap before its label), then its label,
+-- then gap. A row whose words don't fit before `right` (a large text size) has its labels narrowed in
+-- proportion, cut with "...", so nothing passes the edge. place(check, x, rowIndex) puts each box. Measured
+-- each time it runs, so call it again when the text size may have changed.
+function Draft.FlowShowAs(rows, x0, right, boxW, gap, place)
+    for r, checks in ipairs(rows) do
+        local words, total = {}, 0
+        for i, check in ipairs(checks) do
+            local fs = check.label
+            local w = fs.GetUnboundedStringWidth and fs:GetUnboundedStringWidth() or fs:GetStringWidth()
+            words[i] = math.ceil(tonumber(w) or 0)
+            total = total + words[i]
+        end
+        local room = right - x0 - #checks * boxW - (#checks - 1) * gap
+        local scale = (total > room and total > 0) and math.max(0, room) / total or 1
+        local x = x0
+        for i, check in ipairs(checks) do
+            local w = math.floor(words[i] * scale)
+            check.label:SetWordWrap(false)
+            check.label:SetWidth(w)
+            place(check, x, r)
+            x = x + boxW + w + gap
+        end
+    end
+end
+
 -- A saved reminder into the draft. Its times text is kept until Relative to or Time is touched.
 function Draft.FromReminder(draft, r)
     draft.spellID, draft.boss, draft.difficulty = r.spellID, r.boss, r.difficulty

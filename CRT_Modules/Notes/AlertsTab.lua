@@ -80,6 +80,8 @@ local RIGHT_X = math.floor(UI.PAGE_W / 2) + COLUMN_GAP / 2
 local TAB_H = UI.PAGE_H - 66
 local ROWS_TOP = 68      -- the rows start this far down the tab, under the dropdown
 local ROWS_BOTTOM = 4    -- and end this far above its bottom: room for the bars' 13 rows without scrolling
+local KIND_DROP_MIN_W = 180 -- the Configuration dropdown at its narrowest
+local KIND_DROP_PAD = 40    -- the dropdown's text inset and arrow, beside its longest choice
 local TEST_ICONS = { 136243, 135808, 136116 }
 local TEST_TIMES = { 8, 12, 16 } -- seconds until each test alert reaches 0
 local TEST_HOLD = 1
@@ -293,11 +295,20 @@ local function build(pf)
     -- Right: how each kind of alert looks.
     local configTitle = heading(pf, RIGHT_X, -14, TEXT.config)
     UI.HelpRight(configTitle, TEXT.config, TEXT.configHelp)
-    -- No label: the heading says what the list is.
+    -- No label: the heading says what the list is. As wide as its longest choice, in the dropdown's font,
+    -- with room for the text inset and the arrow; never past the page.
+    local measure = pf:CreateFontString(nil, "OVERLAY", "CRTFontStandardHighlight")
+    local widest = 0
+    for _, kind in ipairs(KINDS) do
+        measure:SetText(kind.label)
+        local w = measure.GetUnboundedStringWidth and measure:GetUnboundedStringWidth() or measure:GetStringWidth()
+        widest = math.max(widest, tonumber(w) or 0)
+    end
+    measure:Hide()
     kindDrop = UI.Dropdown(pf, "", {
         options = KINDS,
         labelWidth = 1,
-        width = 180,
+        width = math.min(UI.PAGE_W - RIGHT_X - 8, math.max(KIND_DROP_MIN_W, math.ceil(widest) + KIND_DROP_PAD)),
         get = function()
             return selected
         end,

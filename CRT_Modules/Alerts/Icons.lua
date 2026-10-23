@@ -13,9 +13,6 @@ local TEXT = {
     font = "Font",
     textSize = "Text size",
     outline = "Outline",
-    none = "None",
-    thin = "Outline",
-    thick = "Thick",
     showText = "Show the text",
     fade = "Fade to grey as time runs out",
     sampleNow = "Spread",
@@ -37,12 +34,6 @@ local SAMPLE_TYPES = { "spread", "generic", "soak" } -- the Previews' alerts: Sp
 local SAMPLE_ICONS = { 136243, 135808, 136116 }
 local SAMPLE_GAP = 1      -- seconds between preview ticks that mean it was turned off
 local SAMPLE_SPAN = 14    -- the preview starts over this long after it began
-
-local OUTLINE_OPTIONS = {
-    { key = "", label = TEXT.none },
-    { key = "OUTLINE", label = TEXT.thin },
-    { key = "THICKOUTLINE", label = TEXT.thick },
-}
 
 local function clamp(v, min, max, default)
     v = type(v) == "number" and v or default
@@ -210,14 +201,7 @@ local function settings(panel, s)
         end,
     })
     panel:Dropdown(TEXT.font, {
-        -- Read each time the menu opens, so fonts another addon shares later appear.
-        options = function()
-            local out = {}
-            for _, font in ipairs(CRT:FontList()) do
-                out[#out + 1] = { key = font.name, label = font.name }
-            end
-            return out
-        end,
+        options = Areas.FontOptions,
         enabledIf = function()
             return showText(s)
         end,
@@ -242,7 +226,7 @@ local function settings(panel, s)
         end,
     })
     panel:Dropdown(TEXT.outline, {
-        options = OUTLINE_OPTIONS,
+        options = Areas.OUTLINE_OPTIONS,
         get = function()
             return s.outline or ""
         end,

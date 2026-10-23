@@ -507,6 +507,8 @@ check("callout: first in Configuration, with its own rows and no common ones", f
   local d = configDropdown()
   local k, l = keys(d)
   assert(k:find("^callout,") and l:find("^Note callout/assignments,"), "first choice: " .. l)
+  -- as wide as its longest choice (6 a letter here), with room for the text inset and the template's arrow
+  assert(d.opts.width >= #"Note callout/assignments" * 6 + 40, "sized from its longest label: " .. d.opts.width)
   d.opts.set("callout")
   assert(d.value == "callout", "selected")
   for _, label in ipairs(CALLOUT_ROWS) do assert(calloutRow(label), "row " .. label) end

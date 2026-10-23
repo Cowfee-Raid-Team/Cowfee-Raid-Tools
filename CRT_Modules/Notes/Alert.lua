@@ -21,12 +21,8 @@ local TEXT = {
     addonFont = "Addon font",
     size = "Size",
     outline = "Outline",
-    none = "None",
-    thin = "Outline",
-    thick = "Thick",
     align = "Align",
     left = "Left",
-    center = "Center",
     right = "Right",
     above = "Above",
     below = "Below",
@@ -46,9 +42,7 @@ local TEXT = {
 local REFRESH_SECONDS = 0.1
 local ICON_GAP = 8 -- between the icon and the text
 local LINE_GAP = 2 -- between the name and the countdown
-local DEFAULT_FONT = "Fonts\\FRIZQT__.TTF" -- when no other font can be found
 local MIN_SIZE, MAX_SIZE, DEFAULT_SIZE = 10, 60, 20
-local OUTLINES = { [""] = true, OUTLINE = true, THICKOUTLINE = true }
 -- Each alignment: where the name sits in the two lines' block, and the countdown under it.
 local ALIGN_POINTS = {
     LEFT = { "TOPLEFT", "BOTTOMLEFT" },
@@ -78,44 +72,35 @@ local function alignOf(s)
     return ALIGN_POINTS[s.align] and s.align or "CENTER"
 end
 
--- The file for the chosen font: a CRT:FontList font, or for "default" (or one no longer loaded) the face
--- the addon's own large text is drawn in, so it follows General Settings' font and the theme.
-local function fontPath(s)
-    local path = CRT.FontPath and CRT:FontPath(s.font)
-    if path then
-        return path
-    end
+-- The face the addon's own large text is drawn in, for "Addon font" (the "default" font) and a shared font
+-- that is gone, so it follows General Settings' font and the theme. Nil before the addon's fonts exist.
+local function addonFontPath()
     local large = _G.CRTFontLarge
-    path = large and large.GetFont and large:GetFont()
-    return path or DEFAULT_FONT
+    return large and large.GetFont and (large:GetFont()) or nil
 end
 
-local lookKey -- the look last applied, so a refresh that changes nothing sets nothing
+local lookAlign -- the alignment last applied, so a refresh that changes nothing sets nothing
 
--- Sets the font, size, outline and alignment on both lines when one changed. Returns the look's key.
+-- Sets the font, size and outline on both lines (Alerts/Areas.lua SetFont, which skips an unchanged font),
+-- and the alignment when it changed. Returns the look's key.
 local function applyLook()
     local s = settings()
-    local path, size, align = fontPath(s), fontSize(s), alignOf(s)
-    local outline = OUTLINES[s.outline] and s.outline or ""
-    local key = path .. "|" .. size .. "|" .. outline .. "|" .. align
-    if key == lookKey then
-        return key
+    local Areas = CRT.AlertAreas
+    local size, align, fallback = fontSize(s), alignOf(s), addonFontPath()
+    local outline = Areas.OUTLINES[s.outline] and s.outline or ""
+    Areas.SetFont(label, s.font, size, outline, fallback)
+    Areas.SetFont(countdown, s.font, size, outline, fallback)
+    if align ~= lookAlign then
+        lookAlign = align
+        local points = ALIGN_POINTS[align]
+        label:SetJustifyH(align)
+        countdown:SetJustifyH(align)
+        label:ClearAllPoints()
+        label:SetPoint(points[1])
+        countdown:ClearAllPoints()
+        countdown:SetPoint(points[1], label, points[2], 0, -LINE_GAP)
     end
-    lookKey = key
-    for _, fs in ipairs({ label, countdown }) do
-        fs:SetFont(path, size, outline)
-        -- a file that fails to load leaves the font unset, which GetFont shows
-        if not fs:GetFont() then
-            fs:SetFont(DEFAULT_FONT, size, outline)
-        end
-        fs:SetJustifyH(align)
-    end
-    local points = ALIGN_POINTS[align]
-    label:ClearAllPoints()
-    label:SetPoint(points[1])
-    countdown:ClearAllPoints()
-    countdown:SetPoint(points[1], label, points[2], 0, -LINE_GAP)
-    return key
+    return tostring(s.font) .. "|" .. size .. "|" .. outline .. "|" .. align .. "|" .. tostring(fallback)
 end
 
 -- Text to speech is the alerts speech queue; the callout's Test speech button (below) speaks through here.
@@ -359,21 +344,11 @@ end)
 -- new heading colour.
 CRT.UI:OnTheme(function()
     drawn = nil
-    lookKey = nil
+    lookAlign = nil
 end)
 
 -- Its settings on Raid Notes > Alert Settings > Configuration ----------------------------------
 
-local OUTLINE_OPTIONS = {
-    { key = "", label = TEXT.none },
-    { key = "OUTLINE", label = TEXT.thin },
-    { key = "THICKOUTLINE", label = TEXT.thick },
-}
-local ALIGN_OPTIONS = {
-    { key = "LEFT", label = TEXT.left },
-    { key = "CENTER", label = TEXT.center },
-    { key = "RIGHT", label = TEXT.right },
-}
 local ICON_OPTIONS = {
     { key = "left", label = TEXT.left },
     { key = "right", label = TEXT.right },
@@ -402,13 +377,7 @@ local function panelRows(panel, s)
     })
     panel:Dropdown(TEXT.font, {
         -- read each time the menu opens, so fonts another addon shares later appear
-        options = function()
-            local out = { { key = "default", label = TEXT.addonFont } }
-            for _, font in ipairs(CRT:FontList()) do
-                out[#out + 1] = { key = font.name, label = font.name }
-            end
-            return out
-        end,
+        options = function() return CRT.AlertAreas.FontOptions(TEXT.addonFont) end,
         get = function() return s.font or "default" end,
         set = set("font"),
     })
@@ -418,12 +387,12 @@ local function panelRows(panel, s)
         set = set("fontSize"),
     })
     panel:Dropdown(TEXT.outline, {
-        options = OUTLINE_OPTIONS,
-        get = function() return OUTLINES[s.outline] and s.outline or "" end,
+        options = CRT.AlertAreas.OUTLINE_OPTIONS,
+        get = function() return CRT.AlertAreas.OUTLINES[s.outline] and s.outline or "" end,
         set = set("outline"),
     })
     panel:Dropdown(TEXT.align, {
-        options = ALIGN_OPTIONS,
+        options = CRT.AlertAreas.ALIGN_OPTIONS,
         get = function() return alignOf(s) end,
         set = set("align"),
     })

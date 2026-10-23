@@ -152,6 +152,22 @@ check(CRTDB.lootmaster.itemTooltip == "area" and CRTDB.lootmaster.tooltipMode ==
   and CRTDB.ui.tooltipMode == "spot" and CRTDB.ui.tooltipSpot == "auto" and CRTDB.loot.tooltipSpot == "auto" and CRTDB.lootmaster.tooltipSpot == "auto"
   and CRTDB.timeline.tooltipMode == "general" and CRTDB.timeline.tooltipSpot == "auto", "a fresh install: the defaults")
 check(CRTDB.ui.tooltipAnchor == nil and CRTDB.loot.tooltipPosition == nil and CRTDB.lootmaster.tooltipPosition == nil, "a fresh install: no old field is written")
+-- the note callout's look, new in this version: a fresh install takes the defaults (20, no outline); a save from
+-- before it keeps the look it had, once: the size the addon's large font is drawn at (CRTFontLarge, after its
+-- text size) and General Settings' outline
+check(CRTDB.notes.alert.fontSize == 20 and CRTDB.notes.alert.outline == "", "a fresh install: the callout at 20, no outline")
+for _, c in ipairs({ { nil, "OUTLINE" }, { 22, "THICKOUTLINE" }, { 10, "" }, { 14, "nonsense" } }) do
+  boot({ notes = { alert = { enabled = true, tts = true } }, ui = { fontSize = c[1], outline = c[2] } }, {})
+  local _, size = CRTFontLarge:GetFont()
+  local want = c[2] == "nonsense" and "" or c[2]
+  check(CRTDB.notes.alert.fontSize == math.floor(size + 0.5) and CRTDB.notes.alert.outline == want,
+    "a save from before: the callout keeps its look at text size " .. tostring(c[1]) .. " (" .. tostring(CRTDB.notes.alert.fontSize) .. " for " .. size .. ", " .. tostring(CRTDB.notes.alert.outline) .. ")")
+end
+local big = CRTDB.notes.alert.fontSize
+boot({ notes = { alert = { enabled = true } }, ui = { fontSize = 22 } }, {})
+check(CRTDB.notes.alert.fontSize > big, "a larger text size, a larger callout")
+boot({ notes = { alert = { enabled = true, fontSize = 33, outline = "" } }, ui = { fontSize = 22, outline = "OUTLINE" } }, {})
+check(CRTDB.notes.alert.fontSize == 33 and CRTDB.notes.alert.outline == "", "read only once: a chosen size and outline stay")
 check(P.ShareUncovered and #P.ShareUncovered() == 0, "every saved key in Core.lua's defaults is shared or named as not shared" .. (P.ShareUncovered and (": missing " .. table.concat(P.ShareUncovered(), ", ")) or ""))
 if P.ShareUncovered then
   CRT.defaults.brandNew = { x = 1 }

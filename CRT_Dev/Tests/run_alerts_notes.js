@@ -10,7 +10,7 @@ const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 
 const a = process.argv.slice(2);
 if (a.length < 9) { console.error('usage: node run_alerts_notes.js old_Engine old_Alert Rules AlertsEngine Parse Data Engine Window Alert'); process.exit(2); }
-const [oldEngine, oldAlert, rules, alertsEngine, parse, data, engine, windowSrc, alert, speech, soundEngine] = a;
+const [oldEngine, oldAlert, rules, alertsEngine, parse, data, engine, windowSrc, alert, speech, soundEngine, areas] = a;
 const read = (p) => fs.readFileSync(p, 'utf8');
 
 // The lint folder's sample note plus: a text line of yours with dur:8, a line for another player,
@@ -442,7 +442,7 @@ function check(name, fn) {
 const oldR = runState('old', [['CRT_Modules/Notes/Parse.lua', parse], ['CRT_Modules/Notes/Data.lua', data], ['CRT_Modules/Notes/Engine.lua', oldEngine], ['CRT_Modules/Notes/Window.lua', windowSrc], ['CRT_Modules/Notes/Alert.lua', oldAlert]]);
 let newR, newErr;
 try {
-  newR = runState('new', [['CRT_Core/Sound/Engine.lua', soundEngine], ['CRT_Modules/Alerts/Rules.lua', rules], ['CRT_Modules/Alerts/Engine.lua', alertsEngine], ['CRT_Modules/Alerts/Speech.lua', speech], ['CRT_Modules/Notes/Parse.lua', parse], ['CRT_Modules/Notes/Data.lua', data], ['CRT_Modules/Notes/Engine.lua', engine], ['CRT_Modules/Notes/Window.lua', windowSrc], ['CRT_Modules/Notes/Alert.lua', alert]]);
+  newR = runState('new', [['CRT_Core/Sound/Engine.lua', soundEngine], ['CRT_Modules/Alerts/Rules.lua', rules], ['CRT_Modules/Alerts/Engine.lua', alertsEngine], ['CRT_Modules/Alerts/Speech.lua', speech], ['CRT_Modules/Notes/Parse.lua', parse], ['CRT_Modules/Notes/Data.lua', data], ['CRT_Modules/Notes/Engine.lua', engine], ['CRT_Modules/Notes/Window.lua', windowSrc], ['CRT_Modules/Notes/Alert.lua', alert], ['CRT_Modules/Alerts/Areas.lua', areas]]);
 } catch (e) { newErr = e; void 0; }
 
 // The spoken count (said=) is a running total; once B's Next phase masks lines, it no longer matches.

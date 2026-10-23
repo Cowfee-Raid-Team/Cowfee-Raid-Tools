@@ -37,7 +37,7 @@ local function mock(kind, parent, template)
       rawset(self, "text", s)
       if self.kind == "EditBox" and rawget(self, "OnTextChanged") then self.OnTextChanged(self, false) end end end
     if k == "GetText" then return function(self) return self.text end end
-    if k == "GetUnboundedStringWidth" then return function(self) return #(rawget(self, "text") or "") * 6 end end
+    if k == "GetUnboundedStringWidth" then return function(self) return #(rawget(self, "text") or "") * 6 * (TEXT_SCALE or 1) end end
     if k == "SetChecked" then return function(self, on) rawset(self, "checked", on and true or false) end end
     if k == "GetChecked" then return function(self) return self.checked end end
     if k == "SetEnabled" then return function(self, on) rawset(self, "enabled", on and true or false) end end
@@ -48,6 +48,7 @@ local function mock(kind, parent, template)
     if k == "ClearAllPoints" then return function(self) self.pts = {} end end
     if k == "SetSize" then return function(self, w, h) rawset(self, "w", w) rawset(self, "h", h) end end
     if k == "SetWidth" then return function(self, w) rawset(self, "w", w) end end
+    if k == "SetWordWrap" then return function(self, on) rawset(self, "wordWrap", on) end end
     if k == "GetWidth" then return function(self) return rawget(self, "w") end end
     if k == "GetHeight" then return function(self) return rawget(self, "h") end end
     -- retail: wrapped lines at the set width, ~7 px a letter, 14 px a line
@@ -623,19 +624,35 @@ do
   assert(message():find("older CRT", 1, true) and message():find("|cff" .. UI.Hex("warn"), 1, true), "warned, in the warn colour: " .. message())
   setCheck(w.checks.text, true)
   assert(message() == "", "another display too: no warning")
-  -- the Show as labels fit the window in two rows of three, each after the one before it
+  -- the Show as labels fit the window in two rows (the long names, then the short ones), each after the one
+  -- before it; at the largest text size (General Settings' 22 in Modern, about 1.75 times) they are narrowed,
+  -- never past the edge, measured again when the editor opens
   assert(w.checks.alert.label.text == "Note callout/assignments" and w.checks.text.label.text == "Critical alerts text", "the displays' names")
-  for _, rowKeys in ipairs({ { "alert", "text", "icon" }, { "bar", "circle", "timeline" } }) do
-    local right, y = 0, nil
-    for _, k in ipairs(rowKeys) do
-      local p = w.checks[k].pts[#w.checks[k].pts] -- lay: SetPoint("TOPLEFT", x, y)
-      assert(p[2] > right, k .. " after the one before it")
-      assert(y == nil or p[3] == y, k .. " on its row")
-      y = p[3]
-      right = p[2] + 26 + #w.checks[k].label.text * 6
+  local function rows(scale, cut)
+    for _, rowKeys in ipairs({ { "alert", "text" }, { "icon", "bar", "circle", "timeline" } }) do
+      local right, y = 0, nil
+      for _, k in ipairs(rowKeys) do
+        local c = w.checks[k]
+        local p = c.pts[#c.pts] -- SetPoint("TOPLEFT", x, y)
+        assert(p[2] >= right, k .. " after the one before it (" .. scale .. ")")
+        assert(y == nil or p[3] == y, k .. " on its row")
+        y = p[3]
+        local words = math.ceil(#c.label.text * 6 * scale)
+        assert(cut or c.label.w == words, k .. ": its label as wide as its words at " .. scale)
+        assert(c.label.w <= words and c.label.wordWrap == false, k .. ": one line, never wider than its words")
+        right = p[2] + 26 + c.label.w
+      end
+      assert(right <= 600 - 16, "the row ends inside the window at " .. scale .. ": " .. right)
     end
-    assert(right <= 600 - 16, "the row's last label ends inside the window: " .. right)
   end
+  rows(1, false)
+  TEXT_SCALE = 1.75
+  E:Open(ENC, nil, { text = "Draft", times = "P1 0:30" })
+  rows(1.75, true)
+  assert(w.checks.alert.label.w < #w.checks.alert.label.text * 6 * 1.75, "the long names are cut to fit")
+  TEXT_SCALE = nil
+  E:Open(ENC, nil, { text = "Draft", times = "P1 0:30" })
+  rows(1, false)
   local y1, y2 = w.checks.alert.pts[#w.checks.alert.pts][3], w.checks.bar.pts[#w.checks.bar.pts][3]
   local alsoY = w.also.speak.pts[#w.also.speak.pts][3]
   assert(y2 < y1 and alsoY < y2 - 20, "the second row under the first, Also under both: " .. y1 .. " " .. y2 .. " " .. alsoY)

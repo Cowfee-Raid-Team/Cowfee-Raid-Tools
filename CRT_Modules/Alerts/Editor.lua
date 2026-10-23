@@ -1262,6 +1262,129 @@ local function speakAtRow(f, row)
     }), SPEAK_AT_X, -304 - ROW1_EXTRA - SHOW_EXTRA)
 end
 
+-- The Show as boxes placed by their labels' width (Draft.FlowShowAs), inside the window at any text size.
+-- Run on build and on every open, before applyLayout, so a text size changed since then is measured again.
+local function placeShowAs(f)
+    local rows = {}
+    for r, keys in ipairs(Draft.SHOW_ROWS) do
+        rows[r] = {}
+        for i, key in ipairs(keys) do
+            rows[r][i] = f.checks[key]
+        end
+    end
+    Draft.FlowShowAs(rows, FIELD_X, WIDTH - LEFT, SHOW_CHECK_W, SHOW_GAP, function(check, x)
+        check.placed[2] = x -- applyLayout keeps it there
+        check:ClearAllPoints()
+        check:SetPoint("TOPLEFT", x, check.placed[3])
+    end)
+end
+
+-- Show as, Also, Sound and Speak at. Its own function: build is near Lua 5.1's 60 upvalue limit.
+local function showAsRows(f, row)
+    makeLabel(f, TEXT.showAs, LEFT, -246 - ROW1_EXTRA)
+    local labels = { alert = TEXT.callout, text = TEXT.showText, icon = TEXT.showIcon, bar = TEXT.bar, circle = TEXT.circle,
+        timeline = TEXT.timeline }
+    f.checks = {}
+    for r, keys in ipairs(Draft.SHOW_ROWS) do
+        for _, key in ipairs(keys) do
+            local check = makeCheck(f, labels[key], FIELD_X, -240 - ROW1_EXTRA - (r - 1) * SHOW_EXTRA,
+                setter(function(on) draft.show[key] = on end))
+            check.placed = placed[#placed] -- its entry in the layout, which placeShowAs moves along the row
+            f.checks[key] = check
+        end
+    end
+    placeShowAs(f)
+
+    -- Also
+    makeLabel(f, TEXT.also, LEFT, -280 - ROW1_EXTRA - SHOW_EXTRA)
+    f.also = {
+        speak = makeCheck(f, TEXT.speak, FIELD_X, -274 - ROW1_EXTRA - SHOW_EXTRA, setter(function(on) draft.speak = on end)),
+        count = makeCheck(f, TEXT.count, 226, -274 - ROW1_EXTRA - SHOW_EXTRA, setter(function(on) draft.count = on end)),
+        glow = makeCheck(f, TEXT.glow, 386, -274 - ROW1_EXTRA - SHOW_EXTRA, setter(function(on) draft.glow = on end)),
+    }
+    row(UI.SoundDropdown(f, TEXT.sound, {
+        labelWidth = 70, width = 160, maxHeight = MENU_MAX_HEIGHT, enabledIf = editable, playButton = true,
+        options = soundOptions,
+        get = function() return draft and Draft.SoundKey(draft.sound) or NO_SOUND end,
+        set = setter(function(v) draft.sound = v ~= NO_SOUND and v or nil end),
+    }), LEFT, -304 - ROW1_EXTRA - SHOW_EXTRA)
+    f.speakAt = speakAtRow(f, row)
+end
+
+-- Icon, Text and Color. Its own function: build is near Lua 5.1's 60 upvalue limit.
+local function lookRows(f, row)
+    -- Icon: Spell or Icon ID, the ID box and a preview
+    row(UI.Dropdown(f, TEXT.icon, {
+        labelWidth = 70, width = 110, enabledIf = editable,
+        options = { { key = "spell", label = TEXT.iconSpell }, { key = "id", label = TEXT.iconID } },
+        get = function() return draft and draft.iconType or "spell" end,
+        set = function(v)
+            if draft and readOnly() then
+                refresh(true)
+            elseif draft then
+                draft.iconType = v
+                local id = v == "id" and draft.iconID or draft.spellID
+                f.idEdit:SetText(id and tostring(id) or "")
+                changed(true)
+            end
+        end,
+    }), LEFT, -132 - ROW1_EXTRA)
+    f.idEdit = makeEdit(f, 212, -138 - ROW1_EXTRA, ID_WIDTH, idTextChanged)
+    f.idEdit:SetScript("OnEditFocusGained", function()
+        lookupFrom = draft and validID(draft.spellID)
+    end)
+    UI.HelpRight(f.idEdit, TEXT.iconHelpTitle, TEXT.iconHelp)
+    f.iconPreview = f:CreateTexture(nil, "ARTWORK")
+    f.iconPreview:SetSize(24, 24)
+    lay(f.iconPreview, 326 + ID_SHIFT, -136 - ROW1_EXTRA)
+    f.iconPreview:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+    f.spellName = f:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    lay(f.spellName, 358 + ID_SHIFT, -142 - ROW1_EXTRA)
+    f.spellName:SetWidth(WIDTH - 358 - ID_SHIFT - LEFT)
+    -- the match list of a name lookup, under the box and over the rows below it
+    f.lookupCtl = CRT.AlertSpellLookup.Attach(f.idEdit, {
+        encounterID = function() return ctx and ctx.encounterID end,
+        boss = function() return draft and draft.boss end,
+        enabled = function() return draft ~= nil and editable() end,
+        onPick = pickMatch,
+        onClose = putIDBack,
+        levelFrame = f,
+    })
+    f.lookup = f.lookupCtl.list
+    f.spellName:SetJustifyH("LEFT")
+    f.spellName:SetWordWrap(false)
+
+    -- Text
+    makeLabel(f, TEXT.text, LEFT, -178 - ROW1_EXTRA)
+    f.textEdit = makeEdit(f, FIELD_X + 4, -174 - ROW1_EXTRA, WIDTH - FIELD_X - LEFT - 8, function(text)
+        if draft then
+            draft.text = text
+            changed()
+        end
+    end)
+
+    -- Color: a swatch that opens the game's color picker, and Default for none
+    f.colorLabel = makeLabel(f, TEXT.color, LEFT, -210 - ROW1_EXTRA)
+    f.colorSwatch = CreateFrame("Button", nil, f)
+    f.colorSwatch:SetSize(20, 20)
+    lay(f.colorSwatch, FIELD_X, -206 - ROW1_EXTRA)
+    f.colorSwatch.edge = f.colorSwatch:CreateTexture(nil, "BACKGROUND")
+    f.colorSwatch.edge:SetAllPoints()
+    f.colorSwatch.edge:SetColorTexture(0.5, 0.5, 0.5, 1)
+    f.colorSwatch.tex = f.colorSwatch:CreateTexture(nil, "ARTWORK")
+    f.colorSwatch.tex:SetPoint("TOPLEFT", 1, -1)
+    f.colorSwatch.tex:SetPoint("BOTTOMRIGHT", -1, 1)
+    f.colorSwatch:SetScript("OnClick", pickColor)
+    f.colorDefault = makeButton(f, TEXT.colorDefault, 80)
+    lay(f.colorDefault, FIELD_X + 28, -204 - ROW1_EXTRA)
+    f.colorDefault:SetScript("OnClick", function()
+        if draft and not readOnly() and colourEditable() then
+            draft.color = nil
+            changed()
+        end
+    end)
+end
+
 local function build()
     if frame then
         return
@@ -1433,109 +1556,8 @@ local function build()
         set = setter(function(v) draft.linger = v end),
     }), 306, -98 - ROW1_EXTRA)
 
-    -- Icon: Spell or Icon ID, the ID box and a preview
-    row(UI.Dropdown(f, TEXT.icon, {
-        labelWidth = 70, width = 110, enabledIf = editable,
-        options = { { key = "spell", label = TEXT.iconSpell }, { key = "id", label = TEXT.iconID } },
-        get = function() return draft and draft.iconType or "spell" end,
-        set = function(v)
-            if draft and readOnly() then
-                refresh(true)
-            elseif draft then
-                draft.iconType = v
-                local id = v == "id" and draft.iconID or draft.spellID
-                f.idEdit:SetText(id and tostring(id) or "")
-                changed(true)
-            end
-        end,
-    }), LEFT, -132 - ROW1_EXTRA)
-    f.idEdit = makeEdit(f, 212, -138 - ROW1_EXTRA, ID_WIDTH, idTextChanged)
-    f.idEdit:SetScript("OnEditFocusGained", function()
-        lookupFrom = draft and validID(draft.spellID)
-    end)
-    UI.HelpRight(f.idEdit, TEXT.iconHelpTitle, TEXT.iconHelp)
-    f.iconPreview = f:CreateTexture(nil, "ARTWORK")
-    f.iconPreview:SetSize(24, 24)
-    lay(f.iconPreview, 326 + ID_SHIFT, -136 - ROW1_EXTRA)
-    f.iconPreview:SetTexCoord(0.07, 0.93, 0.07, 0.93)
-    f.spellName = f:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    lay(f.spellName, 358 + ID_SHIFT, -142 - ROW1_EXTRA)
-    f.spellName:SetWidth(WIDTH - 358 - ID_SHIFT - LEFT)
-    -- the match list of a name lookup, under the box and over the rows below it
-    f.lookupCtl = CRT.AlertSpellLookup.Attach(f.idEdit, {
-        encounterID = function() return ctx and ctx.encounterID end,
-        boss = function() return draft and draft.boss end,
-        enabled = function() return draft ~= nil and editable() end,
-        onPick = pickMatch,
-        onClose = putIDBack,
-        levelFrame = f,
-    })
-    f.lookup = f.lookupCtl.list
-    f.spellName:SetJustifyH("LEFT")
-    f.spellName:SetWordWrap(false)
-
-    -- Text
-    makeLabel(f, TEXT.text, LEFT, -178 - ROW1_EXTRA)
-    f.textEdit = makeEdit(f, FIELD_X + 4, -174 - ROW1_EXTRA, WIDTH - FIELD_X - LEFT - 8, function(text)
-        if draft then
-            draft.text = text
-            changed()
-        end
-    end)
-
-    -- Color: a swatch that opens the game's color picker, and Default for none
-    f.colorLabel = makeLabel(f, TEXT.color, LEFT, -210 - ROW1_EXTRA)
-    f.colorSwatch = CreateFrame("Button", nil, f)
-    f.colorSwatch:SetSize(20, 20)
-    lay(f.colorSwatch, FIELD_X, -206 - ROW1_EXTRA)
-    f.colorSwatch.edge = f.colorSwatch:CreateTexture(nil, "BACKGROUND")
-    f.colorSwatch.edge:SetAllPoints()
-    f.colorSwatch.edge:SetColorTexture(0.5, 0.5, 0.5, 1)
-    f.colorSwatch.tex = f.colorSwatch:CreateTexture(nil, "ARTWORK")
-    f.colorSwatch.tex:SetPoint("TOPLEFT", 1, -1)
-    f.colorSwatch.tex:SetPoint("BOTTOMRIGHT", -1, 1)
-    f.colorSwatch:SetScript("OnClick", pickColor)
-    f.colorDefault = makeButton(f, TEXT.colorDefault, 80)
-    lay(f.colorDefault, FIELD_X + 28, -204 - ROW1_EXTRA)
-    f.colorDefault:SetScript("OnClick", function()
-        if draft and not readOnly() and colourEditable() then
-            draft.color = nil
-            changed()
-        end
-    end)
-
-    -- Show as
-    makeLabel(f, TEXT.showAs, LEFT, -246 - ROW1_EXTRA)
-    -- two rows of three, each box after the one before it by its label's width, so the long names fit the window
-    f.checks = {}
-    local showX, showRow = FIELD_X, 1
-    for _, spec in ipairs({ { "alert", TEXT.callout, 1 }, { "text", TEXT.showText, 1 }, { "icon", TEXT.showIcon, 1 },
-        { "bar", TEXT.bar, 2 }, { "circle", TEXT.circle, 2 }, { "timeline", TEXT.timeline, 2 } }) do
-        local key = spec[1]
-        if spec[3] ~= showRow then
-            showX, showRow = FIELD_X, spec[3]
-        end
-        local check = makeCheck(f, spec[2], showX, -240 - ROW1_EXTRA - (showRow - 1) * SHOW_EXTRA, setter(function(on) draft.show[key] = on end))
-        f.checks[key] = check
-        local fs = check.label
-        local words = fs.GetUnboundedStringWidth and fs:GetUnboundedStringWidth() or fs:GetStringWidth()
-        showX = showX + SHOW_CHECK_W + math.ceil(tonumber(words) or 0) + SHOW_GAP
-    end
-
-    -- Also
-    makeLabel(f, TEXT.also, LEFT, -280 - ROW1_EXTRA - SHOW_EXTRA)
-    f.also = {
-        speak = makeCheck(f, TEXT.speak, FIELD_X, -274 - ROW1_EXTRA - SHOW_EXTRA, setter(function(on) draft.speak = on end)),
-        count = makeCheck(f, TEXT.count, 226, -274 - ROW1_EXTRA - SHOW_EXTRA, setter(function(on) draft.count = on end)),
-        glow = makeCheck(f, TEXT.glow, 386, -274 - ROW1_EXTRA - SHOW_EXTRA, setter(function(on) draft.glow = on end)),
-    }
-    row(UI.SoundDropdown(f, TEXT.sound, {
-        labelWidth = 70, width = 160, maxHeight = MENU_MAX_HEIGHT, enabledIf = editable, playButton = true,
-        options = soundOptions,
-        get = function() return draft and Draft.SoundKey(draft.sound) or NO_SOUND end,
-        set = setter(function(v) draft.sound = v ~= NO_SOUND and v or nil end),
-    }), LEFT, -304 - ROW1_EXTRA - SHOW_EXTRA)
-    f.speakAt = speakAtRow(f, row)
+    lookRows(f, row)
+    showAsRows(f, row)
 
     f.messageText = f:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     lay(f.messageText, LEFT, -350 - ROW1_EXTRA - SHOW_EXTRA)
@@ -1682,6 +1704,7 @@ local function show()
     lookupFrom = nil
     hideLookup()
     setTitle()
+    placeShowAs(frame) -- measured again: the text size may have changed since the last open
     applyLayout(ctx.savedMode == true)
     if not ctx.savedMode and not draft.timeTouched then
         local ph, t = firstTime((Reminders:Times(ctx.encounterID, timesProbe(), nil, previewGroup())))
