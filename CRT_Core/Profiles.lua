@@ -63,7 +63,7 @@ Profiles.SHARE = {
     },
     debuffs = true,
     notes = {
-        list = false, nextId = false, personalText = false, showOutsideRaid = true, shareTarget = true,
+        list = false, nextId = false, history = false, personalText = false, showOutsideRaid = true, shareTarget = true,
         window = true, assignments = true, personal = true, editor = true, alert = true,
         trustedOnly = false, -- whose notes you accept stays yours
     },
@@ -311,7 +311,8 @@ function Profiles:Delete(name)
 end
 
 -- The active profile as one line of text to share, through the game's own CBOR, deflate and base64.
--- The import backup stays behind: it would undo to another character's settings.
+-- The import backup stays behind: it would undo to another character's settings. So does the raid notes'
+-- history (notes.history): the earlier texts stay on this computer.
 function Profiles:Export()
     local E = C_EncodingUtil
     if not (E and E.SerializeCBOR and E.CompressString and E.EncodeBase64) then
@@ -319,7 +320,15 @@ function Profiles:Export()
     end
     local data = {}
     for _, key in ipairs(profileKeys()) do
-        if key ~= "importBackup" then
+        if key == "notes" and type(CRTDB.notes) == "table" then
+            local notes = {}
+            for k, v in pairs(CRTDB.notes) do
+                if k ~= "history" then
+                    notes[k] = v
+                end
+            end
+            data.notes = notes
+        elseif key ~= "importBackup" then
             data[key] = CRTDB[key]
         end
     end

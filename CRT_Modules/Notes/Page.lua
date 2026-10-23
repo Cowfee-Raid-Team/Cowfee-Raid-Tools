@@ -24,8 +24,13 @@ local TEXT = {
     otherDifficulty = "Other",
     kindHelp = "Shared: the raid's notes, one per guild. A share from your guild replaces its note for that boss; one from another guild or a pickup group is kept apart. The newest share is the note in use and runs on the pull.\n\nPersonal: your own lines for a boss, kept on this computer. They run on every pull alongside the shared note, and a share never touches them.",
     noteText = "Note text",
-    renderHelp = "The note shows as it reads in the game. Click it to see the raw text. Edit it and Save to see it rendered again. Unsaved changes stay in the raw text.\n\nIf you can't change the raid note, the raw text is read-only. Press Escape to go back.\n\nThe personal note works the same way.\n\nPop out editor opens the note's lines in a window. Drag players, roles, groups and classes onto its assignment lines, and players onto its invite list. Timers stay as they are. Only the names change.",
+    renderHelp = "The note shows as it reads in the game. Click it to see the raw text. Edit it and Save to see it rendered again. Unsaved changes stay in the raw text.\n\nIf you can't change the raid note, the raw text is read-only. Press Escape to go back.\n\nThe personal note works the same way.\n\nPop out editor opens the note's lines in a window. Drag players, roles, groups and classes onto its assignment lines, and players onto its invite list. Timers stay as they are. Only the names change.\n\nHistory keeps the note's last 5 earlier versions. Compare one with the note now, or restore it.",
     popOut = "Pop out editor",
+    history = "History (%d)",
+    historyLabel = "History",
+    historyTip = "The note's last 5 earlier versions: when, how and who changed them. Compare one with the note now, or restore it.",
+    historyNone = "No earlier versions yet. Each change to this note's text keeps the text before it here, up to 5.",
+    historyLine = "%d earlier version%s in History",
     popOutShort = "Pop out",
     changedUnder = "This note changed while you were typing, so your text was not saved. Click Save again to replace the note with your text, or click another note and back to see the new one.",
     personalChangedUnder = "Your personal note changed in the note editor while you were typing here, so this was not saved. Click Save again to replace it with this text.",
@@ -79,6 +84,12 @@ local TEXT_X = 8 + LIST_W + 14
 local RIGHT_X = UI.PAGE_W - 8 - RIGHT_W
 local TEXT_W = RIGHT_X - 14 - TEXT_X
 local TAB_H = UI.PAGE_H - 66
+-- The note text box, from under its heading down to the details under it: Last updated, Shared by, Roster
+-- and the History line (STATUS_LINES lines of STATUS_LINE_H, the tiny font's line), and Save beside them.
+local STATUS_LINE_H = 12
+local STATUS_LINES = 4
+local NOTE_BOX_TOP = 36
+local NOTE_BOX_H = TAB_H - NOTE_BOX_TOP - 8 - STATUS_LINES * STATUS_LINE_H
 
 local GRAY = { 0.35, 0.35, 0.35 }
 local GOLD = CRT.PALETTE.heading -- the theme's heading colour; refilled in place on a theme switch
@@ -364,17 +375,31 @@ refresh = function()
             lines[#lines + 1] = "Roster: linked to a Raid Groups layout"
         end
     end
+    local history = record and Notes:HistoryCount(id) or 0
+    -- what is going on now: a share being sent, a run
+    local now = {}
     local sent, total = CRT.NoteComm:Sharing()
     if sent then
-        lines[#lines + 1] = format("Sharing: %d of %d parts sent", sent, total)
+        now[#now + 1] = format("Sharing: %d of %d parts sent", sent, total)
     end
     local Alerts = CRT.Alerts
     if Engine.running then
-        lines[#lines + 1] = "Running: phase " .. tostring(Engine:CurrentPhase()) .. (Engine.reason == "test" and " (test)" or "")
+        now[#now + 1] = "Running: phase " .. tostring(Engine:CurrentPhase()) .. (Engine.reason == "test" and " (test)" or "")
     elseif Alerts.running then
         -- A run with reminders but no note for this boss: the note windows stay idle.
-        lines[#lines + 1] = "Running reminders, no note: phase " .. tostring(Engine:CurrentPhase())
+        now[#now + 1] = "Running reminders, no note: phase " .. tostring(Engine:CurrentPhase())
             .. (Alerts.run and Alerts.run.reason == "test" and " (test)" or "")
+    end
+    -- at most STATUS_LINES lines, the room under the box: the History line goes first (History (N) shows the
+    -- count too), then a share and a run share one line
+    if history > 0 and #lines + 1 + #now <= STATUS_LINES then
+        lines[#lines + 1] = format(TEXT.historyLine, history, history == 1 and "" or "s")
+    end
+    if #lines + #now > STATUS_LINES then
+        now = { table.concat(now, "; ") }
+    end
+    for _, line in ipairs(now) do
+        lines[#lines + 1] = line
     end
     status:SetText(table.concat(lines, "\n"))
 
@@ -579,8 +604,8 @@ local function buildNotes(pf)
     textLabel:SetPoint("TOPLEFT", TEXT_X, -14)
     textLabel:SetText(TEXT.noteText)
     local box = CreateFrame("Frame", nil, pf, "BackdropTemplate")
-    box:SetPoint("TOPLEFT", TEXT_X, -36)
-    box:SetSize(TEXT_W, TAB_H - 36 - 44)
+    box:SetPoint("TOPLEFT", TEXT_X, -NOTE_BOX_TOP)
+    box:SetSize(TEXT_W, NOTE_BOX_H)
     skin(box, 0.4)
     local scroll = CreateFrame("ScrollFrame", "CowfeeRaidToolsNoteTextScroll", box, "UIPanelScrollFrameTemplate")
     UI:SkinScrollBar(scroll.ScrollBar)
@@ -624,6 +649,31 @@ local function buildNotes(pf)
         popOut:SetEnabled(selected ~= nil and CRT.NoteEditor ~= nil)
     end
     controls[#controls + 1] = popOut
+    -- History, left of Pop out editor: the note's earlier versions (Notes/HistoryWindow.lua); greyed with none
+    local history = fitButton(makeButton(pf, format(TEXT.history, 0), 120, 20))
+    history:SetPoint("RIGHT", popOut, "LEFT", -6, 0)
+    history:SetScript("OnClick", function()
+        if selected and CRT.NoteHistory then
+            CRT.NoteHistory.Open(selected)
+        end
+    end)
+    history:SetMotionScriptsWhileDisabled(true) -- the tooltip says why it is greyed
+    history:SetScript("OnEnter", function(self)
+        UI.TooltipOwner(GameTooltip, self, "ANCHOR_TOP")
+        GameTooltip:SetText(TEXT.historyLabel, 1, 1, 1)
+        GameTooltip:AddLine(self:IsEnabled() and TEXT.historyTip or TEXT.historyNone, 0.85, 0.85, 0.85, true)
+        GameTooltip:Show()
+    end)
+    history:SetScript("OnLeave", function()
+        GameTooltip:Hide()
+    end)
+    history.refresh = function()
+        local n = selected and Notes:Get(selected) and Notes:HistoryCount(selected) or 0
+        history:SetText(format(TEXT.history, n))
+        fitButton(history)
+        history:SetEnabled(n > 0)
+    end
+    controls[#controls + 1] = history
 
     local save = makeButton(pf, TEXT.saveText, 170)
     save:SetPoint("TOPRIGHT", box, "BOTTOMRIGHT", 0, -6)
@@ -670,6 +720,10 @@ local function buildNotes(pf)
     status:SetPoint("TOPLEFT", box, "BOTTOMLEFT", 0, -8)
     status:SetPoint("RIGHT", save, "LEFT", -8, 0)
     status:SetJustifyH("LEFT")
+    -- never more lines than the room under the box (a long line is cut short, not wrapped below the tab)
+    if status.SetMaxLines then
+        status:SetMaxLines(STATUS_LINES)
+    end
 
     -- Right: your personal note, shown in its own window.
     local top = -14
@@ -873,6 +927,8 @@ UI:RegisterPage("notes", "Raid Notes", build)
 -- (Alert Settings) or "settings". TAB_H is a tab's height under the tabs, for the tabs that size themselves from it.
 CRT.NotesPage = {
     TAB_H = TAB_H,
+    -- the Notes tab's note text box and the detail lines under it, for the layout checks
+    NOTE_BOX_TOP = NOTE_BOX_TOP, NOTE_BOX_H = NOTE_BOX_H, STATUS_LINE_H = STATUS_LINE_H, STATUS_LINES = STATUS_LINES,
     Open = function(tab)
         currentTab = tab
         UI:Show("notes")

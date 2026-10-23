@@ -125,6 +125,7 @@ local defaults = {
     notes = {
         list = {},
         nextId = 1,
+        history = {}, -- each note's last 5 earlier texts, by note id (Notes/Data.lua); never shared or exported
         showOutsideRaid = false, -- true also shows the three note windows outside a raid instance
         trustedOnly = true, -- only accept shared notes from the raid leader or assistants
         shareTarget = "crt", -- Share's Send to: "crt", a note target's key (Integrations/), or "all"

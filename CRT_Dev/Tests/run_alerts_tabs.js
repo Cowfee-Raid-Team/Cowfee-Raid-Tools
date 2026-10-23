@@ -86,7 +86,7 @@ CRT.UI.SoundDropdown = function(parent, label, opts) local o = {} for k, v in pa
   return r end
 CRT.Notes = {
   CanEditRaid = function() return true end, -- CRT_Modules/Notes/Data.lua: solo, you may change the raid note
-  OnChange = function() end, List = function() return {} end, ListStyle = function() return "grouped" end, ListDifficulty = function() return "All" end, ListFolded = function() return false end, SetListFolded = function() end, SetListDifficulty = function() end, SetListStyle = function() end, DifficultyGroup = function() return "Other" end, DIFFICULTIES = { "Mythic", "Heroic", "Normal" }, ShortName = function(n) return n end, ViaLabel = function(v) return v end, SourceLabel = function() return nil end, Get = function() return nil end,
+  OnChange = function() end, List = function() return {} end, ListStyle = function() return "grouped" end, ListDifficulty = function() return "All" end, ListFolded = function() return false end, SetListFolded = function() end, SetListDifficulty = function() end, SetListStyle = function() end, DifficultyGroup = function() return "Other" end, DIFFICULTIES = { "Mythic", "Heroic", "Normal" }, ShortName = function(n) return n end, ViaLabel = function(v) return v end, SourceLabel = function() return nil end, HistoryCount = function() return 0 end, Get = function() return nil end,
   Personal = function() return "" end,
 }
 local activeRecord = { encounterID = 9001, name = "Test Boss" }

@@ -215,6 +215,10 @@ local function apply(step, side)
             end
             refsMoved = true
         else
+            -- a note's text written over is kept in its history, like a line changed on the Timeline
+            if item.g == "notes" and type(v) == "table" and CRT.Notes and CRT.Notes.RememberRaw then
+                pcall(CRT.Notes.RememberRaw, CRT.Notes, item.k, v.raw, "edited", { lines = true })
+            end
             t[item.g][item.k] = v
         end
     end

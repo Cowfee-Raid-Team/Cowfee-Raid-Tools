@@ -19,6 +19,12 @@ local tl = { references = { { id = 1, text = "Boss: A\nPhase: P2 3:00" } } }
 local CRT = { db = { notes = { list = { [1] = { raw = "note one", name = "A" } } }, alerts = { reminders = {} } } }
 CRT.Notes, CRT.Alerts, CRT.Timeline = owner(), owner(), owner()
 function CRT.Timeline:Settings() return tl end
+-- Notes:RememberRaw (Notes/Data.lua): the note's text before an undo writes over it, kept in its history
+local remembered = {}
+function CRT.Notes:RememberRaw(id, text, how, extra)
+  local record = CRT.db.notes.list[id]
+  remembered[#remembered + 1] = { id = id, was = record and record.raw, to = text, how = how, lines = extra and extra.lines }
+end
 function CRT:Print(m) printed[#printed + 1] = m end
 assert(load(src, "Undo.lua"))("CowfeeRaidTools", CRT)
 local U = CRT.TimelineUndo
@@ -36,6 +42,10 @@ local listBefore = CRT.db.notes.list
 check("undo", U:Undo() == true and notes[1].raw == "note one")
 check("the owner's table is kept, not replaced", CRT.db.notes.list == listBefore)
 check("redo", U:Redo() == true and notes[1].raw == "note one, moved")
+local r1, r2 = remembered[1], remembered[2]
+check("undo keeps the text it replaces in the note's history, as a line edit",
+  #remembered == 2 and r1.id == 1 and r1.was == "note one, moved" and r1.to == "note one" and r1.how == "edited" and r1.lines == true)
+check("and so does redo", r2.was == "note one" and r2.to == "note one, moved" and r2.lines == true)
 U:Undo()
 
 -- two writes in one frame (a dropped cooldown: the note, then a reminder) undo in one step

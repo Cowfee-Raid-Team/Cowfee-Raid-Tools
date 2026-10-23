@@ -154,7 +154,7 @@ CRT.Notes = {
   WindowSettings = function() return win end, Alert = function() return alertSettings end,
   Set = function(_, k, f, v) local t = k == "alert" and alertSettings or win t[f] = v for _, fn in ipairs(listeners) do fn() end end,
   TrustedOnly = function() return true end, ShowOutsideRaid = function() return true end, OnChange = function(_, fn) listeners[#listeners + 1] = fn end,
-  List = function() return {} end, ListStyle = function() return "grouped" end, ListDifficulty = function() return "All" end, ListFolded = function() return false end, SetListFolded = function() end, SetListDifficulty = function() end, SetListStyle = function() end, DifficultyGroup = function() return "Other" end, DIFFICULTIES = { "Mythic", "Heroic", "Normal" }, ShortName = function(n) return n end, ViaLabel = function(v) return v end, SourceLabel = function() return nil end, Active = function() return nil end, Get = function() return nil end, Personal = function() return "" end,
+  List = function() return {} end, ListStyle = function() return "grouped" end, ListDifficulty = function() return "All" end, ListFolded = function() return false end, SetListFolded = function() end, SetListDifficulty = function() end, SetListStyle = function() end, DifficultyGroup = function() return "Other" end, DIFFICULTIES = { "Mythic", "Heroic", "Normal" }, ShortName = function(n) return n end, ViaLabel = function(v) return v end, SourceLabel = function() return nil end, HistoryCount = function() return 0 end, Active = function() return nil end, Get = function() return nil end, Personal = function() return "" end,
   SpellInfo = function() return nil end,
 }
 CRT.NoteEngine = { running = false, PeekNextPhase = function() return nil end }

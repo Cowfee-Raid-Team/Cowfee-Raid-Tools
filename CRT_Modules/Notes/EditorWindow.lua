@@ -12,7 +12,7 @@ local ADDON, CRT = ...
 -- A raid note opens read-only for anyone who can't change it (Notes:CanEditRaid); a personal note never is. A drag
 -- is the mouse's own: OnMouseDown on a chip, a driver frame's OnUpdate that starts it past a few pixels and moves
 -- the ghost, OnMouseUp to drop it on the row under the mouse; Escape cancels it. Closing with unsaved changes asks
--- first.
+-- first. History in the title bar opens the note's earlier versions (Notes/HistoryWindow.lua).
 
 local Notes = CRT.Notes
 local Model = CRT.NoteEditModel
@@ -39,6 +39,9 @@ local TEXT = {
     gone = "This note was deleted, so there is nothing to save it to.",
     changed = "This note changed since you opened it. Close the editor and open it again.",
     otherOpen = "Save or close the note editor first.",
+    history = "History (%d)",
+    historyTitle = "History",
+    historyTip = "The note's last 5 earlier versions: when, how and who changed them. Compare one with the note now, or restore it.",
     spell = "Spell %s",
     invite = "Invite list (%d):",
     timers = "Timers (from the note, not editable here)",
@@ -1035,6 +1038,35 @@ local function buildFooter(c)
     W.status:SetWordWrap(false)
 end
 
+-- History in the title bar, left of Reset: the note's earlier versions (Notes/HistoryWindow.lua), the same
+-- window as the Raid Notes page's History. Not on the personal note; greyed with no earlier version.
+local function refreshHistory()
+    local b = W.history
+    if not b then
+        return
+    end
+    local id = W.source and not W.source.personal and W.source.id
+    b:SetShown(id ~= nil and id ~= false)
+    local n = id and Notes:Get(id) and Notes:HistoryCount(id) or 0
+    b:SetLabel(string.format(TEXT.history, n))
+    b:SetEnabled(n > 0)
+end
+Editor.RefreshHistory = refreshHistory
+
+local function buildHistory(win)
+    local b = UI.HeaderButton(win.strip, string.format(TEXT.history, 0), function()
+        if W.source and not W.source.personal and CRT.NoteHistory then
+            CRT.NoteHistory.Open(W.source.id)
+        end
+    end, { tipTitle = TEXT.historyTitle, tipText = TEXT.historyTip })
+    b:SetPoint("RIGHT", win.reset or win.CloseButton, "LEFT", -4, 0)
+    if b.SetMotionScriptsWhileDisabled then
+        b:SetMotionScriptsWhileDisabled(true) -- greyed with no earlier version, its tooltip still says what it is
+    end
+    W.history = b
+    Notes:OnChange(refreshHistory)
+end
+
 local function build()
     local win = UI.Window("CowfeeRaidToolsNoteEditor", {
         kind = "popout", title = TEXT.personalTitle, layer = "popups",
@@ -1048,6 +1080,7 @@ local function build()
     buildLeft(c)
     buildPalette(c)
     buildFooter(c)
+    buildHistory(win)
     makeDrag()
     layoutLeft()
     win.refresh = function() -- a theme switch repaints it (UI:RepaintTheme)
@@ -1112,6 +1145,7 @@ function Editor.Open(source)
         openSource() -- worked out once for this open; a layout edit later never changes it
     end
     W.from.refresh()
+    refreshHistory()
     W.window:Show()
     if W.window.Raise then
         W.window:Raise()
