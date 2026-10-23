@@ -1,13 +1,14 @@
 local ADDON, CRT = ...
 
--- The Timeline page's Review tab controls: the Difficulty, Boss and Pull dropdowns, the recording
--- and overlay checkboxes, the zoom slider, the Recent pulls list and the timeline view itself. The
--- page builds it with Build(parent, ctx) and gets back { view, holder, recent, emptyLabel,
--- unnamedHelp, controls }, the controls being everything it must call refresh() on. The page keeps
--- the choices (difficulty, boss, pull, overlay); ctx gives this file group(), boss(), pull() and
--- the setters selectGroup(key), selectBoss(key), selectPull(key), selectOrder(key),
--- toggleOverlay(pullID) and movePhase(index, seconds), plus bossOptions, pullOptions, orderOptions,
--- order(), hasOrder(), pullLabel, showingReference() and groups (the label of each difficulty group).
+-- The Timeline page's Review tab controls: the Difficulty and Boss dropdowns, the read-only label of the
+-- ability timeline shown (no Pull dropdown: the pulls are picked on Recent pulls), the Order dropdown,
+-- the recording and overlay checkboxes, the zoom slider, the Recent pulls list and the timeline view
+-- itself. The page builds it with Build(parent, ctx) and gets back { view, holder, recent, emptyLabel,
+-- unnamedHelp, shownLabel, controls }, the controls being everything it must call refresh() on. The
+-- page keeps the choices (difficulty, boss, the pull picked); ctx gives this file group(), boss() and
+-- the setters selectGroup(key), selectBoss(key), selectOrder(key), togglePull(pullID) and
+-- movePhase(index, seconds), plus bossOptions, orderOptions, order(), hasOrder(), shownLabel(),
+-- hasPull(), pullLabel, showingReference() and groups (the label of each difficulty group).
 
 local Timeline = CRT.Timeline
 local View = CRT.TimelineView
@@ -64,7 +65,7 @@ function ReviewTab.Build(f, ctx)
         return row
     end
 
-    -- Difficulty first: it decides what the Boss and Pull lists hold.
+    -- Difficulty first: it decides what the Boss list and Recent pulls hold.
     local difficulty = place(UI.Dropdown(f, "Difficulty", {
         options = {
             { key = "nh", label = ctx.groups.nh },
@@ -83,30 +84,37 @@ function ReviewTab.Build(f, ctx)
         get = ctx.boss,
         set = ctx.selectBoss,
     }), 200, -4)
-    local pull = place(UI.Dropdown(f, "Pull", {
-        options = ctx.pullOptions,
-        labelWidth = 36,
-        width = 180,
-        get = ctx.pull,
-        set = ctx.selectPull,
-        enabledIf = function()
-            return ctx.pull() ~= nil
-        end,
-    }), 412, -4)
+    -- The ability timeline shown (Timeline:ReferenceFor picks it; the Advanced tab's In use picks
+    -- another): read-only, where a Pull dropdown once was. The pulls are picked on Recent pulls.
+    local LABEL_X, LABEL_MAX = 412, 220
+    local shown = f:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
+    shown:SetPoint("TOPLEFT", f, "TOPLEFT", LABEL_X, -9)
+    shown:SetWidth(LABEL_MAX)
+    shown:SetJustifyH("LEFT")
+    shown:SetWordWrap(false)
+    controls[#controls + 1] = shown -- its refresh is set below, with Order's place
+    tab.shownLabel = shown
 
-    -- The pull's unnamed casts, after the Pull dropdown
-    tab.unnamedHelp = UI.HelpRight(pull, "Unnamed casts", function()
+    -- The unnamed casts of a recorded pull, after the label; a boss with an ability timeline has none
+    tab.unnamedHelp = UI.HelpRight(shown, "Unnamed casts", function()
         local text = "Some boss casts come from the game without a readable spell, so they are drawn in the \"Boss casts (unnamed)\" row with only their time."
-        -- a reference has no casts of its own, so the hint is for recorded pulls only
-        if tab.view and tab.view:CastCount() == 0 and ctx.pull() and not ctx.showingReference() then
+        if tab.view and tab.view:CastCount() == 0 and ctx.hasPull() and not ctx.showingReference() then
             text = text .. "\n\nThis pull has no casts at all. The game's Boss Timeline option may be off; check it in the game's options."
         end
         return text
     end)
 
-    -- Order: shown only for a reference with an Order line. It sits beside Pull (and its (?)) when the frame is
-    -- wide enough (the main panel's page, UI.PAGE_W, is), else on the third row after Time visible,
-    -- clear of the second row's (?) icons and of Share note at the right.
+    -- How far the label's text reaches, (?) included when it shows: where Order starts.
+    local function labelEnd()
+        local w = shown.GetStringWidth and shown:GetStringWidth() or nil
+        w = math.min(LABEL_MAX, type(w) == "number" and w > 0 and w or LABEL_MAX)
+        local help = tab.unnamedHelp and tab.unnamedHelp:IsShown()
+        return LABEL_X + w + (help and (UI.HELP_GAP + UI.HELP_SIZE) or 0) + 16
+    end
+
+    -- Order: shown only for an ability timeline with an Order line. It sits right after the label (and the
+    -- (?)) when the frame is wide enough (the main panel's page, UI.PAGE_W, is), else on the third row after
+    -- Time visible, clear of the second row's (?) icons and of Share note at the right.
     local order = UI.Dropdown(f, "Order", {
         options = ctx.orderOptions,
         labelWidth = 40,
@@ -116,14 +124,22 @@ function ReviewTab.Build(f, ctx)
     })
     local orderHelp = UI.HelpRight(order, "Order", "The order your raid takes this boss's parts in, such as which turtle empowers first. Each part's abilities move to the time it now has. The choice is kept for this boss and difficulty.")
     -- docked: after Time visible (its label, bar and value end near 300)
-    local ORDER_W, WIDE_X, NARROW_X, NARROW_Y = 40 + 5 + 140, 664, 320, -64
+    local ORDER_W, NARROW_X, NARROW_Y = 40 + 5 + 140, 320, -64
+    ReviewTab.ORDER_W = ORDER_W
     local function placeOrder()
-        local wide = (f:GetWidth() or 0) >= WIDE_X + ORDER_W + 28
+        local x = labelEnd()
+        local wide = (f:GetWidth() or 0) >= x + ORDER_W + UI.HELP_GAP + UI.HELP_SIZE + 8
         order:ClearAllPoints()
-        order:SetPoint("TOPLEFT", f, "TOPLEFT", wide and WIDE_X or NARROW_X, wide and -4 or NARROW_Y)
-        local shown = ctx.hasOrder()
-        order:SetShown(shown)
-        orderHelp:SetShown(shown)
+        order:SetPoint("TOPLEFT", f, "TOPLEFT", wide and x or NARROW_X, wide and -4 or NARROW_Y)
+        local on = ctx.hasOrder()
+        order:SetShown(on)
+        orderHelp:SetShown(on)
+    end
+    tab.placeOrder = placeOrder
+    -- the label and its (?) first, then Order beside them
+    shown.refresh = function()
+        shown:SetText(ctx.shownLabel() or "")
+        tab.unnamedHelp:SetShown(not ctx.showingReference() and ctx.hasPull())
     end
     local orderRefresh = order.refresh
     order.refresh = function()
@@ -146,7 +162,7 @@ function ReviewTab.Build(f, ctx)
         Timeline:Set("overlayOn", on)
     end)
     overlay.Label:SetWidth(170)
-    UI.HelpRight(overlay.Label, "Deaths from recent pulls", "Draws the deaths of the pulls before this one over it, faded by how old they are, so deaths that repeat stand out. How many pulls it covers is on the Settings tab.")
+    UI.HelpRight(overlay.Label, "Deaths from recent pulls", "With no pull picked on the right, draws the deaths of this boss's recent pulls on the ability timeline, faded by how old they are, so deaths that repeat stand out. Pick a pull on the right to see only that pull's deaths; click it again to go back to all of them. How many pulls it covers is on the Settings tab.")
 
     -- Zoom: the mouse wheel writes span without telling the page, so refresh re-reads it here.
     place(UI.Slider(f, "Time visible", {
@@ -161,7 +177,7 @@ function ReviewTab.Build(f, ctx)
         end,
     }), 8, -64)
 
-    tab.recent = ReferencePage.Recent(f, RECENT_W, ctx.pullLabel, ctx.toggleOverlay)
+    tab.recent = ReferencePage.Recent(f, RECENT_W, ctx.pullLabel, ctx.togglePull)
 
     tab.holder = CreateFrame("Frame", nil, f)
     tab.holder:SetPoint("TOPLEFT", f, "TOPLEFT", 8, -96)

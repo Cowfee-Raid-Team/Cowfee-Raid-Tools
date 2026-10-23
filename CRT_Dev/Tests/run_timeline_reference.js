@@ -588,6 +588,20 @@ do
   assert(R:PruneRemoved() == 0, "gone: nothing to prune")
   print("ok marks whose blocks are gone are flagged and pruned")
 end
+do
+  -- the In use pick's key: two shipped blocks with the same Boss, Difficulty and Length never share one
+  local a = "Boss: Twin\\nDifficulty: Mythic\\nLength: 5:00\\nSmash: 0:10"
+  local b = "Boss: Twin\\nDifficulty: Mythic\\nLength: 5:00\\nSmash: 0:20"
+  local ea = { own = false, key = "ship:1", ref = R.Parse(a), text = a }
+  local eb = { own = false, key = "ship:2", ref = R.Parse(b), text = b }
+  assert(R.RemovalKey(ea.ref, a) == R.RemovalKey(eb.ref, b), "the two share a header")
+  local ka, kb = R.ChoiceKey(ea), R.ChoiceKey(eb)
+  assert(ka and kb and ka ~= kb, "choice key: a tiebreak from the text keeps them apart: " .. tostring(ka))
+  local moved = { own = false, key = "ship:9", ref = R.Parse(a), text = a }
+  assert(R.ChoiceKey(moved) == ka, "choice key: the same block in another list place keeps its key")
+  assert(R.ChoiceKey({ own = true, key = "own:3", ref = ea.ref, text = a }) == "own:3", "choice key: yours by its own key")
+  print("ok the In use key keeps same-header shipped blocks apart")
+end
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 // Each file named on the command line is loaded in order (Database.lua before Reference.lua).

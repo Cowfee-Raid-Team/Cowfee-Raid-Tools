@@ -412,16 +412,58 @@ function Timeline:ReferenceFor(encounterID, group, bossName, prefer, found)
     if type(found) ~= "table" then
         found = Reference:ForBoss(encounterID, name)
     end
-    local list = Reference:ForGroup(found, group == "mythic" and "mythic" or "nh")
-    if type(prefer) == "string" then
-        local want = prefer:lower()
+    group = group == "mythic" and "mythic" or "nh"
+    local list = Reference:ForGroup(found, group)
+    -- the one In use (picked on the Advanced tab), while it is still one of the boss's. One of yours is
+    -- matched by its own key alone; only a shipped pick reads the shipped blocks' keys (cached by text)
+    local chosen
+    local want = self:ChosenReference(encounterID, group)
+    if type(want) == "string" and Reference.ChoiceKey then
+        local mine = want:find("^own:") ~= nil
         for _, entry in ipairs(list) do
-            if type(entry.ref.difficulty) == "string" and entry.ref.difficulty:lower() == want then
+            if (mine and entry.own and entry.key == want) or (not mine and not entry.own and Reference.ChoiceKey(entry) == want) then
+                chosen = entry
+                break
+            end
+        end
+    end
+    if type(prefer) == "string" then
+        local wanted = prefer:lower()
+        local function fits(entry)
+            return type(entry.ref.difficulty) == "string" and entry.ref.difficulty:lower() == wanted
+        end
+        if chosen and fits(chosen) then
+            return chosen
+        end
+        for _, entry in ipairs(list) do
+            if fits(entry) then
                 return entry
             end
         end
     end
-    return list[1]
+    return chosen or list[1]
+end
+
+-- The ability timeline picked for a boss and difficulty group when it has more than one (the Advanced
+-- tab's "In use"): Reference.ChoiceKey of it, saved in timeline.reviewRefs[encounterID][group]. Nil
+-- (the default) takes the group's first, yours first. ReferenceFor reads it, so the Review tab, the
+-- alerts' times and the Rehearsal all follow the one choice. SetChosenReference(encounterID, group, nil)
+-- clears it.
+function Timeline:ChosenReference(encounterID, group)
+    local picks = tdb().reviewRefs
+    local mine = picks and picks[encounterID]
+    return mine and mine[group == "mythic" and "mythic" or "nh"] or nil
+end
+
+function Timeline:SetChosenReference(encounterID, group, key)
+    if encounterID == nil then
+        return
+    end
+    local db = tdb()
+    db.reviewRefs = db.reviewRefs or {}
+    db.reviewRefs[encounterID] = db.reviewRefs[encounterID] or {}
+    db.reviewRefs[encounterID][group == "mythic" and "mythic" or "nh"] = key
+    self:Fire()
 end
 
 -- For the alerts: how the raid's chosen order moves a line's time. Nil when the boss's reference for
@@ -494,20 +536,82 @@ local function inGroup(pull, group)
     return group == nil or groupOf(pull.difficultyID) == group
 end
 
+-- Pull numbers: what the page shows as "Pull N" counts each boss's pulls on its own, Normal/Heroic and
+-- Mythic apart, from 1. pull.number is given when the pull is saved, from the boss's counter for its group
+-- (boss.counts[group], the last number given), so deleting or trimming pulls never renumbers the rest.
+-- pull.id stays the store's own key, unique across bosses. A boss saved before numbers existed (no
+-- counts) is numbered once, the first time it is read: its pulls are first copied to
+-- timeline.pullNumberBackup[encounterID] ({ id, startedAt, difficultyID } each, in stored order), then
+-- each group's pulls are numbered by start time, oldest first.
+
+local function startOf(pull)
+    return type(pull.startedAt) == "number" and pull.startedAt or 0
+end
+
+local function numberBoss(encounterID, boss)
+    if type(boss) ~= "table" or type(boss.pulls) ~= "table" or type(boss.counts) == "table" then
+        return boss
+    end
+    local db = tdb()
+    -- the backup is only for recovery by hand (editing the SavedVariables file): no code reads it back
+    db.pullNumberBackup = db.pullNumberBackup or {}
+    if db.pullNumberBackup[encounterID] == nil then
+        local copy = {}
+        for i, p in ipairs(boss.pulls) do
+            copy[i] = { id = p.id, startedAt = p.startedAt, difficultyID = p.difficultyID, number = p.number }
+        end
+        db.pullNumberBackup[encounterID] = copy
+    end
+    local counts, todo = {}, {}
+    for _, p in ipairs(boss.pulls) do
+        local group = groupOf(p.difficultyID)
+        if type(p.number) == "number" then
+            counts[group] = math.max(counts[group] or 0, p.number)
+        else
+            todo[#todo + 1] = p
+        end
+    end
+    table.sort(todo, function(a, b)
+        if startOf(a) ~= startOf(b) then
+            return startOf(a) < startOf(b)
+        end
+        return (tonumber(a.id) or 0) < (tonumber(b.id) or 0)
+    end)
+    for _, p in ipairs(todo) do
+        local group = groupOf(p.difficultyID)
+        counts[group] = (counts[group] or 0) + 1
+        p.number = counts[group]
+    end
+    boss.counts = counts
+    return boss
+end
+
+-- The boss's saved table with its pulls numbered (see above), or nil.
+local function bossOf(encounterID)
+    return numberBoss(encounterID, tdb().bosses[encounterID])
+end
+
+-- The number a pull is shown by: its own count on its boss, else (a pull never saved) its id.
+function Timeline.PullNumber(pull)
+    return type(pull) == "table" and (pull.number or pull.id) or nil
+end
+
 -- Saves a finished pull under its boss, numbers it, and keeps only the newest `keep` pulls of its
 -- difficulty group for that boss (the other group's pulls are never dropped).
 function Timeline:SavePull(pull)
     local db = tdb()
-    local boss = db.bosses[pull.encounterID]
+    local boss = bossOf(pull.encounterID)
     if not boss then
-        boss = { name = pull.name, pulls = {} }
+        boss = { name = pull.name, pulls = {}, counts = {} }
         db.bosses[pull.encounterID] = boss
     end
     boss.name = pull.name or boss.name
     pull.id = db.nextId
     db.nextId = db.nextId + 1
-    boss.pulls[#boss.pulls + 1] = pull
     local group = groupOf(pull.difficultyID)
+    boss.counts[group] = (boss.counts[group] or 0) + 1
+    pull.number = boss.counts[group]
+    boss.pulls[#boss.pulls + 1] = pull
     local inGroupCount = 0
     for _, p in ipairs(boss.pulls) do
         if groupOf(p.difficultyID) == group then
@@ -556,7 +660,7 @@ end
 -- A boss's pulls, newest first; with a group, only that group's pulls.
 function Timeline:Pulls(encounterID, group)
     local list = {}
-    local boss = tdb().bosses[encounterID]
+    local boss = bossOf(encounterID)
     if boss then
         for i = #boss.pulls, 1, -1 do
             if inGroup(boss.pulls[i], group) then
@@ -568,7 +672,7 @@ function Timeline:Pulls(encounterID, group)
 end
 
 function Timeline:Pull(encounterID, id)
-    local boss = tdb().bosses[encounterID]
+    local boss = bossOf(encounterID)
     if boss then
         for _, pull in ipairs(boss.pulls) do
             if pull.id == id then
@@ -588,7 +692,7 @@ end
 -- group's pulls are counted and walked.
 function Timeline:RecentDeaths(encounterID, count, fromID, group)
     local list = {}
-    local boss = tdb().bosses[encounterID]
+    local boss = bossOf(encounterID)
     if not boss then
         return list
     end

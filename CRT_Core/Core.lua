@@ -291,8 +291,10 @@ local defaults = {
         nextId = 1,
     },
     -- Timeline. Boss pulls recorded for the Timeline page (Timeline/Data.lua). bosses[encounterID] =
-    -- { name, pulls = { newest last } }, and each pull has the boss casts and the deaths in seconds
-    -- from the pull start. rows[encounterID] holds the player's hidden and added spell rows.
+    -- { name, pulls = { newest last }, counts = { nh = N, mythic = N } }, and each pull has the boss casts
+    -- and the deaths in seconds from the pull start, its id (the store's key, unique across bosses) and its
+    -- number (its count on its boss and difficulty group from 1, shown as "Pull N"; counts holds the last
+    -- number given per group). rows[encounterID] holds the player's hidden and added spell rows.
     timeline = {
         record = true,
         minPull = 15, -- seconds; shorter pulls are not kept
@@ -317,6 +319,9 @@ local defaults = {
         references = {}, -- the player's own reference timelines, { id, text, saved } (saved: time() of the last change, optional; Timeline/Reference.lua)
         nextRef = 1,
         nextId = 1,
+        -- the ability timeline In use per boss and difficulty, picked on the Advanced tab:
+        -- [encounterID] = { nh = key, mythic = key } (Timeline:ChosenReference; none: the group's first, yours first)
+        reviewRefs = {},
     },
     -- Alerts. Reminders, phase events and bar settings for the alerts engine (Alerts/Engine.lua).
     -- reminders are the player's own timed reminders, phases the phase events they set up, overrides
