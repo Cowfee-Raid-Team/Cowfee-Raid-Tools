@@ -66,6 +66,18 @@ function Tattle:Find(id)
     end
 end
 
+-- A night by its id: a saved one, or the running one. Nil when it is gone (deleted) or id is nil.
+function Tattle:Night(id)
+    if id == nil then
+        return nil
+    end
+    local current = tdb().current
+    if current and current.id == id then
+        return current
+    end
+    return self:Find(id)
+end
+
 function Tattle:Delete(id)
     local history = tdb().history
     for i, night in ipairs(history) do
@@ -607,8 +619,9 @@ function Tattle:Totals()
 end
 
 -- Every saved pull on one boss, the running night's too, oldest first, for Season Stats' trend:
--- { at, difficulty, success, damage }, damage being every player's counted damage added up (Tattle.PullDamage:
--- the tracked mechanics, plus the meter's avoidable damage when that setting is on).
+-- { at, difficulty, success, damage, night, nightAt }, damage being every player's counted damage added up
+-- (Tattle.PullDamage: the tracked mechanics, plus the meter's avoidable damage when that setting is on), night the
+-- id of the night it is in (Tattle:Night) and nightAt that night's start.
 function Tattle:BossPulls(encounterID)
     local out = {}
     if encounterID == nil then
@@ -626,7 +639,8 @@ function Tattle:BossPulls(encounterID)
                 for _, p in pairs(pull.players or {}) do
                     damage = damage + Tattle.PullDamage(p, pull)
                 end
-                out[#out + 1] = { at = pull.at or night.startedAt, difficulty = pull.difficulty, success = pull.success, damage = damage }
+                out[#out + 1] = { at = pull.at or night.startedAt, difficulty = pull.difficulty, success = pull.success, damage = damage,
+                    night = night.id, nightAt = night.startedAt }
             end
         end
     end

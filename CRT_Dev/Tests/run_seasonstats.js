@@ -13,7 +13,7 @@ const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate();
 lualib.luaL_openlibs(L);
 const harness = themeLua(process.argv.slice(2)) + `
-local timelineSrc, registrySrc, lateSrc, tattleSrc, dataSrc, pageSrc, coreSrc, panelSrc, profilesSrc, tocSrc = ...
+local timelineSrc, registrySrc, lateSrc, tattleSrc, dataSrc, pageSrc, coreSrc, panelSrc, profilesSrc, tocSrc, referenceSrc, tattlePageSrc = ...
 local fails, passes = 0, 0
 local function check(ok, what) if ok then passes = passes + 1 else fails = fails + 1 print("FAIL " .. what) end end
 local function eq(a, b, what) check(a == b, what .. " (got " .. tostring(a) .. ", want " .. tostring(b) .. ")") end
@@ -29,8 +29,8 @@ GetTime = function() return 1000 end
 C_Timer = { After = function() end, NewTicker = function() return { Cancel = function() end } end }
 C_Spell = { GetSpellName = function(id) return ({ [111] = "Fang Bite", [222] = "Venom Pool", [333] = "Tail Swipe" })[id] end }
 local tip = { lines = {} }
-GameTooltip = { SetOwner = function(self, o) self.owner = o self.lines = {} end, SetText = function(self, t) self.lines = { t } end,
-  AddLine = function(self, t) self.lines[#self.lines + 1] = t end, Show = function(self) self.shown = true end, Hide = function(self) self.shown = false end,
+GameTooltip = { SetOwner = function(self, o) self.owner = o self.lines = {} end, SetText = function(self, t) self.lines = { t } self.colors = {} end,
+  AddLine = function(self, t, r, g, b) self.lines[#self.lines + 1] = t self.colors = self.colors or {} self.colors[#self.lines] = r and { r, g, b } end, Show = function(self) self.shown = true end, Hide = function(self) self.shown = false end,
   ClearAllPoints = function() end, SetPoint = function() end }
 
 -- stand-in frames, keeping where they were put
@@ -60,6 +60,8 @@ local function mock()
       CreateTexture = function(self) local x = mock() x.parent = self self.kids[#self.kids + 1] = x return x end,
       CreateFontString = function(self) local x = mock() x.parent = self x.isText = true self.kids[#self.kids + 1] = x return x end,
       GetStringWidth = function(self) return #(self.text or "") * 6 end,
+      GetStringHeight = function() return 12 end,
+      SetVerticalScroll = function(self, v) self.vscroll = v end,
       GetParent = function(self) return self.parent end,
       GetFrameLevel = function() return 1 end,
     })[k]
@@ -74,9 +76,14 @@ UIParent = mock()
 
 -- the CRT: its saved data, the boss library with two test seasons, the Late Tracker, Tattlebot, the Timeline
 local helps, pages, dropdowns, sorts = {}, {}, {}, {}
+local selectedPage
 local UI = {
-  PAGE_W = 1026, PAGE_H = 560,
+  PAGE_W = 1026, PAGE_H = 560, pages = pages,
   RegisterPage = function(_, key, title, build) pages[key] = { title = title, build = build } end,
+  -- the panel's page switch: builds the page once, then shows it
+  SelectPage = function(_, key) selectedPage = key local p = pages[key] if not p then return end
+    if not p.frame then p.frame = mock() p.frame.shown = false p.build(p.frame) end p.frame:Show() end,
+  SetTabSelected = function() end, RegisterTab = function() end, SkinScrollBar = function() end, SkinCheckButton = function() end,
   HelpRight = function(target, title, text) helps[title] = text local h = mock() h.target = target return h end,
   Dropdown = function(parent, label, opts) local row = mock() row.parent = parent row.label, row.opts = label, opts row.refresh = function() row.refreshed = (row.refreshed or 0) + 1 end
     dropdowns[label] = row return row end,
@@ -90,7 +97,7 @@ local CRT = { UI = UI, db = {
   tattle = { enabled = true, raidsOnly = true, avoidable = false, custom = {}, season = "Season 1", history = {}, nextId = 1 },
 } }
 function CRT:Print() end
-CRT.Groups = { OnChange = function() end }
+CRT.Groups = { OnChange = function() end, ClassColor = function() return 1, 1, 1 end, ReportName = function(k) return k end }
 CRT_THEME(CRT, UI)
 -- the saved default from Core.lua, as the game fills it in
 local coreDefault = coreSrc:match("\\n    seasonStats = (%b{}),")
@@ -102,8 +109,10 @@ check(type(CRT.db.seasonStats.bosses) == "table" and next(CRT.db.seasonStats.bos
 -- the alerts engine's phases, as Alerts/Engine.lua exposes them
 local alertsListeners = {}
 local starts = {}
+local customColors = false -- Use custom colours (Raid Notes > Alerts), which Reference.RowColor reads
 CRT.Alerts = { running = false, OnChange = function(_, fn) alertsListeners[#alertsListeners + 1] = fn end,
-  Phases = function() return { 1, 2, 3 } end, PhaseStart = function(_, ph) return starts[ph] end }
+  Phases = function() return { 1, 2, 3 } end, PhaseStart = function(_, ph) return starts[ph] end,
+  CustomColors = function() return customColors end }
 local function alertsFire() for _, fn in ipairs(alertsListeners) do fn() end end
 
 assert(load(timelineSrc, "Timeline/Data.lua"))("CowfeeRaidTools", CRT)
@@ -117,6 +126,7 @@ end
 assert(load(lateSrc, "Late/Data.lua"))("CowfeeRaidTools", CRT)
 CRT.TattleDB = { bosses = { { boss = "Alpha", encounterID = 9001, mechanics = { { name = "Puddle", spells = { 555 } } } } } }
 assert(load(tattleSrc, "Tattlebot/Data.lua"))("CowfeeRaidTools", CRT)
+assert(load(referenceSrc, "Timeline/Reference.lua"))("CowfeeRaidTools", CRT)
 local T = CRT.Timeline
 
 -- the Timeline as it was before Season Stats: Gamma 118 Mythic pulls, the newest 12 kept (no kills); Delta three
@@ -320,6 +330,51 @@ check(trend and trend[1].key == "2026-09-17" and trend[1].perPull == 1000, "newe
 check(trend and trend[2].key == "2026-09-15" and trend[2].pulls == 2 and trend[2].perPull == 2000, "the night before: two pulls, 2000 a pull")
 eq(S:AvoidableTrend(9001, "mythic", 4)[1].perPull, 9000, "Mythic pulls apart")
 eq(S:AvoidableTrend(9101, "mythic", 4), nil, "no Tattlebot pulls on a boss: no trend")
+-- each line carries its Tattlebot night, to open it there
+eq(bp[1].night, 1, "Tattle:BossPulls: each pull's night id")
+eq(bp[5].night, 2, "the running night's id too")
+eq(trend[1].nightID, 2, "the trend's newest line: the running night")
+eq(trend[2].nightID, 1, "the night before: the saved night")
+eq(trend[2].nightIDs and #trend[2].nightIDs, 1, "one Tattlebot night on that date")
+do
+  -- two Tattlebot nights on one date: both kept, the newest opened
+  local hist = CRT.db.tattle.history
+  hist[#hist + 1] = { id = 3, startedAt = A1 + 3000, season = "Season 1", pulls = { tpull(A1 + 3000, 14, 100, 0) } }
+  local t2 = S:AvoidableTrend(9001, "nh", 4)
+  eq(t2[2].nightIDs and table.concat(t2[2].nightIDs, ","), "3,1", "two nights on a date: newest first")
+  eq(t2[2].nightID, 3, "and the newest is the one opened")
+  hist[#hist] = nil
+end
+eq(CRT.Tattle:Night(1) and CRT.Tattle:Night(1).id, 1, "Tattle:Night: a saved night")
+eq(CRT.Tattle:Night(2) and CRT.Tattle:Night(2).id, 2, "Tattle:Night: the running night")
+eq(CRT.Tattle:Night(99), nil, "Tattle:Night: a night that is gone")
+eq(CRT.Tattle:Night(nil), nil, "Tattle:Night: no id")
+
+-- the death causes on the boss's ability timeline: by spell ID, else by name; cached until the Timeline changes
+local R = CRT.TimelineReference
+CRT.db.timeline.references = { { id = 1, text = "Boss: Gamma\\nEncounter: 9101\\nDifficulty: Mythic\\n"
+  .. "Fang Bite [spell 111] (type raid dodge): 0:10\\nvenom pool (type soak, color 112233): 0:20\\nOther Thing [spell 777]: 0:30" } }
+CRT.db.timeline.nextRef = 2
+local fang = S:AbilityRow(9101, "mythic", 111, "Fang Bite", "Gamma")
+eq(fang and fang.name, "Fang Bite", "a cause on the ability timeline, by spell ID")
+local venom = S:AbilityRow(9101, "mythic", 222, "Venom Pool", "Gamma")
+eq(venom and venom.name, "venom pool", "a cause on the ability timeline, by name in any case")
+eq(S:AbilityRow(9101, "mythic", 333, "Tail Swipe", "Gamma"), nil, "a cause not on the ability timeline: none")
+eq(S:AbilityRow(9101, "mythic", 0, nil, "Gamma"), nil, "an unknown cause: none")
+eq(S:AbilityRow(9101, "nh", 111, "Fang Bite", "Gamma"), nil, "another difficulty group's ability timeline isn't read")
+local reads = 0
+local realFor = T.ReferenceFor
+T.ReferenceFor = function(...) reads = reads + 1 return realFor(...) end
+S:AbilityRow(9101, "mythic", 111, "Fang Bite", "Gamma")
+S:AbilityRow(9101, "mythic", 222, "Venom Pool", "Gamma")
+eq(reads, 0, "the ability timeline is read once per boss and group")
+T:Fire()
+S:AbilityRow(9101, "mythic", 111, "Fang Bite", "Gamma")
+eq(reads, 1, "and again after the Timeline changes")
+T:SetChosenReference(9101, "mythic", nil)
+S:AbilityRow(9101, "mythic", 111, "Fang Bite", "Gamma")
+eq(reads, 2, "and again after another ability timeline is picked In use")
+T.ReferenceFor = realFor
 
 -- 6. Text ------------------------------------------------------------------------------------------------------------
 eq(S.Clock(272), "4:32", "clock")
@@ -331,6 +386,8 @@ eq(S.PhaseText(1.5), "Phase 1.5", "an intermission phase")
 
 -- 7. The page --------------------------------------------------------------------------------------------------------
 assert(load(pageSrc, "SeasonStats/Page.lua"))("CowfeeRaidTools", CRT)
+-- Tattlebot's page, which a night's line opens (built only when it is first shown)
+assert(load(tattlePageSrc, "Tattlebot/Page.lua"))("CowfeeRaidTools", CRT)
 local P = pages.seasonstats
 check(P ~= nil, "the page registers as seasonstats")
 eq(P and P.title, "Season Stats", "its title")
@@ -342,6 +399,7 @@ check(helps["Season Stats"] ~= nil, "the page's (?)")
 local reflHelp
 for title, text in pairs(helps) do if text:find("health", 1, true) then reflHelp = text end end
 check(reflHelp and reflHelp:find("longest pull", 1, true) and reflHelp:find("furthest phase", 1, true), "the reflection's (?) says the longest pull and furthest phase stand in for the boss's health")
+check(reflHelp and reflHelp:find("Click a night", 1, true) and reflHelp:find("ability timeline", 1, true), "and that a night opens in Tattlebot and causes take the ability timeline's colours")
 local sd, dd = dropdowns.Season, dropdowns.Difficulty
 check(sd and dd, "the Season and Difficulty dropdowns")
 local sopts = type(sd.opts.options) == "function" and sd.opts.options() or sd.opts.options
@@ -372,13 +430,34 @@ sh.opts.set(nil, 1)
 eq(rowName(1), "Epsilon", "back to route order")
 -- the reflection: empty until a boss is picked
 check(V.refl.hint.shown and V.refl.hint.text ~= "" and not V.refl.body.shown, "no boss picked: a line says to pick one")
+-- a Gamma death to a spell on no ability timeline, for the third cause
+S:Record({ encounterID = 9101, name = "Gamma", difficultyID = 16, startedAt = NOW + 900, length = 60, kill = false, deaths = { { spellID = 333 } } })
 V.rows[2].scripts.OnClick(V.rows[2])
 check(not V.refl.hint.shown and V.refl.body.shown, "Gamma picked: the reflection fills")
 check(V.refl.title.text:find("Gamma", 1, true) ~= nil, "the reflection names the boss")
 check(V.refl.bars[1].shown and V.refl.bars[1].value.text:find("6:40", 1, true) and V.refl.bars[1].value.text:find("Phase 2", 1, true), "a bar per night: longest pull and phase (" .. tostring(V.refl.bars[1].value.text) .. ")")
 check(V.refl.furthest.text:find("Phase 2", 1, true) ~= nil, "furthest phase line")
-check(V.refl.causes[1].text:find("Fang Bite", 1, true) and V.refl.causes[1].text:find("12", 1, true), "top cause by name, with its count (" .. tostring(V.refl.causes[1].text) .. ")")
-check(V.refl.causes[2].text:find("Venom Pool", 1, true) ~= nil, "second cause")
+local c1, c2, c3 = V.refl.causes[1], V.refl.causes[2], V.refl.causes[3]
+check(plain(c1.label.text):find("Fang Bite", 1, true) and c1.label.text:find("12", 1, true), "top cause by name, with its count (" .. tostring(c1.label.text) .. ")")
+check(plain(c2.label.text):find("Venom Pool", 1, true) ~= nil, "second cause")
+-- coloured as the Timeline draws the ability timeline's row
+check(c1.label.text:lower():find("|cff" .. R.TYPES.raid.hex:lower() .. "fang bite|r", 1, true) ~= nil, "a cause on the ability timeline by spell ID: its row's type colour (" .. c1.label.text .. ")")
+check(c2.label.text:lower():find("|cff" .. R.TYPES.soak.hex:lower() .. "venom pool|r", 1, true) ~= nil, "by name, custom colours off: the type's colour (" .. c2.label.text .. ")")
+eq(c3.label.text, "Tail Swipe: 1", "a cause on no ability timeline: plain")
+customColors = true
+V.refresh()
+check(c2.label.text:lower():find("|cff112233venom pool|r", 1, true) ~= nil, "custom colours on: the row's own colour (" .. c2.label.text .. ")")
+check(c1.label.text:lower():find("|cff" .. R.TYPES.raid.hex:lower(), 1, true) ~= nil, "a row with no colour of its own keeps its type's")
+customColors = false
+V.refresh()
+c1.scripts.OnEnter(c1)
+eq(GameTooltip.owner, c1, "a cause's tooltip, on its line")
+local tl = table.concat(GameTooltip.lines, "\\n")
+check(GameTooltip.lines[1] == "Fang Bite" and tl:find(R.TypeLine("raid"), 1, true) and tl:find(R.TypeLine("dodge"), 1, true), "the tooltip: the spell, then its types (" .. tl .. ")")
+check(GameTooltip.colors[2] and GameTooltip.colors[2][1] == R.TYPES.raid.color[1], "each type line in its type's colour")
+c3.scripts.OnEnter(c3)
+check(#GameTooltip.lines == 1 and GameTooltip.lines[1] == "Tail Swipe", "no match: the spell only")
+c3.scripts.OnLeave(c3)
 check(V.refl.trend.text:find("in the last", 1, true) ~= nil, "deaths per pull line")
 check(V.refl.avoid[1] and not V.refl.avoid[1].shown, "no Tattlebot pulls on Gamma: no avoidable lines")
 check(V.refl.avoidHint.shown, "and a line says so")
@@ -394,8 +473,69 @@ eq(rowName(1) .. ", " .. rowName(2), "Alpha, Beta", "Test Season 1's bosses")
 eq(V.cards.nights.value.text, "2", "raid nights from the Late Tracker")
 check(V.refl.hint.shown, "a new season: the pick is cleared")
 V.rows[1].scripts.OnClick(V.rows[1])
-check(V.refl.avoid[1].shown and V.refl.avoid[1].text:find("2026-09-17", 1, true) and V.refl.avoid[1].text:find("1K", 1, true), "Tattlebot's trend, newest night first (" .. tostring(V.refl.avoid[1].text) .. ")")
-check(V.refl.avoid[2].shown and V.refl.avoid[2].text:find("2K", 1, true), "then the night before")
+local av1, av2 = V.refl.avoid[1], V.refl.avoid[2]
+check(av1.shown and av1.label.text:find("2026-09-17", 1, true) and av1.label.text:find("1K", 1, true), "Tattlebot's trend, newest night first (" .. tostring(av1.label.text) .. ")")
+check(av2.shown and av2.label.text:find("2K", 1, true), "then the night before")
+-- each night opens in Tattlebot
+check(av2.arrow.shown and plain(av2.arrow.text) == ">", "a night in Tattlebot: a > at its right")
+check(av2.arrow.text ~= ">", "the > in the heading colour")
+av2.scripts.OnEnter(av2)
+eq(GameTooltip.owner, av2, "the night's tooltip, on its line")
+check(table.concat(GameTooltip.lines, " "):find("Open this night in Tattlebot", 1, true) ~= nil, "it says the click opens it in Tattlebot")
+av2.scripts.OnLeave(av2)
+av2.scripts.OnClick(av2)
+eq(selectedPage, "tattle", "click: the Tattlebot page")
+local tab, sel, season = CRT.TattlePage.State()
+eq(tab .. " " .. tostring(sel) .. " " .. tostring(season), "history 1 all", "on History, all seasons, with that night selected")
+av1.scripts.OnClick(av1)
+eq((CRT.TattlePage.State()), "tonight", "the running night opens on Tattlebot's Tonight tab")
+-- a Mechanic filter picked in Tattlebot: opening a night shows all of it again
+dropdowns.Mechanic.opts.set("spell/555")
+eq(select(4, CRT.TattlePage.State()), "spell/555", "a Mechanic filter picked")
+CRT.TattlePage.ShowNight(1)
+eq(select(4, CRT.TattlePage.State()), "all", "opening a night resets the Mechanic filter to All")
+-- an old night far down History's list: the list scrolls it into view
+do
+  local hist = CRT.db.tattle.history
+  for n = 1, 8 do table.insert(hist, n, { id = 10 + n, startedAt = A1 - (9 - n) * DAY, season = "Season 1", pulls = {} }) end
+  local listScroll
+  for _, f in ipairs(made) do if f.name == "CowfeeRaidToolsTattleListScroll" then listScroll = f end end
+  check(listScroll ~= nil, "Tattlebot's History list")
+  listScroll.h, listScroll.vscroll = 88, nil
+  -- the list: Totals, night 1, then 18 down to 11; night 13 is the 8th row
+  check(CRT.TattlePage.ShowNight(13), "an old night opens")
+  eq(listScroll.vscroll, 7 * 22 - 44, "the list scrolls the old night to its middle")
+  listScroll.vscroll = nil
+  CRT.Tattle:Fire()
+  eq(listScroll.vscroll, nil, "only once: a later redraw leaves the scroll alone")
+  CRT.TattlePage.ShowNight(11)
+  eq(listScroll.vscroll, 10 * 22 - 88, "the last night: no further than the list's end")
+  for n = 1, 8 do table.remove(hist, 1) end
+end
+-- Tattlebot's page hidden: no >, and nothing opens
+pages.tattle.hidden = true
+V.refresh()
+check(av2.shown and not av2.arrow.shown, "Tattlebot's page hidden: no >")
+local stateBefore = { CRT.TattlePage.State() }
+selectedPage = nil
+eq(CRT.TattlePage.ShowNight(1), false, "ShowNight: false with the page hidden")
+eq(selectedPage, nil, "and the panel stays")
+eq(table.concat({ CRT.TattlePage.State() }, " "), table.concat(stateBefore, " "), "and Tattlebot's state is left alone")
+pages.tattle.hidden = nil
+V.refresh()
+check(av2.arrow.shown, "shown again: the > is back")
+-- a night deleted from Tattlebot while the line still shows it: not clickable
+pf.shown = false
+CRT.Tattle:Delete(1)
+selectedPage = nil
+av2.scripts.OnEnter(av2)
+check(table.concat(GameTooltip.lines, " "):find("no longer in Tattlebot", 1, true) ~= nil, "a night that is gone: the tooltip says so")
+check(not av2.arrow.shown, "and its > goes")
+av2.scripts.OnClick(av2)
+eq(selectedPage, nil, "and a click opens nothing")
+pf.shown = true
+CRT.Tattle:Fire()
+check(av1.shown and not av2.shown, "a change in Tattlebot redraws the lines while the page shows")
 -- a boss with no pulls on this difficulty
 dd.opts.set("mythic")
 check(V.refl.hint.shown == false and V.refl.empty.shown, "a picked boss with no pulls on the difficulty: says so")
@@ -441,7 +581,7 @@ const dir = process.argv[2];
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 const files = ['CRT_Modules/Timeline/Data.lua', 'CRT_Data/Bosses/Registry.lua', 'CRT_Modules/Late/Data.lua', 'CRT_Modules/Tattlebot/Data.lua',
   'CRT_Modules/SeasonStats/Data.lua', 'CRT_Modules/SeasonStats/Page.lua', 'CRT_Core/Core.lua', 'CRT_Core/UI/Panel.lua', 'CRT_Core/Profiles.lua',
-  'CowfeeRaidTools.toc'];
+  'CowfeeRaidTools.toc', 'CRT_Modules/Timeline/Reference.lua', 'CRT_Modules/Tattlebot/Page.lua'];
 for (const f of files) {
   const p = path.join(dir, f);
   lua.lua_pushstring(L, to_luastring(fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : 'error("missing ' + f + '")'));

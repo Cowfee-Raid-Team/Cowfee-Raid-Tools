@@ -4,7 +4,8 @@ local ADDON, CRT = ...
 -- one first) and a Difficulty dropdown (the Timeline's groups); four cards (bosses killed of the season's route,
 -- pulls, raid nights, time in pulls); the table of the route's bosses in route order (sortable, back to route order
 -- on a third click); and the reflection for the boss picked in the table: its longest pull each night as bars,
--- the furthest phase, the spells that killed most, deaths per pull, and Tattlebot's avoidable damage per night.
+-- the furthest phase, the spells that killed most (each in its ability timeline row's type colour, Stats:AbilityRow),
+-- deaths per pull, and Tattlebot's avoidable damage per night (a click opens the night there, TattlePage.ShowNight).
 -- The counters are SeasonStats/Data.lua's. No settings, so no tabs. Laid out for the page area
 -- (UI.PAGE_W x UI.PAGE_H); layout numbers in L, wording in TEXT. S.view keeps the parts, for the harness
 -- (CRT_Dev/Tests/run_seasonstats.js).
@@ -18,7 +19,7 @@ local L = {
     cardsTop = -44, cardH = 54, cardGap = 10, cardPad = 10,
     tableTop = -114, tableW = 604, headH = 22, row = 20, rows = 20,
     reflX = 630, reflW = 388, bodyTop = -26, line = 16, bars = 8, barsTop = -18, dateW = 70, barX = 74, barW = 200, barH = 10,
-    causes = 3, avoid = 4,
+    causes = 3, avoid = 4, arrowW = 12,
 }
 
 -- The table's columns: key, x, w; each title is TEXT.columns[key].
@@ -51,7 +52,8 @@ local TEXT = {
     reflectionHelp = "How a boss went, night by night.\n\n"
         .. "The game hides a boss's health from addons during an encounter, so the longest pull and the furthest phase stand in for how close you got.\n\n"
         .. "The phase is the one the alerts reached in the pull. Pulls from before Season Stats have none.\n\n"
-        .. "Avoidable damage is Tattlebot's: its tracked mechanics, and the game's avoidable damage when that is on in Tattlebot's settings.",
+        .. "A death cause on the boss's ability timeline shows in its type's colour, as on the Timeline. Hover it to see the type.\n\n"
+        .. "Avoidable damage is Tattlebot's: its tracked mechanics, and the game's avoidable damage when that is on in Tattlebot's settings. Click a night to open it in Tattlebot.",
     pick = "Click a boss in the table to see how its pulls went.",
     bossEmpty = "No pulls on this boss on %s yet.",
     longest = "Longest pull each night",
@@ -66,6 +68,7 @@ local TEXT = {
     avoid = "Avoidable damage a pull (Tattlebot)",
     avoidLine = "%s: %s a pull (%d %s)",
     noAvoid = "Tattlebot has no pulls on this boss on this difficulty.",
+    avoidOpen = "Open this night in Tattlebot", avoidGone = "This night is no longer in Tattlebot.", more = ">",
     pull = "pull", pullsWord = "pulls",
 }
 
@@ -297,6 +300,70 @@ local function buildBars(body)
     return bars
 end
 
+-- A death cause's line: its text, and a tooltip with the spell and, on the ability timeline, its types.
+local function causeTip(line)
+    if not line.spell then
+        return
+    end
+    UI.TooltipOwner(GameTooltip, line, "ANCHOR_RIGHT")
+    GameTooltip:SetText(line.spell)
+    local Reference = CRT.TimelineReference
+    for _, t in ipairs(line.row and line.row.types or {}) do
+        local typeLine, c = Reference.TypeLine(t)
+        if typeLine then
+            GameTooltip:AddLine(typeLine, c[1], c[2], c[3], true)
+        end
+    end
+    GameTooltip:Show()
+end
+
+local function buildCause(body, y)
+    local line = CreateFrame("Frame", nil, body)
+    line:SetPoint("TOPLEFT", 0, y)
+    line:SetSize(L.reflW, L.line)
+    line.label = text(line, "CRTFontSmall", 0, 0, L.reflW)
+    line:EnableMouse(true)
+    line:SetScript("OnEnter", causeTip)
+    line:SetScript("OnLeave", hideTip)
+    return line
+end
+
+-- An avoidable damage night's line: a button that opens the night in Tattlebot, with a ">" at its right. A night no
+-- longer in Tattlebot (deleted there since the line was drawn) loses the ">" and opens nothing.
+local function nightThere(line)
+    local Tattle, Page = CRT.Tattle, CRT.TattlePage
+    local there = line.nightID ~= nil and Tattle and Tattle.Night and Tattle:Night(line.nightID) ~= nil
+        and Page and Page.ShowNight ~= nil and Page.CanShow and Page.CanShow()
+    line.arrow:SetShown(there and true or false)
+    return there
+end
+
+local function avoidTip(line)
+    showTip(line, { nightThere(line) and TEXT.avoidOpen or TEXT.avoidGone })
+end
+
+local function buildAvoid(body, y)
+    local line = CreateFrame("Button", nil, body)
+    line:SetPoint("TOPLEFT", 0, y)
+    line:SetSize(L.reflW, L.line)
+    local hl = line:CreateTexture(nil, "HIGHLIGHT")
+    hl:SetAllPoints()
+    hl:SetColorTexture(1, 1, 1, 0.06)
+    line.label = text(line, "CRTFontSmall", 0, 0, L.reflW - L.arrowW)
+    line.arrow = text(line, "CRTFontSmall", L.reflW - L.arrowW, 0, L.arrowW)
+    line.arrow:SetJustifyH("RIGHT")
+    line.arrow:SetText(UI.HeadingText(TEXT.more))
+    line:SetScript("OnEnter", avoidTip)
+    line:SetScript("OnLeave", hideTip)
+    line:SetScript("OnClick", function(self)
+        if nightThere(self) then
+            hideTip()
+            CRT.TattlePage.ShowNight(self.nightID)
+        end
+    end)
+    return line
+end
+
 local function buildReflection(f)
     local refl = CreateFrame("Frame", nil, f)
     refl:SetPoint("TOPLEFT", L.reflX, L.tableTop)
@@ -319,7 +386,7 @@ local function buildReflection(f)
     text(body, "CRTFontSmall", 0, y, L.reflW):SetText(UI.HeadingText(TEXT.causes))
     refl.causes = {}
     for i = 1, L.causes do
-        refl.causes[i] = text(body, "CRTFontSmall", 0, y - i * L.line - 2, L.reflW)
+        refl.causes[i] = buildCause(body, y - i * L.line - 2)
     end
     y = y - (L.causes + 1) * L.line - 8
     refl.trend = text(body, "CRTFontSmall", 0, y, L.reflW)
@@ -327,7 +394,7 @@ local function buildReflection(f)
     text(body, "CRTFontSmall", 0, y, L.reflW):SetText(UI.HeadingText(TEXT.avoid))
     refl.avoid = {}
     for i = 1, L.avoid do
-        refl.avoid[i] = text(body, "CRTFontSmall", 0, y - i * L.line - 2, L.reflW)
+        refl.avoid[i] = buildAvoid(body, y - i * L.line - 2)
     end
     refl.avoidHint = text(body, "CRTFontSmall", 0, y - L.line - 2, L.reflW)
     refl.avoidHint:SetText(TEXT.noAvoid)
@@ -369,8 +436,40 @@ local function paintAvoid(trend)
     for i, line in ipairs(refl.avoid) do
         local night = trend and trend[i]
         line:SetShown(night ~= nil)
+        line.nightID = night and night.nightID
         if night then
-            line:SetText(TEXT.avoidLine:format(night.key, short(night.perPull), night.pulls, night.pulls == 1 and TEXT.pull or TEXT.pullsWord))
+            line.label:SetText(TEXT.avoidLine:format(night.key, short(night.perPull), night.pulls, night.pulls == 1 and TEXT.pull or TEXT.pullsWord))
+            nightThere(line)
+        end
+    end
+end
+
+-- A text in a colour { r, g, b }, or as it is with none.
+local function inColor(s, c)
+    if type(c) ~= "table" then
+        return s
+    end
+    local function byte(v)
+        return math.max(0, math.min(255, math.floor((v or 1) * 255 + 0.5)))
+    end
+    return string.format("|cff%02x%02x%02x%s|r", byte(c[1]), byte(c[2]), byte(c[3]), s)
+end
+
+-- The death causes, each in its ability timeline row's colour when it is one (Stats:AbilityRow).
+local function paintCauses(causes, row)
+    local Reference = CRT.TimelineReference
+    for i, line in ipairs(view.refl.causes) do
+        local cause = causes[i]
+        line:SetShown(cause ~= nil or i == 1)
+        line.spell, line.row = nil, nil
+        if cause then
+            local name = spellName(cause.spellID)
+            local ability = S:AbilityRow(row.encounterID, state.group, cause.spellID, name, row.name)
+            local color = ability and Reference and Reference.RowColor(ability)
+            line.spell, line.row = name, ability
+            line.label:SetText(TEXT.cause:format(inColor(name, color), cause.count))
+        else
+            line.label:SetText(TEXT.noCauses)
         end
     end
 end
@@ -397,11 +496,7 @@ local function refreshReflection(rows)
     local r = S.Reflection(row.counters, L.bars)
     paintBars(r)
     refl.furthest:SetText(r.furthest and TEXT.furthest:format(S.PhaseText(r.furthest.phase), r.furthest.key) or TEXT.noPhase)
-    for i, line in ipairs(refl.causes) do
-        local cause = r.causes[i]
-        line:SetShown(cause ~= nil or i == 1)
-        line:SetText(cause and TEXT.cause:format(spellName(cause.spellID), cause.count) or TEXT.noCauses)
-    end
+    paintCauses(r.causes, row)
     refl.trend:SetText(trendText(r))
     paintAvoid(S:AvoidableTrend(row.encounterID, state.group, L.avoid))
 end
@@ -489,5 +584,17 @@ S:OnChange(function()
         refresh()
     end
 end)
+-- a pull Tattlebot read or a night deleted there: redraw the avoidable damage lines while the page shows. Tattlebot
+-- calls its listeners bare, so a failure here is reported and never stops it.
+if CRT.Tattle and CRT.Tattle.OnChange then
+    CRT.Tattle:OnChange(function()
+        if view and view.page:IsVisible() then
+            local ok, err = pcall(refresh)
+            if not ok and geterrorhandler then
+                geterrorhandler()(err)
+            end
+        end
+    end)
+end
 
 UI:RegisterPage("seasonstats", TEXT.title, build)
