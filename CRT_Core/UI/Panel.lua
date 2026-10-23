@@ -283,7 +283,7 @@ UI.MENU_GROUPS = {
     { label = TEXT.general, "settings", "qol" },
     { label = TEXT.raidAdmin, "readycheck", "groups", "gearcheck", "loot" },
     { label = TEXT.bosses, "timeline", "notes", "pace" },
-    { label = TEXT.modules, "lootmaster", "late", "tattle" },
+    { label = TEXT.modules, "lootmaster", "requests", "late", "tattle" },
 }
 
 function UI:IsModern()

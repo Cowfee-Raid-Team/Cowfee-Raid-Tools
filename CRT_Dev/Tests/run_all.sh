@@ -103,7 +103,8 @@ g "lootmaster score" && { node run_lootmaster_score.js "$W" 2>&1 | tail -6; echo
 g "lootmaster ui" && { node run_lootmaster_ui.js "$W" 2>&1 | tail -6; echo "exit ${PIPESTATUS[0]}"; }
 g "lootmaster windows" && { node run_lootmaster_windows.js "$W" 2>&1 | tail -8; echo "exit ${PIPESTATUS[0]}"; }
 g "lootmaster popup" && { node run_lootmaster_popup.js "$W" 2>&1 | tail -12; echo "exit ${PIPESTATUS[0]}"; }
-g "lootmaster filter" && { node run_lootmaster_filter.js "$W" 2>&1 | tail -6; echo "exit ${PIPESTATUS[0]}"; }
+g "requests" && { node run_requests.js "$W" 2>&1 | tail -20; echo "exit ${PIPESTATUS[0]}"; }
+g "lootmaster filter" &&{ node run_lootmaster_filter.js "$W" 2>&1 | tail -6; echo "exit ${PIPESTATUS[0]}"; }
 g "debuffs" && { node run_debuffs.js "$W" 2>&1 | tail -12; echo "exit ${PIPESTATUS[0]}"; }
 g "consumables dock" && { node run_consumables_dock.js "$W" 2>&1 | tail -12; echo "exit ${PIPESTATUS[0]}"; }
 g "late data" && { node run_late.js "$W/CRT_Modules/Late/Data.lua" 2>&1 | tail -6; echo "exit ${PIPESTATUS[0]}"; }

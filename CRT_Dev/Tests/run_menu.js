@@ -105,7 +105,7 @@ local want = {
   { "General", "settings", "qol" },
   { "Raid Admin", "readycheck", "groups", "gearcheck", "loot" },
   { "Bosses", "timeline", "notes", "pace" },
-  { "Modules", "lootmaster", "late", "tattle" },
+  { "Modules", "lootmaster", "requests", "late", "tattle" },
 }
 check(#UI.MENU_GROUPS == #want, "four menu groups, got " .. #UI.MENU_GROUPS)
 for i, w in ipairs(want) do
@@ -120,8 +120,8 @@ section("the four groups, their labels and pages in order")
 -- hidden until /crt dev; it joins the last group.
 local titles = { settings = "General Settings", qol = "Quality of Life", readycheck = "Ready Check", groups = "Raid Groups",
   gearcheck = "Gear Checker", loot = "Loot History", timeline = "Timeline", notes = "Raid Notes", pace = "Pace",
-  lootmaster = "Loot Master", late = "Late Tracker", tattle = "Tattlebot", dev = "Development" }
-for _, key in ipairs({ "settings", "groups", "readycheck", "notes", "late", "tattle", "timeline", "pace", "gearcheck", "loot", "lootmaster", "qol", "dev" }) do
+  lootmaster = "Loot Master", requests = "Requests", late = "Late Tracker", tattle = "Tattlebot", dev = "Development" }
+for _, key in ipairs({ "settings", "groups", "readycheck", "notes", "late", "tattle", "timeline", "pace", "gearcheck", "loot", "lootmaster", "requests", "qol", "dev" }) do
   UI:RegisterPage(key, titles[key], function() end)
 end
 UI:SetPageHidden("dev", true)
@@ -203,10 +203,13 @@ UI:SetPageHidden("dev", false)
 lay = checkLook("Classic with Development", false)
 if lay then
   check(lay.pages[#lay.pages].key == "dev", "Development joins the last group")
-  check(not lay.scroll and lay.height <= UI.PAGE_H, "Classic with Development still fits (" .. lay.height .. " of " .. UI.PAGE_H .. ")")
+  -- the developer-only page may tip Classic's taller header bars over the window's height: then the menu
+  -- scrolls inside itself (section 4), and everyone else's menu still fits
+  check(lay.height <= UI.PAGE_H, "Classic with Development fits, or scrolls to fit (" .. lay.height .. " of " .. UI.PAGE_H .. ")")
+  check(not lay.scroll or menu.scroll.wheel == true, "Classic with Development: when it scrolls, the wheel scrolls it")
 end
 
-section("Development joins the last group and still fits")
+section("Development joins the last group, and fits or scrolls")
 -- 3. Each Modern theme: a small label in the muted colour over each group's box.
 for _, theme in ipairs({ "midnight", "nitro", "cowfee" }) do
   UI:SetTheme(theme)
@@ -230,7 +233,9 @@ UI:SetTheme("blizzard")
 check(menu.headers[1].art.shown and not menu.blocks[1].shown, "back to Default: Blizzard: header art again, no boxes")
 
 section("each Modern theme: a muted small label over each box, fits")
--- 4. The scroll path: groups taller than the menu scroll, inside the menu, with the theme's bar.
+-- 4. The scroll path: groups taller than the menu scroll, inside the menu, with the theme's bar. The pages
+-- everyone has (Development hidden) fit the full height in both looks.
+UI:SetPageHidden("dev", true)
 do
   local groups = UI.MenuGroups()
   for _, modern in ipairs({ false, true }) do
