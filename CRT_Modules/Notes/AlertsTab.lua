@@ -1,17 +1,18 @@
 local ADDON, CRT = ...
 
 -- The Alerts tab of the Raid Notes page (Notes/Page.lua builds it into its tab).
---   Left   where your own note lines go: the Next spell alert, the texts, icons, bars, circles and timeline, and
---          whether they are read out. Each uses a switch kept elsewhere: the alert and speech in
---          CRTDB.notes.alert (enabled, tts), the bars in alerts.bars.noteLines, the rest in
+--   Left   where your own note lines go: the note callout (Notes/Alert.lua), the critical alerts text, icons,
+--          bars, circles and timeline, and whether they are read out. Each uses a switch kept elsewhere: the
+--          callout and speech in CRTDB.notes.alert (enabled, tts), the bars in alerts.bars.noteLines, the rest in
 --          alerts.noteLines. A note line with its own show: keeps its displays (see Notes/Engine.lua).
 --          Under it, Colours (Use custom colours, alerts.customColors, the one switch for your own alert colours:
 --          the areas' colour rows, your reminders' and templates' colour; see Alerts/Colors.lua), then Previews
 --          and a test of every area.
---   Right  Configuration, from half the page: a dropdown of the five alert areas and the chosen one's
---          settings, drawn by Alerts/Areas.lua's panel from each area's def.settings, in a scroll frame
---          (CowfeeRaidToolsAlertSettingsScroll) for an area with more rows than fit. The choice is kept
---          for the session.
+--   Right  Configuration, from half the page: a dropdown of the note callout and the five alert areas, and the
+--          chosen one's settings, drawn by Alerts/Areas.lua's panel from each area's def.settings (the callout's
+--          from CRT.NoteAlert.PanelEntry), in a scroll frame (CowfeeRaidToolsAlertSettingsScroll) for one with
+--          more rows than fit. The choice is kept for the session. The callout's Read them out row is the same
+--          setting (notes.alert.tts) as the left column's: each follows the other.
 -- The ⚙ on each area's drag box opens this tab on that area (CRT.NoteAlertsTab.Select).
 -- The areas load after this file, so they are only looked up once the tab is built.
 
@@ -25,15 +26,16 @@ local TEXT = {
     routeHelp = "Where your own lines from the raid note show, and whether they are read out. Tick as many as you like.\n\n"
         .. "This is for your note lines without their own displays. A line that names its own displays keeps them, though each display's own switch can still turn it off.\n\n"
         .. "Your note lines are read when the pull starts, so a change takes effect on the next pull.",
-    nextSpell = "Next spell alert",
-    text = "Text",
+    callout = "Note callout/assignments",
+    text = "Critical alerts text",
     icon = "Icon",
     bar = "Bar",
     circle = "Circle",
     timeline = "Alert timeline",
     speech = "Read them out (text to speech)",
-    speechHelp = "Reads your note lines out wherever they show, with or without the Next spell alert, and plays their sounds.\n\n"
-        .. "It is also the switch for all speech: turning it off silences your reminders' speech too.",
+    speechHelp = "Reads your note lines out wherever they show, with or without the note callout, and plays their sounds.\n\n"
+        .. "It is also the switch for all speech: turning it off silences your reminders' speech too.\n\n"
+        .. "Note callout/assignments under Configuration has the same switch, with when, how loud and how fast it reads.",
 
     colours = "Colours",
     coloursHelp = "Each alert shows in the colour of its ability type, as on the Timeline: dispel blue, soak pink, Mythic only orange.\n\n"
@@ -48,23 +50,28 @@ local TEXT = {
     testLine = "Test alert %d",
 
     config = "Configuration",
-    configHelp = "How each kind of alert looks. Pick one from the list to see its settings; a change shows at once.",
+    configHelp = "How each kind of alert looks. Pick one from the list to see its settings; a change shows at once.\n\n"
+        .. "Critical alerts text is the big text in the middle of the screen. Your note lines go there only when you tick it on the left.",
+    callout = "Note callout/assignments",
     icons = "Icons",
-    texts = "Texts",
+    texts = "Critical alerts text",
     bars = "Bars",
     circles = "Circles",
     timelineArea = "Alert timeline",
 }
 
--- The areas in the dropdown, in this order.
+-- The note callout, then the areas, in the dropdown in this order. The callout is not an area: its rows
+-- come from CRT.NoteAlert.PanelEntry.
+local CALLOUT = "callout"
 local KINDS = {
+    { key = CALLOUT, label = TEXT.callout },
     { key = "icons", label = TEXT.icons },
     { key = "texts", label = TEXT.texts },
     { key = "bars", label = TEXT.bars },
     { key = "circles", label = TEXT.circles },
     { key = "timeline", label = TEXT.timelineArea },
 }
-local DEFAULT_KIND = "icons"
+local DEFAULT_KIND = CALLOUT
 -- Two columns, each half of the page (UI.PAGE_W): where your note lines go on the left, Configuration
 -- on the right. The tab is UI.PAGE_H - 66 high under the tabs (Notes/Page.lua); an area's rows that run
 -- taller than the room under the dropdown scroll (the timeline has many).
@@ -73,6 +80,8 @@ local RIGHT_X = math.floor(UI.PAGE_W / 2) + COLUMN_GAP / 2
 local TAB_H = UI.PAGE_H - 66
 local ROWS_TOP = 68      -- the rows start this far down the tab, under the dropdown
 local ROWS_BOTTOM = 4    -- and end this far above its bottom: room for the bars' 13 rows without scrolling
+local KIND_DROP_MIN_W = 180 -- the Configuration dropdown at its narrowest
+local KIND_DROP_PAD = 40    -- the dropdown's text inset and arrow, beside its longest choice
 local TEST_ICONS = { 136243, 135808, 136116 }
 local TEST_TIMES = { 8, 12, 16 } -- seconds until each test alert reaches 0
 local TEST_HOLD = 1
@@ -159,12 +168,20 @@ local function refresh()
     end
 end
 
+-- The area with this key, or the note callout's panel entry for "callout"; nil for none.
+local function find(key)
+    if key == CALLOUT then
+        return CRT.NoteAlert and CRT.NoteAlert.PanelEntry
+    end
+    return CRT.AlertAreas and CRT.AlertAreas.Find(key)
+end
+
 -- Shows the chosen area's settings on the right.
 local function show(key)
-    local area = CRT.AlertAreas and CRT.AlertAreas.Find(key)
+    local area = find(key)
     if not area then
         key = DEFAULT_KIND
-        area = CRT.AlertAreas and CRT.AlertAreas.Find(key)
+        area = find(key)
     end
     selected = key
     if not (panel and area) then
@@ -226,7 +243,7 @@ local function build(pf)
         y = y - 26
         return at
     end
-    makeCheck(pf, 4, nextRow(), TEXT.nextSpell, nil, alertField("enabled"))
+    makeCheck(pf, 4, nextRow(), TEXT.callout, nil, alertField("enabled"))
     makeCheck(pf, 4, nextRow(), TEXT.text, areaOn("texts"), route("text"))
     makeCheck(pf, 4, nextRow(), TEXT.icon, areaOn("icons"), route("icon"))
     makeCheck(pf, 4, nextRow(), TEXT.bar, areaOn("bars"), function()
@@ -278,11 +295,20 @@ local function build(pf)
     -- Right: how each kind of alert looks.
     local configTitle = heading(pf, RIGHT_X, -14, TEXT.config)
     UI.HelpRight(configTitle, TEXT.config, TEXT.configHelp)
-    -- No label: the heading says what the list is.
+    -- No label: the heading says what the list is. As wide as its longest choice, in the dropdown's font,
+    -- with room for the text inset and the arrow; never past the page.
+    local measure = pf:CreateFontString(nil, "OVERLAY", "CRTFontStandardHighlight")
+    local widest = 0
+    for _, kind in ipairs(KINDS) do
+        measure:SetText(kind.label)
+        local w = measure.GetUnboundedStringWidth and measure:GetUnboundedStringWidth() or measure:GetStringWidth()
+        widest = math.max(widest, tonumber(w) or 0)
+    end
+    measure:Hide()
     kindDrop = UI.Dropdown(pf, "", {
         options = KINDS,
         labelWidth = 1,
-        width = 180,
+        width = math.min(UI.PAGE_W - RIGHT_X - 8, math.max(KIND_DROP_MIN_W, math.ceil(widest) + KIND_DROP_PAD)),
         get = function()
             return selected
         end,
@@ -310,8 +336,9 @@ local function build(pf)
     show(selected)
 end
 
--- Built into the Alerts tab by Notes/Page.lua. Select(key) picks an area ("icons", "texts", "bars",
--- "circles" or "timeline") for when the tab shows, and shows it at once if the tab is built.
+-- Built into the Alerts tab by Notes/Page.lua. Select(key) picks the note callout ("callout") or an area
+-- ("icons", "texts", "bars", "circles" or "timeline") for when the tab shows, and shows it at once if the
+-- tab is built.
 CRT.NoteAlertsTab = {
     Build = build,
     Select = function(key)

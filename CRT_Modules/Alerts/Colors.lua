@@ -229,7 +229,7 @@ function Colors.TypeColor(key)
     return CRT.PALETTE and CRT.PALETTE[ACCENT] or nil
 end
 
--- A known type's colour, or nil (no accent): for a display with its own default, such as the Next spell alert.
+-- A known type's colour, or nil (no accent): for a display with its own default, such as the note callout.
 function Colors.KnownTypeColor(key)
     return known(key) and CRT.TimelineReference.TYPES[key].color or nil
 end

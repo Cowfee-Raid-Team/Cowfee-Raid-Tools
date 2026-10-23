@@ -1,24 +1,18 @@
 local ADDON, CRT = ...
 
--- The texts area: big text such as "Stack on X (5.0)" for every line whose outputs.text is on, the
+-- The texts area ("Critical alerts text" on screen): big text such as "Stack on X (5.0)" for every line whose outputs.text is on, the
 -- seconds after it and "NOW" from 0 while it lingers. Built on Alerts/Areas.lua; its settings are
 -- CRT.db.alerts.areas.texts (font, fontSize, outline, align, beside the common shown, cap and grow).
 
 local Areas = CRT.AlertAreas
 
 local TEXT = {
-    title = "Alert texts",
+    title = "Critical alerts text",
     now = "NOW",
     font = "Font",
     size = "Size",
     outline = "Outline",
-    none = "None",
-    thin = "Outline",
-    thick = "Thick",
     align = "Align",
-    left = "Left",
-    center = "Center",
-    right = "Right",
     sampleNow = "Spread",
     sampleSoon = "Stack on the boss",
     sampleLater = "Soak",
@@ -32,16 +26,6 @@ local WHITE = { 1, 1, 1 }
 local SAMPLE_TYPES = { "spread", "generic", "soak" } -- the Previews' alerts: Spread, Stack on the boss, Soak
 local ALIGNS = { LEFT = true, CENTER = true, RIGHT = true }
 
-local OUTLINE_OPTIONS = {
-    { key = "", label = TEXT.none },
-    { key = "OUTLINE", label = TEXT.thin },
-    { key = "THICKOUTLINE", label = TEXT.thick },
-}
-local ALIGN_OPTIONS = {
-    { key = "LEFT", label = TEXT.left },
-    { key = "CENTER", label = TEXT.center },
-    { key = "RIGHT", label = TEXT.right },
-}
 
 -- Tenths under 10 (cut, not rounded, so 9.96 never reads 10.0), whole seconds from 10, and NOW once
 -- under a tenth is left, through 0 and while the line lingers.
@@ -113,14 +97,7 @@ end
 
 local function settings(panel, s)
     panel:Dropdown(TEXT.font, {
-        -- Read each time the menu opens, so fonts another addon shares later appear.
-        options = function()
-            local out = {}
-            for _, font in ipairs(CRT:FontList()) do
-                out[#out + 1] = { key = font.name, label = font.name }
-            end
-            return out
-        end,
+        options = Areas.FontOptions,
         get = function()
             return s.font
         end,
@@ -139,7 +116,7 @@ local function settings(panel, s)
         end,
     })
     panel:Dropdown(TEXT.outline, {
-        options = OUTLINE_OPTIONS,
+        options = Areas.OUTLINE_OPTIONS,
         get = function()
             return s.outline or ""
         end,
@@ -148,7 +125,7 @@ local function settings(panel, s)
         end,
     })
     panel:Dropdown(TEXT.align, {
-        options = ALIGN_OPTIONS,
+        options = Areas.ALIGN_OPTIONS,
         get = function()
             return align(s)
         end,

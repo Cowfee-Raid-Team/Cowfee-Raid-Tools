@@ -44,9 +44,9 @@ local TEXT = {
     showOnTimeline = "Show on the Timeline",
     notOnTimeline = "That mechanic isn't on the Timeline for this boss yet.",
     showAs = "Show as",
-    showAsHelp = "Where the alert shows: the Next spell alert, the alert areas (Text, Icon, Bar, Circle, Alert timeline), and whether it is read out. Alert Settings sets how each area looks.",
-    nextSpell = "Next spell alert",
-    showText = "Text",
+    showAsHelp = "Where the alert shows: the note callout, the alert areas (Critical alerts text, Icon, Bar, Circle, Alert timeline), and whether it is read out. Alert Settings sets how each one looks.",
+    callout = "Note callout/assignments",
+    showText = "Critical alerts text",
     showIcon = "Icon",
     bar = "Bar",
     circle = "Circle",
@@ -147,7 +147,7 @@ L.COL_GAP = 22
 L.COL_W = math.floor((L.PANEL_W - 2 * L.INSET - L.COL_GAP) / 2)
 L.COL2_X = L.INSET + L.COL_W + L.COL_GAP
 L.CHECK_STEP = 130 -- between the checkboxes of a row
-L.CHECK_STEP_NARROW = 100 -- the third checkbox of a row, after a short label
+L.SHOW_GAP = 10 -- between one Show as label and the next box
 L.LABEL_W = 50
 L.ICON_DROP_W = 90
 L.ID_X = L.COL2_X + L.LABEL_W + L.DROP_GAP + L.ICON_DROP_W + 8
@@ -572,10 +572,29 @@ local function idText(d)
     return id and tostring(id) or ""
 end
 
+-- The Show as boxes in their two rows, by their labels' width, inside the left column at any text size
+-- (Alerts/Draft.lua FlowShowAs). Measured on every draw, so a text size changed since is followed.
+local function placeShowAs()
+    local rows = {}
+    for r, keys in ipairs(CRT.AlertDraft.SHOW_ROWS) do
+        rows[r] = {}
+        for i, key in ipairs(keys) do
+            rows[r][i] = panel.checks[key]
+        end
+    end
+    CRT.AlertDraft.FlowShowAs(rows, L.INSET - 4, L.INSET + L.COL_W, L.CHECK_SIZE + 2, L.SHOW_GAP, function(check, x, r)
+        check:ClearAllPoints()
+        check:SetPoint("TOPLEFT", x, L.COL_Y - 20 - (r - 1) * 26)
+    end)
+end
+
 -- Everything on the panel from the draft, except a box being typed in.
 local function drawPanel()
     if not panel.frame then
         return
+    end
+    if panel.checks then
+        placeShowAs()
     end
     local d = cur.draft
     panel.content:SetShown(d ~= nil)
@@ -1298,15 +1317,18 @@ local function buildPanel(f)
 
     -- Left column: Show as, Also
     heading(p, TEXT.showAs, L.INSET, L.COL_Y, TEXT.showAsHelp)
+    -- two rows (Draft.SHOW_ROWS), placed by placeShowAs
     panel.checks = {}
-    for _, spec in ipairs({ { "alert", TEXT.nextSpell, 0, 1 }, { "text", TEXT.showText, 1, 1 }, { "icon", TEXT.showIcon, 2, 1 },
-        { "bar", TEXT.bar, 0, 2 }, { "circle", TEXT.circle, 1, 2 }, { "timeline", TEXT.timeline, 2, 2 } }) do
-        local key = spec[1]
-        local x = L.INSET - 4 + spec[3] * (spec[3] == 2 and L.CHECK_STEP_NARROW or L.CHECK_STEP)
-        panel.checks[key] = makeCheck(p, spec[2], x, L.COL_Y - 20 - (spec[4] - 1) * 26, change(function(on)
-            cur.draft.show[key] = on
-        end))
+    local labels = { alert = TEXT.callout, text = TEXT.showText, icon = TEXT.showIcon, bar = TEXT.bar, circle = TEXT.circle,
+        timeline = TEXT.timeline }
+    for _, keys in ipairs(Draft.SHOW_ROWS) do
+        for _, key in ipairs(keys) do
+            panel.checks[key] = makeCheck(p, labels[key], L.INSET - 4, L.COL_Y, change(function(on)
+                cur.draft.show[key] = on
+            end))
+        end
     end
+    placeShowAs()
     heading(p, TEXT.also, L.INSET, L.COL_Y - 78)
     panel.also = {
         speak = makeCheck(p, TEXT.speak, L.INSET - 4, L.COL_Y - 98, change(function(on) cur.draft.speak = on end)),

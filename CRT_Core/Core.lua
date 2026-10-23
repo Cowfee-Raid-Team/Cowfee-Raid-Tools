@@ -168,14 +168,20 @@ local defaults = {
         },
         personalText = "",
         editor = {}, -- the pop-out note editor's place and size once moved (Notes/EditorWindow.lua, UI.Window)
+        -- The note callout (Notes/Alert.lua; "Note callout/assignments" on screen), set on Raid Notes > Alert
+        -- Settings > Configuration. tts is also the switch for all speech (Alerts/Speech.lua).
         alert = {
             enabled = true,
-            seconds = 10, -- show your next spell this many seconds early
+            seconds = 10, -- show your note lines this many seconds early
             tts = true,
             ttsSeconds = 3, -- read it out at this many seconds left
             ttsVolume = 100,
-            ttsRate = 0,
+            ttsRate = 0, -- -10 to 10, the game's speech rate
             iconPosition = "left", -- the spell icon: left, right, above or below the text
+            font = "default", -- a CRT:FontList name, or "default": the addon's own font
+            fontSize = 20,
+            outline = "", -- "", "OUTLINE" or "THICKOUTLINE"
+            align = "CENTER", -- the two lines: LEFT, CENTER or RIGHT
         },
     },
     -- Quality of Life options. lowHealth is the experimental low-health alert: threshold is the health
@@ -350,7 +356,7 @@ local defaults = {
                 nowTime = 1, stack = true, font = "Friz Quadrata", fontSize = 14,
                 gameMode = "standalone", gameAlsoHere = false },
         },
-        -- Where the player's own note lines without show: also display (Next spell alert, Bar and speech
+        -- Where the player's own note lines without show: also display (the note callout, Bar and speech
         -- keep their own switches); off until chosen.
         noteLines = { text = false, icon = false, circle = false, timeline = false },
         -- Use custom colours (Raid Notes > Alerts): off, every alert is in its ability type's colour and your own
@@ -613,6 +619,27 @@ function CRT.ReadOldTooltipSettings(db)
     end
 end
 
+-- The note callout's size and outline are new settings (notes.alert.fontSize, outline); before them it was drawn
+-- in the addon's large font. A save from before, one with a notes.alert but no fontSize, keeps that look, once:
+-- CalloutNeedsLook(db), read before the defaults fill in 20, says so, and SeedCalloutLook(db), after
+-- CRT:ApplyFonts has sized the large font to the text size, copies its size and General Settings' outline. A new
+-- install takes the defaults.
+local CALLOUT_OUTLINES = { [""] = true, OUTLINE = true, THICKOUTLINE = true }
+local CALLOUT_MIN, CALLOUT_MAX = 10, 60 -- Notes/Alert.lua's Size range
+
+function CRT.CalloutNeedsLook(db)
+    local notes = db.notes
+    return type(notes) == "table" and type(notes.alert) == "table" and notes.alert.fontSize == nil
+end
+
+function CRT.SeedCalloutLook(db)
+    local alert = db.notes.alert
+    local _, size = CRTFontLarge:GetFont()
+    alert.fontSize = math.max(CALLOUT_MIN, math.min(CALLOUT_MAX, math.floor((tonumber(size) or 20) + 0.5)))
+    local outline = type(db.ui) == "table" and db.ui.outline
+    alert.outline = CALLOUT_OUTLINES[outline] and outline or ""
+end
+
 local frame = CreateFrame("Frame")
 frame:RegisterEvent("ADDON_LOADED")
 frame:SetScript("OnEvent", function(self, event, arg1)
@@ -634,6 +661,7 @@ frame:SetScript("OnEvent", function(self, event, arg1)
             lm.itemTooltip = (old == "left" and "area") or (old == "default" and "game") or old
         end
         CRT.ReadOldTooltipSettings(CRTDB)
+        local seedCallout = CRT.CalloutNeedsLook(CRTDB) -- before the defaults fill in its size
         copyDefaults(defaults, CRTDB)
         CRT:UseTheme(CRT:ResolveTheme(CRTDB.ui))
         -- once: the old default of axis labels every 30 seconds becomes Auto, which follows the zoom
@@ -646,6 +674,9 @@ frame:SetScript("OnEvent", function(self, event, arg1)
         end
         CRT.db = CRTDB
         CRT:ApplyFonts()
+        if seedCallout then
+            CRT.SeedCalloutLook(CRTDB) -- the large font is at the text size now
+        end
         self:UnregisterEvent("ADDON_LOADED")
         self:RegisterEvent("PLAYER_LOGIN")
     elseif event == "PLAYER_LOGIN" then

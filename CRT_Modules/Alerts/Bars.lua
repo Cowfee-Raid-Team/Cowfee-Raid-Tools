@@ -439,14 +439,7 @@ local function settingsRows(panel, s)
         help = TEXT.borderHelp,
     })
     panel:Dropdown(TEXT.font, {
-        -- Read each time the menu opens, so fonts another addon shares later appear.
-        options = function()
-            local out = {}
-            for _, font in ipairs(CRT:FontList()) do
-                out[#out + 1] = { key = font.name, label = font.name }
-            end
-            return out
-        end,
+        options = Areas.FontOptions,
         get = function()
             return fontName(s)
         end,

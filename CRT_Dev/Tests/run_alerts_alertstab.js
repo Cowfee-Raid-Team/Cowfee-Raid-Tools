@@ -1,7 +1,8 @@
 // The Alerts tab of Raid Notes (CRT_Modules/Notes/AlertsTab.lua) with the real CRT_Modules/Notes/Page.lua, CRT_Modules/Notes/Settings.lua,
-// CRT_Modules/Alerts/Areas.lua and the four area files, on mock frames.
-// Usage: node run_alerts_alertstab.js CRT_Modules/Alerts/Rules.lua CRT_Modules/Alerts/Engine.lua CRT_Modules/Notes/Settings.lua CRT_Modules/Notes/AlertsTab.lua
+// CRT_Modules/Notes/Alert.lua (the note callout and its Configuration entry), CRT_Modules/Alerts/Areas.lua and the area files, on mock frames.
+// Usage: node run_alerts_alertstab.js CRT_Modules/Alerts/Rules.lua CRT_Modules/Alerts/Engine.lua CRT_Modules/Notes/Alert.lua CRT_Modules/Notes/Settings.lua CRT_Modules/Notes/AlertsTab.lua
 //   CRT_Modules/Notes/Page.lua CRT_Modules/Alerts/Areas.lua CRT_Modules/Alerts/Bars.lua CRT_Modules/Alerts/Texts.lua CRT_Modules/Alerts/Icons.lua CRT_Modules/Alerts/Circles.lua
+//   ... CRT_Core/Core.lua (last: read as text only, for the callout's saved defaults)
 const fs = require('fs');
 const path = require('path');
 const themeLua = require('./theme_stub');
@@ -139,14 +140,23 @@ CRT.UI = { PAGE_W = 1026, PAGE_H = 560, SkinScrollBar = function() end, ScrollGu
     rawset(r, "value", opts.get() or opts.min)
     rawset(r, "refresh", function() rawset(r, "value", opts.get() or opts.min) if opts.enabledIf then rawset(r, "enabled", opts.enabledIf() and true or false) end end)
     sliders[#sliders + 1] = r return r end,
+  -- as CRT_Core/UI/Panel.lua: a button as wide as its label (6 a letter here)
+  PanelButton = function(parent, label, height, onClick) local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
+    b:SetText(label) b:SetSize(math.max(40, #label * 6 + 28), height) b:SetScript("OnClick", onClick) return b end,
 }
+-- the addon's large font (CRT_Core/Core.lua), which the note callout's "Addon font" draws in
+CRTFontLarge = mock("Font")
+rawset(CRTFontLarge, "fontPath", "Fonts\\\\ARIALN.TTF") rawset(CRTFontLarge, "fontSize", 19)
+local spoken = {}
+CRT.AlertSpeech = { SpeakNow = function(_, text) spoken[#spoken + 1] = text end }
 
 -- the main window, centred a little above the screen's centre; the screen's centre is (480, 300)
 rawset(UIParent, "GetCenter", function() return 480, 300 end)
 CRT.UI.frame = mock("Frame")
 rawset(CRT.UI.frame, "GetCenter", function() return 480, 350 end)
 CRT.UI.frame:SetPoint("CENTER", UIParent, "CENTER", 10, 20)
-local alertSettings = { enabled = true, seconds = 10, tts = true, ttsSeconds = 3, ttsVolume = 100, iconPosition = "left" }
+local alertSettings = { enabled = true, seconds = 10, tts = true, ttsSeconds = 3, ttsVolume = 100, ttsRate = 0, iconPosition = "left",
+  font = "default", fontSize = 20, outline = "", align = "CENTER" }
 local win = { shown = true, locked = true, fontSize = 14, alpha = 100, bgAlpha = 50, font = "Friz Quadrata", hidePassed = true, onlyMe = false }
 local listeners = {}
 CRT.Notes = {
@@ -161,11 +171,13 @@ CRT.NoteEngine = { running = false, PeekNextPhase = function() return nil end }
 CRT.NoteComm = { Sharing = function() return nil end }
 CRT.NoteReminders = { Build = function() end }
 CRT.NotePhases = { Build = function() end }
-CRT.NoteAlert = { Speak = function() end }
 
 CRT_THEME(CRT, CRT.UI)
+local coreSrc
 local function loadSource(i, src)
-  if src:find("function UI.PickColor", 1, true) then -- the real CRT_Core/UI/Controls.lua: only PickColor is taken, the harness keeps its own Dropdown and Slider
+  if src:find("CRT.defaults = defaults", 1, true) then -- CRT_Core/Core.lua: read, not run
+    coreSrc = src
+  elseif src:find("function UI.PickColor", 1, true) then -- the real CRT_Core/UI/Controls.lua: only PickColor is taken, the harness keeps its own Dropdown and Slider
     local tmp = { UI = {} }
     assert(load(src, "CRT_Core/UI/Controls.lua"))("CowfeeRaidTools", tmp)
     CRT.UI.PickColor = tmp.UI.PickColor
@@ -201,7 +213,7 @@ end
 local function click(b) b.OnClick(b) end
 local function keys(r) local o = r.opts.options local list = type(o) == "function" and o() or o local k, l = {}, {} for i, x in ipairs(list) do k[i] = x.key l[i] = x.label end return table.concat(k, ","), table.concat(l, ",") end
 local function configDropdown()
-  for _, r in ipairs(dropdowns) do if keys(r) == "icons,texts,bars,circles,timeline" then return r end end
+  for _, r in ipairs(dropdowns) do if keys(r) == "callout,icons,texts,bars,circles,timeline" then return r end end
 end
 local function tabFrame(name)
   for _, b in ipairs(tabs) do if b.text.text == name then return b end end
@@ -314,16 +326,22 @@ check("tab: routing checkboxes bind the saved fields", function()
   for _, f in ipairs(fontStrings) do if f.text == "Your note lines go to" then heading = f end end
   assert(heading and heading.font:find("^CRTFont"), "heading in a CRTFont")
   local cases = {
-    { "Next spell alert", function() return alertSettings.enabled end },
-    { "Text", function() return db.noteLines.text end },
+    { "Note callout/assignments", function() return alertSettings.enabled end },
+    { "Critical alerts text", function() return db.noteLines.text end },
     { "Icon", function() return db.noteLines.icon end },
     { "Bar", function() return db.bars.noteLines end },
     { "Circle", function() return db.noteLines.circle end },
     { "Alert timeline", function() return db.noteLines.timeline end },
     { "Read them out (text to speech)", function() return alertSettings.tts end },
   }
+  local scroll = created.CowfeeRaidToolsAlertSettingsScroll
+  local function leftCheck(label) -- the left column's, not a Configuration row's
+    local out
+    for _, f in ipairs(frames) do if f.kind == "CheckButton" and rawget(f, "labelText") == label and not under(f, scroll) then out = f end end
+    return out
+  end
   for _, c in ipairs(cases) do
-    local b = checks(c[1])
+    local b = leftCheck(c[1])
     assert(b, "check " .. c[1])
     assert(b.checked == (c[2]() and true or false), c[1] .. " shows the saved value")
     b:SetChecked(not b.checked) click(b)
@@ -333,17 +351,17 @@ check("tab: routing checkboxes bind the saved fields", function()
   end
   -- an old save without the routing table
   db.noteLines = nil
-  local t = checks("Text")
+  local t = leftCheck("Critical alerts text")
   t:SetChecked(true) click(t)
   assert(db.noteLines and db.noteLines.text == true, "noteLines made when missing")
   db.noteLines.text = false
   -- reads the saved value when the tab shows
   alertSettings.tts = false
   CRT.NotesPage.Open("notes") CRT.NotesPage.Open("alerts")
-  assert(checks("Read them out (text to speech)").checked == false, "refreshed on show")
+  assert(leftCheck("Read them out (text to speech)").checked == false, "refreshed on show")
   alertSettings.tts = true
   for _, fn in ipairs(listeners) do fn() end
-  assert(checks("Read them out (text to speech)").checked == true, "refreshed on a notes change")
+  assert(leftCheck("Read them out (text to speech)").checked == true, "refreshed on a notes change")
   -- the heading has a (?) that says lines with their own displays keep them
   local help
   for _, f in ipairs(frames) do if rawget(f, "helpText") and tostring(f.helpText):find("own") and tostring(f.helpTitle) == "Your note lines go to" then help = f end end
@@ -352,12 +370,12 @@ check("tab: routing checkboxes bind the saved fields", function()
   -- speech works wherever the lines go: its box never greys with the alert off, and its (?) says so
   alertSettings.enabled = false
   for _, fn in ipairs(listeners) do fn() end
-  local sp = checks("Read them out (text to speech)")
+  local sp = leftCheck("Read them out (text to speech)")
   assert(sp.enabled ~= false, "speech box usable with the alert off")
   alertSettings.enabled = true
   for _, fn in ipairs(listeners) do fn() end
   local speechHelp
-  for _, f in ipairs(frames) do if rawget(f, "helpTitle") == "Read them out (text to speech)" then speechHelp = f end end
+  for _, f in ipairs(frames) do if rawget(f, "helpTitle") == "Read them out (text to speech)" and not under(f, scroll) then speechHelp = f end end
   assert(speechHelp and speechHelp.helpText:find("wherever") and speechHelp.helpText:find("reminders"), "speech (?)")
   -- Try it: Previews and Test all areas
   local previewsBtn, testBtn, tryIt
@@ -409,7 +427,7 @@ check("tab: configuration dropdown swaps rows", function()
   assert(help, "Configuration (?)")
   local d = configDropdown()
   local k, l = keys(d)
-  assert(l == "Icons,Texts,Bars,Circles,Alert timeline", l)
+  assert(l == "Note callout/assignments,Icons,Critical alerts text,Bars,Circles,Alert timeline", l)
   d.opts.set("icons")
   local show = checks("Show these alerts")
   assert(show and show.shown and show.checked, "Show these alerts")
@@ -431,9 +449,9 @@ check("tab: configuration dropdown swaps rows", function()
   row(sliders, "At once").opts.set(4)
   assert(CRT.db.alerts.bars.cap == 4, "At once on bars")
   -- rows are made once per area, never on every switch
-  for _, key in ipairs({ "texts", "circles", "icons", "bars" }) do d.opts.set(key) end
+  for _, key in ipairs({ "texts", "callout", "circles", "icons", "bars" }) do d.opts.set(key) end
   local n, frameCount = rowsMade, made
-  for i = 1, 3 do for _, key in ipairs({ "texts", "circles", "icons", "bars" }) do d.opts.set(key) end end
+  for i = 1, 3 do for _, key in ipairs({ "texts", "callout", "circles", "icons", "bars" }) do d.opts.set(key) end end
   assert(rowsMade == n, "no rows made on a switch")
   assert(made == frameCount, "no frames made on a switch (checks and colour rows too): " .. (made - frameCount))
   -- remembered for the session
@@ -471,29 +489,157 @@ check("tab: colour swatch opens the picker and saves", function()
   assert(#errors == 0, tostring(errors[1]))
 end)
 
-check("tab: settings tab keeps timing and voice only", function()
-  CRT.NotesPage.Open("settings")
-  local speak
-  for _, f in ipairs(frames) do if f.kind == "Button" and f.text == "Test speech" then speak = f end end
-  assert(speak, "Test speech")
-  local root = speak.parent
-  local words = {}
-  for _, f in ipairs(fontStrings) do if under(f, root) then words[tostring(f.text)] = true end end
-  for _, r in ipairs(sliders) do if under(r, root) then words[r.label] = r end end
-  for _, r in ipairs(dropdowns) do if under(r, root) then words[r.label] = r end end
-  for _, w in ipairs({ "Show it early by", "Count down seconds", "Speech volume", "Spell icon" }) do assert(words[w], "keeps " .. w) end
-  for _, w in ipairs({ "Show your next spell or callout", "Text to Speech", "Alert areas", "Show your note lines as bars" }) do assert(not words[w], "moved: " .. w) end
-  for _, f in ipairs(frames) do assert(not (f.kind == "Button" and f.text == "Previews" and under(f, root)), "no Previews here") end
-  -- greying still follows the switches, now on the Alerts tab
-  alertSettings.enabled = false alertSettings.tts = false
-  for _, fn in ipairs(listeners) do fn() end
-  assert(words["Show it early by"].enabled == false and words["Speech volume"].enabled == false, "greyed while off")
-  alertSettings.enabled = true alertSettings.tts = true
-  for _, fn in ipairs(listeners) do fn() end
-  assert(words["Show it early by"].enabled == true and words["Count down seconds"].enabled == true, "back on")
+-- The callout's rows, as the Configuration panel shows them (the shown ones under the rows' scroll frame).
+local CALLOUT_ROWS = { "Show it early by", "Font", "Size", "Outline", "Align", "Spell icon", "Read them out (text to speech)",
+  "Read it at", "Speech volume", "Speech rate", "Test speech" }
+local function calloutRow(label)
+  local scroll = created.CowfeeRaidToolsAlertSettingsScroll
+  for _, list in ipairs({ sliders, dropdowns }) do
+    for _, r in ipairs(list) do if r.label == label and r.shown and under(r, scroll) then return r end end
+  end
+  for _, f in ipairs(frames) do
+    if under(f, scroll) and f.shown and (rawget(f, "labelText") == label or (f.kind == "Button" and f.text == label)) then return f end
+  end
+end
+
+check("callout: first in Configuration, with its own rows and no common ones", function()
+  CRT.NotesPage.Open("alerts")
+  local d = configDropdown()
+  local k, l = keys(d)
+  assert(k:find("^callout,") and l:find("^Note callout/assignments,"), "first choice: " .. l)
+  -- as wide as its longest choice (6 a letter here), with room for the text inset and the template's arrow
+  assert(d.opts.width >= #"Note callout/assignments" * 6 + 40, "sized from its longest label: " .. d.opts.width)
+  d.opts.set("callout")
+  assert(d.value == "callout", "selected")
+  for _, label in ipairs(CALLOUT_ROWS) do assert(calloutRow(label), "row " .. label) end
+  assert(not checks("Show these alerts").shown and not row(sliders, "At once").shown and not row(dropdowns, "Grow").shown,
+    "no Show these alerts, At once or Grow: the left column turns the callout on and off")
+  -- placed top to bottom in that order
+  local last = 1
+  for _, label in ipairs(CALLOUT_ROWS) do
+    local r = calloutRow(label)
+    local y = r.pts[#r.pts][5] or r.pts[#r.pts][3]
+    assert(y < last, label .. " under the row before it")
+    last = y
+  end
+  -- another area hides the callout's rows, and back
+  d.opts.set("icons")
+  assert(not calloutRow("Speech rate") and checks("Show these alerts").shown, "icons: callout rows hidden, common rows back")
+  d.opts.set("callout")
+  assert(calloutRow("Speech rate") and not checks("Show these alerts").shown, "callout again")
+  assert(#errors == 0, tostring(errors[1]))
+end)
+
+check("callout: Size resizes the callout's text live, in Previews too", function()
+  CRT.NotesPage.Open("alerts")
+  configDropdown().opts.set("callout")
+  CRT.UI:SetPreviews(true)
+  local alertFrame = created.CowfeeRaidToolsNoteAlert
+  assert(alertFrame and alertFrame.shown, "the callout shows with Previews")
+  local label, countdown
+  for _, f in ipairs(fontStrings) do
+    if under(f, alertFrame) and f.text == "Your spell" then label = f end
+    if under(f, alertFrame) and f.text == "5.0s" then countdown = f end
+  end
+  assert(label and countdown, "its two lines")
+  assert(label.fontSize == 20 and countdown.fontSize == 20, "the saved size: " .. tostring(label.fontSize))
+  assert(label.fontPath == "Fonts\\\\ARIALN.TTF", "Addon font: the addon's large font's face: " .. tostring(label.fontPath))
+  local h = alertFrame.h
+  calloutRow("Size").opts.set(36)
+  assert(alertSettings.fontSize == 36, "saved")
+  assert(label.fontSize == 36 and countdown.fontSize == 36, "both lines at once: " .. tostring(label.fontSize))
+  assert(alertFrame.h > h, "the callout grows with its text: " .. h .. " -> " .. alertFrame.h)
+  calloutRow("Font").opts.set("Friz Quadrata")
+  assert(alertSettings.font == "Friz Quadrata" and label.fontPath == "Fonts\\\\FRIZQT__.TTF", "font: " .. tostring(label.fontPath))
+  calloutRow("Outline").opts.set("THICKOUTLINE")
+  assert(alertSettings.outline == "THICKOUTLINE", "outline saved")
+  calloutRow("Align").opts.set("LEFT")
+  assert(alertSettings.align == "LEFT", "align saved")
+  local p = label.pts[#label.pts]
+  assert(p[1] == "TOPLEFT", "aligned left: " .. tostring(p[1]))
+  calloutRow("Spell icon").opts.set("right")
+  assert(alertSettings.iconPosition == "right", "spell icon saved")
+  calloutRow("Show it early by").opts.set(12)
+  assert(alertSettings.seconds == 12, "show early saved")
+  -- back as it was
+  alertSettings.font, alertSettings.fontSize, alertSettings.outline, alertSettings.align = "default", 20, "", "CENTER"
+  alertSettings.iconPosition, alertSettings.seconds = "left", 10
+  CRT.UI:SetPreviews(false)
+  assert(#errors == 0, tostring(errors[1]))
+end)
+
+check("callout: Read them out is notes.alert.tts, the left column's switch, and greys the speech rows", function()
+  CRT.NotesPage.Open("alerts")
+  configDropdown().opts.set("callout")
+  local tts = calloutRow("Read them out (text to speech)")
+  local scroll = created.CowfeeRaidToolsAlertSettingsScroll
+  local left
+  for _, f in ipairs(frames) do if f.kind == "CheckButton" and rawget(f, "labelText") == "Read them out (text to speech)" and not under(f, scroll) then left = f end end
+  assert(alertSettings.tts == true and tts.checked == true and left.checked == true, "on")
+  local speechRows = { "Read it at", "Speech volume", "Speech rate", "Test speech" }
+  for _, label in ipairs(speechRows) do assert(calloutRow(label).enabled ~= false, label .. " usable") end
+  tts:SetChecked(false) click(tts)
+  assert(alertSettings.tts == false, "unticked saves notes.alert.tts")
+  assert(left.checked == false, "the left column's box follows")
+  for _, label in ipairs(speechRows) do assert(calloutRow(label).enabled == false, label .. " greyed") end
+  assert(calloutRow("Size").enabled ~= false, "the look rows stay usable")
+  -- the left column's box turns it back on, and the panel follows
+  left:SetChecked(true) click(left)
+  assert(alertSettings.tts == true and tts.checked == true, "in sync")
+  for _, label in ipairs(speechRows) do assert(calloutRow(label).enabled ~= false, label .. " usable again") end
+  -- its (?) says it is the same switch
   local help
-  for _, f in ipairs(frames) do if rawget(f, "helpText") and under(f, root) and tostring(f.helpText):find("Alert Settings tab") then help = f end end
-  assert(help, "a (?) pointing to the Alert Settings tab")
+  for _, f in ipairs(frames) do if rawget(f, "helpTitle") == "Read them out (text to speech)" and under(f, scroll) then help = f end end
+  assert(help and help.helpText:find("same switch", 1, true) and help.helpText:find("Your note lines go to", 1, true), "its (?)")
+  -- the speech rows save their fields
+  calloutRow("Read it at").opts.set(5)
+  calloutRow("Speech volume").opts.set(70)
+  calloutRow("Speech rate").opts.set(-3)
+  assert(alertSettings.ttsSeconds == 5 and alertSettings.ttsVolume == 70 and alertSettings.ttsRate == -3, "speech fields")
+  local rate = calloutRow("Speech rate").opts
+  assert(rate.min == -10 and rate.max == 10, "the game's rate range")
+  alertSettings.ttsSeconds, alertSettings.ttsVolume, alertSettings.ttsRate = 3, 100, 0
+  click(calloutRow("Test speech"))
+  assert(#spoken == 1, "Test speech speaks")
+  assert(#errors == 0, tostring(errors[1]))
+end)
+
+check("callout: its settings live only on Alert Settings, renamed everywhere", function()
+  -- Notes Settings no longer has them
+  CRT.NotesPage.Open("settings")
+  local sharing
+  for _, f in ipairs(fontStrings) do if f.text == "Sharing" then sharing = f end end
+  local root = sharing.parent
+  for _, r in ipairs(sliders) do if under(r, root) then
+    for _, w in ipairs({ "Show it early by", "Count down seconds", "Speech volume" }) do assert(r.label ~= w, "moved: " .. w) end end end
+  for _, r in ipairs(dropdowns) do if under(r, root) then assert(r.label ~= "Spell icon", "moved: Spell icon") end end
+  for _, f in ipairs(frames) do assert(not (f.kind == "Button" and f.text == "Test speech" and under(f, root)), "moved: Test speech") end
+  -- the drag boxes' titles
+  CRT.UI:SetPreviews(true)
+  local calloutTitle, textsTitle
+  for _, f in ipairs(fontStrings) do
+    if f.text == "Note callout/assignments: drag to move" then calloutTitle = f end
+    if f.text == "Critical alerts text: drag to move" then textsTitle = f end
+  end
+  CRT.UI:SetPreviews(false)
+  assert(calloutTitle, "the callout's drag box")
+  assert(textsTitle, "the texts' drag box")
+  for _, f in ipairs(fontStrings) do
+    local s = tostring(f.text)
+    assert(not s:find("[Nn]ext spell") and s ~= "Texts" and s ~= "Alert texts", "an old name: " .. s)
+  end
+  assert(#errors == 0, tostring(errors[1]))
+end)
+
+check("callout: saved fields keep their names, new look fields have defaults", function()
+  assert(coreSrc, "CRT_Core/Core.lua given")
+  local block = coreSrc:match("\\n        alert = (%b{})")
+  assert(block, "notes.alert in the defaults")
+  for _, field in ipairs({ "enabled = true", "seconds = 10", "tts = true", "ttsSeconds = 3", "ttsVolume = 100", "ttsRate = 0",
+    'iconPosition = "left"', 'font = "default"', "fontSize = 20", 'outline = ""', 'align = "CENTER"' }) do
+    assert(block:find(field, 1, true), "default " .. field)
+  end
+  assert(coreSrc:find("texts = { shown = true", 1, true) and coreSrc:find("noteLines = { text = false", 1, true), "the texts area's keys")
 end)
 
 check("alertstab: fits PAGE_W and PAGE_H", function()
@@ -555,7 +701,7 @@ check("alertstab: fits PAGE_W and PAGE_H", function()
     while f do if f == scroll then return true end f = f.parent end
     return false
   end
-  for _, key in ipairs({ "icons", "texts", "bars", "circles", "timeline" }) do
+  for _, key in ipairs({ "callout", "icons", "texts", "bars", "circles", "timeline" }) do
     configDropdown().opts.set(key)
     rects = {}
     local n = 0
@@ -601,7 +747,7 @@ check("alertstab: a slider row's (?) sits inside the scroll frame", function()
   CRT.NotesPage.Open("alerts")
   local scroll = created.CowfeeRaidToolsAlertSettingsScroll
   local found = 0
-  for _, key in ipairs({ "bars", "timeline", "icons", "texts", "circles" }) do
+  for _, key in ipairs({ "callout", "bars", "timeline", "icons", "texts", "circles" }) do
     configDropdown().opts.set(key)
     for _, r in ipairs(sliders) do
       local help = rawget(r, "help")

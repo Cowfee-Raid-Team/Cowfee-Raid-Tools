@@ -29,7 +29,7 @@ local OUTPUT_KEYS = { "alert", "text", "icon", "bar", "circle", "timeline", "spe
 local listeners = {}
 
 -- Each: key (never reused), the fields Saved:Save takes, and pin for the ones listed first. Defaults as a
--- new template: only you, shown 5 seconds before, as the next spell alert and a bar, the text read out.
+-- new template: only you, shown 5 seconds before, as the note callout and a bar, the text read out.
 local STARTER_SHOW = { alert = true, bar = true, speech = true }
 local STARTERS = {
     { key = "healthstone", pin = 1, name = "Healthstone", text = "Healthstone", iconID = 538745 },

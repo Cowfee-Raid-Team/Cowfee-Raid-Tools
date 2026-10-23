@@ -791,7 +791,7 @@ do
   v:CancelChipMove()
   -- the hover still has the details
   m.OnEnter(m)
-  assert(tip[1] == "Move out" and table.concat(tip, "|"):find("Text", 1, true), "hover: " .. table.concat(tip, "|"))
+  assert(tip[1] == "Move out" and table.concat(tip, "|"):find("Critical alerts text", 1, true), "hover: " .. table.concat(tip, "|"))
   S:Delete(green)
 end
 print("ok templates: chip without a spell shows the tinted note icon")

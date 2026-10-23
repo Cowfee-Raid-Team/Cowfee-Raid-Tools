@@ -537,7 +537,7 @@ end
 local function buildRight(pf)
     local x = RIGHT_X
 
-    heading(pf, x, -44, "Layers", "Which layer each group of windows is drawn in, from Background (under everything) to Tooltip (over everything); a higher layer covers a lower one, the game's windows included.\n\nAlerts: alert bars, icons, texts, circles, the alert timeline and the low-health banner. Raid windows: the ready check window, your consumables bar and the debuff panel. Pop-up windows: text to copy, imports and the Late Tracker roster.\n\nMixed means the group's windows differ; picking one puts them all in it.")
+    heading(pf, x, -44, "Layers", "Which layer each group of windows is drawn in, from Background (under everything) to Tooltip (over everything); a higher layer covers a lower one, the game's windows included.\n\nAlerts: the note callout, alert bars, icons, critical alerts text, circles, the alert timeline and the low-health banner. Raid windows: the ready check window, your consumables bar and the debuff panel. Pop-up windows: text to copy, imports and the Late Tracker roster.\n\nMixed means the group's windows differ; picking one puts them all in it.")
     for i, group in ipairs(UI.LAYER_GROUPS) do
         add(UI.Dropdown(pf, group.label, {
             options = function()

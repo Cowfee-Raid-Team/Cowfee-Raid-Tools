@@ -170,7 +170,7 @@ assert(win.shown and #T:Visible() == 1 and not handle.shown, "running: shown wit
 previews.alerttexts(true)
 assert(handle.shown and #T:Visible() >= 1, "preview: drag box and samples")
 local title
-for _, f in ipairs(fontStrings) do if f.parent == handle and f.text and f.text:find("Alert texts") then title = f end end
+for _, f in ipairs(fontStrings) do if f.parent == handle and f.text and f.text == "Critical alerts text: drag to move" then title = f end end
 assert(title and title.font and title.font:find("^CRTFont"), "title on the drag box in a CRTFont")
 assert(resets >= 1, "reset on the drag box")
 -- the whole title sits left of the settings button and Reset (retail widths: the title's unbounded text)
@@ -259,7 +259,7 @@ assert(pos and pos.point == "CENTER" and pos.x == 50 and pos.y == 150, "saved by
 assert(win.pts[1][1] == "CENTER" and win.pts[1][4] == 50, "placed where saved")
 T:ResetPosition()
 assert(A:Settings().areas.texts.position == nil, "reset clears the position")
-assert(win.pts[1][1] == "CENTER" and win.pts[1][4] == 400, "back to the default (right of the Next spell alert)")
+assert(win.pts[1][1] == "CENTER" and win.pts[1][4] == 400, "back to the default (right of the note callout)")
 print("ok areas: position saved and reset")
 
 -- idle: no run, preview or test: hidden once, then nothing

@@ -6,7 +6,7 @@ local ADDON, CRT = ...
 -- your note lines are kept longer, and your reminders are kept longest. Speech plays only while the
 -- Raid Notes "Read them out" switch (notes.alert.tts) is on, for every block. A line's sound cue plays once
 -- at zero, whatever that switch says; a raid note line's sound only while it is on, like its speech, and
--- whether or not the Next spell alert is on (ruling B2).
+-- whether or not the note callout is on (ruling B2).
 -- In a rehearsal run the queue ticks on the engine's time (Alerts:Now()), and speech plays only at 1x: a
 -- change away from 1x stops what is being said and drops the queue, and lines that come due at 2x or 4x
 -- are never said. What was queued at 1x stays while the speed stays 1x. Sound cues play at any speed.
@@ -20,7 +20,7 @@ local TICK = 0.1
 local SOUND_LATE = 1  -- a sound whose time passed more than this many seconds ago is not played
 
 local NOTICE = {
-    speech = "Raid Notes: your note lines are now read out even with the next-spell alert off. Untick 'Read them out' on Raid Notes > Alert Settings to stop it.",
+    speech = "Raid Notes: your note lines are now read out even with the note callout off. Untick 'Read them out' on Raid Notes > Alert Settings to stop it.",
 }
 
 local Speech = {
@@ -33,7 +33,7 @@ local Speech = {
 }
 CRT.AlertSpeech = Speech
 
--- Note lines used to be read out only with the Next spell alert on (ruling B2 changed that). A save with
+-- Note lines used to be read out only with the note callout on (ruling B2 changed that). A save with
 -- the alert off and the speech on is told once, on login; the flag keeps it to once per profile.
 function Speech:SpeechNotice()
     local db = CRT.db

@@ -67,25 +67,21 @@ pf:Show()
 print("notes tab built, frames and strings so far: " .. created)
 CRT.NotesPage.Open("settings")
 print("settings tab built, total: " .. created)
--- The Alerts column keeps the timing and voice rows, as sliders and a dropdown.
-for _, label in ipairs({ "Show it early by", "Count down seconds", "Speech volume" }) do assert(sliderLabels[label], "keeps " .. label) end
--- The switches and the alert areas moved to the Alerts tab.
-for _, label in ipairs({ "Bars at once", "Show bars from", "Bar width", "Bar height" }) do assert(not sliderLabels[label], label .. " is not here") end
+-- The note callout's timing and voice moved to Alert Settings > Configuration (CRT_Modules/Notes/Alert.lua), and the
+-- switches and the alert areas to the Alerts tab: none of them is here.
+for _, label in ipairs({ "Show it early by", "Count down seconds", "Speech volume", "Bars at once", "Show bars from", "Bar width", "Bar height" }) do
+  assert(not sliderLabels[label], label .. " is not here")
+end
 for _, f in ipairs(allFrames) do
   assert(not (f.kind == "Button" and rawget(f, "text") == "Previews"), "no Previews button")
   assert(not (f.kind == "Button" and rawget(f, "text") == "Test bars"), "no Test bars button")
+  assert(not (f.kind == "Button" and rawget(f, "text") == "Test speech"), "no Test speech button")
 end
--- Greying follows the switches, now set on the Alerts tab.
-local early, volume = sliderLabels["Show it early by"], sliderLabels["Speech volume"]
-assert(early.enabledIf() == true and volume.enabledIf() == true)
-alertSettings.enabled = false alertSettings.tts = false
-assert(early.enabledIf() == false and volume.enabledIf() == false, "greyed while off")
-alertSettings.enabled = true alertSettings.tts = true
 local checks = 0
 for _, f in ipairs(allFrames) do if f.kind == "CheckButton" then checks = checks + 1 end end
 -- 3 windows (Show, Locked) + Hide lines once passed + Show only me + the sharing switch
 assert(checks == 14, "checkboxes (13 settings, and Display my notes first on the Notes tab): " .. checks)
-print("ok alerts column keeps timing and voice")
+print("ok the callout's settings are not here")
 -- All note windows is the first section, at the top left; every other section starts under its check box
 local function at(text)
   for _, s in ipairs(allStrings) do if rawget(s, "text") == text and rawget(s, "pt") then return s.pt end end
@@ -96,11 +92,12 @@ assert(all and all[1] == "TOPLEFT" and all[2] == 8 and all[3] == -14, "All note 
 local outside
 for _, f in ipairs(allFrames) do if f.kind == "CheckButton" and rawget(f, "pt") and y(f.pt) == -34 then outside = f end end
 assert(outside and outside.pt[2] == 4, "Show outside of raid: right under its heading, as in every section")
-for _, heading in ipairs({ "Alerts", "Sharing", "Notes list" }) do
+for _, heading in ipairs({ "Sharing", "Notes list" }) do
   local pt = at(heading)
   assert(pt and y(pt) <= -14 - 56, heading .. " starts under All note windows: " .. tostring(pt and y(pt)))
 end
-assert(y(at("Alerts")) == -70 and y(at("Sharing")) == -270 and y(at("Notes list")) == -326, "the fourth column keeps its row spacing, 56 lower")
+assert(not at("Alerts"), "no Alerts section")
+assert(y(at("Sharing")) == -70 and y(at("Notes list")) == -126, "the fourth column starts with Sharing, then Notes list")
 print("ok All note windows comes first")
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }

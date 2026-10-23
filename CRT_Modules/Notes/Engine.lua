@@ -363,7 +363,7 @@ function Engine.ItemFor(t, index, mine)
         color = t.color,
     }
     -- A line with show: is labelled by its text: when it has one, as a reminder is; the spell gives the
-    -- icon. A line without show: keeps the spell's name. ownLabel tells the Next spell alert to show the
+    -- icon. A line without show: keeps the spell's name. ownLabel tells the note callout to show the
     -- item's own text, icon and colour, as the areas do.
     if t.show then
         item.ownLabel = true
@@ -403,7 +403,7 @@ function Engine.ItemFor(t, index, mine)
     item.outputs = {
         alert = s.enabled and true or false,
         bar = (bars.shown and bars.noteLines) and true or false,
-        -- Read out wherever the line shows, with or without the Next spell alert (ruling B2).
+        -- Read out wherever the line shows, with or without the note callout (ruling B2).
         speech = s.tts and true or false,
     }
     -- Where else the player sends their own note lines (Raid Notes > Alerts); each is off unless chosen,

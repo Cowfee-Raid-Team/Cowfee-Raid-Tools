@@ -468,7 +468,7 @@ for (const file of ['CRT_Modules/LootMaster/Popup.lua', 'CRT_Modules/LootMaster/
 // panel has no theme colour: its countdown is the approved yellow in every theme.)
 for (const [file, what] of [
   ['CRT_Modules/Notes/Window.lua', 'the note windows'],
-  ['CRT_Modules/Notes/Alert.lua', 'the next-spell alert'],
+  ['CRT_Modules/Notes/Alert.lua', 'the note callout'],
   ['CRT_Modules/Consumables/Display.lua', 'your bar'],
   ['CRT_Modules/ReadyCheck/BuffLock.lua', 'the buff lock hint'],
   ['CRT_Modules/ReadyCheck/Window.lua', 'the ready check window'],
