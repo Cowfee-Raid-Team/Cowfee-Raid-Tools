@@ -43,6 +43,8 @@ CRT_Modules\ReadyCheck\EarlyPull.lua
 CRT_Modules\ReadyCheck\Page.lua
 CRT_Modules\Debuffs\Data.lua
 CRT_Modules\Debuffs\Panel.lua
+CRT_Modules\Debuffs\Click.lua
+CRT_Modules\Debuffs\Ignore.lua
 CRT_Modules\Debuffs\Page.lua
 CRT_Modules\Alerts\Rules.lua
 CRT_Modules\Alerts\Engine.lua

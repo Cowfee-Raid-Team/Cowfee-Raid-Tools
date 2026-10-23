@@ -3,7 +3,8 @@ local ADDON, CRT = ...
 -- The Debuffs tab of the Quality of Life page (a page of its own before 0.17.2): settings for the
 -- debuff panel. The panel is moved with "Preview debuffs" on the tab, which previews only
 -- this panel, or with "Previews" in the corner of the main window, which previews them all.
--- QoL/Page.lua builds it into its tab through CRT.DebuffsPage.Build.
+-- QoL/Page.lua builds it into its tab through CRT.DebuffsPage.Build. Under the settings, Ignore.lua
+-- builds the Ignore these debuffs section.
 
 local Debuffs = CRT.Debuffs
 local UI = CRT.UI
@@ -52,6 +53,8 @@ end
 -- the widest row on the left, the boss debuff slots checkbox, wraps at LEFT_TEXT_W).
 local LOOK_X = 440
 local LEFT_TEXT_W = 390
+-- The Ignore these debuffs section starts under both columns.
+local IGNORE_Y = -246
 
 -- A dropdown for one look setting, in the Edit Mode style (UI/Controls.lua). getter and setter, when
 -- given, read and save it through Debuffs (such as Debuffs.Grow and Debuffs.SetGrow) instead of Get
@@ -151,6 +154,7 @@ refresh = function()
     for _, control in ipairs(look) do
         control.refresh(on)
     end
+    CRT.DebuffsIgnore.Refresh()
 end
 
 local function build(pf)
@@ -160,7 +164,7 @@ local function build(pf)
     title:SetPoint("TOPLEFT", 8, -8)
     title:SetText("Debuff panel")
 
-    UI.HelpRight(title, "The debuff panel", "A movable row of the debuffs enemies put on you, shortest first, in and out of combat. Press Preview debuffs to see it with samples and drag it into place. The game fills the row itself, so it works in combat. Your own debuffs, long ones, and lockouts such as Exhaustion are left out.")
+    local help = UI.HelpRight(title, "The debuff panel", "A movable row of the debuffs enemies put on you, shortest first, in and out of combat. Press Preview debuffs to see it with samples and drag it into place. The game fills the row itself, so it works in combat. Your own debuffs, long ones, and lockouts such as Exhaustion are left out.")
 
     -- Only this panel's preview, not every panel's. It ends when the tab closes, unless Previews is on.
     previewButton = makeButton(pf, PREVIEW_LABEL, 120, 22)
@@ -306,6 +310,9 @@ local function build(pf)
     lookDropdown(pf, -168, "Grow", "grow", Debuffs.GROW_DIRECTIONS, Debuffs.Grow, Debuffs.SetGrow)
     local glow = lookCheck(pf, "Glow on dispellable debuffs", -204, "dispelGlow", LOOK_X - 4, nil, Debuffs.SetDispelGlow)
     UI.HelpRight(glow.label, "Glow on dispellable debuffs", "A dispellable debuff always gets a frame in its colour: Magic blue, Poison green, Curse purple, Disease brown, Bleed in the game's bleed colour. The glow adds a soft light in the same colour around that frame. Both need a border size above 0.")
+
+    -- Your own and the built-in ignored debuffs, under both columns (Ignore.lua).
+    CRT.DebuffsIgnore.Build(pf, IGNORE_Y)
 
     pf:SetScript("OnShow", refresh)
     Debuffs:OnChange(refresh)

@@ -12,6 +12,7 @@ local ADDON, CRT = ...
 --   A reverse option existed until 0.13.0, includeRegular (the old optional second row) until the
 --   AuraContainer became the panel, and dispelBorder (a box for the border colored by dispel type)
 --   until the frame always took that color. Their saved values may remain and are ignored.
+--   ignored = { [spellID] = true }: your own debuffs to leave out (see "Your own ignored debuffs").
 --   position = { point, relativePoint, x, y } once the panel has been moved. Panel.lua saves it from
 --   the corner the row grows from (TOPLEFT or TOPRIGHT) and turns one saved at any other point into
 --   that corner the first time it applies it.
@@ -142,12 +143,174 @@ Debuffs.EXCLUDED_SPELLS = {
     [71041] = true, -- Dungeon Deserter
 }
 
+-- Your own ignored debuffs ------------------------------------------------------------------
+-- ignored = { [spellID] = true }, added on the Debuffs tab or by right-clicking a debuff on the panel,
+-- and left out like the built-in ones above. It travels with the profile and Export settings only
+-- (Profiles.lua checks each key is a spell ID).
+--
+-- The game decides which of them it really hides. Its candidate filter (Blizzard_AuraContainerUtil.lua,
+-- CanApplyIdentityCandidateFilters, Gethe live) applies excludeSpellIDs to a debuff on you only when
+-- the spell is flagged never secret (C_Secrets.GetSpellAuraSecrecy), so an addon can't hide a boss
+-- mechanic by its ID. Lockouts such as Exhaustion and Sated carry that flag; Debuffs.CanHide asks the
+-- game for any other spell.
+
+-- The most entries your list holds: the most one shared settings table may hold (Profiles.lua's MAX_LIST).
+Debuffs.MAX_IGNORED = 200
+local MAX_SPELL_ID = 2147483647
+
+Debuffs.IGNORE_TEXT = {
+    notID = "Type a spell ID: a whole number.",
+    notSpell = "The game has no spell with that ID.",
+    builtIn = "That one is built in, so it's always ignored.",
+    already = "That one is already on your list.",
+    full = "Your list is full. Remove one first.",
+}
+
+-- A spell ID, typed or saved: a positive whole number (text of digits only), else nil.
+function Debuffs.SpellID(value)
+    if isSecret(value) then
+        return nil
+    end
+    if type(value) == "string" then
+        value = tonumber(value:match("^%s*(%d+)%s*$"))
+    end
+    if type(value) ~= "number" or value ~= value or value < 1 or value > MAX_SPELL_ID or value % 1 ~= 0 then
+        return nil
+    end
+    return value
+end
+
+-- A spell's name and icon (a file ID, or nil), or nil when the game has no spell with that ID. Name and
+-- icon come from the game's own spell data, so they need no load (C_Spell.GetSpellInfo). A secret
+-- value is never compared.
+function Debuffs.SpellInfo(value)
+    local id = Debuffs.SpellID(value)
+    if not id or not C_Spell then
+        return nil
+    end
+    if C_Spell.DoesSpellExist then
+        local ok, exists = pcall(C_Spell.DoesSpellExist, id)
+        if ok and not isSecret(exists) and exists == false then
+            return nil
+        end
+    end
+    local name, icon
+    if C_Spell.GetSpellInfo then
+        local ok, info = pcall(C_Spell.GetSpellInfo, id)
+        if ok and type(info) == "table" then
+            name, icon = info.name, info.iconID
+        end
+    elseif C_Spell.GetSpellName then
+        local ok, n = pcall(C_Spell.GetSpellName, id)
+        name = ok and n or nil
+    end
+    if isSecret(name) or type(name) ~= "string" or name == "" then
+        return nil
+    end
+    if icon == nil and C_Spell.GetSpellTexture then
+        local ok, t = pcall(C_Spell.GetSpellTexture, id)
+        icon = ok and t or nil
+    end
+    if isSecret(icon) or (type(icon) ~= "number" and type(icon) ~= "string") then
+        icon = nil
+    end
+    return name, icon
+end
+
+-- Whether the game lets the panel hide this debuff on you by its spell ID (see above): true, false,
+-- or nil when this client can't say.
+function Debuffs.CanHide(value)
+    local id = Debuffs.SpellID(value)
+    local get = C_Secrets and C_Secrets.GetSpellAuraSecrecy
+    local never = Enum and Enum.SecrecyLevel and Enum.SecrecyLevel.NeverSecret
+    if not id or type(get) ~= "function" or never == nil then
+        return nil
+    end
+    local ok, level = pcall(get, id)
+    if not ok or isSecret(level) or level == nil then
+        return nil
+    end
+    return level == never
+end
+
+-- The saved list, made when old saved data has none.
+function Debuffs:Ignored()
+    local d = ddb()
+    if type(d.ignored) ~= "table" then
+        d.ignored = {}
+    end
+    return d.ignored
+end
+
+-- Your ignored spell IDs, lowest first. A saved key that isn't a spell ID is skipped.
+function Debuffs:IgnoredList()
+    local out = {}
+    for id, on in pairs(self:Ignored()) do
+        if on == true and self.SpellID(id) == id then
+            out[#out + 1] = id
+        end
+    end
+    table.sort(out)
+    return out
+end
+
+-- The built-in spell IDs, lowest first.
+function Debuffs:BuiltInList()
+    local out = {}
+    for id in pairs(self.EXCLUDED_SPELLS) do
+        out[#out + 1] = id
+    end
+    table.sort(out)
+    return out
+end
+
+function Debuffs:IsIgnored(value)
+    local id = self.SpellID(value)
+    return id ~= nil and self:Ignored()[id] == true
+end
+
+-- Adds a spell to your list. Returns its ID, or nil and the reason (Debuffs.IGNORE_TEXT).
+function Debuffs:AddIgnored(value)
+    local T = self.IGNORE_TEXT
+    local id = self.SpellID(value)
+    if not id then
+        return nil, T.notID
+    end
+    if self.EXCLUDED_SPELLS[id] then
+        return nil, T.builtIn
+    end
+    if self:IsIgnored(id) then
+        return nil, T.already
+    end
+    if not self.SpellInfo(id) then
+        return nil, T.notSpell
+    end
+    if #self:IgnoredList() >= self.MAX_IGNORED then
+        return nil, T.full
+    end
+    self:Ignored()[id] = true
+    self:Fire()
+    return id
+end
+
+function Debuffs:RemoveIgnored(value)
+    local id = self.SpellID(value)
+    if id and self:Ignored()[id] ~= nil then
+        self:Ignored()[id] = nil
+        self:Fire()
+    end
+end
+
 -- What the panel's AuraContainer group keeps of your HARMFUL auras: not cast by you or your pet, no
--- longer than maxDuration (when set), and none of the excluded spells. A new table each call, since
--- the container may keep it.
+-- longer than maxDuration (when set), and none of the built-in or your ignored spells (which the game
+-- applies only to spells it lets addons hide, see above). A new table each call, since the container
+-- may keep it.
 function Debuffs:CandidateFilters()
     local exclude = {}
     for id in pairs(self.EXCLUDED_SPELLS) do
+        exclude[id] = true
+    end
+    for _, id in ipairs(self:IgnoredList()) do
         exclude[id] = true
     end
     local filters = { isFromPlayerOrPlayerPet = false, excludeSpellIDs = exclude }
@@ -155,6 +318,66 @@ function Debuffs:CandidateFilters()
         filters.maxDuration = self:MaxDuration()
     end
     return filters
+end
+
+-- The debuffs the panel's row holds now, in its order, for right-clicking one: the row's own buttons
+-- never hand their aura to addon code (only the game's private part of AuraButton holds it), so this
+-- reads your debuffs (C_UnitAuras.GetAuraDataByIndex) and picks them the way the game's candidate
+-- filter and its ExpirationOnly sort do (Blizzard_AuraContainerUtil.lua, AuraUtil.lua, Gethe live):
+-- soonest to end first, debuffs with no end last, then by aura instance. Each entry is
+-- { spellId, name, icon, canHide }. nil when any value is secret (in combat, an encounter), so the
+-- caller says to try again. Boss debuffs the game hides from addons are never in this list, though the
+-- row may show them.
+local MAX_AURAS = 255
+
+function Debuffs:Current()
+    local get = C_UnitAuras and C_UnitAuras.GetAuraDataByIndex
+    if type(get) ~= "function" then
+        return nil
+    end
+    local filters = self:CandidateFilters()
+    local list = {}
+    for index = 1, MAX_AURAS do
+        local ok, aura = pcall(get, "player", index, "HARMFUL")
+        if not ok then
+            return nil
+        end
+        if aura == nil then
+            break
+        end
+        if isSecret(aura) or type(aura) ~= "table" then
+            return nil
+        end
+        local id, name, icon, duration, expires = aura.spellId, aura.name, aura.icon, aura.duration, aura.expirationTime
+        local fromYou, instance = aura.isFromPlayerOrPlayerPet, aura.auraInstanceID
+        for _, v in ipairs({ id, name, icon, duration, expires, fromYou, instance }) do
+            if isSecret(v) then
+                return nil
+            end
+        end
+        if type(id) ~= "number" or type(duration) ~= "number" or type(expires) ~= "number" or type(instance) ~= "number" then
+            return nil
+        end
+        local canHide = self.CanHide(id)
+        local keep = fromYou ~= true
+        if keep and filters.maxDuration and (duration > filters.maxDuration or duration == 0) then
+            keep = false
+        end
+        if keep and filters.excludeSpellIDs[id] and canHide then
+            keep = false
+        end
+        if keep then
+            list[#list + 1] = { spellId = id, name = type(name) == "string" and name or ("Spell " .. id), icon = icon, canHide = canHide,
+                ends = expires > 0 and expires or math.huge, instance = instance }
+        end
+    end
+    table.sort(list, function(a, b)
+        if a.ends ~= b.ends then
+            return a.ends < b.ends
+        end
+        return a.instance < b.instance
+    end)
+    return list
 end
 
 -- The look ----------------------------------------------------------------------------------

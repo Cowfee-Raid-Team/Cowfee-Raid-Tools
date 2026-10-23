@@ -9,7 +9,7 @@ const themeLua = require('./theme_stub');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
 const harness = themeLua(process.argv.slice(2)) + `
-local coreSrc, dataSrc, panelSrc, pageSrc = ...
+local coreSrc, dataSrc, panelSrc, pageSrc, clickSrc, ignoreSrc, qolPageSrc = ...
 local passed, failed = 0, 0
 local function check(name, cond, detail)
   if cond then passed = passed + 1 print("ok " .. name)
@@ -53,7 +53,11 @@ local function mock(kind)
     if k == "GetFrameLevel" then return function(self)
       local p = rawget(self, "parent")
       return rawget(self, "level") or (p and p:GetFrameLevel() + 1) or 1 end end
-    if k == "EnableMouse" then return function(self, on) rawset(self, "mouse", on) end end
+    if k == "EnableMouse" then return function(self, on) rawset(self, "mouse", on) rawset(self, "motion", on) end end
+    if k == "SetMouseMotionEnabled" then return function(self, on) rawset(self, "motion", on) end end
+    if k == "RegisterForClicks" then return function(self, ...) rawset(self, "clicks", { ... }) end end
+    if k == "SetPassThroughButtons" then return function(self, ...) rawset(self, "passThrough", { ... }) end end
+    if k == "SetDesaturated" then return function(self, on) rawset(self, "desaturated", on) end end
     -- A frame's first point as set, or the middle of its parent before it has one.
     if k == "GetPoint" then return function(self)
       local p = self.pts[1]
@@ -68,6 +72,7 @@ end
 -- Game stubs. forbidTextures makes every texture forbidden, as during an encounter.
 forbidTextures = false
 format = string.format
+unpack = unpack or table.unpack -- the game's Lua 5.1 global
 CreateFont = function() return mock("Font") end
 for _, n in ipairs({ "GameFontNormal", "GameFontHighlight", "GameFontDisable", "GameFontHighlightSmall", "GameFontDisableSmall",
   "GameFontNormalLarge", "GameFontNormalSmall", "ChatFontNormal" }) do _G[n] = mock("Font") end
@@ -143,6 +148,7 @@ CRT.db = { debuffs = fresh() }
 local sliders, dropdowns, helps, previewFns = {}, {}, {}, {}
 CRT.UI = {
   PAGE_W = 1026, PAGE_H = 560, previewing = false,
+  SkinScrollBar = function() end, ScrollGutter = function(w) return 6 + (w or 18) end,
   RegisterLayer = function() end,
   RegisterPreview = function(_, key, fn) previewFns[key] = fn end,
   SetPreviews = function() end,
@@ -321,6 +327,10 @@ local Panel = CRT.DebuffPanel
 local events
 for _, f in ipairs(frames) do if rawget(f, "OnEvent") then events = f end end
 events.OnEvent(events, "PLAYER_LOGIN")
+-- The right-click spots (Click.lua), after the panel's own events frame is found.
+assert(load(clickSrc, "Click.lua"))("CowfeeRaidTools", CRT)
+local Click = CRT.DebuffClick
+local clickEvents = frames[#frames]
 do
   local panel
   for _, f in ipairs(frames) do if rawget(f, "name") == "CowfeeRaidToolsDebuffPanel" then panel = f end end
@@ -849,6 +859,7 @@ local info = Panel:InfoText()
 check("diagnostics list the new settings", info:find("dispel icon size 20%%") and info:find("frame colored by dispel type") and info:find("glow false") and info:find("spacing 4"), info:match("Settings:[^\\n]*"))
 
 -- The tab.
+assert(load(ignoreSrc, "Ignore.lua"))("CowfeeRaidTools", CRT)
 assert(load(pageSrc, "Page.lua"))("CowfeeRaidTools", CRT)
 local pf = mock("Frame")
 CRT.DebuffsPage.Build(pf)
@@ -942,6 +953,290 @@ check("closing the tab leaves it on while Previews is on", Panel:IsPreviewing() 
 CRT.UI.previewing = false
 previewFns.debuffs(false)
 
+-- The Debuffs tab's (?) and Preview debuffs: the button sits right of the title's (?).
+do
+  local p = pb and pb.pts[1]
+  check("Preview debuffs is anchored to the title's (?), not off the page", p and type(p[2]) == "table" and rawget(p[2], "helpTarget") ~= nil, p and tostring(p[2]))
+end
+
+-- Ignore these debuffs ----------------------------------------------------------------------
+-- The game's spells, their secrecy (C_Secrets.GetSpellAuraSecrecy: 0 never secret, 2 contextually
+-- secret) and your debuffs (C_UnitAuras.GetAuraDataByIndex), as the game gives them.
+local SPELLS = {
+  [57723] = { name = "Exhaustion", icon = 136090 }, [80354] = { name = "Temporal Displacement", icon = 458224 },
+  [389123] = { name = "Lingering Doom", icon = 1001 }, [442611] = { name = "Old Scar", icon = 1002 },
+  [500001] = { name = "Short Burn", icon = 1003 }, [500002] = { name = "Quick Poison", icon = 1004 },
+}
+local NEVER_SECRET = { [57723] = true, [80354] = true, [389123] = true, [500001] = true, [500002] = true }
+C_Spell = {
+  GetSpellTexture = function(id) return SPELLS[id] and SPELLS[id].icon or nil end,
+  DoesSpellExist = function(id) return SPELLS[id] ~= nil end,
+  GetSpellInfo = function(id) local s = SPELLS[id] if s then return { name = s.name, iconID = s.icon, spellID = id } end end,
+}
+Enum.SecrecyLevel = { NeverSecret = 0, AlwaysSecret = 1, ContextuallySecret = 2 }
+C_Secrets = { GetSpellAuraSecrecy = function(id) return NEVER_SECRET[id] and 0 or 2 end }
+local AURAS = {}
+C_UnitAuras.GetAuraDataByIndex = function(unit, index, filter)
+  if unit ~= "player" or filter ~= "HARMFUL" then return nil end
+  return AURAS[index]
+end
+local function aura(id, duration, expires, instance, fromYou)
+  return { spellId = id, name = SPELLS[id] and SPELLS[id].name or "?", icon = SPELLS[id] and SPELLS[id].icon, duration = duration,
+    expirationTime = expires, auraInstanceID = instance, isFromPlayerOrPlayerPet = fromYou or false, isHarmful = true }
+end
+local box
+for _, f in ipairs(frames) do if f.kind == "AuraContainer" then box = f end end
+rawset(box, "SetAuraGroupCandidateFilters", function(self, key, filters) rawset(self, "lastFilters", filters) end)
+local fired = 0
+Debuffs:OnChange(function() fired = fired + 1 end)
+
+do
+  check("the default ignored list is empty", type(defaults.ignored) == "table" and next(defaults.ignored) == nil)
+  CRT.db.debuffs.ignored = nil
+  check("old saved data without a list reads as empty", #Debuffs:IgnoredList() == 0 and type(CRT.db.debuffs.ignored) == "table")
+  -- spell IDs
+  local ids = { { "57723", 57723 }, { " 12 ", 12 }, { 389123, 389123 }, { "12a", nil }, { "0", nil }, { "-3", nil }, { 1.5, nil }, { "0x10", nil }, { "", nil }, { SECRET, nil } }
+  for _, c in ipairs(ids) do
+    check("spell ID " .. tostring(rawequal(c[1], SECRET) and "(secret)" or c[1]) .. " reads " .. tostring(c[2]), Debuffs.SpellID(c[1]) == c[2], tostring(Debuffs.SpellID(c[1])))
+  end
+  local n, i = Debuffs.SpellInfo("389123")
+  check("a spell's name and icon come from the game", n == "Lingering Doom" and i == 1001, tostring(n) .. " " .. tostring(i))
+  check("an ID the game has no spell for gives nothing", Debuffs.SpellInfo(999) == nil)
+  check("Exhaustion can be hidden: the game flags it never secret", Debuffs.CanHide(57723) == true)
+  check("a contextually secret spell can't be hidden by its ID", Debuffs.CanHide(442611) == false)
+  local savedSecrets = C_Secrets
+  C_Secrets = nil
+  check("without the secrecy API it can't say", Debuffs.CanHide(57723) == nil)
+  C_Secrets = { GetSpellAuraSecrecy = function() return SECRET end }
+  check("a secret secrecy is never compared", Debuffs.CanHide(57723) == nil)
+  C_Secrets = savedSecrets
+  local savedInfo = C_Spell.GetSpellInfo
+  C_Spell.GetSpellInfo = function() return { name = SECRET, iconID = SECRET } end
+  check("a secret spell name is never compared, and gives nothing", Debuffs.SpellInfo(389123) == nil)
+  C_Spell.GetSpellInfo = savedInfo
+
+  -- adding and removing
+  local before = fired
+  local id, err = Debuffs:AddIgnored("389123")
+  check("Add saves a typed spell ID as a number", id == 389123 and CRT.db.debuffs.ignored[389123] == true, tostring(err))
+  check("and refreshes listeners", fired == before + 1, fired - before)
+  check("the panel's filter now leaves it out, with the built-in ones", box.lastFilters and box.lastFilters.excludeSpellIDs[389123] == true and box.lastFilters.excludeSpellIDs[57723] == true)
+  check("CandidateFilters has both lists", Debuffs:CandidateFilters().excludeSpellIDs[389123] and Debuffs:CandidateFilters().excludeSpellIDs[80354])
+  local _, e2 = Debuffs:AddIgnored(389123)
+  check("adding it again says so", e2 == Debuffs.IGNORE_TEXT.already, e2)
+  local _, e3 = Debuffs:AddIgnored(57723)
+  check("a built-in one says it's always ignored", e3 == Debuffs.IGNORE_TEXT.builtIn and CRT.db.debuffs.ignored[57723] == nil, e3)
+  local _, e4 = Debuffs:AddIgnored("999")
+  check("a non-spell ID says so and isn't added", e4 == Debuffs.IGNORE_TEXT.notSpell and CRT.db.debuffs.ignored[999] == nil, e4)
+  local _, e5 = Debuffs:AddIgnored("abc")
+  check("text that isn't an ID says so", e5 == Debuffs.IGNORE_TEXT.notID, e5)
+  check("a non-hideable spell can still be added", Debuffs:AddIgnored(442611) == 442611)
+  CRT.db.debuffs.ignored.junk = true CRT.db.debuffs.ignored[0] = true CRT.db.debuffs.ignored[77] = "yes"
+  local list = Debuffs:IgnoredList()
+  check("junk saved keys are skipped", #list == 2 and list[1] == 389123 and list[2] == 442611, table.concat(list, ","))
+  check("and never reach the filter", Debuffs:CandidateFilters().excludeSpellIDs.junk == nil and Debuffs:CandidateFilters().excludeSpellIDs[0] == nil)
+  CRT.db.debuffs.ignored.junk, CRT.db.debuffs.ignored[0], CRT.db.debuffs.ignored[77] = nil, nil, nil
+  -- in combat the filter change waits, like any other, and applies when combat ends
+  combat = true
+  Debuffs:RemoveIgnored(389123)
+  check("Remove takes it off the list at once", CRT.db.debuffs.ignored[389123] == nil)
+  check("in combat the panel's filter waits", box.lastFilters.excludeSpellIDs[389123] == true)
+  combat = false
+  events.OnEvent(events, "PLAYER_REGEN_ENABLED")
+  check("after combat the panel shows it again", box.lastFilters.excludeSpellIDs[389123] == nil)
+  -- the list is capped at what a shared settings table may hold
+  local full = {}
+  for k = 1, Debuffs.MAX_IGNORED do full[k] = true end
+  CRT.db.debuffs.ignored = full
+  SPELLS[600000] = { name = "One Too Many", icon = 1 }
+  local _, e6 = Debuffs:AddIgnored(600000)
+  check("a full list says so", e6 == Debuffs.IGNORE_TEXT.full, e6)
+  SPELLS[600000] = nil
+  CRT.db.debuffs.ignored = { [442611] = true }
+end
+
+-- What the panel's row holds now, worked out the way the game fills it.
+do
+  CRT.db.debuffs.maxDuration = 300
+  AURAS = {
+    aura(500002, 20, 130, 7), -- ends at 130
+    aura(500001, 10, 110, 9), -- ends first
+    aura(57723, 600, 700, 3), -- Exhaustion: built in, and the game hides it
+    aura(442611, 60, 110, 5), -- ignored but the game won't hide it: same end as 500001, lower instance first
+    aura(389123, 30, 120, 4, true), -- your own: left out
+    aura(80354, 0, 0, 2), -- no end, and a limit is set: left out
+  }
+  local list = Debuffs:Current()
+  local order = {}
+  for _, a in ipairs(list or {}) do order[#order + 1] = a.spellId end
+  check("the row's debuffs, soonest to end first, as the game sorts them", table.concat(order, ",") == "442611,500001,500002", table.concat(order, ","))
+  check("a debuff the game won't hide is marked", list and list[1].canHide == false and list[2].canHide == true)
+  CRT.db.debuffs.maxDuration = 0
+  AURAS[7] = aura(389123, 0, 0, 1) -- no end, from an enemy: shown with no limit, after the timed ones
+  list = Debuffs:Current()
+  order = {}
+  for _, a in ipairs(list or {}) do order[#order + 1] = a.spellId end
+  check("with no limit, a debuff with no end sorts last, and the built-in ones stay out", table.concat(order, ",") == "442611,500001,500002,389123", table.concat(order, ","))
+  AURAS[7] = nil
+  CRT.db.debuffs.maxDuration = 300
+  AURAS[2] = aura(500001, 10, SECRET, 9)
+  check("a secret value gives nothing, never compared", Debuffs:Current() == nil)
+  AURAS[2] = aura(500001, 10, 110, 9)
+end
+
+-- Right-click a debuff on the panel.
+local menus = {}
+CRT.UI.ContextMenu = function(owner, fill)
+  local root = { titles = {}, buttons = {} }
+  function root:CreateTitle(text) self.titles[#self.titles + 1] = text end
+  function root:CreateButton(text, fn) self.buttons[#self.buttons + 1] = { text = text, fn = fn } end
+  fill(root)
+  root.owner = owner
+  menus[#menus + 1] = root
+  return root
+end
+local function buttonNamed(menu, text)
+  for _, b in ipairs(menu and menu.buttons or {}) do if b.text == text then return b end end
+end
+do
+  CRT.db.debuffs.ignored = {}
+  Debuffs:SetMaxCount(4)
+  Debuffs:Fire()
+  local c = Click.catchers
+  local shownSpots, mice = 0, {}
+  for i, s in ipairs(c) do
+    if s.shown then shownSpots = shownSpots + 1 end
+    mice[i] = tostring(rawget(s, "mouse"))
+  end
+  check("one right-click spot per icon shown, the rest hidden", shownSpots == 4, shownSpots)
+  check("only spots holding a debuff take the mouse", table.concat(mice, ","):find("^true,true,true,false") ~= nil and not table.concat(mice, ","):find("true", 16), table.concat(mice, ","))
+  check("a spot takes right-clicks only, and never hover", c[1].clicks and c[1].clicks[1] == "RightButtonUp" and #c[1].clicks == 1 and rawget(c[1], "motion") == false)
+  local pass = c[1].passThrough and table.concat(c[1].passThrough, ",") or ""
+  check("left-clicks pass through the spot", pass:find("LeftButton") ~= nil and not pass:find("RightButton"), pass)
+  local step = Debuffs:Step(Debuffs:Size())
+  check("each spot sits over its icon", c[2].pts[1] and c[2].pts[1][1] == "TOPLEFT" and c[2].pts[1][4] == step and c[2].w == Debuffs:Size(), c[2].pts[1] and c[2].pts[1][4])
+  check("the spots sit above the icons, their glow and text", c[1]:GetFrameLevel() >= panelFrame:GetFrameLevel() + 25)
+
+  -- out of combat: the menu names the debuff and offers Ignore this debuff and Cancel
+  c[2].OnClick(c[2], "RightButton")
+  local m = menus[#menus]
+  check("the menu's title is the debuff's name and icon", m and m.titles[1] and m.titles[1]:find("Short Burn", 1, true) and m.titles[1]:find("1003", 1, true), m and m.titles[1])
+  check("with Ignore this debuff and Cancel", buttonNamed(m, Click.TEXT.ignore) ~= nil and buttonNamed(m, Click.TEXT.cancel) ~= nil)
+  buttonNamed(m, Click.TEXT.ignore).fn()
+  check("Ignore this debuff adds it", CRT.db.debuffs.ignored[500001] == true)
+  check("and the panel's filter leaves it out at once", box.lastFilters.excludeSpellIDs[500001] == true)
+  -- the debuff the game won't hide says so instead
+  c[1].OnClick(c[1], "RightButton")
+  m = menus[#menus]
+  check("a debuff the game won't hide: no Ignore, it says why", m.titles[1]:find("Old Scar", 1, true) and m.titles[2] == Click.TEXT.cantHide and buttonNamed(m, Click.TEXT.ignore) == nil)
+  -- a left-click does nothing
+  local count = #menus
+  c[3].OnClick(c[3], "LeftButton")
+  check("a left-click opens no menu", #menus == count)
+  -- a menu opened out of combat, then combat starts: Ignore adds nothing
+  CRT.db.debuffs.ignored = {}
+  Debuffs:Fire()
+  c[2].OnClick(c[2], "RightButton")
+  m = menus[#menus]
+  combat = true
+  clickEvents.OnEvent(clickEvents, "PLAYER_REGEN_DISABLED")
+  buttonNamed(m, Click.TEXT.ignore).fn()
+  check("Ignore after combat starts adds nothing", CRT.db.debuffs.ignored[500001] == nil)
+  local held = false
+  for _, s in ipairs(c) do if rawget(s, "mouse") then held = true end end
+  check("in combat every spot lets go: the panel is click-through", not held)
+  c[2].OnClick(c[2], "RightButton")
+  m = menus[#menus]
+  check("in combat the menu says to try again after combat", m.titles[1] == Click.TEXT.later and buttonNamed(m, Click.TEXT.ignore) == nil and buttonNamed(m, Click.TEXT.cancel) ~= nil)
+  panelFrame.OnUpdate(panelFrame, 1)
+  held = false
+  for _, s in ipairs(c) do if rawget(s, "mouse") then held = true end end
+  check("the spots stay click-through all combat", not held)
+  combat = false
+  events.OnEvent(events, "PLAYER_REGEN_ENABLED")
+  check("after combat the spots take right-clicks again", rawget(c[1], "mouse") == true)
+  -- a secret value: try again, nothing added
+  AURAS[1] = aura(500002, 20, 130, SECRET)
+  c[1].OnClick(c[1], "RightButton")
+  m = menus[#menus]
+  check("a secret value: the menu says to try again after combat", m.titles[1] == Click.TEXT.later and buttonNamed(m, Click.TEXT.ignore) == nil)
+  AURAS[1] = aura(500002, 20, 130, 7)
+  -- during a preview the panel is click-through
+  Panel:SetPreview(true)
+  held = false
+  for _, s in ipairs(c) do if rawget(s, "mouse") then held = true end end
+  check("during a preview the spots let go", not held)
+  Panel:SetPreview(false)
+  Debuffs:SetEnabled(false)
+  check("with the panel off the spots let go", not rawget(c[1], "mouse"))
+  Debuffs:SetEnabled(true)
+end
+
+-- The section on the tab.
+do
+  local I = CRT.DebuffsIgnore
+  local v = I.view
+  check("the section has a title with a (?)", v.title and v.title.text == "Ignore these debuffs" and v.help and rawget(v.help, "helpTarget") == v.title)
+  check("its (?) says the boss debuff slots can't be filtered", helps["Ignore these debuffs"] and helps["Ignore these debuffs"]:find("boss debuff slots", 1, true) ~= nil)
+  local function type_(text) v.edit:SetText(text) v.edit.OnTextChanged(v.edit, true) end
+  type_("389123")
+  check("typing a spell ID shows its name", v.name.text == "Lingering Doom", v.name.text)
+  check("and its icon", v.icon.texture == 1001 and v.icon.shown)
+  check("and says Add hides it", v.status.text == I.TEXT.canHide, v.status.text)
+  type_("442611")
+  check("a spell the game won't hide says it still shows", v.status.text and v.status.text:find(I.TEXT.cantHide, 1, true) ~= nil, v.status.text)
+  type_("999")
+  check("a non-spell ID says so", v.name.text and v.name.text:find(I.TEXT.noSpell, 1, true) ~= nil and not v.icon.shown, v.name.text)
+  v.add.OnClick(v.add)
+  check("and Add doesn't add it", CRT.db.debuffs.ignored[999] == nil and v.status.text:find(Debuffs.IGNORE_TEXT.notSpell, 1, true) ~= nil, v.status.text)
+  type_("")
+  check("an empty box shows nothing", v.name.text == "" and not v.icon.shown)
+  type_("389123")
+  v.add.OnClick(v.add)
+  check("Add puts it on Yours and clears the box", CRT.db.debuffs.ignored[389123] == true and v.edit.text == "")
+  check("Yours shows it with a Remove button", v.rows[1] and v.rows[1].shown and v.rows[1].id == 389123 and v.rows[1].name.text:find("Lingering Doom", 1, true) and v.rows[1].remove ~= nil)
+  check("and the panel stops showing it", box.lastFilters.excludeSpellIDs[389123] == true)
+  check("the empty-list line hides", not v.none.shown)
+  -- a debuff ignored by right-click shows up in the list at once
+  Debuffs:AddIgnored(442611)
+  check("a change made elsewhere shows at once", v.rows[2] and v.rows[2].shown and v.rows[2].id == 442611)
+  check("one the game won't hide is marked", v.rows[2].name.text:find(I.TEXT.stillShows, 1, true) ~= nil and v.rows[2].cantHide == true)
+  v.rows[1].remove.OnClick(v.rows[1].remove)
+  check("Remove takes it off", CRT.db.debuffs.ignored[389123] == nil and v.rows[1].id == 442611 and not v.rows[2].shown)
+  check("and the panel shows it again", box.lastFilters.excludeSpellIDs[389123] == nil)
+  -- built in, greyed, no Remove, with "and N more" past what fits
+  local built = Debuffs:BuiltInList()
+  local shown, greyed, removable = 0, true, false
+  for _, row in ipairs(v.builtInRows) do
+    if row.shown then
+      shown = shown + 1
+      if not (row.name.textColor and row.name.textColor[1] == 0.5 and row.icon.desaturated) then greyed = false end
+      if row.remove then removable = true end
+    end
+  end
+  check("the built-in list is greyed and can't be removed", shown > 0 and greyed and not removable)
+  local rest = v.more.rest and #v.more.rest or 0
+  check("the built-in ones that don't fit read and N more", shown + rest == #built and (rest == 0 or (v.more.shown and v.moreText.text == format(I.TEXT.more, rest))), shown .. " + " .. rest .. " of " .. #built)
+  check("the built-in names come from the game", v.builtInRows[1].title == (Debuffs.SpellInfo(built[1]) or ("Spell " .. built[1])))
+  -- the layout fits inside the tab: the tab frame starts I.TAB_TOP under the page's top, as QoL/Page.lua puts it
+  check("QoL/Page.lua's tab frames start where the section expects", qolPageSrc:find('f:SetPoint("TOPLEFT", 0, -' .. I.TAB_TOP .. ')', 1, true) ~= nil)
+  local tabH = CRT.UI.PAGE_H - I.TAB_TOP
+  local fits = true
+  for _, b in ipairs({ v.yoursBox, v.builtInBox }) do
+    local p = b.pts[1]
+    if not (p and p[2] + b.w <= CRT.UI.PAGE_W and p[3] - b.h >= -tabH and p[3] < 0) then fits = false end
+  end
+  check("both lists fit inside the tab", fits, v.yoursBox.pts[1][3] .. " - " .. v.yoursBox.h)
+  local titleY = v.title.pts[1][3]
+  check("the section starts under the panel settings and the Look column", titleY <= -240, titleY)
+  check("Yours scrolls when it grows past its space", v.scroll ~= nil and v.child ~= nil)
+  for k = 1, 12 do SPELLS[700000 + k] = { name = "Filler " .. k, icon = 2000 + k } Debuffs:AddIgnored(700000 + k) end
+  check("a long list makes the scroll child taller than the box", v.child.h > v.yoursBox.h, v.child.h)
+  CRT.db.debuffs.ignored = {}
+  Debuffs:Fire()
+  check("an empty list says so", v.none.shown)
+end
+
 -- Without the glow's atlas there is no glow at all: a plain square above the icon would tint it.
 C_Texture = { GetAtlasInfo = function() return nil end }
 local before = #frames
@@ -980,7 +1275,9 @@ if failed > 0 then error("debuff checks failed") end
 `;
 const dir = process.argv[2];
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
-for (const f of ['CRT_Core/Core.lua', 'CRT_Modules/Debuffs/Data.lua', 'CRT_Modules/Debuffs/Panel.lua', 'CRT_Modules/Debuffs/Page.lua']) {
+const files = ['CRT_Core/Core.lua', 'CRT_Modules/Debuffs/Data.lua', 'CRT_Modules/Debuffs/Panel.lua', 'CRT_Modules/Debuffs/Page.lua',
+  'CRT_Modules/Debuffs/Click.lua', 'CRT_Modules/Debuffs/Ignore.lua', 'CRT_Modules/QoL/Page.lua'];
+for (const f of files) {
   lua.lua_pushstring(L, to_luastring(fs.readFileSync(path.join(dir, f), 'utf8')));
 }
-if (lua.lua_pcall(L, 4, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
+if (lua.lua_pcall(L, files.length, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
