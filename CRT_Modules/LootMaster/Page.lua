@@ -260,7 +260,7 @@ local function buildTonight(f)
     local heldMore = f:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     heldMore:SetPoint("TOPLEFT", L.col1 + 4, L.heldTop - 22 - L.heldRows * L.heldRow - 2)
     UI.Tint(heldMore, "SetTextColor", "muted")
-    LM.BuildAddItem(f, L.col1, L.addTop, L.addW, skin) -- Add item: drag or shift-click from your bags
+    LM.BuildAddItem(f, L.col1, L.addTop, L.addW) -- Add item: drag or shift-click from your bags
     refreshers[#refreshers + 1] = function()
         local BL = LM.BossLoot
         local rows = BL and BL:Rows() or {}

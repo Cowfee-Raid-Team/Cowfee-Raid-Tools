@@ -105,7 +105,7 @@ local want = {
   { "General", "settings", "qol" },
   { "Raid Admin", "readycheck", "groups", "gearcheck", "loot" },
   { "Bosses", "timeline", "notes", "pace" },
-  { "Modules", "lootmaster", "late", "tattle" },
+  { "Modules", "lootmaster", "requests", "late", "tattle" },
 }
 check(#UI.MENU_GROUPS == #want, "four menu groups, got " .. #UI.MENU_GROUPS)
 for i, w in ipairs(want) do
@@ -120,8 +120,8 @@ section("the four groups, their labels and pages in order")
 -- hidden until /crt dev; it joins the last group.
 local titles = { settings = "General Settings", qol = "Quality of Life", readycheck = "Ready Check", groups = "Raid Groups",
   gearcheck = "Gear Checker", loot = "Loot History", timeline = "Timeline", notes = "Raid Notes", pace = "Pace",
-  lootmaster = "Loot Master", late = "Late Tracker", tattle = "Tattlebot", dev = "Development" }
-for _, key in ipairs({ "settings", "groups", "readycheck", "notes", "late", "tattle", "timeline", "pace", "gearcheck", "loot", "lootmaster", "qol", "dev" }) do
+  lootmaster = "Loot Master", requests = "Requests", late = "Late Tracker", tattle = "Tattlebot", dev = "Development" }
+for _, key in ipairs({ "settings", "groups", "readycheck", "notes", "late", "tattle", "timeline", "pace", "gearcheck", "loot", "lootmaster", "requests", "qol", "dev" }) do
   UI:RegisterPage(key, titles[key], function() end)
 end
 UI:SetPageHidden("dev", true)
@@ -203,7 +203,9 @@ UI:SetPageHidden("dev", false)
 lay = checkLook("Classic with Development", false)
 if lay then
   check(lay.pages[#lay.pages].key == "dev", "Development joins the last group")
-  check(not lay.scroll and lay.height <= UI.PAGE_H, "Classic with Development still fits (" .. lay.height .. " of " .. UI.PAGE_H .. ")")
+  -- every page, Development included, fits Classic's taller header bars with room to spare
+  check(not lay.scroll and lay.height <= 552, "Classic with Development still fits, with 8 px to spare (" .. lay.height .. " of " .. UI.PAGE_H .. ")")
+  check(menu.scroll.wheel == false and menu.inner.h == lay.height, "Classic with Development: no scrolling, the inner frame is the groups' height")
 end
 
 section("Development joins the last group and still fits")
@@ -221,6 +223,12 @@ for _, theme in ipairs({ "midnight", "nitro", "cowfee" }) do
       check(c and math.abs(c[1] - m[1]) < 0.003 and math.abs(c[2] - m[2]) < 0.003 and math.abs(c[3] - m[3]) < 0.003, theme .. ": header " .. i .. " label in the muted colour")
       check(box and box.y == item.y - item.h, theme .. ": header " .. i .. " sits right above its box")
       check(bg and bg.shown and topOf(bg) == box.y and bg.h == box.h, theme .. ": box " .. i .. " drawn where the layout puts it")
+      local keys, at = UI.MenuGroups()[i].keys, {}
+      for _, p in ipairs(lay.pages) do at[p.key] = p end
+      local first, last = at[keys[1]], at[keys[#keys]]
+      local pad = UI.MENU_LAYOUT.modern.pad
+      check(first and box.y - first.y == pad, theme .. ": box " .. i .. " has pad above its first page")
+      check(last and (last.y - UI.MENU_LAYOUT.row) - (box.y - box.h) == pad, theme .. ": box " .. i .. " has the same pad below its last page")
     end
     check(not lay.scroll and lay.height <= UI.PAGE_H, theme .. ": the menu fits without scrolling (" .. lay.height .. " of " .. UI.PAGE_H .. ")")
     check(pointOf(UI.pages.settings.button.text)[1] == "CENTER", theme .. ": page labels centred in their box")

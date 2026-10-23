@@ -24,6 +24,7 @@ CRT_Core\UI\Tooltip.lua
 CRT_Core\UI\Controls.lua
 CRT_Core\UI\ScrollBar.lua
 CRT_Core\UI\Window.lua
+CRT_Core\UI\ItemSlot.lua
 CRT_Modules\Groups\Data.lua
 CRT_Modules\Groups\Apply.lua
 CRT_Modules\Groups\Invite.lua
@@ -98,6 +99,9 @@ CRT_Modules\LootMaster\AddItem.lua
 CRT_Modules\LootMaster\LootingPrompt.lua
 CRT_Modules\LootMaster\FilterTab.lua
 CRT_Modules\LootMaster\Page.lua
+CRT_Modules\Requests\Data.lua
+CRT_Modules\Requests\Popup.lua
+CRT_Modules\Requests\Page.lua
 CRT_Modules\Timeline\Data.lua
 CRT_Modules\Timeline\Journal.lua
 CRT_Modules\Timeline\Database.lua
