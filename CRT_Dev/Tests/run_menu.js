@@ -203,13 +203,12 @@ UI:SetPageHidden("dev", false)
 lay = checkLook("Classic with Development", false)
 if lay then
   check(lay.pages[#lay.pages].key == "dev", "Development joins the last group")
-  -- the developer-only page may tip Classic's taller header bars over the window's height: then the menu
-  -- scrolls inside itself (section 4), and everyone else's menu still fits
-  check(lay.height <= UI.PAGE_H, "Classic with Development fits, or scrolls to fit (" .. lay.height .. " of " .. UI.PAGE_H .. ")")
-  check(not lay.scroll or menu.scroll.wheel == true, "Classic with Development: when it scrolls, the wheel scrolls it")
+  -- every page, Development included, fits Classic's taller header bars with room to spare
+  check(not lay.scroll and lay.height <= UI.PAGE_H - 4, "Classic with Development still fits, with room (" .. lay.height .. " of " .. UI.PAGE_H .. ")")
+  check(menu.scroll.wheel == false and menu.inner.h == lay.height, "Classic with Development: no scrolling, the inner frame is the groups' height")
 end
 
-section("Development joins the last group, and fits or scrolls")
+section("Development joins the last group and still fits")
 -- 3. Each Modern theme: a small label in the muted colour over each group's box.
 for _, theme in ipairs({ "midnight", "nitro", "cowfee" }) do
   UI:SetTheme(theme)
@@ -233,9 +232,7 @@ UI:SetTheme("blizzard")
 check(menu.headers[1].art.shown and not menu.blocks[1].shown, "back to Default: Blizzard: header art again, no boxes")
 
 section("each Modern theme: a muted small label over each box, fits")
--- 4. The scroll path: groups taller than the menu scroll, inside the menu, with the theme's bar. The pages
--- everyone has (Development hidden) fit the full height in both looks.
-UI:SetPageHidden("dev", true)
+-- 4. The scroll path: groups taller than the menu scroll, inside the menu, with the theme's bar.
 do
   local groups = UI.MenuGroups()
   for _, modern in ipairs({ false, true }) do

@@ -8,14 +8,13 @@ local ADDON, CRT = ...
 -- stack split, so it is left alone (each page's (?) says to drag a stack). The page decides what to do with
 -- the item; the slot only finds its bag slot.
 --   UI.ItemDropSlot(parent, x, y, width, opts) returns the slot (a Button); width is the lines' width. opts:
---     skin(frame, alpha)   the page's box look
 --     label, helpTitle, help   the line beside the slot and its (?)
 --     onDrop(bag, slot, link)  an item dropped on it (bag nil: it isn't in your bags; the cursor is clear)
 --     onPick(bag, slot)        an item shift-clicked in your bags
---     shiftClick(link, itemLocation)  replaces the shift-click route (Loot Master keeps LM.BagShiftClick)
 --   slot.label, slot.status (font strings), slot.Say(text, good) writes the status line in the good or bad
 --   colour (nil good: as given), slot.ShowItem(link) shows the item's icon in the slot with its tooltip on
 --   hover (nil: the "+" again).
+-- The slot's box is the theme's (UI.Tint: the surface fill and the border edge), so it follows a theme switch.
 -- CRT.Bags holds the bag reads both pages share.
 --
 -- From the game (checked 2026-10-22 on warcraft.wiki.gg and Blizzard's UI source, Gethe/wow-ui-source live):
@@ -38,7 +37,7 @@ local UI = CRT.UI
 local Bags = {}
 CRT.Bags = Bags
 
-local L = { slot = 36, gap = 8, lineGap = 4, iconInset = 3 }
+local L = { slot = 36, gap = 8, lineGap = 4, iconInset = 3, fillAlpha = 0.6 }
 
 local function secret(v)
     return issecretvalue and issecretvalue(v) or false
@@ -187,9 +186,9 @@ function UI.ItemDropSlot(parent, x, y, width, opts)
     local slot = CreateFrame("Button", nil, parent, "BackdropTemplate")
     slot:SetSize(L.slot, L.slot)
     slot:SetPoint("TOPLEFT", x, y)
-    if opts.skin then
-        opts.skin(slot, 0.35)
-    end
+    slot:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
+    UI.Tint(slot, "SetBackdropColor", "surface", L.fillAlpha)
+    UI.Tint(slot, "SetBackdropBorderColor", "border", 1)
     local plus = slot:CreateFontString(nil, "OVERLAY", "CRTFontLarge")
     plus:SetPoint("CENTER", 0, 1)
     plus:SetText("+")
@@ -228,7 +227,7 @@ function UI.ItemDropSlot(parent, x, y, width, opts)
     status:SetWordWrap(false)
     slot.label, slot.status, slot.icon, slot.plus = label, status, icon, plus
     slot.crtOnPick = opts.onPick
-    slot.crtShiftClick = opts.shiftClick or function(link, itemLocation)
+    slot.crtShiftClick = function(link, itemLocation)
         return UI.ItemSlotShiftClick(slot, link, itemLocation)
     end
     function slot.Say(text, good)

@@ -277,6 +277,9 @@ check(V and V.slot and V.ask and V.close and V.status and V.rows, "the page's pa
 check(V.slot.Say ~= nil and V.slot.ShowItem ~= nil, "the slot is the shared UI.ItemDropSlot")
 check(slotSrc:find("function UI.ItemDropSlot", 1, true) ~= nil and not pageSrc:find("GetCursorInfo", 1, true), "the page doesn't copy the slot's cursor code")
 check(solex.helps["Requests"] ~= nil, "the page's (?)")
+check(slotSrc:find('UI.Tint(slot, "SetBackdropColor", "surface"', 1, true) and slotSrc:find('UI.Tint(slot, "SetBackdropBorderColor", "border"', 1, true),
+  "the slot's box takes the theme's colours")
+check(not pageSrc:find("SetBackdrop", 1, true), "the page has no box look of its own")
 eq(V.ask.enabled, false, "Ask the raid waits for an item")
 eq(V.close.enabled, false, "Close request: nothing open")
 put("Solex", 0, 1, RUNE, 5)
@@ -331,11 +334,11 @@ eq(need .. "/" .. no .. "/" .. waiting, "0/0/3", "no answers yet")
 click(quick, button(quick, "Need one"))
 check(not qp.shown, "Quick's popup closes on the answer")
 eq(kinds(), "W", "the answer")
-eq(outbox[1].text, "W|" .. id .. "|1|1", "the answer carries the request, need and the version")
+eq(outbox[1].text, "W|" .. id .. "|1|1", "the answer carries the request, the version, then need (1)")
 deliver()
 click(assist, button(assist, "No thanks"))
 check(not ap.shown, "Assist's popup closes")
-eq(outbox[1].text, "W|" .. id .. "|0|1", "no thanks")
+eq(outbox[1].text, "W|" .. id .. "|1|0", "no thanks (0), the version in the same place")
 deliver()
 rows = as(solex, function() return R:Rows() end)
 local byName = {}
@@ -349,7 +352,21 @@ eq(need .. "/" .. no .. "/" .. waiting, "1/1/1", "the counts")
 eq(R.StatusText(42, 9, 6, 5), "Asked 0:42 ago. 9 need one, 6 said no, 5 haven't answered.", "the status line")
 eq(R.StatusText(125, 1, 1, 1), "Asked 2:05 ago. 1 needs one, 1 said no, 1 hasn't answered.", "the status line, one each")
 eq(R.StatusText(3, 0, 0, 0), "Asked 0:03 ago. 0 need one, 0 said no, 0 haven't answered.", "the status line, none")
+local ticker
+local realTicker = C_Timer.NewTicker
+C_Timer.NewTicker = function(s, fn) ticker = realTicker(s, fn) return ticker end
+as(solex, function() pf.scripts.OnShow(pf) end)
+C_Timer.NewTicker = realTicker
+check(ticker and ticker.every == 1, "the page's clock ticks every second while it shows")
 advance(42)
+V.rows[1].name.text = "untouched"
+as(solex, function() ticker.fn() end)
+eq(V.status.text, "Asked 0:42 ago. 1 needs one, 1 said no, 1 hasn't answered.", "the clock updates the status line")
+eq(V.rows[1].name.text, "untouched", "and only the status line")
+for _, f in ipairs(solex.frames) do if f.events.BAG_UPDATE_DELAYED then as(solex, function() f.scripts.OnEvent(f, "BAG_UPDATE_DELAYED") end) end end
+eq(V.rows[1].name.text, "Quick", "a bag change redraws the rows")
+as(solex, function() pf.scripts.OnHide(pf) end)
+check(ticker.cancelled, "the clock stops when the page hides")
 as(solex, function() V.refresh() end)
 eq(V.status.text, "Asked 0:42 ago. 1 needs one, 1 said no, 1 hasn't answered.", "the page's status line")
 -- answers that don't count
@@ -357,7 +374,7 @@ hand(solex, "W|" .. id .. "|1|1", "Stranger-Sargeras")
 check(not as(solex, function() for _, r in ipairs(R:Rows()) do if r.name == "Stranger-Sargeras" then return true end end end), "an answer from outside the group is ignored")
 hand(solex, "W|someoneelse|1|1", "Old-Sargeras")
 eq(byName["Old-Sargeras"].answer, nil, "an answer to another request is ignored")
-hand(solex, "W|" .. id .. "|maybe|1", "Old-Sargeras")
+hand(solex, "W|" .. id .. "|1|maybe", "Old-Sargeras")
 rows = as(solex, function() return R:Rows() end)
 for _, r in ipairs(rows) do if r.name == "Old-Sargeras" then eq(r.answer, nil, "a garbled answer is ignored") end end
 -- asks that don't count
@@ -379,16 +396,49 @@ check(not qp.shown, "and it stays closed")
 hand(quick, "N|first|1|item:" .. FLASK, "Assist-Sargeras")
 hand(quick, "N|second|1|item:" .. RUNE, "Assist-Sargeras")
 eq(quick.R:Waiting() and quick.R:Waiting().id, "second", "one request at a time per asker: the newer one")
-hand(quick, "Z|first", "Assist-Sargeras")
+hand(quick, "Z|first|1", "Assist-Sargeras")
 check(qp.shown, "closing an older request leaves the newer one")
-hand(quick, "Z|second", "Solex-Sargeras")
+hand(quick, "Z|second|1", "Solex-Sargeras")
 check(qp.shown, "only its asker can close it")
-hand(quick, "Z|second", "Assist-Sargeras")
+hand(quick, "Z|second|1", "Assist-Sargeras")
 check(not qp.shown, "its asker closes it: the popup goes")
+hand(quick, "N|third|1|item:" .. RUNE, "Assist-Sargeras")
+hand(quick, "Z|third|2", "Assist-Sargeras")
+check(qp.shown, "a close of a later major version is skipped")
+hand(quick, "Z|third|1.4|later", "Assist-Sargeras")
+check(not qp.shown, "a close of a later minor version is read")
+-- the version is the second field of every kind
+for _, k in ipairs({ "ask", "answer", "close" }) do check(dataSrc:find("send(R.KIND." .. k .. ", { ", 1, true) ~= nil, "the " .. k .. " is sent") end
+check(dataSrc:find("send(R.KIND.ask, { id, R.VERSION,", 1, true) and dataSrc:find("send(R.KIND.answer, { inc.id, R.VERSION,", 1, true)
+  and dataSrc:find("send(R.KIND.close, { open.id, R.VERSION }", 1, true), "N, W and Z carry the version second")
+
+-- an ask expires: its asker leaves the group, stops leading, or ASK_SECONDS pass
+local function groupEvent(p, e) for _, f in ipairs(p.frames) do if f.events[e] then as(p, function() f.scripts.OnEvent(f, e) end) end end end
+hand(quick, "N|gone|1|item:" .. RUNE, "Assist-Sargeras")
+check(qp.shown, "an ask from Assist")
+NAMES = { "Solex", "Quick", "Old" }
+groupEvent(quick, "GROUP_ROSTER_UPDATE")
+check(not qp.shown, "Assist left the group: the ask goes, the popup closes")
+NAMES = { "Solex", "Quick", "Assist", "Old" }
+hand(quick, "N|demoted|1|item:" .. RUNE, "Assist-Sargeras")
+check(qp.shown, "an ask from Assist again")
+local realAssist = UnitIsGroupAssistant
+UnitIsGroupAssistant = function() return false end
+groupEvent(quick, "PARTY_LEADER_CHANGED")
+check(not qp.shown, "Assist no longer an assist: the ask goes")
+UnitIsGroupAssistant = realAssist
+check(type(quick.R.ASK_SECONDS) == "number" and quick.R.ASK_SECONDS >= 300, "an ask's time is a named constant (" .. tostring(quick.R.ASK_SECONDS) .. ")")
+hand(quick, "N|slow|1|item:" .. RUNE, "Assist-Sargeras")
+check(qp.shown, "an ask that waits")
+advance(quick.R.ASK_SECONDS - 1)
+check(qp.shown, "still there just before its time is up")
+advance(2)
+check(not qp.shown, "its time is up: the popup closes")
+eq(quick.R:Waiting(), nil, "and nothing waits")
 
 -- 5. The old client drops every new kind ------------------------------------------------------------------------
 local errs = fails
-for _, text in ipairs({ "N|" .. id .. "|1|item:" .. RUNE, "W|" .. id .. "|1|1", "Z|" .. id }) do hand(old, text, "Solex-Sargeras") end
+for _, text in ipairs({ "N|" .. id .. "|1|item:" .. RUNE, "W|" .. id .. "|1|1", "Z|" .. id .. "|1" }) do hand(old, text, "Solex-Sargeras") end
 eq(fails, errs, "the old client takes the new kinds without an error")
 eq(old.LM.incoming, nil, "and does nothing with them")
 check(oldCommSrc:find("HANDLERS.N", 1, true) == nil and oldCommSrc:find("HANDLERS.W", 1, true) == nil and oldCommSrc:find("HANDLERS.Z", 1, true) == nil,
@@ -457,10 +507,39 @@ as(solex, function() solex.trade.scripts.OnEvent(solex.trade, "TRADE_CLOSED") en
 advance(1)
 as(solex, function() solex.trade.scripts.OnEvent(solex.trade, "UI_INFO_MESSAGE", 1, ERR_TRADE_COMPLETE) end)
 eq(R.open.given["Assist-Sargeras"], 1, "the complete line just after TRADE_CLOSED counts")
+-- Assist's Trade 1, found again: the rows sort again as Given changes
+local function tradeFor(short)
+  as(solex, function() V.refresh() end)
+  for i = 1, #V.rows do if V.rows[i].name.text == short then return V.rows[i].trade end end
+end
+-- a complete line long after TRADE_CLOSED is another trade's: not counted
+R.open.given["Assist-Sargeras"] = nil
+TRADE, initiated = {}, {}
+click(solex, tradeFor("Assist"))
+eq(initiated[1], "raid3", "Trade 1 for Assist again")
+as(solex, function() solex.trade.scripts.OnEvent(solex.trade, "TRADE_SHOW") end)
+as(solex, function() solex.trade.scripts.OnEvent(solex.trade, "TRADE_CLOSED") end)
+advance(3)
+as(solex, function() solex.trade.scripts.OnEvent(solex.trade, "UI_INFO_MESSAGE", 1, ERR_TRADE_COMPLETE) end)
+check(TRADE[1] == link(RUNE), "the rune went in")
+eq(R.open.given["Assist-Sargeras"], nil, "a complete line more than DONE_SECONDS after TRADE_CLOSED isn't counted")
+-- another language: the client's own ERR_TRADE_COMPLETE
+local english = ERR_TRADE_COMPLETE
+ERR_TRADE_COMPLETE = "Handel abgeschlossen."
+TRADE = {}
+click(solex, tradeFor("Assist"))
+as(solex, function() solex.trade.scripts.OnEvent(solex.trade, "TRADE_SHOW") end)
+eq(TRADE[1], link(RUNE), "the rune is in Assist's trade")
+as(solex, function() solex.trade.scripts.OnEvent(solex.trade, "UI_INFO_MESSAGE", 1, english) end)
+eq(R.open.given["Assist-Sargeras"], nil, "in German the English line isn't the trade")
+as(solex, function() solex.trade.scripts.OnEvent(solex.trade, "UI_INFO_MESSAGE", 1, "Handel abgeschlossen.") end)
+eq(R.open.given["Assist-Sargeras"], 1, "in German the client's own line counts")
+ERR_TRADE_COMPLETE = english
 -- none left: Trade 1 greys
 BAGS.Solex[0][1] = nil
 R.open.given["Assist-Sargeras"] = nil
-as(solex, function() V.refresh() end)
+tb2 = tradeFor("Assist")
+eq(tb2.text, "Trade 1", "Assist's Trade 1 again")
 eq(tb2.enabled, false, "none left in your bags: Trade 1 greys")
 initiated = {}
 click(solex, tb2)
@@ -479,7 +558,7 @@ check(qp.shown, "the popup again")
 outbox = {}
 click(solex, V.close)
 eq(kinds(), "Z", "Close request: one close")
-eq(outbox[1].text, "Z|" .. id2, "the close names the request")
+eq(outbox[1].text, "Z|" .. id2 .. "|1", "the close names the request, then the version")
 eq(R.open, nil, "nothing open")
 deliver()
 check(not qp.shown, "Close request closes the raiders' popups")

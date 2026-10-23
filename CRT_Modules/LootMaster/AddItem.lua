@@ -3,9 +3,9 @@ local ADDON, CRT = ...
 -- Add item: items from your bags onto the Boss loot list (Alex, 2026-10-22: "drag and drop and also
 -- shift-click from bags to add to a session list just in case someone messes it up later and wants to start
 -- a new session"). Loot Master > Tonight has an item slot under Held boss loot (LM.BuildAddItem, placed by
--- LootMaster/Page.lua; the slot is the shared UI.ItemDropSlot, UI/ItemSlot.lua). An item goes in by dragging it from your bags onto the slot, or by shift-clicking it
--- in your bags while the slot is shown (the Tonight tab open) and no chat or other text box has the
--- keyboard. Any item you can still trade goes in, gear or not (Alex, 2026-10-22: "remove the restriction
+-- LootMaster/Page.lua; the slot is the shared UI.ItemDropSlot, UI/ItemSlot.lua). An item goes in by
+-- dragging it from your bags onto the slot, or by shift-clicking it in your bags while the slot is shown
+-- (the Tonight tab open) and no chat or other text box has the keyboard. Any item you can still trade goes in, gear or not (Alex, 2026-10-22: "remove the restriction
 -- for non gear and tier items. This would allow me to auction off pots and funny things"); the slot's
 -- status line says why one doesn't. One that does goes through BL:AddFromBags (LootMaster/BossLoot.lua): a
 -- real row, won, ticked, "from your bags", kept out of the loot filter (the leader's own choice) and given
@@ -278,24 +278,15 @@ function LM:AddFromCursor()
     return nil
 end
 
--- After the game's HandleModifiedItemClick(link, itemLocation) (the shared hook in UI/ItemSlot.lua): a
--- shift-click on a bag item while the slot shows and nothing is typing adds it; a stack is left to the game's
--- split. Returns true when it tried.
-function LM:BagShiftClick(link, itemLocation)
-    return UI.ItemSlotShiftClick(target, link, itemLocation)
-end
-
--- The slot and its lines at x, y on parent (Tonight's tab frame); width: the lines' width. skin(frame,
--- alpha): the page's box look.
-function LM.BuildAddItem(parent, x, y, width, skin)
+-- The slot and its lines at x, y on parent (Tonight's tab frame); width: the lines' width. A shift-click
+-- in your bags while it shows adds the item (the shared hook in UI/ItemSlot.lua; a stack is left to the
+-- game's split).
+function LM.BuildAddItem(parent, x, y, width)
     target = UI.ItemDropSlot(parent, x, y, width, {
-        skin = skin, label = TEXT.label, helpTitle = TEXT.helpTitle, help = TEXT.help,
+        label = TEXT.label, helpTitle = TEXT.helpTitle, help = TEXT.help,
         onDrop = dropped,
         onPick = function(bag, slot)
             LM:AddFromBag(bag, slot)
-        end,
-        shiftClick = function(link, itemLocation)
-            return LM:BagShiftClick(link, itemLocation)
         end,
     })
     return target

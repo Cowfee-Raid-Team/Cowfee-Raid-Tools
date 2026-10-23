@@ -988,12 +988,14 @@ end
 --   modern        header: the label's line over each box; pad: inside the box, above the first page and
 --                 below the last; boxRight: the box ends this far from the right; buttonLeft, buttonRight: a
 --                 page's button inside the box; labelX: the label from the left
+-- Tightened for 14 pages (Development included) to fit the 560 px page height in Classic, whose header bars
+-- are taller than Modern's labels (job 20261022-requests).
 UI.MENU_LAYOUT = {
     row = 30,
-    rowGap = 2,
+    rowGap = 1,
     classic = {
-        groupGap = 8,
-        headerGap = 2,
+        groupGap = 6,
+        headerGap = 1,
         textX = 10,
         labelX = 10,
         art = { atlas = "Options_CategoryHeader_", count = 3, w = 199, h = 144, bar = 32 },

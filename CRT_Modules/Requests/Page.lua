@@ -42,12 +42,6 @@ local TEXT = {
 local view -- the parts, once built
 local chosen -- the item for the next ask: its link
 
-local function skin(frame, alpha)
-    frame:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
-    frame:SetBackdropColor(0, 0, 0, alpha or 0.5)
-    frame:SetBackdropBorderColor(0.35, 0.35, 0.35, 1)
-end
-
 local function text(parent, font, x, y, width)
     local fs = parent:CreateFontString(nil, "OVERLAY", font or "CRTFontSmall")
     fs:SetPoint("TOPLEFT", x, y)
@@ -121,6 +115,19 @@ local function hideRow(row)
     end
 end
 
+-- The status line alone, for the clock.
+local function refreshStatus()
+    if not view then
+        return
+    end
+    local open = R.open
+    if open then
+        view.status:SetText(R.StatusText(GetTime() - open.askedAt, R.Counts(R:Rows())))
+    else
+        view.status:SetText(R:CanAsk() and TEXT.none or TEXT.notLead)
+    end
+end
+
 local function refresh()
     if not view then
         return
@@ -137,11 +144,7 @@ local function refresh()
     view.ask:SetEnabled(canAsk and item ~= nil)
     view.close:SetEnabled(open ~= nil)
     local rows = open and R:Rows() or {}
-    if open then
-        view.status:SetText(R.StatusText(GetTime() - open.askedAt, R.Counts(rows)))
-    else
-        view.status:SetText(canAsk and TEXT.none or TEXT.notLead)
-    end
+    refreshStatus()
     local left = open and R.Have(open.itemString) or 0
     for i, row in ipairs(view.rows) do
         if rows[i] then
@@ -180,7 +183,7 @@ local function build(f)
     head:SetText(TEXT.title)
     UI.HelpRight(head, TEXT.title, TEXT.help)
     view.slot = UI.ItemDropSlot(f, L.left, L.slotTop, L.slotW, {
-        skin = skin, label = TEXT.slot, helpTitle = TEXT.slotHelpTitle, help = TEXT.slotHelp,
+        label = TEXT.slot, helpTitle = TEXT.slotHelpTitle, help = TEXT.slotHelp,
         onDrop = dropped, onPick = pick,
     })
     view.ask = UI.PanelButton(f, TEXT.ask, L.button, function()
@@ -212,7 +215,7 @@ local function build(f)
         if ticker then
             ticker:Cancel()
         end
-        ticker = C_Timer.NewTicker(1, refresh)
+        ticker = C_Timer.NewTicker(1, refreshStatus)
     end)
     f:SetScript("OnHide", function()
         if ticker then
@@ -230,7 +233,7 @@ R:OnChange(function(what)
     refresh()
 end)
 
--- the bag counts change as you trade
+-- the bag counts, Trade 1 and the slot's line change as you trade
 local events = CreateFrame("Frame")
 events:RegisterEvent("BAG_UPDATE_DELAYED")
 events:SetScript("OnEvent", function()

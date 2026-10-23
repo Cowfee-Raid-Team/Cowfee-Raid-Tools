@@ -617,8 +617,8 @@ shiftClick(0, 10)
 eq(#BL:Rows(), 3, "shift-click on one potion: added")
 BL.rows[3] = nil
 -- a failing hook body is reported, and the game's click still works
-local realShift, reported = LM.BagShiftClick, {}
-LM.BagShiftClick = function() error("boom") end
+local realShift, reported = CRT_UI.ItemSlotShiftClick, {}
+CRT_UI.ItemSlotShiftClick = function() error("boom") end
 local realHandler = geterrorhandler
 geterrorhandler = function() return function(e) reported[#reported + 1] = e end end
 original = 0
@@ -627,7 +627,7 @@ check(okClick, "a failing hook: the click raises no error")
 eq(original, 1, "a failing hook: the game's click ran")
 eq(ret, false, "a failing hook: the game's answer is kept")
 eq(#reported, 1, "a failing hook: the error is reported")
-geterrorhandler, LM.BagShiftClick = realHandler, realShift
+geterrorhandler, CRT_UI.ItemSlotShiftClick = realHandler, realShift
 shiftClick(0, 2)
 eq(#BL:Rows(), 3, "shift-click again: added")
 -- added rows start a session like any other

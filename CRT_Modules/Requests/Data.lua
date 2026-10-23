@@ -9,16 +9,17 @@ local ADDON, CRT = ...
 -- Messages go on Loot Master's prefix (LM.PREFIX), through its queue (LM.SendText: the throttle, and the
 -- encounter's chat lockdown holds them), as "<kind>|<fields>" (LM.Wire):
 --   N ask    <request id>|<version>|<item string>        from the raid leader or an assist
---   W answer <request id>|<1 need one, 0 no thanks>|<version>   from a raider, for the asker
---   Z close  <request id>                                 from the asker
+--   W answer <request id>|<version>|<1 need one, 0 no thanks>   from a raider, for the asker
+--   Z close  <request id>|<version>                       from the asker
 -- version is R.VERSION, "<major>[.<minor>]": a receiver skips a higher major version and reads a later minor
 -- one, leaving any fields after the ones it knows. A CRT from before Requests has no handler for N, W or Z and
 -- drops them without a word (LootMaster/Comm.lua's receive).
 -- Who may ask: the raid leader or an assist (UnitIsGroupLeader, UnitIsGroupAssistant, which is false in a
 -- party and may be secret: secret is no); anyone out of a group, where the messages go straight back to you,
 -- to try it. A raider takes an ask only from one of those, one at a time per asker (a newer ask replaces the
--- older one), and in a group not from themselves. The asker takes an answer only for the open request and only
--- from a group member.
+-- older one), and in a group not from themselves. An ask goes (and its popup closes) when its asker leaves the
+-- group or stops leading (checked on GROUP_ROSTER_UPDATE and PARTY_LEADER_CHANGED), and ASK_SECONDS after it
+-- came. The asker takes an answer only for the open request and only from a group member.
 -- Nothing is saved: the open request (R.open) and the asks waiting for your answer (R.incoming) are in memory,
 -- so a /reload closes them.
 --
@@ -33,6 +34,7 @@ local R = { listeners = {}, incoming = {} }
 CRT.Requests = R
 
 R.VERSION = "1"
+R.ASK_SECONDS = 600 -- an ask unanswered this long goes, and its popup closes
 R.LABEL = "Requests" -- starts the trade's chat lines
 R.KIND = { ask = "N", answer = "W", close = "Z" }
 R.NEED, R.NO = "need", "no"
@@ -151,7 +153,7 @@ function R:Close()
         return
     end
     self.open = nil
-    send(R.KIND.close, { open.id })
+    send(R.KIND.close, { open.id, R.VERSION })
     self:Fire("open")
 end
 
@@ -264,7 +266,7 @@ function R:Answer(from, need)
         return
     end
     self.incoming[from] = nil
-    send(R.KIND.answer, { inc.id, need and 1 or 0, R.VERSION })
+    send(R.KIND.answer, { inc.id, R.VERSION, need and 1 or 0 })
     self:Fire("incoming")
 end
 
@@ -298,21 +300,38 @@ local function mayAsk(sender)
     return unit ~= nil and leads(unit)
 end
 
+-- Drops the asks whose asker may no longer ask (left the group, stopped leading) or whose time is up.
+function R:Prune()
+    local now, gone = GetTime(), false
+    for from, inc in pairs(self.incoming) do
+        if now - inc.at >= R.ASK_SECONDS or not mayAsk(from) then
+            self.incoming[from] = nil
+            gone = true
+        end
+    end
+    if gone then
+        self:Fire("incoming")
+    end
+end
+
 LM.Handle(R.KIND.ask, function(f, sender)
     local id, itemString = f[1], itemStringOf(f[3])
     if not (id and id ~= "" and itemString and readable(f[2]) and mayAsk(sender)) then
         return
     end
     R.incoming[sender] = { id = id, itemString = itemString, from = sender, at = GetTime() }
+    C_Timer.After(R.ASK_SECONDS, function()
+        R:Prune()
+    end)
     R:Fire("incoming")
 end)
 
 LM.Handle(R.KIND.answer, function(f, sender)
     local open = R.open
-    if not (open and f[1] == open.id and readable(f[3]) and sender and LM.UnitOf(sender)) then
+    if not (open and f[1] == open.id and readable(f[2]) and sender and LM.UnitOf(sender)) then
         return
     end
-    local answer = (f[2] == "1" and R.NEED) or (f[2] == "0" and R.NO) or nil
+    local answer = (f[3] == "1" and R.NEED) or (f[3] == "0" and R.NO) or nil
     if answer then
         open.answers[sender] = answer
         R:Fire("answers")
@@ -321,8 +340,15 @@ end)
 
 LM.Handle(R.KIND.close, function(f, sender)
     local inc = R.incoming[sender]
-    if inc and inc.id == f[1] then
+    if inc and inc.id == f[1] and readable(f[2]) then
         R.incoming[sender] = nil
         R:Fire("incoming")
     end
+end)
+
+local events = CreateFrame("Frame")
+events:RegisterEvent("GROUP_ROSTER_UPDATE")
+events:RegisterEvent("PARTY_LEADER_CHANGED")
+events:SetScript("OnEvent", function()
+    R:Prune()
 end)
