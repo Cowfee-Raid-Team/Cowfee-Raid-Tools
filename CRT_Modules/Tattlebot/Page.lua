@@ -1210,8 +1210,33 @@ end
 
 UI:RegisterPage("tattle", "Tattlebot", build)
 
--- For /crt tattle scan and export.
+-- For /crt tattle scan and export, and Season Stats' avoidable damage lines (ShowNight).
 CRT.TattlePage = {
+    -- Switches the panel to Tattlebot on a night (Tattle:Night): a saved one selected in History's list, with
+    -- every saved night listed and all mechanics shown; the running one on Tonight, since History lists only
+    -- saved nights. Tattlebot has no filter by boss, so the whole night shows. False when the night is gone.
+    ShowNight = function(id)
+        local night = Tattle:Night(id)
+        if not night then
+            return false
+        end
+        if night == Tattle:Current() then
+            currentTab = "tonight"
+        else
+            seasonFilter, mechFilter, selected = ALL, ALL, night.id
+            currentTab = "history"
+        end
+        UI:SelectPage("tattle")
+        if page and page:IsShown() then
+            selectTab(currentTab)
+            refresh()
+        end
+        return true
+    end,
+    -- The tab, the selected night (or "totals") and the Season filter, for the harness (run_seasonstats.js).
+    State = function()
+        return currentTab, selected, seasonFilter
+    end,
     -- Opens the Mechanics tab on Last fight, read fresh.
     Scan = function()
         shownBoss = SCAN
