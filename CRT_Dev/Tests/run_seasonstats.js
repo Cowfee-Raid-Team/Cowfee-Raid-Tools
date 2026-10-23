@@ -61,6 +61,7 @@ local function mock()
       CreateFontString = function(self) local x = mock() x.parent = self x.isText = true self.kids[#self.kids + 1] = x return x end,
       GetStringWidth = function(self) return #(self.text or "") * 6 end,
       GetStringHeight = function() return 12 end,
+      SetVerticalScroll = function(self, v) self.vscroll = v end,
       GetParent = function(self) return self.parent end,
       GetFrameLevel = function() return 1 end,
     })[k]
@@ -77,7 +78,7 @@ UIParent = mock()
 local helps, pages, dropdowns, sorts = {}, {}, {}, {}
 local selectedPage
 local UI = {
-  PAGE_W = 1026, PAGE_H = 560,
+  PAGE_W = 1026, PAGE_H = 560, pages = pages,
   RegisterPage = function(_, key, title, build) pages[key] = { title = title, build = build } end,
   -- the panel's page switch: builds the page once, then shows it
   SelectPage = function(_, key) selectedPage = key local p = pages[key] if not p then return end
@@ -370,6 +371,9 @@ eq(reads, 0, "the ability timeline is read once per boss and group")
 T:Fire()
 S:AbilityRow(9101, "mythic", 111, "Fang Bite", "Gamma")
 eq(reads, 1, "and again after the Timeline changes")
+T:SetChosenReference(9101, "mythic", nil)
+S:AbilityRow(9101, "mythic", 111, "Fang Bite", "Gamma")
+eq(reads, 2, "and again after another ability timeline is picked In use")
 T.ReferenceFor = realFor
 
 -- 6. Text ------------------------------------------------------------------------------------------------------------
@@ -485,6 +489,41 @@ local tab, sel, season = CRT.TattlePage.State()
 eq(tab .. " " .. tostring(sel) .. " " .. tostring(season), "history 1 all", "on History, all seasons, with that night selected")
 av1.scripts.OnClick(av1)
 eq((CRT.TattlePage.State()), "tonight", "the running night opens on Tattlebot's Tonight tab")
+-- a Mechanic filter picked in Tattlebot: opening a night shows all of it again
+dropdowns.Mechanic.opts.set("spell/555")
+eq(select(4, CRT.TattlePage.State()), "spell/555", "a Mechanic filter picked")
+CRT.TattlePage.ShowNight(1)
+eq(select(4, CRT.TattlePage.State()), "all", "opening a night resets the Mechanic filter to All")
+-- an old night far down History's list: the list scrolls it into view
+do
+  local hist = CRT.db.tattle.history
+  for n = 1, 8 do table.insert(hist, n, { id = 10 + n, startedAt = A1 - (9 - n) * DAY, season = "Season 1", pulls = {} }) end
+  local listScroll
+  for _, f in ipairs(made) do if f.name == "CowfeeRaidToolsTattleListScroll" then listScroll = f end end
+  check(listScroll ~= nil, "Tattlebot's History list")
+  listScroll.h, listScroll.vscroll = 88, nil
+  -- the list: Totals, night 1, then 18 down to 11; night 13 is the 8th row
+  check(CRT.TattlePage.ShowNight(13), "an old night opens")
+  eq(listScroll.vscroll, 7 * 22 - 44, "the list scrolls the old night to its middle")
+  listScroll.vscroll = nil
+  CRT.Tattle:Fire()
+  eq(listScroll.vscroll, nil, "only once: a later redraw leaves the scroll alone")
+  CRT.TattlePage.ShowNight(11)
+  eq(listScroll.vscroll, 10 * 22 - 88, "the last night: no further than the list's end")
+  for n = 1, 8 do table.remove(hist, 1) end
+end
+-- Tattlebot's page hidden: no >, and nothing opens
+pages.tattle.hidden = true
+V.refresh()
+check(av2.shown and not av2.arrow.shown, "Tattlebot's page hidden: no >")
+local stateBefore = { CRT.TattlePage.State() }
+selectedPage = nil
+eq(CRT.TattlePage.ShowNight(1), false, "ShowNight: false with the page hidden")
+eq(selectedPage, nil, "and the panel stays")
+eq(table.concat({ CRT.TattlePage.State() }, " "), table.concat(stateBefore, " "), "and Tattlebot's state is left alone")
+pages.tattle.hidden = nil
+V.refresh()
+check(av2.arrow.shown, "shown again: the > is back")
 -- a night deleted from Tattlebot while the line still shows it: not clickable
 pf.shown = false
 CRT.Tattle:Delete(1)

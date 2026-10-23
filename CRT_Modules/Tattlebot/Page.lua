@@ -21,7 +21,8 @@ local BACKDROP = {
 local OUTPUTS = { { key = "self", label = "Only me" }, { key = "raid", label = "Raid chat" }, { key = "officer", label = "Officer chat" } }
 local ENDED = { button = "End night was pressed", gap = "no pull came for 6 hours" }
 
-local page, tonightText, tonightChild, detailText, detailChild, listChild
+local page, tonightText, tonightChild, detailText, detailChild, listChild, listScroll
+local scrollToSelected -- set by ShowNight: the next list refresh scrolls the selected night into view, once
 local tonightPane, detailPane -- the text boxes' views, for showView
 local endButton, postPullButton, postNightButton, deleteButton, postSelectedButton
 local rows, controls = {}, {}
@@ -509,6 +510,18 @@ local function refreshList()
         rows[i]:Hide()
     end
     listChild:SetHeight(#entries * ROW_H)
+    if scrollToSelected and listScroll then
+        scrollToSelected = nil
+        -- the selected row in the middle of the list, never past its end (from the rows' height: the scroll
+        -- frame's own range isn't updated until it is drawn)
+        local h = listScroll:GetHeight() or 0
+        for i, entry in ipairs(entries) do
+            if entry.value == selected then
+                listScroll:SetVerticalScroll(math.max(0, math.min((i - 1) * ROW_H - h / 2, #entries * ROW_H - h)))
+                break
+            end
+        end
+    end
 end
 
 -- Mechanics list ---------------------------------------------------------
@@ -864,7 +877,7 @@ local function buildHistory(f)
     listBox:SetPoint("BOTTOMLEFT", 8, 8)
     listBox:SetWidth(LIST_W)
     skin(listBox, 0.4)
-    local listScroll = CreateFrame("ScrollFrame", "CowfeeRaidToolsTattleListScroll", listBox, "UIPanelScrollFrameTemplate")
+    listScroll = CreateFrame("ScrollFrame", "CowfeeRaidToolsTattleListScroll", listBox, "UIPanelScrollFrameTemplate")
     UI:SkinScrollBar(listScroll.ScrollBar)
     listScroll:SetPoint("TOPLEFT", 4, -4)
     listScroll:SetPoint("BOTTOMRIGHT", -26, 4)
@@ -1214,10 +1227,11 @@ UI:RegisterPage("tattle", "Tattlebot", build)
 CRT.TattlePage = {
     -- Switches the panel to Tattlebot on a night (Tattle:Night): a saved one selected in History's list, with
     -- every saved night listed and all mechanics shown; the running one on Tonight, since History lists only
-    -- saved nights. Tattlebot has no filter by boss, so the whole night shows. False when the night is gone.
+    -- saved nights. Tattlebot has no filter by boss, so the whole night shows. The list scrolls to the night.
+    -- False, changing nothing, when the night is gone or the page can't be opened (CanShow).
     ShowNight = function(id)
         local night = Tattle:Night(id)
-        if not night then
+        if not night or not CRT.TattlePage.CanShow() then
             return false
         end
         if night == Tattle:Current() then
@@ -1225,17 +1239,26 @@ CRT.TattlePage = {
         else
             seasonFilter, mechFilter, selected = ALL, ALL, night.id
             currentTab = "history"
+            scrollToSelected = true
         end
+        local wasShown = page and page:IsShown()
         UI:SelectPage("tattle")
-        if page and page:IsShown() then
+        -- a page that was hidden ran both from its OnShow
+        if wasShown then
             selectTab(currentTab)
             refresh()
         end
         return true
     end,
-    -- The tab, the selected night (or "totals") and the Season filter, for the harness (run_seasonstats.js).
+    -- Whether the panel can open the page: registered and not hidden (UI:SelectPage opens another one then).
+    CanShow = function()
+        local p = UI.pages and UI.pages.tattle
+        return p ~= nil and not p.hidden
+    end,
+    -- The tab, the selected night (or "totals"), the Season and the Mechanic filter, for the harness
+    -- (run_seasonstats.js).
     State = function()
-        return currentTab, selected, seasonFilter
+        return currentTab, selected, seasonFilter, mechFilter
     end,
     -- Opens the Mechanics tab on Last fight, read fresh.
     Scan = function()

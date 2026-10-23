@@ -333,7 +333,7 @@ end
 local function nightThere(line)
     local Tattle, Page = CRT.Tattle, CRT.TattlePage
     local there = line.nightID ~= nil and Tattle and Tattle.Night and Tattle:Night(line.nightID) ~= nil
-        and Page and Page.ShowNight ~= nil
+        and Page and Page.ShowNight ~= nil and Page.CanShow and Page.CanShow()
     line.arrow:SetShown(there and true or false)
     return there
 end
