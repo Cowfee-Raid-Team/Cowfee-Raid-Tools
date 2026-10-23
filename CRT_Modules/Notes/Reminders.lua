@@ -361,7 +361,8 @@ local function timelineRows(enc)
     for _, lane in ipairs(lanes or {}) do
         if lane.kind == "reference" and type(lane.marks) == "table" and #lane.marks > 0 then
             local id = lane.spellID
-            out[#out + 1] = { name = T.IgnoreName(lane), spellID = type(id) == "number" and id > 0 and id or nil, icon = lane.icon }
+            out[#out + 1] = { name = T.IgnoreName(lane), spellID = type(id) == "number" and id > 0 and id or nil, icon = lane.icon,
+                sectionID = lane.sectionID }
         end
     end
     return out
@@ -428,7 +429,7 @@ local function buildItems(enc)
     end
     for _, jrow in ipairs(journalRows(enc)) do
         if jrow.spellID and not listed[jrow.spellID] and not listed[lower(jrow.name)] then
-            add({ name = jrow.name, spellID = jrow.spellID, icon = jrow.icon }, true)
+            add({ name = jrow.name, spellID = jrow.spellID, icon = jrow.icon, sectionID = jrow.sectionID }, true)
         end
     end
     for _, e in ipairs(saved) do
@@ -506,7 +507,14 @@ local function itemsFor(enc, name)
     -- ability timeline on show
     local shown = shownReference()
     local typesOf = CRT.AlertColors and CRT.AlertColors.Types(enc, name, shown and shown.ref.difficulty)
+    -- the boss and difficulty its ability tooltip reads the Journal at (a boss listed by its ability timeline's name
+    -- has the encounter its Encounter line gives, or the one the Journal finds by that name)
+    local Journal = CRT.TimelineJournal
+    local journalEnc = type(enc) == "number" and enc
+        or (Journal and Journal.ResolveID and Journal:ResolveID(enc, shown and shown.ref)) or nil
+    local group = shownGroup()
     for _, item in ipairs(list) do
+        item.enc, item.group = journalEnc, group
         if item.pending then
             item.label, item.has, item.refHas = TEXT.unnamed, false, false
         else
@@ -759,26 +767,22 @@ local function nameColor(item, on, isSelected)
     return c[1], c[2], c[3]
 end
 
--- Hovering a row's name: the name, then each of its ability types in its colour, the main one first.
+-- Hovering a row: the shared ability tooltip (CRT.AbilityTip): the spell, its Journal text, then each of its ability
+-- types in its colour, the main one first, or how to set one.
 local function typeTip(owner, item)
     if not (item and not item.pending and GameTooltip) then
         return
     end
-    UI.TooltipOwner(GameTooltip, owner, "ANCHOR_RIGHT")
-    GameTooltip:SetText(item.label or TEXT.unnamed, 1, 1, 1)
-    local Reference = CRT.TimelineReference
-    local any = false
-    for _, key in ipairs(item.types or {}) do
-        local line, c = Reference.TypeLine(key)
-        if line then
-            GameTooltip:AddLine(line, c[1], c[2], c[3], true)
-            any = true
-        end
-    end
-    if not any then
-        GameTooltip:AddLine(TEXT.noType, 1, 1, 1, true)
-    end
-    GameTooltip:Show()
+    local ability = item.ability
+    CRT.AbilityTip:Show(GameTooltip, owner, nil, {
+        encounterID = item.enc,
+        group = item.group,
+        spellID = item.spellID,
+        name = item.label or (ability and ability.name) or TEXT.unnamed,
+        sectionID = ability and ability.sectionID,
+        types = item.types,
+        empty = TEXT.noType,
+    })
 end
 
 -- The visible rows from the list as it is: text, icons and colours only, no lookups. A scroll is only this.

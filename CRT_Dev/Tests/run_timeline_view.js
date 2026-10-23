@@ -6,7 +6,7 @@ const themeLua = require('./theme_stub');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
 const harness = themeLua(process.argv.slice(2)) + `
-local dataSrc, dbSrc, refSrc, lanesSrc, viewSrc, regSrc, seasonSrc, nekSrc = ...
+local dataSrc, dbSrc, refSrc, lanesSrc, viewSrc, regSrc, seasonSrc, nekSrc, tipSrc = ...
 local buttons, textures = 0, 0
 local function mock(kind)
   local m = { shown = true, kind = kind, children = {} }
@@ -93,6 +93,8 @@ local function loadBosses(CRT, reg, season, nek)
 end
 loadBosses(CRT, regSrc, seasonSrc, nekSrc)
 assert(load(viewSrc, "CRT_Modules/Timeline/View.lua"))("CowfeeRaidTools", CRT)
+-- the shared ability tooltip the view's icons and rows use (CRT_Modules/Timeline/AbilityTip.lua, beside View.lua)
+assert(load(tipSrc, "CRT_Modules/Timeline/AbilityTip.lua"))("CowfeeRaidTools", CRT)
 local View = CRT.TimelineView
 local T = CRT.Timeline
 local S = CRT.db.timeline
@@ -323,6 +325,35 @@ do
   GameTooltip = mock("GameTooltip")
 end
 print("ok tooltip survives SetSpellByID error")
+
+do
+  -- the Journal's text: asked with the view's boss and difficulty group, shown under the cast's lines
+  local said, asked = {}, {}
+  GameTooltip = setmetatable({}, { __index = function(_, k) return function(_, a) said[#said + 1] = k .. ":" .. tostring(a) end end })
+  CRT.TimelineJournal.AbilitySection = function(_, enc, group, spellID, name, sectionID)
+    asked[#asked + 1] = tostring(enc) .. "/" .. tostring(group) .. "/" .. tostring(spellID) .. "/" .. tostring(name) .. "/" .. tostring(sectionID)
+    return { description = "Journal words", tags = {} }, 16
+  end
+  function GetDifficultyInfo(id) return id == 16 and "Mythic" or nil end
+  local given = { boss = "G", encounterID = 3001, length = 60, phases = {}, rows = { { name = "Xylo", spellID = 4242, sectionID = 77, types = { "soak" }, casts = { { t = 10 } } } } }
+  refView:SetData({ reference = given }, "ref:g", nil, "G", "mythic")
+  refView:Refresh()
+  local icon, label
+  for _, b in ipairs(refView.icons) do if b:IsShown() and b.lane.label == "Xylo" then icon = b end end
+  for _, l in ipairs(refView.labels) do if l:IsShown() and l.lane and l.lane.label == "Xylo" then label = l end end
+  icon.OnEnter(icon)
+  local tip = table.concat(said, "|", 2)
+  assert(asked[1] == "3001/mythic/4242/Xylo/77", "Journal asked for the view's boss, group, spell, name and section: " .. tostring(asked[1]))
+  assert(tip == "SetSpellByID:4242|AddLine:Planned at 0:10|AddLine:Encounter Journal (Mythic)|AddLine:Journal words|AddLine:Soak: stack to share the damage|Show:nil", "icon tooltip with the Journal: " .. tip)
+  for i = #said, 1, -1 do said[i] = nil end
+  label.OnEnter(label)
+  tip = table.concat(said, "|", 2)
+  assert(tip == "SetSpellByID:4242|AddLine:Encounter Journal (Mythic)|AddLine:Journal words|AddLine:Soak: stack to share the damage|Show:nil", "row name tooltip, the same without the cast's lines: " .. tip)
+  CRT.TimelineJournal.AbilitySection = nil
+  GetDifficultyInfo = nil
+  GameTooltip = mock("GameTooltip")
+end
+print("ok ability tooltip with the Journal's text on icons and rows")
 
 do
   local said = {}
@@ -746,8 +777,10 @@ end
 print("ok a theme change repaints the view")
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
-for (const p of process.argv.slice(2, 10)) {
+// the eight files given, then the shared ability tooltip beside View.lua
+const files = process.argv.slice(2, 10).concat([path.join(path.dirname(process.argv[6]), 'AbilityTip.lua')]);
+for (const p of files) {
   let src; try { src = fs.readFileSync(p, 'utf8'); } catch (e) { console.error('cannot read ' + p); process.exit(1); }
   lua.lua_pushstring(L, to_luastring(src));
 }
-if (lua.lua_pcall(L, 8, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
+if (lua.lua_pcall(L, 9, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }

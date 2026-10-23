@@ -270,31 +270,51 @@ local function spellName(spellID)
     end
 end
 
--- Shows a spell's tooltip; when the game refuses (or the spell is unknown) the name stands in as a
--- gold title, so the lines added after it still have a title above them.
-local function spellTip(spellID, fallback)
-    local ok = pcall(GameTooltip.SetSpellByID, GameTooltip, spellID)
-    if not ok then
-        GameTooltip:SetText(fallback or "Unknown", 1, 0.82, 0)
+-- The difficulty group a view's Journal text is read at: the view's own, else its pull's difficulty's.
+local function viewGroup(view)
+    if not view then
+        return nil
     end
+    if view.group then
+        return view.group
+    end
+    local pull = view.pull
+    local d = pull and pull.difficultyID
+    return type(d) == "number" and CRT.Timeline.DifficultyGroup and CRT.Timeline.DifficultyGroup(d) or nil
 end
 
--- The type lines of a reference ability ("Soak: stack to share the damage"), each in its type's color.
-local function addTypes(lane)
-    local Reference = CRT.TimelineReference
-    if not Reference then
-        return
-    end
-    for _, key in ipairs(lane.types or {}) do
-        local line, c = Reference.TypeLine(key)
-        if line then
-            GameTooltip:AddLine(line, c[1], c[2], c[3], true)
-        end
-    end
+-- A boss ability's tooltip through the shared one (CRT.AbilityTip): its spell, the lines given (about the
+-- hovered cast), its Journal text, its types and Journal icons.
+local function abilityTip(owner, lane, spellID, lines)
+    local view = owner.view
+    CRT.AbilityTip:Show(GameTooltip, owner, "timeline", {
+        encounterID = view and view:EncounterNumber() or nil,
+        group = viewGroup(view),
+        spellID = spellID,
+        name = lane.label,
+        sectionID = lane.sectionID,
+        types = lane.types,
+        tags = lane.tags,
+        lines = lines,
+    })
 end
 
 local function iconEnter(b)
     local mark, lane = b.mark, b.lane
+    if lane.kind == "reference" then
+        local lines = { { "Planned at " .. View.Format(mark.t), 1, 1, 1 } }
+        if type(mark.dur) == "number" and mark.dur > 0 then
+            lines[#lines + 1] = { string.format("Lasts %ds", mark.dur), 0.85, 0.85, 0.85 }
+        end
+        if type(lane.lead) == "number" and lane.lead > 0 then
+            lines[#lines + 1] = { string.format("Cast starts %ds before", lane.lead), 0.85, 0.85, 0.85 }
+        end
+        abilityTip(b, lane, lane.spellID, lines)
+        return
+    elseif not mark.death and lane.kind ~= "unnamed" then
+        abilityTip(b, lane, mark.spellID, { { "Cast at " .. View.Format(mark.t), 1, 1, 1 } })
+        return
+    end
     CRT.UI.TooltipOwner(GameTooltip, b, "ANCHOR_RIGHT", nil, nil, "timeline")
     if mark.death then
         local d = mark.death
@@ -306,29 +326,12 @@ local function iconEnter(b)
         if (mark.overlay or settings().overlayOn) and mark.pull and mark.pull.id then
             GameTooltip:AddLine("Pull " .. tostring(CRT.Timeline.PullNumber(mark.pull)), 0.85, 0.85, 0.85)
         end
-    elseif lane.kind == "reference" then
-        if lane.spellID and lane.spellID ~= 0 then
-            spellTip(lane.spellID, lane.label)
-        else
-            GameTooltip:SetText(lane.label or "Unknown", 1, 0.82, 0)
-        end
-        GameTooltip:AddLine("Planned at " .. View.Format(mark.t), 1, 1, 1)
-        if type(mark.dur) == "number" and mark.dur > 0 then
-            GameTooltip:AddLine(string.format("Lasts %ds", mark.dur), 0.85, 0.85, 0.85)
-        end
-        if type(lane.lead) == "number" and lane.lead > 0 then
-            GameTooltip:AddLine(string.format("Cast starts %ds before", lane.lead), 0.85, 0.85, 0.85)
-        end
-        addTypes(lane)
-    elseif lane.kind == "unnamed" then
+    else
         GameTooltip:SetText("Boss cast (unnamed)", 1, 1, 1)
         GameTooltip:AddLine("Cast at " .. View.Format(mark.t), 0.85, 0.85, 0.85)
         if type(mark.dur) == "number" and mark.dur > 0 then
             GameTooltip:AddLine(string.format("Duration %.1fs", mark.dur), 0.85, 0.85, 0.85)
         end
-    else
-        spellTip(mark.spellID, spellName(mark.spellID))
-        GameTooltip:AddLine("Cast at " .. View.Format(mark.t), 1, 1, 1)
     end
     GameTooltip:Show()
 end
@@ -379,33 +382,13 @@ local function flagEnter(f)
     GameTooltip:Show()
 end
 
--- The Journal's icons of a lane, one tooltip line each: the icon and its name.
-local function addTags(lane)
-    local TAGS = CRT.TimelineReference and CRT.TimelineReference.TAGS
-    for _, key in ipairs(lane.tags or {}) do
-        local t = TAGS and TAGS[key]
-        if t then
-            GameTooltip:AddLine("|A:" .. t.atlas .. ":14:14|a " .. t.label, 1, 1, 1)
-        end
-    end
-end
+-- A boss ability's row name: the shared ability tooltip. The other rows (deaths, unnamed casts, notes) have none.
+local ABILITY_LANES = { spell = true, reference = true, journal = true }
 
 local function labelEnter(l)
     local lane = l.lane
-    local tagged = lane and lane.tags and #lane.tags > 0
-    if lane and lane.kind == "spell" then
-        CRT.UI.TooltipOwner(GameTooltip, l, "ANCHOR_RIGHT", nil, nil, "timeline")
-        spellTip(lane.spellID, lane.label)
-        if tagged then
-            addTags(lane)
-        end
-        GameTooltip:Show()
-    elseif lane and (lane.kind == "reference" or lane.kind == "journal") and ((lane.types and #lane.types > 0) or tagged) then
-        CRT.UI.TooltipOwner(GameTooltip, l, "ANCHOR_RIGHT", nil, nil, "timeline")
-        GameTooltip:SetText(lane.label or "", 1, 0.82, 0)
-        addTypes(lane)
-        addTags(lane)
-        GameTooltip:Show()
+    if lane and ABILITY_LANES[lane.kind] then
+        abilityTip(l, lane, lane.spellID)
     end
 end
 
@@ -925,6 +908,7 @@ end
 function Methods:Icon(n)
     return pooled(self.icons, n, function()
         local b = CreateFrame("Button", nil, self.track)
+        b.view = self -- for its tooltip's boss and difficulty
         b:EnableMouse(true)
         b.bg = b:CreateTexture(nil, "BACKGROUND")
         b.bg:SetAllPoints()
@@ -3245,6 +3229,7 @@ end
 function Methods:Label(n)
     return pooled(self.labels, n, function()
         local l = CreateFrame("Button", nil, self.body)
+        l.view = self -- for its tooltip's boss and difficulty
         l:SetSize(LABEL_W - 4, ROW_H)
         l.stripe = self.body:CreateTexture(nil, "BACKGROUND")
         l.stripe:SetColorTexture(rgba("text", 0.04))

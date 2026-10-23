@@ -326,7 +326,7 @@ function Timeline:ApplyAbilities(lanes, encounterID, rows)
         if a and a.row and not has[row.spellID] then
             has[row.spellID] = true
             local lane = { key = "journal:" .. row.spellID, label = row.name, kind = "journal", spellID = row.spellID,
-                icon = row.icon, marks = {}, tags = row.tags }
+                icon = row.icon, marks = {}, tags = row.tags, sectionID = row.sectionID }
             dress(lane, a)
             out[#out + 1] = lane
         end

@@ -13,7 +13,7 @@ const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate();
 lualib.luaL_openlibs(L);
 const harness = themeLua(process.argv.slice(2)) + `
-local timelineSrc, registrySrc, lateSrc, tattleSrc, dataSrc, pageSrc, coreSrc, panelSrc, profilesSrc, tocSrc, referenceSrc, tattlePageSrc = ...
+local timelineSrc, registrySrc, lateSrc, tattleSrc, dataSrc, pageSrc, coreSrc, panelSrc, profilesSrc, tocSrc, referenceSrc, tattlePageSrc, abilityTipSrc = ...
 local fails, passes = 0, 0
 local function check(ok, what) if ok then passes = passes + 1 else fails = fails + 1 print("FAIL " .. what) end end
 local function eq(a, b, what) check(a == b, what .. " (got " .. tostring(a) .. ", want " .. tostring(b) .. ")") end
@@ -27,7 +27,8 @@ local NOW = os.time({ year = 2026, month = 10, day = 20, hour = 20, min = 0, sec
 time = function(t) if t then return os.time(t) end return NOW end
 GetTime = function() return 1000 end
 C_Timer = { After = function() end, NewTicker = function() return { Cancel = function() end } end }
-C_Spell = { GetSpellName = function(id) return ({ [111] = "Fang Bite", [222] = "Venom Pool", [333] = "Tail Swipe" })[id] end }
+C_Spell = { GetSpellName = function(id) return ({ [111] = "Fang Bite", [222] = "Venom Pool", [333] = "Tail Swipe" })[id] end,
+  GetSpellTexture = function(id) return ({ [111] = "tex111", [222] = "tex222" })[id] end }
 local tip = { lines = {} }
 GameTooltip = { SetOwner = function(self, o) self.owner = o self.lines = {} end, SetText = function(self, t) self.lines = { t } self.colors = {} end,
   AddLine = function(self, t, r, g, b) self.lines[#self.lines + 1] = t self.colors = self.colors or {} self.colors[#self.lines] = r and { r, g, b } end, Show = function(self) self.shown = true end, Hide = function(self) self.shown = false end,
@@ -39,6 +40,7 @@ local function mock()
   return setmetatable(o, { __index = function(t, k)
     local m = ({
       SetText = function(self, v) self.text = v end,
+      SetTexture = function(self, v) self.texture = v end,
       GetText = function(self) return self.text end,
       Show = function(self) self.shown = true if self.scripts.OnShow then self.scripts.OnShow(self) end end,
       Hide = function(self) self.shown = false end,
@@ -127,6 +129,14 @@ assert(load(lateSrc, "Late/Data.lua"))("CowfeeRaidTools", CRT)
 CRT.TattleDB = { bosses = { { boss = "Alpha", encounterID = 9001, mechanics = { { name = "Puddle", spells = { 555 } } } } } }
 assert(load(tattleSrc, "Tattlebot/Data.lua"))("CowfeeRaidTools", CRT)
 assert(load(referenceSrc, "Timeline/Reference.lua"))("CowfeeRaidTools", CRT)
+-- the shared ability tooltip the causes use, and the Journal text it reads (a stand-in: Tail Swipe is in the Journal,
+-- kept once read; the others are not)
+assert(load(abilityTipSrc, "Timeline/AbilityTip.lua"))("CowfeeRaidTools", CRT)
+local journalAsked = {}
+CRT.TimelineJournal = { AbilitySection = function(_, enc, group, spellID, name, sectionID, cachedOnly)
+  journalAsked[#journalAsked + 1] = tostring(enc) .. "/" .. tostring(group) .. "/" .. tostring(spellID) .. "/" .. tostring(cachedOnly)
+  if spellID == 333 then return { description = "Swipes the tail.", icon = 4040 }, 16 end end }
+function GetDifficultyInfo(id) return id == 16 and "Mythic" or nil end
 local T = CRT.Timeline
 
 -- the Timeline as it was before Season Stats: Gamma 118 Mythic pulls, the newest 12 kept (no kills); Delta three
@@ -456,7 +466,16 @@ local tl = table.concat(GameTooltip.lines, "\\n")
 check(GameTooltip.lines[1] == "Fang Bite" and tl:find(R.TypeLine("raid"), 1, true) and tl:find(R.TypeLine("dodge"), 1, true), "the tooltip: the spell, then its types (" .. tl .. ")")
 check(GameTooltip.colors[2] and GameTooltip.colors[2][1] == R.TYPES.raid.color[1], "each type line in its type's colour")
 c3.scripts.OnEnter(c3)
-check(#GameTooltip.lines == 1 and GameTooltip.lines[1] == "Tail Swipe", "no match: the spell only")
+check(#GameTooltip.lines == 3 and GameTooltip.lines[1] == "Tail Swipe" and GameTooltip.lines[2] == "Encounter Journal (Mythic)" and GameTooltip.lines[3] == "Swipes the tail.",
+  "not on the ability timeline: the spell and its Journal text (" .. table.concat(GameTooltip.lines, " / ") .. ")")
+check(journalAsked[#journalAsked] == "9101/mythic/333/nil", "the Journal asked for the boss and difficulty shown: " .. tostring(journalAsked[#journalAsked]))
+-- each cause with its icon: the spell's, else the Journal's once read, else a question mark
+eq(c1.icon.texture, "tex111", "a cause's spell icon")
+check(c1.icon.w == 16 and c1.icon.h == 16 and c1.label.point[2] >= 16, "a 16 px icon left of the name")
+eq(c3.icon.texture, 4040, "no spell icon: the Journal's")
+eq(S:CauseIcon(9101, "mythic", 0, nil), S.UNKNOWN_ICON, "an unknown spell: a question mark")
+eq(S:CauseIcon(9101, "mythic", 444, "Nothing"), S.UNKNOWN_ICON, "no icon anywhere: a question mark")
+check(journalAsked[1] and journalAsked[1]:find("/true$"), "drawing never reads the Journal anew: " .. tostring(journalAsked[1]))
 c3.scripts.OnLeave(c3)
 check(V.refl.trend.text:find("in the last", 1, true) ~= nil, "deaths per pull line")
 check(V.refl.avoid[1] and not V.refl.avoid[1].shown, "no Tattlebot pulls on Gamma: no avoidable lines")
@@ -581,7 +600,7 @@ const dir = process.argv[2];
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 const files = ['CRT_Modules/Timeline/Data.lua', 'CRT_Data/Bosses/Registry.lua', 'CRT_Modules/Late/Data.lua', 'CRT_Modules/Tattlebot/Data.lua',
   'CRT_Modules/SeasonStats/Data.lua', 'CRT_Modules/SeasonStats/Page.lua', 'CRT_Core/Core.lua', 'CRT_Core/UI/Panel.lua', 'CRT_Core/Profiles.lua',
-  'CowfeeRaidTools.toc', 'CRT_Modules/Timeline/Reference.lua', 'CRT_Modules/Tattlebot/Page.lua'];
+  'CowfeeRaidTools.toc', 'CRT_Modules/Timeline/Reference.lua', 'CRT_Modules/Tattlebot/Page.lua', 'CRT_Modules/Timeline/AbilityTip.lua'];
 for (const f of files) {
   const p = path.join(dir, f);
   lua.lua_pushstring(L, to_luastring(fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : 'error("missing ' + f + '")'));

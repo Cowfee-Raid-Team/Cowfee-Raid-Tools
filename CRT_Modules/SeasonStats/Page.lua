@@ -4,7 +4,8 @@ local ADDON, CRT = ...
 -- one first) and a Difficulty dropdown (the Timeline's groups); four cards (bosses killed of the season's route,
 -- pulls, raid nights, time in pulls); the table of the route's bosses in route order (sortable, back to route order
 -- on a third click); and the reflection for the boss picked in the table: its longest pull each night as bars,
--- the furthest phase, the spells that killed most (each in its ability timeline row's type colour, Stats:AbilityRow),
+-- the furthest phase, the spells that killed most (each with its icon, in its ability timeline row's type colour,
+-- Stats:AbilityRow, and the shared ability tooltip with the spell and its Journal text, CRT.AbilityTip),
 -- deaths per pull, and Tattlebot's avoidable damage per night (a click opens the night there, TattlePage.ShowNight).
 -- The counters are SeasonStats/Data.lua's. No settings, so no tabs. Laid out for the page area
 -- (UI.PAGE_W x UI.PAGE_H); layout numbers in L, wording in TEXT. S.view keeps the parts, for the harness
@@ -19,7 +20,7 @@ local L = {
     cardsTop = -44, cardH = 54, cardGap = 10, cardPad = 10,
     tableTop = -114, tableW = 604, headH = 22, row = 20, rows = 20,
     reflX = 630, reflW = 388, bodyTop = -26, line = 16, bars = 8, barsTop = -18, dateW = 70, barX = 74, barW = 200, barH = 10,
-    causes = 3, avoid = 4, arrowW = 12,
+    causes = 3, avoid = 4, arrowW = 12, causeIcon = 16, causeGap = 4,
 }
 
 -- The table's columns: key, x, w; each title is TEXT.columns[key].
@@ -52,7 +53,7 @@ local TEXT = {
     reflectionHelp = "How a boss went, night by night.\n\n"
         .. "The game hides a boss's health from addons during an encounter, so the longest pull and the furthest phase stand in for how close you got.\n\n"
         .. "The phase is the one the alerts reached in the pull. Pulls from before Season Stats have none.\n\n"
-        .. "A death cause on the boss's ability timeline shows in its type's colour, as on the Timeline. Hover it to see the type.\n\n"
+        .. "A death cause on the boss's ability timeline shows in its type's colour, as on the Timeline. Hover a cause to see the spell, its Encounter Journal text and its types.\n\n"
         .. "Avoidable damage is Tattlebot's: its tracked mechanics, and the game's avoidable damage when that is on in Tattlebot's settings. Click a night to open it in Tattlebot.",
     pick = "Click a boss in the table to see how its pulls went.",
     bossEmpty = "No pulls on this boss on %s yet.",
@@ -300,28 +301,30 @@ local function buildBars(body)
     return bars
 end
 
--- A death cause's line: its text, and a tooltip with the spell and, on the ability timeline, its types.
+-- A death cause's line: its icon and text, and the shared ability tooltip (CRT.AbilityTip): the spell, its Encounter
+-- Journal text and, on the ability timeline, its types, whether the cause is a row there or not.
 local function causeTip(line)
     if not line.spell then
         return
     end
-    UI.TooltipOwner(GameTooltip, line, "ANCHOR_RIGHT")
-    GameTooltip:SetText(line.spell)
-    local Reference = CRT.TimelineReference
-    for _, t in ipairs(line.row and line.row.types or {}) do
-        local typeLine, c = Reference.TypeLine(t)
-        if typeLine then
-            GameTooltip:AddLine(typeLine, c[1], c[2], c[3], true)
-        end
-    end
-    GameTooltip:Show()
+    CRT.AbilityTip:Show(GameTooltip, line, nil, {
+        encounterID = line.encounterID,
+        group = state.group,
+        spellID = line.spellID,
+        name = line.spell,
+        row = line.row,
+    })
 end
 
 local function buildCause(body, y)
     local line = CreateFrame("Frame", nil, body)
     line:SetPoint("TOPLEFT", 0, y)
     line:SetSize(L.reflW, L.line)
-    line.label = text(line, "CRTFontSmall", 0, 0, L.reflW)
+    line.icon = line:CreateTexture(nil, "ARTWORK")
+    line.icon:SetPoint("TOPLEFT", 0, 0)
+    line.icon:SetSize(L.causeIcon, L.causeIcon)
+    local x = L.causeIcon + L.causeGap
+    line.label = text(line, "CRTFontSmall", x, -2, L.reflW - x)
     line:EnableMouse(true)
     line:SetScript("OnEnter", causeTip)
     line:SetScript("OnLeave", hideTip)
@@ -461,12 +464,14 @@ local function paintCauses(causes, row)
     for i, line in ipairs(view.refl.causes) do
         local cause = causes[i]
         line:SetShown(cause ~= nil or i == 1)
-        line.spell, line.row = nil, nil
+        line.spell, line.row, line.spellID, line.encounterID = nil, nil, nil, nil
+        line.icon:SetShown(cause ~= nil)
         if cause then
             local name = spellName(cause.spellID)
             local ability = S:AbilityRow(row.encounterID, state.group, cause.spellID, name, row.name)
             local color = ability and Reference and Reference.RowColor(ability)
-            line.spell, line.row = name, ability
+            line.spell, line.row, line.spellID, line.encounterID = name, ability, cause.spellID, row.encounterID
+            line.icon:SetTexture(S:CauseIcon(row.encounterID, state.group, cause.spellID, name))
             line.label:SetText(TEXT.cause:format(inColor(name, color), cause.count))
         else
             line.label:SetText(TEXT.noCauses)

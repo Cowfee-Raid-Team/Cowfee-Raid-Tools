@@ -1167,7 +1167,8 @@ check("mech: ability names in their type colour, with a type tooltip", function(
   local names = {}
   for _, s in ipairs(said) do names[#names + 1] = s[1] .. ":" .. tostring(s[2]) end
   local all = table.concat(names, "|")
-  assert(all == "SetOwner:" .. tostring(r2.frame) .. "|SetText:Other Spell|AddLine:Dispel: a debuff to dispel|AddLine:Mythic: Mythic only|Show:nil", all)
+  -- the shared ability tooltip (CRT.AbilityTip): the game's spell tooltip, then the types
+  assert(all == "SetOwner:" .. tostring(r2.frame) .. "|SetSpellByID:888|AddLine:Dispel: a debuff to dispel|AddLine:Mythic: Mythic only|Show:nil", all)
   assert(near(said[3][3], dispel) and near(said[4][3], Ref.TYPES.mythic.color), "each line in its type's colour")
   -- Tooltip position, the game's tooltip spot: the same text where the game shows its tooltips
   assert(type(CRT.UI.TooltipOwner) == "function", "UI.TooltipOwner (CRT_Core/UI/Tooltip.lua) is loaded")
@@ -1176,7 +1177,7 @@ check("mech: ability names in their type colour, with a type tooltip", function(
   CRT.db.ui = { tooltipMode = "game" }
   said = {}
   r2.frame.OnEnter(r2.frame)
-  assert(spot and spot[1] == GameTooltip and spot[2] == r2.frame and said[1][1] == "SetText", "the game's tooltip spot: GameTooltip_SetDefaultAnchor, no SetOwner of its own")
+  assert(spot and spot[1] == GameTooltip and spot[2] == r2.frame and said[1][1] == "SetSpellByID", "the game's tooltip spot: GameTooltip_SetDefaultAnchor, no SetOwner of its own")
   CRT.db.ui, GameTooltip_SetDefaultAnchor = nil, nil
   said = {}
   r1.frame.OnEnter(r1.frame)
@@ -1184,6 +1185,20 @@ check("mech: ability names in their type colour, with a type tooltip", function(
   said = {}
   r3.frame.OnEnter(r3.frame)
   assert(said[2][2] == "mine" and said[3][2]:find("^No type yet") and said[3][2]:find("Set type", 1, true), "no type: how to set one: " .. tostring(said[3][2]))
+  -- the Journal's text, asked for the boss and difficulty on show, between the spell and the types
+  local asked
+  CRT.TimelineJournal.AbilitySection = function(_, enc, group, spellID, name, sectionID)
+    asked = tostring(enc) .. "/" .. tostring(group) .. "/" .. tostring(spellID) .. "/" .. tostring(name)
+    if spellID == 888 then return { description = "What it does" }, 16 end
+  end
+  said = {}
+  r2.frame.OnEnter(r2.frame)
+  names = {}
+  for _, s in ipairs(said) do names[#names + 1] = s[1] .. ":" .. tostring(s[2]) end
+  all = table.concat(names, "|")
+  assert(asked and asked:find("^" .. ENC .. "/%a+/888/Other Spell$"), "the Journal asked for the boss, the group on show and the spell: " .. tostring(asked))
+  assert(all:find("SetSpellByID:888|AddLine:Encounter Journal (Mythic)|AddLine:What it does|AddLine:Dispel: a debuff to dispel", 1, true), "the Journal's text before the types: " .. all)
+  CRT.TimelineJournal.AbilitySection = nil
   said = {}
   r3.frame.OnLeave(r3.frame)
   assert(said[1][1] == "Hide", "leaving hides it")
