@@ -603,6 +603,18 @@ function Reference.RemovalKey(ref, text)
     return tostring(ref.encounterID or "") .. "|" .. (ref.difficulty or "") .. "|" .. headerOf(text)
 end
 
+-- The key a picked ability timeline is saved by (Timeline:ChosenReference): yours by its "own:N" key, a
+-- shipped one by its RemovalKey, so the pick survives a reorder of the shipped list.
+function Reference.ChoiceKey(entry)
+    if type(entry) ~= "table" then
+        return nil
+    end
+    if entry.own then
+        return entry.key
+    end
+    return "ship|" .. Reference.RemovalKey(entry.ref, entry.text or "")
+end
+
 local function isMarked(marks, entry)
     return marks ~= nil and not entry.own and marks[Reference.RemovalKey(entry.ref, entry.text)] ~= nil
 end

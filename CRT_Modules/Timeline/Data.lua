@@ -412,16 +412,56 @@ function Timeline:ReferenceFor(encounterID, group, bossName, prefer, found)
     if type(found) ~= "table" then
         found = Reference:ForBoss(encounterID, name)
     end
-    local list = Reference:ForGroup(found, group == "mythic" and "mythic" or "nh")
-    if type(prefer) == "string" then
-        local want = prefer:lower()
+    group = group == "mythic" and "mythic" or "nh"
+    local list = Reference:ForGroup(found, group)
+    -- the one picked on the Advanced tab ("On Review"), while it is still one of the boss's
+    local chosen
+    local want = self:ChosenReference(encounterID, group)
+    if want and Reference.ChoiceKey then
         for _, entry in ipairs(list) do
-            if type(entry.ref.difficulty) == "string" and entry.ref.difficulty:lower() == want then
+            if Reference.ChoiceKey(entry) == want then
+                chosen = entry
+                break
+            end
+        end
+    end
+    if type(prefer) == "string" then
+        local wanted = prefer:lower()
+        local function fits(entry)
+            return type(entry.ref.difficulty) == "string" and entry.ref.difficulty:lower() == wanted
+        end
+        if chosen and fits(chosen) then
+            return chosen
+        end
+        for _, entry in ipairs(list) do
+            if fits(entry) then
                 return entry
             end
         end
     end
-    return list[1]
+    return chosen or list[1]
+end
+
+-- The ability timeline picked for a boss and difficulty group when it has more than one (the Advanced
+-- tab's "On Review"): Reference.ChoiceKey of it, saved in timeline.reviewRefs[encounterID][group]. Nil
+-- (the default) takes the group's first, yours first. ReferenceFor reads it, so the Review tab, the
+-- alerts' times and the Rehearsal all follow the one choice. SetChosenReference(encounterID, group, nil)
+-- clears it.
+function Timeline:ChosenReference(encounterID, group)
+    local picks = tdb().reviewRefs
+    local mine = picks and picks[encounterID]
+    return mine and mine[group == "mythic" and "mythic" or "nh"] or nil
+end
+
+function Timeline:SetChosenReference(encounterID, group, key)
+    if encounterID == nil then
+        return
+    end
+    local db = tdb()
+    db.reviewRefs = db.reviewRefs or {}
+    db.reviewRefs[encounterID] = db.reviewRefs[encounterID] or {}
+    db.reviewRefs[encounterID][group == "mythic" and "mythic" or "nh"] = key
+    self:Fire()
 end
 
 -- For the alerts: how the raid's chosen order moves a line's time. Nil when the boss's reference for

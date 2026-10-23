@@ -61,7 +61,7 @@ local CRT = { db = { timeline = { record = true, minPull = 15, keep = 10, bosses
     deathRows = "combined", roles = { TANK = true, HEALER = true, DAMAGER = true }, firstDeaths = 0, overlay = 3, overlayOn = false, hideEmpty = false, nextId = 1 } },
   UI = { Tint = function() end, OnTheme = function() end, SkinScrollBar = function() end, PAGE_W = 1026, PAGE_H = 560, Help = function(_, title, text) helpCalls = helpCalls + 1 helps[title] = text return mock() end,
     HelpRight = function(target, title, text) helps[title] = text helpTargets[title] = target return mock() end, HELP_GAP = 4, HELP_SIZE = 20,
-    Dropdown = function(_, text, o) local m = mock() m.opts, m.text = o, text dropdowns[#dropdowns+1] = m rawset(m, "refresh", function() end) return m end,
+    Dropdown = function(parent, text, o) local m = mock() m.opts, m.text, m.parent = o, text, parent dropdowns[#dropdowns+1] = m rawset(m, "refresh", function() end) return m end,
     Slider = function(_, text, o) local m = mock() m.opts, m.text = o, text sliders[#sliders+1] = m rawset(m, "refresh", function() end) return m end,
     SkinTree = function(_, f) skinCalls = skinCalls + 1 end,
     RegisterPage = function(_, key, title, fn) pages[key] = { title = title, build = fn } end,
@@ -168,7 +168,17 @@ assert(#tabs == 3 and tabText(tabs[1]) == "Review" and tabText(tabs[2]) == "Sett
 print("ok tabs order")
 
 local function find(list, text) for _, d in ipairs(list) do if d.text == text then return d end end end
-local pullDD = find(dropdowns, "Pull")
+assert(find(dropdowns, "Pull") == nil, "no Pull dropdown on the Review tab")
+print("ok no Pull dropdown")
+-- the read-only label of the ability timeline shown, where the Pull dropdown was (the Unnamed casts (?) follows it)
+local function shownLabel() return helpTargets["Unnamed casts"] end
+local function labelText() local l = shownLabel() return l and l.text end
+-- a shown Recent pulls row, by the pull's id
+local function recentRow(id)
+  for _, b in ipairs(buttons) do
+    if rawget(b, "title") and b.shown and rawget(b, "pullID") == id then return b end
+  end
+end
 do
   local first = find(dropdowns, "Boss")
   local o = opts(first.opts)
@@ -177,8 +187,20 @@ do
   first.opts.set(3001)
 end
 print("ok boss list follows the route")
--- pull 12 is Alpha's second pull: shown by its own count on the boss
-assert(pullDD and opts(pullDD.opts)[1].label == "Pull 2 " .. string.char(194, 183) .. " 1:00 " .. string.char(194, 183) .. " wipe " .. string.char(194, 183) .. " Normal/Heroic", "pull label: " .. tostring(opts(pullDD.opts)[1].label))
+-- pull 12 is Alpha's second pull: shown by its own count on the boss, on the Recent pulls list
+do
+  local row = recentRow(12)
+  assert(row and row.title.text == "Pull 2 " .. string.char(194, 183) .. " 1:00 " .. string.char(194, 183) .. " wipe " .. string.char(194, 183) .. " Normal/Heroic", "pull label: " .. tostring(row and row.title.text))
+  -- Alpha has no ability timeline: its newest pull is drawn, lit on the list, and the label says so
+  assert(view.pull and view.pull.id == 12 and labelText() == "No ability timeline " .. string.char(194, 183) .. " Pull 2", "no ability timeline: the newest pull is drawn: " .. tostring(labelText()))
+  row.OnClick(row)
+  assert(view.pull.id == 12, "no ability timeline: clicking the drawn pull keeps it")
+  local r11 = recentRow(11)
+  r11.OnClick(r11)
+  assert(view.pull.id == 11 and view.overlay == nil and labelText():find("Pull 1$"), "no ability timeline: clicking another pull draws it")
+  r11 = recentRow(11) r11.OnClick(r11)
+  assert(view.pull.id == 12, "no ability timeline: clicking it again goes back to the newest")
+end
 print("ok pull label")
 
 local diffDD = find(dropdowns, "Difficulty")
@@ -191,7 +213,7 @@ do
   assert(helpCalls == 0, "no (?) made outside UI.HelpRight: " .. helpCalls)
   for title in pairs(helps) do assert(helpTargets[title] ~= nil, "the (?) " .. title .. " has a target") end
   assert(helpTargets["Difficulty"] == diffDD, "Difficulty's (?) is right of its dropdown")
-  assert(helpTargets["Unnamed casts"] == find(dropdowns, "Pull"), "Unnamed casts' (?) is right of the Pull dropdown")
+  assert(shownLabel() and shownLabel().kind == "fs" and shownLabel().pt[4] == 412, "Unnamed casts' (?) is right of the label, where the Pull dropdown was")
   assert(helpTargets["Order"] == find(dropdowns, "Order"), "Order's (?) is right of its dropdown")
   local deaths = helpTargets["Deaths from recent pulls"]
   assert(deaths and deaths.kind == "fs" and deaths.text == "Deaths from recent pulls", "the Deaths checkbox's (?) is right of its label's text")
@@ -354,7 +376,7 @@ print("ok a boss with only a reference is listed")
 
 do
   bossDD.opts.set(NEK)
-  assert(pullDD.opts.get() == "ship:1" and view.pull and view.pull.reference, "reference-only boss shows its reference")
+  assert(view.pull and view.pull.reference and labelText() == "Abilities " .. DOT .. " Mythic " .. DOT .. " 9:48", "reference-only boss shows its ability timeline, named in the label: " .. tostring(labelText()))
   assert(not helps["Unnamed casts"]():find("Boss Timeline"), "empty-pull hint: not for a reference")
 end
 
@@ -367,43 +389,61 @@ local listed = 0
 for _, o in ipairs(opts(bossDD.opts)) do if o.key == 3470 then listed = listed + 1 assert(o.label == "Nek'zali the Soulcoiler (2)", "pulled: the count joins the label: " .. o.label) end end
 assert(listed == 1, "the boss is listed once")
 bossDD.opts.set(3470)
-local first = opts(pullDD.opts)[1]
-assert(first.key == "ship:1" and first.label == "Abilities " .. DOT .. " Mythic " .. DOT .. " 9:48", "reference first in pull dropdown: " .. tostring(first.label))
-assert(opts(pullDD.opts)[2].key == 2, "reference first in pull dropdown: pulls follow")
-assert(pullDD.opts.get() == "ship:1" and view.pull.reference and view.eid == 3470, "reference first in pull dropdown: selected")
-print("ok reference first in pull dropdown")
+assert(labelText() == "Abilities " .. DOT .. " Mythic " .. DOT .. " 9:48" and view.pull.reference and view.eid == 3470 and view.overlay == nil, "with pulls saved, the ability timeline is still what is drawn")
+assert(T:ReferenceFor(3470, "mythic").ref == view.pull.reference, "the shown ability timeline is Timeline:ReferenceFor's")
+print("ok abilities always drawn, named in the label")
 
 -- the Recent pulls list
-local function recent(id)
-  for _, b in ipairs(buttons) do
-    local t = rawget(b, "title")
-    if t and b.shown and t.text and t.text:find("^Pull " .. id .. " ") then return b end
-  end
-end
+local function recent(id) return recentRow(id) end
 do
   local function gold(b) local c = rawget(b, "border") return c and c[1] == 1 and c[2] > 0.8 end
+  local function filled(b) local c = rawget(b, "fill") local sel = CRT.PALETTE.selected return c and sel and math.abs(c[1] - sel[1]) < 0.01 and math.abs(c[2] - sel[2]) < 0.01 end
   local b2 = recent(2)
-  for _, b in ipairs(buttons) do if rawget(b, "title") then rawset(b, "SetBackdropBorderColor", function(self, r, g, bl) rawset(self, "border", { r, g, bl }) end) end end
+  for _, b in ipairs(buttons) do if rawget(b, "title") then
+    rawset(b, "SetBackdropBorderColor", function(self, r, g, bl) rawset(self, "border", { r, g, bl }) end)
+    rawset(b, "SetBackdropColor", function(self, r, g, bl) rawset(self, "fill", { r, g, bl }) end)
+  end end
   assert(b2 and b2.title.text == "Pull 2 " .. DOT .. " 7:32 " .. DOT .. " wipe " .. DOT .. " Mythic" and b2.deaths.text == "2 deaths", "recent pulls: line text")
   assert(b2.deaths.color and b2.deaths.color[1] > 0.9 and b2.deaths.color[2] < 0.5, "recent pulls: deaths in red")
   b2.OnClick(b2)
-  assert(view.overlay and view.overlay.id == 2 and view.pull.reference, "recent pulls toggle overlay: on")
-  assert(gold(b2), "recent pulls toggle overlay: gold border, as the Raid Notes list")
+  assert(view.overlay and view.overlay.id == 2 and view.pull.reference, "clicking a pull lays its deaths over the abilities, which stay drawn")
+  assert(gold(b2) and filled(b2), "the picked row is lit: the theme's selected fill and a heading border")
+  assert(not filled(recent(1)) and not gold(recent(1)), "the other rows are not lit")
+  -- the row's tooltip, placed by UI.TooltipOwner in the timeline's area
+  local realOwner, tipArea, tipText = CRT.UI.TooltipOwner, nil, nil
+  CRT.UI.TooltipOwner = function(_, _, _, _, _, how) tipArea = how end
+  GameTooltip = { SetText = function(_, t) tipText = t end, AddLine = function() end, Show = function() end, Hide = function() end }
+  assert(rawget(b2, "OnEnter"), "a recent pull has a tooltip")
+  b2.OnEnter(b2)
+  assert(tipArea == "timeline" and tipText and tipText:find("^Pull 2 "), "the tooltip goes through UI.TooltipOwner (timeline area): " .. tostring(tipArea))
+  CRT.UI.TooltipOwner = realOwner
   b2 = recent(2)
   b2.OnClick(b2)
-  assert(view.overlay == nil and view.pull.reference, "recent pulls toggle overlay: off")
-  assert(not gold(b2), "recent pulls toggle overlay: back to the grey border")
+  assert(view.overlay == nil and view.pull.reference, "clicking the picked pull again clears it")
+  assert(not gold(b2) and not filled(b2), "cleared: back to the grey border")
   b2.OnClick(b2)
-  pullDD.opts.set(2)
-  assert(view.overlay == nil and view.pull.id == 2, "recent pulls: changing pull clears the overlay")
-  assert(not recent(2), "recent pulls: hidden for a recorded pull")
-  assert(helps["Unnamed casts"]():find("Boss Timeline"), "empty-pull hint: shown for a recorded pull")
-  pullDD.opts.set("ship:1")
+  local b1 = recent(1) b1.OnClick(b1)
+  assert(view.overlay and view.overlay.id == 1 and gold(recent(1)) and not gold(recent(2)), "clicking another pull switches to it")
   b2 = recent(2) b2.OnClick(b2)
-  assert(view.overlay and view.overlay.id == 2, "recent pulls: overlay again")
-  bossDD.opts.set(3001) bossDD.opts.set(3470)
-  assert(view.overlay == nil, "recent pulls: changing boss clears the overlay")
-  for k in pairs(CRT.db.timeline) do assert(not tostring(k):lower():find("overlaypull"), "recent pulls: overlay not saved") end
+  assert(view.overlay and view.overlay.id == 2, "switched back")
+  -- kept per boss and difficulty
+  bossDD.opts.set(3002)
+  assert(view.overlay == nil, "another boss has its own pick (none)")
+  bossDD.opts.set(3470)
+  assert(view.overlay and view.overlay.id == 2, "the boss's pick is kept while another boss is looked at")
+  diffDD.opts.set("nh")
+  assert(view.overlay == nil, "the other difficulty has its own pick (none)")
+  diffDD.opts.set("mythic")
+  assert(view.overlay and view.overlay.id == 2, "the pick is kept per difficulty")
+  for k in pairs(CRT.db.timeline) do assert(not tostring(k):lower():find("pick") and not tostring(k):lower():find("overlaypull"), "recent pulls: the pick is not saved: " .. tostring(k)) end
+  -- a deleted pull's pick is dropped
+  local pulls = CRT.db.timeline.bosses[3470].pulls
+  local gone = table.remove(pulls, 2)
+  T:Fire()
+  assert(view.overlay == nil and view.pull.reference, "a deleted pull's pick is dropped")
+  pulls[2] = gone
+  T:Fire()
+  assert(view.overlay == nil, "and stays dropped when the pull comes back")
 end
 print("ok recent pulls toggle overlay")
 
@@ -463,12 +503,34 @@ do
   paste:SetText("Boss: Nek'zali the Soulcoiler\\nDifficulty: Mythic\\nLength: 5:00\\nSmash: 0:10, 0:40")
   save.OnClick(save)
   assert(statusText() == "Saved for Mythic" and R:Find("own:1") and #CRT.db.timeline.references == 1, "references tab saves: valid text")
-  assert(opts(pullDD.opts)[1].key == "own:1" and opts(pullDD.opts)[2].key == "ship:1", "references tab saves: yours listed first")
+  assert(labelText() == "Abilities " .. DOT .. " Mythic " .. DOT .. " 5:00 " .. DOT .. " yours", "references tab saves: yours shown first: " .. tostring(labelText()))
 end
 print("ok references tab saves")
 
+-- On Review: with more than one ability timeline, the Advanced tab picks the one the Review tab shows
 do
-  pullDD.opts.set("own:1")
+  local function useBox(key) for _, c in ipairs(checks) do if rawget(c, "key") == key and c.shown and rawget(c, "Label") and c.Label.text == "On Review" then return c end end end
+  local mine, ship = useBox("own:1"), useBox("ship:1")
+  assert(mine and ship and mine.checked and not ship.checked, "On Review: shown with two, yours ticked by default")
+  assert(mine.pt[1] == "TOPLEFT" and mine.pt[2] + 84 <= 310 and mine.pt[2] >= 154 + 60, "On Review sits inside the reference's line, after its kind: " .. tostring(mine.pt[2]))
+  ship.OnClick(ship)
+  assert(labelText() == "Abilities " .. DOT .. " Mythic " .. DOT .. " 9:48" and view.pull.reference.length == 588, "On Review: the shipped one is shown: " .. tostring(labelText()))
+  assert(useBox("ship:1").checked and not useBox("own:1").checked, "On Review: the tick moves")
+  assert(T:ReferenceFor(3470, "mythic").key == "ship:1", "On Review: the alerts' picker follows (Timeline:ReferenceFor)")
+  assert(T:RehearsalSourceFor(3470, "mythic").base.reference.length == 588, "On Review: the Rehearsal follows")
+  assert(T:ReferenceFor(3470, "nh") == nil, "On Review: the other difficulty keeps its own")
+  local saved = CRT.db.timeline.reviewRefs[3470].mythic
+  assert(type(saved) == "string" and saved:find("^ship|"), "On Review: a shipped pick is saved by its header, not its list place: " .. tostring(saved))
+  ship = useBox("ship:1") ship.OnClick(ship)
+  assert(useBox("ship:1").checked, "On Review: ticking the ticked one keeps it")
+  mine = useBox("own:1") mine.OnClick(mine)
+  assert(view.pull.reference.length == 300 and T:ReferenceFor(3470, "mythic").key == "own:1", "On Review: back to yours")
+  -- a pick on Mythic with Prefer (a reminder's own Difficulty) still wins inside the group
+  assert(T:ReferenceFor(3470, "mythic", nil, "Mythic").key == "own:1", "On Review: the pick wins when it fits the asked difficulty")
+end
+print("ok On Review picks the ability timeline shown")
+
+do
   assert(view.pull.reference and view.pull.reference.length == 300, "own reference shown")
   local del
   for _, b in ipairs(buttons) do if b.text == "Delete" and b.shown and rawget(b, "key") == "own:1" then del = b end end
@@ -478,9 +540,7 @@ do
   assert(popup and popup.callback, "deleting the shown reference falls back: confirms")
   popup.callback()
   assert(#CRT.db.timeline.references == 0, "deleting the shown reference falls back: deleted")
-  local sel = pullDD.opts.get()
-  assert(sel == "ship:1" or type(sel) == "number", "deleting the shown reference falls back: " .. tostring(sel))
-  assert(view.pull and (view.pull.reference or view.pull.id), "deleting the shown reference falls back: something shown")
+  assert(labelText() == "Abilities " .. DOT .. " Mythic " .. DOT .. " 9:48" and view.pull.reference.length == 588, "deleting the shown (and picked) reference falls back to the shipped one: " .. tostring(labelText()))
 end
 print("ok deleting the shown reference falls back")
 
@@ -509,29 +569,26 @@ do
   local key = R:Add("Boss: Nek'zali the Soulcoiler\\nDifficulty: Heroic\\nA: 0:10")
   diffDD.opts.set("nh")
   T:Set("grid", 30)
-  local mine, shipped
-  for _, o in ipairs(opts(pullDD.opts)) do
-    if o.key == key then mine = o elseif o.key == "ship:1" then shipped = o end
-  end
-  assert(mine and mine.label == "Abilities " .. DOT .. " Heroic " .. DOT .. " 0:10 " .. DOT .. " yours", "own reference label marked yours: " .. tostring(mine and mine.label))
-  assert(shipped == nil, "own reference label marked yours: the shipped Mythic one is not listed on Normal/Heroic")
+  assert(labelText() == "Abilities " .. DOT .. " Heroic " .. DOT .. " 0:10 " .. DOT .. " yours", "own reference label marked yours: " .. tostring(labelText()))
   R:Delete(key)
   diffDD.opts.set("mythic")
   bossDD.opts.set(3470)
-  assert(not opts(pullDD.opts)[1].label:find("yours"), "own reference label marked yours: shipped is not")
+  assert(not labelText():find("yours"), "own reference label marked yours: shipped is not")
 end
 print("ok own reference label marked yours")
 
 do
   bossDD.opts.set(3470)
-  pullDD.opts.set("ship:1")
   assert(edit.enabled == false and add.enabled == false, "add spell disabled on a reference")
   assert(helps["Rows"]:find("recorded pulls", 1, true), "add spell disabled on a reference: help says so")
   assert(helps["Rows"]:find("Encounter Journal", 1, true) and helps["Rows"]:find("combat", 1, true), "Rows help: icons need the Journal, not read in combat")
   assert(helps["Abilities Text"]:find("combat", 1, true), "References help: icons need the Journal, not read in combat")
-  pullDD.opts.set(2)
-  assert(edit.enabled == true and add.enabled == true, "add spell disabled on a reference: enabled again for a recorded pull")
-  pullDD.opts.set("ship:1")
+  local b2 = recentRow(2) b2.OnClick(b2)
+  assert(add.enabled == false, "add spell disabled on a reference: a pull laid over it changes nothing")
+  b2 = recentRow(2) b2.OnClick(b2)
+  bossDD.opts.set(3002)
+  assert(edit.enabled == true and add.enabled == true, "add spell disabled on a reference: enabled again for a boss with none")
+  bossDD.opts.set(3470)
   assert(add.enabled == false, "add spell disabled on a reference: and off again")
 end
 print("ok add spell disabled on a reference")
@@ -540,7 +597,7 @@ do
   local key = R:Add("Boss: Zork the Late\\nDifficulty: Mythic\\nA: 0:10")
   T:Set("grid", 30)
   bossDD.opts.set(4004)
-  assert(bossDD.opts.get() == 4004 and pullDD.opts.get() == key, "a reference with no Encounter line joins its library boss by name")
+  assert(bossDD.opts.get() == 4004 and view.pull.reference == R:Find(key).ref, "a reference with no Encounter line joins its library boss by name")
   R:Delete(key)
   bossDD.opts.set(3470)
 end
@@ -637,22 +694,30 @@ print("ok share note makes the note when needed and shares it")
 -- A phase line moved on the timeline is written into the shown reference
 do
   bossDD.opts.set(3470)
-  pullDD.opts.set("ship:1")
   assert(view.onPhaseMoved, "phase move: the page listens to the view")
   local count = #CRT.db.timeline.references
   local before = #printed
   view.onPhaseMoved(1, 187)
-  local key = pullDD.opts.get()
-  assert(type(key) == "string" and key:find("^own:") and #CRT.db.timeline.references == count + 1, "phase move: a shipped reference becomes a reference of your own, and it is shown: " .. tostring(key))
+  local key = "own:" .. (CRT.db.timeline.nextRef - 1)
+  assert(R:Find(key) and #CRT.db.timeline.references == count + 1 and labelText():find("yours$") and view.pull.reference.phases[1].t == 187, "phase move: a shipped reference becomes a reference of your own, and it is shown: " .. tostring(labelText()))
   assert(table.concat(printed, "|", before + 1):find("ability timeline of your own", 1, true), "phase move: says a copy was made")
   local p = view.pull.reference.phases[1]
   assert(p.t == 187 and p.planned == 197, "phase move: the shown reference has the moved line")
   assert(not R:Find("ship:1").text:find("planned", 1, true), "phase move: the shipped text never changes")
   view.onPhaseMoved(1, 190)
-  assert(pullDD.opts.get() == key and #CRT.db.timeline.references == count + 1 and R:Find(key).text:find("Phase: P1.5 3:10 (planned 3:17)", 1, true), "phase move: moving it again changes your copy in place")
+  assert(T:ReferenceFor(3470, "mythic").key == key and #CRT.db.timeline.references == count + 1 and R:Find(key).text:find("Phase: P1.5 3:10 (planned 3:17)", 1, true), "phase move: moving it again changes your copy in place")
   view.onPhaseMoved(1, 197)
   assert(not R:Find(key).text:find("planned", 1, true), "phase move: putting it back removes the planned note")
   R:Delete(key)
+  -- with the shipped one picked On Review over one of yours, the copy is picked in its place
+  local other = R:Add("Boss: Nek'zali the Soulcoiler\\nDifficulty: Mythic\\nA: 0:10")
+  T:SetChosenReference(3470, "mythic", R.ChoiceKey(R:Find("ship:1")))
+  assert(view.pull.reference.length == 588, "phase move: the shipped one picked")
+  view.onPhaseMoved(1, 187)
+  local copy = "own:" .. (CRT.db.timeline.nextRef - 1)
+  assert(copy ~= other and T:ReferenceFor(3470, "mythic").key == copy and view.pull.reference.phases[1].t == 187, "phase move: the copy is picked in the shipped one's place, and shown")
+  R:Delete(copy) R:Delete(other)
+  T:SetChosenReference(3470, "mythic", nil)
 end
 print("ok a moved phase line is saved into the reference")
 
@@ -663,7 +728,7 @@ local function statusIs(p) for _, s in ipairs(strings) do if type(s.text) == "st
 do
   diffDD.opts.set("nh")
   bossDD.opts.set(3470)
-  for _, o in ipairs(opts(pullDD.opts)) do assert(o.key ~= "ship:1", "difficulty defaults to Normal/Heroic: the shipped Mythic reference is not in the pull options") end
+  assert(labelText() == "No ability timeline", "difficulty defaults to Normal/Heroic: the shipped Mythic one is not shown: " .. tostring(labelText()))
   assert(view.pull == nil and view.group == "nh", "difficulty defaults to Normal/Heroic: nothing shown")
   local shown
   for _, s in ipairs(strings) do if s.text == "No pulls recorded for this boss yet" and s.shown then shown = true end end
@@ -674,7 +739,7 @@ print("ok mythic reference is not in the Normal/Heroic pull options")
 do
   diffDD.opts.set("mythic")
   bossDD.opts.set(3470)
-  assert(opts(pullDD.opts)[1].key == "ship:1" and view.pull and view.pull.reference and view.group == "mythic", "mythic shows the shipped reference")
+  assert(labelText():find("^Abilities") and view.pull and view.pull.reference and view.group == "mythic", "mythic shows the shipped reference")
 end
 print("ok mythic shows the shipped reference")
 
@@ -687,19 +752,33 @@ do
   local h1, m1, h2, m2 = ids[1], ids[2], ids[3], ids[4]
   diffDD.opts.set("nh")
   bossDD.opts.set(5001)
-  local function pulls() local out = {} for _, o in ipairs(opts(pullDD.opts)) do if type(o.key) == "number" then out[#out + 1] = o end end return out end
+  -- the Recent pulls rows, top down: { key, label }
+  local function pulls()
+    local rows = {}
+    for _, b in ipairs(buttons) do if rawget(b, "title") and b.shown then rows[#rows + 1] = b end end
+    table.sort(rows, function(x, y) return x.pt[5] > y.pt[5] end)
+    local out = {}
+    for i, b in ipairs(rows) do out[i] = { key = b.pullID, label = b.title.text, row = b } end
+    return out
+  end
   local nhList = pulls()
   assert(#nhList == 2 and nhList[1].key == h2 and nhList[2].key == h1, "pulls filtered by difficulty: Normal/Heroic lists its own")
   assert(nhList[1].label:find("Heroic$") and nhList[2].label:find("Heroic$"), "pulls filtered by difficulty: labels end with the difficulty name: " .. nhList[1].label)
+  assert(nhList[1].label:find("^Pull 2 ") and nhList[2].label:find("^Pull 1 "), "pulls counted per boss and difficulty: " .. nhList[1].label)
+  assert(view.pull and view.pull.id == h2, "no ability timeline: the newest pull is drawn")
+  assert(helps["Unnamed casts"]():find("Boss Timeline"), "empty-pull hint: shown for a recorded pull with no casts")
   local bossOpt for _, o in ipairs(opts(bossDD.opts)) do if o.key == 5001 then bossOpt = o end end
   assert(bossOpt.label == "Delta (2)", "pulls filtered by difficulty: boss count is the group's: " .. bossOpt.label)
   diffDD.opts.set("mythic")
   local myList = pulls()
-  assert(#myList == 2 and myList[1].key == m2 and myList[2].key == m1 and myList[1].label:find("Mythic$"), "pulls filtered by difficulty: Mythic lists its own")
-  pullDD.opts.set(m1)
+  assert(#myList == 2 and myList[1].key == m2 and myList[2].key == m1 and myList[1].label:find("Mythic$") and myList[1].label:find("^Pull 2 "), "pulls filtered by difficulty: Mythic lists its own, counted from 1")
+  myList[2].row.OnClick(myList[2].row)
   assert(view.pull and view.pull.id == m1, "difficulty switch repairs the selection: a Mythic pull shown")
   diffDD.opts.set("nh")
-  assert(pullDD.opts.get() == h2 and view.pull.id == h2 and view.group == "nh", "difficulty switch repairs the selection: newest Heroic pull: " .. tostring(pullDD.opts.get()))
+  assert(view.pull.id == h2 and view.group == "nh", "difficulty switch repairs the selection: newest Heroic pull")
+  diffDD.opts.set("mythic")
+  assert(view.pull.id == m1, "the Mythic pick is kept while Normal/Heroic was shown")
+  diffDD.opts.set("nh")
   GetDifficultyInfo = nil
   T:SavePull({ encounterID = 5001, name = "Delta", length = 60, kill = false, casts = {}, deaths = {} })
   assert(pulls()[1].label:find("Normal/Heroic$"), "pull with no difficultyID is labelled Normal/Heroic")
@@ -712,16 +791,17 @@ print("ok difficulty switch repairs the selection")
 do
   diffDD.opts.set("mythic")
   bossDD.opts.set(3470)
-  pullDD.opts.set("ship:1")
   local b2 = recent(2) b2.OnClick(b2)
-  assert(view.overlay and view.overlay.id == 2, "difficulty switch clears the overlay: laid")
+  assert(view.overlay and view.overlay.id == 2, "difficulty switch: laid")
   local sets = view.sets
   diffDD.opts.set("nh")
-  assert(view.sets > sets and view.overlay == nil, "difficulty switch clears the overlay")
+  assert(view.sets > sets and view.overlay == nil, "difficulty switch: the other difficulty shows no pull of this one")
   diffDD.opts.set("mythic")
-  assert(view.overlay == nil and view.group == "mythic", "difficulty switch clears the overlay: stays clear")
+  assert(view.overlay and view.overlay.id == 2 and view.group == "mythic", "difficulty switch: back, the pick is still there")
+  b2 = recent(2) b2.OnClick(b2)
+  assert(view.overlay == nil, "difficulty switch: cleared")
 end
-print("ok difficulty switch clears the overlay")
+print("ok difficulty switch keeps each difficulty's pick")
 
 do
   diffDD.opts.set("nh")
@@ -753,11 +833,9 @@ do
   assert(statusIs("Copied to Normal/Heroic (2 Mythic-only rows left out)"), "copy to normal/heroic: status " .. tostring((statusIs("Copied"))))
   assert(not copyBtn("Copy to Mythic", "ship:1"), "copy to normal/heroic: no Copy to Mythic on a Mythic reference")
   local key = "own:" .. (CRT.db.timeline.nextRef - 1)
-  for _, o in ipairs(opts(pullDD.opts)) do assert(o.key ~= key, "copy to normal/heroic: not listed under Mythic") end
+  assert(labelText() == "Abilities " .. DOT .. " Mythic " .. DOT .. " 9:48", "copy to normal/heroic: not shown under Mythic")
   diffDD.opts.set("nh")
-  local listed
-  for _, o in ipairs(opts(pullDD.opts)) do if o.key == key then listed = o end end
-  assert(listed, "copy to normal/heroic: switching to Normal/Heroic lists it")
+  assert(view.pull.reference == R:Find(key).ref and labelText():find("yours$"), "copy to normal/heroic: switching to Normal/Heroic shows it")
   local back = copyBtn("Copy to Mythic", key)
   assert(back, "copy to mythic: button on a Normal/Heroic reference")
   back.OnClick(back)
@@ -836,7 +914,7 @@ do
   assert(key, "order reference saved")
   diffDD.opts.set("mythic")
   bossDD.opts.set(5001)
-  pullDD.opts.set(key)
+  assert(view.pull.reference == R:Find(key).ref, "the boss's one ability timeline is shown")
   local list = opts(orderDD.opts)
   assert(#list == 2 and list[1].label == "Gebbo > Nama (as written)" and list[2].key == "Nama > Gebbo", "order options: " .. tostring(list[1] and list[1].label))
   assert(orderDD.opts.get() == "Gebbo > Nama" and view.order and view.order[1] == "Gebbo", "written order chosen at first")
@@ -846,7 +924,25 @@ do
   assert(CRT.db.timeline.orders[5001].nh == nil, "the other difficulty keeps its own")
   orderDD.opts.set("Gebbo > Nama")
   assert(CRT.db.timeline.orders[5001].mythic == nil, "the written order is kept as no choice")
-  pullDD.opts.set("ship:1")
+  -- layout: Order moved into the room the Pull dropdown left, right after the label, nothing reaching
+  -- past the page; at the pop-out's smallest it drops to the third row, clear of Share note
+  local f = orderDD.parent
+  local HELP = 4 + 20
+  rawset(f, "GetWidth", function() return CRT.UI.PAGE_W end)
+  orderDD.refresh()
+  local pt = orderDD.pt
+  assert(pt[1] == "TOPLEFT" and pt[4] == 412 + 220 + 16 and pt[5] == -4, "layout: Order right after the label on the main window: " .. tostring(pt[4]))
+  assert(pt[4] + 185 + HELP <= CRT.UI.PAGE_W - 8, "layout: Order and its (?) stay inside the page")
+  assert(orderDD.shown, "layout: Order shown for an ability timeline with an Order line")
+  rawset(f, "GetWidth", function() return 760 end)
+  orderDD.refresh()
+  pt = orderDD.pt
+  assert(pt[4] == 320 and pt[5] == -64, "layout: at the pop-out's smallest Order drops to the third row")
+  local shareLeft = 760 - (8 + HELP) - 90
+  assert(pt[4] + 185 + HELP < shareLeft, "layout: clear of Share note at the pop-out's smallest")
+  -- the label itself: where the Pull dropdown was, its text cut short before it reaches Order
+  assert(shownLabel().pt[4] == 412 and shownLabel().pt[5] == -9, "layout: the label sits where the Pull dropdown was")
+  rawset(f, "GetWidth", nil)
   bossDD.opts.set(3470)
   assert(view.order == nil and #opts(orderDD.opts) == 0, "a reference with no Order line has no order")
   R:Delete(key)
@@ -876,9 +972,8 @@ print("ok order shift for the alerts")
 do
   diffDD.opts.set("mythic")
   bossDD.opts.set(3470)
-  pullDD.opts.set("ship:1")
   local last = CRT.db.timeline.lastView
-  assert(last and last.group == "mythic" and last.boss == 3470 and last.pull == "ship:1", "the shown view is saved")
+  assert(last and last.group == "mythic" and last.boss == 3470 and last.pull == "ship:1", "the shown view is saved (pull: the key of what is drawn)")
   diffDD.opts.set("nh")
   -- a reload: the page is built again from what was saved
   CRT.db.timeline.lastView = { group = "mythic", boss = 3470, pull = "ship:1" }
@@ -886,13 +981,13 @@ do
   pages.timeline.build(pf2)
   pf2:Show()
   T:Fire()
-  assert(diffDD.opts.get() == "mythic" and bossDD.opts.get() == 3470 and pullDD.opts.get() == "ship:1" and view.group == "mythic", "a reload opens on the saved difficulty, boss and reference")
+  assert(diffDD.opts.get() == "mythic" and bossDD.opts.get() == 3470 and view.pull.reference == R:Find("ship:1").ref and view.group == "mythic", "a reload opens on the saved difficulty and boss, with its ability timeline")
   CRT.db.timeline.lastView = { group = "mythic", boss = 3470, pull = 99999 }
   local pfN = mock()
   pages.timeline.build(pfN)
   pfN:Show()
   T:Fire()
-  assert(bossDD.opts.get() == 3470 and type(pullDD.opts.get()) == "string" and pullDD.opts.get():find("^%a+:%d+$"), "a saved pull that is gone falls back to the boss's reference: " .. tostring(pullDD.opts.get()))
+  assert(bossDD.opts.get() == 3470 and view.pull.reference and view.overlay == nil, "an old saved pull choice is ignored: the ability timeline shows")
   CRT.db.timeline.lastView = { group = "mythic", boss = 424242, pull = 1 }
   local pfN = mock()
   pages.timeline.build(pfN)
@@ -977,7 +1072,6 @@ do
   assert(#printed == before + 1, "says why")
   diffDD.opts.set("mythic")
   bossDD.opts.set(3470)
-  pullDD.opts.set("ship:1")
   assert(b.enabled == true, "enabled with a reference shown")
 end
 print("ok rehearse button greyed without a source")
@@ -985,30 +1079,38 @@ print("ok rehearse button greyed without a source")
 do
   diffDD.opts.set("mythic")
   bossDD.opts.set(3470)
-  pullDD.opts.set("ship:1")
   local s = T:RehearsalSource()
   assert(s and s.base and s.base.reference == view.pull.reference, "source: the shown reference")
-  assert(s.encounterID == 3470 and s.group == "mythic" and s.difficultyName == "Mythic" and s.bossName == "Nek'zali the Soulcoiler" and s.order == nil, "source: boss, group, difficulty, name, order")
-  pullDD.opts.set(2)
+  assert(s.encounterID == 3470 and s.group == "mythic" and s.difficultyName == "Mythic" and s.bossName == "Nek'zali the Soulcoiler" and s.order == nil and s.pull == "ship:1", "source: boss, group, difficulty, name, order")
+  local b2 = recentRow(2) b2.OnClick(b2)
   s = T:RehearsalSource()
-  assert(s and s.base == view.pull and s.base.id == 2 and s.difficultyName == "Mythic", "source: a recorded pull")
+  assert(view.overlay and view.overlay.id == 2 and s.base.reference == view.pull.reference and s.pull == "ship:1", "source: a pull laid over it still rehearses the ability timeline")
+  b2 = recentRow(2) b2.OnClick(b2)
+  -- a boss with no ability timeline rehearses the pull drawn
+  local zid = T:SavePull({ encounterID = 4004, name = "Zork the Late", difficultyID = 16, length = 90, kill = false, casts = {}, deaths = {} })
+  bossDD.opts.set(4004)
+  s = T:RehearsalSource()
+  assert(s and s.base == view.pull and s.base.id == zid and s.pull == zid and s.difficultyName == "Mythic", "source: a recorded pull")
   GetDifficultyInfo = function(id) if id == 16 then return "Mythic (game)" end end
   assert(T:RehearsalSource().difficultyName == "Mythic (game)", "source: a pull's own difficulty name")
   GetDifficultyInfo = nil
+  T:DeleteBoss(4004)
+  bossDD.opts.set(3470)
   local key = R:Add("Boss: Nek'zali the Soulcoiler\\nDifficulty: Heroic\\nA: 0:10")
   diffDD.opts.set("nh")
   bossDD.opts.set(3470)
-  pullDD.opts.set(key)
   s = T:RehearsalSource()
   assert(s and s.group == "nh" and s.difficultyName == "Heroic", "source: a Heroic reference plays as Heroic")
   local nkey = R:Add("Boss: Nek'zali the Soulcoiler\\nDifficulty: Normal\\nA: 0:10")
-  pullDD.opts.set(nkey)
+  T:SetChosenReference(3470, "nh", R.ChoiceKey(R:Find(nkey)))
   assert(T:RehearsalSource().difficultyName == "Normal", "source: a reference's own Difficulty line: " .. tostring(T:RehearsalSource().difficultyName))
   local bkey = R:Add("Boss: Nek'zali the Soulcoiler\\nA: 0:10")
-  pullDD.opts.set(bkey)
+  T:SetChosenReference(3470, "nh", R.ChoiceKey(R:Find(bkey)))
   assert(T:RehearsalSource().difficultyName == "Heroic", "source: a reference with no Difficulty line plays as its group")
   R:Delete(nkey) R:Delete(bkey)
-  pullDD.opts.set(key)
+  T:Fire()
+  assert(T:RehearsalSource().base.reference == R:Find(key).ref, "a picked ability timeline that is deleted falls back to the first")
+  T:SetChosenReference(3470, "nh", nil)
   local b = rehearseBtn()
   b.OnClick(b)
   assert(RW:IsOpen() and RW.source.encounterID == 3470 and RW.source.difficultyName == "Heroic", "the button opens the window on the source")
@@ -1016,7 +1118,6 @@ do
   R:Delete(key)
   diffDD.opts.set("mythic")
   bossDD.opts.set(3470)
-  pullDD.opts.set("ship:1")
 end
 print("ok rehearse opens on what the Review tab shows")
 
@@ -1089,7 +1190,6 @@ do
   if RW:IsOpen() then RW:Close() end
   diffDD.opts.set("mythic")
   bossDD.opts.set(3470)
-  pullDD.opts.set("ship:1")
   local b = playBtn()
   assert(b and helps["Play"], "a Play button with a (?)")
   assert(b.enabled == true, "enabled with a fight shown")
@@ -1110,16 +1210,23 @@ do
   tick()
   assert(b.text == "Pause" and view.playFollow == true, "the window's Play plays here too")
   RW:Pause()
+  -- a pull laid over the abilities is the same fight: the playhead stays
+  local b2 = recentRow(2) b2.OnClick(b2)
+  tick()
+  assert(view.playT == 42, "a pull laid over it keeps the playhead")
+  b2 = recentRow(2) b2.OnClick(b2)
   -- another fight shown: no playhead, and Play opens the shown one instead
-  pullDD.opts.set(2)
+  local zid = T:SavePull({ encounterID = 4004, name = "Zork the Late", difficultyID = 16, length = 90, kill = false, casts = {}, deaths = {} })
+  bossDD.opts.set(4004)
   tick()
   assert(view.playT == nil and b.text == "Play", "a rehearsal of another fight shows no playhead")
   b.OnClick(b)
-  assert(RW:IsOpen() and RW.source.pull == 2 and RW:Playing(), "Play opens the shown fight")
+  assert(RW:IsOpen() and RW.source.pull == zid and RW:Playing(), "Play opens the shown fight")
   RW:Close()
   tick()
   assert(view.playT == nil, "closing the Rehearsal hides the playhead")
-  pullDD.opts.set("ship:1")
+  T:DeleteBoss(4004)
+  bossDD.opts.set(3470)
 end
 print("ok play on the timeline moves the playhead")
 do
@@ -1128,7 +1235,7 @@ do
     "Soulcoil Rite [spell 111] (type raid, tags healer):", "Phase: P1.5 (Intermission: Ritual of Awakening)", "Essence Rend:" }, "\\n")
   local key = T:SaveReferenceText(text)
   assert(key and key:find("^own:"), "saved as your reference: " .. tostring(key))
-  assert(diffDD.opts.get() == "mythic" and bossDD.opts.get() == 3470 and pullDD.opts.get() == key, "its boss, difficulty and reference picked")
+  assert(diffDD.opts.get() == "mythic" and bossDD.opts.get() == 3470 and view.pull.reference == R:Find(key).ref and labelText():find("yours$"), "its boss and difficulty picked, and (yours first) it is shown")
   local function shown(t) for _, x in ipairs(strings) do if x.text == t then return x end end end
   assert(shown("Phase 1 (from the pull)"), "the list starts with phase 1")
   assert(shown("Intermission: Ritual of Awakening") and not shown("P1.5  Intermission: Ritual of Awakening"), "a phase waiting for its start, as a heading by its name, not its number")
@@ -1137,7 +1244,7 @@ do
   -- text that doesn't read yet goes to the box instead
   assert(T:SaveReferenceText("Boss: X") == nil, "nothing saved when it doesn't read")
   R:Delete(key)
-  diffDD.opts.set("mythic") bossDD.opts.set(3470) pullDD.opts.set("ship:1")
+  diffDD.opts.set("mythic") bossDD.opts.set(3470)
 end
 print("ok send to timeline saves and lists the reference")
 
@@ -1146,11 +1253,11 @@ do
   -- the page's own selection alone
   diffDD.opts.set("mythic")
   bossDD.opts.set(3470)
-  pullDD.opts.set(2)
+  local b2 = recentRow(2) b2.OnClick(b2)
   local s = T:RehearsalSourceFor(3470, "mythic")
   assert(s and s.base.reference and s.base.reference.boss == "Nek'zali the Soulcoiler", "the group's reference first")
   assert(s.encounterID == 3470 and s.group == "mythic" and s.bossName == "Nek'zali the Soulcoiler" and s.order == nil, "boss, group, name, order")
-  assert(pullDD.opts.get() == 2 and view.pull.id == 2, "the page's selection is unchanged")
+  assert(view.overlay and view.overlay.id == 2 and view.pull.reference, "the page's selection is unchanged")
   assert(T:RehearsalSourceFor(3470, "nh") == nil, "no Normal/Heroic reference or pull: nil")
   local pulls = CRT.db.timeline.bosses[3470].pulls
   pulls[#pulls + 1] = { id = 3, difficultyID = 15, length = 200, kill = true, casts = {}, deaths = {} }
@@ -1158,7 +1265,7 @@ do
   assert(s and s.base.id == 3 and s.group == "nh" and s.pull == 3, "else the newest pull of the group")
   pulls[#pulls] = nil
   assert(T:RehearsalSourceFor(4242, "mythic") == nil, "a boss with nothing: nil")
-  pullDD.opts.set("ship:1")
+  b2 = recentRow(2) b2.OnClick(b2)
 end
 print("ok rehearsal source for a boss and difficulty")
 `;

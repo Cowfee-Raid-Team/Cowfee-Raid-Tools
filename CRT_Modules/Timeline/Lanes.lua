@@ -144,14 +144,23 @@ function Lanes.Placer(ref)
     end
 end
 
--- The lanes of a reference timeline: deaths (from the overlay pull only), one lane per reference
--- row in file order, and with an overlay a row of ticks for that pull's casts. A row gets its
--- spell and icon from its own [spell], else from the Journal row of the same name.
-local function referenceLanes(ref, rows, settings, encounterID, overlay, group, order)
+-- The lanes of a reference timeline: deaths, one lane per reference row in file order, and with an
+-- overlay a row of ticks for that pull's casts. A row gets its spell and icon from its own [spell],
+-- else from the Journal row of the same name. The deaths: a pull laid over it (picked on Recent pulls)
+-- shows only its own; with none, and when the caller asks for them (opts.recentDeaths: the Review tab's
+-- view), Deaths from recent pulls (settings.overlayOn) shows the group's newest settings.overlay pulls,
+-- the newest at age 0 and older ones faded by age; else there are none.
+local function referenceLanes(ref, rows, settings, encounterID, overlay, group, order, opts)
     local lanes, unknown = {}, {}
     local sources = {}
+    local deathsLength = 0
     if overlay then
         sources[1] = { pull = overlay, deaths = overlay.deaths or {}, overlay = true }
+    elseif opts and opts.recentDeaths and settings.overlayOn and type(encounterID) == "number" then
+        sources = CRT.Timeline:RecentDeaths(encounterID, settings.overlay or 3, nil, group)
+        for _, source in ipairs(sources) do
+            deathsLength = math.max(deathsLength, source.pull.length or 0)
+        end
     end
     addDeaths(lanes, unknown, sources, settings, settings.deathRows ~= "player")
 
@@ -213,7 +222,7 @@ local function referenceLanes(ref, rows, settings, encounterID, overlay, group, 
         end
     end
 
-    local extra = { phases = phases, parts = parts, masked = maskedCasts, length = math.max(ref.length or 0, overlay and overlay.length or 0) }
+    local extra = { phases = phases, parts = parts, masked = maskedCasts, length = math.max(ref.length or 0, overlay and overlay.length or 0, deathsLength) }
     if overlay then
         local ticks = { key = "overlay", label = "Pull " .. tostring(CRT.Timeline.PullNumber(overlay)) .. " casts", kind = "ticks", marks = {} }
         for _, cast in ipairs(overlay.casts or {}) do
@@ -229,13 +238,14 @@ end
 
 -- group ("nh" or "mythic") is the difficulty shown: "nh" leaves out Mythic-only reference rows
 -- and takes the death overlay from that group's pulls. Nil leaves everything in. order is the
--- chosen order of a reference's parts (a list of part names); nil draws the written order.
-function Lanes.Build(base, rows, settings, encounterID, overlay, group, order)
+-- chosen order of a reference's parts (a list of part names); nil draws the written order. opts
+-- (optional): { recentDeaths = true } draws Deaths from recent pulls on a reference (see referenceLanes).
+function Lanes.Build(base, rows, settings, encounterID, overlay, group, order, opts)
     if not base then
         return {}, {}, { phases = {}, length = 0 }
     end
     if base.reference then
-        return referenceLanes(base.reference, rows, settings, encounterID, overlay, group, order)
+        return referenceLanes(base.reference, rows, settings, encounterID, overlay, group, order, opts)
     end
     return pullLanes(base, rows, settings, encounterID, group)
 end
@@ -244,8 +254,8 @@ end
 -- hidden abilities (the boss file's hidden list) and with your ignored mechanics apart. The one list the
 -- view, the Rehearsal and the Mech Alerts tab all read, so they agree. Returns the lanes, the deaths with
 -- no time, extra (see Build) and the ignored lanes.
-function Lanes.AsShown(base, rows, settings, encounterID, overlay, group, order)
-    local lanes, unknown, extra = Lanes.Build(base, rows, settings, encounterID, overlay, group, order)
+function Lanes.AsShown(base, rows, settings, encounterID, overlay, group, order, opts)
+    local lanes, unknown, extra = Lanes.Build(base, rows, settings, encounterID, overlay, group, order, opts)
     local Timeline = CRT.Timeline
     if Timeline.ApplyAbilities then
         lanes = Timeline:ApplyAbilities(lanes, encounterID, rows)

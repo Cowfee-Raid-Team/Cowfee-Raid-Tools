@@ -8,9 +8,10 @@ local ADDON, CRT = ...
 -- ctx gives it selectedBoss(), bossName(), difficulty() (the page's difficulty group, "nh" or
 -- "mythic"), references() (the selected boss's references of that group, by the same rule as the
 -- boss list) and refresh(). Save stamps the text with the page's difficulty, and each listed
--- reference has a Copy to button that adds a copy for the other group. Recent(parent, width, pullLabel, toggle) makes the
--- Review tab's Recent pulls list: the boss's saved pulls beside a reference, where a click lays
--- one over it (toggle(pullID)); the page keeps which one, and says with recent:Update.
+-- reference has a Copy to button that adds a copy for the other group. With more than one listed, On Review
+-- picks the one the Review tab shows (Timeline:SetChosenReference). Recent(parent, width, pullLabel, toggle)
+-- makes the Review tab's Recent pulls list: the boss's saved pulls on the right, where a click picks one
+-- and a second click clears it (toggle(pullID)); the page keeps which one, and says with recent:Update.
 
 local Reference = CRT.TimelineReference
 local Journal = CRT.TimelineJournal
@@ -27,6 +28,9 @@ local LIST_W = 310
 local REFS_X = UI.PAGE_W - 8 - LIST_W -- the boss's references, in the right column, out of the way
 local MAX_ERRORS = 3
 local ABILITY_H = 20
+local USE_W = 84 -- On Review's tick and its word, at the right of a reference's top line
+local TEXT_USE = "On Review"
+local TEXT_USE_TIP = "The ability timeline the Review tab shows for this boss and difficulty. Alert times and the Rehearsal use it too. Until you pick one, your own comes first."
 
 local GROUP_NAMES = CRT.Timeline.GROUP_NAMES
 local OTHER_GROUP = { nh = "mythic", mythic = "nh" }
@@ -96,12 +100,33 @@ function ReferencePage.Recent(f, width, pullLabel, toggle)
     frame:Hide()
     local title = label(frame, "Recent pulls")
     title:SetPoint("TOPLEFT", 4, 0)
-    UI.HelpRight(title, "Recent pulls", "This boss's saved pulls. Click one to lay it over the ability timeline: its deaths go in the Deaths row, its casts show as ticks in a row of their own, and a line marks where it ended. Click again to clear it.")
+    UI.HelpRight(title, "Recent pulls", "This boss's saved pulls on this difficulty, counted per boss. Click one to see it over the ability timeline: its deaths in the Deaths row, its casts as ticks in a row of their own, and a line where it ended. Click it again to clear it, or another pull to switch.\n\nA boss with no ability timeline shows the pull itself.")
 
     local recent, lines = {}, {}
-    -- pulls newest first, each in a box as the Raid Notes list draws its notes, overlayID the one laid
-    -- over the reference (a gold border), shown whether a reference is shown at all
-    function recent:Update(pulls, overlayID, shown)
+
+    -- A row's tooltip: the pull, and what a click does.
+    local function lineEnter(self)
+        local pull = self.pull
+        if not pull then
+            return
+        end
+        UI.TooltipOwner(GameTooltip, self, "ANCHOR_LEFT", nil, nil, "timeline")
+        GameTooltip:SetText(pullLabel(pull), 1, 1, 1)
+        local n = #(pull.deaths or {})
+        GameTooltip:AddLine(n == 1 and "1 death" or (n .. " deaths"), 0.85, 0.85, 0.85)
+        GameTooltip:AddLine(self.selected and "Click to clear it." or "Click to see its deaths on the timeline.", 0.85, 0.85, 0.85, true)
+        GameTooltip:Show()
+    end
+
+    local function lineLeave()
+        GameTooltip:Hide()
+    end
+
+    -- pulls newest first, each in a box as the Raid Notes list draws its notes; selectedID is the one
+    -- picked (the theme's selected fill and a heading border); shown says whether the list shows at all
+    local last -- the last Update's arguments, drawn again in a new theme's colours
+    function recent:Update(pulls, selectedID, shown)
+        last = { pulls, selectedID, shown }
         frame:SetShown(shown)
         for i, pull in ipairs(pulls) do
             local line = lines[i]
@@ -121,19 +146,34 @@ function ReferencePage.Recent(f, width, pullLabel, toggle)
                 line:SetScript("OnClick", function(self)
                     toggle(self.pullID)
                 end)
+                line:SetScript("OnEnter", lineEnter)
+                line:SetScript("OnLeave", lineLeave)
                 lines[i] = line
             end
-            line.pullID = pull.id
+            line.pullID, line.pull = pull.id, pull
+            line.selected = pull.id == selectedID
             line.title:SetText(pullLabel(pull))
             local n = #(pull.deaths or {})
             line.deaths:SetText(n == 1 and "1 death" or (n .. " deaths"))
-            local c = pull.id == overlayID and GOLD or GRAY
+            local c = line.selected and GOLD or GRAY
             line:SetBackdropBorderColor(c[1], c[2], c[3], 1)
+            if line.selected then
+                line:SetBackdropColor(UI.Color("selected", 0.9))
+            else
+                line:SetBackdropColor(0, 0, 0, 0.45)
+            end
             line:Show()
         end
         for i = #pulls + 1, #lines do
             lines[i]:Hide()
         end
+    end
+    if UI.OnTheme then
+        UI:OnTheme(function()
+            if last then
+                recent:Update(last[1], last[2], last[3])
+            end
+        end)
     end
     return recent
 end
@@ -537,6 +577,29 @@ function ReferencePage.Build(f, ctx)
                 fill(entry.text, nil)
             end
         end)
+        -- On Review: which of the boss's ability timelines the Review tab, the alerts' times and the
+        -- Rehearsal use, shown when it has more than one (Timeline:ReferenceFor reads the pick)
+        l.use = CreateFrame("CheckButton", nil, l, "UICheckButtonTemplate")
+        l.use:SetSize(20, 20)
+        l.use:SetPoint("TOPLEFT", LIST_W - USE_W, 2)
+        l.use.Label = label(l, TEXT_USE, "CRTFontSmall")
+        l.use.Label:SetPoint("LEFT", l.use, "RIGHT", 1, 0)
+        l.use:SetScript("OnClick", function(self)
+            local entry = Reference:Find(self.key)
+            if entry then
+                CRT.Timeline:SetChosenReference(ctx.selectedBoss(), ctx.difficulty(), Reference.ChoiceKey(entry))
+            end
+            self:SetChecked(true) -- one is always in use: picking another moves the tick
+        end)
+        l.use:SetScript("OnEnter", function(self)
+            UI.TooltipOwner(GameTooltip, self, "ANCHOR_RIGHT", nil, nil, "timeline")
+            GameTooltip:SetText(TEXT_USE, 1, 1, 1)
+            GameTooltip:AddLine(TEXT_USE_TIP, 0.85, 0.85, 0.85, true)
+            GameTooltip:Show()
+        end)
+        l.use:SetScript("OnLeave", function()
+            GameTooltip:Hide()
+        end)
         l.delete:SetScript("OnClick", function(self)
             local key = self.key
             local entry = Reference:Find(key)
@@ -872,6 +935,8 @@ function ReferencePage.Build(f, ctx)
         local boss = ctx.selectedBoss()
         listLabel:SetText(boss and ("Ability timelines for " .. (ctx.bossName() or tostring(boss)) .. " (" .. GROUP_NAMES[ctx.difficulty()] .. ")") or "Pick a boss on the Review tab")
         local refs = boss and ctx.references() or {}
+        -- the one the Review tab shows (the one picker), ticked On Review when there is a choice
+        local inUse = #refs > 1 and CRT.Timeline:ReferenceFor(boss, ctx.difficulty(), ctx.bossName(), nil, refs) or nil
         -- a reference that is no longer in this list (another difficulty or boss) is not edited any more:
         -- Save then adds a new one and the box keeps its text
         if editing then
@@ -896,9 +961,15 @@ function ReferencePage.Build(f, ctx)
             l.copyTo:ClearAllPoints()
             l.copyTo:SetPoint("RIGHT", entry.own and l.edit or l.copy, "LEFT", -4, 0)
             l.copyTo:Show()
+            l.use.key = entry.key
+            l.use:SetChecked(inUse ~= nil and inUse.key == entry.key)
+            l.use:SetShown(inUse ~= nil)
+            l.use.Label:SetShown(inUse ~= nil)
             l:Show()
         end
         for i = #refs + 1, #lines do
+            lines[i].use:Hide()
+            lines[i].use.Label:Hide()
             lines[i]:Hide()
             lines[i].edit:Hide()
             lines[i].delete:Hide()

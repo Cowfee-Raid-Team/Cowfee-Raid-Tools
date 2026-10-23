@@ -1,16 +1,20 @@
 local ADDON, CRT = ...
 
--- The Timeline page, with three tabs: Review (Timeline/ReviewTab.lua: pick a boss and one of its
--- references or saved pulls, see it drawn by the timeline view), References (Timeline/ReferencePage.lua: paste, edit
--- and delete reference timelines) and Settings (Timeline/SettingsTab.lua: the view, which rows to
--- show, the deaths, and recording). Every control writes through Timeline:Set or the Journal's
--- setters, and the page redraws when either tells it something changed. The boss list is the boss
--- library's bosses in the raid route (CRT.Bosses:Options), headed by raid, so a boss can be opened
--- before its first pull; a boss outside the library is not listed. With a reference shown, the
--- Recent pulls list beside it lays one of the boss's pulls over it; that choice is not saved. The
--- Difficulty dropdown picks Normal/Heroic or Mythic, and every list shows only that group. The
--- difficulty, boss and reference or pull shown are saved in timeline.lastView, so the page opens on
--- them again, after a reload too.
+-- The Timeline page, with three tabs: Review (Timeline/ReviewTab.lua: pick a boss, see its ability
+-- timeline drawn by the timeline view and its recorded pulls on the right), Advanced
+-- (Timeline/ReferencePage.lua: paste, edit and delete ability timelines) and Settings
+-- (Timeline/SettingsTab.lua: the view, which rows to show, the deaths, and recording). Every control
+-- writes through Timeline:Set or the Journal's setters, and the page redraws when either tells it
+-- something changed. The boss list is the boss library's bosses in the raid route (CRT.Bosses:Options),
+-- headed by raid, so a boss can be opened before its first pull; a boss outside the library is not
+-- listed. The Difficulty dropdown picks Normal/Heroic or Mythic, and every list shows only that group.
+-- The ability timeline shown is the boss's one for the group as Timeline:ReferenceFor picks it (the
+-- picker the alerts and the Rehearsal use too; the Advanced tab's On Review changes it), named in a
+-- read-only label. Clicking a pull on Recent pulls lays it over the ability timeline (its deaths, its
+-- casts as ticks, its end line); clicking it again clears it. That pick is kept per boss and
+-- difficulty until a reload or the pull is deleted, never saved. A boss with no ability timeline
+-- shows the picked pull itself, else its newest. The difficulty and boss shown are saved in
+-- timeline.lastView, so the page opens on them again, after a reload too.
 
 local Timeline = CRT.Timeline
 local View = CRT.TimelineView
@@ -37,7 +41,9 @@ local TEXT = {
     pause = "Pause",
     playHelp = "Plays the rehearsal with a gold line moving across the timeline, so you can watch the whole fight and its cooldowns from above while the Rehearsal window shows it as you would see it.",
     rehearseHelp = "Plays this fight out in a window of its own, a stand-in boss frame and cast bar, with your real alerts firing on time. It can't start in combat and stops if combat begins; nothing is sent to the group. /crt timeline rehearse does the same.",
-    noRehearse = "Nothing to rehearse: pick a boss's ability timeline or pull on the Timeline's Review tab.",
+    noRehearse = "Nothing to rehearse: pick a boss with an ability timeline or a pull on the Timeline's Review tab.",
+    noAbilities = "No ability timeline",
+    yours = "yours",
 }
 
 local GRAY = { 0.35, 0.35, 0.35 }
@@ -64,10 +70,10 @@ local rehearseButton, playButton
 local tabButtons, tabFrames = {}, {}
 local controls = {} -- the Review tab's controls, which refresh() redraws
 local currentTab = "review"
-local selectedBoss, selectedPull
+local selectedBoss
 local selectedGroup = "nh" -- "nh" or "mythic": which difficulty the page shows
-local shownBoss, shownPull, shownBase, shownOverlay, shownGroup
-local overlayID -- the pull laid over the shown reference, by id; not saved
+local picks = { nh = {}, mythic = {} } -- per group, boss -> the pull id picked on Recent pulls; not saved
+local shownBoss, shownKey, shownBase, shownOverlay, shownGroup
 local bossList -- { { key, name, label } } for the dropdown and name lookups, rebuilt on each refresh
 local refsByBoss = {} -- boss key -> its references, { { key, ref, own, text } }, rebuilt with bossList
 local refresh
@@ -143,17 +149,30 @@ local function bossRefs()
     return selectedBoss and refsByBoss[selectedBoss] or {}
 end
 
-local function findRef(key)
-    for _, entry in ipairs(bossRefs()) do
-        if entry.key == key then
-            return entry
+-- The name of the selected boss, from the saved pulls or this raid's list.
+local function bossName()
+    if not selectedBoss then
+        return nil
+    end
+    for _, option in ipairs(bossOptions()) do
+        if option.key == selectedBoss then
+            return option.name
         end
     end
 end
 
--- A reference is selected by its text key ("own:1", "ship:1"), a pull by its number.
+-- The ability timeline shown for the selected boss and difficulty: the one picker (Timeline:ReferenceFor),
+-- from the boss's references as the boss list sorts them. Nil when the boss has none for the group.
+local function shownRef()
+    local refs = bossRefs()
+    if not (selectedBoss and refs[1]) then
+        return nil
+    end
+    return Timeline:ReferenceFor(selectedBoss, selectedGroup, bossName(), nil, refs)
+end
+
 local function showingReference()
-    return type(selectedPull) == "string"
+    return shownRef() ~= nil
 end
 
 -- The game's name for a difficultyID ("Mythic", "Heroic"), or nil when the game gives none.
@@ -181,34 +200,55 @@ local function inGroup(pull)
     return Timeline.DifficultyGroup(pull.difficultyID) == selectedGroup
 end
 
--- The boss's references first, then its recorded pulls, newest first.
-local function pullOptions()
-    local list = {}
-    for _, entry in ipairs(bossRefs()) do
-        list[#list + 1] = { key = entry.key, label = Reference.Label(entry.ref) .. (entry.own and (DOT .. "yours") or "") }
-    end
-    if selectedBoss then
-        for _, pull in ipairs(Timeline:Pulls(selectedBoss, selectedGroup)) do
-            list[#list + 1] = { key = pull.id, label = pullLabel(pull) }
-        end
-    end
-    return list
+-- The pull picked on Recent pulls for the selected boss and difficulty, or nil.
+local function pickedPull()
+    local id = selectedBoss and picks[selectedGroup][selectedBoss]
+    local pull = id and Timeline:Pull(selectedBoss, id)
+    return pull and inGroup(pull) and pull or nil
 end
 
--- The name of the selected boss, from the saved pulls or this raid's list.
-local function bossName()
-    if not selectedBoss then
+-- With no ability timeline, the recorded pull drawn: the one picked, else the boss's newest.
+local function shownPull()
+    if not selectedBoss or showingReference() then
         return nil
     end
-    for _, option in ipairs(bossOptions()) do
-        if option.key == selectedBoss then
-            return option.name
-        end
-    end
+    return pickedPull() or Timeline:Pulls(selectedBoss, selectedGroup)[1]
 end
 
--- Keeps the selection valid: a boss that is still listed, and a reference or pull that still exists
--- (else the boss's first reference, else its newest pull). The overlay goes with a reference only.
+-- What is drawn, by key: the ability timeline's ("ship:1", "own:2"), else the recorded pull's id.
+local function shownKeyNow()
+    local entry = shownRef()
+    if entry then
+        return entry.key
+    end
+    local pull = shownPull()
+    return pull and pull.id or nil
+end
+
+-- The pull lit on Recent pulls: the one laid over the ability timeline, or the recorded pull drawn.
+local function litPull()
+    if showingReference() then
+        return pickedPull()
+    end
+    return shownPull()
+end
+
+-- The read-only label in place of a Pull dropdown: the ability timeline shown ("Abilities · Mythic ·
+-- 9:48 · yours"), else that there is none (and the pull drawn instead).
+local function shownLabel()
+    if not selectedBoss then
+        return ""
+    end
+    local entry = shownRef()
+    if entry then
+        return Reference.Label(entry.ref) .. (entry.own and (DOT .. TEXT.yours) or "")
+    end
+    local pull = shownPull()
+    return TEXT.noAbilities .. (pull and (DOT .. "Pull " .. tostring(Timeline.PullNumber(pull))) or "")
+end
+
+-- Keeps the selection valid: a boss that is still listed (else the route's first), and each picked
+-- pull that still exists in its group (a deleted or trimmed one is dropped).
 local function fixSelection()
     local options = bossOptions()
     local found = false
@@ -219,22 +259,14 @@ local function fixSelection()
     end
     if not found then
         selectedBoss = CRT.Bosses.FirstKey(options)
-        selectedPull = nil
     end
-    local valid
-    if showingReference() then
-        valid = findRef(selectedPull) ~= nil
-    else
-        local pull = selectedBoss and selectedPull and Timeline:Pull(selectedBoss, selectedPull)
-        valid = pull ~= nil and inGroup(pull)
-    end
-    if not valid then
-        local refs = bossRefs()
-        local pulls = selectedBoss and Timeline:Pulls(selectedBoss, selectedGroup) or {}
-        selectedPull = (refs[1] and refs[1].key) or (pulls[1] and pulls[1].id) or nil
-    end
-    if not showingReference() or not (overlayID and Timeline:Pull(selectedBoss, overlayID)) then
-        overlayID = nil
+    for group, list in pairs(picks) do
+        for boss, id in pairs(list) do
+            local pull = Timeline:Pull(boss, id)
+            if not pull or Timeline.DifficultyGroup(pull.difficultyID) ~= group then
+                list[boss] = nil
+            end
+        end
     end
 end
 
@@ -242,7 +274,7 @@ end
 
 -- The shown reference, when it has an Order line, and the boss its chosen order is saved under.
 local function orderedRef()
-    local entry = showingReference() and findRef(selectedPull)
+    local entry = shownRef()
     if entry and entry.ref.order then
         return entry.ref, entry.ref.encounterID or selectedBoss
     end
@@ -265,28 +297,41 @@ local function orderOptions()
 end
 
 local function updateView()
-    local base, sig
-    if showingReference() then
-        local entry = findRef(selectedPull)
-        base = entry and { reference = entry.ref }
-        sig = entry and entry.text -- each refresh parses afresh, so the text tells if it changed
+    local entry = shownRef()
+    local base, sig, overlay
+    if entry then
+        base = { reference = entry.ref }
+        sig = entry.text -- each refresh parses afresh, so the text tells if it changed
+        overlay = pickedPull()
     else
-        base = selectedBoss and selectedPull and Timeline:Pull(selectedBoss, selectedPull) or nil
+        base = shownPull()
         sig = base
     end
-    local overlay = showingReference() and overlayID and Timeline:Pull(selectedBoss, overlayID) or nil
+    local key = entry and entry.key or (base and base.id)
     view:SetOrder(chosenOrder())
-    if sig ~= shownBase or selectedPull ~= shownPull or selectedBoss ~= shownBoss or overlay ~= shownOverlay or selectedGroup ~= shownGroup then
-        shownBase, shownPull, shownBoss, shownOverlay, shownGroup = sig, selectedPull, selectedBoss, overlay, selectedGroup
+    if sig ~= shownBase or key ~= shownKey or selectedBoss ~= shownBoss or overlay ~= shownOverlay or selectedGroup ~= shownGroup then
+        shownBase, shownKey, shownBoss, shownOverlay, shownGroup = sig, key, selectedBoss, overlay, selectedGroup
         view:SetData(base, selectedBoss, overlay, bossName(), selectedGroup)
     else
         view:Refresh()
     end
     emptyLabel:SetText(selectedBoss and EMPTY_BOSS or EMPTY_ALL)
     emptyLabel:SetShown(base == nil)
-    -- the Recent pulls list takes the right edge while a reference is shown
-    holder:SetPoint("BOTTOMRIGHT", reviewFrame, "BOTTOMRIGHT", showingReference() and -(RECENT_W + 16) or -8, 8)
-    recent:Update(showingReference() and Timeline:Pulls(selectedBoss, selectedGroup) or {}, overlayID, showingReference())
+    -- the Recent pulls list takes the right edge whenever the boss has pulls on this difficulty
+    local pulls = selectedBoss and Timeline:Pulls(selectedBoss, selectedGroup) or {}
+    holder:SetPoint("BOTTOMRIGHT", reviewFrame, "BOTTOMRIGHT", pulls[1] and -(RECENT_W + 16) or -8, 8)
+    local lit = litPull()
+    recent:Update(pulls, lit and lit.id, pulls[1] ~= nil)
+end
+
+-- A click on Recent pulls: picks that pull, or clears it when it is the one lit; another switches.
+local function togglePull(pullID)
+    if not selectedBoss then
+        return
+    end
+    local lit = litPull()
+    picks[selectedGroup][selectedBoss] = not (lit and lit.id == pullID) and pullID or nil
+    refresh()
 end
 
 local function buildReview(f)
@@ -299,41 +344,32 @@ local function buildReview(f)
         boss = function()
             return selectedBoss
         end,
-        pull = function()
-            return selectedPull
-        end,
-        -- Switching difficulty drops the overlay and repairs the selection.
+        -- Switching difficulty repairs the selection; each difficulty keeps its own picked pulls.
         selectGroup = function(key)
-            selectedGroup, overlayID, bossList = key, nil, nil
+            selectedGroup, bossList = key, nil
             fixSelection()
             refresh()
         end,
         selectBoss = function(key)
-            selectedBoss, selectedPull, overlayID = key, nil, nil
+            selectedBoss = key
             fixSelection()
             refresh()
         end,
-        selectPull = function(key)
-            selectedPull, overlayID = key, nil
-            refresh()
-        end,
-        toggleOverlay = function(pullID)
-            overlayID = overlayID ~= pullID and pullID or nil
-            refresh()
-        end,
-        -- A phase line moved (or put back) on the timeline is written into the shown reference. A
-        -- shipped reference is never changed: the move makes a reference of your own, which is then
-        -- shown.
+        togglePull = togglePull,
+        -- A phase line moved (or put back) on the timeline is written into the shown ability timeline. A
+        -- shipped one is never changed: the move makes one of your own, which is then shown (and picked
+        -- On Review when another was picked there).
         movePhase = function(index, seconds)
-            if type(selectedPull) ~= "string" then
+            local entry = shownRef()
+            if not entry then
                 return
             end
-            local key, copied = Reference:MovePhase(selectedPull, index, seconds)
-            if key then
-                selectedPull = key
-                if copied then
-                    CRT:Print(TEXT.phaseCopy)
+            local key, copied = Reference:MovePhase(entry.key, index, seconds)
+            if key and copied then
+                if Timeline:ChosenReference(selectedBoss, selectedGroup) then
+                    Timeline:SetChosenReference(selectedBoss, selectedGroup, Reference.ChoiceKey(Reference:Find(key)))
                 end
+                CRT:Print(TEXT.phaseCopy)
             end
             refresh()
         end,
@@ -354,7 +390,10 @@ local function buildReview(f)
         end,
         orderOptions = orderOptions,
         bossOptions = bossOptions,
-        pullOptions = pullOptions,
+        shownLabel = shownLabel,
+        hasPull = function()
+            return shownPull() ~= nil
+        end,
         pullLabel = pullLabel,
         showingReference = showingReference,
     })
@@ -508,19 +547,22 @@ end
 -- shows. It is greyed out with nothing shown, in combat, during a boss encounter and while the alerts
 -- run a real pull (CRT.TimelineRehearsalRun.Blocked), and /crt timeline rehearse follows the same rules.
 
--- The difficulty, boss and reference or pull last shown (timeline.lastView).
+-- The difficulty and boss last shown (timeline.lastView). Its pull field (what a Pull dropdown once
+-- picked; still written, as the key of what was drawn) is not read: the ability timeline comes from
+-- Timeline:ReferenceFor.
 local function loadLastView()
     local last = settings().lastView
     if type(last) == "table" then
         selectedGroup = (last.group == "mythic") and "mythic" or "nh"
-        selectedBoss, selectedPull = last.boss, last.pull
+        selectedBoss = last.boss
     end
 end
 
 local lastViewRead = false
 
--- What the Review tab shows, as the Rehearsal window takes it: { base, encounterID, group, order,
--- bossName, difficultyName }, or nil when nothing is shown. Built the way refresh() builds the view;
+-- What the Review tab shows, as the Rehearsal window takes it: { base, encounterID, boss, pull, group,
+-- order, bossName, difficultyName }, or nil when nothing is shown: the ability timeline (never a pull
+-- laid over it), else the recorded pull drawn; pull is its key (shownKeyNow). Built the way refresh() builds the view;
 -- before the page was first opened, from the last view saved. The difficulty name is a recorded
 -- pull's own (as the game names it) or a reference's Difficulty line, else the group's: Mythic, or Heroic for Normal/Heroic.
 function Timeline:RehearsalSource()
@@ -533,11 +575,11 @@ function Timeline:RehearsalSource()
         fixSelection()
     end
     local base, pull
-    if showingReference() then
-        local entry = findRef(selectedPull)
-        base = entry and { reference = entry.ref }
+    local entry = shownRef()
+    if entry then
+        base = { reference = entry.ref }
     else
-        pull = selectedBoss and selectedPull and Timeline:Pull(selectedBoss, selectedPull) or nil
+        pull = shownPull()
         base = pull
     end
     if not base then
@@ -551,7 +593,7 @@ function Timeline:RehearsalSource()
         base = base,
         encounterID = encounterID,
         boss = selectedBoss,
-        pull = selectedPull,
+        pull = shownKeyNow(),
         group = selectedGroup,
         order = chosenOrder(),
         bossName = bossName(),
@@ -560,8 +602,8 @@ function Timeline:RehearsalSource()
 end
 
 -- What the Review tab would show for a boss on a difficulty group ("mythic" or "nh"), as the Rehearsal
--- window takes it (see RehearsalSource): the boss's first reference for that group (yours first, as the
--- pull dropdown lists them), else its newest pull of that group; nil when it has neither. For the alerts'
+-- window takes it (see RehearsalSource): the boss's ability timeline for that group (Timeline:ReferenceFor,
+-- as the Review tab shows it), else its newest pull of that group; nil when it has neither. For the alerts'
 -- Test buttons (RehearsalWindow:OpenAt); the page's own selection is left alone.
 function Timeline:RehearsalSourceFor(encounterID, group)
     group = group == "mythic" and "mythic" or "nh"
@@ -624,13 +666,13 @@ end
 -- Play on the Review tab and the playhead. One fight plays at a time, on the Rehearsal window's clock:
 -- Play here opens that window on the shown fight when it isn't open on it, then plays or pauses it,
 -- and the window's own Play does the same. While the window is open on the fight shown here (the
--- same boss, difficulty and reference or pull), the view draws the playhead at the window's time.
+-- same boss, difficulty and ability timeline or pull), the view draws the playhead at the window's time.
 
 -- The open rehearsal, when it is of the fight shown here.
 local function shownRehearsal()
     local RW = CRT.TimelineRehearsalWindow
     local src = RW and RW:IsOpen() and RW:Source()
-    if src and src.boss == selectedBoss and src.pull == selectedPull and src.group == selectedGroup then
+    if src and src.boss == selectedBoss and src.pull == shownKeyNow() and src.group == selectedGroup then
         return RW
     end
 end
@@ -709,8 +751,8 @@ function CRT.TimelinePopout()
     end
 end
 
--- "Show on the Timeline": opens the pop-out on a boss (by encounter ID) with its reference, or else
--- its newest pull, and lights the row of a spell there: spell is a spellID or an ability's name, and
+-- "Show on the Timeline": opens the pop-out on a boss (by encounter ID) with its ability timeline, or
+-- else its newest pull, and lights the row of a spell there: spell is a spellID or an ability's name, and
 -- name (optional) is tried when no row has that spellID. The boss is
 -- looked for on the shown difficulty first, then on the other one. Returns true when the row is
 -- shown, false when the boss or the row is not.
@@ -746,9 +788,7 @@ function Timeline:ShowRow(encounterID, spell, name)
         refresh()
         return false
     end
-    if key ~= selectedBoss or selectedGroup ~= before then
-        selectedBoss, selectedPull, overlayID = key, nil, nil
-    end
+    selectedBoss = key
     refresh()
     if not view then
         return false
@@ -766,7 +806,7 @@ refresh = function()
     bossList = buildBossList()
     fixSelection()
     -- what is shown is kept, so the page (and a reload) opens on it again
-    settings().lastView = { group = selectedGroup, boss = selectedBoss, pull = selectedPull }
+    settings().lastView = { group = selectedGroup, boss = selectedBoss, pull = shownKeyNow() }
     for _, control in ipairs(controls) do
         control.refresh()
     end
@@ -817,7 +857,7 @@ function Timeline:SaveReferenceText(text)
     end
     local diff = (ref.difficulty or ""):lower()
     selectedGroup = diff == "mythic" and "mythic" or "nh"
-    selectedPull, overlayID, bossList = key, nil, nil
+    bossList = nil
     UI:Show("timeline")
     selectTab("references")
     if refTab then
@@ -832,7 +872,7 @@ local function build(pf)
 
     local title = label(pf, "Timeline", "CRTFontLarge")
     title:SetPoint("TOPLEFT", 8, -8)
-    UI.HelpRight(title, "The Timeline", "Every raid boss pull is saved on its own: the boss's casts and players' deaths. Pick a boss and a pull on the Review tab; scroll the wheel to zoom, right-drag to move along, Shift + wheel to scroll the rows.\n\nAn ability timeline is the boss's planned timeline, listed first in the pull list; paste your own on the Advanced tab.\n\nThe red lines are phase changes: Shift-drag one to move it, right-click a moved line to put it back.\n\nA row's colour says what the ability is (a dot for each extra type):\n" .. CRT.TimelineReference.Legend())
+    UI.HelpRight(title, "The Timeline", "Every raid boss pull is saved on its own: the boss's casts and players' deaths. Pick a boss on the Review tab to see its ability timeline, and click a pull under Recent pulls to see that pull's deaths on it; scroll the wheel to zoom, right-drag to move along, Shift + wheel to scroll the rows.\n\nAn ability timeline is the boss's planned timeline; paste your own on the Advanced tab, and pick which one shows there.\n\nThe red lines are phase changes: Shift-drag one to move it, right-click a moved line to put it back.\n\nA row's colour says what the ability is (a dot for each extra type):\n" .. CRT.TimelineReference.Legend())
 
     for i, tab in ipairs(TABS) do
         local b = CreateFrame("Button", nil, pf, "BackdropTemplate")
@@ -899,15 +939,14 @@ local function build(pf)
         bossName = bossName,
         showingReference = showingReference,
         shownReference = function()
-            return showingReference() and findRef(selectedPull) or nil
+            return shownRef()
         end,
         refresh = function()
             refresh()
         end,
     })
 
-    -- open on the difficulty, boss and reference or pull last shown; fixSelection falls back when
-    -- the boss or pull is gone (the boss's reference, else its newest pull)
+    -- open on the difficulty and boss last shown; fixSelection falls back when the boss is gone
     loadLastView()
     lastViewRead = true
 

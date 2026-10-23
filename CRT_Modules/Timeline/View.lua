@@ -92,6 +92,7 @@ local BAND_LABEL_PAD = 3 -- the length label's room inside the after band
 local SAME_MOMENT = 0.05 -- seconds: another cast this close to the selected one is the same moment, not too soon
 local SELECT_INNER = { 0.10, 0.07, 0.05 } -- a dark inner border under the outline, so it shows on any flag colour
 local SELECT_INNER_W = 1
+local REVIEW_LANES = { recentDeaths = true } -- this view draws Deaths from recent pulls on an ability timeline too
 
 local TEXT = {
     notes = "Notes",
@@ -3594,7 +3595,7 @@ function Methods:Refresh()
         local rows = CRT.TimelineJournal:Rows(self.encounterID)
         -- with your labels for Journal abilities (rows, types, names), without the hidden abilities, and
         -- your ignored mechanics apart, drawn only in their own list under the lanes (DrawIgnored)
-        self.lanes, self.unknown, extra, self.ignoredLanes = CRT.TimelineLanes.AsShown(pull, rows, s, self.encounterID, self.overlay, self.group, self.order)
+        self.lanes, self.unknown, extra, self.ignoredLanes = CRT.TimelineLanes.AsShown(pull, rows, s, self.encounterID, self.overlay, self.group, self.order, REVIEW_LANES)
     else
         self.lanes, self.unknown, self.ignoredLanes = {}, {}, {}
     end

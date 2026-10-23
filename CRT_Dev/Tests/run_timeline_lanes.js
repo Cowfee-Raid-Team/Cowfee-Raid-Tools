@@ -313,6 +313,36 @@ do
 end
 print("ok overlay deaths stay in group")
 do
+  -- on an ability timeline: a picked pull shows only its own deaths; with none picked, Deaths from recent
+  -- pulls (asked for by the Review view only) shows the group's newest pulls' deaths, faded by age
+  local saved = { S.overlayOn, S.deathRows, S.bosses[3001], S.overlay }
+  S.overlayOn, S.deathRows, S.overlay = true, "combined", 2
+  local function p(id, diff, name, len)
+    return { id = id, difficultyID = diff, length = len or 100, casts = {}, deaths = { { t = id, name = name, class = "MAGE", role = "DAMAGER", spellID = 0 } } }
+  end
+  S.bosses[3001] = { pulls = { p(1, 16, "M1"), p(2, 15, "H1"), p(3, 16, "M2", 900), p(4, 16, "M3") } }
+  local review = { recentDeaths = true }
+  local function deaths(overlay, opts)
+    local lanes, _, extra = Lanes.Build({ reference = ref }, journalRows, S, 3001, overlay, "mythic", nil, opts)
+    local out = {}
+    if lanes[1].kind == "deaths" then
+      for _, m in ipairs(lanes[1].marks) do out[#out + 1] = m.death.name .. "@" .. m.age end
+    end
+    return table.concat(out, ","), extra
+  end
+  local all, extra = deaths(nil, review)
+  assert(all == "M3@0,M2@1", "recent deaths on an ability timeline: newest first, faded by age: " .. all)
+  assert(extra.length == 900 and extra.endLine == nil, "recent deaths: the timeline is as long as the longest, no end line")
+  local one, ex1 = deaths(S.bosses[3001].pulls[3], review)
+  assert(one == "M2@0" and ex1.endLine == 900, "a picked pull shows only its own deaths: " .. one)
+  assert(deaths(nil, nil) == "", "recent deaths only where asked (the Rehearsal and Mech Alerts read none)")
+  S.overlayOn = false
+  assert(deaths(nil, review) == "", "Deaths from recent pulls off: no deaths with no pull picked")
+  assert(deaths(S.bosses[3001].pulls[4], review) == "M3@0", "Deaths from recent pulls off: a picked pull still shows its deaths")
+  S.overlayOn, S.deathRows, S.bosses[3001], S.overlay = saved[1], saved[2], saved[3], saved[4]
+end
+print("ok deaths on an ability timeline: one picked pull, or the recent pulls")
+do
   -- AsShown: the lanes as the Timeline shows them, hidden abilities out, ignored ones apart
   local ref = assert(CRT.TimelineReference.Parse("Boss: Shown\\nLength: 2:00\\nSlam: 0:10\\nPool: 0:20\\nFish: 0:30"))
   CRT.Bosses = { Get = function(_, id) if id == 3001 then return { name = "Shown", hidden = { "Fish" } } end end }
