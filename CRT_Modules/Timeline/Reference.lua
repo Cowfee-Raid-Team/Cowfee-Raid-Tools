@@ -603,8 +603,21 @@ function Reference.RemovalKey(ref, text)
     return tostring(ref.encounterID or "") .. "|" .. (ref.difficulty or "") .. "|" .. headerOf(text)
 end
 
--- The key a picked ability timeline is saved by (Timeline:ChosenReference): yours by its "own:N" key, a
--- shipped one by its RemovalKey, so the pick survives a reorder of the shipped list.
+-- A short hash of text (a number below 2^31, as a string): the tiebreak in ChoiceKey.
+local function textHash(text)
+    local h = 5381
+    for i = 1, #text do
+        h = (h * 33 + text:byte(i)) % 2147483647
+    end
+    return tostring(h)
+end
+
+-- The key an In use ability timeline is saved by (Timeline:ChosenReference): yours by its "own:N" key, a
+-- shipped one by its RemovalKey plus a hash of its text, so the pick survives a reorder of the shipped
+-- list and two shipped blocks with the same Boss, Difficulty and Length never share one. An edit of a
+-- shipped block's text drops the pick (it falls back to the default). Shipped keys are kept by text, so
+-- ReferenceFor's check on every call reads each block's header once.
+local choiceCache, choiceCount = {}, 0
 function Reference.ChoiceKey(entry)
     if type(entry) ~= "table" then
         return nil
@@ -612,7 +625,16 @@ function Reference.ChoiceKey(entry)
     if entry.own then
         return entry.key
     end
-    return "ship|" .. Reference.RemovalKey(entry.ref, entry.text or "")
+    local text = entry.text or ""
+    local key = choiceCache[text]
+    if not key then
+        if choiceCount >= 64 then
+            choiceCache, choiceCount = {}, 0
+        end
+        key = "ship|" .. Reference.RemovalKey(entry.ref, text) .. "|" .. textHash(text)
+        choiceCache[text], choiceCount = key, choiceCount + 1
+    end
+    return key
 end
 
 local function isMarked(marks, entry)

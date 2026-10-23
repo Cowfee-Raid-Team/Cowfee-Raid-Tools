@@ -84,7 +84,7 @@ function ReviewTab.Build(f, ctx)
         get = ctx.boss,
         set = ctx.selectBoss,
     }), 200, -4)
-    -- The ability timeline shown (Timeline:ReferenceFor picks it; the Advanced tab's On Review picks
+    -- The ability timeline shown (Timeline:ReferenceFor picks it; the Advanced tab's In use picks
     -- another): read-only, where a Pull dropdown once was. The pulls are picked on Recent pulls.
     local LABEL_X, LABEL_MAX = 412, 220
     local shown = f:CreateFontString(nil, "OVERLAY", "CRTFontNormal")

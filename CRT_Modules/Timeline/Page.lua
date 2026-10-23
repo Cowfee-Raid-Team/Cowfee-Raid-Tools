@@ -9,7 +9,7 @@ local ADDON, CRT = ...
 -- headed by raid, so a boss can be opened before its first pull; a boss outside the library is not
 -- listed. The Difficulty dropdown picks Normal/Heroic or Mythic, and every list shows only that group.
 -- The ability timeline shown is the boss's one for the group as Timeline:ReferenceFor picks it (the
--- picker the alerts and the Rehearsal use too; the Advanced tab's On Review changes it), named in a
+-- picker the alerts and the Rehearsal use too; the Advanced tab's In use changes it), named in a
 -- read-only label. Clicking a pull on Recent pulls lays it over the ability timeline (its deaths, its
 -- casts as ticks, its end line); clicking it again clears it. That pick is kept per boss and
 -- difficulty until a reload or the pull is deleted, never saved. A boss with no ability timeline
@@ -358,7 +358,7 @@ local function buildReview(f)
         togglePull = togglePull,
         -- A phase line moved (or put back) on the timeline is written into the shown ability timeline. A
         -- shipped one is never changed: the move makes one of your own, which is then shown (and picked
-        -- On Review when another was picked there).
+        -- In use when another was picked there).
         movePhase = function(index, seconds)
             local entry = shownRef()
             if not entry then

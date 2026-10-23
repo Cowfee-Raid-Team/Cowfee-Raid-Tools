@@ -158,6 +158,8 @@ local function referenceLanes(ref, rows, settings, encounterID, overlay, group, 
         sources[1] = { pull = overlay, deaths = overlay.deaths or {}, overlay = true }
     elseif opts and opts.recentDeaths and settings.overlayOn and type(encounterID) == "number" then
         sources = CRT.Timeline:RecentDeaths(encounterID, settings.overlay or 3, nil, group)
+        -- a pull that ran longer than the ability timeline lengthens the view past its end, so its
+        -- late deaths are not cut off (the timeline's casts stop at its own length)
         for _, source in ipairs(sources) do
             deathsLength = math.max(deathsLength, source.pull.length or 0)
         end

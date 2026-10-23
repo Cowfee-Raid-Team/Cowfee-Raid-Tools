@@ -39,7 +39,7 @@ local function mock(kind)
     return function() end end })
 end
 allFrames = {}
-function CreateFrame(kind) local m = mock(kind) allFrames[#allFrames + 1] = m
+function CreateFrame(kind, _, _, template) local m = mock(kind) m.template = template allFrames[#allFrames + 1] = m
   if kind == "CheckButton" then checks[#checks+1] = m elseif kind == "EditBox" then edits[#edits+1] = m
   elseif kind == "Button" then buttons[#buttons+1] = m end
   return m end
@@ -507,28 +507,29 @@ do
 end
 print("ok references tab saves")
 
--- On Review: with more than one ability timeline, the Advanced tab picks the one the Review tab shows
+-- In use: with more than one ability timeline, the Advanced tab picks the one the Review tab shows
 do
-  local function useBox(key) for _, c in ipairs(checks) do if rawget(c, "key") == key and c.shown and rawget(c, "Label") and c.Label.text == "On Review" then return c end end end
+  local function useBox(key) for _, c in ipairs(checks) do if rawget(c, "key") == key and c.shown and rawget(c, "Label") and c.Label.text == "In use" then return c end end end
   local mine, ship = useBox("own:1"), useBox("ship:1")
-  assert(mine and ship and mine.checked and not ship.checked, "On Review: shown with two, yours ticked by default")
-  assert(mine.pt[1] == "TOPLEFT" and mine.pt[2] + 84 <= 310 and mine.pt[2] >= 154 + 60, "On Review sits inside the reference's line, after its kind: " .. tostring(mine.pt[2]))
+  assert(mine and ship and mine.checked and not ship.checked, "In use: shown with two, yours ticked by default")
+  assert(mine.pt[1] == "TOPLEFT" and mine.pt[2] + 70 <= 310 and mine.pt[2] >= 154 + 60, "In use sits inside the reference's line, after its kind: " .. tostring(mine.pt[2]))
+  assert(mine.template == "UIRadioButtonTemplate" and ship.template == "UIRadioButtonTemplate", "In use is a radio button")
   ship.OnClick(ship)
-  assert(labelText() == "Abilities " .. DOT .. " Mythic " .. DOT .. " 9:48" and view.pull.reference.length == 588, "On Review: the shipped one is shown: " .. tostring(labelText()))
-  assert(useBox("ship:1").checked and not useBox("own:1").checked, "On Review: the tick moves")
-  assert(T:ReferenceFor(3470, "mythic").key == "ship:1", "On Review: the alerts' picker follows (Timeline:ReferenceFor)")
-  assert(T:RehearsalSourceFor(3470, "mythic").base.reference.length == 588, "On Review: the Rehearsal follows")
-  assert(T:ReferenceFor(3470, "nh") == nil, "On Review: the other difficulty keeps its own")
+  assert(labelText() == "Abilities " .. DOT .. " Mythic " .. DOT .. " 9:48" and view.pull.reference.length == 588, "In use: the shipped one is shown: " .. tostring(labelText()))
+  assert(useBox("ship:1").checked and not useBox("own:1").checked, "In use: the tick moves")
+  assert(T:ReferenceFor(3470, "mythic").key == "ship:1", "In use: the alerts' picker follows (Timeline:ReferenceFor)")
+  assert(T:RehearsalSourceFor(3470, "mythic").base.reference.length == 588, "In use: the Rehearsal follows")
+  assert(T:ReferenceFor(3470, "nh") == nil, "In use: the other difficulty keeps its own")
   local saved = CRT.db.timeline.reviewRefs[3470].mythic
-  assert(type(saved) == "string" and saved:find("^ship|"), "On Review: a shipped pick is saved by its header, not its list place: " .. tostring(saved))
+  assert(type(saved) == "string" and saved:find("^ship|"), "In use: a shipped pick is saved by its header, not its list place: " .. tostring(saved))
   ship = useBox("ship:1") ship.OnClick(ship)
-  assert(useBox("ship:1").checked, "On Review: ticking the ticked one keeps it")
+  assert(useBox("ship:1").checked, "In use: ticking the ticked one keeps it")
   mine = useBox("own:1") mine.OnClick(mine)
-  assert(view.pull.reference.length == 300 and T:ReferenceFor(3470, "mythic").key == "own:1", "On Review: back to yours")
+  assert(view.pull.reference.length == 300 and T:ReferenceFor(3470, "mythic").key == "own:1", "In use: back to yours")
   -- a pick on Mythic with Prefer (a reminder's own Difficulty) still wins inside the group
-  assert(T:ReferenceFor(3470, "mythic", nil, "Mythic").key == "own:1", "On Review: the pick wins when it fits the asked difficulty")
+  assert(T:ReferenceFor(3470, "mythic", nil, "Mythic").key == "own:1", "In use: the pick wins when it fits the asked difficulty")
 end
-print("ok On Review picks the ability timeline shown")
+print("ok In use picks the ability timeline shown")
 
 do
   assert(view.pull.reference and view.pull.reference.length == 300, "own reference shown")
@@ -709,7 +710,7 @@ do
   view.onPhaseMoved(1, 197)
   assert(not R:Find(key).text:find("planned", 1, true), "phase move: putting it back removes the planned note")
   R:Delete(key)
-  -- with the shipped one picked On Review over one of yours, the copy is picked in its place
+  -- with the shipped one picked In use over one of yours, the copy is picked in its place
   local other = R:Add("Boss: Nek'zali the Soulcoiler\\nDifficulty: Mythic\\nA: 0:10")
   T:SetChosenReference(3470, "mythic", R.ChoiceKey(R:Find("ship:1")))
   assert(view.pull.reference.length == 588, "phase move: the shipped one picked")

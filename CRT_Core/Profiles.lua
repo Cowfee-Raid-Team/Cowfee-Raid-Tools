@@ -96,6 +96,7 @@ Profiles.SHARE = {
         record = true, minPull = true, keep = true, span = true, grid = true, iconSize = true, deathRows = true, roles = true,
         firstDeaths = true, overlay = true, overlayOn = true, hideEmpty = true, popout = true, tooltipMode = true, tooltipSpot = true,
         bosses = false, rows = false, references = false, nextRef = false, nextId = false,
+        reviewRefs = false, -- which ability timeline is in use: your own ones' keys mean nothing on another computer
     },
     markers = true,
     pace = { disabled = true, shown = true, position = true, own = false, shared = false, use = false },

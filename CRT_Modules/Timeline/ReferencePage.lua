@@ -8,7 +8,7 @@ local ADDON, CRT = ...
 -- ctx gives it selectedBoss(), bossName(), difficulty() (the page's difficulty group, "nh" or
 -- "mythic"), references() (the selected boss's references of that group, by the same rule as the
 -- boss list) and refresh(). Save stamps the text with the page's difficulty, and each listed
--- reference has a Copy to button that adds a copy for the other group. With more than one listed, On Review
+-- reference has a Copy to button that adds a copy for the other group. With more than one listed, In use
 -- picks the one the Review tab shows (Timeline:SetChosenReference). Recent(parent, width, pullLabel, toggle)
 -- makes the Review tab's Recent pulls list: the boss's saved pulls on the right, where a click picks one
 -- and a second click clears it (toggle(pullID)); the page keeps which one, and says with recent:Update.
@@ -28,9 +28,9 @@ local LIST_W = 310
 local REFS_X = UI.PAGE_W - 8 - LIST_W -- the boss's references, in the right column, out of the way
 local MAX_ERRORS = 3
 local ABILITY_H = 20
-local USE_W = 84 -- On Review's tick and its word, at the right of a reference's top line
-local TEXT_USE = "On Review"
-local TEXT_USE_TIP = "The ability timeline the Review tab shows for this boss and difficulty. Alert times and the Rehearsal use it too. Until you pick one, your own comes first."
+local USE_W = 70 -- In use's radio button and its word, at the right of a reference's top line
+local TEXT_USE = "In use"
+local TEXT_USE_TIP = "Sets which ability timeline the Review tab, alert times, Mech Alerts and the Rehearsal use for this boss and difficulty. Until you pick one, your own comes first."
 
 local GROUP_NAMES = CRT.Timeline.GROUP_NAMES
 local OTHER_GROUP = { nh = "mythic", mythic = "nh" }
@@ -577,19 +577,20 @@ function ReferencePage.Build(f, ctx)
                 fill(entry.text, nil)
             end
         end)
-        -- On Review: which of the boss's ability timelines the Review tab, the alerts' times and the
-        -- Rehearsal use, shown when it has more than one (Timeline:ReferenceFor reads the pick)
-        l.use = CreateFrame("CheckButton", nil, l, "UICheckButtonTemplate")
-        l.use:SetSize(20, 20)
-        l.use:SetPoint("TOPLEFT", LIST_W - USE_W, 2)
+        -- In use: a radio button per line, one on per boss and difficulty: which of the boss's ability
+        -- timelines the Review tab, the alert times, Mech Alerts and the Rehearsal use, shown when it has
+        -- more than one (Timeline:ReferenceFor reads the pick). The game's radio template, as Raid Groups'
+        -- Raid / Guild choice uses it.
+        l.use = CreateFrame("CheckButton", nil, l, "UIRadioButtonTemplate")
+        l.use:SetPoint("TOPLEFT", LIST_W - USE_W, 0)
         l.use.Label = label(l, TEXT_USE, "CRTFontSmall")
-        l.use.Label:SetPoint("LEFT", l.use, "RIGHT", 1, 0)
+        l.use.Label:SetPoint("LEFT", l.use, "RIGHT", 2, 0)
         l.use:SetScript("OnClick", function(self)
             local entry = Reference:Find(self.key)
             if entry then
                 CRT.Timeline:SetChosenReference(ctx.selectedBoss(), ctx.difficulty(), Reference.ChoiceKey(entry))
             end
-            self:SetChecked(true) -- one is always in use: picking another moves the tick
+            self:SetChecked(true) -- a radio: clicking the one on keeps it on; another moves it (Refresh)
         end)
         l.use:SetScript("OnEnter", function(self)
             UI.TooltipOwner(GameTooltip, self, "ANCHOR_RIGHT", nil, nil, "timeline")
@@ -935,7 +936,7 @@ function ReferencePage.Build(f, ctx)
         local boss = ctx.selectedBoss()
         listLabel:SetText(boss and ("Ability timelines for " .. (ctx.bossName() or tostring(boss)) .. " (" .. GROUP_NAMES[ctx.difficulty()] .. ")") or "Pick a boss on the Review tab")
         local refs = boss and ctx.references() or {}
-        -- the one the Review tab shows (the one picker), ticked On Review when there is a choice
+        -- the one the Review tab shows (the one picker), ticked In use when there is a choice
         local inUse = #refs > 1 and CRT.Timeline:ReferenceFor(boss, ctx.difficulty(), ctx.bossName(), nil, refs) or nil
         -- a reference that is no longer in this list (another difficulty or boss) is not edited any more:
         -- Save then adds a new one and the box keeps its text

@@ -414,12 +414,14 @@ function Timeline:ReferenceFor(encounterID, group, bossName, prefer, found)
     end
     group = group == "mythic" and "mythic" or "nh"
     local list = Reference:ForGroup(found, group)
-    -- the one picked on the Advanced tab ("On Review"), while it is still one of the boss's
+    -- the one In use (picked on the Advanced tab), while it is still one of the boss's. One of yours is
+    -- matched by its own key alone; only a shipped pick reads the shipped blocks' keys (cached by text)
     local chosen
     local want = self:ChosenReference(encounterID, group)
-    if want and Reference.ChoiceKey then
+    if type(want) == "string" and Reference.ChoiceKey then
+        local mine = want:find("^own:") ~= nil
         for _, entry in ipairs(list) do
-            if Reference.ChoiceKey(entry) == want then
+            if (mine and entry.own and entry.key == want) or (not mine and not entry.own and Reference.ChoiceKey(entry) == want) then
                 chosen = entry
                 break
             end
@@ -443,7 +445,7 @@ function Timeline:ReferenceFor(encounterID, group, bossName, prefer, found)
 end
 
 -- The ability timeline picked for a boss and difficulty group when it has more than one (the Advanced
--- tab's "On Review"): Reference.ChoiceKey of it, saved in timeline.reviewRefs[encounterID][group]. Nil
+-- tab's "In use"): Reference.ChoiceKey of it, saved in timeline.reviewRefs[encounterID][group]. Nil
 -- (the default) takes the group's first, yours first. ReferenceFor reads it, so the Review tab, the
 -- alerts' times and the Rehearsal all follow the one choice. SetChosenReference(encounterID, group, nil)
 -- clears it.
@@ -551,6 +553,7 @@ local function numberBoss(encounterID, boss)
         return boss
     end
     local db = tdb()
+    -- the backup is only for recovery by hand (editing the SavedVariables file): no code reads it back
     db.pullNumberBackup = db.pullNumberBackup or {}
     if db.pullNumberBackup[encounterID] == nil then
         local copy = {}
