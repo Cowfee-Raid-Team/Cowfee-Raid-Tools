@@ -10,7 +10,7 @@ local ADDON, CRT = ...
 -- timeline event finishes, and after the fight (out of combat, when the game's damage meter has
 -- stopped hiding values) it reads who died and what killed them, then saves the pull.
 
-local Timeline = { listeners = {} }
+local Timeline = { listeners = {}, saveListeners = {} }
 CRT.Timeline = Timeline
 
 local function tdb()
@@ -21,14 +21,25 @@ function Timeline:OnChange(fn)
     self.listeners[#self.listeners + 1] = fn
 end
 
-function Timeline:Fire()
-    for _, fn in ipairs(self.listeners) do
-        -- A listener (the page) failing must never stop the recording.
-        local ok, err = pcall(fn)
+-- Calls each listener with the arguments given; one failing (an error report) never stops the others or the recording.
+local function callEach(list, ...)
+    for _, fn in ipairs(list) do
+        local ok, err = pcall(fn, ...)
         if not ok and geterrorhandler then
             geterrorhandler()(err)
         end
     end
+end
+
+function Timeline:Fire()
+    callEach(self.listeners)
+end
+
+-- fn(pull) is called once for every pull SavePull stores, after it is numbered and stored, before the change
+-- listeners: Season Stats (SeasonStats/Data.lua) counts its pulls here, so a pull is counted once, from the
+-- one save path, and never from the encounter events a second time.
+function Timeline:OnSaved(fn)
+    self.saveListeners[#self.saveListeners + 1] = fn
 end
 
 function Timeline:Settings()
@@ -628,8 +639,16 @@ function Timeline:SavePull(pull)
             i = i + 1
         end
     end
+    callEach(self.saveListeners, pull)
     self:Fire()
     return pull.id
+end
+
+-- How many pulls a boss has had in a difficulty group: its counter (the last pull number given), which trimming
+-- and deleting never lower; 0 for a boss with none.
+function Timeline:PullCount(encounterID, group)
+    local boss = bossOf(encounterID)
+    return boss and boss.counts and boss.counts[group] or 0
 end
 
 -- Every boss with saved pulls, by name. With a group, count is that group's pull count (a boss

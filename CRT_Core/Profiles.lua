@@ -98,6 +98,7 @@ Profiles.SHARE = {
         bosses = false, rows = false, references = false, nextRef = false, nextId = false,
         reviewRefs = false, -- which ability timeline is in use: your own ones' keys mean nothing on another computer
     },
+    seasonStats = false, -- the raid's pull counters: data
     markers = true,
     pace = { disabled = true, shown = true, position = true, own = false, shared = false, use = false },
     alerts = {

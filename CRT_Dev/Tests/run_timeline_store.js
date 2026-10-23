@@ -186,6 +186,26 @@ do
   assert(T:RecentDeaths(6001, 1, nil, "mythic")[1].pull.number == 4, "recent deaths: the pull has its number")
 end
 print("ok old pulls are numbered once, per boss and group, oldest first")
+do
+  -- the one save hook (Season Stats): each saved pull once, numbered, after it is stored; a failing one stops nothing
+  CRT.db = { timeline = defaults() }
+  local seen, errs = {}, {}
+  geterrorhandler = function() return function(e) errs[#errs + 1] = e end end
+  assert(type(T.OnSaved) == "function", "save hook: Timeline:OnSaved exists")
+  T:OnSaved(function() error("a broken listener") end)
+  T:OnSaved(function(pull) seen[#seen + 1] = { number = pull.number, stored = T:Pull(pull.encounterID, pull.id) == pull } end)
+  local before = fired
+  T:SavePull({ encounterID = 7001, name = "Hooked", difficultyID = 16, startedAt = 1, length = 90, kill = false, casts = {}, deaths = {} })
+  T:SavePull({ encounterID = 7001, name = "Hooked", difficultyID = 16, startedAt = 2, length = 95, kill = true, casts = {}, deaths = {} })
+  assert(#seen == 2 and seen[1].number == 1 and seen[2].number == 2 and seen[1].stored and seen[2].stored, "save hook: each pull once, numbered and stored")
+  assert(#errs == 2 and fired == before + 2, "save hook: a failing listener is reported and the save still fires")
+  geterrorhandler = nil
+  -- the pull counter per boss and group, for Season Stats' first fill
+  assert(T:PullCount(7001, "mythic") == 2 and T:PullCount(7001, "nh") == 0 and T:PullCount(9999, "mythic") == 0, "pull count: the boss's counter per group")
+  CRT.db.timeline.bosses[7002] = { name = "Old", pulls = { { id = 1, difficultyID = 16, startedAt = 5, casts = {}, deaths = {} } } }
+  assert(T:PullCount(7002, "mythic") == 1, "pull count: an older store is numbered first")
+end
+print("ok the save hook and the pull counter")
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 let src; try { src = fs.readFileSync(process.argv[2], 'utf8'); } catch (e) { console.error('cannot read ' + process.argv[2]); process.exit(1); }

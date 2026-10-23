@@ -606,6 +606,36 @@ function Tattle:Totals()
     return Tattle.Summary(tdb().history)
 end
 
+-- Every saved pull on one boss, the running night's too, oldest first, for Season Stats' trend:
+-- { at, difficulty, success, damage }, damage being every player's counted damage added up (Tattle.PullDamage:
+-- the tracked mechanics, plus the meter's avoidable damage when that setting is on).
+function Tattle:BossPulls(encounterID)
+    local out = {}
+    if encounterID == nil then
+        return out
+    end
+    local nights = {}
+    for _, night in ipairs(tdb().history) do
+        nights[#nights + 1] = night
+    end
+    nights[#nights + 1] = tdb().current
+    for _, night in ipairs(nights) do
+        for _, pull in ipairs(type(night) == "table" and night.pulls or {}) do
+            if pull.encounterID == encounterID then
+                local damage = 0
+                for _, p in pairs(pull.players or {}) do
+                    damage = damage + Tattle.PullDamage(p, pull)
+                end
+                out[#out + 1] = { at = pull.at or night.startedAt, difficulty = pull.difficulty, success = pull.success, damage = damage }
+            end
+        end
+    end
+    table.sort(out, function(a, b)
+        return (a.at or 0) < (b.at or 0)
+    end)
+    return out
+end
+
 -- Mechanics as a list, most damage first: { name, damage, hits }. hits is 1 for a single pull.
 function Tattle.SortedMechanics(mechanics)
     local list = {}

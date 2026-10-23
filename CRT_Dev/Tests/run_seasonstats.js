@@ -1,0 +1,449 @@
+// Season Stats (CRT_Modules/SeasonStats/): the raid's own counters per boss and difficulty group, from the
+// Timeline's one save hook; the fill from the Timeline's saved pulls, once; kills, wipes, pulls to first kill,
+// best kill, each night's longest pull and furthest phase (the alerts engine's), the spells that killed most,
+// deaths per pull over the last 10 against the 10 before; raid nights from the Late Tracker, the avoidable damage
+// trend from Tattlebot (Tattle:BossPulls); the page: the Season and Difficulty dropdowns, the cards, the table in
+// route order, the reflection, the empty states, inside the page area; saved data only (never in Export settings
+// only, CRT_Dev/Tests/run_profiles_share.js); no season facts in the feature code.
+// Usage: node run_seasonstats.js <addon folder>
+const fs = require('fs');
+const path = require('path');
+const themeLua = require('./theme_stub');
+const { lua, lauxlib, lualib, to_luastring } = require('fengari');
+const L = lauxlib.luaL_newstate();
+lualib.luaL_openlibs(L);
+const harness = themeLua(process.argv.slice(2)) + `
+local timelineSrc, registrySrc, lateSrc, tattleSrc, dataSrc, pageSrc, coreSrc, panelSrc, profilesSrc, tocSrc = ...
+local fails, passes = 0, 0
+local function check(ok, what) if ok then passes = passes + 1 else fails = fails + 1 print("FAIL " .. what) end end
+local function eq(a, b, what) check(a == b, what .. " (got " .. tostring(a) .. ", want " .. tostring(b) .. ")") end
+-- a text without its colour codes
+local function plain(s) return (tostring(s):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")) end
+geterrorhandler = function() return function(e) print("ERROR " .. tostring(e)) fails = fails + 1 end end
+issecretvalue = function(v) return v == "SECRET" end
+format = string.format
+date = os.date
+local NOW = os.time({ year = 2026, month = 10, day = 20, hour = 20, min = 0, sec = 0 })
+time = function(t) if t then return os.time(t) end return NOW end
+GetTime = function() return 1000 end
+C_Timer = { After = function() end, NewTicker = function() return { Cancel = function() end } end }
+C_Spell = { GetSpellName = function(id) return ({ [111] = "Fang Bite", [222] = "Venom Pool", [333] = "Tail Swipe" })[id] end }
+local tip = { lines = {} }
+GameTooltip = { SetOwner = function(self, o) self.owner = o self.lines = {} end, SetText = function(self, t) self.lines = { t } end,
+  AddLine = function(self, t) self.lines[#self.lines + 1] = t end, Show = function(self) self.shown = true end, Hide = function(self) self.shown = false end,
+  ClearAllPoints = function() end, SetPoint = function() end }
+
+-- stand-in frames, keeping where they were put
+local function mock()
+  local o = { shown = true, scripts = {}, events = {}, kids = {} }
+  return setmetatable(o, { __index = function(t, k)
+    local m = ({
+      SetText = function(self, v) self.text = v end,
+      GetText = function(self) return self.text end,
+      Show = function(self) self.shown = true if self.scripts.OnShow then self.scripts.OnShow(self) end end,
+      Hide = function(self) self.shown = false end,
+      IsShown = function(self) return self.shown end,
+      IsVisible = function(self) return self.shown and (not self.parent or self.parent:IsVisible()) end,
+      SetShown = function(self, v) self.shown = v and true or false end,
+      SetScript = function(self, name, fn) self.scripts[name] = fn end,
+      HookScript = function(self, name, fn) local old = self.scripts[name] self.scripts[name] = function(...) if old then old(...) end fn(...) end end,
+      RegisterEvent = function(self, e) self.events[e] = true end,
+      SetSize = function(self, w, h) self.w, self.h = w, h end,
+      SetWidth = function(self, w) self.w = w end,
+      SetHeight = function(self, h) self.h = h end,
+      GetWidth = function(self) return self.w or 0 end,
+      GetHeight = function(self) return self.h or 0 end,
+      SetPoint = function(self, ...) self.point = { ... } end,
+      ClearAllPoints = function(self) self.point = nil end,
+      SetTextColor = function(self, r, g, b) self.color = { r, g, b } end,
+      SetColorTexture = function(self, r, g, b, a) self.colorTex = { r, g, b, a } end,
+      CreateTexture = function(self) local x = mock() x.parent = self self.kids[#self.kids + 1] = x return x end,
+      CreateFontString = function(self) local x = mock() x.parent = self x.isText = true self.kids[#self.kids + 1] = x return x end,
+      GetStringWidth = function(self) return #(self.text or "") * 6 end,
+      GetParent = function(self) return self.parent end,
+      GetFrameLevel = function() return 1 end,
+    })[k]
+    if m then return m end
+    if type(k) == "string" and k:match("^%u") then return function() end end
+    return nil
+  end })
+end
+local made = {}
+CreateFrame = function(_, name, parent) local f = mock() f.parent = parent f.name = name made[#made + 1] = f if parent and parent.kids then parent.kids[#parent.kids + 1] = f end return f end
+UIParent = mock()
+
+-- the CRT: its saved data, the boss library with two test seasons, the Late Tracker, Tattlebot, the Timeline
+local helps, pages, dropdowns, sorts = {}, {}, {}, {}
+local UI = {
+  PAGE_W = 1026, PAGE_H = 560,
+  RegisterPage = function(_, key, title, build) pages[key] = { title = title, build = build } end,
+  HelpRight = function(target, title, text) helps[title] = text local h = mock() h.target = target return h end,
+  Dropdown = function(parent, label, opts) local row = mock() row.parent = parent row.label, row.opts = label, opts row.refresh = function() row.refreshed = (row.refreshed or 0) + 1 end
+    dropdowns[label] = row return row end,
+  SortHeaders = function(parent, cols, opts) local s = { cols = cols, opts = opts, refreshed = 0 } s.refresh = function() s.refreshed = s.refreshed + 1 end sorts[#sorts + 1] = s return s end,
+  IsModern = function() return true end,
+}
+local CRT = { UI = UI, db = {
+  ui = {},
+  timeline = { record = true, minPull = 15, keep = 10, bosses = {}, rows = {}, nextId = 1 },
+  late = { days = {}, hour = 20, minute = 0, grace = 0, history = {}, nextId = 1, lastAuto = "" },
+  tattle = { enabled = true, raidsOnly = true, avoidable = false, custom = {}, season = "Season 1", history = {}, nextId = 1 },
+} }
+function CRT:Print() end
+CRT.Groups = { OnChange = function() end }
+CRT_THEME(CRT, UI)
+-- the saved default from Core.lua, as the game fills it in
+local coreDefault = coreSrc:match("\\n    seasonStats = (%b{}),")
+check(coreDefault ~= nil, "Core.lua has a seasonStats default")
+CRT.db.seasonStats = assert(load("return " .. (coreDefault or "{}")))()
+eq(CRT.db.seasonStats.filled, false, "default: not filled yet")
+check(type(CRT.db.seasonStats.bosses) == "table" and next(CRT.db.seasonStats.bosses) == nil, "default: no bosses")
+
+-- the alerts engine's phases, as Alerts/Engine.lua exposes them
+local alertsListeners = {}
+local starts = {}
+CRT.Alerts = { running = false, OnChange = function(_, fn) alertsListeners[#alertsListeners + 1] = fn end,
+  Phases = function() return { 1, 2, 3 } end, PhaseStart = function(_, ph) return starts[ph] end }
+local function alertsFire() for _, fn in ipairs(alertsListeners) do fn() end end
+
+assert(load(timelineSrc, "Timeline/Data.lua"))("CowfeeRaidTools", CRT)
+assert(load(registrySrc, "Registry.lua"))("CowfeeRaidTools", CRT)
+local B = CRT.Bosses
+B:Season({ key = "test-s1", name = "Test Season 1", order = 1, raids = { { key = "r1", name = "Raid One", bosses = { 9001, 9002 } } } })
+B:Season({ key = "test-s2", name = "Test Season 2", order = 2, current = true, raids = { { key = "r2", name = "Raid Two", bosses = { 9103, 9101, 9102 } } } })
+for id, def in pairs({ [9001] = { "Alpha", "test-s1" }, [9002] = { "Beta", "test-s1" }, [9101] = { "Gamma", "test-s2" }, [9102] = { "Delta", "test-s2" }, [9103] = { "Epsilon", "test-s2" } }) do
+  B:Register({ encounterID = id, name = def[1], season = def[2] })
+end
+assert(load(lateSrc, "Late/Data.lua"))("CowfeeRaidTools", CRT)
+CRT.TattleDB = { bosses = { { boss = "Alpha", encounterID = 9001, mechanics = { { name = "Puddle", spells = { 555 } } } } } }
+assert(load(tattleSrc, "Tattlebot/Data.lua"))("CowfeeRaidTools", CRT)
+local T = CRT.Timeline
+
+-- the Timeline as it was before Season Stats: Gamma 118 Mythic pulls, the newest 12 kept (no kills); Delta three
+-- Normal pulls, the third a kill; Epsilon five Mythic pulls, kills on 4 and 5
+local DAY = 86400
+local function pull(enc, name, diff, number, at, length, kill, deaths)
+  return { id = number, encounterID = enc, name = name, difficultyID = diff, number = number, startedAt = at, length = length, kill = kill, casts = {}, deaths = deaths or {} }
+end
+local gamma = { name = "Gamma", counts = { mythic = 118 }, pulls = {} }
+for n = 107, 118 do gamma.pulls[#gamma.pulls + 1] = pull(9101, "Gamma", 16, n, NOW - 10 * DAY + n * 60, 100 + n, false, { { spellID = 111 } }) end
+local delta = { name = "Delta", counts = { nh = 3 }, pulls = {
+  pull(9102, "Delta", 14, 1, NOW - 9 * DAY, 120, false), pull(9102, "Delta", 14, 2, NOW - 9 * DAY + 600, 200, false), pull(9102, "Delta", 14, 3, NOW - 9 * DAY + 1200, 300, true) } }
+local eps = { name = "Epsilon", counts = { mythic = 5 }, pulls = {} }
+for n, len in ipairs({ 150, 200, 240, 280, 260 }) do eps.pulls[n] = pull(9103, "Epsilon", 16, n, NOW - 8 * DAY + n * 600, len, n >= 4) end
+CRT.db.timeline.bosses = { [9101] = gamma, [9102] = delta, [9103] = eps }
+CRT.db.timeline.nextId = 200
+
+assert(load(dataSrc, "SeasonStats/Data.lua"))("CowfeeRaidTools", CRT)
+local S = CRT.SeasonStats
+check(S ~= nil, "CRT.SeasonStats exists")
+
+-- 1. The fill, once -------------------------------------------------------------------------------------------------
+local changes = 0
+S:OnChange(function() changes = changes + 1 end)
+local login
+for _, f in ipairs(made) do if f.events.PLAYER_LOGIN and f.scripts.OnEvent and not login then
+  -- the Late Tracker's and Tattlebot's drivers listen too: only Season Stats' fills
+  local before = CRT.db.seasonStats.filled
+  f.scripts.OnEvent(f, "PLAYER_LOGIN")
+  if CRT.db.seasonStats.filled ~= before then login = f end
+end end
+check(login ~= nil, "the fill runs at login")
+eq(CRT.db.seasonStats.filled, true, "the fill is marked done")
+local g = S:Boss(9101, "mythic")
+check(g ~= nil, "Gamma Mythic has counters")
+eq(g and g.pulls, 118, "Gamma: 118 pulls, from the Timeline's counter")
+eq(g and g.kills, 0, "Gamma: no kills")
+eq(g and g.wipes, 118, "Gamma: 118 wipes")
+eq(g and g.untimed, 106, "Gamma: the 106 pulls the Timeline no longer keeps have no length")
+eq(S:Boss(9101, "nh"), nil, "Gamma: nothing on Normal/Heroic")
+local d = S:Boss(9102, "nh")
+eq(d and (d.pulls .. "/" .. d.wipes .. "/" .. d.kills), "3/2/1", "Delta Normal: 3 pulls, 2 wipes, 1 kill")
+eq(d and d.firstKillPull, 3, "Delta: first kill on pull 3")
+eq(d and d.bestKill, 300, "Delta: best kill 5:00")
+eq(d and d.firstKillAt, NOW - 9 * DAY + 1200, "Delta: the first kill's time")
+local e = S:Boss(9103, "mythic")
+eq(e and (e.pulls .. "/" .. e.wipes .. "/" .. e.kills), "5/3/2", "Epsilon Mythic: 5 pulls, 3 wipes, 2 kills")
+eq(e and e.firstKillPull, 4, "Epsilon: pulls to first kill, 4")
+eq(e and e.bestKill, 260, "Epsilon: best kill, the shorter of the two")
+eq(e and e.killTime, 540, "Epsilon: total kill time")
+eq(e and e.pullTime, 1130, "Epsilon: total pull time")
+eq(S:Backfill(), false, "the fill never runs twice")
+eq(S:Boss(9101, "mythic").pulls, 118, "and changes nothing the second time")
+
+-- 2. Counting from the Timeline's one save hook -----------------------------------------------------------------------
+check(dataSrc:find("CRT.Timeline:OnSaved(", 1, true) ~= nil, "counted through Timeline:OnSaved")
+check(not dataSrc:find("ENCOUNTER_END", 1, true) and not dataSrc:find("ENCOUNTER_START", 1, true), "never from the encounter events")
+-- the alerts engine reaches Phase 2 on Gamma's pull
+starts = { [1] = 1000, [2] = 1060 }
+CRT.Alerts.running, CRT.Alerts.run = true, { reason = "encounter", encounterID = 9101 }
+alertsFire()
+CRT.Alerts.running, CRT.Alerts.run = false, nil
+alertsFire()
+T:SavePull({ encounterID = 9101, name = "Gamma", difficultyID = 16, startedAt = NOW + 2, length = 400, kill = true, casts = {},
+  deaths = { { spellID = 222 }, { spellID = 222 }, { spellID = 0 } } })
+g = S:Boss(9101, "mythic")
+eq(g.pulls, 119, "a saved pull counts once")
+eq(g.kills .. "/" .. g.wipes, "1/118", "a kill")
+eq(g.firstKillPull, 119, "pulls to first kill: the pull's own number")
+eq(g.bestKill, 400, "best kill")
+local night = g.nights[S.NightKey(NOW)]
+eq(night and night.phase, 2, "the night's furthest phase, from the alerts engine")
+eq(night and night.longest, 400, "the night's longest pull")
+eq(g.causes[222], 2, "death causes counted by spell")
+eq(g.causes[0], 1, "an unknown cause is kept apart")
+-- deleting the boss's pulls in the Timeline resets its counter: the season's own count goes on, the first kill stays
+local firstAt = g.firstKillAt
+T:DeleteBoss(9101)
+T:SavePull({ encounterID = 9101, name = "Gamma", difficultyID = 16, startedAt = NOW + 60, length = 390, kill = true, casts = {}, deaths = {} })
+g = S:Boss(9101, "mythic")
+eq(g.pulls, 120, "after the Timeline's delete: Season Stats counts on")
+eq(g.firstKillPull, 119, "the first kill's pull number is kept")
+eq(g.firstKillAt, firstAt, "and its date")
+eq(g.kills, 2, "the new kill counts")
+-- a Normal pull of the same boss leaves Mythic alone
+T:SavePull({ encounterID = 9101, name = "Gamma", difficultyID = 14, startedAt = NOW + 600, length = 50, kill = false, casts = {}, deaths = {} })
+eq(S:Boss(9101, "mythic").pulls, 120, "another difficulty leaves Mythic alone")
+eq(S:Boss(9101, "nh") and S:Boss(9101, "nh").pulls, 1, "and counts on its own")
+eq(S:Boss(9101, "nh").nights[S.NightKey(NOW + 600)].phase, nil, "a pull with no alerts run has no phase")
+-- a run whose encounter ID is secret is never compared: no error, no phase
+CRT.Alerts.running, CRT.Alerts.run = true, { reason = "encounter", encounterID = "SECRET" }
+local okSecret = pcall(alertsFire)
+CRT.Alerts.running, CRT.Alerts.run = false, nil
+check(okSecret, "a secret encounter ID on the alerts run is skipped")
+eq(S.PhaseFor({ encounterID = 9101, startedAt = NOW + 1200 }), nil, "and gives no phase")
+check(changes >= 3, "the page hears of each change")
+
+do
+  -- the first save after an update fills from the Timeline, that pull among them, counted once and with its phase
+  local saved = CRT.db.seasonStats
+  CRT.db.seasonStats = { filled = false, bosses = {} }
+  starts = { [1] = 1000, [2] = 1050, [3] = 1100 }
+  CRT.Alerts.running, CRT.Alerts.run = true, { reason = "encounter", encounterID = 9103 }
+  alertsFire()
+  CRT.Alerts.running, CRT.Alerts.run = false, nil
+  T:SavePull({ encounterID = 9103, name = "Epsilon", difficultyID = 16, startedAt = NOW + 3, length = 250, kill = false, casts = {}, deaths = {} })
+  local ep = S:Boss(9103, "mythic")
+  eq(CRT.db.seasonStats.filled, true, "the first save after an update fills")
+  eq(ep and ep.pulls, 6, "the saved pull is counted once, with the five before it")
+  eq(ep and ep.nights[S.NightKey(NOW + 3)].phase, 3, "and keeps its phase")
+  CRT.db.seasonStats = saved
+end
+
+-- 3. Nights, phases, causes and the deaths trend ----------------------------------------------------------------------
+eq(S.NightKey(os.time({ year = 2026, month = 10, day = 21, hour = 0, min = 30 })), "2026-10-20", "a pull after midnight counts on the night before")
+eq(S.NightKey(os.time({ year = 2026, month = 10, day = 21, hour = 19 })), "2026-10-21", "an evening pull on its own day")
+local function rec(enc, diff, at, length, kill, phase, deaths)
+  S:Record({ encounterID = enc, name = "Alpha", difficultyID = diff, startedAt = at, length = length, kill = kill, deaths = deaths or {} }, phase)
+end
+local A1 = os.time({ year = 2026, month = 9, day = 15, hour = 20 })
+rec(9001, 14, A1, 100, false, 1, { { spellID = 111 }, { spellID = 111 } })
+rec(9001, 14, A1 + 600, 250, false, 2, { { spellID = 111 }, { spellID = 222 } })
+rec(9001, 14, A1 + 4.5 * 3600, 180, false, 2, { { spellID = 333 }, { spellID = 444 }, { spellID = 222 } })
+rec(9001, 14, A1 + 2 * DAY, 320, false, 3, { { spellID = 0 }, { spellID = 0 } })
+rec(9001, 14, A1 + 2 * DAY + 600, 330, false, 3)
+local a = S:Boss(9001, "nh")
+local r = S.Reflection(a, 8)
+eq(#r.nights, 2, "two nights")
+eq(r.nights[1].key .. " " .. r.nights[1].longest .. " " .. tostring(r.nights[1].phase) .. " " .. r.nights[1].pulls, "2026-09-15 250 2 3", "night one: longest 250, phase 2, three pulls (one after midnight)")
+eq(r.nights[2].key .. " " .. r.nights[2].longest .. " " .. tostring(r.nights[2].phase), "2026-09-17 330 3", "night two: longest 330, phase 3")
+eq(r.longest, 330, "the longest of the shown nights")
+eq(r.furthest and (r.furthest.phase .. " " .. r.furthest.key), "3 2026-09-17", "furthest phase and the night it was first reached")
+eq(#r.causes, 3, "the top three causes")
+eq(r.causes[1] and (r.causes[1].spellID .. "x" .. r.causes[1].count), "111x3", "most deaths: 111, three")
+eq(r.causes[2] and (r.causes[2].spellID .. "x" .. r.causes[2].count), "222x2", "then 222, two")
+eq(r.causes[3] and r.causes[3].spellID, 333, "a tie goes to the lower spell ID; unknown causes never listed")
+eq(#S.Reflection(a, 1).nights, 1, "the nights shown are capped to the newest")
+eq(S.Reflection(a, 1).nights[1].key, "2026-09-17", "the newest night kept")
+for i = 1, 15 do rec(9002, 14, A1 + i * 60, 60, false, nil, { {}, {}, {}, {} }) end
+for i = 16, 25 do rec(9002, 14, A1 + i * 60, 60, false, nil, { {} }) end
+local b = S:Boss(9002, "nh")
+eq(#b.deaths, 20, "deaths per pull: only the last 20 kept")
+r = S.Reflection(b)
+check(r.recent == 1 and r.recentN == 10, "deaths per pull: the last 10")
+check(r.before == 4 and r.beforeN == 10, "deaths per pull: the 10 before")
+r = S.Reflection(S:Boss(9103, "mythic"))
+eq(r.recentN .. " " .. tostring(r.before), "5 nil", "fewer than 11 pulls: no earlier ten")
+r = S.Reflection(nil)
+check(#r.nights == 0 and #r.causes == 0 and r.recent == nil and r.furthest == nil, "no counters: an empty reflection")
+
+-- 4. Seasons, groups, rows and cards ------------------------------------------------------------------------------------
+local so = S.SeasonOptions()
+eq(#so, 2, "both seasons in the Season dropdown")
+eq(so[1].key .. "/" .. so[1].label, "test-s2/Test Season 2", "the current season first")
+eq(so[2].key, "test-s1", "then the others")
+local go = S.GroupOptions()
+eq(go[1].key .. "=" .. go[1].label .. ", " .. go[2].key .. "=" .. go[2].label, "nh=Normal/Heroic, mythic=Mythic", "the Timeline's difficulty groups")
+local rows = S:Rows("test-s2", "mythic")
+eq(#rows, 3, "a row per boss of the season")
+eq(rows[1].name .. ", " .. rows[2].name .. ", " .. rows[3].name, "Epsilon, Gamma, Delta", "rows in route order")
+eq(rows[3].pulls, 0, "a boss with no pulls on this difficulty: zeros")
+eq(rows[3].counters, nil, "and no counters")
+eq(S:DefaultGroup("test-s2"), "mythic", "the page opens on the difficulty with more pulls")
+eq(S:DefaultGroup("test-s1"), "nh", "Normal/Heroic when that has more")
+-- Late Tracker nights: one before the season, two in it, the running one in it too
+CRT.db.late.history = {
+  { id = 1, startedAt = NOW - 60 * DAY, players = {} },
+  { id = 2, startedAt = A1 - 1800, players = {} },
+  { id = 3, startedAt = A1 + 2 * DAY - 1800, players = {} },
+}
+CRT.db.late.current = { id = 4, startedAt = A1 + 2 * DAY + 300, players = {} }
+eq(S:RaidNights("test-s1"), 3, "raid nights: the Late Tracker's nights in the season's range")
+CRT.db.late.current = nil
+eq(S:RaidNights("test-s1"), 2, "without the running night")
+local card = S:Cards("test-s2", "mythic")
+eq(card.killed .. "/" .. card.bosses, "2/3", "bosses killed of the route")
+eq(card.pulls, 125, "pulls on the difficulty")
+eq(card.pullTime, 1130 + S:Boss(9101, "mythic").pullTime, "time in pulls")
+eq(card.untimed, 106, "pulls with no length")
+local empty = S:Cards("test-s1", "mythic")
+check(empty.killed == 0 and empty.pulls == 0 and empty.pullTime == 0 and empty.pullNights == 0, "an empty difficulty: zeros")
+eq(#S:Rows("no-such-season", "nh"), 0, "an unknown season: no rows")
+
+-- 5. Tattlebot's avoidable damage trend ------------------------------------------------------------------------------
+local function tpull(at, diff, a, b2) return { at = at, encounterID = 9001, name = "Alpha", difficulty = diff,
+  players = { ["A-R"] = { spells = { [555] = a } }, ["B-R"] = { spells = { [555] = b2, [999] = 7000 } } } } end
+CRT.db.tattle.history = {
+  { id = 1, startedAt = A1, season = "Season 1", pulls = { tpull(A1, 14, 1000, 500), tpull(A1 + 600, 14, 2000, 500), tpull(A1 + 900, 16, 9000, 0) } },
+}
+CRT.db.tattle.current = { id = 2, startedAt = A1 + 2 * DAY, pulls = { tpull(A1 + 2 * DAY, 14, 600, 400) } }
+CRT.db.tattle.history[1].pulls[#CRT.db.tattle.history[1].pulls + 1] = tpull(A1 + 1200, nil, 50000, 0)
+local bp = CRT.Tattle:BossPulls(9001)
+eq(#bp, 5, "Tattle:BossPulls: every pull on the boss, the running night too")
+check(S:AvoidableTrend(9001, "nh", 4)[2].pulls == 2, "a pull with no readable difficulty is left out of the trend")
+eq(bp[1].damage, 1500, "only the counted damage (a spell Tattlebot doesn't track is left out)")
+eq(bp[5].at, A1 + 2 * DAY, "oldest first")
+eq(#CRT.Tattle:BossPulls(9999), 0, "a boss with no pulls: none")
+local trend = S:AvoidableTrend(9001, "nh", 4)
+eq(trend and #trend, 2, "the trend: one entry per night")
+check(trend and trend[1].key == "2026-09-17" and trend[1].perPull == 1000, "newest night first, damage per pull")
+check(trend and trend[2].key == "2026-09-15" and trend[2].pulls == 2 and trend[2].perPull == 2000, "the night before: two pulls, 2000 a pull")
+eq(S:AvoidableTrend(9001, "mythic", 4)[1].perPull, 9000, "Mythic pulls apart")
+eq(S:AvoidableTrend(9101, "mythic", 4), nil, "no Tattlebot pulls on a boss: no trend")
+
+-- 6. Text ------------------------------------------------------------------------------------------------------------
+eq(S.Clock(272), "4:32", "clock")
+eq(S.Clock(3725), "1:02:05", "clock past an hour")
+eq(S.Hours(11100), "3h 05m", "hours")
+eq(S.Hours(2700), "45m", "minutes")
+eq(S.PhaseText(2), "Phase 2", "phase")
+eq(S.PhaseText(1.5), "Phase 1.5", "an intermission phase")
+
+-- 7. The page --------------------------------------------------------------------------------------------------------
+assert(load(pageSrc, "SeasonStats/Page.lua"))("CowfeeRaidTools", CRT)
+local P = pages.seasonstats
+check(P ~= nil, "the page registers as seasonstats")
+eq(P and P.title, "Season Stats", "its title")
+local pf = mock()
+P.build(pf)
+local V = S.view
+check(V and V.cards and V.rows and V.refl and V.refresh, "the page's parts")
+check(helps["Season Stats"] ~= nil, "the page's (?)")
+local reflHelp
+for title, text in pairs(helps) do if text:find("health", 1, true) then reflHelp = text end end
+check(reflHelp and reflHelp:find("longest pull", 1, true) and reflHelp:find("furthest phase", 1, true), "the reflection's (?) says the longest pull and furthest phase stand in for the boss's health")
+local sd, dd = dropdowns.Season, dropdowns.Difficulty
+check(sd and dd, "the Season and Difficulty dropdowns")
+local sopts = type(sd.opts.options) == "function" and sd.opts.options() or sd.opts.options
+eq(sopts[1].key, "test-s2", "Season: the current season first")
+eq(sd.opts.get(), "test-s2", "the page opens on the current season")
+eq(dd.opts.get(), "mythic", "and on the difficulty with more pulls")
+local dopts = type(dd.opts.options) == "function" and dd.opts.options() or dd.opts.options
+eq(#dopts, 2, "Difficulty: the two groups")
+-- cards
+eq(V.cards.killed.value.text, "2 / 3", "card: bosses killed")
+eq(V.cards.pulls.value.text, "125", "card: pulls")
+eq(V.cards.nights.value.text, "0", "card: raid nights (none in this season)")
+eq(V.cards.time.value.text, S.Hours(card.pullTime), "card: time in pulls")
+-- the table, route order
+local function rowName(i) return V.rows[i] and V.rows[i].shown and V.rows[i].name.text end
+eq(rowName(1) .. ", " .. rowName(2) .. ", " .. rowName(3), "Epsilon, Gamma, Delta", "the table in route order")
+eq(plain(V.rows[1].pulls.text .. " " .. V.rows[1].wipes.text .. " " .. V.rows[1].kills.text .. " " .. V.rows[1].toKill.text .. " " .. V.rows[1].best.text),
+  "5 3 2 4 4:20", "Epsilon's row: pulls, wipes, kills, pulls to first kill, best kill")
+eq(V.rows[1].first.text, date("%Y-%m-%d", NOW - 8 * DAY + 2400), "first kill date")
+eq(V.rows[3].toKill.text, "-", "no pulls: a dash")
+check(not V.rows[4] or not V.rows[4].shown, "no extra rows")
+-- sorting by a column, then back to route order
+local sh = sorts[1]
+check(sh and sh.opts.backToDefault, "sortable headers that go back to route order")
+sh.opts.set("pulls", -1)
+eq(rowName(1), "Gamma", "sorted by pulls, most first")
+sh.opts.set(nil, 1)
+eq(rowName(1), "Epsilon", "back to route order")
+-- the reflection: empty until a boss is picked
+check(V.refl.hint.shown and V.refl.hint.text ~= "" and not V.refl.body.shown, "no boss picked: a line says to pick one")
+V.rows[2].scripts.OnClick(V.rows[2])
+check(not V.refl.hint.shown and V.refl.body.shown, "Gamma picked: the reflection fills")
+check(V.refl.title.text:find("Gamma", 1, true) ~= nil, "the reflection names the boss")
+check(V.refl.bars[1].shown and V.refl.bars[1].value.text:find("6:40", 1, true) and V.refl.bars[1].value.text:find("Phase 2", 1, true), "a bar per night: longest pull and phase (" .. tostring(V.refl.bars[1].value.text) .. ")")
+check(V.refl.furthest.text:find("Phase 2", 1, true) ~= nil, "furthest phase line")
+check(V.refl.causes[1].text:find("Fang Bite", 1, true) and V.refl.causes[1].text:find("12", 1, true), "top cause by name, with its count (" .. tostring(V.refl.causes[1].text) .. ")")
+check(V.refl.causes[2].text:find("Venom Pool", 1, true) ~= nil, "second cause")
+check(V.refl.trend.text:find("in the last", 1, true) ~= nil, "deaths per pull line")
+check(V.refl.avoid[1] and not V.refl.avoid[1].shown, "no Tattlebot pulls on Gamma: no avoidable lines")
+check(V.refl.avoidHint.shown, "and a line says so")
+-- hover: the row's tooltip, placed by UI.TooltipOwner
+V.rows[2].scripts.OnEnter(V.rows[2])
+eq(GameTooltip.owner, V.rows[2], "the row's tooltip, on the row")
+check(table.concat(GameTooltip.lines, " "):find("Time in pulls", 1, true) ~= nil, "the tooltip has the boss's time in pulls")
+V.rows[2].scripts.OnLeave(V.rows[2])
+-- the other season and difficulty
+sd.opts.set("test-s1")
+dd.opts.set("nh")
+eq(rowName(1) .. ", " .. rowName(2), "Alpha, Beta", "Test Season 1's bosses")
+eq(V.cards.nights.value.text, "2", "raid nights from the Late Tracker")
+check(V.refl.hint.shown, "a new season: the pick is cleared")
+V.rows[1].scripts.OnClick(V.rows[1])
+check(V.refl.avoid[1].shown and V.refl.avoid[1].text:find("2026-09-17", 1, true) and V.refl.avoid[1].text:find("1K", 1, true), "Tattlebot's trend, newest night first (" .. tostring(V.refl.avoid[1].text) .. ")")
+check(V.refl.avoid[2].shown and V.refl.avoid[2].text:find("2K", 1, true), "then the night before")
+-- a boss with no pulls on this difficulty
+dd.opts.set("mythic")
+check(V.refl.hint.shown == false and V.refl.empty.shown, "a picked boss with no pulls on the difficulty: says so")
+check(V.empty.shown, "and the table says there are no pulls")
+dd.opts.set("nh")
+check(not V.empty.shown, "the table's empty line goes again")
+-- it refreshes on a change while shown
+local before = V.cards.pulls.value.text
+S:Record({ encounterID = 9002, name = "Beta", difficultyID = 14, startedAt = NOW, length = 30, kill = false, deaths = {} })
+check(V.cards.pulls.value.text ~= before, "a new pull updates the page")
+-- everything inside the page area
+local outside = {}
+local function walk(f, ox, oy)
+  for _, k in ipairs(f.kids or {}) do
+    local p = k.point
+    if p and type(p[2]) == "number" and (p[1] == "TOPLEFT") then
+      local x, y = ox + p[2], oy + p[3]
+      if x < 0 or x + (k.w or 0) > UI.PAGE_W or y > 0 or y - (k.h or 0) < -UI.PAGE_H then outside[#outside + 1] = tostring(k.text or k.name or "?") .. " at " .. x .. "," .. y end
+      walk(k, x, y)
+    end
+  end
+end
+walk(pf, 0, 0)
+check(#outside == 0, "nothing reaches outside the page area: " .. table.concat(outside, "; "))
+
+-- 8. Saved data, the menu, the share, the .toc, no season facts -------------------------------------------------------
+check(panelSrc:find('"requests", "seasonstats"', 1, true) ~= nil, "Modules lists Season Stats right after Requests")
+check(profilesSrc:find("seasonStats = false", 1, true) ~= nil, "Export settings only keeps Season Stats back")
+check(tocSrc:find("CRT_Modules\\\\SeasonStats\\\\Data.lua", 1, true) and tocSrc:find("CRT_Modules\\\\SeasonStats\\\\Page.lua", 1, true), "both files in the .toc")
+local tocTl = tocSrc:find("CRT_Modules\\\\Timeline\\\\Data.lua", 1, true)
+check(tocTl and tocTl < tocSrc:find("CRT_Modules\\\\SeasonStats\\\\Data.lua", 1, true), "after the Timeline's store")
+for _, name in ipairs({ "Midnight", "midnight-s1", "Twin Fang", "Nek'zali", "Season 1" }) do
+  check(not dataSrc:find(name, 1, true) and not pageSrc:find(name, 1, true), "no season fact in the feature code: " .. name)
+end
+check(not pageSrc:find("CRTDB", 1, true), "the page saves nothing of its own")
+check(not (pageSrc:match("local COLS = (%b{})") or "title"):find("title", 1, true), "the column titles come from TEXT")
+eq(sorts[1].cols[5].title, "To first kill", "the headers still read their titles")
+
+print(string.format("%d passed, %d failed", passes, fails))
+if fails > 0 then error("failures") end
+`;
+const dir = process.argv[2];
+if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
+const files = ['CRT_Modules/Timeline/Data.lua', 'CRT_Data/Bosses/Registry.lua', 'CRT_Modules/Late/Data.lua', 'CRT_Modules/Tattlebot/Data.lua',
+  'CRT_Modules/SeasonStats/Data.lua', 'CRT_Modules/SeasonStats/Page.lua', 'CRT_Core/Core.lua', 'CRT_Core/UI/Panel.lua', 'CRT_Core/Profiles.lua',
+  'CowfeeRaidTools.toc'];
+for (const f of files) {
+  const p = path.join(dir, f);
+  lua.lua_pushstring(L, to_luastring(fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : 'error("missing ' + f + '")'));
+}
+if (lua.lua_pcall(L, files.length, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
