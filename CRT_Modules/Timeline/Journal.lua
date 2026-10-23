@@ -4,30 +4,82 @@ local ADDON, CRT = ...
 -- that has a spell, in Journal order, each spell once), followed by spells you added yourself.
 -- The game only gives the Journal's boss list for the instance you are in, so the boss is found
 -- through the map you stand on first, then by looking through the current tier's raids; the
--- Journal's own selected instance is put back afterwards so its window is not disturbed. Nothing
--- is looked up during combat or while the Journal window is open, and what is found is kept for
--- the rest of the session. Hiding a row only sets a flag: the page decides what to draw. A
+-- Journal's own selected instance is put back afterwards so its window is not disturbed. Once the
+-- Journal window's addon has loaded, nothing is selected any more: only the map's instance and the
+-- one the Journal has selected are read (journalLoaded below). Nothing is looked up during combat
+-- or while the Journal window is open, and what is found is kept for the rest of the session. Hiding a row only sets a flag: the page decides what to draw. A
 -- reference timeline that only knows its boss by name finds the boss the same way, by the name
--- the Journal gives it (EncounterByName), so its rows get icons and tooltips anywhere.
+-- the Journal gives it (EncounterByName), so its rows get icons and tooltips anywhere. Each row
+-- keeps the ID of its first Journal section. The Journal's text of an ability, for the shared
+-- ability tooltip, is read here too (Journal:AbilitySection, near the end).
 
 local Journal = {}
 CRT.TimelineJournal = Journal
 
 local cache = {}
--- bosses the Journal could not be asked about in this zone; only your own rows are listed for them
+-- bosses the Journal could not find: [encounterID] = the Journal tier searched (EJ_GetCurrentTier), so a miss
+-- that only came from the tier the Journal had picked is tried again once another is picked; cleared on a zone change
 local missed = {}
--- boss names looked up in the Journal: [name] = dungeon encounter id, or false when not found
+-- boss names looked up in the Journal: [name] = dungeon encounter id, or { tier } (the tier searched) when not found
 local byName = {}
 -- the bosses of each raid instance, by Journal instance id
 local raidCache = {}
+-- where each boss found so far is: [dungeonEncounterID] = { root = section id, instanceID = Journal instance }
+local roots = {}
+
+-- the Journal's text of each boss's abilities, for the ability tooltip (Journal:AbilitySection below):
+-- ["encounterID|difficultyID"] = the boss's sections
+local texts = {}
+
+-- The game's Encounter Journal window (Blizzard_EncounterJournal, load-on-demand). Once it has loaded, it answers
+-- EJ_DIFFICULTY_UPDATE even while hidden by redrawing itself (Blizzard_EncounterJournal.lua: EncounterJournal_OnLoad
+-- registers it; EncounterJournal_UpdateDifficulty runs EncounterJournal_Refresh, which selects its own instance
+-- again). From then on CRT never changes the Journal's selection (no EJ_SelectInstance, no EJ_SetDifficulty): it
+-- only reads, at the difficulty the Journal has picked.
+local function journalLoaded()
+    if EncounterJournal ~= nil then
+        return true
+    end
+    return C_AddOns ~= nil and C_AddOns.IsAddOnLoaded ~= nil and C_AddOns.IsAddOnLoaded("Blizzard_EncounterJournal") and true or false
+end
+Journal.Loaded = journalLoaded
+
+local function currentTier()
+    if not EJ_GetCurrentTier then
+        return 0
+    end
+    local ok, tier = pcall(EJ_GetCurrentTier)
+    return ok and tier or 0
+end
+
+-- A miss kept with the tier it was searched in still holds only while that tier is picked.
+local function stillMissed(tier)
+    return tier ~= nil and tier ~= false and tier == currentTier()
+end
 
 local zoneFrame = CreateFrame("Frame")
 zoneFrame:RegisterEvent("ZONE_CHANGED_NEW_AREA")
 zoneFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
-zoneFrame:SetScript("OnEvent", function()
+-- a spell's text that loaded late (the Journal reads its own again on it too): its kept text is read again
+zoneFrame:RegisterEvent("SPELL_TEXT_UPDATE")
+-- the season's bosses' Journal text is read once after login, before the Journal window is first opened
+zoneFrame:RegisterEvent("PLAYER_LOGIN")
+zoneFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
+zoneFrame:SetScript("OnEvent", function(_, event, spellID)
+    if event == "SPELL_TEXT_UPDATE" then
+        if Journal.TextChanged then
+            Journal.TextChanged(spellID)
+        end
+        return
+    elseif event == "PLAYER_LOGIN" or event == "PLAYER_REGEN_ENABLED" then
+        if Journal.Warm then
+            Journal.Warm(event == "PLAYER_LOGIN")
+        end
+        return
+    end
     missed = {}
     for name, id in pairs(byName) do
-        if id == false then
+        if type(id) ~= "number" then
             byName[name] = nil
         end
     end
@@ -65,12 +117,18 @@ local function changed(encounterID)
     CRT.Timeline:Fire()
 end
 
--- The boss in the instance that is selected right now that match(name, dungeonEncounterID)
--- accepts: its Journal root section and dungeon encounter id, or nil.
-local function rootInSelected(match)
+-- The boss that match(name, dungeonEncounterID) accepts among the bosses of instanceID, or of the instance
+-- the Journal has selected when instanceID is nil: its Journal root section and dungeon encounter id, or nil.
+-- Read only: listing an instance by its ID works once it was selected this session.
+local function rootIn(match, instanceID)
     local j = 1
     while j < 100 do
-        local ok, _, _, journalID = pcall(EJ_GetEncounterInfoByIndex, j)
+        local ok, _, _, journalID
+        if instanceID then
+            ok, _, _, journalID = pcall(EJ_GetEncounterInfoByIndex, j, instanceID)
+        else
+            ok, _, _, journalID = pcall(EJ_GetEncounterInfoByIndex, j)
+        end
         if not ok or not journalID then
             return nil
         end
@@ -82,57 +140,77 @@ local function rootInSelected(match)
     end
 end
 
--- The Journal root section and dungeon encounter id of the boss match accepts, or nil when it
--- cannot be found.
-local function findRoot(match)
-    if not (EJ_SelectInstance and EJ_GetEncounterInfoByIndex and EJ_GetEncounterInfo) then
+-- The Journal instance of the map we stand on, or nil.
+local function mapInstance()
+    if not (EJ_GetInstanceForMap and C_Map and C_Map.GetBestMapForUnit) then
         return nil
     end
-    -- the instance the Journal has selected now, to put back afterwards
-    local previous
-    if EJ_GetCurrentInstance then
-        local ok, id = pcall(EJ_GetCurrentInstance)
-        previous = ok and id or nil
-    elseif EncounterJournal then
-        previous = EncounterJournal.instanceID
+    local okMap, map = pcall(C_Map.GetBestMapForUnit, "player")
+    if not (okMap and map) then
+        return nil
     end
-    local root, found
-    -- the instance of the map we stand on
-    if EJ_GetInstanceForMap and C_Map and C_Map.GetBestMapForUnit then
-        local okMap, map = pcall(C_Map.GetBestMapForUnit, "player")
-        if okMap and map then
-            local okInst, instanceID = pcall(EJ_GetInstanceForMap, map)
-            if okInst and instanceID and instanceID ~= 0 then
+    local okInst, instanceID = pcall(EJ_GetInstanceForMap, map)
+    return okInst and instanceID and instanceID ~= 0 and instanceID or nil
+end
+
+local function selectedInstance()
+    if not EJ_GetCurrentInstance then
+        return nil
+    end
+    local ok, id = pcall(EJ_GetCurrentInstance)
+    return ok and id or nil
+end
+
+-- The Journal root section and dungeon encounter id of the boss match accepts, or nil when it cannot be
+-- found; a boss found is kept in roots with its instance. Before the Journal window has loaded, the map's
+-- instance and then every raid of the current tier are selected in turn, and the Journal's own selected
+-- instance is put back. After it has loaded nothing is selected: only the map's instance (listed by ID) and
+-- the instance the Journal has selected are read.
+local function findRoot(match)
+    if not (EJ_GetEncounterInfoByIndex and EJ_GetEncounterInfo) then
+        return nil
+    end
+    local root, found, where
+    local inMap = mapInstance()
+    if journalLoaded() or not EJ_SelectInstance then
+        if inMap then
+            root, found = rootIn(match, inMap)
+            where = inMap
+        end
+        if not root then
+            root, found = rootIn(match, nil)
+            where = selectedInstance()
+        end
+    else
+        local previous = selectedInstance()
+        if inMap then
+            pcall(EJ_SelectInstance, inMap)
+            root, found = rootIn(match, nil)
+            where = inMap
+        end
+        -- otherwise every raid of the current tier
+        if not root and EJ_GetInstanceByIndex then
+            local i = 1
+            while i < 100 do
+                local ok, instanceID = pcall(EJ_GetInstanceByIndex, i, true)
+                if not ok or not instanceID then
+                    break
+                end
                 pcall(EJ_SelectInstance, instanceID)
-                root, found = rootInSelected(match)
+                root, found = rootIn(match, nil)
+                if root then
+                    where = instanceID
+                    break
+                end
+                i = i + 1
             end
         end
-    end
-    -- otherwise every raid of the current tier
-    if not root and EJ_GetInstanceByIndex then
-        local i = 1
-        while i < 100 do
-            local ok, instanceID = pcall(EJ_GetInstanceByIndex, i, true)
-            if not ok or not instanceID then
-                break
-            end
-            pcall(EJ_SelectInstance, instanceID)
-            root, found = rootInSelected(match)
-            if root then
-                break
-            end
-            i = i + 1
-        end
-    end
-    if previous and previous ~= 0 then
-        local now
-        if EJ_GetCurrentInstance then
-            local ok, id = pcall(EJ_GetCurrentInstance)
-            now = ok and id or nil
-        end
-        if now ~= previous then
+        if previous and previous ~= 0 and selectedInstance() ~= previous then
             pcall(EJ_SelectInstance, previous)
         end
+    end
+    if root and type(found) == "number" then
+        roots[found] = { root = root, instanceID = where }
     end
     return root, found
 end
@@ -187,6 +265,7 @@ local function collect(root, rows, seen)
                         icon = (okIcon and icon) or info.abilityIcon,
                         own = false,
                         tags = tags,
+                        sectionID = id, -- the first of its sections, for the ability tooltip and [section N]
                     }
                     seen[spellID] = rows[#rows] -- a later section of the same spell adds its icons to this row
                 end
@@ -352,6 +431,7 @@ local function abilitiesRows(rootSectionID)
                             name = (okName and spellName) or info.title or "",
                             icon = info.abilityIcon,
                             tags = sectionTags(id),
+                            sectionID = id,
                             headers = headers,
                         }
                         seen[key] = rows[#rows]
@@ -373,7 +453,7 @@ local function abilitiesRows(rootSectionID)
 end
 
 -- A Journal encounter (its Journal ID, as the Journal window shows it): its name, dungeon encounter ID and
--- ability rows in Journal order, each { spellID, name, icon, tags, stage } with stage the title of its
+-- ability rows in Journal order, each { spellID, name, icon, tags, stage, sectionID } with stage the title of its
 -- nearest stage (Journal.IsStage, at any depth), and stages, those titles in order. An ability listed in two
 -- stages is in both; within one stage it is listed once, with its sections' icons merged. A stage header
 -- that has a spell of its own is an ability of that stage too. Sections the Journal leaves out for its picked
@@ -419,6 +499,7 @@ function Journal.FromJournalEncounter(journalEncounterID)
                             name = (okName and spellName) or info.title or "",
                             icon = info.abilityIcon,
                             tags = sectionTags(id),
+                            sectionID = id,
                             stage = here,
                         }
                         seen[key] = rows[#rows]
@@ -437,7 +518,8 @@ end
 
 -- The rows of a boss: Journal abilities, then your own. Empty in combat or while the Journal is
 -- open (nothing cached then). When the Journal does not know the boss only your own spells are
--- listed, and that miss is remembered until the zone changes so the Journal is not walked again.
+-- listed. A miss found by selecting the tier's raids (before the Journal window loaded) is remembered
+-- until the zone changes or another tier is picked; one after it loaded (read only) is not remembered.
 function Journal:Rows(encounterID)
     -- a reference timeline has no encounter id to look up (its key is text), so never walk for it
     if type(encounterID) ~= "number" then
@@ -450,11 +532,11 @@ function Journal:Rows(encounterID)
         return {}
     end
     local rows, seen = {}, {}
-    local root
-    if not missed[encounterID] then
+    local root = roots[encounterID] and roots[encounterID].root
+    if not root and not stillMissed(missed[encounterID]) then
         root = findRoot(byEncounter(encounterID))
-        if not root then
-            missed[encounterID] = true
+        if not root and not journalLoaded() then
+            missed[encounterID] = currentTier()
         end
     end
     if root then
@@ -484,15 +566,18 @@ function Journal:CachedRows(encounterID)
 end
 
 -- The dungeon encounter id of a boss found in the Journal by its name, or nil. Looked up out of
--- combat with the Journal closed; a name that is not found is tried again after a zone change.
+-- combat with the Journal closed; a name that is not found is tried again after a zone change or
+-- once another tier is picked, and every time while the Journal window has loaded (read only then).
 function Journal:EncounterByName(name)
     local key = nameKey(name)
     if key == "" then
         return nil
     end
     local known = byName[key]
-    if known ~= nil then
-        return known or nil
+    if type(known) == "number" then
+        return known
+    elseif type(known) == "table" and stillMissed(known.tier) then
+        return nil
     end
     if InCombatLockdown() or (EncounterJournal and EncounterJournal:IsShown()) then
         return nil
@@ -500,8 +585,12 @@ function Journal:EncounterByName(name)
     local _, id = findRoot(function(bossName)
         return type(bossName) == "string" and nameKey(bossName) == key
     end)
-    byName[key] = type(id) == "number" and id or false
-    return byName[key] or nil
+    if type(id) == "number" then
+        byName[key] = id
+        return id
+    end
+    byName[key] = not journalLoaded() and { tier = currentTier() } or nil
+    return nil
 end
 
 -- The bosses of the raid you are standing in, from the Encounter Journal: { { encounterID, name } }.
@@ -558,6 +647,370 @@ function Journal:ResolveID(encounterID, ref)
         return self:EncounterByName(ref.boss)
     end
     return nil
+end
+
+-- The Journal's text of an ability, for the ability tooltip ----------------------------------------------------------
+-- CRT.AbilityTip (Timeline/AbilityTip.lua) shows an ability's Encounter Journal text under its spell. The text
+-- follows the Journal's picked difficulty (EJ_SetDifficulty; the game writes the numbers in). A boss's sections
+-- are read once per difficulty and kept, by "encounterID|difficultyID", until the season's route changes:
+--   Before the Journal window has loaded (Blizzard_EncounterJournal is load-on-demand, so nothing answers a change
+--   then), a boss is read at the difficulty of the page that asks, Mythic (16) for the "mythic" group and Heroic
+--   (15) for "nh", with the boss's instance selected, and the Journal's difficulty and instance are put back. After
+--   login the current season's route bosses are read this way for both groups, a few each frame, out of combat
+--   (Journal.Warm), stopping for good the moment the Journal loads.
+--   Once it has loaded, CRT changes nothing: a boss not kept at the asked difficulty is read at the Journal's own
+--   (EJ_GetDifficulty), from the sections of a boss found before or found without selecting anything, and the
+--   tooltip's heading names that difficulty. A boss that can't be found so gets no Journal text.
+-- Nothing new is read in combat. A section is found by an explicit [section N] first, else its spell, else its
+-- title or spell name (Reference.Norm); one the difficulty hides never replaces one it shows, and the Overview's
+-- role summaries are left out. A text that hadn't loaded is read again once on a later hover, and the game's
+-- SPELL_TEXT_UPDATE has that spell's kept text read again: at once while the Journal hasn't loaded, else on the
+-- next hover when the text was kept at the Journal's current difficulty.
+Journal.GROUP_DIFFICULTY = { mythic = 16, nh = 15 }
+local WARM_DELAY, WARM_GAP, WARM_PER_TICK = 5, 0.2, 2 -- seconds after login, between ticks, bosses a tick
+local STALE_DELAY = 0.5 -- SPELL_TEXT_UPDATE comes in bursts: the kept texts are read again once after one
+
+local function currentDifficulty()
+    if not EJ_GetDifficulty then
+        return nil
+    end
+    local ok, d = pcall(EJ_GetDifficulty)
+    return ok and type(d) == "number" and d or nil
+end
+
+local function setDifficulty(d)
+    if d and EJ_SetDifficulty and currentDifficulty() ~= d then
+        pcall(EJ_SetDifficulty, d)
+    end
+end
+
+-- a number the game may have made secret, as a plain number or nil
+local function plainNumber(v)
+    if issecretvalue and issecretvalue(v) then
+        return nil
+    end
+    return type(v) == "number" and v > 0 and v or nil
+end
+
+local function textKey(s)
+    if type(s) ~= "string" then
+        return nil
+    end
+    local Reference = CRT.TimelineReference
+    return Reference and Reference.Norm and Reference.Norm(s) or nameKey(s)
+end
+
+local function keyOf(encounterID, difficultyID)
+    return encounterID .. "|" .. tostring(difficultyID)
+end
+
+-- A section as the tooltip reads it: { sectionID, spellID, title, description, icon, tags, hidden }.
+local function sectionText(id, info)
+    return {
+        sectionID = id,
+        spellID = plainNumber(info.spellID),
+        title = info.title,
+        description = type(info.description) == "string" and info.description or nil,
+        icon = info.abilityIcon,
+        tags = sectionTags(id),
+        hidden = info.filteredByDifficulty and true or nil,
+    }
+end
+
+-- Keeps a section under key; a section the difficulty shows wins over one it hides, else the first.
+local function index(list, key, s)
+    if key == nil or key == "" then
+        return
+    end
+    local have = list[key]
+    if not have or (have.hidden and not s.hidden) then
+        list[key] = s
+    end
+end
+
+local function readTexts(root, difficultyID)
+    local map = { difficultyID = difficultyID, bySpell = {}, byName = {}, byID = {} }
+    local visited = {}
+    local function walk(id, depth)
+        while id and id ~= 0 and not visited[id] do
+            visited[id] = true
+            local info = getSection(id)
+            if not info then
+                return
+            end
+            -- the Overview is the root (and its siblings) with the Overview header type; deeper down that
+            -- number is only a depth (the older Abilities pages, Journal.Layout)
+            if not (depth == 0 and info.headerType == HTYPE_OVERVIEW) then
+                local s = sectionText(id, info)
+                map.byID[id] = s
+                index(map.bySpell, s.spellID, s)
+                index(map.byName, textKey(info.title), s)
+                if s.spellID then
+                    local ok, spellName = pcall(C_Spell.GetSpellName, s.spellID)
+                    index(map.byName, ok and textKey(spellName) or nil, s)
+                end
+                walk(info.firstChildSectionID, depth + 1)
+            end
+            id = info.siblingSectionID
+        end
+    end
+    walk(root, 0)
+    return map
+end
+
+-- Only before the Journal window has loaded: read(difficultyID) with the boss's instance (where.instanceID)
+-- selected and the Journal at difficulty want, then the Journal's instance and difficulty put back (the
+-- difficulty again once its own instance is selected, should the boss's instance not have it). Returns read's
+-- result and the difficulty read at.
+local function atDifficulty(where, want, read)
+    local beforeInstance, beforeDifficulty = selectedInstance(), currentDifficulty()
+    local instanceID = where and where.instanceID
+    if instanceID and EJ_SelectInstance and beforeInstance ~= instanceID then
+        pcall(EJ_SelectInstance, instanceID)
+    end
+    setDifficulty(want)
+    local at = currentDifficulty() or want
+    local result = read(at)
+    setDifficulty(beforeDifficulty)
+    if EJ_SelectInstance and beforeInstance and beforeInstance ~= 0 and selectedInstance() ~= beforeInstance then
+        pcall(EJ_SelectInstance, beforeInstance)
+    end
+    setDifficulty(beforeDifficulty)
+    return result, at
+end
+
+-- Where a boss's sections are, { root, instanceID }: kept from an earlier find, else found now (read only once
+-- the Journal has loaded); nil when it can't be found.
+local function rootOf(encounterID)
+    if not roots[encounterID] and not stillMissed(missed[encounterID]) then
+        local root = findRoot(byEncounter(encounterID))
+        if not root and not journalLoaded() then
+            missed[encounterID] = currentTier()
+        end
+    end
+    return roots[encounterID]
+end
+
+-- Reads and keeps a boss's sections: at want before the Journal window has loaded, else at its own difficulty.
+local function build(encounterID, want)
+    local where = rootOf(encounterID)
+    if not where then
+        return nil
+    end
+    local map, at
+    if journalLoaded() then
+        at = currentDifficulty()
+        map = readTexts(where.root, at)
+    else
+        map, at = atDifficulty(where, want, function(d)
+            return readTexts(where.root, d)
+        end)
+    end
+    map.difficultyID, map.encounterID = at, encounterID
+    texts[keyOf(encounterID, at)] = map
+    if want and want ~= at then
+        texts[keyOf(encounterID, want)] = map -- the game didn't take want: kept under it too, named by at
+    end
+    return map
+end
+
+-- One section read again alone at its map's difficulty: info (nil when the game gives nothing) and whether it
+-- could be read at all (after the Journal loaded, only when it is on that difficulty).
+local function readSection(map, sectionID)
+    if journalLoaded() then
+        if map.difficultyID ~= currentDifficulty() then
+            return nil, false
+        end
+        return getSection(sectionID), true
+    end
+    local info, at = atDifficulty(roots[map.encounterID], map.difficultyID, function(d)
+        return (map.difficultyID == nil or d == map.difficultyID) and getSection(sectionID) or nil
+    end)
+    return info, map.difficultyID == nil or at == map.difficultyID
+end
+
+local function refresh(map, s)
+    local info, read = readSection(map, s.sectionID)
+    if read then
+        if info then
+            s.description = type(info.description) == "string" and info.description or nil
+        end
+        s.stale, s.retried = nil, true
+    end
+end
+
+-- The kept sections marked by SPELL_TEXT_UPDATE, read again together, one difficulty change per boss.
+local stalePending = false
+local function readStale()
+    stalePending = false
+    if journalLoaded() or InCombatLockdown() then
+        return
+    end
+    for _, map in pairs(texts) do
+        local list = {}
+        for _, s in pairs(map.byID) do
+            if s and s.stale then
+                list[#list + 1] = s
+            end
+        end
+        if list[1] then
+            atDifficulty(roots[map.encounterID], map.difficultyID, function(d)
+                if map.difficultyID ~= nil and d ~= map.difficultyID then
+                    return
+                end
+                for _, s in ipairs(list) do
+                    local info = getSection(s.sectionID)
+                    if info then
+                        s.description = type(info.description) == "string" and info.description or nil
+                    end
+                    s.stale = nil
+                end
+            end)
+        end
+    end
+end
+
+-- SPELL_TEXT_UPDATE: the kept sections of that spell are read again, together a moment later while the Journal
+-- hasn't loaded, else on their next hover.
+function Journal.TextChanged(spellID)
+    spellID = plainNumber(spellID)
+    if not spellID then
+        return
+    end
+    for _, map in pairs(texts) do
+        for _, s in pairs(map.byID) do
+            if s and s.spellID == spellID then
+                s.stale = true
+            end
+        end
+    end
+    if not stalePending and not journalLoaded() and C_Timer and C_Timer.After then
+        stalePending = true
+        C_Timer.After(STALE_DELAY, readStale)
+    end
+end
+
+-- The Journal section of an ability for the ability tooltip: { sectionID, spellID, title, description (nil when
+-- the game has none), icon, tags }, and the difficulty ID its text was read at (the heading names it); nil when
+-- there is none or it can't be read now. encounterID is the dungeon encounter ID; group "mythic" or "nh" (nil:
+-- the Journal's own difficulty); sectionID an explicit [section N]; cachedOnly reads nothing new (for drawing).
+function Journal:AbilitySection(encounterID, group, spellID, name, sectionID, cachedOnly)
+    if type(encounterID) ~= "number" then
+        return nil
+    end
+    local want = Journal.GROUP_DIFFICULTY[group]
+    local canRead = not cachedOnly and not InCombatLockdown()
+    local map = want and texts[keyOf(encounterID, want)]
+    local built = false
+    if not map then
+        local loaded = journalLoaded()
+        if loaded or not want then
+            map = texts[keyOf(encounterID, currentDifficulty())]
+        end
+        if not map and canRead then
+            map = build(encounterID, not loaded and want or nil)
+            built = true
+        end
+    end
+    if not map then
+        return nil
+    end
+    local s
+    sectionID = plainNumber(sectionID)
+    if sectionID then
+        s = map.byID[sectionID]
+        if s == nil and canRead then
+            local info, read = readSection(map, sectionID)
+            if read then
+                s = info and sectionText(sectionID, info) or false
+                map.byID[sectionID] = s
+            end
+        end
+        s = s or nil
+    end
+    spellID = plainNumber(spellID)
+    if not s and spellID then
+        s = map.bySpell[spellID]
+    end
+    if not s then
+        local k = textKey(name)
+        s = k and map.byName[k] or nil
+    end
+    -- read just now, it is as new as it gets; a later hover reads a missing text once more
+    if s and canRead and not built and (s.stale or (s.description == nil and not s.retried)) then
+        refresh(map, s)
+    end
+    return s, map.difficultyID
+end
+
+-- The warm-up: the current season's route bosses, read for both groups before the Journal window loads.
+local warmQueue -- encounter IDs still to read, or nil when done or stopped for good
+local warmTimer = false
+
+local function routeBosses()
+    local out, B = {}, CRT.Bosses
+    local season = B and B.Current and B:Current()
+    if season and season.key and B.RouteList then
+        for _, def in ipairs(B:RouteList(season.key)) do
+            if type(def.encounterID) == "number" then
+                out[#out + 1] = def.encounterID
+            end
+        end
+    end
+    return out
+end
+
+local function warmBoss(encounterID)
+    pcall(Journal.Rows, Journal, encounterID)
+    for _, group in ipairs({ "mythic", "nh" }) do
+        pcall(Journal.AbilitySection, Journal, encounterID, group)
+    end
+end
+
+local function scheduleWarm(delay)
+    if warmTimer or not warmQueue or not (C_Timer and C_Timer.After) then
+        return
+    end
+    warmTimer = true
+    C_Timer.After(delay, function()
+        warmTimer = false
+        if journalLoaded() then
+            warmQueue = nil -- for good: from now on nothing may change the Journal
+            return
+        end
+        if InCombatLockdown() then
+            return -- PLAYER_REGEN_ENABLED goes on with the rest
+        end
+        for _ = 1, WARM_PER_TICK do
+            local encounterID = warmQueue and table.remove(warmQueue, 1)
+            if not encounterID then
+                warmQueue = nil
+                return
+            end
+            warmBoss(encounterID)
+        end
+        scheduleWarm(WARM_GAP)
+    end)
+end
+
+-- fresh: start over with the route's bosses (at login, on a route change); else go on with what is left.
+function Journal.Warm(fresh)
+    if journalLoaded() then
+        warmQueue = nil
+        return
+    end
+    if fresh then
+        warmQueue = routeBosses()
+    end
+    scheduleWarm(fresh and WARM_DELAY or WARM_GAP)
+end
+
+-- a new season or route: every boss's text is read again
+if CRT.Bosses and CRT.Bosses.OnRouteChange then
+    CRT.Bosses:OnRouteChange(function()
+        texts = {}
+        Journal.Warm(true)
+    end)
 end
 
 function Journal:AddCustom(encounterID, spellID)

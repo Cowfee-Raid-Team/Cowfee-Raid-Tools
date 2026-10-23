@@ -111,6 +111,7 @@ CRT_Modules\Timeline\Journal.lua
 CRT_Modules\Timeline\Database.lua
 CRT_Modules\Timeline\Reference.lua
 CRT_Modules\Timeline\Lanes.lua
+CRT_Modules\Timeline\AbilityTip.lua
 CRT_Modules\Timeline\Rehearsal.lua
 CRT_Modules\Timeline\RehearsalWindow.lua
 CRT_Modules\Alerts\CooldownData.lua

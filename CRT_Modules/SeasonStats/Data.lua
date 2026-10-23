@@ -533,6 +533,30 @@ function Stats:AbilityRow(encounterID, group, spellID, name, bossName)
     return rows.bySpell[spellID] or (folded and rows.byName[folded]) or nil
 end
 
+-- A death cause's icon: its spell's (C_Spell.GetSpellTexture), else the Journal's for that ability when the Journal
+-- was read already (never read for a drawing), else a question mark, as for an unknown spell (0).
+Stats.UNKNOWN_ICON = "Interface\\Icons\\INV_Misc_QuestionMark"
+
+function Stats:CauseIcon(encounterID, group, spellID, name)
+    if type(spellID) ~= "number" or spellID <= 0 then
+        return Stats.UNKNOWN_ICON
+    end
+    if C_Spell and C_Spell.GetSpellTexture then
+        local ok, tex = pcall(C_Spell.GetSpellTexture, spellID)
+        if ok and (type(tex) == "number" or type(tex) == "string") then
+            return tex
+        end
+    end
+    local Journal = CRT.TimelineJournal
+    if Journal and Journal.AbilitySection then
+        local ok, section = pcall(Journal.AbilitySection, Journal, encounterID, group, spellID, name, nil, true)
+        if ok and type(section) == "table" and section.icon then
+            return section.icon
+        end
+    end
+    return Stats.UNKNOWN_ICON
+end
+
 -- Text -------------------------------------------------------------------------------------------------------------
 
 -- 272 -> "4:32", 3725 -> "1:02:05".

@@ -76,7 +76,7 @@ local function pullLanes(pull, rows, settings, encounterID, group)
     local byID, shown = {}, {}
     for _, row in ipairs(rows or {}) do
         local lane = { key = "spell:" .. row.spellID, label = row.name, icon = row.icon, spellID = row.spellID, kind = "spell", marks = {},
-            tags = row.tags }
+            tags = row.tags, sectionID = row.sectionID }
         byID[row.spellID] = lane
         if not CRT.TimelineJournal:IsHidden(encounterID, row.spellID) then
             shown[#shown + 1] = lane
@@ -219,6 +219,7 @@ local function referenceLanes(ref, rows, settings, encounterID, overlay, group, 
                     key = "ref:" .. row.name, label = row.name, color = CRT.TimelineReference.RowColor(row), lead = row.lead, kind = "reference",
                     types = row.types, spellID = spellID, icon = icon or UNNAMED_ICON, marks = marks,
                     tags = row.tags or (match and match.tags) or nil, -- the Journal's icons
+                    sectionID = row.sectionID or (match and match.sectionID) or nil, -- where its Journal text is (AbilityTip)
                 }
             end
         end

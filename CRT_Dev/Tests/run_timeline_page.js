@@ -651,7 +651,7 @@ do
   assert(fillB, "fill spell IDs: button")
   fillB.OnClick(fillB)
   assert(paste:GetText() == "Boss: Nek'zali the Soulcoiler\\nSoulcoil Rite [spell 111]: 0:02\\nOther: 5", "fill spell IDs: text filled: " .. paste:GetText())
-  assert(textStarting("Added 1 spell ID."), "fill spell IDs: status")
+  assert(textStarting("Added IDs to 1 line."), "fill spell IDs: status")
   fillB.OnClick(fillB)
   assert(textStarting("No more lines match"), "fill spell IDs: nothing left to fill")
   rowsList = {}

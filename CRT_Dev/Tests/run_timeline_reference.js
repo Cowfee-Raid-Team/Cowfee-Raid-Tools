@@ -281,6 +281,36 @@ do
 end
 
 do
+  -- [section N]: the row's Encounter Journal section, beside [spell N] in either order
+  local ref, errs = R.Parse("Boss: S\\nMark of Acid [spell 1234] [section 5678] (type dispel): 0:10\\nToxic Drops [section 42][spell 77]: 0:20\\nPlain (type raid) [section 9]: 0:30\\nNone: 0:40")
+  assert(ref, "section: parses: " .. tostring(errs and errs[1]))
+  local a, b, c, d = ref.rows[1], ref.rows[2], ref.rows[3], ref.rows[4]
+  assert(a.spellID == 1234 and a.sectionID == 5678 and a.types[1] == "dispel", "section: after the spell")
+  assert(b.spellID == 77 and b.sectionID == 42 and b.name == "Toxic Drops", "section: before the spell, no space")
+  assert(c.spellID == nil and c.sectionID == 9 and c.types[1] == "raid", "section: after the options, no spell")
+  assert(d.sectionID == nil, "section: none written, none read")
+  assert(R.Parse("Boss: S\\nX [section ab]: 0:10") == nil, "section: a bad number is an error")
+  local _, bad = R.Parse("Boss: S\\nX [sec 1]: 0:10")
+  assert(bad and bad[1]:find("[section N]", 1, true), "section: the error names both brackets: " .. tostring(bad and bad[1]))
+  -- the text is what is saved, so a round trip through FillSpellIDs keeps it
+  local rows = { { spellID = 1234, name = "Mark of Acid", sectionID = 5678 }, { spellID = 77, name = "Toxic Drops", sectionID = 42 }, { spellID = 88, name = "New One", sectionID = 4 } }
+  local text = "Boss: S\\nMark of Acid [spell 1234]: 0:10\\nToxic Drops [section 42] [spell 77]: 0:20\\nNew One (type raid): 0:30\\nOther [spell 77]: 0:40"
+  local out, n = R.FillSpellIDs(text, rows)
+  local lines = {}
+  for l in (out .. "\\n"):gmatch("([^\\n]*)\\n") do lines[#lines + 1] = l end
+  assert(lines[2] == "Mark of Acid [spell 1234] [section 5678]: 0:10", "fill: a section added after a given spell: " .. lines[2])
+  assert(lines[3] == "Toxic Drops [section 42] [spell 77]: 0:20", "fill: a given section kept: " .. lines[3])
+  assert(lines[4] == "New One [spell 88] [section 4] (type raid): 0:30", "fill: spell and section both added: " .. lines[4])
+  assert(lines[5] == "Other [spell 77] [section 42]: 0:40", "fill: a line's own spell finds its section: " .. lines[5])
+  assert(n == 3, "fill: three lines changed, got " .. n)
+  local again, n2 = R.FillSpellIDs(out, rows)
+  assert(again == out and n2 == 0, "fill: twice changes nothing")
+  local back = R.Parse(out)
+  assert(back and back.rows[1].sectionID == 5678 and back.rows[3].sectionID == 4 and back.rows[4].sectionID == 42, "section: round trip")
+  print("ok [section N] read in either order, written by Fill spell IDs")
+end
+
+do
   local ref, errs = R.Parse("Boss: T\\nA (type Mythic soak, lead 6): 0:10\\nB (color 112233, type raid): 0:20\\nC (type raid): 0:30\\nD: 0:40")
   assert(ref, "types: parse: " .. tostring(errs and errs[1]))
   local a, b, c, d = ref.rows[1], ref.rows[2], ref.rows[3], ref.rows[4]

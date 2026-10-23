@@ -18,7 +18,9 @@ local ADDON, CRT = ...
 -- in round brackets are "type" (what the ability is: dispel, raid, falloff, mythic, heroic,
 -- generic, soak or spread; the first colors the row, each other one adds a dot), "lead N" (a cast
 -- line N seconds before each icon) and "color rrggbb" (a color instead of the type's). "[spell N]"
--- after a name gives the spell ID for the icon and tooltip. Blank lines
+-- after a name gives the spell ID for the icon and tooltip, and "[section N]" (either order) its Encounter
+-- Journal section, whose text the ability tooltip shows (the Journal's Export Abilities and Fill spell IDs
+-- write both). The Journal's text itself is never stored: it is read in game. Blank lines
 -- and lines starting with # are skipped, so a # line can say what was left out.
 --
 -- To add another boss, transcribe its planner screenshot into a [[ ... ]] block in that boss's file,

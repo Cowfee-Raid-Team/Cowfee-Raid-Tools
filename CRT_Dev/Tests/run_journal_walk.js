@@ -61,14 +61,15 @@ check("the boss and its encounter", name == "Nek'zali the Soulcoiler" and dungeo
 check("abilities from the stages, the Overview's repeat and the hidden difficulty left out: " .. table.concat(names, ","), table.concat(names, ",") == "Soulcoil Rite,Essence Rend,Ritual Burn,Soul Transfer")
 local rend = rows[2]
 check("a spell listed twice keeps one row with its icons merged: " .. table.concat(rend.tags, " "), rend.stage == "Stage One: Soulcoiler Initiation" and table.concat(rend.tags, " ") == "magic healer")
+check("each row keeps its first Journal section", rows[1].sectionID == 21 and rend.sectionID == 22 and rows[4].sectionID == 41)
 check("stages in order, no Overview", table.concat(stages, "|") == "Stage One: Soulcoiler Initiation|Intermission: Ritual of Awakening|Stage Two: Awakened")
 check("Interruptible is the tag interrupt, Mythic mythic", rows[3].tags[1] == "mythic" and rows[4].tags[1] == "tank")
 
 local text = CRT.TimelineJournalExport.Build(2700, 16)
 check("the first stage a heading, no Phase line", text:find("# Stage One: Soulcoiler Initiation\nSoulcoil Rite", 1, true) ~= nil)
 check("the intermission is P1.5, the next stage P2, with no start yet", text:find("\nPhase: P1.5 (Intermission: Ritual of Awakening)\n", 1, true) and text:find("\nPhase: P2 (Stage Two: Awakened)\n", 1, true))
-check("the intermission's own abilities under its heading", text:find("\nPhase: P1.5 (Intermission: Ritual of Awakening)\nRitual Burn [spell 600]", 1, true) and text:find("\nPhase: P2 (Stage Two: Awakened)\nSoul Transfer [spell 700]", 1, true))
-check("Essence Rend typed dispel, tagged magic healer, a real line", text:find("\nEssence Rend [spell 500] (type dispel, tags magic healer):", 1, true) ~= nil and not text:find("# Essence Rend", 1, true))
+check("the intermission's own abilities under its heading", text:find("\nPhase: P1.5 (Intermission: Ritual of Awakening)\nRitual Burn [spell 600] [section 31]", 1, true) and text:find("\nPhase: P2 (Stage Two: Awakened)\nSoul Transfer [spell 700] [section 41]", 1, true))
+check("Essence Rend typed dispel, tagged magic healer, a real line", text:find("\nEssence Rend [spell 500] [section 22] (type dispel, tags magic healer):", 1, true) ~= nil and not text:find("# Essence Rend", 1, true))
 
 -- stages at any depth, abilities with their nearest stage, an ability in two stages in both
 C_Spell.GetSpellName = function(id) return ({ [400] = "Soulcoil Rite", [500] = "Essence Rend", [600] = "Ritual Burn", [700] = "Soul Transfer", [710] = "Hungering Pyre", [800] = "Uncoiling" })[id] end
@@ -83,7 +84,7 @@ check("an ability in two stages is in both, with each stage's icons: " .. table.
 check("an ability is only listed once within its stage", #nrows == 6)
 check("Journal.IsStage: by title, any numbering and case", J.IsStage({ title = "2. phase two" }) and J.IsStage({ title = "INTERMISSION" }) and not J.IsStage({ title = "Echo of Jawae", spellID = 0, firstChildSectionID = 122 }) and not J.IsStage({ title = "Overview", headerType = 3 }))
 local ntext = CRT.TimelineJournalExport.Build(2800, 16)
-check("the export: the intermission's block, then Phase Two's with its Essence Rend", ntext:find("\nPhase: P1.5 (Intermission: Ritual of Awakening)\nSoul Transfer", 1, true) and ntext:find("\nPhase: P2 (Phase Two: Uncoiling)\nUncoiling [spell 800]:\nEssence Rend [spell 500] (tags healer):", 1, true))
+check("the export: the intermission's block, then Phase Two's with its Essence Rend", ntext:find("\nPhase: P1.5 (Intermission: Ritual of Awakening)\nSoul Transfer", 1, true) and ntext:find("\nPhase: P2 (Phase Two: Uncoiling)\nUncoiling [spell 800] [section 130]:\nEssence Rend [spell 500] [section 131] (tags healer):", 1, true))
 
 -- A current raid's boss export, pinned byte for byte: the old raids' layout must never change it.
 local function exact(label, got, want)
@@ -93,13 +94,13 @@ end
 local HELP = "# From the Encounter Journal. Add each ability's times after its colon, as m:ss or seconds: 0:02, 1:17\n"
   .. "# A Phase line with no time yet is the stage's start to fill in: Phase: P1.5 3:17 (Intermission: ...)\n"
 local PIN_2700 = "Boss: Nek'zali the Soulcoiler\nDifficulty: Mythic\nEncounter: 3470\n" .. HELP
-  .. "# Stage One: Soulcoiler Initiation\nSoulcoil Rite [spell 400] (tags healer):\nEssence Rend [spell 500] (type dispel, tags magic healer):\n"
-  .. "Phase: P1.5 (Intermission: Ritual of Awakening)\nRitual Burn [spell 600] (type mythic, tags mythic):\n"
-  .. "Phase: P2 (Stage Two: Awakened)\nSoul Transfer [spell 700] (tags tank):"
+  .. "# Stage One: Soulcoiler Initiation\nSoulcoil Rite [spell 400] [section 21] (tags healer):\nEssence Rend [spell 500] [section 22] (type dispel, tags magic healer):\n"
+  .. "Phase: P1.5 (Intermission: Ritual of Awakening)\nRitual Burn [spell 600] [section 31] (type mythic, tags mythic):\n"
+  .. "Phase: P2 (Stage Two: Awakened)\nSoul Transfer [spell 700] [section 41] (tags tank):"
 local PIN_2800 = "Boss: Nested Boss\nDifficulty: Mythic\nEncounter: 3480\n" .. HELP
-  .. "# Stage One: Soulcoiler Initiation\nEssence Rend [spell 500] (type dispel, tags magic):\nSoulcoil Rite [spell 400]:\n"
-  .. "Phase: P1.5 (Intermission: Ritual of Awakening)\nSoul Transfer [spell 700]:\nHungering Pyre [spell 710]:\n"
-  .. "Phase: P2 (Phase Two: Uncoiling)\nUncoiling [spell 800]:\nEssence Rend [spell 500] (tags healer):"
+  .. "# Stage One: Soulcoiler Initiation\nEssence Rend [spell 500] [section 111] (type dispel, tags magic):\nSoulcoil Rite [spell 400] [section 112]:\n"
+  .. "Phase: P1.5 (Intermission: Ritual of Awakening)\nSoul Transfer [spell 700] [section 122]:\nHungering Pyre [spell 710] [section 123]:\n"
+  .. "Phase: P2 (Phase Two: Uncoiling)\nUncoiling [spell 800] [section 130]:\nEssence Rend [spell 500] [section 131] (tags healer):"
 exact("a current raid's boss, the Journal's boss list unknown: the export as before", CRT.TimelineJournalExport.Build(2700, 16), PIN_2700)
 exact("a boss with stages a level down, boss list unknown: as before", CRT.TimelineJournalExport.Build(2800, 16), PIN_2800)
 check("no boss list: the layout is unknown", J.Layout(2700) == nil)
@@ -169,16 +170,16 @@ exact("stages a level down with the boss list known: as before", CRT.TimelineJou
 exact("Magmaw: every ability in Journal order, the add under its header, the boss's name before what follows it",
   CRT.TimelineJournalExport.Build(3000, 16),
   "Boss: Magmaw\nDifficulty: Mythic\nEncounter: 1024\n" .. HELP
-  .. "Magma Spit [spell 3001]:\nLava Spew [spell 3002] (tags important):\nMangle [spell 3003] (tags tank):\nSwelter [spell 3004]:\n"
+  .. "Magma Spit [spell 3001] [section 300]:\nLava Spew [spell 3002] [section 301] (tags important):\nMangle [spell 3003] [section 302] (tags tank):\nSwelter [spell 3004] [section 320]:\n"
   .. "# Pillar of Flame (no spell)\n# Exposed Head (Heroic) (no spell)\n# Phase 2: Molten (no spell)\n# Order (no spell)\n"
-  .. "# Lava Parasite\nParasitic Infection [spell 3005]:\n# Magmaw\nMassive Crash [spell 3007]:")
+  .. "# Lava Parasite\nParasitic Infection [spell 3005] [section 340]:\n# Magmaw\nMassive Crash [spell 3007] [section 306]:")
 exact("Theralion and Valiona: each creature's headers as # lines, no Phase lines",
   CRT.TimelineJournalExport.Build(3100, 16),
   "Boss: Theralion and Valiona\nDifficulty: Mythic\nEncounter: 1032\n" .. HELP
-  .. "# Theralion\n# Grounded Abilities\nEngulfing Magic [spell 4001] (type dispel, tags magic healer):\n"
-  .. "# Airborne Abilities\nFabulous Flames [spell 4002]:\nDeep Breath [spell 4003]:\nTwilight Flames [spell 4004]:\n"
-  .. "# Valiona\n# Grounded Abilities\nBlackout [spell 4005] (type dispel, tags magic):\nDevouring Flames [spell 4006]:\n"
-  .. "# Airborne Abilities\nTwilight Meteorite [spell 4007]:\nDeep Breath [spell 4003]:")
+  .. "# Theralion\n# Grounded Abilities\nEngulfing Magic [spell 4001] [section 411] (type dispel, tags magic healer):\n"
+  .. "# Airborne Abilities\nFabulous Flames [spell 4002] [section 421]:\nDeep Breath [spell 4003] [section 422]:\nTwilight Flames [spell 4004] [section 423]:\n"
+  .. "# Valiona\n# Grounded Abilities\nBlackout [spell 4005] [section 461] (type dispel, tags magic):\nDevouring Flames [spell 4006] [section 462]:\n"
+  .. "# Airborne Abilities\nTwilight Meteorite [spell 4007] [section 471]:\nDeep Breath [spell 4003] [section 472]:")
 local _, _, orows, ostages = J.FromJournalEncounter(3100)
 check("an older raid's boss has no stages, and its rows no stage", #ostages == 0 and orows[1].stage == nil and #orows == 8)
 local oref, oerrs = CRT.TimelineReference.Parse(CRT.TimelineJournalExport.Build(3100, 16))
