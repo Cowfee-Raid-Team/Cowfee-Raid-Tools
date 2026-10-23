@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.1.2 beta 2 (2026-10-23)
+
+- **Requests** (new page under Modules): ask the raid who needs an item, like a Vantus rune or a flask. Raiders answer with a popup, and Trade 1 hands one to each player who needs one.
+- **Loot Master:**
+  - End session asks before ending everything; real items still waiting go back to the Held boss loot list.
+  - Add item from your bags: drag or shift-click any item you can still trade onto the Tonight tab, one copy per drag.
+  - Flasks, potions and other items you don't wear are open to every raider.
+  - Trades put in exactly one copy and never leave an item on your cursor.
+- **Tooltips:**
+  - Click where tooltips open, on a picker around the window, or let each open on its own side (the default).
+  - A picked spot sits outside the edge of the window you're in, or of a popped-out page.
+  - Loot History, Loot Master (with its item tabs) and the Timeline can each have their own setting.
+- **Raid Notes:** the Timers window no longer stutters on large notes during a pull.
+- **Menu:** spacing tightened so every page fits.
+
 ## 1.1.2 beta 1 (2026-10-22)
 
 - **Menu:** the side menu is in four groups with headers: General, Raid Admin, Bosses and Modules.

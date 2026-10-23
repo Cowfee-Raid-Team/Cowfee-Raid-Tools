@@ -1,6 +1,6 @@
 local ADDON, CRT = ...
 
-local Groups = { listeners = {} }
+local Groups = { listeners = {}, classVersion = 0 }
 CRT.Groups = Groups
 
 local NUM_SLOTS = 40
@@ -64,9 +64,15 @@ function Groups.CachedRole(key)
     return key and CRT.db.roleCache[key:lower()]
 end
 
+-- classVersion goes up each time the class cache changes, so what is built from it (the note windows'
+-- class colours) is built again only then.
 local function cacheClass(key, class)
-    if class then
-        CRT.db.classCache[key:lower()] = class
+    if class and not (issecretvalue and issecretvalue(class)) then
+        local lower = key:lower()
+        if CRT.db.classCache[lower] ~= class then
+            CRT.db.classCache[lower] = class
+            Groups.classVersion = Groups.classVersion + 1
+        end
     end
 end
 

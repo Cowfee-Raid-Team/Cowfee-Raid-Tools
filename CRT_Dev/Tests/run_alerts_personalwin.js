@@ -136,7 +136,9 @@ fire("PLAYER_LOGIN")
 
 local R, A, Notes, NW = CRT.AlertReminders, CRT.Alerts, CRT.Notes, CRT.NoteWindow
 local win = named.CowfeeRaidToolsNote_personal
-local title, body = win.strings[1], win.strings[2]
+-- the window draws its lines as rows; what it shows, as one text, is its DrawnText
+local title = win.strings[1]
+local body = setmetatable({}, { __index = function(_, k) if k == "text" then return NW:Get("personal"):DrawnText() end end })
 local function show()
   NW:RefreshAll()
   return body.text
@@ -454,7 +456,7 @@ test("stamp: a cleared note keeps the shared windows up for the stamp, then hide
   NW:Flash()
   NW:RefreshAll()
   local w = NW:Get("assignments")
-  assert(assign.shown and assign.strings[2].text == "" and assign.strings[1].text == "", "up for the stamp, blank (no title, no text): " .. tostring(assign.strings[1].text) .. " / " .. tostring(assign.strings[2].text))
+  assert(assign.shown and w:DrawnText() == "" and assign.strings[1].text == "", "up for the stamp, blank (no title, no text): " .. tostring(assign.strings[1].text) .. " / " .. tostring(w:DrawnText()))
   assert(rawget(w.stamp, "playing"), "the stamp plays")
   NW:RefreshAll()
   assert(assign.shown, "stays up while the stamp plays")
@@ -467,7 +469,7 @@ test("stamp: a cleared note keeps the shared windows up for the stamp, then hide
   CRT.db.notes.assignments.keepEmpty = true
   Notes:Fire()
   NW:RefreshAll()
-  assert(assign.shown and assign.strings[2].text == "" and assign.strings[1].text == "", "kept up when empty, blank")
+  assert(assign.shown and w:DrawnText() == "" and assign.strings[1].text == "", "kept up when empty, blank")
   CRT.db.notes.assignments.keepEmpty = nil
   CRT.db.notes.list[9] = nil
   CRT.db.notes.active = 1
