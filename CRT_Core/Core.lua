@@ -118,6 +118,7 @@ local defaults = {
         grow = "right", -- the row grows "right" (left to right) or "left" (right to left, from the panel's right end)
         dispelBorder = false, -- unused since the frame always takes the dispel color (20261020-debuffs-look); kept, as saved data only grows
         dispelGlow = false, -- a soft glow in the dispel color around a dispellable debuff's frame
+        ignored = {}, -- your own debuffs to leave out, { [spellID] = true }, beside the built-in Debuffs.EXCLUDED_SPELLS
     },
     -- Raid notes. list[id] holds each imported or received note. window and alert hold the
     -- note window and personal alert settings, with position added when they are moved.

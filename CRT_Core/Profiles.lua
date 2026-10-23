@@ -554,8 +554,21 @@ local function isLayers(v)
     return true, out, dropped
 end
 
+-- debuffs.ignored: { [spellID] = true }, each key a positive whole number. Anything else rejects it.
+local function isSpellSet(v)
+    if type(v) ~= "table" then
+        return false
+    end
+    for k, x in pairs(v) do
+        if type(k) ~= "number" or k < 1 or k % 1 ~= 0 or k > 2147483647 or x ~= true then
+            return false
+        end
+    end
+    return true, v, 0
+end
+
 -- Shared settings with a shape of their own, by path.
-local SHAPES = { ["ui.layers"] = isLayers }
+local SHAPES = { ["ui.layers"] = isLayers, ["debuffs.ignored"] = isSpellSet }
 
 -- A shared value must be plain and of its default's type, at every level: a list default's entries
 -- too, and a position, ui.layers or a late setting by its own shape. A table that starts empty (a map,
