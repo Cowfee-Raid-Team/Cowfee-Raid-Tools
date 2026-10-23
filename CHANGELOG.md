@@ -1,5 +1,33 @@
 # Changelog
 
+## 1.1.2 (2026-10-23)
+
+- **Menu:** the side menu is in four groups with headers: General, Raid Admin, Bosses and Modules.
+- **Requests** (new page under Modules): ask the raid who needs an item, like a Vantus rune or a flask. Raiders answer with a popup, and Trade 1 hands one to each player who needs one.
+- **Help icons:** every (?) sits just right of what it explains, on every page.
+- **Tooltips:** choose where CRT tooltips open: on their own side (the default), at a spot you click around the window, at the game's tooltip spot, or following the cursor. Loot History, Loot Master and the Timeline can each have their own setting.
+- **Profiles:** Export settings only, for sharing your setup with raiders: no notes, layouts or history, and nothing personal like chat output. Import shows what will change first, keeps a backup, and has Undo.
+- **Invites:** Invite missing on Raid Groups, and click a player who isn't here on the Late Tracker to invite them. Each player moves into their group when they join, after combat if needed.
+- **Loot Master:**
+  - Test boss kill holds test loot on the Tonight tab like a real kill; Start session gives it out.
+  - End session asks first; real items still waiting go back to the Held boss loot list.
+  - Add item from your bags: drag or shift-click any item you can still trade, one copy per drag.
+  - Flasks, potions and other items you don't wear are open to every raider.
+  - CRT Looting stays on through a /reload, and the Boss loot list is kept for the whole raid with each item's 2-hour trade time.
+  - Items outside the raid leader's loot filter get a normal roll.
+  - Trades put in exactly one copy and never leave an item on your cursor.
+- **Debuffs:** an Ignore these debuffs list: add a spell ID, or right-click a debuff out of combat. The game only lets addons hide some debuffs on you, and the list says which.
+- **Mech Alerts:** alerts are saved for Normal/Heroic or Mythic. Old "Any" alerts now show in both.
+- **Raid Notes:**
+  - The note editor can pick its players from the group, the invite list or a Raid Groups layout.
+  - "Demon Hunter" and "Death Knight" are one class everywhere, and an assignment line naming your class counts as yours.
+  - The Timers window no longer stutters on large notes during a pull.
+  - The note windows no longer show outside a raid by default.
+- **Markers:** marker macros on Raid Notes (make, update, drag to your bars), a freeform marker canvas, and marker displays for Sszorak and Nek'zali.
+- **Timeline:** Export Abilities works for raids older than Warlords of Draenor.
+- **Your own sounds** now play only from the CowfeeRaidTools_Media companion addon.
+- **Fixes:** the Raid Groups name picker opens in front, and the ready check consumables bar draws on top.
+
 ## 1.1.2 beta 2 (2026-10-23)
 
 - **Requests** (new page under Modules): ask the raid who needs an item, like a Vantus rune or a flask. Raiders answer with a popup, and Trade 1 hands one to each player who needs one.
