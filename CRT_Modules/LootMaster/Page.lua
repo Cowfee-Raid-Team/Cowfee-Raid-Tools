@@ -59,6 +59,7 @@ local TEXT = {
     running = "%s%d items, %d of %d raiders with CRT, %d answers in",
     testTag = "TEST · ",
     testKill = "Test boss kill", start = "Start session (%d)", window = "Looter window", popup = "My popup", endSession = "End session",
+    noAuthority = "Only the raid leader, or a looter they name in Loot authority, can run loot.",
     held = "Held boss loot",
     heldHelp = "The boss items waiting for your next loot session, real and TEST, as in the Boss loot window (/crt loot boss). Tick the ones to give out and press Start session. TEST items never go into a real session: with both kinds ticked, only the real ones start. TEST items go at End session, after a /reload, or 10 minutes after their test kill. Add item puts gear or a tier token from your bags on the list, marked from your bags, if you can still trade it. One that isn't bound has no trade time and leaves 2 hours after you added it.",
     heldNone = "No boss loot held.",
@@ -228,14 +229,39 @@ local function buildTonight(f)
     -- the buttons in a row, each as wide as its label (Start session's count changes its width)
     local start
     local prev
+    local gated = {} -- the buttons only someone with loot authority may use (not My popup)
     for _, spec in ipairs({
-        { TEXT.testKill, function() LM:TestBossKill() end },
-        { TEXT.start:format(0), function() LM.BossLoot:Start() end },
-        { TEXT.window, function() LM:ShowWindow() end },
+        { TEXT.testKill, function() LM:TestBossKill() end, true },
+        { TEXT.start:format(0), function() LM.BossLoot:Start() end, true },
+        { TEXT.window, function() LM:ShowWindow() end, true },
         { TEXT.popup, function() LM:ShowPopup() end },
-        { TEXT.endSession, function() LM:AskEnd() end }, -- asks first, then ends everything (LootMaster/EndAll.lua)
+        { TEXT.endSession, function() LM:AskEnd() end, true }, -- asks first, then ends everything (LootMaster/EndAll.lua)
     }) do
-        local b = UI.PanelButton(f, spec[1], 24, spec[2])
+        local onClick = spec[2]
+        if spec[3] then
+            onClick = function()
+                if LM:CanLoot() then
+                    spec[2]()
+                end
+            end
+        end
+        local b = UI.PanelButton(f, spec[1], 24, onClick)
+        if spec[3] then
+            gated[#gated + 1] = b
+            -- greyed out without loot authority, with the reason on hover (motion scripts run while disabled)
+            b:SetMotionScriptsWhileDisabled(true)
+            b:SetScript("OnEnter", function(self)
+                if not LM:CanLoot() then
+                    UI.TooltipOwner(GameTooltip, self, "ANCHOR_RIGHT", nil, nil, "lootmaster")
+                    GameTooltip:SetText(self:GetText() or "")
+                    GameTooltip:AddLine(UI.BadText(TEXT.noAuthority), 1, 1, 1, true)
+                    GameTooltip:Show()
+                end
+            end)
+            b:SetScript("OnLeave", function()
+                GameTooltip:Hide()
+            end)
+        end
         if prev then
             b:SetPoint("LEFT", prev, "RIGHT", 6, 0)
         else
@@ -283,7 +309,11 @@ local function buildTonight(f)
         start:SetText(TEXT.start:format(BL and BL:StartCount() or 0)) -- what Start session would send
         local fs = start:GetFontString()
         start:SetWidth(UI.PanelButtonWidth(fs and fs:GetStringWidth() or 0))
-        start:SetEnabled(BL and BL:CanStart() and true or false)
+        local authority = LM:CanLoot() and true or false
+        for _, b in ipairs(gated) do
+            b:SetEnabled(authority)
+        end
+        start:SetEnabled(authority and BL and BL:CanStart() and true or false)
     end
     -- CRT Looting: the state, and the leader's button
     heading(f, L.col3, -8, TEXT.crtLooting, TEXT.crtLootingHelp)

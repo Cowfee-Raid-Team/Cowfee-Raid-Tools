@@ -363,6 +363,52 @@ eq(hb, 3, "Held: old rows count by encounter; one with neither isn't a boss")
 eq(hi, 5, "Held: every row is an item")
 BL.rows = {}
 
+-- Loot authority: the session buttons are greyed (with the reason on hover) for anyone who can't run loot; My popup never
+local realCanLoot = LM.CanLoot
+local canLoot = true
+function LM:CanLoot() return canLoot end
+local tip = { lines = {}, hidden = false }
+GameTooltip = { SetText = function(_, t) tip.title = t end, AddLine = function(_, t) tip.lines[#tip.lines + 1] = t end,
+  Show = function() tip.shown = true end, Hide = function() tip.hidden = true end }
+CRT_UI.TooltipOwner = function() tip.lines = {} tip.title = nil end
+BL:Clear()
+LM:TestBossKill(rand)
+local gatedNames = { "Test boss kill", "Looter window", "End session" }
+local function gate(want, who)
+  LM:Fire("bossloot", "changed")
+  for _, n in ipairs(gatedNames) do eq(buttons[n].enabled, want, who .. ": " .. n) end
+  eq(start.enabled, want and BL:CanStart() and true or false, who .. ": Start session")
+  eq(buttons["My popup"].enabled, true, who .. ": My popup always on")
+end
+canLoot = true
+gate(true, "leader or named looter or solo")
+canLoot = false
+gate(false, "raider not on the list")
+local b = buttons["Test boss kill"]
+tip.lines = {}
+b.scripts.OnEnter(b)
+eq(#tip.lines, 1, "greyed: the tooltip has a reason line")
+check(tip.lines[1] and tip.lines[1]:find("Only the raid leader, or a looter they name in Loot authority, can run loot.", 1, true) ~= nil
+  and tip.lines[1]:find("|cff" .. CRT_UI.Hex("bad"), 1, true) ~= nil, "greyed: the reason is in the bad colour")
+-- clicks do nothing without authority
+local rowsBefore = #BL:Rows()
+b.onClick()
+eq(#BL:Rows(), rowsBefore, "no authority: Test boss kill does nothing")
+buttons["Looter window"].onClick()
+buttons["End session"].onClick()
+eq(#BL:Rows(), rowsBefore, "no authority: End session does nothing")
+-- Start session needs both rules: authority, and something to start
+canLoot = true
+BL:Clear()
+gate(true, "authority but nothing held")
+eq(start.enabled, false, "Start session: authority alone isn't enough")
+LM:TestBossKill(rand)
+gate(true, "authority and rows held")
+eq(start.enabled, true, "Start session: both rules hold")
+canLoot = false
+gate(false, "rows held, no authority")
+LM.CanLoot = realCanLoot
+
 print(string.format("%d passed, %d failed", passes, fails))
 if fails > 0 then error("failures") end
 `;
