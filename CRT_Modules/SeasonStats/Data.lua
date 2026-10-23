@@ -428,7 +428,10 @@ function Stats.Reflection(c, maxNights)
 end
 
 -- Tattlebot's avoidable damage on a boss and group per night, newest first, at most max nights:
--- { key, pulls, damage, perPull }. Nil when Tattlebot has no pull on the boss in that group.
+-- { key, pulls, damage, perPull, nightIDs, nightID }. nightIDs are the Tattlebot nights with a pull on that date,
+-- newest first; a date can have two (End night pressed, then more pulls), and nightID, the one the page opens in
+-- Tattlebot (CRT.TattlePage.ShowNight), is the first of them, the newest. Nil when Tattlebot has no pull on the
+-- boss in that group.
 function Stats:AvoidableTrend(encounterID, group, max)
     local Tattle = CRT.Tattle
     if not (Tattle and Tattle.BossPulls) then
@@ -441,13 +444,26 @@ function Stats:AvoidableTrend(encounterID, group, max)
             local key = Stats.NightKey(p.at)
             local night = byKey[key]
             if not night then
-                night = { key = key, pulls = 0, damage = 0 }
+                night = { key = key, pulls = 0, damage = 0, nights = {} }
                 byKey[key] = night
                 list[#list + 1] = night
             end
             night.pulls = night.pulls + 1
             night.damage = night.damage + (p.damage or 0)
+            if p.night ~= nil and not night.nights[p.night] then
+                night.nights[p.night] = p.nightAt or p.at
+            end
         end
+    end
+    for _, night in ipairs(list) do
+        local ids = {}
+        for id in pairs(night.nights) do
+            ids[#ids + 1] = id
+        end
+        table.sort(ids, function(a, b)
+            return night.nights[a] > night.nights[b]
+        end)
+        night.nightIDs, night.nightID, night.nights = ids, ids[1], nil
     end
     if #list == 0 then
         return nil
@@ -462,6 +478,59 @@ function Stats:AvoidableTrend(encounterID, group, max)
         night.perPull = night.damage / night.pulls
     end
     return list
+end
+
+-- Death causes on the ability timeline ------------------------------------------------------------------------------
+-- The row of the boss's ability timeline for a difficulty group (the one picker, Timeline:ReferenceFor) that a death
+-- cause is: by spell ID, else by the spell's name against the row's name. The page colours the cause as the Timeline
+-- draws the row (Reference.RowColor, read when drawn, so Use custom colours is followed) and lists its types.
+-- The rows are read once per boss and group and kept until the Timeline changes (an ability timeline edited,
+-- another picked, a pull saved).
+
+local abilityRows = {} -- ["encounterID|group"] = { bySpell = { [spellID] = row }, byName = { [name] = row } }
+
+local function foldName(s)
+    local Reference = CRT.TimelineReference
+    if Reference and Reference.Norm then
+        return Reference.Norm(s)
+    end
+    return type(s) == "string" and s:lower() or nil
+end
+
+local function readAbilityRows(encounterID, group, bossName)
+    local out = { bySpell = {}, byName = {} }
+    local T = CRT.Timeline
+    if not (T and T.ReferenceFor) then
+        return out
+    end
+    local ok, entry = pcall(T.ReferenceFor, T, encounterID, group, bossName)
+    local rows = ok and type(entry) == "table" and type(entry.ref) == "table" and entry.ref.rows or {}
+    for _, row in ipairs(rows) do
+        if type(row.spellID) == "number" and row.spellID > 0 and not out.bySpell[row.spellID] then
+            out.bySpell[row.spellID] = row
+        end
+        local name = foldName(row.name)
+        if name and name ~= "" and not out.byName[name] then
+            out.byName[name] = row
+        end
+    end
+    return out
+end
+
+-- The ability timeline row a death cause is, or nil: spellID (0 for an unknown spell gives nil), name the spell's
+-- name when known; bossName the boss library's name, for an ability timeline with no Encounter line.
+function Stats:AbilityRow(encounterID, group, spellID, name, bossName)
+    if type(spellID) ~= "number" or spellID <= 0 then
+        return nil
+    end
+    local key = tostring(encounterID) .. "|" .. tostring(group)
+    local rows = abilityRows[key]
+    if not rows then
+        rows = readAbilityRows(encounterID, group, bossName)
+        abilityRows[key] = rows
+    end
+    local folded = foldName(name)
+    return rows.bySpell[spellID] or (folded and rows.byName[folded]) or nil
 end
 
 -- Text -------------------------------------------------------------------------------------------------------------
@@ -496,6 +565,12 @@ end
 if CRT.Timeline and CRT.Timeline.OnSaved then
     CRT.Timeline:OnSaved(function(pull)
         Stats:Record(pull, Stats.PhaseFor(pull))
+    end)
+end
+-- the ability timelines' rows are read again after any Timeline change
+if CRT.Timeline and CRT.Timeline.OnChange then
+    CRT.Timeline:OnChange(function()
+        abilityRows = {}
     end)
 end
 if CRT.Alerts and CRT.Alerts.OnChange then

@@ -796,6 +796,8 @@ end
 local function norm(name)
     return type(name) == "string" and fold(trim(name)):lower() or nil
 end
+-- A name as the matching here reads it (trimmed, lowercase, curly apostrophes plain), for Season Stats' death causes.
+Reference.Norm = norm
 
 local HEADERS = { boss = true, difficulty = true, length = true, encounter = true, phase = true, order = true }
 
