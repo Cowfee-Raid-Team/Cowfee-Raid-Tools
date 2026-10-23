@@ -18,8 +18,8 @@ local ADDON, CRT = ...
 -- party and may be secret: secret is no); anyone out of a group, where the messages go straight back to you,
 -- to try it. A raider takes an ask only from one of those, one at a time per asker (a newer ask replaces the
 -- older one), and in a group not from themselves. An ask goes (and its popup closes) when its asker leaves the
--- group or stops leading (checked on GROUP_ROSTER_UPDATE and PARTY_LEADER_CHANGED), and ASK_SECONDS after it
--- came. The asker takes an answer only for the open request and only from a group member.
+-- group or stops leading (checked on GROUP_ROSTER_UPDATE and PARTY_LEADER_CHANGED; a secret or unreadable flag,
+-- or a name not loaded yet, keeps it), and ASK_SECONDS after it came. The asker takes an answer only for the open request and only from a group member.
 -- Nothing is saved: the open request (R.open) and the asks waiting for your answer (R.incoming) are in memory,
 -- so a /reload closes them.
 --
@@ -64,17 +64,31 @@ function R:Fire(what)
     end
 end
 
--- Whether a group member (a unit) leads: the leader, or an assist in a raid. Secret or unreadable is no.
-local function leads(unit)
+-- Whether a group member (a unit) leads, the leader or an assist in a raid: true, false, or nil when a flag
+-- that decides it is secret or can't be read.
+local function leadState(unit)
     local okL, leader = pcall(UnitIsGroupLeader, unit)
-    if okL and not secret(leader) and leader == true then
+    local leaderKnown = okL and not secret(leader)
+    if leaderKnown and leader == true then
         return true
     end
+    local assistKnown, assistant = true, false
     if IsInRaid() and UnitIsGroupAssistant then
-        local okA, assistant = pcall(UnitIsGroupAssistant, unit)
-        return okA and not secret(assistant) and assistant == true
+        local okA, a = pcall(UnitIsGroupAssistant, unit)
+        assistKnown, assistant = okA and not secret(a), a
+        if assistKnown and assistant == true then
+            return true
+        end
     end
-    return false
+    if leaderKnown and assistKnown then
+        return false
+    end
+    return nil
+end
+
+-- Leads for sure: secret or unreadable is no.
+local function leads(unit)
+    return leadState(unit) == true
 end
 
 function R:CanAsk()
@@ -300,11 +314,41 @@ local function mayAsk(sender)
     return unit ~= nil and leads(unit)
 end
 
--- Drops the asks whose asker may no longer ask (left the group, stopped leading) or whose time is up.
+-- Whether every group member's name can be read now (none nil, secret or the game's UNKNOWNOBJECT, a name not
+-- loaded yet), so a name missing from the group is really gone.
+local function rosterLoaded()
+    local prefix, n = IsInRaid() and "raid" or "party", IsInRaid() and GetNumGroupMembers() or GetNumSubgroupMembers()
+    for i = 1, n do
+        local ok, name = pcall(UnitName, prefix .. i)
+        if not ok or type(name) ~= "string" or secret(name) or name == "" or name == UNKNOWNOBJECT then
+            return false
+        end
+    end
+    return true
+end
+
+-- Whether the asker surely may no longer ask: out of your group (with every name loaded) or surely not the
+-- leader or an assist. Anything secret or unreadable keeps the ask.
+local function surelyGone(from)
+    local me = LM:Me()
+    if not IsInGroup() then
+        return from ~= me
+    end
+    if from == me then
+        return true
+    end
+    local unit = LM.UnitOf(from)
+    if not unit then
+        return rosterLoaded()
+    end
+    return leadState(unit) == false
+end
+
+-- Drops the asks whose asker surely may no longer ask (left the group, stopped leading) or whose time is up.
 function R:Prune()
     local now, gone = GetTime(), false
     for from, inc in pairs(self.incoming) do
-        if now - inc.at >= R.ASK_SECONDS or not mayAsk(from) then
+        if now - inc.at >= R.ASK_SECONDS or surelyGone(from) then
             self.incoming[from] = nil
             gone = true
         end

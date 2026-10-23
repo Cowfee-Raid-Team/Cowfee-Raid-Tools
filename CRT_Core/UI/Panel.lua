@@ -1074,7 +1074,8 @@ function UI.MenuLayout(groups, modern, width, height)
             out.headers[#out.headers + 1] = { label = group.label, y = y, h = h, art = art }
             y = y - h
             if modern then
-                out.boxes[#out.boxes + 1] = { y = y, h = look.pad + #group.keys * step, right = look.boxRight }
+                -- pad above the first page's button and below the last one's (its rowGap is inside the box)
+                out.boxes[#out.boxes + 1] = { y = y, h = 2 * look.pad + #group.keys * step - L.rowGap, right = look.boxRight }
                 y = y - look.pad
                 left, right = look.buttonLeft, look.buttonRight
             else
@@ -1083,6 +1084,9 @@ function UI.MenuLayout(groups, modern, width, height)
             for _, key in ipairs(group.keys) do
                 out.pages[#out.pages + 1] = { key = key, y = y, left = left, right = right }
                 y = y - step
+            end
+            if modern then
+                y = y + L.rowGap - look.pad -- the box ends pad under the last button
             end
         end
         out.height = -y

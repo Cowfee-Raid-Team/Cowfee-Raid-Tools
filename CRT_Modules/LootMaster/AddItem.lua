@@ -5,9 +5,9 @@ local ADDON, CRT = ...
 -- a new session"). Loot Master > Tonight has an item slot under Held boss loot (LM.BuildAddItem, placed by
 -- LootMaster/Page.lua; the slot is the shared UI.ItemDropSlot, UI/ItemSlot.lua). An item goes in by
 -- dragging it from your bags onto the slot, or by shift-clicking it in your bags while the slot is shown
--- (the Tonight tab open) and no chat or other text box has the keyboard. Any item you can still trade goes in, gear or not (Alex, 2026-10-22: "remove the restriction
--- for non gear and tier items. This would allow me to auction off pots and funny things"); the slot's
--- status line says why one doesn't. One that does goes through BL:AddFromBags (LootMaster/BossLoot.lua): a
+-- (the Tonight tab open) and no chat or other text box has the keyboard. Any item you can still trade goes
+-- in, gear or not (Alex, 2026-10-22: "remove the restriction for non gear and tier items. This would allow
+-- me to auction off pots and funny things"); the slot's status line says why one doesn't. One that does goes through BL:AddFromBags (LootMaster/BossLoot.lua): a
 -- real row, won, ticked, "from your bags", kept out of the loot filter (the leader's own choice) and given
 -- out like any other row. It leaves when the game's trade time for it is over; one that isn't bound has no
 -- trade time and leaves LM.TRADE_SECONDS after it was added.

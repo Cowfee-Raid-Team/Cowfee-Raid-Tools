@@ -422,6 +422,23 @@ check(not qp.shown, "Assist left the group: the ask goes, the popup closes")
 NAMES = { "Solex", "Quick", "Assist", "Old" }
 hand(quick, "N|demoted|1|item:" .. RUNE, "Assist-Sargeras")
 check(qp.shown, "an ask from Assist again")
+-- what can't be read keeps the ask: a secret assist flag, an unreadable leader flag, a name not loaded yet
+assistSecret = true
+groupEvent(quick, "GROUP_ROSTER_UPDATE")
+check(qp.shown, "a secret assist flag on a roster update: the ask stays")
+assistSecret = false
+local realLeader = UnitIsGroupLeader
+UnitIsGroupLeader = function() error("unreadable") end
+groupEvent(quick, "PARTY_LEADER_CHANGED")
+check(qp.shown, "an unreadable leader flag: the ask stays")
+UnitIsGroupLeader = realLeader
+NAMES = { "Solex", "Quick", false, "Old" }
+local realName = UnitName
+UnitName = function(u) local n = realName(u) if n == false then return nil end return n end
+groupEvent(quick, "GROUP_ROSTER_UPDATE")
+check(qp.shown, "a group member's name not loaded yet: the ask stays")
+UnitName = realName
+NAMES = { "Solex", "Quick", "Assist", "Old" }
 local realAssist = UnitIsGroupAssistant
 UnitIsGroupAssistant = function() return false end
 groupEvent(quick, "PARTY_LEADER_CHANGED")

@@ -115,14 +115,14 @@ local function hideRow(row)
     end
 end
 
--- The status line alone, for the clock.
-local function refreshStatus()
+-- The status line alone, for the clock; rows: R:Rows(), when the caller has them already.
+local function refreshStatus(rows)
     if not view then
         return
     end
     local open = R.open
     if open then
-        view.status:SetText(R.StatusText(GetTime() - open.askedAt, R.Counts(R:Rows())))
+        view.status:SetText(R.StatusText(GetTime() - open.askedAt, R.Counts(rows or R:Rows())))
     else
         view.status:SetText(R:CanAsk() and TEXT.none or TEXT.notLead)
     end
@@ -144,7 +144,7 @@ local function refresh()
     view.ask:SetEnabled(canAsk and item ~= nil)
     view.close:SetEnabled(open ~= nil)
     local rows = open and R:Rows() or {}
-    refreshStatus()
+    refreshStatus(rows)
     local left = open and R.Have(open.itemString) or 0
     for i, row in ipairs(view.rows) do
         if rows[i] then
@@ -215,7 +215,9 @@ local function build(f)
         if ticker then
             ticker:Cancel()
         end
-        ticker = C_Timer.NewTicker(1, refreshStatus)
+        ticker = C_Timer.NewTicker(1, function()
+            refreshStatus()
+        end)
     end)
     f:SetScript("OnHide", function()
         if ticker then
