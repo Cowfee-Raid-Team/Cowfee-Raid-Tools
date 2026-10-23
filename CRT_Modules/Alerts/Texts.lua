@@ -1,13 +1,13 @@
 local ADDON, CRT = ...
 
--- The texts area: big text such as "Stack on X (5.0)" for every line whose outputs.text is on, the
+-- The texts area ("Critical alerts text" on screen): big text such as "Stack on X (5.0)" for every line whose outputs.text is on, the
 -- seconds after it and "NOW" from 0 while it lingers. Built on Alerts/Areas.lua; its settings are
 -- CRT.db.alerts.areas.texts (font, fontSize, outline, align, beside the common shown, cap and grow).
 
 local Areas = CRT.AlertAreas
 
 local TEXT = {
-    title = "Alert texts",
+    title = "Critical alerts text",
     now = "NOW",
     font = "Font",
     size = "Size",

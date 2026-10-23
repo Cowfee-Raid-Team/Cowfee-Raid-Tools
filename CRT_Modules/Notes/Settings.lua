@@ -1,9 +1,9 @@
 local ADDON, CRT = ...
 
 -- The Notes Settings tab of the Raid Notes page (Notes/Page.lua builds it into its tab): one column for each
--- of the three note windows (timers, assignments, personal note), your alert's timing and voice, and
--- who to accept shared notes from. Whether the alert and the speech are on, and where your note lines
--- show, is on the Alerts tab (Notes/AlertsTab.lua). Unlocked windows can be dragged and resized by
+-- of the three note windows (timers, assignments, personal note), who to accept shared notes from and how the
+-- Notes tab lists them. The note callout (its timing, look and voice) and where your note lines show are on
+-- the Alert Settings tab (Notes/AlertsTab.lua, Notes/Alert.lua). Unlocked windows can be dragged and resized by
 -- hand, and their position and size are saved per player.
 
 local Notes = CRT.Notes
@@ -28,17 +28,6 @@ local TEXT = {
     backgroundAlpha = "Background",
     font = "Font",
 
-    -- Alerts.
-    alerts = "Alerts",
-    alertsHelp = "When your next spell or callout shows and how it is read out.\n\n"
-        .. "Turn the Next spell alert and the speech on or off on the Alert Settings tab, under Your note lines go to. While one is off, its rows here are greyed out.",
-    alertSeconds = "Show it early by",
-    ttsSeconds = "Count down seconds",
-    ttsVolume = "Speech volume",
-    alertIcon = "Spell icon",
-    testSpeech = "Test speech",
-    testPhrase = "Cowfee Raid Tools. Avenging Wrath in three.",
-
     -- All three note windows.
     allWindows = "All note windows",
     allWindowsHelp = "Settings for the Timers, Assignments and Personal note windows together. Show outside of raid: tick it to show all three outside a raid instance too; off, they show only in a raid. Previews still shows them.",
@@ -56,20 +45,14 @@ local TEXT = {
 }
 
 -- Four columns across the page (UI.PAGE_W), under All note windows: the three note windows, COLUMN_W
--- each, then Alerts and Sharing in what is left. A slider row is 4 + labelWidth + 5 + width + its value
+-- each, then Sharing and Notes list in what is left. A slider row is 4 + labelWidth + 5 + width + its value
 -- (about 44).
 local COLUMN_W = math.floor((UI.PAGE_W - 16) / 4)
-local ALERTS_X = 8 + 3 * COLUMN_W + 10
-local ALERTS_W = UI.PAGE_W - 8 - ALERTS_X
+local FOURTH_X = 8 + 3 * COLUMN_W + 10
+local FOURTH_W = UI.PAGE_W - 8 - FOURTH_X
 -- All note windows comes first, at the top left; the columns start ALL_H under it: its heading and
 -- its check box (20 apart, as in every section), then the 36 a section leaves before the next heading.
 local TOP, ALL_H = -14, 56
-local ICON_POSITIONS = {
-    { key = "left", label = "Left" },
-    { key = "right", label = "Right" },
-    { key = "above", label = "Above" },
-    { key = "below", label = "Below" },
-}
 local WINDOWS = {
     { key = "window", title = TEXT.timers },
     { key = "assignments", title = TEXT.assignments },
@@ -82,29 +65,11 @@ local GREY = { 0.5, 0.5, 0.5 }
 local page
 local controls = {}
 
-local function makeButton(parent, label, width, height)
-    local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
-    b:SetNormalFontObject(CRTFontNormal)
-    b:SetHighlightFontObject(CRTFontHighlight)
-    b:SetDisabledFontObject(CRTFontDisable)
-    b:SetSize(width, height or 24)
-    b:SetText(label)
-    return b
-end
-
 local function setting(key, field)
     return function()
         return Notes:WindowSettings(key)[field]
     end, function(value)
         Notes:Set(key, field, value)
-    end
-end
-
-local function alert(field)
-    return function()
-        return Notes:Alert()[field]
-    end, function(value)
-        Notes:Set("alert", field, value)
     end
 end
 
@@ -115,7 +80,7 @@ local function greyOut(label, on)
 end
 
 -- enabledIf, when given, returns whether a control can be used. When it returns false the control is
--- greyed out and can't be changed, such as the alert seconds while alerts are off.
+-- greyed out and can't be changed, such as a hidden window's rows.
 -- enabledIf comes before getter and setter, which must be last (see makeNumber). Pass nil when the
 -- box never greys out.
 local function makeCheck(parent, x, y, label, enabledIf, getter, setter)
@@ -144,7 +109,7 @@ end
 
 -- A number setting as an Edit Mode style slider. opts: low and high (the range), labelWidth and
 -- width (default 100 and 76, to fit a column), format (the text beside the bar) and enabledIf.
--- getter and setter come last because setting() and alert() return both: Lua only passes every
+-- getter and setter come last because setting() returns both: Lua only passes every
 -- return value of a call when it is the last argument, so in the middle the setter is lost.
 local function makeNumber(parent, x, y, label, opts, getter, setter)
     local row = UI.Slider(parent, label, {
@@ -165,10 +130,6 @@ end
 
 local function percent(v)
     return (v or 0) .. "%"
-end
-
-local function seconds(v)
-    return (v or 0) .. "s"
 end
 
 local function heading(parent, x, y, text)
@@ -253,49 +214,22 @@ local function build(pf)
         buildColumn(pf, index, def, top)
     end
 
-    -- Alerts, then sharing under it, in the fourth column. The seconds row greys out while alerts are off,
-    -- and the speech rows while "Read them out" is off (whatever the alert is); both switches are on the
-    -- Alerts tab.
-    local function alertsOn()
-        return Notes:Alert().enabled and true or false
-    end
-    local function speechOn()
-        return Notes:Alert().tts and true or false
-    end
-    local x = ALERTS_X
-    local LABEL, CONTROL = 116, 76 -- a slider row: 4 + LABEL + 5 + CONTROL + its value, inside ALERTS_W
-    local alertsTitle = heading(pf, x, top, TEXT.alerts)
-    UI.HelpRight(alertsTitle, TEXT.alerts, TEXT.alertsHelp)
-    makeNumber(pf, x - 4, top - 22, TEXT.alertSeconds, { low = 1, high = 60, labelWidth = LABEL, width = CONTROL, format = seconds, enabledIf = alertsOn }, alert("seconds"))
-    local iconGet, iconSet = alert("iconPosition")
-    local iconRow = UI.Dropdown(pf, TEXT.alertIcon, { options = ICON_POSITIONS, labelWidth = LABEL, width = ALERTS_W - LABEL - 5, get = iconGet, set = iconSet, enabledIf = alertsOn })
-    iconRow:SetPoint("TOPLEFT", x, top - 54)
-    controls[#controls + 1] = iconRow
-    makeNumber(pf, x - 4, top - 86, TEXT.ttsSeconds, { low = 0, high = 30, labelWidth = LABEL, width = CONTROL, format = seconds, enabledIf = speechOn }, alert("ttsSeconds"))
-    local volumeGet, volumeSet = alert("ttsVolume")
-    local volume = UI.Slider(pf, TEXT.ttsVolume, { min = 0, max = 100, labelWidth = LABEL, width = CONTROL, format = percent, get = volumeGet, set = volumeSet, enabledIf = speechOn })
-    volume:SetPoint("TOPLEFT", x, top - 118)
-    controls[#controls + 1] = volume
-    local speak = makeButton(pf, TEXT.testSpeech, 140)
-    speak:SetPoint("TOPLEFT", x, top - 158)
-    speak:SetScript("OnClick", function()
-        CRT.NoteAlert:Speak(TEXT.testPhrase)
-    end)
-
-    heading(pf, x, top - 200, TEXT.sharing)
-    makeCheck(pf, x - 4, top - 220, TEXT.trustedOnly, nil, function()
+    -- Sharing, then how the Notes tab lists the notes, in the fourth column. The note callout's timing and
+    -- voice moved to its own entry on Alert Settings > Configuration (Notes/Alert.lua).
+    local x = FOURTH_X
+    heading(pf, x, top, TEXT.sharing)
+    makeCheck(pf, x - 4, top - 20, TEXT.trustedOnly, nil, function()
         return Notes:TrustedOnly()
     end, function(value)
         Notes:Set(nil, "trustedOnly", value)
     end)
 
-    -- how the Notes tab lists the notes
-    local listTitle = heading(pf, x, top - 256, TEXT.notesList)
+    local listTitle = heading(pf, x, top - 56, TEXT.notesList)
     UI.HelpRight(listTitle, TEXT.notesList, TEXT.listHelp)
     local styleRow = UI.Dropdown(pf, TEXT.listStyle, {
         options = { { key = "grouped", label = TEXT.grouped }, { key = "dropdown", label = TEXT.dropdown }, { key = "chips", label = TEXT.chips } },
         labelWidth = 80,
-        width = ALERTS_W - 85,
+        width = FOURTH_W - 85,
         get = function()
             return Notes:ListStyle()
         end,
@@ -303,7 +237,7 @@ local function build(pf)
             Notes:SetListStyle(key)
         end,
     })
-    styleRow:SetPoint("TOPLEFT", x, top - 278)
+    styleRow:SetPoint("TOPLEFT", x, top - 78)
     controls[#controls + 1] = styleRow
 
     pf:SetScript("OnShow", refresh)

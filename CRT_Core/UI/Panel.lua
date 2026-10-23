@@ -102,10 +102,10 @@ UI.STRATA = {
 UI.LAYERS = {
     { key = "panel", label = "Main window", default = "HIGH" },
     { key = "notes", label = "Note windows", default = "MEDIUM" },
-    { key = "alert", label = "Your next spell", default = "HIGH" },
+    { key = "alert", label = "Note callout/assignments", default = "HIGH" },
     { key = "alertbars", label = "Alert bars", default = "HIGH" },
     { key = "alerticons", label = "Alert icons", default = "HIGH" },
-    { key = "alerttexts", label = "Alert texts", default = "HIGH" },
+    { key = "alerttexts", label = "Critical alerts text", default = "HIGH" },
     { key = "alertcircles", label = "Alert circles", default = "HIGH" },
     { key = "alerttimeline", label = "Alert timeline", default = "HIGH" },
     { key = "readycheck", label = "Ready check window", default = "HIGH" },

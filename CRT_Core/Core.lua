@@ -167,14 +167,20 @@ local defaults = {
         },
         personalText = "",
         editor = {}, -- the pop-out note editor's place and size once moved (Notes/EditorWindow.lua, UI.Window)
+        -- The note callout (Notes/Alert.lua; "Note callout/assignments" on screen), set on Raid Notes > Alert
+        -- Settings > Configuration. tts is also the switch for all speech (Alerts/Speech.lua).
         alert = {
             enabled = true,
-            seconds = 10, -- show your next spell this many seconds early
+            seconds = 10, -- show your note lines this many seconds early
             tts = true,
             ttsSeconds = 3, -- read it out at this many seconds left
             ttsVolume = 100,
-            ttsRate = 0,
+            ttsRate = 0, -- -10 to 10, the game's speech rate
             iconPosition = "left", -- the spell icon: left, right, above or below the text
+            font = "default", -- a CRT:FontList name, or "default": the addon's own font
+            fontSize = 20,
+            outline = "", -- "", "OUTLINE" or "THICKOUTLINE"
+            align = "CENTER", -- the two lines: LEFT, CENTER or RIGHT
         },
     },
     -- Quality of Life options. lowHealth is the experimental low-health alert: threshold is the health

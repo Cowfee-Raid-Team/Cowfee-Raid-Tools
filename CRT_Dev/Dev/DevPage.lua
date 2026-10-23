@@ -93,7 +93,7 @@ local function build(pf)
     end)
 
     -- Windows.
-    heading(pf, x, -132, "Windows", "Puts every movable window (your bar, the debuff panel, your next spell, the note windows, the low-health banner, the ready check window, marker displays, the pace window and the Timeline window) and the main panel back where they start.")
+    heading(pf, x, -132, "Windows", "Puts every movable window (your bar, the debuff panel, the note callout, the note windows, the low-health banner, the ready check window, marker displays, the pace window and the Timeline window) and the main panel back where they start.")
     action(pf, x, -152, "Reset all positions", 180, function()
         CRT.Dev:ResetAllPositions()
     end)
