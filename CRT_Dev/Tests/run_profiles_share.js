@@ -191,7 +191,7 @@ db.debuffs.size = 50 db.ui.font = "Morpheus" db.ui.fontSize = 16 db.readycheck.w
 db.alerts.bars.position = { point = "CENTER", relativePoint = "CENTER", x = 10, y = -20 }
 db.debuffs.position = { point = "TOP", relativePoint = "TOP", x = 3, y = 4 }
 db.ui.layers.panel = "DIALOG" db.markers.disabled[3001] = true
-db.notes.list[1] = { text = "secret note" } db.notes.personalText = "my secret" db.groups.presets[1] = { name = "secret layout" }
+db.notes.list[1] = { text = "secret note" } db.notes.personalText = "my secret" db.notes.history[1] = { { text = "secret earlier note text", at = 1, how = "edited" } } db.groups.presets[1] = { name = "secret layout" }
 db.late.history[1] = { secret = true } db.tattle.history[1] = { secret = true } db.alerts.reminders[1] = { text = "secret reminder" }
 db.alerts.saved[1] = { name = "secret alert" } db.classCache.Someone = "MAGE" db.lootmaster.authority.names.Friend = true
 db.ui.settingsTab = "profiles" db.lastPage = "notes"
@@ -215,7 +215,7 @@ check(methods[#methods] == 1, "settings strings compress with Zlib, for its chec
 local sent = text ~= "" and payloadOf(text) or {}
 check(sent.v == 1 and sent.kind == "settings" and sent.from == "Solex" and type(sent.data) == "table", "payload version, kind, sender")
 local flat = GAME.SerializeCBOR(sent)
-check(not flat:find("secret", 1, true), "no note, layout, history, reminder or saved alert is exported")
+check(not flat:find("secret", 1, true), "no note, note history, layout, history, reminder or saved alert is exported")
 check(not flat:find("Someone", 1, true) and not flat:find("Friend", 1, true), "no class cache or loot authority is exported")
 check(not flat:find("settingsTab", 1, true) and not flat:find("lastPage", 1, true), "no page state is exported")
 check(not flat:find("GUILD", 1, true) and not flat:find("officer", 1, true) and sent.data.readycheck.output == nil and sent.data.tattle.autoPost == nil and sent.data.notes.trustedOnly == nil, "no report output, auto-post or note trust setting is exported")

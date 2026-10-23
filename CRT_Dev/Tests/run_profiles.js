@@ -10,7 +10,7 @@ function ReloadUI() reloads = reloads + 1 end
 local store = {}
 C_EncodingUtil = { SerializeCBOR = function(t) store[#store+1] = t return "cbor" .. #store end, CompressString = function(s) return s end, EncodeBase64 = function(s) return s end,
   DecodeBase64 = function(s) return s end, DecompressString = function(s) return s end, DeserializeCBOR = function(s) return store[tonumber(s:match("%d+"))] end }
-local CRT = { defaults = { ui = { font = "default" }, groups = { presets = {} }, late = { history = {} }, lastPage = "groups", classCache = {}, timeline = { bosses = {}, record = true }, alerts = { noteLines = { text = false, icon = false, circle = false }, bars = { cap = 5 }, areas = { texts = { cap = 3 }, icons = { cap = 5 }, circles = { cap = 3 } }, reminders = {}, nextId = 1, saved = {}, nextSavedId = 1 } } }
+local CRT = { defaults = { notes = { list = {}, history = {} }, ui = { font = "default" }, groups = { presets = {} }, late = { history = {} }, lastPage = "groups", classCache = {}, timeline = { bosses = {}, record = true }, alerts = { noteLines = { text = false, icon = false, circle = false }, bars = { cap = 5 }, areas = { texts = { cap = 3 }, icons = { cap = 5 }, circles = { cap = 3 } }, reminders = {}, nextId = 1, saved = {}, nextSavedId = 1 } } }
 assert(load(src, "CRT_Core/Profiles.lua"))("CowfeeRaidTools", CRT)
 local P = CRT.Profiles
 local function fill(db, src) src = src or CRT.defaults for k, v in pairs(src) do if type(v) == "table" then if type(db[k]) ~= "table" then db[k] = {} end fill(db[k], v) elseif db[k] == nil then db[k] = v end end end
@@ -44,10 +44,14 @@ assert(CRTDB.alerts.areas.texts.cap == 7 and CRTDB.alerts.areas.texts.position.x
 print("ok profile copy carries alert areas")
 CRTDB.ui.font = "Copied"
 CRTDB.profiles.Raid.ui.font = "Arial"
--- Export and import.
+-- Export and import. A note's earlier texts (notes.history) stay behind; the notes go.
+CRTDB.notes.list[1] = { raw = "the note" } CRTDB.notes.history[1] = { { text = "an earlier text" } }
 local text = P:Export()
 print("export: " .. text:sub(1, 6) .. ", import as Raid: " .. tostring(select(2, P:Import(text, "Raid"))) .. ", as Copy: " .. tostring(P:Import(text, "Copy")) .. ", bad text: " .. tostring(select(2, P:Import("hello", "X"))))
 print("imported font " .. CRTDB.profiles.Copy.ui.font)
+assert(CRTDB.profiles.Copy.notes.list[1].raw == "the note" and CRTDB.profiles.Copy.notes.history == nil, "export carries the notes, not their history")
+assert(CRTDB.notes.history[1][1].text == "an earlier text", "and the history stays in the profile")
+print("ok note history: never in a profile export")
 assert(CRTDB.profiles.Copy.alerts and CRTDB.profiles.Copy.alerts.reminders[1], "export carries alerts")
 print("ok export carries alerts")
 assert(CRTDB.profiles.Copy.alerts.saved[3] and CRTDB.profiles.Copy.alerts.saved[3].name == "Soak" and CRTDB.profiles.Copy.alerts.nextSavedId == 4, "export carries saved alerts")

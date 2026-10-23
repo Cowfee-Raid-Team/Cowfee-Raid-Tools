@@ -18,6 +18,7 @@ local ADDON, CRT = ...
 --   "personal" block).
 --   active = id of the note in use, nextId
 --   window = note window settings, alert = personal alert settings, trustedOnly
+--   history[id] = the note's earlier texts, newest first (see "History" below)
 -- A note's invite list becomes a Raid Groups layout when it is imported (presetId links them).
 
 local TEXT = {
@@ -226,6 +227,120 @@ local function cacheSpells(note)
             Notes:SpellInfo(item.spellId)
         end
     end
+end
+
+-- History -------------------------------------------------------------------------------------
+-- Each stored note keeps its last HISTORY_MAX earlier texts in CRTDB.notes.history[id], newest first:
+--   { text, at = time(), how, who, from, lines }
+-- An entry is the text as it was just before a change, and that change: when (at), how and who.
+--   how: "edited" (Save text changes, the pop-out editor's Save, or lines changed on the Timeline or in the
+--        alert editor, which set lines = true), "imported", "received" (who = the sender) or "restored"
+--        (from = the `at` of the version put back).
+-- Recorded in one place, store() below, which every write of a note's text goes through. A change that
+-- leaves the text as it was adds nothing. Line changes in a row by the same player within LINE_BURST
+-- seconds keep one entry, the text before the first, so a few Timeline drags don't push out the saves.
+-- All notes' history together holds at most HISTORY_BYTES of text: over that, the note whose history holds
+-- the most text loses its oldest entry, again until it fits (so a short note's history is not emptied for a
+-- long one's). History stays on this computer: never shared to the raid, never
+-- in a profile export (CRT_Core/Profiles.lua).
+
+local HISTORY_MAX = 5
+local HISTORY_BYTES = 256 * 1024
+local LINE_BURST = 300
+Notes.HISTORY_MAX, Notes.HISTORY_BYTES = HISTORY_MAX, HISTORY_BYTES
+
+local function now()
+    return time and time() or 0
+end
+
+local function historyDb()
+    local db = ndb()
+    db.history = db.history or {}
+    return db.history
+end
+
+-- Drops the oldest entries until the whole history fits HISTORY_BYTES, and the history of notes that are gone.
+local function trimHistory()
+    local all, list = historyDb(), ndb().list
+    local total = 0
+    for id, entries in pairs(all) do
+        if not list[id] or #entries == 0 then
+            all[id] = nil
+        else
+            for _, e in ipairs(entries) do
+                total = total + #(e.text or "")
+            end
+        end
+    end
+    while total > HISTORY_BYTES do
+        local worst, most, bytes
+        for id, entries in pairs(all) do
+            local size = 0
+            for _, e in ipairs(entries) do
+                size = size + #(e.text or "")
+            end
+            if not worst or size > bytes or (size == bytes and #entries > most) then
+                worst, most, bytes = id, #entries, size
+            end
+        end
+        if not worst then
+            return
+        end
+        local dropped = table.remove(all[worst])
+        total = total - #(dropped and dropped.text or "")
+        if #all[worst] == 0 then
+            all[worst] = nil
+        end
+    end
+end
+
+-- Keeps `old` (the note's text before a change) as its newest earlier version. extra: who, from, lines.
+local function remember(id, old, how, extra)
+    local entries = historyDb()[id] or {}
+    local who = extra and extra.who or me()
+    local last = entries[1]
+    if extra and extra.lines and last and last.lines and last.who == who and now() - (last.at or 0) < LINE_BURST then
+        return -- the same run of line changes: the text before its first is kept already
+    end
+    table.insert(entries, 1, { text = old, at = now(), how = how, who = who, from = extra and extra.from,
+        lines = extra and extra.lines or nil })
+    while #entries > HISTORY_MAX do
+        table.remove(entries)
+    end
+    historyDb()[id] = entries
+    trimHistory()
+end
+
+-- The one place a stored note's text changes: the text before is kept in its history (when it differs),
+-- then the new text is set. how and extra as for remember.
+local function store(record, id, text, how, extra)
+    if record.raw ~= nil and record.raw ~= text then
+        remember(id, record.raw, how, extra)
+    end
+    record.raw = text
+end
+
+-- A note's earlier versions, newest first (the saved entries: read them, don't change them).
+function Notes:History(id)
+    return id and ndb().history and ndb().history[id] or {}
+end
+
+function Notes:HistoryCount(id)
+    return #self:History(id)
+end
+
+-- Puts a note's earlier version back as its text: the text now is kept first, as a "restored" entry, so
+-- restoring that entry undoes it. Only your copy changes; nothing is shared. Returns true when done.
+function Notes:Restore(id, index)
+    local record = self:Get(id)
+    local entry = self:History(id)[index]
+    if not (record and entry and type(entry.text) == "string") then
+        return false
+    end
+    if entry.text == record.raw then
+        return true
+    end
+    return self:UpdateRaw(id, entry.text, "restored", { from = entry.at })
 end
 
 -- Notes -----------------------------------------------------------------------------------
@@ -472,7 +587,8 @@ function Notes:Import(text, from, personal, source, via)
         db.nextId = db.nextId + 1
     end
     local record = db.list[id] or {}
-    record.raw = text
+    -- a note shared to you is "received", from its sender; one you pasted is "imported"
+    store(record, id, text, from and "received" or "imported", { who = from or me() })
     record.name = note.name or ("Note " .. id)
     record.encounterID = note.encounterID
     record.difficulty = note.difficulty
@@ -502,13 +618,15 @@ function Notes:Import(text, from, personal, source, via)
     return id, message
 end
 
-function Notes:UpdateRaw(id, text)
+-- Saves a note's new text, keeping the text before in its history. how: "edited" (the default) or
+-- "restored"; extra as for remember (lines = true for a change of single lines, below). Returns true.
+function Notes:UpdateRaw(id, text, how, extra)
     local record = self:Get(id)
     if not record then
         return
     end
     local note = Parser.Parse(text)
-    record.raw = text
+    store(record, id, text, how or "edited", extra)
     record.name = note.name or record.name
     record.encounterID = note.encounterID or record.encounterID
     record.difficulty = note.difficulty or record.difficulty
@@ -520,6 +638,7 @@ function Notes:UpdateRaw(id, text)
     parsed[id] = nil
     self:Parsed(id)
     self:Fire()
+    return true
 end
 
 -- Single lines ------------------------------------------------------------------------------
@@ -546,6 +665,9 @@ end
 
 -- Shared with the note editor (Notes/EditModel.lua), so a note is cut into lines one way.
 Notes.SplitPieces = splitLines
+
+-- A change of single lines (the Timeline, the alert editor), for the note's history (remember).
+local LINE_EDIT = { lines = true }
 
 local function joinLines(pieces)
     local out = {}
@@ -658,7 +780,7 @@ function Notes:AddLineTo(id, line)
     else
         pieces[#pieces] = { text = line, eol = "" }
     end
-    self:UpdateRaw(id, joinLines(pieces))
+    self:UpdateRaw(id, joinLines(pieces), "edited", LINE_EDIT)
     return #pieces
 end
 
@@ -682,7 +804,7 @@ function Notes:ReplaceLine(id, lineNumber, line, expected)
         return false
     end
     piece.text = line
-    self:UpdateRaw(id, joinLines(pieces))
+    self:UpdateRaw(id, joinLines(pieces), "edited", LINE_EDIT)
     return true
 end
 
@@ -693,13 +815,16 @@ function Notes:RemoveLine(id, lineNumber, expected)
         return false
     end
     table.remove(pieces, lineNumber)
-    self:UpdateRaw(id, joinLines(pieces))
+    self:UpdateRaw(id, joinLines(pieces), "edited", LINE_EDIT)
     return true
 end
 
 function Notes:Delete(id)
     local db = ndb()
     db.list[id] = nil
+    if db.history then
+        db.history[id] = nil
+    end
     parsed[id] = nil
     if db.active == id then
         db.active = nil
