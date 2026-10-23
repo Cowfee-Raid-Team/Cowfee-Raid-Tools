@@ -8,7 +8,9 @@ local ADDON, CRT = ...
 -- is looked up during combat or while the Journal window is open, and what is found is kept for
 -- the rest of the session. Hiding a row only sets a flag: the page decides what to draw. A
 -- reference timeline that only knows its boss by name finds the boss the same way, by the name
--- the Journal gives it (EncounterByName), so its rows get icons and tooltips anywhere.
+-- the Journal gives it (EncounterByName), so its rows get icons and tooltips anywhere. Each row
+-- keeps the ID of its first Journal section. The Journal's text of an ability, for the shared
+-- ability tooltip, is read here too (Journal:AbilitySection, near the end).
 
 local Journal = {}
 CRT.TimelineJournal = Journal
@@ -21,14 +23,31 @@ local byName = {}
 -- the bosses of each raid instance, by Journal instance id
 local raidCache = {}
 
+-- the Journal's text of each boss's abilities, for the ability tooltip (Journal:AbilitySection below):
+-- ["encounterID|difficultyID"] = the boss's sections, or false when the Journal doesn't know the boss
+local texts = {}
+
 local zoneFrame = CreateFrame("Frame")
 zoneFrame:RegisterEvent("ZONE_CHANGED_NEW_AREA")
 zoneFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
-zoneFrame:SetScript("OnEvent", function()
+-- a spell's text that loaded late (the Journal reads its own again on it too): its kept text is read again
+zoneFrame:RegisterEvent("SPELL_TEXT_UPDATE")
+zoneFrame:SetScript("OnEvent", function(_, event, spellID)
+    if event == "SPELL_TEXT_UPDATE" then
+        if Journal.TextChanged then
+            Journal.TextChanged(spellID)
+        end
+        return
+    end
     missed = {}
     for name, id in pairs(byName) do
         if id == false then
             byName[name] = nil
+        end
+    end
+    for key, map in pairs(texts) do
+        if map == false then
+            texts[key] = nil
         end
     end
 end)
@@ -83,8 +102,8 @@ local function rootInSelected(match)
 end
 
 -- The Journal root section and dungeon encounter id of the boss match accepts, or nil when it
--- cannot be found.
-local function findRoot(match)
+-- cannot be found. during(root), when given, runs while the boss's instance is still selected.
+local function findRoot(match, during)
     if not (EJ_SelectInstance and EJ_GetEncounterInfoByIndex and EJ_GetEncounterInfo) then
         return nil
     end
@@ -123,6 +142,9 @@ local function findRoot(match)
             end
             i = i + 1
         end
+    end
+    if root and during then
+        during(root)
     end
     if previous and previous ~= 0 then
         local now
@@ -187,6 +209,7 @@ local function collect(root, rows, seen)
                         icon = (okIcon and icon) or info.abilityIcon,
                         own = false,
                         tags = tags,
+                        sectionID = id, -- the first of its sections, for the ability tooltip and [section N]
                     }
                     seen[spellID] = rows[#rows] -- a later section of the same spell adds its icons to this row
                 end
@@ -352,6 +375,7 @@ local function abilitiesRows(rootSectionID)
                             name = (okName and spellName) or info.title or "",
                             icon = info.abilityIcon,
                             tags = sectionTags(id),
+                            sectionID = id,
                             headers = headers,
                         }
                         seen[key] = rows[#rows]
@@ -373,7 +397,7 @@ local function abilitiesRows(rootSectionID)
 end
 
 -- A Journal encounter (its Journal ID, as the Journal window shows it): its name, dungeon encounter ID and
--- ability rows in Journal order, each { spellID, name, icon, tags, stage } with stage the title of its
+-- ability rows in Journal order, each { spellID, name, icon, tags, stage, sectionID } with stage the title of its
 -- nearest stage (Journal.IsStage, at any depth), and stages, those titles in order. An ability listed in two
 -- stages is in both; within one stage it is listed once, with its sections' icons merged. A stage header
 -- that has a spell of its own is an ability of that stage too. Sections the Journal leaves out for its picked
@@ -419,6 +443,7 @@ function Journal.FromJournalEncounter(journalEncounterID)
                             name = (okName and spellName) or info.title or "",
                             icon = info.abilityIcon,
                             tags = sectionTags(id),
+                            sectionID = id,
                             stage = here,
                         }
                         seen[key] = rows[#rows]
@@ -558,6 +583,214 @@ function Journal:ResolveID(encounterID, ref)
         return self:EncounterByName(ref.boss)
     end
     return nil
+end
+
+-- The Journal's text of an ability, for the ability tooltip ----------------------------------------------------------
+-- CRT.AbilityTip (Timeline/AbilityTip.lua) shows an ability's Encounter Journal text under its spell. The text
+-- follows the Journal's picked difficulty (EJ_SetDifficulty; the game writes the numbers in), so a boss is read at
+-- the difficulty of the page that asks: Mythic (16) for the "mythic" group, Heroic (15) for "nh", the Journal's own
+-- for none. A boss is read once per difficulty, out of combat and with the Journal window closed (a new difficulty
+-- makes the Journal redraw itself), with the Journal's difficulty and instance put back right after, and kept until
+-- the season's route changes; in combat or with the Journal open only what is kept shows. A section is found by
+-- an explicit [section N] first, else its spell, else its title or spell name (Reference.Norm); one the difficulty
+-- hides never replaces one it shows, and the Overview's role summaries are left out. A boss the Journal doesn't
+-- have is remembered until the zone changes. A section whose text hadn't loaded is read again, alone, on the next
+-- hover, and so is one whose spell's text the game says loaded (SPELL_TEXT_UPDATE).
+Journal.GROUP_DIFFICULTY = { mythic = 16, nh = 15 }
+
+local function journalOpen()
+    return EncounterJournal ~= nil and EncounterJournal.IsShown ~= nil and EncounterJournal:IsShown() and true or false
+end
+
+local function currentDifficulty()
+    if not EJ_GetDifficulty then
+        return nil
+    end
+    local ok, d = pcall(EJ_GetDifficulty)
+    return ok and type(d) == "number" and d or nil
+end
+
+local function setDifficulty(d)
+    if d and EJ_SetDifficulty and currentDifficulty() ~= d then
+        pcall(EJ_SetDifficulty, d)
+    end
+end
+
+-- a number the game may have made secret, as a plain number or nil
+local function plainNumber(v)
+    if issecretvalue and issecretvalue(v) then
+        return nil
+    end
+    return type(v) == "number" and v > 0 and v or nil
+end
+
+local function textKey(s)
+    if type(s) ~= "string" then
+        return nil
+    end
+    local Reference = CRT.TimelineReference
+    return Reference and Reference.Norm and Reference.Norm(s) or nameKey(s)
+end
+
+-- A section as the tooltip reads it: { sectionID, spellID, title, description, icon, tags, hidden }.
+local function sectionText(id, info)
+    return {
+        sectionID = id,
+        spellID = plainNumber(info.spellID),
+        title = info.title,
+        description = type(info.description) == "string" and info.description or nil,
+        icon = info.abilityIcon,
+        tags = sectionTags(id),
+        hidden = info.filteredByDifficulty and true or nil,
+    }
+end
+
+-- Keeps a section under key; a section the difficulty shows wins over one it hides, else the first.
+local function index(list, key, s)
+    if key == nil or key == "" then
+        return
+    end
+    local have = list[key]
+    if not have or (have.hidden and not s.hidden) then
+        list[key] = s
+    end
+end
+
+local function readTexts(root, difficultyID)
+    local map = { difficultyID = difficultyID, bySpell = {}, byName = {}, byID = {} }
+    local visited = {}
+    local function walk(id, depth)
+        while id and id ~= 0 and not visited[id] do
+            visited[id] = true
+            local info = getSection(id)
+            if not info then
+                return
+            end
+            -- the Overview is the root (and its siblings) with the Overview header type; deeper down that
+            -- number is only a depth (the older Abilities pages, Journal.Layout)
+            if not (depth == 0 and info.headerType == HTYPE_OVERVIEW) then
+                local s = sectionText(id, info)
+                map.byID[id] = s
+                index(map.bySpell, s.spellID, s)
+                index(map.byName, textKey(info.title), s)
+                if s.spellID then
+                    local ok, spellName = pcall(C_Spell.GetSpellName, s.spellID)
+                    index(map.byName, ok and textKey(spellName) or nil, s)
+                end
+                walk(info.firstChildSectionID, depth + 1)
+            end
+            id = info.siblingSectionID
+        end
+    end
+    walk(root, 0)
+    return map
+end
+
+-- Reads a boss's sections at difficulty want, with the boss's instance selected, then puts the Journal's
+-- difficulty back (again once its own instance is selected, should the boss's instance not have it).
+local function buildTexts(encounterID, want)
+    local before = currentDifficulty()
+    local map
+    findRoot(byEncounter(encounterID), function(root)
+        setDifficulty(want)
+        map = readTexts(root, currentDifficulty() or want)
+        setDifficulty(before)
+    end)
+    setDifficulty(before)
+    return map
+end
+
+-- One section read alone at the boss's difficulty: a kept one's text again, or one only an explicit
+-- [section N] names. Nil when the game gives nothing.
+local function readOne(map, sectionID)
+    local before = currentDifficulty()
+    setDifficulty(map.difficultyID)
+    local info
+    if map.difficultyID == nil or currentDifficulty() == map.difficultyID then
+        info = getSection(sectionID)
+    end
+    setDifficulty(before)
+    return info
+end
+
+local function refresh(map, s)
+    local info = readOne(map, s.sectionID)
+    if info then
+        s.description = type(info.description) == "string" and info.description or nil
+    end
+    s.stale, s.retried = nil, true
+end
+
+-- SPELL_TEXT_UPDATE: the kept sections of that spell are read again on their next hover.
+function Journal.TextChanged(spellID)
+    spellID = plainNumber(spellID)
+    if not spellID then
+        return
+    end
+    for _, map in pairs(texts) do
+        for _, s in pairs(map and map.byID or {}) do
+            if s and s.spellID == spellID then
+                s.stale = true
+            end
+        end
+    end
+end
+
+-- The Journal section of an ability for the ability tooltip: { sectionID, spellID, title, description (nil when
+-- the game has none), icon, tags }, and the difficulty ID its text was read at; nil when there is none or it
+-- can't be read now. encounterID is the dungeon encounter ID; group "mythic" or "nh" (nil: the Journal's own
+-- difficulty); sectionID an explicit [section N]; cachedOnly reads nothing new (for drawing).
+function Journal:AbilitySection(encounterID, group, spellID, name, sectionID, cachedOnly)
+    if type(encounterID) ~= "number" then
+        return nil
+    end
+    local want = Journal.GROUP_DIFFICULTY[group] or currentDifficulty()
+    local key = encounterID .. "|" .. tostring(want)
+    local map = texts[key]
+    local canRead = not cachedOnly and not InCombatLockdown() and not journalOpen()
+    local built = false
+    if map == nil then
+        if not canRead then
+            return nil
+        end
+        map = buildTexts(encounterID, want) or false
+        texts[key] = map
+        built = true
+    end
+    if not map then
+        return nil
+    end
+    local s
+    sectionID = plainNumber(sectionID)
+    if sectionID then
+        s = map.byID[sectionID]
+        if s == nil and canRead then
+            local info = readOne(map, sectionID)
+            s = info and sectionText(sectionID, info) or false
+            map.byID[sectionID] = s
+        end
+        s = s or nil
+    end
+    spellID = plainNumber(spellID)
+    if not s and spellID then
+        s = map.bySpell[spellID]
+    end
+    if not s then
+        local k = textKey(name)
+        s = k and map.byName[k] or nil
+    end
+    -- read just now, it is as new as it gets; a later hover reads a missing text once more
+    if s and canRead and not built and (s.stale or (s.description == nil and not s.retried)) then
+        refresh(map, s)
+    end
+    return s, map.difficultyID
+end
+
+-- a new season or route: every boss's text is read again
+if CRT.Bosses and CRT.Bosses.OnRouteChange then
+    CRT.Bosses:OnRouteChange(function()
+        texts = {}
+    end)
 end
 
 function Journal:AddCustom(encounterID, spellID)
