@@ -149,6 +149,17 @@ local sliders, dropdowns, helps, previewFns = {}, {}, {}, {}
 CRT.UI = {
   PAGE_W = 1026, PAGE_H = 560, previewing = false,
   SkinScrollBar = function() end, ScrollGutter = function(w) return 6 + (w or 18) end,
+  -- the look's skins record what they were given (UI/Panel.lua)
+  skinned = {},
+  SkinEditBox = function(self, e) self.skinned[e] = "edit" end,
+  SkinButton = function(self, b) self.skinned[b] = "button" end,
+  PanelButtonWidth = function(w) return math.max(40, math.ceil(w or 0) + 28) end,
+  PanelButton = function(parent, label, height, onClick)
+    local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
+    b:SetText(label) b:SetSize(math.max(40, #label * 7 + 28), height) b:SetScript("OnClick", onClick)
+    CRT.UI:SkinButton(b)
+    return b
+  end,
   RegisterLayer = function() end,
   RegisterPreview = function(_, key, fn) previewFns[key] = fn end,
   SetPreviews = function() end,
@@ -976,7 +987,9 @@ C_Spell = {
 Enum.SecrecyLevel = { NeverSecret = 0, AlwaysSecret = 1, ContextuallySecret = 2 }
 C_Secrets = { GetSpellAuraSecrecy = function(id) return NEVER_SECRET[id] and 0 or 2 end }
 local AURAS = {}
+local auraReads = 0
 C_UnitAuras.GetAuraDataByIndex = function(unit, index, filter)
+  auraReads = auraReads + 1
   if unit ~= "player" or filter ~= "HARMFUL" then return nil end
   return AURAS[index]
 end
@@ -1008,7 +1021,12 @@ do
   C_Secrets = nil
   check("without the secrecy API it can't say", Debuffs.CanHide(57723) == nil)
   C_Secrets = { GetSpellAuraSecrecy = function() return SECRET end }
-  check("a secret secrecy is never compared", Debuffs.CanHide(57723) == nil)
+  check("a secret secrecy is never compared", Debuffs.CanHide(500002) == nil)
+  C_Secrets = savedSecrets
+  local asked = 0
+  C_Secrets = { GetSpellAuraSecrecy = function(id) asked = asked + 1 return savedSecrets.GetSpellAuraSecrecy(id) end }
+  Debuffs.CanHide(500002) Debuffs.CanHide(500002) Debuffs.CanHide(500002)
+  check("each spell's secrecy is asked once and kept", asked == 1, asked)
   C_Secrets = savedSecrets
   local savedInfo = C_Spell.GetSpellInfo
   C_Spell.GetSpellInfo = function() return { name = SECRET, iconID = SECRET } end
@@ -1080,7 +1098,17 @@ do
   AURAS[7] = nil
   CRT.db.debuffs.maxDuration = 300
   AURAS[2] = aura(500001, 10, SECRET, 9)
-  check("a secret value gives nothing, never compared", Debuffs:Current() == nil)
+  local okSecret, l2 = pcall(Debuffs.Current, Debuffs)
+  local o2 = {}
+  for _, a in ipairs(okSecret and l2 or {}) do o2[#o2 + 1] = a.unreadable and "?" or tostring(a.spellId) end
+  check("a debuff with a secret value holds a spot of its own, unread; the rest still read", okSecret and table.concat(o2, ",") == "442611,500002,?", tostring(l2) .. " " .. table.concat(o2, ","))
+  -- a missing name and icon, then a secret end time: every value is still checked, nothing compared
+  AURAS[2] = { spellId = 500001, name = nil, icon = nil, duration = 10, expirationTime = SECRET, auraInstanceID = 9, isFromPlayerOrPlayerPet = false }
+  local okNil, l3 = pcall(Debuffs.Current, Debuffs)
+  check("a nil name and icon don't skip the secret checks after them", okNil and l3 and l3[#l3].unreadable == true, tostring(l3))
+  AURAS[2] = { spellId = 500001, name = nil, icon = nil, duration = 10, expirationTime = 110, auraInstanceID = 9, isFromPlayerOrPlayerPet = false }
+  local l4 = Debuffs:Current()
+  check("a debuff with no name or icon still reads, by its spell ID", l4 and l4[2] and l4[2].spellId == 500001 and l4[2].icon == nil and l4[2].name == "Spell 500001")
   AURAS[2] = aura(500001, 10, 110, 9)
 end
 
@@ -1128,7 +1156,9 @@ do
   -- the debuff the game won't hide says so instead
   c[1].OnClick(c[1], "RightButton")
   m = menus[#menus]
-  check("a debuff the game won't hide: no Ignore, it says why", m.titles[1]:find("Old Scar", 1, true) and m.titles[2] == Click.TEXT.cantHide and buttonNamed(m, Click.TEXT.ignore) == nil)
+  check("a debuff the game won't hide: it says it still shows, and can still be added", m.titles[1]:find("Old Scar", 1, true) and m.titles[2] == Debuffs.IGNORE_TEXT.cantHide and buttonNamed(m, Click.TEXT.ignore) ~= nil)
+  buttonNamed(m, Click.TEXT.ignore).fn()
+  check("Ignore adds it like typing it", CRT.db.debuffs.ignored[442611] == true)
   -- a left-click does nothing
   local count = #menus
   c[3].OnClick(c[3], "LeftButton")
@@ -1156,10 +1186,25 @@ do
   events.OnEvent(events, "PLAYER_REGEN_ENABLED")
   check("after combat the spots take right-clicks again", rawget(c[1], "mouse") == true)
   -- a secret value: try again, nothing added
-  AURAS[1] = aura(500002, 20, 130, SECRET)
-  c[1].OnClick(c[1], "RightButton")
+  AURAS[1] = aura(500002, 20, 130, SECRET) -- its end time still places it third
+  c[3].OnClick(c[3], "RightButton")
   m = menus[#menus]
-  check("a secret value: the menu says to try again after combat", m.titles[1] == Click.TEXT.later and buttonNamed(m, Click.TEXT.ignore) == nil)
+  c[1].OnClick(c[1], "RightButton")
+  check("the other spots still read", menus[#menus].titles[1]:find("Old Scar", 1, true) ~= nil)
+  c[3].OnClick(c[3], "RightButton")
+  m = menus[#menus]
+  check("a secret value out of combat: the menu says it can't read this debuff", m.titles[1] == Click.TEXT.unreadable and buttonNamed(m, Click.TEXT.ignore) == nil, m.titles[1])
+  -- the spots aren't worked out again on every layout: only when your debuffs change
+  AURAS[1] = aura(500002, 20, 130, 7)
+  clickEvents.OnEvent(clickEvents, "UNIT_AURA", "player")
+  local reads = auraReads
+  for _ = 1, 5 do panelFrame.OnUpdate(panelFrame, 1) end
+  check("layouts reuse the spots' debuffs", auraReads == reads, auraReads - reads)
+  AURAS[4] = nil AURAS[5] = nil AURAS[6] = nil -- Old Scar's slot and later ones end
+  clickEvents.OnEvent(clickEvents, "UNIT_AURA", "player")
+  check("UNIT_AURA works them out again", auraReads > reads and rawget(c[3], "mouse") ~= true and rawget(c[2], "mouse") == true)
+  AURAS = { aura(500002, 20, 130, 7), aura(500001, 10, 110, 9), aura(57723, 600, 700, 3), aura(442611, 60, 110, 5), aura(389123, 30, 120, 4, true), aura(80354, 0, 0, 2) }
+  clickEvents.OnEvent(clickEvents, "UNIT_AURA", "player")
   AURAS[1] = aura(500002, 20, 130, 7)
   -- during a preview the panel is click-through
   Panel:SetPreview(true)
@@ -1183,8 +1228,16 @@ do
   check("typing a spell ID shows its name", v.name.text == "Lingering Doom", v.name.text)
   check("and its icon", v.icon.texture == 1001 and v.icon.shown)
   check("and says Add hides it", v.status.text == I.TEXT.canHide, v.status.text)
+  check("the Spell ID box and the tab's nudge boxes take the look", CRT.UI.skinned[v.edit] == "edit" and (function()
+    local n = 0 for o, k in pairs(CRT.UI.skinned) do if k == "edit" and o ~= v.edit then n = n + 1 end end return n == 2 end)())
+  check("Add is the shared button, sized from its label and skinned", CRT.UI.skinned[v.add] == "button" and v.add.w == math.max(40, #"Add" * 7 + 28))
+  local savedSecrets2 = C_Secrets
+  C_Secrets = nil
+  type_("500001")
+  check("when the game can't say whether it hides it, the status says nothing", v.name.text == "Short Burn" and v.status.text == "", v.status.text)
+  C_Secrets = savedSecrets2
   type_("442611")
-  check("a spell the game won't hide says it still shows", v.status.text and v.status.text:find(I.TEXT.cantHide, 1, true) ~= nil, v.status.text)
+  check("a spell the game won't hide says it still shows", v.status.text and v.status.text:find(Debuffs.IGNORE_TEXT.cantHide, 1, true) ~= nil, v.status.text)
   type_("999")
   check("a non-spell ID says so", v.name.text and v.name.text:find(I.TEXT.noSpell, 1, true) ~= nil and not v.icon.shown, v.name.text)
   v.add.OnClick(v.add)
@@ -1196,6 +1249,7 @@ do
   check("Add puts it on Yours and clears the box", CRT.db.debuffs.ignored[389123] == true and v.edit.text == "")
   check("Yours shows it with a Remove button", v.rows[1] and v.rows[1].shown and v.rows[1].id == 389123 and v.rows[1].name.text:find("Lingering Doom", 1, true) and v.rows[1].remove ~= nil)
   check("and the panel stops showing it", box.lastFilters.excludeSpellIDs[389123] == true)
+  check("a new row's Remove button takes the look", CRT.UI.skinned[v.rows[1].remove] == "button")
   check("the empty-list line hides", not v.none.shown)
   -- a debuff ignored by right-click shows up in the list at once
   Debuffs:AddIgnored(442611)
@@ -1215,6 +1269,9 @@ do
     end
   end
   check("the built-in list is greyed and can't be removed", shown > 0 and greyed and not removable)
+  check("a built-in one the game won't hide is marked still shows", v.builtInRows[1].id == 26013 and v.builtInRows[1].cantHide and v.builtInRows[1].name.text:find(I.TEXT.stillShows, 1, true) ~= nil)
+  check("a built-in one the game hides isn't marked", v.builtInRows[2].id == 57723 and not v.builtInRows[2].name.text:find(I.TEXT.stillShows, 1, true))
+  check("the (?) quotes the setting and says right-drag doesn't start over an icon", helps["Ignore these debuffs"]:find('"Hide debuffs longer than"', 1, true) ~= nil and helps["Ignore these debuffs"]:find("right-drag", 1, true) ~= nil)
   local rest = v.more.rest and #v.more.rest or 0
   check("the built-in ones that don't fit read and N more", shown + rest == #built and (rest == 0 or (v.more.shown and v.moreText.text == format(I.TEXT.more, rest))), shown .. " + " .. rest .. " of " .. #built)
   check("the built-in names come from the game", v.builtInRows[1].title == (Debuffs.SpellInfo(built[1]) or ("Spell " .. built[1])))

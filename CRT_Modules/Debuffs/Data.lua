@@ -164,6 +164,8 @@ Debuffs.IGNORE_TEXT = {
     builtIn = "That one is built in, so it's always ignored.",
     already = "That one is already on your list.",
     full = "Your list is full. Remove one first.",
+    -- shown on the tab and in the right-click menu for a spell Debuffs.CanHide says no to
+    cantHide = "The game won't let addons hide this one on you, so it still shows.",
 }
 
 -- A spell ID, typed or saved: a positive whole number (text of digits only), else nil.
@@ -218,7 +220,10 @@ function Debuffs.SpellInfo(value)
 end
 
 -- Whether the game lets the panel hide this debuff on you by its spell ID (see above): true, false,
--- or nil when this client can't say.
+-- or nil when this client can't say. The answer is the spell's base secrecy, the same all session, so
+-- each spell is asked once (an unknown answer is asked again).
+local canHideCache = {}
+
 function Debuffs.CanHide(value)
     local id = Debuffs.SpellID(value)
     local get = C_Secrets and C_Secrets.GetSpellAuraSecrecy
@@ -226,11 +231,15 @@ function Debuffs.CanHide(value)
     if not id or type(get) ~= "function" or never == nil then
         return nil
     end
+    if canHideCache[id] ~= nil then
+        return canHideCache[id]
+    end
     local ok, level = pcall(get, id)
     if not ok or isSecret(level) or level == nil then
         return nil
     end
-    return level == never
+    canHideCache[id] = level == never
+    return canHideCache[id]
 end
 
 -- The saved list, made when old saved data has none.
@@ -325,10 +334,17 @@ end
 -- reads your debuffs (C_UnitAuras.GetAuraDataByIndex) and picks them the way the game's candidate
 -- filter and its ExpirationOnly sort do (Blizzard_AuraContainerUtil.lua, AuraUtil.lua, Gethe live):
 -- soonest to end first, debuffs with no end last, then by aura instance. Each entry is
--- { spellId, name, icon, canHide }. nil when any value is secret (in combat, an encounter), so the
--- caller says to try again. Boss debuffs the game hides from addons are never in this list, though the
--- row may show them.
+-- { spellId, name, icon, canHide }, or { unreadable = true } for a debuff with a secret value (it holds
+-- its spot as best its readable values place it, and nothing in it is compared). nil only when the game
+-- can't be asked. Boss debuffs the game hides from addons are never in this list, though the row may
+-- show them.
 local MAX_AURAS = 255
+
+-- The sort keys of a debuff whose values can't all be read: its end time and instance if readable.
+local function unreadable(expires, instance)
+    local ends = (not isSecret(expires) and type(expires) == "number" and expires > 0) and expires or math.huge
+    return { unreadable = true, ends = ends, instance = (not isSecret(instance) and type(instance) == "number") and instance or 0 }
+end
 
 function Debuffs:Current()
     local get = C_UnitAuras and C_UnitAuras.GetAuraDataByIndex
@@ -346,29 +362,12 @@ function Debuffs:Current()
             break
         end
         if isSecret(aura) or type(aura) ~= "table" then
-            return nil
-        end
-        local id, name, icon, duration, expires = aura.spellId, aura.name, aura.icon, aura.duration, aura.expirationTime
-        local fromYou, instance = aura.isFromPlayerOrPlayerPet, aura.auraInstanceID
-        for _, v in ipairs({ id, name, icon, duration, expires, fromYou, instance }) do
-            if isSecret(v) then
-                return nil
+            list[#list + 1] = unreadable()
+        else
+            local entry = self:CurrentEntry(aura, filters)
+            if entry then
+                list[#list + 1] = entry
             end
-        end
-        if type(id) ~= "number" or type(duration) ~= "number" or type(expires) ~= "number" or type(instance) ~= "number" then
-            return nil
-        end
-        local canHide = self.CanHide(id)
-        local keep = fromYou ~= true
-        if keep and filters.maxDuration and (duration > filters.maxDuration or duration == 0) then
-            keep = false
-        end
-        if keep and filters.excludeSpellIDs[id] and canHide then
-            keep = false
-        end
-        if keep then
-            list[#list + 1] = { spellId = id, name = type(name) == "string" and name or ("Spell " .. id), icon = icon, canHide = canHide,
-                ends = expires > 0 and expires or math.huge, instance = instance }
         end
     end
     table.sort(list, function(a, b)
@@ -378,6 +377,40 @@ function Debuffs:Current()
         return a.instance < b.instance
     end)
     return list
+end
+
+-- One debuff of Debuffs:Current, or nil when the row leaves it out. Every value is checked for a secret
+-- before anything else touches it; a nil one (a missing icon) is fine.
+function Debuffs:CurrentEntry(aura, filters)
+    local id, name, icon, duration, expires = aura.spellId, aura.name, aura.icon, aura.duration, aura.expirationTime
+    local fromYou, instance = aura.isFromPlayerOrPlayerPet, aura.auraInstanceID
+    local values = { id, name, icon, duration, expires, fromYou, instance }
+    for i = 1, 7 do
+        if isSecret(values[i]) then
+            if not isSecret(fromYou) and fromYou == true then
+                return nil -- yours, which the row never shows (the game never makes this secret)
+            end
+            return unreadable(expires, instance)
+        end
+    end
+    if fromYou == true then
+        return nil
+    end
+    if type(id) ~= "number" or type(duration) ~= "number" or type(expires) ~= "number" or type(instance) ~= "number" then
+        return unreadable(expires, instance)
+    end
+    if filters.maxDuration and (duration > filters.maxDuration or duration == 0) then
+        return nil
+    end
+    local canHide = self.CanHide(id)
+    if filters.excludeSpellIDs[id] and canHide then
+        return nil
+    end
+    if type(icon) ~= "number" and type(icon) ~= "string" then
+        icon = nil
+    end
+    return { spellId = id, name = type(name) == "string" and name or ("Spell " .. id), icon = icon, canHide = canHide,
+        ends = expires > 0 and expires or math.huge, instance = instance }
 end
 
 -- The look ----------------------------------------------------------------------------------

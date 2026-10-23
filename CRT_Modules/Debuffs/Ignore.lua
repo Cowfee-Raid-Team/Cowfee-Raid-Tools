@@ -23,7 +23,7 @@ local BOTTOM_GAP = 6
 
 local TEXT = {
     title = "Ignore these debuffs",
-    help = "Debuffs on these lists don't show on the debuff panel.\n\nType a spell ID and press Add, or right-click a debuff on the panel out of combat.\n\nThe game only lets addons hide some debuffs on you, such as Exhaustion and other lockouts. For any other it says so, and the debuff still shows. Hide debuffs longer than can still leave out a long one.\n\nThe game's boss debuff slots (the second row) can't be filtered at all.",
+    help = "Debuffs on these lists don't show on the debuff panel.\n\nType a spell ID and press Add, or right-click a debuff on the panel out of combat. In combat the panel can't be clicked. Out of combat a right-drag to turn the camera doesn't start over a debuff icon.\n\nThe game only lets addons hide some debuffs on you, such as Exhaustion and other lockouts. For any other it says so, and the debuff still shows. The \"Hide debuffs longer than\" setting above can still leave out a long one.\n\nThe game's boss debuff slots (the second row) can't be filtered at all.",
     spellID = "Spell ID",
     add = "Add",
     remove = "Remove",
@@ -33,7 +33,6 @@ local TEXT = {
     none = "None yet.",
     more = "and %d more",
     canHide = "Add hides it on the panel.",
-    cantHide = "The game won't let addons hide this one on you, so it still shows.",
     stillShows = "still shows",
     added = "Added %s.",
 }
@@ -42,18 +41,6 @@ Ignore.TEXT = TEXT
 local view = {}
 Ignore.view = view
 local status = { text = "", key = nil } -- the line under the box, and its palette colour
-
-local function makeButton(parent, text)
-    local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
-    b:SetNormalFontObject(CRTFontNormal)
-    b:SetHighlightFontObject(CRTFontHighlight)
-    b:SetDisabledFontObject(CRTFontDisable)
-    b:SetText(text)
-    local fs = b:GetFontString()
-    local w = fs and fs:GetStringWidth() or 0
-    b:SetSize(math.max(40, math.ceil(w) + 24), 22)
-    return b
-end
 
 local function setStatus(text, key)
     status.text, status.key = text or "", key
@@ -80,10 +67,14 @@ local function preview()
         setStatus("")
     else
         view.name:SetText(name)
-        if Debuffs.CanHide(id) == false then
-            setStatus(TEXT.cantHide, "warn")
-        else
+        -- nothing to say when the game can't tell
+        local can = Debuffs.CanHide(id)
+        if can == false then
+            setStatus(Debuffs.IGNORE_TEXT.cantHide, "warn")
+        elseif can == true then
             setStatus(TEXT.canHide)
+        else
+            setStatus("")
         end
     end
 end
@@ -114,12 +105,11 @@ local function makeRow(parent, removable)
     row.name:SetJustifyH("LEFT")
     row.name:SetWordWrap(false)
     if removable then
-        row.remove = makeButton(row, TEXT.remove)
-        row.remove:SetHeight(18)
-        row.remove:SetPoint("RIGHT", -2, 0)
-        row.remove:SetScript("OnClick", function()
+        -- sized from its label and skinned to the look, as rows are made after the page was skinned
+        row.remove = UI.PanelButton(row, TEXT.remove, 18, function()
             Debuffs:RemoveIgnored(row.id)
         end)
+        row.remove:SetPoint("RIGHT", -2, 0)
         row.name:SetPoint("RIGHT", row.remove, "LEFT", -6, 0)
     else
         row.name:SetPoint("RIGHT", -2, 0)
@@ -129,7 +119,7 @@ local function makeRow(parent, removable)
         GameTooltip:SetText(self.title or "", 1, 1, 1)
         GameTooltip:AddLine(format("%s %d", TEXT.spellID, self.id or 0), 0.85, 0.85, 0.85)
         if self.cantHide then
-            GameTooltip:AddLine(TEXT.cantHide, 0.85, 0.85, 0.85, true)
+            GameTooltip:AddLine(Debuffs.IGNORE_TEXT.cantHide, 0.85, 0.85, 0.85, true)
         end
         GameTooltip:Show()
     end)
@@ -148,7 +138,7 @@ local function fillRow(row, id, greyed)
     row.icon:SetDesaturated(greyed and true or false)
     row.icon:SetAlpha(greyed and 0.6 or 1)
     local text = format("%s  |cff999999%d|r", name, id)
-    if cantHide and not greyed then
+    if cantHide then
         text = text .. "  " .. UI.WarnText(TEXT.stillShows)
     end
     row.name:SetText(text)
@@ -217,6 +207,7 @@ function Ignore.Build(pf, top)
     edit:SetMaxLetters(10)
     edit:SetSize(90, 20)
     edit:SetPoint("LEFT", idLabel, "RIGHT", 10, 0)
+    UI:SkinEditBox(edit)
     edit:SetScript("OnTextChanged", preview)
     edit:SetScript("OnEnterPressed", add)
     edit:SetScript("OnEscapePressed", function(self)
@@ -235,9 +226,8 @@ function Ignore.Build(pf, top)
     name:SetJustifyH("LEFT")
     name:SetWordWrap(false)
     view.name = name
-    local addButton = makeButton(pf, TEXT.add)
+    local addButton = UI.PanelButton(pf, TEXT.add, 22, add)
     addButton:SetPoint("LEFT", name, "RIGHT", 8, 0)
-    addButton:SetScript("OnClick", add)
     view.add = addButton
 
     local statusLine = pf:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
