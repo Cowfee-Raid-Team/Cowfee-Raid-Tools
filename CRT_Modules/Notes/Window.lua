@@ -43,15 +43,37 @@ NoteWindow.FONTS = CRT.FONTS
 
 local previewOn = false
 
--- The windows' text is rebuilt only when something it shows may have changed: the note, the settings,
--- the group, your role, your reminders, the alerts run, or previews. contentVersion goes up on each of
--- those, and a window rebuilds when it has not drawn the current version. The timers window also
--- rebuilds every refresh while a note is running, and the personal window while any run goes, for the
--- countdown. A rebuild every few seconds anyway catches anything missed.
+-- Work once, draw often. The windows' text is rebuilt only when something it shows may have changed: the
+-- note, the settings, the group, your role, your reminders, the alerts run (a phase start included), the
+-- class cache, the theme, or previews. contentVersion goes up on each of those, and a window rebuilds when
+-- it has not drawn the current version; out of a run, a rebuild every few seconds anyway catches anything
+-- missed. While a note runs (the timers window) or a run of your reminders goes (the personal window), each
+-- line's text is kept from that rebuild and a refresh only works out each line's whole second: a line's
+-- time is made again only when its second changes, and a refresh that changes nothing on screen sets no
+-- text at all.
 local contentVersion = 1
 local SAFETY_SECONDS = 5
 local function changed()
     contentVersion = contentVersion + 1
+end
+
+-- The lines a window shows. Each line is { t = time text or nil, x = text }: on screen, t then x on one row
+-- (the countdown in its own cell, so a new second sets only that cell). A line with no t and an empty x is
+-- a blank line.
+local NO_LINES = {}
+local EMPTY = {}
+
+-- Lines of plain text, one per line of `text`, made again only when the text changes (cache keeps them).
+local function textLines(cache, text)
+    if cache.text == text and cache.lines then
+        return cache.lines
+    end
+    local lines = {}
+    for line in (text .. "\n"):gmatch("(.-)\n") do
+        lines[#lines + 1] = { x = line }
+    end
+    cache.text, cache.lines = text, lines
+    return lines
 end
 
 -- Text helpers --------------------------------------------------------------------------
@@ -75,12 +97,21 @@ local function hex(color)
     return format("%02x%02x%02x", math.floor((color[1] or 1) * 255), math.floor((color[2] or 1) * 255), math.floor((color[3] or 1) * 255))
 end
 
--- Short name -> class, from the class cache, rebuilt every few seconds.
-local shortClass, shortClassAt = {}, 0
+-- How many times the class cache has changed: CRT.Groups counts each class it saves (Groups/Data.lua).
+local function classVersion()
+    local G = CRT.Groups
+    return G and G.classVersion or 0
+end
+
+-- Short name -> class, from the class cache. The cache can hold thousands of names, so the table is made
+-- again only when the cache changes (or is a new table, as after a profile loads), never on a timer.
+local shortClass, shortFrom, shortVersion = {}, nil, nil
 local function classOf(word)
-    if GetTime() - shortClassAt > 5 then
-        shortClass, shortClassAt = {}, GetTime()
-        for key, class in pairs(CRT.db.classCache or {}) do
+    local cache = CRT.db.classCache or EMPTY
+    local version = classVersion()
+    if cache ~= shortFrom or version ~= shortVersion then
+        shortClass, shortFrom, shortVersion = {}, cache, version
+        for key, class in pairs(cache) do
             local short = key:match("^[^-]+")
             if short and not shortClass[short] then
                 shortClass[short] = class
@@ -107,21 +138,34 @@ local function names(item)
     return table.concat(parts, " ")
 end
 
+-- A timer's icon and label. Also true when it is a spell the game has not given its name yet, so a
+-- kept line can ask again.
 local function describe(item)
     if item.kind == "spell" then
         local info = Notes:SpellInfo(item.spellId)
         local icon = info and info.icon and ("|T" .. info.icon .. ":0|t ") or ""
-        return icon .. (info and info.name or ("Spell " .. item.spellId))
+        return icon .. (info and info.name or ("Spell " .. item.spellId)), not info
     end
-    return "|cff" .. hex(item.color) .. (item.text or "") .. "|r"
+    return "|cff" .. hex(item.color) .. (item.text or "") .. "|r", false
+end
+
+-- A timer line's time cell: yours with ">" in the heading colour, else grey.
+local function timeText(mine, seconds)
+    local time = fmtTime(seconds)
+    if mine then
+        return gold("> " .. time)
+    end
+    return "|cffaaaaaa" .. time .. "|r"
+end
+
+-- A timer line's text after its time: the label, then the names. Also describe's "ask again".
+local function restText(item)
+    local label, missing = describe(item)
+    return "  " .. label .. "  " .. names(item), missing
 end
 
 local function timerLine(item, seconds)
-    local time = fmtTime(seconds)
-    if Engine:IsMine(item) then
-        return gold("> " .. time) .. "  " .. describe(item) .. "  " .. names(item)
-    end
-    return "|cffaaaaaa" .. time .. "|r  " .. describe(item) .. "  " .. names(item)
+    return timeText(Engine:IsMine(item), seconds) .. (restText(item))
 end
 
 -- A line of free text: names class colored, your own name in gold, and the line marked with ">" when it
@@ -232,18 +276,155 @@ local function timersNote()
     return record, note
 end
 
-local function timersText()
+-- The timers window. Its kept state: the note, record and settings it was built for, and per timer an
+-- entry { item, mine, shown, cut, x, t, sec, missing } that is also the timer's line.
+local SAMPLE_TIMERS = "  Avenging Wrath  Crazyoio\n|cffaaaaaa0:06|r  Sample spell  Cheoeqar\n|cffaaaaaa0:48|r  |cff00ffffGroup 1 go in|r  Cheoeqar Djaztech"
+local ONLY_ME = { x = "|cff777777Nothing in this note is for you. Untick Show only me to see every line.|r" }
+local MISSING_SECONDS = 1 -- how often a spell line the game has not named yet asks again during a run
+local timers = { entries = {}, lines = {}, waits = {}, waiting = {}, sample = {}, empty = {}, builtAt = 0, askedAt = 0 }
+
+-- Whether the kept lines no longer match what the window would show.
+local function timersStale(record, note, onlyMe, as, running)
+    local A = CRT.Alerts
+    local k = timers
+    return k.note ~= note or k.record ~= record or k.version ~= contentVersion or k.alerts ~= (A and A.version)
+        or k.classes ~= classVersion() or k.onlyMe ~= onlyMe or k.as ~= as or k.running ~= running
+end
+
+-- Builds every timer's line text once: whether it is yours and shown, cut by a later phase, its label and
+-- names. Out of a run, also the whole list by phase, as it stays until something changes.
+local function timersRebuild(record, note, onlyMe, as, running)
+    local k, A = timers, CRT.Alerts
+    k.note, k.record, k.version, k.alerts, k.classes = note, record, contentVersion, A and A.version, classVersion()
+    k.onlyMe, k.as, k.running, k.builtAt, k.missing = onlyMe, as, running, GetTime(), false
+    local entries = k.entries
+    for i, item in ipairs(note.timers) do
+        local e = entries[i] or {}
+        entries[i] = e
+        e.item = item
+        e.mine = Engine:IsMine(item) and true or false
+        -- "Show only me" keeps your lines, your group's and role's, and lines with no tag.
+        e.shown = not onlyMe or Engine:IsForMe(item)
+        -- A later phase started first: this line never comes.
+        e.cut = running and Engine.IsCut and Engine:IsCut(item) and true or false
+        e.x, e.missing = restText(item)
+        k.missing = k.missing or e.missing
+        e.sec, e.t = nil, nil
+    end
+    for i = #note.timers + 1, #entries do
+        entries[i] = nil
+    end
+    local heading = record.name .. (record.difficulty and (" (" .. record.difficulty .. ")") or "")
+    if onlyMe and not as then
+        heading = heading .. "   " .. gold("only me")
+    end
+    k.base, k.heading, k.headPhase, k.headSecond = heading, heading, nil, nil
+    local lines = k.lines
+    for i = #lines, 1, -1 do
+        lines[i] = nil
+    end
+    if running then
+        return
+    end
+    local lastPhase
+    for i, item in ipairs(note.timers) do
+        local e = entries[i]
+        if e.shown then
+            if item.ph ~= lastPhase then
+                lines[#lines + 1] = { x = gold("Phase " .. item.ph) }
+                lastPhase = item.ph
+            end
+            e.t = timeText(e.mine, item.time)
+            lines[#lines + 1] = e
+        end
+    end
+    if onlyMe and #lines == 0 and #note.timers > 0 then
+        lines[1] = ONLY_ME
+    end
+end
+
+-- A spell line the game had not named yet asks again, about once a second, until it is named.
+local function askMissing()
+    local k = timers
+    if not k.missing or GetTime() - k.askedAt < MISSING_SECONDS then
+        return
+    end
+    k.askedAt, k.missing = GetTime(), false
+    for _, e in ipairs(k.entries) do
+        if e.missing then
+            e.x, e.missing = restText(e.item)
+            k.missing = k.missing or e.missing
+        end
+    end
+end
+
+local function waitLine(ph)
+    local line = timers.waits[ph]
+    if not line then
+        line = { x = "|cff777777Phase " .. ph .. " starts on Next phase|r" }
+        timers.waits[ph] = line
+    end
+    return line
+end
+
+-- During a run: each line's remaining time, to the whole second shown. A line's time text is made again
+-- only when that second changes; the kept text is used as it is.
+local function timersTick(note, onlyMe)
+    local k = timers
+    askMissing()
+    local hidePassed = Notes:WindowSettings("window").hidePassed
+    local lines, waiting, entries = k.lines, k.waiting, k.entries
+    for ph in pairs(waiting) do
+        waiting[ph] = nil
+    end
+    local n = 0
+    for i, item in ipairs(note.timers) do
+        local e = entries[i]
+        local remaining = Engine:Remaining(item)
+        if remaining == nil then
+            waiting[item.ph] = true
+        elseif not e.cut and e.shown and not (hidePassed and remaining < -(item.dur or 0)) then
+            -- the shown time is the whole second, 0 once passed (fmtTime)
+            local second = remaining > 0 and math.floor(remaining) or 0
+            if e.sec ~= second then
+                e.sec, e.t = second, timeText(e.mine, second)
+            end
+            n = n + 1
+            lines[n] = e
+        end
+    end
+    for _, ph in ipairs(note.phases) do
+        if waiting[ph] then
+            n = n + 1
+            lines[n] = waitLine(ph)
+        end
+    end
+    if onlyMe and n == 0 and #note.timers > 0 then
+        n = 1
+        lines[1] = ONLY_ME
+    end
+    for i = #lines, n + 1, -1 do
+        lines[i] = nil
+    end
+    local phase = Engine:CurrentPhase()
+    local elapsed = Engine:Elapsed() or 0
+    local second = elapsed > 0 and math.floor(elapsed) or 0
+    if phase ~= k.headPhase or second ~= k.headSecond then
+        k.headPhase, k.headSecond = phase, second
+        k.heading = k.base .. "   Phase " .. tostring(phase) .. "   " .. fmtTime(second)
+    end
+end
+
+-- force: rebuild the kept text even when nothing seems to have changed (a refresh out of a run).
+local function timersBuild(_, force)
     local record, note = timersNote()
     if not note then
         if previewOn then
-            return gold("> 0:03") .. "  Avenging Wrath  Crazyoio\n|cffaaaaaa0:06|r  Sample spell  Cheoeqar\n|cffaaaaaa0:48|r  |cff00ffffGroup 1 go in|r  Cheoeqar Djaztech", "Raid note (sample)", true
+            return textLines(timers.sample, gold("> 0:03") .. SAMPLE_TIMERS), "Raid note (sample)", true
         end
-        return "No note loaded.", "Raid note", false
+        return textLines(timers.empty, "No note loaded."), "Raid note", false
     end
-    local lines = {}
-    local heading = record.name .. (record.difficulty and (" (" .. record.difficulty .. ")") or "")
-    -- "Show only me" keeps your lines, your group's and role's, and lines with no tag.
-    local onlyMe = Notes:WindowSettings("window").onlyMe
+    local onlyMe = Notes:WindowSettings("window").onlyMe and true or false
     -- Previewing as another player in a rehearsal shows what their window would with Show only me on;
     -- as everyone, every line.
     local as = CRT.Alerts and CRT.Alerts.PreviewAs and CRT.Alerts:PreviewAs()
@@ -252,46 +433,14 @@ local function timersText()
     elseif as then
         onlyMe = true
     end
-    local function shown(item)
-        return not onlyMe or Engine:IsForMe(item)
+    local running = (Engine.running and Engine:Note() == note) and true or false
+    if force or timersStale(record, note, onlyMe, as, running) then
+        timersRebuild(record, note, onlyMe, as, running)
     end
-    if onlyMe and not as then
-        heading = heading .. "   " .. gold("only me")
+    if running then
+        timersTick(note, onlyMe)
     end
-    if Engine.running and Engine:Note() == note then
-        heading = heading .. "   Phase " .. tostring(Engine:CurrentPhase()) .. "   " .. fmtTime(Engine:Elapsed() or 0)
-        local waiting = {}
-        for _, item in ipairs(note.timers) do
-            local remaining = Engine:Remaining(item)
-            if remaining == nil then
-                waiting[item.ph] = true
-            elseif Engine.IsCut and Engine:IsCut(item) then
-                -- A later phase started first: this line never comes.
-            elseif shown(item) and not (Notes:WindowSettings("window").hidePassed and remaining < -(item.dur or 0)) then
-                lines[#lines + 1] = timerLine(item, remaining)
-            end
-        end
-        for _, ph in ipairs(note.phases) do
-            if waiting[ph] then
-                lines[#lines + 1] = "|cff777777Phase " .. ph .. " starts on Next phase|r"
-            end
-        end
-    else
-        local lastPhase
-        for _, item in ipairs(note.timers) do
-            if shown(item) then
-                if item.ph ~= lastPhase then
-                    lines[#lines + 1] = gold("Phase " .. item.ph)
-                    lastPhase = item.ph
-                end
-                lines[#lines + 1] = timerLine(item, item.time)
-            end
-        end
-    end
-    if onlyMe and #lines == 0 and #note.timers > 0 then
-        lines[1] = "|cff777777Nothing in this note is for you. Untick Show only me to see every line.|r"
-    end
-    return table.concat(lines, "\n"), heading, #note.timers > 0
+    return timers.lines, timers.heading, #note.timers > 0
 end
 
 local SAMPLE_ASSIGNMENTS = {
@@ -311,6 +460,12 @@ local function assignmentsText()
         return textBlock(SAMPLE_ASSIGNMENTS), "Assignments (sample)", true
     end
     return "", "Assignments", false
+end
+
+local assignmentsCache = {}
+local function assignmentsBuild()
+    local text, heading, hasContent = assignmentsText()
+    return textLines(assignmentsCache, text), heading, hasContent
 end
 
 -- Your reminders in the personal window ------------------------------------------------------
@@ -437,60 +592,107 @@ local function plannedLines(encounterID, list, record)
 end
 
 -- During a run: the run's own reminder items, counting down from each phase's start, on the engine's
--- time (a rehearsal's clock in one).
-local function runLines()
+-- time (a rehearsal's clock in one). Built once per change of the run (a phase start, a reminder saved):
+-- the phases in order, each phase's rows in the order they come, each row's text after its time. A
+-- refresh only works out each row's second, which rows are passed and which one is next (runTick).
+local function runModel(head)
     local Alerts = CRT.Alerts
-    local now = Alerts.Now and Alerts:Now() or GetTime()
-    local hidePassed = Notes:WindowSettings("window").hidePassed
-    local byPhase, phases, waiting = {}, {}, {}
-    local nextRow
-    for _, it in ipairs(Alerts.items or {}) do
+    local byPhase, order = {}, {}
+    for index, it in ipairs(Alerts.items or {}) do
         if it.block == "mine" then
             local start = Alerts:PhaseStart(it.ph)
             if start and Alerts:IsCut(it.ph, it.time) then
                 -- A later phase started first: this reminder never comes.
             elseif start then
-                local remaining = start + it.time - now
-                if not (hidePassed and remaining < -(it.hold or 0)) then
-                    if not byPhase[it.ph] then
-                        byPhase[it.ph] = {}
-                        phases[#phases + 1] = it.ph
-                    end
-                    local row = { it = it, remaining = remaining }
-                    table.insert(byPhase[it.ph], row)
-                    if remaining >= 0 and (not nextRow or remaining < nextRow.remaining) then
-                        nextRow = row
-                    end
+                local p = byPhase[it.ph]
+                if not p then
+                    p = { ph = it.ph, rows = {}, head = { x = phaseHeading(it.ph) } }
+                    byPhase[it.ph] = p
+                    order[#order + 1] = p
                 end
-            elseif not Alerts:Skipped(it.ph) and not waiting[it.ph] then
-                waiting[it.ph] = true
-                phases[#phases + 1] = it.ph
+                local icon = it.icon and ("|T" .. tostring(it.icon) .. ":0|t ") or ""
+                p.rows[#p.rows + 1] = { it = it, due = start + it.time, index = index, x = "  " .. icon .. tostring(it.text or TEXT.reminder) }
+            elseif not Alerts:Skipped(it.ph) and not byPhase[it.ph] then
+                local p = { ph = it.ph, wait = { x = "|cff777777" .. format(TEXT.waiting, tostring(it.ph)) .. "|r" } }
+                byPhase[it.ph] = p
+                order[#order + 1] = p
             end
         end
     end
-    table.sort(phases)
-    local lines = {}
-    for _, ph in ipairs(phases) do
-        local rows = byPhase[ph]
-        if rows then
-            table.sort(rows, function(a, b)
-                if a.remaining ~= b.remaining then
-                    return a.remaining < b.remaining
+    table.sort(order, function(a, b)
+        return a.ph < b.ph
+    end)
+    for _, p in ipairs(order) do
+        if p.rows then
+            table.sort(p.rows, function(a, b)
+                if a.due ~= b.due then
+                    return a.due < b.due
                 end
                 return a.it.id < b.it.id
             end)
-            lines[#lines + 1] = phaseHeading(ph)
-            for _, row in ipairs(rows) do
-                lines[#lines + 1] = reminderLine(row.it, row.remaining, row == nextRow)
+        end
+    end
+    return { run = true, head = head, order = order, lines = {} }
+end
+
+-- The run's lines now: the boss heading, then by phase the rows not passed (with "Hide lines once passed")
+-- and the phases waiting for Next phase; the next row to come is marked. Nil when nothing is left.
+local function runTick(m)
+    local Alerts = CRT.Alerts
+    local now = Alerts.Now and Alerts:Now() or GetTime()
+    local hidePassed = Notes:WindowSettings("window").hidePassed
+    local nextRow
+    for _, p in ipairs(m.order) do
+        for _, r in ipairs(p.rows or EMPTY) do
+            local remaining = r.due - now
+            r.remaining = remaining
+            r.visible = not (hidePassed and remaining < -(r.it.hold or 0))
+            -- the first of the run's items wins a tie, as the run lists them
+            if r.visible and remaining >= 0 and (not nextRow or remaining < nextRow.remaining
+                or (remaining == nextRow.remaining and r.index < nextRow.index)) then
+                nextRow = r
+            end
+        end
+    end
+    local lines, n = m.lines, 1
+    lines[1] = m.head
+    for _, p in ipairs(m.order) do
+        if p.rows then
+            local headed = false
+            for _, r in ipairs(p.rows) do
+                if r.visible then
+                    if not headed then
+                        n = n + 1
+                        lines[n] = p.head
+                        headed = true
+                    end
+                    local second = r.remaining > 0 and math.floor(r.remaining) or 0
+                    local isNext = r == nextRow
+                    if r.sec ~= second or r.isNext ~= isNext then
+                        r.sec, r.isNext = second, isNext
+                        r.t = isNext and gold("> " .. fmtTime(second)) or ("|cffaaaaaa" .. fmtTime(second) .. "|r")
+                    end
+                    n = n + 1
+                    lines[n] = r
+                end
             end
         else
-            lines[#lines + 1] = "|cff777777" .. format(TEXT.waiting, tostring(ph)) .. "|r"
+            n = n + 1
+            lines[n] = p.wait
         end
+    end
+    for i = #lines, n + 1, -1 do
+        lines[i] = nil
+    end
+    if n == 1 then
+        return nil
     end
     return lines
 end
 
--- The reminders block (heading and lines), or nil when there is no current boss or it has none.
+-- The reminders block as kept: { run = true, ... } for a run (runModel), { lines } out of one, or nil when
+-- there is no current boss or it has none.
+local plannedCache = {}
 local function remindersBlock()
     local R = CRT.AlertReminders
     if not R then
@@ -504,27 +706,38 @@ local function remindersBlock()
     if #list == 0 then
         return nil
     end
-    local lines = run and runLines() or plannedLines(encounterID, list, record)
+    local head = gold(bossName(encounterID, list, record))
+    if run then
+        return runModel({ x = head })
+    end
+    local lines = plannedLines(encounterID, list, record)
     if #lines == 0 then
         return nil
     end
-    table.insert(lines, 1, gold(bossName(encounterID, list, record)))
-    return table.concat(lines, "\n")
+    table.insert(lines, 1, head)
+    return { lines = textLines(plannedCache, table.concat(lines, "\n")) }
 end
 
 -- Whether the personal window counts down: the current boss comes from a run and has a reminder of
--- yours. Anything else (no reminders, the note's boss) uses the normal refresh.
+-- yours. Anything else (no reminders, the note's boss) uses the normal refresh. Asked every refresh, so the
+-- answer is kept until the content or the run changes.
+local live = {}
 local function personalLive()
-    local R = CRT.AlertReminders
-    if not (R and CRT.Alerts and CRT.Alerts.running) then
+    local R, A = CRT.AlertReminders, CRT.Alerts
+    if not (R and A and A.running) then
         return false
     end
+    if live.version == contentVersion and live.alerts == A.version then
+        return live.value
+    end
+    local value = false
     local ok, encounterID, run = pcall(currentBoss)
-    if not (ok and encounterID and run) then
-        return false
+    if ok and encounterID and run then
+        local listed, list = pcall(R.List, R, encounterID)
+        value = listed and type(list) == "table" and #list > 0
     end
-    local listed, list = pcall(R.List, R, encounterID)
-    return listed and type(list) == "table" and #list > 0
+    live.version, live.alerts, live.value = contentVersion, A.version, value
+    return value
 end
 
 -- Your personal note as typed. A raid note pasted in (an "EncounterID:…;Name:…" header, timed
@@ -582,34 +795,69 @@ local function personalNoteBlock(text)
 end
 NoteWindow.PersonalNoteBlock = personalNoteBlock
 
-local function personalText()
+-- The personal window's kept state: what was typed and its lines, the reminders block, and the lines shown.
+local personal = { typedCache = {}, sample = {}, lines = {} }
+local BLANK = { x = "" }
+
+local function failed(err)
+    -- a failure must never take the free text with it
+    if geterrorhandler then
+        geterrorhandler()(err)
+    end
+end
+
+-- force: rebuild the kept text even when nothing seems to have changed (a refresh out of a run).
+local function personalBuild(_, force)
+    local k, A = personal, CRT.Alerts
     local typed = Notes:Personal()
-    local lines = splitLines(typed)
-    local ok, reminders = pcall(remindersBlock)
-    if not ok then
-        -- a failure must never take the free text with it
-        if geterrorhandler then
-            geterrorhandler()(reminders)
+    if force or k.typed ~= typed or k.version ~= contentVersion or k.alerts ~= (A and A.version) or k.classes ~= classVersion() then
+        k.typed, k.version, k.alerts, k.classes = typed, contentVersion, A and A.version, classVersion()
+        k.typedLines = #splitLines(typed) > 0 and textLines(k.typedCache, personalNoteBlock(typed)) or nil
+        local ok, block = pcall(remindersBlock)
+        if not ok then
+            failed(block)
+            block = nil
         end
-        reminders = nil
+        k.block = block
+        k.first = Notes:PersonalFirst()
+    end
+    local reminders = k.block and k.block.lines
+    if k.block and k.block.run then
+        local ok, lines = pcall(runTick, k.block)
+        if not ok then
+            failed(lines)
+            k.block, lines = nil, nil
+        end
+        reminders = lines
     end
     -- your reminders, then what you typed; "Display my notes first" (notes.personalFirst) swaps them
-    local parts = {}
-    local typedBlock = #lines > 0 and personalNoteBlock(typed) or nil
-    if Notes:PersonalFirst() then
-        parts[#parts + 1] = typedBlock
-        parts[#parts + 1] = reminders
-    else
-        parts[#parts + 1] = reminders
-        parts[#parts + 1] = typedBlock
+    local first, second = reminders, k.typedLines
+    if k.first then
+        first, second = k.typedLines, reminders
     end
-    if #parts > 0 then
-        return table.concat(parts, "\n\n"), "Personal note", true
+    local out, n = k.lines, 0
+    for _, line in ipairs(first or EMPTY) do
+        n = n + 1
+        out[n] = line
+    end
+    if first and second then
+        n = n + 1
+        out[n] = BLANK
+    end
+    for _, line in ipairs(second or EMPTY) do
+        n = n + 1
+        out[n] = line
+    end
+    for i = #out, n + 1, -1 do
+        out[i] = nil
+    end
+    if n > 0 then
+        return out, "Personal note", true
     end
     if previewOn then
-        return "Your personal note shows here.\nWrite it on the Raid Notes page.", "Personal note (sample)", true
+        return textLines(k.sample, "Your personal note shows here.\nWrite it on the Raid Notes page."), "Personal note (sample)", true
     end
-    return "", "Personal note", false
+    return NO_LINES, "Personal note", false
 end
 
 -- One window --------------------------------------------------------------------------------
@@ -620,8 +868,144 @@ local function fontPath(name)
     return CRT:FontPath(name) or (GameFontHighlight:GetFont())
 end
 
+-- The rows ------------------------------------------------------------------------------------
+-- A window draws its lines as rows of two font strings each: a time cell (the countdown, when the line
+-- has one) and the text cell after it. A row stays with its line while the line is shown, so a new second
+-- sets only that row's time cell, and a line that goes (passed, or a phase cut) only moves the rows under
+-- it. Rows are made as needed and kept for reuse. Each row sits under the one before (a blank line leaves
+-- one line of space), and rows that do not fit in the window are hidden, as the window always cut its text.
+local TIME_PAD = 2   -- spare width in a time cell, so a digit a little wider fits without moving its text
+local TIME_SLACK = 6 -- how much narrower a time may get before its text moves left to follow it
+
+local function newRow(w)
+    local time = w.frame:CreateFontString(nil, "OVERLAY")
+    time:SetFontObject(w.font)
+    time:SetJustifyH("LEFT")
+    time:SetJustifyV("TOP")
+    time:SetWordWrap(false)
+    time:SetShadowOffset(1, -1)
+    local text = w.frame:CreateFontString(nil, "OVERLAY")
+    text:SetFontObject(w.font)
+    text:SetJustifyH("LEFT")
+    text:SetJustifyV("TOP")
+    text:SetWordWrap(true)
+    text:SetShadowOffset(1, -1)
+    return { time = time, text = text, gap = 0, cellW = 0 }
+end
+
+-- Places every row under the one before, sizes the cells to the window and hides the rows that don't fit.
+local function layoutRows(w)
+    local frame, order = w.frame, w.order
+    local width = math.max(1, (frame:GetWidth() or 0) - 16)
+    local height = (frame:GetHeight() or 0) - 36
+    local lineH = w.lineH or 14
+    local used, fits, prev = 0, true, nil
+    for _, row in ipairs(order) do
+        local timed = row.line.t ~= nil
+        local to, at, x, y = frame, "TOPLEFT", 8, -28 - row.gap * lineH
+        if prev then
+            to, at, x, y = prev.text, "BOTTOMLEFT", -prev.cellW, -row.gap * lineH
+        end
+        -- each row is placed only on rows placed before it, so no anchor ever loops
+        local text, time = row.text, row.time
+        text:ClearAllPoints()
+        time:ClearAllPoints()
+        if timed then
+            row.cellW = math.ceil(time:GetUnboundedStringWidth() or 0) + TIME_PAD
+            time:SetPoint("TOPLEFT", to, at, x, y)
+            time:SetWidth(row.cellW)
+            text:SetPoint("TOPLEFT", time, "TOPRIGHT", 0, 0)
+            text:SetWidth(math.max(1, width - row.cellW))
+        else
+            row.cellW = 0
+            text:SetPoint("TOPLEFT", to, at, x, y)
+            text:SetWidth(width)
+        end
+        used = used + row.gap * lineH + math.max(lineH, text:GetStringHeight() or 0)
+        fits = fits and used <= height + 0.5
+        text:SetShown(fits)
+        time:SetShown(fits and timed)
+        prev = row
+    end
+end
+
+-- Draws lines: each row's cells get new text only when theirs changed, and the rows are placed again only
+-- when a row came, went or moved, a text changed, a time no longer fits its cell, or the window changed.
+local function drawLines(w, lines)
+    local bound, order, free, mark = w.bound, w.order, w.free, w.mark
+    local pass = w.pass + 1
+    w.pass = pass
+    for i = 1, #lines do
+        lines[i][mark] = pass
+    end
+    local relayout = w.layoutDirty
+    -- rows whose line is gone, kept for reuse (pushed last first, so they come back in order)
+    for i = #order, 1, -1 do
+        local row = order[i]
+        if row.line[mark] ~= pass then
+            bound[row.line] = nil
+            row.line = nil
+            row.time:Hide()
+            row.text:Hide()
+            free[#free + 1] = row
+            relayout = true
+        end
+    end
+    local n, gap = 0, 0
+    for i = 1, #lines do
+        local line = lines[i]
+        if line.t == nil and line.x == "" then
+            gap = gap + 1
+        else
+            local row = bound[line]
+            if not row then
+                row = table.remove(free) or newRow(w)
+                bound[line] = row
+                row.line = line
+            end
+            n = n + 1
+            if order[n] ~= row then
+                order[n] = row
+                relayout = true
+            end
+            if row.gap ~= gap then
+                row.gap = gap
+                relayout = true
+            end
+            gap = 0
+            if row.x ~= line.x then
+                row.x = line.x
+                row.text:SetText(line.x)
+                relayout = true
+            end
+            if row.t ~= line.t then
+                row.t = line.t
+                if line.t == nil then
+                    relayout = true
+                else
+                    row.time:SetText(line.t)
+                    if not relayout then
+                        local need = (row.time:GetUnboundedStringWidth() or 0) + TIME_PAD
+                        relayout = need > row.cellW or need < row.cellW - TIME_SLACK
+                    end
+                end
+            end
+        end
+    end
+    for i = #order, n + 1, -1 do
+        order[i] = nil
+        relayout = true
+    end
+    if relayout then
+        layoutRows(w)
+    end
+    w.layoutDirty = false
+end
+
 local function createWindow(key, defaultPosition, build)
-    local w = { key = key }
+    -- bound: line -> its row; order: the rows shown, top first; free: rows kept for reuse; mark: the key
+    -- each drawn line carries this window's draw count under
+    local w = { key = key, bound = {}, order = {}, free = {}, pass = 0, mark = "drawn_" .. key, lines = NO_LINES }
     local function s()
         return Notes:WindowSettings(key)
     end
@@ -675,14 +1059,12 @@ local function createWindow(key, defaultPosition, build)
     title:SetJustifyH("LEFT")
     title:SetWordWrap(false)
 
-    local body = frame:CreateFontString(nil, "OVERLAY")
-    body:SetFontObject(font)
-    body:SetPoint("TOPLEFT", 8, -28)
-    body:SetPoint("BOTTOMRIGHT", -8, 8)
-    body:SetJustifyH("LEFT")
-    body:SetJustifyV("TOP")
-    body:SetWordWrap(true)
-    body:SetShadowOffset(1, -1)
+    -- the lines' rows (drawLines) use this window's font, and are placed again when the window's size
+    -- changes (hooked: BackdropTemplate sizes its edge in its own OnSizeChanged)
+    w.font = font
+    frame:HookScript("OnSizeChanged", function()
+        w.layoutDirty = true
+    end)
 
     local hint = frame:CreateFontString(nil, "OVERLAY", "CRTFontDisableSmall")
     hint:SetPoint("BOTTOMLEFT", 8, 6)
@@ -729,7 +1111,7 @@ local function createWindow(key, defaultPosition, build)
     grip:SetScript("OnMouseUp", function()
         frame:StopMovingOrSizing()
         save()
-        w.lastText = nil
+        w.layoutDirty = true
     end)
 
     function w:ApplyPosition()
@@ -758,20 +1140,29 @@ local function createWindow(key, defaultPosition, build)
         grip:SetShown(open)
         hint:SetShown(open)
         reset:SetShown(open)
-        self.lastText = nil
+        self.lineH = settings.fontSize or 14
+        self.layoutDirty = true
     end
 
     function w:Refresh()
         -- the timers window counts down while a note runs, the personal window while a run of a boss
         -- you have reminders for goes
         local live = (key == "window" and Engine.running) or (key == "personal" and personalLive()) or false
-        if not live and not self.wasLive and self.drawnVersion == contentVersion and GetTime() - (self.drawnAt or 0) < SAFETY_SECONDS then
+        local classes = classVersion()
+        if not live and not self.wasLive and self.drawnVersion == contentVersion and self.drawnClasses == classes
+            and GetTime() - (self.drawnAt or 0) < SAFETY_SECONDS then
+            -- nothing to rebuild; a resize or a new font still places the rows again
+            if self.layoutDirty and frame:IsShown() then
+                drawLines(self, self.lines)
+            end
             return
         end
         self.wasLive = live
         self.drawnVersion = contentVersion
+        self.drawnClasses = classes
         self.drawnAt = GetTime()
-        local text, heading, hasContent = build()
+        -- out of a run, every refresh that gets here rebuilds; during one, the kept text is reused
+        local lines, heading, hasContent = build(self, not live)
         -- a stamp waits for this draw, so a window the new note just made visible shows it too; and a
         -- note with nothing for this window (an empty note, or a boss with no timers or text) keeps it
         -- up, blank, at least for the stamp
@@ -785,17 +1176,27 @@ local function createWindow(key, defaultPosition, build)
             return
         end
         if not hasContent and not previewOn then
-            text, heading = "", ""
+            lines, heading = NO_LINES, ""
         end
         if stampNow then
             self.stamp:Stop()
             self.stamp:Play()
         end
-        title:SetText(heading)
-        if text ~= self.lastText then
-            body:SetText(text)
-            self.lastText = text
+        if heading ~= self.heading then
+            self.heading = heading
+            title:SetText(heading)
         end
+        self.lines = lines
+        drawLines(self, lines)
+    end
+
+    -- The text the window shows, as one string: each line's time and text, lines joined by line breaks.
+    function w:DrawnText()
+        local out = {}
+        for i, line in ipairs(self.lines) do
+            out[i] = (line.t or "") .. line.x
+        end
+        return table.concat(out, "\n")
     end
 
     function w:ResetPosition()
@@ -852,9 +1253,9 @@ local function build()
         return
     end
     built = true
-    NoteWindow.windows.window = createWindow("window", { point = "LEFT", relativePoint = "LEFT", x = 40, y = 120 }, timersText)
-    NoteWindow.windows.assignments = createWindow("assignments", { point = "LEFT", relativePoint = "LEFT", x = 40, y = -170 }, assignmentsText)
-    NoteWindow.windows.personal = createWindow("personal", { point = "RIGHT", relativePoint = "RIGHT", x = -60, y = -60 }, personalText)
+    NoteWindow.windows.window = createWindow("window", { point = "LEFT", relativePoint = "LEFT", x = 40, y = 120 }, timersBuild)
+    NoteWindow.windows.assignments = createWindow("assignments", { point = "LEFT", relativePoint = "LEFT", x = 40, y = -170 }, assignmentsBuild)
+    NoteWindow.windows.personal = createWindow("personal", { point = "RIGHT", relativePoint = "RIGHT", x = -60, y = -60 }, personalBuild)
 end
 
 -- One updater for all three. Timers need a quick refresh, and the others are cheap.
@@ -877,7 +1278,12 @@ driver:RegisterEvent("PLAYER_SPECIALIZATION_CHANGED")
 driver:RegisterEvent("PLAYER_ROLES_ASSIGNED")
 driver:RegisterEvent("PLAYER_ENTERING_WORLD")
 driver:RegisterEvent("ZONE_CHANGED_NEW_AREA")
+-- Your role, spec or group changed: the words that match you are read again now, not a few seconds later.
+local TOKEN_EVENTS = { GROUP_ROSTER_UPDATE = true, PLAYER_SPECIALIZATION_CHANGED = true, PLAYER_ROLES_ASSIGNED = true }
 driver:SetScript("OnEvent", function(_, event)
+    if TOKEN_EVENTS[event] and Engine.ResetTokens then
+        Engine:ResetTokens()
+    end
     changed()
     if event == "PLAYER_LOGIN" then
         build()

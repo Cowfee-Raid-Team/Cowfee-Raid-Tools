@@ -163,6 +163,12 @@ local function previewTokens(name)
     return t, class
 end
 
+-- Forgets the words kept for you and for Preview as, so the next question reads them again: your role,
+-- spec or group just changed (the note windows call it on those events).
+function Engine:ResetTokens()
+    myTokens, classAt, preview.at = nil, nil, nil
+end
+
 -- Whether a timer is for you: your name, your role, your class, everyone, or your raid group. A name in
 -- a tag may carry a realm, which is ignored. A class name of several words may be split over them, and is
 -- read as one class first, so "Demon Hunter" is never a Hunter's (Parse.lua's class words).
