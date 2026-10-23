@@ -62,9 +62,14 @@ local function when(at)
     return at and date("%Y-%m-%d %H:%M", at) or "?"
 end
 
+-- Text shown as it is written (note lines, names): a "|" would start the game's colour and link codes.
+local function plain(text)
+    return (tostring(text):gsub("|", "||"))
+end
+
 -- How a version changed, and who: "Received from Rixxy".
 local function howText(entry)
-    local who = Notes.ShortName(entry.who) or TEXT.someone
+    local who = plain(Notes.ShortName(entry.who) or TEXT.someone)
     if entry.how == "restored" then
         return entry.from and string.format(TEXT.restoredFrom, who, when(entry.from)) or string.format(TEXT.restored, who)
     elseif entry.how == "received" then
@@ -80,11 +85,6 @@ H.HowText = howText
 
 local function lineCount(text)
     return #Diff.Split(text)
-end
-
--- Note text shown as it is written: a "|" would start the game's colour and link codes.
-local function plain(text)
-    return (text:gsub("|", "||"))
 end
 
 -- The diff of a version against now, as one coloured text.
@@ -139,7 +139,7 @@ function H.Refresh()
         return
     end
     local name = (record.name or "?") .. (record.difficulty and (" (" .. record.difficulty .. ")") or "")
-    win.strip:SetTitle(string.format(TEXT.title, name))
+    win.strip:SetTitle(string.format(TEXT.title, plain(name)))
     local entries = Notes:History(H.id)
     local allowed, why = canRestore(record)
     -- the compared version, found again by its entry: a restore adds a row above it
@@ -189,7 +189,14 @@ function H.DrawCompare(record)
         H.summary:SetText(TEXT.pick)
         H.diff:SetText("")
     else
-        local text, added, removed = H.DiffText(entry.text, record.raw or "")
+        -- worked out again only when the version or the note's text changes
+        local c = H.diffCache
+        if not (c and c.entry == entry and c.raw == (record.raw or "")) then
+            local t, a, r = H.DiffText(entry.text, record.raw or "")
+            c = { entry = entry, raw = record.raw or "", text = t, added = a, removed = r }
+            H.diffCache = c
+        end
+        local text, added, removed = c.text, c.added, c.removed
         if added == 0 and removed == 0 then
             H.summary:SetText(string.format(TEXT.same, when(entry.at)))
         else
@@ -315,7 +322,7 @@ local function build()
     H.diff:SetWidth(childW - 4)
     H.diff:SetJustifyH("LEFT")
     H.diffScroll = scroll
-    win:SetScript("OnShow", H.Refresh)
+    win:HookScript("OnShow", H.Refresh) -- hooked: the window's own OnShow (UI.Window, UI:StyleWindow) stays
     Notes:OnChange(H.Refresh)
     UI:OnTheme(H.Refresh) -- the diff's colours are written into its text
 end

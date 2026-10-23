@@ -49,6 +49,8 @@ local function mock(kind, name)
     if k == "GetScript" then return function(self, n) return self.scripts[n] end end
     if k == "HookScript" then return function(self, n, fn) local old = self.scripts[n] self.scripts[n] = function(...) if old then old(...) end fn(...) end end end
     if k == "GetEffectiveScale" then return function() return 1 end end
+    if k == "SetMaxLines" then return function(self, n) rawset(self, "maxLines", n) end end
+    if k == "SetMotionScriptsWhileDisabled" then return function(self, on) rawset(self, "motion", on) end end
     return function() end end })
 end
 function CreateFrame(kind, name, parent, template)
@@ -138,6 +140,7 @@ function CRT.UI.Window(name, opts)
   rawset(f, "CloseButton", CreateFrame("Button", nil, f))
   if opts.kind == "popout" then rawset(f, "reset", CreateFrame("Button", nil, f)) end
   f.Place = function() end
+  f:SetScript("OnShow", function(self) rawset(self, "styledShows", (rawget(self, "styledShows") or 0) + 1) end)
   f.shown = false
   windows[name] = f
   return f
@@ -179,7 +182,21 @@ do
   assert(a == 0 and r == 0 and s == "=A,=B", "line ends and a last line end don't count: " .. s)
   s, a, r = ops("A\\n\\nB", "A\\nB")
   assert(r == 1 and s == "=A,-,=B", "a blank line counts: " .. s)
-  ok("the diff: adds, removes, unchanged lines, empty texts, reordered lines and line ends")
+  -- past 500 x 500 lines the middle isn't matched: all removed, then all added (a shared line too)
+  local old, new = { "head" }, { "head" }
+  for i = 1, 600 do old[#old + 1] = "o" .. i new[#new + 1] = "n" .. i end
+  table.insert(old, 300, "shared") table.insert(new, 400, "shared")
+  old[#old + 1] = "tail" new[#new + 1] = "tail"
+  local lines, added, removed = Diff.Lines(table.concat(old, "\\n"), table.concat(new, "\\n"))
+  assert(added == 601 and removed == 601, "the big middle: all removed then all added: " .. added .. " " .. removed)
+  assert(lines[1].op == "same" and lines[2].op == "remove" and lines[602].op == "remove" and lines[603].op == "add" and lines[#lines].op == "same" and lines[#lines].text == "tail", "the common start and end kept, removes before adds")
+  -- under the cap the shared line is matched
+  local o2, n2 = {}, {}
+  for i = 1, 40 do o2[#o2 + 1] = "o" .. i n2[#n2 + 1] = "n" .. i end
+  table.insert(o2, 10, "shared") table.insert(n2, 30, "shared")
+  local _, a2, r2 = Diff.Lines(table.concat(o2, "\\n"), table.concat(n2, "\\n"))
+  assert(a2 == 40 and r2 == 40, "a small middle matches its shared line")
+  ok("the diff: adds, removes, unchanged lines, empty texts, reordered lines and line ends; past 500 x 500 lines all removed then added")
 end
 
 -- 2. The store: a version per path, with how and who
@@ -215,7 +232,13 @@ do
   clock = clock + 400
   assert(Notes:RemoveLine(id, 2, "time:12;text:Soak;"), "a line removed later")
   assert(Notes:HistoryCount(id) == 5, "a later line change is a new entry")
-  ok("versions kept per path: edited, imported, received and line changes, with how and who; none on an unchanged save")
+  -- the Timeline's Ctrl+Z writes whole records: Notes:RememberRaw keeps the text first, like a line change
+  local n = Notes:HistoryCount(id)
+  Notes:RememberRaw(id, Notes:Get(id).raw, "edited", { lines = true })
+  assert(Notes:HistoryCount(id) == n, "the same text: nothing kept")
+  Notes:RememberRaw(id, "undone text", "edited", { lines = true })
+  assert(Notes:HistoryCount(id) == n, "within a run of line changes: one entry, as for the Timeline's own edits")
+  ok("versions kept per path: edited, imported, received, line changes and undo, with how and who; none on an unchanged save")
 
   -- at most 5, the oldest dropped
   local oldest = Notes:History(id)[5]
@@ -239,7 +262,15 @@ do
   assert(Notes:Restore(id, 1), "restoring that entry")
   assert(Notes:Get(id).raw == nowText and Notes:History(id)[1].how == "restored" and Notes:History(id)[1].text == wanted, "undoes the restore")
   assert(not Notes:Restore(id, 9) and not Notes:Restore(999, 1), "a version or note that isn't there")
-  ok("restore puts a version back, keeps the text before as a restored entry, and restoring that undoes it")
+  -- the oldest (5th): put back, though its row drops off as the restored entry goes on top
+  local before5 = Notes:Get(id).raw
+  local oldest = Notes:History(id)[5]
+  local oldestText, oldestAt = oldest.text, oldest.at
+  assert(Notes:HistoryCount(id) == 5 and Notes:Restore(id, 5), "the 5th restored")
+  h = Notes:History(id)
+  assert(Notes:Get(id).raw == oldestText and #h == 5 and h[1].how == "restored" and h[1].text == before5 and h[1].from == oldestAt, "its text is back; the text before kept on top, naming it")
+  assert(Notes:Restore(id, 1) and Notes:Get(id).raw == before5, "and that undoes it")
+  ok("restore puts a version back, keeps the text before as a restored entry, and restoring that undoes it; the oldest too")
 end
 
 -- 4. Delete removes a note's history; the total size cap
@@ -335,7 +366,8 @@ end
 do
   local text = statusText()
   assert(text, "the page's detail lines")
-  assert(text:find("2 earlier versions: click History to compare or restore", 1, true), "the footer line: " .. text)
+  assert(text:find("2 earlier versions in History", 1, true), "the footer line: " .. text)
+  assert(rawget(statusFs, "maxLines") == P.STATUS_LINES, "never more lines than the room under the box")
   local lines = {} for l in (text .. "\\n"):gmatch("(.-)\\n") do lines[#lines + 1] = l end
   assert(lines[1]:find("^Last updated") and lines[#lines]:find("earlier versions"), "under Last updated")
   assert(#lines <= P.STATUS_LINES, "within the lines the box leaves room for")
@@ -346,7 +378,28 @@ do
   assert(not text:find("earlier version", 1, true), "no footer line with none: " .. text)
   assert(rawget(hist, "text") == "History (0)" and not hist:IsEnabled(), "and History greyed")
   assert(pick(fresh), "picked back")
-  ok("the footer line under Last updated, hidden with no earlier version")
+  -- everything at once: shared by someone, a roster, a share going out and a run: still at most STATUS_LINES lines
+  local got = Notes:Import("EncounterID:3495;Name:Busy\\nA", "Rixxy", nil, "pug:Rixxy", "CRT")
+  Notes:Get(got).presetId = "r1"
+  Notes:UpdateRaw(got, "EncounterID:3495;Name:Busy\\nB")
+  local find, sharing, phase = CRT.Groups.Find, CRT.NoteComm.Sharing, CRT.NoteEngine.CurrentPhase
+  CRT.Groups.Find = function(_, key) return key == "r1" and {} or nil end
+  assert(pick(got), "picked")
+  text = statusText()
+  local function count(t) local n = 0 for _ in (t .. "\\n"):gmatch("(.-)\\n") do n = n + 1 end return n end
+  assert(count(text) == 4 and text:find("in History", 1, true), "four details with the History line: " .. text)
+  CRT.NoteComm.Sharing = function() return 1, 3 end
+  redraw()
+  text = statusText()
+  assert(count(text) == 4 and text:find("Sharing: 1 of 3", 1, true) and not text:find("in History", 1, true), "a share going out takes the History line's place: " .. text)
+  CRT.NoteEngine.running, CRT.NoteEngine.CurrentPhase = true, function() return 1 end
+  redraw()
+  text = statusText()
+  assert(count(text) == 4 and text:find("Sharing: 1 of 3 parts sent; Running: phase 1", 1, true), "a share and a run share a line: " .. text)
+  CRT.Groups.Find, CRT.NoteComm.Sharing, CRT.NoteEngine.CurrentPhase, CRT.NoteEngine.running = find, sharing, phase, false
+  Notes:Delete(got)
+  assert(pick(fresh), "picked back")
+  ok("the footer line under Last updated, hidden with no earlier version; never more than the lines under the box")
 end
 
 -- 8. The window: rows, Compare, Restore asks and can be undone
@@ -356,6 +409,7 @@ do
   hist.scripts.OnClick(hist)
   local win = windows.CowfeeRaidToolsNoteHistory
   assert(win and win.shown, "History opens the window")
+  assert(rawget(win, "styledShows") == 1 and H.rows[1].shown, "its own OnShow is kept, and the rows are drawn")
   assert(win.opts.kind == "dialog" and (win.opts.layer or "popups") == "popups", "a dialog on the popups layer")
   assert(rawget(win, "title") == "History: Fresh (Heroic)", "titled with the note: " .. tostring(rawget(win, "title")))
   assert(rawget(win, "helpTitle") and rawget(win, "helpText"):find("5", 1, true), "its (?) on the title")
@@ -377,6 +431,19 @@ do
   assert(d:find(CRT.UI.BadText("- Tanks: Abu"), 1, true), "removed lines in the bad colour")
   assert(d:find(CRT.UI.ColorText("  EncounterID:3480;Difficulty:Heroic;Name:Fresh", "muted"), 1, true), "unchanged lines muted")
   assert(rawget(H.diffChild, "height") > 12, "the scroll child holds every line")
+  -- worked out once per version and text
+  local calls, lines0 = 0, Diff.Lines
+  Diff.Lines = function(...) calls = calls + 1 return lines0(...) end
+  redraw() redraw()
+  assert(calls == 0, "a redraw with nothing changed reuses the diff")
+  local keep = Notes:Get(fresh).raw
+  Notes:Get(fresh).raw = keep .. "\\nNew: line"
+  redraw()
+  assert(calls == 1 and H.summary:GetText():find("3 added", 1, true), "a changed text works it out again: " .. H.summary:GetText())
+  Notes:Get(fresh).raw = keep
+  redraw()
+  Diff.Lines = lines0
+  assert(H.HowText({ how = "edited", who = "Ab|cffu" }) == "Edited by Ab||cffu", "a name shows as written")
   local piped = H.DiffText("a|cffff0000b", "")
   assert(piped:find("a||cffff0000b", 1, true), "a | in the note shows as written")
   ok("the window: the note now, then each version with when, how and who; Compare's coloured diff and counts")
@@ -409,6 +476,11 @@ do
   inRaid, leader = false, false
   redraw()
   win:Hide()
+  local pipe = Notes:Import("EncounterID:3496;Name:Pipe|Name\\nA")
+  Notes:UpdateRaw(pipe, "EncounterID:3496;Name:Pipe|Name\\nB")
+  assert(H.Open(pipe) and rawget(win, "title") == "History: Pipe||Name", "the title shows the name as written: " .. tostring(rawget(win, "title")))
+  win:Hide()
+  Notes:Delete(pipe)
   ok("Restore asks, restores only your copy, keeps the text before, and restoring that entry undoes it")
 end
 
@@ -419,6 +491,7 @@ do
   local W = Editor.state
   local b = W.history
   assert(b and rawget(b, "header") and b:GetParent() == W.window.strip, "a header button in the title bar")
+  assert(rawget(b, "motion") == true, "its tooltip shows while greyed")
   local p = b.points[#b.points]
   assert(p[1] == "RIGHT" and p[2] == W.window.reset and p[3] == "LEFT", "left of Reset")
   assert(b.shown and rawget(b, "text") == "History (" .. Notes:HistoryCount(fresh) .. ")" and b:IsEnabled(), "History (N): " .. tostring(rawget(b, "text")))

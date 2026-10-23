@@ -236,7 +236,8 @@ end
 --   how: "edited" (Save text changes, the pop-out editor's Save, or lines changed on the Timeline or in the
 --        alert editor, which set lines = true), "imported", "received" (who = the sender) or "restored"
 --        (from = the `at` of the version put back).
--- Recorded in one place, store() below, which every write of a note's text goes through. A change that
+-- Recorded in one place, store() below, which every write of a note's text goes through (and Notes:RememberRaw,
+-- for the Timeline's undo, which writes whole records). A change that
 -- leaves the text as it was adds nothing. Line changes in a row by the same player within LINE_BURST
 -- seconds keep one entry, the text before the first, so a few Timeline drags don't push out the saves.
 -- All notes' history together holds at most HISTORY_BYTES of text: over that, the note whose history holds
@@ -318,6 +319,16 @@ local function store(record, id, text, how, extra)
         remember(id, record.raw, how, extra)
     end
     record.raw = text
+end
+
+-- For a writer that replaces a note's whole record (the Timeline's Ctrl+Z and Ctrl+Y, Timeline/Undo.lua): keeps
+-- the note's text now in its history when `text` (what is about to be written) differs. how and extra as for
+-- remember.
+function Notes:RememberRaw(id, text, how, extra)
+    local record = self:Get(id)
+    if record and type(record.raw) == "string" and type(text) == "string" and record.raw ~= text then
+        remember(id, record.raw, how or "edited", extra)
+    end
 end
 
 -- A note's earlier versions, newest first (the saved entries: read them, don't change them).

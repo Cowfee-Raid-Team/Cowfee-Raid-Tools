@@ -1060,6 +1060,9 @@ local function buildHistory(win)
         end
     end, { tipTitle = TEXT.historyTitle, tipText = TEXT.historyTip })
     b:SetPoint("RIGHT", win.reset or win.CloseButton, "LEFT", -4, 0)
+    if b.SetMotionScriptsWhileDisabled then
+        b:SetMotionScriptsWhileDisabled(true) -- greyed with no earlier version, its tooltip still says what it is
+    end
     W.history = b
     Notes:OnChange(refreshHistory)
 end

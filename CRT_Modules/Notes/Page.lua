@@ -30,7 +30,7 @@ local TEXT = {
     historyLabel = "History",
     historyTip = "The note's last 5 earlier versions: when, how and who changed them. Compare one with the note now, or restore it.",
     historyNone = "No earlier versions yet. Each change to this note's text keeps the text before it here, up to 5.",
-    historyLine = "%d earlier version%s: click History to compare or restore",
+    historyLine = "%d earlier version%s in History",
     popOutShort = "Pop out",
     changedUnder = "This note changed while you were typing, so your text was not saved. Click Save again to replace the note with your text, or click another note and back to see the new one.",
     personalChangedUnder = "Your personal note changed in the note editor while you were typing here, so this was not saved. Click Save again to replace it with this text.",
@@ -374,22 +374,32 @@ refresh = function()
         if record.presetId and CRT.Groups:Find(record.presetId) then
             lines[#lines + 1] = "Roster: linked to a Raid Groups layout"
         end
-        local versions = Notes:HistoryCount(id)
-        if versions > 0 then
-            lines[#lines + 1] = format(TEXT.historyLine, versions, versions == 1 and "" or "s")
-        end
     end
+    local history = record and Notes:HistoryCount(id) or 0
+    -- what is going on now: a share being sent, a run
+    local now = {}
     local sent, total = CRT.NoteComm:Sharing()
     if sent then
-        lines[#lines + 1] = format("Sharing: %d of %d parts sent", sent, total)
+        now[#now + 1] = format("Sharing: %d of %d parts sent", sent, total)
     end
     local Alerts = CRT.Alerts
     if Engine.running then
-        lines[#lines + 1] = "Running: phase " .. tostring(Engine:CurrentPhase()) .. (Engine.reason == "test" and " (test)" or "")
+        now[#now + 1] = "Running: phase " .. tostring(Engine:CurrentPhase()) .. (Engine.reason == "test" and " (test)" or "")
     elseif Alerts.running then
         -- A run with reminders but no note for this boss: the note windows stay idle.
-        lines[#lines + 1] = "Running reminders, no note: phase " .. tostring(Engine:CurrentPhase())
+        now[#now + 1] = "Running reminders, no note: phase " .. tostring(Engine:CurrentPhase())
             .. (Alerts.run and Alerts.run.reason == "test" and " (test)" or "")
+    end
+    -- at most STATUS_LINES lines, the room under the box: the History line goes first (History (N) shows the
+    -- count too), then a share and a run share one line
+    if history > 0 and #lines + 1 + #now <= STATUS_LINES then
+        lines[#lines + 1] = format(TEXT.historyLine, history, history == 1 and "" or "s")
+    end
+    if #lines + #now > STATUS_LINES then
+        now = { table.concat(now, "; ") }
+    end
+    for _, line in ipairs(now) do
+        lines[#lines + 1] = line
     end
     status:SetText(table.concat(lines, "\n"))
 
@@ -710,6 +720,10 @@ local function buildNotes(pf)
     status:SetPoint("TOPLEFT", box, "BOTTOMLEFT", 0, -8)
     status:SetPoint("RIGHT", save, "LEFT", -8, 0)
     status:SetJustifyH("LEFT")
+    -- never more lines than the room under the box (a long line is cut short, not wrapped below the tab)
+    if status.SetMaxLines then
+        status:SetMaxLines(STATUS_LINES)
+    end
 
     -- Right: your personal note, shown in its own window.
     local top = -14

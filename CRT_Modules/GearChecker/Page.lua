@@ -829,7 +829,7 @@ local function buildPopout()
             P.Dock()
         end
     end)
-    P.window:SetScript("OnShow", P.Refresh)
+    P.window:HookScript("OnShow", P.Refresh) -- hooked: the window's own OnShow (UI.Window, UI:StyleWindow) stays
 end
 
 function P.Dock()
