@@ -206,7 +206,8 @@ local A, R, Notes, NW, Speech, Bars, Icons = CRT.Alerts, CRT.AlertReminders, CRT
   CRT.AlertSpeech, CRT.AlertBars, CRT.AlertIcons
 local NE = CRT.NoteEngine
 local win = named.CowfeeRaidToolsNote_personal
-local body = win and win.strings[2]
+-- the window draws its lines as rows; what it shows, as one text, is its DrawnText
+local body = win and setmetatable({}, { __index = function(_, k) if k == "text" then return NW:Get("personal"):DrawnText() end end })
 
 -- The rehearsal clock, as the window would hand it over.
 local fight, speed, playing = 0, 1, true
@@ -552,7 +553,7 @@ end)
 test("rehearsal: timers window shows the rehearsed note", function()
   local timers = named.CowfeeRaidToolsNote_window
   assert(timers, "timers window")
-  local tbody = timers.strings[2]
+  local tbody = setmetatable({}, { __index = function(_, k) if k == "text" then return NW:Get("window"):DrawnText() end end })
   CRT.db.notes.list[2] = { raw = "EncounterID:1111;Difficulty:Mythic;Name:Other\\ntime:5;ph:1;text:Other boss;", name = "Other note", encounterID = 1111, difficulty = "Mythic" }
   CRT.db.notes.active = 2
   Notes:Fire()

@@ -151,7 +151,9 @@ local alertFrame = named.CowfeeRaidToolsNoteAlert
 local block = alertFrame.children[1]
 local label, countdown = block.strings[1], block.strings[2]
 local win = named.CowfeeRaidToolsNote_window
-local winTitle, winBody = win.strings[1], win.strings[2]
+-- the window draws its lines as rows; what it shows, as one text, is its DrawnText
+local winTitle = win.strings[1]
+local winBody = setmetatable({}, { __index = function(_, k) if k == "text" then return CRT.NoteWindow:Get("window"):DrawnText() end end })
 
 local out = {}
 local speechDriver
