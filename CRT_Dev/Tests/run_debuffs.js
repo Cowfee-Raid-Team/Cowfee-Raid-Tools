@@ -168,7 +168,7 @@ CRT.UI = {
   Slider = function(p, text, opts) local r = mock("Slider") rawset(r, "opts", opts) rawset(r, "refresh", function() end) sliders[text] = r return r end,
   Dropdown = function(p, text, opts) local r = mock("Dropdown") rawset(r, "opts", opts) rawset(r, "refresh", function() end) dropdowns[text] = r return r end,
   Help = function(p, title, text) local h = mock("Help") helps[title] = text return h end,
-  SPOT_PICKER_GAP = 12,
+  SPOT_PICKER_GAP = 12, SPOT_PICKER_W = 126, HELP_GAP = 4, HELP_SIZE = 20,
   SpotPicker = function(p, opts) local r = mock("SpotPicker") rawset(r, "opts", opts) rawset(r, "refresh", function() end) spotPickers[#spotPickers + 1] = r return r end,
 }
 CRT_THEME(CRT, CRT.UI)
@@ -684,6 +684,21 @@ do
   combat = false
   events.OnEvent(events, "PLAYER_REGEN_ENABLED")
   check("after combat the buttons take no hover", rawget(tipButton, "motion") == false and CRT.db.debuffs.tooltips == false)
+  -- a button the container makes in combat, with the setting on, is wired at once: hover, anchor, kept in combat
+  Debuffs:SetTooltips(true)
+  combat = true
+  local combatButton = mock("AuraButton")
+  rawset(combatButton, "SetIcon", function() end)
+  rawset(combatButton, "SetTooltipAnchorPoint", function(self, point, x, y) rawset(self, "tipAnchor", { point, x, y }) end)
+  rawset(combatButton, "SetHideTooltipInCombat", function(self, on) rawset(self, "hideInCombat", on) end)
+  groupOpts.initializeFrame(combatButton)
+  local ca = rawget(combatButton, "tipAnchor") or {}
+  check("a button made in combat with tooltips on gets hover, the anchor and keeps its tooltip in combat",
+    rawget(combatButton, "motion") == true and ca[1] == "ANCHOR_BOTTOMLEFT" and ca[2] == 0 and ca[3] == 0 and rawget(combatButton, "hideInCombat") == false,
+    tostring(rawget(combatButton, "motion")) .. " " .. tostring(ca[1]) .. " " .. tostring(rawget(combatButton, "hideInCombat")))
+  combat = false
+  events.OnEvent(events, "PLAYER_REGEN_ENABLED")
+  Debuffs:SetTooltips(false)
   -- a button the game has made forbidden (an encounter) is left alone and wired once it is safe
   Debuffs:SetTooltips(true)
   rawset(tipButton, "IsForbidden", function() return true end)
@@ -1050,10 +1065,27 @@ do
     check("greyed while the panel is off", pos.opts.enabledIf() == false)
     Debuffs:SetEnabled(true)
     Debuffs:SetTooltips(false)
-    local p = pos.pts[1]
-    local right = p and (p[2] + 100 + 5 + 140 + 12 + 126) or 0
-    check("it and its spot picker fit on the page", p and right <= CRT.UI.PAGE_W and p[3] < -204 and p[3] > -246, p and (p[2] .. "," .. p[3] .. " right " .. right))
+    -- placed from the box's label as drawn: beside it when the row fits on the page, else under the box
+    local label = tipBox and tipBox.label
+    local function placedFor(width)
+      rawset(label, "GetStringWidth", function() return width end)
+      pf:Show() Debuffs:Fire()
+      local p = pos.pts[1]
+      return p, p and (p[2] + 100 + 5 + 140 + 12 + 126) or 0, 436 + 26 + 2 + width + 4 + 20
+    end
+    local p, right, labelEnd = placedFor(120)
+    check("a usual label: the row sits beside the box at 630, on the page", p and #pos.pts == 1 and p[2] == 630 and p[3] == -228 and right <= CRT.UI.PAGE_W and labelEnd < 630,
+      p and (p[2] .. "," .. p[3] .. " right " .. right))
+    p, right, labelEnd = placedFor(140)
+    check("a bigger font: the row moves right, past the label and its (?), still on the page", p and p[2] >= labelEnd + 12 and p[3] == -228 and right <= CRT.UI.PAGE_W,
+      p and (p[2] .. "," .. p[3] .. " right " .. right))
+    p, right = placedFor(260)
+    check("no room beside it: the row goes under the box, on the page", p and p[3] <= -228 - 26 and p[3] > -294 and p[2] > 460 and right <= CRT.UI.PAGE_W and #pos.pts == 1,
+      p and (p[2] .. "," .. p[3] .. " right " .. right))
+    rawset(label, "GetStringWidth", nil)
     check("its picker's box stands for the icon", spotPickers[#spotPickers] and spotPickers[#spotPickers].opts.label == "The icon")
+    check("its (?) says a change waits for an encounter to end, and an icon made in one keeps the game's own hover",
+      help and help:find("encounter", 1, true) ~= nil and help:find("game's own hover", 1, true) ~= nil, help)
   end
 end
 

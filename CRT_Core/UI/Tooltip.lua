@@ -200,9 +200,10 @@ function UI.TooltipOutside(tooltip, owner, win, key, level)
 end
 
 -- Places tooltip on a spot: outside the CRT window owner is in, else on owner itself. On "auto", the
--- anchor and offsets the caller asked for, next to owner. Nothing is clamped here: every CRT tooltip is
--- GameTooltip, which its SharedTooltipTemplate keeps on the screen (clampedToScreen="true",
--- Blizzard_SharedXML/SharedTooltipTemplates.xml).
+-- anchor and offsets the caller asked for, next to owner. Nothing is clamped here: every tooltip placed
+-- here is GameTooltip, which its SharedTooltipTemplate keeps on the screen (clampedToScreen="true",
+-- Blizzard_SharedXML/SharedTooltipTemplates.xml). The debuff panel's tooltips are not placed here; see
+-- UI.TooltipAnchor.
 local function placeOnSpot(tooltip, owner, key, anchor, x, y)
     local s = SPOT[key]
     local win = s and UI.WindowOf(owner)
@@ -253,6 +254,9 @@ end
 -- as an anchor on the owner gets: the cursor; a picked spot (always on the owner, as these sit in no CRT
 -- window; a side spot by its byAnchor, height being the owner's); or, on auto, the anchor and offsets
 -- asked for. The game's tooltip spot is not on the owner, so it opens next to it, as auto.
+-- CRT can't clamp or move that tooltip (AuraButtonTooltip is forbidden to addons); keeping it on the
+-- screen is left to its own template, SharedTooltipArtTemplate, which Gethe live marks
+-- clampedToScreen="true" (Blizzard_SharedXML/SharedTooltipTemplates.xml).
 -- Returns anchor, x, y and how: "cursor", "spot" or "near" (the game's spot asked for).
 function UI.TooltipAnchor(how, anchor, x, y, height)
     anchor, x, y = anchor or "ANCHOR_RIGHT", x or 0, y or 0
