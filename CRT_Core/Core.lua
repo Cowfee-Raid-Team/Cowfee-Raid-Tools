@@ -350,7 +350,7 @@ local defaults = {
                 nowTime = 1, stack = true, font = "Friz Quadrata", fontSize = 14,
                 gameMode = "standalone", gameAlsoHere = false },
         },
-        -- Where the player's own note lines without show: also display (Next spell alert, Bar and speech
+        -- Where the player's own note lines without show: also display (the note callout, Bar and speech
         -- keep their own switches); off until chosen.
         noteLines = { text = false, icon = false, circle = false, timeline = false },
         -- Use custom colours (Raid Notes > Alerts): off, every alert is in its ability type's colour and your own

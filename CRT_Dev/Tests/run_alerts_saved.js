@@ -519,7 +519,7 @@ do
   assert(w.shown and w.title == "Template: Soak", w.title)
   assert(dropdowns["Save as"].shown and w.forRow.shown, "Save as and For stay")
   assert(not dropdowns["Relative to"].shown and not dropdowns["Difficulty"].shown, "no Relative to, Difficulty")
-  assert(w.h == 480 - 48, "frame shrinks: " .. tostring(w.h))
+  assert(w.h == 506 - 48, "frame shrinks: " .. tostring(w.h))
   -- no gap: every visible element's top is at most one row gap under the one above it
   local function gaps()
     local ys, seen = {}, {}
@@ -590,7 +590,7 @@ do
   -- an ordinary alert opened afterwards has its rows back
   E:Open(ENC, nil, {})
   assert(dropdowns["Save as"].shown and dropdowns["Relative to"].shown and dropdowns["Difficulty"].shown and w.timeEdit.shown and w.saveSavedBtn.shown and w.exportBtn.shown and w.title == "Alert", "rows back")
-  assert(w.h == 480 and dropdowns["Sound"].pts[1][3] == -304 - 14 and w.messageText.pts[1][3] == -350 - 14, "normal layout restored")
+  assert(w.h == 506 and dropdowns["Sound"].pts[1][3] == -304 - 14 - 26 and w.messageText.pts[1][3] == -350 - 14 - 26, "normal layout restored")
   -- Save as in a saved alert is kept: only me, and a note line for a class
   local mine = S:Save(nil, { text = "Mine", saveAs = "mine", outputs = { alert = true } })
   E:EditSaved(mine)

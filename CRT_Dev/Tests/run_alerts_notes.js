@@ -230,7 +230,7 @@ out[#out + 1] = "C-ph2 phase=" .. tostring(Engine:CurrentPhase()) .. " started2=
 fire("ENCOUNTER_END", 3471)
 clock = clock + 0.1; snap("C-ph2-end")
 
--- F: the Next spell alert off but speech on. The old addon said nothing; since ruling B2 the new one
+-- F: the note callout off but speech on. The old addon said nothing; since ruling B2 the new one
 -- reads the note lines out anyway. What F says is kept out of the old-vs-new comparison.
 -- G: speech off as well: nothing is spoken (old and new alike).
 local function pullQuiet(base)
@@ -341,14 +341,15 @@ if mode == "new" then
   CRT.NoteAlert:Refresh()
   assert(alertFrame.shown and label.text == "Soak", "reminder text on the alert: " .. tostring(label.text))
   results.remText = true
-  -- the Next spell alert's drag box is wide enough for its whole title and Reset (44 wide)
+  -- the note callout's drag box is wide enough for its whole title and Reset (44 wide)
   if mode == "new" then
     local handle, title
     for _, c in ipairs(alertFrame.children) do
       for _, fs in ipairs(c.strings) do if tostring(fs.text):find("drag to move") then handle, title = c, fs end end
     end
     assert(handle, "drag box with the title")
-    local need = 6 + (#'Your next spell: drag to move' * 8) + 4 + 44
+    assert(title.text == "Note callout/assignments: drag to move", "its title: " .. tostring(title.text))
+    local need = 6 + (#'Note callout/assignments: drag to move' * 8) + 4 + 44
     assert(handle.width and handle.width >= need, "drag box fits the title: " .. tostring(handle.width) .. " < " .. need)
     -- a font change shows as a longer title: measured again when Previews turn on
     local before = handle.width
@@ -371,7 +372,7 @@ if mode == "new" then
   remOn = false
   results.replaced = true
 
-  -- a note line with show: puts its own text, icon and colour on the Next spell alert; without show:
+  -- a note line with show: puts its own text, icon and colour on the note callout; without show:
   -- the same spell line keeps the spell's name and icon
   CRT.db.notes.list[3] = { raw = "EncounterID:3472;Name:Show boss\\n"
     .. "time:5;ph:1;tag:Cheoeqar;spellid:31884;text:Dodge now;colors:1 0 0 1;show:alert;icon:135940;\\n"
@@ -389,7 +390,7 @@ if mode == "new" then
   CRT.NoteAlert:Refresh()
   assert(alertFrame.shown and label.text == "Spell31884" and alertIcon.texture == 131884, "no show: keeps the spell: " .. tostring(label.text))
   fire("ENCOUNTER_END", 3472)
-  -- the Next spell alert is in the alert's ability type colour (Use custom colours off), like every display; a
+  -- the note callout is in the alert's ability type colour (Use custom colours off), like every display; a
   -- raid note line's own colour still wins, and with no known type it keeps the heading colour
   local SOAK = { 1, 0.5, 0.82 }
   local knownType = true

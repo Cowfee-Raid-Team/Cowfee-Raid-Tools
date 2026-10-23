@@ -111,7 +111,7 @@ end
 
 -- Making drafts -------------------------------------------------------------------------------------
 
--- A new alert's draft: Only me, for everyone, the Next spell alert and a bar, read out, 5 s ahead.
+-- A new alert's draft: Only me, for everyone, the note callout and a bar, read out, 5 s ahead.
 function Draft.New()
     return { saveAs = "mine", tag = "everyone", ph = 1, timeText = "", timeTouched = false, iconType = "spell",
         text = "", show = { alert = true, bar = true }, speak = true, count = false, glow = false,

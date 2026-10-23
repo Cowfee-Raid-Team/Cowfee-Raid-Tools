@@ -227,7 +227,7 @@ do
   E:Open(ENC, nil, { spellID = 777, boss = "Test Boss" })
   local w = win()
   assert(w and w.shown, "window shown")
-  assert(w.w == 600 and w.h == 480, "fits 600 x 480: " .. tostring(w.w) .. "x" .. tostring(w.h))
+  assert(w.w == 600 and w.h == 506, "fits 600 x 506: " .. tostring(w.w) .. "x" .. tostring(w.h))
   assert(layers.panel ~= w and previews.alerteditor, "not on the panel layer; preview registered")
   assert(w.strata == "FULLSCREEN_DIALOG" and w.toplevel == true, "editor above every window: " .. tostring(w.strata))
   assert(UISpecialFrames[1] == "CowfeeRaidToolsAlertEditor", "closed by Escape")
@@ -477,7 +477,7 @@ do
   assert(item and item.outputs and item.outputs.alert and item.outputs.bar and item.outputs.speech, "the pull's item alerts")
   clock = A:PhaseStart(1) + 18
   local best = CRT.AlertRules.Alert(A:Lines(clock), clock)
-  assert(best and best.text == "All", "shows on the Next spell alert")
+  assert(best and best.text == "All", "shows on the note callout")
   A:Stop(true)
   clock = 100
   -- a boss without a numeric encounter ID can't take a note line
@@ -623,14 +623,22 @@ do
   assert(message():find("older CRT", 1, true) and message():find("|cff" .. UI.Hex("warn"), 1, true), "warned, in the warn colour: " .. message())
   setCheck(w.checks.text, true)
   assert(message() == "", "another display too: no warning")
-  -- the Show as labels fit the window, each after the one before it
-  local right = 0
-  for _, k in ipairs({ "alert", "text", "icon", "bar", "circle", "timeline" }) do
-    local x = w.checks[k].pts[#w.checks[k].pts][2] -- lay: SetPoint("TOPLEFT", x, y)
-    assert(x > right, k .. " after the one before it")
-    right = x + 26 + #w.checks[k].label.text * 6
+  -- the Show as labels fit the window in two rows of three, each after the one before it
+  assert(w.checks.alert.label.text == "Note callout/assignments" and w.checks.text.label.text == "Critical alerts text", "the displays' names")
+  for _, rowKeys in ipairs({ { "alert", "text", "icon" }, { "bar", "circle", "timeline" } }) do
+    local right, y = 0, nil
+    for _, k in ipairs(rowKeys) do
+      local p = w.checks[k].pts[#w.checks[k].pts] -- lay: SetPoint("TOPLEFT", x, y)
+      assert(p[2] > right, k .. " after the one before it")
+      assert(y == nil or p[3] == y, k .. " on its row")
+      y = p[3]
+      right = p[2] + 26 + #w.checks[k].label.text * 6
+    end
+    assert(right <= 600 - 16, "the row's last label ends inside the window: " .. right)
   end
-  assert(right <= 600 - 16, "the last label ends inside the window: " .. right)
+  local y1, y2 = w.checks.alert.pts[#w.checks.alert.pts][3], w.checks.bar.pts[#w.checks.bar.pts][3]
+  local alsoY = w.also.speak.pts[#w.also.speak.pts][3]
+  assert(y2 < y1 and alsoY < y2 - 20, "the second row under the first, Also under both: " .. y1 .. " " .. y2 .. " " .. alsoY)
   print("ok editor: Alert timeline only on a raid note line warns")
 end
 

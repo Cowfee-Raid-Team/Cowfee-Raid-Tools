@@ -149,7 +149,7 @@ local function login(enabled, tts, flag)
   return #printed
 end
 assert(login(false, true, false) == 1, "shown for alert off, speech on")
-assert(printed[1]:find("read out even with the next-spell alert off", 1, true) and printed[1]:find("Untick 'Read them out'", 1, true), printed[1])
+assert(printed[1]:find("read out even with the note callout off", 1, true) and printed[1]:find("Untick 'Read them out'", 1, true), printed[1])
 assert(CRT.db.alerts.speechNotice == true, "remembered")
 printed = {} fire("PLAYER_LOGIN")
 assert(#printed == 0, "not shown twice")

@@ -47,6 +47,8 @@ local function mock(kind, parent, template)
     if k == "SetColorTexture" or k == "SetVertexColor" then return function(self, r, g, b, a) rawset(self, "color", { r, g, b, a }) end end
     if k == "SetTextColor" then return function(self, r, g, b) rawset(self, "textColor", { r, g, b }) end end
     if k == "SetWordWrap" then return function(self, on) rawset(self, "wordWrap", on) end end
+    -- a font string's words, 6 a letter
+    if k == "GetUnboundedStringWidth" then return function(self) return #(rawget(self, "text") or "") * 6 end end
     if k == "SetMultiLine" then return function(self, on) rawset(self, "multiLine", on) end end
     if k == "SetWidth" then return function(self, w) rawset(self, "w", w) end end
     if k == "SetHeight" then return function(self, h) rawset(self, "h", h) end end
@@ -289,6 +291,34 @@ check("mech: click selects, panel shows its fields", function()
   assert(f.panel.name.text ~= "Other Spell", "another boss")
   dropdowns["Boss"].opts.set(ENC)
   assert(f.rows[2].sel.shown and p.name.text == "Other Spell", "back on the second row")
+  assert(#errors == 0, tostring(errors[1]))
+end)
+
+check("mech: Show as names fit the left column, in two rows", function()
+  local f = fresh()
+  local p = f.panel
+  assert(p.checks.alert.label.text == "Note callout/assignments" and p.checks.text.label.text == "Critical alerts text", "the displays' names")
+  local helpRoom = 0
+  for _, help in ipairs(helps) do if help.helpTitle == "Show as" then helpRoom = 1 end end
+  assert(helpRoom == 1, "Show as has its (?)")
+  for _, help in ipairs(helps) do
+    if help.helpTitle == "Show as" then assert(help.helpText:find("note callout", 1, true) and help.helpText:find("Critical alerts text", 1, true), "its (?) names them") end
+  end
+  -- the left column: from the panel's inset to half the panel (CRT_Modules/Notes/Reminders.lua L.COL_W)
+  local colRight = 12 + math.floor((p.frame.w - 24 - 22) / 2)
+  for _, rowKeys in ipairs({ { "alert", "text" }, { "icon", "bar", "circle", "timeline" } }) do
+    local right, y = 0, nil
+    for _, k in ipairs(rowKeys) do
+      local c = p.checks[k]
+      local pt = c.pts[#c.pts]
+      assert(pt[2] >= right, k .. " starts after the label before it")
+      assert(y == nil or pt[3] == y, k .. " on its row")
+      y = pt[3]
+      assert(c.label.w == #c.label.text * 6, k .. ": its label as wide as its words, never cut")
+      right = pt[2] + 26 + c.label.w
+    end
+    assert(right <= colRight, "the row ends inside the left column: " .. right .. " of " .. colRight)
+  end
   assert(#errors == 0, tostring(errors[1]))
 end)
 

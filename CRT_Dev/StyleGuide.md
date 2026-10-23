@@ -110,7 +110,7 @@ Response buttons: a raider's popup and All Loot Rolls window colour the buttons 
 
 ## Ability type colours: fixed, not per theme
 
-The Timeline's ability types colour the ability timeline's rows, the ability names in the Mech Alerts list and every alert: bars, circles, icons, texts, the alert timeline and the Next spell alert (which keeps the heading colour when the type is unknown). They are the same in every theme, since each colour means a kind of ability.
+The Timeline's ability types colour the ability timeline's rows, the ability names in the Mech Alerts list and every alert: bars, circles, icons, texts, the alert timeline and the note callout (which keeps the heading colour when the type is unknown). They are the same in every theme, since each colour means a kind of ability.
 
 The types live in one table, `Reference.ABILITY_TYPES` at the top of `CRT_Modules/Timeline/Reference.lua`: each type's key, label, colour (rrggbb), one-line description and the Journal icons that mean it, in menu order. Its comment says how to add, reword, recolour, rename or remove a type. Every reader (`Reference.TYPES`, `TYPE_ORDER`, `TAG_TYPES`, the legend, the Set type menu, `Alerts/Colors.lua`, the Mech Alerts list, the Journal export) builds from it, so this guide keeps no copy of the colours. The "ability types" test checks the table and fails if another file writes a type's colour. The vault's timeline-reference skill points to the same table.
 

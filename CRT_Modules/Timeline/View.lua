@@ -124,7 +124,7 @@ local TEXT = {
     shows = "Shows: %s",
     showsNothing = "Shows nothing",
     readOut = "read out",
-    outputs = { alert = "Alert", text = "Text", icon = "Icon", bar = "Bar", circle = "Circle", timeline = "Alert timeline" },
+    outputs = { alert = "Note callout/assignments", text = "Critical alerts text", icon = "Icon", bar = "Bar", circle = "Circle", timeline = "Alert timeline" },
     raidNoteFor = "Raid note for %s",
     placeAt = "Place at %s",
     edit = "Edit",

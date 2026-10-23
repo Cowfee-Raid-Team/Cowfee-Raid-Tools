@@ -72,8 +72,8 @@ local TEXT = {
     color = "Color",
     colorDefault = "Default",
     showAs = "Show as",
-    nextSpell = "Next spell alert",
-    showText = "Text",
+    callout = "Note callout/assignments",
+    showText = "Critical alerts text",
     showIcon = "Icon",
     bar = "Bar",
     circle = "Circle",
@@ -137,7 +137,8 @@ local ANY = "any"    -- a raid note line's difficulty dropdown key for its note 
 local NO_SOUND = Draft.NO_SOUND
 local FRAME_NAME = "CowfeeRaidToolsAlertEditor"
 local EXPORT_NAME = "CowfeeRaidToolsAlertExport"
-local WIDTH, HEIGHT = 600, 480
+local SHOW_EXTRA = 26 -- Show as takes two rows: every row below it moves down by one row
+local WIDTH, HEIGHT = 600, 480 + SHOW_EXTRA
 local SHOW_KEYS = Draft.SHOW_KEYS
 local LEFT = 16
 local MENU_MAX_HEIGHT = 400 -- the For and Sound menus scroll past this (a full raid is taller than the screen)
@@ -1258,7 +1259,7 @@ local function speakAtRow(f, row)
         options = Draft.SpeakAtOptions(TEXT.onShow, TEXT.atZero),
         get = function() return Draft.SpeakAtKey(draft) end,
         set = setter(function(v) Draft.SetSpeakAt(draft, v) end),
-    }), SPEAK_AT_X, -304 - ROW1_EXTRA)
+    }), SPEAK_AT_X, -304 - ROW1_EXTRA - SHOW_EXTRA)
 end
 
 local function build()
@@ -1505,13 +1506,16 @@ local function build()
 
     -- Show as
     makeLabel(f, TEXT.showAs, LEFT, -246 - ROW1_EXTRA)
-    -- one row, each box after the one before it by its label's width, so six fit the window
+    -- two rows of three, each box after the one before it by its label's width, so the long names fit the window
     f.checks = {}
-    local showX = FIELD_X
-    for _, spec in ipairs({ { "alert", TEXT.nextSpell }, { "text", TEXT.showText }, { "icon", TEXT.showIcon },
-        { "bar", TEXT.bar }, { "circle", TEXT.circle }, { "timeline", TEXT.timeline } }) do
+    local showX, showRow = FIELD_X, 1
+    for _, spec in ipairs({ { "alert", TEXT.callout, 1 }, { "text", TEXT.showText, 1 }, { "icon", TEXT.showIcon, 1 },
+        { "bar", TEXT.bar, 2 }, { "circle", TEXT.circle, 2 }, { "timeline", TEXT.timeline, 2 } }) do
         local key = spec[1]
-        local check = makeCheck(f, spec[2], showX, -240 - ROW1_EXTRA, setter(function(on) draft.show[key] = on end))
+        if spec[3] ~= showRow then
+            showX, showRow = FIELD_X, spec[3]
+        end
+        local check = makeCheck(f, spec[2], showX, -240 - ROW1_EXTRA - (showRow - 1) * SHOW_EXTRA, setter(function(on) draft.show[key] = on end))
         f.checks[key] = check
         local fs = check.label
         local words = fs.GetUnboundedStringWidth and fs:GetUnboundedStringWidth() or fs:GetStringWidth()
@@ -1519,22 +1523,22 @@ local function build()
     end
 
     -- Also
-    makeLabel(f, TEXT.also, LEFT, -280 - ROW1_EXTRA)
+    makeLabel(f, TEXT.also, LEFT, -280 - ROW1_EXTRA - SHOW_EXTRA)
     f.also = {
-        speak = makeCheck(f, TEXT.speak, FIELD_X, -274 - ROW1_EXTRA, setter(function(on) draft.speak = on end)),
-        count = makeCheck(f, TEXT.count, 226, -274 - ROW1_EXTRA, setter(function(on) draft.count = on end)),
-        glow = makeCheck(f, TEXT.glow, 386, -274 - ROW1_EXTRA, setter(function(on) draft.glow = on end)),
+        speak = makeCheck(f, TEXT.speak, FIELD_X, -274 - ROW1_EXTRA - SHOW_EXTRA, setter(function(on) draft.speak = on end)),
+        count = makeCheck(f, TEXT.count, 226, -274 - ROW1_EXTRA - SHOW_EXTRA, setter(function(on) draft.count = on end)),
+        glow = makeCheck(f, TEXT.glow, 386, -274 - ROW1_EXTRA - SHOW_EXTRA, setter(function(on) draft.glow = on end)),
     }
     row(UI.SoundDropdown(f, TEXT.sound, {
         labelWidth = 70, width = 160, maxHeight = MENU_MAX_HEIGHT, enabledIf = editable, playButton = true,
         options = soundOptions,
         get = function() return draft and Draft.SoundKey(draft.sound) or NO_SOUND end,
         set = setter(function(v) draft.sound = v ~= NO_SOUND and v or nil end),
-    }), LEFT, -304 - ROW1_EXTRA)
+    }), LEFT, -304 - ROW1_EXTRA - SHOW_EXTRA)
     f.speakAt = speakAtRow(f, row)
 
     f.messageText = f:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    lay(f.messageText, LEFT, -350 - ROW1_EXTRA)
+    lay(f.messageText, LEFT, -350 - ROW1_EXTRA - SHOW_EXTRA)
     f.messageText:SetWidth(WIDTH - 2 * LEFT)
     f.messageText:SetJustifyH("LEFT")
 
@@ -1786,7 +1790,7 @@ function Editor:EditSaved(id)
 end
 
 -- Opens a line of a raid note (its line number in the note). False when that line isn't a timed line.
--- A line without show: opens as it shows today: the Next spell alert and a bar, read out.
+-- A line without show: opens as it shows today: the note callout and a bar, read out.
 function Editor:OpenNote(noteID, lineNumber)
     local Notes = CRT.Notes
     local record = Notes and Notes:Get(noteID)

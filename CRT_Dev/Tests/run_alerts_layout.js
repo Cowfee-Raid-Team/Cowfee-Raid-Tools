@@ -39,8 +39,8 @@ const boxes = [
   box('icons', pos(iconsF), 44 + 6 + TEXT_W + 4, 44, 5, 'down'),
   // texts: 36 px font, a line like "Stack on the boss" about 320 wide; cap 3 down
   box('texts', pos(textsF), 320, 40, 3, 'down'),
-  // the Next spell alert (CRT_Modules/Notes/Alert.lua): up to ~400 wide, two lines of text, its drag box above
-  box('next spell alert', pos(alertF), 400, 56, 1, 'down', 300),
+  // the note callout (CRT_Modules/Notes/Alert.lua): up to ~400 wide, two lines of text, its drag box above
+  box('note callout', pos(alertF), 400, 56, 1, 'down', 300),
   // bars: 240 x 20, cap 5 down
   box('bars', pos(barsF), 240, 20, 5, 'down', 240),
   // circles: 64 px ring with its text under it, cap 3 right; centred on the character by default (0, -40)
