@@ -173,6 +173,7 @@ CRT_Dev\Dev\TimelineProbe.lua
 CRT_Dev\Dev\GameTimelineProbe.lua
 CRT_Dev\Dev\MarkerEditor.lua
 CRT_Dev\Dev\ClearProbe.lua
+CRT_Dev\Dev\MarkerProbe.lua
 CRT_Dev\Dev\SeasonTools.lua
 CRT_Dev\Dev\BossOrder.lua
 CRT_Dev\Dev\JournalTree.lua
