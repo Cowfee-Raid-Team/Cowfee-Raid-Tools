@@ -323,6 +323,13 @@ local defaults = {
         -- [encounterID] = { nh = key, mythic = key } (Timeline:ChosenReference; none: the group's first, yours first)
         reviewRefs = {},
     },
+    -- Season Stats (SeasonStats/Data.lua): the raid's own counters per boss and difficulty group, counted from each
+    -- pull the Timeline saves. bosses[encounterID] = { name, nh = counters, mythic = counters }; filled is true once
+    -- they were filled from the Timeline's saved pulls. Data only: never in Export settings only.
+    seasonStats = {
+        filled = false,
+        bosses = {},
+    },
     -- Alerts. Reminders, phase events and bar settings for the alerts engine (Alerts/Engine.lua).
     -- reminders are the player's own timed reminders, phases the phase events they set up, overrides
     -- their changes to shared packs, and nextId numbers them. The bars window position is added when moved.

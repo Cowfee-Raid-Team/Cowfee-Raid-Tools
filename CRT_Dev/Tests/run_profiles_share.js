@@ -173,7 +173,7 @@ do
   local leaked = {}
   for p in pairs(paths) do for _, no in ipairs({ "notes.list", "groups.presets", "late.history", "tattle.history", "alerts.reminders", "alerts.saved", "timeline.bosses", "lootmaster.authority", "classCache", "importBackup",
       "readycheck.output", "readycheck.earlyPullOutput", "tattle.output", "tattle.autoPost", "tattle.season", "lootmaster.awardChannel", "lootmaster.awardMessage", "lootmaster.responses",
-      "notes.trustedOnly", "sound", "qol.lowHealth.customSounds" }) do
+      "notes.trustedOnly", "sound", "qol.lowHealth.customSounds", "seasonStats" }) do
     if p == no or p:sub(1, #no + 1) == no .. "." then leaked[#leaked + 1] = p end end end
   check(#leaked == 0, "no excluded data, report output, trust setting or sound file name is a shared path (" .. table.concat(leaked, ",") .. ")")
   local kept = {}
@@ -199,6 +199,7 @@ db.readycheck.output = "raid" db.tattle.output = "officer" db.tattle.autoPost = 
 db.notes.trustedOnly = false db.sound.custom[1] = "secretfile.ogg" db.qol.lowHealth.customSounds[1] = "secretpulse.ogg" db.qol.lowHealth.soundChoice = "file:secretpulse.ogg"
 db.tattle.season = "secret season" db.lootmaster.responses = { { key = "secretneed" } } db.tattle.custom[12345] = "Soak" db.consumables.categoryOrder = { "flask", "food" }
 db.alerts.areas.timeline.lineColor = { 0.2, 0.4, 0.6, 1 }
+db.seasonStats.bosses[3001] = { name = "secret season boss", mythic = { pulls = 118 } } db.seasonStats.filled = true -- Season Stats' counters are data
 db.debuffs.ignored[389123] = true db.debuffs.ignored[442611] = true -- your own ignored debuffs travel with the settings
 -- a saved value without its default's shape is left out and counted
 db.debuffs.maxCount = "four"
@@ -215,7 +216,8 @@ check(methods[#methods] == 1, "settings strings compress with Zlib, for its chec
 local sent = text ~= "" and payloadOf(text) or {}
 check(sent.v == 1 and sent.kind == "settings" and sent.from == "Solex" and type(sent.data) == "table", "payload version, kind, sender")
 local flat = GAME.SerializeCBOR(sent)
-check(not flat:find("secret", 1, true), "no note, note history, layout, history, reminder or saved alert is exported")
+check(not flat:find("secret", 1, true), "no note, note history, layout, history, reminder, saved alert or Season Stats counter is exported")
+check(sent.data.seasonStats == nil, "Season Stats is kept back")
 check(not flat:find("Someone", 1, true) and not flat:find("Friend", 1, true), "no class cache or loot authority is exported")
 check(not flat:find("settingsTab", 1, true) and not flat:find("lastPage", 1, true), "no page state is exported")
 check(not flat:find("GUILD", 1, true) and not flat:find("officer", 1, true) and sent.data.readycheck.output == nil and sent.data.tattle.autoPost == nil and sent.data.notes.trustedOnly == nil, "no report output, auto-post or note trust setting is exported")
