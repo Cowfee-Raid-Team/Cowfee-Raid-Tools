@@ -177,7 +177,8 @@ do
   first.opts.set(3001)
 end
 print("ok boss list follows the route")
-assert(pullDD and opts(pullDD.opts)[1].label == "Pull 12 " .. string.char(194, 183) .. " 1:00 " .. string.char(194, 183) .. " wipe " .. string.char(194, 183) .. " Normal/Heroic", "pull label: " .. tostring(opts(pullDD.opts)[1].label))
+-- pull 12 is Alpha's second pull: shown by its own count on the boss
+assert(pullDD and opts(pullDD.opts)[1].label == "Pull 2 " .. string.char(194, 183) .. " 1:00 " .. string.char(194, 183) .. " wipe " .. string.char(194, 183) .. " Normal/Heroic", "pull label: " .. tostring(opts(pullDD.opts)[1].label))
 print("ok pull label")
 
 local diffDD = find(dropdowns, "Difficulty")

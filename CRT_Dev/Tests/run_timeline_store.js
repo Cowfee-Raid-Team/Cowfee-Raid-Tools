@@ -131,6 +131,61 @@ do
   CRT.Bosses = nil
 end
 print("ok mech alerts hidden: shipped, set in dev, apart from the timeline")
+do
+  -- pull numbers: each boss counts its own pulls, Normal/Heroic and Mythic apart, from Pull 1
+  CRT.db = { timeline = defaults() }
+  CRT.db.timeline.nextId = 113
+  local function save(enc, d, at) local id = T:SavePull({ encounterID = enc, name = "B" .. enc, difficultyID = d, startedAt = at, length = 100, casts = {}, deaths = {} }) return T:Pull(enc, id) end
+  local a1, a2 = save(5001, 16, 1), save(5001, 16, 2)
+  local h1 = save(5001, 15, 3)
+  local b1 = save(5002, 16, 4)
+  local a3 = save(5001, 16, 5)
+  assert(a1.id == 113 and a1.number == 1 and a2.number == 2 and a3.number == 3, "pull numbers: per boss, from 1: " .. tostring(a1.number))
+  assert(h1.number == 1, "pull numbers: Normal/Heroic counts apart from Mythic")
+  assert(b1.number == 1, "pull numbers: another boss starts at 1")
+  assert(T.PullNumber(a3) == 3 and T.PullNumber({ id = 77 }) == 77, "pull numbers: PullNumber, the id for a pull with none")
+  -- deleting a pull never renumbers the others
+  local pulls = CRT.db.timeline.bosses[5001].pulls
+  for i, p in ipairs(pulls) do if p == a2 then table.remove(pulls, i) break end end
+  local a4 = save(5001, 16, 6)
+  assert(a1.number == 1 and a3.number == 3 and a4.number == 4, "pull numbers: deleting a pull keeps the others' numbers")
+  -- trimming the oldest past keep never resets the count
+  CRT.db.timeline.keep = 2
+  local a5 = save(5001, 16, 7)
+  assert(#T:Pulls(5001, "mythic") == 2 and a5.number == 5 and T:Pulls(5001, "mythic")[2].number == 4, "pull numbers: the count survives trimming")
+  assert(CRT.db.timeline.bosses[5001].counts.mythic == 5 and CRT.db.timeline.bosses[5001].counts.nh == 1, "pull numbers: the counters, per group")
+end
+print("ok pull numbers count per boss and difficulty group")
+do
+  -- an older store: its pulls are numbered once, per boss and group, oldest first, after a backup
+  CRT.db = { timeline = defaults() }
+  CRT.db.timeline.bosses = {
+    [6001] = { name = "Old", pulls = {
+      { id = 120, difficultyID = 16, startedAt = 300, casts = {}, deaths = {} },
+      { id = 114, difficultyID = 16, startedAt = 100, casts = {}, deaths = {} },
+      { id = 118, difficultyID = 15, startedAt = 200, casts = {}, deaths = {} },
+      { id = 119, difficultyID = 16, startedAt = 200, casts = {}, deaths = {} } } },
+    [6002] = { name = "Next", pulls = { { id = 121, difficultyID = 16, startedAt = 400, casts = {}, deaths = {} } } },
+  }
+  CRT.db.timeline.nextId = 122
+  local function num(enc, id) return T:Pull(enc, id).number end
+  assert(num(6001, 114) == 1 and num(6001, 119) == 2 and num(6001, 120) == 3, "migration: Mythic numbered by start time, oldest is Pull 1")
+  assert(num(6001, 118) == 1, "migration: Normal/Heroic apart")
+  assert(T:Pulls(6002)[1].number == 1, "migration: the next boss starts at 1")
+  local backup = CRT.db.timeline.pullNumberBackup
+  assert(backup and backup[6001] and #backup[6001] == 4 and backup[6001][1].id == 120, "migration: the pulls are backed up first")
+  -- once: a second read changes nothing, and a new pull follows on
+  CRT.db.timeline.bosses[6001].pulls[2].number = 42
+  assert(num(6001, 114) == 42, "migration: runs once")
+  local id = T:SavePull({ encounterID = 6001, name = "Old", difficultyID = 16, startedAt = 500, length = 100, casts = {}, deaths = {} })
+  assert(num(6001, id) == 4, "migration: a new pull counts on from the migrated ones")
+  -- a boss with no pulls of one group yet counts it from 1
+  id = T:SavePull({ encounterID = 6002, name = "Next", difficultyID = 15, startedAt = 600, length = 100, casts = {}, deaths = {} })
+  assert(num(6002, id) == 1, "migration: an empty group starts at 1")
+  -- deaths read through RecentDeaths carry their pull's number too
+  assert(T:RecentDeaths(6001, 1, nil, "mythic")[1].pull.number == 4, "recent deaths: the pull has its number")
+end
+print("ok old pulls are numbered once, per boss and group, oldest first")
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 let src; try { src = fs.readFileSync(process.argv[2], 'utf8'); } catch (e) { console.error('cannot read ' + process.argv[2]); process.exit(1); }

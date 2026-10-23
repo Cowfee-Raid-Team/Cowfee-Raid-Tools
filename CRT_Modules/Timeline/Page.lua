@@ -173,7 +173,7 @@ local function difficultyName(pull)
 end
 
 local function pullLabel(pull)
-    return "Pull " .. pull.id .. DOT .. View.Format(pull.length or 0) .. DOT .. (pull.kill and "kill" or "wipe") .. DOT .. difficultyName(pull)
+    return "Pull " .. tostring(Timeline.PullNumber(pull)) .. DOT .. View.Format(pull.length or 0) .. DOT .. (pull.kill and "kill" or "wipe") .. DOT .. difficultyName(pull)
 end
 
 -- A pull belongs to the shown difficulty group.

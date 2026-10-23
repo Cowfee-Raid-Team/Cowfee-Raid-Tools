@@ -215,7 +215,7 @@ local function referenceLanes(ref, rows, settings, encounterID, overlay, group, 
 
     local extra = { phases = phases, parts = parts, masked = maskedCasts, length = math.max(ref.length or 0, overlay and overlay.length or 0) }
     if overlay then
-        local ticks = { key = "overlay", label = "Pull " .. tostring(overlay.id) .. " casts", kind = "ticks", marks = {} }
+        local ticks = { key = "overlay", label = "Pull " .. tostring(CRT.Timeline.PullNumber(overlay)) .. " casts", kind = "ticks", marks = {} }
         for _, cast in ipairs(overlay.casts or {}) do
             if type(cast.t) == "number" then
                 ticks.marks[#ticks.marks + 1] = { t = cast.t }
