@@ -8,7 +8,9 @@ local combat, ejShown = false, false
 local selected = 777
 local selectCalls = 0
 function InCombatLockdown() return combat end
-EncounterJournal = { IsShown = function() return ejShown end }
+-- the Journal window (Blizzard_EncounterJournal) not loaded yet: CRT may select instances, and puts them back
+EncounterJournal = nil
+local function loadJournal() EncounterJournal = { IsShown = function() return ejShown end } end
 local onEvent
 function CreateFrame() return { RegisterEvent = function() end, SetScript = function(_, _, fn) onEvent = fn end } end
 C_Map = { GetBestMapForUnit = function() return 1 end }
@@ -96,32 +98,54 @@ assert(ids(J:Rows(3001)) == "5001,5002", "no lookup in combat: later call works"
 print("ok no lookup in combat")
 
 J:AddCustom(3001, 9998) -- clears cache
+loadJournal()
 ejShown = true
 assert(#J:Rows(3001) == 0, "no lookup while the journal is shown")
 ejShown = false
-assert(ids(J:Rows(3001)) == "5001,5002,9998", "journal shown: later call works")
+local callsLoaded = selectCalls
+assert(ids(J:Rows(3001)) == "5001,5002,9998", "journal closed again: the boss found before is read again")
+assert(selectCalls == callsLoaded, "the Journal loaded: its selection is never changed")
 print("ok no lookup while the journal is shown")
 
--- no EJ_GetCurrentInstance: the previous instance comes from EncounterJournal.instanceID
+-- the Journal loaded: a boss not found before is looked for without selecting anything, and a miss isn't kept
 do
-  local saved = EJ_GetCurrentInstance
-  EJ_GetCurrentInstance = nil
-  EncounterJournal.instanceID = 321
-  selected = 321
+  local before = selectCalls
+  assert(#J:Rows(4243) == 0 and #J:Rows(4243) == 0, "loaded: an unknown boss gives no rows")
+  assert(selectCalls == before, "loaded: nothing selected to look for it")
+  assert(J:EncounterByName("Nobody Else") == nil and selectCalls == before, "loaded: by name, nothing selected")
+  -- the boss in the instance the Journal has selected is found by reading it
+  selected = 200
+  encs[200][2] = { "Second", 902, 10, 3002 }
+  assert(ids(J:Rows(3002)) == "5001,5002", "loaded: the boss in the Journal's selected instance is read")
+  assert(selectCalls == before and selected == 200, "loaded: the selection stays the Journal's")
+  encs[200][2] = nil
+  selected = 777
+  EncounterJournal = nil
+  print("ok the Journal loaded: nothing selected, misses not kept")
+end
+-- a miss is tried again when the Journal's tier changes
+do
   onEvent()
-  J:Rows(4243)
-  assert(selected == 321, "instance restored from EncounterJournal.instanceID")
-  EJ_GetCurrentInstance = saved
-  EncounterJournal.instanceID = nil
-  print("ok instance restored without EJ_GetCurrentInstance")
+  J:Rows(4244)
+  local after = selectCalls
+  J:Rows(4244)
+  assert(selectCalls == after, "tier: the miss is kept on the same tier")
+  local tier = EJ_GetCurrentTier
+  EJ_GetCurrentTier = function() return 2 end
+  J:Rows(4244)
+  assert(selectCalls > after, "tier: tried again on another tier")
+  EJ_GetCurrentTier = tier
+  print("ok a miss is only kept for the tier it was searched in")
 end
 
 -- map-based lookup is tried first
 J:RemoveCustom(3001, 9998)
 function EJ_GetInstanceForMap(map) return 200 end
 selected = 555
-J:SetHidden(3001, 1, false)
-assert(ids(J:Rows(3001)) == "5001,5002" and selected == 555, "map lookup")
+encs[200][2] = { "Third", 903, 12, 3003 }
+sections[12].siblingSectionID = nil
+local mr = J:Rows(3003) assert(ids(mr) == "5002" and selected == 555, "map lookup: " .. ids(mr) .. " sel " .. tostring(selected))
+encs[200][2] = nil
 print("ok map lookup")
 
 -- a boss found by its Journal name (for a reference with no Encounter line)

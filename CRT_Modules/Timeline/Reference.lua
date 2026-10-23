@@ -828,11 +828,13 @@ function Reference.Header(text)
     return boss, encounterID
 end
 
--- Adds [spell N] and [section N] to each ability line whose name matches one of rows (the boss's Journal
--- abilities, { spellID, name, sectionID }), by name in any case: the spell when the line has none, the Journal
--- section when it has none (the one of the line's own spell, else of the row its name matches). A [spell] or
--- [section] the line already has is kept, and every other line is kept as it is. Returns the new text and how
--- many lines got an ID.
+-- Adds IDs from rows (the boss's Journal abilities, { spellID, name, sectionID }) to the ability lines:
+--   [spell N] to a line with none whose name matches a row, by name in any case;
+--   [section N] to a line with none: the section of the line's own [spell N] when a row has that spell (so a
+--   line with [spell N] and no section gets one even when its name matches nothing), else of the row its name
+--   matches.
+-- A [spell] or [section] the line already has is kept, and every other line is kept as it is. Returns the new
+-- text and how many lines got an ID.
 function Reference.FillSpellIDs(text, rows)
     if type(text) ~= "string" then
         return text, 0
