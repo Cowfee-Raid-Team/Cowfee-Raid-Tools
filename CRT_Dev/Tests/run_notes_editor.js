@@ -456,6 +456,12 @@ if not windowSrc then return end
 CRT.UI.PanelButton = function(parent, label, h, fn)
   local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate") b:SetText(label) b:SetScript("OnClick", fn) return b
 end
+-- the title bar's History button (run_notes_history.js tests it)
+CRT.UI.HeaderButton = function(parent, label, fn)
+  local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate") b:SetText(label) b:SetScript("OnClick", fn)
+  b.SetLabel = function(self, t) self:SetText(t) end
+  return b
+end
 assert(load(renderSrc, "Render.lua"))("CowfeeRaidTools", CRT)
 assert(load(windowSrc, "EditorWindow.lua"))("CowfeeRaidTools", CRT)
 assert(load(settingsSrc, "Settings.lua"))("CowfeeRaidTools", CRT)

@@ -51,6 +51,7 @@ CRT_Modules\Alerts\Engine.lua
 CRT_Modules\Alerts\Speech.lua
 CRT_Modules\Notes\Parse.lua
 CRT_Modules\Notes\Data.lua
+CRT_Modules\Notes\Diff.lua
 CRT_Modules\Notes\Engine.lua
 CRT_Modules\Notes\Window.lua
 CRT_Modules\Notes\Alert.lua
@@ -65,6 +66,7 @@ CRT_Modules\Notes\Phases.lua
 CRT_Modules\Notes\AlertsTab.lua
 CRT_Modules\Notes\Render.lua
 CRT_Modules\Notes\EditModel.lua
+CRT_Modules\Notes\HistoryWindow.lua
 CRT_Modules\Notes\EditorWindow.lua
 CRT_Modules\Notes\Page.lua
 CRT_Modules\Late\Data.lua
