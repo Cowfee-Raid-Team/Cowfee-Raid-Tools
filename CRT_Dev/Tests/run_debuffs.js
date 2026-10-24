@@ -9,7 +9,7 @@ const themeLua = require('./theme_stub');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
 const harness = themeLua(process.argv.slice(2)) + `
-local coreSrc, dataSrc, panelSrc, pageSrc, clickSrc, ignoreSrc, qolPageSrc = ...
+local coreSrc, dataSrc, panelSrc, pageSrc, clickSrc, ignoreSrc, qolPageSrc, tooltipSrc = ...
 local passed, failed = 0, 0
 local function check(name, cond, detail)
   if cond then passed = passed + 1 print("ok " .. name)
@@ -58,6 +58,7 @@ local function mock(kind)
     if k == "RegisterForClicks" then return function(self, ...) rawset(self, "clicks", { ... }) end end
     if k == "SetPassThroughButtons" then return function(self, ...) rawset(self, "passThrough", { ... }) end end
     if k == "SetDesaturated" then return function(self, on) rawset(self, "desaturated", on) end end
+    if k == "SetChecked" then return function(self, on) rawset(self, "checked", on) end end
     -- A frame's first point as set, or the middle of its parent before it has one.
     if k == "GetPoint" then return function(self)
       local p = self.pts[1]
@@ -145,7 +146,7 @@ end
 CRT.db = { debuffs = fresh() }
 
 -- UI stubs: sliders, dropdowns and help icons record their options.
-local sliders, dropdowns, helps, previewFns = {}, {}, {}, {}
+local sliders, dropdowns, helps, previewFns, spotPickers = {}, {}, {}, {}, {}
 CRT.UI = {
   PAGE_W = 1026, PAGE_H = 560, previewing = false,
   SkinScrollBar = function() end, ScrollGutter = function(w) return 6 + (w or 18) end,
@@ -167,8 +168,12 @@ CRT.UI = {
   Slider = function(p, text, opts) local r = mock("Slider") rawset(r, "opts", opts) rawset(r, "refresh", function() end) sliders[text] = r return r end,
   Dropdown = function(p, text, opts) local r = mock("Dropdown") rawset(r, "opts", opts) rawset(r, "refresh", function() end) dropdowns[text] = r return r end,
   Help = function(p, title, text) local h = mock("Help") helps[title] = text return h end,
+  SPOT_PICKER_GAP = 12, SPOT_PICKER_W = 126, HELP_GAP = 4, HELP_SIZE = 20,
+  SpotPicker = function(p, opts) local r = mock("SpotPicker") rawset(r, "opts", opts) rawset(r, "refresh", function() end) spotPickers[#spotPickers + 1] = r return r end,
 }
 CRT_THEME(CRT, CRT.UI)
+-- the tooltip rules (UI.TooltipAnchor, the areas, the Tooltip position setting)
+assert(load(tooltipSrc, "Tooltip.lua"))("CowfeeRaidTools", CRT)
 function CRT:Print(m) print("  [print] " .. tostring(m)) end
 
 assert(load(dataSrc, "Data.lua"))("CowfeeRaidTools", CRT)
@@ -613,6 +618,99 @@ CRT.db.debuffs.borderScale, CRT.db.debuffs.spacing = 1, 4
 Debuffs:Fire()
 check("the group's spacing is the step less the icon", groupOpts.layout.elementSpacing == 5 + 4, groupOpts.layout.elementSpacing)
 
+-- Tooltips on hover: the game's own aura button tooltip (Blizzard_AuraButton.lua: OnEnter shows it from the
+-- button's own aura, owned by the button at its SetTooltipAnchorPoint anchor). The panel only turns hover on
+-- and gives the anchor, from the debuffs tooltip area (UI.TooltipAnchor). Off: no button takes hover.
+do
+  local tipButton = mock("AuraButton")
+  rawset(tipButton, "SetIcon", function() end)
+  rawset(tipButton, "SetTooltipAnchorPoint", function(self, point, x, y)
+    rawset(self, "tipAnchor", { point, x, y }) rawset(self, "anchorCalls", (rawget(self, "anchorCalls") or 0) + 1) end)
+  rawset(tipButton, "SetHideTooltipInCombat", function(self, on) rawset(self, "hideInCombat", on) end)
+  local function tipAt() local a = rawget(tipButton, "tipAnchor") or {} return format("%s %g,%g", tostring(a[1]), tonumber(a[2]) or 0 / 0, tonumber(a[3]) or 0 / 0) end
+  CRT.db.ui = { tooltipMode = "spot", tooltipSpot = "auto" }
+  check("tooltips are off by default", defaults.tooltips == false and Debuffs:Tooltips() == false, tostring(defaults.tooltips))
+  check("the panel's tooltip area follows General Settings by default", defaults.tooltipMode == "general" and defaults.tooltipSpot == "auto")
+  groupOpts.initializeFrame(tipButton)
+  check("off: a button takes no hover, so the panel stays click-through", rawget(tipButton, "motion") == false, tostring(rawget(tipButton, "motion")))
+  Debuffs:SetTooltips(true)
+  check("SetTooltips saves true", CRT.db.debuffs.tooltips == true and Debuffs:Tooltips() == true)
+  check("on: the button takes hover, for the game's own tooltip", rawget(tipButton, "motion") == true)
+  check("on: the game keeps the tooltip in combat too", rawget(tipButton, "hideInCombat") == false)
+  local want = { CRT.UI.TooltipAnchor("debuffs", "ANCHOR_BOTTOMLEFT", 0, 0, 44) }
+  check("on auto: next to the icon, below it on the left, the game's own side for an aura button", tipAt() == "ANCHOR_BOTTOMLEFT 0,0" and want[1] == "ANCHOR_BOTTOMLEFT", tipAt())
+  -- the area's own choice and spot reach the button, applied at the next layout
+  CRT.db.debuffs.tooltipMode = "cursor"
+  panelFrame.OnUpdate(panelFrame, 1)
+  check("the area on Follow the cursor: the game's tooltip follows the cursor", tipAt() == "ANCHOR_CURSOR 0,0", tipAt())
+  CRT.db.debuffs.tooltipMode, CRT.db.debuffs.tooltipSpot = "spot", "leftupper"
+  panelFrame.OnUpdate(panelFrame, 1)
+  check("the area's own side spot: its anchor, offset by half the icon", tipAt() == "ANCHOR_LEFT 0,-22", tipAt())
+  CRT.db.debuffs.tooltipMode = "general"
+  CRT.db.ui.tooltipMode, CRT.db.ui.tooltipSpot = "spot", "bottom"
+  panelFrame.OnUpdate(panelFrame, 1)
+  check("Use the general setting: General Settings' spot", tipAt() == "ANCHOR_BOTTOM 0,0", tipAt())
+  local calls = rawget(tipButton, "anchorCalls")
+  panelFrame.OnUpdate(panelFrame, 1) panelFrame.OnUpdate(panelFrame, 1)
+  check("an unchanged anchor isn't set again on every layout", rawget(tipButton, "anchorCalls") == calls, rawget(tipButton, "anchorCalls") - calls)
+  CRT.db.ui.tooltipMode = "game"
+  panelFrame.OnUpdate(panelFrame, 1)
+  check("the game's tooltip spot can't be given to the game's button: next to the icon, as auto", tipAt() == "ANCHOR_BOTTOMLEFT 0,0", tipAt())
+  CRT.db.ui.tooltipMode, CRT.db.ui.tooltipSpot = "spot", "auto"
+  Debuffs:SetSize(60)
+  CRT.db.debuffs.tooltipMode, CRT.db.debuffs.tooltipSpot = "spot", "rightlower"
+  panelFrame.OnUpdate(panelFrame, 1)
+  check("a side spot follows the icon size", tipAt() == "ANCHOR_BOTTOMRIGHT 0,30", tipAt())
+  Debuffs:SetSize(44)
+  CRT.db.debuffs.tooltipMode, CRT.db.debuffs.tooltipSpot = "general", "auto"
+  -- a preview, or the panel turned off: the real row is faded out, so its buttons take no hover
+  Panel:SetPreview(true)
+  check("during a preview the real buttons take no hover", rawget(tipButton, "motion") == false)
+  Panel:SetPreview(false)
+  check("after the preview they do again", rawget(tipButton, "motion") == true)
+  Debuffs:SetEnabled(false)
+  check("with the panel off they take no hover", rawget(tipButton, "motion") == false)
+  Debuffs:SetEnabled(true)
+  check("turned on again, they do", rawget(tipButton, "motion") == true)
+  -- the right-click spots above the icons still take clicks only, never hover, so hover reaches the button
+  Click.Update()
+  local spotMotion = false
+  for _, s in ipairs(Click.catchers) do if rawget(s, "motion") then spotMotion = true end end
+  check("with tooltips on the right-click spots still never take hover", not spotMotion)
+  -- in combat a change waits for combat to end, like every other setting on the buttons
+  combat = true
+  Debuffs:SetTooltips(false)
+  check("in combat turning tooltips off waits", rawget(tipButton, "motion") == true)
+  combat = false
+  events.OnEvent(events, "PLAYER_REGEN_ENABLED")
+  check("after combat the buttons take no hover", rawget(tipButton, "motion") == false and CRT.db.debuffs.tooltips == false)
+  -- a button the container makes in combat, with the setting on, is wired at once: hover, anchor, kept in combat
+  Debuffs:SetTooltips(true)
+  combat = true
+  local combatButton = mock("AuraButton")
+  rawset(combatButton, "SetIcon", function() end)
+  rawset(combatButton, "SetTooltipAnchorPoint", function(self, point, x, y) rawset(self, "tipAnchor", { point, x, y }) end)
+  rawset(combatButton, "SetHideTooltipInCombat", function(self, on) rawset(self, "hideInCombat", on) end)
+  groupOpts.initializeFrame(combatButton)
+  local ca = rawget(combatButton, "tipAnchor") or {}
+  check("a button made in combat with tooltips on gets hover, the anchor and keeps its tooltip in combat",
+    rawget(combatButton, "motion") == true and ca[1] == "ANCHOR_BOTTOMLEFT" and ca[2] == 0 and ca[3] == 0 and rawget(combatButton, "hideInCombat") == false,
+    tostring(rawget(combatButton, "motion")) .. " " .. tostring(ca[1]) .. " " .. tostring(rawget(combatButton, "hideInCombat")))
+  combat = false
+  events.OnEvent(events, "PLAYER_REGEN_ENABLED")
+  Debuffs:SetTooltips(false)
+  -- a button the game has made forbidden (an encounter) is left alone and wired once it is safe
+  Debuffs:SetTooltips(true)
+  rawset(tipButton, "IsForbidden", function() return true end)
+  Debuffs:SetTooltips(false)
+  check("a forbidden button is not touched", rawget(tipButton, "motion") == true)
+  rawset(tipButton, "IsForbidden", nil)
+  Panel:Apply()
+  check("and is wired once it is safe again", rawget(tipButton, "motion") == false)
+  CRT.db.ui = nil
+  check("the diagnostics say whether tooltips are on", Panel:InfoText():find("tooltips false") ~= nil, Panel:InfoText():match("Settings:[^\\n]*"))
+end
+
 -- Grow: the container's flow layout, its anchor, the boss debuff slots and the preview tiles all
 -- start at the panel's left end (right) or its right end (left). The panel itself never moves.
 do
@@ -929,6 +1027,67 @@ rawset(glowBox, "GetChecked", function() return true end)
 glowBox.OnClick(glowBox)
 check("glow ticked: saved and on", CRT.db.debuffs.dispelGlow == true and Debuffs:DispelGlow() == true)
 Debuffs:SetDispelGlow(false)
+
+-- Show tooltips on hover, in the Look column, with its (?) and the panel's own Tooltip position beside it.
+do
+  local tipBox = findCheck("Show tooltips on hover")
+  check("a Show tooltips on hover box", tipBox ~= nil)
+  local help = helps["Show tooltips on hover"]
+  check("its (?) says the icons take the mouse, and that off keeps the panel click-through", help ~= nil and help:find("mouse", 1, true) ~= nil and help:find("click-through", 1, true) ~= nil, help)
+  check("its (?) says what happens in combat and with the boss debuff slots", help ~= nil and help:find("combat", 1, true) ~= nil and help:find("boss debuff slots", 1, true) ~= nil, help)
+  check("its (?) says the game's tooltip spot opens next to the icon", help ~= nil and help:find("Game's tooltip spot", 1, true) ~= nil, help)
+  if tipBox then
+    local p = tipBox.pts[1]
+    check("the box sits in the Look column, under the glow, above the Ignore section's lists", p and p[2] == 436 and p[3] <= -228 and p[3] - 26 > -270, p and (p[2] .. "," .. p[3]))
+    rawset(tipBox, "GetChecked", function() return true end)
+    tipBox.OnClick(tipBox)
+    check("ticked: saved and on", CRT.db.debuffs.tooltips == true)
+    rawset(tipBox, "GetChecked", function() return false end)
+    tipBox.OnClick(tipBox)
+    check("unticked: saved and off", CRT.db.debuffs.tooltips == false)
+    pf:Show()
+    Debuffs:SetTooltips(true)
+    check("the box shows the setting", rawget(tipBox, "checked") == true)
+    Debuffs:SetTooltips(false)
+    check("and shows it off", rawget(tipBox, "checked") == false)
+  end
+  local pos = dropdowns["Tooltip position"]
+  check("the panel's own Tooltip position, for the debuffs area", pos and pos.opts.options == CRT.UI.TOOLTIP_AREA_POSITIONS)
+  if pos then
+    pos.opts.set("cursor")
+    check("it saves in CRTDB.debuffs", CRT.db.debuffs.tooltipMode == "cursor")
+    pos.opts.set("general")
+    Debuffs:SetTooltips(false)
+    check("greyed while tooltips are off", pos.opts.enabledIf and pos.opts.enabledIf() == false)
+    Debuffs:SetTooltips(true)
+    check("usable while they are on", pos.opts.enabledIf() == true)
+    Debuffs:SetEnabled(false)
+    check("greyed while the panel is off", pos.opts.enabledIf() == false)
+    Debuffs:SetEnabled(true)
+    Debuffs:SetTooltips(false)
+    -- placed from the box's label as drawn: beside it when the row fits on the page, else under the box
+    local label = tipBox and tipBox.label
+    local function placedFor(width)
+      rawset(label, "GetStringWidth", function() return width end)
+      pf:Show() Debuffs:Fire()
+      local p = pos.pts[1]
+      return p, p and (p[2] + 100 + 5 + 140 + 12 + 126) or 0, 436 + 26 + 2 + width + 4 + 20
+    end
+    local p, right, labelEnd = placedFor(120)
+    check("a usual label: the row sits beside the box at 630, on the page", p and #pos.pts == 1 and p[2] == 630 and p[3] == -228 and right <= CRT.UI.PAGE_W and labelEnd < 630,
+      p and (p[2] .. "," .. p[3] .. " right " .. right))
+    p, right, labelEnd = placedFor(140)
+    check("a bigger font: the row moves right, past the label and its (?), still on the page", p and p[2] >= labelEnd + 12 and p[3] == -228 and right <= CRT.UI.PAGE_W,
+      p and (p[2] .. "," .. p[3] .. " right " .. right))
+    p, right = placedFor(260)
+    check("no room beside it: the row goes under the box, on the page", p and p[3] <= -228 - 26 and p[3] > -294 and p[2] > 460 and right <= CRT.UI.PAGE_W and #pos.pts == 1,
+      p and (p[2] .. "," .. p[3] .. " right " .. right))
+    rawset(label, "GetStringWidth", nil)
+    check("its picker's box stands for the icon", spotPickers[#spotPickers] and spotPickers[#spotPickers].opts.label == "The icon")
+    check("its (?) says a change waits for an encounter to end, and an icon made in one keeps the game's own hover",
+      help and help:find("encounter", 1, true) ~= nil and help:find("game's own hover", 1, true) ~= nil, help)
+  end
+end
 
 -- Preview debuffs: only this panel, its label, combat, and closing the tab.
 local pb
@@ -1333,7 +1492,7 @@ if failed > 0 then error("debuff checks failed") end
 const dir = process.argv[2];
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 const files = ['CRT_Core/Core.lua', 'CRT_Modules/Debuffs/Data.lua', 'CRT_Modules/Debuffs/Panel.lua', 'CRT_Modules/Debuffs/Page.lua',
-  'CRT_Modules/Debuffs/Click.lua', 'CRT_Modules/Debuffs/Ignore.lua', 'CRT_Modules/QoL/Page.lua'];
+  'CRT_Modules/Debuffs/Click.lua', 'CRT_Modules/Debuffs/Ignore.lua', 'CRT_Modules/QoL/Page.lua', 'CRT_Core/UI/Tooltip.lua'];
 for (const f of files) {
   lua.lua_pushstring(L, to_luastring(fs.readFileSync(path.join(dir, f), 'utf8')));
 }

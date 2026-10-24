@@ -217,6 +217,7 @@ db.tattle.season = "secret season" db.lootmaster.responses = { { key = "secretne
 db.alerts.areas.timeline.lineColor = { 0.2, 0.4, 0.6, 1 }
 db.seasonStats.bosses[3001] = { name = "secret season boss", mythic = { pulls = 118 } } db.seasonStats.filled = true -- Season Stats' counters are data
 db.debuffs.ignored[389123] = true db.debuffs.ignored[442611] = true -- your own ignored debuffs travel with the settings
+db.debuffs.tooltips = true db.debuffs.tooltipMode = "cursor" db.debuffs.tooltipSpot = "top" -- the panel's tooltips, like its other look settings
 -- a saved value without its default's shape is left out and counted
 db.debuffs.maxCount = "four"
 local text, err = P:ExportSettings()
@@ -240,6 +241,7 @@ check(not flat:find("GUILD", 1, true) and not flat:find("officer", 1, true) and 
 check(sent.data.qol.lowHealth.soundChoice == nil and sent.data.sound == nil, "no sound file name, and no sound choice naming your own file, is exported")
 check(sent.data.tattle.custom[12345] == "Soak" and sent.data.consumables.categoryOrder[1] == "flask" and sent.data.alerts.areas.timeline.lineColor[3] == 0.6, "Tattlebot spells, consumables order and the timeline line colour are exported")
 check(sent.data.debuffs and sent.data.debuffs.ignored and sent.data.debuffs.ignored[389123] == true and sent.data.debuffs.ignored[442611] == true, "your ignored debuffs are exported")
+check(sent.data.debuffs and sent.data.debuffs.tooltips == true and sent.data.debuffs.tooltipMode == "cursor" and sent.data.debuffs.tooltipSpot == "top", "the debuff panel's tooltips and their position are exported")
 check(sent.data.debuffs and sent.data.debuffs.size == 50 and sent.data.ui.fontSize == 16 and sent.data.alerts.bars.position.x == 10, "settings, a late setting and a position are exported")
 local senderValues = {}
 for _, e in ipairs(P.ShareEntries and P.ShareEntries() or {}) do
@@ -274,6 +276,7 @@ if info then P:ApplySettings(info, true) end
 check(reloads == 1, "applying reloads")
 check(alt.debuffs.size == 50 and alt.ui.font == "Morpheus" and alt.ui.fontSize == 16 and alt.readycheck.window.columns.food == false and alt.ui.layers.panel == "DIALOG" and alt.markers.disabled[3001] == true, "applied: the settings match the sender's")
 check(alt.debuffs.ignored[389123] == true and alt.debuffs.ignored[442611] == true, "applied: the sender's ignored debuffs come across")
+check(alt.debuffs.tooltips == true and alt.debuffs.tooltipMode == "cursor" and alt.debuffs.tooltipSpot == "top", "applied: the sender's debuff tooltips come across")
 check(alt.debuffs.position.x == 7 and alt.notes.window.position.x == 1 and alt.alerts.bars.position == nil, "kept: the raider's window positions stay")
 check(alt.notes.list[5] and alt.notes.list[5].text == "raider note" and alt.notes.list[1] == nil, "the raider's notes are untouched")
 check(P:HasBackup(), "a backup is kept")

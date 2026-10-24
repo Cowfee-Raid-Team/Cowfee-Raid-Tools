@@ -192,8 +192,9 @@ keys = {} for _, c in ipairs(UI.TOOLTIP_AREA_POSITIONS) do keys[#keys + 1] = c.k
 eq(table.concat(keys, ","), "general=Use the general setting,spot=Outside the window,game=Game's tooltip spot,cursor=Follow the cursor", "an area's four choices")
 check(UI.TOOLTIP_AREAS.loothistory.table == "loot" and UI.TOOLTIP_AREAS.lootmaster.table == "lootmaster", "the areas' tables")
 check(UI.TOOLTIP_AREAS.timeline and UI.TOOLTIP_AREAS.timeline.table == "timeline", "the Timeline area, saved in CRTDB.timeline")
+check(UI.TOOLTIP_AREAS.debuffs and UI.TOOLTIP_AREAS.debuffs.table == "debuffs", "the debuff panel's area, saved in CRTDB.debuffs")
 gameSpot()
-for area, tbl in pairs({ loothistory = "loot", lootmaster = "lootmaster", timeline = "timeline" }) do
+for area, tbl in pairs({ loothistory = "loot", lootmaster = "lootmaster", timeline = "timeline", debuffs = "debuffs" }) do
   for _, general in ipairs({ "spot", "game", "cursor" }) do
     CRT.db.ui.tooltipMode, CRT.db.ui.tooltipSpot = general, "left"
     for _, choice in ipairs({ "unset", "general", "spot", "game", "cursor", "owner", "nonsense" }) do
@@ -390,6 +391,17 @@ GameTooltip = newTip()
 CRT.db.lootmaster.tooltipMode, CRT.db.ui.tooltipMode = "spot", "spot"
 a.picker.spots.top.scripts.OnEnter(a.picker.spots.top)
 check(GameTooltip.anchor == "ANCHOR_RIGHT" and GameTooltip.owner == a.picker.spots.top and GameTooltip.point == nil, "area: its picker's own tooltips stay next to the spot, not on the area's spot (got " .. tostring(GameTooltip.anchor) .. ")")
+-- opts.pickerLabel names the box, opts.enabledIf greys the dropdown and the picker
+local live = false
+local d = UI.TooltipPositionSetting(page, "debuffs", { labelWidth = 100, width = 140, beside = true, pickerLabel = "The icon", enabledIf = function() return live end })
+CRT.db.debuffs = { tooltipMode = "spot", tooltipSpot = "top" }
+d.refresh()
+eq(d.picker.text.text, "The icon", "pickerLabel: the picker's box")
+check(d.row.opts.enabledIf and d.row.opts.enabledIf() == false and d.picker.alpha < 1, "enabledIf false: the dropdown and the picker are greyed")
+live = true
+d.refresh()
+check(d.row.opts.enabledIf() == true and d.picker.alpha == 1, "enabledIf true: both usable")
+CRT.db.debuffs = nil
 print("ok tooltip spots: the Tooltip position dropdown with its picker")
 
 -- 7. A picked spot sits outside the CRT window that holds what you hover (CRT_Core/UI/Panel.lua's UI.AddWindow and
@@ -491,6 +503,78 @@ for _, mode in ipairs({ "spot", "game", "cursor" }) do
 end
 CRT.db.ui.tooltipMode, CRT.db.ui.tooltipSpot = nil, nil
 print("ok tooltip spots: a picked spot outside the window you are in")
+
+-- 8. UI.TooltipAnchor: a tooltip the game places itself on what you hover, from a SetOwner anchor and offsets
+-- only (the debuff panel's icons, AuraButton:SetTooltipAnchorPoint): the same rules, as near as an anchor gets.
+-- Each anchor's SetPoint as warcraft.wiki.gg gives it (API GameTooltip:SetOwner): the tooltip's point, the owner's.
+check(type(UI.TooltipAnchor) == "function", "UI.TooltipAnchor exists")
+if type(UI.TooltipAnchor) ~= "function" then print(passes .. " passed, " .. fails .. " failed") error("no UI.TooltipAnchor") end
+local ANCHOR_POINTS = {
+  ANCHOR_TOP = { "BOTTOM", "TOP" }, ANCHOR_RIGHT = { "BOTTOMLEFT", "TOPRIGHT" }, ANCHOR_BOTTOM = { "TOP", "BOTTOM" },
+  ANCHOR_LEFT = { "BOTTOMRIGHT", "TOPLEFT" }, ANCHOR_TOPRIGHT = { "BOTTOMRIGHT", "TOPRIGHT" }, ANCHOR_BOTTOMRIGHT = { "TOPLEFT", "BOTTOMRIGHT" },
+  ANCHOR_TOPLEFT = { "BOTTOMLEFT", "TOPLEFT" }, ANCHOR_BOTTOMLEFT = { "TOPRIGHT", "BOTTOMLEFT" },
+}
+-- where a point is on a 40 x 40 owner, from its bottom left
+local function at(point)
+  local fx = point:find("LEFT") and 0 or point:find("RIGHT") and 1 or 0.5
+  local fy = point:find("BOTTOM") and 0 or point:find("TOP") and 1 or 0.5
+  return fx * 40, fy * 40
+end
+-- where the tooltip's own point lands for an anchor and offsets
+local function lands(anchor, x, y)
+  local p = ANCHOR_POINTS[anchor]
+  local ox, oy = at(p[2])
+  return p[1], ox + (x or 0), oy + (y or 0)
+end
+GameTooltip_SetDefaultAnchor = nil
+CRT.db.ui.tooltipMode = "spot"
+for _, s in ipairs(UI.TOOLTIP_SPOTS) do
+  CRT.db.ui.tooltipSpot = s.key
+  local anchor, x, y, how = UI.TooltipAnchor(nil, "ANCHOR_TOP", 3, 4, 40)
+  eq(how, "spot", s.key .. ": on its spot")
+  check(ANCHOR_POINTS[anchor] ~= nil, s.key .. ": an anchor the game takes (got " .. tostring(anchor) .. ")")
+  if s.anchor then
+    check(anchor == s.anchor and x == 0 and y == 0, s.key .. ": the spot's own anchor, no offsets (got " .. tostring(anchor) .. " " .. tostring(x) .. "," .. tostring(y) .. ")")
+  elseif ANCHOR_POINTS[anchor] then
+    local point, px, py = lands(anchor, x, y)
+    local rx, ry = at(s.rel)
+    local wantPoint, wantY = s.point, ry
+    if s.point == "RIGHT" or s.point == "LEFT" then
+      -- the middle of a side: no anchor has it, so its upper part (the tooltip's bottom at the side's middle)
+      wantPoint = s.point == "RIGHT" and "BOTTOMRIGHT" or "BOTTOMLEFT"
+    end
+    check(point == wantPoint and px == rx and py == wantY, s.key .. ": " .. wantPoint .. " on the owner's " .. s.rel .. " (got " .. tostring(point) .. " at " .. tostring(px) .. "," .. tostring(py) .. ")")
+  end
+end
+CRT.db.ui.tooltipSpot = "auto"
+local a1, x1, y1, h1 = UI.TooltipAnchor(nil, "ANCHOR_BOTTOMLEFT", 2, -3, 40)
+check(a1 == "ANCHOR_BOTTOMLEFT" and x1 == 2 and y1 == -3 and h1 == "spot", "auto: the caller's anchor and offsets")
+a1, x1, y1 = UI.TooltipAnchor(nil, nil, nil, nil, 40)
+check(a1 == "ANCHOR_RIGHT" and x1 == 0 and y1 == 0, "auto with no anchor asked for: ANCHOR_RIGHT, no offsets")
+CRT.db.ui.tooltipMode = "cursor"
+a1, x1, y1, h1 = UI.TooltipAnchor(nil, "ANCHOR_BOTTOMLEFT", 2, -3, 40)
+check(a1 == "ANCHOR_CURSOR" and x1 == 0 and y1 == 0 and h1 == "cursor", "follow the cursor: ANCHOR_CURSOR")
+-- the game's spot can't be reached from an anchor on the owner: next to it, as auto
+gameSpot() defaults = {}
+CRT.db.ui.tooltipMode, CRT.db.ui.tooltipSpot = "game", "top"
+a1, x1, y1, h1 = UI.TooltipAnchor(nil, "ANCHOR_BOTTOMLEFT", 2, -3, 40)
+check(a1 == "ANCHOR_BOTTOMLEFT" and x1 == 2 and y1 == -3 and h1 == "near" and #defaults == 0, "the game's spot: next to what you hover, the caller's anchor (got " .. tostring(a1) .. " " .. tostring(h1) .. ")")
+GameTooltip_SetDefaultAnchor = nil
+-- an area's own choice and spot, and Use the general setting
+CRT.db.ui.tooltipMode, CRT.db.ui.tooltipSpot = "spot", "bottom"
+CRT.db.debuffs = { tooltipMode = "spot", tooltipSpot = "topright" }
+eq(UI.TooltipAnchor("debuffs", "ANCHOR_BOTTOMLEFT", 0, 0, 40), "ANCHOR_RIGHT", "the debuffs area's own spot")
+CRT.db.debuffs.tooltipMode = "general"
+eq(UI.TooltipAnchor("debuffs", "ANCHOR_BOTTOMLEFT", 0, 0, 40), "ANCHOR_BOTTOM", "the debuffs area on Use the general setting: General Settings' spot")
+CRT.db.debuffs.tooltipMode = "cursor"
+eq(UI.TooltipAnchor("debuffs", "ANCHOR_BOTTOMLEFT", 0, 0, 40), "ANCHOR_CURSOR", "the debuffs area following the cursor")
+-- no height given: the side spots still take an anchor, with no offset
+CRT.db.debuffs = { tooltipMode = "spot", tooltipSpot = "leftlower" }
+a1, x1, y1 = UI.TooltipAnchor("debuffs", "ANCHOR_BOTTOMLEFT")
+check(a1 == "ANCHOR_BOTTOMLEFT" and x1 == 0 and y1 == 0, "no height: the side's anchor with no offset")
+CRT.db.debuffs = nil
+CRT.db.ui.tooltipMode, CRT.db.ui.tooltipSpot = nil, nil
+print("ok tooltip spots: tooltips the game places, from an anchor")
 
 print(passes .. " passed, " .. fails .. " failed")
 if fails > 0 then error(fails .. " tooltip spot checks failed") end

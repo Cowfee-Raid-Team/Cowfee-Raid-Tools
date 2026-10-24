@@ -9,6 +9,8 @@ local ADDON, CRT = ...
 --   icons' borders, 0 to 20; the border's width is added to it) and dispelGlow (a soft glow around a
 --   dispellable debuff's frame).
 --   grow is "right" (left to right) or "left" (right to left, from the panel's right end).
+--   tooltips: the game's tooltip when you hover a debuff (Panel.lua), off by default; tooltipMode and
+--   tooltipSpot are where it opens, the "debuffs" area of UI/Tooltip.lua.
 --   A reverse option existed until 0.13.0, includeRegular (the old optional second row) until the
 --   AuraContainer became the panel, and dispelBorder (a box for the border colored by dispel type)
 --   until the frame always took that color. Their saved values may remain and are ignored.
@@ -531,6 +533,17 @@ end
 
 function Debuffs:SetDispelGlow(value)
     ddb().dispelGlow = value and true or false
+    self:Fire()
+end
+
+-- The game's tooltip when you hover a debuff on the panel. Off by default, so the panel ignores the
+-- mouse unless you ask for it.
+function Debuffs:Tooltips()
+    return ddb().tooltips and true or false
+end
+
+function Debuffs:SetTooltips(value)
+    ddb().tooltips = value and true or false
     self:Fire()
 end
 

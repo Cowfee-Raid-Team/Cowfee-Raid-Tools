@@ -24,6 +24,8 @@ local ADDON, CRT = ...
 --                spot use the flag below, and a side of the window UI.TooltipOutside.
 --   timeline     every Timeline tooltip on the Review tab, docked or popped out (Timeline/View.lua: the
 --                cells, lanes, reminders and saved alerts), in CRTDB.timeline
+--   debuffs      the debuff panel's icons (Debuffs/Panel.lua), in CRTDB.debuffs. The game shows and places
+--                those tooltips itself, so they go through UI.TooltipAnchor below, not UI.TooltipOwner
 -- Core.lua reads an area's old tooltipPosition ("general", "owner", "game", "cursor") into tooltipMode once.
 -- A flag overrides every setting for the tooltips that must stay where they are:
 --   UI.TOOLTIP_KEEP  always the anchor given:
@@ -50,7 +52,9 @@ UI.TOOLTIP_GAME = "game"
 -- and lower parts, so those set the owner with ANCHOR_NONE and point the tooltip themselves: point is the
 -- tooltip's, rel the owner's. Besides these, a spot setting may be "auto" (UI.TOOLTIP_SPOT_AUTO, the default):
 -- no spot picked, so each tooltip opens on the side its caller asks for, next to what you hover, as before
--- the picker.
+-- the picker. byAnchor is, for a spot with no anchor of its own, the nearest an anchor and a y offset get
+-- (the offset in owner heights), for a tooltip the game places from an anchor only (UI.TooltipAnchor): an
+-- upper or lower part of a side is exact; the middle of a side has none, so it takes the upper part.
 local GAP = 4 -- from the window's edge, as the item tabs' sides
 local function outside(point, rel, dx, dy)
     return { point = point, rel = rel, dx = dx, dy = dy }
@@ -59,12 +63,12 @@ UI.TOOLTIP_SPOTS = {
     { key = "topleft", label = "Top left", anchor = "ANCHOR_LEFT", window = outside("BOTTOMLEFT", "TOPLEFT", 0, GAP) }, -- BOTTOMRIGHT on the owner's TOPLEFT
     { key = "top", label = "Top", anchor = "ANCHOR_TOP", window = outside("BOTTOM", "TOP", 0, GAP) }, -- BOTTOM on TOP
     { key = "topright", label = "Top right", anchor = "ANCHOR_RIGHT", window = outside("BOTTOMRIGHT", "TOPRIGHT", 0, GAP) }, -- BOTTOMLEFT on TOPRIGHT
-    { key = "leftupper", label = "Left, upper", point = "BOTTOMRIGHT", rel = "LEFT", window = outside("TOPRIGHT", "TOPLEFT", -GAP, 0) },
-    { key = "left", label = "Left", point = "RIGHT", rel = "LEFT", window = outside("RIGHT", "LEFT", -GAP, 0) },
-    { key = "leftlower", label = "Left, lower", point = "TOPRIGHT", rel = "LEFT", window = outside("BOTTOMRIGHT", "BOTTOMLEFT", -GAP, 0) },
-    { key = "rightupper", label = "Right, upper", point = "BOTTOMLEFT", rel = "RIGHT", window = outside("TOPLEFT", "TOPRIGHT", GAP, 0) },
-    { key = "right", label = "Right", point = "LEFT", rel = "RIGHT", window = outside("LEFT", "RIGHT", GAP, 0) },
-    { key = "rightlower", label = "Right, lower", point = "TOPLEFT", rel = "RIGHT", window = outside("BOTTOMLEFT", "BOTTOMRIGHT", GAP, 0) },
+    { key = "leftupper", label = "Left, upper", point = "BOTTOMRIGHT", rel = "LEFT", window = outside("TOPRIGHT", "TOPLEFT", -GAP, 0), byAnchor = { "ANCHOR_LEFT", -0.5 } },
+    { key = "left", label = "Left", point = "RIGHT", rel = "LEFT", window = outside("RIGHT", "LEFT", -GAP, 0), byAnchor = { "ANCHOR_LEFT", -0.5 } },
+    { key = "leftlower", label = "Left, lower", point = "TOPRIGHT", rel = "LEFT", window = outside("BOTTOMRIGHT", "BOTTOMLEFT", -GAP, 0), byAnchor = { "ANCHOR_BOTTOMLEFT", 0.5 } },
+    { key = "rightupper", label = "Right, upper", point = "BOTTOMLEFT", rel = "RIGHT", window = outside("TOPLEFT", "TOPRIGHT", GAP, 0), byAnchor = { "ANCHOR_RIGHT", -0.5 } },
+    { key = "right", label = "Right", point = "LEFT", rel = "RIGHT", window = outside("LEFT", "RIGHT", GAP, 0), byAnchor = { "ANCHOR_RIGHT", -0.5 } },
+    { key = "rightlower", label = "Right, lower", point = "TOPLEFT", rel = "RIGHT", window = outside("BOTTOMLEFT", "BOTTOMRIGHT", GAP, 0), byAnchor = { "ANCHOR_BOTTOMRIGHT", 0.5 } },
     { key = "bottomleft", label = "Bottom left", anchor = "ANCHOR_BOTTOMLEFT", window = outside("TOPLEFT", "BOTTOMLEFT", 0, -GAP) }, -- TOPRIGHT on BOTTOMLEFT
     { key = "bottom", label = "Bottom", anchor = "ANCHOR_BOTTOM", window = outside("TOP", "BOTTOM", 0, -GAP) }, -- TOP on BOTTOM
     { key = "bottomright", label = "Bottom right", anchor = "ANCHOR_BOTTOMRIGHT", window = outside("TOPRIGHT", "BOTTOMRIGHT", 0, -GAP) }, -- TOPLEFT on BOTTOMRIGHT
@@ -95,6 +99,7 @@ UI.TOOLTIP_AREAS = {
     loothistory = { table = "loot" },
     lootmaster = { table = "lootmaster" },
     timeline = { table = "timeline" },
+    debuffs = { table = "debuffs" },
 }
 
 local MODE = { spot = true, game = true, cursor = true }
@@ -195,9 +200,10 @@ function UI.TooltipOutside(tooltip, owner, win, key, level)
 end
 
 -- Places tooltip on a spot: outside the CRT window owner is in, else on owner itself. On "auto", the
--- anchor and offsets the caller asked for, next to owner. Nothing is clamped here: every CRT tooltip is
--- GameTooltip, which its SharedTooltipTemplate keeps on the screen (clampedToScreen="true",
--- Blizzard_SharedXML/SharedTooltipTemplates.xml).
+-- anchor and offsets the caller asked for, next to owner. Nothing is clamped here: every tooltip placed
+-- here is GameTooltip, which its SharedTooltipTemplate keeps on the screen (clampedToScreen="true",
+-- Blizzard_SharedXML/SharedTooltipTemplates.xml). The debuff panel's tooltips are not placed here; see
+-- UI.TooltipAnchor.
 local function placeOnSpot(tooltip, owner, key, anchor, x, y)
     local s = SPOT[key]
     local win = s and UI.WindowOf(owner)
@@ -242,20 +248,54 @@ function UI.TooltipOwner(tooltip, owner, anchor, x, y, how)
     return "spot"
 end
 
+-- For a tooltip the game shows and places itself on what you hover, given only a GameTooltip:SetOwner
+-- anchor and offsets: the debuff panel's icons, the game's aura buttons (AuraButton:SetTooltipAnchorPoint,
+-- Blizzard_AuraContainer/Blizzard_AuraButton.lua, Gethe live). The same rules as UI.TooltipOwner as near
+-- as an anchor on the owner gets: the cursor; a picked spot (always on the owner, as these sit in no CRT
+-- window; a side spot by its byAnchor, height being the owner's); or, on auto, the anchor and offsets
+-- asked for. The game's tooltip spot is not on the owner, so it opens next to it, as auto.
+-- CRT can't clamp or move that tooltip (AuraButtonTooltip is forbidden to addons); keeping it on the
+-- screen is left to its own template, SharedTooltipArtTemplate, which Gethe live marks
+-- clampedToScreen="true" (Blizzard_SharedXML/SharedTooltipTemplates.xml).
+-- Returns anchor, x, y and how: "cursor", "spot" or "near" (the game's spot asked for).
+function UI.TooltipAnchor(how, anchor, x, y, height)
+    anchor, x, y = anchor or "ANCHOR_RIGHT", x or 0, y or 0
+    local mode = UI.TooltipPosition(how)
+    if mode == "cursor" then
+        return "ANCHOR_CURSOR", 0, 0, "cursor"
+    end
+    if mode == "game" then
+        return anchor, x, y, "near"
+    end
+    local s = SPOT[UI.TooltipSpot(how)]
+    if not s then
+        return anchor, x, y, "spot"
+    end
+    if s.anchor then
+        return s.anchor, 0, 0, "spot"
+    end
+    return s.byAnchor[1], 0, s.byAnchor[2] * (tonumber(height) or 0), "spot"
+end
+
 -- The Tooltip position dropdown and its spot picker under it, for General Settings (area nil) or an
 -- area's Settings tab. The picker is greyed unless the dropdown is on Outside the window; picking a
 -- spot turns that on, and clicking the lit spot again goes back to auto (no spot lit, "Each on its own
 -- side"); on a greyed picker, a click on the lit spot picks it. While an area is on Use the general
 -- setting, its picker shows General Settings' spot, the one in use. opts: labelWidth, width (the
--- dropdown's), beside (the picker right of the dropdown, for a page with no room under it). Place the
+-- dropdown's), beside (the picker right of the dropdown, for a page with no room under it), pickerLabel (the
+-- picker box's text, "The window" by default) and enabledIf (greys both while it returns false). Place the
 -- dropdown with group.row:SetPoint; the picker follows it. Returns group = { row, picker, refresh }.
 function UI.TooltipPositionSetting(parent, area, opts)
     opts = opts or {}
     local labelWidth = opts.labelWidth or 140
+    local function usable()
+        return not opts.enabledIf or opts.enabledIf() and true or false
+    end
     local group = {}
     group.row = UI.Dropdown(parent, TEXT.position, {
         labelWidth = labelWidth,
         width = opts.width,
+        enabledIf = opts.enabledIf and usable or nil,
         options = area and UI.TOOLTIP_AREA_POSITIONS or UI.TOOLTIP_POSITIONS,
         get = function()
             return UI.TooltipChoice(area)
@@ -266,7 +306,7 @@ function UI.TooltipPositionSetting(parent, area, opts)
         end,
     })
     group.picker = UI.SpotPicker(parent, {
-        label = TEXT.window,
+        label = opts.pickerLabel or TEXT.window,
         emptyLabel = TEXT.auto,
         clear = UI.TOOLTIP_SPOT_AUTO,
         get = function()
@@ -280,7 +320,7 @@ function UI.TooltipPositionSetting(parent, area, opts)
             group.row.refresh()
         end,
         enabledIf = function()
-            return UI.TooltipChoice(area) == "spot"
+            return UI.TooltipChoice(area) == "spot" and usable()
         end,
     })
     if opts.beside then

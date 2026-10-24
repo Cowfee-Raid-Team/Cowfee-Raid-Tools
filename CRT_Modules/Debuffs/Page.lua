@@ -15,6 +15,19 @@ local refresh
 local PREVIEW_LABEL, STOP_LABEL = "Preview debuffs", "Stop preview"
 local look = {} -- the Look section's controls, each with refresh(on)
 
+-- The wording of the tooltip settings.
+local TEXT = {
+    tooltips = "Show tooltips on hover",
+    tooltipsHelp = "Hover a debuff on the panel to see its tooltip. It is the game's own tooltip, so it works in combat too.\n\n"
+        .. "On, the icons take the mouse when you hover them. Off, the panel stays click-through, as before.\n\n"
+        .. "Tooltip position picks where it opens: next to the icon, on a spot around it, or at the cursor. "
+        .. "Game's tooltip spot can't be used here, so the tooltip opens next to the icon.\n\n"
+        .. "The boss debuff slots (the second row) are drawn by the game, which decides their tooltips. "
+        .. "A change made in combat or in a boss encounter applies when it ends. "
+        .. "An icon the game first makes during an encounter keeps the game's own hover and placement until the encounter ends.",
+    tooltipPicker = "The icon",
+}
+
 local function makeButton(parent, label, width, height)
     local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
     b:SetNormalFontObject(CRTFontNormal)
@@ -53,8 +66,16 @@ end
 -- the widest row on the left, the boss debuff slots checkbox, wraps at LEFT_TEXT_W).
 local LOOK_X = 440
 local LEFT_TEXT_W = 390
--- The Ignore these debuffs section starts under both columns.
+-- The Ignore these debuffs section starts under both columns; the tooltip row, last in the Look column,
+-- sits clear of its lists. The Tooltip position dropdown (with its spot picker beside it) goes right of
+-- the box's label and (?), at TOOLTIP_POS_X or further; when a big font leaves no room on the page, it
+-- goes under the box instead, at TOOLTIP_UNDER_X, clear of the Spell ID row's Add button.
 local IGNORE_Y = -246
+local TOOLTIP_Y = -228
+local TOOLTIP_POS_X = 630
+local TOOLTIP_UNDER_X, TOOLTIP_UNDER_Y = 480, -256
+local TOOLTIP_LABEL_W, TOOLTIP_DROP_W = 100, 140
+local TOOLTIP_GAP = 12
 
 -- A dropdown for one look setting, in the Edit Mode style (UI/Controls.lua). getter and setter, when
 -- given, read and save it through Debuffs (such as Debuffs.Grow and Debuffs.SetGrow) instead of Get
@@ -135,6 +156,21 @@ local function lookCheck(pf, label, yOffset, field, x, dependsOn, setter)
     end
     look[#look + 1] = check
     return check
+end
+
+-- Places the Tooltip position row from the box's label as drawn: right of the label, its (?) and a gap,
+-- at TOOLTIP_POS_X or further, or under the box when that would run past the page's right edge.
+local function placeTooltipRow(check, row)
+    local text = check.label:GetStringWidth() or 0
+    local labelLeft = LOOK_X - 4 + 26 + 2 -- makeCheck: the box, then its label 2 px right of it
+    local x = math.max(TOOLTIP_POS_X, math.ceil(labelLeft + text + UI.HELP_GAP + UI.HELP_SIZE + TOOLTIP_GAP))
+    local width = TOOLTIP_LABEL_W + 5 + TOOLTIP_DROP_W + UI.SPOT_PICKER_GAP + UI.SPOT_PICKER_W
+    row:ClearAllPoints()
+    if x + width <= UI.PAGE_W then
+        row:SetPoint("TOPLEFT", x, TOOLTIP_Y)
+    else
+        row:SetPoint("TOPLEFT", TOOLTIP_UNDER_X, TOOLTIP_UNDER_Y)
+    end
 end
 
 refresh = function()
@@ -311,6 +347,20 @@ local function build(pf)
     lookDropdown(pf, -168, "Grow", "grow", Debuffs.GROW_DIRECTIONS, Debuffs.Grow, Debuffs.SetGrow)
     local glow = lookCheck(pf, "Glow on dispellable debuffs", -204, "dispelGlow", LOOK_X - 4, nil, Debuffs.SetDispelGlow)
     UI.HelpRight(glow.label, "Glow on dispellable debuffs", "A dispellable debuff always gets a frame in its colour: Magic blue, Poison green, Curse purple, Disease brown, Bleed in the game's bleed colour. The glow adds a soft light in the same colour around that frame. Both need a border size above 0.")
+
+    -- Tooltips on hover (Panel.lua), and where they open: the panel's own Tooltip position (UI/Tooltip.lua).
+    local tips = lookCheck(pf, TEXT.tooltips, TOOLTIP_Y, "tooltips", LOOK_X - 4, nil, Debuffs.SetTooltips)
+    UI.HelpRight(tips.label, TEXT.tooltips, TEXT.tooltipsHelp)
+    local position = UI.TooltipPositionSetting(pf, "debuffs", { labelWidth = TOOLTIP_LABEL_W, width = TOOLTIP_DROP_W, beside = true,
+        pickerLabel = TEXT.tooltipPicker,
+        enabledIf = function()
+            return Debuffs:Enabled() and Debuffs:Tooltips()
+        end })
+    placeTooltipRow(tips, position.row)
+    look[#look + 1] = { refresh = function()
+        placeTooltipRow(tips, position.row) -- the font may have changed since
+        position.refresh()
+    end }
 
     -- Your own and the built-in ignored debuffs, under both columns (Ignore.lua).
     CRT.DebuffsIgnore.Build(pf, IGNORE_Y)

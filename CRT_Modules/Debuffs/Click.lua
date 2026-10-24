@@ -6,7 +6,8 @@ local ADDON, CRT = ...
 -- AuraButton forbids untrusted scripts and scripted input) and can't read which aura one shows (only
 -- the game's private part of the button holds it): Blizzard_AuraButton.xml and .lua, Gethe live. So each
 -- icon spot gets a catcher of its own, a frame over the spot that takes only right-clicks, lets the
--- other mouse buttons pass through (SetPassThroughButtons) and never takes hover. Which debuff is in a
+-- other mouse buttons pass through (SetPassThroughButtons) and never takes hover, so hover reaches the
+-- button under it, which shows the game's tooltip when Show tooltips on hover is on (Panel.lua). Which debuff is in a
 -- spot is worked out the way the game fills the row (Debuffs:Current), and the menu shows its name
 -- and icon, so you see what you'd ignore.
 --
