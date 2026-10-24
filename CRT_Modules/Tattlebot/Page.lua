@@ -19,8 +19,8 @@ local BACKDROP = {
     edgeSize = 1,
 }
 local OUTPUTS = { { key = "self", label = "Only me" }, { key = "raid", label = "Raid chat" }, { key = "officer", label = "Officer chat" } }
-local ENDED = { button = "End night was pressed", gap = "no pull came for 6 hours", team = "the next pull was in a different kind of raid" }
-local NOT_TEAM = "Not a team raid."
+local ENDED = { button = "End night was pressed", gap = "no pull came for 6 hours" }
+local NOT_TEAM = "not a team raid" -- a pull's mark, beside its difficulty and length
 local SHOW_OPTIONS = { { key = "team", label = "Team raids" }, { key = "all", label = "All raids" } }
 
 local page, tonightText, tonightChild, detailText, detailChild, listChild, listScroll
@@ -113,6 +113,9 @@ local function pullLines(pull, index, lines)
     if pull.duration then
         extra[#extra + 1] = duration(pull.duration)
     end
+    if not Tattle.IsTeam(pull) then
+        extra[#extra + 1] = NOT_TEAM
+    end
     if #extra > 0 then
         bits[1] = bits[1] .. " (" .. table.concat(extra, ", ") .. ")"
     end
@@ -159,9 +162,6 @@ local function tonightView(night)
         return table.concat(lines, "\n")
     end
     lines[#lines + 1] = format("Started %s %s, %d %s so far. %s, all pulls added up:", day(night.startedAt), clock(night.startedAt), #night.pulls, #night.pulls == 1 and "pull" or "pulls", UI.HeadingText("Tonight's totals"))
-    if not Tattle.IsTeam(night) then
-        lines[#lines] = NOT_TEAM .. " " .. lines[#lines]
-    end
     local below = { UI.HeadingText("Pulls, newest first") }
     for i = #night.pulls, 1, -1 do
         pullLines(night.pulls[i], i, below)
@@ -175,8 +175,9 @@ end
 -- The Mechanic dropdown narrows the totals, the nights and the export to one mechanic, which makes
 -- Totals that mechanic's record.
 
--- The Show dropdown, there only once a night that wasn't a team raid was saved (Only record team raids off), keeps
--- to team raids (the default) or shows every night.
+-- The Show dropdown, there only once a pull that wasn't a team raid was saved (Only record team raids off): Team
+-- raids (the default) keeps to the team pulls, each night with only its team pulls and a night with none left out
+-- (Tattle.InScope); All raids shows everything.
 local ALL = "all"
 local NIGHT = "night"
 local TEAM = "team"
@@ -196,10 +197,11 @@ end
 -- Tonight's running night, or else the last saved one, or nil (in the Show filter).
 local function currentNight()
     local current = Tattle:Current()
-    local list = Tattle.InScope(Tattle:History(), teamScope())
-    if current and Tattle.InScope({ current }, teamScope())[1] then
-        return current
+    local mine = current and Tattle.InScope({ current }, teamScope())[1]
+    if mine then
+        return mine
     end
+    local list = Tattle.InScope(Tattle:History(), teamScope())
     return list[#list]
 end
 
@@ -211,12 +213,19 @@ local function filteredNights()
     return Tattle.InScope(Tattle:History(), teamScope())
 end
 
+-- A saved night by id as the Show filter has it (only its team pulls in Team raids), or nil.
+local function shownNight(id)
+    local night = Tattle:Find(id)
+    return night and Tattle.InScope({ night }, teamScope())[1] or nil
+end
+
 local function seasonText()
     if seasonFilter ~= NIGHT then
         return "all seasons"
     end
     local night = currentNight()
-    if night and night == Tattle:Current() then
+    local current = Tattle:Current()
+    if night and current and night.id == current.id then
         return "tonight"
     elseif night then
         return "the last night, " .. day(night.startedAt)
@@ -232,9 +241,6 @@ end
 local function nightView(night)
     local mechKey = filterMech()
     local intro = format("%s, %s to %s, %d %s. Ended when %s.", day(night.startedAt), clock(night.startedAt), clock(night.endedAt), #night.pulls, #night.pulls == 1 and "pull" or "pulls", ENDED[night.endReason] or "it ended")
-    if not Tattle.IsTeam(night) then
-        intro = intro .. " " .. NOT_TEAM
-    end
     if mechKey then
         intro = intro .. " " .. UI.HeadingText(mechText()) .. " only."
     end
@@ -434,7 +440,7 @@ local function export()
     if selected == TOTALS then
         text, title = totalsExport(), "Tattlebot totals for Discord (Ctrl+C to copy)"
     else
-        local night = Tattle:Find(selected)
+        local night = shownNight(selected)
         if not night then
             return
         end
@@ -791,7 +797,7 @@ refresh = function()
         deleteButton:Hide()
         postSelectedButton:Hide()
     else
-        showView(detailPane, nightView(Tattle:Find(selected)))
+        showView(detailPane, nightView(shownNight(selected)))
         deleteButton:Show()
         postSelectedButton:Show()
     end
@@ -892,7 +898,7 @@ local function buildHistory(f)
     mechDropdown:SetPoint("LEFT", seasonDropdown, "RIGHT", 16, 0)
     controls[#controls + 1] = mechDropdown
     UI.HelpRight(mechDropdown, "History filters", "Season picks what is added up: every saved night, or the current one. Mechanic narrows Totals, each night and the export to one mechanic: each player's damage from it, the pulls it hit them in, and the average per hit.")
-    -- Team raids or all raids: shown only once a night that wasn't a team raid is saved
+    -- Team raids or all raids: shown only once a pull that wasn't a team raid is saved
     local showDropdown = UI.Dropdown(f, "Show", {
         options = SHOW_OPTIONS,
         labelWidth = 44,
@@ -906,7 +912,7 @@ local function buildHistory(f)
         end,
     })
     showDropdown:SetPoint("LEFT", mechDropdown, "RIGHT", 40, 0)
-    local showHelp = UI.HelpRight(showDropdown, "Show", "Team raids keeps to the nights that were team raids: enough of the raid ran CRT, as set on General Settings > Team raids. All raids adds the nights recorded with Only record team raids off. Nights from before this update are team raids.")
+    local showHelp = UI.HelpRight(showDropdown, "Show", "Team raids keeps to the pulls that were team raids: enough of the raid ran CRT, as set on General Settings > Team raids. A night with no team pull is left out. All raids adds the pulls recorded with Only record team raids off. Pulls from before this update are team raids.")
     local showRefresh = showDropdown.refresh
     showDropdown.refresh = function()
         local on = Tattle:HasOtherNights()
@@ -948,7 +954,7 @@ local function buildHistory(f)
     postSelectedButton = makeButton(f, "Post this night", 140)
     postSelectedButton:SetPoint("LEFT", exportButton, "RIGHT", 4, 0)
     postSelectedButton:SetScript("OnClick", function()
-        local night = Tattle:Find(selected)
+        local night = shownNight(selected)
         if night then
             Tattle:PostNight(night)
         end
@@ -1286,8 +1292,9 @@ CRT.TattlePage = {
             currentTab = "tonight"
         else
             seasonFilter, mechFilter, selected = ALL, ALL, night.id
-            if not Tattle.IsTeam(night) then
-                teamFilter = ALL -- so the night is in the list
+            local team, all = Tattle.TeamPulls(night)
+            if team < all then
+                teamFilter = ALL -- so the whole night shows, its other pulls too
             end
             currentTab = "history"
             scrollToSelected = true

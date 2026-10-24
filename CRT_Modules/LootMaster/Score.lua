@@ -1,7 +1,7 @@
 local ADDON, CRT = ...
 
--- Raider Score, from the Late Tracker's saved nights (CRTDB late.history, read through CRT.Late), so there
--- is no tracking of its own. Everyone starts at 100. In each night of the last `weeks` weeks where a player
+-- Raider Score, from the Late Tracker's saved team raid nights (CRTDB late.history, read through CRT.Late; a
+-- night stamped team = false is left out, one saved before team raids counts), so there is no tracking of its own. Everyone starts at 100. In each night of the last `weeks` weeks where a player
 -- was expected, a no-show costs `noShow`, and a late arrival `late` plus `per10` for every full ten minutes.
 -- Each penalty shrinks by `recover` a week after its night, down to nothing. Settings are in CRTDB
 -- lootmaster.score (the Settings tab). A player with no night in the window has no score (nil).
@@ -27,7 +27,8 @@ local function compute()
     local now = time()
     local from = now - (tonumber(c.weeks) or 8) * WEEK
     for _, night in ipairs(history) do
-        if night.startedAt and night.startedAt >= from then
+        -- team raid nights only: a night that wasn't one (team = false) never costs anyone; older nights have no stamp
+        if night.startedAt and night.startedAt >= from and night.team ~= false then
             local weeksSince = math.max(0, (now - night.startedAt) / WEEK)
             for _, p in ipairs(night.players or {}) do
                 local key = p.key and p.key:lower()

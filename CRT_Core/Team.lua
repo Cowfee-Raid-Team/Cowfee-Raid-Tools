@@ -13,15 +13,18 @@ local ADDON, CRT = ...
 -- are dropped on GROUP_ROSTER_UPDATE (or UNIT_CONNECTION), so they count again once they say hello again; the set
 -- resets when you leave the group.
 --
--- The hello, under the prefix CRTHello, to the RAID channel only:   H|<version>|<addon version>   e.g. "H|1|1.1.2"
+-- The hello, under the prefix CRTHello, to and heard on the RAID channel only:
+--   H|<version>|<addon version>[|A]   e.g. "H|1|1.1.2" or "H|1|1.1.2|A"
 -- A later minor version may add fields after these, which are skipped; a higher major version or another kind is
--- left alone. A CRT says hello when it joins a raid group, logs in or reloads in one, and enters a raid instance.
--- Hearing a hello from someone not yet known (a joiner, or someone heard again after going offline), or from a
--- known member while your own last hello is older than WINDOW (they reloaded and know nobody), it says hello back.
+-- left alone. A, answer me, is sent by a CRT that knows nobody: on login, on a reload and on joining a raid group
+-- (joiners announce themselves; no other roster change sends a hello). Entering a raid instance sends a plain
+-- hello. Every CRT answers a hello with A, and a plain hello only from someone it doesn't know yet (a joiner, or
+-- someone heard again after going offline), so a run back after a wipe sends no answers. Answers are plain.
 -- Hellos go at most once per WINDOW seconds, DEBOUNCE seconds after the first reason, so a burst of joiners or
 -- hellos gets one answer, never one per joiner. Never in combat (sent when it ends), never during the game's
 -- addon message lockdown (tried again every LOCK_RETRY seconds, as Gear Checker's and Season Stats' messages
--- are), never in a finder group (IsInGroup(LE_PARTY_CATEGORY_INSTANCE)) or outside a raid group. A sender's name
+-- are, and once more at ENCOUNTER_END when the lockdown outlasts the tries), never in a finder group
+-- (IsInGroup(LE_PARTY_CATEGORY_INSTANCE)) or outside a raid group. A sender's name
 -- is never compared when secret; names are folded to "name-realm" (lower case, the realm's spaces and dashes
 -- left out), the roster's and the senders' alike.
 --
@@ -315,12 +318,15 @@ end
 
 -- The message ----------------------------------------------------------------------------------------------------
 
-function Team.Encode()
+-- ask adds the answer-me field, "H|1|1.1.2|A": sent on login, reload and joining a raid group, when this CRT
+-- knows nobody. A CRT from before the field skips it (a later field of the same version).
+function Team.Encode(ask)
     local version = tostring(CRT.version or "dev"):gsub("[|%c]", ""):sub(1, Team.MAX_VERSION_TEXT)
-    return "H|" .. Team.VERSION .. "|" .. version
+    return "H|" .. Team.VERSION .. "|" .. version .. (ask and "|A" or "")
 end
 
--- The message's version and addon version, or nil for anything that isn't a hello this CRT reads.
+-- The message's version, addon version and whether it asks for answers, or nil for anything that isn't a hello
+-- this CRT reads.
 function Team.Decode(text)
     if not readable(text) or type(text) ~= "string" or #text > 255 then
         return nil
@@ -333,22 +339,25 @@ function Team.Decode(text)
     if rest ~= "" and rest:sub(1, 1) ~= "|" then
         return nil
     end
-    return version, addon
+    return version, addon, rest:match("^|([^|]*)") == "A"
 end
 
 -- Sending --------------------------------------------------------------------------------------------------------
 
 local driver = CreateFrame("Frame")
 local wanted, timerSet, combatWait = false, false, false
+local askWanted = false -- the hello waiting to go asks for answers
+local encounterWait = false -- the lockdown outlasted the retries: tried again at ENCOUNTER_END
 local lastSent -- GetTime() of your last hello
 local tries = { throttle = 0, lock = 0 }
 
 local flush
 
--- One hello, DEBOUNCE seconds from now and at least WINDOW after the last.
-local function request()
+-- One hello, DEBOUNCE seconds from now and at least WINDOW after the last; ask makes it ask for answers.
+local function request(ask)
     wanted = true
-    if timerSet or combatWait then
+    askWanted = askWanted or ask == true
+    if timerSet or combatWait or encounterWait then
         return
     end
     local wait = Team.DEBOUNCE
@@ -391,17 +400,23 @@ flush = function()
     if chatLocked() then
         result = LOCKDOWN
     else
-        local ok, r = pcall(C_ChatInfo.SendAddonMessage, Team.PREFIX, Team.Encode(), "RAID")
+        local ok, r = pcall(C_ChatInfo.SendAddonMessage, Team.PREFIX, Team.Encode(askWanted), "RAID")
         result = ok and r or "error"
     end
     if (result == THROTTLED or result == CHANNEL_THROTTLED) and tries.throttle < Team.THROTTLE_TRIES then
         tries.throttle = tries.throttle + 1
         return later(Team.THROTTLE_RETRY)
-    elseif result == LOCKDOWN and tries.lock < Team.LOCK_TRIES then
-        tries.lock = tries.lock + 1
-        return later(Team.LOCK_RETRY)
+    elseif result == LOCKDOWN then
+        if tries.lock < Team.LOCK_TRIES then
+            tries.lock = tries.lock + 1
+            return later(Team.LOCK_RETRY)
+        end
+        -- held past every retry: kept, and tried again when the encounter ends
+        tries.lock = 0
+        encounterWait = true
+        return
     end
-    wanted = false
+    wanted, askWanted = false, false
     tries.throttle, tries.lock = 0, 0
     if result == nil or result == true or result == SUCCESS then
         lastSent = now()
@@ -409,8 +424,8 @@ flush = function()
 end
 
 reset = function()
-    heard, members = {}, {}
-    wanted, combatWait = false, false
+    heard, members, pulls = {}, {}, {}
+    wanted, askWanted, combatWait, encounterWait = false, false, false, false
     lastSent = nil
     tries.throttle, tries.lock = 0, 0
     driver:UnregisterEvent("PLAYER_REGEN_ENABLED")
@@ -418,11 +433,15 @@ end
 
 -- Receiving ------------------------------------------------------------------------------------------------------
 
--- Takes one hello: the sender, a raid member, runs CRT. A hello from someone not yet known, or from a known member
--- while your own last hello is older than WINDOW, is answered (once, with any others in the window). Returns true
--- when the hello was taken.
+-- Takes one hello: the sender, a raid member, runs CRT. A hello that asks for answers (the sender logged in,
+-- reloaded or joined, and knows nobody) is always answered; a plain one only when its sender wasn't known yet. Either
+-- way at most once in the window, with any others. Returns true when the hello was taken.
 function Team:Hear(sender, text)
-    if not Team.InRaidGroup() or not Team.Decode(text) then
+    if not Team.InRaidGroup() then
+        return false
+    end
+    local version, _, ask = Team.Decode(text)
+    if not version then
         return false
     end
     local key = Team.Key(sender)
@@ -437,7 +456,7 @@ function Team:Hear(sender, text)
     end
     local known = heard[key]
     heard[key] = true
-    if not known or not lastSent or now() - lastSent >= Team.WINDOW then
+    if ask or not known then
         request()
     end
     count()
@@ -446,7 +465,7 @@ end
 
 -- Events -----------------------------------------------------------------------------------------------------------
 
-local RAID_EVENTS = { "CHAT_MSG_ADDON", "UNIT_CONNECTION", "ENCOUNTER_START" }
+local RAID_EVENTS = { "CHAT_MSG_ADDON", "UNIT_CONNECTION", "ENCOUNTER_START", "ENCOUNTER_END" }
 local listening = false
 local inRaidInstance = false
 
@@ -476,7 +495,7 @@ function Team.HandleEvent(event, ...)
         Team:Recount()
         listen(snap.raid)
         if snap.raid and not was then
-            request() -- joined a raid group (or the party became one)
+            request(true) -- joined a raid group (or the party became one): knows nobody yet
         end
     elseif event == "PLAYER_ENTERING_WORLD" then
         local login, reload = ...
@@ -484,18 +503,27 @@ function Team.HandleEvent(event, ...)
         inRaidInstance = raidInstance()
         Team:Recount()
         listen(snap.raid)
-        if snap.raid and (login or reload or (inRaidInstance and not wasInside)) then
-            request()
+        if snap.raid and (login or reload) then
+            request(true) -- a new copy of the addon knows nobody
+        elseif snap.raid and inRaidInstance and not wasInside then
+            request() -- into the raid instance: a plain hello, answered only by those who don't know you
         end
     elseif event == "CHAT_MSG_ADDON" then
-        local prefix, text, _, sender = ...
-        if readable(prefix) and prefix == Team.PREFIX then
+        local prefix, text, channel, sender = ...
+        if readable(prefix) and prefix == Team.PREFIX and readable(channel) and channel == "RAID" then
             Team:Hear(sender, text)
         end
     elseif event == "UNIT_CONNECTION" then
         Team:Recount()
     elseif event == "ENCOUNTER_START" then
         startPull((...))
+    elseif event == "ENCOUNTER_END" then
+        if encounterWait then
+            encounterWait = false
+            if wanted then
+                request()
+            end
+        end
     elseif event == "PLAYER_REGEN_ENABLED" then
         driver:UnregisterEvent("PLAYER_REGEN_ENABLED")
         if combatWait then

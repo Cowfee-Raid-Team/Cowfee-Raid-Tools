@@ -115,7 +115,9 @@ CRT.TattleDB = { bosses = { { boss = "Alpha", encounterID = 9001, mechanics = { 
 -- the team raid check, a stand-in: the answer at each pull's start
 local teamAnswer = true
 local asked = 0
-CRT.Team = { PullIsTeam = function(_, enc) asked = asked + 1 return teamAnswer end }
+local askedAt, nowAsked = nil, 0
+CRT.Team = { PullIsTeam = function(_, enc, at) asked = asked + 1 askedAt = at return teamAnswer end,
+  IsTeam = function() nowAsked = nowAsked + 1 return teamAnswer end }
 
 assert(load(dataSrc, "Tattlebot/Data.lua"))("CowfeeRaidTools", CRT)
 local Tattle = CRT.Tattle
@@ -123,6 +125,8 @@ local driver
 for _, f in ipairs(made) do if f.events.ENCOUNTER_END and f.scripts.OnEvent then driver = f end end
 check(driver ~= nil, "Tattlebot's driver")
 local function pull(enc, name)
+  driver.scripts.OnEvent(driver, "ENCOUNTER_START", enc, name, 16, 20)
+  NOW = NOW + 120
   driver.scripts.OnEvent(driver, "ENCOUNTER_END", enc, name, 16, 20, 0)
   runTimers()
 end
@@ -131,7 +135,7 @@ local s = CRT.db.tattle
 -- 1. Nights and pulls from before team raids count as team raids ----------------------------------------------------
 s.history = { { id = 1, startedAt = NOW - 86400, season = "Season 1", pulls = { { at = NOW - 86400, encounterID = 9001, players = {} } } } }
 s.nextId = 2
-check(Tattle.IsTeam(s.history[1]) and Tattle.IsTeam(s.history[1].pulls[1]), "a night and a pull with no stamp are team raids")
+check(Tattle.IsTeam(s.history[1].pulls[1]), "a pull with no stamp is a team raid")
 eq(Tattle:HasOtherNights(), false, "only old nights: nothing but team raids")
 eq(#Tattle.InScope(s.history, "team"), 1, "and they are in Team raids")
 
@@ -141,6 +145,7 @@ teamAnswer = false
 reads = 0
 pull(9001, "Alpha")
 eq(asked, 1, "the check is asked once at the pull's end")
+eq(askedAt, NOW - 120, "for the pull's own start, its snapshot at ENCOUNTER_START")
 eq(s.current, nil, "not a team raid: no night started")
 eq(reads, 0, "and the meter isn't even read")
 eq(#posted, 0, "and nothing is posted")
@@ -148,36 +153,58 @@ eq(#posted, 0, "and nothing is posted")
 teamAnswer = true
 pull(9001, "Alpha")
 check(s.current ~= nil and #s.current.pulls == 1, "a team raid pull is recorded")
-eq(s.current.team, true, "the night is stamped a team raid")
-eq(s.current.pulls[1].team, true, "and the pull too")
+eq(s.current.pulls[1].team, true, "and stamped a team raid")
 eq(#posted, 1, "and posted")
+-- a pull waiting for combat's end is dropped when a pull that isn't a team raid ends first
+local before = #s.current.pulls
+driver.scripts.OnEvent(driver, "PLAYER_REGEN_DISABLED")
+pull(9001, "Alpha")
+teamAnswer = false
+pull(9001, "Alpha")
+driver.scripts.OnEvent(driver, "PLAYER_REGEN_ENABLED")
+runTimers()
+eq(#s.current.pulls, before, "a skipped pull leaves nothing waiting to be read")
+teamAnswer = true
 
--- 3. Off: every pull is recorded and stamped; a night holds one kind ----------------------------------------------
+-- 3. Off: every pull is recorded and stamped; a night stays whole ---------------------------------------------
 s.onlyTeam = false
 teamAnswer = false
 local teamNight = s.current
 pull(9001, "Alpha")
-check(s.current ~= teamNight, "a pull from a raid that isn't a team raid starts its own night")
-eq(teamNight.endReason, "team", "the team night ended for it")
-eq(s.history[#s.history], teamNight, "and was saved")
-eq(s.current.team, false, "the new night is stamped not a team raid")
-eq(s.current.pulls[1].team, false, "and its pull too")
 pull(9001, "Alpha")
-eq(#s.current.pulls, 2, "the next pull of the same kind joins it")
-eq(Tattle:HasOtherNights(), true, "now there is a night that wasn't a team raid")
-local pugNight = s.current
+eq(s.current, teamNight, "pulls that aren't team raids join the same night")
+eq(#teamNight.pulls, before + 2, "kept whole")
+eq(teamNight.pulls[#teamNight.pulls].team, false, "each pull stamped as it was")
+eq(Tattle:HasOtherNights(), true, "now there is a pull that wasn't a team raid")
 teamAnswer = true
 pull(9001, "Alpha")
-check(s.current ~= pugNight and s.current.team == true, "back in a team raid: a new team night")
-eq(#Tattle.InScope(s.history, "team") + 1, #s.history, "Team raids leaves the other night out")
+eq(s.current, teamNight, "back in a team raid: still the same night")
+Tattle:EndNight("button")
+-- a night of only other pulls
+teamAnswer = false
+pull(9001, "Alpha")
+local pugNight = s.current
+Tattle:EndNight("button")
+local inTeam = Tattle.InScope(s.history, "team")
+eq(#inTeam + 1, #s.history, "Team raids leaves out a night with no team pull")
+local mixed
+for _, n in ipairs(inTeam) do if n.id == teamNight.id then mixed = n end end
+check(mixed and mixed ~= teamNight and #mixed.pulls == #teamNight.pulls - 2, "and shows a mixed night with its team pulls only")
+eq(#teamNight.pulls, before + 3, "the saved night itself is left whole")
 eq(#Tattle.InScope(s.history, "all"), #s.history, "All raids keeps every night")
 local bp = Tattle:BossPulls(9001)
 local pugPulls = 0 for _, p in ipairs(bp) do if p.team == false then pugPulls = pugPulls + 1 end end
-eq(pugPulls, 2, "BossPulls marks each pull's kind, for Season Stats")
+eq(pugPulls, 3, "BossPulls marks each pull's kind, for Season Stats")
 -- a fight saved by hand from the Last fight view is stamped too
 teamAnswer = false
 local scanned = Tattle:AddScannedPull({ spells = { { id = 555 } }, players = {}, boss = { name = "Alpha", encounterID = 9001 } }, { 555 })
 eq(scanned.team, false, "a fight saved from the Last fight view is stamped")
+local n0 = nowAsked
+teamAnswer = true
+local scanned2 = Tattle:AddScannedPull({ spells = { { id = 555 } }, players = {} }, { 555 })
+eq(nowAsked, n0 + 1, "a fight that wasn't a boss asks the answer now, not a pull's snapshot")
+eq(scanned2.team, true, "and is stamped by it")
+Tattle:EndNight("button")
 -- only the accessor reads the check
 local _, uses = dataSrc:gsub("= CRT%.Team", "")
 eq(uses, 1, "Tattlebot/Data.lua reads CRT.Team in one place, its accessor")
@@ -197,17 +224,18 @@ check(box ~= nil, "Settings: an Only record team raids check box")
 check(helps["Only record team raids"] ~= nil and helps["Only record team raids"]:find("General Settings", 1, true), "with a (?) saying where the share is set")
 local sh = dropdowns.Show
 check(sh ~= nil, "History: a Show dropdown")
-CRT.TattlePage.ShowNight(teamNight.id)
-check(sh.shown, "shown while a night that wasn't a team raid is saved")
 eq(sh.opts.get(), "team", "Team raids by default")
+CRT.TattlePage.ShowNight(pugNight.id)
+check(sh.shown, "shown while a pull that wasn't a team raid is saved")
+
 local o = sh.opts.options
 eq(o[1].key .. "=" .. o[1].label .. ", " .. o[2].key .. "=" .. o[2].label, "team=Team raids, all=All raids", "its choices")
 CRT.TattlePage.ShowNight(pugNight.id)
-eq(select(5, CRT.TattlePage.State()), "all", "opening a night that wasn't a team raid shows All raids, so it is listed")
+eq(select(5, CRT.TattlePage.State()), "all", "opening a night with other pulls shows All raids, so all of it is listed")
 eq(select(2, CRT.TattlePage.State()), pugNight.id, "and selected")
 -- with only team nights, the filter goes
-for i = #s.history, 1, -1 do if not Tattle.IsTeam(s.history[i]) then table.remove(s.history, i) end end
-if not Tattle.IsTeam(s.current) then s.current = nil end
+for _, n in ipairs(s.history) do for i = #n.pulls, 1, -1 do if not Tattle.IsTeam(n.pulls[i]) then table.remove(n.pulls, i) end end end
+s.current = nil
 Tattle:Fire()
 check(not sh.shown, "only team raids saved: no Show dropdown")
 local core = coreSrc

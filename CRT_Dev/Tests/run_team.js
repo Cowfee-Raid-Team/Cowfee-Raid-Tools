@@ -137,6 +137,10 @@ eq(T.PREFIX, "CRTHello", "the prefix")
 check(#T.PREFIX <= 16, "the prefix fits the game's 16 characters")
 eq(#prefixes, 1, "registered once, as the file loads")
 eq(T.Encode(), "H|1|1.2.0", "the hello: kind, version, addon version")
+eq(T.Encode(true), "H|1|1.2.0|A", "asking for answers: the A field")
+eq(select(3, T.Decode("H|1|1.2.0|A")), true, "decoded as asking")
+eq(select(3, T.Decode("H|1|1.2.0")), false, "a plain hello doesn't ask")
+eq(select(3, T.Decode("H|1|1.2.0|B")), false, "another field isn't an ask")
 local v, addon = T.Decode("H|1|1.2.0")
 eq(tostring(v) .. " " .. tostring(addon), "1 1.2.0", "decoded")
 eq(T.Decode("H|1.3|1.4.0|more|fields"), 1.3, "a later minor version with more fields is read")
@@ -290,6 +294,41 @@ local afterReload = #sent
 advance(300)
 eq(#sent, afterReload, "and the answers stop")
 check(afterReload - before <= 8, "a reload costs one round of answers (" .. (afterReload - before) .. ")")
+local reloadHello
+for i = before + 1, afterReload do if sent[i].from == "Hay" then reloadHello = reloadHello or sent[i].text end end
+eq(reloadHello, "H|1|1.2.0|A", "a reload's hello asks for answers")
+-- two reloads 5 seconds apart: everyone just answered the first, and the second still learns everyone
+local function reload(name)
+  local c = clients[name]
+  c.frames = {}
+  local w = ME ME = name
+  assert(load(teamSrc, "Team.lua"))("CowfeeRaidTools", c.CRT)
+  ME = w
+  c.Team = c.CRT.Team
+  on(name, "PLAYER_ENTERING_WORLD", false, true)
+end
+advance(60)
+reload("Moo")
+advance(5)
+reload("Hay")
+advance(60)
+eq(snap("Moo").crt .. "/" .. snap("Moo").online, "6/8", "the first reloader learns everyone")
+eq(snap("Hay").crt .. "/" .. snap("Hay").online, "6/8", "and so does the second, 5 seconds later")
+local afterTwo = #sent
+advance(300)
+eq(#sent, afterTwo, "and the answers stop")
+-- a run back after a wipe: out of the raid instance and in again, a plain hello; everyone knows the sender
+instanceKind = "none"
+on("Bell", "PLAYER_ENTERING_WORLD", false, false)
+advance(60)
+instanceKind = "raid"
+before = #sent
+on("Bell", "PLAYER_ENTERING_WORLD", false, false)
+advance(60)
+eq(sentBy("Bell", before + 1), 1, "back in the raid instance: one plain hello")
+local runHello for i = before + 1, #sent do if sent[i].from == "Bell" then runHello = sent[i].text end end
+eq(runHello, "H|1|1.2.0", "which doesn't ask for answers")
+eq(#sent - before, 1, "and nobody answers it: no answer storm")
 
 -- 6. Leaving, and the set resetting ------------------------------------------------------------------------------
 leave("Bell")
@@ -333,6 +372,19 @@ advance(30)
 sendResult = 0
 advance(60)
 eq(snap("Late3").crt, 9, "a send the game held is tried again")
+-- a lockdown longer than every try: kept, and sent when the encounter ends
+leave("Late3")
+locked = true
+before = #sent
+join("Late3", "Sargeras", true)
+advance(T.LOCK_RETRY * (T.LOCK_TRIES + 3))
+eq(sentBy("Late3", before + 1), 0, "held past every try: nothing sent")
+locked = false
+advance(60)
+eq(snap("Late3").crt, 1, "and it waits, not tried on a timer")
+on("Late3", "ENCOUNTER_END", 3129, "Boss", 16, 20, 0)
+advance(60)
+eq(snap("Late3").crt, 9, "the encounter's end sends it, and the others answer")
 -- the throttle
 sendResult = 3
 leave("Late3") join("Late3", "Sargeras", true)
@@ -355,6 +407,10 @@ on("Solex", "CHAT_MSG_ADDON", "SECRET", "H|1|1.0", "RAID", "Pug1-Sargeras")
 eq(snap("Solex").crt, now, "a secret prefix is left alone")
 on("Solex", "CHAT_MSG_ADDON", "CRTHello", "H|1|1.0", "RAID", "Solex-Sargeras")
 eq(snap("Solex").crt, now, "your own echo counts once")
+local pugKey = T.Key("Pug1")
+on("Solex", "CHAT_MSG_ADDON", "CRTHello", "H|1|1.0", "PARTY", "Pug1-Sargeras")
+on("Solex", "CHAT_MSG_ADDON", "CRTHello", "H|1|1.0", "WHISPER", "Pug1-Sargeras")
+eq(T:Runs(pugKey), false, "a hello on any channel but RAID is left alone")
 -- a secret roster row keeps the last count
 secretRow = true
 on("Solex", "GROUP_ROSTER_UPDATE")
@@ -375,6 +431,12 @@ eq(T:AtPull(9999, pullAt), nil, "another boss: none")
 eq(T:PullIsTeam(9999, pullAt + 600), false, "no snapshot: the answer now")
 on("Solex", "ENCOUNTER_START", "SECRET", "Boss", 16, 20)
 eq(T:AtPull(nil, time()) and T:AtPull(nil, time()).team, false, "a secret encounter ID is kept as none, matched by time")
+-- leaving the group forgets the pulls' snapshots too
+shape = "solo"
+on("Solex", "GROUP_ROSTER_UPDATE")
+eq(T:AtPull(3129, pullAt), nil, "out of the group: no snapshot left")
+shape = "raid"
+on("Solex", "GROUP_ROSTER_UPDATE")
 
 -- 10. Cheap, saved data, the share, the .toc ----------------------------------------------------------------------
 check(not teamSrc:find('"OnUpdate"', 1, true), "no OnUpdate")
