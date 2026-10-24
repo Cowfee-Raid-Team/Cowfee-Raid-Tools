@@ -1295,7 +1295,7 @@ end
 
 -- A small help icon that shows an explanation as a tooltip, used for every bit of extra context so the
 -- pages stay compact. text is a string, with paragraphs split on blank lines, or a function returning
--- one, for text that changes. Pages make it with UI.HelpRight (below), which places it.
+-- one, for text that changes (title may be a function too). Pages make it with UI.HelpRight (below), which places it.
 -- Classic draws the game's gold "i" from the Appearances tab (MainHelpPlateButton in
 -- Blizzard_HelpPlate.xml: the "i", the ring and the additive hover glow) at HELP_SCALE, keeping the
 -- template's offsets, without inheriting its 64 px frame or its pulse. Modern draws a thin accent ring
@@ -1366,7 +1366,7 @@ function UI.Help(parent, title, text)
         paintHelp(self)
         -- right of the (?), whatever Tooltip position says (UI/Tooltip.lua's UI.TOOLTIP_KEEP)
         UI.TooltipOwner(GameTooltip, self, "ANCHOR_RIGHT", nil, nil, UI.TOOLTIP_KEEP)
-        GameTooltip:SetText(title, 1, 1, 1)
+        GameTooltip:SetText(type(title) == "function" and title() or title, 1, 1, 1)
         local body = type(text) == "function" and text() or text or ""
         for paragraph in (body .. "\n\n"):gmatch("(.-)\n\n") do
             if paragraph ~= "" then

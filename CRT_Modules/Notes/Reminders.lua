@@ -102,6 +102,9 @@ L.HELP_ROOM = UI.HELP_GAP + UI.HELP_SIZE + 6 -- a (?) after its control (UI.Help
 L.DROP_GAP = 5 -- UI/Controls.lua: between a row's label and its control
 L.FROM_W = UI.PAGE_W - L.FROM_X - L.FROM_LABEL - L.DROP_GAP - L.HELP_ROOM - L.PAD
 L.LIST_TOP = -44
+-- the Mechanics | Special toggle (Notes/SpecialAlerts.lua) at the top of the left column, the list under it
+L.TOGGLE_H, L.TOGGLE_GAP = 20, 4
+L.LIST_Y = L.LIST_TOP - L.TOGGLE_H - L.TOGGLE_GAP
 L.LIST_W = 250
 L.ROW_H = 24
 L.OWN_H = 24
@@ -157,15 +160,9 @@ L.SPEAK_AT_LABEL, L.SPEAK_AT_W = 56, 104 -- Speak at, beside Glow under Count do
 L.BUTTON_H = 22
 L.TYPING_PAUSE = 0.5 -- seconds after the last key before a typed box saves
 
-local WHITE = { 1, 1, 1 }
-local GREY = { 0.5, 0.5, 0.5 }
-local TIMES_GREY = { 0.55, 0.5, 0.45 }
--- the selected row: the colour of a selected tab (UI:StyleTab), Classic and Modern
-local SEL_CLASSIC_ALPHA = 0.18 -- over the heading colour (the game's gold)
-local SEL_MODERN_ALPHA = 0.95
--- a name in its ability type's colour: mixed this far toward GREY when its reminder is off, and toward WHITE on
--- the selected row, so it reads on the highlight in every theme
-local TYPE_DIM, TYPE_LIFT = 0.5, 0.5
+-- the list's look, shared with the Special list (Notes/MechLook.lua)
+local Look = CRT.MechLook
+local WHITE, TIMES_GREY = Look.WHITE, Look.TIMES_GREY
 local HIDDEN_ALPHA = 0.5 -- a row hidden for everyone, shown with /crt dev open: its icon and name faded
 
 local function lower(s)
@@ -217,6 +214,8 @@ local picked, pendingOwn = {}, {}
 -- The row the Timeline's Make a Mech Alert opened ({ enc, key }), listed even when hidden from the list,
 -- until another row or boss is picked or the tab closes.
 local opened
+-- The Special view (Notes/SpecialAlerts.lua: the boss's special alerts), when that file is loaded.
+local special
 -- The panel's alert: the row's key and item, the boss, and the draft with where it came from (ctx).
 local cur = {}
 local notice -- the last save's problem, shown in red until a change saves
@@ -745,26 +744,10 @@ local function selectedIndex(enc)
     return index
 end
 
-local function mix(c, to, t)
-    return c[1] + (to[1] - c[1]) * t, c[2] + (to[2] - c[2]) * t, c[3] + (to[3] - c[3]) * t
-end
-
 -- A row name's colour: its main ability type's (Timeline/Reference.lua ABILITY_TYPES), dimmed when its reminder
--- is off and lifted on the selected row; with no known type the theme's text colour, or GREY when off.
+-- is off and lifted on the selected row (MechLook.NameColor).
 local function nameColor(item, on, isSelected)
-    local Colors = CRT.AlertColors
-    local c = item.types and item.types[1] and Colors and Colors.KnownTypeColor(item.types[1])
-    if not c then
-        c = on and CRT.PALETTE.text or GREY
-        return c[1], c[2], c[3]
-    end
-    if not on then
-        c = { mix(c, GREY, TYPE_DIM) }
-    end
-    if isSelected then
-        return mix(c, WHITE, TYPE_LIFT)
-    end
-    return c[1], c[2], c[3]
+    return Look.NameColor(item.types and item.types[1], on, isSelected)
 end
 
 -- Hovering a row: the shared ability tooltip (CRT.AbilityTip): the spell, its Journal text, then each of its ability
@@ -798,12 +781,7 @@ local function paint(index)
     end
     reveal = false
     offset = math.max(0, math.min(offset, maxOffset))
-    local h = CRT.PALETTE.heading
-    local selColor = { h[1], h[2], h[3], SEL_CLASSIC_ALPHA }
-    if UI:IsModern() then
-        local m = CRT.PALETTE.selected
-        selColor = { m[1], m[2], m[3], SEL_MODERN_ALPHA }
-    end
+    local selColor = { Look.SelectedColor(UI:IsModern()) }
     for i, row in ipairs(rows) do
         local item = items[offset + i]
         if item then
@@ -848,10 +826,28 @@ local function paint(index)
     end
 end
 
+-- Mechanics or Special on show (the toggle over the list): the other's list and panel are hidden.
+local function applyView()
+    local mech = not (special and CRT.NoteSpecialAlerts.View() == "special")
+    if not mech then
+        -- the Mechanics panel hides: its boxes let go (leaving one saves what was typed)
+        for _, edit in ipairs({ panel.textEdit, panel.timesEdit, panel.idEdit }) do
+            edit:ClearFocus()
+        end
+    end
+    list:SetShown(mech)
+    ownButton:SetShown(mech)
+    panel.frame:SetShown(mech)
+    if special then
+        CRT.NoteSpecialAlerts.Refresh()
+    end
+end
+
 local function refresh(keepDraft)
     if not tab then
         return
     end
+    applyView()
     local enc, name = pickBoss(bosses())
     items = itemsFor(enc, name)
     local index = selectedIndex(enc)
@@ -1539,7 +1535,7 @@ end
 local function build(f)
     tab = f
     local tabH = CRT.NotesPage.TAB_H
-    L.LIST_H = tabH + L.LIST_TOP - L.PAD - L.OWN_H - L.OWN_GAP
+    L.LIST_H = tabH + L.LIST_Y - L.PAD - L.OWN_H - L.OWN_GAP
     L.MAX_ROWS = math.floor((L.LIST_H - 4) / L.ROW_H)
     L.PANEL_H = tabH + L.LIST_TOP - L.PAD
     selected, viewGroup, viewPrefer, offset = nil, nil, nil, 0
@@ -1629,7 +1625,7 @@ local function build(f)
     -- Left: the list, scrolled with the mouse wheel
     list = CreateFrame("Frame", nil, f, "BackdropTemplate")
     list:SetSize(L.LIST_W, L.LIST_H)
-    list:SetPoint("TOPLEFT", L.PAD, L.LIST_TOP)
+    list:SetPoint("TOPLEFT", L.PAD, L.LIST_Y)
     backdrop(list, 0.8)
     f.list = list
     rows = {}
@@ -1649,7 +1645,7 @@ local function build(f)
     f.scroll = scrollBy
 
     ownButton = makeButton(f, TEXT.ownReminder, L.LIST_W, L.OWN_H)
-    ownButton:SetPoint("TOPLEFT", L.PAD, L.LIST_TOP - L.LIST_H - L.OWN_GAP)
+    ownButton:SetPoint("TOPLEFT", L.PAD, L.LIST_Y - L.LIST_H - L.OWN_GAP)
     ownButton:SetScript("OnClick", function()
         saveTyped()
         local enc = pickBoss(bosses())
@@ -1694,6 +1690,20 @@ local function build(f)
             markerText:SetText(string.format(TEXT.markerShow, def.name or TEXT.markerTitle))
             markerCheck:SetChecked(CRT.MarkerDisplay:Enabled(enc))
         end
+    end
+
+    -- The Mechanics | Special toggle, and the Special list and panel in the same places as these
+    if CRT.NoteSpecialAlerts then
+        special = CRT.NoteSpecialAlerts.Build(f, {
+            boss = function() return pickBoss(bosses()) end,
+            group = shownGroup,
+            reference = shownReference,
+            -- typing waiting on the Mechanics panel is saved before it hides
+            view = function() saveTyped() refresh() end,
+        }, { x = L.PAD, y = L.LIST_TOP, toggleH = L.TOGGLE_H, listY = L.LIST_Y, listW = L.LIST_W,
+            listH = L.LIST_H + L.OWN_GAP + L.OWN_H, panelX = L.PANEL_X, panelY = L.LIST_TOP, panelW = L.PANEL_W,
+            panelH = L.PANEL_H })
+        f.special = special
     end
 
     f:SetScript("OnShow", function()
@@ -1790,4 +1800,8 @@ CRT.NoteReminders = {
         refresh()
     end,
     BossList = bossList,
+    -- The boss on show (the active note's, else the first, until one is picked), for /crt dev special.
+    Boss = function()
+        return (pickBoss(bosses()))
+    end,
 }

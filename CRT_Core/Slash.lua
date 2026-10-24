@@ -207,6 +207,8 @@ SlashCmdList["COWFEERAIDTOOLS"] = function(msg)
         -- dev clearprobe on, off, show: log a pull's possible reset moments for a marker display (Dev/ClearProbe.lua)
     elseif CRT.MarkerProbe and CRT.MarkerProbe:Command(msg) then
         -- dev markerprobe: try drawing a raid marker from hidden chat text (Dev/MarkerProbe.lua)
+    elseif CRT.SpecialSampleDev and CRT.SpecialSampleDev:Command(msg) then
+        -- dev special (off): a sample special alert on the boss Mech Alerts shows, never saved (Dev/SpecialSample.lua)
     elseif msg == "dev layout" then
         if CRT.LayoutCheck then
             CRT.LayoutCheck:Run()

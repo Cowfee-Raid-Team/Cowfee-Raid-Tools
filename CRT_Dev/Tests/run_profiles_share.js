@@ -189,11 +189,11 @@ do
   local leaked = {}
   for p in pairs(paths) do for _, no in ipairs({ "notes.list", "groups.presets", "late.history", "tattle.history", "alerts.reminders", "alerts.saved", "timeline.bosses", "lootmaster.authority", "classCache", "importBackup",
       "readycheck.output", "readycheck.earlyPullOutput", "tattle.output", "tattle.autoPost", "tattle.season", "lootmaster.awardChannel", "lootmaster.awardMessage", "lootmaster.responses",
-      "notes.trustedOnly", "sound", "qol.lowHealth.customSounds", "seasonStats", "whatsNew" }) do
+      "notes.trustedOnly", "sound", "qol.lowHealth.customSounds", "seasonStats", "whatsNew", "alerts.specialView" }) do
     if p == no or p:sub(1, #no + 1) == no .. "." then leaked[#leaked + 1] = p end end end
   check(#leaked == 0, "no excluded data, report output, trust setting or sound file name is a shared path (" .. table.concat(leaked, ",") .. ")")
   local kept = {}
-  for _, want in ipairs({ "consumables.categoryOrder", "consumables.itemOrder", "tattle.custom", "markers.disabled", "alerts.areas.timeline.lineColor", "qol.lowHealth.soundChoice" }) do
+  for _, want in ipairs({ "consumables.categoryOrder", "consumables.itemOrder", "tattle.custom", "markers.disabled", "alerts.areas.timeline.lineColor", "qol.lowHealth.soundChoice", "alerts.special" }) do
     if not paths[want] then kept[#kept + 1] = want end
   end
   check(#kept == 0, "consumables order, Tattlebot spells, marker switches, the timeline line colour and the sound choice are shared (" .. table.concat(kept, ",") .. ")")
@@ -220,6 +220,7 @@ db.readycheck.output = "raid" db.tattle.output = "officer" db.tattle.autoPost = 
 db.notes.trustedOnly = false db.sound.custom[1] = "secretfile.ogg" db.qol.lowHealth.customSounds[1] = "secretpulse.ogg" db.qol.lowHealth.soundChoice = "file:secretpulse.ogg"
 db.tattle.season = "secret season" db.lootmaster.responses = { { key = "secretneed" } } db.tattle.custom[12345] = "Soak" db.consumables.categoryOrder = { "flask", "food" }
 db.alerts.areas.timeline.lineColor = { 0.2, 0.4, 0.6, 1 }
+db.alerts.special[3001] = { soaks = { on = true, show = { alert = true, bar = false }, speak = true, markers = false } } db.alerts.specialView = "special"
 db.seasonStats.bosses[3001] = { name = "secret season boss", mythic = { pulls = 118 } } db.seasonStats.filled = true -- Season Stats' counters are data
 db.debuffs.ignored[389123] = true db.debuffs.ignored[442611] = true -- your own ignored debuffs travel with the settings
 db.debuffs.tooltips = true db.debuffs.tooltipMode = "cursor" db.debuffs.tooltipSpot = "top" -- the panel's tooltips, like its other look settings
@@ -246,6 +247,8 @@ check(not flat:find("settingsTab", 1, true) and not flat:find("lastPage", 1, tru
 check(not flat:find("GUILD", 1, true) and not flat:find("officer", 1, true) and sent.data.readycheck.output == nil and sent.data.tattle.autoPost == nil and sent.data.notes.trustedOnly == nil, "no report output, auto-post or note trust setting is exported")
 check(sent.data.qol.lowHealth.soundChoice == nil and sent.data.sound == nil, "no sound file name, and no sound choice naming your own file, is exported")
 check(sent.data.tattle.custom[12345] == "Soak" and sent.data.consumables.categoryOrder[1] == "flask" and sent.data.alerts.areas.timeline.lineColor[3] == 0.6, "Tattlebot spells, consumables order and the timeline line colour are exported")
+check(sent.data.alerts.special and sent.data.alerts.special[3001] and sent.data.alerts.special[3001].soaks.on == true and sent.data.alerts.special[3001].soaks.show.bar == false
+  and sent.data.alerts.specialView == nil, "your special alerts' choices are exported with the other alert settings, the list's page state is not")
 check(sent.data.debuffs and sent.data.debuffs.ignored and sent.data.debuffs.ignored[389123] == true and sent.data.debuffs.ignored[442611] == true, "your ignored debuffs are exported")
 check(sent.data.debuffs and sent.data.debuffs.tooltips == true and sent.data.debuffs.tooltipMode == "cursor" and sent.data.debuffs.tooltipSpot == "top", "the debuff panel's tooltips and their position are exported")
 check(sent.data.debuffs and sent.data.debuffs.size == 50 and sent.data.ui.fontSize == 16 and sent.data.alerts.bars.position.x == 10, "settings, a late setting and a position are exported")

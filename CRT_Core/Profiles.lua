@@ -105,6 +105,8 @@ Profiles.SHARE = {
     pace = { disabled = true, shown = true, position = true, own = false, shared = false, use = false },
     alerts = {
         bars = true, areas = true, noteLines = true, customColors = true, cooldownFilter = true,
+        special = true, -- your special alerts' on/off and Show as choices
+        specialView = false, -- the page state of Mech Alerts' list
         speechNotice = false, reminders = false, phases = false, overrides = false, nextId = false, saved = false, nextSavedId = false,
     },
     importBackup = false, -- the backup Undo last import puts back

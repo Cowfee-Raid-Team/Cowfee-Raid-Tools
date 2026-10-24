@@ -64,7 +64,9 @@ CRT_Core\Integrations\NSRT.lua
 CRT_Core\Integrations\MRT.lua
 CRT_Core\Integrations\Breaks.lua
 CRT_Modules\Notes\Settings.lua
+CRT_Modules\Notes\MechLook.lua
 CRT_Modules\Notes\Reminders.lua
+CRT_Modules\Notes\SpecialAlerts.lua
 CRT_Modules\Notes\Phases.lua
 CRT_Modules\Notes\AlertsTab.lua
 CRT_Modules\Notes\Render.lua
@@ -127,6 +129,7 @@ CRT_Modules\Timeline\SettingsTab.lua
 CRT_Modules\Timeline\Page.lua
 CRT_Modules\Alerts\Reminders.lua
 CRT_Modules\Alerts\Colors.lua
+CRT_Modules\Alerts\Special.lua
 CRT_Modules\Timeline\Undo.lua
 CRT_Modules\Timeline\JournalExport.lua
 CRT_Modules\SeasonStats\Data.lua
@@ -170,6 +173,7 @@ CRT_Dev\Dev\GameTimelineProbe.lua
 CRT_Dev\Dev\MarkerEditor.lua
 CRT_Dev\Dev\ClearProbe.lua
 CRT_Dev\Dev\MarkerProbe.lua
+CRT_Dev\Dev\SpecialSample.lua
 CRT_Dev\Dev\SeasonTools.lua
 CRT_Dev\Dev\BossOrder.lua
 CRT_Dev\Dev\JournalTree.lua

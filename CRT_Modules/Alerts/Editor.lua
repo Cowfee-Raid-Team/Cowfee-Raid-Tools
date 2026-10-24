@@ -847,6 +847,28 @@ local function rehearse(c, d)
     return false
 end
 
+-- The quick test: a "test" run of only these items (ids "mine:test:", "note:test:" or "special:test:"),
+-- starting TEST_LEAD seconds before the first of them (phase lowest, `first` seconds in). True, or false
+-- and the message when that phase waits for an event.
+local function quickTest(encounterID, items, lowest, first)
+    testItems = items
+    Alerts:Start(encounterID, nil, "test", {
+        blocks = { [TEST_BLOCK] = true },
+        filter = function(_, item)
+            local id = type(item.id) == "string" and item.id or ""
+            return (id:find("^mine:test:") or id:find("^note:test:") or id:find("^special:test:")) ~= nil
+        end,
+        firstAt = GetTime() + TEST_LEAD - first,
+    })
+    testItems = nil
+    -- A lowest phase with an event trigger waits for its event, so the test would show nothing.
+    if Alerts.running and Alerts.run and Alerts.run.reason == "test" and not Alerts:PhaseStart(lowest) then
+        Alerts:Stop()
+        return false, string.format(TEXT.testTrigger, tostring(lowest))
+    end
+    return true
+end
+
 -- Tests a draft: in the Rehearsal when it can open (rehearse), else alone as a quick test starting
 -- TEST_LEAD seconds before its first time. Saves nothing. True, or false and the message (none when the
 -- draft simply has no times).
@@ -866,21 +888,7 @@ local function runTest(c, d)
     if not items then
         return false
     end
-    testItems = items
-    Alerts:Start(c.encounterID or 0, nil, "test", {
-        blocks = { [TEST_BLOCK] = true },
-        filter = function(_, item)
-            return type(item.id) == "string" and (item.id:find("^mine:test:") or item.id:find("^note:test:")) ~= nil
-        end,
-        firstAt = GetTime() + TEST_LEAD - first,
-    })
-    testItems = nil
-    -- A lowest phase with an event trigger waits for its event, so the test would show nothing.
-    if Alerts.running and Alerts.run and Alerts.run.reason == "test" and not Alerts:PhaseStart(lowest) then
-        Alerts:Stop()
-        return false, string.format(TEXT.testTrigger, tostring(lowest))
-    end
-    return true
+    return quickTest(c.encounterID or 0, items, lowest, first)
 end
 
 -- Tests the draft on screen.
@@ -906,6 +914,24 @@ function Editor:TestDraft(c, d)
         return false
     end
     return runTest(c, d)
+end
+
+-- Tests one alert item that isn't a draft (a special alert, Alerts/Special.lua) the same quick way: it
+-- plays alone, as phase 1, TEST_LEAD seconds from now. Never during a pull. True, or false and the message.
+function Editor:TestItem(encounterID, item)
+    if Alerts.running and Alerts.run and Alerts.run.reason == "encounter" then
+        return false, TEXT.testInPull
+    end
+    if type(item) ~= "table" then
+        return false
+    end
+    local it = {}
+    for k, v in pairs(item) do
+        it[k] = v
+    end
+    it.id = "special:test:" .. tostring(item.special or 1)
+    it.ph, it.time = 1, TEST_LEAD
+    return quickTest(type(encounterID) == "number" and encounterID or 0, { it }, 1, TEST_LEAD)
 end
 
 -- The draft's items, given out once and only to a test run. A note line's item keeps block "note".
