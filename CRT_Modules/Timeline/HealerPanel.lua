@@ -36,6 +36,7 @@ local TEXT = {
     stale = " \194\183 changed since",
     staleTip = "That line of the raid note changed since this was sent, so it can't be accepted.",
     shared = " \194\183 Shared assignment (%d players): accepting moves everyone's timer on this line",
+    sharedWith = " \194\183 Shared assignment (with %s): accepting moves everyone's timer on this line",
     sharedTitle = "Shared assignment",
     accept = "Accept",
     decline = "Decline",
@@ -267,7 +268,14 @@ function Panel.ProposalText(view, p)
         return abs and View.Format(abs) or P.FormatTime(ph, t)
     end
     local text = string.format(TEXT.proposal, p.short, P.SpellLabel(p.spellID), at(p.oldPh, p.oldT), at(p.newPh, p.newT))
-    local note = (p.stale and TEXT.stale) or (p.shared and string.format(TEXT.shared, #(p.players or {}))) or nil
+    local note = p.stale and TEXT.stale or nil
+    if not note and p.shared then
+        if (p.playerCount or 0) > 1 or #(p.others or {}) == 0 then
+            note = string.format(TEXT.shared, p.playerCount or 0)
+        else
+            note = string.format(TEXT.sharedWith, table.concat(p.others, " "))
+        end
+    end
     if note then
         text = text .. (CRT.UI.WarnText and CRT.UI.WarnText(note) or note)
     end

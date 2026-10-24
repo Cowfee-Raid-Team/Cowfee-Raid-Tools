@@ -856,11 +856,13 @@ do
   -- the old time must be the line's
   P.list = {}
   check(P:Hear("CRTCDMove", about(N:RawLines(1)[2], 44, { oldT = 21 }), "RAID", "Halo-Home") == nil, "an old time that isn't the line's is refused")
+  check(P.Owns({ spellID = 64843, oldPh = 1, oldT = 20.04, sender = "Halo-Home" }, 1, 2) == true, "times are compared at tenths")
+  check(P.Owns({ spellID = 64843, oldPh = 1, oldT = 20.2, sender = "Halo-Home" }, 1, 2) == false, "a tenth apart is another time")
 end
 
 -- Proposals: a shared assignment ----------------------------------------------------------------------------------
 do
-  setNote({ "time:40;ph:1;tag:Halo Rain;spellid:64843;", "time:50;ph:1;tag:Halo healer;spellid:64843;" })
+  setNote({ "time:40;ph:1;tag:Halo Rain;spellid:64843;", "time:50;ph:1;tag:Halo healers;spellid:64843;", "time:60;ph:1;tag:Halo;spellid:64843;" })
   CRT.TimelineUndo:Quietly(function() end)
   group.leader = true
   P.list = {}
@@ -869,14 +871,21 @@ do
   local p = P:Hear("CRTCDMove", P.Encode({ encounterID = 3001, hash = Shifts.Key(shared), spellID = 64843, oldPh = 1, oldT = 40, newPh = 1, newT = 55 }), "RAID", "Rain-Home")
   check(p and p.shared and #p.players == 2 and not p.stale, "a line naming two players: any of them may propose it, and it is shared")
   check(N:TimerAt(1, 2).time == 40 and #P.list == 1, "auto-accept never takes a shared assignment")
-  local own = P:Hear("CRTCDMove", P.Encode({ encounterID = 3001, hash = Shifts.Key(N:RawLines(1)[3]), spellID = 64843, oldPh = 1, oldT = 50, newPh = 1, newT = 58 }), "RAID", "Halo-Home")
-  check(own and not own.shared and N:TimerAt(1, 3).time == 58, "a line naming only the sender (and a role) is auto-accepted")
+  -- "Halo healers": a role word beside the sender is an assignment too, never auto-accepted
+  local role = P:Hear("CRTCDMove", P.Encode({ encounterID = 3001, hash = Shifts.Key(N:RawLines(1)[3]), spellID = 64843, oldPh = 1, oldT = 50, newPh = 1, newT = 58 }), "RAID", "Halo-Home")
+  check(role and role.shared and N:TimerAt(1, 3).time == 50 and #P.list == 2, "the sender and a role word: shared, it waits")
+  local own = P:Hear("CRTCDMove", P.Encode({ encounterID = 3001, hash = Shifts.Key(N:RawLines(1)[4]), spellID = 64843, oldPh = 1, oldT = 60, newPh = 1, newT = 66 }), "RAID", "Halo-Home")
+  check(own and not own.shared and N:TimerAt(1, 4).time == 66, "a line naming only the sender is auto-accepted")
   local v = newView()
   local pf = v.hvProps[1]
   check(pf.text.text:find("Shared assignment (2 players): accepting moves everyone's timer on this line", 1, true), "the row says so: " .. tostring(pf.text.text))
   check(pf.text.text:find("|c", 1, true) ~= nil, "in the warn colour")
   pf.OnEnter(pf)
   check(table.concat(tip, "|"):find("Halo, Rain", 1, true), "with the names in its tooltip: " .. table.concat(tip, "|"))
+  local rf = v.hvProps[2]
+  check(rf.text.text:find("Shared assignment (with healers): accepting moves everyone's timer on this line", 1, true), "the role line's row says it is shared: " .. tostring(rf.text.text))
+  rf.OnEnter(rf)
+  check(table.concat(tip, "|"):find("Halo, healers", 1, true), "its tooltip names who: " .. table.concat(tip, "|"))
   pf.buttons.accept.OnClick(pf.buttons.accept)
   check(N:TimerAt(1, 2).time == 55 and N:TimerAt(1, 2).tags[2] == "Rain", "a manual Accept moves the shared line")
   CRT.db.notes.autoAcceptCooldowns = false
@@ -906,6 +915,12 @@ do
   check(p and p.held and N:TimerAt(1, 2).time == 31, "in an encounter: held")
   P.events.OnEvent(P.events, "ENCOUNTER_END")
   check(N:TimerAt(1, 2).time == 31, "ENCOUNTER_END while it still counts as in progress: still held")
+  -- combat ending while the encounter still runs: still held, and the end of combat is waited for again
+  local registered = {}
+  rawset(P.events, "RegisterEvent", function(_, e) registered[e] = true end)
+  P.events.OnEvent(P.events, "PLAYER_REGEN_ENABLED")
+  check(N:TimerAt(1, 2).time == 31 and registered.PLAYER_REGEN_ENABLED and registered.ENCOUNTER_END, "busy: it waits for the next end of combat again")
+  rawset(P.events, "RegisterEvent", nil)
   encounter = false
   flush()
   check(N:TimerAt(1, 2).time == 36, "applied once the encounter is over")
@@ -944,7 +959,12 @@ do
   setNote({})
   group.leader = true
   CRT.PALETTE.good, CRT.PALETTE.bad = { 0.4, 0.8, 0.4 }, { 0.9, 0.3, 0.3 } -- the theme's status colours
-  for _, kill in ipairs({ false, true }) do
+  -- the parts painted from the theme (UI.Tint), so a theme switch repaints them
+  local tints = {}
+  local realTint = CRT.UI.Tint
+  CRT.UI.Tint = function(region, method, key, alpha) tints[region] = key return realTint(region, method, key, alpha) end
+  for _, kill in ipairs({ false, true, "none" }) do
+    if kill == "none" then kill = nil end
     local pull = { id = 5, encounterID = 3001, length = 250, kill = kill, casts = { { t = 10, spellID = 0 } },
       deaths = { { t = 90, name = "Halo", class = "PRIEST", role = "HEALER", spellID = 0 } } }
     local v = View.Create(mock("Frame"))
@@ -957,10 +977,13 @@ do
       if mode == "healers" then
         check(laneIndex(v, "healers:halo-home") ~= nil and skull.lane.kind ~= "healer", "Healer CDs keeps the deaths row above the healers")
       end
-      local line, want = v.endLine, kill and CRT.PALETTE.good or CRT.PALETTE.bad
+      local key = (kill == true and "good") or (kill == false and "bad") or "accent"
+      local line, want = v.endLine, CRT.PALETTE[key]
       check(line and line:IsShown() and line.w == 3 and line.h == #v.lanes * 30, mode .. ": the end line, 3 px, across every row")
-      check(line.color[1] == want[1] and line.color[2] == want[2] and line.color[3] == want[3], mode .. ": in the " .. (kill and "good" or "bad") .. " colour")
-      check(v.endTag:IsShown() and v.endTag.text.text == (kill and "Kill 4:10" or "Wipe 4:10"), mode .. ": tagged on the axis: " .. tostring(v.endTag.text.text))
+      check(line.color[1] == want[1] and line.color[2] == want[2] and line.color[3] == want[3], mode .. ": in the " .. key .. " colour")
+      check(tints[line] == key and tints[v.endTag.text] == key, mode .. ": both painted from the theme's " .. key)
+      local word = (kill == true and "Kill 4:10") or (kill == false and "Wipe 4:10") or "End 4:10"
+      check(v.endTag:IsShown() and v.endTag.text.text == word, mode .. ": tagged on the axis: " .. tostring(v.endTag.text.text))
     end
   end
 end

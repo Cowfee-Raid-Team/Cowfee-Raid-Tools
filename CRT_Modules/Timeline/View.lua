@@ -184,6 +184,7 @@ local TEXT = {
     zoomRange = "%s - %s (%s)", -- the drag-to-zoom band's label: from, to, and how long
     kill = "Kill %s", -- the end line's tag on the axis: how the overlaid pull ended, and when
     wipe = "Wipe %s",
+    ended = "End %s", -- a pull with no saved result
 }
 
 local function settings()
@@ -3825,8 +3826,9 @@ function Methods:DrawPhases(phases, length, height)
 end
 
 -- Draws the line where the overlaid pull ended, or hides it when there is none: 3 px across every row, in
--- the theme's good colour for a kill and its bad colour for a wipe (self.extra.endKill), with a "Kill 4:12" or
--- "Wipe 4:12" tag at the bottom of the time axis. Both layouts draw it (Abilities and Healer CDs).
+-- the theme's good colour for a kill, its bad colour for a wipe and its accent for a pull with no saved result
+-- (self.extra.endResult), with a "Kill 4:12", "Wipe 4:12" or "End 4:12" tag at the bottom of the time axis,
+-- painted through themed() so a theme switch repaints them. Both layouts draw it (Abilities and Healer CDs).
 function Methods:DrawEndLine(t, length, height)
     if type(t) ~= "number" then
         if self.endLine then
@@ -3847,17 +3849,20 @@ function Methods:DrawEndLine(t, length, height)
         tag.text:SetPoint("CENTER")
         self.endTag = tag
     end
-    local key = self.extra and self.extra.endKill and "good" or "bad"
-    local c = CRT.PALETTE[key] or (key == "bad" and DEATH_RED) or CRT.PALETTE.accent
+    local result = self.extra and self.extra.endResult
+    local key = (result == "kill" and "good") or (result == "wipe" and "bad") or "accent"
+    if not CRT.PALETTE[key] then
+        key = "accent" -- a palette without the status colours (every theme has them)
+    end
     local x = View.TimeToX(math.min(t, length), length, self.trackW)
-    self.endLine:SetColorTexture(c[1], c[2], c[3], 1)
+    themed(self.endLine, "SetColorTexture", key)
     self.endLine:ClearAllPoints()
     self.endLine:SetPoint("TOPLEFT", self.track, "TOPLEFT", x - END_LINE_W / 2, 0)
     self.endLine:SetSize(END_LINE_W, height)
     self.endLine:Show()
     local tag = self.endTag
-    tag.text:SetTextColor(c[1], c[2], c[3])
-    tag.text:SetText(string.format(key == "good" and TEXT.kill or TEXT.wipe, View.Format(t)))
+    themed(tag.text, "SetTextColor", key)
+    tag.text:SetText(string.format((result == "kill" and TEXT.kill) or (result == "wipe" and TEXT.wipe) or TEXT.ended, View.Format(t)))
     tag:SetWidth((tag.text.GetStringWidth and tag.text:GetStringWidth() or 40) + 8)
     tag:ClearAllPoints()
     tag:SetPoint("BOTTOM", self.axis, "BOTTOMLEFT", x, 2)

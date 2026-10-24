@@ -245,12 +245,33 @@ function P.OnlyPlayer(tags, name)
     return true
 end
 
--- Marks a proposal shared when its line names several players (part of an assignment: accepting moves
--- everyone's timer on it), with players the names as written. Never auto-accepted.
+-- Marks a proposal shared when its line is for anyone but the sender alone: another player, or a role, class
+-- or raid group word beside them ("Rixxy healers"). It is part of an assignment, so accepting moves everyone's
+-- timer on it, and it is never auto-accepted. players: every tag as written (the row's tooltip); playerCount:
+-- how many name players; others: the role, class and group words.
 local function share(p, timer)
-    local names = timer and P.PlayerTags(timer.tags) or {}
-    p.shared = timer ~= nil and (#names > 1 or not P.OnlyPlayer(timer.tags, p.sender))
-    p.players = p.shared and names or nil
+    p.shared, p.players, p.playerCount, p.others = false, nil, nil, nil
+    if not timer then
+        return
+    end
+    for _, tag in ipairs(timer.tags or {}) do
+        if not Shifts.TagsName({ tag }, p.sender) then
+            p.shared = true
+        end
+    end
+    if p.shared then
+        local names, isName = P.PlayerTags(timer.tags), {}
+        for _, n in ipairs(names) do
+            isName[n] = true
+        end
+        local others = {}
+        for _, tag in ipairs(timer.tags) do
+            if not isName[tag] then
+                others[#others + 1] = tag
+            end
+        end
+        p.players, p.playerCount, p.others = timer.tags, #names, others
+    end
 end
 
 -- The phases the boss has: 1, the note's own, and its ability timeline's (each difficulty group's when the
@@ -405,7 +426,8 @@ end
 -- old time, its tags naming the sender. The one check of arrival, every draw and Accept.
 function P.Owns(p, id, line)
     local timer = id and line and Notes:TimerAt(id, line)
-    return timer ~= nil and timer.spellId == p.spellID and timer.ph == p.oldPh and timer.time == p.oldT
+    return timer ~= nil and timer.spellId == p.spellID and timer.ph == p.oldPh and type(timer.time) == "number"
+        and tenth(timer.time) == tenth(p.oldT)
         and Shifts.TagsName(timer.tags, p.sender), timer
 end
 
@@ -517,6 +539,14 @@ end
 -- Applies the proposals auto-accept holds, once out of combat and encounter. Each is checked again.
 function P:ApplyHeld()
     if busy() then
+        for _, p in ipairs(self.list) do
+            if p.held then
+                -- still held: wait for the next end of combat too, not only the next encounter's end
+                driver:RegisterEvent("PLAYER_REGEN_ENABLED")
+                driver:RegisterEvent("ENCOUNTER_END")
+                break
+            end
+        end
         return
     end
     local list = {}
