@@ -19,7 +19,8 @@ local Profiles = {}
 CRT.Profiles = Profiles
 
 local DEFAULT = "Default"
-local SHARED = { classCache = true, roleCache = true, macros = true }
+-- whatsNew: the installed addon version is the account's, so What's new shows once whatever the profile
+local SHARED = { classCache = true, roleCache = true, macros = true, whatsNew = true }
 local EXPORT_PREFIX = "CRTP1:"
 local SHARE_PREFIX = "CRTS1:"
 local SHARE_VERSION = 1
@@ -106,6 +107,7 @@ Profiles.SHARE = {
         speechNotice = false, reminders = false, phases = false, overrides = false, nextId = false, saved = false, nextSavedId = false,
     },
     importBackup = false, -- the backup Undo last import puts back
+    whatsNew = false, -- Show after updates and the last version seen: personal
 }
 
 -- Window places and sizes: "Keep my window positions" leaves these as they are. Most are saved only once

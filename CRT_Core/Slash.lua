@@ -34,6 +34,7 @@ local function printHelp()
     print("  |cffffd100/crt previews|r - toggle the panel previews, same as the button in the main window")
     print("  |cffffd100/crt consumables scan|r - list your buffs and bag consumables, for updating the list")
     print("  |cffffd100/crt consumables check|r - test every ID in the built-in consumables list")
+    print("  |cffffd100/crt whatsnew|r - what's new in this version")
     print("  |cffffd100/crt help|r - show this list")
 end
 
@@ -231,6 +232,10 @@ SlashCmdList["COWFEERAIDTOOLS"] = function(msg)
         else
             CRT:Print("The timeline probe is not loaded.")
         end
+    elseif msg == "dev whatsnew" then
+        -- forget the version seen, so the next /reload shows What's new as after an update, every entry combined
+        CRT.db.whatsNew.seen = "0"
+        CRT:Print("What's new will show about 5 seconds after your next /reload.")
     elseif msg == "dev edit" then
         if CRT.Dev then
             CRT.Dev:Toggle()
@@ -259,6 +264,8 @@ SlashCmdList["COWFEERAIDTOOLS"] = function(msg)
         CRT.UI:TogglePreviews()
     elseif msg == "rc" then
         CRT.ConsumablesDisplay:Preview()
+    elseif msg == "whatsnew" or msg == "whats new" or msg == "what's new" then
+        CRT.WhatsNew:ShowNow()
     elseif msg == "help" or msg == "?" then
         printHelp()
     else

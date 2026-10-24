@@ -189,7 +189,7 @@ do
   local leaked = {}
   for p in pairs(paths) do for _, no in ipairs({ "notes.list", "groups.presets", "late.history", "tattle.history", "alerts.reminders", "alerts.saved", "timeline.bosses", "lootmaster.authority", "classCache", "importBackup",
       "readycheck.output", "readycheck.earlyPullOutput", "tattle.output", "tattle.autoPost", "tattle.season", "lootmaster.awardChannel", "lootmaster.awardMessage", "lootmaster.responses",
-      "notes.trustedOnly", "sound", "qol.lowHealth.customSounds", "seasonStats" }) do
+      "notes.trustedOnly", "sound", "qol.lowHealth.customSounds", "seasonStats", "whatsNew" }) do
     if p == no or p:sub(1, #no + 1) == no .. "." then leaked[#leaked + 1] = p end end end
   check(#leaked == 0, "no excluded data, report output, trust setting or sound file name is a shared path (" .. table.concat(leaked, ",") .. ")")
   local kept = {}
@@ -235,6 +235,7 @@ check(sent.v == 1 and sent.kind == "settings" and sent.from == "Solex" and type(
 local flat = GAME.SerializeCBOR(sent)
 check(not flat:find("secret", 1, true), "no note, note history, layout, history, reminder, saved alert or Season Stats counter is exported")
 check(sent.data.seasonStats == nil, "Season Stats is kept back")
+check(sent.data.whatsNew == nil, "What's new (Show after updates, the version seen) is kept back")
 check(not flat:find("Someone", 1, true) and not flat:find("Friend", 1, true), "no class cache or loot authority is exported")
 check(not flat:find("settingsTab", 1, true) and not flat:find("lastPage", 1, true), "no page state is exported")
 check(not flat:find("GUILD", 1, true) and not flat:find("officer", 1, true) and sent.data.readycheck.output == nil and sent.data.tattle.autoPost == nil and sent.data.notes.trustedOnly == nil, "no report output, auto-post or note trust setting is exported")
