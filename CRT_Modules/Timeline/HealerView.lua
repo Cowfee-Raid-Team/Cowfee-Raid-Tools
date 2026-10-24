@@ -52,7 +52,9 @@ local TEXT = {
 HV.TEXT = TEXT
 
 local DOT = " \194\183 "
-local BAND_ALPHA = 0.22 -- a cooldown's band after its cast, in the accent colour
+local BAND_ALPHA = 0.22 -- a cooldown's band after its cast, in its player's class colour (accent when unknown)
+HV.INDENT = 16 -- how far a cooldown row's icon and name sit right of its healer's name row
+local NAME_TINT, SPELL_TINT = 0.16, 0.12 -- a healer's block background alpha: the name row, the cooldown rows
 local BAND_INSET = 4 -- the band's gap from its row's top and bottom
 local BAND_LINE_W = 1 -- the line where the cooldown is up again
 local SAME_MOMENT = 0.05 -- seconds: two casts this close are the same moment, not too soon
@@ -103,6 +105,13 @@ local function spellIcon(id)
         return tex
     end
     return nil
+end
+
+-- A class's colour as { r, g, b, alpha } for a healer's block, or nil for a class the game doesn't know.
+-- These are the game's class colours, not theme colours: a class reads the same in every theme.
+local function classTint(class, alpha)
+    local c = usable(class) and RAID_CLASS_COLORS and RAID_CLASS_COLORS[class]
+    return c and { c.r, c.g, c.b, alpha } or nil
 end
 
 local function rgba(key, alpha)
@@ -515,8 +524,10 @@ function HV.Build(view, lanes, length)
             who.marker = not lead and (p.me and TEXT.yours or TEXT.locked) or nil
             local label = p.name .. (spec and (DOT .. spec) or "") .. (who.marker and (DOT .. who.marker) or "")
             out[#out + 1] = { key = "healers:" .. p.key:lower(), kind = "healer", label = label, class = who.class,
-                marks = {}, tip = headerTip(who), note = #who.rows == 0 and TEXT.classUnknown or nil }
+                marks = {}, tip = headerTip(who), note = #who.rows == 0 and TEXT.classUnknown or nil,
+                tint = classTint(who.class, NAME_TINT) }
             for _, r in ipairs(who.rows) do
+                r.indent, r.tint = HV.INDENT, classTint(who.class, SPELL_TINT) -- the view draws both
                 out[#out + 1] = r
                 r.row = #out
             end
@@ -647,9 +658,15 @@ function HV.Draw(view, length)
         local function x(t)
             return View.TimeToX(math.max(0, math.min(length, t)), length, trackW)
         end
-        local r, g, b = rgba("accent")
+        local ar, ag, ab = rgba("accent")
         for _, m in ipairs(view.marks or {}) do
             if m.hvLane and m.cd and m.row then
+                -- the band is in its player's class colour, so each block reads as one colour
+                local tint = m.hvLane.tint
+                local r, g, b = ar, ag, ab
+                if tint then
+                    r, g, b = tint[1], tint[2], tint[3]
+                end
                 local x0, x1 = x(m.t), x(m.t + m.cd)
                 local top = -(m.row - 1) * rowH - BAND_INSET
                 if x1 - x0 > 0 then

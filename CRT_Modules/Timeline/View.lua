@@ -3982,7 +3982,10 @@ function Methods:Refresh()
         l.stripe:SetPoint("BOTTOMRIGHT", self.body, "TOPRIGHT", 0, y - ROW_H)
         -- a reference row is tinted faintly in its type's color; other rows keep the alternate stripe
         local tint = lane.kind == "reference" and lane.color
-        if tint then
+        if lane.tint then -- a healer's block (Healer CDs), in the game's class colour with its own alpha
+            l.stripe:SetColorTexture(lane.tint[1], lane.tint[2], lane.tint[3], lane.tint[4])
+            tint = true
+        elseif tint then
             l.stripe:SetColorTexture(tint[1], tint[2], tint[3], TINT_ALPHA)
         else
             l.stripe:SetColorTexture(rgba("text", 0.04))
@@ -4023,6 +4026,9 @@ function Methods:Refresh()
             l.dots[d]:SetPoint("RIGHT", l, "RIGHT", -4 - tagW - (d - 1) * (DOT_SIZE + 3), 0)
         end
         l.text:SetPoint("RIGHT", l, "RIGHT", -2 - tagW - dotCount * (DOT_SIZE + 3), 0)
+        local indent = lane.indent or 0 -- a healer's cooldown rows sit under their name row
+        l.icon:SetPoint("LEFT", l, "LEFT", 20 + indent, 0)
+        l.text:SetPoint("LEFT", l, "LEFT", NAME_X + indent, 0)
         l.icon:SetTexture(lane.icon)
         l.text:SetText(lane.label or "")
         if lane.class then

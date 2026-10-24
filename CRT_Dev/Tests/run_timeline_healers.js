@@ -366,6 +366,46 @@ do
   check(#HV.TEXT.hint * 6 <= 760 - 16, "the hint fits the pop-out at its smallest")
 end
 
+-- The look: spell rows indented under the name, each healer's block tinted in their class colour ----------------------
+do
+  local v = newView()
+  local hi = laneIndex(v, "healers:halo-home")
+  local name, spell = v.labels[hi], v.labels[laneIndex(v, "healers:halo-home:64843")]
+  check(name.text.pt[4] == 42 and spell.text.pt[4] == 42 + HV.INDENT and HV.INDENT == 16, "a spell's name starts one indent right of the healer's name")
+  check(spell.icon.pt[4] == 20 + HV.INDENT and name.icon.pt[4] == 20, "and its icon too; the name row keeps its place")
+  local surge
+  for i, lane in ipairs(v.lanes) do if lane.label == "Surge" then surge = i end end
+  check(v.labels[surge].text.pt[4] == 42 and v.labels[surge].icon.pt[4] == 20, "an ability row is not indented")
+  local priest = RAID_CLASS_COLORS.PRIEST
+  local hs, ss = name.stripe, spell.stripe
+  check(hs.shown and hs.color[1] == priest.r and hs.color[4] > ss.color[4], "the name row is tinted in the class colour, a little stronger")
+  check(ss.shown and ss.color[1] == priest.r and ss.color[4] >= 0.10 and ss.color[4] <= 0.14, "a spell row is tinted faintly: " .. tostring(ss.color[4]))
+  local me = v.labels[laneIndex(v, "healers:me-home")]
+  local pal = RAID_CLASS_COLORS.PALADIN
+  check(me and me.stripe.color[1] == pal.r and me.stripe.color[2] == pal.g, "a paladin's block is paladin pink")
+  check(v.labels[laneIndex(v, "healers:me-home:31821")].stripe.color[3] == pal.b, "down its spell rows")
+  check(v.lanes[surge].tint == nil, "an ability row has no class tint")
+  -- unknown class: no tint
+  G:SetHandRole("Zorp-Elsewhere", "HEALER")
+  flush()
+  local zi = laneIndex(v, "healers:zorp-elsewhere")
+  check(zi and v.lanes[zi].tint == nil, "an unknown class has no tint")
+  G:SetHandRole("Zorp-Elsewhere", nil)
+  flush()
+  -- bands take the class colour
+  setNote({ "time:20;ph:1;tag:Halo;spellid:64843;", "time:30;ph:1;tag:Me;spellid:31821;" })
+  v = newView()
+  local hymn, aura = laneIndex(v, "healers:halo-home:64843"), laneIndex(v, "healers:me-home:31821")
+  local b1, b2
+  for _, t in ipairs(v.hvBands) do
+    if t:IsShown() and t.w > 2 and t.pt[5] == -(hymn - 1) * 30 - 4 then b1 = t end
+    if t:IsShown() and t.w > 2 and t.pt[5] == -(aura - 1) * 30 - 4 then b2 = t end
+  end
+  check(b1 and b1.color[1] == priest.r and b1.color[4] == 0.22, "a band is in the class colour at its alpha")
+  check(b2 and b2.color[1] == pal.r and b2.color[2] == pal.g, "a paladin's band is pink")
+  setNote({})
+end
+
 -- The casts: the raid note's cooldown lines, on their player's row ------------------------------------------------
 do
   setNote({
