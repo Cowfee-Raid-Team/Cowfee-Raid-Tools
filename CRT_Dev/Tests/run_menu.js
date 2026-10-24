@@ -103,9 +103,9 @@ local UI = CRT.UI
 -- 1. The groups and their labels, in order.
 local want = {
   { "General", "settings", "qol" },
-  { "Raid Admin", "readycheck", "groups", "gearcheck", "loot" },
   { "Bosses", "timeline", "notes", "pace" },
-  { "Modules", "lootmaster", "requests", "seasonstats", "late", "tattle" },
+  { "Raid Admin", "readycheck", "groups", "gearcheck", "late" },
+  { "Modules", "lootmaster", "loot", "requests", "seasonstats", "tattle" },
 }
 check(#UI.MENU_GROUPS == #want, "four menu groups, got " .. #UI.MENU_GROUPS)
 for i, w in ipairs(want) do

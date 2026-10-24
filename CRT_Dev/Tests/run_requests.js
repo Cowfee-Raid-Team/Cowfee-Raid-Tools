@@ -627,7 +627,7 @@ LM.current = nil
 
 -- 11. The menu: Requests is under Modules, after Loot Master
 local groups = panelSrc:match("UI.MENU_GROUPS = (%b{})") or ""
-check(groups:find('"lootmaster", "requests"', 1, true) ~= nil, "Modules lists requests right after lootmaster")
+check(groups:find('"lootmaster", "loot", "requests"', 1, true) ~= nil, "Modules lists requests after Loot Master and Loot History")
 -- nothing saved
 check(not dataSrc:find("CRTDB", 1, true) and not pageSrc:find("CRTDB", 1, true) and not popupSrc:find("CRTDB", 1, true), "Requests saves nothing")
 
