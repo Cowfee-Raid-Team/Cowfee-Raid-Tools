@@ -281,9 +281,9 @@ local TEXT = {
 }
 UI.MENU_GROUPS = {
     { label = TEXT.general, "settings", "qol" },
-    { label = TEXT.raidAdmin, "readycheck", "groups", "gearcheck", "loot" },
     { label = TEXT.bosses, "timeline", "notes", "pace" },
-    { label = TEXT.modules, "lootmaster", "requests", "seasonstats", "late", "tattle" },
+    { label = TEXT.raidAdmin, "readycheck", "groups", "gearcheck", "late" },
+    { label = TEXT.modules, "lootmaster", "loot", "requests", "seasonstats", "tattle" },
 }
 
 function UI:IsModern()

@@ -210,8 +210,8 @@ CRT.Bosses = { GearChecks = function() return { enchant = { 1, 3, 5, 7, 8, 11, 1
 check(UI.pages.gearcheck ~= nil, "the page is registered")
 eq(UI.pages.gearcheck.title, "Gear Checker", "it is called Gear Checker in the left menu")
 local listed = false
-for _, key in ipairs(UI.MENU_GROUPS[2]) do listed = listed or key == "gearcheck" end
-check(listed, "it sits in the Raid Groups and Ready Check block")
+for _, key in ipairs(UI.MENU_GROUPS[3]) do listed = listed or key == "gearcheck" end
+check(listed, "it sits in the Raid Admin block")
 local page = CreateFrame("Frame") page.w, page.h = UI.PAGE_W, UI.PAGE_H
 GC.LOW_ILVL = 15 -- the help text is built from it
 UI.pages.gearcheck.builder(page)
