@@ -11,6 +11,11 @@ local Alerts = CRT.Alerts
 local Phases = {}
 CRT.AlertPhases = Phases
 
+-- Your triggers are kept per boss: declared for the dev season purge (Bosses:DeclareStore, CRT_Data/Bosses/Registry.lua).
+if CRT.Bosses and CRT.Bosses.DeclareField then
+    CRT.Bosses:DeclareField("phase triggers", "alerts", "phases")
+end
+
 Phases.KINDS = {
     { key = "manual", label = "Next phase only" },
     { key = "emote", label = "Boss emote contains" },

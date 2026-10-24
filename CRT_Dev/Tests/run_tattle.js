@@ -2,7 +2,8 @@
 // reads, saves and posts nothing for a pull that wasn't a team raid; turned off, every pull is saved and stamped team
 // = true or false, and a night holds one kind (a pull of the other kind starts a new night); nights and pulls from
 // before count as team raids; Tattlebot reads CRT.Team through its one accessor; the Settings tab's check box and
-// History's Show filter, there only once a night that wasn't a team raid is saved.
+// History's Show filter, there only once a night that wasn't a team raid is saved. Also the season new nights are
+// filed under: the current season pack's name (the sample pack's), your own typed name instead, Season 1 with no pack.
 // Usage: node run_tattle.js <addon folder>
 const fs = require('fs');
 const path = require('path');
@@ -11,7 +12,7 @@ const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate();
 lualib.luaL_openlibs(L);
 const harness = themeLua(process.argv.slice(2)) + `
-local dataSrc, pageSrc, coreSrc, profilesSrc = ...
+local dataSrc, pageSrc, coreSrc, profilesSrc, registrySrc, sampleSeasonSrc = ...
 local fails, passes = 0, 0
 local function check(ok, what) if ok then passes = passes + 1 else fails = fails + 1 print("FAIL " .. what) end end
 local function eq(a, b, what) check(a == b, what .. " (got " .. tostring(a) .. ", want " .. tostring(b) .. ")") end
@@ -241,12 +242,67 @@ check(not sh.shown, "only team raids saved: no Show dropdown")
 local core = coreSrc
 check(profilesSrc:find("onlyTeam = true, avoidable", 1, true) ~= nil, "Only record team raids is shared in Export settings only")
 
+-- 5. The season new nights are filed under: the season pack's name, unless you typed your own -------------------
+eq(CRT.db.tattle.season, "", "the default is empty: follow the current season")
+local _, literals = (dataSrc .. pageSrc):gsub('"Season 1"', "")
+eq(literals, 1, "Season 1 is written once, as Tattle.DEFAULT_SEASON")
+check(not coreSrc:find('"Season 1"', 1, true), "and not in Core.lua")
+CRT.Bosses = nil
+eq(Tattle:SeasonName(), "Season 1", "no season pack: Season 1")
+s.season = "Season 1"
+eq(Tattle:SeasonName(), "Season 1", "the old default, no season pack: Season 1")
+assert(load(registrySrc, "Registry.lua"))("CowfeeRaidTools", CRT)
+assert(load(sampleSeasonSrc, "Season.lua"))("CowfeeRaidTools", CRT)
+eq(Tattle:SeasonName(), "Sample Season", "the old default saved in a profile follows the current season pack")
+s.season = ""
+eq(Tattle:SeasonName(), "Sample Season", "an empty name follows it too")
+s.onlyTeam, teamAnswer = false, true
+NOW = NOW + 86400
+pull(9001, "Alpha")
+eq(s.current and s.current.season, "Sample Season", "a new night is labelled with the current season's name")
+Tattle:EndNight("button")
+local packNight = s.history[#s.history]
+Tattle:SetSeasonName("  Tier X  ")
+eq(s.season, "Tier X", "a typed name is saved, trimmed")
+eq(Tattle:SeasonName(), "Tier X", "and overrides the season pack")
+NOW = NOW + 86400
+pull(9001, "Alpha")
+eq(s.current and s.current.season, "Tier X", "a new night takes the typed name")
+Tattle:EndNight("button")
+eq(packNight.season, "Sample Season", "a saved night keeps its label")
+eq(s.history[1].season, "Season 1", "and so do the oldest")
+local names = table.concat(Tattle:Seasons(), ", ")
+eq(names, "Season 1, Sample Season, Tier X", "the History filter lists every season, oldest first")
+Tattle:SetSeasonName("Sample Season")
+eq(s.season, "", "typing the season pack's own name goes back to following it")
+Tattle:SetSeasonName("Tier X")
+Tattle:SetSeasonName("")
+eq(s.season, "", "clearing the box goes back to following it")
+-- the Settings tab's box shows the name new nights get, and saves what is typed
+local seasonBox
+local function find(f) for _, k in ipairs(f.kids or {}) do if k.scripts and k.scripts.OnEditFocusLost and k.refresh then seasonBox = k end find(k) end end
+find(pf)
+check(seasonBox ~= nil, "Settings: the Season box")
+if seasonBox then
+  seasonBox.refresh()
+  eq(seasonBox.text, "Sample Season", "it shows the current season's name")
+  seasonBox.text = "My Tier"
+  seasonBox.scripts.OnEditFocusLost(seasonBox)
+  eq(s.season, "My Tier", "typing a name saves it")
+  eq(seasonBox.text, "My Tier", "and the box shows it")
+  seasonBox.text = ""
+  seasonBox.scripts.OnEditFocusLost(seasonBox)
+  eq(s.season, "", "clearing the box follows the season again")
+  eq(seasonBox.text, "Sample Season", "and shows its name")
+end
+check(helps.Season ~= nil and helps.Season:find("current season", 1, true) ~= nil, "the Season (?) says new nights take the current season's name")
+
 print(string.format("%d passed, %d failed", passes, fails))
 if fails > 0 then error("failures") end
 `;
 const dir = process.argv[2];
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
-const files = ['CRT_Modules/Tattlebot/Data.lua', 'CRT_Modules/Tattlebot/Page.lua', 'CRT_Core/Core.lua', 'CRT_Core/Profiles.lua'];
+const files = ['CRT_Modules/Tattlebot/Data.lua', 'CRT_Modules/Tattlebot/Page.lua', 'CRT_Core/Core.lua', 'CRT_Core/Profiles.lua', 'CRT_Data/Bosses/Registry.lua', 'CRT_Dev/Tests/SamplePack/Season.lua'];
 for (const f of files) {
   const p = path.join(dir, f);
   lua.lua_pushstring(L, to_luastring(fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : 'error("missing ' + f + '")'));

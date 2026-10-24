@@ -42,6 +42,11 @@ local Rules = CRT.AlertRules
 local Special = { dev = {} }
 CRT.AlertSpecial = Special
 
+-- Your choices are kept per boss: declared for the dev season purge (Bosses:DeclareStore, CRT_Data/Bosses/Registry.lua).
+if CRT.Bosses and CRT.Bosses.DeclareField then
+    CRT.Bosses:DeclareField("special alert choices", "alerts", "special")
+end
+
 local BLOCK = "special"
 Special.BLOCK = BLOCK
 local DEFAULT_LEAD = 5

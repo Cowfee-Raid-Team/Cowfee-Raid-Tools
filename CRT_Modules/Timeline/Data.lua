@@ -17,6 +17,20 @@ local function tdb()
     return CRT.db.timeline
 end
 
+-- The saved tables kept per boss, declared for the dev season purge (Bosses:DeclareStore, CRT_Data/Bosses/Registry.lua).
+-- ignored, abilities and the dev lists are keyed by the encounter ID as text.
+if CRT.Bosses and CRT.Bosses.DeclareField then
+    CRT.Bosses:DeclareField("recorded Timeline pulls", "timeline", "bosses")
+    CRT.Bosses:DeclareField("Timeline row settings", "timeline", "rows")
+    CRT.Bosses:DeclareField("ability timelines in use", "timeline", "reviewRefs")
+    CRT.Bosses:DeclareField("chosen part orders", "timeline", "orders")
+    CRT.Bosses:DeclareField("ignored mechanics", "timeline", "ignored")
+    CRT.Bosses:DeclareField("ability labels", "timeline", "abilities")
+    CRT.Bosses:DeclareField("pull number backups", "timeline", "pullNumberBackup")
+    CRT.Bosses:DeclareField("hidden ability drafts", "dev", "hiddenAbilities")
+    CRT.Bosses:DeclareField("Mech Alerts hidden drafts", "dev", "mechHidden")
+end
+
 function Timeline:OnChange(fn)
     self.listeners[#self.listeners + 1] = fn
 end

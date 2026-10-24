@@ -22,8 +22,41 @@ local ADDON, CRT = ...
 -- the current season only, by default, or all. See the vault note "Cowfee Raid Tools - Boss Library
 -- Design".
 
-local Bosses = { seasons = {}, bosses = {}, order = {}, topics = {} }
+local Bosses = { seasons = {}, bosses = {}, order = {}, topics = {}, stores = {} }
 CRT.Bosses = Bosses
+
+-- Per-boss stores ----------------------------------------------------------------------------
+-- Every saved table that holds something per boss is declared here once, by the module that owns it, so the dev
+-- season purge (Dev/SeasonTools.lua) clears it with the rest and a new store can't be missed:
+--   Bosses:DeclareStore(label, getter, bySeason)
+-- label names it in the purge's question ("recorded Timeline pulls"). getter(db) returns the table from a profile's
+-- saved data (CRT.db), or nil while it isn't made. Its keys are encounter IDs, as numbers or as text (a purge
+-- clears both), or season keys when bySeason is true. Long-term data, kept across seasons, is never declared: the
+-- list of both kinds is above the defaults in CRT_Core/Core.lua. This file loads before every module.
+function Bosses:DeclareStore(label, getter, bySeason)
+    assert(type(label) == "string" and type(getter) == "function", "a store needs a label and a getter")
+    local store = { label = label, getter = getter, bySeason = bySeason and true or false }
+    for i, s in ipairs(self.stores) do
+        if s.label == label then
+            self.stores[i] = store
+            return
+        end
+    end
+    self.stores[#self.stores + 1] = store
+end
+
+-- The same for one field of a saved area, CRT.db[area][field], the usual shape.
+function Bosses:DeclareField(label, area, field, bySeason)
+    self:DeclareStore(label, function(db)
+        local t = type(db) == "table" and db[area]
+        return type(t) == "table" and t[field] or nil
+    end, bySeason)
+end
+
+-- The declared stores, in the order they were declared: { { label, getter, bySeason }, ... }.
+function Bosses:Stores()
+    return self.stores
+end
 
 -- A season pack's description, from its Season.lua: { key, name, expansion, order, current, raids }
 -- (raids is the route, below).

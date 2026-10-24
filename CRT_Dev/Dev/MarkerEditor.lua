@@ -71,6 +71,11 @@ local bossID -- the encounter being edited
 local draft = {}
 local previewing = false -- Show preview is on
 
+-- The drafts are kept per boss: declared for the season purge (Bosses:DeclareStore, CRT_Data/Bosses/Registry.lua).
+if CRT.Bosses and CRT.Bosses.DeclareField then
+    CRT.Bosses:DeclareField("marker display drafts", "dev", "markerDisplays")
+end
+
 local function drafts()
     CRT.db.dev = CRT.db.dev or {}
     CRT.db.dev.markerDisplays = CRT.db.dev.markerDisplays or {}

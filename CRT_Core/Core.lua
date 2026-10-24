@@ -6,6 +6,23 @@ CRT.name = ADDON
 CRT.MEDIA = "Interface\\AddOns\\" .. ADDON .. "\\CRT_Media\\Media\\"
 CRT.version = (C_AddOns and C_AddOns.GetAddOnMetadata and C_AddOns.GetAddOnMetadata(ADDON, "Version")) or "dev"
 
+-- Saved data by how long it lives. Never rename a store below: old saved data must still load.
+-- Per season (declared, so the dev season purge, Dev/SeasonTools.lua, clears them for a finished season's bosses):
+-- each module declares its tables kept per boss with Bosses:DeclareStore or DeclareField (CRT_Data/Bosses/Registry.lua).
+--   timeline.bosses, rows, reviewRefs, orders, ignored, abilities, pullNumberBackup (Timeline/Data.lua)
+--   alerts.reminders, anyBackup (Alerts/Reminders.lua), alerts.phases (Alerts/Phases.lua), alerts.special (Alerts/Special.lua)
+--   pace.own, shared, use, disabled (Pace/Data.lua); markers.disabled (Markers/Display.lua)
+--   dev.hiddenAbilities, mechHidden (Timeline/Data.lua), dev.markerDisplays (Dev/MarkerEditor.lua),
+--   dev.bossRoute[seasonKey] (Dev/BossOrder.lua, kept by season)
+-- A new table kept per boss is declared the same way, by the module that writes it.
+-- Long term (never declared, so a purge never touches them; they outlast a season):
+--   seasonStats (counters per boss, read by season; /crt dev seasons clearstats <key> clears one season's)
+--   tattle.history, tattle.current, tattle.custom (Tattlebot's nights, with each night's season name and team stamp)
+--   late.history (the Late Tracker's nights, team stamped), notes.list and notes.history (raid notes and their
+--   earlier texts), CRTLootDB (Loot History, its own saved variable), timeline.references (your own ability timelines)
+--   longTerm: the area for new long-term data. Anything new that should outlast a season goes under it, never
+--   declared; nothing has moved into it, and the stores above stay where they are.
+
 local defaults = {
     window = { point = "CENTER", x = 0, y = 0, scale = 100 }, -- the main panel; scale is a percent, 50 to 200
     -- The General Settings page. font is "default" (the game's own) or a name from CRT.FONTS, outline is
@@ -306,7 +323,9 @@ local defaults = {
         output = "self",
         maxPlayers = 10,
         custom = {}, -- the player's own tracked spells, [spellID] = mechanic name ("" for the spell's name)
-        season = "Season 1", -- the season new nights are filed under, for the History filter
+        -- the season name you typed for new nights (the History filter's seasons); "" follows the current season pack's
+        -- name (Tattle:SeasonName). Profiles from before hold the old default, Tattle.DEFAULT_SEASON, which follows it too.
+        season = "",
         history = {},
         nextId = 1,
     },
@@ -359,6 +378,9 @@ local defaults = {
         show = "team",
         bosses = {},
     },
+    -- Long-term data that outlasts a season (the list at the top of this file): never declared, so the season purge
+    -- keeps it. Data only, never in Export settings only. Empty until a feature saves something here.
+    longTerm = {},
     -- Alerts. Reminders, phase events and bar settings for the alerts engine (Alerts/Engine.lua).
     -- reminders are the player's own timed reminders, phases the phase events they set up, overrides
     -- their changes to shared packs, and nextId numbers them. The bars window position is added when moved.

@@ -131,6 +131,7 @@ g "marker macros tab" && { node run_markermacros.js "$W" 2>&1 | tail -40; echo "
 g "Lua 5.1 upvalue limit (60 per function; the harnesses run a newer Lua that allows 255)" && { node lua-upvalue-check.cjs "$W" | grep -v "^OK"; up=${PIPESTATUS[0]}; if [ "$up" = "0" ]; then echo "all passed"; else echo "FAIL a function has more than 60 upvalues"; fi; }
 g "boss route" && { node run_bossroute.js "$W" 2>&1 | tail -1; }
 g "season ids" && { node run_seasonids.js "$W" 2>&1 | tail -30; echo "exit ${PIPESTATUS[0]}"; }
+g "season purge" && { node run_seasonpurge.js "$W" 2>&1 | tail -250; echo "exit ${PIPESTATUS[0]}"; }
 g "journal export" && { node run_journal_export.js "$W" 2>&1 | tail -2; echo "exit ${PIPESTATUS[0]}"; }
 g "ability tip" && { node run_ability_tip.js "$W" 2>&1 | tail -80; echo "exit ${PIPESTATUS[0]}"; }
 g "journal walk" && { node run_journal_walk.js "$W" 2>&1 | tail -2; echo "exit ${PIPESTATUS[0]}"; }
