@@ -3,7 +3,7 @@ local ADDON, CRT = ...
 -- Kith'ix. Everything the addon ships about this boss, read by Bosses/Registry.lua.
 --
 -- encounterID 3513 comes from the boss's Warcraft Logs rankings link (boss=3513), not from a pull
---             yet.
+--             yet; /crt dev seasons ids checks it against the saved pulls.
 -- references  The Mythic reference timeline, in the Timeline's text format (see Timeline/Database.lua
 --             for the format), transcribed from two planner screenshots on 2026-10-19. The rows have
 --             no types yet: Alex sets them in game with the Logged Timeline Ref tool on the Development
