@@ -123,6 +123,7 @@ CRT_Modules\Alerts\CooldownData.lua
 CRT_Modules\Alerts\Cooldowns.lua
 CRT_Modules\Alerts\Roster.lua
 CRT_Modules\Timeline\View.lua
+CRT_Modules\Timeline\HealerView.lua
 CRT_Modules\Timeline\ReferencePage.lua
 CRT_Modules\Timeline\ReviewTab.lua
 CRT_Modules\Timeline\SettingsTab.lua

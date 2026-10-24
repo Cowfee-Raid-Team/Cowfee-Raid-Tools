@@ -44,6 +44,11 @@ local TEXT = {
     noRehearse = "Nothing to rehearse: pick a boss with an ability timeline or a pull on the Timeline's Review tab.",
     noAbilities = "No ability timeline",
     yours = "yours",
+    abilities = "Abilities",
+    healers = "Healer CDs",
+    viewHelp = "Abilities shows the boss's ability timeline. Healer CDs shows each healer with one row per major healing cooldown, and a Raid damage row on top.\n\n"
+        .. "The healers are the players on the active Raid Groups layout whose role is healer: the role you set there (right-click a name, Set role), else the game's role. Anyone the raid note gives a cooldown gets rows too.\n\n"
+        .. "The casts are the raid note's cooldown lines. Drag one to move it, or double-click a row to add one. Only this window has Healer CDs; the docked timeline always shows the abilities.",
 }
 
 local GRAY = { 0.35, 0.35, 0.35 }
@@ -404,12 +409,17 @@ end
 -- Pop out moves the whole Review tab (the boss and pull choices, the zoom and the view) into a
 -- window of its own that can be dragged to any size, for a wider view than the main panel allows.
 -- The Review tab then shows a note and a button to bring it back, and closing the window (its X,
--- Escape or Dock) puts it back. Its size and position are saved in timeline.popout.
+-- Escape or Dock) puts it back. Its size and position are saved in timeline.popout. Its title strip holds
+-- the Abilities | Healer CDs toggle (timeline.popView): Healer CDs draws the view's healer layout
+-- (Timeline/HealerView.lua) in this window only, and docking always goes back to the abilities.
 
 local MIN_W, MIN_H = 760, 360
 local popWin, popButton, dockedNote
 local popped = false
 local returnPage -- the page Show on the Timeline came from, shown again when the pop-out is closed
+-- the Abilities | Healer CDs toggle on the pop-out's title strip: each half as wide as its label
+local TOGGLE = { pad = 10, minW = 60, gap = 4, h = 18, help = 8 } -- help: the gap after the (?), before Reset
+local toggleButtons = {}
 
 local function popSettings()
     local s = settings()
@@ -418,6 +428,70 @@ local function popSettings()
 end
 
 local dock
+
+-- The pop-out's view: "abilities" (the default) or "healers" (Healer CDs), kept in timeline.popView.
+local function popView()
+    return settings().popView == "healers" and "healers" or "abilities"
+end
+
+-- Lights the toggle's half and draws the view in it: Healer CDs only while popped out.
+local function applyPopView()
+    local key = popped and popView() or "abilities"
+    for _, b in ipairs(toggleButtons) do
+        UI:SetTabSelected(b, b.viewKey == key)
+    end
+    if view and view.SetMode then
+        view:SetMode(key == "healers" and "healers" or nil)
+    end
+end
+
+local function setPopView(key)
+    settings().popView = key == "healers" and "healers" or "abilities"
+    applyPopView()
+end
+
+-- Each half as wide as its label (measured again each time the window opens, for a changed text size),
+-- right to left from the (?) before Reset.
+local function layToggle()
+    local after
+    for i = #toggleButtons, 1, -1 do
+        local b = toggleButtons[i]
+        local fs = b.text
+        local w = (fs.GetUnboundedStringWidth and fs:GetUnboundedStringWidth()) or fs:GetStringWidth() or 0
+        b:SetSize(math.max(TOGGLE.minW, math.ceil(tonumber(w) or 0) + 2 * TOGGLE.pad), TOGGLE.h)
+        b:ClearAllPoints()
+        if after then
+            b:SetPoint("RIGHT", after, "LEFT", -TOGGLE.gap, 0)
+        else
+            b:SetPoint("RIGHT", popWin.reset, "LEFT", -(TOGGLE.help + UI.HELP_GAP + UI.HELP_SIZE), 0)
+        end
+        after = b
+    end
+end
+
+local function buildToggle()
+    local strip = popWin.strip
+    for _, v in ipairs({ { key = "abilities", label = TEXT.abilities }, { key = "healers", label = TEXT.healers } }) do
+        local b = CreateFrame("Button", nil, strip, "BackdropTemplate")
+        if b.SetBackdrop then
+            b:SetBackdrop(BACKDROP)
+        end
+        b.sel = b:CreateTexture(nil, "ARTWORK")
+        b.sel:SetAllPoints()
+        b.sel:SetColorTexture(UI.Color("heading", 0.18)) -- UI:RegisterTab styles it from here on
+        b.text = b:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+        b.text:SetPoint("CENTER")
+        b.text:SetText(v.label)
+        b.viewKey = v.key
+        b:SetScript("OnClick", function()
+            setPopView(v.key)
+        end)
+        UI:RegisterTab(b)
+        toggleButtons[#toggleButtons + 1] = b
+    end
+    UI.HelpRight(toggleButtons[#toggleButtons], TEXT.healers, TEXT.viewHelp, { parent = strip })
+    layToggle()
+end
 
 -- The window is a UI.Window pop-out: the game's window art in Default: Blizzard and the theme in the
 -- Modern themes (UI:StyleWindow, restyled on a theme change), the shared title strip with Reset and
@@ -431,6 +505,7 @@ local function buildPopout()
         kind = "popout", title = "Timeline", layer = "timeline", saved = popSettings,
         width = 1200, height = 600, minWidth = MIN_W, minHeight = MIN_H,
     })
+    buildToggle()
 
     -- Closing the window, however it closes, puts the Review tab back, and ends a Show on the
     -- Timeline's light. Opened by Show on the Timeline, the main window goes back to the page it
@@ -454,6 +529,7 @@ end
 -- Puts the Review tab back on the page.
 dock = function()
     popped = false
+    applyPopView() -- docked: always the abilities
     reviewFrame:SetParent(tabFrames.review)
     reviewFrame:ClearAllPoints()
     reviewFrame:SetAllPoints(tabFrames.review)
@@ -480,6 +556,8 @@ local function popOut()
     popButton:SetText("Dock")
     popWin:Show()
     UI:SkinTree(popWin)
+    layToggle()
+    applyPopView()
     refresh()
 end
 
@@ -792,6 +870,10 @@ function Timeline:ShowRow(encounterID, spell, name)
     refresh()
     if not view then
         return false
+    end
+    -- an ability's row is on Abilities
+    if popView() == "healers" then
+        setPopView("abilities")
     end
     local spellID = type(spell) == "number" and spell or nil
     return view:Highlight(spellID, type(spell) == "string" and spell or name)

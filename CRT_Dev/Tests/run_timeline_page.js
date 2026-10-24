@@ -94,6 +94,7 @@ function CRT:Print(m) printed[#printed+1] = m end
 windowsMade = {}
 function CRT.UI.Window(name, o)
   local w = mock("window") w.content = mock() w.placed = 0
+  w.strip, w.reset = mock("strip"), mock("reset") -- the title strip, and Reset on it (a pop-out's)
   rawset(w, "Place", function(self) self.placed = self.placed + 1 end)
   rawset(w, "SetBackdropColor", function(self) self.flatPainted = true end)
   windowsMade[#windowsMade + 1] = { name = name, opts = o, frame = w }
@@ -111,6 +112,7 @@ do
   CRT.TimelineJournal.RaidBosses = function() return realCRT.TimelineJournal:RaidBosses() end
 end
 local view = { SetData = function(self, pull, eid, overlay, name, group) self.pull, self.eid, self.overlay, self.group = pull, eid, overlay, group self.sets = (self.sets or 0) + 1 end, refreshes = 0, Refresh = function(self) self.refreshes = self.refreshes + 1 end, SetSpan = function(self, v) self.span = v end, Fit = function(self) self.fits = (self.fits or 0) + 1 end, CastCount = function() return 0 end, SetOrder = function(self, o) self.order = o end, ClearHighlight = function(self) self.highlight = nil end, Highlight = function(self, id, name) self.highlight = { spellID = id, name = name and name:lower() } local ref = self.pull and self.pull.reference for _, row in ipairs(ref and ref.rows or {}) do if (id and row.spellID == id) or (name and row.name:lower() == name:lower()) then return true end end return false end }
+view.SetMode = function(self, mode) self.mode = mode self.modes = (self.modes or 0) + 1 end
 view.EncounterNumber = function(self) return type(self.eid) == "number" and self.eid or nil end
 view.SetPlayhead = function(self, t, follow) self.playT = type(t) == "number" and t or nil self.playFollow = follow and true or false end
 -- the raid notes and their sharing, as CRT_Modules/Notes/Data.lua and CRT_Modules/Notes/Comm.lua give them
@@ -1101,6 +1103,52 @@ do
   diffDD.opts.set("nh")
 end
 print("ok the pop-out is a UI.Window")
+do
+  -- the Abilities | Healer CDs toggle: on the pop-out's title strip only, Abilities first, remembered
+  local made
+  for _, m in ipairs(windowsMade) do if m.name == "CowfeeRaidToolsTimelineWindow" then made = m end end
+  local w = made.frame
+  local halves = {}
+  for _, b in ipairs(tabs) do if rawget(b, "viewKey") then halves[#halves + 1] = b end end
+  assert(#halves == 2 and halves[1].viewKey == "abilities" and halves[2].viewKey == "healers", "two halves: Abilities, Healer CDs")
+  assert(tabText(halves[1]) == "Abilities" and tabText(halves[2]) == "Healer CDs", "labelled Abilities and Healer CDs")
+  -- sized from their labels each time the window opens (6 px a letter here)
+  for _, b in ipairs(halves) do
+    rawset(b, "SetSize", function(self, bw, bh) rawset(self, "w", bw) rawset(self, "h", bh) end)
+    rawset(b.text, "GetStringWidth", function(self) return #(self.text or "") * 6 end)
+  end
+  CRT.TimelinePopout()
+  w:Hide() w.OnHide()
+  assert(halves[2].w == 10 * 6 + 20 and halves[1].w == 9 * 6 + 20, "each half as wide as its label and padding: " .. tostring(halves[1].w) .. ", " .. tostring(halves[2].w))
+  assert(helps["Healer CDs"] and helpTargets["Healer CDs"] == halves[2], "a (?) right of the toggle explains the view")
+  assert(helps["Healer CDs"]:find("Raid Groups", 1, true) and helps["Healer CDs"]:find("raid note", 1, true), "it says where the rows and casts come from")
+  -- placed right to left from Reset, leaving room for the (?)
+  assert(halves[2].pt[1] == "RIGHT" and halves[2].pt[2] == w.reset and halves[2].pt[4] == -(8 + 4 + 20), "Healer CDs sits a (?) left of Reset")
+  assert(halves[1].pt[2] == halves[2] and halves[1].pt[4] == -4, "Abilities just left of it")
+  -- the toggle, its (?), Reset and the close button leave the title room at the smallest size
+  local used = halves[1].w + 4 + halves[2].w + 8 + 4 + 20 + 4 + 44 + 30
+  assert(halves[1].w >= 60 and used <= 760 - 200, "fits at the pop-out's minimum width: " .. used)
+  -- docked: Abilities, always
+  CRT.db.timeline.popView = nil
+  assert(view.mode == nil, "docked: the abilities")
+  CRT.TimelinePopout()
+  assert(view.mode == nil, "the pop-out opens on Abilities by default")
+  halves[2].OnClick(halves[2])
+  assert(view.mode == "healers" and CRT.db.timeline.popView == "healers", "Healer CDs: the view's healer layout, remembered")
+  w:Hide() w.OnHide()
+  assert(view.mode == nil, "docking goes back to the abilities")
+  CRT.TimelinePopout()
+  assert(view.mode == "healers", "the next pop-out opens on Healer CDs again")
+  halves[1].OnClick(halves[1])
+  assert(view.mode == nil and CRT.db.timeline.popView == "abilities", "Abilities again")
+  halves[2].OnClick(halves[2])
+  -- Show on the Timeline lights an ability's row: on Abilities
+  T:ShowRow(3470, "Soulcoil Rite")
+  assert(view.mode == nil and CRT.db.timeline.popView == "abilities", "Show on the Timeline switches to Abilities")
+  w:Hide() w.OnHide()
+  diffDD.opts.set("nh")
+end
+print("ok the pop-out's Abilities | Healer CDs toggle")
 
 -- Rehearse (Task 4) ------------------------------------------------------------------------------------
 local RW, Run = CRT.TimelineRehearsalWindow, CRT.TimelineRehearsalRun

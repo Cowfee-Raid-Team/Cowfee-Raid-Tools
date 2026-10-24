@@ -36,6 +36,9 @@ local ADDON, CRT = ...
 -- chips wrap onto rows, up to 3 shown (fewer when the lanes
 -- would get under 3 rows); the wheel scrolls the rest. A right click on the track that doesn't move
 -- opens a menu there: New alert here, or Place a template or a cooldown.
+-- view:SetMode("healers") (the pop-out's Healer CDs toggle) draws Timeline/HealerView.lua's rows in place of
+-- the ability rows: Raid damage, then each healer with one row per major cooldown, the raid note's cooldown
+-- lines as flags on them; the axis, zoom, scrolling, flag drag and Undo are this view's. SetMode(nil) goes back.
 
 local View = {}
 CRT.TimelineView = View
@@ -43,6 +46,7 @@ CRT.TimelineView = View
 local LABEL_W = 166 -- the lane name column, with a mechanic's show tick at its left
 local NAME_X = 42 -- where a lane's name starts in its label, after the tick and the icon
 local ROW_H = 30
+View.ROW_H = ROW_H -- every lane's height, for Timeline/HealerView.lua's bands
 local AXIS_H = 20
 local PHASE_ROW_H = 12 -- each row of phase labels above the time labels
 local PHASE_ROWS = 2 -- phase labels stagger over at most this many rows
@@ -309,7 +313,9 @@ local function abilityTip(owner, lane, spellID, lines)
 end
 
 local function iconEnter(b)
-    local mark, lane = b.mark, b.lane
+    -- a Healer CDs Raid damage icon is drawn on that row but belongs to its own ability row (mark.source)
+    local mark = b.mark
+    local lane = mark.source or b.lane
     if lane.kind == "reference" then
         local lines = { { "Planned at " .. View.Format(mark.t), 1, 1, 1 } }
         if type(mark.dur) == "number" and mark.dur > 0 then
@@ -398,6 +404,8 @@ local function labelEnter(l)
     local lane = l.lane
     if lane and ABILITY_LANES[lane.kind] then
         abilityTip(l, lane, lane.spellID)
+    elseif lane and lane.tip then
+        lane.tip(l) -- a Healer CDs row's own tooltip
     end
 end
 
@@ -1306,6 +1314,7 @@ local function castIcon(lane, mark)
     if not (lane and mark and type(mark.t) == "number") or mark.death then
         return false
     end
+    lane = mark.source or lane -- a Healer CDs Raid damage icon: its own ability row
     return lane.kind == "reference" or lane.kind == "spell" or lane.kind == "unnamed"
 end
 
@@ -1313,6 +1322,7 @@ end
 -- list). Nil when neither is known.
 local function castSpell(lane, mark)
     local readable = CRT.Timeline.readable
+    lane = mark.source or lane
     if readable(lane.spellID) and type(lane.spellID) == "number" and lane.spellID > 0 then
         return lane.spellID
     end
@@ -1375,7 +1385,30 @@ function Methods:TrackDoubleClick()
     local length = math.max(1, self.extra.length or 0)
     local x = self.hscroll:GetHorizontalScroll() + cursorX(self.hscroll)
     local t = math.max(0, math.min(length, View.XToTime(x, length, self.trackW)))
+    -- Healer CDs: a cooldown row places that cooldown for its player (Timeline/HealerView.lua)
+    local HealerView = self.mode == "healers" and CRT.TimelineHealerView
+    if HealerView then
+        local _, y = self:CursorOnTrack()
+        if HealerView.DoubleClick(self, tenth(t), self:LaneAtY(y)) then
+            return
+        end
+    end
     self:OpenAt(t)
+end
+
+-- The layout drawn: nil for the ability rows, "healers" for Healer CDs (Timeline/HealerView.lua). The page
+-- sets it for the pop-out only.
+function Methods:SetMode(mode)
+    mode = mode == "healers" and "healers" or nil
+    if mode ~= self.mode then
+        self.mode = mode
+        self:ClearSelection()
+        self:Refresh()
+    end
+end
+
+function Methods:Mode()
+    return self.mode
 end
 
 -- Markers -------------------------------------------------------------------------------------------
@@ -1887,6 +1920,10 @@ local function cursorOnTrack(self)
     local x, y = GetCursorPosition()
     x, y = x / scale, y / scale
     return self.hscroll:GetHorizontalScroll() + x - (self.hscroll:GetLeft() or 0), (self.hscroll:GetTop() or 0) - y
+end
+
+function Methods:CursorOnTrack()
+    return cursorOnTrack(self)
 end
 
 -- The time at x on the track, within the view and to a tenth.
@@ -3485,6 +3522,11 @@ function Methods:DrawMarks(length)
         local icon = chipIcon(m)
         f.icon:SetTexture(icon)
         f.edge:SetColorTexture(rgba(key))
+        if m.tooSoon then
+            -- Healer CDs: cast while its cooldown from the cast before is still running
+            f.edge:SetColorTexture(DEATH_RED[1], DEATH_RED[2], DEATH_RED[3], 1)
+            f.head:SetColorTexture(DEATH_RED[1], DEATH_RED[2], DEATH_RED[3], 1)
+        end
         f.icon:SetShown(icon ~= nil)
         f.edge:SetShown(icon ~= nil)
         f.head:SetShown(icon == nil)
@@ -3854,8 +3896,15 @@ function Methods:Refresh()
     local lanes = self.lanes
     local width = self:VisibleWidth()
     local length = pull and math.max(1, self.extra.length or 0) or 1
-    -- the saved notes' markers, collected before the lanes are drawn since they may add the Notes lane
-    self.marks = self:Marks(lanes, length)
+    -- the saved notes' markers, collected before the lanes are drawn since they may add the Notes lane;
+    -- Healer CDs puts its own rows in place of the lanes, the note lines on them
+    local HealerView = pull and self.mode == "healers" and CRT.TimelineHealerView
+    if HealerView then
+        lanes, self.marks = HealerView.Build(self, lanes, length)
+        self.lanes, self.ignoredLanes, self.unknown = lanes, {}, {}
+    else
+        self.marks = self:Marks(lanes, length)
+    end
     self.trackW = pull and math.max(1, length * width / clampSpan(s.span)) or 1
     local height = math.max(1, #lanes * ROW_H)
     local ignoredRows = #self.ignoredLanes > 0 and (1 + (s.ignoredOpen and #self.ignoredLanes or 0)) or 0
@@ -3900,7 +3949,7 @@ function Methods:Refresh()
         l.stripe:SetPoint("TOPLEFT", self.body, "TOPLEFT", 0, y)
         l.stripe:SetPoint("BOTTOMRIGHT", self.body, "TOPRIGHT", 0, y - ROW_H)
         -- a reference row is tinted faintly in its type's color; other rows keep the alternate stripe
-        local tint = lane.kind == "reference" and lane.color
+        local tint = (lane.kind == "reference" or lane.kind == "raid") and lane.color
         if tint then
             l.stripe:SetColorTexture(tint[1], tint[2], tint[3], TINT_ALPHA)
         else
@@ -3979,7 +4028,7 @@ function Methods:Refresh()
                     b.bg:SetColorTexture(r, g, bl)
                 end
             else
-                local icon = lane.icon
+                local icon = mark.icon or lane.icon -- a Raid damage icon has its own row's
                 if lane.kind == "spell" and not icon then
                     local ok, tex = pcall(C_Spell.GetSpellTexture, mark.spellID)
                     icon = ok and tex or UNNAMED_ICON
@@ -4008,6 +4057,9 @@ function Methods:Refresh()
     self.unknownText:SetText(#names > 0 and ("Time unknown: " .. table.concat(names, ", ")) or "")
     self:DrawHighlight(lanes)
     self:DrawMarks(length)
+    if CRT.TimelineHealerView then
+        CRT.TimelineHealerView.Draw(self, length) -- Healer CDs' cooldown bands and hint, or none
+    end
     self:DrawSelection()
     self:DrawStrip()
     self:ScrollTo(self.hscroll:GetHorizontalScroll())
