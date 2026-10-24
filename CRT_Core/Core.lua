@@ -383,6 +383,10 @@ local defaults = {
         nextSavedId = 1,
         -- The Timeline's Cooldowns row (Alerts/Cooldowns.lua): which cooldowns it lists.
         cooldownFilter = "mine",
+        -- Special alerts (Alerts/Special.lua): your choices per boss and alert, special[encounterID][key] =
+        -- { on, show, speak, markers }; specialView is what Mech Alerts' list shows, "mechanics" or "special".
+        special = {},
+        specialView = "mechanics",
     },
     -- The settings as they were before the last settings-only import (Profiles:ApplySettings in Profiles.lua):
     -- { from, saved, values = { [path] = value }, unset = { [path] = true } }, empty when there is none.

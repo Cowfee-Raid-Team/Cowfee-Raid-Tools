@@ -9,6 +9,12 @@ local ADDON, CRT = ...
 --   markers     -> CRT.MarkerDisplayDB.displays  (marker displays)
 --   markerHelp  -> CRT.MarkerDisplayDB.help      (how the marker calls work on the boss, one string)
 --   pace        -> CRT.PaceDB.bosses             (pace plans)
+-- One field is read where it is used, through Bosses:Get, not copied here:
+--   special     -> CRT.AlertSpecial (Alerts/Special.lua: the boss's scripted special alerts, on Mech Alerts'
+--                  Special list), a list of { key, label, help, type, difficulty, default, when = { row |
+--                  spellID | times }, lead, who = { mode = "everyone" | "rotation" (rotation = { { 1, 2 },
+--                  { 3, 4 } }) | "note" (note = "<label>") }, text, show, markers = { marks, on } }. The full
+--                  format is at the top of Alerts/Special.lua; an entry that doesn't read is skipped.
 -- Features that don't depend on a boss (the Late Tracker, Raid Groups, ready checks, consumables)
 -- never read it. A season's own facts that aren't about a boss (the Gear Checker's enchant, socket and
 -- season checks) live in a topic file each (Bosses:SeasonData) and are read through their accessor
