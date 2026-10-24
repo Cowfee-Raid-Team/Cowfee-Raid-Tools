@@ -6,6 +6,8 @@ local ADDON, CRT = ...
 -- lane names; the track to its right scrolls sideways under a time axis and up and down with the
 -- lane names. The mouse wheel over the track zooms around the cursor (with Shift it scrolls the
 -- lanes), dragging the track or its bar scrolls it, and hovering shows the time under the cursor.
+-- A left drag along the time axis, or Ctrl + left drag on the track, selects a range and zooms to it;
+-- view:Fit() and a right-click on the axis show the whole fight again (see "Zooming to a range").
 -- Icons come from a pool and are reused on every refresh, since frames cannot be deleted. With the
 -- overlay on, deaths from the pulls before the shown one are drawn faded by how old they are.
 -- A reference timeline is drawn the same way, plus its phase lines and labels, a bar behind each
@@ -93,6 +95,12 @@ local SAME_MOMENT = 0.05 -- seconds: another cast this close to the selected one
 local SELECT_INNER = { 0.10, 0.07, 0.05 } -- a dark inner border under the outline, so it shows on any flag colour
 local SELECT_INNER_W = 1
 local REVIEW_LANES = { recentDeaths = true } -- this view draws Deaths from recent pulls on an ability timeline too
+-- drag to zoom, in one table to spare the file's locals (Lua 5.1 allows 200 in a chunk):
+local ZOOM_SEL = {
+    bandAlpha = 0.18, -- the band over the lanes, in the heading colour; its edges are solid
+    minPx = 2, minSec = 1, -- a selected range narrower than either is ignored
+    edgeStep = 12, -- the most pixels a frame the track scrolls while a selection is past its edge
+}
 
 local TEXT = {
     notes = "Notes",
@@ -167,6 +175,7 @@ local TEXT = {
     placeFailedWhy = "it could not be saved.", -- the reason in placeFailed when none is given
     bandLength = "%d:%02d", -- a cooldown band's length, minutes and seconds, inside the after band
     tooSoon = " \194\183 too soon", -- added to a drag's label when another cast of the spell is inside its bands
+    zoomRange = "%s - %s (%s)", -- the drag-to-zoom band's label: from, to, and how long
 }
 
 local function settings()
@@ -454,6 +463,14 @@ function View.Create(parent)
     base:SetPoint("BOTTOMRIGHT", axisScroll, "BOTTOMRIGHT")
     base:SetHeight(1)
     themed(base, "SetColorTexture", "accent")
+    -- a left drag along the axis selects a range to zoom to; a right-click shows the whole fight
+    axisScroll:EnableMouse(true)
+    axisScroll:SetScript("OnMouseDown", function(_, button)
+        view:AxisMouseDown(button)
+    end)
+    axisScroll:SetScript("OnMouseUp", function(_, button)
+        view:AxisMouseUp(button)
+    end)
 
     view.unknownText = f:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     -- placed above the strip by PlaceStrip, as are the scroll bar and the lanes
@@ -524,11 +541,19 @@ function View.Create(parent)
         if view:PhaseMouseDown(button) then
             return -- Shift + drag moves a phase line; a right press on a moved one may reset it
         end
+        view.zoomEnded = nil -- a mark no release took is stale by the next press
+        if IsControlKeyDown and IsControlKeyDown() and view:StartZoomSelect(button, "track") then
+            return -- Ctrl + left drag selects a range to zoom to
+        end
         view:StartDrag(button)
         view:RightDown(button)
     end)
     hscroll:SetScript("OnMouseUp", function(_, button)
         if view:PhaseMouseUp(button) then
+            return
+        end
+        if view:FinishZoomSelect(button) or view:ZoomEndedRelease(button) then
+            view.clickAt = nil -- the release ended a selection, so it never counts toward a double-click
             return
         end
         view:RightUp(button) -- before StopDrag: a menu click puts back the few pixels it scrolled
@@ -543,6 +568,7 @@ function View.Create(parent)
     end)
     f:SetScript("OnHide", function()
         view:StopDrag()
+        view:DropZoomSelect()
         view:CancelMove()
         view:CancelChipMove()
         view.rightAt = nil
@@ -776,6 +802,9 @@ function Methods:OnUpdate()
     if self.phaseDrag then
         self:UpdatePhaseDrag() -- after the hover time, so its own label wins while a line drags
     end
+    if self.zoomSel then
+        self:UpdateZoomSelect()
+    end
 end
 
 -- Moving phase lines --------------------------------------------------------------------------------
@@ -904,6 +933,233 @@ function Methods:FinishPhaseDrag()
     end
 end
 
+-- Zooming to a range ----------------------------------------------------------------------------------
+-- A left drag along the time axis, or Ctrl + left drag on the track (a cast icon included), selects a
+-- range: once the cursor has moved MOVE_DIST pixels a see-through band in the heading colour covers the
+-- lanes from the press to the cursor, with its times on a tag on the axis, and the track scrolls along
+-- when the cursor passes its edge. Letting go zooms so the range fills the track: the span becomes its
+-- length (kept to MIN_SPAN..MAX_SPAN; a shorter range gets MIN_SPAN centred on it) and the range starts
+-- at the left edge. A range under ZOOM_SEL.minPx pixels or ZOOM_SEL.minSec seconds is ignored, and Escape
+-- cancels one. Fit, and a right-click on the axis, show the whole fight again. Each zoom here calls
+-- view.onSpan(span), so the page's Time visible slider follows. The band's parts are made once and only
+-- moved while a selection runs.
+
+-- The track's x under the cursor, kept on the track.
+function Methods:TrackXAtCursor()
+    local x = self.hscroll:GetHorizontalScroll() + cursorX(self.hscroll)
+    return math.max(0, math.min(self.trackW or 1, x))
+end
+
+-- A left press on the axis, or with Ctrl on the track: remembers where. True when it starts a selection.
+function Methods:StartZoomSelect(button, source)
+    if button ~= "LeftButton" or not self.pull or self.zoomSel or self.phaseDrag or self.move or self.chipMove then
+        return false
+    end
+    self.zoomSel = { x0 = GetCursorPosition() / self.hscroll:GetEffectiveScale(), from = self:TrackXAtCursor(), source = source }
+    return true
+end
+
+-- Each frame while a selection's button is held: start it past MOVE_DIST, scroll at the edges, draw the band.
+function Methods:UpdateZoomSelect()
+    local sel = self.zoomSel
+    if not IsMouseButtonDown("LeftButton") then
+        self:FinishZoomSelect("LeftButton", true) -- let go before the release reached the view
+        return
+    end
+    if sel.cancelled then
+        return
+    end
+    if not sel.started then
+        if math.abs(GetCursorPosition() / self.hscroll:GetEffectiveScale() - sel.x0) < MOVE_DIST then
+            return
+        end
+        sel.started = true
+    end
+    local cx, shown = cursorX(self.hscroll), self:VisibleWidth()
+    local past = cx < 0 and cx or (cx > shown and cx - shown or 0)
+    if past ~= 0 then
+        self:ScrollTo(self.hscroll:GetHorizontalScroll() + math.max(-ZOOM_SEL.edgeStep, math.min(ZOOM_SEL.edgeStep, past)))
+    end
+    sel.to = self:TrackXAtCursor()
+    self:DrawZoomBand(sel.from, sel.to)
+end
+
+-- The band's parts, made the first time: the see-through fill and its two edges on the track, and the
+-- tag with the range's times on the axis.
+function Methods:ZoomBand()
+    local band = self.zoomBand
+    if band then
+        return band
+    end
+    band = {}
+    band.fill = self.track:CreateTexture(nil, "OVERLAY")
+    themed(band.fill, "SetColorTexture", "heading", ZOOM_SEL.bandAlpha)
+    band.left = self.track:CreateTexture(nil, "OVERLAY")
+    themed(band.left, "SetColorTexture", "heading")
+    band.right = self.track:CreateTexture(nil, "OVERLAY")
+    themed(band.right, "SetColorTexture", "heading")
+    local tag = CreateFrame("Frame", nil, self.axis)
+    tag:SetFrameLevel((self.axis:GetFrameLevel() or 0) + 6)
+    tag:SetHeight(14)
+    tag.bg = tag:CreateTexture(nil, "BACKGROUND")
+    tag.bg:SetAllPoints()
+    themed(tag.bg, "SetColorTexture", "surface", 0.95)
+    tag.text = tag:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    tag.text:SetPoint("CENTER")
+    themed(tag.text, "SetTextColor", "heading")
+    band.tag = tag
+    self.zoomBand = band
+    return band
+end
+
+-- A line on the track at x, as tall as the track.
+function Methods:BandLine(tex, x, w)
+    tex:ClearAllPoints()
+    tex:SetPoint("TOPLEFT", self.track, "TOPLEFT", x, 0)
+    tex:SetPoint("BOTTOMLEFT", self.track, "BOTTOMLEFT", x, 0)
+    tex:SetWidth(w)
+    tex:Show()
+end
+
+-- The band from track x a to b (either way round), and its times on the tag, kept inside the axis shown.
+function Methods:DrawZoomBand(a, b)
+    local band = self:ZoomBand()
+    local left, right = math.min(a, b), math.max(a, b)
+    self:BandLine(band.fill, left, math.max(1, right - left))
+    self:BandLine(band.left, left, 1)
+    self:BandLine(band.right, math.max(left, right - 1), 1)
+    local length = math.max(1, self.drawLength or 1)
+    local t1, t2 = View.XToTime(left, length, self.trackW), View.XToTime(right, length, self.trackW)
+    local tag = band.tag
+    tag.text:SetText(string.format(TEXT.zoomRange, View.Format(t1), View.Format(t2), View.Format(t2 - t1)))
+    local w = (tag.text.GetStringWidth and tag.text:GetStringWidth() or 90) + 8
+    tag:SetWidth(w)
+    local from = self.hscroll:GetHorizontalScroll()
+    local x = math.max(from + w / 2, math.min(from + self:VisibleWidth() - w / 2, (left + right) / 2))
+    tag:ClearAllPoints()
+    tag:SetPoint("BOTTOM", self.axis, "BOTTOMLEFT", x, 2)
+    tag:Show()
+end
+
+function Methods:HideZoomBand()
+    local band = self.zoomBand
+    if band then
+        band.fill:Hide()
+        band.left:Hide()
+        band.right:Hide()
+        band.tag:Hide()
+    end
+end
+
+-- Escape while a selection runs: the band goes; the button's release then does nothing.
+function Methods:CancelZoomSelect()
+    local sel = self.zoomSel
+    if sel then
+        sel.cancelled = true
+        self:HideZoomBand()
+    end
+end
+
+-- Forgets a selection at once (the view hid).
+function Methods:DropZoomSelect()
+    self.zoomSel = nil
+    self:HideZoomBand()
+end
+
+-- The left button let go: zooms to the selected range. True when the release belonged to a selection
+-- (started or cancelled); a press that never moved returns false, so the track takes it as a click.
+-- Ended from OnUpdate (early) for a selection begun on the track, it leaves view.zoomEnded so the
+-- track's own release, still to come, is taken as the selection's too (ZoomEndedRelease).
+function Methods:FinishZoomSelect(button, early)
+    local sel = self.zoomSel
+    if button ~= "LeftButton" or not sel then
+        return false
+    end
+    self:DropZoomSelect()
+    local owned = sel.cancelled or (sel.started and sel.to ~= nil)
+    if owned and early and sel.source == "track" then
+        self.zoomEnded = true
+    end
+    if sel.cancelled then
+        return true
+    end
+    if not owned then
+        return false
+    end
+    local left, right = math.min(sel.from, sel.to), math.max(sel.from, sel.to)
+    local length = math.max(1, self.drawLength or 1)
+    local t1, t2 = View.XToTime(left, length, self.trackW), View.XToTime(right, length, self.trackW)
+    if right - left >= ZOOM_SEL.minPx and t2 - t1 >= ZOOM_SEL.minSec then
+        self:ZoomRange(t1, t2)
+    end
+    return true
+end
+
+-- The track's left release: true (and forgotten) when it belongs to a selection OnUpdate already ended.
+function Methods:ZoomEndedRelease(button)
+    if button ~= "LeftButton" or not self.zoomEnded then
+        return false
+    end
+    self.zoomEnded = nil
+    return true
+end
+
+-- Zooms so seconds t1 to t2 fill the track, from its left edge; a range under MIN_SPAN is centred.
+function Methods:ZoomRange(t1, t2)
+    local span = clampSpan(t2 - t1)
+    local start = t1
+    if t2 - t1 < span then
+        start = (t1 + t2) / 2 - span / 2
+    end
+    self:SetSpan(span)
+    span = clampSpan(settings().span)
+    self:ScrollTo(math.max(0, start) * self:VisibleWidth() / span)
+    if self.onSpan then
+        self.onSpan(span)
+    end
+end
+
+-- Zooms out to the whole fight (the pull's or the ability timeline's length, at most MAX_SPAN across)
+-- and scrolls to its start.
+function Methods:Fit()
+    if not self.pull then
+        return
+    end
+    self:SetSpan(math.max(1, self.extra and self.extra.length or 0))
+    self:ScrollTo(0)
+    if self.onSpan then
+        self.onSpan(clampSpan(settings().span))
+    end
+end
+
+-- The axis: a left press may start a selection; a right press is remembered so its release can tell a
+-- click (Fit) from a drag.
+function Methods:AxisMouseDown(button)
+    if button == "LeftButton" then
+        self:StartZoomSelect(button, "axis")
+    elseif button == "RightButton" then
+        local x, y = GetCursorPosition()
+        self.axisRight = { x = x, y = y, at = GetTime() }
+    end
+end
+
+function Methods:AxisMouseUp(button)
+    if button == "LeftButton" then
+        self:FinishZoomSelect(button)
+        return
+    end
+    local r = self.axisRight
+    self.axisRight = nil
+    if button ~= "RightButton" or not r then
+        return
+    end
+    local scale = self.hscroll:GetEffectiveScale()
+    local x, y = GetCursorPosition()
+    if math.abs(x - r.x) / scale < MENU_DIST and math.abs(y - r.y) / scale < MENU_DIST and GetTime() - r.at <= MENU_TIME then
+        self:Fit()
+    end
+end
+
 -- One icon button from the pool, set up for a mark on a lane.
 function Methods:Icon(n)
     return pooled(self.icons, n, function()
@@ -919,10 +1175,16 @@ function Methods:Icon(n)
         b:SetScript("OnLeave", hideTip)
         b:SetScript("OnMouseDown", function(_, button)
             self.clickAt = nil -- a click here is the icon's, so it never pairs with one on the track
+            if IsControlKeyDown and IsControlKeyDown() and self:StartZoomSelect(button, "icon") then
+                return -- Ctrl + left drag selects a range to zoom to, as on the track
+            end
             self:StartDrag(button)
             self:RightDown(button)
         end)
         b:SetScript("OnMouseUp", function(_, button)
+            if self:FinishZoomSelect(button) then
+                return
+            end
             self:RightUp(button)
             self:StopDrag()
         end)
@@ -2860,11 +3122,13 @@ local function escapeWindowShown(view)
     return false
 end
 
--- Escape clears the selection and stops there, unless a window Escape closes is shown (the alert editor):
--- then it goes on to close it. Ctrl+Z undoes the last change and Ctrl+Y or Ctrl+Shift+Z redoes it
--- (Timeline/Undo.lua). Any other key passes through.
+-- Escape cancels a drag-to-zoom selection that is being drawn, else clears the selected flag, and stops
+-- there, unless a window Escape closes is shown (the alert editor): then it goes on to close it. Ctrl+Z
+-- undoes the last change and Ctrl+Y or Ctrl+Shift+Z redoes it (Timeline/Undo.lua). Any other key passes through.
 function Methods:KeyDown(key)
-    local escape = key == "ESCAPE" and self.selected ~= nil
+    local zs = self.zoomSel
+    local zooming = key == "ESCAPE" and zs ~= nil and zs.started and not zs.cancelled
+    local escape = key == "ESCAPE" and (self.selected ~= nil or zooming)
     local keep = escape and not escapeWindowShown(self)
     local ctrl = IsControlKeyDown and IsControlKeyDown()
     local undo = ctrl and key == "Z" and not (IsShiftKeyDown and IsShiftKeyDown())
@@ -2885,7 +3149,9 @@ function Methods:KeyDown(key)
             end)
         end
     end
-    if escape then
+    if zooming then
+        self:CancelZoomSelect()
+    elseif escape then
         self:ClearSelection()
     end
     if Undo and undo then
