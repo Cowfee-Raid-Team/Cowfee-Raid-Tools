@@ -3,7 +3,7 @@ local ADDON, CRT = ...
 -- Entombed Sentinels. Everything the addon ships about this boss, read by Bosses/Registry.lua.
 --
 -- encounterID 3445 comes from the EncounterID line of Alex's raid note for this boss, not from a pull
---             yet.
+--             yet; /crt dev seasons ids checks it against the saved pulls.
 -- references  The Mythic reference timeline, in the Timeline's text format (see Timeline/Database.lua
 --             for the format), transcribed from a planner screenshot on 2026-10-17 (the vault note
 --             "Cowfee Raid Tools - Boss Reference Transcriptions"). The rows have no types yet: Alex

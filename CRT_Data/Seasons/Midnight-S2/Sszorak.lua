@@ -2,7 +2,8 @@ local ADDON, CRT = ...
 
 -- Sszorak. Everything the addon ships about this boss, read by Bosses/Registry.lua.
 --
--- encounterID 3420 comes from the Timeline's saved Mythic pulls of this boss.
+-- encounterID 3420 comes from the Timeline's saved Mythic pulls of this boss (the game's own ID);
+--             /crt dev seasons ids checks it against the saved pulls.
 -- references  The Mythic reference timeline, in the Timeline's text format (see Timeline/Database.lua
 --             for the format), transcribed from a planner screenshot, with each ability's type set
 --             by Alex in the Logged Timeline Ref tool (Development page). Serpent's Fury (Mythic) waits

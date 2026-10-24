@@ -3,7 +3,7 @@ local ADDON, CRT = ...
 -- The Lost Explorers. Everything the addon ships about this boss, read by Bosses/Registry.lua.
 --
 -- encounterID 3497 comes from the boss's Warcraft Logs rankings link (boss=3497), not from a pull
---             yet.
+--             yet; /crt dev seasons ids checks it against the saved pulls.
 -- references  The Mythic reference timeline, in the Timeline's text format (see Timeline/Database.lua
 --             for the format), transcribed from a planner screenshot on 2026-10-17 (the vault note
 --             "Cowfee Raid Tools - Boss Reference Transcriptions"). Types from Alex on
