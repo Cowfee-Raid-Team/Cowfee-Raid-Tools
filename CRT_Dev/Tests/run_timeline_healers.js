@@ -15,7 +15,7 @@ const FILES = [
   'CRT_Modules/Alerts/Rules.lua', 'CRT_Modules/Alerts/Engine.lua', 'CRT_Modules/Notes/Parse.lua', 'CRT_Modules/Notes/Data.lua',
   'CRT_Modules/Alerts/Reminders.lua', 'CRT_Modules/Alerts/CooldownData.lua', 'CRT_Modules/Alerts/Cooldowns.lua',
   'CRT_Modules/Timeline/AbilityTip.lua', 'CRT_Modules/Timeline/View.lua', 'CRT_Modules/Timeline/HealerView.lua',
-  'CRT_Core/Sound/Engine.lua', 'CRT_Modules/Alerts/Draft.lua', 'CRT_Modules/Alerts/Saved.lua',
+  'CRT_Core/Sound/Engine.lua', 'CRT_Modules/Alerts/Draft.lua', 'CRT_Modules/Alerts/Saved.lua', 'CRT_Modules/Timeline/Undo.lua',
 ];
 const harness = require('./theme_stub')(W) + `
 local src = { ... }
@@ -99,7 +99,10 @@ function IsInRaid() return group.raid end
 function IsInGroup() return group.party or group.raid end
 function UnitIsGroupLeader(unit) return unit == "player" and group.leader end
 function UnitIsGroupAssistant(unit) return unit == "player" and group.assist end
-C_Timer = { After = function() end }
+-- timers wait until flush() runs them
+local timers = {}
+C_Timer = { After = function(_, fn) timers[#timers + 1] = fn end }
+local function flush() local list = timers timers = {} for _, fn in ipairs(list) do fn() end return #list end
 -- the live raid: { name (no realm on your own), class file, role }
 local liveRoster = {}
 function GetNumGroupMembers() return #liveRoster end
@@ -183,6 +186,7 @@ run("CRT_Modules/Timeline/HealerView.lua", CRT)
 run("CRT_Core/Sound/Engine.lua", CRT)
 run("CRT_Modules/Alerts/Draft.lua", CRT)
 run("CRT_Modules/Alerts/Saved.lua", CRT)
+run("CRT_Modules/Timeline/Undo.lua", CRT)
 CRT.AlertEditor = { Open = function() end, OpenNote = function() end, Frame = function() return nil end }
 
 local fails = 0
@@ -196,7 +200,7 @@ local function setLayout(names) local w = {} for i = 1, 40 do w[i] = names[i] or
   CRT.db.groups.presets = { { id = 1, name = "Main", slots = w } } CRT.db.groups.active = 1 end
 -- the layout: Halo (a live priest healer), Rain (a live shaman playing damage), Tanky (a live warrior tank),
 -- Off (a druid not in the group: no role) and you (a paladin healer, Holy)
-setLayout({ "Halo-Home", "Rain-Home", "Tanky-Home", "Off-Home", "Me-Home" })
+setLayout({ "Halo-Home", "Rain-Home", "Tanky-Home", "Off-Home", "Me-Home", "Zorp-Elsewhere" }) -- Zorp: never seen, class unknown
 liveRoster = { { "Halo", "PRIEST", "HEALER" }, { "Rain", "SHAMAN", "DAMAGER" }, { "Tanky", "WARRIOR", "TANK" }, { "Me", "PALADIN", "HEALER" } }
 CRT.db.classCache["off-home"] = "DRUID"
 local NOTE = "EncounterID:3001;Name:Nek\\n"
@@ -262,6 +266,47 @@ do
   G:SetHandRole("Off-Home", nil)
   v:Refresh()
   check(laneIndex(v, "healers:off-home") == nil, "out of the group, no role: left out")
+  -- a role set by hand redraws an open Healer CDs view by itself, once per burst of changes
+  flush()
+  G:SetHandRole("Rain-Home", "HEALER")
+  G:SetHandRole("Rain-Home", "HEALER")
+  check(laneIndex(v, "healers:rain-home") == nil and #timers == 1, "one redraw waits for the burst to end")
+  flush()
+  check(laneIndex(v, "healers:rain-home:98008") ~= nil, "Set role redraws the open view")
+  G:SetHandRole("Rain-Home", nil)
+  flush()
+  check(laneIndex(v, "healers:rain-home") == nil, "and again when it is cleared")
+  -- the group changing redraws it too (GROUP_ROSTER_UPDATE, PLAYER_ROLES_ASSIGNED)
+  liveRoster[2][3] = "HEALER"
+  HV.events.OnEvent(HV.events, "PLAYER_ROLES_ASSIGNED")
+  flush()
+  check(laneIndex(v, "healers:rain-home") ~= nil, "a role the game gives redraws it")
+  liveRoster[2][3] = "DAMAGER"
+  HV.events.OnEvent(HV.events, "GROUP_ROSTER_UPDATE")
+  flush()
+  check(laneIndex(v, "healers:rain-home") == nil, "so does a roster change")
+  -- a docked view (not in Healer CDs) is left alone
+  v:SetMode(nil)
+  local drawn = 0
+  local realRefresh = v.Refresh
+  rawset(v, "Refresh", function(self) drawn = drawn + 1 return realRefresh(self) end)
+  G:SetHandRole("Rain-Home", "HEALER")
+  flush()
+  check(drawn == 0, "a view on Abilities is not redrawn")
+  rawset(v, "Refresh", nil)
+  G:SetHandRole("Rain-Home", nil)
+  flush()
+  v:SetMode("healers")
+  -- a healer set by hand whose class nobody knows: their name row with a muted hint
+  G:SetHandRole("Zorp-Elsewhere", "HEALER")
+  flush()
+  local zi = laneIndex(v, "healers:zorp-elsewhere")
+  check(zi ~= nil and v.lanes[zi].note == HV.TEXT.classUnknown and v.lanes[zi + 1] == nil, "a class-unknown healer gets a name row, no cooldowns")
+  local hint
+  for _, fs in ipairs(v.hvNotes or {}) do if fs:IsShown() and fs.text == HV.TEXT.classUnknown then hint = fs end end
+  check(hint and hint.pt[5] == -(zi - 1) * 30 - 15, "with the hint on its row")
+  G:SetHandRole("Zorp-Elsewhere", nil)
+  flush()
   -- a role the game hides is not compared, and counts as unknown
   local realRole = UnitGroupRolesAssigned
   local SECRET = {}
@@ -324,6 +369,8 @@ end
 
 -- Drag a cast: its note line is rewritten -----------------------------------------------------------------------------
 do
+  -- the note written straight into the saved data above is where Undo starts from (as if received from the raid)
+  CRT.TimelineUndo:Quietly(function() end)
   local v = newView()
   local hymn = laneIndex(v, "healers:halo-home:64843")
   local f
@@ -338,6 +385,25 @@ do
   local moved
   for _, x in ipairs(flagsOn(v, hymn)) do if x.mark.t == 45 then moved = x end end
   check(moved ~= nil, "the flag redraws at the new time")
+  -- Ctrl+Z puts the line back
+  now = now + 5
+  CRT.TimelineUndo:Undo()
+  t = N:TimerAt(1, 2)
+  check(t and t.time == 20 and t.tags[1] == "Halo", "Undo puts the line back: " .. tostring(t and t.time))
+  local back
+  for _, x in ipairs(flagsOn(v, hymn)) do if x.mark.t == 20 then back = x end end
+  check(back ~= nil, "and its flag")
+  -- not the raid leader or an assistant: a raid note line can't be dragged
+  group.leader = false
+  now = now + 5
+  cx, cy = screenX(v, 20), 300
+  back.OnMouseDown(back, "LeftButton")
+  cx = screenX(v, 70)
+  v.frame.OnUpdate(v.frame)
+  back.OnMouseUp(back, "LeftButton")
+  t = N:TimerAt(1, 2)
+  check(t and t.time == 20, "a drag by anyone else leaves the line: " .. tostring(t and t.time))
+  group.leader = true
 end
 
 -- Double-click a cooldown row: a cast for that player at that time -----------------------------------------------------------
@@ -358,10 +424,15 @@ do
   local added = N:TimerAt(1, #lines)
   check(#lines == #before + 1 and added and added.tags[1] == "Halo" and added.spellId == 200183 and added.time == 60, "a raid note line for Halo's Apotheosis at 1:00: " .. tostring(added and added.time))
   check(printed[#printed]:find("for Halo", 1, true), "the chat line says for whom: " .. tostring(printed[#printed]))
-  -- not the raid leader or an assistant: your own reminder, as a dropped cooldown
+  -- not the raid leader or an assistant: nothing on another player's row, and chat says why
   group.leader = false
   dbl(80, apo)
-  check(#N:RawLines(1) == #lines and #R:List(3001) == 1, "anyone else: one of your reminders, no note line")
+  check(#N:RawLines(1) == #lines and #R:List(3001) == 0, "anyone else: nothing on another player's row")
+  check(printed[#printed] == HV.TEXT.notLead, "and why: " .. tostring(printed[#printed]))
+  -- on your own row: one of your reminders, as a dropped cooldown
+  dbl(80, laneIndex(v, "healers:me-home:31821"))
+  check(#N:RawLines(1) == #lines and #R:List(3001) == 1, "your own row: one of your reminders, no note line")
+  check(printed[#printed]:find("for you", 1, true), "for you: " .. tostring(printed[#printed]))
   group.leader = true
   -- a player's name row does nothing
   local n = #N:RawLines(1)

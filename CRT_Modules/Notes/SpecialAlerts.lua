@@ -161,44 +161,12 @@ end
 
 -- The toggle ---------------------------------------------------------------------------------------
 
-local function toggleButton(parent, label, onClick)
-    local b = CreateFrame("Button", nil, parent, "BackdropTemplate")
-    if b.SetBackdrop then
-        b:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
-    end
-    b.sel = b:CreateTexture(nil, "ARTWORK")
-    b.sel:SetAllPoints()
-    b.sel:SetColorTexture(UI.Color("heading", 0.18)) -- UI:RegisterTab styles it from here on
-    b.text = b:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    b.text:SetPoint("CENTER")
-    b.text:SetText(label)
-    b:SetScript("OnClick", onClick)
-    UI:RegisterTab(b)
-    return b
-end
-
--- Each half of the toggle as wide as its label (the count changes the second), side by side. When both and
--- the (?) after them don't fit the list's width (a large text size), both shrink in proportion and their labels
--- are cut with "...". Measured on every draw, so a text size changed since is followed.
+-- UI.Toggle2 (CRT_Core/UI/Toggle.lua). Each half as wide as its label (the count changes the second), side by
+-- side. When both and the (?) after them don't fit the list's width (a large text size), both shrink in
+-- proportion and their labels are cut with "...". Measured on every draw, so a text size changed since is followed.
 local function layToggle()
-    local buttons = { ui.mechBtn, ui.specialBtn }
-    local want, total = {}, 0
-    for i, b in ipairs(buttons) do
-        want[i] = math.max(L.TOGGLE_MIN_W, width(b.text) + 2 * L.TOGGLE_PAD)
-        total = total + want[i]
-    end
-    local room = L.LIST_W - L.TOGGLE_GAP - UI.HELP_GAP - UI.HELP_SIZE
-    local scale = total > room and room / total or 1
-    local x = 0
-    for i, b in ipairs(buttons) do
-        local w = math.floor(want[i] * scale)
-        b:SetSize(w, L.TOGGLE_H)
-        b.text:SetWidth(w - 2 * L.TOGGLE_PAD)
-        b.text:SetWordWrap(false)
-        b:ClearAllPoints()
-        b:SetPoint("TOPLEFT", L.X + x, L.Y)
-        x = x + w + L.TOGGLE_GAP
-    end
+    ui.toggle:Size(L.LIST_W - UI.HELP_GAP - UI.HELP_SIZE)
+    ui.toggle:PlaceLeft(L.X, L.Y)
 end
 
 -- The list ---------------------------------------------------------------------------------------
@@ -370,14 +338,9 @@ function M.Refresh()
     local view = M.View()
     local special = view == "special"
     -- SetTabSelected skins the whole tab (UI:SkinTree), so only when the view changes; a plain redraw restyles
-    if ui.tabView ~= view then
-        ui.tabView = view
-        UI:SetTabSelected(ui.mechBtn, not special)
-        UI:SetTabSelected(ui.specialBtn, special)
-    else
-        UI:StyleTab(ui.mechBtn, not special)
-        UI:StyleTab(ui.specialBtn, special)
-    end
+    local changed = ui.tabView ~= view
+    ui.tabView = view
+    ui.toggle:Select(view, changed)
     ui.list:SetShown(special)
     ui.panel:SetShown(special)
     if not special then
@@ -614,12 +577,9 @@ function M.Build(f, h, g)
     L.LIST_W, L.LIST_H = g.listW, g.listH
     L.PANEL_X, L.PANEL_Y, L.PANEL_W, L.PANEL_H = g.panelX, g.panelY, g.panelW, g.panelH
 
-    ui.mechBtn = toggleButton(f, TEXT.mechanics, function()
-        choose("mechanics")
-    end)
-    ui.specialBtn = toggleButton(f, string.format(TEXT.special, 0), function()
-        choose("special")
-    end)
+    ui.toggle = UI.Toggle2(f, { { key = "mechanics", label = TEXT.mechanics }, { key = "special", label = string.format(TEXT.special, 0) } },
+        choose, { pad = L.TOGGLE_PAD, minW = L.TOGGLE_MIN_W, gap = L.TOGGLE_GAP, h = L.TOGGLE_H })
+    ui.mechBtn, ui.specialBtn = ui.toggle.buttons[1], ui.toggle.buttons[2]
     layToggle()
     ui.toggleHelp = UI.HelpRight(ui.specialBtn, TEXT.mechanics, TEXT.toggleHelp)
 

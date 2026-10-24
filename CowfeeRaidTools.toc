@@ -23,6 +23,7 @@ CRT_Core\Sound\Auras.lua
 CRT_Core\UI\Panel.lua
 CRT_Core\UI\Tooltip.lua
 CRT_Core\UI\Controls.lua
+CRT_Core\UI\Toggle.lua
 CRT_Core\UI\ScrollBar.lua
 CRT_Core\UI\Window.lua
 CRT_Core\UI\ItemSlot.lua

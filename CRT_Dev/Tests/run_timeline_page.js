@@ -7,7 +7,7 @@ const themeLua = require('./theme_stub');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
 const harness = themeLua(process.argv.slice(2)) + `
-local dataSrc, dbSrc, refSrc, lanesSrc, refPageSrc, settingsTabSrc, pageSrc, journalSrc, regSrc, seasonSrc, nekSrc, reviewSrc, rehSrc, rehWinSrc, slashSrc = ...
+local dataSrc, dbSrc, refSrc, lanesSrc, refPageSrc, settingsTabSrc, pageSrc, journalSrc, regSrc, seasonSrc, nekSrc, reviewSrc, rehSrc, rehWinSrc, slashSrc, toggleSrc = ...
 local strings, checks, edits, buttons, dropdowns, sliders = {}, {}, {}, {}, {}, {}
 local function mock(kind)
   local m = { shown = false, kind = kind }
@@ -85,6 +85,8 @@ local CRT = { db = { timeline = { record = true, minPull = 15, keep = 10, bosses
   PALETTE = { background = { 0.1, 0.1, 0.1 }, border = { 0.3, 0.3, 0.3 }, accent = { 0.78, 0.56, 0.36 }, label = { 0.87, 0.73, 0.56 }, text = { 0.95, 0.9, 0.84 } },
 }
 CRT_THEME(CRT, CRT.UI)
+-- the real CRT_Core/UI/Toggle.lua (UI.Toggle2, the pop-out's Abilities | Healer CDs toggle)
+assert(load(toggleSrc, "CRT_Core/UI/Toggle.lua"))("CowfeeRaidTools", CRT)
 -- over the real UI/Tooltip.lua's (CRT_THEME loads it): the Tooltip position dropdown with its spot picker,
 -- recording the area and the options
 CRT.UI.TooltipPositionSetting = function(parent, area, o) local g = { row = mock(), picker = mock(), area = area, opts = o, parent = parent, refreshed = 0 }
@@ -112,7 +114,7 @@ do
   CRT.TimelineJournal.RaidBosses = function() return realCRT.TimelineJournal:RaidBosses() end
 end
 local view = { SetData = function(self, pull, eid, overlay, name, group) self.pull, self.eid, self.overlay, self.group = pull, eid, overlay, group self.sets = (self.sets or 0) + 1 end, refreshes = 0, Refresh = function(self) self.refreshes = self.refreshes + 1 end, SetSpan = function(self, v) self.span = v end, Fit = function(self) self.fits = (self.fits or 0) + 1 end, CastCount = function() return 0 end, SetOrder = function(self, o) self.order = o end, ClearHighlight = function(self) self.highlight = nil end, Highlight = function(self, id, name) self.highlight = { spellID = id, name = name and name:lower() } local ref = self.pull and self.pull.reference for _, row in ipairs(ref and ref.rows or {}) do if (id and row.spellID == id) or (name and row.name:lower() == name:lower()) then return true end end return false end }
-view.SetMode = function(self, mode) self.mode = mode self.modes = (self.modes or 0) + 1 end
+view.SetMode = function(self, mode, later) self.mode = mode self.later = later if not later then self.refreshes = self.refreshes + 1 end end
 view.EncounterNumber = function(self) return type(self.eid) == "number" and self.eid or nil end
 view.SetPlayhead = function(self, t, follow) self.playT = type(t) == "number" and t or nil self.playFollow = follow and true or false end
 -- the raid notes and their sharing, as CRT_Modules/Notes/Data.lua and CRT_Modules/Notes/Comm.lua give them
@@ -1109,8 +1111,8 @@ do
   for _, m in ipairs(windowsMade) do if m.name == "CowfeeRaidToolsTimelineWindow" then made = m end end
   local w = made.frame
   local halves = {}
-  for _, b in ipairs(tabs) do if rawget(b, "viewKey") then halves[#halves + 1] = b end end
-  assert(#halves == 2 and halves[1].viewKey == "abilities" and halves[2].viewKey == "healers", "two halves: Abilities, Healer CDs")
+  for _, b in ipairs(tabs) do if rawget(b, "key") then halves[#halves + 1] = b end end
+  assert(#halves == 2 and halves[1].key == "abilities" and halves[2].key == "healers", "two halves (UI.Toggle2): Abilities, Healer CDs")
   assert(tabText(halves[1]) == "Abilities" and tabText(halves[2]) == "Healer CDs", "labelled Abilities and Healer CDs")
   -- sized from their labels each time the window opens (6 px a letter here)
   for _, b in ipairs(halves) do
@@ -1137,14 +1139,28 @@ do
   assert(view.mode == "healers" and CRT.db.timeline.popView == "healers", "Healer CDs: the view's healer layout, remembered")
   w:Hide() w.OnHide()
   assert(view.mode == nil, "docking goes back to the abilities")
+  local before = view.refreshes
   CRT.TimelinePopout()
   assert(view.mode == "healers", "the next pop-out opens on Healer CDs again")
+  assert(view.later == true and view.refreshes == before + 1, "set before the one redraw the pop-out makes: " .. (view.refreshes - before))
   halves[1].OnClick(halves[1])
   assert(view.mode == nil and CRT.db.timeline.popView == "abilities", "Abilities again")
   halves[2].OnClick(halves[2])
-  -- Show on the Timeline lights an ability's row: on Abilities
+  -- Show on the Timeline lights an ability's row: on Abilities for that opening, the saved choice kept
   T:ShowRow(3470, "Soulcoil Rite")
-  assert(view.mode == nil and CRT.db.timeline.popView == "abilities", "Show on the Timeline switches to Abilities")
+  assert(view.mode == nil and CRT.db.timeline.popView == "healers", "Show on the Timeline shows Abilities without saving it")
+  w:Hide() w.OnHide()
+  -- from closed: Abilities decided before the window draws, so Healer CDs never draws first
+  local modes = {}
+  local realSet = view.SetMode
+  view.SetMode = function(self, mode, later) modes[#modes + 1] = tostring(mode) realSet(self, mode, later) end
+  T:ShowRow(3470, "Soulcoil Rite")
+  view.SetMode = realSet
+  assert(view.mode == nil and not table.concat(modes, ","):find("healers", 1, true), "no Healer CDs on the way: " .. table.concat(modes, ","))
+  w:Hide() w.OnHide()
+  CRT.TimelinePopout()
+  assert(view.mode == "healers", "the next plain pop-out is on Healer CDs again")
+  halves[1].OnClick(halves[1])
   w:Hide() w.OnHide()
   diffDD.opts.set("nh")
 end
@@ -1370,4 +1386,6 @@ for (const p of process.argv.slice(2, 17)) {
   let src; try { src = fs.readFileSync(p, 'utf8'); } catch (e) { console.error('cannot read ' + p); process.exit(1); }
   lua.lua_pushstring(L, to_luastring(src));
 }
-if (lua.lua_pcall(L, 15, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
+// CRT_Core/UI/Toggle.lua, found from Page.lua's place (CRT_Modules/Timeline/Page.lua)
+lua.lua_pushstring(L, to_luastring(fs.readFileSync(path.join(path.dirname(process.argv[8]), '..', '..', 'CRT_Core', 'UI', 'Toggle.lua'), 'utf8')));
+if (lua.lua_pcall(L, 16, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }

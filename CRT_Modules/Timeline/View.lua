@@ -1397,13 +1397,18 @@ function Methods:TrackDoubleClick()
 end
 
 -- The layout drawn: nil for the ability rows, "healers" for Healer CDs (Timeline/HealerView.lua). The page
--- sets it for the pop-out only.
-function Methods:SetMode(mode)
+-- sets it for the pop-out only. later: the caller redraws the view next, so this doesn't.
+function Methods:SetMode(mode, later)
     mode = mode == "healers" and "healers" or nil
     if mode ~= self.mode then
         self.mode = mode
-        self:ClearSelection()
-        self:Refresh()
+        self.selected = nil -- a flag of the other layout; DrawSelection drops it on the next draw
+        if mode and CRT.TimelineHealerView then
+            CRT.TimelineHealerView.Watch(self) -- redrawn when the roster or a role changes
+        end
+        if not later then
+            self:Refresh()
+        end
     end
 end
 
@@ -3523,9 +3528,10 @@ function Methods:DrawMarks(length)
         f.icon:SetTexture(icon)
         f.edge:SetColorTexture(rgba(key))
         if m.tooSoon then
-            -- Healer CDs: cast while its cooldown from the cast before is still running
-            f.edge:SetColorTexture(DEATH_RED[1], DEATH_RED[2], DEATH_RED[3], 1)
-            f.head:SetColorTexture(DEATH_RED[1], DEATH_RED[2], DEATH_RED[3], 1)
+            -- Healer CDs: cast while its cooldown from the cast before is still running, in the theme's bad colour
+            local bad = CRT.PALETTE.bad or DEATH_RED
+            f.edge:SetColorTexture(bad[1], bad[2], bad[3], 1)
+            f.head:SetColorTexture(bad[1], bad[2], bad[3], 1)
         end
         f.icon:SetShown(icon ~= nil)
         f.edge:SetShown(icon ~= nil)

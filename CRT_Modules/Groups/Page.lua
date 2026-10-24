@@ -610,7 +610,8 @@ local function refreshInvites()
 end
 
 -- A filled slot's right-click menu: invite the player (greyed while they are in your group or you
--- can't invite), or clear the slot.
+-- can't invite), clear the slot, or Set role (Tank, Healer, Damage, or back to the game's role;
+-- Groups.HandRole, which the Timeline's Healer CDs reads).
 local function openSlotMenu(slot)
     local key = Groups:Working()[slot.index]
     if not key or key == "" then

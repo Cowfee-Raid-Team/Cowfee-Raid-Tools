@@ -16,7 +16,7 @@ local ADDON, CRT = ...
 -- the cooldown after it; a cast inside the cooldown of the one before it on its row gets a red edge.
 -- Dragging a cast moves its note line (the view's flag move, so Undo works); a double-click on a cooldown
 -- row places one there for that player (the view's PlaceCooldownAt, by the raid leader and assistant rules).
--- Built once per refresh (data or zoom); scrolling only moves the track.
+-- Built once per refresh (data, zoom, or a roster or role change: HV.Watch); scrolling only moves the track.
 
 local HV = {}
 CRT.TimelineHealerView = HV
@@ -26,6 +26,8 @@ local TEXT = {
     raidTip = "Raid-wide damage from the ability timeline: its rows of type Raid damage.",
     hint = "Drag a cast to move it \194\183 double-click a row to add a cast \194\183 red edge: cast while still on cooldown",
     noHealers = "No healers found. Right-click a name on Raid Groups and pick Set role > Healer.",
+    classUnknown = "Class unknown until they are seen in a group once.",
+    notLead = "Only the raid leader or an assistant can place a cooldown for another player.",
     healer = "Healer",
     healerHand = "Healer (set on Raid Groups)",
     assigned = "Has cooldowns in the raid note",
@@ -193,7 +195,6 @@ end
 -- was set by hand. spec is known for you only.
 function HV.Players()
     local Roster, Groups = CRT.AlertRoster, CRT.Groups
-    local players = Roster and Roster:Players() or {}
     local live = {}
     if Groups and Groups.ReadRoster then
         local ok, got = pcall(Groups.ReadRoster, Groups)
@@ -201,6 +202,8 @@ function HV.Players()
             live = got
         end
     end
+    -- the live group read once, for the roster and the roles
+    local players = Roster and Roster:Players(live) or {}
     local lookup = Groups and Groups.MakeLookup and Groups.MakeLookup(live)
     local me = selfKey()
     local out = {}
@@ -324,6 +327,9 @@ local function headerTip(who)
         GameTooltip:SetText(p.name, CRT.Groups.ClassColor(p.key, who.class))
         local line = p.role == "HEALER" and (p.hand and TEXT.healerHand or TEXT.healer) or TEXT.assigned
         GameTooltip:AddLine(line, 0.85, 0.85, 0.85, true)
+        if #who.rows == 0 then
+            GameTooltip:AddLine(TEXT.classUnknown, 0.85, 0.85, 0.85, true)
+        end
         GameTooltip:Show()
     end
 end
@@ -388,10 +394,14 @@ function HV.Build(view, lanes, length)
         if p.me then
             me = p.key:lower()
         end
-        if p.role == "HEALER" and usable(p.class) then
+        if p.role == "HEALER" then
             local who = person(p)
-            for _, e in ipairs(HV.Majors(p.class, p.spec)) do
-                row(who, e)
+            if usable(p.class) then
+                for _, e in ipairs(HV.Majors(p.class, p.spec)) do
+                    row(who, e)
+                end
+            else
+                who.unknownClass = true -- set as healer by hand, never seen in a group: their name row and a hint
             end
         end
     end
@@ -429,11 +439,11 @@ function HV.Build(view, lanes, length)
     end
     local out = { raidLane(lanes) }
     for _, who in ipairs(people) do
-        if #who.rows > 0 then
+        if #who.rows > 0 or who.unknownClass then
             local p = who.p
             local spec = specName(p.spec)
             out[#out + 1] = { key = "healers:" .. p.key:lower(), kind = "healer", label = p.name .. (spec and (DOT .. spec) or ""),
-                class = who.class, marks = {}, tip = headerTip(who) }
+                class = who.class, marks = {}, tip = headerTip(who), note = #who.rows == 0 and TEXT.classUnknown or nil }
             for _, r in ipairs(who.rows) do
                 out[#out + 1] = r
                 r.row = #out
@@ -521,11 +531,81 @@ function HV.Draw(view, length)
     for i = n + 1, #(view.hvBands or {}) do
         view.hvBands[i]:Hide()
     end
+    -- a row's muted note on the track, at its start (a healer whose class isn't known yet)
+    local notes, rowH = 0, CRT.TimelineView.ROW_H
+    for i, lane in ipairs(on and view.lanes or {}) do
+        if lane.note then
+            notes = notes + 1
+            view.hvNotes = view.hvNotes or {}
+            local fs = view.hvNotes[notes]
+            if not fs then
+                fs = view.hvBandFrame:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+                view.hvNotes[notes] = fs
+            end
+            fs:SetTextColor(rgba(CRT.PALETTE and CRT.PALETTE.muted and "muted" or "label"))
+            fs:SetText(lane.note)
+            fs:ClearAllPoints()
+            fs:SetPoint("LEFT", view.track, "TOPLEFT", 6, -(i - 1) * rowH - rowH / 2)
+            fs:Show()
+        end
+    end
+    for i = notes + 1, #(view.hvNotes or {}) do
+        view.hvNotes[i]:Hide()
+    end
+end
+
+-- Redrawing on a roster or role change ------------------------------------------------------------
+-- A view in Healer CDs (view:SetMode watches it) is drawn again when a role is set by hand (Groups:OnChange)
+-- or the group or its roles change (GROUP_ROSTER_UPDATE, PLAYER_ROLES_ASSIGNED), once per burst of changes
+-- (REDRAW_DELAY), and only while it shows Healer CDs.
+local REDRAW_DELAY = 0.2
+local watched = setmetatable({}, { __mode = "k" })
+local pending, hooked = false, false
+
+local function redraw()
+    pending = false
+    for v in pairs(watched) do
+        if v.mode == "healers" and v.pull and v.frame and v.frame:IsVisible() then
+            local ok, err = pcall(v.Refresh, v)
+            if not ok and geterrorhandler then
+                geterrorhandler()(err)
+            end
+        end
+    end
+end
+
+function HV.Changed()
+    if pending then
+        return
+    end
+    pending = true
+    if C_Timer and C_Timer.After then
+        C_Timer.After(REDRAW_DELAY, redraw)
+    else
+        redraw()
+    end
+end
+
+function HV.Watch(view)
+    watched[view] = true
+    if hooked then
+        return
+    end
+    hooked = true
+    if CRT.Groups and CRT.Groups.OnChange then
+        CRT.Groups:OnChange(HV.Changed)
+    end
+    local events = CreateFrame("Frame")
+    events:RegisterEvent("GROUP_ROSTER_UPDATE")
+    events:RegisterEvent("PLAYER_ROLES_ASSIGNED")
+    events:SetScript("OnEvent", HV.Changed)
+    HV.events = events
 end
 
 -- A double-click on a row of Healer CDs at t seconds: on a cooldown row, that cooldown is placed at once for
--- its player (a raid note line) by someone who may change the raid note, else as your own (Only me), as a
--- dropped cooldown is. True when the click was this view's (a cooldown or a player's row).
+-- its player (a raid note line) by someone who may change the raid note. Anyone else places it only on their
+-- own row, as one of their reminders (Only me); on another player's row nothing is placed and a chat line
+-- says why. True when the click was this view's (a cooldown or a player's row).
 function HV.DoubleClick(view, t, lane)
     if not lane then
         return false
@@ -539,10 +619,12 @@ function HV.DoubleClick(view, t, lane)
     local e = { spellID = lane.spellID, name = lane.label, class = lane.entry and lane.entry.class }
     local Notes = CRT.Notes
     local raid = Notes and Notes.CanEditRaid and Notes:CanEditRaid()
-    if raid and view:EncounterNumber() then
+    if raid then
         view:PlaceCooldownAt(t, e, lane.player.name)
+    elseif lane.player.me then
+        view:PlaceCooldownAt(t, e) -- your own row: one of your reminders, as a dropped cooldown
     else
-        view:PlaceCooldownAt(t, e)
+        CRT:Print(TEXT.notLead)
     end
     return true
 end

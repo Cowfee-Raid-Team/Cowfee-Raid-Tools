@@ -417,9 +417,10 @@ local MIN_W, MIN_H = 760, 360
 local popWin, popButton, dockedNote
 local popped = false
 local returnPage -- the page Show on the Timeline came from, shown again when the pop-out is closed
--- the Abilities | Healer CDs toggle on the pop-out's title strip: each half as wide as its label
-local TOGGLE = { pad = 10, minW = 60, gap = 4, h = 18, help = 8 } -- help: the gap after the (?), before Reset
-local toggleButtons = {}
+-- the Abilities | Healer CDs toggle on the pop-out's title strip (UI.Toggle2); its (?) and a gap before Reset
+local TOGGLE_HELP_GAP = 8
+local toggle
+local abilitiesNow = false -- Show on the Timeline: Abilities for this opening, the saved choice untouched
 
 local function popSettings()
     local s = settings()
@@ -434,62 +435,44 @@ local function popView()
     return settings().popView == "healers" and "healers" or "abilities"
 end
 
--- Lights the toggle's half and draws the view in it: Healer CDs only while popped out.
-local function applyPopView()
-    local key = popped and popView() or "abilities"
-    for _, b in ipairs(toggleButtons) do
-        UI:SetTabSelected(b, b.viewKey == key)
+-- The view the pop-out shows now: Healer CDs only while popped out, and not while Show on the Timeline
+-- has it on Abilities.
+local function shownPopView()
+    if not popped or abilitiesNow then
+        return "abilities"
+    end
+    return popView()
+end
+
+-- Lights the toggle's half and draws the view in it. later: the caller redraws the view next, so SetMode
+-- doesn't. skin: a real change of view (UI:SetTabSelected), else only restyled.
+local function applyPopView(later, skin)
+    local key = shownPopView()
+    if toggle then
+        toggle:Select(key, skin)
     end
     if view and view.SetMode then
-        view:SetMode(key == "healers" and "healers" or nil)
+        view:SetMode(key == "healers" and "healers" or nil, later)
     end
 end
 
 local function setPopView(key)
+    abilitiesNow = false
     settings().popView = key == "healers" and "healers" or "abilities"
-    applyPopView()
+    applyPopView(false, true)
 end
 
 -- Each half as wide as its label (measured again each time the window opens, for a changed text size),
 -- right to left from the (?) before Reset.
 local function layToggle()
-    local after
-    for i = #toggleButtons, 1, -1 do
-        local b = toggleButtons[i]
-        local fs = b.text
-        local w = (fs.GetUnboundedStringWidth and fs:GetUnboundedStringWidth()) or fs:GetStringWidth() or 0
-        b:SetSize(math.max(TOGGLE.minW, math.ceil(tonumber(w) or 0) + 2 * TOGGLE.pad), TOGGLE.h)
-        b:ClearAllPoints()
-        if after then
-            b:SetPoint("RIGHT", after, "LEFT", -TOGGLE.gap, 0)
-        else
-            b:SetPoint("RIGHT", popWin.reset, "LEFT", -(TOGGLE.help + UI.HELP_GAP + UI.HELP_SIZE), 0)
-        end
-        after = b
-    end
+    toggle:Size()
+    toggle:PlaceRight(popWin.reset, -(TOGGLE_HELP_GAP + UI.HELP_GAP + UI.HELP_SIZE))
 end
 
 local function buildToggle()
     local strip = popWin.strip
-    for _, v in ipairs({ { key = "abilities", label = TEXT.abilities }, { key = "healers", label = TEXT.healers } }) do
-        local b = CreateFrame("Button", nil, strip, "BackdropTemplate")
-        if b.SetBackdrop then
-            b:SetBackdrop(BACKDROP)
-        end
-        b.sel = b:CreateTexture(nil, "ARTWORK")
-        b.sel:SetAllPoints()
-        b.sel:SetColorTexture(UI.Color("heading", 0.18)) -- UI:RegisterTab styles it from here on
-        b.text = b:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-        b.text:SetPoint("CENTER")
-        b.text:SetText(v.label)
-        b.viewKey = v.key
-        b:SetScript("OnClick", function()
-            setPopView(v.key)
-        end)
-        UI:RegisterTab(b)
-        toggleButtons[#toggleButtons + 1] = b
-    end
-    UI.HelpRight(toggleButtons[#toggleButtons], TEXT.healers, TEXT.viewHelp, { parent = strip })
+    toggle = UI.Toggle2(strip, { { key = "abilities", label = TEXT.abilities }, { key = "healers", label = TEXT.healers } }, setPopView)
+    UI.HelpRight(toggle.buttons[2], TEXT.healers, TEXT.viewHelp, { parent = strip })
     layToggle()
 end
 
@@ -529,7 +512,8 @@ end
 -- Puts the Review tab back on the page.
 dock = function()
     popped = false
-    applyPopView() -- docked: always the abilities
+    abilitiesNow = false
+    applyPopView(true) -- docked: always the abilities; refresh() below redraws
     reviewFrame:SetParent(tabFrames.review)
     reviewFrame:ClearAllPoints()
     reviewFrame:SetAllPoints(tabFrames.review)
@@ -557,7 +541,7 @@ local function popOut()
     popWin:Show()
     UI:SkinTree(popWin)
     layToggle()
-    applyPopView()
+    applyPopView(true, true)
     refresh()
 end
 
@@ -852,6 +836,11 @@ function Timeline:ShowRow(encounterID, spell, name)
     if not (popped and popWin:IsShown()) and CRT.db.lastPage ~= "timeline" then
         returnPage = CRT.db.lastPage
     end
+    -- an ability's row is on Abilities: for this opening only, decided before the window draws
+    abilitiesNow = true
+    if popped then
+        applyPopView(true, true)
+    end
     CRT.TimelinePopout()
     local key, before = nil, selectedGroup
     for _, group in ipairs({ before, before == "nh" and "mythic" or "nh" }) do
@@ -870,10 +859,6 @@ function Timeline:ShowRow(encounterID, spell, name)
     refresh()
     if not view then
         return false
-    end
-    -- an ability's row is on Abilities
-    if popView() == "healers" then
-        setPopView("abilities")
     end
     local spellID = type(spell) == "number" and spell or nil
     return view:Highlight(spellID, type(spell) == "string" and spell or name)
