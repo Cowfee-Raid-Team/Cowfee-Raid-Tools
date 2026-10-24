@@ -5,9 +5,10 @@ local ADDON, CRT = ...
 --
 -- It doesn't follow each action. It keeps a copy of everything the Timeline can change, item by item:
 -- each note (CRT.db.notes.list[id]: the raid and personal notes), each boss's own reminders
--- (CRT.db.alerts.reminders[encounterID]) and each of your references, with its moved phase lines
--- (timeline.references, by id). It watches their owners' change events (Notes, Alerts, Timeline), and
--- when items differ from the copy while a timeline shows, a step with those items before and after goes
+-- (CRT.db.alerts.reminders[encounterID]), each of your references, with its moved phase lines
+-- (timeline.references, by id), and each note's own times of yours (CRT.db.notes.personalShifts[id], the
+-- casts you moved on Healer CDs: Notes/Shifts.lua). It watches their owners' change events (Notes, Alerts,
+-- Timeline), and when items differ from the copy while a timeline shows, a step with those items before and after goes
 -- on the undo list. So every way of changing them from the Timeline is covered, the editor's saves and
 -- dropped cooldowns too, and undo puts back only the items that step changed. Changes in one frame join
 -- one step, so an action that writes two places undoes at once.
@@ -27,7 +28,7 @@ local TEXT = {
     nothingRedo = "Nothing to redo.",
 }
 
-local GROUPS = { "notes", "reminders", "references" }
+local GROUPS = { "notes", "reminders", "references", "shifts" }
 
 local last -- the copy of every item as it was after the last change seen: { notes = {}, ... }
 local restoring = false -- putting items back: their own change events are not new changes
@@ -72,11 +73,15 @@ local function live()
     db.notes.list = db.notes.list or {}
     db.alerts = db.alerts or {}
     db.alerts.reminders = db.alerts.reminders or {}
+    if type(db.notes.personalShifts) ~= "table" then
+        db.notes.personalShifts = {}
+    end
     local tl = CRT.Timeline and CRT.Timeline:Settings()
     if tl then
         tl.references = tl.references or {}
     end
-    return { notes = db.notes.list, reminders = db.alerts.reminders, references = tl and tl.references }
+    return { notes = db.notes.list, reminders = db.alerts.reminders, references = tl and tl.references,
+        shifts = db.notes.personalShifts }
 end
 
 -- Every item, copied, keyed the way it is put back: references by their id.
@@ -91,7 +96,7 @@ local function capture()
             refs[r.id] = copy(r)
         end
     end
-    return { notes = copy(t.notes), reminders = copy(t.reminders), references = refs }
+    return { notes = copy(t.notes), reminders = copy(t.reminders), references = refs, shifts = copy(t.shifts) }
 end
 
 -- The items that differ between two captures: { { group, key }, ... }.

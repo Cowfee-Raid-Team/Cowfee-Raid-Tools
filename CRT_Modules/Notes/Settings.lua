@@ -36,6 +36,11 @@ local TEXT = {
     -- Sharing.
     sharing = "Sharing",
     trustedOnly = "Only accept notes from leader or assistants",
+    autoAccept = "Accept healers' cooldown changes automatically",
+    autoAcceptHelp = "For the raid leader and assistants. Healers can move their own cooldowns on the Timeline's "
+        .. "Healer CDs and send them to you; they show under Proposed changes there. Ticked, a change from a group "
+        .. "member about their own line is written into the raid note at once. A change to a line you changed since "
+        .. "always waits. Share the note afterwards as usual.",
     notesList = "Notes list",
     listStyle = "Show notes",
     listHelp = "How the Notes tab lists notes: Grouped headings puts every note under its difficulty; Dropdown and Chips show one difficulty at a time, picked above the list.",
@@ -93,6 +98,7 @@ local function makeCheck(parent, x, y, label, enabledIf, getter, setter)
     text:SetWidth(COLUMN_W - 30)
     text:SetJustifyH("LEFT")
     text:SetText(label)
+    check.label = text -- UI.HelpRight follows it
     check:SetScript("OnClick", function(self)
         setter(self:GetChecked() and true or false)
     end)
@@ -105,6 +111,7 @@ local function makeCheck(parent, x, y, label, enabledIf, getter, setter)
         end
     end
     controls[#controls + 1] = check
+    return check, text
 end
 
 -- A number setting as an Edit Mode style slider. opts: low and high (the range), labelWidth and
@@ -223,8 +230,16 @@ local function build(pf)
     end, function(value)
         Notes:Set(nil, "trustedOnly", value)
     end)
+    -- healers' cooldown changes sent from Healer CDs (Notes/Proposals.lua)
+    local auto, autoText = makeCheck(pf, x - 4, top - 56, TEXT.autoAccept, nil, function()
+        return CRT.NoteProposals and CRT.NoteProposals.AutoAccept() or false
+    end, function(value)
+        Notes:Set(nil, "autoAcceptCooldowns", value)
+    end)
+    autoText:SetWidth(COLUMN_W - 30 - UI.HELP_SIZE - UI.HELP_GAP) -- room for its (?)
+    UI.HelpRight(auto, TEXT.autoAccept, TEXT.autoAcceptHelp)
 
-    local listTitle = heading(pf, x, top - 56, TEXT.notesList)
+    local listTitle = heading(pf, x, top - 92, TEXT.notesList)
     UI.HelpRight(listTitle, TEXT.notesList, TEXT.listHelp)
     local styleRow = UI.Dropdown(pf, TEXT.listStyle, {
         options = { { key = "grouped", label = TEXT.grouped }, { key = "dropdown", label = TEXT.dropdown }, { key = "chips", label = TEXT.chips } },
@@ -237,7 +252,7 @@ local function build(pf)
             Notes:SetListStyle(key)
         end,
     })
-    styleRow:SetPoint("TOPLEFT", x, top - 78)
+    styleRow:SetPoint("TOPLEFT", x, top - 114)
     controls[#controls + 1] = styleRow
 
     pf:SetScript("OnShow", refresh)

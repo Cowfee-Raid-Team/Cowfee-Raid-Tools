@@ -39,11 +39,12 @@ local barRefreshes, barTests = 0, 0
 local previewsOn = false
 local sliderLabels = {}
 local listeners = {}
+local helps = {} -- every (?) made
 local alertSettings = { enabled = true, seconds = 10, tts = true, ttsSeconds = 3, ttsVolume = 100 }
 local win = { shown = true, locked = true, fontSize = 14, alpha = 100, bgAlpha = 50, font = "Friz Quadrata", hidePassed = true, onlyMe = false }
 local CRT = {
   Bosses = { OnRouteChange = function() end, RouteIndex = function() end },
-  UI = { PAGE_W = 1026, PAGE_H = 560, SkinScrollBar = function() end, ScrollGutter = function(w) return 6 + (w or 18) end, Help = function() return mock() end, Dropdown = function(_, _, o) local m = mock() rawset(m, "refresh", function() if o.enabledIf then rawset(m, "enabled", o.enabledIf() and true or false) end end) return m end, Slider = function(_, t, o) sliderLabels[t] = o local m = mock() rawset(m, "refresh", function() if o.enabledIf then rawset(m, "enabled", o.enabledIf() and true or false) end end) return m end,  RegisterLayer = function() end, RegisterPage = function(_, key, title, fn) pages[key] = fn end, Show = function() end, SetFrameTitle = function() end, RegisterTab = function() end, SetPreviews = function(_, on) previewsOn = on end, SetTabSelected = function() end },
+  UI = { PAGE_W = 1026, PAGE_H = 560, SkinScrollBar = function() end, ScrollGutter = function(w) return 6 + (w or 18) end, Help = function() local h = mock() helps[#helps + 1] = h return h end, Dropdown = function(_, _, o) local m = mock() rawset(m, "refresh", function() if o.enabledIf then rawset(m, "enabled", o.enabledIf() and true or false) end end) return m end, Slider = function(_, t, o) sliderLabels[t] = o local m = mock() rawset(m, "refresh", function() if o.enabledIf then rawset(m, "enabled", o.enabledIf() and true or false) end end) return m end,  RegisterLayer = function() end, RegisterPage = function(_, key, title, fn) pages[key] = fn end, Show = function() end, SetFrameTitle = function() end, RegisterTab = function() end, SetPreviews = function(_, on) previewsOn = on end, SetTabSelected = function() end },
   Notes = {
     CanEditRaid = function() return true end, -- CRT_Modules/Notes/Data.lua: solo, you may change the raid note
     WindowSettings = function() return win end, Alert = function() return alertSettings end, Set = function(_, k, f, v) print("Set", k, f, v); local t = k == "alert" and alertSettings or win; t[f] = v; for _, fn in ipairs(listeners) do fn() end end,
@@ -80,7 +81,7 @@ end
 local checks = 0
 for _, f in ipairs(allFrames) do if f.kind == "CheckButton" then checks = checks + 1 end end
 -- 3 windows (Show, Locked) + Hide lines once passed + Show only me + the sharing switch
-assert(checks == 14, "checkboxes (13 settings, and Display my notes first on the Notes tab): " .. checks)
+assert(checks == 15, "checkboxes (14 settings, and Display my notes first on the Notes tab): " .. checks)
 print("ok the callout's settings are not here")
 -- All note windows is the first section, at the top left; every other section starts under its check box
 local function at(text)
@@ -97,8 +98,20 @@ for _, heading in ipairs({ "Sharing", "Notes list" }) do
   assert(pt and y(pt) <= -14 - 56, heading .. " starts under All note windows: " .. tostring(pt and y(pt)))
 end
 assert(not at("Alerts"), "no Alerts section")
-assert(y(at("Sharing")) == -70 and y(at("Notes list")) == -126, "the fourth column starts with Sharing, then Notes list")
+assert(y(at("Sharing")) == -70 and y(at("Notes list")) == -162, "the fourth column starts with Sharing, then Notes list")
 print("ok All note windows comes first")
+-- Accept healers' cooldown changes automatically (CRT_Modules/Notes/Proposals.lua): under the sharing switch, with a (?)
+local auto, autoLabel
+for _, s in ipairs(allStrings) do if rawget(s, "text") == "Accept healers' cooldown changes automatically" then autoLabel = s end end
+for _, f in ipairs(allFrames) do if f.kind == "CheckButton" and rawget(f, "label") == autoLabel then auto = f end end
+assert(autoLabel and auto and y(auto.pt) == -70 - 56, "the auto-accept box, in Sharing under the trusted switch")
+local help
+for _, h in ipairs(helps) do if rawget(h, "helpTarget") == auto then help = h end end
+assert(help, "with its (?)")
+rawset(auto, "GetChecked", function() return true end)
+auto.OnClick(auto)
+assert(win.autoAcceptCooldowns == true, "ticking it sets notes.autoAcceptCooldowns")
+print("ok the auto-accept box")
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 lua.lua_pushstring(L, to_luastring(fs.readFileSync(process.argv[2], 'utf8')));

@@ -36,9 +36,10 @@ local ADDON, CRT = ...
 -- chips wrap onto rows, up to 3 shown (fewer when the lanes
 -- would get under 3 rows); the wheel scrolls the rest. A right click on the track that doesn't move
 -- opens a menu there: New alert here, or Place a template or a cooldown.
--- view:SetMode("healers") (the pop-out's Healer CDs toggle) draws Timeline/HealerView.lua's rows in place of
--- the ability rows: Raid damage, then each healer with one row per major cooldown, the raid note's cooldown
--- lines as flags on them; the axis, zoom, scrolling, flag drag and Undo are this view's. SetMode(nil) goes back.
+-- view:SetMode("healers") (the pop-out's Healer CDs toggle) draws Timeline/HealerView.lua's layout: the
+-- ability rows as they are, then each healer with one row per major cooldown, the raid note's cooldown lines
+-- as flags on them; the axis, zoom, scrolling, flag drag and Undo are this view's. A non-lead's drag of their
+-- own cast there keeps their own time (HealerView.MovePersonal). SetMode(nil) goes back.
 
 local View = {}
 CRT.TimelineView = View
@@ -57,6 +58,7 @@ local MIN_SPAN, MAX_SPAN = 60, 600
 local ZOOM = 1.25
 local TICK_GAP = 40 -- the fewest pixels between two axis labels
 local DEATH_RED = { 0.89, 0.29, 0.29 } -- also the phase lines
+local END_LINE_W = 3 -- the line where an overlaid pull ended, in the kill or wipe colour
 local LEAD_GREEN = { 0.72, 0.88, 0.72 }
 local DUR_H = 18 -- the height of a duration bar
 local BAR_ALPHA = 0.45
@@ -180,6 +182,9 @@ local TEXT = {
     bandLength = "%d:%02d", -- a cooldown band's length, minutes and seconds, inside the after band
     tooSoon = " \194\183 too soon", -- added to a drag's label when another cast of the spell is inside its bands
     zoomRange = "%s - %s (%s)", -- the drag-to-zoom band's label: from, to, and how long
+    kill = "Kill %s", -- the end line's tag on the axis: how the overlaid pull ended, and when
+    wipe = "Wipe %s",
+    ended = "End %s", -- a pull with no saved result
 }
 
 local function settings()
@@ -313,7 +318,7 @@ local function abilityTip(owner, lane, spellID, lines)
 end
 
 local function iconEnter(b)
-    -- a Healer CDs Raid damage icon is drawn on that row but belongs to its own ability row (mark.source)
+    -- a mark drawn on another row than its own names its own (mark.source)
     local mark = b.mark
     local lane = mark.source or b.lane
     if lane.kind == "reference" then
@@ -394,6 +399,10 @@ local function flagEnter(f)
         source = m.difficulty and string.format(TEXT.raidNoteOf, m.difficulty) or TEXT.raidNote
     end
     GameTooltip:AddLine(source, 0.85, 0.85, 0.85)
+    -- Healer CDs' own lines: whose cast it is and who may move it, your time against the raid's
+    for _, line in ipairs(m.tipLines or {}) do
+        GameTooltip:AddLine(line, 0.85, 0.85, 0.85, true)
+    end
     GameTooltip:Show()
 end
 
@@ -1682,9 +1691,9 @@ local function canEditRaid()
 end
 
 -- Whether a marker can be moved, Alt+dragged or deleted by you: your reminders always, a raid note
--- line only when you may change the raid note.
+-- line only when you may change the raid note, or (only moved, for you) your own cast on Healer CDs.
 local function canChange(m)
-    return m ~= nil and (m.kind ~= "note" or (canEditRaid()))
+    return m ~= nil and (m.kind ~= "note" or m.hvOwn or (canEditRaid()))
 end
 
 -- No hover highlight on a flag you can't change (a raid note line, for anyone else); its tooltip
@@ -1821,21 +1830,7 @@ end
 -- Moves a note line to phase ph, t seconds in, or (add) writes the same line again there, in the same
 -- note. Fields the parser doesn't know stay on the line. False when the line is no longer the one drawn.
 local function writeNote(m, ph, t, add)
-    local Notes, Parser = CRT.Notes, CRT.NoteParser
-    local timer, raw = Notes:TimerAt(m.noteID, m.line)
-    if not (timer and m.expected ~= nil and raw == m.expected) then
-        return false
-    end
-    local moved = {}
-    for k, v in pairs(timer) do
-        moved[k] = v
-    end
-    moved.ph, moved.time = ph, t
-    local line = Parser.FormatLine(moved) .. Parser.UnknownFields(m.expected)
-    if add then
-        return Notes:AddLineTo(m.noteID, line) ~= nil
-    end
-    return Notes:ReplaceLine(m.noteID, m.line, line, m.expected)
+    return CRT.Notes:MoveLine(m.noteID, m.line, ph, t, m.expected, add)
 end
 
 -- Whether the cursor is over the track's window: inside the track and inside the shown part of the lanes
@@ -1897,11 +1892,15 @@ function Methods:FinishMove()
     elseif m.kind == "note" then
         -- asked again at the release: you may have lost the right since the grab
         local allowed, why = canEditRaid()
-        if not allowed then
+        -- Alt adds a raid note line, which only a lead may do: refused below with the reason
+        if not allowed and m.hvOwn and not add and CRT.TimelineHealerView then
+            ok = CRT.TimelineHealerView.MovePersonal(self, m, ph, seconds) -- your own time, the raid note untouched
+        elseif not allowed then
             CRT:Print(why or TEXT.moveRefused)
             return
+        else
+            ok = writeNote(m, ph, seconds, add)
         end
-        ok = writeNote(m, ph, seconds, add)
     end
     if not ok then
         CRT:Print(TEXT.moveRefused)
@@ -3449,7 +3448,8 @@ end
 function Methods:FlagMenu(m, owner)
     local title = tostring(m.text or "")
     title = title .. " \194\183 " .. CRT.AlertReminders.FormatTimes({ { ph = m.ph, t = m.time } })
-    local changeable = canChange(m)
+    -- your own cast on Healer CDs moves for you only: its line is still the raid's to edit or delete
+    local changeable = canChange(m) and not (m.hvOwn and not canEditRaid())
     contextMenu(owner, function(root)
         root:CreateTitle(title)
         root:CreateButton(changeable and TEXT.edit or TEXT.view, function()
@@ -3825,22 +3825,48 @@ function Methods:DrawPhases(phases, length, height)
     return rows
 end
 
--- Draws the 2 px line where the overlaid pull ended, or hides it when there is none.
+-- Draws the line where the overlaid pull ended, or hides it when there is none: 3 px across every row, in
+-- the theme's good colour for a kill, its bad colour for a wipe and its accent for a pull with no saved result
+-- (self.extra.endResult), with a "Kill 4:12", "Wipe 4:12" or "End 4:12" tag at the bottom of the time axis,
+-- painted through themed() so a theme switch repaints them. Both layouts draw it (Abilities and Healer CDs).
 function Methods:DrawEndLine(t, length, height)
     if type(t) ~= "number" then
         if self.endLine then
             self.endLine:Hide()
+            self.endTag:Hide()
         end
         return
     end
     if not self.endLine then
-        self.endLine = self.track:CreateTexture(nil, "ARTWORK")
-        themed(self.endLine, "SetColorTexture", "accent")
+        self.endLine = self.track:CreateTexture(nil, "OVERLAY")
+        local tag = CreateFrame("Frame", nil, self.axis)
+        tag:SetFrameLevel((self.axis:GetFrameLevel() or 0) + 4)
+        tag:SetHeight(14)
+        tag.bg = tag:CreateTexture(nil, "BACKGROUND")
+        tag.bg:SetAllPoints()
+        themed(tag.bg, "SetColorTexture", "surface", 0.95)
+        tag.text = tag:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+        tag.text:SetPoint("CENTER")
+        self.endTag = tag
     end
+    local result = self.extra and self.extra.endResult
+    local key = (result == "kill" and "good") or (result == "wipe" and "bad") or "accent"
+    if not CRT.PALETTE[key] then
+        key = "accent" -- a palette without the status colours (every theme has them)
+    end
+    local x = View.TimeToX(math.min(t, length), length, self.trackW)
+    themed(self.endLine, "SetColorTexture", key)
     self.endLine:ClearAllPoints()
-    self.endLine:SetPoint("TOPLEFT", self.track, "TOPLEFT", View.TimeToX(math.min(t, length), length, self.trackW) - 1, 0)
-    self.endLine:SetSize(2, height)
+    self.endLine:SetPoint("TOPLEFT", self.track, "TOPLEFT", x - END_LINE_W / 2, 0)
+    self.endLine:SetSize(END_LINE_W, height)
     self.endLine:Show()
+    local tag = self.endTag
+    themed(tag.text, "SetTextColor", key)
+    tag.text:SetText(string.format((result == "kill" and TEXT.kill) or (result == "wipe" and TEXT.wipe) or TEXT.ended, View.Format(t)))
+    tag:SetWidth((tag.text.GetStringWidth and tag.text:GetStringWidth() or 40) + 8)
+    tag:ClearAllPoints()
+    tag:SetPoint("BOTTOM", self.axis, "BOTTOMLEFT", x, 2)
+    tag:Show()
 end
 
 -- A reference lane's bars (as long as each cast lasts) and lead lines (from the cast's start to
@@ -3903,11 +3929,11 @@ function Methods:Refresh()
     local width = self:VisibleWidth()
     local length = pull and math.max(1, self.extra.length or 0) or 1
     -- the saved notes' markers, collected before the lanes are drawn since they may add the Notes lane;
-    -- Healer CDs puts its own rows in place of the lanes, the note lines on them
+    -- Healer CDs adds its own rows under the ability rows, the cooldown lines on them
     local HealerView = pull and self.mode == "healers" and CRT.TimelineHealerView
     if HealerView then
         lanes, self.marks = HealerView.Build(self, lanes, length)
-        self.lanes, self.ignoredLanes, self.unknown = lanes, {}, {}
+        self.lanes = lanes
     else
         self.marks = self:Marks(lanes, length)
     end
@@ -3955,7 +3981,7 @@ function Methods:Refresh()
         l.stripe:SetPoint("TOPLEFT", self.body, "TOPLEFT", 0, y)
         l.stripe:SetPoint("BOTTOMRIGHT", self.body, "TOPRIGHT", 0, y - ROW_H)
         -- a reference row is tinted faintly in its type's color; other rows keep the alternate stripe
-        local tint = (lane.kind == "reference" or lane.kind == "raid") and lane.color
+        local tint = lane.kind == "reference" and lane.color
         if tint then
             l.stripe:SetColorTexture(tint[1], tint[2], tint[3], TINT_ALPHA)
         else
@@ -4034,7 +4060,7 @@ function Methods:Refresh()
                     b.bg:SetColorTexture(r, g, bl)
                 end
             else
-                local icon = mark.icon or lane.icon -- a Raid damage icon has its own row's
+                local icon = mark.icon or lane.icon
                 if lane.kind == "spell" and not icon then
                     local ok, tex = pcall(C_Spell.GetSpellTexture, mark.spellID)
                     icon = ok and tex or UNNAMED_ICON

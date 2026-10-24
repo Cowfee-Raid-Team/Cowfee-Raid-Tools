@@ -20,6 +20,7 @@ CRT.version = (C_AddOns and C_AddOns.GetAddOnMetadata and C_AddOns.GetAddOnMetad
 --   tattle.history, tattle.current, tattle.custom (Tattlebot's nights, with each night's season name and team stamp)
 --   late.history (the Late Tracker's nights, team stamped), notes.list and notes.history (raid notes and their
 --   earlier texts), CRTLootDB (Loot History, its own saved variable), timeline.references (your own ability timelines)
+--   notes.personalShifts (your own Healer CDs times, by note id: they follow the notes and go with a deleted note)
 --   longTerm: the area for new long-term data. Anything new that should outlast a season goes under it, never
 --   declared; nothing has moved into it, and the stores above stay where they are.
 
@@ -151,6 +152,10 @@ local defaults = {
         history = {}, -- each note's last 5 earlier texts, by note id (Notes/Data.lua); never shared or exported
         showOutsideRaid = false, -- true also shows the three note windows outside a raid instance
         trustedOnly = true, -- only accept shared notes from the raid leader or assistants
+        -- Healer CDs (Notes/Shifts.lua, Notes/Proposals.lua): your own times for your raid note cooldowns, by
+        -- note and line, kept on this computer; and whether healers' proposed changes are accepted at once
+        personalShifts = {},
+        autoAcceptCooldowns = false,
         shareTarget = "crt", -- Share's Send to: "crt", a note target's key (Integrations/), or "all"
         -- keepEmpty keeps a window up, blank at its own transparency, while it has nothing to show, so a
         -- note being cleared or shared doesn't make it vanish (Notes/Window.lua).

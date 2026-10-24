@@ -137,7 +137,7 @@ end
 CRT.db.seasonStats = { bosses = { [SSZ] = { name = "Sszorak", nh = { pulls = 4 } }, [OLD] = { name = "Old Boss", nh = { pulls = 9 } } } }
 CRT.db.tattle = { history = { { id = 1, season = "Season 1", pulls = { { encounterID = SSZ } } } }, custom = { [555] = { name = "Puddle", encounterID = SSZ } } }
 CRT.db.late = { history = { { id = 1 } } }
-CRT.db.notes = { list = { [1] = { raw = "x", encounterID = SSZ } }, history = { [1] = { "old" } } }
+CRT.db.notes = { list = { [1] = { raw = "x", encounterID = SSZ } }, history = { [1] = { "old" } }, personalShifts = { [1] = { k = { ph = 1, t = 5, raw = "x" } } } }
 CRT.db.longTerm = { kept = { [SSZ] = true } }
 CRTLootDB = { bosses = { [SSZ] = "Sszorak" }, records = { { encounterID = SSZ } } }
 local counts, total, bosses = Tools:PurgeCounts("sample")
@@ -163,6 +163,7 @@ eq(#CRT.db.tattle.history, 1, "Tattlebot's history is kept")
 check(CRT.db.tattle.custom[555] ~= nil, "Tattlebot's own tracked spells are kept")
 eq(#CRT.db.late.history, 1, "the Late Tracker is kept")
 check(CRT.db.notes.list[1] ~= nil and CRT.db.notes.history[1] ~= nil, "raid notes and note history are kept")
+check(CRT.db.notes.personalShifts[1] ~= nil, "your own Healer CDs times (by note) are kept with their notes")
 check(CRT.db.longTerm.kept[SSZ], "the longTerm area is kept")
 check(CRTLootDB.bosses[SSZ] ~= nil and #CRTLootDB.records == 1, "loot history is kept")
 local _, again = Tools:PurgeCounts("sample")
@@ -212,7 +213,7 @@ check(a and b and c and c > a and c < b, "the command is inside the do-not-packa
 -- 4. The longTerm area and the store list in Core.lua --------------------------------------------------------------
 local core = loaded["CRT_Core/Core.lua"]
 check(core:find("\n    longTerm = {},", 1, true) ~= nil, "Core.lua has a longTerm default")
-for _, s in ipairs({ "seasonStats", "tattle.history", "notes.list", "notes.history", "late.history", "CRTLootDB" }) do
+for _, s in ipairs({ "seasonStats", "tattle.history", "notes.list", "notes.history", "notes.personalShifts", "late.history", "CRTLootDB" }) do
   check(core:find(s, 1, true) ~= nil, "Core.lua's store list names " .. s)
 end
 check(core:find("DeclareStore", 1, true) ~= nil, "Core.lua says per-season stores are declared")

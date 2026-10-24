@@ -235,6 +235,8 @@ local function referenceLanes(ref, rows, settings, encounterID, overlay, group, 
         end
         lanes[#lanes + 1] = ticks
         extra.endLine = overlay.length
+        -- how it ended, for the end line's colour and tag: "kill", "wipe", or nil when no result was saved
+        extra.endResult = (overlay.kill == true and "kill") or (overlay.kill == false and "wipe") or nil
     end
     return lanes, unknown, extra
 end
