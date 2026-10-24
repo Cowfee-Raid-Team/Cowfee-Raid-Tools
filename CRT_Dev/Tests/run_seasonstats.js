@@ -423,6 +423,57 @@ eq(V.cards.killed.value.text, "2 / 3", "card: bosses killed")
 eq(V.cards.pulls.value.text, "125", "card: pulls")
 eq(V.cards.nights.value.text, "0", "card: raid nights (none in this season)")
 eq(V.cards.time.value.text, S.Hours(card.pullTime), "card: time in pulls")
+-- the repairs cards and columns: empty until a pull is measured
+check(V.cards.repairs and V.cards.raid, "the Your repairs and Raid costs cards")
+eq(V.cards.repairs.label.text, "Your repairs", "card: Your repairs")
+eq(V.cards.raid.label.text, "Raid costs", "card: Raid costs")
+eq(V.cards.repairs.value.text, "-", "no measured pull: Your repairs is a dash")
+eq(V.cards.raid.value.text, "-", "no report: Raid costs is a dash")
+V.cards.raid.scripts.OnEnter(V.cards.raid)
+check(table.concat(GameTooltip.lines, " "):find("No raiders running CRT", 1, true) ~= nil, "and its tooltip says no one reported (" .. table.concat(GameTooltip.lines, " / ") .. ")")
+V.cards.raid.scripts.OnLeave(V.cards.raid)
+local lastCard = V.cards.raid
+check(lastCard.point[2] + lastCard.w <= UI.PAGE_W - 8 and lastCard.point[3] == V.cards.killed.point[3], "six cards in one row inside the page")
+check(V.cards.killed.w >= 150, "and each still wide enough to read (" .. tostring(V.cards.killed.w) .. ")")
+local colKeys = {}
+for _, col in ipairs(sorts[1].cols) do colKeys[#colKeys + 1] = col.key end
+eq(table.concat(colKeys, ","), "name,pulls,wipes,kills,toKill,best,first,repairs,raid", "the table's columns, the repairs last")
+eq(sorts[1].cols[8].title .. "/" .. sorts[1].cols[9].title, "Your repairs/Raid costs", "their titles")
+eq(V.rows[2].repairs.text .. " " .. V.rows[2].raid.text, "- -", "no repairs on a boss: dashes")
+eq(S.Money(25000), "3g", "money: a gold or more in whole gold")
+eq(S.Money(250), "2s 50c", "money: less than a gold in silver and copper")
+GetMoneyString = function(c, sep) return "GMS" .. c .. tostring(sep) end
+eq(S.Money(123456), "GMS120000true", "money: the game's money text, thousands separated")
+GetMoneyString = nil
+-- Gamma: your 2.5 gold over one pull, the raid's 4 gold from two raiders
+local gm = S:Boss(9101, "mythic")
+S:AddRepair(gm, 25000)
+S:AddRaidRepair(9101, "mythic", 25000, true)
+S:AddRaidRepair(9101, "mythic", 15000, false)
+S:AddRepair(gm, -5)
+eq(gm.repairs .. "/" .. gm.repairPulls, "25000/1", "a negative bill adds nothing")
+V.refresh()
+eq(V.cards.repairs.value.text, S.Money(25000), "card: Your repairs, the season's")
+eq(V.cards.raid.value.text, S.Money(40000), "card: Raid costs, the season's")
+eq(V.rows[2].repairs.text, S.Money(25000), "Gamma's row: Your repairs")
+eq(V.rows[2].raid.text, S.Money(40000), "Gamma's row: Raid costs")
+eq(V.rows[1].repairs.text, "-", "Epsilon's row: none")
+V.cards.raid.scripts.OnEnter(V.cards.raid)
+local rt = table.concat(GameTooltip.lines, " ")
+eq(GameTooltip.owner, V.cards.raid, "the Raid costs tooltip, on its card")
+check(rt:find("From 2 raiders running CRT over 1 pull", 1, true) and rt:find("without CRT", 1, true), "it says how many raiders over how many pulls, and that raiders without CRT aren't counted (" .. rt .. ")")
+V.cards.repairs.scripts.OnEnter(V.cards.repairs)
+check(table.concat(GameTooltip.lines, " "):find("1 pull", 1, true) ~= nil, "Your repairs' tooltip: over how many pulls")
+V.rows[2].scripts.OnEnter(V.rows[2])
+local rowTipText = table.concat(GameTooltip.lines, " ")
+check(rowTipText:find("Your repairs", 1, true) and rowTipText:find("Raid costs", 1, true), "the row's tooltip has both (" .. rowTipText .. ")")
+V.rows[2].scripts.OnLeave(V.rows[2])
+local help = helps["Season Stats"] or ""
+check(help:find("Your repairs", 1, true) and help:find("Raid costs", 1, true) and help:find("starts with this update", 1, true) and help:find("without CRT", 1, true),
+  "the page's (?) explains both, that counting starts with this update and who isn't counted")
+sorts[1].opts.set("raid", -1)
+eq(V.rows[1].name.text, "Gamma", "sorted by Raid costs, most first")
+sorts[1].opts.set(nil, 1)
 -- the table, route order
 local function rowName(i) return V.rows[i] and V.rows[i].shown and V.rows[i].name.text end
 eq(rowName(1) .. ", " .. rowName(2) .. ", " .. rowName(3), "Epsilon, Gamma, Delta", "the table in route order")

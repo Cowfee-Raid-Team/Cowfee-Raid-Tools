@@ -1,8 +1,8 @@
 local ADDON, CRT = ...
 
 -- The Season Stats page (Modules > Season Stats): a Season dropdown (the boss library's season packs, the current
--- one first) and a Difficulty dropdown (the Timeline's groups); four cards (bosses killed of the season's route,
--- pulls, raid nights, time in pulls); the table of the route's bosses in route order (sortable, back to route order
+-- one first) and a Difficulty dropdown (the Timeline's groups); six cards (bosses killed of the season's route,
+-- pulls, raid nights, time in pulls, your repairs and the raid's costs, SeasonStats/Repairs.lua); the table of the route's bosses in route order (sortable, back to route order
 -- on a third click); and the reflection for the boss picked in the table: its longest pull each night as bars,
 -- the furthest phase, the spells that killed most (each with its icon, in its ability timeline row's type colour,
 -- Stats:AbilityRow, and the shared ability tooltip with the spell and its Journal text, CRT.AbilityTip),
@@ -17,32 +17,46 @@ local UI = CRT.UI
 local L = {
     left = 8, headTop = -8, filterTop = -2, seasonX = 190, seasonLabelW = 50, seasonW = 200, groupX = 470,
     groupLabelW = 64, groupW = 130,
-    cardsTop = -44, cardH = 54, cardGap = 10, cardPad = 10,
-    tableTop = -114, tableW = 604, headH = 22, row = 20, rows = 20,
-    reflX = 630, reflW = 388, bodyTop = -26, line = 16, bars = 8, barsTop = -18, dateW = 70, barX = 74, barW = 200, barH = 10,
+    cards = 6, cardsTop = -44, cardH = 54, cardGap = 10, cardPad = 10,
+    tableTop = -114, tableW = 670, headH = 22, row = 20, rows = 20,
+    reflX = 690, reflW = 328, bodyTop = -26, line = 16, bars = 8, barsTop = -18, dateW = 70, barX = 74, barW = 150, barH = 10,
     causes = 3, avoid = 4, arrowW = 12, causeIcon = 16, causeGap = 4,
 }
 
 -- The table's columns: key, x, w; each title is TEXT.columns[key].
 local COLS = {
-    { key = "name", x = 0, w = 184 },
-    { key = "pulls", x = 190, w = 50 },
-    { key = "wipes", x = 244, w = 50 },
-    { key = "kills", x = 298, w = 44 },
-    { key = "toKill", x = 346, w = 96 },
-    { key = "best", x = 446, w = 62 },
-    { key = "first", x = 512, w = 90 },
+    { key = "name", x = 0, w = 140 },
+    { key = "pulls", x = 144, w = 42 },
+    { key = "wipes", x = 190, w = 46 },
+    { key = "kills", x = 240, w = 38 },
+    { key = "toKill", x = 282, w = 82 },
+    { key = "best", x = 368, w = 62 },
+    { key = "first", x = 434, w = 68 },
+    { key = "repairs", x = 506, w = 88 },
+    { key = "raid", x = 598, w = 72 },
 }
 
 local TEXT = {
     title = "Season Stats",
-    columns = { name = "Boss", pulls = "Pulls", wipes = "Wipes", kills = "Kills", toKill = "To first kill", best = "Best kill", first = "First kill" },
+    columns = { name = "Boss", pulls = "Pulls", wipes = "Wipes", kills = "Kills", toKill = "To first kill", best = "Best kill", first = "First kill",
+        repairs = "Your repairs", raid = "Raid costs" },
     help = "Your raid's season, boss by boss: pulls, wipes and kills on the difficulty you pick.\n\n"
         .. "Every pull the Timeline saves counts, so keep Record on in the Timeline's settings.\n\n"
         .. "Pulls from before Season Stats are filled in once from the Timeline's saved pulls. It keeps only the newest of them, so older pulls count as wipes with no length.\n\n"
-        .. "Raid nights are the Late Tracker's nights between the season's first and last pull. Click a boss to see how its pulls went.",
+        .. "Raid nights are the Late Tracker's nights between the season's first and last pull. Click a boss to see how its pulls went.\n\n"
+        .. "Your repairs is how much your repair bill went up over each pull. It's read from your gear right at the pull and again after it, so running back adds nothing.\n\n"
+        .. "Raid costs adds up the same from every raider running CRT. Raiders without CRT aren't counted.\n\n"
+        .. "Repair counting starts with this update, so older pulls have none.",
     season = "Season", difficulty = "Difficulty",
     killed = "Bosses killed", pulls = "Pulls", nights = "Raid nights", time = "Time in pulls",
+    repairs = "Your repairs", raid = "Raid costs",
+    repairsTip = "Your repair bill over %d %s, read from your gear.",
+    repairsNone = "No pulls measured yet.",
+    raidFrom = "From %d raiders running CRT over %d %s.",
+    raidReports = "%d reports in all.",
+    raidWithout = "Raiders without CRT aren't counted.",
+    raidNone = "No raiders running CRT have reported yet.",
+    rowRepairs = "Your repairs: %s over %d %s", rowRaid = "Raid costs: %s from %d raiders over %d %s",
     nightsTip = "Nights the Late Tracker saved between this season's first and last pull.",
     pullNights = "%d nights had pulls on this difficulty.",
     untimed = "%d early pulls have no saved length, so they aren't in this time.",
@@ -136,7 +150,7 @@ end
 -- Cards -------------------------------------------------------------------------------------------------------------
 
 local function makeCard(f, i, label)
-    local w = (UI.PAGE_W - 2 * L.left - 3 * L.cardGap) / 4
+    local w = (UI.PAGE_W - 2 * L.left - (L.cards - 1) * L.cardGap) / L.cards
     local card = CreateFrame("Frame", nil, f, "BackdropTemplate")
     card:SetPoint("TOPLEFT", L.left + (i - 1) * (w + L.cardGap), L.cardsTop)
     card:SetSize(w, L.cardH)
@@ -156,6 +170,15 @@ local function makeCard(f, i, label)
     return card
 end
 
+local function pullWord(n)
+    return n == 1 and TEXT.pull or TEXT.pullsWord
+end
+
+-- the raiders reporting a pull, on average (each report is one raider's one pull)
+local function raiders(t)
+    return t.raidPulls > 0 and math.floor(t.raidReporters / t.raidPulls + 0.5) or 0
+end
+
 local function refreshCards(card)
     local c = view.cards
     c.killed.value:SetText(string.format("%d / %d", card.killed, card.bosses))
@@ -164,6 +187,21 @@ local function refreshCards(card)
     c.nights.tip = { TEXT.nights, TEXT.nightsTip, TEXT.pullNights:format(card.pullNights) }
     c.time.value:SetText(S.Hours(card.pullTime))
     c.time.tip = card.untimed > 0 and { TEXT.time, TEXT.untimed:format(card.untimed) } or nil
+    if card.repairPulls > 0 then
+        c.repairs.value:SetText(S.Money(card.repairs))
+        c.repairs.tip = { TEXT.repairs, TEXT.repairsTip:format(card.repairPulls, pullWord(card.repairPulls)) }
+    else
+        c.repairs.value:SetText(TEXT.none)
+        c.repairs.tip = { TEXT.repairs, TEXT.repairsNone }
+    end
+    if card.raidPulls > 0 then
+        c.raid.value:SetText(S.Money(card.raidRepairs))
+        c.raid.tip = { TEXT.raid, TEXT.raidFrom:format(raiders(card), card.raidPulls, pullWord(card.raidPulls)),
+            TEXT.raidReports:format(card.raidReporters), TEXT.raidWithout }
+    else
+        c.raid.value:SetText(TEXT.none)
+        c.raid.tip = { TEXT.raid, TEXT.raidNone, TEXT.raidWithout }
+    end
 end
 
 -- The table ---------------------------------------------------------------------------------------------------------
@@ -176,6 +214,8 @@ local SORT = {
     toKill = function(r) return r.firstKillPull end,
     best = function(r) return r.bestKill end,
     first = function(r) return r.firstKillAt end,
+    repairs = function(r) return r.repairPulls > 0 and r.repairs or nil end,
+    raid = function(r) return r.raidPulls > 0 and r.raidRepairs or nil end,
 }
 
 -- rows sorted by the chosen column; a row with no value (no kill yet) last either way; route order breaks ties
@@ -221,6 +261,8 @@ local function paintRow(row, r)
     end
     row.best:SetText(r.bestKill and S.Clock(r.bestKill) or TEXT.none)
     row.first:SetText(r.firstKillAt and date("%Y-%m-%d", r.firstKillAt) or TEXT.none)
+    row.repairs:SetText(r.repairPulls > 0 and S.Money(r.repairs) or TEXT.none)
+    row.raid:SetText(r.raidPulls > 0 and S.Money(r.raidRepairs) or TEXT.none)
     row.sel:SetShown(state.boss == r.encounterID)
     row:Show()
 end
@@ -233,6 +275,12 @@ local function rowTip(row)
     local lines = { r.name, TEXT.rowTime:format(S.Hours(r.pullTime)) }
     if r.counters and r.counters.killTime > 0 then
         lines[#lines + 1] = TEXT.rowKills:format(S.Hours(r.counters.killTime))
+    end
+    if r.repairPulls > 0 then
+        lines[#lines + 1] = TEXT.rowRepairs:format(S.Money(r.repairs), r.repairPulls, pullWord(r.repairPulls))
+    end
+    if r.raidPulls > 0 then
+        lines[#lines + 1] = TEXT.rowRaid:format(S.Money(r.raidRepairs), raiders(r), r.raidPulls, pullWord(r.raidPulls))
     end
     lines[#lines + 1] = TEXT.rowClick
     showTip(row, lines)
@@ -564,6 +612,8 @@ local function build(f)
         pulls = makeCard(f, 2, TEXT.pulls),
         nights = makeCard(f, 3, TEXT.nights),
         time = makeCard(f, 4, TEXT.time),
+        repairs = makeCard(f, 5, TEXT.repairs),
+        raid = makeCard(f, 6, TEXT.raid),
     }
     view.sort = UI.SortHeaders(f, COLS, {
         x = L.left, y = L.tableTop, backToDefault = true,
