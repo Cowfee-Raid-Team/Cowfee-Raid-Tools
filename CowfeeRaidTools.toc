@@ -127,6 +127,7 @@ CRT_Modules\Alerts\Colors.lua
 CRT_Modules\Timeline\Undo.lua
 CRT_Modules\Timeline\JournalExport.lua
 CRT_Modules\SeasonStats\Data.lua
+CRT_Modules\SeasonStats\Repairs.lua
 CRT_Modules\SeasonStats\Page.lua
 CRT_Modules\Alerts\PhaseDatabase.lua
 CRT_Modules\Alerts\Phases.lua
