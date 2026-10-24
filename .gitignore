@@ -5,6 +5,9 @@
 # Tooling
 node_modules/
 
+# The internal build number, written by CRT_Dev/Tools/build-number.sh after each commit or merge on main
+CRT_Dev/Dev/Build.lua
+
 # Editor and OS
 .vscode/
 Thumbs.db

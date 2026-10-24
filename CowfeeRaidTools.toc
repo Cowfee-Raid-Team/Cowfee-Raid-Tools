@@ -169,6 +169,7 @@ CRT_Core\UI\SettingsPage.lua
 # Season packs: one line each. The pack's Season.xml lists its own files (CRT_Data\Seasons\<pack>\Season.xml).
 CRT_Data\Seasons\Midnight-S2\Season.xml
 #@do-not-package@
+CRT_Dev\Dev\Build.lua
 CRT_Dev\Dev\LayoutEditor.lua
 CRT_Dev\Dev\TimelineProbe.lua
 CRT_Dev\Dev\GameTimelineProbe.lua

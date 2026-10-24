@@ -279,6 +279,15 @@ local TEXT = {
     bosses = "Bosses",
     modules = "Modules",
 }
+-- The title bar's version text: "v1.1.2", or "v1.1.2 build#004" in a developer copy with CRT.BUILD.
+function UI.VersionText()
+    local text = "v" .. tostring(CRT.version)
+    if type(CRT.BUILD) == "number" then
+        text = text .. string.format(" build#%03d", CRT.BUILD)
+    end
+    return text
+end
+
 UI.MENU_GROUPS = {
     { label = TEXT.general, "settings", "qol" },
     { label = TEXT.bosses, "timeline", "notes", "pace" },
@@ -1801,11 +1810,12 @@ function UI:Create()
         end
     end)
     UI.SetFrameTitle(f, "Cowfee Raid Tools")
-    -- The addon's version, from the .toc, in the top left of the title bar.
+    -- The addon's version, from the .toc, in the top left of the title bar. A developer copy adds its internal
+    -- build number (CRT.BUILD, from CRT_Dev/Dev/Build.lua, never shipped): "v1.1.2 build#004".
     f.version = f:CreateFontString(nil, "OVERLAY", "CRTFontButtonSmall")
     f.version:SetPoint("TOPLEFT", 10, -6)
     f.version:SetTextColor(0.6, 0.6, 0.6)
-    f.version:SetText("v" .. tostring(CRT.version))
+    f.version:SetText(UI.VersionText())
     tinsert(UISpecialFrames, "CowfeeRaidToolsFrame")
 
     -- Closing the panel also turns the previews off, so nothing is left floating on screen.
