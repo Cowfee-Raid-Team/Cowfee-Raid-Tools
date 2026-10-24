@@ -17,13 +17,21 @@ root="${root:-$(cd "$here/../.." && (pwd -W 2>/dev/null || pwd))}"
 out="$here/last-run.txt"
 [ -n "$only" ] && out="$here/last-group.txt"
 
-# node_modules is not in Git, so a fresh worktree borrows the main checkout's (git's common dir is
-# <main checkout>/.git). A main checkout from before the CRT_Dev move still has it in Tests/.
+# node_modules is not in Git, so a fresh worktree borrows the main checkout's. Git can't name that checkout
+# from a worktree (its .git is a pointer file to C:\dev\git, and git lists the gitdir as the main worktree), so
+# the worktree convention comes first: worktrees live in <main checkout>/.claude/worktrees/<name>. A main
+# checkout from before the CRT_Dev move still has the modules in Tests/.
 mods="$here/node_modules"
 if [ ! -d "$mods/fengari" ]; then
-    common="$(git -C "$here" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)"
-    if [ -n "$common" ]; then
-        main="$(dirname "$common")"
+    main=""
+    case "$here" in
+        */.claude/worktrees/*) main="${here%%/.claude/worktrees/*}" ;;
+    esac
+    if [ -z "$main" ]; then
+        common="$(git -C "$here" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)"
+        [ -n "$common" ] && main="$(dirname "$common")"
+    fi
+    if [ -n "$main" ]; then
         mods="$main/CRT_Dev/Tests/node_modules"
         [ -d "$mods/fengari" ] || mods="$main/Tests/node_modules"
     fi

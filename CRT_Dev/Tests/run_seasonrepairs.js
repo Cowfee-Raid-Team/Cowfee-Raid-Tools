@@ -427,7 +427,7 @@ check(okOld, "old counters take a pull")
 eq(S:Boss(9001, "nh").pulls, 4, "and count it")
 eq(S:Boss(9001, "nh").repairs or 0, 0, "with no repairs of their own")
 check(tocSrc:find("CRT_Modules\\\\SeasonStats\\\\Data.lua\\r?\\nCRT_Modules\\\\SeasonStats\\\\Repairs.lua") ~= nil, "Repairs.lua loads right after Season Stats' data")
-for _, name in ipairs({ "Midnight", "midnight-s1", "Season 1" }) do
+for _, name in ipairs({ "Midnight", "midnight-s2", "Season 1" }) do
   check(not repairsSrc:find(name, 1, true), "no season fact in Repairs.lua: " .. name)
 end
 

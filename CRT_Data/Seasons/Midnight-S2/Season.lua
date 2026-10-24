@@ -5,7 +5,7 @@ local ADDON, CRT = ...
 -- current = true, and this one's current set to false.
 
 CRT.Bosses:Season({
-    key = "midnight-s1",
+    key = "midnight-s2",
     name = "Midnight Season 2",
     expansion = "Midnight",
     order = 1,
@@ -16,7 +16,7 @@ CRT.Bosses:Season({
     -- raid group until the raids are split out.
     raids = {
         {
-            key = "midnight-s1",
+            key = "midnight-s2",
             name = "Midnight Season 2",
             bosses = {
                 3470, -- Nek'zali the Soulcoiler

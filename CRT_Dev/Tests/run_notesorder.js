@@ -12,7 +12,7 @@ assert(load(season, "Season.lua"))("CowfeeRaidTools", CRT)
 assert(load(data, "Data.lua"))("CowfeeRaidTools", CRT)
 local B = CRT.Bosses
 for _, b in ipairs({ { 3470, "Nek'zali the Soulcoiler" }, { 3445, "Entombed Sentinels" }, { 3420, "Sszorak" }, { 3421, "The Twin Fangs" }, { 3455, "Vashnik the Malignant" } }) do
-  B:Register({ encounterID = b[1], name = b[2], season = "midnight-s1" })
+  B:Register({ encounterID = b[1], name = b[2], season = "sample" })
 end
 local list = CRT.db.notes.list
 list[1] = { name = "Vashnik the Malignant", encounterID = 3455, difficulty = "Mythic" }
@@ -31,5 +31,5 @@ print((got == want and "PASS " or "FAIL ") .. "notes in route order: " .. got)
 print(got == want and "all passed" or "1 failed")
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
-for (const f of ['CRT_Data/Bosses/Registry.lua', 'CRT_Data/Seasons/Midnight-S1/Season.lua', 'CRT_Modules/Notes/Data.lua']) lua.lua_pushstring(L, to_luastring(fs.readFileSync(process.argv[2] + '/' + f, 'utf8')));
+for (const f of ['CRT_Data/Bosses/Registry.lua', 'CRT_Dev/Tests/SamplePack/Season.lua', 'CRT_Modules/Notes/Data.lua']) lua.lua_pushstring(L, to_luastring(fs.readFileSync(process.argv[2] + '/' + f, 'utf8')));
 if (lua.lua_pcall(L, 3, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }

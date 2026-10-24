@@ -1,0 +1,23 @@
+<Ui xmlns="http://www.blizzard.com/wow/ui/">
+	<!--
+	Midnight Season 2: this season pack's files, in load order. The .toc loads only this file for the season
+	(CRT_Data\Seasons\Midnight-S2\Season.xml), so a new boss is a new file here, and a new season is a new
+	folder with its own Season.xml and one new .toc line. Paths are relative to this folder.
+
+	Season.lua first (the season and its raid route), then the season's topic files (Bosses:SeasonData), then
+	one file per boss (CRT.Bosses:Register). See CRT_Data/Bosses/Registry.lua for the fields.
+	-->
+	<Script file="Season.lua"/>
+	<Script file="GearChecks.lua"/>
+	<Script file="Tracks.lua"/>
+	<Script file="NekzaliTheSoulcoiler.lua"/>
+	<Script file="Sszorak.lua"/>
+	<Script file="EntombedSentinels.lua"/>
+	<Script file="TheTwinFangs.lua"/>
+	<Script file="TheLostExplorers.lua"/>
+	<Script file="VashnikTheMalignant.lua"/>
+	<Script file="TheCoiledAltar.lua"/>
+	<Script file="Ulatek.lua"/>
+	<Script file="NymrissaWavecaller.lua"/>
+	<Script file="Kithix.lua"/>
+</Ui>

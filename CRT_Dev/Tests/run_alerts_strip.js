@@ -1,6 +1,6 @@
 // Timeline: the saved alerts strip under the track (chips, drag a chip onto the track, chip menu, "+"),
 // and the track's right-click menu (New alert here, Place a saved alert), and the Cooldowns row under the templates.
-// Usage: node run_alerts_strip.js CRT_Modules/Timeline/Data.lua CRT_Modules/Timeline/Database.lua CRT_Modules/Timeline/Reference.lua CRT_Modules/Timeline/Lanes.lua CRT_Modules/Alerts/Rules.lua CRT_Modules/Alerts/Engine.lua CRT_Modules/Notes/Parse.lua CRT_Modules/Notes/Data.lua CRT_Modules/Alerts/Reminders.lua CRT_Modules/Alerts/Saved.lua CRT_Modules/Timeline/View.lua CRT_Data/Bosses/Registry.lua CRT_Data/Seasons/Midnight-S1/Season.lua CRT_Data/Seasons/Midnight-S1/NekzaliTheSoulcoiler.lua CRT_Core/UI/Panel.lua CRT_Modules/Alerts/Cooldowns.lua CRT_Core/UI/Controls.lua CRT_Modules/Alerts/CooldownData.lua CRT_Modules/Groups/Data.lua CRT_Modules/Alerts/Draft.lua CRT_Modules/Alerts/Roster.lua CRT_Core/Sound/Engine.lua
+// Usage: node run_alerts_strip.js CRT_Modules/Timeline/Data.lua CRT_Modules/Timeline/Database.lua CRT_Modules/Timeline/Reference.lua CRT_Modules/Timeline/Lanes.lua CRT_Modules/Alerts/Rules.lua CRT_Modules/Alerts/Engine.lua CRT_Modules/Notes/Parse.lua CRT_Modules/Notes/Data.lua CRT_Modules/Alerts/Reminders.lua CRT_Modules/Alerts/Saved.lua CRT_Modules/Timeline/View.lua CRT_Data/Bosses/Registry.lua CRT_Dev/Tests/SamplePack/Season.lua CRT_Dev/Tests/SamplePack/NekzaliTheSoulcoiler.lua CRT_Core/UI/Panel.lua CRT_Modules/Alerts/Cooldowns.lua CRT_Core/UI/Controls.lua CRT_Modules/Alerts/CooldownData.lua CRT_Modules/Groups/Data.lua CRT_Modules/Alerts/Draft.lua CRT_Modules/Alerts/Roster.lua CRT_Core/Sound/Engine.lua
 const fs = require('fs');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
@@ -193,8 +193,8 @@ local function loadBosses(CRT, reg, season, nek)
   CreateFrame = function() return { RegisterEvent = function() end, UnregisterEvent = function() end, SetScript = function(_, n, fn) if n == "OnEvent" then handler = fn end end } end
   assert(load(reg, "CRT_Data/Bosses/Registry.lua"))("CowfeeRaidTools", CRT)
   CreateFrame = real
-  assert(load(season, "CRT_Data/Seasons/Midnight-S1/Season.lua"))("CowfeeRaidTools", CRT)
-  assert(load(nek, "CRT_Data/Seasons/Midnight-S1/NekzaliTheSoulcoiler.lua"))("CowfeeRaidTools", CRT)
+  assert(load(season, "CRT_Dev/Tests/SamplePack/Season.lua"))("CowfeeRaidTools", CRT)
+  assert(load(nek, "CRT_Dev/Tests/SamplePack/NekzaliTheSoulcoiler.lua"))("CowfeeRaidTools", CRT)
   handler({ UnregisterEvent = function() end }, "ADDON_LOADED", "CowfeeRaidTools")
 end
 loadBosses(CRT, regSrc, seasonSrc, nekSrc)

@@ -12,7 +12,7 @@ local ADDON, CRT = ...
 CRT.Bosses:Register({
     encounterID = 3379,
     name = "Nymrissa Wavecaller",
-    season = "midnight-s1",
+    season = "midnight-s2",
     references = {
         [[
 Boss: Nymrissa Wavecaller

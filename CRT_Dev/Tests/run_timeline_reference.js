@@ -4,14 +4,14 @@ const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
 const harness = `
 local sources = { ... }
--- Boss library wiring (CRT_Data/Bosses/Registry.lua, then the season pack, then the ADDON_LOADED the game fires once every file has loaded).
+-- Boss library wiring (CRT_Data/Bosses/Registry.lua, then the tests' sample pack (CRT_Dev/Tests/SamplePack: test data, never the shipped season), then the ADDON_LOADED the game fires once every file has loaded).
 local function loadBosses(CRT, reg, season, nek)
   local real, handler = CreateFrame, nil
   CreateFrame = function() return { RegisterEvent = function() end, UnregisterEvent = function() end, SetScript = function(_, n, fn) if n == "OnEvent" then handler = fn end end } end
   assert(load(reg, "CRT_Data/Bosses/Registry.lua"))("CowfeeRaidTools", CRT)
   CreateFrame = real
-  assert(load(season, "CRT_Data/Seasons/Midnight-S1/Season.lua"))("CowfeeRaidTools", CRT)
-  assert(load(nek, "CRT_Data/Seasons/Midnight-S1/NekzaliTheSoulcoiler.lua"))("CowfeeRaidTools", CRT)
+  assert(load(season, "CRT_Dev/Tests/SamplePack/Season.lua"))("CowfeeRaidTools", CRT)
+  assert(load(nek, "CRT_Dev/Tests/SamplePack/NekzaliTheSoulcoiler.lua"))("CowfeeRaidTools", CRT)
   handler({ UnregisterEvent = function() end }, "ADDON_LOADED", "CowfeeRaidTools")
 end
 local nek, season, reg = table.remove(sources), table.remove(sources), table.remove(sources)
@@ -28,17 +28,17 @@ local NEKZALI = R:List()[1].text
 
 do
   local list = R:List()
-  assert(#list == 1 and list[1].own == false and list[1].key == "ship:1", "shipped: Nek'zali parses (one shipped reference, not your own)")
+  assert(#list == 1 and list[1].own == false and list[1].key == "ship:1", "sample: Nek'zali parses (one shipped reference, not your own)")
   local ref = list[1].ref
-  assert(ref.boss == "Nek'zali the Soulcoiler" and ref.difficulty == "Mythic" and ref.length == 588, "shipped: Nek'zali parses (header)")
-  assert(#ref.rows == 11 and ref.rows[1].name == "Soulcoil Rite", "shipped: Nek'zali parses (11 rows, Soulcoil Rite first)")
-  assert(ref.rows[5].name == "Restless Amani" and #ref.rows[5].casts == 10, "shipped: Nek'zali parses (Restless Amani has 10 casts)")
-  assert(#ref.phases == 3, "shipped: Nek'zali parses (3 phases)")
+  assert(ref.boss == "Nek'zali the Soulcoiler" and ref.difficulty == "Mythic" and ref.length == 588, "sample: Nek'zali parses (header)")
+  assert(#ref.rows == 11 and ref.rows[1].name == "Soulcoil Rite", "sample: Nek'zali parses (11 rows, Soulcoil Rite first)")
+  assert(ref.rows[5].name == "Restless Amani" and #ref.rows[5].casts == 10, "sample: Nek'zali parses (Restless Amani has 10 casts)")
+  assert(#ref.phases == 3, "sample: Nek'zali parses (3 phases)")
   local want = { "raid", "dispel", "falloff", "mythic", "generic", "heroic raid", "generic", "generic", "soak", "generic", "mythic" }
   for i, row in ipairs(ref.rows) do
-    assert(table.concat(row.types or {}, " ") == want[i], "shipped: Nek'zali types: " .. row.name .. " is " .. table.concat(row.types or {}, " "))
+    assert(table.concat(row.types or {}, " ") == want[i], "sample: Nek'zali types: " .. row.name .. " is " .. table.concat(row.types or {}, " "))
   end
-  print("ok shipped: Nek'zali parses")
+  print("ok sample: Nek'zali parses")
 end
 
 local function ser(v)

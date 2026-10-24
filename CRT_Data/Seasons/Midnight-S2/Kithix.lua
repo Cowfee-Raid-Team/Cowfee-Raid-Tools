@@ -12,7 +12,7 @@ local ADDON, CRT = ...
 CRT.Bosses:Register({
     encounterID = 3513,
     name = "Kith'ix",
-    season = "midnight-s1",
+    season = "midnight-s2",
     references = {
         [[
 Boss: Kith'ix

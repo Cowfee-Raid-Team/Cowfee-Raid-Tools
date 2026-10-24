@@ -1,17 +1,13 @@
 local ADDON, CRT = ...
 
--- Nek'zali the Soulcoiler. Everything the addon ships about this boss, read by Bosses/Registry.lua.
---
--- encounterID 3470 comes from an example raid note and isn't confirmed in a pull yet. The reference
---             has no Encounter: line, so the Timeline matches it by the boss's name either way.
--- references  The Mythic reference timeline, in the Timeline's text format (see Timeline/Database.lua
---             for the format), transcribed from a planner screenshot with each ability's type from
---             Alex. Moved here from Timeline/Database.lua in the boss library change.
+-- TEST DATA, never shipped. A frozen copy of the Nek'zali the Soulcoiler boss file as it was on 2026-10-24, for the tests in
+-- CRT_Dev/Tests (the .toc never lists this folder). The shipped file, CRT_Data/Seasons/<pack>/NekzaliTheSoulcoiler.lua, can change
+-- without touching this one, and nothing here needs to match the game: the tests check the engine, not the boss.
 
 CRT.Bosses:Register({
     encounterID = 3470,
     name = "Nek'zali the Soulcoiler",
-    season = "midnight-s1",
+    season = "sample",
     -- The marker display (Markers/Display.lua), exported from /crt dev markers on 2026-10-21.
     markers = { name = "Add Spawn", slots = 4, layout = "free", iconSize = 48, number = true, names = true, clearGap = 30, clearFull = 0, clearPhase = true, hidden = "fill", shape = "circle", canvas = 170, places = { { 0.25, 0.25 }, { 0.75, 0.25 }, { 0.25, 0.75 }, { 0.75, 0.75 } } },
     markerHelp = "Use the markers to indicate where the adds are coming from.",

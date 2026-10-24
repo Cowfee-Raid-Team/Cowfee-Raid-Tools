@@ -1,6 +1,6 @@
 // CRT_Modules/Notes/Window.lua: your personal reminders (CRT.AlertReminders, "Only me") in the personal note window,
 // above the free text: the current boss's, by phase, counting down during a run.
-// Args (in the TOC's order): CRT_Data/Bosses/Registry.lua CRT_Data/Seasons/Midnight-S1/Season.lua CRT_Data/Seasons/Midnight-S1/NekzaliTheSoulcoiler.lua
+// Args (in the TOC's order): CRT_Data/Bosses/Registry.lua CRT_Dev/Tests/SamplePack/Season.lua CRT_Dev/Tests/SamplePack/NekzaliTheSoulcoiler.lua
 //   CRT_Modules/Alerts/Rules.lua CRT_Modules/Alerts/Engine.lua CRT_Modules/Notes/Parse.lua CRT_Modules/Notes/Data.lua CRT_Modules/Notes/Engine.lua CRT_Modules/Notes/Window.lua
 //   CRT_Modules/Timeline/Data.lua CRT_Modules/Timeline/Database.lua CRT_Modules/Timeline/Reference.lua CRT_Modules/Alerts/Reminders.lua
 const fs = require('fs');
