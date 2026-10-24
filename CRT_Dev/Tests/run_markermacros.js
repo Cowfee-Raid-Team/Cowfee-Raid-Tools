@@ -112,7 +112,7 @@ assert(load(seasonSrc, "Season.lua"))("CowfeeRaidTools", CRT)
 assert(load(bossSrc, "Sszorak.lua"))("CowfeeRaidTools", CRT)
 -- A second boss with no marker display, but help text, to switch to.
 local OTHER = 99001
-CRT.Bosses:Register({ encounterID = OTHER, name = "Other Boss", season = "midnight-s1", markerHelp = "Stand on your marker." })
+CRT.Bosses:Register({ encounterID = OTHER, name = "Other Boss", season = "sample", markerHelp = "Stand on your marker." })
 for _, f in ipairs(frames) do if rawget(f, "events").ADDON_LOADED and rawget(f, "OnEvent") then f.OnEvent(f, "ADDON_LOADED", "CowfeeRaidTools") end end
 check(CRT.MarkerDisplayDB.displays[3420] ~= nil, "the registry ships Sszorak's marker display")
 check(CRT.MarkerDisplayDB.help[OTHER] == "Stand on your marker.", "the registry ships a boss file's markerHelp")
@@ -273,6 +273,6 @@ print(passes .. " passed, " .. fails .. " failed")
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 const d = process.argv[2];
-for (const p of ['CRT_Core/Macros.lua', 'CRT_Modules/Markers/Macros.lua', 'CRT_Modules/Markers/Database.lua', 'CRT_Modules/Markers/Display.lua', 'CRT_Data/Bosses/Registry.lua', 'CRT_Data/Seasons/Midnight-S1/Season.lua', 'CRT_Data/Seasons/Midnight-S1/Sszorak.lua', 'CRT_Modules/Markers/MacrosTab.lua'])
+for (const p of ['CRT_Core/Macros.lua', 'CRT_Modules/Markers/Macros.lua', 'CRT_Modules/Markers/Database.lua', 'CRT_Modules/Markers/Display.lua', 'CRT_Data/Bosses/Registry.lua', 'CRT_Dev/Tests/SamplePack/Season.lua', 'CRT_Dev/Tests/SamplePack/Sszorak.lua', 'CRT_Modules/Markers/MacrosTab.lua'])
   lua.lua_pushstring(L, to_luastring(fs.readFileSync(d + '/' + p, 'utf8')));
 if (lua.lua_pcall(L, 8, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
