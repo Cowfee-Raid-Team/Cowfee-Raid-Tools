@@ -1054,7 +1054,7 @@ local function buildSettings(f)
     postTo:SetPoint("TOPLEFT", 8, -136)
     controls[#controls + 1] = postTo
 
-    -- The season new nights are filed under. Typing a new name starts a new season.
+    -- The season new nights are filed under: the current season's name, or one typed here (Tattle:SeasonName).
     local seasonLabel = label(f, "Season", "CRTFontSmall")
     seasonLabel:SetPoint("TOPLEFT", 8, -174)
     seasonLabel:SetWidth(120)
@@ -1062,11 +1062,12 @@ local function buildSettings(f)
     season:SetPoint("LEFT", seasonLabel, "RIGHT", 10, 0)
     local function save(self)
         local text = strtrim(self:GetText() or "")
-        if text ~= "" and text ~= Tattle:Settings().season then
-            Tattle:Set("season", text)
-            CRT:Print("Tattlebot: new nights now go under the season \"" .. text .. "\".")
+        local before = Tattle:SeasonName()
+        Tattle:SetSeasonName(text)
+        if Tattle:SeasonName() ~= before then
+            CRT:Print("Tattlebot: new nights now go under the season \"" .. Tattle:SeasonName() .. "\".")
         end
-        self:SetText(Tattle:Settings().season)
+        self:SetText(Tattle:SeasonName())
     end
     season:SetScript("OnEnterPressed", function(self)
         self:ClearFocus()
@@ -1074,11 +1075,11 @@ local function buildSettings(f)
     season:SetScript("OnEditFocusLost", save)
     season.refresh = function()
         if not season:HasFocus() then
-            season:SetText(Tattle:Settings().season)
+            season:SetText(Tattle:SeasonName())
         end
     end
     controls[#controls + 1] = season
-    UI.HelpRight(season, "Season", "New nights are saved under this season name. Type a new name and press Enter to start a new season, such as a new raid tier; earlier seasons stay in the history.")
+    UI.HelpRight(season, "Season", "New nights are saved under the current season's name. Type your own name and press Enter to use it instead. Clear the box to go back to the current season's name. Earlier seasons stay in the history.")
 end
 
 local function buildMechanics(f)

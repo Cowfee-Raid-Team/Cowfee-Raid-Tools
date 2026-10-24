@@ -319,7 +319,9 @@ local defaults = {
         output = "self",
         maxPlayers = 10,
         custom = {}, -- the player's own tracked spells, [spellID] = mechanic name ("" for the spell's name)
-        season = "Season 1", -- the season new nights are filed under, for the History filter
+        -- the season name you typed for new nights (the History filter's seasons); "" follows the current season pack's
+        -- name (Tattle:SeasonName). Profiles from before hold the old default, Tattle.DEFAULT_SEASON, which follows it too.
+        season = "",
         history = {},
         nextId = 1,
     },

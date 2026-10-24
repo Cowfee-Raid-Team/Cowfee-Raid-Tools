@@ -463,7 +463,7 @@ function Tattle:AddPull(pull, info, now)
         night = nil
     end
     if not night then
-        night = { id = s.nextId, startedAt = now, season = s.season, pulls = {} }
+        night = { id = s.nextId, startedAt = now, season = self:SeasonName(), pulls = {} }
         s.nextId = s.nextId + 1
         s.current = night
     end
@@ -522,7 +522,35 @@ end
 function Tattle.SeasonOf(night)
     return night.season or Tattle.DEFAULT_SEASON
 end
+-- The name of nights saved before seasons, and of new nights when no season pack is loaded. Profiles from before
+-- also hold it as their saved season (the old default), which follows the season pack like an empty one.
 Tattle.DEFAULT_SEASON = "Season 1"
+
+-- The season new nights are filed under: the name typed on the Settings tab (tattle.season), else the current
+-- season pack's name (CRT.Bosses:Current().name), else DEFAULT_SEASON. Saved nights keep the name they got.
+function Tattle:SeasonName()
+    local own = tdb().season
+    if type(own) == "string" and own ~= "" and own ~= Tattle.DEFAULT_SEASON then
+        return own
+    end
+    local B = CRT.Bosses
+    local def = B and B.Current and B:Current()
+    if def and type(def.name) == "string" and def.name ~= "" then
+        return def.name
+    end
+    return Tattle.DEFAULT_SEASON
+end
+
+-- Saves a typed season name for new nights; empty, or the season pack's own name, follows the season pack again.
+function Tattle:SetSeasonName(text)
+    text = tostring(text or ""):gsub("^%s+", ""):gsub("%s+$", "")
+    local saved = text
+    tdb().season = ""
+    if text == self:SeasonName() then
+        saved = ""
+    end
+    self:Set("season", saved)
+end
 
 -- Every season name in the history and the current one, oldest first.
 function Tattle:Seasons()
@@ -536,7 +564,7 @@ function Tattle:Seasons()
     for _, night in ipairs(tdb().history) do
         add(Tattle.SeasonOf(night))
     end
-    add(tdb().season)
+    add(self:SeasonName())
     return out
 end
 
