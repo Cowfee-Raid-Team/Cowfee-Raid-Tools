@@ -346,6 +346,26 @@ function Stats:AddRaidRepair(c, copper, newPull)
     end
 end
 
+-- Deletes one season's counters, every boss of it in the boss library (CRT.Bosses), both scopes. The counters are
+-- long-term data, which the season purge keeps; the dev's /crt dev seasons clearstats <key> (Dev/SeasonTools.lua)
+-- asks, then calls this. The one-time fill stays done, so the Timeline's saved pulls never count again. Returns how
+-- many bosses had counters.
+function Stats:ClearSeason(seasonKey)
+    local B = CRT.Bosses
+    local bosses = sdb().bosses
+    local n = 0
+    for _, def in ipairs(B and seasonKey and B:List(seasonKey) or {}) do
+        if bosses[def.encounterID] ~= nil then
+            bosses[def.encounterID] = nil
+            n = n + 1
+        end
+    end
+    if n > 0 then
+        self:Fire()
+    end
+    return n
+end
+
 -- A boss's counters for a difficulty group, or nil when it has none.
 -- scope is "team" or "all", by default the page's Show (Stats:Scope).
 function Stats:Boss(encounterID, group, scope)

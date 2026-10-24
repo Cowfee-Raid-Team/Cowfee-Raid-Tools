@@ -102,6 +102,7 @@ Profiles.SHARE = {
     },
     team = true, -- the team raid threshold (Team.lua)
     seasonStats = false, -- the raid's pull counters: data
+    longTerm = false, -- long-term data (Core.lua): never a setting
     markers = true,
     pace = { disabled = true, shown = true, position = true, own = false, shared = false, use = false },
     alerts = {

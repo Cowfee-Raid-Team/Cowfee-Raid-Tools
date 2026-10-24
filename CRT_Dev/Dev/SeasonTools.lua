@@ -4,10 +4,12 @@ local ADDON, CRT = ...
 -- purging a season's saved data. See the vault note "Cowfee Raid Tools - Boss Library Design".
 --   Load      Current season only (the default) or All seasons, saved in CRTDB.dev.seasons.load.
 --             Changing it reloads the interface, since the library fills the features at load.
---   Purge     Deletes the saved data of one season's bosses, those registered in its pack: recorded
---             Timeline pulls and row settings, reminders and phase triggers, pace plans and switches,
---             and marker display switches and drafts. Tattlebot's history, the Late Tracker and raid
---             notes are never touched, and a boss with saved data but no boss file is never purged.
+--   Purge     Deletes the saved data of one season's bosses, those registered in its pack, from every store
+--             a module declared per boss (Bosses:DeclareStore in CRT_Data/Bosses/Registry.lua), and the
+--             season's own entry in a store kept by season. Long-term data is never declared, so never
+--             touched (the list above the defaults in CRT_Core/Core.lua), and a boss with saved data but no
+--             boss file is never purged. The (?) beside the list names every store.
+--   Clear stats  /crt dev seasons clearstats <key>: deletes one season's Season Stats counters, asked first.
 --   IDs       /crt dev seasons ids (or the Encounter IDs button): each loaded boss's encounterID and name
 --             against the Timeline's saved pulls (CRTDB.timeline.bosses, keyed by the ID the game gave,
 --             with its name): confirmed, mismatched or never pulled, one line per boss in route order,
@@ -35,58 +37,132 @@ local function dev()
     return CRT.db.dev.seasons
 end
 
--- The saved tables keyed by encounter ID that a purge clears, with a label for the confirmation.
-local function stores()
-    local db = CRT.db
-    return {
-        { label = "recorded Timeline pulls", t = db.timeline and db.timeline.bosses },
-        { label = "Timeline row settings", t = db.timeline and db.timeline.rows },
-        { label = "reminders", t = db.alerts and db.alerts.reminders },
-        { label = "phase triggers", t = db.alerts and db.alerts.phases },
-        { label = "own pace plans", t = db.pace and db.pace.own },
-        { label = "shared pace plans", t = db.pace and db.pace.shared },
-        { label = "pace plan choices", t = db.pace and db.pace.use },
-        { label = "pace switches", t = db.pace and db.pace.disabled },
-        { label = "marker display switches", t = db.markers and db.markers.disabled },
-        { label = "marker display drafts", t = db.dev and db.dev.markerDisplays },
-    }
-end
+-- What a purge keeps: the long-term data, never declared (the list above the defaults in CRT_Core/Core.lua).
+local KEPT = "Season Stats, Tattlebot's history, the Late Tracker, raid notes and their history, and loot history are kept."
 
--- What a purge of the season would delete: { { label, count } }, and the total.
-function Tools:PurgeCounts(seasonKey)
+-- The entries a purge of the season clears, from every store the modules declared (Bosses:DeclareStore):
+-- { { label, t, keys = { key, ... } } } and the season's boss count. A store's keys are the season's encounter
+-- IDs, as numbers or as text, or the season's own key in a store kept by season.
+local function entries(seasonKey)
     local ids = {}
     for _, def in ipairs(Bosses:List(seasonKey)) do
         ids[#ids + 1] = def.encounterID
     end
-    local out, total = {}, 0
-    for _, store in ipairs(stores()) do
-        local n = 0
-        if type(store.t) == "table" then
-            for _, id in ipairs(ids) do
-                if store.t[id] ~= nil then
-                    n = n + 1
+    local out = {}
+    for _, store in ipairs(Bosses:Stores()) do
+        local ok, t = pcall(store.getter, CRT.db)
+        local keys = {}
+        if ok and type(t) == "table" then
+            if store.bySeason then
+                if t[seasonKey] ~= nil then
+                    keys[1] = seasonKey
+                end
+            else
+                for _, id in ipairs(ids) do
+                    if t[id] ~= nil then
+                        keys[#keys + 1] = id
+                    end
+                    if t[tostring(id)] ~= nil then
+                        keys[#keys + 1] = tostring(id)
+                    end
                 end
             end
         end
-        if n > 0 then
-            out[#out + 1] = { label = store.label, count = n }
-            total = total + n
+        out[#out + 1] = { label = store.label, t = t, keys = keys }
+    end
+    return out, #ids
+end
+
+-- What a purge of the season would delete: { { label, count } }, the total, and the season's boss count.
+function Tools:PurgeCounts(seasonKey)
+    local list, bosses = entries(seasonKey)
+    local out, total = {}, 0
+    for _, e in ipairs(list) do
+        if #e.keys > 0 then
+            out[#out + 1] = { label = e.label, count = #e.keys }
+            total = total + #e.keys
         end
     end
-    return out, total, #ids
+    return out, total, bosses
 end
 
 function Tools:Purge(seasonKey)
     local n = 0
-    for _, def in ipairs(Bosses:List(seasonKey)) do
-        for _, store in ipairs(stores()) do
-            if type(store.t) == "table" and store.t[def.encounterID] ~= nil then
-                store.t[def.encounterID] = nil
-                n = n + 1
-            end
+    for _, e in ipairs((entries(seasonKey))) do
+        for _, key in ipairs(e.keys) do
+            e.t[key] = nil
+            n = n + 1
         end
     end
     return n
+end
+
+-- The (?) text: every store a purge clears, then what it keeps.
+function Tools:PurgeHelp()
+    local labels = {}
+    for _, store in ipairs(Bosses:Stores()) do
+        labels[#labels + 1] = store.label
+    end
+    return "Purge deletes, for the season's bosses: " .. table.concat(labels, ", ") .. ".\n\n" .. KEPT
+end
+
+-- Asks in the game's own confirmation box, then runs accept.
+local function confirm(text, arg, acceptText, accept)
+    StaticPopup_ShowCustomGenericConfirmation({
+        text = text,
+        text_arg1 = arg,
+        acceptText = acceptText,
+        cancelText = CANCEL,
+        showAlert = true,
+        callback = accept,
+    })
+end
+
+-- Season Stats ---------------------------------------------------------------------------------
+-- /crt dev seasons clearstats <key>: deletes one finished season's Season Stats counters, asked first. The
+-- counters are long-term data, so the purge keeps them; this is the one way to clear them.
+
+local function seasonByKey(key)
+    key = type(key) == "string" and key:lower() or ""
+    for _, def in ipairs(Bosses:Seasons()) do
+        if def.key:lower() == key then
+            return def
+        end
+    end
+end
+
+local function statsCount(seasonKey)
+    local bosses = CRT.db.seasonStats and CRT.db.seasonStats.bosses
+    local n = 0
+    for _, def in ipairs(Bosses:List(seasonKey)) do
+        if type(bosses) == "table" and bosses[def.encounterID] ~= nil then
+            n = n + 1
+        end
+    end
+    return n
+end
+
+function Tools:ConfirmClearStats(key)
+    local def = seasonByKey(key)
+    if not def then
+        local keys = {}
+        for _, s in ipairs(Bosses:Seasons()) do
+            keys[#keys + 1] = s.key
+        end
+        CRT:Print("No season with the key \"" .. tostring(key or "") .. "\". The keys: " .. table.concat(keys, ", ") .. ".")
+        return
+    end
+    local name = def.name or def.key
+    local n = statsCount(def.key)
+    if n == 0 or not CRT.SeasonStats then
+        CRT:Print("No Season Stats saved for " .. name .. ".")
+        return
+    end
+    confirm("Clear the Season Stats of %s? This deletes the counters of " .. n .. " boss" .. (n == 1 and "" or "es") .. ". This can't be undone.",
+        name, "Clear", function()
+            local cleared = CRT.SeasonStats:ClearSeason(def.key)
+            CRT:Print("Cleared the Season Stats of " .. cleared .. " boss" .. (cleared == 1 and "" or "es") .. " for " .. name .. ".")
+        end)
 end
 
 -- The encounter ID check ---------------------------------------------------------------------
@@ -162,7 +238,7 @@ function Tools:Ids()
     CRT.ConsumablesTools:ShowText("Encounter ID check (Ctrl+C to copy, paste to Claude)", head .. "\n" .. table.concat(lines, "\n"))
 end
 
-local function confirmPurge(def)
+function Tools:ConfirmPurge(def)
     local counts, total, bosses = Tools:PurgeCounts(def.key)
     if total == 0 then
         CRT:Print("Nothing saved for the " .. bosses .. " boss" .. (bosses == 1 and "" or "es") .. " of " .. (def.name or def.key) .. ".")
@@ -172,18 +248,12 @@ local function confirmPurge(def)
     for _, c in ipairs(counts) do
         parts[#parts + 1] = c.count .. " " .. c.label
     end
-    StaticPopup_ShowCustomGenericConfirmation({
-        text = "Purge %s? This deletes, for its bosses: " .. table.concat(parts, ", ") .. ".\n\nTattlebot's history, the Late Tracker and raid notes are kept. This can't be undone.",
-        text_arg1 = def.name or def.key,
-        acceptText = "Purge",
-        cancelText = CANCEL,
-        showAlert = true,
-        callback = function()
+    confirm("Purge %s? This deletes, for its bosses: " .. table.concat(parts, ", ") .. ".\n\n" .. KEPT .. " This can't be undone.",
+        def.name or def.key, "Purge", function()
             local n = Tools:Purge(def.key)
             CRT:Print("Purged " .. n .. " saved entr" .. (n == 1 and "y" or "ies") .. " for " .. (def.name or def.key) .. ". /reload to see it everywhere.")
             Tools:Refresh()
-        end,
-    })
+        end)
 end
 
 local function button(parent, text, width)
@@ -220,7 +290,7 @@ function Tools:Refresh()
         local _, total, bosses = Tools:PurgeCounts(def.key)
         r.text:SetText(string.format("%s%s: %d boss%s, %d saved", def.name or def.key, def.current and " (current)" or "", bosses, bosses == 1 and "" or "es", total))
         r.purge:SetScript("OnClick", function()
-            confirmPurge(def)
+            Tools:ConfirmPurge(def)
         end)
         r:Show()
     end
@@ -261,6 +331,7 @@ local function build()
     local note = win:CreateFontString(nil, "OVERLAY", "CRTFontDisableSmall")
     note:SetPoint("TOPLEFT", 16, -66)
     note:SetText("Seasons, their bosses, and what is saved for them:")
+    UI.HelpRight(note, "Purge", Tools:PurgeHelp())
     local ids = button(win, "Encounter IDs")
     ids:SetPoint("BOTTOMLEFT", 14, 12)
     ids:SetScript("OnClick", function()

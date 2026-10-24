@@ -35,6 +35,11 @@ local ADDON, CRT = ...
 local Markers = {}
 CRT.MarkerDisplay = Markers
 
+-- The switches are kept per boss: declared for the dev season purge (Bosses:DeclareStore, CRT_Data/Bosses/Registry.lua).
+if CRT.Bosses and CRT.Bosses.DeclareField then
+    CRT.Bosses:DeclareField("marker display switches", "markers", "disabled")
+end
+
 local UI = CRT.UI
 
 local CHAT_EVENTS = {

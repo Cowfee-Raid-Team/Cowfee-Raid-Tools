@@ -24,6 +24,12 @@ local Rules = CRT.AlertRules
 local Reminders = {}
 CRT.AlertReminders = Reminders
 
+-- The saved tables kept per boss, declared for the dev season purge (Bosses:DeclareStore, CRT_Data/Bosses/Registry.lua).
+if CRT.Bosses and CRT.Bosses.DeclareField then
+    CRT.Bosses:DeclareField("reminders", "alerts", "reminders")
+    CRT.Bosses:DeclareField("reminder backups", "alerts", "anyBackup")
+end
+
 local BLOCK = "mine"
 -- said once when an older alert's typed times move onto its ability's casts (see MigrateOne)
 local MIGRATE_TEXT = "%s now follows its ability timeline. Times with no cast near them were kept aside: %s"

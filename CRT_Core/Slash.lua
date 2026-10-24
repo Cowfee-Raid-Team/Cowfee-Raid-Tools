@@ -167,6 +167,11 @@ SlashCmdList["COWFEERAIDTOOLS"] = function(msg)
         if CRT.SeasonTools then
             CRT.SeasonTools:Ids()
         end
+    elseif msg == "dev seasons clearstats" or msg:match("^dev seasons clearstats%s") then
+        -- one season's Season Stats counters, asked first (Dev/SeasonTools.lua)
+        if CRT.SeasonTools then
+            CRT.SeasonTools:ConfirmClearStats(msg:match("^dev seasons clearstats%s+(%S+)"))
+        end
     elseif msg == "dev markers" then
         if CRT.MarkerEditor then
             CRT.MarkerEditor:Toggle()

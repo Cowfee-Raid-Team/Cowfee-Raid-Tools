@@ -22,6 +22,14 @@ local function db()
     return CRT.db.pace
 end
 
+-- The saved tables kept per boss, declared for the dev season purge (Bosses:DeclareStore, CRT_Data/Bosses/Registry.lua).
+if CRT.Bosses and CRT.Bosses.DeclareField then
+    CRT.Bosses:DeclareField("own pace plans", "pace", "own")
+    CRT.Bosses:DeclareField("shared pace plans", "pace", "shared")
+    CRT.Bosses:DeclareField("pace plan choices", "pace", "use")
+    CRT.Bosses:DeclareField("pace switches", "pace", "disabled")
+end
+
 function Pace:OnChange(fn)
     self.listeners[#self.listeners + 1] = fn
 end
