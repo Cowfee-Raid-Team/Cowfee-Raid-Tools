@@ -13,7 +13,7 @@ local ADDON, CRT = ...
 CRT.Bosses:Register({
     encounterID = 3455,
     name = "Vashnik the Malignant",
-    season = "midnight-s1",
+    season = "midnight-s2",
     references = {
         [[
 Boss: Vashnik the Malignant

@@ -371,7 +371,7 @@ eq(table.concat(tl), "EAVCHM", "the shipped tracks, lowest first")
 eq(shippedTracks and next(shippedTracks.bonus), nil, "the shipped bonus ID map is empty until filled from the game")
 check(not GC:Tracks().usable and GC:FilterKey("below") == "all", "so no Below chip yet")
 -- a season with no gear rules at all
-B.seasons["midnight-s1"].current = false
+B.seasons["sample"].current = false
 B:Season({ key = "test-s8", name = "Plain", order = 8, current = true })
 eq(B:GearChecks(), nil, "a season without gear data: the accessor gives nothing")
 eq(B:Tracks(), nil, "nor tracks")
@@ -583,7 +583,7 @@ check(not GC:Tracks().usable and GC:FilterKey("below") == "all", "no bonus IDs: 
 eq(GC:Filters()[#GC:Filters()].key, "check:cursed", "no bonus IDs: the season checks are the last chips")
 -- back to the shipped season
 B.seasons["test-s9"].current = false
-B.seasons["midnight-s1"].current = true
+B.seasons["sample"].current = true
 eq(#GC:Filters(), 4, "the shipped season again: four filters")
 remember("Quick", { piece(1, "item:101:7364", 289), piece(11, "item:111:7364:213746", 289) })
 
@@ -691,8 +691,8 @@ if fails > 0 then error("failures") end
 `;
 const dir = process.argv[2];
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
-const files = ['CRT_Core/Gear.lua', 'CRT_Data/Bosses/Registry.lua', 'CRT_Data/Seasons/Midnight-S1/Season.lua',
-  'CRT_Data/Seasons/Midnight-S1/GearChecks.lua', 'CRT_Data/Seasons/Midnight-S1/Tracks.lua', 'CRT_Modules/GearChecker/Data.lua', 'CRT_Modules/GearChecker/Inspect.lua',
+const files = ['CRT_Core/Gear.lua', 'CRT_Data/Bosses/Registry.lua', 'CRT_Dev/Tests/SamplePack/Season.lua',
+  'CRT_Dev/Tests/SamplePack/GearChecks.lua', 'CRT_Dev/Tests/SamplePack/Tracks.lua', 'CRT_Modules/GearChecker/Data.lua', 'CRT_Modules/GearChecker/Inspect.lua',
   'CRT_Modules/GearChecker/Comm.lua'];
 for (const f of files) lua.lua_pushstring(L, to_luastring(fs.readFileSync(path.join(dir, f), 'utf8')));
 if (lua.lua_pcall(L, files.length, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }

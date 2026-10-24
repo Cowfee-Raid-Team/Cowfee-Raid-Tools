@@ -7,7 +7,7 @@
 //   CRT_Modules/Timeline/Reference.lua CRT_Modules/Timeline/Lanes.lua CRT_Modules/Alerts/Rules.lua CRT_Modules/Alerts/Engine.lua
 //   CRT_Modules/Alerts/Speech.lua CRT_Modules/Notes/Parse.lua CRT_Modules/Notes/Data.lua CRT_Modules/Notes/Engine.lua
 //   CRT_Modules/Alerts/Reminders.lua CRT_Modules/Alerts/Colors.lua CRT_Modules/Alerts/Saved.lua
-//   CRT_Data/Bosses/Registry.lua CRT_Data/Seasons/Midnight-S1/Season.lua CRT_Data/Seasons/Midnight-S1/NekzaliTheSoulcoiler.lua
+//   CRT_Data/Bosses/Registry.lua CRT_Dev/Tests/SamplePack/Season.lua CRT_Dev/Tests/SamplePack/NekzaliTheSoulcoiler.lua
 //   CRT_Core/Core.lua (read as text only: the default)
 const fs = require('fs');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
@@ -20,8 +20,8 @@ local function loadBosses(CRT, reg, season, nek)
   CreateFrame = function() return { RegisterEvent = function() end, UnregisterEvent = function() end, SetScript = function(_, n, fn) if n == "OnEvent" then handler = fn end end } end
   assert(load(reg, "CRT_Data/Bosses/Registry.lua"))("CowfeeRaidTools", CRT)
   CreateFrame = real
-  assert(load(season, "CRT_Data/Seasons/Midnight-S1/Season.lua"))("CowfeeRaidTools", CRT)
-  assert(load(nek, "CRT_Data/Seasons/Midnight-S1/NekzaliTheSoulcoiler.lua"))("CowfeeRaidTools", CRT)
+  assert(load(season, "CRT_Dev/Tests/SamplePack/Season.lua"))("CowfeeRaidTools", CRT)
+  assert(load(nek, "CRT_Dev/Tests/SamplePack/NekzaliTheSoulcoiler.lua"))("CowfeeRaidTools", CRT)
   handler({ UnregisterEvent = function() end }, "ADDON_LOADED", "CowfeeRaidTools")
 end
 local nek, season, reg = table.remove(sources), table.remove(sources), table.remove(sources)

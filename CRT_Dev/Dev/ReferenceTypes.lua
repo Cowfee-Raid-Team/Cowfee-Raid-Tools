@@ -320,7 +320,7 @@ local function bossID(ref)
     return Reference.BossID(ref.encounterID, ref.boss)
 end
 
--- midnight-s1 -> Midnight-S1: each part of a season key capitalized, as its folder is named.
+-- midnight-s2 -> Midnight-S2: each part of a season key capitalized, as its folder is named.
 local function seasonFolder(key)
     return (key:gsub("(%w)(%w*)", function(first, rest)
         return first:upper() .. rest
@@ -329,7 +329,7 @@ end
 
 -- The boss file a boss's references ship in. The registry doesn't keep each boss's source file, so this
 -- is a guess from the naming rule: the boss's name in title case without spaces or apostrophes, in its
--- season's folder ("CRT_Data/Seasons/Midnight-S1/Kithix.lua") when the registry knows the boss, else
+-- season's folder ("CRT_Data/Seasons/Midnight-S2/Kithix.lua") when the registry knows the boss, else
 -- the file name alone.
 function Editor.BossFile(name, encounterID)
     local def = encounterID and CRT.Bosses and CRT.Bosses.Get and CRT.Bosses:Get(encounterID)
@@ -349,7 +349,7 @@ function Editor.BossFile(name, encounterID)
 end
 
 -- One line of the removals export:
--- "CRT_Data/Seasons/Midnight-S1/Kithix.lua; encounter 3513; Mythic; Boss: Kith'ix / Difficulty: Mythic / Length: 7:00",
+-- "CRT_Data/Seasons/Midnight-S2/Kithix.lua; encounter 3513; Mythic; Boss: Kith'ix / Difficulty: Mythic / Length: 7:00",
 -- ending "; already gone" when no shipped block has that header any more (Claude deleted it).
 function Editor.RemovalLine(mark)
     local id = Reference.BossID(mark.encounterID, mark.boss)

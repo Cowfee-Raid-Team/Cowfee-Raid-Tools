@@ -1,8 +1,8 @@
 // The alerts engine's rehearsal run (Timeline Rehearsal plan, Task 2): a run driven by the Rehearsal
 // window's clock, which may stand still, speed up or jump. Engine, speech, the bars and icons areas, the
 // note engine (Preview as), the personal note window and CRT.AlertRoster, with game-like mocks.
-// Args (in the TOC's order): CRT_Data/Bosses/Registry.lua CRT_Data/Seasons/Midnight-S1/Season.lua
-//   CRT_Data/Seasons/Midnight-S1/NekzaliTheSoulcoiler.lua CRT_Modules/Groups/Data.lua CRT_Modules/Alerts/Rules.lua CRT_Modules/Alerts/Engine.lua
+// Args (in the TOC's order): CRT_Data/Bosses/Registry.lua CRT_Dev/Tests/SamplePack/Season.lua
+//   CRT_Dev/Tests/SamplePack/NekzaliTheSoulcoiler.lua CRT_Modules/Groups/Data.lua CRT_Modules/Alerts/Rules.lua CRT_Modules/Alerts/Engine.lua
 //   CRT_Modules/Alerts/Speech.lua CRT_Modules/Notes/Parse.lua CRT_Modules/Notes/Data.lua CRT_Modules/Notes/Engine.lua CRT_Modules/Notes/Window.lua CRT_Modules/Timeline/Data.lua
 //   CRT_Modules/Timeline/Database.lua CRT_Modules/Timeline/Reference.lua CRT_Modules/Alerts/Roster.lua CRT_Modules/Alerts/Reminders.lua CRT_Modules/Alerts/Areas.lua
 //   CRT_Modules/Alerts/Bars.lua CRT_Modules/Alerts/Icons.lua

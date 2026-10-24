@@ -162,19 +162,8 @@ CRT_Modules\QoL\BreakTimer.lua
 CRT_Modules\QoL\Page.lua
 CRT_Core\UI\Minimap.lua
 CRT_Core\UI\SettingsPage.lua
-CRT_Data\Seasons\Midnight-S1\Season.lua
-CRT_Data\Seasons\Midnight-S1\GearChecks.lua
-CRT_Data\Seasons\Midnight-S1\Tracks.lua
-CRT_Data\Seasons\Midnight-S1\NekzaliTheSoulcoiler.lua
-CRT_Data\Seasons\Midnight-S1\Sszorak.lua
-CRT_Data\Seasons\Midnight-S1\EntombedSentinels.lua
-CRT_Data\Seasons\Midnight-S1\TheTwinFangs.lua
-CRT_Data\Seasons\Midnight-S1\TheLostExplorers.lua
-CRT_Data\Seasons\Midnight-S1\VashnikTheMalignant.lua
-CRT_Data\Seasons\Midnight-S1\TheCoiledAltar.lua
-CRT_Data\Seasons\Midnight-S1\Ulatek.lua
-CRT_Data\Seasons\Midnight-S1\NymrissaWavecaller.lua
-CRT_Data\Seasons\Midnight-S1\Kithix.lua
+# Season packs: one line each. The pack's Season.xml lists its own files (CRT_Data\Seasons\<pack>\Season.xml).
+CRT_Data\Seasons\Midnight-S2\Season.xml
 #@do-not-package@
 CRT_Dev\Dev\LayoutEditor.lua
 CRT_Dev\Dev\TimelineProbe.lua

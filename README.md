@@ -264,7 +264,7 @@ CowfeeRaidTools/
     Markers/, Pace/, QoL/  boss markers, raid pace, quality of life
   CRT_Data/
     Bosses/Registry.lua    the boss library: every boss's shipped data, read by the features
-    Seasons/               season packs: one file per boss with all its properties
+    Seasons/               season packs: Season.lua, topic files and one file per boss, listed by the pack's Season.xml (one .toc line per pack)
   CRT_Media/
     Media/                 textures: the icon, the alert rings, the rounded corner disc
     Media Addon Template/  the CowfeeRaidTools_Media companion addon you copy once for your own sounds

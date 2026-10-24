@@ -645,7 +645,7 @@ check(profilesSrc:find("seasonStats = false", 1, true) ~= nil, "Export settings 
 check(tocSrc:find("CRT_Modules\\\\SeasonStats\\\\Data.lua", 1, true) and tocSrc:find("CRT_Modules\\\\SeasonStats\\\\Page.lua", 1, true), "both files in the .toc")
 local tocTl = tocSrc:find("CRT_Modules\\\\Timeline\\\\Data.lua", 1, true)
 check(tocTl and tocTl < tocSrc:find("CRT_Modules\\\\SeasonStats\\\\Data.lua", 1, true), "after the Timeline's store")
-for _, name in ipairs({ "Midnight", "midnight-s1", "Twin Fang", "Nek'zali", "Season 1" }) do
+for _, name in ipairs({ "Midnight", "midnight-s2", "Twin Fang", "Nek'zali", "Season 1" }) do
   check(not dataSrc:find(name, 1, true) and not pageSrc:find(name, 1, true), "no season fact in the feature code: " .. name)
 end
 check(not pageSrc:find("CRTDB", 1, true), "the page saves nothing of its own")

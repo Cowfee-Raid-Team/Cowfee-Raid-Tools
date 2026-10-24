@@ -14,7 +14,7 @@ local ADDON, CRT = ...
 -- The track names are the ones warcraft.wiki.gg's Item upgrade page lists since Dragonflight Season 2 (read
 -- 2026-10-21). Until the bonus map has IDs the page shows no tracks and has no Below chip.
 
-CRT.Bosses:SeasonData("midnight-s1", "tracks", {
+CRT.Bosses:SeasonData("midnight-s2", "tracks", {
     default = "hero",
     list = {
         { key = "explorer", label = "Explorer", letter = "E", quality = 0 },

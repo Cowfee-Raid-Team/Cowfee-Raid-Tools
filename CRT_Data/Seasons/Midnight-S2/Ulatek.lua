@@ -13,7 +13,7 @@ local ADDON, CRT = ...
 CRT.Bosses:Register({
     encounterID = 3492,
     name = "Ula'tek",
-    season = "midnight-s1",
+    season = "midnight-s2",
     references = {
         [[
 Boss: Ula'tek

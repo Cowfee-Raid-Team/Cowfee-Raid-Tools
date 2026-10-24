@@ -1,17 +1,13 @@
 local ADDON, CRT = ...
 
--- Sszorak. Everything the addon ships about this boss, read by Bosses/Registry.lua.
---
--- encounterID 3420 comes from the Timeline's saved Mythic pulls of this boss.
--- references  The Mythic reference timeline, in the Timeline's text format (see Timeline/Database.lua
---             for the format), transcribed from a planner screenshot, with each ability's type set
---             by Alex in the Logged Timeline Ref tool (Development page). Serpent's Fury (Mythic) waits
---             for its cast times.
+-- TEST DATA, never shipped. A frozen copy of the Sszorak boss file as it was on 2026-10-24, for the tests in
+-- CRT_Dev/Tests (the .toc never lists this folder). The shipped file, CRT_Data/Seasons/<pack>/Sszorak.lua, can change
+-- without touching this one, and nothing here needs to match the game: the tests check the engine, not the boss.
 
 CRT.Bosses:Register({
     encounterID = 3420,
     name = "Sszorak",
-    season = "midnight-s1",
+    season = "sample",
     -- The marker display (Markers/Display.lua), exported from /crt dev markers on 2026-10-21.
     markers = { name = "Marker display", slots = 4, layout = "row", iconSize = 52, number = true, names = true, clearGap = 10, clearFull = 0, clearPhase = true, hidden = "fill" },
     references = {
