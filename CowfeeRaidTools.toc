@@ -23,6 +23,7 @@ CRT_Core\Sound\Auras.lua
 CRT_Core\UI\Panel.lua
 CRT_Core\UI\Tooltip.lua
 CRT_Core\UI\Controls.lua
+CRT_Core\UI\Toggle.lua
 CRT_Core\UI\ScrollBar.lua
 CRT_Core\UI\Window.lua
 CRT_Core\UI\ItemSlot.lua
@@ -123,6 +124,7 @@ CRT_Modules\Alerts\CooldownData.lua
 CRT_Modules\Alerts\Cooldowns.lua
 CRT_Modules\Alerts\Roster.lua
 CRT_Modules\Timeline\View.lua
+CRT_Modules\Timeline\HealerView.lua
 CRT_Modules\Timeline\ReferencePage.lua
 CRT_Modules\Timeline\ReviewTab.lua
 CRT_Modules\Timeline\SettingsTab.lua

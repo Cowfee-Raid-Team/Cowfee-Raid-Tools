@@ -152,7 +152,11 @@ local function openMenu(index)
   if not m then return nil end
   local items = {}
   local root = { CreateTitle = function(_, t) items[#items + 1] = { label = "title:" .. t } end,
-    CreateButton = function(_, label, fn) local it = { label = label, fn = fn, enabled = true } function it:SetEnabled(on) self.enabled = on end items[#items + 1] = it return it end }
+    CreateDivider = function() items[#items + 1] = { label = "divider" } end,
+    CreateButton = function(_, label, fn) local it = { label = label, fn = fn, enabled = true, items = {} } function it:SetEnabled(on) self.enabled = on end
+      -- a submenu's radios: the label, whether it is picked, and picking it
+      function it:CreateRadio(l, isSel, set, data) local r = { label = l, isSel = isSel, set = set, data = data } self.items[#self.items + 1] = r return r end
+      items[#items + 1] = it return it end }
   m.fill(root)
   return items
 end
@@ -168,6 +172,40 @@ check(items and items[2].label == "Invite Solex-Area52" and items[2].enabled == 
 items[3].fn()
 check(w[1] == "", "Clear slot clears it")
 check(openMenu(1) == nil, "an empty slot opens no menu")
+
+-- Set role: a submenu on a filled slot (Tank, Healer, Damage, Use the game's role), saved per player.
+do
+  local slot = gridRef.slots[2] -- Abu-KelThuzad, in the raid as damage
+  local icon = slot.icon
+  rawset(icon, "SetTexCoord", function(self, a, b, c, d) rawset(self, "coords", { a, b, c, d }) end)
+  G:Fire()
+  check(rawget(icon, "coords") and icon.coords[1] == 20 / 64 and icon.coords[3] == 22 / 64, "the game's role to begin with: damage")
+  check(slot.roleHand and not slot.roleHand.shown, "no set-by-hand marker yet")
+  items = openMenu(2)
+  local sub
+  for _, it in ipairs(items or {}) do if it.label == "Set role" then sub = it end end
+  check(sub ~= nil, "the slot menu has Set role")
+  local labels = {}
+  for _, r in ipairs(sub and sub.items or {}) do labels[#labels + 1] = r.label end
+  check(table.concat(labels, "|") == "Tank|Healer|Damage|Use the game's role", "its choices: " .. table.concat(labels, "|"))
+  check(sub.items[4].isSel(sub.items[4].data) == true and sub.items[2].isSel(sub.items[2].data) == false, "the game's role is picked while none is set")
+  sub.items[2].set(sub.items[2].data)
+  check(CRT.db.groups.roles["abu-kelthuzad"] == "HEALER" and G.HandRole("Abu-KelThuzad") == "HEALER", "Healer is saved for the player: " .. tostring(CRT.db.groups.roles["abu-kelthuzad"]))
+  check(icon.coords[1] == 20 / 64 and icon.coords[3] == 1 / 64, "the slot's icon shows the role set by hand")
+  check(slot.roleHand.shown == true, "with the set-by-hand marker")
+  items = openMenu(2)
+  for _, it in ipairs(items) do if it.label == "Set role" then sub = it end end
+  check(sub.items[2].isSel(sub.items[2].data) == true and sub.items[4].isSel(sub.items[4].data) == false, "Healer is picked now")
+  sub.items[4].set(sub.items[4].data)
+  check(CRT.db.groups.roles["abu-kelthuzad"] == nil and G.HandRole("Abu-KelThuzad") == nil, "Use the game's role clears it")
+  check(icon.coords[3] == 22 / 64 and slot.roleHand.shown == false, "back to the game's role, no marker")
+  -- a role for someone not in the group shows too
+  G:SetHandRole("Gadios-Area52", "TANK")
+  local gslot
+  for i = 1, 40 do if w[i] == "Gadios-Area52" then gslot = gridRef.slots[i] end end
+  check(gslot and gslot.roleHand and gslot.roleHand.shown == true, "a role set by hand shows for a player out of the group")
+  G:SetHandRole("Gadios-Area52", nil)
+end
 if fails > 0 then error(fails .. " groups invite checks failed") end
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness + tail)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }

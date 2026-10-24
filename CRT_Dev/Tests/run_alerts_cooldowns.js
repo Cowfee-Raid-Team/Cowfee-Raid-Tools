@@ -29,7 +29,7 @@ local CRT = { db = { alerts = { cooldownFilter = "mine" } },
   Timeline = { readable = function(v) return not issecretvalue(v) end } }
 -- the season data loads first, as in the .toc
 assert(load(dataSrc, "CRT_Modules/Alerts/CooldownData.lua"))("CowfeeRaidTools", CRT)
-assert(type(CRT.AlertCooldownData) == "table" and #CRT.AlertCooldownData == 33, "the data file holds the list")
+assert(type(CRT.AlertCooldownData) == "table" and #CRT.AlertCooldownData == 35, "the data file holds the list")
 assert(load(cdSrc, "CRT_Modules/Alerts/Cooldowns.lua"))("CowfeeRaidTools", CRT)
 local C = assert(CRT.AlertCooldowns, "CRT.AlertCooldowns")
 local function ids(list) local out = {} for i, e in ipairs(list) do out[i] = e.spellID end return table.concat(out, ",") end
@@ -45,7 +45,7 @@ do
   assert(ids(C:List()) == ids(list), "nil is mine")
   -- Rapture is gone from the game: the priest list skips it
   local priest = C:List("PRIEST")
-  assert(not find(priest, 47536) and find(priest, 64843) and #priest == 7, "unknown spell skipped: " .. ids(priest))
+  assert(not find(priest, 47536) and find(priest, 64843) and #priest == 8, "unknown spell skipped: " .. ids(priest))
   -- everything known, in list order
   local all = C:List("all")
   assert(#all == #C.LIST - 2, "all, less the two the game won't name: " .. #all)
@@ -166,6 +166,38 @@ do
   C:ResetLengths()
 end
 print("ok bands: cooldown lengths are remembered per spell")
+
+do
+  -- the major healing cooldowns of each healer spec (the Healer CDs view): checked on warcraft.wiki.gg
+  local want = {
+    [65] = "31821,31884,216331", -- Holy Paladin: Aura Mastery, Avenging Wrath, Avenging Crusader
+    [256] = "62618,421453", -- Discipline: Power Word: Barrier, Ultimate Penitence
+    [257] = "64843,200183", -- Holy Priest: Divine Hymn, Apotheosis
+    [264] = "108280,98008,114052", -- Restoration Shaman: Healing Tide Totem, Spirit Link Totem, Ascendance
+    [105] = "740,33891,391528", -- Restoration Druid: Tranquility, Tree of Life, Convoke the Spirits
+    [270] = "115310,388615,322118,325197", -- Mistweaver: Revival, Restoral, Yu'lon, Chi-Ji
+    [1468] = "363534,359816", -- Preservation: Rewind, Dream Flight
+  }
+  local got = {}
+  for _, e in ipairs(CRT.AlertCooldownData) do
+    if e.major then
+      assert(e.kind == "healer", "a major cooldown is a healer's: " .. e.spellID)
+      local specs = type(e.spec) == "table" and e.spec or { e.spec }
+      assert(#specs > 0, "a major cooldown names its spec: " .. e.spellID)
+      for _, s in ipairs(specs) do
+        assert(want[s], "a healer spec: " .. tostring(s))
+        got[s] = (got[s] and (got[s] .. ",") or "") .. e.spellID
+      end
+    else
+      assert(e.spec == nil, "only major entries name a spec: " .. e.spellID)
+    end
+  end
+  for s, list in pairs(want) do assert(got[s] == list, "spec " .. s .. ": " .. tostring(got[s])) end
+  local function cdOf(id) for _, e in ipairs(CRT.AlertCooldownData) do if e.spellID == id then return e.cd end end end
+  -- the wiki's lengths
+  assert(cdOf(200183) == 180 and cdOf(421453) == 240 and cdOf(216331) == 60 and cdOf(322118) == 120, "major lengths")
+end
+print("ok cooldowns: the major healing cooldowns per healer spec")
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 const files = process.argv.slice(2);

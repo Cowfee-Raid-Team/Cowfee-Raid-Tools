@@ -44,6 +44,11 @@ local TEXT = {
     noRehearse = "Nothing to rehearse: pick a boss with an ability timeline or a pull on the Timeline's Review tab.",
     noAbilities = "No ability timeline",
     yours = "yours",
+    abilities = "Abilities",
+    healers = "Healer CDs",
+    viewHelp = "Abilities shows the boss's ability timeline. Healer CDs shows each healer with one row per major healing cooldown, and a Raid damage row on top.\n\n"
+        .. "The healers are the players on the active Raid Groups layout whose role is healer: the role you set there (right-click a name, Set role), else the game's role. Anyone the raid note gives a cooldown gets rows too.\n\n"
+        .. "The casts are the raid note's cooldown lines. Drag one to move it, or double-click a row to add one. Only this window has Healer CDs; the docked timeline always shows the abilities.",
 }
 
 local GRAY = { 0.35, 0.35, 0.35 }
@@ -404,12 +409,18 @@ end
 -- Pop out moves the whole Review tab (the boss and pull choices, the zoom and the view) into a
 -- window of its own that can be dragged to any size, for a wider view than the main panel allows.
 -- The Review tab then shows a note and a button to bring it back, and closing the window (its X,
--- Escape or Dock) puts it back. Its size and position are saved in timeline.popout.
+-- Escape or Dock) puts it back. Its size and position are saved in timeline.popout. Its title strip holds
+-- the Abilities | Healer CDs toggle (timeline.popView): Healer CDs draws the view's healer layout
+-- (Timeline/HealerView.lua) in this window only, and docking always goes back to the abilities.
 
 local MIN_W, MIN_H = 760, 360
 local popWin, popButton, dockedNote
 local popped = false
 local returnPage -- the page Show on the Timeline came from, shown again when the pop-out is closed
+-- the Abilities | Healer CDs toggle on the pop-out's title strip (UI.Toggle2); its (?) and a gap before Reset
+local TOGGLE_HELP_GAP = 8
+local toggle
+local abilitiesNow = false -- Show on the Timeline: Abilities for this opening, the saved choice untouched
 
 local function popSettings()
     local s = settings()
@@ -418,6 +429,52 @@ local function popSettings()
 end
 
 local dock
+
+-- The pop-out's view: "abilities" (the default) or "healers" (Healer CDs), kept in timeline.popView.
+local function popView()
+    return settings().popView == "healers" and "healers" or "abilities"
+end
+
+-- The view the pop-out shows now: Healer CDs only while popped out, and not while Show on the Timeline
+-- has it on Abilities.
+local function shownPopView()
+    if not popped or abilitiesNow then
+        return "abilities"
+    end
+    return popView()
+end
+
+-- Lights the toggle's half and draws the view in it. later: the caller redraws the view next, so SetMode
+-- doesn't. skin: a real change of view (UI:SetTabSelected), else only restyled.
+local function applyPopView(later, skin)
+    local key = shownPopView()
+    if toggle then
+        toggle:Select(key, skin)
+    end
+    if view and view.SetMode then
+        view:SetMode(key == "healers" and "healers" or nil, later)
+    end
+end
+
+local function setPopView(key)
+    abilitiesNow = false
+    settings().popView = key == "healers" and "healers" or "abilities"
+    applyPopView(false, true)
+end
+
+-- Each half as wide as its label (measured again each time the window opens, for a changed text size),
+-- right to left from the (?) before Reset.
+local function layToggle()
+    toggle:Size()
+    toggle:PlaceRight(popWin.reset, -(TOGGLE_HELP_GAP + UI.HELP_GAP + UI.HELP_SIZE))
+end
+
+local function buildToggle()
+    local strip = popWin.strip
+    toggle = UI.Toggle2(strip, { { key = "abilities", label = TEXT.abilities }, { key = "healers", label = TEXT.healers } }, setPopView)
+    UI.HelpRight(toggle.buttons[2], TEXT.healers, TEXT.viewHelp, { parent = strip })
+    layToggle()
+end
 
 -- The window is a UI.Window pop-out: the game's window art in Default: Blizzard and the theme in the
 -- Modern themes (UI:StyleWindow, restyled on a theme change), the shared title strip with Reset and
@@ -431,6 +488,7 @@ local function buildPopout()
         kind = "popout", title = "Timeline", layer = "timeline", saved = popSettings,
         width = 1200, height = 600, minWidth = MIN_W, minHeight = MIN_H,
     })
+    buildToggle()
 
     -- Closing the window, however it closes, puts the Review tab back, and ends a Show on the
     -- Timeline's light. Opened by Show on the Timeline, the main window goes back to the page it
@@ -454,6 +512,8 @@ end
 -- Puts the Review tab back on the page.
 dock = function()
     popped = false
+    abilitiesNow = false
+    applyPopView(true) -- docked: always the abilities; refresh() below redraws
     reviewFrame:SetParent(tabFrames.review)
     reviewFrame:ClearAllPoints()
     reviewFrame:SetAllPoints(tabFrames.review)
@@ -480,6 +540,8 @@ local function popOut()
     popButton:SetText("Dock")
     popWin:Show()
     UI:SkinTree(popWin)
+    layToggle()
+    applyPopView(true, true)
     refresh()
 end
 
@@ -773,6 +835,11 @@ end
 function Timeline:ShowRow(encounterID, spell, name)
     if not (popped and popWin:IsShown()) and CRT.db.lastPage ~= "timeline" then
         returnPage = CRT.db.lastPage
+    end
+    -- an ability's row is on Abilities: for this opening only, decided before the window draws
+    abilitiesNow = true
+    if popped then
+        applyPopView(true, true)
     end
     CRT.TimelinePopout()
     local key, before = nil, selectedGroup

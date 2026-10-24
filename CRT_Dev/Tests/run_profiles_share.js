@@ -189,7 +189,7 @@ do
   local leaked = {}
   for p in pairs(paths) do for _, no in ipairs({ "notes.list", "groups.presets", "late.history", "tattle.history", "alerts.reminders", "alerts.saved", "timeline.bosses", "lootmaster.authority", "classCache", "importBackup",
       "readycheck.output", "readycheck.earlyPullOutput", "tattle.output", "tattle.autoPost", "tattle.season", "lootmaster.awardChannel", "lootmaster.awardMessage", "lootmaster.responses",
-      "notes.trustedOnly", "sound", "qol.lowHealth.customSounds", "seasonStats", "whatsNew", "alerts.specialView" }) do
+      "notes.trustedOnly", "sound", "qol.lowHealth.customSounds", "seasonStats", "whatsNew", "alerts.specialView", "groups.roles", "timeline.popView" }) do
     if p == no or p:sub(1, #no + 1) == no .. "." then leaked[#leaked + 1] = p end end end
   check(#leaked == 0, "no excluded data, report output, trust setting or sound file name is a shared path (" .. table.concat(leaked, ",") .. ")")
   local kept = {}

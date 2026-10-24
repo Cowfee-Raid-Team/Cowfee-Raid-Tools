@@ -29,8 +29,10 @@ local TEXT = {
     inviteBody = "Invites everyone in this layout who isn't in your group. Each one moves to their group when they join, if it has a free spot.",
     inviteName = "Invite %s",
     clearSlot = "Clear slot",
+    setRole = "Set role",
+    gameRole = "Use the game's role",
     unsaved = "Unsaved layout",
-    editHelp = "Click a slot to choose a name, drag to move or swap. Right-click a name to invite that player or clear the slot.",
+    editHelp = "Click a slot to choose a name, drag to move or swap. Right-click a name to invite that player, clear the slot or set their role. A role you set shows a small dot on its icon and wins over the game's role.",
 }
 
 local ROLE_TEXTURE = "Interface\\LFGFrame\\UI-LFG-ICON-PORTRAITROLES"
@@ -39,6 +41,13 @@ local ROLE_COORDS = {
     HEALER = { 20 / 64, 39 / 64, 1 / 64, 20 / 64 },
     DAMAGER = { 20 / 64, 39 / 64, 22 / 64, 41 / 64 },
 }
+-- Set role's choices, in order
+local ROLE_CHOICES = {
+    { role = "TANK", label = "Tank" },
+    { role = "HEALER", label = "Healer" },
+    { role = "DAMAGER", label = "Damage" },
+}
+local HAND_MARK = 6 -- the dot on a role set by hand, at the icon's corner
 
 local BACKDROP = {
     bgFile = "Interface\\Buttons\\WHITE8X8",
@@ -601,7 +610,8 @@ local function refreshInvites()
 end
 
 -- A filled slot's right-click menu: invite the player (greyed while they are in your group or you
--- can't invite), or clear the slot.
+-- can't invite), clear the slot, or Set role (Tank, Healer, Damage, or back to the game's role;
+-- Groups.HandRole, which the Timeline's Healer CDs reads).
 local function openSlotMenu(slot)
     local key = Groups:Working()[slot.index]
     if not key or key == "" then
@@ -623,6 +633,18 @@ local function openSlotMenu(slot)
         root:CreateButton(TEXT.clearSlot, function()
             Groups:SetSlot(slot.index, "")
         end)
+        -- Set role: one of the three, or back to the game's role; it wins over the game's (Groups.HandRole)
+        local roles = root:CreateButton(TEXT.setRole)
+        local function picked(role)
+            return Groups.HandRole(key) == (role or nil)
+        end
+        local function pick(role)
+            Groups:SetHandRole(key, role or nil)
+        end
+        for _, c in ipairs(ROLE_CHOICES) do
+            roles:CreateRadio(c.label, picked, pick, c.role)
+        end
+        roles:CreateRadio(TEXT.gameRole, picked, pick, false)
     end)
 end
 
@@ -711,6 +733,7 @@ refresh = function()
 
     for i = 1, NUM_SLOTS do
         local b, key = slotButtons[i], working[i]
+        local hand = key ~= "" and Groups.HandRole(key) or nil
         if key == "" then
             b.text:SetText("")
             UI.FitText(b.text)
@@ -720,7 +743,7 @@ refresh = function()
             b.text:SetText(Groups.Display(key))
             UI.FitText(b.text)
             local member = lookup(key)
-            local role = (member and member.role) or Groups.CachedRole(key)
+            local role = hand or (member and member.role) or Groups.CachedRole(key)
             if member then
                 -- In your group: bright, class colored.
                 b.text:SetTextColor(Groups.ClassColor(key, member.class))
@@ -739,6 +762,13 @@ refresh = function()
             else
                 b.role:Hide()
             end
+        end
+        -- a role set by hand: a dot in the heading colour at the icon's corner
+        if hand then
+            b.roleHand:SetColorTexture(GOLD[1], GOLD[2], GOLD[3], 1)
+            b.roleHand:Show()
+        else
+            b.roleHand:Hide()
         end
         if not b:IsMouseOver() or drag.from then
             setBorder(b, b.baseBorder)
@@ -855,6 +885,10 @@ local function buildPage(pf)
         b.baseBorder = GRAY
         b.role = b.icon
         b.role:SetTexture(ROLE_TEXTURE)
+        b.roleHand = b:CreateTexture(nil, "OVERLAY", nil, 2)
+        b.roleHand:SetSize(HAND_MARK, HAND_MARK)
+        b.roleHand:SetPoint("BOTTOMRIGHT", b.role, "BOTTOMRIGHT", 1, -1)
+        b.roleHand:Hide()
         b:RegisterForClicks("LeftButtonUp", "RightButtonUp")
         b:RegisterForDrag("LeftButton")
         b:SetScript("OnEnter", function(self)

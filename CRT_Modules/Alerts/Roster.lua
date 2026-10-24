@@ -8,6 +8,8 @@ local ADDON, CRT = ...
 --                                display name (Groups.Display, Ambiguate "none": no realm on your own);
 --                                class is the class file ("MAGE") from the live group when the player is in
 --                                it, else from CRT.db.classCache, else nil. Values the game hides are left out.
+--                                live (optional): the live group as Groups:ReadRoster gave it, when the caller has
+--                                read it already, so it is read once.
 --   AlertRoster:ClassOf(name) -> the class of the player with that name or key (realm optional), or nil.
 -- The same list as the Timeline view's AssignRoster, so the view can read it from here unchanged.
 
@@ -27,14 +29,17 @@ local function usable(v)
     return readable(v) and type(v) == "string" and v ~= ""
 end
 
-function Roster:Players()
+function Roster:Players(given)
     local Groups = CRT.Groups
     if not Groups then
         return {}
     end
     local live = {}
-    if Groups.ReadRoster then
-        local ok, list = pcall(Groups.ReadRoster, Groups)
+    if given or Groups.ReadRoster then
+        local ok, list = true, given
+        if not given then
+            ok, list = pcall(Groups.ReadRoster, Groups)
+        end
         for _, entry in ipairs(ok and type(list) == "table" and list or {}) do
             if usable(entry.key) then
                 live[#live + 1] = entry
