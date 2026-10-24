@@ -102,6 +102,9 @@ L.HELP_ROOM = UI.HELP_GAP + UI.HELP_SIZE + 6 -- a (?) after its control (UI.Help
 L.DROP_GAP = 5 -- UI/Controls.lua: between a row's label and its control
 L.FROM_W = UI.PAGE_W - L.FROM_X - L.FROM_LABEL - L.DROP_GAP - L.HELP_ROOM - L.PAD
 L.LIST_TOP = -44
+-- the Mechanics | Special toggle (Notes/SpecialAlerts.lua) at the top of the left column, the list under it
+L.TOGGLE_H, L.TOGGLE_GAP = 20, 4
+L.LIST_Y = L.LIST_TOP - L.TOGGLE_H - L.TOGGLE_GAP
 L.LIST_W = 250
 L.ROW_H = 24
 L.OWN_H = 24
@@ -217,6 +220,8 @@ local picked, pendingOwn = {}, {}
 -- The row the Timeline's Make a Mech Alert opened ({ enc, key }), listed even when hidden from the list,
 -- until another row or boss is picked or the tab closes.
 local opened
+-- The Special view (Notes/SpecialAlerts.lua: the boss's special alerts), when that file is loaded.
+local special
 -- The panel's alert: the row's key and item, the boss, and the draft with where it came from (ctx).
 local cur = {}
 local notice -- the last save's problem, shown in red until a change saves
@@ -848,10 +853,22 @@ local function paint(index)
     end
 end
 
+-- Mechanics or Special on show (the toggle over the list): the other's list and panel are hidden.
+local function applyView()
+    local mech = not (special and CRT.NoteSpecialAlerts.View() == "special")
+    list:SetShown(mech)
+    ownButton:SetShown(mech)
+    panel.frame:SetShown(mech)
+    if special then
+        CRT.NoteSpecialAlerts.Refresh()
+    end
+end
+
 local function refresh(keepDraft)
     if not tab then
         return
     end
+    applyView()
     local enc, name = pickBoss(bosses())
     items = itemsFor(enc, name)
     local index = selectedIndex(enc)
@@ -1539,7 +1556,7 @@ end
 local function build(f)
     tab = f
     local tabH = CRT.NotesPage.TAB_H
-    L.LIST_H = tabH + L.LIST_TOP - L.PAD - L.OWN_H - L.OWN_GAP
+    L.LIST_H = tabH + L.LIST_Y - L.PAD - L.OWN_H - L.OWN_GAP
     L.MAX_ROWS = math.floor((L.LIST_H - 4) / L.ROW_H)
     L.PANEL_H = tabH + L.LIST_TOP - L.PAD
     selected, viewGroup, viewPrefer, offset = nil, nil, nil, 0
@@ -1629,7 +1646,7 @@ local function build(f)
     -- Left: the list, scrolled with the mouse wheel
     list = CreateFrame("Frame", nil, f, "BackdropTemplate")
     list:SetSize(L.LIST_W, L.LIST_H)
-    list:SetPoint("TOPLEFT", L.PAD, L.LIST_TOP)
+    list:SetPoint("TOPLEFT", L.PAD, L.LIST_Y)
     backdrop(list, 0.8)
     f.list = list
     rows = {}
@@ -1649,7 +1666,7 @@ local function build(f)
     f.scroll = scrollBy
 
     ownButton = makeButton(f, TEXT.ownReminder, L.LIST_W, L.OWN_H)
-    ownButton:SetPoint("TOPLEFT", L.PAD, L.LIST_TOP - L.LIST_H - L.OWN_GAP)
+    ownButton:SetPoint("TOPLEFT", L.PAD, L.LIST_Y - L.LIST_H - L.OWN_GAP)
     ownButton:SetScript("OnClick", function()
         saveTyped()
         local enc = pickBoss(bosses())
@@ -1694,6 +1711,20 @@ local function build(f)
             markerText:SetText(string.format(TEXT.markerShow, def.name or TEXT.markerTitle))
             markerCheck:SetChecked(CRT.MarkerDisplay:Enabled(enc))
         end
+    end
+
+    -- The Mechanics | Special toggle, and the Special list and panel in the same places as these
+    if CRT.NoteSpecialAlerts then
+        special = CRT.NoteSpecialAlerts.Build(f, {
+            boss = function() return pickBoss(bosses()) end,
+            group = shownGroup,
+            reference = shownReference,
+            -- typing waiting on the Mechanics panel is saved before it hides
+            view = function() saveTyped() refresh() end,
+        }, { x = L.PAD, y = L.LIST_TOP, toggleH = L.TOGGLE_H, listY = L.LIST_Y, listW = L.LIST_W,
+            listH = L.LIST_H + L.OWN_GAP + L.OWN_H, panelX = L.PANEL_X, panelY = L.LIST_TOP, panelW = L.PANEL_W,
+            panelH = L.PANEL_H })
+        f.special = special
     end
 
     f:SetScript("OnShow", function()
@@ -1790,4 +1821,8 @@ CRT.NoteReminders = {
         refresh()
     end,
     BossList = bossList,
+    -- The boss on show (the active note's, else the first, until one is picked), for /crt dev special.
+    Boss = function()
+        return (pickBoss(bosses()))
+    end,
 }

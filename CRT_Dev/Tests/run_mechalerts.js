@@ -1276,7 +1276,11 @@ check("mech: alerts per difficulty group", function()
   local opts = diff.opts.options()
   assert(#opts == 2 and opts[1].key == "nh" and opts[1].label == "Normal/Heroic" and opts[2].key == "mythic" and opts[2].label == "Mythic",
     "Normal/Heroic and Mythic only")
-  for _, h in ipairs(helps) do assert(not (h.helpText or ""):find("Any", 1, true), "no help names Any: " .. tostring(h.helpText)) end
+  for _, h in ipairs(helps) do
+    -- a (?) whose text changes (a special alert's own help) gives it from a function
+    local text = type(h.helpText) == "function" and h.helpText() or h.helpText or ""
+    assert(not text:find("Any", 1, true), "no help names Any: " .. tostring(text))
+  end
   assert(diff.opts.get() == "mythic" and f.rows[1].name.text == "Real Name", "the boss's first timeline's group")
   -- tick an alert on in Mythic: Normal/Heroic doesn't show it on
   setCheck(f.rows[1].check, true)
@@ -1444,6 +1448,168 @@ check("mech: hidden from the list for everyone, set in /crt dev", function()
   assert(#errors == 0, tostring(errors[1]))
 end)
 
+-- The Special view (CRT_Modules/Notes/SpecialAlerts.lua): the Mechanics | Special toggle over the list, the boss's
+-- special alerts (CRT_Modules/Alerts/Special.lua, from its boss file) and the selected one's panel.
+local SPECIAL_LIST = {
+  { key = "soaks", label = "Orb soaks", help = "Two groups soak each orb.", type = "soak", when = { row = "Real Name" }, lead = 6,
+    who = { mode = "rotation", rotation = { { 1, 2 }, { 3, 4 } } }, text = "Soak now: {group}",
+    show = { callout = true, bar = false, speech = true }, markers = { marks = { "star", "circle" }, on = "who" } },
+  { key = "mythicOnly", label = "Mythic dance", difficulty = "mythic", when = { times = "P1 0:20" } },
+}
+local function withSpecial(list)
+  CRT.Bosses.Get = function(self, id) if id == ENC then return { encounterID = ENC, name = "Test Boss", season = "T", special = list } end end
+  CRT.Bosses.Loaded = function() return true end
+end
+local function noSpecial() CRT.Bosses.Get, CRT.Bosses.Loaded = nil, nil end
+local SA = CRT.NoteSpecialAlerts
+
+check("mech special: the toggle sits over the list, Mechanics by default", function()
+  noSpecial()
+  CRT.db.alerts.specialView = nil
+  local f = fresh()
+  local s = f.special
+  assert(s and s.mechBtn and s.specialBtn, "two halves")
+  assert(s.mechBtn.text.text == "Mechanics" and s.specialBtn.text.text == "Special (0)", "labels: " .. tostring(s.specialBtn.text.text))
+  assert(SA.View() == "mechanics" and f.list.shown and f.ownButton.shown and f.panel.frame.shown, "Mechanics on show")
+  assert(not s.list.shown and not s.panel.shown, "Special hidden")
+  rects = {}
+  local a, b, lr = rect(s.mechBtn, f), rect(s.specialBtn, f), rect(f.list, f)
+  assert(a[3] <= b[1], "side by side")
+  assert(a[4] <= lr[2] and b[4] <= lr[2], "over the list: " .. a[4] .. " > " .. lr[2])
+  assert(a[1] >= lr[1] and b[3] + 24 <= lr[3], "inside the list's width, its (?) too")
+  assert(math.abs(b[3] - b[1] - (#"Special (0)" * 6 + 20)) < 1, "sized from its label")
+  assert(#errors == 0, tostring(errors[1]))
+end)
+
+check("mech special: Special shows the empty line, and the choice is remembered", function()
+  noSpecial()
+  local f = fresh()
+  local s = f.special
+  typeInto(f.panel.textEdit, "Typed before Special")
+  click(s.specialBtn)
+  assert(only().text == "Typed before Special", "typing on the Mechanics panel is saved first")
+  assert(SA.View() == "special" and CRT.db.alerts.specialView == "special", "saved")
+  assert(not f.list.shown and not f.ownButton.shown and not f.panel.frame.shown, "Mechanics hidden")
+  assert(s.list.shown and s.panel.shown and s.empty.shown and s.empty.text == "No special alerts for this boss yet.", "the empty line")
+  local m = CRT.PALETTE.muted
+  assert(s.empty.textColor and s.empty.textColor[1] == m[1] and s.empty.textColor[3] == m[3], "in the muted colour")
+  assert(not s.content.shown, "no panel content")
+  local f2 = fresh()
+  assert(SA.View() == "special" and f2.special.list.shown and not f2.list.shown, "remembered when the tab is built again")
+  click(f2.special.mechBtn)
+  assert(SA.View() == "mechanics" and f2.list.shown and not f2.special.list.shown, "back to Mechanics")
+  assert(#errors == 0, tostring(errors[1]))
+end)
+
+check("mech special: the list counts, ticks and selects", function()
+  withSpecial(SPECIAL_LIST)
+  local f = fresh()
+  local s = f.special
+  assert(s.specialBtn.text.text == "Special (2)", "Mythic on show: both: " .. s.specialBtn.text.text)
+  dropdowns["Difficulty"].opts.set("nh")
+  assert(s.specialBtn.text.text == "Special (1)", "Normal/Heroic: the Mythic one is left out")
+  dropdowns["Difficulty"].opts.set("mythic")
+  click(s.specialBtn)
+  assert(s.rows[1].frame.shown and s.rows[1].name.text == "Orb soaks" and s.rows[2].name.text == "Mythic dance" and not s.rows[3].frame.shown, "two rows")
+  assert(not s.empty.shown, "no empty line")
+  assert(s.rows[1].check.checked == false and s.rows[1].sel.shown and not s.rows[2].sel.shown, "off, the first selected")
+  local c = s.rows[1].name.textColor
+  assert(c and c[1] ~= 1, "in its type's colour, lifted on the selected row")
+  setCheck(s.rows[1].check, true)
+  assert(CRT.db.alerts.special[ENC].soaks.on == true and s.rows[1].check.checked, "ticked: saved on")
+  assert(s.alertMe.checked == true, "the panel's Alert me follows")
+  local c2 = s.rows[2].name.textColor
+  assert(c2[1] == 0.5 and c2[2] == 0.5, "an off row without a type is grey")
+  click(s.rows[2].frame)
+  assert(s.rows[2].sel.shown and not s.rows[1].sel.shown and s.title.text == "Mythic dance", "the second selected")
+  click(s.mechBtn)
+  CRT.db.alerts.special = {}
+  noSpecial()
+  assert(#errors == 0, tostring(errors[1]))
+end)
+
+check("mech special: the panel says When and Who, keeps Show as, greys Markers", function()
+  withSpecial(SPECIAL_LIST)
+  CRT.db.alerts.special = {}
+  local f = fresh()
+  local s = f.special
+  click(s.specialBtn)
+  assert(s.content.shown and s.title.text == "Orb soaks" and s.kind.text == "special alert", "title and kind")
+  assert(s.titleHelp.shown, "its help in a (?)")
+  assert(s.whenText.text == "Each cast of Real Name: P1 0:30; P2 +0:20. Shown 6 s before.", "When: " .. s.whenText.text)
+  assert(s.whoText.text == "In turn, one step per cast:", "Who: " .. s.whoText.text)
+  assert(s.chips[1].shown and s.chips[1].text.text == "1: G1, G2" and s.chips[2].text.text == "2: G3, G4", "the steps as chips, in order")
+  assert(not s.more.shown, "no more")
+  assert(s.checks.alert.checked and not s.checks.bar.checked and s.speak.checked, "Show as from the data")
+  assert(s.checks.alert.label.text == "Note callout/assignments" and s.checks.timeline.label.text == "Alert timeline", "the same names as a mechanic")
+  setCheck(s.checks.bar, true)
+  assert(CRT.db.alerts.special[ENC].soaks.show.bar == true and CRT.db.alerts.special[ENC].soaks.on == false, "Bar saved, still off")
+  setCheck(s.speak, false)
+  assert(CRT.db.alerts.special[ENC].soaks.speak == false, "Speak saved")
+  -- markers: an addon can't set them, so the section is greyed and says why
+  assert(s.markText.text == "Marks for each step: Star, Circle. Named in the alert's text.", "the marks: " .. s.markText.text)
+  assert(s.markCheck.enabled == false and s.markCheck.checked == false, "Mark the players: greyed")
+  local help
+  for _, h in ipairs(helps) do if h.helpTitle == "Markers" then help = h end end
+  assert(help and help.helpText:find("can't", 1, true) and help.helpText:find("12.0", 1, true), "its (?) says why")
+  -- your step's chip
+  CRT.NoteEngine = { IsMine = function(self, item) return item.tags[1] == "G3" end }
+  CRT.NoteReminders.Refresh()
+  assert(s.chips[2].mine and not s.chips[1].mine, "your step's chip is marked")
+  CRT.NoteEngine = nil
+  -- every (?) is placed by UI.HelpRight
+  for _, h in ipairs(helps) do assert(rawget(h, "helpTarget") ~= nil, "the (?) " .. tostring(h.helpTitle) .. " is placed by UI.HelpRight") end
+  click(s.mechBtn)
+  CRT.db.alerts.special = {}
+  noSpecial()
+  assert(#errors == 0, tostring(errors[1]))
+end)
+
+check("mech special: Test plays the alert through the editor's test", function()
+  withSpecial(SPECIAL_LIST)
+  local f = fresh()
+  local s = f.special
+  click(s.specialBtn)
+  click(s.testBtn)
+  assert(A.running and A.run.reason == "test", "a test run")
+  local got
+  for _, it in ipairs(A.items) do if it.id == "special:test:soaks" then got = it end end
+  assert(got and got.ph == 1 and got.time == 10 and got.text == "Soak now: G1, G2 (Star, Circle)" and got.outputs.alert, "the first cast, 10 s ahead: " .. tostring(got and got.text))
+  A:Stop(true)
+  -- an alert with no times says so
+  withSpecial({ { key = "none", label = "Nothing", when = { row = "Not A Row" } } })
+  CRT.NoteReminders.Refresh()
+  click(s.testBtn)
+  assert(not A.running and s.message.text:find("Nothing to test", 1, true), "no times: " .. tostring(s.message.text))
+  click(s.mechBtn)
+  noSpecial()
+  assert(#errors == 0, tostring(errors[1]))
+end)
+
+check("mech special: nothing passes the page edges", function()
+  local long = {}
+  for i = 1, 30 do long[i] = { key = "k" .. i, label = "Special alert number " .. i .. " with a long name", when = { times = "0:10" },
+    who = { mode = "rotation", rotation = { { 1, 2, 3, 4, 5 }, { 6, 7, 8 }, "tank", "healer", "melee", "ranged", { 1 }, { 2 }, { 3 }, { 4 }, { 5 }, { 6 }, { 7 } } },
+    markers = { marks = { "star", "circle", "diamond", "triangle", "moon", "square", "cross", "skull" } } } end
+  withSpecial(long)
+  local f = fresh()
+  click(f.special.specialBtn)
+  local n = edges(f, "special")
+  assert(n > 40, "checked " .. n .. " pieces")
+  assert(f.special.more.shown, "the steps that don't fit are counted")
+  rects = {}
+  local lr, pr = rect(f.special.list, f), rect(f.special.panel, f)
+  assert(lr[3] <= pr[1], "the list ends before the panel")
+  assert(lr[4] >= TAB_H - 12 and pr[4] >= TAB_H - 12, "both fill the height")
+  TEXT_SCALE = 1.75
+  CRT.NoteReminders.Refresh()
+  edges(f, "special, large text")
+  TEXT_SCALE = nil
+  click(f.special.mechBtn)
+  noSpecial()
+  assert(#errors == 0, tostring(errors[1]))
+end)
+
 check("no errors raised", function()
   assert(#errors == 0, tostring(errors[1]))
 end)
@@ -1451,5 +1617,6 @@ if fail > 0 then error(fail .. " failed") end
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 const srcs = process.argv.slice(2);
+lua.lua_checkstack(L, srcs.length + 2); // more sources than the stack's first 20 slots
 for (const s of srcs) lua.lua_pushstring(L, to_luastring(fs.readFileSync(s, 'utf8')));
 if (lua.lua_pcall(L, srcs.length, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
