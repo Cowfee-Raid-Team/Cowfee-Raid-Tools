@@ -2,8 +2,9 @@ local ADDON, CRT = ...
 
 -- Nek'zali the Soulcoiler. Everything the addon ships about this boss, read by Bosses/Registry.lua.
 --
--- encounterID 3470 comes from an example raid note and isn't confirmed in a pull yet. The reference
---             has no Encounter: line, so the Timeline matches it by the boss's name either way.
+-- encounterID 3470 comes from the EncounterID line of an example raid note, not from a pull yet;
+--             /crt dev seasons ids checks it against the saved pulls. The reference has no
+--             Encounter: line, so the Timeline matches it by the boss's name either way.
 -- references  The Mythic reference timeline, in the Timeline's text format (see Timeline/Database.lua
 --             for the format), transcribed from a planner screenshot with each ability's type from
 --             Alex. Moved here from Timeline/Database.lua in the boss library change.
