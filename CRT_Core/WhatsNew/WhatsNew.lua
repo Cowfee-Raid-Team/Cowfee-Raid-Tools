@@ -163,6 +163,10 @@ end
 
 local view = { lines = {}, dots = {} }
 WN.view = view
+-- pending: the set waiting to open after login; waiting: a try found it blocked, so an event that ends a blocking
+-- state tries again (before that, the login delay runs untouched); events: the frame below, listening while pending
+local state = { pending = nil, waiting = false, token = 0, encounter = false, loading = false, events = nil }
+WN.state = state
 
 local function row(i, c)
     if not view.lines[i] then
@@ -201,13 +205,18 @@ local function build()
     local checkText = c:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     checkText:SetPoint("LEFT", check, "RIGHT", L.checkGap, 0)
     checkText:SetText(TEXT.show)
+    -- the label clicks the box too: the box's hit area reaches over it (sized again in fill, as fonts change)
+    view.labelHit = function()
+        check:SetHitRectInsets(0, -(L.checkGap + math.ceil(checkText:GetStringWidth() or 0)), 0, 0)
+    end
     local got = UI.PanelButton(c, TEXT.gotIt, L.button, function()
         win:Hide()
     end)
     got:SetPoint("BOTTOMRIGHT", 0, 0)
     -- closed any way (Got it, X, Escape): this version is seen
-    win:HookScript("OnHide", function()
-        if view.open then
+    -- (the whole interface hiding, Alt+Z or a cinematic, hides it too while it is still shown: not a close)
+    win:HookScript("OnHide", function(self)
+        if view.open and not self:IsShown() then
             view.open = false
             markSeen()
         end
@@ -251,6 +260,7 @@ local function fill(set)
     end
     local d = db()
     view.check:SetChecked(not d or d.show ~= false)
+    view.labelHit()
     win:SetSize(L.width, math.ceil(D.titleHeight + 4 + y - L.rowGap + L.footerGap + L.button + D.inset))
 end
 
@@ -261,6 +271,11 @@ function WN.Open(set)
     end
     fill(set)
     view.open = true
+    -- open now, by hand or after login: nothing waits any more
+    state.pending, state.waiting = nil, false
+    if state.events then
+        state.events:UnregisterAllEvents()
+    end
     if not view.win:IsShown() then
         view.win:Show()
     end
@@ -285,8 +300,6 @@ function WN:ShowNow()
 end
 
 -- When it may open --------------------------------------------------------------------------------------------------
-
-local state = { pending = nil, token = 0, encounter = false, loading = false, entered = false }
 
 local function encounterOn()
     if state.encounter then
@@ -339,18 +352,18 @@ try = function()
         return
     end
     if blocked() then
+        state.waiting = true
         schedule(L.poll)
         return
     end
-    local set = state.pending
-    state.pending = nil
-    WN.Open(set)
+    WN.Open(state.pending)
 end
 
 -- the events that end a blocking state: try again shortly after
 local RELEASE = { PLAYER_REGEN_ENABLED = true, ENCOUNTER_END = true, LOADING_SCREEN_DISABLED = true, CINEMATIC_STOP = true, STOP_MOVIE = true }
 
 local events = CreateFrame("Frame")
+state.events = events
 for _, e in ipairs({ "PLAYER_ENTERING_WORLD", "PLAYER_REGEN_ENABLED", "ENCOUNTER_START", "ENCOUNTER_END",
     "LOADING_SCREEN_ENABLED", "LOADING_SCREEN_DISABLED", "CINEMATIC_STOP", "STOP_MOVIE" }) do
     events:RegisterEvent(e)
@@ -358,10 +371,11 @@ end
 events:SetScript("OnEvent", function(self, event)
     if event == "PLAYER_ENTERING_WORLD" then
         self:UnregisterEvent("PLAYER_ENTERING_WORLD")
-        state.loading = false
         state.pending = WN.Due()
         if state.pending then
             schedule(L.delay)
+        else
+            self:UnregisterAllEvents() -- nothing to show this session
         end
         return
     end
@@ -374,7 +388,7 @@ events:SetScript("OnEvent", function(self, event)
     elseif event == "LOADING_SCREEN_DISABLED" then
         state.loading = false
     end
-    if RELEASE[event] and state.pending then
+    if RELEASE[event] and state.pending and state.waiting then
         schedule(L.retry)
     end
 end)

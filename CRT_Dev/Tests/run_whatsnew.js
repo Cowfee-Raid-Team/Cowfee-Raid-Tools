@@ -56,6 +56,8 @@ local function mock()
       HookScript = function(self, name, fn) local old = self.scripts[name] self.scripts[name] = function(...) if old then old(...) end fn(...) end end,
       RegisterEvent = function(self, e) self.events[e] = true end,
       UnregisterEvent = function(self, e) self.events[e] = nil end,
+      UnregisterAllEvents = function(self) self.events = {} end,
+      SetHitRectInsets = function(self, l, r, t, b) self.hit = { l, r, t, b } end,
       SetSize = function(self, w, h) self.w, self.h = w, h end,
       SetWidth = function(self, w) self.w = w end,
       SetHeight = function(self, h) self.h = h end,
@@ -107,16 +109,28 @@ local function boot(opts)
     Help = function() local h = mock() h.shown = true return h end,
     IsModern = function() return true end,
   }
-  local db = { whatsNew = opts.db or { show = true, window = {} } }
-  local CRT = { UI = UI, db = db, version = opts.version or "1.1.2", freshInstall = opts.fresh or false }
+  local CRT, db
+  if opts.core then
+    -- the real CRT_Core/Core.lua and Profiles.lua: ADDON_LOADED with CRTDB as saved (nil: a first install)
+    CRT = { UI = UI }
+    assert(load(coreSrc, "Core.lua"))("CowfeeRaidTools", CRT)
+    CRT_THEME(CRT, UI)
+    assert(load(profilesSrc, "Profiles.lua"))("CowfeeRaidTools", CRT)
+    CRTDB, CRTDBChar = opts.saved, {}
+    for _, f in ipairs(made) do if f.events.ADDON_LOADED then f.scripts.OnEvent(f, "ADDON_LOADED", "CowfeeRaidTools") end end
+    db = CRTDB
+  else
+    db = { whatsNew = opts.db or { show = true, window = {} } }
+    CRT = { UI = UI, db = db, version = opts.version or "1.1.2", freshInstall = opts.fresh or false }
+    CRT_THEME(CRT, UI)
+  end
   local printed = {}
   function CRT:Print(m) printed[#printed + 1] = m end
-  CRT_THEME(CRT, UI)
   assert(load(dataSrc, "Data.lua"))("CowfeeRaidTools", CRT)
   if opts.data then CRT.WhatsNewData = opts.data end
   assert(load(wnSrc, "WhatsNew.lua"))("CowfeeRaidTools", CRT)
   local p = { CRT = CRT, WN = CRT.WhatsNew, UI = UI, db = db.whatsNew, windows = windows, buttons = buttons, printed = printed }
-  for _, f in ipairs(made) do if f.events.PLAYER_ENTERING_WORLD then p.events = f end end
+  for _, f in ipairs(made) do if f.events.PLAYER_ENTERING_WORLD and f.events.LOADING_SCREEN_DISABLED then p.events = f end end
   made = nil
   p.fire = function(e, ...) if p.events and p.events.events[e] then p.events.scripts.OnEvent(p.events, e, ...) end end
   p.win = function() return windows.CRTWhatsNew end
@@ -125,6 +139,17 @@ local function boot(opts)
   return p
 end
 local function login(p) p.fire("PLAYER_ENTERING_WORLD", true, false) end
+-- Core.lua's needs: fonts, the .toc version, the character for Profiles.lua
+local function fontObject() local o = { path = "f", size = 12, flags = "" }
+  function o:CopyFontObject() end function o:GetFont() return self.path, self.size, self.flags end
+  function o:SetFont(p, s, fl) self.path, self.size, self.flags = p, s, fl end
+  function o:GetTextColor() return 1, 1, 1 end function o:SetTextColor() end return o end
+function CreateFont(name) local o = fontObject() _G[name] = o return o end
+GameFontNormal, GameFontHighlight, GameFontDisable, GameFontHighlightSmall, GameFontDisableSmall, GameFontNormalLarge, GameFontNormalSmall, ChatFontNormal = fontObject(), fontObject(), fontObject(), fontObject(), fontObject(), fontObject(), fontObject(), fontObject()
+C_AddOns = { GetAddOnMetadata = function(_, field) if field == "Version" then return "1.1.2" end end }
+UnitName = function() return "Solex" end
+GetRealmName = function() return "Silvermoon" end
+ReloadUI = function() end
 
 -- 1. Version compare -------------------------------------------------------------------------------------------
 local p = boot({})
@@ -313,6 +338,42 @@ SlashCmdList.COWFEERAIDTOOLS("whatsnew")
 check(not p.shown() and #p.printed == 1, "no entries at all: a line in chat instead")
 check(slashSrc:find("/crt whatsnew", 1, true) ~= nil, "/crt whatsnew is in the /crt help list")
 
+-- 8b. Review fixes -------------------------------------------------------------------------------------------------
+-- a release event before any try (the loading screen ending right after login) keeps the 5 s delay
+p = boot({ db = { show = true, window = {} } })
+login(p) advance(0.5)
+p.fire("LOADING_SCREEN_DISABLED") p.fire("PLAYER_REGEN_ENABLED")
+advance(3.5)
+check(not p.shown(), "a release event right after login: not at 4 s")
+advance(2)
+check(p.shown(), "a release event right after login: shown at 6 s")
+check(next(p.events.events) == nil, "once open, no events are listened to")
+-- the whole interface hiding (Alt+Z) runs OnHide while the window is still shown: not a close
+w = p.win()
+w.scripts.OnHide(w)
+eq(p.db.seen, nil, "the interface hiding doesn't mark it seen")
+w:Hide()
+eq(p.db.seen, "1.1.2", "a real close does")
+-- nothing to show: no events stay
+p = boot({ db = { show = true, seen = "1.1.2", window = {} } })
+login(p)
+check(next(p.events.events) == nil, "nothing to show: no events are listened to")
+-- /crt whatsnew during the login wait, closed: it doesn't open again
+p = boot({ db = { show = true, window = {} } })
+SlashCmdList = {}
+assert(load(slashSrc, "Slash.lua"))("CowfeeRaidTools", p.CRT)
+login(p) advance(1)
+SlashCmdList.COWFEERAIDTOOLS("whatsnew")
+p.win():Hide()
+advance(30)
+check(not p.shown(), "/crt whatsnew closed during the wait: not opened again")
+eq(p.db.seen, "1.1.2", "and seen")
+-- the label clicks the box: its hit area reaches over the label
+local v8 = p.WN.view
+local hit = v8.check.hit
+check(hit and hit[1] == 0 and hit[2] == -(p.WN.LAYOUT.checkGap + v8.checkText:GetStringWidth()) and hit[3] == 0 and hit[4] == 0,
+  "the box's hit area covers its label (" .. tostring(hit and hit[2]) .. ")")
+
 -- 9. The shipped entries: newest first, at most 5 short lines, a count of fixes, no other addon names ---------
 p = boot({})
 local shipped = p.CRT.WhatsNewData
@@ -370,8 +431,26 @@ check(p.win().h < tall, "fewer lines, a shorter window (" .. p.win().h .. " < " 
 check(not v.lines[2].shown, "rows from a longer list are hidden")
 
 -- 11. Saved data: a default in Core.lua, account-wide, never in Export settings only ---------------------------
-check(coreSrc:find("whatsNew = { show = true", 1, true) ~= nil, "Core.lua has the whatsNew default with show on")
-check(coreSrc:find("freshInstall", 1, true) ~= nil, "Core.lua notes a fresh install")
+-- through the real Core.lua: a first install (no CRTDB) records the version and shows nothing
+p = boot({ core = true, saved = nil })
+eq(p.CRT.version, "1.1.2", "Core.lua: the version from the .toc")
+check(p.CRT.freshInstall == true, "Core.lua: no CRTDB is a fresh install")
+check(p.db and p.db.show == true and type(p.db.window) == "table", "Core.lua: whatsNew's defaults, Show after updates on")
+eq(p.db.seen, nil, "Core.lua: seen has no default")
+login(p) advance(30)
+check(not p.shown(), "Core.lua, first install: no window")
+eq(p.db.seen, "1.1.2", "Core.lua, first install: the version recorded")
+-- an existing save from before What's new: shown once
+p = boot({ core = true, saved = { ui = { theme = "blizzard" }, debuffs = { size = 50 } } })
+check(p.CRT.freshInstall == false, "Core.lua: an existing CRTDB is not a fresh install")
+login(p) advance(6)
+check(p.shown(), "Core.lua, an upgrade into the feature: shown")
+eq(CRTDB.debuffs.size, 50, "and the old save is kept")
+p.button("Got it").scripts.OnClick(p.button("Got it"))
+eq(p.db.seen, "1.1.2", "Core.lua, an upgrade: seen on close")
+-- a profile switch keeps it: whatsNew stays at the top of CRTDB
+p.CRT.Profiles:Load()
+eq(CRTDB.whatsNew and CRTDB.whatsNew.seen, "1.1.2", "Profiles: whatsNew is account-wide")
 check(profilesSrc:find("whatsNew = false", 1, true) ~= nil, "Profiles.SHARE keeps whatsNew out of Export settings only")
 check(profilesSrc:match("local SHARED = (%b{})"):find("whatsNew", 1, true) ~= nil, "whatsNew is account-wide, not per profile")
 check(tocSrc:find("CRT_Core\\\\WhatsNew\\\\Data.lua", 1, true) and tocSrc:find("CRT_Core\\\\WhatsNew\\\\WhatsNew.lua", 1, true), "both files are in the .toc")
