@@ -200,7 +200,7 @@ local function buildAuto(f)
     UI.HelpRight(minutes, "Warn under", "An icon gets gold marching ants when its buff or weapon oil has less time left than this, 1 to 240 minutes.")
 
     -- Work in progress: shown but greyed out until the cauldron flasks' and an unlimited rune's
-    -- item IDs are in the built-in list (Consumables/Database.lua).
+    -- item IDs are in the built-in list (the season pack's GameIDs.lua).
     local function wip()
         return false
     end

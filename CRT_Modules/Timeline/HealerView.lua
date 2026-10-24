@@ -56,9 +56,10 @@ local function usable(v)
     return v ~= nil and readable(v) and type(v) == "string" and v ~= ""
 end
 
+-- The season's class cooldowns (CRT.Bosses:Cooldowns(), from its GameIDs.lua), or none.
 local function list()
-    local C = CRT.AlertCooldowns
-    return (C and C.LIST) or CRT.AlertCooldownData or {}
+    local B = CRT.Bosses
+    return (B and B:Cooldowns()) or {}
 end
 
 local function spellName(id)

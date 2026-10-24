@@ -1,6 +1,6 @@
 local ADDON, CRT = ...
 
--- Ready button lock: when a ready check starts and your class gives a raid buff (Report.BUFFS) that
+-- Ready button lock: when a ready check starts and your class gives a raid buff (Report.Buffs(), the season's list) that
 -- someone in the group is missing, the game's Ready button is greyed out until everyone has it, so you
 -- buff before you ready. On by default (CRTDB.readycheck.buffLock), set on the Ready Check Settings tab.
 --
@@ -39,7 +39,7 @@ end
 local function classBuffs()
     local _, class = UnitClass("player")
     local out = {}
-    for _, buff in ipairs(Report.BUFFS) do
+    for _, buff in ipairs(Report.Buffs()) do
         if buff.class == class then
             out[#out + 1] = buff
         end

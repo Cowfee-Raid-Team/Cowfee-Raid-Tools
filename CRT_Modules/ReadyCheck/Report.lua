@@ -14,18 +14,33 @@ local Consumables = CRT.Consumables
 
 local CHAT_MAX = 250 -- a chat line can hold 255 characters
 
--- Raid buffs, each given by one class. A buff is found by its spell ID or by that spell's name, since
--- Blessing of the Bronze gives a differently numbered buff to each class. IDs are the retail spell IDs
--- linked from each Warcraft Wiki page, read 2026-10-14.
--- short is the ready check window's column heading.
-Report.BUFFS = {
-    { key = "intellect", spell = 1459, class = "MAGE", label = "Arcane Intellect", short = "Int" },
-    { key = "stamina", spell = 21562, class = "PRIEST", label = "Power Word: Fortitude", short = "Stam" },
-    { key = "attack", spell = 6673, class = "WARRIOR", label = "Battle Shout", short = "AP" },
-    { key = "versatility", spell = 1126, class = "DRUID", label = "Mark of the Wild", short = "Vers" },
-    { key = "mastery", spell = 462854, class = "SHAMAN", label = "Skyfury", short = "Mast" },
-    { key = "movement", spell = 364342, class = "EVOKER", label = "Blessing of the Bronze", short = "Move" },
-}
+-- Raid buffs, each given by one class. The list ships in each season pack's GameIDs.lua (part raidBuffs), read
+-- through CRT.Bosses:RaidBuffs(); this is the format, and the empty list a season without one gets:
+--   { key = "intellect", spell = 1459, class = "MAGE", label = "Arcane Intellect", short = "Int" }
+-- key names the buff's column and setting (CRTDB.readycheck.window.columns), spell is the buff's spell ID, class
+-- the class that gives it, label its name when the game gives none, and short the ready check window's column
+-- heading. A buff is found by its spell ID or by that spell's name, since Blessing of the Bronze gives a
+-- differently numbered buff to each class.
+Report.BUFFS = {}
+
+-- The season's raid buffs, else none. Asked each time, never kept at load: the season packs load after this file.
+function Report.Buffs()
+    local B = CRT.Bosses
+    return (B and B:RaidBuffs()) or Report.BUFFS
+end
+
+-- One raid buff by its key, or nil. The index is rebuilt when the season's list changes.
+local buffIndex, buffIndexOf = {}, nil
+function Report.Buff(key)
+    local buffs = Report.Buffs()
+    if buffIndexOf ~= buffs then
+        buffIndex, buffIndexOf = {}, buffs
+        for _, buff in ipairs(buffs) do
+            buffIndex[buff.key] = buff
+        end
+    end
+    return buffIndex[key]
+end
 
 -- The checks, in the order they show and post.
 Report.CHECKS = {
@@ -36,7 +51,7 @@ Report.CHECKS = {
     { key = "buffs", label = "Raid buffs" },
 }
 
--- Until the consumables list in Consumables/Database.lua is filled in, buffs are also found by their
+-- Until the season's consumables list (its GameIDs.lua) is filled in, buffs are also found by their
 -- English names. This only works on an English game client. Food is matched by "Well Fed" anywhere in
 -- the name, since a feast gives "Hearty Well Fed".
 local FALLBACK = {
@@ -200,7 +215,7 @@ local function minutesLeft(seconds)
     return math.max(1, math.floor(seconds / 60 + 0.5)) .. " min"
 end
 
--- Food is one hardcoded check, whatever was eaten: the food buffs in Consumables/Database.lua, or a
+-- Food is one hardcoded check, whatever was eaten: the consumables list's food buffs, or a
 -- buff with "Well Fed" in its name.
 local function foodIds()
     return Consumables:FoodBuffIds(), FALLBACK.food
@@ -250,7 +265,7 @@ local function checkBuffs(members)
             result.unknown[#result.unknown + 1] = m.name .. " (" .. m.why .. ")"
         end
     end
-    for _, buff in ipairs(Report.BUFFS) do
+    for _, buff in ipairs(Report.Buffs()) do
         if classes[buff.class] then
             local spellName = C_Spell.GetSpellName(buff.spell)
             local missing = {}
@@ -293,12 +308,6 @@ function Report.Classes(members)
     return classes
 end
 
-local buffByKey = {}
-for _, buff in ipairs(Report.BUFFS) do
-    buffByKey[buff.key] = buff
-end
-Report.BuffByKey = buffByKey
-
 -- One cell of the ready check window, for a consumable key or a raid buff key:
 -- { state = "ok" | "low" | "missing" | "unknown", icon, left }. "low" is an expiring or lower quality flask.
 function Report.Cell(member, key)
@@ -306,7 +315,7 @@ function Report.Cell(member, key)
         return { state = "unknown", why = member.why }
     end
     local aura, entry
-    local buff = buffByKey[key]
+    local buff = Report.Buff(key)
     if buff then
         local spellName = C_Spell.GetSpellName(buff.spell)
         for _, a in ipairs(member.auras) do

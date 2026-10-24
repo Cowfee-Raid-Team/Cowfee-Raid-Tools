@@ -1,8 +1,8 @@
 local ADDON, CRT = ...
 
 -- Cooldowns: the healer cooldowns and raid defensives the Timeline's Cooldowns row lists, under the
--- templates. The list itself is season data in Alerts/CooldownData.lua (CRT.AlertCooldownData), checked
--- on every patch pass. Each one dragged onto the timeline opens the alert editor on a new alert with its
+-- templates. The list itself is season data, the season pack's GameIDs.lua read through CRT.Bosses:Cooldowns()
+-- (the format is in Alerts/CooldownData.lua), checked on every patch pass. Each one dragged onto the timeline opens the alert editor on a new alert with its
 -- spell. An entry the game doesn't know (no readable name) is left out at runtime, so an ID deleted
 -- outright drops off the row; a removed or reworked talent may still have a name and keep showing, which
 -- only the patch-pass check catches. CRT.db.alerts.cooldownFilter keeps the row's choice: "mine" (your
@@ -19,9 +19,19 @@ local TEXT = {
     raid = "Raid defensives",
 }
 
--- { class, spellID, kind } entries, from Alerts/CooldownData.lua; kind is "healer" or "raid".
-local LIST = CRT.AlertCooldownData or {}
-Cooldowns.LIST = LIST
+-- The season's { class, spellID, kind, cd } entries (CRT.Bosses:Cooldowns()), else the empty list in
+-- Alerts/CooldownData.lua; kind is "healer" or "raid". Asked each time, never kept at load: the season packs
+-- load after this file.
+local NONE = {}
+
+local function list()
+    local B = CRT.Bosses
+    return (B and B:Cooldowns()) or CRT.AlertCooldownData or NONE
+end
+
+function Cooldowns:Entries()
+    return list()
+end
 
 local function readable(v)
     local T = CRT.Timeline
@@ -32,7 +42,7 @@ local function readable(v)
 end
 
 local function hasClass(token)
-    for _, e in ipairs(LIST) do
+    for _, e in ipairs(list()) do
         if e.class == token then
             return true
         end
@@ -99,7 +109,7 @@ end
 function Cooldowns:List(filter)
     filter = Cooldowns.Resolve(filter)
     local out = {}
-    for _, e in ipairs(LIST) do
+    for _, e in ipairs(list()) do
         if matches(e, filter) then
             local name = spellName(e.spellID)
             if name then
@@ -130,7 +140,7 @@ function Cooldowns:Filters()
         { key = "raid", label = TEXT.raid },
     }
     local seen, classes = {}, {}
-    for _, e in ipairs(LIST) do
+    for _, e in ipairs(list()) do
         if not seen[e.class] then
             seen[e.class] = true
             classes[#classes + 1] = { key = e.class, label = Cooldowns.ClassName(e.class) }
@@ -150,7 +160,7 @@ end
 local lengths = {}
 
 local function findLength(spellID)
-    for _, e in ipairs(LIST) do
+    for _, e in ipairs(list()) do
         if e.spellID == spellID and type(e.cd) == "number" and e.cd > 0 then
             return e.cd
         end

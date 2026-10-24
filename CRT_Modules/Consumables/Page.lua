@@ -346,7 +346,7 @@ refresh = function()
     for _, list in pairs(db.categories or {}) do
         total = total + #list
     end
-    footer:SetText(format("Built-in list: %s, updated %s, %d consumables.", tostring(db.expansion), tostring(db.updated), total))
+    footer:SetText(db.expansion and format("Built-in list: %s, updated %s, %d consumables.", tostring(db.expansion), tostring(db.updated), total) or "No built-in list this season.")
     learning:SetText(Consumables:LearningText())
 end
 

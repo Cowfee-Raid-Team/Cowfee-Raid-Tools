@@ -1,7 +1,8 @@
 local ADDON, CRT = ...
 
 -- Consumables: the status of each ready check slot. The list comes from two places:
---   * the list that ships with the addon, Consumables/Database.lua, and
+--   * the list that ships with the addon, the season's GameIDs.lua (CRT.Bosses:Consumables(); the format is
+--     in Consumables/Database.lua), and
 --   * the player's own additions, saved in CRTDB.consumables.extra, added by dragging an item
 --     from the bags onto the bar on the Consumables tab. They are optional.
 -- The player also chooses the order, and the buff of an item is learned the first time it is used.
@@ -69,13 +70,13 @@ function Consumables:Def(key)
 end
 
 -- Food ---------------------------------------------------------------------------------
--- Food is one hardcoded check: a buff from foodBuffs in Database.lua, or, on an English client, any
+-- Food is one hardcoded check: a buff from the list's foodBuffs, or, on an English client, any
 -- buff with "Well Fed" in its name (a feast gives "Hearty Well Fed"). The food list is only for
 -- clicking: which food your bar eats.
 
 function Consumables:FoodBuffIds()
     local out = {}
-    for _, entry in ipairs(CRT.ConsumablesDB.foodBuffs or {}) do
+    for _, entry in ipairs(self:Database().foodBuffs or {}) do
         out[entry.buff] = entry
     end
     return out
@@ -135,8 +136,11 @@ end
 
 -- The shipped list ------------------------------------------------------------
 
+-- The season's list (CRT.Bosses:Consumables(), from its GameIDs.lua), else the empty one in Database.lua.
+-- Asked each time, never kept at load: the season packs load after this file.
 function Consumables:Database()
-    return CRT.ConsumablesDB
+    local B = CRT.Bosses
+    return (B and B:Consumables()) or CRT.ConsumablesDB
 end
 
 -- Moves one id to a place in a list of ids (1 is first), returning the new list.
@@ -804,9 +808,9 @@ end
 
 -- Maintainer tools: text for the scan and check commands ---------------------------
 
--- Your current buffs and the consumables in your bags, as lines to paste into Database.lua.
+-- Your current buffs and the consumables in your bags, as lines to paste into the season's GameIDs.lua.
 function Consumables:ScanText()
-    local lines = { "-- Helpful buffs on you right now. Use the ID as buff = <ID>." }
+    local lines = { "-- For the consumables in CRT_Data/Seasons/<pack>/GameIDs.lua.", "-- Helpful buffs on you right now. Use the ID as buff = <ID>." }
     local seen = {}
     for _, aura in ipairs(helpfulAuras()) do
         if not seen[aura.id] then
@@ -814,7 +818,7 @@ function Consumables:ScanText()
             lines[#lines + 1] = format("buff = %d, -- %s (icon %s)", aura.id, tostring(aura.name), tostring(aura.icon))
         end
     end
-    if #lines == 1 then
+    if #lines == 2 then
         lines[#lines + 1] = "-- (none readable)"
     end
 
@@ -869,7 +873,7 @@ end
 -- Checks every entry, shipped and your own, against the game, so a wrong ID is caught.
 function Consumables:CheckText()
     local db = self:Database()
-    local lines = { format("Consumables list: %s, updated %s", tostring(db.expansion), tostring(db.updated)) }
+    local lines = { db.expansion and format("Consumables list: %s, updated %s", tostring(db.expansion), tostring(db.updated)) or "This season has no consumables list." }
     local problems, total = 0, 0
     for _, def in ipairs(self.CATEGORIES) do
         local entries = self:Entries(def.key)

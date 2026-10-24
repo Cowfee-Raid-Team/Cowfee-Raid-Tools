@@ -10,6 +10,7 @@
 	<Script file="Season.lua"/>
 	<Script file="GearChecks.lua"/>
 	<Script file="Tracks.lua"/>
+	<Script file="GameIDs.lua"/>
 	<Script file="NekzaliTheSoulcoiler.lua"/>
 	<Script file="Sszorak.lua"/>
 	<Script file="EntombedSentinels.lua"/>
