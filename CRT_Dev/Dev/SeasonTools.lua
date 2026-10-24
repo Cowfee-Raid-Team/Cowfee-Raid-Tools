@@ -8,6 +8,10 @@ local ADDON, CRT = ...
 --             Timeline pulls and row settings, reminders and phase triggers, pace plans and switches,
 --             and marker display switches and drafts. Tattlebot's history, the Late Tracker and raid
 --             notes are never touched, and a boss with saved data but no boss file is never purged.
+--   IDs       /crt dev seasons ids (or the Encounter IDs button): each loaded boss's encounterID and name
+--             against the Timeline's saved pulls (CRTDB.timeline.bosses, keyed by the ID the game gave,
+--             with its name): confirmed, mismatched or never pulled, one line per boss in route order,
+--             then any saved boss with no boss file. Printed, and shown in a Copy box to paste to Claude.
 --
 -- This file never ships: its .toc line is inside the do-not-package block.
 
@@ -85,6 +89,79 @@ function Tools:Purge(seasonKey)
     return n
 end
 
+-- The encounter ID check ---------------------------------------------------------------------
+
+-- A boss name to compare: lower case, letters and digits only, so "Nek'zali" matches "Nek’zali".
+local function nameKey(name)
+    return type(name) == "string" and name:lower():gsub("[^%w]", "") or nil
+end
+
+local function pullCount(saved)
+    local n = type(saved.pulls) == "table" and #saved.pulls or 0
+    return n .. " saved pull" .. (n == 1 and "" or "s")
+end
+
+-- One line per loaded boss, in route order, then one per saved boss with no boss file; and the counts
+-- { confirmed, mismatched, never }.
+function Tools:IdsReport()
+    local saved = {}
+    local tl = CRT.db.timeline
+    for id, boss in pairs(type(tl) == "table" and type(tl.bosses) == "table" and tl.bosses or {}) do
+        if type(id) == "number" and type(boss) == "table" then
+            saved[id] = boss
+        end
+    end
+    local byName = {}
+    for id, boss in pairs(saved) do
+        local key = nameKey(boss.name)
+        if key and (not byName[key] or id < byName[key]) then
+            byName[key] = id
+        end
+    end
+    local lines, counts, used = {}, { confirmed = 0, mismatched = 0, never = 0 }, {}
+    for _, def in ipairs(Bosses:RouteList()) do
+        local id, key = def.encounterID, nameKey(def.name)
+        local own, other = saved[id], byName[key]
+        local head = string.format("%s (%d): ", def.name, id)
+        if own and nameKey(own.name) == key then
+            counts.confirmed = counts.confirmed + 1
+            lines[#lines + 1] = head .. "confirmed (" .. pullCount(own) .. ")"
+        elseif other and other ~= id then
+            counts.mismatched = counts.mismatched + 1
+            used[other] = true
+            lines[#lines + 1] = head .. "mismatched, the game pulled it as " .. other .. " (" .. pullCount(saved[other]) .. ")"
+        elseif own then
+            counts.mismatched = counts.mismatched + 1
+            lines[#lines + 1] = head .. "mismatched, the saved pull with this ID is named " .. tostring(own.name)
+        else
+            counts.never = counts.never + 1
+            lines[#lines + 1] = head .. "never pulled"
+        end
+    end
+    local extra = {}
+    for id in pairs(saved) do
+        if not used[id] and not Bosses:Get(id) then
+            extra[#extra + 1] = id
+        end
+    end
+    table.sort(extra)
+    for _, id in ipairs(extra) do
+        local n = type(saved[id].pulls) == "table" and #saved[id].pulls or 0
+        lines[#lines + 1] = string.format("%s (%d): saved pulls (%d), no boss file", tostring(saved[id].name or "?"), id, n)
+    end
+    return lines, counts
+end
+
+function Tools:Ids()
+    local lines, c = self:IdsReport()
+    local head = string.format("Encounter ID check: %d confirmed, %d mismatched, %d never pulled.", c.confirmed, c.mismatched, c.never)
+    CRT:Print(head)
+    for _, line in ipairs(lines) do
+        CRT:Print("  " .. line)
+    end
+    CRT.ConsumablesTools:ShowText("Encounter ID check (Ctrl+C to copy, paste to Claude)", head .. "\n" .. table.concat(lines, "\n"))
+end
+
 local function confirmPurge(def)
     local counts, total, bosses = Tools:PurgeCounts(def.key)
     if total == 0 then
@@ -113,8 +190,10 @@ local function button(parent, text, width)
     local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
     b:SetNormalFontObject(CRTFontButtonSmall)
     b:SetHighlightFontObject(CRTFontButtonSmallHighlight)
-    b:SetSize(width, 20)
+    b:SetHeight(20)
     b:SetText(text)
+    local fs = b:GetFontString()
+    b:SetWidth(width or math.ceil((fs and fs:GetStringWidth() or 60) + 24))
     return b
 end
 
@@ -182,6 +261,12 @@ local function build()
     local note = win:CreateFontString(nil, "OVERLAY", "CRTFontDisableSmall")
     note:SetPoint("TOPLEFT", 16, -66)
     note:SetText("Seasons, their bosses, and what is saved for them:")
+    local ids = button(win, "Encounter IDs")
+    ids:SetPoint("BOTTOMLEFT", 14, 12)
+    ids:SetScript("OnClick", function()
+        Tools:Ids()
+    end)
+    UI.HelpRight(ids, "Encounter IDs", "Checks each boss's encounter ID against the Timeline's saved pulls: confirmed, mismatched or never pulled. The same as /crt dev seasons ids. Copy the text and paste it to Claude.")
     win:SetScript("OnShow", function()
         Tools:Refresh()
     end)

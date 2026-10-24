@@ -163,6 +163,10 @@ SlashCmdList["COWFEERAIDTOOLS"] = function(msg)
         if CRT.SeasonTools then
             CRT.SeasonTools:Toggle()
         end
+    elseif msg == "dev seasons ids" then
+        if CRT.SeasonTools then
+            CRT.SeasonTools:Ids()
+        end
     elseif msg == "dev markers" then
         if CRT.MarkerEditor then
             CRT.MarkerEditor:Toggle()
