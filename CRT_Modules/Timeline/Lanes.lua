@@ -235,6 +235,7 @@ local function referenceLanes(ref, rows, settings, encounterID, overlay, group, 
         end
         lanes[#lanes + 1] = ticks
         extra.endLine = overlay.length
+        extra.endKill = overlay.kill == true -- a kill, else a wipe: the end line's colour and tag
     end
     return lanes, unknown, extra
 end

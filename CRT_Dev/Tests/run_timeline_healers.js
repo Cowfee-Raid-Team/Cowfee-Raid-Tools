@@ -392,7 +392,10 @@ do
   check(ghost and ghost.class == "DRUID", "a name off the roster takes its cooldown's class")
   local shown = 0
   for _, x in ipairs(v.flags) do if x:IsShown() then shown = shown + 1 end end
-  check(shown == 6, "the cooldown lines for a player, and the line for a boss ability on its row: " .. shown)
+  check(shown == 7, "the cooldown lines for a player, the boss ability's line on its row and the everyone line on Notes: " .. shown)
+  local notesRow = laneIndex(v, "notes")
+  check(notesRow and notesRow < laneIndex(v, "healers:halo-home") and #flagsOn(v, notesRow) == 1 and flagsOn(v, notesRow)[1].mark.t == 60,
+    "the Notes row stays under the ability rows, as Abilities shows it, with the line no healer row took")
   local surgeRow
   for i, lane in ipairs(v.lanes) do if lane.label == "Surge" then surgeRow = i end end
   check(#flagsOn(v, surgeRow) == 1 and flagsOn(v, surgeRow)[1].mark.t == 70, "the Surge line on the Surge row, as Abilities draws it")
@@ -549,8 +552,9 @@ do
   drag(v, flagsOn(v, aura)[1], 30, 50)
   local t = N:TimerAt(1, 3)
   check(t and t.time == 30 and N:RawLines(1)[3] == raw3, "the raid note keeps your line at 0:30")
-  local s = CRT.db.notes.personalShifts[1] and CRT.db.notes.personalShifts[1][Shifts.Key(raw3)]
-  check(s and s.ph == 1 and s.t == 50 and s.raw == raw3 and s.spellID == 31821, "your time is saved by note and line: " .. tostring(s and s.t))
+  local s = Shifts:Find(1, 3)
+  check(s and s.ph == 1 and s.t == 50 and s.raw == raw3 and s.occ == 1 and s.who == "me-home" and s.spellID == 31821, "your time is saved by note and line, as yours: " .. tostring(s and s.t))
+  check(CRT.db.notes.personalShifts[1]["me-home|" .. Shifts.Key(raw3) .. "#1"] == s, "under your character, the line's text and which copy of it")
   local f = flagsOn(v, aura)[1]
   check(f and f.mark.t == 50 and f.mark.raidT == 30 and f.mark.moved ~= nil, "the cast draws at your time")
   check(shownLabels(v) == "0:30 to 0:50", "with the raid's time and yours beside it: " .. shownLabels(v))
@@ -564,14 +568,32 @@ do
   check(table.concat(tip, "|"):find("Raid note time: 0:30", 1, true), "its tooltip gives the raid's time: " .. table.concat(tip, "|"))
   -- another healer's cast won't move
   drag(v, flagsOn(v, hymn)[1], 20, 70)
-  check(N:TimerAt(1, 2).time == 20 and Shifts:Find(1, N:RawLines(1)[2]) == nil, "Halo's cast stays, in the note and for you")
+  check(N:TimerAt(1, 2).time == 20 and Shifts:Find(1, 2) == nil, "Halo's cast stays, in the note and for you")
   -- the alerts: your item at your time, everyone else's at the raid's
   check(item(31821) and item(31821).time == 50 and item(31821).outputs ~= nil, "your callout comes at your time: " .. tostring(item(31821) and item(31821).time))
   check(item(64843) and item(64843).time == 20, "Halo's line keeps the raid's time")
   -- a time kept for someone else's line is never used
-  CRT.db.notes.personalShifts[1][Shifts.Key(N:RawLines(1)[2])] = { ph = 1, t = 99, raw = N:RawLines(1)[2] }
+  local otherKey = "me-home|" .. Shifts.Key(N:RawLines(1)[2]) .. "#1"
+  CRT.db.notes.personalShifts[1][otherKey] = { ph = 1, t = 99, raw = N:RawLines(1)[2], occ = 1, who = "me-home" }
   check(item(64843).time == 20, "a time for a line that isn't yours does nothing")
-  CRT.db.notes.personalShifts[1][Shifts.Key(N:RawLines(1)[2])] = nil
+  CRT.db.notes.personalShifts[1][otherKey] = nil
+  -- the saved data is the account's: another character's time for your line is not yours
+  local altKey = "alt-home|" .. Shifts.Key(raw3) .. "#1"
+  CRT.db.notes.personalShifts[1][altKey] = { ph = 1, t = 77, raw = raw3, occ = 1, who = "alt-home" }
+  v:Refresh()
+  check(Shifts:Find(1, 3).t == 50 and Shifts:Count({ 1 }) == 1 and item(31821).time == 50, "another character's time is never yours")
+  CRT.db.notes.personalShifts[1][altKey] = nil
+  -- Alt+drag adds a raid note line, which only a lead may do: refused with the reason
+  local altDown = IsAltKeyDown
+  IsAltKeyDown = function() return true end
+  now = now + 5
+  local nLines = #N:RawLines(1)
+  drag(v, flagsOn(v, aura)[1], 50, 70)
+  IsAltKeyDown = altDown
+  check(#N:RawLines(1) == nLines and Shifts:Find(1, 3).t == 50 and printed[#printed] == "Only the raid leader or assistants can change the raid note.",
+    "a non-lead's Alt+drag of their own cast is refused: " .. tostring(printed[#printed]))
+  -- the hint line says what a non-lead may drag
+  check(v.unknownText:GetText() == HV.TEXT.hintOwn, "the hint for a non-lead: " .. tostring(v.unknownText:GetText()))
   -- the bar: one moved cast
   v:Refresh()
   local barRow
@@ -582,37 +604,37 @@ do
   -- Ctrl+Z puts your move back, Ctrl+Y again
   now = now + 5
   CRT.TimelineUndo:Undo()
-  check(Shifts:Find(1, raw3) == nil and flagsOn(v, aura)[1].mark.t == 30, "Undo puts your cast back at the raid's time")
+  check(Shifts:Find(1, 3) == nil and flagsOn(v, aura)[1].mark.t == 30, "Undo puts your cast back at the raid's time")
   check(not v.hvBar:IsShown(), "and the bar goes")
   now = now + 5
   CRT.TimelineUndo:Redo()
-  check(Shifts:Find(1, raw3) and Shifts:Find(1, raw3).t == 50, "Redo moves it again")
+  check(Shifts:Find(1, 3) and Shifts:Find(1, 3).t == 50, "Redo moves it again")
   -- a second cast: the bar counts two; Reset mine puts both back
   now = now + 5
   local wrath = laneIndex(v, "healers:me-home:31884")
   drag(v, flagsOn(v, wrath)[1], 130, 140)
-  check(Shifts:Find(1, N:RawLines(1)[4]) and Shifts:Find(1, N:RawLines(1)[4]).ph == 2 and Shifts:Find(1, N:RawLines(1)[4]).t == 20, "a phase 2 cast keeps its phase: 2:10 to P2 +0:20")
+  check(Shifts:Find(1, 4) and Shifts:Find(1, 4).ph == 2 and Shifts:Find(1, 4).t == 20, "a phase 2 cast keeps its phase: 2:10 to P2 +0:20")
   check(v.hvBar.text.text == "You moved 2 casts from the raid note.", "the bar counts two: " .. tostring(v.hvBar.text.text))
   -- dragged back onto the raid's time: yours again
   now = now + 5
   drag(v, flagsOn(v, wrath)[1], 140, 130)
-  check(Shifts:Find(1, N:RawLines(1)[4]) == nil, "dropped on the raid's time, your time goes")
+  check(Shifts:Find(1, 4) == nil, "dropped on the raid's time, your time goes")
   now = now + 5
   v.hvBar.buttons.reset.OnClick(v.hvBar.buttons.reset)
   check(Shifts:Count({ 1 }) == 0 and flagsOn(v, aura)[1].mark.t == 30 and not v.hvBar:IsShown(), "Reset mine puts every cast back")
   check(N:TimerAt(1, 3).time == 30, "the raid note never changed")
   -- the raid note changes that line: your time goes, and chat says so
-  Shifts:Set(1, N:RawLines(1)[3], 1, 50, 31821)
+  Shifts:Set(1, 3, 1, 50, 31821)
   CRT.TimelineUndo:Quietly(function() N:ReplaceLine(1, 3, "time:35;ph:1;tag:Me;spellid:31821;", N:RawLines(1)[3]) end)
   check(Shifts:Count({ 1 }) == 0, "a changed line drops your time")
   check(printed[#printed] == "Your moved Spell31821 time was reset: the raid note changed that line.", "chat: " .. tostring(printed[#printed]))
   check(item(31821).time == 35, "your alert follows the raid note again")
   -- the lead took your time: chat says that instead
-  Shifts:Set(1, N:RawLines(1)[3], 1, 48, 31821)
+  Shifts:Set(1, 3, 1, 48, 31821)
   CRT.TimelineUndo:Quietly(function() N:ReplaceLine(1, 3, "time:48;ph:1;tag:Me;spellid:31821;", N:RawLines(1)[3]) end)
   check(Shifts:Count({ 1 }) == 0 and printed[#printed] == "The raid note now has your Spell31821 time.", "taken: " .. tostring(printed[#printed]))
   -- a note that goes takes its times with it, quietly
-  Shifts:Set(1, N:RawLines(1)[3], 1, 60, 31821)
+  Shifts:Set(1, 3, 1, 60, 31821)
   local before = #printed
   local keep = CRT.db.notes.list[1]
   CRT.db.notes.list[1] = nil
@@ -632,20 +654,39 @@ do
   check(N:TimerAt(1, 2).time == 25, "and anyone's")
 end
 
+-- The same line twice: each copy keeps its own time ------------------------------------------------------------
+do
+  setNote({ "time:30;ph:1;tag:Me;spellid:31821;", "time:30;ph:1;tag:Me;spellid:31821;" })
+  CRT.TimelineUndo:Quietly(function() end)
+  group.leader = false
+  check(Shifts.Occurrence(1, 2) == 1 and Shifts.Occurrence(1, 3) == 2, "the second copy of a line is its occurrence 2")
+  Shifts:Set(1, 3, 1, 70, 31821)
+  check(Shifts:Find(1, 2) == nil and Shifts:Find(1, 3) and Shifts:Find(1, 3).t == 70, "a time for the second copy is that copy's only")
+  local times = {}
+  for _, it in ipairs(CRT.Alerts.blocks.note.Entries({ encounterID = 3001 })) do times[#times + 1] = it.time end
+  table.sort(times)
+  check(table.concat(times, ",") == "30,70", "the alerts: one at the raid's time, one at yours: " .. table.concat(times, ","))
+  -- the note drops the second copy: that time goes
+  CRT.TimelineUndo:Quietly(function() N:RemoveLine(1, 3, N:RawLines(1)[3]) end)
+  check(Shifts:Count({ 1 }) == 0, "a copy that goes takes its time with it")
+  group.leader = true
+end
+
 -- The proposal message --------------------------------------------------------------------------------------------
 do
-  local e = { encounterID = 3001, difficulty = "Mythic", hash = "1f2e3d4c25", spellID = 64843, oldPh = 1, oldT = 171, newPh = 2, newT = 18.5 }
+  local e = { encounterID = 3001, difficulty = "Mythic", hash = "1f2e3d4c25", occ = 2, spellID = 64843, oldPh = 1, oldT = 171, newPh = 2, newT = 18.5 }
   local text = P.Encode(e)
-  check(text == "P|1|3001|Mythic|1f2e3d4c25|64843|1|171|2|18.5", "the message: " .. text)
+  check(text == "P|1|3001|Mythic|1f2e3d4c25|2|64843|1|171|2|18.5", "the message: " .. text)
   local d = P.Decode(text)
-  check(d and d.encounterID == 3001 and d.difficulty == "Mythic" and d.hash == "1f2e3d4c25" and d.spellID == 64843 and d.oldPh == 1
+  check(d and d.encounterID == 3001 and d.difficulty == "Mythic" and d.hash == "1f2e3d4c25" and d.occ == 2 and d.spellID == 64843 and d.oldPh == 1
     and d.oldT == 171 and d.newPh == 2 and d.newT == 18.5, "reads back")
-  check(P.Decode("P|1|3001||1f2e3d4c25|64843|1|171|1|185").difficulty == nil, "no difficulty")
+  check(P.Decode("P|1|3001||1f2e3d4c25|1|64843|1|171|1|185").difficulty == nil, "no difficulty")
   check(P.Decode(text .. "|later") ~= nil, "a later field of the same version is skipped")
-  for _, bad in ipairs({ "P|2|3001|Mythic|1f2e|64843|1|171|1|185", "X|1|3001|Mythic|1f2e|64843|1|171|1|185", "P|1|3001|Mythic|1f2e|64843|1|171|1",
-    "P|1|0|Mythic|1f2e|64843|1|171|1|185", "P|1|3001|Mythic|xyz|64843|1|171|1|185", "P|1|3001|Mythic|1f2e|-5|1|171|1|185",
-    "P|1|3001|Mythic|1f2e|64843|0|171|1|185", "P|1|3001|Mythic|1f2e|64843|1|171|1|9999", "P|1|3001|Mythic|1f2e|64843|1|1.25|1|185",
-    "P|1|3001|Mythic|11112222333344445|64843|1|171|1|185", "P|1|3001|My\tthic|1f2e|64843|1|171|1|185", "", "P" }) do
+  for _, bad in ipairs({ "P|2|3001|Mythic|1f2e|1|64843|1|171|1|185", "X|1|3001|Mythic|1f2e|1|64843|1|171|1|185", "P|1|3001|Mythic|1f2e|1|64843|1|171|1",
+    "P|1|0|Mythic|1f2e|1|64843|1|171|1|185", "P|1|3001|Mythic|xyz|1|64843|1|171|1|185", "P|1|3001|Mythic|1f2e|1|-5|1|171|1|185",
+    "P|1|3001|Mythic|1f2e|1|64843|0|171|1|185", "P|1|3001|Mythic|1f2e|1|64843|1|171|1|9999", "P|1|3001|Mythic|1f2e|1|64843|1|1.25|1|185",
+    "P|1|3001|Mythic|11112222333344445|1|64843|1|171|1|185", "P|1|3001|My\tthic|1f2e|1|64843|1|171|1|185", "P|1|3001|Mythic|1f2e|0|64843|1|171|1|185",
+    "P|1|3001|Mythic|1f2e|x|64843|1|171|1|185", "", "P" }) do
     check(P.Decode(bad) == nil, "not read: " .. bad)
   end
   check(P.Decode({}) == nil and P.Decode(string.rep("P|", 200)) == nil, "nor anything else")
@@ -657,13 +698,13 @@ do
   CRT.TimelineUndo:Quietly(function() end)
   group.leader = false
   local raw3 = N:RawLines(1)[3]
-  Shifts:Set(1, raw3, 1, 50, 31821)
+  Shifts:Set(1, 3, 1, 50, 31821)
   local v = newView()
   for i = #sent, 1, -1 do sent[i] = nil end
   v.hvBar.buttons.send.OnClick(v.hvBar.buttons.send)
   check(#sent == 1 and sent[1][1] == "CRTCDMove" and sent[1][3] == "RAID", "one message, on the raid channel: " .. tostring(sent[1] and sent[1][3]))
   local d = sent[1] and P.Decode(sent[1][2])
-  check(d and d.encounterID == 3001 and d.hash == Shifts.Key(raw3) and d.spellID == 31821 and d.oldPh == 1 and d.oldT == 30 and d.newT == 50,
+  check(d and d.encounterID == 3001 and d.hash == Shifts.Key(raw3) and d.occ == 1 and d.spellID == 31821 and d.oldPh == 1 and d.oldT == 30 and d.newT == 50,
     "with the note's boss, the line, the spell and both times: " .. tostring(sent[1] and sent[1][2]))
   check(printed[#printed] == "Sent 1 moved cast to the raid lead.", "chat: " .. tostring(printed[#printed]))
   -- in combat: sent once it ends
@@ -781,6 +822,147 @@ do
   cb.OnClick(cb)
   check(CRT.db.notes.autoAcceptCooldowns == false, "and turns it off")
   P.list = {}
+end
+
+-- Proposals: ownership is checked on arrival, on every draw and by Accept ---------------------------------------------
+do
+  setNote(OWN_LINES)
+  CRT.TimelineUndo:Quietly(function() end)
+  group.leader = true
+  CRT.db.notes.autoAcceptCooldowns = false
+  P.list = {}
+  local rainLine = "time:20;ph:1;tag:Rain;spellid:64843;"
+  local function about(line, newT, extra)
+    local e = { encounterID = 3001, hash = Shifts.Key(line), spellID = 64843, oldPh = 1, oldT = 20, newPh = 1, newT = newT }
+    for k, x in pairs(extra or {}) do e[k] = x end
+    return P.Encode(e)
+  end
+  -- Halo proposes a line the note doesn't have yet: stale on arrival
+  local p = P:Hear("CRTCDMove", about(rainLine, 44), "RAID", "Halo-Home")
+  check(p and p.stale, "a line the note doesn't have: stale on arrival")
+  -- then the note gets that line, naming Rain: never Halo's to move
+  CRT.TimelineUndo:Quietly(function() N:AddLineTo(1, rainLine) end)
+  local rainAt = #N:RawLines(1)
+  check(P:Accept(p) == false and N:TimerAt(1, rainAt).time == 20, "Accept refuses a line that names another player")
+  check(#P.list == 0, "and drops it")
+  local q = P:Hear("CRTCDMove", about("time:20;ph:1;tag:Nobody;spellid:64843;", 45), "RAID", "Halo-Home")
+  check(q and q.stale, "another stale one")
+  CRT.TimelineUndo:Quietly(function() N:AddLineTo(1, "time:20;ph:1;tag:Nobody;spellid:64843;") end)
+  local v = newView()
+  check(#P.list == 0 and not (v.hvHead and v.hvHead:IsShown()), "a draw drops one whose line came back naming someone else")
+  -- a phase the boss doesn't have is refused on arrival
+  check(P:Hear("CRTCDMove", about(N:RawLines(1)[2], 44, { newPh = 5 }), "RAID", "Halo-Home") == nil, "phase 5: the boss has no such phase")
+  check(P:Hear("CRTCDMove", about(N:RawLines(1)[2], 4, { newPh = 2 }), "RAID", "Halo-Home") ~= nil, "phase 2, which the note uses: taken")
+  -- the old time must be the line's
+  P.list = {}
+  check(P:Hear("CRTCDMove", about(N:RawLines(1)[2], 44, { oldT = 21 }), "RAID", "Halo-Home") == nil, "an old time that isn't the line's is refused")
+end
+
+-- Proposals: a shared assignment ----------------------------------------------------------------------------------
+do
+  setNote({ "time:40;ph:1;tag:Halo Rain;spellid:64843;", "time:50;ph:1;tag:Halo healer;spellid:64843;" })
+  CRT.TimelineUndo:Quietly(function() end)
+  group.leader = true
+  P.list = {}
+  CRT.db.notes.autoAcceptCooldowns = true
+  local shared = N:RawLines(1)[2]
+  local p = P:Hear("CRTCDMove", P.Encode({ encounterID = 3001, hash = Shifts.Key(shared), spellID = 64843, oldPh = 1, oldT = 40, newPh = 1, newT = 55 }), "RAID", "Rain-Home")
+  check(p and p.shared and #p.players == 2 and not p.stale, "a line naming two players: any of them may propose it, and it is shared")
+  check(N:TimerAt(1, 2).time == 40 and #P.list == 1, "auto-accept never takes a shared assignment")
+  local own = P:Hear("CRTCDMove", P.Encode({ encounterID = 3001, hash = Shifts.Key(N:RawLines(1)[3]), spellID = 64843, oldPh = 1, oldT = 50, newPh = 1, newT = 58 }), "RAID", "Halo-Home")
+  check(own and not own.shared and N:TimerAt(1, 3).time == 58, "a line naming only the sender (and a role) is auto-accepted")
+  local v = newView()
+  local pf = v.hvProps[1]
+  check(pf.text.text:find("Shared assignment (2 players): accepting moves everyone's timer on this line", 1, true), "the row says so: " .. tostring(pf.text.text))
+  check(pf.text.text:find("|c", 1, true) ~= nil, "in the warn colour")
+  pf.OnEnter(pf)
+  check(table.concat(tip, "|"):find("Halo, Rain", 1, true), "with the names in its tooltip: " .. table.concat(tip, "|"))
+  pf.buttons.accept.OnClick(pf.buttons.accept)
+  check(N:TimerAt(1, 2).time == 55 and N:TimerAt(1, 2).tags[2] == "Rain", "a manual Accept moves the shared line")
+  CRT.db.notes.autoAcceptCooldowns = false
+  P.list = {}
+end
+
+-- Proposals: auto-accept waits for the end of combat and of the encounter ------------------------------------------
+do
+  setNote(OWN_LINES)
+  CRT.TimelineUndo:Quietly(function() end)
+  group.leader = true
+  P.list = {}
+  CRT.db.notes.autoAcceptCooldowns = true
+  local raw2 = N:RawLines(1)[2]
+  local function hear(newT) return P:Hear("CRTCDMove", P.Encode({ encounterID = 3001, hash = Shifts.Key(raw2), spellID = 64843, oldPh = 1, oldT = 20, newPh = 1, newT = newT }), "RAID", "Halo-Home") end
+  inCombat = true
+  local p = hear(31)
+  check(p and p.held and N:TimerAt(1, 2).time == 20, "in combat: held, the note untouched")
+  inCombat = false
+  P.events.OnEvent(P.events, "PLAYER_REGEN_ENABLED")
+  check(N:TimerAt(1, 2).time == 31 and #P.list == 0, "applied once combat ends")
+  local encounter = true
+  IsEncounterInProgress = function() return encounter end
+  raw2 = N:RawLines(1)[2]
+  local function hear2(newT) return P:Hear("CRTCDMove", P.Encode({ encounterID = 3001, hash = Shifts.Key(raw2), spellID = 64843, oldPh = 1, oldT = 31, newPh = 1, newT = newT }), "RAID", "Halo-Home") end
+  p = hear2(36)
+  check(p and p.held and N:TimerAt(1, 2).time == 31, "in an encounter: held")
+  P.events.OnEvent(P.events, "ENCOUNTER_END")
+  check(N:TimerAt(1, 2).time == 31, "ENCOUNTER_END while it still counts as in progress: still held")
+  encounter = false
+  flush()
+  check(N:TimerAt(1, 2).time == 36, "applied once the encounter is over")
+  IsEncounterInProgress = nil
+  CRT.db.notes.autoAcceptCooldowns = false
+  P.list = {}
+end
+
+-- Proposals: at most 20 per sender and 100 in all, and a few rows of frames ------------------------------------------
+do
+  setNote(OWN_LINES)
+  CRT.TimelineUndo:Quietly(function() end)
+  group.leader = true
+  P.list = {}
+  local function stale(i, who)
+    return P:Hear("CRTCDMove", P.Encode({ encounterID = 3001, hash = string.format("%08x", i), spellID = 64843, oldPh = 1, oldT = 20, newPh = 1, newT = 30 }), "RAID", who)
+  end
+  for i = 1, 25 do stale(i, "Halo-Home") end
+  check(#P.list == P.MAX_PER_SENDER and P.list[1].hash == string.format("%08x", 6), "20 kept per sender, the oldest dropped: " .. #P.list)
+  local keep = liveRoster
+  liveRoster = {}
+  for i = 1, 7 do liveRoster[i] = { "S" .. string.char(96 + i), "PRIEST", "HEALER" } end
+  P.list = {}
+  for s = 1, 7 do for i = 1, 20 do stale(s * 100 + i, "S" .. string.char(96 + s) .. "-Home") end end
+  check(#P.list == P.MAX_TOTAL and P.list[1].who == "sc-home", "100 in all, the oldest dropped: " .. #P.list .. " " .. tostring(P.list[1].who))
+  liveRoster = keep
+  local v = newView()
+  check(#(v.hvProps or {}) == CRT.TimelineHealerPanel.MAX_ROWS, "only a few rows of frames are made: " .. #(v.hvProps or {}))
+  check(v.hvHead.text.text == "Proposed changes (100, the first 8 shown)", "the box says how many: " .. tostring(v.hvHead.text.text))
+  P.list = {}
+  flush()
+end
+
+-- Deaths and the end of a picked pull, in both layouts --------------------------------------------------------------
+do
+  setNote({})
+  group.leader = true
+  CRT.PALETTE.good, CRT.PALETTE.bad = { 0.4, 0.8, 0.4 }, { 0.9, 0.3, 0.3 } -- the theme's status colours
+  for _, kill in ipairs({ false, true }) do
+    local pull = { id = 5, encounterID = 3001, length = 250, kill = kill, casts = { { t = 10, spellID = 0 } },
+      deaths = { { t = 90, name = "Halo", class = "PRIEST", role = "HEALER", spellID = 0 } } }
+    local v = View.Create(mock("Frame"))
+    v:SetData({ reference = ref }, 3001, pull, "Nek")
+    for _, mode in ipairs({ "nil", "healers" }) do
+      v:SetMode(mode == "healers" and "healers" or nil)
+      local skull
+      for _, b in ipairs(v.icons) do if b:IsShown() and b.mark and b.mark.death then skull = b end end
+      check(skull and skull.mark.t == 90, mode .. ": the picked pull's deaths show")
+      if mode == "healers" then
+        check(laneIndex(v, "healers:halo-home") ~= nil and skull.lane.kind ~= "healer", "Healer CDs keeps the deaths row above the healers")
+      end
+      local line, want = v.endLine, kill and CRT.PALETTE.good or CRT.PALETTE.bad
+      check(line and line:IsShown() and line.w == 3 and line.h == #v.lanes * 30, mode .. ": the end line, 3 px, across every row")
+      check(line.color[1] == want[1] and line.color[2] == want[2] and line.color[3] == want[3], mode .. ": in the " .. (kill and "good" or "bad") .. " colour")
+      check(v.endTag:IsShown() and v.endTag.text.text == (kill and "Kill 4:10" or "Wipe 4:10"), mode .. ": tagged on the axis: " .. tostring(v.endTag.text.text))
+    end
+  end
 end
 
 if fails > 0 then error(fails .. " healer view checks failed") end

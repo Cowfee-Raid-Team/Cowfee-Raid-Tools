@@ -3,20 +3,25 @@ local ADDON, CRT = ...
 -- Cooldown changes proposed to the raid lead (CRT.NoteProposals). A healer who moved their own casts on
 -- Healer CDs (Notes/Shifts.lua) presses Send to raid lead; the raid leader and assistants see each change in a
 -- Proposed changes box on their Healer CDs (Timeline/HealerPanel.lua) and Accept it (the note line is
--- rewritten through the note's own line write, Notes:ReplaceLine, and the lead shares the note as usual) or
--- Decline it (nothing is sent back). With "Accept healers' cooldown changes automatically"
--- (CRTDB.notes.autoAcceptCooldowns, off by default) a change that checks out is applied at once.
--- Proposals live for the session only.
+-- rewritten through Notes:MoveLine, and the lead shares the note as usual) or Decline it (nothing is sent
+-- back). With "Accept healers' cooldown changes automatically" (CRTDB.notes.autoAcceptCooldowns, off by
+-- default) a change that checks out, to a line naming no other player, is applied at once (out of combat and
+-- out of an encounter: held until both end). Proposals live for the session only, at most MAX_PER_SENDER per
+-- sender and MAX_TOTAL in all, the oldest dropped first.
 --
 -- The message, under the prefix CRTCDMove, one per moved line, to the RAID or PARTY channel:
---   P|<version>|<encounterID>|<difficulty>|<line>|<spellID>|<old phase>|<old seconds>|<new phase>|<new seconds>
---   e.g. "P|1|3001|Mythic|1f2e3d4c25|64843|1|171|1|185"
+--   P|<version>|<encounterID>|<difficulty>|<line>|<occurrence>|<spellID>|<old phase>|<old seconds>|<new phase>|<new seconds>
+--   e.g. "P|1|3001|Mythic|1f2e3d4c25|1|64843|1|171|1|185"
 -- The note is named by its boss and difficulty (each computer numbers its notes its own way), the line by the
--- fingerprint of its text (Shifts.Key), the times as the note writes them (phase, seconds into it, to a
--- tenth). A later minor version may add fields after these, which are skipped; a higher major version or
--- anything else is dropped. Strict: every field must read as it should, the sender must be in your group and
--- the line, found in your note for that boss, must be the sender's own (its tags name the sender) and for that
--- spell. A line your note no longer has (you changed it since) is kept as stale: it can't be accepted.
+-- fingerprint of its text (Shifts.Key) and which line of that text it is (1 for the first), the times as the
+-- note writes them (phase, seconds into it, to a tenth). A later minor version may add fields after these,
+-- which are skipped; a higher major version or anything else is dropped. Strict: every field must read as it
+-- should; the sender must be in your group; the new phase must be one the boss's ability timeline or note has.
+-- The line, found in your note for that boss, must be the sender's (Owns: its tags name the sender, for that
+-- spell, at the old time) when it is checked on arrival, on every draw of the box (one that fails is dropped)
+-- and again by Accept. A line your note doesn't have (changed since) is kept as stale: it can't be accepted.
+-- A line naming several players (an assignment) can be proposed by any of them, but only a manual Accept takes
+-- it (shared): the lead's row says accepting moves everyone's timer on it.
 -- Taken only by someone who may change the raid note (Notes:CanEditRaid).
 --
 -- Sending: never in combat (sent when it ends), never in a finder group; while the game holds addon
@@ -25,10 +30,11 @@ local ADDON, CRT = ...
 --
 -- Game calls (warcraft.wiki.gg, read 2026-10-24): C_ChatInfo.RegisterAddonMessagePrefix, SendAddonMessage
 -- (Enum.SendAddonMessageResult), InChatMessagingLockdown, CHAT_MSG_ADDON (prefix, text, channel, sender),
--- PLAYER_REGEN_ENABLED, IsInRaid, IsInGroup (LE_PARTY_CATEGORY_INSTANCE), GetNumGroupMembers,
--- GetNumSubgroupMembers, GetRaidRosterInfo, UnitName, GetNormalizedRealmName, InCombatLockdown, Ambiguate.
+-- PLAYER_REGEN_ENABLED, ENCOUNTER_END, IsEncounterInProgress, IsInRaid, IsInGroup (LE_PARTY_CATEGORY_INSTANCE),
+-- GetNumGroupMembers, GetNumSubgroupMembers, GetRaidRosterInfo, UnitName, InCombatLockdown, Ambiguate.
 
 local Notes = CRT.Notes
+local Shifts = CRT.NoteShifts
 local P = { list = {} }
 CRT.NoteProposals = P
 
@@ -37,6 +43,9 @@ P.VERSION = 1
 P.MAX_SECONDS = 3600 -- a time past an hour into its phase is not a raid note time
 P.MAX_PHASE = 20
 P.MAX_DIFFICULTY = 24
+P.MAX_OCCURRENCE = 99
+P.MAX_PER_SENDER = 20 -- proposals kept per sender, and in all: the oldest go first
+P.MAX_TOTAL = 100
 P.TRIES = 3 -- tries of a throttled message
 P.LOCK_TRIES = 15 -- tries while the game holds addon messages
 P.RETRY = 2 -- seconds before trying again
@@ -53,7 +62,6 @@ local TEXT = {
     nothing = "You have no moved casts to send.",
     sent = "Sent %d moved cast%s to the raid lead.",
     afterCombat = "Your moved casts go to the raid lead once combat ends.",
-    cooldown = "cooldown",
 }
 P.TEXT = TEXT
 
@@ -66,15 +74,9 @@ if C_ChatInfo and C_ChatInfo.RegisterAddonMessagePrefix then
     C_ChatInfo.RegisterAddonMessagePrefix(P.PREFIX)
 end
 
-local function readable(v)
-    if issecretvalue then
-        local ok, secret = pcall(issecretvalue, v)
-        if not ok or secret then
-            return false
-        end
-    end
-    return true
-end
+local readable, key = Shifts.Readable, Shifts.PlayerKey
+P.Key = key
+P.SpellLabel = Shifts.SpellLabel
 
 local function tenth(t)
     return math.floor(t * 10 + 0.5) / 10
@@ -107,54 +109,22 @@ function P.FormatTime(ph, t)
     return "P" .. tostring(ph) .. " +" .. clock(t)
 end
 
--- "Name-Realm" as one key, lower case: your realm added when missing, the realm's spaces and dashes left out.
-local function key(name)
-    if not (readable(name) and type(name) == "string" and name ~= "") then
-        return nil
-    end
-    local base, realm = name:match("^([^%-]+)%-(.+)$")
-    if not base then
-        base = name
-        realm = GetNormalizedRealmName and GetNormalizedRealmName() or ""
-        if not (readable(realm) and type(realm) == "string") then
-            realm = ""
-        end
-    end
-    return base:lower() .. "-" .. realm:lower():gsub("[%s%-]", "")
-end
-P.Key = key
-
-local function spellLabel(spellID)
-    local info = Notes.SpellInfo and Notes:SpellInfo(spellID)
-    if info and type(info.name) == "string" then
-        return info.name
-    end
-    if C_Spell and C_Spell.GetSpellName then
-        local ok, name = pcall(C_Spell.GetSpellName, spellID)
-        if ok and readable(name) and type(name) == "string" and name ~= "" then
-            return name
-        end
-    end
-    return TEXT.cooldown
-end
-P.SpellLabel = spellLabel
-
 -- The message ----------------------------------------------------------------------------------------------
 
--- e: { encounterID, difficulty, hash, spellID, oldPh, oldT, newPh, newT }.
+-- e: { encounterID, difficulty, hash, occ, spellID, oldPh, oldT, newPh, newT }.
 function P.Encode(e)
     local difficulty = tostring(e.difficulty or ""):gsub("[|%c]", ""):sub(1, P.MAX_DIFFICULTY)
-    return table.concat({ "P", P.VERSION, e.encounterID, difficulty, e.hash, e.spellID, e.oldPh, seconds(e.oldT),
-        e.newPh, seconds(e.newT) }, "|")
+    return table.concat({ "P", P.VERSION, e.encounterID, difficulty, e.hash, e.occ or 1, e.spellID, e.oldPh,
+        seconds(e.oldT), e.newPh, seconds(e.newT) }, "|")
 end
 
-local function phaseOf(s)
-    local n = s and s:match("^%d%d?$") and tonumber(s)
-    return n and n >= 1 and n <= P.MAX_PHASE and n or nil
+local function wholeOf(s, low, high)
+    local n = s and s:match("^%d+$") and #s <= 9 and tonumber(s)
+    return n and n >= low and n <= high and n or nil
 end
 
 local function secondsOf(s)
-    local n = s and (s:match("^%d+$") or s:match("^%d+%.%d$")) and tonumber(s)
+    local n = s and (s:match("^%d+$") or s:match("^%d+%.%d$")) and #s <= 8 and tonumber(s)
     return n and n >= 0 and n <= P.MAX_SECONDS and n or nil
 end
 
@@ -167,25 +137,25 @@ function P.Decode(text)
     for f in (text .. "|"):gmatch("([^|]*)|") do
         fields[#fields + 1] = f
     end
-    if fields[1] ~= "P" or #fields < 10 then
+    if fields[1] ~= "P" or #fields < 11 then
         return nil
     end
-    local version = fields[2]:match("^%d+$") and tonumber(fields[2])
-    if not version or version < 1 or version > P.VERSION then
+    local version = wholeOf(fields[2], 1, P.VERSION)
+    if not version then
         return nil
     end
     local e = {
-        encounterID = fields[3]:match("^%d+$") and tonumber(fields[3]),
+        encounterID = wholeOf(fields[3], 1, 999999999),
         difficulty = fields[4],
         hash = fields[5]:match("^%x+$") and #fields[5] <= 16 and fields[5] or nil,
-        spellID = fields[6]:match("^%d+$") and tonumber(fields[6]),
-        oldPh = phaseOf(fields[7]),
-        oldT = secondsOf(fields[8]),
-        newPh = phaseOf(fields[9]),
-        newT = secondsOf(fields[10]),
+        occ = wholeOf(fields[6], 1, P.MAX_OCCURRENCE),
+        spellID = wholeOf(fields[7], 1, 999999999),
+        oldPh = wholeOf(fields[8], 1, P.MAX_PHASE),
+        oldT = secondsOf(fields[9]),
+        newPh = wholeOf(fields[10], 1, P.MAX_PHASE),
+        newT = secondsOf(fields[11]),
     }
-    if not (e.encounterID and e.encounterID > 0 and e.hash and e.spellID and e.spellID > 0 and e.oldPh and e.oldT
-        and e.newPh and e.newT) then
+    if not (e.encounterID and e.hash and e.occ and e.spellID and e.oldPh and e.oldT and e.newPh and e.newT) then
         return nil
     end
     if #e.difficulty > P.MAX_DIFFICULTY or e.difficulty:find("%c") then
@@ -237,6 +207,77 @@ local function inGroup(who)
         end
     end
     return false
+end
+
+-- The tags of a line that name players, as written: every tag but the role and raid words, classes and raid
+-- groups (Parse.lua's words).
+function P.PlayerTags(tags)
+    local Parser = CRT.NoteParser
+    local out, i = {}, 1
+    while i <= #(tags or {}) do
+        local tag = tags[i]
+        local word = type(tag) == "string" and tag:lower() or ""
+        local _, n = Parser.ClassAt(tags, i)
+        local prefix = word:match("^(%a+)%d$")
+        if n then
+            i = i + n
+        elseif Parser.TAG_WORDS[word] or (prefix and Parser.GROUP_WORDS[prefix]) then
+            i = i + 1
+        elseif Parser.GROUP_WORDS[word] and type(tags[i + 1]) == "string" and tags[i + 1]:match("^%d$") then
+            i = i + 2
+        else
+            if word ~= "" then
+                out[#out + 1] = tag
+            end
+            i = i + 1
+        end
+    end
+    return out
+end
+
+-- Whether a line's tags name no other player than this one.
+function P.OnlyPlayer(tags, name)
+    for _, tag in ipairs(P.PlayerTags(tags)) do
+        if not Shifts.TagsName({ tag }, name) then
+            return false
+        end
+    end
+    return true
+end
+
+-- Marks a proposal shared when its line names several players (part of an assignment: accepting moves
+-- everyone's timer on it), with players the names as written. Never auto-accepted.
+local function share(p, timer)
+    local names = timer and P.PlayerTags(timer.tags) or {}
+    p.shared = timer ~= nil and (#names > 1 or not P.OnlyPlayer(timer.tags, p.sender))
+    p.players = p.shared and names or nil
+end
+
+-- The phases the boss has: 1, the note's own, and its ability timeline's (each difficulty group's when the
+-- note names no difficulty).
+local function knownPhases(p, id)
+    local known = { [1] = true }
+    local note = id and Notes:Parsed(id)
+    for _, timer in ipairs(note and note.timers or {}) do
+        known[timer.ph] = true
+    end
+    for _, ph in ipairs(note and note.phases or {}) do
+        known[ph] = true
+    end
+    local T, Reminders = CRT.Timeline, CRT.AlertReminders
+    if T and T.ReferenceFor and Reminders and Reminders.PhaseNumber then
+        local group = p.difficulty and T.GroupFor and T:GroupFor(p.difficulty)
+        for _, g in ipairs(group and { group } or { "nh", "mythic" }) do
+            local ok, entry = pcall(T.ReferenceFor, T, p.encounterID, g)
+            for _, ph in ipairs(ok and entry and entry.ref and entry.ref.phases or {}) do
+                local n = Reminders.PhaseNumber(ph.label)
+                if n then
+                    known[n] = true
+                end
+            end
+        end
+    end
+    return known
 end
 
 -- Sending ----------------------------------------------------------------------------------------------------
@@ -311,19 +352,19 @@ function P:Send(ids)
         CRT:Print(TEXT.noGroup)
         return 0
     end
-    local Shifts = CRT.NoteShifts
     local n = 0
     for _, id in ipairs(ids or {}) do
         local record = Notes:Get(id)
         local note = Notes:Parsed(id)
-        local moved = record and Shifts and Shifts:ByLine(id)
+        local moved = record and Shifts:ByLine(id)
         if moved and type(record.encounterID) == "number" then
             for _, timer in ipairs(note and note.timers or {}) do
                 local e = moved[timer.line]
                 if e and type(timer.spellId) == "number" then
                     queue[#queue + 1] = { throttles = 0, locks = 0, text = P.Encode({
                         encounterID = record.encounterID, difficulty = record.difficulty, hash = Shifts.Key(e.raw),
-                        spellID = timer.spellId, oldPh = timer.ph, oldT = timer.time, newPh = e.ph, newT = e.t,
+                        occ = e.occ or 1, spellID = timer.spellId, oldPh = timer.ph, oldT = timer.time, newPh = e.ph,
+                        newT = e.t,
                     }) }
                     n = n + 1
                 end
@@ -341,26 +382,54 @@ end
 
 -- The raid lead's side ----------------------------------------------------------------------------------------
 
--- Where a proposal's line is in your note now: the note id and line number, or nil when your note for that
--- boss has no line with that text (stale).
+-- Where a proposal's line is in your note now: the note id, line number and text, or nil when your note for
+-- that boss has no such line (stale).
 function P:Locate(p)
     local id = Notes:FindForEncounter(p.encounterID, p.difficulty)
     if not id then
         return nil
     end
-    local Shifts = CRT.NoteShifts
+    local seen = 0
     for i, raw in ipairs(Notes:RawLines(id)) do
         if Shifts.Key(raw) == p.hash then
-            return id, i, raw
+            seen = seen + 1
+            if seen == (p.occ or 1) then
+                return id, i, raw
+            end
         end
     end
     return nil
 end
 
--- Marks each proposal stale or not, from the notes as they are now (the Healer CDs box asks once per draw).
+-- Whether a proposal's line, where Locate found it, is the sender's own: a timed line for that spell at the
+-- old time, its tags naming the sender. The one check of arrival, every draw and Accept.
+function P.Owns(p, id, line)
+    local timer = id and line and Notes:TimerAt(id, line)
+    return timer ~= nil and timer.spellId == p.spellID and timer.ph == p.oldPh and timer.time == p.oldT
+        and Shifts.TagsName(timer.tags, p.sender), timer
+end
+
+local function remove(p)
+    for i = #P.list, 1, -1 do
+        if P.list[i] == p then
+            table.remove(P.list, i)
+        end
+    end
+end
+
+-- From the notes as they are now: a proposal whose line is found but isn't the sender's own is dropped; one
+-- whose line isn't found is stale; shared says the line names other players too. The box asks once per draw.
 function P:Check()
-    for _, p in ipairs(self.list) do
-        p.stale = self:Locate(p) == nil
+    for i = #self.list, 1, -1 do
+        local p = self.list[i]
+        local id, line = self:Locate(p)
+        local owns, timer = P.Owns(p, id, line)
+        if id and not owns then
+            table.remove(self.list, i)
+        else
+            p.stale = id == nil
+            share(p, timer)
+        end
     end
 end
 
@@ -382,14 +451,6 @@ local function redraw()
     end
 end
 
-local function remove(p)
-    for i = #P.list, 1, -1 do
-        if P.list[i] == p then
-            table.remove(P.list, i)
-        end
-    end
-end
-
 -- Writes a proposal into your note: the line at its new time, every other field kept. auto: applied by
 -- auto-accept, which the chat line says. True when written.
 function P:Accept(p, auto)
@@ -399,28 +460,27 @@ function P:Accept(p, auto)
         return false
     end
     local id, line, raw = self:Locate(p)
-    local timer = id and Notes:TimerAt(id, line)
-    if not timer then
+    if not id then
         p.stale = true
         CRT:Print(string.format(TEXT.stale, p.short))
         redraw()
         return false
     end
-    local Parser = CRT.NoteParser
-    local moved = {}
-    for k, v in pairs(timer) do
-        moved[k] = v
+    if not P.Owns(p, id, line) then
+        remove(p) -- the line there now isn't the sender's
+        CRT:Print(string.format(TEXT.stale, p.short))
+        redraw()
+        return false
     end
-    moved.ph, moved.time = p.newPh, p.newT
     -- out of the list first, so the redraw the write fires no longer shows it
     remove(p)
-    if not Notes:ReplaceLine(id, line, Parser.FormatLine(moved) .. Parser.UnknownFields(raw), raw) then
+    if not Notes:MoveLine(id, line, p.newPh, p.newT, raw) then
         self.list[#self.list + 1] = p
         CRT:Print(TEXT.failed)
         redraw()
         return false
     end
-    CRT:Print(string.format(auto and TEXT.autoAccepted or TEXT.accepted, p.short, spellLabel(p.spellID),
+    CRT:Print(string.format(auto and TEXT.autoAccepted or TEXT.accepted, p.short, Shifts.SpellLabel(p.spellID),
         P.FormatTime(p.oldPh, p.oldT), P.FormatTime(p.newPh, p.newT)))
     redraw()
     return true
@@ -440,6 +500,55 @@ end
 function P.SetAutoAccept(on)
     Notes:Set(nil, "autoAcceptCooldowns", on and true or false)
     redraw()
+end
+
+-- In combat or a boss encounter: auto-accept waits (the note isn't rewritten mid-pull).
+local function busy()
+    if InCombatLockdown() then
+        return true
+    end
+    if IsEncounterInProgress then
+        local ok, on = pcall(IsEncounterInProgress)
+        return ok and readable(on) and on == true
+    end
+    return false
+end
+
+-- Applies the proposals auto-accept holds, once out of combat and encounter. Each is checked again.
+function P:ApplyHeld()
+    if busy() then
+        return
+    end
+    local list = {}
+    for i, p in ipairs(self.list) do
+        list[i] = p -- a copy: Accept takes them out of the list
+    end
+    for _, p in ipairs(list) do
+        if p.held then
+            p.held = nil
+            self:Check()
+            if not p.stale and not p.shared and P.AutoAccept() then
+                self:Accept(p, true)
+            end
+        end
+    end
+    redraw()
+end
+
+-- Keeps the list inside its caps: the sender's oldest past MAX_PER_SENDER, then anyone's oldest past MAX_TOTAL.
+local function cap(who)
+    local mine = 0
+    for i = #P.list, 1, -1 do
+        if P.list[i].who == who then
+            mine = mine + 1
+            if mine > P.MAX_PER_SENDER then
+                table.remove(P.list, i)
+            end
+        end
+    end
+    while #P.list > P.MAX_TOTAL do
+        table.remove(P.list, 1)
+    end
 end
 
 -- The chat line per sender, once their burst of proposals is in.
@@ -464,8 +573,7 @@ function P:Hear(prefix, text, ch, sender)
         return nil
     end
     local who = key(sender)
-    local me = UnitName and key(UnitName("player"))
-    if not who or who == me or not inGroup(who) then
+    if not who or who == Shifts.Me() or not inGroup(who) then
         return nil
     end
     local e = P.Decode(text)
@@ -475,24 +583,35 @@ function P:Hear(prefix, text, ch, sender)
     local short = Ambiguate and Ambiguate(sender, "none") or sender
     e.sender, e.who, e.short = sender, who, short
     local id, line = self:Locate(e)
-    if id then
-        local timer = Notes:TimerAt(id, line)
-        local Shifts = CRT.NoteShifts
-        if not (timer and timer.spellId == e.spellID and Shifts.TagsName(timer.tags, sender)) then
-            return nil -- not the sender's own line for that spell
-        end
+    local owns, timer = P.Owns(e, id, line)
+    if id and not owns then
+        return nil -- not the sender's own line for that spell at that time
+    end
+    local known = knownPhases(e, id or Notes:FindForEncounter(e.encounterID, e.difficulty))
+    if not known[e.newPh] then
+        return nil -- a phase the boss doesn't have
     end
     e.stale = id == nil
+    share(e, timer)
     -- a newer proposal for the same line replaces the older
     for i = #self.list, 1, -1 do
         local old = self.list[i]
-        if old.who == who and old.hash == e.hash and old.encounterID == e.encounterID then
+        if old.who == who and old.hash == e.hash and old.occ == e.occ and old.encounterID == e.encounterID then
             table.remove(self.list, i)
         end
     end
     self.list[#self.list + 1] = e
-    if not e.stale and P.AutoAccept() and self:Accept(e, true) then
-        return e
+    cap(who)
+    if not e.stale and not e.shared and P.AutoAccept() then
+        if not busy() then
+            if self:Accept(e, true) then
+                return e
+            end
+        else
+            e.held = true -- applied once combat and the encounter end
+            driver:RegisterEvent("PLAYER_REGEN_ENABLED")
+            driver:RegisterEvent("ENCOUNTER_END")
+        end
     end
     told[short] = (told[short] or 0) + 1
     if not chatSet then
@@ -507,11 +626,20 @@ driver:RegisterEvent("CHAT_MSG_ADDON")
 driver:SetScript("OnEvent", function(_, event, ...)
     if event == "CHAT_MSG_ADDON" then
         P:Hear(...)
-    elseif event == "PLAYER_REGEN_ENABLED" then
-        driver:UnregisterEvent("PLAYER_REGEN_ENABLED")
-        if combatWait then
+    elseif event == "PLAYER_REGEN_ENABLED" or event == "ENCOUNTER_END" then
+        if event == "PLAYER_REGEN_ENABLED" then
+            driver:UnregisterEvent("PLAYER_REGEN_ENABLED")
+        end
+        if combatWait and not InCombatLockdown() then
             combatWait = false
             sendNext()
+        end
+        -- ENCOUNTER_END comes while the encounter still counts as in progress: try again once it has ended
+        P:ApplyHeld()
+        if C_Timer and C_Timer.After then
+            C_Timer.After(P.RETRY, function()
+                P:ApplyHeld()
+            end)
         end
     end
 end)

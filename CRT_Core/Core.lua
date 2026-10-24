@@ -20,6 +20,7 @@ CRT.version = (C_AddOns and C_AddOns.GetAddOnMetadata and C_AddOns.GetAddOnMetad
 --   tattle.history, tattle.current, tattle.custom (Tattlebot's nights, with each night's season name and team stamp)
 --   late.history (the Late Tracker's nights, team stamped), notes.list and notes.history (raid notes and their
 --   earlier texts), CRTLootDB (Loot History, its own saved variable), timeline.references (your own ability timelines)
+--   notes.personalShifts (your own Healer CDs times, by note id: they follow the notes and go with a deleted note)
 --   longTerm: the area for new long-term data. Anything new that should outlast a season goes under it, never
 --   declared; nothing has moved into it, and the stores above stay where they are.
 

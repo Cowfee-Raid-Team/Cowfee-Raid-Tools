@@ -6,9 +6,11 @@ local ADDON, CRT = ...
 --   your moved casts  "You moved N casts from the raid note." with Reset mine and Send to raid lead, when you
 --                     moved any of the shown notes' casts (Notes/Shifts.lua); hidden at none
 --   proposed changes  for the raid leader and assistants: "Proposed changes (N)" with the auto-accept check
---                     box, then one row per change a healer sent (Notes/Proposals.lua): who, the spell and both
---                     times, with Accept, Decline and Show on Timeline. A change whose line changed since is
---                     stale: it says so and can't be accepted.
+--                     box, then one row per change a healer sent (Notes/Proposals.lua), the first MAX_ROWS of
+--                     them (so only that many frames are ever made): who, the spell and both times, with
+--                     Accept, Decline and Show on Timeline. A change whose line changed since is stale: it says
+--                     so and can't be accepted. A shared assignment (a line naming several players) says that
+--                     accepting moves everyone's timer on it, with the names in its tooltip.
 -- Built with the view's rows (Rows, once per refresh); Draw places the frames, made once and reused.
 
 local Panel = {}
@@ -23,6 +25,7 @@ local TEXT = {
     reset = "Reset mine",
     send = "Send to raid lead",
     proposed = "Proposed changes (%d)",
+    proposedMore = "Proposed changes (%d, the first %d shown)",
     autoAccept = "Accept healers' cooldown changes automatically",
     autoTitle = "Proposed changes",
     autoHelp = "Healers can move their own cooldowns on Healer CDs and send them to you. Accept writes the new time "
@@ -32,6 +35,8 @@ local TEXT = {
     proposal = "%s \194\183 %s %s to %s",
     stale = " \194\183 changed since",
     staleTip = "That line of the raid note changed since this was sent, so it can't be accepted.",
+    shared = " \194\183 Shared assignment (%d players): accepting moves everyone's timer on this line",
+    sharedTitle = "Shared assignment",
     accept = "Accept",
     decline = "Decline",
     show = "Show on Timeline",
@@ -39,6 +44,8 @@ local TEXT = {
 Panel.TEXT = TEXT
 
 local BUTTON_H = 20
+local MAX_ROWS = 8 -- proposal rows shown at once (and frames made); the rest come up as these are answered
+Panel.MAX_ROWS = MAX_ROWS
 local BUTTON_GAP = 4
 local PAD = 8
 
@@ -67,8 +74,8 @@ function Panel.Rows(view, out)
     view.hvProposals = #list
     if #list > 0 then
         add("head")
-        for _, p in ipairs(list) do
-            add("proposal", p)
+        for i = 1, math.min(#list, MAX_ROWS) do
+            add("proposal", list[i])
         end
     end
 end
@@ -217,15 +224,35 @@ local function proposalFrame(view, n)
         end },
     })
     -- a stale change says why on its Accept button
-    f.buttons.accept:SetScript("OnEnter", function(b)
+    -- a shared assignment's row names its players in its tooltip
+    f:SetScript("OnEnter", function(row)
+        local p = row.p
+        if p and p.shared and not p.stale then
+            CRT.UI.TooltipOwner(GameTooltip, row, "ANCHOR_RIGHT", nil, nil, "timeline")
+            GameTooltip:SetText(TEXT.sharedTitle, 1, 1, 1)
+            GameTooltip:AddLine(table.concat(p.players or {}, ", "), 0.85, 0.85, 0.85, true)
+            GameTooltip:Show()
+        end
+    end)
+    f:SetScript("OnLeave", function()
+        GameTooltip:Hide()
+    end)
+    -- hooked, so the button's own hover (its skin) stays; a disabled button still shows it
+    local accept = f.buttons.accept
+    if accept.SetMotionScriptsWhileDisabled then
+        accept:SetMotionScriptsWhileDisabled(true)
+    end
+    accept:HookScript("OnEnter", function(b)
         if f.p and f.p.stale then
             CRT.UI.TooltipOwner(GameTooltip, b, "ANCHOR_RIGHT", nil, nil, "timeline")
             GameTooltip:SetText(TEXT.staleTip, 1, 1, 1, 1, true)
             GameTooltip:Show()
         end
     end)
-    f.buttons.accept:SetScript("OnLeave", function()
-        GameTooltip:Hide()
+    accept:HookScript("OnLeave", function()
+        if f.p and f.p.stale then
+            GameTooltip:Hide()
+        end
     end)
     view.hvProps[n] = f
     return f
@@ -240,8 +267,9 @@ function Panel.ProposalText(view, p)
         return abs and View.Format(abs) or P.FormatTime(ph, t)
     end
     local text = string.format(TEXT.proposal, p.short, P.SpellLabel(p.spellID), at(p.oldPh, p.oldT), at(p.newPh, p.newT))
-    if p.stale then
-        text = text .. (CRT.UI.WarnText and CRT.UI.WarnText(TEXT.stale) or TEXT.stale)
+    local note = (p.stale and TEXT.stale) or (p.shared and string.format(TEXT.shared, #(p.players or {}))) or nil
+    if note then
+        text = text .. (CRT.UI.WarnText and CRT.UI.WarnText(note) or note)
     end
     return text
 end
@@ -266,7 +294,8 @@ function Panel.Draw(view, on)
                 f.text:SetText(string.format(TEXT.moved, n, n == 1 and "" or "s"))
             elseif lane.panel == "head" then
                 f, head = headFrame(view), true
-                f.text:SetText(string.format(TEXT.proposed, view.hvProposals or 0))
+                local n = view.hvProposals or 0
+                f.text:SetText(n > MAX_ROWS and string.format(TEXT.proposedMore, n, MAX_ROWS) or string.format(TEXT.proposed, n))
                 f.auto:SetChecked(CRT.NoteProposals.AutoAccept())
             else
                 props = props + 1

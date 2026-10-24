@@ -58,6 +58,7 @@ local MIN_SPAN, MAX_SPAN = 60, 600
 local ZOOM = 1.25
 local TICK_GAP = 40 -- the fewest pixels between two axis labels
 local DEATH_RED = { 0.89, 0.29, 0.29 } -- also the phase lines
+local END_LINE_W = 3 -- the line where an overlaid pull ended, in the kill or wipe colour
 local LEAD_GREEN = { 0.72, 0.88, 0.72 }
 local DUR_H = 18 -- the height of a duration bar
 local BAR_ALPHA = 0.45
@@ -181,6 +182,8 @@ local TEXT = {
     bandLength = "%d:%02d", -- a cooldown band's length, minutes and seconds, inside the after band
     tooSoon = " \194\183 too soon", -- added to a drag's label when another cast of the spell is inside its bands
     zoomRange = "%s - %s (%s)", -- the drag-to-zoom band's label: from, to, and how long
+    kill = "Kill %s", -- the end line's tag on the axis: how the overlaid pull ended, and when
+    wipe = "Wipe %s",
 }
 
 local function settings()
@@ -1826,21 +1829,7 @@ end
 -- Moves a note line to phase ph, t seconds in, or (add) writes the same line again there, in the same
 -- note. Fields the parser doesn't know stay on the line. False when the line is no longer the one drawn.
 local function writeNote(m, ph, t, add)
-    local Notes, Parser = CRT.Notes, CRT.NoteParser
-    local timer, raw = Notes:TimerAt(m.noteID, m.line)
-    if not (timer and m.expected ~= nil and raw == m.expected) then
-        return false
-    end
-    local moved = {}
-    for k, v in pairs(timer) do
-        moved[k] = v
-    end
-    moved.ph, moved.time = ph, t
-    local line = Parser.FormatLine(moved) .. Parser.UnknownFields(m.expected)
-    if add then
-        return Notes:AddLineTo(m.noteID, line) ~= nil
-    end
-    return Notes:ReplaceLine(m.noteID, m.line, line, m.expected)
+    return CRT.Notes:MoveLine(m.noteID, m.line, ph, t, m.expected, add)
 end
 
 -- Whether the cursor is over the track's window: inside the track and inside the shown part of the lanes
@@ -1902,7 +1891,8 @@ function Methods:FinishMove()
     elseif m.kind == "note" then
         -- asked again at the release: you may have lost the right since the grab
         local allowed, why = canEditRaid()
-        if not allowed and m.hvOwn and CRT.TimelineHealerView then
+        -- Alt adds a raid note line, which only a lead may do: refused below with the reason
+        if not allowed and m.hvOwn and not add and CRT.TimelineHealerView then
             ok = CRT.TimelineHealerView.MovePersonal(self, m, ph, seconds) -- your own time, the raid note untouched
         elseif not allowed then
             CRT:Print(why or TEXT.moveRefused)
@@ -3834,22 +3824,44 @@ function Methods:DrawPhases(phases, length, height)
     return rows
 end
 
--- Draws the 2 px line where the overlaid pull ended, or hides it when there is none.
+-- Draws the line where the overlaid pull ended, or hides it when there is none: 3 px across every row, in
+-- the theme's good colour for a kill and its bad colour for a wipe (self.extra.endKill), with a "Kill 4:12" or
+-- "Wipe 4:12" tag at the bottom of the time axis. Both layouts draw it (Abilities and Healer CDs).
 function Methods:DrawEndLine(t, length, height)
     if type(t) ~= "number" then
         if self.endLine then
             self.endLine:Hide()
+            self.endTag:Hide()
         end
         return
     end
     if not self.endLine then
-        self.endLine = self.track:CreateTexture(nil, "ARTWORK")
-        themed(self.endLine, "SetColorTexture", "accent")
+        self.endLine = self.track:CreateTexture(nil, "OVERLAY")
+        local tag = CreateFrame("Frame", nil, self.axis)
+        tag:SetFrameLevel((self.axis:GetFrameLevel() or 0) + 4)
+        tag:SetHeight(14)
+        tag.bg = tag:CreateTexture(nil, "BACKGROUND")
+        tag.bg:SetAllPoints()
+        themed(tag.bg, "SetColorTexture", "surface", 0.95)
+        tag.text = tag:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+        tag.text:SetPoint("CENTER")
+        self.endTag = tag
     end
+    local key = self.extra and self.extra.endKill and "good" or "bad"
+    local c = CRT.PALETTE[key] or (key == "bad" and DEATH_RED) or CRT.PALETTE.accent
+    local x = View.TimeToX(math.min(t, length), length, self.trackW)
+    self.endLine:SetColorTexture(c[1], c[2], c[3], 1)
     self.endLine:ClearAllPoints()
-    self.endLine:SetPoint("TOPLEFT", self.track, "TOPLEFT", View.TimeToX(math.min(t, length), length, self.trackW) - 1, 0)
-    self.endLine:SetSize(2, height)
+    self.endLine:SetPoint("TOPLEFT", self.track, "TOPLEFT", x - END_LINE_W / 2, 0)
+    self.endLine:SetSize(END_LINE_W, height)
     self.endLine:Show()
+    local tag = self.endTag
+    tag.text:SetTextColor(c[1], c[2], c[3])
+    tag.text:SetText(string.format(key == "good" and TEXT.kill or TEXT.wipe, View.Format(t)))
+    tag:SetWidth((tag.text.GetStringWidth and tag.text:GetStringWidth() or 40) + 8)
+    tag:ClearAllPoints()
+    tag:SetPoint("BOTTOM", self.axis, "BOTTOMLEFT", x, 2)
+    tag:Show()
 end
 
 -- A reference lane's bars (as long as each cast lasts) and lead lines (from the cast's start to

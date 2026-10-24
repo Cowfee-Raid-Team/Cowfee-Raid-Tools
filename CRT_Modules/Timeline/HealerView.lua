@@ -4,7 +4,8 @@ local ADDON, CRT = ...
 -- strip, Timeline/Page.lua). The timeline view (Timeline/View.lua) draws it in place of the Abilities layout
 -- while view:SetMode("healers"), with the same axis, zoom, scroll, drag-zoom and Fit. Top to bottom:
 --   the ability rows  every row the Abilities layout shows, as it shows them (lanes, colours, types, phase
---                     lines, deaths), without its Notes and Personal notes rows
+--                     lines, deaths, a picked pull's end line), and its Notes row with the lines no healer row
+--                     takes; not its Personal notes row
 --   each healer       a row with their name in class colour and their spec, then one row per major cooldown
 --                     (the cooldown list's major entries for their spec, else for their class), then one per
 --                     other listed cooldown the raid note gives them
@@ -29,6 +30,8 @@ CRT.TimelineHealerView = HV
 
 local TEXT = {
     hint = "Drag a cast to move it \194\183 double-click a row to add a cast \194\183 red edge: cast while still on cooldown",
+    -- for someone who may not change the raid note
+    hintOwn = "Drag your own casts to move them for yourself \194\183 red edge: cast while still on cooldown",
     noHealers = "No healers found. Right-click a name on Raid Groups and pick Set role > Healer.",
     classUnknown = "Class unknown until they are seen in a group once.",
     notLead = "Only the raid leader or an assistant can place a cooldown for another player.",
@@ -368,7 +371,10 @@ local function claim(view, r, c, lead, length)
         c.tipLines = { TEXT.ownCast }
     end
     local Shifts, Reminders = CRT.NoteShifts, CRT.AlertReminders
-    local s = Shifts and Shifts:Find(c.noteID, c.expected)
+    local s = Shifts and Shifts:Find(c.noteID, c.line)
+    if s and s.raw ~= c.expected then
+        s = nil
+    end
     local t = s and Reminders.AbsoluteTime(view.pull and view.pull.reference, s.ph, s.t)
     if t then
         t = t + (c.shiftDelta or 0)
@@ -440,7 +446,9 @@ function HV.Build(view, lanes, length)
             end
         end
     end
-    local shown, noteIds, seenNote = {}, {}, {}
+    -- the Notes row the Abilities layout adds for lines with no ability row, when it got one
+    local notesRow = rowsFor[#lanes + 1] and rowsFor[#lanes + 1].kind == "notes" and #lanes + 1 or nil
+    local shown, noteIds, seenNote, onNotes = {}, {}, {}, {}
     local function put(m, r)
         local c = copy(m)
         r.casts[#r.casts + 1] = c
@@ -455,8 +463,10 @@ function HV.Build(view, lanes, length)
         end
         if not e and m.kind == "note" and m.row and m.row <= #lanes then
             shown[#shown + 1] = m -- a line for a boss ability: on its row, as Abilities draws it
+        elseif not e and m.kind == "note" and notesRow and m.row == notesRow then
+            onNotes[#onNotes + 1] = m
         elseif e and m.kind == "note" then
-            local seen = {}
+            local seen, placed = {}, false
             for _, tag in ipairs(m.tags or {}) do
                 local p = usable(tag) and find(tag) or nil
                 if not p and nameWord(tag, classes) then
@@ -467,8 +477,12 @@ function HV.Build(view, lanes, length)
                     local r = row(person(p, e.class), e)
                     if r then
                         put(m, r)
+                        placed = true
                     end
                 end
+            end
+            if not placed and notesRow and m.row == notesRow then
+                onNotes[#onNotes + 1] = m -- a cooldown line for no player: on the Notes row, as Abilities draws it
             end
         elseif e and m.kind == "mine" then
             local who = me and byKey[me]
@@ -482,6 +496,14 @@ function HV.Build(view, lanes, length)
     local out = {}
     for _, lane in ipairs(lanes) do
         out[#out + 1] = lane
+    end
+    -- the Notes row, under the ability rows as in Abilities, with the lines no healer row took
+    if #onNotes > 0 then
+        out[#out + 1] = rowsFor[notesRow]
+        for _, m in ipairs(onNotes) do
+            m.row = #out
+            shown[#shown + 1] = m
+        end
     end
     local abilities = #out
     local lead = canEditRaid()
@@ -540,10 +562,10 @@ function HV.MovePersonal(view, m, ph, seconds)
         return false
     end
     if ph == timer.ph and seconds == timer.time then
-        Shifts:Clear(m.noteID, raw)
+        Shifts:Clear(m.noteID, m.line)
         return true
     end
-    return Shifts:Set(m.noteID, raw, ph, seconds, timer.spellId)
+    return Shifts:Set(m.noteID, m.line, ph, seconds, timer.spellId)
 end
 
 -- Drawing --------------------------------------------------------------------------------------------
@@ -649,7 +671,7 @@ function HV.Draw(view, length)
             end
         end
         n, labels = drawMoved(view, n, x, length)
-        view.unknownText:SetText(view.hvEmpty and TEXT.noHealers or TEXT.hint)
+        view.unknownText:SetText(view.hvEmpty and TEXT.noHealers or (canEditRaid() and TEXT.hint or TEXT.hintOwn))
     end
     for i = n + 1, #(view.hvBands or {}) do
         view.hvBands[i]:Hide()

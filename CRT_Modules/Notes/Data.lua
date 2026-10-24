@@ -829,6 +829,27 @@ function Notes:ReplaceLine(id, lineNumber, line, expected)
     return true
 end
 
+-- Moves a timed line to phase ph, t seconds in, or (add) writes the same line again there at the note's end.
+-- Fields the parser doesn't know stay on the line. `expected` is the raw line as it was read; false when the
+-- line has changed since (nothing is written). The Timeline's flag drag and an accepted cooldown change
+-- (Notes/Proposals.lua) both write through it.
+function Notes:MoveLine(id, lineNumber, ph, t, expected, add)
+    local timer, raw = self:TimerAt(id, lineNumber)
+    if not (timer and expected ~= nil and raw == expected) then
+        return false
+    end
+    local moved = {}
+    for k, v in pairs(timer) do
+        moved[k] = v
+    end
+    moved.ph, moved.time = ph, t
+    local line = Parser.FormatLine(moved) .. Parser.UnknownFields(expected)
+    if add then
+        return self:AddLineTo(id, line) ~= nil
+    end
+    return self:ReplaceLine(id, lineNumber, line, expected)
+end
+
 -- Removes one line and its line end (a last line with no end leaves the line before it as it was).
 function Notes:RemoveLine(id, lineNumber, expected)
     local pieces = pieceAt(id, lineNumber, expected)
