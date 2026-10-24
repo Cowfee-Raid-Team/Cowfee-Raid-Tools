@@ -63,6 +63,7 @@ CRT_Core\Integrations\NSRT.lua
 CRT_Core\Integrations\MRT.lua
 CRT_Core\Integrations\Breaks.lua
 CRT_Modules\Notes\Settings.lua
+CRT_Modules\Notes\MechLook.lua
 CRT_Modules\Notes\Reminders.lua
 CRT_Modules\Notes\SpecialAlerts.lua
 CRT_Modules\Notes\Phases.lua

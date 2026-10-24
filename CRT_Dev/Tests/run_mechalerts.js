@@ -99,6 +99,7 @@ ColorPickerFrame = { SetupColorPickerAndShow = function(self, info) picker.info 
   GetColorRGB = function() return picker.r or 1, picker.g or 1, picker.b or 1 end }
 
 local helps, dropdowns, sliders = {}, {}, {}
+TAB_CALLS = { set = 0, style = 0 }
 local printed = {}
 local CRT = {
   db = {
@@ -112,8 +113,13 @@ function CRT:Print(m) printed[#printed + 1] = m end
 CRT.PALETTE = { background = { 0.11, 0.078, 0.063 }, surface = { 0.165, 0.122, 0.098 }, border = { 0.3, 0.235, 0.188 },
   selected = { 0.44, 0.31, 0.22 }, accent = { 0.78, 0.56, 0.36 }, label = { 0.87, 0.73, 0.56 }, text = { 0.95, 0.9, 0.84 } }
 CRT.UI = { Tint = function(r, m, k, a) local c = CRT.PALETTE[k] r[m](r, c[1], c[2], c[3], a or 1) end, OnTheme = function() end, PAGE_W = 1026, PAGE_H = 560,
-  IsModern = function() return true end,
-  RegisterTab = function() end, SetTabSelected = function() end, RegisterPage = function() end,
+  -- the look on show: Modern unless a check sets MODERN = false (Classic)
+  IsModern = function() return MODERN ~= false end,
+  -- tabs: which is selected, and how often each way was asked (SetTabSelected also skins the whole tab)
+  RegisterTab = function() end,
+  SetTabSelected = function(self, b, on) TAB_CALLS.set = TAB_CALLS.set + 1 rawset(b, "tabSelected", on) end,
+  StyleTab = function(self, b, on) TAB_CALLS.style = TAB_CALLS.style + 1 rawset(b, "tabSelected", on) end,
+  RegisterPage = function() end,
   Show = function() end, SetFrameTitle = function() end, RegisterLayer = function() end, RegisterPreview = function() end,
   SkinTree = function() end, StyleWindow = function() end,
   Help = function(parent, title, text) local b = mock("Button", parent) rawset(b, "helpTitle", title) rawset(b, "helpText", text) helps[#helps + 1] = b return b end,
@@ -1453,7 +1459,7 @@ end)
 local SPECIAL_LIST = {
   { key = "soaks", label = "Orb soaks", help = "Two groups soak each orb.", type = "soak", when = { row = "Real Name" }, lead = 6,
     who = { mode = "rotation", rotation = { { 1, 2 }, { 3, 4 } } }, text = "Soak now: {group}",
-    show = { callout = true, bar = false, speech = true }, markers = { marks = { "star", "circle" }, on = "who" } },
+    show = { callout = true, bar = false, speech = true }, markers = { marks = { "star", "circle" } } },
   { key = "mythicOnly", label = "Mythic dance", difficulty = "mythic", when = { times = "P1 0:20" } },
 }
 local function withSpecial(list)
@@ -1462,8 +1468,11 @@ local function withSpecial(list)
 end
 local function noSpecial() CRT.Bosses.Get, CRT.Bosses.Loaded = nil, nil end
 local SA = CRT.NoteSpecialAlerts
+-- every check in both looks
+for _, LOOK in ipairs({ "Modern", "Classic" }) do
+MODERN = LOOK == "Modern"
 
-check("mech special: the toggle sits over the list, Mechanics by default", function()
+check("mech special (" .. LOOK .. "): the toggle sits over the list, Mechanics by default", function()
   noSpecial()
   CRT.db.alerts.specialView = nil
   local f = fresh()
@@ -1478,15 +1487,34 @@ check("mech special: the toggle sits over the list, Mechanics by default", funct
   assert(a[4] <= lr[2] and b[4] <= lr[2], "over the list: " .. a[4] .. " > " .. lr[2])
   assert(a[1] >= lr[1] and b[3] + 24 <= lr[3], "inside the list's width, its (?) too")
   assert(math.abs(b[3] - b[1] - (#"Special (0)" * 6 + 20)) < 1, "sized from its label")
+  -- the largest text size: both halves shrink, cut with "...", so they and the (?) still fit the list
+  TEXT_SCALE = 1.75
+  CRT.NoteReminders.Refresh()
+  rects = {}
+  a, b, lr = rect(s.mechBtn, f), rect(s.specialBtn, f), rect(f.list, f)
+  assert(a[3] <= b[1] and b[3] + 24 <= lr[3], "at 1.75 the toggle and its (?) fit 250: " .. b[3] .. " of " .. lr[3])
+  assert(s.specialBtn.text.wordWrap == false and s.specialBtn.text.w <= b[3] - b[1], "its label is cut to the button")
+  TEXT_SCALE = nil
+  CRT.NoteReminders.Refresh()
+  -- a redraw only restyles the toggle; SetTabSelected (which skins the whole tab) only when the view changes
+  local set, style = TAB_CALLS.set, TAB_CALLS.style
+  CRT.NoteReminders.Refresh()
+  assert(TAB_CALLS.set == set and TAB_CALLS.style == style + 2, "a redraw restyles: " .. TAB_CALLS.set - set .. " " .. TAB_CALLS.style - style)
+  assert(s.mechBtn.tabSelected == true and s.specialBtn.tabSelected == false, "Mechanics selected")
+  click(s.specialBtn)
+  assert(TAB_CALLS.set == set + 2 and s.specialBtn.tabSelected == true and s.mechBtn.tabSelected == false, "the view changed: SetTabSelected")
+  click(s.mechBtn)
   assert(#errors == 0, tostring(errors[1]))
 end)
 
-check("mech special: Special shows the empty line, and the choice is remembered", function()
+check("mech special (" .. LOOK .. "): Special shows the empty line, and the choice is remembered", function()
   noSpecial()
   local f = fresh()
   local s = f.special
   typeInto(f.panel.textEdit, "Typed before Special")
+  rawset(f.panel.timesEdit, "focused", true) rawset(f.panel.idEdit, "focused", true)
   click(s.specialBtn)
+  assert(not f.panel.textEdit.focused and not f.panel.timesEdit.focused and not f.panel.idEdit.focused, "the Mechanics boxes let go")
   assert(only().text == "Typed before Special", "typing on the Mechanics panel is saved first")
   assert(SA.View() == "special" and CRT.db.alerts.specialView == "special", "saved")
   assert(not f.list.shown and not f.ownButton.shown and not f.panel.frame.shown, "Mechanics hidden")
@@ -1501,7 +1529,7 @@ check("mech special: Special shows the empty line, and the choice is remembered"
   assert(#errors == 0, tostring(errors[1]))
 end)
 
-check("mech special: the list counts, ticks and selects", function()
+check("mech special (" .. LOOK .. "): the list counts, ticks and selects", function()
   withSpecial(SPECIAL_LIST)
   local f = fresh()
   local s = f.special
@@ -1513,6 +1541,9 @@ check("mech special: the list counts, ticks and selects", function()
   assert(s.rows[1].frame.shown and s.rows[1].name.text == "Orb soaks" and s.rows[2].name.text == "Mythic dance" and not s.rows[3].frame.shown, "two rows")
   assert(not s.empty.shown, "no empty line")
   assert(s.rows[1].check.checked == false and s.rows[1].sel.shown and not s.rows[2].sel.shown, "off, the first selected")
+  local want = { CRT.MechLook.SelectedColor(MODERN) }
+  local sel = s.rows[1].sel.color
+  assert(sel[1] == want[1] and sel[4] == want[4] and want[4] == (MODERN and 0.95 or 0.18), LOOK .. ": the selected row's tint, as the Mechanics list's")
   local c = s.rows[1].name.textColor
   assert(c and c[1] ~= 1, "in its type's colour, lifted on the selected row")
   setCheck(s.rows[1].check, true)
@@ -1528,7 +1559,7 @@ check("mech special: the list counts, ticks and selects", function()
   assert(#errors == 0, tostring(errors[1]))
 end)
 
-check("mech special: the panel says When and Who, keeps Show as, greys Markers", function()
+check("mech special (" .. LOOK .. "): the panel says When and Who, keeps Show as, greys Markers", function()
   withSpecial(SPECIAL_LIST)
   CRT.db.alerts.special = {}
   local f = fresh()
@@ -1536,6 +1567,7 @@ check("mech special: the panel says When and Who, keeps Show as, greys Markers",
   click(s.specialBtn)
   assert(s.content.shown and s.title.text == "Orb soaks" and s.kind.text == "special alert", "title and kind")
   assert(s.titleHelp.shown, "its help in a (?)")
+  assert(type(s.titleHelp.helpTitle) == "function" and s.titleHelp.helpTitle() == "Orb soaks" and s.titleHelp.helpText() == "Two groups soak each orb.", "the (?) is titled with the alert's name")
   assert(s.whenText.text == "Each cast of Real Name: P1 0:30; P2 +0:20. Shown 6 s before.", "When: " .. s.whenText.text)
   assert(s.whoText.text == "In turn, one step per cast:", "Who: " .. s.whoText.text)
   assert(s.chips[1].shown and s.chips[1].text.text == "1: G1, G2" and s.chips[2].text.text == "2: G3, G4", "the steps as chips, in order")
@@ -1565,7 +1597,7 @@ check("mech special: the panel says When and Who, keeps Show as, greys Markers",
   assert(#errors == 0, tostring(errors[1]))
 end)
 
-check("mech special: Test plays the alert through the editor's test", function()
+check("mech special (" .. LOOK .. "): Test plays the alert through the editor's test", function()
   withSpecial(SPECIAL_LIST)
   local f = fresh()
   local s = f.special
@@ -1586,7 +1618,7 @@ check("mech special: Test plays the alert through the editor's test", function()
   assert(#errors == 0, tostring(errors[1]))
 end)
 
-check("mech special: nothing passes the page edges", function()
+check("mech special (" .. LOOK .. "): nothing passes the page edges", function()
   local long = {}
   for i = 1, 30 do long[i] = { key = "k" .. i, label = "Special alert number " .. i .. " with a long name", when = { times = "0:10" },
     who = { mode = "rotation", rotation = { { 1, 2, 3, 4, 5 }, { 6, 7, 8 }, "tank", "healer", "melee", "ranged", { 1 }, { 2 }, { 3 }, { 4 }, { 5 }, { 6 }, { 7 } } },
@@ -1609,6 +1641,9 @@ check("mech special: nothing passes the page edges", function()
   noSpecial()
   assert(#errors == 0, tostring(errors[1]))
 end)
+
+end
+MODERN = nil
 
 check("no errors raised", function()
   assert(#errors == 0, tostring(errors[1]))

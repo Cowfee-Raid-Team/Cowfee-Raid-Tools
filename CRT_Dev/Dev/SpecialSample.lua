@@ -60,7 +60,7 @@ function Dev:Command(msg)
         who = { mode = "rotation", rotation = { { 1, 2 }, { 3, 4 } } },
         text = "Soak now: {group}",
         show = { callout = true, bar = true, text = true, speech = true },
-        markers = { marks = { "star", "circle" }, on = "who" },
+        markers = { marks = { "star", "circle" } },
     } }
     CRT.Alerts:Fire()
     CRT:Print(string.format(TEXT.added, def.name))

@@ -75,7 +75,7 @@ local SPECIAL = {
   { key = "soaks", label = "Orb soaks", help = "Two groups soak each orb.", type = "soak",
     when = { row = "Orb Burst" }, lead = 6, who = { mode = "rotation", rotation = { { 1, 2 }, { 3, 4 } } },
     text = "Soak now: {group}", show = { callout = true, bar = false, text = true, speech = true },
-    markers = { marks = { "star", "circle" }, on = "who" }, unknownField = "ignored" },
+    markers = { marks = { "star", "circle" } }, unknownField = "ignored" },
   { key = "everyone", label = "Everyone hides", when = { times = "P1 0:20; P2 0:10, 0:40" }, who = { mode = "everyone" }, default = true },
   { key = "tanks", label = "Tank swap", difficulty = "mythic", when = { spellID = 4242 }, who = { mode = "rotation", rotation = { "tank", "healer" } } },
   { key = "kicks", label = "Kicks", when = { times = "0:15, 0:45, 1:15" }, who = { mode = "note", note = "Kick" } },
@@ -202,6 +202,11 @@ check("special: note mode reads the active note's label lines", function()
   local all = S:Items(9001, e, {})
   assert(#all == 3, "one Kick: line is every cast (the class names you): " .. #all)
   assert(#S.NoteSteps(Notes:Parsed(id), "Soak") == 0, "a label the note doesn't have: no steps")
+  -- a raid group on the line, as "Group 3" or "G3": your subgroup is 3
+  Notes:Import("EncounterID:9001;Difficulty:Mythic;Name:Test Boss\\nKick 1: Group 3\\nKick 2: G5\\n")
+  local g = S:Items(9001, e, {})
+  assert(#g == 2 and g[1].id == "special:kicks:1" and g[2].id == "special:kicks:3", "Group 3 is your group, G5 is not: " .. #g)
+  assert(S.NoteSteps(S.NoteFor(nil, 9001), "Kick")[1].tags[2] == "3", "the number stays after its group word")
   CRT.db.notes.list = {} CRT.db.notes.active = nil
 end)
 

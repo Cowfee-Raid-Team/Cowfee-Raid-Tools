@@ -23,7 +23,7 @@ local ADDON, CRT = ...
 --     text = "Soak now: {group}",       optional: the callout and speech (default the label); {group} is the step
 --     show = { callout = true, bar = true, text = false, icon = false, circle = false, timeline = false,
 --              speech = true },         optional: the Show as choices a player starts with
---     markers = { marks = { "star", "circle" }, on = "who" },
+--     markers = { marks = { "star", "circle" } },
 --                                       optional: the raid markers for the players of each step
 --   } }
 -- Only the players of a cast's step get its alert ("mine", as the note's tags say); everyone else gets
@@ -415,8 +415,12 @@ local function names(rest)
     local Parser = CRT.NoteParser
     local out = {}
     if Parser and Parser.ClassRuns then
+        local groupWords = Parser.GROUP_WORDS or {}
         for _, item in ipairs(Parser.ClassRuns(rest, Parser.NAME_WORD)) do
-            if item.text:find("%a") and not item.text:find("^{") then
+            local before = out[#out]
+            -- a group's number stays after its word ("Group 1"), as a note tag reads it
+            local groupNumber = item.text:match("^%d$") and before and groupWords[before:lower()]
+            if groupNumber or (item.text:find("%a") and not item.text:find("^{")) then
                 out[#out + 1] = item.text
             end
         end

@@ -19,7 +19,7 @@ local TEXT = {
     kind = "special alert",
     alertMe = "Alert me",
     when = "When",
-    whenHelp = "When the alert comes, from the boss's data. Casts are read from the ability timeline Times from names.",
+    whenHelp = "When the alert comes, from the boss's data. Casts are read from the ability timeline picked in Times from.",
     whenRow = "Each cast of %s: %s. Shown %s s before.",
     whenNoCasts = "Each cast of %s. None on the ability timeline on show.",
     whenTimes = "At %s. Shown %s s before.",
@@ -77,9 +77,9 @@ local L = {
     ALERT_W = 130, -- Alert me and its label, at the header's right
 }
 
-local GREY = { 0.5, 0.5, 0.5 }
-local WHITE = { 1, 1, 1 }
-local TIMES_GREY = { 0.55, 0.5, 0.45 }
+-- the lists' look, shared with the Mechanics list (Notes/MechLook.lua)
+local Look = CRT.MechLook
+local GREY, TIMES_GREY = Look.GREY, Look.TIMES_GREY
 local OFF_ALPHA = 0.5 -- the Markers section, which can't be used
 
 local M = {}
@@ -144,27 +144,6 @@ local function ref()
     return entry and entry.ref or nil
 end
 
--- A name's colour: its ability type's, dimmed when off and lifted when selected (as the Mechanics rows).
-local function mix(c, to, t)
-    return { c[1] + (to[1] - c[1]) * t, c[2] + (to[2] - c[2]) * t, c[3] + (to[3] - c[3]) * t }
-end
-
-local function nameColor(entry, on, isSelected)
-    local Colors = CRT.AlertColors
-    local c = entry.type and Colors and Colors.KnownTypeColor(entry.type)
-    if not c then
-        c = on and CRT.PALETTE.text or GREY
-        return c[1], c[2], c[3]
-    end
-    if not on then
-        c = mix(c, GREY, 0.5)
-    end
-    if isSelected then
-        c = mix(c, WHITE, 0.5)
-    end
-    return c[1], c[2], c[3]
-end
-
 -- The words of When.
 local function whenText(enc, entry)
     local S, Reminders = Special(), CRT.AlertReminders
@@ -198,14 +177,27 @@ local function toggleButton(parent, label, onClick)
     return b
 end
 
--- Each half of the toggle as wide as its label (the count changes the second), side by side.
+-- Each half of the toggle as wide as its label (the count changes the second), side by side. When both and
+-- the (?) after them don't fit the list's width (a large text size), both shrink in proportion and their labels
+-- are cut with "...". Measured on every draw, so a text size changed since is followed.
 local function layToggle()
+    local buttons = { ui.mechBtn, ui.specialBtn }
+    local want, total = {}, 0
+    for i, b in ipairs(buttons) do
+        want[i] = math.max(L.TOGGLE_MIN_W, width(b.text) + 2 * L.TOGGLE_PAD)
+        total = total + want[i]
+    end
+    local room = L.LIST_W - L.TOGGLE_GAP - UI.HELP_GAP - UI.HELP_SIZE
+    local scale = total > room and room / total or 1
     local x = 0
-    for _, b in ipairs({ ui.mechBtn, ui.specialBtn }) do
-        b:SetSize(math.max(L.TOGGLE_MIN_W, width(b.text) + 2 * L.TOGGLE_PAD), L.TOGGLE_H)
+    for i, b in ipairs(buttons) do
+        local w = math.floor(want[i] * scale)
+        b:SetSize(w, L.TOGGLE_H)
+        b.text:SetWidth(w - 2 * L.TOGGLE_PAD)
+        b.text:SetWordWrap(false)
         b:ClearAllPoints()
         b:SetPoint("TOPLEFT", L.X + x, L.Y)
-        x = x + b:GetWidth() + L.TOGGLE_GAP
+        x = x + w + L.TOGGLE_GAP
     end
 end
 
@@ -215,7 +207,7 @@ local function paintList(list, enc, current)
     local maxRows = #ui.rows
     local maxOffset = math.max(0, #list - maxRows)
     state.offset = math.max(0, math.min(state.offset, maxOffset))
-    local m = CRT.PALETTE.selected
+    local selColor = { Look.SelectedColor(UI:IsModern()) }
     for i, row in ipairs(ui.rows) do
         local entry = list[state.offset + i]
         if entry then
@@ -224,12 +216,8 @@ local function paintList(list, enc, current)
             row.entry = entry
             row.check:SetChecked(on)
             row.name:SetText(entry.label)
-            row.name:SetTextColor(nameColor(entry, on, isSel))
-            if UI:IsModern() then
-                row.sel:SetColorTexture(m[1], m[2], m[3], 0.95)
-            else
-                row.sel:SetColorTexture(UI.Color("heading", 0.18))
-            end
+            row.name:SetTextColor(Look.NameColor(entry.type, on, isSel))
+            row.sel:SetColorTexture(selColor[1], selColor[2], selColor[3], selColor[4])
             row.sel:SetShown(isSel)
             row.frame:Show()
         else
@@ -379,9 +367,17 @@ function M.Refresh()
     local list, enc = entries()
     ui.specialBtn.text:SetText(string.format(TEXT.special, #list))
     layToggle()
-    local special = M.View() == "special"
-    UI:SetTabSelected(ui.mechBtn, not special)
-    UI:SetTabSelected(ui.specialBtn, special)
+    local view = M.View()
+    local special = view == "special"
+    -- SetTabSelected skins the whole tab (UI:SkinTree), so only when the view changes; a plain redraw restyles
+    if ui.tabView ~= view then
+        ui.tabView = view
+        UI:SetTabSelected(ui.mechBtn, not special)
+        UI:SetTabSelected(ui.specialBtn, special)
+    else
+        UI:StyleTab(ui.mechBtn, not special)
+        UI:StyleTab(ui.specialBtn, special)
+    end
     ui.list:SetShown(special)
     ui.panel:SetShown(special)
     if not special then
@@ -555,7 +551,11 @@ local function buildPanel(f)
     ui.title:SetWidth(L.PANEL_W - 2 * L.INSET - L.ALERT_W - UI.HELP_GAP - UI.HELP_SIZE - 8)
     ui.title:SetJustifyH("LEFT")
     ui.title:SetWordWrap(false)
-    ui.titleHelp = UI.HelpRight(ui.title, TEXT.kind, function()
+    -- the selected alert's own help, under its name
+    ui.titleHelp = UI.HelpRight(ui.title, function()
+        local entry = current()
+        return entry and entry.label or TEXT.kind
+    end, function()
         local entry = current()
         return entry and entry.help or ""
     end)

@@ -160,15 +160,9 @@ L.SPEAK_AT_LABEL, L.SPEAK_AT_W = 56, 104 -- Speak at, beside Glow under Count do
 L.BUTTON_H = 22
 L.TYPING_PAUSE = 0.5 -- seconds after the last key before a typed box saves
 
-local WHITE = { 1, 1, 1 }
-local GREY = { 0.5, 0.5, 0.5 }
-local TIMES_GREY = { 0.55, 0.5, 0.45 }
--- the selected row: the colour of a selected tab (UI:StyleTab), Classic and Modern
-local SEL_CLASSIC_ALPHA = 0.18 -- over the heading colour (the game's gold)
-local SEL_MODERN_ALPHA = 0.95
--- a name in its ability type's colour: mixed this far toward GREY when its reminder is off, and toward WHITE on
--- the selected row, so it reads on the highlight in every theme
-local TYPE_DIM, TYPE_LIFT = 0.5, 0.5
+-- the list's look, shared with the Special list (Notes/MechLook.lua)
+local Look = CRT.MechLook
+local WHITE, TIMES_GREY = Look.WHITE, Look.TIMES_GREY
 local HIDDEN_ALPHA = 0.5 -- a row hidden for everyone, shown with /crt dev open: its icon and name faded
 
 local function lower(s)
@@ -750,26 +744,10 @@ local function selectedIndex(enc)
     return index
 end
 
-local function mix(c, to, t)
-    return c[1] + (to[1] - c[1]) * t, c[2] + (to[2] - c[2]) * t, c[3] + (to[3] - c[3]) * t
-end
-
 -- A row name's colour: its main ability type's (Timeline/Reference.lua ABILITY_TYPES), dimmed when its reminder
--- is off and lifted on the selected row; with no known type the theme's text colour, or GREY when off.
+-- is off and lifted on the selected row (MechLook.NameColor).
 local function nameColor(item, on, isSelected)
-    local Colors = CRT.AlertColors
-    local c = item.types and item.types[1] and Colors and Colors.KnownTypeColor(item.types[1])
-    if not c then
-        c = on and CRT.PALETTE.text or GREY
-        return c[1], c[2], c[3]
-    end
-    if not on then
-        c = { mix(c, GREY, TYPE_DIM) }
-    end
-    if isSelected then
-        return mix(c, WHITE, TYPE_LIFT)
-    end
-    return c[1], c[2], c[3]
+    return Look.NameColor(item.types and item.types[1], on, isSelected)
 end
 
 -- Hovering a row: the shared ability tooltip (CRT.AbilityTip): the spell, its Journal text, then each of its ability
@@ -803,12 +781,7 @@ local function paint(index)
     end
     reveal = false
     offset = math.max(0, math.min(offset, maxOffset))
-    local h = CRT.PALETTE.heading
-    local selColor = { h[1], h[2], h[3], SEL_CLASSIC_ALPHA }
-    if UI:IsModern() then
-        local m = CRT.PALETTE.selected
-        selColor = { m[1], m[2], m[3], SEL_MODERN_ALPHA }
-    end
+    local selColor = { Look.SelectedColor(UI:IsModern()) }
     for i, row in ipairs(rows) do
         local item = items[offset + i]
         if item then
@@ -856,6 +829,12 @@ end
 -- Mechanics or Special on show (the toggle over the list): the other's list and panel are hidden.
 local function applyView()
     local mech = not (special and CRT.NoteSpecialAlerts.View() == "special")
+    if not mech then
+        -- the Mechanics panel hides: its boxes let go (leaving one saves what was typed)
+        for _, edit in ipairs({ panel.textEdit, panel.timesEdit, panel.idEdit }) do
+            edit:ClearFocus()
+        end
+    end
     list:SetShown(mech)
     ownButton:SetShown(mech)
     panel.frame:SetShown(mech)
