@@ -100,6 +100,7 @@ Profiles.SHARE = {
         popView = false, -- the pop-out's view: page state
         bosses = false, rows = false, references = false, nextRef = false, nextId = false,
         reviewRefs = false, -- which ability timeline is in use: your own ones' keys mean nothing on another computer
+        healerRows = false, -- the Healer CDs rows you picked per player stay on this computer
     },
     team = true, -- the team raid threshold (Team.lua)
     seasonStats = false, -- the raid's pull counters: data

@@ -128,6 +128,7 @@ CRT_Modules\Alerts\Roster.lua
 CRT_Modules\Timeline\View.lua
 CRT_Modules\Timeline\HealerView.lua
 CRT_Modules\Timeline\HealerPanel.lua
+CRT_Modules\Timeline\HealerRows.lua
 CRT_Modules\Timeline\ReferencePage.lua
 CRT_Modules\Timeline\ReviewTab.lua
 CRT_Modules\Timeline\SettingsTab.lua

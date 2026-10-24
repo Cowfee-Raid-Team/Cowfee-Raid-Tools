@@ -213,7 +213,7 @@ check(a and b and c and c > a and c < b, "the command is inside the do-not-packa
 -- 4. The longTerm area and the store list in Core.lua --------------------------------------------------------------
 local core = loaded["CRT_Core/Core.lua"]
 check(core:find("\n    longTerm = {},", 1, true) ~= nil, "Core.lua has a longTerm default")
-for _, s in ipairs({ "seasonStats", "tattle.history", "notes.list", "notes.history", "notes.personalShifts", "late.history", "CRTLootDB" }) do
+for _, s in ipairs({ "seasonStats", "tattle.history", "notes.list", "notes.history", "notes.personalShifts", "timeline.healerRows", "late.history", "CRTLootDB" }) do
   check(core:find(s, 1, true) ~= nil, "Core.lua's store list names " .. s)
 end
 check(core:find("DeclareStore", 1, true) ~= nil, "Core.lua says per-season stores are declared")

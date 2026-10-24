@@ -22,6 +22,8 @@ const FILES = [
   'CRT_Modules/Alerts/Reminders.lua', 'CRT_Modules/Alerts/CooldownData.lua', 'CRT_Modules/Alerts/Cooldowns.lua',
   'CRT_Modules/Timeline/AbilityTip.lua', 'CRT_Modules/Timeline/View.lua', 'CRT_Modules/Timeline/HealerView.lua',
   'CRT_Core/Sound/Engine.lua', 'CRT_Modules/Alerts/Draft.lua', 'CRT_Modules/Alerts/Saved.lua', 'CRT_Modules/Timeline/Undo.lua',
+  'CRT_Modules/Timeline/HealerRows.lua',
+  'CRT_Core/Core.lua', 'CRT_Core/Profiles.lua', // read as text only: the saved data's defaults and share rules
 ];
 const harness = require('./theme_stub')(W) + `
 local src = { ... }
@@ -152,6 +154,7 @@ local function description(kind, text, fn)
   function d:CreateButton(s, f) local x = description("button", s, f) table.insert(self.items, x) return x end
   function d:CreateDivider() local x = description("divider") table.insert(self.items, x) return x end
   function d:CreateRadio(s, isSel, set, key) local x = description("radio", s, function() set(key) end) table.insert(self.items, x) return x end
+  function d:CreateCheckbox(s, isSel, set) local x = description("checkbox", s, set) x.isSel = isSel table.insert(self.items, x) return x end
   function d:SetScrollMode() end
   function d:SetEnabled() end
   return d
@@ -204,6 +207,7 @@ run("CRT_Modules/Timeline/AbilityTip.lua", CRT)
 run("CRT_Modules/Timeline/View.lua", CRT)
 run("CRT_Modules/Timeline/HealerView.lua", CRT)
 run("CRT_Modules/Timeline/HealerPanel.lua", CRT)
+run("CRT_Modules/Timeline/HealerRows.lua", CRT)
 run("CRT_Core/Sound/Engine.lua", CRT)
 run("CRT_Modules/Alerts/Draft.lua", CRT)
 run("CRT_Modules/Alerts/Saved.lua", CRT)
@@ -544,6 +548,114 @@ do
   p:SetData({ id = 1, encounterID = 3001, length = 200, casts = {}, deaths = {} }, 3001, nil, "Nek")
   p:SetMode("healers")
   check(laneIndex(p, "healers:halo-home") ~= nil, "a recorded pull shows the healers too")
+end
+
+-- Picking a player's rows: right-click their name or a spell row; a note spell for them alone is their row ---------------
+local function source(name) for i, f in ipairs(FILES) do if f == name then return src[i] end end end
+do
+  CRT.db.timeline.healerRows = nil
+  setNote({
+    "time:20;ph:1;tag:Halo;spellid:64843;",      -- a listed major
+    "time:40;ph:1;tag:Halo;spellid:5555;",       -- Halo alone, a spell the cooldown list hasn't: Halo's own row
+    "time:50;ph:1;tag:Halo Me;spellid:6666;",    -- two players: stays on Notes
+    "time:55;ph:1;tag:healer;spellid:7777;",     -- a role word, no player: Notes
+    "time:58;ph:1;tag:Halo priest;spellid:8888;", -- the player with a class word: not them alone, Notes
+    "time:60;ph:1;tag:Halo;spellid:33206;",      -- a listed cooldown that isn't major: a row by the note
+  })
+  local v = newView()
+  local hi = laneIndex(v, "healers:halo-home")
+  local own = laneIndex(v, "healers:halo-home:5555")
+  check(own and own > hi and v.lanes[own].label == "Spell5555" and v.lanes[own].icon == "tex5555" and v.lanes[own].kind == "healercd",
+    "a line for Halo alone with an unlisted spell is a row on Halo's block: " .. labels(v))
+  check(v.lanes[own].indent == HV.INDENT and v.lanes[own].tint and v.lanes[own].tint[1] == RAID_CLASS_COLORS.PRIEST.r, "indented and tinted like the others")
+  check(#flagsOn(v, own) == 1 and flagsOn(v, own)[1].mark.t == 40, "its cast is on it")
+  local function notesTimes(view)
+    local nr = laneIndex(view, "notes")
+    local out = {}
+    for _, f in ipairs(nr and flagsOn(view, nr) or {}) do out[#out + 1] = f.mark.t end
+    table.sort(out)
+    return table.concat(out, ",")
+  end
+  check(notesTimes(v) == "50,55,58", "the Notes row keeps the shared lines only: " .. notesTimes(v))
+  check(laneIndex(v, "healers:halo-home:33206") ~= nil, "a listed spell the note gives shows")
+  -- the menu: a right-click on the name in the label column
+  local function openOn(index)
+    local l = v.labels[index]
+    local before = #menus
+    l.OnClick(l, "RightButton")
+    return #menus > before and menus[#menus] or nil
+  end
+  local function boxes(root)
+    local out = {}
+    for _, it in ipairs(root.items) do if it.kind == "checkbox" then out[#out + 1] = it end end
+    return out
+  end
+  local function box(root, id) for _, it in ipairs(boxes(root)) do if it.text:find("Spell" .. id .. "$") then return it end end end
+  local root = openOn(hi)
+  check(root and root.items[1].kind == "title" and root.items[1].text == "Halo", "a right-click on the name opens a menu titled with it")
+  local order = {}
+  for _, it in ipairs(boxes(root)) do order[#order + 1] = (it.text:match("Spell(%d+)$") or "?") .. (it.isSel() and "+" or "-") end
+  check(table.concat(order, ",") == "64843+,200183+,62618+,421453+,472433-,33206+,47788-,5555+",
+    "the class's majors, then the rest, then the note's spells, checked when shown: " .. table.concat(order, ","))
+  check(box(root, 64843).text:find("|Ttex64843:", 1, true) == 1, "each with its icon: " .. box(root, 64843).text)
+  local last = root.items[#root.items]
+  check(last.kind == "button" and last.text == CRT.TimelineHealerRows.TEXT.reset, "and Reset to defaults last")
+  -- the same menu from a spell row
+  local fromRow = openOn(laneIndex(v, "healers:halo-home:62618"))
+  check(fromRow and fromRow.items[1].text == "Halo" and #boxes(fromRow) == 8, "a spell row opens the same menu")
+  -- untick: the row goes, its casts aren't drawn anywhere, and it is saved
+  box(root, 64843).fn()
+  check(laneIndex(v, "healers:halo-home:64843") == nil, "an unticked row goes")
+  check(CRT.db.timeline.healerRows["halo-home"][64843] == false, "saved as hidden: " .. tostring(CRT.db.timeline.healerRows["halo-home"][64843]))
+  check(notesTimes(v) == "50,55,58", "its cast isn't moved to the Notes row")
+  check(not box(root, 64843).isSel(), "the menu shows it unticked")
+  check(N:TimerAt(1, 2) and N:TimerAt(1, 2).spellId == 64843, "the note keeps the line")
+  -- tick one that isn't shown by default: its row comes
+  box(root, 47788).fn()
+  check(laneIndex(v, "healers:halo-home:47788") ~= nil and CRT.db.timeline.healerRows["halo-home"][47788] == true, "a ticked row comes, saved as shown")
+  -- the note's own spell can be hidden too, and its line doesn't go back to Notes
+  box(root, 5555).fn()
+  check(laneIndex(v, "healers:halo-home:5555") == nil and notesTimes(v) == "50,55,58", "a hidden note spell row: not drawn, not on Notes")
+  -- ticked back to its default: the saved entry goes
+  box(root, 5555).fn()
+  check(laneIndex(v, "healers:halo-home:5555") ~= nil and CRT.db.timeline.healerRows["halo-home"][5555] == nil, "back to its default, nothing is kept for it")
+  -- kept after a reload (a new view reads the saved data)
+  local w = newView()
+  check(laneIndex(w, "healers:halo-home:64843") == nil and laneIndex(w, "healers:halo-home:47788") ~= nil, "kept on a new view")
+  -- the shape: player key, spell ID, true or false
+  local shape = true
+  for key, spells in pairs(CRT.db.timeline.healerRows) do
+    if type(key) ~= "string" or key ~= key:lower() or type(spells) ~= "table" then shape = false end
+    for id, on in pairs(spells) do if type(id) ~= "number" or type(on) ~= "boolean" then shape = false end end
+  end
+  check(shape, "healerRows[player key][spellID] = true or false")
+  -- Reset to defaults
+  last.fn()
+  check(CRT.db.timeline.healerRows["halo-home"] == nil, "Reset forgets the player's picks")
+  check(laneIndex(v, "healers:halo-home:64843") ~= nil and laneIndex(v, "healers:halo-home:47788") == nil, "and the default rows are back")
+  -- someone who may not change the raid note picks rows too (a view setting)
+  group.leader = false
+  v:Refresh()
+  local mine = openOn(laneIndex(v, "healers:me-home:31821"))
+  check(mine and mine.items[1].text == "Me", "a non-lead gets the menu: " .. tostring(mine and mine.items[1].text))
+  local mo = {}
+  for _, it in ipairs(boxes(mine)) do mo[#mo + 1] = (it.text:match("Spell(%d+)$") or "?") .. (it.isSel() and "+" or "-") end
+  check(table.concat(mo, ",") == "31821+,31884+,216331+,375576-,6940-", "your spec's majors ticked, the rest not: " .. table.concat(mo, ","))
+  -- every row hidden: the name row stays, so they can be shown again
+  for _, id in ipairs({ 31821, 31884, 216331 }) do box(mine, id).fn() end
+  local mi = laneIndex(v, "healers:me-home")
+  check(mi ~= nil and laneIndex(v, "healers:me-home:31821") == nil and v.lanes[mi].note == HV.TEXT.allHidden, "every row hidden: the name row stays with a note")
+  check(openOn(mi) ~= nil, "and still opens the menu")
+  group.leader = true
+  CRT.db.timeline.healerRows = nil
+  -- the saved data: a default in Core.lua, on its long-term list, never in a profile, not a per-boss store
+  local core, profiles = source("CRT_Core/Core.lua"), source("CRT_Core/Profiles.lua")
+  check(core:find("healerRows = {}", 1, true) ~= nil, "Core.lua gives healerRows its default")
+  check(core:find("timeline.healerRows", 1, true) ~= nil, "and names it on its long-term list")
+  local share = profiles:match("\\n    timeline = (%b{})")
+  check(share and share:find("healerRows = false", 1, true) ~= nil, "Export settings only never takes it")
+  check(not source("CRT_Modules/Timeline/Data.lua"):find("healerRows", 1, true), "not declared to the season purge")
+  setNote({})
 end
 
 -- Your own casts, for a healer who may not change the raid note ----------------------------------------------------
