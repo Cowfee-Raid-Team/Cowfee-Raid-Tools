@@ -4,7 +4,7 @@
 // Usage: node run_alerts_special.js CRT_Modules/Timeline/Data.lua CRT_Modules/Timeline/Database.lua CRT_Modules/Timeline/Reference.lua
 //   CRT_Modules/Timeline/Lanes.lua CRT_Modules/Alerts/Rules.lua CRT_Modules/Alerts/Engine.lua CRT_Modules/Alerts/Speech.lua
 //   CRT_Modules/Notes/Parse.lua CRT_Modules/Notes/Data.lua CRT_Modules/Notes/Engine.lua CRT_Modules/Alerts/Reminders.lua
-//   CRT_Modules/Alerts/Special.lua CRT_Data/Bosses/Registry.lua
+//   CRT_Modules/Alerts/Special.lua CRT_Dev/Dev/SpecialSample.lua CRT_Data/Bosses/Registry.lua
 const fs = require('fs');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
@@ -279,6 +279,30 @@ check("special: the dev sample is listed for its boss only, never saved", functi
   S.dev[9002] = { { key = "sample", label = "Sample", when = { times = "0:10" } } }
   assert(keys(S:List(9002)) == "sample" and #S:List(9001) == 4, "listed on its boss only")
   assert(CRT.db.alerts.special[9002] == nil, "nothing saved")
+end)
+
+check("special: /crt dev special adds a sample to the boss on show, off takes it away", function()
+  fresh()
+  local D = CRT.SpecialSampleDev
+  assert(D, "CRT_Dev/Dev/SpecialSample.lua is loaded")
+  assert(D:Command("dev specials") == false and D:Command("dev markers") == false, "other commands are not its")
+  CRT.NoteReminders = { Boss = function() return 9002 end }
+  assert(D:Command("dev special") == true, "its command")
+  local list = S:List(9002)
+  assert(#list == 1 and list[1].key == "devSample" and list[1].when.times and list[1].who.mode == "rotation" and list[1].marks, "a typed sample on a boss with no ability timeline")
+  assert(next(CRT.db.alerts.special) == nil, "nothing saved")
+  CRT.NoteReminders.Boss = function() return 9001 end
+  D:Command("dev special")
+  local sample = S:Get(9001, "devSample")
+  assert(sample and sample.when.row == "Orb Burst" and #S:List(9001) == 5, "on its ability timeline's first row with casts")
+  assert(#S:Items(9001, sample, { group = "mythic", all = true }) == 4, "its casts")
+  D:Command("dev special off")
+  assert(S:Get(9001, "devSample") == nil and #S:List(9002) == 1, "off: gone from that boss only")
+  CRT.NoteReminders.Boss = function() return nil end
+  wipe(printed)
+  assert(D:Command("dev special") == true and printed[1] and printed[1]:find("No boss", 1, true), "no boss: says so")
+  CRT.NoteReminders = nil
+  wipe(printed)
 end)
 
 print(ok_ .. " passed, " .. fail .. " failed")
