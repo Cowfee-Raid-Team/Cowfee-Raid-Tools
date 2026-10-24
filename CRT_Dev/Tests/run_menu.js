@@ -287,6 +287,13 @@ do
 end
 
 section("the scroll path: too many pages scroll inside the menu with the theme's bar")
+-- The title bar's version text: the internal build number only in a developer copy (CRT.BUILD)
+local savedVersion, savedBuild = CRT.version, CRT.BUILD
+CRT.version, CRT.BUILD = "1.1.2", nil
+check(UI.VersionText() == "v1.1.2", "the version text without a build number")
+CRT.BUILD = 4
+check(UI.VersionText() == "v1.1.2 build#004", "the version text with build 4 reads build#004")
+CRT.version, CRT.BUILD = savedVersion, savedBuild
 print(passes .. " passed")
 if fails > 0 then print(fails .. " failed") end
 MENU_FAILS = fails
