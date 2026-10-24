@@ -60,6 +60,8 @@ CRT_Modules\Notes\Engine.lua
 CRT_Modules\Notes\Window.lua
 CRT_Modules\Notes\Alert.lua
 CRT_Modules\Notes\Comm.lua
+CRT_Modules\Notes\Shifts.lua
+CRT_Modules\Notes\Proposals.lua
 CRT_Core\Integrations\NoteTargets.lua
 CRT_Core\Integrations\NSRT.lua
 CRT_Core\Integrations\MRT.lua
@@ -125,6 +127,7 @@ CRT_Modules\Alerts\Cooldowns.lua
 CRT_Modules\Alerts\Roster.lua
 CRT_Modules\Timeline\View.lua
 CRT_Modules\Timeline\HealerView.lua
+CRT_Modules\Timeline\HealerPanel.lua
 CRT_Modules\Timeline\ReferencePage.lua
 CRT_Modules\Timeline\ReviewTab.lua
 CRT_Modules\Timeline\SettingsTab.lua

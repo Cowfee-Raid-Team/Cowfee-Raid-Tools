@@ -422,15 +422,25 @@ function Engine.ItemFor(t, index, mine)
     return item
 end
 
--- One item per timer.
+-- One item per timer. A line of yours you moved to your own time on the Timeline's Healer CDs
+-- (Notes/Shifts.lua) runs at that time; everyone else's lines, and the note itself, keep theirs.
 local function entries(run)
     local n = noteFor(run)
     if not n then
         return {}
     end
+    local Shifts = CRT.NoteShifts
+    local id = Shifts and Notes.IdOf and Notes:IdOf(n)
+    local moved = id and Shifts:ByLine(id)
     local out = {}
     for index, t in ipairs(n.timers) do
-        out[#out + 1] = Engine.ItemFor(t, index, Engine:IsMine(t))
+        local mine = Engine:IsMine(t)
+        local item = Engine.ItemFor(t, index, mine)
+        local own = mine and moved and moved[t.line]
+        if own then
+            item.ph, item.time = own.ph, own.t
+        end
+        out[#out + 1] = item
     end
     return out
 end

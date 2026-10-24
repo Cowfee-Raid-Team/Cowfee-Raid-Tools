@@ -36,9 +36,10 @@ local ADDON, CRT = ...
 -- chips wrap onto rows, up to 3 shown (fewer when the lanes
 -- would get under 3 rows); the wheel scrolls the rest. A right click on the track that doesn't move
 -- opens a menu there: New alert here, or Place a template or a cooldown.
--- view:SetMode("healers") (the pop-out's Healer CDs toggle) draws Timeline/HealerView.lua's rows in place of
--- the ability rows: Raid damage, then each healer with one row per major cooldown, the raid note's cooldown
--- lines as flags on them; the axis, zoom, scrolling, flag drag and Undo are this view's. SetMode(nil) goes back.
+-- view:SetMode("healers") (the pop-out's Healer CDs toggle) draws Timeline/HealerView.lua's layout: the
+-- ability rows as they are, then each healer with one row per major cooldown, the raid note's cooldown lines
+-- as flags on them; the axis, zoom, scrolling, flag drag and Undo are this view's. A non-lead's drag of their
+-- own cast there keeps their own time (HealerView.MovePersonal). SetMode(nil) goes back.
 
 local View = {}
 CRT.TimelineView = View
@@ -313,7 +314,7 @@ local function abilityTip(owner, lane, spellID, lines)
 end
 
 local function iconEnter(b)
-    -- a Healer CDs Raid damage icon is drawn on that row but belongs to its own ability row (mark.source)
+    -- a mark drawn on another row than its own names its own (mark.source)
     local mark = b.mark
     local lane = mark.source or b.lane
     if lane.kind == "reference" then
@@ -394,6 +395,10 @@ local function flagEnter(f)
         source = m.difficulty and string.format(TEXT.raidNoteOf, m.difficulty) or TEXT.raidNote
     end
     GameTooltip:AddLine(source, 0.85, 0.85, 0.85)
+    -- Healer CDs' own lines: whose cast it is and who may move it, your time against the raid's
+    for _, line in ipairs(m.tipLines or {}) do
+        GameTooltip:AddLine(line, 0.85, 0.85, 0.85, true)
+    end
     GameTooltip:Show()
 end
 
@@ -1682,9 +1687,9 @@ local function canEditRaid()
 end
 
 -- Whether a marker can be moved, Alt+dragged or deleted by you: your reminders always, a raid note
--- line only when you may change the raid note.
+-- line only when you may change the raid note, or (only moved, for you) your own cast on Healer CDs.
 local function canChange(m)
-    return m ~= nil and (m.kind ~= "note" or (canEditRaid()))
+    return m ~= nil and (m.kind ~= "note" or m.hvOwn or (canEditRaid()))
 end
 
 -- No hover highlight on a flag you can't change (a raid note line, for anyone else); its tooltip
@@ -1897,11 +1902,14 @@ function Methods:FinishMove()
     elseif m.kind == "note" then
         -- asked again at the release: you may have lost the right since the grab
         local allowed, why = canEditRaid()
-        if not allowed then
+        if not allowed and m.hvOwn and CRT.TimelineHealerView then
+            ok = CRT.TimelineHealerView.MovePersonal(self, m, ph, seconds) -- your own time, the raid note untouched
+        elseif not allowed then
             CRT:Print(why or TEXT.moveRefused)
             return
+        else
+            ok = writeNote(m, ph, seconds, add)
         end
-        ok = writeNote(m, ph, seconds, add)
     end
     if not ok then
         CRT:Print(TEXT.moveRefused)
@@ -3449,7 +3457,8 @@ end
 function Methods:FlagMenu(m, owner)
     local title = tostring(m.text or "")
     title = title .. " \194\183 " .. CRT.AlertReminders.FormatTimes({ { ph = m.ph, t = m.time } })
-    local changeable = canChange(m)
+    -- your own cast on Healer CDs moves for you only: its line is still the raid's to edit or delete
+    local changeable = canChange(m) and not (m.hvOwn and not canEditRaid())
     contextMenu(owner, function(root)
         root:CreateTitle(title)
         root:CreateButton(changeable and TEXT.edit or TEXT.view, function()
@@ -3903,11 +3912,11 @@ function Methods:Refresh()
     local width = self:VisibleWidth()
     local length = pull and math.max(1, self.extra.length or 0) or 1
     -- the saved notes' markers, collected before the lanes are drawn since they may add the Notes lane;
-    -- Healer CDs puts its own rows in place of the lanes, the note lines on them
+    -- Healer CDs adds its own rows under the ability rows, the cooldown lines on them
     local HealerView = pull and self.mode == "healers" and CRT.TimelineHealerView
     if HealerView then
         lanes, self.marks = HealerView.Build(self, lanes, length)
-        self.lanes, self.ignoredLanes, self.unknown = lanes, {}, {}
+        self.lanes = lanes
     else
         self.marks = self:Marks(lanes, length)
     end
@@ -3955,7 +3964,7 @@ function Methods:Refresh()
         l.stripe:SetPoint("TOPLEFT", self.body, "TOPLEFT", 0, y)
         l.stripe:SetPoint("BOTTOMRIGHT", self.body, "TOPRIGHT", 0, y - ROW_H)
         -- a reference row is tinted faintly in its type's color; other rows keep the alternate stripe
-        local tint = (lane.kind == "reference" or lane.kind == "raid") and lane.color
+        local tint = lane.kind == "reference" and lane.color
         if tint then
             l.stripe:SetColorTexture(tint[1], tint[2], tint[3], TINT_ALPHA)
         else
@@ -4034,7 +4043,7 @@ function Methods:Refresh()
                     b.bg:SetColorTexture(r, g, bl)
                 end
             else
-                local icon = mark.icon or lane.icon -- a Raid damage icon has its own row's
+                local icon = mark.icon or lane.icon
                 if lane.kind == "spell" and not icon then
                     local ok, tex = pcall(C_Spell.GetSpellTexture, mark.spellID)
                     icon = ok and tex or UNNAMED_ICON

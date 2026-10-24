@@ -46,9 +46,9 @@ local TEXT = {
     yours = "yours",
     abilities = "Abilities",
     healers = "Healer CDs",
-    viewHelp = "Abilities shows the boss's ability timeline. Healer CDs shows each healer with one row per major healing cooldown, and a Raid damage row on top.\n\n"
+    viewHelp = "Abilities shows the boss's ability timeline. Healer CDs shows the same ability rows, then each healer with one row per major healing cooldown.\n\n"
         .. "The healers are the players on the active Raid Groups layout whose role is healer: the role you set there (right-click a name, Set role), else the game's role. Anyone the raid note gives a cooldown gets rows too.\n\n"
-        .. "The casts are the raid note's cooldown lines. Drag one to move it, or double-click a row to add one. Only this window has Healer CDs; the docked timeline always shows the abilities.",
+        .. "The casts are the raid note's cooldown lines. The raid leader or an assistant drags one to move it in the raid note, or double-clicks a row to add one. Anyone else drags only their own casts: the new time is only yours, for your own alerts, and Send to raid lead proposes it. Only this window has Healer CDs; the docked timeline always shows the abilities.",
 }
 
 local GRAY = { 0.35, 0.35, 0.35 }

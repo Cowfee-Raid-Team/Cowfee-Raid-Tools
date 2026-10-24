@@ -134,6 +134,10 @@ local defaults = {
         history = {}, -- each note's last 5 earlier texts, by note id (Notes/Data.lua); never shared or exported
         showOutsideRaid = false, -- true also shows the three note windows outside a raid instance
         trustedOnly = true, -- only accept shared notes from the raid leader or assistants
+        -- Healer CDs (Notes/Shifts.lua, Notes/Proposals.lua): your own times for your raid note cooldowns, by
+        -- note and line, kept on this computer; and whether healers' proposed changes are accepted at once
+        personalShifts = {},
+        autoAcceptCooldowns = false,
         shareTarget = "crt", -- Share's Send to: "crt", a note target's key (Integrations/), or "all"
         -- keepEmpty keeps a window up, blank at its own transparency, while it has nothing to show, so a
         -- note being cleared or shared doesn't make it vanish (Notes/Window.lua).

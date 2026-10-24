@@ -376,6 +376,16 @@ function Notes:Parsed(id)
     return entry.note
 end
 
+-- The id of the note a parsed note (from Parsed) was read from, or nil (the alerts' note block asks it).
+function Notes:IdOf(note)
+    for id, entry in pairs(parsed) do
+        if entry.note == note then
+            return id
+        end
+    end
+    return nil
+end
+
 local DIFFICULTY_RANK = { mythic = 1, heroic = 2, normal = 3 }
 
 -- Your guild's name, read now (so a guild renamed or changed shows at once); nil out of a guild.

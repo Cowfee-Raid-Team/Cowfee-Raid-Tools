@@ -1,12 +1,14 @@
 local ADDON, CRT = ...
 
 -- Timeline: the Healer CDs view, the pop-out's other layout (the Abilities | Healer CDs toggle on its title
--- strip, Timeline/Page.lua). The timeline view (Timeline/View.lua) draws it in place of the ability rows
+-- strip, Timeline/Page.lua). The timeline view (Timeline/View.lua) draws it in place of the Abilities layout
 -- while view:SetMode("healers"), with the same axis, zoom, scroll, drag-zoom and Fit. Top to bottom:
---   Raid damage   the casts of the ability timeline's raid damage rows (type raid), icons only, on one row
---   each healer   a row with their name in class colour and their spec, then one row per major cooldown
---                 (the cooldown list's major entries for their spec, else for their class), then one per
---                 other listed cooldown the raid note gives them
+--   the ability rows  every row the Abilities layout shows, as it shows them (lanes, colours, types, phase
+--                     lines, deaths), without its Notes and Personal notes rows
+--   each healer       a row with their name in class colour and their spec, then one row per major cooldown
+--                     (the cooldown list's major entries for their spec, else for their class), then one per
+--                     other listed cooldown the raid note gives them
+--   the panel rows    your moved casts' bar and the raid lead's proposed changes (Timeline/HealerPanel.lua)
 -- The healers are the roster's players (Alerts/Roster.lua: the active Raid Groups layout, else the group)
 -- whose role is healer: a role set by hand (Groups.HandRole) wins, else the game's role in the group; a
 -- player whose role is unknown is left out. Anyone the raid note gives a listed cooldown gets rows too.
@@ -14,16 +16,18 @@ local ADDON, CRT = ...
 -- The casts are the raid note's cooldown lines for the boss and difficulty shown (the view's
 -- NoteAndReminderMarks, which places its flags), each on the row of its player and spell, with a band for
 -- the cooldown after it; a cast inside the cooldown of the one before it on its row gets a red edge.
--- Dragging a cast moves its note line (the view's flag move, so Undo works); a double-click on a cooldown
--- row places one there for that player (the view's PlaceCooldownAt, by the raid leader and assistant rules).
+-- The raid leader and assistants drag any cast to move its note line (the view's flag move, so Undo works).
+-- Anyone else drags only their own casts, and only for themselves: the new time is kept on this computer
+-- (Notes/Shifts.lua, HV.MovePersonal), your alerts use it, and the raid note stays as it is. A moved cast
+-- draws at your time, with the raid's time as a dashed ghost and "2:51 to 3:05" beside it. Other players'
+-- casts don't move for them; their name rows say locked. A double-click on a cooldown row places one there
+-- for that player (the view's PlaceCooldownAt, by the raid leader and assistant rules).
 -- Built once per refresh (data, zoom, or a roster or role change: HV.Watch); scrolling only moves the track.
 
 local HV = {}
 CRT.TimelineHealerView = HV
 
 local TEXT = {
-    raid = "Raid damage",
-    raidTip = "Raid-wide damage from the ability timeline: its rows of type Raid damage.",
     hint = "Drag a cast to move it \194\183 double-click a row to add a cast \194\183 red edge: cast while still on cooldown",
     noHealers = "No healers found. Right-click a name on Raid Groups and pick Set role > Healer.",
     classUnknown = "Class unknown until they are seen in a group once.",
@@ -33,6 +37,14 @@ local TEXT = {
     assigned = "Has cooldowns in the raid note",
     cooldown = "Cooldown %d:%02d",
     addCast = "Double-click this row to add a cast.",
+    yours = "yours",
+    locked = "locked",
+    ownTip = "Your casts: drag one to move it for you. Your alerts use your time; the raid note stays as it is.",
+    lockedTip = "Only %s, the raid leader or an assistant can move these.",
+    lockedCast = "Only %s can move this, for themselves. The raid leader or an assistant can move it in the raid note.",
+    ownCast = "Yours: drag it to move it for you.",
+    raidTime = "Raid note time: %s",
+    moved = "%s to %s", -- a moved cast's label: the raid's time, then yours
 }
 HV.TEXT = TEXT
 
@@ -41,6 +53,8 @@ local BAND_ALPHA = 0.22 -- a cooldown's band after its cast, in the accent colou
 local BAND_INSET = 4 -- the band's gap from its row's top and bottom
 local BAND_LINE_W = 1 -- the line where the cooldown is up again
 local SAME_MOMENT = 0.05 -- seconds: two casts this close are the same moment, not too soon
+local GHOST_W, GHOST_ALPHA = 18, 0.25 -- a moved cast's ghost at the raid's time: a faint square where its icon was
+local GHOST_DASH, GHOST_GAP = 4, 3 -- and a dashed pole down its row
 local UNNAMED_ICON = "Interface\\Icons\\INV_Misc_QuestionMark"
 local GROUP_WORD = { "^g%d+$", "^group%d+$" } -- tag words that name a raid group, not a player
 
@@ -279,46 +293,8 @@ end
 
 -- The lanes ------------------------------------------------------------------------------------------
 
-local function hasType(types, key)
-    for _, t in ipairs(types or {}) do
-        if t == key then
-            return true
-        end
-    end
-    return false
-end
-
 local function tooltipOwner(owner)
     CRT.UI.TooltipOwner(GameTooltip, owner, "ANCHOR_RIGHT", nil, nil, "timeline")
-end
-
-local function raidTip(l)
-    tooltipOwner(l)
-    GameTooltip:SetText(TEXT.raid, 1, 1, 1)
-    GameTooltip:AddLine(TEXT.raidTip, 0.85, 0.85, 0.85, true)
-    GameTooltip:Show()
-end
-
--- The Raid damage row: every cast of the ability rows of type raid, by time. Each keeps its own row
--- (source) for its tooltip and its icon.
-local function raidLane(lanes)
-    local marks = {}
-    for _, lane in ipairs(lanes or {}) do
-        if (lane.kind == "reference" or lane.kind == "spell") and hasType(lane.types, "raid") then
-            local icon = lane.icon or spellIcon(lane.spellID) or UNNAMED_ICON
-            for _, m in ipairs(lane.marks or {}) do
-                if type(m.t) == "number" then
-                    marks[#marks + 1] = { t = m.t, dur = m.dur, spellID = m.spellID or lane.spellID, icon = icon, source = lane, age = m.age }
-                end
-            end
-        end
-    end
-    table.sort(marks, function(a, b)
-        return a.t < b.t
-    end)
-    local Reference = CRT.TimelineReference
-    local raid = Reference and Reference.TYPES and Reference.TYPES.raid
-    return { key = "healers:raid", kind = "raid", label = TEXT.raid, color = raid and raid.color, marks = marks, tip = raidTip }
 end
 
 local function headerTip(who)
@@ -330,6 +306,11 @@ local function headerTip(who)
         GameTooltip:AddLine(line, 0.85, 0.85, 0.85, true)
         if #who.rows == 0 then
             GameTooltip:AddLine(TEXT.classUnknown, 0.85, 0.85, 0.85, true)
+        end
+        if who.marker == TEXT.yours then
+            GameTooltip:AddLine(TEXT.ownTip, 0.85, 0.85, 0.85, true)
+        elseif who.marker == TEXT.locked then
+            GameTooltip:AddLine(string.format(TEXT.lockedTip, p.name), 0.85, 0.85, 0.85, true)
         end
         GameTooltip:Show()
     end
@@ -355,13 +336,66 @@ local function copy(m)
     return c
 end
 
--- The view's lanes and flags for Healer CDs, from lanes (the ability timeline's, as the view built them)
--- and the boss's note lines and reminders up to length seconds. Returns the lanes (Raid damage, then each
--- player's header and cooldown rows) and the marks drawn as flags: a note line once on each row it is for
--- (row set, cd its spell's length, tooSoon when cast inside the cooldown of the one before it on its row).
--- Lines for no listed cooldown or no player are not drawn. Your own reminders go on your own rows.
+-- Whether you may change the raid note now (Notes:CanEditRaid: the raid leader or an assistant).
+local function canEditRaid()
+    local Notes = CRT.Notes
+    return Notes and Notes.CanEditRaid and Notes:CanEditRaid() and true or false
+end
+
+-- Whether a note line is in one of your personal notes (yours to edit, never a raid note line).
+local function personalNote(m)
+    local record = CRT.Notes and CRT.Notes:Get(m.noteID)
+    return record and record.personal and true or false
+end
+
+-- Who may move a raid note cast on Healer CDs: on your own rows it is yours (hvOwn: a drag keeps your own
+-- time, HV.MovePersonal, unless you may change the raid note), drawn at your time when you moved it (moved,
+-- with raidT the raid's time for its ghost); on anyone else's it is locked unless you may change the raid
+-- note. Each gets its tooltip lines (tipLines, Timeline/View.lua's flag tooltip).
+local function claim(view, r, c, lead, length)
+    if c.kind ~= "note" or personalNote(c) then
+        return
+    end
+    if not r.player.me then
+        if not lead then
+            c.hvLocked = true
+            c.tipLines = { string.format(TEXT.lockedCast, r.player.name) }
+        end
+        return
+    end
+    c.hvOwn = true
+    if not lead then
+        c.tipLines = { TEXT.ownCast }
+    end
+    local Shifts, Reminders = CRT.NoteShifts, CRT.AlertReminders
+    local s = Shifts and Shifts:Find(c.noteID, c.expected)
+    local t = s and Reminders.AbsoluteTime(view.pull and view.pull.reference, s.ph, s.t)
+    if t then
+        t = t + (c.shiftDelta or 0)
+        if t >= 0 and t <= length then
+            c.raidT, c.moved = c.t, s
+            c.t, c.ph, c.time = t, s.ph, s.t
+            c.tipLines = c.tipLines or {}
+            c.tipLines[#c.tipLines + 1] = string.format(TEXT.raidTime, CRT.TimelineView.Format(c.raidT))
+        end
+    end
+end
+
+-- The view's lanes and flags for Healer CDs, from lanes (the ability rows, as the view built them for the
+-- Abilities layout) and the boss's note lines and reminders up to length seconds. Returns the lanes (the
+-- ability rows, then each player's header and cooldown rows, then the panel rows) and the marks drawn as
+-- flags: a note line once on each row it is for (row set, cd its spell's length, tooSoon when cast inside the
+-- cooldown of the one before it on its row); a line for a boss ability on its ability row, as Abilities draws
+-- it. Lines for no listed cooldown or no player and no ability row are not drawn. Your own reminders go on your
+-- own rows. view.hvNoteIds is the raid notes whose lines are drawn, for the panel.
 function HV.Build(view, lanes, length)
-    local marks = view:NoteAndReminderMarks({}, length)
+    lanes = lanes or {}
+    -- a copy for the marks to find their ability rows in (it may get a Notes row added, never drawn here)
+    local rowsFor = {}
+    for i, lane in ipairs(lanes) do
+        rowsFor[i] = lane
+    end
+    local marks = view:NoteAndReminderMarks(rowsFor, length)
     local players = HV.Players()
     local find, classes = nameIndex(players), classWords()
     local people, byKey, me = {}, {}, nil
@@ -406,7 +440,7 @@ function HV.Build(view, lanes, length)
             end
         end
     end
-    local shown = {}
+    local shown, noteIds, seenNote = {}, {}, {}
     local function put(m, r)
         local c = copy(m)
         r.casts[#r.casts + 1] = c
@@ -415,7 +449,13 @@ function HV.Build(view, lanes, length)
     end
     for _, m in ipairs(marks) do
         local e = HV.Listed(m.spellID)
-        if e and m.kind == "note" then
+        if m.kind == "note" and m.noteID ~= nil and not seenNote[m.noteID] and not personalNote(m) then
+            seenNote[m.noteID] = true
+            noteIds[#noteIds + 1] = m.noteID
+        end
+        if not e and m.kind == "note" and m.row and m.row <= #lanes then
+            shown[#shown + 1] = m -- a line for a boss ability: on its row, as Abilities draws it
+        elseif e and m.kind == "note" then
             local seen = {}
             for _, tag in ipairs(m.tags or {}) do
                 local p = usable(tag) and find(tag) or nil
@@ -438,22 +478,35 @@ function HV.Build(view, lanes, length)
             end
         end
     end
-    local out = { raidLane(lanes) }
+    -- the ability rows as the Abilities layout shows them, then the healers
+    local out = {}
+    for _, lane in ipairs(lanes) do
+        out[#out + 1] = lane
+    end
+    local abilities = #out
+    local lead = canEditRaid()
     for _, who in ipairs(people) do
         if #who.rows > 0 or who.unknownClass then
             local p = who.p
             local spec = specName(p.spec)
-            out[#out + 1] = { key = "healers:" .. p.key:lower(), kind = "healer", label = p.name .. (spec and (DOT .. spec) or ""),
-                class = who.class, marks = {}, tip = headerTip(who), note = #who.rows == 0 and TEXT.classUnknown or nil }
+            -- yours or locked, for someone who may not change the raid note
+            who.marker = not lead and (p.me and TEXT.yours or TEXT.locked) or nil
+            local label = p.name .. (spec and (DOT .. spec) or "") .. (who.marker and (DOT .. who.marker) or "")
+            out[#out + 1] = { key = "healers:" .. p.key:lower(), kind = "healer", label = label, class = who.class,
+                marks = {}, tip = headerTip(who), note = #who.rows == 0 and TEXT.classUnknown or nil }
             for _, r in ipairs(who.rows) do
                 out[#out + 1] = r
                 r.row = #out
             end
         end
     end
-    -- each row's casts by time: a cast inside the cooldown of the one before it is too soon
+    -- each row's casts (at your own time where you moved one) by time: a cast inside the cooldown of the one
+    -- before it is too soon
     for _, who in ipairs(people) do
         for _, r in ipairs(who.rows) do
+            for _, c in ipairs(r.casts) do
+                claim(view, r, c, lead, length)
+            end
             table.sort(r.casts, function(a, b)
                 return a.t < b.t
             end)
@@ -468,8 +521,29 @@ function HV.Build(view, lanes, length)
             end
         end
     end
-    view.hvEmpty = #out == 1
+    view.hvEmpty = #out == abilities
+    view.hvNoteIds = noteIds
+    local Panel = CRT.TimelineHealerPanel
+    if Panel then
+        Panel.Rows(view, out)
+    end
     return out, shown
+end
+
+-- A dragged cast of yours let go at phase ph, seconds in, by someone who may not change the raid note: your
+-- own time for that line (Notes/Shifts.lua), or back to the raid's when dropped on it. False when the line
+-- changed since it was drawn.
+function HV.MovePersonal(view, m, ph, seconds)
+    local Notes, Shifts = CRT.Notes, CRT.NoteShifts
+    local timer, raw = Notes:TimerAt(m.noteID, m.line)
+    if not (Shifts and timer and m.expected ~= nil and raw == m.expected) then
+        return false
+    end
+    if ph == timer.ph and seconds == timer.time then
+        Shifts:Clear(m.noteID, raw)
+        return true
+    end
+    return Shifts:Set(m.noteID, raw, ph, seconds, timer.spellId)
 end
 
 -- Drawing --------------------------------------------------------------------------------------------
@@ -485,11 +559,58 @@ local function bandTexture(view, n)
     return tex
 end
 
+local function moveLabel(view, n)
+    view.hvMoveLabels = view.hvMoveLabels or {}
+    local fs = view.hvMoveLabels[n]
+    if not fs then
+        fs = view.hvBandFrame:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+        view.hvMoveLabels[n] = fs
+    end
+    fs:Show()
+    return fs
+end
+
+-- The ghosts of your moved casts at the raid's time (a faint square and a dashed pole on the cast's row), each
+-- with "2:51 to 3:05" right of the later of the two. n: the band textures used so far; returns the new count
+-- and the labels used.
+local function drawMoved(view, n, x, length)
+    local View = CRT.TimelineView
+    local rowH, labels = View.ROW_H, 0
+    local r, g, b = rgba("accent")
+    for _, m in ipairs(view.marks or {}) do
+        if m.moved and m.raidT and m.row then
+            local gx, top = x(m.raidT), -(m.row - 1) * rowH
+            n = n + 1
+            local square = bandTexture(view, n)
+            square:SetColorTexture(r, g, b, GHOST_ALPHA)
+            square:ClearAllPoints()
+            square:SetPoint("TOPLEFT", view.track, "TOPLEFT", gx - GHOST_W / 2, top - 1)
+            square:SetSize(GHOST_W, GHOST_W)
+            for y = 3, rowH - 3 - GHOST_DASH, GHOST_DASH + GHOST_GAP do
+                n = n + 1
+                local dash = bandTexture(view, n)
+                dash:SetColorTexture(r, g, b, 1)
+                dash:ClearAllPoints()
+                dash:SetPoint("TOPLEFT", view.track, "TOPLEFT", gx - 1, top - y)
+                dash:SetSize(2, GHOST_DASH)
+            end
+            labels = labels + 1
+            local fs = moveLabel(view, labels)
+            fs:SetTextColor(rgba("label"))
+            fs:SetText(string.format(TEXT.moved, View.Format(m.raidT), View.Format(math.min(length, m.t))))
+            fs:ClearAllPoints()
+            fs:SetPoint("LEFT", view.track, "TOPLEFT", math.max(gx, x(m.t)) + GHOST_W / 2 + 4, top - rowH / 2)
+        end
+    end
+    return n, labels
+end
+
 -- The cooldown bands of the shown casts (from each cast to when its cooldown is up, cut at the timeline's
--- end) and the hint line under the rows. Hides the bands outside Healer CDs.
+-- end), your moved casts' ghosts, the panel rows (Timeline/HealerPanel.lua) and the hint line under the rows.
+-- Hides them all outside Healer CDs.
 function HV.Draw(view, length)
     local on = view.mode == "healers" and view.pull ~= nil
-    local n = 0
+    local n, labels = 0, 0
     if on then
         if not view.hvBandFrame then
             local bf = CreateFrame("Frame", nil, view.track)
@@ -527,10 +648,18 @@ function HV.Draw(view, length)
                 end
             end
         end
+        n, labels = drawMoved(view, n, x, length)
         view.unknownText:SetText(view.hvEmpty and TEXT.noHealers or TEXT.hint)
     end
     for i = n + 1, #(view.hvBands or {}) do
         view.hvBands[i]:Hide()
+    end
+    for i = labels + 1, #(view.hvMoveLabels or {}) do
+        view.hvMoveLabels[i]:Hide()
+    end
+    local Panel = CRT.TimelineHealerPanel
+    if Panel then
+        Panel.Draw(view, on)
     end
     -- a row's muted note on the track, at its start (a healer whose class isn't known yet)
     local notes, rowH = 0, CRT.TimelineView.ROW_H
@@ -606,12 +735,12 @@ end
 -- A double-click on a row of Healer CDs at t seconds: on a cooldown row, that cooldown is placed at once for
 -- its player (a raid note line) by someone who may change the raid note. Anyone else places it only on their
 -- own row, as one of their reminders (Only me); on another player's row nothing is placed and a chat line
--- says why. True when the click was this view's (a cooldown or a player's row).
+-- says why. True when the click was this view's (a cooldown, a player's or a panel row).
 function HV.DoubleClick(view, t, lane)
     if not lane then
         return false
     end
-    if lane.kind == "healer" then
+    if lane.kind == "healer" or lane.kind == "hvpanel" then
         return true
     end
     if lane.kind ~= "healercd" then
