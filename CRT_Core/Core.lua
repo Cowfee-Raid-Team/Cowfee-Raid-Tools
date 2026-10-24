@@ -333,6 +333,9 @@ local defaults = {
         -- [encounterID] = { nh = key, mythic = key } (Timeline:ChosenReference; none: the group's first, yours first)
         reviewRefs = {},
     },
+    -- The team raid check (Team.lua): threshold is the share of the raid's online members that must run CRT for a
+    -- team raid, 0.5 to 1 (General Settings shows it as 50% to 100%). A setting: shared in Export settings only.
+    team = { threshold = 0.75 },
     -- Season Stats (SeasonStats/Data.lua): the raid's own counters per boss and difficulty group, counted from each
     -- pull the Timeline saves. bosses[encounterID] = { name, nh = counters, mythic = counters }; filled is true once
     -- they were filled from the Timeline's saved pulls. Data only: never in Export settings only.

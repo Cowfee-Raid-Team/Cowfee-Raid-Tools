@@ -99,6 +99,7 @@ Profiles.SHARE = {
         bosses = false, rows = false, references = false, nextRef = false, nextId = false,
         reviewRefs = false, -- which ability timeline is in use: your own ones' keys mean nothing on another computer
     },
+    team = true, -- the team raid threshold (Team.lua)
     seasonStats = false, -- the raid's pull counters: data
     markers = true,
     pace = { disabled = true, shown = true, position = true, own = false, shared = false, use = false },
@@ -162,7 +163,7 @@ local SECTIONS = {
     window = "Main window", ui = "General", minimap = "Minimap", groups = "Raid Groups", consumables = "Consumables",
     readycheck = "Ready Check", debuffs = "Debuffs", notes = "Raid Notes", qol = "Quality of Life", loot = "Loot History",
     lootmaster = "Loot Master", gearChecker = "Gear Checker", sound = "Sounds", late = "Late Tracker", tattle = "Tattlebot",
-    timeline = "Timeline", markers = "Markers", pace = "Pace", alerts = "Alerts",
+    timeline = "Timeline", markers = "Markers", pace = "Pace", alerts = "Alerts", team = "Team raids",
 }
 
 -- The top-level keys a profile holds: every key in the defaults, except the shared caches.
