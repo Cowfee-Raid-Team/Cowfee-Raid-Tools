@@ -55,7 +55,7 @@ Profiles.SHARE = {
     classCache = false,
     roleCache = false,
     macros = false, -- the macros the addon made in this account's macro list
-    groups = { presets = false, nextId = false, working = false, keepChanges = true, source = true },
+    groups = { presets = false, nextId = false, working = false, keepChanges = true, source = true, roles = false }, -- roles: guild roster data
     consumables = { enabled = true, notStarter = true, lowMinutes = true, categoryOrder = true, itemOrder = true, extra = false, learned = false, position = true },
     readycheck = {
         tab = false, auto = true, onPull = true, raidsOnly = true, notLFR = true, include = true, buffLock = true,
@@ -96,6 +96,7 @@ Profiles.SHARE = {
     timeline = {
         record = true, minPull = true, keep = true, span = true, grid = true, iconSize = true, deathRows = true, roles = true,
         firstDeaths = true, overlay = true, overlayOn = true, hideEmpty = true, popout = true, tooltipMode = true, tooltipSpot = true,
+        popView = false, -- the pop-out's view: page state
         bosses = false, rows = false, references = false, nextRef = false, nextId = false,
         reviewRefs = false, -- which ability timeline is in use: your own ones' keys mean nothing on another computer
     },

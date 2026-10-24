@@ -40,6 +40,8 @@ local defaults = {
         keepChanges = true,
         source = "raid",
         working = {},
+        -- roles set by hand on a slot's Set role (Groups.HandRole): [key in lower case] = "TANK", "HEALER" or "DAMAGER"
+        roles = {},
     },
     -- The consumables list ships in Consumables/Database.lua. Players choose the order
     -- (categoryOrder is the icon order, itemOrder[category] is which item is used first) and
@@ -330,6 +332,8 @@ local defaults = {
         tooltipSpot = "auto",
         -- The pop-out window (Timeline/Page.lua): its size, and its position once it is moved.
         popout = { width = 1200, height = 600 },
+        -- the pop-out's view (its title strip's toggle): "abilities" (the ability timeline) or "healers" (Healer CDs)
+        popView = "abilities",
         references = {}, -- the player's own reference timelines, { id, text, saved } (saved: time() of the last change, optional; Timeline/Reference.lua)
         nextRef = 1,
         nextId = 1,

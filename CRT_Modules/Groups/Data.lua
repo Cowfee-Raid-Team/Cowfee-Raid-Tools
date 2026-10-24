@@ -64,6 +64,37 @@ function Groups.CachedRole(key)
     return key and CRT.db.roleCache[key:lower()]
 end
 
+-- Roles set by hand (a slot's Set role on Raid Groups): CRTDB.groups.roles[key in lower case] = "TANK",
+-- "HEALER" or "DAMAGER". A role set by hand wins over the game's; with none set, the game's role is used.
+-- Guild roster data, so Export settings only leaves it out (Profiles.SHARE).
+Groups.ROLES = { TANK = true, HEALER = true, DAMAGER = true }
+
+local function handRoles()
+    local g = gdb()
+    if type(g.roles) ~= "table" then
+        g.roles = {}
+    end
+    return g.roles
+end
+
+-- The role set by hand for this name, or nil.
+function Groups.HandRole(key)
+    if type(key) ~= "string" or key == "" then
+        return nil
+    end
+    local role = handRoles()[key:lower()]
+    return Groups.ROLES[role] and role or nil
+end
+
+-- Sets this name's role by hand (TANK, HEALER or DAMAGER), or with nil goes back to the game's role.
+function Groups:SetHandRole(key, role)
+    if type(key) ~= "string" or key == "" then
+        return
+    end
+    handRoles()[key:lower()] = Groups.ROLES[role] and role or nil
+    self:Fire()
+end
+
 -- classVersion goes up each time the class cache changes, so what is built from it (the note windows'
 -- class colours) is built again only then.
 local function cacheClass(key, class)
@@ -101,6 +132,10 @@ end
 -- TANK, HEALER or DAMAGER, or nil when unknown. Your own role falls back to your spec.
 local function unitRole(unit)
     local role = UnitGroupRolesAssigned(unit)
+    -- the game may hide a unit's role (a secret value), which must not be compared
+    if issecretvalue and issecretvalue(role) then
+        role = nil
+    end
     if (not role or role == "NONE") and UnitIsUnit(unit, "player") then
         role = playerSpecRole() or role
     end
