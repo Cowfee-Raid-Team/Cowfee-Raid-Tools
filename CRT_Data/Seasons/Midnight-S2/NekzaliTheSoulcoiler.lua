@@ -11,7 +11,7 @@ local ADDON, CRT = ...
 CRT.Bosses:Register({
     encounterID = 3470,
     name = "Nek'zali the Soulcoiler",
-    season = "midnight-s1",
+    season = "midnight-s2",
     -- The marker display (Markers/Display.lua), exported from /crt dev markers on 2026-10-21.
     markers = { name = "Add Spawn", slots = 4, layout = "free", iconSize = 48, number = true, names = true, clearGap = 30, clearFull = 0, clearPhase = true, hidden = "fill", shape = "circle", canvas = 170, places = { { 0.25, 0.25 }, { 0.75, 0.25 }, { 0.25, 0.75 }, { 0.75, 0.75 } } },
     markerHelp = "Use the markers to indicate where the adds are coming from.",

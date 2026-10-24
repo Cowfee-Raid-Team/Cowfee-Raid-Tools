@@ -13,7 +13,7 @@ local ADDON, CRT = ...
 CRT.Bosses:Register({
     encounterID = 3421,
     name = "The Twin Fangs",
-    season = "midnight-s1",
+    season = "midnight-s2",
     references = {
         [[
 Boss: The Twin Fangs

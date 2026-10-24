@@ -15,7 +15,7 @@ local ADDON, CRT = ...
 CRT.Bosses:Register({
     encounterID = 3497,
     name = "The Lost Explorers",
-    season = "midnight-s1",
+    season = "midnight-s2",
     references = {
         [[
 Boss: The Lost Explorers

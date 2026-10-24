@@ -30,7 +30,12 @@ local rowPool = {}
 local function devRoutes()
     CRT.db.dev = CRT.db.dev or {}
     CRT.db.dev.bossRoute = CRT.db.dev.bossRoute or {}
-    return CRT.db.dev.bossRoute
+    local routes = CRT.db.dev.bossRoute
+    -- The Midnight Season 2 pack was keyed midnight-s1 until 2026-10-24: a route saved under that key moves over.
+    if routes["midnight-s1"] and not routes["midnight-s2"] then
+        routes["midnight-s2"], routes["midnight-s1"] = routes["midnight-s1"], nil
+    end
+    return routes
 end
 
 -- The route as it applies now (shipped, or this computer's), as plain IDs, every boss placed.

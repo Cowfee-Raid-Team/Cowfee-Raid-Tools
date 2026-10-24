@@ -13,7 +13,7 @@ local ADDON, CRT = ...
 CRT.Bosses:Register({
     encounterID = 3445,
     name = "Entombed Sentinels",
-    season = "midnight-s1",
+    season = "midnight-s2",
     references = {
         [[
 Boss: Entombed Sentinels

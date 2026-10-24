@@ -22,7 +22,7 @@ local ADDON, CRT = ...
 -- A check with no ids does nothing and has no chip, so a check can be written before its IDs are known.
 -- The season's temporary checks go when the season does: delete their entries, never the rules above.
 
-CRT.Bosses:SeasonData("midnight-s1", "gearChecks", {
+CRT.Bosses:SeasonData("midnight-s2", "gearChecks", {
     enchant = { 1, 3, 5, 7, 8, 11, 12, 16, 17 },
     enchantWeaponOnly = { 17 },
     sockets = true,
