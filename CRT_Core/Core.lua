@@ -388,6 +388,10 @@ local defaults = {
     -- { from, saved, values = { [path] = value }, unset = { [path] = true } }, empty when there is none.
     -- Each profile keeps its own. Undo last import puts it back and empties it.
     importBackup = {},
+    -- What's new (WhatsNew/WhatsNew.lua): show is Show after updates; seen, the last version whose window was
+    -- closed (or that had nothing to show), is saved only once known, so it has no default; window is the
+    -- window's place once moved. Account-wide (Profiles.lua's SHARED), never in Export settings only.
+    whatsNew = { show = true, window = {} },
 }
 
 -- Profiles.lua reads these to know which keys a profile holds and to start a profile afresh.
@@ -655,6 +659,8 @@ local frame = CreateFrame("Frame")
 frame:RegisterEvent("ADDON_LOADED")
 frame:SetScript("OnEvent", function(self, event, arg1)
     if event == "ADDON_LOADED" and arg1 == ADDON then
+        -- no saved data before this login: a fresh install (What's new records the version and shows nothing)
+        CRT.freshInstall = CRTDB == nil
         CRTDB = CRTDB or {}
         -- Puts this character's profile on top of CRTDB before anything reads it.
         CRT.Profiles:Load()
