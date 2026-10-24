@@ -76,6 +76,8 @@ fullGear()
 local function damage(slot, points, cost) local g = gear[slot] g[1] = g[1] - points g[3] = g[3] + cost end
 local durabilityCalls, tipCalls = 0, 0
 GetInventoryItemDurability = function(slot) durabilityCalls = durabilityCalls + 1 local g = gear[slot] if g then return g[1], g[2] end end
+local itemIDs = {}
+GetInventoryItemID = function(unit, slot) if gear[slot] then return itemIDs[slot] or (1000 + slot) end end
 local secretCost = false
 C_TooltipInfo = { GetInventoryItem = function(unit, slot)
   tipCalls = tipCalls + 1
@@ -87,7 +89,9 @@ local sent = {}
 Enum = { SendAddonMessageResult = { Success = 0, AddonMessageThrottle = 3, AddOnMessageLockdown = 11 } }
 local sendResult = 0
 local prefixes = {}
+local chatLocked = false
 C_ChatInfo = {
+  InChatMessagingLockdown = function() return chatLocked end,
   RegisterAddonMessagePrefix = function(p) prefixes[#prefixes + 1] = p return true end,
   SendAddonMessage = function(prefix, text, channel) sent[#sent + 1] = { prefix = prefix, text = text, channel = channel } return sendResult end,
 }
@@ -144,6 +148,12 @@ secretCost = false
 gear[7] = { 50, 100, 0 } -- damaged, but the game gives no cost for it
 eq(R.Read(), nil, "a damaged item with no readable cost: no read")
 gear[7] = { 100, 100, 0 }
+fullGear() damage(1, 10, 1500)
+R.Forget()
+eq(R.Read(), 1500, "a damaged helm")
+itemIDs[1] = 7777 gear[1][3] = 2600 -- another helm, as worn, at the same durability
+eq(R.Read(), 2600, "a swapped item is read again, though its durability is the same")
+itemIDs[1] = nil
 fullGear()
 R.Forget()
 check(not dataSrc:find("C_TooltipInfo", 1, true) and not repairsSrc:find("SetInventoryItem", 1, true), "tooltip data only, no tooltip drawn")
@@ -207,15 +217,22 @@ hear("Dot-Stormrage", R.Encode(Gamma, "mythic", serverNow, 1000))
 eq(fired, 0, "reports are only added up as they arrive")
 runTimers()
 eq(fired, 1, "and the page is told once")
--- the next pull
-serverNow = serverNow + 300
-hear("Moo-Stormrage", R.Encode(Gamma, "mythic", serverNow, 500))
-eq(g.raidPulls, 2, "a report on a later pull: a second pull")
-eq(g.raidReporters, 6, "and a sixth report")
--- reports on another difficulty and an unknown boss
+-- reports on pulls this computer never saw are dropped, and never make counters
+local function snapshot() return g.raidRepairs .. "/" .. g.raidReporters .. "/" .. g.raidPulls end
+local was = snapshot()
+hear("Moo-Stormrage", R.Encode(Gamma, "mythic", serverNow + 300, 500))
+eq(snapshot(), was, "a report on a pull you didn't see counts nothing")
 hear("Moo-Stormrage", R.Encode(Gamma, "nh", serverNow, 800))
-eq(S:Boss(Gamma, "nh") and S:Boss(Gamma, "nh").raidRepairs, 800, "Normal/Heroic reports count on their own")
-eq(S:Boss(Gamma, "nh").pulls, 0, "and count no pull of yours")
+eq(S:Boss(Gamma, "nh"), nil, "a report on another difficulty makes no counters")
+hear("Moo-Stormrage", R.Encode(77777, "mythic", serverNow, 800))
+eq(S:Boss(77777, "mythic"), nil, "a report on a made-up boss makes no counters")
+eq(CRT.db.seasonStats.bosses[77777], nil, "nor any saved boss")
+-- one sender alternating starts around the pull's counts once at most
+for i = 1, 6 do hear("Evil-Stormrage", R.Encode(Gamma, "mythic", serverNow + (i % 2 == 0 and 11 or 0), 100000)) end
+for i = 1, 6 do hear("Evil2-Stormrage", R.Encode(Gamma, "mythic", serverNow + (i % 2 == 0 and 11 or -9), 100000)) end
+eq(g.raidReporters, 7, "alternating starts: one report each, the far ones dropped")
+eq(g.raidRepairs, 224000, "and their cost once each")
+eq(g.raidPulls, 1, "still one pull")
 -- outside a raid instance nothing is heard
 instance = { "Dornogal", "none", 0 }
 fire("PLAYER_ENTERING_WORLD")
@@ -260,21 +277,27 @@ eq(#sent, 0, "and nothing is sent for it")
 -- the read at the pull is secret: the last read out of combat stands in
 now = now + 600 clock = clock + 600 serverNow = serverNow + 600
 fullGear() damage(5, 10, 2000)
-fire("MERCHANT_CLOSED") -- read out of combat: 2000
+fire("UPDATE_INVENTORY_DURABILITY") -- durability changed out of combat: read, 2000
 R.Forget() -- so the read at the pull asks the game again
 secretCost = true
 combat = true
 fire("ENCOUNTER_START", Delta, "Delta", 15, 20)
 secretCost = false
 damage(7, 10, 1000)
+fire("UPDATE_INVENTORY_DURABILITY") -- in the pull: nothing read
 clock = clock + 100 now = now + 100
 fire("ENCOUNTER_END", Delta, "Delta", 15, 20, 0)
+-- a raider's report before Season Stats counted the pull waits for it
+hear("Moo-Stormrage", R.Encode(Delta, "nh", serverNow + 1, 333))
+eq(d.raidRepairs or 0, 0, "a report before the pull is counted waits")
 combat = false
 fire("PLAYER_REGEN_ENABLED")
 runTimers()
 eq(d.pulls, 2, "the second pull counted")
 eq(d.repairs, 1000, "a secret read at the pull: the last read out of combat is the start")
 eq(#sent, 1, "one message for it")
+eq(d.raidRepairs, 1333, "once counted, the waiting report and yours are the raid's costs")
+eq(d.raidReporters .. "/" .. d.raidPulls, "2/1", "two reports on one pull")
 -- a pull the Timeline doesn't keep (too short) adds nothing of yours, but the raid still hears your cost
 now = now + 600 clock = clock + 600 serverNow = serverNow + 600
 combat = true
@@ -288,6 +311,9 @@ runTimers()
 eq(d.pulls, 2, "a short pull isn't counted")
 eq(d.repairs, 1000, "nor its bill in your repairs")
 eq(#sent, 2, "but its cost is sent")
+eq(d.raidRepairs, 1333, "and neither yours nor a raider's report of it is in the raid's costs")
+hear("Moo-Stormrage", R.Encode(Delta, "nh", serverNow, 444))
+eq(d.raidRepairs .. "/" .. d.raidPulls, "1333/1", "Raid costs counts the same pulls as Your repairs")
 -- Raid Finder, a finder group and a party send nothing
 local function pullOnce(enc, diff)
   now = now + 600 clock = clock + 600 serverNow = serverNow + 600
@@ -326,9 +352,26 @@ pullOnce(Delta, 15)
 check(#sent >= 1, "a throttled message is tried")
 sendResult = 0
 runTimers()
-local okSends = 0
-for _, s in ipairs(sent) do okSends = okSends + 1 end
-check(okSends >= 2 and okSends <= 4, "and tried again a few times at most (" .. okSends .. ")")
+eq(#sent, R.TRIES, "and tried again a few times at most")
+-- held by the game's lockdown: tried again until it lifts, sent once
+sendResult = 11
+sent = {}
+pullOnce(Delta, 15)
+runTimers() -- runTimers stops after 10 rounds
+eq(#sent, R.LOCK_TRIES, "a message the game holds is tried LOCK_TRIES times")
+sendResult = 0
+sent = {}
+chatLocked = true
+local heldBy = {}
+local realAfter = C_Timer.After
+C_Timer.After = function(d, fn) heldBy[#heldBy + 1] = fn end
+pullOnce(Delta, 15)
+eq(#sent, 0, "during the chat lockdown nothing is sent")
+check(#heldBy >= 1, "but a try is waiting")
+chatLocked = false
+C_Timer.After = realAfter
+for _, fn in ipairs(heldBy) do fn() end
+eq(#sent, 1, "after it lifts the message goes, once")
 
 -- 6. Cheap: nothing read outside a raid, two reads a pull -------------------------------------------------------------
 instance = { "Dornogal", "none", 0 }

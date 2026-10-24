@@ -9,21 +9,26 @@ local ADDON, CRT = ...
 -- warcraft.wiki.gg and in Blizzard's TooltipDataRules.lua, which reads tooltipData.repairCost). It's read at
 -- ENCOUNTER_START and again out of combat after ENCOUNTER_END (at once, or on PLAYER_REGEN_ENABLED), so a release
 -- and run back adds nothing. When the read at the pull fails (a secret or missing cost), the last read out of
--- combat stands in: on entering the raid, after the last pull, and when a vendor or repair bot closes. A smaller
--- bill after the pull than before (repaired) counts nothing. The bill is added to the counters the Timeline's save
--- hook counted the pull in (Stats:Record calls Rep:Claim), once, so a pull the Timeline doesn't keep adds nothing.
+-- combat stands in: on entering the raid, after the last pull, when a vendor or repair bot closes, and when your
+-- durability changes out of combat. A smaller bill after the pull than before (repaired) counts nothing.
+--
+-- Each pull is kept here (the last KEEP) until the Timeline's save hook counts it: Stats:Record calls Rep:Claim,
+-- which gives the pull the counters it was counted in. Your bill and the raid's reports go to those counters only,
+-- once, so Your repairs and Raid costs count the same pulls, and a pull the Timeline doesn't keep adds nothing.
 --
 -- Cheap on every computer: the events are only listened to inside a raid instance, PLAYER_REGEN_ENABLED only while
--- a pull waits for its read; a read asks 17 slots' durability (GetInventoryItemDurability) and reads tooltip data
--- only for damaged slots, and only when the durability changed since the last read. No OnUpdate.
+-- a pull waits for its read; a read asks 17 slots' item and durability (GetInventoryItemID,
+-- GetInventoryItemDurability) and reads tooltip data only for damaged slots, and only when those changed since the
+-- last read. No OnUpdate.
 --
 -- The raid's costs: after its read, each raider's CRT sends one message under the prefix CRTRepair to the raid
 -- (never in combat; never in Raid Finder, a finder group or outside a raid group):
 --   "<version>|<encounterID>|<group>|<start>|<copper>"   e.g. "1|3129|mythic|1793232000|7000"
 -- start is the pull's start on the server's clock (GetServerTime, the same on every computer), so the reports of
--- one pull agree within MATCH seconds. A newer version may add fields after these. Every CRT client in the raid adds
--- what it hears to the boss's raid costs: one report per sender per pull (duplicates and your own echo ignored,
--- secret senders never compared), your own included. Raiders without CRT send nothing, so aren't counted.
+-- one pull agree within MATCH seconds. A newer version may add fields after these. A report counts only for a pull
+-- this computer saw too (same boss, difficulty group and start) and that Season Stats counted: one report per
+-- sender per pull (repeats and your own echo ignored, secret senders never compared), your own included. Anything
+-- else is dropped, and a report never makes counters of its own. Raiders without CRT send nothing.
 
 local Stats = CRT.SeasonStats
 local Rep = {}
@@ -32,16 +37,20 @@ CRT.SeasonRepairs = Rep
 Rep.PREFIX = "CRTRepair"
 Rep.VERSION = 1
 Rep.MATCH = 10 -- seconds between two starts of the same pull (two computers, or the Timeline's and this one's)
-Rep.MAX_COST = 50000000 -- copper: more than any raider's pull could cost (5,000 gold), so a broken message
+Rep.MAX_COST = 50000000 -- copper (5,000 gold): a report above this is dropped as broken
 Rep.FIRST_SLOT, Rep.LAST_SLOT = 1, 17 -- head to off hand; the shirt, ranged and tabard slots have no durability
-Rep.KEEP = 4 -- pulls read after kept for the Timeline's save, starts kept per boss, messages waiting to go
+Rep.KEEP = 4 -- pulls kept for the Timeline's save and for reports, messages waiting to go
+Rep.MAX_REPORTS = 40 -- reports kept per pull, a full raid's
 Rep.TRIES = 3 -- tries to send a message the game throttled
+Rep.LOCK_TRIES = 15 -- tries to send while the game holds addon messages (it can last past the encounter's end)
 Rep.RETRY = 2 -- seconds before trying again
 Rep.FIRE_DELAY = 1 -- seconds of reports added up before the page is told
 
 local FINDER = { [7] = true, [17] = true } -- Raid Finder difficulties
 local RESULT = Enum and Enum.SendAddonMessageResult or {}
 local THROTTLED = RESULT.AddonMessageThrottle or 3
+local CHANNEL_THROTTLED = RESULT.ChannelThrottle or 8
+local LOCKDOWN = RESULT.AddOnMessageLockdown or 11
 local SELF = "\1self" -- your own report's sender, never a player's name
 
 if C_ChatInfo and C_ChatInfo.RegisterAddonMessagePrefix then
@@ -60,18 +69,18 @@ local function readable(v)
 end
 
 local inside = false -- in a raid instance
-local cache -- the last read: { sig = durability, cost }
+local cache -- the last read: { sig = items and durability, cost }
 local baseline -- the last bill read out of combat
-local pending -- the pull running: { encounterID, difficultyID, group, at = time(), key = server time, before, ended }
-local finished = {} -- pulls read after, newest last: pending plus cost, claimed, counters
-local heard = {} -- [sender] = { ["encounterID|group"] = start of the last report }
-local starts = {} -- ["encounterID|group"] = the starts of the last pulls reported, newest last
-local queue = {} -- messages waiting to go
+local pending -- the pull waiting for its read after
+-- the last KEEP pulls, newest last: { encounterID, group, at = time(), key = server time, before, ended, cost,
+-- counters (once Claimed), repairAdded, reports = { [sender] = copper }, reportCount, raidCounted }
+local pulls = {}
+local queue = {} -- messages waiting to go: { text, throttles, locks }
 local fireQueued = false
 
 -- Reading your bill --------------------------------------------------------------------------------------------------
 
--- Every slot's durability as one text, and the damaged slots; nil when a value is secret.
+-- Every slot's item and durability as one text, and the damaged slots; nil when a value is secret.
 local function durability()
     local parts, damaged = {}, {}
     for slot = Rep.FIRST_SLOT, Rep.LAST_SLOT do
@@ -81,7 +90,11 @@ local function durability()
                 return nil
             end
             if type(cur) == "number" and type(max) == "number" then
-                parts[#parts + 1] = slot .. ":" .. cur .. "/" .. max
+                local okID, item = pcall(GetInventoryItemID, "player", slot)
+                if not okID or not readable(item) then
+                    return nil
+                end
+                parts[#parts + 1] = slot .. "=" .. tostring(item) .. ":" .. cur .. "/" .. max
                 if cur < max then
                     damaged[#damaged + 1] = slot
                 end
@@ -92,7 +105,7 @@ local function durability()
 end
 
 -- Your gear's repair bill in copper, or nil when it can't be read (a damaged item's cost secret or missing).
--- Unchanged durability gives the last read again without asking the game.
+-- Unchanged items and durability give the last read again without asking the game.
 function Rep.Read()
     local sig, damaged = durability()
     if not sig then
@@ -185,37 +198,65 @@ function Rep.Decode(text)
     return enc, group, start, copper
 end
 
-local function sendNext(tries)
-    local text = queue[1]
-    if not text then
+-- True while the game holds addon messages: in combat, or its chat messaging lockdown.
+local function held()
+    if InCombatLockdown() then
+        return true
+    end
+    if C_ChatInfo.InChatMessagingLockdown then
+        local ok, locked = pcall(C_ChatInfo.InChatMessagingLockdown)
+        return ok and readable(locked) and locked == true
+    end
+    return false
+end
+
+local sendNext
+
+local function later()
+    C_Timer.After(Rep.RETRY, sendNext)
+end
+
+-- Sends the first waiting message; a throttled one is tried TRIES times, a held one LOCK_TRIES times.
+sendNext = function()
+    local item = queue[1]
+    if not item then
         return
     end
-    if InCombatLockdown() or not Rep.CanShare() or not (C_ChatInfo and C_ChatInfo.SendAddonMessage) then
+    if not Rep.CanShare() or not (C_ChatInfo and C_ChatInfo.SendAddonMessage) then
         wipe(queue)
         return
     end
-    local ok, result = pcall(C_ChatInfo.SendAddonMessage, Rep.PREFIX, text, "RAID")
-    if ok and result == THROTTLED and tries < Rep.TRIES then
-        C_Timer.After(Rep.RETRY, function()
-            sendNext(tries + 1)
-        end)
-        return
+    local result
+    if held() then
+        result = LOCKDOWN
+    else
+        local ok, r = pcall(C_ChatInfo.SendAddonMessage, Rep.PREFIX, item.text, "RAID")
+        result = ok and r or nil
+    end
+    if result == THROTTLED or result == CHANNEL_THROTTLED then
+        item.throttles = item.throttles + 1
+        if item.throttles < Rep.TRIES then
+            return later()
+        end
+    elseif result == LOCKDOWN then
+        item.locks = item.locks + 1
+        if item.locks < Rep.LOCK_TRIES then
+            return later()
+        end
     end
     table.remove(queue, 1)
     if queue[1] then
-        C_Timer.After(Rep.RETRY, function()
-            sendNext(1)
-        end)
+        later()
     end
 end
 
 local function send(text)
-    queue[#queue + 1] = text
+    queue[#queue + 1] = { text = text, throttles = 0, locks = 0 }
     while #queue > Rep.KEEP do
         table.remove(queue, 1)
     end
     if #queue == 1 then
-        sendNext(1)
+        sendNext()
     end
 end
 
@@ -231,76 +272,77 @@ local function queueFire()
     end)
 end
 
--- Adds one raider's report to the raid's costs, unless that sender already reported that pull. Returns true when
--- it counted.
-function Rep:Hear(sender, encounterID, group, start, copper)
-    local id = encounterID .. "|" .. group
-    local mine = heard[sender]
-    if not mine then
-        mine = {}
-        heard[sender] = mine
-    end
-    if mine[id] and math.abs(mine[id] - start) <= Rep.MATCH then
-        return false
-    end
-    mine[id] = start
-    local list = starts[id]
-    if not list then
-        list = {}
-        starts[id] = list
-    end
-    local newPull = true
-    for _, s in ipairs(list) do
-        if math.abs(s - start) <= Rep.MATCH then
-            newPull = false
-            break
-        end
-    end
-    if newPull then
-        list[#list + 1] = start
-        while #list > Rep.KEEP do
-            table.remove(list, 1)
-        end
-    end
-    Stats:AddRaidRepair(encounterID, group, copper, newPull)
-    queueFire()
-    return true
+-- One pull ----------------------------------------------------------------------------------------------------------
+
+-- A pull's report into its counters, the first of the pull counting the pull.
+local function addReport(p, copper)
+    Stats:AddRaidRepair(p.counters, copper, not p.raidCounted)
+    p.raidCounted = true
 end
 
--- One pull ----------------------------------------------------------------------------------------------------------
+-- Your bill into the pull's counters, once both are known.
+local function addOwn(p)
+    if p.counters and p.cost and not p.repairAdded then
+        p.repairAdded = true
+        Stats:AddRepair(p.counters, p.cost)
+    end
+end
+
+-- The kept pull a report is about: same boss and group, a start within MATCH seconds.
+local function pullFor(encounterID, group, start)
+    for i = #pulls, 1, -1 do
+        local p = pulls[i]
+        if p.encounterID == encounterID and p.group == group and math.abs(p.key - start) <= Rep.MATCH then
+            return p
+        end
+    end
+    return nil
+end
+
+-- Takes one raider's report of a pull: kept when the pull is one this computer saw, and added to its counters
+-- once Season Stats counted it. A second report from the same sender on that pull is ignored. Returns true when
+-- the report was taken.
+function Rep:Hear(sender, encounterID, group, start, copper)
+    local p = pullFor(encounterID, group, start)
+    if not p or p.reports[sender] ~= nil or p.reportCount >= Rep.MAX_REPORTS then
+        return false
+    end
+    p.reports[sender] = copper
+    p.reportCount = p.reportCount + 1
+    if p.counters then
+        addReport(p, copper)
+        queueFire()
+    end
+    return true
+end
 
 local function sameStart(p, pull)
     return p.encounterID == pull.encounterID and type(pull.startedAt) == "number" and math.abs(p.at - pull.startedAt) <= Rep.MATCH
 end
 
--- Gives a pull's bill to the counters the Timeline's save counted it in (Stats:Record), once. A pull still waiting
--- for its read after gets it when the read finishes.
+-- Gives a pull the counters the Timeline's save counted it in (Stats:Record), once: your bill (now, or when the
+-- read after finishes) and the raid's reports heard so far go there.
 function Rep:Claim(pull, c)
     if type(c) ~= "table" or type(pull) ~= "table" then
         return false
     end
-    for i = #finished, 1, -1 do
-        local p = finished[i]
-        if not p.claimed and sameStart(p, pull) then
-            p.claimed = true
-            Stats:AddRepair(c, p.cost)
+    for i = #pulls, 1, -1 do
+        local p = pulls[i]
+        if not p.counters and sameStart(p, pull) then
+            p.counters = c
+            addOwn(p)
+            for _, copper in pairs(p.reports) do
+                addReport(p, copper)
+            end
             return true
         end
-    end
-    if pending and not pending.claimed and sameStart(pending, pull) then
-        pending.claimed, pending.counters = true, c
-        return true
     end
     return false
 end
 
 local function finish(p)
-    finished[#finished + 1] = p
-    while #finished > Rep.KEEP do
-        table.remove(finished, 1)
-    end
     if p.counters then
-        Stats:AddRepair(p.counters, p.cost)
+        addOwn(p)
         queueFire()
     end
     if p.group and Rep.CanShare() then
@@ -315,7 +357,7 @@ local function readAfter()
     local p = pending
     pending = nil
     driver:UnregisterEvent("PLAYER_REGEN_ENABLED")
-    if not (p and p.ended) then
+    if not (p and p.ended and p.before) then
         return
     end
     local after = Rep.Read()
@@ -340,14 +382,15 @@ local function startPull(encounterID, _, difficultyID)
     if before == nil then
         before = baseline
     end
-    if before == nil then
-        return
-    end
     local diff = readable(difficultyID) and type(difficultyID) == "number" and difficultyID or nil
     pending = {
-        encounterID = encounterID, difficultyID = diff, group = diff and Stats.GroupOf(diff) or nil,
-        at = time(), key = GetServerTime and GetServerTime() or time(), before = before,
+        encounterID = encounterID, group = diff and Stats.GroupOf(diff) or nil, at = time(),
+        key = GetServerTime and GetServerTime() or time(), before = before, reports = {}, reportCount = 0,
     }
+    pulls[#pulls + 1] = pending
+    while #pulls > Rep.KEEP do
+        table.remove(pulls, 1)
+    end
 end
 
 local function endPull(encounterID)
@@ -379,7 +422,7 @@ local function onMessage(prefix, text, _, sender)
     end
 end
 
-local LIVE = { "ENCOUNTER_START", "ENCOUNTER_END", "MERCHANT_CLOSED", "CHAT_MSG_ADDON" }
+local LIVE = { "ENCOUNTER_START", "ENCOUNTER_END", "MERCHANT_CLOSED", "UPDATE_INVENTORY_DURABILITY", "CHAT_MSG_ADDON" }
 
 local function setInside(on)
     inside = on
@@ -416,7 +459,7 @@ function Rep.HandleEvent(event, ...)
         endPull((...))
     elseif event == "PLAYER_REGEN_ENABLED" then
         readAfter()
-    elseif event == "MERCHANT_CLOSED" and not pending then
+    elseif (event == "MERCHANT_CLOSED" or event == "UPDATE_INVENTORY_DURABILITY") and not pending then
         outOfCombatRead()
     end
 end

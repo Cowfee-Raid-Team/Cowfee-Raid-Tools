@@ -188,7 +188,8 @@ function Stats:Backfill(latest, phase)
 end
 
 -- Your repair bill over the pull, when Repairs.lua measured it: added to the counters the pull just counted in,
--- once (Repairs:Claim keeps which pulls it gave). With no read finished yet, it's added when the read finishes.
+-- once (Rep:Claim in SeasonStats/Repairs.lua keeps which pulls it gave), with the raid's reports of that pull. With no
+-- read finished yet, the bill is added when the read finishes.
 local function claimRepair(pull)
     local Rep = CRT.SeasonRepairs
     if Rep and Rep.Claim and type(pull) == "table" and type(pull.encounterID) == "number" then
@@ -220,13 +221,12 @@ function Stats:AddRepair(c, copper)
     c.repairPulls = (c.repairPulls or 0) + 1
 end
 
--- Adds one raider's repair bill over a pull (copper) to a boss's raid costs; newPull when it's the first report of
--- that pull. The counters are made when missing (a report can come before your own pull is saved, or with Record off).
-function Stats:AddRaidRepair(encounterID, group, copper, newPull)
-    if type(encounterID) ~= "number" or type(copper) ~= "number" or copper < 0 then
+-- Adds one raider's repair bill over a pull (copper) to the counters that pull was counted in; newPull when it's
+-- the first report of that pull. Never makes counters: only a pull Season Stats counted gets reports.
+function Stats:AddRaidRepair(c, copper, newPull)
+    if type(c) ~= "table" or type(copper) ~= "number" or copper < 0 then
         return
     end
-    local c = counters(encounterID, group, nil, true)
     c.raidRepairs = (c.raidRepairs or 0) + copper
     c.raidReporters = (c.raidReporters or 0) + 1
     if newPull then
@@ -634,11 +634,14 @@ function Stats.Hours(seconds)
 end
 
 -- Copper as the game writes money, with its coin icons: GetMoneyString (Blizzard_SharedXML/FormattingUtil.lua,
--- thousands separated), else C_CurrencyInfo.GetCoinTextureString. A gold or more is rounded to whole gold.
+-- thousands separated), else C_CurrencyInfo.GetCoinTextureString. From 10 gold up it shows whole gold, under that
+-- gold and silver, under a silver copper.
 function Stats.Money(copper)
-    copper = math.max(0, math.floor((copper or 0) + 0.5))
-    if copper >= 10000 then
-        copper = math.floor(copper / 10000 + 0.5) * 10000
+    copper = math.max(0, math.floor(copper or 0))
+    if copper >= 100000 then
+        copper = math.floor(copper / 10000) * 10000
+    elseif copper >= 100 then
+        copper = math.floor(copper / 100) * 100
     end
     if GetMoneyString then
         local ok, s = pcall(GetMoneyString, copper, true)
@@ -652,10 +655,14 @@ function Stats.Money(copper)
             return s
         end
     end
-    if copper >= 10000 then
-        return string.format("%dg", math.floor(copper / 10000))
+    local gold, silver = math.floor(copper / 10000), math.floor(copper % 10000 / 100)
+    if gold > 0 then
+        return silver > 0 and string.format("%dg %ds", gold, silver) or string.format("%dg", gold)
     end
-    return string.format("%ds %dc", math.floor(copper / 100), copper % 100)
+    if silver > 0 then
+        return string.format("%ds", silver)
+    end
+    return string.format("%dc", copper)
 end
 
 -- 2 -> "Phase 2", 1.5 -> "Phase 1.5".

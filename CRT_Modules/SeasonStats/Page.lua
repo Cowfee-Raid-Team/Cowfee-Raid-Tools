@@ -2,8 +2,8 @@ local ADDON, CRT = ...
 
 -- The Season Stats page (Modules > Season Stats): a Season dropdown (the boss library's season packs, the current
 -- one first) and a Difficulty dropdown (the Timeline's groups); six cards (bosses killed of the season's route,
--- pulls, raid nights, time in pulls, your repairs and the raid's costs, SeasonStats/Repairs.lua); the table of the route's bosses in route order (sortable, back to route order
--- on a third click); and the reflection for the boss picked in the table: its longest pull each night as bars,
+-- pulls, raid nights, time in pulls, your repairs and the raid's costs, SeasonStats/Repairs.lua); the table of the
+-- route's bosses in route order (sortable, back to route order on a third click); and the reflection for the boss picked in the table: its longest pull each night as bars,
 -- the furthest phase, the spells that killed most (each with its icon, in its ability timeline row's type colour,
 -- Stats:AbilityRow, and the shared ability tooltip with the spell and its Journal text, CRT.AbilityTip),
 -- deaths per pull, and Tattlebot's avoidable damage per night (a click opens the night there, TattlePage.ShowNight).
@@ -25,13 +25,13 @@ local L = {
 
 -- The table's columns: key, x, w; each title is TEXT.columns[key].
 local COLS = {
-    { key = "name", x = 0, w = 140 },
-    { key = "pulls", x = 144, w = 42 },
-    { key = "wipes", x = 190, w = 46 },
-    { key = "kills", x = 240, w = 38 },
-    { key = "toKill", x = 282, w = 82 },
-    { key = "best", x = 368, w = 62 },
-    { key = "first", x = 434, w = 68 },
+    { key = "name", x = 0, w = 150 },
+    { key = "pulls", x = 154, w = 42 },
+    { key = "wipes", x = 200, w = 46 },
+    { key = "kills", x = 250, w = 38 },
+    { key = "toKill", x = 292, w = 82 },
+    { key = "best", x = 378, w = 62 },
+    { key = "first", x = 444, w = 58 },
     { key = "repairs", x = 506, w = 88 },
     { key = "raid", x = 598, w = 72 },
 }
@@ -44,8 +44,9 @@ local TEXT = {
         .. "Every pull the Timeline saves counts, so keep Record on in the Timeline's settings.\n\n"
         .. "Pulls from before Season Stats are filled in once from the Timeline's saved pulls. It keeps only the newest of them, so older pulls count as wipes with no length.\n\n"
         .. "Raid nights are the Late Tracker's nights between the season's first and last pull. Click a boss to see how its pulls went.\n\n"
-        .. "Your repairs is how much your repair bill went up over each pull. It's read from your gear right at the pull and again after it, so running back adds nothing.\n\n"
-        .. "Raid costs adds up the same from every raider running CRT. Raiders without CRT aren't counted.\n\n"
+        .. "Your repairs is how much your repair bill went up over each pull. It's read from your gear right at the pull and again after it, so running back adds nothing. If the read at the pull fails, your last read out of combat is used.\n\n"
+        .. "Raid costs adds up the same from every raider running CRT, on the pulls Season Stats counted. Raiders without CRT aren't counted.\n\n"
+        .. "It isn't confirmed yet whether reputation discounts on repairs are included.\n\n"
         .. "Repair counting starts with this update, so older pulls have none.",
     season = "Season", difficulty = "Difficulty",
     killed = "Bosses killed", pulls = "Pulls", nights = "Raid nights", time = "Time in pulls",
@@ -62,7 +63,7 @@ local TEXT = {
     untimed = "%d early pulls have no saved length, so they aren't in this time.",
     noPulls = "No pulls on this difficulty yet.",
     inProgress = "in progress", none = "-",
-    rowTime = "Time in pulls: %s", rowKills = "Kill time: %s", rowClick = "Click to see how its pulls went.",
+    rowTime = "Time in pulls: %s", rowKills = "Kill time: %s", rowFirst = "First kill: %s", rowClick = "Click to see how its pulls went.",
     reflection = "Reflection", reflectionOf = "Reflection: %s",
     reflectionHelp = "How a boss went, night by night.\n\n"
         .. "The game hides a boss's health from addons during an encounter, so the longest pull and the furthest phase stand in for how close you got.\n\n"
@@ -260,7 +261,7 @@ local function paintRow(row, r)
         row.toKill:SetText(r.pulls > 0 and UI.WarnText(TEXT.inProgress) or TEXT.none)
     end
     row.best:SetText(r.bestKill and S.Clock(r.bestKill) or TEXT.none)
-    row.first:SetText(r.firstKillAt and date("%Y-%m-%d", r.firstKillAt) or TEXT.none)
+    row.first:SetText(r.firstKillAt and date("%m-%d", r.firstKillAt) or TEXT.none) -- the full date is in the tooltip
     row.repairs:SetText(r.repairPulls > 0 and S.Money(r.repairs) or TEXT.none)
     row.raid:SetText(r.raidPulls > 0 and S.Money(r.raidRepairs) or TEXT.none)
     row.sel:SetShown(state.boss == r.encounterID)
@@ -275,6 +276,9 @@ local function rowTip(row)
     local lines = { r.name, TEXT.rowTime:format(S.Hours(r.pullTime)) }
     if r.counters and r.counters.killTime > 0 then
         lines[#lines + 1] = TEXT.rowKills:format(S.Hours(r.counters.killTime))
+    end
+    if r.firstKillAt then
+        lines[#lines + 1] = TEXT.rowFirst:format(date("%Y-%m-%d", r.firstKillAt))
     end
     if r.repairPulls > 0 then
         lines[#lines + 1] = TEXT.rowRepairs:format(S.Money(r.repairs), r.repairPulls, pullWord(r.repairPulls))

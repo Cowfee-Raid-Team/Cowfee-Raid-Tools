@@ -440,16 +440,20 @@ for _, col in ipairs(sorts[1].cols) do colKeys[#colKeys + 1] = col.key end
 eq(table.concat(colKeys, ","), "name,pulls,wipes,kills,toKill,best,first,repairs,raid", "the table's columns, the repairs last")
 eq(sorts[1].cols[8].title .. "/" .. sorts[1].cols[9].title, "Your repairs/Raid costs", "their titles")
 eq(V.rows[2].repairs.text .. " " .. V.rows[2].raid.text, "- -", "no repairs on a boss: dashes")
-eq(S.Money(25000), "3g", "money: a gold or more in whole gold")
-eq(S.Money(250), "2s 50c", "money: less than a gold in silver and copper")
+eq(S.Money(25000), "2g 50s", "money: under 10 gold in gold and silver")
+eq(S.Money(99999), "9g 99s", "money: never rounded up")
+eq(S.Money(250), "2s", "money: under a gold in silver")
+eq(S.Money(42), "42c", "money: under a silver in copper")
+eq(S.Money(129999), "12g", "money: from 10 gold up, whole gold")
 GetMoneyString = function(c, sep) return "GMS" .. c .. tostring(sep) end
 eq(S.Money(123456), "GMS120000true", "money: the game's money text, thousands separated")
 GetMoneyString = nil
 -- Gamma: your 2.5 gold over one pull, the raid's 4 gold from two raiders
 local gm = S:Boss(9101, "mythic")
 S:AddRepair(gm, 25000)
-S:AddRaidRepair(9101, "mythic", 25000, true)
-S:AddRaidRepair(9101, "mythic", 15000, false)
+S:AddRaidRepair(gm, 25000, true)
+S:AddRaidRepair(gm, 15000, false)
+S:AddRaidRepair(nil, 15000, true)
 S:AddRepair(gm, -5)
 eq(gm.repairs .. "/" .. gm.repairPulls, "25000/1", "a negative bill adds nothing")
 V.refresh()
@@ -469,7 +473,8 @@ local rowTipText = table.concat(GameTooltip.lines, " ")
 check(rowTipText:find("Your repairs", 1, true) and rowTipText:find("Raid costs", 1, true), "the row's tooltip has both (" .. rowTipText .. ")")
 V.rows[2].scripts.OnLeave(V.rows[2])
 local help = helps["Season Stats"] or ""
-check(help:find("Your repairs", 1, true) and help:find("Raid costs", 1, true) and help:find("starts with this update", 1, true) and help:find("without CRT", 1, true),
+check(help:find("Your repairs", 1, true) and help:find("Raid costs", 1, true) and help:find("starts with this update", 1, true) and help:find("without CRT", 1, true)
+  and help:find("last read out of combat", 1, true) and help:find("discounts", 1, true),
   "the page's (?) explains both, that counting starts with this update and who isn't counted")
 sorts[1].opts.set("raid", -1)
 eq(V.rows[1].name.text, "Gamma", "sorted by Raid costs, most first")
@@ -479,7 +484,10 @@ local function rowName(i) return V.rows[i] and V.rows[i].shown and V.rows[i].nam
 eq(rowName(1) .. ", " .. rowName(2) .. ", " .. rowName(3), "Epsilon, Gamma, Delta", "the table in route order")
 eq(plain(V.rows[1].pulls.text .. " " .. V.rows[1].wipes.text .. " " .. V.rows[1].kills.text .. " " .. V.rows[1].toKill.text .. " " .. V.rows[1].best.text),
   "5 3 2 4 4:20", "Epsilon's row: pulls, wipes, kills, pulls to first kill, best kill")
-eq(V.rows[1].first.text, date("%Y-%m-%d", NOW - 8 * DAY + 2400), "first kill date")
+eq(V.rows[1].first.text, date("%m-%d", NOW - 8 * DAY + 2400), "first kill date, month and day")
+V.rows[1].scripts.OnEnter(V.rows[1])
+check(table.concat(GameTooltip.lines, " "):find("First kill: " .. date("%Y-%m-%d", NOW - 8 * DAY + 2400), 1, true) ~= nil, "and the full date in the row's tooltip")
+V.rows[1].scripts.OnLeave(V.rows[1])
 eq(V.rows[3].toKill.text, "-", "no pulls: a dash")
 check(not V.rows[4] or not V.rows[4].shown, "no extra rows")
 -- sorting by a column, then back to route order
