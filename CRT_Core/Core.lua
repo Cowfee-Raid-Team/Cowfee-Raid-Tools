@@ -21,6 +21,7 @@ CRT.version = (C_AddOns and C_AddOns.GetAddOnMetadata and C_AddOns.GetAddOnMetad
 --   late.history (the Late Tracker's nights, team stamped), notes.list and notes.history (raid notes and their
 --   earlier texts), CRTLootDB (Loot History, its own saved variable), timeline.references (your own ability timelines)
 --   notes.personalShifts (your own Healer CDs times, by note id: they follow the notes and go with a deleted note)
+--   timeline.healerRows (the spell rows you showed or hid per player on Healer CDs, Timeline/HealerRows.lua)
 --   longTerm: the area for new long-term data. Anything new that should outlast a season goes under it, never
 --   declared; nothing has moved into it, and the stores above stay where they are.
 
@@ -364,6 +365,9 @@ local defaults = {
         -- the ability timeline In use per boss and difficulty, picked on the Advanced tab:
         -- [encounterID] = { nh = key, mythic = key } (Timeline:ChosenReference; none: the group's first, yours first)
         reviewRefs = {},
+        -- Healer CDs' rows you picked per player: [player key in lower case][spellID] = true (shown) or false
+        -- (hidden); a spell not there is as by default (Timeline/HealerRows.lua). Long term, never shared.
+        healerRows = {},
     },
     -- The team raid check (Team.lua): threshold is the share of the raid's online members that must run CRT for a
     -- team raid, 0.5 to 1 (General Settings shows it as 50% to 100%). A setting: shared in Export settings only.

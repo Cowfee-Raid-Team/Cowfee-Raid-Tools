@@ -8,7 +8,9 @@ local ADDON, CRT = ...
 --                     takes; not its Personal notes row
 --   each healer       a row with their name in class colour and their spec, then one row per major cooldown
 --                     (the cooldown list's major entries for their spec, else for their class), then one per
---                     other listed cooldown the raid note gives them
+--                     other listed cooldown the raid note gives them and one per other spell a note line gives
+--                     them alone; a right-click on their rows' labels shows or hides any of these or the rest of
+--                     their class's list (Timeline/HealerRows.lua)
 --   the panel rows    your moved casts' bar and the raid lead's proposed changes (Timeline/HealerPanel.lua)
 -- The healers are the roster's players (Alerts/Roster.lua: the active Raid Groups layout, else the group)
 -- whose role is healer: a role set by hand (Groups.HandRole) wins, else the game's role in the group; a
@@ -40,6 +42,9 @@ local TEXT = {
     assigned = "Has cooldowns in the raid note",
     cooldown = "Cooldown %d:%02d",
     addCast = "Double-click this row to add a cast.",
+    pickRows = "Right-click to show or hide this player's rows.",
+    allHidden = "All rows hidden. Right-click the name to show some.",
+    noDefaults = "No rows by default. Right-click the name to add some.",
     yours = "yours",
     locked = "locked",
     ownTip = "Your casts: drag one to move it for you. Your alerts use your time; the raid note stays as it is.",
@@ -173,6 +178,48 @@ local function lengthOf(e)
     return ok and type(n) == "number" and n > 0 and n or nil
 end
 
+-- The spells that can be a row for a player of Build (who: p, class, noteSpells), in the order their menu lists
+-- them (Timeline/HealerRows.lua): their class's major cooldowns (a healer's spec ones first), the rest of their
+-- class's, then the other spells the raid note gives them. Each is { spellID, entry, label, icon, default }:
+-- default is shown unless picked otherwise (a healer's spec majors, as HV.Majors, and every spell the note gives
+-- them). A spell the game doesn't name is left out.
+function HV.Options(who)
+    local out, seen = {}, {}
+    local function add(e, default)
+        local had = seen[e.spellID]
+        if had then
+            had.default = had.default or default
+            return
+        end
+        local name = spellName(e.spellID)
+        if name then
+            local o = { spellID = e.spellID, entry = e, label = name, icon = spellIcon(e.spellID) or UNNAMED_ICON,
+                default = default }
+            seen[e.spellID] = o
+            out[#out + 1] = o
+        end
+    end
+    local class = usable(who.class) and who.class or nil
+    if class then
+        if who.p.role == "HEALER" then
+            for _, e in ipairs(HV.Majors(class, who.p.spec)) do
+                add(e, true)
+            end
+        end
+        for pass = 1, 2 do
+            for _, e in ipairs(list()) do
+                if e.class == class and (e.major and true or false) == (pass == 1) then
+                    add(e, false)
+                end
+            end
+        end
+    end
+    for _, e in ipairs(who.noteSpells or {}) do
+        add(e, true)
+    end
+    return out
+end
+
 -- The players -----------------------------------------------------------------------------------------
 
 -- Your SpecializationID, when the game gives one.
@@ -303,6 +350,20 @@ local function nameWord(tag, classes)
     return true
 end
 
+-- The player a note line's tags name with nothing else beside them (no role, class or group word, no second
+-- player), or nil.
+local function soleName(m, find, classes)
+    local tags = m.tags
+    if type(tags) ~= "table" or #tags ~= 1 or not usable(tags[1]) then
+        return nil
+    end
+    local p = find(tags[1])
+    if not p and nameWord(tags[1], classes) then
+        p = { key = tags[1], name = tags[1] } -- named in the note, not on the roster
+    end
+    return p
+end
+
 -- The lanes ------------------------------------------------------------------------------------------
 
 local function tooltipOwner(owner)
@@ -316,13 +377,16 @@ local function headerTip(who)
         GameTooltip:SetText(p.name, CRT.Groups.ClassColor(p.key, who.class))
         local line = p.role == "HEALER" and (p.hand and TEXT.healerHand or TEXT.healer) or TEXT.assigned
         GameTooltip:AddLine(line, 0.85, 0.85, 0.85, true)
-        if #who.rows == 0 then
+        if #who.rows == 0 and who.unknownClass then
             GameTooltip:AddLine(TEXT.classUnknown, 0.85, 0.85, 0.85, true)
         end
         if who.marker == TEXT.yours then
             GameTooltip:AddLine(TEXT.ownTip, 0.85, 0.85, 0.85, true)
         elseif who.marker == TEXT.locked then
             GameTooltip:AddLine(string.format(TEXT.lockedTip, p.name), 0.85, 0.85, 0.85, true)
+        end
+        if who.menu and #who.menu.options > 0 then
+            GameTooltip:AddLine(TEXT.pickRows, 0.85, 0.85, 0.85, true)
         end
         GameTooltip:Show()
     end
@@ -336,6 +400,7 @@ local function cooldownTip(r)
             lines[1] = { string.format(TEXT.cooldown, math.floor(secs / 60), secs % 60), 1, 1, 1 }
         end
         lines[#lines + 1] = { TEXT.addCast, 0.85, 0.85, 0.85 }
+        lines[#lines + 1] = { TEXT.pickRows, 0.85, 0.85, 0.85 }
         CRT.AbilityTip:Show(GameTooltip, l, "timeline", { spellID = r.spellID, name = r.label, lines = lines })
     end
 end
@@ -418,11 +483,21 @@ function HV.Build(view, lanes, length)
         local k = p.key:lower()
         local who = byKey[k]
         if not who then
-            who = { p = p, class = p.class or class, rows = {}, bySpell = {} }
+            who = { p = p, key = k, class = p.class or class, rows = {}, bySpell = {}, noteSpells = {} }
             byKey[k] = who
             people[#people + 1] = who
+        elseif not usable(who.class) and class then
+            who.class = class -- met first without a class (a healer never seen), then by a listed cooldown's
         end
         return who
+    end
+    local function noteSpell(who, e)
+        for _, had in ipairs(who.noteSpells) do
+            if had.spellID == e.spellID then
+                return
+            end
+        end
+        who.noteSpells[#who.noteSpells + 1] = e
     end
     local function row(who, e)
         local r = who.bySpell[e.spellID]
@@ -446,11 +521,7 @@ function HV.Build(view, lanes, length)
         end
         if p.role == "HEALER" then
             local who = person(p)
-            if usable(p.class) then
-                for _, e in ipairs(HV.Majors(p.class, p.spec)) do
-                    row(who, e)
-                end
-            else
+            if not usable(p.class) then
                 who.unknownClass = true -- set as healer by hand, never seen in a group: their name row and a hint
             end
         end
@@ -464,6 +535,8 @@ function HV.Build(view, lanes, length)
         shown[#shown + 1] = c
         c.hvLane = r
     end
+    -- who each note line is for (pending: { m, whos, spellID }), before the rows, since the note adds rows
+    local pending, mine, sole = {}, {}, {}
     for _, m in ipairs(marks) do
         local e = HV.Listed(m.spellID)
         if m.kind == "note" and m.noteID ~= nil and not seenNote[m.noteID] and not personalNote(m) then
@@ -473,9 +546,15 @@ function HV.Build(view, lanes, length)
         if not e and m.kind == "note" and m.row and m.row <= #lanes then
             shown[#shown + 1] = m -- a line for a boss ability: on its row, as Abilities draws it
         elseif not e and m.kind == "note" and notesRow and m.row == notesRow then
-            onNotes[#onNotes + 1] = m
+            -- a spell for one player alone: theirs once every line is read (below); any other line stays on Notes
+            local p = spellName(m.spellID) and not personalNote(m) and soleName(m, find, classes)
+            if p then
+                sole[#sole + 1] = { m = m, p = p }
+            else
+                onNotes[#onNotes + 1] = m
+            end
         elseif e and m.kind == "note" then
-            local seen, placed = {}, false
+            local seen, whos = {}, {}
             for _, tag in ipairs(m.tags or {}) do
                 local p = usable(tag) and find(tag) or nil
                 if not p and nameWord(tag, classes) then
@@ -483,22 +562,61 @@ function HV.Build(view, lanes, length)
                 end
                 if p and not seen[p.key:lower()] then
                     seen[p.key:lower()] = true
-                    local r = row(person(p, e.class), e)
-                    if r then
-                        put(m, r)
-                        placed = true
-                    end
+                    local who = person(p, e.class)
+                    noteSpell(who, e)
+                    whos[#whos + 1] = who
                 end
             end
-            if not placed and notesRow and m.row == notesRow then
-                onNotes[#onNotes + 1] = m -- a cooldown line for no player: on the Notes row, as Abilities draws it
-            end
+            pending[#pending + 1] = { m = m, whos = whos, spellID = e.spellID }
         elseif e and m.kind == "mine" then
-            local who = me and byKey[me]
-            local r = who and who.bySpell[e.spellID]
-            if r then
-                put(m, r)
+            mine[#mine + 1] = { m = m, spellID = e.spellID }
+        end
+    end
+    -- a one-player spell line is a row on that player's block only when they have one here (a healer, or someone
+    -- the note gives a listed cooldown): this view is for healers; anyone else's stays on Notes
+    for _, s in ipairs(sole) do
+        local who = byKey[s.p.key:lower()]
+        if who then
+            noteSpell(who, { spellID = s.m.spellID })
+            pending[#pending + 1] = { m = s.m, whos = { who }, spellID = s.m.spellID }
+        else
+            onNotes[#onNotes + 1] = s.m
+        end
+    end
+    -- each player's rows: the ones that can be (HV.Options, the menu's list) that show (HealerRows.lua's picks)
+    local Picks = CRT.TimelineHealerRows
+    for _, who in ipairs(people) do
+        who.menu = { key = who.key, name = who.p.name, options = HV.Options(who) }
+        for _, o in ipairs(who.menu.options) do
+            if not Picks or Picks.Shown(who.key, o.spellID, o.default) then
+                row(who, o.entry)
+            elseif o.default then
+                -- picked off (a note spell's among them: its lines aren't drawn, nor moved to Notes)
+                who.hidden = who.hidden or {}
+                who.hidden[o.spellID] = true
             end
+        end
+    end
+    for _, w in ipairs(pending) do
+        local placed, hidden = false, false
+        for _, who in ipairs(w.whos) do
+            local r = who.bySpell[w.spellID]
+            if r then
+                put(w.m, r)
+                placed = true
+            elseif who.hidden and who.hidden[w.spellID] then
+                hidden = true -- a row picked off: its casts aren't drawn here (the note keeps them)
+            end
+        end
+        if not placed and not hidden and notesRow and w.m.row == notesRow then
+            onNotes[#onNotes + 1] = w.m -- a line for no player's row: on the Notes row, as Abilities draws it
+        end
+    end
+    for _, w in ipairs(mine) do
+        local who = me and byKey[me]
+        local r = who and who.bySpell[w.spellID]
+        if r then
+            put(w.m, r)
         end
     end
     -- the ability rows as the Abilities layout shows them, then the healers
@@ -517,16 +635,23 @@ function HV.Build(view, lanes, length)
     local abilities = #out
     local lead = canEditRaid()
     for _, who in ipairs(people) do
-        if #who.rows > 0 or who.unknownClass then
+        -- every row picked off still leaves the name row, to pick them back
+        if #who.rows > 0 or who.unknownClass or #who.menu.options > 0 then
             local p = who.p
             local spec = specName(p.spec)
             -- yours or locked, for someone who may not change the raid note
             who.marker = not lead and (p.me and TEXT.yours or TEXT.locked) or nil
             local label = p.name .. (spec and (DOT .. spec) or "") .. (who.marker and (DOT .. who.marker) or "")
+            local note
+            if #who.rows == 0 then
+                note = (who.unknownClass and TEXT.classUnknown) or (who.hidden and next(who.hidden) and TEXT.allHidden)
+                    or TEXT.noDefaults
+            end
             out[#out + 1] = { key = "healers:" .. p.key:lower(), kind = "healer", label = label, class = who.class,
-                marks = {}, tip = headerTip(who), note = #who.rows == 0 and TEXT.classUnknown or nil,
-                tint = classTint(who.class, NAME_TINT) }
+                marks = {}, tip = headerTip(who), note = note, tint = classTint(who.class, NAME_TINT),
+                hvMenu = who.menu }
             for _, r in ipairs(who.rows) do
+                r.hvMenu = who.menu -- a right-click on any of a player's rows picks their rows (HV.LabelMenu)
                 r.indent, r.tint = HV.INDENT, classTint(who.class, SPELL_TINT) -- the view draws both
                 out[#out + 1] = r
                 r.row = #out
@@ -769,6 +894,18 @@ function HV.Watch(view)
     events:RegisterEvent("PLAYER_ROLES_ASSIGNED")
     events:SetScript("OnEvent", HV.Changed)
     HV.events = events
+end
+
+-- A right-click on a player's name or spell row in the label column (View:LabelMenu): the menu that shows or hides
+-- their rows (Timeline/HealerRows.lua), the view drawn again after each pick. True when lane was one.
+function HV.LabelMenu(view, owner, lane)
+    local Picks = CRT.TimelineHealerRows
+    if not (lane and lane.hvMenu and Picks) then
+        return false
+    end
+    return Picks.Menu(owner, lane.hvMenu, function()
+        view:Refresh()
+    end)
 end
 
 -- A double-click on a row of Healer CDs at t seconds: on a cooldown row, that cooldown is placed at once for

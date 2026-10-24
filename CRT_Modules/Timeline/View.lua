@@ -3608,9 +3608,14 @@ end
 
 -- Developer builds with /crt dev open: right-click a boss mechanic's name for the Advanced tab's menu
 -- (its type, tags, name, a row of its own, a Mech Alert) and Hide from the timeline, which ships.
--- Players get no menu here; the Advanced tab is theirs.
+-- Players get no menu here; the Advanced tab is theirs. On Healer CDs, a player's name or spell row opens the
+-- menu that shows or hides their rows, for anyone (HealerView.LabelMenu).
 function Methods:LabelMenu(l)
     local lane, Timeline, Menu = l.lane, CRT.Timeline, CRT.TimelineAbilityMenu
+    local Healers = CRT.TimelineHealerView
+    if self.mode == "healers" and Healers and Healers.LabelMenu(self, l, lane) then
+        return
+    end
     if not (lane and self.encounterID and Timeline.DevMode() and Timeline.Ignorable(lane) and Menu
         and MenuUtil and MenuUtil.CreateContextMenu) then
         return
