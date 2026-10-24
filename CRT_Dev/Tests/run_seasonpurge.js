@@ -110,6 +110,15 @@ for _, s in ipairs(declared) do
   local ok, t = pcall(s.getter, {})
   check(ok and t == nil, s.label .. ": nothing saved yet reads as nil")
 end
+-- long-term stores are never declared: no declared getter reaches them
+do
+  local longTerm = { healerRows = {} }
+  local probe = { timeline = { healerRows = longTerm.healerRows } }
+  for _, s in ipairs(declared) do
+    local ok, t = pcall(s.getter, probe)
+    check(not (ok and t == longTerm.healerRows), s.label .. " is not timeline.healerRows (Healer CDs' picked rows)")
+  end
+end
 -- a store declared again (a file loaded twice) replaces itself
 local n0 = #B:Stores()
 B:DeclareStore(declared[1].label, declared[1].getter)
@@ -139,6 +148,7 @@ CRT.db.tattle = { history = { { id = 1, season = "Season 1", pulls = { { encount
 CRT.db.late = { history = { { id = 1 } } }
 CRT.db.notes = { list = { [1] = { raw = "x", encounterID = SSZ } }, history = { [1] = { "old" } }, personalShifts = { [1] = { k = { ph = 1, t = 5, raw = "x" } } } }
 CRT.db.longTerm = { kept = { [SSZ] = true } }
+CRT.db.timeline.healerRows = { ["halo-home"] = { [64843] = false } }
 CRTLootDB = { bosses = { [SSZ] = "Sszorak" }, records = { { encounterID = SSZ } } }
 local counts, total, bosses = Tools:PurgeCounts("sample")
 eq(bosses, 2, "the sample season has two bosses with files")
@@ -165,6 +175,7 @@ eq(#CRT.db.late.history, 1, "the Late Tracker is kept")
 check(CRT.db.notes.list[1] ~= nil and CRT.db.notes.history[1] ~= nil, "raid notes and note history are kept")
 check(CRT.db.notes.personalShifts[1] ~= nil, "your own Healer CDs times (by note) are kept with their notes")
 check(CRT.db.longTerm.kept[SSZ], "the longTerm area is kept")
+check(CRT.db.timeline.healerRows["halo-home"][64843] == false, "Healer CDs' picked rows are kept")
 check(CRTLootDB.bosses[SSZ] ~= nil and #CRTLootDB.records == 1, "loot history is kept")
 local _, again = Tools:PurgeCounts("sample")
 eq(again, 0, "nothing left to purge")

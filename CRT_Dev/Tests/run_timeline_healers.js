@@ -654,8 +654,55 @@ do
   check(core:find("timeline.healerRows", 1, true) ~= nil, "and names it on its long-term list")
   local share = profiles:match("\\n    timeline = (%b{})")
   check(share and share:find("healerRows = false", 1, true) ~= nil, "Export settings only never takes it")
-  check(not source("CRT_Modules/Timeline/Data.lua"):find("healerRows", 1, true), "not declared to the season purge")
+  CRT.db.timeline.healerRows = {}
+  local declaredAs
+  for _, s in ipairs(CRT.Bosses:Stores()) do
+    local ok, t = pcall(s.getter, CRT.db)
+    if ok and t == CRT.db.timeline.healerRows then declaredAs = s.label end
+  end
+  check(#CRT.Bosses:Stores() > 0 and declaredAs == nil, "no declared per-boss store is healerRows: " .. tostring(declaredAs))
+  CRT.db.timeline.healerRows = nil
   setNote({})
+end
+
+-- Healer CDs is for healers: a note spell for one player makes a block only for a healer or someone with a listed cooldown --
+do
+  setNote({
+    "time:30;ph:1;tag:Rain;spellid:9999;",   -- Rain plays damage and has no listed cooldown: stays on Notes
+    "time:35;ph:1;tag:Tanky;spellid:5556;",  -- Tanky alone, before his listed cooldown line: still his row
+    "time:45;ph:1;tag:Tanky;spellid:97462;", -- Tanky's Rallying Cry (listed)
+    "time:65;ph:1;tag:Zorp;spellid:740;",    -- a listed druid cooldown for Zorp, whose class nobody knows
+  })
+  G:SetHandRole("Zorp-Elsewhere", "HEALER")
+  flush()
+  local v = newView()
+  check(laneIndex(v, "healers:rain-home") == nil and laneIndex(v, "healers:rain-home:9999") == nil, "a damage dealer's line makes no block")
+  local nr = laneIndex(v, "notes")
+  local onNotes = {}
+  for _, f in ipairs(nr and flagsOn(v, nr) or {}) do onNotes[#onNotes + 1] = f.mark.t end
+  check(table.concat(onNotes, ",") == "30", "it stays on the Notes row: " .. table.concat(onNotes, ","))
+  check(laneIndex(v, "healers:tanky-home:5556") ~= nil and #flagsOn(v, laneIndex(v, "healers:tanky-home:5556")) == 1,
+    "someone with a listed cooldown gets their note spell as a row, whichever line comes first")
+  -- the class comes from a listed cooldown even when the player was met first without one
+  local zi = laneIndex(v, "healers:zorp-elsewhere")
+  check(zi and v.lanes[zi].class == "DRUID" and v.lanes[zi].tint ~= nil, "a class-unknown healer takes the class of their note cooldown")
+  G:SetHandRole("Zorp-Elsewhere", nil)
+  flush()
+  -- a healer with no rows by default (a class with no major cooldowns) gets a hint to add some
+  setNote({})
+  G:SetHandRole("Tanky-Home", "HEALER")
+  flush()
+  v = newView()
+  local ti = laneIndex(v, "healers:tanky-home")
+  check(ti and laneIndex(v, "healers:tanky-home:97462") == nil and v.lanes[ti].note == HV.TEXT.noDefaults,
+    "no rows by default: the name row says so: " .. tostring(ti and v.lanes[ti].note))
+  check(HV.LabelMenu(v, v.labels[ti], v.lanes[ti]) == true, "LabelMenu says it opened the menu")
+  local realMenu = MenuUtil
+  MenuUtil = nil
+  check(HV.LabelMenu(v, v.labels[ti], v.lanes[ti]) == false, "and false when the game's menus aren't there")
+  MenuUtil = realMenu
+  G:SetHandRole("Tanky-Home", nil)
+  flush()
 end
 
 -- Your own casts, for a healer who may not change the raid note ----------------------------------------------------
