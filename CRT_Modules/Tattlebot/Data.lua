@@ -619,9 +619,10 @@ function Tattle:Totals()
 end
 
 -- Every saved pull on one boss, the running night's too, oldest first, for Season Stats' trend:
--- { at, difficulty, success, damage, night, nightAt }, damage being every player's counted damage added up
+-- { at, difficulty, success, damage, night, nightAt, team }, damage being every player's counted damage added up
 -- (Tattle.PullDamage: the tracked mechanics, plus the meter's avoidable damage when that setting is on), night the
--- id of the night it is in (Tattle:Night) and nightAt that night's start.
+-- id of the night it is in (Tattle:Night), nightAt that night's start and team whether it was a team raid (a pull
+-- saved before team raids was).
 function Tattle:BossPulls(encounterID)
     local out = {}
     if encounterID == nil then
@@ -640,7 +641,7 @@ function Tattle:BossPulls(encounterID)
                     damage = damage + Tattle.PullDamage(p, pull)
                 end
                 out[#out + 1] = { at = pull.at or night.startedAt, difficulty = pull.difficulty, success = pull.success, damage = damage,
-                    night = night.id, nightAt = night.startedAt }
+                    night = night.id, nightAt = night.startedAt, team = pull.team ~= false and night.team ~= false }
             end
         end
     end

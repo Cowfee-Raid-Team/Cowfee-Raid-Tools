@@ -4,7 +4,13 @@ local ADDON, CRT = ...
 -- (SeasonStats/Page.lua). The Timeline keeps only the newest pulls of each boss; these keep the whole season.
 -- Saved in CRTDB.seasonStats (defaults in CRT_Core/Core.lua; data, so never in Export settings only):
 --   filled               true once the counters were filled from the Timeline's saved pulls (Backfill, once)
---   bosses[encounterID]  { name, nh = counters, mythic = counters }, the groups of Timeline.DifficultyGroup
+--   scoped               true once the counters from before team raids were copied into all (Migrate, once)
+--   show                 the page's Show: "team" (Team raids, the default) or "all" (All raids)
+--   bosses[encounterID]  { name, nh = counters, mythic = counters, all = { nh = counters, mythic = counters } },
+--                        the groups of Timeline.DifficultyGroup. Two scopes: boss[group] (the field from before
+--                        scopes, kept) counts team raids, boss.all[group] every raid. A pull counts in all, and in
+--                        team too when the team raid check (CRT.Team, CRT_Core/Team.lua) said team at its start.
+--                        Counters saved before scopes count as both: Migrate copies them into all once.
 --   counters             { pulls, wipes, kills, firstKillPull, firstKillAt, bestKill, killTime, pullTime, untimed,
 --                          first, last, nights = { [night] = { longest, phase, pulls } }, causes = { [spellID] = deaths },
 --                          deaths = { deaths per pull, newest last, the last TREND },
@@ -32,9 +38,36 @@ Stats.HALF = 10 -- the trend compares the last HALF pulls with the HALF before
 Stats.TOP_CAUSES = 3
 Stats.RUN_MATCH = 10 -- seconds between an alerts run's start and a pull's start for the run to be the pull's
 Stats.GROUPS = { "nh", "mythic" }
+Stats.TEAM, Stats.ALL = "team", "all"
+Stats.SCOPES = { Stats.TEAM, Stats.ALL }
 
 local function sdb()
     return CRT.db.seasonStats
+end
+
+-- The page's Show: "team" (the default) or "all".
+function Stats:Scope()
+    return sdb().show == Stats.ALL and Stats.ALL or Stats.TEAM
+end
+
+function Stats:SetScope(scope)
+    sdb().show = scope == Stats.ALL and Stats.ALL or Stats.TEAM
+    self:Fire()
+end
+
+function Stats.ScopeOptions()
+    return { { key = Stats.TEAM, label = "Team raids" }, { key = Stats.ALL, label = "All raids" } }
+end
+
+-- The scopes a pull counts in: all, and team when the team raid check said team at its start (the answer now when
+-- it has no snapshot of the pull; with no check loaded, team, as every pull counted before).
+local function pullScopes(pull)
+    local Team = CRT.Team
+    local team = true
+    if Team and Team.PullIsTeam then
+        team = Team:PullIsTeam(pull.encounterID, pull.startedAt) and true or false
+    end
+    return team and Stats.SCOPES or { Stats.ALL }
 end
 
 function Stats:OnChange(fn)
@@ -65,27 +98,75 @@ local function groupOf(difficultyID)
 end
 Stats.GroupOf = groupOf
 
--- A boss's counters for a group; make creates them (and the boss) when missing.
-local function counters(encounterID, group, name, make)
-    local all = sdb().bosses
-    local boss = all[encounterID]
+-- A boss's counters for a group in a scope (team, the default, or all); make creates them (and the boss) when
+-- missing.
+local function counters(encounterID, group, name, make, scope)
+    local bosses = sdb().bosses
+    local boss = bosses[encounterID]
     if not boss then
         if not make then
             return nil
         end
         boss = {}
-        all[encounterID] = boss
+        bosses[encounterID] = boss
     end
     if make and type(name) == "string" and name ~= "" then
         boss.name = name
     end
-    local c = boss[group]
+    local holder = boss
+    if scope == Stats.ALL then
+        holder = boss.all
+        if type(holder) ~= "table" then
+            if not make then
+                return nil
+            end
+            holder = {}
+            boss.all = holder
+        end
+    end
+    local c = holder[group]
     if not c and make then
         c = { pulls = 0, wipes = 0, kills = 0, killTime = 0, pullTime = 0, untimed = 0, nights = {}, causes = {}, deaths = {},
             repairs = 0, repairPulls = 0, raidRepairs = 0, raidReporters = 0, raidPulls = 0 }
-        boss[group] = c
+        holder[group] = c
     end
     return c
+end
+
+local function deepCopy(v)
+    if type(v) ~= "table" then
+        return v
+    end
+    local out = {}
+    for k, x in pairs(v) do
+        out[k] = deepCopy(x)
+    end
+    return out
+end
+
+-- Once: the counters saved before scopes were team raids and all raids alike, so each is copied into all (the
+-- team ones stay where they were). Marked done; returns true when it ran.
+function Stats:Migrate()
+    local s = sdb()
+    if s.scoped then
+        return false
+    end
+    for _, boss in pairs(s.bosses) do
+        if type(boss) == "table" then
+            for _, group in ipairs(Stats.GROUPS) do
+                if type(boss[group]) == "table" then
+                    if type(boss.all) ~= "table" then
+                        boss.all = {}
+                    end
+                    if boss.all[group] == nil then
+                        boss.all[group] = deepCopy(boss[group])
+                    end
+                end
+            end
+        end
+    end
+    s.scoped = true
+    return true
 end
 
 local function addNight(c, at, length, phase)
@@ -123,12 +204,8 @@ end
 -- Counts one saved pull ({ encounterID, name, difficultyID, startedAt, length, kill, number, deaths }, as the
 -- Timeline saves it). phase is the furthest phase it reached, when known. useNumber takes the pull's own number
 -- for pulls to first kill (the fill only): the Timeline's counter starts again when its pulls of a boss are
--- deleted, so a live pull is numbered by these counters' own count. Returns the counters, or nil.
-local function add(pull, phase, useNumber)
-    if type(pull) ~= "table" or type(pull.encounterID) ~= "number" then
-        return nil
-    end
-    local c = counters(pull.encounterID, groupOf(pull.difficultyID), pull.name, true)
+-- deleted, so a live pull is numbered by these counters' own count.
+local function addTo(c, pull, phase, useNumber)
     c.pulls = c.pulls + 1
     local number = useNumber and type(pull.number) == "number" and pull.number or c.pulls
     local length = type(pull.length) == "number" and pull.length or nil
@@ -155,57 +232,92 @@ local function add(pull, phase, useNumber)
     while #c.deaths > Stats.TREND do
         table.remove(c.deaths, 1)
     end
-    return c
+end
+
+-- Counts a pull in each of its scopes (pullScopes, or the list given). Returns the counters it went into, a list,
+-- or nil for a pull that can't be counted.
+local function add(pull, phase, useNumber, scopes)
+    if type(pull) ~= "table" or type(pull.encounterID) ~= "number" then
+        return nil
+    end
+    local list = {}
+    for _, scope in ipairs(scopes or pullScopes(pull)) do
+        local c = counters(pull.encounterID, groupOf(pull.difficultyID), pull.name, true, scope)
+        addTo(c, pull, phase, useNumber)
+        list[#list + 1] = c
+    end
+    return list
 end
 
 -- Fills the counters once from the Timeline's saved pulls (numbered per boss), oldest first. The Timeline keeps
 -- only the newest of them, so the pulls its counter has numbered beyond the saved ones count as wipes with no
 -- length (untimed). latest and phase: a pull being saved right now and its phase, when the fill runs from the
--- save hook. Marked done, so it never runs twice. Returns true when it filled.
+-- save hook. The Timeline's saved pulls are from before team raids, so they count as team and all alike; the pull
+-- being saved counts in its own scopes. Marked done, so it never runs twice. Returns true when it filled, and the
+-- counters the latest pull went into.
 function Stats:Backfill(latest, phase)
     local s = sdb()
     local T = CRT.Timeline
     if s.filled or not T then
         return false
     end
+    self:Migrate()
+    local latestIn
     for _, b in ipairs(T:Bosses()) do
         local pulls = T:Pulls(b.encounterID) -- newest first
         for i = #pulls, 1, -1 do
-            add(pulls[i], pulls[i] == latest and phase or nil, true)
+            local p = pulls[i]
+            if p == latest then
+                latestIn = add(p, phase, true)
+            else
+                add(p, nil, true, Stats.SCOPES)
+            end
         end
         for _, group in ipairs(Stats.GROUPS) do
-            local total = T:PullCount(b.encounterID, group)
-            local c = counters(b.encounterID, group, b.name, total > 0)
-            if c and total > c.pulls then
-                local extra = total - c.pulls
-                c.pulls, c.wipes, c.untimed = total, c.wipes + extra, c.untimed + extra
+            for _, scope in ipairs(Stats.SCOPES) do
+                local total = T:PullCount(b.encounterID, group)
+                -- the latest pull, when it isn't a team raid, is in the Timeline's count but not in team
+                if scope == Stats.TEAM and latestIn and #latestIn == 1 and latest.encounterID == b.encounterID and groupOf(latest.difficultyID) == group then
+                    total = total - 1
+                end
+                local c = counters(b.encounterID, group, b.name, total > 0, scope)
+                if c and total > c.pulls then
+                    local extra = total - c.pulls
+                    c.pulls, c.wipes, c.untimed = total, c.wipes + extra, c.untimed + extra
+                end
             end
         end
     end
     s.filled = true
+    s.scoped = true
     self:Fire()
-    return true
+    return true, latestIn
 end
 
--- Your repair bill over the pull, when Repairs.lua measured it: added to the counters the pull just counted in,
--- once (Rep:Claim in SeasonStats/Repairs.lua keeps which pulls it gave), with the raid's reports of that pull. With no
--- read finished yet, the bill is added when the read finishes.
-local function claimRepair(pull)
+-- Your repair bill over the pull, when Repairs.lua measured it: added to the counters the pull just counted in (a
+-- list, one per scope), once (Rep:Claim in SeasonStats/Repairs.lua keeps which pulls it gave), with the raid's
+-- reports of that pull. With no read finished yet, the bill is added when the read finishes.
+local function claimRepair(pull, list)
     local Rep = CRT.SeasonRepairs
-    if Rep and Rep.Claim and type(pull) == "table" and type(pull.encounterID) == "number" then
-        Rep:Claim(pull, counters(pull.encounterID, groupOf(pull.difficultyID)))
+    if Rep and Rep.Claim and type(list) == "table" and #list > 0 then
+        Rep:Claim(pull, list)
     end
 end
 
 -- Counts a pull the Timeline just saved (its save hook). The first one after an update fills from the saved pulls
 -- instead, this one among them.
 function Stats:Record(pull, phase)
-    if not sdb().filled and self:Backfill(pull, phase) then
-        claimRepair(pull)
-        return
+    self:Migrate()
+    if not sdb().filled then
+        local filled, list = self:Backfill(pull, phase)
+        if filled then
+            claimRepair(pull, list)
+            return
+        end
     end
-    if add(pull, phase) then
-        claimRepair(pull)
+    local list = add(pull, phase)
+    if list then
+        claimRepair(pull, list)
         self:Fire()
     end
 end
@@ -235,8 +347,9 @@ function Stats:AddRaidRepair(c, copper, newPull)
 end
 
 -- A boss's counters for a difficulty group, or nil when it has none.
-function Stats:Boss(encounterID, group)
-    return counters(encounterID, group)
+-- scope is "team" or "all", by default the page's Show (Stats:Scope).
+function Stats:Boss(encounterID, group, scope)
+    return counters(encounterID, group, nil, false, scope or self:Scope())
 end
 
 -- The furthest phase -------------------------------------------------------------------------------------------
@@ -327,15 +440,16 @@ end
 
 -- One row per boss of a season's route, in route order: { encounterID, name, counters, pulls, wipes, kills,
 -- firstKillPull, firstKillAt, bestKill, pullTime, repairs, repairPulls, raidRepairs, raidReporters, raidPulls };
--- a boss with no pulls has zeros and no counters.
+-- a boss with no pulls has zeros and no counters. scope is "team" or "all", by default the page's Show.
 local REPAIR_FIELDS = { "repairs", "repairPulls", "raidRepairs", "raidReporters", "raidPulls" }
 Stats.REPAIR_FIELDS = REPAIR_FIELDS
 
-function Stats:Rows(seasonKey, group)
+function Stats:Rows(seasonKey, group, scope)
+    scope = scope or self:Scope()
     local out = {}
     local B = CRT.Bosses
     for _, def in ipairs(B and seasonKey and B:RouteList(seasonKey) or {}) do
-        local c = counters(def.encounterID, group)
+        local c = counters(def.encounterID, group, nil, false, scope)
         local row = {
             encounterID = def.encounterID, name = def.name, counters = c,
             pulls = c and c.pulls or 0, wipes = c and c.wipes or 0, kills = c and c.kills or 0,
@@ -351,11 +465,11 @@ function Stats:Rows(seasonKey, group)
 end
 
 -- The difficulty group the page opens on: the one with more pulls in the season, Mythic on a tie.
-function Stats:DefaultGroup(seasonKey)
+function Stats:DefaultGroup(seasonKey, scope)
     local n = {}
     for _, group in ipairs(Stats.GROUPS) do
         n[group] = 0
-        for _, row in ipairs(self:Rows(seasonKey, group)) do
+        for _, row in ipairs(self:Rows(seasonKey, group, scope)) do
             n[group] = n[group] + row.pulls
         end
     end
@@ -363,11 +477,13 @@ function Stats:DefaultGroup(seasonKey)
 end
 
 -- The Late Tracker's raid nights in a season: its saved nights (and the running one) that started between the
--- season's first pull (less NIGHT_LEAD) and its last, on any difficulty. 0 with no pulls or no Late Tracker.
-function Stats:RaidNights(seasonKey)
+-- season's first pull (less NIGHT_LEAD) and its last, on any difficulty. 0 with no pulls or no Late Tracker. In the
+-- team scope, only the team raid nights (a night saved before team raids is one).
+function Stats:RaidNights(seasonKey, scope)
+    scope = scope or self:Scope()
     local first, last
     for _, group in ipairs(Stats.GROUPS) do
-        for _, row in ipairs(self:Rows(seasonKey, group)) do
+        for _, row in ipairs(self:Rows(seasonKey, group, scope)) do
             local c = row.counters
             if c and c.first then
                 first = math.min(first or c.first, c.first)
@@ -387,7 +503,8 @@ function Stats:RaidNights(seasonKey)
     local count = 0
     for _, night in ipairs(nights) do
         local at = type(night) == "table" and night.startedAt
-        if type(at) == "number" and at >= first - Stats.NIGHT_LEAD and at <= last then
+        local inScope = scope ~= Stats.TEAM or (type(night) == "table" and night.team ~= false)
+        if inScope and type(at) == "number" and at >= first - Stats.NIGHT_LEAD and at <= last then
             count = count + 1
         end
     end
@@ -396,9 +513,10 @@ end
 
 -- The cards and the rows: { bosses, killed, pulls, pullTime, untimed, nights (the Late Tracker's),
 -- pullNights (nights with a pull on this difficulty), and the season's repairs, repairPulls, raidRepairs,
--- raidReporters and raidPulls }, rows.
-function Stats:Cards(seasonKey, group)
-    local rows = self:Rows(seasonKey, group)
+-- raidReporters and raidPulls }, rows, in a scope (by default the page's Show).
+function Stats:Cards(seasonKey, group, scope)
+    scope = scope or self:Scope()
+    local rows = self:Rows(seasonKey, group, scope)
     local card = { bosses = #rows, killed = 0, pulls = 0, pullTime = 0, untimed = 0, pullNights = 0 }
     for _, key in ipairs(REPAIR_FIELDS) do
         card[key] = 0
@@ -422,7 +540,7 @@ function Stats:Cards(seasonKey, group)
             end
         end
     end
-    card.nights = self:RaidNights(seasonKey)
+    card.nights = self:RaidNights(seasonKey, scope)
     return card, rows
 end
 
@@ -487,16 +605,19 @@ end
 -- { key, pulls, damage, perPull, nightIDs, nightID }. nightIDs are the Tattlebot nights with a pull on that date,
 -- newest first; a date can have two (End night pressed, then more pulls), and nightID, the one the page opens in
 -- Tattlebot (CRT.TattlePage.ShowNight), is the first of them, the newest. Nil when Tattlebot has no pull on the
--- boss in that group.
-function Stats:AvoidableTrend(encounterID, group, max)
+-- boss in that group. In the team scope (by default the page's Show), only Tattlebot's team raid pulls (a pull
+-- saved before team raids is one).
+function Stats:AvoidableTrend(encounterID, group, max, scope)
     local Tattle = CRT.Tattle
     if not (Tattle and Tattle.BossPulls) then
         return nil
     end
+    scope = scope or self:Scope()
     local byKey, list = {}, {}
     for _, p in ipairs(Tattle:BossPulls(encounterID)) do
         -- a difficulty that wasn't readable (secret, saved as nil) belongs to no group
-        if type(p.at) == "number" and type(p.difficulty) == "number" and groupOf(p.difficulty) == group then
+        local inScope = scope ~= Stats.TEAM or p.team ~= false
+        if inScope and type(p.at) == "number" and type(p.difficulty) == "number" and groupOf(p.difficulty) == group then
             local key = Stats.NightKey(p.at)
             local night = byKey[key]
             if not night then
@@ -692,5 +813,7 @@ end
 local driver = CreateFrame("Frame")
 driver:RegisterEvent("PLAYER_LOGIN")
 driver:SetScript("OnEvent", function()
+    -- the counters from before team raids into all first, then the fill (which counts in both)
+    Stats:Migrate()
     Stats:Backfill()
 end)

@@ -338,9 +338,13 @@ local defaults = {
     team = { threshold = 0.75 },
     -- Season Stats (SeasonStats/Data.lua): the raid's own counters per boss and difficulty group, counted from each
     -- pull the Timeline saves. bosses[encounterID] = { name, nh = counters, mythic = counters }; filled is true once
-    -- they were filled from the Timeline's saved pulls. Data only: never in Export settings only.
+    -- they were filled from the Timeline's saved pulls. Data only: never in Export settings only. boss[group] counts team
+    -- raids and boss.all[group] every raid; scoped is true once the counters from before were copied into all (they
+    -- count as both), and show is the page's Show, "team" or "all".
     seasonStats = {
         filled = false,
+        scoped = false,
+        show = "team",
         bosses = {},
     },
     -- Alerts. Reminders, phase events and bar settings for the alerts engine (Alerts/Engine.lua).
