@@ -767,7 +767,7 @@ do
   v.frame.OnUpdate(v.frame)
   local band = v.zoomBand
   assert(band and band.fill:IsShown() and band.tag:IsShown(), "drag zoom: a band shows while dragging")
-  assert(band.tag.text:GetText() == "2:00 \\226\\128\\147 3:30 (1:30)", "drag zoom: the band's times: " .. tostring(band.tag.text:GetText()))
+  assert(band.tag.text:GetText() == "2:00 - 3:30 (1:30)", "drag zoom: the band's times: " .. tostring(band.tag.text:GetText()))
   assert(band.fill.pt and band.fill.pt[4] == 240 and band.fill.w == 180, "drag zoom: the band spans the range on the track")
   local made = textures
   axis.OnMouseUp(axis, "LeftButton")
@@ -825,6 +825,63 @@ do
   v.frame.OnUpdate(v.frame)
   icon.OnMouseUp(icon, "LeftButton")
   assert(S.span == 90 and math.abs(scrolled() - 10 * 600 / 90) < 0.01, "track: Ctrl + drag from a cast icon zooms too: " .. S.span)
+  -- the button let go before the track's release arrives (OnUpdate ends it): that release is still no click
+  reset()
+  v.clickAt = nil
+  local realDown = IsMouseButtonDown
+  at(120)
+  v.hscroll.OnMouseDown(v.hscroll, "LeftButton")
+  at(210)
+  v.frame.OnUpdate(v.frame)
+  IsMouseButtonDown = function() return false end
+  v.frame.OnUpdate(v.frame)
+  IsMouseButtonDown = realDown
+  assert(S.span == 90 and v.zoomSel == nil and v.zoomEnded, "early end: OnUpdate zooms and leaves its mark")
+  local cleared = false
+  local realClear = v.ClearSelection
+  rawset(v, "ClearSelection", function(self) cleared = true return realClear(self) end)
+  v.hscroll.OnMouseUp(v.hscroll, "LeftButton")
+  assert(v.clickAt == nil and not cleared and v.zoomEnded == nil, "early end: the track's late release is taken, no click, the flag selection kept")
+  v.hscroll.OnMouseDown(v.hscroll, "LeftButton")
+  v.hscroll.OnMouseUp(v.hscroll, "LeftButton")
+  assert(v.clickAt ~= nil and cleared, "early end: the next click is a plain click again")
+  v.clickAt = nil
+  -- a mark no release took is dropped by the next press
+  v.zoomEnded = true
+  ctrl = false
+  v.hscroll.OnMouseDown(v.hscroll, "LeftButton")
+  v.hscroll.OnMouseUp(v.hscroll, "LeftButton")
+  assert(v.clickAt ~= nil and v.zoomEnded == nil, "early end: a stale mark never eats a click")
+  rawset(v, "ClearSelection", nil)
+  v.clickAt = nil
+  -- an axis selection ended early leaves no mark (the axis takes its own release)
+  reset()
+  at(120)
+  axis.OnMouseDown(axis, "LeftButton")
+  at(210)
+  v.frame.OnUpdate(v.frame)
+  IsMouseButtonDown = function() return false end
+  v.frame.OnUpdate(v.frame)
+  IsMouseButtonDown = realDown
+  axis.OnMouseUp(axis, "LeftButton")
+  assert(S.span == 90 and v.zoomEnded == nil, "early end: no mark for an axis selection")
+  -- Ctrl + double-click on a cast icon still opens the alert editor
+  ctrl = true
+  reset()
+  local opened
+  local realReminders = CRT.AlertReminders
+  CRT.AlertReminders = realReminders or { SpellName = function(id) return "Spell" .. tostring(id) end }
+  rawset(v, "OpenAt", function(_, t, spellID) opened = { t, spellID } end)
+  for _, b in ipairs(v.icons) do if b:IsShown() and b.mark and b.mark.t == 10 then icon = b end end
+  at(10)
+  icon.OnMouseDown(icon, "LeftButton")
+  icon.OnMouseUp(icon, "LeftButton")
+  icon.OnMouseDown(icon, "LeftButton")
+  icon.OnDoubleClick(icon)
+  icon.OnMouseUp(icon, "LeftButton")
+  rawset(v, "OpenAt", nil)
+  CRT.AlertReminders = realReminders
+  assert(opened and opened[1] == 10 and S.span == 300 and v.zoomSel == nil, "Ctrl + double-click on a cast icon still opens the editor")
   ctrl = false
   print("ok ctrl+drag on the track zooms to the range")
 
@@ -981,8 +1038,26 @@ do
   pv:Fit()
   assert(S.span == 600 and pv.hscroll:GetHorizontalScroll() == 0, "pop-out: Fit the same")
   S.span = 300
-  cursor = 400
   print("ok the pop-out view zooms the same")
+
+  -- Ctrl + Shift on a phase line still picks the line up, not a selection
+  local ref = assert(CRT.TimelineReference.Parse(CRT.TimelineDB.references[1]), "ctrl+shift: a fresh Nek'zali")
+  local rv = View.Create(mock("Frame"))
+  rv:SetData({ reference = ref }, "ref:x")
+  local length = rv:Extra().length
+  local saved
+  rv.onPhaseMoved = function(i, t) saved = { i, t } end
+  IsControlKeyDown, IsShiftKeyDown = function() return true end, function() return true end
+  cursor = 100 + View.TimeToX(197, length, rv.trackW)
+  rv.hscroll.OnMouseDown(rv.hscroll, "LeftButton")
+  assert(rv.phaseDrag and rv.zoomSel == nil, "ctrl+shift: the phase line is picked up")
+  cursor = 100 + View.TimeToX(187, length, rv.trackW)
+  rv.frame.OnUpdate(rv.frame)
+  rv.hscroll.OnMouseUp(rv.hscroll, "LeftButton")
+  assert(saved and saved[1] == 1 and saved[2] == 187 and S.span == 300, "ctrl+shift: the line moved, no zoom")
+  IsControlKeyDown, IsShiftKeyDown = nil, function() return false end
+  cursor = 400
+  print("ok ctrl+shift on a phase line still moves it")
 end
 
 -- A theme change: the parts made once are tinted through UI.Tint and repaint, and a shown view redraws

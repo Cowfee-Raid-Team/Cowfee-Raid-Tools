@@ -95,9 +95,12 @@ local SAME_MOMENT = 0.05 -- seconds: another cast this close to the selected one
 local SELECT_INNER = { 0.10, 0.07, 0.05 } -- a dark inner border under the outline, so it shows on any flag colour
 local SELECT_INNER_W = 1
 local REVIEW_LANES = { recentDeaths = true } -- this view draws Deaths from recent pulls on an ability timeline too
-local ZOOM_BAND_ALPHA = 0.18 -- the drag-to-zoom band over the lanes, in the heading colour; its edges are solid
-local ZOOM_MIN_PX, ZOOM_MIN_SEC = 2, 1 -- a selected range narrower than either is ignored
-local ZOOM_EDGE_STEP = 12 -- the most pixels a frame the track scrolls while a selection is past its edge
+-- drag to zoom, in one table to spare the file's locals (Lua 5.1 allows 200 in a chunk):
+local ZOOM_SEL = {
+    bandAlpha = 0.18, -- the band over the lanes, in the heading colour; its edges are solid
+    minPx = 2, minSec = 1, -- a selected range narrower than either is ignored
+    edgeStep = 12, -- the most pixels a frame the track scrolls while a selection is past its edge
+}
 
 local TEXT = {
     notes = "Notes",
@@ -172,7 +175,7 @@ local TEXT = {
     placeFailedWhy = "it could not be saved.", -- the reason in placeFailed when none is given
     bandLength = "%d:%02d", -- a cooldown band's length, minutes and seconds, inside the after band
     tooSoon = " \194\183 too soon", -- added to a drag's label when another cast of the spell is inside its bands
-    zoomRange = "%s \226\128\147 %s (%s)", -- the drag-to-zoom band's label: from, to, and how long
+    zoomRange = "%s - %s (%s)", -- the drag-to-zoom band's label: from, to, and how long
 }
 
 local function settings()
@@ -538,7 +541,8 @@ function View.Create(parent)
         if view:PhaseMouseDown(button) then
             return -- Shift + drag moves a phase line; a right press on a moved one may reset it
         end
-        if IsControlKeyDown and IsControlKeyDown() and view:StartZoomSelect(button) then
+        view.zoomEnded = nil -- a mark no release took is stale by the next press
+        if IsControlKeyDown and IsControlKeyDown() and view:StartZoomSelect(button, "track") then
             return -- Ctrl + left drag selects a range to zoom to
         end
         view:StartDrag(button)
@@ -548,7 +552,7 @@ function View.Create(parent)
         if view:PhaseMouseUp(button) then
             return
         end
-        if view:FinishZoomSelect(button) then
+        if view:FinishZoomSelect(button) or view:ZoomEndedRelease(button) then
             view.clickAt = nil -- the release ended a selection, so it never counts toward a double-click
             return
         end
@@ -935,7 +939,7 @@ end
 -- lanes from the press to the cursor, with its times on a tag on the axis, and the track scrolls along
 -- when the cursor passes its edge. Letting go zooms so the range fills the track: the span becomes its
 -- length (kept to MIN_SPAN..MAX_SPAN; a shorter range gets MIN_SPAN centred on it) and the range starts
--- at the left edge. A range under ZOOM_MIN_PX pixels or ZOOM_MIN_SEC seconds is ignored, and Escape
+-- at the left edge. A range under ZOOM_SEL.minPx pixels or ZOOM_SEL.minSec seconds is ignored, and Escape
 -- cancels one. Fit, and a right-click on the axis, show the whole fight again. Each zoom here calls
 -- view.onSpan(span), so the page's Time visible slider follows. The band's parts are made once and only
 -- moved while a selection runs.
@@ -947,11 +951,11 @@ function Methods:TrackXAtCursor()
 end
 
 -- A left press on the axis, or with Ctrl on the track: remembers where. True when it starts a selection.
-function Methods:StartZoomSelect(button)
+function Methods:StartZoomSelect(button, source)
     if button ~= "LeftButton" or not self.pull or self.zoomSel or self.phaseDrag or self.move or self.chipMove then
         return false
     end
-    self.zoomSel = { x0 = GetCursorPosition() / self.hscroll:GetEffectiveScale(), from = self:TrackXAtCursor() }
+    self.zoomSel = { x0 = GetCursorPosition() / self.hscroll:GetEffectiveScale(), from = self:TrackXAtCursor(), source = source }
     return true
 end
 
@@ -959,7 +963,7 @@ end
 function Methods:UpdateZoomSelect()
     local sel = self.zoomSel
     if not IsMouseButtonDown("LeftButton") then
-        self:FinishZoomSelect("LeftButton") -- let go where no release reached the view
+        self:FinishZoomSelect("LeftButton", true) -- let go before the release reached the view
         return
     end
     if sel.cancelled then
@@ -974,7 +978,7 @@ function Methods:UpdateZoomSelect()
     local cx, shown = cursorX(self.hscroll), self:VisibleWidth()
     local past = cx < 0 and cx or (cx > shown and cx - shown or 0)
     if past ~= 0 then
-        self:ScrollTo(self.hscroll:GetHorizontalScroll() + math.max(-ZOOM_EDGE_STEP, math.min(ZOOM_EDGE_STEP, past)))
+        self:ScrollTo(self.hscroll:GetHorizontalScroll() + math.max(-ZOOM_SEL.edgeStep, math.min(ZOOM_SEL.edgeStep, past)))
     end
     sel.to = self:TrackXAtCursor()
     self:DrawZoomBand(sel.from, sel.to)
@@ -989,7 +993,7 @@ function Methods:ZoomBand()
     end
     band = {}
     band.fill = self.track:CreateTexture(nil, "OVERLAY")
-    themed(band.fill, "SetColorTexture", "heading", ZOOM_BAND_ALPHA)
+    themed(band.fill, "SetColorTexture", "heading", ZOOM_SEL.bandAlpha)
     band.left = self.track:CreateTexture(nil, "OVERLAY")
     themed(band.left, "SetColorTexture", "heading")
     band.right = self.track:CreateTexture(nil, "OVERLAY")
@@ -1009,10 +1013,10 @@ function Methods:ZoomBand()
 end
 
 -- A line on the track at x, as tall as the track.
-local function bandLine(tex, track, x, w)
+function Methods:BandLine(tex, x, w)
     tex:ClearAllPoints()
-    tex:SetPoint("TOPLEFT", track, "TOPLEFT", x, 0)
-    tex:SetPoint("BOTTOMLEFT", track, "BOTTOMLEFT", x, 0)
+    tex:SetPoint("TOPLEFT", self.track, "TOPLEFT", x, 0)
+    tex:SetPoint("BOTTOMLEFT", self.track, "BOTTOMLEFT", x, 0)
     tex:SetWidth(w)
     tex:Show()
 end
@@ -1021,9 +1025,9 @@ end
 function Methods:DrawZoomBand(a, b)
     local band = self:ZoomBand()
     local left, right = math.min(a, b), math.max(a, b)
-    bandLine(band.fill, self.track, left, math.max(1, right - left))
-    bandLine(band.left, self.track, left, 1)
-    bandLine(band.right, self.track, math.max(left, right - 1), 1)
+    self:BandLine(band.fill, left, math.max(1, right - left))
+    self:BandLine(band.left, left, 1)
+    self:BandLine(band.right, math.max(left, right - 1), 1)
     local length = math.max(1, self.drawLength or 1)
     local t1, t2 = View.XToTime(left, length, self.trackW), View.XToTime(right, length, self.trackW)
     local tag = band.tag
@@ -1064,24 +1068,39 @@ end
 
 -- The left button let go: zooms to the selected range. True when the release belonged to a selection
 -- (started or cancelled); a press that never moved returns false, so the track takes it as a click.
-function Methods:FinishZoomSelect(button)
+-- Ended from OnUpdate (early) for a selection begun on the track, it leaves view.zoomEnded so the
+-- track's own release, still to come, is taken as the selection's too (ZoomEndedRelease).
+function Methods:FinishZoomSelect(button, early)
     local sel = self.zoomSel
     if button ~= "LeftButton" or not sel then
         return false
     end
     self:DropZoomSelect()
+    local owned = sel.cancelled or (sel.started and sel.to ~= nil)
+    if owned and early and sel.source == "track" then
+        self.zoomEnded = true
+    end
     if sel.cancelled then
         return true
     end
-    if not (sel.started and sel.to) then
+    if not owned then
         return false
     end
     local left, right = math.min(sel.from, sel.to), math.max(sel.from, sel.to)
     local length = math.max(1, self.drawLength or 1)
     local t1, t2 = View.XToTime(left, length, self.trackW), View.XToTime(right, length, self.trackW)
-    if right - left >= ZOOM_MIN_PX and t2 - t1 >= ZOOM_MIN_SEC then
+    if right - left >= ZOOM_SEL.minPx and t2 - t1 >= ZOOM_SEL.minSec then
         self:ZoomRange(t1, t2)
     end
+    return true
+end
+
+-- The track's left release: true (and forgotten) when it belongs to a selection OnUpdate already ended.
+function Methods:ZoomEndedRelease(button)
+    if button ~= "LeftButton" or not self.zoomEnded then
+        return false
+    end
+    self.zoomEnded = nil
     return true
 end
 
@@ -1117,7 +1136,7 @@ end
 -- click (Fit) from a drag.
 function Methods:AxisMouseDown(button)
     if button == "LeftButton" then
-        self:StartZoomSelect(button)
+        self:StartZoomSelect(button, "axis")
     elseif button == "RightButton" then
         local x, y = GetCursorPosition()
         self.axisRight = { x = x, y = y, at = GetTime() }
@@ -1156,7 +1175,7 @@ function Methods:Icon(n)
         b:SetScript("OnLeave", hideTip)
         b:SetScript("OnMouseDown", function(_, button)
             self.clickAt = nil -- a click here is the icon's, so it never pairs with one on the track
-            if IsControlKeyDown and IsControlKeyDown() and self:StartZoomSelect(button) then
+            if IsControlKeyDown and IsControlKeyDown() and self:StartZoomSelect(button, "icon") then
                 return -- Ctrl + left drag selects a range to zoom to, as on the track
             end
             self:StartDrag(button)

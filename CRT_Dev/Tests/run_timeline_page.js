@@ -44,6 +44,7 @@ function CreateFrame(kind, _, _, template) local m = mock(kind) m.template = tem
   elseif kind == "Button" then buttons[#buttons+1] = m end
   return m end
 format = string.format
+CRTFontButtonSmall, CRTFontButtonSmallHighlight, CRTFontButtonSmallDisable = { "small" }, { "smallHighlight" }, { "smallDisable" }
 CANCEL = "Cancel"
 UISpecialFrames = {}
 function tinsert(t, v) table.insert(t, v) end
@@ -66,7 +67,15 @@ local CRT = { db = { timeline = { record = true, minPull = 15, keep = 10, bosses
     Slider = function(_, text, o) local m = mock() m.opts, m.text = o, text sliders[#sliders+1] = m rawset(m, "refresh", function() end)
       rawset(m, "GetWidth", function() return (o.labelWidth or 140) + 5 + (o.width or 200) + 44 end) return m end,
     PanelButton = function(parent, label, h, onClick) local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate") b.text = label
-      rawset(b, "OnClick", onClick) rawset(b, "GetWidth", function() return math.max(40, #label * 6 + 28) end) return b end,
+      rawset(b, "OnClick", onClick) rawset(b, "GetWidth", function(self) return rawget(self, "w") or math.max(40, #label * 6 + 28) end)
+      -- the label's width follows its font: a font set after the last sizing leaves the button the wrong width
+      rawset(b, "SetNormalFontObject", function(self, f) self.normalFont = f self.sized = false end)
+      rawset(b, "SetHighlightFontObject", function(self, f) self.highlightFont = f end)
+      rawset(b, "SetDisabledFontObject", function(self, f) self.disabledFont = f end)
+      rawset(b, "GetFontString", function(self) return { GetStringWidth = function() return #label * (self.normalFont == CRTFontButtonSmall and 5 or 6) end } end)
+      rawset(b, "SetWidth", function(self, w) self.w = w self.sized = true end)
+      b.sized = true return b end,
+    PanelButtonWidth = function(w) return math.max(40, math.ceil(w or 0) + 28) end,
     SkinTree = function(_, f) skinCalls = skinCalls + 1 end,
     RegisterPage = function(_, key, title, fn) pages[key] = { title = title, build = fn } end,
     RegisterTab = function(_, b) tabs[#tabs+1] = b end, SetTabSelected = function() end,
@@ -337,6 +346,9 @@ do
   for _, b in ipairs(buttons) do if b.text == "Fit" then fit = b end end
   assert(fit and fit.template == "UIPanelButtonTemplate", "a Fit button")
   assert(fit.pt and fit.pt[1] == "LEFT" and fit.pt[2] == zoom and fit.pt[3] == "RIGHT", "Fit sits right after the zoom slider")
+  assert(CRTFontButtonSmall and fit.normalFont == CRTFontButtonSmall and fit.highlightFont == CRTFontButtonSmallHighlight
+    and fit.disabledFont == CRTFontButtonSmallDisable, "Fit has the Review buttons' small fonts")
+  assert(fit.sized and fit:GetWidth() == math.max(40, 3 * 5 + 28), "Fit is sized from its label in that font: " .. tostring(fit:GetWidth()))
   fit.OnClick(fit)
   assert(view.fits == 1, "Fit zooms the view out")
   local refreshed = 0
