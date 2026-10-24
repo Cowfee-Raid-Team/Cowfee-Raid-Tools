@@ -2,7 +2,8 @@ local ADDON, CRT = ...
 
 -- Maintainer tools for the consumables list: a copyable text window (also used by the Late Tracker's
 -- Discord export), and the two commands that use it. `/crt consumables scan` prints your buffs and bag consumables as lines to paste into
--- Consumables/Database.lua, and `/crt consumables check` tests every listed ID against the game.
+-- the season pack's GameIDs.lua, and `/crt consumables check` tests every ID in the season's list (Consumables:Database())
+-- against the game.
 
 local Consumables = CRT.Consumables
 local UI = CRT.UI

@@ -44,18 +44,37 @@ local READY_ICONS = {
     waiting = "Interface\\RaidFrame\\ReadyCheck-Waiting",
 }
 
--- Every column the window can show, in order. The raid buff columns come from Report.BUFFS.
-Window.COLUMNS = {
+-- The columns before the raid buffs, in order; Durability comes last.
+local FIRST_COLUMNS = {
     { key = "food", short = "Food", label = "Food" },
     { key = "flask", short = "Flask", label = "Flask" },
     { key = "weapon", short = "Oil", label = "Weapon oil" },
     { key = "rune", short = "Rune", label = "Augment rune" },
     { key = "vantus", short = "Vantus", label = "Vantus rune" },
 }
-for _, buff in ipairs(Report.BUFFS) do
-    Window.COLUMNS[#Window.COLUMNS + 1] = { key = buff.key, short = buff.short, label = buff.label, buff = buff }
+local DURABILITY_COLUMN = { key = "durability", short = "Dur", label = "Durability" }
+
+-- Every column the window can show, in order, and the same by key. The raid buff columns come from the season's
+-- raid buffs (Report.Buffs()), so the list is built when first asked (the season packs load after this file) and
+-- again when the season's list changes.
+local columns, byKey, columnsOf = nil, nil, nil
+function Window:Columns()
+    local buffs = Report.Buffs()
+    if columnsOf ~= buffs then
+        columns, byKey, columnsOf = {}, {}, buffs
+        for _, col in ipairs(FIRST_COLUMNS) do
+            columns[#columns + 1] = col
+        end
+        for _, buff in ipairs(buffs) do
+            columns[#columns + 1] = { key = buff.key, short = buff.short, label = buff.label, buff = buff }
+        end
+        columns[#columns + 1] = DURABILITY_COLUMN
+        for _, col in ipairs(columns) do
+            byKey[col.key] = col
+        end
+    end
+    return columns, byKey
 end
-Window.COLUMNS[#Window.COLUMNS + 1] = { key = "durability", short = "Dur", label = "Durability" }
 
 local frame
 local shownUntil, previewOn = 0, false
@@ -215,16 +234,10 @@ end
 
 -- Columns and data ------------------------------------------------------------------------
 
--- The columns to draw: ticked in settings, and for raid buffs only those your group can give when
--- "Only buffs my group can give" is on.
-local byKey = {}
-for _, col in ipairs(Window.COLUMNS) do
-    byKey[col.key] = col
-end
-
 -- Every column in the player's order (CRTDB.readycheck.window.order). Columns added in a later
 -- version, and so missing from a saved order, go at the end.
 function Window:OrderedColumns()
+    local all, byKey = self:Columns()
     local out, seen = {}, {}
     for _, key in ipairs(settings().order or {}) do
         if byKey[key] and not seen[key] then
@@ -232,7 +245,7 @@ function Window:OrderedColumns()
             seen[key] = true
         end
     end
-    for _, col in ipairs(Window.COLUMNS) do
+    for _, col in ipairs(all) do
         if not seen[col.key] then
             out[#out + 1] = col
         end
@@ -253,6 +266,8 @@ function Window:MoveColumnTo(key, index)
     self:Apply()
 end
 
+-- The columns to draw: ticked in settings, and for raid buffs only those your group can give when
+-- "Only buffs my group can give" is on.
 local function visibleColumns(classes)
     local s = settings()
     local out = {}
@@ -279,7 +294,7 @@ local function classColor(class)
 end
 
 local function sampleIcon(key)
-    local buff = Report.BuffByKey[key]
+    local buff = Report.Buff(key)
     if buff then
         return C_Spell.GetSpellTexture(buff.spell)
     end
@@ -300,7 +315,7 @@ function Window.SampleMembers()
     for i, m in ipairs(list) do
         m.order = i
         m.cells = {}
-        for _, col in ipairs(Window.COLUMNS) do
+        for _, col in ipairs((Window:Columns())) do
             m.cells[col.key] = { state = m.states[col.key] or "missing", icon = sampleIcon(col.key), left = (m.states[col.key] == "low") and 240 or 2460, name = col.label .. " (sample)", why = "sample player" }
         end
     end

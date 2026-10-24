@@ -1,11 +1,11 @@
 // Timeline: the saved alerts strip under the track (chips, drag a chip onto the track, chip menu, "+"),
 // and the track's right-click menu (New alert here, Place a saved alert), and the Cooldowns row under the templates.
-// Usage: node run_alerts_strip.js CRT_Modules/Timeline/Data.lua CRT_Modules/Timeline/Database.lua CRT_Modules/Timeline/Reference.lua CRT_Modules/Timeline/Lanes.lua CRT_Modules/Alerts/Rules.lua CRT_Modules/Alerts/Engine.lua CRT_Modules/Notes/Parse.lua CRT_Modules/Notes/Data.lua CRT_Modules/Alerts/Reminders.lua CRT_Modules/Alerts/Saved.lua CRT_Modules/Timeline/View.lua CRT_Data/Bosses/Registry.lua CRT_Dev/Tests/SamplePack/Season.lua CRT_Dev/Tests/SamplePack/NekzaliTheSoulcoiler.lua CRT_Core/UI/Panel.lua CRT_Modules/Alerts/Cooldowns.lua CRT_Core/UI/Controls.lua CRT_Modules/Alerts/CooldownData.lua CRT_Modules/Groups/Data.lua CRT_Modules/Alerts/Draft.lua CRT_Modules/Alerts/Roster.lua CRT_Core/Sound/Engine.lua
+// Usage: node run_alerts_strip.js CRT_Modules/Timeline/Data.lua CRT_Modules/Timeline/Database.lua CRT_Modules/Timeline/Reference.lua CRT_Modules/Timeline/Lanes.lua CRT_Modules/Alerts/Rules.lua CRT_Modules/Alerts/Engine.lua CRT_Modules/Notes/Parse.lua CRT_Modules/Notes/Data.lua CRT_Modules/Alerts/Reminders.lua CRT_Modules/Alerts/Saved.lua CRT_Modules/Timeline/View.lua CRT_Data/Bosses/Registry.lua CRT_Dev/Tests/SamplePack/Season.lua CRT_Dev/Tests/SamplePack/NekzaliTheSoulcoiler.lua CRT_Core/UI/Panel.lua CRT_Modules/Alerts/Cooldowns.lua CRT_Core/UI/Controls.lua CRT_Modules/Alerts/CooldownData.lua CRT_Modules/Groups/Data.lua CRT_Modules/Alerts/Draft.lua CRT_Modules/Alerts/Roster.lua CRT_Core/Sound/Engine.lua CRT_Dev/Tests/SamplePack/GameIDs.lua
 const fs = require('fs');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
 const harness = require('./theme_stub')(process.argv.slice(2)) + `
-local dataSrc, dbSrc, refSrc, lanesSrc, rulesSrc, engineSrc, parseSrc, notesSrc, remSrc, savedSrc, viewSrc, regSrc, seasonSrc, nekSrc, panelSrc, cdSrc, controlsSrc, cdDataSrc, groupsSrc, draftSrc, rosterSrc, soundSrc = ...
+local dataSrc, dbSrc, refSrc, lanesSrc, rulesSrc, engineSrc, parseSrc, notesSrc, remSrc, savedSrc, viewSrc, regSrc, seasonSrc, nekSrc, panelSrc, cdSrc, controlsSrc, cdDataSrc, groupsSrc, draftSrc, rosterSrc, soundSrc, idsSrc = ...
 local buttons = 0
 local function mock(kind)
   local m = { shown = true, kind = kind, children = {} }
@@ -195,6 +195,7 @@ local function loadBosses(CRT, reg, season, nek)
   CreateFrame = real
   assert(load(season, "CRT_Dev/Tests/SamplePack/Season.lua"))("CowfeeRaidTools", CRT)
   assert(load(nek, "CRT_Dev/Tests/SamplePack/NekzaliTheSoulcoiler.lua"))("CowfeeRaidTools", CRT)
+  assert(load(idsSrc, "CRT_Dev/Tests/SamplePack/GameIDs.lua"))("CowfeeRaidTools", CRT) -- the cooldowns (Bosses:Cooldowns())
   handler({ UnregisterEvent = function() end }, "ADDON_LOADED", "CowfeeRaidTools")
 end
 loadBosses(CRT, regSrc, seasonSrc, nekSrc)
@@ -1868,9 +1869,9 @@ print("ok theme: chips on the stone in Default: Blizzard, flat in Modern, repain
 
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
-lua.lua_checkstack(L, 40); // 22 sources and the chunk: past the default 20 slots
-for (const p of process.argv.slice(2, 24)) {
+lua.lua_checkstack(L, 40); // 23 sources and the chunk: past the default 20 slots
+for (const p of process.argv.slice(2, 25)) {
   let src; try { src = fs.readFileSync(p, 'utf8'); } catch (e) { console.error('cannot read ' + p); process.exit(1); }
   lua.lua_pushstring(L, to_luastring(src));
 }
-if (lua.lua_pcall(L, 22, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
+if (lua.lua_pcall(L, 23, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }

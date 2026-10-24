@@ -43,7 +43,7 @@ local defaults = {
         -- roles set by hand on a slot's Set role (Groups.HandRole): [key in lower case] = "TANK", "HEALER" or "DAMAGER"
         roles = {},
     },
-    -- The consumables list ships in Consumables/Database.lua. Players choose the order
+    -- The consumables list ships in each season pack's GameIDs.lua. Players choose the order
     -- (categoryOrder is the icon order, itemOrder[category] is which item is used first) and
     -- may add their own items. An older "categories" key from version 0.2.0 may remain in
     -- saved data and is ignored.

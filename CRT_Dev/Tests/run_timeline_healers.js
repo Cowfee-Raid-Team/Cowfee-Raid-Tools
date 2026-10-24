@@ -12,6 +12,7 @@ const FILES = [
   'CRT_Core/UI/Panel.lua', 'CRT_Core/UI/Controls.lua', 'CRT_Modules/Groups/Data.lua', 'CRT_Modules/Alerts/Roster.lua',
   'CRT_Modules/Timeline/Data.lua', 'CRT_Modules/Timeline/Database.lua', 'CRT_Modules/Timeline/Reference.lua', 'CRT_Modules/Timeline/Lanes.lua',
   'CRT_Data/Bosses/Registry.lua', 'CRT_Dev/Tests/SamplePack/Season.lua', 'CRT_Dev/Tests/SamplePack/NekzaliTheSoulcoiler.lua',
+  'CRT_Dev/Tests/SamplePack/GameIDs.lua',
   'CRT_Modules/Alerts/Rules.lua', 'CRT_Modules/Alerts/Engine.lua', 'CRT_Modules/Notes/Parse.lua', 'CRT_Modules/Notes/Data.lua',
   'CRT_Modules/Alerts/Reminders.lua', 'CRT_Modules/Alerts/CooldownData.lua', 'CRT_Modules/Alerts/Cooldowns.lua',
   'CRT_Modules/Timeline/AbilityTip.lua', 'CRT_Modules/Timeline/View.lua', 'CRT_Modules/Timeline/HealerView.lua',
@@ -171,6 +172,7 @@ do
   CreateFrame = real
   run("CRT_Dev/Tests/SamplePack/Season.lua", CRT)
   run("CRT_Dev/Tests/SamplePack/NekzaliTheSoulcoiler.lua", CRT)
+  run("CRT_Dev/Tests/SamplePack/GameIDs.lua", CRT) -- the cooldowns (Bosses:Cooldowns()): the sample pack, never the shipped one
   handler({ UnregisterEvent = function() end }, "ADDON_LOADED", "CowfeeRaidTools")
 end
 run("CRT_Modules/Alerts/Rules.lua", CRT)
@@ -230,6 +232,14 @@ do
   check(ids(HV.Majors("PRIEST")) == "64843,200183,62618,421453", "no spec: every major priest cooldown")
   check(ids(HV.Majors("PRIEST", 258)) == "64843,200183,62618,421453", "a spec with none (Shadow): the class's")
   check(#HV.Majors("WARRIOR") == 0, "a class with no healer spec has none")
+  -- the list is the season's game IDs (Bosses:Cooldowns()): a season without them has none
+  local B = CRT.Bosses
+  B.seasons["sample"].current = false
+  B:Season({ key = "plain", name = "Plain", order = 2, current = true })
+  check(B:Cooldowns() == nil and #HV.Majors("PRIEST") == 0, "a season without game IDs: no major cooldowns")
+  B.seasons["plain"] = nil
+  B.seasons["sample"].current = true
+  check(#HV.Majors("PRIEST") == 4, "the sample season's again")
   check(HV.Listed(97462) and HV.Listed(97462).class == "WARRIOR" and HV.Listed(1) == nil, "Listed finds any listed cooldown")
 end
 

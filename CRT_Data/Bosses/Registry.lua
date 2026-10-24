@@ -15,10 +15,10 @@ local ADDON, CRT = ...
 --                  spellID | times }, lead, who = { mode = "everyone" | "rotation" (rotation = { { 1, 2 },
 --                  { 3, 4 } }) | "note" (note = "<label>") }, text, show, markers = { marks } }. The full
 --                  format is at the top of Alerts/Special.lua; an entry that doesn't read is skipped.
--- Features that don't depend on a boss (the Late Tracker, Raid Groups, ready checks, consumables)
--- never read it. A season's own facts that aren't about a boss (the Gear Checker's enchant, socket and
--- season checks) live in a topic file each (Bosses:SeasonData) and are read through their accessor
--- (Bosses:GearChecks()). Which seasons load is a dev-only choice (Dev/SeasonTools.lua, CRTDB.dev.seasons):
+-- Features that don't depend on a boss (the Late Tracker, Raid Groups) never read it. A season's own facts
+-- that aren't about a boss (the Gear Checker's enchant, socket and season checks, the upgrade tracks, and the
+-- game IDs: consumables, class cooldowns and raid buffs) live in a topic file each (Bosses:SeasonData) and are
+-- read through their accessor (Bosses:GearChecks(), Tracks(), Consumables(), Cooldowns(), RaidBuffs()). Which seasons load is a dev-only choice (Dev/SeasonTools.lua, CRTDB.dev.seasons):
 -- the current season only, by default, or all. See the vault note "Cowfee Raid Tools - Boss Library
 -- Design".
 
@@ -73,7 +73,9 @@ end
 -- Season data that isn't about one boss: one file per topic in the pack's folder (Seasons/<pack>/<Topic>.lua),
 -- each a Bosses:SeasonData(seasonKey, topic, data) call, listed in the .toc after the pack's Season.lua and before its boss files
 -- (the store works in any order, but every pack keeps this one).
--- Each topic is read through its own accessor below (GearChecks, Tracks), never by name in feature code. A pack
+-- Each topic is read through its own accessor below (GearChecks, Tracks, Consumables, Cooldowns, RaidBuffs), never
+-- by name in feature code. The packs load after every module (last in the .toc), so a reader asks its accessor when
+-- it needs the data, never while its file loads. A pack
 -- may also write a topic as a field of its Season.lua; the topic file wins.
 function Bosses:SeasonData(seasonKey, topic, data)
     assert(type(seasonKey) == "string" and type(topic) == "string", "season data needs a season key and a topic")
@@ -106,6 +108,29 @@ end
 -- puts an item on which track and rank), for the Gear Checker; nil when the season has none.
 function Bosses:Tracks()
     return self:Topic("tracks")
+end
+
+-- The game IDs that change with the game, not with a boss (topic gameIDs, one file per pack: GameIDs.lua). Each
+-- part is read through its own accessor below; nil when the season has none, and each reader then has nothing.
+local function gameIDs(self, part)
+    local ids = self:Topic("gameIDs")
+    return ids and type(ids[part]) == "table" and ids[part] or nil
+end
+
+-- The consumables the ready check row and your bar know about ({ expansion, updated, foodBuffs, categories },
+-- the format in Consumables/Database.lua).
+function Bosses:Consumables()
+    return gameIDs(self, "consumables")
+end
+
+-- The class cooldowns of the Timeline's Cooldowns row and Healer CDs view (the format in Alerts/CooldownData.lua).
+function Bosses:Cooldowns()
+    return gameIDs(self, "cooldowns")
+end
+
+-- The raid buffs the ready check looks for (the format above Report.BUFFS in ReadyCheck/Report.lua).
+function Bosses:RaidBuffs()
+    return gameIDs(self, "raidBuffs")
 end
 
 function Bosses:Get(encounterID)
