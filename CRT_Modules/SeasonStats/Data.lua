@@ -7,7 +7,11 @@ local ADDON, CRT = ...
 --   bosses[encounterID]  { name, nh = counters, mythic = counters }, the groups of Timeline.DifficultyGroup
 --   counters             { pulls, wipes, kills, firstKillPull, firstKillAt, bestKill, killTime, pullTime, untimed,
 --                          first, last, nights = { [night] = { longest, phase, pulls } }, causes = { [spellID] = deaths },
---                          deaths = { deaths per pull, newest last, the last TREND } }
+--                          deaths = { deaths per pull, newest last, the last TREND },
+--                          repairs, repairPulls, raidRepairs, raidReporters, raidPulls }
+-- repairs is your own repair bill over the pulls measured (repairPulls), raidRepairs the raid's from every raider
+-- running CRT (raidReporters reports over raidPulls pulls), all copper, read and heard by SeasonStats/Repairs.lua.
+-- Counted from the update that added them on, so counters saved before have none (read as 0).
 -- Times are seconds, first, last and firstKillAt time() values; a night is NightKey of a pull's start. untimed counts
 -- pulls with no saved length (the early ones the fill only knows by the Timeline's counter). causes[0] is deaths
 -- whose spell wasn't known.
@@ -77,7 +81,8 @@ local function counters(encounterID, group, name, make)
     end
     local c = boss[group]
     if not c and make then
-        c = { pulls = 0, wipes = 0, kills = 0, killTime = 0, pullTime = 0, untimed = 0, nights = {}, causes = {}, deaths = {} }
+        c = { pulls = 0, wipes = 0, kills = 0, killTime = 0, pullTime = 0, untimed = 0, nights = {}, causes = {}, deaths = {},
+            repairs = 0, repairPulls = 0, raidRepairs = 0, raidReporters = 0, raidPulls = 0 }
         boss[group] = c
     end
     return c
@@ -182,14 +187,50 @@ function Stats:Backfill(latest, phase)
     return true
 end
 
+-- Your repair bill over the pull, when Repairs.lua measured it: added to the counters the pull just counted in,
+-- once (Rep:Claim in SeasonStats/Repairs.lua keeps which pulls it gave), with the raid's reports of that pull. With no
+-- read finished yet, the bill is added when the read finishes.
+local function claimRepair(pull)
+    local Rep = CRT.SeasonRepairs
+    if Rep and Rep.Claim and type(pull) == "table" and type(pull.encounterID) == "number" then
+        Rep:Claim(pull, counters(pull.encounterID, groupOf(pull.difficultyID)))
+    end
+end
+
 -- Counts a pull the Timeline just saved (its save hook). The first one after an update fills from the saved pulls
 -- instead, this one among them.
 function Stats:Record(pull, phase)
     if not sdb().filled and self:Backfill(pull, phase) then
+        claimRepair(pull)
         return
     end
     if add(pull, phase) then
+        claimRepair(pull)
         self:Fire()
+    end
+end
+
+-- Repairs ----------------------------------------------------------------------------------------------------------
+
+-- Adds your repair bill over one pull (copper) to its counters.
+function Stats:AddRepair(c, copper)
+    if type(c) ~= "table" or type(copper) ~= "number" or copper < 0 then
+        return
+    end
+    c.repairs = (c.repairs or 0) + copper
+    c.repairPulls = (c.repairPulls or 0) + 1
+end
+
+-- Adds one raider's repair bill over a pull (copper) to the counters that pull was counted in; newPull when it's
+-- the first report of that pull. Never makes counters: only a pull Season Stats counted gets reports.
+function Stats:AddRaidRepair(c, copper, newPull)
+    if type(c) ~= "table" or type(copper) ~= "number" or copper < 0 then
+        return
+    end
+    c.raidRepairs = (c.raidRepairs or 0) + copper
+    c.raidReporters = (c.raidReporters or 0) + 1
+    if newPull then
+        c.raidPulls = (c.raidPulls or 0) + 1
     end
 end
 
@@ -285,18 +326,26 @@ function Stats.GroupOptions()
 end
 
 -- One row per boss of a season's route, in route order: { encounterID, name, counters, pulls, wipes, kills,
--- firstKillPull, firstKillAt, bestKill, pullTime }; a boss with no pulls has zeros and no counters.
+-- firstKillPull, firstKillAt, bestKill, pullTime, repairs, repairPulls, raidRepairs, raidReporters, raidPulls };
+-- a boss with no pulls has zeros and no counters.
+local REPAIR_FIELDS = { "repairs", "repairPulls", "raidRepairs", "raidReporters", "raidPulls" }
+Stats.REPAIR_FIELDS = REPAIR_FIELDS
+
 function Stats:Rows(seasonKey, group)
     local out = {}
     local B = CRT.Bosses
     for _, def in ipairs(B and seasonKey and B:RouteList(seasonKey) or {}) do
         local c = counters(def.encounterID, group)
-        out[#out + 1] = {
+        local row = {
             encounterID = def.encounterID, name = def.name, counters = c,
             pulls = c and c.pulls or 0, wipes = c and c.wipes or 0, kills = c and c.kills or 0,
             firstKillPull = c and c.firstKillPull, firstKillAt = c and c.firstKillAt, bestKill = c and c.bestKill,
             pullTime = c and c.pullTime or 0,
         }
+        for _, key in ipairs(REPAIR_FIELDS) do
+            row[key] = c and c[key] or 0
+        end
+        out[#out + 1] = row
     end
     return out
 end
@@ -345,13 +394,20 @@ function Stats:RaidNights(seasonKey)
     return count
 end
 
--- The four cards and the rows: { bosses, killed, pulls, pullTime, untimed, nights (the Late Tracker's),
--- pullNights (nights with a pull on this difficulty) }, rows.
+-- The cards and the rows: { bosses, killed, pulls, pullTime, untimed, nights (the Late Tracker's),
+-- pullNights (nights with a pull on this difficulty), and the season's repairs, repairPulls, raidRepairs,
+-- raidReporters and raidPulls }, rows.
 function Stats:Cards(seasonKey, group)
     local rows = self:Rows(seasonKey, group)
     local card = { bosses = #rows, killed = 0, pulls = 0, pullTime = 0, untimed = 0, pullNights = 0 }
+    for _, key in ipairs(REPAIR_FIELDS) do
+        card[key] = 0
+    end
     local seen = {}
     for _, row in ipairs(rows) do
+        for _, key in ipairs(REPAIR_FIELDS) do
+            card[key] = card[key] + row[key]
+        end
         local c = row.counters
         if c then
             card.killed = card.killed + (c.kills > 0 and 1 or 0)
@@ -575,6 +631,38 @@ function Stats.Hours(seconds)
         return string.format("%dh %02dm", math.floor(m / 60), m % 60)
     end
     return string.format("%dm", m)
+end
+
+-- Copper as the game writes money, with its coin icons: GetMoneyString (Blizzard_SharedXML/FormattingUtil.lua,
+-- thousands separated), else C_CurrencyInfo.GetCoinTextureString. From 10 gold up it shows whole gold, under that
+-- gold and silver, under a silver copper.
+function Stats.Money(copper)
+    copper = math.max(0, math.floor(copper or 0))
+    if copper >= 100000 then
+        copper = math.floor(copper / 10000) * 10000
+    elseif copper >= 100 then
+        copper = math.floor(copper / 100) * 100
+    end
+    if GetMoneyString then
+        local ok, s = pcall(GetMoneyString, copper, true)
+        if ok and type(s) == "string" then
+            return s
+        end
+    end
+    if C_CurrencyInfo and C_CurrencyInfo.GetCoinTextureString then
+        local ok, s = pcall(C_CurrencyInfo.GetCoinTextureString, copper)
+        if ok and type(s) == "string" then
+            return s
+        end
+    end
+    local gold, silver = math.floor(copper / 10000), math.floor(copper % 10000 / 100)
+    if gold > 0 then
+        return silver > 0 and string.format("%dg %ds", gold, silver) or string.format("%dg", gold)
+    end
+    if silver > 0 then
+        return string.format("%ds", silver)
+    end
+    return string.format("%dc", copper)
 end
 
 -- 2 -> "Phase 2", 1.5 -> "Phase 1.5".
