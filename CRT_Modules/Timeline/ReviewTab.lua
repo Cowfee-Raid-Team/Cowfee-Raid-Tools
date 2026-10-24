@@ -31,6 +31,9 @@ local RECENT_W = 150
 ReviewTab.RECENT_W = RECENT_W
 
 local EMPTY_ALL = "No boss pulls recorded yet"
+local FIT = "Fit"
+local FIT_TIP = "Zoom out to show the whole fight. A right-click on the time axis does the same."
+local FIT_GAP = 6 -- between the zoom slider and Fit
 
 local function settings()
     return Timeline:Settings()
@@ -123,14 +126,21 @@ function ReviewTab.Build(f, ctx)
         set = ctx.selectOrder,
     })
     local orderHelp = UI.HelpRight(order, "Order", "The order your raid takes this boss's parts in, such as which turtle empowers first. Each part's abilities move to the time it now has. The choice is kept for this boss and difficulty.")
-    -- docked: after Time visible (its label, bar and value end near 300)
+    -- docked: after Time visible (its label, bar and value end near 300) and the Fit button after it
     local ORDER_W, NARROW_X, NARROW_Y = 40 + 5 + 140, 320, -64
     ReviewTab.ORDER_W = ORDER_W
+    local function narrowX()
+        local zoom, fit = tab.zoom, tab.fit
+        if not (zoom and fit) then
+            return NARROW_X
+        end
+        return math.max(NARROW_X, 8 + (zoom:GetWidth() or 0) + FIT_GAP + (fit:GetWidth() or 0) + 16)
+    end
     local function placeOrder()
         local x = labelEnd()
         local wide = (f:GetWidth() or 0) >= x + ORDER_W + UI.HELP_GAP + UI.HELP_SIZE + 8
         order:ClearAllPoints()
-        order:SetPoint("TOPLEFT", f, "TOPLEFT", wide and x or NARROW_X, wide and -4 or NARROW_Y)
+        order:SetPoint("TOPLEFT", f, "TOPLEFT", wide and x or narrowX(), wide and -4 or NARROW_Y)
         local on = ctx.hasOrder()
         order:SetShown(on)
         orderHelp:SetShown(on)
@@ -164,8 +174,9 @@ function ReviewTab.Build(f, ctx)
     overlay.Label:SetWidth(170)
     UI.HelpRight(overlay.Label, "Deaths from recent pulls", "With no pull picked on the right, draws the deaths of this boss's recent pulls on the ability timeline, faded by how old they are, so deaths that repeat stand out. Pick a pull on the right to see only that pull's deaths; click it again to go back to all of them. How many pulls it covers is on the Settings tab.")
 
-    -- Zoom: the mouse wheel writes span without telling the page, so refresh re-reads it here.
-    place(UI.Slider(f, "Time visible", {
+    -- Zoom: the mouse wheel writes span without telling the page, so refresh re-reads it here; a drag
+    -- zoom and Fit tell it at once (view.onSpan, set below).
+    tab.zoom = place(UI.Slider(f, "Time visible", {
         min = 60, max = 600, step = 30, format = View.Format, toDisplay = toMinutes, fromDisplay = fromMinutes,
         labelWidth = 80, width = 160,
         get = function()
@@ -176,6 +187,21 @@ function ReviewTab.Build(f, ctx)
             tab.view:SetSpan(value)
         end,
     }), 8, -64)
+    -- Fit: back out to the whole fight after zooming in (a drag along the time axis, or the wheel)
+    local fit = UI.PanelButton(f, FIT, 20, function()
+        tab.view:Fit()
+    end)
+    fit:SetPoint("LEFT", tab.zoom, "RIGHT", FIT_GAP, 0)
+    fit:SetScript("OnEnter", function(self)
+        UI.TooltipOwner(GameTooltip, self, "ANCHOR_TOP", nil, nil, "timeline")
+        GameTooltip:SetText(FIT, 1, 1, 1)
+        GameTooltip:AddLine(FIT_TIP, 0.85, 0.85, 0.85, true)
+        GameTooltip:Show()
+    end)
+    fit:SetScript("OnLeave", function()
+        GameTooltip:Hide()
+    end)
+    tab.fit = fit
 
     tab.recent = ReferencePage.Recent(f, RECENT_W, ctx.pullLabel, ctx.togglePull)
 
@@ -184,6 +210,9 @@ function ReviewTab.Build(f, ctx)
     tab.holder:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -8, 8)
     tab.view = View.Create(tab.holder)
     tab.view.onPhaseMoved = ctx.movePhase
+    tab.view.onSpan = function()
+        tab.zoom.refresh()
+    end
     tab.emptyLabel = tab.holder:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
     tab.emptyLabel:SetPoint("CENTER", tab.holder, "CENTER")
     tab.emptyLabel:SetText(EMPTY_ALL)

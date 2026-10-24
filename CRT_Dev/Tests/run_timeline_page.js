@@ -62,7 +62,11 @@ local CRT = { db = { timeline = { record = true, minPull = 15, keep = 10, bosses
   UI = { Tint = function() end, OnTheme = function() end, SkinScrollBar = function() end, PAGE_W = 1026, PAGE_H = 560, Help = function(_, title, text) helpCalls = helpCalls + 1 helps[title] = text return mock() end,
     HelpRight = function(target, title, text) helps[title] = text helpTargets[title] = target return mock() end, HELP_GAP = 4, HELP_SIZE = 20,
     Dropdown = function(parent, text, o) local m = mock() m.opts, m.text, m.parent = o, text, parent dropdowns[#dropdowns+1] = m rawset(m, "refresh", function() end) return m end,
-    Slider = function(_, text, o) local m = mock() m.opts, m.text = o, text sliders[#sliders+1] = m rawset(m, "refresh", function() end) return m end,
+    -- as wide as the real row: its label, the gap, the bar and the value (CRT_Core/UI/Controls.lua)
+    Slider = function(_, text, o) local m = mock() m.opts, m.text = o, text sliders[#sliders+1] = m rawset(m, "refresh", function() end)
+      rawset(m, "GetWidth", function() return (o.labelWidth or 140) + 5 + (o.width or 200) + 44 end) return m end,
+    PanelButton = function(parent, label, h, onClick) local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate") b.text = label
+      rawset(b, "OnClick", onClick) rawset(b, "GetWidth", function() return math.max(40, #label * 6 + 28) end) return b end,
     SkinTree = function(_, f) skinCalls = skinCalls + 1 end,
     RegisterPage = function(_, key, title, fn) pages[key] = { title = title, build = fn } end,
     RegisterTab = function(_, b) tabs[#tabs+1] = b end, SetTabSelected = function() end,
@@ -97,7 +101,7 @@ do
   assert(load(journalSrc, "Journal.lua"))("CowfeeRaidTools", realCRT)
   CRT.TimelineJournal.RaidBosses = function() return realCRT.TimelineJournal:RaidBosses() end
 end
-local view = { SetData = function(self, pull, eid, overlay, name, group) self.pull, self.eid, self.overlay, self.group = pull, eid, overlay, group self.sets = (self.sets or 0) + 1 end, refreshes = 0, Refresh = function(self) self.refreshes = self.refreshes + 1 end, SetSpan = function(self, v) self.span = v end, CastCount = function() return 0 end, SetOrder = function(self, o) self.order = o end, ClearHighlight = function(self) self.highlight = nil end, Highlight = function(self, id, name) self.highlight = { spellID = id, name = name and name:lower() } local ref = self.pull and self.pull.reference for _, row in ipairs(ref and ref.rows or {}) do if (id and row.spellID == id) or (name and row.name:lower() == name:lower()) then return true end end return false end }
+local view = { SetData = function(self, pull, eid, overlay, name, group) self.pull, self.eid, self.overlay, self.group = pull, eid, overlay, group self.sets = (self.sets or 0) + 1 end, refreshes = 0, Refresh = function(self) self.refreshes = self.refreshes + 1 end, SetSpan = function(self, v) self.span = v end, Fit = function(self) self.fits = (self.fits or 0) + 1 end, CastCount = function() return 0 end, SetOrder = function(self, o) self.order = o end, ClearHighlight = function(self) self.highlight = nil end, Highlight = function(self, id, name) self.highlight = { spellID = id, name = name and name:lower() } local ref = self.pull and self.pull.reference for _, row in ipairs(ref and ref.rows or {}) do if (id and row.spellID == id) or (name and row.name:lower() == name:lower()) then return true end end return false end }
 view.EncounterNumber = function(self) return type(self.eid) == "number" and self.eid or nil end
 view.SetPlayhead = function(self, t, follow) self.playT = type(t) == "number" and t or nil self.playFollow = follow and true or false end
 -- the raid notes and their sharing, as CRT_Modules/Notes/Data.lua and CRT_Modules/Notes/Comm.lua give them
@@ -326,6 +330,32 @@ for _, sl in ipairs(sliders) do
   if sl.text ~= "Time visible" and sl.text ~= "Seconds visible" then assert(sl.opts.toDisplay == nil, sl.text .. " types what it shows") end
 end
 print("ok zoom slider")
+
+-- Fit: right after the zoom slider, zooms the view out to the whole fight; a drag zoom moves the slider too
+do
+  local fit
+  for _, b in ipairs(buttons) do if b.text == "Fit" then fit = b end end
+  assert(fit and fit.template == "UIPanelButtonTemplate", "a Fit button")
+  assert(fit.pt and fit.pt[1] == "LEFT" and fit.pt[2] == zoom and fit.pt[3] == "RIGHT", "Fit sits right after the zoom slider")
+  fit.OnClick(fit)
+  assert(view.fits == 1, "Fit zooms the view out")
+  local refreshed = 0
+  rawset(zoom, "refresh", function() refreshed = refreshed + 1 end)
+  assert(type(view.onSpan) == "function", "the view tells the page of a zoom")
+  view.onSpan(90)
+  assert(refreshed == 1, "the zoom slider follows a drag zoom")
+  rawset(zoom, "refresh", function() end)
+  local realOwner, realTip, area, said = CRT.UI.TooltipOwner, GameTooltip, nil, {}
+  CRT.UI.TooltipOwner = function(_, _, _, _, _, how) area = how end
+  GameTooltip = { SetText = function(_, t) said[#said + 1] = t end, AddLine = function(_, t) said[#said + 1] = t end, Show = function() end, Hide = function() end }
+  fit.OnEnter(fit)
+  assert(area == "timeline" and said[1] == "Fit" and tostring(said[2]):find("whole fight", 1, true), "Fit's tooltip, in the timeline's area: " .. tostring(said[2]))
+  CRT.UI.TooltipOwner, GameTooltip = realOwner, realTip
+  -- the help names the ways to zoom
+  local help = helps["The Timeline"]
+  assert(help:find("time axis", 1, true) and help:find("Ctrl", 1, true) and help:find("Fit", 1, true) and help:find("right-click the axis", 1, true), "the Timeline's help names drag zoom, Fit and the right-click")
+end
+print("ok fit button")
 
 -- new row lines are skinned
 rowsList = { { spellID = 1, name = "A", own = true } }
@@ -938,9 +968,14 @@ do
   rawset(f, "GetWidth", function() return 760 end)
   orderDD.refresh()
   pt = orderDD.pt
-  assert(pt[4] == 320 and pt[5] == -64, "layout: at the pop-out's smallest Order drops to the third row")
+  local fit
+  for _, b in ipairs(buttons) do if b.text == "Fit" then fit = b end end
+  local zoomRow = find(sliders, "Time visible")
+  local fitRight = 8 + zoomRow:GetWidth() + fit.pt[4] + fit:GetWidth()
+  assert(pt[4] >= fitRight + 8 and pt[5] == -64, "layout: at the pop-out's smallest Order drops to the third row, after Fit: " .. tostring(pt[4]))
   local shareLeft = 760 - (8 + HELP) - 90
   assert(pt[4] + 185 + HELP < shareLeft, "layout: clear of Share note at the pop-out's smallest")
+  assert(fitRight < shareLeft, "layout: Fit fits at the pop-out's smallest")
   -- the label itself: where the Pull dropdown was, its text cut short before it reaches Order
   assert(shownLabel().pt[4] == 412 and shownLabel().pt[5] == -9, "layout: the label sits where the Pull dropdown was")
   rawset(f, "GetWidth", nil)
