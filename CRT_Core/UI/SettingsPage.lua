@@ -58,11 +58,15 @@ local TEXT = {
     acceptImport = "Import and reload",
     confirmUndo = "Put back the settings you had before importing from %s?\n\nYour interface reloads.",
     acceptUndo = "Undo and reload",
+    teamTitle = "Team raids",
+    teamSlider = "Running CRT",
+    teamHelp = "A team raid needs this share of the raid's online members running CRT. Season Stats keeps team raids apart from all raids, and Tattlebot and the Late Tracker can record team raids only.\n\nEach CRT says hello to the raid when it joins, so CRT knows who runs it. Players without CRT count against the share. Parties, solo play and finder groups are never team raids.",
     help = "A profile holds everything the addon saves: settings, window positions, layouts, notes, consumables lists and history. Each character remembers its own; new characters start on the one under New characters. Switching, copying or resetting a profile reloads your interface.\n\nExport gives the whole profile as text, for your own characters: Import saves it as a new profile.\n\nExport settings only gives just settings and window positions, for raiders (where your reports go, whose notes and loot leaders you trust and your own sound files stay yours): Import shows what differs and applies it to this profile, after saving your settings for Undo last import. Keep my window positions keeps where your windows are and the size of your note windows.",
 }
 
 local page
 local controls = {}
+local teamStatus -- the Team raids status line, redrawn on each new count while the page shows
 
 -- Text size in points, for the body text: 8 to 22 pt.
 local TEXT_SIZES = {}
@@ -572,6 +576,34 @@ local function buildRight(pf)
         refresh()
     end)
 
+    -- Team raids (Team.lua): the share of the raid that must run CRT, and the answer now.
+    local Team = CRT.Team
+    local top = lastLayer - 52
+    heading(pf, x, top, TEXT.teamTitle, TEXT.teamHelp)
+    add(UI.Slider(pf, TEXT.teamSlider, {
+        min = Team.MIN_PERCENT,
+        max = Team.MAX_PERCENT,
+        step = Team.STEP,
+        labelWidth = LABEL_W,
+        width = CONTROL_W,
+        format = percent,
+        get = function()
+            return Team.Percent()
+        end,
+        set = function(v)
+            Team:SetPercent(v)
+            refresh()
+        end,
+    }), x, top - 18)
+    local status = pf:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    status:SetPoint("TOPLEFT", x, top - 54)
+    status:SetWidth(COL_W - 20)
+    status:SetJustifyH("LEFT")
+    status.refresh = function()
+        status:SetText(Team.StatusLine())
+    end
+    controls[#controls + 1] = status
+    teamStatus = status
 end
 
 local function buildProfiles(pf)
@@ -783,6 +815,12 @@ local function build(pf)
     pf:SetScript("OnShow", refresh)
     -- Ctrl + mouse wheel changes the scale too, so the slider follows it.
     UI.onScale = refresh
+    -- a hello or a roster change: the Team raids line follows while the page shows
+    CRT.Team:OnRecount(function()
+        if page:IsShown() and teamStatus then
+            teamStatus.refresh()
+        end
+    end)
 end
 
 UI:RegisterPage("settings", "General Settings", build)

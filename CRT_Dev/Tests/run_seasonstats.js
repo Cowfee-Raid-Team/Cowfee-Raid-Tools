@@ -403,6 +403,7 @@ check(P ~= nil, "the page registers as seasonstats")
 eq(P and P.title, "Season Stats", "its title")
 local pf = mock()
 P.build(pf)
+local seasonShow = dropdowns.Show -- Tattlebot's page has a Show of its own, built later
 local V = S.view
 check(V and V.cards and V.rows and V.refl and V.refresh, "the page's parts")
 check(helps["Season Stats"] ~= nil, "the page's (?)")
@@ -638,6 +639,79 @@ local function walk(f, ox, oy)
 end
 walk(pf, 0, 0)
 check(#outside == 0, "nothing reaches outside the page area: " .. table.concat(outside, "; "))
+
+-- 7b. Team raids and all raids ----------------------------------------------------------------------------------------
+do
+  -- counters saved before team raids: once, they count as both (copied into all; the team ones stay where they were)
+  local saved = CRT.db.seasonStats
+  local old = { pulls = 7, wipes = 6, kills = 1, killTime = 200, pullTime = 900, untimed = 0, firstKillPull = 7, nights = { ["2026-09-01"] = { longest = 200, pulls = 7 } }, causes = { [111] = 4 }, deaths = { 1, 2 } }
+  CRT.db.seasonStats = { filled = true, bosses = { [9001] = { name = "Alpha", nh = old } } }
+  eq(S:Migrate(), true, "the counters from before are copied once")
+  local boss = CRT.db.seasonStats.bosses[9001]
+  check(boss.nh == old and boss.nh.pulls == 7, "the old field is kept as it was, and counts team raids")
+  check(type(boss.all) == "table" and boss.all.nh ~= old and boss.all.nh.pulls == 7 and boss.all.nh.nights["2026-09-01"].pulls == 7 and boss.all.nh.causes[111] == 4, "and a copy counts all raids")
+  eq(CRT.db.seasonStats.scoped, true, "marked done")
+  boss.all.nh.pulls = 8
+  eq(S:Migrate(), false, "never twice")
+  eq(boss.all.nh.pulls, 8, "and changes nothing the second time")
+  eq(S:Boss(9001, "nh", "team").pulls .. "/" .. S:Boss(9001, "nh", "all").pulls, "7/8", "Boss reads a scope")
+  -- a team raid pull counts in both, a pull with players outside the team only in all
+  local teamAnswer = true
+  local asked = {}
+  CRT.Team = { PullIsTeam = function(_, enc, at) asked[#asked + 1] = tostring(enc) .. "@" .. tostring(at) return teamAnswer end }
+  S:Record({ encounterID = 9001, name = "Alpha", difficultyID = 14, startedAt = NOW + 50, length = 100, kill = false, deaths = {} })
+  eq(asked[#asked], "9001@" .. (NOW + 50), "the check is asked for the pull's own start (its snapshot at ENCOUNTER_START)")
+  eq(S:Boss(9001, "nh", "team").pulls .. "/" .. S:Boss(9001, "nh", "all").pulls, "8/9", "a team raid pull: in both")
+  teamAnswer = false
+  S:Record({ encounterID = 9001, name = "Alpha", difficultyID = 14, startedAt = NOW + 900, length = 100, kill = true, deaths = {} })
+  eq(S:Boss(9001, "nh", "team").pulls .. "/" .. S:Boss(9001, "nh", "all").pulls, "8/10", "a pull that isn't a team raid: only in all")
+  eq(S:Boss(9001, "nh", "team").kills .. "/" .. S:Boss(9001, "nh", "all").kills, "1/2", "its kill too")
+  S:Record({ encounterID = 9002, name = "Beta", difficultyID = 16, startedAt = NOW + 1900, length = 60, kill = false, deaths = {} })
+  eq(S:Boss(9002, "mythic", "team"), nil, "a boss only pulled outside the team has no team counters")
+  eq(S:Boss(9002, "mythic", "all").pulls, 1, "but has all")
+  -- the fill: pulls saved before team raids count in both
+  CRT.db.seasonStats = { filled = false, bosses = {} }
+  teamAnswer = false
+  local kept = #T:Pulls(9103)
+  T:SavePull({ encounterID = 9103, name = "Epsilon", difficultyID = 16, startedAt = NOW + 4000, length = 99, kill = false, casts = {}, deaths = {} })
+  local ep = CRT.db.seasonStats.bosses[9103]
+  check(ep and ep.mythic and ep.all and ep.all.mythic, "the fill makes both scopes")
+  eq(ep.mythic.pulls .. "/" .. ep.all.mythic.pulls, kept .. "/" .. (kept + 1), "the Timeline's saved pulls count as team and all, the pull being saved (not a team raid) only in all")
+  eq(ep.mythic.untimed, 0, "and isn't made up as an untimed team pull")
+  -- the Show dropdown: Team raids by default, saved, and the page follows it
+  CRT.db.seasonStats = saved
+  CRT.db.seasonStats.bosses[9001].all = CRT.db.seasonStats.bosses[9001].all or {}
+  local sh = seasonShow
+  check(sh ~= nil, "a Show dropdown")
+  local so2 = type(sh.opts.options) == "function" and sh.opts.options() or sh.opts.options
+  eq(so2[1].key .. "=" .. so2[1].label .. ", " .. so2[2].key .. "=" .. so2[2].label, "team=Team raids, all=All raids", "its choices")
+  eq(sh.opts.get(), "team", "Team raids by default")
+  check(sh.point and sh.point[2] + 40 + 5 + 130 <= UI.PAGE_W, "inside the page, right of Difficulty")
+  sd.opts.set("test-s1") dd.opts.set("nh")
+  S:Record({ encounterID = 9001, name = "Alpha", difficultyID = 14, startedAt = NOW + 7000, length = 100, kill = false, deaths = {} })
+  V.refresh()
+  local teamPulls = V.cards.pulls.value.text
+  sh.opts.set("all")
+  eq(CRT.db.seasonStats.show, "all", "All raids is saved")
+  eq(S:Scope(), "all", "and read back")
+  check(V.cards.pulls.value.text ~= teamPulls, "the cards follow it (" .. teamPulls .. " -> " .. V.cards.pulls.value.text .. ")")
+  eq(tonumber(V.cards.pulls.value.text), S:Cards("test-s1", "nh", "all").pulls, "All raids: every pull")
+  sh.opts.set("team")
+  eq(V.cards.pulls.value.text, teamPulls, "back to Team raids")
+  check((helps["Season Stats"] or ""):find("Team raids or All raids", 1, true) ~= nil, "the page's (?) explains Show")
+  -- raid nights and Tattlebot's trend follow it: a night or a pull that wasn't a team raid only in all
+  CRT.db.late.history[#CRT.db.late.history + 1] = { id = 9, startedAt = A1 + 3600, players = {}, team = false }
+  local inTeam, inAll = S:RaidNights("test-s1", "team"), S:RaidNights("test-s1", "all")
+  eq(inAll - inTeam, 1, "a Late Tracker night that wasn't a team raid counts only in all")
+  table.remove(CRT.db.late.history)
+  local hist = CRT.db.tattle.history
+  hist[#hist + 1] = { id = 50, startedAt = A1 + 5 * DAY, season = "Season 1", team = false, pulls = { tpull(A1 + 5 * DAY, 14, 4000, 0) } }
+  hist[#hist].pulls[1].team = false
+  local tAll, tTeam = S:AvoidableTrend(9001, "nh", 8, "all"), S:AvoidableTrend(9001, "nh", 8, "team")
+  eq(#tAll - #tTeam, 1, "a Tattlebot pull that wasn't a team raid is only in all's trend")
+  table.remove(hist)
+  CRT.Team = nil
+end
 
 -- 8. Saved data, the menu, the share, the .toc, no season facts -------------------------------------------------------
 check(panelSrc:find('"requests", "seasonstats"', 1, true) ~= nil, "Modules lists Season Stats right after Requests")

@@ -197,6 +197,11 @@ do
     if not paths[want] then kept[#kept + 1] = want end
   end
   check(#kept == 0, "consumables order, Tattlebot spells, marker switches, the timeline line colour and the sound choice are shared (" .. table.concat(kept, ",") .. ")")
+  -- the team raid check's threshold and the two "Only record team raids" switches are settings: shared
+  check(paths["team.threshold"] ~= nil and paths["team.threshold"].default == 0.75, "the team raid threshold is shared, with its default 75%")
+  check(paths["tattle.onlyTeam"] ~= nil and paths["tattle.onlyTeam"].default == true, "Tattlebot's Only record team raids is shared, on by default")
+  check(paths["late.onlyTeam"] ~= nil and paths["late.onlyTeam"].default == true, "the Late Tracker's Only record team raids is shared, on by default")
+  check(paths["seasonStats.show"] == nil, "Season Stats' Show stays with its data, never shared")
 end
 
 -- The sender: a profile with settings, positions and data. --------------------------------------

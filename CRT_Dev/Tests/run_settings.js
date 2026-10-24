@@ -5,7 +5,7 @@ const fs = require('fs');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
 const harness = `
-local coreSrc, panelSrc, controlsSrc, pageSrc, alertSrc, profilesSrc, themesSrc, macrosSrc, windowSrc, tooltipSrc, areasSrc = ...
+local coreSrc, panelSrc, controlsSrc, pageSrc, alertSrc, profilesSrc, themesSrc, macrosSrc, windowSrc, tooltipSrc, areasSrc, teamSrc = ...
 -- FAIL lines are counted, and the count printed last, so a failure shows past the runner's tail
 local failCount, rawPrint = 0, print
 print = function(s, ...) if type(s) == "string" and s:find("^FAIL ") then failCount = failCount + 1 end rawPrint(s, ...) end
@@ -91,6 +91,9 @@ local CRT = {}
 assert(load(coreSrc, "CRT_Core/Core.lua"))("CowfeeRaidTools", CRT)
 assert(load(themesSrc, "CRT_Core/Themes.lua"))("CowfeeRaidTools", CRT)
 assert(load(profilesSrc, "CRT_Core/Profiles.lua"))("CowfeeRaidTools", CRT)
+-- the team raid check, which General Settings shows (CRT_Core/Team.lua; its own harness is run_team.js)
+IsInRaid = function() return false end IsInGroup = function() return false end
+assert(load(teamSrc, "CRT_Core/Team.lua"))("CowfeeRaidTools", CRT)
 -- the shipped textures' folder, set once in Core.lua
 if CRT.MEDIA == "Interface\\\\AddOns\\\\CowfeeRaidTools\\\\CRT_Media\\\\Media\\\\" then print("ok CRT.MEDIA") else print("FAIL CRT.MEDIA: " .. tostring(CRT.MEDIA)) end
 -- ADDON_LOADED, with data saved before themes: the Modern look on and no theme loads as Beanworks: Cowfee.
@@ -226,6 +229,9 @@ end
 local dropdowns = {}
 local realDropdown = UI.Dropdown
 UI.Dropdown = function(p, text, opts) dropdowns[text] = opts return realDropdown(p, text, opts) end
+local sliders = {}
+local realSlider = UI.Slider
+UI.Slider = function(p, text, opts) local row = realSlider(p, text, opts) sliders[text] = { opts = opts, row = row } return row end
 UI:SelectPage("settings")
 if dropdowns["Style"] then print("FAIL General Settings still has the Style dropdown") end
 for _, fr in ipairs(frames) do
@@ -310,6 +316,33 @@ do
     if not helped then print("FAIL the Tooltips heading has a (?)") end
     print("tooltip position: " .. table.concat(labels, ", "))
   end
+end
+-- Team raids: a heading with its (?), the Running CRT slider (50% to 100%, steps of 5, saved as a fraction) and the
+-- status line, in the right column and inside the page
+do
+  local slider = sliders["Running CRT"]
+  if not slider then print("FAIL General Settings has a Team raids slider, Running CRT") else
+    if not (slider.opts.min == 50 and slider.opts.max == 100 and slider.opts.step == 5) then print("FAIL the slider goes from 50% to 100% in steps of 5") end
+    if slider.opts.get() ~= 75 then print("FAIL the slider starts on 75%: " .. tostring(slider.opts.get())) end
+    slider.opts.set(80)
+    if CRT.db.team.threshold ~= 0.8 then print("FAIL the slider saves team.threshold as a fraction: " .. tostring(CRT.db.team.threshold)) end
+    slider.opts.set(75)
+    local p = slider.row.pts[1] or {}
+    if not (p[2] == 10 + 2 * math.floor(UI.PAGE_W / 3)) then print("FAIL the slider sits in the right column") end
+  end
+  local status, helped
+  for _, fr in ipairs(frames) do
+    local t = rawget(fr, "text")
+    if fr.kind == "FontString" and type(t) == "string" and t:find("^Now: ") then status = fr end
+    local ht = rawget(fr, "crtHelpText")
+    if rawget(fr, "crtHelp") and ht and rawget(ht, "text") == "Team raids" then helped = true end
+  end
+  UI.pages.settings.frame.OnShow()
+  if not (status and status.text == "Now: Not in a raid group.") then print("FAIL the Team raids status line: " .. tostring(status and status.text)) end
+  if not helped then print("FAIL the Team raids heading has a (?)") end
+  local p = status and status.pts[1] or {}
+  if status and ((p[2] or 0) + (status.w or 0) > UI.PAGE_W or (p[3] or 0) < -(UI.PAGE_H - 30)) then print("FAIL the status line stays inside the page") end
+  print("team raids: slider " .. tostring(slider and slider.opts.get()) .. "%, " .. tostring(status and status.text))
 end
 local opts = {} for _, o in ipairs(dropdowns["Use profile"].options()) do opts[#opts + 1] = o.label end
 print("use profile choices: " .. table.concat(opts, ", ") .. "; copy from enabled " .. tostring(dropdowns["Copy from"].enabledIf()))
@@ -506,5 +539,5 @@ if failCount > 0 then print(failCount .. " failed") end
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 const d = process.argv[2];
-for (const p of ['CRT_Core/Core.lua', 'CRT_Core/UI/Panel.lua', 'CRT_Core/UI/Controls.lua', 'CRT_Core/UI/SettingsPage.lua', 'CRT_Modules/Notes/Alert.lua', 'CRT_Core/Profiles.lua', 'CRT_Core/Themes.lua', 'CRT_Core/Macros.lua', 'CRT_Core/UI/Window.lua', 'CRT_Core/UI/Tooltip.lua', 'CRT_Modules/Alerts/Areas.lua']) lua.lua_pushstring(L, to_luastring(fs.readFileSync(d + '/' + p, 'utf8')));
-if (lua.lua_pcall(L, 11, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
+for (const p of ['CRT_Core/Core.lua', 'CRT_Core/UI/Panel.lua', 'CRT_Core/UI/Controls.lua', 'CRT_Core/UI/SettingsPage.lua', 'CRT_Modules/Notes/Alert.lua', 'CRT_Core/Profiles.lua', 'CRT_Core/Themes.lua', 'CRT_Core/Macros.lua', 'CRT_Core/UI/Window.lua', 'CRT_Core/UI/Tooltip.lua', 'CRT_Modules/Alerts/Areas.lua', 'CRT_Core/Team.lua']) lua.lua_pushstring(L, to_luastring(fs.readFileSync(d + '/' + p, 'utf8')));
+if (lua.lua_pcall(L, 12, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }

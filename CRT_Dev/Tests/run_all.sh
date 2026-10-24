@@ -107,6 +107,8 @@ g "lootmaster windows" && { node run_lootmaster_windows.js "$W" 2>&1 | tail -8; 
 g "lootmaster popup" && { node run_lootmaster_popup.js "$W" 2>&1 | tail -12; echo "exit ${PIPESTATUS[0]}"; }
 g "requests" && { node run_requests.js "$W" 2>&1 | tail -20; echo "exit ${PIPESTATUS[0]}"; }
 g "whats new" && { node run_whatsnew.js "$W" 2>&1 | tail -30; echo "exit ${PIPESTATUS[0]}"; }
+g "team" && { node run_team.js "$W" 2>&1 | tail -30; echo "exit ${PIPESTATUS[0]}"; }
+g "tattlebot team" && { node run_tattle.js "$W" 2>&1 | tail -30; echo "exit ${PIPESTATUS[0]}"; }
 g "season stats" && { node run_seasonstats.js "$W" 2>&1 | tail -30; echo "exit ${PIPESTATUS[0]}"; }
 g "season repairs" && { node run_seasonrepairs.js "$W" 2>&1 | tail -30; echo "exit ${PIPESTATUS[0]}"; }
 g "lootmaster filter" && { node run_lootmaster_filter.js "$W" 2>&1 | tail -6; echo "exit ${PIPESTATUS[0]}"; }

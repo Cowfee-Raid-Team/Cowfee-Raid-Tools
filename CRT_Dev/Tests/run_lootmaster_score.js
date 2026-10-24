@@ -81,6 +81,17 @@ eq(LM.Score("Solex-Sargeras"), 85, "the new night counts")
 check(#LM.ScoreList() >= 3, "a list for the Raider Score tab")
 eq(LM.ScoreList()[1].score <= LM.ScoreList()[#LM.ScoreList()].score, true, "lowest first")
 
+-- only team raid nights count: a night stamped not a team raid costs nothing; nights with no stamp (from before) count
+night(0, { { "Quick-Sargeras" } })
+history[#history].team = false
+for _, fn in ipairs(Late.listeners) do fn() end
+eq(LM.Score("Quick-Sargeras"), 93, "a no-show on a night that wasn't a team raid costs nothing")
+history[#history].team = true
+for _, fn in ipairs(Late.listeners) do fn() end
+eq(LM.Score("Quick-Sargeras"), 78, "the same night as a team raid costs 15")
+table.remove(history)
+for _, fn in ipairs(Late.listeners) do fn() end
+
 -- The Late Tracker decides on time, late and no-show; the score follows it exactly.
 local function finish(start, stop)
   NOW = stop

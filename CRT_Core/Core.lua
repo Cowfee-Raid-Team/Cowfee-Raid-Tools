@@ -278,6 +278,7 @@ local defaults = {
         hour = 20,
         minute = 0,
         grace = 0, -- minutes after the start before someone counts as late
+        onlyTeam = true, -- Only record team raids: the schedule's start waits for a team raid (Team.lua); nights are stamped team
         history = {},
         nextId = 1,
         lastAuto = "", -- the day the schedule last started (or skipped) a night
@@ -288,9 +289,12 @@ local defaults = {
     -- output is "self", "raid" or "officer". maxPlayers is no longer used: chat posts list every
     -- player, on more lines when needed. Each pull keeps every spell's damage (pull.all), and the
     -- reports pick out the tracked ones.
+    -- onlyTeam: Only record team raids (Team.lua); each night and pull is stamped team, and data from before counts
+    -- as team raids.
     tattle = {
         enabled = true,
         raidsOnly = true,
+        onlyTeam = true,
         avoidable = false, -- also count what the game's meter marks as avoidable damage
         autoPost = false, -- post each pull's report when it is read (to chat only for the raid leader)
         output = "self",
@@ -333,11 +337,18 @@ local defaults = {
         -- [encounterID] = { nh = key, mythic = key } (Timeline:ChosenReference; none: the group's first, yours first)
         reviewRefs = {},
     },
+    -- The team raid check (Team.lua): threshold is the share of the raid's online members that must run CRT for a
+    -- team raid, 0.5 to 1 (General Settings shows it as 50% to 100%). A setting: shared in Export settings only.
+    team = { threshold = 0.75 },
     -- Season Stats (SeasonStats/Data.lua): the raid's own counters per boss and difficulty group, counted from each
     -- pull the Timeline saves. bosses[encounterID] = { name, nh = counters, mythic = counters }; filled is true once
-    -- they were filled from the Timeline's saved pulls. Data only: never in Export settings only.
+    -- they were filled from the Timeline's saved pulls. Data only: never in Export settings only. boss[group] counts team
+    -- raids and boss.all[group] every raid; scoped is true once the counters from before were copied into all (they
+    -- count as both), and show is the page's Show, "team" or "all".
     seasonStats = {
         filled = false,
+        scoped = false,
+        show = "team",
         bosses = {},
     },
     -- Alerts. Reminders, phase events and bar settings for the alerts engine (Alerts/Engine.lua).

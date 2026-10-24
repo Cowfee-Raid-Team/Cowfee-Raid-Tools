@@ -2,7 +2,8 @@ local ADDON, CRT = ...
 
 -- Season Stats' repairs: your own repair bill per pull, and the raid's from every raider running CRT, for the
 -- Your repairs and Raid costs cards and columns (SeasonStats/Page.lua). Nothing here is saved; the counters are
--- Data.lua's (repairs, repairPulls, raidRepairs, raidReporters, raidPulls).
+-- Data.lua's (repairs, repairPulls, raidRepairs, raidReporters, raidPulls), in each scope the pull counted in (all,
+-- and team for a team raid).
 --
 -- Your bill is what the game would charge to repair your gear: each damaged item's repairCost in its tooltip data
 -- (C_TooltipInfo.GetInventoryItem("player", slot), a data call that draws no tooltip; checked 2026-10-24 on
@@ -274,9 +275,12 @@ end
 
 -- One pull ----------------------------------------------------------------------------------------------------------
 
--- A pull's report into its counters, the first of the pull counting the pull.
+-- A pull's report into its counters (one per scope it counted in: all, and team for a team raid), the first of the
+-- pull counting the pull.
 local function addReport(p, copper)
-    Stats:AddRaidRepair(p.counters, copper, not p.raidCounted)
+    for _, c in ipairs(p.counters) do
+        Stats:AddRaidRepair(c, copper, not p.raidCounted)
+    end
     p.raidCounted = true
 end
 
@@ -284,7 +288,9 @@ end
 local function addOwn(p)
     if p.counters and p.cost and not p.repairAdded then
         p.repairAdded = true
-        Stats:AddRepair(p.counters, p.cost)
+        for _, c in ipairs(p.counters) do
+            Stats:AddRepair(c, p.cost)
+        end
     end
 end
 
@@ -320,11 +326,15 @@ local function sameStart(p, pull)
     return p.encounterID == pull.encounterID and type(pull.startedAt) == "number" and math.abs(p.at - pull.startedAt) <= Rep.MATCH
 end
 
--- Gives a pull the counters the Timeline's save counted it in (Stats:Record), once: your bill (now, or when the
--- read after finishes) and the raid's reports heard so far go there.
+-- Gives a pull the counters the Timeline's save counted it in (Stats:Record: a list, one per scope, or one
+-- counters table), once: your bill (now, or when the read after finishes) and the raid's reports heard so far go
+-- to each.
 function Rep:Claim(pull, c)
     if type(c) ~= "table" or type(pull) ~= "table" then
         return false
+    end
+    if c.pulls ~= nil then
+        c = { c }
     end
     for i = #pulls, 1, -1 do
         local p = pulls[i]

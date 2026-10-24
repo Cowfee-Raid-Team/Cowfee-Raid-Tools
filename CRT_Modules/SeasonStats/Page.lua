@@ -1,7 +1,8 @@
 local ADDON, CRT = ...
 
 -- The Season Stats page (Modules > Season Stats): a Season dropdown (the boss library's season packs, the current
--- one first) and a Difficulty dropdown (the Timeline's groups); six cards (bosses killed of the season's route,
+-- one first), a Difficulty dropdown (the Timeline's groups) and a Show dropdown (Team raids or All raids, the
+-- counters' two scopes, saved by Stats:SetScope; everything below follows it); six cards (bosses killed of the season's route,
 -- pulls, raid nights, time in pulls, your repairs and the raid's costs, SeasonStats/Repairs.lua); the table of the
 -- route's bosses in route order (sortable, back to route order on a third click); and the reflection for the boss picked in the table: its longest pull each night as bars,
 -- the furthest phase, the spells that killed most (each with its icon, in its ability timeline row's type colour,
@@ -16,7 +17,7 @@ local UI = CRT.UI
 
 local L = {
     left = 8, headTop = -8, filterTop = -2, seasonX = 190, seasonLabelW = 50, seasonW = 200, groupX = 470,
-    groupLabelW = 64, groupW = 130,
+    groupLabelW = 64, groupW = 130, scopeX = 690, scopeLabelW = 40, scopeW = 130,
     cards = 6, cardsTop = -44, cardH = 54, cardGap = 10, cardPad = 10,
     tableTop = -114, tableW = 670, headH = 22, row = 20, rows = 20,
     reflX = 690, reflW = 328, bodyTop = -26, line = 16, bars = 8, barsTop = -18, dateW = 70, barX = 74, barW = 150, barH = 10,
@@ -47,8 +48,9 @@ local TEXT = {
         .. "Your repairs is how much your repair bill went up over each pull. It's read from your gear right at the pull and again after it, so running back adds nothing. If the read at the pull fails, your last read out of combat is used.\n\n"
         .. "Raid costs adds up the same from every raider running CRT, on the pulls Season Stats counted. Raiders without CRT aren't counted.\n\n"
         .. "It isn't confirmed yet whether reputation discounts on repairs are included.\n\n"
-        .. "Repair counting starts with this update, so older pulls have none.",
-    season = "Season", difficulty = "Difficulty",
+        .. "Repair counting starts with this update, so older pulls have none.\n\n"
+        .. "Show picks Team raids or All raids. A team raid is one where enough of the raid runs CRT, as set on General Settings > Team raids. Every pull counts in All raids, and in Team raids too when it was a team raid at the pull. Pulls from before this update count in both.",
+    season = "Season", difficulty = "Difficulty", show = "Show",
     killed = "Bosses killed", pulls = "Pulls", nights = "Raid nights", time = "Time in pulls",
     repairs = "Your repairs", raid = "Raid costs",
     repairsTip = "Your repair bill over %d %s, read from your gear.",
@@ -59,6 +61,7 @@ local TEXT = {
     raidNone = "No raiders running CRT have reported yet.",
     rowRepairs = "Your repairs: %s over %d %s", rowRaid = "Raid costs: %s from %d raiders over %d %s",
     nightsTip = "Nights the Late Tracker saved between this season's first and last pull.",
+    nightsTeamTip = "Team raid nights the Late Tracker saved between this season's first and last team raid pull.",
     pullNights = "%d nights had pulls on this difficulty.",
     untimed = "%d early pulls have no saved length, so they aren't in this time.",
     noPulls = "No pulls on this difficulty yet.",
@@ -185,7 +188,7 @@ local function refreshCards(card)
     c.killed.value:SetText(string.format("%d / %d", card.killed, card.bosses))
     c.pulls.value:SetText(tostring(card.pulls))
     c.nights.value:SetText(tostring(card.nights))
-    c.nights.tip = { TEXT.nights, TEXT.nightsTip, TEXT.pullNights:format(card.pullNights) }
+    c.nights.tip = { TEXT.nights, S:Scope() == S.TEAM and TEXT.nightsTeamTip or TEXT.nightsTip, TEXT.pullNights:format(card.pullNights) }
     c.time.value:SetText(S.Hours(card.pullTime))
     c.time.tip = card.untimed > 0 and { TEXT.time, TEXT.untimed:format(card.untimed) } or nil
     if card.repairPulls > 0 then
@@ -570,6 +573,7 @@ local function refresh()
     refreshReflection(rows)
     view.season.refresh()
     view.group.refresh()
+    view.scope.refresh()
 end
 
 local function buildHeader(f)
@@ -602,6 +606,20 @@ local function buildHeader(f)
         end,
     })
     view.group:SetPoint("TOPLEFT", L.groupX, L.filterTop)
+    -- Team raids or All raids, saved with the counters (Stats:SetScope); the page's (?) explains it
+    view.scope = UI.Dropdown(f, TEXT.show, {
+        options = S.ScopeOptions,
+        labelWidth = L.scopeLabelW,
+        width = L.scopeW,
+        get = function()
+            return S:Scope()
+        end,
+        set = function(key)
+            S:SetScope(key)
+            refresh()
+        end,
+    })
+    view.scope:SetPoint("TOPLEFT", L.scopeX, L.filterTop)
 end
 
 local function build(f)

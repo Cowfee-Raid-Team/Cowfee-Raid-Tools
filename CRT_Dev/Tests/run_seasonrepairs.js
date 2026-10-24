@@ -384,6 +384,40 @@ instance = { "Raid One", "raid", 15 }
 fire("PLAYER_ENTERING_WORLD")
 check(not driver.events.PLAYER_REGEN_ENABLED, "combat's end is only listened to while a pull waits for its read")
 
+-- 6b. Team raids and all raids: a pull's bill and the raid's reports go to each scope it counted in -----------------------
+do
+  local teamNow = true
+  CRT.Team = { PullIsTeam = function() return teamNow end }
+  local E = 9103
+  local function pullScoped(team)
+    teamNow = team
+    now = now + 600 clock = clock + 600 serverNow = serverNow + 600
+    fullGear() R.Forget()
+    combat = true
+    fire("ENCOUNTER_START", E, "Epsilon", 16, 20)
+    damage(1, 10, 3000)
+    clock = clock + 100 now = now + 100
+    fire("ENCOUNTER_END", E, "Epsilon", 16, 20, 0)
+    combat = false
+    fire("PLAYER_REGEN_ENABLED")
+    runTimers()
+  end
+  pullScoped(true)
+  local t, a = S:Boss(E, "mythic", "team"), S:Boss(E, "mythic", "all")
+  check(t and a, "a team raid pull: counters in both scopes")
+  eq(t.repairs .. "/" .. a.repairs, "3000/3000", "your bill in both")
+  hear("Moo-Stormrage", R.Encode(E, "mythic", serverNow, 500))
+  runTimers()
+  eq(t.raidRepairs .. "/" .. a.raidRepairs, "3500/3500", "a raider's report in both")
+  pullScoped(false)
+  eq(t.repairs .. "/" .. a.repairs, "3000/6000", "a pull that isn't a team raid: your bill only in all")
+  hear("Moo-Stormrage", R.Encode(E, "mythic", serverNow, 700))
+  runTimers()
+  eq(t.raidRepairs .. "/" .. a.raidRepairs, "3500/7200", "and the raid's reports only in all")
+  eq(t.raidPulls .. "/" .. a.raidPulls, "1/2", "pulls with reports, per scope")
+  CRT.Team = nil
+end
+
 -- 7. Saved data -------------------------------------------------------------------------------------------------------
 -- counters saved before this update have none of the new fields: they still read as zeros
 CRT.db.seasonStats.bosses[9001] = { name = "Alpha", nh = { pulls = 3, wipes = 3, kills = 0, killTime = 0, pullTime = 30, untimed = 0, nights = {}, causes = {}, deaths = {} } }
