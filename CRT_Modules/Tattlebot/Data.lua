@@ -7,7 +7,8 @@ local ADDON, CRT = ...
 -- a read that still finds a secret is tried again a few times. The meter has damage per spell but no
 -- hit count, so each player gets the damage taken per spell and the number of pulls it hit them in.
 -- Pulls go into a night (CRTDB.tattle.current), which ends after NIGHT_GAP without a pull or by End
--- night, and then moves to CRTDB.tattle.history.
+-- night, and then moves to CRTDB.tattle.history. Only team raids are recorded unless Only record team
+-- raids is off (Team raids, below).
 
 local Tattle = { listeners = {} }
 CRT.Tattle = Tattle
@@ -346,9 +347,61 @@ local function avoidableSet()
     return set
 end
 
+-- Team raids -------------------------------------------------------------------------------------------
+-- Each pull and night is stamped team = true or false: whether the team raid check (CRT.Team, CRT_Core/Team.lua)
+-- said team at the pull's start. With Only record team raids on (CRTDB.tattle.onlyTeam, the default) a pull that
+-- isn't a team raid is never read, saved or posted. A night holds one kind: a pull of the other kind ends it and
+-- starts a new one. Pulls and nights saved before team raids have no stamp and count as team raids.
+
+-- The team raid check, read only here: whether the pull of encounterID that just ended was a team raid (its
+-- snapshot at ENCOUNTER_START, else the answer now). With no check loaded, true, as every pull was before.
+local function pullIsTeam(encounterID)
+    local Team = CRT.Team
+    if not (Team and Team.PullIsTeam) then
+        return true
+    end
+    local ok, team = pcall(Team.PullIsTeam, Team, encounterID)
+    return not ok or team == true
+end
+Tattle.PullIsTeam = pullIsTeam
+
+-- Whether a night or pull is a team raid's (saved before team raids: yes).
+function Tattle.IsTeam(x)
+    return type(x) == "table" and x.team ~= false
+end
+
+-- Whether any night, saved or running, wasn't a team raid: the History's Show filter is shown only then.
+function Tattle:HasOtherNights()
+    local s = tdb()
+    if s.current and not Tattle.IsTeam(s.current) then
+        return true
+    end
+    for _, night in ipairs(s.history) do
+        if not Tattle.IsTeam(night) then
+            return true
+        end
+    end
+    return false
+end
+
+-- The nights given that are in a scope: "team" (team raids only) or "all".
+function Tattle.InScope(nights, scope)
+    if scope ~= "team" then
+        return nights
+    end
+    local out = {}
+    for _, night in ipairs(nights) do
+        if Tattle.IsTeam(night) then
+            out[#out + 1] = night
+        end
+    end
+    return out
+end
+
 -- Nights ---------------------------------------------------------------------------------------------
 
--- reason is "button" or "gap". A night with no pulls is dropped, not saved.
+-- reason is "button", "gap" or "team" (the next pull was the other kind of raid). A night with no pulls is
+-- dropped, not saved.
 function Tattle:EndNight(reason, at)
     local s = tdb()
     local night = s.current
@@ -364,21 +417,27 @@ function Tattle:EndNight(reason, at)
     self:Fire()
 end
 
--- info is { encounterID, name, difficulty, success }. Adds the pull to tonight, starting a new night
--- when there is none or the last pull was more than NIGHT_GAP ago.
+-- info is { encounterID, name, difficulty, success, team }. Adds the pull to tonight, starting a new night
+-- when there is none, the last pull was more than NIGHT_GAP ago, or tonight is the other kind of raid (team or
+-- not; info.team nil is a team raid).
 function Tattle:AddPull(pull, info, now)
     local s = tdb()
     now = now or time()
+    local team = info.team ~= false
     local night = s.current
     if night and now - (night.lastAt or night.startedAt) > NIGHT_GAP then
         self:EndNight("gap", night.lastAt)
         night = nil
+    elseif night and Tattle.IsTeam(night) ~= team then
+        self:EndNight("team", night.lastAt)
+        night = nil
     end
     if not night then
-        night = { id = s.nextId, startedAt = now, season = s.season, pulls = {} }
+        night = { id = s.nextId, startedAt = now, season = s.season, team = team, pulls = {} }
         s.nextId = s.nextId + 1
         s.current = night
     end
+    pull.team = team
     pull.at = now
     pull.encounterID = info.encounterID
     pull.name = info.name
@@ -899,9 +958,11 @@ function Tattle:AddScannedPull(scan, ids)
             pull.avoidable[sp.id] = true
         end
     end
+    -- saved by hand from the Last fight view, so it is saved whatever the kind of raid, stamped as it was
     self:AddPull(pull, {
         encounterID = boss and boss.encounterID,
         name = boss and boss.name or "Not a boss",
+        team = pullIsTeam(boss and boss.encounterID),
     })
     scannedFight = { pull = pull, combat = combatCount }
     -- Every player's every spell, like a pull read after a boss.
@@ -1113,12 +1174,19 @@ driver:SetScript("OnEvent", function(_, event, ...)
         if not shouldTrack() then
             return
         end
+        local id = readable(encounterID) and encounterID or nil
+        -- Only record team raids: a pull that wasn't one is never read, saved or posted
+        local team = pullIsTeam(id)
+        if tdb().onlyTeam and not team then
+            return
+        end
         local info = {
             boss = lastBoss,
-            encounterID = readable(encounterID) and encounterID or nil,
+            encounterID = id,
             name = readable(encounterName) and encounterName or nil,
             difficulty = readable(difficultyID) and difficultyID or nil,
             success = readable(success) and success or nil,
+            team = team,
         }
         pending = info
         if inCombat then

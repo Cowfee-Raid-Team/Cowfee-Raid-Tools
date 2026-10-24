@@ -403,6 +403,7 @@ check(P ~= nil, "the page registers as seasonstats")
 eq(P and P.title, "Season Stats", "its title")
 local pf = mock()
 P.build(pf)
+local seasonShow = dropdowns.Show -- Tattlebot's page has a Show of its own, built later
 local V = S.view
 check(V and V.cards and V.rows and V.refl and V.refresh, "the page's parts")
 check(helps["Season Stats"] ~= nil, "the page's (?)")
@@ -680,7 +681,7 @@ do
   -- the Show dropdown: Team raids by default, saved, and the page follows it
   CRT.db.seasonStats = saved
   CRT.db.seasonStats.bosses[9001].all = CRT.db.seasonStats.bosses[9001].all or {}
-  local sh = dropdowns.Show
+  local sh = seasonShow
   check(sh ~= nil, "a Show dropdown")
   local so2 = type(sh.opts.options) == "function" and sh.opts.options() or sh.opts.options
   eq(so2[1].key .. "=" .. so2[1].label .. ", " .. so2[2].key .. "=" .. so2[2].label, "team=Team raids, all=All raids", "its choices")

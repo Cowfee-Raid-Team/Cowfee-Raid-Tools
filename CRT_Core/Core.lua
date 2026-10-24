@@ -288,9 +288,12 @@ local defaults = {
     -- output is "self", "raid" or "officer". maxPlayers is no longer used: chat posts list every
     -- player, on more lines when needed. Each pull keeps every spell's damage (pull.all), and the
     -- reports pick out the tracked ones.
+    -- onlyTeam: Only record team raids (Team.lua); each night and pull is stamped team, and data from before counts
+    -- as team raids.
     tattle = {
         enabled = true,
         raidsOnly = true,
+        onlyTeam = true,
         avoidable = false, -- also count what the game's meter marks as avoidable damage
         autoPost = false, -- post each pull's report when it is read (to chat only for the raid leader)
         output = "self",
