@@ -278,6 +278,7 @@ local defaults = {
         hour = 20,
         minute = 0,
         grace = 0, -- minutes after the start before someone counts as late
+        onlyTeam = true, -- Only record team raids: the schedule's start waits for a team raid (Team.lua); nights are stamped team
         history = {},
         nextId = 1,
         lastAuto = "", -- the day the schedule last started (or skipped) a night

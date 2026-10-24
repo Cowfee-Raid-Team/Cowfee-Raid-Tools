@@ -87,7 +87,7 @@ Profiles.SHARE = {
     },
     gearChecker = { filter = false, belowTrack = true, popout = true },
     sound = false, -- the names of your own sound files
-    late = { days = true, hour = true, minute = true, grace = true, history = false, nextId = false, lastAuto = false },
+    late = { days = true, hour = true, minute = true, grace = true, onlyTeam = true, history = false, nextId = false, lastAuto = false },
     tattle = {
         enabled = true, raidsOnly = true, onlyTeam = true, avoidable = true, maxPlayers = true, custom = true,
         output = false, autoPost = false, -- where and whether your reports post

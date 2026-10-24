@@ -171,6 +171,25 @@ do
   check(window ~= nil, "the roster window's (?) is right of the window's title (its TitleText)")
   for _, x in ipairs(lateHelps) do check(rawget(x, "helpTarget") ~= nil, "the (?) " .. tostring(x.helpTitle) .. " is placed by UI.HelpRight") end
 end
+-- Team raids: Only record team raids on the Settings tab; History's Show filter (with its (?)) only once a night
+-- that wasn't a team raid is saved, and Team raids keeps the totals to the team's nights
+do
+  local function find(pred) for _, s in ipairs(strings) do local t = rawget(s, "text") if type(t) == "string" and pred(t) then return s end end end
+  check(find(function(t) return t == "Only record team raids" end) ~= nil, "Settings: an Only record team raids check box")
+  local onlyHelp, showHelp
+  for _, x in ipairs(lateHelps) do if x.helpTitle == "Only record team raids" then onlyHelp = x elseif x.helpTitle == "Show" then showHelp = x end end
+  check(onlyHelp ~= nil, "with a (?)")
+  CRT.db.late.current = nil
+  pf:Show()
+  check(showHelp ~= nil and not showHelp.shown, "only team raid nights: no Show filter")
+  check(find(function(t) return t == "All 2 saved nights, most often late first." end) ~= nil, "the totals cover both nights")
+  CRT.db.late.history[#CRT.db.late.history + 1] = { id = 3, startedAt = at(19, 0), endedAt = at(19, 30), how = "button", endReason = "button", layout = "Pug", grace = 0, team = false,
+    players = { { key = "Balevolence-Stormrage" } } }
+  pf:Show()
+  check(showHelp.shown, "a night that wasn't a team raid saved: the Show filter")
+  check(find(function(t) return t == "All 2 team raid nights, most often late first." end) ~= nil, "Team raids by default: the totals leave the other night out")
+  table.remove(CRT.db.late.history)
+end
 if fails > 0 then error(fails .. " late page checks failed") end
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }

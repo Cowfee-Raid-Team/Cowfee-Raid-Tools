@@ -114,6 +114,55 @@ local r0, p0 = resets, prunes
 NOW = NOW + 60 Late:Start("button", NOW)
 eq(prunes, p0 + 1, "a night's start drops the finished invites") eq(resets, r0, "but doesn't reset the open ones")
 Late:End("button", NOW + 60) eq(resets, r0 + 1, "its end resets them")
+-- Team raids: with Only record team raids on, the schedule's start waits for a team raid (checked again when the
+-- answer changes); Start raid now always starts; every night is stamped; nights from before count as team raids.
+do
+  local function check(ok, what) eq(ok and true or false, true, what) end
+  local teamNow, changed = false, nil
+  local T = { IsTeam = function() return teamNow end, OnChange = function(_, fn) changed = fn end }
+  local said = {}
+  local C2 = { db = { groups = {}, late = { days = { [4] = true }, hour = 20, minute = 0, grace = 0, onlyTeam = true, history = { { id = 1, startedAt = 0, players = {} } }, nextId = 2, lastAuto = "" } },
+    Team = T, Groups = CRT.Groups, Invite = CRT.Invite }
+  function C2:Print(m) said[#said + 1] = m end
+  assert(load(src, "Data.lua"))("CowfeeRaidTools", C2)
+  local L2, s2 = C2.Late, C2.db.late
+  eq(L2.IsTeam(s2.history[1]), true, "a night saved before team raids is a team raid")
+  eq(L2:HasOtherNights(), false, "so there is nothing else yet")
+  check(changed ~= nil, "the Late Tracker hears when the team raid answer changes")
+  -- Wednesdays at 20:00 on this computer's clock (never by adding days, which a clock change would shift)
+  local function wedAt(day) return os.time({ year = 2026, month = 10, day = day, hour = 20, min = 0, sec = 0 }) end
+  local wed = wedAt(21)
+  inGroup = true roster = {}
+  NOW = wed + 60 L2:Tick()
+  eq(L2:Current(), nil, "the start time, in a group that isn't a team raid: no night yet")
+  NOW = wed + 90 teamNow = true changed(true)
+  local n2 = L2:Current()
+  check(n2 ~= nil and n2.how == "schedule", "the group becomes a team raid inside the window: the night starts from the schedule")
+  eq(n2 and n2.startedAt, wed, "from the scheduled time")
+  eq(n2 and n2.team, true, "stamped a team raid")
+  L2:End("button", NOW + 3600)
+  -- the next week the group never becomes one: the window passes and says why
+  local wed2 = wedAt(28)
+  teamNow = false
+  NOW = wed2 + 60 L2:Tick()
+  NOW = wed2 + 6 * 60 L2:Tick()
+  eq(L2:Current(), nil, "never a team raid: no night")
+  check(said[#said] and said[#said]:find("wasn't a team raid", 1, true), "and chat says the start passed without a team raid (" .. tostring(said[#said]) .. ")")
+  -- Start raid now always starts, stamped as it is
+  check(L2:Start("button", NOW), "Start raid now works in a group that isn't a team raid")
+  eq(L2:Current().team, false, "stamped not a team raid")
+  L2:End("button", NOW + 600)
+  eq(L2:HasOtherNights(), true, "now a night that wasn't a team raid is saved")
+  eq(#L2:Nights("team"), 2, "Team raids: the two team nights")
+  eq(#L2:Nights("all"), 3, "All raids: every night")
+  local nightsIn = 0 for _, t in ipairs(L2:Totals("team")) do nightsIn = math.max(nightsIn, t.nights) end
+  eq(nightsIn, 1, "the totals in Team raids leave the other night out")
+  -- Only record team raids off: the schedule starts whatever the group, stamped
+  s2.onlyTeam = false
+  local wed3 = wedAt(4 + 31) -- November the 4th, as os.time normalises the day
+  NOW = wed3 + 60 L2:Tick()
+  check(L2:Current() ~= nil and L2:Current().team == false, "off: the schedule starts, stamped not a team raid")
+end
 print(string.format("%d passed, %d failed", passes, fails))
 if fails > 0 then error("failures") end
 `;

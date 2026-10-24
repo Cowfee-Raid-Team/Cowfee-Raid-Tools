@@ -38,6 +38,17 @@ local rows, controls = {}, {}
 local selected = TOTALS
 local refresh
 
+-- History's Show filter, there only once a night that wasn't a team raid is saved (Only record team raids off, or
+-- Start raid now in another group): team raids (the default) or every night.
+local SHOW_OPTIONS = { { key = "team", label = "Team raids" }, { key = "all", label = "All raids" } }
+local NOT_TEAM = "Not a team raid."
+local teamFilter = "team"
+
+-- The Show filter in use: "team", or "all" (also while every night is a team raid's, when it is hidden).
+local function scope()
+    return Late:HasOtherNights() and teamFilter or "all"
+end
+
 local function skin(frame, alpha)
     frame:SetBackdrop(BACKDROP)
     frame:SetBackdropColor(0, 0, 0, alpha or 0.5)
@@ -161,6 +172,9 @@ local function nightLines(night)
     if (night.grace or 0) > 0 then
         lines[#lines + 1] = "Grace: " .. night.grace .. " min."
     end
+    if not Late.IsTeam(night) then
+        lines[#lines + 1] = NOT_TEAM
+    end
     local late, onTime = {}, {}
     for _, p in ipairs(sortedPlayers(night)) do
         local status = Late.Status(night, p)
@@ -214,7 +228,7 @@ local function plain(key)
 end
 
 local function totalsExport()
-    local history = Late:History()
+    local history = Late:Nights(scope())
     if #history == 0 then
         return "No finished raid nights yet."
     end
@@ -227,7 +241,7 @@ local function totalsExport()
         "```",
         pad("Player", 26) .. pad("Late", 9) .. pad("Time late", 13) .. "No-Show",
     }
-    for _, t in ipairs(Late:Totals()) do
+    for _, t in ipairs(Late:Totals(scope())) do
         lines[#lines + 1] = pad(plain(t.key), 26) .. pad(t.late .. " of " .. t.nights, 9) .. pad(t.late > 0 and minutes(t.seconds) or "-", 13) .. (t.never > 0 and t.never or "-")
     end
     lines[#lines + 1] = "```"
@@ -317,17 +331,21 @@ end
 -- they never joined (no-shows), or a line saying there are no nights yet.
 local function showTotals()
     hideTotals()
-    local history = Late:History()
+    local history = Late:Nights(scope())
     if #history == 0 then
         setText(detailText, detailChild, "No finished raid nights yet. Each night is added here when it ends.")
         return
     end
-    setText(detailText, detailChild, format("All %d saved nights, most often late first.", #history))
+    if scope() == "team" then
+        setText(detailText, detailChild, format("All %d team raid nights, most often late first.", #history))
+    else
+        setText(detailText, detailChild, format("All %d saved nights, most often late first.", #history))
+    end
     local w = detailChild:GetWidth()
     if not w or w < 200 then
         w = 370
     end
-    local list = Late:Totals()
+    local list = Late:Totals(scope())
     -- The player's name takes 40% of the width, and the three numbers share the rest evenly, each
     -- centred under its heading, so the columns spread out as the box grows.
     local nameW = math.floor(w * 0.4)
@@ -463,8 +481,12 @@ local function getRow(i)
 end
 
 local function refreshList()
-    local history = Late:History()
-    if selected ~= TOTALS and not Late:Find(selected) then
+    local history = Late:Nights(scope())
+    local inList = false
+    for _, night in ipairs(history) do
+        inList = inList or night.id == selected
+    end
+    if selected ~= TOTALS and not inList then
         selected = TOTALS
     end
     local entries = { { value = TOTALS, text = UI.HeadingText("Totals (all nights)") } }
@@ -1111,6 +1133,32 @@ local function buildHistory(f)
     exportButton:SetScript("OnClick", export)
     tooltip(exportButton, "Export for Discord", "Opens the selected totals or night as text, already selected. Press Ctrl+C and paste it into Discord; the columns line up in a code block.")
 
+    -- Team raids or all raids: shown only once a night that wasn't a team raid is saved
+    local showDropdown = UI.Dropdown(f, "Show", {
+        options = SHOW_OPTIONS,
+        labelWidth = 44,
+        width = 130,
+        get = function()
+            return teamFilter
+        end,
+        set = function(key)
+            teamFilter = key
+            refresh()
+        end,
+    })
+    showDropdown:SetPoint("LEFT", exportButton, "RIGHT", 16, 0)
+    local showHelp = UI.HelpRight(showDropdown, "Show", "Team raids keeps the list, the totals and the export to the nights that were team raids: enough of the raid ran CRT at the start, as set on General Settings > Team raids. All raids adds the other nights. Nights from before this update are team raids.")
+    local showRefresh = showDropdown.refresh
+    showDropdown.refresh = function()
+        local on = Late:HasOtherNights()
+        showDropdown:SetShown(on)
+        if showHelp and showHelp.SetShown then
+            showHelp:SetShown(on)
+        end
+        showRefresh()
+    end
+    controls[#controls + 1] = showDropdown
+
     deleteButton = makeButton(f, "Delete this night", 190)
     deleteButton:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -8, 8)
     local armToken = 0
@@ -1212,6 +1260,21 @@ local function buildSettings(f)
     layoutButton:SetPoint("TOPLEFT", 8, -62)
     controls[#controls + 1] = layoutButton
     UI.HelpRight(layoutButton, "Expected roster", "The active Raid Groups layout: who should be there, in their groups (Make active on Raid Groups). During a raid night, tonight's list follows it when you change or switch layouts, with everyone's clock kept.")
+
+    -- Only record team raids (Late:Settings().onlyTeam)
+    local onlyTeam = CreateFrame("CheckButton", nil, f, "UICheckButtonTemplate")
+    onlyTeam:SetSize(24, 24)
+    onlyTeam:SetPoint("TOPLEFT", 4, -102)
+    local onlyTeamLabel = label(f, "Only record team raids", "CRTFontSmall")
+    onlyTeamLabel:SetPoint("LEFT", onlyTeam, "RIGHT", 2, 0)
+    onlyTeam:SetScript("OnClick", function(self)
+        Late:Set("onlyTeam", self:GetChecked() and true or false)
+    end)
+    onlyTeam.refresh = function()
+        onlyTeam:SetChecked(Late:Settings().onlyTeam and true or false)
+    end
+    controls[#controls + 1] = onlyTeam
+    UI.HelpRight(onlyTeamLabel, "Only record team raids", "The schedule starts a night only once the group is a team raid: enough of the raid runs CRT, as set on General Settings > Team raids. It waits for one until 5 minutes after the start time. Start raid now always starts a night, marked as a team raid or not.")
 end
 
 local function build(pf)

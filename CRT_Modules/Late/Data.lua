@@ -6,6 +6,11 @@ local ADDON, CRT = ...
 -- is pressed, or MAX_HOURS pass. Only the first join counts. The running night is saved in
 -- CRTDB.late.current so it survives a reload, and finished nights go to CRTDB.late.history.
 -- Times are time() values, so the schedule follows this computer's clock.
+-- Team raids: each night is stamped team = true or false, whether the team raid check (CRT.Team,
+-- CRT_Core/Team.lua) said team at its start; nights saved before have no stamp and count as team raids. With
+-- Only record team raids on (CRTDB.late.onlyTeam, the default) the schedule's start waits, within its window,
+-- until the group is a team raid, checked again on every tick and when the check's answer changes. Start raid
+-- now always starts.
 
 local Late = { listeners = {} }
 CRT.Late = Late
@@ -49,6 +54,49 @@ end
 
 function Late:History()
     return ldb().history
+end
+
+-- Team raids ---------------------------------------------------------------
+
+-- The team raid check, read only here: whether the group is a team raid now. With no check loaded, true.
+local function teamNow()
+    local Team = CRT.Team
+    if not (Team and Team.IsTeam) then
+        return true
+    end
+    local ok, team = pcall(Team.IsTeam, Team)
+    return not ok or team == true
+end
+Late.TeamNow = teamNow
+
+-- Whether a night was a team raid (saved before team raids: yes).
+function Late.IsTeam(night)
+    return type(night) == "table" and night.team ~= false
+end
+
+-- The saved nights in a scope: "team" (team raids only) or anything else for all of them.
+function Late:Nights(scope)
+    local history = ldb().history
+    if scope ~= "team" then
+        return history
+    end
+    local out = {}
+    for _, night in ipairs(history) do
+        if Late.IsTeam(night) then
+            out[#out + 1] = night
+        end
+    end
+    return out
+end
+
+-- Whether a saved night wasn't a team raid: the History's Show filter is shown only then.
+function Late:HasOtherNights()
+    for _, night in ipairs(ldb().history) do
+        if not Late.IsTeam(night) then
+            return true
+        end
+    end
+    return false
 end
 
 -- Schedule ---------------------------------------------------------------
@@ -134,6 +182,7 @@ function Late:Start(how, startedAt)
         how = how,
         layout = nameOrError,
         grace = s.grace,
+        team = teamNow(),
         hadGroup = IsInGroup() and true or false,
         players = {},
     }
@@ -322,11 +371,12 @@ function Late.Status(night, p, now)
     return p.joinedAt and "late" or "noshow"
 end
 
--- One row per player across all saved nights, by Late.Status: nights expected, nights late (no-shows
--- included), no-shows, and total seconds late. Sorted most late first.
-function Late:Totals()
+-- One row per player across the saved nights (in a scope, Late:Nights; all of them by default), by
+-- Late.Status: nights expected, nights late (no-shows included), no-shows, and total seconds late. Sorted most
+-- late first.
+function Late:Totals(scope)
     local byKey, out = {}, {}
-    for _, night in ipairs(ldb().history) do
+    for _, night in ipairs(self:Nights(scope)) do
         for _, p in ipairs(night.players) do
             local lower = p.key:lower()
             local t = byKey[lower]
@@ -360,6 +410,8 @@ end
 
 -- Checks ------------------------------------------------------------------
 
+local waitedForTeam -- the day the schedule's start waited for a team raid
+
 function Late:Tick()
     local s = ldb()
     local now = time()
@@ -384,6 +436,11 @@ function Late:Tick()
         return
     end
     if now - start <= AUTO_WINDOW and IsInGroup() then
+        if s.onlyTeam and not teamNow() then
+            -- Only record team raids: wait, within the window, for the group to be one
+            waitedForTeam = today
+            return
+        end
         if self:Start("schedule", start) then
             CRT:Print("Raid night started from the schedule. Late Tracker: /crt late")
         else
@@ -392,7 +449,11 @@ function Late:Tick()
     elseif now - start > AUTO_WINDOW then
         -- Without a group at the start time there is no way to tell who was on time.
         s.lastAuto = today
-        CRT:Print(format("Tonight's %s start passed while you were not in a group, so it is not tracked. Press Start raid now on the Late Tracker page to track from now.", date("%H:%M", start)))
+        if waitedForTeam == today then
+            CRT:Print(format("Tonight's %s start passed while the group wasn't a team raid, so it is not tracked. Press Start raid now on the Late Tracker page to track from now.", date("%H:%M", start)))
+        else
+            CRT:Print(format("Tonight's %s start passed while you were not in a group, so it is not tracked. Press Start raid now on the Late Tracker page to track from now.", date("%H:%M", start)))
+        end
     end
 end
 
@@ -436,6 +497,15 @@ CRT.Groups:OnChange(function()
         CRT:Print(format("Tonight's late list follows %s: %d added, %d taken off. The clock keeps running.", night.layout or "the roster", added, removed))
     end
 end)
+
+-- The group became a team raid (or stopped being one): a scheduled start waiting for it is checked at once.
+if CRT.Team and CRT.Team.OnChange then
+    CRT.Team:OnChange(function()
+        if CRT.db and not ldb().current then
+            Late:Tick()
+        end
+    end)
+end
 
 local driver = CreateFrame("Frame")
 driver:RegisterEvent("PLAYER_LOGIN")
