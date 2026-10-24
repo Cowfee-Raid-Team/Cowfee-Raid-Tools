@@ -23,6 +23,11 @@ local WIN_W = 470
 local ADD_POPUP = "COWFEERAIDTOOLS_BOSSORDER_ADD"
 local TOP = 64
 
+-- This computer's orders are kept per season: declared for the season purge (Bosses:DeclareStore, CRT_Data/Bosses/Registry.lua).
+if Bosses and Bosses.DeclareField then
+    Bosses:DeclareField("boss orders", "dev", "bossRoute", true)
+end
+
 local win, seasonKey
 local raids -- the working route: { { key, name, bosses = { encounterID or { id, name }, ... } } }
 local rowPool = {}
