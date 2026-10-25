@@ -1,5 +1,5 @@
 // Module switches (CRT_Core/Modules.lua): the whole addon, every file the .toc lists (the season pack's Season.xml
-// and the dev block included), loaded in order in a stand-in game client, once with every module on and once
+// and the dev block included; also as a release build, without it), loaded in order in a stand-in game client, once with every module on and once
 // with each module off (CRTDB.modules[key] = false), then ADDON_LOADED and PLAYER_LOGIN. Each run checks the
 // files load and the events run with no Lua error, the module's pages, menu entries and /crt words are gone or
 // say it is off, its event frames are quiet, the others keep working, and the raider-side handlers (Gear Checker
@@ -12,11 +12,16 @@ const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const root = process.argv[2];
 if (!root) { console.error('usage: node run_modules.js <addon folder>'); process.exit(2); }
 
-// The .toc's files in order, the season pack's Season.xml expanded, the dev block kept (a dev build).
-function tocFiles() {
+// The .toc's files in order, the season pack's Season.xml expanded, the dev block kept (a dev build) or, for a
+// release build, left out as the packager does.
+function tocFiles(release) {
   const out = [];
+  let inDev = false;
   for (const raw of fs.readFileSync(path.join(root, 'CowfeeRaidTools.toc'), 'utf8').split(/\r?\n/)) {
     const line = raw.trim();
+    if (line === '#@do-not-package@') inDev = true;
+    if (line === '#@end-do-not-package@') inDev = false;
+    if (release && inDev) continue;
     if (line === '' || line.startsWith('#')) continue;
     const rel = line.replace(/\\/g, '/');
     if (rel.endsWith('.xml')) {
@@ -374,8 +379,11 @@ for _, def in ipairs(M:List()) do
   for _, word in ipairs(def.words or {}) do
     local pagesBefore = #shownPages
     local out = slash(word)
-    local offLine = out:find(def.label .. " is turned off. Turn it on in Modules.", 1, true) ~= nil
-    check(offLine == not on, "/crt " .. word .. (on and " runs" or " says " .. def.label .. " is turned off") .. ": " .. out)
+    -- a developer build points at the Modules page; a release build has none to point at
+    local offText = def.label .. (scenario.release and " is turned off." or " is turned off. Turn it on in Modules (/crt modules).")
+    local offLine = out:find(offText, 1, true) ~= nil
+    check(offLine == not on, "/crt " .. word .. (on and " runs" or " says " .. offText) .. ": " .. out)
+    if scenario.release then check(not out:find("Modules", 1, true), "/crt " .. word .. " names no Modules page in a release build: " .. out) end
     check(not out:find("Unknown command", 1, true), "/crt " .. word .. " is a known command")
     check((#shownPages > pagesBefore) == on, "/crt " .. word .. (on and " opens its page" or " opens nothing"))
   end
@@ -453,7 +461,7 @@ do
 end
 
 -- /crt dev modules (Dev/Modules.lua): sets a switch for after a /reload; this session keeps running as it was
-do
+if not scenario.release then
   local was = M:IsOn("loot")
   local out = slash("dev modules loot " .. (was and "off" or "on"))
   check(CRT.db.modules.loot == not was, "/crt dev modules saves the switch: " .. out)
@@ -467,70 +475,97 @@ do
   check(M:Set("core", false) == false and M:IsOn("core"), "Core can't be turned off")
 end
 
--- The Modules page (UI/ModulesPage.lua): Core's, in the General group; a row per module from the registry, Core
--- first, greyed and ticked; a box saves at once; Reload to apply and its status line only while a saved switch
--- differs from what runs, disabled in combat; /crt modules opens it
+-- The Modules page (Dev/ModulesPage.lua), a developer build only for now: hidden like the Development page until
+-- /crt modules; a "Core" and an "Optional" heading; a row per module from the registry, Core first with its power
+-- button disabled; a name greyed when its switch is off; a power button that flips the switch (saved at once)
+-- and asks to reload (Reload / Later; in combat only to reload after combat); "Reload to apply." at the top while
+-- a saved switch differs from what runs. A release build has no page and no /crt modules.
 do
   local P = CRT.ModulesPage
-  check(type(P) == "table" and UI.pages.modules ~= nil, "the Modules page is registered")
-  local inGeneral = false
-  for _, k in ipairs(UI.MENU_GROUPS[1]) do if k == "modules" then inGeneral = true end end
-  check(inGeneral, "Modules is in the menu's General group")
-  local inMenu = false
-  for _, g in ipairs(UI.MenuGroups()) do for _, k in ipairs(g.keys) do if k == "modules" then inMenu = true end end end
-  check(inMenu, "Modules is in the menu, whatever is off")
-  local before = #shownPages
-  slash("modules")
-  check(#shownPages > before and shownPages[#shownPages] == "modules", "/crt modules opens the Modules page")
-  check(slash("help"):find("/crt modules|r", 1, true) ~= nil, "/crt help lists /crt modules")
-  if type(P) == "table" and UI.pages.modules then
-    local pf = newFrame("Frame", nil, stubs.UIParent)
-    UI.pages.modules.builder(pf)
-    if pf.scripts.OnShow then pf.scripts.OnShow(pf) end
-    local list = M:List()
-    local rows = P.rows or {}
-    check(#rows == #list + 1, "one row per module plus Core: " .. #rows)
-    local core = rows[1] or {}
-    check(core.key == "core" and core.label and core.label:GetText() == "Core (always on)", "Core's row comes first: " .. tostring(core.label and core.label:GetText()))
-    check(core.check and core.check:GetChecked() == true and core.check:IsEnabled() == false, "Core's box is ticked and can't be clicked")
-    check(core.help ~= nil, "Core's row has a (?)")
-    for i, def in ipairs(list) do
-      local row = rows[i + 1] or {}
-      check(row.key == def.key and row.label and row.label:GetText() == def.label, "row " .. (i + 1) .. " is " .. def.label .. " from the registry")
-      check(row.check and row.check:GetChecked() == M:Saved(def.key) and row.check:IsEnabled(), def.label .. "'s box shows its switch and can be clicked")
-      check(row.help ~= nil and row.helpText == def.help, def.label .. "'s (?) gives its registry help")
+  if scenario.release then
+    check(P == nil and UI.pages.modules == nil, "release: no Modules page")
+    check(slash("modules"):find("Unknown command", 1, true) ~= nil, "release: /crt modules is unknown")
+  else
+    check(type(P) == "table" and UI.pages.modules ~= nil, "the Modules page is registered")
+    local inGeneral = false
+    for _, k in ipairs(UI.MENU_GROUPS[1]) do if k == "modules" then inGeneral = true end end
+    check(inGeneral, "Modules has its place in the menu's General group")
+    local function inMenu()
+      for _, g in ipairs(UI.MenuGroups()) do for _, k in ipairs(g.keys) do if k == "modules" then return true end end end
+      return false
     end
-    check(P.reload and not P.reload:IsShown() and P.status and not P.status:IsShown(), "nothing to reload: no button, no status")
-    check(P.reload and P.reload:GetText() == "Reload to apply", "the button reads Reload to apply")
-    local loot = rows[2]
-    if loot and loot.check then
-      local was = M:IsOn("loot")
-      loot.check:SetChecked(not was)
-      loot.check.scripts.OnClick(loot.check)
-      check(CRT.db.modules.loot == not was, "ticking Loot's box saves CRTDB.modules at once")
-      check(M:IsOn("loot") == was, "and this session runs as it started")
-      check(P.reload:IsShown() and P.status:IsShown(), "saved differs from running: Reload to apply and the status show")
-      check(P.status:GetText() == "Takes effect after a reload.", "the status reads Takes effect after a reload.: " .. tostring(P.status:GetText()))
-      check(P.reload:IsEnabled(), "out of combat the button can be clicked")
-      -- in combat it can't, and says why
-      stubs.InCombatLockdown = function() return true end
-      P.Refresh()
-      check(not P.reload:IsEnabled(), "in combat the button is disabled")
-      check(P.ReloadTip and P.ReloadTip():find("combat", 1, true) ~= nil, "its tooltip says why: " .. tostring(P.ReloadTip and P.ReloadTip()))
-      stubs.InCombatLockdown = function() return false end
-      fire("PLAYER_REGEN_DISABLED")
-      check(not P.reload:IsEnabled(), "combat starting disables it while the page shows")
-      fire("PLAYER_REGEN_ENABLED")
-      check(P.reload:IsEnabled(), "combat ending enables it again")
-      local reloads = 0
+    check(not inMenu() and UI.pages.modules and UI.pages.modules.hidden and UI.pages.modules.closeHides, "it starts hidden, like the Development page, and hides again on close")
+    local before = #shownPages
+    slash("modules")
+    check(#shownPages > before and shownPages[#shownPages] == "modules", "/crt modules opens the Modules page")
+    check(inMenu(), "and shows it in the menu")
+    if type(P) == "table" and UI.pages.modules then
+      -- what each part was last tinted with (UI.Tint), to read colours off the stand-in frames
+      local tints = setmetatable({}, { __mode = "k" })
+      local realTint = UI.Tint
+      UI.Tint = function(region, method, key, alpha) tints[region] = tints[region] or {} tints[region][method] = key return realTint(region, method, key, alpha) end
+      local popups, reloads = {}, 0
+      stubs.StaticPopup_Show = function(name, a, b) popups[#popups + 1] = { name = name, a = a, b = b } return newFrame("Frame", nil, stubs.UIParent) end
+      stubs.StaticPopup_Visible = function() return nil end
       stubs.ReloadUI = function() reloads = reloads + 1 end
-      P.reload.scripts.OnClick(P.reload)
-      check(reloads == 1, "Reload to apply reloads the interface")
-      stubs.ReloadUI = nil
-      loot.check:SetChecked(was)
-      loot.check.scripts.OnClick(loot.check)
-      check(CRT.db.modules.loot == was, "ticking it back saves that")
-      check(not P.reload:IsShown() and not P.status:IsShown(), "back to what runs: the button and status hide")
+      local pf = newFrame("Frame", nil, stubs.UIParent)
+      UI.pages.modules.builder(pf)
+      if pf.scripts.OnShow then pf.scripts.OnShow(pf) end
+      local headings = {}
+      for _, r in ipairs(pf.regions) do
+        local t = r:GetText()
+        if (t == "Core" or t == "Optional") and tints[r] and tints[r].SetTextColor == "heading" then headings[#headings + 1] = t end
+      end
+      check(table.concat(headings, " ") == "Core Optional", "the Core and Optional headings, in the heading colour: " .. table.concat(headings, " "))
+      local list = M:List()
+      local rows = P.rows or {}
+      check(#rows == #list + 1, "one row per module plus Core: " .. #rows)
+      local core = rows[1] or {}
+      check(core.key == "core" and core.label and core.label:GetText() == "Core", "Core's row comes first")
+      check(core.power and not core.power:IsEnabled(), "Core's power button is disabled")
+      check(P.PowerTip("core") == "Core is always on.", "and says Core is always on")
+      check(core.help ~= nil and core.helpText == M.CORE_INFO.help, "Core's row has its (?)")
+      for i, def in ipairs(list) do
+        local row = rows[i + 1] or {}
+        local on = M:Saved(def.key)
+        local want = on and "text" or "muted"
+        check(row.key == def.key and row.label and row.label:GetText() == def.label, "row " .. (i + 1) .. " is " .. def.label .. " from the registry")
+        check(row.power and row.power:IsEnabled(), def.label .. "'s power button can be clicked")
+        check(tints[row.label] and tints[row.label].SetTextColor == want, def.label .. "'s name is in the " .. want .. " colour")
+        check(row.power and tints[row.power.icon] and tints[row.power.icon].SetVertexColor == want, def.label .. "'s power symbol is in the " .. want .. " colour")
+        check(P.PowerTip(def.key) == (on and "Turn " .. def.label .. " off" or "Turn " .. def.label .. " on"), def.label .. "'s power tooltip: " .. P.PowerTip(def.key))
+        check(row.help ~= nil and row.helpText == def.help, def.label .. "'s (?) gives its registry help")
+      end
+      check(P.status and not P.status:IsShown(), "nothing to reload: no Reload to apply")
+      local loot = rows[2]
+      if loot and loot.power then
+        local was = M:IsOn("loot")
+        loot.power.scripts.OnClick(loot.power)
+        check(CRT.db.modules.loot == not was, "the power button saves the switch at once")
+        check(M:IsOn("loot") == was, "and this session runs as it started")
+        local p = popups[#popups] or {}
+        check(p.name == "CRT_MODULES_RELOAD" and p.a == "Loot" and p.b == (was and "off" or "on"), "it asks to reload: " .. tostring(p.name) .. " " .. tostring(p.a) .. " " .. tostring(p.b))
+        local d = stubs.StaticPopupDialogs.CRT_MODULES_RELOAD or {}
+        check(d.text and d.text:format("Loot", "off") == "Loot will be turned off after a reload. Reload now?" and d.button1 == "Reload" and d.button2 == "Later", "the popup: Reload now?, Reload and Later")
+        check(P.status:IsShown() and P.status:GetText() == "Reload to apply.", "Later keeps it saved and the page says Reload to apply.")
+        check(tints[loot.label].SetTextColor == (was and "muted" or "text"), "the name follows the switch")
+        check(P.PowerTip("loot") == (was and "Turn Loot on" or "Turn Loot off"), "and so does the tooltip")
+        if d.OnAccept then d.OnAccept() end
+        check(reloads == 1, "Reload reloads the interface")
+        -- in combat: no reload
+        stubs.InCombatLockdown = function() return true end
+        if d.OnAccept then d.OnAccept() end
+        check(reloads == 1, "Reload does nothing in combat")
+        loot.power.scripts.OnClick(loot.power)
+        p = popups[#popups] or {}
+        local dc = stubs.StaticPopupDialogs.CRT_MODULES_RELOAD_COMBAT or {}
+        check(p.name == "CRT_MODULES_RELOAD_COMBAT" and dc.button2 == nil and dc.OnAccept == nil and dc.text and dc.text:find("after combat", 1, true), "in combat it only says to reload after combat")
+        stubs.InCombatLockdown = function() return false end
+        check(CRT.db.modules.loot == was, "clicking it back saves that")
+        check(not P.status:IsShown(), "back to what runs: Reload to apply hides")
+      end
+      UI.Tint = realTint
+      stubs.StaticPopup_Show, stubs.StaticPopup_Visible, stubs.ReloadUI = nil, nil, nil
     end
   end
 end
@@ -664,8 +699,16 @@ MODULES_FAILS = fails
 `;
 
 // CRT_Dev/Dev/Build.lua is made by the build script and not in Git, so a checkout may not have it
-const files = tocFiles().filter(f => fs.existsSync(path.join(root, f)) || f !== 'CRT_Dev/Dev/Build.lua');
-const sources = files.map(f => fs.readFileSync(path.join(root, f), 'utf8'));
+// A release build: the .toc's dev block left out, and every Lua do-not-package block cut, as the packager does
+function build(release) {
+  const files = tocFiles(release).filter(f => fs.existsSync(path.join(root, f)) || f !== 'CRT_Dev/Dev/Build.lua');
+  const sources = files.map(f => {
+    const text = fs.readFileSync(path.join(root, f), 'utf8');
+    return release ? text.replace(/--@do-not-package@[\s\S]*?--@end-do-not-package@/g, '') : text;
+  });
+  return { files, sources };
+}
+const builds = { dev: build(false), release: build(true) };
 
 // The files whose event frames must keep listening whatever the switches say (raider side and Core).
 const ALWAYS = ['CRT_Modules/GearChecker/Comm.lua', 'CRT_Modules/SeasonStats/Repairs.lua', 'CRT_Modules/Pace/Comm.lua',
@@ -679,6 +722,9 @@ const scenarios = [
   { name: 'timeline off', modules: { timeline: false }, listen: ALWAYS.concat(['CRT_Modules/Loot/Capture.lua', 'CRT_Modules/Late/Data.lua']) },
   { name: 'raidlead off', modules: { raidlead: false }, listen: ALWAYS.concat(['CRT_Modules/Loot/Capture.lua', 'CRT_Modules/Timeline/RehearsalWindow.lua']) },
   { name: 'all off', modules: { loot: false, timeline: false, raidlead: false }, listen: ALWAYS },
+  // a release build: no Modules page, so the off message names none
+  { name: 'release, all on', release: true, modules: {}, listen: ALWAYS },
+  { name: 'release, loot off', release: true, modules: { loot: false }, listen: ALWAYS },
 ];
 
 let failed = 0;
@@ -687,6 +733,7 @@ for (const sc of scenarios) {
   lualib.luaL_openlibs(L);
   if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
   // files and sources as Lua tables, the scenario as a table
+  const { files, sources } = builds[sc.release ? 'release' : 'dev'];
   for (const list of [files, sources]) {
     lua.lua_createtable(L, list.length, 0);
     list.forEach((s, i) => { lua.lua_pushstring(L, to_luastring(s)); lua.lua_rawseti(L, -2, i + 1); });
@@ -699,6 +746,7 @@ for (const sc of scenarios) {
   lua.lua_createtable(L, sc.listen.length, 0);
   sc.listen.forEach((s, i) => { lua.lua_pushstring(L, to_luastring(s)); lua.lua_rawseti(L, -2, i + 1); });
   lua.lua_setfield(L, -2, to_luastring('listen'));
+  lua.lua_pushboolean(L, sc.release === true); lua.lua_setfield(L, -2, to_luastring('release'));
   if (lua.lua_pcall(L, 3, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR (' + sc.name + '):', lua.lua_tojsstring(L, -1)); process.exit(1); }
   lua.lua_getglobal(L, to_luastring('MODULES_FAILS'));
   const n = lua.lua_tonumber(L, -1);

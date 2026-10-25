@@ -32,7 +32,7 @@ local Modules = { list = {}, byKey = {}, frames = {}, inits = {}, started = fals
 CRT.Modules = Modules
 
 local TEXT = {
-    off = "%s is turned off. Turn it on in Modules.",
+    off = "%s is turned off.",
 }
 Modules.TEXT = TEXT
 
@@ -40,7 +40,7 @@ local CORE = "core"
 Modules.CORE = CORE
 -- Core's row on the Modules page: always on, so never registered
 Modules.CORE_INFO = {
-    label = "Core (always on)",
+    label = "Core",
     help = "Raid Notes, Mech Alerts, Ready Check, Quality of Life and the settings. It can't be turned off.",
 }
 
@@ -96,10 +96,11 @@ function Modules:Set(key, on)
     return self:Saved(key) ~= self:IsOn(key)
 end
 
--- "<Module> is turned off. Turn it on in Modules."
+-- "<Module> is turned off.", or, where the Modules page is loaded (it sets pageText; a developer build only
+-- for now), its own line saying to turn it on there. A release build has no page to point at.
 function Modules:OffText(key)
     local def = self.byKey[key]
-    return TEXT.off:format(def and def.label or tostring(key))
+    return (self.pageText or TEXT.off):format(def and def.label or tostring(key))
 end
 
 -- True when the module is on; otherwise says it is off in chat and returns false.

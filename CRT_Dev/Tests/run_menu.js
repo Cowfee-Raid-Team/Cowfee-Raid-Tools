@@ -100,7 +100,8 @@ assert(load(panelSrc, "CRT_Core/UI/Panel.lua"))("CowfeeRaidTools", CRT)
 assert(load(scrollSrc, "CRT_Core/UI/ScrollBar.lua"))("CowfeeRaidTools", CRT)
 local UI = CRT.UI
 
--- 1. The groups and their labels, in order.
+-- 1. The groups and their labels, in order. Modules (Dev/ModulesPage.lua) is a developer page for now, hidden
+-- until /crt modules like Development, so the players' menu below leaves it out.
 local want = {
   { "General", "settings", "modules", "qol" },
   { "Bosses", "timeline", "notes", "pace" },
@@ -118,10 +119,10 @@ end
 section("the four groups, their labels and pages in order")
 -- Every page, registered out of the menu's order (as the .toc loads them), plus the Development page,
 -- hidden until /crt dev; it joins the last group.
-local titles = { settings = "General Settings", modules = "Modules", qol = "Quality of Life", readycheck = "Ready Check", groups = "Raid Groups",
+local titles = { settings = "General Settings", qol = "Quality of Life", readycheck = "Ready Check", groups = "Raid Groups",
   gearcheck = "Gear Checker", loot = "Loot History", timeline = "Timeline", notes = "Raid Notes", pace = "Pace",
   lootmaster = "Loot Master", requests = "Requests", seasonstats = "Season Stats", late = "Late Tracker", tattle = "Tattlebot", dev = "Development" }
-for _, key in ipairs({ "settings", "modules", "groups", "readycheck", "notes", "late", "tattle", "timeline", "pace", "gearcheck", "loot", "lootmaster", "requests", "seasonstats", "qol", "dev" }) do
+for _, key in ipairs({ "settings", "groups", "readycheck", "notes", "late", "tattle", "timeline", "pace", "gearcheck", "loot", "lootmaster", "requests", "seasonstats", "qol", "dev" }) do
   UI:RegisterPage(key, titles[key], function() end)
 end
 UI:SetPageHidden("dev", true)

@@ -1118,10 +1118,9 @@ end
 --                 below the last; boxRight: the box ends this far from the right; buttonLeft, buttonRight: a
 --                 page's button inside the box; labelX: the label from the left
 -- Tightened for 14 pages (Development included) to fit the 560 px page height in Classic, whose header bars
--- are taller than Modern's labels (job 20261022-requests), and rows 2 px lower for the Modules page's 15th
--- (job 20261025-modules-page).
+-- are taller than Modern's labels (job 20261022-requests).
 UI.MENU_LAYOUT = {
-    row = 28,
+    row = 30,
     rowGap = 1,
     classic = {
         groupGap = 6,
