@@ -798,6 +798,13 @@ P.extraButton:Click()
 check(not xw.shown, "extra: the button closes the window again")
 P.extraButton:Click()
 check(xw.shown and P.extraChecks[1] and P.minIlvlEdit:GetText() == "0", "extra: opened again, built once")
+-- leaving the page closes it (kept built, ticks saved); showing the page again does not reopen it
+page3.scripts.OnHide(page3)
+check(not xw.shown, "extra: the page hiding closes the window")
+page3.scripts.OnShow(page3)
+check(not xw.shown, "extra: the page showing again leaves it closed")
+P.extraButton:Click()
+check(xw.shown and P.extraWindow == xw, "extra: the button opens the same window again")
 xw:Hide()
 CRT.db.gearChecker.extra = nil
 CRT.db.gearChecker.filter = "all"

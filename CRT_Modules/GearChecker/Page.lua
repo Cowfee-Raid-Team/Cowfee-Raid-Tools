@@ -1080,6 +1080,13 @@ local function build(page)
         end
         P.Open()
     end)
+    -- leaving the page closes the Extra filters window (kept built); while the page is popped out its
+    -- button lives in the pop-out, so the window stays
+    page:HookScript("OnHide", function()
+        if P.extraWindow and not P.popped then
+            P.extraWindow:Hide()
+        end
+    end)
     GC:OnChange(P.Refresh)
     UI:OnTheme(P.Refresh)
     P.Refresh()
