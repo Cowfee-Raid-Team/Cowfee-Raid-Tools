@@ -186,6 +186,9 @@ SlashCmdList["COWFEERAIDTOOLS"] = function(msg)
         if CRT.LateTest then
             CRT.LateTest:Toggle()
         end
+    elseif msg == "modules" and CRT.ModulesPage then
+        -- the Modules page, developer builds only for now (Dev/ModulesPage.lua)
+        CRT.ModulesPage.Open()
     elseif CRT.ModulesDev and CRT.ModulesDev:Command(msg) then
         -- dev modules [<key> on|off]: list the module switches or set one, for after a /reload (Dev/Modules.lua)
     elseif CRT.NoteTargetsDev and CRT.NoteTargetsDev:Command(msg) then

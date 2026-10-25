@@ -1,6 +1,6 @@
 local ADDON, CRT = ...
 
--- DEVELOPER ONLY. The module switches (CRT_Core/Modules.lua) from chat, until the Modules page has them. This file
+-- DEVELOPER ONLY. The module switches (CRT_Core/Modules.lua) from chat, beside the Modules page. This file
 -- never ships: its .toc line is inside the do-not-package block.
 --   /crt dev modules                  each module, whether it runs now and what its switch says
 --   /crt dev modules <key> on|off     sets one switch; it takes effect after a /reload

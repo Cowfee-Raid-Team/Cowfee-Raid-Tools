@@ -405,7 +405,7 @@ function UI.VersionText()
 end
 
 UI.MENU_GROUPS = {
-    { label = TEXT.general, "settings", "qol" },
+    { label = TEXT.general, "settings", "modules", "qol" },
     { label = TEXT.bosses, "timeline", "notes", "pace" },
     { label = TEXT.raidAdmin, "readycheck", "groups", "gearcheck", "late" },
     { label = TEXT.modules, "lootmaster", "loot", "requests", "seasonstats", "tattle" },
