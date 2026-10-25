@@ -31,6 +31,8 @@ local function mock(kind, parent, template)
     if k == "Hide" then return function(self) if self.shown then hides = hides + 1 end self.shown = false end end
     if k == "SetShown" then return function(self, on) if self.shown and not on then hides = hides + 1 end self.shown = on and true or false end end
     if k == "IsShown" then return function(self) return self.shown end end
+    -- shown, and every parent shown, as in the game (UI/Placement.lua places only an element whose drag box is on screen)
+    if k == "IsVisible" then return function(self) local f = self while f do if not f.shown then return false end f = rawget(f, "parent") end return true end end
     if k == "SetText" then return function(self, s) rawset(self, "text", s) end end
     if k == "GetText" then return function(self) return self.text end end
     if k == "SetChecked" then return function(self, on) rawset(self, "checked", on and true or false) end end
@@ -262,6 +264,7 @@ print("ok areas: grow directions")
 
 -- position saved by center and reset
 pull()
+previews.alerttexts(true) -- a drag box takes a drag only while it is on screen, in Previews
 handle.OnDragStop(handle)
 local pos = A:Settings().areas.texts.position
 assert(pos and pos.point == "CENTER" and pos.x == 50 and pos.y == 150, "saved by center")
@@ -269,6 +272,10 @@ assert(win.pts[1][1] == "CENTER" and win.pts[1][4] == 50, "placed where saved")
 T:ResetPosition()
 assert(A:Settings().areas.texts.position == nil, "reset clears the position")
 assert(win.pts[1][1] == "CENTER" and win.pts[1][4] == 3 and win.pts[1][5] == 323, "back to the default (under the break timer)")
+previews.alerttexts(false)
+win.pts = {} T:ResetPosition() -- the preview drew it; placed again for the checks below
+handle.OnDragStop(handle)
+assert(A:Settings().areas.texts.position == nil, "outside Previews a stray drag stop saves nothing")
 print("ok areas: position saved and reset")
 
 -- idle: no run, preview or test: hidden once, then nothing

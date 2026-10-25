@@ -22,6 +22,8 @@ local ADDON, CRT = ...
 --     relativePoint  the screen's point it is saved from when on the screen (default its own point)
 --     build()     optional: makes its frame, so another element can anchor to it before it has shown
 --     settings()  optional: opens its settings (the gear's Settings)
+--     editing()   optional, for an element that is its own drag box: whether it is being placed now (its Previews
+--                 flag). Without it, an element is being placed while its drag box is on screen
 --     place()     optional: places it itself (consumables docks under the game's window); it calls
 --                 el:ApplySaved() when it goes where it is saved
 --     canAnchor   false: it always sits on the screen (it holds the game's protected buttons)
@@ -30,13 +32,17 @@ local ADDON, CRT = ...
 --     keepPoint   true: a place saved at another point is turned into its own point, at the same spot (debuffs)
 --   el:Attach(frame, handle, opts)  when its frame is made: handle (the frame itself when nil) drags it; opts.reset
 --                is its Reset button (the gear goes left of it), opts.gear a gear button it already has
+--   UI.Placement.FitHandle(handle, frame, title, y)  a drag box over the frame's top (y above it), as wide as the
+--                frame but never too narrow for its title, the gear and Reset; fitted again when the frame resizes
 --   el:Apply()   puts it where it is saved, or at its default
 --   el:Reset()   back to its default on the screen; the elements anchored to it follow
 --   el:Offset() / el:SetOffset(x, y)  its centre's distance from its anchor's centre, in whole pixels
 --   el:Nudge(dx, dy), el:CentreH(), el:CentreV(), el:SetAnchor(key or nil), el:CanAnchorTo(key)
 --   UI.Placement.Select(el) / Deselect()   the selected element (gold outline) takes the arrow keys
--- Nothing moves and no key is taken in combat: a drag, the gear and the keys refuse, and combat starting drops
--- the selection.
+-- Nothing moves and no key is taken in combat: a drag, the gear, the keys and Reset refuse, and combat starting drops
+-- the selection and puts a dragged element back at its saved place. Nothing is selected, dragged or given the keys
+-- unless it is being placed (el:Editable: its drag box on screen in Previews or its page's own preview), and its
+-- drag box hiding lets go of it and closes its panel.
 
 local UI = CRT.UI
 local P = { list = {}, byKey = {} }
@@ -289,6 +295,9 @@ function El:ApplySaved()
         end
     end
     local saved = p ~= nil
+    if saved and rel ~= UIParent then
+        p = self:FollowCorner(p, s, rel)
+    end
     p = p or self:Default()
     if self.spec.keepPoint and rel == UIParent and p.point ~= self:Point() then
         local w, h = 0, 0
@@ -304,6 +313,26 @@ function El:ApplySaved()
     end
     f:ClearAllPoints()
     f:SetPoint(p.point or "CENTER", rel, p.relativePoint or p.point or "CENTER", p.x or 0, p.y or 0)
+end
+
+-- An anchored place saved from the anchor's corner before that one changed corner (the debuff panel's Grow): the
+-- same spot, measured from the anchor's corner now, and saved so.
+function El:FollowCorner(p, s, rel)
+    local want = P.byKey[p.anchor]:Point()
+    if p.relativePoint == want then
+        return p
+    end
+    local _, _, aw, ah = P.Rect(rel)
+    if not aw then
+        return p
+    end
+    local ox, oy = fraction(p.relativePoint)
+    local nx, ny = fraction(want)
+    local k = scaleOf(UIParent) / scaleOf(self.frame)
+    p = { point = p.point, relativePoint = want, x = round((p.x or 0) + (ox - nx) * aw * k), y = round((p.y or 0) + (oy - ny) * ah * k),
+        anchor = p.anchor }
+    s.position = p
+    return p
 end
 
 function El:Apply()
@@ -431,14 +460,19 @@ function El:SetAnchor(key)
     if not (s and self.frame) then
         return false
     end
+    -- both places must be readable, or the offsets would be measured from nowhere and it would jump: then nothing
+    -- changes
     local cx, cy = P.Rect(self.frame)
-    local p = s.position or self:Default()
-    s.position = { point = p.point, relativePoint = p.relativePoint, x = p.x, y = p.y, anchor = key }
-    if key ~= nil then
-        self:AnchorFrame(key)
+    if not cx or (key ~= nil and not P.Rect(self:AnchorFrame(key))) then
+        return false
     end
-    if not (cx and self:MoveCenterTo(cx, cy, true)) then
+    local old = s.position
+    local p = old or self:Default()
+    s.position = { point = p.point, relativePoint = p.relativePoint, x = p.x, y = p.y, anchor = key }
+    if not self:MoveCenterTo(cx, cy, true) then
+        s.position = old
         self:Apply()
+        return false
     end
     changed(self)
     return true
@@ -446,14 +480,30 @@ end
 
 -- Back to its default on the screen, its anchor cleared. The elements anchored to it follow it there.
 function El:Reset()
+    if inCombat() then
+        return P.Refuse()
+    end
     local _, s = self:Saved()
     if s then
         s.position = nil
     end
-    if self.frame and not (self.spec.protected and inCombat()) then
+    if self.frame then
         self:Apply()
     end
     changed(self)
+    return true
+end
+
+-- Whether it is being placed now: its drag box on screen, in Previews (or its page's own preview, spec.editing).
+function El:Editable()
+    local h = self.handle
+    if not (h and h.IsVisible and h:IsVisible()) then
+        return false
+    end
+    if self.spec.editing then
+        return self.spec.editing() and true or false
+    end
+    return h ~= self.frame
 end
 
 -- Snapping -----------------------------------------------------------------------------------
@@ -529,7 +579,7 @@ function P.DragStep(final)
         return false
     end
     if inCombat() then
-        P.StopDrag()
+        P.CancelDrag()
         return false
     end
     local mx, my = cursor()
@@ -557,12 +607,21 @@ function P.StopDrag()
     end
 end
 
+-- A drag cut short (combat): it goes back to its saved place, unless its frame may not move now.
+function P.CancelDrag()
+    local d = drag
+    P.StopDrag()
+    if d and not (d.el.spec.protected and inCombat()) then
+        d.el:Apply()
+    end
+end
+
 function P.Dragging()
     return drag and drag.el or nil
 end
 
 function El:BeginDrag()
-    if P.picking or not self.frame then
+    if P.picking or not self.frame or not self:Editable() then
         return
     end
     if inCombat() then
@@ -589,9 +648,10 @@ function El:EndDrag()
         P.StopDrag()
         return
     end
-    local moved = drag and drag.el == self and P.DragStep(true)
+    local mine = drag and drag.el == self
+    local moved = mine and P.DragStep(true)
     P.StopDrag()
-    if not moved then
+    if not moved and (mine or self:Editable()) then
         local cx, cy = P.Rect(self.frame)
         if cx then
             self:MoveCenterTo(cx, cy, true)
@@ -647,6 +707,9 @@ function P.OnKey(key)
     if inCombat() then
         return false
     end
+    if P.selected and not P.selected:Editable() then
+        P.Deselect()
+    end
     local took = false
     local arrow = ARROWS[key]
     if arrow and P.selected then
@@ -665,7 +728,7 @@ end
 
 -- Selecting another element while the panel is open moves the panel to it.
 function P.Select(el)
-    if inCombat() or not el then
+    if inCombat() or not el or not el:Editable() then
         return
     end
     local open = P.PanelShows and P.PanelShows()
@@ -711,7 +774,7 @@ end
 
 -- A left click on an element's box: while picking, it becomes the anchor (when it can); else it is selected.
 function P.Click(el)
-    if inCombat() then
+    if inCombat() or not el:Editable() then
         return
     end
     local picking = P.picking
@@ -780,6 +843,38 @@ function El:OpenMenu(owner)
     return true
 end
 
+-- A drag box's width ----------------------------------------------------------------------------
+
+local function textWidth(fs)
+    -- the words' full width, else the width as drawn
+    for _, method in ipairs({ "GetUnboundedStringWidth", "GetStringWidth" }) do
+        local ok, w = pcall(fs[method], fs)
+        w = ok and num(w)
+        if w then
+            return w
+        end
+    end
+    return 0
+end
+
+function P.FitHandle(handle, frame, title, y)
+    handle.crtFit = { frame = frame, title = title, y = y or 2 }
+    local function fit()
+        local f = handle.crtFit
+        local reset = UI.ResetButtonWidth and UI.ResetButtonWidth() or 44
+        -- room on both sides, so a centred title clears the gear and Reset too
+        local need = math.ceil(textWidth(f.title) + 2 * (6 + P.GEAR_SIZE + P.GEAR_GAP + reset + 2))
+        handle:ClearAllPoints()
+        handle:SetPoint("BOTTOMLEFT", f.frame, "TOPLEFT", 0, f.y)
+        handle:SetWidth(math.max(num(f.frame:GetWidth()) or 0, need))
+    end
+    if not handle.crtFitHooked and frame.HookScript then
+        handle.crtFitHooked = true
+        frame:HookScript("OnSizeChanged", fit)
+    end
+    fit()
+end
+
 -- Attaching a frame ----------------------------------------------------------------------------
 
 -- Wires the frame and its drag box, adds the gear, places it, and places again the elements anchored to it.
@@ -801,10 +896,24 @@ function El:Attach(frame, handle, opts)
             P.Click(self)
         end
     end
+    -- its drag box going (Previews or its page's preview off, the window closing) lets go of it
+    local function hidden()
+        if P.Dragging() == self then
+            P.CancelDrag()
+        end
+        if P.PanelShows and P.PanelShows() == self and P.ClosePanel then
+            P.ClosePanel()
+        end
+        if P.selected == self or P.picking == self then
+            P.Deselect()
+        end
+    end
     if handle.HookScript then
         handle:HookScript("OnMouseUp", click)
+        handle:HookScript("OnHide", hidden)
     else
         handle:SetScript("OnMouseUp", click)
+        handle:SetScript("OnHide", hidden)
     end
     local gear = opts.gear or makeGear(handle, opts.reset)
     gear:SetScript("OnClick", function(b)
@@ -816,7 +925,7 @@ function El:Attach(frame, handle, opts)
     return gear
 end
 
--- Every element that has a frame, in the order they were defined.
+-- Every element defined, with a frame or not, in the order they were defined.
 function P.Elements()
     local out = {}
     for _, el in ipairs(P.list) do
@@ -827,7 +936,7 @@ end
 
 -- Combat drops the drag, the selection and the panel; Previews off do too.
 local function stopAll()
-    P.StopDrag()
+    P.CancelDrag()
     P.Deselect()
     if P.ClosePanel then
         P.ClosePanel()

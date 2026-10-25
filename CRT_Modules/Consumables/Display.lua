@@ -46,8 +46,6 @@ local function gameWindow()
     end
 end
 
--- Whether you lead the group, read when the group or its leader changes and when the row shows,
--- rather than on every refresh. A value the game hides is never compared, and counts as not leading.
 -- Its saved place, drag, nudge and reset are the shared helper's (UI/Placement.lua), held by its top. It holds
 -- secure buttons, so it is never anchored to another element and nothing is anchored to it (either would make
 -- another frame protected); place() below docks it or puts it at its saved place.
@@ -66,6 +64,8 @@ local placement = CRT.UI.Placement.Define("consumables", {
     end,
 })
 
+-- Whether you lead the group, read when the group or its leader changes and when the row shows,
+-- rather than on every refresh. A value the game hides is never compared, and counts as not leading.
 local leading = false
 local function readLeader()
     local ok, leader = pcall(UnitIsGroupLeader, "player")
@@ -127,15 +127,12 @@ local function build()
     CRT.UI:RegisterLayer("bar", frame)
     frame:SetBackdrop(Bar.BACKDROP)
     CRT.UI:RegisterThemed(frame, { bg = { 0, 0, 0, 0.45 }, border = { 0.2, 0.8, 0.9 } })
-
     frame:SetClampedToScreen(true)
     frame:Hide()
 
     -- A drag handle above the row, shown during a preview so the row can be moved.
     handle = CreateFrame("Frame", nil, frame, "BackdropTemplate")
     handle:SetHeight(20)
-    handle:SetPoint("BOTTOMLEFT", frame, "TOPLEFT", 0, 2)
-    handle:SetPoint("BOTTOMRIGHT", frame, "TOPRIGHT", 0, 2)
     handle:SetBackdrop(Bar.BACKDROP)
     CRT.UI:RegisterThemed(handle, { bg = { 0.1, 0.3, 0.35, 0.9 }, border = { 0.2, 0.8, 0.9 } })
     local handleText = handle:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
@@ -145,6 +142,7 @@ local function build()
         Display:ResetPosition()
     end)
     reset:SetPoint("RIGHT", -2, 0)
+    CRT.UI.Placement.FitHandle(handle, frame, handleText)
     handle:Hide()
 
     -- A Close bar under the row, the row's width, for when you're done looking before the check ends.

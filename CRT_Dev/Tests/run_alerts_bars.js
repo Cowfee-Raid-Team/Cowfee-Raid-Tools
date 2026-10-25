@@ -31,6 +31,8 @@ local function mock(kind, parent, template)
     if k == "Hide" then return function(self) if self.shown then hides = hides + 1 end self.shown = false end end
     if k == "SetShown" then return function(self, on) if self.shown and not on then hides = hides + 1 end self.shown = on and true or false end end
     if k == "IsShown" then return function(self) return self.shown end end
+    -- shown, and every parent shown, as in the game (UI/Placement.lua places only an element whose drag box is on screen)
+    if k == "IsVisible" then return function(self) local f = self while f do if not f.shown then return false end f = rawget(f, "parent") end return true end end
     if k == "SetText" then return function(self, s) rawset(self, "text", s) end end
     if k == "GetText" then return function(self) return self.text end end
     if k == "SetChecked" then return function(self, on) rawset(self, "checked", on and true or false) end end
@@ -318,6 +320,7 @@ print("ok bars: previews show samples while the run has nothing to show")
 
 -- reset clears position
 pull()
+previews.alertbars(true) -- a drag box takes a drag only while it is on screen, in Previews
 handle.OnDragStop(handle)
 local pos = A:Settings().bars.position
 assert(pos and pos.point == "CENTER" and pos.x == 50 and pos.y == 150, "saved by center")
@@ -336,6 +339,7 @@ for i = 1, 3 do B:Refresh() end
 assert(A:Settings().bars.position.y == 72, "converted once")
 handle.OnDragStop(handle) -- a new drag is saved as it is and not converted again
 assert(A:Settings().bars.position.y == 150)
+previews.alertbars(false)
 B:Refresh()
 assert(A:Settings().bars.position.y == 150, "a new position is left alone")
 pull()

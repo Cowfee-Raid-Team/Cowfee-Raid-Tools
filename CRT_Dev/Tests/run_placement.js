@@ -71,6 +71,8 @@ local function mock(kind, parent, template, name)
     Hide = function(self) if self.shown then self.shown = false local s = self.scripts.OnHide if s then s(self) end end end,
     SetShown = function(self, on) if on then self:Show() else self:Hide() end end,
     IsShown = function(self) return self.shown end,
+    -- shown, and every parent shown, as in the game
+    IsVisible = function(self) local f = self while f do if not f.shown then return false end f = f.parent end return true end,
     SetScript = function(self, k, fn) self.scripts[k] = fn end,
     GetScript = function(self, k) return self.scripts[k] end,
     HookScript = function(self, k, fn) local old = self.scripts[k] self.scripts[k] = function(...) if old then old(...) end fn(...) end end,
@@ -144,7 +146,7 @@ check(P and type(P.Define) == "function" and type(P.OpenPanel) == "function", "t
 local function el(key, store, default, opts)
   opts = opts or {}
   local spec = { title = opts.title or key, store = function() return store end, default = default, point = opts.point,
-    build = opts.build, settings = opts.settings, canAnchor = opts.canAnchor, target = opts.target }
+    build = opts.build, settings = opts.settings, canAnchor = opts.canAnchor, target = opts.target, editing = opts.editing }
   return P.Define(key, spec)
 end
 local function make(e, w, h)
@@ -439,6 +441,103 @@ P.OpenPanel(E)
 check(dropdowns["Anchor to"].opts.enabledIf() == false and buttons["Pick on screen"].enabled == false, "no Anchor to for an element that stays on the screen")
 P.ClosePanel()
 
+-- only in Previews (or a page's own preview): a hidden drag box, or a window that is its own drag box outside
+-- Previews (the ready check window during a real check), takes no click, drag or key -----------------------
+local editing = false
+local R = el("rcwindow", {}, { point = "TOP", relativePoint = "TOP", x = 0, y = -140 }, { title = "Ready check window", point = "TOP",
+  editing = function() return editing end })
+local fr = CreateFrame("Frame", nil, UIParent)
+fr:SetSize(300, 100)
+R:Attach(fr, fr, {})
+fr.scripts.OnMouseUp(fr, "LeftButton")
+check(P.selected == nil and not keys.shown, "a click on a window that is its own drag box, outside Previews, selects nothing")
+check(P.OnKey("RIGHT") == false, "and the arrows go to the game")
+local before0 = { centre(fr) }
+cursorX, cursorY = centre(fr)
+R:BeginDrag()
+check(P.Dragging() == nil, "and it isn't dragged")
+fr.scripts.OnDragStop(fr)
+check(R:Saved() == nil, "nor saved")
+check(P.OpenPanel(R) == false and not (P.Panel() and P.Panel().shown), "nor does its panel open")
+editing = true
+fr.scripts.OnMouseUp(fr, "LeftButton")
+check(P.selected == R and keys.shown, "in Previews it is selected")
+editing = false
+check(P.OnKey("RIGHT") == false and P.selected == nil and not keys.shown, "Previews gone (its own preview flag off): the next arrow lets go")
+-- a drag box that hides (a page's own preview stopping) lets go and closes the panel
+P.OpenPanel(A)
+check(P.selected == A and P.Panel().shown, "the panel open on it")
+ha:Hide()
+check(P.selected == nil and not P.Panel().shown and not keys.shown, "its drag box hiding lets go and closes the panel")
+ha.scripts.OnMouseUp(ha, "LeftButton")
+check(P.selected == nil, "a hidden drag box takes no click")
+ha:Show()
+
+-- anchoring to an element with no place yet doesn't jump: nothing changes ---------------------------------
+local N = el("noplace", {}, nil, { title = "No place yet" })
+local fn = CreateFrame("Frame", nil, UIParent)
+N:Attach(fn, CreateFrame("Frame", nil, fn), {})
+fn:ClearAllPoints()
+B:SetOffset(10, 10)
+local bx2, by2 = centre(fb)
+check(B:SetAnchor("noplace") == false and CRT.db.b.position.anchor == nil, "an anchor with no place yet is refused")
+local bx3, by3 = centre(fb)
+check(bx3 == bx2 and by3 == by2, "and it stays where it was")
+N:Apply()
+
+-- Reset in combat is refused --------------------------------------------------------------------------
+A:SetOffset(40, 40)
+inCombat = true
+A:Reset()
+check(CRT.db.a.position ~= nil and select(1, A:Offset()) == 40 and errorLines[#errorLines] == P.TEXT.combat, "Reset in combat is refused, with a message")
+inCombat = false
+
+-- combat cutting a drag puts it back where it was saved ------------------------------------------------
+A:SetOffset(40, 40)
+cursorX, cursorY = centre(fa)
+A:BeginDrag()
+cursorX = cursorX + 200
+P.DragStep(false)
+check(select(1, A:Offset()) == 240, "mid-drag it follows the cursor")
+for _, f in ipairs(frames) do if f.scripts.OnEvent and not f.name then f.scripts.OnEvent(f, "PLAYER_REGEN_DISABLED") end end
+check(P.Dragging() == nil and select(1, A:Offset()) == 40, "combat starting ends the drag and puts it back at its saved place")
+
+-- an anchor that changes the point it is held by: the anchored one keeps its spot --------------------------
+local corner = "TOPLEFT"
+local K = el("corner", {}, { point = "TOPLEFT", relativePoint = "CENTER", x = -100, y = 0 }, { title = "Corner", point = function() return corner end })
+local fk = make(K, 200, 50)
+B:SetAnchor("corner")
+local bx4, by4 = centre(fb)
+check(CRT.db.b.position.relativePoint == "TOPLEFT", "anchored from the anchor's corner")
+corner = "TOPRIGHT"
+K:Apply() -- its Grow changed: held by its other corner now, at the same spot (keepPoint is the debuff panel's)
+B:Apply()
+local bx5, by5 = centre(fb)
+check(CRT.db.b.position.relativePoint == "TOPRIGHT" and bx5 == bx4 and by5 == by4, "the anchored one follows the anchor's new corner and keeps its spot: " .. bx5 .. " vs " .. bx4)
+B:Reset()
+
+-- a box's up and down step only that box, never the other box's half-typed text ---------------------------
+A:SetOffset(0, 0)
+P.OpenPanel(A)
+panel.yBox.text = "1-"
+panel.xBox.scripts.OnKeyDown(panel.xBox, "UP")
+x, y = A:Offset()
+check(x == 1 and y == 0, "up in X moves X only: " .. x .. ", " .. y)
+P.ClosePanel()
+
+-- a drag box over a narrow frame is still wide enough for its title, the gear and Reset, and follows the frame's width
+do
+  local f = CreateFrame("Frame", nil, UIParent) f:SetSize(60, 20) f:SetPoint("CENTER")
+  local h = CreateFrame("Frame", nil, f)
+  local t = h:CreateFontString() t:SetText("Debuffs: drag to move")
+  P.FitHandle(h, f, t)
+  local need = #"Debuffs: drag to move" * 6 + 2 * (6 + P.GEAR_SIZE + P.GEAR_GAP + 44 + 2)
+  check(h.w >= need and h.pts[1].point == "BOTTOMLEFT" and h.pts[1].rel == f, "a narrow frame's drag box fits its title, the gear and Reset: " .. h.w)
+  f:SetSize(600, 20) h.crtFit.frame = f
+  P.FitHandle(h, f, t)
+  check(h.w == 600, "and is as wide as a wide frame")
+end
+
 -- the lint: every movable element is placed by the helper ---------------------------------------------
 for _, e in ipairs(ELEMENTS) do
   local file, key = e[1], e[2]
@@ -452,6 +551,14 @@ for _, e in ipairs(ELEMENTS) do
   end
 end
 -- a drag box's title is a string ending ": drag to move" (a help text that mentions dragging is not one)
+-- a Reset button means a movable element too, whatever its drag box is called; the windows that keep their own
+-- drag (decided 2026-10-25: the note windows and the alert editor) are listed
+local OWN_DRAG = { ["CRT_Modules/Notes/Window.lua"] = true, ["CRT_Modules/Alerts/Editor.lua"] = true }
+for file, src in pairs(MODULES) do
+  if src:find("ResetButton(", 1, true) and not OWN_DRAG[file] then
+    check(src:find("Placement.Define(", 1, true) ~= nil, file .. " has a Reset button: it must be placed by UI.Placement")
+  end
+end
 for file, src in pairs(MODULES) do
   if src:find(': drag to move"', 1, true) then
     check(src:find("Placement.Define(", 1, true) ~= nil, file .. " has a drag box: it must be placed by UI.Placement")

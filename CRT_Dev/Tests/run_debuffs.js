@@ -31,6 +31,8 @@ local function mock(kind)
     if k == "Hide" then return function(self) self.shown = false end end
     if k == "SetShown" then return function(self, on) self.shown = on and true or false end end
     if k == "IsShown" then return function(self) return self.shown end end
+    -- shown, and every parent shown, as in the game (UI/Placement.lua places only an element whose drag box is on screen)
+    if k == "IsVisible" then return function(self) local f = self while f do if not f.shown then return false end f = rawget(f, "parent") end return true end end
     if k == "SetSize" then return function(self, w, h) rawset(self, "w", w) rawset(self, "h", h) end end
     if k == "SetPoint" then return function(self, ...) table.insert(self.pts, { ... }) rawset(self, "setPoints", (rawget(self, "setPoints") or 0) + 1) end end
     if k == "ClearAllPoints" then return function(self) self.pts = {} end end
@@ -826,6 +828,7 @@ do
   local handleFrame
   for _, f in ipairs(frames) do if rawget(f, "OnDragStop") then handleFrame = f end end
   Debuffs:SetGrow("left")
+  Panel:SetPreview(true) -- its drag box takes a drag only while it is on screen, in its preview
   panelFrame.pts = { { "CENTER", UIParent, "CENTER", 40, -20 } }
   local dl, dr, dt = edges(panelFrame)
   handleFrame.OnDragStop(handleFrame)
@@ -844,6 +847,7 @@ do
   dl = edges(panelFrame)
   handleFrame.OnDragStop(handleFrame)
   check("a drag with left to right saves the top left", CRT.db.debuffs.position.point == "TOPLEFT" and math.abs(edges(panelFrame) - dl) <= 0.5, CRT.db.debuffs.position.point)
+  Panel:SetPreview(false)
   Debuffs:SetSize(44) Debuffs:SetMaxCount(4) Debuffs:SetSpacing(4) Debuffs:Set("borderScale", 1)
 end
 

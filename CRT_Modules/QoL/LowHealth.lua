@@ -131,6 +131,10 @@ local placement = CRT.UI.Placement.Define("lowhealth", {
     build = function()
         build()
     end,
+    -- it is its own drag box: placed only in Previews
+    editing = function()
+        return previewOn
+    end,
 })
 
 function build()

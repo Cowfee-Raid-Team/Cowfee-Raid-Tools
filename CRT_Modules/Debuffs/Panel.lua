@@ -131,6 +131,7 @@ local pendingApply = false -- a settings change waiting for a safe moment
 local lastApply = 0 -- GetTime() of the last Apply, so a button that stays forbidden is retried slowly
 local RETRY_SECONDS = 5
 local placement -- its place, below
+local build
 local previewOn = false
 local inCombat = false -- set from PLAYER_REGEN_DISABLED/ENABLED, for the diagnostics
 local elapsed = 0
@@ -944,6 +945,10 @@ placement = CRT.UI.Placement.Define("debuffs", {
     end,
     canAnchor = false,
     protected = true,
+    -- made at login; an element anchored to it before then has it made
+    build = function()
+        build()
+    end,
 })
 
 local function applyPosition()
@@ -981,9 +986,8 @@ local function placeHandle()
         return
     end
     local lift = Debuffs:Get("timerPosition") == "above" and (Panel.TimerFontSize(Debuffs:Size()) + 4) or 0
-    handle:ClearAllPoints()
-    handle:SetPoint("BOTTOMLEFT", frame, "TOPLEFT", 0, 2 + lift)
-    handle:SetPoint("BOTTOMRIGHT", frame, "TOPRIGHT", 0, 2 + lift)
+    -- as wide as the panel, never too narrow for its title, the gear and Reset
+    CRT.UI.Placement.FitHandle(handle, frame, handle.title, 2 + lift)
 end
 
 -- Applies the settings: position, the container's group options, and every button's look. In combat
@@ -1048,7 +1052,7 @@ function Panel:ResetPosition()
     placement:Reset()
 end
 
-local function build()
+function build()
     if frame then
         return
     end
@@ -1069,6 +1073,7 @@ local function build()
     local text = handle:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     text:SetPoint("CENTER")
     text:SetText("Debuffs: drag to move")
+    handle.title = text
     local reset = CRT.UI.ResetButton(handle, function()
         Panel:ResetPosition()
     end)

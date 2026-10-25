@@ -62,7 +62,7 @@ g "themes" && { node run_themes.js "$WA" 2>&1 | tail -30; echo "exit ${PIPESTATU
 g "menu" && { node run_menu.js "$WA" 2>&1 | tail -30; echo "exit ${PIPESTATUS[0]}"; }
 g "break timer" && { node run_breaktimer.js "$WA" 2>&1 | tail -40; echo "exit ${PIPESTATUS[0]}"; }
 g "placement" && { node run_placement.js "$WA" 2>&1 | tail -40; echo "exit ${PIPESTATUS[0]}"; }
-g "default positions" &&{ node run_default_positions.js "$WA" 2>&1 | tail -30; echo "exit ${PIPESTATUS[0]}"; }
+g "default positions" && { node run_default_positions.js "$WA" 2>&1 | tail -30; echo "exit ${PIPESTATUS[0]}"; }
 g "palette" && { node run_palette.js "$WA" 2>&1 | tail -40; echo "exit ${PIPESTATUS[0]}"; }
 g "scrollbar" && { node run_scrollbar.js "$WA" 2>&1 | tail -40; echo "exit ${PIPESTATUS[0]}"; }
 # The colours from before themes live only in CRT_Core/Themes.lua (the Default: Blizzard palette): code reads CRT.PALETTE. A saved

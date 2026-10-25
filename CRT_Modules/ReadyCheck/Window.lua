@@ -851,6 +851,10 @@ local placement = CRT.UI.Placement.Define("readycheck", {
             build()
         end
     end,
+    -- it is its own drag box: placed only in Previews, never during a real ready check
+    editing = function()
+        return previewOn
+    end,
 })
 
 -- Its size (Scale on the Ready Check page), then its place.

@@ -238,13 +238,24 @@ local function stepBox(box, key)
     if key ~= "UP" and key ~= "DOWN" then
         return
     end
-    local v = tonumber(box:GetText()) or 0
-    local step = (IsShiftKeyDown and IsShiftKeyDown()) and P.NUDGE_BIG or P.NUDGE
-    box:SetText(tostring(v + (key == "UP" and step or -step)))
-    local x, y = tonumber(panel.xBox:GetText()), tonumber(panel.yBox:GetText())
-    if shown and x and y then
-        shown:SetOffset(x, y)
+    local x, y
+    if shown then
+        x, y = shown:Offset()
     end
+    if not x then
+        return
+    end
+    local step = (IsShiftKeyDown and IsShiftKeyDown()) and P.NUDGE_BIG or P.NUDGE
+    step = key == "UP" and step or -step
+    -- only this box steps, from its own number (else the element's); the other box's half-typed text is left alone
+    local own = tonumber(box:GetText())
+    if box == panel.xBox then
+        x = (own or x) + step
+    else
+        y = (own or y) + step
+    end
+    shown:SetOffset(x, y)
+    box:SetText(tostring(box == panel.xBox and x or y))
 end
 
 local function wireBox(box)
@@ -356,7 +367,7 @@ function P.OpenPanel(el)
     if InCombatLockdown and InCombatLockdown() then
         return P.Refuse()
     end
-    if not (el and el.frame) then
+    if not (el and el.frame and el:Editable()) then
         return false
     end
     panel = panel or build()
