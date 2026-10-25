@@ -47,6 +47,9 @@ local defaults = {
     minimap = { hide = false, angle = 225 },
     classCache = {},
     roleCache = {},
+    -- The last spec seen per player, [name-realm in lower case] = SpecializationID (Groups.CacheSpec), for the
+    -- Timeline's death icons. Shared by every profile, like the class cache.
+    specCache = {},
     -- The macros the addon made in General Macros (Macros.lua): owned[setKey][name] = { body } for each one, so
     -- only those are ever edited or removed. Shared by every profile, like the game's macro list (Profiles.lua).
     -- Those it made in a character's macros are kept the same way in CRTDBChar.macros.owned.
