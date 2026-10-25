@@ -663,8 +663,14 @@ function P.OnKey(key)
     return took
 end
 
+-- Selecting another element while the panel is open moves the panel to it.
 function P.Select(el)
     if inCombat() or not el then
+        return
+    end
+    local open = P.PanelShows and P.PanelShows()
+    if open and open ~= el and not P.picking and P.OpenPanel then
+        P.OpenPanel(el)
         return
     end
     P.selected = el
