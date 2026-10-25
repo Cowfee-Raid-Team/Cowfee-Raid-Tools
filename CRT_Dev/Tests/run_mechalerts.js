@@ -1141,6 +1141,158 @@ check("speak at: Mech Alerts panel has it too", function()
   assert(#errors == 0, tostring(errors[1]))
 end)
 
+-- Impact ticks, Bar fill and Bar ends on any mechanic (CRT_Modules/Alerts/Draft.lua ParseTicks; the bars draw them,
+-- CRT_Modules/Alerts/Bars.lua). Ticks are seconds after the cast, typed with commas.
+check("mech ticks: the typed ticks parse", function()
+  local D = CRT.AlertDraft
+  local function list(t) local out = {} for i, v in ipairs(t) do out[i] = tostring(v) end return table.concat(out, ",") end
+  local t = D.ParseTicks("1.5, 3.5")
+  assert(t and list(t) == "1.5,3.5", "two ticks: " .. tostring(t and list(t)))
+  t = D.ParseTicks("3.5,1.5 ,  2")
+  assert(t and list(t) == "1.5,2,3.5", "put in order: " .. tostring(t and list(t)))
+  t = D.ParseTicks("2, 2, 0")
+  assert(t and list(t) == "0,2", "the same tick once, 0 is at the cast: " .. tostring(t and list(t)))
+  for _, empty in ipairs({ "", "   ", nil }) do
+    local e, err = D.ParseTicks(empty)
+    assert(e and #e == 0 and err == nil, "empty: no ticks, no problem")
+  end
+  local bad, err = D.ParseTicks("1.5, soon")
+  assert(bad == nil and type(err) == "string" and err:find("soon", 1, true), "a word: " .. tostring(err))
+  bad, err = D.ParseTicks("-1, 2")
+  assert(bad == nil and err:find("-1", 1, true) and err:find("after the cast", 1, true), "below 0: " .. tostring(err))
+  bad, err = D.ParseTicks("1e3")
+  assert(bad == nil and err, "only plain seconds")
+  assert(D.TicksText({ 1.5, 3.5 }) == "1.5, 3.5" and D.TicksText(nil) == nil and D.TicksText({}) == nil, "back to text")
+end)
+
+check("mech ticks: the rows follow Bar and the ticks", function()
+  local f = fresh()
+  local p = f.panel
+  setCheck(f.rows[1].check, true)
+  assert(p.ticksEdit and p.ticksEdit.kind == "EditBox", "an Impact ticks box")
+  assert(p.ticksLabel.text == "Impact ticks" and p.ticksUnit.text == "s after the cast", "its words: " .. tostring(p.ticksUnit.text))
+  assert(p.barFill and p.barFill.label == "Bar fill" and p.barTo and p.barTo.label == "Bar ends", "two dropdowns")
+  local function keys(row) local out = {} for i, o in ipairs(row.opts.options) do out[i] = o.key .. "=" .. o.label end return table.concat(out, ",") end
+  assert(keys(p.barFill) == "up=Bar fills up,down=Bar empties", keys(p.barFill))
+  assert(keys(p.barTo) == "last=At the last impact,cast=At the cast", keys(p.barTo))
+  local helped
+  for _, h in ipairs(helps) do if h.helpTitle == "Impact ticks" then helped = h end end
+  assert(helped and helped.helpText:find("thin line", 1, true) and helped.helpText:find("Only me", 1, true), "a (?) on the ticks")
+  -- a new alert has Bar on: ticks and Bar fill on, Bar ends greyed with no ticks
+  assert(p.checks.bar.checked, "Bar on")
+  assert(p.ticksEdit.enabled and p.barFill.opts.enabledIf() == true, "on with Bar")
+  assert(p.barFill.opts.get() == "down", "Bar empties, as bars always did")
+  assert(p.barTo.opts.enabledIf() == false and p.barTo.opts.get() == "last", "Bar ends greyed with no ticks")
+  typeInto(p.ticksEdit, "1.5, 3.5")
+  p.ticksEdit.OnEnterPressed(p.ticksEdit)
+  assert(p.barTo.opts.enabledIf() == true, "Bar ends on with ticks")
+  -- Bar off: all three grey out
+  setCheck(p.checks.bar, false)
+  assert(not p.ticksEdit.enabled and p.barFill.opts.enabledIf() == false and p.barTo.opts.enabledIf() == false, "greyed with Bar off")
+  local grey = p.ticksLabel.textColor
+  assert(grey and grey[1] == 0.5, "the label greyed")
+  setCheck(p.checks.bar, true)
+  assert(p.ticksEdit.enabled and p.ticksLabel.textColor[1] ~= 0.5, "back on")
+  -- cleared: Bar ends greys again
+  typeInto(p.ticksEdit, "")
+  p.ticksEdit.OnEnterPressed(p.ticksEdit)
+  assert(p.barTo.opts.enabledIf() == false, "no ticks: Bar ends greyed")
+  assert(#errors == 0, tostring(errors[1]))
+end)
+
+check("mech ticks: saved with the reminder, bad ones not", function()
+  local f = fresh()
+  local p = f.panel
+  setCheck(f.rows[1].check, true)
+  local _, id = only()
+  typeInto(p.ticksEdit, "3.5, 1.5")
+  assert(R:Get(ENC, id).ticks == nil, "not saved per key")
+  runTimers()
+  local r = R:Get(ENC, id)
+  assert(r.ticks and #r.ticks == 2 and r.ticks[1] == 1.5 and r.ticks[2] == 3.5, "saved in order after the pause")
+  p.barFill.opts.set("up")
+  assert(R:Get(ENC, id).fill == "up", "Bar fills up saved")
+  p.barTo.opts.set("cast")
+  assert(R:Get(ENC, id).barTo == "cast", "At the cast saved")
+  p.barTo.opts.set("last")
+  assert(R:Get(ENC, id).barTo == nil, "At the last impact, the default, saved as nothing")
+  p.barFill.opts.set("down")
+  assert(R:Get(ENC, id).fill == nil, "Bar empties, the default, saved as nothing")
+  p.barFill.opts.set("up")
+  -- a bad tick: said in red, nothing saved
+  typeInto(p.ticksEdit, "1.5, -2")
+  p.ticksEdit.OnEnterPressed(p.ticksEdit)
+  assert(p.message.text:find("|cff" .. CRT.UI.Hex("bad"), 1, true) and p.message.text:find("-2", 1, true), "red line: " .. tostring(p.message.text))
+  r = R:Get(ENC, id)
+  assert(#r.ticks == 2 and r.ticks[1] == 1.5, "the last good ticks kept")
+  typeInto(p.ticksEdit, "2")
+  p.ticksEdit.OnEnterPressed(p.ticksEdit)
+  assert(p.message.text == "" and #R:Get(ENC, id).ticks == 1, "fixed: saved, the message gone")
+  -- the panel shows them again when the row is loaded afresh (a /reload)
+  click(f.rows[2].frame)
+  click(f.rows[1].frame)
+  assert(p.ticksEdit.text == "2" and p.barFill.opts.get() == "up" and p.barTo.opts.get() == "last", "loaded back: " .. tostring(p.ticksEdit.text))
+  -- emptied: no ticks saved at all
+  typeInto(p.ticksEdit, "")
+  p.ticksEdit.OnEnterPressed(p.ticksEdit)
+  assert(R:Get(ENC, id).ticks == nil, "empty: no ticks field")
+  assert(#errors == 0, tostring(errors[1]))
+end)
+
+check("mech ticks: an older reminder gains no fields", function()
+  local f = fresh()
+  local p = f.panel
+  local id = R:Save(ENC, nil, { spellID = 777, boss = "Test Boss", text = "Old one", group = "mythic", outputs = { bar = true, alert = true } })
+  click(f.rows[1].frame)
+  assert(p.ticksEdit.text == "" and p.barFill.opts.get() == "down" and p.barTo.opts.get() == "last", "the defaults on show")
+  p.showFrom.opts.set(7)
+  local r = R:Get(ENC, id)
+  assert(r.warn == 7 and r.ticks == nil and r.fill == nil and r.barTo == nil, "a change elsewhere adds no tick fields")
+  local items = R:Items(ENC, id, r, "mythic")
+  assert(#items > 0, "it has items")
+  for _, it in ipairs(items) do
+    assert(it.ticks == nil and it.fill == nil and it.barTo == nil, "a plain bar, as before")
+  end
+  assert(#errors == 0, tostring(errors[1]))
+end)
+
+check("mech ticks: a run and a Test carry them onto the items", function()
+  local f = fresh()
+  local p = f.panel
+  setCheck(f.rows[1].check, true)
+  local _, id = only()
+  typeInto(p.ticksEdit, "1.5, 3.5")
+  p.ticksEdit.OnEnterPressed(p.ticksEdit)
+  p.barFill.opts.set("up")
+  p.barTo.opts.set("cast")
+  local r = R:Get(ENC, id)
+  -- Reminders:Items, which the block of your reminders runs on
+  local items = R:Items(ENC, id, r, R.GroupOf(r))
+  assert(#items > 0, "items")
+  for _, it in ipairs(items) do
+    assert(it.ticks and #it.ticks == 2 and it.ticks[2] == 3.5 and it.fill == "up" and it.barTo == "cast", "each item has them")
+  end
+  assert(items[1].ticks ~= items[2].ticks and items[1].ticks ~= r.ticks, "each its own copy")
+  -- a pull of the boss
+  A:Start(ENC, r.group == "mythic" and "Mythic" or "Heroic", "encounter")
+  local got
+  for _, it in ipairs(A.items) do if it.id == "mine:" .. id .. ":1" then got = it end end
+  A:Stop(true)
+  assert(got and got.ticks and got.ticks[1] == 1.5 and got.fill == "up" and got.barTo == "cast", "the run's item")
+  -- the panel's Test (a quick test, no Rehearsal window)
+  click(p.testBtn)
+  assert(A.running and A.run.reason == "test", "a test run")
+  got = nil
+  for _, it in ipairs(A.items) do if it.id == "mine:test:1" then got = it end end
+  A:Stop(true)
+  assert(got and got.ticks and #got.ticks == 2 and got.fill == "up" and got.barTo == "cast", "the test's item")
+  -- the ticks alone, with Bar ends at the last impact: no barTo, the bars' default
+  p.barTo.opts.set("last")
+  items = R:Items(ENC, id, R:Get(ENC, id), R.GroupOf(r))
+  assert(items[1].barTo == nil and items[1].ticks, "ticks, ending at the last impact")
+  assert(#errors == 0, tostring(errors[1]))
+end)
+
 -- Each ability's name in its main type's colour (Reference.ABILITY_TYPES, found as alerts find it: your label, the
 -- ability timeline's row, the Journal's icons), dimmed when its reminder is off, lifted on the selected row so it
 -- reads on the highlight; no type keeps the text colour. Hovering a name lists its types, the main one first.

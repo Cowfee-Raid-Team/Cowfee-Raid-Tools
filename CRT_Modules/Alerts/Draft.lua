@@ -7,8 +7,11 @@ local ADDON, CRT = ...
 --          and for the editor also a note line (noteID, line, expected) or a saved alert (savedMode)
 --   draft  { saveAs, tag, group, difficulty, ph, timeText, timeTouched, keptTimes, spellID, iconType, iconID,
 --          text, color, show = { alert, text, icon, bar, circle, timeline }, speak, speakAt, count, glow, sound,
---          warn, linger, boss, baseDifficulty, difficultyTouched }
+--          warn, linger, boss, baseDifficulty, difficultyTouched, ticksText, fill, barTo }
 --          speakAt is nil (Speak at: On show) or "zero" (At 0), as a reminder keeps it
+--          ticksText is the Impact ticks box as typed ("1.5, 3.5": seconds after the cast, Draft.ParseTicks), fill
+--          "up" (Bar fills up) or nil (it empties), barTo "cast" (the bar ends at the cast) or nil (at the last
+--          impact), as a reminder keeps them (Alerts/Bars.lua draws them; Only me: a note line has no such fields)
 --          group is the difficulty group Only me saves for ("nh" or "mythic", Draft.Group); difficulty
 --          the raid note's Difficulty a note line goes to, or an older reminder's Difficulty text
 -- Every function takes ctx and the draft it works on; none keeps either.
@@ -33,6 +36,9 @@ local TEXT = {
     noBoss = "This boss has no encounter ID, so it can't have a raid note line.",
     noteFailed = "The note line could not be saved.",
     timelineOnly = "Only the Alert timeline shows this line. Raiders on an older CRT won't see it.",
+    badTicks = "The impact ticks don't read: %s.",
+    tickWord = "'%s' isn't a number of seconds",
+    tickBefore = "%s is before the cast, and ticks are seconds after the cast",
 }
 Draft.TEXT = TEXT
 
@@ -190,6 +196,54 @@ function Draft.FlowShowAs(rows, x0, right, boxW, gap, place)
     end
 end
 
+-- The Impact ticks box: seconds after the cast, separated by commas ("1.5, 3.5"), each a plain number of 0 or
+-- more. Returns them in order, each once ({} for an empty box), or nil and what doesn't read.
+function Draft.ParseTicks(text)
+    local out, seen = {}, {}
+    for piece in (tostring(text or "") .. ","):gmatch("([^,]*),") do
+        local word = trim(piece)
+        if word ~= "" then
+            local t = (word:match("^%d+%.?%d*$") or word:match("^%.%d+$")) and tonumber(word) or nil
+            if not t then
+                local below = word:match("^%-%d*%.?%d+$") and tonumber(word)
+                return nil, below and string.format(TEXT.tickBefore, word) or string.format(TEXT.tickWord, word)
+            end
+            if not seen[t] then
+                seen[t] = true
+                out[#out + 1] = t
+            end
+        end
+    end
+    table.sort(out)
+    return out
+end
+
+-- Ticks as the box shows them ("1.5, 3.5"), or nil for none.
+function Draft.TicksText(list)
+    if type(list) ~= "table" or #list == 0 then
+        return nil
+    end
+    local parts = {}
+    for i, t in ipairs(list) do
+        parts[i] = ("%g"):format(t)
+    end
+    return table.concat(parts, ", ")
+end
+
+-- The draft's ticks, or nil for none or a box that doesn't read (Draft.Problem says why).
+function Draft.Ticks(draft)
+    local list = Draft.ParseTicks(draft and draft.ticksText)
+    return list and #list > 0 and list or nil
+end
+
+-- The Bar fill and Bar ends choices, in the caller's words.
+function Draft.FillOptions(up, down)
+    return { { key = "up", label = up }, { key = "down", label = down } }
+end
+function Draft.BarToOptions(last, cast)
+    return { { key = "last", label = last }, { key = "cast", label = cast } }
+end
+
 -- A saved reminder into the draft. Its times text is kept until Relative to or Time is touched.
 function Draft.FromReminder(draft, r)
     draft.spellID, draft.boss, draft.difficulty = r.spellID, r.boss, r.difficulty
@@ -213,6 +267,9 @@ function Draft.FromReminder(draft, r)
     draft.iconID = validID(r.iconID)
     draft.iconType = draft.iconID and "id" or "spell"
     draft.color = copy(r.color)
+    draft.ticksText = Reminders.TickList and Draft.TicksText(Reminders.TickList(r.ticks)) or nil
+    draft.fill = r.fill == "up" and "up" or nil
+    draft.barTo = r.barTo == "cast" and "cast" or nil
 end
 
 -- A new draft from a saved reminder.
@@ -352,6 +409,10 @@ function Draft.Problem(ctx, draft)
     if not Draft.AnyOutput(draft) then
         return TEXT.nothing
     end
+    local ticks, why = Draft.ParseTicks(draft.ticksText)
+    if not ticks then
+        return string.format(TEXT.badTicks, why)
+    end
     return nil
 end
 
@@ -398,6 +459,11 @@ function Draft.BuildReminder(ctx, draft)
     r.glow = draft.glow or nil
     r.iconID = draft.iconType == "id" and validID(draft.iconID) or nil
     r.color = copy(draft.color)
+    -- the bar's impact ticks and how it fills; the defaults (no ticks, it empties, it ends at the last impact) are
+    -- saved as nothing, so a reminder that never set them gains no fields
+    r.ticks = Draft.Ticks(draft)
+    r.fill = draft.fill == "up" and "up" or nil
+    r.barTo = draft.barTo == "cast" and "cast" or nil
     return r
 end
 
