@@ -430,6 +430,37 @@ end
 check(slash("nonsense"):find("Unknown command", 1, true) ~= nil, "an unknown word is still unknown")
 check(slash("late nonsense"):find(M:IsOn("raidlead") and "Unknown command" or "Raid Lead is turned off", 1, true) ~= nil, "an unknown word of a module: unknown when on, off when off")
 
+-- /crt loot alone is the raider's: your loot popup and All Loot Rolls, with Loot on or off. Loot History has no word
+-- (it opens from the menu); the leader's words after /crt loot say Loot is off while it is.
+do
+  local LM = CRT.LootMaster
+  local lootOn = M:IsOn("loot")
+  local state = lootOn and "Loot on" or "Loot off"
+  local calls = { popup = 0, answers = 0 }
+  local realPopup, realAnswers, was = LM.ShowPopup, LM.ShowAnswers, LM.incoming
+  LM.ShowPopup = function() calls.popup = calls.popup + 1 end
+  LM.ShowAnswers = function() calls.answers = calls.answers + 1 end
+  LM.incoming = { id = "t1", items = {}, mine = {}, view = {} }
+  local before = #shownPages
+  local out = slash("loot")
+  check(calls.popup == 1 and calls.answers == 1, state .. ": /crt loot opens your loot popup and All Loot Rolls")
+  check(not out:find("turned off", 1, true) and not out:find("Unknown command", 1, true), state .. ": /crt loot runs: " .. out)
+  check(#shownPages == before, state .. ": /crt loot opens no page (Loot History has no word)")
+  LM.incoming = nil
+  out = slash("loot")
+  check(out:find("no loot session", 1, true) ~= nil, state .. ": /crt loot with no session says so: " .. out)
+  LM.ShowPopup, LM.ShowAnswers, LM.incoming = realPopup, realAnswers, was
+  out = slash("loot test")
+  if not lootOn then
+    check(out:find("Loot is turned off", 1, true) ~= nil, "Loot off: /crt loot test says Loot is off: " .. out)
+  end
+  local help = slash("help")
+  check(help:find("/crt loot|r - open your loot popup and All Loot Rolls", 1, true) ~= nil, state .. ": /crt help lists /crt loot")
+  check((help:find("/crt loot test|r", 1, true) ~= nil) == lootOn, state .. ": /crt help lists the leader's /crt loot test only with Loot on")
+  check(not help:find("Loot History", 1, true), state .. ": /crt help names no Loot History word")
+  if lootOn and LM.current then LM:End() end
+end
+
 -- Loot off: the leader's CRT Looting can't be turned on, and says why; Raider Score still follows the Late Tracker
 do
   local LM = CRT.LootMaster

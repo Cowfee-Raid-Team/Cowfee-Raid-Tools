@@ -12,6 +12,9 @@ CRT.Slash = Slash
 --            case), raw as typed. Returns false when it doesn't know rest, for "Unknown command".
 --   help     the lines /crt help lists for it, while its module is on; each part typed as a command is in
 --            square brackets ("[/crt late start], [end] - ..."), shown in the help's command colour
+--   raider   raider(rest): true when that use of the word is a raider's and runs with its module off (/crt loot
+--            alone opens your loot popup, LootMaster/RaiderWindow.lua); any other use says the module is off
+--   raiderHelp  the help lines of those uses, listed whether the module is on or off, before help
 --   top      true: listed at the top of /crt help, right under /crt itself (a page most players open first);
 --            the others come after Core's notes lines, in the order they registered
 function Slash:Register(word, def)
@@ -29,19 +32,27 @@ function Slash:Run(msg, raw)
         return false
     end
     local Modules = CRT.Modules
-    if Modules and not Modules:Check(def.module) then
+    if Modules and not (def.raider and def.raider(rest)) and not Modules:Check(def.module) then
         return true
     end
     return def.run(rest, msg, raw) ~= false
 end
 
--- The help lines of the registered words with top == top, while their module is on.
+local function printLines(lines)
+    for _, line in ipairs(lines or {}) do
+        print("  " .. line:gsub("%[(.-)%]", "|cffffd100%1|r"))
+    end
+end
+
+-- The help lines of the registered words with top == top: a word's raider lines always, the rest while its
+-- module is on.
 local function printWords(top)
     for _, word in ipairs(Slash.order) do
         local def = Slash.words[word]
-        if (def.top == true) == top and (not CRT.Modules or CRT.Modules:IsOn(def.module)) then
-            for _, line in ipairs(def.help or {}) do
-                print("  " .. line:gsub("%[(.-)%]", "|cffffd100%1|r"))
+        if (def.top == true) == top then
+            printLines(def.raiderHelp)
+            if not CRT.Modules or CRT.Modules:IsOn(def.module) then
+                printLines(def.help)
             end
         end
     end

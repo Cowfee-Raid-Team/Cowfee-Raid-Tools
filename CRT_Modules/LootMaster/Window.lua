@@ -1,6 +1,6 @@
 local ADDON, CRT = ...
 
--- The looter's window: the session's items as tabs down the left, and for the chosen item every raider's
+-- The looter's window, the Master Loot Window: the session's items as tabs down the left, and for the chosen item every raider's
 -- row, sorted by the response's weight, then Raider Score, then roll (Session:Rows). Right-click a row to
 -- award the item for a response, show the raider's popup again, ask them to roll again, or clear their
 -- answer; right-click an item tab to do that for everyone who still needs it. A pop-out made by
@@ -30,7 +30,7 @@ local COLS = {
 }
 
 local TEXT = {
-    title = "Loot Master",
+    title = "Master Loot Window",
     test = "TEST",
     help = "Every raider's answer for the item picked on the left, best first: the answer's weight, then Raider Score, then the roll. Right-click a raider to give them the item, show their popup again, roll again for them, or clear their answer. Ctrl- or Shift-click picks several raiders first. Right-click an item on the left to do that for everyone who still needs it.",
     answered = "%d of %d answered",
