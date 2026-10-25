@@ -1484,7 +1484,7 @@ MODERN = LOOK == "Modern"
 
 check("mech special (" .. LOOK .. "): the toggle sits over the list, Mechanics by default", function()
   noSpecial()
-  CRT.db.alerts.specialView = nil
+  CRT.db.alerts.specialView, CRT.db.alerts.specialViewPicked = nil, nil
   local f = fresh()
   local s = f.special
   assert(s and s.mechBtn and s.specialBtn, "two halves")
@@ -1532,10 +1532,11 @@ check("mech special (" .. LOOK .. "): Special shows the empty line, and the choi
   local m = CRT.PALETTE.muted
   assert(s.empty.textColor and s.empty.textColor[1] == m[1] and s.empty.textColor[3] == m[3], "in the muted colour")
   assert(not s.content.shown, "no panel content")
+  click(s.mechBtn)
+  click(s.specialBtn)
+  assert(SA.View() == "special" and s.list.shown, "held for the boss while the tab stays built")
   local f2 = fresh()
-  assert(SA.View() == "special" and f2.special.list.shown and not f2.list.shown, "remembered when the tab is built again")
-  click(f2.special.mechBtn)
-  assert(SA.View() == "mechanics" and f2.list.shown and not f2.special.list.shown, "back to Mechanics")
+  assert(SA.View() == "mechanics" and f2.list.shown and not f2.special.list.shown, "built again: a boss with none opens on Mechanics")
   assert(#errors == 0, tostring(errors[1]))
 end)
 
@@ -1569,6 +1570,75 @@ check("mech special (" .. LOOK .. "): the list counts, ticks and selects", funct
   assert(#errors == 0, tostring(errors[1]))
 end)
 
+check("mech special (" .. LOOK .. "): Special first for a boss with special alerts; a pick of Mechanics is remembered", function()
+  withSpecial(SPECIAL_LIST)
+  CRT.db.alerts.special = {}
+  -- an old save: the default view, the toggle never clicked
+  CRT.db.alerts.specialView, CRT.db.alerts.specialViewPicked = "mechanics", false
+  local f = fresh()
+  assert(SA.View() == "special" and f.special.list.shown and not f.list.shown, "opens on Special")
+  assert(f.special.specialBtn.tabSelected == true, "the toggle says so")
+  click(f.special.mechBtn)
+  assert(CRT.db.alerts.specialView == "mechanics" and CRT.db.alerts.specialViewPicked == true and f.list.shown, "Mechanics picked: saved")
+  local f2 = fresh()
+  assert(SA.View() == "mechanics" and f2.list.shown and not f2.special.list.shown, "a picked Mechanics wins")
+  click(f2.special.specialBtn)
+  local f3 = fresh()
+  assert(SA.View() == "special" and f3.special.list.shown, "Special picked again: Special first again")
+  noSpecial()
+  CRT.NoteReminders.Refresh()
+  assert(SA.View() == "mechanics" and f3.list.shown, "a boss with none: Mechanics")
+  -- Make a Mech Alert opens the tab on one of the boss's abilities: Mechanics, nothing saved
+  withSpecial(SPECIAL_LIST)
+  local opened = CRT.NotesPage.Open
+  CRT.NotesPage.Open = function() end
+  CRT.NoteReminders.Open(ENC, 888)
+  CRT.NotesPage.Open = opened
+  assert(SA.View() == "mechanics" and f3.list.shown and CRT.db.alerts.specialView == "special", "opened on an ability: Mechanics for now")
+  -- the toggle's (?) says what each is for
+  local help
+  for _, h in ipairs(helps) do if h.helpTitle == "Mechanics" then help = h end end
+  assert(help and help.helpText:find("prepared alerts", 1, true) and help.helpText:find("your own reminders", 1, true), "its (?)")
+  CRT.db.alerts.specialView, CRT.db.alerts.specialViewPicked = "mechanics", true
+  noSpecial()
+  assert(#errors == 0, tostring(errors[1]))
+end)
+
+check("mech special (" .. LOOK .. "): an ability a special alert covers is tagged Special, its tooltip names it", function()
+  withSpecial(SPECIAL_LIST)
+  CRT.db.alerts.specialView, CRT.db.alerts.specialViewPicked = "mechanics", true
+  local said = {}
+  GameTooltip = setmetatable({}, { __index = function(_, k) return function(_, a) said[#said + 1] = { k, a } end end })
+  local f = fresh()
+  local r1, r2 = f.rows[1], f.rows[2]
+  assert(r1.name.text == "Real Name" and r1.tag.shown and r1.tag.text.text == "Special", "Real Name: the Orb soaks row")
+  assert(not r2.tag.shown, "Other Spell: no special alert covers it")
+  assert(math.abs(r1.tag.w - (#"Special" * 6 + 8)) < 1, "sized from its word: " .. tostring(r1.tag.w))
+  assert(r1.name.w < r2.name.w, "the name a little shorter for it")
+  r1.tag.OnEnter(r1.tag)
+  local text
+  for _, l in ipairs(said) do if l[1] == "AddLine" then text = l[2] end end
+  assert(text and text:find("Orb soaks", 1, true) and text:find("only alerts the casts it doesn't", 1, true), "names the special alert: " .. tostring(text))
+  said = {}
+  r1.check.OnEnter(r1.check)
+  assert(#said > 0, "the tick's tooltip says it too")
+  -- ticking it asks nothing: your reminder is made as always
+  setCheck(r1.check, true)
+  assert(only().spellID == 777 and only().enabled == true, "ticked")
+  said = {}
+  r2.check.OnEnter(r2.check)
+  assert(#said == 0, "no tooltip on a tick nothing covers")
+  -- covered by spell too: a special alert on Other Spell's spell
+  withSpecial({ { key = "byspell", label = "By spell", when = { spellID = 888 } } })
+  CRT.NoteReminders.Refresh()
+  assert(not f.rows[1].tag.shown and f.rows[2].tag.shown, "by its spell")
+  GameTooltip = nil
+  noSpecial()
+  CRT.NoteReminders.Refresh()
+  assert(not f.rows[2].tag.shown, "none: no tag")
+  assert(#errors == 0, tostring(errors[1]))
+end)
+
 check("mech special (" .. LOOK .. "): the panel says When and Who, keeps Show as, greys Markers", function()
   withSpecial(SPECIAL_LIST)
   CRT.db.alerts.special = {}
@@ -1579,6 +1649,7 @@ check("mech special (" .. LOOK .. "): the panel says When and Who, keeps Show as
   assert(s.titleHelp.shown, "its help in a (?)")
   assert(type(s.titleHelp.helpTitle) == "function" and s.titleHelp.helpTitle() == "Orb soaks" and s.titleHelp.helpText() == "Two groups soak each orb.", "the (?) is titled with the alert's name")
   assert(s.whenText.text == "Each cast of Real Name: P1 0:30; P2 +0:20. Shown 6 s before.", "When: " .. s.whenText.text)
+  assert(not s.impactsText.shown, "no impacts: no line under When")
   assert(s.whoText.text == "In turn, one step per cast:", "Who: " .. s.whoText.text)
   assert(s.chips[1].shown and s.chips[1].text.text == "1: G1, G2" and s.chips[2].text.text == "2: G3, G4", "the steps as chips, in order")
   assert(not s.more.shown, "no more")
@@ -1603,6 +1674,28 @@ check("mech special (" .. LOOK .. "): the panel says When and Who, keeps Show as
   for _, h in ipairs(helps) do assert(rawget(h, "helpTarget") ~= nil, "the (?) " .. tostring(h.helpTitle) .. " is placed by UI.HelpRight") end
   click(s.mechBtn)
   CRT.db.alerts.special = {}
+  noSpecial()
+  assert(#errors == 0, tostring(errors[1]))
+end)
+
+check("mech special (" .. LOOK .. "): the impacts under When", function()
+  withSpecial({ { key = "ticks", label = "Ticks", when = { times = "0:30" }, ticks = { 0, 2.5 } },
+    { key = "tocast", label = "To cast", when = { times = "0:30" }, ticks = { 0, 62 }, barTo = "cast" },
+    { key = "bar", label = "Bar", when = { times = "0:30" }, bar = { length = 8, ticks = { 4.5, 6.5 } } },
+    { key = "early", label = "Early bar", when = { times = "0:30" }, bar = { start = -3, length = 8, ticks = { 4.5 } } },
+    { key = "plain", label = "Plain bar", when = { times = "0:30" }, bar = { start = 2, length = 10 } } })
+  CRT.db.alerts.specialViewPicked = false
+  local f = fresh()
+  local s = f.special
+  local want = { "Impacts: +0:00, +0:02.5", "Impacts: +0:00, +1:02. The bar ends at the cast.", "Bar 8 s, impacts at 4.5 s and 6.5 s",
+    "Bar 8 s from 3 s before the cast, impacts at 4.5 s", "Bar 10 s from 2 s after the cast" }
+  for i, w in ipairs(want) do
+    click(s.rows[i].frame)
+    assert(s.impactsText.shown and s.impactsText.text == w, i .. ": " .. tostring(s.impactsText.text))
+  end
+  local wr, ir, hr = rect(s.whenText, f), rect(s.impactsText, f), nil
+  assert(ir[2] > wr[2], "under When")
+  CRT.db.alerts.specialView, CRT.db.alerts.specialViewPicked = "mechanics", true
   noSpecial()
   assert(#errors == 0, tostring(errors[1]))
 end)

@@ -5,8 +5,9 @@ local ADDON, CRT = ...
 -- for the difficulty on show, each with its on/off tick in its ability type's colour, and on the right the
 -- selected one: When and Who as its data says them, Show as (your choices, saved at once), Markers (greyed:
 -- an addon can't set them) and Test. The tab hands it the boss, the difficulty group and the ability timeline
--- on show (host), and the places of its list and panel. The toggle's choice is saved in
--- CRT.db.alerts.specialView; Mechanics is the default.
+-- on show (host), and the places of its list and panel. Special first: a boss with special alerts opens on
+-- Special, one with none on Mechanics, unless you picked Mechanics last (CRT.db.alerts.specialView, with
+-- specialViewPicked once you click the toggle). A pick holds for that boss for the session.
 
 local UI = CRT.UI
 
@@ -14,7 +15,7 @@ local UI = CRT.UI
 local TEXT = {
     mechanics = "Mechanics",
     special = "Special (%d)",
-    toggleHelp = "Mechanics lists the boss's abilities and your own reminders. Special lists the boss's special alerts: scripted calls such as soak rotations. Each is off until you tick it.",
+    toggleHelp = "Special lists this tier's prepared alerts for the boss, such as soak rotations. Tick the ones you want. Mechanics is for your own reminders: an ability a special alert already covers is marked Special there.",
     empty = "No special alerts for this boss yet.",
     kind = "special alert",
     alertMe = "Alert me",
@@ -23,6 +24,15 @@ local TEXT = {
     whenRow = "Each cast of %s: %s. Shown %s s before.",
     whenNoCasts = "Each cast of %s. None on the ability timeline on show.",
     whenTimes = "At %s. Shown %s s before.",
+    impacts = "Impacts: %s",
+    impactsToCast = "Impacts: %s. The bar ends at the cast.",
+    barLength = "Bar %s s",
+    barLengthFrom = "Bar %s s from %s s %s the cast",
+    before = "before",
+    after = "after",
+    barImpacts = "%s, impacts at %s",
+    secondsWord = "%s s",
+    andWord = " and ",
     spell = "spell %d",
     who = "Who",
     whoHelp = "Who gets each cast. In turn: the first cast goes to the first step, the next cast to the next, and so on, then from the start again. Only the players of a cast's step get its alert.",
@@ -69,11 +79,11 @@ local L = {
     BOTTOM_Y = 10,
     -- the panel's rows, from its top
     TITLE_Y = -14, KIND_Y = -36, ALERT_Y = -12,
-    WHEN_Y = -62, WHEN_TEXT_Y = -82,
-    WHO_Y = -108, WHO_TEXT_Y = -128, CHIPS_Y = -146,
-    SHOW_Y = -176, SPEAK_Y = -248,
-    MARK_Y = -282, MARK_TEXT_Y = -302, MARK_CHECK_Y = -318,
-    MESSAGE_Y = -352,
+    WHEN_Y = -62, WHEN_TEXT_Y = -82, IMPACTS_Y = -98,
+    WHO_Y = -122, WHO_TEXT_Y = -142, CHIPS_Y = -160,
+    SHOW_Y = -190, SPEAK_Y = -262,
+    MARK_Y = -296, MARK_TEXT_Y = -316, MARK_CHECK_Y = -332,
+    MESSAGE_Y = -366,
     ALERT_W = 130, -- Alert me and its label, at the header's right
 }
 
@@ -88,7 +98,7 @@ CRT.NoteSpecialAlerts = M
 -- host: { boss = fn -> encounterID, name; group = fn -> "nh" or "mythic"; reference = fn -> entry or nil;
 -- view = fn(view) after the toggle changed }. ui: every frame. state: the session's choices.
 local host, ui = nil, {}
-local state = { picked = {}, offset = 0, notice = nil }
+local state = { picked = {}, views = {}, offset = 0, notice = nil }
 
 local function width(fs)
     local w = fs.GetUnboundedStringWidth and fs:GetUnboundedStringWidth() or fs:GetStringWidth()
@@ -103,19 +113,6 @@ local function db()
     return CRT.db and CRT.db.alerts
 end
 
--- The view on show: "mechanics" (the default) or "special".
-function M.View()
-    local s = db()
-    return s and s.specialView == "special" and "special" or "mechanics"
-end
-
-local function setView(view)
-    local s = db()
-    if s then
-        s.specialView = view == "special" and "special" or "mechanics"
-    end
-end
-
 -- The boss's special alerts for the difficulty on show.
 local function entries()
     local S = Special()
@@ -124,6 +121,42 @@ local function entries()
         return {}, enc
     end
     return S:List(enc, host.group()), enc
+end
+
+-- The view on show, "mechanics" or "special", for the boss on show: the one picked for it this session; else
+-- Mechanics when that is what you picked last; else Special when the boss has special alerts, Mechanics when not.
+function M.View()
+    local list, enc = entries()
+    local session = enc and state.views[enc]
+    if session then
+        return session
+    end
+    local s = db()
+    if s and s.specialViewPicked == true and s.specialView == "mechanics" then
+        return "mechanics"
+    end
+    return #list > 0 and "special" or "mechanics"
+end
+
+-- A pick on the toggle: saved, and held for the boss on show for the session.
+local function setView(view)
+    view = view == "special" and "special" or "mechanics"
+    local s = db()
+    if s then
+        s.specialView = view
+        s.specialViewPicked = true
+    end
+    local _, enc = entries()
+    if enc then
+        state.views[enc] = view
+    end
+end
+
+-- Shows a boss's Mechanics for the session, without saving a pick (Mech Alerts opened on one of its abilities).
+function M.ShowMechanics(encounterID)
+    if encounterID ~= nil then
+        state.views[encounterID] = "mechanics"
+    end
 end
 
 local function selected(list, enc)
@@ -157,6 +190,49 @@ local function whenText(enc, entry)
         return string.format(TEXT.whenNoCasts, name)
     end
     return string.format(TEXT.whenRow, name, Reminders.FormatTimes(times), lead)
+end
+
+-- "+0:02.5": seconds after the cast as minutes and seconds.
+local function after(t)
+    local m = math.floor(t / 60)
+    local sec = t - m * 60
+    return "+" .. m .. ":" .. (sec == math.floor(sec) and string.format("%02d", sec) or string.format("%04.1f", sec))
+end
+
+local function joined(list)
+    if #list <= 1 then
+        return list[1] or ""
+    end
+    return table.concat(list, ", ", 1, #list - 1) .. TEXT.andWord .. list[#list]
+end
+
+-- The line under When: the bar's impacts, or nil for an alert with none. Ticks after the cast read "Impacts:
+-- +0:00, +0:02.5"; a bar of its own "Bar 8 s, impacts at 4.5 s and 6.5 s".
+function M.ImpactsText(entry)
+    local imp = entry and entry.impacts
+    if not imp then
+        return nil
+    end
+    if imp.length then
+        local bar = string.format(TEXT.barLength, string.format("%g", imp.length))
+        if imp.start ~= 0 then
+            bar = string.format(TEXT.barLengthFrom, string.format("%g", imp.length), string.format("%g", math.abs(imp.start)),
+                imp.start < 0 and TEXT.before or TEXT.after)
+        end
+        if #imp.inBar == 0 then
+            return bar
+        end
+        local list = {}
+        for i, t in ipairs(imp.inBar) do
+            list[i] = string.format(TEXT.secondsWord, string.format("%g", t))
+        end
+        return string.format(TEXT.barImpacts, bar, joined(list))
+    end
+    local list = {}
+    for i, t in ipairs(imp.ticks) do
+        list[i] = after(t)
+    end
+    return string.format(imp.barTo == "cast" and TEXT.impactsToCast or TEXT.impacts, table.concat(list, ", "))
 end
 
 -- The toggle ---------------------------------------------------------------------------------------
@@ -317,6 +393,9 @@ local function drawPanel(enc, entry)
     ui.titleHelp:SetShown(entry.help ~= nil)
     ui.alertMe:SetChecked(c.on)
     ui.whenText:SetText(whenText(enc, entry))
+    local impacts = M.ImpactsText(entry)
+    ui.impactsText:SetText(impacts or "")
+    ui.impactsText:SetShown(impacts ~= nil)
     drawWho(enc, entry)
     placeShowAs()
     for key, check in pairs(ui.checks) do
@@ -531,6 +610,8 @@ local function buildPanel(f)
     heading(p, TEXT.when, L.WHEN_Y, nil, TEXT.whenHelp)
     ui.whenText = line(p, L.WHEN_TEXT_Y)
     ui.whenText:SetTextColor(TIMES_GREY[1], TIMES_GREY[2], TIMES_GREY[3])
+    ui.impactsText = line(p, L.IMPACTS_Y)
+    ui.impactsText:SetTextColor(TIMES_GREY[1], TIMES_GREY[2], TIMES_GREY[3])
 
     heading(p, TEXT.who, L.WHO_Y, nil, TEXT.whoHelp)
     ui.whoText = line(p, L.WHO_TEXT_Y)
@@ -572,7 +653,7 @@ end
 -- bottom), panelX, panelY, panelW, panelH. Returns the parts, for the tab and the tests.
 function M.Build(f, h, g)
     host = h
-    ui, state = {}, { picked = {}, offset = 0, notice = nil }
+    ui, state = {}, { picked = {}, views = {}, offset = 0, notice = nil }
     L.X, L.Y, L.TOGGLE_H = g.x, g.y, g.toggleH
     L.LIST_W, L.LIST_H = g.listW, g.listH
     L.PANEL_X, L.PANEL_Y, L.PANEL_W, L.PANEL_H = g.panelX, g.panelY, g.panelW, g.panelH

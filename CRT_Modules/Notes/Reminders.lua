@@ -88,6 +88,9 @@ local TEXT = {
     showMech = "Show again",
     -- an ability with a ticked alert of yours that isn't on the ability timeline on show
     offTimelineMark = "(not on timeline) %s",
+    -- an ability one of the boss's special alerts already covers (Alerts/Special.lua)
+    specialTag = "Special",
+    specialTip = "The special alert %s covers this ability. With it on, a reminder of your own here only alerts the casts it doesn't.",
 }
 
 -- Layout, from the page's width (UI.PAGE_W) and the tab's height (CRT.NotesPage.TAB_H, under the Raid
@@ -118,6 +121,7 @@ L.ROW_W = L.LIST_W - L.ROW_X - UI.ScrollGutter(L.THUMB_W + L.THUMB_INSET)
 L.NAME_X = 50
 L.DOT_SIZE = 6
 L.NAME_W = L.ROW_W - L.NAME_X - L.DOT_SIZE - 12
+L.TAG_PAD, L.TAG_GAP = 4, 6 -- the Special tag: each side of its word, and to the dot and the name
 L.PANEL_GAP = 12
 L.PANEL_X = L.PAD + L.LIST_W + L.PANEL_GAP
 L.PANEL_W = UI.PAGE_W - L.PAD - L.PANEL_X
@@ -519,6 +523,10 @@ local function itemsFor(enc, name)
         else
             item.label = itemName(item)
             item.types = typesOf and typesOf(item.spellID, item.label) or nil
+            -- the boss's special alert that already covers it, for its Special tag
+            local S = CRT.AlertSpecial
+            item.covered = S and type(enc) == "number" and S:CoveredBy(enc, group, item.spellID, item.ability and item.ability.name,
+                shown and shown.ref) or nil
             item.iconTex = itemIcon(item)
             -- the game had not loaded the spell yet: asked again when the row is painted
             item.unloaded = item.spellID ~= nil and (item.label == TEXT.unnamed or item.iconTex == nil) or nil
@@ -807,6 +815,15 @@ local function paint(index)
             end
             row.check:SetChecked(on)
             row.dot:SetShown(item.has)
+            -- covered by a special alert: its Special tag, the name a little shorter for it
+            local tagW = 0
+            row.tag:SetShown(item.covered ~= nil)
+            if item.covered then
+                local w = row.tag.text.GetUnboundedStringWidth and row.tag.text:GetUnboundedStringWidth() or row.tag.text:GetStringWidth()
+                tagW = math.ceil(tonumber(w) or 0) + 2 * L.TAG_PAD
+                row.tag:SetSize(tagW, L.ROW_H - 8)
+            end
+            row.name:SetWidth(item.covered and math.max(1, L.NAME_W - tagW - L.TAG_GAP) or L.NAME_W)
             row.sel:SetColorTexture(selColor[1], selColor[2], selColor[3], selColor[4])
             row.sel:SetShown(offset + i == index)
             row.frame:Show()
@@ -1168,6 +1185,18 @@ local function openRowMenu(owner, item)
     end)
 end
 
+-- The tooltip of a covered ability's tick and Special tag: which special alert already alerts it.
+local function coveredTip(owner, item)
+    local entry = item and item.covered
+    if not (entry and GameTooltip and UI.TooltipOwner) then
+        return
+    end
+    UI.TooltipOwner(GameTooltip, owner, "ANCHOR_RIGHT")
+    GameTooltip:SetText(TEXT.specialTag, 1, 1, 1)
+    GameTooltip:AddLine(string.format(TEXT.specialTip, entry.label), 0.85, 0.85, 0.85, true)
+    GameTooltip:Show()
+end
+
 local function makeRow(parent, i)
     local frame = CreateFrame("Button", nil, parent)
     frame:SetSize(L.ROW_W, L.ROW_H - 2)
@@ -1185,6 +1214,12 @@ local function makeRow(parent, i)
     row.check:SetScript("OnClick", function()
         onTick(row)
     end)
+    row.check:SetScript("OnEnter", function(self)
+        coveredTip(self, row.item)
+    end)
+    row.check:SetScript("OnLeave", function()
+        GameTooltip:Hide()
+    end)
     row.icon = frame:CreateTexture(nil, "ARTWORK")
     row.icon:SetSize(18, 18)
     row.icon:SetPoint("LEFT", 28, 0)
@@ -1201,6 +1236,20 @@ local function makeRow(parent, i)
     if row.dot.SetMask then
         row.dot:SetMask("Interface\\CharacterFrame\\TempPortraitAlphaMask") -- round
     end
+    -- the Special tag: a special alert already covers this ability; its tooltip names it
+    row.tag = CreateFrame("Button", nil, frame)
+    row.tag:SetPoint("RIGHT", frame, "RIGHT", -8 - L.DOT_SIZE - L.TAG_GAP, 0)
+    row.tag.text = row.tag:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    row.tag.text:SetPoint("CENTER")
+    row.tag.text:SetText(TEXT.specialTag)
+    UI.Tint(row.tag.text, "SetTextColor", "accent")
+    row.tag:SetScript("OnEnter", function(self)
+        coveredTip(self, row.item)
+    end)
+    row.tag:SetScript("OnLeave", function()
+        GameTooltip:Hide()
+    end)
+    row.tag:Hide()
     -- a click on the row, outside the tick, selects it; a right-click opens its menu (/crt dev open)
     frame:RegisterForClicks("LeftButtonUp", "RightButtonUp")
     frame:SetScript("OnClick", function(self, button)
@@ -1798,6 +1847,10 @@ CRT.NoteReminders = {
             saveTyped() -- typing waiting to save belongs to the row it was typed on
         end
         selected, viewPrefer, opened = encounterID, nil, nil
+        -- opened on one of its abilities: the Mechanics list, whatever the boss's special alerts
+        if spellID and CRT.NoteSpecialAlerts then
+            CRT.NoteSpecialAlerts.ShowMechanics(encounterID)
+        end
         if spellID then
             picked[encounterID] = "a:" .. tostring(spellID)
             reveal = true
