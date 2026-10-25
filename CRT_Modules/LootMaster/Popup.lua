@@ -8,7 +8,7 @@ local ADDON, CRT = ...
 -- right-click. The looter can show a panel again or ask you to roll again, which restarts its timer.
 -- An item your CRT answered for you (Comm.lua's CheckSpecs) has no panel unless Show me items I can't use is
 -- on: it gets a short row instead (icon, name, item level, "Transmog (auto)", or who it was given to), under
--- the line saying why, until its answer time is over. So the popup opens on every session, even one where
+-- the line saying why, until the session ends (past the answer time). So the popup opens on every session, even one where
 -- nothing needs a choice (Alex, 2026-10-25: "make sure the loot window always shows"). Its X takes a row away.
 -- In Default: Blizzard each panel looks like the game's group-loot roll frame and the whole popup sits in
 -- the main window's frame, sized to what shows; the other themes draw it flat in their colours.
@@ -576,12 +576,13 @@ local function openItems(inc)
     return out
 end
 
--- The answered-for-you items with no panel that still have time: each gets a row.
+-- The answered-for-you items with no panel: each gets a row, for the whole session (past the answer
+-- time), so you see who got each one.
 local function autoItems(inc)
     local out = {}
     for i = 1, LM.MAX_ITEMS do
         local it, mine = inc.items[i], inc.mine[i]
-        if it and mine and mine.auto and mine.closed and not mine.dismissed and timeLeft(it, inc) > 0 then
+        if it and mine and mine.auto and mine.closed and not mine.dismissed then
             out[#out + 1] = i
         end
     end

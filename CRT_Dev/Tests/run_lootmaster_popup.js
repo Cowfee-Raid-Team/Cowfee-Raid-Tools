@@ -474,13 +474,26 @@ check(not anchor.shown, "the title bar's X closes the popup, rows and all")
 rowsNow = 0
 for _, f in ipairs(frames) do if rawget(f, "autoRow") and f.shown then rowsNow = rowsNow + 1 end end
 eq(rowsNow, 0, "closed: no row shows")
--- the answer time over: the rows go with the panels
+-- the answer time over: the rows stay for the whole session, so the raider sees who got each item
 LM:ShowPopup()
 check(anchor.shown, "shown again after the X")
 allAuto.items[1].shownAt, allAuto.items[2].shownAt = 0, 0
+allAuto.mine[1] = { auto = true, closed = true, response = "tmog" }
 allAuto.mine[2] = { auto = true, closed = true, response = "tmog" }
 LM:Fire("incoming")
-check(not anchor.shown, "the time over: the popup closes")
+check(anchor.shown, "the time over: the popup stays for its rows")
+rowsNow = 0
+for _, f in ipairs(frames) do if rawget(f, "autoRow") and f.shown then rowsNow = rowsNow + 1 end end
+eq(rowsNow, 2, "the time over: both rows stay")
+check(r1 and r1.state.text:find("Mythicforge", 1, true), "the time over: the row still says who got it")
+allAuto.items[2].award = { name = "Solex", response = "tmog" }
+LM:Fire("incoming")
+local r2
+for _, f in ipairs(frames) do if rawget(f, "autoRow") and f.shown and f.index == 2 then r2 = f end end
+check(r2 and r2.state.text:find("Solex", 1, true), "an award after the time: the row says who got it")
+-- the session's end closes the popup
+LM:Fire("incoming", "ended")
+check(not anchor.shown, "the session over: the popup closes")
 C_Item.GetItemInfoInstant = instant
 print(string.format("%d passed, %d failed", passes, fails))
 if fails > 0 then error("failures") end
