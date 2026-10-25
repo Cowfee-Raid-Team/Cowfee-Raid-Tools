@@ -11,14 +11,21 @@ local ADDON, CRT = ...
 --             replaces this block.
 -- special     The boss's special alerts on Raid Notes > Mech Alerts > Special (the format is at the top of
 --             Alerts/Special.lua). Each one but Pre-Pot names a row of the ability timeline (when.row), so its
---             times are that row's casts and move when the reference changes; Pre-Pot is 5 s before the pull,
---             from the game's pull timer only (one of 10 s or more). Four are on until a player changes them (Caustic Waves, Mother's
---             Wrath for tanks, Rage of the Shackled, Circling Prey); the rest are off until ticked. The (?)
---             sentences come from the boss's Encounter Journal text; Slithering Gestation and Submerge are not
---             in it, so theirs only say what the row is. There is no tank-buster type, so Mother's Wrath has
---             the generic one. None has a difficulty: each follows the ability timeline of the run's group.
+--             times are that row's casts and move when the reference changes. Pre-Pot is typed at 5 s before
+--             the pull with a 5 s lead: it shows and is read out 10 s before the pull, from the game's pull
+--             timer only (one of 10 s or more). Four are on until a player changes them (Caustic Waves,
+--             Mother's Wrath for tanks, Rage of the Shackled, Circling Prey); the rest are off until ticked.
+--             The (?) sentences come from the boss's Encounter Journal text; Slithering Gestation and Submerge
+--             are not in it, so theirs are plain. There is no tank-buster type, so Mother's Wrath has the
+--             generic one.
+--             The nine row alerts have difficulty = "mythic": the only ability timeline is Mythic's, and a
+--             Normal or Heroic run with none of its own would read Mythic's times. On Normal and Heroic only
+--             Pre-Pot is listed. Once a Heroic ability timeline lands, the others lose their difficulty, but
+--             Toxic Incubation and Serpent's Bite keep difficulty = "mythic": the wiki's Journal text marks
+--             them Mythic-only mechanics.
 --             Still needs Alex:
---               - a Heroic ability timeline (from his screenshot): until then Normal and Heroic get no times;
+--               - a Heroic ability timeline (from his screenshot): until then Normal and Heroic get no row
+--                 alerts;
 --               - phase lines and phase triggers, once his /crt dev probe log confirms the phase events. Until
 --                 then every cast counts from the pull, so a phase that starts early or late is not corrected.
 --             CRT_Dev/Tests/run_season_special.js checks every entry reads and every row is on the reference.
@@ -61,6 +68,7 @@ Fester Burst: 0:39, 1:14, 1:48, 2:23, 7:45, 8:19
             help = "Waves of venom cross the platform. They hit on impact and keep hurting anyone in their path for 10 seconds.",
             type = "dodge",
             default = true,
+            difficulty = "mythic",
             when = { row = "Caustic Waves" },
             lead = 6,
             who = { mode = "everyone" },
@@ -73,6 +81,7 @@ Fester Burst: 0:39, 1:14, 1:48, 2:23, 7:45, 8:19
             help = "Ula'tek knocks back her target and bites them, leaving stacking Stone Venom and a slow. If her target is out of reach, every player is hit.",
             type = "generic", -- there is no tank-buster type
             default = true,
+            difficulty = "mythic",
             when = { row = "Mother's Wrath" },
             lead = 8,
             who = { mode = "roles", roles = { "tank" } },
@@ -85,6 +94,7 @@ Fester Burst: 0:39, 1:14, 1:48, 2:23, 7:45, 8:19
             help = "Ula'tek rages for 20 seconds: raid damage every 5 seconds and falling debris. Flying into the rage exposes her Venomous Heart.",
             type = "raid",
             default = true,
+            difficulty = "mythic",
             when = { row = "Rage of the Shackled" },
             lead = 15,
             who = { mode = "everyone" },
@@ -99,6 +109,7 @@ Fester Burst: 0:39, 1:14, 1:48, 2:23, 7:45, 8:19
             help = "Ula'tek destroys part of the platform, hitting and knocking back players within 13 yards.",
             type = "dodge",
             default = true,
+            difficulty = "mythic",
             when = { row = "Circling Prey" },
             lead = 6,
             who = { mode = "everyone" },
@@ -110,6 +121,7 @@ Fester Burst: 0:39, 1:14, 1:48, 2:23, 7:45, 8:19
             label = "Serpent's Bite",
             help = "Fangs hit random players and keep pumping venom every second. The poison turns them into a Calcified Corpse unless it is leeched within 15 seconds.",
             type = "heavydot", -- the Journal shows no dispel icon on it: the poison is leeched, not dispelled
+            difficulty = "mythic", -- a Mythic-only mechanic: keeps this with a Heroic ability timeline
             when = { row = "Serpent's Bite" },
             lead = 6,
             who = { mode = "everyone" },
@@ -121,6 +133,7 @@ Fester Burst: 0:39, 1:14, 1:48, 2:23, 7:45, 8:19
             label = "Toxic Incubation",
             help = "A spectral Ula'tek sends a cascade toward the Toxic Blightscale. Each impact sets off Caustic Waves.",
             type = "generic",
+            difficulty = "mythic", -- a Mythic-only mechanic: keeps this with a Heroic ability timeline
             when = { row = "Toxic Incubation" },
             lead = 6,
             who = { mode = "everyone" },
@@ -130,8 +143,9 @@ Fester Burst: 0:39, 1:14, 1:48, 2:23, 7:45, 8:19
         {
             key = "adds",
             label = "Slithering Gestation",
-            help = "Adds come, on each cast of this row of the ability timeline.",
+            help = "Slithering Clutches hatch into adds.",
             type = "generic",
+            difficulty = "mythic",
             when = { row = "Slithering Gestation" },
             lead = 6,
             who = { mode = "everyone" },
@@ -143,6 +157,7 @@ Fester Burst: 0:39, 1:14, 1:48, 2:23, 7:45, 8:19
             label = "Mephitic Thrash",
             help = "Ula'tek's tail sweeps the ground, knocking back players within 35 yards and leaving damage every 2 seconds for 20 seconds.",
             type = "dodge",
+            difficulty = "mythic",
             when = { row = "Mephitic Thrash" },
             lead = 5,
             who = { mode = "everyone" },
@@ -152,8 +167,9 @@ Fester Burst: 0:39, 1:14, 1:48, 2:23, 7:45, 8:19
         {
             key = "submerge",
             label = "Submerge",
-            help = "Ula'tek submerges, on each cast of this row of the ability timeline.",
+            help = "Ula'tek submerges.",
             type = "generic",
+            difficulty = "mythic",
             when = { row = "Submerge" },
             lead = 5,
             who = { mode = "everyone" },
@@ -163,7 +179,7 @@ Fester Burst: 0:39, 1:14, 1:48, 2:23, 7:45, 8:19
         {
             key = "prePot",
             label = "Pre-Pot",
-            help = "Drink your potion before the pull. It plays only from the game's pull timer, 5 seconds before the pull, when the timer runs 10 seconds or more.",
+            help = "Drink your potion. It shows 10 seconds before the pull, from a pull timer of 10 seconds or more.",
             type = "generic",
             -- no icon: no potion texture file ID could be confirmed from Blizzard's UI source or the wiki
             -- -0:05 with lead 5: it shows 10 s before the pull, so any pull timer of 10 s or more plays it (the
