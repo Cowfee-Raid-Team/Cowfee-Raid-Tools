@@ -324,8 +324,9 @@ local autoFrame
 for _, f in ipairs(frames) do if rawget(f, "show") and rawget(f, "text") and f.parent == anchor then autoFrame = f end end
 check(autoFrame and autoFrame.shown, "auto line shows")
 check(autoFrame and autoFrame.points[1][2] == 4 and autoFrame.points[1][3] == -(26 + 4), "classic: the auto line inside the inset")
-eq(chrome.h, 26 + 4 + 22 + 4 + p.h + 4 + p2.h + 6, "classic: the frame takes in the auto line")
-eq(last(p)[3], -(26 + 4 + 22 + 4), "classic: the items under it")
+-- and the item's own row under it (24 high)
+eq(chrome.h, 26 + 4 + 22 + 4 + 24 + 4 + p.h + 4 + p2.h + 6, "classic: the frame takes in the auto line and its row")
+eq(last(p)[3], -(26 + 4 + 22 + 4 + 24 + 4), "classic: the items under it")
 
 -- unchanged behaviour: a click answers, a right-click closes, and the frame shrinks to what is left
 p.note.text = " my note "
@@ -334,8 +335,8 @@ check(answered and answered[1] == p.index and answered[2] == eight[2].key and an
 p.scripts.OnMouseUp(p, "RightButton")
 check(LM.incoming.mine[p.index] and LM.incoming.mine[p.index].closed, "a right-click closes the item")
 check(not p.shown, "the closed item hides")
-eq(chrome.h, 26 + 4 + 22 + 4 + p2.h + 6, "closed: the frame shrinks to the items left")
-eq(last(p2)[3], -(26 + 4 + 22 + 4), "closed: the next item moves up, no gap")
+eq(chrome.h, 26 + 4 + 22 + 4 + 24 + 4 + p2.h + 6, "closed: the frame shrinks to the items left")
+eq(last(p2)[3], -(26 + 4 + 22 + 4 + 24 + 4), "closed: the next item moves up, no gap")
 -- the auto items shown again (Show again): every item back, the frame grows
 LM:ShowPopup()
 check(p.shown and autoFrame.shown == false, "shown again: the closed item is back and the auto line goes")
@@ -420,6 +421,80 @@ rawget(strip, "close").scripts.OnClick()
 local allClosed = true
 for i in pairs(LM.incoming.items) do if not (LM.incoming.mine[i] and LM.incoming.mine[i].closed) then allClosed = false end end
 check(allClosed, "the title bar's X closes every item")
+
+-- Alex, 2026-10-25: a session where every item was answered for you still opens the popup, listing every
+-- item (icon, name, item level) with its answer, and who got it once given out. Through the real path:
+-- Comm.lua's CheckSpecs answers both tank trinkets for a mage and closes their panels (Show me items I
+-- can't use is off), then the session's "shown" opens the popup.
+local listenerErr
+geterrorhandler = function() return function(e) listenerErr = e end end
+C_Item.GetItemInfoInstant = function(s)
+  if s == "item:6" or s == "item:7" then return 6, "Armor", "Miscellaneous", "INVTYPE_TRINKET", 0, 4, 0 end
+  return instant(s)
+end
+CRT.db.lootmaster.showAllItems = false
+local tmog = { key = "tmog", label = "Transmog", color = { 0.5, 0.5, 0.5 } }
+local allAuto = { id = "s2", items = { { itemString = "item:6", ilvl = 44, shownAt = 100 }, { itemString = "item:7", ilvl = 45, shownAt = 100 } },
+  mine = {}, responses = { tmog }, byKey = { tmog = tmog }, seconds = 60, autoPass = true, version = LM.VERSION,
+  view = { Answer = function() end } } -- out of a group the answers come straight back: the raider window's copy
+LM.incoming = allAuto
+LM:CheckSpecs(allAuto, function() end)
+check(allAuto.mine[1] and allAuto.mine[1].auto and allAuto.mine[1].closed and allAuto.mine[2] and allAuto.mine[2].auto,
+  "all auto: both items answered for you, their panels closed")
+LM:Fire("incoming", "shown")
+eq(listenerErr, nil, "all auto: no error drawing the popup")
+check(anchor.shown, "all auto: the popup opens though nothing needs a choice")
+local autoRows = {}
+for _, f in ipairs(frames) do if rawget(f, "autoRow") and f.shown then autoRows[#autoRows + 1] = f end end
+eq(#autoRows, 2, "all auto: a row per item")
+local r1
+for _, f in ipairs(autoRows) do if f.index == 1 then r1 = f end end
+check(r1 and r1.icon.file == 134400, "all auto: the row has the item's icon")
+check(r1 and r1.name.text == "item 6", "all auto: the row has the item's name (got " .. tostring(r1 and r1.name.text) .. ")")
+check(r1 and r1.ilvl.text and r1.ilvl.text:find("44", 1, true), "all auto: the row has the item level")
+eq(r1 and r1.state.text, "Transmog (auto)", "all auto: the row says the answer given for you")
+check(autoFrame.shown, "all auto: the line saying why shows above the rows")
+for _, q in ipairs({ p, p2, p3, pf }) do check(not q.shown, "all auto: no answer panel shows") end
+-- given out: the row says who got it
+allAuto.items[1].award = { name = "Mythicforge", response = "tmog" }
+LM:Fire("incoming")
+check(r1 and r1.state.text:find("Mythicforge", 1, true), "given out: the row says who got it (got " .. tostring(r1 and r1.state.text) .. ")")
+-- one item still needs a choice: its panel shows, the other its row
+allAuto.mine[2] = nil
+LM:Fire("incoming", "shown")
+local open2
+for _, f in ipairs(frames) do if rawget(f, "note") and rawget(f, "buttons") and f.shown and f.index == 2 then open2 = f end end
+check(open2 ~= nil, "mixed: the item to choose shows its panel")
+local rowsNow = 0
+for _, f in ipairs(frames) do if rawget(f, "autoRow") and f.shown then rowsNow = rowsNow + 1 end end
+eq(rowsNow, 1, "mixed: the other item keeps its row")
+-- the title bar's X closes the rows too, and the popup with them
+rawget(strip, "close").scripts.OnClick()
+check(not anchor.shown, "the title bar's X closes the popup, rows and all")
+rowsNow = 0
+for _, f in ipairs(frames) do if rawget(f, "autoRow") and f.shown then rowsNow = rowsNow + 1 end end
+eq(rowsNow, 0, "closed: no row shows")
+-- the answer time over: the rows stay for the whole session, so the raider sees who got each item
+LM:ShowPopup()
+check(anchor.shown, "shown again after the X")
+allAuto.items[1].shownAt, allAuto.items[2].shownAt = 0, 0
+allAuto.mine[1] = { auto = true, closed = true, response = "tmog" }
+allAuto.mine[2] = { auto = true, closed = true, response = "tmog" }
+LM:Fire("incoming")
+check(anchor.shown, "the time over: the popup stays for its rows")
+rowsNow = 0
+for _, f in ipairs(frames) do if rawget(f, "autoRow") and f.shown then rowsNow = rowsNow + 1 end end
+eq(rowsNow, 2, "the time over: both rows stay")
+check(r1 and r1.state.text:find("Mythicforge", 1, true), "the time over: the row still says who got it")
+allAuto.items[2].award = { name = "Solex", response = "tmog" }
+LM:Fire("incoming")
+local r2
+for _, f in ipairs(frames) do if rawget(f, "autoRow") and f.shown and f.index == 2 then r2 = f end end
+check(r2 and r2.state.text:find("Solex", 1, true), "an award after the time: the row says who got it")
+-- the session's end closes the popup
+LM:Fire("incoming", "ended")
+check(not anchor.shown, "the session over: the popup closes")
+C_Item.GetItemInfoInstant = instant
 print(string.format("%d passed, %d failed", passes, fails))
 if fails > 0 then error("failures") end
 `;
