@@ -211,23 +211,22 @@ function Alert:Refresh()
         return
     end
     handle:SetShown(previewOn)
-    if previewOn then
-        local info = Notes:SpellInfo(31884)
-        show(info and info.icon or 134400, info and info.name or TEXT.sample, "5.0s")
-        return
-    end
-    local s = settings()
-    if not (s.enabled and CRT.Alerts.running) then
-        frame:Hide()
-        return
-    end
-
     -- The alert: the engine's line inside its warn and hold window, soonest first, on the engine's time
-    -- (a rehearsal's clock in one).
-    local now = CRT.Alerts.Now and CRT.Alerts:Now() or GetTime()
-    local best = CRT.AlertRules.Alert(CRT.Alerts:Lines(now), now)
+    -- (a rehearsal's clock in one). With Previews on, a run's alert (a Test's too) shows in place of the
+    -- sample while it is due, and the sample the rest of the time, so the drag box stays.
+    local s = settings()
+    local best, now
+    if s.enabled and CRT.Alerts.running then
+        now = CRT.Alerts.Now and CRT.Alerts:Now() or GetTime()
+        best = CRT.AlertRules.Alert(CRT.Alerts:Lines(now), now)
+    end
     if not best then
-        frame:Hide()
+        if previewOn then
+            local info = Notes:SpellInfo(31884)
+            show(info and info.icon or 134400, info and info.name or TEXT.sample, "5.0s")
+        else
+            frame:Hide()
+        end
         return
     end
     local remaining = best.at - now
