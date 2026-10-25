@@ -210,14 +210,16 @@ end
 local stripColor = UI.StripColor
 
 -- The strip's own colors, painted again when the theme changes; the badge keeps the colors it was
--- given, so a theme color (STRIP.neutral) follows too.
+-- given, so a theme color (STRIP.neutral) follows too. A window's strip (framed) is part of the window's
+-- background, so its fill is drawn at the window opacity (UI:Opacity); a strip of its own stays solid.
 local function paintStrip(s)
     local tr, tg, tb = stripColor(STRIP.top)
     local br, bgr, bb = stripColor(STRIP.bottom)
+    local a = s.framed and UI:Opacity() or 1
     s.bg:SetColorTexture(1, 1, 1, 1)
-    local ok = pcall(s.bg.SetGradient, s.bg, "VERTICAL", CreateColor(br, bgr, bb, 1), CreateColor(tr, tg, tb, 1))
+    local ok = pcall(s.bg.SetGradient, s.bg, "VERTICAL", CreateColor(br, bgr, bb, a), CreateColor(tr, tg, tb, a))
     if not ok then
-        s.bg:SetColorTexture(tr, tg, tb, 1)
+        s.bg:SetColorTexture(tr, tg, tb, a)
     end
     local lr, lg, lb = stripColor(STRIP.line)
     s.line:SetColorTexture(lr, lg, lb, 1)
@@ -359,6 +361,12 @@ function UI.TitleStrip(parent, height, opts)
     s:SetScript("OnSizeChanged", layoutStrip)
     s.crtSkin = function()
         styleStrip(s)
+    end
+    -- the opacity slider repaints a window's strip live (UI:ApplyOpacity)
+    if s.framed then
+        s.crtOpacity = function()
+            paintStrip(s)
+        end
     end
     UI.skinned[#UI.skinned + 1] = s
     styleStrip(s)

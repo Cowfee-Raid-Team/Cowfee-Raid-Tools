@@ -29,8 +29,8 @@ local defaults = {
     window = { point = "CENTER", x = 0, y = 0, scale = 100 }, -- the main panel; scale is a percent, 50 to 200
     -- The General Settings page. font is "default" (the game's own) or a name from CRT.FONTS, outline is
     -- "", "OUTLINE" or "THICKOUTLINE", fontSize the body text size in points (set the first time from
-    -- textSize, the percent used before 0.17.2). bgAlpha is the main window's opacity in percent (30 to
-    -- 100). An old profile may still hold style, a window style choice that is no longer read. layers holds a
+    -- textSize, the percent used before 0.17.2). bgAlpha is the opacity of every window's background in percent (30 to
+    -- 100, 100 solid; UI:ApplyOpacity in UI/Panel.lua). An old profile may still hold style, a window style choice that is no longer read. layers holds a
     -- frame strata for each kind of window moved off its default (UI.LAYERS in UI/Panel.lua).
     -- soundChannel is the game sound channel every sound the addon plays goes through (CRT:PlaySound).
     -- theme is the look picked from the title bar (UI:SetTheme in UI/Panel.lua, CRT.THEME_LIST in Themes.lua);
@@ -41,7 +41,7 @@ local defaults = {
     -- each tooltip on its own side, or a key of UI.TOOLTIP_SPOTS), "game" the game's tooltip spot, "cursor"
     -- following the cursor (UI.TooltipOwner in UI/Tooltip.lua). They replaced tooltipAnchor, which is read
     -- once on load (below) and kept.
-    ui = { font = "default", outline = "", textSize = 100, bgAlpha = 100, layers = {}, soundChannel = "Master", hideRealms = false, modern = false, theme = "blizzard", tooltipMode = "spot", tooltipSpot = "auto" },
+    ui = { font = "default", outline = "", textSize = 100, bgAlpha = 90, layers = {}, soundChannel = "Master", hideRealms = false, modern = false, theme = "blizzard", tooltipMode = "spot", tooltipSpot = "auto" },
     lastPage = "groups",
     -- The minimap button (UI/Minimap.lua): angle is its place around the minimap, in degrees.
     minimap = { hide = false, angle = 225 },
