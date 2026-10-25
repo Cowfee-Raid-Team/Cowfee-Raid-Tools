@@ -680,7 +680,7 @@ do
   local it = A.items[1]
   assert(it.block == "note" and it.ph == 2 and it.time == 34, "note item: " .. tostring(it.block))
   assert(it.outputs.text and it.outputs.circle and not it.outputs.alert and it.outputs.speech and it.sound == "READY_CHECK" and it.warn == 7)
-  assert(A:PhaseStart(2) == clock + 10 - 34, "10 s out")
+  assert(A:PhaseStart(2) == clock + 7 + 5 - 34, "5 s before its 7 s Show from: " .. tostring(A:PhaseStart(2) - clock))
   assert(noteRaw(id) == before and #R:List(ENC) == 0, "nothing saved")
   print("ok editor: test shows every ticked display")
 end
@@ -1727,7 +1727,8 @@ do
   click(w.testBtn)
   assert(#opened == 1, "OpenAt called: " .. #opened)
   local c = opened[1]
-  assert(c.enc == ENC and c.diff == "Heroic" and c.t == 25 and c.opts.stopAt == 33, "the 5 s countdown before 0:30, paused 3 s after: " .. tostring(c.diff) .. " " .. tostring(c.t))
+  -- 5 s before its 5 s Show from; ends 5 s after it is done (no Linger: the alert's own half second)
+  assert(c.enc == ENC and c.diff == "Heroic" and c.t == 20 and c.opts.stopAt == 35.5, "from 0:20 to 0:35.5 around 0:30: " .. tostring(c.diff) .. " " .. tostring(c.t) .. " " .. tostring(c.opts.stopAt))
   assert(c.opts.testing == "Draft", "Testing label: " .. tostring(c.opts.testing))
   local extra = c.opts.alerts and c.opts.alerts.extra
   assert(type(extra) == "table" and #extra == 1 and extra[1].text == "Draft" and extra[1].block == "minetest", "the draft's item")
@@ -1738,7 +1739,7 @@ do
   E:OpenNote(id, 4) -- time:50;ph:1;text:Other;
   click(w.testBtn)
   c = opened[2]
-  assert(c and c.t == 40 and c.diff == "Heroic", "the note line from 0:50, its 10 s Show from early: " .. tostring(c and c.t))
+  assert(c and c.t == 35 and c.diff == "Heroic", "the note line at 0:50, 5 s before its 10 s Show from: " .. tostring(c and c.t))
   extra = c.opts.alerts.extra
   assert(#extra == 1 and extra[1].block == "note" and extra[1].text == "Other", "note item")
   local rep = c.opts.alerts.replaces
@@ -1757,7 +1758,7 @@ do
   pick("Difficulty", "mythic")
   click(w.testBtn)
   local c = opened[1]
-  assert(c and c.t == 125 and c.diff == "Mythic", "P2 at 2:00 + 0:10, its 5 s Show from early: " .. tostring(c and c.t))
+  assert(c and c.t == 120 and c.diff == "Mythic", "P2 at 2:00 + 0:10, 5 s before its 5 s Show from: " .. tostring(c and c.t))
   -- Heroic's reference has no phase 2: no fight time, so the quick test runs
   pick("Difficulty", "nh")
   click(w.testBtn)
@@ -1781,14 +1782,14 @@ do
   mockWindow(true)
   click(w.testBtn)
   local c = opened[1]
-  assert(c and c.diff == "Heroic" and c.t == 40, "Heroic's 0:45, 5 s early: " .. tostring(c and c.diff) .. " " .. tostring(c and c.t))
+  assert(c and c.diff == "Heroic" and c.t == 35, "Heroic's 0:45, 5 s before its 5 s Show from: " .. tostring(c and c.diff) .. " " .. tostring(c and c.t))
   -- a recorded pull has no reference: only phase 1 times are placed
   sourceOverride = { base = { id = 1 }, encounterID = ENC, group = "mythic", difficultyName = "Mythic" }
   E:Open(ENC, nil, { text = "Mixed", times = "P1 0:20; P2 0:01" })
   pick("Difficulty", "mythic")
   click(w.testBtn)
   c = opened[2]
-  assert(c and c.t == 15 and c.diff == "Mythic", "phase 1 from the pull, 5 s early: " .. tostring(c and c.t))
+  assert(c and c.t == 10 and c.diff == "Mythic", "phase 1 from the pull, 5 s before its 5 s Show from: " .. tostring(c and c.t))
   E:Open(ENC, nil, { text = "Later", times = "P2 0:10" })
   pick("Difficulty", "mythic")
   click(w.testBtn)
@@ -1831,12 +1832,12 @@ do
   click(w.testBtn)
   local c = opened[1]
   assert(asked[1] == "mythic", "the order of the group played: " .. tostring(asked[1]))
-  assert(c and c.t == 85, "0:30 moved to 1:30, 1:00 dropped, P2 0:05 is 2:05: " .. tostring(c and c.t))
+  assert(c and c.t == 80, "0:30 moved to 1:30, 1:00 dropped, P2 0:05 is 2:05: " .. tostring(c and c.t))
   -- a line of no part keeps its time
   E:Open(ENC, nil, { text = "Other", times = "P1 0:30" })
   pick("Difficulty", "mythic")
   click(w.testBtn)
-  assert(opened[2] and opened[2].t == 25, "no part: unmoved: " .. tostring(opened[2] and opened[2].t))
+  assert(opened[2] and opened[2].t == 20, "no part: unmoved: " .. tostring(opened[2] and opened[2].t))
   CRT.Timeline.OrderShift = realShift
   CRT.TimelineRehearsalWindow = nil
   assert(#errors == 0, tostring(errors[1]))

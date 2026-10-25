@@ -54,7 +54,7 @@ local TEXT = {
     -- under Show as, for the bar: greyed while Bar is off
     ticks = "Impact ticks",
     ticksUnit = "s after the cast",
-    ticksHelp = "Each number is a thin line on the bar where that hit lands, in seconds after the cast, such as 1.5, 3.5. The fill reaches each line as its hit lands. Leave it empty for no ticks.\n\nBar ends: at the last impact, the bar runs on to the last line. At the cast, it ends at the cast.\n\nThese are for Only me alerts. A raid note line can't carry them.",
+    ticksHelp = "Each number is a thin line on the bar where that hit lands, in seconds after the cast, such as 1.5, 3.5. The fill reaches each line as its hit lands. Leave it empty for no ticks.\n\nWith ticks, the bar shows from Show from before the cast, a faint line marks the cast, and the seconds count to the next hit.\n\nBar ends: at the last impact, the bar runs on to the last line. At the cast, it ends at the cast.\n\nThese are for Only me alerts. A raid note line can't carry them.",
     barFill = "Bar fill",
     fillUp = "Bar fills up",
     fillDown = "Bar empties",

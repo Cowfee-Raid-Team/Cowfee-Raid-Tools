@@ -545,12 +545,12 @@ do
   assert(w.testBtn.shown and not w.exportBtn.shown and w.deleteBtn.shown, "Test and Delete stay; no Export (a saved alert has no time to write)")
   assert(w.textEdit.text == "Soak now" and w.forRow.shown and value("For") == "tank G1" and w.idEdit.text == "135940", "fields")
   assert(w.messageText.text == "", "no time is asked for: " .. w.messageText.text)
-  -- Test: ten seconds on, phase 1, saving nothing
+  -- Test: 10 s into phase 1, starting 5 s before its Show from, saving nothing
   click(w.testBtn)
   assert(A.running and A.run.reason == "test" and #A.items == 1 and message() == "", "test ran: " .. message())
   local it = A.items[1]
   assert(it.ph == 1 and it.time == 10 and it.block == "note", "note-type saved alert tests as a note item")
-  assert(A:PhaseStart(1) == clock + 10 - 10, "starts now, 10 s to the alert")
+  assert(it.warn > 0 and A:PhaseStart(1) == clock + it.warn + 5 - 10, "5 s before it shows: " .. tostring(A:PhaseStart(1) - clock))
   A:Stop(true)
   -- a reminder-type one tests as a reminder
   typeInto(w.textEdit, "Changed")
