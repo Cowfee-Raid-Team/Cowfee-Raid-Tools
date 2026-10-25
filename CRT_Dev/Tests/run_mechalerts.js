@@ -1176,6 +1176,16 @@ check("mech: ability names in their type colour, with a type tooltip", function(
   -- the shared ability tooltip (CRT.AbilityTip): the game's spell tooltip, then the types
   assert(all == "SetOwner:" .. tostring(r2.frame) .. "|SetSpellByID:888|AddLine:Dispel: a debuff to dispel|AddLine:Mythic: Mythic only|Show:nil", all)
   assert(near(said[3][3], dispel) and near(said[4][3], Ref.TYPES.mythic.color), "each line in its type's colour")
+  -- the header icon over the selected row's settings shows the same tooltip
+  click(r2.frame)
+  local hit = CRT.NoteReminders.IconHit()
+  assert(hit and hit.OnEnter, "the header icon has a hover frame")
+  said = {}
+  hit.OnEnter(hit)
+  assert(said[1] and said[1][1] == "SetOwner" and said[2][1] == "SetSpellByID" and said[2][2] == 888, "the header icon shows the ability tooltip")
+  click(r1.frame)
+  said = {}
+  r2.frame.OnEnter(r2.frame)
   -- Tooltip position, the game's tooltip spot: the same text where the game shows its tooltips
   assert(type(CRT.UI.TooltipOwner) == "function", "UI.TooltipOwner (CRT_Core/UI/Tooltip.lua) is loaded")
   local spot

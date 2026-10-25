@@ -615,6 +615,7 @@ local function drawPanel()
     local icon = draftIcon()
     panel.icon:SetTexture(icon)
     panel.icon:SetShown(icon ~= nil)
+    panel.iconHit:SetShown(icon ~= nil)
     panel.name:SetText(draftName())
     panel.alertMe:SetChecked(cur.item and cur.item.r ~= nil and cur.item.r.enabled ~= false)
     for _, row in ipairs(panel.rows) do
@@ -1253,6 +1254,17 @@ local function buildPanel(f)
     panel.icon:SetSize(L.HEADER_ICON, L.HEADER_ICON)
     panel.icon:SetPoint("TOPLEFT", L.INSET, L.ICON_Y)
     panel.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+    -- hovering the header icon shows the same ability tooltip as the row (a texture takes no mouse, so a
+    -- small frame over it does)
+    panel.iconHit = CreateFrame("Frame", nil, p)
+    panel.iconHit:SetAllPoints(panel.icon)
+    panel.iconHit:EnableMouse(true)
+    panel.iconHit:SetScript("OnEnter", function(self)
+        typeTip(self, cur.item)
+    end)
+    panel.iconHit:SetScript("OnLeave", function()
+        GameTooltip:Hide()
+    end)
     panel.name = p:CreateFontString(nil, "OVERLAY", "CRTFontLarge")
     panel.name:SetPoint("TOPLEFT", L.INSET + L.HEADER_ICON + 8, L.NAME_Y)
     panel.name:SetWidth(L.TITLE_W)
@@ -1772,6 +1784,10 @@ end
 
 CRT.NoteReminders = {
     Build = build,
+    -- the header icon's hover frame (tests)
+    IconHit = function()
+        return panel.iconHit
+    end,
     -- Opens the Mech Alerts tab on a boss with one of its Journal abilities selected (by spell ID), as
     -- the Timeline's Journal list does with Make a Mech Alert.
     Open = function(encounterID, spellID)
