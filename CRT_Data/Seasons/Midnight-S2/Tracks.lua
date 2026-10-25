@@ -28,6 +28,7 @@ CRT.Bosses:SeasonData("midnight-s2", "tracks", {
         -- From Alex's /crt dev gear and the items' tooltips, 2026-10-24. Each is the one 128xx bonus ID the
         -- items differ by; only ranks seen on a real item are listed (never guessed from the pattern).
         [12843] = { track = "hero", rank = 3, max = 6 }, -- Leggings of the Galeforce Viper (159329), ilvl 311
+        [12846] = { track = "hero", rank = 6, max = 6 }, -- neck 273781, chest 271531, hands 159312, ring 272149, all ilvl 321 and fully upgraded (Alex, 2026-10-24: "all my gear is capped except" the legs)
         [12853] = { track = "myth", rank = 5, max = 6 }, -- head 271528, ilvl 331
         [12854] = { track = "myth", rank = 6, max = 6 }, -- Enigmatic Dreamwatcher's Plumage (271526), ilvl 334
         -- TODO ids: the other ranks and tracks (/crt dev gear on more items, with their tooltips' Upgrade Level)
