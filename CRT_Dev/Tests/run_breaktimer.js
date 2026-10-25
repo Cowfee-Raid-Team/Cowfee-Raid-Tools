@@ -8,7 +8,7 @@ const path = require('path');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const themeLua = require('./theme_stub');
 const root = process.argv[2];
-const harness = themeLua(root) + `
+const harness = themeLua(root) + require('./placement_stub')(root) + `
 local breakSrc = ...
 local unpack = unpack or table.unpack
 local fails, passes = 0, 0
@@ -48,6 +48,7 @@ InCombatLockdown = function() return false end
 local CRT = { db = { qol = { breakTimer = {} } } }
 CRT.UI = {}
 CRT_THEME(CRT, CRT.UI)
+CRT_PLACEMENT(CRT) -- CRT_Core/UI/Placement.lua, which the window is placed by
 local UI = CRT.UI
 local previews = {}
 function UI:RegisterLayer() end

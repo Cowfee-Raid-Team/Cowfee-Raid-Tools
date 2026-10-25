@@ -152,13 +152,14 @@ local ANCHORS = {
 local POSITION_FIELDS = {
     point = "anchor", relativePoint = "anchor", x = "number", y = "number", width = "number", height = "number", angle = "number",
     positionV = "number",
+    anchor = "element", -- the key of the CRT element a place is anchored to (UI/Placement.lua)
     userSized = "flag", -- a pop-out's size was chosen with its grip (UI/Window.lua)
     -- a size a pop-out keeps for one of its views, { width, height, userSized } (the Timeline's, Timeline/Page.lua)
     abilities = "size", healers = "size",
 }
 -- The fields a position table may hold; positionV and angle are single settings of their own.
 local TABLE_FIELDS = { point = true, relativePoint = true, x = true, y = true, width = true, height = true, userSized = true,
-    abilities = true, healers = true }
+    abilities = true, healers = true, anchor = true }
 -- The fields a view's size may hold.
 local SIZE_FIELDS = { width = true, height = true, userSized = true }
 -- The most entries one table in a shared setting may hold. markers.disabled and pace.disabled grow by
@@ -472,6 +473,9 @@ local function isField(kind, v)
     if kind == "flag" then
         return type(v) == "boolean"
     end
+    if kind == "element" then
+        return type(v) == "string" and #v <= 40 and v:find("^[%w_]+$") ~= nil
+    end
     if kind == "size" then
         if type(v) ~= "table" then
             return false
@@ -487,8 +491,8 @@ local function isField(kind, v)
 end
 
 -- A position: a single field (window.point, window.x, minimap.angle) or a table of point, relativePoint,
--- x, y, width and height (and a pop-out's userSized and its views' sizes), each an anchor name, a number, true or
--- false, or a view's { width, height, userSized }. A field this version doesn't know (a newer
+-- x, y, width and height (and a pop-out's userSized and its views' sizes, and the key of the element a place is
+-- anchored to), each an anchor name, a number, true or false, an element's key, or a view's { width, height, userSized }. A field this version doesn't know (a newer
 -- one's) is left out and counted; a known field with a bad value rejects it.
 -- Returns ok, the value to use, and how many fields were left out.
 local function isPosition(entry, v)

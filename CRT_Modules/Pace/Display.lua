@@ -57,26 +57,22 @@ end
 
 -- The window ---------------------------------------------------------------------------------------
 
-local function savePosition()
-    local point, _, relativePoint, x, y = frame:GetPoint()
-    db().position = { point = point, relativePoint = relativePoint, x = x, y = y }
-end
+local build
 
-local function applyPosition()
-    local p = db().position
-    frame:ClearAllPoints()
-    if p then
-        frame:SetPoint(p.point, UIParent, p.relativePoint or p.point, p.x, p.y)
-    else
-        frame:SetPoint("TOP", UIParent, "TOP", 0, -260)
-    end
-end
+-- Its place, drag, nudge, reset and anchor are the shared helper's (UI/Placement.lua). Held by its top, so a new
+-- bar grows it downwards.
+local placement = UI.Placement.Define("pace", {
+    title = "Pace",
+    store = db,
+    default = { point = "TOP", relativePoint = "TOP", x = 0, y = -260 },
+    point = "TOP",
+    build = function()
+        build()
+    end,
+})
 
 function Pace:ResetPosition()
-    db().position = nil
-    if frame then
-        applyPosition()
-    end
+    placement:Reset()
 end
 
 local function bar(i)
@@ -117,7 +113,7 @@ local function bar(i)
     return b
 end
 
-local function build()
+function build()
     if frame then
         return
     end
@@ -126,33 +122,22 @@ local function build()
     UI:RegisterThemed(frame, { bg = { 0.05, 0.05, 0.07, 0.8 }, border = { 0.78, 0.63, 0.31 } })
     UI:RegisterLayer("alert", frame)
     frame:SetClampedToScreen(true)
-    frame:SetMovable(true)
 
     handle = CreateFrame("Frame", nil, frame, "BackdropTemplate")
     handle:SetHeight(20)
-    handle:SetPoint("BOTTOMLEFT", frame, "TOPLEFT", 0, 2)
-    handle:SetPoint("BOTTOMRIGHT", frame, "TOPRIGHT", 0, 2)
     handle:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
     UI:RegisterThemed(handle, { bg = { 0.3, 0.25, 0.05, 0.9 }, border = { 0.78, 0.63, 0.31 } })
-    handle:EnableMouse(true)
-    handle:RegisterForDrag("LeftButton")
     local text = handle:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     text:SetPoint("LEFT", 6, 0)
     text:SetText("Pace: drag to move")
-    handle:SetScript("OnDragStart", function()
-        frame:StartMoving(true)
-    end)
-    handle:SetScript("OnDragStop", function()
-        frame:StopMovingOrSizing()
-        savePosition()
-    end)
-    UI.ResetButton(handle, function()
+    local reset = UI.ResetButton(handle, function()
         Pace:ResetPosition()
-    end):SetPoint("RIGHT", -2, 0)
+    end)
+    reset:SetPoint("RIGHT", -2, 0)
+    UI.Placement.FitHandle(handle, frame, text)
     handle:Hide()
-
-    applyPosition()
     frame:Hide()
+    placement:Attach(frame, handle, { reset = reset })
 end
 
 local function layout(units)

@@ -6,6 +6,7 @@
 const fs = require('fs');
 const path = require('path');
 const themeLua = require('./theme_stub');
+const placementLua = require('./placement_stub');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 
 const a = process.argv.slice(2);
@@ -25,7 +26,7 @@ const noteText = read(path.join(__dirname, 'sample_note.txt')).replace(/\r/g, ''
   'time:57;ph:1;tag:Cheoeqar;text:Short line;\n' +
   'time:44;ph:1.5;tag:Cheoeqar;text:Later phase text;dur:8;');
 
-const harness = themeLua(process.argv.slice(2)) + `
+const harness = themeLua(process.argv.slice(2)) + placementLua(process.argv.slice(2)) + `
 local mode, noteText = ...
 -- A note with only ph:2 lines: today its first phase (2) starts at the pull.
 local ph2Text = [[
@@ -141,6 +142,7 @@ local CRT = {
   Print = function(_, m) printed[#printed + 1] = m end,
 }
 CRT_THEME(CRT, CRT.UI)
+CRT_PLACEMENT(CRT) -- UI/Placement.lua, which the callout is placed by
 for i = 1, #files, 2 do
   assert(load(files[i + 1], "@" .. files[i]))("CowfeeRaidTools", CRT)
 end

@@ -31,7 +31,7 @@ local DOCK_GAP = 4 -- pixels between the game's ready check window and the docke
 
 local frame, handle, closeBar
 local slots = {}
-local dragging -- true while the row is being dragged, so it is not re-anchored under the cursor
+local place
 local shownUntil -- time at which a ready check or preview row hides by itself, nil for no limit
 local sawGameWindow -- true once the game's ready check window has been seen on screen
 local elapsed = 0
@@ -45,6 +45,24 @@ local function gameWindow()
         return window
     end
 end
+
+-- Its saved place, drag, nudge and reset are the shared helper's (UI/Placement.lua), held by its top. It holds
+-- secure buttons, so it is never anchored to another element and nothing is anchored to it (either would make
+-- another frame protected); place() below docks it or puts it at its saved place.
+local placement = CRT.UI.Placement.Define("consumables", {
+    title = "Consumables bar",
+    store = function()
+        return Consumables:PositionStore()
+    end,
+    default = { point = "TOP", relativePoint = "TOP", x = 0, y = -200 },
+    point = "TOP",
+    canAnchor = false,
+    target = false,
+    protected = true,
+    place = function()
+        place()
+    end,
+})
 
 -- Whether you lead the group, read when the group or its leader changes and when the row shows,
 -- rather than on every refresh. A value the game hides is never compared, and counts as not leading.
@@ -109,38 +127,22 @@ local function build()
     CRT.UI:RegisterLayer("bar", frame)
     frame:SetBackdrop(Bar.BACKDROP)
     CRT.UI:RegisterThemed(frame, { bg = { 0, 0, 0, 0.45 }, border = { 0.2, 0.8, 0.9 } })
-    frame:SetMovable(true)
     frame:SetClampedToScreen(true)
     frame:Hide()
 
     -- A drag handle above the row, shown during a preview so the row can be moved.
     handle = CreateFrame("Frame", nil, frame, "BackdropTemplate")
     handle:SetHeight(20)
-    handle:SetPoint("BOTTOMLEFT", frame, "TOPLEFT", 0, 2)
-    handle:SetPoint("BOTTOMRIGHT", frame, "TOPRIGHT", 0, 2)
     handle:SetBackdrop(Bar.BACKDROP)
     CRT.UI:RegisterThemed(handle, { bg = { 0.1, 0.3, 0.35, 0.9 }, border = { 0.2, 0.8, 0.9 } })
-    handle:EnableMouse(true)
-    handle:RegisterForDrag("LeftButton")
     local handleText = handle:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     handleText:SetPoint("CENTER")
     handleText:SetText("Consumables: drag to move")
-    CRT.UI.ResetButton(handle, function()
+    local reset = CRT.UI.ResetButton(handle, function()
         Display:ResetPosition()
-    end):SetPoint("RIGHT", -2, 0)
-    handle:SetScript("OnDragStart", function()
-        if InCombatLockdown() then
-            return
-        end
-        dragging = true
-        frame:StartMoving(true)
     end)
-    handle:SetScript("OnDragStop", function()
-        frame:StopMovingOrSizing()
-        dragging = false
-        local point, _, relativePoint, x, y = frame:GetPoint()
-        Consumables:SavePosition(point, relativePoint, x, y)
-    end)
+    reset:SetPoint("RIGHT", -2, 0)
+    CRT.UI.Placement.FitHandle(handle, frame, handleText)
     handle:Hide()
 
     -- A Close bar under the row, the row's width, for when you're done looking before the check ends.
@@ -197,11 +199,13 @@ local function build()
             end
         end)
     end
+    placement:Attach(frame, handle, { reset = reset })
     return frame
 end
 
-local function place()
-    if InCombatLockdown() or dragging then
+-- Not while it is dragged, so it is never put back under the cursor.
+function place()
+    if InCombatLockdown() or not frame or CRT.UI.Placement.Dragging() == placement then
         return
     end
     local window = not Display.preview and gameWindow()
@@ -214,15 +218,12 @@ local function place()
     if window then
         x, bottom = windowBottom(window)
     end
-    local saved = Consumables:Position()
-    frame:ClearAllPoints()
     if x then
+        frame:ClearAllPoints()
         frame:SetPoint("TOP", UIParent, "BOTTOMLEFT", x, bottom - DOCK_GAP)
-    elseif saved then
-        -- Where the player put it.
-        frame:SetPoint(saved.point, UIParent, saved.relativePoint or saved.point, saved.x, saved.y)
     else
-        frame:SetPoint("TOP", UIParent, "TOP", 0, -200)
+        -- where the player put it, else near the top of the screen
+        placement:ApplySaved()
     end
 end
 
@@ -363,10 +364,7 @@ end
 
 -- Moves the row back to its default place, for when the game shows you no ready check window.
 function Display:ResetPosition()
-    Consumables:ResetPosition()
-    if frame and frame:IsShown() then
-        place()
-    end
+    placement:Reset()
 end
 
 -- A theme switch repaints the bar: the ants and the running-low and none-left numbers take the theme's

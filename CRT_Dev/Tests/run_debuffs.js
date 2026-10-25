@@ -8,7 +8,7 @@ const path = require('path');
 const themeLua = require('./theme_stub');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
-const harness = themeLua(process.argv.slice(2)) + `
+const harness = themeLua(process.argv.slice(2)) + require('./placement_stub')(process.argv.slice(2)) + `
 local coreSrc, dataSrc, panelSrc, pageSrc, clickSrc, ignoreSrc, qolPageSrc, tooltipSrc = ...
 local passed, failed = 0, 0
 local function check(name, cond, detail)
@@ -31,6 +31,8 @@ local function mock(kind)
     if k == "Hide" then return function(self) self.shown = false end end
     if k == "SetShown" then return function(self, on) self.shown = on and true or false end end
     if k == "IsShown" then return function(self) return self.shown end end
+    -- shown, and every parent shown, as in the game (UI/Placement.lua places only an element whose drag box is on screen)
+    if k == "IsVisible" then return function(self) local f = self while f do if not f.shown then return false end f = rawget(f, "parent") end return true end end
     if k == "SetSize" then return function(self, w, h) rawset(self, "w", w) rawset(self, "h", h) end end
     if k == "SetPoint" then return function(self, ...) table.insert(self.pts, { ... }) rawset(self, "setPoints", (rawget(self, "setPoints") or 0) + 1) end end
     if k == "ClearAllPoints" then return function(self) self.pts = {} end end
@@ -64,6 +66,19 @@ local function mock(kind)
       local p = self.pts[1]
       if p then return p[1], p[2], p[3], p[4], p[5] end
       return "CENTER", nil, "CENTER", 0, 0 end end
+    -- Its size, and its centre from its one point on UIParent (the screen's middle for UIParent), as the game
+    -- lays it out; nil for a frame placed any other way. UI/Placement.lua reads these when the panel is dragged.
+    if k == "GetWidth" then return function(self) return rawget(self, "w") end end
+    if k == "GetHeight" then return function(self) return rawget(self, "h") end end
+    if k == "GetCenter" then return function(self)
+      if self == UIParent then return self.w / 2, self.h / 2 end
+      local p = self.pts[1]
+      if #self.pts ~= 1 or p[2] ~= UIParent then return nil end
+      local function frac(pt) return (pt:find("LEFT") and 0 or pt:find("RIGHT") and 1 or 0.5), (pt:find("BOTTOM") and 0 or pt:find("TOP") and 1 or 0.5) end
+      local fx, fy = frac(p[1])
+      local rx, ry = frac(p[3] or p[1])
+      local w, h = rawget(self, "w") or 0, rawget(self, "h") or 0
+      return rx * UIParent.w + p[4] - fx * w + w / 2, ry * UIParent.h + p[5] - fy * h + h / 2 end end
     if k == "IsForbidden" then return function(self) return forbidTextures and self.kind == "Texture" or false end end
     if k == "SetEnabled" then return function(self, on) rawset(self, "enabled", on) end end
     return function() end
@@ -338,6 +353,7 @@ local function near(a, b) return a ~= nil and b ~= nil and math.abs(a - b) < 1e-
 -- The panel: build it, then make a container button through the group's initializeFrame. A position
 -- saved before the panel kept a fixed corner (any point) loads where it was.
 CRT.db.debuffs.position = { point = "BOTTOMLEFT", relativePoint = "BOTTOMLEFT", x = 300, y = 200 }
+CRT_PLACEMENT(CRT) -- CRT_Core/UI/Placement.lua, which the panel is placed by (after the core's events frame is found)
 assert(load(panelSrc, "Panel.lua"))("CowfeeRaidTools", CRT)
 local Panel = CRT.DebuffPanel
 local events
@@ -812,21 +828,26 @@ do
   local handleFrame
   for _, f in ipairs(frames) do if rawget(f, "OnDragStop") then handleFrame = f end end
   Debuffs:SetGrow("left")
+  Panel:SetPreview(true) -- its drag box takes a drag only while it is on screen, in its preview
   panelFrame.pts = { { "CENTER", UIParent, "CENTER", 40, -20 } }
   local dl, dr, dt = edges(panelFrame)
   handleFrame.OnDragStop(handleFrame)
   local saved = CRT.db.debuffs.position
   local nl, nr, nt = edges(panelFrame)
   check("a drag with right to left saves the top right", saved.point == "TOPRIGHT" and saved.relativePoint == "CENTER", saved.point)
-  check("and the panel stays where it was dropped", near(nl, dl) and near(nr, dr) and near(nt, dt), tostring(nr) .. " vs " .. tostring(dr))
+  -- UI/Placement.lua saves a place in whole pixels, so it may land up to half a pixel from where it was dropped
+  local function nearPixel(a, b) return a ~= nil and b ~= nil and math.abs(a - b) <= 0.5 end
+  check("and the panel stays where it was dropped, to the pixel", nearPixel(nl, dl) and nearPixel(nr, dr) and nearPixel(nt, dt), tostring(nr) .. " vs " .. tostring(dr))
+  check("saved in whole pixels", saved.x == math.floor(saved.x) and saved.y == math.floor(saved.y), tostring(saved.x) .. ", " .. tostring(saved.y))
   Debuffs:Fire() -- as after a /reload: the saved position is applied as it is
   local _, rr = edges(panelFrame)
-  check("the saved drag comes back in the same place", near(rr, dr) and panelFrame.pts[1][1] == "TOPRIGHT")
+  check("the saved drag comes back in the same place", near(rr, nr) and panelFrame.pts[1][1] == "TOPRIGHT")
   Debuffs:SetGrow("right")
   panelFrame.pts = { { "BOTTOMRIGHT", UIParent, "BOTTOMRIGHT", -100, 50 } }
   dl = edges(panelFrame)
   handleFrame.OnDragStop(handleFrame)
-  check("a drag with left to right saves the top left", CRT.db.debuffs.position.point == "TOPLEFT" and near(edges(panelFrame), dl), CRT.db.debuffs.position.point)
+  check("a drag with left to right saves the top left", CRT.db.debuffs.position.point == "TOPLEFT" and math.abs(edges(panelFrame) - dl) <= 0.5, CRT.db.debuffs.position.point)
+  Panel:SetPreview(false)
   Debuffs:SetSize(44) Debuffs:SetMaxCount(4) Debuffs:SetSpacing(4) Debuffs:Set("borderScale", 1)
 end
 

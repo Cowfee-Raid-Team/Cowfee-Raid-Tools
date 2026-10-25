@@ -11,7 +11,7 @@ const path = require('path');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const W = process.argv[2];
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
-const harness = require('./theme_stub')(W) + `
+const harness = require('./theme_stub')(W) + require('./placement_stub')(W) + `
 local checkSrc, controlsSrc, pageSrc, parseSrc, renderSrc, displaySrc, tabSrc = ...
 local fails, passes = 0, 0
 unpack = unpack or table.unpack
@@ -299,6 +299,7 @@ CRT.Macros = {
   end,
   StatusText = function() return "none" end, InCombat = function() return false end, OnChange = function() end,
 }
+CRT_PLACEMENT(CRT) -- CRT_Core/UI/Placement.lua, which the display is placed by
 assert(load(displaySrc, "Display.lua"))("CowfeeRaidTools", CRT)
 assert(load(tabSrc, "MacrosTab.lua"))("CowfeeRaidTools", CRT)
 for _, def in ipairs({
