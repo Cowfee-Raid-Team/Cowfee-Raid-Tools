@@ -363,6 +363,11 @@ test("window: other boss's reminders not shown", function()
   text = show()
   assert(at(text, "Soak") and not at(text, "Elsewhere"), "a test run keeps the note's boss:\\n" .. text)
   A:Stop()
+  -- nor is the pull timer's countdown run (Alerts/Countdown.lua): the windows stay as they were
+  A:Start(3471, nil, "countdown", { blocks = {}, firstAt = clock + 10 })
+  text = show()
+  assert(at(text, "Soak") and not at(text, "Elsewhere"), "a countdown run keeps the note's boss:\\n" .. text)
+  A:Stop()
 end)
 
 test("theme: the headings follow a live switch (Blackout: Midnight's heading, then the game's gold again)", function()
