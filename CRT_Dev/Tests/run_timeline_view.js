@@ -390,6 +390,88 @@ end
 print("ok overlay death tooltip names its pull")
 
 do
+  -- Deaths that would overlap (the same moment, or closer than an icon's width) on one pull share one icon:
+  -- the icon a player sees and the tooltip on hover always name the same deaths, and its colour is honest.
+  local colors = { PALADIN = { 0.96, 0.55, 0.73 }, DRUID = { 1, 0.49, 0.04 }, HUNTER = { 0.67, 0.83, 0.45 }, MAGE = { 0.25, 0.78, 0.92 } }
+  local realColor = CRT.Groups.ClassColor
+  CRT.Groups.ClassColor = function(_, class) local c = colors[class] or { 1, 1, 1 } return c[1], c[2], c[3] end
+  local said = {}
+  GameTooltip = setmetatable({}, { __index = function(_, k)
+    return function(_, a, b2, c, d, e) said[#said + 1] = { k = k, a = a, b = b2, c = c, d = d, e = e } end
+  end })
+  local stack = { id = 48, encounterID = 3001, length = 300, casts = {}, deaths = {
+    { t = 50, name = "Abu", class = "MAGE", role = "DAMAGER", spellID = 7 },
+    { t = 127, name = "Sixz", class = "HUNTER", role = "DAMAGER", spellID = 7 },
+    { t = 127, name = "Skarghan", class = "PALADIN", role = "TANK", spellID = 7 },
+    { t = 127, name = "Dotsanhots", class = "DRUID", role = "HEALER", spellID = 7 },
+    { t = 127.5, name = "Lichkingstoy", class = "PALADIN", role = "DAMAGER", spellID = 7 } } }
+  local v = View.Create(mock("Frame"))
+  v:SetData(stack, 3001)
+  v:Refresh()
+  local icons = {}
+  for _, b in ipairs(v.icons) do if b:IsShown() and b.mark.death then icons[#icons + 1] = b end end
+  local size = S.iconSize
+  for i = 1, #icons do
+    for j = i + 1, #icons do
+      local a, c = icons[i], icons[j]
+      assert(not ((a.mark.age or 0) == (c.mark.age or 0) and math.abs(a.pt[4] - c.pt[4]) < size),
+        "stacked deaths: two death icons of one pull overlap at x " .. a.pt[4] .. " and " .. c.pt[4])
+    end
+  end
+  assert(#icons == 2, "stacked deaths: one icon for the lone death, one for the four at 2:07, got " .. #icons)
+  local function tip(b) for i = #said, 1, -1 do said[i] = nil end b.OnEnter(b) return said end
+  local lone, many
+  for _, b in ipairs(icons) do if b.mark.t == 50 then lone = b else many = b end end
+  -- the lone death: its icon is its class colour, the name in its tooltip the same colour
+  local t1 = tip(lone)
+  assert(t1[2].k == "SetText" and t1[2].a == "Abu", "stacked deaths: lone tooltip names Abu")
+  assert(lone.bg.color[1] == t1[2].b and lone.bg.color[2] == t1[2].c and lone.bg.color[3] == t1[2].d, "stacked deaths: lone icon colour matches its name")
+  assert(lone.count:GetText() == "" or lone.count:GetText() == nil, "stacked deaths: a lone death shows no count")
+  -- the stack: a neutral death colour with the count, and a tooltip listing every death in class colour
+  assert(many.count:GetText() == "4", "stacked deaths: the stack shows its count, got " .. tostring(many.count:GetText()))
+  assert(many.bg.color[1] == 0.89 and many.bg.color[2] == 0.29 and many.bg.color[3] == 0.29, "stacked deaths: the stack is the neutral death red")
+  local t2 = tip(many)
+  assert(t2[2].k == "SetText" and t2[2].a == "4 deaths", "stacked deaths: tooltip heading: " .. tostring(t2[2].a))
+  local listed = {}
+  for _, line in ipairs(t2) do
+    if line.k == "AddDoubleLine" then
+      local name = line.a
+      listed[#listed + 1] = name
+      local cls = ({ Sixz = "HUNTER", Skarghan = "PALADIN", Dotsanhots = "DRUID", Lichkingstoy = "PALADIN" })[name]
+      local c = colors[cls]
+      assert(c and line.c == c[1] and line.d == c[2] and line.e == c[3], "stacked deaths: " .. tostring(name) .. " in its class colour")
+      assert(type(line.b) == "string" and line.b:find("2:07", 1, true) and line.b:find("Killed by Spell7", 1, true), "stacked deaths: time and killer: " .. tostring(line.b))
+    end
+  end
+  assert(listed[4] == "Lichkingstoy", "stacked deaths: tooltip in time order, the latest last: " .. table.concat(listed, ","))
+  table.sort(listed)
+  assert(table.concat(listed, ",") == "Dotsanhots,Lichkingstoy,Sixz,Skarghan", "stacked deaths: tooltip lists all four: " .. table.concat(listed, ","))
+  -- zoomed in far enough the half second apart no longer overlaps: 2:07.5 gets its own icon
+  v:SetSpan(60)
+  local n = 0
+  for _, b in ipairs(v.icons) do if b:IsShown() and b.mark.death then n = n + 1 end end
+  assert(n == (View.TimeToX(0.5, 300, v.trackW) >= size and 3 or 2), "stacked deaths: grouping follows the zoom, got " .. n)
+  v:SetSpan(300)
+  -- an older pull's death at the same moment keeps its own faded icon under the shown pull's
+  S.overlayOn = true
+  for i = 1, 2 do
+    T:SavePull({ encounterID = 3002, name = "Boss", length = 300, kill = false, casts = {},
+      deaths = { { t = 127, name = "Old" .. i, class = "MAGE", role = "DAMAGER", spellID = 7 }, { t = 127, name = "Twin" .. i, class = "DRUID", role = "DAMAGER", spellID = 7 } } })
+  end
+  local newest = T:Pulls(3002)[1]
+  v:SetData(newest, 3002)
+  v:Refresh()
+  local ages = {}
+  for _, b in ipairs(v.icons) do if b:IsShown() and b.mark.death then ages[#ages + 1] = (b.mark.age or 0) .. ":" .. b.count:GetText() end end
+  table.sort(ages)
+  assert(table.concat(ages, ",") == "0:2,1:2", "stacked deaths: one stack per pull, older pull kept apart: " .. table.concat(ages, ","))
+  S.overlayOn = false
+  CRT.Groups.ClassColor = realColor
+  GameTooltip = mock("GameTooltip")
+end
+print("ok stacked deaths share one icon whose colour and tooltip agree")
+
+do
   local v = View.Create(mock("Frame"))
   v:SetData(pull, 3001)
   assert(v:CastCount() == 2, "old SetData still works: cast count")
