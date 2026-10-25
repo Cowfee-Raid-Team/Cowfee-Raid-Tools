@@ -48,8 +48,8 @@ local MIN_SIZE, MAX_SIZE, DEFAULT_SIZE = 32, 160, 64
 local MIN_FONT, MAX_FONT, DEFAULT_FONT = 10, 32, 16
 local MIN_SECONDS_FONT = 8
 local TEXT_GAP = 2           -- between the ring and its text
--- Over the player's character, a little below the middle of the screen.
-local DEFAULT_POSITION = { point = "CENTER", relativePoint = "CENTER", x = 0, y = -40 }
+-- Alex's layout: over the player's character, a little below the middle of the screen.
+local DEFAULT_POSITION = { point = "CENTER", relativePoint = "CENTER", x = 8, y = -29 }
 local WHITE = { 1, 1, 1 }
 local SAMPLE_TYPES = { "spread", "generic", "soak" } -- the Previews' rings: Spread, Stack on the boss, Soak
 local SAMPLE_GAP = 1         -- seconds between preview ticks that mean it was turned off

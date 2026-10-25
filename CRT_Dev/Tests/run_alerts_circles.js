@@ -401,7 +401,7 @@ print("ok circles: ring colour applies to ring and swipe")
 
 pull()
 local p = I.frame.pts[#I.frame.pts]
-assert(p[1] == "CENTER" and p[2] == UIParent and p[3] == "CENTER" and p[4] == 0 and p[5] == -40, "default centred on the character: " .. tostring(p[1]) .. "," .. tostring(p[4]) .. "," .. tostring(p[5]))
+assert(p[1] == "CENTER" and p[2] == UIParent and p[3] == "CENTER" and p[4] == 8 and p[5] == -29, "default centred on the character: " .. tostring(p[1]) .. "," .. tostring(p[4]) .. "," .. tostring(p[5]))
 print("ok circles: default centred on the character")
 
 -- the Ring colour row opens the game's colour picker

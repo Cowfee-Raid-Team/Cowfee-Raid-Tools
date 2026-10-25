@@ -24,6 +24,8 @@ local frame, curve
 local SCALE = 1 -- the curve's input range, 0 to 1
 local previewOn = false
 local warned = false
+-- Alex's layout: under the middle of the screen, above the consumables bar. Until it is moved.
+local DEFAULT_POSITION = { point = "CENTER", relativePoint = "CENTER", x = -5, y = 41 }
 
 local function settings()
     return CRT.db.qol.lowHealth
@@ -125,12 +127,8 @@ end
 
 local function applyPosition()
     frame:ClearAllPoints()
-    local p = settings().position
-    if p then
-        frame:SetPoint(p.point, UIParent, p.relativePoint, p.x, p.y)
-    else
-        frame:SetPoint("CENTER", UIParent, "CENTER", 0, 180)
-    end
+    local p = settings().position or DEFAULT_POSITION
+    frame:SetPoint(p.point, UIParent, p.relativePoint, p.x, p.y)
 end
 
 local function build()
