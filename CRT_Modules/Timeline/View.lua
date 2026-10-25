@@ -98,6 +98,8 @@ local BAND_LINE_W = 1 -- the line at a band's far end, where the cooldown is up 
 local BAND_INSET = 2 -- a band's gap from its row's top and bottom
 local BAND_LABEL_PAD = 3 -- the length label's room inside the after band
 local SAME_MOMENT = 0.05 -- seconds: another cast this close to the selected one is the same moment, not too soon
+-- a band's red, for Timeline/HealerView.lua's bands of every cast
+View.BAND_RED = { DEATH_RED[1], DEATH_RED[2], DEATH_RED[3], BAND_RED_ALPHA }
 local SELECT_INNER = { 0.10, 0.07, 0.05 } -- a dark inner border under the outline, so it shows on any flag colour
 local SELECT_INNER_W = 1
 local REVIEW_LANES = { recentDeaths = true } -- this view draws Deaths from recent pulls on an ability timeline too
@@ -1816,6 +1818,8 @@ function Methods:UpdateMove()
     -- the cooldown bands at the ghost, on its row; Alt keeps the grabbed time, so it counts as another cast
     local alt = IsAltKeyDown()
     local soon = self:DrawBands(self:BandSpec(m, t, m.row, mv.others, alt and m.t or nil))
+    -- Healer CDs' own bands of the grabbed cast go while it moves (Alt leaves it where it is)
+    self:OwnBands(not alt and View.BandKey(m) or nil)
     g.label:SetText(string.format(alt and TEXT.addTime or TEXT.moveTo, clock(t)) .. (soon and TEXT.tooSoon or ""))
     -- the label stays inside the visible part of the track: above the flag (beside it on row 1,
     -- where nothing is above), slid sideways as far as it needs
@@ -2848,7 +2852,8 @@ end
 -- its row: "before" from t - cd to t and "after" from t to t + cd, with a thin line at each far end (up
 -- again) and the length inside the after band. Where another cast of the same spell for the same target
 -- falls inside, the stretch from it to the selected cast is red. A dragged flag or chip shows its own bands
--- the same way. Display only: nothing here is saved.
+-- the same way. Healer CDs draws every cast's bands by itself (Timeline/HealerView.lua); the selected or
+-- dragged cast's are hidden there while these show (OwnBands). Display only: nothing here is saved.
 
 -- A mark's identity, kept across redraws: a note line's noteID and line, a reminder's id and which time.
 local function markKey(m)
@@ -2861,6 +2866,13 @@ local function markKey(m)
         return "mine:" .. tostring(m.encounterID) .. ":" .. tostring(m.id) .. ":" .. tostring(m.index)
     end
     return nil
+end
+
+-- A drawn cast's identity on its row (a note line for two players is drawn on both their rows), for
+-- Timeline/HealerView.lua's bands of every cast; nil for a mark with no identity.
+function View.BandKey(m, row)
+    local key = markKey(m)
+    return key and (key .. "@" .. tostring(row or m.row)) or nil
 end
 
 -- The words of a tags list (or a tags text) as one text, to tell the same target.
@@ -2976,7 +2988,8 @@ function Methods:BandFrame()
 end
 
 -- Draws the bands of spec (BandSpec's), or hides them all with none. Clamped to the timeline's length;
--- nothing when the spell's length is unknown. Returns true when another cast is inside them (too soon).
+-- nothing when the spell's length is unknown. Returns true when another cast is inside them (too soon),
+-- then whether any were drawn.
 function Methods:DrawBands(spec)
     local n, soon, labelShown = 0, false, false
     local cd = spec and self.pull and spec.row and cdLength(spec.spellID)
@@ -3051,7 +3064,7 @@ function Methods:DrawBands(spec)
     if self.bandLabel and not labelShown then
         self.bandLabel:Hide()
     end
-    return soon
+    return soon, cd and true or false
 end
 
 -- The selected flag's mark on what is drawn now, else nil.
@@ -3066,6 +3079,15 @@ function Methods:SelectedMark()
         end
     end
     return nil
+end
+
+-- Healer CDs draws every cast's bands (Timeline/HealerView.lua); the cast whose bands this view draws
+-- itself (key: View.BandKey's, or nil for none) has its own hidden there, so they never draw twice.
+function Methods:OwnBands(key)
+    local HV = CRT.TimelineHealerView
+    if HV and HV.HideBands then
+        HV.HideBands(self, key)
+    end
 end
 
 -- Outlines the selected flag and draws its bands (not while a drag draws its own). A selection whose alert
@@ -3085,7 +3107,8 @@ function Methods:DrawSelection()
         end
     end
     if not ((self.move and self.move.moved) or (self.chipMove and self.chipMove.moved)) then
-        self:DrawBands(m and self:BandSpec(m))
+        local _, drawn = self:DrawBands(m and self:BandSpec(m))
+        self:OwnBands(drawn and View.BandKey(m) or nil)
     end
 end
 

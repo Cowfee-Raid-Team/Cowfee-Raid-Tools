@@ -401,12 +401,97 @@ do
   v = newView()
   local hymn, aura = laneIndex(v, "healers:halo-home:64843"), laneIndex(v, "healers:me-home:31821")
   local b1, b2
-  for _, t in ipairs(v.hvBands) do
-    if t:IsShown() and t.w > 2 and t.pt[5] == -(hymn - 1) * 30 - 4 then b1 = t end
-    if t:IsShown() and t.w > 2 and t.pt[5] == -(aura - 1) * 30 - 4 then b2 = t end
+  for _, p in pairs(v.hvPairs) do
+    if p.fill:IsShown() and p.fill.pt[5] == -(hymn - 1) * 30 - 4 then b1 = p.fill end
+    if p.fill:IsShown() and p.fill.pt[5] == -(aura - 1) * 30 - 4 then b2 = p.fill end
   end
   check(b1 and b1.color[1] == priest.r and b1.color[4] == 0.22, "a band is in the class colour at its alpha")
   check(b2 and b2.color[1] == pal.r and b2.color[2] == pal.g, "a paladin's band is pink")
+  setNote({})
+end
+
+-- Every cast's cooldown before and after it, with no selection: the before band outlined, the after band filled ---------
+do
+  setNote({
+    "time:20;ph:1;tag:Halo;spellid:64843;",  -- Divine Hymn (3:00) at 0:20, 1:40 and 4:10 on a 5:00 fight
+    "time:100;ph:1;tag:Halo;spellid:64843;",
+    "time:130;ph:2;tag:Halo;spellid:64843;",  -- phase 2 (2:00) + 2:10
+  })
+  CRT.TimelineUndo:Quietly(function() end)
+  local drawn = 0
+  local realDraw = HV.Draw
+  HV.Draw = function(...) drawn = drawn + 1 return realDraw(...) end
+  local v = newView()
+  local hymn = laneIndex(v, "healers:halo-home:64843")
+  local W = v.trackW / 300
+  local top = -(hymn - 1) * 30 - 4
+  local priest = RAID_CLASS_COLORS.PRIEST
+  local function castAt(t) for _, f in ipairs(flagsOn(v, hymn)) do if f.mark.t == t then return f end end end
+  local function pairAt(t) local f = castAt(t) return f and v.hvPairs and v.hvPairs[View.BandKey(f.mark)] end
+  local function shownAll(p) for _, tx in ipairs(p.tex) do if not tx:IsShown() then return false end end return true end
+  local function hiddenAll(p) for _, tx in ipairs(p.tex) do if tx:IsShown() then return false end end return true end
+  local function near(a, b) return math.abs(a - b) < 0.01 end
+  check(v.selected == nil and pairAt(20) and pairAt(100) and pairAt(250), "every cast has its bands, nothing selected")
+  local p1, p2, p3 = pairAt(20), pairAt(100), pairAt(250)
+  -- the after band: filled in the class colour at the band alpha, from the cast to when it is up again
+  local fill = p1.fill
+  check(fill.shown and near(fill.pt[4], 20 * W) and near(fill.w, 180 * W) and fill.pt[5] == top and fill.h == 30 - 8,
+    "the after band runs from the cast for its 3:00 cooldown, on the cast's row")
+  check(fill.color[1] == priest.r and fill.color[2] == priest.g and fill.color[4] == 0.22, "filled in the class colour at the band alpha")
+  check(p1.hiEnd and p1.hiEnd.shown and near(p1.hiEnd.pt[4], 200 * W - 1) and p1.hiEnd.w == 1 and p1.hiEnd.color[4] == 1, "with a line where it is up again")
+  check(near(p3.fill.w, 50 * W) and p3.hiEnd == nil, "cut at the fight's end, where there is no end line")
+  -- the before band: an outline only, in the class colour, from when it was last up to the cast
+  local function box(p)
+    local l, r, t, b, solid = math.huge, -math.huge, -math.huge, math.huge, false
+    for _, tx in ipairs(p.outline) do
+      if tx.w > 1 and tx.h > 1 then solid = true end
+      l, r = math.min(l, tx.pt[4]), math.max(r, tx.pt[4] + tx.w)
+      t, b = math.max(t, tx.pt[5]), math.min(b, tx.pt[5] - tx.h)
+      if tx.color[1] ~= priest.r or tx.color[2] ~= priest.g then solid = true end
+    end
+    return l, r, t, b, solid
+  end
+  local l, r, t, b, solid = box(p3)
+  check(#p3.outline >= 3 and not solid, "the before band is a 1 px outline in the class colour, no fill")
+  check(near(l, 70 * W) and near(r, 250 * W) and t == top and b == top - 22, "from 1:10 to the cast, on its row: " .. l / W .. " to " .. r / W)
+  check(p3.loEnd and near(p3.loEnd.pt[4], 70 * W) and p3.loEnd.color[4] == 1 and p3.loEnd.h == 22, "with a solid line where it was up before")
+  local l1 = box(p1)
+  check(near(l1, 0) and p1.loEnd == nil, "cut at the pull, with no end line there")
+  -- red where the next cast falls inside the cooldown, once per pair
+  check(p1.red and near(p1.red.pt[4], 20 * W) and near(p1.red.w, 80 * W) and p1.red.color[1] > 0.8 and p1.red.color[2] < 0.4,
+    "red from 0:20 to the cast at 1:40 inside its cooldown")
+  check(p2.red and near(p2.red.pt[4], 100 * W) and near(p2.red.w, 150 * W), "and from 1:40 to 4:10")
+  check(p3.red == nil, "the last cast has nothing inside its cooldown")
+  check(castAt(100).mark.tooSoon and castAt(100).edge.color[1] > 0.8, "the too-soon red edge stays")
+  -- a selected cast: the selection's bands replace its own, the others stay
+  v:Select(castAt(100).mark)
+  check(hiddenAll(p2) and shownAll(p1) and shownAll(p3), "a selected cast's own bands go; the others stay")
+  local sel = 0
+  for _, tx in ipairs(v.bandTex or {}) do if tx:IsShown() then sel = sel + 1 end end
+  check(sel > 0, "and the selection draws its bands")
+  v:ClearSelection()
+  check(shownAll(p2), "cleared, its own bands come back")
+  -- a drag: the dragged cast's bands follow the cursor; nothing else is drawn again
+  now = now + 5
+  local before = drawn
+  local f = castAt(100)
+  cx, cy = screenX(v, 100), 300
+  f.OnMouseDown(f, "LeftButton")
+  cx = screenX(v, 130)
+  v.frame.OnUpdate(v.frame)
+  v.frame.OnUpdate(v.frame)
+  check(hiddenAll(p2) and shownAll(p1), "while dragged, its own bands go")
+  check(drawn == before, "the drag draws only its own bands, not every cast's: " .. (drawn - before))
+  f.OnMouseUp(f, "LeftButton")
+  local moved = pairAt(130)
+  check(moved and near(moved.fill.pt[4], 130 * W) and shownAll(moved), "let go, its bands are drawn at the new time")
+  -- the Abilities view: no bands until a flag is selected
+  v:SetMode(nil)
+  local any = false
+  for _, tx in ipairs(v.hvBands or {}) do if tx:IsShown() then any = true end end
+  for _, tx in ipairs(v.bandTex or {}) do if tx:IsShown() then any = true end end
+  check(not any, "Abilities draws no bands with nothing selected")
+  HV.Draw = realDraw
   setNote({})
 end
 
@@ -444,10 +529,8 @@ do
   for i, lane in ipairs(v.lanes) do if lane.label == "Surge" then surgeRow = i end end
   check(#flagsOn(v, surgeRow) == 1 and flagsOn(v, surgeRow)[1].mark.t == 70, "the Surge line on the Surge row, as Abilities draws it")
   -- bands: one from each cast for its cooldown, cut at the end; a line where it is up again
-  local bands = {}
-  for _, t in ipairs(v.hvBands or {}) do if t:IsShown() then bands[#bands + 1] = t end end
   local first
-  for _, t in ipairs(bands) do if t.pt and t.pt[4] == 20 * v.trackW / 300 and t.w > 2 then first = t end end
+  for _, p in pairs(v.hvPairs or {}) do if p.fill:IsShown() and p.fill.pt[4] == 20 * v.trackW / 300 then first = p.fill end end
   check(first and math.abs(first.w - 180 * v.trackW / 300) < 0.01 and first.pt[5] == -(hymn - 1) * 30 - 4, "a band for the 3:00 cooldown on the cast's row")
   check(first.color[4] < 1, "see-through")
   -- red edge: the second Hymn is cast inside the first one's cooldown
@@ -763,6 +846,12 @@ do
   local dashes = 0
   for _, tx in ipairs(v.hvBands) do if tx:IsShown() and tx.w == 2 and tx.pt[4] == 30 * v.trackW / 300 - 1 then dashes = dashes + 1 end end
   check(dashes >= 3, "its pole dashed: " .. dashes)
+  -- its cooldown bands at your time; the ghost has none
+  local own = v.hvPairs[View.BandKey(f.mark)]
+  check(own and math.abs(own.fill.pt[4] - 50 * v.trackW / 300) < 0.01 and own.fill.shown, "the moved cast's bands start at your time")
+  local onRow = 0
+  for _, p in pairs(v.hvPairs) do if p.fill.pt[5] == -(aura - 1) * 30 - 4 then onRow = onRow + 1 end end
+  check(onRow == 1, "and the ghost has none: " .. onRow)
   f.OnEnter(f)
   check(table.concat(tip, "|"):find("Raid note time: 0:30", 1, true), "its tooltip gives the raid's time: " .. table.concat(tip, "|"))
   -- another healer's cast won't move
