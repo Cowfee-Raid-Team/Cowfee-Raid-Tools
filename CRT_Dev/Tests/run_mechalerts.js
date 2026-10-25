@@ -1628,10 +1628,11 @@ check("mech special (" .. LOOK .. "): an ability a special alert covers is tagge
   said = {}
   r2.check.OnEnter(r2.check)
   assert(#said == 0, "no tooltip on a tick nothing covers")
-  -- covered by spell too: a special alert on Other Spell's spell
+  -- covered by spell too: a special alert on Other Spell's spell. A new list is read on the next redraw, here the
+  -- toggle's (nothing else tells the tab, as with the developer's sample before it fires the change)
   withSpecial({ { key = "byspell", label = "By spell", when = { spellID = 888 } } })
-  CRT.NoteReminders.Refresh()
-  assert(not f.rows[1].tag.shown and f.rows[2].tag.shown, "by its spell")
+  click(f.special.specialBtn) click(f.special.mechBtn)
+  assert(not f.rows[1].tag.shown and f.rows[2].tag.shown, "by its spell, read again: " .. tostring(f.rows[1].tag.shown))
   GameTooltip = nil
   noSpecial()
   CRT.NoteReminders.Refresh()
@@ -1659,6 +1660,19 @@ check("mech special (" .. LOOK .. "): the panel says When and Who, keeps Show as
   assert(CRT.db.alerts.special[ENC].soaks.show.bar == true and CRT.db.alerts.special[ENC].soaks.on == false, "Bar saved, still off")
   setCheck(s.speak, false)
   assert(CRT.db.alerts.special[ENC].soaks.speak == false, "Speak saved")
+  -- Bar fill: fills up by default, or empties; saved with your choices, greyed while Bar is off
+  local fill = dropdowns["Bar fill"]
+  assert(fill and fill == s.fill and fill.value == "up", "Bar fill: up by default")
+  local labels = {}
+  for i, o in ipairs(fill.opts.options) do labels[i] = o.key .. "=" .. o.label end
+  assert(table.concat(labels, ",") == "up=Bar fills up,down=Bar empties", table.concat(labels, ","))
+  assert(fill.opts.enabledIf() == true, "on with Bar on")
+  fill.opts.set("down")
+  assert(CRT.db.alerts.special[ENC].soaks.fill == "down" and fill.value == "down" and CRT.db.alerts.special[ENC].soaks.speak == false, "saved, the rest kept")
+  setCheck(s.checks.bar, false)
+  assert(fill.opts.enabledIf() == false, "greyed with Bar off")
+  local fp = fill.pts[#fill.pts]
+  assert(fp[3] == -262 and fp[2] > 96, "on the Speak row, after its label")
   -- markers: an addon can't set them, so the section is greyed and says why
   assert(s.markText.text == "Marks for each step: Star, Circle. Named in the alert's text.", "the marks: " .. s.markText.text)
   assert(s.markCheck.enabled == false and s.markCheck.checked == false, "Mark the players: greyed")

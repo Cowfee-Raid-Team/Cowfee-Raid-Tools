@@ -210,10 +210,11 @@ function Alerts:RehearsalTick()
 end
 
 -- def = { label, group = bool, Entries = function(run) -> { item }, keepBlock = bool, own = bool,
--- Replaces = function(run, rep, item) -> bool (optional, see Collect) }.
+-- coverable = bool, Replaces = function(run, rep, item) -> bool (optional, see Collect) }.
 -- Registering a key again replaces it. With keepBlock, an item that names its own `block` keeps it (the
 -- editor's Test runs a note line as a "note" item, so the note's speech and sound switches still apply).
--- own marks your personal items (your reminders): previewing as another player leaves them out.
+-- own marks your personal items (your reminders, your personal note): previewing as another player leaves them out.
+-- coverable marks the block whose items step aside for a covering item (your reminders; see No double alerts).
 function Alerts:RegisterBlock(key, def)
     if not self.blocks[key] then
         self.blockOrder[#self.blockOrder + 1] = key
@@ -303,15 +304,23 @@ local function replaced(self, run, rep, item)
 end
 
 -- No double alerts: an item may carry covers = { [spellID] = true }, the spells it stands for (a special alert,
--- Alerts/Special.lua). An item of a block marked own (your reminders) on one of those spells, in the same phase
--- and within COVER_WINDOW seconds of a covering item, is left out: that cast is alerted once, by the covering
--- one. Your reminder's other casts still come. owned[item] marks the items of own blocks.
+-- Alerts/Special.lua). An item of a block marked coverable (your reminders) on one of those spells, in the same
+-- phase and within COVER_WINDOW seconds of a covering item that shows anywhere, is left out: that cast is
+-- alerted once, by the covering one. Your reminder's other casts still come, and so does every other block's
+-- line (the raid note, your personal note). coverable[item] marks the items of coverable blocks.
 Alerts.COVER_WINDOW = 1
 
-local function uncovered(out, owned)
+-- Whether an item shows anywhere: an alert, a bar, speech, or the text, icon, circle or timeline areas.
+-- Anyone else's note timers have none; they only show in the timers window, which reads the note itself.
+local function hasOutput(it)
+    local o = it.outputs
+    return type(o) == "table" and (o.alert or o.bar or o.speech or o.text or o.icon or o.circle or o.timeline) and true or false
+end
+
+local function uncovered(out, coverable)
     local covering = {}
     for _, it in ipairs(out) do
-        if type(it.covers) == "table" then
+        if type(it.covers) == "table" and hasOutput(it) then
             covering[#covering + 1] = it
         end
     end
@@ -321,7 +330,7 @@ local function uncovered(out, owned)
     local kept = {}
     for _, it in ipairs(out) do
         local drop = false
-        if owned[it] and type(it.spellID) == "number" then
+        if coverable[it] and type(it.spellID) == "number" then
             for _, c in ipairs(covering) do
                 if c.covers[it.spellID] and c.ph == it.ph and math.abs(c.time - it.time) <= Alerts.COVER_WINDOW then
                     drop = true
@@ -337,7 +346,7 @@ local function uncovered(out, owned)
 end
 
 function Alerts:Collect(run, opts)
-    local out, owned = {}, {}
+    local out, coverable = {}, {}
     -- Previewing as another player shows exactly what they get: none of your own reminders.
     local as = run and run.rehearsal and previewOf(run.rehearsal)
     local othersOnly = as ~= nil and as ~= "*"
@@ -359,14 +368,14 @@ function Alerts:Collect(run, opts)
                         local copy = stamp(self, it, block)
                         if copy and not replaced(self, run, rep, copy) then
                             out[#out + 1] = copy
-                            owned[copy] = def.own or nil
+                            coverable[copy] = def.coverable or nil
                         end
                     end
                 end
             end
         end
     end
-    out = uncovered(out, owned)
+    out = uncovered(out, coverable)
     -- the tested alert as it stands on screen. It shows under any Preview as: you always see the alert
     -- you are testing.
     if testing and type(opts.extra) == "table" then
@@ -610,13 +619,6 @@ function Alerts:Elapsed()
         return nil
     end
     return self:Now() - self.run.firstAt
-end
-
--- Whether an item shows anywhere: an alert, a bar, speech, or the text, icon, circle or timeline areas.
--- Anyone else's note timers have none; they only show in the timers window, which reads the note itself.
-local function hasOutput(it)
-    local o = it.outputs
-    return type(o) == "table" and (o.alert or o.bar or o.speech or o.text or o.icon or o.circle or o.timeline) and true or false
 end
 
 -- The timed lines of the run: items of started phases that show anywhere and are not masked by a later

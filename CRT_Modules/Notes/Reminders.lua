@@ -502,7 +502,10 @@ local function itemsFor(enc, name)
     local pending = enc and pendingOwn[enc] or false
     local dev = devMode()
     local diff = shownGroup() .. "|" .. tostring(viewPrefer)
-    if c and c.enc == enc and c.diff == diff and c.pending == pending and c.dev == dev then
+    -- the boss's special alerts, whose Special tags the rows show (a new /crt dev special sample reads again)
+    local S = CRT.AlertSpecial
+    local specialKey = S and S.ListKey and type(enc) == "number" and S:ListKey(enc) or nil
+    if c and c.enc == enc and c.diff == diff and c.pending == pending and c.dev == dev and c.special == specialKey then
         return c.items
     end
     local list = buildItems(enc)
@@ -524,7 +527,6 @@ local function itemsFor(enc, name)
             item.label = itemName(item)
             item.types = typesOf and typesOf(item.spellID, item.label) or nil
             -- the boss's special alert that already covers it, for its Special tag
-            local S = CRT.AlertSpecial
             item.covered = S and type(enc) == "number" and S:CoveredBy(enc, group, item.spellID, item.ability and item.ability.name,
                 shown and shown.ref) or nil
             item.iconTex = itemIcon(item)
@@ -541,7 +543,7 @@ local function itemsFor(enc, name)
             end
         end
     end
-    listCache = { enc = enc, diff = diff, pending = pending, dev = dev, items = list }
+    listCache = { enc = enc, diff = diff, pending = pending, dev = dev, special = specialKey, items = list }
     return list
 end
 

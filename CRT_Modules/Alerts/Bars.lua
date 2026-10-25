@@ -20,6 +20,8 @@ local ADDON, CRT = ...
 -- cast) ends it there instead, and barStart (seconds after the cast) is when the bar appears: its fill then runs
 -- over barEnd - barStart, not over `ahead` (a special alert's bar = { start, length, ticks }, Alerts/Special.lua).
 -- Only the bars read these; the callout, speech and the other areas keep the cast's time.
+-- fill = "up" makes a line's bar fill up from empty as its time nears instead of emptying (any other value, or
+-- none: it empties, as every bar did before); its ticks still sit where the fill's edge is at each impact.
 
 local Areas = CRT.AlertAreas
 local Alerts = CRT.Alerts
@@ -262,6 +264,9 @@ end
 -- engine lines table (Alerts:Lines hands out the same one until something changes), never per frame.
 local barCache = setmetatable({}, { __mode = "k" })
 local function barLines(src)
+    if #src == 0 then
+        return src, false -- no run hands out a new empty table each time: nothing to keep
+    end
     local done = barCache[src]
     if done then
         return done.lines, done.starts
@@ -297,9 +302,9 @@ local function barLines(src)
     return out, starts
 end
 
--- Where each tick sits on the bar, 0 (the left, empty end) to 1 (full): the fill's fraction at the moment its
--- impact lands, so the fill's edge reaches it then. Ticks off the bar (before it showed) are left out.
-local function tickMarks(line, now, total)
+-- Where each tick sits on the bar, 0 (the left end) to 1 (the right): the fill's edge at the moment its impact
+-- lands, emptying or filling up (up), so the edge reaches it then. Ticks off the bar (before it showed) are left out.
+local function tickMarks(line, now, total, up)
     if type(line.tickAt) ~= "table" or not (total and total > 0) then
         return nil
     end
@@ -307,7 +312,7 @@ local function tickMarks(line, now, total)
     for _, at in ipairs(line.tickAt) do
         local pos = (line.at - at) / total
         if pos >= 0 and pos <= 1 then
-            out[#out + 1] = { pos = pos, passed = now >= at }
+            out[#out + 1] = { pos = up and 1 - pos or pos, passed = now >= at }
         end
     end
     return #out > 0 and out or nil
@@ -322,7 +327,8 @@ local function row(line, now, ahead, shownAt, s)
     else
         total = math.min(ahead, line.at - (shownAt or now))
     end
-    local fraction = total > 0 and (line.at - now) / total or 0
+    local fraction = math.max(0, math.min(1, total > 0 and (line.at - now) / total or 0))
+    local up = line.fill == "up"
     local color, from = Areas.DrawColor(line, colorOf(s.barColor, DEFAULT_BAR_COLOR))
     color = color or DEFAULT_BAR_COLOR
     return {
@@ -332,8 +338,10 @@ local function row(line, now, ahead, shownAt, s)
         icon = Areas.LineIcon(line),
         lineColor = from ~= "custom" and color or nil,
         color = color,
-        fraction = math.max(0, math.min(1, fraction)),
-        ticks = tickMarks(line, now, total),
+        fraction = fraction, -- the time left, over the bar's time
+        fill = up and "up" or "down",
+        filled = up and 1 - fraction or fraction, -- how much of the bar is filled
+        ticks = tickMarks(line, now, total, up),
     }
 end
 
@@ -421,7 +429,7 @@ local function draw(bar, line, now, s, shownAt)
         left = height
     end
 
-    local fillWidth = (width - left) * r.fraction
+    local fillWidth = (width - left) * r.filled
     bar.fill:ClearAllPoints()
     bar.fill:SetPoint("LEFT", left, 0)
     bar.fill:SetSize(math.max(fillWidth, 1), height)

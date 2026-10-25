@@ -32,6 +32,8 @@ local ADDON, CRT = ...
 --                                       optional, the other way to write it: a bar of its own that appears
 --                                         start seconds after each cast (negative: before it; default 0), runs
 --                                         length seconds, with impacts ticks seconds into it. Not with ticks.
+--     fill = "up",                      optional: whether its bar fills up as the cast nears ("up", the default for
+--                                         special alerts) or empties ("down"); each player may change it
 --     covers = { 1234, 5678 },          optional: more spells this alert stands for (besides when's spell or
 --                                         row), so your own reminder on them doesn't alert the same cast twice
 --   } }
@@ -45,7 +47,7 @@ local ADDON, CRT = ...
 -- Blizzard calls it only from its secure templates), so an addon can never put a marker on a player. The
 -- alert names the marks in its text instead (Special.MARKING says so to the Mech Alerts panel).
 -- Each player's choices: CRT.db.alerts.special[encounterID][key] = { on, show = { alert, text, icon, bar,
--- circle, timeline }, speak, markers }, saved once changed; until then the entry's own defaults apply.
+-- circle, timeline }, speak, markers, fill }, saved once changed; until then the entry's own defaults apply.
 -- /crt dev special (developer builds) adds a sample to Special.dev[encounterID], never saved.
 
 local Alerts = CRT.Alerts
@@ -75,6 +77,8 @@ local DATA_SHOW = { alert = "callout", text = "text", icon = "icon", bar = "bar"
 local SHOW_DEFAULT = { alert = true, bar = true }
 
 local MODES = { everyone = true, rotation = true, note = true }
+local FILLS = { up = true, down = true }
+local DEFAULT_FILL = "up" -- a special alert is usually a cast coming: its bar fills up to it
 local GROUPS = { mythic = true, nh = true }
 
 -- The raid markers by the words a boss file may use, as the game numbers them (1 star ... 8 skull).
@@ -320,6 +324,9 @@ function Special.Read(def)
     if not covers then
         return nil, whyCovers
     end
+    if def.fill ~= nil and not FILLS[def.fill] then
+        return nil, "fill must be up or down"
+    end
     local show, given = {}, type(def.show) == "table" and def.show or nil
     for _, k in ipairs(SHOW_KEYS) do
         local v = given and given[DATA_SHOW[k]]
@@ -345,6 +352,7 @@ function Special.Read(def)
         marks = readMarks(def.markers),
         impacts = impacts,
         covers = covers,
+        fill = def.fill or DEFAULT_FILL,
     }
 end
 
@@ -439,10 +447,11 @@ function Special:Choices(encounterID, entry)
         return v and true or false
     end
     return { on = pick(saved.on, entry.default), show = show, speak = pick(saved.speak, entry.speak),
-        markers = pick(saved.markers, false) }
+        markers = pick(saved.markers, false), fill = FILLS[saved.fill] and saved.fill or entry.fill or DEFAULT_FILL }
 end
 
--- Saves one choice ("on", "speak", "markers", or a Show as key with show = true) and tells the engine.
+-- Saves one choice ("on", "speak", "markers", "fill" = "up" or "down", or a Show as key with show = true) and
+-- tells the engine.
 -- The whole set is saved, so a later change to the entry's defaults leaves your choices alone.
 function Special:SetChoice(encounterID, entry, field, value, show)
     local all = store(true)
@@ -452,6 +461,8 @@ function Special:SetChoice(encounterID, entry, field, value, show)
     local c = self:Choices(encounterID, entry)
     if show then
         c.show[field] = value and true or false
+    elseif field == "fill" then
+        c.fill = FILLS[value] and value or DEFAULT_FILL
     else
         c[field] = value and true or false
     end
@@ -537,6 +548,14 @@ function Special:Covers(encounterID, entry, group, ref)
         end
     end
     return out
+end
+
+-- What a boss's special alerts are read from: changes when its boss file's list or the developer's sample is
+-- replaced (a list that is cached by its tables, such as Mech Alerts' rows, keys on it).
+function Special:ListKey(encounterID)
+    local Bosses = CRT.Bosses
+    local def = Bosses and Bosses.Get and Bosses:Get(encounterID)
+    return tostring(def and def.special) .. "|" .. tostring(self.dev[encounterID])
 end
 
 -- The first of a boss's special alerts for group that stands for an ability (its spell, or for one named by its
@@ -719,6 +738,7 @@ local function item(entry, choices, n, at, step, covers)
         barTo = imp and imp.barTo,
         barStart = imp and imp.barStart,
         barEnd = imp and imp.barEnd,
+        fill = choices.fill or DEFAULT_FILL,
         covers = covers,
         id = BLOCK .. ":" .. entry.key .. ":" .. n,
         ph = at.ph,

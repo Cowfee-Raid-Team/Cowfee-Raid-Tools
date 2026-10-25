@@ -1095,4 +1095,5 @@ local function entries(run)
     return out
 end
 
-Alerts:RegisterBlock(BLOCK, { label = "Your reminders", group = true, own = true, Entries = entries })
+-- coverable: a reminder steps aside for a special alert on the same cast (Alerts/Engine.lua, No double alerts)
+Alerts:RegisterBlock(BLOCK, { label = "Your reminders", group = true, own = true, coverable = true, Entries = entries })

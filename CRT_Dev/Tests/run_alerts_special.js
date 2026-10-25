@@ -330,11 +330,31 @@ check("special: ticks and barTo, or a bar of its own, are read", function()
     ["seconds after the cast"] = { ticks = { -1 } },
     ["barTo must"] = { ticks = { 1 }, barTo = "sometime" },
     ["covers must"] = { covers = { "Feast" } },
+    ["fill must"] = { fill = "sideways" },
   }) do
     def.key, def.label, def.when = "x", "X", { times = "0:30" }
     local ok, err = S.Read(def)
     assert(ok == nil and tostring(err):find(why, 1, true), why .. ": " .. tostring(err))
   end
+end)
+
+check("special: the bar fills up by default; the data and each player may choose", function()
+  fresh()
+  S.dev[9002] = { { key = "up", label = "Up", when = { times = "0:30" } }, { key = "down", label = "Down", when = { times = "0:30" }, fill = "down" } }
+  local up, down = S:Get(9002, "up"), S:Get(9002, "down")
+  assert(up.fill == "up" and down.fill == "down", "read: up unless the data says down")
+  assert(S:Choices(9002, up).fill == "up" and S:Choices(9002, down).fill == "down", "your choice starts as the data's")
+  assert(S:Items(9002, up, {})[1].fill == "up" and S:Items(9002, down, {})[1].fill == "down", "the item carries it")
+  S:SetChoice(9002, up, "fill", "down")
+  assert(CRT.db.alerts.special[9002].up.fill == "down" and S:Items(9002, up, {})[1].fill == "down", "saved with your choices")
+  assert(CRT.db.alerts.special[9002].up.on == false, "the rest saved whole")
+  S:SetChoice(9002, up, "fill", "nonsense")
+  assert(S:Choices(9002, up).fill == "up", "anything else: up")
+  CRT.db.alerts.special[9002] = { down = { fill = 7 } }
+  assert(S:Choices(9002, down).fill == "down", "a bad saved value: the data's")
+  local k = S:ListKey(9002)
+  S.dev[9002] = { { key = "other", label = "Other", when = { times = "0:30" } } }
+  assert(S:ListKey(9002) ~= k, "a new sample changes the list's key")
 end)
 
 check("special: an item carries its ticks, its bar and the spells it covers", function()
@@ -359,31 +379,44 @@ end)
 
 check("special: no double alerts: your own reminder steps aside for the casts the special one alerts", function()
   fresh()
-  local own = {}
-  A:RegisterBlock("ownTest", { label = "Yours", group = true, own = true, Entries = function() return own end })
-  A:RegisterBlock("raidTest", { label = "Raid", Entries = function() return { { id = "raid:1", ph = 1, time = 40, spellID = 4242, text = "Raid", outputs = { alert = true } } } end })
-  local function mine(id, ph, t) return { id = "ownTest:" .. id, ph = ph, time = t, spellID = 4242, text = "Mine", outputs = { alert = true } } end
-  own = { mine("a", 1, 40.5), mine("b", 1, 100), mine("c", 1, 70), mine("d", 2, 40),
-    { id = "ownTest:e", ph = 1, time = 40, spellID = 5555, text = "Other spell", outputs = { alert = true } } }
+  -- the real blocks, fed test items: your reminders (coverable), your personal note (own, not coverable), the raid note
+  local mineDef, personalDef, noteDef = A.blocks.mine, A.blocks.personal, A.blocks.note
+  assert(mineDef and mineDef.coverable == true and mineDef.own == true, "your reminders are the coverable block")
+  assert(personalDef and personalDef.own == true and not personalDef.coverable, "your personal note is yours, but never covered")
+  assert(noteDef and not noteDef.coverable, "nor is the raid note")
+  local saved = { mineDef.Entries, personalDef.Entries, noteDef.Entries }
+  local function it(id, ph, t, spell) return { id = id, ph = ph, time = t, spellID = spell or 4242, text = id, outputs = { alert = true } } end
+  local mine = { it("mine:a:1", 1, 40.5), it("mine:b:1", 1, 100), it("mine:c:1", 1, 70), it("mine:d:1", 2, 40), it("mine:e:1", 1, 40, 5555) }
+  mineDef.Entries = function() return mine end
+  personalDef.Entries = function() return { it("personal:1", 1, 40) } end
+  noteDef.Entries = function() return { it("note:1", 1, 40) } end
   local function ids()
     local out = {}
-    for _, it in ipairs(A.items) do if it.block == "ownTest" or it.block == "special" or it.block == "raidTest" then out[#out + 1] = it.id end end
+    for _, x in ipairs(A.items) do if x.block == "mine" or x.block == "special" or x.block == "personal" or x.block == "note" then out[#out + 1] = x.id end end
     table.sort(out) return table.concat(out, ",")
   end
   -- a tank: the Tank swap rotation gives you its first cast (0:40) only
   role = "TANK" CRT.NoteEngine:ResetTokens()
   CRT.db.alerts.special[9001] = { everyone = { on = false } }
   A:Start(9001, "Mythic", "encounter", { difficultyID = 16 })
-  assert(ids() == "ownTest:a,ownTest:b,ownTest:c,ownTest:d,ownTest:e,raid:1", "special off: all of yours: " .. ids())
-  S:SetChoice(9001, S:Get(9001, "tanks"), "on", true)
+  assert(ids() == "mine:a:1,mine:b:1,mine:c:1,mine:d:1,mine:e:1,note:1,personal:1", "special off: all of yours: " .. ids())
+  local tanks = S:Get(9001, "tanks")
+  S:SetChoice(9001, tanks, "on", true)
   A:Start(9001, "Mythic", "encounter", { difficultyID = 16 })
-  assert(ids() == "ownTest:b,ownTest:c,ownTest:d,ownTest:e,raid:1,special:tanks:1", "both on: the shared cast once, by the special alert: " .. ids())
+  assert(ids() == "mine:b:1,mine:c:1,mine:d:1,mine:e:1,note:1,personal:1,special:tanks:1",
+    "both on: the shared cast once, by the special alert; your personal note and the raid note keep theirs: " .. ids())
   -- outside the window it is another cast
-  own[1].time = 41.5
+  mine[1].time = 41.5
   A:Start(9001, "Mythic", "encounter", { difficultyID = 16 })
-  assert(ids():find("ownTest:a", 1, true), "1.5 s apart: both")
+  assert(ids():find("mine:a:1", 1, true), "1.5 s apart: both")
+  mine[1].time = 40.5
+  -- a special alert that shows nowhere covers nothing
+  for _, k in ipairs(S.SHOW_KEYS) do S:SetChoice(9001, tanks, k, false, true) end
+  S:SetChoice(9001, tanks, "speak", false)
+  A:Start(9001, "Mythic", "encounter", { difficultyID = 16 })
+  assert(ids():find("mine:a:1", 1, true), "every output off: your reminder still alerts: " .. ids())
   A:Stop(true)
-  A.blocks.ownTest, A.blocks.raidTest = nil, nil
+  mineDef.Entries, personalDef.Entries, noteDef.Entries = saved[1], saved[2], saved[3]
   assert(#errors == 0, tostring(errors[1]))
 end)
 

@@ -51,6 +51,9 @@ local TEXT = {
     circle = "Circle",
     timeline = "Alert timeline",
     speak = "Speak the text",
+    barFill = "Bar fill",
+    fillUp = "Bar fills up",
+    fillDown = "Bar empties",
     markers = "Markers",
     markersHelp = "Addons can't put raid markers on players. Since patch 12.0 only the game's own menus and the /tm macro can. So the alert names its marks in its text instead.",
     marks = "Marks for each step: %s. Named in the alert's text.",
@@ -85,6 +88,7 @@ local L = {
     MARK_Y = -296, MARK_TEXT_Y = -316, MARK_CHECK_Y = -332,
     MESSAGE_Y = -366,
     ALERT_W = 130, -- Alert me and its label, at the header's right
+    FILL_X = 150, FILL_LABEL = 56, FILL_W = 130, -- Bar fill, on the Speak row
 }
 
 -- the lists' look, shared with the Mechanics list (Notes/MechLook.lua)
@@ -402,6 +406,7 @@ local function drawPanel(enc, entry)
         check:SetChecked(c.show[key] and true or false)
     end
     ui.speak:SetChecked(c.speak)
+    ui.fill.refresh()
     drawMarkers(entry)
     ui.message:SetText(state.notice and UI.BadText(state.notice) or "")
 end
@@ -628,6 +633,28 @@ local function buildPanel(f)
     end
     placeShowAs()
     ui.speak = makeCheck(p, TEXT.speak, L.INSET - 4, L.SPEAK_Y, setChoice("speak"))
+    -- Bar fill: whether the bar fills up to the cast or empties, saved with your choices; greyed while Bar is off
+    ui.fill = UI.Dropdown(p, TEXT.barFill, {
+        labelWidth = L.FILL_LABEL, width = L.FILL_W,
+        options = { { key = "up", label = TEXT.fillUp }, { key = "down", label = TEXT.fillDown } },
+        enabledIf = function()
+            local entry, enc = current()
+            return entry ~= nil and Special():Choices(enc, entry).show.bar and true or false
+        end,
+        get = function()
+            local entry, enc = current()
+            return entry and Special():Choices(enc, entry).fill or "up"
+        end,
+        set = function(key)
+            local entry, enc = current()
+            if entry then
+                state.notice = nil
+                Special():SetChoice(enc, entry, "fill", key)
+                M.Refresh()
+            end
+        end,
+    })
+    ui.fill:SetPoint("TOPLEFT", L.INSET + L.FILL_X, L.SPEAK_Y)
 
     ui.markHeading = heading(p, TEXT.markers, L.MARK_Y, nil, TEXT.markersHelp)
     ui.markText = line(p, L.MARK_TEXT_Y)
