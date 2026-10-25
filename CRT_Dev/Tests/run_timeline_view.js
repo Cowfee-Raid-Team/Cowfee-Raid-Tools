@@ -190,15 +190,28 @@ do
   assert(S.span == 60, "build smoke: SetSpan clamps to 60")
   view:SetData(pull, 3001)
   view:ScrollTo(500)
+  local spanBefore = S.span
   view.hscroll.OnMouseWheel(view.hscroll, -1)
-  assert(S.span == 75 and view.hscroll:GetHorizontalScroll() == 340, "zoom keeps the time under the cursor")
+  assert(S.span == spanBefore, "a plain wheel never zooms")
+  IsControlKeyDown = function() return true end
+  view:ScrollTo(500)
+  view.hscroll.OnMouseWheel(view.hscroll, -1)
+  IsControlKeyDown = nil
+  assert(S.span == 75 and view.hscroll:GetHorizontalScroll() == 340, "Ctrl + wheel zooms and keeps the time under the cursor")
   local before = view.hscroll:GetHorizontalScroll()
+  IsShiftKeyDown = function() return true end
+  view.hscroll.OnMouseWheel(view.hscroll, -1)
+  IsShiftKeyDown = function() return false end
+  assert(view.hscroll:GetHorizontalScroll() > before and S.span == 75, "Shift + wheel moves along the time")
+  view:ScrollTo(before)
   view.hscroll.OnMouseDown(view.hscroll, "LeftButton")
   cursor = 350
   view.frame.OnUpdate(view.frame)
   view.hscroll.OnMouseUp(view.hscroll, "LeftButton")
-  assert(view.hscroll:GetHorizontalScroll() == before, "left button does not drag")
-  print("ok left button does not drag")
+  assert(S.span ~= 75, "a left drag on the track zooms to the range")
+  view:SetSpan(75)
+  view:ScrollTo(before)
+  print("ok wheel scrolls, Ctrl + wheel zooms, left drag zooms")
   cursor = 400
   view.hscroll.OnMouseDown(view.hscroll, "RightButton")
   cursor = 350
@@ -787,25 +800,18 @@ do
   assert(textures == made, "drag zoom: no new textures for a second band")
   print("ok drag right to left zooms the same, and the band is reused")
 
-  -- Ctrl + drag on the track does the same; without Ctrl a left drag on the track still selects nothing
-  reset()
-  at(120)
-  v.hscroll.OnMouseDown(v.hscroll, "LeftButton")
-  assert(v.zoomSel == nil, "track: a plain left press starts no selection")
-  at(210)
-  v.frame.OnUpdate(v.frame)
-  v.hscroll.OnMouseUp(v.hscroll, "LeftButton")
-  assert(S.span == 300 and scrolled() == 0, "track: a plain left drag changes nothing")
-  local ctrl = true
+  -- a plain left drag on the track does the same (no Ctrl needed); Ctrl + drag still works
+  local ctrl = false
   IsControlKeyDown = function() return ctrl end
+  reset()
   v.clickAt = nil
   at(120)
   v.hscroll.OnMouseDown(v.hscroll, "LeftButton")
   at(210)
   v.frame.OnUpdate(v.frame)
-  assert(band.fill:IsShown(), "track: Ctrl + drag shows the band")
+  assert(band.fill:IsShown(), "track: a plain left drag shows the band")
   v.hscroll.OnMouseUp(v.hscroll, "LeftButton")
-  assert(S.span == 90 and scrolled() == 800, "track: Ctrl + drag zooms to the range: span " .. S.span .. ", scroll " .. scrolled())
+  assert(S.span == 90 and scrolled() == 800, "track: a plain left drag zooms to the range: span " .. S.span .. ", scroll " .. scrolled())
   assert(v.clickAt == nil, "track: the release is the selection's, not a click toward a double-click")
   -- a Ctrl + click that doesn't move is still a plain click on the track
   reset()
