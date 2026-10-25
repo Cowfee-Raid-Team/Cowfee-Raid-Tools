@@ -93,7 +93,12 @@ local function mock(kind, name, parent)
   function m:GetTextColor() return 1, 1, 1, 1 end
   function m:GetText() return rawget(self, "text") end
   function m:SetText(t) rawset(self, "text", t) end
-  function m:GetChecked() return false end
+  function m:GetChecked() return rawget(self, "checked") == true end
+  function m:SetChecked(v) rawset(self, "checked", v and true or false) end
+  function m:SetEnabled(v) rawset(self, "enabled", v and true or false) end
+  function m:Enable() rawset(self, "enabled", true) end
+  function m:Disable() rawset(self, "enabled", false) end
+  function m:IsEnabled() return rawget(self, "enabled") ~= false end
   function m:GetRegions() return unpack(self.regions) end
   function m:GetChildren() return unpack(self.children) end
   function m:GetNumRegions() return #self.regions end
@@ -126,6 +131,7 @@ local function newFrame(kind, name, parent, template)
   if name then env[name] = f end
   -- the templates' parts the addon reaches for
   if template and template:find("ScrollFrameTemplate") then rawset(f, "ScrollBar", mock("Slider", nil, f)) end
+  if template and template:find("UIPanelButtonTemplate") then for _, k in ipairs({ "Left", "Middle", "Right" }) do rawset(f, k, mock("Texture", nil, f)) end end
   if template and template:find("BasicFrameTemplate") then rawset(f, "CloseButton", mock("Button", nil, f)) rawset(f, "TitleText", mock("FontString", nil, f)) rawset(f, "Inset", mock("Frame", nil, f)) end
   return f
 end
@@ -459,6 +465,74 @@ do
   slash("dev modules loot " .. (was and "on" or "off"))
   check(CRT.db.modules.loot == was, "and back")
   check(M:Set("core", false) == false and M:IsOn("core"), "Core can't be turned off")
+end
+
+-- The Modules page (UI/ModulesPage.lua): Core's, in the General group; a row per module from the registry, Core
+-- first, greyed and ticked; a box saves at once; Reload to apply and its status line only while a saved switch
+-- differs from what runs, disabled in combat; /crt modules opens it
+do
+  local P = CRT.ModulesPage
+  check(type(P) == "table" and UI.pages.modules ~= nil, "the Modules page is registered")
+  local inGeneral = false
+  for _, k in ipairs(UI.MENU_GROUPS[1]) do if k == "modules" then inGeneral = true end end
+  check(inGeneral, "Modules is in the menu's General group")
+  local inMenu = false
+  for _, g in ipairs(UI.MenuGroups()) do for _, k in ipairs(g.keys) do if k == "modules" then inMenu = true end end end
+  check(inMenu, "Modules is in the menu, whatever is off")
+  local before = #shownPages
+  slash("modules")
+  check(#shownPages > before and shownPages[#shownPages] == "modules", "/crt modules opens the Modules page")
+  check(slash("help"):find("/crt modules|r", 1, true) ~= nil, "/crt help lists /crt modules")
+  if type(P) == "table" and UI.pages.modules then
+    local pf = newFrame("Frame", nil, stubs.UIParent)
+    UI.pages.modules.builder(pf)
+    if pf.scripts.OnShow then pf.scripts.OnShow(pf) end
+    local list = M:List()
+    local rows = P.rows or {}
+    check(#rows == #list + 1, "one row per module plus Core: " .. #rows)
+    local core = rows[1] or {}
+    check(core.key == "core" and core.label and core.label:GetText() == "Core (always on)", "Core's row comes first: " .. tostring(core.label and core.label:GetText()))
+    check(core.check and core.check:GetChecked() == true and core.check:IsEnabled() == false, "Core's box is ticked and can't be clicked")
+    check(core.help ~= nil, "Core's row has a (?)")
+    for i, def in ipairs(list) do
+      local row = rows[i + 1] or {}
+      check(row.key == def.key and row.label and row.label:GetText() == def.label, "row " .. (i + 1) .. " is " .. def.label .. " from the registry")
+      check(row.check and row.check:GetChecked() == M:Saved(def.key) and row.check:IsEnabled(), def.label .. "'s box shows its switch and can be clicked")
+      check(row.help ~= nil and row.helpText == def.help, def.label .. "'s (?) gives its registry help")
+    end
+    check(P.reload and not P.reload:IsShown() and P.status and not P.status:IsShown(), "nothing to reload: no button, no status")
+    check(P.reload and P.reload:GetText() == "Reload to apply", "the button reads Reload to apply")
+    local loot = rows[2]
+    if loot and loot.check then
+      local was = M:IsOn("loot")
+      loot.check:SetChecked(not was)
+      loot.check.scripts.OnClick(loot.check)
+      check(CRT.db.modules.loot == not was, "ticking Loot's box saves CRTDB.modules at once")
+      check(M:IsOn("loot") == was, "and this session runs as it started")
+      check(P.reload:IsShown() and P.status:IsShown(), "saved differs from running: Reload to apply and the status show")
+      check(P.status:GetText() == "Takes effect after a reload.", "the status reads Takes effect after a reload.: " .. tostring(P.status:GetText()))
+      check(P.reload:IsEnabled(), "out of combat the button can be clicked")
+      -- in combat it can't, and says why
+      stubs.InCombatLockdown = function() return true end
+      P.Refresh()
+      check(not P.reload:IsEnabled(), "in combat the button is disabled")
+      check(P.ReloadTip and P.ReloadTip():find("combat", 1, true) ~= nil, "its tooltip says why: " .. tostring(P.ReloadTip and P.ReloadTip()))
+      stubs.InCombatLockdown = function() return false end
+      fire("PLAYER_REGEN_DISABLED")
+      check(not P.reload:IsEnabled(), "combat starting disables it while the page shows")
+      fire("PLAYER_REGEN_ENABLED")
+      check(P.reload:IsEnabled(), "combat ending enables it again")
+      local reloads = 0
+      stubs.ReloadUI = function() reloads = reloads + 1 end
+      P.reload.scripts.OnClick(P.reload)
+      check(reloads == 1, "Reload to apply reloads the interface")
+      stubs.ReloadUI = nil
+      loot.check:SetChecked(was)
+      loot.check.scripts.OnClick(loot.check)
+      check(CRT.db.modules.loot == was, "ticking it back saves that")
+      check(not P.reload:IsShown() and not P.status:IsShown(), "back to what runs: the button and status hide")
+    end
+  end
 end
 
 -- raider-side answers

@@ -180,6 +180,7 @@ CRT_Modules\QoL\BreakTimer.lua
 CRT_Modules\QoL\Page.lua
 CRT_Core\UI\Minimap.lua
 CRT_Core\UI\SettingsPage.lua
+CRT_Core\UI\ModulesPage.lua
 # Season packs: one line each. The pack's Season.xml lists its own files (CRT_Data\Seasons\<pack>\Season.xml).
 CRT_Data\Seasons\Midnight-S2\Season.xml
 #@do-not-package@

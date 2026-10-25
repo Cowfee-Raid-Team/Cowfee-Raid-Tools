@@ -102,7 +102,7 @@ local UI = CRT.UI
 
 -- 1. The groups and their labels, in order.
 local want = {
-  { "General", "settings", "qol" },
+  { "General", "settings", "modules", "qol" },
   { "Bosses", "timeline", "notes", "pace" },
   { "Raid Admin", "readycheck", "groups", "gearcheck", "late" },
   { "Modules", "lootmaster", "loot", "requests", "seasonstats", "tattle" },
@@ -118,10 +118,10 @@ end
 section("the four groups, their labels and pages in order")
 -- Every page, registered out of the menu's order (as the .toc loads them), plus the Development page,
 -- hidden until /crt dev; it joins the last group.
-local titles = { settings = "General Settings", qol = "Quality of Life", readycheck = "Ready Check", groups = "Raid Groups",
+local titles = { settings = "General Settings", modules = "Modules", qol = "Quality of Life", readycheck = "Ready Check", groups = "Raid Groups",
   gearcheck = "Gear Checker", loot = "Loot History", timeline = "Timeline", notes = "Raid Notes", pace = "Pace",
   lootmaster = "Loot Master", requests = "Requests", seasonstats = "Season Stats", late = "Late Tracker", tattle = "Tattlebot", dev = "Development" }
-for _, key in ipairs({ "settings", "groups", "readycheck", "notes", "late", "tattle", "timeline", "pace", "gearcheck", "loot", "lootmaster", "requests", "seasonstats", "qol", "dev" }) do
+for _, key in ipairs({ "settings", "modules", "groups", "readycheck", "notes", "late", "tattle", "timeline", "pace", "gearcheck", "loot", "lootmaster", "requests", "seasonstats", "qol", "dev" }) do
   UI:RegisterPage(key, titles[key], function() end)
 end
 UI:SetPageHidden("dev", true)

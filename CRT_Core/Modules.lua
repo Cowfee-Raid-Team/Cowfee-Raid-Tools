@@ -12,7 +12,8 @@ local ADDON, CRT = ...
 -- until the next /reload.
 --
 -- A module's parts, declared at the bottom of this file:
---   label, help   its name and one line on what it holds (for the Modules page)
+--   label, help   its name, and its (?) on the Modules page (UI/ModulesPage.lua): what turns off with it,
+--                 then what keeps working for raiders
 --   files         the files it owns: turned off with it
 --   raider        files in its folders that keep running when it is off: what raiders answer or see
 --   core          files in its folders that are Core: the shared stores and data the rest of the addon reads
@@ -37,6 +38,11 @@ Modules.TEXT = TEXT
 
 local CORE = "core"
 Modules.CORE = CORE
+-- Core's row on the Modules page: always on, so never registered
+Modules.CORE_INFO = {
+    label = "Core (always on)",
+    help = "Raid Notes, Mech Alerts, Ready Check, Quality of Life and the settings. It can't be turned off.",
+}
 
 -- Declares a module (see the top of this file for def's fields). Returns def.
 function Modules:Register(key, def)
@@ -197,7 +203,7 @@ end
 
 Modules:Register("loot", {
     label = "Loot",
-    help = "Loot Master for the raid leader, Loot History and Requests. Off, your CRT still answers a raid leader's loot session: the popup, auto-pass and the answers window keep working.",
+    help = "Loot Master, Loot History and Requests. Your loot popup keeps working when a leader runs a session.",
     pages = { "lootmaster", "loot", "requests" },
     words = { "loot" },
     files = {
@@ -220,7 +226,7 @@ Modules:Register("loot", {
 
 Modules:Register("timeline", {
     label = "Timeline",
-    help = "The Timeline page and window, Healer CDs and the Rehearsal. Off, pulls are still recorded and Mech Alerts, reminders and the ability timelines keep working.",
+    help = "Pull review, Healer CDs and the Rehearsal. Mech Alerts, alerts and pull recording keep working.",
     pages = { "timeline" },
     words = { "timeline" },
     files = {
@@ -240,7 +246,7 @@ Modules:Register("timeline", {
 
 Modules:Register("raidlead", {
     label = "Raid Lead",
-    help = "Raid Groups, Gear Checker, Late Tracker, the Pace page, the Season Stats page and Tattlebot. Off, your CRT still answers a Gear Checker ask, reports your repairs, counts your pulls for Season Stats and shows the Pace bars your raid leader sends.",
+    help = "Raid Groups, Gear Checker, Late Tracker, the Pace page, the Season Stats page and Tattlebot. Gear replies, repair reports, Pace bars and Season Stats counting keep working.",
     pages = { "groups", "gearcheck", "late", "pace", "seasonstats", "tattle" },
     words = { "groups", "gear", "late", "pace", "tattle" },
     files = {
