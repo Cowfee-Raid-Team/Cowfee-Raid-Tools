@@ -401,7 +401,7 @@ print("ok bars: ticker")
 
 -- smooth: between the 0.1 s refreshes the fill, the seconds and a tick's fade move every frame, from the lines the
 -- last refresh drew (Alerts:Lines is not asked again), with nothing made
-pull({}, { item{ id = "sm", time = 5, text = "Smooth", ticks = { 0, 0.03 } } })
+pull({}, { item{ id = "sm", time = 5, text = "Smooth", ticks = { 0, 0.03 }, countTo = "impact" } })
 start()
 ticker.OnUpdate(ticker, 1) -- a refresh now, the ticker's count back at 0
 local bar = B.pool[1]
@@ -810,7 +810,7 @@ print("ok bars: spacing and border rows")
 -- tick sits inside it; a tick sits where the fill's edge is when its impact lands, and a passed one fades.
 local function near1(a, b) return a and b and math.abs(a - b) < 1e-9 end
 local function shownTicks(bar) local out = {} for _, t in ipairs(rawget(bar, "tickLines") or {}) do if t.shown then out[#out + 1] = t end end return out end
-pull({}, { item{ id = "feast", time = 10, text = "Soak", ticks = { 2.5, 0 } } })
+pull({}, { item{ id = "feast", time = 10, text = "Soak", ticks = { 2.5, 0 }, countTo = "impact" } })
 start()
 clock = 100 B:Refresh()
 v = B:Visible()
@@ -858,7 +858,7 @@ clock = 100 B:Refresh()
 v = B:Visible()
 assert(v[1].time == "10" and #v[1].ticks == 1 and v[1].ticks[1].pos == 0, "ends at the cast: one tick on it")
 -- a bar of its own: barStart and barEnd (seconds after the cast), here from 3 s before the cast for 8 s, impacts 4.5 and 6.5 s in
-pull({}, { item{ id = "own", time = 10, text = "Own", ticks = { 1.5, 3.5 }, barStart = -3, barEnd = 5 } })
+pull({}, { item{ id = "own", time = 10, text = "Own", ticks = { 1.5, 3.5 }, barStart = -3, barEnd = 5, countTo = "impact" } })
 start()
 clock = 106 B:Refresh()
 assert(#B:Visible() == 0, "waits for its start")
@@ -880,7 +880,7 @@ assert(ownEnd == 5, "a bar of its own keeps its length: no tail")
 local _, tailEnd = B.Span({ ticks = { 1, 2 } })
 assert(tailEnd == 3, "ticks 1, 2: the bar ends 1 s past the last")
 -- fill "up": the bar starts empty and fills as the time nears; the ticks sit where the fill's edge is at each impact
-pull({}, { item{ id = "up", time = 10, text = "Up", ticks = { 0, 2.5 }, fill = "up" } })
+pull({}, { item{ id = "up", time = 10, text = "Up", ticks = { 0, 2.5 }, fill = "up", countTo = "impact" } })
 start()
 clock = 100 B:Refresh()
 v = B:Visible()
@@ -894,7 +894,7 @@ assert(near1(v[1].filled, v[1].ticks[1].pos) and v[1].ticks[1].passed and near1(
 clock = 113.4 B:Refresh()
 assert(B:Visible()[1].filled > 0.99, "nearly full at the bar's end")
 -- an empty bar is the default: down
-pull({}, { item{ id = "down", time = 10, text = "Down", ticks = { 0 } } })
+pull({}, { item{ id = "down", time = 10, text = "Down", ticks = { 0 }, countTo = "impact" } })
 start()
 clock = 100 B:Refresh()
 assert(B:Visible()[1].fill == "down" and B:Visible()[1].filled == 1, "empties by default")
@@ -905,7 +905,7 @@ print("ok bars: impact ticks")
 -- below): from 1 s before the cast, impacts 4.5 and 6.5 s after the cast, filling up, ending 1 s past the last impact. The cast at 110: the
 -- bar shows at 109, a faint cast line 1 s into its 8.5 s, the ticks at 114.5 and 116.5, the seconds to the next impact.
 local function castLine(bar) return rawget(bar, "castLine") end
-pull({}, { item{ id = "feast", time = 10, text = "Feast", warn = 1, hold = 1, ticks = { 4.5, 6.5 }, fill = "up", barStart = -1 } })
+pull({}, { item{ id = "feast", time = 10, text = "Feast", warn = 1, hold = 1, ticks = { 4.5, 6.5 }, fill = "up", barStart = -1, countTo = "impact" } })
 start()
 clock = 108.9 B:Refresh()
 assert(#B:Visible() == 0, "not before Show from")
@@ -936,7 +936,7 @@ assert(B:Visible()[1].time == "0.0", "0 from the bar's end, while it lingers: " 
 clock = 118.5 B:Refresh()
 assert(#B:Visible() == 0, "gone after its 1 s Linger")
 -- the cast line only when the bar starts before the cast: none on a bar that ends at the cast, or on a plain bar
-pull({}, { item{ id = "c", time = 10, text = "Cast", ticks = { 0, 2.5 }, barTo = "cast", barStart = -5 } })
+pull({}, { item{ id = "c", time = 10, text = "Cast", ticks = { 0, 2.5 }, barTo = "cast", barStart = -5, countTo = "impact" } })
 start()
 clock = 106 B:Refresh()
 assert(B:Visible()[1].cast == nil and not (castLine(B.pool[1]) and castLine(B.pool[1]).shown), "ends at the cast: no cast line")
@@ -951,7 +951,7 @@ print("ok bars: a ticked bar from Show from, its cast line and the next impact's
 -- its own from 5 s before the cast to the cast (barStart -5, barEnd 0), the ticks 3 and 1 s before the cast. The cast
 -- at 110: the bar shows at 105, 5 s long, ticks at 40% and 80% as it fills up, the seconds to the next impact and then
 -- to the cast, no cast line (the bar ends there), and nothing after the cast but its Linger.
-pull({}, { item{ id = "mine", time = 10, text = "Rend", warn = 5, hold = 0.5, ticks = { -3, -1 }, barStart = -5, barEnd = 0, fill = "up" } })
+pull({}, { item{ id = "mine", time = 10, text = "Rend", warn = 5, hold = 0.5, ticks = { -3, -1 }, barStart = -5, barEnd = 0, fill = "up", countTo = "impact" } })
 start()
 clock = 104.9 B:Refresh()
 assert(#B:Visible() == 0, "not before Show from")
@@ -970,6 +970,29 @@ clock = 110.6 B:Refresh()
 assert(#B:Visible() == 0, "gone after the cast and its Linger: no tail")
 assert(#errors == 0, tostring(errors[1]))
 print("ok bars: a reminder's ticks inside a bar that ends at the cast")
+
+-- Count down to: by default a ticked bar's seconds count to its end whatever the ticks; countTo = "impact" counts
+-- to the next impact, then to the end
+pull({}, { item{ id = "mine", time = 10, text = "Rend", warn = 5, hold = 0.5, ticks = { -3, -1 }, barStart = -5, barEnd = 0 } })
+start()
+clock = 105 B:Refresh()
+assert(B:Visible()[1].time == "5.0", "to the cast, not the first impact: " .. tostring(B:Visible()[1].time))
+clock = 108 B:Refresh()
+assert(B:Visible()[1].time == "2.0", "still to the cast after an impact: " .. tostring(B:Visible()[1].time))
+clock = 109.5 B:Refresh()
+assert(B:Visible()[1].time == "0.5", "to the cast")
+pull({}, { item{ id = "mine", time = 10, text = "Rend", warn = 5, hold = 0.5, ticks = { -3, -1 }, barStart = -5, barEnd = 0, countTo = "impact" } })
+start()
+clock = 105 B:Refresh()
+assert(B:Visible()[1].time == "2.0", "Each impact: to the first impact: " .. tostring(B:Visible()[1].time))
+clock = 108 B:Refresh()
+assert(B:Visible()[1].time == "1.0", "Each impact: to the second")
+pull({}, { item{ id = "mine", time = 10, text = "Rend", warn = 5, hold = 0.5, ticks = { -3, -1 }, barStart = -5, barEnd = 0, countTo = "sideways" } })
+start()
+clock = 105 B:Refresh()
+assert(B:Visible()[1].time == "5.0", "anything but impact counts to the end")
+assert(#errors == 0, tostring(errors[1]))
+print("ok bars: Count down to the cast or each impact")
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 for (let i = 2; i < 8; i++) {

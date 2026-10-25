@@ -57,10 +57,14 @@ local TEXT = {
     -- under Show as, for the bar: greyed while Bar is off
     ticks = "Impact ticks",
     ticksUnit = "s into the bar",
-    ticksHelp = "Seconds after the bar appears when each hit lands. The bar runs from Show from to the cast; a tick past its end isn't shown.\n\nEach number is a thin line on the bar, such as 2, 4, and the fill reaches it as its hit lands. With ticks, the seconds count to the next hit, then to the cast. Leave it empty for no ticks.\n\nThese are for Only me alerts. A raid note line can't carry them.",
+    ticksHelp = "Seconds after the bar appears when each hit lands. The bar runs from Show from to the cast; a tick past its end isn't shown.\n\nEach number is a thin line on the bar, such as 2, 4, and the fill reaches it as its hit lands. The seconds count to the cast, or to each hit (Count down to). Leave it empty for no ticks.\n\nThese are for Only me alerts. A raid note line can't carry them.",
     barFill = "Bar fill",
     fillUp = "Bar fills up",
     fillDown = "Bar empties",
+    countTo = "Count down to",
+    countCast = "The cast",
+    countImpact = "Each impact",
+    countHelp = "What the bar's number counts down to: the end of the cast, or the next hit.",
     also = "Also",
     speak = "Speak the text",
     count = "Count down 3 2 1",
@@ -168,10 +172,10 @@ L.CHECK_STEP = 130 -- between the checkboxes of a row
 L.SHOW_GAP = 10 -- between one Show as label and the next box
 -- the left column under L.COL_Y, from its top: the two Show as rows, Impact ticks, Bar fill, then Also and its two
 -- rows, then a save's problem
-L.TICKS_DY, L.FILL_DY = 72, 94
-L.ALSO_DY, L.ALSO_ROW1_DY, L.ALSO_ROW2_DY = 126, 146, 172
-L.MESSAGE_DY = 206
-L.TICKS_LABEL, L.TICKS_W, L.UNIT_GAP, L.BAR_DROP_W = 76, 70, 6, 140
+L.TICKS_DY, L.FILL_DY, L.COUNT_DY = 72, 94, 116
+L.ALSO_DY, L.ALSO_ROW1_DY, L.ALSO_ROW2_DY = 148, 168, 194
+L.MESSAGE_DY = 228
+L.TICKS_LABEL, L.TICKS_W, L.UNIT_GAP, L.BAR_DROP_W = 90, 70, 6, 140 -- TICKS_LABEL fits "Count down to"
 L.LABEL_W = 50
 L.ICON_DROP_W = 90
 L.ID_X = L.COL2_X + L.LABEL_W + L.DROP_GAP + L.ICON_DROP_W + 8
@@ -1356,6 +1360,16 @@ local function buildBarRows(p, row)
         set = change(function(v) cur.draft.fill = v == "up" and "up" or nil end),
     }))
     panel.barFill:SetPoint("TOPLEFT", x, L.COL_Y - L.FILL_DY)
+    -- Count down to: the bar's number counts to the cast (the default) or to each impact; greyed without ticks
+    panel.countTo = row(UI.Dropdown(p, TEXT.countTo, {
+        labelWidth = L.TICKS_LABEL, width = L.BAR_DROP_W,
+        enabledIf = function() return barOn() and Draft.Ticks(cur.draft) ~= nil end,
+        options = Draft.CountOptions(TEXT.countCast, TEXT.countImpact),
+        get = function() return cur.draft and cur.draft.countTo == "impact" and "impact" or "cast" end,
+        set = change(function(v) cur.draft.countTo = v == "impact" and "impact" or nil end),
+    }))
+    panel.countTo:SetPoint("TOPLEFT", x, L.COL_Y - L.COUNT_DY)
+    UI.HelpRight(panel.countTo, TEXT.countTo, TEXT.countHelp)
 end
 
 local function buildPanel(f)

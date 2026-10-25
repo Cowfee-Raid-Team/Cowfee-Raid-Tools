@@ -23,7 +23,8 @@ local ADDON, CRT = ...
 -- bar appears: its fill then runs over barEnd - barStart, not over `ahead`: a bar of its own (a special alert's
 -- bar = { start, length, ticks }, Alerts/Special.lua; a reminder's bar with ticks, from its Show from to the cast,
 -- Alerts/Reminders.lua BarTicks). Ticks never move a bar of its own: one off it is not drawn.
--- A bar with ticks counts its seconds to the next impact on it (0 as it lands), then to its end, and one that starts
+-- A bar counts its seconds to its end; with countTo = "impact" a bar with ticks counts to the next impact on it
+-- (0 as it lands), then to its end. A bar with ticks that starts
 -- before its cast draws a faint cast line there, so it reads: the cast, then the impacts.
 -- Only the bars read these; the callout, speech and the other areas keep the cast's time.
 -- fill = "up" makes a line's bar fill up from empty as its time nears instead of emptying (any other value, or
@@ -344,9 +345,12 @@ local function castMark(line, total, up)
     return up and 1 - pos or pos
 end
 
--- The moment a bar's seconds count to: its next impact on the bar, else (no ticks, or all landed) its end.
--- tickAt is in order.
+-- The moment a bar's seconds count to: its end (the cast, for a reminder's bar), or, with countTo = "impact", its
+-- next impact on the bar, else (no ticks, or all landed) its end. tickAt is in order.
 local function countTo(line, now)
+    if line.countTo ~= "impact" then
+        return line.at
+    end
     for _, at in ipairs(type(line.tickAt) == "table" and line.tickAt or {}) do
         if at >= now and at <= line.at then
             return at

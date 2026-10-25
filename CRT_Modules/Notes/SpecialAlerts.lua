@@ -63,6 +63,10 @@ local TEXT = {
     barFill = "Bar fill",
     fillUp = "Bar fills up",
     fillDown = "Bar empties",
+    countTo = "Count down to",
+    countCast = "The cast",
+    countImpact = "Each impact",
+    countHelp = "What the bar's number counts down to: the end of the cast, or the next hit.",
     markers = "Markers",
     markersHelp = "Addons can't put raid markers on players. Since patch 12.0 only the game's own menus and the /tm macro can. So the alert names its marks in its text instead.",
     marks = "Marks for each step: %s. Named in the alert's text.",
@@ -93,13 +97,13 @@ local L = {
     TITLE_Y = -14, KIND_Y = -36, ALERT_Y = -12,
     WHEN_Y = -62, WHEN_TEXT_Y = -82, IMPACTS_Y = -98, LEAD_Y = -114,
     WHO_Y = -152, WHO_TEXT_Y = -172, CHIPS_Y = -190,
-    SHOW_Y = -220, SPEAK_Y = -292,
-    MARK_Y = -326, MARK_TEXT_Y = -346, MARK_CHECK_Y = -362,
-    MESSAGE_Y = -396,
+    SHOW_Y = -220, SPEAK_Y = -292, COUNT_Y = -314,
+    MARK_Y = -344, MARK_TEXT_Y = -364, MARK_CHECK_Y = -380,
+    MESSAGE_Y = -408,
     -- Show from: the Mechanics panel's slider (Notes/Reminders.lua's SHOW_LABEL, SLIDER_W), Default after its (?)
     LEAD_LABEL = 70, LEAD_W = 150, DEFAULT_GAP = 8,
     ALERT_W = 130, -- Alert me and its label, at the header's right
-    FILL_X = 150, FILL_LABEL = 56, FILL_W = 130, -- Bar fill, on the Speak row
+    FILL_X = 150, FILL_LABEL = 90, FILL_W = 130, -- Bar fill, on the Speak row, and Count down to under it
 }
 
 -- the lists' look, shared with the Mechanics list (Notes/MechLook.lua)
@@ -418,6 +422,7 @@ local function drawPanel(enc, entry)
     end
     ui.speak:SetChecked(c.speak)
     ui.fill.refresh()
+    ui.countTo.refresh()
     drawMarkers(entry)
     ui.message:SetText(state.notice and UI.BadText(state.notice) or "")
 end
@@ -702,6 +707,29 @@ local function buildPanel(f)
         end,
     })
     ui.fill:SetPoint("TOPLEFT", L.INSET + L.FILL_X, L.SPEAK_Y)
+    -- Count down to: the bar's number counts to the cast (the default) or to each impact; greyed while the bar has no ticks
+    ui.countTo = UI.Dropdown(p, TEXT.countTo, {
+        labelWidth = L.FILL_LABEL, width = L.FILL_W,
+        options = CRT.AlertDraft.CountOptions(TEXT.countCast, TEXT.countImpact),
+        enabledIf = function()
+            local entry, enc = current()
+            return entry ~= nil and entry.impacts ~= nil and Special():Choices(enc, entry).show.bar and true or false
+        end,
+        get = function()
+            local entry, enc = current()
+            return entry and Special():Choices(enc, entry).countTo or "cast"
+        end,
+        set = function(key)
+            local entry, enc = current()
+            if entry then
+                state.notice = nil
+                Special():SetChoice(enc, entry, "countTo", key)
+                M.Refresh()
+            end
+        end,
+    })
+    ui.countTo:SetPoint("TOPLEFT", L.INSET + L.FILL_X, L.COUNT_Y)
+    UI.HelpRight(ui.countTo, TEXT.countTo, TEXT.countHelp)
 
     ui.markHeading = heading(p, TEXT.markers, L.MARK_Y, nil, TEXT.markersHelp)
     ui.markText = line(p, L.MARK_TEXT_Y)

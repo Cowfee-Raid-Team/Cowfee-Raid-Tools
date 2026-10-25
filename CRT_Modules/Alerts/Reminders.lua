@@ -5,7 +5,7 @@ local ADDON, CRT = ...
 -- you type, and it runs on the alerts engine as the "mine" block beside the raid note. A reminder is
 -- saved in CRT.db.alerts.reminders[encounterID][id] as
 --   { boss, spellID, text, times, outputs = { alert, bar, speech, text, icon, circle, timeline }, warn, speech,
---     priority, group, difficulty, enabled, linger, sound, auraSound, glow, iconID, color, speakAt, ticks, fill, barTo }
+--     priority, group, difficulty, enabled, linger, sound, auraSound, glow, iconID, color, speakAt, ticks, fill, countTo, barTo }
 -- auraSound true also plays the sound when the spell's aura is put on you (Sound/Auras.lua).
 -- ticks (optional) are the bar's impact ticks, seconds into the bar from when it shows ({ 2, 4 }); fill "up" makes
 -- the bar fill up instead of emptying. A reminder's bar always runs from Show from before the cast to the cast, and
@@ -1110,6 +1110,7 @@ function Reminders:Items(encounterID, id, r, group, ref)
     end
     local o = r.outputs or {}
     local fill = r.fill == "up" and "up" or nil
+    local countTo = r.countTo == "impact" and "impact" or nil
     local warn = type(r.warn) == "number" and r.warn or 5
     for n, t in ipairs(times) do
         -- the bar's impact ticks, each item its own copy (BarTicks): with any on it, a bar of its own (Alerts/Bars.lua)
@@ -1121,6 +1122,7 @@ function Reminders:Items(encounterID, id, r, group, ref)
             barStart = ticks and -warn or nil,
             barEnd = ticks and 0 or nil,
             fill = fill,
+            countTo = ticks and countTo or nil,
             id = "mine:" .. tostring(id) .. ":" .. n,
             ph = t.ph,
             time = t.t,

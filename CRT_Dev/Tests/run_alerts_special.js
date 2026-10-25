@@ -400,6 +400,25 @@ check("special: ticks and barTo, or a bar of its own, are read", function()
   end
 end)
 
+check("special: Count down to is the cast by default; Each impact is saved only when chosen", function()
+  S.dev[9003] = { { key = "hits", label = "Hits", when = { times = "0:30" }, ticks = { 1, 2 } }, { key = "plain", label = "Plain", when = { times = "0:30" } } }
+  CRT.db.alerts.special = {}
+  local hits, plain = S:Get(9003, "hits"), S:Get(9003, "plain")
+  assert(S:Choices(9003, hits).countTo == nil, "the cast, by default")
+  assert(S:Items(9003, hits, {})[1].countTo == nil, "the item carries nothing")
+  S:SetChoice(9003, hits, "countTo", "impact")
+  assert(CRT.db.alerts.special[9003].hits.countTo == "impact" and S:Choices(9003, hits).countTo == "impact", "saved with your choices")
+  assert(S:Items(9003, hits, {})[1].countTo == "impact", "the item carries it")
+  S:SetChoice(9003, hits, "countTo", "cast")
+  assert(CRT.db.alerts.special[9003].hits.countTo == nil and S:Items(9003, hits, {})[1].countTo == nil, "back to the cast: saved as nothing")
+  S:SetChoice(9003, hits, "countTo", "nonsense")
+  assert(CRT.db.alerts.special[9003].hits.countTo == nil, "anything else is the cast")
+  CRT.db.alerts.special[9003].hits.countTo = "impact"
+  assert(S:Items(9003, hits, {})[1].countTo == "impact", "a saved choice loads")
+  CRT.db.alerts.special[9003].plain = { countTo = "impact" }
+  assert(S:Items(9003, plain, {})[1].countTo == nil, "no ticks, nothing to count to")
+end)
+
 check("special: the bar fills up by default; the data and each player may choose", function()
   fresh()
   S.dev[9002] = { { key = "up", label = "Up", when = { times = "0:30" } }, { key = "down", label = "Down", when = { times = "0:30" }, fill = "down" } }

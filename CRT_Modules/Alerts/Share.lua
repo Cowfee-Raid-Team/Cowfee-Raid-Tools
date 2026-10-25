@@ -252,6 +252,7 @@ local REMINDER_FIELDS = {
         return list
     end,
     fill = oneOf({ up = true }),
+    countTo = oneOf({ impact = true }),
     shifts = perCast(function(x)
         if finite(x) and math.abs(x) <= 600 then
             return x
@@ -322,6 +323,12 @@ local function cleanChoices(v, base, count, shipped)
         elseif k == "fill" then
             if x == "up" or x == "down" then
                 out.fill = x
+            else
+                count()
+            end
+        elseif k == "countTo" then
+            if x == "impact" then
+                out.countTo = x
             else
                 count()
             end

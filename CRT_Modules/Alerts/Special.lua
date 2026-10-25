@@ -515,7 +515,7 @@ function Special:Choices(encounterID, entry)
     end
     return { on = pick(saved.on, entry.default), show = show, speak = pick(saved.speak, entry.speak),
         markers = pick(saved.markers, false), fill = FILLS[saved.fill] and saved.fill or entry.fill or DEFAULT_FILL,
-        lead = ownLead(entry, saved.lead) }
+        lead = ownLead(entry, saved.lead), countTo = saved.countTo == "impact" and "impact" or nil }
 end
 
 -- Seconds before each cast the entry shows for you: your Show from, else the entry's lead.
@@ -523,7 +523,7 @@ function Special:Lead(encounterID, entry)
     return self:Choices(encounterID, entry).lead or entry.lead
 end
 
--- Saves one choice ("on", "speak", "markers", "fill" = "up" or "down", "lead" = seconds or nil for the entry's,
+-- Saves one choice ("on", "speak", "markers", "fill" = "up" or "down", "countTo" = "impact" or the cast, "lead" = seconds or nil for the entry's,
 -- or a Show as key with show = true) and tells the engine.
 -- The whole set is saved, so a later change to the entry's defaults leaves your choices alone; a lead is saved
 -- only while it differs from the entry's (one out of range is the entry's too).
@@ -537,6 +537,8 @@ function Special:SetChoice(encounterID, entry, field, value, show)
         c.show[field] = value and true or false
     elseif field == "fill" then
         c.fill = FILLS[value] and value or DEFAULT_FILL
+    elseif field == "countTo" then
+        c.countTo = value == "impact" and "impact" or nil -- the default (to the cast) is saved as nothing
     elseif field == "lead" then
         c.lead = ownLead(entry, value)
     else
@@ -851,6 +853,7 @@ local function item(entry, choices, n, at, step, covers, icon)
         barStart = imp and imp.barStart,
         barEnd = imp and imp.barEnd,
         fill = choices.fill or DEFAULT_FILL,
+        countTo = ticks and choices.countTo or nil,
         covers = covers,
         id = BLOCK .. ":" .. entry.key .. ":" .. n,
         ph = at.ph,

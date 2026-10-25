@@ -1331,7 +1331,7 @@ check("mech ticks: the rows follow Bar and the ticks", function()
   -- the rows under Bar fill moved up into the room Bar ends left: Also's first row as far under Bar fill as it
   -- was under Bar ends, and a save's problem as far under that
   local function y(fr) local pt = fr.pts[#fr.pts] return pt[#pt] end
-  assert(y(p.barFill) - y(p.also.speak) == 52, "no gap under Bar fill: " .. (y(p.barFill) - y(p.also.speak)))
+  assert(y(p.barFill) - y(p.countTo) == 22 and y(p.countTo) - y(p.also.speak) == 52, "Count down to under Bar fill, no gap under it: " .. (y(p.countTo) - y(p.also.speak)))
   assert(y(p.also.speak) - y(p.also.glow) == 26 and y(p.also.speak) - y(p.message) == 60, "Also's rows and the message moved with it")
   -- a new alert has Bar on: ticks and Bar fill on
   assert(p.checks.bar.checked, "Bar on")
@@ -1380,6 +1380,43 @@ check("mech ticks: saved with the reminder, bad ones not", function()
   typeInto(p.ticksEdit, "")
   p.ticksEdit.OnEnterPressed(p.ticksEdit)
   assert(R:Get(ENC, id).ticks == nil, "empty: no ticks field")
+  assert(#errors == 0, tostring(errors[1]))
+end)
+
+check("mech ticks: Count down to, the cast or each impact", function()
+  local f = fresh()
+  local p = f.panel
+  setCheck(f.rows[1].check, true)
+  local _, id = only()
+  local c = p.countTo
+  assert(c and c.label == "Count down to", "a Count down to dropdown")
+  local out = {}
+  for i, o in ipairs(c.opts.options) do out[i] = o.key .. "=" .. o.label end
+  assert(table.concat(out, ",") == "cast=The cast,impact=Each impact", table.concat(out, ","))
+  local helped
+  for _, h in ipairs(helps) do if h.helpTitle == "Count down to" then helped = h end end
+  assert(helped and helped.helpText == "What the bar's number counts down to: the end of the cast, or the next hit.", "its (?)")
+  -- greyed without ticks, on with them
+  assert(c.opts.enabledIf() == false, "greyed with no ticks")
+  assert(c.opts.get() == "cast", "The cast, by default")
+  typeInto(p.ticksEdit, "1.5, 3.5")
+  p.ticksEdit.OnEnterPressed(p.ticksEdit)
+  assert(c.opts.enabledIf() == true, "on with ticks")
+  setCheck(p.checks.bar, false)
+  assert(c.opts.enabledIf() == false, "greyed with Bar off")
+  setCheck(p.checks.bar, true)
+  assert(R:Get(ENC, id).countTo == nil, "the default is saved as nothing")
+  c.opts.set("impact")
+  assert(R:Get(ENC, id).countTo == "impact", "Each impact saved")
+  local r = R:Get(ENC, id)
+  for _, it in ipairs(R:Items(ENC, id, r, R.GroupOf(r))) do
+    assert(it.countTo == "impact", "each item carries it")
+  end
+  click(f.rows[2].frame)
+  click(f.rows[1].frame)
+  assert(c.opts.get() == "impact", "loaded back")
+  c.opts.set("cast")
+  assert(R:Get(ENC, id).countTo == nil, "The cast saved as nothing")
   assert(#errors == 0, tostring(errors[1]))
 end)
 
@@ -2095,6 +2132,37 @@ check("mech special (" .. LOOK .. "): the impacts under When", function()
   end
   local wr, ir, hr = rect(s.whenText, f), rect(s.impactsText, f), nil
   assert(ir[2] > wr[2], "under When")
+  CRT.db.alerts.specialView, CRT.db.alerts.specialViewPicked = "mechanics", true
+  noSpecial()
+  assert(#errors == 0, tostring(errors[1]))
+end)
+
+check("mech special (" .. LOOK .. "): Count down to under Bar fill: the cast or each impact, greyed without ticks", function()
+  withSpecial({ { key = "ticks", label = "Ticks", when = { times = "0:30" }, ticks = { 0, 2.5 } },
+    { key = "plain", label = "Plain", when = { times = "0:30" } } })
+  CRT.db.alerts.special = {}
+  local f = freshOpen()
+  local s = f.special
+  local c = s.countTo
+  assert(c and c.label == "Count down to", "a Count down to dropdown")
+  local out = {}
+  for i, o in ipairs(c.opts.options) do out[i] = o.key .. "=" .. o.label end
+  assert(table.concat(out, ",") == "cast=The cast,impact=Each impact", table.concat(out, ","))
+  click(s.rows[1].frame)
+  rects = {}
+  local fr, cr = rect(s.fill, f), rect(c, f)
+  assert(cr[2] > fr[2] and cr[1] == fr[1], "under Bar fill")
+  assert(c.opts.enabledIf() == true and c.opts.get() == "cast", "on with ticks, The cast first")
+  c.opts.set("impact")
+  local saved
+  for _, byKey in pairs(CRT.db.alerts.special) do if byKey.ticks then saved = byKey.ticks end end
+  assert(saved and saved.countTo == "impact", "Each impact saved")
+  assert(c.opts.get() == "impact", "and shown")
+  c.opts.set("cast")
+  for _, byKey in pairs(CRT.db.alerts.special) do if byKey.ticks then saved = byKey.ticks end end
+  assert(saved.countTo == nil, "The cast saved as nothing")
+  click(s.rows[2].frame)
+  assert(c.opts.enabledIf() == false, "greyed without ticks")
   CRT.db.alerts.specialView, CRT.db.alerts.specialViewPicked = "mechanics", true
   noSpecial()
   assert(#errors == 0, tostring(errors[1]))
