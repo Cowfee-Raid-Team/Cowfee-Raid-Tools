@@ -12,7 +12,8 @@ local ADDON, CRT = ...
 -- colour still wins over the Bar colour. Off, they stay saved and their rows grey out.
 -- With showType on (the default) a bar whose alert has a known ability type shows it after the text: "Hungering Pyre
 -- (soak)"; a long text is cut with an ellipsis before the type, so the type and the seconds stay in view.
--- A bar starts full: its fill runs over the time left when it first showed, at most `ahead`.
+-- A bar starts full: its fill runs over the time left when it first showed, at most `ahead`. The area redraws
+-- the bars every 0.1 s; in between, the fill, the seconds and the ticks' fade move every frame (animate).
 -- Impact ticks: any line may carry ticks = { s, ... }, seconds after its cast (the line's `at`) when each impact
 -- lands. Each is a thin line on the bar in the theme's text colour, placed on the fill's time scale, so the fill
 -- reaches it as that impact lands; one already passed fades. barTo = "last" (the default with ticks) runs the bar
@@ -316,7 +317,7 @@ local function tickMarks(line, now, total, up)
     for _, at in ipairs(line.tickAt) do
         local pos = (line.at - at) / total
         if pos >= 0 and pos <= 1 then
-            out[#out + 1] = { pos = up and 1 - pos or pos, passed = now >= at }
+            out[#out + 1] = { pos = up and 1 - pos or pos, at = at, passed = now >= at }
         end
     end
     return #out > 0 and out or nil
@@ -346,6 +347,7 @@ local function row(line, now, ahead, shownAt, s)
         fill = up and "up" or "down",
         filled = up and 1 - fraction or fraction, -- how much of the bar is filled
         ticks = tickMarks(line, now, total, up),
+        total = total, -- the bar's time, kept for animate
     }
 end
 
@@ -408,6 +410,39 @@ local function drawTicks(bar, marks, left, room, height)
     end
 end
 
+-- What moves with time on a bar: its fill, its seconds and its ticks' fade, from what its last draw kept (the
+-- line, its row, the fill's room). Part of every draw, and run every frame in between (the area's def.move), so
+-- the fill moves smoothly; a handful of calls per bar, and the seconds' text only when it changes.
+local function animate(bar, now)
+    local line, r = bar.line, bar.row
+    if not (line and r) then
+        return
+    end
+    local total = r.total
+    local fraction = math.max(0, math.min(1, total > 0 and (line.at - now) / total or 0))
+    local filled = r.fill == "up" and 1 - fraction or fraction
+    r.fraction, r.filled = fraction, filled
+    local fillWidth = bar.fillRoom * filled
+    bar.fill:SetWidth(math.max(fillWidth, 1))
+    bar.fill:SetShown(fillWidth > 0)
+    local t = timeText(line.at - now)
+    if t ~= bar.timeShown then
+        bar.timeShown = t
+        bar.time:SetText(t)
+    end
+    r.time = t
+    local marks, pool = r.ticks, bar.tickLines
+    if marks and pool then
+        for i, m in ipairs(marks) do
+            local passed = now >= m.at
+            if passed ~= m.passed then
+                m.passed = passed
+                pool[i]:SetAlpha(passed and TICK_PASSED_ALPHA or 1)
+            end
+        end
+    end
+end
+
 local function draw(bar, line, now, s, shownAt)
     local width, height, _, border = metrics(s, scaleOf(bar))
     drawBorder(bar, border)
@@ -433,15 +468,14 @@ local function draw(bar, line, now, s, shownAt)
         left = height
     end
 
-    local fillWidth = (width - left) * r.filled
     bar.fill:ClearAllPoints()
     bar.fill:SetPoint("LEFT", left, 0)
-    bar.fill:SetSize(math.max(fillWidth, 1), height)
+    bar.fill:SetHeight(height)
     bar.fill:SetColorTexture(r.color[1], r.color[2], r.color[3], r.lineColor and LINE_ALPHA or r.color[4] or 1)
-    bar.fill:SetShown(fillWidth > 0)
     drawTicks(bar, r.ticks, left, width - left, height)
+    bar.line, bar.fillRoom = line, width - left
+    animate(bar, now) -- the fill's width and the seconds
 
-    bar.time:SetText(r.time)
     bar.text:SetText(r.text)
     bar.kind:SetText(r.kind or "")
     bar.kind:SetShown(r.kind ~= nil)
@@ -647,6 +681,7 @@ Bars = Areas.New({
     defaultPosition = DEFAULT_POSITION,
     make = make,
     draw = draw,
+    move = animate,
     lines = lines,
     lead = function(_, s)
         return aheadOf(s)

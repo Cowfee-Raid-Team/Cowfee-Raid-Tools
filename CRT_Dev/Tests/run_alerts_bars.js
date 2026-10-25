@@ -298,6 +298,22 @@ assert(restarted, "starts over full")
 previews.alertbars(false)
 print("ok bars: preview starts full and animates")
 
+-- Previews with a run that has nothing to show (a test left going, a pull before its first bar): the samples, the
+-- second filling up with its two ticks; once the run has a bar due, that bar instead; and the samples again after it.
+pull({ item{ id = "due", time = 30, text = "Due" } })
+start()
+previews.alertbars(true)
+v = B:Visible()
+assert(#v == 3 and v[2].fill == "up" and v[2].ticks and #v[2].ticks == 2, "a run with nothing due: three samples: " .. #v)
+clock = 112 B:Refresh() -- 18 s left: due within ahead 20
+assert(texts() == "Due", "the run's bar in place of the samples: " .. texts())
+clock = 131 B:Refresh()
+assert(#B:Visible() == 3 and B:Visible()[1].text ~= "Due", "passed: the samples again")
+previews.alertbars(false)
+A:Stop()
+assert(#errors == 0, tostring(errors[1]))
+print("ok bars: previews show samples while the run has nothing to show")
+
 -- reset clears position
 pull()
 handle.OnDragStop(handle)
@@ -382,6 +398,53 @@ assert(not win.shown)
 ticker.OnUpdate(ticker, 0.06)
 assert(win.shown, "refreshed after 0.1 s")
 print("ok bars: ticker")
+
+-- smooth: between the 0.1 s refreshes the fill, the seconds and a tick's fade move every frame, from the lines the
+-- last refresh drew (Alerts:Lines is not asked again), with nothing made
+pull({}, { item{ id = "sm", time = 5, text = "Smooth", ticks = { 0, 0.03 } } })
+start()
+ticker.OnUpdate(ticker, 1) -- a refresh now, the ticker's count back at 0
+local bar = B.pool[1]
+assert(#B:Visible() == 1 and bar.fill.w == 240 and bar.time.text == "5.0", "drawn full: " .. tostring(bar.fill.w))
+local linesCalls, realLines = 0, A.Lines
+A.Lines = function(...) linesCalls = linesCalls + 1 return realLines(...) end
+local madeBefore = made
+local widths = {}
+for i = 1, 5 do
+  clock = clock + 0.016
+  ticker.OnUpdate(ticker, 0.016)
+  widths[i] = bar.fill.w
+end
+assert(linesCalls == 0, "no lines worked out between refreshes: " .. linesCalls)
+assert(made == madeBefore, "nothing made per frame")
+for i = 2, 5 do assert(widths[i] < widths[i - 1], "the fill moves every frame: " .. widths[i - 1] .. " then " .. widths[i]) end
+assert(math.abs(bar.fill.w - 240 * (5.03 - 0.08) / 5.03) < 1e-6, "on the bar's own time: " .. bar.fill.w)
+assert(math.abs(B:Visible()[1].fraction - (5.03 - 0.08) / 5.03) < 1e-9, "the row follows")
+clock = 100.16 ticker.OnUpdate(ticker, 0.016)
+assert(bar.time.text == "4.9" and B:Visible()[1].time == "4.9", "the seconds follow: " .. bar.time.text)
+-- the bar is drawn to its last impact at 5.03 s; at 5 s the first lands and its tick fades in the frame it does
+ticker.OnUpdate(ticker, 1) -- a refresh
+clock = 104.99 ticker.OnUpdate(ticker, 0.016)
+local tk = bar.tickLines
+assert(tk[1].alpha == 1 and tk[2].alpha == 1, "no impact yet")
+clock = 105.001 ticker.OnUpdate(ticker, 0.016)
+assert(tk[1].alpha == 0.3 and tk[2].alpha == 1, "the first impact's tick fades at once")
+A.Lines = realLines
+-- the samples move every frame too (later than any sample before, as the game's clock only goes on)
+pull()
+clock = 600
+previews.alertbars(true)
+ticker.OnUpdate(ticker, 1)
+local s1 = B.pool[1].fill.w
+clock = clock + 0.016 ticker.OnUpdate(ticker, 0.016)
+assert(B.pool[1].fill.w < s1, "a sample's fill moves between refreshes: " .. s1 .. " then " .. B.pool[1].fill.w)
+previews.alertbars(false)
+-- nothing on screen: nothing to move
+ticker.OnUpdate(ticker, 1)
+assert(B.count == 0)
+ticker.OnUpdate(ticker, 0.016)
+assert(#errors == 0, tostring(errors[1]))
+print("ok bars: the fill moves every frame between refreshes")
 
 -- settings in the panel
 pull({ item{ id = "s", time = 5, text = "S" } })

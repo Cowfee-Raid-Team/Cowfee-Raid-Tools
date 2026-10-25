@@ -37,6 +37,8 @@ local ADDON, CRT = ...
 --                      (lines beyond the cap included), such as for a "+N more" line
 --     align(s)         -> "LEFT", "CENTER" or "RIGHT": with grow up or down, the widgets line up on that
 --                      edge of a box HANDLE_MIN_WIDTH wide around the saved center
+--     move(widget, now)  between refreshes, every frame: moves what changes with time on a widget on screen
+--                      (the bars' fill, seconds and ticks' fade) from what its last draw kept, never the lines
 --   Optional, for an area that places its widgets itself (the timeline):
 --     layout(area, n, now, s) -> width, height, below: called after every draw, even with nothing to show,
 --                      instead of the grow chain. It anchors area.pool[1..n] itself and gives the area's
@@ -52,10 +54,11 @@ local ADDON, CRT = ...
 -- down, it sits on that edge of a box HANDLE_MIN_WIDTH wide centered there instead. A line glows while
 -- line.glow and now >= at. The drag box (title, settings button, reset) shows only with Previews, above
 -- the area, or below it when it grows up. Every area refreshes from one ticker every 0.1 s, and only
--- while a run, a preview or a test is going; otherwise it hides once and does nothing.
+-- while a run, a preview or a test is going; otherwise it hides once and does nothing. In between, the same
+-- ticker runs def.move on the widgets on screen every frame, so what moves with time moves smoothly.
 -- A run's lines are drawn on the engine's time (Alerts:Now(), the clock of a rehearsal run); Previews and
--- tests are drawn on GetTime(), which they were made with. While a run plays, a shown area draws the run
--- even with Previews on (area:ShowsSamples), so an alert's Test shows as set.
+-- tests are drawn on GetTime(), which they were made with. While a run has alerts for a shown area, it draws
+-- them even with Previews on (area:ShowsSamples), so an alert's Test shows as set; with none, the samples.
 --   area:Refresh()        draws it now
 --   area:ResetPosition()  back to defaultPosition
 --   area:Test(lines)      shows the given lines (with `at` set) until they have all passed
@@ -989,16 +992,34 @@ local function testLines(self, now)
     return out
 end
 
--- Whether the area shows its Previews samples: Previews on and no run to show. While a run plays (a pull, a
--- rehearsal, or a Test of an alert), a shown area draws the run's alerts in place of the samples, so a Test
--- made with Previews on shows the alert as set; the drag box stays. An area turned off keeps its samples.
-function Area:ShowsSamples()
-    return self.preview and not (Alerts.running and self:Settings().shown) or false
+-- The run's lines for this area at `now` (the engine's time) and how many were left out, or nil while no run
+-- goes or the area is off: nothing shows while the area is off, whichever block the lines come from.
+function Area:RunLines(now, s)
+    if not (s.shown and Alerts.running) then
+        return nil
+    end
+    local cap = capOf(s)
+    local lines, more
+    if self.def.lines then
+        lines, more = self.def.lines(now, s, cap)
+    else
+        lines, more = Rules.Area(Alerts:Lines(now), now, self.def.output, cap)
+    end
+    return lines or EMPTY, more
 end
 
--- Whether the area draws the engine's run (on its time), rather than samples or its own test lines.
+-- Whether the area showed its Previews samples at its last refresh: Previews on and nothing of a run to show.
+-- While a run has alerts for a shown area (a pull, a rehearsal, or a Test of an alert), it draws them in place of
+-- the samples, so a Test made with Previews on shows the alert as set; the drag box stays. A run with nothing
+-- for the area right now (a test whose alert has played, a pull before its first alert) leaves the samples.
+function Area:ShowsSamples()
+    return self.sampling and true or false
+end
+
+-- Whether the area draws the engine's run (on its time), rather than samples or its own test lines; as decided
+-- at its last refresh, so a per-frame mover keeps the clock the area drew on.
 function Area:DrawsRun()
-    return not (self:ShowsSamples() or self.testList)
+    return self.drawsRun and true or false
 end
 
 function Area:Refresh()
@@ -1006,30 +1027,27 @@ function Area:Refresh()
         return
     end
     local s = self:Settings()
-    local sampling = self:ShowsSamples()
-    drawingRun = self:DrawsRun()
-    local now = (not drawingRun or not Alerts.Now) and GetTime() or Alerts:Now()
     self.handle:SetShown(self.preview)
-    local lines, more
-    if sampling then
-        lines = self.def.sample(now) or EMPTY
-    elseif self.testList then
+    local lines, more, now
+    local sampling = false
+    drawingRun = false
+    if self.testList and not self.preview then
+        now = GetTime()
         lines = testLines(self, now)
     end
     if not lines then
-        -- Nothing shows while the area is off, whichever block the lines come from.
-        if s.shown and Alerts.running then
-            local cap = capOf(s)
-            if self.def.lines then
-                lines, more = self.def.lines(now, s, cap)
-                lines = lines or EMPTY
-            else
-                lines, more = Rules.Area(Alerts:Lines(now), now, self.def.output, cap)
-            end
+        local runNow = Alerts.Now and Alerts:Now() or GetTime()
+        local run, runMore = self:RunLines(runNow, s)
+        if run and (#run > 0 or not self.preview) then
+            lines, more, now, drawingRun = run, runMore, runNow, true
+        elseif self.preview then
+            now = GetTime()
+            lines, sampling = self.def.sample(now) or EMPTY, true
         else
-            lines = EMPTY
+            lines, now = EMPTY, GetTime()
         end
     end
+    self.sampling, self.drawsRun = sampling, drawingRun
     self:Draw(lines, now, s, more)
 end
 
@@ -1131,12 +1149,33 @@ function Areas:ResetAllPositions()
     end
 end
 
+-- Between refreshes: what moves with time on the widgets on screen (def.move), on the clock the area last drew
+-- on. The lines are the last refresh's; nothing is worked out again.
+function Area:Move()
+    local now = self.drawsRun and Alerts.Now and Alerts:Now() or GetTime()
+    local move, pool = self.def.move, self.pool
+    for i = 1, self.count do
+        move(pool[i], now)
+    end
+end
+
 -- One ticker for every area. It builds them at login, once the saved settings are in.
 local ticker = CreateFrame("Frame")
 local elapsed = 0
 ticker:SetScript("OnUpdate", function(_, dt)
     elapsed = elapsed + dt
     if elapsed < REFRESH_SECONDS then
+        -- every frame between refreshes, only areas with something on screen that moves; a failure is reported
+        -- once and the area then moves only at its refreshes, so it never floods
+        for _, area in ipairs(Areas.list) do
+            if area.def.move and area.count > 0 and not area.moveFailed then
+                local ok, err = pcall(area.Move, area)
+                if not ok then
+                    area.moveFailed = true
+                    report(err)
+                end
+            end
+        end
         return
     end
     elapsed = 0
