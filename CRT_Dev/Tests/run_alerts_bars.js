@@ -298,6 +298,22 @@ assert(restarted, "starts over full")
 previews.alertbars(false)
 print("ok bars: preview starts full and animates")
 
+-- Previews with a run that has nothing to show (a test left going, a pull before its first bar): the samples, the
+-- second filling up with its two ticks; once the run has a bar due, that bar instead; and the samples again after it.
+pull({ item{ id = "due", time = 30, text = "Due" } })
+start()
+previews.alertbars(true)
+v = B:Visible()
+assert(#v == 3 and v[2].fill == "up" and v[2].ticks and #v[2].ticks == 2, "a run with nothing due: three samples: " .. #v)
+clock = 112 B:Refresh() -- 18 s left: due within ahead 20
+assert(texts() == "Due", "the run's bar in place of the samples: " .. texts())
+clock = 131 B:Refresh()
+assert(#B:Visible() == 3 and B:Visible()[1].text ~= "Due", "passed: the samples again")
+previews.alertbars(false)
+A:Stop()
+assert(#errors == 0, tostring(errors[1]))
+print("ok bars: previews show samples while the run has nothing to show")
+
 -- reset clears position
 pull()
 handle.OnDragStop(handle)

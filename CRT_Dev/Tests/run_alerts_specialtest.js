@@ -147,7 +147,9 @@ local function callout() return Rules.Alert(A:Lines(clock), clock) end
 -- cast, 8 s long, with its ticks 4.5 and 6.5 s into it, filling up (or emptying with "down").
 local function checkBar(t0, castIn, fill)
   local cast = t0 + castIn
-  assert(at(cast - 3.5) == nil, "no bar before its start, 3 s before the cast")
+  -- before it, nothing (or with Previews on, the samples: the run has nothing to show yet)
+  local early = at(cast - 3.5)
+  assert(early == nil or not tostring(early.text):find("^Soak now"), "no bar before its start, 3 s before the cast")
   local v = at(cast - 3)
   assert(v, "the bar shows 3 s before the cast")
   assert(v.time == "8.0", "8 s long: " .. tostring(v.time))
@@ -233,6 +235,27 @@ check("special test: with Previews on, the bar and the callout are the alert's, 
   clock = 120 at(120) Callout:Refresh()
   local back = B:Visible()[1]
   assert(#B:Visible() == 3 and back.text ~= item.text, "the test over: the samples again")
+  setPreviews(false)
+  assert(#errors == 0, tostring(errors[1]))
+end)
+
+-- A quick test's run is never stopped: once its alert has passed, it is still "running" with nothing due. The
+-- samples come back all the same, the second filling up with its two ticks, and they keep running.
+check("special test: with Previews on, the samples come back once the test has played, its run still going", function()
+  A:Stop(true) wipe(spoken) wipe(errors)
+  clock = 100
+  setPreviews(true)
+  assert(E:TestItem(ENC, S:TestItem(ENC, entry, "mythic")), "the test starts")
+  checkBar(100, 10, "up")
+  assert(A.running, "the test's run is still going")
+  at(120)
+  local v = B:Visible()
+  assert(#v == 3, "three sample bars: " .. #v)
+  assert(v[1].text ~= nil and v[2].fill == "up" and v[2].ticks and #v[2].ticks == 2, "the second fills up with two ticks")
+  local before = v[1].fraction
+  at(121)
+  assert(#B:Visible() == 3 and B:Visible()[1].fraction < before, "the samples run down")
+  A:Stop(true)
   setPreviews(false)
   assert(#errors == 0, tostring(errors[1]))
 end)
