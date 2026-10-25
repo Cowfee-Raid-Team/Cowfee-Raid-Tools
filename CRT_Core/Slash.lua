@@ -214,6 +214,8 @@ SlashCmdList["COWFEERAIDTOOLS"] = function(msg)
         -- dev gametimeline: add one event to the game's boss timeline and print the result (Dev/GameTimelineProbe.lua)
     elseif CRT.ClearProbe and CRT.ClearProbe:Command(msg) then
         -- dev clearprobe on, off, show: log a pull's possible reset moments for a marker display (Dev/ClearProbe.lua)
+    elseif CRT.AbsorbProbe and CRT.AbsorbProbe:Command(msg) then
+        -- dev absorbprobe on, off, show: log whether a boss's absorb shield is readable in a pull (Dev/AbsorbProbe.lua)
     elseif CRT.MarkerProbe and CRT.MarkerProbe:Command(msg) then
         -- dev markerprobe: try drawing a raid marker from hidden chat text (Dev/MarkerProbe.lua)
     elseif CRT.SpecialSampleDev and CRT.SpecialSampleDev:Command(msg) then
