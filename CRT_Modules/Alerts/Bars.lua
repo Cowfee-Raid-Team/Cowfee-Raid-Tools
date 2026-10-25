@@ -69,6 +69,10 @@ local SAMPLE_TYPES = { "dispel", "soak", "mythic" } -- the Previews' bars show t
 local DEFAULT_POSITION = { point = "CENTER", relativePoint = "CENTER", x = 0, y = 142 }
 local SAMPLE_SPELL = 31884
 local SAMPLE_TIMES = { 8, 14, 19 }
+-- The second sample is a special alert's bar, so its fill up and impact ticks can be seen and placed: it
+-- shows from the cycle's start, its cast SAMPLE_CAST seconds in, filling up over 8 s with impacts 4.5 and 6.5 s in.
+local SAMPLE_CAST = 3
+local SAMPLE_SPAN = { barStart = -3, barEnd = 5, ticks = { 1.5, 3.5 }, fill = "up" }
 local SAMPLE_GAP = 1      -- seconds between preview ticks that mean it was turned off
 local TEST_SECONDS = 12
 local TEST_STEP = 4       -- seconds between the three test bars
@@ -520,8 +524,14 @@ local function sample(now)
             abilityType = SAMPLE_TYPES[i],
             at = sampleBase + remaining,
         }
+        if i == 2 then
+            out[i].at = sampleBase + SAMPLE_CAST
+            for k, v in pairs(SAMPLE_SPAN) do
+                out[i][k] = v
+            end
+        end
     end
-    return out
+    return (barLines(out))
 end
 
 local function settingsRows(panel, s)
