@@ -254,6 +254,11 @@ function Draft.TicksPast(draft)
     return string.format(#off > 1 and TEXT.ticksPast or TEXT.tickPast, words, ("%g"):format(warn))
 end
 
+-- The Count down to choices, in the caller's words.
+function Draft.CountOptions(cast, impact)
+    return { { key = "cast", label = cast }, { key = "impact", label = impact } }
+end
+
 -- The Bar fill choices, in the caller's words.
 function Draft.FillOptions(up, down)
     return { { key = "up", label = up }, { key = "down", label = down } }
@@ -284,6 +289,7 @@ function Draft.FromReminder(draft, r)
     draft.color = copy(r.color)
     draft.ticksText = Reminders.TickList and Draft.TicksText(Reminders.TickList(r.ticks)) or nil
     draft.fill = r.fill == "up" and "up" or nil
+    draft.countTo = r.countTo == "impact" and "impact" or nil
 end
 
 -- A new draft from a saved reminder.
@@ -477,6 +483,7 @@ function Draft.BuildReminder(ctx, draft)
     -- reminder that never set them gains no fields. An older barTo is left as it was saved (never read)
     r.ticks = Draft.Ticks(draft)
     r.fill = draft.fill == "up" and "up" or nil
+    r.countTo = draft.countTo == "impact" and "impact" or nil -- the default (to the cast) is saved as nothing
     return r
 end
 

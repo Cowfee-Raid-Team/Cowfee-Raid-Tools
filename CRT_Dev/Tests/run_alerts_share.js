@@ -144,13 +144,13 @@ end
 -- the sender's Mech Alerts and choices
 local SWAP = { spellID = 4242, text = "Swap", group = "mythic", outputs = { alert = true, bar = true, speech = true, text = false, icon = true, circle = false, timeline = false },
   warn = 6, speech = "textcount", priority = "high", enabled = true, linger = 2, glow = true, color = { 1, 0.5, 0.25, 1 }, speakAt = "zero",
-  ticks = { 1.5, 3.5 }, fill = "up", barTo = "cast", shifts = { mythic = { ["P1@0:40"] = 2 } }, off = { mythic = { ["P1@1:40"] = true } }, sound = "kit:RAID_WARNING" }
+  ticks = { 1.5, 3.5 }, fill = "up", countTo = "impact", barTo = "cast", shifts = { mythic = { ["P1@0:40"] = 2 } }, off = { mythic = { ["P1@1:40"] = true } }, sound = "kit:RAID_WARNING" }
 local RUN = { text = "Run out", times = "P1 0:20, 1:00", group = "nh", outputs = { alert = true, bar = false, speech = true }, warn = 5, speech = "text", priority = "normal", enabled = true }
 local function sender()
   CRT.db.alerts.reminders = {} CRT.db.alerts.nextId = 1 CRT.db.alerts.special = {} S.dev = {}
   CRT.db.alerts.reminders[9001] = { [1] = copy(SWAP), [2] = copy(RUN) }
   CRT.db.alerts.nextId = 3
-  CRT.db.alerts.special[9001] = { soaks = { on = true, show = { alert = true, text = false, icon = false, bar = true, circle = false, timeline = false }, speak = false, markers = false, fill = "down" } }
+  CRT.db.alerts.special[9001] = { soaks = { on = true, show = { alert = true, text = false, icon = false, bar = true, circle = false, timeline = false }, speak = false, markers = false, fill = "down", countTo = "impact" } }
 end
 local function receiver()
   CRT.db.alerts.reminders = {} CRT.db.alerts.nextId = 1 CRT.db.alerts.special = {} S.dev = {}
@@ -171,11 +171,11 @@ check("alerts share: Export gives a !CRT:alerts:1: code with your reminders and 
   local data = Share.Decode(code, "alerts", 1, AS.CAPS)
   assert(data and data.v == 1 and data.from == "Solex", "the payload's version and sender")
   local m = data.boss[9001].mythic
-  assert(m and m.reminders[1].spellID == 4242 and same(m.reminders[1].ticks, { 1.5, 3.5 }) and m.reminders[1].fill == "up", "the Mythic reminder with its ticks and fill")
+  assert(m and m.reminders[1].spellID == 4242 and same(m.reminders[1].ticks, { 1.5, 3.5 }) and m.reminders[1].fill == "up" and m.reminders[1].countTo == "impact", "the Mythic reminder with its ticks, fill and Count down to")
   assert(m.reminders[1].barTo == nil, "an old saved bar end is not written: it is ignored now")
   assert(m.special.tanks and m.special.tanks.on == false, "the Mythic-only special alert's choices sit under Mythic")
   local any = data.boss[9001].any
-  assert(any and any.special.soaks.on == true and any.special.soaks.fill == "down", "a special alert for both difficulties sits under any, with your choices")
+  assert(any and any.special.soaks.on == true and any.special.soaks.fill == "down" and any.special.soaks.countTo == "impact", "a special alert for both difficulties sits under any, with your choices")
   assert(data.boss[9001].nh.reminders[1].times == "P1 0:20, 1:00", "the Normal/Heroic typed reminder")
   assert(m.defs == nil and any.defs == nil, "no shipped definitions unless asked")
 end)
@@ -211,11 +211,11 @@ check("alerts share: into a fresh CRT, every reminder is new; Import writes them
   local mine = byText(9001)
   local swap, run = mine.Swap and mine.Swap.r, mine["Run out"] and mine["Run out"].r
   assert(swap and run, "both saved in alerts.reminders")
-  assert(same(swap.ticks, { 1.5, 3.5 }) and swap.fill == "up" and swap.barTo == nil and swap.group == "mythic" and swap.warn == 6 and swap.speech == "textcount"
+  assert(same(swap.ticks, { 1.5, 3.5 }) and swap.fill == "up" and swap.countTo == "impact" and swap.barTo == nil and swap.group == "mythic" and swap.warn == 6 and swap.speech == "textcount"
     and swap.linger == 2 and swap.glow == true and swap.color[2] == 0.5 and swap.speakAt == "zero" and swap.shifts.mythic["P1@0:40"] == 2 and swap.off.mythic["P1@1:40"] == true
     and swap.sound == "kit:RAID_WARNING" and swap.priority == "high" and swap.outputs.icon == true, "every field of the Swap reminder came across")
   assert(run.times == "P1 0:20, 1:00" and run.group == "nh", "the typed reminder keeps its times (it follows no ability)")
-  assert(CRT.db.alerts.special[9001].soaks.on == true and CRT.db.alerts.special[9001].soaks.fill == "down" and CRT.db.alerts.special[9001].soaks.show.bar == true, "the soaks choices")
+  assert(CRT.db.alerts.special[9001].soaks.on == true and CRT.db.alerts.special[9001].soaks.fill == "down" and CRT.db.alerts.special[9001].soaks.countTo == "impact" and CRT.db.alerts.special[9001].soaks.show.bar == true, "the soaks choices, with Count down to")
   assert(CRT.db.alerts.special[9001].tanks == nil, "a choice the same as yours is not written")
   local again = AS:Read(code)
   assert(again.counts.new == 0 and again.counts.replace == 0 and again.counts.same == 4, "read again: everything the same as yours")
@@ -316,13 +316,13 @@ check("alerts share: invalid fields and entries are dropped and counted", functi
     [9001] = {
       mythic = { reminders = {
         { spellID = 4242, text = "Swap", group = "mythic", outputs = { alert = true, bar = "yes", madeUp = true }, warn = "soon", speech = "loud", priority = "urgent",
-          ticks = { 2, -1, "a", 1 }, fill = "sideways", barTo = "middle", color = { 2, 0, 0 }, linger = 99, shifts = { mythic = { ["P1@0:40"] = "far" } }, unknownField = 1 },
+          ticks = { 2, -1, "a", 1 }, fill = "sideways", countTo = "sideways", barTo = "middle", color = { 2, 0, 0 }, linger = 99, shifts = { mythic = { ["P1@0:40"] = "far" } }, unknownField = 1 },
         { text = "Bad times", times = "soon", spellID = 77, outputs = { alert = true } },
         { text = "Shows nothing", times = "0:10", outputs = { alert = false, bar = false, speech = false } },
         { outputs = { alert = true }, times = "0:10" },
         "not a reminder",
       }, special = {
-        tanks = { on = true, fill = "sideways", show = { bar = "no" } },
+        tanks = { on = true, fill = "sideways", countTo = "sideways", show = { bar = "no" } },
         nosuch = { on = true },
       } },
       sometimes = { reminders = { { text = "Wrong group", times = "0:10", outputs = { alert = true } } } },
@@ -336,12 +336,12 @@ check("alerts share: invalid fields and entries are dropped and counted", functi
   for _, it in ipairs(info.items) do if it.kind == "reminder" then rems[#rems + 1] = it.value elseif it.kind == "special" then specials[it.key] = it.value end end
   assert(#rems == 2, "Swap and Bad times are kept (Bad times has a spell): " .. #rems)
   local r = rems[1].text == "Swap" and rems[1] or rems[2]
-  assert(r.warn == nil and r.speech == nil and r.priority == nil and r.fill == nil and r.barTo == nil and r.color == nil and r.linger == nil and r.unknownField == nil and r.shifts == nil, "each bad field is left out")
+  assert(r.warn == nil and r.speech == nil and r.priority == nil and r.fill == nil and r.countTo == nil and r.barTo == nil and r.color == nil and r.linger == nil and r.unknownField == nil and r.shifts == nil, "each bad field is left out")
   assert(same(r.ticks, { 1, 2 }), "only the good ticks, in order")
   assert(r.outputs.alert == true and r.outputs.bar == nil and r.outputs.madeUp == nil, "only the good outputs")
   local bt = rems[1].text == "Bad times" and rems[1] or rems[2]
   assert(bt.times == nil and bt.spellID == 77, "times that don't read are left out")
-  assert(specials.tanks and specials.tanks.on == true and specials.tanks.fill == "down" and specials.tanks.show.bar == true, "a bad choice field falls back to yours")
+  assert(specials.tanks and specials.tanks.on == true and specials.tanks.fill == "down" and specials.tanks.countTo == nil and specials.tanks.show.bar == true, "a bad choice field falls back to yours")
   assert(specials.nosuch == nil, "a choice for a special alert this CRT doesn't have is left out")
   assert(info.dropped >= 18, "every dropped part is counted: " .. info.dropped)
   assert(AS.Summary(info):find("left out", 1, true), "the summary says some was left out: " .. AS.Summary(info))
