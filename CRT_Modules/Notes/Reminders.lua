@@ -105,7 +105,7 @@ L.HELP_ROOM = UI.HELP_GAP + UI.HELP_SIZE + 6 -- a (?) after its control (UI.Help
 L.DROP_GAP = 5 -- UI/Controls.lua: between a row's label and its control
 L.FROM_W = UI.PAGE_W - L.FROM_X - L.FROM_LABEL - L.DROP_GAP - L.HELP_ROOM - L.PAD
 L.LIST_TOP = -44
--- the Mechanics | Special toggle (Notes/SpecialAlerts.lua) at the top of the left column, the list under it
+-- the Special | Mechanics toggle (Notes/SpecialAlerts.lua) at the top of the left column, the list under it
 L.TOGGLE_H, L.TOGGLE_GAP = 20, 4
 L.LIST_Y = L.LIST_TOP - L.TOGGLE_H - L.TOGGLE_GAP
 L.LIST_W = 250
@@ -1755,7 +1755,7 @@ local function build(f)
         end
     end
 
-    -- The Mechanics | Special toggle, and the Special list and panel in the same places as these
+    -- The Special | Mechanics toggle, and the Special list and panel in the same places as these
     if CRT.NoteSpecialAlerts then
         special = CRT.NoteSpecialAlerts.Build(f, {
             boss = function() return pickBoss(bosses()) end,
@@ -1771,6 +1771,9 @@ local function build(f)
 
     f:SetScript("OnShow", function()
         allChanged() -- anything may have changed while it was hidden
+        if special then
+            CRT.NoteSpecialAlerts.Opened() -- every opening is on Special
+        end
         refresh()
     end)
     -- closed or another tab picked: typing waiting is saved, and the boxes let go
@@ -1849,15 +1852,16 @@ CRT.NoteReminders = {
             saveTyped() -- typing waiting to save belongs to the row it was typed on
         end
         selected, viewPrefer, opened = encounterID, nil, nil
-        -- opened on one of its abilities: the Mechanics list, whatever the boss's special alerts
-        if spellID and CRT.NoteSpecialAlerts then
-            CRT.NoteSpecialAlerts.ShowMechanics(encounterID)
-        end
         if spellID then
             picked[encounterID] = "a:" .. tostring(spellID)
             reveal = true
         end
         CRT.NotesPage.Open("reminders")
+        -- opened on one of its abilities: the Mechanics list, whatever the boss's special alerts (after the
+        -- tab's OnShow, which puts every boss on Special)
+        if spellID and CRT.NoteSpecialAlerts then
+            CRT.NoteSpecialAlerts.ShowMechanics(encounterID)
+        end
         if spellID then
             -- an ability hidden from the list is listed while this open lasts (set after the tab shows,
             -- whose OnHide ends it)

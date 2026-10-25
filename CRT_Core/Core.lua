@@ -437,8 +437,8 @@ local defaults = {
         -- The Timeline's Cooldowns row (Alerts/Cooldowns.lua): which cooldowns it lists.
         cooldownFilter = "mine",
         -- Special alerts (Alerts/Special.lua): your choices per boss and alert, special[encounterID][key] =
-        -- { on, show, speak, markers }; specialView is what Mech Alerts' list shows, "mechanics" or "special".
-        -- specialViewPicked: you clicked the toggle; until then a boss with special alerts opens on Special.
+        -- { on, show, speak, markers }. specialView ("mechanics" or "special") and specialViewPicked were Mech
+        -- Alerts' last pick; kept for older saves, no longer read: the tab opens on Special every time.
         special = {},
         specialView = "mechanics",
         specialViewPicked = false,
