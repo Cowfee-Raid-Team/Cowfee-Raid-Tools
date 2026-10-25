@@ -15,10 +15,11 @@ local ADDON, CRT = ...
 --             Rupture, Dreadmarch, Spiritcackle, Gloombomb, Eternal Nightfall) has one alert; the engine puts each
 --             cast in its phase. Sever, Soul Sever and Blighted Sever each have two: a Frontal for everyone and a
 --             Taunt swap for tanks (off until ticked). Both play, since only your own reminders step aside for a
---             special alert. On until a player changes them: the three Frontals, the two Tank soaks, Mind
---             controls, Debuffs and Shield; the rest are off until ticked. The (?) sentences come from the boss's
---             Encounter Journal text. Gloombomb has the spread type: marked players explode on everyone within 15
---             yards, and the Journal shows no dispel icon on it.
+--             special alert. On until a player changes them: the three Frontals, the two Soaks, Mind controls,
+--             Debuffs and Shield; the rest are off until ticked. The (?) sentences come from the boss's Encounter
+--             Journal text. The Soaks (Guillotine, Grim Guillotine) are for everyone: the Journal says the axe
+--             hits a random player and is split among those within 9 yards. Gloombomb has the spread type: marked
+--             players explode on everyone within 15 yards, and the Journal shows no dispel icon on it.
 --             The reference has phase lines (P2 at 2:55, P2.5 at 6:22, P3 at 7:00), so every cast after 2:55 is
 --             a phase 2 or 3 item. It has no phase triggers yet, so in a pull those alerts wait for Next phase.
 --             Every alert has difficulty = "mythic": the only ability timeline is Mythic's, and a Normal or Heroic
@@ -144,27 +145,27 @@ Blighted Sever: 7:35, 8:06, 8:39, 9:16, 9:47, 10:19
         {
             key = "soakP1",
             label = "Guillotine",
-            help = "Zul'jan throws an axe whose damage is split among the players within 9 yards of its target; if fewer than 5 are hit, Execution hits every player.",
+            help = "Zul'jan throws an axe at a random player, split among the players within 9 yards; if fewer than five are hit, everyone takes the hit.",
             type = "soak",
             default = true,
             difficulty = "mythic",
             when = { row = "Guillotine" },
             lead = 8,
-            who = { mode = "roles", roles = { "tank" } },
-            text = "Tank soak",
+            who = { mode = "everyone" },
+            text = "Soak",
             show = { callout = true, bar = true, speech = true },
         },
         {
             key = "soakP3",
             label = "Grim Guillotine",
-            help = "Zul'jan throws an axe whose damage is split among the players within 9 yards of its target and leaves them absorbing healing; if fewer than 5 are hit, Grim Execution hits every player.",
+            help = "Zul'jan throws an axe at a random player, split among the players within 9 yards; if fewer than five are hit, everyone takes the hit.",
             type = "soak",
             default = true,
             difficulty = "mythic",
             when = { row = "Grim Guillotine" },
             lead = 8,
-            who = { mode = "roles", roles = { "tank" } },
-            text = "Tank soak",
+            who = { mode = "everyone" },
+            text = "Soak",
             show = { callout = true, bar = true, speech = true },
         },
         {
