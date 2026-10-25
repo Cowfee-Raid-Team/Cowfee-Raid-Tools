@@ -108,7 +108,8 @@ local route = { { key = "raid:test", label = "Test Raid", title = true }, { key 
 CRT.Bosses = { Options = function() return route end, OnRouteChange = function(self, fn) routeFns[#routeFns + 1] = fn end,
   FirstKey = function(o) for _, x in ipairs(o) do if not x.title then return x.key end end end }
 local opened = {}
-CRT.AlertEditor = { Open = function(self, enc, id, prefill) opened[#opened + 1] = { enc = enc, id = id, prefill = prefill } end }
+CRT.AlertEditor = { Open = function(self, enc, id, prefill) opened[#opened + 1] = { enc = enc, id = id, prefill = prefill } end,
+  BindTest = function(self, btn, owner, start) btn:SetScript("OnClick", start) end }
 
 CRT_THEME(CRT, CRT.UI)
 for i, src in ipairs(sources) do

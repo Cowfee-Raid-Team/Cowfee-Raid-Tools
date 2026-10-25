@@ -443,6 +443,8 @@ end
 -- Alerts.starting is true while the hooks and the first phase run, so a hook can tell not to start again.
 -- opts.firstAt is the start time recorded for the lowest phase (default now): the editor's Test uses it to
 -- begin a reminder a few seconds before its first time.
+-- opts.tag (a string) is kept on the run (run.tag) so the caller that started it can tell its own run later: a
+-- Test button reads Stop only while a run with its tag is going.
 -- reason "rehearsal" takes opts.clock, opts.speed and opts.as (see the top of this file) and runs the
 -- onRehearsal hooks instead; its lowest phase starts at fight second 0 (TimeAt(0)).
 -- reason "countdown" (the pull timer's run before the pull, Alerts/Countdown.lua) runs no hooks; its opts.firstAt
@@ -452,7 +454,8 @@ function Alerts:Start(encounterID, difficultyName, reason, opts)
         self:Stop(true)
     end
     local run = { encounterID = encounterID, difficultyName = difficultyName, reason = reason,
-        bossName = type(opts) == "table" and type(opts.bossName) == "string" and opts.bossName or nil }
+        bossName = type(opts) == "table" and type(opts.bossName) == "string" and opts.bossName or nil,
+        tag = type(opts) == "table" and type(opts.tag) == "string" and opts.tag or nil }
     -- opts.difficultyID (the pull's, read only when not secret) and opts.group (a rehearsal's) set the
     -- run's difficulty group (RunGroup)
     if type(opts) == "table" then

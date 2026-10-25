@@ -1772,6 +1772,47 @@ end
 
 
 
+-- The editor's Test button reads Stop while its quick test runs and Stop ends it (Editor:BindTest, shared with the
+-- Mechanics and Special panels). Never a pull, a countdown or a Rehearsal.
+do
+  reset()
+  CRT.TimelineRehearsalWindow = nil
+  A:Stop(true)
+  local held, realAfter = {}, C_Timer.After
+  C_Timer.After = function(d, fn) held[#held + 1] = { d = d, fn = fn } end
+  E:Open(ENC, nil, { text = "Draft", times = "P1 0:30" })
+  local w = win()
+  assert(w.testBtn.text == "Test", "idle: Test " .. tostring(w.testBtn.text))
+  click(w.testBtn)
+  assert(A.running and A.run.reason == "test" and w.testBtn.text == "Stop", "a quick test, the button reads Stop: " .. tostring(w.testBtn.text))
+  click(w.testBtn)
+  assert(not A.running and w.testBtn.text == "Test", "Stop ends it, the button reads Test")
+  assert(#printed == 0 and message() == "", "no message")
+  -- the run ending on its own
+  click(w.testBtn)
+  assert(w.testBtn.text == "Stop", "Stop again")
+  held[#held].fn()
+  assert(not A.running and w.testBtn.text == "Test", "the end timer puts the label back")
+  -- a pull: Test stays, the click is refused as before and the pull goes on
+  A.HandleEvent("ENCOUNTER_START", ENC, "Boss", 16)
+  local pull = A.run
+  assert(w.testBtn.text == "Test", "a pull going: Test")
+  click(w.testBtn)
+  assert(A.run == pull and w.testBtn.text == "Test", "the pull goes on")
+  A:Stop(true)
+  -- a countdown and a Rehearsal run are not the button's to stop
+  A:Start(ENC, "Mythic", "countdown", { firstAt = GetTime() + 10, difficultyID = 16 })
+  assert(w.testBtn.text == "Test" and E:StopTest("editor") == false and A.run.reason == "countdown", "a countdown stays")
+  A:Stop(true)
+  A:Start(ENC, "Mythic", "rehearsal", { clock = function() return 0 end, speed = function() return 1 end })
+  local rehearsal = A.run
+  assert(w.testBtn.text == "Test" and E:StopTest("editor") == false and A.run == rehearsal, "a Rehearsal stays")
+  A:Stop()
+  C_Timer.After = realAfter
+  assert(#errors == 0, tostring(errors[1]))
+  print("ok editor: Test reads Stop while its quick test runs")
+end
+
 -- test: the jump uses the reference the window plays
 do
   reset()

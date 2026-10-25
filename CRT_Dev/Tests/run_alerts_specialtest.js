@@ -299,6 +299,74 @@ check("special test: the run stops by itself after the alert, never a newer run"
   assert(#errors == 0, tostring(errors[1]))
 end)
 
+-- The Test buttons share one helper (Editor:BindTest): the button reads Stop while the quick test it started runs, and
+-- a click then ends that run at once. It never ends a pull, a countdown, a Rehearsal or another test.
+check("test button: Stop while its own test runs, Test again after a click", function()
+  A:Stop(true) wipe(spoken) wipe(errors) wipe(timers)
+  clock = 100
+  local btn = CreateFrame("Button")
+  btn:SetText("Test")
+  E:BindTest(btn, "special", function() return E:TestItem(ENC, S:TestItem(ENC, entry, "mythic")) end)
+  assert(btn.text == "Test", "idle: Test")
+  btn.OnClick(btn)
+  assert(A.running and A.run.reason == "test", "the click starts the test")
+  assert(btn.text == "Stop", "the label reads Stop: " .. tostring(btn.text))
+  assert(callout(), "its alert is on screen")
+  btn.OnClick(btn)
+  assert(not A.running, "Stop ends the run at once")
+  assert(btn.text == "Test", "the label reads Test again: " .. tostring(btn.text))
+  assert(callout() == nil, "its alert is gone")
+  assert(#errors == 0, tostring(errors[1]))
+end)
+
+check("test button: the run ending on its own puts the label back", function()
+  A:Stop(true) wipe(spoken) wipe(errors) wipe(timers)
+  clock = 100
+  local btn = CreateFrame("Button")
+  E:BindTest(btn, "special", function() return E:TestItem(ENC, S:TestItem(ENC, entry, "mythic")) end)
+  btn.OnClick(btn)
+  assert(btn.text == "Stop", "Stop while it plays")
+  assert(#timers == 1, "the end timer")
+  timers[1].fn()
+  assert(not A.running and btn.text == "Test", "the timer ends it and the label follows: " .. tostring(btn.text))
+  assert(#errors == 0, tostring(errors[1]))
+end)
+
+check("test button: a pull, a countdown, another test or a note test is never stopped by it", function()
+  A:Stop(true) wipe(spoken) wipe(errors) wipe(timers)
+  clock = 100
+  local start = function() return E:TestItem(ENC, S:TestItem(ENC, entry, "mythic")) end
+  local btn, other = CreateFrame("Button"), CreateFrame("Button")
+  E:BindTest(btn, "special", start)
+  E:BindTest(other, "mechanics", start)
+  -- a pull: the label stays Test, the click is refused as it is today and the pull goes on
+  A:Start(ENC, "Mythic", "encounter", { difficultyID = 16 })
+  local pull = A.run
+  assert(btn.text == "Test", "a pull going: Test")
+  assert(E:StopTest("special") == false and A.run == pull, "StopTest leaves a pull alone")
+  btn.OnClick(btn)
+  assert(A.running and A.run == pull, "the click does not stop the pull")
+  -- a countdown: the label stays Test and nothing stops it but a new test, as today
+  A:Start(ENC, "Mythic", "countdown", { firstAt = clock + 10, difficultyID = 16 })
+  local count = A.run
+  assert(btn.text == "Test", "a countdown going: Test")
+  assert(E:StopTest("special") == false and A.run == count, "StopTest leaves a countdown alone")
+  -- a note test (the Notes tab's Try it) has no tag
+  A:Start(ENC, nil, "test")
+  local note = A.run
+  assert(btn.text == "Test" and E:StopTest("special") == false and A.run == note, "an untagged test is not this button's")
+  -- another button's test: this one reads Test and cannot stop it, the other one can
+  btn.OnClick(btn)
+  assert(A.running and A.run.reason == "test" and A.run.tag == "special", "the click starts its own test")
+  assert(btn.text == "Stop" and other.text == "Test", "only the button that started it reads Stop")
+  other.OnClick(other)
+  assert(A.running and A.run.tag == "mechanics", "the other button's click starts its own test in its place")
+  assert(other.text == "Stop" and btn.text == "Test", "the labels follow")
+  A:Stop()
+  assert(btn.text == "Test" and other.text == "Test", "both back")
+  assert(#errors == 0, tostring(errors[1]))
+end)
+
 -- The samples come back once the test has played, the second filling up with its two ticks, and keep running.
 check("special test: with Previews on, the samples come back once the test has played", function()
   A:Stop(true) wipe(spoken) wipe(errors)
