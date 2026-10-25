@@ -901,8 +901,8 @@ assert(B:Visible()[1].fill == "down" and B:Visible()[1].filled == 1, "empties by
 assert(#errors == 0, tostring(errors[1]))
 print("ok bars: impact ticks")
 
--- Alex's Ravenous Feast (#1159), as Reminders:Items gives it: Show from 1 s (a bar with ticks starts that far before
--- the cast), impacts 4.5 and 6.5 s after the cast, filling up, ending 1 s past the last impact. The cast at 110: the
+-- A line with a start but no end (barStart only, the form #1159's reminders had; a reminder now sends barEnd too, see
+-- below): from 1 s before the cast, impacts 4.5 and 6.5 s after the cast, filling up, ending 1 s past the last impact. The cast at 110: the
 -- bar shows at 109, a faint cast line 1 s into its 8.5 s, the ticks at 114.5 and 116.5, the seconds to the next impact.
 local function castLine(bar) return rawget(bar, "castLine") end
 pull({}, { item{ id = "feast", time = 10, text = "Feast", warn = 1, hold = 1, ticks = { 4.5, 6.5 }, fill = "up", barStart = -1 } })
@@ -946,6 +946,30 @@ clock = 100 B:Refresh()
 assert(B:Visible()[1].cast == nil and not (castLine(B.pool[1]) and castLine(B.pool[1]).shown), "a plain bar: no cast line")
 assert(#errors == 0, tostring(errors[1]))
 print("ok bars: a ticked bar from Show from, its cast line and the next impact's seconds")
+
+-- #1171: a reminder's ticked bar as Reminders:Items gives it: Show from 5, ticks 2 and 4 s into the bar, so a bar of
+-- its own from 5 s before the cast to the cast (barStart -5, barEnd 0), the ticks 3 and 1 s before the cast. The cast
+-- at 110: the bar shows at 105, 5 s long, ticks at 40% and 80% as it fills up, the seconds to the next impact and then
+-- to the cast, no cast line (the bar ends there), and nothing after the cast but its Linger.
+pull({}, { item{ id = "mine", time = 10, text = "Rend", warn = 5, hold = 0.5, ticks = { -3, -1 }, barStart = -5, barEnd = 0, fill = "up" } })
+start()
+clock = 104.9 B:Refresh()
+assert(#B:Visible() == 0, "not before Show from")
+clock = 105 B:Refresh()
+v = B:Visible()
+assert(#v == 1 and v[1].filled == 0 and v[1].time == "2.0", "shows at 105, empty, 2 s to the first impact: " .. tostring(v[1] and v[1].time))
+assert(near1(v[1].ticks[1].pos, 0.4) and near1(v[1].ticks[2].pos, 0.8), "ticks at 40% and 80%")
+assert(v[1].cast == nil and not (castLine(B.pool[1]) and castLine(B.pool[1]).shown), "the bar ends at the cast: no cast line")
+clock = 108 B:Refresh()
+assert(B:Visible()[1].time == "1.0", "to the second impact")
+clock = 109.5 B:Refresh()
+assert(B:Visible()[1].time == "0.5" and near1(B:Visible()[1].filled, 0.9), "then to the cast")
+clock = 110.4 B:Refresh()
+assert(#B:Visible() == 1, "lingers its half second")
+clock = 110.6 B:Refresh()
+assert(#B:Visible() == 0, "gone after the cast and its Linger: no tail")
+assert(#errors == 0, tostring(errors[1]))
+print("ok bars: a reminder's ticks inside a bar that ends at the cast")
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 for (let i = 2; i < 8; i++) {

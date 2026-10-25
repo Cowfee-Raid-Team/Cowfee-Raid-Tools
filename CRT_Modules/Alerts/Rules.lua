@@ -15,7 +15,7 @@ Rules.DUPLICATE = 2        -- same spell (or text) within this many seconds show
 Rules.GROUP = 1.5          -- entries this close to the first of a run share one line
 Rules.SPEECH_BEHIND = 1.5  -- a queued line this late makes the queue drop its lowest priority
 Rules.SPEECH_TIMEOUT = 4   -- seconds a line may play before the next starts without a finished event
-Rules.TICK_TAIL = 1        -- seconds a bar with impact ticks runs past its last one, so that tick sits inside it
+Rules.TICK_TAIL = 1        -- seconds a special alert's bar with ticks only runs past its last one (a reminder's ends at the cast)
 
 local LATE = 1  -- a speech item whose entry passed more than this many seconds ago is skipped, not spoken
 

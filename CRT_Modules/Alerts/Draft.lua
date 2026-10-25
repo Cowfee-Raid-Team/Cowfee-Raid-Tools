@@ -9,7 +9,7 @@ local ADDON, CRT = ...
 --          text, color, show = { alert, text, icon, bar, circle, timeline }, speak, speakAt, count, glow, sound,
 --          warn, linger, boss, baseDifficulty, difficultyTouched, ticksText, fill }
 --          speakAt is nil (Speak at: On show) or "zero" (At 0), as a reminder keeps it
---          ticksText is the Impact ticks box as typed ("1.5, 3.5": seconds after the cast, Draft.ParseTicks), fill
+--          ticksText is the Impact ticks box as typed ("2, 4": seconds into the bar, Draft.ParseTicks), fill
 --          "up" (Bar fills up) or nil (it empties), as a reminder keeps them (Alerts/Bars.lua draws them; Only me: a
 --          note line has no such fields). An older reminder's barTo stays saved as it was and is never read
 --          group is the difficulty group Only me saves for ("nh" or "mythic", Draft.Group); difficulty
@@ -38,7 +38,10 @@ local TEXT = {
     timelineOnly = "Only the Alert timeline shows this line. Raiders on an older CRT won't see it.",
     badTicks = "The impact ticks don't read: %s.",
     tickWord = "'%s' isn't a number of seconds",
-    tickBefore = "%s is before the cast, and ticks are seconds after the cast",
+    tickBefore = "%s is under 0, and ticks are seconds into the bar",
+    -- a tick that reads but is past the bar (Show from long): it still saves, and fits a longer Show from
+    tickPast = "%s is past the %s s bar and won't show",
+    ticksPast = "%s are past the %s s bar and won't show",
 }
 Draft.TEXT = TEXT
 
@@ -196,7 +199,7 @@ function Draft.FlowShowAs(rows, x0, right, boxW, gap, place)
     end
 end
 
--- The Impact ticks box: seconds after the cast, separated by commas ("1.5, 3.5"), each a plain number of 0 or
+-- The Impact ticks box: seconds into the bar, separated by commas ("2, 4"), each a plain number of 0 or
 -- more. Returns them in order, each once ({} for an empty box), or nil and what doesn't read.
 function Draft.ParseTicks(text)
     local out, seen = {}, {}
@@ -234,6 +237,21 @@ end
 function Draft.Ticks(draft)
     local list = Draft.ParseTicks(draft and draft.ticksText)
     return list and #list > 0 and list or nil
+end
+
+-- What the panel says of ticks that read but are past the bar: a reminder's bar is Show from long (Reminders.BarTicks),
+-- so "6 is past the 5 s bar and won't show". Nil when every tick fits, the box doesn't read, or Bar is off.
+function Draft.TicksPast(draft)
+    if not (draft and draft.show and draft.show.bar) then
+        return nil
+    end
+    local warn = type(draft.warn) == "number" and draft.warn or DEFAULT_WARN
+    local _, off = Reminders.BarTicks(Draft.Ticks(draft), warn)
+    if not off then
+        return nil
+    end
+    local words = Draft.TicksText(off)
+    return string.format(#off > 1 and TEXT.ticksPast or TEXT.tickPast, words, ("%g"):format(warn))
 end
 
 -- The Bar fill choices, in the caller's words.

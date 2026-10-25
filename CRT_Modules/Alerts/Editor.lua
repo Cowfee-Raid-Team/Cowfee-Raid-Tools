@@ -819,9 +819,9 @@ local function itemLead(it)
     return lead
 end
 
--- Seconds after an item's time that it is done: its bar's end (its own barEnd, else Rules.TICK_TAIL past its
--- last impact unless a special alert's bar ends at the cast), then its Linger (hold), which the bar keeps after
--- its end.
+-- Seconds after an item's time that it is done: its bar's end (its own barEnd, which a reminder's ticked bar sets
+-- at the cast; else, for a special alert's ticks only, Rules.TICK_TAIL past its last impact unless its bar ends at
+-- the cast), then its Linger (hold), which the bar keeps after its end.
 local function itemTail(it)
     local finish = type(it.barEnd) == "number" and it.barEnd or 0
     if type(it.barEnd) ~= "number" and type(it.ticks) == "table" and it.barTo ~= "cast" then

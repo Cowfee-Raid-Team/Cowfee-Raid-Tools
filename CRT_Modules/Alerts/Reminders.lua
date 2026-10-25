@@ -7,9 +7,12 @@ local ADDON, CRT = ...
 --   { boss, spellID, text, times, outputs = { alert, bar, speech, text, icon, circle, timeline }, warn, speech,
 --     priority, group, difficulty, enabled, linger, sound, auraSound, glow, iconID, color, speakAt, ticks, fill, barTo }
 -- auraSound true also plays the sound when the spell's aura is put on you (Sound/Auras.lua).
--- ticks (optional) are the bar's impact ticks, seconds after each time ({ 1.5, 3.5 }); fill "up" makes the bar fill
--- up instead of emptying. Each item carries them for the bars (Alerts/Bars.lua), and a bar with ticks shows from
--- its Show from before the cast (barStart) and runs 1 s past the last tick; none of them is saved at its default.
+-- ticks (optional) are the bar's impact ticks, seconds into the bar from when it shows ({ 2, 4 }); fill "up" makes
+-- the bar fill up instead of emptying. A reminder's bar always runs from Show from before the cast to the cast, and
+-- each item carries the ticks inside it as a bar of its own for the bars (barStart, barEnd and ticks as seconds after
+-- the cast, Alerts/Bars.lua; BarTicks); a tick at or past Show from is not drawn. Until #1171 ticks were seconds
+-- after the cast, with the bar running past the last one; nothing shipped saved any, so they are read the new way.
+-- None of them is saved at its default.
 -- barTo is an older field (Bar ends, "cast"): it stays saved where it was set, and nothing reads it.
 -- where `times` is typed text ("P1 0:02, 1:17; P2 +0:18") or nil for the reference, `speech` is
 -- "text", "textcount" (the text, then 3, 2, 1) or "count", `speakAt` is nil (the text is read out when
@@ -1036,7 +1039,7 @@ local function matchesDifficulty(r, run)
     return Alerts.RunGroup ~= nil and Alerts:RunGroup(run) == want
 end
 
--- A reminder's saved impact ticks as a fresh list in order (seconds after the cast, each 0 or more), or nil
+-- A reminder's saved impact ticks as a fresh list in order (seconds into the bar, each 0 or more), or nil
 -- for none. Anything else saved there is left out.
 function Reminders.TickList(ticks)
     if type(ticks) ~= "table" then
@@ -1050,6 +1053,27 @@ function Reminders.TickList(ticks)
     end
     table.sort(out)
     return #out > 0 and out or nil
+end
+
+-- A reminder's bar runs from Show from (warn seconds) before the cast to the cast, ticks or not. Its saved ticks
+-- (seconds into the bar) split into those on it, each moved to seconds after the cast as the bars read them (-warn
+-- + tick, so 0 or less), and those outside it (at or past warn): those are not drawn and never move the bar.
+-- Returns the ticks on the bar, then the saved ticks left off, each nil for none.
+function Reminders.BarTicks(ticks, warn)
+    local list = Reminders.TickList(ticks)
+    if not list then
+        return nil, nil
+    end
+    warn = type(warn) == "number" and warn or 0
+    local on, off = {}, {}
+    for _, t in ipairs(list) do
+        if t < warn then
+            on[#on + 1] = t - warn
+        else
+            off[#off + 1] = t
+        end
+    end
+    return #on > 0 and on or nil, #off > 0 and off or nil
 end
 
 local function speechList(r, text)
@@ -1088,13 +1112,14 @@ function Reminders:Items(encounterID, id, r, group, ref)
     local fill = r.fill == "up" and "up" or nil
     local warn = type(r.warn) == "number" and r.warn or 5
     for n, t in ipairs(times) do
-        -- the bar's impact ticks, each item its own copy, and where it ends (Alerts/Bars.lua). A bar with ticks
-        -- is timed to the cast: it shows Show from (warn) before it, so the cast and each impact sit at the same
-        -- places on the bar in a pull and in a test, whenever the bar first showed
-        local ticks = Reminders.TickList(r.ticks)
+        -- the bar's impact ticks, each item its own copy (BarTicks): with any on it, a bar of its own (Alerts/Bars.lua)
+        -- from Show from (warn) before the cast to the cast, so each impact sits at the same place on the bar in a
+        -- pull and in a test, whenever the bar first showed. A tick off the bar changes nothing
+        local ticks = Reminders.BarTicks(r.ticks, warn)
         out[#out + 1] = {
             ticks = ticks,
-            barStart = ticks and warn > 0 and -warn or nil,
+            barStart = ticks and -warn or nil,
+            barEnd = ticks and 0 or nil,
             fill = fill,
             id = "mine:" .. tostring(id) .. ":" .. n,
             ph = t.ph,
