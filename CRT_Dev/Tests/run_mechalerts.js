@@ -1896,7 +1896,7 @@ check("mech special (" .. LOOK .. "): a roles alert's Who, a time before the pul
   local f = freshOpen()
   local s = f.special
   click(s.rows[1].frame)
-  assert(s.whoText.text == "Roles: Tank, Healer, G3", "Who: " .. s.whoText.text)
+  assert(s.whoText.text == "Roles: Tank, Healer, Group 3", "Who: " .. s.whoText.text)
   assert(s.chips[1] == nil or not s.chips[1].shown, "no chips: one list for every cast")
   assert(s.whenText.text == "At P1 -0:15, 0:30. Shown 5 s before.", "When: " .. s.whenText.text)
   local who, when
@@ -1911,10 +1911,14 @@ check("mech special (" .. LOOK .. "): a roles alert's Who, a time before the pul
   assert(s.rows[2].icon.shown and s.rows[2].icon.texture == "tex777", "the row's spell: " .. tostring(s.rows[2].icon.texture))
   assert(not s.rows[3].icon.shown, "none")
   local function nameX(row) return row.name.pts[#row.name.pts][2] end
-  assert(nameX(s.rows[1]) > nameX(s.rows[3]) and s.rows[1].name.w < s.rows[3].name.w, "the name moves over for the icon")
+  assert(nameX(s.rows[1]) == nameX(s.rows[3]) and s.rows[1].name.w == s.rows[3].name.w, "one name column, with an icon or without")
   rects = {}
   local ir, nr = rect(s.rows[1].icon, f), rect(s.rows[1].name, f)
   assert(ir[3] <= nr[1], "the icon before the name")
+  -- drawn as the Mechanics list draws its icon (Notes/MechLook.lua): the same size, place and name column
+  local m = f.rows[1]
+  assert(s.rows[1].icon.w == 18 and m.icon.w == s.rows[1].icon.w and m.icon.pts[1][2] == s.rows[1].icon.pts[1][2], "the same icon")
+  assert(nameX(m) == nameX(s.rows[1]), "the same name column")
   CRT.db.alerts.specialView, CRT.db.alerts.specialViewPicked = "mechanics", true
   noSpecial()
   assert(#errors == 0, tostring(errors[1]))

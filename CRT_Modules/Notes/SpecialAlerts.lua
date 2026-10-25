@@ -74,8 +74,6 @@ local L = {
     TOGGLE_GAP = 4,
     ROW_H = 24,
     EMPTY_GAP = 6, -- the empty list's hint under its line
-    NAME_X = 30,
-    ICON_SIZE = 16, ICON_GAP = 4, -- a row's icon, at NAME_X, the name after it
     CHECK_SIZE = 24,
     CHECK_LABEL_W = 96,
     SHOW_GAP = 10,
@@ -245,22 +243,6 @@ end
 
 -- The list ---------------------------------------------------------------------------------------
 
--- A row's icon (Special.Icon: the entry's, else its spell's), the name after it; with none, the name where the icon goes.
-local function paintIcon(row, enc, entry)
-    local tex = Special().Icon(enc, entry, host.group(), ref())
-    local x = L.NAME_X
-    if tex then
-        row.icon:SetTexture(tex)
-        row.icon:Show()
-        x = x + L.ICON_SIZE + L.ICON_GAP
-    else
-        row.icon:Hide()
-    end
-    row.name:ClearAllPoints()
-    row.name:SetPoint("LEFT", x, 0)
-    row.name:SetWidth(L.LIST_W - 4 - x - 8)
-end
-
 local function paintList(list, enc, current)
     local maxRows = #ui.rows
     local maxOffset = math.max(0, #list - maxRows)
@@ -273,7 +255,8 @@ local function paintList(list, enc, current)
             local isSel = entry == current
             row.entry = entry
             row.check:SetChecked(on)
-            paintIcon(row, enc, entry)
+            -- its icon (Special.Icon), drawn as the Mechanics list draws one
+            Look.SetIcon(row.icon, Special().Icon(enc, entry, host.group(), ref()))
             row.name:SetText(entry.label)
             row.name:SetTextColor(Look.NameColor(entry.type, on, isSel))
             row.sel:SetColorTexture(selColor[1], selColor[2], selColor[3], selColor[4])
@@ -568,13 +551,11 @@ local function makeRow(parent, i)
             M.Refresh()
         end
     end)
-    row.icon = frame:CreateTexture(nil, "ARTWORK")
-    row.icon:SetSize(L.ICON_SIZE, L.ICON_SIZE)
-    row.icon:SetPoint("LEFT", L.NAME_X, 0)
+    row.icon = Look.MakeIcon(frame)
     row.icon:Hide()
     row.name = frame:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
-    row.name:SetPoint("LEFT", L.NAME_X, 0)
-    row.name:SetWidth(L.LIST_W - 4 - L.NAME_X - 8)
+    row.name:SetPoint("LEFT", Look.NAME_X, 0)
+    row.name:SetWidth(L.LIST_W - 4 - Look.NAME_X - 8)
     row.name:SetJustifyH("LEFT")
     row.name:SetWordWrap(false)
     frame:SetScript("OnClick", function()
