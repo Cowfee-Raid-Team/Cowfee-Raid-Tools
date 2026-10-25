@@ -6,7 +6,7 @@ local ADDON, CRT = ...
 -- lane names; the track to its right scrolls sideways under a time axis and up and down with the
 -- lane names. The mouse wheel over the track zooms around the cursor (with Shift it scrolls the
 -- lanes), dragging the track or its bar scrolls it, and hovering shows the time under the cursor.
--- A left drag along the time axis, or Ctrl + left drag on the track, selects a range and zooms to it;
+-- A left drag along the time axis or on the track selects a range and zooms to it;
 -- view:Fit() and a right-click on the axis show the whole fight again (see "Zooming to a range").
 -- Icons come from a pool and are reused on every refresh, since frames cannot be deleted. With the
 -- overlay on, deaths from the pulls before the shown one are drawn faded by how old they are.
@@ -192,7 +192,7 @@ local function settings()
 end
 
 local function rgba(key, alpha)
-    local c = CRT.PALETTE[key]
+    local c = CRT.PALETTE[key] or CRT.PALETTE.text or { 1, 1, 1 } -- a palette without the key (an old theme) draws white
     return c[1], c[2], c[3], alpha or 1
 end
 
@@ -548,19 +548,15 @@ function View.Create(parent)
     hscroll:EnableMouse(true)
     hscroll:EnableMouseWheel(true)
     hscroll:SetScript("OnMouseWheel", function(_, delta)
-        if IsShiftKeyDown() then
-            view:ScrollLanes(delta)
-        else
-            view:Zoom(delta)
-        end
+        view:Wheel(delta)
     end)
     hscroll:SetScript("OnMouseDown", function(_, button)
         if view:PhaseMouseDown(button) then
             return -- Shift + drag moves a phase line; a right press on a moved one may reset it
         end
         view.zoomEnded = nil -- a mark no release took is stale by the next press
-        if IsControlKeyDown and IsControlKeyDown() and view:StartZoomSelect(button, "track") then
-            return -- Ctrl + left drag selects a range to zoom to
+        if view:StartZoomSelect(button, "track") then
+            return -- a left drag selects a range to zoom to (a left click without moving is still a click)
         end
         view:StartDrag(button)
         view:RightDown(button)
@@ -765,6 +761,19 @@ function Methods:Zoom(delta)
     self:ScrollTo(t * width / clampSpan(settings().span) - cx)
 end
 
+-- The mouse wheel over the track (Abilities and Healer CDs alike): it scrolls the rows, or along the time
+-- when every row fits; Shift + wheel moves along the time; Ctrl + wheel zooms around the cursor.
+function Methods:Wheel(delta)
+    if IsControlKeyDown and IsControlKeyDown() then
+        return self:Zoom(delta)
+    end
+    local rows = self.vscroll and (self.vscroll:GetVerticalScrollRange() or 0) or 0
+    if not (IsShiftKeyDown and IsShiftKeyDown()) and rows > 0 then
+        return self:ScrollLanes(delta)
+    end
+    self:ScrollTo(self.hscroll:GetHorizontalScroll() - delta * self:VisibleWidth() / 8)
+end
+
 function Methods:ScrollLanes(delta)
     local v = self.vscroll
     local top = math.max(0, math.min(v:GetVerticalScrollRange() or 0, (v:GetVerticalScroll() or 0) - delta * ROW_H))
@@ -951,7 +960,7 @@ function Methods:FinishPhaseDrag()
 end
 
 -- Zooming to a range ----------------------------------------------------------------------------------
--- A left drag along the time axis, or Ctrl + left drag on the track (a cast icon included), selects a
+-- A left drag along the time axis or on the track (a cast icon included) selects a
 -- range: once the cursor has moved MOVE_DIST pixels a see-through band in the heading colour covers the
 -- lanes from the press to the cursor, with its times on a tag on the axis, and the track scrolls along
 -- when the cursor passes its edge. Letting go zooms so the range fills the track: the span becomes its
@@ -967,7 +976,7 @@ function Methods:TrackXAtCursor()
     return math.max(0, math.min(self.trackW or 1, x))
 end
 
--- A left press on the axis, or with Ctrl on the track: remembers where. True when it starts a selection.
+-- A left press on the axis or the track: remembers where. True when it starts a selection.
 function Methods:StartZoomSelect(button, source)
     if button ~= "LeftButton" or not self.pull or self.zoomSel or self.phaseDrag or self.move or self.chipMove then
         return false
@@ -1192,8 +1201,8 @@ function Methods:Icon(n)
         b:SetScript("OnLeave", hideTip)
         b:SetScript("OnMouseDown", function(_, button)
             self.clickAt = nil -- a click here is the icon's, so it never pairs with one on the track
-            if IsControlKeyDown and IsControlKeyDown() and self:StartZoomSelect(button, "icon") then
-                return -- Ctrl + left drag selects a range to zoom to, as on the track
+            if self:StartZoomSelect(button, "icon") then
+                return -- a left drag selects a range to zoom to, as on the track
             end
             self:StartDrag(button)
             self:RightDown(button)
