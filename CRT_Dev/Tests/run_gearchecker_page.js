@@ -3,7 +3,7 @@
 // Refresh label with the CRT count and its width; the rows (name in class colour, average, the issues
 // badge, the cells' quality border, red and orange outlines, enchant dots and gem diamonds, not seen yet);
 // the filters; the season checks (info ones not counted), the upgrade tracks (tag, Tracks column, Below
-// chip and its menu, Not an issue lines); the page in each theme and a live theme switch; hover, shift-click, the issues badge's
+// chip and its menu, Not an issue lines), the Extra filters window and its chips; the page in each theme and a live theme switch; hover, shift-click, the issues badge's
 // tooltip and the right-click menu (the Send issues to submenu per group, guild and officer rights, Say in
 // the world into the chat box, chat box, inspect); and the pop-out window saving its place and size.
 // Usage: node run_gearchecker_page.js <addon folder>
@@ -227,7 +227,11 @@ for _, f in ipairs(made) do
     check(f.crtHelpTarget ~= nil and p and p[1] == "LEFT" and p[2] == f.crtHelpTarget and p[3] == "RIGHT" and p[4] == UI.HELP_GAP and p[5] == 0, "a (?) is placed by UI.HelpRight, right of its target")
   end
 end
-check(helps == 1 and helpButton and helpButton.crtHelpTarget == P.chips[#P.chips], "the page's (?) is right of the last filter chip")
+check(helps == 1 and helpButton and helpButton.crtHelpTarget == P.extraButton, "the page's (?) is right of the Extra filters button")
+check(P.extraButton ~= nil and P.extraButton.text.text == "Extra filters", "an Extra filters button")
+local xp = P.extraButton.points[#P.extraButton.points]
+check(xp and xp[1] == "TOPLEFT" and xp[2] == P.chips[4].points[1][2] + P.chips[4].w + Lt.chipGap and xp[3] == 0, "right after the last chip, on its row")
+eq(P.extraButton.w, #"Extra filters" * 6 + 2 * Lt.chipPad, "sized from its label, like a chip")
 helpButton.scripts.OnEnter(helpButton)
 local helpText = table.concat(tip.lines, " ")
 check(helpText:find("an item 15 or more item levels under", 1, true) ~= nil, "the help says the low item level rule from GC.LOW_ILVL")
@@ -236,7 +240,7 @@ check(P.body ~= nil and P.box ~= nil, "the body and the list are built")
 check(Lt.rowW + Lt.barGap + Lt.barW <= UI.PAGE_W - 16, "a row and the scroll bar fit inside the page (" .. (Lt.rowW + Lt.barGap + Lt.barW) .. ")")
 eq(Lt.rowW, Lt.nameW + Lt.ilvlW + Lt.issuesW + Lt.tracksW + 16 * Lt.cellW, "all 16 slots and the Tracks column in a row")
 check(P.bar.crtScroll ~= nil, "the scroll bar goes through UI:SkinScrollBar")
-local chipW = 0
+local chipW = P.extraButton.w + Lt.chipGap
 for _, c in ipairs(P.chips) do chipW = chipW + c.w + Lt.chipGap end
 local right = P.refreshButton.w + P.popButton.w + 6 + 10 + P.countText:GetStringWidth()
 check(chipW + 8 + 20 + 20 + right <= UI.PAGE_W - 16, "the chips, help, count and buttons fit across the page")
@@ -687,7 +691,102 @@ me = rowOf("Solex")
 me.badgeHit.scripts.OnEnter(me.badgeHit)
 check(not tip.lines[#tip.lines]:find("^Tracks"), "badge: no tracks known, no Tracks line")
 CRT.db.gearChecker.filter = "all"
+
+-- 9b. Extra filters: the button opens a window of check boxes, each with its (?); a ticked one adds its chip
+-- after Missing enchants, flags its cells with an orange square and counts in Issues; Item level below takes
+-- a typed level. Saved in CRTDB.gearChecker.extra.
+CRT.Bosses = { GearChecks = function() return { enchant = { 1 } } end, Tracks = function() return TRACKS end }
+CRT.db.gearChecker.extra = { upgrade = false, ilvl = false, quality = false, empty = false, minIlvl = 0 }
+local XS = CRT.db.gearChecker.extra
+CRT.db.gearChecker.belowTrack = "hero"
+P.Refresh()
+local function chipLabels() local out = {} for _, c in ipairs(P.chips) do out[#out + 1] = c.text.text end return table.concat(out, "|") end
+eq(chipLabels(), "Everyone|Only issues|Missing gems|Missing enchants|Below Hero", "extra: none ticked, no extra chips")
+P.extraButton:Click()
+local xw = _G.CowfeeRaidToolsGearCheckerExtra
+check(xw ~= nil and xw.shown, "extra: the button opens the Extra filters window")
+eq(xw and xw.strata, "FULLSCREEN_DIALOG", "extra: on the pop-up windows layer")
+eq(#P.extraChecks, 4, "extra: a check box per filter")
+local xl = {}
+for _, cb in ipairs(P.extraChecks) do xl[#xl + 1] = cb.label.text end
+eq(table.concat(xl, "|"), "Not fully upgraded|Item level below|Low quality|Empty slot", "extra: the check boxes' labels")
+local xhelps = 0
+for _, f in ipairs(made) do
+  if f.crtHelp and f.crtHelpTarget then
+    local mine = f.crtHelpTarget == P.minIlvlEdit
+    for _, cb in ipairs(P.extraChecks) do mine = mine or f.crtHelpTarget == cb end
+    if mine then xhelps = xhelps + 1 end
+  end
+end
+eq(xhelps, 4, "extra: each filter has its (?)")
+check(P.minIlvlEdit ~= nil and P.minIlvlEdit.template == "InputBoxTemplate", "extra: a number box for the level")
+eq(P.minIlvlEdit:GetText(), "0", "extra: the saved level shows")
+check(#P.extraChecks * Lt.extraRowH + 34 <= Lt.extraH and Lt.extraW >= 200, "extra: the window holds its rows")
+-- Not fully upgraded
+P.extraChecks[1]:Click()
+eq(XS.upgrade, true, "upgrade: ticking it saves it")
+eq(chipLabels(), "Everyone|Only issues|Missing gems|Missing enchants|Not fully upgraded|Below Hero", "upgrade: its chip after Missing enchants")
+local xp2 = P.extraButton.points[#P.extraButton.points]
+local lastChip = P.chips[#P.chips]
+check(xp2[2] == lastChip.points[1][2] + lastChip.w + Lt.chipGap and xp2[2] + P.extraButton.w <= Lt.chipsW, "upgrade: the Extra filters button moves after the new chip, still left of the buttons")
+rows = drawRows()
+quick = rowOf("Quick")
+eq(quick.issues.text, "4", "upgrade: Quick's four items below their track's last rank count in Issues")
+check(cell(quick, 11).tag.shown and near(cell(quick, 11).tag.color, WARN), "upgrade: the Champion 4/6 ring has an orange square")
+check(not cell(rowOf("Solex"), 1).tag.shown, "upgrade: an item with no known track has none")
+P.chips[5]:Click()
+eq(CRT.db.gearChecker.filter, "extra:upgrade", "upgrade: its chip saves the filter")
+rows = drawRows()
+eq(#rows, 1, "upgrade: only Quick")
+quick.badgeHit.scripts.OnEnter(quick.badgeHit)
+local upl = 0 for i, l in ipairs(tip.lines) do if l:find("Not fully upgraded$") and near(tip.colors[i], WARN) then upl = upl + 1 end end
+eq(upl, 4, "upgrade: the badge lists each one in orange")
+P.extraChecks[1]:Click()
+eq(XS.upgrade, false, "upgrade: unticking saves it")
+eq(chipLabels(), "Everyone|Only issues|Missing gems|Missing enchants|Below Hero", "upgrade: unticked, its chip goes")
+check(P.chips[1].selected, "upgrade: its picked chip falls back to Everyone")
+rows = drawRows()
+eq(rowOf("Quick").issues.text, "0", "upgrade: unticked, nothing counts")
+-- Item level below: the typed level
+P.minIlvlEdit:SetText("300")
+P.minIlvlEdit.scripts.OnEditFocusLost(P.minIlvlEdit)
+eq(XS.minIlvl, 300, "ilvl: the typed level is saved")
+eq(chipLabels(), "Everyone|Only issues|Missing gems|Missing enchants|Below Hero", "ilvl: a level alone, unticked, adds no chip")
+P.extraChecks[2]:Click()
+eq(chipLabels(), "Everyone|Only issues|Missing gems|Missing enchants|Item level below 300|Below Hero", "ilvl: ticked, the chip names the level")
+rows = drawRows()
+check(cell(rowOf("Quick"), 1).tag.shown and rowOf("Quick").issues.text == "4", "ilvl: Quick's 289 items are below 300")
+P.minIlvlEdit:SetText("abc")
+P.minIlvlEdit.scripts.OnEditFocusLost(P.minIlvlEdit)
+eq(XS.minIlvl, 0, "ilvl: no number is 0, off")
+eq(P.minIlvlEdit:GetText(), "0", "ilvl: the box shows the saved level again")
+eq(chipLabels(), "Everyone|Only issues|Missing gems|Missing enchants|Below Hero", "ilvl: level 0, no chip")
+P.extraChecks[2]:Click()
+-- Empty slot: the empty cell gets its square and a tooltip
+P.extraChecks[4]:Click()
+P.chips[5]:Click()
+eq(CRT.db.gearChecker.filter, "extra:empty", "empty: its chip")
+rows = drawRows()
+quick = rowOf("Quick")
+local qe = cell(quick, 5)
+check(qe.shown and not qe.icon.shown and qe.tag.shown and near(qe.tag.color, WARN), "empty: an empty chest is drawn with an orange square")
+qe.scripts.OnEnter(qe)
+check(tip.shown and tip.lines[1] == "Empty slot", "empty: its tooltip says so (" .. tostring(tip.lines[1]) .. ")")
+shift = true
+qe.scripts.OnClick(qe, "LeftButton")
+shift = false
+check(chat.opened[#chat.opened]:find("^%[Quick%] .+ %- Empty slot$") ~= nil, "empty: shift-click puts it in the chat box")
+P.extraChecks[4]:Click()
+-- the window closes from its button too, and the settings stay
+P.extraButton:Click()
+check(not xw.shown, "extra: the button closes the window again")
+P.extraButton:Click()
+check(xw.shown and P.extraChecks[1] and P.minIlvlEdit:GetText() == "0", "extra: opened again, built once")
+xw:Hide()
+CRT.db.gearChecker.extra = nil
+CRT.db.gearChecker.filter = "all"
 CRT.Bosses = { GearChecks = function() return { enchant = { 1 } } end }
+P.Refresh()
 
 -- 10. Your own row follows an enchant put on with no event (no reload): Refresh reads your slots at once,
 -- and so does the page each time it opens

@@ -56,6 +56,7 @@ local function mock(kind)
     if k == "SetPoint" then return function(self, a, rel, b, x, y) rawset(self, "pt", { a, rel, b, x, y }) end end
     if k == "ClearAllPoints" then return function(self) rawset(self, "pt", nil) end end
     if k == "SetColorTexture" then return function(self, r, g, b, a) rawset(self, "color", { r, g, b, a }) end end
+    if k == "SetAlpha" then return function(self, a) rawset(self, "alpha", a) end end
     if k == "SetTextColor" then return function(self, r, g, b) rawset(self, "tcolor", { r, g, b }) end end
     if k == "GetStringWidth" then return function(self) return #(rawget(self, "text") or "") * 6 end end
     if k == "GetUnboundedStringWidth" then return function(self) return #(rawget(self, "text") or "") * 6 end end
@@ -433,14 +434,17 @@ do
   local function near(a, b) return math.abs(a - b) < 0.01 end
   check(v.selected == nil and pairAt(20) and pairAt(100) and pairAt(250), "every cast has its bands, nothing selected")
   local p1, p2, p3 = pairAt(20), pairAt(100), pairAt(250)
-  -- the after band: filled in the class colour at the band alpha, from the cast to when it is up again
+  local HALF = HV.CastW() / 2
+  check(HV.CastW() == 30 - 8, "a cast's icon is as tall as its bands: " .. tostring(HV.CastW()))
+  -- the after band: filled in the class colour at the band alpha, from the cast's icon to the next cast's icon
+  -- (inside its cooldown, so the next cast's bands take over there)
   local fill = p1.fill
-  check(fill.shown and near(fill.pt[4], 20 * W) and near(fill.w, 180 * W) and fill.pt[5] == top and fill.h == 30 - 8,
-    "the after band runs from the cast for its 3:00 cooldown, on the cast's row")
+  check(fill.shown and near(fill.pt[4], 20 * W + HALF) and near(fill.w, 80 * W - 2 * HALF) and fill.pt[5] == top and fill.h == 30 - 8,
+    "the after band runs from the cast's icon to the next cast's icon, on the cast's row: " .. fill.pt[4] .. " w " .. fill.w)
   check(fill.color[1] == priest.r and fill.color[2] == priest.g and fill.color[4] == 0.22, "filled in the class colour at the band alpha")
-  check(p1.hiEnd and p1.hiEnd.shown and near(p1.hiEnd.pt[4], 200 * W - 1) and p1.hiEnd.w == 1 and p1.hiEnd.color[4] == 1, "with a line where it is up again")
-  check(near(p3.fill.w, 50 * W) and p3.hiEnd == nil, "cut at the fight's end, where there is no end line")
-  -- the before band: an outline only, in the class colour, from when it was last up to the cast
+  check(p1.hiEnd == nil, "no up-again line inside the next cast's band")
+  check(near(p3.fill.pt[4], 250 * W + HALF) and near(p3.fill.w, 50 * W - HALF) and p3.hiEnd == nil, "cut at the fight's end, where there is no end line")
+  -- the before band: an outline only, in the class colour, from when it was last up to the cast's icon
   local function box(p)
     local l, r, t, b, solid = math.huge, -math.huge, -math.huge, math.huge, false
     for _, tx in ipairs(p.outline) do
@@ -451,16 +455,15 @@ do
     end
     return l, r, t, b, solid
   end
-  local l, r, t, b, solid = box(p3)
-  check(#p3.outline >= 3 and not solid, "the before band is a 1 px outline in the class colour, no fill")
-  check(near(l, 70 * W) and near(r, 250 * W) and t == top and b == top - 22, "from 1:10 to the cast, on its row: " .. l / W .. " to " .. r / W)
-  check(p3.loEnd and near(p3.loEnd.pt[4], 70 * W) and p3.loEnd.color[4] == 1 and p3.loEnd.h == 22, "with a solid line where it was up before")
-  local l1 = box(p1)
-  check(near(l1, 0) and p1.loEnd == nil, "cut at the pull, with no end line there")
-  -- red where the next cast falls inside the cooldown, once per pair
-  check(p1.red and near(p1.red.pt[4], 20 * W) and near(p1.red.w, 80 * W) and p1.red.color[1] > 0.8 and p1.red.color[2] < 0.4,
+  local l1, r1, t1, b1, solid1 = box(p1)
+  check(#p1.outline == 2 and not solid1, "the before band is a 1 px outline in the class colour, no fill")
+  check(near(l1, 0) and near(r1, 20 * W - HALF) and t1 == top and b1 == top - 22 and p1.loEnd == nil,
+    "cut at the pull with no end line there, ending at the icon's left edge: " .. l1 .. " to " .. r1)
+  check(#p2.outline == 0 and #p3.outline == 0, "a cast inside the one before's filled band has no outline over it")
+  -- red where the next cast falls inside the cooldown, once per pair, from icon to icon
+  check(p1.red and near(p1.red.pt[4], 20 * W + HALF) and near(p1.red.w, 80 * W - 2 * HALF) and p1.red.color[1] > 0.8 and p1.red.color[2] < 0.4,
     "red from 0:20 to the cast at 1:40 inside its cooldown")
-  check(p2.red and near(p2.red.pt[4], 100 * W) and near(p2.red.w, 150 * W), "and from 1:40 to 4:10")
+  check(p2.red and near(p2.red.pt[4], 100 * W + HALF) and near(p2.red.w, 150 * W - 2 * HALF), "and from 1:40 to 4:10")
   check(p3.red == nil, "the last cast has nothing inside its cooldown")
   check(castAt(100).mark.tooSoon and castAt(100).edge.color[1] > 0.8, "the too-soon red edge stays")
   -- a selected cast: the selection's bands replace its own, the others stay
@@ -484,7 +487,7 @@ do
   check(drawn == before, "the drag draws only its own bands, not every cast's: " .. (drawn - before))
   f.OnMouseUp(f, "LeftButton")
   local moved = pairAt(130)
-  check(moved and near(moved.fill.pt[4], 130 * W) and shownAll(moved), "let go, its bands are drawn at the new time")
+  check(moved and near(moved.fill.pt[4], 130 * W + HALF) and shownAll(moved), "let go, its bands are drawn at the new time")
   -- the Abilities view: no bands until a flag is selected
   v:SetMode(nil)
   local any = false
@@ -492,6 +495,164 @@ do
   for _, tx in ipairs(v.bandTex or {}) do if tx:IsShown() then any = true end end
   check(not any, "Abilities draws no bands with nothing selected")
   HV.Draw = realDraw
+  setNote({})
+end
+
+-- Casts in line with their bands, the hover shadow on a cooldown row, and a click placing it ---------------------------
+do
+  setNote({
+    "time:20;ph:1;tag:Halo;spellid:64843;",     -- Divine Hymn at 0:20, then 3:50 once it is up again (3:20)
+    "time:110;ph:2;tag:Halo;spellid:64843;",
+    "time:130;ph:2;tag:Halo;spellid:200183;",   -- Apotheosis alone at 4:10
+    "time:60;ph:1;tag:everyone;spellid:64843;", -- on the Notes row
+    "time:70;ph:1;tag:Halo;spellid:4242;",      -- on the Surge row
+  })
+  CRT.TimelineUndo:Quietly(function() end)
+  local v = newView()
+  local W, HALF, CW = v.trackW / 300, HV.CastW() / 2, HV.CastW()
+  local hymn, apo = laneIndex(v, "healers:halo-home:64843"), laneIndex(v, "healers:halo-home:200183")
+  local function castAt(row, t) for _, f in ipairs(flagsOn(v, row)) do if f.mark.t == t then return f end end end
+  local a, b, c = castAt(hymn, 20), castAt(hymn, 230), castAt(apo, 250)
+  check(a and b and c, "the three casts are drawn")
+  check(a.pt[1] == "CENTER" and a.pt[4] == 20 * W and a.pt[5] == -(hymn - 1) * 30 - 15,
+    "a cast is its icon, centred on its time in the middle of its row: " .. tostring(a.pt[1]) .. " " .. tostring(a.pt[5]))
+  check(a.w == CW and a.h == CW and a.icon.w == CW - 2 and a.icon.shown and not a.pole.shown and not a.head.shown,
+    "as tall as its bands, with no flag and no pole under it")
+  local pa, pb, pc = v.hvPairs[View.BandKey(a.mark)], v.hvPairs[View.BandKey(b.mark)], v.hvPairs[View.BandKey(c.mark)]
+  check(pa.fill.pt[4] == 20 * W + HALF and pa.fill.pt[4] + pa.fill.w == 200 * W and pa.hiEnd and pa.hiEnd.pt[4] == 200 * W - 1,
+    "the after band starts at the icon's right edge and ends when it is up again, with its line")
+  local o1, o2 = pb.outline[1], pb.outline[2]
+  check(#pb.outline == 2 and o1.pt[4] == 200 * W and o1.pt[4] + o1.w == 230 * W - HALF and o2.pt[4] == 200 * W and o2.w == o1.w,
+    "the next cast's outline starts where the filled band ends and stops at its icon's left edge")
+  check(pb.loEnd == nil and pa.red == nil and not b.mark.tooSoon, "no second end line inside the filled band, nothing red")
+  check(pc.outline[1].pt[4] == 70 * W and pc.outline[1].pt[4] + pc.outline[1].w == 250 * W - HALF and pc.loEnd and pc.loEnd.pt[4] == 70 * W,
+    "a cast alone: its outline from when it was last up, with its end line")
+  -- the note lines on the Notes and ability rows keep their flags
+  local notesRow, surgeRow = laneIndex(v, "notes"), nil
+  for i, lane in ipairs(v.lanes) do if lane.label == "Surge" then surgeRow = i end end
+  local nf, sf = flagsOn(v, notesRow)[1], flagsOn(v, surgeRow)[1]
+  check(nf and nf.pt[1] == "TOPLEFT" and nf.w == 20 and nf.pole.shown and nf.pt[5] == -(notesRow - 1) * 30, "a Notes row line keeps its flag")
+  check(sf and sf.pt[1] == "TOPLEFT" and sf.w == 20 and sf.pole.shown and sf.icon.w == 18, "so does a line on an ability row")
+  -- the hint line
+  check(v.unknownText:GetText() == "Click a row to add a cast" .. DOT .. "drag a cast to move it" .. DOT .. "drag across the track to zoom",
+    "the hint line: " .. tostring(v.unknownText:GetText()))
+
+  -- the shadow: hovering an empty spot of a cooldown row
+  local hs = v.hscroll
+  local over = true
+  rawset(hs, "IsMouseOver", function() return over end)
+  local drawn = 0
+  local realDraw = HV.Draw
+  HV.Draw = function(...) drawn = drawn + 1 return realDraw(...) end
+  mouseDown = false
+  local function hover(t, row) cx, cy = screenX(v, t), laneY(row) v.frame.OnUpdate(v.frame) end
+  hover(120.4, apo)
+  local sh = v.hvShadow
+  local function shown() return sh ~= nil and sh.icon.shown == true end
+  check(shown() and sh.icon.texture == "tex200183" and sh.icon.alpha == 0.4, "a see-through shadow of the row's spell")
+  check(sh.icon.pt[1] == "CENTER" and sh.icon.pt[4] == 120 * W and sh.icon.pt[5] == -(apo - 1) * 30 - 15 and sh.icon.w == CW,
+    "at the cursor's whole second, where a cast would sit: " .. tostring(sh.icon.pt[4] / W))
+  check(v.hover.text == "Spell200183 at 2:00 for Halo", "the readout says what a click places: " .. tostring(v.hover.text))
+  local L = sh.lines
+  check(L[1].shown and L[1].pt[4] == 0 and L[1].w == 120 * W - HALF and L[2].shown and not L[3].shown,
+    "its before band outlined faintly, cut at the pull")
+  check(L[4].shown and L[4].pt[4] == 120 * W + HALF and L[4].pt[4] + L[4].w == 300 * W and L[6].shown and L[6].pt[4] == 300 * W - 1,
+    "and its after band, to when it is up again")
+  check(L[1].color[4] < 0.5 and L[1].color[1] == RAID_CLASS_COLORS.PRIEST.r, "faint, in the class colour")
+  hover(140.6, apo)
+  check(shown() and sh.icon.pt[4] == 141 * W and v.hover.text == "Spell200183 at 2:21 for Halo", "it follows the cursor")
+  check(drawn == 0, "hovering draws nothing else again: " .. drawn)
+  hover(250 + 4 / W, apo)
+  check(not shown(), "hidden over a cast")
+  hover(120, laneIndex(v, "healers:halo-home"))
+  check(not shown(), "hidden off a cooldown row (a name row)")
+  hover(120, surgeRow)
+  check(not shown(), "and on an ability row")
+  hover(120, apo)
+  over = false
+  v.frame.OnUpdate(v.frame)
+  check(not shown(), "hidden when the cursor leaves the track")
+  over = true
+  inCombat = true
+  hover(120, apo)
+  check(not shown(), "hidden in combat")
+  inCombat = false
+  hover(120, apo)
+  check(shown(), "back once combat ends")
+  -- a cast held: no shadow while it drags
+  mouseDown = true
+  cx, cy = screenX(v, 230), laneY(hymn)
+  b.OnMouseDown(b, "LeftButton")
+  hover(150, hymn)
+  check(not shown(), "hidden while a cast drags")
+  v:CancelMove()
+  -- a drag across the track still zooms, placing nothing
+  local nLines = #N:RawLines(1)
+  now = now + 5
+  cx, cy = screenX(v, 40), laneY(apo)
+  hs.OnMouseDown(hs, "LeftButton")
+  cx = cx + 2
+  v.frame.OnUpdate(v.frame)
+  check(shown(), "under 4 px the press may still be a click")
+  cx = cx + 58
+  v.frame.OnUpdate(v.frame)
+  v.frame.OnUpdate(v.frame)
+  check(not shown(), "hidden during a zoom selection")
+  hs.OnMouseUp(hs, "LeftButton")
+  check(CRT.db.timeline.span == 60 and #N:RawLines(1) == nLines, "the drag zooms and places nothing: span " .. tostring(CRT.db.timeline.span))
+  mouseDown = false
+  v:SetSpan(300)
+  v:ScrollTo(0)
+  HV.Draw = realDraw
+  -- a click on an empty spot places the spell there for that player
+  now = now + 5
+  cx, cy = screenX(v, 140.3), laneY(apo)
+  hs.OnMouseDown(hs, "LeftButton") hs.OnMouseUp(hs, "LeftButton")
+  local lines = N:RawLines(1)
+  local added = N:TimerAt(1, #lines)
+  check(#lines == nLines + 1 and added and added.spellId == 200183 and added.tags[1] == "Halo" and added.ph == 2 and added.time == 20,
+    "a click places Halo's Apotheosis at the shadow's 2:20 (P2 +0:20): " .. tostring(added and added.time))
+  check(printed[#printed]:find("for Halo", 1, true), "the chat line says for whom: " .. tostring(printed[#printed]))
+  check(castAt(apo, 140) ~= nil, "and it is drawn")
+  hover(140.3, apo)
+  check(not shown(), "the new cast is under the cursor: no shadow")
+  -- its double-click's second click places nothing more
+  now = now + 0.1
+  hs.OnMouseDown(hs, "LeftButton") hs.OnMouseUp(hs, "LeftButton")
+  check(#N:RawLines(1) == nLines + 1, "a double-click places one cast, not two")
+  -- not the raid leader or an assistant: refused on another player's row, once per double-click
+  group.leader = false
+  now = now + 5
+  local np = #printed
+  cx, cy = screenX(v, 60), laneY(apo)
+  hs.OnMouseDown(hs, "LeftButton") hs.OnMouseUp(hs, "LeftButton")
+  now = now + 0.1
+  hs.OnMouseDown(hs, "LeftButton") hs.OnMouseUp(hs, "LeftButton")
+  check(#N:RawLines(1) == nLines + 1 and #printed == np + 1 and printed[#printed] == HV.TEXT.notLead, "anyone else: nothing placed, and why, once")
+  -- on your own row: one of your reminders
+  v:Refresh()
+  now = now + 5
+  cx, cy = screenX(v, 80), laneY(laneIndex(v, "healers:me-home:31821"))
+  hs.OnMouseDown(hs, "LeftButton") hs.OnMouseUp(hs, "LeftButton")
+  check(#N:RawLines(1) == nLines + 1 and #R:List(3001) == 1 and printed[#printed]:find("for you", 1, true), "your own row: one of your reminders")
+  group.leader = true
+  CRT.db.alerts.reminders = {}
+  -- Abilities: every flag as before, the pooled ones put back; no shadow there
+  v:SetMode(nil)
+  local n, look = 0, true
+  for _, f in ipairs(v.flags) do
+    if f:IsShown() then
+      n = n + 1
+      if f.pt[1] ~= "TOPLEFT" or f.w ~= 20 or not f.pole.shown or f.icon.w ~= 18 then look = false end
+    end
+  end
+  check(n >= 5 and look, "Abilities: every alert is a flag again: " .. n)
+  check(not shown(), "and no shadow")
+  cx, cy = screenX(v, 120), laneY(2)
+  v.frame.OnUpdate(v.frame)
+  check(not shown(), "nor on hover")
+  rawset(hs, "IsMouseOver", nil)
+  mouseDown = true
   setNote({})
 end
 
@@ -530,8 +691,8 @@ do
   check(#flagsOn(v, surgeRow) == 1 and flagsOn(v, surgeRow)[1].mark.t == 70, "the Surge line on the Surge row, as Abilities draws it")
   -- bands: one from each cast for its cooldown, cut at the end; a line where it is up again
   local first
-  for _, p in pairs(v.hvPairs or {}) do if p.fill:IsShown() and p.fill.pt[4] == 20 * v.trackW / 300 then first = p.fill end end
-  check(first and math.abs(first.w - 180 * v.trackW / 300) < 0.01 and first.pt[5] == -(hymn - 1) * 30 - 4, "a band for the 3:00 cooldown on the cast's row")
+  for _, p in pairs(v.hvPairs or {}) do if p.fill:IsShown() and p.fill.pt[4] == 20 * v.trackW / 300 + HV.CastW() / 2 then first = p.fill end end
+  check(first and math.abs(first.w - 80 * v.trackW / 300 + HV.CastW()) < 0.01 and first.pt[5] == -(hymn - 1) * 30 - 4, "a band from the cast to the next one inside its cooldown, on the cast's row")
   check(first.color[4] < 1, "see-through")
   -- red edge: the second Hymn is cast inside the first one's cooldown
   check(f[2].mark.tooSoon == true and not f[1].mark.tooSoon, "the second cast is too soon")
@@ -848,7 +1009,7 @@ do
   check(dashes >= 3, "its pole dashed: " .. dashes)
   -- its cooldown bands at your time; the ghost has none
   local own = v.hvPairs[View.BandKey(f.mark)]
-  check(own and math.abs(own.fill.pt[4] - 50 * v.trackW / 300) < 0.01 and own.fill.shown, "the moved cast's bands start at your time")
+  check(own and math.abs(own.fill.pt[4] - 50 * v.trackW / 300 - HV.CastW() / 2) < 0.01 and own.fill.shown, "the moved cast's bands start at your time")
   local onRow = 0
   for _, p in pairs(v.hvPairs) do if p.fill.pt[5] == -(aura - 1) * 30 - 4 then onRow = onRow + 1 end end
   check(onRow == 1, "and the ghost has none: " .. onRow)

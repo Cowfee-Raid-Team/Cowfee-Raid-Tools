@@ -283,11 +283,13 @@ local defaults = {
     -- Gear Checker (GearChecker/): filter, the chip picked on the page (all, issues, gems, enchants,
     -- check:<key>, below); belowTrack, the upgrade track the Below chip lists items under (a key of the
     -- season's Tracks.lua; one the season doesn't have falls back to the season's default); popout, the
-    -- pop-out window's place and size once moved (UI.Window keeps point, x, y, width, height).
+    -- pop-out window's place and size once moved (UI.Window keeps point, x, y, width, height); extra, the
+    -- Extra filters window's ticks (each adds its chip, extra:<key>) and Item level below's level (0 is off).
     gearChecker = {
         filter = "all",
         belowTrack = "hero",
         popout = {},
+        extra = { upgrade = false, ilvl = false, quality = false, empty = false, minIlvl = 0 },
     },
     -- The sound engine (Sound/Engine.lua): custom, your own sound file names typed on Quality of Life >
     -- Sounds (the companion addon CowfeeRaidTools_Media lists more in its Sounds.lua).

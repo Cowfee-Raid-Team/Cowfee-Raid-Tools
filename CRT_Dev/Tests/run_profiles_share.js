@@ -202,6 +202,12 @@ do
   check(paths["tattle.onlyTeam"] ~= nil and paths["tattle.onlyTeam"].default == true, "Tattlebot's Only record team raids is shared, on by default")
   check(paths["late.onlyTeam"] ~= nil and paths["late.onlyTeam"].default == true, "the Late Tracker's Only record team raids is shared, on by default")
   check(paths["seasonStats.show"] == nil, "Season Stats' Show stays with its data, never shared")
+  -- the Gear Checker's extra filters are settings: each tick and the level travel with the settings
+  for path, def in pairs({ ["gearChecker.extra.upgrade"] = false, ["gearChecker.extra.ilvl"] = false, ["gearChecker.extra.quality"] = false,
+      ["gearChecker.extra.empty"] = false, ["gearChecker.extra.minIlvl"] = 0 }) do
+    check(paths[path] ~= nil and paths[path].default == def, path .. " is shared, with its default " .. tostring(def))
+  end
+  check(paths["gearChecker.filter"] == nil, "the Gear Checker's picked chip stays page state")
 end
 
 -- The sender: a profile with settings, positions and data. --------------------------------------

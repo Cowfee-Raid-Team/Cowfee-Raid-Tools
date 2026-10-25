@@ -25,15 +25,20 @@ local ADDON, CRT = ...
 -- Anyone else drags only their own casts, and only for themselves: the new time is kept on this computer
 -- (Notes/Shifts.lua, HV.MovePersonal), your alerts use it, and the raid note stays as it is. A moved cast
 -- draws at your time, with the raid's time as a dashed ghost and "2:51 to 3:05" beside it. Other players'
--- casts don't move for them; their name rows say locked. A double-click on a cooldown row places one there
--- for that player (the view's PlaceCooldownAt, by the raid leader and assistant rules).
+-- casts don't move for them; their name rows say locked. Each cast on a cooldown row is its spell's icon centred
+-- on its time in the middle of the row, as tall as its bands, the before band ending at its left edge and the
+-- after band starting at its right edge; where a cast's after band reaches the next cast, the filled band runs
+-- to that cast's icon and the next cast's outline starts where it ends (HV.Draw). Hovering an empty spot of a
+-- cooldown row shows a see-through shadow of its spell and its bands at the cursor's whole second, with
+-- "Rewind at 2:14 for Rixxy" in the view's hover readout (HV.Hover); a click there places it for that player
+-- (HV.Click: the view's PlaceCooldownAt, by the raid leader and assistant rules), as a double-click does.
 -- Built once per refresh (data, zoom, or a roster or role change: HV.Watch); scrolling only moves the track.
 
 local HV = {}
 CRT.TimelineHealerView = HV
 
 local TEXT = {
-    hint = "Drag a cast to move it \194\183 double-click a row to add a cast \194\183 red edge: cast while still on cooldown",
+    hint = "Click a row to add a cast \194\183 drag a cast to move it \194\183 drag across the track to zoom",
     -- for someone who may not change the raid note
     hintOwn = "Drag your own casts to move them for yourself \194\183 red edge: cast while still on cooldown",
     noHealers = "No healers found. Right-click a name on Raid Groups and pick Set role > Healer.",
@@ -43,7 +48,8 @@ local TEXT = {
     healerHand = "Healer (set on Raid Groups)",
     assigned = "Has cooldowns in the raid note",
     cooldown = "Cooldown %d:%02d",
-    addCast = "Double-click this row to add a cast.",
+    addCast = "Click this row to add a cast.",
+    shadowAt = "%s at %s for %s", -- the hover readout over a cooldown row: its spell, the time, the player
     pickRows = "Right-click to show or hide this player's rows.",
     allHidden = "All rows hidden. Right-click the name to show some.",
     noDefaults = "No rows by default. Right-click the name to add some.",
@@ -68,8 +74,14 @@ local BAND_LINE_W = 1 -- the line where the cooldown is up again
 local SAME_MOMENT = 0.05 -- seconds: two casts this close are the same moment, not too soon
 local GHOST_W, GHOST_ALPHA = 18, 0.25 -- a moved cast's ghost at the raid's time: a faint square where its icon was
 local GHOST_DASH, GHOST_GAP = 4, 3 -- and a dashed pole down its row
+local SHADOW_ICON_ALPHA, SHADOW_LINE_ALPHA = 0.4, 0.35 -- the hover shadow of a cast a click would place
 local UNNAMED_ICON = "Interface\\Icons\\INV_Misc_QuestionMark"
 local GROUP_WORD = { "^g%d+$", "^group%d+$" } -- tag words that name a raid group, not a player
+
+-- A cast's icon on a cooldown row: square, as tall as its bands (the view's DrawMarks draws it).
+function HV.CastW()
+    return CRT.TimelineView.ROW_H - 2 * BAND_INSET
+end
 
 local function readable(v)
     local T = CRT.Timeline
@@ -662,7 +674,7 @@ function HV.Build(view, lanes, length)
         end
     end
     -- each row's casts (at your own time where you moved one) by time: a cast inside the cooldown of the one
-    -- before it is too soon
+    -- before it is too soon. Each knows its neighbours on its row (hvPrev, hvNext), where its bands meet theirs.
     for _, who in ipairs(people) do
         for _, r in ipairs(who.rows) do
             for _, c in ipairs(r.casts) do
@@ -673,10 +685,13 @@ function HV.Build(view, lanes, length)
             end)
             local prev
             for _, c in ipairs(r.casts) do
-                c.row, c.cd, c.tooSoon = r.row, r.cd, nil
+                c.row, c.cd, c.tooSoon, c.hvPrev, c.hvNext = r.row, r.cd, nil, prev, nil
                 local gap = prev and c.t - prev.t
                 if gap and r.cd and gap > SAME_MOMENT and gap < r.cd then
                     c.tooSoon = true
+                end
+                if prev then
+                    prev.hvNext = c
                 end
                 prev = c
             end
@@ -777,20 +792,38 @@ local function bandRect(view, n, x0, top, w, h, r, g, b, a, sub)
     return tex
 end
 
--- Cast m's cooldown bands on its row, in its player's class colour (accent when unknown) so each block reads as
--- one colour, cut at the timeline's ends: after the cast filled up to when its cooldown is up again, before it
--- an outline only from when it was last up, with a solid line at each far end inside the timeline; red from
--- the cast to the farthest later cast on its row inside its cooldown, so each too-soon pair is red once. n: the
--- band textures used so far; returns the new count and the pair: { tex (all of them), fill, outline, loEnd,
--- hiEnd, red }, the last four nil when not drawn.
+-- A cooldown row's colour: its player's class colour (accent when unknown), so each block reads as one colour.
+local function laneColor(lane)
+    local tint = lane.tint
+    if tint then
+        return tint[1], tint[2], tint[3]
+    end
+    local r, g, b = rgba("accent")
+    return r, g, b
+end
+
+-- Where the filled band after cast c on its row ends, in track pixels: when its cooldown is up again, or at the
+-- next cast's icon when that comes first (its own bands take over there). x: the track's time to x.
+local function fillEnd(c, x, half)
+    local xhi = x(c.t + c.cd)
+    local nextC = c.hvNext
+    if nextC and type(nextC.t) == "number" then
+        return math.min(xhi, x(nextC.t) - half), xhi
+    end
+    return xhi, xhi
+end
+
+-- Cast m's cooldown bands on its row, in its row's colour, cut at the timeline's ends and meeting its icon
+-- (HV.CastW() wide, centred on its time): after the icon filled up to when its cooldown is up again (or to the
+-- next cast's icon), before it an outline only from when it was last up (or from where the cast before's filled
+-- band ends, so no outline runs inside a filled band), with a solid line at each far end inside the timeline and
+-- not inside another cast's band; red from the icon to the farthest later cast's icon on its row inside its
+-- cooldown, so each too-soon pair is red once. n: the band textures used so far; returns the new count and the
+-- pair: { tex (all of them), fill, outline, loEnd, hiEnd, red }, the last four nil when not drawn.
 local function drawPair(view, n, m, x, length)
     local rowH = CRT.TimelineView.ROW_H
-    local r, g, b = rgba("accent")
-    local tint = m.hvLane.tint
-    if tint then
-        r, g, b = tint[1], tint[2], tint[3]
-    end
-    local t, cd = m.t, m.cd
+    local r, g, b = laneColor(m.hvLane)
+    local t, cd, half = m.t, m.cd, HV.CastW() / 2
     local top, h = -(m.row - 1) * rowH - BAND_INSET, rowH - 2 * BAND_INSET
     local p = { tex = {}, outline = {} }
     local function put(x0, y, w, hh, cr, cg, cb, a, sub)
@@ -799,21 +832,27 @@ local function drawPair(view, n, m, x, length)
         p.tex[#p.tex + 1] = tex
         return tex
     end
-    local xt, xlo, xhi = x(t), x(t - cd), x(t + cd)
-    if xhi - xt > 0 then
-        p.fill = put(xt, top, xhi - xt, h, r, g, b, BAND_ALPHA, 0)
-        if t + cd <= length then
+    local xt, xlo = x(t), x(t - cd)
+    local left, right = xt - half, xt + half -- the icon's edges
+    local stop, xhi = fillEnd(m, x, half)
+    if stop - right > 0 then
+        p.fill = put(right, top, stop - right, h, r, g, b, BAND_ALPHA, 0)
+        if stop == xhi and t + cd <= length then
             p.hiEnd = put(xhi - BAND_LINE_W, top, BAND_LINE_W, h, r, g, b, 1, 2)
         end
     end
-    if xt - xlo > 0 then
-        local w = xt - xlo
-        p.outline[1] = put(xlo, top, w, BAND_LINE_W, r, g, b, OUTLINE_ALPHA, 2)
-        p.outline[2] = put(xlo, top - h + BAND_LINE_W, w, BAND_LINE_W, r, g, b, OUTLINE_ALPHA, 2)
-        p.outline[3] = put(xt - BAND_LINE_W, top, BAND_LINE_W, h, r, g, b, OUTLINE_ALPHA, 2)
-        if t - cd >= 0 then
+    local prev = m.hvPrev
+    local from = xlo
+    if prev and type(prev.t) == "number" and prev.cd then
+        from = math.max(xlo, (fillEnd(prev, x, half)))
+    end
+    if left - from > 0 then
+        local w = left - from
+        p.outline[1] = put(from, top, w, BAND_LINE_W, r, g, b, OUTLINE_ALPHA, 2)
+        p.outline[2] = put(from, top - h + BAND_LINE_W, w, BAND_LINE_W, r, g, b, OUTLINE_ALPHA, 2)
+        if from == xlo and t - cd >= 0 then
             p.loEnd = put(xlo, top, BAND_LINE_W, h, r, g, b, 1, 2)
-            p.outline[4] = p.loEnd
+            p.outline[3] = p.loEnd
         end
     end
     local far
@@ -822,9 +861,9 @@ local function drawPair(view, n, m, x, length)
             far = c.t
         end
     end
-    if far and x(far) - xt > 0 then
+    if far and x(far) - half - right > 0 then
         local red = CRT.TimelineView.BAND_RED
-        p.red = put(xt, top, x(far) - xt, h, red[1], red[2], red[3], red[4], 1)
+        p.red = put(right, top, x(far) - half - right, h, red[1], red[2], red[3], red[4], 1)
     end
     return n, p
 end
@@ -847,6 +886,143 @@ function HV.HideBands(view, key)
     view.hvHidden = key
 end
 
+-- The hover shadow ---------------------------------------------------------------------------------
+-- Over an empty spot of a cooldown row, a see-through cast of its spell at the cursor's whole second: the icon
+-- where a cast would sit and its bands outlined faintly. Its parts are made once (view.hvShadow: icon, and lines
+-- 1-3 the before band's top, bottom and far end, 4-6 the after band's) and only moved while it shows.
+
+-- The cooldown row under the cursor and the whole second a click there would place its spell at, or nil: not in
+-- Healer CDs, off a cooldown row, over a cast on it, in combat, or while a cast, chip, phase line or the track
+-- drags or a zoom selection runs.
+function HV.ShadowAt(view)
+    if view.mode ~= "healers" or not view.pull or view.move or view.chipMove or view.dragX or view.phaseDrag
+        or (view.zoomSel and view.zoomSel.started) then
+        return nil
+    end
+    if InCombatLockdown and InCombatLockdown() then
+        return nil
+    end
+    local x, y = view:CursorOnTrack()
+    local lane = view:LaneAtY(y)
+    if not (lane and lane.kind == "healercd" and lane.player) then
+        return nil
+    end
+    local View = CRT.TimelineView
+    local length = math.max(1, view.extra and view.extra.length or 0)
+    local trackW = math.max(1, view.trackW or 1)
+    local half = HV.CastW() / 2
+    for _, c in ipairs(lane.casts or {}) do
+        if type(c.t) == "number" and math.abs(x - View.TimeToX(c.t, length, trackW)) <= half then
+            return nil
+        end
+    end
+    local t = math.floor(View.XToTime(x, length, trackW) + 0.5)
+    return lane, math.max(0, math.min(math.floor(length), t))
+end
+
+local function makeShadow(view)
+    local bf = view.hvBandFrame
+    local sh = { icon = bf:CreateTexture(nil, "OVERLAY"), lines = {} }
+    sh.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    sh.icon:SetAlpha(SHADOW_ICON_ALPHA)
+    for i = 1, 6 do
+        sh.lines[i] = bf:CreateTexture(nil, "ARTWORK", nil, 2)
+    end
+    view.hvShadow = sh
+    return sh
+end
+
+local function hideShadow(view)
+    local sh = view.hvShadow
+    if sh and sh.on then
+        sh.icon:Hide()
+        for _, tex in ipairs(sh.lines) do
+            tex:Hide()
+        end
+        sh.on, sh.key = false, nil
+    end
+end
+
+-- One shadow line at track x0, top, w by h, or hidden when it has no width.
+local function shadowLine(view, tex, x0, top, w, h, r, g, b)
+    if w <= 0 then
+        tex:Hide()
+        return
+    end
+    tex:SetColorTexture(r, g, b, SHADOW_LINE_ALPHA)
+    tex:ClearAllPoints()
+    tex:SetPoint("TOPLEFT", view.track, "TOPLEFT", x0, top)
+    tex:SetSize(w, h)
+    tex:Show()
+end
+
+-- The shadow of lane's spell at t seconds, laid out once per row, second and zoom.
+local function placeShadow(view, lane, t)
+    local sh = view.hvShadow or makeShadow(view)
+    local key = lane.key .. "@" .. t .. "@" .. tostring(view.trackW)
+    if sh.on and sh.key == key then
+        return
+    end
+    sh.on, sh.key = true, key
+    local View = CRT.TimelineView
+    local rowH, cw = View.ROW_H, HV.CastW()
+    local length = math.max(1, view.extra and view.extra.length or 0)
+    local trackW = math.max(1, view.trackW or 1)
+    local function x(s)
+        return View.TimeToX(math.max(0, math.min(length, s)), length, trackW)
+    end
+    local row = lane.row or 1
+    local xt, half = x(t), cw / 2
+    sh.icon:SetTexture(lane.icon)
+    sh.icon:ClearAllPoints()
+    sh.icon:SetPoint("CENTER", view.track, "TOPLEFT", xt, -(row - 1) * rowH - rowH / 2)
+    sh.icon:SetSize(cw, cw)
+    sh.icon:Show()
+    local r, g, b = laneColor(lane)
+    local top, h, L = -(row - 1) * rowH - BAND_INSET, rowH - 2 * BAND_INSET, sh.lines
+    local cd = lane.cd
+    if not cd then
+        for _, tex in ipairs(L) do
+            tex:Hide()
+        end
+        return
+    end
+    local xlo, xhi = x(t - cd), x(t + cd)
+    shadowLine(view, L[1], xlo, top, xt - half - xlo, BAND_LINE_W, r, g, b)
+    shadowLine(view, L[2], xlo, top - h + BAND_LINE_W, xt - half - xlo, BAND_LINE_W, r, g, b)
+    shadowLine(view, L[3], xlo, top, t - cd >= 0 and BAND_LINE_W or 0, h, r, g, b)
+    shadowLine(view, L[4], xt + half, top, xhi - xt - half, BAND_LINE_W, r, g, b)
+    shadowLine(view, L[5], xt + half, top - h + BAND_LINE_W, xhi - xt - half, BAND_LINE_W, r, g, b)
+    shadowLine(view, L[6], xhi - BAND_LINE_W, top, t + cd <= length and BAND_LINE_W or 0, h, r, g, b)
+end
+
+-- Each frame the cursor is over the track (over) in Healer CDs (the view's OnUpdate): the shadow where a click
+-- would place a cast, with what it places in the hover readout; hidden anywhere else.
+function HV.Hover(view, over)
+    local lane, t
+    if over and view.hvBandFrame then
+        lane, t = HV.ShadowAt(view)
+    end
+    if not lane then
+        hideShadow(view)
+        return
+    end
+    placeShadow(view, lane, t)
+    view.hover:SetText(string.format(TEXT.shadowAt, lane.label, CRT.TimelineView.Format(t), lane.player.name))
+end
+
+-- A left click on the track (the view's TrackClick, not the second of a double-click): on an empty spot of a
+-- cooldown row it places the shadow's cast, as HV.DoubleClick does. True when it did (or said why not).
+function HV.Click(view)
+    local lane, t = HV.ShadowAt(view)
+    if not lane then
+        return false
+    end
+    hideShadow(view)
+    HV.DoubleClick(view, t, lane)
+    return true
+end
+
 -- The cooldown bands of the shown casts (drawPair's, at your time for a cast you moved), your moved casts'
 -- ghosts, the panel rows (Timeline/HealerPanel.lua) and the hint line under the rows. Hides them all outside
 -- Healer CDs. Each cast's bands are kept by View.BandKey in view.hvPairs, for HV.HideBands.
@@ -854,6 +1030,7 @@ function HV.Draw(view, length)
     local on = view.mode == "healers" and view.pull ~= nil
     local n, labels = 0, 0
     view.hvPairs, view.hvHidden = {}, nil
+    hideShadow(view) -- laid out again by the next hover, on what is drawn now
     if on then
         if not view.hvBandFrame then
             local bf = CreateFrame("Frame", nil, view.track)
@@ -974,10 +1151,10 @@ function HV.LabelMenu(view, owner, lane)
     end)
 end
 
--- A double-click on a row of Healer CDs at t seconds: on a cooldown row, that cooldown is placed at once for
--- its player (a raid note line) by someone who may change the raid note. Anyone else places it only on their
--- own row, as one of their reminders (Only me); on another player's row nothing is placed and a chat line
--- says why. True when the click was this view's (a cooldown, a player's or a panel row).
+-- A click (HV.Click) or double-click on a row of Healer CDs at t seconds: on a cooldown row, that cooldown is
+-- placed at once for its player (a raid note line) by someone who may change the raid note. Anyone else places
+-- it only on their own row, as one of their reminders (Only me); on another player's row nothing is placed and
+-- a chat line says why. True when the click was this view's (a cooldown, a player's or a panel row).
 function HV.DoubleClick(view, t, lane)
     if not lane then
         return false
