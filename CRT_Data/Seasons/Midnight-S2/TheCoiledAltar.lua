@@ -9,6 +9,25 @@ local ADDON, CRT = ...
 --             "Cowfee Raid Tools - Boss Reference Transcriptions"). The rows have no types yet: Alex
 --             sets them in game with the Logged Timeline Ref tool on the Development page, and its export
 --             replaces this block.
+-- special     The boss's special alerts on Raid Notes > Mech Alerts > Special (the format is at the top of
+--             Alerts/Special.lua). Each one names a row of the ability timeline (when.row), so its times are that
+--             row's casts and move when the reference changes. A row that runs through several phases (Venom
+--             Rupture, Dreadmarch, Spiritcackle, Gloombomb, Eternal Nightfall) has one alert; the engine puts each
+--             cast in its phase. Sever, Soul Sever and Blighted Sever each have two: a Frontal for everyone and a
+--             Taunt swap for tanks (off until ticked). Both play, since only your own reminders step aside for a
+--             special alert. On until a player changes them: the three Frontals, the two Tank soaks, Mind
+--             controls, Debuffs and Shield; the rest are off until ticked. The (?) sentences come from the boss's
+--             Encounter Journal text. Gloombomb has the spread type: marked players explode on everyone within 15
+--             yards, and the Journal shows no dispel icon on it.
+--             The reference has phase lines (P2 at 2:55, P2.5 at 6:22, P3 at 7:00), so every cast after 2:55 is
+--             a phase 2 or 3 item. It has no phase triggers yet, so in a pull those alerts wait for Next phase.
+--             Every alert has difficulty = "mythic": the only ability timeline is Mythic's, and a Normal or Heroic
+--             run with none of its own would read Mythic's times. On Normal and Heroic none is listed.
+--             Still needs Alex:
+--               - phase triggers, once his /crt dev probe pull confirms the phase events: until then phase 2 and 3
+--                 alerts wait for Next phase;
+--               - a Heroic ability timeline (from his screenshot): until then Normal and Heroic get no alerts.
+--             CRT_Dev/Tests/run_season_special.js checks every entry reads and every row is on the reference.
 
 CRT.Bosses:Register({
     encounterID = 3429,
@@ -45,5 +64,173 @@ Defilement of the Coiled Altar: 7:00, 8:42, 10:24
 Grim Guillotine (lead 6): 7:21, 8:26, 10:06
 Blighted Sever: 7:35, 8:06, 8:39, 9:16, 9:47, 10:19
 ]],
+    },
+    special = {
+        {
+            key = "frontalP1",
+            label = "Sever",
+            help = "Zul'jan cleaves his primary target, hitting every player in a frontal cone and destroying any Coalesced Venom in it.",
+            type = "dodge",
+            default = true,
+            difficulty = "mythic",
+            when = { row = "Sever" },
+            lead = 6,
+            who = { mode = "everyone" },
+            text = "Frontal",
+            show = { callout = true, bar = true, speech = true },
+        },
+        {
+            key = "frontalP2",
+            label = "Soul Sever",
+            help = "Malacrass blasts his primary target with shadow, hitting every player in a frontal cone and destroying any Manifestation of Dread in it.",
+            type = "dodge",
+            default = true,
+            difficulty = "mythic",
+            when = { row = "Soul Sever" },
+            lead = 6,
+            who = { mode = "everyone" },
+            text = "Frontal",
+            show = { callout = true, bar = true, speech = true },
+        },
+        {
+            key = "frontalP3",
+            label = "Blighted Sever",
+            help = "Zul'jan cleaves his primary target, hitting every player in a frontal cone and destroying any Coalesced Venom or Manifestation of Dread in it.",
+            type = "dodge",
+            default = true,
+            difficulty = "mythic",
+            when = { row = "Blighted Sever" },
+            lead = 6,
+            who = { mode = "everyone" },
+            text = "Frontal",
+            show = { callout = true, bar = true, speech = true },
+        },
+        {
+            key = "tauntP1",
+            label = "Sever taunt swap",
+            help = "Sever makes the players it hits take 200% more damage from Sever for 30 seconds.",
+            type = "generic",
+            difficulty = "mythic",
+            when = { row = "Sever" },
+            lead = 4,
+            who = { mode = "roles", roles = { "tank" } },
+            text = "Taunt swap",
+            show = { callout = true, bar = false, speech = true },
+        },
+        {
+            key = "tauntP2",
+            label = "Soul Sever taunt swap",
+            help = "Soul Sever makes the players it hits take 200% more damage from Soul Sever and shadow damage every 2 seconds, for 36 seconds.",
+            type = "generic",
+            difficulty = "mythic",
+            when = { row = "Soul Sever" },
+            lead = 4,
+            who = { mode = "roles", roles = { "tank" } },
+            text = "Taunt swap",
+            show = { callout = true, bar = false, speech = true },
+        },
+        {
+            key = "tauntP3",
+            label = "Blighted Sever taunt swap",
+            help = "Blighted Sever makes the players it hits take 200% more damage from Blighted Sever for 30 seconds.",
+            type = "generic",
+            difficulty = "mythic",
+            when = { row = "Blighted Sever" },
+            lead = 4,
+            who = { mode = "roles", roles = { "tank" } },
+            text = "Taunt swap",
+            show = { callout = true, bar = false, speech = true },
+        },
+        {
+            key = "soakP1",
+            label = "Guillotine",
+            help = "Zul'jan throws an axe whose damage is split among the players within 9 yards of its target; if fewer than 5 are hit, Execution hits every player.",
+            type = "soak",
+            default = true,
+            difficulty = "mythic",
+            when = { row = "Guillotine" },
+            lead = 8,
+            who = { mode = "roles", roles = { "tank" } },
+            text = "Tank soak",
+            show = { callout = true, bar = true, speech = true },
+        },
+        {
+            key = "soakP3",
+            label = "Grim Guillotine",
+            help = "Zul'jan throws an axe whose damage is split among the players within 9 yards of its target and leaves them absorbing healing; if fewer than 5 are hit, Grim Execution hits every player.",
+            type = "soak",
+            default = true,
+            difficulty = "mythic",
+            when = { row = "Grim Guillotine" },
+            lead = 8,
+            who = { mode = "roles", roles = { "tank" } },
+            text = "Tank soak",
+            show = { callout = true, bar = true, speech = true },
+        },
+        {
+            key = "orbDeadline",
+            label = "Venom Rupture",
+            help = "A destroyed Coalesced Venom globule explodes, hitting every player.",
+            type = "generic",
+            difficulty = "mythic",
+            when = { row = "Venom Rupture" },
+            lead = 10,
+            who = { mode = "everyone" },
+            text = "Orb deadline",
+            show = { callout = true, bar = true, speech = false },
+        },
+        {
+            key = "mindControls",
+            label = "Dreadmarch",
+            help = "Malacrass possesses players and walks them to the edge of the arena to jump off; when one jumps or loses the absorb shield, two Manifestations of Dread appear.",
+            type = "generic",
+            default = true,
+            difficulty = "mythic",
+            when = { row = "Dreadmarch" },
+            lead = 6,
+            who = { mode = "everyone" },
+            text = "Mind controls",
+            show = { callout = true, bar = true, speech = true },
+        },
+        {
+            key = "debuffs",
+            label = "Gloombomb",
+            help = "Malacrass marks players for 5 seconds, then they explode, hitting every player within 15 yards.",
+            type = "spread", -- marked players explode on everyone within 15 yards; the Journal shows no dispel icon
+            default = true,
+            difficulty = "mythic",
+            when = { row = "Gloombomb" },
+            lead = 6,
+            who = { mode = "roles", roles = { "dps", "healer" } },
+            text = "Debuffs",
+            show = { callout = true, bar = true, speech = false },
+        },
+        {
+            key = "shield",
+            label = "Eternal Nightfall",
+            help = "Malacrass shields himself in a Veil of Twilight before a blast that hits every player and then every second; the cast can be interrupted once the shield breaks.",
+            type = "raid",
+            default = true,
+            difficulty = "mythic",
+            when = { row = "Eternal Nightfall" },
+            lead = 6,
+            who = { mode = "everyone" },
+            text = "Shield",
+            show = { callout = true, bar = true, speech = true },
+            -- the bar runs the 15 s the row's casts last (+15 on the reference)
+            bar = { length = 15 },
+        },
+        {
+            key = "ghosts",
+            label = "Spiritcackle",
+            help = "Malacrass calls up a Spiteful Soulcoiler, whose Wail of Terror fears every player for 5 seconds unless it is interrupted.",
+            type = "generic",
+            difficulty = "mythic",
+            when = { row = "Spiritcackle" },
+            lead = 6,
+            who = { mode = "everyone" },
+            text = "Ghosts (interrupt)",
+            show = { callout = true, bar = true, speech = false },
+        },
     },
 })
