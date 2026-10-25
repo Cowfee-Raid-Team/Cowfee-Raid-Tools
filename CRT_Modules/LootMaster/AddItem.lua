@@ -2,8 +2,8 @@ local ADDON, CRT = ...
 
 -- Add item: items from your bags onto the Boss loot list (Alex, 2026-10-22: "drag and drop and also
 -- shift-click from bags to add to a session list just in case someone messes it up later and wants to start
--- a new session"). Loot Master > Tonight has an item slot under Held boss loot (LM.BuildAddItem, placed by
--- LootMaster/Page.lua; the slot is the shared UI.ItemDropSlot, UI/ItemSlot.lua). An item goes in by
+-- a new session"). Loot Master > Tonight's Master loot side has an item slot, Add from bags (LM.BuildAddItem,
+-- placed by LootMaster/Tonight.lua; the slot is the shared UI.ItemDropSlot, UI/ItemSlot.lua). An item goes in by
 -- dragging it from your bags onto the slot, or by shift-clicking it in your bags while the slot is shown
 -- (the Tonight tab open) and no chat or other text box has the keyboard. Any item you can still trade goes
 -- in, gear or not (Alex, 2026-10-22: "remove the restriction for non gear and tier items. This would allow
@@ -39,8 +39,8 @@ local Bags = CRT.Bags
 
 local TEXT = {
     -- one short line: the detail is in its (?), so it never wraps onto the status line under it
-    label = "Add item: drag an item from your bags here, or shift-click it.",
-    helpTitle = "Add item",
+    label = "Drag or shift-click an item here.",
+    helpTitle = "Add from bags",
     help = "Drag an item from your bags onto the slot, or shift-click it in your bags while this tab is open.\n\n"
         .. "Any item you can still trade goes in: gear, tokens, flasks, potions, anything. Each one is open to every raider.\n\n"
         .. "A stack adds one copy each time you drag it, up to the number you have. Shift-click on a stack opens the game's split instead, so drag stacks.",
@@ -280,13 +280,28 @@ end
 
 -- The slot and its lines at x, y on parent (Tonight's tab frame); width: the lines' width. A shift-click
 -- in your bags while it shows adds the item (the shared hook in UI/ItemSlot.lua; a stack is left to the
--- game's split).
-function LM.BuildAddItem(parent, x, y, width)
+-- game's split). opts (optional): allowed() false refuses every item with opts.refused on the status line
+-- (Tonight: without loot authority).
+function LM.BuildAddItem(parent, x, y, width, opts)
+    opts = opts or {}
+    local function refused()
+        if opts.allowed and not opts.allowed() then
+            target.Say(opts.refused or "", false)
+            return true
+        end
+        return false
+    end
     target = UI.ItemDropSlot(parent, x, y, width, {
         label = TEXT.label, helpTitle = TEXT.helpTitle, help = TEXT.help,
-        onDrop = dropped,
+        onDrop = function(bag, slot, link)
+            if not refused() then
+                return dropped(bag, slot, link)
+            end
+        end,
         onPick = function(bag, slot)
-            LM:AddFromBag(bag, slot)
+            if not refused() then
+                LM:AddFromBag(bag, slot)
+            end
         end,
     })
     return target

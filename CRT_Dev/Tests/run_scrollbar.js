@@ -351,6 +351,7 @@ const KNOWN = [
   ['CRT_Modules/Groups/Page.lua', 'CowfeeRaidToolsGroupExtraScroll'],
   ['CRT_Modules/Groups/Page.lua', 'CowfeeRaidToolsPresetScroll'], // Raid Groups Quick Load
   ['CRT_Modules/LootMaster/Page.lua', 'MinimalScrollBar'],
+  ['CRT_Modules/LootMaster/Tonight.lua', 'MinimalScrollBar'], // Tonight's Held boss loot
   ['CRT_Modules/LootMaster/Window.lua', 'MinimalScrollBar'], // the Loot Master list
   ['CRT_Modules/LootMaster/RaiderWindow.lua', 'MinimalScrollBar'], // All Loot Rolls
   ['CRT_Modules/LootMaster/BossLootWindow.lua', 'MinimalScrollBar'],

@@ -543,7 +543,7 @@ for (const [file, re, what] of [
   ['CRT_Modules/Timeline/ReferencePage.lua', /saved\.warnings\[1\]\)\s*\n\s*status:SetTextColor\(UI\.Color\("warn"\)\)/, 'ability timeline: saved with warnings in warn'],
   ['CRT_Modules/Tattlebot/Page.lua', /"\|cffff8060" \.\. Tattle\.Short\(data\.damage\) \.\. "\|r".*not a theme colour/, 'Tattlebot: the totals\' damage orange again'],
   ['CRT_Modules/Tattlebot/Page.lua', /\|cffff8060%s\|r on %d.*not a theme colour/, 'Tattlebot: the scan\'s damage orange again'],
-  ['CRT_Modules/LootMaster/Page.lua', /looting:SetText\(on and UI:IsModern\(\) and UI\.GoodText\(line\) or line\).*not a theme colour/, 'Loot Master: the looting line as before themes'],
+  ['CRT_Modules/LootMaster/Tonight.lua', /looting:SetText\(on and UI:IsModern\(\) and UI\.GoodText\(line\) or line\).*not a theme colour/, 'Loot Master: the looting line as before themes'],
   ['CRT_Modules/LootMaster/Page.lua', /LM:SyncStatus\(UI:IsModern\(\) and UI\.GoodText or nil\).*not a theme colour/, 'Loot Master: the synced to line as before themes'],
   ['CRT_Modules/LootMaster/Window.lua', /answered >= expected\) and UI:IsModern\(\) and UI\.GoodText\(count\) or count\).*not a theme colour/, 'Loot Master: the all-answered count as before themes'],
   ['CRT_Modules/GearChecker/Page.lua', /^\s*low = CRT\.PALETTE\.warn,/m, 'Gear Checker: a low item in warn'],
