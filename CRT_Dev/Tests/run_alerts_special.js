@@ -301,6 +301,8 @@ check("special: /crt dev special adds a sample to the boss on show, off takes it
   local sample = S:Get(9001, "devSample")
   assert(sample and sample.when.row == "Orb Burst" and #S:List(9001) == 5, "on its ability timeline's first row with casts")
   assert(#S:Items(9001, sample, { group = "mythic", all = true }) == 4, "its casts")
+  local first = S:Items(9001, sample, { group = "mythic", all = true })[1]
+  assert(first.ticks and #first.ticks == 2 and first.barStart == -3 and first.barEnd == 5, "its bar has two impact ticks")
   D:Command("dev special off")
   assert(S:Get(9001, "devSample") == nil and #S:List(9002) == 1, "off: gone from that boss only")
   CRT.NoteReminders.Boss = function() return nil end
@@ -308,6 +310,81 @@ check("special: /crt dev special adds a sample to the boss on show, off takes it
   assert(D:Command("dev special") == true and printed[1] and printed[1]:find("No boss", 1, true), "no boss: says so")
   CRT.NoteReminders = nil
   wipe(printed)
+end)
+
+check("special: ticks and barTo, or a bar of its own, are read", function()
+  fresh()
+  local e = assert(S.Read({ key = "feast", label = "Feast", when = { times = "0:30" }, ticks = { 2.5, 0 } }))
+  assert(e.impacts and e.impacts.ticks[1] == 0 and e.impacts.ticks[2] == 2.5 and e.impacts.barTo == "last", "ticks in order, barTo last by default")
+  assert(S.Read({ key = "c", label = "C", when = { times = "0:30" }, ticks = { 1 }, barTo = "cast" }).impacts.barTo == "cast", "barTo cast")
+  local b = assert(S.Read({ key = "b", label = "B", when = { times = "0:30" }, bar = { length = 8, ticks = { 6.5, 4.5 } } }))
+  local i = b.impacts
+  assert(i.ticks[1] == 4.5 and i.ticks[2] == 6.5 and i.barStart == 0 and i.barEnd == 8 and i.length == 8 and i.inBar[1] == 4.5, "a bar from the cast, 8 s")
+  local early = S.Read({ key = "b", label = "B", when = { times = "0:30" }, bar = { start = -3, length = 8, ticks = { 4.5, 6.5 } } }).impacts
+  assert(early.ticks[1] == 1.5 and early.ticks[2] == 3.5 and early.barStart == -3 and early.barEnd == 5, "from 3 s before the cast: the ticks counted from the bar's start")
+  assert(S.Read({ key = "n", label = "N", when = { times = "0:30" } }).impacts == nil, "none: nil")
+  for why, def in pairs({
+    ["not both"] = { ticks = { 1 }, bar = { length = 8 } },
+    ["length over 0"] = { bar = { length = 0 } },
+    ["inside its length"] = { bar = { length = 8, ticks = { 9 } } },
+    ["seconds after the cast"] = { ticks = { -1 } },
+    ["barTo must"] = { ticks = { 1 }, barTo = "sometime" },
+    ["covers must"] = { covers = { "Feast" } },
+  }) do
+    def.key, def.label, def.when = "x", "X", { times = "0:30" }
+    local ok, err = S.Read(def)
+    assert(ok == nil and tostring(err):find(why, 1, true), why .. ": " .. tostring(err))
+  end
+end)
+
+check("special: an item carries its ticks, its bar and the spells it covers", function()
+  fresh()
+  S.dev[9002] = { { key = "feast", label = "Feast", when = { times = "0:30, 1:10" }, ticks = { 0, 2.5 }, covers = { 77 } },
+    { key = "own", label = "Own bar", when = { times = "0:30" }, bar = { start = -3, length = 8, ticks = { 4.5, 6.5 } } } }
+  local list = S:Items(9002, S:Get(9002, "feast"), { group = "mythic" })
+  assert(#list == 2 and list[1].ticks[1] == 0 and list[1].ticks[2] == 2.5 and list[1].barTo == "last", "ticks and barTo")
+  assert(list[1].ticks ~= S:Get(9002, "feast").impacts.ticks, "a copy, so a display can't change the entry")
+  assert(list[1].covers[77] and list[2].covers == list[1].covers, "the spells it covers, one set per entry")
+  local o = S:Items(9002, S:Get(9002, "own"), { group = "mythic" })[1]
+  assert(o.barStart == -3 and o.barEnd == 5 and o.ticks[1] == 1.5 and o.barTo == nil, "a bar of its own")
+  -- the spells: covers, when.spellID, and the spell of when.row
+  local c = S:Covers(9001, { when = { row = "Swap" }, covers = { 77 } }, "mythic")
+  assert(c[4242] and c[77], "the row's spell and covers")
+  assert(S:Covers(9001, S:Get(9001, "tanks"), "mythic")[4242], "when.spellID")
+  assert(S:CoveredBy(9001, "mythic", 4242) == S:Get(9001, "tanks"), "the ability's special alert")
+  assert(S:CoveredBy(9001, "nh", 4242) == nil, "a Mythic-only one doesn't cover Normal/Heroic")
+  assert(S:CoveredBy(9001, "mythic", nil, "orb burst") == S:Get(9001, "soaks"), "by its row's name")
+  assert(S:CoveredBy(9001, "mythic", 999, "Other") == nil, "an ability none covers")
+end)
+
+check("special: no double alerts: your own reminder steps aside for the casts the special one alerts", function()
+  fresh()
+  local own = {}
+  A:RegisterBlock("ownTest", { label = "Yours", group = true, own = true, Entries = function() return own end })
+  A:RegisterBlock("raidTest", { label = "Raid", Entries = function() return { { id = "raid:1", ph = 1, time = 40, spellID = 4242, text = "Raid", outputs = { alert = true } } } end })
+  local function mine(id, ph, t) return { id = "ownTest:" .. id, ph = ph, time = t, spellID = 4242, text = "Mine", outputs = { alert = true } } end
+  own = { mine("a", 1, 40.5), mine("b", 1, 100), mine("c", 1, 70), mine("d", 2, 40),
+    { id = "ownTest:e", ph = 1, time = 40, spellID = 5555, text = "Other spell", outputs = { alert = true } } }
+  local function ids()
+    local out = {}
+    for _, it in ipairs(A.items) do if it.block == "ownTest" or it.block == "special" or it.block == "raidTest" then out[#out + 1] = it.id end end
+    table.sort(out) return table.concat(out, ",")
+  end
+  -- a tank: the Tank swap rotation gives you its first cast (0:40) only
+  role = "TANK" CRT.NoteEngine:ResetTokens()
+  CRT.db.alerts.special[9001] = { everyone = { on = false } }
+  A:Start(9001, "Mythic", "encounter", { difficultyID = 16 })
+  assert(ids() == "ownTest:a,ownTest:b,ownTest:c,ownTest:d,ownTest:e,raid:1", "special off: all of yours: " .. ids())
+  S:SetChoice(9001, S:Get(9001, "tanks"), "on", true)
+  A:Start(9001, "Mythic", "encounter", { difficultyID = 16 })
+  assert(ids() == "ownTest:b,ownTest:c,ownTest:d,ownTest:e,raid:1,special:tanks:1", "both on: the shared cast once, by the special alert: " .. ids())
+  -- outside the window it is another cast
+  own[1].time = 41.5
+  A:Start(9001, "Mythic", "encounter", { difficultyID = 16 })
+  assert(ids():find("ownTest:a", 1, true), "1.5 s apart: both")
+  A:Stop(true)
+  A.blocks.ownTest, A.blocks.raidTest = nil, nil
+  assert(#errors == 0, tostring(errors[1]))
 end)
 
 print(ok_ .. " passed, " .. fail .. " failed")

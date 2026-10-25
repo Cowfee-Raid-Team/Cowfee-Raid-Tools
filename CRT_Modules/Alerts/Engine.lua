@@ -302,8 +302,42 @@ local function replaced(self, run, rep, item)
     return rep.id ~= nil and type(item.id) == "string" and item.id:sub(1, #prefix) == prefix
 end
 
+-- No double alerts: an item may carry covers = { [spellID] = true }, the spells it stands for (a special alert,
+-- Alerts/Special.lua). An item of a block marked own (your reminders) on one of those spells, in the same phase
+-- and within COVER_WINDOW seconds of a covering item, is left out: that cast is alerted once, by the covering
+-- one. Your reminder's other casts still come. owned[item] marks the items of own blocks.
+Alerts.COVER_WINDOW = 1
+
+local function uncovered(out, owned)
+    local covering = {}
+    for _, it in ipairs(out) do
+        if type(it.covers) == "table" then
+            covering[#covering + 1] = it
+        end
+    end
+    if #covering == 0 then
+        return out
+    end
+    local kept = {}
+    for _, it in ipairs(out) do
+        local drop = false
+        if owned[it] and type(it.spellID) == "number" then
+            for _, c in ipairs(covering) do
+                if c.covers[it.spellID] and c.ph == it.ph and math.abs(c.time - it.time) <= Alerts.COVER_WINDOW then
+                    drop = true
+                    break
+                end
+            end
+        end
+        if not drop then
+            kept[#kept + 1] = it
+        end
+    end
+    return kept
+end
+
 function Alerts:Collect(run, opts)
-    local out = {}
+    local out, owned = {}, {}
     -- Previewing as another player shows exactly what they get: none of your own reminders.
     local as = run and run.rehearsal and previewOf(run.rehearsal)
     local othersOnly = as ~= nil and as ~= "*"
@@ -325,12 +359,14 @@ function Alerts:Collect(run, opts)
                         local copy = stamp(self, it, block)
                         if copy and not replaced(self, run, rep, copy) then
                             out[#out + 1] = copy
+                            owned[copy] = def.own or nil
                         end
                     end
                 end
             end
         end
     end
+    out = uncovered(out, owned)
     -- the tested alert as it stands on screen. It shows under any Preview as: you always see the alert
     -- you are testing.
     if testing and type(opts.extra) == "table" then

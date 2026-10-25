@@ -4,7 +4,7 @@ local ADDON, CRT = ...
 -- on Raid Notes > Mech Alerts, so its Special list, panel and Test can be tried before any boss file has one.
 -- It lives in CRT.AlertSpecial.dev, never in the saved data, so a /reload takes it away; /crt dev special off
 -- takes it away at once. It times itself on a row of the boss's ability timeline with at least two casts
--- (the first such row), else on typed times.
+-- (the first such row), else on typed times. Its bar has two impact ticks (Alerts/Bars.lua).
 
 local Dev = {}
 CRT.SpecialSampleDev = Dev
@@ -14,7 +14,7 @@ local TEXT = {
     added = "Added a sample special alert to %s: Raid Notes > Mech Alerts > Special. A /reload takes it away.",
     removed = "Took the sample special alert off %s.",
     label = "Sample: soak rotation",
-    help = "A developer sample: groups 1 and 2 soak the first cast, groups 3 and 4 the next, and so on.",
+    help = "A developer sample: groups 1 and 2 soak the first cast, groups 3 and 4 the next, and so on. Its bar marks the two impacts of each soak.",
 }
 
 local SAMPLE_TIMES = "P1 0:20, 0:50, 1:20, 1:50"
@@ -61,6 +61,8 @@ function Dev:Command(msg)
         text = "Soak now: {group}",
         show = { callout = true, bar = true, text = true, speech = true },
         markers = { marks = { "star", "circle" } },
+        -- its bar: from 3 s before each cast for 8 s, the two impacts 4.5 and 6.5 s into it
+        bar = { start = -3, length = 8, ticks = { 4.5, 6.5 } },
     } }
     CRT.Alerts:Fire()
     CRT:Print(string.format(TEXT.added, def.name))
