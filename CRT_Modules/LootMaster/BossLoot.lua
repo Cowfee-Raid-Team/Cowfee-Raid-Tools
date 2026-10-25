@@ -805,7 +805,7 @@ function BL:Load()
     startNext()
 end
 
-local events = CreateFrame("Frame")
+local events = CRT.Modules and CRT.Modules:Frame("loot") or CreateFrame("Frame") -- quiet while the module is off (CRT_Core/Modules.lua)
 for _, e in ipairs({ "PLAYER_LOGIN", "ENCOUNTER_LOOT_RECEIVED" }) do
     events:RegisterEvent(e)
 end

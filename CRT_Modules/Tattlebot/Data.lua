@@ -1207,7 +1207,7 @@ end
 -- For tests outside the game.
 Tattle._attempt = attempt
 
-local driver = CreateFrame("Frame")
+local driver = CRT.Modules and CRT.Modules:Frame("raidlead") or CreateFrame("Frame") -- quiet while the module is off (CRT_Core/Modules.lua)
 driver:RegisterEvent("PLAYER_LOGIN")
 driver:RegisterEvent("PLAYER_REGEN_DISABLED")
 driver:RegisterEvent("PLAYER_REGEN_ENABLED")

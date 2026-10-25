@@ -1466,6 +1466,8 @@ local function buildPanel(f)
     panel.timelineBtn = makeButton(p, TEXT.showOnTimeline, L.TIMELINE_W)
     panel.timelineBtn:SetPoint("TOPLEFT", L.INSET, L.TIMELINE_Y)
     panel.timelineBtn:SetScript("OnClick", showOnTimeline)
+    -- the Timeline page is the Timeline module's: no button while it is off (CRT_Core/Modules.lua)
+    panel.timelineBtn:SetShown(not CRT.Modules or CRT.Modules:IsOn("timeline"))
 
     -- Left column: Show as, Also
     heading(p, TEXT.showAs, L.INSET, L.COL_Y, TEXT.showAsHelp)

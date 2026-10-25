@@ -868,6 +868,9 @@ local function rehearse(c, d)
     if not (W and W.OpenAt) or c.savedMode or type(c.encounterID) ~= "number" then
         return false
     end
+    if CRT.Modules and not CRT.Modules:IsOn("timeline") then
+        return false -- the Rehearsal is the Timeline module's (CRT_Core/Modules.lua): the quick test runs
+    end
     local first, difficulty, ref, group = Draft.FirstFightTime(c, d)
     if not first then
         return false

@@ -236,7 +236,7 @@ R:OnChange(function(what)
 end)
 
 -- the bag counts, Trade 1 and the slot's line change as you trade
-local events = CreateFrame("Frame")
+local events = CRT.Modules and CRT.Modules:Frame("loot") or CreateFrame("Frame") -- quiet while the module is off (CRT_Core/Modules.lua)
 events:RegisterEvent("BAG_UPDATE_DELAYED")
 events:SetScript("OnEvent", function()
     if view and view.status:IsVisible() then

@@ -259,7 +259,7 @@ function RC:ReportText()
         tostring(r.realmKey), r.awards, r.matched, r.unmatched, r.records)
 end
 
-local events = CreateFrame("Frame")
+local events = CRT.Modules and CRT.Modules:Frame("loot") or CreateFrame("Frame") -- quiet while the module is off (CRT_Core/Modules.lua)
 events:RegisterEvent("PLAYER_LOGIN")
 events:SetScript("OnEvent", function()
     -- after every addon's saved data is loaded

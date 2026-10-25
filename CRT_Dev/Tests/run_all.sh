@@ -60,6 +60,7 @@ g "tooltip spots" && { node run_tooltip_spots.js "$WA" 2>&1 | tail -30; echo "ex
 g "help icons sit right" &&{ node run_help.js "$WA" lint 2>&1 | tail -140; echo "exit ${PIPESTATUS[0]}"; }
 g "themes" && { node run_themes.js "$WA" 2>&1 | tail -30; echo "exit ${PIPESTATUS[0]}"; }
 g "menu" && { node run_menu.js "$WA" 2>&1 | tail -30; echo "exit ${PIPESTATUS[0]}"; }
+g "modules" && { node run_modules.js "$WA" 2>&1 | tail -40; echo "exit ${PIPESTATUS[0]}"; }
 g "break timer" && { node run_breaktimer.js "$WA" 2>&1 | tail -40; echo "exit ${PIPESTATUS[0]}"; }
 g "default positions" && { node run_default_positions.js "$WA" 2>&1 | tail -30; echo "exit ${PIPESTATUS[0]}"; }
 g "palette" && { node run_palette.js "$WA" 2>&1 | tail -40; echo "exit ${PIPESTATUS[0]}"; }

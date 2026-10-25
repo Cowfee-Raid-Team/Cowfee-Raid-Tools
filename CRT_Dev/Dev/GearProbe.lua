@@ -31,7 +31,11 @@ function Probe.Lines(who, pieces)
         return { string.format(Probe.TEXT.none, who) }
     end
     local out = { string.format(Probe.TEXT.head, who, #pieces, #pieces == 1 and "item" or "items") }
-    local rules = CRT.GearChecker and CRT.GearChecker:Rules()
+    local GC = CRT.GearChecker
+    if not GC then
+        return { string.format(Probe.TEXT.none, who) }
+    end
+    local rules = GC:Rules()
     for _, p in ipairs(pieces) do
         local parts = CRT.GearChecker.PartsOf(p)
         local gems = {}
