@@ -10,13 +10,15 @@
 //   Quick fill, the raw text, Save through Notes:UpdateRaw, the unsaved warning, the permission gate and the
 //   personal note. Players from: the current group, the note's invite list or a saved Raid Groups layout (the
 //   linked one first, picked when solo), class colours, search, the tokens written, and when the list redraws.
-// Usage: node run_notes_editor.js <Parse.lua> <Data.lua> <Engine.lua> <EditModel.lua> <Render.lua> <EditorWindow.lua> <Settings.lua> <Page.lua>
+//   Timer lines that follow an assignment line (Links.lua, EditorLinks.lua): the Link banner, Link, the one obvious
+//   fix, the row tags and the hover, a row change rewriting the lines that follow it, Not now, read-only.
+// Usage: node run_notes_editor.js <Parse.lua> <Data.lua> <Engine.lua> <EditModel.lua> <Render.lua> <EditorWindow.lua> <Settings.lua> <Page.lua> <Links.lua> <EditorLinks.lua>
 const fs = require('fs');
 const themeLua = require('./theme_stub');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
 const harness = themeLua(process.argv.slice(2)) + `
-local parseSrc, dataSrc, engineSrc, modelSrc, renderSrc, windowSrc, settingsSrc, pageSrc = ...
+local parseSrc, dataSrc, engineSrc, modelSrc, renderSrc, windowSrc, settingsSrc, pageSrc, linksSrc, editorLinksSrc = ...
 local edits, buttons, frames, scrolls, events, checks = {}, {}, {}, {}, {}, {}
 local focused
 local cursor = { 0, 0 }
@@ -463,7 +465,9 @@ CRT.UI.HeaderButton = function(parent, label, fn)
   return b
 end
 assert(load(renderSrc, "Render.lua"))("CowfeeRaidTools", CRT)
+assert(load(linksSrc, "Links.lua"))("CowfeeRaidTools", CRT)
 assert(load(windowSrc, "EditorWindow.lua"))("CowfeeRaidTools", CRT)
+assert(load(editorLinksSrc, "EditorLinks.lua"))("CowfeeRaidTools", CRT)
 assert(load(settingsSrc, "Settings.lua"))("CowfeeRaidTools", CRT)
 assert(load(pageSrc, "Page.lua"))("CowfeeRaidTools", CRT)
 local Editor = CRT.NoteEditor
@@ -604,7 +608,10 @@ do
   W.save.scripts.OnClick(W.save)
   local saved = Notes:Get(id).raw
   assert(saved == expected, "the note holds the editor's text")
-  onlyChanged(NOTE:gsub("\\r", ""), saved:gsub("\\r", ""), { 7, 8, 11, 12 })
+  -- line 3 listed Melee's players (Cheoeqar, Abu), so it followed Abu's move: only its names changed
+  onlyChanged(NOTE:gsub("\\r", ""), saved:gsub("\\r", ""), { 3, 7, 8, 11, 12 })
+  local line3 = lines((saved:gsub("\\r", "")))[3]
+  assert(line3 == "  Time:34; ph:1 ;Tag: Cheoeqar ;spellid:64843;Custom:keep me;  ", "line 3 follows Melee: " .. line3)
   assert(select(2, saved:gsub("\\r\\n", "")) == select(2, NOTE:gsub("\\r\\n", "")), "line ends kept")
   assert(not W.session:Dirty() and W.session.base == saved and not W.save:IsEnabled(), "a clean session after Save")
   local parsed = Notes:Parsed(id)
@@ -920,9 +927,115 @@ do
   W.window:Hide()
 end
 print("ok Players from: the group, the invite list or a layout (linked one first and picked when solo), class colours, search, tokens, refresh")
+
+-- 20. Timer lines that follow an assignment line: the Link banner, Link, the fix, row tags, hover, the rewrite, Not now
+do
+  local EL = CRT.NoteEditorLinks
+  local tips = {}
+  GameTooltip = { SetOwner = function() end, ClearAllPoints = function() end, SetPoint = function() end, ClearLines = function() end,
+    SetText = function(_, t) tips = { t } end, AddLine = function(_, t) tips[#tips + 1] = t end, Show = function() end, Hide = function() tips = {} end }
+  local LEFT = "Solex Rixxy Xuelan Crazyoio Sixz Gadios"
+  local RIGHT = "Dotsanhots Sarrantha Durayn Abu Granddh Dyspepsia"
+  local CENTER = "Cheoeqar Thisisfartaa Skarghan Balevolence Lichkingstoy Djaztech"
+  local ls = { "EncounterID:9999;Difficulty:Heroic;Name:Links boss", "Ravenous Feast and Tainted Blood Groups",
+    "Left: " .. LEFT:gsub(" ", ", "), "Right: " .. RIGHT:gsub(" ", ", "), "Center: " .. CENTER:gsub(" ", ", ") }
+  for _, t in ipairs({ 61, 122, 216, 277, 371, 432 }) do
+    ls[#ls + 1] = "time:" .. t .. ";ph:1;tag:" .. LEFT .. ";text:Soak First, Knock Left;DisplayType:Text;"
+    ls[#ls + 1] = "time:" .. (t + 2) .. ";ph:1;tag:" .. RIGHT .. ";text:Soak Second, Knock Right;DisplayType:Text;"
+    ls[#ls + 1] = "time:" .. (t + 4) .. ";ph:1;tag:Notkvr " .. CENTER .. ";text:Soak Third, Knock Center;DisplayType:Text;"
+  end
+  local TEXT2 = table.concat(ls, "\\n")
+  local nid = Notes:Import(TEXT2)
+  assert(Editor.Open({ id = nid }) and W.session.base == TEXT2 and not W.session.readOnly, "the note opens, editable")
+  local B = W.banner
+  local function bannerText() local out = {} for _, fs in ipairs(B.lines) do if fs.shown then out[#out + 1] = fs:GetText() end end return table.concat(out, "\\n") end
+  assert(B.shown, "the banner shows")
+  assert(B.title:GetText() == "18 timer lines list the same players as a group row. Link them so they follow the row?", B.title:GetText())
+  local body = bannerText()
+  assert(body:find("6 lines match Left", 1, true) and body:find("6 lines match Right", 1, true), body)
+  assert(body:find("6 lines are close to Center but list Notkvr, who isn't in that row", 1, true), body)
+  assert(B.link.shown and B.link:GetText() == "Link 12", "Link 12")
+  assert(B.fix.shown and B.fix:GetText() == "Add Notkvr to Center and link all 18", tostring(B.fix:GetText()))
+  assert(B.later.shown and B.later:GetText() == "Not now", "Not now")
+  -- hover: a Left line says what it follows; a Center line follows nothing
+  local leftLine, centerLine = W.rowFrames[6], W.rowFrames[8]
+  assert(leftLine.scripts.OnEnter, "a following timer line has a hover")
+  leftLine.scripts.OnEnter(leftLine)
+  assert(tips[1] == "Follows Left (Ravenous Feast and Tainted Blood Groups)", tostring(tips[1]))
+  tips = {}
+  if centerLine.scripts.OnEnter then centerLine.scripts.OnEnter(centerLine) end
+  assert(tips[1] == nil, "a Center line follows nothing yet")
+  assert(rawget(leftLine, "mouse") == false, "and takes no clicks")
+  -- Link 12
+  B.link.scripts.OnClick(B.link)
+  local saved = CRT.NoteLinks.Saved(nid)
+  assert(#saved == 2 and saved[1].row == "Left" and #saved[1].sigs == 6 and saved[2].row == "Right", "two links saved")
+  assert(CRT.db.notes.links[nid], "under the note's id")
+  assert(B.shown and B.title:GetText() == "6 timer lines are close to a group row." and not B.link.shown, "only the near-misses left: " .. B.title:GetText())
+  assert(B.fix:GetText() == "Add Notkvr to Center and link all 6", tostring(B.fix:GetText()))
+  assert(not W.session:Dirty(), "linking changes no text")
+  -- the row tags
+  local leftRow = W.rowFrames[3]
+  assert(EL.Tag(leftRow) and EL.Tag(leftRow).shown and EL.Tag(leftRow).text:GetText() == "6 lines", "Left's tag")
+  assert(not (EL.Tag(W.rowFrames[5]) and EL.Tag(W.rowFrames[5]).shown), "no tag on Center yet")
+  EL.Tag(leftRow).scripts.OnEnter(EL.Tag(leftRow))
+  assert(tips[1] == "Timer lines that follow Left" and tips[2] == "1:01 P1  Soak First, Knock Left" and #tips == 7, table.concat(tips, " / "))
+  -- the fix: Notkvr joins Center and all 18 follow
+  B.fix.scripts.OnClick(B.fix)
+  assert(table.concat(W.session:Names(5), " ") == CENTER .. " Notkvr", "Notkvr at the end of Center")
+  assert(not B.shown, "nothing left to ask")
+  assert(#CRT.NoteLinks.Saved(nid) == 3, "three links")
+  for _, i in ipairs({ 3, 4, 5 }) do assert(EL.Tag(W.rowFrames[i]).shown and EL.Tag(W.rowFrames[i]).text:GetText() == "6 lines", "row " .. i .. " has 6 lines") end
+  assert(W.session:Dirty() and W.save:IsEnabled(), "the row change waits for Save")
+  -- move Skarghan from Center to Left: every Left and Center line follows
+  drag(W.rowFrames[5].chips[3], 3)
+  assert(table.concat(W.session:Names(3), " ") == LEFT .. " Skarghan", "Skarghan on Left")
+  local raw = W.raw:GetText()
+  local n = 0
+  for line in (raw .. "\\n"):gmatch("(.-)\\n") do
+    if line:find("Knock Left", 1, true) then n = n + 1 assert(line:find("tag:" .. LEFT .. " Skarghan;text:Soak First, Knock Left;DisplayType:Text;", 1, true), line) end
+    if line:find("Knock Center", 1, true) then n = n + 1 assert(line:find(";tag:Cheoeqar Thisisfartaa Balevolence Lichkingstoy Djaztech Notkvr;text:Soak Third, Knock Center;DisplayType:Text;", 1, true), line) end
+    if line:find("Knock Right", 1, true) then assert(line:find("tag:" .. RIGHT .. ";", 1, true), "Right untouched") end
+  end
+  assert(n == 12, "12 lines rewritten")
+  W.save.scripts.OnClick(W.save)
+  local stored = Notes:Get(nid).raw
+  local parsed = CRT.NoteParser.Parse(stored)
+  assert(#parsed.timers == 18 and parsed.timers[1].time == 61 and parsed.timers[1].text == "Soak First, Knock Left", "the saved note reads as before")
+  assert(table.concat(parsed.timers[1].tags, " ") == LEFT .. " Skarghan", "with the new names")
+  assert(not W.banner.shown and EL.Tag(W.rowFrames[3]).text:GetText() == "6 lines", "still linked after Save")
+  W.window:Hide()
+
+  -- implicit links on a note shared from someone else: no saved data, Not now hides the banner until the text changes
+  local other = Notes:Import((TEXT2:gsub("Heroic", "Normal")))
+  assert(other ~= nid and #CRT.NoteLinks.Saved(other) == 0, "a second note, nothing saved")
+  assert(Editor.Open({ id = other }) and B.shown, "the banner again")
+  local tag = EL.Tag(W.rowFrames[3])
+  assert(tag.shown and tag.text:GetText() == "6 lines", "implicit links: Left's 6 lines follow it")
+  B.later.scripts.OnClick(B.later)
+  assert(not B.shown and CRT.db.notes.links[other].dismissed, "Not now hides it")
+  Editor.Refresh()
+  assert(not B.shown, "and it stays hidden")
+  W.window:Hide()
+  assert(Editor.Open({ id = other }) and not B.shown, "reopened: still hidden")
+  drag(W.rowFrames[4].chips[1], 3)
+  assert(B.shown, "the text changed: it shows again")
+  assert(W.raw:GetText():find("tag:" .. LEFT .. " Dotsanhots;", 1, true), "an implicit link followed the move")
+  W.session = nil
+  W.window:Hide()
+
+  -- a raider who can't change the note: no banner, the tags and hover still say what follows what
+  inRaid, leader = true, false
+  assert(Editor.Open({ id = nid }) and W.session.readOnly, "read-only")
+  assert(not B.shown, "no banner")
+  assert(EL.Tag(W.rowFrames[3]).shown, "the tags still show")
+  inRaid = false
+  W.window:Hide()
+end
+print("ok timer lines follow their assignment line: the Link banner, Link, the fix, tags, hover, the rewrite, Not now")
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
-const files = process.argv.slice(2, 10);
+const files = process.argv.slice(2, 12);
 for (const f of files) {
   let src; try { src = fs.readFileSync(f, 'utf8'); } catch (e) { console.error('cannot read ' + f); process.exit(1); }
   lua.lua_pushstring(L, to_luastring(src));

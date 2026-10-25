@@ -451,6 +451,38 @@ function Parser.Field(line, key)
     return fields(line or "")[key:lower()]
 end
 
+-- The line with one field's value replaced, every other byte as written (the spaces around the old value kept),
+-- or nil when the line has no such field. The last field of that key, the one Parse reads. A field is a
+-- "key:value" between ";", so "text:tag:A" holds no tag. The note editor rewrites a timer's names with it
+-- (Notes/Links.lua): ReplaceField(line, "tag", "Abu Cheo").
+function Parser.ReplaceField(line, key, value)
+    line = line or ""
+    key = key:lower()
+    local found, pos = nil, 1
+    while true do
+        local semi = line:find(";", pos, true)
+        local stop = semi or (#line + 1)
+        local part = line:sub(pos, stop - 1)
+        local name, colon = part:match("^%s*([^:]+)():")
+        if name and trim(name):lower() == key then
+            found = { colon = pos + colon - 1, stop = stop }
+        end
+        if not semi then
+            break
+        end
+        pos = semi + 1
+    end
+    if not found then
+        return nil
+    end
+    local old = line:sub(found.colon + 1, found.stop - 1)
+    local lead, trail = old:match("^(%s*)"), ""
+    if #lead < #old then
+        trail = old:match("(%s*)$")
+    end
+    return line:sub(1, found.colon) .. lead .. value .. trail .. line:sub(found.stop)
+end
+
 -- A number as short as it can be written: 34, 1.5, -5.
 local function num(n)
     return (("%.10g"):format(n))

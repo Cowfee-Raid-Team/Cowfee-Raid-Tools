@@ -19,6 +19,7 @@ local ADDON, CRT = ...
 --   active = id of the note in use, nextId
 --   window = note window settings, alert = personal alert settings, trustedOnly
 --   history[id] = the note's earlier texts, newest first (see "History" below)
+--   links[id] = which timer lines follow which assignment line, for the note editor (Notes/Links.lua)
 -- A note's invite list becomes a Raid Groups layout when it is imported (presetId links them).
 
 local TEXT = {
@@ -866,6 +867,9 @@ function Notes:Delete(id)
     db.list[id] = nil
     if db.history then
         db.history[id] = nil
+    end
+    if db.links then
+        db.links[id] = nil -- which timer lines follow which assignment line (Notes/Links.lua)
     end
     parsed[id] = nil
     if db.active == id then
