@@ -8,6 +8,12 @@ CRT.Bosses:SeasonData("sample", "gearChecks", {
     enchant = { 1, 3, 5, 7, 8, 11, 12, 16, 17 },
     enchantWeaponOnly = { 17 },
     sockets = true,
+    rank1Enchants = { -- a few of the shipped list (each one's rank 2 is its ID + 1)
+        [7958] = "Hex of Leeching", -- head
+        [7934] = "Sunfire Silk Spellthread", -- legs
+        [7964] = "Amani Mastery", -- rings
+        [8612] = "Smuggler's Lynxeye", -- a scope
+    },
     checks = {
         {
             key = "venomcursed",

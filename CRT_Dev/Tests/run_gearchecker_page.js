@@ -86,6 +86,8 @@ local function region(kind, parent)
   function m:SetBackdropColor(r, g, b, a) self.backdrop = { r, g, b, a } end
   function m:SetBackdropBorderColor(r, g, b, a) self.border = { r, g, b, a } end
   function m:RegisterForClicks(...) self.clicks = { ... } end
+  function m:SetChecked(v) self.checked = v and true or false end
+  function m:GetChecked() return self.checked == true end
   function m:Click(button) if self.scripts.OnClick then self.scripts.OnClick(self, button or "LeftButton") end end
   function m:GetHighlightTexture() return self.highlight end
   return setmetatable(r, { __index = function(_, k) return m[k] or (type(k) == "string" and not FIELDS[k] and k:find("^%u") and function() end) or nil end })
@@ -709,7 +711,7 @@ eq(xw and xw.strata, "FULLSCREEN_DIALOG", "extra: on the pop-up windows layer")
 eq(#P.extraChecks, 4, "extra: a check box per filter")
 local xl = {}
 for _, cb in ipairs(P.extraChecks) do xl[#xl + 1] = cb.label.text end
-eq(table.concat(xl, "|"), "Not fully upgraded|Item level below|Low quality|Empty slot", "extra: the check boxes' labels")
+eq(table.concat(xl, "|"), "Not fully upgraded|Item level below|Low rank enchants|Empty slot", "extra: the check boxes' labels")
 local xhelps = 0
 for _, f in ipairs(made) do
   if f.crtHelp and f.crtHelpTarget then
@@ -762,6 +764,20 @@ eq(XS.minIlvl, 0, "ilvl: no number is 0, off")
 eq(P.minIlvlEdit:GetText(), "0", "ilvl: the box shows the saved level again")
 eq(chipLabels(), "Everyone|Only issues|Missing gems|Missing enchants|Below Hero", "ilvl: level 0, no chip")
 P.extraChecks[2]:Click()
+-- Low rank enchants: its tick is the saved quality field; no chip in a season with no rank 1 list
+P.extraChecks[3]:Click()
+check(XS.quality == true and XS.rank == nil, "rank: ticking it saves the old quality field")
+eq(chipLabels(), "Everyone|Only issues|Missing gems|Missing enchants|Below Hero", "rank: no rank 1 list in the season, no chip")
+local rankRules = { enchant = { 1 }, rank1Enchants = { [7958] = "Hex of Leeching" } }
+CRT.Bosses.GearChecks = function() return rankRules end
+P.Refresh()
+eq(chipLabels(), "Everyone|Only issues|Missing gems|Missing enchants|Low rank enchants|Below Hero", "rank: with the season's list, its chip")
+xw:Hide()
+P.extraButton:Click()
+check(P.extraChecks[3]:GetChecked() == true, "rank: the box shows the saved quality tick")
+P.extraChecks[3]:Click()
+check(XS.quality == false and XS.rank == nil, "rank: unticking saves the quality field")
+eq(chipLabels(), "Everyone|Only issues|Missing gems|Missing enchants|Below Hero", "rank: unticked, its chip goes")
 -- Empty slot: the empty cell gets its square and a tooltip
 P.extraChecks[4]:Click()
 P.chips[5]:Click()

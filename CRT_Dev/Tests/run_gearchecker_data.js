@@ -106,6 +106,7 @@ check(not R.enchant[2] and not R.enchant[15] and not R.enchant[13], "rules: neck
 check(R.weaponOnly[17], "rules: the off hand only when it is a weapon")
 check(R.sockets[2] and R.sockets[11] and R.sockets[1], "rules: sockets count everywhere")
 eq(GC.LOW_ILVL, 12, "low: 12 levels under the average")
+check(R.rank1[7958] == "Hex of Leeching" and R.rank1[7959] == nil, "rules: the season's rank 1 enchants, by ID (its rank 2 not)")
 
 -- 2. One slot
 local function piece(slot, s, ilvl) return { slot = slot, id = tonumber(s:match("item:(%d+)")), itemString = s, ilvl = ilvl } end
@@ -588,8 +589,6 @@ B:SeasonData("test-s9", "gearChecks", { checks = { { key = "cursed", label = "Cu
 B:SeasonData("test-s9", "tracks", { default = "hero", list = T.source.list, bonus = { [7001] = { track = "champion", rank = 4, max = 6 },
   [7004] = { track = "hero", rank = 6, max = 6 }, [7008] = { track = "hero", rank = 3 } } })
 LOC[130] = "INVTYPE_2HWEAPON"
-local QUALITY = {}
-C_Item.GetItemQualityByID = function(s) return QUALITY[tonumber(tostring(s):match("item:(%d+)") or s)] end
 local function fkeys() local out = {} for _, f in ipairs(GC:Filters()) do out[#out + 1] = f.key end return table.concat(out, ",") end
 local XS = CRT.db.gearChecker
 XS.extra = nil
@@ -643,25 +642,42 @@ issecretvalue = nil
 XS.extra.ilvl = false
 r = GC.CheckSlot(7, piece(7, "item:107::::::::90", 311), GC:Rules(), 311)
 eq(keys(r), "", "ilvl: unticked, a saved level does nothing")
--- Low quality
+-- Low rank enchants: ticked in the saved field quality (its old name, Low quality); a season with no rank 1
+-- list has no chip and flags nothing
 XS.extra.quality = true
-eq(fkeys(), "all,issues,gems,enchants,extra:quality,check:cursed,below", "quality: its chip")
-eq(GC:Filters()[5].label, "Low quality", "quality: the chip's label")
-QUALITY[107], QUALITY[108], QUALITY[109], QUALITY[110] = 2, 3, 4, 1
-for _, c in ipairs({ { 107, true, "Uncommon (green)" }, { 108, true, "Rare (blue)" }, { 109, false, "Epic" }, { 110, true, "Common" }, { 111, false, "not loaded yet" } }) do
-  r = GC.CheckSlot(7, piece(7, "item:" .. c[1] .. "::::::::90", 300), GC:Rules(), 300)
-  eq(keys(r) == "extra:quality", c[2], "quality: " .. c[3])
+check(GC:ExtraOn("rank"), "rank: the old saved quality tick is its tick")
+eq(fkeys(), "all,issues,gems,enchants,check:cursed,below", "rank: a season with no rank 1 list, no chip")
+r = GC.CheckSlot(1, piece(1, "item:103:7958", 300), GC:Rules(), 300)
+check(keys(r) == "" and r.issues == 0, "rank: a season with no rank 1 list flags nothing")
+B:SeasonData("test-s9", "gearChecks", { checks = { { key = "cursed", label = "Cursed", kind = "itemIds", ids = { 101 }, severity = "info" } },
+  rank1Enchants = { [7958] = "Hex of Leeching", [7964] = "Amani Mastery", bad = "x", [9] = 5 } })
+eq(fkeys(), "all,issues,gems,enchants,extra:rank,check:cursed,below", "rank: its chip")
+eq(GC:Filters()[5].label, "Low rank enchants", "rank: the chip's label")
+check(GC:Filters()[5].help:find("season", 1, true) ~= nil, "rank: its help says it uses the season's list")
+r = GC.CheckSlot(1, piece(1, "item:103:7958", 300), GC:Rules(), 300)
+eq(keys(r), "extra:rank", "rank: a rank 1 enchant trips")
+eq(r.issues, 1, "rank: one issue")
+eq(GC.TopCheck(r).severity, "low", "rank: severity low (orange)")
+eq(GC.Problems(r), "rank 1 enchant: Hex of Leeching", "rank: the cell's words name the enchant")
+r = GC.CheckSlot(11, piece(11, "item:111:7964:213746:213747", 300), GC:Rules(), 300)
+eq(GC.Problems(r), "rank 1 enchant: Amani Mastery", "rank: a ring's rank 1 enchant")
+for _, c in ipairs({ { 1, "item:103:7959", "its rank 2" }, { 1, "item:103:7364", "an enchant not on the list" },
+    { 10, "item:110:8727", "a hands Battle Art (no ranks)" }, { 1, "item:103::::::::90", "no enchant" } }) do
+  r = GC.CheckSlot(c[1], piece(c[1], c[2], 300), GC:Rules(), 300)
+  eq(keys(r), "", "rank: " .. c[3] .. ", never flagged")
 end
-r = GC.CheckSlot(7, { slot = 7, id = 107, ilvl = 300 }, GC:Rules(), 300)
-eq(keys(r), "", "quality: an ID-only piece, never flagged (its upgrades can't be read)")
-issecretvalue = function(v) return v == 2 end
-r = GC.CheckSlot(7, piece(7, "item:107::::::::90", 300), GC:Rules(), 300)
-eq(keys(r), "", "quality: a secret quality is never compared")
-issecretvalue = nil
-C_Item.GetItemQualityByID = function() error("no") end
-r = GC.CheckSlot(7, piece(7, "item:107::::::::90", 300), GC:Rules(), 300)
-eq(keys(r), "", "quality: an error from the game, no finding")
-C_Item.GetItemQualityByID = function(s) return QUALITY[tonumber(tostring(s):match("item:(%d+)") or s)] end
+r = GC.CheckSlot(1, { slot = 1, id = 103, ilvl = 300 }, GC:Rules(), 300)
+eq(keys(r), "", "rank: an ID-only piece, never flagged (its enchant can't be read)")
+remember("Quick", { piece(1, "item:103:7958", 300), piece(3, "item:105:7959", 300) })
+qr = rowNamed("Quick")
+check(GC.Passes(qr, "extra:rank") and GC.CellShows(qr.slots[1], "extra:rank") and not GC.CellShows(qr.slots[3], "extra:rank"), "rank: the row and its rank 1 cell show under its chip, not the rank 2 one")
+eq(GC.IssueLines(qr)[1] and (GC.IssueLines(qr)[1].text .. "|" .. GC.IssueLines(qr)[1].kind), "Head [item 103] 300 - rank 1 enchant: Hex of Leeching|low", "rank: the badge's line, orange")
+eq(GC.WhisperLines(qr)[1], "Gear check: Head [item 103] 300 - rank 1 enchant: Hex of Leeching", "rank: the whisper")
+GC:SetExtra("rank", false)
+check(XS.extra.quality == false and XS.extra.rank == nil, "rank: unticking saves in quality, never a new field")
+eq(fkeys(), "all,issues,gems,enchants,check:cursed,below", "rank: unticked, no chip")
+GC:SetExtra("rank", true)
+check(XS.extra.quality == true and GC:ExtraOn("rank"), "rank: ticking saves in quality")
 XS.extra.quality = false
 -- Empty slot: on a seen row only; the off hand only beside a one-handed main hand
 XS.extra.empty = true
@@ -702,12 +718,11 @@ qe = rowNamed("Quick")
 eq(qe.issues, 0, "empty: unticked, nothing counts")
 -- several at once: each its own chip, in the list's order, and a cell tripping two has both words
 XS.extra = { upgrade = true, ilvl = true, minIlvl = 320, quality = true, empty = true }
-eq(fkeys(), "all,issues,gems,enchants,extra:upgrade,extra:ilvl,extra:quality,extra:empty,check:cursed,below", "several: a chip each, in order")
-QUALITY[103] = 3
-r = GC.CheckSlot(3, c4, GC:Rules(), 300)
-eq(keys(r), "extra:upgrade,extra:ilvl,extra:quality", "several: one piece trips three")
+eq(fkeys(), "all,issues,gems,enchants,extra:upgrade,extra:ilvl,extra:rank,extra:empty,check:cursed,below", "several: a chip each, in order")
+r = GC.CheckSlot(3, piece(3, bonusString(103, "7958", { 7001 }), 300), GC:Rules(), 300)
+eq(keys(r), "extra:upgrade,extra:ilvl,extra:rank", "several: one piece trips three")
 eq(r.issues, 3, "several: three issues")
-eq(GC.Problems(r), "Not fully upgraded, Item level below 320, Low quality", "several: all in the words")
+eq(GC.Problems(r), "Not fully upgraded, Item level below 320, rank 1 enchant: Hex of Leeching", "several: all in the words")
 XS.extra = nil
 -- back to the shipped season
 B.seasons["test-s9"].current = false
