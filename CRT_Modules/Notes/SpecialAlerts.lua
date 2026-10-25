@@ -2,8 +2,9 @@ local ADDON, CRT = ...
 
 -- The Special part of the Mech Alerts tab (Notes/Reminders.lua builds it into the tab): the Special (N) |
 -- Mechanics toggle over the left list, the boss's special alerts (Alerts/Special.lua, from its boss file)
--- for the difficulty on show, each with its on/off tick in its ability type's colour, and on the right the
--- selected one: When and Who as its data says them, Show as (your choices, saved at once), Markers (greyed:
+-- for the difficulty on show, each with its on/off tick and its icon (Special.Icon) in its ability type's colour, and
+-- on the right the selected one: When and Who as its data says them (a rotation's steps as chips, a roles list as
+-- "Roles: Tank, Healer"), Show as (your choices, saved at once), Markers (greyed:
 -- an addon can't set them) and Test. The tab hands it the boss, the difficulty group and the ability timeline
 -- on show (host), and the places of its list and panel. Special first: the tab opens on Special every time
 -- (M.Opened), a boss with none too. A click on Mechanics holds for that boss until the tab is left; Make a
@@ -22,7 +23,7 @@ local TEXT = {
     kind = "special alert",
     alertMe = "Alert me",
     when = "When",
-    whenHelp = "When the alert comes, from the boss's data. Casts are read from the ability timeline picked in Times from.",
+    whenHelp = "When the alert comes, from the boss's data. Casts are read from the ability timeline picked in Times from. A time with a minus comes before the pull: it plays from the game's pull timer, never in a rehearsal.",
     whenRow = "Each cast of %s: %s. Shown %s s before.",
     whenNoCasts = "Each cast of %s. None on the ability timeline on show.",
     whenTimes = "At %s. Shown %s s before.",
@@ -37,9 +38,10 @@ local TEXT = {
     andWord = " and ",
     spell = "spell %d",
     who = "Who",
-    whoHelp = "Who gets each cast. In turn: the first cast goes to the first step, the next cast to the next, and so on, then from the start again. Only the players of a cast's step get its alert.",
+    whoHelp = "Who gets each cast. In turn: the first cast goes to the first step, the next cast to the next, and so on, then from the start again. Only the players of a cast's step get its alert. Roles: every cast goes to the players the words name, by role, class, raid group or name.",
     everyone = "Everyone, on every cast.",
     rotation = "In turn, one step per cast:",
+    roles = "Roles: %s",
     noteLine = "The names on the raid note's \"%s\" line:",
     noNoteLine = "The raid note has no \"%s\" line yet.",
     more = "+%d",
@@ -73,6 +75,7 @@ local L = {
     ROW_H = 24,
     EMPTY_GAP = 6, -- the empty list's hint under its line
     NAME_X = 30,
+    ICON_SIZE = 16, ICON_GAP = 4, -- a row's icon, at NAME_X, the name after it
     CHECK_SIZE = 24,
     CHECK_LABEL_W = 96,
     SHOW_GAP = 10,
@@ -242,6 +245,22 @@ end
 
 -- The list ---------------------------------------------------------------------------------------
 
+-- A row's icon (Special.Icon: the entry's, else its spell's), the name after it; with none, the name where the icon goes.
+local function paintIcon(row, enc, entry)
+    local tex = Special().Icon(enc, entry, host.group(), ref())
+    local x = L.NAME_X
+    if tex then
+        row.icon:SetTexture(tex)
+        row.icon:Show()
+        x = x + L.ICON_SIZE + L.ICON_GAP
+    else
+        row.icon:Hide()
+    end
+    row.name:ClearAllPoints()
+    row.name:SetPoint("LEFT", x, 0)
+    row.name:SetWidth(L.LIST_W - 4 - x - 8)
+end
+
 local function paintList(list, enc, current)
     local maxRows = #ui.rows
     local maxOffset = math.max(0, #list - maxRows)
@@ -254,6 +273,7 @@ local function paintList(list, enc, current)
             local isSel = entry == current
             row.entry = entry
             row.check:SetChecked(on)
+            paintIcon(row, enc, entry)
             row.name:SetText(entry.label)
             row.name:SetTextColor(Look.NameColor(entry.type, on, isSel))
             row.sel:SetColorTexture(selColor[1], selColor[2], selColor[3], selColor[4])
@@ -338,6 +358,13 @@ local function drawWho(enc, entry)
     elseif mode == "note" then
         steps = S.NoteSteps(S.NoteFor(nil, enc), entry.who.note)
         ui.whoText:SetText(string.format(#steps > 0 and TEXT.noteLine or TEXT.noNoteLine, entry.who.note))
+    elseif mode == "roles" then
+        -- one list for every cast, so no chips: its words, each with a capital
+        local words = {}
+        for i, w in ipairs(entry.who.roles) do
+            words[i] = w:sub(1, 1):upper() .. w:sub(2)
+        end
+        ui.whoText:SetText(string.format(TEXT.roles, table.concat(words, ", ")))
     else
         ui.whoText:SetText(TEXT.everyone)
     end
@@ -541,6 +568,10 @@ local function makeRow(parent, i)
             M.Refresh()
         end
     end)
+    row.icon = frame:CreateTexture(nil, "ARTWORK")
+    row.icon:SetSize(L.ICON_SIZE, L.ICON_SIZE)
+    row.icon:SetPoint("LEFT", L.NAME_X, 0)
+    row.icon:Hide()
     row.name = frame:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
     row.name:SetPoint("LEFT", L.NAME_X, 0)
     row.name:SetWidth(L.LIST_W - 4 - L.NAME_X - 8)
