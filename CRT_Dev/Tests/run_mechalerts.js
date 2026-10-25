@@ -1035,7 +1035,7 @@ local function mockWindow(ok, reason)
   end }
 end
 
-check("mech: test with no Show from starts 5 s before, a Linger stops 5 s after it", function()
+check("mech: test with no Show from starts at its first show moment, a Linger stops 5 s after it", function()
   local f = fresh()
   dropdowns["Difficulty"].opts.set("nh") -- the Heroic timeline's times
   local p = f.panel
@@ -1048,15 +1048,15 @@ check("mech: test with no Show from starts 5 s before, a Linger stops 5 s after 
   local c = opened[#opened]
   sliders["Show from"].opts.set(5)
   sliders["Linger"].opts.set(0)
-  assert(c and c.t == 40, "5 s before 0:45 with no Show from: " .. tostring(c and c.t))
+  assert(c and c.t == 45, "at 0:45 with no Show from: " .. tostring(c and c.t))
   assert(c.opts.stopAt == 56, "the 6 s Linger, then 5 s: " .. tostring(c.opts.stopAt))
   assert(#errors == 0, tostring(errors[1]))
 end)
 
 -- Alex's Ravenous Feast (#1159): Show from 1 s, Linger 0, a bar with impact ticks 4.5 and 6.5 that fills up and ends
--- at the last impact. The test plays from 5 s before the bar shows to 5 s after it is done, and only around the
+-- at the last impact. The test plays from the moment the bar shows to 5 s after it is done, and only around the
 -- first cast; the bar shows Show from before the cast and runs to the last impact.
-check("mech: a ticked bar's test plays 5 s either side of its bar", function()
+check("mech: a ticked bar's test plays from its bar to 5 s after it", function()
   local f = fresh()
   dropdowns["Difficulty"].opts.set("nh") -- the Heroic timeline's times: 0:45 first
   local p = f.panel
@@ -1072,7 +1072,7 @@ check("mech: a ticked bar's test plays 5 s either side of its bar", function()
   click(p.testBtn)
   CRT.TimelineRehearsalWindow = nil
   local c = opened[#opened]
-  assert(c and c.t == 39, "5 s before the bar shows at 0:44: " .. tostring(c and c.t))
+  assert(c and c.t == 44, "the moment the bar shows at 0:44: " .. tostring(c and c.t))
   -- the bar ends at 0:51.5 and keeps the alert's half second (Linger 0), then 5 s
   assert(c.opts.stopAt == 57, "5 s after the bar is done: " .. tostring(c.opts.stopAt))
   local it = c.opts.alerts.extra[1]
@@ -1080,23 +1080,23 @@ check("mech: a ticked bar's test plays 5 s either side of its bar", function()
   -- a pull's items carry the same bar start
   local items = R:Items(ENC, id, R:Get(ENC, id), "nh")
   assert(items[1].barStart == -1, "a pull's bar too: " .. tostring(items[1].barStart))
-  -- Show from 20, Linger 5: 25 s before the cast, 10 s after the last impact (and its Linger)
+  -- Show from 20, Linger 5: 20 s before the cast, 10 s after the last impact (and its Linger)
   sliders["Show from"].opts.set(20)
   sliders["Linger"].opts.set(5)
   mockWindow(true)
   click(p.testBtn)
   CRT.TimelineRehearsalWindow = nil
   c = opened[#opened]
-  assert(c and c.t == 20 and c.opts.stopAt == 61.5, "Show from 20, Linger 5: " .. tostring(c and c.t) .. " to " .. tostring(c and c.opts.stopAt))
+  assert(c and c.t == 25 and c.opts.stopAt == 61.5, "Show from 20, Linger 5: " .. tostring(c and c.t) .. " to " .. tostring(c and c.opts.stopAt))
   -- the quick test (no window): the same window, from now
   A:Stop(true)
   timers = {}
   click(p.testBtn)
   assert(A.running and A.run.reason == "test", "a quick test")
-  assert(A:PhaseStart(1) == clock + 25 - 45, "25 s to the cast: " .. tostring(A:PhaseStart(1) - clock))
+  assert(A:PhaseStart(1) == clock + 20 - 45, "20 s to the cast: " .. tostring(A:PhaseStart(1) - clock))
   local stop
   for _, t in ipairs(timers) do if t.delay > 5 then stop = t end end
-  assert(stop and stop.delay == 25 + 6.5 + 5 + 5, "ends 5 s after the bar and its Linger: " .. tostring(stop and stop.delay))
+  assert(stop and stop.delay == 20 + 6.5 + 5 + 5, "ends 5 s after the bar and its Linger: " .. tostring(stop and stop.delay))
   A:Stop(true)
   timers = {}
   sliders["Show from"].opts.set(5)
@@ -1128,7 +1128,7 @@ check("mech: test plays the countdown and stops 5 s after", function()
   assert(#opened == 1, "OpenAt called once: " .. #opened)
   local c = opened[1]
   assert(c.enc == ENC and c.diff == "Heroic", "boss and difficulty: " .. tostring(c.enc) .. " " .. tostring(c.diff))
-  assert(c.t == 35, "5 s before the 5 s Show from before Heroic's 0:45: " .. tostring(c.t))
+  assert(c.t == 40, "the 5 s Show from before Heroic's 0:45: " .. tostring(c.t))
   assert(c.opts.stopAt == 50.5, "ends 5 s after its half second: " .. tostring(c.opts.stopAt))
   assert(c.opts.testing == "Real Name", "Testing label: " .. tostring(c.opts.testing))
   assert(not A.running, "no quick test as well")
