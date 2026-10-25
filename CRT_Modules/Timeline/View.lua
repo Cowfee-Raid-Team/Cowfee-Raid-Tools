@@ -9,7 +9,8 @@ local ADDON, CRT = ...
 -- A left drag along the time axis or on the track selects a range and zooms to it;
 -- view:Fit() and a right-click on the axis show the whole fight again (see "Zooming to a range").
 -- Icons come from a pool and are reused on every refresh, since frames cannot be deleted. With the
--- overlay on, deaths from the pulls before the shown one are drawn faded by how old they are.
+-- overlay on, deaths from the pulls before the shown one are drawn faded by how old they are. Deaths of
+-- one pull that would overlap share one icon with their count, listed together in its tooltip.
 -- A reference timeline is drawn the same way, plus its phase lines and labels, a bar behind each
 -- cast that lasts a while, a thin line before each cast that has a lead time, and the row names in
 -- their own colors. A pull laid over a reference adds its deaths, a row of small ticks for its
@@ -128,6 +129,7 @@ local TEXT = {
     onlyMe = "Only me",
     raidNote = "Raid note",
     raidNoteOf = "Raid note (%s)",
+    deathsHere = "%d deaths",
     yourReminder = "Your reminder",
     reminder = "Reminder",
     spell = "Spell %d",
@@ -342,7 +344,20 @@ local function iconEnter(b)
         return
     end
     CRT.UI.TooltipOwner(GameTooltip, b, "ANCHOR_RIGHT", nil, nil, "timeline")
-    if mark.death then
+    local stacked = mark.deaths and #mark.deaths > 1 and mark.deaths
+    if stacked then
+        -- deaths sharing one icon (View.StackDeaths): each on its own line, its name in its class colour
+        GameTooltip:SetText(string.format(TEXT.deathsHere, #stacked), 1, 1, 1)
+        for _, d in ipairs(stacked) do
+            local killer = spellName(d.spellID)
+            local r, g, bl = CRT.Groups.ClassColor(d.name, d.class)
+            GameTooltip:AddDoubleLine(d.name or "Unknown", View.Format(d.t) .. ", " .. (killer and ("Killed by " .. killer) or "Killing blow unknown"),
+                r, g, bl, 0.85, 0.85, 0.85)
+        end
+        if (mark.overlay or settings().overlayOn) and mark.pull and mark.pull.id then
+            GameTooltip:AddLine("Pull " .. tostring(CRT.Timeline.PullNumber(mark.pull)), 0.85, 0.85, 0.85)
+        end
+    elseif mark.death then
         local d = mark.death
         GameTooltip:SetText(d.name or "Unknown", CRT.Groups.ClassColor(d.name, d.class))
         GameTooltip:AddLine(type(d.t) == "number" and ("Died at " .. View.Format(d.t)) or "time unknown", 1, 1, 1)
@@ -1225,6 +1240,11 @@ function Methods:Icon(n)
         b.tex = b:CreateTexture(nil, "ARTWORK")
         b.tex:SetPoint("TOPLEFT", 1, -1)
         b.tex:SetPoint("BOTTOMRIGHT", -1, 1)
+        -- how many deaths share the icon (View.StackDeaths), at its bottom right; empty for one
+        b.count = b:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+        b.count:SetPoint("BOTTOMRIGHT", 1, -1)
+        b.count:SetShadowColor(0, 0, 0, 1)
+        b.count:SetShadowOffset(1, -1)
         b:SetScript("OnEnter", iconEnter)
         b:SetScript("OnLeave", hideTip)
         b:SetScript("OnMouseDown", function(_, button)
@@ -4062,6 +4082,51 @@ function Methods:ContentHeight()
     return (self.axisH or AXIS_H) + rows * ROW_H + self.stripH + UNKNOWN_H + BAR_H + 4
 end
 
+-- A deaths row's marks as drawn at this zoom: the deaths of one pull (one age) that would overlap, the next
+-- closer than an icon's width (size, in pixels) to the first, share one mark, at the first's time, with every
+-- death in time order in its deaths. Each pull keeps its own marks, so an older pull's stay apart, faded under
+-- the shown one's. A death alone keeps its mark. The marks come back in the order the ages came in.
+function View.StackDeaths(marks, length, trackW, size)
+    local ages, byAge = {}, {}
+    for i, mark in ipairs(marks) do
+        local age = mark.age or 0
+        if not byAge[age] then
+            byAge[age] = {}
+            ages[#ages + 1] = age
+        end
+        local list = byAge[age]
+        list[#list + 1] = { mark = mark, i = i }
+    end
+    local out = {}
+    for _, age in ipairs(ages) do
+        local list = byAge[age]
+        table.sort(list, function(a, b)
+            if a.mark.t ~= b.mark.t then
+                return a.mark.t < b.mark.t
+            end
+            return a.i < b.i
+        end)
+        local group, groupX
+        for _, entry in ipairs(list) do
+            local mark = entry.mark
+            local x = View.TimeToX(mark.t, length, trackW)
+            if group and group.death and mark.death and x - groupX < size then
+                if not group.deaths then
+                    local first = group
+                    group = { t = first.t, spellID = first.spellID, death = first.death, deaths = { first.death }, age = first.age,
+                        pull = first.pull, overlay = first.overlay, source = first.source }
+                    out[#out] = group
+                end
+                group.deaths[#group.deaths + 1] = mark.death
+            else
+                group, groupX = mark, x
+                out[#out + 1] = mark
+            end
+        end
+    end
+    return out
+end
+
 -- Draws what is shown. relayout: only the size changed, so the rows and marks built last are kept when they
 -- were built for the same pull and layout (BuildLanes).
 function Methods:Refresh(relayout)
@@ -4187,9 +4252,11 @@ function Methods:Refresh(relayout)
         if lane.kind == "ticks" then
             ticks = self:DrawTicks(lane, mid, length, ticks)
         end
-        -- older marks first, so the shown pull's deaths are drawn on top; ticks have no icons
-        for m = #lane.marks, lane.kind == "ticks" and #lane.marks + 1 or 1, -1 do
-            local mark = lane.marks[m]
+        -- older marks first, so the shown pull's deaths are drawn on top; ticks have no icons. Deaths of one
+        -- pull that would overlap share one icon, so what it shows and its tooltip name the same deaths.
+        local marks = lane.kind == "deaths" and View.StackDeaths(lane.marks, length, self.trackW, size) or lane.marks
+        for m = #marks, lane.kind == "ticks" and #marks + 1 or 1, -1 do
+            local mark = marks[m]
             used = used + 1
             local b = self:Icon(used)
             b.mark, b.lane = mark, lane
@@ -4197,9 +4264,12 @@ function Methods:Refresh(relayout)
             b:ClearAllPoints()
             b:SetPoint("CENTER", self.track, "TOPLEFT", View.TimeToX(mark.t, length, self.trackW), y - ROW_H / 2)
             b:SetFrameLevel((self.track:GetFrameLevel() or 0) + 5 - math.min(mark.age or 0, 4))
+            local several = mark.deaths and #mark.deaths > 1
+            b.count:SetText(several and tostring(#mark.deaths) or "")
             if mark.death then
                 b.tex:SetTexture(SKULL)
-                if lane.class then
+                -- several deaths have no one class: the neutral death red, with their count
+                if lane.class or several then
                     b.bg:SetColorTexture(DEATH_RED[1], DEATH_RED[2], DEATH_RED[3])
                 else
                     local r, g, bl = CRT.Groups.ClassColor(mark.death.name, mark.death.class)
