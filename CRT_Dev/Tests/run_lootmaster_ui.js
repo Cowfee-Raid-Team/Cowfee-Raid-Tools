@@ -295,6 +295,19 @@ pw.reset.scripts.OnClick(pw.reset)
 check(kept.point == nil and kept.relativePoint == nil and kept.width == nil, "window: Reset forgets the saved place")
 p = point(pw)
 check(p[1] == "CENTER" and pw.w == 1200 and pw.h == 600, "window: Reset puts it in the middle at its default size")
+-- a size from the grip is the player's own (userSized), until Reset; onPlace runs after each Place
+pw.grip.scripts.OnMouseUp(pw.grip)
+check(kept.userSized == true and kept.width == 1000, "window: a resize with the grip keeps userSized")
+pw.scripts.OnDragStop(pw)
+check(kept.userSized == true, "window: a move keeps it")
+pw.reset.scripts.OnClick(pw.reset)
+check(kept.userSized == false, "window: Reset clears it")
+local placedWith
+local ow = UI.Window("TestOnPlace", { kind = "popout", saved = function() return {} end, onPlace = function(f) placedWith = f f:SetSize(1500, 800) end })
+check(placedWith == ow and ow.w == 1500 and ow.h == 800, "window: onPlace runs at the end of Place and may change the size")
+placedWith = nil
+ow:Place()
+check(placedWith == ow, "window: and on every Place")
 
 -- the item tabs: "X/Y answered", orange when the time ran out with answers missing
 local tabs = LM.ItemTabs(mock(), {})

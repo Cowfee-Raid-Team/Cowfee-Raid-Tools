@@ -414,6 +414,9 @@ end
 -- (Timeline/HealerView.lua) in this window only, and docking always goes back to the abilities.
 
 local MIN_W, MIN_H = 760, 360
+-- The pop-out's size until the player sizes it with the grip, and how much of the screen it may take then.
+-- A saved size other than POP.oldW x POP.oldH (the size every pop-out had before) came from the grip.
+local POP = { w = 1600, h = 900, screen = 0.9, oldW = 1200, oldH = 600 }
 local popWin, popButton, dockedNote
 local popped = false
 local returnPage -- the page Show on the Timeline came from, shown again when the pop-out is closed
@@ -424,8 +427,38 @@ local abilitiesNow = false -- Show on the Timeline: Abilities for this opening, 
 
 local function popSettings()
     local s = settings()
-    s.popout = s.popout or { width = 1200, height = 600 }
+    s.popout = s.popout or {}
     return s.popout
+end
+
+-- Whether the player chose the pop-out's size: they dragged its grip (UI.Window sets userSized; Reset clears
+-- it to false). A size saved before userSized existed counts as chosen when it is not the old default; that
+-- answer is kept in userSized the first time, so a later save of a size picked here never counts.
+local function sizedByPlayer(s)
+    if s.userSized == nil then
+        s.userSized = s.width ~= nil and (s.width ~= POP.oldW or s.height ~= POP.oldH)
+    end
+    return s.userSized == true
+end
+
+-- The most the pop-out may take, POP.screen of the screen, in its own units (it is scaled by UI:Scale).
+local function screenRoom(win)
+    local scale = win:GetScale() or 1
+    if scale <= 0 then
+        scale = 1
+    end
+    return (UIParent:GetWidth() or 0) * POP.screen / scale, (UIParent:GetHeight() or 0) * POP.screen / scale
+end
+
+-- UI.Window's Place, then: a size the player chose stays as it is; any other is POP.w x POP.h within the
+-- screen, or the size saved when that is larger, so it only ever grows.
+local function sizePopout(win)
+    local s = popSettings()
+    if sizedByPlayer(s) then
+        return
+    end
+    local roomW, roomH = screenRoom(win)
+    win:SetSize(math.max(MIN_W, s.width or 0, math.min(POP.w, roomW)), math.max(MIN_H, s.height or 0, math.min(POP.h, roomH)))
 end
 
 local dock
@@ -456,10 +489,35 @@ local function applyPopView(later, skin)
     end
 end
 
+-- On Healer CDs, a pop-out the player never sized grows tall enough to show every row (the view's
+-- ContentHeight), up to POP.screen of the screen's height; it never shrinks. Once more a moment later, when the
+-- game has laid the bigger window out and the view has drawn in it again.
+local function fitRows(again)
+    if not (popped and popWin and popWin:IsShown() and shownPopView() == "healers") then
+        return
+    end
+    if not (view and view.frame and view.ContentHeight) or sizedByPlayer(popSettings()) then
+        return
+    end
+    local _, roomH = screenRoom(popWin)
+    local height = popWin:GetHeight() or 0
+    local want = math.min(roomH, height - (view.frame:GetHeight() or 0) + view:ContentHeight())
+    if want > height + 0.5 then
+        popWin:SetHeight(want)
+    end
+    if again and C_Timer and C_Timer.After then
+        -- after the view's own relayout, which waits up to RELAYOUT_GAP after a size change
+        C_Timer.After(2 * (CRT.TimelineView.RELAYOUT_GAP or 0.1), function()
+            fitRows(false)
+        end)
+    end
+end
+
 local function setPopView(key)
     abilitiesNow = false
     settings().popView = key == "healers" and "healers" or "abilities"
     applyPopView(false, true)
+    fitRows(true)
 end
 
 -- Each half as wide as its label (measured again each time the window opens, for a changed text size),
@@ -480,13 +538,14 @@ end
 -- Modern themes (UI:StyleWindow, restyled on a theme change), the shared title strip with Reset and
 -- the close X, the resize grip, Escape to close, and its place and size kept in timeline.popout. A
 -- place saved before the window used the helper (any point, with its relativePoint) loads as it was.
+-- Each time it is placed (opened, or Reset) sizePopout picks its size; on Healer CDs fitRows grows it.
 local function buildPopout()
     if popWin then
         return
     end
     popWin = UI.Window("CowfeeRaidToolsTimelineWindow", {
         kind = "popout", title = "Timeline", layer = "timeline", saved = popSettings,
-        width = 1200, height = 600, minWidth = MIN_W, minHeight = MIN_H,
+        width = POP.w, height = POP.h, minWidth = MIN_W, minHeight = MIN_H, onPlace = sizePopout,
     })
     buildToggle()
 
@@ -543,6 +602,7 @@ local function popOut()
     layToggle()
     applyPopView(true, true)
     refresh()
+    fitRows(true)
 end
 
 local function togglePopout()
@@ -803,6 +863,11 @@ local function buildPopControls()
     back:SetPoint("TOP", text, "BOTTOM", 0, -12)
     back:SetScript("OnClick", dock)
     dockedNote:Hide()
+end
+
+-- The view while it is popped out, else nil (the window log, CRT_Dev/Dev/WindowLog.lua, reads its layout).
+function Timeline:PopoutView()
+    return popped and view or nil
 end
 
 -- /crt timeline pop: opens the Timeline page and pops the Review tab out.

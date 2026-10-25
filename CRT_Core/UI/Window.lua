@@ -11,7 +11,9 @@ local ADDON, CRT = ...
 --   title      the title text
 --   width, height, minWidth, minHeight   sizes (the minimums only matter for a pop-out)
 --   layer      a UI layer key (default "popups")
---   saved      function returning the table that keeps point, x, y (and width, height)
+--   saved      function returning the table that keeps point, x, y (and width, height; a pop-out's
+--              userSized is true once the player has sized it with the grip, false after Reset)
+--   onPlace    function(f) run at the end of f:Place(), to change the size it was given
 --   escape     false keeps Escape from closing it
 --   opaque     true keeps the window solid whatever the Opacity slider says (UI:StyleWindow)
 -- The frame gets f.content (the area under the title), f:Place() (puts it where it was saved) and
@@ -430,6 +432,9 @@ function UI.Window(name, opts)
         else
             self:SetSize(w, h)
         end
+        if opts.onPlace then
+            opts.onPlace(self)
+        end
     end
 
     if popout then
@@ -448,6 +453,10 @@ function UI.Window(name, opts)
         end)
         grip:SetScript("OnMouseUp", function()
             f:StopMovingOrSizing()
+            local s = savedOf(opts)
+            if s then
+                s.userSized = true -- the player's own size, kept as it is from now on
+            end
             save(f, opts)
         end)
         f.grip = grip
@@ -455,6 +464,7 @@ function UI.Window(name, opts)
             local s = savedOf(opts)
             if s then
                 s.point, s.relativePoint, s.x, s.y, s.width, s.height = nil, nil, nil, nil, nil, nil
+                s.userSized = false
             end
             f:Place()
         end)

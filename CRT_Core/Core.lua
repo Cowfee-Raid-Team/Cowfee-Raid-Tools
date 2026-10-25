@@ -355,8 +355,11 @@ local defaults = {
         -- "spot", "game" or "cursor" (UI/Tooltip.lua), and its own spot; personal.
         tooltipMode = "general",
         tooltipSpot = "auto",
-        -- The pop-out window (Timeline/Page.lua): its size, and its position once it is moved.
-        popout = { width = 1200, height = 600 },
+        -- The pop-out window (Timeline/Page.lua): its size and position once it is moved or sized, and userSized
+        -- (true once the player sized it with the grip, false once Page.lua sized it). No default for userSized:
+        -- left out, Page.lua works it out from a size saved before it existed. Until then the window opens at
+        -- Page.lua's default size, 1600 x 900 within the screen.
+        popout = {},
         -- the pop-out's view (its title strip's toggle): "abilities" (the ability timeline) or "healers" (Healer CDs)
         popView = "abilities",
         references = {}, -- the player's own reference timelines, { id, text, saved } (saved: time() of the last change, optional; Timeline/Reference.lua)

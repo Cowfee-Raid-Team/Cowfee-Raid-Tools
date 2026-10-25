@@ -340,6 +340,12 @@ bad({ window = { relativePoint = "MIDDLE" } }, "the main window's relativePoint 
 bad({ window = { x = "10" } }, "the main window's x must be a number", "window.x")
 bad({ debuffs = { position = { point = "TOP", relativePoint = "SIDEWAYS", x = 1, y = 2 } } }, "a position's relativePoint must be an anchor name", "debuffs.position")
 bad({ timeline = { popout = { width = "wide", height = 600 } } }, "a window size must be a number", "timeline.popout")
+bad({ timeline = { popout = { width = 900, height = 600, userSized = "yes" } } }, "a pop-out's userSized must be true or false", "timeline.popout")
+do
+  -- a pop-out's size chosen with its grip travels with it (UI/Window.lua's userSized)
+  local i = P:Read(craft({ v = 1, kind = "settings", from = "X", data = { timeline = { popout = { width = 900, height = 600, userSized = true } } } }))
+  check(i and i.unknown == 0 and i.values["timeline.popout"].userSized == true, "a pop-out's userSized is read with its size")
+end
 bad({ ui = { layers = { panel = "ON_TOP" } } }, "a layer must be one of the game's strata", "ui.layers")
 bad({ ui = { fontSize = "big" } }, "a late setting of the wrong type is rejected", "ui.fontSize")
 bad({ debuffs = { ignored = { abc = true } } }, "an ignored debuff keyed by text is rejected", "debuffs.ignored")
