@@ -60,9 +60,13 @@ function check(name, fn) {
 }
 const overlap = (a, b) => a.left < b.right && b.left < a.right && a.bottom < b.top && b.bottom < a.top;
 const show = (b) => `${b.name} x ${b.left}..${b.right} y ${b.bottom}..${b.top}`;
+// Alex's layout (2026-10-25) set the note callout's default under the critical alerts text and kept the icons' and
+// bars' own defaults, which a full cap of them reaches. These two pairs may touch; any other overlap fails.
+const ACCEPTED = new Set(['icons|note callout', 'note callout|bars']);
 check('areas: default places and drag boxes do not overlap', () => {
   for (let i = 0; i < boxes.length; i++) {
     for (let j = i + 1; j < boxes.length; j++) {
+      if (ACCEPTED.has(boxes[i].name + '|' + boxes[j].name)) continue;
       if (overlap(boxes[i], boxes[j])) throw new Error(show(boxes[i]) + ' overlaps ' + show(boxes[j]));
     }
   }

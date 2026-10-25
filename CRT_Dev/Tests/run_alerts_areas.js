@@ -259,7 +259,7 @@ assert(pos and pos.point == "CENTER" and pos.x == 50 and pos.y == 150, "saved by
 assert(win.pts[1][1] == "CENTER" and win.pts[1][4] == 50, "placed where saved")
 T:ResetPosition()
 assert(A:Settings().areas.texts.position == nil, "reset clears the position")
-assert(win.pts[1][1] == "CENTER" and win.pts[1][4] == 400, "back to the default (right of the note callout)")
+assert(win.pts[1][1] == "CENTER" and win.pts[1][4] == 3 and win.pts[1][5] == 323, "back to the default (under the break timer)")
 print("ok areas: position saved and reset")
 
 -- idle: no run, preview or test: hidden once, then nothing

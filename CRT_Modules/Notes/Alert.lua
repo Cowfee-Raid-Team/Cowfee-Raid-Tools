@@ -53,7 +53,7 @@ local ALIGN_POINTS = {
 local frame, handle, icon, block, label, countdown
 local handleText -- the drag box's title
 local handleMin -- the drag box's least width: its whole title and Reset
-local DEFAULT_POSITION = { point = "CENTER", relativePoint = "CENTER", x = 0, y = 220 }
+local DEFAULT_POSITION = { point = "CENTER", relativePoint = "CENTER", x = 3, y = 113 } -- Alex's layout, under the critical alerts text
 local previewOn = false
 local elapsed = 0
 
