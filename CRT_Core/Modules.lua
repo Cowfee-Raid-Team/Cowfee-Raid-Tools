@@ -18,7 +18,8 @@ local ADDON, CRT = ...
 --   raider        files in its folders that keep running when it is off: what raiders answer or see
 --   core          files in its folders that are Core: the shared stores and data the rest of the addon reads
 --   pages         the page keys it registers (UI:RegisterPage); dropped from the menu when off
---   words         the /crt words it registers (CRT.Slash:Register in Slash.lua), for the tests
+--   words         the /crt words it registers (CRT.Slash:Register in Slash.lua), for the tests; a word whose
+--                 bare form is a raider's (Slash.lua's raider) is listed with a word after it
 -- A module's own files ask the registry for the rest, at file load:
 --   Modules:Frame(key)        an event frame: made as CreateFrame("Frame"); when the module is off it is
 --                             silenced on ADDON_LOADED (no events, no OnEvent or OnUpdate)
@@ -204,15 +205,18 @@ end
 
 Modules:Register("loot", {
     label = "Loot",
-    help = "Loot Master, Loot History and Requests. Your loot popup keeps working when a leader runs a session.",
+    help = "Loot Master, Loot History and Requests. Your loot popup and /crt loot keep working when a leader runs a session.",
     pages = { "lootmaster", "loot", "requests" },
-    words = { "loot" },
+    -- /crt loot alone is the raider's (your loot popup, LootMaster/RaiderWindow.lua) and runs with Loot off;
+    -- loot settings stands for the leader's words after it
+    words = { "loot settings" },
     files = {
         "CRT_Modules/Loot/Store.lua", "CRT_Modules/Loot/Capture.lua", "CRT_Modules/Loot/RCLC.lua", "CRT_Modules/Loot/Page.lua",
         "CRT_Modules/LootMaster/Score.lua", "CRT_Modules/LootMaster/BossLoot.lua", "CRT_Modules/LootMaster/EndAll.lua",
         "CRT_Modules/LootMaster/Window.lua", "CRT_Modules/LootMaster/BossLootWindow.lua", "CRT_Modules/LootMaster/Trade.lua",
         "CRT_Modules/LootMaster/Test.lua", "CRT_Modules/LootMaster/AddItem.lua", "CRT_Modules/LootMaster/LootingPrompt.lua",
-        "CRT_Modules/LootMaster/FilterTab.lua", "CRT_Modules/LootMaster/Page.lua", "CRT_Modules/Requests/Page.lua",
+        "CRT_Modules/LootMaster/FilterTab.lua", "CRT_Modules/LootMaster/Tonight.lua", "CRT_Modules/LootMaster/Page.lua",
+        "CRT_Modules/Requests/Page.lua",
     },
     -- a raider's side of a loot session and of a request (prefix CRTLootRemaster): the leader's tools
     -- (CRT Looting's prompt and Turn on, LootMaster/Looting.lua) refuse while Loot is off

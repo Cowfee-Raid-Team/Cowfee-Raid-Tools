@@ -13,7 +13,7 @@ const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate();
 lualib.luaL_openlibs(L);
 const harness = themeLua(process.argv.slice(2)) + `
-local dataSrc, commSrc, gateSrc, lootingSrc, bossSrc, endSrc, winSrc, testSrc, addSrc, pageSrc, slotSrc = ...
+local dataSrc, commSrc, gateSrc, lootingSrc, bossSrc, endSrc, winSrc, testSrc, addSrc, pageSrc, slotSrc, raiderSrc, tonightSrc = ...
 local fails, passes = 0, 0
 local function check(ok, what) if ok then passes = passes + 1 else fails = fails + 1 print("FAIL " .. what) end end
 local function eq(a, b, what) check(a == b, what .. " (got " .. tostring(a) .. ", want " .. tostring(b) .. ")") end
@@ -168,6 +168,9 @@ function LM:SyncStatus() return nil end
 function LM:SyncPing() end
 function LM:SyncTargets() return {} end
 LM.ScoreChanged = function() end
+LM.TAB_COLUMN = LM.TAB_COLUMN or 180 -- Tabs.lua is not loaded: All Loot Rolls' left column
+assert(load(raiderSrc, "RaiderWindow.lua"))("CowfeeRaidTools", CRT) -- My Loot (LM.MyLoot, LM:OpenMyLoot)
+assert(load(tonightSrc, "Tonight.lua"))("CowfeeRaidTools", CRT) -- Tonight's two columns
 assert(load(pageSrc, "Page.lua"))("CowfeeRaidTools", CRT)
 local BL = LM.BossLoot
 local fired = {}
@@ -183,9 +186,10 @@ check(buttons["Test boss kill"] ~= nil, "Tonight: a Test boss kill button")
 eq(buttons["Test"], nil, "Tonight: no plain Test button")
 local start = buttons["Start session (0)"]
 check(start ~= nil, "Tonight: a Start session (N) button")
-check(buttons["End session"] ~= nil and buttons["Looter window"] ~= nil and buttons["My popup"] ~= nil, "Tonight: the other session buttons stay")
+check(buttons["End session"] ~= nil and buttons["Master Loot Window"] ~= nil, "Tonight: the other session buttons stay")
+eq(buttons["My popup"], nil, "Tonight: no My popup button (the My Loot card replaces it)")
 check(type(helps["Held boss loot"]) == "string", "Tonight: Held boss loot has (?) help")
-check(helps["Loot session"]:find("Test boss kill", 1, true) ~= nil, "Tonight: the session help says what Test boss kill does")
+check((helps["Master loot"] or ""):find("Test boss kill", 1, true) ~= nil, "Tonight: the Master loot help says what Test boss kill does")
 eq(start.enabled, false, "Start session: off with nothing held")
 
 -- 1. Three test kills hold the right rows
@@ -224,10 +228,7 @@ LM:Fire("bossloot", "changed")
 eq(start.text, "Start session (" .. total .. ")", "Start session: the ticked won count")
 local function shown(text) for _, t in ipairs(texts) do if t.text == text then return true end end return false end
 check(shown(heldStatus), "Tonight: the status says " .. heldStatus)
-local heldShown = 0
-for _, f in ipairs(frames) do if rawget(f, "withBoss") and f.shown then heldShown = heldShown + 1 end end
-eq(heldShown, math.min(3, total), "Tonight: Held boss loot shows the rows, at most 3 (Add item sits under them)")
-if total > 3 then check(shown("and " .. (total - 3) .. " more (/crt loot boss shows them all)"), "Tonight: and N more past the cap") end
+eq(#(LM.Tonight.heldData or {}), total, "Tonight: Held boss loot lists every row (it scrolls)")
 eq(start.enabled, true, "Start session: on")
 check(start.width and start.width >= #start.text * 6, "Start session: as wide as its label")
 -- the Held list's rows are LM.BossLootRow's: find the first by its TEST tag
@@ -363,7 +364,7 @@ eq(hb, 3, "Held: old rows count by encounter; one with neither isn't a boss")
 eq(hi, 5, "Held: every row is an item")
 BL.rows = {}
 
--- Loot authority: the session buttons are greyed (with the reason on hover) for anyone who can't run loot; My popup never
+-- Loot authority: the session buttons are greyed (with the reason on hover) for anyone who can't run loot; the My Loot card never
 local realCanLoot = LM.CanLoot
 local canLoot = true
 function LM:CanLoot() return canLoot end
@@ -373,12 +374,12 @@ GameTooltip = { SetText = function(_, t) tip.title = t end, AddLine = function(_
 CRT_UI.TooltipOwner = function() tip.lines = {} tip.title = nil end
 BL:Clear()
 LM:TestBossKill(rand)
-local gatedNames = { "Test boss kill", "Looter window", "End session" }
+local gatedNames = { "Test boss kill", "Master Loot Window", "End session" }
 local function gate(want, who)
   LM:Fire("bossloot", "changed")
   for _, n in ipairs(gatedNames) do eq(buttons[n].enabled, want, who .. ": " .. n) end
   eq(start.enabled, want and BL:CanStart() and true or false, who .. ": Start session")
-  eq(buttons["My popup"].enabled, true, who .. ": My popup always on")
+  eq(LM.Tonight.card.enabled, true, who .. ": the My Loot card always on")
 end
 canLoot = true
 gate(true, "leader or named looter or solo")
@@ -394,7 +395,7 @@ check(tip.lines[1] and tip.lines[1]:find("Only the raid leader, or a looter they
 local rowsBefore = #BL:Rows()
 b.onClick()
 eq(#BL:Rows(), rowsBefore, "no authority: Test boss kill does nothing")
-buttons["Looter window"].onClick()
+buttons["Master Loot Window"].onClick()
 buttons["End session"].onClick()
 eq(#BL:Rows(), rowsBefore, "no authority: End session does nothing")
 -- Start session needs both rules: authority, and something to start
@@ -416,7 +417,8 @@ const dir = process.argv[2];
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 const files = ['CRT_Modules/LootMaster/Data.lua', 'CRT_Modules/LootMaster/Comm.lua', 'CRT_Modules/LootMaster/AutoPass.lua',
   'CRT_Modules/LootMaster/Looting.lua', 'CRT_Modules/LootMaster/BossLoot.lua', 'CRT_Modules/LootMaster/EndAll.lua', 'CRT_Modules/LootMaster/BossLootWindow.lua',
-  'CRT_Modules/LootMaster/Test.lua', 'CRT_Modules/LootMaster/AddItem.lua', 'CRT_Modules/LootMaster/Page.lua', 'CRT_Core/UI/ItemSlot.lua'];
+  'CRT_Modules/LootMaster/Test.lua', 'CRT_Modules/LootMaster/AddItem.lua', 'CRT_Modules/LootMaster/Page.lua', 'CRT_Core/UI/ItemSlot.lua',
+  'CRT_Modules/LootMaster/RaiderWindow.lua', 'CRT_Modules/LootMaster/Tonight.lua'];
 for (const f of files) {
   const p = path.join(dir, f);
   lua.lua_pushstring(L, to_luastring(fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : 'error("missing ' + f + '")'));

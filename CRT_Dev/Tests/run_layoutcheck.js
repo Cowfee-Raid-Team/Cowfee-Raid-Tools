@@ -12,7 +12,7 @@ const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const W = process.argv[2];
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
 const harness = require('./theme_stub')(W) + require('./placement_stub')(W) + `
-local checkSrc, controlsSrc, pageSrc, parseSrc, renderSrc, displaySrc, tabSrc = ...
+local checkSrc, controlsSrc, pageSrc, parseSrc, renderSrc, displaySrc, tabSrc, slotSrc, addSrc, tonightSrc = ...
 local fails, passes = 0, 0
 unpack = unpack or table.unpack
 local function check(ok, what) if ok then passes = passes + 1 print("ok " .. what) else fails = fails + 1 print("FAIL " .. what) end end
@@ -320,12 +320,76 @@ for _, def in ipairs({
   check(#clipped > 0 and #out == 0, "the preview of display " .. def.layout .. " of " .. def.slots .. " sits inside the page unclipped too (got " .. #out .. ")")
 end
 
+-- 5. Loot Master > Tonight (CRT_Modules/LootMaster/Tonight.lua), built for real on its tab frame (Page.lua's: 66 under the
+-- page's top): the My Loot card with eight items waiting, and Master loot as the leader sees it (Turn off for everyone
+-- shown, a long CRT Looting line, Start session (12), every Held boss loot row and eight session items).
+do
+  local LM = {
+    MAX_ITEMS = 8, current = nil,
+    CanLoot = function() return true end, OnChange = function() end, OpenMyLoot = function() end,
+    LootingStatus = function() return "CRT Looting: on for everyone in the raid with CRT", true end,
+    LootingOn = function() return true end, CanRunLooting = function() return true end,
+    TestBossKill = function() end, ShowWindow = function() end, AskEnd = function() end,
+    BossLootStatus = function() return "Won" end,
+  }
+  local waiting = {}
+  for i = 1, 8 do waiting[i] = "item:" .. (200 + i) .. "::::" end
+  LM.MyLoot = function() return 8, waiting, false end
+  local rows = {}
+  for i = 1, 14 do rows[i] = { rollID = -i, link = "|cffa335ee|Hitem:" .. (300 + i) .. "::::|h[A Long Boss Item Name " .. i .. "]|h|r", ilvl = 289, ticked = true, status = "won" } end
+  LM.BossLoot = { Rows = function() return rows end, Held = function() return 4, 14 end, StartCount = function() return 12 end,
+    CanStart = function() return true end, Tickable = function() return true end, SetTicked = function() end, Start = function() end }
+  LM.current = { test = true, players = {}, order = {}, items = {}, Answered = function() return 0 end, Response = function() return nil end }
+  for i = 1, 8 do LM.current.items[i] = { itemString = "item:" .. (300 + i) .. "::::" } end
+  CRT.LootMaster = LM
+  C_Item = { GetItemInfo = function(s) return "Item", "|cffa335ee|H" .. s .. "|h[A Long Boss Item Name]|h|r" end,
+    GetItemIconByID = function() return 134400 end, GetItemInfoInstant = function() return 1, nil, nil, nil, 134400 end,
+    GetItemQualityByID = function() return 4 end, GetItemQualityColor = function() return 0.64, 0.21, 0.93 end }
+  IsInGroup = function() return true end
+  UnitIsGroupLeader = function() return true end
+  CreateScrollBoxListLinearView = function() return new("View") end
+  ScrollUtil = { InitScrollBoxListWithScrollBar = function() end }
+  CreateDataProvider = function(t) return t end
+  UI.IsModern = function() return true end
+  UI.SkinCheckButton = function() end
+  UI.PanelButton = function(parent, label, h)
+    local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
+    b:SetText(label)
+    b:SetSize(UI.PanelButtonWidth(b:GetFontString():GetStringWidth()), h)
+    return b
+  end
+  assert(load(slotSrc, "ItemSlot.lua"))("CowfeeRaidTools", CRT)
+  assert(load(addSrc, "AddItem.lua"))("CowfeeRaidTools", CRT)
+  assert(load(tonightSrc, "Tonight.lua"))("CowfeeRaidTools", CRT)
+  local lootPage = newPage()
+  local tab = CreateFrame("Frame", nil, lootPage)
+  tab:SetPoint("TOPLEFT", 0, -66)
+  tab:SetPoint("BOTTOMRIGHT", 0, 0)
+  local refreshers = {}
+  -- Page.lua's heading: CRTFontNormal at x, y, with its (?) right of it
+  local function heading(f, x, y, text, help)
+    local h = f:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
+    h:SetPoint("TOPLEFT", x, y)
+    h:SetText(text)
+    if help then UI.HelpRight(h, text, help) end
+    return h
+  end
+  LM.BuildTonight(tab, { heading = heading, refreshers = refreshers })
+  for _, fn in ipairs(refreshers) do fn() end
+  local out = scanned(lootPage, "Loot Master > Tonight")
+  check(#out == 0, "Loot Master > Tonight fits the page, every part shown (got " .. #out .. ")")
+  -- the two columns don't meet: the card ends left of Master loot
+  local card = LM.Tonight.card
+  check(card:GetRight() < LM.Tonight.masterHeading:GetLeft(), "the My Loot card ends left of Master loot")
+end
+
 print(passes .. " passed, " .. fails .. " failed")
 if fails > 0 then error("layout check harness failed") end
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 for (const f of ['CRT_Dev/Dev/LayoutCheck.lua', 'CRT_Core/UI/Controls.lua', 'CRT_Modules/Notes/Page.lua', 'CRT_Modules/Notes/Parse.lua',
-  'CRT_Modules/Notes/Render.lua', 'CRT_Modules/Markers/Display.lua', 'CRT_Modules/Markers/MacrosTab.lua']) {
+  'CRT_Modules/Notes/Render.lua', 'CRT_Modules/Markers/Display.lua', 'CRT_Modules/Markers/MacrosTab.lua',
+  'CRT_Core/UI/ItemSlot.lua', 'CRT_Modules/LootMaster/AddItem.lua', 'CRT_Modules/LootMaster/Tonight.lua']) {
   lua.lua_pushstring(L, to_luastring(fs.readFileSync(path.join(W, f), 'utf8')));
 }
-if (lua.lua_pcall(L, 7, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
+if (lua.lua_pcall(L, 10, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }

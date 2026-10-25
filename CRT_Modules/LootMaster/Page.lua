@@ -1,10 +1,9 @@
 local ADDON, CRT = ...
 
--- The Loot Master page (/crt lootmaster), with four tabs:
---   Tonight       the running session (or none), and buttons for a test boss kill, Start session, the
---                 looter window, your popup and End session; Held boss loot (LootMaster/BossLoot.lua),
---                 with Add item under it (LootMaster/AddItem.lua);
---                 CRT Looting's state, with the leader's Turn on / Turn off for everyone (LootMaster/Looting.lua)
+-- The Loot Master page (/crt loot settings), with four tabs:
+--   Tonight       My Loot on the left, for everyone: a card that opens your loot popup and All Loot Rolls;
+--                 Master loot on the right, the looter's side: CRT Looting, the session, its buttons, Held
+--                 boss loot, Add from bags and the session's items (LootMaster/Tonight.lua builds both)
 --   Raider Score  every player's score from the Late Tracker's nights (LootMaster/Score.lua)
 --   Loot filter   which items open a loot session (LootMaster/FilterTab.lua, rules in Filter.lua)
 --   Settings      the response buttons raiders see (label, colour, weight, icon, order), how long they
@@ -39,39 +38,18 @@ local L = {
     specsTop = -416,
     -- CRT Looting, in the third column under Loot authority's Add row (which ends near -440)
     lootingTop = -446,
-    -- Tonight: Held boss loot under the session buttons (at most heldRows rows, then "and N more"), Add
-    -- item's 36 px slot and its lines under that, then the session's Items, whose last line ends near -470
-    heldTop = -96, heldRow = 36, heldRows = 3, heldW = 600, addTop = -244, addW = 640, itemsTop = -292,
 }
 L.col3W = UI.PAGE_W - L.col3 - 8 -- the third column, to the page's right margin
 L.col2W = L.col3 - L.col2 - 12 -- the second column, with a gap before the third
 
 local TEXT = {
     title = "Loot Master",
-    help = "Run the loot: the raid leader gives each boss item out from one window, and every raider with CRT answers from a popup. Loot filter picks which items open a session; Settings has the raiders' buttons. /crt loot test tries it with sample items.",
+    help = "Run the loot: the raid leader gives each boss item out from one window, and every raider with CRT answers from a popup. On Tonight, My Loot opens your popup; Master loot is the looter's side. Loot filter picks which items open a session; Settings has the raiders' buttons. /crt loot test tries it with sample items.",
     tonight = "Tonight",
     score = "Raider Score",
     filter = "Loot filter",
     settings = "Settings",
-    session = "Loot session",
-    sessionHelp = "The session you are running. Test boss kill acts as one boss kill: it adds 2 to 4 sample items marked TEST to Held boss loot. Start session gives out the ticked items, as after a real kill. A session of TEST items is a test: everyone with CRT gets the popup, nothing is passed or saved to Loot History, and only you see the award message. End session asks first, then ends the session, puts real items waiting to start back in Held boss loot unticked, and clears the TEST items. /crt loot test starts a test session at once.",
-    none = "No loot session is running.",
-    running = "%s%d items, %d of %d raiders with CRT, %d answers in",
-    testTag = "TEST · ",
-    testKill = "Test boss kill", start = "Start session (%d)", window = "Looter window", popup = "My popup", endSession = "End session",
-    noAuthority = "Only the raid leader, or a looter they name in Loot authority, can run loot.",
-    held = "Held boss loot",
-    heldHelp = "The boss items waiting for your next loot session, real and TEST, as in the Boss loot window (/crt loot boss). Tick the ones to give out and press Start session. TEST items never go into a real session: with both kinds ticked, only the real ones start. TEST items go at End session, after a /reload, or 10 minutes after their test kill. Add item puts gear or a tier token from your bags on the list, marked from your bags, if you can still trade it. One that isn't bound has no trade time and leaves 2 hours after you added it.",
-    heldNone = "No boss loot held.",
-    heldCount = "%d %s killed, %d %s held",
-    heldBoss = "boss", heldBosses = "bosses", heldItem = "item", heldItems = "items",
-    heldMore = "and %d more (/crt loot boss shows them all)",
-    items = "Items",
     crtLooting = "CRT Looting",
-    crtLootingHelp = "When CRT Looting is on, for 10 minutes after a boss kill your CRT passes your loot rolls (trash too) and the raid leader's CRT rolls Need, so the leader gets the items to give out. Only items in the raid leader's loot filter: anything else is a normal roll, and so is an item your CRT can't read yet. Only the raid leader turns it on or off, for everyone; CRT asks on the way into a raid instance. It starts off after a /reload and turns off when the leader enters another instance.\n\nYou roll yourself when a test session is running, you aren't in the leader's instance, the leader is off, changed, offline or quiet for 90 seconds, the leader's CRT is too old, you are in a finder group, or no boss was killed here in the last 10 minutes. Chat says each pass.",
-    turnOn = "Turn on", turnOff = "Turn off for everyone",
-    awarded = "given to %s (%s)",
-    open = "open",
     scoreHelp = "From the Late Tracker's saved nights: everyone starts at 100, a late arrival or a no-show costs points, and points come back every week. The weights are on the Settings tab. Players with no night counted have no score.",
     scoreEmpty = "No Late Tracker nights in the time counted yet.",
     responses = "Response buttons",
@@ -96,7 +74,7 @@ local TEXT = {
     noIcon = "No icon",
     guildStream = "Guild: %s",
     specs = "Items a raider can't use",
-    specsHelp = "Each raider's own CRT answers an item for them when they can't use it: no spec of theirs is listed for it, a Classes line without their class, another class's armour type, or a weapon type the game marks red for them. It is left off their popup, and the looter window shows it with an 'auto' tag and why. The answer is always Transmog and gets a roll. Only a clear answer from the game counts; anything unclear shows the item as normal. Raiders who tick Show me items I can't use see them with their buttons off. Flasks, potions and other items you don't wear are open to everyone, unless they have a Classes line.",
+    specsHelp = "Each raider's own CRT answers an item for them when they can't use it: no spec of theirs is listed for it, a Classes line without their class, another class's armour type, or a weapon type the game marks red for them. It is left off their popup, and the Master Loot Window shows it with an 'auto' tag and why. The answer is always Transmog and gets a roll. Only a clear answer from the game counts; anything unclear shows the item as normal. Raiders who tick Show me items I can't use see them with their buttons off. Flasks, potions and other items you don't wear are open to everyone, unless they have a Classes line.",
     showAll = "Show me items I can't use (greyed out, just for you)",
     partyHelp = "CRT Looting is for raids. With Enable in party on, a party leader can turn it on in a raid instance too, and your CRT follows a party leader who did. Finder groups never count.",
     enableInParty = "Enable in party",
@@ -107,8 +85,8 @@ local TEXT = {
     noRoll = "If no roll, %v is",
     preview = "Preview:",
     tooltip = "Tooltips",
-    tooltipHelp = "Tooltip position is where every Loot Master tooltip opens: on this page, in both loot windows, the popup and Boss loot. Use the general setting follows General Settings. Outside the window puts it just past the edge of the window you are in, on the spot you click in the box beside it.\n\nItem tabs is where an item's tooltip opens when you hover its icon in the looter window and All Loot Rolls. Same as above follows Tooltip position. Next to the window puts it on the side of the window you click in the box beside it; a corner puts it flush with that corner of the window.\n\nClicking a spot also picks it in the dropdown. For Tooltip position, clicking the lit spot again goes back to each tooltip on its own side.",
-    lootWindow = "Loot Master window",
+    tooltipHelp = "Tooltip position is where every Loot Master tooltip opens: on this page, in both loot windows, the popup and Boss loot. Use the general setting follows General Settings. Outside the window puts it just past the edge of the window you are in, on the spot you click in the box beside it.\n\nItem tabs is where an item's tooltip opens when you hover its icon in the Master Loot Window and All Loot Rolls. Same as above follows Tooltip position. Next to the window puts it on the side of the window you click in the box beside it; a corner puts it flush with that corner of the window.\n\nClicking a spot also picks it in the dropdown. For Tooltip position, clicking the lit spot again goes back to each tooltip on its own side.",
+    lootWindow = "Master Loot Window",
     itemTabs = "Item tabs",
     channels = {
         { key = "RAID", label = "Raid" }, { key = "RAID_WARNING", label = "Raid warning" }, { key = "PARTY", label = "Party" },
@@ -220,170 +198,9 @@ end
 
 -- Tonight -------------------------------------------------------------------------------------------
 
+-- Tonight's two columns, My Loot and Master loot, are built by LootMaster/Tonight.lua.
 local function buildTonight(f)
-    heading(f, L.col1, -8, TEXT.session, TEXT.sessionHelp)
-    local status = f:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    status:SetPoint("TOPLEFT", L.col1, -34)
-    status:SetWidth(400)
-    status:SetJustifyH("LEFT")
-    -- the buttons in a row, each as wide as its label (Start session's count changes its width)
-    local start
-    local prev
-    local gated = {} -- the buttons only someone with loot authority may use (not My popup)
-    for _, spec in ipairs({
-        { TEXT.testKill, function() LM:TestBossKill() end, true },
-        { TEXT.start:format(0), function() LM.BossLoot:Start() end, true },
-        { TEXT.window, function() LM:ShowWindow() end, true },
-        { TEXT.popup, function() LM:ShowPopup() end },
-        { TEXT.endSession, function() LM:AskEnd() end, true }, -- asks first, then ends everything (LootMaster/EndAll.lua)
-    }) do
-        local onClick = spec[2]
-        if spec[3] then
-            onClick = function()
-                if LM:CanLoot() then
-                    spec[2]()
-                end
-            end
-        end
-        local b = UI.PanelButton(f, spec[1], 24, onClick)
-        if spec[3] then
-            gated[#gated + 1] = b
-            -- greyed out without loot authority, with the reason on hover (motion scripts run while disabled)
-            b:SetMotionScriptsWhileDisabled(true)
-            b:SetScript("OnEnter", function(self)
-                if not LM:CanLoot() then
-                    UI.TooltipOwner(GameTooltip, self, "ANCHOR_RIGHT", nil, nil, "lootmaster")
-                    GameTooltip:SetText(self:GetText() or "")
-                    GameTooltip:AddLine(UI.BadText(TEXT.noAuthority), 1, 1, 1, true)
-                    GameTooltip:Show()
-                end
-            end)
-            b:SetScript("OnLeave", function()
-                GameTooltip:Hide()
-            end)
-        end
-        if prev then
-            b:SetPoint("LEFT", prev, "RIGHT", 6, 0)
-        else
-            b:SetPoint("TOPLEFT", L.col1, -58)
-        end
-        start = start or (spec[1] == TEXT.start:format(0) and b) or nil
-        prev = b
-    end
-    -- Held boss loot: the Boss loot list's rows (LM.BossLootRow), at most L.heldRows
-    local heldHead = heading(f, L.col1, L.heldTop, TEXT.held, TEXT.heldHelp)
-    local heldStatus = f:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    heldStatus:SetPoint("LEFT", heldHead, "RIGHT", 30, 0) -- after the (?) icon
-    local heldRows = {}
-    for i = 1, L.heldRows do
-        local row = CreateFrame("Button", nil, f)
-        row:SetSize(L.heldW, L.heldRow)
-        row:SetPoint("TOPLEFT", L.col1, L.heldTop - 22 - (i - 1) * L.heldRow)
-        row.withBoss = true
-        row:Hide()
-        heldRows[i] = row
-    end
-    local heldMore = f:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    heldMore:SetPoint("TOPLEFT", L.col1 + 4, L.heldTop - 22 - L.heldRows * L.heldRow - 2)
-    UI.Tint(heldMore, "SetTextColor", "muted")
-    LM.BuildAddItem(f, L.col1, L.addTop, L.addW) -- Add item: drag or shift-click from your bags
-    refreshers[#refreshers + 1] = function()
-        local BL = LM.BossLoot
-        local rows = BL and BL:Rows() or {}
-        for i, row in ipairs(heldRows) do
-            if rows[i] and LM.BossLootRow then
-                LM.BossLootRow(row, rows[i])
-                row:Show()
-            else
-                row:Hide()
-            end
-        end
-        local more = #rows - L.heldRows
-        heldMore:SetText(more > 0 and TEXT.heldMore:format(more) or "")
-        local bosses, items = 0, 0
-        if BL then
-            bosses, items = BL:Held()
-        end
-        heldStatus:SetText(items == 0 and TEXT.heldNone
-            or TEXT.heldCount:format(bosses, bosses == 1 and TEXT.heldBoss or TEXT.heldBosses, items, items == 1 and TEXT.heldItem or TEXT.heldItems))
-        start:SetText(TEXT.start:format(BL and BL:StartCount() or 0)) -- what Start session would send
-        local fs = start:GetFontString()
-        start:SetWidth(UI.PanelButtonWidth(fs and fs:GetStringWidth() or 0))
-        local authority = LM:CanLoot() and true or false
-        for _, b in ipairs(gated) do
-            b:SetEnabled(authority)
-        end
-        start:SetEnabled(authority and BL and BL:CanStart() and true or false)
-    end
-    -- CRT Looting: the state, and the leader's button
-    heading(f, L.col3, -8, TEXT.crtLooting, TEXT.crtLootingHelp)
-    local looting = f:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    looting:SetPoint("TOPLEFT", L.col3, -34)
-    looting:SetWidth(L.col3W)
-    looting:SetJustifyH("LEFT")
-    local toggle = UI.PanelButton(f, TEXT.turnOn, 24, function()
-        if LM:LootingOn() then
-            LM:ChooseLooting(false, "off")
-        else
-            LM:ChooseLooting(true)
-        end
-    end)
-    toggle:SetPoint("TOPLEFT", looting, "BOTTOMLEFT", 4, -8) -- under the line, however many lines it takes
-    refreshers[#refreshers + 1] = function()
-        local line, on = LM:LootingStatus()
-        -- on: the good colour in a Modern theme, plain in Default: Blizzard, as before themes: not a theme colour
-        looting:SetText(on and UI:IsModern() and UI.GoodText(line) or line) -- not a theme colour
-        local leader = IsInGroup() and UnitIsGroupLeader("player")
-        toggle:SetShown(leader and true or false)
-        toggle:SetText(LM:LootingOn() and TEXT.turnOff or TEXT.turnOn)
-        local fs = toggle:GetFontString()
-        toggle:SetWidth(UI.PanelButtonWidth(fs and fs:GetStringWidth() or 0))
-        toggle:SetEnabled(LM:LootingOn() or (LM:CanRunLooting()) or false)
-    end
-    heading(f, L.col1, L.itemsTop, TEXT.items)
-    local lines = {}
-    for i = 1, LM.MAX_ITEMS do
-        local fs = f:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-        fs:SetPoint("TOPLEFT", L.col1, L.itemsTop - i * 20)
-        fs:SetWidth(600)
-        fs:SetJustifyH("LEFT")
-        fs:SetWordWrap(false)
-        lines[i] = fs
-    end
-    refreshers[#refreshers + 1] = function()
-        local s = LM.current
-        if not s then
-            status:SetText(TEXT.none)
-            for _, fs in ipairs(lines) do
-                fs:SetText("")
-            end
-            return
-        end
-        local crt, answers = 0, 0
-        for _, p in pairs(s.players) do
-            if p.crt then
-                crt = crt + 1
-            end
-        end
-        for i in ipairs(s.items) do
-            answers = answers + s:Answered(i)
-        end
-        status:SetText(string.format(TEXT.running, s.test and TEXT.testTag or "", #s.items, crt, #s.order, answers))
-        for i, fs in ipairs(lines) do
-            local it = s.items[i]
-            if it then
-                local _, link = C_Item.GetItemInfo(it.itemString or "")
-                local state = TEXT.open
-                if it.award then
-                    local r = s:Response(it.award.response)
-                    state = string.format(TEXT.awarded, Ambiguate(it.award.name, "short"), r and r.label or it.award.response)
-                end
-                fs:SetText((link or it.itemString) .. "  |cffaaaaaa" .. state .. "|r")
-            else
-                fs:SetText("")
-            end
-        end
-    end
+    LM.BuildTonight(f, { heading = heading, refreshers = refreshers })
 end
 
 -- Raider Score ----------------------------------------------------------------------------------------

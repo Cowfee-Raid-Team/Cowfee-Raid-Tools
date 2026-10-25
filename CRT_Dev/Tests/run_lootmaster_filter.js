@@ -476,6 +476,7 @@ CRT_THEME(CRT, CRT.UI)
 CreateScrollBoxListLinearView = function() return mock("View") end
 ScrollUtil = { InitScrollBoxListWithScrollBar = function() end }
 LM.BuildAddItem = function() end -- Tonight's Add item (AddItem.lua isn't loaded; run_lootmaster_addend.js tests it)
+LM.BuildTonight = function() end -- Tonight itself (Tonight.lua isn't loaded; run_lootmaster_tonight.js tests it)
 assert(load(tooltipSrc, "Tooltip.lua"))("CowfeeRaidTools", CRT) -- UI.TOOLTIP_AREA_POSITIONS for the Settings tab
 assert(load(pageSrc, "Page.lua"))("CowfeeRaidTools", CRT)
 local built = {}
@@ -499,9 +500,9 @@ local pos, tabsDrop = byLabel["Tooltip position"], byLabel["Item tabs"]
 check(pos ~= nil and tabsDrop ~= nil, "settings: the Tooltip position and Item tabs dropdowns")
 local hover, window
 for _, p in ipairs(pickers) do
-  if p.opts.label == "The window" then hover = p elseif p.opts.label == "Loot Master window" then window = p end
+  if p.opts.label == "The window" then hover = p elseif p.opts.label == "Master Loot Window" then window = p end
 end
-check(hover ~= nil and window ~= nil, "settings: a The window picker and a Loot Master window picker")
+check(hover ~= nil and window ~= nil, "settings: a The window picker and a Master Loot Window picker")
 if pos and tabsDrop and hover and window then
   local keys = {}
   for _, o in ipairs(pos.opts.options) do keys[#keys + 1] = o.key end

@@ -2,7 +2,7 @@ local ADDON, CRT = ...
 
 -- End session asks first (Alex, 2026-10-22: "Can we also add a confirmation to the end session? 'Are you
 -- sure you want to end all loot session?'"; the mockup approved: "End all ends everything"). Every End
--- session (Loot Master > Tonight, the looter window, /crt loot end) calls LM:AskEnd. With a session running
+-- session (Loot Master > Tonight, the Master Loot Window, /crt loot end) calls LM:AskEnd. With a session running
 -- or boss loot waiting for its turn (LootMaster/BossLoot.lua's BL.waiting), the game's generic confirm
 -- dialog asks, lifted over CRT's windows (UI.LiftOver), with what is still open: the running session's
 -- items not given out yet and the waiting items. End all (LM:EndAll) sends the real waiting items back to

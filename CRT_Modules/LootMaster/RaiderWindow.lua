@@ -3,9 +3,10 @@ local ADDON, CRT = ...
 -- The raider window: what everyone answered and rolled for each item, read only. It is the session you
 -- were sent (LM.incoming) and its copy of everyone's answers (inc.view), in the same order the looter
 -- sees (the answer's weight, then the roll; Raider Score is never shown to raiders). Nothing here
--- changes anything: no menus, no awards. Open it from the popup's title bar or /crt loot answers; it
+-- changes anything: no menus, no awards. Open it from the popup's title bar or /crt loot answers, or
+-- with your popup from My Loot (Loot Master > Tonight's card) and /crt loot (LM:OpenMyLoot, below); it
 -- stays until the session ends. A pop-out made by UI.Window; its place is kept in CRTDB
--- lootmaster.answers.
+-- lootmaster.answers. The /crt loot word is registered here, on the raider's side.
 
 local LM = CRT.LootMaster
 local UI = CRT.UI
@@ -239,4 +240,97 @@ function LM:ShowAnswers()
     build()
     win:Show()
     refresh()
+end
+
+-- My Loot (Loot Master > Tonight's card, LootMaster/Tonight.lua, and /crt loot) ------------------------------
+
+local MY_TEXT = {
+    noSession = "Loot Master: no loot session right now.",
+}
+
+-- The last session you were sent, kept after it ends (this session only, not saved), so My Loot can still
+-- show its items.
+local last
+
+LM:OnChange(function(what)
+    if what == "incoming" and LM.incoming then
+        last = LM.incoming
+    end
+end)
+
+-- Whether an item of the session you were sent still waits for your answer: not given out, not answered
+-- (an auto answer counts as one), and its time to answer not run out (as the popup counts it).
+local function waiting(inc, index)
+    local it = inc.items[index]
+    local mine = inc.mine[index]
+    if not it or it.award or (mine and mine.response) then
+        return false
+    end
+    return (inc.seconds or 60) - (GetTime() - (it.shownAt or GetTime())) > 0
+end
+
+-- What My Loot shows: the number of items waiting for your answer, and the items to show (their item
+-- strings): the waiting ones, or with none waiting the session's (or the last one's) items, which the card
+-- dims (old true).
+function LM.MyLoot()
+    local inc = LM.incoming or last
+    local count, items = 0, {}
+    if not inc then
+        return 0, items, false
+    end
+    if LM.incoming then
+        for i = 1, LM.MAX_ITEMS do
+            if waiting(inc, i) then
+                count = count + 1
+                items[#items + 1] = inc.items[i].itemString
+            end
+        end
+    end
+    if count > 0 then
+        return count, items, false
+    end
+    for i = 1, LM.MAX_ITEMS do
+        if inc.items[i] then
+            items[#items + 1] = inc.items[i].itemString
+        end
+    end
+    return 0, items, true
+end
+
+-- Your loot popup (Popup.lua) and All Loot Rolls together: the My Loot card and /crt loot. With no session
+-- there is nothing for either to show, so one chat line says so. Returns whether a session was there.
+function LM:OpenMyLoot()
+    if not (self.incoming and self.incoming.view) then
+        CRT:Print(MY_TEXT.noSession)
+        return false
+    end
+    self:ShowPopup()
+    self:ShowAnswers()
+    return true
+end
+
+-- /crt loot: your loot (the raider's side, so it works with the Loot module off); /crt loot <word> is the
+-- leader's (LM:Command, LootMaster/Test.lua), which says Loot is off while it is (CRT_Core/Slash.lua's
+-- registry; a Loot word, CRT_Core/Modules.lua).
+if CRT.Slash then
+    CRT.Slash:Register("loot", {
+        module = "loot",
+        raider = function(rest)
+            return rest == ""
+        end,
+        run = function(rest, msg)
+            if rest == "" then
+                LM:OpenMyLoot()
+                return true
+            end
+            return LM.Command ~= nil and LM:Command(msg)
+        end,
+        raiderHelp = {
+            "[/crt loot] - open your loot popup and All Loot Rolls",
+        },
+        help = {
+            "[/crt loot test] - try Loot Master with sample items: the Master Loot Window for you, the popup for everyone with CRT ([window], [popup], [end])",
+            "[/crt loot settings] - open the Loot Master page ([boss] opens Boss loot)",
+        },
+    })
 end

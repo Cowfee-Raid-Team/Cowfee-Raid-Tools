@@ -1,7 +1,7 @@
 local ADDON, CRT = ...
 
 -- Testing Loot Master with no boss: /crt loot test starts a session of sample items marked TEST. You get
--- the looter window straight away, and everyone in the group with CRT (you too) gets the raider popup.
+-- the Master Loot Window straight away, and everyone in the group with CRT (you too) gets the raider popup.
 -- The answers, the rolls (drawn silently by the looter's CRT), Award, show again, roll again, the raider
 -- window and double-click trading all work as in a real session; nothing is passed or written to Loot
 -- History, and the award message is shown only to you. The items are real ones from your own loot: picked at
@@ -9,8 +9,9 @@ local ADDON, CRT = ...
 -- of item) first so each test shows a mix; FALLBACK is only used when you have none. Items that pass your loot
 -- filter are picked first, and the chat says when too few do. Loot Master > Tonight's Test boss kill
 -- (LM:TestBossKill, below) holds samples in Boss loot instead, as a boss kill would.
+--   /crt loot                your popup and All Loot Rolls (LM:OpenMyLoot, LootMaster/RaiderWindow.lua)
 --   /crt loot test [count]   start a test (count 1-8, default 4)
---   /crt loot window         show the looter window again
+--   /crt loot window         show the Master Loot Window again
 --   /crt loot popup          show your raider popup again
 --   /crt loot answers        everyone's answers and rolls (the raider window)
 --   /crt loot end            end the session and the items waiting to start, after asking
@@ -214,21 +215,6 @@ function LM:Command(msg)
     return true
 end
 
--- /crt loot opens Loot History; loot test, window, popup, answers, end, boss and settings are LM:Command's
--- (CRT_Core/Slash.lua's registry; a Loot word, CRT_Core/Modules.lua)
-if CRT.Slash then
-    CRT.Slash:Register("loot", {
-        module = "loot",
-        run = function(rest, msg)
-            if rest == "" then
-                CRT.UI:Show("loot")
-                return true
-            end
-            return LM:Command(msg)
-        end,
-        help = {
-            "[/crt loot] - open Loot History: who got which boss item, with filters and a CSV export",
-            "[/crt loot test] - try Loot Master with sample items: the looter window for you, the popup for everyone with CRT ([window], [popup], [end])",
-        },
-    })
-end
+-- The /crt loot word is registered in LootMaster/RaiderWindow.lua: /crt loot alone opens your loot (the
+-- raider's side, there with Loot off); with a word after it, it runs LM:Command. Loot History has no word
+-- of its own: it opens from the menu.

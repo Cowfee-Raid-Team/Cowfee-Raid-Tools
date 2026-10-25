@@ -109,6 +109,7 @@ g "lootmaster looting" && { node run_lootmaster_looting.js "$W" 2>&1 | tail -6; 
 g "lootmaster rolls" && { node run_lootmaster_rolls.js "$W" 2>&1 | tail -12; echo "exit ${PIPESTATUS[0]}"; }
 g "lootmaster boss loot window" && { node run_lootmaster_bosswin.js "$W" 2>&1 | tail -12; echo "exit ${PIPESTATUS[0]}"; }
 g "lootmaster test boss kill" && { node run_lootmaster_testkill.js "$W" 2>&1 | tail -12; echo "exit ${PIPESTATUS[0]}"; }
+g "lootmaster tonight" && { node run_lootmaster_tonight.js "$W" 2>&1 | tail -30; echo "exit ${PIPESTATUS[0]}"; }
 g "lootmaster add and end" && { node run_lootmaster_addend.js "$W" 2>&1 | tail -12; echo "exit ${PIPESTATUS[0]}"; }
 g "lootmaster persist" && { node run_lootmaster_persist.js "$W" 2>&1 | tail -12; echo "exit ${PIPESTATUS[0]}"; }
 g "RollOnLoot only in the auto-pass gate" && { bad=$(grep -rlnE "RollOnLoot|ConfirmLootRoll" --include=*.lua --exclude-dir=.claude --exclude-dir=node_modules "$W" | sed 's#\\#/#g' | grep -vE "$NOT_TESTS" | grep -v "/LootMaster/AutoPass\.lua$" | grep -v "/Dev/LootProbe\.lua$"); if [ -n "$bad" ]; then echo "FAIL RollOnLoot or ConfirmLootRoll outside CRT_Modules/LootMaster/AutoPass.lua (CRT_Dev/Dev/LootProbe.lua is exempt):"; echo "$bad"; else echo "all passed"; fi; }

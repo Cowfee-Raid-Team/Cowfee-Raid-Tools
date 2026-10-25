@@ -14,7 +14,7 @@ const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate();
 lualib.luaL_openlibs(L);
 const harness = themeLua(process.argv.slice(2)) + `
-local dataSrc, commSrc, gateSrc, lootingSrc, bossSrc, endSrc, winSrc, testSrc, addSrc, pageSrc, windowSrc, tradeSrc, slotSrc = ...
+local dataSrc, commSrc, gateSrc, lootingSrc, bossSrc, endSrc, winSrc, testSrc, addSrc, pageSrc, windowSrc, tradeSrc, slotSrc, raiderSrc, tonightSrc = ...
 local fails, passes = 0, 0
 local function check(ok, what) if ok then passes = passes + 1 else fails = fails + 1 print("FAIL " .. what) end end
 local function eq(a, b, what) check(a == b, what .. " (got " .. tostring(a) .. ", want " .. tostring(b) .. ")") end
@@ -219,6 +219,9 @@ LM.ScoreChanged = function() end
 local slot
 local realBuild = LM.BuildAddItem
 LM.BuildAddItem = function(...) slot = realBuild(...) return slot end
+LM.TAB_COLUMN = LM.TAB_COLUMN or 180 -- Tabs.lua is not loaded: All Loot Rolls' left column
+assert(load(raiderSrc, "RaiderWindow.lua"))("CowfeeRaidTools", CRT) -- My Loot (LM.MyLoot, LM:OpenMyLoot)
+assert(load(tonightSrc, "Tonight.lua"))("CowfeeRaidTools", CRT) -- Tonight's two columns
 assert(load(pageSrc, "Page.lua"))("CowfeeRaidTools", CRT)
 local BL = LM.BossLoot
 local pf = mock()
@@ -228,12 +231,12 @@ check(okBuild, "the page builds: " .. tostring(err))
 check(slot ~= nil, "Tonight: the Add item slot is built")
 local function lastText(pattern) for i = #texts, 1, -1 do local t = texts[i].text if type(t) == "string" and t:find(pattern, 1, true) then return t end end return nil end
 local addLabel
-for i = #texts, 1, -1 do if texts[i].text == "Add item: drag an item from your bags here, or shift-click it." then addLabel = texts[i] break end end
+for i = #texts, 1, -1 do if texts[i].text == "Drag or shift-click an item here." then addLabel = texts[i] break end end
 check(addLabel ~= nil, "Tonight: the Add item line")
 -- the line and the status line under it never overlap (the screenshot: the long line wrapped onto the status)
 check(addLabel and addLabel.wrap == false, "the Add item line is one line, never wrapped")
 check(addLabel and addLabel.width and addLabel.width > #addLabel.text * 6, "the Add item line fits its width (" .. tostring(addLabel and addLabel.width) .. ")")
-local addHelp = helps["Add item"]
+local addHelp = helps["Add from bags"]
 check(addHelp and addHelp:find("Any item you can still trade", 1, true) ~= nil, "the detail is in the (?): any tradeable item")
 check(addHelp and addHelp:find("one copy", 1, true) ~= nil and addHelp:find("split", 1, true) ~= nil, "the (?) says a stack adds one copy, and shift-click on a stack is the game's split")
 local statusLine
@@ -741,7 +744,8 @@ if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.
 const files = ['CRT_Modules/LootMaster/Data.lua', 'CRT_Modules/LootMaster/Comm.lua', 'CRT_Modules/LootMaster/AutoPass.lua',
   'CRT_Modules/LootMaster/Looting.lua', 'CRT_Modules/LootMaster/BossLoot.lua', 'CRT_Modules/LootMaster/EndAll.lua',
   'CRT_Modules/LootMaster/BossLootWindow.lua', 'CRT_Modules/LootMaster/Test.lua', 'CRT_Modules/LootMaster/AddItem.lua',
-  'CRT_Modules/LootMaster/Page.lua', 'CRT_Modules/LootMaster/Window.lua', 'CRT_Modules/LootMaster/Trade.lua', 'CRT_Core/UI/ItemSlot.lua'];
+  'CRT_Modules/LootMaster/Page.lua', 'CRT_Modules/LootMaster/Window.lua', 'CRT_Modules/LootMaster/Trade.lua', 'CRT_Core/UI/ItemSlot.lua',
+  'CRT_Modules/LootMaster/RaiderWindow.lua', 'CRT_Modules/LootMaster/Tonight.lua'];
 for (const f of files) {
   const p = path.join(dir, f);
   lua.lua_pushstring(L, to_luastring(fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : 'error("missing ' + f + '")'));
