@@ -54,6 +54,10 @@ local ADDON, CRT = ...
 --   el:FrameProblem(frame) -> nil, or why it can't anchor to that frame; P.AnchorToName(el, name) -> ok, message
 --   P.ResolveFocus(region) -> frame, name, own: the nearest frame with a global name up from a region (the one under
 --                the cursor), or own when it is part of CRT
+--   el:AnchorProblem(key) -> nil, or why it can't anchor to that element or frame (CanAnchorTo is its nil)
+--   Picking: el:StartPick(), then P.PickTarget(P.UnderCursor()) names what is under the cursor and Enter or Space
+--                (P.OnKey -> P.PickChoose) anchors to it; clicks never pick a frame, so the click never reaches it.
+--                P.message holds what the last pick or typed name was refused with, for the panel
 --   UI.Placement.Select(el) / Deselect()   the selected element (gold outline) takes the arrow keys
 -- Nothing moves and no key is taken in combat: a drag, the gear, the keys and Reset refuse, and combat starting drops
 -- the selection and puts a dragged element back at its saved place. Nothing is selected, dragged or given the keys
@@ -87,8 +91,10 @@ local TEXT = {
     own = "That is part of CRT. Pick CRT's elements from the Anchor to list.",
     nowhere = "That frame isn't on screen, so it can't be anchored to.",
     loop = "That frame is anchored to this one, so it would go round in a loop.",
-    spread = "This one holds the game's protected frames, so it can only anchor to a protected frame, such as a unit frame.",
+    spread = "This one is protected by the game, so it can only anchor to a protected frame, such as a unit frame.",
     fixed = "This one always sits on the screen.",
+    notTarget = "That element can't be anchored to.",
+    nothing = "Nothing to anchor to there.",
 }
 P.TEXT = TEXT
 
@@ -268,8 +274,12 @@ local function call(f, method, ...)
     return a, b
 end
 
+-- Whether a value the game gave is true; a hidden (secret) value is never compared.
 local function flag(v)
-    return v == true and not (issecretvalue and issecretvalue(v))
+    if issecretvalue and issecretvalue(v) then
+        return false
+    end
+    return v == true
 end
 
 -- The frame called name, or nil: a widget held by that global, which addons may touch.
@@ -296,15 +306,40 @@ local function globalName(r)
     return _G[name] == r and name or nil
 end
 
--- CRT's own frames: every element's frame and drag box, and anything named for the addon (the Placement panel).
-local function ownFrame(r)
+-- The element whose frame or drag box r is, or nil.
+local function elementOf(r)
     for _, el in ipairs(P.list) do
         if r == el.frame or r == el.handle then
-            return true
+            return el
         end
     end
+    return nil
+end
+
+-- CRT's own frames: every element's frame and drag box, and anything named for the addon (CowfeeRaidTools..., such
+-- as the Placement panel, or CRT..., such as the looting prompt).
+local function ownFrame(r)
+    if elementOf(r) then
+        return true
+    end
     local name = globalName(r)
-    return name ~= nil and name:find("^CowfeeRaidTools") ~= nil
+    return name ~= nil and (name:find("^CowfeeRaidTools") ~= nil or name:find("^CRT") ~= nil)
+end
+
+-- The element a region is part of (its frame, its drag box, or anything on them), or nil.
+function P.ElementOf(r)
+    local n = 0
+    while r and n < P.MAX_WALK do
+        if flag(call(r, "IsForbidden")) then
+            return nil
+        end
+        local el = elementOf(r)
+        if el then
+            return el
+        end
+        r, n = call(r, "GetParent"), n + 1
+    end
+    return nil
 end
 
 -- Whether a region is part of CRT: it, or one of its parents, is CRT's own.
@@ -428,24 +463,39 @@ function El:WouldLoop(key)
     return false
 end
 
--- Whether it may be anchored to that element or frame (nil: the screen, always).
-function El:CanAnchorTo(key)
+-- Why it can't be anchored to that element or frame, or nil when it can (nil key: the screen, always). A protected
+-- frame may only anchor to a protected one, CRT's elements too: else it would make that one protected in combat.
+function El:AnchorProblem(key)
     if key == nil then
-        return true
+        return nil
+    end
+    if self.spec.canAnchor == false then
+        return TEXT.fixed
     end
     local name = P.FrameName(key)
     if name then
         local f = P.LookupFrame(name)
-        return f ~= nil and self:FrameProblem(f) == nil
+        if not f then
+            return string.format(TEXT.missing, name)
+        end
+        return self:FrameProblem(f)
     end
     local other = P.byKey[key]
-    if not other or other == self or self.spec.canAnchor == false or other.spec.target == false then
-        return false
+    if not other or other == self or other.spec.target == false or not (other.frame or other.spec.build) then
+        return TEXT.notTarget
     end
-    if not (other.frame or other.spec.build) then
-        return false
+    if self:WouldLoop(key) then
+        return TEXT.loop
     end
-    return not self:WouldLoop(key)
+    -- an element not made yet can't say whether it is protected: refused until it is
+    if self.frame and isProtected(self.frame) and not (other.frame and isProtected(other.frame)) then
+        return TEXT.spread
+    end
+    return nil
+end
+
+function El:CanAnchorTo(key)
+    return self:AnchorProblem(key) == nil
 end
 
 -- Whether it is anchored to a frame on screen, itself or through the elements it is anchored to.
@@ -462,9 +512,13 @@ function El:External()
     return false
 end
 
--- The saved anchor when it can be used, else nil (the screen).
+-- The saved anchor when it can be used, else nil (the screen). A frame the game refused to anchor to this session
+-- (self.refused) can't be.
 function El:LiveAnchor()
     local key = self:AnchorKey()
+    if key and self.refused and P.FrameName(key) == self.refused then
+        return nil
+    end
     if key and self:CanAnchorTo(key) and self:AnchorFrame(key) then
         return key
     end
@@ -552,21 +606,25 @@ function El:ApplySaved()
     f:ClearAllPoints()
     local ok = pcall(f.SetPoint, f, p.point or "CENTER", rel, p.relativePoint or p.point or "CENTER", p.x or 0, p.y or 0)
     if not ok then
-        -- the game refused that anchor (an anchor family it keeps apart): the screen, the anchor kept
+        -- the game refused that anchor (an anchor family it keeps apart): noted for this session, and the screen,
+        -- the anchor kept
+        self.refused = P.FrameName(s and s.position and s.position.anchor)
         p = self:Missing(s and s.position) or self:Default()
         f:ClearAllPoints()
         f:SetPoint(p.point or "CENTER", UIParent, p.relativePoint or p.point or "CENTER", p.x or 0, p.y or 0)
     end
 end
 
--- Where it goes while its saved anchor can't be used: for a frame on screen not loaded yet, the spot it kept on the
--- screen (else its default), and that frame is looked for again; for an element, its default (nil).
+-- Where it goes while its saved anchor can't be used: for a frame on screen, the spot it kept on the screen (else its
+-- default), and a frame not loaded yet, or not given a place yet, is looked for again; for an element, its default
+-- (nil).
 function El:Missing(p)
     local name = p and P.FrameName(p.anchor)
     if not name then
         return nil
     end
-    if not P.LookupFrame(name) then
+    local f = P.LookupFrame(name)
+    if name ~= self.refused and (not f or self:FrameProblem(f) == TEXT.nowhere) then
         self.waiting = name
         P.Retry(false)
     end
@@ -650,6 +708,8 @@ function El:MoveCenterTo(cx, cy, save)
     local x, y = round((px - rx) * k), round((py - ry) * k)
     f:ClearAllPoints()
     if not pcall(f.SetPoint, f, point, rel, relPoint, x, y) then
+        -- the game refused that anchor: noted for this session, and placed where it can go
+        self.refused = P.FrameName(key) or self.refused
         self:Apply()
         return false
     end
@@ -738,6 +798,9 @@ function El:SetAnchor(key)
     if inCombat() then
         return P.Refuse()
     end
+    if key ~= nil and P.FrameName(key) == self.refused then
+        self.refused = nil -- chosen again: tried again
+    end
     if key ~= nil and not self:CanAnchorTo(key) then
         return false
     end
@@ -779,7 +842,7 @@ function P.AnchorToName(el, name)
         return false, problem
     end
     if not el:SetAnchor(P.FrameKey(name)) then
-        return false, TEXT.nowhere
+        return false, el.refused == name and TEXT.forbidden or TEXT.nowhere
     end
     return true
 end
@@ -790,7 +853,8 @@ function El:AnchorStatus()
     if not name or self:LiveAnchor() then
         return nil
     end
-    return string.format(P.LookupFrame(name) and TEXT.cantUse or TEXT.notLoaded, name)
+    local loaded = P.LookupFrame(name) and self:FrameProblem(P.LookupFrame(name)) ~= TEXT.nowhere
+    return string.format((loaded or name == self.refused) and TEXT.cantUse or TEXT.notLoaded, name)
 end
 
 -- Back to its default on the screen, its anchor cleared. The elements anchored to it follow it there.
@@ -1017,7 +1081,8 @@ function P.Keys(on)
 end
 
 -- A key while an element is selected: an arrow moves it P.NUDGE (Shift: P.NUDGE_BIG) and is kept from the game,
--- Escape stops picking or drops the selection; any other key goes on to the game. Returns whether it took the key.
+-- Escape stops picking or drops the selection, Enter or Space while picking anchors to what is under the cursor;
+-- any other key goes on to the game. Returns whether it took the key.
 function P.OnKey(key)
     if inCombat() then
         return false
@@ -1033,6 +1098,9 @@ function P.OnKey(key)
         took = true
     elseif key == "ESCAPE" and (P.selected or P.picking) then
         P.Escape()
+        took = true
+    elseif (key == "ENTER" or key == "SPACE") and P.picking then
+        P.PickChoose()
         took = true
     end
     if keys then
@@ -1063,13 +1131,14 @@ function P.Deselect()
     changed(was)
 end
 
--- Picking an anchor on screen: the next click on another element's box anchors the picking one to it.
+-- Picking an anchor on screen: Enter or Space anchors the picking one to the frame under the cursor (P.PickChoose),
+-- and a click on another element's box anchors it to that element.
 function El:StartPick()
     if inCombat() then
         return P.Refuse()
     end
     P.Select(self)
-    P.picking = self
+    P.picking, P.message = self, nil
     changed(self)
     return true
 end
@@ -1094,14 +1163,77 @@ function P.Click(el)
     end
     local picking = P.picking
     if picking then
-        if el ~= picking and picking:CanAnchorTo(el.key) then
-            P.picking = nil
-            picking:SetAnchor(el.key)
+        if el ~= picking then
+            P.message = picking:AnchorProblem(el.key)
+            if not P.message then
+                P.picking = nil
+                picking:SetAnchor(el.key)
+            end
         end
         changed(picking)
         return
     end
     P.Select(el)
+end
+
+-- What is under the cursor while picking, for the name tag and for Enter: "element" and the element (another
+-- element's box), "frame", the frame and its name, or "own" (CRT's own, the picking element itself), "noname" (a
+-- frame with no named parent), "forbidden" (the game's), "nothing" (the world, the screen, or nothing at all).
+function P.PickTarget(region)
+    if region == nil or region == UIParent or region == WorldFrame then
+        return "nothing"
+    end
+    if flag(call(region, "IsForbidden")) then
+        return "forbidden"
+    end
+    local el = P.ElementOf(region)
+    if el then
+        return el ~= P.picking and "element" or "own", el
+    end
+    local f, name, own = P.ResolveFocus(region)
+    if own then
+        return "own"
+    end
+    if f then
+        return "frame", f, name
+    end
+    return "noname"
+end
+
+-- The topmost region under the cursor (GetMouseFoci), or nil.
+function P.UnderCursor()
+    if not GetMouseFoci then
+        return nil
+    end
+    local ok, foci = pcall(GetMouseFoci)
+    return ok and type(foci) == "table" and foci[1] or nil
+end
+
+local PICK_REFUSED = { noname = "noName", forbidden = "forbidden", nothing = "nothing", own = "own" }
+
+-- Enter or Space while picking: anchors to what is under the cursor, or says why not (P.message) and goes on
+-- picking. Clicks never pick, so the click never reaches the frame under the cursor (it would target or cast).
+function P.PickChoose()
+    local el = P.picking
+    if not el or inCombat() then
+        return false
+    end
+    local kind, what, name = P.PickTarget(P.UnderCursor())
+    local ok, why = false, TEXT[PICK_REFUSED[kind] or "nothing"]
+    if kind == "element" then
+        why = el:AnchorProblem(what.key)
+        ok = why == nil and el:SetAnchor(what.key)
+        why = why or (not ok and TEXT.nowhere) or nil
+    elseif kind == "frame" then
+        ok, why = P.AnchorToName(el, name)
+    end
+    if ok then
+        P.picking, P.message = nil, nil
+    else
+        P.message = why or TEXT.nothing
+    end
+    changed(el)
+    return ok
 end
 
 -- The gear ------------------------------------------------------------------------------------

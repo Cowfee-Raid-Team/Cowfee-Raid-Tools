@@ -60,7 +60,7 @@ local function mock(kind, parent, template, name)
       if type(rel) == "number" then rel, rp, x, y = nil, nil, rel, rp end
       if type(rp) == "number" then rp, x, y = nil, rp, x end
       -- as the game: an anchor-restricted region can't be anchored to from another hierarchy
-      if rel and rel.anchorRestricted then error("anchor family connection") end
+      if rel and (rel.anchorRestricted or rel.refuseAnchors) then error("anchor family connection") end
       self.layoutCalls = (self.layoutCalls or 0) + 1
       table.insert(self.pts, { point = point, rel = rel or self.parent or UIParent, rp = rp or point, x = x or 0, y = y or 0 })
     end,
@@ -618,6 +618,8 @@ refused("TestForbidden", T.forbidden, "a forbidden frame")
 local plate = CreateFrame("Frame", "TestPlate", UIParent) plate:SetSize(10, 10) plate:SetPoint("CENTER") plate.anchorRestricted = true
 refused("TestPlate", T.forbidden, "an anchor-restricted frame (a nameplate)")
 refused("CowfeeRaidToolsPlacementKeys", T.own, "one of CRT's own frames")
+local crtNamed = CreateFrame("Frame", "CRTWhatsNewTest", UIParent) crtNamed:SetSize(30, 30) crtNamed:SetPoint("CENTER")
+refused("CRTWhatsNewTest", T.own, "one of CRT's own frames named CRT...")
 local nowhere = CreateFrame("Frame", "TestNowhere", UIParent)
 refused("TestNowhere", T.nowhere, "a frame with no place on screen")
 -- loops through other frames' anchors, read from their points
@@ -636,13 +638,34 @@ local plain = CreateFrame("Frame", "TestPlainFrame", UIParent) plain:SetSize(80,
 fq.protected = true
 refused("TestPlainFrame", T.spread, "a protected element to a frame that isn't protected")
 check(Q:CanAnchorTo("frame:TestUnitFrame") == true, "a protected element to a protected unit frame is fine")
+-- the same rule for CRT's own elements: a protected element can't make an alert area protected
+check(Q:CanAnchorTo("texts") == false and Q:AnchorProblem("texts") == T.spread, "a protected element can't anchor to a CRT element that isn't protected")
+check(Q:SetAnchor("texts") == false and Q:Saved().anchor == "frame:TestUnitFrame", "trying it changes nothing")
+P.OpenPanel(Q)
+local byKeyP = {}
+for _, o in ipairs(dropdowns["Anchor to"].opts.options()) do byKeyP[o.key] = o end
+check(byKeyP.texts and byKeyP.texts.disabled, "the list greys it out")
+P.ClosePanel()
+fa.protected = true
+check(Q:CanAnchorTo("texts") == true, "to a protected element it may")
+fa.protected = nil
 fq.protected = nil
-check(Q:CanAnchorTo("frame:TestPlainFrame") == true, "an element that isn't protected may anchor to any frame")
--- an anchor that the game refuses at SetPoint leaves it on the screen
-do
-  local okS = pcall(function() return P.AnchorToName(Q, "TestUnitFrame") end)
-  check(okS, "anchoring is guarded")
-end
+check(Q:CanAnchorTo("frame:TestPlainFrame") == true and Q:CanAnchorTo("texts") == true, "an element that isn't protected may anchor to any frame or element")
+-- an anchor the game refuses at SetPoint (an anchor family it keeps apart): it stays on the screen, with a message
+local refuser = CreateFrame("Frame", "TestRefuser", UIParent) refuser:SetSize(40, 40) refuser:SetPoint("CENTER", UIParent, "CENTER", 200, 200)
+refuser.refuseAnchors = true
+local qxr, qyr = centre(fq)
+local okR, whyR = P.AnchorToName(Q, "TestRefuser")
+check(okR == false and whyR == T.forbidden, "a frame the game won't let it anchor to is refused: " .. tostring(whyR))
+check(select(2, pt(fq)) == unit and Q:Saved().anchor == "frame:TestUnitFrame", "and it keeps its anchor and place")
+-- the same, met on a saved anchor: on its screen spot, the anchor kept, and the panel says it can't be used
+Q.spec.store().position = { point = "TOPLEFT", relativePoint = "TOPLEFT", x = 0, y = 0, anchor = "frame:TestRefuser", screenX = 120, screenY = -80 }
+Q.refused = nil
+Q:Apply()
+check(select(2, pt(fq)) == UIParent and select(4, pt(fq)) == 120 and Q:Saved().anchor == "frame:TestRefuser", "a saved anchor the game refuses: on the screen spot, the anchor kept")
+check(Q:AnchorStatus() == format(T.cantUse, "TestRefuser"), "and it can't be used now: " .. tostring(Q:AnchorStatus()))
+Q:Reset()
+P.AnchorToName(Q, "TestUnitFrame")
 
 -- the panel: the Anchor to list, the frame name box and Pick on screen ----------------------------------------
 P.OpenPanel(Q)
@@ -659,31 +682,52 @@ panel.frameBox.scripts.OnEnterPressed(panel.frameBox)
 check(Q:Saved().anchor == "frame:TestPlainFrame" and select(2, pt(fq)) == plain, "a name in the box and Enter anchors to it")
 dropdowns["Anchor to"].opts.set("screen")
 check(Q:Saved().anchor == nil and select(2, pt(fq)) == UIParent, "Screen takes it back off")
--- Pick on screen: the name shows at the cursor, and a click anchors
+-- Pick on screen: the name shows at the cursor, Enter or Space anchors, and a click never picks a frame (it would
+-- reach the frame under the cursor: target, cast, press)
 buttons["Pick on screen"].scripts.OnClick()
+check(P.picking == Q and keys.shown, "picking takes the keys, as the arrows do")
 focus = barText
 P.PickHover()
 check(P.pickTag and P.pickTag.shown and P.pickTag.text.text == "TestUnitFrame", "hovering a frame while picking shows its name at the cursor")
 fire("GLOBAL_MOUSE_DOWN", "LeftButton")
-check(P.picking == nil and Q:Saved().anchor == "frame:TestUnitFrame" and select(2, pt(fq)) == unit, "a click on it anchors to it")
+check(P.picking == Q and Q:Saved().anchor == nil and select(2, pt(fq)) == UIParent, "a click doesn't pick: picking goes on, nothing anchored")
+check(P.OnKey("W") == false and keys.propagate == true, "any other key goes on to the game while picking")
+check(P.OnKey("ENTER") == true and keys.propagate == false, "Enter is taken from the game")
+keys.scripts.OnKeyUp(keys, "ENTER")
+check(P.picking == nil and Q:Saved().anchor == "frame:TestUnitFrame" and select(2, pt(fq)) == unit, "Enter anchors to the hovered frame")
 check(not P.pickTag.shown, "and the name tag goes")
 buttons["Pick on screen"].scripts.OnClick()
 focus = anonChild
 P.PickHover()
 check(P.pickTag.text.text == T.noName, "a frame with no name says so while hovered")
-fire("GLOBAL_MOUSE_DOWN", "LeftButton")
-check(P.picking == Q and panel.status.text == T.noName and Q:Saved().anchor == "frame:TestUnitFrame", "a click on it is refused, with that message, and picking goes on")
+P.OnKey("SPACE")
+check(P.picking == Q and panel.status.text == T.noName and Q:Saved().anchor == "frame:TestUnitFrame", "Space on it is refused, with that message, and picking goes on")
+focus = WorldFrame
+P.PickHover()
+check(P.pickTag.text.text == T.nothing, "over the world: nothing to anchor to")
+P.OnKey("ENTER")
+check(P.picking == Q and panel.status.text == T.nothing, "Enter there says so")
+focus = nil
+P.PickHover()
+check(P.pickTag.text.text == T.nothing, "over nothing at all: the same")
+focus = hq
+P.PickHover()
+check(not P.pickTag.shown, "over its own box: no tag")
 focus = ha
 P.PickHover()
-check(not P.pickTag.shown, "over a CRT element's box: no name tag")
-fire("GLOBAL_MOUSE_DOWN", "LeftButton")
-check(P.picking == Q, "a mouse down on a CRT element's box is left to its click")
-P.Click(A)
-check(P.picking == nil and Q:Saved().anchor == "texts", "which anchors to that element as before")
+check(P.pickTag.shown and P.pickTag.text.text == "Critical alerts text", "over another element's box: that element's name")
+P.OnKey("ENTER")
+check(P.picking == nil and Q:Saved().anchor == "texts", "Enter anchors to that element")
 buttons["Pick on screen"].scripts.OnClick()
-focus = barText
-fire("GLOBAL_MOUSE_DOWN", "RightButton")
-check(P.picking == Q, "a right click doesn't pick")
+P.Click(B)
+check(P.picking == nil and Q:Saved().anchor == "callout", "a click on another element's box still anchors to it")
+buttons["Pick on screen"].scripts.OnClick()
+inCombat = true
+check(P.OnKey("ENTER") == false and P.picking == Q, "in combat Enter goes to the game")
+inCombat = false
+dropdowns["Anchor to"].opts.set("screen")
+check(P.picking == nil and Q:Saved().anchor == nil, "a choice from the Anchor to list ends picking")
+buttons["Pick on screen"].scripts.OnClick()
 P.OnKey("ESCAPE")
 check(P.picking == nil and not P.pickTag.shown, "Escape stops picking and hides the name tag")
 P.ClosePanel()
@@ -705,6 +749,15 @@ P.ClosePanel()
 local late = CreateFrame("Frame", "TestLateFrame", UIParent) late:SetSize(100, 30) late:SetPoint("CENTER", UIParent, "CENTER", 0, 200)
 fire("PLAYER_ENTERING_WORLD")
 check(select(2, pt(fq)) == late and Q:Saved().anchor == "frame:TestLateFrame", "once it is made it is anchored to it (PLAYER_ENTERING_WORLD)")
+-- a frame that exists but has no place yet (its addon places it later): looked for again too
+runTimers()
+qstore.position = { point = "TOPLEFT", relativePoint = "TOPLEFT", x = 5, y = 5, anchor = "frame:TestPlacedLater", screenX = 300, screenY = -200 }
+local placedLater = CreateFrame("Frame", "TestPlacedLater", UIParent) placedLater:SetSize(100, 30)
+Q:Apply()
+check(Q.waiting == "TestPlacedLater" and select(2, pt(fq)) == UIParent, "a frame with no place yet: waited for, on the screen spot")
+placedLater:SetPoint("CENTER", UIParent, "CENTER", 0, -100)
+fire("PLAYER_ENTERING_WORLD")
+check(select(2, pt(fq)) == placedLater, "once it has a place it is anchored to it")
 -- a frame that never loads: the retries stop, it stays on its spot and keeps the anchor
 qstore.position = { point = "TOPLEFT", relativePoint = "TOPLEFT", x = 5, y = 5, anchor = "frame:TestNeverFrame", screenX = 250, screenY = -150 }
 runTimers()

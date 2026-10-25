@@ -9,9 +9,10 @@ local ADDON, CRT = ...
 -- with Pick on screen, Frame name (a frame's name typed in, Enter or Anchor), a line for picking and one for what
 -- was refused or an anchor that isn't loaded, then Reset and Done.
 --
--- Picking: a click on another element's box anchors to it (UI/Placement.lua's P.Click); a click anywhere else is
--- heard through GLOBAL_MOUSE_DOWN, and the frame under the cursor (GetMouseFoci) is resolved to the nearest frame with
--- a global name (P.ResolveFocus), whose name a tag at the cursor shows while hovering.
+-- Picking: a tag at the cursor names what is under it (UI/Placement.lua's P.PickTarget: another element, or the
+-- nearest frame with a global name), and Enter or Space anchors to it (P.PickChoose, through the keys frame the
+-- arrows use). A click never picks a frame, so it never reaches that frame (it would target or cast); a click on
+-- another element's box still anchors to that element (P.Click).
 
 local UI = CRT.UI
 local P = UI.Placement
@@ -25,18 +26,20 @@ local TEXT = {
     anchor = "Anchor to",
     screen = "Screen",
     pick = "Pick on screen",
-    picking = "Click another element's box, or any frame. Esc cancels.",
+    picking = "Hover a frame and press Enter. Esc cancels.",
     frameName = "Frame name",
     useFrame = "Anchor",
     frameHelp = "Type the name of a frame on screen, such as PlayerFrame, then press Enter.\n\n"
-        .. "Pick on screen shows the name of the frame under the cursor.",
+        .. "Or use Pick on screen: hover a frame to see its name, then press Enter or Space to anchor to it. "
+        .. "Clicks don't pick, so you never target or press what is under the cursor. Esc stops picking.",
     reset = "Reset",
     done = "Done",
     help = "X and Y are how far its centre is from the centre of what it is anchored to, in pixels.\n\n"
         .. "Click its box to select it: the arrow keys move it 1 pixel, Shift and an arrow 10. Esc lets go.\n\n"
         .. "Dragging snaps to the dashed lines within 6 pixels. Hold Shift while dragging to place it freely.",
     anchorHelp = "It keeps its distance from that element or frame and moves with it.\n\n"
-        .. "Greyed out: that element is anchored to this one, so it would go round in a loop.\n\n"
+        .. "Greyed out: that element is anchored to this one, so it would go round in a loop, or this one is "
+        .. "protected by the game and that one isn't.\n\n"
         .. "A frame from another addon that loads late is found when it loads. Until then this stays where it was.",
     fixedHelp = "This one holds the game's own buttons, so it always sits on the screen.",
 }
@@ -58,7 +61,6 @@ P.PANEL_LAYOUT = L
 
 local panel -- the window, made the first time it opens
 local shown -- the element it shows
-local message -- what was last refused (a typed name, a frame picked), until the next change
 
 -- The outline and its x, y ----------------------------------------------------------------------
 
@@ -236,7 +238,7 @@ local function refresh()
     f.pick:SetEnabled(not fixed)
     f.useFrame:SetEnabled(not fixed)
     pcall(f.frameBox.SetEnabled, f.frameBox, not fixed)
-    local status = message or shown:AnchorStatus()
+    local status = P.message or shown:AnchorStatus()
     f.status:SetText(status or "")
     f.status:SetShown(status ~= nil)
 end
@@ -248,7 +250,7 @@ local function useTypedName()
         return
     end
     local ok, why = P.AnchorToName(shown, f.frameBox:GetText())
-    message = not ok and why or nil
+    P.message = not ok and why or nil
     f.frameBox:ClearFocus()
     if ok then
         f.frameBox:SetText("")
@@ -365,7 +367,10 @@ local function build()
         get = anchorChoice,
         set = function(key)
             if shown then
-                message = nil
+                P.message = nil
+                if P.picking == shown then
+                    P.picking = nil -- a choice from the list ends picking
+                end
                 shown:SetAnchor(key ~= "screen" and key or nil)
                 refresh()
             end
@@ -448,7 +453,7 @@ function P.OpenPanel(el)
         return false
     end
     panel = panel or build()
-    shown, message = el, nil
+    shown, P.message = el, nil
     P.Select(el)
     panel.strip:SetTitle(string.format(TEXT.title, el.title))
     local dx = el:ScreenOffset()
@@ -506,16 +511,11 @@ local function hoverStep(_, dt)
     end
 end
 
--- The region under the cursor: the topmost the game reports.
-local function underCursor()
-    if not GetMouseFoci then
-        return nil
-    end
-    local ok, foci = pcall(GetMouseFoci)
-    return ok and type(foci) == "table" and foci[1] or nil
-end
+-- What the tag says for each kind of thing under the cursor (P.PickTarget); over CRT's own it hides.
+local TAG_TEXT = { noname = "noName", nothing = "nothing", forbidden = "forbidden" }
 
--- While picking, the tag at the cursor names the frame under it, or says it has none; over CRT's own it goes.
+-- While picking, the tag at the cursor names what Enter would anchor to (a frame's name, another element's title), or
+-- says why there is nothing to anchor to there.
 function P.PickHover()
     if not P.picking or (InCombatLockdown and InCombatLockdown()) then
         if tag then
@@ -526,55 +526,22 @@ function P.PickHover()
     if not tag then
         makeTag()
     end
-    local _, name, own = P.ResolveFocus(underCursor())
+    local kind, what, name = P.PickTarget(P.UnderCursor())
     local x, y = GetCursorPosition()
     local s = UIParent:GetEffectiveScale()
     x, y = P.num(x), P.num(y)
     s = P.num(s) or 1
-    if own or not (x and y) or s <= 0 then
+    if kind == "own" or not (x and y) or s <= 0 then
         tag:Hide()
         return
     end
-    tag.text:SetText(name or P.TEXT.noName)
+    local text = kind == "frame" and name or kind == "element" and what.title or P.TEXT[TAG_TEXT[kind] or "nothing"]
+    tag.text:SetText(text)
     tag:SetSize((P.num(tag.text:GetStringWidth()) or 0) + L.tagPad, L.tag)
     tag:ClearAllPoints()
     tag:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", x / s + L.tagOffset, y / s + L.tagOffset)
     tag:Show()
 end
-
--- A left mouse button going down while picking: the frame under the cursor is anchored to, or the panel says why
--- not. A press on CRT's own (an element's box, this panel) is left to its own click.
-local function mouseDown(button)
-    local el = P.picking
-    if button ~= "LeftButton" or not el or (InCombatLockdown and InCombatLockdown()) then
-        return
-    end
-    local f, name, own = P.ResolveFocus(underCursor())
-    if own then
-        return
-    end
-    local ok, why
-    if f then
-        ok, why = P.AnchorToName(el, name)
-    else
-        ok, why = false, P.TEXT.noName
-    end
-    if ok then
-        P.picking = nil
-        message = nil
-    else
-        message = why
-    end
-    P.OnChanged(el)
-end
-
-local clicks = CreateFrame("Frame")
-if clicks.RegisterEvent then
-    clicks:RegisterEvent("GLOBAL_MOUSE_DOWN")
-end
-clicks:SetScript("OnEvent", function(_, _, button)
-    mouseDown(button)
-end)
 
 -- Every change to an element: the outline and the panel follow; the name tag shows only while picking.
 function P.OnChanged()
