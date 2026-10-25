@@ -17,8 +17,10 @@ local ADDON, CRT = ...
 -- player whose role is unknown is left out. Anyone the raid note gives a listed cooldown gets rows too.
 -- Your own spec is the game's; nobody else's is known, so they get every major cooldown of their class.
 -- The casts are the raid note's cooldown lines for the boss and difficulty shown (the view's
--- NoteAndReminderMarks, which places its flags), each on the row of its player and spell, with a band for
--- the cooldown after it; a cast inside the cooldown of the one before it on its row gets a red edge.
+-- NoteAndReminderMarks, which places its flags), each on the row of its player and spell, with its cooldown
+-- shown with no selection needed: a filled band after it and an outlined one before it, red where the next
+-- cast on its row falls inside; a cast inside the cooldown of the one before it on its row gets a red edge.
+-- A selected or dragged cast shows the view's own bands instead (HV.HideBands).
 -- The raid leader and assistants drag any cast to move its note line (the view's flag move, so Undo works).
 -- Anyone else drags only their own casts, and only for themselves: the new time is kept on this computer
 -- (Notes/Shifts.lua, HV.MovePersonal), your alerts use it, and the raid note stays as it is. A moved cast
@@ -58,6 +60,7 @@ HV.TEXT = TEXT
 
 local DOT = " \194\183 "
 local BAND_ALPHA = 0.22 -- a cooldown's band after its cast, in its player's class colour (accent when unknown)
+local OUTLINE_ALPHA = 0.7 -- the outline of a cooldown's band before its cast; its far end line is solid
 HV.INDENT = 16 -- how far a cooldown row's icon and name sit right of its healer's name row
 local NAME_TINT, SPELL_TINT = 0.16, 0.12 -- a healer's block background alpha: the name row, the cooldown rows
 local BAND_INSET = 4 -- the band's gap from its row's top and bottom
@@ -763,12 +766,94 @@ local function drawMoved(view, n, x, length)
     return n, labels
 end
 
--- The cooldown bands of the shown casts (from each cast to when its cooldown is up, cut at the timeline's
--- end), your moved casts' ghosts, the panel rows (Timeline/HealerPanel.lua) and the hint line under the rows.
--- Hides them all outside Healer CDs.
+-- A band texture at track x0, top, w by h, in r, g, b, a, at ARTWORK sublevel sub. n: its place in the pool.
+local function bandRect(view, n, x0, top, w, h, r, g, b, a, sub)
+    local tex = bandTexture(view, n)
+    tex:SetDrawLayer("ARTWORK", sub)
+    tex:SetColorTexture(r, g, b, a)
+    tex:ClearAllPoints()
+    tex:SetPoint("TOPLEFT", view.track, "TOPLEFT", x0, top)
+    tex:SetSize(w, h)
+    return tex
+end
+
+-- Cast m's cooldown bands on its row, in its player's class colour (accent when unknown) so each block reads as
+-- one colour, cut at the timeline's ends: after the cast filled up to when its cooldown is up again, before it
+-- an outline only from when it was last up, with a solid line at each far end inside the timeline; red from
+-- the cast to the farthest later cast on its row inside its cooldown, so each too-soon pair is red once. n: the
+-- band textures used so far; returns the new count and the pair: { tex (all of them), fill, outline, loEnd,
+-- hiEnd, red }, the last four nil when not drawn.
+local function drawPair(view, n, m, x, length)
+    local rowH = CRT.TimelineView.ROW_H
+    local r, g, b = rgba("accent")
+    local tint = m.hvLane.tint
+    if tint then
+        r, g, b = tint[1], tint[2], tint[3]
+    end
+    local t, cd = m.t, m.cd
+    local top, h = -(m.row - 1) * rowH - BAND_INSET, rowH - 2 * BAND_INSET
+    local p = { tex = {}, outline = {} }
+    local function put(x0, y, w, hh, cr, cg, cb, a, sub)
+        n = n + 1
+        local tex = bandRect(view, n, x0, y, w, hh, cr, cg, cb, a, sub)
+        p.tex[#p.tex + 1] = tex
+        return tex
+    end
+    local xt, xlo, xhi = x(t), x(t - cd), x(t + cd)
+    if xhi - xt > 0 then
+        p.fill = put(xt, top, xhi - xt, h, r, g, b, BAND_ALPHA, 0)
+        if t + cd <= length then
+            p.hiEnd = put(xhi - BAND_LINE_W, top, BAND_LINE_W, h, r, g, b, 1, 2)
+        end
+    end
+    if xt - xlo > 0 then
+        local w = xt - xlo
+        p.outline[1] = put(xlo, top, w, BAND_LINE_W, r, g, b, OUTLINE_ALPHA, 2)
+        p.outline[2] = put(xlo, top - h + BAND_LINE_W, w, BAND_LINE_W, r, g, b, OUTLINE_ALPHA, 2)
+        p.outline[3] = put(xt - BAND_LINE_W, top, BAND_LINE_W, h, r, g, b, OUTLINE_ALPHA, 2)
+        if t - cd >= 0 then
+            p.loEnd = put(xlo, top, BAND_LINE_W, h, r, g, b, 1, 2)
+            p.outline[4] = p.loEnd
+        end
+    end
+    local far
+    for _, c in ipairs(m.hvLane.casts or {}) do
+        if type(c.t) == "number" and c.t - t > SAME_MOMENT and c.t < t + cd and (far == nil or c.t > far) then
+            far = c.t
+        end
+    end
+    if far and x(far) - xt > 0 then
+        local red = CRT.TimelineView.BAND_RED
+        p.red = put(xt, top, x(far) - xt, h, red[1], red[2], red[3], red[4], 1)
+    end
+    return n, p
+end
+
+-- While the view draws one cast's bands itself (its selection or its drag), that cast's own bands here are
+-- hidden; key is View.BandKey's, or nil to show them all again. Show and Hide only: nothing is drawn again.
+function HV.HideBands(view, key)
+    if view.hvHidden == key then
+        return
+    end
+    local drawn = view.hvPairs or {}
+    local old = view.hvHidden and drawn[view.hvHidden]
+    for _, tex in ipairs(old and old.tex or {}) do
+        tex:Show()
+    end
+    local new = key and drawn[key]
+    for _, tex in ipairs(new and new.tex or {}) do
+        tex:Hide()
+    end
+    view.hvHidden = key
+end
+
+-- The cooldown bands of the shown casts (drawPair's, at your time for a cast you moved), your moved casts'
+-- ghosts, the panel rows (Timeline/HealerPanel.lua) and the hint line under the rows. Hides them all outside
+-- Healer CDs. Each cast's bands are kept by View.BandKey in view.hvPairs, for HV.HideBands.
 function HV.Draw(view, length)
     local on = view.mode == "healers" and view.pull ~= nil
     local n, labels = 0, 0
+    view.hvPairs, view.hvHidden = {}, nil
     if on then
         if not view.hvBandFrame then
             local bf = CreateFrame("Frame", nil, view.track)
@@ -778,37 +863,18 @@ function HV.Draw(view, length)
         -- under the flags (DrawMarks puts them 8 above the track) and the selection's bands (7)
         view.hvBandFrame:SetFrameLevel((view.track:GetFrameLevel() or 0) + 6)
         local View = CRT.TimelineView
-        local rowH, trackW = View.ROW_H, view.trackW
+        local trackW = view.trackW
         length = math.max(1, length or 1)
         local function x(t)
             return View.TimeToX(math.max(0, math.min(length, t)), length, trackW)
         end
-        local ar, ag, ab = rgba("accent")
         for _, m in ipairs(view.marks or {}) do
-            if m.hvLane and m.cd and m.row then
-                -- the band is in its player's class colour, so each block reads as one colour
-                local tint = m.hvLane.tint
-                local r, g, b = ar, ag, ab
-                if tint then
-                    r, g, b = tint[1], tint[2], tint[3]
-                end
-                local x0, x1 = x(m.t), x(m.t + m.cd)
-                local top = -(m.row - 1) * rowH - BAND_INSET
-                if x1 - x0 > 0 then
-                    n = n + 1
-                    local band = bandTexture(view, n)
-                    band:SetColorTexture(r, g, b, BAND_ALPHA)
-                    band:ClearAllPoints()
-                    band:SetPoint("TOPLEFT", view.track, "TOPLEFT", x0, top)
-                    band:SetSize(x1 - x0, rowH - 2 * BAND_INSET)
-                    if m.t + m.cd <= length then
-                        n = n + 1
-                        local line = bandTexture(view, n)
-                        line:SetColorTexture(r, g, b, 1)
-                        line:ClearAllPoints()
-                        line:SetPoint("TOPLEFT", view.track, "TOPLEFT", x1 - BAND_LINE_W, top)
-                        line:SetSize(BAND_LINE_W, rowH - 2 * BAND_INSET)
-                    end
+            if m.hvLane and m.cd and m.row and type(m.t) == "number" then
+                local p
+                n, p = drawPair(view, n, m, x, length)
+                local key = View.BandKey(m)
+                if key then
+                    view.hvPairs[key] = p
                 end
             end
         end
