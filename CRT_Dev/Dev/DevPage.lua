@@ -130,7 +130,7 @@ local function build(pf)
     end
 
     -- Window log.
-    heading(pf, right, -284, "Window log", "Prints to chat every time something moves, sizes or rescales the main window: its anchor, its place on screen and the line of code that did it, and where it is one frame into a drag. For finding what makes the window jump. Click again to turn it off.")
+    heading(pf, right, -284, "Window log", "Prints to chat every time something moves, sizes or rescales the main window or the Timeline pop-out: its anchor, its place on screen and the line of code that did it, and where it is one frame into a drag. After a pop-out resize it also prints how the timeline laid out. For finding what makes a window jump or draw wrong. Click again to turn it off.")
     action(pf, right, -304, "Window log on or off", 160, function()
         CRT.WindowLog:Toggle()
     end)
