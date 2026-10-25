@@ -245,6 +245,70 @@ check("alerts share: apply only what is picked", function()
   assert(n == 1 and #R:List(9001) == 0 and CRT.db.alerts.special[9001].soaks.on == true, "only the special choice: " .. tostring(n))
 end)
 
+check("alerts share (players): Parts lists your alerts, in the order Export writes them", function()
+  sender()
+  local parts = AS:Parts({ special = true, reminders = true, bosses = { 9001 } })
+  local byId = {}
+  for _, p in ipairs(parts) do byId[p.id] = p end
+  assert(#parts == 4, "two Mech Alerts and two special alerts: " .. #parts)
+  assert(byId["r:9001:1"] and byId["r:9001:1"].kind == "reminder" and byId["r:9001:1"].label == "Swap" and byId["r:9001:1"].group == "mythic", "the Swap reminder")
+  assert(byId["r:9001:2"] and byId["r:9001:2"].group == "nh", "the typed reminder")
+  assert(byId["s:9001:soaks"] and byId["s:9001:soaks"].kind == "special" and byId["s:9001:soaks"].label == "Orb soaks" and byId["s:9001:soaks"].group == "any", "the soaks special alert")
+  assert(byId["s:9001:tanks"] and byId["s:9001:tanks"].group == "mythic", "the Mythic-only special alert")
+  for _, p in ipairs(parts) do assert(p.enc == 9001, "each part names its boss") end
+  CRT.db.alerts.reminders[9001][3] = { spellID = 4242, outputs = { alert = true } }
+  local spellOnly
+  for _, p in ipairs(AS:Parts({ reminders = true, bosses = { 9001 } })) do if p.id == "r:9001:3" then spellOnly = p end end
+  assert(spellOnly and spellOnly.label == "Spell4242", "a reminder with no text is named by its spell: " .. tostring(spellOnly and spellOnly.label))
+end)
+
+check("alerts share (players): Export with a pick holds only the ticked alerts", function()
+  sender()
+  local code, n = AS:Export({ special = true, reminders = true, bosses = { 9001 }, pick = function(p) return p.id == "r:9001:1" end })
+  assert(code and n == 1, "one part: " .. tostring(n))
+  local data = Share.Decode(code, "alerts", 1, AS.CAPS)
+  assert(data.boss[9001].mythic.reminders[1].text == "Swap" and #data.boss[9001].mythic.reminders == 1, "only Swap")
+  assert(data.boss[9001].nh == nil and data.boss[9001].any == nil and data.boss[9001].mythic.special == nil, "nothing else")
+  local none, why = AS:Export({ special = true, reminders = true, pick = function() return false end })
+  assert(none == nil and why == AS.TEXT.nothing, "nothing ticked says so: " .. tostring(why))
+end)
+
+check("alerts share (players): Read without definitions leaves a code's new definitions and their choices out", function()
+  sender()
+  S.dev[9001] = { { key = "devSample", label = "Sample", when = { times = "P1 0:20, 0:50" }, who = { mode = "everyone" } } }
+  CRT.db.alerts.special[9001].devSample = { on = true }
+  local dcode = AS:Export({ special = true, defs = true, bosses = { 9001 } })
+  receiver()
+  local info = AS:Read(dcode, { defs = false })
+  assert(info, "reads")
+  for _, it in ipairs(info.items) do
+    assert(it.kind ~= "def", "no definitions: " .. tostring(it.key))
+    assert(it.key ~= "devSample", "no choice for a definition this CRT doesn't ship")
+  end
+  assert(info.kinds.special == 2 and info.dropped == 0, "the two shipped choices, nothing counted as not valid: " .. info.kinds.special .. " " .. info.dropped)
+  AS:Apply(info)
+  assert(S:Get(9001, "devSample") == nil and next(S.dev) == nil, "no definition loaded")
+  local dev = AS:Read(dcode)
+  local defs = 0
+  for _, it in ipairs(dev.items) do if it.kind == "def" then defs = defs + 1 end end
+  assert(defs == 3, "the dev read still reads them: " .. defs)
+end)
+
+check("alerts share (players): the From line names the sender, the boss and the difficulty", function()
+  sender()
+  local mythic = AS:Read(AS:Export({ reminders = true, bosses = { 9001 }, pick = function(p) return p.id == "r:9001:1" end }), { defs = false })
+  assert(AS.FromLine(mythic) == "From Solex · Test Boss · Mythic", AS.FromLine(mythic))
+  local nh = AS:Read(AS:Export({ reminders = true, bosses = { 9001 }, pick = function(p) return p.id == "r:9001:2" end }), { defs = false })
+  assert(AS.FromLine(nh) == "From Solex · Test Boss · Normal/Heroic", AS.FromLine(nh))
+  local both = AS:Read(AS:Export({ reminders = true, bosses = { 9001 } }), { defs = false })
+  assert(AS.FromLine(both) == "From Solex · Test Boss · Normal/Heroic and Mythic", AS.FromLine(both))
+  local any = AS:Read(AS:Export({ special = true, bosses = { 9001 }, pick = function(p) return p.id == "s:9001:soaks" end }), { defs = false })
+  assert(AS.FromLine(any) == "From Solex · Test Boss", AS.FromLine(any))
+  CRT.db.alerts.reminders[9002] = { [5] = { text = "Plain", times = "0:10", outputs = { alert = true } } }
+  local two = AS:Read(AS:Export({ reminders = true }), { defs = false })
+  assert(AS.FromLine(two):find("^From Solex · 2 bosses"), AS.FromLine(two))
+end)
+
 check("alerts share: invalid fields and entries are dropped and counted", function()
   receiver()
   local payload = { v = 1, from = "Hand|cffff0000made|r", boss = {
