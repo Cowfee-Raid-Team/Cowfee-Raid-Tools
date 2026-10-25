@@ -12,8 +12,10 @@ local ADDON, CRT = ...
 -- Reading checks every field the way the editor does (Draft's and Reminders' parsers, Special.Read) and leaves
 -- out, and counts, anything that doesn't read. Read changes nothing: it compares each part with what you have
 -- (new, replaces yours, same as yours), and Apply writes the picked parts into the same store the panel uses.
--- AlertShare:Read and Apply are meant for any caller (the dev window now, players sharing their own alerts
--- later). Nothing is sent as an addon message: codes are pasted by hand. Saved data only grows.
+-- AlertShare:Read and Apply are meant for any caller: the dev window, and the players' Export and Import
+-- windows on Mech Alerts (Notes/AlertShareWindows.lua), which tick parts through AS:Parts and Export's pick, and
+-- Apply's pick, and read with { defs = false }. Nothing is sent as an addon message: codes are pasted by hand.
+-- Saved data only grows.
 
 local Alerts = CRT.Alerts
 
@@ -38,6 +40,12 @@ local TEXT = {
     defs = { "%d definition", "%d definitions" },
     empty = "nothing",
     boss = "encounter %d",
+    unnamed = "Reminder",
+    -- the Import window's line over its list: who, which boss, which difficulty
+    from = "From %s",
+    fromSep = " · ",
+    groups = { nh = "Normal/Heroic", mythic = "Mythic" },
+    bothGroups = "Normal/Heroic and Mythic",
 }
 AS.TEXT = TEXT
 
@@ -406,28 +414,71 @@ local function slot(boss, enc, group)
     return boss[enc][group]
 end
 
--- One boss's parts into the payload's boss table. Returns how many parts it added.
-local function collectBoss(boss, enc, opts)
-    local n = 0
+-- A reminder's name for a list: its text, else its spell's name, else "Reminder".
+function AS.ReminderLabel(r)
+    if type(r) ~= "table" then
+        return TEXT.unnamed
+    end
+    if trim(r.text) ~= "" then
+        return trim(r.text)
+    end
+    local name = CRT.AlertReminders.SpellName and CRT.AlertReminders.SpellName(r.spellID)
+    return name or TEXT.unnamed
+end
+
+-- Each of a boss's parts you could export, in the order they are written: fn(part, value), where part is
+-- { id = "r:<enc>:<reminder id>" or "s:<enc>:<key>", kind = "reminder" or "special", enc, group, label }
+-- and value is the clean reminder or your choices.
+local function eachPart(enc, opts, fn)
     local Special, Reminders = CRT.AlertSpecial, CRT.AlertReminders
     if opts.reminders then
         for _, e in ipairs(Reminders:List(enc)) do
             local clean = AS.CleanReminder(e.r)
             if clean then
-                local s = slot(boss, enc, Reminders.GroupOf(e.r) or "any")
-                s.reminders = s.reminders or {}
-                s.reminders[#s.reminders + 1] = clean
-                n = n + 1
+                fn({ id = "r:" .. enc .. ":" .. tostring(e.id), kind = "reminder", enc = enc, group = Reminders.GroupOf(e.r) or "any",
+                    label = AS.ReminderLabel(clean) }, clean)
             end
         end
     end
     if opts.special then
         for _, entry in ipairs(Special:List(enc)) do
-            local s = slot(boss, enc, entry.difficulty or "any")
-            s.special = s.special or {}
-            s.special[entry.key] = Special:Choices(enc, entry)
-            n = n + 1
+            fn({ id = "s:" .. enc .. ":" .. entry.key, kind = "special", enc = enc, group = entry.difficulty or "any", label = entry.label or entry.key, key = entry.key },
+                Special:Choices(enc, entry))
         end
+    end
+end
+
+-- The parts opts (as Collect, pick left aside) would export, for a list to tick: { part, ... } (eachPart).
+function AS:Parts(opts)
+    opts = opts or {}
+    local out = {}
+    for _, enc in ipairs(bossList(opts)) do
+        eachPart(enc, opts, function(part)
+            out[#out + 1] = part
+        end)
+    end
+    return out
+end
+
+-- One boss's parts into the payload's boss table, those opts.pick(part) keeps when it is given. Returns how
+-- many parts it added.
+local function collectBoss(boss, enc, opts)
+    local n = 0
+    eachPart(enc, opts, function(part, value)
+        if opts.pick and not opts.pick(part) then
+            return
+        end
+        local s = slot(boss, enc, part.group)
+        if part.kind == "reminder" then
+            s.reminders = s.reminders or {}
+            s.reminders[#s.reminders + 1] = value
+        else
+            s.special = s.special or {}
+            s.special[part.key] = value
+        end
+        n = n + 1
+    end)
+    if opts.special then
         if opts.defs then
             for _, d in ipairs(rawDefs(enc)) do
                 local s = slot(boss, enc, d.difficulty or "any")
@@ -441,7 +492,8 @@ local function collectBoss(boss, enc, opts)
 end
 
 -- The payload for opts: { bosses (a list of encounter IDs; nil for every boss), special (your choices),
--- reminders (your Mech Alerts), defs (the boss files' entries too: developer builds) }. Returns it and how many
+-- reminders (your Mech Alerts), pick (function(part) keeping only the parts it is true for, as AS:Parts lists
+-- them; nil keeps every one), defs (the boss files' entries too: developer builds) }. Returns it and how many
 -- parts it holds.
 function AS:Collect(opts)
     opts = opts or {}
@@ -535,7 +587,7 @@ local function readReminders(info, enc, group, list, taken)
                 info.dropped = info.dropped + 1
             end
             local match = findMatch(enc, group, clean, taken)
-            local item = { kind = "reminder", enc = enc, group = group, value = clean, label = clean.text }
+            local item = { kind = "reminder", enc = enc, group = group, value = clean, label = AS.ReminderLabel(clean) }
             if match then
                 taken[match.id] = true
                 item.target = match.id
@@ -548,7 +600,9 @@ local function readReminders(info, enc, group, list, taken)
     end
 end
 
-local function readSpecial(info, enc, group, map, defs)
+-- defs: the keys of the new definitions the code brings (their choices are read with them); skip: the keys of
+-- definitions left unread (a player's Import), whose choices are left out quietly.
+local function readSpecial(info, enc, group, map, defs, skip)
     local Special = CRT.AlertSpecial
     if type(map) ~= "table" then
         info.dropped = info.dropped + 1
@@ -556,7 +610,9 @@ local function readSpecial(info, enc, group, map, defs)
     end
     for key, v in pairs(map) do
         local entry = type(key) == "string" and Special:Get(enc, key)
-        if entry or (type(key) == "string" and defs[key]) then
+        if not entry and skip[key] then
+            -- a definition this CRT doesn't ship: not for a player's Import
+        elseif entry or (type(key) == "string" and defs[key]) then
             local base = entry and Special:Choices(enc, entry) or { on = false, show = {}, speak = true, markers = false, fill = "up" }
             if not entry then
                 for _, k in ipairs(SHOW_KEYS) do
@@ -615,8 +671,10 @@ end
 -- Reads a pasted code without changing anything. Returns { from, date, version, bosses = { encounterID, ... },
 -- items = { { kind = "reminder" | "special" | "def", enc, group, key, label, value, status = "new" | "replace"
 -- | "same" | "differs" (a definition), target (the reminder replaced) } }, counts, kinds, dropped }, or nil and
--- the reason.
-function AS:Read(text)
+-- the reason. opts.defs false (a player's Import) reads no definitions: a player never gets a special alert
+-- this CRT doesn't ship, only choices on the ones it does; the developer tool reads them (opts nil).
+function AS:Read(text, opts)
+    local readDefinitions = not (opts and opts.defs == false)
     local data, err = CRT.Share.Decode(text, AS.KIND, AS.VERSION, AS.CAPS)
     if not data then
         return nil, err
@@ -651,12 +709,18 @@ function AS:Read(text)
         end
         table.sort(groups)
         -- definitions first: a choice for a definition the code brings is read with it
-        local newDefs = {}
+        local newDefs, skip = {}, {}
         for _, group in ipairs(groups) do
             local part = data.boss[enc][group]
-            if part.defs ~= nil then
+            if part.defs ~= nil and readDefinitions then
                 for k in pairs(readDefs(info, enc, group, part.defs)) do
                     newDefs[k] = true
+                end
+            elseif type(part.defs) == "table" then
+                for _, d in ipairs(part.defs) do
+                    if type(d) == "table" and type(d.key) == "string" then
+                        skip[d.key] = true
+                    end
                 end
             end
         end
@@ -666,7 +730,7 @@ function AS:Read(text)
                 readReminders(info, enc, group, part.reminders, taken)
             end
             if part.special ~= nil then
-                readSpecial(info, enc, group, part.special, newDefs)
+                readSpecial(info, enc, group, part.special, newDefs, skip)
             end
         end
     end
@@ -698,6 +762,25 @@ function AS.Summary(info)
         line = line .. TEXT.dropped:format(info.dropped)
     end
     return line
+end
+
+-- "From <name> · <boss> · <difficulty>": the boss, or how many; the difficulty group of every part ("any"
+-- parts left aside), both, or none when every part is for any difficulty.
+function AS.FromLine(info)
+    local parts = { TEXT.from:format(info.from) }
+    parts[2] = #info.bosses == 1 and bossName(info.bosses[1]) or TEXT.bosses:format(#info.bosses)
+    local seen = {}
+    for _, it in ipairs(info.items) do
+        if TEXT.groups[it.group] then
+            seen[it.group] = true
+        end
+    end
+    if seen.nh and seen.mythic then
+        parts[3] = TEXT.bothGroups
+    elseif seen.nh or seen.mythic then
+        parts[3] = TEXT.groups[seen.nh and "nh" or "mythic"]
+    end
+    return table.concat(parts, TEXT.fromSep)
 end
 
 -- Applying ---------------------------------------------------------------------------------------------
