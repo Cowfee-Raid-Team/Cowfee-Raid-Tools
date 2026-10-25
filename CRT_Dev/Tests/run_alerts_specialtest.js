@@ -65,7 +65,8 @@ local errors = {}
 function geterrorhandler() return function(e) errors[#errors + 1] = tostring(e) end end
 function issecretvalue() return false end
 function InCombatLockdown() return false end
-C_Timer = { After = function() end }
+local timers = {}
+C_Timer = { After = function(s, fn) timers[#timers + 1] = { s = s, fn = fn } end }
 SOUNDKIT = { RAID_WARNING = 8959, READY_CHECK = 8960 }
 C_Spell = { GetSpellName = function(id) return "Spell" .. id end, GetSpellTexture = function(id) return "tex" .. id end,
   GetSpellInfo = function(id) return { name = "Spell" .. id, iconID = 100000 + id } end }
@@ -239,15 +240,43 @@ check("special test: with Previews on, the bar and the callout are the alert's, 
   assert(#errors == 0, tostring(errors[1]))
 end)
 
--- A quick test's run is never stopped: once its alert has passed, it is still "running" with nothing due. The
--- samples come back all the same, the second filling up with its two ticks, and they keep running.
-check("special test: with Previews on, the samples come back once the test has played, its run still going", function()
+-- A quick test's run ends by itself once its alert has played (a timer, after the bar's end plus a rest).
+check("special test: the run stops by itself after the alert, never a newer run", function()
+  A:Stop(true) wipe(spoken) wipe(errors) wipe(timers)
+  clock = 100
+  assert(E:TestItem(ENC, S:TestItem(ENC, entry, "mythic")), "the test starts")
+  assert(#timers == 1, "one end timer: " .. #timers)
+  -- cast at 10 s, bar to 5 s after it, then a rest
+  assert(timers[1].s >= 15 and timers[1].s < 25, "after the bar's end: " .. tostring(timers[1].s))
+  assert(A.running and A.run.reason == "test", "going before the timer")
+  timers[1].fn()
+  assert(not A.running, "stopped once the alert has played")
+  -- a newer Test: the old timer leaves it alone
+  wipe(timers)
+  assert(E:TestItem(ENC, S:TestItem(ENC, entry, "mythic")), "test 1")
+  assert(E:TestItem(ENC, S:TestItem(ENC, entry, "mythic")), "test 2")
+  assert(#timers == 2, "two timers")
+  timers[1].fn()
+  assert(A.running, "the old test's timer does not stop the newer one")
+  timers[2].fn()
+  assert(not A.running, "its own timer does")
+  -- a pull started meanwhile
+  wipe(timers)
+  assert(E:TestItem(ENC, S:TestItem(ENC, entry, "mythic")), "test 3")
+  A:Start(ENC, "Mythic", "encounter", { difficultyID = 16 })
+  timers[1].fn()
+  assert(A.running and A.run.reason == "encounter", "a pull is never stopped by a test's timer")
+  A:Stop(true)
+  assert(#errors == 0, tostring(errors[1]))
+end)
+
+-- The samples come back once the test has played, the second filling up with its two ticks, and keep running.
+check("special test: with Previews on, the samples come back once the test has played", function()
   A:Stop(true) wipe(spoken) wipe(errors)
   clock = 100
   setPreviews(true)
   assert(E:TestItem(ENC, S:TestItem(ENC, entry, "mythic")), "the test starts")
   checkBar(100, 10, "up")
-  assert(A.running, "the test's run is still going")
   at(120)
   local v = B:Visible()
   assert(#v == 3, "three sample bars: " .. #v)
