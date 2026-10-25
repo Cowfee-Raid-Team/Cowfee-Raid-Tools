@@ -13,6 +13,13 @@ local ADDON, CRT = ...
 -- With showType on (the default) a bar whose alert has a known ability type shows it after the text: "Hungering Pyre
 -- (soak)"; a long text is cut with an ellipsis before the type, so the type and the seconds stay in view.
 -- A bar starts full: its fill runs over the time left when it first showed, at most `ahead`.
+-- Impact ticks: any line may carry ticks = { s, ... }, seconds after its cast (the line's `at`) when each impact
+-- lands. Each is a thin line on the bar in the theme's text colour, placed on the fill's time scale, so the fill
+-- reaches it as that impact lands; one already passed fades. barTo = "last" (the default with ticks) runs the bar
+-- to the last tick, so its seconds count to the last impact; "cast" ends it at the cast. barEnd (seconds after the
+-- cast) ends it there instead, and barStart (seconds after the cast) is when the bar appears: its fill then runs
+-- over barEnd - barStart, not over `ahead` (a special alert's bar = { start, length, ticks }, Alerts/Special.lua).
+-- Only the bars read these; the callout, speech and the other areas keep the cast's time.
 
 local Areas = CRT.AlertAreas
 local Alerts = CRT.Alerts
@@ -71,6 +78,9 @@ local MAX_SPACING = 20
 local BORDER_WIDTH = { none = 0, thin = 1, thick = 2 }
 local DEFAULT_BORDER = "none" -- bars had no border before the setting
 local BORDER_COLOR = "outline" -- the theme's darkest colour, drawn opaque (CRT_Dev/StyleGuide.md)
+local TICK_COLOR = "text"  -- an impact tick, in the theme's text colour
+local TICK_WIDTH = 2
+local TICK_PASSED_ALPHA = 0.3 -- a tick whose impact has landed
 local BORDER_OPTIONS = {
     { key = "none", label = TEXT.noBorder },
     { key = "thin", label = TEXT.thin },
@@ -221,9 +231,97 @@ local function typeWord(line, s)
     return format(TEXT.typeFormat, key)
 end
 
--- What one bar shows. The fill is over the time left when the line first showed, at most `ahead`.
+-- A line's impact ticks and bar span (see the top of this file), as seconds after its cast: the ticks in order,
+-- where the bar ends and where it starts (nil: as any bar, when it first shows). Nil for a line with none.
+local function span(line)
+    local list = {}
+    if type(line.ticks) == "table" then
+        for _, t in ipairs(line.ticks) do
+            if type(t) == "number" and t == t and t > -math.huge and t < math.huge then
+                list[#list + 1] = t
+            end
+        end
+    end
+    local start = type(line.barStart) == "number" and line.barStart or nil
+    local finish = type(line.barEnd) == "number" and line.barEnd or nil
+    if #list == 0 and not start and not finish then
+        return nil
+    end
+    table.sort(list)
+    if not finish then
+        finish = (line.barTo ~= "cast" and #list > 0) and math.max(0, list[#list]) or 0
+    end
+    if start and start >= finish then
+        start = nil -- a bar that would end before it starts shows as any bar
+    end
+    return list, finish, start
+end
+
+-- The lines as the bars draw them: a line with ticks or a span copied with `at` moved to where its bar ends,
+-- castAt (its cast), tickAt (each impact's time) and barFrom (when its bar appears, or nil). Made once per
+-- engine lines table (Alerts:Lines hands out the same one until something changes), never per frame.
+local barCache = setmetatable({}, { __mode = "k" })
+local function barLines(src)
+    local done = barCache[src]
+    if done then
+        return done.lines, done.starts
+    end
+    local out, starts = src, false
+    for i, line in ipairs(src) do
+        local ticks, finish, start = span(line)
+        if ticks then
+            if out == src then
+                out = {}
+                for j = 1, i - 1 do
+                    out[j] = src[j]
+                end
+            end
+            local c = {}
+            for k, v in pairs(line) do
+                c[k] = v
+            end
+            c.castAt = line.at
+            c.at = line.at + finish
+            c.tickAt = {}
+            for j, t in ipairs(ticks) do
+                c.tickAt[j] = line.at + t
+            end
+            c.barFrom = start and line.at + start or nil
+            starts = starts or start ~= nil
+            out[i] = c
+        elseif out ~= src then
+            out[i] = line
+        end
+    end
+    barCache[src] = { lines = out, starts = starts }
+    return out, starts
+end
+
+-- Where each tick sits on the bar, 0 (the left, empty end) to 1 (full): the fill's fraction at the moment its
+-- impact lands, so the fill's edge reaches it then. Ticks off the bar (before it showed) are left out.
+local function tickMarks(line, now, total)
+    if type(line.tickAt) ~= "table" or not (total and total > 0) then
+        return nil
+    end
+    local out = {}
+    for _, at in ipairs(line.tickAt) do
+        local pos = (line.at - at) / total
+        if pos >= 0 and pos <= 1 then
+            out[#out + 1] = { pos = pos, passed = now >= at }
+        end
+    end
+    return #out > 0 and out or nil
+end
+
+-- What one bar shows. The fill is over the time left when the line first showed, at most `ahead`; a bar with
+-- its own start (barFrom) fills over its own length.
 local function row(line, now, ahead, shownAt, s)
-    local total = math.min(ahead, line.at - (shownAt or now))
+    local total
+    if line.barFrom then
+        total = line.at - line.barFrom
+    else
+        total = math.min(ahead, line.at - (shownAt or now))
+    end
     local fraction = total > 0 and (line.at - now) / total or 0
     local color, from = Areas.DrawColor(line, colorOf(s.barColor, DEFAULT_BAR_COLOR))
     color = color or DEFAULT_BAR_COLOR
@@ -235,6 +333,7 @@ local function row(line, now, ahead, shownAt, s)
         lineColor = from ~= "custom" and color or nil,
         color = color,
         fraction = math.max(0, math.min(1, fraction)),
+        ticks = tickMarks(line, now, total),
     }
 end
 
@@ -269,6 +368,34 @@ local function make(parent)
     return bar
 end
 
+-- The impact ticks: one thin line per tick, full height, at the fill's edge for that moment; faded once passed.
+-- Made on first need and kept with the bar.
+local function drawTicks(bar, marks, left, room, height)
+    bar.tickLines = bar.tickLines or {}
+    local pool = bar.tickLines
+    local w = snap(TICK_WIDTH, scaleOf(bar), 1)
+    local n = marks and #marks or 0
+    for i = 1, n do
+        local t = pool[i]
+        if not t then
+            t = bar:CreateTexture(nil, "OVERLAY")
+            UI.Tint(t, "SetColorTexture", TICK_COLOR, 1)
+            pool[i] = t
+        end
+        local m = marks[i]
+        t:ClearAllPoints()
+        -- centred on its moment, kept inside the bar at either end
+        local x = math.max(left, math.min(left + room - w, left + room * m.pos - w / 2))
+        t:SetPoint("TOPLEFT", bar, "TOPLEFT", x, 0)
+        t:SetSize(w, height)
+        t:SetAlpha(m.passed and TICK_PASSED_ALPHA or 1)
+        t:Show()
+    end
+    for i = n + 1, #pool do
+        pool[i]:Hide()
+    end
+end
+
 local function draw(bar, line, now, s, shownAt)
     local width, height, _, border = metrics(s, scaleOf(bar))
     drawBorder(bar, border)
@@ -300,6 +427,7 @@ local function draw(bar, line, now, s, shownAt)
     bar.fill:SetSize(math.max(fillWidth, 1), height)
     bar.fill:SetColorTexture(r.color[1], r.color[2], r.color[3], r.lineColor and LINE_ALPHA or r.color[4] or 1)
     bar.fill:SetShown(fillWidth > 0)
+    drawTicks(bar, r.ticks, left, width - left, height)
 
     bar.time:SetText(r.time)
     bar.text:SetText(r.text)
@@ -319,8 +447,19 @@ local function draw(bar, line, now, s, shownAt)
 end
 
 -- The lines the bars show: those due within `ahead`, soonest first, and how many the cap left out.
+-- A line with its own start (barFrom) waits for it.
 local function lines(now, s, cap)
-    return Rules.Bars(Alerts:Lines(now), now, aheadOf(s), cap)
+    local list, starts = barLines(Alerts:Lines(now))
+    if starts then
+        local due = {}
+        for _, line in ipairs(list) do
+            if not (line.barFrom and now < line.barFrom) then
+                due[#due + 1] = line
+            end
+        end
+        list = due
+    end
+    return Rules.Bars(list, now, aheadOf(s), cap)
 end
 
 -- "+N more" under the last bar (above it when they grow up, under the first when they grow sideways).
@@ -504,6 +643,7 @@ Bars = Areas.New({
 })
 CRT.AlertBars = Bars
 Bars.Metrics = metrics -- for the tests
+Bars.Span = span
 
 -- For the tests: one table per bar on screen (text, time, icon, color, fraction), and the count left out.
 local widgets = Bars.Visible
