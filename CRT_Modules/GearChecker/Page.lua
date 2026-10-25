@@ -8,7 +8,9 @@ local ADDON, CRT = ...
 -- enchant, a dot at the bottom left (green, or red when missing). A missing enchant or gem outlines the
 -- cell red, a low item orange. Filter chips pick who shows, and on an issue filter each row draws only the
 -- cells with that issue (GC.CellShows), the rest empty; the Below chip does the same for items under a
--- track picked from its arrow's menu (CRTDB.gearChecker.belowTrack). Refresh reads your own gear again, asks
+-- track picked from its arrow's menu (CRTDB.gearChecker.belowTrack). The Extra filters button after the
+-- chips opens a small window (UI.Window dialog) of check boxes: each ticked one adds its chip (GC:ExtraChecks).
+-- Refresh reads your own gear again, asks
 -- the group's CRTs and inspects the rest (Comm.lua, Inspect.lua), and says how many have CRT; opening the
 -- page reads your own gear again too. Hover a cell for the exact item,
 -- or the issues badge for the list of issues and, under Not an issue, the info checks and items below the
@@ -25,7 +27,8 @@ local ADDON, CRT = ...
 -- RAID_CLASS_COLORS; C_Item.GetItemQualityByID(itemInfo) and its colour from Gear.QualityColor (ColorManager, else
 -- ITEM_QUALITY_COLORS), redrawn on ITEM_DATA_LOAD_RESULT (itemID, success); C_Item.GetItemInfoInstant (the
 -- icon); TextureBase:SetRotation(radians); the WowScrollBoxList, MinimalScrollBar and
--- ScrollUtil.InitScrollBoxListWithScrollBar as Loot History uses them.
+-- ScrollUtil.InitScrollBoxListWithScrollBar as Loot History uses them. Read 2026-10-24: UICheckButtonTemplate
+-- and InputBoxTemplate (EditBox:SetNumeric, SetMaxLetters, OnEditFocusLost) as other pages use them; Frame:Raise.
 
 local UI = CRT.UI
 local GC = CRT.GearChecker
@@ -33,7 +36,7 @@ local Gear = CRT.Gear
 
 local TEXT = {
     title = "Gear Checker",
-    help = "Shows everyone's gear and what to fix: red for a missing enchant or gem, orange for an item %d or more item levels under their average, and a small square for a season check (blue is just to know). A tag like H4 is the item's upgrade track and rank. Pick a filter to see only those items, and right-click a player to send them their issues.",
+    help = "Shows everyone's gear and what to fix: red for a missing enchant or gem, orange for an item %d or more item levels under their average, and a small square for a season check or an extra filter (blue is just to know). A tag like H4 is the item's upgrade track and rank. Pick a filter to see only those items, and right-click a player to send them their issues. Extra filters adds more filters.",
     refresh = "Refresh (%d/%d have CRT)",
     popOut = "Pop out",
     dock = "Dock",
@@ -60,6 +63,7 @@ local TEXT = {
     inspect = "Inspect %s",
     empty = "Nothing here",
     count = "%d shown",
+    extra = "Extra filters",
 }
 
 -- Sizes in pixels. A row is NAME + ILVL + ISSUES + TRACKS + 16 cells; with the scroll bar it fits UI.PAGE_W
@@ -76,6 +80,8 @@ local L = {
     icon = 30, edge = 2, gem = 7, gemInner = 5, gemGap = 1, dot = 8, badgeW = 26, badgeH = 16,
     barGap = UI.SCROLL_GAP, barW = 8, -- the gap before the bar: the shared scroll bar gap
     popW = 1040, popH = 560, popMinW = 1024, popMinH = 300,
+    helpW = 24, -- room kept right of the Extra filters button for the page's (?)
+    extraW = 280, extraH = 160, extraRowH = 28, extraCheck = 24, extraEditW = 48, extraEditH = 20, -- the Extra filters window
 }
 L.cellsX = L.nameW + L.ilvlW + L.issuesW + L.tracksW -- where the first cell starts
 L.rowW = L.cellsX + #Gear.SLOTS * L.cellW
@@ -97,7 +103,7 @@ local DISC = (CRT.MEDIA or ("Interface\\AddOns\\" .. ADDON .. "\\CRT_Media\\Medi
 local WHITE = "Interface\\Buttons\\WHITE8X8"
 
 -- The page's state, one table so the file stays far under Lua 5.1's upvalue limit.
-local P = { rows = {}, chips = {}, headers = {}, refreshedOnce = false, popped = false }
+local P = { rows = {}, chips = {}, chipOf = {}, headers = {}, colHeads = {}, refreshedOnce = false, popped = false }
 GC.Page = P
 
 -- Colours by look -------------------------------------------------------------------------------------------
@@ -273,9 +279,28 @@ local function findingColor(r)
     return COLORS[worst or "bad"] or COLORS.bad
 end
 
+-- An empty slot with an issue (Empty slot): the slot's name, the issue in its colour, the shift-click hint.
+local function emptyEnter(cell, r)
+    local problems = GC.Problems(r)
+    if not (problems and GameTooltip) then
+        return
+    end
+    local slot = Gear.Slot(r.slot)
+    UI.TooltipOwner(GameTooltip, cell, "ANCHOR_RIGHT")
+    GameTooltip:SetText(slot and slot.name or "", textColor("heading"))
+    local c = findingColor(r)
+    GameTooltip:AddLine(problems, c[1], c[2], c[3], true)
+    GameTooltip:AddLine(TEXT.shiftClick, 0.6, 0.6, 0.6, true)
+    GameTooltip:Show()
+end
+
 -- The item's tooltip, then its issues in their colour (and the shift-click hint), then its info checks in blue.
 local function cellEnter(cell)
     local r = cell.result
+    if r and r.empty then
+        emptyEnter(cell, r)
+        return
+    end
     if not (r and r.piece) then
         return
     end
@@ -402,7 +427,7 @@ local function paintCell(c, row, r, shown)
         c.trackBack:SetColorTexture(0, 0, 0, 0.7)
         c.trackBack:SetWidth(math.min(c.trackTag:GetStringWidth() or 0, L.trackMaxW) + 2) -- as wide as the text
     end
-    local top = piece and GC.TopCheck(r)
+    local top = r and GC.TopCheck(r) -- an empty slot's own check (Empty slot) too
     c.tag:SetShown(top ~= nil)
     if top then
         local t = COLORS[top.severity] or COLORS.bad
@@ -609,6 +634,9 @@ local function paintHeaders()
             chip.arrow.icon:SetVertexColor(textColor("text"))
         end
     end
+    if P.extraButton then
+        UI:StyleTab(P.extraButton, P.extraWindow ~= nil and P.extraWindow:IsShown()) -- looks picked while its window is open
+    end
 end
 
 -- Works out the rows (once per change) and hands them to the list; only while the page or the pop-out shows.
@@ -621,6 +649,7 @@ function P.Refresh()
         return
     end
     P.dirty = false
+    P.LayChips() -- only when the chips changed (an extra filter ticked, a new level)
     local filter = GC:FilterKey(settings().filter or "all") -- a check the season no longer has: Everyone
     P.filter = filter -- the rows' cells are drawn for it (P.InitRow)
     local rows = GC:Rows(filter)
@@ -740,26 +769,160 @@ local function makeChip(parent, filter)
     return b
 end
 
--- The chips (GC:Filters: the four, then one per season check) from the left, on as many rows as they need
--- to stay left of L.chipsW. Returns how far the rows below move down.
-local function layChips(body)
+-- A filter's chip, made once per key and kept; a chip whose label changed (Item level below's level) is
+-- given the new label and resized to it. The Below chip keeps its own size (its widest track).
+local function chipFor(body, filter)
+    local chip = P.chipOf[filter.key]
+    if not chip then
+        chip = makeChip(body, filter)
+        P.chipOf[filter.key] = chip
+    elseif not chip.below and chip.label ~= filter.label then
+        chip.label = filter.label
+        chip.text:SetText(filter.label)
+        chip:SetSize(math.ceil(chip.text:GetStringWidth() or 0) + 2 * L.chipPad, L.chipH)
+    end
+    return chip
+end
+
+-- The chips (GC:Filters: the four, the ticked extra filters, one per season check, Below), then the Extra
+-- filters button and its (?), from the left on as many rows as they need to stay left of L.chipsW; the
+-- headings and the list move down with the rows. Laid out again only when the filters change.
+function P.LayChips()
+    local filters = GC:Filters()
+    local sig = {}
+    for i, f in ipairs(filters) do
+        sig[i] = f.key .. "=" .. f.label
+    end
+    sig = table.concat(sig, "\n")
+    if sig == P.chipsSig then
+        return
+    end
+    P.chipsSig = sig
+    for _, chip in ipairs(P.chips) do
+        chip:Hide()
+    end
+    P.chips = {}
     local x, y = 0, 0
-    for _, filter in ipairs(GC:Filters()) do
-        local chip = makeChip(body, filter)
-        if x > 0 and x + chip:GetWidth() > L.chipsW then
+    local function place(b, room)
+        if x > 0 and x + b:GetWidth() + room > L.chipsW then
             x, y = 0, y - (L.chipH + L.chipGap)
         end
-        chip:SetPoint("TOPLEFT", x, y)
-        P.chips[#P.chips + 1] = chip
-        x = x + chip:GetWidth() + L.chipGap
+        b:ClearAllPoints()
+        b:SetPoint("TOPLEFT", x, y)
+        b:Show()
+        x = x + b:GetWidth() + L.chipGap
     end
-    return y
+    for _, filter in ipairs(filters) do
+        local chip = chipFor(P.body, filter)
+        place(chip, 0)
+        P.chips[#P.chips + 1] = chip
+    end
+    place(P.extraButton, L.helpW) -- with room for the (?) right of it
+    P.chipsDown = y
+    for _, h in ipairs(P.colHeads) do
+        h:ClearAllPoints()
+        h:SetPoint("TOPLEFT", h.x0, L.headY + y)
+    end
+    if P.box then
+        P.box:ClearAllPoints()
+        P.box:SetPoint("TOPLEFT", 0, L.listY + y)
+        P.box:SetPoint("BOTTOMLEFT", 0, 0)
+    end
+end
+
+-- The Extra filters window -----------------------------------------------------------------------------------
+
+-- A check box per extra filter (GC.EXTRA_FILTERS), each with its (?); Item level below has a number box for
+-- its level. A tick or a level is saved (GC:SetExtra) and the page redrawn, its chips with it.
+local function extraNumber(parent, anchor)
+    local edit = CreateFrame("EditBox", nil, parent, "InputBoxTemplate")
+    edit:SetAutoFocus(false)
+    edit:SetFontObject(CRTFontHighlight)
+    edit:SetNumeric(true)
+    edit:SetMaxLetters(4)
+    edit:SetSize(L.extraEditW, L.extraEditH)
+    edit:SetPoint("LEFT", anchor, "RIGHT", 10, 0)
+    edit:SetText(tostring(GC:MinIlvl()))
+    edit:SetScript("OnEnterPressed", function(self)
+        self:ClearFocus()
+    end)
+    edit:SetScript("OnEscapePressed", function(self)
+        self:SetText(tostring(GC:MinIlvl()))
+        self:ClearFocus()
+    end)
+    edit:SetScript("OnEditFocusLost", function(self)
+        GC:SetExtra("minIlvl", tonumber(self:GetText()) or 0)
+        self:SetText(tostring(GC:MinIlvl()))
+        P.Refresh()
+    end)
+    return edit
+end
+
+local function buildExtra()
+    local win = UI.Window("CowfeeRaidToolsGearCheckerExtra", {
+        kind = "dialog", title = TEXT.extra, layer = "popups", width = L.extraW, height = L.extraH,
+    })
+    P.extraWindow = win
+    P.extraChecks = {}
+    local c = win.content
+    for i, f in ipairs(GC.EXTRA_FILTERS) do
+        local cb = CreateFrame("CheckButton", nil, c, "UICheckButtonTemplate")
+        cb:SetSize(L.extraCheck, L.extraCheck)
+        cb:SetPoint("TOPLEFT", 0, -(i - 1) * L.extraRowH)
+        local name = f.option or f.label
+        cb.label = c:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
+        cb.label:SetPoint("LEFT", cb, "RIGHT", 2, 0)
+        cb.label:SetText(name)
+        cb.key = f.key
+        -- the saved tick decides, not the box's own state, so the two can't drift apart
+        cb:SetScript("OnClick", function(self)
+            GC:SetExtra(f.key, GC:Extra()[f.key] ~= true)
+            self:SetChecked(GC:Extra()[f.key] == true)
+            P.Refresh()
+        end)
+        local helpOn = cb
+        if f.number then
+            P.minIlvlEdit = extraNumber(c, cb.label)
+            helpOn = P.minIlvlEdit
+        end
+        UI.HelpRight(helpOn, name, f.help)
+        P.extraChecks[i] = cb
+    end
+    win:HookScript("OnShow", paintHeaders)
+    win:HookScript("OnHide", paintHeaders)
+    UI:SkinTree(win)
+end
+
+-- Opens the window under the button, its boxes showing what is saved, or closes it.
+function P.ToggleExtra()
+    if not P.extraWindow then
+        buildExtra()
+    end
+    local win = P.extraWindow
+    if win:IsShown() then
+        win:Hide()
+        return
+    end
+    for _, cb in ipairs(P.extraChecks) do
+        cb:SetChecked(GC:Extra()[cb.key] == true)
+        cb.label:SetTextColor(textColor("text"))
+    end
+    P.minIlvlEdit:SetText(tostring(GC:MinIlvl()))
+    win:SetScale(UI:Scale() / 100)
+    win:ClearAllPoints()
+    win:SetPoint("TOPLEFT", P.extraButton, "BOTTOMLEFT", 0, -4)
+    win:Show()
+    pcall(win.Raise, win) -- over the pop-out, which is on the same layer
+    UI:SkinTree(win)
 end
 
 local function buildBody(body)
-    local down = layChips(body)
-    P.chipsDown = down
-    UI.HelpRight(P.chips[#P.chips], TEXT.title, string.format(TEXT.help, GC.LOW_ILVL))
+    -- the Extra filters button: a chip's look, after the chips (P.LayChips places it)
+    P.extraButton = makeChip(body, { key = "extraFilters", label = TEXT.extra })
+    P.extraButton:SetScript("OnClick", function()
+        P.ToggleExtra()
+    end)
+    UI.HelpRight(P.extraButton, TEXT.title, string.format(TEXT.help, GC.LOW_ILVL))
 
     P.popButton = UI.PanelButton(body, TEXT.popOut, L.buttonH, function()
         P.TogglePopout()
@@ -775,12 +938,13 @@ local function buildBody(body)
     -- the column headings, over the list's columns
     local function heading(text, x0, w, justify)
         local h = body:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-        h:SetPoint("TOPLEFT", x0, L.headY + down)
+        h.x0 = x0 -- P.LayChips puts it under the chips' rows
         h:SetWidth(w)
         h:SetJustifyH(justify or "CENTER")
         h:SetWordWrap(false)
         h:SetText(text)
         P.headers[#P.headers + 1] = h
+        P.colHeads[#P.colHeads + 1] = h
         return h
     end
     heading(TEXT.name, 6, L.nameW - 6, "LEFT")
@@ -792,9 +956,7 @@ local function buildBody(body)
     end
 
     local box = CreateFrame("Frame", nil, body, "WowScrollBoxList")
-    box:SetPoint("TOPLEFT", 0, L.listY + down)
-    box:SetPoint("BOTTOMLEFT", 0, 0)
-    box:SetWidth(L.rowW)
+    box:SetWidth(L.rowW) -- placed by P.LayChips, under the chips' rows
     local bar = CreateFrame("EventFrame", nil, body, "MinimalScrollBar")
     UI:SkinScrollBar(bar)
     bar:SetPoint("TOPLEFT", box, "TOPRIGHT", UI.SCROLL_GAP, 0)
@@ -804,6 +966,7 @@ local function buildBody(body)
     view:SetElementInitializer("Button", P.InitRow)
     ScrollUtil.InitScrollBoxListWithScrollBar(box, bar, view)
     P.box, P.bar = box, bar
+    P.LayChips()
 end
 
 -- The pop-out window ------------------------------------------------------------------------------------------
