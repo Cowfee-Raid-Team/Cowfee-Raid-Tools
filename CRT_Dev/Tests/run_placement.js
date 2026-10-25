@@ -59,10 +59,21 @@ local function mock(kind, parent, template, name)
     SetPoint = function(self, point, rel, rp, x, y)
       if type(rel) == "number" then rel, rp, x, y = nil, nil, rel, rp end
       if type(rp) == "number" then rp, x, y = nil, rp, x end
+      -- as the game: an anchor-restricted region can't be anchored to from another hierarchy
+      if rel and (rel.anchorRestricted or rel.refuseAnchors) then error("anchor family connection") end
+      self.layoutCalls = (self.layoutCalls or 0) + 1
       table.insert(self.pts, { point = point, rel = rel or self.parent or UIParent, rp = rp or point, x = x or 0, y = y or 0 })
     end,
-    ClearAllPoints = function(self) self.pts = {} end,
-    GetPoint = function(self) local p = self.pts[1] if p then return p.point, p.rel, p.rp, p.x, p.y end end,
+    ClearAllPoints = function(self) self.layoutCalls = (self.layoutCalls or 0) + 1 self.pts = {} end,
+    GetPoint = function(self, i) local p = self.pts[i or 1] if p then return p.point, p.rel, p.rp, p.x, p.y end end,
+    GetNumPoints = function(self) return #self.pts end,
+    GetName = function(self) return self.name end,
+    GetParent = function(self) return self.parent end,
+    IsProtected = function(self) return self.protected == true, false end,
+    IsForbidden = function(self) return self.forbidden == true end,
+    IsAnchoringRestricted = function(self) return self.anchorRestricted == true end,
+    RegisterEvent = function(self, e) self.events = self.events or {} self.events[e] = true end,
+    UnregisterEvent = function(self, e) if self.events then self.events[e] = nil end end,
     GetCenter = function(self) local cx, cy = rect(self) return cx, cy end,
     SetSize = function(self, w, h) self.w, self.h = w, h end,
     SetWidth = function(self, w) self.w = w end, SetHeight = function(self, h) self.h = h end,
@@ -96,13 +107,31 @@ local function mock(kind, parent, template, name)
     if type(k) == "string" and k:find("^%u") then return function() end end
   end })
 end
-UIParent = mock("Frame")
+UIParent = mock("Frame", nil, nil, "UIParent")
 UIParent:SetSize(SCREEN_W, SCREEN_H)
-function CreateFrame(kind, name, parent, template) return mock(kind, parent, template, name) end
+WorldFrame = mock("Frame", nil, nil, "WorldFrame")
+WorldFrame:SetSize(SCREEN_W, SCREEN_H)
+WorldFrame:SetPoint("CENTER", UIParent, "CENTER")
+-- named frames are globals, as in the game
+function CreateFrame(kind, name, parent, template) local f = mock(kind, parent, template, name) if name then _G[name] = f end return f end
 function InCombatLockdown() return inCombat end
 function IsShiftKeyDown() return shiftDown end
 local cursorX, cursorY = 0, 0
 function GetCursorPosition() return cursorX, cursorY end
+local focus -- the region under the cursor (GetMouseFoci's first)
+function GetMouseFoci() return { focus } end
+local timers, timersEver = {}, 0
+C_Timer = { After = function(d, fn) timersEver = timersEver + 1 timers[#timers + 1] = { d, fn } end }
+-- an event to every frame that registered it
+local function fire(event, ...)
+  for _, f in ipairs(frames) do
+    if f.events and f.events[event] and f.scripts.OnEvent then f.scripts.OnEvent(f, event, ...) end
+  end
+end
+local function runTimers()
+  local n = 0
+  while #timers > 0 and n < 100 do n = n + 1 local t = table.remove(timers, 1) t[2]() end
+end
 function issecretvalue() return false end
 local errorLines = {}
 UIErrorsFrame = { AddMessage = function(_, text) errorLines[#errorLines + 1] = text end }
@@ -538,6 +567,227 @@ do
   check(h.w == 600, "and is as wide as a wide frame")
 end
 
+-- anchoring to any named frame on screen (a unit frame from any addon) ------------------------------------
+local T = P.TEXT
+local Q = el("qpanel", {}, { point = "TOPLEFT", relativePoint = "CENTER", x = -100, y = -200 }, { title = "Q panel", point = "TOPLEFT" })
+local fq, hq = make(Q, 160, 40)
+-- a unit frame: named, protected, with an anonymous bar and a text on it
+local unit = CreateFrame("Button", "TestUnitFrame", UIParent)
+unit:SetSize(200, 60) unit:SetPoint("CENTER", UIParent, "CENTER", -300, -250) unit.protected = true
+local bar = CreateFrame("StatusBar", nil, unit) bar:SetSize(180, 20) bar:SetPoint("CENTER", unit, "CENTER")
+local barText = bar:CreateFontString()
+local fr0, name0, own0 = P.ResolveFocus(barText)
+check(fr0 == unit and name0 == "TestUnitFrame" and not own0, "the nearest named frame up from the hovered region: " .. tostring(name0))
+local notGlobal = CreateFrame("Frame", nil, unit) notGlobal.name = "NotItsGlobal"
+check(select(2, P.ResolveFocus(notGlobal)) == "TestUnitFrame", "a name that isn't its own global is passed over")
+local anon = CreateFrame("Frame", nil, UIParent) anon:SetSize(50, 50) anon:SetPoint("CENTER", UIParent, "CENTER", 400, 0)
+local anonChild = CreateFrame("Frame", nil, anon)
+local fr1, name1, own1 = P.ResolveFocus(anonChild)
+check(fr1 == nil and name1 == nil and not own1, "no named frame below the screen itself: none (UIParent is never picked)")
+check(select(3, P.ResolveFocus(ha)) == true and select(3, P.ResolveFocus(fa)) == true, "a CRT element's box and frame are CRT's own")
+check(P.ResolveFocus(WorldFrame) == nil, "the world is never picked")
+-- what can be anchored to
+check(Q:CanAnchorTo("frame:TestUnitFrame") == true, "any named frame can be anchored to")
+local qx, qy = centre(fq)
+local ok, msg = P.AnchorToName(Q, "TestUnitFrame")
+local qs = Q:Saved()
+check(ok == true and qs.anchor == "frame:TestUnitFrame" and select(2, pt(fq)) == unit, "a typed name anchors to that frame, saved as frame:<name>: " .. tostring(msg))
+local qx1, qy1 = centre(fq)
+check(qx1 == qx and qy1 == qy, "it stays where it was on the screen")
+check(type(qs.screenX) == "number" and type(qs.screenY) == "number", "and its spot on the screen is kept, for when that frame isn't loaded")
+unit:ClearAllPoints() unit:SetPoint("CENTER", UIParent, "CENTER", -200, -100)
+local qx2, qy2 = centre(fq)
+check(qx2 == qx + 100 and qy2 == qy + 150, "it follows the frame when that one moves")
+Q:SetOffset(0, 60)
+local ux, uy = centre(unit)
+qx2, qy2 = centre(fq)
+check(qx2 == ux and qy2 == uy + 60, "X and Y are from that frame's centre")
+-- typed names that are refused, with a message, the anchor unchanged
+local function refused(name, want, what)
+  local okR, m = P.AnchorToName(Q, name)
+  check(okR == false and m == want and Q:Saved().anchor == "frame:TestUnitFrame", what .. ": " .. tostring(m))
+end
+refused("NoSuchFrame", format(T.missing, "NoSuchFrame"), "a name no frame has")
+refused("Player Frame!", format(T.missing, "Player Frame!"), "a name that can't be a frame's")
+refused("UIParent", T.fullScreen, "the screen itself")
+refused("WorldFrame", T.fullScreen, "the world frame")
+local big = CreateFrame("Frame", "TestBigOverlay", UIParent) big:SetSize(SCREEN_W, SCREEN_H) big:SetPoint("CENTER")
+refused("TestBigOverlay", T.fullScreen, "a frame that fills the screen")
+local forb = CreateFrame("Frame", "TestForbidden", UIParent) forb:SetSize(10, 10) forb:SetPoint("CENTER") forb.forbidden = true
+refused("TestForbidden", T.forbidden, "a forbidden frame")
+local plate = CreateFrame("Frame", "TestPlate", UIParent) plate:SetSize(10, 10) plate:SetPoint("CENTER") plate.anchorRestricted = true
+refused("TestPlate", T.forbidden, "an anchor-restricted frame (a nameplate)")
+refused("CowfeeRaidToolsPlacementKeys", T.own, "one of CRT's own frames")
+local crtNamed = CreateFrame("Frame", "CRTWhatsNewTest", UIParent) crtNamed:SetSize(30, 30) crtNamed:SetPoint("CENTER")
+refused("CRTWhatsNewTest", T.own, "one of CRT's own frames named CRT...")
+local nowhere = CreateFrame("Frame", "TestNowhere", UIParent)
+refused("TestNowhere", T.nowhere, "a frame with no place on screen")
+-- loops through other frames' anchors, read from their points
+local loop1 = CreateFrame("Frame", "TestLoop1", UIParent) loop1:SetSize(20, 20) loop1:SetPoint("TOP", fq, "BOTTOM")
+local loop2 = CreateFrame("Frame", "TestLoop2", UIParent) loop2:SetSize(20, 20) loop2:SetPoint("TOP", loop1, "BOTTOM")
+refused("TestLoop1", T.loop, "a frame anchored to this one")
+refused("TestLoop2", T.loop, "a frame anchored to this one through another")
+local onA = CreateFrame("Frame", "TestOnA", UIParent) onA:SetSize(20, 20) onA:SetPoint("TOP", fa, "BOTTOM")
+check(B:SetAnchor("frame:TestOnA") == true, "anchored to a frame that is anchored to another element")
+check(A:CanAnchorTo("callout") == false, "that element can't anchor back to it (a loop through the other frame)")
+B:Reset()
+-- an element holding the game's protected buttons stays on the screen
+check(E:CanAnchorTo("frame:TestUnitFrame") == false, "the consumables bar can't anchor to a frame")
+-- a frame that is protected itself may only anchor to a protected frame, so it never spreads protection to one
+local plain = CreateFrame("Frame", "TestPlainFrame", UIParent) plain:SetSize(80, 30) plain:SetPoint("CENTER", UIParent, "CENTER", 0, -300)
+fq.protected = true
+refused("TestPlainFrame", T.spread, "a protected element to a frame that isn't protected")
+check(Q:CanAnchorTo("frame:TestUnitFrame") == true, "a protected element to a protected unit frame is fine")
+-- the same rule for CRT's own elements: a protected element can't make an alert area protected
+check(Q:CanAnchorTo("texts") == false and Q:AnchorProblem("texts") == T.spread, "a protected element can't anchor to a CRT element that isn't protected")
+check(Q:SetAnchor("texts") == false and Q:Saved().anchor == "frame:TestUnitFrame", "trying it changes nothing")
+P.OpenPanel(Q)
+local byKeyP = {}
+for _, o in ipairs(dropdowns["Anchor to"].opts.options()) do byKeyP[o.key] = o end
+check(byKeyP.texts and byKeyP.texts.disabled, "the list greys it out")
+P.ClosePanel()
+fa.protected = true
+check(Q:CanAnchorTo("texts") == true, "to a protected element it may")
+fa.protected = nil
+fq.protected = nil
+check(Q:CanAnchorTo("frame:TestPlainFrame") == true and Q:CanAnchorTo("texts") == true, "an element that isn't protected may anchor to any frame or element")
+-- an anchor the game refuses at SetPoint (an anchor family it keeps apart): it stays on the screen, with a message
+local refuser = CreateFrame("Frame", "TestRefuser", UIParent) refuser:SetSize(40, 40) refuser:SetPoint("CENTER", UIParent, "CENTER", 200, 200)
+refuser.refuseAnchors = true
+local qxr, qyr = centre(fq)
+local okR, whyR = P.AnchorToName(Q, "TestRefuser")
+check(okR == false and whyR == T.forbidden, "a frame the game won't let it anchor to is refused: " .. tostring(whyR))
+check(select(2, pt(fq)) == unit and Q:Saved().anchor == "frame:TestUnitFrame", "and it keeps its anchor and place")
+-- the same, met on a saved anchor: on its screen spot, the anchor kept, and the panel says it can't be used
+Q.spec.store().position = { point = "TOPLEFT", relativePoint = "TOPLEFT", x = 0, y = 0, anchor = "frame:TestRefuser", screenX = 120, screenY = -80 }
+Q.refused = nil
+Q:Apply()
+check(select(2, pt(fq)) == UIParent and select(4, pt(fq)) == 120 and Q:Saved().anchor == "frame:TestRefuser", "a saved anchor the game refuses: on the screen spot, the anchor kept")
+check(Q:AnchorStatus() == format(T.cantUse, "TestRefuser"), "and it can't be used now: " .. tostring(Q:AnchorStatus()))
+Q:Reset()
+P.AnchorToName(Q, "TestUnitFrame")
+
+-- the panel: the Anchor to list, the frame name box and Pick on screen ----------------------------------------
+P.OpenPanel(Q)
+local list = dropdowns["Anchor to"].opts.options()
+local hasUnit
+for _, o in ipairs(list) do if o.key == "frame:TestUnitFrame" then hasUnit = o end end
+check(hasUnit and hasUnit.label == "TestUnitFrame" and dropdowns["Anchor to"].opts.get() == "frame:TestUnitFrame", "the list holds the frame it is anchored to, chosen")
+check(dropdowns["Anchor to"].opts.enabledIf() == true, "Anchor to is open for it")
+panel.frameBox.text = "NoSuchFrame"
+panel.frameBox.scripts.OnEnterPressed(panel.frameBox)
+check(panel.status.shown and panel.status.text == format(T.missing, "NoSuchFrame") and Q:Saved().anchor == "frame:TestUnitFrame", "a wrong name in the box is refused, with a message")
+panel.frameBox.text = "TestPlainFrame"
+panel.frameBox.scripts.OnEnterPressed(panel.frameBox)
+check(Q:Saved().anchor == "frame:TestPlainFrame" and select(2, pt(fq)) == plain, "a name in the box and Enter anchors to it")
+dropdowns["Anchor to"].opts.set("screen")
+check(Q:Saved().anchor == nil and select(2, pt(fq)) == UIParent, "Screen takes it back off")
+-- Pick on screen: the name shows at the cursor, Enter or Space anchors, and a click never picks a frame (it would
+-- reach the frame under the cursor: target, cast, press)
+buttons["Pick on screen"].scripts.OnClick()
+check(P.picking == Q and keys.shown, "picking takes the keys, as the arrows do")
+focus = barText
+P.PickHover()
+check(P.pickTag and P.pickTag.shown and P.pickTag.text.text == "TestUnitFrame", "hovering a frame while picking shows its name at the cursor")
+fire("GLOBAL_MOUSE_DOWN", "LeftButton")
+check(P.picking == Q and Q:Saved().anchor == nil and select(2, pt(fq)) == UIParent, "a click doesn't pick: picking goes on, nothing anchored")
+check(P.OnKey("W") == false and keys.propagate == true, "any other key goes on to the game while picking")
+check(P.OnKey("ENTER") == true and keys.propagate == false, "Enter is taken from the game")
+keys.scripts.OnKeyUp(keys, "ENTER")
+check(P.picking == nil and Q:Saved().anchor == "frame:TestUnitFrame" and select(2, pt(fq)) == unit, "Enter anchors to the hovered frame")
+check(not P.pickTag.shown, "and the name tag goes")
+buttons["Pick on screen"].scripts.OnClick()
+focus = anonChild
+P.PickHover()
+check(P.pickTag.text.text == T.noName, "a frame with no name says so while hovered")
+P.OnKey("SPACE")
+check(P.picking == Q and panel.status.text == T.noName and Q:Saved().anchor == "frame:TestUnitFrame", "Space on it is refused, with that message, and picking goes on")
+focus = WorldFrame
+P.PickHover()
+check(P.pickTag.text.text == T.nothing, "over the world: nothing to anchor to")
+P.OnKey("ENTER")
+check(P.picking == Q and panel.status.text == T.nothing, "Enter there says so")
+focus = nil
+P.PickHover()
+check(P.pickTag.text.text == T.nothing, "over nothing at all: the same")
+focus = hq
+P.PickHover()
+check(not P.pickTag.shown, "over its own box: no tag")
+focus = ha
+P.PickHover()
+check(P.pickTag.shown and P.pickTag.text.text == "Critical alerts text", "over another element's box: that element's name")
+P.OnKey("ENTER")
+check(P.picking == nil and Q:Saved().anchor == "texts", "Enter anchors to that element")
+buttons["Pick on screen"].scripts.OnClick()
+P.Click(B)
+check(P.picking == nil and Q:Saved().anchor == "callout", "a click on another element's box still anchors to it")
+buttons["Pick on screen"].scripts.OnClick()
+inCombat = true
+check(P.OnKey("ENTER") == false and P.picking == Q, "in combat Enter goes to the game")
+inCombat = false
+dropdowns["Anchor to"].opts.set("screen")
+check(P.picking == nil and Q:Saved().anchor == nil, "a choice from the Anchor to list ends picking")
+buttons["Pick on screen"].scripts.OnClick()
+P.OnKey("ESCAPE")
+check(P.picking == nil and not P.pickTag.shown, "Escape stops picking and hides the name tag")
+P.ClosePanel()
+Q:Reset()
+
+-- late-loading frames: kept on its spot, tried again, anchored once the frame is there -------------------------
+local qstore = Q.spec.store()
+qstore.position = { point = "TOPLEFT", relativePoint = "TOPLEFT", x = 5, y = 5, anchor = "frame:TestLateFrame", screenX = 300, screenY = -200 }
+runTimers()
+local ever0 = timersEver
+Q:Apply()
+local pq, rq, rpq, xq, yq = pt(fq)
+check(rq == UIParent and pq == "TOPLEFT" and rpq == "TOPLEFT" and xq == 300 and yq == -200, "its frame isn't loaded: it stays at its saved spot on the screen")
+check(#timers > 0, "and it is tried again on a timer")
+P.OpenPanel(Q)
+check(panel.status.shown and panel.status.text == format(T.notLoaded, "TestLateFrame"), "the panel says the frame isn't loaded: " .. tostring(panel.status.text))
+check(dropdowns["Anchor to"].opts.get() == "frame:TestLateFrame", "the list still shows that anchor")
+P.ClosePanel()
+local late = CreateFrame("Frame", "TestLateFrame", UIParent) late:SetSize(100, 30) late:SetPoint("CENTER", UIParent, "CENTER", 0, 200)
+fire("PLAYER_ENTERING_WORLD")
+check(select(2, pt(fq)) == late and Q:Saved().anchor == "frame:TestLateFrame", "once it is made it is anchored to it (PLAYER_ENTERING_WORLD)")
+-- a frame that exists but has no place yet (its addon places it later): looked for again too
+runTimers()
+qstore.position = { point = "TOPLEFT", relativePoint = "TOPLEFT", x = 5, y = 5, anchor = "frame:TestPlacedLater", screenX = 300, screenY = -200 }
+local placedLater = CreateFrame("Frame", "TestPlacedLater", UIParent) placedLater:SetSize(100, 30)
+Q:Apply()
+check(Q.waiting == "TestPlacedLater" and select(2, pt(fq)) == UIParent, "a frame with no place yet: waited for, on the screen spot")
+placedLater:SetPoint("CENTER", UIParent, "CENTER", 0, -100)
+fire("PLAYER_ENTERING_WORLD")
+check(select(2, pt(fq)) == placedLater, "once it has a place it is anchored to it")
+-- a frame that never loads: the retries stop, it stays on its spot and keeps the anchor
+qstore.position = { point = "TOPLEFT", relativePoint = "TOPLEFT", x = 5, y = 5, anchor = "frame:TestNeverFrame", screenX = 250, screenY = -150 }
+runTimers()
+ever0 = timersEver
+Q:Apply()
+fire("PLAYER_LOGIN")
+fire("PLAYER_ENTERING_WORLD")
+runTimers()
+Q:Apply()
+runTimers()
+check(timersEver - ever0 <= P.MAX_RETRIES and #timers == 0, "the retries are capped: " .. (timersEver - ever0))
+check(select(2, pt(fq)) == UIParent and select(4, pt(fq)) == 250 and Q:Saved().anchor == "frame:TestNeverFrame", "it never loads: it stays where it was, the anchor kept")
+-- a saved anchor with no screen spot (made elsewhere): its default
+qstore.position = { point = "TOPLEFT", relativePoint = "TOPLEFT", x = 5, y = 5, anchor = "frame:TestNeverFrame" }
+Q:Apply()
+check(select(2, pt(fq)) == UIParent and select(4, pt(fq)) == -100 and select(5, pt(fq)) == -200, "no spot kept: its default")
+Q:Reset()
+
+-- combat: nothing anchored to another frame is moved in combat, it waits for combat to end ----------------------
+P.AnchorToName(Q, "TestUnitFrame")
+B:SetAnchor("qpanel")
+inCombat = true
+local before1, beforeB = fq.layoutCalls, fb.layoutCalls
+Q:Apply() B:Apply()
+check(fq.layoutCalls == before1 and fb.layoutCalls == beforeB, "in combat it isn't placed again (no SetPoint or ClearAllPoints), nor what is anchored to it")
+inCombat = false
+fire("PLAYER_REGEN_ENABLED")
+check(fq.layoutCalls > before1 and fb.layoutCalls > beforeB and select(2, pt(fq)) == unit, "after combat it is placed")
+B:Reset() Q:Reset()
+
 -- the lint: every movable element is placed by the helper ---------------------------------------------
 for _, e in ipairs(ELEMENTS) do
   local file, key = e[1], e[2]
@@ -549,6 +799,13 @@ for _, e in ipairs(ELEMENTS) do
     check(src:find("StartMoving", 1, true) == nil and src:find("StopMovingOrSizing", 1, true) == nil, file .. ": no drag code of its own (the helper drags it)")
     check(src:find("%.position = {") == nil and src:find("SavePosition%(") == nil, file .. ": no position save of its own (the helper saves it)")
   end
+end
+-- the debuff panel may be anchored (to an element or a unit frame); the consumables bar holds protected buttons
+-- and stays on the screen
+do
+  local deb, con = MODULES["CRT_Modules/Debuffs/Panel.lua"] or "", MODULES["CRT_Modules/Consumables/Display.lua"] or ""
+  check(not deb:find("canAnchor%s*=%s*false"), "the debuff panel can be anchored")
+  check(con:find("canAnchor%s*=%s*false") ~= nil and con:find("target%s*=%s*false") ~= nil, "the consumables bar stays on the screen, and nothing anchors to it")
 end
 -- a drag box's title is a string ending ": drag to move" (a help text that mentions dragging is not one)
 -- a Reset button means a movable element too, whatever its drag box is called; the windows that keep their own

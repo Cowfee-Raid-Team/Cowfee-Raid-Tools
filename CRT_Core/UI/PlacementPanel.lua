@@ -5,7 +5,14 @@ local ADDON, CRT = ...
 --
 -- The panel (UI.Window, a dialog next to the element): X and Y (its centre's distance from its anchor's centre;
 -- Enter applies, the up and down arrows step 1, Shift 10), Centre horizontally and Centre vertically, Anchor to
--- (Screen or another CRT element; a choice that would loop is greyed out) with Pick on screen, then Reset and Done.
+-- (Screen, another CRT element, or the frame on screen it is anchored to; a choice that would loop is greyed out)
+-- with Pick on screen, Frame name (a frame's name typed in, Enter or Anchor), a line for picking and one for what
+-- was refused or an anchor that isn't loaded, then Reset and Done.
+--
+-- Picking: a tag at the cursor names what is under it (UI/Placement.lua's P.PickTarget: another element, or the
+-- nearest frame with a global name), and Enter or Space anchors to it (P.PickChoose, through the keys frame the
+-- arrows use). A click never picks a frame, so it never reaches that frame (it would target or cast); a click on
+-- another element's box still anchors to that element (P.Click).
 
 local UI = CRT.UI
 local P = UI.Placement
@@ -19,22 +26,31 @@ local TEXT = {
     anchor = "Anchor to",
     screen = "Screen",
     pick = "Pick on screen",
-    picking = "Click another element's box. Esc cancels.",
+    picking = "Hover a frame and press Enter. Esc cancels.",
+    frameName = "Frame name",
+    useFrame = "Anchor",
+    frameHelp = "Type the name of a frame on screen, such as PlayerFrame, then press Enter.\n\n"
+        .. "Or use Pick on screen: hover a frame to see its name, then press Enter or Space to anchor to it. "
+        .. "Clicks don't pick, so you never target or press what is under the cursor. Esc stops picking.",
     reset = "Reset",
     done = "Done",
     help = "X and Y are how far its centre is from the centre of what it is anchored to, in pixels.\n\n"
         .. "Click its box to select it: the arrow keys move it 1 pixel, Shift and an arrow 10. Esc lets go.\n\n"
         .. "Dragging snaps to the dashed lines within 6 pixels. Hold Shift while dragging to place it freely.",
-    anchorHelp = "It keeps its distance from that element and moves with it.\n\n"
-        .. "Greyed out: that element is anchored to this one, so it would go round in a loop.",
+    anchorHelp = "It keeps its distance from that element or frame and moves with it.\n\n"
+        .. "Greyed out: that element is anchored to this one, so it would go round in a loop, or this one is "
+        .. "protected by the game and that one isn't.\n\n"
+        .. "A frame from another addon that loads late is found when it loads. Until then this stays where it was.",
     fixedHelp = "This one holds the game's own buttons, so it always sits on the screen.",
 }
 P.PANEL_TEXT = TEXT
 
 local L = {
-    width = 380, height = 206,
+    width = 380, height = 262,
     box = 56, boxH = 20, labelW = 14, gap = 6, -- X and Y
-    rowY = { -6, -38, -72, -108 }, -- the boxes, the centre buttons, Anchor to, the picking line
+    rowY = { -6, -38, -72, -104, -136, -156 }, -- the boxes, the centre buttons, Anchor to, Frame name, picking, status
+    tag = 16, tagPad = 8, tagOffset = 16, -- the name tag at the cursor while picking
+    hoverSeconds = 0.05, -- how often the tag reads the frame under the cursor
     button = 22,
     dropLabel = 64, drop = 150,
     side = 12, -- the panel's gap from the element
@@ -220,6 +236,26 @@ local function refresh()
     f.picking:SetShown(P.picking == shown)
     local fixed = shown.spec.canAnchor == false
     f.pick:SetEnabled(not fixed)
+    f.useFrame:SetEnabled(not fixed)
+    pcall(f.frameBox.SetEnabled, f.frameBox, not fixed)
+    local status = P.message or shown:AnchorStatus()
+    f.status:SetText(status or "")
+    f.status:SetShown(status ~= nil)
+end
+
+-- The name typed in the Frame name box: anchored to, or the reason it can't be.
+local function useTypedName()
+    local f = panel
+    if not (f and shown) then
+        return
+    end
+    local ok, why = P.AnchorToName(shown, f.frameBox:GetText())
+    P.message = not ok and why or nil
+    f.frameBox:ClearFocus()
+    if ok then
+        f.frameBox:SetText("")
+    end
+    refresh()
 end
 
 -- Applies what the boxes say; a box that isn't a number goes back to the element's place.
@@ -283,7 +319,24 @@ local function anchorOptions()
     for _, el in ipairs(others) do
         out[#out + 1] = { key = el.key, label = el.title, disabled = not shown:CanAnchorTo(el.key) }
     end
+    -- the frame on screen it is anchored to, loaded or not
+    local name = shown and P.FrameName(shown:AnchorKey())
+    if name then
+        out[#out + 1] = { key = P.FrameKey(name), label = name }
+    end
     return out
+end
+
+-- The chosen anchor: a frame on screen while it is saved (loaded or not), else the element it is held by, or Screen.
+local function anchorChoice()
+    if not shown then
+        return "screen"
+    end
+    local key = shown:AnchorKey()
+    if P.FrameName(key) then
+        return key
+    end
+    return shown:LiveAnchor() or "screen"
 end
 
 local function build()
@@ -311,12 +364,15 @@ local function build()
     f.anchorRow = UI.Dropdown(c, TEXT.anchor, {
         labelWidth = L.dropLabel, width = L.drop,
         options = anchorOptions,
-        get = function()
-            return shown and shown:LiveAnchor() or "screen"
-        end,
+        get = anchorChoice,
         set = function(key)
             if shown then
+                P.message = nil
+                if P.picking == shown then
+                    P.picking = nil -- a choice from the list ends picking
+                end
                 shown:SetAnchor(key ~= "screen" and key or nil)
+                refresh()
             end
         end,
         enabledIf = function()
@@ -335,11 +391,37 @@ local function build()
         return shown and shown.spec.canAnchor == false and TEXT.fixedHelp or TEXT.anchorHelp
     end, { parent = c })
 
+    -- Frame name: a frame's global name typed in, anchored to on Enter or Anchor
+    local nameLabel = c:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    nameLabel:SetPoint("TOPLEFT", c, "TOPLEFT", 0, L.rowY[4] - 4)
+    nameLabel:SetText(TEXT.frameName)
+    f.frameBox = CreateFrame("EditBox", nil, c, "InputBoxTemplate")
+    f.frameBox:SetSize(L.drop, L.boxH)
+    f.frameBox:SetPoint("TOPLEFT", c, "TOPLEFT", L.dropLabel + L.gap, L.rowY[4])
+    f.frameBox:SetAutoFocus(false)
+    f.frameBox:SetMaxLetters(60)
+    UI:SkinEditBox(f.frameBox)
+    f.frameBox:SetScript("OnEnterPressed", useTypedName)
+    f.frameBox:SetScript("OnEscapePressed", function(b)
+        b:ClearFocus()
+    end)
+    f.useFrame = UI.PanelButton(c, TEXT.useFrame, L.button, useTypedName)
+    f.useFrame:SetPoint("LEFT", f.frameBox, "RIGHT", L.gap, 0)
+    f.frameHelp = UI.HelpRight(f.useFrame, TEXT.frameName, TEXT.frameHelp, { parent = c })
+
     f.picking = c:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    f.picking:SetPoint("TOPLEFT", c, "TOPLEFT", 0, L.rowY[4])
+    f.picking:SetPoint("TOPLEFT", c, "TOPLEFT", 0, L.rowY[5])
     f.picking:SetText(TEXT.picking)
     UI.Tint(f.picking, "SetTextColor", "heading")
     f.picking:Hide()
+
+    -- what was refused, or an anchor that can't be used now
+    f.status = c:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    f.status:SetPoint("TOPLEFT", c, "TOPLEFT", 0, L.rowY[6])
+    f.status:SetPoint("RIGHT", c, "RIGHT", 0, 0)
+    f.status:SetJustifyH("LEFT")
+    UI.Tint(f.status, "SetTextColor", "bad")
+    f.status:Hide()
 
     f.done = UI.PanelButton(c, TEXT.done, L.button, function()
         P.ClosePanel()
@@ -371,7 +453,7 @@ function P.OpenPanel(el)
         return false
     end
     panel = panel or build()
-    shown = el
+    shown, P.message = el, nil
     P.Select(el)
     panel.strip:SetTitle(string.format(TEXT.title, el.title))
     local dx = el:ScreenOffset()
@@ -401,8 +483,76 @@ function P.Panel()
     return panel
 end
 
--- Every change to an element: the outline and the panel follow.
+-- Picking any frame on screen ------------------------------------------------------------------------
+
+local tag -- the name of the frame under the cursor, while picking
+local hoverWait = 0
+
+local function makeTag()
+    tag = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
+    tag:SetFrameStrata("TOOLTIP")
+    tag:EnableMouse(false) -- never the frame under the cursor itself
+    tag:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8" })
+    UI.Tint(tag, "SetBackdropColor", "surface", 0.9)
+    tag.text = tag:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    tag.text:SetPoint("CENTER")
+    UI.Tint(tag.text, "SetTextColor", "heading")
+    tag:Hide()
+    P.pickTag = tag
+end
+
+-- The frame whose OnUpdate reads the frame under the cursor, set only while picking.
+local hover = CreateFrame("Frame")
+local function hoverStep(_, dt)
+    hoverWait = hoverWait + (dt or 0)
+    if hoverWait >= L.hoverSeconds then
+        hoverWait = 0
+        P.PickHover()
+    end
+end
+
+-- What the tag says for each kind of thing under the cursor (P.PickTarget); over CRT's own it hides.
+local TAG_TEXT = { noname = "noName", nothing = "nothing", forbidden = "forbidden" }
+
+-- While picking, the tag at the cursor names what Enter would anchor to (a frame's name, another element's title), or
+-- says why there is nothing to anchor to there.
+function P.PickHover()
+    if not P.picking or (InCombatLockdown and InCombatLockdown()) then
+        if tag then
+            tag:Hide()
+        end
+        return
+    end
+    if not tag then
+        makeTag()
+    end
+    local kind, what, name = P.PickTarget(P.UnderCursor())
+    local x, y = GetCursorPosition()
+    local s = UIParent:GetEffectiveScale()
+    x, y = P.num(x), P.num(y)
+    s = P.num(s) or 1
+    if kind == "own" or not (x and y) or s <= 0 then
+        tag:Hide()
+        return
+    end
+    local text = kind == "frame" and name or kind == "element" and what.title or P.TEXT[TAG_TEXT[kind] or "nothing"]
+    tag.text:SetText(text)
+    tag:SetSize((P.num(tag.text:GetStringWidth()) or 0) + L.tagPad, L.tag)
+    tag:ClearAllPoints()
+    tag:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", x / s + L.tagOffset, y / s + L.tagOffset)
+    tag:Show()
+end
+
+-- Every change to an element: the outline and the panel follow; the name tag shows only while picking.
 function P.OnChanged()
     drawOutline()
     refresh()
+    if P.picking then
+        hover:SetScript("OnUpdate", hoverStep)
+    else
+        hover:SetScript("OnUpdate", nil)
+        if tag then
+            tag:Hide()
+        end
+    end
 end
