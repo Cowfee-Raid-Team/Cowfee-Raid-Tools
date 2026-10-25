@@ -6,6 +6,10 @@ local ADDON, CRT = ...
 -- you can still change your mind. Each panel's background is its timer: the lighter part shrinks as the
 -- answer time runs out, and the panel closes itself at the end. Close it sooner with its X or a
 -- right-click. The looter can show a panel again or ask you to roll again, which restarts its timer.
+-- An item your CRT answered for you (Comm.lua's CheckSpecs) has no panel unless Show me items I can't use is
+-- on: it gets a short row instead (icon, name, item level, "Transmog (auto)", or who it was given to), under
+-- the line saying why, until its answer time is over. So the popup opens on every session, even one where
+-- nothing needs a choice (Alex, 2026-10-25: "make sure the loot window always shows"). Its X takes a row away.
 -- In Default: Blizzard each panel looks like the game's group-loot roll frame and the whole popup sits in
 -- the main window's frame, sized to what shows; the other themes draw it flat in their colours.
 -- The panels hang from one overlay (UI.Window kind "overlay"): drag any panel to move them all; the
@@ -24,6 +28,10 @@ local L = {
     headerH = 26, -- the title bar above the panels
     headerClose = 22, -- the title bar's X
     autoH = 22, -- the line saying which items were answered for you
+    autoRowH = 24, -- a row per item answered for you, under that line
+    autoIcon = 20,
+    autoIlvlW = 90, -- the row's item level, before its answer at the right
+    autoStateW = 170,
     -- Default: Blizzard: one window frame around the title bar, the auto line and the items, which sit in
     -- its inset (BasicFrameTemplateWithInset's is 4 in from the left, 6 from the right, 4 above the bottom)
     insetLeft = 4,
@@ -80,12 +88,15 @@ local TEXT = {
     showAuto = "Show",
     answers = "All Loot Rolls",
     autoAnswered = "%s: answered %s for you",
+    autoState = "%s (auto)", -- an answered-for-you row's answer
+    given = "Given to %s",
+    itemLevel = "Item level %d",
     -- why an item was answered for you, by the reason your CRT found (LM.CantUse)
     autoWhy = {
         spec = "Your specs can't use this", classes = "This is for other classes",
         armor = "Not your armor type", weapon = "Your class can't use this weapon type",
     },
-    help = "Pick an answer for each item. It goes to the looter, who gives the item out; every answer gets a roll from 1 to 100, drawn by the looter's CRT and shown in everyone's loot window (no /roll in chat). You can change your answer until the time runs out. Close an item with its X or a right-click; drag any item to move them all.",
+    help = "Pick an answer for each item. It goes to the looter, who gives the item out; every answer gets a roll from 1 to 100, drawn by the looter's CRT and shown in everyone's loot window (no /roll in chat). You can change your answer until the time runs out. An item you can't use is answered for you and shows as a short row. Close an item with its X or a right-click; drag any item to move them all.",
     have = "You have: ",
     nothing = "nothing in that slot",
     sent = "Sent %s",
@@ -130,6 +141,7 @@ end
 
 local anchor, chrome, header, autoLine
 local panels = {} -- by item index
+local autoRows = {} -- the answered-for-you rows, by item index
 local loading = {} -- item IDs asked of the game once each
 
 local function settings()
@@ -356,11 +368,13 @@ local function closePanel(index)
         local mine = inc.mine[index] or {}
         inc.mine[index] = mine
         mine.closed = true
+        mine.dismissed = mine.auto or nil -- an answered-for-you item gets no row either
     end
     LM:Fire("incoming")
 end
 
--- Closes every item at once (the title bar's X); Show again on the looter's side brings them back.
+-- Closes every item at once (the title bar's X), the answered-for-you rows too; Show again on the
+-- looter's side brings them back.
 function LM:ClosePopup()
     local inc = LM.incoming
     if inc then
@@ -368,6 +382,7 @@ function LM:ClosePopup()
             if inc.items[i] then
                 inc.mine[i] = inc.mine[i] or {}
                 inc.mine[i].closed = true
+                inc.mine[i].dismissed = true
             end
         end
     end
@@ -561,6 +576,87 @@ local function openItems(inc)
     return out
 end
 
+-- The answered-for-you items with no panel that still have time: each gets a row.
+local function autoItems(inc)
+    local out = {}
+    for i = 1, LM.MAX_ITEMS do
+        local it, mine = inc.items[i], inc.mine[i]
+        if it and mine and mine.auto and mine.closed and not mine.dismissed and timeLeft(it, inc) > 0 then
+            out[#out + 1] = i
+        end
+    end
+    return out
+end
+
+-- Whether the popup has anything to show: a panel or an answered-for-you row.
+local function anything(inc)
+    return #openItems(inc) > 0 or #autoItems(inc) > 0
+end
+
+-- A row for an item answered for you: its icon, name and item level, and its answer or who got it.
+local function autoRow(index)
+    local r = autoRows[index]
+    if r then
+        return r
+    end
+    r = CreateFrame("Frame", nil, anchor, "BackdropTemplate")
+    r.autoRow = true
+    r:SetFrameLevel(chrome:GetFrameLevel() + 2)
+    r:SetSize(L.width, L.autoRowH)
+    r:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8" })
+    r:SetBackdropColor(0, 0, 0, 0.6)
+    r.icon = r:CreateTexture(nil, "ARTWORK")
+    r.icon:SetSize(L.autoIcon, L.autoIcon)
+    r.icon:SetPoint("LEFT", L.pad, 0)
+    r.state = r:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    r.state:SetPoint("RIGHT", -L.pad, 0)
+    r.state:SetWidth(L.autoStateW)
+    r.state:SetJustifyH("RIGHT")
+    r.state:SetWordWrap(false)
+    r.state:SetTextColor(0.8, 0.75, 0.65)
+    r.ilvl = r:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    r.ilvl:SetPoint("RIGHT", r.state, "LEFT", -8, 0)
+    r.ilvl:SetWidth(L.autoIlvlW)
+    r.ilvl:SetJustifyH("LEFT")
+    r.ilvl:SetTextColor(0.75, 0.75, 0.75)
+    r.name = r:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    r.name:SetPoint("LEFT", r.icon, "RIGHT", 8, 0)
+    r.name:SetPoint("RIGHT", r.ilvl, "LEFT", -8, 0)
+    r.name:SetJustifyH("LEFT")
+    r.name:SetWordWrap(false)
+    r:EnableMouse(true)
+    r:SetScript("OnEnter", function(self)
+        UI.TooltipOwner(GameTooltip, self, "ANCHOR_RIGHT", nil, nil, "lootmaster")
+        pcall(GameTooltip.SetHyperlink, GameTooltip, self.itemString)
+        GameTooltip:Show()
+    end)
+    r:SetScript("OnLeave", function()
+        GameTooltip:Hide()
+    end)
+    r:RegisterForDrag("LeftButton")
+    r:SetScript("OnDragStart", function()
+        anchor:StartDrag()
+    end)
+    r:SetScript("OnDragStop", function()
+        anchor:StopDrag()
+    end)
+    autoRows[index] = r
+    return r
+end
+
+local function fillAutoRow(r, index, it, mine, inc)
+    r.index, r.itemString = index, it.itemString
+    r.icon:SetTexture(C_Item.GetItemIconByID(it.itemString or "") or 134400)
+    r.name:SetText(itemText(it))
+    r.ilvl:SetText(it.ilvl and string.format(TEXT.itemLevel, it.ilvl) or "")
+    local resp = LM.ResponseOf(inc.byKey, mine.response)
+    if it.award then
+        r.state:SetText(string.format(TEXT.given, Ambiguate(it.award.name, "short")))
+    else
+        r.state:SetText(string.format(TEXT.autoState, resp and resp.label or mine.response))
+    end
+end
+
 local function build()
     if anchor then
         return
@@ -674,20 +770,31 @@ local function refresh()
     header:SetPoint("TOPLEFT", classic and 1 or 0, classic and -1 or 0)
     header:SetSize(outerW - (classic and 2 or 0), L.headerH - (classic and 2 or 0))
     local y = L.headerH + L.gap -- panels can be taller when their buttons wrap, so they stack by height
-    local auto, autoKey = 0, nil
-    for _, mine in pairs(inc.mine) do
-        if mine.auto and mine.closed then
-            auto, autoKey = auto + 1, mine.response
-        end
-    end
+    local autoList = autoItems(inc)
+    local auto = #autoList
     autoLine:SetShown(auto > 0)
+    local rowShown = {}
     if auto > 0 then
-        local r = LM.ResponseOf(inc.byKey, autoKey)
+        local r = LM.ResponseOf(inc.byKey, inc.mine[autoList[1]].response)
         autoLine.text:SetText(string.format(auto == 1 and TEXT.autoOne or TEXT.autoMany, auto, r and r.label or "Transmog"))
         autoLine:ClearAllPoints()
         autoLine:SetPoint("TOPLEFT", x, -y)
         autoLine:SetWidth(L.width)
         y = y + L.autoH + L.gap
+        for _, index in ipairs(autoList) do
+            local row = autoRow(index)
+            fillAutoRow(row, index, inc.items[index], inc.mine[index], inc)
+            row:ClearAllPoints()
+            row:SetPoint("TOPLEFT", x, -y)
+            y = y + L.autoRowH + L.gap
+            row:Show()
+            rowShown[index] = true
+        end
+    end
+    for index, row in pairs(autoRows) do
+        if not rowShown[index] then
+            row:Hide()
+        end
     end
     for _, index in ipairs(open) do
         local p = panel(index)
@@ -709,7 +816,7 @@ local function refresh()
     chrome:SetShown(classic)
     chrome:SetSize(outerW, outerH)
     anchor:SetHeight(outerH)
-    if #open == 0 then
+    if #open == 0 and auto == 0 then
         anchor:Hide()
     end
 end
@@ -725,7 +832,8 @@ LM:OnChange(function(what, how)
         return
     end
     refresh()
-    if how == "shown" and anchor and LM.incoming and #openItems(LM.incoming) > 0 then
+    -- every session opens it, also one where everything was answered for you (its rows show)
+    if how == "shown" and anchor and LM.incoming and anything(LM.incoming) then
         anchor:Show()
     end
 end)
@@ -741,7 +849,7 @@ function LM:ShowPopup()
         return
     end
     for _, mine in pairs(inc.mine) do
-        mine.closed = nil
+        mine.closed, mine.dismissed = nil, nil
     end
     refresh()
     if anchor and #openItems(inc) > 0 then
