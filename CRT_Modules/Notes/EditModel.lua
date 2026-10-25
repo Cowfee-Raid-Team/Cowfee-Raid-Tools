@@ -421,9 +421,63 @@ local function changed(row)
     return false
 end
 
+-- Timer rows' names ----------------------------------------------------------------------------------------------
+-- A timed line is never edited here, except its names when it follows an assignment line (Notes/Links.lua): then
+-- only the tag's value is written, every other byte of the line as it was.
+
+local function words(s)
+    local out = {}
+    for word in (s or ""):gmatch("%S+") do
+        out[#out + 1] = word
+    end
+    return out
+end
+
+local function sameWords(a, b)
+    if #a ~= #b then
+        return false
+    end
+    for k, w in ipairs(a) do
+        if w ~= b[k] then
+            return false
+        end
+    end
+    return true
+end
+
+-- Timer row i's names now (a copy), a class name of several words as one ("Demon Hunter").
+function Session:TimerNames(i)
+    local row = self.rows[i]
+    if not (row and row.kind == "timer") then
+        return {}
+    end
+    return Parser.JoinClassWords(row.tags)
+end
+
+-- Writes names (a list) as timer row i's tag. Back to the names it had, the line is written exactly as it was.
+-- False in read-only, on a row that is no timer, or a line with no tag field.
+function Session:SetTimerNames(i, list)
+    local row = self.rows[i]
+    if self.readOnly or not (row and row.kind == "timer") then
+        return false
+    end
+    local value = table.concat(list, " ")
+    local line = Parser.ReplaceField(row.raw, "tag", value)
+    if not line then
+        return false
+    end
+    local now = words(value)
+    row.tags = now
+    row.rewritten = (not sameWords(now, row.timer.tags or {})) and line or nil
+    return true
+end
+
 -- Row i's line now: as written while its names are the ones it had.
 function Session:LineText(i)
     local row = self.rows[i]
+    if row and row.rewritten then
+        return row.rewritten
+    end
     if not (row and row.field and changed(row)) then
         return row and row.raw or nil
     end

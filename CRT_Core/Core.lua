@@ -154,6 +154,9 @@ local defaults = {
         list = {},
         nextId = 1,
         history = {}, -- each note's last 5 earlier texts, by note id (Notes/Data.lua); never shared or exported
+        -- which timer lines follow which assignment line in the note editor, by note id ("personal" for the
+        -- personal note), and whether its Link banner was put off (Notes/Links.lua); never shared or exported
+        links = {},
         showOutsideRaid = false, -- true also shows the three note windows outside a raid instance
         trustedOnly = true, -- only accept shared notes from the raid leader or assistants
         -- Healer CDs (Notes/Shifts.lua, Notes/Proposals.lua): your own times for your raid note cooldowns, by

@@ -66,7 +66,7 @@ Profiles.SHARE = {
     },
     debuffs = true,
     notes = {
-        list = false, nextId = false, history = false, personalText = false, showOutsideRaid = true, shareTarget = true,
+        list = false, nextId = false, history = false, links = false, personalText = false, showOutsideRaid = true, shareTarget = true,
         window = true, assignments = true, personal = true, editor = true, alert = true,
         trustedOnly = false, -- whose notes you accept stays yours
         personalShifts = false, autoAcceptCooldowns = false, -- your own cooldown times, and whose changes you accept
