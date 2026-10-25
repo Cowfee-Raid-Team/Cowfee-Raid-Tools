@@ -338,29 +338,24 @@ end
 
 -- The window -------------------------------------------------------------------------------------
 
-local function savePosition()
-    local point, _, relativePoint, x, y = frame:GetPoint()
-    db().position = { point = point, relativePoint = relativePoint, x = x, y = y }
-end
+local build
 
-local function applyPosition()
-    local p = db().position
-    frame:ClearAllPoints()
-    if p then
-        frame:SetPoint(p.point, UIParent, p.relativePoint or p.point, p.x, p.y)
-    else
-        frame:SetPoint("CENTER", UIParent, "CENTER", 0, 160)
-    end
-end
+-- Its place, drag, nudge, reset and anchor are the shared helper's (UI/Placement.lua). Held by its centre, above the
+-- middle of the screen until it is moved.
+local placement = UI.Placement.Define("markers", {
+    title = "Marker display",
+    store = db,
+    default = { point = "CENTER", relativePoint = "CENTER", x = 0, y = 160 },
+    build = function()
+        build()
+    end,
+})
 
 function Markers:ResetPosition()
-    db().position = nil
-    if frame then
-        applyPosition()
-    end
+    placement:Reset()
 end
 
-local function build()
+function build()
     if frame then
         return
     end
@@ -369,7 +364,6 @@ local function build()
     UI:RegisterThemed(frame, { bg = { 0.1, 0.1, 0.1, 0.85 }, border = { 0.2, 0.6, 0.85 } })
     UI:RegisterLayer("alert", frame)
     frame:SetClampedToScreen(true)
-    frame:SetMovable(true)
 
     handle = CreateFrame("Frame", nil, frame, "BackdropTemplate")
     handle:SetHeight(20)
@@ -377,32 +371,24 @@ local function build()
     handle:SetPoint("BOTTOMRIGHT", frame, "TOPRIGHT", 0, 2)
     handle:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
     UI:RegisterThemed(handle, { bg = { 0.1, 0.25, 0.35, 0.9 }, border = { 0.2, 0.6, 0.85 } })
-    handle:EnableMouse(true)
-    handle:RegisterForDrag("LeftButton")
     title = handle:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     title:SetPoint("LEFT", 6, 0)
     title:SetJustifyH("LEFT")
     title:SetWordWrap(false)
-    handle:SetScript("OnDragStart", function()
-        frame:StartMoving(true)
-    end)
-    handle:SetScript("OnDragStop", function()
-        frame:StopMovingOrSizing()
-        savePosition()
-    end)
     local reset = UI.ResetButton(handle, function()
         Markers:ResetPosition()
     end)
     reset:SetPoint("RIGHT", -2, 0)
-    title:SetPoint("RIGHT", reset, "LEFT", -4, 0)
     handle:Hide()
 
     -- The marker's font: its height is the icon size, since a chat icon is drawn at the text's height.
     frame.iconFont = CreateFont("CRTMarkerIconFont")
     frame.iconFont:CopyFontObject(GameFontHighlight)
 
-    applyPosition()
     frame:Hide()
+    -- the title ends left of the gear, which goes left of Reset
+    local gear = placement:Attach(frame, handle, { reset = reset })
+    title:SetPoint("RIGHT", gear, "LEFT", -4, 0)
 end
 
 local function slot(i)

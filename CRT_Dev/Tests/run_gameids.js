@@ -16,7 +16,7 @@ const FILES = [
   'CRT_Modules/ReadyCheck/Report.lua', 'CRT_Modules/ReadyCheck/Window.lua', 'CRT_Modules/ReadyCheck/BuffLock.lua',
   'CRT_Dev/Tests/SamplePack/Season.lua', 'CRT_Dev/Tests/SamplePack/GameIDs.lua',
 ];
-const harness = `
+const harness = require('./placement_stub')(W) + `
 local src = { ... }
 local FILES = ${'{'}${FILES.map(f => JSON.stringify(f)).join(', ')}${'}'}
 local passes, fails = 0, 0
@@ -73,6 +73,7 @@ _G.ReadyCheckFrameYesButton = yes
 
 local CRT = { UI = stub() }
 function CRT:Print() end
+CRT_PLACEMENT(CRT) -- CRT_Core/UI/Placement.lua, which the ready check window is placed by
 CRT.db = {
   consumables = { enabled = true, lowMinutes = 10, categoryOrder = {}, itemOrder = {}, extra = {}, learned = {} },
   readycheck = { buffLock = true, include = {}, output = "self", flaskWarn = 0,

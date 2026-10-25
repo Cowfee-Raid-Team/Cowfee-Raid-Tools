@@ -380,6 +380,13 @@ do
   check(alt.ui.layers.notes == "LOW" and alt.ui.layers.madeUp == nil and alt.debuffs.position.point == "TOP" and alt.debuffs.position.anchorFrame == nil, "the known layers and position fields apply")
   P:UndoImport()
 end
+-- A place anchored to another element (UI/Placement.lua) travels with that element's key.
+do
+  local i = P:Read(craft({ v = 1, kind = "settings", from = "X", data = { notes = { alert = { position = { point = "CENTER", relativePoint = "CENTER", x = 0, y = -40, anchor = "alerttexts" } } } } }))
+  check(i and i.unknown == 0 and i.values["notes.alert.position"] and i.values["notes.alert.position"].anchor == "alerttexts", "an anchored position keeps its anchor")
+end
+bad({ notes = { alert = { position = { point = "CENTER", relativePoint = "CENTER", x = 0, y = 0, anchor = 5 } } } }, "a position's anchor must be an element's key", "notes.alert.position")
+bad({ notes = { alert = { position = { point = "CENTER", relativePoint = "CENTER", x = 0, y = 0, anchor = "not a key!" } } } }, "a position's anchor must be letters and digits", "notes.alert.position")
 -- The bars position travels with its positionV, so Alerts/Bars.lua doesn't move it a second time.
 do
   local saved = { point = "CENTER", relativePoint = "CENTER", x = 0, y = 100 }

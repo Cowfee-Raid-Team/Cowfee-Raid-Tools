@@ -19,6 +19,7 @@ local ADDON, CRT = ...
 --     default     { point, relativePoint, x, y } on the screen until it is moved, or a function returning one
 --     point       the point it is held by when it is saved (default "CENTER"), or a function returning it: the
 --                 point that stays put when it changes size
+--     relativePoint  the screen's point it is saved from when on the screen (default its own point)
 --     build()     optional: makes its frame, so another element can anchor to it before it has shown
 --     settings()  optional: opens its settings (the gear's Settings)
 --     place()     optional: places it itself (consumables docks under the game's window); it calls
@@ -336,7 +337,7 @@ function El:MoveCenterTo(cx, cy, save)
         key = nil
     end
     local point = self:Point()
-    local relPoint = key and P.byKey[key]:Point() or point
+    local relPoint = key and P.byKey[key]:Point() or self.spec.relativePoint or point
     local ax, ay, aw, ah = P.Rect(rel)
     if not ax then
         return false
@@ -502,7 +503,7 @@ function El:Snap(cx, cy)
 end
 
 -- Dragging -----------------------------------------------------------------------------------
--- The helper moves the frame itself, every frame from the cursor, rather than the game's StartMoving: the frame
+-- The helper moves the frame itself, every frame from the cursor, rather than letting the game move it: the frame
 -- stays on its anchor while it moves, and it can snap as it goes.
 
 local drag -- { el, dx, dy } while a drag goes
