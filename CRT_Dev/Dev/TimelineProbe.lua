@@ -24,6 +24,11 @@ local ADDON, CRT = ...
 -- ENCOUNTER_TIMELINE_, caught with RegisterAllEvents while armed and during the pull, then
 -- unregistered). A value is never compared or tested before the secret check says it is safe.
 --
+-- Boss debug (Dev/BossDebug.lua) makes it follow every raid boss pull through Follow, without arming it:
+-- each reading of the pull, at its end and after combat then goes to the boss's record, section
+-- "timeline", as one line ("+12.3 added@event id=readable spellID=secret ..."). Following alone adds no
+-- catch-all, logs nothing before the pull, writes nothing to CRTDB.dev.probe and prints nothing.
+--
 -- This file never ships: the .toc line that loads it is inside a do-not-package block.
 
 local Probe = {}
@@ -52,6 +57,9 @@ local TIMELINE_PREFIX = "ENCOUNTER_TIMELINE_"
 local stage = "idle" -- idle, armed (waiting for a raid boss pull), pull, ended (waiting to leave combat)
 local seenIDs = {}
 local frame
+local own = false -- armed by /crt dev probe: fills CRTDB.dev.probe and prints when done
+local follow = false -- Boss debug is on: every raid boss pull goes to its record
+local pullEncounterID -- the pull's encounter ID, when readable
 
 local function probeData()
     local r = CRTDB or CRT.db
@@ -76,37 +84,63 @@ local function classify(v)
     return "readable"
 end
 
-local function bump(source, field, moment, class)
-    local data = probeData()
-    local key = source .. "." .. field .. "@" .. moment
-    data.fields[key] = class
-    local c = data.counts[key]
-    if not c then
-        c = { secret = 0, readable = 0, missing = 0, error = 0 }
-        data.counts[key] = c
+-- Boss debug's timeline section: a reading of the pull, its end or after combat (never the armed wait
+-- before it), as one line with the seconds from the pull.
+local function toDebug(text, secrets)
+    if (stage == "pull" or stage == "ended") and CRT.BossDebug then
+        local seconds = CRT.BossDebug:Seconds()
+        if seconds then
+            CRT.BossDebug:Append("timeline", string.format("+%.1f %s", seconds, text), secrets)
+        end
     end
-    c[class] = c[class] + 1
 end
 
-local function record(source, field, moment, v)
-    bump(source, field, moment, classify(v))
+-- Counts a class. batch, when Boss debug follows a table's fields, collects "field=class" for one line.
+local function bump(source, field, moment, class, batch)
+    local data = own and probeData()
+    if data then
+        local key = source .. "." .. field .. "@" .. moment
+        data.fields[key] = class
+        local c = data.counts[key]
+        if not c then
+            c = { secret = 0, readable = 0, missing = 0, error = 0 }
+            data.counts[key] = c
+        end
+        c[class] = c[class] + 1
+    end
+    if batch then
+        batch[#batch + 1] = field .. "=" .. class
+        if class == "secret" then
+            batch.secret = batch.secret + 1
+        end
+    elseif follow then
+        toDebug(source .. "." .. field .. "@" .. moment .. " " .. class, class == "secret" and 1 or 0)
+    end
+end
+
+local function record(source, field, moment, v, batch)
+    bump(source, field, moment, classify(v), batch)
 end
 
 -- Records each named field of a table, or "missing" for all of them when there is no table.
 local function recordFields(source, names, moment, t)
     local class = classify(t)
     local usable = class == "readable" and type(t) == "table"
+    local batch = follow and { secret = 0 } or nil
     for _, name in ipairs(names) do
         if not usable then
-            bump(source, name, moment, class == "readable" and "missing" or class)
+            bump(source, name, moment, class == "readable" and "missing" or class, batch)
         else
             local ok, v = pcall(function() return t[name] end)
             if ok then
-                record(source, name, moment, v)
+                record(source, name, moment, v, batch)
             else
-                bump(source, name, moment, "error")
+                bump(source, name, moment, "error", batch)
             end
         end
+    end
+    if batch then
+        toDebug(source .. "@" .. moment .. " " .. table.concat(batch, " "), batch.secret)
     end
 end
 
@@ -260,9 +294,20 @@ local function catchAllOff()
     end
 end
 
+-- After the armed pull: back to idle, or to waiting for the next pull while Boss debug follows.
 local function disarm()
-    stage = "idle"
+    own = false
+    stage = follow and "armed" or "idle"
     catchAllOff()
+end
+
+local function ensureFrame()
+    if not frame and CreateFrame then
+        frame = CreateFrame("Frame")
+        frame:SetScript("OnEvent", function(_, event, ...)
+            Probe.HandleEvent(event, ...)
+        end)
+    end
 end
 
 -- The phase event sources and any other ENCOUNTER_TIMELINE_ event. Returns true when the event was one
@@ -322,10 +367,13 @@ local function readPhaseSources(event, ...)
 end
 
 function Probe.HandleEvent(event, ...)
-    if stage == "idle" or not probeData() then
+    if stage == "idle" or (own and not probeData()) then
         return
     end
-    local data = probeData()
+    if stage == "armed" and not own and event ~= "ENCOUNTER_START" then
+        return -- following only: nothing before the pull is logged
+    end
+    local data = own and probeData() or nil
     if (stage == "armed" or stage == "pull") and readPhaseSources(event, ...) then
         return
     end
@@ -334,11 +382,18 @@ function Probe.HandleEvent(event, ...)
         if not ok or instanceType ~= "raid" then
             return
         end
-        local encounterID = ...
+        local encounterID, name, difficultyID = ...
         stage = "pull"
         seenIDs = {}
+        pullEncounterID = nil
         if classify(encounterID) == "readable" then
-            data.encounterID = encounterID
+            pullEncounterID = encounterID
+            if data then
+                data.encounterID = encounterID
+            end
+        end
+        if follow and CRT.BossDebug then
+            CRT.BossDebug:Open(encounterID, name, difficultyID)
         end
         readFeature("event")
         readJournal("event", encounterID)
@@ -387,15 +442,18 @@ function Probe.HandleEvent(event, ...)
             readSeen("end")
             readFeature("end")
             readDeaths("end")
-            if data.encounterID then
-                readJournal("end", data.encounterID)
+            if pullEncounterID then
+                readJournal("end", pullEncounterID)
             end
         end
     elseif stage == "ended" and event == "PLAYER_REGEN_ENABLED" then
         readSeen("ooc")
         readDeaths("ooc")
+        local armed = own
         disarm()
-        CRT:Print("Timeline probe done, /crt dev probe show")
+        if armed then
+            CRT:Print("Timeline probe done, /crt dev probe show")
+        end
     end
 end
 
@@ -409,12 +467,8 @@ function Probe:Arm()
     r.dev.probe = { armedAt = time(), fields = {}, counts = {} }
     seenIDs = {}
     stage = "armed"
-    if not frame and CreateFrame then
-        frame = CreateFrame("Frame")
-        frame:SetScript("OnEvent", function(_, event, ...)
-            Probe.HandleEvent(event, ...)
-        end)
-    end
+    own = true
+    ensureFrame()
     if frame then
         frame:UnregisterAllEvents()
         registerNormal()
@@ -422,6 +476,27 @@ function Probe:Arm()
         pcall(frame.RegisterAllEvents, frame)
     end
     CRT:Print("Timeline probe armed for the next raid boss pull.")
+end
+
+-- Boss debug on or off. On: waits for every raid boss pull (no catch-all) unless already armed or in one.
+-- Off: back to idle unless armed by /crt dev probe. Prints nothing.
+function Probe:Follow(on)
+    follow = on and true or false
+    if follow then
+        if stage == "idle" then
+            stage = "armed"
+            ensureFrame()
+            if frame then
+                frame:UnregisterAllEvents()
+                registerNormal()
+            end
+        end
+    elseif not own then
+        stage = "idle"
+        if frame then
+            frame:UnregisterAllEvents()
+        end
+    end
 end
 
 -- Prints one line per value: its counts at each moment.

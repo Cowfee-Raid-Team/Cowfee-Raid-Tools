@@ -28,6 +28,9 @@ local ADDON, CRT = ...
 -- Saved in CRTDB.dev.absorbProbe: on, and last = { encounterID, name, difficultyID, started (time()),
 -- lines, counts[kind] = { n, secret[field] = n }, throttled, dropped }, the last pull only.
 --
+-- Boss debug (Dev/BossDebug.lua) turns it on through Follow without its own switch: then each line also
+-- goes to the boss's record, section "absorb", and CRTDB.dev.absorbProbe is left alone unless on too.
+--
 -- This file never ships: its .toc line is inside the do-not-package block.
 
 local Probe = {}
@@ -46,6 +49,7 @@ local pulling = false
 local startedAt = 0
 local seenAura, seenSecretUnit = {}, {}
 local probed -- which kinds of value already ran the format and bar probes this pull: probed.readable, probed.secret
+local follow = false -- Boss debug is on: log every pull into its record too
 
 local function store()
     CRT.db.dev = CRT.db.dev or {}
@@ -90,7 +94,21 @@ function Probe.Line(seconds, kind, fields)
 end
 
 local function add(kind, fields)
-    local last = store().last
+    local s = store()
+    local last = s.on and s.last or nil
+    if not last and not follow then
+        return
+    end
+    local line = Probe.Line(GetTime() - startedAt, kind, fields)
+    if follow and CRT.BossDebug then
+        local secrets = 0
+        for _, f in ipairs(fields) do
+            if f[4] or isSecret(f[2]) then
+                secrets = secrets + 1
+            end
+        end
+        CRT.BossDebug:Append("absorb", line, secrets)
+    end
     if not last then
         return
     end
@@ -109,7 +127,15 @@ local function add(kind, fields)
         last.dropped = (last.dropped or 0) + 1
         return
     end
-    last.lines[#last.lines + 1] = Probe.Line(GetTime() - startedAt, kind, fields)
+    last.lines[#last.lines + 1] = line
+end
+
+-- An aura left out as a repeat: counted in the probe's own log only.
+local function throttled()
+    local s = store()
+    if s.on and s.last then
+        s.last.throttled = (s.last.throttled or 0) + 1
+    end
 end
 
 -- A game call's first result, or the text "error" when it fails, "missing" when there is no such function.
@@ -154,8 +180,13 @@ local function startPull(encounterID, name, difficultyID, groupSize)
     startedAt = GetTime()
     seenAura, seenSecretUnit = {}, {}
     probed = {}
-    store().last = { encounterID = readable(encounterID) and encounterID or nil, name = readable(name) and name or nil,
-        difficultyID = readable(difficultyID) and difficultyID or nil, started = time(), lines = {}, counts = {}, throttled = 0 }
+    if store().on then
+        store().last = { encounterID = readable(encounterID) and encounterID or nil, name = readable(name) and name or nil,
+            difficultyID = readable(difficultyID) and difficultyID or nil, started = time(), lines = {}, counts = {}, throttled = 0 }
+    end
+    if follow and CRT.BossDebug then
+        CRT.BossDebug:Open(encounterID, name, difficultyID)
+    end
     setUnitEvents(true)
     add("ENCOUNTER_START", { { "encounterID", encounterID }, { "name", name }, { "difficultyID", difficultyID }, { "groupSize", groupSize } })
     logApis()
@@ -163,7 +194,7 @@ end
 
 local function endPull(encounterID, success)
     add("ENCOUNTER_END", { { "encounterID", encounterID }, { "success", success } })
-    local last = store().last
+    local last = store().on and store().last
     if last then
         last.length = GetTime() - startedAt
         last.success = readable(success) and success or nil
@@ -270,7 +301,6 @@ local function onAura(unit)
             add("UNIT_AURA", { { "unit", unit }, { "index", i }, { "error", aura } })
             return
         end
-        local last = store().last
         if not isSecret(aura) and aura == nil then
             return
         end
@@ -278,7 +308,7 @@ local function onAura(unit)
             -- The table is hidden whole: there is no spell to key on, so the slot is.
             local key = unit .. ":secret:" .. i
             if seenAura[key] and now - seenAura[key] < Probe.AURA_GAP then
-                last.throttled = last.throttled + 1
+                throttled()
             else
                 seenAura[key] = now
                 add("UNIT_AURA", { { "unit", unit }, { "index", i }, { "auraSecret", true } })
@@ -287,7 +317,7 @@ local function onAura(unit)
             local spellId, name, points = aura.spellId, aura.name, aura.points
             local key = unit .. ":" .. (readable(spellId) and type(spellId) == "number" and spellId or ("secret:" .. i))
             if seenAura[key] and now - seenAura[key] < Probe.AURA_GAP then
-                last.throttled = last.throttled + 1
+                throttled()
             else
                 seenAura[key] = now
                 local text, anySecret = pointsText(points)
@@ -316,7 +346,7 @@ local function onCast(unit)
 end
 
 function Probe.HandleEvent(event, ...)
-    if not CRT.db or not store().on then
+    if not CRT.db or not (store().on or follow) then
         return
     end
     local a1, a2, a3, a4, a5 = ...
@@ -368,8 +398,14 @@ end
 
 function Probe:SetOn(on)
     store().on = on and true or false
-    listen(on)
+    listen(on or follow)
     CRT:Print(on and "Absorb probe on: it logs the next boss pull. /crt dev absorbprobe show after it." or "Absorb probe off. The last log is kept.")
+end
+
+-- Boss debug on or off: listens while it or the probe's own switch is on. Prints nothing.
+function Probe:Follow(on)
+    follow = on and true or false
+    listen(store().on or follow)
 end
 
 -- The whole log: a header, then one line per reading.

@@ -23,6 +23,9 @@ local ADDON, CRT = ...
 -- Saved in CRTDB.dev.clearProbe: on, and last = { encounterID, name, difficultyID, started (time()),
 -- lines, counts[event] = { n, secret[field] = n }, dropped }, the last pull only.
 --
+-- Boss debug (Dev/BossDebug.lua) turns it on through Follow without its own switch: then each line also
+-- goes to the boss's record, section "clear", and CRTDB.dev.clearProbe is left alone unless on too.
+--
 -- This file never ships: its .toc line is inside the do-not-package block.
 
 local Probe = {}
@@ -54,6 +57,7 @@ local pulling = false
 local startedAt = 0
 local lastHealth, healthSecret = {}, {}
 local lastPhase
+local follow = false -- Boss debug is on: log every pull into its record too
 
 local function store()
     CRT.db.dev = CRT.db.dev or {}
@@ -97,7 +101,21 @@ function Probe.Line(seconds, event, fields)
 end
 
 local function add(event, fields)
-    local last = store().last
+    local s = store()
+    local last = s.on and s.last or nil
+    if not last and not follow then
+        return
+    end
+    local line = Probe.Line(GetTime() - startedAt, event, fields)
+    if follow and CRT.BossDebug then
+        local secrets = 0
+        for _, f in ipairs(fields) do
+            if isSecret(f[2]) then
+                secrets = secrets + 1
+            end
+        end
+        CRT.BossDebug:Append("clear", line, secrets)
+    end
     if not last then
         return
     end
@@ -116,7 +134,7 @@ local function add(event, fields)
         last.dropped = (last.dropped or 0) + 1
         return
     end
-    last.lines[#last.lines + 1] = Probe.Line(GetTime() - startedAt, event, fields)
+    last.lines[#last.lines + 1] = line
 end
 
 -- A game call's first result, or the text "error" when it fails.
@@ -146,15 +164,20 @@ local function startPull(encounterID, name, difficultyID, groupSize)
     startedAt = GetTime()
     lastHealth, healthSecret = {}, {}
     lastPhase = CRT.Alerts and CRT.Alerts.CurrentPhase and ask(CRT.Alerts.CurrentPhase, CRT.Alerts) or nil
-    store().last = { encounterID = readable(encounterID) and encounterID or nil, name = readable(name) and name or nil,
-        difficultyID = readable(difficultyID) and difficultyID or nil, started = time(), lines = {}, counts = {} }
+    if store().on then
+        store().last = { encounterID = readable(encounterID) and encounterID or nil, name = readable(name) and name or nil,
+            difficultyID = readable(difficultyID) and difficultyID or nil, started = time(), lines = {}, counts = {} }
+    end
+    if follow and CRT.BossDebug then
+        CRT.BossDebug:Open(encounterID, name, difficultyID)
+    end
     setUnitEvents(true)
     add("ENCOUNTER_START", { { "encounterID", encounterID }, { "name", name }, { "difficultyID", difficultyID }, { "groupSize", groupSize } })
 end
 
 local function endPull(encounterID, success)
     add("ENCOUNTER_END", { { "encounterID", encounterID }, { "success", success } })
-    local last = store().last
+    local last = store().on and store().last
     if last then
         last.length = GetTime() - startedAt
         last.success = readable(success) and success or nil
@@ -243,7 +266,7 @@ local function onTimeline(event, a1)
 end
 
 function Probe.HandleEvent(event, ...)
-    if not CRT.db or not store().on then
+    if not CRT.db or not (store().on or follow) then
         return
     end
     local a1, a2, a3, a4, a5 = ...
@@ -290,7 +313,7 @@ end
 
 -- CRT's own phase change, during a pull.
 local function onAlertsChange()
-    if not pulling or not CRT.db or not store().on then
+    if not pulling or not CRT.db or not (store().on or follow) then
         return
     end
     local ph = ask(CRT.Alerts.CurrentPhase, CRT.Alerts)
@@ -321,8 +344,14 @@ end
 
 function Probe:SetOn(on)
     store().on = on and true or false
-    listen(on)
+    listen(on or follow)
     CRT:Print(on and "Clear probe on: it logs the next boss pull. /crt dev clearprobe show after it." or "Clear probe off. The last log is kept.")
+end
+
+-- Boss debug on or off: listens while it or the probe's own switch is on. Prints nothing.
+function Probe:Follow(on)
+    follow = on and true or false
+    listen(store().on or follow)
 end
 
 -- The whole log: a header, then one line per event.
