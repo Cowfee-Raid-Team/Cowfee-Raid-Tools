@@ -38,8 +38,10 @@ local ADDON, CRT = ...
 -- opens a menu there: New alert here, or Place a template or a cooldown.
 -- view:SetMode("healers") (the pop-out's Healer CDs toggle) draws Timeline/HealerView.lua's layout: the
 -- ability rows as they are, then each healer with one row per major cooldown, the raid note's cooldown lines
--- as flags on them; the axis, zoom, scrolling, flag drag and Undo are this view's. A non-lead's drag of their
--- own cast there keeps their own time (HealerView.MovePersonal). SetMode(nil) goes back.
+-- on them as icons in line with their cooldown bands; the axis, zoom, scrolling, flag drag and Undo are this
+-- view's. A non-lead's drag of their own cast there keeps their own time (HealerView.MovePersonal). A click on
+-- an empty spot of a cooldown row places its cooldown there (HealerView.Click), with its shadow shown while
+-- hovering (HealerView.Hover, from OnUpdate). SetMode(nil) goes back.
 
 local View = {}
 CRT.TimelineView = View
@@ -815,7 +817,8 @@ function Methods:OnUpdate()
             self.dragX = nil
         end
     end
-    if self.pull and self.hscroll:IsMouseOver() then
+    local over = self.pull and self.hscroll:IsMouseOver()
+    if over then
         local cx = cursorX(self.hscroll)
         local x = self.hscroll:GetHorizontalScroll() + cx
         self.hover:SetText(View.Format(x * clampSpan(settings().span) / self:VisibleWidth()))
@@ -832,6 +835,10 @@ function Methods:OnUpdate()
     end
     if self.zoomSel then
         self:UpdateZoomSelect()
+    end
+    -- Healer CDs: the shadow of the cast a click on a cooldown row would place (Timeline/HealerView.lua)
+    if self.mode == "healers" and CRT.TimelineHealerView then
+        CRT.TimelineHealerView.Hover(self, over)
     end
 end
 
@@ -1374,7 +1381,9 @@ function Methods:IconDoubleClick(b)
 end
 
 -- A left click on the track itself (icons and markers take their own clicks). The second of two
--- within DOUBLE_TIME seconds and DOUBLE_DIST pixels is a double-click; a single click does nothing.
+-- within DOUBLE_TIME seconds and DOUBLE_DIST pixels is a double-click; a single click does nothing, except
+-- on an empty spot of a Healer CDs cooldown row, where it places that row's cooldown (HealerView.Click) and
+-- its double-click's second click does nothing more.
 -- A drag that scrolled the track since the first click (the mouse-up ending it comes here too) means
 -- the next click starts over, so a drag and a quick click never open the editor.
 function Methods:TrackClick(button)
@@ -1393,9 +1402,13 @@ function Methods:TrackClick(button)
     if self.clickAt and now - self.clickAt <= DOUBLE_TIME
         and math.abs(x - self.clickX) <= DOUBLE_DIST and math.abs(y - self.clickY) <= DOUBLE_DIST then
         self.clickAt = nil
-        self:TrackDoubleClick()
+        if not self.clickPlaced then
+            self:TrackDoubleClick()
+        end
     else
         self.clickAt, self.clickX, self.clickY, self.clickScroll = now, x, y, scroll
+        local HealerView = self.mode == "healers" and CRT.TimelineHealerView
+        self.clickPlaced = HealerView and HealerView.Click(self) or false
     end
 end
 
@@ -1808,12 +1821,25 @@ function Methods:UpdateMove()
     local m = mv.m
     local t = self:MoveTarget(mv)
     local g = self:Ghost()
-    local x = View.TimeToX(t, math.max(1, self.extra.length or 0), self.trackW) - 1 - (FLAG_BTN_W - FLAG_W) / 2
+    -- a Healer CDs cooldown cast's ghost is a square where its icon would sit (DrawMarks), a flag's a flag
+    local HealerView = m.hvLane ~= nil and CRT.TimelineHealerView
+    local gw = HealerView and HealerView.CastW() or FLAG_BTN_W
+    local xt = View.TimeToX(t, math.max(1, self.extra.length or 0), self.trackW)
+    local x = HealerView and (xt - gw / 2) or (xt - 1 - (FLAG_BTN_W - FLAG_W) / 2)
     local key = m.mine and "text" or "accent"
     g.head:SetColorTexture(rgba(key, 0.6))
     g.pole:SetColorTexture(rgba(key, 0.6))
+    g:SetSize(gw, gw)
+    g.pole:SetShown(not HealerView)
+    g.head:ClearAllPoints()
+    if HealerView then
+        g.head:SetAllPoints(g)
+    else
+        g.head:SetPoint("TOPLEFT", g, "TOPLEFT", (FLAG_BTN_W - FLAG_W) / 2, -3)
+        g.head:SetSize(FLAG_W, FLAG_HEAD)
+    end
     g:ClearAllPoints()
-    g:SetPoint("TOPLEFT", self.track, "TOPLEFT", x, -(m.row - 1) * ROW_H)
+    g:SetPoint("TOPLEFT", self.track, "TOPLEFT", x, -(m.row - 1) * ROW_H - (HealerView and (ROW_H - gw) / 2 or 0))
     g:SetFrameLevel((mv.f:GetFrameLevel() or 0) + 1)
     -- the cooldown bands at the ghost, on its row; Alt keeps the grabbed time, so it counts as another cast
     local alt = IsAltKeyDown()
@@ -1826,10 +1852,10 @@ function Methods:UpdateMove()
     local w = g.label:GetStringWidth() or 0
     local left = self.hscroll:GetHorizontalScroll()
     local right = left + self:VisibleWidth()
-    local lx, ly = x + FLAG_BTN_W / 2 - w / 2, -(m.row - 1) * ROW_H + 4
+    local lx, ly = x + gw / 2 - w / 2, -(m.row - 1) * ROW_H + 4
     local anchor = "BOTTOMLEFT"
     if m.row == 1 then
-        lx, ly, anchor = x + FLAG_BTN_W, -FLAG_HEAD, "BOTTOMLEFT"
+        lx, ly, anchor = x + gw, -FLAG_HEAD, "BOTTOMLEFT"
         if lx + w > right - 3 then
             lx = x - w - 4
         end
@@ -3543,20 +3569,33 @@ function Methods:TrackMenu(x, y)
 end
 
 -- Draws the markers above the icons: raid note lines in the accent, your reminders in the text colour. A button
--- sits a level above every cast icon, so a flag over an icon is the one clicked.
+-- sits a level above every cast icon, so a flag over an icon is the one clicked. A cast on a Healer CDs
+-- cooldown row (m.hvLane) is its icon alone, centred on its time in the middle of its row between its bands
+-- (HealerView.CastW() square, no pole); every other marker is a flag at its row's top.
 function Methods:DrawMarks(length)
     local level = (self.track:GetFrameLevel() or 0) + 8
+    local HealerView = CRT.TimelineHealerView
     for n, m in ipairs(self.marks) do
         local f = self:Flag(n)
         f.mark = m
         self:FlagHighlight(f)
         f:ClearAllPoints()
-        f:SetPoint("TOPLEFT", self.track, "TOPLEFT", View.TimeToX(m.t, length, self.trackW) - 1 - (FLAG_BTN_W - FLAG_W) / 2, -(m.row - 1) * ROW_H)
+        local x = View.TimeToX(m.t, length, self.trackW)
+        local inline = m.hvLane ~= nil and HealerView ~= nil
+        local w = inline and HealerView.CastW() or FLAG_BTN_W
+        f:SetSize(w, w)
+        f.icon:SetSize(w - 2, w - 2)
+        f.pole:SetShown(not inline)
+        if inline then
+            f:SetPoint("CENTER", self.track, "TOPLEFT", x, -(m.row - 1) * ROW_H - ROW_H / 2)
+        else
+            f:SetPoint("TOPLEFT", self.track, "TOPLEFT", x - 1 - (FLAG_BTN_W - FLAG_W) / 2, -(m.row - 1) * ROW_H)
+        end
         f:SetFrameLevel(level)
         local key = m.mine and "text" or "accent"
         f.pole:SetColorTexture(rgba(key))
         f.head:SetColorTexture(rgba(key))
-        local icon = chipIcon(m)
+        local icon = chipIcon(m) or (inline and m.hvLane.icon) or nil
         f.icon:SetTexture(icon)
         f.edge:SetColorTexture(rgba(key))
         if m.tooSoon then
