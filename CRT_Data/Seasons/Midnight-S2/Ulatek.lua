@@ -9,6 +9,26 @@ local ADDON, CRT = ...
 --             "Cowfee Raid Tools - Boss Reference Transcriptions"). The rows have no types yet: Alex
 --             sets them in game with the Logged Timeline Ref tool on the Development page, and its export
 --             replaces this block.
+-- special     The boss's special alerts on Raid Notes > Mech Alerts > Special (the format is at the top of
+--             Alerts/Special.lua). Each one but Pre-Pot names a row of the ability timeline (when.row), so its
+--             times are that row's casts and move when the reference changes. Pre-Pot is typed at 5 s before
+--             the pull with a 5 s lead: it shows and is read out 10 s before the pull, from the game's pull
+--             timer only (one of 10 s or more). Four are on until a player changes them (Caustic Waves,
+--             Mother's Wrath for tanks, Rage of the Shackled, Circling Prey); the rest are off until ticked.
+--             The (?) sentences come from the boss's Encounter Journal text; Slithering Gestation and Submerge
+--             are not in it, so theirs are plain. There is no tank-buster type, so Mother's Wrath has the
+--             generic one.
+--             The nine row alerts have difficulty = "mythic": the only ability timeline is Mythic's, and a
+--             Normal or Heroic run with none of its own would read Mythic's times. On Normal and Heroic only
+--             Pre-Pot is listed. Once a Heroic ability timeline lands, the others lose their difficulty, but
+--             Toxic Incubation and Serpent's Bite keep difficulty = "mythic": the wiki's Journal text marks
+--             them Mythic-only mechanics.
+--             Still needs Alex:
+--               - a Heroic ability timeline (from his screenshot): until then Normal and Heroic get no row
+--                 alerts;
+--               - phase lines and phase triggers, once his /crt dev probe log confirms the phase events. Until
+--                 then every cast counts from the pull, so a phase that starts early or late is not corrected.
+--             CRT_Dev/Tests/run_season_special.js checks every entry reads and every row is on the reference.
 
 CRT.Bosses:Register({
     encounterID = 3492,
@@ -40,5 +60,135 @@ Fester Burst: 0:39, 1:14, 1:48, 2:23, 7:45, 8:19
 # Left out, cut off at the edge: Circling Prey's last cast near 10:1x.
 # The phases: Stage 1 at 0:00, Stage 2 at about 2:24, Int at about 4:56 and Stage 3 at about 6:00.
 ]],
+    },
+    special = {
+        {
+            key = "waves",
+            label = "Caustic Waves",
+            help = "Waves of venom cross the platform. They hit on impact and keep hurting anyone in their path for 10 seconds.",
+            type = "dodge",
+            default = true,
+            difficulty = "mythic",
+            when = { row = "Caustic Waves" },
+            lead = 6,
+            who = { mode = "everyone" },
+            text = "Waves",
+            show = { callout = true, bar = true, speech = true },
+        },
+        {
+            key = "mothersWrath",
+            label = "Mother's Wrath",
+            help = "Ula'tek knocks back her target and bites them, leaving stacking Stone Venom and a slow. If her target is out of reach, every player is hit.",
+            type = "generic", -- there is no tank-buster type
+            default = true,
+            difficulty = "mythic",
+            when = { row = "Mother's Wrath" },
+            lead = 8,
+            who = { mode = "roles", roles = { "tank" } },
+            text = "Hit + Knock",
+            show = { callout = true, bar = true, speech = true },
+        },
+        {
+            key = "damageAmp",
+            label = "Rage of the Shackled",
+            help = "Ula'tek rages for 20 seconds: raid damage every 5 seconds and falling debris. Flying into the rage exposes her Venomous Heart.",
+            type = "raid",
+            default = true,
+            difficulty = "mythic",
+            when = { row = "Rage of the Shackled" },
+            lead = 15,
+            who = { mode = "everyone" },
+            text = "Damage amp",
+            show = { callout = true, bar = true, speech = true },
+            -- the bar runs the 20 s the row's casts last (+20 on the reference)
+            bar = { length = 20 },
+        },
+        {
+            key = "platformBreak",
+            label = "Circling Prey",
+            help = "Ula'tek destroys part of the platform, hitting and knocking back players within 13 yards.",
+            type = "dodge",
+            default = true,
+            difficulty = "mythic",
+            when = { row = "Circling Prey" },
+            lead = 6,
+            who = { mode = "everyone" },
+            text = "Platform break",
+            show = { callout = true, bar = true, speech = true },
+        },
+        {
+            key = "debuffs",
+            label = "Serpent's Bite",
+            help = "Fangs hit random players and keep pumping venom every second. The poison turns them into a Calcified Corpse unless it is leeched within 15 seconds.",
+            type = "heavydot", -- the Journal shows no dispel icon on it: the poison is leeched, not dispelled
+            difficulty = "mythic", -- a Mythic-only mechanic: keeps this with a Heroic ability timeline
+            when = { row = "Serpent's Bite" },
+            lead = 6,
+            who = { mode = "everyone" },
+            text = "Debuffs",
+            show = { callout = true, bar = true, speech = false },
+        },
+        {
+            key = "eggs",
+            label = "Toxic Incubation",
+            help = "A spectral Ula'tek sends a cascade toward the Toxic Blightscale. Each impact sets off Caustic Waves.",
+            type = "generic",
+            difficulty = "mythic", -- a Mythic-only mechanic: keeps this with a Heroic ability timeline
+            when = { row = "Toxic Incubation" },
+            lead = 6,
+            who = { mode = "everyone" },
+            text = "Eggs",
+            show = { callout = true, bar = true, speech = false },
+        },
+        {
+            key = "adds",
+            label = "Slithering Gestation",
+            help = "Slithering Clutches hatch into adds.",
+            type = "generic",
+            difficulty = "mythic",
+            when = { row = "Slithering Gestation" },
+            lead = 6,
+            who = { mode = "everyone" },
+            text = "Adds",
+            show = { callout = true, bar = true, speech = true },
+        },
+        {
+            key = "sweep",
+            label = "Mephitic Thrash",
+            help = "Ula'tek's tail sweeps the ground, knocking back players within 35 yards and leaving damage every 2 seconds for 20 seconds.",
+            type = "dodge",
+            difficulty = "mythic",
+            when = { row = "Mephitic Thrash" },
+            lead = 5,
+            who = { mode = "everyone" },
+            text = "Sweep",
+            show = { callout = true, bar = true, speech = false },
+        },
+        {
+            key = "submerge",
+            label = "Submerge",
+            help = "Ula'tek submerges.",
+            type = "generic",
+            difficulty = "mythic",
+            when = { row = "Submerge" },
+            lead = 5,
+            who = { mode = "everyone" },
+            text = "Submerge",
+            show = { callout = true, bar = true, speech = false },
+        },
+        {
+            key = "prePot",
+            label = "Pre-Pot",
+            help = "Drink your potion. It shows 10 seconds before the pull, from a pull timer of 10 seconds or more.",
+            type = "generic",
+            -- no icon: no potion texture file ID could be confirmed from Blizzard's UI source or the wiki
+            -- -0:05 with lead 5: it shows 10 s before the pull, so any pull timer of 10 s or more plays it (the
+            -- countdown run starts with the timer, and an item whose window is already past never shows)
+            when = { times = "P1 -0:05" },
+            lead = 5,
+            who = { mode = "everyone" },
+            text = "Pre-Pot",
+            show = { callout = true, bar = false, speech = true },
+        },
     },
 })
