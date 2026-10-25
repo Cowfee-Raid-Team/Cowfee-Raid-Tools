@@ -737,7 +737,14 @@ UNITS.raid6.links = { [1] = "|cffa335ee|Hitem:101:7364|h[ilvl277]|h|r" }
 UNITS.raid6.ids = { [11] = 111 } -- a ring the game has no link for yet
 local fired = 0
 GC:OnChange(function() fired = fired + 1 end)
+-- the inspected player's spec goes to the spec cache (CRT.Groups), from the inspect already made
+local specs, specAsked = {}, {}
+CRT.Groups = { CacheSpec = function(name, s) specs[#specs + 1] = tostring(name) .. "=" .. tostring(s) end }
+local INSPECT_SPECS = { raid2 = 260, raid3 = 0, raid6 = "SECRET" }
+C_SpecializationInfo = { GetInspectSpecialization = function(unit) specAsked[#specAsked + 1] = unit return INSPECT_SPECS[unit] end }
+issecretvalue = function(v) return v == "SECRET" end
 Inspect:Queue({ "Quick-Sargeras", "Far-Sargeras", "Off-Sargeras", "Arrow-Sargeras" })
+eq(#specAsked, 0, "inspect spec: not read before the inspect is ready")
 eq(#log.notify, 1, "one at a time: one NotifyInspect")
 eq(log.notify[1], "raid2", "the first player's unit")
 Inspect:Queue({ "Quick-Sargeras" })
@@ -748,6 +755,8 @@ Inspect:OnEvent("INSPECT_READY", "G2")
 eq(Gear:Of("Quick-Sargeras", 2).itemString, "item:102::213746", "inspect: the exact item read from the game")
 eq(Gear:Of("Quick-Sargeras", 11), nil, "inspect: the whole set replaces what was remembered")
 eq(select(2, Gear:When("Quick-Sargeras")), "inspect", "inspect: the source")
+eq(table.concat(specs, ","), "Quick-Sargeras=260", "inspect spec: remembered for the inspected player")
+eq(table.concat(specAsked, ","), "raid2", "inspect spec: read once, from the inspected unit")
 eq(log.cleared, 1, "inspect: ClearInspectPlayer once read")
 check(fired > 0, "inspect: the page is told")
 eq(#log.notify, 1, "the next player waits for the pause")
@@ -792,6 +801,9 @@ UNITS.raid6.links[11] = "|cffa335ee|Hitem:111:7364|h[ilvl277]|h|r"
 advance(Inspect.RETRY)
 eq(Gear:Of("Halo-Sargeras", 11) and Gear:Of("Halo-Sargeras", 11).id, 111, "the ring read on the second try")
 eq(log.cleared, cleared + 1, "then let go")
+eq(table.concat(specs, ","), "Quick-Sargeras=260", "inspect spec: 0 (not ready) and a secret spec are left out")
+CRT.Groups = nil
+C_SpecializationInfo = nil
 -- the game's own inspect window open: ours waits, and never clears the game's inspect
 advance(Inspect.DELAY)
 InspectFrame = { IsShown = function() return true end }
