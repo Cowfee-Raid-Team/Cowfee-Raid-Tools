@@ -558,6 +558,12 @@ A:Settings().customColors = false
 local samples = B.def.sample(500)
 assert(samples[1].abilityType == "dispel" and samples[2].abilityType == "soak" and samples[3].abilityType == "mythic", "preview types")
 print("ok bars: previews in type colours")
+-- the second preview bar fills up with two impact ticks, from the cycle's start, 8 s long
+B.def.sample(1000) local sp = B.def.sample(1000.5)[2]
+assert(sp.fill == "up" and sp.barFrom ~= nil, "preview: fill up from its own start")
+assert(#sp.tickAt == 2 and math.abs(sp.tickAt[1] - sp.barFrom - 4.5) < 1e-6 and math.abs(sp.tickAt[2] - sp.barFrom - 6.5) < 1e-6
+  and math.abs(sp.at - sp.barFrom - 8) < 1e-6, "preview: impacts 4.5 and 6.5 s into an 8 s bar")
+print("ok bars: a preview shows fill up and impact ticks")
 
 -- the ability type after the text, whatever colour the bar uses
 A:Settings().customColors = true
