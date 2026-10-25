@@ -32,7 +32,8 @@ local ADDON, CRT = ...
 -- cooldown row shows a see-through shadow of its spell and its bands at the cursor's whole second, with
 -- "Rewind at 2:14 for Rixxy" in the view's hover readout (HV.Hover); a click there places it for that player
 -- (HV.Click: the view's PlaceCooldownAt, by the raid leader and assistant rules), as a double-click does.
--- Built once per refresh (data, zoom, or a roster or role change: HV.Watch); scrolling only moves the track.
+-- Built once per refresh (data, zoom, or a roster or role change: HV.Watch); scrolling only moves the track, and
+-- resizing the window only draws the built rows again at the new size (View's SizeChanged), never every frame.
 
 local HV = {}
 CRT.TimelineHealerView = HV

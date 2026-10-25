@@ -149,9 +149,10 @@ local ANCHORS = {
 local POSITION_FIELDS = {
     point = "anchor", relativePoint = "anchor", x = "number", y = "number", width = "number", height = "number", angle = "number",
     positionV = "number",
+    userSized = "flag", -- a pop-out's size was chosen with its grip (UI/Window.lua)
 }
 -- The fields a position table may hold; positionV and angle are single settings of their own.
-local TABLE_FIELDS = { point = true, relativePoint = true, x = true, y = true, width = true, height = true }
+local TABLE_FIELDS = { point = true, relativePoint = true, x = true, y = true, width = true, height = true, userSized = true }
 -- The most entries one table in a shared setting may hold. markers.disabled and pace.disabled grow by
 -- one for each boss switched off, so this leaves room for many seasons of bosses.
 local MAX_LIST = 200
@@ -493,11 +494,14 @@ local function isField(kind, v)
     if kind == "anchor" then
         return ANCHORS[v] == true
     end
+    if kind == "flag" then
+        return type(v) == "boolean"
+    end
     return type(v) == "number" and isPlain(v, 1)
 end
 
 -- A position: a single field (window.point, window.x, minimap.angle) or a table of point, relativePoint,
--- x, y, width and height, each an anchor name or a number. A field this version doesn't know (a newer
+-- x, y, width and height (and a pop-out's userSized), each an anchor name, a number, or true or false. A field this version doesn't know (a newer
 -- one's) is left out and counted; a known field with a bad value rejects it.
 -- Returns ok, the value to use, and how many fields were left out.
 local function isPosition(entry, v)

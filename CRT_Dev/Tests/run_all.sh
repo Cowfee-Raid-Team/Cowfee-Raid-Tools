@@ -136,6 +136,7 @@ g "journal export" && { node run_journal_export.js "$W" 2>&1 | tail -2; echo "ex
 g "ability tip" && { node run_ability_tip.js "$W" 2>&1 | tail -80; echo "exit ${PIPESTATUS[0]}"; }
 g "journal walk" && { node run_journal_walk.js "$W" 2>&1 | tail -2; echo "exit ${PIPESTATUS[0]}"; }
 g "timeline healers" && { node run_timeline_healers.js "$W" 2>&1 | tail -300; echo "exit ${PIPESTATUS[0]}"; }
+g "winlog" && { node run_winlog.js "$W" 2>&1 | tail -30; echo "exit ${PIPESTATUS[0]}"; }
 g "timeline undo" && { node run_timeline_undo.js "$W" 2>&1 | tail -3; echo "exit ${PIPESTATUS[0]}"; }
 g "notes order" && { node run_notesorder.js "$W" 2>&1 | tail -1; }
 g "timeline rehearsal" && { node run_timeline_rehearsal.js "$W/CRT_Modules/Timeline/Rehearsal.lua" 2>&1 | tail -15; echo "exit ${PIPESTATUS[0]}"; }

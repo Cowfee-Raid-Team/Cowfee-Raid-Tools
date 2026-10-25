@@ -3,6 +3,8 @@ local ADDON, CRT = ...
 -- DEVELOPER ONLY. The window log (/crt dev winlog): prints to chat every time something moves, sizes
 -- or rescales the main window, with its anchor and screen place and the line of code that did it, to
 -- find what makes it jump. A drag also prints the place one frame after it starts and after it ends.
+-- The Timeline's pop-out is logged the same way, with each size change (OnSizeChanged) and, once a
+-- resize or drag of it ends, what its view laid out (Log.PopoutReport).
 -- /crt dev winlog again turns it off. This file never ships: its .toc line is inside the
 -- do-not-package block.
 
@@ -16,7 +18,7 @@ local on, hooked = false, false
 local function where(f)
     local point, rel, relPoint, x, y = f:GetPoint()
     local relName = rel == nil and "screen" or (rel == UIParent and "UIParent") or (rel.GetName and rel:GetName()) or "a frame"
-    return string.format("%s of %s %s %+.0f %+.0f | left %.0f top %.0f | scale %.2f h %.0f", tostring(point), relName, tostring(relPoint), x or 0, y or 0, f:GetLeft() or -1, f:GetTop() or -1, f:GetScale(), f:GetHeight() or 0)
+    return string.format("%s of %s %s %+.0f %+.0f | left %.0f top %.0f | scale %.2f w %.0f h %.0f", tostring(point), relName, tostring(relPoint), x or 0, y or 0, f:GetLeft() or -1, f:GetTop() or -1, f:GetScale(), f:GetWidth() or 0, f:GetHeight() or 0)
 end
 
 -- The file and line that called the hooked method, without the folder path.
@@ -54,6 +56,56 @@ local function hook(f)
             end
         end)
     end
+end
+
+-- The Timeline's pop-out (made the first time it pops out): the same methods plus its own sizing, and each
+-- size change. A resize or drag that ends prints the view's layout once the view has laid out again (its
+-- relayout waits up to View.RELAYOUT_GAP after the last size change).
+local popHooked = false
+local REPORT_DELAY = 0.3
+
+local function num(v)
+    return type(v) == "number" and string.format("%.0f", v) or "?"
+end
+
+-- What the pop-out's view laid out: its layout, the track's window (VisibleWidth) and the track's width, the
+-- up and down scroll range, the name column, the rows, and the lanes' window against the rows' body (the
+-- tints and panel rows reach the body's right edge).
+function Log.PopoutReport()
+    local T = CRT.Timeline
+    local view = T and T.PopoutView and T:PopoutView()
+    if not (view and view.frame) then
+        print("|cffc8a050winlog|r pop-out view: none")
+        return
+    end
+    local View = CRT.TimelineView
+    local vs, body = view.vscroll, view.body
+    local label = view.labels and view.labels[1]
+    print(string.format("|cffc8a050winlog|r pop-out view: %s | frame %sx%s | VisibleWidth %s track %s | rows %d, scroll range %s at %s | name column %s (label %s) | lanes window %sx%s, body %sx%s",
+        view:Mode() == "healers" and "Healer CDs" or "Abilities", num(view.frame:GetWidth()), num(view.frame:GetHeight()),
+        num(view:VisibleWidth()), num(view.trackW), #(view.lanes or {}), num(vs:GetVerticalScrollRange()), num(vs:GetVerticalScroll()),
+        num(View and View.LABEL_W), num(label and label:GetWidth()), num(vs:GetWidth()), num(vs:GetHeight()), num(body:GetWidth()), num(body:GetHeight())))
+end
+
+local function hookPopout()
+    local f = _G.CowfeeRaidToolsTimelineWindow
+    if popHooked or not f then
+        return
+    end
+    popHooked = true
+    for _, method in ipairs({ "SetSize", "SetWidth", "SetHeight", "SetPoint", "SetScale", "StartSizing", "StopMovingOrSizing" }) do
+        hooksecurefunc(f, method, function(self)
+            say("pop-out " .. method, self, caller())
+            if method == "StopMovingOrSizing" and on then
+                C_Timer.After(REPORT_DELAY, Log.PopoutReport)
+            end
+        end)
+    end
+    f:HookScript("OnSizeChanged", function(self, w, h)
+        if on then
+            print(string.format("|cffc8a050winlog|r pop-out OnSizeChanged: %s x %s |cff888888from %s|r", num(w), num(h), caller()))
+        end
+    end)
 end
 
 -- Every frame while the log is on: a jump (the window's corner moving more than JUMP pixels in one
@@ -111,6 +163,9 @@ local WATCHED = {
 }
 
 watcher:SetScript("OnUpdate", function()
+    if on and not popHooked then
+        hookPopout() -- the pop-out is made the first time the Timeline pops out
+    end
     local down = IsMouseButtonDown("LeftButton")
     for _, w in ipairs(WATCHED) do
         local f = w.get()
@@ -160,8 +215,9 @@ end
 function Log:Toggle()
     local f = UI:Create()
     hook(f)
+    hookPopout()
     on = not on
-    CRT:Print("Window log " .. (on and "on: every move of the main window prints here. /crt dev winlog turns it off." or "off."))
+    CRT:Print("Window log " .. (on and "on: every move and size change of the main window and the Timeline pop-out prints here. /crt dev winlog turns it off." or "off."))
     if on then
         say("now", f)
     end
