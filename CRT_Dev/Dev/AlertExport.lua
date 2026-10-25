@@ -58,11 +58,11 @@ local ALL = "all"
 -- Lua writing ----------------------------------------------------------------------------------------------
 
 -- The entry fields in the order Alerts/Special.lua documents them, and the order inside its tables.
-local ORDER = { "key", "label", "help", "type", "difficulty", "default", "when", "lead", "who", "text", "show", "markers",
+local ORDER = { "key", "label", "help", "type", "difficulty", "default", "when", "lead", "icon", "iconFile", "who", "text", "show", "markers",
     "ticks", "barTo", "bar", "fill", "covers" }
 local SUB_ORDER = {
     when = { "row", "spellID", "times" },
-    who = { "mode", "rotation", "note" },
+    who = { "mode", "roles", "rotation", "note" },
     show = { "callout", "bar", "text", "icon", "circle", "timeline", "speech" },
     markers = { "marks" },
     bar = { "start", "length", "ticks" },
