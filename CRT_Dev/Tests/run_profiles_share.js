@@ -387,6 +387,16 @@ do
 end
 bad({ notes = { alert = { position = { point = "CENTER", relativePoint = "CENTER", x = 0, y = 0, anchor = 5 } } } }, "a position's anchor must be an element's key", "notes.alert.position")
 bad({ notes = { alert = { position = { point = "CENTER", relativePoint = "CENTER", x = 0, y = 0, anchor = "not a key!" } } } }, "a position's anchor must be letters and digits", "notes.alert.position")
+-- A place anchored to a named frame on screen travels as frame:<name>, with the spot it keeps on the screen.
+do
+  local i = P:Read(craft({ v = 1, kind = "settings", from = "X", data = { debuffs = { position = { point = "TOPLEFT", relativePoint = "TOPLEFT", x = 0, y = 40,
+    anchor = "frame:PlayerFrame", screenX = -300, screenY = -200 } } } }))
+  local pos = i and i.values["debuffs.position"]
+  check(pos and i.unknown == 0 and pos.anchor == "frame:PlayerFrame" and pos.screenX == -300 and pos.screenY == -200, "a place anchored to a frame keeps its anchor and screen spot")
+end
+bad({ debuffs = { position = { point = "TOPLEFT", relativePoint = "TOPLEFT", x = 0, y = 0, anchor = "frame:Player Frame" } } }, "a frame anchor must be a frame's name", "debuffs.position")
+bad({ debuffs = { position = { point = "TOPLEFT", relativePoint = "TOPLEFT", x = 0, y = 0, anchor = "frame:" } } }, "a frame anchor needs a name", "debuffs.position")
+bad({ debuffs = { position = { point = "TOPLEFT", relativePoint = "TOPLEFT", x = 0, y = 0, screenX = "left" } } }, "a screen spot must be a number", "debuffs.position")
 -- The bars position travels with its positionV, so Alerts/Bars.lua doesn't move it a second time.
 do
   local saved = { point = "CENTER", relativePoint = "CENTER", x = 0, y = 100 }

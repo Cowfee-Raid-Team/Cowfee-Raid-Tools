@@ -154,14 +154,15 @@ local ANCHORS = {
 local POSITION_FIELDS = {
     point = "anchor", relativePoint = "anchor", x = "number", y = "number", width = "number", height = "number", angle = "number",
     positionV = "number",
-    anchor = "element", -- the key of the CRT element a place is anchored to (UI/Placement.lua)
+    anchor = "element", -- the key of the CRT element a place is anchored to, or frame:<name> of a frame on screen (UI/Placement.lua)
+    screenX = "number", screenY = "number", -- where a place anchored to a frame sits while that frame isn't loaded
     userSized = "flag", -- a pop-out's size was chosen with its grip (UI/Window.lua)
     -- a size a pop-out keeps for one of its views, { width, height, userSized } (the Timeline's, Timeline/Page.lua)
     abilities = "size", healers = "size",
 }
 -- The fields a position table may hold; positionV and angle are single settings of their own.
 local TABLE_FIELDS = { point = true, relativePoint = true, x = true, y = true, width = true, height = true, userSized = true,
-    abilities = true, healers = true, anchor = true }
+    abilities = true, healers = true, anchor = true, screenX = true, screenY = true }
 -- The fields a view's size may hold.
 local SIZE_FIELDS = { width = true, height = true, userSized = true }
 -- The most entries one table in a shared setting may hold. markers.disabled and pace.disabled grow by
@@ -475,7 +476,8 @@ local function isField(kind, v)
         return type(v) == "boolean"
     end
     if kind == "element" then
-        return type(v) == "string" and #v <= 40 and v:find("^[%w_]+$") ~= nil
+        -- an element's key, or frame: and a frame's global name
+        return type(v) == "string" and #v <= 80 and (v:find("^[%w_]+$") ~= nil or v:find("^frame:[%w_]+$") ~= nil)
     end
     if kind == "size" then
         if type(v) ~= "table" then

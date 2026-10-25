@@ -924,8 +924,17 @@ end
 -- Its place, drag, nudge and reset are the shared helper's (UI/Placement.lua). The panel is held by the corner
 -- its row grows from (rowPoint(1)): its top left for left to right, its top right for right to left, so a change
 -- of width moves only the other end. A position saved at any other point (one from before, or the other Grow) is
--- turned into that corner, at the same place on screen, and saved again (keepPoint). It holds the boss debuff
--- slots' private aura anchors, so it is never anchored to another element; another element may anchor to it.
+-- turned into that corner, at the same place on screen, and saved again (keepPoint).
+--
+-- It may be anchored to another element or to any named frame on screen, such as your unit frame. Neither the
+-- AuraContainer nor its buttons are protected frames (Blizzard_AuraContainer's XML: forbidden aspects, no protected
+-- flag), and the game's restrictions run from a protected frame to its parents and the frames it is anchored to,
+-- never to frames anchored to it (ScriptRegion:IsProtected, Secure Execution and Tainting on warcraft.wiki.gg), so a
+-- panel held by a secure unit frame stays free to change in combat. The game's own raid frames hold private aura
+-- anchors on secure unit buttons the same way (CompactUnitFrame.lua). Should the panel ever report itself protected,
+-- the helper only lets it anchor to a frame that is protected already, so it never spreads protection to another
+-- addon's frame. It is never placed again in combat once anchored to a frame (the helper waits), and it is only
+-- sized out of combat anyway (layout); the container sizes itself.
 
 local function corner()
     return (rowPoint(1))
@@ -943,7 +952,6 @@ placement = CRT.UI.Placement.Define("debuffs", {
     size = function()
         return frameWidth, frameHeight
     end,
-    canAnchor = false,
     protected = true,
     -- made at login; an element anchored to it before then has it made
     build = function()
