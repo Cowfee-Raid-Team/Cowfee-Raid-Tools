@@ -13,10 +13,11 @@ local ADDON, CRT = ...
 --   UNIT_AURA (payload unitTarget, updateInfo; updateInfo is not read): each HELPFUL aura from
 --     C_UnitAuras.GetAuraDataByIndex(unit, i, "HELPFUL"), i up to 40: spellId, name, points, and whether the
 --     aura table itself is secret. A spell is logged once per 5 s.
---   FORMAT, once per pull after the first absorb that is a number (readable or secret): AbbreviateNumbers
+--   FORMAT, twice per pull at most, tagged kind="readable" (the first readable absorb that is not 0) or
+--     kind="secret" (the first secret one): AbbreviateNumbers
 --     and AbbreviateLargeNumbers (a native API since 12.0.0), string.format("%d") and tostring, each in a
 --     pcall: the result, its type, whether it is secret, or the error text
---   BAR, once per pull, same moment: whether StatusBar:SetMinMaxValues(0, value) and SetValue(value) on a
+--   BAR, same moments and tags: whether StatusBar:SetMinMaxValues(0, value) and SetValue(value) on a
 --     hidden bar take the value (pcall)
 --   UNIT_SPELLCAST_START for boss1 (payload unitTarget, castGUID, spellID, castBarID): UnitCastingInfo's
 --     name, startTimeMs and endTimeMs, readable or secret
@@ -44,7 +45,7 @@ local frame, bar
 local pulling = false
 local startedAt = 0
 local seenAura, seenSecretUnit = {}, {}
-local formatDone, barDone
+local probed -- which kinds of value already ran the format and bar probes this pull: probed.readable, probed.secret
 
 local function store()
     CRT.db.dev = CRT.db.dev or {}
@@ -152,7 +153,7 @@ local function startPull(encounterID, name, difficultyID, groupSize)
     pulling = true
     startedAt = GetTime()
     seenAura, seenSecretUnit = {}, {}
-    formatDone, barDone = false, false
+    probed = {}
     store().last = { encounterID = readable(encounterID) and encounterID or nil, name = readable(name) and name or nil,
         difficultyID = readable(difficultyID) and difficultyID or nil, started = time(), lines = {}, counts = {}, throttled = 0 }
     setUnitEvents(true)
@@ -175,7 +176,7 @@ local function endPull(encounterID, success)
 end
 
 -- What the number formatters and string functions do with the value, each in a pcall.
-local function probeFormat(value)
+local function probeFormat(value, kind)
     local tries = {
         { "AbbreviateNumbers", AbbreviateNumbers },
         { "AbbreviateLargeNumbers", AbbreviateLargeNumbers },
@@ -184,30 +185,30 @@ local function probeFormat(value)
     }
     for _, t in ipairs(tries) do
         if type(t[2]) ~= "function" then
-            add("FORMAT", { { "fn", t[1] }, { "present", false } })
+            add("FORMAT", { { "kind", kind }, { "fn", t[1] }, { "present", false } })
         else
             local ok, result = pcall(t[2], value)
             if ok then
-                add("FORMAT", { { "fn", t[1] }, { "ok", true }, { "result", result }, { "type", type(result) }, { "secret", isSecret(result) } })
+                add("FORMAT", { { "kind", kind }, { "fn", t[1] }, { "ok", true }, { "result", result }, { "type", type(result) }, { "secret", isSecret(result) } })
             else
-                add("FORMAT", { { "fn", t[1] }, { "ok", false }, { "error", result } })
+                add("FORMAT", { { "kind", kind }, { "fn", t[1] }, { "ok", false }, { "error", result } })
             end
         end
     end
 end
 
 -- Whether a status bar takes the value: it is the display call the game allows for hidden numbers.
-local function probeBar(value)
+local function probeBar(value, kind)
     if not bar then
         local ok, made = pcall(CreateFrame, "StatusBar", nil, UIParent)
         if not ok then
-            add("BAR", { { "create", false }, { "error", made } })
+            add("BAR", { { "kind", kind }, { "create", false }, { "error", made } })
             return
         end
         bar = made
         bar:Hide()
     end
-    local fields = {}
+    local fields = { { "kind", kind } }
     local ok1, err1 = pcall(bar.SetMinMaxValues, bar, 0, value)
     fields[#fields + 1] = { "SetMinMaxValues", ok1 }
     if not ok1 then
@@ -229,13 +230,13 @@ local function onAbsorb(unit)
     end
     add("UNIT_ABSORB_AMOUNT_CHANGED", fields)
     if type(total) == "number" then
-        if not formatDone then
-            formatDone = true
-            probeFormat(total)
-        end
-        if not barDone then
-            barDone = true
-            probeBar(total)
+        -- Twice a pull at most: the first secret value, and the first readable one that is not 0 (a 0
+        -- before the shield lands must not use the slot). The comparison comes after the secret check.
+        local kind = isSecret(total) and "secret" or total ~= 0 and "readable" or nil
+        if kind and not probed[kind] then
+            probed[kind] = true
+            probeFormat(total, kind)
+            probeBar(total, kind)
         end
     end
 end

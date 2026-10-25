@@ -101,12 +101,12 @@ now = 203.4
 absorbs.boss1 = 5000000
 fire("UNIT_ABSORB_AMOUNT_CHANGED", "boss1")
 check(has('+3.4 UNIT_ABSORB_AMOUNT_CHANGED unit="boss1" total=5000000 type="number" secret=false canaccess=true'), "a readable absorb as it came, with its type and canaccessvalue")
-check(has('FORMAT fn="AbbreviateNumbers" ok=true result="1.5M" type="string" secret=false'), "AbbreviateNumbers on a readable value")
-check(has('FORMAT fn="AbbreviateLargeNumbers" ok=true result="1.5M"'), "AbbreviateLargeNumbers on a readable value")
-check(has('FORMAT fn="string.format %d" ok=true result="5000000"') and has('FORMAT fn="tostring" ok=true result="5000000"'), "string.format and tostring on a readable value")
-check(has("BAR SetMinMaxValues=true SetValue=true") and barFrame.shown == false and #barFrame.calls == 2, "the hidden status bar took the value")
+check(has('FORMAT kind="readable" fn="AbbreviateNumbers" ok=true result="1.5M" type="string" secret=false'), "AbbreviateNumbers on a readable value")
+check(has('FORMAT kind="readable" fn="AbbreviateLargeNumbers" ok=true result="1.5M"'), "AbbreviateLargeNumbers on a readable value")
+check(has('FORMAT kind="readable" fn="string.format %d" ok=true result="5000000"') and has('FORMAT kind="readable" fn="tostring" ok=true result="5000000"'), "string.format and tostring on a readable value")
+check(has('BAR kind="readable" SetMinMaxValues=true SetValue=true') and barFrame.shown == false and #barFrame.calls == 2, "the hidden status bar took the value")
 fire("UNIT_ABSORB_AMOUNT_CHANGED", "boss1")
-check(countOf("FORMAT fn=") == 4 and countOf(" BAR ") == 1, "the formatter and bar probes run once per pull")
+check(countOf('FORMAT kind="readable" fn=') == 4 and countOf(' BAR kind="readable"') == 1, "the readable formatter and bar probes run once per pull")
 
 -- A secret absorb: logged as <secret>, nothing compared, errors recorded.
 absorbs.boss1 = secret(4000000)
@@ -137,10 +137,10 @@ now = 400
 absorbs.boss1 = secret(7000000)
 fire("ENCOUNTER_START", 3002, "Other", 16, 20)
 fire("UNIT_ABSORB_AMOUNT_CHANGED", "boss1")
-check(has('FORMAT fn="AbbreviateNumbers" ok=true result=<secret> type="string" secret=true'), "AbbreviateNumbers takes a secret and gives a secret string")
-check(has('FORMAT fn="AbbreviateLargeNumbers" ok=false error="'), "AbbreviateLargeNumbers refusing a secret: the error text is logged")
-check(has('FORMAT fn="string.format %d" ok=false error="') and has('FORMAT fn="tostring" ok=false error="'), "string.format and tostring refusing a secret: the error text is logged")
-check(has("BAR SetMinMaxValues=true SetValue=true"), "the status bar takes a secret")
+check(has('FORMAT kind="secret" fn="AbbreviateNumbers" ok=true result=<secret> type="string" secret=true'), "AbbreviateNumbers takes a secret and gives a secret string")
+check(has('FORMAT kind="secret" fn="AbbreviateLargeNumbers" ok=false error="'), "AbbreviateLargeNumbers refusing a secret: the error text is logged")
+check(has('FORMAT kind="secret" fn="string.format %d" ok=false error="') and has('FORMAT kind="secret" fn="tostring" ok=false error="'), "string.format and tostring refusing a secret: the error text is logged")
+check(has('BAR kind="secret" SetMinMaxValues=true SetValue=true'), "the status bar takes a secret")
 check(#log() > 5 and not has("3001"), "the next pull replaces the last one")
 
 -- A bar that refuses the secret.
@@ -150,7 +150,7 @@ fire("ENCOUNTER_END", 3002, "Other", 16, 20, 1)
 fire("ENCOUNTER_START", 3003, "Third", 16, 20)
 absorbs.boss1 = secret(1)
 fire("UNIT_ABSORB_AMOUNT_CHANGED", "boss1")
-check(has('BAR SetMinMaxValues=false minMaxError="'), "a bar that refuses: ok false and the error text")
+check(has('BAR kind="secret" SetMinMaxValues=false minMaxError="'), "a bar that refuses: ok false and the error text")
 
 -- Auras: readable, secret points, a secret table, once per spell per 5 s.
 now = 500
@@ -219,8 +219,28 @@ check(has("canaccessvalue=false") and has("UnitCastingInfo=false") and has("C_Un
 fire("UNIT_ABSORB_AMOUNT_CHANGED", "boss1")
 fire("UNIT_AURA", "boss1", {})
 fire("UNIT_SPELLCAST_START", "boss1", "Cast-1", 1)
-check(has('total=42 type="number" secret=false') and not has("canaccess=") and has('FORMAT fn="AbbreviateLargeNumbers" present=false'), "a missing function is skipped, the rest still runs")
+check(has('total=42 type="number" secret=false') and not has("canaccess=") and has('FORMAT kind="readable" fn="AbbreviateLargeNumbers" present=false'), "a missing function is skipped, the rest still runs")
 check(countOf("UNIT_AURA") == 0 and countOf("UNIT_SPELLCAST_START") == 0, "no aura or cast line without their functions")
+
+-- Two probe runs a pull at most: the first readable value that is not 0, and the first secret one.
+fire("ENCOUNTER_END", 3005, "Fifth", 16, 20, 1)
+fire("ENCOUNTER_START", 3007, "Seventh", 16, 20)
+absorbs.boss1 = 0
+fire("UNIT_ABSORB_AMOUNT_CHANGED", "boss1")
+check(has("total=0 type=\\"number\\" secret=false") and countOf("FORMAT ") == 0 and countOf("BAR ") == 0, "a readable 0 runs no probe: it must not use the slot")
+absorbs.boss1 = 5000
+fire("UNIT_ABSORB_AMOUNT_CHANGED", "boss1")
+check(countOf("FORMAT kind=\\"readable\\"") == 4 and countOf("BAR kind=\\"readable\\"") == 1 and has('kind="readable" fn="tostring" ok=true result="5000"'), "the first readable value that is not 0 runs the probes, tagged readable")
+absorbs.boss1 = 6000
+fire("UNIT_ABSORB_AMOUNT_CHANGED", "boss1")
+absorbs.boss1 = secret(7000)
+fire("UNIT_ABSORB_AMOUNT_CHANGED", "boss1")
+check(countOf("UNIT_ABSORB_AMOUNT_CHANGED") == 4 and countOf("FORMAT kind=\\"secret\\"") == 4 and countOf("BAR kind=\\"secret\\"") == 1, "the first secret value runs them again, tagged secret")
+absorbs.boss1 = secret(8000)
+fire("UNIT_ABSORB_AMOUNT_CHANGED", "boss1")
+absorbs.boss1 = 9000
+fire("UNIT_ABSORB_AMOUNT_CHANGED", "boss1")
+check(countOf("FORMAT ") == 8 and countOf("BAR ") == 2, "two runs a pull at most: " .. countOf("FORMAT ") .. " FORMAT lines, " .. countOf("BAR ") .. " BAR lines")
 
 -- A long pull stops at the cap and says how many lines it dropped.
 fire("ENCOUNTER_END", 3005, "Fifth", 16, 20, 1)
