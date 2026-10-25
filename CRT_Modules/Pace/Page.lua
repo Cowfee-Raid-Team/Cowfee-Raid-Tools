@@ -466,6 +466,11 @@ local function build(pf)
     end)
 
     pf:SetScript("OnShow", refresh)
+    pf:SetScript("OnHide", function() -- the Import and Export window belongs to this page
+        if textDialog then
+            textDialog:Hide()
+        end
+    end)
     Pace:OnChange(refresh)
     CRT.Bosses:OnRouteChange(refresh)
     -- the Share buttons follow your role: promoted or demoted, joined or left, while the page is open
