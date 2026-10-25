@@ -385,8 +385,9 @@ refresh = function()
     local Alerts = CRT.Alerts
     if Engine.running then
         now[#now + 1] = "Running: phase " .. tostring(Engine:CurrentPhase()) .. (Engine.reason == "test" and " (test)" or "")
-    elseif Alerts.running then
-        -- A run with reminders but no note for this boss: the note windows stay idle.
+    elseif Alerts.running and not (Alerts.run and Alerts.run.reason == "countdown") then
+        -- A run with reminders but no note for this boss: the note windows stay idle. The pull timer's countdown
+        -- run (special alerts before the pull, Alerts/Countdown.lua) runs no reminders, so it gets no line.
         now[#now + 1] = "Running reminders, no note: phase " .. tostring(Engine:CurrentPhase())
             .. (Alerts.run and Alerts.run.reason == "test" and " (test)" or "")
     end

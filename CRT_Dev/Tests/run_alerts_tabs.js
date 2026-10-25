@@ -371,6 +371,11 @@ check("notes page: a reminders-only run shows as running", function()
   A:Stop()
   CRT.NotesPage.Open("notes")
   assert(not findText("Running reminders"), "status cleared after stop")
+  -- the pull timer's countdown run (Alerts/Countdown.lua) is no reminders run: the status says nothing of it
+  A:Start(ENC, nil, "countdown", { blocks = {}, firstAt = GetTime() + 10 })
+  CRT.NotesPage.Open("notes")
+  assert(not findText("Running reminders") and not findText("^Running"), "no run line for a countdown run")
+  A:Stop()
 end)
 
 check("reminders tab: lists the current raid's Journal bosses", function()
