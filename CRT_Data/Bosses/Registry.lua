@@ -12,10 +12,12 @@ local ADDON, CRT = ...
 -- One field is read where it is used, through Bosses:Get, not copied here:
 --   special     -> CRT.AlertSpecial (Alerts/Special.lua: the boss's scripted special alerts, on Mech Alerts'
 --                  Special list), a list of { key, label, help, type, difficulty, default, when = { row |
---                  spellID | times }, lead, who = { mode = "everyone" | "rotation" (rotation = { { 1, 2 },
---                  { 3, 4 } }) | "note" (note = "<label>") }, text, show, markers = { marks }, ticks = { s },
---                  barTo = "last" | "cast", or bar = { length, ticks, start }, covers = { spellIDs } }. The full
---                  format is at the top of Alerts/Special.lua; an entry that doesn't read is skipped.
+--                  spellID | times (a P1 time may be before the pull: "-0:15") }, lead, icon (a spell ID),
+--                  iconFile (a texture file ID), who = { mode = "everyone" | "rotation" (rotation = { { 1, 2 }, { 3, 4 } }) |
+--                  "roles" (roles = { "tank", "healer" }) | "note" (note = "<label>") }, text, show, markers =
+--                  { marks }, ticks = { s }, barTo = "last" | "cast", or bar = { length, ticks, start }, covers =
+--                  { spellIDs } }. The full format is at the top of Alerts/Special.lua; an entry that doesn't read
+--                  is skipped.
 -- Features that don't depend on a boss (the Late Tracker, Raid Groups) never read it. A season's own facts
 -- that aren't about a boss (the Gear Checker's enchant, socket and season checks, the upgrade tracks, and the
 -- game IDs: consumables, class cooldowns and raid buffs) live in a topic file each (Bosses:SeasonData) and are

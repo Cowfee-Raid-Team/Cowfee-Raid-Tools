@@ -11,16 +11,32 @@ local ADDON, CRT = ...
 --     default = false,                  optional: on for a player who never ticked it (default off)
 --     when = { row = "Orb Burst" },     one of: row, an ability timeline row's name (each of its casts);
 --            { spellID = 1234 },        the row of that spell; or times typed as reminders type them,
---            { times = "P1 0:30, 1:10" }  "P1 0:30, 1:10; P2 0:20"
+--            { times = "P1 0:30, 1:10" }  "P1 0:30, 1:10; P2 0:20". A phase 1 time may be before the pull,
+--                                         "-0:15" or "-15": it plays only from the game's pull timer (the countdown
+--                                         run, Alerts/Countdown.lua), never in a pull's run or a rehearsal
 --     lead = 5,                         optional: seconds before each time it shows (default 5)
+--     icon = 2825,                      optional: a spell ID (2825 is Bloodlust); the icon is that spell's texture
+--     iconFile = 136243,                optional: a texture file ID, the alert's icon as it is (never read as a
+--                                         spell). With both, icon wins (iconFile when the game knows no such
+--                                         spell). With neither: the texture of when's spell (spellID, or its
+--                                         row's spell). A texture the game hides shows no icon
 --     who = { mode = "everyone" },      everyone (the default) gets every cast;
 --           { mode = "rotation", rotation = { { 1, 2 }, { 3, 4 } } }
 --                                       or one step per cast in turn, wrapping: raid groups by number, or the
---                                       words a note tag takes ("tank", "healer", "melee", a class or a name);
+--                                       words a note tag takes ("tank", "healer", "melee", a class or a name).
+--                                       The steps count the casts from the pull: a cast before the pull takes
+--                                       step 1 and never moves the rest, so the first cast after it is step 1;
+--           { mode = "roles", roles = { "tank", "healer" } }
+--                                       or every cast to each player the words fit, read as a note's tags read
+--                                       them: tank, healer, dps, melee, ranged, a class (its English or file
+--                                       name), Group1 to Group8 or a number 1 to 8 (shown as "Group 3"), a
+--                                       player's name;
 --           { mode = "note", note = "Soak" }
 --                                       or the names on the active raid note's "Soak:" line (every cast), or on
---                                       its "Soak 1:", "Soak 2:" lines (one per cast in turn, wrapping)
+--                                       its "Soak 1:", "Soak 2:" lines (one per cast in turn, wrapping, counted
+--                                       as a rotation's are)
 --     text = "Soak now: {group}",       optional: the callout and speech (default the label); {group} is the step
+--                                         (roles: the words, joined with ", ")
 --     show = { callout = true, bar = true, text = false, icon = false, circle = false, timeline = false,
 --              speech = true },         optional: the Show as choices a player starts with
 --     markers = { marks = { "star", "circle" } },
@@ -41,8 +57,11 @@ local ADDON, CRT = ...
 -- and your own reminder on for one of those spells, the engine leaves out your reminder's alert for any cast
 -- the special one also alerts (the same phase, within Alerts.COVER_WINDOW seconds); the rest still come.
 -- Only the players of a cast's step get its alert ("mine", as the note's tags say); everyone else gets
--- nothing, unless the mode is everyone. Unknown fields are ignored. An entry that doesn't read is skipped,
--- with a chat warning in developer builds only.
+-- nothing, unless the mode is everyone. A step's words are cut at spaces before they are read as tags, so
+-- "Group 3" and "Demon Hunter" read as in a note. Unknown fields are ignored. An entry that doesn't read is
+-- skipped, with a chat warning in developer builds only.
+-- Pre-pull: the special block gives a run whose reason is "countdown" only its phase 1 items before the pull
+-- (time < 0), and every other run only the rest, so a pre-pull alert never shows twice.
 -- Raid markers: SetRaidTarget is a protected function since patch 12.0 (warcraft.wiki.gg API_SetRaidTarget;
 -- Blizzard calls it only from its secure templates), so an addon can never put a marker on a player. The
 -- alert names the marks in its text instead (Special.MARKING says so to the Mech Alerts panel).
@@ -76,7 +95,10 @@ local DATA_SHOW = { alert = "callout", text = "text", icon = "icon", bar = "bar"
 -- what a new entry shows when its file says nothing: the note callout and a bar, read out
 local SHOW_DEFAULT = { alert = true, bar = true }
 
-local MODES = { everyone = true, rotation = true, note = true }
+local MODES = { everyone = true, rotation = true, roles = true, note = true }
+-- the run the pull timer starts (Alerts/Countdown.lua): it takes only the items before the pull
+local COUNTDOWN = "countdown"
+Special.COUNTDOWN = COUNTDOWN
 local FILLS = { up = true, down = true }
 local DEFAULT_FILL = "up" -- a special alert is usually a cast coming: its bar fills up to it
 local GROUPS = { mythic = true, nh = true }
@@ -126,7 +148,8 @@ local function warn(enc, key, why)
     CRT:Print(string.format("Special alert %s of boss %s skipped: %s.", tostring(key or "?"), tostring(enc), why))
 end
 
--- One rotation step: a group number, a word, or a list of them. Returns { tags, words } or nil.
+-- One rotation step, or a roles list: a group number, a word, or a list of them. Returns { tags, words } or
+-- nil. The tags are the words cut at spaces, as a note line's tags are ("Group 3", "Demon Hunter").
 local function readStep(step)
     local list = type(step) == "table" and step or { step }
     local tags, words = {}, {}
@@ -138,7 +161,9 @@ local function readStep(step)
             tags[#tags + 1] = "G" .. v
             words[#words + 1] = "G" .. v
         elseif text(v) then
-            tags[#tags + 1] = text(v)
+            for w in text(v):gmatch("%S+") do
+                tags[#tags + 1] = w
+            end
             words[#words + 1] = text(v)
         else
             return nil
@@ -161,7 +186,8 @@ local function readWhen(when)
         return { spellID = when.spellID }
     end
     if text(when.times) then
-        local list, err = CRT.AlertReminders.ParseTimes(when.times)
+        -- a phase 1 time may be before the pull (see the top of this file)
+        local list, err = CRT.AlertReminders.ParseTimes(when.times, true)
         if not list then
             return nil, "its times don't read (" .. tostring(err) .. ")"
         end
@@ -175,7 +201,7 @@ local function readWho(who)
         return { mode = "everyone" }
     end
     if type(who) ~= "table" or not MODES[who.mode or "everyone"] then
-        return nil, "who.mode must be everyone, rotation or note"
+        return nil, "who.mode must be everyone, rotation, roles or note"
     end
     local mode = who.mode or "everyone"
     if mode == "rotation" then
@@ -190,6 +216,19 @@ local function readWho(who)
             end
         end
         return { mode = mode, steps = steps }
+    elseif mode == "roles" then
+        -- one step that every cast takes
+        local step = type(who.roles) == "table" and #who.roles > 0 and readStep(who.roles)
+        if not step then
+            return nil, "roles must be words (a role, a class, a name) or groups 1 to 8"
+        end
+        -- a group by its number is read as G3 and shown as "Group 3" (one word per item of the list)
+        for i, v in ipairs(who.roles) do
+            if type(v) == "number" then
+                step.words[i] = "Group " .. v
+            end
+        end
+        return { mode = mode, roles = step.words, steps = { step } }
     elseif mode == "note" then
         if not text(who.note) then
             return nil, "note mode needs the note's label"
@@ -275,6 +314,11 @@ local function readImpacts(def)
     return nil
 end
 
+-- Whether v is a game ID: a whole number over 0.
+local function wholeID(v)
+    return finite(v) and v > 0 and v == math.floor(v)
+end
+
 -- The spells an entry names in covers, or nil and why.
 local function readCovers(list)
     if list == nil then
@@ -285,7 +329,7 @@ local function readCovers(list)
     end
     local out = {}
     for _, id in ipairs(list) do
-        if not (finite(id) and id > 0 and id == math.floor(id)) then
+        if not wholeID(id) then
             return nil, "covers must be spell IDs"
         end
         out[#out + 1] = id
@@ -327,6 +371,12 @@ function Special.Read(def)
     if def.fill ~= nil and not FILLS[def.fill] then
         return nil, "fill must be up or down"
     end
+    if def.icon ~= nil and not wholeID(def.icon) then
+        return nil, "icon must be a spell ID"
+    end
+    if def.iconFile ~= nil and not wholeID(def.iconFile) then
+        return nil, "iconFile must be a texture file ID"
+    end
     local show, given = {}, type(def.show) == "table" and def.show or nil
     for _, k in ipairs(SHOW_KEYS) do
         local v = given and given[DATA_SHOW[k]]
@@ -353,6 +403,8 @@ function Special.Read(def)
         impacts = impacts,
         covers = covers,
         fill = def.fill or DEFAULT_FILL,
+        icon = def.icon,
+        iconFile = def.iconFile,
     }
 end
 
@@ -525,6 +577,24 @@ function Special:Times(encounterID, entry, group, ref)
     return out
 end
 
+-- The spell of an entry's when.row on ref or the boss's ability timeline for group, or nil.
+local function rowSpell(encounterID, entry, group, ref)
+    local Lanes = CRT.TimelineLanes
+    if not (entry.when.row and Lanes and Lanes.RowSpell) then
+        return nil
+    end
+    ref = ref or CRT.AlertReminders.ReferenceFor(encounterID, { boss = bossName(encounterID) }, group)
+    local row = ref and rowOf(ref, encounterID, entry.when)
+    local ok, id = false, nil
+    if row then
+        ok, id = pcall(Lanes.RowSpell, row, encounterID)
+    end
+    if ok and readable(id) and type(id) == "number" and id > 0 then
+        return id
+    end
+    return nil
+end
+
 -- The spells an entry stands for, as a set (see "No double alerts" at the top of this file): its covers, its
 -- when.spellID, and the spell of its when.row on ref or the boss's ability timeline for group.
 function Special:Covers(encounterID, entry, group, ref)
@@ -535,17 +605,9 @@ function Special:Covers(encounterID, entry, group, ref)
     if entry.when.spellID then
         out[entry.when.spellID] = true
     end
-    local Lanes = CRT.TimelineLanes
-    if entry.when.row and Lanes and Lanes.RowSpell then
-        ref = ref or CRT.AlertReminders.ReferenceFor(encounterID, { boss = bossName(encounterID) }, group)
-        local row = ref and rowOf(ref, encounterID, entry.when)
-        local ok, id = false, nil
-        if row then
-            ok, id = pcall(Lanes.RowSpell, row, encounterID)
-        end
-        if ok and readable(id) and type(id) == "number" and id > 0 then
-            out[id] = true
-        end
+    local id = rowSpell(encounterID, entry, group, ref)
+    if id then
+        out[id] = true
     end
     return out
 end
@@ -650,9 +712,9 @@ local function noteFor(run, encounterID)
 end
 Special.NoteFor = noteFor
 
--- The steps of an entry: the rotation's, the note's, or nil for everyone.
+-- The steps of an entry: the rotation's, the roles' one step (every cast), the note's, or nil for everyone.
 function Special.Steps(entry, note)
-    if entry.who.mode == "rotation" then
+    if entry.who.mode == "rotation" or entry.who.mode == "roles" then
         return entry.who.steps
     elseif entry.who.mode == "note" then
         return Special.NoteSteps(note, entry.who.note)
@@ -680,13 +742,37 @@ end
 
 -- Items ---------------------------------------------------------------------------------------------
 
-local function icon(spellID)
-    if type(spellID) == "number" and C_Spell and C_Spell.GetSpellTexture then
-        local ok, tex = pcall(C_Spell.GetSpellTexture, spellID)
-        if ok and tex ~= nil and readable(tex) then
+-- A spell's texture: the texture when it can be read; nil and true when the game hides it; nil when the game
+-- knows no such spell.
+local function spellTexture(spellID)
+    if type(spellID) ~= "number" or not (C_Spell and C_Spell.GetSpellTexture) then
+        return nil
+    end
+    local ok, tex = pcall(C_Spell.GetSpellTexture, spellID)
+    if not ok or tex == nil then
+        return nil
+    end
+    if readable(tex) then
+        return tex
+    end
+    return nil, true
+end
+
+-- An entry's icon (see icon and iconFile at the top of this file): its icon spell's texture, else its iconFile
+-- (also when the game knows no such spell), else the texture of when's spell (when.spellID, else its row's spell
+-- on ref or the boss's ability timeline for group). Nil when there is none or the game hides it.
+function Special.Icon(encounterID, entry, group, ref)
+    if entry.icon then
+        local tex, hidden = spellTexture(entry.icon)
+        if tex or hidden then
             return tex
         end
     end
+    if entry.iconFile then
+        return readable(entry.iconFile) and entry.iconFile or nil
+    end
+    local spell = entry.when.spellID or rowSpell(encounterID, entry, group, ref)
+    return (spellTexture(spell))
 end
 
 -- The entry's marks as text, in order ("Star, Circle"), or nil.
@@ -715,7 +801,7 @@ function Special.TextFor(entry, step)
     return out
 end
 
-local function item(entry, choices, n, at, step, covers)
+local function item(entry, choices, n, at, step, covers, icon)
     local textOut = Special.TextFor(entry, step)
     local Reference = CRT.TimelineReference
     local outputs = {}
@@ -744,7 +830,7 @@ local function item(entry, choices, n, at, step, covers)
         ph = at.ph,
         time = at.t,
         spellID = spell,
-        icon = icon(spell),
+        icon = icon,
         text = textOut,
         priority = Rules.Priority(3, "normal"),
         warn = entry.lead,
@@ -757,20 +843,30 @@ local function item(entry, choices, n, at, step, covers)
 end
 
 -- The items of one entry for a run (or nil: the boss's own view), one per cast of yours: every cast when
--- the mode is everyone, else those whose step is yours. opts: group, ref (the run's ability timeline),
+-- the mode is everyone, else those whose step is yours (a cast before the pull takes step 1; the casts from the
+-- pull count the steps, see who at the top of this file). opts: group, ref (the run's ability timeline),
 -- choices (default yours), all (every cast, as if each were yours: a test).
 function Special:Items(encounterID, entry, opts)
     opts = opts or {}
     local run = opts.run
     local choices = opts.choices or self:Choices(encounterID, entry)
     local steps = Special.Steps(entry, entry.who.mode == "note" and noteFor(run, encounterID) or nil)
-    local out, covers = {}, nil
+    local out, covers, icon = {}, nil, nil
+    local fromPull = 0 -- the casts at or after the pull: a step counts these, so a pre-pull cast never shifts one
     for n, at in ipairs(self:Times(encounterID, entry, opts.group, opts.ref)) do
-        local step = Special.StepAt(steps, n)
+        local index = 1
+        if not (at.ph == 1 and at.t < 0) then
+            fromPull = fromPull + 1
+            index = fromPull
+        end
+        local step = Special.StepAt(steps, index)
         local mine = entry.who.mode == "everyone" or Special.IsMine(step)
         if mine or opts.all then
-            covers = covers or self:Covers(encounterID, entry, opts.group, opts.ref)
-            out[#out + 1] = item(entry, choices, n, at, step, covers)
+            if not covers then
+                covers = self:Covers(encounterID, entry, opts.group, opts.ref)
+                icon = Special.Icon(encounterID, entry, opts.group, opts.ref)
+            end
+            out[#out + 1] = item(entry, choices, n, at, step, covers, icon)
         end
     end
     return out
@@ -786,19 +882,24 @@ function Special:TestItem(encounterID, entry, group, ref)
     return self:Items(encounterID, entry, { group = group, ref = ref, all = true })[1]
 end
 
--- The block: every entry of the run's boss for its difficulty group that you turned on.
+-- The block: every entry of the run's boss for its difficulty group that you turned on. A countdown run (the
+-- pull timer's) takes only the items before the pull; every other run (a pull, a rehearsal, a test) the rest.
 local function entries(run)
     local out = {}
     if not (run and type(run.encounterID) == "number") then
         return out
     end
     local group = Alerts.RunGroup and Alerts:RunGroup(run) or nil
+    local countdown = run.reason == COUNTDOWN
     for _, entry in ipairs(Special:List(run.encounterID)) do
         local fits = entry.difficulty == nil or run.anyDifficulty or entry.difficulty == group
         if fits and Special:Choices(run.encounterID, entry).on then
             local list = Special:Items(run.encounterID, entry, { run = run, group = group, ref = run.reference })
             for _, it in ipairs(list) do
-                out[#out + 1] = it
+                local prePull = it.ph == 1 and it.time < 0
+                if prePull == countdown then
+                    out[#out + 1] = it
+                end
             end
         end
     end

@@ -1980,6 +1980,42 @@ check("mech special (" .. LOOK .. "): the impacts under When", function()
   assert(#errors == 0, tostring(errors[1]))
 end)
 
+check("mech special (" .. LOOK .. "): a roles alert's Who, a time before the pull, and each row's icon", function()
+  withSpecial({ { key = "roles", label = "Roles", when = { times = "-0:15, 0:30" }, who = { mode = "roles", roles = { "tank", "healer", 3 } }, icon = 135000 },
+    { key = "row", label = "By row", when = { row = "Real Name" } },
+    { key = "none", label = "No icon", when = { times = "0:30" } } })
+  CRT.db.alerts.special = {}
+  local f = freshOpen()
+  local s = f.special
+  click(s.rows[1].frame)
+  assert(s.whoText.text == "Roles: Tank, Healer, Group 3", "Who: " .. s.whoText.text)
+  assert(s.chips[1] == nil or not s.chips[1].shown, "no chips: one list for every cast")
+  assert(s.whenText.text == "At P1 -0:15, 0:30. Shown 5 s before.", "When: " .. s.whenText.text)
+  local who, when
+  for _, h in ipairs(helps) do
+    if h.helpTitle == "Who" then who = h end
+    if h.helpTitle == "When" then when = h end
+  end
+  assert(who and who.helpText:find("Roles:", 1, true), "Who's (?) says what roles do")
+  assert(when and when.helpText:find("before the pull", 1, true) and when.helpText:find("pull timer", 1, true), "When's (?) says what a minus does")
+  -- the icon on each row: the entry's (every number is a spell in this harness, so its texture), its row's spell, or none
+  assert(s.rows[1].icon.shown and s.rows[1].icon.texture == "tex135000", "the entry's icon: " .. tostring(s.rows[1].icon.texture))
+  assert(s.rows[2].icon.shown and s.rows[2].icon.texture == "tex777", "the row's spell: " .. tostring(s.rows[2].icon.texture))
+  assert(not s.rows[3].icon.shown, "none")
+  local function nameX(row) return row.name.pts[#row.name.pts][2] end
+  assert(nameX(s.rows[1]) == nameX(s.rows[3]) and s.rows[1].name.w == s.rows[3].name.w, "one name column, with an icon or without")
+  rects = {}
+  local ir, nr = rect(s.rows[1].icon, f), rect(s.rows[1].name, f)
+  assert(ir[3] <= nr[1], "the icon before the name")
+  -- drawn as the Mechanics list draws its icon (Notes/MechLook.lua): the same size, place and name column
+  local m = f.rows[1]
+  assert(s.rows[1].icon.w == 18 and m.icon.w == s.rows[1].icon.w and m.icon.pts[1][2] == s.rows[1].icon.pts[1][2], "the same icon")
+  assert(nameX(m) == nameX(s.rows[1]), "the same name column")
+  CRT.db.alerts.specialView, CRT.db.alerts.specialViewPicked = "mechanics", true
+  noSpecial()
+  assert(#errors == 0, tostring(errors[1]))
+end)
+
 check("mech special (" .. LOOK .. "): Test plays the alert through the editor's test", function()
   withSpecial(SPECIAL_LIST)
   local f = fresh()

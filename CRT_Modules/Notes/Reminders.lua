@@ -132,7 +132,7 @@ L.THUMB_W = 3 -- the list's scroll bar, a thin thumb THUMB_INSET in from its rig
 L.THUMB_INSET = 1
 -- the rows end the scroll gutter (UI/ScrollBar.lua) short of the thumb's outer edge, so no row runs under it
 L.ROW_W = L.LIST_W - L.ROW_X - UI.ScrollGutter(L.THUMB_W + L.THUMB_INSET)
-L.NAME_X = 50
+L.NAME_X = CRT.MechLook.NAME_X -- the name column both lists share (Notes/MechLook.lua)
 L.DOT_SIZE = 6
 L.NAME_W = L.ROW_W - L.NAME_X - L.DOT_SIZE - 12
 L.TAG_PAD, L.TAG_GAP = 4, 6 -- the Special tag: each side of its word, and to the dot and the name
@@ -841,8 +841,7 @@ local function paint(index)
             end
             local on = item.r ~= nil and item.r.enabled ~= false
             row.item = item
-            row.icon:SetTexture(item.iconTex)
-            row.icon:SetShown(item.iconTex ~= nil)
+            Look.SetIcon(row.icon, item.iconTex)
             row.icon:SetAlpha(item.hiddenMark and HIDDEN_ALPHA or 1)
             if item.hiddenMark then
                 -- hidden for everyone, shown with /crt dev open: faded, with a mark
@@ -1263,10 +1262,7 @@ local function makeRow(parent, i)
     row.check:SetScript("OnLeave", function()
         GameTooltip:Hide()
     end)
-    row.icon = frame:CreateTexture(nil, "ARTWORK")
-    row.icon:SetSize(18, 18)
-    row.icon:SetPoint("LEFT", 28, 0)
-    row.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+    row.icon = Look.MakeIcon(frame)
     row.name = frame:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
     row.name:SetPoint("LEFT", L.NAME_X, 0)
     row.name:SetWidth(L.NAME_W)

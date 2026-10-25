@@ -202,6 +202,23 @@ A:Start(3001, nil, "test")
 assert(A:PhaseStart(1) == 100, "default is now")
 print("ok start: firstAt sets the first phase start")
 
+-- the pull timer's countdown run (Alerts/Countdown.lua): phase 1's clock is the pull moment, ahead of now
+fresh({ item{ id = "pre", ph = 1, time = -15, text = "Pre" } })
+local hooked = 0
+A.onPull[#A.onPull + 1] = function() hooked = hooked + 1 end
+A.onRehearsal[#A.onRehearsal + 1] = function() hooked = hooked + 1 end
+A:Start(3001, "Mythic", "countdown", { firstAt = clock + 20, difficultyID = 16 })
+assert(A.running and A.run.reason == "countdown" and A:PhaseStart(1) == 120, "phase 1 starts at the pull moment")
+assert(hooked == 0, "no onPull or onRehearsal hook")
+assert(A:Lines(clock)[1].at == 105 and A:Elapsed() == -20, "an item 15 s before the pull")
+H("ENCOUNTER_END", 3001)
+assert(A.running and A.run.reason == "countdown", "ENCOUNTER_END leaves it")
+clock = 110
+H("ENCOUNTER_START", 3001, "Boss", 16)
+assert(A.run.reason == "encounter" and A:PhaseStart(1) == 110 and hooked == 1, "ENCOUNTER_START replaces it")
+table.remove(A.onPull) table.remove(A.onRehearsal)
+print("ok start: a countdown run")
+
 -- lines are cached until something changes
 fresh({ item{ id = "a", ph = 1, time = 3, text = "A" }, item{ id = "b", ph = 2, time = 5, text = "B" } })
 H("ENCOUNTER_START", 3001, "Boss", 16)

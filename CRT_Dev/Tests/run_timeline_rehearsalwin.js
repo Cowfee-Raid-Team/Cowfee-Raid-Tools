@@ -744,6 +744,19 @@ do
   assert(okE == false and whyE == "Rehearsal can't start while the alerts are running a pull or a test." and A.running and not RW:IsOpen(), "a real pull is never replaced: " .. tostring(whyE))
   A.run = { reason = "test" }
   assert(Run.Blocked() == "Rehearsal can't start while the alerts are running a pull or a test.", "the plain Rehearse still waits for a test")
+  -- the pull timer's countdown run (Alerts/Countdown.lua) is no pull: opening the Rehearsal stops it, either way
+  A.running, A.rehearsal, A.run = true, false, { reason = "countdown" }
+  assert(Run.Blocked() == nil, "a countdown run doesn't block Rehearse")
+  acalls = {}
+  local okP, whyP = RW:OpenAt(3470, "Mythic", 10, {})
+  assert(okP == true and whyP == nil and RW:IsOpen(), "OpenAt opens: " .. tostring(whyP))
+  assert(acalls[1] and acalls[1][1] == "stop" and acalls[2] and acalls[2][1] == "start" and acalls[2][4] == "rehearsal", "the countdown run stops, then the rehearsal starts: " .. kinds())
+  RW:Close()
+  A.running, A.rehearsal, A.run = true, false, { reason = "countdown" }
+  acalls = {}
+  RW:Open(CRT.Timeline:RehearsalSourceFor(3470, "mythic"))
+  assert(acalls[1] and acalls[1][1] == "stop" and not A.running, "the plain Rehearse stops it as it opens: " .. kinds())
+  RW:Close()
   A.running, A.rehearsal, A.run = false, false, nil
 end
 ok("open at a time for a test")

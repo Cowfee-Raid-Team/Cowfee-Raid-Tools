@@ -1,7 +1,7 @@
 local ADDON, CRT = ...
 
 -- How the Mech Alerts tab's lists look, in one place: the Mechanics list (Notes/Reminders.lua) and the Special
--- list (Notes/SpecialAlerts.lua) draw their names and their selected row through these, so both stay alike.
+-- list (Notes/SpecialAlerts.lua) draw their icons, names and selected row through these, so both stay alike.
 
 local Look = {
     WHITE = { 1, 1, 1 },
@@ -14,6 +14,12 @@ local Look = {
     -- the selected row: the colour of a selected tab (UI:StyleTab), Classic and Modern
     SEL_CLASSIC_ALPHA = 0.18, -- over the heading colour (the game's gold)
     SEL_MODERN_ALPHA = 0.95,
+    -- a row's icon after its tick: ICON_SIZE px at ICON_X, its edge cropped by ICON_CROP on each side; the name
+    -- starts at NAME_X whether or not the row has an icon, so names stay in one column
+    ICON_SIZE = 18,
+    ICON_X = 28,
+    ICON_CROP = 0.07,
+    NAME_X = 50,
 }
 CRT.MechLook = Look
 
@@ -38,6 +44,22 @@ function Look.NameColor(typeKey, on, isSelected)
         return Look.Mix(c, Look.WHITE, Look.LIFT)
     end
     return c[1], c[2], c[3]
+end
+
+-- A list row's icon texture on frame (the row's button), placed and cropped as both lists draw it.
+function Look.MakeIcon(frame)
+    local icon = frame:CreateTexture(nil, "ARTWORK")
+    icon:SetSize(Look.ICON_SIZE, Look.ICON_SIZE)
+    icon:SetPoint("LEFT", Look.ICON_X, 0)
+    local c = Look.ICON_CROP
+    icon:SetTexCoord(c, 1 - c, c, 1 - c)
+    return icon
+end
+
+-- Shows a texture (a file ID or path) on a row's icon, or hides the icon for nil.
+function Look.SetIcon(icon, tex)
+    icon:SetTexture(tex)
+    icon:SetShown(tex ~= nil)
 end
 
 -- The selected row's tint as r, g, b, a, for the look on show (modern: UI:IsModern()).

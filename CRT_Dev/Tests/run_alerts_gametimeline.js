@@ -292,6 +292,12 @@ check("game timeline: not in a rehearsal or with the game's timeline off, and a 
   G:Sync()
   assert(count(api.added) == 0, "a rehearsal sends nothing")
   assert(shownNames() == "Rehearsed", "it shows here")
+  -- the pull timer's countdown run (Alerts/Countdown.lua): before the pull, nothing is sent either
+  pull({ item{ id = "c", time = -4, text = "Before pull" } }, ADD)
+  A:Start(3001, "Mythic", "countdown", { firstAt = clock + 10 })
+  G:Sync()
+  assert(count(api.added) == 0, "a countdown run sends nothing")
+  assert(shownNames() == "Before pull", "it shows here")
   pull({ item{ id = "d", time = 4, text = "Disabled" } }, ADD)
   api.enabled = false
   start()

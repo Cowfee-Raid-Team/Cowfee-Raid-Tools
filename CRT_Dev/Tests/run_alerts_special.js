@@ -1,10 +1,10 @@
 // CRT_Modules/Alerts/Special.lua: a boss's special alerts (its boss file's special list), read and checked, their
-// times, who gets each cast (everyone, a rotation of groups or roles, a note's label lines), your choices, and the
-// "special" block on the alerts engine.
+// times, who gets each cast (everyone, a rotation of groups or roles, a roles list, a note's label lines), its icon,
+// your choices, the "special" block on the alerts engine, and the pull timer's countdown run (Alerts/Countdown.lua).
 // Usage: node run_alerts_special.js CRT_Modules/Timeline/Data.lua CRT_Modules/Timeline/Database.lua CRT_Modules/Timeline/Reference.lua
 //   CRT_Modules/Timeline/Lanes.lua CRT_Modules/Alerts/Rules.lua CRT_Modules/Alerts/Engine.lua CRT_Modules/Alerts/Speech.lua
 //   CRT_Modules/Notes/Parse.lua CRT_Modules/Notes/Data.lua CRT_Modules/Notes/Engine.lua CRT_Modules/Alerts/Reminders.lua
-//   CRT_Modules/Alerts/Special.lua CRT_Dev/Dev/SpecialSample.lua CRT_Data/Bosses/Registry.lua
+//   CRT_Modules/Alerts/Special.lua CRT_Modules/Alerts/Countdown.lua CRT_Dev/Dev/SpecialSample.lua CRT_Data/Bosses/Registry.lua
 const fs = require('fs');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
@@ -22,6 +22,7 @@ function geterrorhandler() return function(e) errors[#errors + 1] = tostring(e) 
 function wipe(t) for k in pairs(t) do t[k] = nil end return t end
 format = string.format
 function date() return "2026-10-24 12:00" end
+function time() return NOW or 1000000 end
 SOUNDKIT = { RAID_WARNING = 8959, READY_CHECK = 8960 }
 C_TTSSettings = { GetVoiceOptionID = function() return 1 end }
 C_VoiceChat = { SpeakText = function() end }
@@ -417,6 +418,276 @@ check("special: no double alerts: your own reminder steps aside for the casts th
   assert(ids():find("mine:a:1", 1, true), "every output off: your reminder still alerts: " .. ids())
   A:Stop(true)
   mineDef.Entries, personalDef.Entries, noteDef.Entries = saved[1], saved[2], saved[3]
+  assert(#errors == 0, tostring(errors[1]))
+end)
+
+check("special: a per-alert icon: icon is a spell, iconFile a texture file; else when's spell; unreadable left out", function()
+  fresh()
+  local SECRET = setmetatable({}, { __tostring = function() return "SECRET" end })
+  local savedTex, savedSecret = C_Spell.GetSpellTexture, issecretvalue
+  -- the game knows 4242, 5150 and 136000 as spells; 777's texture is hidden; any other number is no spell
+  C_Spell.GetSpellTexture = function(id)
+    if id == 4242 or id == 5150 or id == 136000 then return "tex" .. id end
+    if id == 777 then return SECRET end
+    return nil
+  end
+  issecretvalue = function(v) return v == SECRET end
+  S.dev[9002] = {
+    { key = "spell", label = "Spell", when = { times = "0:30" }, icon = 5150 },
+    -- a file ID that is also a spell's number: iconFile is never read as a spell
+    { key = "file", label = "File", when = { times = "0:30" }, iconFile = 136000 },
+    { key = "both", label = "Both", when = { times = "0:30" }, icon = 5150, iconFile = 136000 },
+    { key = "plain", label = "Plain", when = { spellID = 4242 } },
+    { key = "hidden", label = "Hidden", when = { times = "0:30" }, icon = 777, iconFile = 136000 },
+    { key = "unknown", label = "Unknown", when = { times = "0:30" }, icon = 99999, iconFile = 136001 },
+    { key = "over", label = "Over", when = { spellID = 4242 }, iconFile = 136001 },
+  }
+  S.dev[9001] = { { key = "byrow", label = "By row", when = { row = "Swap" } } }
+  local function first(enc, key) return S:Items(enc, S:Get(enc, key), { group = "mythic", all = true })[1] end
+  assert(S:Get(9002, "spell").icon == 5150 and S:Get(9002, "file").iconFile == 136000 and S:Get(9002, "plain").icon == nil
+    and S:Get(9002, "plain").iconFile == nil, "read: the numbers, nil when left out")
+  assert(first(9002, "spell").icon == "tex5150", "icon: the spell's texture")
+  assert(first(9002, "file").icon == 136000, "iconFile: the file ID itself, though a spell has that number")
+  assert(first(9002, "both").icon == "tex5150", "both set: icon wins")
+  assert(S.Icon(9002, S:Get(9002, "unknown")) == 136001, "a spell the game doesn't know: iconFile")
+  assert(S.Icon(9002, S:Get(9002, "over")) == 136001, "iconFile over when's spell")
+  assert(first(9001, "byrow").icon == "tex4242", "neither: the spell of when's row")
+  assert(S.Icon(9001, S:Get(9001, "tanks"), "mythic") == "tex4242", "neither: when.spellID's texture, as before")
+  assert(first(9002, "hidden").icon == nil and S.Icon(9002, S:Get(9002, "hidden")) == nil, "a hidden texture is left out, never swapped")
+  for _, bad in ipairs({ "tex", 0, -5, 1.5 }) do
+    for _, field in ipairs({ "icon", "iconFile" }) do
+      local def = { key = "x", label = "X", when = { times = "0:30" } }
+      def[field] = bad
+      local e, why = S.Read(def)
+      assert(e == nil and tostring(why):find(field, 1, true), field .. " " .. tostring(bad) .. ": " .. tostring(why))
+    end
+  end
+  -- the panel's Test plays the item with it
+  assert(S:TestItem(9002, S:Get(9002, "spell"), "mythic").icon == "tex5150", "the Test item carries it")
+  C_Spell.GetSpellTexture, issecretvalue = savedTex, savedSecret
+end)
+
+check("special: roles: every cast to each player the words fit, as a note's tags read them", function()
+  fresh()
+  local function roles(list) return { key = "r", label = "Roles", when = { times = "0:30, 1:10, 1:50" }, text = "Move: {group}",
+    who = { mode = "roles", roles = list } } end
+  local function mine(list)
+    local e = assert(S.Read(roles(list)))
+    S.dev[9002] = { roles(list) }
+    return #S:Items(9002, S:Get(9002, "r"), { group = "mythic" }), e
+  end
+  local n, e = mine({ "tank", "healer" })
+  assert(e.who.mode == "roles" and e.who.roles[1] == "tank" and e.who.roles[2] == "healer", "read: the words as written")
+  assert(n == 0, "a damage dealer: not a tank or a healer")
+  role = "TANK" CRT.NoteEngine:ResetTokens()
+  n = mine({ "tank", "healer" })
+  assert(n == 3, "a tank: every cast: " .. n)
+  role = "DAMAGER" CRT.NoteEngine:ResetTokens()
+  assert(mine({ "dps" }) == 3 and mine({ "ranged" }) == 3 and mine({ "melee" }) == 0, "dps and ranged (an Arcane mage), not melee")
+  assert(mine({ "Mage" }) == 3 and mine({ "MAGE" }) == 3 and mine({ "Demon Hunter" }) == 0 and mine({ "Hunter" }) == 0, "by class, its English or file name")
+  assert(mine({ 3 }) == 3 and mine({ "Group3" }) == 3 and mine({ "Group 3" }) == 3 and mine({ "G3" }) == 3, "your raid group, by number or word")
+  assert(mine({ 5 }) == 0 and mine({ "Group 5" }) == 0, "another group")
+  local _, g = mine({ "tank", 3 })
+  assert(g.who.roles[2] == "Group 3" and g.who.steps[1].tags[2] == "G3", "a group number is shown as Group 3, read as G3")
+  assert(mine({ "Cheoeqar" }) == 3 and mine({ "Bob" }) == 0, "by name")
+  -- one step for every cast, no wrapping; {group} is the words
+  local steps = S.Steps(S:Get(9002, "r"))
+  assert(#steps == 1 and S.StepAt(steps, 3) == steps[1], "one step for every cast")
+  role = "TANK" CRT.NoteEngine:ResetTokens()
+  mine({ "tank", "healer" })
+  local items = S:Items(9002, S:Get(9002, "r"), { group = "mythic" })
+  assert(items[1].id == "special:r:1" and items[3].id == "special:r:3", "each cast its own item")
+  assert(items[1].text == "Move: tank, healer", "{group} is the words: " .. items[1].text)
+  -- words that don't read: the entry is skipped
+  for _, bad in ipairs({ {}, { 9 }, { 0 }, { "" }, { {} }, "tank" }) do
+    local got, why = S.Read(roles(bad))
+    assert(got == nil and tostring(why):find("roles", 1, true), "skipped: " .. tostring(why))
+  end
+  CRT.UI.pages.dev = { hidden = true }
+  wipe(printed)
+  S.dev[9002] = { roles({ 9 }) }
+  assert(#S:List(9002) == 0 and printed[1] and printed[1]:find("roles", 1, true), "said in a developer build: " .. tostring(printed[1]))
+  CRT.UI.pages.dev = nil
+  wipe(printed)
+  -- the rule against double alerts is the same
+  S.dev[9002] = { { key = "c", label = "C", when = { spellID = 4242 }, who = { mode = "roles", roles = { "tank" } }, covers = { 77 } } }
+  local c = S:Covers(9002, S:Get(9002, "c"))
+  assert(c[4242] and c[77], "covers as before")
+end)
+
+check("special: pre-pull times read in phase 1 only; the block keeps them for a countdown run", function()
+  fresh()
+  local e = assert(S.Read({ key = "pre", label = "Pre", when = { times = "-0:15, -5, 0:30" } }))
+  assert(e.when.list[1].t == -15 and e.when.list[2].t == -5 and e.when.list[3].t == 30, "typed: minus in P1")
+  local bad, why = S.Read({ key = "pre", label = "Pre", when = { times = "P1 0:10; P2 -0:10" } })
+  assert(bad == nil and tostring(why):find("P1", 1, true), "a minus in P2 doesn't read: " .. tostring(why))
+  S.dev[9002] = { { key = "pre", label = "Pre", default = true, when = { times = "-0:15, -5, 0:30; P2 0:10" } } }
+  local function times(run)
+    local out = {}
+    for _, it in ipairs(A.blocks.special.Entries(run)) do out[#out + 1] = it.ph .. "@" .. it.time end
+    return table.concat(out, ",")
+  end
+  assert(times({ encounterID = 9002, group = "mythic", reason = "countdown" }) == "1@-15,1@-5", "a countdown run: the pre-pull items only: " .. times({ encounterID = 9002, reason = "countdown" }))
+  assert(times({ encounterID = 9002, group = "mythic", reason = "encounter" }) == "1@30,2@10", "a pull: never a pre-pull item")
+  assert(times({ encounterID = 9002, group = "mythic", reason = "rehearsal" }) == "1@30,2@10", "nor a rehearsal")
+  -- the panel's Test still plays one (the editor's quick test sets its own time)
+  assert(S:TestItem(9002, S:Get(9002, "pre")).time == -15, "the Test item is the first cast")
+end)
+
+check("special: a pre-pull cast never shifts a rotation: the first cast after the pull is step 1", function()
+  fresh()
+  S.dev[9002] = { { key = "rot", label = "Rot", when = { times = "-0:10, 0:30, 1:10" }, text = "Go {group}",
+    who = { mode = "rotation", rotation = { { 1, 2 }, { 3, 4 } } } } }
+  local e = S:Get(9002, "rot")
+  local function ids() local out = {} for _, it in ipairs(S:Items(9002, e, {})) do out[#out + 1] = it.id .. "=" .. it.text end return table.concat(out, ",") end
+  subgroup = 1 CRT.NoteEngine:ResetTokens()
+  assert(ids() == "special:rot:1=Go G1, G2,special:rot:2=Go G1, G2", "group 1: the pre-pull cast (step 1) and the first after the pull: " .. ids())
+  subgroup = 3 CRT.NoteEngine:ResetTokens()
+  assert(ids() == "special:rot:3=Go G3, G4", "group 3: the second cast after the pull: " .. ids())
+  -- everyone: every cast, the pre-pull one too
+  S.dev[9002] = { { key = "all", label = "All", when = { times = "-0:10, 0:30" } } }
+  assert(#S:Items(9002, S:Get(9002, "all"), {}) == 2, "everyone gets both")
+end)
+
+check("special: the pull timer starts a countdown run; cancel, the pull and the timeout end it", function()
+  fresh()
+  local C = CRT.AlertCountdown
+  assert(C and C.HandleEvent, "CRT_Modules/Alerts/Countdown.lua is loaded")
+  local SECRET = setmetatable({}, { __tostring = function() return "SECRET" end })
+  local savedSecret, savedName = issecretvalue, UnitName
+  issecretvalue = function(v) return v == SECRET end
+  local target, focus = "Plain Boss", nil
+  UnitName = function(u) if u == "player" then return "Cheoeqar" elseif u == "target" then return target elseif u == "focus" then return focus end end
+  local inCombat = false
+  InCombatLockdown = function() return inCombat end
+  -- the Journal finds a boss by its name (Timeline/Journal.lua); here only the two bosses of the season
+  local J = CRT.TimelineJournal
+  J.EncounterByName = function(_, name) return ({ ["Plain Boss"] = 9002, ["Test Boss"] = 9001 })[name] end
+  local raid = {}
+  J.RaidBosses = function() return raid end
+  local instance = { "Raid", "raid", 16 }
+  GetInstanceInfo = function() return instance[1], instance[2], instance[3] end
+  local timers = {}
+  C_Timer.After = function(d, fn) timers[#timers + 1] = { d = d, fn = fn } end
+  local pulls = 0
+  A.onPull[#A.onPull + 1] = function() pulls = pulls + 1 end
+  S.dev[9002] = { { key = "pre", label = "Pre", default = true, when = { times = "-0:15, -5, 0:30" } } }
+  -- your reminder on the same boss: never in a countdown run
+  CRT.db.alerts.reminders[9002] = { [1] = { text = "Mine", times = "0:10", outputs = { alert = true }, enabled = true } }
+  local function ids() local out = {} for _, it in ipairs(A.items) do out[#out + 1] = it.id end return table.concat(out, ",") end
+
+  clock = 100
+  C.HandleEvent("START_PLAYER_COUNTDOWN", "Player-1", 20, 20)
+  assert(A.running and A.run.reason == "countdown" and A.run.encounterID == 9002, "a countdown run on the target's boss")
+  assert(A.run.difficultyID == 16 and A:RunGroup() == "mythic", "the instance's difficulty")
+  assert(A:PhaseStart(1) == 120, "phase 1's clock is the pull moment")
+  assert(ids() == "special:pre:1,special:pre:2", "the pre-pull items only: " .. ids())
+  local lines = A:Lines(clock)
+  assert(#lines == 2 and lines[1].at == 105 and lines[2].at == 115, "due 15 s and 5 s before the pull")
+  assert(pulls == 0, "no onPull hook runs")
+  assert(#timers == 1 and timers[1].d == 25, "ends on its own 25 s after it began")
+  -- cancelled
+  C.HandleEvent("CANCEL_PLAYER_COUNTDOWN", "Player-1")
+  assert(not A.running, "cancel stops it")
+  -- the pull replaces it, and nothing of it shows again
+  C.HandleEvent("START_PLAYER_COUNTDOWN", "Player-1", 20, 20)
+  clock = 106
+  A.HandleEvent("ENCOUNTER_START", 9002, "Plain Boss", 16)
+  assert(A.run.reason == "encounter" and pulls == 1, "the encounter's run")
+  for _, it in ipairs(A.items) do assert(it.time >= 0, "no pre-pull item in the pull: " .. it.id) end
+  assert(ids():find("special:pre:3", 1, true), "the pull's own items")
+  local reason = A.run
+  for _, t in ipairs(timers) do t.fn() end
+  timers = {}
+  assert(A.running and A.run == reason, "the timeout of the countdown never stops the pull")
+  -- a run going: no countdown run
+  C.HandleEvent("START_PLAYER_COUNTDOWN", "Player-1", 20, 20)
+  assert(A.run == reason and #timers == 0, "out of a run only")
+  A:Stop(true)
+  -- times out
+  clock = 200
+  C.HandleEvent("START_PLAYER_COUNTDOWN", "Player-1", 10, 10)
+  assert(A.running and #timers == 1 and timers[1].d == 15, "started")
+  timers[1].fn()
+  timers = {}
+  assert(not A.running, "a pull timer that never pulled: the run ends")
+  -- a new pull timer restarts it
+  C.HandleEvent("START_PLAYER_COUNTDOWN", "Player-1", 10, 10)
+  local first = A.runId
+  C.HandleEvent("START_PLAYER_COUNTDOWN", "Player-1", 30, 30)
+  assert(A.running and A.runId > first and A:PhaseStart(1) == 230, "a new pull timer: a new countdown run")
+  timers[1].fn()
+  assert(A.running and A:PhaseStart(1) == 230, "the old timer's timeout leaves the new run")
+  A:Stop(true)
+  timers = {}
+  -- nothing readable, nothing found: no run
+  for why, setup in pairs({
+    ["the seconds hidden"] = function() return SECRET end,
+    ["no seconds"] = function() return 0 end,
+    ["in combat"] = function() inCombat = true return 20 end,
+    ["the target's name hidden"] = function() target = SECRET return 20 end,
+    ["no boss of a loaded season"] = function() target = "Some Rat" return 20 end,
+  }) do
+    local remaining = setup()
+    C.HandleEvent("START_PLAYER_COUNTDOWN", "Player-1", remaining, 20)
+    assert(not A.running, why .. ": no run")
+    inCombat, target = false, "Plain Boss"
+  end
+  -- the focus when the target is none
+  target, focus = nil, "Plain Boss"
+  C.HandleEvent("START_PLAYER_COUNTDOWN", "Player-1", 20, 20)
+  assert(A.running and A.run.encounterID == 9002, "the focus's boss")
+  A:Stop(true)
+  focus = nil
+  -- a boss with no pre-pull alert: no run
+  S.dev[9002] = { { key = "late", label = "Late", default = true, when = { times = "0:30" } } }
+  target = "Plain Boss"
+  C.HandleEvent("START_PLAYER_COUNTDOWN", "Player-1", 20, 20)
+  assert(not A.running, "nothing to show before the pull: no run")
+  -- an alert turned off: no run either
+  S.dev[9002] = { { key = "pre", label = "Pre", when = { times = "-0:15" } } }
+  C.HandleEvent("START_PLAYER_COUNTDOWN", "Player-1", 20, 20)
+  assert(not A.running, "off: no run")
+  S.dev[9002] = { { key = "pre", label = "Pre", default = true, when = { times = "-0:15" } } }
+  S.dev[9001] = { { key = "pre", label = "Pre", default = true, when = { times = "-0:15" } } }
+
+  -- no target: the one boss of the raid you are in with no kill recorded since the weekly reset
+  target = nil
+  NOW = 1000000
+  C_DateAndTime = { GetSecondsUntilWeeklyReset = function() return 3 * 86400 end }
+  raid = { { encounterID = 9001, name = "Test Boss" }, { encounterID = 9002, name = "Plain Boss" } }
+  C.HandleEvent("START_PLAYER_COUNTDOWN", "Player-1", 20, 20)
+  assert(not A.running, "two bosses with no kill: no run")
+  local week = NOW + 3 * 86400 - 7 * 86400
+  CRT.db.timeline.bosses[9002] = { name = "Plain Boss", counts = { mythic = 2 }, pulls = {
+    { id = 1, number = 1, kill = true, difficultyID = 16, startedAt = week + 60, encounterID = 9002 } } }
+  C.HandleEvent("START_PLAYER_COUNTDOWN", "Player-1", 20, 20)
+  assert(A.running and A.run.encounterID == 9001, "the one boss not killed this week")
+  A:Stop(true)
+  CRT.db.timeline.bosses[9002].pulls[1].startedAt = week - 60
+  C.HandleEvent("START_PLAYER_COUNTDOWN", "Player-1", 20, 20)
+  assert(not A.running, "a kill before the reset doesn't count")
+  CRT.db.timeline.bosses[9002].pulls[1].startedAt = week + 60
+  CRT.db.timeline.bosses[9002].pulls[1].difficultyID = 15
+  C.HandleEvent("START_PLAYER_COUNTDOWN", "Player-1", 20, 20)
+  assert(not A.running, "a kill on another difficulty doesn't count")
+  CRT.db.timeline.bosses[9002].pulls[1].difficultyID = 16
+  C_DateAndTime = nil
+  C.HandleEvent("START_PLAYER_COUNTDOWN", "Player-1", 20, 20)
+  assert(not A.running, "the weekly reset unknown: no run")
+  raid = {}
+  instance = { "Somewhere", "none", 0 }
+  target = "Plain Boss"
+  C.HandleEvent("START_PLAYER_COUNTDOWN", "Player-1", 20, 20)
+  assert(A.running and A.run.difficultyID == nil, "outside a raid: no difficulty")
+  A:Stop(true)
+
+  CRT.db.timeline.bosses[9002] = nil
+  CRT.db.alerts.reminders = {}
+  table.remove(A.onPull)
+  issecretvalue, UnitName = savedSecret, savedName
+  InCombatLockdown = function() return false end
+  C_Timer.After = function() end
   assert(#errors == 0, tostring(errors[1]))
 end)
 

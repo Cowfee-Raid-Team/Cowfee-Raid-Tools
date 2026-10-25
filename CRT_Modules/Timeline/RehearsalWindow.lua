@@ -459,6 +459,11 @@ end
 -- playing against the new one.
 function RehearsalWindow:Open(source)
     source = source or {}
+    -- the pull timer's countdown run gives way, as OpenAt stops a Test's run
+    local Alerts = CRT.Alerts
+    if Alerts and RehearsalWindow.CountdownRun(Alerts) then
+        Alerts:Stop()
+    end
     local f = self:Frame()
     if self.open then
         self:Closed()
@@ -850,7 +855,8 @@ end
 --   phase 1, which the engine starts at the pull, start nothing.
 --   Closing the window stops a rehearsal run, never a real one, and Play never replaces a real run.
 --   Combat or a boss encounter starting closes the window. Blocked() says why Rehearse can't open now
---   (combat, a boss encounter, or the alerts running a real pull or a test), and OnChange(fn) is told
+--   (combat, a boss encounter, or the alerts running a real pull or a test; the pull timer's countdown run
+--   doesn't count, and opening the window stops it), and OnChange(fn) is told
 --   when combat or an encounter starts or ends, so the Rehearse button can grey out.
 
 local Run = { started = false, last = nil, listeners = {} }
@@ -860,9 +866,16 @@ CRT.TimelineRehearsalRun = Run
 -- this file's ENCOUNTER_START against the game's own must not matter.
 local inCombat, inEncounter = false, false
 
+-- The pull timer's countdown run (Alerts/Countdown.lua, special alerts before the pull) is going. It is no pull:
+-- the Rehearsal never waits for it, and opening the window stops it (RehearsalWindow:Open).
+local function countdownRun(Alerts)
+    return Alerts.running and type(Alerts.run) == "table" and Alerts.run.reason == "countdown" or false
+end
+RehearsalWindow.CountdownRun = countdownRun
+
 -- A run that is not a rehearsal (an encounter, a test) is going.
 local function realRun(Alerts)
-    return Alerts.running and not Alerts:IsRehearsal()
+    return Alerts.running and not Alerts:IsRehearsal() and not countdownRun(Alerts)
 end
 
 -- Starts the phase of every line after `from` (nil: from the pull) up to `to`, in time order.

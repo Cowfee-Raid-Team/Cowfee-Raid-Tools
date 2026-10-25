@@ -121,9 +121,12 @@ function Reminders.PhaseCut(ref, ph)
     return cut
 end
 
--- m:ss, or m:ss.s when the time has tenths (FormatTimes' and the cast keys').
+-- m:ss, or m:ss.s when the time has tenths (FormatTimes' and the cast keys'); a time before the pull as -m:ss.
 local function clock(t)
     t = math.floor(t * 10 + 0.5) / 10
+    if t < 0 then
+        return "-" .. clock(-t)
+    end
     if t == math.floor(t) then
         return string.format("%d:%02d", math.floor(t / 60), t % 60)
     end
@@ -225,7 +228,9 @@ end
 
 -- "P1 0:02, 1:17; P2 +0:18" into { { ph, t } }. Groups split by ";", each an optional P<number> and
 -- then times split by ",". A time may carry tenths ("3:13.5", "193.5"), as a click on the Timeline
--- gives. Returns nil and a message naming the bad part.
+-- gives. With prePull (special alerts only; your reminders never pass it), a phase 1 time may have a
+-- leading minus, a time before the pull ("-0:15" or "-15" is t = -15); a minus in any other phase is an
+-- error. Returns nil and a message naming the bad part.
 local function parseTime(s)
     local t = CRT.TimelineReference.ParseTime(s)
     if t then
@@ -242,7 +247,7 @@ local function parseTime(s)
     return nil
 end
 
-function Reminders.ParseTimes(text)
+function Reminders.ParseTimes(text, prePull)
     if type(text) ~= "string" then
         return nil, "no times"
     end
@@ -264,9 +269,16 @@ function Reminders.ParseTimes(text)
             for tok in (rest .. ","):gmatch("([^,]*),") do
                 tok = trim(tok)
                 if tok ~= "" then
-                    local t = parse((tok:gsub("^%+%s*", "")))
+                    local before = prePull and tok:match("^%-%s*(.+)$")
+                    if before and ph ~= 1 then
+                        return nil, "time '" .. tok .. "' in " .. label .. " is before the pull: only P1 may have one"
+                    end
+                    local t = parse(before or (tok:gsub("^%+%s*", "")))
                     if not t then
                         return nil, "bad time '" .. tok .. "' in " .. label
+                    end
+                    if before and t > 0 then
+                        t = -t
                     end
                     out[#out + 1] = { ph = ph, t = t }
                     count = count + 1

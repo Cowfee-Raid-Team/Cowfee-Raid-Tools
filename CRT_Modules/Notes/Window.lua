@@ -499,11 +499,12 @@ local function bossID(v)
     return nil
 end
 
--- encounterID, the run when it is that boss's, and the note record when the boss comes from the note.
+-- encounterID, the run when it is that boss's, and the note record when the boss comes from the note. An editor
+-- Test and the pull timer's countdown run (Alerts/Countdown.lua) aren't a boss's pull: the note's boss stays.
 local function currentBoss()
     local Alerts = CRT.Alerts
     local run = Alerts and Alerts.running and Alerts.run
-    if run and (run.reason ~= "test" or Engine.running) then
+    if run and ((run.reason ~= "test" and run.reason ~= "countdown") or Engine.running) then
         local id = bossID(run.encounterID)
         if id then
             return id, run

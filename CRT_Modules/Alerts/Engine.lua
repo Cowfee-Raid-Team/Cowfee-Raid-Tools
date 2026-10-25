@@ -445,6 +445,8 @@ end
 -- begin a reminder a few seconds before its first time.
 -- reason "rehearsal" takes opts.clock, opts.speed and opts.as (see the top of this file) and runs the
 -- onRehearsal hooks instead; its lowest phase starts at fight second 0 (TimeAt(0)).
+-- reason "countdown" (the pull timer's run before the pull, Alerts/Countdown.lua) runs no hooks; its opts.firstAt
+-- is the pull moment, ahead of now, so an item at a negative time is due before it.
 function Alerts:Start(encounterID, difficultyName, reason, opts)
     if self.running then
         self:Stop(true)

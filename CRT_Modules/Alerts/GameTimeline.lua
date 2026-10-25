@@ -13,7 +13,8 @@ local ADDON, CRT = ...
 -- (FinishScriptEvent); a line that goes away first (a later phase cut it, the pull ended or wiped, the Mode changed)
 -- is canceled (CancelScriptEvent). Only our own event IDs are touched, never CancelAllScriptEvents, which would take
 -- other addons' events too. Never in a rehearsal: its clock pauses, jumps and runs at 2x or 4x, and a script event
--- counts down on real time. Every value passed is read through CRT.Timeline.readable first, so nothing secret
+-- counts down on real time. Never in a countdown run (reason "countdown", the pull timer's pre-pull alerts,
+-- Alerts/Countdown.lua): those show on our Alert timeline only. Every value passed is read through CRT.Timeline.readable first, so nothing secret
 -- reaches the API; a secret name, spell or icon is left out.
 -- Nothing is sent while the game's timeline shows nothing: a rehearsal, the game's timeline turned off in its
 -- options (IsFeatureEnabled), or its view type None (another addon replacing it). Then, and for any line not on the
@@ -151,10 +152,11 @@ local function gameShowing(C)
     return true
 end
 
--- Whether lines are being sent now, and the API when they are.
+-- Whether lines are being sent now, and the API when they are. Never for a rehearsal, nor for the countdown run
+-- the pull timer starts before the pull (Alerts/Countdown.lua): our own Alert timeline shows those.
 local function sending()
     local s = settings()
-    if modeOf(s) ~= "add" or not Alerts.running or Alerts:IsRehearsal() then
+    if modeOf(s) ~= "add" or not Alerts.running or Alerts:IsRehearsal() or (Alerts.run and Alerts.run.reason == "countdown") then
         return nil
     end
     local C = api()
