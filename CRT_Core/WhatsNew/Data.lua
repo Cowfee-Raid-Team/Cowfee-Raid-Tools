@@ -6,6 +6,17 @@ local ADDON, CRT = ...
 -- CRT_Dev/Tests/run_whatsnew.js checks every entry.
 CRT.WhatsNewData = {
     {
+        version = "1.1.3",
+        lines = {
+            "Season Stats: kills, wipes and repair costs per boss",
+            "Healer CDs view in the Timeline pop-out",
+            "Drag the Timeline's time bar to zoom in",
+            "Hover any ability for its Journal notes",
+            "Raid note History: compare and restore",
+        },
+        more = 8,
+    },
+    {
         version = "1.1.2",
         lines = {
             "Requests: ask the raid who needs a rune or a flask",

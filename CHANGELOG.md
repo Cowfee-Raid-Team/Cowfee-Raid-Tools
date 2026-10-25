@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.1.3 (2026-10-24)
+
+- **Season Stats** (new, under Modules): pulls, wipes, kills, first and best kill per boss, your repair bill and the raid's repair costs, and a reflection for each boss.
+- **Team raids:** a raid counts as your team when 75% of it runs CRT (adjustable). Season Stats keeps team and all raids apart; Tattlebot and the Late Tracker record only team raids by default.
+- **Healer CDs** (Timeline pop-out): each healer's major cooldowns under the boss's abilities, in class colours. Healers can move their own cooldowns and send them to the raid lead; right-click a healer to show or hide rows. Set role on Raid Groups.
+- **Timeline:** drag across the time bar (or Ctrl+drag) to zoom, Fit to zoom back out; click a recent pull to show its deaths, with a bold Kill or Wipe line.
+- **Ability tooltips:** hover an ability on the Timeline, Mech Alerts or Season Stats to read its Encounter Journal notes.
+- **Mech Alerts:** a Special tab for boss-specific alerts.
+- **Raid Notes:** History keeps your last 5 versions with Compare and Restore. Note callout/assignments has its own settings (size, font, text to speech); Texts is now Critical alerts text.
+- **Debuffs:** optional tooltips on hover.
+- **Loot Master:** session buttons grey out for players who can't run loot.
+- **Menu:** General, Bosses, Raid Admin, Modules.
+- **What's new:** a short list like this appears once after an update; /crt whatsnew shows it again.
+- **Season 2:** The Lost Explorers' ability timeline has its types, and the class cooldown list is updated for patch 12.0.
+
 ## 1.1.2 (2026-10-23)
 
 - **Menu:** the side menu is in four groups with headers: General, Raid Admin, Bosses and Modules.
