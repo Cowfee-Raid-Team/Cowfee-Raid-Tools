@@ -96,6 +96,25 @@ do
 end
 
 do
+  -- a time before the pull: phase 1 only, and only when the caller asks for it (special alerts do; your reminders don't)
+  local l = R.ParseTimes("P1 -0:15, -5, 0:30; P2 +0:10", true)
+  assert(l and #l == 4 and l[1].ph == 1 and l[1].t == -15 and l[2].t == -5 and l[3].t == 30 and l[4].ph == 2 and l[4].t == 10,
+    "minus in P1: " .. tostring(l and l[1].t))
+  assert(R.FormatTimes(l) == "P1 -0:15, -0:05, 0:30; P2 +0:10", "written back: " .. R.FormatTimes(l))
+  local again = R.ParseTimes(R.FormatTimes(l), true)
+  assert(again and again[1].t == -15 and again[2].t == -5 and again[3].t == 30 and again[4].t == 10, "round trip")
+  local m = R.ParseTimes("-15", true)
+  assert(m and #m == 1 and m[1].ph == 1 and m[1].t == -15, "no P is phase 1, plain seconds")
+  assert(R.ParseTimes("-1:02.5", true)[1].t == -62.5, "tenths")
+  local bad, err = R.ParseTimes("P1 0:10; P2 -0:10", true)
+  assert(bad == nil and err:find("-0:10", 1, true) and err:find("P2", 1, true) and err:find("P1", 1, true), "refused in P2: " .. tostring(err))
+  local own, ownErr = R.ParseTimes("-0:15")
+  assert(own == nil and ownErr == "bad time '-0:15' in P1", "your reminders still refuse it: " .. tostring(ownErr))
+  assert(R.FormatTimes({ { ph = 1, t = -90 } }) == "P1 -1:30", "a minute and a half before")
+  print("ok times: a time before the pull in P1")
+end
+
+do
   fresh()
   -- your own reminder (its text names no ability row) keeps typed times
   local id = R:Save(3001, nil, { boss = NEK, text = "Soak call", times = "P1 0:30" })
