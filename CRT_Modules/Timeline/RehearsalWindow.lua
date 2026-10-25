@@ -428,12 +428,14 @@ function RehearsalWindow:Frame()
     end)
     -- onTick runs every frame while the window is open, paused too, so the engine sees a pause at once
     f:SetScript("OnUpdate", function()
-        -- a Test's stopAt: the clock pauses there once (the run goes on), and Play carries on past it
+        -- a Test's stopAt: the test ends there as a fight ends at its length, the clock standing still,
+        -- and the window becomes a plain Rehearse (EndTest: no "Testing:" line, no draft); Play goes on
         local stop, clock = self.stopAt, self.clock
         if stop and clock and clock:Playing() and clock:Now() >= stop then
             self.stopAt = nil
             clock:Seek(stop)
             self:Pause()
+            self:EndTest()
         end
         if self.playing then
             self:Redraw()
@@ -972,8 +974,8 @@ end
 
 -- For the alerts' Test buttons: opens the rehearsal of a boss on a difficulty (what the Review tab
 -- would show for it: its reference for that difficulty group, else its newest pull), seeks to fight
--- second t (0 at the earliest) and plays, pausing once at fight second opts.stopAt when given (a jump,
--- Restart or a plain Rehearse clears it). opts.testing labels the window "Testing: <testing>";
+-- second t (0 at the earliest) and plays, ending the test at fight second opts.stopAt when given: the
+-- clock pauses there and EndTest runs (a jump, Restart or a plain Rehearse clears it first). opts.testing labels the window "Testing: <testing>";
 -- opts.alerts is copied into Alerts:Start's opts on every start (a jump or Restart keeps it). It
 -- replaces whatever the window had open, and a quick test run (never a real pull). True, or false and
 -- the reason to print.
@@ -1004,7 +1006,7 @@ function RehearsalWindow:OpenAt(encounterID, difficultyName, t, opts)
     return true
 end
 
--- Ends a Test's rehearsal (OpenAt) when another alert is picked: the "Testing:" line goes, the pause
+-- Ends a Test's rehearsal (OpenAt) at its stopAt or when another alert is picked: the "Testing:" line goes, the pause
 -- at stopAt is dropped, and the run starts again at the clock without the tested draft, playing on as
 -- a plain Rehearse. Nothing when the window is closed or not testing.
 function RehearsalWindow:EndTest()

@@ -11,9 +11,10 @@ local ADDON, CRT = ...
 -- own ("minetest") that gives them out only to a run started with reason "test". A note line's item is
 -- the note block's own (CRT.NoteEngine.ItemFor) and stays a "note" item, so the note's switches apply.
 -- When the Timeline's Rehearsal window can open (CRT.TimelineRehearsalWindow:OpenAt), Test opens it
--- instead, REHEARSAL_LEAD seconds before the alert's first fight second, playing the whole fight with the
--- draft's items added and its saved version left out (Alerts:Start's opts.extra and opts.replaces). The
--- quick test above is the fallback: no window, the window refusing (its reason printed), or no fight time.
+-- instead, with the draft's items added and its saved version left out (Alerts:Start's opts.extra and
+-- opts.replaces). The quick test above is the fallback: no window, the window refusing (its reason
+-- printed), or no fight time. Either way a test plays only around the alert's first cast: from TEST_BEFORE
+-- seconds before it shows to TEST_AFTER seconds after it is done (testWindow).
 -- Export shows the draft as a note line in a copy box.
 -- Only the raid leader or an assistant changes the raid note (CRT.Notes:CanEditRaid): for anyone else
 -- Save as Raid note is greyed out, a new alert set to it opens as Only me, a note line opens read-only
@@ -22,7 +23,7 @@ local ADDON, CRT = ...
 -- Save as saved alert keeps the draft's setup, without its time, as a saved alert (CRT.AlertSaved), and
 -- Open takes prefill.saved to start from one. EditSaved opens a saved alert itself: no Save as saved alert,
 -- Export, Relative to, Time or Difficulty; Save overwrites it (keeping the name its chip gave it, and
--- making nothing once it was deleted), and Test previews it ten seconds ahead.
+-- making nothing once it was deleted), and Test plays it as phase 1, NO_TIME seconds in.
 
 local TEXT = {
     title = "Alert",
@@ -130,9 +131,11 @@ local Editor = {}
 CRT.AlertEditor = Editor
 
 local TEST_BLOCK = "minetest"
-local TEST_LEAD = 10 -- a test starts this many seconds before the alert's first time
-local REHEARSAL_LEAD = 8 -- Test opens the Rehearsal this many seconds before the alert's first time, when it has no Show from
-local REHEARSAL_AFTER = 3 -- and pauses it this many seconds after (longer when the alert lingers longer)
+-- A test plays only around the alert: from TEST_BEFORE seconds before it first shows (its Show from, or its
+-- bar's own start) to TEST_AFTER seconds after it is done (its bar's end, then its Linger).
+local TEST_BEFORE = 5
+local TEST_AFTER = 5
+local NO_TIME = 10 -- a saved alert or a special alert has no time of its own: a test plays it this far into phase 1
 local ANY = "any"    -- a raid note line's difficulty dropdown key for its note with no difficulty (saved as nil)
 local NO_SOUND = Draft.NO_SOUND
 local FRAME_NAME = "CowfeeRaidToolsAlertEditor"
@@ -758,7 +761,7 @@ end
 
 -- The draft's test items: a note line's through the note block's own builder (block "note"), a
 -- reminder's through Reminders:Items (ids "mine:test:n"). Returns items, the lowest phase and its first
--- time, or nil when a reminder has no times. A saved alert has no time: ten seconds from the start.
+-- time, or nil when a reminder has no times. A saved alert has no time: NO_TIME seconds into phase 1.
 -- Only the editor's own draft is ever a raid note line (noteTimers reads it). group and ref (optional) are
 -- the difficulty group and the ability timeline the Rehearsal plays, so the test reads its casts.
 local function testItemsFor(c, d, group, ref)
@@ -766,7 +769,7 @@ local function testItemsFor(c, d, group, ref)
     if d.saveAs == "note" then
         for i, t in ipairs(noteTimers()) do
             if c.savedMode then
-                t.ph, t.time = 1, TEST_LEAD
+                t.ph, t.time = 1, NO_TIME
             end
             local item = CRT.NoteEngine.ItemFor(t, i, true)
             item.id = "note:test:" .. i
@@ -777,7 +780,7 @@ local function testItemsFor(c, d, group, ref)
     else
         local r = Draft.BuildReminder(c, d)
         if c.savedMode then
-            r.times = Reminders.FormatTimes({ { ph = 1, t = TEST_LEAD } })
+            r.times = Reminders.FormatTimes({ { ph = 1, t = NO_TIME } })
         end
         list = Reminders:Times(c.encounterID, r, ref, group)
         if #list == 0 then
@@ -807,12 +810,51 @@ local function savedIdentity(c)
     return nil
 end
 
--- Opens the Rehearsal on the boss at the start of the draft's countdown (its Show from, else
--- REHEARSAL_LEAD seconds) before its first fight second, playing the whole fight with the draft as it
--- stands on screen in place of its saved version, and pausing REHEARSAL_AFTER seconds after it (or its
--- Linger, if longer), so a test shows just that alert's countdown and what follows. True when it
--- opened; false (the quick test runs instead) when the window is missing or can't open, or the draft has
--- no fight time or boss. A reason from the window is printed once.
+-- Seconds before an item's time that it first shows: its Show from, or its bar's own start when earlier.
+local function itemLead(it)
+    local lead = (type(it.warn) == "number" and it.warn > 0) and it.warn or 0
+    if type(it.barStart) == "number" and -it.barStart > lead then
+        lead = -it.barStart
+    end
+    return lead
+end
+
+-- Seconds after an item's time that it is done: its bar's end (its own barEnd, else its last impact unless
+-- the bar ends at the cast), then its Linger (hold), which the bar keeps after its end.
+local function itemTail(it)
+    local finish = type(it.barEnd) == "number" and it.barEnd or 0
+    if type(it.barEnd) ~= "number" and type(it.ticks) == "table" and it.barTo ~= "cast" then
+        for _, tk in ipairs(it.ticks) do
+            local v = type(tk) == "table" and (tk.t or tk.at or tk[1]) or tk
+            if type(v) == "number" and v > finish then
+                finish = v
+            end
+        end
+    end
+    return math.max(0, finish) + (type(it.hold) == "number" and it.hold or 0)
+end
+
+-- What a test plays around the first cast (phase lowest, `first` seconds in): it starts `before` seconds
+-- ahead of that cast (TEST_BEFORE before the alert shows) and ends `after` seconds past it (TEST_AFTER after
+-- the alert is done). Later casts are left out.
+local function testWindow(items, lowest, first)
+    local lead, tail = 0, 0
+    for _, it in ipairs(items) do
+        local t = tonumber(it.time)
+        if (it.ph == nil or it.ph == lowest) and t and math.abs(t - first) < 0.01 then
+            lead = math.max(lead, itemLead(it))
+            tail = math.max(tail, itemTail(it))
+        end
+    end
+    return lead + TEST_BEFORE, tail + TEST_AFTER
+end
+
+-- Opens the Rehearsal on the boss TEST_BEFORE seconds before the draft first shows (testWindow) at its
+-- first fight second, playing the fight with the draft as it stands on screen in place of its saved
+-- version, and ending the test TEST_AFTER seconds after that cast's alert is done (the window's stopAt),
+-- so a test shows just that alert and a little either side. True when it opened; false (the quick test
+-- runs instead) when the window is missing or can't open, or the draft has no fight time or boss. A
+-- reason from the window is printed once.
 local function rehearse(c, d)
     local W = CRT.TimelineRehearsalWindow
     if not (W and W.OpenAt) or c.savedMode or type(c.encounterID) ~= "number" then
@@ -822,7 +864,7 @@ local function rehearse(c, d)
     if not first then
         return false
     end
-    local items = testItemsFor(c, d, group, ref)
+    local items, lowest, phaseFirst = testItemsFor(c, d, group, ref)
     if not items or #items == 0 then
         return false
     end
@@ -830,9 +872,8 @@ local function rehearse(c, d)
         it.block = it.block or TEST_BLOCK
     end
     -- OpenAt itself stops a quick test still going; a real pull never gets here (runTest)
-    local lead = (type(d.warn) == "number" and d.warn > 0) and d.warn or REHEARSAL_LEAD
-    local after = math.max(REHEARSAL_AFTER, type(d.linger) == "number" and d.linger or 0)
-    local ok, why = W:OpenAt(c.encounterID, difficulty, first - lead, {
+    local before, after = testWindow(items, lowest, phaseFirst)
+    local ok, why = W:OpenAt(c.encounterID, difficulty, first - before, {
         group = group,
         testing = testLabel(d),
         stopAt = first + after,
@@ -847,33 +888,12 @@ local function rehearse(c, d)
     return false
 end
 
--- Seconds after the quick test starts when its last item is done: the item's time, then its linger, its bar's
--- end or its last impact tick (whichever is longest), and a short rest. `first` is the lowest phase's first time.
-local TEST_REST = 3
-local function testSpan(items, lowest, first)
-    local span = 0
-    for _, it in ipairs(items) do
-        if it.ph == nil or it.ph == lowest then
-            local tail = math.max(type(it.hold) == "number" and it.hold or 0, type(it.barEnd) == "number" and it.barEnd or 0)
-            if type(it.ticks) == "table" then
-                for _, tk in ipairs(it.ticks) do
-                    local v = type(tk) == "table" and (tk.t or tk.at or tk[1]) or tk
-                    if type(v) == "number" then
-                        tail = math.max(tail, math.abs(v))
-                    end
-                end
-            end
-            span = math.max(span, TEST_LEAD - first + (tonumber(it.time) or first) + tail)
-        end
-    end
-    return span + TEST_REST
-end
-
 -- The quick test: a "test" run of only these items (ids "mine:test:", "note:test:" or "special:test:"),
--- starting TEST_LEAD seconds before the first of them (phase lowest, `first` seconds in). True, or false
--- and the message when that phase waits for an event. The run stops by itself once its last item has
--- played (never a newer run: it checks the run is still this one).
+-- starting TEST_BEFORE seconds before the first of them shows (phase lowest, `first` seconds in; testWindow).
+-- True, or false and the message when that phase waits for an event. The run stops by itself TEST_AFTER
+-- seconds after that first one is done (never a newer run: it checks the run is still this one).
 local function quickTest(encounterID, items, lowest, first)
+    local before, after = testWindow(items, lowest, first)
     testItems = items
     Alerts:Start(encounterID, nil, "test", {
         blocks = { [TEST_BLOCK] = true },
@@ -881,7 +901,7 @@ local function quickTest(encounterID, items, lowest, first)
             local id = type(item.id) == "string" and item.id or ""
             return (id:find("^mine:test:") or id:find("^note:test:") or id:find("^special:test:")) ~= nil
         end,
-        firstAt = GetTime() + TEST_LEAD - first,
+        firstAt = GetTime() + before - first,
     })
     testItems = nil
     -- A lowest phase with an event trigger waits for its event, so the test would show nothing.
@@ -891,7 +911,7 @@ local function quickTest(encounterID, items, lowest, first)
     end
     local run = Alerts.running and Alerts.run
     if run and run.reason == "test" and C_Timer and C_Timer.After then
-        C_Timer.After(testSpan(items, lowest, first), function()
+        C_Timer.After(before + after, function()
             if Alerts.running and Alerts.run == run then
                 Alerts:Stop()
             end
@@ -900,8 +920,8 @@ local function quickTest(encounterID, items, lowest, first)
     return true
 end
 
--- Tests a draft: in the Rehearsal when it can open (rehearse), else alone as a quick test starting
--- TEST_LEAD seconds before its first time. Saves nothing. True, or false and the message (none when the
+-- Tests a draft: in the Rehearsal when it can open (rehearse), else alone as a quick test around its
+-- first time (quickTest). Saves nothing. True, or false and the message (none when the
 -- draft simply has no times).
 local function runTest(c, d)
     -- A real pull is never cut short by a test.
@@ -948,7 +968,8 @@ function Editor:TestDraft(c, d)
 end
 
 -- Tests one alert item that isn't a draft (a special alert, Alerts/Special.lua) the same quick way: it
--- plays alone, as phase 1, TEST_LEAD seconds from now. Never during a pull. True, or false and the message.
+-- plays alone, as phase 1 NO_TIME seconds in, with TEST_BEFORE seconds before it shows. Never during a pull.
+-- True, or false and the message.
 function Editor:TestItem(encounterID, item)
     if Alerts.running and Alerts.run and Alerts.run.reason == "encounter" then
         return false, TEXT.testInPull
@@ -961,8 +982,8 @@ function Editor:TestItem(encounterID, item)
         it[k] = v
     end
     it.id = "special:test:" .. tostring(item.special or 1)
-    it.ph, it.time = 1, TEST_LEAD
-    return quickTest(type(encounterID) == "number" and encounterID or 0, { it }, 1, TEST_LEAD)
+    it.ph, it.time = 1, NO_TIME
+    return quickTest(type(encounterID) == "number" and encounterID or 0, { it }, 1, NO_TIME)
 end
 
 -- The draft's items, given out once and only to a test run. A note line's item keeps block "note".

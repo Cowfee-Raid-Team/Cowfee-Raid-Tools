@@ -748,21 +748,25 @@ do
 end
 ok("open at a time for a test")
 
--- OpenAt's stopAt: the test plays from its countdown to a little after, then pauses there ----------
+-- OpenAt's stopAt: the test plays from its start to a little after the alert, then ends there: the clock
+-- stands still as at the fight's length, and the window is a plain Rehearse (no label, no draft) -----------
 do
   dropdowns["Speed"].opts.set(1)
   acalls = {}
-  RW:OpenAt(3470, "Mythic", 10, { testing = "Soulcoil Rite", stopAt = 14 })
+  local alerts = { extra = { { id = "draft" } } }
+  RW:OpenAt(3470, "Mythic", 10, { testing = "Soulcoil Rite", stopAt = 14, alerts = alerts })
   now = now + 3
   f.OnUpdate(f, 0.016)
   assert(RW.clock:Playing() and near(RW:Now(), 13), "playing before stopAt")
+  assert(f.testing.text == "Testing: Soulcoil Rite", "the label while it plays")
+  acalls = {}
   now = now + 2
   f.OnUpdate(f, 0.016)
-  assert(not RW.clock:Playing() and near(RW:Now(), 14), "paused at stopAt: " .. RW:Now())
-  assert(RW:IsOpen() and A:IsRehearsal() and f.play.text == "Play", "the window stays open and the run stays")
-  local stops = 0 for _, c in ipairs(acalls) do if c[1] == "stop" then stops = stops + 1 end end
-  assert(stops == 0, "the run is never stopped: " .. kinds())
-  assert(f.testing.text == "Testing: Soulcoil Rite", "the label stays")
+  assert(not RW.clock:Playing() and near(RW:Now(), 14), "stopped at stopAt: " .. RW:Now())
+  assert(RW:IsOpen() and A:IsRehearsal() and f.play.text == "Play", "the window stays open, a rehearsal run going")
+  assert(f.testing.text == "", "the test has ended: no Testing line: " .. tostring(f.testing.text))
+  local last = acalls[#acalls]
+  assert(last and last[1] == "start" and last[5].extra == nil, "the run starts again without the draft: " .. kinds())
   f.play.OnClick(f.play)
   now = now + 3
   f.OnUpdate(f, 0.016)
