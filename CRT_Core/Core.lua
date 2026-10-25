@@ -283,11 +283,13 @@ local defaults = {
     -- Gear Checker (GearChecker/): filter, the chip picked on the page (all, issues, gems, enchants,
     -- check:<key>, below); belowTrack, the upgrade track the Below chip lists items under (a key of the
     -- season's Tracks.lua; one the season doesn't have falls back to the season's default); popout, the
-    -- pop-out window's place and size once moved (UI.Window keeps point, x, y, width, height).
+    -- pop-out window's place and size once moved (UI.Window keeps point, x, y, width, height); extra, the
+    -- Extra filters window's ticks (each adds its chip, extra:<key>) and Item level below's level (0 is off).
     gearChecker = {
         filter = "all",
         belowTrack = "hero",
         popout = {},
+        extra = { upgrade = false, ilvl = false, quality = false, empty = false, minIlvl = 0 },
     },
     -- The sound engine (Sound/Engine.lua): custom, your own sound file names typed on Quality of Life >
     -- Sounds (the companion addon CowfeeRaidTools_Media lists more in its Sounds.lua).
@@ -355,8 +357,11 @@ local defaults = {
         -- "spot", "game" or "cursor" (UI/Tooltip.lua), and its own spot; personal.
         tooltipMode = "general",
         tooltipSpot = "auto",
-        -- The pop-out window (Timeline/Page.lua): its size, and its position once it is moved.
-        popout = { width = 1200, height = 600 },
+        -- The pop-out window (Timeline/Page.lua): its size and position once it is moved or sized, and userSized
+        -- (true once the player sized it with the grip, false once Page.lua sized it). No default for userSized:
+        -- left out, Page.lua works it out from a size saved before it existed. Until then the window opens at
+        -- Page.lua's default size, 1600 x 900 within the screen.
+        popout = {},
         -- the pop-out's view (its title strip's toggle): "abilities" (the ability timeline) or "healers" (Healer CDs)
         popView = "abilities",
         references = {}, -- the player's own reference timelines, { id, text, saved } (saved: time() of the last change, optional; Timeline/Reference.lua)
@@ -431,8 +436,10 @@ local defaults = {
         cooldownFilter = "mine",
         -- Special alerts (Alerts/Special.lua): your choices per boss and alert, special[encounterID][key] =
         -- { on, show, speak, markers }; specialView is what Mech Alerts' list shows, "mechanics" or "special".
+        -- specialViewPicked: you clicked the toggle; until then a boss with special alerts opens on Special.
         special = {},
         specialView = "mechanics",
+        specialViewPicked = false,
     },
     -- The settings as they were before the last settings-only import (Profiles:ApplySettings in Profiles.lua):
     -- { from, saved, values = { [path] = value }, unset = { [path] = true } }, empty when there is none.

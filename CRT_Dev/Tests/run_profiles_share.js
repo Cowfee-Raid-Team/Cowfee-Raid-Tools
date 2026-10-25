@@ -189,7 +189,7 @@ do
   local leaked = {}
   for p in pairs(paths) do for _, no in ipairs({ "notes.list", "groups.presets", "late.history", "tattle.history", "alerts.reminders", "alerts.saved", "timeline.bosses", "lootmaster.authority", "classCache", "importBackup",
       "readycheck.output", "readycheck.earlyPullOutput", "tattle.output", "tattle.autoPost", "tattle.season", "lootmaster.awardChannel", "lootmaster.awardMessage", "lootmaster.responses",
-      "notes.trustedOnly", "sound", "qol.lowHealth.customSounds", "seasonStats", "whatsNew", "alerts.specialView", "groups.roles", "timeline.popView" }) do
+      "notes.trustedOnly", "sound", "qol.lowHealth.customSounds", "seasonStats", "whatsNew", "alerts.specialView", "alerts.specialViewPicked", "groups.roles", "timeline.popView" }) do
     if p == no or p:sub(1, #no + 1) == no .. "." then leaked[#leaked + 1] = p end end end
   check(#leaked == 0, "no excluded data, report output, trust setting or sound file name is a shared path (" .. table.concat(leaked, ",") .. ")")
   local kept = {}
@@ -202,6 +202,12 @@ do
   check(paths["tattle.onlyTeam"] ~= nil and paths["tattle.onlyTeam"].default == true, "Tattlebot's Only record team raids is shared, on by default")
   check(paths["late.onlyTeam"] ~= nil and paths["late.onlyTeam"].default == true, "the Late Tracker's Only record team raids is shared, on by default")
   check(paths["seasonStats.show"] == nil, "Season Stats' Show stays with its data, never shared")
+  -- the Gear Checker's extra filters are settings: each tick and the level travel with the settings
+  for path, def in pairs({ ["gearChecker.extra.upgrade"] = false, ["gearChecker.extra.ilvl"] = false, ["gearChecker.extra.quality"] = false,
+      ["gearChecker.extra.empty"] = false, ["gearChecker.extra.minIlvl"] = 0 }) do
+    check(paths[path] ~= nil and paths[path].default == def, path .. " is shared, with its default " .. tostring(def))
+  end
+  check(paths["gearChecker.filter"] == nil, "the Gear Checker's picked chip stays page state")
 end
 
 -- The sender: a profile with settings, positions and data. --------------------------------------
@@ -340,6 +346,12 @@ bad({ window = { relativePoint = "MIDDLE" } }, "the main window's relativePoint 
 bad({ window = { x = "10" } }, "the main window's x must be a number", "window.x")
 bad({ debuffs = { position = { point = "TOP", relativePoint = "SIDEWAYS", x = 1, y = 2 } } }, "a position's relativePoint must be an anchor name", "debuffs.position")
 bad({ timeline = { popout = { width = "wide", height = 600 } } }, "a window size must be a number", "timeline.popout")
+bad({ timeline = { popout = { width = 900, height = 600, userSized = "yes" } } }, "a pop-out's userSized must be true or false", "timeline.popout")
+do
+  -- a pop-out's size chosen with its grip travels with it (UI/Window.lua's userSized)
+  local i = P:Read(craft({ v = 1, kind = "settings", from = "X", data = { timeline = { popout = { width = 900, height = 600, userSized = true } } } }))
+  check(i and i.unknown == 0 and i.values["timeline.popout"].userSized == true, "a pop-out's userSized is read with its size")
+end
 bad({ ui = { layers = { panel = "ON_TOP" } } }, "a layer must be one of the game's strata", "ui.layers")
 bad({ ui = { fontSize = "big" } }, "a late setting of the wrong type is rejected", "ui.fontSize")
 bad({ debuffs = { ignored = { abc = true } } }, "an ignored debuff keyed by text is rejected", "debuffs.ignored")

@@ -102,6 +102,8 @@ local BAND_LABEL_PAD = 3 -- the length label's room inside the after band
 local SAME_MOMENT = 0.05 -- seconds: another cast this close to the selected one is the same moment, not too soon
 -- a band's red, for Timeline/HealerView.lua's bands of every cast
 View.BAND_RED = { DEATH_RED[1], DEATH_RED[2], DEATH_RED[3], BAND_RED_ALPHA }
+View.RELAYOUT_GAP = 0.1 -- seconds: while the view's size keeps changing (a drag of the pop-out's grip), it lays out this often
+View.LABEL_W = LABEL_W -- for the window log (CRT_Dev/Dev/WindowLog.lua)
 local SELECT_INNER = { 0.10, 0.07, 0.05 } -- a dark inner border under the outline, so it shows on any flag colour
 local SELECT_INNER_W = 1
 local REVIEW_LANES = { recentDeaths = true } -- this view draws Deaths from recent pulls on an ability timeline too
@@ -581,7 +583,7 @@ function View.Create(parent)
         view:OnUpdate()
     end)
     f:SetScript("OnSizeChanged", function()
-        view:Refresh()
+        view:SizeChanged()
     end)
     f:SetScript("OnHide", function()
         view:StopDrag()
@@ -786,6 +788,23 @@ function Methods:ScrollLanes(delta)
     else
         v:SetVerticalScroll(top)
     end
+end
+
+-- After the rows or the lanes' window change size (a taller window has less to scroll): the up and down
+-- scroll stays inside its new range, through the scroll bar when there is one so its thumb follows.
+function Methods:ClampLanes()
+    local v = self.vscroll
+    if v.UpdateScrollChildRect then
+        v:UpdateScrollChildRect()
+    end
+    local range = math.max(0, v:GetVerticalScrollRange() or 0)
+    if (v:GetVerticalScroll() or 0) <= range then
+        return
+    end
+    if type(v.ScrollBar) == "table" and v.ScrollBar.SetValue then
+        v.ScrollBar:SetValue(range)
+    end
+    v:SetVerticalScroll(range)
 end
 
 -- Holding the right mouse button and moving scrolls the timeline sideways. The left button is
@@ -3988,7 +4007,11 @@ function Methods:DrawTicks(lane, mid, length, ticks)
     return ticks
 end
 
-function Methods:Refresh()
+-- The rows and marks of what is shown: the lanes, the deaths of unknown time, the ignored rows, the phases and
+-- length, and the notes' and reminders' marks (collected before the lanes are drawn, since they may add the Notes
+-- lane; Healer CDs adds its own rows under the ability rows, the cooldown lines on them). view.built says what
+-- they were built for, so a relayout of the same data in the same layout (Refresh(true)) keeps them.
+function Methods:BuildLanes()
     local s = settings()
     local pull = self.pull
     local extra
@@ -4001,21 +4024,60 @@ function Methods:Refresh()
         self.lanes, self.unknown, self.ignoredLanes = {}, {}, {}
     end
     self.extra = extra or { phases = {}, length = 0 }
+    local length = pull and math.max(1, self.extra.length or 0) or 1
+    local HealerView = pull and self.mode == "healers" and CRT.TimelineHealerView
+    if HealerView then
+        self.lanes, self.marks = HealerView.Build(self, self.lanes, length)
+    else
+        self.marks = self:Marks(self.lanes, length)
+    end
+    self.built = { pull = pull, mode = self.mode }
+end
+
+-- A size change (the pop-out's grip, the main window's) lays the view out again at most every View.RELAYOUT_GAP
+-- seconds while the changes go on, and once after the last one: a drag of the grip never draws every frame, and
+-- each layout runs once the game has sized every part (the lanes' window, the axis). A layout keeps the rows and
+-- marks already built (Refresh(true)); only their sizes and places follow the new width and height.
+function Methods:SizeChanged()
+    if not (C_Timer and C_Timer.After and GetTime) then
+        return self:Refresh(true)
+    end
+    if self.relayoutPending then
+        return -- the layout waiting reads the size it has then
+    end
+    self.relayoutPending = true
+    local wait = self.relayoutAt and math.max(0, self.relayoutAt + View.RELAYOUT_GAP - GetTime()) or 0
+    C_Timer.After(wait, function()
+        self.relayoutPending = false
+        self.relayoutAt = GetTime()
+        self:Refresh(true)
+    end)
+end
+
+-- The view's height that shows every row with nothing to scroll up and down: the axis, the rows (and the
+-- ignored list's), the scroll bar, Time unknown and the strip, as last drawn. The pop-out grows to it on
+-- Healer CDs (Timeline/Page.lua).
+function Methods:ContentHeight()
+    local rows = #(self.lanes or {}) + (self.ignoredRows or 0)
+    return (self.axisH or AXIS_H) + rows * ROW_H + self.stripH + UNKNOWN_H + BAR_H + 4
+end
+
+-- Draws what is shown. relayout: only the size changed, so the rows and marks built last are kept when they
+-- were built for the same pull and layout (BuildLanes).
+function Methods:Refresh(relayout)
+    local s = settings()
+    local pull = self.pull
+    local built = self.built
+    if not (relayout and built and built.pull == pull and built.mode == self.mode) then
+        self:BuildLanes()
+    end
     local lanes = self.lanes
     local width = self:VisibleWidth()
     local length = pull and math.max(1, self.extra.length or 0) or 1
-    -- the saved notes' markers, collected before the lanes are drawn since they may add the Notes lane;
-    -- Healer CDs adds its own rows under the ability rows, the cooldown lines on them
-    local HealerView = pull and self.mode == "healers" and CRT.TimelineHealerView
-    if HealerView then
-        lanes, self.marks = HealerView.Build(self, lanes, length)
-        self.lanes = lanes
-    else
-        self.marks = self:Marks(lanes, length)
-    end
     self.trackW = pull and math.max(1, length * width / clampSpan(s.span)) or 1
     local height = math.max(1, #lanes * ROW_H)
     local ignoredRows = #self.ignoredLanes > 0 and (1 + (s.ignoredOpen and #self.ignoredLanes or 0)) or 0
+    self.ignoredRows = ignoredRows
     -- the track reaches at least the bottom of the window, so the empty space under the lanes takes
     -- a double-click too; when the lanes fit there is still nothing to scroll up and down
     local area = math.max(height + ignoredRows * ROW_H, self.vscroll:GetHeight() or 0)
@@ -4179,6 +4241,7 @@ function Methods:Refresh()
     self:DrawSelection()
     self:DrawStrip()
     self:ScrollTo(self.hscroll:GetHorizontalScroll())
+    self:ClampLanes()
     self.drawLength, self.drawHeight = length, height
     self:DrawPlayhead()
 end

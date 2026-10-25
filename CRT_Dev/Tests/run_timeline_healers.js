@@ -1437,6 +1437,83 @@ do
   end
 end
 
+-- Resizing the pop-out on Healer CDs: one layout per burst of size changes, at most every View.RELAYOUT_GAP seconds and
+-- once after the last, keeping the rows built; the bands, tints, panel rows, scroll, hover shadow and Fit follow ----------
+do
+  setNote({ "time:20;ph:1;tag:Halo;spellid:64843;", "time:150;ph:1;tag:Me;spellid:31821;" })
+  CRT.TimelineUndo:Quietly(function() end)
+  local v = newView()
+  flush()
+  v:Fit()
+  check(CRT.db.timeline.span == 300 and v.trackW == 600, "fitted: the whole fight across the track: " .. v.trackW)
+  local vs, hs = v.vscroll, v.hscroll
+  rawset(vs, "GetVerticalScrollRange", function(self) return math.max(0, (v.body.h or 0) - (self.h or 300)) end)
+  local draws, builds, delays = 0, 0, {}
+  local realDraw, realBuild, realAfter = HV.Draw, HV.Build, C_Timer.After
+  HV.Draw = function(...) draws = draws + 1 return realDraw(...) end
+  HV.Build = function(...) builds = builds + 1 return realBuild(...) end
+  C_Timer.After = function(d, fn) delays[#delays + 1] = d return realAfter(d, fn) end
+  -- the view's frame and its parts at a new size, as the game lays them out (the mock frames don't)
+  local function size(w, h)
+    rawset(v.frame, "w", w) rawset(v.frame, "h", h)
+    rawset(v.axisScroll, "w", w - 166 - 24)
+    rawset(vs, "w", w - 24) rawset(vs, "h", h - (v.axisH or 20) - v.stripH - 16 - 10 - 4)
+    v.frame.OnSizeChanged(v.frame, w, h)
+  end
+  vs:SetVerticalScroll(5000)
+  for step = 1, 30 do size(800 + step * 10, 600 + step * 10) end
+  check(draws == 0 and #delays == 1 and delays[1] == 0, "a drag of the grip draws nothing per size change: one layout waits: " .. draws .. ", " .. #delays)
+  flush()
+  check(draws == 1 and builds == 0, "then one layout, keeping the rows built: " .. draws .. " draws, " .. builds .. " builds")
+  local W = v:VisibleWidth()
+  check(W == 1100 - 190 and v.trackW == W, "Fit follows the new width: the whole fight still fills the track: " .. v.trackW)
+  check(v.body.w == vs.w and v.track.w == v.trackW, "the rows' tints and the panel rows reach the new right edge (the body is the lanes' window wide)")
+  check(v.body.h == math.max(#v.lanes * 30, vs.h) and v.track.h == v.body.h, "the track reaches the rows' end or the window's bottom")
+  check(vs:GetVerticalScroll() <= vs:GetVerticalScrollRange(), "the up and down scroll stays inside the new range: " .. vs:GetVerticalScroll())
+  local hymn = laneIndex(v, "healers:halo-home:64843")
+  local p
+  for _, q in pairs(v.hvPairs) do if q.fill.shown and q.fill.pt[5] == -(hymn - 1) * 30 - 4 then p = q end end
+  check(p and math.abs(p.fill.pt[4] - (20 * W / 300 + HV.CastW() / 2)) < 0.01, "the bands are drawn at the new width")
+  local stripe = v.labels[laneIndex(v, "healers:halo-home")].stripe
+  check(stripe.shown and stripe.color[1] == RAID_CLASS_COLORS.PRIEST.r, "the healer's tint is drawn again")
+  -- the next burst waits out the rest of the gap, then lays out the last size
+  now = now + 0.04
+  size(1200, 700)
+  size(1210, 710)
+  check(#delays == 2 and math.abs(delays[2] - (View.RELAYOUT_GAP - 0.04)) < 1e-6 and draws == 1,
+    "a size change inside the gap waits out the rest of it: " .. tostring(delays[2]))
+  flush()
+  check(draws == 2 and v.trackW == 1210 - 190, "and lays out the last size: " .. v.trackW)
+  now = now + 1
+  size(1000, 650)
+  flush()
+  check(draws == 3 and v.trackW == 1000 - 190 and builds == 0, "once more after the drag ends")
+  -- the hover shadow follows the new width
+  vs:SetVerticalScroll(0)
+  rawset(hs, "IsMouseOver", function() return true end)
+  mouseDown = false
+  local apo = laneIndex(v, "healers:halo-home:200183")
+  cx, cy = screenX(v, 120), laneY(apo)
+  v.frame.OnUpdate(v.frame)
+  local sh = v.hvShadow
+  check(sh and sh.icon.shown and math.abs(sh.icon.pt[4] - 120 * v.trackW / 300) < 0.01, "the hover shadow sits at the new width")
+  rawset(hs, "IsMouseOver", nil)
+  mouseDown = true
+  -- new data still builds the rows again, and a relayout after another layout's build does too
+  v:Refresh()
+  check(builds == 1, "a redraw for new data builds the rows again")
+  v:SetMode(nil)
+  size(900, 650)
+  v:SetMode("healers", true)
+  flush()
+  check(builds == 2 and laneIndex(v, "healers:halo-home") ~= nil, "a layout after the mode changed builds that mode's rows")
+  -- the height that shows every row with nothing to scroll, for the pop-out to grow to
+  local want = (v.axisH or 20) + #v.lanes * 30 + v.stripH + 16 + 10 + 4
+  check(v:ContentHeight() == want, "ContentHeight: the axis, every row, the scroll bar, Time unknown and the strip: " .. tostring(v:ContentHeight()))
+  HV.Draw, HV.Build, C_Timer.After = realDraw, realBuild, realAfter
+  setNote({})
+end
+
 if fails > 0 then error(fails .. " healer view checks failed") end
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }

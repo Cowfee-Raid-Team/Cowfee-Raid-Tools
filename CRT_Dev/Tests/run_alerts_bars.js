@@ -60,6 +60,7 @@ local function mock(kind, parent, template)
     if k == "SetEnabled" then return function(self, on) rawset(self, "enabledState", on and true or false) end end
     if k == "SetColorTexture" or k == "SetVertexColor" then return function(self, r, g, b, a) rawset(self, "color", { r, g, b, a }) end end
     if k == "GetFrameLevel" then return function() return 1 end end
+    if k == "SetAlpha" then return function(self, a) rawset(self, "alpha", a) end end
     return function() end end })
 end
 UIParent = mock("Frame")
@@ -735,6 +736,80 @@ assert(spacingRow.opts.enabledIf() == false and borderRow.opts.enabledIf() == fa
 A:Settings().bars.shown = true
 assert(#errors == 0, tostring(errors[1]))
 print("ok bars: spacing and border rows")
+
+-- Impact ticks: ticks = { s, ... } after the cast. The bar runs to the last tick (barTo "last", the default), a tick
+-- sits where the fill's edge is when its impact lands, and a passed one fades.
+local function near1(a, b) return a and b and math.abs(a - b) < 1e-9 end
+local function shownTicks(bar) local out = {} for _, t in ipairs(rawget(bar, "tickLines") or {}) do if t.shown then out[#out + 1] = t end end return out end
+pull({}, { item{ id = "feast", time = 10, text = "Soak", ticks = { 2.5, 0 } } })
+start()
+clock = 100 B:Refresh()
+v = B:Visible()
+assert(#v == 1 and v[1].time == "12" and v[1].fraction == 1, "the bar runs to the last impact, 12.5 s away: " .. tostring(v[1] and v[1].time))
+assert(v[1].ticks and #v[1].ticks == 2 and near1(v[1].ticks[1].pos, 2.5 / 12.5) and near1(v[1].ticks[2].pos, 0), "the ticks on the fill's scale, in order")
+assert(not v[1].ticks[1].passed and not v[1].ticks[2].passed, "none passed yet")
+local lines0 = A:Lines(clock)
+assert(lines0[1].at == 110, "the line itself keeps the cast's time: the other areas and speech are unchanged")
+local tl = shownTicks(B.pool[1])
+local tc = CRT.PALETTE.text
+assert(#tl == 2 and tl[1].w == 2 and tl[1].h == 20 and tl[1].color[1] == tc[1] and tl[1].color[3] == tc[3], "two 2 px lines, full height, in the theme's text colour")
+assert(lastPoint(tl[1])[4] == 240 * 0.2 - 1, "placed at the fill's edge for that moment: " .. tostring(lastPoint(tl[1])[4]))
+assert(lastPoint(tl[2])[4] == 0, "the last impact sits at the bar's end, kept inside it")
+clock = 110 B:Refresh()
+v = B:Visible()
+assert(near1(v[1].fraction, v[1].ticks[1].pos), "the fill reaches the first tick as that impact lands")
+assert(v[1].ticks[1].passed and not v[1].ticks[2].passed, "the first impact has landed")
+tl = shownTicks(B.pool[1])
+assert(tl[1].alpha == 0.3 and tl[2].alpha == 1, "a passed tick fades")
+clock = 111 B:Refresh()
+assert(B:Visible()[1].time == "1.5", "counts down to the last impact")
+clock = 112.5 B:Refresh()
+assert(#B:Visible() == 0, "gone once the last impact lands (no hold)")
+-- barTo "cast": the bar ends at the cast; ticks past it are off the bar
+pull({}, { item{ id = "c", time = 10, text = "Cast", ticks = { 0, 2.5 }, barTo = "cast" } })
+start()
+clock = 100 B:Refresh()
+v = B:Visible()
+assert(v[1].time == "10" and #v[1].ticks == 1 and v[1].ticks[1].pos == 0, "ends at the cast: one tick on it")
+-- a bar of its own: barStart and barEnd (seconds after the cast), here from 3 s before the cast for 8 s, impacts 4.5 and 6.5 s in
+pull({}, { item{ id = "own", time = 10, text = "Own", ticks = { 1.5, 3.5 }, barStart = -3, barEnd = 5 } })
+start()
+clock = 106 B:Refresh()
+assert(#B:Visible() == 0, "waits for its start")
+clock = 107 B:Refresh()
+v = B:Visible()
+assert(#v == 1 and v[1].fraction == 1 and v[1].time == "8.0", "appears full, 8 s long")
+assert(near1(v[1].ticks[1].pos, 3.5 / 8) and near1(v[1].ticks[2].pos, 1.5 / 8), "ticks 4.5 and 6.5 s into the bar")
+clock = 111.5 B:Refresh()
+v = B:Visible()
+assert(near1(v[1].fraction, 3.5 / 8) and v[1].ticks[1].passed and not v[1].ticks[2].passed, "the fill on its own length reaches the first tick")
+-- a line without ticks has none, and the pooled bar's tick lines hide
+pull({}, { item{ id = "plain", time = 5, text = "Plain" } })
+start()
+clock = 100 B:Refresh()
+assert(B:Visible()[1].ticks == nil and #shownTicks(B.pool[1]) == 0, "no ticks: none drawn")
+assert(B.Span({ ticks = {} }) == nil and B.Span({}) == nil, "no span without ticks or a bar")
+-- fill "up": the bar starts empty and fills as the time nears; the ticks sit where the fill's edge is at each impact
+pull({}, { item{ id = "up", time = 10, text = "Up", ticks = { 0, 2.5 }, fill = "up" } })
+start()
+clock = 100 B:Refresh()
+v = B:Visible()
+assert(v[1].fill == "up" and v[1].fraction == 1 and v[1].filled == 0 and not B.pool[1].fill.shown, "starts empty")
+assert(near1(v[1].ticks[1].pos, 1 - 2.5 / 12.5) and near1(v[1].ticks[2].pos, 1), "ticks from the left: the last impact at the full end")
+tl = shownTicks(B.pool[1])
+assert(lastPoint(tl[2])[4] == 240 - 2 and near1(lastPoint(tl[1])[4], 240 * 0.8 - 1), "placed and kept inside the bar")
+clock = 110 B:Refresh()
+v = B:Visible()
+assert(near1(v[1].filled, v[1].ticks[1].pos) and v[1].ticks[1].passed and near1(B.pool[1].fill.w, 240 * 0.8), "the fill reaches the first tick as it lands")
+clock = 112.4 B:Refresh()
+assert(B:Visible()[1].filled > 0.99, "nearly full at the last impact")
+-- an empty bar is the default: down
+pull({}, { item{ id = "down", time = 10, text = "Down", ticks = { 0 } } })
+start()
+clock = 100 B:Refresh()
+assert(B:Visible()[1].fill == "down" and B:Visible()[1].filled == 1, "empties by default")
+assert(#errors == 0, tostring(errors[1]))
+print("ok bars: impact ticks")
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 for (let i = 2; i < 8; i++) {
