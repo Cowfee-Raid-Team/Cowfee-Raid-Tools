@@ -1040,13 +1040,13 @@ check("mech: test with no Show from starts at its first show moment, a Linger st
   dropdowns["Difficulty"].opts.set("nh") -- the Heroic timeline's times
   local p = f.panel
   setCheck(f.rows[1].check, true)
-  sliders["Show from"].opts.set(0)
+  f.panel.showFrom.opts.set(0)
   sliders["Linger"].opts.set(6)
   mockWindow(true)
   click(p.testBtn)
   CRT.TimelineRehearsalWindow = nil
   local c = opened[#opened]
-  sliders["Show from"].opts.set(5)
+  f.panel.showFrom.opts.set(5)
   sliders["Linger"].opts.set(0)
   assert(c and c.t == 45, "at 0:45 with no Show from: " .. tostring(c and c.t))
   assert(c.opts.stopAt == 56, "the 6 s Linger, then 5 s: " .. tostring(c.opts.stopAt))
@@ -1062,7 +1062,7 @@ check("mech: a ticked bar's test plays from its bar to 5 s after it", function()
   local p = f.panel
   setCheck(f.rows[1].check, true)
   local _, id = only()
-  sliders["Show from"].opts.set(1)
+  f.panel.showFrom.opts.set(1)
   sliders["Linger"].opts.set(0)
   setCheck(p.checks.bar, true)
   typeInto(p.ticksEdit, "4.5, 6.5")
@@ -1081,7 +1081,7 @@ check("mech: a ticked bar's test plays from its bar to 5 s after it", function()
   local items = R:Items(ENC, id, R:Get(ENC, id), "nh")
   assert(items[1].barStart == -1, "a pull's bar too: " .. tostring(items[1].barStart))
   -- Show from 20, Linger 5: 20 s before the cast, 10 s after the last impact (and its Linger)
-  sliders["Show from"].opts.set(20)
+  f.panel.showFrom.opts.set(20)
   sliders["Linger"].opts.set(5)
   mockWindow(true)
   click(p.testBtn)
@@ -1099,7 +1099,7 @@ check("mech: a ticked bar's test plays from its bar to 5 s after it", function()
   assert(stop and stop.delay == 20 + 6.5 + 5 + 5, "ends 5 s after the bar and its Linger: " .. tostring(stop and stop.delay))
   A:Stop(true)
   timers = {}
-  sliders["Show from"].opts.set(5)
+  f.panel.showFrom.opts.set(5)
   sliders["Linger"].opts.set(0)
   assert(#errors == 0, tostring(errors[1]))
 end)
@@ -1560,7 +1560,7 @@ check("mech: alerts per difficulty group", function()
   assert(f.rows[1].name.text == "Real Name" and not f.rows[1].check.checked, "not on in Normal/Heroic")
   assert(f.panel.times.text:find("0:45", 1, true), "Times from the Heroic timeline: " .. tostring(f.panel.times.text))
   -- a change here makes Normal/Heroic's own, and leaves Mythic's alone
-  sliders["Show from"].opts.set(9)
+  f.panel.showFrom.opts.set(9)
   local list = R:List(ENC)
   assert(#list == 2 and list[2].r.group == "nh" and list[2].r.warn == 9 and list[2].r.enabled == false, "Normal/Heroic's own, off like its tick")
   assert(R:Get(ENC, id).warn == 5 and R:Get(ENC, id).enabled == true, "Mythic's untouched")
@@ -1939,7 +1939,7 @@ check("mech special (" .. LOOK .. "): the panel says When and Who, keeps Show as
   setCheck(s.checks.bar, false)
   assert(fill.opts.enabledIf() == false, "greyed with Bar off")
   local fp = fill.pts[#fill.pts]
-  assert(fp[3] == -262 and fp[2] > 96, "on the Speak row, after its label")
+  assert(fp[3] == s.speak.pts[1][3] and fp[2] > 96, "on the Speak row, after its label")
   -- markers: an addon can't set them, so the section is greyed and says why
   assert(s.markText.text == "Marks for each step: Star, Circle. Named in the alert's text.", "the marks: " .. s.markText.text)
   assert(s.markCheck.enabled == false and s.markCheck.checked == false, "Mark the players: greyed")
@@ -1976,6 +1976,63 @@ check("mech special (" .. LOOK .. "): the impacts under When", function()
   local wr, ir, hr = rect(s.whenText, f), rect(s.impactsText, f), nil
   assert(ir[2] > wr[2], "under When")
   CRT.db.alerts.specialView, CRT.db.alerts.specialViewPicked = "mechanics", true
+  noSpecial()
+  assert(#errors == 0, tostring(errors[1]))
+end)
+
+check("mech special (" .. LOOK .. "): Show from under When: yours, saved when it differs; Default puts the shipped one back", function()
+  withSpecial(SPECIAL_LIST) -- Orb soaks ships lead 6, Mythic dance the default 5
+  CRT.db.alerts.special = {}
+  local f = freshOpen()
+  local s = f.special
+  local sl, def = s.lead, s.leadDefault
+  assert(sl and sl.label == "Show from" and sl.kind == "Slider", "a Show from slider")
+  local m = f.panel.showFrom.opts
+  assert(sl.opts.min == m.min and sl.opts.max == m.max and sl.opts.min == 1 and sl.opts.max == 60 and sl.opts.step == 1, "the Mechanics range, 1 to 60 s")
+  assert(sl.opts.labelWidth == m.labelWidth and sl.opts.width == m.width and sl.opts.onRelease == true, "the Mechanics slider's label width, width, saved when let go")
+  assert(sl.opts.format(8) == m.format(8), "its value reads as the Mechanics one: " .. tostring(sl.opts.format(8)))
+  assert(sl.opts.get() == 6 and sl.value == 6, "starts at the shipped lead")
+  assert(def and def.text == "Default" and def.enabled == false, "Default, greyed at the default")
+  assert(def.w == CRT.UI.PanelButtonWidth(#"Default" * 6), "Default sized from its label: " .. tostring(def.w))
+  -- the (?) right of the slider, Default after it
+  local help
+  for _, h in ipairs(helps) do if h.helpTitle == "Show from" and rawget(h, "helpTarget") == sl then help = h end end
+  assert(help and help.helpText == "How long before each cast this alert shows. Default puts back the shipped time.", "its (?): " .. tostring(help and help.helpText))
+  rects = {}
+  local sr, hr, dr = rect(sl, f), rect(help, f), rect(def, f)
+  local wr, ir, whoR = rect(s.whenText, f), rect(s.impactsText, f), rect(s.whoHeading, f)
+  assert(hr[1] >= sr[3] and dr[1] >= hr[3], "slider, its (?), then Default")
+  assert(sr[2] >= ir[4] and sr[2] >= wr[4] and sr[4] <= whoR[2], "under When's lines, over Who")
+  -- moved: saved, When follows, Default lights up
+  sl.opts.set(8)
+  assert(CRT.db.alerts.special[ENC].soaks.lead == 8, "saved")
+  assert(s.whenText.text == "Each cast of Real Name: P1 0:30; P2 +0:20. Shown 8 s before.", "When follows: " .. s.whenText.text)
+  assert(sl.value == 8 and def.enabled == true, "Default lights up")
+  -- Test plays it at yours
+  click(s.testBtn)
+  local got
+  for _, it in ipairs(A.items) do if it.id == "special:test:soaks" then got = it end end
+  assert(got and got.warn == 8, "Test at your Show from: " .. tostring(got and got.warn))
+  A:Stop(true)
+  -- another alert: its own
+  click(s.rows[2].frame)
+  assert(sl.opts.get() == 5 and def.enabled == false and s.whenText.text:find("Shown 5 s before.", 1, true), "Mythic dance: its own 5 s")
+  click(s.rows[1].frame)
+  assert(sl.opts.get() == 8 and def.enabled == true, "Orb soaks: yours kept")
+  -- Default: the shipped one back, nothing saved for it
+  click(def)
+  assert(CRT.db.alerts.special[ENC].soaks.lead == nil and sl.opts.get() == 6 and sl.value == 6, "back to 6, not saved")
+  assert(s.whenText.text:find("Shown 6 s before.", 1, true) and def.enabled == false, "When and Default follow")
+  -- moved back by hand to the shipped value: the same as Default
+  sl.opts.set(9) sl.opts.set(6)
+  assert(CRT.db.alerts.special[ENC].soaks.lead == nil and def.enabled == false, "the shipped value by hand: not saved")
+  -- a bar of its own: still said as shipped
+  withSpecial({ { key = "early", label = "Early bar", when = { times = "0:30" }, lead = 4, bar = { start = -3, length = 8 } } })
+  CRT.NoteReminders.Refresh()
+  sl.opts.set(12)
+  assert(s.whenText.text == "At P1 0:30. Shown 12 s before." and s.impactsText.text == "Bar 8 s from 3 s before the cast", "the bar's line unchanged: " .. s.impactsText.text)
+  click(s.mechBtn)
+  CRT.db.alerts.special = {}
   noSpecial()
   assert(#errors == 0, tostring(errors[1]))
 end)

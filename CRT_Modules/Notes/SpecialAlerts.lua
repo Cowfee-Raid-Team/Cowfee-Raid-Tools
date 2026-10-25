@@ -4,7 +4,8 @@ local ADDON, CRT = ...
 -- Mechanics toggle over the left list, the boss's special alerts (Alerts/Special.lua, from its boss file)
 -- for the difficulty on show, each with its on/off tick and its icon (Special.Icon) in its ability type's colour, and
 -- on the right the selected one: When and Who as its data says them (a rotation's steps as chips, a roles list as
--- "Roles: Tank, Healer"), Show as (your choices, saved at once), Markers (greyed:
+-- "Roles: Tank, Healer"), Show from under When (your lead, with Default for the boss file's; the only part of the
+-- entry itself a player may change), Show as (your choices, saved at once), Markers (greyed:
 -- an addon can't set them) and Test. The tab hands it the boss, the difficulty group and the ability timeline
 -- on show (host), and the places of its list and panel. Special first: the tab opens on Special every time
 -- (M.Opened), a boss with none too. A click on Mechanics holds for that boss until the tab is left; Make a
@@ -27,6 +28,10 @@ local TEXT = {
     whenRow = "Each cast of %s: %s. Shown %s s before.",
     whenNoCasts = "Each cast of %s. None on the ability timeline on show.",
     whenTimes = "At %s. Shown %s s before.",
+    showFrom = "Show from",
+    showFromHelp = "How long before each cast this alert shows. Default puts back the shipped time.",
+    seconds = "%d s",
+    default = "Default",
     impacts = "Impacts: %s",
     impactsToCast = "Impacts: %s. The bar ends at the cast.",
     barLength = "Bar %s s",
@@ -86,11 +91,13 @@ local L = {
     BOTTOM_Y = 10,
     -- the panel's rows, from its top
     TITLE_Y = -14, KIND_Y = -36, ALERT_Y = -12,
-    WHEN_Y = -62, WHEN_TEXT_Y = -82, IMPACTS_Y = -98,
-    WHO_Y = -122, WHO_TEXT_Y = -142, CHIPS_Y = -160,
-    SHOW_Y = -190, SPEAK_Y = -262,
-    MARK_Y = -296, MARK_TEXT_Y = -316, MARK_CHECK_Y = -332,
-    MESSAGE_Y = -366,
+    WHEN_Y = -62, WHEN_TEXT_Y = -82, IMPACTS_Y = -98, LEAD_Y = -114,
+    WHO_Y = -152, WHO_TEXT_Y = -172, CHIPS_Y = -190,
+    SHOW_Y = -220, SPEAK_Y = -292,
+    MARK_Y = -326, MARK_TEXT_Y = -346, MARK_CHECK_Y = -362,
+    MESSAGE_Y = -396,
+    -- Show from: the Mechanics panel's slider (Notes/Reminders.lua's SHOW_LABEL, SLIDER_W), Default after its (?)
+    LEAD_LABEL = 70, LEAD_W = 150, DEFAULT_GAP = 8,
     ALERT_W = 130, -- Alert me and its label, at the header's right
     FILL_X = 150, FILL_LABEL = 56, FILL_W = 130, -- Bar fill, on the Speak row
 }
@@ -176,7 +183,7 @@ end
 -- The words of When.
 local function whenText(enc, entry)
     local S, Reminders = Special(), CRT.AlertReminders
-    local lead = tostring(entry.lead)
+    local lead = tostring(S:Lead(enc, entry)) -- your Show from, else the entry's
     if entry.when.list then
         return string.format(TEXT.whenTimes, Reminders.FormatTimes(entry.when.list), lead)
     end
@@ -402,6 +409,8 @@ local function drawPanel(enc, entry)
     local impacts = M.ImpactsText(entry)
     ui.impactsText:SetText(impacts or "")
     ui.impactsText:SetShown(impacts ~= nil)
+    ui.lead.refresh()
+    ui.leadDefault:SetEnabled(c.lead ~= nil) -- greyed while the shipped lead is on
     drawWho(enc, entry)
     placeShowAs()
     for key, check in pairs(ui.checks) do
@@ -586,6 +595,39 @@ local function makeRow(parent, i)
     return row
 end
 
+-- Show from: your lead for the selected alert (Special:SetChoice "lead"), the Mechanics panel's slider; its (?),
+-- then Default (UI.PanelButton), which puts the entry's own lead back.
+local function setLead(value)
+    local entry, enc = current()
+    if entry then
+        state.notice = nil
+        Special():SetChoice(enc, entry, "lead", value) -- fires the alerts change, which redraws the tab
+        M.Refresh()
+    end
+end
+
+local function buildLead(p)
+    local S = Special()
+    ui.lead = UI.Slider(p, TEXT.showFrom, {
+        min = S.LEAD_MIN, max = S.LEAD_MAX, step = 1, labelWidth = L.LEAD_LABEL, width = L.LEAD_W,
+        format = function(v)
+            return string.format(TEXT.seconds, math.floor(v + 0.5))
+        end,
+        onRelease = true, -- saved when the bar is let go, not on every step of a drag
+        get = function()
+            local entry, enc = current()
+            return entry and Special():Lead(enc, entry) or S.LEAD_MIN
+        end,
+        set = setLead,
+    })
+    ui.lead:SetPoint("TOPLEFT", L.INSET, L.LEAD_Y)
+    ui.leadHelp = UI.HelpRight(ui.lead, TEXT.showFrom, TEXT.showFromHelp)
+    ui.leadDefault = UI.PanelButton(p, TEXT.default, L.BUTTON_H, function()
+        setLead(nil)
+    end)
+    ui.leadDefault:SetPoint("LEFT", ui.leadHelp, "RIGHT", L.DEFAULT_GAP, 0)
+end
+
 local function buildPanel(f)
     local frame = CreateFrame("Frame", nil, f, "BackdropTemplate")
     frame:SetSize(L.PANEL_W, L.PANEL_H)
@@ -621,8 +663,9 @@ local function buildPanel(f)
     ui.whenText:SetTextColor(TIMES_GREY[1], TIMES_GREY[2], TIMES_GREY[3])
     ui.impactsText = line(p, L.IMPACTS_Y)
     ui.impactsText:SetTextColor(TIMES_GREY[1], TIMES_GREY[2], TIMES_GREY[3])
+    buildLead(p)
 
-    heading(p, TEXT.who, L.WHO_Y, nil, TEXT.whoHelp)
+    ui.whoHeading = heading(p, TEXT.who, L.WHO_Y, nil, TEXT.whoHelp)
     ui.whoText = line(p, L.WHO_TEXT_Y)
     ui.chips = {}
     ui.more = p:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
