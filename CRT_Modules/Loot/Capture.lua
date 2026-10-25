@@ -214,14 +214,23 @@ end
 local function rememberSaved()
     local now, wall = GetTime(), time()
     local found = {}
-    local ok = pcall(Loot.Each, Loot, function(rec)
-        local age = type(rec[R.TIME]) == "number" and wall - rec[R.TIME] or nil
-        if age and age >= 0 and age <= MATCH_SECONDS then
-            found[#found + 1] = { rec = rec, age = age }
-        end
-    end)
-    if not ok then
+    -- only this month's records, and last month's just after a month starts (MonthOf, Store.lua's keys)
+    local months = type(CRTLootDB) == "table" and type(CRTLootDB.months) == "table" and CRTLootDB.months or nil
+    if not months then
         return -- no store to read (CRTLootDB not loaded)
+    end
+    local keys = { Loot.MonthOf(wall) }
+    local before = Loot.MonthOf(wall - MATCH_SECONDS)
+    if before ~= keys[1] then
+        keys[2] = before
+    end
+    for _, month in ipairs(keys) do
+        for _, rec in ipairs(type(months[month]) == "table" and months[month] or {}) do
+            local age = type(rec[R.TIME]) == "number" and wall - rec[R.TIME] or nil
+            if age and age >= 0 and age <= MATCH_SECONDS then
+                found[#found + 1] = { rec = rec, age = age }
+            end
+        end
     end
     table.sort(found, function(a, b)
         return a.age > b.age -- oldest first, as remember keeps them

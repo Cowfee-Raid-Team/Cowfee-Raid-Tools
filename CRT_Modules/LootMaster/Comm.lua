@@ -2,8 +2,9 @@ local ADDON, CRT = ...
 
 -- Loot Master over addon messages (prefix CRTLootRemaster, LM.PREFIX): the looter's running session (LM.current) and, on
 -- every raider's computer, the session they were sent (LM.incoming), with inc.view, a copy of everyone's
--- answers and rolls for the raider window. Every message goes to the group channel, never as a whisper,
--- so answers work across realms and every window sees every answer. Raid messages come back to the
+-- answers and rolls for the raider window. Every message goes to the group channel, so answers work across
+-- realms and every window sees every answer; only the catch-up for one raider (LootMaster/Resync.lua) is
+-- whispered, with the group channel as its fallback. Raid messages come back to the
 -- sender too, so the looter also gets the raider popup. Out of a group a message is handed straight to
 -- the receiver here (the game sends nothing then), so a test works alone.
 --
@@ -175,7 +176,11 @@ pump = function()
             end
             break
         end
-        local ok, result = pcall(C_ChatInfo.SendAddonMessage, LM.PREFIX, queue[1].text, ch)
+        local to = queue[1].to
+        if to then
+            ch = "WHISPER" -- one group member only (LootMaster/Resync.lua's catch-up)
+        end
+        local ok, result = pcall(C_ChatInfo.SendAddonMessage, LM.PREFIX, queue[1].text, ch, to)
         if ok and (result == THROTTLED or result == CHANNEL_THROTTLED) then
             C_Timer.After(1, pump)
             return
@@ -205,15 +210,22 @@ end
 
 -- A finished message to the group; out of a group it is handed straight to receive(). done (optional):
 -- done(sent) once the message has left the queue, sent or dropped (sent: whether the game took it).
-local function sendText(text, done)
+-- to (optional): a group member's full name, for a whisper to them alone; they must be on your realm or a
+-- connected one (C_ChatInfo.SendAddonMessage's WHISPER). Whispers wait in the same queue.
+local function sendText(text, done, to)
     if not channel() then
-        receive(text, LM:Me())
+        if not to or to == LM:Me() then
+            receive(text, LM:Me())
+        end
         if done then
-            done(true)
+            done(not to or to == LM:Me())
         end
         return
     end
-    queue[#queue + 1] = { text = text, done = done }
+    if to then
+        to = Ambiguate(to, "none") -- the game's whisper target: no realm for your own realm's players
+    end
+    queue[#queue + 1] = { text = text, done = done, to = to }
     if not sending and not held then
         sending = true
         pump()
@@ -243,7 +255,7 @@ function LM.ShowError(text)
         pcall(UIErrorsFrame.AddMessage, UIErrorsFrame, text, 1, 0.1, 0.1)
     end
 end
-LM.SendText = sendText -- a finished message, such as one of Wire.Pack's, and an optional done(sent)
+LM.SendText = sendText -- a finished message, such as one of Wire.Pack's, an optional done(sent) and whisper target
 
 -- Loot authority -------------------------------------------------------------------------------------
 
@@ -344,9 +356,11 @@ end
 
 local function save() end -- set below, with the /reload code
 
--- The session to the group: S, the buttons (B), the items (I), packed so a start fits the game's burst.
-local function sendSession(s)
-    send("S", { s.id, s.test and 1 or 0, #s.items, LM.VERSION, s.seconds, #s.responses, s.autoPass and 1 or 0 })
+-- The session to the group (or whispered to one member, to): S, the buttons (B), the items (I), packed so
+-- a start fits the game's burst. done (optional) goes with the last message. Returns how many messages went
+-- into the queue.
+local function sendSession(s, to, done)
+    sendText(Wire.Encode("S", { s.id, s.test and 1 or 0, #s.items, LM.VERSION, s.seconds, #s.responses, s.autoPass and 1 or 0 }), nil, to)
     local buttons, items = {}, {}
     for i, r in ipairs(s.responses) do
         buttons[i] = { i, r.key, Wire.Color(r.color), r.weight, r.icon or "", r.label }
@@ -354,12 +368,17 @@ local function sendSession(s)
     for i, it in ipairs(s.items) do
         items[i] = { i, it.ilvl and math.floor(it.ilvl + 0.5) or "", it.itemString }
     end
+    local out = {}
     for _, text in ipairs((Wire.Pack("B", s.id, buttons))) do
-        sendText(text)
+        out[#out + 1] = text
     end
     for _, text in ipairs((Wire.Pack("I", s.id, items))) do
-        sendText(text)
+        out[#out + 1] = text
     end
+    for i, text in ipairs(out) do
+        sendText(text, i == #out and done or nil, to)
+    end
+    return #out + 1
 end
 LM.SendSession = sendSession
 
@@ -768,6 +787,7 @@ function LM:Answer(index, response, note)
     local mine = inc.mine[index] or {}
     inc.mine[index] = mine
     mine.response, mine.note = response, note
+    mine.auto, mine.autoWhy, mine.autoDetail, mine.autoSpecs = nil, nil, nil, nil -- your own answer, by hand
     sendAnswer(inc, index, mine)
     self:Fire("incoming")
     save()
@@ -1001,13 +1021,14 @@ end
 -- Receiving ------------------------------------------------------------------------------------------
 
 -- Once every item and button is in (and the items you can't use are answered), the popup opens and the
--- looter is told you are ready, which starts your clock there.
-local function checkReady(inc)
+-- looter is told you are ready, which starts your clock there. added: whether this message brought a new
+-- item or button; a session sent again that brings nothing new doesn't open the popup again.
+local function checkReady(inc, added)
     if inc.got < inc.n or #inc.responses < inc.nResponses then
         return
     end
     if inc.checked then
-        LM:Fire("incoming", "shown")
+        LM:Fire("incoming", added and "shown" or nil)
     elseif not inc.checking then
         inc.checking = true
         LM:CheckSpecs(inc, function()
@@ -1090,9 +1111,11 @@ HANDLERS.B = function(f, sender)
     if not fromLooter(inc, f, sender) then
         return
     end
+    local added = false
     for _, e in ipairs(Wire.Unpack(f[2])) do
         local index = tonumber(e[1])
         if index and index <= LM.MAX_RESPONSES and e[2] and e[2] ~= "" and not inc.responses[index] then
+            added = true
             local r = { key = e[2], color = Wire.ParseColor(e[3]), weight = tonumber(e[4]) or 0,
                 -- a looter on an older version may send longer labels: cut to what the popup lays out
                 icon = e[5] ~= "" and e[5] or nil, label = LM.CutLetters(e[6] or e[2], LM.LABEL_MAX) }
@@ -1100,7 +1123,7 @@ HANDLERS.B = function(f, sender)
             inc.byKey[r.key] = r
         end
     end
-    checkReady(inc)
+    checkReady(inc, added)
 end
 
 -- I: the items, packed: index, item level, item string. A repeat (the session sent again) changes nothing.
@@ -1109,14 +1132,16 @@ HANDLERS.I = function(f, sender)
     if not fromLooter(inc, f, sender) then
         return
     end
+    local added = false
     for _, e in ipairs(Wire.Unpack(f[2])) do
         local index = tonumber(e[1])
         if index and index <= LM.MAX_ITEMS and e[3] and e[3] ~= "" and not inc.items[index] then
             inc.items[index] = { itemString = e[3], ilvl = tonumber(e[2]), shownAt = GetTime(), shownWall = time() }
             inc.got = inc.got + 1
+            added = true
         end
     end
-    checkReady(inc)
+    checkReady(inc, added)
 end
 
 -- Q: show an item again to one raider (their answer is cleared everywhere).
@@ -1273,11 +1298,16 @@ end
 -- brought back at login while LM.Fresh says it is this raid night's, unless you are now in another raid
 -- instance. The looter's clocks start again (LM.Revive). On the popup an item still waiting for your answer
 -- gets a fresh timer, an item you answered keeps the time it had left, and an item given out stays closed.
--- A fresh login whose group isn't known yet waits for it (the first GROUP_ROSTER_UPDATE, or RESTORE_WAIT
--- seconds), so a real session isn't dropped for it. Every way out fires LM:Fire("restored"): the boss loot
--- waiting for its turn starts only then (LootMaster/BossLoot.lua), and LootMaster/Resync.lua asks the group
--- for what was missed. End clears it.
-local restoring = false -- a saved session waiting for the group
+-- A fresh login whose group isn't known yet waits for it (the first GROUP_ROSTER_UPDATE): RESTORE_WAIT
+-- seconds after the first loading screen it stops holding new saves, but keeps the saved session (parked)
+-- for a later group event, while it is fresh. The popup comes back only while its looter is in your group
+-- (an old raid's items never show in a later party). Every way out fires LM:Fire("restored"): the boss
+-- loot waiting for its turn starts only then (LootMaster/BossLoot.lua), and LootMaster/Resync.lua asks the
+-- group for what was missed. End clears it.
+-- The raid instance is its map ID and difficulty (LM.InstanceKey): a second raid of the same difficulty
+-- within RESTORE_HOURS (rare) would count as the same one; the weekly reset is the lockout's end.
+local restoring = false -- a saved session waiting for the group, holding new saves
+local parked = false -- the wait ran out with no group: the save is kept for a later group event
 
 save = function()
     if restoring then
@@ -1286,9 +1316,12 @@ save = function()
     CRTDBChar = CRTDBChar or {}
     local before = CRTDBChar.lootSession
     if not (LM.current or LM.incoming) then
-        CRTDBChar.lootSession = nil
+        if not parked then
+            CRTDBChar.lootSession = nil
+        end
         return
     end
+    parked = false -- a new session replaces the parked one
     local key = LM.InstanceKey and LM.InstanceKey() or nil
     CRTDBChar.lootSession = { savedAt = time(), resetAt = LM.ResetAt(), current = LM.current, incoming = LM.incoming,
         instance = key or (type(before) == "table" and before.instance) or nil }
@@ -1297,9 +1330,19 @@ LM.Save = function()
     save()
 end
 
--- Whether a saved session waits for the group.
+-- Whether a saved session waits for the group (or is parked until one).
 function LM.RestorePending()
-    return restoring
+    return restoring or parked
+end
+
+-- Whether a name is in your group now (you count).
+local function inGroup(name)
+    for _, n in ipairs(LM:Roster()) do
+        if n == name then
+            return true
+        end
+    end
+    return false
 end
 
 -- The popup's items after a login: see above. gone: seconds since the save, for an item with no shownWall.
@@ -1324,7 +1367,7 @@ local function restore(final)
     local key = LM.InstanceKey and LM.InstanceKey() or nil
     if type(saved) ~= "table" or not LM.Fresh(saved.savedAt, saved.resetAt)
         or (key and type(saved.instance) == "string" and saved.instance ~= key) then
-        restoring = false
+        restoring, parked = false, false
         if CRTDBChar then
             CRTDBChar.lootSession = nil
         end
@@ -1333,18 +1376,15 @@ local function restore(final)
     end
     local real = (type(saved.current) == "table" and not saved.current.test)
         or (type(saved.incoming) == "table" and not saved.incoming.test)
-    if real and not IsInGroup() and not final then
-        if not restoring then
-            restoring = true
-            C_Timer.After(LM.RESTORE_WAIT, function()
-                if restoring then
-                    restore(true)
-                end
-            end)
+    if real and not IsInGroup() then
+        if final then
+            restoring, parked = false, true -- kept for a later group event
+        else
+            restoring = true -- the wait starts at the first loading screen
         end
         return
     end
-    restoring = false
+    restoring, parked = false, false
     local s = LM.Revive(saved.current)
     local inc = saved.incoming
     if s and not LM.current and (s.test or IsInGroup()) then -- a session that came in while waiting wins
@@ -1353,7 +1393,7 @@ local function restore(final)
         LM:Fire("started", s)
     end
     if type(inc) == "table" and type(inc.items) == "table" and type(inc.mine) == "table" and not LM.incoming
-        and (inc.test or IsInGroup()) then
+        and (inc.test or (IsInGroup() and inGroup(inc.leader))) then
         inc.view = LM.Revive(inc.view)
         if inc.view then
             inc.view.items, inc.view.responses, inc.view.byKey = inc.items, inc.responses, inc.byKey
@@ -1392,11 +1432,13 @@ local events = CreateFrame("Frame")
 events:RegisterEvent("CHAT_MSG_ADDON")
 events:RegisterEvent("PLAYER_LOGIN")
 events:RegisterEvent("PLAYER_LOGOUT")
+events:RegisterEvent("PLAYER_ENTERING_WORLD")
 events:RegisterEvent("ENCOUNTER_END")
 events:RegisterEvent("PLAYER_REGEN_ENABLED")
 events:RegisterEvent("GROUP_ROSTER_UPDATE")
 events:RegisterEvent("PARTY_LEADER_CHANGED")
 local rosterPending = false
+local waitStarted = false -- the group wait of a fresh login, from its first loading screen
 events:SetScript("OnEvent", function(_, event, a1, a2, a3, a4, a5)
     if event == "CHAT_MSG_ADDON" then
         if a1 == LM.PREFIX then
@@ -1405,6 +1447,15 @@ events:SetScript("OnEvent", function(_, event, a1, a2, a3, a4, a5)
     elseif event == "PLAYER_LOGIN" then
         loadAuthority()
         restore()
+    elseif event == "PLAYER_ENTERING_WORLD" then
+        if restoring and not waitStarted then
+            waitStarted = true
+            C_Timer.After(LM.RESTORE_WAIT, function()
+                if restoring then
+                    restore(true)
+                end
+            end)
+        end
     elseif event == "PLAYER_LOGOUT" then
         save()
     elseif event == "ENCOUNTER_END" or event == "PLAYER_REGEN_ENABLED" then
@@ -1413,7 +1464,7 @@ events:SetScript("OnEvent", function(_, event, a1, a2, a3, a4, a5)
         end
         resume()
     else
-        if restoring and IsInGroup() then
+        if (restoring or parked) and IsInGroup() then
             restore() -- a fresh login's group is known now
         end
         if rosterPending then

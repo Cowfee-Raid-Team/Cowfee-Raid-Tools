@@ -65,8 +65,18 @@ local chat = {} -- award messages posted to the raid: { text, by }
 SendChatMessage = function(text, kind) chat[#chat + 1] = { text = text, by = ME, kind = kind } end
 local LOCKED = false
 local outbox = {}
+-- THROTTLE: the game's allowance per prefix, 10 messages coming back at one a second (each CRT its own)
+local THROTTLE, allowance = false, {}
 C_ChatInfo = { RegisterAddonMessagePrefix = function() end, InChatMessagingLockdown = function() return LOCKED end,
-  SendAddonMessage = function(_, text) outbox[#outbox + 1] = { text = text, from = ME } return 0 end }
+  SendAddonMessage = function(_, text, ch, to)
+    if THROTTLE then
+      local a = allowance[ME] or { n = 10, at = NOW }
+      a.n, a.at = math.min(10, a.n + (NOW - a.at)), NOW
+      allowance[ME] = a
+      if a.n < 1 then return 3 end
+      a.n = a.n - 1
+    end
+    outbox[#outbox + 1] = { text = text, from = ME, to = ch == "WHISPER" and to or nil } return 0 end }
 
 -- the CRTs: each its frames, timers, tickers and saved data
 local clients, booting = {}, nil
@@ -124,7 +134,9 @@ local function deliver()
     for _, m in ipairs(box) do
       for _, name in ipairs({ "Solex", "Halo", "Quick" }) do
         local p = clients[name]
-        if p and p.online then fire(p, "CHAT_MSG_ADDON", p.LM.PREFIX, m.text, "RAID", m.from .. "-Sargeras") end
+        if p and p.online and (not m.to or m.to == name) then
+          fire(p, "CHAT_MSG_ADDON", p.LM.PREFIX, m.text, m.to and "WHISPER" or "RAID", m.from .. "-Sargeras")
+        end
       end
     end
   end
@@ -264,11 +276,53 @@ eq(sentBy("Halo", "V"), 1, "a second reload asks again")
 deliver()
 NOW = NOW + 2
 runTimers()
-eq(sentBy("Solex", "C") <= 1, true, "the looter answers once")
+eq(sentBy("Solex", "C"), 1, "the looter answers once")
+local whisper = true
+for _, m in ipairs(outbox) do if m.from == "Solex" and (m.text:sub(1, 2) == "D|" or m.text:sub(1, 2) == "C|") and m.to ~= "Halo" then whisper = false end end
+check(whisper, "the answer is whispered to the raider who asked, not sent to the raid")
 for _, m in ipairs(outbox) do if m.from == "Halo" and m.text:sub(1, 2) == "R|" then rFromHalo = rFromHalo + 1 end end
 deliver()
 for _, m in ipairs(outbox) do if m.from == "Halo" and m.text:sub(1, 2) == "R|" then rFromHalo = rFromHalo + 1 end end
 eq(rFromHalo, 0, "a raider sends no answer again that the looter has")
+settle()
+
+-- failure paths: D and C from someone who isn't the looter; a C whose count doesn't match
+local function inject(text, from, to) outbox[#outbox + 1] = { text = text, from = from, to = to } end
+inject("D|" .. sid .. ":901|w,3,Quick-Sargeras,bis", "Quick")
+inject("C|" .. sid .. "|901|1|" .. halo.LM.VERSION, "Quick")
+deliver()
+eq(halo.LM.incoming.items[3].award, nil, "a D from a raider who isn't the looter changes nothing")
+halo.LM.incoming.mine[3] = { response = "minor" } -- an answer the looter doesn't have
+local againR, realAgain = {}, halo.LM.SendAnswerAgain
+halo.LM.SendAnswerAgain = function(i) againR[#againR + 1] = i return realAgain(i) end
+inject("D|" .. sid .. ":902|a,1,Halo-Sargeras,bis," .. haloRoll, "Solex", "Halo")
+inject("C|" .. sid .. "|902|3|" .. halo.LM.VERSION, "Solex", "Halo")
+deliver()
+eq(#againR, 0, "a C whose count doesn't match: no answer sent again")
+inject("D|" .. sid .. ":903|a,1,Halo-Sargeras,bis," .. haloRoll, "Solex", "Halo")
+inject("C|" .. sid .. "|903|1|" .. halo.LM.VERSION, "Solex", "Halo")
+deliver()
+halo.LM.SendAnswerAgain = realAgain
+eq(table.concat(againR, ","), "3", "a matching C: only the missing answer is sent again, once")
+settle()
+eq(s.players["Halo-Sargeras"].answers[3] and s.players["Halo-Sargeras"].answers[3].response, "minor", "and the looter has it")
+-- a changed answer in the digest keeps the raider window's note and gear
+local va = halo.LM.incoming.view.players["Quick-Sargeras"].answers[2]
+va.note, va.gear = "4pc", { { id = 7, ilvl = 280 } }
+inject("D|" .. sid .. ":904|a,2,Quick-Sargeras,up,55", "Solex", "Halo")
+inject("C|" .. sid .. "|904|1|" .. halo.LM.VERSION, "Solex", "Halo")
+deliver()
+eq(va.response, "up", "digest: the changed answer")
+eq(va.note, "4pc", "digest: the note is kept")
+eq(#va.gear, 1, "digest: the gear is kept")
+eq(va.roll, 55, "digest: the looter's roll")
+-- a bad session id in an ask is ignored
+outbox = {}
+inject("V|" .. halo.LM.VERSION .. "|not-an-id|Solex-Sargeras|", "Halo")
+deliver()
+NOW = NOW + 20
+runTimers()
+eq(sentBy("Solex", "E"), 0, "an ask with a bad session id: no end sent")
 settle()
 
 -- 4. Nothing in combat: the ask waits for combat to end ----------------------------------------------------
@@ -297,6 +351,10 @@ fire(quick, "PLAYER_LOGIN")
 fire(quick, "PLAYER_ENTERING_WORLD", true, false)
 eq(quick.LM.incoming, nil, "relog: waits for its group")
 check(quick.db.lootSession ~= nil, "relog: the saved session is kept while it waits")
+NOW = NOW + 6
+runTimers()
+check(quick.db.lootSession ~= nil, "relog: still kept after the 5 second wait")
+eq(quick.LM.RestorePending(), true, "relog: and still waiting for the group")
 NOGROUP.Quick = nil
 fire(quick, "GROUP_ROSTER_UPDATE")
 check(quick.LM.incoming ~= nil and quick.LM.incoming.id == sid, "relog: the group is known, the saved session is back")
@@ -326,6 +384,67 @@ NOGROUP.Solex = nil
 fire(solex, "GROUP_ROSTER_UPDATE")
 eq(solex.LM.current and solex.LM.current.id, s2.id, "fresh login: the session is back once the group is known")
 eq(solex.LM.BossLoot:WaitingCount(), 1, "fresh login: the row still waits for its turn")
+settle()
+
+-- an old raid's popup isn't brought back when its looter isn't in your group
+goAway(quick)
+quick.db.lootSession = { savedAt = time(), current = nil, incoming = { id = "abc123", leader = "Gone-Sargeras", items = { { itemString = "item:1" } },
+  mine = {}, responses = {}, test = false } }
+quick = comeBack(quick)
+eq(quick.LM.incoming, nil, "a looter not in your group: no popup")
+eq(quick.db.lootSession, nil, "a looter not in your group: the save is dropped")
+settle()
+-- an ask while the looter's own saved session isn't back yet is ignored: no end sent
+local sentKinds = {}
+local realSend = solex.LM.SendText
+solex.LM.SendText = function(text, done, to) sentKinds[#sentKinds + 1] = text:sub(1, 1) return realSend(text, done, to) end
+local realPending = solex.LM.RestorePending
+solex.LM.RestorePending = function() return true end
+fire(solex, "CHAT_MSG_ADDON", solex.LM.PREFIX, "V|" .. solex.LM.VERSION .. "|abc124|Solex-Sargeras|", "RAID", "Quick-Sargeras")
+NOW = NOW + 20
+runTimers()
+solex.LM.RestorePending = realPending
+local anyE = false
+for _, k in ipairs(sentKinds) do if k == "E" then anyE = true end end
+eq(anyE, false, "an ask during a pending restore: no end sent")
+-- three asks 5 seconds apart with the game's allowance: one answer in flight at a time, an award not starved
+THROTTLE = true
+local inFlight, most, answers = 0, 0, 0
+solex.LM.SendText = function(text, done, to)
+  if text:sub(1, 2) == "C|" then
+    inFlight = inFlight + 1
+    answers = answers + 1
+    most = math.max(most, inFlight)
+    local d = done
+    done = function(...) inFlight = inFlight - 1 if d then return d(...) end end
+  end
+  return realSend(text, done, to)
+end
+-- the queue is backed up (20 messages: two seconds of them for every ask below), then three asks 5 s apart
+for i = 1, 20 do as(solex, function() solex.LM.SendText("X|filler" .. i) end) end
+local cBeforeA, awardAt, t = 0, nil, 0
+local function step()
+  NOW = NOW + 1
+  t = t + 1
+  runTimers()
+  for _, m in ipairs(outbox) do
+    if m.from == "Solex" and m.text:sub(1, 2) == "C|" and not awardAt then cBeforeA = cBeforeA + 1 end
+    if m.from == "Solex" and m.text:sub(1, 2) == "A|" then awardAt = awardAt or t end
+  end
+  deliver()
+end
+for n, who in ipairs({ "Halo", "Quick", "Halo" }) do
+  fire(solex, "CHAT_MSG_ADDON", solex.LM.PREFIX, "V|" .. solex.LM.VERSION .. "|" .. s2.id .. "|Solex-Sargeras|", "RAID", who .. "-Sargeras")
+  if n == 2 then as(solex, function() solex.LM:Award(1, "Quick-Sargeras", "bis") end) end
+  for _ = 1, 5 do step() end
+end
+for _ = 1, 40 do step() end
+check(answers >= 2, "throttled: the asks are answered (" .. answers .. ")")
+check(most <= 1, "throttled: at most one answer in flight (" .. most .. ")")
+check(awardAt ~= nil, "throttled: the award goes out")
+check(cBeforeA <= 1, "throttled: at most one answer ahead of the award (" .. cBeforeA .. ")")
+THROTTLE = false
+solex.LM.SendText = realSend
 settle()
 
 -- 7. The next day: everything clears ----------------------------------------------------------------------
@@ -379,7 +498,10 @@ eq(halo.LM:LootingOn(), true, "new leader reload: back on")
 eq(halo.asked, 0, "new leader reload: not asked again")
 check(halo.LM.incoming ~= nil and halo.LM.incoming.id == s3.id, "new leader reload: the old leader's session is still on its popup")
 goAway(quick)
+quick.db.lootmaster.heardAuthority.from = "Solex-Sargeras" -- as if it was last heard from the old leader
 quick = comeBack(quick)
+eq(quick.LM.authority and quick.LM.authority.from, "Solex-Sargeras", "raider reload after the lead moved: its kept list is the old leader's")
+eq(as(quick, function() return quick.LM.Allowed("Solex-Sargeras") end), false, "and it counts for nothing: Solex no longer leads")
 settle()
 check(quick.LM.incoming ~= nil and quick.LM.incoming.id == s3.id, "raider reload after the lead moved: the session is back")
 eq(quick.LM.authority and quick.LM.authority.from, "Halo-Sargeras", "raider reload after the lead moved: the new leader's list")
