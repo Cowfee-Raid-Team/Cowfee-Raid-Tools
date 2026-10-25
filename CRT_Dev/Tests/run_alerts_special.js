@@ -421,34 +421,46 @@ check("special: no double alerts: your own reminder steps aside for the casts th
   assert(#errors == 0, tostring(errors[1]))
 end)
 
-check("special: a per-alert icon: the entry's, a spell's texture, else when's spell; unreadable left out", function()
+check("special: a per-alert icon: icon is a spell, iconFile a texture file; else when's spell; unreadable left out", function()
   fresh()
   local SECRET = setmetatable({}, { __tostring = function() return "SECRET" end })
   local savedTex, savedSecret = C_Spell.GetSpellTexture, issecretvalue
-  -- the game knows 4242 and 5150 as spells; 777's texture is hidden; any other number is no spell
-  C_Spell.GetSpellTexture = function(id) if id == 4242 or id == 5150 then return "tex" .. id end if id == 777 then return SECRET end return nil end
+  -- the game knows 4242, 5150 and 136000 as spells; 777's texture is hidden; any other number is no spell
+  C_Spell.GetSpellTexture = function(id)
+    if id == 4242 or id == 5150 or id == 136000 then return "tex" .. id end
+    if id == 777 then return SECRET end
+    return nil
+  end
   issecretvalue = function(v) return v == SECRET end
   S.dev[9002] = {
-    { key = "file", label = "File", when = { times = "0:30" }, icon = 135000 },
     { key = "spell", label = "Spell", when = { times = "0:30" }, icon = 5150 },
+    -- a file ID that is also a spell's number: iconFile is never read as a spell
+    { key = "file", label = "File", when = { times = "0:30" }, iconFile = 136000 },
+    { key = "both", label = "Both", when = { times = "0:30" }, icon = 5150, iconFile = 136000 },
     { key = "plain", label = "Plain", when = { spellID = 4242 } },
-    { key = "hidden", label = "Hidden", when = { times = "0:30" }, icon = 777 },
-    { key = "both", label = "Both", when = { spellID = 4242 }, icon = 135000 },
+    { key = "hidden", label = "Hidden", when = { times = "0:30" }, icon = 777, iconFile = 136000 },
+    { key = "unknown", label = "Unknown", when = { times = "0:30" }, icon = 99999, iconFile = 136001 },
+    { key = "over", label = "Over", when = { spellID = 4242 }, iconFile = 136001 },
   }
   S.dev[9001] = { { key = "byrow", label = "By row", when = { row = "Swap" } } }
   local function first(enc, key) return S:Items(enc, S:Get(enc, key), { group = "mythic", all = true })[1] end
-  assert(S:Get(9002, "file").icon == 135000 and S:Get(9002, "plain").icon == nil, "read: the number, nil when left out")
-  assert(first(9002, "file").icon == 135000, "a number the game knows no spell for is a texture file ID")
-  assert(first(9002, "spell").icon == "tex5150", "a spell's number: its texture")
-  assert(S:Times(9002, S:Get(9002, "plain"), "mythic")[1] == nil, "no ability timeline on this boss")
-  assert(first(9002, "both") == nil, "nothing to play there")
-  assert(first(9001, "byrow").icon == "tex4242", "no icon: the spell of when's row")
-  assert(S.Icon(9001, S:Get(9001, "tanks"), "mythic") == "tex4242", "no icon: when.spellID's texture, as before")
-  assert(S.Icon(9002, S:Get(9002, "both")) == 135000, "the entry's icon wins over when's spell")
-  assert(first(9002, "hidden").icon == nil and S.Icon(9002, S:Get(9002, "hidden")) == nil, "a hidden texture is left out")
+  assert(S:Get(9002, "spell").icon == 5150 and S:Get(9002, "file").iconFile == 136000 and S:Get(9002, "plain").icon == nil
+    and S:Get(9002, "plain").iconFile == nil, "read: the numbers, nil when left out")
+  assert(first(9002, "spell").icon == "tex5150", "icon: the spell's texture")
+  assert(first(9002, "file").icon == 136000, "iconFile: the file ID itself, though a spell has that number")
+  assert(first(9002, "both").icon == "tex5150", "both set: icon wins")
+  assert(S.Icon(9002, S:Get(9002, "unknown")) == 136001, "a spell the game doesn't know: iconFile")
+  assert(S.Icon(9002, S:Get(9002, "over")) == 136001, "iconFile over when's spell")
+  assert(first(9001, "byrow").icon == "tex4242", "neither: the spell of when's row")
+  assert(S.Icon(9001, S:Get(9001, "tanks"), "mythic") == "tex4242", "neither: when.spellID's texture, as before")
+  assert(first(9002, "hidden").icon == nil and S.Icon(9002, S:Get(9002, "hidden")) == nil, "a hidden texture is left out, never swapped")
   for _, bad in ipairs({ "tex", 0, -5, 1.5 }) do
-    local e, why = S.Read({ key = "x", label = "X", when = { times = "0:30" }, icon = bad })
-    assert(e == nil and tostring(why):find("icon", 1, true), "icon " .. tostring(bad) .. ": " .. tostring(why))
+    for _, field in ipairs({ "icon", "iconFile" }) do
+      local def = { key = "x", label = "X", when = { times = "0:30" } }
+      def[field] = bad
+      local e, why = S.Read(def)
+      assert(e == nil and tostring(why):find(field, 1, true), field .. " " .. tostring(bad) .. ": " .. tostring(why))
+    end
   end
   -- the panel's Test plays the item with it
   assert(S:TestItem(9002, S:Get(9002, "spell"), "mythic").icon == "tex5150", "the Test item carries it")
@@ -475,6 +487,8 @@ check("special: roles: every cast to each player the words fit, as a note's tags
   assert(mine({ "Mage" }) == 3 and mine({ "MAGE" }) == 3 and mine({ "Demon Hunter" }) == 0 and mine({ "Hunter" }) == 0, "by class, its English or file name")
   assert(mine({ 3 }) == 3 and mine({ "Group3" }) == 3 and mine({ "Group 3" }) == 3 and mine({ "G3" }) == 3, "your raid group, by number or word")
   assert(mine({ 5 }) == 0 and mine({ "Group 5" }) == 0, "another group")
+  local _, g = mine({ "tank", 3 })
+  assert(g.who.roles[2] == "Group 3" and g.who.steps[1].tags[2] == "G3", "a group number is shown as Group 3, read as G3")
   assert(mine({ "Cheoeqar" }) == 3 and mine({ "Bob" }) == 0, "by name")
   -- one step for every cast, no wrapping; {group} is the words
   local steps = S.Steps(S:Get(9002, "r"))
@@ -518,6 +532,21 @@ check("special: pre-pull times read in phase 1 only; the block keeps them for a 
   assert(times({ encounterID = 9002, group = "mythic", reason = "rehearsal" }) == "1@30,2@10", "nor a rehearsal")
   -- the panel's Test still plays one (the editor's quick test sets its own time)
   assert(S:TestItem(9002, S:Get(9002, "pre")).time == -15, "the Test item is the first cast")
+end)
+
+check("special: a pre-pull cast never shifts a rotation: the first cast after the pull is step 1", function()
+  fresh()
+  S.dev[9002] = { { key = "rot", label = "Rot", when = { times = "-0:10, 0:30, 1:10" }, text = "Go {group}",
+    who = { mode = "rotation", rotation = { { 1, 2 }, { 3, 4 } } } } }
+  local e = S:Get(9002, "rot")
+  local function ids() local out = {} for _, it in ipairs(S:Items(9002, e, {})) do out[#out + 1] = it.id .. "=" .. it.text end return table.concat(out, ",") end
+  subgroup = 1 CRT.NoteEngine:ResetTokens()
+  assert(ids() == "special:rot:1=Go G1, G2,special:rot:2=Go G1, G2", "group 1: the pre-pull cast (step 1) and the first after the pull: " .. ids())
+  subgroup = 3 CRT.NoteEngine:ResetTokens()
+  assert(ids() == "special:rot:3=Go G3, G4", "group 3: the second cast after the pull: " .. ids())
+  -- everyone: every cast, the pre-pull one too
+  S.dev[9002] = { { key = "all", label = "All", when = { times = "-0:10, 0:30" } } }
+  assert(#S:Items(9002, S:Get(9002, "all"), {}) == 2, "everyone gets both")
 end)
 
 check("special: the pull timer starts a countdown run; cancel, the pull and the timeout end it", function()

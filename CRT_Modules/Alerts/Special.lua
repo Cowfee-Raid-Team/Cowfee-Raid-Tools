@@ -15,20 +15,26 @@ local ADDON, CRT = ...
 --                                         "-0:15" or "-15": it plays only from the game's pull timer (the countdown
 --                                         run, Alerts/Countdown.lua), never in a pull's run or a rehearsal
 --     lead = 5,                         optional: seconds before each time it shows (default 5)
---     icon = 135000,                    optional: the alert's icon. A spell ID the game knows gives that spell's
---                                         texture; any other number is a texture file ID. Left out: the texture
---                                         of when's spell (spellID, or row's spell). A hidden texture shows none
+--     icon = 2825,                      optional: a spell ID (2825 is Bloodlust); the icon is that spell's texture
+--     iconFile = 136243,                optional: a texture file ID, the alert's icon as it is (never read as a
+--                                         spell). With both, icon wins (iconFile when the game knows no such
+--                                         spell). With neither: the texture of when's spell (spellID, or its
+--                                         row's spell). A texture the game hides shows no icon
 --     who = { mode = "everyone" },      everyone (the default) gets every cast;
 --           { mode = "rotation", rotation = { { 1, 2 }, { 3, 4 } } }
 --                                       or one step per cast in turn, wrapping: raid groups by number, or the
---                                       words a note tag takes ("tank", "healer", "melee", a class or a name);
+--                                       words a note tag takes ("tank", "healer", "melee", a class or a name).
+--                                       The steps count the casts from the pull: a cast before the pull takes
+--                                       step 1 and never moves the rest, so the first cast after it is step 1;
 --           { mode = "roles", roles = { "tank", "healer" } }
 --                                       or every cast to each player the words fit, read as a note's tags read
 --                                       them: tank, healer, dps, melee, ranged, a class (its English or file
---                                       name), Group1 to Group8 or a number 1 to 8, a player's name;
+--                                       name), Group1 to Group8 or a number 1 to 8 (shown as "Group 3"), a
+--                                       player's name;
 --           { mode = "note", note = "Soak" }
 --                                       or the names on the active raid note's "Soak:" line (every cast), or on
---                                       its "Soak 1:", "Soak 2:" lines (one per cast in turn, wrapping)
+--                                       its "Soak 1:", "Soak 2:" lines (one per cast in turn, wrapping, counted
+--                                       as a rotation's are)
 --     text = "Soak now: {group}",       optional: the callout and speech (default the label); {group} is the step
 --                                         (roles: the words, joined with ", ")
 --     show = { callout = true, bar = true, text = false, icon = false, circle = false, timeline = false,
@@ -216,6 +222,12 @@ local function readWho(who)
         if not step then
             return nil, "roles must be words (a role, a class, a name) or groups 1 to 8"
         end
+        -- a group by its number is read as G3 and shown as "Group 3" (one word per item of the list)
+        for i, v in ipairs(who.roles) do
+            if type(v) == "number" then
+                step.words[i] = "Group " .. v
+            end
+        end
         return { mode = mode, roles = step.words, steps = { step } }
     elseif mode == "note" then
         if not text(who.note) then
@@ -302,6 +314,11 @@ local function readImpacts(def)
     return nil
 end
 
+-- Whether v is a game ID: a whole number over 0.
+local function wholeID(v)
+    return finite(v) and v > 0 and v == math.floor(v)
+end
+
 -- The spells an entry names in covers, or nil and why.
 local function readCovers(list)
     if list == nil then
@@ -312,7 +329,7 @@ local function readCovers(list)
     end
     local out = {}
     for _, id in ipairs(list) do
-        if not (finite(id) and id > 0 and id == math.floor(id)) then
+        if not wholeID(id) then
             return nil, "covers must be spell IDs"
         end
         out[#out + 1] = id
@@ -354,8 +371,11 @@ function Special.Read(def)
     if def.fill ~= nil and not FILLS[def.fill] then
         return nil, "fill must be up or down"
     end
-    if def.icon ~= nil and not (finite(def.icon) and def.icon > 0 and def.icon == math.floor(def.icon)) then
-        return nil, "icon must be a spell ID or a texture file ID"
+    if def.icon ~= nil and not wholeID(def.icon) then
+        return nil, "icon must be a spell ID"
+    end
+    if def.iconFile ~= nil and not wholeID(def.iconFile) then
+        return nil, "iconFile must be a texture file ID"
     end
     local show, given = {}, type(def.show) == "table" and def.show or nil
     for _, k in ipairs(SHOW_KEYS) do
@@ -384,6 +404,7 @@ function Special.Read(def)
         covers = covers,
         fill = def.fill or DEFAULT_FILL,
         icon = def.icon,
+        iconFile = def.iconFile,
     }
 end
 
@@ -737,16 +758,18 @@ local function spellTexture(spellID)
     return nil, true
 end
 
--- An entry's icon (see icon at the top of this file): its icon field, a spell's texture or else a texture file
--- ID; without one, the texture of when's spell (when.spellID, else its row's spell on ref or the boss's ability
--- timeline for group). Nil when there is none or the game hides it.
+-- An entry's icon (see icon and iconFile at the top of this file): its icon spell's texture, else its iconFile
+-- (also when the game knows no such spell), else the texture of when's spell (when.spellID, else its row's spell
+-- on ref or the boss's ability timeline for group). Nil when there is none or the game hides it.
 function Special.Icon(encounterID, entry, group, ref)
     if entry.icon then
         local tex, hidden = spellTexture(entry.icon)
         if tex or hidden then
             return tex
         end
-        return readable(entry.icon) and entry.icon or nil
+    end
+    if entry.iconFile then
+        return readable(entry.iconFile) and entry.iconFile or nil
     end
     local spell = entry.when.spellID or rowSpell(encounterID, entry, group, ref)
     return (spellTexture(spell))
@@ -820,7 +843,8 @@ local function item(entry, choices, n, at, step, covers, icon)
 end
 
 -- The items of one entry for a run (or nil: the boss's own view), one per cast of yours: every cast when
--- the mode is everyone, else those whose step is yours. opts: group, ref (the run's ability timeline),
+-- the mode is everyone, else those whose step is yours (a cast before the pull takes step 1; the casts from the
+-- pull count the steps, see who at the top of this file). opts: group, ref (the run's ability timeline),
 -- choices (default yours), all (every cast, as if each were yours: a test).
 function Special:Items(encounterID, entry, opts)
     opts = opts or {}
@@ -828,8 +852,14 @@ function Special:Items(encounterID, entry, opts)
     local choices = opts.choices or self:Choices(encounterID, entry)
     local steps = Special.Steps(entry, entry.who.mode == "note" and noteFor(run, encounterID) or nil)
     local out, covers, icon = {}, nil, nil
+    local fromPull = 0 -- the casts at or after the pull: a step counts these, so a pre-pull cast never shifts one
     for n, at in ipairs(self:Times(encounterID, entry, opts.group, opts.ref)) do
-        local step = Special.StepAt(steps, n)
+        local index = 1
+        if not (at.ph == 1 and at.t < 0) then
+            fromPull = fromPull + 1
+            index = fromPull
+        end
+        local step = Special.StepAt(steps, index)
         local mine = entry.who.mode == "everyone" or Special.IsMine(step)
         if mine or opts.all then
             if not covers then
