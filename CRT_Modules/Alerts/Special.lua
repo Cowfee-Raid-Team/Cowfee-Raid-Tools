@@ -25,7 +25,21 @@ local ADDON, CRT = ...
 --              speech = true },         optional: the Show as choices a player starts with
 --     markers = { marks = { "star", "circle" } },
 --                                       optional: the raid markers for the players of each step
+--     ticks = { 0, 2.5 },               optional: seconds after each cast when its impacts land, drawn as
+--     barTo = "last",                     lines on its bar (Alerts/Bars.lua); barTo "last" (the default) runs
+--                                         the bar to the last impact, "cast" ends it at the cast
+--     bar = { length = 8, ticks = { 4.5, 6.5 }, start = 0 },
+--                                       optional, the other way to write it: a bar of its own that appears
+--                                         start seconds after each cast (negative: before it; default 0), runs
+--                                         length seconds, with impacts ticks seconds into it. Not with ticks.
+--     fill = "up",                      optional: whether its bar fills up as the cast nears ("up", the default for
+--                                         special alerts) or empties ("down"); each player may change it
+--     covers = { 1234, 5678 },          optional: more spells this alert stands for (besides when's spell or
+--                                         row), so your own reminder on them doesn't alert the same cast twice
 --   } }
+-- No double alerts: an alert covers its when.spellID, its when.row's spell and its covers. When you have it on
+-- and your own reminder on for one of those spells, the engine leaves out your reminder's alert for any cast
+-- the special one also alerts (the same phase, within Alerts.COVER_WINDOW seconds); the rest still come.
 -- Only the players of a cast's step get its alert ("mine", as the note's tags say); everyone else gets
 -- nothing, unless the mode is everyone. Unknown fields are ignored. An entry that doesn't read is skipped,
 -- with a chat warning in developer builds only.
@@ -33,7 +47,7 @@ local ADDON, CRT = ...
 -- Blizzard calls it only from its secure templates), so an addon can never put a marker on a player. The
 -- alert names the marks in its text instead (Special.MARKING says so to the Mech Alerts panel).
 -- Each player's choices: CRT.db.alerts.special[encounterID][key] = { on, show = { alert, text, icon, bar,
--- circle, timeline }, speak, markers }, saved once changed; until then the entry's own defaults apply.
+-- circle, timeline }, speak, markers, fill }, saved once changed; until then the entry's own defaults apply.
 -- /crt dev special (developer builds) adds a sample to Special.dev[encounterID], never saved.
 
 local Alerts = CRT.Alerts
@@ -63,6 +77,8 @@ local DATA_SHOW = { alert = "callout", text = "text", icon = "icon", bar = "bar"
 local SHOW_DEFAULT = { alert = true, bar = true }
 
 local MODES = { everyone = true, rotation = true, note = true }
+local FILLS = { up = true, down = true }
+local DEFAULT_FILL = "up" -- a special alert is usually a cast coming: its bar fills up to it
 local GROUPS = { mythic = true, nh = true }
 
 -- The raid markers by the words a boss file may use, as the game numbers them (1 star ... 8 skull).
@@ -197,6 +213,86 @@ local function readMarks(m)
     return #out > 0 and out or nil
 end
 
+local function finite(v)
+    return type(v) == "number" and v == v and v > -math.huge and v < math.huge
+end
+
+-- A list of seconds in order, or nil when it isn't one.
+local function seconds(list)
+    if type(list) ~= "table" then
+        return nil
+    end
+    local out = {}
+    for _, v in ipairs(list) do
+        if not finite(v) then
+            return nil
+        end
+        out[#out + 1] = v
+    end
+    table.sort(out)
+    return out
+end
+
+-- The bar's impacts, from ticks (and barTo) or bar: { ticks (seconds after the cast, in order), barTo, barStart,
+-- barEnd, length, start, inBar (bar's own ticks, seconds into it) }, as the bars read them (Alerts/Bars.lua).
+-- Nil when the entry has neither; nil and why when one doesn't read.
+local function readImpacts(def)
+    if def.ticks ~= nil and def.bar ~= nil then
+        return nil, "give ticks or bar, not both"
+    end
+    local b = def.bar
+    if b ~= nil then
+        if type(b) ~= "table" or not finite(b.length) or b.length <= 0 then
+            return nil, "bar needs a length over 0 seconds"
+        end
+        local start = b.start == nil and 0 or b.start
+        if not finite(start) then
+            return nil, "bar.start must be seconds"
+        end
+        local inBar = b.ticks == nil and {} or seconds(b.ticks)
+        if not inBar then
+            return nil, "bar.ticks must be seconds into the bar"
+        end
+        local ticks = {}
+        for i, t in ipairs(inBar) do
+            if t < 0 or t > b.length then
+                return nil, "bar.ticks must lie inside its length"
+            end
+            ticks[i] = start + t
+        end
+        return { ticks = ticks, barStart = start, barEnd = start + b.length, length = b.length, start = start, inBar = inBar }
+    end
+    if def.ticks ~= nil then
+        local ticks = seconds(def.ticks)
+        if not ticks or #ticks == 0 or ticks[1] < 0 then
+            return nil, "ticks must be seconds after the cast"
+        end
+        if def.barTo ~= nil and def.barTo ~= "cast" and def.barTo ~= "last" then
+            return nil, "barTo must be cast or last"
+        end
+        return { ticks = ticks, barTo = def.barTo or "last" }
+    end
+    return nil
+end
+
+-- The spells an entry names in covers, or nil and why.
+local function readCovers(list)
+    if list == nil then
+        return {}
+    end
+    if type(list) ~= "table" then
+        return nil, "covers must be spell IDs"
+    end
+    local out = {}
+    for _, id in ipairs(list) do
+        if not (finite(id) and id > 0 and id == math.floor(id)) then
+            return nil, "covers must be spell IDs"
+        end
+        out[#out + 1] = id
+    end
+    return out
+end
+
 -- One entry of a boss file, checked and in the shape the rest of the addon reads, or nil and why.
 function Special.Read(def)
     if type(def) ~= "table" then
@@ -219,6 +315,17 @@ function Special.Read(def)
     local who, whyWho = readWho(def.who)
     if not who then
         return nil, whyWho
+    end
+    local impacts, whyImpacts = readImpacts(def)
+    if whyImpacts then
+        return nil, whyImpacts
+    end
+    local covers, whyCovers = readCovers(def.covers)
+    if not covers then
+        return nil, whyCovers
+    end
+    if def.fill ~= nil and not FILLS[def.fill] then
+        return nil, "fill must be up or down"
     end
     local show, given = {}, type(def.show) == "table" and def.show or nil
     for _, k in ipairs(SHOW_KEYS) do
@@ -243,6 +350,9 @@ function Special.Read(def)
         show = show,
         speak = not (given and given.speech == false),
         marks = readMarks(def.markers),
+        impacts = impacts,
+        covers = covers,
+        fill = def.fill or DEFAULT_FILL,
     }
 end
 
@@ -337,10 +447,11 @@ function Special:Choices(encounterID, entry)
         return v and true or false
     end
     return { on = pick(saved.on, entry.default), show = show, speak = pick(saved.speak, entry.speak),
-        markers = pick(saved.markers, false) }
+        markers = pick(saved.markers, false), fill = FILLS[saved.fill] and saved.fill or entry.fill or DEFAULT_FILL }
 end
 
--- Saves one choice ("on", "speak", "markers", or a Show as key with show = true) and tells the engine.
+-- Saves one choice ("on", "speak", "markers", "fill" = "up" or "down", or a Show as key with show = true) and
+-- tells the engine.
 -- The whole set is saved, so a later change to the entry's defaults leaves your choices alone.
 function Special:SetChoice(encounterID, entry, field, value, show)
     local all = store(true)
@@ -350,6 +461,8 @@ function Special:SetChoice(encounterID, entry, field, value, show)
     local c = self:Choices(encounterID, entry)
     if show then
         c.show[field] = value and true or false
+    elseif field == "fill" then
+        c.fill = FILLS[value] and value or DEFAULT_FILL
     else
         c[field] = value and true or false
     end
@@ -410,6 +523,54 @@ function Special:Times(encounterID, entry, group, ref)
         out[#out + 1] = { ph = e.ph, t = e.t }
     end
     return out
+end
+
+-- The spells an entry stands for, as a set (see "No double alerts" at the top of this file): its covers, its
+-- when.spellID, and the spell of its when.row on ref or the boss's ability timeline for group.
+function Special:Covers(encounterID, entry, group, ref)
+    local out = {}
+    for _, id in ipairs(entry.covers or {}) do
+        out[id] = true
+    end
+    if entry.when.spellID then
+        out[entry.when.spellID] = true
+    end
+    local Lanes = CRT.TimelineLanes
+    if entry.when.row and Lanes and Lanes.RowSpell then
+        ref = ref or CRT.AlertReminders.ReferenceFor(encounterID, { boss = bossName(encounterID) }, group)
+        local row = ref and rowOf(ref, encounterID, entry.when)
+        local ok, id = false, nil
+        if row then
+            ok, id = pcall(Lanes.RowSpell, row, encounterID)
+        end
+        if ok and readable(id) and type(id) == "number" and id > 0 then
+            out[id] = true
+        end
+    end
+    return out
+end
+
+-- What a boss's special alerts are read from: changes when its boss file's list or the developer's sample is
+-- replaced (a list that is cached by its tables, such as Mech Alerts' rows, keys on it).
+function Special:ListKey(encounterID)
+    local Bosses = CRT.Bosses
+    local def = Bosses and Bosses.Get and Bosses:Get(encounterID)
+    return tostring(def and def.special) .. "|" .. tostring(self.dev[encounterID])
+end
+
+-- The first of a boss's special alerts for group that stands for an ability (its spell, or for one named by its
+-- row, the row's name), or nil: Mech Alerts marks that ability's row (Notes/Reminders.lua).
+function Special:CoveredBy(encounterID, group, spellID, name, ref)
+    local want = type(name) == "string" and trim(name):lower() or nil
+    for _, entry in ipairs(self:List(encounterID, group)) do
+        if want and entry.when.row and entry.when.row:lower() == want then
+            return entry
+        end
+        if type(spellID) == "number" and self:Covers(encounterID, entry, group, ref)[spellID] then
+            return entry
+        end
+    end
+    return nil
 end
 
 -- Who -----------------------------------------------------------------------------------------------
@@ -554,7 +715,7 @@ function Special.TextFor(entry, step)
     return out
 end
 
-local function item(entry, choices, n, at, step)
+local function item(entry, choices, n, at, step, covers)
     local textOut = Special.TextFor(entry, step)
     local Reference = CRT.TimelineReference
     local outputs = {}
@@ -563,7 +724,22 @@ local function item(entry, choices, n, at, step)
     end
     outputs.speech = choices.speak and true or false
     local spell = entry.when.spellID
+    local imp = entry.impacts
+    local ticks
+    if imp then
+        ticks = {}
+        for i, t in ipairs(imp.ticks) do
+            ticks[i] = t
+        end
+    end
     return {
+        -- the bar's impacts (Alerts/Bars.lua) and the spells it stands for (Alerts/Engine.lua's no double alerts)
+        ticks = ticks,
+        barTo = imp and imp.barTo,
+        barStart = imp and imp.barStart,
+        barEnd = imp and imp.barEnd,
+        fill = choices.fill or DEFAULT_FILL,
+        covers = covers,
         id = BLOCK .. ":" .. entry.key .. ":" .. n,
         ph = at.ph,
         time = at.t,
@@ -588,12 +764,13 @@ function Special:Items(encounterID, entry, opts)
     local run = opts.run
     local choices = opts.choices or self:Choices(encounterID, entry)
     local steps = Special.Steps(entry, entry.who.mode == "note" and noteFor(run, encounterID) or nil)
-    local out = {}
+    local out, covers = {}, nil
     for n, at in ipairs(self:Times(encounterID, entry, opts.group, opts.ref)) do
         local step = Special.StepAt(steps, n)
         local mine = entry.who.mode == "everyone" or Special.IsMine(step)
         if mine or opts.all then
-            out[#out + 1] = item(entry, choices, n, at, step)
+            covers = covers or self:Covers(encounterID, entry, opts.group, opts.ref)
+            out[#out + 1] = item(entry, choices, n, at, step, covers)
         end
     end
     return out

@@ -436,8 +436,10 @@ local defaults = {
         cooldownFilter = "mine",
         -- Special alerts (Alerts/Special.lua): your choices per boss and alert, special[encounterID][key] =
         -- { on, show, speak, markers }; specialView is what Mech Alerts' list shows, "mechanics" or "special".
+        -- specialViewPicked: you clicked the toggle; until then a boss with special alerts opens on Special.
         special = {},
         specialView = "mechanics",
+        specialViewPicked = false,
     },
     -- The settings as they were before the last settings-only import (Profiles:ApplySettings in Profiles.lua):
     -- { from, saved, values = { [path] = value }, unset = { [path] = true } }, empty when there is none.
