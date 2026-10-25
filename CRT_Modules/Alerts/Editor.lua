@@ -819,16 +819,21 @@ local function itemLead(it)
     return lead
 end
 
--- Seconds after an item's time that it is done: its bar's end (its own barEnd, else its last impact unless
--- the bar ends at the cast), then its Linger (hold), which the bar keeps after its end.
+-- Seconds after an item's time that it is done: its bar's end (its own barEnd, else Rules.TICK_TAIL past its
+-- last impact unless a special alert's bar ends at the cast), then its Linger (hold), which the bar keeps after
+-- its end.
 local function itemTail(it)
     local finish = type(it.barEnd) == "number" and it.barEnd or 0
     if type(it.barEnd) ~= "number" and type(it.ticks) == "table" and it.barTo ~= "cast" then
+        local last
         for _, tk in ipairs(it.ticks) do
             local v = type(tk) == "table" and (tk.t or tk.at or tk[1]) or tk
-            if type(v) == "number" and v > finish then
-                finish = v
+            if type(v) == "number" and (not last or v > last) then
+                last = v
             end
+        end
+        if last then
+            finish = last + CRT.AlertRules.TICK_TAIL
         end
     end
     return math.max(0, finish) + (type(it.hold) == "number" and it.hold or 0)

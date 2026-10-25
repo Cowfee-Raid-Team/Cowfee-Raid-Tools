@@ -57,13 +57,10 @@ local TEXT = {
     -- under Show as, for the bar: greyed while Bar is off
     ticks = "Impact ticks",
     ticksUnit = "s after the cast",
-    ticksHelp = "Each number is a thin line on the bar where that hit lands, in seconds after the cast, such as 1.5, 3.5. The fill reaches each line as its hit lands. Leave it empty for no ticks.\n\nWith ticks, the bar shows from Show from before the cast, a faint line marks the cast, and the seconds count to the next hit.\n\nBar ends: at the last impact, the bar runs on to the last line. At the cast, it ends at the cast.\n\nThese are for Only me alerts. A raid note line can't carry them.",
+    ticksHelp = "Each number is a thin line on the bar where that hit lands, in seconds after the cast, such as 1.5, 3.5. The fill reaches each line as its hit lands. Leave it empty for no ticks.\n\nWith ticks, the bar shows from Show from before the cast, a faint line marks the cast, and the seconds count to the next hit.\n\nThe bar ends 1 s past the last line, so every line sits inside it. With no ticks, it ends at the cast.\n\nThese are for Only me alerts. A raid note line can't carry them.",
     barFill = "Bar fill",
     fillUp = "Bar fills up",
     fillDown = "Bar empties",
-    barTo = "Bar ends",
-    toLast = "At the last impact",
-    toCast = "At the cast",
     also = "Also",
     speak = "Speak the text",
     count = "Count down 3 2 1",
@@ -169,11 +166,11 @@ L.COL_W = math.floor((L.PANEL_W - 2 * L.INSET - L.COL_GAP) / 2)
 L.COL2_X = L.INSET + L.COL_W + L.COL_GAP
 L.CHECK_STEP = 130 -- between the checkboxes of a row
 L.SHOW_GAP = 10 -- between one Show as label and the next box
--- the left column under L.COL_Y, from its top: the two Show as rows, Impact ticks, Bar fill, Bar ends, then Also
--- and its two rows, then a save's problem
-L.TICKS_DY, L.FILL_DY, L.BAR_TO_DY = 72, 94, 120
-L.ALSO_DY, L.ALSO_ROW1_DY, L.ALSO_ROW2_DY = 152, 172, 198
-L.MESSAGE_DY = 232
+-- the left column under L.COL_Y, from its top: the two Show as rows, Impact ticks, Bar fill, then Also and its two
+-- rows, then a save's problem
+L.TICKS_DY, L.FILL_DY = 72, 94
+L.ALSO_DY, L.ALSO_ROW1_DY, L.ALSO_ROW2_DY = 126, 146, 172
+L.MESSAGE_DY = 206
 L.TICKS_LABEL, L.TICKS_W, L.UNIT_GAP, L.BAR_DROP_W = 76, 70, 6, 140
 L.LABEL_W = 50
 L.ICON_DROP_W = 90
@@ -630,8 +627,7 @@ local function placeShowAs()
     end)
 end
 
--- The bar's rows under Show as: Impact ticks greyed while Bar is off (Bar fill and Bar ends grey through their
--- enabledIf), its box showing the draft's ticks unless it is being typed in.
+-- The bar's rows under Show as: Impact ticks greyed while Bar is off (Bar fill greys through its enabledIf), its box showing the draft's ticks unless it is being typed in.
 local function drawBarRows(d)
     local on = d.show.bar and true or false
     panel.ticksEdit:SetEnabled(on)
@@ -1321,8 +1317,8 @@ local function backdrop(f, alpha)
 end
 
 -- Under Show as, the bar's rows: Impact ticks (seconds after the cast, typed: saved after a pause, as the other
--- boxes), Bar fill and Bar ends (greyed with no ticks). All three grey out while Bar is off (drawBarRows); what
--- they hold stays saved. `row` adds a dropdown to the rows drawPanel refreshes. Its own function: buildPanel is
+-- boxes) and Bar fill. Both grey out while Bar is off (drawBarRows); what they hold stays saved. A bar with ticks
+-- always runs 1 s past the last one (Alerts/Bars.lua). `row` adds a dropdown to the rows drawPanel refreshes. Its own function: buildPanel is
 -- near Lua 5.1's 60 upvalue limit.
 local function buildBarRows(p, row)
     local Draft = CRT.AlertDraft
@@ -1358,15 +1354,6 @@ local function buildBarRows(p, row)
         set = change(function(v) cur.draft.fill = v == "up" and "up" or nil end),
     }))
     panel.barFill:SetPoint("TOPLEFT", x, L.COL_Y - L.FILL_DY)
-    -- only a bar with ticks has a last impact to end at
-    panel.barTo = row(UI.Dropdown(p, TEXT.barTo, {
-        labelWidth = L.TICKS_LABEL, width = L.BAR_DROP_W,
-        enabledIf = function() return barOn() and Draft.Ticks(cur.draft) ~= nil end,
-        options = Draft.BarToOptions(TEXT.toLast, TEXT.toCast),
-        get = function() return cur.draft and cur.draft.barTo == "cast" and "cast" or "last" end,
-        set = change(function(v) cur.draft.barTo = v == "cast" and "cast" or nil end),
-    }))
-    panel.barTo:SetPoint("TOPLEFT", x, L.COL_Y - L.BAR_TO_DY)
 end
 
 local function buildPanel(f)

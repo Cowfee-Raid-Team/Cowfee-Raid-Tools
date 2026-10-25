@@ -268,7 +268,6 @@ function Dev.ReminderDef(enc, r, used)
         lead = (type(r.warn) == "number" and r.warn ~= 5) and r.warn or nil,
         show = show,
         ticks = ticks,
-        barTo = (ticks and r.barTo == "cast") and "cast" or nil,
         -- a special alert's bar fills up unless it says down; a reminder's empties unless it says up
         fill = r.fill ~= "up" and "down" or nil,
     }

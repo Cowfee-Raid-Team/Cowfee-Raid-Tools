@@ -8,9 +8,9 @@ local ADDON, CRT = ...
 --     priority, group, difficulty, enabled, linger, sound, auraSound, glow, iconID, color, speakAt, ticks, fill, barTo }
 -- auraSound true also plays the sound when the spell's aura is put on you (Sound/Auras.lua).
 -- ticks (optional) are the bar's impact ticks, seconds after each time ({ 1.5, 3.5 }); fill "up" makes the bar fill
--- up instead of emptying; barTo "cast" ends a bar with ticks at the cast instead of the last one. Each item
--- carries them for the bars (Alerts/Bars.lua), and a bar with ticks shows from its Show from before the cast
--- (barStart); none of them is saved at its default.
+-- up instead of emptying. Each item carries them for the bars (Alerts/Bars.lua), and a bar with ticks shows from
+-- its Show from before the cast (barStart) and runs 1 s past the last tick; none of them is saved at its default.
+-- barTo is an older field (Bar ends, "cast"): it stays saved where it was set, and nothing reads it.
 -- where `times` is typed text ("P1 0:02, 1:17; P2 +0:18") or nil for the reference, `speech` is
 -- "text", "textcount" (the text, then 3, 2, 1) or "count", `speakAt` is nil (the text is read out when
 -- the alert shows) or "zero" (at its time). `group` is the difficulty group it is for, "nh" (Normal/Heroic)
@@ -1094,7 +1094,6 @@ function Reminders:Items(encounterID, id, r, group, ref)
         local ticks = Reminders.TickList(r.ticks)
         out[#out + 1] = {
             ticks = ticks,
-            barTo = ticks and r.barTo == "cast" and "cast" or nil,
             barStart = ticks and warn > 0 and -warn or nil,
             fill = fill,
             id = "mine:" .. tostring(id) .. ":" .. n,

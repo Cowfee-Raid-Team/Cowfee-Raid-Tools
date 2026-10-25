@@ -17,12 +17,12 @@ local ADDON, CRT = ...
 -- Impact ticks: any line may carry ticks = { s, ... }, seconds after its cast (the line's `at`) when each impact
 -- lands. Each is a thin line on the bar in the theme's text colour, placed on the fill's time scale, so the fill
 -- reaches it as that impact lands; one already passed fades. A tick at either end is drawn TICK_INSET inside the
--- bar, so it shows. barTo = "last" (the default with ticks) runs the bar to the last tick; "cast" ends it at the
--- cast. barEnd (seconds after the cast) ends it there instead, and barStart (seconds after the cast) is when the
+-- bar, so it shows. A bar with ticks runs TICK_TAIL past the last one, so every tick sits inside it; a special
+-- alert's barTo = "cast" (a boss file's choice) ends it at the cast instead.
+-- barEnd (seconds after the cast) ends it there instead, and barStart (seconds after the cast) is when the
 -- bar appears: its fill then runs over barEnd - barStart, not over `ahead` (a special alert's bar = { start,
 -- length, ticks }, Alerts/Special.lua; a reminder's bar with ticks starts at its Show from, Alerts/Reminders.lua).
--- A bar with ticks counts its seconds to the next impact on it (then to its end, 0 at the last impact when it
--- ends there), and one that starts
+-- A bar with ticks counts its seconds to the next impact on it (0 as it lands), then to its end, and one that starts
 -- before its cast draws a faint cast line there, so it reads: the cast, then the impacts.
 -- Only the bars read these; the callout, speech and the other areas keep the cast's time.
 -- fill = "up" makes a line's bar fill up from empty as its time nears instead of emptying (any other value, or
@@ -93,6 +93,7 @@ local TICK_COLOR = "text"  -- an impact tick, in the theme's text colour
 local TICK_WIDTH = 2
 local TICK_PASSED_ALPHA = 0.3 -- a tick whose impact has landed
 local TICK_INSET = 2 -- a tick at either end of the bar is drawn this many pixels inside it, so it shows
+local TICK_TAIL = Rules.TICK_TAIL -- seconds a bar ending at its last impact runs past it (1 s)
 local CAST_LINE_WIDTH = 1 -- the cast's own line on a bar that starts before it: thinner and fainter than a tick
 local CAST_LINE_ALPHA = 0.45
 local BORDER_OPTIONS = {
@@ -263,7 +264,7 @@ local function span(line)
     end
     table.sort(list)
     if not finish then
-        finish = (line.barTo ~= "cast" and #list > 0) and math.max(0, list[#list]) or 0
+        finish = (line.barTo ~= "cast" and #list > 0) and math.max(0, list[#list] + TICK_TAIL) or 0
     end
     if start and start >= finish then
         start = nil -- a bar that would end before it starts shows as any bar
@@ -342,8 +343,8 @@ local function castMark(line, total, up)
     return up and 1 - pos or pos
 end
 
--- The moment a bar's seconds count to: its next impact on the bar, else (no ticks, or all landed) its end, which
--- with Bar ends At the last impact is that impact. tickAt is in order.
+-- The moment a bar's seconds count to: its next impact on the bar, else (no ticks, or all landed) its end.
+-- tickAt is in order.
 local function countTo(line, now)
     for _, at in ipairs(type(line.tickAt) == "table" and line.tickAt or {}) do
         if at >= now and at <= line.at then
