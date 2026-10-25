@@ -1351,3 +1351,35 @@ CRT.LatePage = {
         CRT.ConsumablesTools:ShowText("Late tracker totals for Discord (Ctrl+C to copy)", totalsExport())
     end,
 }
+
+-- /crt late, late export, late start, late end (CRT_Core/Slash.lua's registry; a Raid Lead word, CRT_Core/Modules.lua)
+if CRT.Slash then
+    CRT.Slash:Register("late", {
+        module = "raidlead",
+        run = function(rest)
+            if rest == "" then
+                UI:Show("late")
+            elseif rest == "export" then
+                CRT.LatePage.ExportTotals()
+            elseif rest == "start" then
+                if Late:Start("button", time()) then
+                    CRT:Print("Raid night started.")
+                end
+            elseif rest == "end" then
+                if Late:Current() then
+                    Late:End("button", time())
+                    CRT:Print("Raid night ended and saved to the history.")
+                else
+                    CRT:Print("No raid night is running.")
+                end
+            else
+                return false
+            end
+        end,
+        help = {
+            "[/crt late] - open the Late Tracker page",
+            "[/crt late start], [end] - start tonight's raid now, or end it",
+            "[/crt late export] - the late totals as text to paste into Discord",
+        },
+    })
+end

@@ -1141,3 +1141,17 @@ local function buildPage(pf)
 end
 
 UI:RegisterPage("groups", "Raid Groups", buildPage)
+
+-- /crt groups (CRT_Core/Slash.lua's registry; a Raid Lead word, CRT_Core/Modules.lua)
+if CRT.Slash then
+    CRT.Slash:Register("groups", {
+        module = "raidlead",
+        run = function(rest)
+            if rest ~= "" then
+                return false
+            end
+            UI:Show("groups")
+        end,
+        help = { "[/crt groups] - open the Raid Groups page" },
+    })
+end

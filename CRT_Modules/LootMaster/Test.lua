@@ -213,3 +213,22 @@ function LM:Command(msg)
     end
     return true
 end
+
+-- /crt loot opens Loot History; loot test, window, popup, answers, end, boss and settings are LM:Command's
+-- (CRT_Core/Slash.lua's registry; a Loot word, CRT_Core/Modules.lua)
+if CRT.Slash then
+    CRT.Slash:Register("loot", {
+        module = "loot",
+        run = function(rest, msg)
+            if rest == "" then
+                CRT.UI:Show("loot")
+                return true
+            end
+            return LM:Command(msg)
+        end,
+        help = {
+            "[/crt loot] - open Loot History: who got which boss item, with filters and a CSV export",
+            "[/crt loot test] - try Loot Master with sample items: the looter window for you, the popup for everyone with CRT ([window], [popup], [end])",
+        },
+    })
+end

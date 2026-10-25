@@ -1,9 +1,41 @@
 local ADDON, CRT = ...
 
+-- /crt. Core's own words are below; a module registers its own (CRT.Slash:Register, in its own files), so
+-- this file never calls into a module that may be turned off (CRT_Core/Modules.lua). A word of a module that is
+-- off says so. Developer words stay in the do-not-package block.
+local Slash = { words = {}, order = {} }
+CRT.Slash = Slash
+
+-- word: the first word typed, in lower case. def:
+--   module   the module's key (Modules.lua); its words say it is turned off while it is off
+--   run      run(rest, msg, raw): rest is what follows the word (lower case), msg the whole command (lower
+--            case), raw as typed. Returns false when it doesn't know rest, for "Unknown command".
+--   help     the lines /crt help lists for it, while its module is on; each part typed as a command is in
+--            square brackets ("[/crt late start], [end] - ..."), shown in the help's command colour
+function Slash:Register(word, def)
+    if not self.words[word] then
+        self.order[#self.order + 1] = word
+    end
+    self.words[word] = def
+end
+
+-- Runs a registered word. True when the command was handled (or said its module is off).
+function Slash:Run(msg, raw)
+    local word, rest = msg:match("^(%S+)%s*(.-)$")
+    local def = word and self.words[word]
+    if not def then
+        return false
+    end
+    local Modules = CRT.Modules
+    if Modules and not Modules:Check(def.module) then
+        return true
+    end
+    return def.run(rest, msg, raw) ~= false
+end
+
 local function printHelp()
     CRT:Print("v" .. CRT.version .. " commands:")
     print("  |cffffd100/crt|r - open or close the main panel")
-    print("  |cffffd100/crt groups|r - open the Raid Groups page")
     print("  |cffffd100/crt readycheck|r - open the Ready Check page (|cffffd100/crt consumables|r opens its Your bar tab)")
     print("  |cffffd100/crt check|r - open the ready check window for your group, open until you right-click it")
     print("  |cffffd100/crt check food|r, |cffffd100flask|r, |cffffd100rune|r, |cffffd100vantus|r, |cffffd100buffs|r or |cffffd100all|r - check the group, add |cffffd100chat|r to post it")
@@ -12,19 +44,15 @@ local function printHelp()
     print("  |cffffd100/crt notes|r - open the Raid Notes page (|cffffd100/crt notes settings|r opens its Notes Settings tab)")
     print("  |cffffd100/crt reminders|r - open the Mech Alerts tab of Raid Notes")
     print("  |cffffd100/crt note test|r, |cffffd100next|r, |cffffd100stop|r - start the active note now, start the next phase, stop")
-    print("  |cffffd100/crt late|r - open the Late Tracker page")
-    print("  |cffffd100/crt late start|r, |cffffd100end|r - start tonight's raid now, or end it")
-    print("  |cffffd100/crt late export|r - the late totals as text to paste into Discord")
-    print("  |cffffd100/crt tattle|r - open the Tattlebot page")
-    print("  |cffffd100/crt tattle post|r, |cffffd100night|r, |cffffd100end|r - post the last pull or tonight's totals, or end the night")
-    print("  |cffffd100/crt tattle scan|r - pick spells to track from the last fight (|cffffd100/crt tattle scan text|r for the plain list)")
-    print("  |cffffd100/crt tattle export|r - the Tattlebot totals as text to paste into Discord")
-    print("  |cffffd100/crt gear|r - open the Gear Checker: everyone's gear, gems and enchants (|cffffd100/crt gear pop|r opens it in its own window)")
-    print("  |cffffd100/crt loot|r - open Loot History: who got which boss item, with filters and a CSV export")
-    print("  |cffffd100/crt loot test|r - try Loot Master with sample items: the looter window for you, the popup for everyone with CRT (|cffffd100window|r, |cffffd100popup|r, |cffffd100end|r)")
-    print("  |cffffd100/crt pace|r - open the Pace page: where each boss's health should be")
-    print("  |cffffd100/crt timeline|r - open the Timeline page (|cffffd100/crt timeline pop|r opens it in its own window)")
-    print("  |cffffd100/crt timeline rehearse|r - play the fight the Timeline shows in the Rehearsal window, with your alerts")
+    -- the modules' words, in the order they registered, while their module is on
+    for _, word in ipairs(Slash.order) do
+        local def = Slash.words[word]
+        if not CRT.Modules or CRT.Modules:IsOn(def.module) then
+            for _, line in ipairs(def.help or {}) do
+                print("  " .. line:gsub("%[(.-)%]", "|cffffd100%1|r"))
+            end
+        end
+    end
     print("  |cffffd100/crt break 10|r - a 10 minute break timer (any minutes, 0 cancels); from a raid leader or assistant it reaches the whole raid")
     print("  |cffffd100/crt qol|r - open the Quality of Life page (low health and debuffs)")
     print("  |cffffd100/crt settings|r - open General Settings: window, fonts, sound, minimap button, layers, profiles")
@@ -43,10 +71,11 @@ SLASH_COWFEERAIDTOOLS1 = "/crt"
 SlashCmdList["COWFEERAIDTOOLS"] = function(msg)
     local raw = strtrim(msg or "")
     msg = raw:lower()
+    if Slash:Run(msg, raw) then
+        return
+    end
     if msg == "" then
         CRT.UI:Toggle()
-    elseif msg == "groups" then
-        CRT.UI:Show("groups")
     elseif msg == "readycheck" or msg == "ready" then
         CRT.ReadyCheckPage.Open("window")
     elseif msg == "consumables" then
@@ -90,56 +119,6 @@ SlashCmdList["COWFEERAIDTOOLS"] = function(msg)
         CRT:Print(ph and ("Phase " .. ph .. " started.") or "No phase left to start, or nothing is running.")
     elseif msg == "note stop" then
         CRT.NoteEngine:Stop()
-    elseif msg == "late" then
-        CRT.UI:Show("late")
-    elseif msg == "late export" then
-        CRT.LatePage.ExportTotals()
-    elseif msg == "late start" then
-        if CRT.Late:Start("button", time()) then
-            CRT:Print("Raid night started.")
-        end
-    elseif msg == "late end" then
-        if CRT.Late:Current() then
-            CRT.Late:End("button", time())
-            CRT:Print("Raid night ended and saved to the history.")
-        else
-            CRT:Print("No raid night is running.")
-        end
-    elseif msg == "timeline" then
-        CRT.UI:Show("timeline")
-    elseif msg == "pace" then
-        CRT.UI:Show("pace")
-    elseif msg == "timeline pop" then
-        CRT.TimelinePopout()
-    elseif msg == "timeline rehearse" then
-        CRT.Timeline:Rehearse()
-    elseif msg == "gear" then
-        CRT.UI:Show("gearcheck")
-    elseif msg == "gear pop" then
-        CRT.GearChecker.Popout()
-    elseif msg == "loot" then
-        CRT.UI:Show("loot")
-    elseif msg:match("^loot%s") and CRT.LootMaster and CRT.LootMaster:Command(msg) then
-        -- loot test, window, popup, end: Loot Master (LootMaster/Test.lua)
-    elseif msg == "tattle" then
-        CRT.UI:Show("tattle")
-    elseif msg == "tattle post" then
-        CRT.Tattle:PostLastPull()
-    elseif msg == "tattle night" then
-        CRT.Tattle:PostNight()
-    elseif msg == "tattle end" then
-        if CRT.Tattle:Current() then
-            CRT.Tattle:EndNight("button")
-            CRT:Print("Tattlebot night ended and saved to the history.")
-        else
-            CRT:Print("No Tattlebot night is running.")
-        end
-    elseif msg == "tattle scan text" then
-        CRT.TattlePage.ScanText()
-    elseif msg == "tattle scan" then
-        CRT.TattlePage.Scan()
-    elseif msg == "tattle export" then
-        CRT.TattlePage.ExportTotals()
     elseif msg == "lowhp stop" then
         CRT.LowHealthSound:StopAll()
         CRT:Print("Stopped every low-health sound the addon was playing.")
@@ -200,6 +179,8 @@ SlashCmdList["COWFEERAIDTOOLS"] = function(msg)
         if CRT.LateTest then
             CRT.LateTest:Toggle()
         end
+    elseif CRT.ModulesDev and CRT.ModulesDev:Command(msg) then
+        -- dev modules [<key> on|off]: list the module switches or set one, for after a /reload (Dev/Modules.lua)
     elseif CRT.NoteTargetsDev and CRT.NoteTargetsDev:Command(msg) then
         -- dev nsrt, dev mrt and dev all: the note targets (Dev/NoteTargets.lua)
     elseif CRT.LootDev and CRT.LootDev:Command(msg, raw) then

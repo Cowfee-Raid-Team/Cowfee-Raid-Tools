@@ -1108,7 +1108,8 @@ function P.OnEvent(event, itemID)
 end
 
 if CreateFrame then
-    local events = CreateFrame("Frame")
+    -- a Raid Lead frame: quiet while Raid Lead is off (CRT_Core/Modules.lua)
+    local events = CRT.Modules and CRT.Modules:Frame("raidlead") or CreateFrame("Frame")
     events:RegisterEvent("ITEM_DATA_LOAD_RESULT")
     events:SetScript("OnEvent", function(_, event, itemID)
         P.OnEvent(event, itemID)
@@ -1116,3 +1117,20 @@ if CreateFrame then
 end
 
 UI:RegisterPage("gearcheck", TEXT.title, build)
+
+-- /crt gear, gear pop (CRT_Core/Slash.lua's registry; a Raid Lead word, CRT_Core/Modules.lua)
+if CRT.Slash then
+    CRT.Slash:Register("gear", {
+        module = "raidlead",
+        run = function(rest)
+            if rest == "" then
+                UI:Show("gearcheck")
+            elseif rest == "pop" then
+                GC.Popout()
+            else
+                return false
+            end
+        end,
+        help = { "[/crt gear] - open the Gear Checker: everyone's gear, gems and enchants ([/crt gear pop] opens it in its own window)" },
+    })
+end
