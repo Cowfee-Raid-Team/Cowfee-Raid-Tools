@@ -39,7 +39,7 @@ local function texture(owner, layer)
   return setmetatable(t, { __index = function(_, k) return m[k] or (type(k) == "string" and k:find("^%u") and function() end) or nil end })
 end
 FRAME_PIECES = { "TopLeftCorner", "TopRightCorner", "TopBorder", "BotLeftCorner", "BotRightCorner", "BottomBorder",
-  "LeftBorder", "RightBorder", "Bg", "TitleBg", "TopTileStreaks" }
+  "LeftBorder", "RightBorder", "Bg", "TitleBg", "TopTileStreaks", "InsetBg", "InsetBorderTop" }
 local function frame(kind, parent, template)
   local f = { kind = kind, children = {}, textures = {}, scripts = {}, shown = true, enabled = true, checked = false, points = {} }
   local m = {
@@ -280,6 +280,64 @@ for i, w in ipairs(want) do
   end
 end
 print("ok themes: picking each theme saves it and re-skins live")
+
+-- Window opacity (CRTDB.ui.bgAlpha, 30 to 100): every background layer of a UI:StyleWindow window and its title
+-- strip is drawn at exactly bgAlpha / 100, in both looks, so 100 is solid; the template's border, the flat edges,
+-- the accent line and the text are never faded. Classic puts a solid background-colour layer under the template's
+-- tiled art. A strip outside a window frame (no framed) keeps its own alpha.
+do
+  check(UI:Opacity() == 1, "no saved opacity reads as solid")
+  local BG_PIECES = { "Bg", "TitleBg", "TopTileStreaks", "InsetBg" }
+  local isBg = {} for _, k2 in ipairs(BG_PIECES) do isBg[k2] = true end
+  for _, key in ipairs({ "blizzard", "nitro", "cowfee" }) do
+    UI:SetTheme(key)
+    local modern = UI:IsModern()
+    for _, pct in ipairs({ 100, 90, 30 }) do
+      CRT.db.ui.bgAlpha = pct
+      UI:ApplyOpacity()
+      local a = pct / 100
+      local what = key .. " at " .. pct .. "%: "
+      for _, w2 in ipairs({ popout, win }) do
+        local solid = w2.crtSolid
+        if modern then
+          check(near(w2.crtBg.rgb, CRT.PALETTE.background) and w2.crtBg.a == a, what .. "the flat background's alpha is the slider's: " .. tostring(w2.crtBg.a))
+          check(w2.crtTitle.a == a, what .. "the flat title row's alpha is the slider's: " .. tostring(w2.crtTitle.a))
+          check(not (solid and solid.shown), what .. "no Classic solid layer in a Modern theme")
+          for _, edge in ipairs(w2.crtEdges) do check(edge.a == 1, what .. "the flat edges are never faded") end
+          check(w2.crtTitleLine.a == 1, what .. "the accent line is never faded")
+        else
+          check(solid and solid.shown and near(solid.rgb, CRT.PALETTE.background) and solid.a == a, what .. "a solid background-colour layer under the template's art at the slider's alpha: " .. tostring(solid and solid.a))
+          check(solid and solid.layer == "BACKGROUND", what .. "the solid layer is on the BACKGROUND layer, under the art")
+          for _, k2 in ipairs(FRAME_PIECES) do
+            local want = isBg[k2] and a or 1
+            check(w2[k2].alpha == want, what .. "the template's " .. k2 .. " alpha is " .. want .. ": " .. tostring(w2[k2].alpha))
+          end
+          check(w2.InsetBg.alpha == a, what .. "the template's InsetBg is faded: " .. tostring(w2.InsetBg.alpha))
+        end
+      end
+      local g = popout.strip.bg.gradient
+      if modern then
+        check(g and g[1][4] == a and g[2][4] == a, what .. "a UI.Window's title strip is drawn at the slider's alpha")
+      end
+      check(popout.strip.title.alpha == 1, what .. "the title text is never faded")
+      check(strip.bg.gradient == nil or (strip.bg.gradient[1][4] == 1 and strip.bg.gradient[2][4] == 1), what .. "a strip outside a window keeps its own alpha")
+    end
+  end
+  -- out of range values are clamped
+  CRT.db.ui.bgAlpha = 10
+  check(UI:Opacity() == 0.3, "a saved 10% reads as 30%: " .. UI:Opacity())
+  CRT.db.ui.bgAlpha = 150
+  check(UI:Opacity() == 1, "a saved 150% reads as 100%")
+  -- a theme switch keeps the slider's alpha
+  CRT.db.ui.bgAlpha = 80
+  UI:SetTheme("midnight")
+  check(popout.crtBg.a == 0.8 and popout.strip.bg.gradient[1][4] == 0.8, "a theme switch keeps the opacity")
+  UI:SetTheme("blizzard")
+  check(popout.crtSolid.a == 0.8 and popout.Bg.alpha == 0.8, "and back in Default: Blizzard")
+  CRT.db.ui.bgAlpha = nil
+  UI:ApplyOpacity()
+end
+print("ok themes: window opacity is the background's alpha, in both looks")
 
 -- UI.Tint and UI:OnTheme: a theme change repaints a tinted part, runs the hooks, refreshes the page in
 -- view (its OnShow script) and an open window with a refresh.
