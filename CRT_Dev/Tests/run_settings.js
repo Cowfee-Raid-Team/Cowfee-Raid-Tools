@@ -499,14 +499,16 @@ do
   for _, key in ipairs({ "window", "assignments", "personal" }) do
     if CRT.defaults.notes[key].bgAlpha ~= 50 then print("FAIL the note windows keep their own 50% background: " .. key) end
   end
-  local s = sliders["Opacity"]
+  local s = sliders["Background opacity"]
   -- a styled window (the mocks here can't run UI:StyleWindow; run_themes.js checks a real UI.Window), for the live update
   local pop = mock("Frame") rawset(pop, "crtBg", mock("Texture")) rawset(pop, "crtTitle", mock("Texture"))
   rawset(pop, "crtArt", {}) rawset(pop, "crtEdges", {}) rawset(pop, "crtTitleLine", mock("Texture"))
   table.insert(UI.windows, pop)
   local themedBox = UI.themed[#UI.themed]
   local themedBefore = themedBox and themedBox.bg and themedBox.bg[4]
-  if not s then print("FAIL General Settings has the Opacity slider") else
+  local function close(x, want) return x ~= nil and want ~= nil and math.abs(x - want) < 0.01 end
+  local function solidShare(a) return UI.ShareAlpha and UI.CLASSIC_SHARE and UI.ShareAlpha(a, UI.CLASSIC_SHARE.solid) end
+  if not s then print("FAIL General Settings has the Background opacity slider") else
     if not (s.opts.min == 30 and s.opts.max == 100) then print("FAIL the slider still runs from 30% to 100%") end
     for _, look in ipairs({ { "blizzard", false }, { "cowfee", true } }) do
       CRT.db.ui.theme, CRT.db.ui.modern = look[1], look[2] CRT:UseTheme(look[1]) UI:ApplyStyle()
@@ -521,20 +523,33 @@ do
           if f.flatEdges[1].color[4] ~= 1 or f.titleLine.color[4] ~= 1 then print("FAIL " .. what .. "the edges and accent line are never faded") end
           if rawget(f, "crtSolid") and f.crtSolid.shown then print("FAIL " .. what .. "no Classic solid layer in a Modern theme") end
         else
+          -- the solid layer's share of the stack (run_themes.js checks the whole stack on the template's art)
           local solid = rawget(f, "crtSolid")
-          if not (solid and solid.shown and solid.color and solid.color[4] == a) then print("FAIL " .. what .. "the main window has a solid background layer at the slider's alpha: " .. tostring(solid and solid.color and solid.color[4])) end
+          if not (solid and solid.shown and solid.color and close(solid.color[4], solidShare(a))) then print("FAIL " .. what .. "the main window has a solid background layer at its share of the slider: " .. tostring(solid and solid.color and solid.color[4])) end
           if f.flatBg.shown then print("FAIL " .. what .. "no flat background in Classic") end
         end
         if pop then
           local layer = look[2] and rawget(pop, "crtBg") or rawget(pop, "crtSolid")
-          if not (layer and layer.color and layer.color[4] == a) then print("FAIL " .. what .. "a pop-up window's background follows the slider live: " .. tostring(layer and layer.color and layer.color[4])) end
+          local want = look[2] and a or solidShare(a)
+          if not (layer and layer.color and close(layer.color[4], want)) then print("FAIL " .. what .. "a pop-up window's background follows the slider live: " .. tostring(layer and layer.color and layer.color[4])) end
         end
       end
+      -- a theme or style change paints each background once (UI:ApplyWindow and the main window's own)
+      local counts = {}
+      for _, t in ipairs({ f.flatBg, pop.crtBg }) do
+        counts[t] = 0
+        rawset(t, "SetColorTexture", function(self, r, g, b, al) counts[t] = counts[t] + 1 rawset(self, "color", { r, g, b, al }) end)
+      end
+      UI:ApplyStyle()
+      if counts[f.flatBg] ~= 1 or counts[pop.crtBg] ~= 1 then print("FAIL " .. look[1] .. ": UI:ApplyStyle paints each background once: main " .. counts[f.flatBg] .. ", window " .. counts[pop.crtBg]) end
+      rawset(f.flatBg, "SetColorTexture", nil) rawset(pop.crtBg, "SetColorTexture", nil)
     end
     table.remove(UI.windows)
     if themedBox and themedBox.bg[4] ~= themedBefore then print("FAIL a raid window's own backdrop alpha is not the slider's") end
     CRT.db.ui.bgAlpha = 10 UI:ApplyStyle()
-    if not (UI.Opacity and UI:Opacity() == 0.3 and rawget(f, "crtSolid") and f.crtSolid.color[4] == 0.3) then print("FAIL a saved 10% is clamped to 30%") end
+    if not (UI.Opacity and UI:Opacity() == 0.3 and rawget(f, "crtSolid") and close(f.crtSolid.color[4], solidShare(0.3))) then print("FAIL a saved 10% is clamped to 30%") end
+    CRT.db.ui.bgAlpha = nil
+    if UI:Opacity() ~= 0.9 then print("FAIL nothing saved reads Core.lua's default: " .. UI:Opacity()) end
     print("opacity: background alpha follows the slider in both looks, the window and its text stay at 1, default " .. tostring(CRT.defaults.ui.bgAlpha))
   end
   CRT.db.ui.theme, CRT.db.ui.modern = "blizzard", false CRT:UseTheme("blizzard")

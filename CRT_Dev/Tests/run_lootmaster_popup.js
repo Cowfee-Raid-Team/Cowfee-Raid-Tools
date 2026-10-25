@@ -238,6 +238,19 @@ local strip
 for _, f in ipairs(frames) do if rawget(f, "framed") ~= nil and f.parent == anchor then strip = f end end
 check(strip and strip.framed and not strip.bar.shown, "classic: the strip lets the template draw the title tile")
 eq(strip and strip.points[1][2], 1, "classic: the strip 1 in from the frame's edge")
+-- the popup shows over the game mid-raid: it stays solid whatever General Settings' Background opacity says
+do
+  CRT.db.ui.bgAlpha = 30
+  UI:ApplyOpacity()
+  UI:ApplyStyle()
+  local solid = chrome and rawget(chrome, "crtSolid")
+  check(solid and solid.fill and solid.fill[4] == 1, "the popup's solid layer stays solid at 30% opacity")
+  check(chrome and chrome.Bg.alpha == 1 and chrome.TitleBg.alpha == 1 and chrome.InsetBg.alpha == 1, "the popup's frame art stays solid at 30% opacity")
+  check(chrome and rawget(chrome, "crtOpaque") == true and strip and strip.opaque == true and rawget(strip, "crtOpacity") == nil, "the popup's frame and title bar are styled opaque")
+  check(strip and strip.bg.fill and strip.bg.fill[4] == 1, "the popup's title bar stays solid at 30% opacity")
+  CRT.db.ui.bgAlpha = nil
+  UI:ApplyOpacity()
+end
 -- the title bar, right to left: its X and All Loot Rolls, on the bar's centre line; the (i) after the title
 local x = strip and rawget(strip, "close")
 check(x and x.template == "UIPanelCloseButton" and x.parent == strip, "title bar: an X in every theme")

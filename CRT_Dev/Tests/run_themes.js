@@ -26,6 +26,7 @@ local function texture(owner, layer)
     SetGradient = function(self, _, from, to) self.gradient = { from, to } end,
     SetTexture = function(self, file) self.file = file end,
     SetAlpha = function(self, a) self.alpha = a end,
+    SetPoint = function(self, ...) self.points[#self.points + 1] = { ... } end,
     Show = function(self) self.shown = true end, Hide = function(self) self.shown = false end,
     SetShown = function(self, v) self.shown = v and true or false end, IsShown = function(self) return self.shown end,
     SetText = function(self, text) self.text = text end, GetText = function(self) return self.text end,
@@ -281,14 +282,31 @@ for i, w in ipairs(want) do
 end
 print("ok themes: picking each theme saves it and re-skins live")
 
--- Window opacity (CRTDB.ui.bgAlpha, 30 to 100): every background layer of a UI:StyleWindow window and its title
--- strip is drawn at exactly bgAlpha / 100, in both looks, so 100 is solid; the template's border, the flat edges,
--- the accent line and the text are never faded. Classic puts a solid background-colour layer under the template's
--- tiled art. A strip outside a window frame (no framed) keeps its own alpha.
+-- Window opacity (CRTDB.ui.bgAlpha, 30 to 100): what a UI:StyleWindow window and its title strip cover of the game
+-- world is exactly bgAlpha / 100, in both looks, so 100 is solid. The layers that lie on top of each other are
+-- counted together: coverage is 1 - (1 - a1)(1 - a2)... The template's border, the flat edges, the accent line
+-- and the text are never faded. Classic puts a solid background-colour layer under the template's tiled art. A
+-- strip outside a window frame (no framed) keeps its own alpha, and a window styled opaque (the raider loot
+-- popup) stays solid.
 do
-  check(UI:Opacity() == 1, "no saved opacity reads as solid")
-  local BG_PIECES = { "Bg", "TitleBg", "TopTileStreaks", "InsetBg" }
-  local isBg = {} for _, k2 in ipairs(BG_PIECES) do isBg[k2] = true end
+  local function cover(...)
+    local through = 1
+    for _, x in ipairs({ ... }) do through = through * (1 - x) end
+    return 1 - through
+  end
+  local function close(x, want) return x ~= nil and math.abs(x - want) < 0.01 end
+  check(UI:Opacity() == 1, "no saved opacity and no defaults read as solid")
+  local BORDER = {}
+  for _, k2 in ipairs(FRAME_PIECES) do
+    if not ({ Bg = true, TitleBg = true, TopTileStreaks = true, InsetBg = true })[k2] then BORDER[#BORDER + 1] = k2 end
+  end
+  local solidWin = UI.Window("TestSolid", { kind = "dialog", title = "Loot", opaque = true })
+  local solidStrip = UI.TitleStrip(frame("Frame", nil), 24, { framed = true, opaque = true })
+  -- the flat background starts under the title row, so the two never lie on top of each other
+  for _, w2 in ipairs({ popout, win, solidWin }) do
+    local p1 = w2.crtBg.points[1]
+    check(p1 and p1[1] == "TOPLEFT" and p1[2] == 0 and p1[3] == -UI.TITLE_ROW, "the flat background starts under the title row")
+  end
   for _, key in ipairs({ "blizzard", "nitro", "cowfee" }) do
     UI:SetTheme(key)
     local modern = UI:IsModern()
@@ -297,47 +315,68 @@ do
       UI:ApplyOpacity()
       local a = pct / 100
       local what = key .. " at " .. pct .. "%: "
-      for _, w2 in ipairs({ popout, win }) do
+      for _, w2 in ipairs({ popout, win, solidWin }) do
+        local want = (w2 == solidWin) and 1 or a
+        local name = (w2 == popout and "a pop-out" or w2 == win and "a styled window" or "an opaque window") .. " "
         local solid = w2.crtSolid
         if modern then
-          check(near(w2.crtBg.rgb, CRT.PALETTE.background) and w2.crtBg.a == a, what .. "the flat background's alpha is the slider's: " .. tostring(w2.crtBg.a))
-          check(w2.crtTitle.a == a, what .. "the flat title row's alpha is the slider's: " .. tostring(w2.crtTitle.a))
-          check(not (solid and solid.shown), what .. "no Classic solid layer in a Modern theme")
-          for _, edge in ipairs(w2.crtEdges) do check(edge.a == 1, what .. "the flat edges are never faded") end
-          check(w2.crtTitleLine.a == 1, what .. "the accent line is never faded")
-        else
-          check(solid and solid.shown and near(solid.rgb, CRT.PALETTE.background) and solid.a == a, what .. "a solid background-colour layer under the template's art at the slider's alpha: " .. tostring(solid and solid.a))
-          check(solid and solid.layer == "BACKGROUND", what .. "the solid layer is on the BACKGROUND layer, under the art")
-          for _, k2 in ipairs(FRAME_PIECES) do
-            local want = isBg[k2] and a or 1
-            check(w2[k2].alpha == want, what .. "the template's " .. k2 .. " alpha is " .. want .. ": " .. tostring(w2[k2].alpha))
+          check(near(w2.crtBg.rgb, CRT.PALETTE.background) and close(w2.crtBg.a, want), what .. name .. "covers the slider's share under its title: " .. tostring(w2.crtBg.a))
+          local title
+          if w2.strip then
+            local g = w2.strip.bg.gradient
+            title = cover(w2.crtTitle.a, g and g[1][4] or 0)
+            check(g and g[1][4] == g[2][4], what .. name .. "has one alpha across its strip")
+          else
+            title = cover(w2.crtTitle.a)
           end
-          check(w2.InsetBg.alpha == a, what .. "the template's InsetBg is faded: " .. tostring(w2.InsetBg.alpha))
+          check(close(title, want), what .. name .. "covers the slider's share in its title row: " .. tostring(title))
+          check(not (solid and solid.shown), what .. name .. "has no Classic solid layer in a Modern theme")
+          for _, edge in ipairs(w2.crtEdges) do check(edge.a == 1, what .. name .. "never fades its flat edges") end
+          check(w2.crtTitleLine.a == 1, what .. name .. "never fades its accent line")
+        else
+          check(solid and solid.shown and near(solid.rgb, CRT.PALETTE.background) and solid.layer == "BACKGROUND", what .. name .. "has a solid background-colour layer under the art")
+          local page = cover(solid and solid.a or 0, w2.Bg.alpha, w2.InsetBg.alpha)
+          check(close(page, want), what .. name .. "covers the slider's share over its page area: " .. tostring(page))
+          local title = cover(solid and solid.a or 0, w2.TitleBg.alpha)
+          check(close(title, want), what .. name .. "covers the slider's share in its title: " .. tostring(title))
+          check(w2.TopTileStreaks.alpha == (want >= 1 and 1 or 0), what .. name .. "shows the title's shading only when solid")
+          for _, k2 in ipairs(BORDER) do
+            check(w2[k2].alpha == 1, what .. name .. "never fades the template's " .. k2)
+          end
         end
-      end
-      local g = popout.strip.bg.gradient
-      if modern then
-        check(g and g[1][4] == a and g[2][4] == a, what .. "a UI.Window's title strip is drawn at the slider's alpha")
       end
       check(popout.strip.title.alpha == 1, what .. "the title text is never faded")
       check(strip.bg.gradient == nil or (strip.bg.gradient[1][4] == 1 and strip.bg.gradient[2][4] == 1), what .. "a strip outside a window keeps its own alpha")
+      if modern then
+        check(solidStrip.bg.gradient[1][4] == 1, what .. "an opaque strip stays solid")
+      end
     end
   end
-  -- out of range values are clamped
+  -- out of range values are clamped; nothing saved reads Core.lua's default
   CRT.db.ui.bgAlpha = 10
   check(UI:Opacity() == 0.3, "a saved 10% reads as 30%: " .. UI:Opacity())
   CRT.db.ui.bgAlpha = 150
   check(UI:Opacity() == 1, "a saved 150% reads as 100%")
-  -- a theme switch keeps the slider's alpha
+  CRT.db.ui.bgAlpha = nil
+  CRT.defaults = { ui = { bgAlpha = 90 } }
+  check(UI:Opacity() == 0.9, "nothing saved reads the default: " .. UI:Opacity())
+  CRT.defaults = nil
+  -- a theme switch keeps the opacity, and paints each window once
   CRT.db.ui.bgAlpha = 80
   UI:SetTheme("midnight")
-  check(popout.crtBg.a == 0.8 and popout.strip.bg.gradient[1][4] == 0.8, "a theme switch keeps the opacity")
+  check(close(popout.crtBg.a, 0.8) and close(popout.strip.bg.gradient[1][4], 0.8), "a theme switch keeps the opacity")
+  local paints = 0
+  local realPaint = popout.crtBg.SetColorTexture
+  rawset(popout.crtBg, "SetColorTexture", function(...) paints = paints + 1 return realPaint(...) end)
+  UI:ApplyStyle()
+  check(paints == 1, "UI:ApplyStyle paints a window's background once: " .. paints)
+  rawset(popout.crtBg, "SetColorTexture", nil)
   UI:SetTheme("blizzard")
-  check(popout.crtSolid.a == 0.8 and popout.Bg.alpha == 0.8, "and back in Default: Blizzard")
+  check(close(cover(popout.crtSolid.a, popout.Bg.alpha, popout.InsetBg.alpha), 0.8), "and back in Default: Blizzard")
   CRT.db.ui.bgAlpha = nil
   UI:ApplyOpacity()
 end
-print("ok themes: window opacity is the background's alpha, in both looks")
+print("ok themes: window opacity is the background's coverage, in both looks")
 
 -- UI.Tint and UI:OnTheme: a theme change repaints a tinted part, runs the hooks, refreshes the page in
 -- view (its OnShow script) and an open window with a refresh.

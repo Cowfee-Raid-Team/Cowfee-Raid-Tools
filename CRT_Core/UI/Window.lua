@@ -13,6 +13,7 @@ local ADDON, CRT = ...
 --   layer      a UI layer key (default "popups")
 --   saved      function returning the table that keeps point, x, y (and width, height)
 --   escape     false keeps Escape from closing it
+--   opaque     true keeps the window solid whatever the Opacity slider says (UI:StyleWindow)
 -- The frame gets f.content (the area under the title), f:Place() (puts it where it was saved) and
 -- f.strip, its title bar (UI.TitleStrip): f.strip:SetTitle(text), f.strip:SetBadge("TEST", note), or
 -- f.strip:SetBadge(name, nil, UI.TITLE_STRIP.neutral) for a plain badge such as a boss's name.
@@ -173,7 +174,8 @@ end
 --            (opts.framed false, such as the raider popup's) draws the template's title tile itself.
 --   Modern   the theme's strip (titleTop to titleBottom), lighter than the window, an accent line under
 --            it, the title in larger bold text colour on the left with the badge after it.
--- UI.TitleStrip(parent, height, opts): opts.framed when parent is a BasicFrameTemplate window (UI.Window).
+-- UI.TitleStrip(parent, height, opts): opts.framed when parent is a BasicFrameTemplate window (UI.Window);
+-- opts.opaque keeps a framed strip solid whatever the Opacity slider says.
 -- strip:SetTitle(text), strip:SetHelp(title, text) (a (?) right of the title: strip.help),
 -- strip:SetBadge(text or nil, note, colors): colors is { bg, edge, text }; without
 -- it the badge is the orange TEST one. STRIP.neutral is the window's gold text on a dark badge. A note
@@ -215,7 +217,7 @@ local stripColor = UI.StripColor
 local function paintStrip(s)
     local tr, tg, tb = stripColor(STRIP.top)
     local br, bgr, bb = stripColor(STRIP.bottom)
-    local a = s.framed and UI:Opacity() or 1
+    local a = (s.framed and not s.opaque) and UI:Opacity() or 1
     s.bg:SetColorTexture(1, 1, 1, 1)
     local ok = pcall(s.bg.SetGradient, s.bg, "VERTICAL", CreateColor(br, bgr, bb, a), CreateColor(tr, tg, tb, a))
     if not ok then
@@ -303,6 +305,7 @@ end
 function UI.TitleStrip(parent, height, opts)
     local s = CreateFrame("Frame", nil, parent)
     s.framed = opts and opts.framed and true or false
+    s.opaque = opts and opts.opaque and true or false
     s.window = parent
     s:SetHeight(height or 24)
     local bg = s:CreateTexture(nil, "BACKGROUND")
@@ -363,7 +366,7 @@ function UI.TitleStrip(parent, height, opts)
         styleStrip(s)
     end
     -- the opacity slider repaints a window's strip live (UI:ApplyOpacity)
-    if s.framed then
+    if s.framed and not s.opaque then
         s.crtOpacity = function()
             paintStrip(s)
         end
@@ -380,11 +383,12 @@ function UI.Window(name, opts)
     end
     local popout = opts.kind == "popout"
     local f = CreateFrame("Frame", name, UIParent, DEFAULTS.template)
-    UI:StyleWindow(f) -- also makes it a CRT window (UI.AddWindow)
+    -- titled: the title strip below draws the title row (UI:StyleWindow)
+    UI:StyleWindow(f, { opaque = opts.opaque, titled = true }) -- also makes it a CRT window (UI.AddWindow)
     UI:RegisterLayer(opts.layer or DEFAULTS.layer, f)
     UI.SetFrameTitle(f, "")
     -- the title bar, over the template's own title area; the close button stays on top of it
-    local strip = UI.TitleStrip(f, DEFAULTS.titleHeight - 2, { framed = true })
+    local strip = UI.TitleStrip(f, DEFAULTS.titleHeight - 2, { framed = true, opaque = opts.opaque })
     strip:SetPoint("TOPLEFT", 1, -1)
     strip:SetPoint("TOPRIGHT", -1, -1)
     strip:SetFrameLevel(f:GetFrameLevel() + 2)

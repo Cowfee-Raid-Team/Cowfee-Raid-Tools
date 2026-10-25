@@ -570,7 +570,8 @@ local function build()
     -- as UI:StyleWindow keeps it), sized to what shows (refresh); the other themes hide it and keep their
     -- flat strip. Its own X is hidden: the title bar has one X for every theme (header.close).
     chrome = CreateFrame("Frame", nil, anchor, UI.WINDOW_DEFAULTS.template)
-    UI:StyleWindow(chrome)
+    -- solid whatever General Settings' Background opacity says: it shows over the game mid-raid
+    UI:StyleWindow(chrome, { opaque = true })
     chrome:SetPoint("TOPLEFT")
     if chrome.CloseButton then
         chrome.CloseButton:Hide()
@@ -585,7 +586,7 @@ local function build()
     end)
     -- framed: in Default: Blizzard the template draws the title tile and the title sits where it does
     -- on the main window
-    header = UI.TitleStrip(anchor, L.headerH, { framed = true })
+    header = UI.TitleStrip(anchor, L.headerH, { framed = true, opaque = true })
     header:SetFrameLevel(chrome:GetFrameLevel() + 2)
     header:EnableMouse(true)
     header:RegisterForDrag("LeftButton")

@@ -274,27 +274,55 @@ end
 -- Window opacity ----------------------------------------------------------------------------------
 -- CRTDB.ui.bgAlpha, General Settings' Opacity slider, in percent (30 to 100; its default is in Core.lua), is the
 -- alpha of every CRT window's background: the main window (UI:Create) and every UI:StyleWindow window, so
--- every UI.Window dialog and pop-out. 100 is solid in both looks and every theme. Each background layer is
--- drawn at exactly bgAlpha / 100:
---   Modern   the flat background and title row, and a UI.Window's title strip (Window.lua)
---   Classic  the template's tiled art (OPACITY_ART) and, under it, a solid background-colour layer
---            (f.crtSolid), since the art alone lets the game world show through
+-- every UI.Window dialog and pop-out. 100 is solid in both looks and every theme. What shows of the game
+-- world through a window is 1 - bgAlpha / 100 (the background's coverage), however many layers it has:
+--   Modern   one layer in each place. The flat background starts under the title row (TITLE_ROW), so it
+--            never lies under it; the title row is the flat title, or a UI.Window's title strip
+--            (Window.lua) with the flat title under it drawn at 0.
+--   Classic  the template's tiled art over a solid background-colour layer (f.crtSolid; the art alone lets
+--            the world show through). Layers that lie on top of each other split the coverage: a layer at
+--            share e is drawn at 1 - (1 - a)^e and the shares in each place add up to 1, so the stack covers
+--            exactly a (CLASSIC_SHARE). This counts the art as solid where it draws, so it is exact for the
+--            layers we draw; the game's art adds a little of its own where its texture is see-through.
 -- The window frame itself, its border, edges, accent line, text, buttons and tints are never faded. The
--- overlays with their own transparency (note windows, alerts, bars, raid windows) keep their own settings.
+-- overlays with their own transparency (note windows, alerts, bars, raid windows) keep their own settings,
+-- and a window styled opaque (UI:StyleWindow(f, { opaque = true }), the raider loot popup) stays solid.
 UI.MIN_OPACITY, UI.MAX_OPACITY = 30, 100
 
--- the background's alpha, 0.3 to 1
+-- the background's alpha, 0.3 to 1; with nothing saved, Core.lua's default
 function UI:Opacity()
-    local v = tonumber(CRT.db and CRT.db.ui and CRT.db.ui.bgAlpha) or self.MAX_OPACITY
+    local default = CRT.defaults and CRT.defaults.ui and CRT.defaults.ui.bgAlpha
+    local v = tonumber(CRT.db and CRT.db.ui and CRT.db.ui.bgAlpha) or tonumber(default) or self.MAX_OPACITY
     return math.max(self.MIN_OPACITY, math.min(self.MAX_OPACITY, v)) / 100
 end
 
+-- The Modern title row's height from the window's top: the flat background starts under it.
+UI.TITLE_ROW = 24
+
 -- BasicFrameTemplateWithInset's background textures, by parentKey (Blizzard_UIPanelTemplates/Mainline/
--- UIPanelTemplates.xml, live): BasicFrameTemplate's Bg (the tiled rock), TitleBg and TopTileStreaks, and
--- the inset's InsetBg (the tiled marble). Its border pieces are not in the list and stay solid.
-local OPACITY_ART = { "Bg", "TitleBg", "TopTileStreaks", "InsetBg" }
+-- UIPanelTemplates.xml, live): BasicFrameTemplate's Bg (the tiled rock, under the whole body), TitleBg
+-- (the title) and TopTileStreaks (shading under the title), and the inset's InsetBg (the tiled marble, over
+-- Bg; Inset.Bg where the inset is a frame of its own). Each with its share of the coverage; the solid layer
+-- (solid) is under all of them. In the page area: solid + Bg + InsetBg = 1/4 + 1/4 + 1/2. In the title:
+-- solid + TitleBg = 1/4 + 3/4. TopTileStreaks only shades and takes no share (drawn at 0 below 100%).
+-- The border pieces are not listed and stay solid.
+local CLASSIC_SHARE = { solid = 1 / 4, Bg = 1 / 4, InsetBg = 1 / 2, TitleBg = 3 / 4, TopTileStreaks = 0 }
+UI.CLASSIC_SHARE = CLASSIC_SHARE -- for the harnesses
+local CLASSIC_ART = { "Bg", "TitleBg", "TopTileStreaks", "InsetBg" }
 -- the solid layer covers what the template's Bg and TitleBg cover, under its metal border
 local SOLID_INSET = { left = 2, top = 1, right = 2, bottom = 2 }
+
+-- A layer's alpha for its share e of coverage a. Share 0 is a layer that only shows when solid.
+local function shareAlpha(a, e)
+    if a >= 1 then
+        return 1
+    end
+    if e <= 0 then
+        return 0
+    end
+    return 1 - (1 - a) ^ e
+end
+UI.ShareAlpha = shareAlpha
 
 -- The solid background-colour layer under a window's Classic art, made once.
 local function solidLayer(f)
@@ -307,37 +335,50 @@ local function solidLayer(f)
     return f.crtSolid
 end
 
--- Paints one window's background at alpha a: bg and title are its flat background and title row.
-local function paintOpacity(f, bg, title, a, modern)
+-- The opacity a window is drawn at: the slider's, or solid for a window styled opaque.
+local function windowOpacity(f)
+    return rawget(f, "crtOpaque") and 1 or UI:Opacity()
+end
+
+-- Paints one window's background: bg and title are its flat background and title row (title at 0 under a
+-- UI.Window's title strip, which draws the row itself).
+local function paintOpacity(f, bg, title, modern)
+    local a = windowOpacity(f)
     bg:SetColorTexture(rgba("background", a))
-    title:SetColorTexture(rgba("background", a))
+    title:SetColorTexture(rgba("background", rawget(f, "crtTitled") and 0 or a))
     local solid = solidLayer(f)
     solid:SetShown(not modern)
-    solid:SetColorTexture(rgba("background", a))
-    for _, key in ipairs(OPACITY_ART) do
+    solid:SetColorTexture(rgba("background", shareAlpha(a, CLASSIC_SHARE.solid)))
+    for _, key in ipairs(CLASSIC_ART) do
         local t = rawget(f, key)
         if type(t) == "table" and t.SetAlpha then
-            t:SetAlpha(a)
+            t:SetAlpha(shareAlpha(a, CLASSIC_SHARE[key]))
         end
     end
-    -- the inset, a frame of its own on some clients, has its own background
+    -- the inset, a frame of its own on some clients, has its own background in InsetBg's place
     local inset = rawget(f, "Inset")
     local insetBg = type(inset) == "table" and rawget(inset, "Bg")
     if type(insetBg) == "table" and insetBg.SetAlpha then
-        insetBg:SetAlpha(a)
+        insetBg:SetAlpha(shareAlpha(a, CLASSIC_SHARE.InsetBg))
     end
 end
 
--- Paints every window's background at the slider's alpha, live: the main window, every styled window
--- and each window's title strip (a skinned part with crtOpacity, UI.TitleStrip).
+-- Paints the main window's background (UI:ApplyStyle, UI:ApplyOpacity).
+local function paintMainOpacity(f)
+    paintOpacity(f, f.flatBg, f.flatTitle, UI:IsModern())
+end
+
+-- Paints every window's background at the slider's opacity, live, for the slider: the main window, every
+-- styled window and each window's title strip (a skinned part with crtOpacity, UI.TitleStrip). A theme
+-- change paints them through UI:ApplyStyle instead.
 function UI:ApplyOpacity()
-    local a, modern = self:Opacity(), self:IsModern()
+    local modern = self:IsModern()
     local f = self.frame
     if f then
-        paintOpacity(f, f.flatBg, f.flatTitle, a, modern)
+        paintMainOpacity(f)
     end
     for _, window in ipairs(self.windows) do
-        paintOpacity(window, window.crtBg, window.crtTitle, a, modern)
+        paintOpacity(window, window.crtBg, window.crtTitle, modern)
     end
     for _, control in ipairs(self.skinned) do
         if type(rawget(control, "crtOpacity")) == "function" then
@@ -598,6 +639,9 @@ end
 -- the plain X.
 -- Call StyleWindow right after CreateFrame, before adding anything, so only the template's own
 -- textures count as its art. Its buttons and dropdowns are skinned now and each time it shows.
+-- opts.titled: a title strip of its own (UI.Window) draws the title row, so the flat title under it is drawn
+-- at 0. opts.opaque keeps it solid whatever the Opacity slider says (a window over the game mid-raid, the raider
+-- loot popup).
 UI.windows = {}
 
 -- CRT's windows, for the one lookup of the window something sits in: the main window (UI:Create), every
@@ -636,7 +680,7 @@ function UI:ApplyWindow(f)
     end
     f.crtBg:SetShown(modern)
     f.crtTitle:SetShown(modern)
-    paintOpacity(f, f.crtBg, f.crtTitle, self:Opacity(), modern)
+    paintOpacity(f, f.crtBg, f.crtTitle, modern)
     for _, edge in ipairs(f.crtEdges) do
         edge:SetShown(modern)
         edge:SetColorTexture(rgba("border"))
@@ -649,18 +693,22 @@ function UI:ApplyWindow(f)
     end
 end
 
-function UI:StyleWindow(f)
+function UI:StyleWindow(f, opts)
     if f.crtArt then
         return
     end
     f.crtArt = {}
+    f.crtOpaque = opts and opts.opaque and true or false
+    f.crtTitled = opts and opts.titled and true or false
     for _, region in ipairs({ f:GetRegions() }) do
         if region:GetObjectType() == "Texture" then
             f.crtArt[#f.crtArt + 1] = region
         end
     end
     f.crtBg = f:CreateTexture(nil, "BACKGROUND", nil, -8)
-    f.crtBg:SetAllPoints()
+    -- under the title row, so the title row is one layer (Window opacity, above)
+    f.crtBg:SetPoint("TOPLEFT", 0, -UI.TITLE_ROW)
+    f.crtBg:SetPoint("BOTTOMRIGHT")
     -- the title strip, as on the main window
     f.crtTitle = f:CreateTexture(nil, "BACKGROUND", nil, -7)
     f.crtTitle:SetPoint("TOPLEFT", 1, -1)
@@ -748,7 +796,7 @@ function UI:ApplyStyle()
         return
     end
     local modern = self:IsModern()
-    -- the template's art at full alpha; UI:ApplyOpacity below fades its background pieces only
+    -- the template's art at full alpha; paintMainOpacity below fades its background pieces only
     local alpha = 1
     for _, texture in ipairs(f.art) do
         texture:SetShown(not modern)
@@ -757,9 +805,9 @@ function UI:ApplyStyle()
     for _, texture in ipairs(f.flat) do
         texture:SetShown(modern)
     end
-    -- Opacity (bgAlpha) is the background's alpha, the window's and every other window's; the window
-    -- itself, its text and its buttons are never faded
-    self:ApplyOpacity()
+    -- Opacity (bgAlpha) is the background's coverage; the window itself, its text and its buttons are
+    -- never faded. The other windows were painted by UI:ApplyWindow above, their strips by their crtSkin.
+    paintMainOpacity(f)
     for _, edge in ipairs(f.flatEdges) do
         edge:SetColorTexture(rgba("border", alpha))
     end
@@ -1838,8 +1886,10 @@ function UI:Create()
         end
     end
     -- The Modern look's window: a flat background, its own title strip and a thin border.
+    -- the background starts under the title row, so the title row is one layer (Window opacity)
     f.flatBg = f:CreateTexture(nil, "BACKGROUND", nil, -8)
-    f.flatBg:SetAllPoints()
+    f.flatBg:SetPoint("TOPLEFT", 0, -UI.TITLE_ROW)
+    f.flatBg:SetPoint("BOTTOMRIGHT")
     f.flatTitle = f:CreateTexture(nil, "BACKGROUND", nil, -7)
     f.flatTitle:SetPoint("TOPLEFT", 1, -1)
     f.flatTitle:SetPoint("TOPRIGHT", -1, -1)
