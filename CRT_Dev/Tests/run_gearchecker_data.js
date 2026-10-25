@@ -1,6 +1,6 @@
 // Gear Checker's rules, rows and inspect queue (CRT_Modules/GearChecker/Data.lua and Inspect.lua, with the
 // gear engine and the season's gearChecks): missing enchants and gems, a slot that needs no enchant, an
-// off hand that is a shield, low item levels, the filters, the shift-click, whisper, raid and chat box
+// off hand that is a shield, low item levels, the filters (the extra filters too), the shift-click, whisper, raid and chat box
 // text, the issues tooltip's lines, where the issues can go (group, guild, officer rights), each channel's
 // send and Say in the open world, the chat sends (and the encounter lockdown), and the inspect queue (one at a time, never in combat,
 // out of range and offline skipped, a timeout, an item not loaded yet, the game's own inspect window).

@@ -16,6 +16,10 @@ local ADDON, CRT = ...
 --   GC.TrackTag, GC.TrackWords, GC.TrackColor, GC.TrackCounts(row), GC.TrackText(row, colored, keep)   a
 --                                track as "H4", "Hero 4/6", its colour; a row's pieces per track;
 --                                the Tracks column ("3M 3H")
+--   GC:Extra(), GC:SetExtra(key, v), GC:MinIlvl(), GC:ExtraChecks()   the Extra filters window's ticks and
+--                                level (CRTDB.gearChecker.extra), and the ticked ones as low checks
+--   GC.ExtraTrips, GC.CheckEmpty(r, rules, mainHand), GC.SlotWanted, GC.QualityOf   an extra filter on a piece,
+--                                Empty slot on an empty slot, whether it should hold an item, a piece's quality
 --   GC.CheckSlot(slot, piece, rules, avg)   one slot's findings: missing enchant, empty sockets, low
 --   GC:Roster()                  the group: { name, unit, class, me }, you first
 --   GC:Row(member), GC:Rows(filter)   a member's checked gear; the rows a filter shows
@@ -42,6 +46,9 @@ local ADDON, CRT = ...
 -- .GetActiveWindow and .InsertLink (the older ChatFrame_OpenChat, ChatEdit_GetActiveWindow and
 -- ChatEdit_InsertLink as fallbacks); the chat box reads a leading "/s " as Say when Enter sends it
 -- (ChatFrameEditBox's SendText parses it). Each in pcall; secret values are never compared.
+-- Read 2026-10-24 (Blizzard_APIDocumentationGenerated, live): C_Item.GetItemQualityByID(itemInfo) -> quality
+-- (Enum.ItemQuality). No item, PvP or tooltip API tells whether an item is PvP gear (C_ItemUpgrade's PvP item
+-- level calls read only the item in the upgrade window), so there is no PvP gear filter.
 
 local Gear = CRT.Gear
 local GC = { listeners = {} }
