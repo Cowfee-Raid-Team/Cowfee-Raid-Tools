@@ -95,6 +95,7 @@ CRT_Modules\LootMaster\Filter.lua
 CRT_Modules\LootMaster\Score.lua
 CRT_Modules\LootMaster\Comm.lua
 CRT_Modules\LootMaster\Sync.lua
+CRT_Modules\LootMaster\Resync.lua
 CRT_Modules\LootMaster\AutoPass.lua
 CRT_Modules\LootMaster\Looting.lua
 CRT_Modules\LootMaster\BossLoot.lua

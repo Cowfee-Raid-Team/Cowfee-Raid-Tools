@@ -30,7 +30,8 @@ LM.FILTER_SYNC_SINCE = "0.28.0" -- a receiver from this version on takes the loo
 LM.AUTO_TMOG_SINCE = "0.26.0" -- a looter from this version on accepts the built-in Transmog (LM.TRANSMOG)
 LM.HELLO_SECONDS = 5 -- after this, raiders who never said hello have no CRT
 LM.READY_SECONDS = 10 -- a raider who said hello but never got everything is sent the session again, once
-LM.RESTORE_HOURS = 3 -- a saved session older than this is not restored after a /reload
+LM.RESTORE_HOURS = 6 -- the raid night: what is kept per character comes back within this of its last activity (LM.Fresh)
+LM.RESTORE_WAIT = 5 -- seconds a fresh login waits for its group before a saved session is given up
 LM.BOSS_SECONDS = 600 -- a session started this soon after a boss kill shows the boss's name
 LM.MAX_ITEMS = 8
 LM.MAX_RESPONSES = 8
@@ -153,6 +154,36 @@ end
 
 function LM:Settings()
     return CRT.db.lootmaster
+end
+
+-- The raid night. What Loot Master keeps per character for a /reload, a disconnect or a log out and back
+-- in (the session, CRT Looting's Yes and the answered prompt, the raid leader's authority list) is stamped
+-- with its last activity (at, a time()) and the next weekly reset then (resetAt, LM.ResetAt). It comes back
+-- while it is fresh: no more than RESTORE_HOURS since at, and no weekly reset (a new lockout) in between.
+-- C_DateAndTime.GetSecondsUntilWeeklyReset (https://warcraft.wiki.gg/wiki/API_C_DateAndTime.GetSecondsUntilWeeklyReset,
+-- since 9.0.1): the seconds to the weekly reset. nil when it can't be read.
+function LM.ResetAt()
+    if not (C_DateAndTime and C_DateAndTime.GetSecondsUntilWeeklyReset) then
+        return nil
+    end
+    local ok, left = pcall(C_DateAndTime.GetSecondsUntilWeeklyReset)
+    if not ok or type(left) ~= "number" or (issecretvalue and issecretvalue(left)) then
+        return nil
+    end
+    return time() + math.floor(left)
+end
+
+-- Whether something stamped at (time()) with resetAt is still this raid night's.
+function LM.Fresh(at, resetAt)
+    if type(at) ~= "number" then
+        return false
+    end
+    local now = time()
+    local age = now - at
+    if age < 0 or age > LM.RESTORE_HOURS * 3600 then
+        return false
+    end
+    return not (type(resetAt) == "number" and now >= resetAt)
 end
 
 -- How long raiders have to answer, in seconds (Settings tab).

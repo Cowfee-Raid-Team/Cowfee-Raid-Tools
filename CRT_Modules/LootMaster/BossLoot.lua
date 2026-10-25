@@ -110,10 +110,11 @@ local function itemID(s)
     return tonumber(tostring(s or ""):match("item:(%d+)"))
 end
 
--- Results already applied: each drop once ({ ["<encounterID>:<lootListID>"] = true }), and per item string
--- how many rows a result has set, and how many results each source has given, so the loot history and
--- the receive event for the same drop count once.
+-- Results already applied: per boss and item how many rows a result has set, and how many results each
+-- source has given, so the loot history and the receive event for the same drop count once. Kept with the
+-- list (store), so a result coming in after a /reload still counts once.
 local applied, fromSource = {}, { history = {}, received = {} }
+local drops = {} -- the history's drops that set a row: { ["<encounterID>:<lootListID>"] = true }
 local rolledKill -- the kill (its time) the game last started a roll after, while you led CRT Looting
 local nextOwn = 0 -- received rows' rollIDs: -1, -2, … so they never meet the game's
 
@@ -151,7 +152,8 @@ local function store()
         CRTDBChar.lootmaster.bossLootList = nil
         return
     end
-    CRTDBChar.lootmaster.bossLootList = { rows = rows, waiting = waiting, boss = BL.boss, difficulty = BL.difficulty }
+    CRTDBChar.lootmaster.bossLootList = { rows = rows, waiting = waiting, boss = BL.boss, difficulty = BL.difficulty,
+        results = { applied = applied, history = fromSource.history, received = fromSource.received, drops = drops } }
 end
 
 -- Whether the list has a real (not TEST) row.
@@ -167,7 +169,7 @@ end
 local function changed(what)
     if not hasReal() then -- TEST rows have no badge and no results
         BL.boss, BL.difficulty = nil, nil -- the badge follows the next kill's rows
-        applied, fromSource = {}, { history = {}, received = {} }
+        applied, fromSource, drops = {}, { history = {}, received = {} }, {}
     end
     store()
     LM:Fire("bossloot", what or "changed")
@@ -425,9 +427,15 @@ function BL:Busy()
     return (LM.current and not LM.current.test) or #self.waiting > 0
 end
 
+-- Whether a saved session is still to come back (Comm.lua: a fresh login waiting for its group): the boss
+-- loot waiting for its turn starts only after it, so a /reload never starts a second session.
+local function restoring()
+    return LM.RestorePending and LM.RestorePending() or false
+end
+
 local startNext
 startNext = function()
-    if LM.current or #BL.waiting == 0 then
+    if LM.current or #BL.waiting == 0 or restoring() then
         return
     end
     local w = table.remove(BL.waiting, 1)
@@ -675,8 +683,6 @@ function BL:Result(link, winner, isSelf, allPassed, encounterID, source)
     return true
 end
 
-local drops = {} -- the history's drops that set a row: { ["<encounterID>:<lootListID>"] = true }
-
 local function fromHistory(encounterID, lootListID)
     if not readable(encounterID, lootListID) or #BL.rows == 0 or not (C_LootHistory and C_LootHistory.GetSortedInfoForDrop) then
         return
@@ -744,6 +750,8 @@ LM:OnChange(function(what, s)
             BL:ClearTests()
         end
         startNext()
+    elseif what == "restored" then
+        startNext() -- the saved session is back, or gone: the waiting boss loot may start now
     end
 end)
 
@@ -786,6 +794,11 @@ function BL:Load()
         end
     end
     self.boss, self.difficulty = kept.boss, kept.difficulty
+    local res = type(kept.results) == "table" and kept.results or {}
+    local function map(t)
+        return type(t) == "table" and t or {}
+    end
+    applied, fromSource, drops = map(res.applied), { history = map(res.history), received = map(res.received) }, map(res.drops)
     sayGone(gone, unbound)
     warn()
     changed(#self.rows > 0 and "open" or "changed")

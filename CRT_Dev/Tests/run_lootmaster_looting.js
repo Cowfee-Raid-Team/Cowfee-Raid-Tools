@@ -649,14 +649,16 @@ LOCKED = false
 onEvent("PLAYER_REGEN_ENABLED")
 box = take()
 eq(box[1], "H|" .. V .. "|" .. HERE .. "|" .. HERE .. "|0" .. FF, "reload in a lockdown: the heartbeat after combat ends")
--- Turn off for everyone clears it: the next /reload starts off and asks again
+-- Turn off for everyone clears it: the next /reload starts off, and isn't asked again (it was answered in
+-- this instance tonight: CRTDBChar lootmaster.lootingAsked)
 LM:SetLooting(false, "off")
 eq(S(), nil, "turn off: the saved state is cleared")
 n = asked
 reload()
 eq(LM:LootingOn(), false, "turn off, then reload: off")
 eq(take()[1], "F|" .. V .. "|reload", "turn off, then reload: the F reload still goes")
-eq(asked, n + 1, "turn off, then reload: asked again")
+eq(asked, n, "turn off, then reload: not asked again, it was answered here tonight")
+eq(CRTDBChar.lootmaster.lootingAsked and CRTDBChar.lootmaster.lootingAsked.instance, HERE, "the answered instance is kept")
 -- a login in another instance: off, cleared
 LM:SetLooting(true)
 WHERE.difficulty = 15
@@ -667,16 +669,83 @@ WHERE.difficulty = 16
 onEvent("PLAYER_ENTERING_WORLD", false, false)
 reload()
 eq(LM:LootingOn(), false, "back in the first instance after that: still off")
--- a login after the away limit since it was last confirmed: off, cleared
+-- a log out and back in inside its instance after the away limit, within the raid night: back on, no prompt
 LM:SetLooting(true)
 loadLooting()
 LM.AskLooting = function() asked = asked + 1 end
 NOW = NOW + LM.LOOTING_AWAY + 1
 take()
+n = asked
 onEvent("PLAYER_ENTERING_WORLD", false, false)
-eq(LM:LootingOn(), false, "login after the away limit: off")
-eq(S(), nil, "login after the away limit: cleared")
-eq(take()[1], "F|" .. V .. "|reload", "login after the away limit: raiders told")
+eq(LM:LootingOn(), true, "login inside after the away limit, same night: on")
+eq(take()[1], "O|" .. V .. "|" .. HERE .. FF, "login inside after the away limit: the O")
+eq(asked, n, "login inside after the away limit: not asked")
+-- a log out, and back in later the same night outside: off (raiders told), kept; on again on entering
+NOW = NOW + 30
+tick(30)
+goOutside()
+NOW = NOW + 3600
+loadLooting()
+LM.AskLooting = function() asked = asked + 1 end
+take()
+onEvent("PLAYER_ENTERING_WORLD", false, false)
+eq(LM:LootingOn(), false, "login outside an hour later: off")
+eq(take()[1], "F|" .. V .. "|reload", "login outside an hour later: raiders told it starts off")
+eq(S() and S().instance, HERE, "login outside an hour later: the Yes is kept for its instance")
+WHERE.difficulty = 15
+goInside()
+onEvent("PLAYER_ENTERING_WORLD", false, false)
+eq(LM:LootingOn(), false, "then another instance: off")
+eq(S(), nil, "then another instance: cleared")
+WHERE.difficulty = 16
+goOutside()
+onEvent("PLAYER_ENTERING_WORLD", false, false)
+take()
+LM:SetLooting(true) -- (outside, so refused: CanRunLooting needs the instance)
+goInside()
+onEvent("PLAYER_ENTERING_WORLD", false, false)
+LM:SetLooting(true)
+NOW = NOW + 30
+tick(30)
+goOutside()
+onEvent("PLAYER_ENTERING_WORLD", false, false)
+NOW = NOW + 3600
+loadLooting()
+LM.AskLooting = function() asked = asked + 1 end
+onEvent("PLAYER_ENTERING_WORLD", false, false)
+take()
+n = asked
+goInside()
+onEvent("PLAYER_ENTERING_WORLD", false, false)
+eq(LM:LootingOn(), true, "re-entering its instance the same night: on again")
+box = take()
+eq(box[1], "O|" .. V .. "|" .. HERE .. FF, "re-entering: the O")
+eq(box[2], "H|" .. V .. "|" .. HERE .. "|" .. HERE .. "|0" .. FF, "re-entering: and a heartbeat")
+eq(asked, n, "re-entering: not asked")
+-- after the raid night (6 hours since it was last confirmed): off, cleared, asked again
+NOW = NOW + LM.RESTORE_HOURS * 3600 + 1
+loadLooting()
+LM.AskLooting = function() asked = asked + 1 end
+take()
+n = asked
+onEvent("PLAYER_ENTERING_WORLD", false, false)
+eq(LM:LootingOn(), false, "login the next day: off")
+eq(S(), nil, "login the next day: cleared")
+eq(take()[1], "F|" .. V .. "|reload", "login the next day: raiders told")
+eq(asked, n + 1, "login the next day: asked again")
+eq(CRTDBChar.lootmaster.lootingAsked, nil, "login the next day: the old answer is gone")
+-- a weekly reset since it was last confirmed: a new lockout, cleared
+C_DateAndTime = { GetSecondsUntilWeeklyReset = function() return 60 end }
+LM:SetLooting(true)
+C_DateAndTime = nil
+NOW = NOW + 61
+loadLooting()
+LM.AskLooting = function() asked = asked + 1 end
+take()
+onEvent("PLAYER_ENTERING_WORLD", false, false)
+eq(LM:LootingOn(), false, "login after a weekly reset: off")
+eq(S(), nil, "login after a weekly reset: cleared")
+take()
 -- a /reload in the open world on a wipe, within the away limit: on, away counted from the last confirm
 LM:SetLooting(true)
 take()

@@ -19,10 +19,13 @@ local ADDON, CRT = ...
 --           (LootMaster/Sync.lua, its own handler through LM.Handle); O on, F off and H heartbeat for
 --           CRT Looting (LootMaster/Looting.lua)
 --   requests: N ask, W answer, Z close (Requests/Data.lua, its own handlers through LM.Handle)
+--   catching up: V what's running?, D and C what the looter holds (LootMaster/Resync.lua, through LM.Handle)
 -- A kind this version doesn't know is dropped without a word, so a new kind never troubles an older CRT.
 -- Who may run loot: the raid leader (unless their list says not) and the names on the current raid
 -- leader's list. A raider's own settings never grant anyone authority; no list received means leader only.
--- A session survives a /reload on both sides (CRTDBChar.lootSession), with every clock started again.
+-- A session survives a /reload, a disconnect or a log out on both sides for the raid night
+-- (CRTDBChar.lootSession, LM.Fresh), and LootMaster/Resync.lua catches up on what was sent meanwhile.
+-- The raid leader's authority list a raider heard is kept the same way (CRTDBChar.lootmaster.heardAuthority).
 -- Nothing here passes a Blizzard roll (that is LootMaster/Rolls.lua, through AutoPass.lua). Trading is in
 -- LootMaster/Trade.lua.
 
@@ -358,6 +361,7 @@ local function sendSession(s)
         sendText(text)
     end
 end
+LM.SendSession = sendSession
 
 -- The session's clocks: hello, ready (those who never got everything are sent it again, once), timeouts.
 local function startTimers(s)
@@ -729,6 +733,29 @@ local function sendGear(id, index, gear)
     end
 end
 
+-- Your answer (inc.mine[index]: response, note, and for one your CRT gave, auto, autoWhy, autoDetail) to
+-- everyone, an R and its G parts.
+local function sendAnswer(inc, index, mine)
+    local gear = LM:MyGear(inc.items[index].itemString)
+    local _, classFile = UnitClass("player")
+    send("R", { inc.id, index, mine.response, LM:MyRole(), classFile or "", LM:MyItemLevel(),
+        Wire.GearText(gear[1]), Wire.GearText(gear[2]), mine.auto and (mine.autoWhy or "spec") or "",
+        mine.auto and (mine.autoDetail or "") or "", mine.note or "" })
+    sendGear(inc.id, index, gear)
+end
+
+-- Your answer for an item, sent again (LootMaster/Resync.lua: the looter's CRT missed it). Returns whether
+-- there was one to send.
+function LM.SendAnswerAgain(index)
+    local inc = LM.incoming
+    local mine = inc and inc.items[index] and inc.mine[index]
+    if not (mine and mine.response) then
+        return false
+    end
+    sendAnswer(inc, index, mine)
+    return true
+end
+
 -- Your answer for an item, to everyone. The looter's CRT draws your roll and sends it back.
 function LM:Answer(index, response, note)
     local inc = self.incoming
@@ -741,11 +768,7 @@ function LM:Answer(index, response, note)
     local mine = inc.mine[index] or {}
     inc.mine[index] = mine
     mine.response, mine.note = response, note
-    local gear = self:MyGear(inc.items[index].itemString)
-    local _, classFile = UnitClass("player")
-    send("R", { inc.id, index, response, self:MyRole(), classFile or "", self:MyItemLevel(),
-        Wire.GearText(gear[1]), Wire.GearText(gear[2]), "", "", note or "" })
-    sendGear(inc.id, index, gear)
+    sendAnswer(inc, index, mine)
     self:Fire("incoming")
     save()
 end
@@ -915,15 +938,10 @@ local function judge(inc, index, loaded)
     if not why then
         return
     end
-    local response = LM.AutoAnswer(inc)
-    local gear = LM:MyGear(it.itemString)
-    local _, classFile = UnitClass("player")
     -- hidden, unless you chose to see every item; either way you can see it but not answer it
-    inc.mine[index] = { response = response, auto = true, autoWhy = why, autoSpecs = why == "spec" and LM.ParseSpecs(detail) or nil,
-        closed = not LM:Settings().showAllItems }
-    send("R", { inc.id, index, response, LM:MyRole(), classFile or "", LM:MyItemLevel(),
-        Wire.GearText(gear[1]), Wire.GearText(gear[2]), why, detail or "", "" })
-    sendGear(inc.id, index, gear)
+    inc.mine[index] = { response = LM.AutoAnswer(inc), auto = true, autoWhy = why, autoDetail = detail,
+        autoSpecs = why == "spec" and LM.ParseSpecs(detail) or nil, closed = not LM:Settings().showAllItems }
+    sendAnswer(inc, index, inc.mine[index])
 end
 
 -- Checks every item of a session, then calls done once: when all are judged, or after SPEC_WAIT.
@@ -995,7 +1013,7 @@ local function checkReady(inc)
         LM:CheckSpecs(inc, function()
             inc.checked = true
             for _, it in pairs(inc.items) do
-                it.shownAt = GetTime()
+                it.shownAt, it.shownWall = GetTime(), time()
             end
             send("Y", { inc.id })
             LM:Fire("incoming", "shown")
@@ -1035,6 +1053,12 @@ HANDLERS.U = function(f, sender)
             a.names[e[1]:lower()] = true
         end
     end
+    -- kept per character for the raid night (CRTDBChar.lootmaster.heardAuthority), so a raider's /reload or
+    -- login still knows who may run loot before the leader sends it again
+    CRTDBChar = CRTDBChar or {}
+    CRTDBChar.lootmaster = CRTDBChar.lootmaster or {}
+    CRTDBChar.lootmaster.heardAuthority = { from = a.from, leader = a.leader, names = a.names, stamp = a.stamp,
+        at = time(), resetAt = LM.ResetAt() }
     LM:Fire("authority")
 end
 
@@ -1088,7 +1112,7 @@ HANDLERS.I = function(f, sender)
     for _, e in ipairs(Wire.Unpack(f[2])) do
         local index = tonumber(e[1])
         if index and index <= LM.MAX_ITEMS and e[3] and e[3] ~= "" and not inc.items[index] then
-            inc.items[index] = { itemString = e[3], ilvl = tonumber(e[2]), shownAt = GetTime() }
+            inc.items[index] = { itemString = e[3], ilvl = tonumber(e[2]), shownAt = GetTime(), shownWall = time() }
             inc.got = inc.got + 1
         end
     end
@@ -1105,7 +1129,7 @@ HANDLERS.Q = function(f, sender)
     inc.view:Clear(f[3], index)
     if f[3] == LM:Me() then
         inc.mine[index] = nil
-        inc.items[index].shownAt = GetTime() -- a fresh timer
+        inc.items[index].shownAt, inc.items[index].shownWall = GetTime(), time() -- a fresh timer
         LM:Fire("incoming", "shown")
     else
         LM:Fire("incoming")
@@ -1242,38 +1266,94 @@ receive = function(text, sender)
     end
 end
 
--- Surviving a /reload ------------------------------------------------------------------------------------
+-- Surviving a /reload, a disconnect or a log out ----------------------------------------------------------
 
--- The running session and the one you were sent are kept in CRTDBChar.lootSession and brought back after
--- a /reload (not after RESTORE_HOURS), with every clock started again. End clears it.
+-- The running session and the one you were sent are kept in CRTDBChar.lootSession (savedAt: its last
+-- activity, resetAt: LM.ResetAt then, instance: the raid instance it was last saved in, LM.InstanceKey) and
+-- brought back at login while LM.Fresh says it is this raid night's, unless you are now in another raid
+-- instance. The looter's clocks start again (LM.Revive). On the popup an item still waiting for your answer
+-- gets a fresh timer, an item you answered keeps the time it had left, and an item given out stays closed.
+-- A fresh login whose group isn't known yet waits for it (the first GROUP_ROSTER_UPDATE, or RESTORE_WAIT
+-- seconds), so a real session isn't dropped for it. Every way out fires LM:Fire("restored"): the boss loot
+-- waiting for its turn starts only then (LootMaster/BossLoot.lua), and LootMaster/Resync.lua asks the group
+-- for what was missed. End clears it.
+local restoring = false -- a saved session waiting for the group
+
 save = function()
+    if restoring then
+        return -- not yet back: the saved session stays as it was
+    end
     CRTDBChar = CRTDBChar or {}
+    local before = CRTDBChar.lootSession
     if not (LM.current or LM.incoming) then
         CRTDBChar.lootSession = nil
         return
     end
-    CRTDBChar.lootSession = { savedAt = time(), current = LM.current, incoming = LM.incoming }
+    local key = LM.InstanceKey and LM.InstanceKey() or nil
+    CRTDBChar.lootSession = { savedAt = time(), resetAt = LM.ResetAt(), current = LM.current, incoming = LM.incoming,
+        instance = key or (type(before) == "table" and before.instance) or nil }
 end
 LM.Save = function()
     save()
 end
 
-local function restore()
+-- Whether a saved session waits for the group.
+function LM.RestorePending()
+    return restoring
+end
+
+-- The popup's items after a login: see above. gone: seconds since the save, for an item with no shownWall.
+local function reopen(inc, gone)
+    local now, wall = GetTime(), time()
+    for index, it in pairs(inc.items) do
+        local mine = inc.mine[index]
+        if it.award then
+            mine = mine or {}
+            mine.closed = true
+            inc.mine[index] = mine
+        elseif mine and mine.response then
+            it.shownAt = now - math.max(0, type(it.shownWall) == "number" and wall - it.shownWall or gone)
+        else
+            it.shownAt, it.shownWall = now, wall -- a fresh timer after the reload
+        end
+    end
+end
+
+local function restore(final)
     local saved = CRTDBChar and CRTDBChar.lootSession
-    if type(saved) ~= "table" or not saved.savedAt or time() - saved.savedAt > LM.RESTORE_HOURS * 3600 then
+    local key = LM.InstanceKey and LM.InstanceKey() or nil
+    if type(saved) ~= "table" or not LM.Fresh(saved.savedAt, saved.resetAt)
+        or (key and type(saved.instance) == "string" and saved.instance ~= key) then
+        restoring = false
         if CRTDBChar then
             CRTDBChar.lootSession = nil
         end
+        LM:Fire("restored")
         return
     end
+    local real = (type(saved.current) == "table" and not saved.current.test)
+        or (type(saved.incoming) == "table" and not saved.incoming.test)
+    if real and not IsInGroup() and not final then
+        if not restoring then
+            restoring = true
+            C_Timer.After(LM.RESTORE_WAIT, function()
+                if restoring then
+                    restore(true)
+                end
+            end)
+        end
+        return
+    end
+    restoring = false
     local s = LM.Revive(saved.current)
     local inc = saved.incoming
-    if s and (s.test or IsInGroup()) then
+    if s and not LM.current and (s.test or IsInGroup()) then -- a session that came in while waiting wins
         LM.current = s
         startTimers(s)
         LM:Fire("started", s)
     end
-    if type(inc) == "table" and type(inc.items) == "table" and (inc.test or IsInGroup()) then
+    if type(inc) == "table" and type(inc.items) == "table" and type(inc.mine) == "table" and not LM.incoming
+        and (inc.test or IsInGroup()) then
         inc.view = LM.Revive(inc.view)
         if inc.view then
             inc.view.items, inc.view.responses, inc.view.byKey = inc.items, inc.responses, inc.byKey
@@ -1285,14 +1365,27 @@ local function restore()
         if inc.view then
             inc.view.byKey = inc.byKey
         end
-        for _, it in pairs(inc.items) do
-            it.shownAt = GetTime() -- a fresh timer after the reload
-        end
+        reopen(inc, time() - saved.savedAt)
         inc.checking, inc.checked = true, true
         LM.incoming = inc
         LM:Fire("incoming", "shown")
     end
     save()
+    LM:Fire("restored")
+end
+
+-- The raid leader's authority list heard before a /reload or login (HANDLERS.U), while it is fresh; it
+-- counts only while its sender still leads (allowed).
+local function loadAuthority()
+    local kept = CRTDBChar and type(CRTDBChar.lootmaster) == "table" and CRTDBChar.lootmaster.heardAuthority
+    if type(kept) ~= "table" then
+        return
+    end
+    if not LM.Fresh(kept.at, kept.resetAt) or type(kept.from) ~= "string" or type(kept.names) ~= "table" then
+        CRTDBChar.lootmaster.heardAuthority = nil
+        return
+    end
+    LM.authority = LM.authority or { from = kept.from, leader = kept.leader == true, names = kept.names, stamp = kept.stamp }
 end
 
 local events = CreateFrame("Frame")
@@ -1310,6 +1403,7 @@ events:SetScript("OnEvent", function(_, event, a1, a2, a3, a4, a5)
             receive(a2, a4)
         end
     elseif event == "PLAYER_LOGIN" then
+        loadAuthority()
         restore()
     elseif event == "PLAYER_LOGOUT" then
         save()
@@ -1318,7 +1412,13 @@ events:SetScript("OnEvent", function(_, event, a1, a2, a3, a4, a5)
             noteEncounter(a1, a2, a5)
         end
         resume()
-    elseif not rosterPending then
+    else
+        if restoring and IsInGroup() then
+            restore() -- a fresh login's group is known now
+        end
+        if rosterPending then
+            return
+        end
         rosterPending = true
         C_Timer.After(ROSTER_DELAY, function()
             rosterPending = false
