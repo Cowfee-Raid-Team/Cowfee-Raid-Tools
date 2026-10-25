@@ -12,7 +12,9 @@ local ADDON, CRT = ...
 --     whether it is secret, and what canaccessvalue says when that function exists
 --   UNIT_AURA (payload unitTarget, updateInfo; updateInfo is not read): each HELPFUL aura from
 --     C_UnitAuras.GetAuraDataByIndex(unit, i, "HELPFUL"), i up to 40: spellId, name, points, and whether the
---     aura table itself is secret. A spell is logged once per 5 s.
+--     aura table itself is secret. A spell is logged once per 5 s. An error on the aura path (the game
+--     refuses secret auras to a tainted caller) is logged once per unit per pull, with count= kept up to
+--     date on that line, and that unit's auras are not read again this pull.
 --   FORMAT, twice per pull at most, tagged kind="readable" (the first readable absorb that is not 0) or
 --     kind="secret" (the first secret one): AbbreviateNumbers
 --     and AbbreviateLargeNumbers (a native API since 12.0.0), string.format("%d") and tostring, each in a
@@ -26,14 +28,20 @@ local ADDON, CRT = ...
 -- never indexed.
 --
 -- Saved in CRTDB.dev.absorbProbe: on, and last = { encounterID, name, difficultyID, started (time()),
--- lines, counts[kind] = { n, secret[field] = n }, throttled, dropped }, the last pull only.
+-- lines, counts[kind] = { n, secret[field] = n, dropped }, throttled, dropped }, the last pull only.
+-- Caps per kind: UNIT_AURA lines stop at MAX_LINES (3000), every other kind at KIND_MAX (600) each, so
+-- aura lines never push out the absorb, FORMAT, BAR and cast lines. The same caps apply to Boss debug.
+--
+-- Boss debug (Dev/BossDebug.lua) turns it on through Follow without its own switch: then each line also
+-- goes to the boss's record, section "absorb", and CRTDB.dev.absorbProbe is left alone unless on too.
 --
 -- This file never ships: its .toc line is inside the do-not-package block.
 
 local Probe = {}
 CRT.AbsorbProbe = Probe
 
-Probe.MAX_LINES = 3000
+Probe.MAX_LINES = 3000 -- UNIT_AURA lines a pull keeps
+Probe.KIND_MAX = 600 -- lines a pull keeps of each other kind
 Probe.AURA_GAP = 5 -- seconds before the same aura is logged again
 local MAX_AURAS = 40
 local MAX_POINTS = 8
@@ -46,6 +54,9 @@ local pulling = false
 local startedAt = 0
 local seenAura, seenSecretUnit = {}, {}
 local probed -- which kinds of value already ran the format and bar probes this pull: probed.readable, probed.secret
+local follow = false -- Boss debug is on: log every pull into its record too
+local debugKinds = {} -- lines of each kind sent to Boss debug this pull
+local auraErrors = {} -- unit -> its aura error line this pull: { seconds, fields, count (the field), own, debug }
 
 local function store()
     CRT.db.dev = CRT.db.dev or {}
@@ -89,10 +100,39 @@ function Probe.Line(seconds, kind, fields)
     return table.concat(parts, " ")
 end
 
+-- How many lines of a kind a pull keeps.
+function Probe.Limit(kind)
+    return kind == "UNIT_AURA" and Probe.MAX_LINES or Probe.KIND_MAX
+end
+
+-- Logs a line. Returns where it went: its index in the probe's own log and Boss debug's handle, each nil
+-- when the line was not kept there.
 local function add(kind, fields)
-    local last = store().last
-    if not last then
+    local s = store()
+    local last = s.on and s.last or nil
+    if not last and not follow then
         return
+    end
+    local line = Probe.Line(GetTime() - startedAt, kind, fields)
+    local handle
+    if follow and CRT.BossDebug then
+        local secrets = 0
+        for _, f in ipairs(fields) do
+            if f[4] or isSecret(f[2]) then
+                secrets = secrets + 1
+            end
+        end
+        local n = (debugKinds[kind] or 0) + 1
+        debugKinds[kind] = n
+        if n <= Probe.Limit(kind) then
+            -- only aura lines count against Boss debug's own cap: the others always go in
+            handle = CRT.BossDebug:Append("absorb", line, secrets, kind ~= "UNIT_AURA")
+        else
+            CRT.BossDebug:Capped("absorb", kind, secrets)
+        end
+    end
+    if not last then
+        return nil, handle
     end
     local c = last.counts[kind]
     if not c then
@@ -105,11 +145,35 @@ local function add(kind, fields)
             c.secret[f[1]] = (c.secret[f[1]] or 0) + 1
         end
     end
-    if #last.lines >= Probe.MAX_LINES then
+    if c.n - (c.dropped or 0) > Probe.Limit(kind) then
+        c.dropped = (c.dropped or 0) + 1
         last.dropped = (last.dropped or 0) + 1
-        return
+        return nil, handle
     end
-    last.lines[#last.lines + 1] = Probe.Line(GetTime() - startedAt, kind, fields)
+    last.lines[#last.lines + 1] = line
+    return #last.lines, handle
+end
+
+-- The kinds a log dropped lines of, sorted: { { kind, dropped }, ... }.
+local function cappedKinds(last)
+    local out = {}
+    for kind, c in pairs(last.counts) do
+        if (c.dropped or 0) > 0 then
+            out[#out + 1] = { kind, c.dropped }
+        end
+    end
+    table.sort(out, function(a, b)
+        return a[1] < b[1]
+    end)
+    return out
+end
+
+-- An aura left out as a repeat: counted in the probe's own log only.
+local function throttled()
+    local s = store()
+    if s.on and s.last then
+        s.last.throttled = (s.last.throttled or 0) + 1
+    end
 end
 
 -- A game call's first result, or the text "error" when it fails, "missing" when there is no such function.
@@ -154,8 +218,14 @@ local function startPull(encounterID, name, difficultyID, groupSize)
     startedAt = GetTime()
     seenAura, seenSecretUnit = {}, {}
     probed = {}
-    store().last = { encounterID = readable(encounterID) and encounterID or nil, name = readable(name) and name or nil,
-        difficultyID = readable(difficultyID) and difficultyID or nil, started = time(), lines = {}, counts = {}, throttled = 0 }
+    debugKinds, auraErrors = {}, {}
+    if store().on then
+        store().last = { encounterID = readable(encounterID) and encounterID or nil, name = readable(name) and name or nil,
+            difficultyID = readable(difficultyID) and difficultyID or nil, started = time(), lines = {}, counts = {}, throttled = 0 }
+    end
+    if follow and CRT.BossDebug then
+        CRT.BossDebug:Open(encounterID, name, difficultyID)
+    end
     setUnitEvents(true)
     add("ENCOUNTER_START", { { "encounterID", encounterID }, { "name", name }, { "difficultyID", difficultyID }, { "groupSize", groupSize } })
     logApis()
@@ -163,12 +233,12 @@ end
 
 local function endPull(encounterID, success)
     add("ENCOUNTER_END", { { "encounterID", encounterID }, { "success", success } })
-    local last = store().last
+    local last = store().on and store().last
     if last then
         last.length = GetTime() - startedAt
         last.success = readable(success) and success or nil
-        if last.dropped then
-            last.lines[#last.lines + 1] = "... " .. last.dropped .. " more lines dropped (the log keeps " .. Probe.MAX_LINES .. ")"
+        for _, k in ipairs(cappedKinds(last)) do
+            last.lines[#last.lines + 1] = string.format("... %d more %s lines dropped (the log keeps %d of them)", k[2], k[1], Probe.Limit(k[1]))
         end
     end
     pulling = false
@@ -258,19 +328,41 @@ local function pointsText(points)
     return "{" .. table.concat(parts, ",") .. "}", anySecret
 end
 
-local function onAura(unit)
-    local api = C_UnitAuras and C_UnitAuras.GetAuraDataByIndex
-    if type(api) ~= "function" then
-        return
+-- An error on a unit's aura path: one line per unit per pull. Its count field says how many UNIT_AURA
+-- events met it; the probe reads that unit's auras no more this pull, since the answer is known.
+local function auraError(unit, index, err)
+    local count = { "count", 1 }
+    local fields = { { "unit", unit } }
+    if index then
+        fields[#fields + 1] = { "index", index }
     end
+    fields[#fields + 1] = { "error", err }
+    fields[#fields + 1] = count
+    local e = { seconds = GetTime() - startedAt, fields = fields, count = count }
+    e.own, e.debug = add("UNIT_AURA", fields)
+    auraErrors[unit] = e
+end
+
+local function auraErrorAgain(e)
+    e.count[2] = e.count[2] + 1
+    local line = Probe.Line(e.seconds, "UNIT_AURA", e.fields)
+    local s = store()
+    if e.own and s.on and s.last and s.last.lines[e.own] then
+        s.last.lines[e.own] = line
+    end
+    if e.debug and CRT.BossDebug then
+        CRT.BossDebug:Update(e.debug, line)
+    end
+end
+
+-- Reads a unit's helpful auras. Returns the index and the error when GetAuraDataByIndex fails.
+local function readAuras(unit, api)
     local now = GetTime()
     for i = 1, MAX_AURAS do
         local ok, aura = pcall(api, unit, i, "HELPFUL")
         if not ok then
-            add("UNIT_AURA", { { "unit", unit }, { "index", i }, { "error", aura } })
-            return
+            return i, aura
         end
-        local last = store().last
         if not isSecret(aura) and aura == nil then
             return
         end
@@ -278,7 +370,7 @@ local function onAura(unit)
             -- The table is hidden whole: there is no spell to key on, so the slot is.
             local key = unit .. ":secret:" .. i
             if seenAura[key] and now - seenAura[key] < Probe.AURA_GAP then
-                last.throttled = last.throttled + 1
+                throttled()
             else
                 seenAura[key] = now
                 add("UNIT_AURA", { { "unit", unit }, { "index", i }, { "auraSecret", true } })
@@ -287,7 +379,7 @@ local function onAura(unit)
             local spellId, name, points = aura.spellId, aura.name, aura.points
             local key = unit .. ":" .. (readable(spellId) and type(spellId) == "number" and spellId or ("secret:" .. i))
             if seenAura[key] and now - seenAura[key] < Probe.AURA_GAP then
-                last.throttled = last.throttled + 1
+                throttled()
             else
                 seenAura[key] = now
                 local text, anySecret = pointsText(points)
@@ -295,6 +387,23 @@ local function onAura(unit)
                     { "points", points, text, anySecret } })
             end
         end
+    end
+end
+
+local function onAura(unit)
+    local api = C_UnitAuras and C_UnitAuras.GetAuraDataByIndex
+    if type(api) ~= "function" then
+        return
+    end
+    if auraErrors[unit] then
+        auraErrorAgain(auraErrors[unit])
+        return
+    end
+    local ok, index, err = pcall(readAuras, unit, api)
+    if not ok then
+        auraError(unit, nil, index) -- any other error on the aura path: index holds its text
+    elseif index then
+        auraError(unit, index, err)
     end
 end
 
@@ -316,7 +425,7 @@ local function onCast(unit)
 end
 
 function Probe.HandleEvent(event, ...)
-    if not CRT.db or not store().on then
+    if not CRT.db or not (store().on or follow) then
         return
     end
     local a1, a2, a3, a4, a5 = ...
@@ -368,8 +477,14 @@ end
 
 function Probe:SetOn(on)
     store().on = on and true or false
-    listen(on)
+    listen(on or follow)
     CRT:Print(on and "Absorb probe on: it logs the next boss pull. /crt dev absorbprobe show after it." or "Absorb probe off. The last log is kept.")
+end
+
+-- Boss debug on or off: listens while it or the probe's own switch is on. Prints nothing.
+function Probe:Follow(on)
+    follow = on and true or false
+    listen(store().on or follow)
 end
 
 -- The whole log: a header, then one line per reading.
@@ -383,6 +498,13 @@ function Probe:Text()
     local head = string.format('Absorb probe: encounter %s "%s", difficulty %s, pulled %s, %s, %s',
         tostring(last.encounterID or "?"), tostring(last.name or "?"), tostring(last.difficultyID or "?"), when,
         last.length and string.format("%.1f s", last.length) or "still going", result)
+    local capped = {}
+    for _, k in ipairs(cappedKinds(last)) do
+        capped[#capped + 1] = string.format("%s %d past %d", k[1], k[2], Probe.Limit(k[1]))
+    end
+    if #capped > 0 then
+        head = head .. "\nCapped: " .. table.concat(capped, ", ") .. " (lines dropped past each kind's cap)."
+    end
     return head .. "\n<secret> is a value the game hid; nil is a missing one. An aura is logged once per "
         .. Probe.AURA_GAP .. " s (" .. (last.throttled or 0) .. " repeats left out).\n" .. table.concat(last.lines, "\n")
 end
@@ -411,6 +533,7 @@ function Probe:Summary()
             parts[#parts + 1] = f .. " " .. c.secret[f]
         end
         out[#out + 1] = k .. ": " .. c.n .. (#parts > 0 and (" (secret: " .. table.concat(parts, ", ") .. ")") or " (all readable)")
+            .. ((c.dropped or 0) > 0 and (", " .. c.dropped .. " past the cap") or "")
     end
     return out
 end

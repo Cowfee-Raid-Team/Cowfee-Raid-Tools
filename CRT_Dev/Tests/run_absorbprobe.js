@@ -242,12 +242,59 @@ absorbs.boss1 = 9000
 fire("UNIT_ABSORB_AMOUNT_CHANGED", "boss1")
 check(countOf("FORMAT ") == 8 and countOf("BAR ") == 2, "two runs a pull at most: " .. countOf("FORMAT ") .. " FORMAT lines, " .. countOf("BAR ") .. " BAR lines")
 
--- A long pull stops at the cap and says how many lines it dropped.
+-- Each kind other than UNIT_AURA stops at its own cap, and the log says how many lines of it were dropped.
 fire("ENCOUNTER_END", 3005, "Fifth", 16, 20, 1)
 fire("ENCOUNTER_START", 3006, "Sixth", 16, 20)
-for i = 1, P.MAX_LINES + 10 do fire("UNIT_ABSORB_AMOUNT_CHANGED", "boss1") end
+for i = 1, P.KIND_MAX + 10 do fire("UNIT_ABSORB_AMOUNT_CHANGED", "boss1") end
 fire("ENCOUNTER_END", 3006, "Sixth", 16, 20, 1)
-check(#log() == P.MAX_LINES + 1 and log()[#log()]:find("more lines dropped", 1, true), "the log is capped: " .. tostring(log()[#log()]))
+check(P.MAX_LINES == 3000 and P.KIND_MAX == 600, "caps: 3000 aura lines, 600 of each other kind")
+check(countOf("UNIT_ABSORB_AMOUNT_CHANGED unit=") == P.KIND_MAX and log()[#log()] == "... 10 more UNIT_ABSORB_AMOUNT_CHANGED lines dropped (the log keeps 600 of them)", "a kind is capped on its own: " .. tostring(log()[#log()]))
+
+-- An aura error: one line per unit per pull, its count kept up to date, and the unit is not asked again.
+local auraCalls = {}
+C_UnitAuras = { GetAuraDataByIndex = function(u, i, filter)
+  auraCalls[u] = (auraCalls[u] or 0) + 1
+  if u == "boss2" then error("Auras cannot be accessed when secret while tainted by 'CowfeeRaidTools'") end
+  return auras[u] and auras[u][i]
+end }
+auras.boss1 = { { spellId = 1111, name = "Veil", points = {} } }
+auras.boss3 = { { spellId = 3333, name = "Odd", points = setmetatable({}, { __len = function() error("bad points") end }) } }
+now = 800
+fire("ENCOUNTER_START", 3008, "Eighth", 16, 20)
+for i = 1, 50 do fire("UNIT_AURA", "boss2", {}) end
+check(countOf('UNIT_AURA unit="boss2"') == 1 and auraCalls.boss2 == 1, "an aura error on every event: one line, and the unit is asked once: " .. countOf('UNIT_AURA unit="boss2"') .. " lines, " .. tostring(auraCalls.boss2) .. " calls")
+check(has('UNIT_AURA unit="boss2" index=1 error="') and has("tainted by 'CowfeeRaidTools'\\" count=50"), "the line has the error and count=50")
+fire("UNIT_AURA", "boss1", {})
+check(has('UNIT_AURA unit="boss1" index=1 auraSecret=false spellId=1111'), "another unit's auras are still read")
+fire("UNIT_AURA", "boss3", {})
+fire("UNIT_AURA", "boss3", {})
+check(countOf('UNIT_AURA unit="boss3"') == 1 and has('UNIT_AURA unit="boss3" error="') and has("bad points\\" count=2"), "any other error on the aura path: once per unit, counted")
+fire("ENCOUNTER_END", 3008, "Eighth", 16, 20, 1)
+now = 900
+fire("ENCOUNTER_START", 3009, "Ninth", 16, 20)
+fire("UNIT_AURA", "boss2", {})
+check(auraCalls.boss2 == 2 and has('unit="boss2" index=1 error=') and has("count=1"), "the next pull asks again")
+fire("ENCOUNTER_END", 3009, "Ninth", 16, 20, 1)
+
+-- 3000 aura lines fill the aura cap; the absorb, FORMAT, BAR and cast lines after them are kept.
+now = 1000
+fire("ENCOUNTER_START", 3010, "Tenth", 16, 20)
+auras.boss3 = {}
+for i = 1, 40 do auras.boss3[i] = { spellId = 20000 + i, name = "B", points = {} } end
+for i = 1, 80 do now = now + 6 fire("UNIT_AURA", "boss3", {}) end
+absorbs.boss1 = 77000
+fire("UNIT_ABSORB_AMOUNT_CHANGED", "boss1")
+casting.boss1 = { name = "Late Cast", start = 1, ["end"] = 2 }
+UnitCastingInfo = function(u) local c = casting[u] if not c then return nil end return c.name, c.name, 1, c.start, c["end"] end
+fire("UNIT_SPELLCAST_START", "boss1", "Cast-20", 1)
+fire("ENCOUNTER_END", 3010, "Tenth", 16, 20, 0)
+check(countOf('UNIT_AURA unit="boss3"') == 3000, "aura lines stop at 3000: " .. countOf('UNIT_AURA unit="boss3"'))
+check(has("UNIT_ABSORB_AMOUNT_CHANGED unit=\\"boss1\\" total=77000") and countOf('FORMAT kind="readable"') == 4 and countOf('BAR kind="readable"') == 1 and has('UNIT_SPELLCAST_START unit="boss1" name="Late Cast"'), "the absorb, FORMAT, BAR and cast lines after them are kept")
+check(log()[#log()] == "... 200 more UNIT_AURA lines dropped (the log keeps 3000 of them)", "the end says which kind was capped: " .. tostring(log()[#log()]))
+printed = {}
+P:Command("dev absorbprobe show")
+check(shown.text:find("Capped: UNIT_AURA 200 past 3000", 1, true) ~= nil, "the header says which kind was capped")
+check(table.concat(printed, "|"):find("UNIT_AURA: 3200 (all readable), 200 past the cap", 1, true) ~= nil, "the chat summary too: " .. table.concat(printed, "|"))
 
 print(passes .. " passed, " .. fails .. " failed")
 `;

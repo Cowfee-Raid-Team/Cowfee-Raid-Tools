@@ -7,6 +7,7 @@ local ADDON, CRT = ...
 --   Layout editor     open it, and Move pieces (off by default, so the panel works as usual)
 --   Windows           reset every movable window and the main panel
 --   Diagnostics       the debuff panel's diagnostics
+--   Boss debug        log every boss pull, one log per boss, a row per boss with Copy (Dev/BossDebugPanel.lua)
 --   Timeline probe    arm it for the next raid boss pull, show what it found
 --   Marker displays   the marker display editor
 --   Logged Timeline Ref   set each ability's types on an ability timeline, manage and remove them
@@ -60,9 +61,9 @@ local function build(pf)
     local title = pf:CreateFontString(nil, "OVERLAY", "CRTFontLarge")
     title:SetPoint("TOPLEFT", 8, -8)
     title:SetText("Development")
-    UI.HelpRight(title, "Development", "Developer tools. This page is only in a developer build of the addon (from Git); release zips leave it out, along with every tool on it.\n\nThe same tools have slash commands: /crt dev (this page), /crt dev edit, /crt dev reset, /crt dev clear, /crt dev debuffs, /crt dev probe, /crt dev probe show, /crt dev clearprobe, /crt dev absorbprobe (on, off, show: can a boss's absorb be read in a pull), /crt dev markerprobe, /crt dev special (a sample special alert on Mech Alerts), /crt dev alerts (export and import alerts), /crt dev markers, /crt dev types, /crt dev removed, /crt dev winlog, /crt dev seasons and /crt dev seasons ids.")
+    UI.HelpRight(title, "Development", "Developer tools. This page is only in a developer build of the addon (from Git); release zips leave it out, along with every tool on it.\n\nThe same tools have slash commands: /crt dev (this page), /crt dev edit, /crt dev reset, /crt dev clear, /crt dev debuffs, /crt dev probe, /crt dev probe show, /crt dev clearprobe, /crt dev absorbprobe (on, off, show: can a boss's absorb be read in a pull), /crt dev bossdebug (on, off, show, show <boss>: every boss pull logged, one log per boss, to copy), /crt dev markerprobe, /crt dev special (a sample special alert on Mech Alerts), /crt dev alerts (export and import alerts), /crt dev markers, /crt dev types, /crt dev removed, /crt dev winlog, /crt dev seasons and /crt dev seasons ids.")
 
-    -- Three columns: tools, more tools, and every window's layer.
+    -- Three columns: tools, Boss debug and more tools, and every window's layer.
     local x, right, third = 8, 360, 700
 
     -- Layout editor.
@@ -130,46 +131,51 @@ local function build(pf)
     end
 
     -- Window log.
-    heading(pf, right, -284, "Window log", "Prints to chat every time something moves, sizes or rescales the main window or the Timeline pop-out: its anchor, its place on screen and the line of code that did it, and where it is one frame into a drag. After a pop-out resize it also prints how the timeline laid out. For finding what makes a window jump or draw wrong. Click again to turn it off.")
-    action(pf, right, -304, "Window log on or off", 160, function()
+    heading(pf, x, -372, "Window log", "Prints to chat every time something moves, sizes or rescales the main window or the Timeline pop-out: its anchor, its place on screen and the line of code that did it, and where it is one frame into a drag. After a pop-out resize it also prints how the timeline laid out. For finding what makes a window jump or draw wrong. Click again to turn it off.")
+    action(pf, x, -392, "Window log on or off", 160, function()
         CRT.WindowLog:Toggle()
     end)
-    action(pf, right, -332, "Check the layout", 160, function()
+    action(pf, x, -420, "Check the layout", 160, function()
         CRT.LayoutCheck:Run()
     end)
-    action(pf, right, -360, "Sample late night", 160, function()
+    action(pf, x, -448, "Sample late night", 160, function()
         CRT.LateTest:Toggle()
     end)
 
+    -- Boss debug: one log per boss pull, a row per boss.
+    if CRT.BossDebugPanel then
+        controls[#controls + 1] = CRT.BossDebugPanel.Build(pf, right, -44)
+    end
+
     -- Timeline probe.
-    heading(pf, right, -44, "Timeline probe", "For the next raid boss pull, logs whether each boss timeline, cast, damage meter, death recap and Journal value, and each phase event, was secret, readable or missing: when it fired, at the end of the encounter and after combat. Show prints what it found.")
-    action(pf, right, -64, "Arm for the next pull", 160, function()
+    heading(pf, right, -372, "Timeline probe", "For the next raid boss pull, logs whether each boss timeline, cast, damage meter, death recap and Journal value, and each phase event, was secret, readable or missing: when it fired, at the end of the encounter and after combat. Show prints what it found.")
+    action(pf, right, -392, "Arm for the next pull", 160, function()
         if CRT.TimelineProbe then
             CRT.TimelineProbe:Arm()
         end
     end)
-    action(pf, right, -92, "Show what it found", 160, function()
+    action(pf, right + 168, -392, "Show what it found", 160, function()
         if CRT.TimelineProbe then
             CRT.TimelineProbe:Show()
         end
     end)
 
     -- Marker displays.
-    heading(pf, right, -132, "Marker displays", "Make a boss's marker display: slots, layout, icon size and when it clears. Save it as a draft to try in a real pull, Test it in /say, and Export it to ship in the boss's file.")
-    action(pf, right, -152, "Open the marker editor", 160, function()
+    heading(pf, x, -312, "Marker displays", "Make a boss's marker display: slots, layout, icon size and when it clears. Save it as a draft to try in a real pull, Test it in /say, and Export it to ship in the boss's file.")
+    action(pf, x, -332, "Open the marker editor", 160, function()
         CRT.MarkerEditor:Toggle()
     end)
 
     -- Season packs.
-    heading(pf, right, -192, "Season packs", "Which season packs load (the current season only, or all), and purging one season's saved boss data: Timeline pulls, reminders, phase triggers, pace plans and switches, and marker display settings. Tattlebot's history, the Late Tracker and raid notes are always kept.")
-    action(pf, right, -212, "Open season packs", 160, function()
+    heading(pf, right, -432, "Season packs", "Which season packs load (the current season only, or all), and purging one season's saved boss data: Timeline pulls, reminders, phase triggers, pace plans and switches, and marker display settings. Tattlebot's history, the Late Tracker and raid notes are always kept.")
+    action(pf, right, -452, "Open season packs", 160, function()
         CRT.SeasonTools:Toggle()
     end)
-    action(pf, right + 168, -212, "Boss order", 120, function()
+    action(pf, right + 168, -452, "Boss order", 120, function()
         CRT.BossOrder:Toggle()
     end)
     local loads = pf:CreateFontString(nil, "OVERLAY", "CRTFontDisableSmall")
-    loads:SetPoint("TOPLEFT", right, -240)
+    loads:SetPoint("TOPLEFT", right, -480)
     loads:SetWidth(250)
     loads:SetJustifyH("LEFT")
     loads.refresh = function()
