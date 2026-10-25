@@ -18,7 +18,9 @@ local ADDON, CRT = ...
 --   H|<version>|<addon version>|[A]|<spec>   with the sender's SpecializationID when the game gives one, e.g.
 --                                            "H|1|1.1.2||65" or "H|1|1.1.2|A|65" (kept in CRT.Groups' spec cache)
 -- A later minor version may add fields after these, which are skipped; a higher major version or another kind is
--- left alone. A CRT from before the spec field reads the same version, addon version and A from a hello with it. A, answer me, is sent by a CRT that knows nobody: on login, on a reload and on joining a raid group
+-- left alone. A CRT from before the spec field reads the same version, addon version and A from a hello with it.
+-- The spec goes only with the hellos below: a spec change sends none of its own.
+-- A, answer me, is sent by a CRT that knows nobody: on login, on a reload and on joining a raid group
 -- (joiners announce themselves; no other roster change sends a hello). Entering a raid instance sends a plain
 -- hello. Every CRT answers a hello with A, and a plain hello only from someone it doesn't know yet (a joiner, or
 -- someone heard again after going offline), so a run back after a wipe sends no answers. Answers are plain.
