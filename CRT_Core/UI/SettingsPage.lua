@@ -421,7 +421,7 @@ end
 local function buildLeft(pf)
     local x = LEFT_X
 
-    heading(pf, x, -44, "Window", "The theme button in the title bar picks the look. Window Scale applies when you let go or press Enter (Ctrl + mouse wheel over the window works too). Opacity fades the whole window, down to 30%.")
+    heading(pf, x, -44, "Window", "The theme button in the title bar picks the look. Window Scale applies when you let go or press Enter (Ctrl + mouse wheel over the window works too). Background opacity is how solid every window's background is: 100% is solid, lower lets the game show through, down to 30%. Text and buttons never fade. The raider loot popup always stays solid.")
     add(UI.Slider(pf, "Window scale", {
         min = UI.MIN_SCALE,
         max = UI.MAX_SCALE,
@@ -442,19 +442,20 @@ local function buildLeft(pf)
     resetScale:SetScript("OnClick", function()
         UI:SetScale(100)
     end)
-    add(UI.Slider(pf, "Opacity", {
-        min = 30,
-        max = 100,
+    -- every window's background, live (UI:ApplyOpacity)
+    add(UI.Slider(pf, "Background opacity", {
+        min = UI.MIN_OPACITY,
+        max = UI.MAX_OPACITY,
         step = 5,
         labelWidth = LABEL_W,
         width = CONTROL_W,
         format = percent,
         get = function()
-            return math.max(30, ui().bgAlpha or 100)
+            return math.floor(UI:Opacity() * 100 + 0.5)
         end,
         set = function(v)
             ui().bgAlpha = v
-            UI:ApplyStyle()
+            UI:ApplyOpacity()
         end,
     }), x, -120)
 
