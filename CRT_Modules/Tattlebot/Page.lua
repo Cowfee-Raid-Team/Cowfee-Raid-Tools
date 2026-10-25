@@ -1343,3 +1343,41 @@ CRT.TattlePage = {
         CRT.ConsumablesTools:ShowText("Tattlebot totals for Discord (Ctrl+C to copy)", totalsExport())
     end,
 }
+
+-- /crt tattle and its words (CRT_Core/Slash.lua's registry; a Raid Lead word, CRT_Core/Modules.lua)
+if CRT.Slash then
+    CRT.Slash:Register("tattle", {
+        module = "raidlead",
+        run = function(rest)
+            local TP = CRT.TattlePage
+            if rest == "" then
+                UI:Show("tattle")
+            elseif rest == "post" then
+                Tattle:PostLastPull()
+            elseif rest == "night" then
+                Tattle:PostNight()
+            elseif rest == "end" then
+                if Tattle:Current() then
+                    Tattle:EndNight("button")
+                    CRT:Print("Tattlebot night ended and saved to the history.")
+                else
+                    CRT:Print("No Tattlebot night is running.")
+                end
+            elseif rest == "scan text" then
+                TP.ScanText()
+            elseif rest == "scan" then
+                TP.Scan()
+            elseif rest == "export" then
+                TP.ExportTotals()
+            else
+                return false
+            end
+        end,
+        help = {
+            "[/crt tattle] - open the Tattlebot page",
+            "[/crt tattle post], [night], [end] - post the last pull or tonight's totals, or end the night",
+            "[/crt tattle scan] - pick spells to track from the last fight ([/crt tattle scan text] for the plain list)",
+            "[/crt tattle export] - the Tattlebot totals as text to paste into Discord",
+        },
+    })
+end

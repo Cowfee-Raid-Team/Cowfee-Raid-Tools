@@ -836,21 +836,30 @@ local function build(pf)
 end
 
 -- New loot goes into the list without rebuilding it; anything else rebuilds it when the page is open.
-Loot:OnChange(function(what, rec, month)
-    if not (page and list) then
-        return
-    end
-    if what == "added" then
-        local e = { rec = rec, month = month }
-        if passes(e) then
-            list.provider:InsertAtIndex(e, 1)
-            countText:SetText(string.format(TEXT.count, list.provider:GetSize()))
+-- Made once Loot is known to be on (CRT_Core/Modules.lua), so with Loot off nothing here runs on a change;
+-- straight away without the registry.
+local function hookChanges()
+    Loot:OnChange(function(what, rec, month)
+        if not (page and list) then
+            return
         end
-    elseif what == "changed" then
-        refreshVisible()
-    elseif page:IsVisible() then
-        rebuild()
-    end
-end)
+        if what == "added" then
+            local e = { rec = rec, month = month }
+            if passes(e) then
+                list.provider:InsertAtIndex(e, 1)
+                countText:SetText(string.format(TEXT.count, list.provider:GetSize()))
+            end
+        elseif what == "changed" then
+            refreshVisible()
+        elseif page:IsVisible() then
+            rebuild()
+        end
+    end)
+end
+if CRT.Modules then
+    CRT.Modules:OnInit("loot", hookChanges)
+else
+    hookChanges()
+end
 
 UI:RegisterPage("loot", TEXT.title, build)

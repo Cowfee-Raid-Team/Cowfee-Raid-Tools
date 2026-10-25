@@ -43,6 +43,9 @@ local defaults = {
     -- once on load (below) and kept.
     ui = { font = "default", outline = "", textSize = 100, bgAlpha = 90, layers = {}, soundChannel = "Master", hideRealms = false, modern = false, theme = "blizzard", tooltipMode = "spot", tooltipSpot = "auto" },
     lastPage = "groups",
+    -- The module switches (Modules.lua): modules[key] = false turns that module off after a /reload; a key
+    -- not saved is on. Per profile, and never in Export settings only (Profiles.lua).
+    modules = {},
     -- The minimap button (UI/Minimap.lua): angle is its place around the minimap, in degrees.
     minimap = { hide = false, angle = 225 },
     classCache = {},
@@ -756,6 +759,10 @@ frame:SetScript("OnEvent", function(self, event, arg1)
             end
         end
         CRT.db = CRTDB
+        -- the module switches, read once: an off module's pages, frames and hooks never start (Modules.lua)
+        if CRT.Modules then
+            CRT.Modules:Start()
+        end
         CRT:ApplyFonts()
         if seedCallout then
             CRT.SeedCalloutLook(CRTDB) -- the large font is at the text size now

@@ -55,6 +55,10 @@ local function sampleNight()
 end
 
 function Test:Toggle()
+    -- the Late Tracker is Raid Lead's (CRT_Core/Modules.lua): with it off there is no page to preview on
+    if not (CRT.Late and CRT.LatePage) or (CRT.Modules and not CRT.Modules:Check("raidlead")) then
+        return
+    end
     showing = not showing
     CRT.LatePage.Preview(showing and sampleNight() or nil)
     CRT:Print(showing and "Late Tracker: showing a sample night (nothing is saved). /crt dev late again goes back." or "Late Tracker: back to the real night.")

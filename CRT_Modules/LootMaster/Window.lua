@@ -410,19 +410,28 @@ local function refresh()
     list:SetDataProvider(CreateDataProvider(rows), ScrollBoxConstants and ScrollBoxConstants.RetainScrollPosition)
 end
 
-LM:OnChange(function(what)
-    if what == "started" then
-        build()
-        current = 1
-        wipe(selected)
-        refresh()
-        win:Show()
-    elseif what == "session" or what == "scores" then
-        refresh()
-    elseif what == "ended" and win then
-        win:Hide()
-    end
-end)
+-- Made once Loot is known to be on (CRT_Core/Modules.lua), so with Loot off nothing here runs on a change;
+-- straight away without the registry.
+local function hookChanges()
+    LM:OnChange(function(what)
+        if what == "started" then
+            build()
+            current = 1
+            wipe(selected)
+            refresh()
+            win:Show()
+        elseif what == "session" or what == "scores" then
+            refresh()
+        elseif what == "ended" and win then
+            win:Hide()
+        end
+    end)
+end
+if CRT.Modules then
+    CRT.Modules:OnInit("loot", hookChanges)
+else
+    hookChanges()
+end
 -- a new theme repaints the rows, the tabs and the answered count
 UI:OnTheme(refresh)
 

@@ -487,27 +487,34 @@ end
 -- During a raid night, tonight's list follows the active layout straight away: when another layout
 -- is made active, and when the active one is saved with changes (Raid Groups saves edits to the
 -- layout when Keep changes is ticked). Clocks and join times are kept.
-CRT.Groups:OnChange(function()
-    local night = ldb().current
-    if not night or not CRT.Groups:Active() then
-        return
-    end
-    local added, removed = Late:SyncLayout()
-    if added and added + removed > 0 then
-        CRT:Print(format("Tonight's late list follows %s: %d added, %d taken off. The clock keeps running.", night.layout or "the roster", added, removed))
-    end
-end)
-
 -- The group became a team raid (or stopped being one): a scheduled start waiting for it is checked at once.
-if CRT.Team and CRT.Team.OnChange then
-    CRT.Team:OnChange(function()
-        if CRT.db and not ldb().current then
-            Late:Tick()
+-- Both hooks are made only while Raid Lead is on (CRT_Core/Modules.lua); straight away without the registry.
+local function hookChanges()
+    CRT.Groups:OnChange(function()
+        local night = ldb().current
+        if not night or not CRT.Groups:Active() then
+            return
+        end
+        local added, removed = Late:SyncLayout()
+        if added and added + removed > 0 then
+            CRT:Print(format("Tonight's late list follows %s: %d added, %d taken off. The clock keeps running.", night.layout or "the roster", added, removed))
         end
     end)
+    if CRT.Team and CRT.Team.OnChange then
+        CRT.Team:OnChange(function()
+            if CRT.db and not ldb().current then
+                Late:Tick()
+            end
+        end)
+    end
+end
+if CRT.Modules then
+    CRT.Modules:OnInit("raidlead", hookChanges)
+else
+    hookChanges()
 end
 
-local driver = CreateFrame("Frame")
+local driver = CRT.Modules and CRT.Modules:Frame("raidlead") or CreateFrame("Frame") -- quiet while the module is off (CRT_Core/Modules.lua)
 driver:RegisterEvent("PLAYER_LOGIN")
 driver:RegisterEvent("GROUP_ROSTER_UPDATE")
 driver:SetScript("OnEvent", function(_, event)

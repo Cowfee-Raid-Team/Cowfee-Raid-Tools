@@ -52,6 +52,9 @@ Profiles.SHARE = {
     window = true, -- the main window's place and scale
     ui = true,
     lastPage = false, -- the open page
+    -- the module switches (Modules.lua) stay on this computer: a raid leader's settings would turn modules off
+    -- for everyone who imports them
+    modules = false,
     minimap = true,
     classCache = false,
     roleCache = false,

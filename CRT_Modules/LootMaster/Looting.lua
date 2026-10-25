@@ -75,6 +75,7 @@ local TEXT = {
     lead = "CRT Looting: off: %s.",
     cant = "CRT Looting: can't turn it on: %s.",
     notLead = "you are not the raid leader",
+    lootOff = "Loot is turned off",
 }
 
 -- Why the leader turned it off, as a raider reads it (F's <why>); anything else is just off.
@@ -151,8 +152,12 @@ local function enableInParty()
 end
 
 -- Whether you may lead CRT Looting wherever you are: the leader of your own raid (or party, with Enable
--- in party), not a finder group. Returns true, or false and the words why not.
+-- in party), not a finder group, with Loot turned on (CRT_Core/Modules.lua: off, your CRT still answers a
+-- leader's session as a raider, but never leads one). Returns true, or false and the words why not.
 local function canLead()
+    if CRT.Modules and not CRT.Modules:IsOn("loot") then
+        return false, TEXT.lootOff
+    end
     if not IsInGroup() then
         return false, AutoPass.WHY.nogroup
     end
@@ -531,6 +536,11 @@ end
 -- again, or "pending" when only the lead can't be read yet (a fresh login's group may not be known at the
 -- first loading screen) and final isn't set.
 local function resume(key, where, final)
+    -- Loot off (CRT_Core/Modules.lua): nothing comes back on and nothing waits for the group, and the saved Yes
+    -- is kept as it is, for a /reload with Loot on again tonight
+    if CRT.Modules and not CRT.Modules:IsOn("loot") then
+        return false
+    end
     local s = saved()
     if not s or s.on ~= true then
         return false

@@ -224,7 +224,7 @@ function Inspect:OnEvent(event, a1)
 end
 
 if CreateFrame then
-    local events = CreateFrame("Frame")
+    local events = CRT.Modules and CRT.Modules:Frame("raidlead") or CreateFrame("Frame") -- quiet while Raid Lead is off (CRT_Core/Modules.lua)
     events:RegisterEvent("INSPECT_READY")
     events:RegisterEvent("PLAYER_REGEN_DISABLED")
     events:RegisterEvent("PLAYER_REGEN_ENABLED")

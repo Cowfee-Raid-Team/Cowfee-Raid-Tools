@@ -483,3 +483,17 @@ local function build(pf)
 end
 
 UI:RegisterPage("pace", TEXT.title, build)
+
+-- /crt pace (CRT_Core/Slash.lua's registry; a Raid Lead word, CRT_Core/Modules.lua)
+if CRT.Slash then
+    CRT.Slash:Register("pace", {
+        module = "raidlead",
+        run = function(rest)
+            if rest ~= "" then
+                return false
+            end
+            UI:Show("pace")
+        end,
+        help = { "[/crt pace] - open the Pace page: where each boss's health should be" },
+    })
+end

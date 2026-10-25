@@ -175,6 +175,10 @@ CRT.Alerts = alertsStub
 GetTime = function() return 1000 end
 assert(load(rehSrc, "Rehearsal.lua"))("CowfeeRaidTools", CRT)
 assert(load(rehWinSrc, "RehearsalWindow.lua"))("CowfeeRaidTools", CRT)
+-- the /crt registry before Page.lua, as the .toc loads it, so Page.lua registers /crt timeline (tested below)
+SlashCmdList = {}
+strtrim = function(s) return (s:gsub("^%s+", ""):gsub("%s+$", "")) end
+assert(load(slashSrc, "CRT_Core/Slash.lua"))("CowfeeRaidTools", CRT)
 assert(load(pageSrc, "Page.lua"))("CowfeeRaidTools", CRT)
 local pf = mock()
 assert(pages.timeline, "page registered") print("ok page registered")
@@ -1412,12 +1416,9 @@ end
 print("ok rehearse greyed in combat")
 
 do
-  SlashCmdList = {}
-  strtrim = function(s) return (s:gsub("^%s+", ""):gsub("%s+$", "")) end
   local lines = {}
   local oldPrint = print
   CRT.version = "test"
-  assert(load(slashSrc, "CRT_Core/Slash.lua"))("CowfeeRaidTools", CRT)
   print = function(s) lines[#lines + 1] = s end
   SlashCmdList["COWFEERAIDTOOLS"]("help")
   print = oldPrint
