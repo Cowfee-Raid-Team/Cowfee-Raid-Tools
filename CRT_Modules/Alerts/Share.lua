@@ -235,7 +235,7 @@ local REMINDER_FIELDS = {
         return out
     end,
     speakAt = oneOf({ zero = true }),
-    -- the impact ticks as the Impact ticks box reads them: seconds after the cast, 0 or more, in order
+    -- the impact ticks as the Impact ticks box reads them: seconds into the bar, 0 or more, in order
     ticks = function(v, count)
         if type(v) ~= "table" then
             return nil

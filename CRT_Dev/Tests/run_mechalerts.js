@@ -1053,16 +1053,16 @@ check("mech: test with no Show from starts at its first show moment, a Linger st
   assert(#errors == 0, tostring(errors[1]))
 end)
 
--- Alex's Ravenous Feast (#1159): Show from 1 s, Linger 0, a bar with impact ticks 4.5 and 6.5 that fills up and ends
--- 1 s past the last impact. The test plays from the moment the bar shows to 5 s after it is done, and only around the
--- first cast; the bar shows Show from before the cast and runs 1 s past the last impact.
-check("mech: a ticked bar's test plays from its bar to 5 s after it", function()
+-- Alex's Ravenous Feast (#1159), on the bar model of #1171: Show from 8 s, Linger 0, a bar with impact ticks 4.5 and
+-- 6.5 s into it that fills up. The bar runs from Show from before the cast to the cast, ticks or not; the test plays
+-- from the moment it shows to 5 s after the cast and its Linger, and only around the first cast.
+check("mech: a ticked bar's test plays from its bar to 5 s after the cast", function()
   local f = fresh()
   dropdowns["Difficulty"].opts.set("nh") -- the Heroic timeline's times: 0:45 first
   local p = f.panel
   setCheck(f.rows[1].check, true)
   local _, id = only()
-  f.panel.showFrom.opts.set(1)
+  f.panel.showFrom.opts.set(8)
   sliders["Linger"].opts.set(0)
   setCheck(p.checks.bar, true)
   typeInto(p.ticksEdit, "4.5, 6.5")
@@ -1072,22 +1072,23 @@ check("mech: a ticked bar's test plays from its bar to 5 s after it", function()
   click(p.testBtn)
   CRT.TimelineRehearsalWindow = nil
   local c = opened[#opened]
-  assert(c and c.t == 44, "the moment the bar shows at 0:44: " .. tostring(c and c.t))
-  -- the bar ends at 0:52.5 (1 s past the last impact) and keeps the alert's half second (Linger 0), then 5 s
-  assert(c.opts.stopAt == 58, "5 s after the bar is done: " .. tostring(c.opts.stopAt))
+  assert(c and c.t == 37, "the moment the bar shows at 0:37: " .. tostring(c and c.t))
+  -- the bar ends at the cast (0:45) and keeps the alert's half second (Linger 0), then 5 s: no tail past the ticks
+  assert(c.opts.stopAt == 50.5, "5 s after the cast and its Linger: " .. tostring(c.opts.stopAt))
   local it = c.opts.alerts.extra[1]
-  assert(it.barStart == -1 and it.ticks[2] == 6.5 and it.fill == "up" and it.barTo == nil, "the bar from Show from before the cast to the last impact: " .. tostring(it.barStart))
-  -- a pull's items carry the same bar start
+  assert(it.barStart == -8 and it.barEnd == 0 and it.ticks[1] == -3.5 and it.ticks[2] == -1.5 and it.fill == "up" and it.barTo == nil,
+    "the bar from Show from before the cast to the cast, its ticks inside it: " .. tostring(it.barStart) .. " " .. tostring(it.barEnd))
+  -- a pull's items carry the same bar
   local items = R:Items(ENC, id, R:Get(ENC, id), "nh")
-  assert(items[1].barStart == -1, "a pull's bar too: " .. tostring(items[1].barStart))
-  -- Show from 20, Linger 5: 20 s before the cast, 11 s after the last impact (the bar's 1 s, its Linger, then 5 s)
+  assert(items[1].barStart == -8 and items[1].barEnd == 0, "a pull's bar too: " .. tostring(items[1].barStart))
+  -- Show from 20, Linger 5: 20 s before the cast, then the cast, its Linger and 5 s
   f.panel.showFrom.opts.set(20)
   sliders["Linger"].opts.set(5)
   mockWindow(true)
   click(p.testBtn)
   CRT.TimelineRehearsalWindow = nil
   c = opened[#opened]
-  assert(c and c.t == 25 and c.opts.stopAt == 62.5, "Show from 20, Linger 5: " .. tostring(c and c.t) .. " to " .. tostring(c and c.opts.stopAt))
+  assert(c and c.t == 25 and c.opts.stopAt == 55, "Show from 20, Linger 5: " .. tostring(c and c.t) .. " to " .. tostring(c and c.opts.stopAt))
   -- the quick test (no window): the same window, from now
   A:Stop(true)
   timers = {}
@@ -1096,7 +1097,7 @@ check("mech: a ticked bar's test plays from its bar to 5 s after it", function()
   assert(A:PhaseStart(1) == clock + 20 - 45, "20 s to the cast: " .. tostring(A:PhaseStart(1) - clock))
   local stop
   for _, t in ipairs(timers) do if t.delay > 5 then stop = t end end
-  assert(stop and stop.delay == 20 + 7.5 + 5 + 5, "ends 5 s after the bar and its Linger: " .. tostring(stop and stop.delay))
+  assert(stop and stop.delay == 20 + 5 + 5, "ends 5 s after the cast and its Linger: " .. tostring(stop and stop.delay))
   A:Stop(true)
   timers = {}
   f.panel.showFrom.opts.set(5)
@@ -1288,7 +1289,7 @@ check("speak at: Mech Alerts panel has it too", function()
 end)
 
 -- Impact ticks and Bar fill on any mechanic (CRT_Modules/Alerts/Draft.lua ParseTicks; the bars draw them,
--- CRT_Modules/Alerts/Bars.lua). Ticks are seconds after the cast, typed with commas.
+-- CRT_Modules/Alerts/Bars.lua). Ticks are seconds into the bar (from when it shows), typed with commas.
 check("mech ticks: the typed ticks parse", function()
   local D = CRT.AlertDraft
   local function list(t) local out = {} for i, v in ipairs(t) do out[i] = tostring(v) end return table.concat(out, ",") end
@@ -1297,7 +1298,7 @@ check("mech ticks: the typed ticks parse", function()
   t = D.ParseTicks("3.5,1.5 ,  2")
   assert(t and list(t) == "1.5,2,3.5", "put in order: " .. tostring(t and list(t)))
   t = D.ParseTicks("2, 2, 0")
-  assert(t and list(t) == "0,2", "the same tick once, 0 is at the cast: " .. tostring(t and list(t)))
+  assert(t and list(t) == "0,2", "the same tick once, 0 is where the bar starts: " .. tostring(t and list(t)))
   for _, empty in ipairs({ "", "   ", nil }) do
     local e, err = D.ParseTicks(empty)
     assert(e and #e == 0 and err == nil, "empty: no ticks, no problem")
@@ -1305,7 +1306,7 @@ check("mech ticks: the typed ticks parse", function()
   local bad, err = D.ParseTicks("1.5, soon")
   assert(bad == nil and type(err) == "string" and err:find("soon", 1, true), "a word: " .. tostring(err))
   bad, err = D.ParseTicks("-1, 2")
-  assert(bad == nil and err:find("-1", 1, true) and err:find("after the cast", 1, true), "below 0: " .. tostring(err))
+  assert(bad == nil and err:find("-1", 1, true) and err:find("into the bar", 1, true), "below 0: " .. tostring(err))
   bad, err = D.ParseTicks("1e3")
   assert(bad == nil and err, "only plain seconds")
   assert(D.TicksText({ 1.5, 3.5 }) == "1.5, 3.5" and D.TicksText(nil) == nil and D.TicksText({}) == nil, "back to text")
@@ -1316,15 +1317,17 @@ check("mech ticks: the rows follow Bar and the ticks", function()
   local p = f.panel
   setCheck(f.rows[1].check, true)
   assert(p.ticksEdit and p.ticksEdit.kind == "EditBox", "an Impact ticks box")
-  assert(p.ticksLabel.text == "Impact ticks" and p.ticksUnit.text == "s after the cast", "its words: " .. tostring(p.ticksUnit.text))
+  assert(p.ticksLabel.text == "Impact ticks" and p.ticksUnit.text == "s into the bar", "its words: " .. tostring(p.ticksUnit.text))
   assert(p.barFill and p.barFill.label == "Bar fill", "the Bar fill dropdown")
-  assert(p.barTo == nil and dropdowns["Bar ends"] == nil, "no Bar ends row: a ticked bar always runs 1 s past its last impact")
+  assert(p.barTo == nil and dropdowns["Bar ends"] == nil, "no Bar ends row: a ticked bar always ends at the cast")
   local function keys(row) local out = {} for i, o in ipairs(row.opts.options) do out[i] = o.key .. "=" .. o.label end return table.concat(out, ",") end
   assert(keys(p.barFill) == "up=Bar fills up,down=Bar empties", keys(p.barFill))
   local helped
   for _, h in ipairs(helps) do if h.helpTitle == "Impact ticks" then helped = h end end
   assert(helped and helped.helpText:find("thin line", 1, true) and helped.helpText:find("Only me", 1, true), "a (?) on the ticks")
-  assert(not helped.helpText:find("Bar ends", 1, true) and helped.helpText:find("1 s past the last", 1, true), "its (?) says where the bar ends: " .. helped.helpText)
+  assert(not helped.helpText:find("Bar ends", 1, true) and not helped.helpText:find("1 s past", 1, true)
+    and helped.helpText:find("Seconds after the bar appears when each hit lands. The bar runs from Show from to the cast; a tick past its end isn't shown.", 1, true),
+    "its (?) says ticks are in the bar, which ends at the cast: " .. helped.helpText)
   -- the rows under Bar fill moved up into the room Bar ends left: Also's first row as far under Bar fill as it
   -- was under Bar ends, and a save's problem as far under that
   local function y(fr) local pt = fr.pts[#fr.pts] return pt[#pt] end
@@ -1410,7 +1413,7 @@ check("mech ticks: a run and a Test carry them onto the items", function()
   local items = R:Items(ENC, id, r, R.GroupOf(r))
   assert(#items > 0, "items")
   for _, it in ipairs(items) do
-    assert(it.ticks and #it.ticks == 2 and it.ticks[2] == 3.5 and it.fill == "up" and it.barTo == nil, "each item has them")
+    assert(it.ticks and #it.ticks == 2 and it.ticks[2] == -1.5 and it.fill == "up" and it.barTo == nil, "each item has them, as seconds from the cast")
   end
   assert(items[1].ticks ~= items[2].ticks and items[1].ticks ~= r.ticks, "each its own copy")
   -- a pull of the boss
@@ -1418,7 +1421,7 @@ check("mech ticks: a run and a Test carry them onto the items", function()
   local got
   for _, it in ipairs(A.items) do if it.id == "mine:" .. id .. ":1" then got = it end end
   A:Stop(true)
-  assert(got and got.ticks and got.ticks[1] == 1.5 and got.fill == "up" and got.barTo == nil, "the run's item")
+  assert(got and got.ticks and got.ticks[1] == -3.5 and got.fill == "up" and got.barTo == nil, "the run's item")
   -- the panel's Test (a quick test, no Rehearsal window)
   click(p.testBtn)
   assert(A.running and A.run.reason == "test", "a test run")
@@ -1429,8 +1432,62 @@ check("mech ticks: a run and a Test carry them onto the items", function()
   assert(#errors == 0, tostring(errors[1]))
 end)
 
+-- #1171: ticks are seconds into the bar, which runs from Show from before the cast to the cast whatever the ticks.
+-- A tick at or past the bar's end (or under 0) is not drawn and never moves the bar; the panel says so under the
+-- box, the reminder still saves, and a longer Show from can make it fit.
+check("mech ticks: inside a bar that ends at the cast, never extending it", function()
+  local f = fresh()
+  local p = f.panel
+  setCheck(f.rows[1].check, true)
+  local _, id = only()
+  p.showFrom.opts.set(5)
+  typeInto(p.ticksEdit, "2, 4")
+  p.ticksEdit.OnEnterPressed(p.ticksEdit)
+  local r = R:Get(ENC, id)
+  assert(r.ticks and r.ticks[1] == 2 and r.ticks[2] == 4, "saved as typed: seconds into the bar")
+  local it = R:Items(ENC, id, r, R.GroupOf(r))[1]
+  assert(it.barStart == -5 and it.barEnd == 0, "from 5 s before the cast to the cast: " .. tostring(it.barStart) .. " " .. tostring(it.barEnd))
+  assert(#it.ticks == 2 and it.ticks[1] == -3 and it.ticks[2] == -1, "2 and 4 s in: 3 and 1 s before the cast")
+  assert(p.message.text == "", "both fit: no message")
+  -- 6 is past the 5 s bar: not drawn, said under the box, still saved
+  typeInto(p.ticksEdit, "2, 6")
+  p.ticksEdit.OnEnterPressed(p.ticksEdit)
+  r = R:Get(ENC, id)
+  assert(r.ticks and #r.ticks == 2 and r.ticks[2] == 6, "the tick past the bar still saves")
+  it = R:Items(ENC, id, r, R.GroupOf(r))[1]
+  assert(it.barStart == -5 and it.barEnd == 0 and #it.ticks == 1 and it.ticks[1] == -3, "only the 2 s tick, the bar unchanged")
+  assert(p.message.text:find("6 is past the 5 s bar and won't show", 1, true), "said under the box: " .. tostring(p.message.text))
+  -- 5 is the bar's end: not drawn either
+  typeInto(p.ticksEdit, "2, 5")
+  p.ticksEdit.OnEnterPressed(p.ticksEdit)
+  it = R:Items(ENC, id, R:Get(ENC, id), R.GroupOf(r))[1]
+  assert(#it.ticks == 1 and p.message.text:find("5 is past the 5 s bar", 1, true), "a tick on the end isn't drawn: " .. tostring(p.message.text))
+  -- every tick past the bar: a plain bar, as with no ticks
+  typeInto(p.ticksEdit, "6, 7")
+  p.ticksEdit.OnEnterPressed(p.ticksEdit)
+  it = R:Items(ENC, id, R:Get(ENC, id), R.GroupOf(r))[1]
+  assert(it.ticks == nil and it.barStart == nil and it.barEnd == nil, "nothing drawn: a plain bar")
+  assert(p.message.text:find("6, 7 are past the 5 s bar and won't show", 1, true), "both named: " .. tostring(p.message.text))
+  -- Show from 8: 6 fits, and the message goes
+  typeInto(p.ticksEdit, "2, 6")
+  p.ticksEdit.OnEnterPressed(p.ticksEdit)
+  p.showFrom.opts.set(8)
+  r = R:Get(ENC, id)
+  it = R:Items(ENC, id, r, R.GroupOf(r))[1]
+  assert(it.barStart == -8 and it.barEnd == 0 and #it.ticks == 2 and it.ticks[1] == -6 and it.ticks[2] == -2, "2 and 6 s into an 8 s bar")
+  assert(p.message.text == "", "the message goes: " .. tostring(p.message.text))
+  -- back to 5: said again
+  p.showFrom.opts.set(5)
+  assert(p.message.text:find("6 is past the 5 s bar", 1, true), "Show from re-checks: " .. tostring(p.message.text))
+  -- Bar off: no bar, nothing to say
+  setCheck(p.checks.bar, false)
+  assert(p.message.text == "", "no bar, no message: " .. tostring(p.message.text))
+  setCheck(p.checks.bar, true)
+  assert(#errors == 0, tostring(errors[1]))
+end)
+
 -- A reminder saved with the old Bar ends At the cast (barTo = "cast") keeps the field, but it is ignored: its items
--- run to 1 s past the last impact, so its ticks show; a save from the panel leaves the field as it was.
+-- have their ticks inside the bar, as every reminder's; a save from the panel leaves the field as it was.
 check("mech ticks: an old At the cast reminder now shows its ticks", function()
   local f = fresh()
   local p = f.panel

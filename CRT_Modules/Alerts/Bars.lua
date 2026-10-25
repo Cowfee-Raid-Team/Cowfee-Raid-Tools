@@ -17,11 +17,12 @@ local ADDON, CRT = ...
 -- Impact ticks: any line may carry ticks = { s, ... }, seconds after its cast (the line's `at`) when each impact
 -- lands. Each is a thin line on the bar in the theme's text colour, placed on the fill's time scale, so the fill
 -- reaches it as that impact lands; one already passed fades. A tick at either end is drawn TICK_INSET inside the
--- bar, so it shows. A bar with ticks runs TICK_TAIL past the last one, so every tick sits inside it; a special
--- alert's barTo = "cast" (a boss file's choice) ends it at the cast instead.
+-- bar, so it shows. A special alert's bar with ticks only (barTo "last") runs TICK_TAIL past the last one, so every
+-- tick sits inside it; its barTo = "cast" (a boss file's choice) ends it at the cast instead.
 -- barEnd (seconds after the cast) ends it there instead, and barStart (seconds after the cast) is when the
--- bar appears: its fill then runs over barEnd - barStart, not over `ahead` (a special alert's bar = { start,
--- length, ticks }, Alerts/Special.lua; a reminder's bar with ticks starts at its Show from, Alerts/Reminders.lua).
+-- bar appears: its fill then runs over barEnd - barStart, not over `ahead`: a bar of its own (a special alert's
+-- bar = { start, length, ticks }, Alerts/Special.lua; a reminder's bar with ticks, from its Show from to the cast,
+-- Alerts/Reminders.lua BarTicks). Ticks never move a bar of its own: one off it is not drawn.
 -- A bar with ticks counts its seconds to the next impact on it (0 as it lands), then to its end, and one that starts
 -- before its cast draws a faint cast line there, so it reads: the cast, then the impacts.
 -- Only the bars read these; the callout, speech and the other areas keep the cast's time.

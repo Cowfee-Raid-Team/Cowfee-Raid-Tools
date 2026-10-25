@@ -56,8 +56,8 @@ local TEXT = {
     timeline = "Alert timeline",
     -- under Show as, for the bar: greyed while Bar is off
     ticks = "Impact ticks",
-    ticksUnit = "s after the cast",
-    ticksHelp = "Each number is a thin line on the bar where that hit lands, in seconds after the cast, such as 1.5, 3.5. The fill reaches each line as its hit lands. Leave it empty for no ticks.\n\nWith ticks, the bar shows from Show from before the cast, a faint line marks the cast, and the seconds count to the next hit.\n\nThe bar ends 1 s past the last line, so every line sits inside it. With no ticks, it ends at the cast.\n\nThese are for Only me alerts. A raid note line can't carry them.",
+    ticksUnit = "s into the bar",
+    ticksHelp = "Seconds after the bar appears when each hit lands. The bar runs from Show from to the cast; a tick past its end isn't shown.\n\nEach number is a thin line on the bar, such as 2, 4, and the fill reaches it as its hit lands. With ticks, the seconds count to the next hit, then to the cast. Leave it empty for no ticks.\n\nThese are for Only me alerts. A raid note line can't carry them.",
     barFill = "Bar fill",
     fillUp = "Bar fills up",
     fillDown = "Bar empties",
@@ -693,7 +693,9 @@ local function drawPanel()
     if own then
         setBox(panel.timesEdit, d.keptTimes)
     end
-    panel.message:SetText(notice and UI.BadText(notice) or "")
+    -- a save's problem, else ticks past the bar (they still save: a longer Show from can fit them)
+    local say = notice or CRT.AlertDraft.TicksPast(d)
+    panel.message:SetText(say and UI.BadText(say) or "")
 end
 
 local saveTyped
@@ -1316,9 +1318,9 @@ local function backdrop(f, alpha)
     end
 end
 
--- Under Show as, the bar's rows: Impact ticks (seconds after the cast, typed: saved after a pause, as the other
--- boxes) and Bar fill. Both grey out while Bar is off (drawBarRows); what they hold stays saved. A bar with ticks
--- always runs 1 s past the last one (Alerts/Bars.lua). `row` adds a dropdown to the rows drawPanel refreshes. Its own function: buildPanel is
+-- Under Show as, the bar's rows: Impact ticks (seconds into the bar, typed: saved after a pause, as the other
+-- boxes) and Bar fill. Both grey out while Bar is off (drawBarRows); what they hold stays saved. The bar runs from
+-- Show from to the cast, ticks or not; a tick past it is said on the message line (Draft.TicksPast). `row` adds a dropdown to the rows drawPanel refreshes. Its own function: buildPanel is
 -- near Lua 5.1's 60 upvalue limit.
 local function buildBarRows(p, row)
     local Draft = CRT.AlertDraft
