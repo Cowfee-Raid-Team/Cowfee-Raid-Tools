@@ -172,6 +172,41 @@ d = T:Pulls(3001)[1].deaths
 assert(#d == 2 and d[1].spellID == 333 and d[2].spellID == 0 and d[2].role == "NONE", "killing blow fallback")
 print("ok killing blow fallback")
 
+-- deaths keep the spec at the fight: the spec of the meter's spec icon, else your own spec live, else the spec
+-- cache (CRT.Groups); the icon itself is kept too. Deaths saved before have neither.
+reset()
+local cache = { Healy = 65, Mage = 62, Me = 70 }
+CRT.Groups = { CachedSpec = function(n) return cache[n] end, PlayerSpecID = function() return 256 end,
+  SpecOfIcon = function(icon) return ({ [135873] = 70, [135940] = 256 })[icon] end }
+H("ENCOUNTER_START", 3001, "Boss", 16, 20)
+sources = {
+  { name = "Healy", classFilename = "PALADIN", deathRecapID = 1, deathTimeSeconds = 10, sourceGUID = "G5", specIconID = 135873 },
+  { name = "Mage", classFilename = "MAGE", deathRecapID = 2, deathTimeSeconds = 11, sourceGUID = "G2", specIconID = 0 },
+  { name = "Me", classFilename = "PRIEST", deathRecapID = 3, deathTimeSeconds = 12, sourceGUID = "G6", specIconID = 0, isLocalPlayer = true },
+  { name = "Odd", classFilename = "ROGUE", deathRecapID = 4, deathTimeSeconds = 13, sourceGUID = "G7", specIconID = 999 },
+  { name = "Shh", classFilename = "ROGUE", deathRecapID = 5, deathTimeSeconds = 14, sourceGUID = "G8", specIconID = SECRET },
+  { name = SECRET, classFilename = "ROGUE", deathRecapID = 6, deathTimeSeconds = 15, sourceGUID = "G9" },
+}
+clock = 160; H("ENCOUNTER_END", 3001, "Boss", 16, 20, 0)
+runTimers()
+local by = {}
+for _, x in ipairs(T:Pulls(3001)[1].deaths) do by[x.name or "?"] = x end
+assert(by.Healy.spec == 70 and by.Healy.specIcon == 135873, "spec: the meter's icon wins over an older cached spec")
+assert(by.Mage.spec == 62 and by.Mage.specIcon == nil, "spec: no icon, the cached spec")
+assert(by.Me.spec == 256, "spec: your own spec read live, over the cache")
+assert(by.Odd.spec == nil and by.Odd.specIcon == 999, "spec: an icon of no known spec is kept, with no spec")
+assert(by.Shh.spec == nil and by.Shh.specIcon == nil, "spec: a secret icon is left out")
+assert(by["?"].spec == nil, "spec: a secret name gets none from the cache")
+CRT.Groups = nil
+reset()
+H("ENCOUNTER_START", 3001, "Boss", 16, 20)
+sources = { { name = "Mage", classFilename = "MAGE", deathRecapID = 7, deathTimeSeconds = 42, sourceGUID = "G2", specIconID = 135940 } }
+clock = 160; H("ENCOUNTER_END", 3001, "Boss", 16, 20, 0)
+runTimers()
+d = T:Pulls(3001)[1].deaths
+assert(#d == 1 and d[1].spec == nil and d[1].specIcon == 135940, "spec: no spec cache loaded, the icon alone")
+print("ok deaths keep the spec at the fight")
+
 -- deaths: secret after retries saves pull
 reset()
 H("ENCOUNTER_START", 3001, "Boss", 16, 20)

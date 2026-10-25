@@ -14,9 +14,13 @@ local ADDON, CRT = ...
 -- resets when you leave the group.
 --
 -- The hello, under the prefix CRTHello, to and heard on the RAID channel only:
---   H|<version>|<addon version>[|A]   e.g. "H|1|1.1.2" or "H|1|1.1.2|A"
+--   H|<version>|<addon version>[|A]          e.g. "H|1|1.1.2" or "H|1|1.1.2|A"
+--   H|<version>|<addon version>|[A]|<spec>   with the sender's SpecializationID when the game gives one, e.g.
+--                                            "H|1|1.1.2||65" or "H|1|1.1.2|A|65" (kept in CRT.Groups' spec cache)
 -- A later minor version may add fields after these, which are skipped; a higher major version or another kind is
--- left alone. A, answer me, is sent by a CRT that knows nobody: on login, on a reload and on joining a raid group
+-- left alone. A CRT from before the spec field reads the same version, addon version and A from a hello with it.
+-- The spec goes only with the hellos below: a spec change sends none of its own.
+-- A, answer me, is sent by a CRT that knows nobody: on login, on a reload and on joining a raid group
 -- (joiners announce themselves; no other roster change sends a hello). Entering a raid instance sends a plain
 -- hello. Every CRT answers a hello with A, and a plain hello only from someone it doesn't know yet (a joiner, or
 -- someone heard again after going offline), so a run back after a wipe sends no answers. Answers are plain.
@@ -318,15 +322,30 @@ end
 
 -- The message ----------------------------------------------------------------------------------------------------
 
+-- Your spec for the hello: CRT.Groups' reader (CRT_Modules/Groups/Data.lua), nil when the game gives none.
+local function mySpec()
+    local Groups = CRT.Groups
+    if not (Groups and Groups.PlayerSpecID) then
+        return nil
+    end
+    local ok, spec = pcall(Groups.PlayerSpecID)
+    return ok and type(spec) == "number" and spec or nil
+end
+
 -- ask adds the answer-me field, "H|1|1.1.2|A": sent on login, reload and joining a raid group, when this CRT
--- knows nobody. A CRT from before the field skips it (a later field of the same version).
+-- knows nobody. Your spec follows as one more field when the game gives it, "H|1|1.1.2||65" or "H|1|1.1.2|A|65",
+-- for the Timeline's death icons. A CRT from before either field skips them (later fields of the same version).
 function Team.Encode(ask)
     local version = tostring(CRT.version or "dev"):gsub("[|%c]", ""):sub(1, Team.MAX_VERSION_TEXT)
+    local spec = mySpec()
+    if spec then
+        return "H|" .. Team.VERSION .. "|" .. version .. "|" .. (ask and "A" or "") .. "|" .. string.format("%d", spec)
+    end
     return "H|" .. Team.VERSION .. "|" .. version .. (ask and "|A" or "")
 end
 
--- The message's version, addon version and whether it asks for answers, or nil for anything that isn't a hello
--- this CRT reads.
+-- The message's version, addon version, whether it asks for answers and the sender's spec (nil when it has
+-- none), or nil for anything that isn't a hello this CRT reads.
 function Team.Decode(text)
     if not readable(text) or type(text) ~= "string" or #text > 255 then
         return nil
@@ -339,7 +358,12 @@ function Team.Decode(text)
     if rest ~= "" and rest:sub(1, 1) ~= "|" then
         return nil
     end
-    return version, addon, rest:match("^|([^|]*)") == "A"
+    local flag = rest:match("^|([^|]*)")
+    local spec = tonumber(rest:match("^|[^|]*|(%d+)$") or rest:match("^|[^|]*|(%d+)|"))
+    if spec and spec <= 0 then
+        spec = nil
+    end
+    return version, addon, flag == "A", spec
 end
 
 -- Sending --------------------------------------------------------------------------------------------------------
@@ -440,7 +464,7 @@ function Team:Hear(sender, text)
     if not Team.InRaidGroup() then
         return false
     end
-    local version, _, ask = Team.Decode(text)
+    local version, _, ask, spec = Team.Decode(text)
     if not version then
         return false
     end
@@ -453,6 +477,11 @@ function Team:Hear(sender, text)
         if members[key] == nil then
             return false
         end
+    end
+    -- the sender's spec, for the Timeline's death icons (the sender's name is readable: Key read it)
+    local Groups = CRT.Groups
+    if spec and Groups and Groups.CacheSpec then
+        pcall(Groups.CacheSpec, sender, spec)
     end
     local known = heard[key]
     heard[key] = true

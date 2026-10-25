@@ -1,7 +1,7 @@
 local ADDON, CRT = ...
 
 -- Profiles. A profile is a full copy of the addon's saved data: every setting, plus the raid layouts,
--- notes, consumables lists, and the Late Tracker and Tattlebot history. The class and role caches, and the
+-- notes, consumables lists, and the Late Tracker and Tattlebot history. The class, role and spec caches, and the
 -- list of macros the addon made (Macros.lua: the game's macro list is the account's), are shared by every profile.
 --
 -- The active profile lives at the top of CRTDB, under the same keys as before profiles existed, so no
@@ -20,7 +20,7 @@ CRT.Profiles = Profiles
 
 local DEFAULT = "Default"
 -- whatsNew: the installed addon version is the account's, so What's new shows once whatever the profile
-local SHARED = { classCache = true, roleCache = true, macros = true, whatsNew = true }
+local SHARED = { classCache = true, roleCache = true, specCache = true, macros = true, whatsNew = true }
 local EXPORT_PREFIX = "CRTP1:"
 local SHARE_PREFIX = "CRTS1:"
 local SHARE_VERSION = 1
@@ -54,6 +54,7 @@ Profiles.SHARE = {
     minimap = true,
     classCache = false,
     roleCache = false,
+    specCache = false,
     macros = false, -- the macros the addon made in this account's macro list
     groups = { presets = false, nextId = false, working = false, keepChanges = true, source = true, roles = false }, -- roles: guild roster data
     consumables = { enabled = true, notStarter = true, lowMinutes = true, categoryOrder = true, itemOrder = true, extra = false, learned = false, position = true },

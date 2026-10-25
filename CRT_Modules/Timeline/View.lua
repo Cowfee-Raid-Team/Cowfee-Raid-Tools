@@ -73,6 +73,16 @@ local TAG_SIZE = 14 -- the Journal's icons at the right of a row's name (Referen
 local MAX_TAGS = 4
 local TICK_W, TICK_H = 3, 10 -- one cast of an overlaid pull
 local SKULL = "Interface\\TargetingFrame\\UI-TargetingFrame-Skull"
+-- A death's round icon (View.DeathLook): a ring in its class colour around the face, masked round. The class
+-- icons are the game's round ones (Blizzard_SharedXML/PortraitFrame.lua's SetPortraitToClassIcon: this file
+-- with CLASS_ICON_TCOORDS from SharedConstants.lua); a spec icon is cut in a little so its square frame
+-- doesn't show at the edge. One table, to spare the file's locals.
+local DEATH_ICON = {
+    classes = "Interface\\TargetingFrame\\UI-Classes-Circles",
+    ring = 2, -- pixels of class colour around the face
+    crop = { 0.08, 0.92, 0.08, 0.92 },
+    full = { 0, 1, 0, 1 },
+}
 local UNNAMED_ICON = "Interface\\Icons\\INV_Misc_QuestionMark"
 local NOTES_ICON = "Interface\\Icons\\INV_Misc_Note_01"
 local PERSONAL_ICON = "Interface\\Icons\\INV_Misc_Note_02"
@@ -351,7 +361,7 @@ local function iconEnter(b)
         for _, d in ipairs(stacked) do
             local killer = spellName(d.spellID)
             local r, g, bl = CRT.Groups.ClassColor(d.name, d.class)
-            GameTooltip:AddDoubleLine(d.name or "Unknown", View.Format(d.t) .. ", " .. (killer and ("Killed by " .. killer) or "Killing blow unknown"),
+            GameTooltip:AddDoubleLine(View.DeathName(d), View.Format(d.t) .. ", " .. (killer and ("Killed by " .. killer) or "Killing blow unknown"),
                 r, g, bl, 0.85, 0.85, 0.85)
         end
         if (mark.overlay or settings().overlayOn) and mark.pull and mark.pull.id then
@@ -360,6 +370,10 @@ local function iconEnter(b)
     elseif mark.death then
         local d = mark.death
         GameTooltip:SetText(d.name or "Unknown", CRT.Groups.ClassColor(d.name, d.class))
+        local who = View.DeathWho(d) -- "Holy Paladin", or the class alone
+        if who then
+            GameTooltip:AddLine(who, CRT.Groups.ClassColor(d.name, d.class))
+        end
         GameTooltip:AddLine(type(d.t) == "number" and ("Died at " .. View.Format(d.t)) or "time unknown", 1, 1, 1)
         local killer = spellName(d.spellID)
         GameTooltip:AddLine(killer and ("Killed by " .. killer) or "Killing blow unknown", 0.85, 0.85, 0.85)
@@ -398,6 +412,113 @@ local function className(word)
         end
     end
     return names[word:lower()] or word
+end
+
+-- Death icons ----------------------------------------------------------------------------------------------
+
+-- A saved spec's name, icon and localized class name (CRT.Groups.SpecInfo), or nil.
+local function specOf(d)
+    local Groups = CRT.Groups
+    if not (d and type(d.spec) == "number" and Groups and Groups.SpecInfo) then
+        return nil
+    end
+    local ok, name, icon, _, class = pcall(Groups.SpecInfo, d.spec)
+    if ok then
+        return name, icon, class
+    end
+    return nil
+end
+
+-- How a death mark is drawn: { texture, coords (nil for the whole texture), skull (true for the skull), ring =
+-- { r, g, b } }. One death: the icon of the spec it saved, else the meter's spec icon it saved, else its class's
+-- round icon, else the skull, in a ring of its class colour. Several sharing one mark: the skull in the death red.
+-- Only what the death saved: a player may have changed spec since, so the spec cache is not asked here.
+function View.DeathLook(mark)
+    local d = mark and mark.death
+    if not d or (mark.deaths and #mark.deaths > 1) then
+        return { texture = SKULL, skull = true, ring = { DEATH_RED[1], DEATH_RED[2], DEATH_RED[3] } }
+    end
+    local r, g, b = CRT.Groups.ClassColor(d.name, d.class)
+    local look = { ring = { r, g, b } }
+    local _, icon = specOf(d)
+    icon = icon or d.specIcon
+    local coords = type(CLASS_ICON_TCOORDS) == "table" and type(d.class) == "string" and CLASS_ICON_TCOORDS[d.class:upper()]
+    if icon then
+        look.texture = icon
+    elseif type(coords) == "table" and #coords == 4 then
+        look.texture, look.coords = DEATH_ICON.classes, coords
+    else
+        look.texture, look.skull = SKULL, true
+    end
+    return look
+end
+
+-- "Holy Paladin" for a death that saved its spec, "Paladin" for one with only its class, else nil.
+function View.DeathWho(d)
+    local spec, _, class = specOf(d)
+    if not class and type(d.class) == "string" then
+        local name = className(d.class)
+        class = name ~= d.class and name or nil
+    end
+    if spec and class then
+        return spec .. " " .. class
+    end
+    return spec or class
+end
+
+-- A death's name in a stack's tooltip, with its saved spec: "Healy (Holy)".
+function View.DeathName(d)
+    local spec = specOf(d)
+    local name = d.name or "Unknown"
+    return spec and (name .. " (" .. spec .. ")") or name
+end
+
+-- An icon button's round parts for a death, hidden until one is drawn: the ring, a dark disc and the face,
+-- masked round with the game's circle mask (Texture:AddMaskTexture with a MaskTexture of TempPortraitAlphaMask,
+-- as Blizzard's own CircleMask templates do). Made once with the button.
+function View.MakeDeathParts(b)
+    b.ring = b:CreateTexture(nil, "BACKGROUND", nil, 1)
+    b.ring:SetAllPoints()
+    b.ring:SetTexture(DOT)
+    b.disc = b:CreateTexture(nil, "BORDER")
+    b.disc:SetPoint("TOPLEFT", DEATH_ICON.ring, -DEATH_ICON.ring)
+    b.disc:SetPoint("BOTTOMRIGHT", -DEATH_ICON.ring, DEATH_ICON.ring)
+    b.disc:SetTexture(DOT)
+    b.disc:SetVertexColor(0, 0, 0)
+    b.face = b:CreateTexture(nil, "ARTWORK", nil, 1)
+    b.face:SetAllPoints(b.disc)
+    local mask = b.CreateMaskTexture and b:CreateMaskTexture()
+    if mask and b.face.AddMaskTexture then
+        mask:SetTexture(DOT, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+        mask:SetAllPoints(b.face)
+        b.face:AddMaskTexture(mask)
+    end
+    b.ring:Hide()
+    b.disc:Hide()
+    b.face:Hide()
+end
+
+-- Draws a death mark on an icon button (View.DeathLook), the square parts hidden.
+function View.DrawDeath(b, mark)
+    local look = View.DeathLook(mark)
+    b.bg:Hide()
+    b.tex:Hide()
+    b.ring:SetVertexColor(look.ring[1], look.ring[2], look.ring[3])
+    b.face:SetTexture(look.texture)
+    local c = look.coords or (look.skull and DEATH_ICON.full) or DEATH_ICON.crop
+    b.face:SetTexCoord(c[1], c[2], c[3], c[4])
+    b.ring:Show()
+    b.disc:Show()
+    b.face:Show()
+end
+
+-- Back to the square look of a boss cast on a button that drew a death before.
+function View.DrawSquare(b)
+    b.ring:Hide()
+    b.disc:Hide()
+    b.face:Hide()
+    b.bg:Show()
+    b.tex:Show()
 end
 
 -- A marker: the alert's text, who it is for, its phase and time, and where it is saved.
@@ -1240,6 +1361,7 @@ function Methods:Icon(n)
         b.tex = b:CreateTexture(nil, "ARTWORK")
         b.tex:SetPoint("TOPLEFT", 1, -1)
         b.tex:SetPoint("BOTTOMRIGHT", -1, 1)
+        View.MakeDeathParts(b) -- a death's round look, in place of bg and tex
         -- how many deaths share the icon (View.StackDeaths), at its bottom right; empty for one
         b.count = b:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
         b.count:SetPoint("BOTTOMRIGHT", 1, -1)
@@ -4267,15 +4389,11 @@ function Methods:Refresh(relayout)
             local several = mark.deaths and #mark.deaths > 1
             b.count:SetText(several and tostring(#mark.deaths) or "")
             if mark.death then
-                b.tex:SetTexture(SKULL)
-                -- several deaths have no one class: the neutral death red, with their count
-                if lane.class or several then
-                    b.bg:SetColorTexture(DEATH_RED[1], DEATH_RED[2], DEATH_RED[3])
-                else
-                    local r, g, bl = CRT.Groups.ClassColor(mark.death.name, mark.death.class)
-                    b.bg:SetColorTexture(r, g, bl)
-                end
+                -- round: the spec or class icon in its class colour; several deaths have no one class, so the
+                -- skull in the neutral death red, with their count
+                View.DrawDeath(b, mark)
             else
+                View.DrawSquare(b)
                 local icon = mark.icon or lane.icon
                 if lane.kind == "spell" and not icon then
                     local ok, tex = pcall(C_Spell.GetSpellTexture, mark.spellID)

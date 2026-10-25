@@ -881,6 +881,38 @@ local function killingBlow(recapID, sourceGUID)
     return 0
 end
 
+-- A dead player's spec at the fight and the meter's spec icon (a file ID, 0 for none, so nil): the spec of
+-- that icon, else your own spec read live, else the last spec the spec cache saw for the name (CRT.Groups:
+-- a hello, an inspect). Nil for what isn't known. The meter's source has specIconID and isLocalPlayer
+-- (Gethe live DamageMeterDocumentation.lua, both NeverSecret; Blizzard_DamageMeter draws specIconID as the
+-- row's icon), still checked.
+local function deathSpec(src, name)
+    local icon = src.specIconID
+    if not (readable(icon) and type(icon) == "number" and icon > 0) then
+        icon = nil
+    end
+    local Groups = CRT.Groups
+    if not Groups then
+        return nil, icon
+    end
+    local function ask(fn, ...)
+        if type(fn) ~= "function" then
+            return nil
+        end
+        local ok, v = pcall(fn, ...)
+        return ok and readable(v) and type(v) == "number" and v > 0 and v or nil
+    end
+    local spec = icon and ask(Groups.SpecOfIcon, icon)
+    local mine = src.isLocalPlayer
+    if not spec and readable(mine) and mine == true then
+        spec = ask(Groups.PlayerSpecID)
+    end
+    if not spec and name then
+        spec = ask(Groups.CachedSpec, name)
+    end
+    return spec, icon
+end
+
 -- The deaths in the meter's current session. The second return is true when a name or a time was
 -- still secret.
 local function readDeaths()
@@ -913,6 +945,7 @@ local function readDeaths()
             local guid = src.sourceGUID
             local role = readable(guid) and guid and byGuid[guid]
             death.role = role or (death.name and byName[death.name]) or "NONE"
+            death.spec, death.specIcon = deathSpec(src, death.name)
             death.spellID = killingBlow(recapID, guid)
             deaths[#deaths + 1] = death
         end

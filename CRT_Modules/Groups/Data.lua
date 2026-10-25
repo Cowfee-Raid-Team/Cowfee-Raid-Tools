@@ -113,6 +113,140 @@ local function cacheRole(key, role)
     end
 end
 
+-- Specs ------------------------------------------------------------------
+-- The last spec seen for each name: CRTDB.specCache[key in lower case] = SpecializationID, so a death can be
+-- drawn with its spec's icon. Fed by your own spec (Groups.PlayerSpecID), the Gear Checker's inspects
+-- (GearChecker/Inspect.lua) and CRT's hello (CRT_Core/Team.lua). Shared by every profile, like the class cache,
+-- and left out of Export settings (guild roster data).
+-- Game calls (Gethe wow-ui-source live, read 2026-10-25): C_SpecializationInfo.GetSpecialization() -> index and
+-- GetSpecializationInfo(index) -> specID (globals as fallback); GetSpecializationInfoByID(specID) -> id, name,
+-- description, icon, role, classFile, className (Blizzard_SharedXML/UnitUtil.lua uses it); GetNumClasses,
+-- C_SpecializationInfo.GetNumSpecializationsForClassID(classID) (the global is its deprecated alias);
+-- GetSpecializationInfoForClassID(classID, index) -> id, name, description, icon. Each in pcall, secrets left out.
+
+local function readable(v)
+    if issecretvalue then
+        local ok, secret = pcall(issecretvalue, v)
+        if not ok or secret then
+            return false
+        end
+    end
+    return true
+end
+
+-- A SpecializationID as the game gives one (a whole number above 0), else nil.
+local function specID(v)
+    if not readable(v) or type(v) ~= "number" or v <= 0 or v ~= math.floor(v) or v >= 100000 then
+        return nil
+    end
+    return v
+end
+Groups.ValidSpec = specID
+
+local function specCache()
+    local db = CRT.db
+    if not db then
+        return nil
+    end
+    if type(db.specCache) ~= "table" then
+        db.specCache = {}
+    end
+    return db.specCache
+end
+
+local function specKey(name)
+    if not readable(name) or type(name) ~= "string" then
+        return nil
+    end
+    local key = Groups.Normalize(name)
+    return key ~= "" and key:lower() or nil
+end
+
+-- Remembers a player's spec ("Name" or "Name-Realm"); a missing, secret or wrong value changes nothing.
+function Groups.CacheSpec(name, spec)
+    local key, id, cache = specKey(name), specID(spec), specCache()
+    if key and id and cache then
+        cache[key] = id
+    end
+end
+
+-- The last spec seen for this name, or nil.
+function Groups.CachedSpec(name)
+    local key, cache = specKey(name), specCache()
+    return key and cache and specID(cache[key]) or nil
+end
+
+-- Your own SpecializationID now, remembered under your name; nil when the game gives none.
+function Groups.PlayerSpecID()
+    local info = C_SpecializationInfo
+    local getSpec = (info and info.GetSpecialization) or GetSpecialization
+    local getInfo = (info and info.GetSpecializationInfo) or GetSpecializationInfo
+    if not (getSpec and getInfo) then
+        return nil
+    end
+    local ok, index = pcall(getSpec)
+    if not (ok and readable(index) and type(index) == "number") then
+        return nil
+    end
+    local ok2, id = pcall(getInfo, index)
+    id = ok2 and specID(id) or nil
+    if id and UnitName then
+        local okName, name = pcall(UnitName, "player")
+        if okName then
+            Groups.CacheSpec(name, id)
+        end
+    end
+    return id
+end
+
+-- A spec's name, icon (a file ID), class file name and localized class name, or nil.
+function Groups.SpecInfo(spec)
+    local id = specID(spec)
+    if not id or not GetSpecializationInfoByID then
+        return nil
+    end
+    local ok, _, name, _, icon, _, classFile, className = pcall(GetSpecializationInfoByID, id)
+    if not ok then
+        return nil
+    end
+    local function text(v)
+        return readable(v) and type(v) == "string" and v ~= "" and v or nil
+    end
+    return text(name), readable(icon) and icon or nil, text(classFile), text(className)
+end
+
+-- The spec whose icon this is (the damage meter gives each player's spec icon, not the spec), or nil. The map
+-- is made once from the game's spec list.
+local iconSpecs
+function Groups.SpecOfIcon(icon)
+    if not readable(icon) or icon == nil or icon == 0 then
+        return nil
+    end
+    if not iconSpecs then
+        local map = {}
+        local count = (C_SpecializationInfo and C_SpecializationInfo.GetNumSpecializationsForClassID) or GetNumSpecializationsForClassID
+        if GetNumClasses and count and GetSpecializationInfoForClassID then
+            local okN, classes = pcall(GetNumClasses)
+            for classID = 1, (okN and readable(classes) and type(classes) == "number") and classes or 0 do
+                local okC, n = pcall(count, classID)
+                for i = 1, (okC and readable(n) and type(n) == "number") and n or 0 do
+                    local okS, id, _, _, specIcon = pcall(GetSpecializationInfoForClassID, classID, i)
+                    id = okS and specID(id) or nil
+                    if id and readable(specIcon) and specIcon ~= nil then
+                        -- an icon two specs share names neither
+                        map[specIcon] = (map[specIcon] == nil) and id or false
+                    end
+                end
+            end
+        end
+        if next(map) == nil then
+            return nil -- the game had no list yet: tried again next time
+        end
+        iconSpecs = map
+    end
+    return iconSpecs[icon] or nil
+end
+
 -- Rosters ----------------------------------------------------------------
 
 local function playerSpecRole()

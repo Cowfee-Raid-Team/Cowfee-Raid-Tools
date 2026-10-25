@@ -16,6 +16,9 @@ local ADDON, CRT = ...
 -- the game watching them, as InspectFrame_OnHide does. CanInspect(unit, showError) -> canInspect;
 -- CheckInteractDistance(unit, 1) is the 28 yard check and can't be called in combat (protected since
 -- 10.2.0); UnitIsConnected, UnitGUID. Each is called in pcall, and a secret answer counts as no.
+-- C_SpecializationInfo.GetInspectSpecialization(unit) -> specID, 0 until the inspect is ready (Gethe live
+-- SpecializationInfoDocumentation.lua, read 2026-10-25; the global GetInspectSpecialization is its 12.1.0
+-- deprecated alias, used only as a fallback), read at INSPECT_READY for the spec cache.
 
 local GC = CRT.GearChecker
 local Gear = CRT.Gear
@@ -81,6 +84,22 @@ end
 
 local step
 
+-- The inspected player's spec, for the Timeline's death icons (CRT.Groups' spec cache), read from the inspect
+-- already made: never an inspect of its own. 0 (not ready) and a secret answer are left out. The cache is
+-- called in pcall, so an error there can't stall the queue.
+local function rememberSpec(cur)
+    local info = C_SpecializationInfo
+    local getSpec = (info and info.GetInspectSpecialization) or GetInspectSpecialization
+    local Groups = CRT.Groups
+    if not (getSpec and Groups and Groups.CacheSpec) then
+        return
+    end
+    local ok, spec = pcall(getSpec, cur.unit)
+    if ok and not secret(spec) and type(spec) == "number" and spec > 0 then
+        pcall(Groups.CacheSpec, cur.name, spec)
+    end
+end
+
 -- Why a unit can't be inspected now ("offline", "cannot", "range"), or nil when it can.
 function Inspect.Blocked(unit)
     if not unit then
@@ -115,6 +134,7 @@ local function finish(tries)
         Inspect.skipped[cur.name] = nil
         GC:Fire("inspect")
     end
+    rememberSpec(cur)
     release()
     after(Inspect.DELAY, step)
 end
