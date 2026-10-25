@@ -54,7 +54,8 @@ local ADDON, CRT = ...
 -- the area, or below it when it grows up. Every area refreshes from one ticker every 0.1 s, and only
 -- while a run, a preview or a test is going; otherwise it hides once and does nothing.
 -- A run's lines are drawn on the engine's time (Alerts:Now(), the clock of a rehearsal run); Previews and
--- tests are drawn on GetTime(), which they were made with.
+-- tests are drawn on GetTime(), which they were made with. While a run plays, a shown area draws the run
+-- even with Previews on (area:ShowsSamples), so an alert's Test shows as set.
 --   area:Refresh()        draws it now
 --   area:ResetPosition()  back to defaultPosition
 --   area:Test(lines)      shows the given lines (with `at` set) until they have all passed
@@ -988,16 +989,29 @@ local function testLines(self, now)
     return out
 end
 
+-- Whether the area shows its Previews samples: Previews on and no run to show. While a run plays (a pull, a
+-- rehearsal, or a Test of an alert), a shown area draws the run's alerts in place of the samples, so a Test
+-- made with Previews on shows the alert as set; the drag box stays. An area turned off keeps its samples.
+function Area:ShowsSamples()
+    return self.preview and not (Alerts.running and self:Settings().shown) or false
+end
+
+-- Whether the area draws the engine's run (on its time), rather than samples or its own test lines.
+function Area:DrawsRun()
+    return not (self:ShowsSamples() or self.testList)
+end
+
 function Area:Refresh()
     if not self.frame then
         return
     end
     local s = self:Settings()
-    drawingRun = not (self.preview or self.testList)
+    local sampling = self:ShowsSamples()
+    drawingRun = self:DrawsRun()
     local now = (not drawingRun or not Alerts.Now) and GetTime() or Alerts:Now()
     self.handle:SetShown(self.preview)
     local lines, more
-    if self.preview then
+    if sampling then
         lines = self.def.sample(now) or EMPTY
     elseif self.testList then
         lines = testLines(self, now)

@@ -181,9 +181,10 @@ local function lineColor(s)
     return CRT.PALETTE and CRT.PALETTE.accent or WHITE
 end
 
--- The time the area draws on: Previews and tests on real time, a run on the engine's (a rehearsal's clock).
+-- The time the area draws on: Previews and tests on real time, a run on the engine's (a rehearsal's clock),
+-- Previews or not (Area:DrawsRun).
 local function clockOf(area)
-    if area.preview or area.testList or not Alerts.Now then
+    if not area:DrawsRun() or not Alerts.Now then
         return GetTime()
     end
     return Alerts:Now()
