@@ -261,9 +261,43 @@ for i = 1, 30 do fire("ENCOUNTER_TIMELINE_EVENT_HIGHLIGHT", i) end
 fire("ENCOUNTER_END", 3470, "Nek'zali", 16, 20, 1)
 local capped = rec(3470)
 local kept = #capped.lines.clear + #(capped.lines.absorb or {}) + #(capped.lines.timeline or {})
-check(capped.kept == 20 and kept == 20 and capped.dropped > 0, "the record keeps MAX_LINES lines and counts the dropped: " .. kept .. " kept, " .. tostring(capped.dropped) .. " dropped")
-check((BD:Text(3470) or ""):find("Lines: 20 kept, " .. capped.dropped .. " dropped.", 1, true) and (BD:Text(3470) or ""):find(capped.dropped .. " more lines dropped (a log keeps 20)", 1, true), "Text says how many were dropped")
+check(capped.kept == kept and #capped.lines.clear < 20 and not has(3470, "clear", "ENCOUNTER_END") and capped.dropped > 0, "the record stops taking lines at MAX_LINES and counts the dropped: " .. kept .. " kept, " .. tostring(capped.dropped) .. " dropped")
+check(has(3470, "absorb", "ENCOUNTER_END"), "the absorb probe's kinds other than auras go in past the record's cap")
+check((BD:Text(3470) or ""):find("Lines: " .. kept .. " kept, " .. capped.dropped .. " dropped.", 1, true) and (BD:Text(3470) or ""):find(capped.dropped .. " more lines dropped (a log keeps 20)", 1, true), "Text says how many were dropped")
 BD.MAX_LINES = 6000
+
+-- The absorb probe's caps per kind carry over: aura lines never flood the absorb section.
+local AP = CRT.AbsorbProbe
+AP.MAX_LINES = 5
+local auraCalls = 0
+local bossAuras = {}
+for i = 1, 10 do bossAuras[i] = { spellId = 500 + i, name = "A", points = {} } end
+C_UnitAuras = { GetAuraDataByIndex = function(u, i)
+  if u == "boss2" then auraCalls = auraCalls + 1 error("Auras cannot be accessed when secret while tainted") end
+  return u == "boss1" and bossAuras[i] or nil
+end }
+now = 1050
+fire("ENCOUNTER_START", 3470, "Nek'zali", 16, 20)
+fire("UNIT_AURA", "boss1", {})
+for i = 1, 10 do fire("UNIT_AURA", "boss2", {}) end
+absorbs.boss1 = 64000
+fire("UNIT_ABSORB_AMOUNT_CHANGED", "boss1")
+fire("ENCOUNTER_END", 3470, "Nek'zali", 16, 20, 1)
+local auraLines = 0
+for _, l in ipairs(section(3470, "absorb")) do if l:find("UNIT_AURA unit=", 1, true) then auraLines = auraLines + 1 end end
+check(auraLines == 5 and rec(3470).capped and rec(3470).capped["absorb UNIT_AURA"] == 6, "aura lines stop at the probe's aura cap in the record: " .. auraLines .. " kept, " .. tostring(rec(3470).capped and rec(3470).capped["absorb UNIT_AURA"]) .. " capped")
+check(has(3470, "absorb", "total=64000") and has(3470, "absorb", 'FORMAT kind="readable"') and has(3470, "absorb", 'BAR kind="readable"'), "the absorb, FORMAT and BAR lines after them are kept")
+check((BD:Text(3470) or ""):find("Capped by kind: absorb UNIT_AURA 6", 1, true) ~= nil, "Text says which kind was capped")
+AP.MAX_LINES = 3000
+AP.KIND_MAX = 600
+now = 1060
+fire("ENCOUNTER_START", 3470, "Nek'zali", 16, 20)
+for i = 1, 10 do fire("UNIT_AURA", "boss2", {}) end
+fire("ENCOUNTER_END", 3470, "Nek'zali", 16, 20, 1)
+local errLines = 0
+for _, l in ipairs(section(3470, "absorb")) do if l:find('UNIT_AURA unit="boss2"', 1, true) then errLines = errLines + 1 end end
+check(errLines == 1 and has(3470, "absorb", "tainted\\" count=10") and auraCalls == 2,"an aura error in the record: one line whose count is kept up to date")
+C_UnitAuras = nil
 
 -- The probes' own switches still work beside Boss debug.
 CRT.ClearProbe:Command("dev clearprobe on")

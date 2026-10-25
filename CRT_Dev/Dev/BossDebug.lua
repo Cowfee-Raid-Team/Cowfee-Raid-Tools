@@ -10,7 +10,8 @@ local ADDON, CRT = ...
 --
 -- Saved in CRTDB.dev.bossDebug: on, and bosses[encounterID] = { encounterID, name, difficultyID,
 -- difficultyName, startedAt and endedAt (time()), length (seconds), result ("kill", "wipe" or nil),
--- lines[section] = { line, ... }, counts[section] = { n, secret }, kept, dropped }.
+-- lines[section] = { line, ... }, counts[section] = { n, secret }, kept, dropped, capped["section kind"] = n
+-- (lines a probe's own cap per kind left out, counted in dropped too) }.
 --
 -- Values from the game go through the secret check before they are compared or stored; the probes pass
 -- finished strings and a count of the secret values in each.
@@ -160,10 +161,12 @@ function BossDebug:Seconds()
 end
 
 -- One finished line for a section of the open record. secrets: how many values in it the game hid
--- (counted from "<secret>" in the line when not given). Past MAX_LINES a line is only counted.
-function BossDebug:Append(section, line, secrets)
+-- (counted from "<secret>" in the line when not given). Past MAX_LINES a line is only counted, unless
+-- always: a kind the probe keeps past the cap under a cap of its own. Returns a handle for Update, or nil
+-- when the line was not kept.
+function BossDebug:Append(section, line, secrets, always)
     if not current or not CRT.db or not store().on or type(line) ~= "string" then
-        return
+        return nil
     end
     if not secrets then
         secrets = 0
@@ -178,9 +181,9 @@ function BossDebug:Append(section, line, secrets)
     end
     c.n = c.n + 1
     c.secret = c.secret + secrets
-    if current.kept >= self.MAX_LINES then
+    if current.kept >= self.MAX_LINES and not always then
         current.dropped = current.dropped + 1
-        return
+        return nil
     end
     current.kept = current.kept + 1
     local list = current.lines[section]
@@ -189,6 +192,32 @@ function BossDebug:Append(section, line, secrets)
         current.lines[section] = list
     end
     list[#list + 1] = line
+    return { list = list, index = #list }
+end
+
+-- A line a probe left out past its own cap for one kind: counted, not kept.
+function BossDebug:Capped(section, kind, secrets)
+    if not current or not CRT.db or not store().on then
+        return
+    end
+    local c = current.counts[section]
+    if not c then
+        c = { n = 0, secret = 0 }
+        current.counts[section] = c
+    end
+    c.n = c.n + 1
+    c.secret = c.secret + (secrets or 0)
+    current.dropped = current.dropped + 1
+    current.capped = current.capped or {}
+    local key = section .. " " .. tostring(kind)
+    current.capped[key] = (current.capped[key] or 0) + 1
+end
+
+-- Writes a kept line again, such as a running count on it.
+function BossDebug:Update(handle, line)
+    if handle and handle.list and handle.list[handle.index] and type(line) == "string" then
+        handle.list[handle.index] = line
+    end
 end
 
 function BossDebug:Record(encounterID)
@@ -281,8 +310,19 @@ function BossDebug:Text(encounterID)
         string.format("Boss debug: %s, encounter %s", bossName(rec), tostring(rec.encounterID)),
         string.format("%s, pulled %s, %s", diff, when, result),
         string.format("Lines: %d kept, %d dropped. Secret values: %s.", rec.kept or 0, rec.dropped or 0, table.concat(secrets, ", ")),
-        TEXT.legend,
     }
+    if rec.capped and next(rec.capped) then
+        local keys, parts = {}, {}
+        for key in pairs(rec.capped) do
+            keys[#keys + 1] = key
+        end
+        table.sort(keys)
+        for _, key in ipairs(keys) do
+            parts[#parts + 1] = key .. " " .. rec.capped[key]
+        end
+        out[#out + 1] = "Capped by kind: " .. table.concat(parts, ", ") .. " (lines a probe left out past its cap for that kind)."
+    end
+    out[#out + 1] = TEXT.legend
     for _, s in ipairs(self.SECTIONS) do
         out[#out + 1] = ""
         out[#out + 1] = "== " .. s .. " =="
