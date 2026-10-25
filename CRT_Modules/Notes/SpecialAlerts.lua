@@ -1,13 +1,14 @@
 local ADDON, CRT = ...
 
--- The Special part of the Mech Alerts tab (Notes/Reminders.lua builds it into the tab): the Mechanics |
--- Special (N) toggle over the left list, the boss's special alerts (Alerts/Special.lua, from its boss file)
+-- The Special part of the Mech Alerts tab (Notes/Reminders.lua builds it into the tab): the Special (N) |
+-- Mechanics toggle over the left list, the boss's special alerts (Alerts/Special.lua, from its boss file)
 -- for the difficulty on show, each with its on/off tick in its ability type's colour, and on the right the
 -- selected one: When and Who as its data says them, Show as (your choices, saved at once), Markers (greyed:
 -- an addon can't set them) and Test. The tab hands it the boss, the difficulty group and the ability timeline
--- on show (host), and the places of its list and panel. Special first: a boss with special alerts opens on
--- Special, one with none on Mechanics, unless you picked Mechanics last (CRT.db.alerts.specialView, with
--- specialViewPicked once you click the toggle). A pick holds for that boss for the session.
+-- on show (host), and the places of its list and panel. Special first: the tab opens on Special every time
+-- (M.Opened), a boss with none too. A click on Mechanics holds for that boss until the tab is left; Make a
+-- Mech Alert opens it on Mechanics (M.ShowMechanics). CRT.db.alerts.specialView and specialViewPicked, the
+-- older saved pick, are no longer read or written.
 
 local UI = CRT.UI
 
@@ -17,6 +18,7 @@ local TEXT = {
     special = "Special (%d)",
     toggleHelp = "Special lists this tier's prepared alerts for the boss, such as soak rotations. Tick the ones you want. Mechanics is for your own reminders: an ability a special alert already covers is marked Special there.",
     empty = "No special alerts for this boss yet.",
+    emptyHint = "Mechanics has every ability for your own reminders.",
     kind = "special alert",
     alertMe = "Alert me",
     when = "When",
@@ -69,6 +71,7 @@ local L = {
     TOGGLE_MIN_W = 60,
     TOGGLE_GAP = 4,
     ROW_H = 24,
+    EMPTY_GAP = 6, -- the empty list's hint under its line
     NAME_X = 30,
     CHECK_SIZE = 24,
     CHECK_LABEL_W = 96,
@@ -113,10 +116,6 @@ local function Special()
     return CRT.AlertSpecial
 end
 
-local function db()
-    return CRT.db and CRT.db.alerts
-end
-
 -- The boss's special alerts for the difficulty on show.
 local function entries()
     local S = Special()
@@ -127,36 +126,28 @@ local function entries()
     return S:List(enc, host.group()), enc
 end
 
--- The view on show, "mechanics" or "special", for the boss on show: the one picked for it this session; else
--- Mechanics when that is what you picked last; else Special when the boss has special alerts, Mechanics when not.
+-- The view on show, "mechanics" or "special", for the boss on show: the one picked for it since the tab
+-- opened, else Special.
 function M.View()
-    local list, enc = entries()
-    local session = enc and state.views[enc]
-    if session then
-        return session
-    end
-    local s = db()
-    if s and s.specialViewPicked == true and s.specialView == "mechanics" then
-        return "mechanics"
-    end
-    return #list > 0 and "special" or "mechanics"
+    local _, enc = entries()
+    return enc and state.views[enc] or "special"
 end
 
--- A pick on the toggle: saved, and held for the boss on show for the session.
+-- A pick on the toggle: held for the boss on show until the tab is left.
 local function setView(view)
-    view = view == "special" and "special" or "mechanics"
-    local s = db()
-    if s then
-        s.specialView = view
-        s.specialViewPicked = true
-    end
     local _, enc = entries()
     if enc then
-        state.views[enc] = view
+        state.views[enc] = view == "special" and "special" or "mechanics"
     end
 end
 
--- Shows a boss's Mechanics for the session, without saving a pick (Mech Alerts opened on one of its abilities).
+-- The tab opened (its OnShow): every boss is on Special again.
+function M.Opened()
+    state.views = {}
+end
+
+-- Shows a boss's Mechanics for this visit (Mech Alerts opened on one of its abilities). Called once the tab
+-- is on show, after M.Opened.
 function M.ShowMechanics(encounterID)
     if encounterID ~= nil then
         state.views[encounterID] = "mechanics"
@@ -241,7 +232,7 @@ end
 
 -- The toggle ---------------------------------------------------------------------------------------
 
--- UI.Toggle2 (CRT_Core/UI/Toggle.lua). Each half as wide as its label (the count changes the second), side by
+-- UI.Toggle2 (CRT_Core/UI/Toggle.lua). Each half as wide as its label (the count changes the first), side by
 -- side. When both and the (?) after them don't fit the list's width (a large text size), both shrink in
 -- proportion and their labels are cut with "...". Measured on every draw, so a text size changed since is followed.
 local function layToggle()
@@ -274,6 +265,7 @@ local function paintList(list, enc, current)
         end
     end
     ui.empty:SetShown(#list == 0)
+    ui.emptyHint:SetShown(#list == 0)
 end
 
 -- The panel ----------------------------------------------------------------------------------------
@@ -685,11 +677,12 @@ function M.Build(f, h, g)
     L.LIST_W, L.LIST_H = g.listW, g.listH
     L.PANEL_X, L.PANEL_Y, L.PANEL_W, L.PANEL_H = g.panelX, g.panelY, g.panelW, g.panelH
 
-    ui.toggle = UI.Toggle2(f, { { key = "mechanics", label = TEXT.mechanics }, { key = "special", label = string.format(TEXT.special, 0) } },
+    -- Special on the left, Mechanics on the right, the (?) after it
+    ui.toggle = UI.Toggle2(f, { { key = "special", label = string.format(TEXT.special, 0) }, { key = "mechanics", label = TEXT.mechanics } },
         choose, { pad = L.TOGGLE_PAD, minW = L.TOGGLE_MIN_W, gap = L.TOGGLE_GAP, h = L.TOGGLE_H })
-    ui.mechBtn, ui.specialBtn = ui.toggle.buttons[1], ui.toggle.buttons[2]
+    ui.specialBtn, ui.mechBtn = ui.toggle.buttons[1], ui.toggle.buttons[2]
     layToggle()
-    ui.toggleHelp = UI.HelpRight(ui.specialBtn, TEXT.mechanics, TEXT.toggleHelp)
+    ui.toggleHelp = UI.HelpRight(ui.mechBtn, TEXT.mechanics, TEXT.toggleHelp)
 
     local list = CreateFrame("Frame", nil, f, "BackdropTemplate")
     list:SetSize(L.LIST_W, L.LIST_H)
@@ -711,6 +704,13 @@ function M.Build(f, h, g)
     ui.empty:SetJustifyH("LEFT")
     ui.empty:SetText(TEXT.empty)
     UI.Tint(ui.empty, "SetTextColor", "muted")
+    -- and where your own reminders are
+    ui.emptyHint = list:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    ui.emptyHint:SetPoint("TOPLEFT", ui.empty, "BOTTOMLEFT", 0, -L.EMPTY_GAP)
+    ui.emptyHint:SetWidth(L.LIST_W - 16)
+    ui.emptyHint:SetJustifyH("LEFT")
+    ui.emptyHint:SetText(TEXT.emptyHint)
+    UI.Tint(ui.emptyHint, "SetTextColor", "muted")
 
     buildPanel(f)
     list:Hide()

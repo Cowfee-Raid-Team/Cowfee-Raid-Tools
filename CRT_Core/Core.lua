@@ -359,8 +359,10 @@ local defaults = {
         tooltipSpot = "auto",
         -- The pop-out window (Timeline/Page.lua): its size and position once it is moved or sized, and userSized
         -- (true once the player sized it with the grip, false once Page.lua sized it). No default for userSized:
-        -- left out, Page.lua works it out from a size saved before it existed. Until then the window opens at
-        -- Page.lua's default size, 1600 x 900 within the screen.
+        -- left out, Page.lua works it out from a size saved before it existed. Each view keeps its own size in
+        -- popout.abilities and popout.healers ({ width, height, userSized }); no default for them either: Page.lua
+        -- makes both the first time, from the older single size. Abilities opens at 1200 x 600, Healer CDs at
+        -- 1600 x 900 within the screen and taller for every healer row, until the player sizes that view.
         popout = {},
         -- the pop-out's view (its title strip's toggle): "abilities" (the ability timeline) or "healers" (Healer CDs)
         popView = "abilities",
@@ -435,8 +437,8 @@ local defaults = {
         -- The Timeline's Cooldowns row (Alerts/Cooldowns.lua): which cooldowns it lists.
         cooldownFilter = "mine",
         -- Special alerts (Alerts/Special.lua): your choices per boss and alert, special[encounterID][key] =
-        -- { on, show, speak, markers }; specialView is what Mech Alerts' list shows, "mechanics" or "special".
-        -- specialViewPicked: you clicked the toggle; until then a boss with special alerts opens on Special.
+        -- { on, show, speak, markers }. specialView ("mechanics" or "special") and specialViewPicked were Mech
+        -- Alerts' last pick; kept for older saves, no longer read: the tab opens on Special every time.
         special = {},
         specialView = "mechanics",
         specialViewPicked = false,

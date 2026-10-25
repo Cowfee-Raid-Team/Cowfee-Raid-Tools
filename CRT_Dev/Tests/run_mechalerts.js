@@ -192,13 +192,22 @@ local function reset()
   for i = #printed, 1, -1 do printed[i] = nil end
   A:Stop(true)
 end
-local function fresh()
+-- the tab as it opens: on Special (Notes/SpecialAlerts.lua)
+local function freshOpen()
   reset()
   local f = mock("Frame")
   f.shown = false
   rawset(f, "w", TAB_W) rawset(f, "h", TAB_H)
   CRT.NoteReminders.Build(f)
   f:Show()
+  return f
+end
+-- the tab with Mechanics clicked, for the checks of the Mechanics list and panel
+local function fresh()
+  local f = freshOpen()
+  if f.special and CRT.NoteSpecialAlerts.View() == "special" then
+    click(f.special.mechBtn)
+  end
   return f
 end
 local function only()
@@ -1482,42 +1491,44 @@ local SA = CRT.NoteSpecialAlerts
 for _, LOOK in ipairs({ "Modern", "Classic" }) do
 MODERN = LOOK == "Modern"
 
-check("mech special (" .. LOOK .. "): the toggle sits over the list, Mechanics by default", function()
+check("mech special (" .. LOOK .. "): the toggle sits over the list, Special on the left and on show", function()
   noSpecial()
   CRT.db.alerts.specialView, CRT.db.alerts.specialViewPicked = nil, nil
-  local f = fresh()
+  local f = freshOpen()
   local s = f.special
   assert(s and s.mechBtn and s.specialBtn, "two halves")
+  assert(s.toggle.buttons[1] == s.specialBtn and s.toggle.buttons[2] == s.mechBtn, "Special first, Mechanics second")
   assert(s.mechBtn.text.text == "Mechanics" and s.specialBtn.text.text == "Special (0)", "labels: " .. tostring(s.specialBtn.text.text))
-  assert(SA.View() == "mechanics" and f.list.shown and f.ownButton.shown and f.panel.frame.shown, "Mechanics on show")
-  assert(not s.list.shown and not s.panel.shown, "Special hidden")
+  assert(SA.View() == "special" and s.list.shown and s.panel.shown, "Special on show, a boss with none too")
+  assert(not f.list.shown and not f.ownButton.shown and not f.panel.frame.shown, "Mechanics hidden")
   rects = {}
-  local a, b, lr = rect(s.mechBtn, f), rect(s.specialBtn, f), rect(f.list, f)
-  assert(a[3] <= b[1], "side by side")
+  local a, b, lr = rect(s.specialBtn, f), rect(s.mechBtn, f), rect(s.list, f)
+  assert(a[3] <= b[1], "side by side, Special on the left")
   assert(a[4] <= lr[2] and b[4] <= lr[2], "over the list: " .. a[4] .. " > " .. lr[2])
   assert(a[1] >= lr[1] and b[3] + 24 <= lr[3], "inside the list's width, its (?) too")
-  assert(math.abs(b[3] - b[1] - (#"Special (0)" * 6 + 20)) < 1, "sized from its label")
+  assert(math.abs(a[3] - a[1] - (#"Special (0)" * 6 + 20)) < 1, "sized from its label")
+  assert(s.toggleHelp and rawget(s.toggleHelp, "helpTarget") == s.mechBtn, "the (?) after the toggle, right of Mechanics")
   -- the largest text size: both halves shrink, cut with "...", so they and the (?) still fit the list
   TEXT_SCALE = 1.75
   CRT.NoteReminders.Refresh()
   rects = {}
-  a, b, lr = rect(s.mechBtn, f), rect(s.specialBtn, f), rect(f.list, f)
+  a, b, lr = rect(s.specialBtn, f), rect(s.mechBtn, f), rect(s.list, f)
   assert(a[3] <= b[1] and b[3] + 24 <= lr[3], "at 1.75 the toggle and its (?) fit 250: " .. b[3] .. " of " .. lr[3])
-  assert(s.specialBtn.text.wordWrap == false and s.specialBtn.text.w <= b[3] - b[1], "its label is cut to the button")
+  assert(s.specialBtn.text.wordWrap == false and s.specialBtn.text.w <= a[3] - a[1], "its label is cut to the button")
   TEXT_SCALE = nil
   CRT.NoteReminders.Refresh()
   -- a redraw only restyles the toggle; SetTabSelected (which skins the whole tab) only when the view changes
   local set, style = TAB_CALLS.set, TAB_CALLS.style
   CRT.NoteReminders.Refresh()
   assert(TAB_CALLS.set == set and TAB_CALLS.style == style + 2, "a redraw restyles: " .. TAB_CALLS.set - set .. " " .. TAB_CALLS.style - style)
-  assert(s.mechBtn.tabSelected == true and s.specialBtn.tabSelected == false, "Mechanics selected")
-  click(s.specialBtn)
-  assert(TAB_CALLS.set == set + 2 and s.specialBtn.tabSelected == true and s.mechBtn.tabSelected == false, "the view changed: SetTabSelected")
+  assert(s.specialBtn.tabSelected == true and s.mechBtn.tabSelected == false, "Special selected")
   click(s.mechBtn)
+  assert(TAB_CALLS.set == set + 2 and s.mechBtn.tabSelected == true and s.specialBtn.tabSelected == false, "the view changed: SetTabSelected")
+  assert(f.list.shown and not s.list.shown, "Mechanics on show")
   assert(#errors == 0, tostring(errors[1]))
 end)
 
-check("mech special (" .. LOOK .. "): Special shows the empty line, and the choice is remembered", function()
+check("mech special (" .. LOOK .. "): Special shows the empty line and its hint, and a pick holds while the tab stays open", function()
   noSpecial()
   local f = fresh()
   local s = f.special
@@ -1526,17 +1537,21 @@ check("mech special (" .. LOOK .. "): Special shows the empty line, and the choi
   click(s.specialBtn)
   assert(not f.panel.textEdit.focused and not f.panel.timesEdit.focused and not f.panel.idEdit.focused, "the Mechanics boxes let go")
   assert(only().text == "Typed before Special", "typing on the Mechanics panel is saved first")
-  assert(SA.View() == "special" and CRT.db.alerts.specialView == "special", "saved")
+  assert(SA.View() == "special", "Special on show")
   assert(not f.list.shown and not f.ownButton.shown and not f.panel.frame.shown, "Mechanics hidden")
   assert(s.list.shown and s.panel.shown and s.empty.shown and s.empty.text == "No special alerts for this boss yet.", "the empty line")
+  assert(s.emptyHint and s.emptyHint.shown and s.emptyHint.text == "Mechanics has every ability for your own reminders.", "and where to go instead")
+  rects = {}
+  local er, hr = rect(s.empty, f), rect(s.emptyHint, f)
+  assert(hr[2] > er[2], "the hint under the empty line")
   local m = CRT.PALETTE.muted
   assert(s.empty.textColor and s.empty.textColor[1] == m[1] and s.empty.textColor[3] == m[3], "in the muted colour")
   assert(not s.content.shown, "no panel content")
   click(s.mechBtn)
   click(s.specialBtn)
   assert(SA.View() == "special" and s.list.shown, "held for the boss while the tab stays built")
-  local f2 = fresh()
-  assert(SA.View() == "mechanics" and f2.list.shown and not f2.special.list.shown, "built again: a boss with none opens on Mechanics")
+  local f2 = freshOpen()
+  assert(SA.View() == "special" and not f2.list.shown and f2.special.list.shown and f2.special.empty.shown, "built again: a boss with none opens on Special too")
   assert(#errors == 0, tostring(errors[1]))
 end)
 
@@ -1570,31 +1585,39 @@ check("mech special (" .. LOOK .. "): the list counts, ticks and selects", funct
   assert(#errors == 0, tostring(errors[1]))
 end)
 
-check("mech special (" .. LOOK .. "): Special first for a boss with special alerts; a pick of Mechanics is remembered", function()
+check("mech special (" .. LOOK .. "): the tab opens on Special every time; Make a Mech Alert opens on Mechanics", function()
   withSpecial(SPECIAL_LIST)
   CRT.db.alerts.special = {}
-  -- an old save: the default view, the toggle never clicked
-  CRT.db.alerts.specialView, CRT.db.alerts.specialViewPicked = "mechanics", false
-  local f = fresh()
+  -- an old save that picked Mechanics: no longer read for opening
+  CRT.db.alerts.specialView, CRT.db.alerts.specialViewPicked = "mechanics", true
+  local f = freshOpen()
   assert(SA.View() == "special" and f.special.list.shown and not f.list.shown, "opens on Special")
   assert(f.special.specialBtn.tabSelected == true, "the toggle says so")
   click(f.special.mechBtn)
-  assert(CRT.db.alerts.specialView == "mechanics" and CRT.db.alerts.specialViewPicked == true and f.list.shown, "Mechanics picked: saved")
-  local f2 = fresh()
-  assert(SA.View() == "mechanics" and f2.list.shown and not f2.special.list.shown, "a picked Mechanics wins")
-  click(f2.special.specialBtn)
-  local f3 = fresh()
-  assert(SA.View() == "special" and f3.special.list.shown, "Special picked again: Special first again")
+  assert(SA.View() == "mechanics" and f.list.shown and not f.special.list.shown, "Mechanics for this visit")
+  assert(CRT.db.alerts.specialView == "mechanics" and CRT.db.alerts.specialViewPicked == true, "the saved fields are kept as they were")
+  -- left and opened again (another tab picked, or the window closed): Special again
+  f:Hide() f:Show()
+  assert(SA.View() == "special" and f.special.list.shown and not f.list.shown, "opened again: Special, whatever was picked last")
+  click(f.special.mechBtn)
+  local f2 = freshOpen()
+  assert(SA.View() == "special" and f2.special.list.shown, "built again: Special")
+  -- the menu (or any other way to the tab) opens it the same way
+  local opened = CRT.NotesPage.Open
+  CRT.NotesPage.Open = function() f2:Hide() f2:Show() end
+  click(f2.special.mechBtn)
+  CRT.NoteReminders.Open(ENC)
+  assert(SA.View() == "special" and f2.special.list.shown, "opened on a boss: Special")
+  -- Make a Mech Alert opens the tab on one of the boss's abilities: Mechanics, nothing saved
+  CRT.db.alerts.specialView = "special"
+  CRT.NoteReminders.Open(ENC, 888)
+  assert(SA.View() == "mechanics" and f2.list.shown and not f2.special.list.shown and CRT.db.alerts.specialView == "special", "opened on an ability: Mechanics")
+  f2:Hide() f2:Show()
+  assert(SA.View() == "special", "and the next opening is on Special again")
+  CRT.NotesPage.Open = opened
   noSpecial()
   CRT.NoteReminders.Refresh()
-  assert(SA.View() == "mechanics" and f3.list.shown, "a boss with none: Mechanics")
-  -- Make a Mech Alert opens the tab on one of the boss's abilities: Mechanics, nothing saved
-  withSpecial(SPECIAL_LIST)
-  local opened = CRT.NotesPage.Open
-  CRT.NotesPage.Open = function() end
-  CRT.NoteReminders.Open(ENC, 888)
-  CRT.NotesPage.Open = opened
-  assert(SA.View() == "mechanics" and f3.list.shown and CRT.db.alerts.specialView == "special", "opened on an ability: Mechanics for now")
+  assert(SA.View() == "special" and f2.special.empty.shown and f2.special.emptyHint.shown, "a boss with none: Special, its empty line and hint")
   -- the toggle's (?) says what each is for
   local help
   for _, h in ipairs(helps) do if h.helpTitle == "Mechanics" then help = h end end
@@ -1698,8 +1721,7 @@ check("mech special (" .. LOOK .. "): the impacts under When", function()
     { key = "bar", label = "Bar", when = { times = "0:30" }, bar = { length = 8, ticks = { 4.5, 6.5 } } },
     { key = "early", label = "Early bar", when = { times = "0:30" }, bar = { start = -3, length = 8, ticks = { 4.5 } } },
     { key = "plain", label = "Plain bar", when = { times = "0:30" }, bar = { start = 2, length = 10 } } })
-  CRT.db.alerts.specialViewPicked = false
-  local f = fresh()
+  local f = freshOpen()
   local s = f.special
   local want = { "Impacts: +0:00, +0:02.5", "Impacts: +0:00, +1:02. The bar ends at the cast.", "Bar 8 s, impacts at 4.5 s and 6.5 s",
     "Bar 8 s from 3 s before the cast, impacts at 4.5 s", "Bar 10 s from 2 s after the cast" }
