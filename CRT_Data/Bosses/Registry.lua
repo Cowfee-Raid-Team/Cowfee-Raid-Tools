@@ -12,8 +12,8 @@ local ADDON, CRT = ...
 -- One field is read where it is used, through Bosses:Get, not copied here:
 --   special     -> CRT.AlertSpecial (Alerts/Special.lua: the boss's scripted special alerts, on Mech Alerts'
 --                  Special list), a list of { key, label, help, type, difficulty, default, when = { row |
---                  spellID | times (a P1 time may be before the pull: "-0:15") }, lead, icon (a spell ID or a
---                  texture file ID), who = { mode = "everyone" | "rotation" (rotation = { { 1, 2 }, { 3, 4 } }) |
+--                  spellID | times (a P1 time may be before the pull: "-0:15") }, lead, icon (a spell ID),
+--                  iconFile (a texture file ID), who = { mode = "everyone" | "rotation" (rotation = { { 1, 2 }, { 3, 4 } }) |
 --                  "roles" (roles = { "tank", "healer" }) | "note" (note = "<label>") }, text, show, markers =
 --                  { marks }, ticks = { s }, barTo = "last" | "cast", or bar = { length, ticks, start }, covers =
 --                  { spellIDs } }. The full format is at the top of Alerts/Special.lua; an entry that doesn't read
