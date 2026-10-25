@@ -28,6 +28,10 @@ local function mock(kind)
     if k == "SetSize" then return function(self, w, h) rawset(self, "w", w) rawset(self, "h", h) end end
     if k == "SetColorTexture" then return function(self, r, g, b, a) rawset(self, "color", { r, g, b, a }) end end
     if k == "SetVertexColor" then return function(self, r, g, b) rawset(self, "vcolor", { r, g, b }) end end
+    if k == "SetTexture" then return function(self, file) rawset(self, "texFile", file) end end
+    if k == "SetTexCoord" then return function(self, ...) rawset(self, "coords", { ... }) end end
+    if k == "CreateMaskTexture" then return function() return mock("MaskTexture") end end
+    if k == "AddMaskTexture" then return function(self, m) rawset(self, "masks", (rawget(self, "masks") or 0) + (m and 1 or 0)) end end
     if k == "GetLeft" then return function() return 100 end end
     if k == "GetTop" then return function() return 500 end end
     if k == "GetEffectiveScale" then return function() return 1 end end
@@ -422,14 +426,17 @@ do
   local function tip(b) for i = #said, 1, -1 do said[i] = nil end b.OnEnter(b) return said end
   local lone, many
   for _, b in ipairs(icons) do if b.mark.t == 50 then lone = b else many = b end end
-  -- the lone death: its icon is its class colour, the name in its tooltip the same colour
+  -- the lone death: a round icon in a ring of its class colour, the name in its tooltip the same colour
   local t1 = tip(lone)
   assert(t1[2].k == "SetText" and t1[2].a == "Abu", "stacked deaths: lone tooltip names Abu")
-  assert(lone.bg.color[1] == t1[2].b and lone.bg.color[2] == t1[2].c and lone.bg.color[3] == t1[2].d, "stacked deaths: lone icon colour matches its name")
+  assert(lone.ring.vcolor[1] == t1[2].b and lone.ring.vcolor[2] == t1[2].c and lone.ring.vcolor[3] == t1[2].d, "stacked deaths: lone ring colour matches its name")
+  assert(lone.ring:IsShown() and lone.face:IsShown() and not lone.bg:IsShown() and not lone.tex:IsShown(), "death icons: the round look, not the square one")
+  assert(lone.face.masks == 1, "death icons: the face is masked round, once")
   assert(lone.count:GetText() == "" or lone.count:GetText() == nil, "stacked deaths: a lone death shows no count")
   -- the stack: a neutral death colour with the count, and a tooltip listing every death in class colour
   assert(many.count:GetText() == "4", "stacked deaths: the stack shows its count, got " .. tostring(many.count:GetText()))
-  assert(many.bg.color[1] == 0.89 and many.bg.color[2] == 0.29 and many.bg.color[3] == 0.29, "stacked deaths: the stack is the neutral death red")
+  assert(many.ring.vcolor[1] == 0.89 and many.ring.vcolor[2] == 0.29 and many.ring.vcolor[3] == 0.29, "stacked deaths: the stack is the neutral death red")
+  assert(many.face.texFile == "Interface\\\\TargetingFrame\\\\UI-TargetingFrame-Skull", "stacked deaths: the stack keeps the skull, got " .. tostring(many.face.texFile))
   local t2 = tip(many)
   assert(t2[2].k == "SetText" and t2[2].a == "4 deaths", "stacked deaths: tooltip heading: " .. tostring(t2[2].a))
   local listed = {}
@@ -470,6 +477,63 @@ do
   GameTooltip = mock("GameTooltip")
 end
 print("ok stacked deaths share one icon whose colour and tooltip agree")
+
+do
+  -- A death's round icon: its saved spec's icon, else the meter's spec icon saved with it, else its class's
+  -- round icon, else the skull; always in a ring of its class colour. A stack is the skull in the death red.
+  -- Only what the death saved is used: the spec cache is never asked when drawing.
+  local colors = { PALADIN = { 0.96, 0.55, 0.73 }, MAGE = { 0.25, 0.78, 0.92 } }
+  local G = CRT.Groups
+  local realColor = G.ClassColor
+  G.ClassColor = function(_, class) local c = colors[class] or { 1, 1, 1 } return c[1], c[2], c[3] end
+  G.SpecInfo = function(id) if id == 65 then return "Holy", 135920, "PALADIN", "Paladin" end end
+  G.CachedSpec = function() error("the spec cache is asked when drawing") end
+  CLASS_ICON_TCOORDS = { PALADIN = { 0, 0.25, 0.5, 0.75 }, MAGE = { 0.25, 0.49609375, 0, 0.25 } }
+  local CIRCLES = "Interface\\\\TargetingFrame\\\\UI-Classes-Circles"
+  local look = View.DeathLook
+  local function ring(l, c) return l.ring[1] == c[1] and l.ring[2] == c[2] and l.ring[3] == c[3] end
+  local a = look({ death = { name = "Healy", class = "PALADIN", spec = 65, specIcon = 777 } })
+  assert(a.texture == 135920 and not a.skull and a.coords == nil and ring(a, colors.PALADIN), "death look: the saved spec's icon in a class ring")
+  local b = look({ death = { name = "Healy", class = "PALADIN", spec = 999, specIcon = 777 } })
+  assert(b.texture == 777 and ring(b, colors.PALADIN), "death look: a spec the game doesn't know, the saved spec icon")
+  local c = look({ death = { name = "Mage", class = "MAGE", specIcon = 778 } })
+  assert(c.texture == 778 and ring(c, colors.MAGE), "death look: the saved spec icon alone")
+  local d = look({ death = { name = "Old", class = "PALADIN" } })
+  assert(d.texture == CIRCLES and d.coords and d.coords[1] == 0 and d.coords[2] == 0.25 and d.coords[3] == 0.5 and d.coords[4] == 0.75
+    and ring(d, colors.PALADIN), "death look: a death from before specs, the round class icon")
+  local e = look({ death = { name = "Who" } })
+  assert(e.skull and e.texture == "Interface\\\\TargetingFrame\\\\UI-TargetingFrame-Skull" and ring(e, { 1, 1, 1 }), "death look: no class, the skull")
+  local f = look({ death = { name = "Healy", class = "PALADIN", spec = 65 }, deaths = { { name = "Healy", class = "PALADIN", spec = 65 }, { name = "Old", class = "MAGE" } } })
+  assert(f.skull and ring(f, { 0.89, 0.29, 0.29 }), "death look: a stack stays the skull in the death red")
+  CLASS_ICON_TCOORDS = nil
+  local g = look({ death = { name = "Old", class = "PALADIN" } })
+  assert(g.skull, "death look: no class icon table, the skull")
+  -- the tooltip: the spec before the class when the death saved one, the class alone before that
+  local said = {}
+  GameTooltip = setmetatable({}, { __index = function(_, k) return function(_, x, y) said[#said + 1] = { k = k, a = x, b = y } end end })
+  local function lines(pull)
+    local v = View.Create(mock("Frame"))
+    v:SetData(pull, 3001)
+    v:Refresh()
+    local out = {}
+    for _, btn in ipairs(v.icons) do
+      if btn:IsShown() and btn.mark.death then
+        for i = #said, 1, -1 do said[i] = nil end
+        btn.OnEnter(btn)
+        for _, l in ipairs(said) do if l.k == "AddLine" or l.k == "AddDoubleLine" then out[#out + 1] = tostring(l.a) end end
+      end
+    end
+    return table.concat(out, "|")
+  end
+  local holy = lines({ id = 61, encounterID = 3001, length = 300, casts = {}, deaths = { { t = 50, name = "Healy", class = "PALADIN", role = "HEALER", spec = 65, spellID = 7 } } })
+  assert(holy:find("Holy Paladin", 1, true) == 1, "death tooltip: the spec before the class: " .. holy)
+  local stack = lines({ id = 62, encounterID = 3001, length = 300, casts = {}, deaths = {
+    { t = 50, name = "Healy", class = "PALADIN", role = "HEALER", spec = 65, spellID = 7 }, { t = 50, name = "Old", class = "MAGE", role = "DAMAGER", spellID = 7 } } })
+  assert(stack:find("Healy (Holy)", 1, true) and stack:find("Old", 1, true) and not stack:find("Old (", 1, true), "death tooltip: a stack names a known spec: " .. stack)
+  GameTooltip = mock("GameTooltip")
+  G.ClassColor, G.SpecInfo, G.CachedSpec = realColor, nil, nil
+end
+print("ok death icons: spec, class or skull, in a class ring")
 
 do
   local v = View.Create(mock("Frame"))
