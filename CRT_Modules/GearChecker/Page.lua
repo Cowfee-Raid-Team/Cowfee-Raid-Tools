@@ -876,8 +876,8 @@ local function buildExtra()
         cb.key = f.key
         -- the saved tick decides, not the box's own state, so the two can't drift apart
         cb:SetScript("OnClick", function(self)
-            GC:SetExtra(f.key, GC:Extra()[f.key] ~= true)
-            self:SetChecked(GC:Extra()[f.key] == true)
+            GC:SetExtra(f.key, not GC:ExtraOn(f.key))
+            self:SetChecked(GC:ExtraOn(f.key))
             P.Refresh()
         end)
         local helpOn = cb
@@ -904,7 +904,7 @@ function P.ToggleExtra()
         return
     end
     for _, cb in ipairs(P.extraChecks) do
-        cb:SetChecked(GC:Extra()[cb.key] == true)
+        cb:SetChecked(GC:ExtraOn(cb.key))
         cb.label:SetTextColor(textColor("text"))
     end
     P.minIlvlEdit:SetText(tostring(GC:MinIlvl()))

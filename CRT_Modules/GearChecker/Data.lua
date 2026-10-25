@@ -16,10 +16,11 @@ local ADDON, CRT = ...
 --   GC.TrackTag, GC.TrackWords, GC.TrackColor, GC.TrackCounts(row), GC.TrackText(row, colored, keep)   a
 --                                track as "H4", "Hero 4/6", its colour; a row's pieces per track;
 --                                the Tracks column ("3M 3H")
---   GC:Extra(), GC:SetExtra(key, v), GC:MinIlvl(), GC:ExtraChecks()   the Extra filters window's ticks and
---                                level (CRTDB.gearChecker.extra), and the ticked ones as low checks
---   GC.ExtraTrips, GC.CheckEmpty(r, rules, mainHand), GC.SlotWanted, GC.QualityOf   an extra filter on a piece,
---                                Empty slot on an empty slot, whether it should hold an item, a piece's quality
+--   GC:Extra(), GC:ExtraOn(key), GC:SetExtra(key, v), GC:MinIlvl(), GC:ExtraChecks()   the Extra filters
+--                                window's ticks and level (CRTDB.gearChecker.extra), and the ticked ones as low checks
+--   GC.ExtraTrips, GC.CheckWords(c, r), GC.CheckEmpty(r, rules, mainHand), GC.SlotWanted   an extra filter on a
+--                                piece, a check's words on a slot, Empty slot on an empty slot, whether it should
+--                                hold an item
 --   GC.CheckSlot(slot, piece, rules, avg)   one slot's findings: missing enchant, empty sockets, low
 --   GC:Roster()                  the group: { name, unit, class, me }, you first
 --   GC:Row(member), GC:Rows(filter)   a member's checked gear; the rows a filter shows
@@ -46,9 +47,9 @@ local ADDON, CRT = ...
 -- .GetActiveWindow and .InsertLink (the older ChatFrame_OpenChat, ChatEdit_GetActiveWindow and
 -- ChatEdit_InsertLink as fallbacks); the chat box reads a leading "/s " as Say when Enter sends it
 -- (ChatFrameEditBox's SendText parses it). Each in pcall; secret values are never compared.
--- Read 2026-10-24 (Blizzard_APIDocumentationGenerated, live): C_Item.GetItemQualityByID(itemInfo) -> quality
--- (Enum.ItemQuality). No item, PvP or tooltip API tells whether an item is PvP gear (C_ItemUpgrade's PvP item
--- level calls read only the item in the upgrade window), so there is no PvP gear filter.
+-- No item, PvP or tooltip API tells whether an item is PvP gear (C_ItemUpgrade's PvP item level calls read
+-- only the item in the upgrade window), so there is no PvP gear filter. An enchant's rank is season data (its
+-- gearChecks.rank1Enchants), read from the item string's enchant ID, never from a tooltip.
 
 local Gear = CRT.Gear
 local GC = { listeners = {} }
@@ -85,6 +86,7 @@ GC.TEXT = {
     emptyLine = "[%s] %s - %s", -- name, slot, what is wrong (an empty slot has no item)
     emptyWhisper = "Gear check: %s - %s", -- slot, what is wrong
     emptyHead = "%s - ", -- the badge tooltip's line start for an empty slot
+    rankEnchant = "rank 1 enchant: %s", -- a Low rank enchants cell's words, with the enchant's name
 }
 
 -- Extra filters (the page's Extra filters window): each one ticked in CRTDB.gearChecker.extra is a low
@@ -96,11 +98,12 @@ GC.EXTRA_FILTERS = {
       help = "Shows items below the last rank of their upgrade track. Only ranks seen on real items so far are known, so an item with an unknown track is never shown." },
     { key = "ilvl", label = "Item level below %d", option = "Item level below", number = true,
       help = "Shows items under the item level you type. 0 is off." },
-    { key = "quality", label = "Low quality", help = "Shows green and blue items, and anything lower." },
+    -- saved as extra.quality, the tick's name from when this filter was Low quality, so old ticks still load
+    { key = "rank", saved = "quality", label = "Low rank enchants",
+      help = "Shows enchants of the lower rank, from this season's list of enchants. An enchant not on the list is never shown." },
     { key = "empty", label = "Empty slot",
       help = "Shows slots with no item. The off hand counts only beside a one-handed main hand." },
 }
-GC.LOW_QUALITY = Enum and Enum.ItemQuality and Enum.ItemQuality.Rare or 3 -- this quality or lower is low
 GC.ONE_HAND_LOCS = { INVTYPE_WEAPON = true, INVTYPE_WEAPONMAINHAND = true } -- a main hand that wants an off hand
 GC.MAIN_HAND, GC.OFF_HAND = 16, 17 -- their inventory slots (Gear.SLOTS)
 
@@ -192,18 +195,30 @@ local function checkList(list)
     return out
 end
 
+-- The season's rank 1 enchants (its gearChecks.rank1Enchants): { [enchant ID] = name }, numbers to names only.
+local function rankList(list)
+    local out = {}
+    for id, name in pairs(type(list) == "table" and list or {}) do
+        if type(id) == "number" and type(name) == "string" then
+            out[id] = name
+        end
+    end
+    return out
+end
+
 -- The season's rules: { enchant = { [slot] = true }, weaponOnly = { [slot] = true }, sockets = { [slot] =
--- true }, checks = { season check, ... } }. A season with none checks nothing but item levels.
+-- true }, checks = { season check, ... }, rank1 = { [enchant ID] = name } }. A season with none checks
+-- nothing but item levels.
 function GC:Rules()
     local src = CRT.Bosses and CRT.Bosses.GearChecks and CRT.Bosses:GearChecks() or nil
     if self.rulesOf ~= src or not self.rules then
         local def = type(src) == "table" and src or {}
         self.rules = { enchant = slotSet(def.enchant), weaponOnly = slotSet(def.enchantWeaponOnly), sockets = slotSet(def.sockets),
-            checks = checkList(def.checks) }
+            checks = checkList(def.checks), rank1 = rankList(def.rank1Enchants) }
         self.rulesOf = src -- worked out again only when the season's table changes
     end
     self.rules.tracks = self:Tracks() -- its own topic, so read each time (cached by GC:Tracks)
-    self.rules.extras = self:ExtraChecks() -- a setting, so read each time
+    self.rules.extras = self:ExtraChecks(self.rules.rank1) -- a setting, so read each time
     return self.rules
 end
 
@@ -215,6 +230,21 @@ function GC:Extra()
     return type(s) == "table" and type(s.extra) == "table" and s.extra or {}
 end
 
+-- The saved field an extra filter's tick is in: its key, or its saved name (Low rank enchants' is quality).
+function GC.ExtraField(key)
+    for _, f in ipairs(GC.EXTRA_FILTERS) do
+        if f.key == key then
+            return f.saved or key
+        end
+    end
+    return key
+end
+
+-- Whether an extra filter is ticked.
+function GC:ExtraOn(key)
+    return self:Extra()[GC.ExtraField(key)] == true
+end
+
 -- Ticks or unticks an extra filter; set minIlvl to a whole number from 0.
 function GC:SetExtra(key, value)
     local s = self:Settings()
@@ -224,7 +254,7 @@ function GC:SetExtra(key, value)
     else
         value = value and true or false
     end
-    s.extra[key] = value
+    s.extra[GC.ExtraField(key)] = value
 end
 
 -- Item level below's level, a whole number (0 when unset).
@@ -234,15 +264,19 @@ function GC:MinIlvl()
 end
 
 -- The ticked extra filters, as low checks for CheckSlot: { key = "extra:<key>", extra = <key>, label, help,
--- severity, min (ilvl's level) }, in GC.EXTRA_FILTERS' order. Item level below with no level is left out.
-function GC:ExtraChecks()
-    local saved, out = self:Extra(), {}
+-- severity, min (ilvl's level), names (rank's: the season's rank 1 enchants) }, in GC.EXTRA_FILTERS' order.
+-- Item level below with no level is left out, and Low rank enchants in a season with no rank 1 enchants
+-- (rank1: GC:Rules().rank1).
+function GC:ExtraChecks(rank1)
+    rank1 = rank1 or self:Rules().rank1
+    local out = {}
     self.extraOf = self.extraOf or {}
     for _, f in ipairs(GC.EXTRA_FILTERS) do
         local min = f.number and self:MinIlvl() or nil
-        if saved[f.key] == true and (not f.number or min > 0) then
+        if self:ExtraOn(f.key) and (not f.number or min > 0) and (f.key ~= "rank" or next(rank1) ~= nil) then
             local c = self.extraOf[f.key] or { key = GC.EXTRA_FILTER .. f.key, extra = f.key, help = f.help, severity = "low", slots = {} }
             c.label, c.min = f.number and string.format(f.label, min) or f.label, min
+            c.names = f.key == "rank" and rank1 or nil
             self.extraOf[f.key] = c -- the same table each time, so a cell's tag stays the same check
             out[#out + 1] = c
         end
@@ -250,31 +284,33 @@ function GC:ExtraChecks()
     return out
 end
 
--- A piece's item quality (Enum.ItemQuality) from the game, or nil (not loaded, an error, a secret).
-function GC.QualityOf(piece)
-    if not (C_Item and C_Item.GetItemQualityByID) then
-        return nil
-    end
-    local ok, q = pcall(C_Item.GetItemQualityByID, piece.itemString or piece.link or piece.id)
-    if ok and not secret(q) and type(q) == "number" then
-        return q
-    end
-    return nil
-end
-
 -- Whether an extra filter trips on a worn piece (r: its findings so far, with its track). A piece known only
--- by its ID (parts nil) has no track and no readable quality, so only its item level counts.
+-- by its ID (parts nil) has no track and no readable enchant, so only its item level counts. Low rank
+-- enchants trips only on an enchant on the season's list, and keeps its name in r.rankEnchant.
 function GC.ExtraTrips(c, r, piece, parts, ilvl)
     if c.extra == "upgrade" then
         local t = r.track
         return t ~= nil and t.max ~= nil and t.rank < t.max
     elseif c.extra == "ilvl" then
         return ilvl ~= nil and c.min ~= nil and ilvl < c.min
-    elseif c.extra == "quality" then
-        local q = parts and GC.QualityOf(piece)
-        return q ~= nil and q <= GC.LOW_QUALITY
+    elseif c.extra == "rank" then
+        local id = parts and parts.enchant
+        local name = type(id) == "number" and not secret(id) and c.names and c.names[id]
+        if name then
+            r.rankEnchant = name
+            return true
+        end
     end
     return false
+end
+
+-- A check's words on a slot: its label, but a Low rank enchants finding names the enchant
+-- ("rank 1 enchant: Hex of Leeching").
+function GC.CheckWords(c, r)
+    if c.extra == "rank" and type(r) == "table" and r.rankEnchant then
+        return string.format(GC.TEXT.rankEnchant, r.rankEnchant)
+    end
+    return c.label
 end
 
 -- Whether an empty slot should hold an item: every slot, but the off hand only beside a one-handed main
@@ -600,7 +636,7 @@ local function checkWords(r, notes)
     local words = {}
     for _, c in ipairs(r.checks or {}) do
         if GC.IsNote(c) == (notes == true) then
-            words[#words + 1] = c.label
+            words[#words + 1] = GC.CheckWords(c, r)
         end
     end
     return #words > 0 and table.concat(words, ", ") or nil
@@ -963,7 +999,7 @@ function GC.IssueLines(row)
             end
             for _, c in ipairs(r.checks or {}) do
                 if not GC.IsNote(c) then
-                    out[#out + 1] = { text = head .. c.label, kind = c.severity }
+                    out[#out + 1] = { text = head .. GC.CheckWords(c, r), kind = c.severity }
                 end
             end
         end
@@ -990,7 +1026,7 @@ function GC.NoteLines(row)
         if r and r.piece then
             for _, c in ipairs(r.checks or {}) do
                 if GC.IsNote(c) then
-                    out[#out + 1] = { text = lineHead(r) .. c.label, kind = c.severity }
+                    out[#out + 1] = { text = lineHead(r) .. GC.CheckWords(c, r), kind = c.severity }
                 end
             end
             if r.below and r.track then
