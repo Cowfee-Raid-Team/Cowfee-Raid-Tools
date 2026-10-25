@@ -2,8 +2,8 @@ local ADDON, CRT = ...
 
 -- DEVELOPER ONLY. The layout check (/crt dev layout): opens every page of the main window and clicks
 -- through its tabs, then prints every shown frame and text that reaches outside the page area
--- (UI.PAGE_W x UI.PAGE_H), and by how much. Content inside a scroll frame is skipped, since a scroll
--- child is meant to be larger than its frame. The page you were on is selected again at the end; each
+-- (UI.PAGE_W x UI.PAGE_H), and by how much, in the page's units. Content inside a scroll frame is skipped,
+-- since a scroll child is meant to be larger than its frame, and so is what a clipping frame cuts off. The page you were on is selected again at the end; each
 -- page remembers the last tab clicked, so pages with tabs end on their last tab. This file never ships:
 -- its .toc line is inside the do-not-package block.
 
@@ -37,10 +37,23 @@ local function label(obj)
     return obj:GetObjectType() .. " " .. tostring(name or "?"):gsub("^.*%.", "")
 end
 
--- How far obj reaches past the page frame's edges, as "right 24, bottom 10", or nil when inside.
-local function overflow(obj, pl, pr, pt, pb)
+local function effectiveScale(obj)
+    local s = obj.GetEffectiveScale and obj:GetEffectiveScale()
+    return (type(s) == "number" and s > 0) and s or 1
+end
+
+-- How far obj reaches past the page frame's edges, as "right 24, bottom 10", or nil when inside. GetLeft and the
+-- rest answer in obj's own effective scale (warcraft.wiki.gg, API Region GetLeft), so a frame with SetScale, or
+-- under one (such as the Marker macros tab's preview, scaled down to fit its box), is turned into the page's
+-- units (pageScale, the page's effective scale) first.
+local function overflow(obj, pl, pr, pt, pb, pageScale)
     local l, r, t, b = obj:GetLeft(), obj:GetRight(), obj:GetTop(), obj:GetBottom()
-    if not (l and r and t and b) or r - l < 1 or t - b < 1 then
+    if not (l and r and t and b) then
+        return nil
+    end
+    local k = effectiveScale(obj) / pageScale
+    l, r, t, b = l * k, r * k, t * k, b * k
+    if r - l < 1 or t - b < 1 then
         return nil
     end
     local parts = {}
@@ -51,28 +64,34 @@ local function overflow(obj, pl, pr, pt, pb)
     return #parts > 0 and table.concat(parts, ", ") or nil
 end
 
--- Every shown frame and non-empty text under the page that reaches outside it.
+-- Every shown frame and non-empty text under the page that reaches outside it. A frame that clips its children
+-- (SetClipsChildren; every ScrollBox does, so a list's last row half past its bottom) is measured, but not what is
+-- in it: whatever of that reaches past the frame is cut off there and never shows.
 local function scan(pf, where, out)
     local pl, pr, pt, pb = pf:GetLeft(), pf:GetRight(), pf:GetTop(), pf:GetBottom()
     if not (pl and pr and pt and pb) then
         return
     end
+    local pageScale = effectiveScale(pf)
     local function walk(frame, depth)
         if depth > 15 then
             return
         end
         for _, region in ipairs({ frame:GetRegions() }) do
             if region:GetObjectType() == "FontString" and region:IsVisible() and (region:GetText() or "") ~= "" then
-                local over = overflow(region, pl, pr, pt, pb)
+                local over = overflow(region, pl, pr, pt, pb, pageScale)
                 if over then
                     out[#out + 1] = string.format("%s: %s past by %s", where, label(region), over)
                 end
             end
         end
+        if frame ~= pf and frame.DoesClipChildren and frame:DoesClipChildren() then
+            return
+        end
         local scrollChild = frame.GetScrollChild and frame:GetScrollChild()
         for _, child in ipairs({ frame:GetChildren() }) do
             if child:IsVisible() and child ~= scrollChild then
-                local over = overflow(child, pl, pr, pt, pb)
+                local over = overflow(child, pl, pr, pt, pb, pageScale)
                 if over then
                     out[#out + 1] = string.format("%s: %s past by %s", where, label(child), over)
                 end
@@ -82,6 +101,7 @@ local function scan(pf, where, out)
     end
     walk(pf, 1)
 end
+Check.Scan = scan -- for tests (CRT_Dev/Tests/run_layoutcheck.js)
 
 function Check:Run()
     UI:Show()
