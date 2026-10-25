@@ -218,6 +218,8 @@ SlashCmdList["COWFEERAIDTOOLS"] = function(msg)
         -- dev markerprobe: try drawing a raid marker from hidden chat text (Dev/MarkerProbe.lua)
     elseif CRT.SpecialSampleDev and CRT.SpecialSampleDev:Command(msg) then
         -- dev special (off): a sample special alert on the boss Mech Alerts shows, never saved (Dev/SpecialSample.lua)
+    elseif CRT.AlertExportDev and CRT.AlertExportDev:Command(msg) then
+        -- dev alerts: export a boss's alerts as a code or as Lua to ship, and import a code (Dev/AlertExport.lua)
     elseif msg == "dev layout" then
         if CRT.LayoutCheck then
             CRT.LayoutCheck:Run()

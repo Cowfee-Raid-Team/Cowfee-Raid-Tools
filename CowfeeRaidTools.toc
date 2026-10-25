@@ -12,6 +12,7 @@
 CRT_Core\Core.lua
 CRT_Core\Themes.lua
 CRT_Core\Gear.lua
+CRT_Core\Share.lua
 CRT_Core\Profiles.lua
 CRT_Core\Team.lua
 CRT_Data\Bosses\Registry.lua
@@ -155,6 +156,7 @@ CRT_Modules\Alerts\Draft.lua
 CRT_Modules\Alerts\SpellLookup.lua
 CRT_Modules\Alerts\Editor.lua
 CRT_Modules\Alerts\Saved.lua
+CRT_Modules\Alerts\Share.lua
 CRT_Modules\Markers\Database.lua
 CRT_Modules\Markers\Display.lua
 CRT_Modules\Markers\ClearOn.lua
@@ -182,6 +184,7 @@ CRT_Dev\Dev\MarkerEditor.lua
 CRT_Dev\Dev\ClearProbe.lua
 CRT_Dev\Dev\MarkerProbe.lua
 CRT_Dev\Dev\SpecialSample.lua
+CRT_Dev\Dev\AlertExport.lua
 CRT_Dev\Dev\SeasonTools.lua
 CRT_Dev\Dev\BossOrder.lua
 CRT_Dev\Dev\JournalTree.lua

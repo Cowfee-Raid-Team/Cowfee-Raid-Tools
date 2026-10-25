@@ -6,7 +6,7 @@ const fs = require('fs');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
 const harness = `
-local coreSrc, profilesSrc = ...
+local coreSrc, profilesSrc, shareSrc = ...
 local failCount, okCount = 0, 0
 local function check(cond, name) if cond then okCount = okCount + 1 print("ok " .. name) else failCount = failCount + 1 print("FAIL " .. name) end end
 function strtrim(s) return (s:gsub("^%s+", ""):gsub("%s+$", "")) end
@@ -95,6 +95,7 @@ CRT.PALETTE = {}
 CRT.UI = { STRATA = {}, LAYERS = {} }
 for _, s in ipairs({ "BACKGROUND", "LOW", "MEDIUM", "HIGH", "DIALOG", "FULLSCREEN", "FULLSCREEN_DIALOG", "TOOLTIP" }) do table.insert(CRT.UI.STRATA, { key = s }) end
 for _, k in ipairs({ "panel", "notes", "alert", "popups" }) do table.insert(CRT.UI.LAYERS, { key = k }) end
+assert(load(shareSrc, "CRT_Core/Share.lua"))("CowfeeRaidTools", CRT) -- the share engine Profiles packs through
 assert(load(profilesSrc, "CRT_Core/Profiles.lua"))("CowfeeRaidTools", CRT)
 local P = CRT.Profiles
 local paths0 = {} for _, e in ipairs(P.ShareEntries()) do paths0[e.path] = e end
@@ -465,5 +466,5 @@ print(okCount .. " passed, " .. failCount .. " failed")
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 const d = process.argv[2];
-for (const p of ['CRT_Core/Core.lua', 'CRT_Core/Profiles.lua']) lua.lua_pushstring(L, to_luastring(fs.readFileSync(d + '/' + p, 'utf8')));
-if (lua.lua_pcall(L, 2, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
+for (const p of ['CRT_Core/Core.lua', 'CRT_Core/Profiles.lua', 'CRT_Core/Share.lua']) lua.lua_pushstring(L, to_luastring(fs.readFileSync(d + '/' + p, 'utf8')));
+if (lua.lua_pcall(L, 3, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }

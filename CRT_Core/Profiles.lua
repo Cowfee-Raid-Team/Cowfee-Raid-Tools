@@ -14,9 +14,12 @@ local ADDON, CRT = ...
 -- profile: for your own characters. Export settings only (CRTS1:, after a few # header lines) gives only
 -- the paths in Profiles.SHARE below, and Import applies them onto the active profile after a preview,
 -- keeping one backup (CRTDB.importBackup, so each profile has its own) for Undo last import: for raiders.
+-- Both are packed and read through the share engine's parts (CRT_Core/Share.lua: Pack, Unpack, Clean, IsPlain),
+-- keeping their own CRTP1: and CRTS1: prefixes, so every text made before reads as it did.
 
 local Profiles = {}
 CRT.Profiles = Profiles
+local Share = CRT.Share -- CRT_Core/Share.lua, loaded just before this file
 
 local DEFAULT = "Default"
 -- whatsNew: the installed addon version is the account's, so What's new shows once whatever the profile
@@ -27,8 +30,6 @@ local SHARE_VERSION = 1
 local MAX_DEPTH = 5 -- a table with no default to match (a position, a list) may nest this deep
 local MAX_STRING = 255 -- the longest text a shared setting may hold
 local MAX_FROM = 48 -- the sender's name, as the preview shows it
--- Zlib, not the default raw Deflate: its checksum makes a cut-off or changed string fail to decompress.
-local ZLIB = (Enum and Enum.CompressionMethod and Enum.CompressionMethod.Zlib) or 1
 
 local TEXT = {
     header = "# Cowfee Raid Tools settings",
@@ -332,8 +333,7 @@ end
 -- The import backup stays behind: it would undo to another character's settings. So does the raid notes'
 -- history (notes.history): the earlier texts stay on this computer.
 function Profiles:Export()
-    local E = C_EncodingUtil
-    if not (E and E.SerializeCBOR and E.CompressString and E.EncodeBase64) then
+    if not Share.Encoder() then
         return nil, "This game client can't export profiles."
     end
     local data = {}
@@ -350,10 +350,9 @@ function Profiles:Export()
             data[key] = CRTDB[key]
         end
     end
-    local ok, text = pcall(function()
-        return E.EncodeBase64(E.CompressString(E.SerializeCBOR({ v = 1, data = data })))
-    end)
-    if not ok or not text then
+    -- the game's default compression, as every CRTP1: text was made
+    local text = Share.Pack({ v = 1, data = data })
+    if not text then
         return nil, "The profile couldn't be exported."
     end
     return EXPORT_PREFIX .. text
@@ -361,13 +360,7 @@ end
 
 -- Pasted text without its # header lines and without the spaces and line breaks a paste can add.
 local function cleanText(text)
-    local out = {}
-    for line in (text or ""):gmatch("[^\r\n]+") do
-        if not line:find("^%s*#") then
-            out[#out + 1] = line
-        end
-    end
-    return (table.concat(out):gsub("%s", ""))
+    return Share.Clean(text)
 end
 
 local function decodeFull(text)
@@ -375,11 +368,8 @@ local function decodeFull(text)
     if text:sub(1, #EXPORT_PREFIX) ~= EXPORT_PREFIX then
         return nil, "That isn't a Cowfee Raid Tools profile."
     end
-    local E = C_EncodingUtil
-    local ok, decoded = pcall(function()
-        return E.DeserializeCBOR(E.DecompressString(E.DecodeBase64(text:sub(#EXPORT_PREFIX + 1))))
-    end)
-    if not ok or type(decoded) ~= "table" or type(decoded.data) ~= "table" then
+    local decoded = Share.Unpack(text:sub(#EXPORT_PREFIX + 1))
+    if type(decoded) ~= "table" or type(decoded.data) ~= "table" then
         return nil, "The profile text is damaged. Copy it again."
     end
     local data = {}
@@ -411,10 +401,7 @@ end
 -- Export settings only. ---------------------------------------------------------------------------
 
 local function encoder()
-    local E = C_EncodingUtil
-    if E and E.SerializeCBOR and E.DeserializeCBOR and E.CompressString and E.DecompressString and E.EncodeBase64 and E.DecodeBase64 then
-        return E
-    end
+    return Share.Encoder()
 end
 
 local function splitPath(path)
@@ -470,30 +457,10 @@ local function same(a, b)
 end
 
 -- Only plain saved data: true or false, a finite number, a short text, or a table of those, keyed by
--- text or number, at most MAX_DEPTH deep.
+-- text or number, at most MAX_DEPTH deep and MAX_LIST entries wide (the share engine's check, with these caps).
+local PLAIN = { depth = MAX_DEPTH, entries = MAX_LIST, string = MAX_STRING }
 local function isPlain(v, depth)
-    local t = type(v)
-    if t == "boolean" then
-        return true
-    elseif t == "number" then
-        return v == v and v ~= math.huge and v ~= -math.huge
-    elseif t == "string" then
-        return #v <= MAX_STRING
-    elseif t == "table" then
-        if depth > MAX_DEPTH then
-            return false
-        end
-        local n = 0
-        for k, x in pairs(v) do
-            local kt = type(k)
-            n = n + 1
-            if n > MAX_LIST or not ((kt == "string" and #k <= MAX_STRING) or (kt == "number" and isPlain(k, depth))) or not isPlain(x, depth + 1) then
-                return false
-            end
-        end
-        return true
-    end
-    return false
+    return Share.IsPlain(v, PLAIN, depth)
 end
 
 local function isField(kind, v)
@@ -753,8 +720,7 @@ end
 -- the text and how many saved values were left out for not having their default's shape (0 normally);
 -- a choice of one of your own sound files is left out without counting.
 function Profiles:ExportSettings()
-    local E = encoder()
-    if not E then
+    if not encoder() then
         return nil, TEXT.noApi
     end
     local data, unset, dropped = {}, {}, 0
@@ -775,10 +741,8 @@ function Profiles:ExportSettings()
     end
     local name, day, version = playerName(), date("%Y-%m-%d"), tostring(CRT.version or "dev")
     local payload = { v = SHARE_VERSION, kind = "settings", from = name, date = day, version = version, data = data, unset = unset }
-    local ok, block = pcall(function()
-        return E.EncodeBase64(E.CompressString(E.SerializeCBOR(payload), ZLIB))
-    end)
-    if not ok or type(block) ~= "string" then
+    local block = Share.Pack(payload, Share.ZLIB)
+    if not block then
         return nil, TEXT.damaged
     end
     return TEXT.header .. "\n" .. TEXT.from:format(name, day, version) .. "\n" .. SHARE_PREFIX .. block, dropped
@@ -822,14 +786,11 @@ local function cleanName(from)
 end
 
 local function readSettings(text)
-    local E = encoder()
-    if not E then
+    if not encoder() then
         return nil, TEXT.noApi
     end
-    local ok, payload = pcall(function()
-        return E.DeserializeCBOR(E.DecompressString(E.DecodeBase64(text:sub(#SHARE_PREFIX + 1)), ZLIB))
-    end)
-    if not ok or type(payload) ~= "table" or type(payload.v) ~= "number" then
+    local payload = Share.Unpack(text:sub(#SHARE_PREFIX + 1), Share.ZLIB)
+    if type(payload) ~= "table" or type(payload.v) ~= "number" then
         return nil, TEXT.damaged
     end
     if payload.v > SHARE_VERSION then

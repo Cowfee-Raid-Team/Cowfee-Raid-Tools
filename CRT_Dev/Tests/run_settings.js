@@ -5,7 +5,7 @@ const fs = require('fs');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
 const harness = `
-local coreSrc, panelSrc, controlsSrc, pageSrc, alertSrc, profilesSrc, themesSrc, macrosSrc, windowSrc, tooltipSrc, areasSrc, teamSrc = ...
+local coreSrc, panelSrc, controlsSrc, pageSrc, alertSrc, profilesSrc, themesSrc, macrosSrc, windowSrc, tooltipSrc, areasSrc, teamSrc, shareSrc = ...
 -- FAIL lines are counted, and the count printed last, so a failure shows past the runner's tail
 local failCount, rawPrint = 0, print
 print = function(s, ...) if type(s) == "string" and s:find("^FAIL ") then failCount = failCount + 1 end rawPrint(s, ...) end
@@ -90,6 +90,7 @@ function CreateFont(name) local o = fontObject() fontObjects[name] = o _G[name] 
 local CRT = {}
 assert(load(coreSrc, "CRT_Core/Core.lua"))("CowfeeRaidTools", CRT)
 assert(load(themesSrc, "CRT_Core/Themes.lua"))("CowfeeRaidTools", CRT)
+assert(load(shareSrc, "CRT_Core/Share.lua"))("CowfeeRaidTools", CRT) -- the share engine Profiles packs through
 assert(load(profilesSrc, "CRT_Core/Profiles.lua"))("CowfeeRaidTools", CRT)
 -- the team raid check, which General Settings shows (CRT_Core/Team.lua; its own harness is run_team.js)
 IsInRaid = function() return false end IsInGroup = function() return false end
@@ -600,5 +601,5 @@ if failCount > 0 then print(failCount .. " failed") end
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 const d = process.argv[2];
-for (const p of ['CRT_Core/Core.lua', 'CRT_Core/UI/Panel.lua', 'CRT_Core/UI/Controls.lua', 'CRT_Core/UI/SettingsPage.lua', 'CRT_Modules/Notes/Alert.lua', 'CRT_Core/Profiles.lua', 'CRT_Core/Themes.lua', 'CRT_Core/Macros.lua', 'CRT_Core/UI/Window.lua', 'CRT_Core/UI/Tooltip.lua', 'CRT_Modules/Alerts/Areas.lua', 'CRT_Core/Team.lua']) lua.lua_pushstring(L, to_luastring(fs.readFileSync(d + '/' + p, 'utf8')));
-if (lua.lua_pcall(L, 12, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
+for (const p of ['CRT_Core/Core.lua', 'CRT_Core/UI/Panel.lua', 'CRT_Core/UI/Controls.lua', 'CRT_Core/UI/SettingsPage.lua', 'CRT_Modules/Notes/Alert.lua', 'CRT_Core/Profiles.lua', 'CRT_Core/Themes.lua', 'CRT_Core/Macros.lua', 'CRT_Core/UI/Window.lua', 'CRT_Core/UI/Tooltip.lua', 'CRT_Modules/Alerts/Areas.lua', 'CRT_Core/Team.lua', 'CRT_Core/Share.lua']) lua.lua_pushstring(L, to_luastring(fs.readFileSync(d + '/' + p, 'utf8')));
+if (lua.lua_pcall(L, 13, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
