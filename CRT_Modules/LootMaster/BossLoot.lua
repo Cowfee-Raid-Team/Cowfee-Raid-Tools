@@ -744,16 +744,25 @@ end
 -- A test session's end clears the TEST rows, unless TEST items wait to start next (or Start session ended
 -- it to start another). Only a session started from held TEST rows: an instant test (/crt loot test)
 -- leaves them; Loot Master > Tonight's End session clears them itself.
-LM:OnChange(function(what, s)
-    if what == "ended" then
-        if type(s) == "table" and s.test and s.fromHeld and not starting and not testsWaiting() then
-            BL:ClearTests()
+-- Made once Loot is known to be on (CRT_Core/Modules.lua), so with Loot off nothing here runs on a change;
+-- straight away without the registry.
+local function hookChanges()
+    LM:OnChange(function(what, s)
+        if what == "ended" then
+            if type(s) == "table" and s.test and s.fromHeld and not starting and not testsWaiting() then
+                BL:ClearTests()
+            end
+            startNext()
+        elseif what == "restored" then
+            startNext() -- the saved session is back, or gone: the waiting boss loot may start now
         end
-        startNext()
-    elseif what == "restored" then
-        startNext() -- the saved session is back, or gone: the waiting boss loot may start now
-    end
-end)
+    end)
+end
+if CRT.Modules then
+    CRT.Modules:OnInit("loot", hookChanges)
+else
+    hookChanges()
+end
 
 -- At login: the kept list back, each row with the time it had left (rows whose time is over are dropped,
 -- won ones said in chat), its rollID CRT's own.

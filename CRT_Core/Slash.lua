@@ -12,6 +12,8 @@ CRT.Slash = Slash
 --            case), raw as typed. Returns false when it doesn't know rest, for "Unknown command".
 --   help     the lines /crt help lists for it, while its module is on; each part typed as a command is in
 --            square brackets ("[/crt late start], [end] - ..."), shown in the help's command colour
+--   top      true: listed at the top of /crt help, right under /crt itself (a page most players open first);
+--            the others come after Core's notes lines, in the order they registered
 function Slash:Register(word, def)
     if not self.words[word] then
         self.order[#self.order + 1] = word
@@ -33,9 +35,22 @@ function Slash:Run(msg, raw)
     return def.run(rest, msg, raw) ~= false
 end
 
+-- The help lines of the registered words with top == top, while their module is on.
+local function printWords(top)
+    for _, word in ipairs(Slash.order) do
+        local def = Slash.words[word]
+        if (def.top == true) == top and (not CRT.Modules or CRT.Modules:IsOn(def.module)) then
+            for _, line in ipairs(def.help or {}) do
+                print("  " .. line:gsub("%[(.-)%]", "|cffffd100%1|r"))
+            end
+        end
+    end
+end
+
 local function printHelp()
     CRT:Print("v" .. CRT.version .. " commands:")
     print("  |cffffd100/crt|r - open or close the main panel")
+    printWords(true)
     print("  |cffffd100/crt readycheck|r - open the Ready Check page (|cffffd100/crt consumables|r opens its Your bar tab)")
     print("  |cffffd100/crt check|r - open the ready check window for your group, open until you right-click it")
     print("  |cffffd100/crt check food|r, |cffffd100flask|r, |cffffd100rune|r, |cffffd100vantus|r, |cffffd100buffs|r or |cffffd100all|r - check the group, add |cffffd100chat|r to post it")
@@ -44,15 +59,7 @@ local function printHelp()
     print("  |cffffd100/crt notes|r - open the Raid Notes page (|cffffd100/crt notes settings|r opens its Notes Settings tab)")
     print("  |cffffd100/crt reminders|r - open the Mech Alerts tab of Raid Notes")
     print("  |cffffd100/crt note test|r, |cffffd100next|r, |cffffd100stop|r - start the active note now, start the next phase, stop")
-    -- the modules' words, in the order they registered, while their module is on
-    for _, word in ipairs(Slash.order) do
-        local def = Slash.words[word]
-        if not CRT.Modules or CRT.Modules:IsOn(def.module) then
-            for _, line in ipairs(def.help or {}) do
-                print("  " .. line:gsub("%[(.-)%]", "|cffffd100%1|r"))
-            end
-        end
-    end
+    printWords(false)
     print("  |cffffd100/crt break 10|r - a 10 minute break timer (any minutes, 0 cancels); from a raid leader or assistant it reaches the whole raid")
     print("  |cffffd100/crt qol|r - open the Quality of Life page (low health and debuffs)")
     print("  |cffffd100/crt settings|r - open General Settings: window, fonts, sound, minimap button, layers, profiles")

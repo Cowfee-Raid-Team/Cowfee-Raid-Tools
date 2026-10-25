@@ -270,12 +270,21 @@ end)
 
 -- A new record may match an award RCLootCouncil gives later; a scan a little after it catches that.
 local pendingScan = false
-Loot:OnChange(function(what)
-    if what == "added" and not pendingScan and RC:Available() and Loot:Settings().rcEnrich then
-        pendingScan = true
-        C_Timer.After(60, function()
-            pendingScan = false
-            RC:Scan()
-        end)
-    end
-end)
+-- Made once Loot is known to be on (CRT_Core/Modules.lua), so with Loot off nothing here runs on a change;
+-- straight away without the registry.
+local function hookChanges()
+    Loot:OnChange(function(what)
+        if what == "added" and not pendingScan and RC:Available() and Loot:Settings().rcEnrich then
+            pendingScan = true
+            C_Timer.After(60, function()
+                pendingScan = false
+                RC:Scan()
+            end)
+        end
+    end)
+end
+if CRT.Modules then
+    CRT.Modules:OnInit("loot", hookChanges)
+else
+    hookChanges()
+end

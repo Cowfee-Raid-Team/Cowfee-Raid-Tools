@@ -251,19 +251,28 @@ local function build()
     list = box
 end
 
-LM:OnChange(function(what, sub)
-    if what == "bossloot" then
-        if sub == "open" then
-            build()
-            refresh()
-            win:Show()
-        elseif win then
-            refresh()
+-- Made once Loot is known to be on (CRT_Core/Modules.lua), so with Loot off nothing here runs on a change;
+-- straight away without the registry.
+local function hookChanges()
+    LM:OnChange(function(what, sub)
+        if what == "bossloot" then
+            if sub == "open" then
+                build()
+                refresh()
+                win:Show()
+            elseif win then
+                refresh()
+            end
+        elseif (what == "started" or what == "ended") and win then
+            refresh() -- Start session waits for a running session
         end
-    elseif (what == "started" or what == "ended") and win then
-        refresh() -- Start session waits for a running session
-    end
-end)
+    end)
+end
+if CRT.Modules then
+    CRT.Modules:OnInit("loot", hookChanges)
+else
+    hookChanges()
+end
 
 -- /crt loot boss: the window again.
 function LM:ShowBossLoot()

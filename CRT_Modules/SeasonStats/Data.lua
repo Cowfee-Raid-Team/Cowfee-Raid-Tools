@@ -814,31 +814,23 @@ function Stats.PhaseText(ph)
     return "Phase " .. tostring(ph)
 end
 
--- Counts each saved pull, and keeps each encounter's furthest phase while it runs. The hooks are made only
--- while Raid Lead is on (CRT_Core/Modules.lua); straight away without the registry.
-local function hookChanges()
-    if CRT.Timeline and CRT.Timeline.OnSaved then
-        CRT.Timeline:OnSaved(function(pull)
-            Stats:Record(pull, Stats.PhaseFor(pull))
-        end)
-    end
-    -- the ability timelines' rows are read again after any Timeline change
-    if CRT.Timeline and CRT.Timeline.OnChange then
-        CRT.Timeline:OnChange(function()
-            abilityRows = {}
-        end)
-    end
-    if CRT.Alerts and CRT.Alerts.OnChange then
-        CRT.Alerts:OnChange(watchPhase)
-    end
+-- Counts each saved pull, and keeps each encounter's furthest phase while it runs.
+if CRT.Timeline and CRT.Timeline.OnSaved then
+    CRT.Timeline:OnSaved(function(pull)
+        Stats:Record(pull, Stats.PhaseFor(pull))
+    end)
 end
-if CRT.Modules then
-    CRT.Modules:OnInit("raidlead", hookChanges)
-else
-    hookChanges()
+-- the ability timelines' rows are read again after any Timeline change
+if CRT.Timeline and CRT.Timeline.OnChange then
+    CRT.Timeline:OnChange(function()
+        abilityRows = {}
+    end)
+end
+if CRT.Alerts and CRT.Alerts.OnChange then
+    CRT.Alerts:OnChange(watchPhase)
 end
 
-local driver = CRT.Modules and CRT.Modules:Frame("raidlead") or CreateFrame("Frame") -- quiet while the module is off (CRT_Core/Modules.lua)
+local driver = CreateFrame("Frame")
 driver:RegisterEvent("PLAYER_LOGIN")
 driver:SetScript("OnEvent", function()
     -- the counters from before team raids into all first, then the fill (which counts in both)

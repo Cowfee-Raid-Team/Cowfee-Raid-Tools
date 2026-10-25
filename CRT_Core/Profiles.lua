@@ -52,7 +52,9 @@ Profiles.SHARE = {
     window = true, -- the main window's place and scale
     ui = true,
     lastPage = false, -- the open page
-    modules = true, -- the module switches (Modules.lua): shared like the theme
+    -- the module switches (Modules.lua) stay on this computer: a raid leader's settings would turn modules off
+    -- for everyone who imports them
+    modules = false,
     minimap = true,
     classCache = false,
     roleCache = false,
@@ -180,7 +182,6 @@ local SECTIONS = {
     readycheck = "Ready Check", debuffs = "Debuffs", notes = "Raid Notes", qol = "Quality of Life", loot = "Loot History",
     lootmaster = "Loot Master", gearChecker = "Gear Checker", sound = "Sounds", late = "Late Tracker", tattle = "Tattlebot",
     timeline = "Timeline", markers = "Markers", pace = "Pace", alerts = "Alerts", team = "Team raids",
-    modules = "Modules",
 }
 
 -- The top-level keys a profile holds: every key in the defaults, except the shared caches.

@@ -536,6 +536,11 @@ end
 -- again, or "pending" when only the lead can't be read yet (a fresh login's group may not be known at the
 -- first loading screen) and final isn't set.
 local function resume(key, where, final)
+    -- Loot off (CRT_Core/Modules.lua): nothing comes back on and nothing waits for the group, and the saved Yes
+    -- is kept as it is, for a /reload with Loot on again tonight
+    if CRT.Modules and not CRT.Modules:IsOn("loot") then
+        return false
+    end
     local s = saved()
     if not s or s.on ~= true then
         return false

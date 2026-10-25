@@ -1153,5 +1153,6 @@ if CRT.Slash then
             UI:Show("groups")
         end,
         help = { "[/crt groups] - open the Raid Groups page" },
+        top = true,
     })
 end

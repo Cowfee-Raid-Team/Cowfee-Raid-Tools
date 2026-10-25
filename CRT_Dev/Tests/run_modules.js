@@ -373,6 +373,15 @@ for _, def in ipairs(M:List()) do
     check(not out:find("Unknown command", 1, true), "/crt " .. word .. " is a known command")
     check((#shownPages > pagesBefore) == on, "/crt " .. word .. (on and " opens its page" or " opens nothing"))
   end
+  -- General Settings' layer rows: a module's own row only while it is on
+  for _, g in ipairs(UI.LAYER_GROUPS) do
+    if g.module == def.key then check(on, def.key .. " off: no " .. g.label .. " layer row") end
+  end
+  if def.key == "timeline" and on then
+    local row = false
+    for _, g in ipairs(UI.LAYER_GROUPS) do if g.key == "timeline" then row = true end end
+    check(row, "the Timeline window's layer row is there")
+  end
   -- /crt help lists a module's words only while it is on
   local help = slash("help")
   for _, word in ipairs(def.words or {}) do
@@ -425,7 +434,7 @@ do
   env.UnitIsGroupLeader = stubs.UnitIsGroupLeader
 end
 
--- Raid Lead off: Season Stats counts no pull (its Timeline hook is never made)
+-- Season Stats' counters are Core: every pull is counted, Raid Lead on or off (only its page goes with it)
 do
   local S, T = CRT.SeasonStats, CRT.Timeline
   local counted = 0
@@ -434,7 +443,7 @@ do
   check(type(T.saveListeners) == "table", "the Timeline's save hooks are there (Timeline/Data.lua, Core)")
   for _, fn in ipairs(T.saveListeners or {}) do pcall(fn, { encounterID = 1 }) end
   S.Record = real
-  check((counted > 0) == M:IsOn("raidlead"), "Season Stats " .. (M:IsOn("raidlead") and "counts" or "doesn't count") .. " a saved pull")
+  check(counted > 0, "Season Stats counts a saved pull")
 end
 
 -- /crt dev modules (Dev/Modules.lua): sets a switch for after a /reload; this session keeps running as it was
@@ -470,11 +479,111 @@ do
   check(answered, "a Gear Checker ask is answered with your gear")
 end
 check(prefixes.CRTGearCheck and prefixes.CRTRepair and prefixes.CRTPace1 and prefixes.CRTLootRemaster, "the raider-side prefixes are registered: CRTGearCheck, CRTRepair, CRTPace1, CRTLootRemaster")
--- Loot Master: the looter's session reaches the raider's CRT (LM.incoming)
+-- /crt help: Raid Groups right under /crt, the other module words after Core's notes lines
+do
+  local lines = {}
+  for line in (slash("help") .. "\\n"):gmatch("(.-)\\n") do lines[#lines + 1] = line end
+  local at = {}
+  for i, l in ipairs(lines) do
+    for _, w in ipairs({ "groups", "readycheck", "note test", "late", "timeline" }) do
+      if not at[w] and l:find("/crt " .. w .. "|r", 1, true) then at[w] = i end
+    end
+  end
+  if M:IsOn("raidlead") then
+    check(at.groups and at.readycheck and at.groups < at.readycheck, "/crt help lists /crt groups near the top")
+    check(at.late and at["note test"] and at.late > at["note test"], "the other module words come after Core's notes lines")
+  end
+end
+local errorsBefore = #errors
+-- The rest is driven through the frame of the one file that owns it, so no other handler sees the stand-in raid.
+local function fireIn(file, event, ...)
+  local n = 0
+  for _, rec in ipairs(frames) do
+    local f = rec.frame
+    if rec.file == file and f.events[event] and f.scripts.OnEvent then
+      n = n + 1
+      local ok, e = pcall(f.scripts.OnEvent, f, event, ...)
+      if not ok then check(false, file .. " " .. event .. ": " .. tostring(e)) end
+    end
+  end
+  runTimers()
+  return n
+end
+local function sentWith(before, prefix, pattern)
+  for i = before + 1, #sent do
+    if sent[i].prefix == prefix and (not pattern or sent[i].text:find(pattern)) then return sent[i] end
+  end
+  return nil
+end
+-- what follows sets stand-ins in stubs: a raw value the checks above left in env would hide them
+for _, k in ipairs({ "IsInGroup", "IsInRaid", "UnitIsGroupLeader", "UnitName", "GetNumGroupMembers" }) do
+  local v = rawget(env, k)
+  if v ~= nil then stubs[k] = v rawset(env, k, nil) end
+end
+-- your own raid group, not a finder group
+stubs.LE_PARTY_CATEGORY_HOME, stubs.LE_PARTY_CATEGORY_INSTANCE = 1, 2
+stubs.IsInGroup = function(category) return category ~= 2 end
+-- a raid of two: you (raid1) and Leader-Realm (raid2), who leads
+stubs.GetNumGroupMembers = function() return 2 end
+stubs.GetRaidRosterInfo = function(i) if i == 1 then return "Me" elseif i == 2 then return "Leader-Realm" end end
+stubs.UnitName = function(u)
+  if u == "player" or u == "raid1" then return "Me", nil end
+  if u == "raid2" then return "Leader", "Realm" end
+  return nil
+end
+stubs.UnitIsGroupLeader = function(u) return u == "raid2" or u == "Leader" or u == "Leader-Realm" end
+
+-- Loot Master: a leader's session (S) reaches your CRT (LM.incoming) and your CRT says hello (K)
 do
   local LM = CRT.LootMaster
-  check(LM and type(LM.Handle) == "function", "Loot Master's message handler is there")
+  local before = #sent
+  local text = LM.Wire.Encode("S", { "sess1", 0, 1, LM.VERSION, 60, 2, 0 })
+  local n = fireIn("CRT_Modules/LootMaster/Comm.lua", "CHAT_MSG_ADDON", LM.PREFIX, text, "RAID", "Leader-Realm")
+  check(n > 0, "Loot Master's message frame still listens")
+  check(LM.incoming and LM.incoming.id == "sess1" and LM.incoming.leader == "Leader-Realm", "a leader's loot session reaches your CRT (LM.incoming)")
+  check(sentWith(before, LM.PREFIX, "^K|") ~= nil, "your CRT answers a loot session with its hello (K)")
 end
+
+-- Repairs: one pull in a raid instance, and your bill goes to the raid under CRTRepair
+do
+  local cost, cur = 1000, 90
+  stubs.GetInstanceInfo = function() return "Raid", "raid", 16, "Mythic", 20, 0, false, 2900 end
+  stubs.IsInInstance = function() return true, "raid" end
+  stubs.GetInventoryItemDurability = function(slot) if slot == 1 then return cur, 100 end return nil end
+  stubs.GetInventoryItemID = function(_, slot) if slot == 1 then return 12345 end return nil end
+  stubs.C_TooltipInfo = { GetInventoryItem = function() return { repairCost = cost } end }
+  local file = "CRT_Modules/SeasonStats/Repairs.lua"
+  check(fireIn(file, "PLAYER_ENTERING_WORLD", false, false) > 0, "the repair reports still listen")
+  local before = #sent
+  fireIn(file, "ENCOUNTER_START", 3129, "Boss", 16, 20)
+  cost, cur = 8000, 60
+  fireIn(file, "ENCOUNTER_END", 3129, "Boss", 16, 20, 0)
+  local msg = sentWith(before, "CRTRepair")
+  check(msg ~= nil and msg.text:find("|7000$") ~= nil, "a pull's repair bill goes to the raid (CRTRepair): " .. tostring(msg and msg.text))
+  stubs.IsInInstance = function() return false, "none" end
+  stubs.GetInstanceInfo = function() return "Somewhere", "none", 0, "", 0, 0, false, 0 end
+end
+
+-- Pace: the leader's plan (CRTPace1) is taken as the raid's plan, and its bars run on the pull
+do
+  local Pace = CRT.Pace
+  local id = 3129
+  local plan = "mode phase;1 30 boss1 72"
+  local h, a = 5381, 1
+  for i = 1, #plan do local b = plan:byte(i) h = (h * 33 + b) % 16777216 a = (a * 7 + b) % 65521 end
+  local hash = string.format("%06x%04x%x", h, a, #plan)
+  local n = fireIn("CRT_Modules/Pace/Comm.lua", "CHAT_MSG_ADDON", "CRTPace1", id .. "|" .. hash .. "|1|1|" .. plan, "RAID", "Leader-Realm")
+  check(n > 0, "the Pace plans still listen")
+  local got = Pace:Plan(id)
+  check(got and got.from == "Leader" and got.rows and got.rows[1] and got.rows[1].hp == 72, "the leader's pace plan is the plan in use")
+  fireIn("CRT_Modules/Pace/Display.lua", "ENCOUNTER_START", id, "Boss", 16, 20)
+  -- the bars' window is made on first use (Pace/Display.lua's build), during the event
+  local running = false
+  for _, rec in ipairs(frames) do if rec.file == "(events)" and rec.frame.scripts.OnUpdate and rec.frame.shown then running = true end end
+  check(running, "the Pace bars run on the pull")
+  fireIn("CRT_Modules/Pace/Display.lua", "ENCOUNTER_END", id)
+end
+for i = errorsBefore + 1, #errors do check(false, "a Lua error while driving the raider side: " .. errors[i]) end
 
 print(passes .. " passed, " .. fails .. " failed")
 MODULES_FAILS = fails

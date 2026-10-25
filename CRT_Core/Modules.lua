@@ -5,8 +5,9 @@ local ADDON, CRT = ...
 -- words (they say it is off), no event frames, no hooks. A switch takes effect after a /reload: there is
 -- no live unload. Core is always on.
 --
--- The switch is saved in CRTDB.modules[key] (true or false; missing is on), one per profile like the theme,
--- and shared by Export settings only like the theme (Profiles.lua's SHARE). The registry reads it once, on
+-- The switch is saved in CRTDB.modules[key] (true or false; missing is on), one per profile. It never travels
+-- in Export settings only (Profiles.lua's SHARE): a raid leader's settings would turn modules off for everyone
+-- who imports them. The registry reads it once, on
 -- Core's ADDON_LOADED (Modules:Start, called from Core.lua), so IsOn keeps saying what this session runs
 -- until the next /reload.
 --
@@ -143,9 +144,10 @@ end
 
 -- On Core's ADDON_LOADED, after CRT.db is set (Core.lua): reads every switch once, takes a module that is
 -- off out of the page registry (the menu leaves out a page that isn't registered, UI/Panel.lua's
--- menuGroups) and silences its event frames, then runs the inits of the modules that are on. Core's
--- ADDON_LOADED runs first (its frame is the addon's first), so a module frame that also waits for
--- ADDON_LOADED has no handler left by the time the event reaches it.
+-- menuGroups) and silences its event frames, then runs the inits of the modules that are on. Nothing here
+-- counts on the order frames get an event in: a module frame that also waits for ADDON_LOADED either got it
+-- before this ran (its handler ran as with the module on: today the only one is Loot/Store.lua's, which brings
+-- the Loot History store's format up to date, harmless with Loot off) or has no handler left when it comes.
 function Modules:Start()
     if self.started then
         return
@@ -164,6 +166,13 @@ function Modules:Start()
             for _, page in ipairs(def.pages or {}) do
                 dropPage(CRT.UI, page)
             end
+        end
+    end
+    -- General Settings' layer rows of a module that is off (a row's module, UI.LAYER_GROUPS in UI/Panel.lua)
+    local groups = CRT.UI and CRT.UI.LAYER_GROUPS
+    for i = #(groups or {}), 1, -1 do
+        if groups[i].module and not self:IsOn(groups[i].module) then
+            table.remove(groups, i)
         end
     end
     for _, rec in ipairs(self.frames) do
@@ -231,22 +240,23 @@ Modules:Register("timeline", {
 
 Modules:Register("raidlead", {
     label = "Raid Lead",
-    help = "Raid Groups, Gear Checker, Late Tracker, the Pace page, Season Stats and Tattlebot. Off, your CRT still answers a Gear Checker ask, reports your repairs and shows the Pace bars your raid leader sends.",
+    help = "Raid Groups, Gear Checker, Late Tracker, the Pace page, the Season Stats page and Tattlebot. Off, your CRT still answers a Gear Checker ask, reports your repairs, counts your pulls for Season Stats and shows the Pace bars your raid leader sends.",
     pages = { "groups", "gearcheck", "late", "pace", "seasonstats", "tattle" },
     words = { "groups", "gear", "late", "pace", "tattle" },
     files = {
         "CRT_Modules/Groups/Apply.lua", "CRT_Modules/Groups/Invite.lua", "CRT_Modules/Groups/Page.lua",
         "CRT_Modules/GearChecker/Data.lua", "CRT_Modules/GearChecker/Inspect.lua", "CRT_Modules/GearChecker/Page.lua",
         "CRT_Modules/Late/Data.lua", "CRT_Modules/Late/Page.lua", "CRT_Modules/Pace/Page.lua",
-        "CRT_Modules/SeasonStats/Data.lua", "CRT_Modules/SeasonStats/Page.lua",
+        "CRT_Modules/SeasonStats/Page.lua",
         "CRT_Modules/Tattlebot/Data.lua", "CRT_Modules/Tattlebot/Page.lua",
     },
     -- the Gear Checker's answer (prefix CRTGearCheck) and your repair reports (CRTRepair)
     raider = { "CRT_Modules/GearChecker/Comm.lua", "CRT_Modules/SeasonStats/Repairs.lua" },
     -- the raid layouts and names everyone reads (Groups/Data.lua), the shipped Tattlebot and Pace stores the
-    -- boss library fills (CRT_Data/Bosses/Registry.lua), and the Pace bars raiders see with their plans (CRTPace1)
+    -- boss library fills (CRT_Data/Bosses/Registry.lua), the Pace bars raiders see with their plans (CRTPace1), and
+    -- Season Stats' counters, which keep counting pulls with Raid Lead off (only its page goes with it)
     core = {
-        "CRT_Modules/Groups/Data.lua", "CRT_Modules/Tattlebot/Database.lua", "CRT_Modules/Pace/Database.lua",
+        "CRT_Modules/Groups/Data.lua", "CRT_Modules/SeasonStats/Data.lua", "CRT_Modules/Tattlebot/Database.lua", "CRT_Modules/Pace/Database.lua",
         "CRT_Modules/Pace/Data.lua", "CRT_Modules/Pace/Display.lua", "CRT_Modules/Pace/Comm.lua",
     },
 })
