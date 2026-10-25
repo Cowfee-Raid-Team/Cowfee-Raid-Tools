@@ -3,7 +3,7 @@ const fs = require('fs');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
 const harness = `
-local src = ...
+local shareSrc, src = ...
 function strtrim(s) return (s:gsub("^%s+", ""):gsub("%s+$", "")) end
 local reloads = 0
 function ReloadUI() reloads = reloads + 1 end
@@ -11,6 +11,7 @@ local store = {}
 C_EncodingUtil = { SerializeCBOR = function(t) store[#store+1] = t return "cbor" .. #store end, CompressString = function(s) return s end, EncodeBase64 = function(s) return s end,
   DecodeBase64 = function(s) return s end, DecompressString = function(s) return s end, DeserializeCBOR = function(s) return store[tonumber(s:match("%d+"))] end }
 local CRT = { defaults = { notes = { list = {}, history = {} }, ui = { font = "default" }, groups = { presets = {} }, late = { history = {} }, lastPage = "groups", classCache = {}, timeline = { bosses = {}, record = true }, alerts = { noteLines = { text = false, icon = false, circle = false }, bars = { cap = 5 }, areas = { texts = { cap = 3 }, icons = { cap = 5 }, circles = { cap = 3 } }, reminders = {}, nextId = 1, saved = {}, nextSavedId = 1 } } }
+assert(load(shareSrc, "CRT_Core/Share.lua"))("CowfeeRaidTools", CRT)
 assert(load(src, "CRT_Core/Profiles.lua"))("CowfeeRaidTools", CRT)
 local P = CRT.Profiles
 local function fill(db, src) src = src or CRT.defaults for k, v in pairs(src) do if type(v) == "table" then if type(db[k]) ~= "table" then db[k] = {} end fill(db[k], v) elseif db[k] == nil then db[k] = v end end end
@@ -75,5 +76,7 @@ CRTDBChar = raidChar P:Load() fill(CRTDB)
 print("raid character back: active " .. P:Current() .. ", font " .. CRTDB.ui.font .. ", reloads " .. reloads)
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
+// the share engine Profiles packs through, from the same folder (CRT_Core/Share.lua)
+lua.lua_pushstring(L, to_luastring(fs.readFileSync(require('path').join(require('path').dirname(process.argv[2]), 'Share.lua'), 'utf8')));
 lua.lua_pushstring(L, to_luastring(fs.readFileSync(process.argv[2], 'utf8')));
-if (lua.lua_pcall(L, 1, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
+if (lua.lua_pcall(L, 2, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }

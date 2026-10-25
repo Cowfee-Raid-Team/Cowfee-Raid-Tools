@@ -240,6 +240,7 @@ CowfeeRaidTools/
   CowfeeRaidTools.toc      title, version, interface number, saved variables, load order
   CRT_Core/                what every feature uses
     Core.lua               namespace, saved data defaults, scaled fonts, the Modern colors
+    Share.lua              the share engine: a table as a !CRT: code to paste, and back
     Profiles.lua           profiles: load, switch, copy, reset, delete, export, import
     Slash.lua              the /crt command
     Perf.lua               /crt perf: the addon's CPU cost, from the game's profiler
