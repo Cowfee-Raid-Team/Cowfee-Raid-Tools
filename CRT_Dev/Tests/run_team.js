@@ -153,6 +153,47 @@ eq(T.Decode("SECRET"), nil, "a secret text is never read")
 eq(T.Decode(nil), nil, "nothing is dropped")
 A.CRT.version = "1|2" eq(T.Encode(), "H|1|12", "a | in the version is left out") A.CRT.version = "1.2.0"
 check(#T.Encode() < 40, "a small message")
+-- the sender's spec: a field after the answer-me field (empty for a plain hello), only when the game gives one
+A.CRT.Groups = { PlayerSpecID = function() return 65 end }
+eq(T.Encode(), "H|1|1.2.0||65", "a plain hello with your spec")
+eq(T.Encode(true), "H|1|1.2.0|A|65", "asking for answers, with your spec")
+A.CRT.version = string.rep("9", 40) check(#T.Encode(true) < 40, "with a spec still a small message") A.CRT.version = "1.2.0"
+A.CRT.Groups = { PlayerSpecID = function() return nil end }
+eq(T.Encode(true), "H|1|1.2.0|A", "no spec known: the hello as before")
+A.CRT.Groups = nil
+eq(T.Encode(), "H|1|1.2.0", "no spec reader: the hello as before")
+local function spec(text) return select(4, T.Decode(text)) end
+eq(spec("H|1|1.2.0||65"), 65, "the spec read from a plain hello")
+eq(select(3, T.Decode("H|1|1.2.0||65")), false, "which doesn't ask")
+eq(spec("H|1|1.2.0|A|257"), 257, "and from one that asks")
+eq(select(3, T.Decode("H|1|1.2.0|A|257")), true, "which asks")
+eq(spec("H|1|1.2.0|A"), nil, "a hello from before the spec field: no spec")
+eq(spec("H|1|1.2.0"), nil, "a plain one from before it: no spec")
+eq(spec("H|1|1.2.0||x65"), nil, "a spec that isn't a number is left out")
+eq(spec("H|1|1.2.0||0"), nil, "spec 0 is none")
+eq(spec("H|1|1.2.0||6.5"), nil, "a fraction is none")
+eq(spec("H|1.4|1.5.0|A|65|later"), 65, "a later minor version's extra fields after it are skipped")
+-- the CRTs already out there read the new hello as before: their Decode, as shipped (the first one, then the
+-- one with the answer-me field), takes a hello with the spec field as the same version, addon version and ask
+local OLD = {
+  [[return function(text) local version, addon, rest = text:match("^H|(%d+%.?%d*)|([^|]*)(.*)$") version = tonumber(version)
+    if not version or version < 1 or math.floor(version) > 1 then return nil end
+    if rest ~= "" and rest:sub(1, 1) ~= "|" then return nil end return version, addon end]],
+  [[return function(text) local version, addon, rest = text:match("^H|(%d+%.?%d*)|([^|]*)(.*)$") version = tonumber(version)
+    if not version or version < 1 or math.floor(version) > 1 then return nil end
+    if rest ~= "" and rest:sub(1, 1) ~= "|" then return nil end return version, addon, rest:match("^|([^|]*)") == "A" end]],
+}
+for i, src in ipairs(OLD) do
+  local decode = assert(load(src))()
+  local v1, a1, ask1 = decode("H|1|1.2.0||65")
+  eq(tostring(v1) .. " " .. tostring(a1), "1 1.2.0", "old parser " .. i .. ": a plain hello with a spec is read")
+  local v2, a2, ask2 = decode("H|1|1.2.0|A|65")
+  eq(tostring(v2) .. " " .. tostring(a2), "1 1.2.0", "old parser " .. i .. ": an asking hello with a spec is read")
+  if i == 2 then
+    eq(ask1, false, "old parser 2: the plain one doesn't ask")
+    eq(ask2, true, "old parser 2: the asking one asks")
+  end
+end
 
 -- 2. Names --------------------------------------------------------------------------------------------------------
 ME = "Solex"
@@ -411,6 +452,18 @@ local pugKey = T.Key("Pug1")
 on("Solex", "CHAT_MSG_ADDON", "CRTHello", "H|1|1.0", "PARTY", "Pug1-Sargeras")
 on("Solex", "CHAT_MSG_ADDON", "CRTHello", "H|1|1.0", "WHISPER", "Pug1-Sargeras")
 eq(T:Runs(pugKey), false, "a hello on any channel but RAID is left alone")
+-- a hello's spec goes to the spec cache under the sender's name; none without the field, none from a stranger
+local cached = {}
+A.CRT.Groups = { CacheSpec = function(name, s) cached[#cached + 1] = tostring(name) .. "=" .. tostring(s) end }
+on("Solex", "CHAT_MSG_ADDON", "CRTHello", "H|1|1.2.0||65", "RAID", "Moo-Sargeras")
+eq(table.concat(cached, ","), "Moo-Sargeras=65", "a hello's spec is remembered for its sender")
+on("Solex", "CHAT_MSG_ADDON", "CRTHello", "H|1|1.2.0|A", "RAID", "Moo-Sargeras")
+on("Solex", "CHAT_MSG_ADDON", "CRTHello", "H|1|1.2.0||70", "RAID", "Stranger-Sargeras")
+on("Solex", "CHAT_MSG_ADDON", "CRTHello", "H|1|1.2.0||70", "PARTY", "Moo-Sargeras")
+eq(#cached, 1, "no spec from an old hello, a stranger or another channel")
+A.CRT.Groups = nil
+on("Solex", "CHAT_MSG_ADDON", "CRTHello", "H|1|1.2.0||65", "RAID", "Moo-Sargeras")
+check(true, "no spec cache loaded: the hello is still taken without error")
 -- a secret roster row keeps the last count
 secretRow = true
 on("Solex", "GROUP_ROSTER_UPDATE")
