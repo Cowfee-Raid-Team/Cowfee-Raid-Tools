@@ -4,7 +4,7 @@
 const fs = require('fs');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
-const harness = `
+const harness = require('./placement_stub')(process.argv[2]) + `
 local coreSrc, panelSrc, controlsSrc, pageSrc, alertSrc, profilesSrc, themesSrc, macrosSrc, windowSrc, tooltipSrc, areasSrc, teamSrc, shareSrc = ...
 -- FAIL lines are counted, and the count printed last, so a failure shows past the runner's tail
 local failCount, rawPrint = 0, print
@@ -146,6 +146,7 @@ CRT.Macros:Register({ key = "test", label = "Test calls", macros = { { name = "C
 assert(load(pageSrc, "SettingsPage.lua"))("CowfeeRaidTools", CRT)
 UI:RegisterPage("devtest", "Development", function() end)
 UI:SetPageHidden("devtest", true, true)
+CRT_PLACEMENT(CRT) -- CRT_Core/UI/Placement.lua, which the callout is placed by
 assert(load(alertSrc, "Alert.lua"))("CowfeeRaidTools", CRT)
 -- CRT_Modules/Alerts/Areas.lua: the font helpers the alert draws its two lines with
 assert(load(areasSrc, "CRT_Modules/Alerts/Areas.lua"))("CowfeeRaidTools", CRT)

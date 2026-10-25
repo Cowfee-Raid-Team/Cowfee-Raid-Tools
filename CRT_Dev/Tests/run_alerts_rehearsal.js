@@ -9,12 +9,13 @@
 const fs = require('fs');
 const path = require('path');
 const themeLua = require('./theme_stub');
+const placementLua = require('./placement_stub');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 
 const files = process.argv.slice(2);
 if (files.length < 19) { console.error('usage: node run_alerts_rehearsal.js <19 files in TOC order>'); process.exit(2); }
 
-const harness = themeLua(process.argv.slice(2)) + `
+const harness = themeLua(process.argv.slice(2)) + placementLua(process.argv.slice(2)) + `
 local sources = { ... }
 local clock = 1000
 function GetTime() return clock end
@@ -191,6 +192,7 @@ local CRT = {
   PlaySound = function(_, kit) played[#played + 1] = kit end,
 }
 CRT_THEME(CRT, CRT.UI)
+CRT_PLACEMENT(CRT) -- UI/Placement.lua, which every area is placed by
 for i = 1, #sources, 2 do
   local before = #all
   assert(load(sources[i + 1], "@" .. sources[i]))("CowfeeRaidTools", CRT)

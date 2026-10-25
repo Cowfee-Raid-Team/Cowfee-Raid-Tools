@@ -6,9 +6,10 @@
 const fs = require('fs');
 const path = require('path');
 const themeLua = require('./theme_stub');
+const placementLua = require('./placement_stub');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
-const harness = themeLua(process.argv.slice(2)) + `
+const harness = themeLua(process.argv.slice(2)) + placementLua(process.argv.slice(2)) + `
 local sources = { ... }
 local frames, fontStrings = {}, {}
 local function mock(kind, parent, template)
@@ -173,6 +174,7 @@ CRT.NoteReminders = { Build = function() end }
 CRT.NotePhases = { Build = function() end }
 
 CRT_THEME(CRT, CRT.UI)
+CRT_PLACEMENT(CRT) -- UI/Placement.lua, which every area is placed by
 local coreSrc
 local function loadSource(i, src)
   if src:find("CRT.defaults = defaults", 1, true) then -- CRT_Core/Core.lua: read, not run
@@ -211,6 +213,20 @@ local function row(list, label, root)
   return out
 end
 local function click(b) b.OnClick(b) end
+-- an area's gear opens its menu (UI/Placement.lua): Placement, then Settings, which opens this tab on the area
+local menus = {}
+CRT.UI.ContextMenu = function(owner, fill)
+  local root = { items = {} }
+  function root:CreateButton(label, fn) self.items[#self.items + 1] = { label = label, fn = fn } end
+  fill(root)
+  menus[#menus + 1] = root
+end
+local function gearSettings(gear)
+  click(gear)
+  local menu = menus[#menus]
+  assert(menu and menu.items[1].label == "Placement" and menu.items[2].label == "Settings", "the gear: Placement and Settings")
+  menu.items[2].fn()
+end
 local function keys(r) local o = r.opts.options local list = type(o) == "function" and o() or o local k, l = {}, {} for i, x in ipairs(list) do k[i] = x.key l[i] = x.label end return table.concat(k, ","), table.concat(l, ",") end
 local function configDropdown()
   for _, r in ipairs(dropdowns) do if keys(r) == "callout,icons,texts,bars,circles,timeline" then return r end end
@@ -226,12 +242,12 @@ check("tab: gear opens the tab on its area", function()
   local C = CRT.AlertCircles
   assert(C.handle.shown, "drag box with previews")
   -- the icons' gear first, so its rows exist before they must hide
-  click(CRT.AlertIcons.handle.gear)
+  gearSettings(CRT.AlertIcons.handle.gear)
   assert(configDropdown().value == "icons", "icons selected")
   local fadeRow = checks("Fade to grey as time runs out")
   assert(fadeRow and fadeRow.shown, "icons rows shown")
   local gear = C.handle.gear
-  click(gear)
+  gearSettings(gear)
   assert(shownPages[#shownPages] == "notes", "opens Raid Notes")
   local alertsTab = tabFrame("Alert Settings")
   assert(alertsTab and alertsTab.selected == true, "on the Alerts tab")
@@ -241,7 +257,7 @@ check("tab: gear opens the tab on its area", function()
   assert(thick and thick.shown, "circles rows shown")
   assert(not fadeRow.shown, "icons rows hidden")
   -- another area's gear swaps the tab to it
-  click(CRT.AlertBars.handle.gear)
+  gearSettings(CRT.AlertBars.handle.gear)
   assert(configDropdown().value == "bars", "bars")
   assert(row(sliders, "Show bars from").shown and not thick.shown, "bars rows shown, circles hidden")
   CRT.UI:SetPreviews(false)
@@ -253,7 +269,9 @@ check("tab: gear moves the main window aside while Previews are on", function()
   local function at() local p = f.pts[#f.pts] return p[1], p[3], p[4], p[5] end
   local function gearOn(area, x)
     area:Settings().position = { point = "CENTER", relativePoint = "CENTER", x = x, y = 0 }
-    area.handle.gear.OnClick(area.handle.gear)
+    -- the mock frames sit at the screen's centre, so the helper's on-screen offset is the saved x here
+    area.placement.ScreenOffset = function() return x, 0 end
+    gearSettings(area.handle.gear)
   end
   local saved = CRT.db.window
   -- previews off: the window is left where it is

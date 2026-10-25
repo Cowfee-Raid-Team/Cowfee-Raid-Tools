@@ -3,9 +3,10 @@
 const fs = require('fs');
 const path = require('path');
 const themeLua = require('./theme_stub');
+const placementLua = require('./placement_stub');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
-const harness = themeLua(process.argv.slice(2)) + `
+const harness = themeLua(process.argv.slice(2)) + placementLua(process.argv.slice(2)) + `
 local rulesSrc, engineSrc, areasSrc, barsSrc, referenceSrc, colorsSrc = ...
 local frames, fontStrings = {}, {}
 local hides = 0
@@ -136,6 +137,7 @@ assert(load(engineSrc, "Engine"))("CowfeeRaidTools", CRT)
 assert(load(referenceSrc, "Reference"))("CowfeeRaidTools", CRT)
 assert(load(colorsSrc, "Colors"))("CowfeeRaidTools", CRT)
 CRT_THEME(CRT, CRT.UI)
+CRT_PLACEMENT(CRT) -- UI/Placement.lua, which every area is placed by
 assert(load(areasSrc, "Areas"))("CowfeeRaidTools", CRT)
 assert(load(barsSrc, "Bars"))("CowfeeRaidTools", CRT)
 local A, Areas, B = CRT.Alerts, CRT.AlertAreas, CRT.AlertBars

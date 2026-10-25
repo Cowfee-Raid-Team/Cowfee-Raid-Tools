@@ -95,7 +95,7 @@ local function mock(kind, parent, template, name)
   end })
 end
 UIParent = mock("Frame")
-UIParent.parent = nil
+UIParent:SetSize(SCREEN_W, SCREEN_H)
 function CreateFrame(kind, name, parent, template) return mock(kind, parent, template, name) end
 function InCombatLockdown() return inCombat end
 function IsShiftKeyDown() return shiftDown end

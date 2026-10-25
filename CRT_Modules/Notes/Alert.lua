@@ -110,14 +110,15 @@ end
 
 -- The alert -------------------------------------------------------------------------------
 
--- Wide enough for the whole title left of Reset, and at least as wide as the alert. Measured
+-- Wide enough for the whole title left of the gear and Reset, and at least as wide as the alert. Measured
 -- again whenever Previews turn on, so a font change applies.
 local function measureHandle()
     if not (handle and handleText) then
         return
     end
     local titleWidth = handleText.GetUnboundedStringWidth and handleText:GetUnboundedStringWidth() or handleText:GetStringWidth()
-    handleMin = math.ceil(6 + titleWidth + 4 + CRT.UI.ResetButtonWidth() + 2)
+    local P = CRT.UI.Placement
+    handleMin = math.ceil(6 + titleWidth + 4 + P.GEAR_SIZE + P.GEAR_GAP + CRT.UI.ResetButtonWidth() + 2)
     handle:SetWidth(math.max(handleMin, frame and frame:GetWidth() or 0))
 end
 
@@ -248,20 +249,32 @@ function Alert:Refresh()
     end
 end
 
-local function applyPosition()
-    local p = settings().position or DEFAULT_POSITION
-    frame:ClearAllPoints()
-    frame:SetPoint(p.point, UIParent, p.relativePoint or p.point, p.x, p.y)
-end
+local build
+
+-- Its place, drag, nudge, reset and anchor are the shared helper's (UI/Placement.lua); its gear's Settings open
+-- Raid Notes > Alert Settings on the callout.
+local placement = CRT.UI.Placement.Define("notecallout", {
+    title = TEXT.title,
+    store = settings,
+    default = DEFAULT_POSITION,
+    build = function()
+        build()
+    end,
+    settings = function()
+        if CRT.NoteAlertsTab then
+            CRT.NoteAlertsTab.Select("callout")
+        end
+        if CRT.NotesPage then
+            CRT.NotesPage.Open("alerts")
+        end
+    end,
+})
 
 function Alert:ResetPosition()
-    settings().position = nil
-    if frame then
-        applyPosition()
-    end
+    placement:Reset()
 end
 
-local function build()
+function build()
     if frame then
         return
     end
@@ -269,7 +282,6 @@ local function build()
     frame:SetSize(320, 56)
     CRT.UI:RegisterLayer("alert", frame)
     frame:SetClampedToScreen(true)
-    frame:SetMovable(true)
 
     icon = frame:CreateTexture(nil, "ARTWORK")
     icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
@@ -294,8 +306,6 @@ local function build()
     handle:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
     CRT.UI.Tint(handle, "SetBackdropColor", "surface", 0.9) -- the theme's field colour under its heading-coloured edge
     CRT.UI.Tint(handle, "SetBackdropBorderColor", "heading")
-    handle:EnableMouse(true)
-    handle:RegisterForDrag("LeftButton")
     local text = handle:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     text:SetPoint("LEFT", 6, 0)
     text:SetText(format(TEXT.drag, TEXT.title))
@@ -305,21 +315,10 @@ local function build()
     handle.reset:SetPoint("RIGHT", -2, 0)
     handleText = text
     measureHandle()
-    handle:SetScript("OnDragStart", function()
-        frame:StartMoving(true)
-    end)
-    -- Saved by its center, so the alert grows evenly around where you put it.
-    handle:SetScript("OnDragStop", function()
-        frame:StopMovingOrSizing()
-        local x, y = frame:GetCenter()
-        local ux, uy = UIParent:GetCenter()
-        settings().position = { point = "CENTER", relativePoint = "CENTER", x = x - ux, y = y - uy }
-        applyPosition()
-    end)
     handle:Hide()
-
-    applyPosition()
     frame:Hide()
+    -- Held by its center, so the alert grows evenly around where you put it.
+    handle.gear = placement:Attach(frame, handle, { reset = handle.reset })
 end
 
 -- The alert hides itself when there is nothing to show, so this frame keeps it updated.

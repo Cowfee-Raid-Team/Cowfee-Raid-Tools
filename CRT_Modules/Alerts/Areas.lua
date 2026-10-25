@@ -63,7 +63,8 @@ local ADDON, CRT = ...
 --   area:ResetPosition()  back to defaultPosition
 --   area:Test(lines)      shows the given lines (with `at` set) until they have all passed
 --   area:Visible()        -> { widget } on screen, for the tests; area.more is the count left out
---   area:Open()           opens Raid Notes > Alerts on this area (the ⚙ button)
+--   area:Open()           opens Raid Notes > Alerts on this area (the gear's Settings)
+--   area.placement        its place, drag, nudge, reset and anchor (UI/Placement.lua), key "alert" .. def.key
 --   area:Settings()       -> its settings table
 --   Areas.Panel(parent, onChange)  the settings panel the Alerts tab shows an area's rows in (below)
 --   Areas.Find(key)       the area with that def.key
@@ -82,7 +83,6 @@ CRT.AlertAreas = Areas
 
 local TEXT = {
     drag = "%s: drag to move",
-    settings = "Settings",
     show = "Show these alerts",
     cap = "At once",
     grow = "Grow",
@@ -106,10 +106,7 @@ local OUTLINES = { [""] = true, OUTLINE = true, THICKOUTLINE = true }
 local HANDLE_HEIGHT = 20
 local WINDOW_MARGIN = 20      -- the main window moved aside sits this far from the screen edge
 local HANDLE_MIN_WIDTH = 220
-local GEAR_TEXTURE = "Interface\\WorldMap\\Gear_64Grey" -- the settings button
-local GEAR_SIZE = 16
 local HANDLE_TITLE_LEFT = 6   -- the title's left edge on the drag box
-local HANDLE_GEAR_GAP = 4    -- between the settings button and Reset
 local HANDLE_RESET_RIGHT = 2  -- Reset's right edge, from the drag box's right
 local HANDLE_TITLE_GAP = 4    -- between the title and the settings button
 local GLOW_SIZE = 2      -- the border's thickness
@@ -757,28 +754,25 @@ function Area:Settings()
     return s
 end
 
+-- Its place, drag, nudge, reset and anchor are the shared helper's (UI/Placement.lua): self.placement.
 function Area:ApplyPosition()
-    local p = self:Settings().position or self.def.defaultPosition or DEFAULT_POSITION
-    self.frame:ClearAllPoints()
-    self.frame:SetPoint(p.point or "CENTER", UIParent, p.relativePoint or p.point or "CENTER", p.x or 0, p.y or 0)
+    self.placement:Apply()
 end
 
 function Area:ResetPosition()
-    self:Settings().position = nil
-    if self.frame then
-        self:ApplyPosition()
-    end
+    self.placement:Reset()
 end
 
--- The drag box is wide enough for the whole title left of the settings button and Reset, never narrower
+-- The drag box is wide enough for the whole title left of the gear and Reset, never narrower
 -- than before. Measured again whenever Previews turn on, so a font change applies.
 function Area:MeasureHandle()
     local title = self.handleTitle
     if not (title and self.handle) then
         return
     end
+    local P = UI.Placement
     local titleWidth = title.GetUnboundedStringWidth and title:GetUnboundedStringWidth() or title:GetStringWidth()
-    self.handleMin = math.max(HANDLE_MIN_WIDTH, math.ceil(HANDLE_TITLE_LEFT + titleWidth + HANDLE_TITLE_GAP + GEAR_SIZE + HANDLE_GEAR_GAP + CRT.UI.ResetButtonWidth() + HANDLE_RESET_RIGHT))
+    self.handleMin = math.max(HANDLE_MIN_WIDTH, math.ceil(HANDLE_TITLE_LEFT + titleWidth + HANDLE_TITLE_GAP + P.GEAR_SIZE + P.GEAR_GAP + CRT.UI.ResetButtonWidth() + HANDLE_RESET_RIGHT))
     self.handle:SetWidth(self.handleMin)
 end
 
@@ -792,7 +786,6 @@ function Area:Build()
     frame:SetSize(HANDLE_MIN_WIDTH, HANDLE_HEIGHT)
     UI:RegisterLayer(self.def.layer, frame)
     frame:SetClampedToScreen(true)
-    frame:SetMovable(true)
 
     local handle = CreateFrame("Frame", nil, frame, "BackdropTemplate")
     self.handle = handle
@@ -802,8 +795,6 @@ function Area:Build()
     handle:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
     UI.Tint(handle, "SetBackdropColor", "surface", 0.9) -- the theme's field colour under its heading-coloured edge
     UI.Tint(handle, "SetBackdropBorderColor", "heading")
-    handle:EnableMouse(true)
-    handle:RegisterForDrag("LeftButton")
     local title = handle:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     title:SetPoint("LEFT", 6, 0)
     title:SetText(format(TEXT.drag, self.title))
@@ -813,41 +804,12 @@ function Area:Build()
     handle.reset:SetPoint("RIGHT", -2, 0)
     self.handleTitle = title
     self:MeasureHandle()
-
-    local gear = CreateFrame("Button", nil, handle)
-    handle.gear = gear
-    gear:SetSize(GEAR_SIZE, GEAR_SIZE)
-    gear:SetPoint("RIGHT", handle.reset, "LEFT", -HANDLE_GEAR_GAP, 0)
-    gear:SetFrameLevel((handle:GetFrameLevel() or 1) + 5)
-    gear:SetNormalTexture(GEAR_TEXTURE)
-    gear:SetHighlightTexture(GEAR_TEXTURE)
-    gear:SetScript("OnClick", function()
-        self:Open()
-    end)
-    gear:SetScript("OnEnter", function(b)
-        UI.TooltipOwner(GameTooltip, b, "ANCHOR_TOP")
-        GameTooltip:SetText(TEXT.settings, 1, 1, 1)
-        GameTooltip:Show()
-    end)
-    gear:SetScript("OnLeave", function()
-        GameTooltip:Hide()
-    end)
-
-    handle:SetScript("OnDragStart", function()
-        frame:StartMoving(true)
-    end)
-    -- Saved by its center, which is the first alert's center.
-    handle:SetScript("OnDragStop", function()
-        frame:StopMovingOrSizing()
-        local x, y = frame:GetCenter()
-        local ux, uy = UIParent:GetCenter()
-        self:Settings().position = { point = "CENTER", relativePoint = "CENTER", x = x - ux, y = y - uy }
-        self:ApplyPosition()
-    end)
     handle:Hide()
-
-    self:ApplyPosition()
     frame:Hide()
+
+    -- Dragged by its drag box and held by its center, which is the first alert's center. The gear (Placement,
+    -- and Settings: Raid Notes > Alerts on this area) goes left of Reset.
+    handle.gear = self.placement:Attach(frame, handle, { reset = handle.reset })
 end
 
 -- Lays out up to `cap` lines on pooled widgets and hides the rest. `more` is how many the source left
@@ -1103,8 +1065,8 @@ function Area:MoveWindowAside()
     if not f or UI.windowParked == "dragged" then
         return
     end
-    local p = self:Settings().position or self.def.defaultPosition or DEFAULT_POSITION
-    local left = (p.x or 0) >= 0
+    local dx = self.placement:ScreenOffset()
+    local left = (dx or 0) >= 0
     local _, cy = f:GetCenter()
     local _, uy = UIParent:GetCenter()
     local scale = (f.GetEffectiveScale and f:GetEffectiveScale() or 1)
@@ -1130,6 +1092,20 @@ function Areas.New(def)
     local area = setmetatable({ def = def, title = def.title, pool = {}, count = 0, more = 0,
         preview = false, shownAt = {}, seen = {} }, Area)
     Areas.list[#Areas.list + 1] = area
+    -- its key ("alerttexts", "alertbars", ...) is saved as the anchor of anything anchored to it
+    area.placement = UI.Placement.Define("alert" .. def.key, {
+        title = def.title,
+        store = function()
+            return area:Settings()
+        end,
+        default = def.defaultPosition or DEFAULT_POSITION,
+        build = function()
+            area:Build()
+        end,
+        settings = function()
+            area:Open()
+        end,
+    })
     UI:RegisterPreview("alert" .. def.key, function(on)
         area:Build()
         if on then
