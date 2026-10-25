@@ -11,8 +11,8 @@ local ADDON, CRT = ...
 --             replaces this block.
 -- special     The boss's special alerts on Raid Notes > Mech Alerts > Special (the format is at the top of
 --             Alerts/Special.lua). Each one but Pre-Pot names a row of the ability timeline (when.row), so its
---             times are that row's casts and move when the reference changes; Pre-Pot is 15 s before the pull,
---             from the game's pull timer only. Four are on until a player changes them (Caustic Waves, Mother's
+--             times are that row's casts and move when the reference changes; Pre-Pot is 5 s before the pull,
+--             from the game's pull timer only (one of 10 s or more). Four are on until a player changes them (Caustic Waves, Mother's
 --             Wrath for tanks, Rage of the Shackled, Circling Prey); the rest are off until ticked. The (?)
 --             sentences come from the boss's Encounter Journal text; Slithering Gestation and Submerge are not
 --             in it, so theirs only say what the row is. There is no tank-buster type, so Mother's Wrath has
@@ -163,11 +163,13 @@ Fester Burst: 0:39, 1:14, 1:48, 2:23, 7:45, 8:19
         {
             key = "prePot",
             label = "Pre-Pot",
-            help = "Drink your potion before the pull. It plays only from the game's pull timer, 15 seconds before the pull.",
+            help = "Drink your potion before the pull. It plays only from the game's pull timer, 5 seconds before the pull, when the timer runs 10 seconds or more.",
             type = "generic",
             -- no icon: no potion texture file ID could be confirmed from Blizzard's UI source or the wiki
-            when = { times = "P1 -0:15" },
-            lead = 8,
+            -- -0:05 with lead 5: it shows 10 s before the pull, so any pull timer of 10 s or more plays it (the
+            -- countdown run starts with the timer, and an item whose window is already past never shows)
+            when = { times = "P1 -0:05" },
+            lead = 5,
             who = { mode = "everyone" },
             text = "Pre-Pot",
             show = { callout = true, bar = false, speech = true },
