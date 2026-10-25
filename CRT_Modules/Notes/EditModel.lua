@@ -24,7 +24,8 @@ local ADDON, CRT = ...
 --   list           leaves its slot empty, so everyone after it keeps their group; a new one fills the first empty
 --                  slot, else goes on the end. The spaces in a slot and everything around the list stay as written.
 -- Every other line (the header, the timed lines, headings, text, a timer the parser could not read) is shown as
--- written and never changes.
+-- written and never changes, except a timed line's names when it follows an assignment line (Notes/Links.lua):
+--   s:TimerNames(i), s:SetTimerNames(i, names)   a timer row's names, and writing new ones as its tag
 
 local Model = {}
 CRT.NoteEditModel = Model

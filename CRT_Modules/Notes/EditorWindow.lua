@@ -13,6 +13,8 @@ local ADDON, CRT = ...
 -- is the mouse's own: OnMouseDown on a chip, a driver frame's OnUpdate that starts it past a few pixels and moves
 -- the ghost, OnMouseUp to drop it on the row under the mouse; Escape cancels it. Closing with unsaved changes asks
 -- first. History in the title bar opens the note's earlier versions (Notes/HistoryWindow.lua).
+-- Timer lines that list the same players as an assignment line follow it (Notes/EditorLinks.lua, Notes/Links.lua):
+-- a change to the line's names is written on them too, and a banner over the rows offers to link them.
 
 local Notes = CRT.Notes
 local Model = CRT.NoteEditModel
@@ -20,6 +22,11 @@ local UI = CRT.UI
 
 local Editor = {}
 CRT.NoteEditor = Editor
+
+-- The timer links (Notes/EditorLinks.lua, loaded after this file), or nil without them.
+local function links()
+    return CRT.NoteEditorLinks
+end
 
 local TEXT = {
     title = "Note editor: %s",
@@ -56,8 +63,9 @@ local TEXT = {
         .. "Players from picks the players listed on the right: your current group, this note's invite list, or a "
         .. "saved Raid Groups layout. A note linked to a layout shows that layout first, and picks it when you're "
         .. "not in a group.\n\n"
-        .. "Timers are shown as the note has them and can't be changed here. Only names change. Raw text shows "
-        .. "the note as it will be saved.",
+        .. "Timers are shown as the note has them and can't be changed here, except that a timer line listing the "
+        .. "same players as an assignment line follows it: change the line's names and the timer line gets them "
+        .. "too. Only names change. Raw text shows the note as it will be saved.",
 }
 
 local L = {
@@ -273,6 +281,10 @@ local function drawRow(f, i, row, width)
         part:Hide()
     end
     f.index, f.kind = i, row.kind
+    local el = links()
+    if el then
+        el.Clear(f) -- its tag and hover, set again below for its kind
+    end
     f:EnableMouse(row.editable == true)
     local kind = row.kind
     -- a timed line is shown dimmed, under the Timers heading: no drop target, nothing to drag or remove
@@ -308,6 +320,9 @@ local function drawRow(f, i, row, width)
         f.info:SetWidth(math.max(20, width - x - right))
         f.info:SetText(timerInfo(row))
         f.info:Show()
+        if el then
+            el.TimerRow(f, i) -- the row it follows, on hover
+        end
         height = L.infoH
     elseif kind == "label" or kind == "invite" then
         f.label:SetWidth(0)
@@ -317,7 +332,9 @@ local function drawRow(f, i, row, width)
         f.label:ClearAllPoints()
         f.label:SetPoint("TOPLEFT", 4, -4)
         f.label:Show()
-        height = rowChips(f, i, row, 4 + w + 8, width - 4, 2) + L.rowGap
+        -- how many timer lines follow it, right of the label
+        local tagW = (el and kind == "label") and el.LabelTag(f, i, 4 + w + 6) or 0
+        height = rowChips(f, i, row, 4 + w + 8 + tagW, width - 4, 2) + L.rowGap
     else
         if kind == "blank" then
             height = L.blankH
@@ -682,6 +699,16 @@ local function changed()
     followInvite()
 end
 
+-- A change to the session's names (fn returns whether it changed any), with the timer lines that follow a changed
+-- row given its new names.
+local function edit(fn)
+    local el = links()
+    if el then
+        return el.Edit(fn)
+    end
+    return fn()
+end
+
 function chipUp(chip)
     local p = W.press
     if not p or p.chip ~= chip then
@@ -690,10 +717,15 @@ function chipUp(chip)
     endPress()
     if p.dragging then
         -- drawn again either way, so a refused drop leaves nothing half shown
-        W.session:Drop(rowUnderMouse())
+        local target = rowUnderMouse()
+        edit(function()
+            return W.session:Drop(target)
+        end)
         changed()
     elseif p.source.token then
-        if W.session:PaletteClick(p.source.token, p.source.kind) then
+        if edit(function()
+            return W.session:PaletteClick(p.source.token, p.source.kind)
+        end) then
             changed()
         end
     elseif W.session.quickFill then
@@ -704,7 +736,9 @@ end
 
 function removeClick(chip)
     local s = chip.source
-    if s and s.row and W.session and W.session:Remove(s.row, s.index) then
+    if s and s.row and W.session and edit(function()
+        return W.session:Remove(s.row, s.index)
+    end) then
         changed()
     end
 end
@@ -737,6 +771,8 @@ end
 
 -- Refresh, save, close ---------------------------------------------------------------------------------------------
 
+local layoutLeft -- the rows, the banner over them and the raw text under them (below)
+
 -- Everything that follows the session: the rows, the raw text, Save and the status line.
 function Editor.Refresh()
     if not (W.window and W.session) then
@@ -748,6 +784,10 @@ function Editor.Refresh()
     local width = (W.window:GetWidth() or L.width) - 2 * inset - L.paletteW - L.gap - UI.ScrollGutter()
     W.rowsWidth = math.max(200, width)
     W.rowsChild:SetWidth(W.rowsWidth)
+    -- the timer links and their banner over the rows, before the rows that show them
+    local el = links()
+    W.bannerH = el and el.Refresh(W.rowsWidth + UI.ScrollGutter()) or 0
+    layoutLeft()
     Editor.DrawRows()
     local text = W.session:Text()
     if W.raw:GetText() ~= text then
@@ -769,9 +809,9 @@ function Editor.Refresh()
     W.status:SetText(status)
 end
 
-local function layoutLeft()
+function layoutLeft()
     W.rowsScroll:ClearAllPoints()
-    W.rowsScroll:SetPoint("TOPLEFT", 0, 0)
+    W.rowsScroll:SetPoint("TOPLEFT", 0, -(W.bannerH or 0)) -- under the Link banner when it shows
     if W.rawShown then
         W.rawBox:Show()
         W.rowsScroll:SetPoint("BOTTOMRIGHT", W.rawBox, "TOPRIGHT", -UI.ScrollGutter(), 6)
@@ -963,6 +1003,10 @@ local function buildLeft(c)
     left:SetPoint("TOPLEFT", 0, 0)
     left:SetPoint("BOTTOMRIGHT", -(L.paletteW + L.gap), L.footerH + 4)
     W.left = left
+    local el = links()
+    if el then
+        el.Build(left) -- the Link banner, at the top
+    end
     local scroll = CreateFrame("ScrollFrame", "CowfeeRaidToolsNoteEditorRows", left, "UIPanelScrollFrameTemplate")
     UI:SkinScrollBar(scroll.ScrollBar)
     W.rowsChild = CreateFrame("Frame", nil, scroll)
