@@ -47,6 +47,7 @@ format = string.format
 CRTFontButtonSmall, CRTFontButtonSmallHighlight, CRTFontButtonSmallDisable = { "small" }, { "smallHighlight" }, { "smallDisable" }
 CANCEL = "Cancel"
 UISpecialFrames = {}
+UIParent = { GetWidth = function() return 1920 end, GetHeight = function() return 1080 end } -- the screen the pop-out sizes in
 function tinsert(t, v) table.insert(t, v) end
 InCombatLockdown = function() return false end
 C_Spell = { GetSpellName = function() return nil end }
@@ -1090,7 +1091,7 @@ do
   assert(made, "the pop-out is made by UI.Window, keeping its global name")
   local o = made.opts
   assert(o.kind == "popout" and o.layer == "timeline" and o.title == "Timeline", "pop-out: kind popout, the timeline layer, its title")
-  assert(o.minWidth == 760 and o.minHeight == 360 and o.width == 1600 and o.height == 900, "pop-out: MIN_W and MIN_H kept, 1600 x 900 by default")
+  assert(o.minWidth == 760 and o.minHeight == 360 and o.width == 1200 and o.height == 600, "pop-out: MIN_W and MIN_H kept, 1200 x 600 by default")
   assert(type(o.saved) == "function" and o.saved() == CRT.db.timeline.popout, "pop-out: its place and size stay in timeline.popout")
   assert(o.escape ~= false, "pop-out: Escape closes it")
   local w = made.frame
@@ -1166,98 +1167,140 @@ do
 end
 print("ok the pop-out's Abilities | Healer CDs toggle")
 do
-  -- the pop-out's size: 1600 x 900 within 90% of the screen until the player sizes it with the grip (userSized); a
-  -- size the player chose stays as it is; it never opens smaller than saved. On Healer CDs it grows to show every
-  -- row, up to 90% of the screen's height.
+  -- the pop-out's size, kept per view (timeline.popout.abilities and .healers): Abilities a normal window,
+  -- 1200 x 600 within 90% of the screen; Healer CDs 1600 x 900, taller for every row up to 90% of the screen's
+  -- height; each until the player sizes the window on that view with the grip. Switching views gives the window
+  -- that view's size, so going back to Abilities shrinks it. Reset puts both back.
   local made
   for _, m in ipairs(windowsMade) do if m.name == "CowfeeRaidToolsTimelineWindow" then made = m end end
   local o, w = made.opts, made.frame
-  assert(type(o.onPlace) == "function", "pop-out: sized each time it is placed (opened or Reset)")
+  assert(type(o.onPlace) == "function" and type(o.onResize) == "function" and type(o.onReset) == "function",
+    "pop-out: sized each time it is placed, a grip size kept for its view, Reset clears both")
   local realParent = UIParent
-  local screenW, screenH = 1920, 1080
+  local screenW, screenH, scale = 1920, 1080, 1
   UIParent = { GetWidth = function() return screenW end, GetHeight = function() return screenH end }
-  local function fake(scale) local f = { scale = scale or 1 } function f:GetScale() return self.scale end function f:SetSize(a, b) self.w, self.h = a, b end return f end
   local function near(a, b) return a ~= nil and math.abs(a - b) < 0.01 end
-  local s = CRT.db.timeline.popout
-  for k in pairs(s) do s[k] = nil end
-  local f = fake() o.onPlace(f)
-  assert(f.w == 1600 and f.h == 900 and s.userSized == false, "pop-out: fresh, 1600 x 900, not the player's size: " .. tostring(f.w) .. " x " .. tostring(f.h))
-  screenW, screenH = 1280, 720
-  f = fake() o.onPlace(f)
-  assert(near(f.w, 1280 * 0.9) and near(f.h, 720 * 0.9), "pop-out: within 90% of a small screen: " .. f.w .. " x " .. f.h)
-  f = fake(1.25) o.onPlace(f)
-  assert(near(f.w, 1280 * 0.9 / 1.25) and near(f.h, 720 * 0.9 / 1.25), "pop-out: in its own units when scaled")
-  screenW, screenH = 600, 300
-  f = fake() o.onPlace(f)
-  assert(f.w == 760 and f.h == 360, "pop-out: never under its minimum size")
-  screenW, screenH = 1920, 1080
-  s.width, s.height = 1700, 950
-  f = fake() o.onPlace(f)
-  assert(f.w == 1700 and f.h == 950, "pop-out: a larger size saved is kept: it only grows")
-  s.userSized = true
-  f = fake() o.onPlace(f)
-  assert(f.w == nil, "pop-out: a size the player chose stays as UI.Window put it")
-  -- saved before userSized existed: the old 1200 x 600 was nobody's choice; any other size came from the grip
-  s.userSized, s.width, s.height = nil, 1200, 600
-  f = fake() o.onPlace(f)
-  assert(f.w == 1600 and f.h == 900 and s.userSized == false, "pop-out: the old default grows to the new one")
-  s.userSized, s.width, s.height = nil, 1000, 700
-  f = fake() o.onPlace(f)
-  assert(f.w == nil and s.userSized == true, "pop-out: a size sized before is the player's")
-  s.width, s.height = 1600, 900
-  s.userSized = false
-  f = fake() o.onPlace(f)
-  assert(f.w == 1600 and s.userSized == false, "pop-out: a later save of the size picked here is still not the player's")
-  -- Healer CDs grows the window to every row (the view's ContentHeight under the window's other parts)
-  for k in pairs(s) do s[k] = nil end
-  local height = 900
+  local width, height = 0, 0
+  rawset(w, "SetSize", function(_, a, b) width, height = a, b end)
+  rawset(w, "GetWidth", function() return width end)
   rawset(w, "GetHeight", function() return height end)
   rawset(w, "SetHeight", function(_, h) height = h end)
-  rawset(w, "GetScale", function() return 1 end)
+  rawset(w, "GetScale", function() return scale end)
+  -- like UI.Window's Place: onPlace runs at its end
+  local realPlace = rawget(w, "Place")
+  rawset(w, "Place", function(self) self.placed = self.placed + 1 o.onPlace(self) end)
   view.frame = { GetHeight = function() return height - 158 end }
-  local rowsH = 1200
+  local rowsH = 500
   view.ContentHeight = function() return rowsH end
-  CRT.db.timeline.popView = "abilities"
-  CRT.TimelinePopout()
-  assert(height == 900, "pop-out: Abilities keeps its size")
-  w:Hide() w.OnHide()
-  CRT.db.timeline.popView = "healers"
-  CRT.TimelinePopout()
-  assert(near(height, 1080 * 0.9), "pop-out: Healer CDs grows to every row, up to 90% of the screen's height: " .. height)
-  w:Hide() w.OnHide()
-  height, rowsH = 900, 500
-  CRT.TimelinePopout()
-  assert(height == 900, "pop-out: never shrinks for fewer rows")
-  w:Hide() w.OnHide()
-  rowsH = 800
-  CRT.TimelinePopout()
-  assert(height == 158 + 800, "pop-out: just tall enough when that fits: " .. height)
-  w:Hide() w.OnHide()
-  -- switching to Healer CDs grows it too
-  height, rowsH = 700, 650
-  CRT.db.timeline.popView = "abilities"
-  CRT.TimelinePopout()
-  height = 700 -- as it was sized
   local halves = {}
   for _, b in ipairs(tabs) do if rawget(b, "key") then halves[#halves + 1] = b end end
+  local s = CRT.db.timeline.popout
+  for k in pairs(s) do s[k] = nil end
+  local function size() return width .. " x " .. height end
+
+  CRT.db.timeline.popView = "abilities"
+  CRT.TimelinePopout()
+  assert(width == 1200 and height == 600, "Abilities: a normal window, 1200 x 600: " .. size())
+  assert(type(s.abilities) == "table" and type(s.healers) == "table" and s.abilities.userSized ~= true and s.healers.userSized ~= true,
+    "each view's size is kept on its own")
   halves[2].OnClick(halves[2])
-  assert(height == 158 + 650, "pop-out: switching to Healer CDs grows it: " .. height)
+  assert(width == 1600 and height == 900, "Healer CDs: 1600 x 900 when its rows fit: " .. size())
   halves[1].OnClick(halves[1])
+  assert(width == 1200 and height == 600, "back to Abilities: shrinks to its size: " .. size())
+  rowsH = 1200
+  halves[2].OnClick(halves[2])
+  assert(width == 1600 and near(height, 1080 * 0.9), "Healer CDs grows to every row, up to 90% of the screen's height: " .. size())
+  halves[1].OnClick(halves[1])
+  assert(width == 1200 and height == 600, "and shrinks again on Abilities: " .. size())
+  rowsH = 800
+  halves[2].OnClick(halves[2])
+  assert(height == 158 + 800, "just tall enough when that fits: " .. height)
   w:Hide() w.OnHide()
-  -- the player's size: kept on Healer CDs too
-  height = 700
-  s.userSized = true
+  CRT.TimelinePopout()
+  assert(width == 1600 and height == 958, "opened again on Healer CDs: its size: " .. size())
+  halves[1].OnClick(halves[1])
+
+  -- the player's size on Abilities: kept for Abilities, Healer CDs still grows
+  width, height = 1000, 700
+  o.onResize(w)
+  assert(s.abilities.userSized == true and s.abilities.width == 1000 and s.abilities.height == 700, "the grip on Abilities: Abilities' own size")
+  assert(s.healers.userSized ~= true, "Healer CDs' size untouched")
+  halves[2].OnClick(halves[2])
+  assert(width == 1600 and height == 958, "Healer CDs still grows: " .. size())
+  halves[1].OnClick(halves[1])
+  assert(width == 1000 and height == 700, "back to the player's Abilities size: " .. size())
+  -- the player's size on Healer CDs: kept there and never grown
+  halves[2].OnClick(halves[2])
+  width, height = 1300, 650
+  o.onResize(w)
+  assert(s.healers.userSized == true and s.healers.width == 1300 and s.healers.height == 650, "the grip on Healer CDs: its own size")
+  halves[1].OnClick(halves[1])
+  assert(width == 1000 and height == 700, "Abilities keeps the player's size: " .. size())
+  rowsH = 1200
+  halves[2].OnClick(halves[2])
+  assert(width == 1300 and height == 650, "Healer CDs keeps the player's size, not grown for its rows: " .. size())
+  w:Hide() w.OnHide()
+  CRT.TimelinePopout()
+  assert(width == 1300 and height == 650, "and opens at it: " .. size())
+
+  -- Show on the Timeline lights an ability's row on Abilities: at the Abilities size
+  T:ShowRow(3470, "Soulcoil Rite")
+  assert(width == 1000 and height == 700 and CRT.db.timeline.popView == "healers", "Show on the Timeline: the Abilities size: " .. size())
+  w:Hide() w.OnHide()
+
+  -- Reset (UI.Window clears the place, then onReset, then Place): both back to their defaults
   CRT.db.timeline.popView = "healers"
   CRT.TimelinePopout()
-  assert(height == 700, "pop-out: a size the player chose is kept on Healer CDs")
+  s.userSized = false
+  o.onReset(s)
+  w:Place()
+  assert(s.abilities.userSized ~= true and s.healers.userSized ~= true, "Reset: neither view keeps the player's size")
+  assert(width == 1600 and near(height, 1080 * 0.9), "Reset on Healer CDs: its default, grown for its rows: " .. size())
+  halves[1].OnClick(halves[1])
+  assert(width == 1200 and height == 600, "Reset: Abilities' default again: " .. size())
+
+  -- within the screen, in the window's own units, never under its minimum
+  screenW, screenH = 1280, 640
+  w:Place()
+  assert(near(width, 1280 * 0.9) and near(height, 640 * 0.9), "within 90% of a small screen: " .. size())
+  scale = 1.25
+  w:Place()
+  assert(near(width, 1280 * 0.9 / 1.25) and near(height, 640 * 0.9 / 1.25), "in its own units when scaled: " .. size())
+  screenW, screenH, scale = 600, 300, 1
+  w:Place()
+  assert(width == 760 and height == 360, "never under its minimum size: " .. size())
+  screenW, screenH = 1920, 1080
   w:Hide() w.OnHide()
+
+  -- saved before each view kept its own size: a size the player chose is Abilities'; the old default was nobody's
+  CRT.db.timeline.popView = "abilities"
+  for k in pairs(s) do s[k] = nil end
+  s.width, s.height = 1000, 700
+  CRT.TimelinePopout()
+  assert(width == 1000 and height == 700 and s.abilities.userSized == true and s.healers.userSized ~= true, "an older chosen size: Abilities': " .. size())
+  halves[2].OnClick(halves[2])
+  assert(width == 1600, "Healer CDs at its own default: " .. size())
+  halves[1].OnClick(halves[1])
+  w:Hide() w.OnHide()
+  for k in pairs(s) do s[k] = nil end
+  s.width, s.height = 1200, 600
+  CRT.TimelinePopout()
+  assert(width == 1200 and height == 600 and s.abilities.userSized ~= true, "the old default was nobody's choice")
+  w:Hide() w.OnHide()
+  for k in pairs(s) do s[k] = nil end
+  s.width, s.height, s.userSized = 1600, 900, false
+  CRT.TimelinePopout()
+  assert(width == 1200 and height == 600, "the size the last version picked was nobody's choice: " .. size())
+  w:Hide() w.OnHide()
+
   assert(T.PopoutView and T:PopoutView() == nil, "PopoutView: none while docked")
   CRT.TimelinePopout()
   assert(T:PopoutView() == view, "PopoutView: the view while popped out (the window log reads it)")
   w:Hide() w.OnHide()
   for k in pairs(s) do s[k] = nil end
   view.frame, view.ContentHeight = nil, nil
-  rawset(w, "GetHeight", nil) rawset(w, "SetHeight", nil) rawset(w, "GetScale", nil)
+  for _, k in ipairs({ "SetSize", "GetWidth", "GetHeight", "SetHeight", "GetScale" }) do rawset(w, k, nil) end
+  rawset(w, "Place", realPlace)
   CRT.db.timeline.popView = "abilities"
   UIParent = realParent
   diffDD.opts.set("nh")

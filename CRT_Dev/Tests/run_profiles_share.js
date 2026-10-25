@@ -351,7 +351,16 @@ do
   -- a pop-out's size chosen with its grip travels with it (UI/Window.lua's userSized)
   local i = P:Read(craft({ v = 1, kind = "settings", from = "X", data = { timeline = { popout = { width = 900, height = 600, userSized = true } } } }))
   check(i and i.unknown == 0 and i.values["timeline.popout"].userSized == true, "a pop-out's userSized is read with its size")
+  -- the Timeline pop-out keeps a size for each view (Timeline/Page.lua): they travel with it too
+  i = P:Read(craft({ v = 1, kind = "settings", from = "X", data = { timeline = { popout = { width = 900, height = 600,
+    abilities = { width = 1000, height = 700, userSized = true }, healers = {} } } } }))
+  local pop = i and i.values["timeline.popout"]
+  check(pop and i.unknown == 0 and pop.abilities.width == 1000 and pop.abilities.userSized == true and type(pop.healers) == "table",
+    "a pop-out's per-view sizes are read with it")
 end
+bad({ timeline = { popout = { abilities = { width = "wide" } } } }, "a view's size must be a number", "timeline.popout")
+bad({ timeline = { popout = { healers = { userSized = 1 } } } }, "a view's userSized must be true or false", "timeline.popout")
+bad({ timeline = { popout = { healers = 5 } } }, "a view's size must be a table", "timeline.popout")
 bad({ ui = { layers = { panel = "ON_TOP" } } }, "a layer must be one of the game's strata", "ui.layers")
 bad({ ui = { fontSize = "big" } }, "a late setting of the wrong type is rejected", "ui.fontSize")
 bad({ debuffs = { ignored = { abc = true } } }, "an ignored debuff keyed by text is rejected", "debuffs.ignored")

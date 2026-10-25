@@ -308,6 +308,20 @@ check(placedWith == ow and ow.w == 1500 and ow.h == 800, "window: onPlace runs a
 placedWith = nil
 ow:Place()
 check(placedWith == ow, "window: and on every Place")
+-- onResize runs when the grip is let go, after the size is saved; onReset runs on Reset, after the clear, before Place
+local hooked, calls = {}, {}
+local hw = UI.Window("TestHooks", { kind = "popout", saved = function() return hooked end,
+  onResize = function(f) calls[#calls + 1] = { "resize", f, hooked.userSized, hooked.width } end,
+  onReset = function(s) calls[#calls + 1] = { "reset", s, s.width, s.userSized } end,
+  onPlace = function() calls[#calls + 1] = { "place" } end })
+hw.GetLeft, hw.GetTop, hw.GetWidth, hw.GetHeight = function() return 5 end, function() return 900 end, function() return 1100 end, function() return 500 end
+calls = {}
+hw.grip.scripts.OnMouseUp(hw.grip)
+check(#calls == 1 and calls[1][1] == "resize" and calls[1][2] == hw and calls[1][3] == true and calls[1][4] == 1100, "window: onResize after the grip's size is saved")
+calls = {}
+hw.reset.scripts.OnClick(hw.reset)
+check(#calls == 2 and calls[1][1] == "reset" and calls[1][2] == hooked and calls[1][3] == nil and calls[1][4] == false and calls[2][1] == "place",
+  "window: onReset with the cleared table, then Place")
 
 -- the item tabs: "X/Y answered", orange when the time ran out with answers missing
 local tabs = LM.ItemTabs(mock(), {})

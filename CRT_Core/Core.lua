@@ -359,8 +359,10 @@ local defaults = {
         tooltipSpot = "auto",
         -- The pop-out window (Timeline/Page.lua): its size and position once it is moved or sized, and userSized
         -- (true once the player sized it with the grip, false once Page.lua sized it). No default for userSized:
-        -- left out, Page.lua works it out from a size saved before it existed. Until then the window opens at
-        -- Page.lua's default size, 1600 x 900 within the screen.
+        -- left out, Page.lua works it out from a size saved before it existed. Each view keeps its own size in
+        -- popout.abilities and popout.healers ({ width, height, userSized }); no default for them either: Page.lua
+        -- makes both the first time, from the older single size. Abilities opens at 1200 x 600, Healer CDs at
+        -- 1600 x 900 within the screen and taller for every healer row, until the player sizes that view.
         popout = {},
         -- the pop-out's view (its title strip's toggle): "abilities" (the ability timeline) or "healers" (Healer CDs)
         popView = "abilities",

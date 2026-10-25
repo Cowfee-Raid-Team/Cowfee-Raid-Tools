@@ -14,6 +14,8 @@ local ADDON, CRT = ...
 --   saved      function returning the table that keeps point, x, y (and width, height; a pop-out's
 --              userSized is true once the player has sized it with the grip, false after Reset)
 --   onPlace    function(f) run at the end of f:Place(), to change the size it was given
+--   onResize   function(f) run when the player let go of a pop-out's grip, after its size was saved
+--   onReset    function(s) run by a pop-out's Reset after it cleared the saved table s, before f:Place()
 --   escape     false keeps Escape from closing it
 --   opaque     true keeps the window solid whatever the Opacity slider says (UI:StyleWindow)
 -- The frame gets f.content (the area under the title), f:Place() (puts it where it was saved) and
@@ -458,6 +460,9 @@ function UI.Window(name, opts)
                 s.userSized = true -- the player's own size, kept as it is from now on
             end
             save(f, opts)
+            if opts.onResize then
+                opts.onResize(f)
+            end
         end)
         f.grip = grip
         local reset = UI.ResetButton(strip, function()
@@ -465,6 +470,9 @@ function UI.Window(name, opts)
             if s then
                 s.point, s.relativePoint, s.x, s.y, s.width, s.height = nil, nil, nil, nil, nil, nil
                 s.userSized = false
+                if opts.onReset then
+                    opts.onReset(s)
+                end
             end
             f:Place()
         end)
