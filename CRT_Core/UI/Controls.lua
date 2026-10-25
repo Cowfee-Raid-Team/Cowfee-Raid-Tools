@@ -12,6 +12,7 @@ local ADDON, CRT = ...
 local UI = CRT.UI
 
 local ROW_H = 32
+UI.CONTROL_ROW_H = ROW_H -- a dropdown's or slider's row, for pages that stack one under other controls
 local LABEL_W = 140
 local GAP = 5
 local VALUE_W = 44 -- room for the slider's value, which the template draws to the right of the bar
