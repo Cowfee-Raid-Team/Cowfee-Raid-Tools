@@ -787,7 +787,16 @@ eq(#log.notify, 3, "combat: nothing in the meantime")
 combat = false
 Inspect:OnEvent("PLAYER_REGEN_ENABLED")
 eq(log.notify[4], "raid3", "after combat: the same player again")
-Inspect:OnEvent("INSPECT_READY", "G3")
+-- a spec cache that errors never stalls the queue: the inspect is still let go
+INSPECT_SPECS.raid3 = 250
+local cacheSpec = CRT.Groups.CacheSpec
+CRT.Groups.CacheSpec = function() error("spec cache broke") end
+local clearedBefore = log.cleared
+local readyOk = pcall(Inspect.OnEvent, Inspect, "INSPECT_READY", "G3")
+check(readyOk, "inspect spec: an erroring spec cache doesn't break INSPECT_READY")
+eq(log.cleared, clearedBefore + 1, "inspect spec: an erroring spec cache, the inspect still let go")
+CRT.Groups.CacheSpec = cacheSpec
+INSPECT_SPECS.raid3 = 0
 eq(Gear:Of("Arrow-Sargeras", 1).itemString, "item:101::::::::ilvl281", "after combat: read")
 eq(log.distanceInCombat, 0, "never a range check in combat")
 -- an item not loaded yet: read again before letting go

@@ -85,7 +85,8 @@ end
 local step
 
 -- The inspected player's spec, for the Timeline's death icons (CRT.Groups' spec cache), read from the inspect
--- already made: never an inspect of its own. 0 (not ready) and a secret answer are left out.
+-- already made: never an inspect of its own. 0 (not ready) and a secret answer are left out. The cache is
+-- called in pcall, so an error there can't stall the queue.
 local function rememberSpec(cur)
     local info = C_SpecializationInfo
     local getSpec = (info and info.GetInspectSpecialization) or GetInspectSpecialization
@@ -95,7 +96,7 @@ local function rememberSpec(cur)
     end
     local ok, spec = pcall(getSpec, cur.unit)
     if ok and not secret(spec) and type(spec) == "number" and spec > 0 then
-        Groups.CacheSpec(cur.name, spec)
+        pcall(Groups.CacheSpec, cur.name, spec)
     end
 end
 

@@ -473,6 +473,22 @@ do
   table.sort(ages)
   assert(table.concat(ages, ",") == "0:2,1:2", "stacked deaths: one stack per pull, older pull kept apart: " .. table.concat(ages, ","))
   S.overlayOn = false
+  -- a button that drew a death, reused for a boss cast: square again, the round parts hidden
+  local wasDeath = {}
+  for _, b in ipairs(v.icons) do if b:IsShown() and b.mark.death then wasDeath[b] = true end end
+  v:SetData({ id = 49, encounterID = 3001, length = 300, deaths = {},
+    casts = { { t = 10, dur = 0, spellID = 5001 }, { t = 60, dur = 0, spellID = 5001 }, { t = 120, dur = 0, spellID = 5001 } } }, 3001)
+  v:Refresh()
+  local reused = 0
+  for _, b in ipairs(v.icons) do
+    if b:IsShown() and wasDeath[b] then
+      reused = reused + 1
+      assert(not b.mark.death, "death icons: the reused button holds a boss cast")
+      assert(b.bg:IsShown() and b.tex:IsShown() and not b.ring:IsShown() and not b.disc:IsShown() and not b.face:IsShown(),
+        "death icons: a reused button draws a boss cast square, with no ring or round face")
+    end
+  end
+  assert(reused > 0, "death icons: a button that drew a death is reused for a boss cast")
   CRT.Groups.ClassColor = realColor
   GameTooltip = mock("GameTooltip")
 end

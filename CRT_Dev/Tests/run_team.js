@@ -173,26 +173,36 @@ eq(spec("H|1|1.2.0||x65"), nil, "a spec that isn't a number is left out")
 eq(spec("H|1|1.2.0||0"), nil, "spec 0 is none")
 eq(spec("H|1|1.2.0||6.5"), nil, "a fraction is none")
 eq(spec("H|1.4|1.5.0|A|65|later"), 65, "a later minor version's extra fields after it are skipped")
--- the CRTs already out there read the new hello as before: their Decode, as shipped (the first one, then the
--- one with the answer-me field), takes a hello with the spec field as the same version, addon version and ask
-local OLD = {
-  [[return function(text) local version, addon, rest = text:match("^H|(%d+%.?%d*)|([^|]*)(.*)$") version = tonumber(version)
-    if not version or version < 1 or math.floor(version) > 1 then return nil end
-    if rest ~= "" and rest:sub(1, 1) ~= "|" then return nil end return version, addon end]],
-  [[return function(text) local version, addon, rest = text:match("^H|(%d+%.?%d*)|([^|]*)(.*)$") version = tonumber(version)
-    if not version or version < 1 or math.floor(version) > 1 then return nil end
-    if rest ~= "" and rest:sub(1, 1) ~= "|" then return nil end return version, addon, rest:match("^|([^|]*)") == "A" end]],
-}
-for i, src in ipairs(OLD) do
-  local decode = assert(load(src))()
+-- the CRTs already out there read the new hello as before: v1.1.3's Decode, the first release with the hello,
+-- copied exactly from git show v1.1.3:CRT_Core/Team.lua (with its readable and Team.VERSION 1), takes a hello
+-- with the spec field as the same version, addon version and ask
+local OLD_V113 = [[
+local readable = function() return true end
+local Team = { VERSION = 1 }
+function Team.Decode(text)
+    if not readable(text) or type(text) ~= "string" or #text > 255 then
+        return nil
+    end
+    local version, addon, rest = text:match("^H|(%d+%.?%d*)|([^|]*)(.*)$")
+    version = tonumber(version)
+    if not version or version < 1 or math.floor(version) > Team.VERSION then
+        return nil
+    end
+    if rest ~= "" and rest:sub(1, 1) ~= "|" then
+        return nil
+    end
+    return version, addon, rest:match("^|([^|]*)") == "A"
+end
+return Team.Decode
+]]
+do
+  local decode = assert(load(OLD_V113))()
   local v1, a1, ask1 = decode("H|1|1.2.0||65")
-  eq(tostring(v1) .. " " .. tostring(a1), "1 1.2.0", "old parser " .. i .. ": a plain hello with a spec is read")
+  eq(tostring(v1) .. " " .. tostring(a1), "1 1.2.0", "v1.1.3 parser: a plain hello with a spec is read")
+  eq(ask1, false, "v1.1.3 parser: the plain one doesn't ask")
   local v2, a2, ask2 = decode("H|1|1.2.0|A|65")
-  eq(tostring(v2) .. " " .. tostring(a2), "1 1.2.0", "old parser " .. i .. ": an asking hello with a spec is read")
-  if i == 2 then
-    eq(ask1, false, "old parser 2: the plain one doesn't ask")
-    eq(ask2, true, "old parser 2: the asking one asks")
-  end
+  eq(tostring(v2) .. " " .. tostring(a2), "1 1.2.0", "v1.1.3 parser: an asking hello with a spec is read")
+  eq(ask2, true, "v1.1.3 parser: the asking one asks")
 end
 
 -- 2. Names --------------------------------------------------------------------------------------------------------
