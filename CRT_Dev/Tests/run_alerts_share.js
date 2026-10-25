@@ -346,6 +346,43 @@ check("alerts share: invalid fields and entries are dropped and counted", functi
   assert(AS.Summary(info):find("left out", 1, true), "the summary says some was left out: " .. AS.Summary(info))
 end)
 
+check("alerts share: your Show from travels with your special choices; a bad one is dropped", function()
+  sender()
+  local soaks = S:Get(9001, "soaks") -- shipped lead 6
+  S:SetChoice(9001, soaks, "lead", 9)
+  local code = AS:Export({ special = true, bosses = { 9001 } })
+  local data = Share.Decode(code, "alerts", 1, AS.CAPS)
+  assert(data.boss[9001].any.special.soaks.lead == 9, "in the code")
+  assert(data.boss[9001].mythic.special.tanks.lead == nil, "none for an alert at its shipped lead")
+  receiver()
+  local info = AS:Read(code, { defs = false })
+  local item
+  for _, it in ipairs(info.items) do if it.key == "soaks" then item = it end end
+  assert(item and item.value.lead == 9 and item.status == "replace", "read: yours would be 9")
+  AS:Apply(info)
+  assert(CRT.db.alerts.special[9001].soaks.lead == 9 and S:Lead(9001, soaks) == 9, "applied: saved where the panel saves it")
+  assert(AS:Read(code, { defs = false }).counts.same == 2, "read again: the same as yours")
+  -- hand-made: the shipped value, out of range, not a number
+  receiver()
+  local function readLead(v)
+    local payload = { v = 1, from = "Hand", boss = { [9001] = { any = { special = { soaks = { on = true, lead = v } } } } } }
+    local got = assert(AS:Read(Share.Encode("alerts", 1, payload), { defs = false }))
+    return got.items[1].value, got.dropped
+  end
+  local v, dropped = readLead(6)
+  assert(v.lead == nil and dropped == 0, "the shipped value: none of yours, nothing dropped")
+  v, dropped = readLead(60)
+  assert(v.lead == 60 and dropped == 0, "60 s: the top of the range")
+  for _, bad in ipairs({ 0, 0.5, 61, -3, "8", true }) do
+    v, dropped = readLead(bad)
+    assert(v.lead == nil and v.on == true and dropped == 1, tostring(bad) .. ": dropped and counted, the rest read")
+  end
+  -- yours kept when the code's is bad
+  S:SetChoice(9001, soaks, "lead", 20)
+  v = readLead(99)
+  assert(v.lead == 20, "a bad lead keeps yours: " .. tostring(v.lead))
+end)
+
 check("alerts share: codes that don't read change nothing", function()
   receiver()
   local i, e = AS:Read("CRTS1:abcd")

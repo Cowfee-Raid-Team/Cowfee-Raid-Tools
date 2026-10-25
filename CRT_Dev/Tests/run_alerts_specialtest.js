@@ -208,6 +208,23 @@ check("special test: the alert shows at once, no silent lead", function()
   assert(#errors == 0, tostring(errors[1]))
 end)
 
+-- Your Show from: the Test starts at your show moment, the cast that much later; the bar of its own stays as shipped
+check("special test: the Test starts at your Show from", function()
+  A:Stop(true) wipe(spoken) wipe(errors)
+  S:SetChoice(ENC, entry, "lead", 8)
+  clock = 100
+  local item = S:TestItem(ENC, entry, "mythic")
+  assert(item.warn == 8, "the item at your lead: " .. tostring(item.warn))
+  assert(E:TestItem(ENC, item), "the test starts")
+  local c = callout()
+  assert(c and tostring(c.text):find("^Soak now"), "the callout shows at the click: " .. tostring(c and c.text))
+  checkBar(100, 8, "up") -- the cast 8 s after the click, its bar from 3 s before it as shipped
+  A:Stop(true)
+  S:SetChoice(ENC, entry, "lead", nil)
+  assert(S:TestItem(ENC, entry, "mythic").warn == 5, "Default: the shipped lead again")
+  assert(#errors == 0, tostring(errors[1]))
+end)
+
 check("special test: the callout and the speech come once each", function()
   A:Stop(true) wipe(spoken) wipe(errors)
   clock = 100

@@ -260,6 +260,67 @@ check("special: your choices default from the data and save whole", function()
   assert(CRT.db.alerts.special[9001].soaks.on == true and S:Choices(9001, e).show.bar == true, "on, the bar kept")
 end)
 
+check("special: your Show from: the items show your lead, the shipped one until you change it", function()
+  fresh()
+  local e = S:Get(9001, "soaks") -- shipped lead 6, no bar of its own
+  assert(S:Lead(9001, e) == 6 and S:Choices(9001, e).lead == nil, "the shipped lead, none of yours")
+  local function first(entry, opts) return S:Items(9001, entry, opts or { group = "mythic", all = true })[1] end
+  assert(first(e).warn == 6 and first(e).speech[1].offset == 6, "items at the shipped lead")
+  -- another choice changed: no lead saved
+  S:SetChoice(9001, e, "speak", true)
+  assert(CRT.db.alerts.special[9001].soaks.lead == nil, "saved only when it differs")
+  S:SetChoice(9001, e, "lead", 9)
+  assert(CRT.db.alerts.special[9001].soaks.lead == 9 and S:Lead(9001, e) == 9 and S:Choices(9001, e).lead == 9, "yours saved")
+  local it = first(e)
+  assert(it.warn == 9 and it.speech[1].offset == 9 and it.time == 30, "the alert shows 9 s before; the cast stays put")
+  assert(CRT.db.alerts.special[9001].soaks.speak == true, "the rest kept")
+  -- the other entries keep theirs
+  assert(S:Lead(9001, S:Get(9001, "everyone")) == 5, "another entry: its own default")
+  -- back to the shipped value: nothing saved for it
+  S:SetChoice(9001, e, "lead", 6)
+  assert(CRT.db.alerts.special[9001].soaks.lead == nil and S:Lead(9001, e) == 6, "the shipped value is not saved")
+  S:SetChoice(9001, e, "lead", 12)
+  S:SetChoice(9001, e, "lead", nil)
+  assert(CRT.db.alerts.special[9001].soaks.lead == nil and S:Lead(9001, e) == 6, "nil puts the shipped one back")
+  -- out of the Mechanics range (1 to 60 s), or not a number: the shipped one
+  for _, bad in ipairs({ 0, 0.5, 61, -5, "8", true }) do
+    S:SetChoice(9001, e, "lead", bad)
+    assert(CRT.db.alerts.special[9001].soaks.lead == nil, "set " .. tostring(bad) .. ": not saved")
+    CRT.db.alerts.special[9001].soaks.lead = bad
+    assert(S:Lead(9001, e) == 6 and S:Choices(9001, e).lead == nil, "saved " .. tostring(bad) .. ": read as the shipped one")
+  end
+  CRT.db.alerts.special[9001].soaks.lead = 6
+  assert(S:Choices(9001, e).lead == nil, "a saved copy of the shipped value reads as none of yours")
+  assert(S:TestItem(9001, e, "mythic").warn == 6, "the Test item at the shipped lead")
+  S:SetChoice(9001, e, "lead", 15)
+  assert(S:TestItem(9001, e, "mythic").warn == 15, "the Test item at yours")
+  -- through the block, as a pull reads it
+  S:SetChoice(9001, e, "on", true)
+  local soak
+  for _, x in ipairs(A.blocks.special.Entries({ encounterID = 9001, group = "mythic" })) do if x.special == "soaks" then soak = soak or x end end
+  assert(soak and soak.warn == 15, "a pull's items too")
+end)
+
+check("special: your Show from and a bar: a bar of its own keeps its start; ticks follow the alert", function()
+  fresh()
+  S.dev[9002] = { { key = "own", label = "Own bar", when = { times = "0:30" }, bar = { start = -3, length = 8, ticks = { 4.5, 6.5 } } },
+    { key = "ticks", label = "Ticks", when = { times = "0:30" }, ticks = { 0, 2.5 }, lead = 4 },
+    { key = "pre", label = "Pre", default = true, when = { times = "-0:15, 0:30" } } }
+  local own, ticks, pre = S:Get(9002, "own"), S:Get(9002, "ticks"), S:Get(9002, "pre")
+  local before = S:Items(9002, own, {})[1]
+  assert(before.warn == 5 and before.barStart == -3 and before.barEnd == 5, "shipped: lead 5, its bar from 3 s before")
+  S:SetChoice(9002, own, "lead", 12)
+  local after = S:Items(9002, own, {})[1]
+  assert(after.warn == 12 and after.barStart == -3 and after.barEnd == 5 and after.ticks[1] == 1.5, "yours: the alert 12 s before, the bar as shipped")
+  S:SetChoice(9002, ticks, "lead", 7)
+  local t = S:Items(9002, ticks, {})[1]
+  assert(t.warn == 7 and t.barStart == nil and t.ticks[2] == 2.5, "ticks only: the bar shows with the alert (no start of its own)")
+  -- before the pull: the countdown run's item takes yours the same way
+  S:SetChoice(9002, pre, "lead", 10)
+  local items = A.blocks.special.Entries({ encounterID = 9002, group = "mythic", reason = "countdown" })
+  assert(#items == 1 and items[1].time == -15 and items[1].warn == 10, "pre-pull: 10 s before")
+end)
+
 check("special: a test plays your first cast, else the first", function()
   fresh()
   local e = S:Get(9001, "soaks")

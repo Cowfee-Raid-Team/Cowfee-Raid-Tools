@@ -66,7 +66,10 @@ local ADDON, CRT = ...
 -- Blizzard calls it only from its secure templates), so an addon can never put a marker on a player. The
 -- alert names the marks in its text instead (Special.MARKING says so to the Mech Alerts panel).
 -- Each player's choices: CRT.db.alerts.special[encounterID][key] = { on, show = { alert, text, icon, bar,
--- circle, timeline }, speak, markers, fill }, saved once changed; until then the entry's own defaults apply.
+-- circle, timeline }, speak, markers, fill, lead }, saved once changed; until then the entry's own defaults apply.
+-- lead is your Show from (seconds before each cast it shows, LEAD_MIN to LEAD_MAX as on the Mechanics panel), kept
+-- only while it differs from the entry's lead. It moves when the alert shows (callout, text, icon, speech, and a bar
+-- with no start of its own, which shows with it); a bar of its own (bar.start) keeps the boss file's place.
 -- /crt dev special (developer builds) adds a sample to Special.dev[encounterID], never saved.
 
 local Alerts = CRT.Alerts
@@ -83,6 +86,9 @@ end
 local BLOCK = "special"
 Special.BLOCK = BLOCK
 local DEFAULT_LEAD = 5
+-- your Show from: the Mechanics panel's range (Notes/Reminders.lua, Alerts/Share.lua)
+local LEAD_MIN, LEAD_MAX = 1, 60
+Special.LEAD_MIN, Special.LEAD_MAX = LEAD_MIN, LEAD_MAX
 local MAX_GROUP = 8
 
 -- Whether an addon may set raid markers on players during a pull: no (see the top of this file).
@@ -478,7 +484,16 @@ local function store(create)
     return type(db.special) == "table" and db.special or nil
 end
 
--- Your choices for an entry: { on, show = { ... }, speak, markers }, the saved ones over the entry's defaults.
+-- Your Show from for an entry, or nil: a saved lead in range that differs from the entry's.
+local function ownLead(entry, v)
+    if finite(v) and v >= LEAD_MIN and v <= LEAD_MAX and v ~= entry.lead then
+        return v
+    end
+    return nil
+end
+
+-- Your choices for an entry: { on, show = { ... }, speak, markers, fill, lead }, the saved ones over the entry's
+-- defaults. lead is nil until yours differs from the entry's (Special:Lead gives the one in use).
 function Special:Choices(encounterID, entry)
     local all = store()
     local saved = all and type(all[encounterID]) == "table" and all[encounterID][entry.key]
@@ -499,12 +514,19 @@ function Special:Choices(encounterID, entry)
         return v and true or false
     end
     return { on = pick(saved.on, entry.default), show = show, speak = pick(saved.speak, entry.speak),
-        markers = pick(saved.markers, false), fill = FILLS[saved.fill] and saved.fill or entry.fill or DEFAULT_FILL }
+        markers = pick(saved.markers, false), fill = FILLS[saved.fill] and saved.fill or entry.fill or DEFAULT_FILL,
+        lead = ownLead(entry, saved.lead) }
 end
 
--- Saves one choice ("on", "speak", "markers", "fill" = "up" or "down", or a Show as key with show = true) and
--- tells the engine.
--- The whole set is saved, so a later change to the entry's defaults leaves your choices alone.
+-- Seconds before each cast the entry shows for you: your Show from, else the entry's lead.
+function Special:Lead(encounterID, entry)
+    return self:Choices(encounterID, entry).lead or entry.lead
+end
+
+-- Saves one choice ("on", "speak", "markers", "fill" = "up" or "down", "lead" = seconds or nil for the entry's,
+-- or a Show as key with show = true) and tells the engine.
+-- The whole set is saved, so a later change to the entry's defaults leaves your choices alone; a lead is saved
+-- only while it differs from the entry's (one out of range is the entry's too).
 function Special:SetChoice(encounterID, entry, field, value, show)
     local all = store(true)
     if not (all and entry) then
@@ -515,6 +537,8 @@ function Special:SetChoice(encounterID, entry, field, value, show)
         c.show[field] = value and true or false
     elseif field == "fill" then
         c.fill = FILLS[value] and value or DEFAULT_FILL
+    elseif field == "lead" then
+        c.lead = ownLead(entry, value)
     else
         c[field] = value and true or false
     end
@@ -809,6 +833,8 @@ local function item(entry, choices, n, at, step, covers, icon)
         outputs[k] = choices.show[k] and true or false
     end
     outputs.speech = choices.speak and true or false
+    -- your Show from, else the entry's: when the alert shows; a bar of its own keeps its start (barStart)
+    local lead = choices.lead or entry.lead
     local spell = entry.when.spellID
     local imp = entry.impacts
     local ticks
@@ -833,11 +859,11 @@ local function item(entry, choices, n, at, step, covers, icon)
         icon = icon,
         text = textOut,
         priority = Rules.Priority(3, "normal"),
-        warn = entry.lead,
+        warn = lead,
         hold = 0.5,
         abilityType = (entry.type and Reference and Reference.TYPES and Reference.TYPES[entry.type]) and entry.type or nil,
         outputs = outputs,
-        speech = Rules.SpeechItems(textOut, entry.lead, choices.speak and true or false, false, false),
+        speech = Rules.SpeechItems(textOut, lead, choices.speak and true or false, false, false),
         special = entry.key,
     }
 end

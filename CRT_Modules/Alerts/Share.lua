@@ -8,7 +8,7 @@ local ADDON, CRT = ...
 --     special = { [key] = choices }, defs = { def, ... } } } } }
 -- group is "nh" or "mythic", or "any" for an older reminder on any difficulty and a special alert for both.
 -- A reminder carries only the fields REMINDER_FIELDS lists (what the Mech Alerts store saves, ticks, fill and
--- barTo among them); special choices are { on, show, speak, markers, fill }; defs are boss file entries.
+-- barTo among them); special choices are { on, show, speak, markers, fill, lead }; defs are boss file entries.
 -- Reading checks every field the way the editor does (Draft's and Reminders' parsers, Special.Read) and leaves
 -- out, and counts, anything that doesn't read. Read changes nothing: it compares each part with what you have
 -- (new, replaces yours, same as yours), and Apply writes the picked parts into the same store the panel uses.
@@ -301,8 +301,11 @@ end
 -- Special choices -------------------------------------------------------------------------------------
 
 -- Incoming choices laid over base (your own for the entry, Special:Choices), each field checked; a field that
--- doesn't read keeps base's and is counted.
-local function cleanChoices(v, base, count)
+-- doesn't read keeps base's and is counted. lead (your Show from) reads in the Mechanics range; one equal to
+-- shipped (the entry's own lead) is none of yours, as Special:SetChoice keeps it.
+local LEAD = seconds(1, 60)
+
+local function cleanChoices(v, base, count, shipped)
     local out = copy(base)
     if type(v) ~= "table" then
         count()
@@ -320,6 +323,14 @@ local function cleanChoices(v, base, count)
                 out.fill = x
             else
                 count()
+            end
+        elseif k == "lead" then
+            if LEAD(x) == nil then
+                count()
+            elseif x == shipped then
+                out.lead = nil
+            else
+                out.lead = x
             end
         elseif k == "show" and type(x) == "table" then
             for sk, sv in pairs(x) do
@@ -621,7 +632,7 @@ local function readSpecial(info, enc, group, map, defs, skip)
             end
             local clean = cleanChoices(v, base, function()
                 info.dropped = info.dropped + 1
-            end)
+            end, entry and entry.lead)
             info.items[#info.items + 1] = { kind = "special", enc = enc, group = group, key = key, value = clean, label = entry and entry.label or key,
                 status = same(clean, base) and "same" or "replace" }
         else
