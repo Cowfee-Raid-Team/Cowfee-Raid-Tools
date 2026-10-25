@@ -38,6 +38,8 @@ local TEXT = {
     auto = "auto",
     itemLevel = "Item level %d",
     given = "Given to %s",
+    pastNote = "last session, read only",
+    noneYet = "No loot session yet tonight.",
 }
 
 local ROLE_TEXT = { T = "Tank", H = "Heal", D = "DPS", N = "" }
@@ -47,6 +49,24 @@ local ticker -- refreshes the window while it is shown
 local refresh
 local REFRESH_SECONDS = 1
 local current = 1
+
+-- The last session you were sent, kept after it ends (this login only, not saved), so My Loot, /crt loot
+-- and this window can still show its items and results. past: the window was opened with no session
+-- running, so it shows that one (or says there was none).
+local last
+local past = false
+
+LM:OnChange(function(what)
+    if what == "incoming" and LM.incoming then
+        last = LM.incoming
+        past = false
+    end
+end)
+
+-- The session the window shows: the running one, else (opened with none) the last one.
+local function shownSession()
+    return LM.incoming or (past and last) or nil
+end
 
 local function settings()
     return CRT.db.lootmaster.answers
@@ -94,7 +114,7 @@ local function initRow(row, r)
         row.me = row:CreateTexture(nil, "BACKGROUND")
         row.me:SetAllPoints()
     end
-    local inc = LM.incoming
+    local inc = shownSession()
     local cc = classColor(r.class)
     row.cols.name:SetText(Ambiguate(r.name, "short"))
     row.cols.name:SetTextColor(cc and cc.r or 0.85, cc and cc.g or 0.85, cc and cc.b or 0.85)
@@ -186,18 +206,36 @@ local function build()
     end)
 end
 
+-- With no session this login: the window empty, its header saying so.
+local function showNone()
+    win.strip:SetTitle(TEXT.title)
+    win.strip:SetBadge(nil, TEXT.pastNote)
+    tabs:Update({}, 1)
+    header.icon:Hide()
+    header.name:SetText(TEXT.noneYet)
+    header.info:SetText("")
+    list:SetDataProvider(CreateDataProvider({}))
+end
+
 refresh = function() -- declared above, for the ticker
-    local inc = LM.incoming
-    if not (win and win:IsShown() and inc and inc.view) then
+    if not (win and win:IsShown()) then
         return
     end
+    local inc = shownSession()
+    if not (inc and inc.view) then
+        showNone()
+        return
+    end
+    header.icon:Show()
     local view = inc.view
     if not inc.items[current] then
         current = 1
     end
     win.strip:SetTitle(TEXT.title)
     -- TEST for a test, else the boss you saw killed just before (LM:RecentBoss); the note shows either way
-    win.strip:SetBadge(inc.test and TEXT.test or inc.boss, TEXT.note, not inc.test and UI.TITLE_STRIP.neutral or nil)
+    -- (the last session's note once it no longer runs)
+    local note = inc == LM.incoming and TEXT.note or TEXT.pastNote
+    win.strip:SetBadge(inc.test and TEXT.test or inc.boss, note, not inc.test and UI.TITLE_STRIP.neutral or nil)
     tabs:Update(inc.items, current, function(i)
         return view:AnswerCount(i)
     end, function(name)
@@ -232,31 +270,15 @@ end)
 -- a new theme repaints the rows and the tabs
 UI:OnTheme(refresh)
 
+-- With no session running it shows the last one, read only, or says there was none this login.
 function LM:ShowAnswers()
-    if not (self.incoming and self.incoming.view) then
-        CRT:Print("Loot Master: no loot session to show.")
-        return
-    end
+    past = not (self.incoming and self.incoming.view)
     build()
     win:Show()
     refresh()
 end
 
 -- My Loot (Loot Master > Tonight's card, LootMaster/Tonight.lua, and /crt loot) ------------------------------
-
-local MY_TEXT = {
-    noSession = "Loot Master: no loot session right now.",
-}
-
--- The last session you were sent, kept after it ends (this session only, not saved), so My Loot can still
--- show its items.
-local last
-
-LM:OnChange(function(what)
-    if what == "incoming" and LM.incoming then
-        last = LM.incoming
-    end
-end)
 
 -- Whether an item of the session you were sent still waits for your answer: not given out, not answered
 -- (an auto answer counts as one), and its time to answer not run out (as the popup counts it).
@@ -298,15 +320,19 @@ function LM.MyLoot()
 end
 
 -- Your loot popup (Popup.lua) and All Loot Rolls together: the My Loot card and /crt loot. With no session
--- there is nothing for either to show, so one chat line says so. Returns whether a session was there.
+-- running, the last one this login, read only: its items and results in the popup (rows, no buttons) and in
+-- All Loot Rolls; with none this login, All Loot Rolls empty, saying so. Returns whether one was running.
 function LM:OpenMyLoot()
-    if not (self.incoming and self.incoming.view) then
-        CRT:Print(MY_TEXT.noSession)
-        return false
+    if self.incoming and self.incoming.view then
+        self:ShowPopup()
+        self:ShowAnswers()
+        return true
     end
-    self:ShowPopup()
+    if last and self.ShowLastPopup then
+        self:ShowLastPopup(last)
+    end
     self:ShowAnswers()
-    return true
+    return false
 end
 
 -- /crt loot: your loot (the raider's side, so it works with the Loot module off); /crt loot <word> is the
