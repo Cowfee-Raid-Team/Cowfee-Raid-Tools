@@ -16,10 +16,14 @@ local ADDON, CRT = ...
 -- the bars every 0.1 s; in between, the fill, the seconds and the ticks' fade move every frame (animate).
 -- Impact ticks: any line may carry ticks = { s, ... }, seconds after its cast (the line's `at`) when each impact
 -- lands. Each is a thin line on the bar in the theme's text colour, placed on the fill's time scale, so the fill
--- reaches it as that impact lands; one already passed fades. barTo = "last" (the default with ticks) runs the bar
--- to the last tick, so its seconds count to the last impact; "cast" ends it at the cast. barEnd (seconds after the
--- cast) ends it there instead, and barStart (seconds after the cast) is when the bar appears: its fill then runs
--- over barEnd - barStart, not over `ahead` (a special alert's bar = { start, length, ticks }, Alerts/Special.lua).
+-- reaches it as that impact lands; one already passed fades. A tick at either end is drawn TICK_INSET inside the
+-- bar, so it shows. barTo = "last" (the default with ticks) runs the bar to the last tick; "cast" ends it at the
+-- cast. barEnd (seconds after the cast) ends it there instead, and barStart (seconds after the cast) is when the
+-- bar appears: its fill then runs over barEnd - barStart, not over `ahead` (a special alert's bar = { start,
+-- length, ticks }, Alerts/Special.lua; a reminder's bar with ticks starts at its Show from, Alerts/Reminders.lua).
+-- A bar with ticks counts its seconds to the next impact on it (then to its end, 0 at the last impact when it
+-- ends there), and one that starts
+-- before its cast draws a faint cast line there, so it reads: the cast, then the impacts.
 -- Only the bars read these; the callout, speech and the other areas keep the cast's time.
 -- fill = "up" makes a line's bar fill up from empty as its time nears instead of emptying (any other value, or
 -- none: it empties, as every bar did before); its ticks still sit where the fill's edge is at each impact.
@@ -88,6 +92,9 @@ local BORDER_COLOR = "outline" -- the theme's darkest colour, drawn opaque (CRT_
 local TICK_COLOR = "text"  -- an impact tick, in the theme's text colour
 local TICK_WIDTH = 2
 local TICK_PASSED_ALPHA = 0.3 -- a tick whose impact has landed
+local TICK_INSET = 2 -- a tick at either end of the bar is drawn this many pixels inside it, so it shows
+local CAST_LINE_WIDTH = 1 -- the cast's own line on a bar that starts before it: thinner and fainter than a tick
+local CAST_LINE_ALPHA = 0.45
 local BORDER_OPTIONS = {
     { key = "none", label = TEXT.noBorder },
     { key = "thin", label = TEXT.thin },
@@ -323,6 +330,29 @@ local function tickMarks(line, now, total, up)
     return #out > 0 and out or nil
 end
 
+-- Where the cast sits on a bar that starts before it and ends after it (0 to 1, as tickMarks), else nil.
+local function castMark(line, total, up)
+    if type(line.castAt) ~= "number" or not (total and total > 0) then
+        return nil
+    end
+    local pos = (line.at - line.castAt) / total
+    if pos <= 0 or pos >= 1 then
+        return nil
+    end
+    return up and 1 - pos or pos
+end
+
+-- The moment a bar's seconds count to: its next impact on the bar, else (no ticks, or all landed) its end, which
+-- with Bar ends At the last impact is that impact. tickAt is in order.
+local function countTo(line, now)
+    for _, at in ipairs(type(line.tickAt) == "table" and line.tickAt or {}) do
+        if at >= now and at <= line.at then
+            return at
+        end
+    end
+    return line.at
+end
+
 -- What one bar shows. The fill is over the time left when the line first showed, at most `ahead`; a bar with
 -- its own start (barFrom) fills over its own length.
 local function row(line, now, ahead, shownAt, s)
@@ -339,7 +369,7 @@ local function row(line, now, ahead, shownAt, s)
     return {
         text = Areas.LineText(line),
         kind = typeWord(line, s),
-        time = timeText(line.at - now),
+        time = timeText(countTo(line, now) - now),
         icon = Areas.LineIcon(line),
         lineColor = from ~= "custom" and color or nil,
         color = color,
@@ -347,6 +377,7 @@ local function row(line, now, ahead, shownAt, s)
         fill = up and "up" or "down",
         filled = up and 1 - fraction or fraction, -- how much of the bar is filled
         ticks = tickMarks(line, now, total, up),
+        cast = castMark(line, total, up), -- where the cast's line sits, or nil
         total = total, -- the bar's time, kept for animate
     }
 end
@@ -382,6 +413,15 @@ local function make(parent)
     return bar
 end
 
+-- A line of width w, full height, centred on pos (0 to 1) of the fill's room, kept TICK_INSET inside either end.
+local function placeLine(bar, t, pos, left, room, w, height)
+    local inset = math.min(TICK_INSET, math.max(0, (room - w) / 2))
+    local x = math.max(left + inset, math.min(left + room - w - inset, left + room * pos - w / 2))
+    t:ClearAllPoints()
+    t:SetPoint("TOPLEFT", bar, "TOPLEFT", x, 0)
+    t:SetSize(w, height)
+end
+
 -- The impact ticks: one thin line per tick, full height, at the fill's edge for that moment; faded once passed.
 -- Made on first need and kept with the bar.
 local function drawTicks(bar, marks, left, room, height)
@@ -397,17 +437,32 @@ local function drawTicks(bar, marks, left, room, height)
             pool[i] = t
         end
         local m = marks[i]
-        t:ClearAllPoints()
-        -- centred on its moment, kept inside the bar at either end
-        local x = math.max(left, math.min(left + room - w, left + room * m.pos - w / 2))
-        t:SetPoint("TOPLEFT", bar, "TOPLEFT", x, 0)
-        t:SetSize(w, height)
+        placeLine(bar, t, m.pos, left, room, w, height)
         t:SetAlpha(m.passed and TICK_PASSED_ALPHA or 1)
         t:Show()
     end
     for i = n + 1, #pool do
         pool[i]:Hide()
     end
+end
+
+-- The cast's line (row.cast): one faint 1 px line in the text colour where the cast is, on a bar that starts before
+-- it, so the bar reads cast, then impacts. Made on first need and kept with the bar.
+local function drawCastLine(bar, pos, left, room, height)
+    local t = bar.castLine
+    if not pos then
+        if t then
+            t:Hide()
+        end
+        return
+    end
+    if not t then
+        t = bar:CreateTexture(nil, "OVERLAY")
+        UI.Tint(t, "SetColorTexture", TICK_COLOR, CAST_LINE_ALPHA)
+        bar.castLine = t
+    end
+    placeLine(bar, t, pos, left, room, snap(CAST_LINE_WIDTH, scaleOf(bar), 1), height)
+    t:Show()
 end
 
 -- What moves with time on a bar: its fill, its seconds and its ticks' fade, from what its last draw kept (the
@@ -425,7 +480,7 @@ local function animate(bar, now)
     local fillWidth = bar.fillRoom * filled
     bar.fill:SetWidth(math.max(fillWidth, 1))
     bar.fill:SetShown(fillWidth > 0)
-    local t = timeText(line.at - now)
+    local t = timeText(countTo(line, now) - now)
     if t ~= bar.timeShown then
         bar.timeShown = t
         bar.time:SetText(t)
@@ -473,6 +528,7 @@ local function draw(bar, line, now, s, shownAt)
     bar.fill:SetHeight(height)
     bar.fill:SetColorTexture(r.color[1], r.color[2], r.color[3], r.lineColor and LINE_ALPHA or r.color[4] or 1)
     drawTicks(bar, r.ticks, left, width - left, height)
+    drawCastLine(bar, r.cast, left, width - left, height)
     bar.line, bar.fillRoom = line, width - left
     animate(bar, now) -- the fill's width and the seconds
 
