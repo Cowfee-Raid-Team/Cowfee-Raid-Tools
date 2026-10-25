@@ -51,6 +51,16 @@ local TEXT = {
     bar = "Bar",
     circle = "Circle",
     timeline = "Alert timeline",
+    -- under Show as, for the bar: greyed while Bar is off
+    ticks = "Impact ticks",
+    ticksUnit = "s after the cast",
+    ticksHelp = "Each number is a thin line on the bar where that hit lands, in seconds after the cast, such as 1.5, 3.5. The fill reaches each line as its hit lands. Leave it empty for no ticks.\n\nBar ends: at the last impact, the bar runs on to the last line. At the cast, it ends at the cast.\n\nThese are for Only me alerts. A raid note line can't carry them.",
+    barFill = "Bar fill",
+    fillUp = "Bar fills up",
+    fillDown = "Bar empties",
+    barTo = "Bar ends",
+    toLast = "At the last impact",
+    toCast = "At the cast",
     also = "Also",
     speak = "Speak the text",
     count = "Count down 3 2 1",
@@ -155,6 +165,12 @@ L.COL_W = math.floor((L.PANEL_W - 2 * L.INSET - L.COL_GAP) / 2)
 L.COL2_X = L.INSET + L.COL_W + L.COL_GAP
 L.CHECK_STEP = 130 -- between the checkboxes of a row
 L.SHOW_GAP = 10 -- between one Show as label and the next box
+-- the left column under L.COL_Y, from its top: the two Show as rows, Impact ticks, Bar fill, Bar ends, then Also
+-- and its two rows, then a save's problem
+L.TICKS_DY, L.FILL_DY, L.BAR_TO_DY = 72, 94, 120
+L.ALSO_DY, L.ALSO_ROW1_DY, L.ALSO_ROW2_DY = 152, 172, 198
+L.MESSAGE_DY = 232
+L.TICKS_LABEL, L.TICKS_W, L.UNIT_GAP, L.BAR_DROP_W = 76, 70, 6, 140
 L.LABEL_W = 50
 L.ICON_DROP_W = 90
 L.ID_X = L.COL2_X + L.LABEL_W + L.DROP_GAP + L.ICON_DROP_W + 8
@@ -584,6 +600,11 @@ local function setBox(edit, text, force)
     end
 end
 
+-- The panel's typed boxes, which let go together (another row, another view, the tab hiding).
+local function panelEdits()
+    return { panel.textEdit, panel.timesEdit, panel.idEdit, panel.ticksEdit }
+end
+
 local function idText(d)
     local id = d.iconType == "id" and d.iconID or d.spellID
     return id and tostring(id) or ""
@@ -603,6 +624,17 @@ local function placeShowAs()
         check:ClearAllPoints()
         check:SetPoint("TOPLEFT", x, L.COL_Y - 20 - (r - 1) * 26)
     end)
+end
+
+-- The bar's rows under Show as: Impact ticks greyed while Bar is off (Bar fill and Bar ends grey through their
+-- enabledIf), its box showing the draft's ticks unless it is being typed in.
+local function drawBarRows(d)
+    local on = d.show.bar and true or false
+    panel.ticksEdit:SetEnabled(on)
+    local v = on and 1 or 0.5
+    panel.ticksLabel:SetTextColor(v, v, v)
+    panel.ticksUnit:SetTextColor(v, v, v)
+    setBox(panel.ticksEdit, d.ticksText)
 end
 
 -- Everything on the panel from the draft, except a box being typed in.
@@ -634,6 +666,7 @@ local function drawPanel()
     for key, check in pairs(panel.checks) do
         check:SetChecked(d.show[key] and true or false)
     end
+    drawBarRows(d)
     panel.also.speak:SetChecked(d.speak and true or false)
     panel.also.count:SetChecked(d.count and true or false)
     panel.also.glow:SetChecked(d.glow and true or false)
@@ -671,7 +704,7 @@ local function loadPanel(item, enc, name)
     if not item then
         -- nothing to show (a boss with no abilities yet): typing is saved, the boxes empty
         saveTyped(true)
-        for _, edit in ipairs({ panel.textEdit, panel.timesEdit, panel.idEdit }) do
+        for _, edit in ipairs(panelEdits()) do
             edit:ClearFocus()
             setBox(edit, "", true)
         end
@@ -686,7 +719,7 @@ local function loadPanel(item, enc, name)
     if not same then
         -- typing belongs to the row it was typed on: saved there before the boxes change hands
         saveTyped(true)
-        for _, edit in ipairs({ panel.textEdit, panel.timesEdit, panel.idEdit }) do
+        for _, edit in ipairs(panelEdits()) do
             edit:ClearFocus()
         end
     end
@@ -725,6 +758,7 @@ local function loadPanel(item, enc, name)
     setBox(panel.textEdit, cur.draft.text, not same)
     setBox(panel.idEdit, idText(cur.draft), not same)
     setBox(panel.timesEdit, cur.draft.keptTimes, not same)
+    setBox(panel.ticksEdit, cur.draft.ticksText, not same)
 end
 
 -- The selected row's index in the list: the one holding a reminder just saved, the boss's last one,
@@ -851,7 +885,7 @@ local function applyView()
     local mech = not (special and CRT.NoteSpecialAlerts.View() == "special")
     if not mech then
         -- the Mechanics panel hides: its boxes let go (leaving one saves what was typed)
-        for _, edit in ipairs({ panel.textEdit, panel.timesEdit, panel.idEdit }) do
+        for _, edit in ipairs(panelEdits()) do
             edit:ClearFocus()
         end
     end
@@ -1283,6 +1317,55 @@ local function backdrop(f, alpha)
     end
 end
 
+-- Under Show as, the bar's rows: Impact ticks (seconds after the cast, typed: saved after a pause, as the other
+-- boxes), Bar fill and Bar ends (greyed with no ticks). All three grey out while Bar is off (drawBarRows); what
+-- they hold stays saved. `row` adds a dropdown to the rows drawPanel refreshes. Its own function: buildPanel is
+-- near Lua 5.1's 60 upvalue limit.
+local function buildBarRows(p, row)
+    local Draft = CRT.AlertDraft
+    local x = L.INSET
+    panel.ticksLabel = p:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    panel.ticksLabel:SetPoint("TOPLEFT", x, L.COL_Y - L.TICKS_DY - 4)
+    panel.ticksLabel:SetWidth(L.TICKS_LABEL)
+    panel.ticksLabel:SetJustifyH("LEFT")
+    panel.ticksLabel:SetWordWrap(false)
+    panel.ticksLabel:SetText(TEXT.ticks)
+    panel.ticksEdit = makeEdit(p, x + L.TICKS_LABEL + L.DROP_GAP, L.COL_Y - L.TICKS_DY, L.TICKS_W, function(text)
+        if not cur.draft then
+            return
+        end
+        local ticks = Draft.trim(text) ~= "" and text or nil
+        if ticks ~= cur.draft.ticksText then
+            cur.draft.ticksText = ticks
+            typing()
+        end
+    end)
+    panel.ticksUnit = p:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    panel.ticksUnit:SetPoint("LEFT", panel.ticksEdit, "RIGHT", L.UNIT_GAP, 0)
+    panel.ticksUnit:SetText(TEXT.ticksUnit)
+    UI.HelpRight(panel.ticksUnit, TEXT.ticks, TEXT.ticksHelp)
+    local function barOn()
+        return cur.draft ~= nil and cur.draft.show.bar and true or false
+    end
+    panel.barFill = row(UI.Dropdown(p, TEXT.barFill, {
+        labelWidth = L.TICKS_LABEL, width = L.BAR_DROP_W,
+        enabledIf = barOn,
+        options = Draft.FillOptions(TEXT.fillUp, TEXT.fillDown),
+        get = function() return cur.draft and cur.draft.fill == "up" and "up" or "down" end,
+        set = change(function(v) cur.draft.fill = v == "up" and "up" or nil end),
+    }))
+    panel.barFill:SetPoint("TOPLEFT", x, L.COL_Y - L.FILL_DY)
+    -- only a bar with ticks has a last impact to end at
+    panel.barTo = row(UI.Dropdown(p, TEXT.barTo, {
+        labelWidth = L.TICKS_LABEL, width = L.BAR_DROP_W,
+        enabledIf = function() return barOn() and Draft.Ticks(cur.draft) ~= nil end,
+        options = Draft.BarToOptions(TEXT.toLast, TEXT.toCast),
+        get = function() return cur.draft and cur.draft.barTo == "cast" and "cast" or "last" end,
+        set = change(function(v) cur.draft.barTo = v == "cast" and "cast" or nil end),
+    }))
+    panel.barTo:SetPoint("TOPLEFT", x, L.COL_Y - L.BAR_TO_DY)
+end
+
 local function buildPanel(f)
     local Draft = CRT.AlertDraft
     local frame = CreateFrame("Frame", nil, f, "BackdropTemplate")
@@ -1392,11 +1475,13 @@ local function buildPanel(f)
         end
     end
     placeShowAs()
-    heading(p, TEXT.also, L.INSET, L.COL_Y - 78)
+    buildBarRows(p, row)
+    heading(p, TEXT.also, L.INSET, L.COL_Y - L.ALSO_DY)
+    local y1, y2 = L.COL_Y - L.ALSO_ROW1_DY, L.COL_Y - L.ALSO_ROW2_DY
     panel.also = {
-        speak = makeCheck(p, TEXT.speak, L.INSET - 4, L.COL_Y - 98, change(function(on) cur.draft.speak = on end)),
-        count = makeCheck(p, TEXT.count, L.INSET - 4 + L.CHECK_STEP, L.COL_Y - 98, change(function(on) cur.draft.count = on end)),
-        glow = makeCheck(p, TEXT.glow, L.INSET - 4, L.COL_Y - 124, change(function(on) cur.draft.glow = on end)),
+        speak = makeCheck(p, TEXT.speak, L.INSET - 4, y1, change(function(on) cur.draft.speak = on end)),
+        count = makeCheck(p, TEXT.count, L.INSET - 4 + L.CHECK_STEP, y1, change(function(on) cur.draft.count = on end)),
+        glow = makeCheck(p, TEXT.glow, L.INSET - 4, y2, change(function(on) cur.draft.glow = on end)),
     }
     -- Speak at: when Speak the text says it, On show or At 0; greyed while Speak the text is off
     panel.speakAt = row(UI.Dropdown(p, TEXT.speakAt, {
@@ -1406,7 +1491,7 @@ local function buildPanel(f)
         get = function() return Draft.SpeakAtKey(cur.draft) end,
         set = change(function(v) Draft.SetSpeakAt(cur.draft, v) end),
     }))
-    panel.speakAt:SetPoint("TOPLEFT", L.INSET + L.CHECK_STEP, L.COL_Y - 124) -- in line with Glow at 0
+    panel.speakAt:SetPoint("TOPLEFT", L.INSET + L.CHECK_STEP, y2) -- in line with Glow at 0
 
     -- Right column: Look and sound
     heading(p, TEXT.look, L.COL2_X, L.COL_Y)
@@ -1510,7 +1595,7 @@ local function buildPanel(f)
 
     -- A save's problem, in red
     panel.message = p:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    panel.message:SetPoint("TOPLEFT", L.INSET, L.COL_Y - 162)
+    panel.message:SetPoint("TOPLEFT", L.INSET, L.COL_Y - L.MESSAGE_DY)
     panel.message:SetWidth(L.PANEL_W - 2 * L.INSET)
     panel.message:SetJustifyH("LEFT")
 
@@ -1780,7 +1865,7 @@ local function build(f)
     f:SetScript("OnHide", function()
         saveTyped()
         opened = nil -- a row Make a Mech Alert opened is listed only while that open lasts
-        for _, edit in ipairs({ panel.textEdit, panel.timesEdit, panel.idEdit }) do
+        for _, edit in ipairs(panelEdits()) do
             edit:ClearFocus()
         end
     end)

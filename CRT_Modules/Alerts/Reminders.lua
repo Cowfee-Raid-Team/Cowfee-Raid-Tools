@@ -5,8 +5,11 @@ local ADDON, CRT = ...
 -- you type, and it runs on the alerts engine as the "mine" block beside the raid note. A reminder is
 -- saved in CRT.db.alerts.reminders[encounterID][id] as
 --   { boss, spellID, text, times, outputs = { alert, bar, speech, text, icon, circle, timeline }, warn, speech,
---     priority, group, difficulty, enabled, linger, sound, auraSound, glow, iconID, color, speakAt }
+--     priority, group, difficulty, enabled, linger, sound, auraSound, glow, iconID, color, speakAt, ticks, fill, barTo }
 -- auraSound true also plays the sound when the spell's aura is put on you (Sound/Auras.lua).
+-- ticks (optional) are the bar's impact ticks, seconds after each time ({ 1.5, 3.5 }); fill "up" makes the bar fill
+-- up instead of emptying; barTo "cast" ends a bar with ticks at the cast instead of the last one. Each item
+-- carries them for the bars (Alerts/Bars.lua); none of them is saved at its default.
 -- where `times` is typed text ("P1 0:02, 1:17; P2 +0:18") or nil for the reference, `speech` is
 -- "text", "textcount" (the text, then 3, 2, 1) or "count", `speakAt` is nil (the text is read out when
 -- the alert shows) or "zero" (at its time). `group` is the difficulty group it is for, "nh" (Normal/Heroic)
@@ -1020,6 +1023,22 @@ local function matchesDifficulty(r, run)
     return Alerts.RunGroup ~= nil and Alerts:RunGroup(run) == want
 end
 
+-- A reminder's saved impact ticks as a fresh list in order (seconds after the cast, each 0 or more), or nil
+-- for none. Anything else saved there is left out.
+function Reminders.TickList(ticks)
+    if type(ticks) ~= "table" then
+        return nil
+    end
+    local out = {}
+    for _, t in ipairs(ticks) do
+        if type(t) == "number" and t == t and t >= 0 and t < math.huge then
+            out[#out + 1] = t
+        end
+    end
+    table.sort(out)
+    return #out > 0 and out or nil
+end
+
 local function speechList(r, text)
     local mode = r.speech
     return Rules.SpeechItems(text, r.warn or 5, mode ~= "count", mode == "textcount" or mode == "count",
@@ -1053,8 +1072,14 @@ function Reminders:Items(encounterID, id, r, group, ref)
         end
     end
     local o = r.outputs or {}
+    local fill = r.fill == "up" and "up" or nil
     for n, t in ipairs(times) do
+        -- the bar's impact ticks, each item its own copy, and where it ends (Alerts/Bars.lua)
+        local ticks = Reminders.TickList(r.ticks)
         out[#out + 1] = {
+            ticks = ticks,
+            barTo = ticks and r.barTo == "cast" and "cast" or nil,
+            fill = fill,
             id = "mine:" .. tostring(id) .. ":" .. n,
             ph = t.ph,
             time = t.t,
