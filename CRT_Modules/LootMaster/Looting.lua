@@ -7,14 +7,18 @@ local ADDON, CRT = ...
 -- Raiders can't change it. A party group counts only with "Enable in party" (Settings), on both sides; a
 -- finder group never does.
 --
--- The leader's Yes is saved per character (CRTDBChar.lootmaster.looting: on, the instance, and at, when
--- it was last confirmed: on Yes and each heartbeat in that instance), so it stays on through a /reload or
--- login until it is turned off or a safety off happens. The leader's first loading screen brings it back
--- on, with no prompt, an O and a heartbeat, when it is still the leader, in that instance (or in the open
--- world, a wipe's run back, the time away counted from at) and within LM.LOOTING_AWAY of at; otherwise
--- the saved state is cleared and raiders are told it starts off ("reload"). When only the lead can't be
--- told yet (a fresh login), the first group event within LM.RESUME_WAIT seconds decides. Raiders save
--- nothing: after their own /reload they are off until the leader's next O or heartbeat.
+-- The leader's Yes is saved per character (CRTDBChar.lootmaster.looting: on, the instance, at, when it
+-- was last confirmed: on Yes and each heartbeat in that instance, and resetAt, LM.ResetAt), so it stays on
+-- through a /reload, a disconnect or a log out for the raid night (LM.Fresh) until it is turned off or a
+-- safety off happens. A loading screen brings it back on, with no prompt, an O and a heartbeat, when you
+-- still lead and are in that instance, or in the open world within LM.LOOTING_AWAY of at (a wipe's run
+-- back, the time away counted from at). A login in the open world after that is off (raiders are told,
+-- "reload") but keeps it: entering that instance again tonight turns it back on. Any other instance, a
+-- stale one or not leading clears it. When only the lead can't be told yet (a fresh login), the first
+-- group event within LM.RESUME_WAIT seconds decides. The prompt's answer is saved too
+-- (CRTDBChar.lootmaster.lootingAsked), so a /reload or login in that instance doesn't ask again tonight.
+-- Raiders save nothing: after their own /reload their CRT asks what's running (LootMaster/Resync.lua) and
+-- the leader answers with a heartbeat.
 -- A wipe keeps it on: the leader may be in the open world (dead, released, running back) for up to
 -- LM.LOOTING_AWAY seconds, and isn't asked again on the way back in. It turns off (and the saved state is
 -- cleared) when the leader stays out longer, enters any other instance (a dungeon, delve, scenario,
@@ -188,15 +192,37 @@ local function saved()
     return type(s) == "table" and s or nil
 end
 
--- Saves the leader's on state (own) now, at = time() as its last confirm, or clears it when off.
+-- Saves the leader's on state (own) now, at = time() as its last confirm (and resetAt, LM.ResetAt), or
+-- clears it when off.
 local function save()
     if own.on then
         CRTDBChar = CRTDBChar or {}
         CRTDBChar.lootmaster = CRTDBChar.lootmaster or {}
-        CRTDBChar.lootmaster.looting = { on = true, instance = own.instance, at = time() }
+        CRTDBChar.lootmaster.looting = { on = true, instance = own.instance, at = time(), resetAt = LM.ResetAt() }
     elseif saved() then
         CRTDBChar.lootmaster.looting = nil
     end
+end
+
+-- The raid instance the leader answered for (CRTDBChar.lootmaster.lootingAsked: { instance, at, resetAt }),
+-- so a /reload or login there doesn't ask again this raid night. Saved on a click (LM:ChooseLooting) and
+-- when a saved Yes comes back; cleared once it is stale or someone else leads.
+local function savedAsked()
+    local a = CRTDBChar and type(CRTDBChar.lootmaster) == "table" and CRTDBChar.lootmaster.lootingAsked
+    if type(a) ~= "table" then
+        return nil
+    end
+    if not LM.Fresh(a.at, a.resetAt) or type(a.instance) ~= "string" then
+        CRTDBChar.lootmaster.lootingAsked = nil
+        return nil
+    end
+    return a.instance
+end
+
+local function saveAsked(key)
+    CRTDBChar = CRTDBChar or {}
+    CRTDBChar.lootmaster = CRTDBChar.lootmaster or {}
+    CRTDBChar.lootmaster.lootingAsked = key and { instance = key, at = time(), resetAt = LM.ResetAt() } or nil
 end
 
 local function stopBeat()
@@ -251,6 +277,11 @@ function LM:ChooseLooting(on, why)
     if LM.ChatLocked() then
         LM.ShowError(LM.LOCKDOWN_ERROR)
         return false, "locked"
+    end
+    local key = LM.InstanceKey()
+    if key and isLeader() then
+        askedFor = key
+        saveAsked(key) -- answered here: not asked again this raid night, after a /reload or login too
     end
     return self:SetLooting(on, why)
 end
@@ -481,9 +512,9 @@ end)
 -- Events -----------------------------------------------------------------------------------------------
 
 -- Asks the leader once per raid instance (also on becoming the leader inside); a wipe's run back into
--- the same instance doesn't ask again.
+-- the same instance doesn't ask again, nor a /reload or login there once it was answered (savedAsked).
 local function maybeAsk()
-    if lastKey and askedFor ~= lastKey and not own.on and LM:CanRunLooting() then
+    if lastKey and askedFor ~= lastKey and not own.on and LM:CanRunLooting() and savedAsked() ~= lastKey then
         askedFor = lastKey
         if LM.AskLooting then
             LM.AskLooting()
@@ -491,29 +522,41 @@ local function maybeAsk()
     end
 end
 
--- The first loading screen after a login or /reload: the saved Yes brings it back on (an O when in its
--- instance; the caller sends the heartbeat) if you still lead, are in that instance or the open world,
--- and it was last confirmed within LM.LOOTING_AWAY. Otherwise the saved state is cleared. Returns
--- whether it is on again, or "pending" when only the lead can't be read yet (a fresh login's group may
--- not be known at the first loading screen) and final isn't set.
+-- A loading screen while off with a saved Yes (the first after a login or /reload, or a later one): it
+-- comes back on (an O when in its instance; the caller sends the heartbeat) if you still lead and it is
+-- this raid night's (LM.Fresh), and either you are in its instance, or you are in the open world within
+-- LM.LOOTING_AWAY of its last confirm (a wipe's run back). A login in the open world after that keeps it
+-- for later: it comes back on when you enter its instance again this raid night (a log out, and back in
+-- later outside). Any other instance, a stale one or not leading clears it. Returns whether it is on
+-- again, or "pending" when only the lead can't be read yet (a fresh login's group may not be known at the
+-- first loading screen) and final isn't set.
 local function resume(key, where, final)
     local s = saved()
     if not s or s.on ~= true then
         return false
     end
-    local age = type(s.at) == "number" and time() - s.at or nil
-    local fits = type(s.instance) == "string" and s.instance ~= "" and (key == s.instance or where == "world")
-        and age ~= nil and age >= 0 and age <= LM.LOOTING_AWAY
-    if fits and not canLead() and not final then
-        return "pending"
-    end
-    if not fits or not canLead() then
+    if not LM.Fresh(s.at, s.resetAt) or type(s.instance) ~= "string" or s.instance == "" then
         save() -- own is still off: clears it
+        return false
+    end
+    local age = math.max(0, time() - s.at)
+    if key ~= s.instance and not (where == "world" and age <= LM.LOOTING_AWAY) then
+        if where ~= "world" then
+            save() -- another instance: cleared
+        end
+        return false -- the open world: kept until you enter its instance
+    end
+    if not canLead() then
+        if not final then
+            return "pending"
+        end
+        save()
         return false
     end
     own.on, own.instance, own.why = true, s.instance, nil
     own.awaySince = key ~= s.instance and (GetTime() - age) or nil
     askedFor = s.instance -- not asked there again, even after a later Turn off
+    saveAsked(s.instance)
     if key == s.instance and not LM.ChatLocked() then
         LM.SendText(Wire.Encode("O", withFilter({ LM.VERSION, own.instance })))
     end
@@ -558,6 +601,8 @@ local function zoned()
         elseif not back and canLead() then
             LM.SendText(Wire.Encode("F", { LM.VERSION, "reload" }))
         end
+    elseif not own.on and not resuming and saved() then
+        resume(key, where, true) -- a Yes kept from a login outside: back on in its instance
     end
     lastKey, lastPlace = key, where
     if key and key ~= passedIn then
@@ -586,8 +631,11 @@ end
 -- it off, a raider forgets a word that no longer counts.
 local function regrouped(from)
     settleResume() -- a saved Yes waiting for the group, if any
-    if not isLeader() then
-        askedFor = nil -- asked again on getting the lead back
+    if IsInGroup() and not isLeader() and LM.LeaderName() then
+        askedFor = nil -- someone else leads: asked again on getting the lead back
+        if savedAsked() then
+            saveAsked(nil)
+        end
     end
     local ok, whyNot = canLead()
     if own.on and not ok then
@@ -599,6 +647,14 @@ local function regrouped(from)
     maybeAsk()
 end
 LM.LootingRecheck = regrouped
+
+-- A raider back from a /reload or login asked what's running (LootMaster/Resync.lua): the heartbeat now,
+-- so its auto-pass gate doesn't wait for the next one.
+LM:OnChange(function(what)
+    if what == "resync" and own.on and not LM.ChatLocked() then
+        beat()
+    end
+end)
 
 local events = CreateFrame("Frame")
 for _, e in ipairs({ "PLAYER_ENTERING_WORLD", "ZONE_CHANGED_NEW_AREA", "GROUP_ROSTER_UPDATE", "PARTY_LEADER_CHANGED",

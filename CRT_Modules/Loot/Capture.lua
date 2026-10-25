@@ -208,13 +208,54 @@ local function dropChanged(encounterID, lootListID)
     end
 end
 
+-- After a /reload or login: the records of the last MATCH_SECONDS (kept in CRTLootDB) are matched again, so a
+-- roll result or receive event that comes in after it updates the record its item made instead of adding a
+-- second one.
+local function rememberSaved()
+    local now, wall = GetTime(), time()
+    local found = {}
+    -- only this month's records, and last month's just after a month starts (MonthOf, Store.lua's keys)
+    local months = type(CRTLootDB) == "table" and type(CRTLootDB.months) == "table" and CRTLootDB.months or nil
+    if not months then
+        return -- no store to read (CRTLootDB not loaded)
+    end
+    local keys = { Loot.MonthOf(wall) }
+    local before = Loot.MonthOf(wall - MATCH_SECONDS)
+    if before ~= keys[1] then
+        keys[2] = before
+    end
+    for _, month in ipairs(keys) do
+        for _, rec in ipairs(type(months[month]) == "table" and months[month] or {}) do
+            local age = type(rec[R.TIME]) == "number" and wall - rec[R.TIME] or nil
+            if age and age >= 0 and age <= MATCH_SECONDS then
+                found[#found + 1] = { rec = rec, age = age }
+            end
+        end
+    end
+    table.sort(found, function(a, b)
+        return a.age > b.age -- oldest first, as remember keeps them
+    end)
+    for _, f in ipairs(found) do
+        local rec = f.rec
+        local enc, diff, listID = rec[R.ENC], rec[R.DIFF], rec[R.LIST]
+        if listID then
+            byKey[enc .. "-" .. diff .. "-" .. listID] = rec
+        end
+        recent[#recent + 1] = { rec = rec, enc = enc, diff = diff, itemID = Loot.ItemID(rec[R.ITEM]), at = now - f.age }
+    end
+end
+Capture.RememberSaved = rememberSaved
+
 local events = CreateFrame("Frame")
+events:RegisterEvent("PLAYER_LOGIN")
 events:RegisterEvent("ENCOUNTER_START")
 events:RegisterEvent("BOSS_KILL")
 events:RegisterEvent("ENCOUNTER_LOOT_RECEIVED")
 pcall(events.RegisterEvent, events, "LOOT_HISTORY_UPDATE_DROP")
 events:SetScript("OnEvent", function(_, event, ...)
-    if event == "ENCOUNTER_START" or event == "BOSS_KILL" then
+    if event == "PLAYER_LOGIN" then
+        rememberSaved()
+    elseif event == "ENCOUNTER_START" or event == "BOSS_KILL" then
         local encounterID, name = ...
         if readable(encounterID, name) then
             Loot:SetBoss(encounterID, name)
