@@ -448,7 +448,8 @@ do
   check(#shownPages == before, state .. ": /crt loot opens no page (Loot History has no word)")
   LM.incoming = nil
   out = slash("loot")
-  check(out:find("no loot session", 1, true) ~= nil, state .. ": /crt loot with no session says so: " .. out)
+  check(calls.answers == 2 and calls.popup == 1, state .. ": /crt loot with no session opens All Loot Rolls (the last session, or none yet), no answer popup")
+  check(not out:find("turned off", 1, true), state .. ": /crt loot with no session runs: " .. out)
   LM.ShowPopup, LM.ShowAnswers, LM.incoming = realPopup, realAnswers, was
   out = slash("loot test")
   if not lootOn then

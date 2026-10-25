@@ -10,6 +10,9 @@ local ADDON, CRT = ...
 -- on: it gets a short row instead (icon, name, item level, "Transmog (auto)", or who it was given to), under
 -- the line saying why, until the session ends (past the answer time). So the popup opens on every session, even one where
 -- nothing needs a choice (Alex, 2026-10-25: "make sure the loot window always shows"). Its X takes a row away.
+-- With no session running, My Loot and /crt loot show the last session this login read only
+-- (LM:ShowLastPopup): the same short rows for every item, each with who got it, your answer or No answer,
+-- and no answer panels, so no buttons.
 -- In Default: Blizzard each panel looks like the game's group-loot roll frame and the whole popup sits in
 -- the main window's frame, sized to what shows; the other themes draw it flat in their colours.
 -- The panels hang from one overlay (UI.Window kind "overlay"): drag any panel to move them all; the
@@ -104,6 +107,10 @@ local TEXT = {
     awarded = "Given to %s (%s)",
     notes = "Notes:",
     timeLeft = "Time left: %d",
+    -- the last session, read only (LM:ShowLastPopup)
+    pastNote = "last session, read only",
+    youAnswered = "You answered %s",
+    noAnswer = "No answer",
 }
 
 -- What you bring to an answer ---------------------------------------------------------------------
@@ -140,6 +147,7 @@ end
 -- Panels -----------------------------------------------------------------------------------------------
 
 local anchor, chrome, header, autoLine
+local past -- the last session, shown read only while no session runs (LM:ShowLastPopup)
 local panels = {} -- by item index
 local autoRows = {} -- the answered-for-you rows, by item index
 local loading = {} -- item IDs asked of the game once each
@@ -376,6 +384,7 @@ end
 -- Closes every item at once (the title bar's X), the answered-for-you rows too; Show again on the
 -- looter's side brings them back.
 function LM:ClosePopup()
+    past = nil -- the last session's rows go with it
     local inc = LM.incoming
     if inc then
         for i = 1, LM.MAX_ITEMS do
@@ -645,16 +654,22 @@ local function autoRow(index)
     return r
 end
 
-local function fillAutoRow(r, index, it, mine, inc)
+-- isPast: a row of the last session (no session running): your answer as you gave it, or No answer.
+local function fillAutoRow(r, index, it, mine, inc, isPast)
     r.index, r.itemString = index, it.itemString
     r.icon:SetTexture(C_Item.GetItemIconByID(it.itemString or "") or 134400)
     r.name:SetText(itemText(it))
     r.ilvl:SetText(it.ilvl and string.format(TEXT.itemLevel, it.ilvl) or "")
-    local resp = LM.ResponseOf(inc.byKey, mine.response)
+    local resp = mine and LM.ResponseOf(inc.byKey, mine.response)
+    local label = resp and resp.label or (mine and mine.response)
     if it.award then
         r.state:SetText(string.format(TEXT.given, Ambiguate(it.award.name, "short")))
+    elseif not isPast then
+        r.state:SetText(string.format(TEXT.autoState, label))
+    elseif mine and mine.response then
+        r.state:SetText(string.format(mine.auto and TEXT.autoState or TEXT.youAnswered, label))
     else
-        r.state:SetText(string.format(TEXT.autoState, resp and resp.label or mine.response))
+        r.state:SetText(TEXT.noAnswer)
     end
 end
 
@@ -743,23 +758,41 @@ local function build()
     end)
 end
 
+-- Every item of the last session, for its read-only rows.
+local function pastItems(inc)
+    local out = {}
+    for i = 1, LM.MAX_ITEMS do
+        if inc.items[i] then
+            out[#out + 1] = i
+        end
+    end
+    return out
+end
+
 local function refresh()
     local inc = LM.incoming
+    if inc then
+        past = nil -- a running session takes the popup back
+    end
+    inc = inc or past
     if not inc then
         if anchor then
             anchor:Hide()
         end
         return
     end
+    local isPast = inc == past
     build()
     header:SetTitle(TEXT.title)
-    -- TEST for a test, else the boss you saw killed just before (LM:RecentBoss)
-    if inc.test then
+    -- TEST for a test, else the boss you saw killed just before (LM:RecentBoss); the last session says so
+    if isPast then
+        header:SetBadge(inc.test and TEXT.test or inc.boss, TEXT.pastNote, not inc.test and UI.TITLE_STRIP.neutral or nil)
+    elseif inc.test then
         header:SetBadge(TEXT.test, TEXT.testNote)
     else
         header:SetBadge(inc.boss, nil, UI.TITLE_STRIP.neutral)
     end
-    local open = openItems(inc)
+    local open = isPast and {} or openItems(inc)
     local shown = {}
     local classic = not UI:IsModern()
     -- Default: Blizzard: one window frame around everything, the title bar inside its border as on
@@ -771,20 +804,22 @@ local function refresh()
     header:SetPoint("TOPLEFT", classic and 1 or 0, classic and -1 or 0)
     header:SetSize(outerW - (classic and 2 or 0), L.headerH - (classic and 2 or 0))
     local y = L.headerH + L.gap -- panels can be taller when their buttons wrap, so they stack by height
-    local autoList = autoItems(inc)
+    local autoList = isPast and pastItems(inc) or autoItems(inc)
     local auto = #autoList
-    autoLine:SetShown(auto > 0)
+    autoLine:SetShown(auto > 0 and not isPast)
     local rowShown = {}
     if auto > 0 then
-        local r = LM.ResponseOf(inc.byKey, inc.mine[autoList[1]].response)
-        autoLine.text:SetText(string.format(auto == 1 and TEXT.autoOne or TEXT.autoMany, auto, r and r.label or "Transmog"))
-        autoLine:ClearAllPoints()
-        autoLine:SetPoint("TOPLEFT", x, -y)
-        autoLine:SetWidth(L.width)
-        y = y + L.autoH + L.gap
+        if not isPast then
+            local r = LM.ResponseOf(inc.byKey, inc.mine[autoList[1]].response)
+            autoLine.text:SetText(string.format(auto == 1 and TEXT.autoOne or TEXT.autoMany, auto, r and r.label or "Transmog"))
+            autoLine:ClearAllPoints()
+            autoLine:SetPoint("TOPLEFT", x, -y)
+            autoLine:SetWidth(L.width)
+            y = y + L.autoH + L.gap
+        end
         for _, index in ipairs(autoList) do
             local row = autoRow(index)
-            fillAutoRow(row, index, inc.items[index], inc.mine[index], inc)
+            fillAutoRow(row, index, inc.items[index], inc.mine[index], inc, isPast)
             row:ClearAllPoints()
             row:SetPoint("TOPLEFT", x, -y)
             y = y + L.autoRowH + L.gap
@@ -827,6 +862,7 @@ LM:OnChange(function(what, how)
         return
     end
     if how == "ended" then
+        past = nil
         if anchor then
             anchor:Hide()
         end
@@ -841,6 +877,19 @@ end)
 
 -- a new theme repaints the open panels
 UI:OnTheme(refresh)
+
+-- The last session (inc, kept by RaiderWindow.lua after it ended), read only: a row per item with who got
+-- it, your answer or No answer. Only while no session runs: one that starts takes the popup back.
+function LM:ShowLastPopup(inc)
+    if self.incoming or not inc then
+        return
+    end
+    past = inc
+    refresh()
+    if anchor and past then
+        anchor:Show()
+    end
+end
 
 -- /crt loot popup: every item that still has time, closed ones too.
 function LM:ShowPopup()

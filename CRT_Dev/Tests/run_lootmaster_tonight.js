@@ -173,6 +173,7 @@ local BL = LM.BossLoot
 local opened = { popup = 0, answers = 0 }
 function LM:ShowPopup() opened.popup = opened.popup + 1 end
 function LM:ShowAnswers() opened.answers = opened.answers + 1 end
+function LM:ShowLastPopup(s) opened.last = s end
 local function shown(text) for _, t in ipairs(texts) do if t.text == text and t.shown then return t end end return nil end
 
 local pf = mock()
@@ -272,13 +273,15 @@ LM:Fire("incoming")
 T.cardIcons[1].scripts.OnClick(T.cardIcons[1])
 eq(opened.popup, 2, "an icon click opens them too")
 eq(opened.answers, 2, "an icon click opens All Loot Rolls too")
--- no session: one chat line, nothing else
+-- no session: the last one, read only, in the popup (Popup.lua's LM:ShowLastPopup) and in All Loot Rolls
 LM.incoming = nil
+LM:Fire("incoming", "ended")
 printed = {}
 card.scripts.OnClick(card)
-eq(opened.popup + opened.answers, 4, "no session: no window to open")
-eq(#printed, 1, "no session: one chat line")
-check(printed[1] and printed[1]:find("no loot session", 1, true) ~= nil, "it says there is no loot session (" .. tostring(printed[1]) .. ")")
+eq(opened.popup, 2, "no session: no answer popup")
+eq(opened.last, inc, "no session: the popup shows the last session, read only")
+eq(opened.answers, 3, "no session: All Loot Rolls opens (it shows the last session, or says there was none)")
+eq(#printed, 0, "no session: no chat line")
 
 -- 4. Without loot authority the right side is greyed, the card is not
 local realCanLoot = LM.CanLoot

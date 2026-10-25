@@ -494,6 +494,35 @@ check(r2 and r2.state.text:find("Solex", 1, true), "an award after the time: the
 -- the session's end closes the popup
 LM:Fire("incoming", "ended")
 check(not anchor.shown, "the session over: the popup closes")
+-- the last session, read only (My Loot and /crt loot with no session, LM:OpenMyLoot): every item as a row with
+-- its result (who got it, your answer, or none), no answer panels and no buttons
+LM.incoming = nil
+allAuto.items[1].award = { name = "Mythicforge", response = "tmog" }
+allAuto.items[2].award = nil
+allAuto.mine[1] = { auto = true, closed = true, dismissed = true, response = "tmog" }
+allAuto.mine[2] = { response = "tmog", roll = 71 }
+check(type(LM.ShowLastPopup) == "function", "the popup can show the last session (LM:ShowLastPopup)")
+if LM.ShowLastPopup then
+  LM:ShowLastPopup(allAuto)
+  check(anchor.shown, "last session: the popup opens")
+  local pastRows = {}
+  for _, f in ipairs(frames) do if rawget(f, "autoRow") and f.shown then pastRows[f.index] = f end end
+  check(pastRows[1] and pastRows[2], "last session: a row per item, also one you dismissed")
+  check(pastRows[1] and pastRows[1].state.text:find("Mythicforge", 1, true), "last session: a given item says who got it (got " .. tostring(pastRows[1] and pastRows[1].state.text) .. ")")
+  eq(pastRows[2] and pastRows[2].state.text, "You answered Transmog", "last session: an item not given yet says your answer")
+  allAuto.mine[2] = nil
+  LM:ShowLastPopup(allAuto)
+  eq(pastRows[2] and pastRows[2].state.text, "No answer", "last session: an item you didn't answer says so")
+  for _, q in ipairs({ p, p2, p3, pf }) do check(not q.shown, "last session: no answer panel, so no buttons") end
+  check(not autoFrame.shown, "last session: no answered-for-you line")
+  local stripNote = rawget(strip, "note")
+  eq(stripNote and stripNote.text, "last session, read only", "last session: the title bar says it is the last session, read only")
+  -- the X closes it
+  rawget(strip, "close").scripts.OnClick()
+  check(not anchor.shown, "last session: the title bar's X closes it")
+  LM:Fire("incoming")
+  check(not anchor.shown, "last session: it stays closed")
+end
 C_Item.GetItemInfoInstant = instant
 print(string.format("%d passed, %d failed", passes, fails))
 if fails > 0 then error("failures") end
