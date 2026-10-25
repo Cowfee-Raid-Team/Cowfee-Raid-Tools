@@ -102,7 +102,7 @@ local function lint(def)
             end
             local where = "the " .. tostring(ref.difficulty or "untitled") .. " ability timeline"
             if not found then
-              bad(name, "row " .. entry.when.row .. " is not on " .. where)
+              bad(name, "row " .. entry.when.row .. " is not on " .. where .. ' (or give the entry difficulty = "mythic" or "nh")')
             elseif #S:Times(def.encounterID, entry, group, ref) == 0 then
               bad(name, "row " .. entry.when.row .. " has no casts on " .. where)
             end
@@ -131,7 +131,8 @@ local probe = lint({ encounterID = 1, name = "Probe", season = "x",
   } })
 local said = table.concat(probe, "\n")
 check(#probe == 5, "the lint finds the five broken entries of its probe, and only those: " .. said)
-check(said:find("missing: row Orb Bursts is not on the Mythic ability timeline", 1, true) ~= nil, "a row the reference doesn't have")
+check(said:find('missing: row Orb Bursts is not on the Mythic ability timeline (or give the entry difficulty = "mythic" or "nh")', 1, true) ~= nil,
+  "a row the reference doesn't have, and how to fix it")
 check(said:find("unread: doesn't read", 1, true) ~= nil, "an entry Special.Read skips")
 check(said:find("good: a second entry", 1, true) ~= nil, "a key used twice")
 check(said:find("badtype: type tankbuster", 1, true) ~= nil, "a type that isn't an ability type")
@@ -151,15 +152,14 @@ while args[i] do
   i = i + 2
 end
 check(#packs > 0, "found the season packs: " .. table.concat(packs, ", "))
-local entries = 0
 for _, r in ipairs(registered) do
   local problems = lint(r.def)
   local n = type(r.def.special) == "table" and #r.def.special or 0
-  entries = entries + n
   check(#problems == 0, r.def.name .. " (" .. tostring(r.file) .. "): " .. n .. " special alerts"
     .. (#problems == 0 and "" or (": " .. table.concat(problems, "; "))))
 end
-check(entries > 0, "the packs ship special alerts to check (" .. entries .. ")")
+-- the files did register bosses (a pack with no special alerts yet is fine: the probe above shows the lint works)
+check(#registered > 0, "the packs register bosses to check (" .. #registered .. ")")
 
 print(passes .. " passed, " .. fails .. " failed")
 if fails > 0 then error("season special alerts: " .. fails .. " failed") end
@@ -170,15 +170,21 @@ const modules = ['CRT_Modules/Timeline/Data.lua', 'CRT_Modules/Timeline/Database
   'CRT_Modules/Timeline/Lanes.lua', 'CRT_Modules/Alerts/Rules.lua', 'CRT_Modules/Alerts/Engine.lua', 'CRT_Modules/Alerts/Speech.lua',
   'CRT_Modules/Notes/Parse.lua', 'CRT_Modules/Notes/Data.lua', 'CRT_Modules/Notes/Engine.lua', 'CRT_Modules/Alerts/Reminders.lua',
   'CRT_Data/Bosses/Registry.lua', 'CRT_Modules/Alerts/Special.lua'];
-// Each pack's files in the order its Season.xml lists them, as "<pack>/<file>".
+// Each pack's files in the order its Season.xml lists them, as "<pack>/<file>". A Script or Include tag written any
+// other way than <Script file="..."/> fails the group, so no pack file can slip past the lint unread.
 const seasons = path.join(dir, 'CRT_Data/Seasons');
-const packFiles = [];
+const packFiles = [], unread = [];
 for (const pack of fs.readdirSync(seasons).sort()) {
   const xml = path.join(seasons, pack, 'Season.xml');
   if (!fs.existsSync(xml)) continue;
-  for (const m of fs.readFileSync(xml, 'utf8').matchAll(/<Script\s+file="([^"]+)"\s*\/>/g))
-    packFiles.push(pack + '/' + m[1].replace(/\\/g, '/'));
+  const text = fs.readFileSync(xml, 'utf8').replace(/<!--[\s\S]*?-->/g, '');
+  for (const tag of text.match(/<\s*(Script|Include)\b[^>]*>/gi) || []) {
+    const m = tag.match(/^<Script\s+file="([^"]+)"\s*\/>$/);
+    if (m) packFiles.push(pack + '/' + m[1].replace(/\\/g, '/'));
+    else unread.push(pack + '/Season.xml: ' + tag);
+  }
 }
+for (const u of unread) console.log('FAIL a tag the lint does not read, so its files go unchecked: ' + u);
 // every file is two arguments, more than the stack's default room
 if (!lua.lua_checkstack(L, 2 * (modules.length + packFiles.length) + 2)) { console.error('LUA ERROR: no stack room'); process.exit(1); }
 lua.lua_pushinteger(L, modules.length);
@@ -191,3 +197,4 @@ for (const f of packFiles) {
   lua.lua_pushstring(L, to_luastring(fs.readFileSync(path.join(seasons, f), 'utf8')));
 }
 if (lua.lua_pcall(L, 1 + 2 * (modules.length + packFiles.length), 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
+if (unread.length > 0) process.exit(1);
