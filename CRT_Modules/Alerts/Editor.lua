@@ -131,9 +131,9 @@ local Editor = {}
 CRT.AlertEditor = Editor
 
 local TEST_BLOCK = "minetest"
--- A test plays only around the alert: from TEST_BEFORE seconds before it first shows (its Show from, or its
--- bar's own start) to TEST_AFTER seconds after it is done (its bar's end, then its Linger).
-local TEST_BEFORE = 5
+-- A test plays only around the alert: from TEST_BEFORE seconds before it first shows (0: right at its Show from,
+-- or its bar's own start, so the alert is on screen the moment Test is clicked) to TEST_AFTER seconds after it is done (its bar's end, then its Linger).
+local TEST_BEFORE = 0
 local TEST_AFTER = 5
 local NO_TIME = 10 -- a saved alert or a special alert has no time of its own: a test plays it this far into phase 1
 local ANY = "any"    -- a raid note line's difficulty dropdown key for its note with no difficulty (saved as nil)
