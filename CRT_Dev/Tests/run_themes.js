@@ -169,12 +169,12 @@ local function palette(key, list)
   end
 end
 palette("cowfee", { background = "17110E", surface = "2B1E17", border = "5A4231", selected = "8C4F2B", accent = "E2A14B", label = "D9B48A",
-  heading = "D9B48A", text = "F4EBDD", good = "8FA876", warn = "F2C14E", bad = "C8553D", knob = "4A3424", knobBorder = "1A120C", knobShine = "7A5A3E", knobText = { 1, 1, 1 },
+  heading = "D9B48A", text = "F4EBDD", good = "8FA876", warn = "F2C14E", bad = "5B9BE6", knob = "4A3424", knobBorder = "1A120C", knobShine = "7A5A3E", knobText = { 1, 1, 1 },
   check = { 1, 1, 1 }, checkBorder = "1A120C", outline = "17110E" })
 palette("midnight", { background = "050505", surface = "121212", border = "2E2E2E", selected = "2A2A2A", accent = "E6E6E6", label = "BDBDBD",
   heading = "BDBDBD", text = "F2F2F2", good = "7FBF7F", warn = "E6B450", bad = "E06C6C", knob = "1E1E1E", knobBorder = "000000", knobShine = "3A3A3A", check = "E6E6E6", checkBorder = "E6E6E6", outline = "000000" })
 palette("nitro", { background = "06080A", surface = "11151A", border = "28313B", selected = "1E2A36", accent = "7FB3D9", label = "A9BBCB",
-  heading = "A9BBCB", text = "EEF2F5", good = "8FCFA0", warn = "F0C060", bad = "FF7F6B", knob = "18202A", knobBorder = "000000", knobShine = "34414F", check = "7FB3D9", checkBorder = "7FB3D9", outline = "000000" })
+  heading = "A9BBCB", text = "EEF2F5", good = "8FCFA0", warn = "FFE066", bad = "FF9A4D", knob = "18202A", knobBorder = "000000", knobShine = "34414F", check = "7FB3D9", checkBorder = "7FB3D9", outline = "000000" })
 -- Default: Blizzard keeps the colours from before themes, so what reads CRT.PALETTE in Classic is unchanged;
 -- its heading, good, warn and bad are the game's gold, green, orange and red (the fallbacks, with no game globals here).
 local old = { background = { 0.11, 0.078, 0.063 }, surface = { 0.165, 0.122, 0.098 }, border = { 0.30, 0.235, 0.188 }, selected = { 0.44, 0.31, 0.22 },
@@ -447,15 +447,16 @@ print("ok themes: the blackouts' menu bar")
 -- from the style guide job).
 local mock = {
   blizzard = { heading = "ffd100", good = "19ff19", warn = "ff8040", bad = "ff2020" },
-  cowfee = { heading = "d9b48a", good = "8fa876", warn = "f2c14e", bad = "c8553d" },
+  cowfee = { heading = "d9b48a", good = "8fa876", warn = "f2c14e", bad = "5b9be6" },
   midnight = { heading = "bdbdbd", good = "7fbf7f", warn = "e6b450", bad = "e06c6c" },
-  nitro = { heading = "a9bbcb", good = "8fcfa0", warn = "f0c060", bad = "ff7f6b" },
+  nitro = { heading = "a9bbcb", good = "8fcfa0", warn = "ffe066", bad = "ff9a4d" },
 }
 for key, m in pairs(mock) do
   UI:SetTheme(key)
   check(UI.GoodText("on") == "|cff" .. m.good .. "on|r", key .. ": good text: " .. UI.GoodText("on"))
   check(UI.WarnText and UI.WarnText("low") == "|cff" .. m.warn .. "low|r", key .. ": warn text: " .. tostring(UI.WarnText and UI.WarnText("low")))
   check(m.warn ~= m.heading and m.warn ~= m.bad and m.warn ~= m.good, key .. ": warn is its own colour")
+  check(m.bad ~= m.warn and m.bad ~= UI.Hex("accent"), key .. ": bad differs from warn and accent")
   check(UI.BadText("late") == "|cff" .. m.bad .. "late|r", key .. ": bad text: " .. UI.BadText("late"))
   check(UI.HeadingText("Raid") == "|cff" .. m.heading .. "Raid|r", key .. ": heading text: " .. UI.HeadingText("Raid"))
   check(UI.Hex("bad") == m.bad and UI.ColorText("x", "good") == "|cff" .. m.good .. "x|r", key .. ": UI.Hex and UI.ColorText")
@@ -476,7 +477,7 @@ do
   check(line.text == "|cff19ff19Ready|r |cffff2020Missing|r", "Default: Blizzard: a themed text: " .. tostring(line.text))
   UI:SetTheme("nitro")
   check(near(head.rgb, hex("A9BBCB")), "Nitro: the tinted heading repaints")
-  check(line.text == "|cff8fcfa0Ready|r |cffff7f6bMissing|r", "Nitro: the themed text is rebuilt: " .. tostring(line.text))
+  check(line.text == "|cff8fcfa0Ready|r |cffff9a4dMissing|r", "Nitro: the themed text is rebuilt: " .. tostring(line.text))
   -- UI.ThemedText(fs, nil) stops it: the text stays as it is and a switch no longer rebuilds it
   UI.ThemedText(line, nil)
   line:SetText("plain")

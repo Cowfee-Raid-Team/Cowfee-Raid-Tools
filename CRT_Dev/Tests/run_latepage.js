@@ -93,7 +93,7 @@ local function check(ok, what) if ok then print("ok " .. what) else fails = fail
 check(noShowCell() == "|cffff20201|r", "Default: Blizzard: the no-show count is the game's red: " .. tostring(noShowCell()))
 CRT.UI.SwitchTheme("nitro")
 pf:Show()
-check(noShowCell() == "|cffff7f6b1|r", "Nitro: the no-show count follows the switch: " .. tostring(noShowCell()))
+check(noShowCell() == "|cffff9a4d1|r", "Nitro: the no-show count follows the switch: " .. tostring(noShowCell()))
 CRT.UI.SwitchTheme("blizzard")
 
 -- Invites on the Tonight tab: click a row that isn't here to invite them, Invite all not here, greyed states.
