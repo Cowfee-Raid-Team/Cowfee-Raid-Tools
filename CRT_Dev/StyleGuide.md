@@ -48,8 +48,8 @@ Hex per theme, in menu order. "Game" means Default: Blizzard reads the game's ow
 | heading | game `NORMAL_FONT_COLOR` (FFD100) | BDBDBD | A9BBCB | D9B48A |
 | text | F2E6D6 | F2F2F2 | EEF2F5 | F4EBDD |
 | good | game `GREEN_FONT_COLOR` (19FF19) | 7FBF7F | 8FCFA0 | 8FA876 |
-| warn | game `ORANGE_FONT_COLOR` (FF8040) | E6B450 | F0C060 | F2C14E |
-| bad | game `RED_FONT_COLOR` (FF2020) | E06C6C | FF7F6B | C8553D |
+| warn | game `ORANGE_FONT_COLOR` (FF8040) | E6B450 | FFE066 | F2C14E |
+| bad | game `RED_FONT_COLOR` (FF2020) | E06C6C | FF9A4D | 5B9BE6 |
 | knob | 4A3424 | 1E1E1E | 18202A | 4A3424 |
 | knobBorder | 1A120C | 000000 | 000000 | 1A120C |
 | knobShine | 7A5A3E | 3A3A3A | 34414F | 7A5A3E |
@@ -134,7 +134,7 @@ Set in `CRT.THEME_LIST`: `modern`, `menuBar` and `scrollBar` (the looks and thei
 1. Pick the colours with Alex (the crt-theme skill has the mockup). Start from the closest theme's column.
 2. Fill a new column above: every key. Light accents on a dark theme get an accent check and checkBorder; a warm brown knob can keep a white tick.
 3. Check contrast: `node .claude/skills/crt-theme/scripts/contrast.mjs <palette.json>` (or with no file, every theme in Themes.lua). Every pair must meet its target, warn included, on background and on surface.
-4. Make warn its own colour: not the heading, good, bad or accent colour, so it reads as a status.
+4. Make warn its own colour: not the heading, good, bad or accent colour, so it reads as a status. Make bad the opposite on the colour wheel of the theme's main colour (its accent hue + 180°); a theme with no hue (greys) uses red. warn must stay its own colour, clearly apart from bad.
 5. Add the palette to `CRT.THEMES` (each key as `hex("RRGGBB")`) and its entry to `CRT.THEME_LIST` where Alex wants it in the menu, with `name` ("Family: Name"), `modern = true`, a `scrollBar` look and `menuBar` if it has one.
 6. Add the theme to `run_themes.js`'s palette and order checks, and to the table here. Run `bash CRT_Dev/Tests/test.sh "themes"`.
 

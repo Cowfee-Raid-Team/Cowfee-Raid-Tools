@@ -366,7 +366,7 @@ do
   typeInto(w.timeEdit, "0:yy")
   local themed = message()
   CRT:UseTheme("blizzard")
-  assert(themed:find("|cffc8553d", 1, true), "Beanworks: Cowfee: the error in its bad colour: " .. themed)
+  assert(themed:find("|cff5b9be6", 1, true), "Beanworks: Cowfee: the error in its bad colour: " .. themed)
   typeInto(w.timeEdit, "0:xx")
   assert(w.saveBtn.enabled, "save stays enabled")
   click(w.saveBtn)
