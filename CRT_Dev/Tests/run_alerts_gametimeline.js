@@ -7,9 +7,10 @@
 const fs = require('fs');
 const path = require('path');
 const themeLua = require('./theme_stub');
+const placementLua = require('./placement_stub');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
-const harness = themeLua(process.argv.slice(2)) + `
+const harness = themeLua(process.argv.slice(2)) + placementLua(process.argv.slice(2)) + `
 local rulesSrc, engineSrc, areasSrc, gameSrc, timelineSrc, referenceSrc, colorsSrc, probeSrc = ...
 local frames = {}
 local function mock(kind, parent, template)
@@ -152,6 +153,7 @@ assert(load(engineSrc, "Engine"))("CowfeeRaidTools", CRT)
 assert(load(referenceSrc, "Reference"))("CowfeeRaidTools", CRT)
 assert(load(colorsSrc, "Colors"))("CowfeeRaidTools", CRT)
 CRT_THEME(CRT, CRT.UI)
+CRT_PLACEMENT(CRT) -- UI/Placement.lua, which every area is placed by
 assert(load(areasSrc, "Areas"))("CowfeeRaidTools", CRT)
 assert(load(gameSrc, "GameTimeline"))("CowfeeRaidTools", CRT)
 assert(load(timelineSrc, "TimelineArea"))("CowfeeRaidTools", CRT)

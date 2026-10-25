@@ -3,9 +3,10 @@
 const fs = require('fs');
 const path = require('path');
 const themeLua = require('./theme_stub');
+const placementLua = require('./placement_stub');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
-const harness = themeLua(process.argv.slice(2)) + `
+const harness = themeLua(process.argv.slice(2)) + placementLua(process.argv.slice(2)) + `
 local rulesSrc, engineSrc, areasSrc, circlesSrc, controlsSrc, referenceSrc, colorsSrc = ...
 local RING = "Interface\\\\AddOns\\\\CowfeeRaidTools\\\\CRT_Media\\\\Media\\\\"
 local frames, fontStrings = {}, {}
@@ -148,6 +149,7 @@ assert(load(engineSrc, "Engine"))("CowfeeRaidTools", CRT)
 assert(load(referenceSrc, "Reference"))("CowfeeRaidTools", CRT)
 assert(load(colorsSrc, "Colors"))("CowfeeRaidTools", CRT)
 CRT_THEME(CRT, CRT.UI)
+CRT_PLACEMENT(CRT) -- UI/Placement.lua, which every area is placed by
 assert(load(areasSrc, "Areas"))("CowfeeRaidTools", CRT)
 assert(load(circlesSrc, "Circles"))("CowfeeRaidTools", CRT)
 do -- the real CRT_Core/UI/Controls.lua: only PickColor is taken, the harness keeps its own Dropdown and Slider

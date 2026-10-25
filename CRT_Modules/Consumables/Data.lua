@@ -119,19 +119,10 @@ function Consumables:SetLowMinutes(minutes)
     self:Fire()
 end
 
--- Where the ready check bar sits when the game shows no ready check window (it docks under that
--- window otherwise). Without a saved position it goes near the top of the screen.
-function Consumables:Position()
-    return cdb().position
-end
-
-function Consumables:SavePosition(point, relativePoint, x, y)
-    cdb().position = { point = point, relativePoint = relativePoint, x = x, y = y }
-end
-
-function Consumables:ResetPosition()
-    cdb().position = nil
-    self:Fire()
+-- The table the ready check bar's place is saved in, as .position (UI/Placement.lua saves and resets it): where it
+-- sits when the game shows no ready check window (it docks under that window otherwise).
+function Consumables:PositionStore()
+    return cdb()
 end
 
 -- The shipped list ------------------------------------------------------------

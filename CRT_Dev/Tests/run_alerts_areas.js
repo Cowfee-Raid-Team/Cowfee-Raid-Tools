@@ -3,9 +3,10 @@
 const fs = require('fs');
 const path = require('path');
 const themeLua = require('./theme_stub');
+const placementLua = require('./placement_stub');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
-const harness = themeLua(process.argv.slice(2)) + `
+const harness = themeLua(process.argv.slice(2)) + placementLua(process.argv.slice(2)) + `
 local rulesSrc, engineSrc, areasSrc, textsSrc = ...
 local frames, fontStrings = {}, {}
 local hides = 0
@@ -30,6 +31,8 @@ local function mock(kind, parent, template)
     if k == "Hide" then return function(self) if self.shown then hides = hides + 1 end self.shown = false end end
     if k == "SetShown" then return function(self, on) if self.shown and not on then hides = hides + 1 end self.shown = on and true or false end end
     if k == "IsShown" then return function(self) return self.shown end end
+    -- shown, and every parent shown, as in the game (UI/Placement.lua places only an element whose drag box is on screen)
+    if k == "IsVisible" then return function(self) local f = self while f do if not f.shown then return false end f = rawget(f, "parent") end return true end end
     if k == "SetText" then return function(self, s) rawset(self, "text", s) end end
     if k == "GetText" then return function(self) return self.text end end
     if k == "SetChecked" then return function(self, on) rawset(self, "checked", on and true or false) end end
@@ -119,6 +122,14 @@ CRT.Notes = { SpellInfo = function(_, id) return spells[id] end }
 assert(load(rulesSrc, "Rules"))("CowfeeRaidTools", CRT)
 assert(load(engineSrc, "Engine"))("CowfeeRaidTools", CRT)
 CRT_THEME(CRT, CRT.UI)
+local menus = {}
+CRT.UI.ContextMenu = function(owner, fill)
+  local root = { items = {} }
+  function root:CreateButton(label, fn) self.items[#self.items + 1] = { label = label, fn = fn } end
+  fill(root)
+  menus[#menus + 1] = root
+end
+CRT_PLACEMENT(CRT)
 assert(load(areasSrc, "Areas"))("CowfeeRaidTools", CRT)
 assert(load(textsSrc, "Texts"))("CowfeeRaidTools", CRT)
 local A, Areas, T = CRT.Alerts, CRT.AlertAreas, CRT.AlertTexts
@@ -253,6 +264,7 @@ print("ok areas: grow directions")
 
 -- position saved by center and reset
 pull()
+previews.alerttexts(true) -- a drag box takes a drag only while it is on screen, in Previews
 handle.OnDragStop(handle)
 local pos = A:Settings().areas.texts.position
 assert(pos and pos.point == "CENTER" and pos.x == 50 and pos.y == 150, "saved by center")
@@ -260,6 +272,10 @@ assert(win.pts[1][1] == "CENTER" and win.pts[1][4] == 50, "placed where saved")
 T:ResetPosition()
 assert(A:Settings().areas.texts.position == nil, "reset clears the position")
 assert(win.pts[1][1] == "CENTER" and win.pts[1][4] == 3 and win.pts[1][5] == 323, "back to the default (under the break timer)")
+previews.alerttexts(false)
+win.pts = {} T:ResetPosition() -- the preview drew it; placed again for the checks below
+handle.OnDragStop(handle)
+assert(A:Settings().areas.texts.position == nil, "outside Previews a stray drag stop saves nothing")
 print("ok areas: position saved and reset")
 
 -- idle: no run, preview or test: hidden once, then nothing
@@ -379,16 +395,22 @@ Areas.Glow(wf, true)
 assert(wf.glowBorder == border, "made once")
 print("ok texts: glow at zero")
 
--- the gear opens Raid Notes > Alerts on its area; the old shared window is gone
+-- the gear's menu: Placement (UI/Placement.lua), and Settings, which opens Raid Notes > Alerts on its area; the old
+-- shared window is gone
 local opened = {}
 CRT.NoteAlertsTab = { Select = function(key) opened[#opened + 1] = "select " .. key end }
 CRT.NotesPage = { Open = function(tab) opened[#opened + 1] = "open " .. tab end }
 gear.OnClick(gear)
+local menu = menus[#menus]
+assert(menu and menu.items[1].label == "Placement" and menu.items[2].label == "Settings", "the gear: Placement and Settings")
+menu.items[2].fn()
 assert(table.concat(opened, ",") == "select texts,open alerts", table.concat(opened, ","))
 assert(created.CowfeeRaidToolsAlertArea == nil, "no settings window")
 CRT.NoteAlertsTab, CRT.NotesPage = nil, nil
-gear.OnClick(gear) -- without the tab loaded, nothing breaks
-print("ok areas: gear opens the Alerts tab on its area")
+gear.OnClick(gear)
+menus[#menus].items[2].fn() -- without the tab loaded, nothing breaks
+assert(T.placement == CRT.UI.Placement.Find("alerttexts"), "placed by the shared helper as alerttexts")
+print("ok areas: gear opens Placement and the Alerts tab on its area")
 
 -- the settings panel shows controls that read their values as they are made, and again
 local panelParent = CreateFrame("Frame", nil, UIParent)

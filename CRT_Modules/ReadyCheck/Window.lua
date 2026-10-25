@@ -837,38 +837,39 @@ end
 
 -- The frame ---------------------------------------------------------------------------------
 
-local function savePosition()
-    local point, _, relativePoint, x, y = frame:GetPoint()
-    settings().position = { point = point, relativePoint = relativePoint, x = x, y = y }
-end
+local build
 
+-- Its place, drag, nudge, reset and anchor are the shared helper's (UI/Placement.lua); the whole window is its drag
+-- box. Held by its top, so more rows grow it downwards.
+local placement = CRT.UI.Placement.Define("readycheck", {
+    title = "Ready check window",
+    store = settings,
+    default = { point = "TOP", relativePoint = "TOP", x = 0, y = -140 },
+    point = "TOP",
+    build = function()
+        if not frame then
+            build()
+        end
+    end,
+    -- it is its own drag box: placed only in Previews, never during a real ready check
+    editing = function()
+        return previewOn
+    end,
+})
+
+-- Its size (Scale on the Ready Check page), then its place.
 local function applyPosition()
-    local s = settings()
-    frame:ClearAllPoints()
-    local p = s.position
-    if p then
-        frame:SetPoint(p.point, UIParent, p.relativePoint, p.x, p.y)
-    else
-        frame:SetPoint("TOP", UIParent, "TOP", 0, -140)
-    end
-    frame:SetScale((s.scale or 100) / 100)
+    frame:SetScale((settings().scale or 100) / 100)
+    placement:Apply()
 end
 
-local function build()
+function build()
     frame = CreateFrame("Frame", "CowfeeRaidToolsReadyCheckWindow", UIParent, "BackdropTemplate")
     CRT.UI:RegisterLayer("readycheck", frame)
     frame:SetClampedToScreen(true)
-    frame:SetMovable(true)
-    frame:EnableMouse(true)
-    frame:RegisterForDrag("LeftButton")
     Window.Dress(frame)
     windowTable = Window.NewTable(frame, false, nil, function(key)
         Window:PostColumn(key)
-    end)
-    frame:SetScript("OnDragStart", function(self) self:StartMoving(true) end)
-    frame:SetScript("OnDragStop", function(self)
-        self:StopMovingOrSizing()
-        savePosition()
     end)
     frame:SetScript("OnMouseUp", function(_, button)
         if button == "RightButton" and not previewOn then
@@ -906,7 +907,9 @@ local function build()
     end)
     frame.reset:SetPoint("TOPRIGHT", -4, -4)
     frame.reset:Hide()
-    applyPosition()
+    frame:SetScale((settings().scale or 100) / 100)
+    frame.gear = placement:Attach(frame, frame, { reset = frame.reset })
+    frame.gear:Hide()
     frame:Hide()
 end
 
@@ -940,10 +943,7 @@ function Window:Hide()
 end
 
 function Window:ResetPosition()
-    settings().position = nil
-    if frame then
-        applyPosition()
-    end
+    placement:Reset()
 end
 
 -- Applies changed settings to an open window.
@@ -965,9 +965,10 @@ CRT.UI:RegisterPreview("readycheckwindow", function(on)
     end
     previewOn = on
     frame.reset:SetShown(on and true or false)
-    -- the timer text sits left of whichever is shown
+    frame.gear:SetShown(on and true or false)
+    -- the timer text sits left of whichever is shown: the gear (left of Reset) or the X
     frame.timer:ClearAllPoints()
-    frame.timer:SetPoint("RIGHT", on and frame.reset or frame.close, "LEFT", -4, 0)
+    frame.timer:SetPoint("RIGHT", on and frame.gear or frame.close, "LEFT", -4, 0)
     if on then
         applyPosition()
         frame:Show()

@@ -7,7 +7,7 @@
 const fs = require('fs');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
-const harness = `
+const harness = require('./placement_stub')(process.argv[2]) + `
 local dbSrc, displaySrc, editorSrc, clearOnSrc = ...
 local fails, passes = 0, 0
 local function check(ok, what) if ok then passes = passes + 1 print("ok " .. what) else fails = fails + 1 print("FAIL " .. what) end end
@@ -99,6 +99,7 @@ CRT.UI = { RegisterThemed = function() end, RegisterLayer = function() end, Regi
 local exported
 CRT.ConsumablesTools = { ShowText = function(_, title, text) exported = text end }
 assert(load(dbSrc, "Database.lua"))("CowfeeRaidTools", CRT)
+CRT_PLACEMENT(CRT) -- CRT_Core/UI/Placement.lua, which the display is placed by
 assert(load(displaySrc, "Display.lua"))("CowfeeRaidTools", CRT)
 assert(load(clearOnSrc, "ClearOn.lua"))("CowfeeRaidTools", CRT)
 local M = CRT.MarkerDisplay

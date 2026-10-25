@@ -8,7 +8,7 @@ const path = require('path');
 const themeLua = require('./theme_stub');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
-const harness = themeLua(process.argv.slice(2)) + `
+const harness = themeLua(process.argv.slice(2)) + require('./placement_stub')(process.argv.slice(2)) + `
 local displaySrc, barSrc = ...
 local passed, failed = 0, 0
 local function check(name, cond, detail)
@@ -99,9 +99,10 @@ CRT.Consumables = {
   Def = function() return { clickable = false } end,
   Enabled = function() return true end,
   NotStarter = function() return false end,
-  Position = function() return savedPosition end,
-  SavePosition = function() end,
-  ResetPosition = function() savedPosition = nil end,
+  -- the table the bar's place is kept in (UI/Placement.lua reads and saves its .position): savedPosition here
+  PositionStore = function() return setmetatable({}, {
+    __index = function(_, k) if k == "position" then return savedPosition end end,
+    __newindex = function(_, k, v) if k == "position" then savedPosition = v end end }) end,
   RefreshBags = function() end,
   Order = function() return { "food", "flask" } end,
   Status = function() return {} end,
@@ -121,6 +122,7 @@ CRT.UI = {
   RegisterPreview = function(_, key, fn) previews[key] = fn end,
 }
 CRT_THEME(CRT, CRT.UI)
+CRT_PLACEMENT(CRT) -- CRT_Core/UI/Placement.lua, which the bar is placed by
 
 assert(load(displaySrc, "Display.lua"))("CowfeeRaidTools", CRT)
 local Display = CRT.ConsumablesDisplay

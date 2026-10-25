@@ -9,9 +9,10 @@
 //   CRT_Modules/Alerts/Special.lua CRT_Modules/Alerts/Colors.lua CRT_Modules/Alerts/Areas.lua CRT_Modules/Alerts/Bars.lua
 const fs = require('fs');
 const themeLua = require('./theme_stub');
+const placementLua = require('./placement_stub');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
-const harness = themeLua(process.argv.slice(2)) + `
+const harness = themeLua(process.argv.slice(2)) + placementLua(process.argv.slice(2)) + `
 local sources = { ... }
 local frames = {}
 local function mock(kind, parent, template)
@@ -103,6 +104,7 @@ CRT.UI = {
   Slider = function(parent) local r = mock("Row", parent) rawset(r, "refresh", function() end) return r end,
 }
 CRT_THEME(CRT, CRT.UI)
+CRT_PLACEMENT(CRT) -- UI/Placement.lua, which every area is placed by
 function CRT:Print() end
 function CRT:PlaySound() end
 function CRT:FontList() return { { name = "Friz Quadrata", path = "Fonts\\\\FRIZQT__.TTF" } } end

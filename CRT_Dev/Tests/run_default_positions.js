@@ -7,9 +7,10 @@ const fs = require('fs');
 const path = require('path');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const root = process.argv[2];
+const placementLua = require('./placement_stub');
 const read = (f) => fs.readFileSync(path.join(root, f), 'utf8');
 
-const harness = `
+const harness = placementLua(root) + `
 local SRC = ...
 local fails, passes = 0, 0
 local function check(ok, what) if ok then passes = passes + 1 else fails = fails + 1 print("FAIL " .. what) end end
@@ -70,6 +71,7 @@ local function newCRT()
   function UI.ResetButtonWidth() return 50 end
   function UI.BadText(t) return t end
   CRT.UI = UI
+  CRT_PLACEMENT(CRT) -- UI/Placement.lua, which every movable element is placed by
   CRT.PALETTE = setmetatable({}, { __index = function() return { 1, 1, 1 } end })
   CRT.Alerts = { running = false, Lines = function() return {} end, Now = function() return 100 end }
   CRT.AlertRules = { Area = function() return {}, 0 end, Alert = function() end }

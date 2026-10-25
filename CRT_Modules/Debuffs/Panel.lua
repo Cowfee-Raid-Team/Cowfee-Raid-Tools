@@ -130,7 +130,8 @@ local encounter = false -- between ENCOUNTER_START and ENCOUNTER_END
 local pendingApply = false -- a settings change waiting for a safe moment
 local lastApply = 0 -- GetTime() of the last Apply, so a button that stays forbidden is retried slowly
 local RETRY_SECONDS = 5
-local dragging
+local placement -- its place, below
+local build
 local previewOn = false
 local inCombat = false -- set from PLAYER_REGEN_DISABLED/ENABLED, for the diagnostics
 local elapsed = 0
@@ -920,41 +921,38 @@ local function tickTiles()
 end
 
 -- Position and visibility -----------------------------------------------------------
--- The panel is held by the corner its row grows from (rowPoint(1)): its top left for left to right,
--- its top right for right to left, so a change of width moves only the other end. A position saved
--- at any other point (one from before, a drag, or the other Grow) is turned into that corner, at the
--- same place on screen, and saved again.
+-- Its place, drag, nudge and reset are the shared helper's (UI/Placement.lua). The panel is held by the corner
+-- its row grows from (rowPoint(1)): its top left for left to right, its top right for right to left, so a change
+-- of width moves only the other end. A position saved at any other point (one from before, or the other Grow) is
+-- turned into that corner, at the same place on screen, and saved again (keepPoint). It holds the boss debuff
+-- slots' private aura anchors, so it is never anchored to another element; another element may anchor to it.
 
--- How far a point is across and up a frame, as fractions of its width and height.
-local function pointFraction(point)
-    point = type(point) == "string" and point or "CENTER"
-    local fx = point:find("LEFT") and 0 or point:find("RIGHT") and 1 or 0.5
-    local fy = point:find("BOTTOM") and 0 or point:find("TOP") and 1 or 0.5
-    return fx, fy
+local function corner()
+    return (rowPoint(1))
 end
 
--- The same place for a panel width by height, held by corner instead of point. The point on the
--- screen it is measured from (relativePoint) stays, so no screen size is needed.
-local function toCorner(point, relativePoint, x, y, corner, width, height)
-    local fx, fy = pointFraction(point)
-    local cx, cy = pointFraction(corner)
-    return { point = corner, relativePoint = relativePoint or point, x = (tonumber(x) or 0) + (cx - fx) * width, y = (tonumber(y) or 0) + (cy - fy) * height }
-end
-
--- Saves a position from the panel's fixed corner, for the panel's current size.
-local function saveAtCorner(point, relativePoint, x, y)
-    local at = toCorner(point, relativePoint, x, y, rowPoint(1), frameWidth, frameHeight)
-    Debuffs:SavePosition(at.point, at.relativePoint, at.x, at.y)
-    return at
-end
+placement = CRT.UI.Placement.Define("debuffs", {
+    title = "Debuff panel",
+    store = function()
+        return Debuffs:PositionStore()
+    end,
+    default = Debuffs.DEFAULT_POSITION,
+    point = corner,
+    relativePoint = "CENTER",
+    keepPoint = true,
+    size = function()
+        return frameWidth, frameHeight
+    end,
+    canAnchor = false,
+    protected = true,
+    -- made at login; an element anchored to it before then has it made
+    build = function()
+        build()
+    end,
+})
 
 local function applyPosition()
-    local saved = Debuffs:Position()
-    if saved.point ~= rowPoint(1) then
-        saved = saveAtCorner(saved.point, saved.relativePoint, saved.x, saved.y)
-    end
-    frame:ClearAllPoints()
-    frame:SetPoint(saved.point, UIParent, saved.relativePoint or saved.point, saved.x, saved.y)
+    placement:Apply()
 end
 
 -- Shows the panel whenever it is turned on, in and out of combat, anywhere: only the settings (the
@@ -988,9 +986,8 @@ local function placeHandle()
         return
     end
     local lift = Debuffs:Get("timerPosition") == "above" and (Panel.TimerFontSize(Debuffs:Size()) + 4) or 0
-    handle:ClearAllPoints()
-    handle:SetPoint("BOTTOMLEFT", frame, "TOPLEFT", 0, 2 + lift)
-    handle:SetPoint("BOTTOMRIGHT", frame, "TOPRIGHT", 0, 2 + lift)
+    -- as wide as the panel, never too narrow for its title, the gear and Reset
+    CRT.UI.Placement.FitHandle(handle, frame, handle.title, 2 + lift)
 end
 
 -- Applies the settings: position, the container's group options, and every button's look. In combat
@@ -1005,7 +1002,7 @@ function Panel:Apply()
     end
     pendingApply = false
     lastApply = GetTime()
-    if not dragging then
+    if CRT.UI.Placement.Dragging() ~= placement then
         applyPosition()
     end
     if container and forbidden(container) then
@@ -1052,22 +1049,17 @@ function Panel:IsPreviewing()
 end
 
 function Panel:ResetPosition()
-    Debuffs:ResetPosition()
-    if frame and not InCombatLockdown() then
-        applyPosition()
-    end
+    placement:Reset()
 end
 
-local function build()
+function build()
     if frame then
         return
     end
     frame = CreateFrame("Frame", "CowfeeRaidToolsDebuffPanel", UIParent)
     CRT.UI:RegisterLayer("debuffs", frame)
-    frame:SetMovable(true)
     frame:SetClampedToScreen(true)
     sizeFrame()
-    applyPosition()
     frame:SetAlpha(0)
 
     -- A drag handle above the panel, shown during a preview. It is a separate frame, not a child,
@@ -1078,32 +1070,18 @@ local function build()
     handle:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
     handle:SetBackdropColor(0.35, 0.1, 0.1, 0.9)
     handle:SetBackdropBorderColor(0.9, 0.3, 0.3, 1)
-    handle:EnableMouse(true)
-    handle:RegisterForDrag("LeftButton")
     local text = handle:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     text:SetPoint("CENTER")
     text:SetText("Debuffs: drag to move")
-    CRT.UI.ResetButton(handle, function()
+    handle.title = text
+    local reset = CRT.UI.ResetButton(handle, function()
         Panel:ResetPosition()
-    end):SetPoint("RIGHT", -2, 0)
-    handle:SetScript("OnDragStart", function()
-        if InCombatLockdown() then
-            return
-        end
-        dragging = true
-        frame:StartMoving(true)
     end)
-    handle:SetScript("OnDragStop", function()
-        frame:StopMovingOrSizing()
-        dragging = false
-        -- The game leaves the panel at a point of its choosing; it is saved and held from its fixed corner.
-        local point, _, relativePoint, x, y = frame:GetPoint()
-        local at = saveAtCorner(point, relativePoint, x, y)
-        frame:ClearAllPoints()
-        frame:SetPoint(at.point, UIParent, at.relativePoint, at.x, at.y)
-    end)
+    reset:SetPoint("RIGHT", -2, 0)
     handle:Hide()
     placeHandle()
+    -- dragged by its handle and saved from its fixed corner
+    placement:Attach(frame, handle, { reset = reset })
 
     createContainer()
     layout()

@@ -7,7 +7,7 @@
 const fs = require('fs');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
-const harness = require('./theme_stub')(process.argv.slice(2)) + `
+const harness = require('./theme_stub')(process.argv.slice(2)) + require('./placement_stub')(process.argv.slice(2)) + `
 local engineSrc, setSrc, dbSrc, displaySrc, regSrc, seasonSrc, bossSrc, tabSrc = ...
 local fails, passes = 0, 0
 local function check(ok, what) if ok then passes = passes + 1 print("ok " .. what) else fails = fails + 1 print("FAIL " .. what) end end
@@ -106,6 +106,7 @@ CRT.UI = { PAGE_W = 1026, PAGE_H = 560,
 assert(load(engineSrc, "CRT_Core/Macros.lua"))("CowfeeRaidTools", CRT)
 assert(load(setSrc, "CRT_Modules/Markers/Macros.lua"))("CowfeeRaidTools", CRT)
 assert(load(dbSrc, "CRT_Modules/Markers/Database.lua"))("CowfeeRaidTools", CRT)
+CRT_PLACEMENT(CRT) -- CRT_Core/UI/Placement.lua, which the display is placed by
 assert(load(displaySrc, "CRT_Modules/Markers/Display.lua"))("CowfeeRaidTools", CRT)
 assert(load(regSrc, "CRT_Data/Bosses/Registry.lua"))("CowfeeRaidTools", CRT)
 assert(load(seasonSrc, "Season.lua"))("CowfeeRaidTools", CRT)

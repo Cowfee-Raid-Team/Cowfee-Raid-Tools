@@ -594,16 +594,9 @@ function Debuffs:LookSignature()
         tostring(timerY), tostring(self:Get("borderScale")), tostring(self:DispelGlow()), self:Spacing(), self:Grow() }, ":")
 end
 
--- The saved position, or the default one in the upper middle of the screen.
-function Debuffs:Position()
-    return ddb().position or DEFAULT_POSITION
+-- The table the panel's place is saved in, as .position (UI/Placement.lua saves and resets it), and its default
+-- place in the upper middle of the screen.
+function Debuffs:PositionStore()
+    return ddb()
 end
-
-function Debuffs:SavePosition(point, relativePoint, x, y)
-    ddb().position = { point = point, relativePoint = relativePoint, x = x, y = y }
-end
-
-function Debuffs:ResetPosition()
-    ddb().position = nil
-    self:Fire()
-end
+Debuffs.DEFAULT_POSITION = DEFAULT_POSITION

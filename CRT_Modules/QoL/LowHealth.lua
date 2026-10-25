@@ -120,18 +120,24 @@ end
 
 -- The banner -------------------------------------------------------------------------------------
 
-local function savePosition()
-    local point, _, relativePoint, x, y = frame:GetPoint()
-    settings().position = { point = point, relativePoint = relativePoint, x = x, y = y }
-end
+local build
 
-local function applyPosition()
-    frame:ClearAllPoints()
-    local p = settings().position or DEFAULT_POSITION
-    frame:SetPoint(p.point, UIParent, p.relativePoint, p.x, p.y)
-end
+-- Its place, drag, nudge, reset and anchor are the shared helper's (UI/Placement.lua); the whole banner is its drag
+-- box while Previews are on.
+local placement = CRT.UI.Placement.Define("lowhealth", {
+    title = "Low-health banner",
+    store = settings,
+    default = DEFAULT_POSITION,
+    build = function()
+        build()
+    end,
+    -- it is its own drag box: placed only in Previews
+    editing = function()
+        return previewOn
+    end,
+})
 
-local function build()
+function build()
     if frame then
         return
     end
@@ -140,7 +146,6 @@ local function build()
     -- By default above the main panel (HIGH), so the panel never covers it.
     CRT.UI:RegisterLayer("lowhealth", frame)
     frame:SetClampedToScreen(true)
-    frame:SetMovable(true)
     frame:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 2 })
     frame:SetBackdropColor(0.35, 0, 0, 0.55)
     -- the edge and the words in the theme's bad colour (the game's red in Default: Blizzard), repainted
@@ -151,19 +156,15 @@ local function build()
     CRT.UI.ThemedText(text, function()
         return CRT.UI.BadText("LOW HEALTH")
     end)
-    frame:RegisterForDrag("LeftButton")
-    frame:SetScript("OnDragStart", function(self) self:StartMoving(true) end)
-    frame:SetScript("OnDragStop", function(self)
-        self:StopMovingOrSizing()
-        savePosition()
-    end)
-    frame:EnableMouse(false)
     frame.reset = CRT.UI.ResetButton(frame, function()
         LowHealth:ResetPosition()
     end)
     frame.reset:SetPoint("TOPRIGHT", -4, -4)
     frame.reset:Hide()
-    applyPosition()
+    frame.gear = placement:Attach(frame, frame, { reset = frame.reset })
+    frame.gear:Hide()
+    -- it takes the mouse only while Previews are on (LowHealth:Apply)
+    frame:EnableMouse(false)
     frame:SetAlpha(0)
 end
 
@@ -175,6 +176,7 @@ function LowHealth:Apply()
     frame:SetShown(previewOn or settings().enabled)
     frame:EnableMouse(previewOn)
     frame.reset:SetShown(previewOn)
+    frame.gear:SetShown(previewOn)
     self:Update()
     -- The game's low-health pulse follows the same threshold (QoL/LowHealthSound.lua).
     if CRT.LowHealthSound then
@@ -241,10 +243,7 @@ function LowHealth:Info()
 end
 
 function LowHealth:ResetPosition()
-    settings().position = nil
-    if frame then
-        applyPosition()
-    end
+    placement:Reset()
 end
 
 CRT.UI:RegisterPreview("lowhealth", function(on)

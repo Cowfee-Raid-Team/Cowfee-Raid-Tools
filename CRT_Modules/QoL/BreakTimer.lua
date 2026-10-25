@@ -84,31 +84,25 @@ end
 
 -- The window ---------------------------------------------------------------------------------------
 
-local function savePosition()
-    local point, _, relativePoint, x, y = frame:GetPoint()
-    db().position = { point = point, relativePoint = relativePoint, x = x, y = y }
-end
+local onUpdate, build
 
-local function applyPosition()
-    local p = db().position
-    frame:ClearAllPoints()
-    if p then
-        frame:SetPoint(p.point, UIParent, p.relativePoint or p.point, p.x, p.y)
-    else
-        frame:SetPoint("TOP", UIParent, "TOP", 0, -140)
-    end
-end
+-- Its place, drag, nudge, reset and anchor are the shared helper's (UI/Placement.lua). Held by its top, near the
+-- top of the screen until it is moved.
+local placement = UI.Placement.Define("breaktimer", {
+    title = "Break timer",
+    store = db,
+    default = { point = "TOP", relativePoint = "TOP", x = 0, y = -140 },
+    point = "TOP",
+    build = function()
+        build()
+    end,
+})
 
 function Break:ResetPosition()
-    db().position = nil
-    if frame then
-        applyPosition()
-    end
+    placement:Reset()
 end
 
-local onUpdate
-
-local function build()
+function build()
     if frame then
         return
     end
@@ -117,7 +111,6 @@ local function build()
     frame:SetSize(BAR_W, BAR_H + 26)
     UI:RegisterLayer("alert", frame)
     frame:SetClampedToScreen(true)
-    frame:SetMovable(true)
     frame:EnableMouse(true)
     -- Right-click hides it for you; the break keeps running and the end still plays.
     frame:SetScript("OnMouseUp", function(_, button)
@@ -144,29 +137,19 @@ local function build()
 
     handle = CreateFrame("Frame", nil, frame, "BackdropTemplate")
     handle:SetHeight(20)
-    handle:SetPoint("BOTTOMLEFT", frame, "TOPLEFT", 0, 2)
-    handle:SetPoint("BOTTOMRIGHT", frame, "TOPRIGHT", 0, 2)
     handle:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
     UI:RegisterThemed(handle, { bg = { 0.3, 0.25, 0.05, 0.9 }, border = { 0.78, 0.63, 0.31 } })
-    handle:EnableMouse(true)
-    handle:RegisterForDrag("LeftButton")
     local text = handle:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     text:SetPoint("LEFT", 6, 0)
     text:SetText("Break timer: drag to move")
-    handle:SetScript("OnDragStart", function()
-        frame:StartMoving(true)
-    end)
-    handle:SetScript("OnDragStop", function()
-        frame:StopMovingOrSizing()
-        savePosition()
-    end)
-    UI.ResetButton(handle, function()
+    local reset = UI.ResetButton(handle, function()
         Break:ResetPosition()
-    end):SetPoint("RIGHT", -2, 0)
+    end)
+    reset:SetPoint("RIGHT", -2, 0)
+    UI.Placement.FitHandle(handle, frame, text)
     handle:Hide()
-
-    applyPosition()
     frame:Hide()
+    placement:Attach(frame, handle, { reset = reset })
 end
 
 local overAt -- GetTime() when "Break's over" was shown
