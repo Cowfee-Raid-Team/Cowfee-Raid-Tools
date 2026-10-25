@@ -74,7 +74,8 @@ local function shareHelp()
 end
 
 local ROW_H = 24
-local BUTTONS_H = 4 * (24 + 4) + 26 -- the note buttons and Send to, at the bottom of the list's column
+-- the note buttons and Send to (a UI.Dropdown row, UI.CONTROL_ROW_H high), at the bottom of the list's column
+local BUTTONS_H = 4 * (24 + 4) + (UI.CONTROL_ROW_H or 32)
 local LIST_SCROLL_W = 22 -- the list's scroll bar
 -- The Notes tab in three columns across the page (UI.PAGE_W): the notes list, the note text, and your
 -- personal note with Try it. The tab is UI.PAGE_H - 66 high, under the tabs.
