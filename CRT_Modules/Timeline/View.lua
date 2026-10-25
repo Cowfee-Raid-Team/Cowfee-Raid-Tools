@@ -4042,7 +4042,9 @@ function Methods:Refresh()
         l.text:SetPoint("RIGHT", l, "RIGHT", -2 - tagW - dotCount * (DOT_SIZE + 3), 0)
         local indent = lane.indent or 0 -- a healer's cooldown rows sit under their name row
         l.icon:SetPoint("LEFT", l, "LEFT", 20 + indent, 0)
-        l.text:SetPoint("LEFT", l, "LEFT", NAME_X + indent, 0)
+        -- a healer's name row has no tick or icon: its name starts at the label's left edge, and the rows
+        -- under it are indented from there
+        l.text:SetPoint("LEFT", l, "LEFT", lane.kind == "healer" and 4 or (NAME_X + indent), 0)
         l.icon:SetTexture(lane.icon)
         l.text:SetText(lane.label or "")
         if lane.class then

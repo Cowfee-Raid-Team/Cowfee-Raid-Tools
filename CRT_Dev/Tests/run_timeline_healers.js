@@ -375,7 +375,7 @@ do
   local v = newView()
   local hi = laneIndex(v, "healers:halo-home")
   local name, spell = v.labels[hi], v.labels[laneIndex(v, "healers:halo-home:64843")]
-  check(name.text.pt[4] == 42 and spell.text.pt[4] == 42 + HV.INDENT and HV.INDENT == 16, "a spell's name starts one indent right of the healer's name")
+  check(name.text.pt[4] == 4 and spell.text.pt[4] == 42 + HV.INDENT and HV.INDENT == 16, "the healer's name starts at the left edge; a spell's name is indented under it")
   check(spell.icon.pt[4] == 20 + HV.INDENT and name.icon.pt[4] == 20, "and its icon too; the name row keeps its place")
   local surge
   for i, lane in ipairs(v.lanes) do if lane.label == "Surge" then surge = i end end
