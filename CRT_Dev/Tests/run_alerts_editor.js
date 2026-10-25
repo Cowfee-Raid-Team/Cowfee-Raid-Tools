@@ -1749,6 +1749,57 @@ do
   print("ok editor: test opens the rehearsal for an unsaved draft")
 end
 
+-- editor: a Test that opens the Rehearsal reads Stop, and Stop closes the window (Editor:BindTest)
+do
+  reset()
+  A:Stop(true)
+  local closed = 0
+  -- the window as the real one does it: OpenAt starts a "rehearsal" run with the opts' tag, Close ends it
+  CRT.TimelineRehearsalWindow = {
+    OpenAt = function(self, enc, diff, t, o)
+      opened[#opened + 1] = { enc = enc, diff = diff, t = t, opts = o }
+      A:Start(enc, diff, "rehearsal", { clock = function() return 0 end, speed = function() return 1 end, tag = o.tag })
+      return true
+    end,
+    Close = function(self)
+      closed = closed + 1
+      if A:IsRehearsal() then A:Stop() end
+    end,
+  }
+  for i = #opened, 1, -1 do opened[i] = nil end
+  E:Open(ENC, nil, { text = "Draft", times = "P1 0:30" })
+  local w = win()
+  assert(w.testBtn.text == "Test", "idle: Test")
+  click(w.testBtn)
+  assert(#opened == 1 and opened[1].opts.tag == "editor", "OpenAt gets the button's tag: " .. tostring(opened[1] and opened[1].opts.tag))
+  assert(A.running and A.run.reason == "rehearsal" and A.run.tag == "editor", "a rehearsal run with the button's tag")
+  assert(w.testBtn.text == "Stop", "the button reads Stop: " .. tostring(w.testBtn.text))
+  click(w.testBtn)
+  assert(closed == 1 and not A.running, "Stop closes the window and ends the run")
+  assert(w.testBtn.text == "Test", "the label goes back to Test: " .. tostring(w.testBtn.text))
+  assert(#opened == 1, "Stop did not start another test")
+  -- a Rehearsal the player opened (no tag): Test, and a click on Stop does nothing to it
+  A:Start(ENC, "Heroic", "rehearsal", { clock = function() return 0 end, speed = function() return 1 end })
+  local own = A.run
+  assert(w.testBtn.text == "Test" and E:StopTest("editor") == false, "an untagged Rehearsal is not the button's")
+  assert(closed == 1 and A.run == own, "the window not closed, the run goes on")
+  A:Stop(true)
+  -- another button's tagged Rehearsal is not this button's either
+  A:Start(ENC, "Heroic", "rehearsal", { clock = function() return 0 end, speed = function() return 1 end, tag = "mechanics" })
+  assert(w.testBtn.text == "Test" and E:StopTest("editor") == false and closed == 1, "another button's Rehearsal stays")
+  A:Stop(true)
+  -- the quick test is untouched: it still ends through the engine, with no window call
+  CRT.TimelineRehearsalWindow = nil
+  click(w.testBtn)
+  assert(A.running and A.run.reason == "test" and A.run.tag == "editor" and w.testBtn.text == "Stop", "the quick test reads Stop")
+  CRT.TimelineRehearsalWindow = { Close = function() closed = closed + 1 end }
+  click(w.testBtn)
+  assert(not A.running and closed == 1, "Stop on a quick test does not close the window")
+  CRT.TimelineRehearsalWindow = nil
+  assert(#errors == 0, tostring(errors[1]))
+  print("ok editor: Test that opens the Rehearsal reads Stop and closes it")
+end
+
 -- editor: a later-phase alert starts from its reference time
 do
   reset()

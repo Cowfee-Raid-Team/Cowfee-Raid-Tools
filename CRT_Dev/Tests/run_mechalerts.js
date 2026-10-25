@@ -1265,6 +1265,40 @@ check("mech: the Test button never stops a pull, a countdown or a Rehearsal", fu
   assert(#errors == 0, tostring(errors[1]))
 end)
 
+-- Test that opens the Rehearsal: the run carries the panel button's tag, the button reads Stop, Stop closes the window
+check("mech: the Test button reads Stop while its Rehearsal runs, and Stop closes it", function()
+  local f = fresh()
+  local p = f.panel
+  setCheck(f.rows[1].check, true)
+  A:Stop(true)
+  local closed = 0
+  CRT.TimelineRehearsalWindow = {
+    OpenAt = function(self, enc, diff, t, o)
+      opened[#opened + 1] = { t = t, opts = o }
+      A:Start(enc, diff, "rehearsal", { clock = function() return 0 end, speed = function() return 1 end, tag = o.tag })
+      return true
+    end,
+    Close = function(self) closed = closed + 1 if A:IsRehearsal() then A:Stop() end end,
+  }
+  for i = #opened, 1, -1 do opened[i] = nil end
+  assert(p.testBtn.text == "Test", "idle: Test")
+  click(p.testBtn)
+  assert(#opened == 1 and opened[1].opts.tag == "mechanics", "the window is asked with the panel's tag: " .. tostring(opened[1] and opened[1].opts.tag))
+  assert(A.running and A.run.reason == "rehearsal" and A.run.tag == "mechanics", "a rehearsal run with the tag")
+  assert(p.testBtn.text == "Stop", "reads Stop: " .. tostring(p.testBtn.text))
+  click(p.testBtn)
+  assert(closed == 1 and not A.running, "Stop closes the window, the run ends")
+  assert(p.testBtn.text == "Test" and p.message.text == "", "reads Test again, no message")
+  -- a Rehearsal the player opened: Test stays and a click does not close it
+  A:Start(ENC, "Heroic", "rehearsal", { clock = function() return 0 end, speed = function() return 1 end })
+  local own = A.run
+  assert(p.testBtn.text == "Test" and CRT.AlertEditor:StopTest("mechanics") == false, "an untagged Rehearsal: Test")
+  assert(closed == 1 and A.run == own, "left open")
+  A:Stop(true)
+  CRT.TimelineRehearsalWindow = nil
+  assert(#errors == 0, tostring(errors[1]))
+end)
+
 check("speak at: Mech Alerts panel has it too", function()
   local f = fresh()
   local p = f.panel
