@@ -718,7 +718,11 @@ local function buildPanel(f)
     local fs = b.GetFontString and b:GetFontString()
     b:SetSize(math.max(L.TEST_W, UI.PanelButtonWidth and UI.PanelButtonWidth(fs and width(fs) or 0) or L.TEST_W), L.BUTTON_H)
     b:SetPoint("BOTTOMRIGHT", -L.INSET, L.BOTTOM_Y)
-    b:SetScript("OnClick", test)
+    if CRT.AlertEditor and CRT.AlertEditor.BindTest then
+        CRT.AlertEditor:BindTest(b, "special", test) -- reads Stop while its test plays
+    else
+        b:SetScript("OnClick", test)
+    end
     ui.testBtn = b
 end
 

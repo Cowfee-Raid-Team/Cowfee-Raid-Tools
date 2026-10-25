@@ -101,6 +101,7 @@ local TEXT = {
     export = "Export",
     exportTitle = "Alert as a note line",
     test = "Test",
+    stop = "Stop",
     save = "Save",
     saveAsSaved = "Save As Template",
     savedNamePrompt = "Name this template:",
@@ -173,6 +174,7 @@ local ctx
 local draft
 local notice -- the message from the last Save, Test or Delete, shown until the draft changes
 local testItems
+local testOwner -- the Test button whose click is starting a quick test (BindTest), stamped on that run as its tag
 local inCorner -- Previews put the editor in the corner, so closing it puts it back
 local previewDraft -- the empty draft Previews opened, so Previews only ever closes that one
 
@@ -907,6 +909,7 @@ local function quickTest(encounterID, items, lowest, first)
             return (id:find("^mine:test:") or id:find("^note:test:") or id:find("^special:test:")) ~= nil
         end,
         firstAt = GetTime() + before - first,
+        tag = testOwner or "quick", -- which Test button started it (BindTest)
     })
     testItems = nil
     -- A lowest phase with an event trigger waits for its event, so the test would show nothing.
@@ -990,6 +993,58 @@ function Editor:TestItem(encounterID, item)
     it.ph, it.time = 1, NO_TIME
     return quickTest(type(encounterID) == "number" and encounterID or 0, { it }, 1, NO_TIME)
 end
+
+-- The Test buttons ---------------------------------------------------------------------------------
+-- The editor's Test, the Mechanics panel's and the Special panel's all go through BindTest, so they behave alike:
+-- the button reads Stop while the quick test it started is running, and a click then ends that run at once (its
+-- alert, bar and speech go with it). The run is told apart by its reason "test" and the tag the button put on it, so
+-- a pull, a countdown, a Rehearsal, the Notes tab's own test and another button's test are never stopped by it.
+-- The label follows the engine (Alerts:OnChange), including the run ending on its own after the alert played.
+
+local bound = setmetatable({}, { __mode = "k" }) -- [button] = owner
+
+-- Whether the engine is running the quick test that owner's button started.
+local function ownTest(owner)
+    local run = Alerts.running and Alerts.run
+    return type(run) == "table" and run.reason == "test" and run.tag == owner
+end
+
+local function paintTests()
+    for btn, owner in pairs(bound) do
+        btn:SetText(ownTest(owner) and TEXT.stop or TEXT.test)
+    end
+end
+
+-- Ends the quick test owner's button started. True when it did; false (and nothing stops) for any other run.
+function Editor:StopTest(owner)
+    if not ownTest(owner) then
+        return false
+    end
+    Alerts:Stop()
+    paintTests()
+    return true
+end
+
+-- Makes btn a Test button for owner (a short name, one per place): Test runs start() (which starts the test through
+-- Editor:Test, TestDraft or TestItem and handles its own message), Stop ends the test. btn keeps its size and place.
+function Editor:BindTest(btn, owner, start)
+    bound[btn] = owner
+    btn:SetScript("OnClick", function()
+        if Editor:StopTest(owner) then
+            return
+        end
+        testOwner = owner
+        local ok, err = pcall(start)
+        testOwner = nil
+        paintTests()
+        if not ok then
+            error(err, 0)
+        end
+    end)
+    btn:SetText(ownTest(owner) and TEXT.stop or TEXT.test)
+end
+
+Alerts:OnChange(paintTests)
 
 -- The draft's items, given out once and only to a test run. A note line's item keeps block "note".
 Alerts:RegisterBlock(TEST_BLOCK, { label = TEXT.testBlock, group = true, keepBlock = true, Entries = function(run)
@@ -1718,7 +1773,7 @@ local function build()
     end)
     f.testBtn = makeButton(f, TEXT.test, 80)
     f.testBtn:SetPoint("BOTTOMRIGHT", -LEFT - 176, 14)
-    f.testBtn:SetScript("OnClick", function()
+    Editor:BindTest(f.testBtn, "editor", function()
         Editor:Test()
     end)
     UI:SkinTree(f)
@@ -1801,6 +1856,7 @@ local function show()
     frame.idEdit:SetText(id and tostring(id) or "")
     -- Setting the boxes runs their change handlers, which read them back; the draft is already right.
     refresh(true)
+    paintTests() -- Test or Stop, as the engine stands now
     frame:Show()
     -- Above the Timeline pop-out and any other window it opened from.
     frame:Raise()

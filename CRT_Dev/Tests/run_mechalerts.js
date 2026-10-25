@@ -1195,6 +1195,7 @@ check("mech: test replaces a running quick test with the rehearsal", function()
   setCheck(f.rows[1].check, true)
   click(p.testBtn) -- no window yet: a quick test
   assert(A.running and A.run.reason == "test", "quick test going")
+  A.run.tag = "special" -- one another Test button started: this one reads Test and opens the Rehearsal
   -- the real OpenAt stops a quick test itself, then opens; any other run still blocks it
   for i = #opened, 1, -1 do opened[i] = nil end
   CRT.TimelineRehearsalWindow = { OpenAt = function(self, enc, diff, t, o)
@@ -1207,6 +1208,59 @@ check("mech: test replaces a running quick test with the rehearsal", function()
   CRT.TimelineRehearsalWindow = nil
   assert(#opened == 1 and opened[1].reason == "test", "the Test button leaves the quick test to OpenAt")
   assert(not A.running and #printed == 0, "the rehearsal opened, nothing printed: " .. tostring(printed[1]))
+  assert(#errors == 0, tostring(errors[1]))
+end)
+
+-- Test becomes Stop while the quick test this button started runs (Editor:BindTest, shared with the other Test buttons)
+check("mech: the Test button reads Stop while its test runs, and Stop ends it", function()
+  local f = fresh()
+  local p = f.panel
+  setCheck(f.rows[1].check, true)
+  CRT.TimelineRehearsalWindow = nil
+  A:Stop()
+  timers = {}
+  assert(p.testBtn.text == "Test", "idle: Test")
+  click(p.testBtn)
+  assert(A.running and A.run.reason == "test", "a quick test")
+  assert(p.testBtn.text == "Stop", "reads Stop: " .. tostring(p.testBtn.text))
+  click(p.testBtn)
+  assert(not A.running, "Stop ends the run")
+  assert(p.testBtn.text == "Test", "reads Test again")
+  assert(p.message.text == "", "no message")
+  -- the run ending on its own
+  click(p.testBtn)
+  assert(p.testBtn.text == "Stop", "Stop again")
+  local last = timers[#timers]
+  assert(last and last.delay > 5, "the end timer")
+  last.fn()
+  assert(not A.running and p.testBtn.text == "Test", "the end timer puts the label back")
+  assert(#errors == 0, tostring(errors[1]))
+end)
+
+check("mech: the Test button never stops a pull, a countdown or a Rehearsal", function()
+  local f = fresh()
+  local p = f.panel
+  setCheck(f.rows[1].check, true)
+  CRT.TimelineRehearsalWindow = nil
+  A:Stop()
+  -- a pull: Test stays, and the click is refused as before
+  A.HandleEvent("ENCOUNTER_START", ENC, "Boss", 16)
+  local pull = A.run
+  assert(p.testBtn.text == "Test", "a pull going: Test")
+  click(p.testBtn)
+  assert(A.running and A.run == pull and p.testBtn.text == "Test", "the pull goes on")
+  A:Stop()
+  -- a countdown
+  A:Start(ENC, "Mythic", "countdown", { firstAt = GetTime() + 10, difficultyID = 16 })
+  assert(p.testBtn.text == "Test", "a countdown going: Test")
+  assert(CRT.AlertEditor:StopTest("mechanics") == false and A.running and A.run.reason == "countdown", "the countdown is not this button's to stop")
+  A:Stop()
+  -- a Rehearsal
+  A:Start(ENC, "Mythic", "rehearsal", { clock = function() return 0 end, speed = function() return 1 end })
+  local rehearsal = A.run
+  assert(p.testBtn.text == "Test", "a Rehearsal going: Test")
+  assert(CRT.AlertEditor:StopTest("mechanics") == false and A.run == rehearsal, "the Rehearsal is not this button's to stop")
+  A:Stop()
   assert(#errors == 0, tostring(errors[1]))
 end)
 
@@ -2098,6 +2152,42 @@ check("mech special (" .. LOOK .. "): Test plays the alert through the editor's 
   CRT.NoteReminders.Refresh()
   click(s.testBtn)
   assert(not A.running and s.message.text:find("Nothing to test", 1, true), "no times: " .. tostring(s.message.text))
+  click(s.mechBtn)
+  noSpecial()
+  assert(#errors == 0, tostring(errors[1]))
+end)
+
+check("mech special (" .. LOOK .. "): Test reads Stop while the test plays, and Stop ends it", function()
+  withSpecial(SPECIAL_LIST)
+  local f = fresh()
+  local s = f.special
+  click(s.specialBtn)
+  A:Stop()
+  timers = {}
+  assert(s.testBtn.text == "Test", "idle: Test")
+  click(s.testBtn)
+  assert(A.running and A.run.reason == "test" and s.testBtn.text == "Stop", "a test, and the button reads Stop: " .. tostring(s.testBtn.text))
+  assert(f.panel.testBtn.text == "Test", "the Mechanics panel's own button is not showing this test")
+  click(s.testBtn)
+  assert(not A.running and s.testBtn.text == "Test", "Stop ends it, the button reads Test")
+  -- the run ending on its own
+  click(s.testBtn)
+  assert(s.testBtn.text == "Stop", "Stop again")
+  local last = timers[#timers]
+  assert(last and last.delay > 5, "the end timer")
+  last.fn()
+  assert(not A.running and s.testBtn.text == "Test", "the end timer puts the label back")
+  -- a pull: Test stays and the pull goes on
+  A.HandleEvent("ENCOUNTER_START", ENC, "Boss", 16)
+  local pull = A.run
+  assert(s.testBtn.text == "Test", "a pull going: Test")
+  click(s.testBtn)
+  assert(A.running and A.run == pull, "the pull goes on")
+  A:Stop()
+  -- a countdown
+  A:Start(ENC, "Mythic", "countdown", { firstAt = GetTime() + 10, difficultyID = 16 })
+  assert(s.testBtn.text == "Test" and CRT.AlertEditor:StopTest("special") == false and A.run.reason == "countdown", "a countdown stays")
+  A:Stop()
   click(s.mechBtn)
   noSpecial()
   assert(#errors == 0, tostring(errors[1]))
