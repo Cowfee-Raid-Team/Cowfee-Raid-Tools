@@ -847,9 +847,32 @@ local function rehearse(c, d)
     return false
 end
 
+-- Seconds after the quick test starts when its last item is done: the item's time, then its linger, its bar's
+-- end or its last impact tick (whichever is longest), and a short rest. `first` is the lowest phase's first time.
+local TEST_REST = 3
+local function testSpan(items, lowest, first)
+    local span = 0
+    for _, it in ipairs(items) do
+        if it.ph == nil or it.ph == lowest then
+            local tail = math.max(type(it.hold) == "number" and it.hold or 0, type(it.barEnd) == "number" and it.barEnd or 0)
+            if type(it.ticks) == "table" then
+                for _, tk in ipairs(it.ticks) do
+                    local v = type(tk) == "table" and (tk.t or tk.at or tk[1]) or tk
+                    if type(v) == "number" then
+                        tail = math.max(tail, math.abs(v))
+                    end
+                end
+            end
+            span = math.max(span, TEST_LEAD - first + (tonumber(it.time) or first) + tail)
+        end
+    end
+    return span + TEST_REST
+end
+
 -- The quick test: a "test" run of only these items (ids "mine:test:", "note:test:" or "special:test:"),
 -- starting TEST_LEAD seconds before the first of them (phase lowest, `first` seconds in). True, or false
--- and the message when that phase waits for an event.
+-- and the message when that phase waits for an event. The run stops by itself once its last item has
+-- played (never a newer run: it checks the run is still this one).
 local function quickTest(encounterID, items, lowest, first)
     testItems = items
     Alerts:Start(encounterID, nil, "test", {
@@ -865,6 +888,14 @@ local function quickTest(encounterID, items, lowest, first)
     if Alerts.running and Alerts.run and Alerts.run.reason == "test" and not Alerts:PhaseStart(lowest) then
         Alerts:Stop()
         return false, string.format(TEXT.testTrigger, tostring(lowest))
+    end
+    local run = Alerts.running and Alerts.run
+    if run and run.reason == "test" and C_Timer and C_Timer.After then
+        C_Timer.After(testSpan(items, lowest, first), function()
+            if Alerts.running and Alerts.run == run then
+                Alerts:Stop()
+            end
+        end)
     end
     return true
 end
