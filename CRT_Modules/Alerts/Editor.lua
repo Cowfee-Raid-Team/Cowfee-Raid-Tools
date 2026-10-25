@@ -14,7 +14,8 @@ local ADDON, CRT = ...
 -- instead, with the draft's items added and its saved version left out (Alerts:Start's opts.extra and
 -- opts.replaces). The quick test above is the fallback: no window, the window refusing (its reason
 -- printed), or no fight time. Either way a test plays only around the alert's first cast: from TEST_BEFORE
--- seconds before it shows to TEST_AFTER seconds after it is done (testWindow).
+-- seconds before it shows to TEST_AFTER seconds after it is done (testWindow). The window's run carries the
+-- Test button's tag (opts.tag), so that button reads Stop and Stop closes the window (BindTest, StopTest).
 -- Export shows the draft as a note line in a copy box.
 -- Only the raid leader or an assistant changes the raid note (CRT.Notes:CanEditRaid): for anyone else
 -- Save as Raid note is greyed out, a new alert set to it opens as Only me, a note line opens read-only
@@ -884,6 +885,7 @@ local function rehearse(c, d)
         group = group,
         testing = testLabel(d),
         stopAt = first + after,
+        tag = testOwner, -- which Test button opened it (BindTest): that button then reads Stop
         alerts = { extra = items, replaces = savedIdentity(c) },
     })
     if ok then
@@ -996,17 +998,23 @@ end
 
 -- The Test buttons ---------------------------------------------------------------------------------
 -- The editor's Test, the Mechanics panel's and the Special panel's all go through BindTest, so they behave alike:
--- the button reads Stop while the quick test it started is running, and a click then ends that run at once (its
--- alert, bar and speech go with it). The run is told apart by its reason "test" and the tag the button put on it, so
--- a pull, a countdown, a Rehearsal, the Notes tab's own test and another button's test are never stopped by it.
+-- the button reads Stop while the test it started is running, and a click then ends that run at once (its
+-- alert, bar and speech go with it). The test is the quick test (reason "test") or, when Test opened the Rehearsal,
+-- that window's run (reason "rehearsal"; Stop then closes the window). Either run is told apart by the tag the
+-- button put on it, so a pull, a countdown, a Rehearsal the player opened, the Notes tab's own test and another
+-- button's test are never stopped by it.
 -- The label follows the engine (Alerts:OnChange), including the run ending on its own after the alert played.
 
 local bound = setmetatable({}, { __mode = "k" }) -- [button] = owner
 
--- Whether the engine is running the quick test that owner's button started.
+-- Whether the engine is running the test that owner's button started, and its reason.
 local function ownTest(owner)
     local run = Alerts.running and Alerts.run
-    return type(run) == "table" and run.reason == "test" and run.tag == owner
+    if type(run) == "table" and type(owner) == "string" and run.tag == owner
+        and (run.reason == "test" or run.reason == "rehearsal") then
+        return true, run.reason
+    end
+    return false
 end
 
 local function paintTests()
@@ -1015,12 +1023,20 @@ local function paintTests()
     end
 end
 
--- Ends the quick test owner's button started. True when it did; false (and nothing stops) for any other run.
+-- Ends the test owner's button started. True when it did; false (and nothing stops) for any other run. A test that
+-- opened the Rehearsal ends by closing the window, which stops its run (the window's own close path).
 function Editor:StopTest(owner)
-    if not ownTest(owner) then
+    local own, reason = ownTest(owner)
+    if not own then
         return false
     end
-    Alerts:Stop()
+    local W = CRT.TimelineRehearsalWindow
+    if reason == "rehearsal" and W and W.Close then
+        W:Close()
+    end
+    if ownTest(owner) then
+        Alerts:Stop()
+    end
     paintTests()
     return true
 end

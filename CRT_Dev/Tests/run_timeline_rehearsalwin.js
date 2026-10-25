@@ -831,6 +831,40 @@ do
   CRT.Timeline.RehearsalSourceFor = nil
 end
 ok("end test clears the testing line")
+
+-- opts.tag: the Test button that opened the window rides on every run the window starts for that test -------
+do
+  CRT.Timeline.RehearsalSourceFor = function(_, eid, group)
+    return { base = base, encounterID = eid, group = group, bossName = "Nek'zali", difficultyName = "Heroic" }
+  end
+  local function lastStart()
+    for i = #acalls, 1, -1 do if acalls[i][1] == "start" then return acalls[i] end end
+  end
+  acalls = {}
+  RW:OpenAt(3470, "Heroic", 10, { testing = "Hungering Pyre", stopAt = 30, tag = "mechanics", alerts = { extra = { { id = "draft" } } } })
+  local c = lastStart()
+  assert(c and c[4] == "rehearsal" and c[5].tag == "mechanics", "the first run carries the button's tag")
+  RW:Seek(15) -- a jump
+  assert(lastStart()[5].tag == "mechanics", "a jump keeps the tag")
+  RW:Restart()
+  assert(lastStart()[5].tag == "mechanics", "Restart keeps the tag")
+  dropdowns["Speed"].opts.set(2)
+  assert(lastStart()[5].tag == "mechanics", "a speed change keeps the tag")
+  dropdowns["Speed"].opts.set(1)
+  -- the test ending at stopAt (or another alert picked) leaves a plain Rehearse: no tag any more
+  RW:EndTest()
+  assert(lastStart()[5].tag == nil, "the ended test's run is untagged")
+  -- a new OpenAt without a tag, and a plain Rehearse, carry none
+  RW:OpenAt(3470, "Heroic", 10, { testing = "Other" })
+  assert(lastStart()[5].tag == nil, "OpenAt without a tag: none")
+  RW:Close()
+  RW:Open(src)
+  f.play.OnClick(f.play)
+  assert(lastStart()[5].tag == nil, "a plain Rehearse is untagged")
+  RW:Close()
+  CRT.Timeline.RehearsalSourceFor = nil
+end
+ok("open at keeps the Test button's tag on its runs")
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 for (const p of process.argv.slice(2, 4)) {

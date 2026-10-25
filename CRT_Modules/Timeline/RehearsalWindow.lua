@@ -914,6 +914,10 @@ local function startRun(Alerts)
             opts[k] = v
         end
     end
+    -- the Test button that opened the window for its test tags every run the window starts for it
+    if type(source.tag) == "string" then
+        opts.tag = source.tag
+    end
     -- the boss's name finds an ability timeline with no Encounter: line, for the alerts' type colours
     local ref = source.base and source.base.reference
     local bossName = ref and ref.boss or source.bossName
@@ -989,7 +993,9 @@ end
 -- would show for it: its reference for that difficulty group, else its newest pull), seeks to fight
 -- second t (0 at the earliest) and plays, ending the test at fight second opts.stopAt when given: the
 -- clock pauses there and EndTest runs (a jump, Restart or a plain Rehearse clears it first). opts.testing labels the window "Testing: <testing>";
--- opts.alerts is copied into Alerts:Start's opts on every start (a jump or Restart keeps it). It
+-- opts.alerts is copied into Alerts:Start's opts on every start (a jump or Restart keeps it). opts.tag (the Test
+-- button's name) is passed as Start's opts.tag on every start too, until the test ends (EndTest), so that
+-- button can tell this run from one the player opened. It
 -- replaces whatever the window had open, and a quick test run (never a real pull). True, or false and
 -- the reason to print.
 function RehearsalWindow:OpenAt(encounterID, difficultyName, t, opts)
@@ -1012,6 +1018,7 @@ function RehearsalWindow:OpenAt(encounterID, difficultyName, t, opts)
     end
     source.encounterID, source.difficultyName = encounterID, difficultyName or source.difficultyName
     source.testing, source.alerts = opts.testing, opts.alerts
+    source.tag = type(opts.tag) == "string" and opts.tag or nil
     self:Open(source)
     self:Seek(math.max(0, tonumber(t) or 0))
     self.stopAt = tonumber(opts.stopAt)
@@ -1027,7 +1034,7 @@ function RehearsalWindow:EndTest()
     if not (s and (s.testing or s.alerts)) then
         return
     end
-    s.testing, s.alerts = nil, nil
+    s.testing, s.alerts, s.tag = nil, nil, nil
     self.stopAt = nil
     if self.frame then
         self.frame.testing:SetText("")
