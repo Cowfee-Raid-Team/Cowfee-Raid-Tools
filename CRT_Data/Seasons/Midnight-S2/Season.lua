@@ -12,12 +12,12 @@ CRT.Bosses:Season({
     current = true,
     -- The raid progression route: the raids in order, each with its bosses in order. Every boss list
     -- in the addon follows it (CRT.Bosses:Route). Set it with Boss order on the Development page, then
-    -- paste its Export here. The progression order is Alex's, from 2026-10-17; every boss is in one
-    -- raid group until the raids are split out.
+    -- paste its Export here. The progression order and the three raids are Alex's, from 2026-10-17 and
+    -- 2026-10-24 (his /crt dev bosses Export).
     raids = {
         {
             key = "midnight-s2",
-            name = "Midnight Season 2",
+            name = "The Venemous Abyss",
             bosses = {
                 3470, -- Nek'zali the Soulcoiler
                 3497, -- The Lost Explorers
@@ -27,6 +27,20 @@ CRT.Bosses:Season({
                 3421, -- The Twin Fangs
                 3429, -- The Coiled Altar
                 3492, -- Ula'tek
+            },
+        },
+        {
+            key = "midnight-s2-raid2",
+            name = "The Tidebound Grotto",
+            bosses = {
+                3379, -- Nymrissa Wavecaller
+            },
+        },
+        {
+            key = "midnight-s2-raid3",
+            name = "The Unbinding of Kithi'ix",
+            bosses = {
+                3513, -- Kith'ix
             },
         },
     },
