@@ -47,6 +47,7 @@ local function mock(kind, parent, template)
     if k == "SetColorTexture" or k == "SetVertexColor" then return function(self, r, g, b, a) rawset(self, "color", { r, g, b, a }) end end
     if k == "SetTextColor" then return function(self, r, g, b) rawset(self, "textColor", { r, g, b }) end end
     if k == "SetWordWrap" then return function(self, on) rawset(self, "wordWrap", on) end end
+    if k == "SetNormalFontObject" then return function(self, f) rawset(self, "normalFont", f) end end
     -- a font string's words, 6 a letter
     if k == "GetUnboundedStringWidth" then return function(self) return #(rawget(self, "text") or "") * 6 * (TEXT_SCALE or 1) end end
     if k == "SetMultiLine" then return function(self, on) rawset(self, "multiLine", on) end end
@@ -74,6 +75,9 @@ function wipe(t) for k in pairs(t) do t[k] = nil end return t end
 CANCEL, ACCEPT = "Cancel", "Accept"
 SOUNDKIT = { RAID_WARNING = 8959, READY_CHECK = 8960 }
 CRTFontNormal, CRTFontHighlight, CRTFontDisable, CRTFontEdit, CRTFontDisableSmall, CRTFontSmall = {}, {}, {}, {}, {}, {}
+CRTFontButtonSmall, CRTFontButtonSmallHighlight, CRTFontButtonSmallDisable = {}, {}, {}
+-- a button label's width: 6 a letter, 5 in the game's small button font
+local function labelWidth(b) return #(rawget(b, "text") or "") * (rawget(b, "normalFont") == CRTFontButtonSmall and 5 or 6) * (TEXT_SCALE or 1) end
 function CreateFrame(kind, name, parent, template) return mock(kind, parent, template) end
 local clock = 100
 function GetTime() return clock end
@@ -130,6 +134,19 @@ CRT.UI = { Tint = function(r, m, k, a) local c = CRT.PALETTE[k] r[m](r, c[1], c[
     rawset(r, "refresh", function() rawset(r, "value", opts.get()) end)
     sliders[label] = r return r end,
 }
+-- CRT_Core/UI/Panel.lua's PanelButton: as wide as its label plus 14 each side, at least 40
+CRT.UI.PanelButtonWidth = function(w) return math.max(40, math.ceil(w or 0) + 28) end
+CRT.UI.PanelButton = function(parent, label, height, onClick)
+  local b = mock("Button", parent, "UIPanelButtonTemplate")
+  rawset(b, "text", label) rawset(b, "OnClick", onClick)
+  rawset(b, "GetFontString", function(self) return { GetStringWidth = function() return labelWidth(self) end } end)
+  b:SetSize(CRT.UI.PanelButtonWidth(labelWidth(b)), height)
+  return b
+end
+-- CRT_Modules/Notes/AlertShareWindows.lua: the Export and Import windows, recorded
+local shareCalls = {}
+CRT.NoteAlertShare = { OpenExport = function(enc) shareCalls[#shareCalls + 1] = { "export", enc } end,
+  OpenImport = function() shareCalls[#shareCalls + 1] = { "import" } end }
 CRT.UI.SoundDropdown = function(parent, label, opts) local o = {} for k, v in pairs(opts) do o[k] = v end
   o.options = opts.options or function() return CRT.Sound:Choices({ none = opts.none, filesOnly = opts.filesOnly }) end
   local r = CRT.UI.Dropdown(parent, label, o)
@@ -535,6 +552,30 @@ check("mech: your own reminder button", function()
   assert(r.text == "Soak now" and r.spellID == nil and r.boss == "Test Boss", "saved as your own")
   assert(f.rows[3].name.text == "Soak now" and f.rows[3].sel.shown, "listed and still selected: " .. tostring(f.rows[3].name.text) .. " " .. tostring(f.rows[3].sel.shown) .. " " .. tostring(f.rows[4].frame.shown) .. tostring(f.rows[4].sel.shown))
   assert(not f.rows[4].frame.shown, "no second new row")
+  assert(#errors == 0, tostring(errors[1]))
+end)
+
+check("mech: Export and Import sit beside Your own reminder", function()
+  local f = fresh()
+  local own, ex, im = f.ownButton, f.exportButton, f.importButton
+  assert(ex and im, "the two buttons")
+  assert(ex.text == "Export" and im.text == "Import" and ex.shown and im.shown and own.shown, "named and shown")
+  assert(own.normalFont == CRTFontButtonSmall and ex.normalFont == CRTFontButtonSmall and im.normalFont == CRTFontButtonSmall, "all three in the small button font")
+  assert(ex.w == CRT.UI.PanelButtonWidth(labelWidth(ex)) and im.w == CRT.UI.PanelButtonWidth(labelWidth(im)), "each as wide as its label")
+  assert(own.w + ex.w + im.w + 8 == 250, "the three fill the list's width: " .. own.w .. " " .. ex.w .. " " .. im.w)
+  assert(own.w >= CRT.UI.PanelButtonWidth(labelWidth(own)), "Your own reminder's label fits: " .. own.w)
+  local p = im.pts[1]
+  assert(p[1] == "TOPRIGHT" and p[3] == "TOPLEFT" and p[4] == 8 + 250 and p[5] == own.pts[1][3], "Import ends at the list's right edge, on Your own reminder's row")
+  assert(ex.pts[1][1] == "RIGHT" and ex.pts[1][2] == im and ex.pts[1][4] == -4, "Export left of Import")
+  for i = #shareCalls, 1, -1 do shareCalls[i] = nil end
+  click(ex)
+  assert(shareCalls[1] and shareCalls[1][1] == "export" and shareCalls[1][2] == ENC, "Export opens on the boss on show")
+  click(im)
+  assert(shareCalls[2] and shareCalls[2][1] == "import", "Import opens")
+  click(f.special.specialBtn)
+  assert(not ex.shown and not im.shown and not own.shown, "hidden on Special")
+  click(f.special.mechBtn)
+  assert(ex.shown and im.shown, "back on Mechanics")
   assert(#errors == 0, tostring(errors[1]))
 end)
 

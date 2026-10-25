@@ -25,6 +25,9 @@ local TEXT = {
     timesFromHelp = "Which of the boss's ability timelines for the difficulty on show the list and its times are read from. Times you typed stay as they are.",
     none = "None on the timeline",
     ownReminder = "Your own reminder",
+    -- beside it: your alerts as a code to share, and a code from someone else (Notes/AlertShareWindows.lua)
+    export = "Export",
+    import = "Import",
     unnamed = "Reminder",
 
     alertMe = "Alert me",
@@ -122,6 +125,7 @@ L.LIST_W = 250
 L.ROW_H = 24
 L.OWN_H = 24
 L.OWN_GAP = 6
+L.SHARE_GAP = 4 -- between Your own reminder, Export and Import
 -- L.LIST_H, L.MAX_ROWS, L.PANEL_H: from the tab's height, set in build
 L.ROW_X = 2
 L.THUMB_W = 3 -- the list's scroll bar, a thin thumb THUMB_INSET in from its right edge
@@ -891,6 +895,9 @@ local function applyView()
     end
     list:SetShown(mech)
     ownButton:SetShown(mech)
+    for _, b in ipairs(panel.share or {}) do
+        b:SetShown(mech)
+    end
     panel.frame:SetShown(mech)
     if special then
         CRT.NoteSpecialAlerts.Refresh()
@@ -1805,6 +1812,38 @@ local function build(f)
         end
     end)
     f.ownButton = ownButton
+    -- Export and Import beside it (Notes/AlertShareWindows.lua), each as wide as its label; Your own reminder
+    -- takes the rest of the list's width. All three in the game's small button size, unscaled like the title
+    -- bar's buttons, so the three labels fit the list's width whatever the text size.
+    if CRT.NoteAlertShare then
+        local function smallFont(b)
+            b:SetNormalFontObject(CRTFontButtonSmall)
+            b:SetHighlightFontObject(CRTFontButtonSmallHighlight)
+            b:SetDisabledFontObject(CRTFontButtonSmallDisable)
+        end
+        smallFont(ownButton)
+        local function shareButton(text, open)
+            local b = UI.PanelButton(f, text, L.OWN_H, function()
+                saveTyped()
+                open()
+            end)
+            smallFont(b)
+            local fs = b:GetFontString()
+            b:SetWidth(UI.PanelButtonWidth(fs and fs:GetStringWidth() or 0))
+            return b
+        end
+        local importBtn = shareButton(TEXT.import, function()
+            CRT.NoteAlertShare.OpenImport()
+        end)
+        local exportBtn = shareButton(TEXT.export, function()
+            CRT.NoteAlertShare.OpenExport(pickBoss(bosses()))
+        end)
+        importBtn:SetPoint("TOPRIGHT", f, "TOPLEFT", L.PAD + L.LIST_W, L.LIST_Y - L.LIST_H - L.OWN_GAP)
+        exportBtn:SetPoint("RIGHT", importBtn, "LEFT", -L.SHARE_GAP, 0)
+        ownButton:SetWidth(L.LIST_W - exportBtn:GetWidth() - importBtn:GetWidth() - 2 * L.SHARE_GAP)
+        panel.share = { exportBtn, importBtn } -- shown with Your own reminder (applyView)
+        f.exportButton, f.importButton = exportBtn, importBtn
+    end
 
     -- Right: the selected row's alert
     buildPanel(f)
