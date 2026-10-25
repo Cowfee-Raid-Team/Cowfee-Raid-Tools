@@ -7,8 +7,8 @@ local ADDON, CRT = ...
 --   { v = 1, from, date, version, boss = { [encounterID] = { [group] = { reminders = { r, ... },
 --     special = { [key] = choices }, defs = { def, ... } } } } }
 -- group is "nh" or "mythic", or "any" for an older reminder on any difficulty and a special alert for both.
--- A reminder carries only the fields REMINDER_FIELDS lists (what the Mech Alerts store saves, ticks, fill and
--- barTo among them); special choices are { on, show, speak, markers, fill }; defs are boss file entries.
+-- A reminder carries only the fields REMINDER_FIELDS lists (what the Mech Alerts store saves, ticks and fill
+-- among them; an older reminder's barTo, now ignored, is left out without a count, OLD_REMINDER_FIELDS); special choices are { on, show, speak, markers, fill }; defs are boss file entries.
 -- Reading checks every field the way the editor does (Draft's and Reminders' parsers, Special.Read) and leaves
 -- out, and counts, anything that doesn't read. Read changes nothing: it compares each part with what you have
 -- (new, replaces yours, same as yours), and Apply writes the picked parts into the same store the panel uses.
@@ -252,7 +252,6 @@ local REMINDER_FIELDS = {
         return list
     end,
     fill = oneOf({ up = true }),
-    barTo = oneOf({ cast = true }),
     shifts = perCast(function(x)
         if finite(x) and math.abs(x) <= 600 then
             return x
@@ -265,6 +264,8 @@ local REMINDER_FIELDS = {
     end),
 }
 AS.REMINDER_FIELDS = REMINDER_FIELDS
+-- Fields an older CRT saved and sent that are ignored now: an incoming one reads, is left out, and isn't counted.
+local OLD_REMINDER_FIELDS = { barTo = true }
 
 -- A reminder with only the fields that travel, each checked. Returns the clean copy (nil when it isn't a
 -- reminder you could save: no spell and no text, or nothing it shows, as Draft.Problem says) and how many
@@ -283,7 +284,7 @@ function AS.CleanReminder(r)
         local good = check and check(v, count)
         if good ~= nil then
             out[k] = good
-        elseif check ~= nil or type(k) ~= "string" or not k:find("^times") then
+        elseif not OLD_REMINDER_FIELDS[k] and (check ~= nil or type(k) ~= "string" or not k:find("^times")) then
             -- the migration's bookkeeping (timesBackup, timesUnmatched, timesMigrated) stays behind quietly
             count()
         end

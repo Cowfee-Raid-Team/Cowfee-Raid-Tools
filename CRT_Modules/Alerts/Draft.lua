@@ -7,11 +7,11 @@ local ADDON, CRT = ...
 --          and for the editor also a note line (noteID, line, expected) or a saved alert (savedMode)
 --   draft  { saveAs, tag, group, difficulty, ph, timeText, timeTouched, keptTimes, spellID, iconType, iconID,
 --          text, color, show = { alert, text, icon, bar, circle, timeline }, speak, speakAt, count, glow, sound,
---          warn, linger, boss, baseDifficulty, difficultyTouched, ticksText, fill, barTo }
+--          warn, linger, boss, baseDifficulty, difficultyTouched, ticksText, fill }
 --          speakAt is nil (Speak at: On show) or "zero" (At 0), as a reminder keeps it
 --          ticksText is the Impact ticks box as typed ("1.5, 3.5": seconds after the cast, Draft.ParseTicks), fill
---          "up" (Bar fills up) or nil (it empties), barTo "cast" (the bar ends at the cast) or nil (at the last
---          impact), as a reminder keeps them (Alerts/Bars.lua draws them; Only me: a note line has no such fields)
+--          "up" (Bar fills up) or nil (it empties), as a reminder keeps them (Alerts/Bars.lua draws them; Only me: a
+--          note line has no such fields). An older reminder's barTo stays saved as it was and is never read
 --          group is the difficulty group Only me saves for ("nh" or "mythic", Draft.Group); difficulty
 --          the raid note's Difficulty a note line goes to, or an older reminder's Difficulty text
 -- Every function takes ctx and the draft it works on; none keeps either.
@@ -236,12 +236,9 @@ function Draft.Ticks(draft)
     return list and #list > 0 and list or nil
 end
 
--- The Bar fill and Bar ends choices, in the caller's words.
+-- The Bar fill choices, in the caller's words.
 function Draft.FillOptions(up, down)
     return { { key = "up", label = up }, { key = "down", label = down } }
-end
-function Draft.BarToOptions(last, cast)
-    return { { key = "last", label = last }, { key = "cast", label = cast } }
 end
 
 -- A saved reminder into the draft. Its times text is kept until Relative to or Time is touched.
@@ -269,7 +266,6 @@ function Draft.FromReminder(draft, r)
     draft.color = copy(r.color)
     draft.ticksText = Reminders.TickList and Draft.TicksText(Reminders.TickList(r.ticks)) or nil
     draft.fill = r.fill == "up" and "up" or nil
-    draft.barTo = r.barTo == "cast" and "cast" or nil
 end
 
 -- A new draft from a saved reminder.
@@ -459,11 +455,10 @@ function Draft.BuildReminder(ctx, draft)
     r.glow = draft.glow or nil
     r.iconID = draft.iconType == "id" and validID(draft.iconID) or nil
     r.color = copy(draft.color)
-    -- the bar's impact ticks and how it fills; the defaults (no ticks, it empties, it ends at the last impact) are
-    -- saved as nothing, so a reminder that never set them gains no fields
+    -- the bar's impact ticks and how it fills; the defaults (no ticks, it empties) are saved as nothing, so a
+    -- reminder that never set them gains no fields. An older barTo is left as it was saved (never read)
     r.ticks = Draft.Ticks(draft)
     r.fill = draft.fill == "up" and "up" or nil
-    r.barTo = draft.barTo == "cast" and "cast" or nil
     return r
 end
 

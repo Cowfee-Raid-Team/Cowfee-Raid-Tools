@@ -171,7 +171,8 @@ check("alerts share: Export gives a !CRT:alerts:1: code with your reminders and 
   local data = Share.Decode(code, "alerts", 1, AS.CAPS)
   assert(data and data.v == 1 and data.from == "Solex", "the payload's version and sender")
   local m = data.boss[9001].mythic
-  assert(m and m.reminders[1].spellID == 4242 and same(m.reminders[1].ticks, { 1.5, 3.5 }) and m.reminders[1].fill == "up" and m.reminders[1].barTo == "cast", "the Mythic reminder with its ticks, fill and bar end")
+  assert(m and m.reminders[1].spellID == 4242 and same(m.reminders[1].ticks, { 1.5, 3.5 }) and m.reminders[1].fill == "up", "the Mythic reminder with its ticks and fill")
+  assert(m.reminders[1].barTo == nil, "an old saved bar end is not written: it is ignored now")
   assert(m.special.tanks and m.special.tanks.on == false, "the Mythic-only special alert's choices sit under Mythic")
   local any = data.boss[9001].any
   assert(any and any.special.soaks.on == true and any.special.soaks.fill == "down", "a special alert for both difficulties sits under any, with your choices")
@@ -210,7 +211,7 @@ check("alerts share: into a fresh CRT, every reminder is new; Import writes them
   local mine = byText(9001)
   local swap, run = mine.Swap and mine.Swap.r, mine["Run out"] and mine["Run out"].r
   assert(swap and run, "both saved in alerts.reminders")
-  assert(same(swap.ticks, { 1.5, 3.5 }) and swap.fill == "up" and swap.barTo == "cast" and swap.group == "mythic" and swap.warn == 6 and swap.speech == "textcount"
+  assert(same(swap.ticks, { 1.5, 3.5 }) and swap.fill == "up" and swap.barTo == nil and swap.group == "mythic" and swap.warn == 6 and swap.speech == "textcount"
     and swap.linger == 2 and swap.glow == true and swap.color[2] == 0.5 and swap.speakAt == "zero" and swap.shifts.mythic["P1@0:40"] == 2 and swap.off.mythic["P1@1:40"] == true
     and swap.sound == "kit:RAID_WARNING" and swap.priority == "high" and swap.outputs.icon == true, "every field of the Swap reminder came across")
   assert(run.times == "P1 0:20, 1:00" and run.group == "nh", "the typed reminder keeps its times (it follows no ability)")
@@ -346,6 +347,19 @@ check("alerts share: invalid fields and entries are dropped and counted", functi
   assert(AS.Summary(info):find("left out", 1, true), "the summary says some was left out: " .. AS.Summary(info))
 end)
 
+check("alerts share: an older code's barTo still reads, and is left out quietly", function()
+  receiver()
+  local payload = { v = 1, from = "Old", boss = { [9001] = { mythic = { reminders = {
+    { spellID = 4242, text = "Old swap", group = "mythic", outputs = { alert = true, bar = true }, ticks = { 1, 2 }, barTo = "cast" } } } } } }
+  local info, err = AS:Read(Share.Encode("alerts", 1, payload))
+  assert(info, "reads: " .. tostring(err))
+  assert(info.dropped == 0, "nothing counted as left out: " .. info.dropped)
+  local r
+  for _, it in ipairs(info.items) do if it.kind == "reminder" then r = it.value end end
+  assert(r and same(r.ticks, { 1, 2 }) and r.barTo == nil, "its ticks kept, its bar end not")
+  assert(AS.REMINDER_FIELDS.barTo == nil, "barTo is no longer a field that travels")
+end)
+
 check("alerts share: codes that don't read change nothing", function()
   receiver()
   local i, e = AS:Read("CRTS1:abcd")
@@ -409,7 +423,7 @@ check("alerts share: Lua for shipping reads back through the boss file loader", 
   assert(same(byKey.soaks, SPECIAL[1]) and same(byKey.tanks, SPECIAL[2]), "the shipped entries come back as they were written")
   local swap = byKey.swap
   assert(swap and swap.label == "Swap" and swap.when.spellID == 4242 and swap.difficulty == "mythic" and swap.lead == 6, "the Swap reminder as an entry: " .. tostring(swap and swap.key))
-  assert(same(swap.ticks, { 1.5, 3.5 }) and swap.barTo == "cast" and swap.fill == nil, "its ticks and bar end; a bar that fills up is the default")
+  assert(same(swap.ticks, { 1.5, 3.5 }) and swap.barTo == nil and swap.fill == nil, "its ticks, no bar end (a reminder's is ignored); a bar that fills up is the default")
   assert(swap.show.callout == true and swap.show.icon == true and swap.show.text == false and swap.show.speech == true, "its Show as")
   local run = byKey.runOut
   assert(run and run.when.times == "P1 0:20, 1:00" and run.difficulty == "nh" and run.fill == "down" and run.show.bar == false, "the typed reminder: its times, and its bar empties")
