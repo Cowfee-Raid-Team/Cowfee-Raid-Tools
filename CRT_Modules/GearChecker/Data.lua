@@ -75,7 +75,27 @@ GC.TEXT = {
     trackRankOnly = "%s %d",
     below = "Below %s", -- the Below chip, with the picked track's label
     belowHelp = "Shows who wears an item below the track you pick. Click it to see only those items, and click its arrow to pick the track.",
+    emptyLine = "[%s] %s - %s", -- name, slot, what is wrong (an empty slot has no item)
+    emptyWhisper = "Gear check: %s - %s", -- slot, what is wrong
+    emptyHead = "%s - ", -- the badge tooltip's line start for an empty slot
 }
+
+-- Extra filters (the page's Extra filters window): each one ticked in CRTDB.gearChecker.extra is a low
+-- issue with its own chip after Missing enchants; minIlvl is Item level below's level (0 is off). label is
+-- the chip, the cell's words and the chat line (ilvl's takes the level).
+GC.EXTRA_FILTER = "extra:" -- an extra filter's chip key is this and its key
+GC.EXTRA_FILTERS = {
+    { key = "upgrade", label = "Not fully upgraded",
+      help = "Shows items below the last rank of their upgrade track. Only ranks seen on real items so far are known, so an item with an unknown track is never shown." },
+    { key = "ilvl", label = "Item level below %d", option = "Item level below", number = true,
+      help = "Shows items under the item level you type. 0 is off." },
+    { key = "quality", label = "Low quality", help = "Shows green and blue items, and anything lower." },
+    { key = "empty", label = "Empty slot",
+      help = "Shows slots with no item. The off hand counts only beside a one-handed main hand." },
+}
+GC.LOW_QUALITY = Enum and Enum.ItemQuality and Enum.ItemQuality.Rare or 3 -- this quality or lower is low
+GC.ONE_HAND_LOCS = { INVTYPE_WEAPON = true, INVTYPE_WEAPONMAINHAND = true } -- a main hand that wants an off hand
+GC.MAIN_HAND, GC.OFF_HAND = 16, 17 -- their inventory slots (Gear.SLOTS)
 
 local function secret(v)
     return issecretvalue and issecretvalue(v) or false
@@ -176,7 +196,101 @@ function GC:Rules()
         self.rulesOf = src -- worked out again only when the season's table changes
     end
     self.rules.tracks = self:Tracks() -- its own topic, so read each time (cached by GC:Tracks)
+    self.rules.extras = self:ExtraChecks() -- a setting, so read each time
     return self.rules
+end
+
+-- Extra filters ---------------------------------------------------------------------------------------------
+
+-- The saved extra filters (CRTDB.gearChecker.extra), {} before any is set.
+function GC:Extra()
+    local s = self:Settings()
+    return type(s) == "table" and type(s.extra) == "table" and s.extra or {}
+end
+
+-- Ticks or unticks an extra filter; set minIlvl to a whole number from 0.
+function GC:SetExtra(key, value)
+    local s = self:Settings()
+    s.extra = type(s.extra) == "table" and s.extra or {}
+    if key == "minIlvl" then
+        value = math.max(0, math.floor(tonumber(value) or 0))
+    else
+        value = value and true or false
+    end
+    s.extra[key] = value
+end
+
+-- Item level below's level, a whole number (0 when unset).
+function GC:MinIlvl()
+    local n = tonumber(self:Extra().minIlvl)
+    return n and n > 0 and math.floor(n) or 0
+end
+
+-- The ticked extra filters, as low checks for CheckSlot: { key = "extra:<key>", extra = <key>, label, help,
+-- severity, min (ilvl's level) }, in GC.EXTRA_FILTERS' order. Item level below with no level is left out.
+function GC:ExtraChecks()
+    local saved, out = self:Extra(), {}
+    self.extraOf = self.extraOf or {}
+    for _, f in ipairs(GC.EXTRA_FILTERS) do
+        local min = f.number and self:MinIlvl() or nil
+        if saved[f.key] == true and (not f.number or min > 0) then
+            local c = self.extraOf[f.key] or { key = GC.EXTRA_FILTER .. f.key, extra = f.key, help = f.help, severity = "low", slots = {} }
+            c.label, c.min = f.number and string.format(f.label, min) or f.label, min
+            self.extraOf[f.key] = c -- the same table each time, so a cell's tag stays the same check
+            out[#out + 1] = c
+        end
+    end
+    return out
+end
+
+-- A piece's item quality (Enum.ItemQuality) from the game, or nil (not loaded, an error, a secret).
+function GC.QualityOf(piece)
+    if not (C_Item and C_Item.GetItemQualityByID) then
+        return nil
+    end
+    local ok, q = pcall(C_Item.GetItemQualityByID, piece.itemString or piece.link or piece.id)
+    if ok and not secret(q) and type(q) == "number" then
+        return q
+    end
+    return nil
+end
+
+-- Whether an extra filter trips on a worn piece (r: its findings so far, with its track). A piece known only
+-- by its ID (parts nil) has no track and no readable quality, so only its item level counts.
+function GC.ExtraTrips(c, r, piece, parts, ilvl)
+    if c.extra == "upgrade" then
+        local t = r.track
+        return t ~= nil and t.max ~= nil and t.rank < t.max
+    elseif c.extra == "ilvl" then
+        return ilvl ~= nil and c.min ~= nil and ilvl < c.min
+    elseif c.extra == "quality" then
+        local q = parts and GC.QualityOf(piece)
+        return q ~= nil and q <= GC.LOW_QUALITY
+    end
+    return false
+end
+
+-- Whether an empty slot should hold an item: every slot, but the off hand only beside a one-handed main
+-- hand (a two-hander, a ranged weapon or no main hand can't tell, so it is left out).
+function GC.SlotWanted(slot, mainHand)
+    if slot ~= GC.OFF_HAND then
+        return true
+    end
+    return type(mainHand) == "table" and GC.ONE_HAND_LOCS[Gear.EquipLoc(mainHand) or ""] == true
+end
+
+-- Empty slot on an empty slot's findings, when ticked and the slot should hold an item. Only for a player
+-- whose whole set is known (GC:Row), so a set not seen yet is never all empty slots.
+function GC.CheckEmpty(r, rules, mainHand)
+    if not r.empty or not GC.SlotWanted(r.slot, mainHand) then
+        return
+    end
+    for _, c in ipairs(rules.extras or {}) do
+        if c.extra == "empty" then
+            r.checks[#r.checks + 1] = c
+            r.issues = r.issues + 1
+        end
+    end
 end
 
 -- The season's usable checks, in its order.
@@ -189,6 +303,9 @@ function GC:Filters()
     local out = {}
     for _, f in ipairs(GC.FILTERS) do
         out[#out + 1] = f
+    end
+    for _, c in ipairs(self:ExtraChecks()) do
+        out[#out + 1] = { key = c.key, label = c.label, help = c.help, check = c, extra = true }
     end
     for _, c in ipairs(self:SeasonChecks()) do
         out[#out + 1] = { key = GC.CHECK_FILTER .. c.key, label = c.label, help = c.help, check = c }
@@ -443,6 +560,12 @@ function GC.CheckSlot(slot, piece, rules, avg)
         end
     end
     r.track = GC.TrackOf(parts, rules.tracks)
+    for _, c in ipairs(rules.extras or {}) do
+        if GC.ExtraTrips(c, r, piece, parts, ilvl) then
+            r.checks[#r.checks + 1] = c
+            r.issues = r.issues + 1
+        end
+    end
     return r
 end
 
@@ -593,6 +716,9 @@ function GC:Row(m)
     row.trackCounts, row.below = {}, 0
     for _, s in ipairs(Gear.SLOTS) do
         local r = self.CheckSlot(s.id, by[s.id], rules, row.avg)
+        if row.seen then
+            GC.CheckEmpty(r, rules, by[GC.MAIN_HAND])
+        end
         row.slots[s.id] = r
         row.issues = row.issues + r.issues
         row.missingGems = row.missingGems + r.emptySockets
@@ -630,9 +756,22 @@ function GC:Row(m)
     return row
 end
 
+-- The check key a filter picks: a season check's ("check:<key>" picks <key>) or an extra filter's (its
+-- filter key is its check key), else nil.
+local function checkKeyOf(filter)
+    if type(filter) ~= "string" then
+        return nil
+    elseif filter:sub(1, #GC.CHECK_FILTER) == GC.CHECK_FILTER then
+        return filter:sub(#GC.CHECK_FILTER + 1)
+    elseif filter:sub(1, #GC.EXTRA_FILTER) == GC.EXTRA_FILTER then
+        return filter
+    end
+    return nil
+end
+
 -- Whether a filter (GC:Filters) shows a row. A player not seen yet shows only under Everyone.
 function GC.Passes(row, filter)
-    local check = type(filter) == "string" and filter:sub(1, #GC.CHECK_FILTER) == GC.CHECK_FILTER and filter:sub(#GC.CHECK_FILTER + 1)
+    local check = checkKeyOf(filter)
     if check then
         return (row.checkHits[check] or 0) > 0
     elseif filter == "issues" then
@@ -655,10 +794,10 @@ function GC.CellShows(r, filter, row)
     if filter == nil or filter == "all" then
         return true
     end
-    if type(r) ~= "table" or r.empty then
-        return false
+    if type(r) ~= "table" or (r.empty and r.issues == 0) then
+        return false -- an empty slot is drawn only with an issue of its own (Empty slot)
     end
-    local check = filter:sub(1, #GC.CHECK_FILTER) == GC.CHECK_FILTER and filter:sub(#GC.CHECK_FILTER + 1)
+    local check = checkKeyOf(filter)
     if check then
         for _, c in ipairs(r.checks or {}) do
             if c.key == check then
@@ -728,19 +867,24 @@ local function slotName(slot)
 end
 
 -- The shift-click text for one slot: "[Name] Head [item] 285 - missing enchant", or nil when it has no issue.
+-- An empty slot with an issue (Empty slot): "[Name] Off Hand - Empty slot".
 function GC.SlotLine(row, r)
     local problems = GC.Problems(r)
+    if problems and r.empty then
+        return string.format(GC.TEXT.emptyLine, shortName(row.name), slotName(r.slot), problems)
+    end
     if not (problems and r.piece) then
         return nil
     end
     return string.format(GC.TEXT.line, shortName(row.name), slotName(r.slot), GC.ItemLink(r.piece), tostring(r.piece.ilvl or "?"), problems)
 end
 
+-- fn(r, problems) for each slot with an issue, worn or empty.
 local function eachIssue(row, fn)
     local out = {}
     for _, s in ipairs(Gear.SLOTS) do
         local r = row.slots[s.id]
-        local problems = r and r.piece and GC.Problems(r)
+        local problems = r and (r.piece or r.empty) and GC.Problems(r)
         if problems then
             out[#out + 1] = fn(r, problems)
         end
@@ -766,6 +910,9 @@ end
 -- The lines whispered to the player: one per slot with an issue, then the row's own.
 function GC.WhisperLines(row)
     local out = eachIssue(row, function(r, problems)
+        if r.empty then
+            return string.format(GC.TEXT.emptyWhisper, slotName(r.slot), problems)
+        end
         return string.format(GC.TEXT.whisper, slotName(r.slot), GC.ItemLink(r.piece), tostring(r.piece.ilvl or "?"), problems)
     end)
     return addRowLines(out, row, GC.TEXT.rowWhisper)
@@ -779,8 +926,11 @@ function GC.RaidLines(row)
     return addRowLines(out, row, GC.TEXT.rowLine, shortName(row.name))
 end
 
--- A slot's line start in the badge's tooltip: "Head [item] 285 - ".
+-- A slot's line start in the badge's tooltip: "Head [item] 285 - ", or "Off Hand - " for an empty one.
 local function lineHead(r)
+    if not r.piece then
+        return string.format(GC.TEXT.emptyHead, slotName(r.slot))
+    end
     return string.format("%s %s %s - ", slotName(r.slot), GC.ItemLink(r.piece), tostring(r.piece.ilvl or "?"))
 end
 
@@ -795,7 +945,7 @@ function GC.IssueLines(row)
     local out = {}
     for _, s in ipairs(Gear.SLOTS) do
         local r = row.slots[s.id]
-        if r and r.piece then
+        if r and (r.piece or r.empty) then -- an empty slot has only its Empty slot check
             local head = lineHead(r)
             local missing, low = missingWords(r), lowWords(r)
             if missing then

@@ -581,6 +581,134 @@ eq(table.concat(bc, ","), "Champion,Hero,Myth", "below: the choices, every track
 B:SeasonData("test-s9", "tracks", { list = T.source.list, bonus = {} })
 check(not GC:Tracks().usable and GC:FilterKey("below") == "all", "no bonus IDs: no Below chip, a saved Below is Everyone")
 eq(GC:Filters()[#GC:Filters()].key, "check:cursed", "no bonus IDs: the season checks are the last chips")
+
+-- 5g. Extra filters (CRTDB.gearChecker.extra): each ticked one is a low issue with its own chip after Missing
+-- enchants; unticked ones do nothing
+B:SeasonData("test-s9", "gearChecks", { checks = { { key = "cursed", label = "Cursed", kind = "itemIds", ids = { 101 }, severity = "info" } } })
+B:SeasonData("test-s9", "tracks", { default = "hero", list = T.source.list, bonus = { [7001] = { track = "champion", rank = 4, max = 6 },
+  [7004] = { track = "hero", rank = 6, max = 6 }, [7008] = { track = "hero", rank = 3 } } })
+LOC[130] = "INVTYPE_2HWEAPON"
+local QUALITY = {}
+C_Item.GetItemQualityByID = function(s) return QUALITY[tonumber(tostring(s):match("item:(%d+)") or s)] end
+local function fkeys() local out = {} for _, f in ipairs(GC:Filters()) do out[#out + 1] = f.key end return table.concat(out, ",") end
+local XS = CRT.db.gearChecker
+XS.extra = nil
+eq(fkeys(), "all,issues,gems,enchants,check:cursed,below", "extra: none ticked, no extra chips (and no saved table is fine)")
+local c4 = piece(3, bonusString(103, "", { 7001 }), 300)
+r = GC.CheckSlot(3, c4, GC:Rules(), 300)
+check(keys(r) == "" and r.issues == 0, "extra: unticked, a piece below its track's max is no finding")
+XS.extra = { upgrade = false, ilvl = false, quality = false, empty = false, minIlvl = 0 }
+eq(fkeys(), "all,issues,gems,enchants,check:cursed,below", "extra: all unticked (the defaults), still none")
+-- Not fully upgraded
+XS.extra.upgrade = true
+eq(fkeys(), "all,issues,gems,enchants,extra:upgrade,check:cursed,below", "upgrade: its chip right after Missing enchants")
+eq(GC:Filters()[5].label, "Not fully upgraded", "upgrade: the chip's label")
+check(type(GC:Filters()[5].help) == "string" and GC:Filters()[5].help:find("seen", 1, true) ~= nil, "upgrade: its help says the map knows only ranks seen so far")
+r = GC.CheckSlot(3, c4, GC:Rules(), 300)
+eq(keys(r), "extra:upgrade", "upgrade: Champion 4/6 trips")
+eq(r.issues, 1, "upgrade: one issue")
+eq(GC.TopCheck(r).severity, "low", "upgrade: severity low (orange)")
+eq(GC.Problems(r), "Not fully upgraded", "upgrade: in the issue words")
+r = GC.CheckSlot(3, piece(3, bonusString(103, "", { 7004 }), 300), GC:Rules(), 300)
+check(keys(r) == "" and r.issues == 0, "upgrade: Hero 6/6 is fully upgraded")
+r = GC.CheckSlot(3, piece(3, bonusString(103, "", { 9 }), 300), GC:Rules(), 300)
+eq(keys(r), "", "upgrade: no known track, never flagged")
+r = GC.CheckSlot(3, piece(3, bonusString(103, "", { 7008 }), 300), GC:Rules(), 300)
+eq(keys(r), "", "upgrade: a rank with no known last rank, never flagged")
+r = GC.CheckSlot(3, { slot = 3, id = 103, ilvl = 300 }, GC:Rules(), 300)
+eq(keys(r), "", "upgrade: an ID-only piece, never flagged")
+check(GC.CellShows(GC.CheckSlot(3, c4, GC:Rules(), 300), "extra:upgrade") and not GC.CellShows(GC.CheckSlot(3, c4, GC:Rules(), 300), "gems"), "upgrade: drawn under its own chip, not under Missing gems")
+eq(GC:FilterKey("extra:upgrade"), "extra:upgrade", "upgrade: a saved chip that is ticked is kept")
+XS.extra.upgrade = false
+eq(GC:FilterKey("extra:upgrade"), "all", "upgrade: unticked, a saved chip of it is Everyone")
+-- Item level below
+XS.extra.ilvl, XS.extra.minIlvl = true, 0
+eq(fkeys(), "all,issues,gems,enchants,check:cursed,below", "ilvl: ticked with no level (0), no chip")
+r = GC.CheckSlot(7, piece(7, "item:107::::::::90", 311), GC:Rules(), 311)
+eq(keys(r), "", "ilvl: no level, nothing flagged")
+XS.extra.minIlvl = 320
+eq(fkeys(), "all,issues,gems,enchants,extra:ilvl,check:cursed,below", "ilvl: a level set, its chip")
+eq(GC:Filters()[5].label, "Item level below 320", "ilvl: the chip names the level")
+r = GC.CheckSlot(7, piece(7, "item:107::::::::90", 311), GC:Rules(), 311)
+check(keys(r) == "extra:ilvl" and r.issues == 1, "ilvl: 311 is below 320")
+eq(GC.Problems(r), "Item level below 320", "ilvl: in the issue words")
+r = GC.CheckSlot(7, piece(7, "item:107::::::::90", 320), GC:Rules(), 320)
+eq(keys(r), "", "ilvl: 320 is not below 320")
+r = GC.CheckSlot(7, { slot = 7, id = 107, ilvl = 300 }, GC:Rules(), 300)
+eq(keys(r), "extra:ilvl", "ilvl: an ID-only piece still has its item level")
+issecretvalue = function(v) return v == 305 end
+r = GC.CheckSlot(7, piece(7, "item:107::::::::90", 305), GC:Rules(), 320)
+eq(keys(r), "", "ilvl: a secret item level is never compared")
+issecretvalue = nil
+XS.extra.ilvl = false
+r = GC.CheckSlot(7, piece(7, "item:107::::::::90", 311), GC:Rules(), 311)
+eq(keys(r), "", "ilvl: unticked, a saved level does nothing")
+-- Low quality
+XS.extra.quality = true
+eq(fkeys(), "all,issues,gems,enchants,extra:quality,check:cursed,below", "quality: its chip")
+eq(GC:Filters()[5].label, "Low quality", "quality: the chip's label")
+QUALITY[107], QUALITY[108], QUALITY[109], QUALITY[110] = 2, 3, 4, 1
+for _, c in ipairs({ { 107, true, "Uncommon (green)" }, { 108, true, "Rare (blue)" }, { 109, false, "Epic" }, { 110, true, "Common" }, { 111, false, "not loaded yet" } }) do
+  r = GC.CheckSlot(7, piece(7, "item:" .. c[1] .. "::::::::90", 300), GC:Rules(), 300)
+  eq(keys(r) == "extra:quality", c[2], "quality: " .. c[3])
+end
+r = GC.CheckSlot(7, { slot = 7, id = 107, ilvl = 300 }, GC:Rules(), 300)
+eq(keys(r), "", "quality: an ID-only piece, never flagged (its upgrades can't be read)")
+issecretvalue = function(v) return v == 2 end
+r = GC.CheckSlot(7, piece(7, "item:107::::::::90", 300), GC:Rules(), 300)
+eq(keys(r), "", "quality: a secret quality is never compared")
+issecretvalue = nil
+C_Item.GetItemQualityByID = function() error("no") end
+r = GC.CheckSlot(7, piece(7, "item:107::::::::90", 300), GC:Rules(), 300)
+eq(keys(r), "", "quality: an error from the game, no finding")
+C_Item.GetItemQualityByID = function(s) return QUALITY[tonumber(tostring(s):match("item:(%d+)") or s)] end
+XS.extra.quality = false
+-- Empty slot: on a seen row only; the off hand only beside a one-handed main hand
+XS.extra.empty = true
+eq(fkeys(), "all,issues,gems,enchants,extra:empty,check:cursed,below", "empty: its chip")
+local function wearing(list) remember("Quick", list) return rowNamed("Quick") end
+local function emptyKeys(row) local out = {} for _, s in ipairs(Gear.SLOTS) do local sr = row.slots[s.id] if sr.empty and sr.checks[1] then out[#out + 1] = s.id end end return table.concat(out, ",") end
+local full = {}
+for _, s in ipairs(Gear.SLOTS) do if s.id ~= 17 then full[#full + 1] = piece(s.id, "item:1" .. s.id .. "::::::::90", 300) end end
+full[#full + 1] = piece(17, "item:117::::::::90", 300)
+local qe = wearing(full)
+check(emptyKeys(qe) == "" and qe.issues == 0, "empty: a full set, nothing flagged (" .. emptyKeys(qe) .. ", " .. qe.issues .. ")")
+table.remove(full) -- the shield off
+full[#full] = piece(16, "item:116::::::::90", 300) -- a one-handed main hand
+qe = wearing(full)
+eq(emptyKeys(qe), "17", "empty: no off hand beside a one-hander is flagged")
+eq(qe.issues, 1, "empty: one issue")
+check(GC.Passes(qe, "extra:empty") and GC.Passes(qe, "issues"), "empty: the row shows under its chip and under Only issues")
+check(GC.CellShows(qe.slots[17], "extra:empty") and GC.CellShows(qe.slots[17], "issues") and not GC.CellShows(qe.slots[17], "gems"), "empty: its cell is drawn under its chip and Only issues")
+eq(GC.TopCheck(qe.slots[17]).severity, "low", "empty: a low square")
+local et = GC.IssueLines(qe)
+eq(et[1] and (et[1].text .. "|" .. et[1].kind), "Off Hand - Empty slot|low", "empty: the badge's line, orange")
+eq(GC.RaidLines(qe)[1], "[Quick] Off Hand - Empty slot", "empty: the raid line")
+eq(GC.WhisperLines(qe)[1], "Gear check: Off Hand - Empty slot", "empty: the whisper")
+eq(GC.SlotLine(qe, qe.slots[17]), "[Quick] Off Hand - Empty slot", "empty: the shift-click line")
+full[#full] = piece(16, "item:130::::::::90", 300) -- a two-hander
+qe = wearing(full)
+eq(emptyKeys(qe), "", "empty: no off hand beside a two-hander is fine")
+table.remove(full) -- no main hand at all
+table.remove(full, 1) -- nor a head
+qe = wearing(full)
+eq(emptyKeys(qe), "1,16", "empty: the head and main hand, the off hand left out (no main hand to tell by)")
+eq(qe.issues, 2, "empty: an issue each")
+eq(names(GC:Rows("extra:empty")), "Solex,Quick,Arrow,Far,Off", "empty: under its chip, your own empty slots too (Halo not seen yet)")
+local halo2 = rowNamed("Halo")
+check(not halo2.seen and halo2.issues == 0 and emptyKeys(halo2) == "", "empty: a player not seen yet has no empty slots")
+XS.extra.empty = false
+qe = rowNamed("Quick")
+eq(qe.issues, 0, "empty: unticked, nothing counts")
+-- several at once: each its own chip, in the list's order, and a cell tripping two has both words
+XS.extra = { upgrade = true, ilvl = true, minIlvl = 320, quality = true, empty = true }
+eq(fkeys(), "all,issues,gems,enchants,extra:upgrade,extra:ilvl,extra:quality,extra:empty,check:cursed,below", "several: a chip each, in order")
+QUALITY[103] = 3
+r = GC.CheckSlot(3, c4, GC:Rules(), 300)
+eq(keys(r), "extra:upgrade,extra:ilvl,extra:quality", "several: one piece trips three")
+eq(r.issues, 3, "several: three issues")
+eq(GC.Problems(r), "Not fully upgraded, Item level below 320, Low quality", "several: all in the words")
+XS.extra = nil
 -- back to the shipped season
 B.seasons["test-s9"].current = false
 B.seasons["sample"].current = true

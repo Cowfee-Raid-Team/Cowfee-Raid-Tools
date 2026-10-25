@@ -86,7 +86,7 @@ Profiles.SHARE = {
         sort = false,
         responses = false, -- the response buttons (saved once edited): the leader's own, kept back
     },
-    gearChecker = { filter = false, belowTrack = true, popout = true },
+    gearChecker = { filter = false, belowTrack = true, popout = true, extra = true },
     sound = false, -- the names of your own sound files
     late = { days = true, hour = true, minute = true, grace = true, onlyTeam = true, history = false, nextId = false, lastAuto = false },
     tattle = {
