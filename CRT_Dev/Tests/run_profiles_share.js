@@ -462,6 +462,11 @@ do
   check(CRTDB.debuffs.size == 33 and next(CRTDB.importBackup) == nil and not P:HasBackup() and reloads == r + 1, "Copy from clears the copied import backup")
   check(CRTDB.profiles.Other.importBackup.from == "Someone", "the other profile keeps its own backup")
 end
+-- The module switches (Modules.lua) travel with Export settings only, like the theme.
+do
+  local i = P:Read(craft({ v = 1, kind = "settings", from = "X", data = { modules = { loot = false, timeline = true } } }))
+  check(i and i.unknown == 0 and i.values["modules"] and i.values["modules"].loot == false and i.values["modules"].timeline == true, "the module switches are read from a settings string")
+end
 print(okCount .. " passed, " .. failCount .. " failed")
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
