@@ -215,7 +215,7 @@ local function build()
     place()
 end
 
-local events = CRT.Modules and CRT.Modules:Frame("timeline") or CreateFrame("Frame") -- quiet while the module is off (CRT_Core/Modules.lua)
+local events = CreateFrame("Frame")
 events:RegisterEvent("ADDON_LOADED")
 events:SetScript("OnEvent", function(self, _, name)
     if name == "Blizzard_EncounterJournal" then
@@ -223,14 +223,7 @@ events:SetScript("OnEvent", function(self, _, name)
         self:UnregisterEvent("ADDON_LOADED")
     end
 end)
--- already loaded (another addon opened it first): built once the Timeline is known to be on (CRT_Core/Modules.lua)
-local function buildIfLoaded()
-    if C_AddOns and C_AddOns.IsAddOnLoaded and C_AddOns.IsAddOnLoaded("Blizzard_EncounterJournal") then
-        build()
-    end
-end
-if CRT.Modules then
-    CRT.Modules:OnInit("timeline", buildIfLoaded)
-else
-    buildIfLoaded()
+-- already loaded (another addon opened it first)
+if C_AddOns and C_AddOns.IsAddOnLoaded and C_AddOns.IsAddOnLoaded("Blizzard_EncounterJournal") then
+    build()
 end

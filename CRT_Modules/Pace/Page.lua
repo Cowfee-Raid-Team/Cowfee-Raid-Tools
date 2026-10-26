@@ -484,10 +484,9 @@ end
 
 UI:RegisterPage("pace", TEXT.title, build)
 
--- /crt pace (CRT_Core/Slash.lua's registry; a Raid Lead word, CRT_Core/Modules.lua)
+-- /crt pace (CRT_Core/Slash.lua's registry)
 if CRT.Slash then
     CRT.Slash:Register("pace", {
-        module = "raidlead",
         run = function(rest)
             if rest ~= "" then
                 return false

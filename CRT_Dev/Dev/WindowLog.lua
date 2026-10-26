@@ -73,11 +73,6 @@ end
 -- tints and panel rows reach the body's right edge).
 function Log.PopoutReport()
     local T, View = CRT.Timeline, CRT.TimelineView
-    -- the pop-out is the Timeline module's (CRT_Core/Modules.lua): nothing to report while it is off
-    if not View or (CRT.Modules and not CRT.Modules:IsOn("timeline")) then
-        print("|cffc8a050winlog|r pop-out view: none, the Timeline is turned off")
-        return
-    end
     local view = T and T.PopoutView and T:PopoutView()
     if not (view and view.frame) then
         print("|cffc8a050winlog|r pop-out view: none")

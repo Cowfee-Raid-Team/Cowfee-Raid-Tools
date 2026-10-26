@@ -335,15 +335,10 @@ function LM:OpenMyLoot()
     return false
 end
 
--- /crt loot: your loot (the raider's side, so it works with the Loot module off); /crt loot <word> is the
--- leader's (LM:Command, LootMaster/Test.lua), which says Loot is off while it is (CRT_Core/Slash.lua's
--- registry; a Loot word, CRT_Core/Modules.lua).
+-- /crt loot: your loot; /crt loot <word> is the leader's (LM:Command, LootMaster/Test.lua) (CRT_Core/Slash.lua's
+-- registry).
 if CRT.Slash then
     CRT.Slash:Register("loot", {
-        module = "loot",
-        raider = function(rest)
-            return rest == ""
-        end,
         run = function(rest, msg)
             if rest == "" then
                 LM:OpenMyLoot()
@@ -351,10 +346,8 @@ if CRT.Slash then
             end
             return LM.Command ~= nil and LM:Command(msg)
         end,
-        raiderHelp = {
-            "[/crt loot] - open your loot popup and All Loot Rolls",
-        },
         help = {
+            "[/crt loot] - open your loot popup and All Loot Rolls",
             "[/crt loot test] - try Loot Master with sample items: the Master Loot Window for you, the popup for everyone with CRT ([window], [popup], [end])",
             "[/crt loot settings] - open the Loot Master page ([boss] opens Boss loot)",
         },

@@ -15,7 +15,6 @@ CRT.GearProbe = Probe
 Probe.TEXT = {
     head = "Gear probe: %s (%d %s). Paste the IDs into the season's GearChecks.lua or Tracks.lua.",
     none = "Gear probe: nothing known for %s. Refresh the Gear Checker first.",
-    noChecker = "Gear probe: the Gear Checker isn't loaded, so its rules can't be read.",
     line = "  %s: item %s, enchant %s, gems %s, bonus %s, track %s%s",
     unknownTrack = "unknown",
     trips = " | trips: %s",
@@ -31,14 +30,10 @@ function Probe.Lines(who, pieces)
     if #pieces == 0 then
         return { string.format(Probe.TEXT.none, who) }
     end
-    local GC = CRT.GearChecker
-    if not GC then
-        return { Probe.TEXT.noChecker }
-    end
     local out = { string.format(Probe.TEXT.head, who, #pieces, #pieces == 1 and "item" or "items") }
-    local rules = GC:Rules()
+    local rules = CRT.GearChecker and CRT.GearChecker:Rules()
     for _, p in ipairs(pieces) do
-        local parts = GC.PartsOf(p)
+        local parts = CRT.GearChecker.PartsOf(p)
         local gems = {}
         for g = 1, 4 do
             if parts and parts.gems[g] then
@@ -47,15 +42,15 @@ function Probe.Lines(who, pieces)
         end
         local trips = {}
         for _, c in ipairs(rules and rules.checks or {}) do
-            if c.slots[p.slot] and GC.CheckTrips(c, p, parts) then
+            if c.slots[p.slot] and CRT.GearChecker.CheckTrips(c, p, parts) then
                 trips[#trips + 1] = c.key
             end
         end
         local slot = Gear.Slot(p.slot)
-        local track = GC.TrackOf(parts)
+        local track = CRT.GearChecker.TrackOf(parts)
         out[#out + 1] = string.format(Probe.TEXT.line, slot and slot.name or tostring(p.slot), tostring(p.id or "?"),
             tostring(parts and parts.enchant or "-"), list(gems), list(parts and parts.bonusIds),
-            track and GC.TrackWords(track) or Probe.TEXT.unknownTrack,
+            track and CRT.GearChecker.TrackWords(track) or Probe.TEXT.unknownTrack,
             #trips > 0 and string.format(Probe.TEXT.trips, table.concat(trips, ",")) or "")
         out[#out + 1] = string.format(Probe.TEXT.raw, tostring(p.itemString or "(no item string)"))
     end

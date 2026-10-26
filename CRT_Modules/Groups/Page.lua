@@ -1142,10 +1142,9 @@ end
 
 UI:RegisterPage("groups", "Raid Groups", buildPage)
 
--- /crt groups (CRT_Core/Slash.lua's registry; a Raid Lead word, CRT_Core/Modules.lua)
+-- /crt groups (CRT_Core/Slash.lua's registry)
 if CRT.Slash then
     CRT.Slash:Register("groups", {
-        module = "raidlead",
         run = function(rest)
             if rest ~= "" then
                 return false

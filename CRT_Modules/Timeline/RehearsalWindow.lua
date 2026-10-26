@@ -1052,7 +1052,7 @@ function Run.Install()
 end
 Run.Install()
 
-local events = CRT.Modules and CRT.Modules:Frame("timeline") or CreateFrame("Frame") -- quiet while the module is off (CRT_Core/Modules.lua)
+local events = CreateFrame("Frame")
 events:RegisterEvent("PLAYER_REGEN_DISABLED")
 events:RegisterEvent("PLAYER_REGEN_ENABLED")
 events:RegisterEvent("ENCOUNTER_START")

@@ -1,20 +1,15 @@
 local ADDON, CRT = ...
 
 -- /crt. Core's own words are below; a module registers its own (CRT.Slash:Register, in its own files), so
--- this file never calls into a module that may be turned off (CRT_Core/Modules.lua). A word of a module that is
--- off says so. Developer words stay in the do-not-package block.
+-- each word lives beside the code it runs. Developer words stay in the do-not-package block.
 local Slash = { words = {}, order = {} }
 CRT.Slash = Slash
 
 -- word: the first word typed, in lower case. def:
---   module   the module's key (Modules.lua); its words say it is turned off while it is off
 --   run      run(rest, msg, raw): rest is what follows the word (lower case), msg the whole command (lower
 --            case), raw as typed. Returns false when it doesn't know rest, for "Unknown command".
---   help     the lines /crt help lists for it, while its module is on; each part typed as a command is in
---            square brackets ("[/crt late start], [end] - ..."), shown in the help's command colour
---   raider   raider(rest): true when that use of the word is a raider's and runs with its module off (/crt loot
---            alone opens your loot popup, LootMaster/RaiderWindow.lua); any other use says the module is off
---   raiderHelp  the help lines of those uses, listed whether the module is on or off, before help
+--   help     the lines /crt help lists for it; each part typed as a command is in square brackets
+--            ("[/crt late start], [end] - ..."), shown in the help's command colour
 --   top      true: listed at the top of /crt help, right under /crt itself (a page most players open first);
 --            the others come after Core's notes lines, in the order they registered
 function Slash:Register(word, def)
@@ -24,16 +19,12 @@ function Slash:Register(word, def)
     self.words[word] = def
 end
 
--- Runs a registered word. True when the command was handled (or said its module is off).
+-- Runs a registered word. True when the command was handled.
 function Slash:Run(msg, raw)
     local word, rest = msg:match("^(%S+)%s*(.-)$")
     local def = word and self.words[word]
     if not def then
         return false
-    end
-    local Modules = CRT.Modules
-    if Modules and not (def.raider and def.raider(rest)) and not Modules:Check(def.module) then
-        return true
     end
     return def.run(rest, msg, raw) ~= false
 end
@@ -44,16 +35,12 @@ local function printLines(lines)
     end
 end
 
--- The help lines of the registered words with top == top: a word's raider lines always, the rest while its
--- module is on.
+-- The help lines of the registered words with top == top.
 local function printWords(top)
     for _, word in ipairs(Slash.order) do
         local def = Slash.words[word]
         if (def.top == true) == top then
-            printLines(def.raiderHelp)
-            if not CRT.Modules or CRT.Modules:IsOn(def.module) then
-                printLines(def.help)
-            end
+            printLines(def.help)
         end
     end
 end
@@ -197,11 +184,6 @@ SlashCmdList["COWFEERAIDTOOLS"] = function(msg)
         if CRT.LateTest then
             CRT.LateTest:Toggle()
         end
-    elseif msg == "modules" and CRT.ModulesPage then
-        -- the Modules page, developer builds only for now (Dev/ModulesPage.lua)
-        CRT.ModulesPage.Open()
-    elseif CRT.ModulesDev and CRT.ModulesDev:Command(msg) then
-        -- dev modules [<key> on|off]: list the module switches or set one, for after a /reload (Dev/Modules.lua)
     elseif CRT.NoteTargetsDev and CRT.NoteTargetsDev:Command(msg) then
         -- dev nsrt, dev mrt and dev all: the note targets (Dev/NoteTargets.lua)
     elseif CRT.LootDev and CRT.LootDev:Command(msg, raw) then

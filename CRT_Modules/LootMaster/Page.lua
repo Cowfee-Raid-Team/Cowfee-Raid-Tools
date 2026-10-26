@@ -954,20 +954,11 @@ local function build(pf)
     selectTab(currentTab)
 end
 
--- Made once Loot is known to be on (CRT_Core/Modules.lua), so with Loot off nothing here runs on a change;
--- straight away without the registry.
-local function hookChanges()
-    LM:OnChange(function(what)
-        if what == "responses" or what == "session" or what == "started" or what == "ended" or what == "scores"
-            or what == "authority" or what == "sync" or what == "looting" or what == "filter" or what == "bossloot" then
-            refresh()
-        end
-    end)
-end
-if CRT.Modules then
-    CRT.Modules:OnInit("loot", hookChanges)
-else
-    hookChanges()
-end
+LM:OnChange(function(what)
+    if what == "responses" or what == "session" or what == "started" or what == "ended" or what == "scores"
+        or what == "authority" or what == "sync" or what == "looting" or what == "filter" or what == "bossloot" then
+        refresh()
+    end
+end)
 
 UI:RegisterPage("lootmaster", TEXT.title, build)
