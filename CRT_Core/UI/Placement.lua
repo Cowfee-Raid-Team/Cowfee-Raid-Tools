@@ -3,7 +3,7 @@ local ADDON, CRT = ...
 -- Placement: the one helper every movable CRT element is placed, dragged, nudged, reset and anchored by (the
 -- alert areas, the note callout, the break timer, low health, the marker display, consumables, debuffs, pace and
 -- the ready check window). The Placement panel, the selection outline and the drag guides are drawn by
--- UI/PlacementPanel.lua.
+-- UI/PlacementPanel.lua; Select Anchor's overlay, hit test, outline and name tag are UI/PlacementSelect.lua's.
 --
 -- Saved data: each element keeps its place as store().position = { point, relativePoint, x, y, anchor }, the same
 -- table as before this helper, with one optional field: anchor, the key of the CRT element it is anchored to (none
@@ -55,9 +55,10 @@ local ADDON, CRT = ...
 --   P.ResolveFocus(region) -> frame, name, own: the nearest frame with a global name up from a region (the one under
 --                the cursor), or own when it is part of CRT
 --   el:AnchorProblem(key) -> nil, or why it can't anchor to that element or frame (CanAnchorTo is its nil)
---   Picking: el:StartPick(), then P.PickTarget(P.UnderCursor()) names what is under the cursor and Enter or Space
---                (P.OnKey -> P.PickChoose) anchors to it; clicks never pick a frame, so the click never reaches it.
---                P.message holds what the last pick or typed name was refused with, for the panel
+--   Select Anchor: el:StartPick() (P.picking), then P.PickTarget(P.UnderCursor()) names what is under the cursor
+--                and a left click, Enter or Space (P.OnKey -> P.PickChoose) anchors to it. The overlay that takes
+--                the click, so it never reaches the frame under it, and the hit test are UI/PlacementSelect.lua's.
+--                P.message holds what the last choice or typed name was refused with, for the panel
 --   UI.Placement.Select(el) / Deselect()   the selected element (gold outline) takes the arrow keys
 -- Nothing moves and no key is taken in combat: a drag, the gear, the keys and Reset refuse, and combat starting drops
 -- the selection and puts a dragged element back at its saved place. Nothing is selected, dragged or given the keys
@@ -1081,7 +1082,8 @@ function P.Keys(on)
 end
 
 -- A key while an element is selected: an arrow moves it P.NUDGE (Shift: P.NUDGE_BIG) and is kept from the game,
--- Escape stops picking or drops the selection, Enter or Space while picking anchors to what is under the cursor;
+-- Escape stops selecting an anchor or drops the selection, Enter or Space while selecting anchors to what is under
+-- the cursor;
 -- any other key goes on to the game. Returns whether it took the key.
 function P.OnKey(key)
     if inCombat() then
@@ -1131,14 +1133,14 @@ function P.Deselect()
     changed(was)
 end
 
--- Picking an anchor on screen: Enter or Space anchors the picking one to the frame under the cursor (P.PickChoose),
--- and a click on another element's box anchors it to that element.
+-- Select Anchor: until a frame is chosen or it is cancelled, a left click (on UI/PlacementSelect.lua's overlay),
+-- Enter or Space anchors the selecting one to the frame under the cursor (P.PickChoose). Refused in combat.
 function El:StartPick()
     if inCombat() then
         return P.Refuse()
     end
     P.Select(self)
-    P.picking, P.message = self, nil
+    P.picking, P.message, P.messageFor = self, nil, nil
     changed(self)
     return true
 end
@@ -1156,7 +1158,8 @@ function P.Escape()
     end
 end
 
--- A left click on an element's box: while picking, it becomes the anchor (when it can); else it is selected.
+-- A left click on an element's box: while selecting an anchor, it becomes the anchor (when it can); else it is
+-- selected. (While selecting, the overlay takes the clicks, and P.PickChoose finds the element under it.)
 function P.Click(el)
     if inCombat() or not el:Editable() then
         return
@@ -1200,25 +1203,17 @@ function P.PickTarget(region)
     return "noname"
 end
 
--- The topmost region under the cursor (GetMouseFoci), or nil.
-function P.UnderCursor()
-    if not GetMouseFoci then
-        return nil
-    end
-    local ok, foci = pcall(GetMouseFoci)
-    return ok and type(foci) == "table" and foci[1] or nil
-end
-
 local PICK_REFUSED = { noname = "noName", forbidden = "forbidden", nothing = "nothing", own = "own" }
 
--- Enter or Space while picking: anchors to what is under the cursor, or says why not (P.message) and goes on
--- picking. Clicks never pick, so the click never reaches the frame under the cursor (it would target or cast).
+-- A left click on the overlay, Enter or Space while selecting: anchors to what is under the cursor
+-- (UI/PlacementSelect.lua's P.UnderCursor), or says why not (P.message, P.messageFor what it was about) and goes on
+-- selecting.
 function P.PickChoose()
     local el = P.picking
     if not el or inCombat() then
         return false
     end
-    local kind, what, name = P.PickTarget(P.UnderCursor())
+    local kind, what, name = P.PickTarget(P.UnderCursor and P.UnderCursor())
     local ok, why = false, TEXT[PICK_REFUSED[kind] or "nothing"]
     if kind == "element" then
         why = el:AnchorProblem(what.key)
@@ -1228,9 +1223,9 @@ function P.PickChoose()
         ok, why = P.AnchorToName(el, name)
     end
     if ok then
-        P.picking, P.message = nil, nil
+        P.picking, P.message, P.messageFor = nil, nil, nil
     else
-        P.message = why or TEXT.nothing
+        P.message, P.messageFor = why or TEXT.nothing, what
     end
     changed(el)
     return ok

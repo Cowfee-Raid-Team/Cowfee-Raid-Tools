@@ -1,10 +1,13 @@
-// CRT_Core/UI/Placement.lua and CRT_Core/UI/PlacementPanel.lua: the one helper every movable CRT element is placed by.
+// CRT_Core/UI/Placement.lua, PlacementPanel.lua and PlacementSelect.lua: the one helper every movable CRT element is
+// placed by.
 // On mock frames that work out where they are from their anchors (as the game does): old saved places load unchanged;
 // X and Y apply and stay on the screen; Centre horizontally and vertically; the arrow keys nudge 1 and Shift 10 px
 // and only while selected and out of combat; a drag snaps within 6 px and not with Shift; an element anchored to
 // another keeps its offset and follows it (a move, a nudge, a reset, and while it is hidden); a loop can't be made;
-// Reset clears the anchor; the gear and the panel refuse in combat. Then a lint: every movable element in the
-// modules is placed by the helper, with none of its own drag or save code.
+// Reset clears the anchor; the gear and the panel refuse in combat; Select Anchor's overlay takes the clicks (the
+// frame under it hears none), its hit test finds the topmost frame that takes the mouse, a left click selects, a
+// right click or Escape cancels, the refusals apply, and combat refuses and cancels it. Then a lint: every movable
+// element in the modules is placed by the helper, with none of its own drag or save code.
 // Usage: node run_placement.js <addon folder>
 const fs = require('fs');
 const path = require('path');
@@ -51,10 +54,12 @@ local function rect(f, depth)
   return rx + rfx * rw + p.x - fx * f.w, ry + rfy * rh + p.y - fy * f.h, f.w, f.h
 end
 local inCombat, shiftDown = false, false
+local cursorX, cursorY = 0, 0
 local propagate = {}
 local function mock(kind, parent, template, name)
   local m = { kind = kind, parent = parent, template = template, name = name, shown = true, pts = {}, w = 0, h = 0, text = "", scripts = {}, hooks = {} }
   frames[#frames + 1] = m
+  m.idx = #frames
   local methods = {
     SetPoint = function(self, point, rel, rp, x, y)
       if type(rel) == "number" then rel, rp, x, y = nil, nil, rel, rp end
@@ -100,7 +105,27 @@ local function mock(kind, parent, template, name)
     end,
     HasFocus = function(self) return self.focus == true end,
     ClearFocus = function(self) self.focus = false end,
-    GetFrameLevel = function() return 1 end,
+    GetFrameLevel = function(self) return self.level or 1 end,
+    SetFrameLevel = function(self, l) self.level = l end,
+    GetFrameStrata = function(self) return self.strata or "MEDIUM" end,
+    SetFrameStrata = function(self, s) self.strata = s end,
+    -- the mouse: off until enabled, as on a new frame; EnableMouse is both clicks and hovering
+    EnableMouse = function(self, on) self.click, self.motion = on and true or false, on and true or false end,
+    SetMouseClickEnabled = function(self, on) self.click = on and true or false end,
+    SetMouseMotionEnabled = function(self, on) self.motion = on and true or false end,
+    IsMouseClickEnabled = function(self) return self.click == true end,
+    IsMouseMotionEnabled = function(self) return self.motion == true end,
+    IsMouseOver = function(self)
+      local cx, cy, w, h = rect(self)
+      if not cx then return false end
+      return math.abs(cursorX - cx) <= w / 2 and math.abs(cursorY - cy) <= h / 2
+    end,
+    SetAllPoints = function(self, rel)
+      rel = rel or self.parent or UIParent
+      self.pts = { { point = "CENTER", rel = rel, rp = "CENTER", x = 0, y = 0 } }
+      local _, _, w, h = rect(rel)
+      self.w, self.h = w or 0, h or 0
+    end,
   }
   return setmetatable(m, { __index = function(_, k)
     if methods[k] then return methods[k] end
@@ -116,10 +141,37 @@ WorldFrame:SetPoint("CENTER", UIParent, "CENTER")
 function CreateFrame(kind, name, parent, template) local f = mock(kind, parent, template, name) if name then _G[name] = f end return f end
 function InCombatLockdown() return inCombat end
 function IsShiftKeyDown() return shiftDown end
-local cursorX, cursorY = 0, 0
 function GetCursorPosition() return cursorX, cursorY end
-local focus -- the region under the cursor (GetMouseFoci's first)
-function GetMouseFoci() return { focus } end
+-- every frame that isn't forbidden, in the order they were made (textures and texts are regions, not frames)
+local enumerated = 0 -- how many times the frames were gone through
+function EnumerateFrames(cur)
+  if not cur then enumerated = enumerated + 1 end
+  for i = cur and cur.idx + 1 or 1, #frames do
+    local f = frames[i]
+    if f.kind ~= "Texture" and f.kind ~= "FontString" and not f.forbidden then return f end
+  end
+end
+local clock = 0
+function GetTime() return clock end
+-- The game's click: it goes to the topmost frame under the cursor that takes clicks (strata, then frame level, then
+-- the one made later): its OnMouseDown, its OnMouseUp, and a button's OnClick.
+local STRATA = { WORLD = 1, BACKGROUND = 2, LOW = 3, MEDIUM = 4, HIGH = 5, DIALOG = 6, FULLSCREEN = 7, FULLSCREEN_DIALOG = 8, TOOLTIP = 9 }
+local function clickAt(button)
+  local best
+  for _, f in ipairs(frames) do
+    if f.kind ~= "Texture" and f.kind ~= "FontString" and f.click and f:IsVisible() and f:IsMouseOver() then
+      local r, l = STRATA[f:GetFrameStrata()], f:GetFrameLevel()
+      if not best or r > best.r or (r == best.r and l >= best.l) then best = { f = f, r = r, l = l } end
+    end
+  end
+  local f = best and best.f
+  if f then
+    if f.scripts.OnMouseDown then f.scripts.OnMouseDown(f, button) end
+    if f.scripts.OnMouseUp then f.scripts.OnMouseUp(f, button, true) end
+    if f.kind == "Button" and f.scripts.OnClick then f.scripts.OnClick(f, button, false) end
+  end
+  return f
+end
 local timers, timersEver = {}, 0
 C_Timer = { After = function(d, fn) timersEver = timersEver + 1 timers[#timers + 1] = { d, fn } end }
 -- an event to every frame that registered it
@@ -155,7 +207,7 @@ function UI.ContextMenu(owner, fill)
   menus[#menus + 1] = root
   return root
 end
-function UI.PanelButton(parent, label, h, onClick) local b = mock("Button", parent) b.label = label b.scripts.OnClick = onClick buttons[label] = b return b end
+function UI.PanelButton(parent, label, h, onClick) local b = mock("Button", parent) b.label = label b.height = h b.scripts.OnClick = onClick buttons[label] = b return b end
 function UI.Dropdown(parent, label, opts) local r = mock("Row", parent) r.opts = opts r.refresh = function() end dropdowns[label] = r return r end
 function UI.Window(name, opts)
   local f = mock("Frame", UIParent, nil, name)
@@ -169,6 +221,7 @@ end
 
 assert(load(SRC.placement, "Placement"))("CowfeeRaidTools", CRT)
 assert(load(SRC.panel, "PlacementPanel"))("CowfeeRaidTools", CRT)
+assert(load(SRC.select, "PlacementSelect"))("CowfeeRaidTools", CRT)
 local P = UI.Placement
 check(P and type(P.Define) == "function" and type(P.OpenPanel) == "function", "the helper and its panel load")
 
@@ -448,12 +501,12 @@ dropdowns["Anchor to"].opts.set("texts")
 check(CRT.db.b.position.anchor == "texts" and dropdowns["Anchor to"].opts.get() == "texts", "Anchor to sets the anchor")
 dropdowns["Anchor to"].opts.set("screen")
 check(CRT.db.b.position.anchor == nil, "and Screen clears it")
--- Pick on screen: the next click on another element's box anchors to it; Escape cancels
-buttons["Pick on screen"].scripts.OnClick()
+-- Select Anchor: a click on another element's box anchors to it; Escape cancels
+buttons["Select Anchor"].scripts.OnClick()
 check(P.picking == B and panel.picking.shown, "picking, with its line on the panel")
 P.Click(C)
 check(P.picking == nil and CRT.db.b.position.anchor == "pace", "a click on another element's box anchors to it")
-buttons["Pick on screen"].scripts.OnClick()
+buttons["Select Anchor"].scripts.OnClick()
 P.OnKey("ESCAPE")
 check(P.picking == nil and P.selected == B and panel.shown, "Escape cancels picking")
 P.OnKey("ESCAPE")
@@ -467,7 +520,7 @@ check(CRT.db.b.position == nil, "the panel's Reset")
 buttons["Done"].scripts.OnClick()
 check(not panel.shown and P.selected == nil and not keys.shown, "Done closes it and lets go of the keys")
 P.OpenPanel(E)
-check(dropdowns["Anchor to"].opts.enabledIf() == false and buttons["Pick on screen"].enabled == false, "no Anchor to for an element that stays on the screen")
+check(dropdowns["Anchor to"].opts.enabledIf() == false and buttons["Select Anchor"].enabled == false, "no Anchor to for an element that stays on the screen")
 P.ClosePanel()
 
 -- only in Previews (or a page's own preview): a hidden drag box, or a window that is its own drag box outside
@@ -667,7 +720,7 @@ check(Q:AnchorStatus() == format(T.cantUse, "TestRefuser"), "and it can't be use
 Q:Reset()
 P.AnchorToName(Q, "TestUnitFrame")
 
--- the panel: the Anchor to list, the frame name box and Pick on screen ----------------------------------------
+-- the panel: the Anchor to list, the frame name box and Select Anchor -----------------------------------------
 P.OpenPanel(Q)
 local list = dropdowns["Anchor to"].opts.options()
 local hasUnit
@@ -682,54 +735,157 @@ panel.frameBox.scripts.OnEnterPressed(panel.frameBox)
 check(Q:Saved().anchor == "frame:TestPlainFrame" and select(2, pt(fq)) == plain, "a name in the box and Enter anchors to it")
 dropdowns["Anchor to"].opts.set("screen")
 check(Q:Saved().anchor == nil and select(2, pt(fq)) == UIParent, "Screen takes it back off")
--- Pick on screen: the name shows at the cursor, Enter or Space anchors, and a click never picks a frame (it would
--- reach the frame under the cursor: target, cast, press)
-buttons["Pick on screen"].scripts.OnClick()
-check(P.picking == Q and keys.shown, "picking takes the keys, as the arrows do")
-focus = barText
+-- Select Anchor: the screen dims under a click-catching overlay, the frame under the cursor is found by a hit test
+-- (not the mouse focus, which is the overlay), outlined and named at the cursor; a left click selects it and never
+-- reaches it (no target, no cast, no press), a right click or Escape cancels, Enter and Space still select
+local SEL = buttons["Select Anchor"]
+check(SEL and buttons["Pick on screen"] == nil, "the button is called Select Anchor")
+check(SEL.height > buttons["Anchor"].height and SEL.pts[1].y > dropdowns["Anchor to"].pts[1].y, "Select Anchor is the main control: larger, and above Anchor to")
+check(panel.frameHelp.tip:find("Select Anchor", 1, true) ~= nil, "the Frame name help points to Select Anchor")
+local unitDowns, unitClicks = 0, 0
+unit:EnableMouse(true)
+unit.scripts.OnMouseDown = function() unitDowns = unitDowns + 1 end
+unit.scripts.OnClick = function() unitClicks = unitClicks + 1 end
+-- its bar and a part of the bar take hovering only (clicks go on to the unit frame), as the game's often do
+bar:SetMouseMotionEnabled(true) bar:SetFrameLevel(2)
+local deep = CreateFrame("Frame", nil, bar) deep:SetSize(20, 10) deep:SetPoint("CENTER", bar, "CENTER") deep:SetMouseMotionEnabled(true) deep:SetFrameLevel(2)
+-- over it: a frame that takes no mouse, a hidden one, and one in a lower strata with a higher level, all passed over
+local cover = CreateFrame("Frame", "TestCoverPlain", UIParent) cover:SetSize(300, 100) cover:SetPoint("CENTER", unit, "CENTER") cover:SetFrameStrata("HIGH")
+local hiddenOver = CreateFrame("Frame", "TestHiddenOver", UIParent) hiddenOver:SetSize(50, 50) hiddenOver:SetPoint("CENTER", unit, "CENTER")
+hiddenOver:EnableMouse(true) hiddenOver:SetFrameStrata("DIALOG") hiddenOver:Hide()
+local lowHigh = CreateFrame("Frame", "TestLowHigh", UIParent) lowHigh:SetSize(50, 50) lowHigh:SetPoint("CENTER", unit, "CENTER")
+lowHigh:EnableMouse(true) lowHigh:SetFrameStrata("LOW") lowHigh:SetFrameLevel(50)
+-- a mouse-enabled window in front of the unit frame's right end
+local over = CreateFrame("Frame", "TestDialogOver", UIParent) over:SetSize(30, 30) over:SetPoint("CENTER", unit, "CENTER", 80, 0)
+over:EnableMouse(true) over:SetFrameStrata("DIALOG")
+WorldFrame:EnableMouse(true) WorldFrame:SetFrameStrata("WORLD")
+local ux0, uy0 = centre(unit)
+cursorX, cursorY = ux0, uy0
+SEL.scripts.OnClick()
+local ov = P.pickOverlay
+check(P.picking == Q and keys.shown, "selecting takes the keys, as the arrows do")
+check(ov and ov.shown and ov.click == true and (ov.strata == "FULLSCREEN_DIALOG" or ov.strata == "TOOLTIP"), "a click-catching overlay on top of everything: " .. tostring(ov and ov.strata))
+check(ov.w == SCREEN_W and ov.h == SCREEN_H and ov.dim ~= nil, "it covers the whole screen and dims it")
+check(P.pickTag and P.pickTag.shown and P.pickTag.text.text == "TestUnitFrame", "the frame under the cursor is named at the cursor (through its unnamed children): " .. tostring(P.pickTag and P.pickTag.text.text))
+local bx, by, bw, bh = rect(P.pickBox)
+check(P.pickBox.shown and bx == ux0 and by == uy0 and bw >= 200 and bh >= 60, "and outlined: " .. tostring(bx) .. ", " .. tostring(by) .. " " .. tostring(bw))
+check(P.pickBox.strata == "TOOLTIP" and (P.pickBox.level or 1) > (ov.level or 1) and (P.pickTag.level or 1) > (ov.level or 1), "the outline and the name show above the dimming")
+cursorX = ux0 + 80
 P.PickHover()
-check(P.pickTag and P.pickTag.shown and P.pickTag.text.text == "TestUnitFrame", "hovering a frame while picking shows its name at the cursor")
-fire("GLOBAL_MOUSE_DOWN", "LeftButton")
-check(P.picking == Q and Q:Saved().anchor == nil and select(2, pt(fq)) == UIParent, "a click doesn't pick: picking goes on, nothing anchored")
-check(P.OnKey("W") == false and keys.propagate == true, "any other key goes on to the game while picking")
+check(P.pickTag.text.text == "TestDialogOver", "a window in front of it wins (higher strata)")
+cursorX = ux0
+P.PickHover()
+check(P.pickTag.text.text == "TestUnitFrame", "back on the unit frame")
+-- the click: the overlay takes it, the unit frame hears nothing
+local got = clickAt("LeftButton")
+check(got == ov and unitDowns == 0 and unitClicks == 0, "a left click goes to the overlay, never to the frame under it")
+check(P.picking == nil and Q:Saved().anchor == "frame:TestUnitFrame" and select(2, pt(fq)) == unit, "and selects it: anchored")
+check(not ov.shown and not P.pickTag.shown and not P.pickBox.shown, "the overlay, the name and the outline go")
+check(clickAt("LeftButton") == unit and unitClicks == 1, "(after selecting, a click reaches the unit frame again)")
+unitDowns, unitClicks = 0, 0
+-- Enter and Space still select
+SEL.scripts.OnClick()
+cursorX = ux0 + 80
+P.PickHover()
+check(P.OnKey("W") == false and keys.propagate == true, "any other key goes on to the game while selecting")
 check(P.OnKey("ENTER") == true and keys.propagate == false, "Enter is taken from the game")
 keys.scripts.OnKeyUp(keys, "ENTER")
-check(P.picking == nil and Q:Saved().anchor == "frame:TestUnitFrame" and select(2, pt(fq)) == unit, "Enter anchors to the hovered frame")
-check(not P.pickTag.shown, "and the name tag goes")
-buttons["Pick on screen"].scripts.OnClick()
-focus = anonChild
+check(P.picking == nil and Q:Saved().anchor == "frame:TestDialogOver", "Enter selects the frame under the cursor")
+-- refused: nothing selected, a message, selecting goes on
+SEL.scripts.OnClick()
+anonChild:SetSize(20, 20) anonChild:SetPoint("CENTER", anon, "CENTER") anonChild:EnableMouse(true)
+P.ForgetHits()
+cursorX, cursorY = centre(anon)
 P.PickHover()
-check(P.pickTag.text.text == T.noName, "a frame with no name says so while hovered")
+check(P.pickTag.text.text == T.noName and not P.pickBox.shown, "a frame with no name says so, with no outline")
+clickAt("LeftButton")
+check(P.picking == Q and ov.shown and panel.status.text == T.noName and Q:Saved().anchor == "frame:TestDialogOver", "a click on it is refused, with that message, and selecting goes on")
 P.OnKey("SPACE")
-check(P.picking == Q and panel.status.text == T.noName and Q:Saved().anchor == "frame:TestUnitFrame", "Space on it is refused, with that message, and picking goes on")
-focus = WorldFrame
+check(P.picking == Q and panel.status.text == T.noName, "Space on it too")
+cursorX, cursorY = 100, 1000
 P.PickHover()
 check(P.pickTag.text.text == T.nothing, "over the world: nothing to anchor to")
-P.OnKey("ENTER")
-check(P.picking == Q and panel.status.text == T.nothing, "Enter there says so")
-focus = nil
+clickAt("LeftButton")
+check(P.picking == Q and panel.status.text == T.nothing, "a click there says so and selecting goes on")
+local function refusedAt(f, want, what)
+  f:EnableMouse(true)
+  P.ForgetHits()
+  cursorX, cursorY = centre(f)
+  clickAt("LeftButton")
+  check(P.picking == Q and panel.status.text == want and Q:Saved().anchor == "frame:TestDialogOver", what .. ": " .. tostring(panel.status.text))
+  check(P.pickTag.shown and P.pickTag.text.text == want, what .. ": the reason shows at the cursor")
+end
+refusedAt(loop1, T.loop, "a frame anchored to this one")
+plate:SetFrameLevel(5)
+refusedAt(plate, T.forbidden, "a frame the game keeps from addons (a nameplate)")
+fq.protected = true
+refusedAt(plain, T.spread, "a protected element to a frame that isn't protected")
+fq.protected = nil
+crtNamed:EnableMouse(true)
+P.ForgetHits()
+cursorX, cursorY = centre(crtNamed)
+cursorX = cursorX + 12
 P.PickHover()
-check(P.pickTag.text.text == T.nothing, "over nothing at all: the same")
-focus = hq
+check(not P.pickTag.shown, "over CRT's own frames: no name")
+clickAt("LeftButton")
+check(P.picking == Q and panel.status.text == T.own, "a click there is refused")
+-- CRT's elements: its own box shows nothing, another's selects that element
+hq:SetSize(160, 16) hq:SetPoint("BOTTOM", fq, "TOP")
+ha:SetSize(200, 16) ha:SetPoint("BOTTOM", fa, "TOP")
+P.ForgetHits()
+cursorX, cursorY = centre(hq)
 P.PickHover()
-check(not P.pickTag.shown, "over its own box: no tag")
-focus = ha
+check(not P.pickTag.shown and not P.pickBox.shown, "over its own box: no name, no outline")
+cursorX, cursorY = centre(ha)
 P.PickHover()
-check(P.pickTag.shown and P.pickTag.text.text == "Critical alerts text", "over another element's box: that element's name")
-P.OnKey("ENTER")
-check(P.picking == nil and Q:Saved().anchor == "texts", "Enter anchors to that element")
-buttons["Pick on screen"].scripts.OnClick()
+check(P.pickTag.shown and P.pickTag.text.text == "Critical alerts text" and P.pickBox.shown, "over another element's box: that element's name, outlined")
+clickAt("LeftButton")
+check(P.picking == nil and Q:Saved().anchor == "texts", "a click selects that element")
+-- cancelling: a right click or Escape, nothing changed
+SEL.scripts.OnClick()
+cursorX, cursorY = ux0, uy0
+P.PickHover()
+check(clickAt("RightButton") == ov and unitDowns == 0 and unitClicks == 0, "a right click goes to the overlay too")
+check(P.picking == nil and not ov.shown and Q:Saved().anchor == "texts", "and cancels: nothing changed")
+SEL.scripts.OnClick()
+P.OnKey("ESCAPE")
+check(P.picking == nil and not ov.shown and not P.pickTag.shown and not P.pickBox.shown and Q:Saved().anchor == "texts", "Escape cancels")
+-- the hit test is cheap: the frames are gone through once, again only after a while
+local before2 = enumerated
+SEL.scripts.OnClick()
+for i = 1, 5 do cursorX = ux0 + i P.PickHover() end
+check(enumerated - before2 == 1, "moving over the screen goes through the frames once: " .. (enumerated - before2))
+clock = clock + 5
+P.PickHover()
+check(enumerated - before2 == 1, "a still cursor reads nothing again")
+cursorX = ux0
+P.PickHover()
+check(enumerated - before2 == 2, "a move after a while reads them again, for frames shown since: " .. (enumerated - before2))
+P.OnKey("ESCAPE")
+-- combat: refused, and combat starting cancels it
+SEL.scripts.OnClick()
 P.Click(B)
 check(P.picking == nil and Q:Saved().anchor == "callout", "a click on another element's box still anchors to it")
-buttons["Pick on screen"].scripts.OnClick()
+SEL.scripts.OnClick()
 inCombat = true
 check(P.OnKey("ENTER") == false and P.picking == Q, "in combat Enter goes to the game")
+ov.scripts.OnUpdate(ov, 1)
+check(P.picking == nil and not ov.shown, "in combat the overlay goes at once, even before the combat event")
 inCombat = false
+SEL.scripts.OnClick()
+inCombat = true
+fire("PLAYER_REGEN_DISABLED")
+check(P.picking == nil and not ov.shown and not P.pickTag.shown and not P.pickBox.shown, "combat starting cancels selecting")
+inCombat = false
+P.OpenPanel(Q)
+inCombat = true
+local errs = #errorLines
+SEL.scripts.OnClick()
+check(P.picking == nil and #errorLines == errs + 1 and errorLines[#errorLines] == P.TEXT.combat and not ov.shown, "Select Anchor is refused in combat")
+inCombat = false
+SEL.scripts.OnClick()
 dropdowns["Anchor to"].opts.set("screen")
-check(P.picking == nil and Q:Saved().anchor == nil, "a choice from the Anchor to list ends picking")
-buttons["Pick on screen"].scripts.OnClick()
-P.OnKey("ESCAPE")
-check(P.picking == nil and not P.pickTag.shown, "Escape stops picking and hides the name tag")
+check(P.picking == nil and Q:Saved().anchor == nil and not ov.shown, "a choice from the Anchor to list ends selecting")
 P.ClosePanel()
 Q:Reset()
 
@@ -840,6 +996,7 @@ if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.
 lua.lua_newtable(L);
 lua.lua_pushstring(L, to_luastring(read('CRT_Core/UI/Placement.lua'))); lua.lua_setfield(L, -2, to_luastring('placement'));
 lua.lua_pushstring(L, to_luastring(read('CRT_Core/UI/PlacementPanel.lua'))); lua.lua_setfield(L, -2, to_luastring('panel'));
+lua.lua_pushstring(L, to_luastring(read('CRT_Core/UI/PlacementSelect.lua'))); lua.lua_setfield(L, -2, to_luastring('select'));
 lua.lua_newtable(L);
 ELEMENTS.forEach(([file, key], i) => {
   lua.lua_newtable(L);
