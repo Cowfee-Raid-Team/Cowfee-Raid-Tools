@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.1.4 (2026-10-25)
+
+- **Placement** (new): move, nudge, centre and anchor every movable element from its gear.
+- **Select Anchor:** click any frame on screen, like your unit frame, to anchor to it.
+- **Share alerts:** export and import Mech Alerts and special alerts as a code.
+- **Impact ticks:** fill-up bars with tick marks on any mechanic.
+- **Special alerts:** your own Show from, icons, roles and pre-pull alerts.
+- **Test buttons:** play around the first cast and read Stop while running.
+- **Timeline:** deaths as spec icons, drag to zoom, and a larger pop-out.
+- **Healer CDs:** hover a row and click to place a cooldown.
+- **Raid Notes:** timer lines move with their assignment line.
+- **Loot Master:** My Loot card and /crt loot; raiders always see the boss's loot.
+- **Gear Checker:** Extra filters for upgrades, item level, enchants and empty slots.
+- **Window opacity:** sets each window's background.
+- **Themes:** warning colours contrast with each theme.
+- **Default places:** tidier starting spots for the alert areas.
+- **Midnight Season 2:** three-raid route and more upgrade track IDs.
+- **Fixes:** Loot History duplicates, Extra filters closing, Raid Notes Send to row.
+
 ## 1.1.3 (2026-10-24)
 
 - **Season Stats** (new, under Modules): pulls, wipes, kills, first and best kill per boss, your repair bill and the raid's repair costs, and a reflection for each boss.

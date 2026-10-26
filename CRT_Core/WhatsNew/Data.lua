@@ -6,6 +6,17 @@ local ADDON, CRT = ...
 -- CRT_Dev/Tests/run_whatsnew.js checks every entry.
 CRT.WhatsNewData = {
     {
+        version = "1.1.4",
+        lines = {
+            "Placement: move, centre and anchor every element",
+            "Select Anchor: click your unit frame to anchor to it",
+            "Share Mech Alerts and special alerts as a code",
+            "Impact ticks and fill-up bars on any mechanic",
+            "My Loot card and /crt loot open your roll window",
+        },
+        more = 11,
+    },
+    {
         version = "1.1.3",
         lines = {
             "Season Stats: kills, wipes and repair costs per boss",
