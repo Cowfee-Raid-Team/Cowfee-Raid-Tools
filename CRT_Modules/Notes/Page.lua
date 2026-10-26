@@ -571,8 +571,6 @@ local function buildNotes(pf)
             CRT:Print("This note has no invite list, so there is no roster for it.")
         end
     end)
-    -- Raid Groups is Raid Lead's page: no button while Raid Lead is off (CRT_Core/Modules.lua drops the page)
-    roster:SetShown(UI.pages == nil or UI.pages.groups ~= nil)
     -- Where Share to raid sends the note: CRT's own sharing, another raid addon's note, or all of them.
     local sendTo = UI.Dropdown(pf, TEXT.sendTo, {
         labelWidth = 56,
@@ -585,7 +583,7 @@ local function buildNotes(pf)
     })
     -- Save to personal (on the Shared tab): a copy of this note, with your changes, kept as your own
     toPersonal = makeButton(pf, TEXT.toPersonal, LIST_W)
-    toPersonal:SetPoint("TOPLEFT", roster:IsShown() and roster or active, "BOTTOMLEFT", 0, -4)
+    toPersonal:SetPoint("TOPLEFT", roster, "BOTTOMLEFT", 0, -4)
     toPersonal:SetScript("OnClick", function()
         if not selected then
             return

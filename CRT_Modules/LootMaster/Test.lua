@@ -215,6 +215,5 @@ function LM:Command(msg)
     return true
 end
 
--- The /crt loot word is registered in LootMaster/RaiderWindow.lua: /crt loot alone opens your loot (the
--- raider's side, there with Loot off); with a word after it, it runs LM:Command. Loot History has no word
--- of its own: it opens from the menu.
+-- The /crt loot word is registered in LootMaster/RaiderWindow.lua: /crt loot alone opens your loot; with a
+-- word after it, it runs LM:Command. Loot History has no word of its own: it opens from the menu.

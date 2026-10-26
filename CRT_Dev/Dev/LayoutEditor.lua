@@ -575,9 +575,7 @@ function Dev:ResetAllPositions()
     CRT.LowHealth:ResetPosition()
     CRT.ReadyCheckWindow:ResetPosition()
     CRT.MarkerDisplay:ResetPosition()
-    if CRT.Pace and CRT.Pace.ResetPosition then
-        CRT.Pace:ResetPosition()
-    end
+    CRT.Pace:ResetPosition()
     CRT.BreakTimer:ResetPosition()
     local pop = CRT.db.timeline.popout
     pop.point, pop.relativePoint, pop.x, pop.y = nil, nil, nil, nil

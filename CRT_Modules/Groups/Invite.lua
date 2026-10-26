@@ -618,7 +618,7 @@ local function afterCombat()
     updateSoon()
 end
 
-local events = CRT.Modules and CRT.Modules:Frame("raidlead") or CreateFrame("Frame") -- quiet while the module is off (CRT_Core/Modules.lua)
+local events = CreateFrame("Frame")
 events:RegisterEvent("GROUP_ROSTER_UPDATE")
 events:RegisterEvent("PARTY_LEADER_CHANGED")
 events:RegisterEvent("PLAYER_REGEN_DISABLED")

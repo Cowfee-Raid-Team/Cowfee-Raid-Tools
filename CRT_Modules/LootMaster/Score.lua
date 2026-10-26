@@ -106,17 +106,23 @@ function LM.ScoreList()
     return list
 end
 
--- The scores follow the Late Tracker's changes. The hook is made once every file has loaded (CRT_Core/Modules.lua),
--- so it doesn't matter which loads first; with Raid Lead off the Late Tracker changes nothing, and the scores still
--- read the nights it saved (Late/Data.lua's Status and Seconds read a saved night, nothing else). Straight away
--- without the registry.
+-- The scores follow the Late Tracker's changes. The hook is made at once when the Late Tracker has loaded (the
+-- .toc loads it first), else on this addon's ADDON_LOADED, once every file has, so it doesn't matter which loads
+-- first.
 local function hookLate()
     if CRT.Late and CRT.Late.OnChange then
         CRT.Late:OnChange(LM.ScoreChanged)
     end
 end
-if CRT.Modules then
-    CRT.Modules:OnInit("loot", hookLate)
+if not CRT.Late and CreateFrame then
+    local loaded = CreateFrame("Frame")
+    loaded:RegisterEvent("ADDON_LOADED")
+    loaded:SetScript("OnEvent", function(self, _, name)
+        if name == ADDON then
+            self:UnregisterEvent("ADDON_LOADED")
+            hookLate()
+        end
+    end)
 else
     hookLate()
 end

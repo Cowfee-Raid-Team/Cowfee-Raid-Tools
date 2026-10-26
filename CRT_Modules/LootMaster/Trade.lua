@@ -216,7 +216,7 @@ local function completed(message)
     end
 end
 
-local events = CRT.Modules and CRT.Modules:Frame("loot") or CreateFrame("Frame") -- quiet while the module is off (CRT_Core/Modules.lua)
+local events = CreateFrame("Frame")
 for _, e in ipairs({ "TRADE_SHOW", "TRADE_CLOSED", "TRADE_PLAYER_ITEM_CHANGED", "TRADE_ACCEPT_UPDATE", "UI_INFO_MESSAGE" }) do
     events:RegisterEvent(e)
 end

@@ -11,7 +11,6 @@
 
 CRT_Core\Core.lua
 CRT_Core\Themes.lua
-CRT_Core\Modules.lua
 CRT_Core\Gear.lua
 CRT_Core\Share.lua
 CRT_Core\Profiles.lua
@@ -185,8 +184,6 @@ CRT_Core\UI\SettingsPage.lua
 CRT_Data\Seasons\Midnight-S2\Season.xml
 #@do-not-package@
 CRT_Dev\Dev\Build.lua
-CRT_Dev\Dev\Modules.lua
-CRT_Dev\Dev\ModulesPage.lua
 CRT_Dev\Dev\LayoutEditor.lua
 CRT_Dev\Dev\TimelineProbe.lua
 CRT_Dev\Dev\GameTimelineProbe.lua

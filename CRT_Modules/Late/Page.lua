@@ -1352,10 +1352,9 @@ CRT.LatePage = {
     end,
 }
 
--- /crt late, late export, late start, late end (CRT_Core/Slash.lua's registry; a Raid Lead word, CRT_Core/Modules.lua)
+-- /crt late, late export, late start, late end (CRT_Core/Slash.lua's registry)
 if CRT.Slash then
     CRT.Slash:Register("late", {
-        module = "raidlead",
         run = function(rest)
             if rest == "" then
                 UI:Show("late")

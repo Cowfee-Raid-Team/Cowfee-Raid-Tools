@@ -1138,10 +1138,9 @@ end
 
 UI:RegisterPage("timeline", "Timeline", build)
 
--- /crt timeline, timeline pop, timeline rehearse (CRT_Core/Slash.lua's registry; a Timeline word, CRT_Core/Modules.lua)
+-- /crt timeline, timeline pop, timeline rehearse (CRT_Core/Slash.lua's registry)
 if CRT.Slash then
     CRT.Slash:Register("timeline", {
-        module = "timeline",
         run = function(rest)
             if rest == "" then
                 UI:Show("timeline")

@@ -246,7 +246,7 @@ local function rememberSaved()
 end
 Capture.RememberSaved = rememberSaved
 
-local events = CRT.Modules and CRT.Modules:Frame("loot") or CreateFrame("Frame") -- quiet while the module is off (CRT_Core/Modules.lua)
+local events = CreateFrame("Frame")
 events:RegisterEvent("PLAYER_LOGIN")
 events:RegisterEvent("ENCOUNTER_START")
 events:RegisterEvent("BOSS_KILL")

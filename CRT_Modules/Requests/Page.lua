@@ -228,24 +228,15 @@ local function build(f)
     refresh()
 end
 
--- Made once Loot is known to be on (CRT_Core/Modules.lua), so with Loot off nothing here runs on a change;
--- straight away without the registry.
-local function hookChanges()
-    R:OnChange(function(what)
-        if what == "open" and R.open then
-            chosen = R.open.link or chosen
-        end
-        refresh()
-    end)
-end
-if CRT.Modules then
-    CRT.Modules:OnInit("loot", hookChanges)
-else
-    hookChanges()
-end
+R:OnChange(function(what)
+    if what == "open" and R.open then
+        chosen = R.open.link or chosen
+    end
+    refresh()
+end)
 
 -- the bag counts, Trade 1 and the slot's line change as you trade
-local events = CRT.Modules and CRT.Modules:Frame("loot") or CreateFrame("Frame") -- quiet while the module is off (CRT_Core/Modules.lua)
+local events = CreateFrame("Frame")
 events:RegisterEvent("BAG_UPDATE_DELAYED")
 events:SetScript("OnEvent", function()
     if view and view.status:IsVisible() then

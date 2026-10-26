@@ -1344,10 +1344,9 @@ CRT.TattlePage = {
     end,
 }
 
--- /crt tattle and its words (CRT_Core/Slash.lua's registry; a Raid Lead word, CRT_Core/Modules.lua)
+-- /crt tattle and its words (CRT_Core/Slash.lua's registry)
 if CRT.Slash then
     CRT.Slash:Register("tattle", {
-        module = "raidlead",
         run = function(rest)
             local TP = CRT.TattlePage
             if rest == "" then

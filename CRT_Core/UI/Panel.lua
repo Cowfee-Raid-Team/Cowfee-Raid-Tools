@@ -205,7 +205,7 @@ end
 UI.LAYER_GROUPS = {
     { key = "panel", label = "Main window", layers = { "panel" } },
     { key = "notes", label = "Note windows", layers = { "notes" } },
-    { key = "timeline", label = "Timeline window", layers = { "timeline" }, module = "timeline" }, -- left out with it off (Modules.lua)
+    { key = "timeline", label = "Timeline window", layers = { "timeline" } },
     { key = "alerts", label = "Alerts", layers = { "alert", "alertbars", "alerticons", "alerttexts", "alertcircles", "alerttimeline", "lowhealth" } },
     { key = "raid", label = "Raid windows", layers = { "readycheck", "bar", "debuffs" } },
     { key = "popups", label = "Pop-up windows", layers = { "popups" } },
@@ -405,7 +405,7 @@ function UI.VersionText()
 end
 
 UI.MENU_GROUPS = {
-    { label = TEXT.general, "settings", "modules", "qol" },
+    { label = TEXT.general, "settings", "qol" },
     { label = TEXT.bosses, "timeline", "notes", "pace" },
     { label = TEXT.raidAdmin, "readycheck", "groups", "gearcheck", "late" },
     { label = TEXT.modules, "lootmaster", "loot", "requests", "seasonstats", "tattle" },
