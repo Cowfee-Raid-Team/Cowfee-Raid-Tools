@@ -100,10 +100,9 @@ assert(load(panelSrc, "CRT_Core/UI/Panel.lua"))("CowfeeRaidTools", CRT)
 assert(load(scrollSrc, "CRT_Core/UI/ScrollBar.lua"))("CowfeeRaidTools", CRT)
 local UI = CRT.UI
 
--- 1. The groups and their labels, in order. Modules (Dev/ModulesPage.lua) is a developer page for now, hidden
--- until /crt modules like Development, so the players' menu below leaves it out.
+-- 1. The groups and their labels, in order.
 local want = {
-  { "General", "settings", "modules", "qol" },
+  { "General", "settings", "qol" },
   { "Bosses", "timeline", "notes", "pace" },
   { "Raid Admin", "readycheck", "groups", "gearcheck", "late" },
   { "Modules", "lootmaster", "loot", "requests", "seasonstats", "tattle" },

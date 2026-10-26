@@ -479,20 +479,21 @@ do
   check(CRTDB.debuffs.size == 33 and next(CRTDB.importBackup) == nil and not P:HasBackup() and reloads == r + 1, "Copy from clears the copied import backup")
   check(CRTDB.profiles.Other.importBackup.from == "Someone", "the other profile keeps its own backup")
 end
--- The module switches (Modules.lua) never travel with Export settings only: a raid leader's would turn modules
--- off for everyone who imports them.
+-- A saved key with no default (an old setting CRT no longer reads) stays where it is and never travels with
+-- Export settings only, nor is it set by an import.
 do
-  CRTDB.modules = { loot = false }
+  CRTDB.retired = { a = false }
   local t = P:ExportSettings()
   local i = t and P:Read(t)
   local carried = false
-  for path in pairs(i and i.values or {}) do if path == "modules" or path:find("^modules%.") then carried = true end end
-  check(i ~= nil and not carried, "Export settings only leaves the module switches out")
-  local r = P:Read(craft({ v = 1, kind = "settings", from = "X", data = { modules = { loot = false, timeline = false } } }))
+  for path in pairs(i and i.values or {}) do if path == "retired" or path:find("^retired%.") then carried = true end end
+  check(i ~= nil and not carried, "Export settings only leaves an old key out")
+  local r = P:Read(craft({ v = 1, kind = "settings", from = "X", data = { retired = { a = false, b = false } } }))
   local read = false
-  for path in pairs(r and r.values or {}) do if path == "modules" or path:find("^modules%.") then read = true end end
-  check(not read, "an imported settings string never sets the module switches")
-  CRTDB.modules = {}
+  for path in pairs(r and r.values or {}) do if path == "retired" or path:find("^retired%.") then read = true end end
+  check(not read, "an imported settings string never sets an old key")
+  check(CRTDB.retired.a == false, "the old saved value is left alone")
+  CRTDB.retired = nil
 end
 print(okCount .. " passed, " .. failCount .. " failed")
 `;

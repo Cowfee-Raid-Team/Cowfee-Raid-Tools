@@ -1,16 +1,15 @@
-// Module switches (CRT_Core/Modules.lua): the whole addon, every file the .toc lists (the season pack's Season.xml
-// and the dev block included; also as a release build, without it), loaded in order in a stand-in game client, once with every module on and once
-// with each module off (CRTDB.modules[key] = false), then ADDON_LOADED and PLAYER_LOGIN. Each run checks the
-// files load and the events run with no Lua error, the module's pages, menu entries and /crt words are gone or
-// say it is off, its event frames are quiet, the others keep working, and the raider-side handlers (Gear Checker
-// answers, repair reports, Pace plans, the loot popup's messages) still answer. With all on, everything is there.
-// Usage: node run_modules.js <addon folder>
+// The whole addon, every file the .toc lists (the season pack's Season.xml and the dev block included; also as a
+// release build, without it), loaded in order in a stand-in game client, then ADDON_LOADED and PLAYER_LOGIN.
+// Checks the files load and the events run with no Lua error, every event frame registers at file load, every
+// page is registered and in the menu, every /crt word runs and is in /crt help, and the raider side answers
+// (Gear Checker asks, a leader's loot session, repair reports, Pace plans).
+// Usage: node run_addon.js <addon folder>
 const fs = require('fs');
 const path = require('path');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 
 const root = process.argv[2];
-if (!root) { console.error('usage: node run_modules.js <addon folder>'); process.exit(2); }
+if (!root) { console.error('usage: node run_addon.js <addon folder>'); process.exit(2); }
 
 // The .toc's files in order, the season pack's Season.xml expanded, the dev block kept (a dev build) or, for a
 // release build, left out as the packager does.
@@ -281,9 +280,14 @@ for i, file in ipairs(files) do
 end
 loadingFile = "(events)"
 
--- The saved data this run starts with: the module switch under test
-env.CRTDB = { modules = {} }
-for key, on in pairs(scenario.modules or {}) do env.CRTDB.modules[key] = on end
+-- What each file's frames listen to right after it loaded, before any event: every event frame registers
+local registered = {}
+for _, rec in ipairs(frames) do
+  if next(rec.frame.events) ~= nil and rec.frame.scripts.OnEvent ~= nil then registered[rec.file] = true end
+end
+
+-- The saved data this run starts with
+env.CRTDB = {}
 
 local function fire(event, ...)
   for _, rec in ipairs(frames) do
@@ -317,39 +321,11 @@ local name = scenario.name
 local function check(ok, what) if ok then passes = passes + 1 else fails = fails + 1 print("FAIL " .. name .. ": " .. what) end end
 
 for _, e in ipairs(errors) do check(false, "a Lua error: " .. e) end
+check(type(CRT.db) == "table", "the saved data is in on ADDON_LOADED")
 
-local M = CRT.Modules
-check(type(M) == "table" and type(M.IsOn) == "function", "CRT.Modules is loaded")
-if type(M) ~= "table" then print(passes .. " passed, " .. fails .. " failed") MODULES_FAILS = fails return end
-check(M.started == true, "the registry started on ADDON_LOADED")
-check(type(CRT.db) == "table" and type(CRT.db.modules) == "table", "CRTDB.modules is there")
-
--- the modules and what each owns
-local want = { loot = "Loot", timeline = "Timeline", raidlead = "Raid Lead" }
-for key, label in pairs(want) do
-  local def = M:Get(key)
-  check(def and def.label == label, key .. " is registered as " .. label)
-end
-check(M:IsOn("core") == true, "Core is always on")
-
-local function hasFile(list, file) for _, f in ipairs(list or {}) do if f == file then return true end end return false end
-local tocSet = {}
-for _, f in ipairs(files) do tocSet[f] = true end
-local owner = {}
-for _, def in ipairs(M:List()) do
-  for _, part in ipairs({ "files", "raider", "core" }) do
-    for _, f in ipairs(def[part] or {}) do
-      check(tocSet[f], def.key .. "." .. part .. " lists " .. f .. ", which the .toc loads")
-      check(owner[f] == nil, f .. " is listed once, got " .. tostring(owner[f]) .. " and " .. def.key .. "." .. part)
-      owner[f] = def.key .. "." .. part
-    end
-  end
-end
-
--- each module's on state is the saved switch
-for key in pairs(want) do
-  local on = not (scenario.modules and scenario.modules[key] == false)
-  check(M:IsOn(key) == on, key .. (on and " is on" or " is off"))
+-- every event frame registers its events at file load
+for _, file in ipairs(scenario.listen or {}) do
+  check(registered[file], file .. " has an event frame that listens")
 end
 
 local UI = CRT.UI
@@ -363,79 +339,56 @@ local function slash(msg)
   return table.concat(printed, "\\n", before + 1)
 end
 
-for _, def in ipairs(M:List()) do
-  local on = M:IsOn(def.key)
-  -- pages and menu entries
-  for _, page in ipairs(def.pages or {}) do
-    check((UI.pages[page] ~= nil) == on, def.key .. ": page " .. page .. (on and " is there" or " is gone"))
-    local inOrder = false
-    for _, k in ipairs(UI.order) do if k == page then inOrder = true end end
-    check(inOrder == on, def.key .. ": page " .. page .. (on and " is in" or " is out of") .. " the page order")
-    local inMenu = false
-    for _, g in ipairs(UI.MenuGroups()) do for _, k in ipairs(g.keys) do if k == page then inMenu = true end end end
-    check(inMenu == on, def.key .. ": page " .. page .. (on and " is in" or " is out of") .. " the menu")
-  end
-  -- /crt words
-  for _, word in ipairs(def.words or {}) do
-    local pagesBefore = #shownPages
-    local out = slash(word)
-    -- a developer build points at the Modules page; a release build has none to point at
-    local offText = def.label .. (scenario.release and " is turned off." or " is turned off. Turn it on in Modules (/crt modules).")
-    local offLine = out:find(offText, 1, true) ~= nil
-    check(offLine == not on, "/crt " .. word .. (on and " runs" or " says " .. offText) .. ": " .. out)
-    if scenario.release then check(not out:find("Modules", 1, true), "/crt " .. word .. " names no Modules page in a release build: " .. out) end
-    check(not out:find("Unknown command", 1, true), "/crt " .. word .. " is a known command")
-    check((#shownPages > pagesBefore) == on, "/crt " .. word .. (on and " opens its page" or " opens nothing"))
-  end
-  -- General Settings' layer rows: a module's own row only while it is on
-  for _, g in ipairs(UI.LAYER_GROUPS) do
-    if g.module == def.key then check(on, def.key .. " off: no " .. g.label .. " layer row") end
-  end
-  if def.key == "timeline" and on then
-    local row = false
-    for _, g in ipairs(UI.LAYER_GROUPS) do if g.key == "timeline" then row = true end end
-    check(row, "the Timeline window's layer row is there")
-  end
-  -- /crt help lists a module's words only while it is on
-  local help = slash("help")
-  for _, word in ipairs(def.words or {}) do
-    check((help:find("/crt " .. word .. "|r", 1, true) ~= nil) == on, "/crt help " .. (on and "lists" or "leaves out") .. " /crt " .. word)
-  end
-  -- event frames: a turned-off module's files have none that listen; its raider and core files keep theirs
-  for _, rec in ipairs(frames) do
-    if hasFile(def.files, rec.file) and not on then
-      check(next(rec.frame.events) == nil and rec.frame.scripts.OnEvent == nil and rec.frame.scripts.OnUpdate == nil, def.key .. " off: the frame made in " .. rec.file .. " is quiet")
-    end
-  end
+-- every page is registered, in the page order and in the menu
+local PAGES = { "settings", "qol", "timeline", "notes", "pace", "readycheck", "groups", "gearcheck", "late",
+  "lootmaster", "loot", "requests", "seasonstats", "tattle" }
+local inMenu = {}
+for _, g in ipairs(UI.MenuGroups()) do for _, k in ipairs(g.keys) do inMenu[k] = true end end
+for _, page in ipairs(PAGES) do
+  check(UI.pages[page] ~= nil, "page " .. page .. " is there")
+  local inOrder = false
+  for _, k in ipairs(UI.order) do if k == page then inOrder = true end end
+  check(inOrder, "page " .. page .. " is in the page order")
+  check(inMenu[page], "page " .. page .. " is in the menu")
 end
+check(UI.pages.modules == nil and not inMenu.modules, "no Modules page")
+local row = false
+for _, g in ipairs(UI.LAYER_GROUPS) do if g.key == "timeline" then row = true end end
+check(row, "the Timeline window's layer row is there")
 
--- the module files' event frames all listen when their module is on, and so do the raider and core ones always
-local listening = {}
-for _, rec in ipairs(frames) do
-  if next(rec.frame.events) ~= nil and rec.frame.scripts.OnEvent ~= nil then listening[rec.file] = true end
-end
-for _, file in ipairs(scenario.listen or {}) do
-  check(listening[file], file .. " still listens to its events")
-end
-
--- Core's pages and words never depend on a switch
-for _, page in ipairs({ "settings", "qol", "notes", "readycheck" }) do
-  check(UI.pages[page] ~= nil, "Core's page " .. page .. " is there")
-end
-for _, msg in ipairs({ "notes", "reminders", "qol", "settings", "readycheck" }) do
+-- every module word: registered, runs for everyone, opens its page, and is in /crt help
+local WORDS = { groups = "groups", gear = "gearcheck", late = "late", pace = "pace", tattle = "tattle", timeline = "timeline" }
+local help = slash("help")
+for word, page in pairs(WORDS) do
+  check(CRT.Slash.words[word] ~= nil, "/crt " .. word .. " is registered")
   local before = #shownPages
+  local out = slash(word)
+  check(not out:find("Unknown command", 1, true) and not out:find("turned off", 1, true), "/crt " .. word .. " runs: " .. out)
+  check(shownPages[before + 1] == page, "/crt " .. word .. " opens " .. page .. ", got " .. tostring(shownPages[before + 1]))
+  check(help:find("/crt " .. word .. "|r", 1, true) ~= nil, "/crt help lists /crt " .. word)
+end
+local count = 0
+for _ in pairs(CRT.Slash.words) do count = count + 1 end
+check(count == 7, "seven registered words (the six above and loot), got " .. count)
+check(not help:find("turned off", 1, true), "/crt help names nothing turned off")
+for _, def in pairs(CRT.Slash.words) do
+  check(def.module == nil and def.raider == nil and def.raiderHelp == nil, "a registered word has only run, help and top")
+end
+
+-- Core's pages and words
+for _, msg in ipairs({ "notes", "reminders", "qol", "settings", "readycheck" }) do
   local out = slash(msg)
-  check(not out:find("turned off", 1, true) and not out:find("Unknown command", 1, true), "/crt " .. msg .. " is Core's: " .. out)
+  check(not out:find("Unknown command", 1, true), "/crt " .. msg .. " is Core's: " .. out)
 end
 check(slash("nonsense"):find("Unknown command", 1, true) ~= nil, "an unknown word is still unknown")
-check(slash("late nonsense"):find(M:IsOn("raidlead") and "Unknown command" or "Raid Lead is turned off", 1, true) ~= nil, "an unknown word of a module: unknown when on, off when off")
+check(slash("late nonsense"):find("Unknown command", 1, true) ~= nil, "an unknown word after a module word is unknown")
+check(slash("modules"):find("Unknown command", 1, true) ~= nil, "/crt modules is unknown")
+check(slash("dev modules"):find("Unknown command", 1, true) ~= nil, "/crt dev modules is unknown")
 
--- /crt loot alone is the raider's: your loot popup and All Loot Rolls, with Loot on or off. Loot History has no word
--- (it opens from the menu); the leader's words after /crt loot say Loot is off while it is.
+-- /crt loot alone: your loot popup and All Loot Rolls. Loot History has no word (it opens from the menu); the
+-- leader's words come after /crt loot.
 do
   local LM = CRT.LootMaster
-  local lootOn = M:IsOn("loot")
-  local state = lootOn and "Loot on" or "Loot off"
   local calls = { popup = 0, answers = 0 }
   local realPopup, realAnswers, was = LM.ShowPopup, LM.ShowAnswers, LM.incoming
   LM.ShowPopup = function() calls.popup = calls.popup + 1 end
@@ -443,163 +396,48 @@ do
   LM.incoming = { id = "t1", items = {}, mine = {}, view = {} }
   local before = #shownPages
   local out = slash("loot")
-  check(calls.popup == 1 and calls.answers == 1, state .. ": /crt loot opens your loot popup and All Loot Rolls")
-  check(not out:find("turned off", 1, true) and not out:find("Unknown command", 1, true), state .. ": /crt loot runs: " .. out)
-  check(#shownPages == before, state .. ": /crt loot opens no page (Loot History has no word)")
+  check(calls.popup == 1 and calls.answers == 1, "/crt loot opens your loot popup and All Loot Rolls")
+  check(not out:find("Unknown command", 1, true), "/crt loot runs: " .. out)
+  check(#shownPages == before, "/crt loot opens no page (Loot History has no word)")
   LM.incoming = nil
   out = slash("loot")
-  check(calls.answers == 2 and calls.popup == 1, state .. ": /crt loot with no session opens All Loot Rolls (the last session, or none yet), no answer popup")
-  check(not out:find("turned off", 1, true), state .. ": /crt loot with no session runs: " .. out)
+  check(calls.answers == 2 and calls.popup == 1, "/crt loot with no session opens All Loot Rolls (the last session, or none yet), no answer popup")
   LM.ShowPopup, LM.ShowAnswers, LM.incoming = realPopup, realAnswers, was
+  before = #shownPages
+  out = slash("loot settings")
+  check(shownPages[before + 1] == "lootmaster" and not out:find("turned off", 1, true), "/crt loot settings opens Loot Master: " .. out)
   out = slash("loot test")
-  if not lootOn then
-    check(out:find("Loot is turned off", 1, true) ~= nil, "Loot off: /crt loot test says Loot is off: " .. out)
-  end
-  local help = slash("help")
-  check(help:find("/crt loot|r - open your loot popup and All Loot Rolls", 1, true) ~= nil, state .. ": /crt help lists /crt loot")
-  check((help:find("/crt loot test|r", 1, true) ~= nil) == lootOn, state .. ": /crt help lists the leader's /crt loot test only with Loot on")
-  check(not help:find("Loot History", 1, true), state .. ": /crt help names no Loot History word")
-  if lootOn and LM.current then LM:End() end
+  check(not out:find("turned off", 1, true) and not out:find("Unknown command", 1, true), "/crt loot test runs: " .. out)
+  check(help:find("/crt loot|r - open your loot popup and All Loot Rolls", 1, true) ~= nil, "/crt help lists /crt loot")
+  check(help:find("/crt loot test|r", 1, true) ~= nil, "/crt help lists /crt loot test")
+  check(not help:find("Loot History", 1, true), "/crt help names no Loot History word")
+  if LM.current then LM:End() end
 end
 
--- Loot off: the leader's CRT Looting can't be turned on, and says why; Raider Score still follows the Late Tracker
+-- the leader may lead CRT Looting; Raider Score follows the Late Tracker, whatever loaded first
 do
   local LM = CRT.LootMaster
   env.UnitIsGroupLeader = function() return true end
   stubs.UnitIsGroupLeader = env.UnitIsGroupLeader
-  local ok, why = LM:CanRunLooting()
-  if M:IsOn("loot") then
-    check(why ~= "Loot is turned off", "Loot on: CRT Looting isn't refused for Loot")
-    local hooked = false
-    for _, fn in ipairs(CRT.Late.listeners or {}) do if fn == LM.ScoreChanged then hooked = true end end
-    check(hooked, "Loot on: Raider Score follows the Late Tracker's changes, whatever loaded first")
-  else
-    check(ok == false and why == "Loot is turned off", "Loot off: CRT Looting can't be led: " .. tostring(why))
-  end
+  local _, why = LM:CanRunLooting()
+  check(why == nil or not tostring(why):find("turned off", 1, true), "CRT Looting is never refused for a switch: " .. tostring(why))
+  local hooked = false
+  for _, fn in ipairs(CRT.Late.listeners or {}) do if fn == LM.ScoreChanged then hooked = true end end
+  check(hooked, "Raider Score follows the Late Tracker's changes")
   stubs.UnitIsGroupLeader = function() return false end
   env.UnitIsGroupLeader = stubs.UnitIsGroupLeader
 end
 
--- Season Stats' counters are Core: every pull is counted, Raid Lead on or off (only its page goes with it)
+-- Season Stats counts every saved pull
 do
   local S, T = CRT.SeasonStats, CRT.Timeline
   local counted = 0
   local real = S.Record
   S.Record = function() counted = counted + 1 end
-  check(type(T.saveListeners) == "table", "the Timeline's save hooks are there (Timeline/Data.lua, Core)")
+  check(type(T.saveListeners) == "table", "the Timeline's save hooks are there (Timeline/Data.lua)")
   for _, fn in ipairs(T.saveListeners or {}) do pcall(fn, { encounterID = 1 }) end
   S.Record = real
   check(counted > 0, "Season Stats counts a saved pull")
-end
-
--- /crt dev modules (Dev/Modules.lua): sets a switch for after a /reload; this session keeps running as it was
-if not scenario.release then
-  local was = M:IsOn("loot")
-  local out = slash("dev modules loot " .. (was and "off" or "on"))
-  check(CRT.db.modules.loot == not was, "/crt dev modules saves the switch: " .. out)
-  check(M:IsOn("loot") == was, "the session keeps running as it started")
-  check(out:find("after a /reload", 1, true) ~= nil, "it says the change waits for a /reload: " .. out)
-  local list = slash("dev modules")
-  check(list:find("Loot (loot)", 1, true) and list:find("Timeline (timeline)", 1, true) and list:find("Raid Lead (raidlead)", 1, true), "/crt dev modules lists them: " .. list)
-  check(slash("dev modules nope off"):find("No module 'nope'", 1, true) ~= nil, "an unknown module is named")
-  slash("dev modules loot " .. (was and "on" or "off"))
-  check(CRT.db.modules.loot == was, "and back")
-  check(M:Set("core", false) == false and M:IsOn("core"), "Core can't be turned off")
-end
-
--- The Modules page (Dev/ModulesPage.lua), a developer build only for now: hidden like the Development page until
--- /crt modules; a "Core" and an "Optional" heading; a row per module from the registry, Core first with its power
--- button disabled; a name greyed when its switch is off; a power button that flips the switch (saved at once)
--- and asks to reload (Reload / Later; in combat only to reload after combat); "Reload to apply." at the top while
--- a saved switch differs from what runs. A release build has no page and no /crt modules.
-do
-  local P = CRT.ModulesPage
-  if scenario.release then
-    check(P == nil and UI.pages.modules == nil, "release: no Modules page")
-    check(slash("modules"):find("Unknown command", 1, true) ~= nil, "release: /crt modules is unknown")
-  else
-    check(type(P) == "table" and UI.pages.modules ~= nil, "the Modules page is registered")
-    local inGeneral = false
-    for _, k in ipairs(UI.MENU_GROUPS[1]) do if k == "modules" then inGeneral = true end end
-    check(inGeneral, "Modules has its place in the menu's General group")
-    local function inMenu()
-      for _, g in ipairs(UI.MenuGroups()) do for _, k in ipairs(g.keys) do if k == "modules" then return true end end end
-      return false
-    end
-    check(not inMenu() and UI.pages.modules and UI.pages.modules.hidden and UI.pages.modules.closeHides, "it starts hidden, like the Development page, and hides again on close")
-    local before = #shownPages
-    slash("modules")
-    check(#shownPages > before and shownPages[#shownPages] == "modules", "/crt modules opens the Modules page")
-    check(inMenu(), "and shows it in the menu")
-    if type(P) == "table" and UI.pages.modules then
-      -- what each part was last tinted with (UI.Tint), to read colours off the stand-in frames
-      local tints = setmetatable({}, { __mode = "k" })
-      local realTint = UI.Tint
-      UI.Tint = function(region, method, key, alpha) tints[region] = tints[region] or {} tints[region][method] = key return realTint(region, method, key, alpha) end
-      local popups, reloads = {}, 0
-      stubs.StaticPopup_Show = function(name, a, b) popups[#popups + 1] = { name = name, a = a, b = b } return newFrame("Frame", nil, stubs.UIParent) end
-      stubs.StaticPopup_Visible = function() return nil end
-      stubs.ReloadUI = function() reloads = reloads + 1 end
-      local pf = newFrame("Frame", nil, stubs.UIParent)
-      UI.pages.modules.builder(pf)
-      if pf.scripts.OnShow then pf.scripts.OnShow(pf) end
-      local headings = {}
-      for _, r in ipairs(pf.regions) do
-        local t = r:GetText()
-        if (t == "Core" or t == "Optional") and tints[r] and tints[r].SetTextColor == "heading" then headings[#headings + 1] = t end
-      end
-      check(table.concat(headings, " ") == "Core Optional", "the Core and Optional headings, in the heading colour: " .. table.concat(headings, " "))
-      local list = M:List()
-      local rows = P.rows or {}
-      check(#rows == #list + 1, "one row per module plus Core: " .. #rows)
-      local core = rows[1] or {}
-      check(core.key == "core" and core.label and core.label:GetText() == "Core", "Core's row comes first")
-      check(core.power and not core.power:IsEnabled(), "Core's power button is disabled")
-      check(P.PowerTip("core") == "Core is always on.", "and says Core is always on")
-      check(core.help ~= nil and core.helpText == M.CORE_INFO.help, "Core's row has its (?)")
-      for i, def in ipairs(list) do
-        local row = rows[i + 1] or {}
-        local on = M:Saved(def.key)
-        local want = on and "text" or "muted"
-        check(row.key == def.key and row.label and row.label:GetText() == def.label, "row " .. (i + 1) .. " is " .. def.label .. " from the registry")
-        check(row.power and row.power:IsEnabled(), def.label .. "'s power button can be clicked")
-        check(tints[row.label] and tints[row.label].SetTextColor == want, def.label .. "'s name is in the " .. want .. " colour")
-        check(row.power and tints[row.power.icon] and tints[row.power.icon].SetVertexColor == want, def.label .. "'s power symbol is in the " .. want .. " colour")
-        check(P.PowerTip(def.key) == (on and "Turn " .. def.label .. " off" or "Turn " .. def.label .. " on"), def.label .. "'s power tooltip: " .. P.PowerTip(def.key))
-        check(row.help ~= nil and row.helpText == def.help, def.label .. "'s (?) gives its registry help")
-      end
-      check(P.status and not P.status:IsShown(), "nothing to reload: no Reload to apply")
-      local loot = rows[2]
-      if loot and loot.power then
-        local was = M:IsOn("loot")
-        loot.power.scripts.OnClick(loot.power)
-        check(CRT.db.modules.loot == not was, "the power button saves the switch at once")
-        check(M:IsOn("loot") == was, "and this session runs as it started")
-        local p = popups[#popups] or {}
-        check(p.name == "CRT_MODULES_RELOAD" and p.a == "Loot" and p.b == (was and "off" or "on"), "it asks to reload: " .. tostring(p.name) .. " " .. tostring(p.a) .. " " .. tostring(p.b))
-        local d = stubs.StaticPopupDialogs.CRT_MODULES_RELOAD or {}
-        check(d.text and d.text:format("Loot", "off") == "Loot will be turned off after a reload. Reload now?" and d.button1 == "Reload" and d.button2 == "Later", "the popup: Reload now?, Reload and Later")
-        check(P.status:IsShown() and P.status:GetText() == "Reload to apply.", "Later keeps it saved and the page says Reload to apply.")
-        check(tints[loot.label].SetTextColor == (was and "muted" or "text"), "the name follows the switch")
-        check(P.PowerTip("loot") == (was and "Turn Loot on" or "Turn Loot off"), "and so does the tooltip")
-        if d.OnAccept then d.OnAccept() end
-        check(reloads == 1, "Reload reloads the interface")
-        -- in combat: no reload
-        stubs.InCombatLockdown = function() return true end
-        if d.OnAccept then d.OnAccept() end
-        check(reloads == 1, "Reload does nothing in combat")
-        loot.power.scripts.OnClick(loot.power)
-        p = popups[#popups] or {}
-        local dc = stubs.StaticPopupDialogs.CRT_MODULES_RELOAD_COMBAT or {}
-        check(p.name == "CRT_MODULES_RELOAD_COMBAT" and dc.button2 == nil and dc.OnAccept == nil and dc.text and dc.text:find("after combat", 1, true), "in combat it only says to reload after combat")
-        stubs.InCombatLockdown = function() return false end
-        check(CRT.db.modules.loot == was, "clicking it back saves that")
-        check(not P.status:IsShown(), "back to what runs: Reload to apply hides")
-      end
-      UI.Tint = realTint
-      stubs.StaticPopup_Show, stubs.StaticPopup_Visible, stubs.ReloadUI = nil, nil, nil
-    end
-  end
 end
 
 -- raider-side answers
@@ -630,10 +468,8 @@ do
       if not at[w] and l:find("/crt " .. w .. "|r", 1, true) then at[w] = i end
     end
   end
-  if M:IsOn("raidlead") then
-    check(at.groups and at.readycheck and at.groups < at.readycheck, "/crt help lists /crt groups near the top")
-    check(at.late and at["note test"] and at.late > at["note test"], "the other module words come after Core's notes lines")
-  end
+  check(at.groups and at.readycheck and at.groups < at.readycheck, "/crt help lists /crt groups near the top")
+  check(at.late and at["note test"] and at.late > at["note test"], "the other module words come after Core's notes lines")
 end
 local errorsBefore = #errors
 -- The rest is driven through the frame of the one file that owns it, so no other handler sees the stand-in raid.
@@ -727,7 +563,7 @@ end
 for i = errorsBefore + 1, #errors do check(false, "a Lua error while driving the raider side: " .. errors[i]) end
 
 print(passes .. " passed, " .. fails .. " failed")
-MODULES_FAILS = fails
+ADDON_FAILS = fails
 `;
 
 // CRT_Dev/Dev/Build.lua is made by the build script and not in Git, so a checkout may not have it
@@ -742,21 +578,20 @@ function build(release) {
 }
 const builds = { dev: build(false), release: build(true) };
 
-// The files whose event frames must keep listening whatever the switches say (raider side and Core).
-const ALWAYS = ['CRT_Modules/GearChecker/Comm.lua', 'CRT_Modules/SeasonStats/Repairs.lua', 'CRT_Modules/Pace/Comm.lua',
-  'CRT_Modules/Pace/Display.lua', 'CRT_Modules/LootMaster/Comm.lua', 'CRT_Modules/LootMaster/Rolls.lua',
-  'CRT_Modules/LootMaster/Looting.lua', 'CRT_Modules/LootMaster/Resync.lua', 'CRT_Modules/Requests/Data.lua',
+// The files that make an event frame at load: each must have one that listens, in every build.
+const LISTEN = [
+  'CRT_Modules/GearChecker/Comm.lua', 'CRT_Modules/GearChecker/Inspect.lua', 'CRT_Modules/GearChecker/Page.lua',
+  'CRT_Modules/SeasonStats/Repairs.lua', 'CRT_Modules/Pace/Comm.lua', 'CRT_Modules/Pace/Display.lua',
+  'CRT_Modules/LootMaster/Comm.lua', 'CRT_Modules/LootMaster/Rolls.lua', 'CRT_Modules/LootMaster/Looting.lua',
+  'CRT_Modules/LootMaster/Resync.lua', 'CRT_Modules/LootMaster/BossLoot.lua', 'CRT_Modules/LootMaster/Trade.lua',
+  'CRT_Modules/Requests/Data.lua', 'CRT_Modules/Requests/Page.lua',
+  'CRT_Modules/Loot/Store.lua', 'CRT_Modules/Loot/Capture.lua', 'CRT_Modules/Loot/RCLC.lua',
+  'CRT_Modules/Groups/Apply.lua', 'CRT_Modules/Groups/Invite.lua', 'CRT_Modules/Late/Data.lua',
+  'CRT_Modules/Tattlebot/Data.lua', 'CRT_Modules/Timeline/RehearsalWindow.lua', 'CRT_Modules/Timeline/JournalExport.lua',
   'CRT_Modules/Notes/Comm.lua', 'CRT_Modules/Alerts/Engine.lua'];
 const scenarios = [
-  { name: 'all on', modules: {}, listen: ALWAYS.concat(['CRT_Modules/Loot/Capture.lua', 'CRT_Modules/Late/Data.lua',
-    'CRT_Modules/Tattlebot/Data.lua', 'CRT_Modules/Timeline/RehearsalWindow.lua', 'CRT_Modules/GearChecker/Inspect.lua']) },
-  { name: 'loot off', modules: { loot: false }, listen: ALWAYS.concat(['CRT_Modules/Late/Data.lua', 'CRT_Modules/Timeline/RehearsalWindow.lua']) },
-  { name: 'timeline off', modules: { timeline: false }, listen: ALWAYS.concat(['CRT_Modules/Loot/Capture.lua', 'CRT_Modules/Late/Data.lua']) },
-  { name: 'raidlead off', modules: { raidlead: false }, listen: ALWAYS.concat(['CRT_Modules/Loot/Capture.lua', 'CRT_Modules/Timeline/RehearsalWindow.lua']) },
-  { name: 'all off', modules: { loot: false, timeline: false, raidlead: false }, listen: ALWAYS },
-  // a release build: no Modules page, so the off message names none
-  { name: 'release, all on', release: true, modules: {}, listen: ALWAYS },
-  { name: 'release, loot off', release: true, modules: { loot: false }, listen: ALWAYS },
+  { name: 'dev build', listen: LISTEN },
+  { name: 'release build', release: true, listen: LISTEN },
 ];
 
 let failed = 0;
@@ -772,16 +607,13 @@ for (const sc of scenarios) {
   }
   lua.lua_createtable(L, 0, 3);
   lua.lua_pushstring(L, to_luastring(sc.name)); lua.lua_setfield(L, -2, to_luastring('name'));
-  lua.lua_createtable(L, 0, 3);
-  for (const [k, v] of Object.entries(sc.modules)) { lua.lua_pushboolean(L, v); lua.lua_setfield(L, -2, to_luastring(k)); }
-  lua.lua_setfield(L, -2, to_luastring('modules'));
   lua.lua_createtable(L, sc.listen.length, 0);
   sc.listen.forEach((s, i) => { lua.lua_pushstring(L, to_luastring(s)); lua.lua_rawseti(L, -2, i + 1); });
   lua.lua_setfield(L, -2, to_luastring('listen'));
   lua.lua_pushboolean(L, sc.release === true); lua.lua_setfield(L, -2, to_luastring('release'));
   if (lua.lua_pcall(L, 3, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR (' + sc.name + '):', lua.lua_tojsstring(L, -1)); process.exit(1); }
-  lua.lua_getglobal(L, to_luastring('MODULES_FAILS'));
+  lua.lua_getglobal(L, to_luastring('ADDON_FAILS'));
   const n = lua.lua_tonumber(L, -1);
-  if (n > 0) failed++; else console.log('ok modules: ' + sc.name);
+  if (n > 0) failed++; else console.log('ok addon: ' + sc.name);
 }
 process.exit(failed > 0 ? 1 : 0);
