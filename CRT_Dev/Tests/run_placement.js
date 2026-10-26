@@ -115,6 +115,8 @@ local function mock(kind, parent, template, name)
     SetMouseMotionEnabled = function(self, on) self.motion = on and true or false end,
     IsMouseClickEnabled = function(self) return self.click == true end,
     IsMouseMotionEnabled = function(self) return self.motion == true end,
+    SetClipsChildren = function(self, on) self.clipsKids = on and true or false end,
+    DoesClipChildren = function(self) return self.clipsKids == true end,
     IsMouseOver = function(self)
       local cx, cy, w, h = rect(self)
       if not cx then return false end
@@ -858,12 +860,56 @@ check(enumerated - before2 == 1, "moving over the screen goes through the frames
 clock = clock + 5
 P.PickHover()
 check(enumerated - before2 == 1, "a still cursor reads nothing again")
-cursorX = ux0
+-- a sweep across the screen for 3 seconds: never read again while the cursor moves
+for i = 1, 60 do clock = clock + 0.05 cursorX = ux0 + (i % 20) P.PickHover() end
+check(enumerated - before2 == 1, "a sweep across the screen reads nothing again: " .. (enumerated - before2))
+clock = clock + 0.1
 P.PickHover()
-check(enumerated - before2 == 2, "a move after a while reads them again, for frames shown since: " .. (enumerated - before2))
+check(enumerated - before2 == 1, "nor a pause shorter than " .. P.SELECT_LAYOUT.stillSeconds .. " s")
+clock = clock + 0.3
+P.PickHover()
+check(enumerated - before2 == 2, "once the cursor has stopped after a move, they are read again, for frames shown since: " .. (enumerated - before2))
+clock = clock + 5
+P.PickHover()
+check(enumerated - before2 == 2, "once for each stop: a cursor left still reads nothing more")
+cursorX = ux0 + 7
+P.PickHover()
+clock = clock + 0.4
+P.PickHover()
+check(enumerated - before2 == 3, "the next stop reads them again")
+cursorX = ux0 + 3
+P.PickHover()
+clock = clock + 0.4
+P.PickHover()
+check(enumerated - before2 == 3, "but not twice within " .. P.SELECT_LAYOUT.refreshSeconds .. " s")
+check(P.HeldHits() > 0, "while selecting, the frames read are held")
 P.OnKey("ESCAPE")
+check(P.HeldHits() == 0, "selecting stops: they are let go")
+-- a row scrolled out of a list that clips its children isn't under the cursor where it is cut off
+do
+  local under = CreateFrame("Button", "TestUnderList", UIParent) under:SetSize(100, 100) under:SetPoint("CENTER", UIParent, "CENTER", -700, 300) under:EnableMouse(true)
+  local list = CreateFrame("Frame", "TestScrollList", UIParent) list:SetSize(100, 40) list:SetPoint("CENTER", UIParent, "CENTER", -700, 300)
+  list:SetFrameStrata("HIGH") list:SetClipsChildren(true)
+  local content = CreateFrame("Frame", nil, list) content:SetSize(100, 200) content:SetPoint("TOP", list, "TOP", 0, 60)
+  local rowIn = CreateFrame("Button", "TestRowShown", content) rowIn:SetSize(100, 20) rowIn:SetPoint("CENTER", list, "CENTER", 0, 0) rowIn:EnableMouse(true)
+  local rowOut = CreateFrame("Button", "TestRowScrolledOut", content) rowOut:SetSize(100, 20) rowOut:SetPoint("CENTER", list, "CENTER", 0, 40) rowOut:EnableMouse(true)
+  SEL.scripts.OnClick()
+  cursorX, cursorY = centre(rowIn)
+  P.PickHover()
+  check(P.pickTag.text.text == "TestRowShown", "a row showing in a clipping list is found: " .. tostring(P.pickTag.text.text))
+  cursorX, cursorY = centre(rowOut)
+  P.PickHover()
+  check(P.pickTag.text.text == "TestUnderList", "a row scrolled out of it is passed over for the frame under it: " .. tostring(P.pickTag.text.text))
+  list:SetClipsChildren(false)
+  P.ForgetHits()
+  P.PickHover()
+  check(P.pickTag.text.text == "TestRowScrolledOut", "(without clipping, that row would be found)")
+  P.OnKey("ESCAPE")
+  cursorX, cursorY = ux0, uy0
+end
 -- combat: refused, and combat starting cancels it
 SEL.scripts.OnClick()
+-- P.Click's selecting branch, called directly: in the game the overlay takes this click and P.PickChoose finds the box
 P.Click(B)
 check(P.picking == nil and Q:Saved().anchor == "callout", "a click on another element's box still anchors to it")
 SEL.scripts.OnClick()
@@ -884,6 +930,7 @@ SEL.scripts.OnClick()
 check(P.picking == nil and #errorLines == errs + 1 and errorLines[#errorLines] == P.TEXT.combat and not ov.shown, "Select Anchor is refused in combat")
 inCombat = false
 SEL.scripts.OnClick()
+-- the list's set called directly: in the game the overlay covers the panel, so a click there goes to P.PickChoose
 dropdowns["Anchor to"].opts.set("screen")
 check(P.picking == nil and Q:Saved().anchor == nil and not ov.shown, "a choice from the Anchor to list ends selecting")
 P.ClosePanel()

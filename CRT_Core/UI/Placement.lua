@@ -130,6 +130,7 @@ end
 local function inCombat()
     return InCombatLockdown and InCombatLockdown() and true or false
 end
+P.inCombat = inCombat
 
 local function scaleOf(f)
     local ok, s = pcall(f.GetEffectiveScale, f)
@@ -274,6 +275,7 @@ local function call(f, method, ...)
     end
     return a, b
 end
+P.call = call -- f's method called safely: its first two returns, or nil when it has none or errors
 
 -- Whether a value the game gave is true; a hidden (secret) value is never compared.
 local function flag(v)
@@ -282,6 +284,7 @@ local function flag(v)
     end
     return v == true
 end
+P.flag = flag
 
 -- The frame called name, or nil: a widget held by that global, which addons may touch.
 function P.LookupFrame(name)

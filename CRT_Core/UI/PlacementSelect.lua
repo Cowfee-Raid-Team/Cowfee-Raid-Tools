@@ -8,10 +8,11 @@ local ADDON, CRT = ...
 -- the frame under it: no target, no click-cast, no button pressed. It acts on the button's release (OnMouseUp), so
 -- the press and the release both land on it. Being the topmost mouse frame, it is what the game reports under the
 -- cursor (GetMouseFoci), so the frame under it is found by a hit test instead: EnumerateFrames goes through every
--- frame once when selecting starts (and again when the cursor moves after L.refreshSeconds, for frames shown since),
--- keeping the visible ones that take the mouse (motion or clicks, as the game's own mouse focus does); then each
--- hover only asks those IsMouseOver and takes the topmost: higher strata, then higher frame level, then a child over
--- its parent, then the one made later. The answer is kept until the cursor moves.
+-- frame once when selecting starts (and again, for frames shown since, once the cursor stops after a move, at most
+-- every L.refreshSeconds), keeping the visible ones that take the mouse (motion or clicks, as the game's own mouse
+-- focus does); then each hover only asks those IsMouseOver (and the parents that clip them: a row scrolled out of
+-- its list is cut off) and takes the topmost: higher strata, then higher frame level, then a child over its parent,
+-- then the one made later. The answer is kept until the cursor moves; the list is let go when selecting stops.
 --
 -- Combat: el:StartPick refuses, combat starting cancels (Placement.lua's PLAYER_REGEN_DISABLED), and the overlay
 -- also cancels itself on its next frame in combat. The outline and tag are placed from the target's rect on
@@ -26,7 +27,8 @@ local L = {
     box = 2, boxOut = 2, -- the outline's thickness, and how far outside the frame
     tag = 16, tagPad = 8, tagOffset = 16, -- the name tag at the cursor
     hoverSeconds = 0.05, -- how often the tag reads the frame under the cursor
-    refreshSeconds = 1, -- how long the list of frames that take the mouse is kept
+    refreshSeconds = 1, -- the list of frames that take the mouse is read again at most this often,
+    stillSeconds = 0.3, -- and only once the cursor has stopped this long after moving
     maxFrames = 200000, -- frames read at most in one pass
 }
 P.SELECT_LAYOUT = L
@@ -37,31 +39,10 @@ local STRATA_RANK = {
     TOOLTIP = 9,
 }
 
-local num = P.num
+local num, call, yes, inCombat = P.num, P.call, P.flag, P.inCombat -- Placement.lua's
 local overlay, box, tag
 local mine = {} -- the frames made here, never found by the hit test
 local hoverWait = 0
-
-local function call(f, method, ...)
-    local fn = type(f) == "table" and f[method]
-    if type(fn) ~= "function" then
-        return nil
-    end
-    local ok, v = pcall(fn, f, ...)
-    return ok and v or nil
-end
-
--- Whether a value the game gave is true; a hidden (secret) value is never compared.
-local function yes(v)
-    if issecretvalue and issecretvalue(v) then
-        return false
-    end
-    return v == true
-end
-
-local function inCombat()
-    return InCombatLockdown and InCombatLockdown() and true or false
-end
 
 local function now()
     return GetTime and num(GetTime()) or 0
@@ -70,7 +51,7 @@ end
 -- The hit test ------------------------------------------------------------------------------------
 
 local hits = { list = nil, at = 0 } -- the frames that take the mouse, and when they were read
-local last = {} -- the last answer, with the cursor it was for
+local last = {} -- the last answer, with the cursor it was for, and when the cursor last moved (last.moved)
 
 local function strataRank(f)
     local s = call(f, "GetFrameStrata")
@@ -78,6 +59,20 @@ local function strataRank(f)
         return 0
     end
     return STRATA_RANK[s] or 0
+end
+
+-- The parents of f that clip their children (Frame:DoesClipChildren): f only shows inside all of them. Nil for none.
+local function clippers(f)
+    local out
+    local r, n = call(f, "GetParent"), 0
+    while r and r ~= UIParent and n < P.MAX_WALK do
+        if yes(call(r, "DoesClipChildren")) then
+            out = out or {}
+            out[#out + 1] = r
+        end
+        r, n = call(r, "GetParent"), n + 1
+    end
+    return out
 end
 
 -- Every visible frame (EnumerateFrames gives none of the forbidden ones) that takes the mouse, in the order made.
@@ -93,7 +88,8 @@ local function collect()
         -- most frames are hidden, so that is asked first
         if yes(call(f, "IsVisible")) and not mine[f] and not yes(call(f, "IsForbidden"))
             and (yes(call(f, "IsMouseMotionEnabled")) or yes(call(f, "IsMouseClickEnabled"))) then
-            list[#list + 1] = { frame = f, rank = strataRank(f), level = num(call(f, "GetFrameLevel")) or 0, order = n }
+            list[#list + 1] = { frame = f, rank = strataRank(f), level = num(call(f, "GetFrameLevel")) or 0, order = n,
+                clips = clippers(f) }
         end
         ok, f = pcall(EnumerateFrames, f)
     end
@@ -129,26 +125,52 @@ local function over(a, b)
     return a.order > b.order
 end
 
--- The topmost frame under the cursor that takes the mouse, the overlay left out; nil when there is none.
+-- Whether the cursor is over c's frame where it shows: inside every parent that clips it (a row scrolled out of
+-- its list is cut off there).
+local function hit(c)
+    if not (yes(call(c.frame, "IsVisible")) and yes(call(c.frame, "IsMouseOver"))) then
+        return false
+    end
+    for _, r in ipairs(c.clips or {}) do
+        if not yes(call(r, "IsMouseOver")) then
+            return false
+        end
+    end
+    return true
+end
+
+-- The topmost frame under the cursor that takes the mouse, the overlay left out; nil when there is none. The frames
+-- are read when there is no list yet (P.UnderCursor reads them again).
 function P.HitTest()
-    local t = now()
-    if not hits.list or t - hits.at >= L.refreshSeconds then
-        hits.list, hits.at = collect(), t
+    if not hits.list then
+        hits.list, hits.at = collect(), now()
     end
     local best
     for _, c in ipairs(hits.list) do
-        if yes(call(c.frame, "IsVisible")) and yes(call(c.frame, "IsMouseOver")) and (not best or over(c, best)) then
+        if (not best or over(c, best)) and hit(c) then
             best = c
         end
     end
     return best and best.frame or nil
 end
 
--- The frame under the cursor while selecting, kept until the cursor moves (a still cursor reads nothing again).
+-- The frame under the cursor while selecting, kept until the cursor moves. The frames are read again (for frames
+-- shown since) only once the cursor has stopped for L.stillSeconds after a move, and at most every
+-- L.refreshSeconds, so a sweep across the screen never reads them.
 function P.UnderCursor()
     local x, y = GetCursorPosition()
     x, y = num(x), num(y)
-    if hits.list and last.at == hits.at and last.x == x and last.y == y then
+    local t = now()
+    local moved = last.x ~= x or last.y ~= y
+    if moved then
+        last.moved = t
+    end
+    local settled = last.moved and last.moved > hits.at and t - last.moved >= L.stillSeconds
+    if hits.list and settled and t - hits.at >= L.refreshSeconds then
+        hits.list, hits.at = collect(), t
+        moved = true
+    end
+    if hits.list and not moved and last.at == hits.at then
         return last.frame
     end
     local f = P.HitTest()
@@ -156,10 +178,16 @@ function P.UnderCursor()
     return f
 end
 
--- Reads the frames again on the next hover (selecting starts, or a test changed them).
+-- Lets go of the frames read: they are read again on the next hover (selecting starts or stops, or a test changed
+-- them).
 function P.ForgetHits()
     hits.list, hits.at = nil, 0
     last = {}
+end
+
+-- How many frames the hit test holds now (0 when it holds none).
+function P.HeldHits()
+    return hits.list and #hits.list or 0
 end
 
 -- The overlay, the outline and the tag ------------------------------------------------------------------
@@ -328,4 +356,5 @@ function P.SelectSync()
         overlay:Hide()
     end
     hideMarks()
+    P.ForgetHits()
 end
