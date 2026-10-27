@@ -383,9 +383,11 @@ local defaults = {
         -- (hidden); a spell not there is as by default (Timeline/HealerRows.lua). Long term, never shared.
         healerRows = {},
     },
-    -- The team raid check (Team.lua): threshold is the share of the raid's online members that must run CRT for a
-    -- team raid, 0.5 to 1 (General Settings shows it as 50% to 100%). A setting: shared in Export settings only.
-    team = { threshold = 0.75 },
+    -- Team raids (Team.lua, TeamList.lua): list is your own team names, in the order added (Team and Pug are built
+    -- in, never saved here); popup is the place of the new raid group popup (TeamPopup.lua). Tonight's team and the
+    -- group's lock are per character, in CRTDBChar.team. threshold, the share of the raid that once had to run CRT,
+    -- is no longer read and stays only so old saved data keeps its shape.
+    team = { threshold = 0.75, list = {}, popup = {} },
     -- Season Stats (SeasonStats/Data.lua): the raid's own counters per boss and difficulty group, counted from each
     -- pull the Timeline saves. bosses[encounterID] = { name, nh = counters, mythic = counters }; filled is true once
     -- they were filled from the Timeline's saved pulls. Data only: never in Export settings only. boss[group] counts team

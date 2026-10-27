@@ -286,6 +286,46 @@ function LM:ChooseLooting(on, why)
     return self:SetLooting(on, why)
 end
 
+-- The new raid group popup's Use Loot Master? (CRT_Core/UI/TeamPopup.lua), answered by the leader. In a raid
+-- instance it is answered there and then: Yes turns CRT Looting on (LM:ChooseLooting), No leaves it off and the
+-- instance's question isn't asked. Elsewhere the answer is kept for this raid group (CRTDBChar.lootmaster.lootingPlan:
+-- { on, group = CRT.Team:GroupKey(), at, resetAt }) and taken, once, instead of the question when you next enter
+-- a raid instance while leading this group tonight (LM.Fresh). Nothing else about loot changes.
+function LM:PlanLooting(on)
+    on = on and true or false
+    local key = LM.InstanceKey()
+    if key and isLeader() then
+        if on then
+            return self:ChooseLooting(true)
+        end
+        askedFor = key
+        saveAsked(key)
+        return true
+    end
+    CRTDBChar = CRTDBChar or {}
+    CRTDBChar.lootmaster = CRTDBChar.lootmaster or {}
+    local Team = CRT.Team
+    CRTDBChar.lootmaster.lootingPlan = { on = on, group = Team and Team.GroupKey and Team:GroupKey() or nil, at = time(), resetAt = LM.ResetAt() }
+    return true
+end
+
+-- The kept answer, taken once: true (Yes) or false (No), or nil when there is none for this raid group tonight.
+local function takePlan()
+    local lm = CRTDBChar and type(CRTDBChar.lootmaster) == "table" and CRTDBChar.lootmaster
+    local plan = lm and lm.lootingPlan
+    if type(plan) ~= "table" then
+        return nil
+    end
+    lm.lootingPlan = nil
+    local Team = CRT.Team
+    local group = Team and Team.GroupKey and Team:GroupKey() or nil
+    if not LM.Fresh(plan.at, plan.resetAt) or plan.group == nil or plan.group ~= group then
+        return nil
+    end
+    return plan.on == true
+end
+LM.TakeLootingPlan = takePlan
+
 beat = function()
     if not own.on then
         stopBeat()
@@ -516,6 +556,15 @@ end)
 local function maybeAsk()
     if lastKey and askedFor ~= lastKey and not own.on and LM:CanRunLooting() and savedAsked() ~= lastKey then
         askedFor = lastKey
+        -- answered already on the new raid group popup
+        local plan = takePlan()
+        if plan == true then
+            LM:ChooseLooting(true)
+            return
+        elseif plan == false then
+            saveAsked(lastKey)
+            return
+        end
         if LM.AskLooting then
             LM.AskLooting()
         end

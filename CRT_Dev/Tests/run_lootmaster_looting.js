@@ -197,6 +197,47 @@ onEvent("PARTY_LEADER_CHANGED")
 GROUP.leader = "Solex-Sargeras"
 onEvent("PARTY_LEADER_CHANGED")
 eq(asked, n + 2, "prompt: asked again on getting the lead back")
+-- the new raid group popup's Use Loot Master? (LM:PlanLooting, CRT_Core/UI/TeamPopup.lua): outside, the answer is
+-- kept for the raid group and taken once, instead of the question, on entering a raid instance; inside, at once
+do
+  local groupKey = "g1"
+  CRT.Team = { GroupKey = function() return groupKey end }
+  local function enterNew()
+    goOutside() onEvent("PLAYER_ENTERING_WORLD", false, false)
+    nextId = nextId + 1 WHERE.id = nextId goInside()
+    onEvent("PLAYER_ENTERING_WORLD", false, false)
+  end
+  goOutside() onEvent("PLAYER_ENTERING_WORLD", false, false)
+  take()
+  LM:PlanLooting(true)
+  eq(LM:LootingOn(), false, "plan: Yes outside an instance turns nothing on yet")
+  eq(CRTDBChar.lootmaster.lootingPlan and CRTDBChar.lootmaster.lootingPlan.group, "g1", "plan: kept for this raid group")
+  local a = asked
+  enterNew()
+  eq(asked, a, "plan: Yes answers the instance's question")
+  eq(LM:LootingOn(), true, "plan: CRT Looting on when the leader enters a raid instance")
+  eq(CRTDBChar.lootmaster.lootingPlan, nil, "plan: taken once")
+  LM:ChooseLooting(false, "off") take()
+  goOutside() onEvent("PLAYER_ENTERING_WORLD", false, false)
+  LM:PlanLooting(false)
+  enterNew()
+  eq(asked, a, "plan: No answers it too")
+  eq(LM:LootingOn(), false, "plan: and leaves CRT Looting off")
+  take()
+  enterNew()
+  eq(asked, a + 1, "plan: the next instance asks as before")
+  goOutside() onEvent("PLAYER_ENTERING_WORLD", false, false)
+  LM:PlanLooting(true)
+  groupKey = "g2"
+  enterNew()
+  eq(asked, a + 2, "plan: another raid group's answer is dropped, and the question asked")
+  eq(LM:LootingOn(), false, "plan: nothing turned on from another group's answer")
+  -- inside a raid instance: answered there and then
+  LM:PlanLooting(true)
+  eq(LM:LootingOn(), true, "plan: Yes inside turns CRT Looting on at once")
+  LM:ChooseLooting(false, "off") take()
+  CRT.Team = nil
+end
 WHERE.id = 2810
 onEvent("PLAYER_ENTERING_WORLD", false, false)
 -- a /reload inside: off again, raiders told, and asked again

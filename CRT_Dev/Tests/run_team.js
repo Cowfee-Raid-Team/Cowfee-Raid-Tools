@@ -2,7 +2,7 @@
 // handed to every other one. The hello's encode and decode, the batching and the window (a burst of joiners gets one
 // answer, never one per joiner, and the answers stop), no hello in combat, a finder group, a party, solo or during
 // the game's lockdown (tried again until it lifts), the set following the roster (leaving, going offline, a reload),
-// the threshold maths with offline members and players without CRT, OnChange, the snapshot at a pull's start, the
+// the count with offline members and players without CRT, tonight's team and Pug, OnChange, the snapshot at a pull's start, the
 // realm folded in names, secret senders, the saved default, the share and the .toc.
 // Usage: node run_team.js <addon folder>
 const fs = require('fs');
@@ -11,7 +11,7 @@ const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate();
 lualib.luaL_openlibs(L);
 const harness = `
-local teamSrc, coreSrc, profilesSrc, tocSrc, slashSrc = ...
+local teamSrc, coreSrc, profilesSrc, tocSrc, slashSrc, listSrc = ...
 local fails, passes = 0, 0
 local function check(ok, what) if ok then passes = passes + 1 else fails = fails + 1 print("FAIL " .. what) end end
 local function eq(a, b, what) check(a == b, what .. " (got " .. tostring(a) .. ", want " .. tostring(b) .. ")") end
@@ -26,6 +26,11 @@ time = function() return 1790000000 + CLOCK end
 -- the clients: each its own CRT and frames; ME is the one acting now
 local ME
 local clients, order = {}, {}
+-- CRTDBChar is per character: each client's own, read and written as the one acting now
+setmetatable(_G, {
+  __index = function(_, k) if k == "CRTDBChar" then local c = clients[ME] return c and c.char end end,
+  __newindex = function(t, k, v) if k == "CRTDBChar" then clients[ME].char = v else rawset(t, k, v) end end,
+})
 -- the raid: { name, realm, online, crt (has a client) }; party = a party, not a raid
 local raid = {}
 local shape = "raid" -- "raid", "party", "solo", "finder"
@@ -102,12 +107,13 @@ end
 CreateFrame = function() local f = mock() clients[ME].frames[#clients[ME].frames + 1] = f return f end
 
 local function newClient(name, realm, version)
-  local c = { name = name, realm = realm or "Sargeras", frames = {}, CRT = { db = { team = { threshold = 0.75 } }, version = version or "1.2.0" } }
+  local c = { name = name, realm = realm or "Sargeras", frames = {}, CRT = { db = { team = { threshold = 0.75, list = {} } }, version = version or "1.2.0" } }
   function c.CRT:Print() end
   clients[name] = c
   order[#order + 1] = name
   local was = ME ME = name
   assert(load(teamSrc, "Team.lua"))("CowfeeRaidTools", c.CRT)
+  assert(load(listSrc, "TeamList.lua"))("CowfeeRaidTools", c.CRT)
   ME = was
   c.Team = c.CRT.Team
   c.loaded = true
@@ -222,6 +228,7 @@ advance(30)
 eq(#sent, 0, "solo: nothing sent")
 eq(T:IsTeam(), false, "solo: not a team raid")
 eq(T.StatusText(), "Not in a raid group", "solo: the status")
+eq(T.StatusLine(), "Now: Not in a raid group.", "solo: the status line")
 check(not A.frames[1].events.CHAT_MSG_ADDON, "out of a raid group: addon messages not listened to")
 shape = "party"
 on("Solex", "GROUP_ROSTER_UPDATE")
@@ -248,7 +255,8 @@ eq(sentBy("Solex"), 1, "joining a raid group: one hello")
 eq(sent[1].channel, "RAID", "to the raid channel")
 eq(sent[1].prefix, "CRTHello", "under CRTHello")
 eq(snap("Solex").crt .. "/" .. snap("Solex").online, "1/1", "alone: 1 of 1")
-eq(T:IsTeam(), true, "1 of 1 running CRT is a team raid")
+eq(T:IsTeam(), true, "a raid group on tonight's default team, Team: a team raid")
+eq(T:Tonight(), "Team", "a new raid group starts on Team")
 -- five more CRTs join within a few seconds, two players without CRT
 local start = #sent + 1
 for i, name in ipairs({ "Moo", "Bell", "Hay", "Dot" }) do join(name, "Sargeras", true) advance(1) end
@@ -276,42 +284,38 @@ for _, m in ipairs(sent) do
   last[m.from] = m.at
 end
 eq(tooSoon, 0, "no CRT sent two hellos within the window")
--- 6 of 8 is 75%: a team raid
-eq(T:IsTeam(), true, "6 of 8 (75%) is a team raid")
-eq(T.StatusText(), "Team raid, 6 of 8 running CRT (75%)", "the status")
-eq(T.StatusLine(), "Now: Team raid, 6 of 8 running CRT (75%).", "the status line General Settings and /crt team show")
+-- tonight's team decides, not how many run CRT
+eq(T:IsTeam(), true, "6 of 8 running CRT on Team: a team raid")
+eq(T.StatusText(), "Team", "the status: tonight's team")
+eq(T.StatusLine(), "Now: Team.", "the status line General Settings and /crt team show")
 
--- 5. The threshold, offline members, OnChange ---------------------------------------------------------------------
+-- 5. Pug, offline members, OnChange --------------------------------------------------------------------------------
 local flips = {}
-T:OnChange(function(team, s) flips[#flips + 1] = tostring(team) .. ":" .. s.crt .. "/" .. s.online end)
+T:OnChange(function(team, s) flips[#flips + 1] = tostring(team) .. ":" .. s.team end)
 local recounts = 0
 T:OnRecount(function() recounts = recounts + 1 end)
 join("Pug3", "Sargeras", false)
-eq(T:IsTeam(), false, "6 of 9 (67%) is not a team raid")
-eq(flips[#flips], "false:6/9", "OnChange fires when the answer flips")
+eq(T:IsTeam(), true, "players without CRT joining don't change the team")
+eq(#flips, 0, "and nothing flips")
 check(recounts >= 1, "OnRecount on a new count")
-eq(T.StatusText(), "Not a team raid, 6 of 9 running CRT (67%)", "the status says so")
+check(T:SetTonight("pug"), "Pug picked (any case)")
+eq(T:Tonight(), "Pug", "saved as the built-in name")
+eq(T:IsTeam(), false, "Pug: not a team raid")
+eq(flips[#flips], "false:Pug", "OnChange fires when the answer flips")
+eq(T.StatusLine(), "Now: Pug.", "the status says so")
+check(not T:SetTonight("Nobody"), "a team not in the list can't be picked")
+eq(T:Tonight(), "Pug", "and tonight stays")
 -- a player without CRT going offline: online members only
 raid[#raid].online = false
 on("Solex", "UNIT_CONNECTION", "raid9", false)
 eq(snap("Solex").crt .. "/" .. snap("Solex").online, "6/8", "an offline member is left out of the count")
-eq(T:IsTeam(), true, "6 of 8 online: a team raid again")
-eq(flips[#flips], "true:6/8", "and OnChange says so")
+T:SetTonight("Team")
+eq(T:IsTeam(), true, "Team again: a team raid")
+eq(flips[#flips], "true:Team", "and OnChange says so")
 local nflips = #flips
 on("Solex", "GROUP_ROSTER_UPDATE")
 eq(#flips, nflips, "OnChange only on a flip")
--- the threshold is adjustable
-T:SetPercent(80)
-eq(A.CRT.db.team.threshold, 0.8, "the slider saves a fraction")
-eq(T:IsTeam(), false, "at 80%, 6 of 8 isn't a team raid")
-T:SetPercent(50)
-eq(T:IsTeam(), true, "at 50% it is")
-T:SetPercent(33) eq(T.Percent(), 50, "never under 50%")
-T:SetPercent(120) eq(T.Percent(), 100, "never over 100%")
-T:SetPercent(77) eq(T.Percent(), 75, "on the slider's steps")
-A.CRT.db.team.threshold = nil eq(T.Percent(), 75, "no saved threshold: 75%")
-A.CRT.db.team.threshold = 0.75
-check(T.Rule(15, 20, 75) and not T.Rule(14, 20, 75) and T.Rule(3, 4, 75) and not T.Rule(0, 0, 75), "whole-number maths: 15 of 20 is 75%, 14 is not")
+eq(T.Percent, nil, "no threshold any more")
 -- a CRT going offline is dropped, and counts again only after its hello
 for _, m in ipairs(raid) do if m.name == "Dot" then m.online = false end end
 on("Solex", "UNIT_CONNECTION", "raid5", false)
@@ -335,6 +339,7 @@ local Hay = clients.Hay
 Hay.frames = {}
 local was = ME ME = "Hay"
 assert(load(teamSrc, "Team.lua"))("CowfeeRaidTools", Hay.CRT)
+assert(load(listSrc, "TeamList.lua"))("CowfeeRaidTools", Hay.CRT)
 ME = was
 Hay.Team = Hay.CRT.Team
 on("Hay", "PLAYER_ENTERING_WORLD", false, true)
@@ -354,6 +359,7 @@ local function reload(name)
   c.frames = {}
   local w = ME ME = name
   assert(load(teamSrc, "Team.lua"))("CowfeeRaidTools", c.CRT)
+  assert(load(listSrc, "TeamList.lua"))("CowfeeRaidTools", c.CRT)
   ME = w
   c.Team = c.CRT.Team
   on(name, "PLAYER_ENTERING_WORLD", false, true)
@@ -485,15 +491,19 @@ check(A.frames[1].events.ENCOUNTER_START, "a pull's start is listened to in a ra
 local pullAt = time()
 on("Solex", "ENCOUNTER_START", 3129, "Boss", 16, 20)
 local atPull = T:AtPull(3129, pullAt)
-eq(atPull and atPull.team, true, "the pull's snapshot: a team raid")
-for i = 1, 6 do join("PugX" .. i, "Sargeras", false) end
-eq(T:IsTeam(), false, "pugs joined after the pull: not a team raid now")
+eq(atPull and atPull.isTeam, true, "the pull's snapshot: a team raid")
+eq(atPull and atPull.team, "Team", "and its team's name")
+T:SetTonight("Pug")
+eq(T:IsTeam(), false, "Pug picked after the pull: not a team raid now")
+eq(T:PullTeam(3129, pullAt), "Team", "the pull keeps the team it started with")
+eq(T:PullTeam(9999, pullAt + 600), "Pug", "no snapshot: tonight's team now")
 eq(T:PullIsTeam(3129, pullAt), true, "but the pull keeps its answer from the start")
 eq(T:AtPull(3129, pullAt + 600), nil, "a start far from any pull: none")
 eq(T:AtPull(9999, pullAt), nil, "another boss: none")
 eq(T:PullIsTeam(9999, pullAt + 600), false, "no snapshot: the answer now")
 on("Solex", "ENCOUNTER_START", "SECRET", "Boss", 16, 20)
-eq(T:AtPull(nil, time()) and T:AtPull(nil, time()).team, false, "a secret encounter ID is kept as none, matched by time")
+eq(T:AtPull(nil, time()) and T:AtPull(nil, time()).isTeam, false, "a secret encounter ID is kept as none, matched by time")
+T:SetTonight("Team")
 -- leaving the group forgets the pulls' snapshots too
 shape = "solo"
 on("Solex", "GROUP_ROSTER_UPDATE")
@@ -507,8 +517,12 @@ check(not teamSrc:find("WHISPER", 1, true) and not teamSrc:find("GUILD", 1, true
 local coreDefault = coreSrc:match("\\n    team = (%b{}),")
 check(coreDefault ~= nil, "Core.lua has a team default")
 local def = assert(load("return " .. (coreDefault or "{}")))()
-eq(def.threshold, 0.75, "default: 75%")
-check(profilesSrc:find("\\n    team = true,", 1, true) ~= nil, "the threshold is shared in Export settings only")
+eq(def.threshold, 0.75, "the old threshold keeps its default, unread")
+check(type(def.list) == "table" and #def.list == 0, "default: no teams of your own")
+check(profilesSrc:find("\\n    team = { threshold = false, list = false, popup = true },", 1, true) ~= nil, "your team names stay yours in Export settings only")
+check(not teamSrc:find("threshold", 1, true), "Team.lua never reads the threshold")
+local listAt = tocSrc:find("CRT_Core\\\\TeamList.lua", 1, true)
+check(listAt and listAt > tocSrc:find("CRT_Core\\\\Team.lua", 1, true), "TeamList.lua in the .toc, after Team.lua")
 local coreAt = tocSrc:find("CRT_Core\\\\Core.lua", 1, true)
 local teamAt = tocSrc:find("CRT_Core\\\\Team.lua", 1, true)
 check(teamAt and teamAt > coreAt and teamAt < tocSrc:find("CRT_Modules\\\\Late\\\\Data.lua", 1, true), "Team.lua in the .toc, after Core and before the modules")
@@ -520,7 +534,7 @@ if fails > 0 then error("failures") end
 `;
 const dir = process.argv[2];
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
-const files = ['CRT_Core/Team.lua', 'CRT_Core/Core.lua', 'CRT_Core/Profiles.lua', 'CowfeeRaidTools.toc', 'CRT_Core/Slash.lua'];
+const files = ['CRT_Core/Team.lua', 'CRT_Core/Core.lua', 'CRT_Core/Profiles.lua', 'CowfeeRaidTools.toc', 'CRT_Core/Slash.lua', 'CRT_Core/TeamList.lua'];
 for (const f of files) {
   const p = path.join(dir, f);
   lua.lua_pushstring(L, to_luastring(fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : 'error("missing ' + f + '")'));

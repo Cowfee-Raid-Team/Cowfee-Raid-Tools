@@ -5,7 +5,7 @@ const fs = require('fs');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
 const harness = require('./placement_stub')(process.argv[2]) + `
-local coreSrc, panelSrc, controlsSrc, pageSrc, alertSrc, profilesSrc, themesSrc, macrosSrc, windowSrc, tooltipSrc, areasSrc, teamSrc, shareSrc = ...
+local coreSrc, panelSrc, controlsSrc, pageSrc, alertSrc, profilesSrc, themesSrc, macrosSrc, windowSrc, tooltipSrc, areasSrc, teamSrc, shareSrc, listSrc = ...
 -- FAIL lines are counted, and the count printed last, so a failure shows past the runner's tail
 local failCount, rawPrint = 0, print
 print = function(s, ...) if type(s) == "string" and s:find("^FAIL ") then failCount = failCount + 1 end rawPrint(s, ...) end
@@ -95,6 +95,7 @@ assert(load(profilesSrc, "CRT_Core/Profiles.lua"))("CowfeeRaidTools", CRT)
 -- the team raid check, which General Settings shows (CRT_Core/Team.lua; its own harness is run_team.js)
 IsInRaid = function() return false end IsInGroup = function() return false end
 assert(load(teamSrc, "CRT_Core/Team.lua"))("CowfeeRaidTools", CRT)
+assert(load(listSrc, "CRT_Core/TeamList.lua"))("CowfeeRaidTools", CRT)
 -- the shipped textures' folder, set once in Core.lua
 if CRT.MEDIA == "Interface\\\\AddOns\\\\CowfeeRaidTools\\\\CRT_Media\\\\Media\\\\" then print("ok CRT.MEDIA") else print("FAIL CRT.MEDIA: " .. tostring(CRT.MEDIA)) end
 -- ADDON_LOADED, with data saved before themes: the Modern look on and no theme loads as Beanworks: Cowfee.
@@ -319,18 +320,42 @@ do
     print("tooltip position: " .. table.concat(labels, ", "))
   end
 end
--- Team raids: a heading with its (?), the Running CRT slider (50% to 100%, steps of 5, saved as a fraction) and the
--- status line, in the right column and inside the page
+-- Team raids: a heading with its (?), the Tonight's team dropdown (Team, Pug, your teams, Add team…), Push to raid
+-- and Remove team, the status line, no slider, in the right column and inside the page
 do
-  local slider = sliders["Running CRT"]
-  if not slider then print("FAIL General Settings has a Team raids slider, Running CRT") else
-    if not (slider.opts.min == 50 and slider.opts.max == 100 and slider.opts.step == 5) then print("FAIL the slider goes from 50% to 100% in steps of 5") end
-    if slider.opts.get() ~= 75 then print("FAIL the slider starts on 75%: " .. tostring(slider.opts.get())) end
-    slider.opts.set(80)
-    if CRT.db.team.threshold ~= 0.8 then print("FAIL the slider saves team.threshold as a fraction: " .. tostring(CRT.db.team.threshold)) end
-    slider.opts.set(75)
-    local p = slider.row.pts[1] or {}
-    if not (p[2] == 10 + 2 * math.floor(UI.PAGE_W / 3)) then print("FAIL the slider sits in the right column") end
+  if sliders["Running CRT"] then print("FAIL the Running CRT slider is gone") end
+  local d = dropdowns["Tonight's team"]
+  local Team = CRT.Team
+  local function textOf(fr) local t = rawget(fr, "text") return type(t) == "string" and t or "" end
+  local function findButton(want) for _, fr in ipairs(frames) do if fr.kind == "Button" and textOf(fr) == want then return fr end end end
+  if not d then print("FAIL General Settings has a Tonight's team dropdown") else
+    local labels = {} for _, o in ipairs(d.options()) do labels[#labels + 1] = o.label end
+    if table.concat(labels, ",") ~= "Team,Pug,Add team\\226\\128\\166" then print("FAIL Tonight's team lists Team, Pug, Add team…: " .. table.concat(labels, ",")) end
+    if d.get() ~= "Team" then print("FAIL Tonight's team starts on Team: " .. tostring(d.get())) end
+    Team:AddTeam("Cowfee Mythic")
+    d.set("Cowfee Mythic")
+    if d.get() ~= "Cowfee Mythic" then print("FAIL picking a team saves it") end
+    -- Add team… opens the shared name box (UI/TeamDialogs.lua), and the added team is picked
+    local asked
+    CRT.TeamDialogs = { AskName = function(done) asked = done end, AskRemove = function(name, done) asked = { name, done } end }
+    d.set(Team.ADD_KEY)
+    if type(asked) ~= "function" then print("FAIL Add team… opens the name box") else
+      Team:AddTeam("Night Crew") asked("Night Crew")
+      if d.get() ~= "Night Crew" then print("FAIL the added team is picked") end
+    end
+    local push, remove = findButton("Push to raid"), findButton("Remove team")
+    if not (push and remove) then print("FAIL Team raids has Push to raid and Remove team") else
+      UI.pages.settings.frame.OnShow()
+      if rawget(push, "enabled") ~= false then print("FAIL Push to raid is greyed out of a raid group") end
+      if rawget(remove, "enabled") ~= true then print("FAIL Remove team works on your own team") end
+      remove.OnClick(remove)
+      if not (type(asked) == "table" and asked[1] == "Night Crew") then print("FAIL Remove team asks about tonight's team") end
+      d.set("Team") UI.pages.settings.frame.OnShow()
+      if rawget(remove, "enabled") ~= false then print("FAIL Remove team is greyed for Team") end
+      local p = remove.pts[1] or {}
+      if not (p[2] == push and p[3] == "RIGHT") then print("FAIL Remove team sits right of Push to raid") end
+    end
+    local p = d.pts and d.pts[1]
   end
   local status, helped
   for _, fr in ipairs(frames) do
@@ -343,8 +368,9 @@ do
   if not (status and status.text == "Now: Not in a raid group.") then print("FAIL the Team raids status line: " .. tostring(status and status.text)) end
   if not helped then print("FAIL the Team raids heading has a (?)") end
   local p = status and status.pts[1] or {}
-  if status and ((p[2] or 0) + (status.w or 0) > UI.PAGE_W or (p[3] or 0) < -(UI.PAGE_H - 30)) then print("FAIL the status line stays inside the page") end
-  print("team raids: slider " .. tostring(slider and slider.opts.get()) .. "%, " .. tostring(status and status.text))
+  if status and ((p[2] or 0) + (status.w or 0) > UI.PAGE_W or (p[3] or 0) - 40 < -(UI.PAGE_H - 30)) then print("FAIL the status line stays inside the page") end
+  if status and p[2] ~= 10 + 2 * math.floor(UI.PAGE_W / 3) then print("FAIL Team raids sits in the right column") end
+  print("team raids: " .. tostring(d and d.get()) .. ", " .. tostring(status and status.text))
 end
 local opts = {} for _, o in ipairs(dropdowns["Use profile"].options()) do opts[#opts + 1] = o.label end
 print("use profile choices: " .. table.concat(opts, ", ") .. "; copy from enabled " .. tostring(dropdowns["Copy from"].enabledIf()))
@@ -602,5 +628,5 @@ if failCount > 0 then print(failCount .. " failed") end
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 const d = process.argv[2];
-for (const p of ['CRT_Core/Core.lua', 'CRT_Core/UI/Panel.lua', 'CRT_Core/UI/Controls.lua', 'CRT_Core/UI/SettingsPage.lua', 'CRT_Modules/Notes/Alert.lua', 'CRT_Core/Profiles.lua', 'CRT_Core/Themes.lua', 'CRT_Core/Macros.lua', 'CRT_Core/UI/Window.lua', 'CRT_Core/UI/Tooltip.lua', 'CRT_Modules/Alerts/Areas.lua', 'CRT_Core/Team.lua', 'CRT_Core/Share.lua']) lua.lua_pushstring(L, to_luastring(fs.readFileSync(d + '/' + p, 'utf8')));
-if (lua.lua_pcall(L, 13, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
+for (const p of ['CRT_Core/Core.lua', 'CRT_Core/UI/Panel.lua', 'CRT_Core/UI/Controls.lua', 'CRT_Core/UI/SettingsPage.lua', 'CRT_Modules/Notes/Alert.lua', 'CRT_Core/Profiles.lua', 'CRT_Core/Themes.lua', 'CRT_Core/Macros.lua', 'CRT_Core/UI/Window.lua', 'CRT_Core/UI/Tooltip.lua', 'CRT_Modules/Alerts/Areas.lua', 'CRT_Core/Team.lua', 'CRT_Core/Share.lua', 'CRT_Core/TeamList.lua']) lua.lua_pushstring(L, to_luastring(fs.readFileSync(d + '/' + p, 'utf8')));
+if (lua.lua_pcall(L, 14, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }

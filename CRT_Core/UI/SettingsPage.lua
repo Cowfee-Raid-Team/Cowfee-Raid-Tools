@@ -7,7 +7,8 @@ local ADDON, CRT = ...
 --               size of every text the addon draws with its shared fonts, CRT:ApplyFonts in Core.lua).
 --               Middle: Sound, Reports, the Minimap button and Tooltips (where tooltips open, with the spot
 --               picker under the dropdown: UI.TooltipPositionSetting in UI/Tooltip.lua). Right: Layers (which frame strata each
---               group of windows is drawn in, UI:SetLayer in UI/Panel.lua)
+--               group of windows is drawn in, UI:SetLayer in UI/Panel.lua) and Team raids (tonight's team,
+--               Push to raid and Remove team: buildTeam, on Team.lua and TeamList.lua)
 --   Profiles    Profiles.lua: switch, create, copy, delete and reset profiles; Export (the whole profile),
 --               Export settings only (for raiders), Import (either kind, with a preview) and Undo last import
 -- Named Addon Settings before 0.16.0. Its key is still "settings".
@@ -59,14 +60,18 @@ local TEXT = {
     confirmUndo = "Put back the settings you had before importing from %s?\n\nYour interface reloads.",
     acceptUndo = "Undo and reload",
     teamTitle = "Team raids",
-    teamSlider = "Running CRT",
-    teamHelp = "A team raid needs this share of the raid's online members running CRT. Season Stats keeps team raids apart from all raids, and Tattlebot and the Late Tracker can record team raids only.\n\nEach CRT says hello to the raid when it joins, so CRT knows who runs it. Players without CRT count against the share. Parties, solo play and finder groups are never team raids.",
+    teamTonight = "Tonight's team",
+    teamPush = "Push to raid",
+    teamRemove = "Remove team",
+    teamLocked = "Set by %s (raid leader). You can change or remove it after you leave the group.",
+    -- the game's lock icon (Blizzard_GroupFinder's LFGFrame.xml uses this file), inline before the line
+    teamLockIcon = "|TInterface\\LFGFrame\\UI-LFG-ICON-LOCK:14:14|t ",
+    teamHelp = "Pick which team tonight's raid is. Season Stats keeps each team's pulls apart, and Tattlebot and the Late Tracker can record team raids only: any team but Pug. Add team at the bottom of the list adds your own.\n\nWhen you join a new raid group, CRT asks which team it is. The raid leader can push the team to everyone in the raid with CRT, with Push to raid or the popup's Save and push. Raiders can't change it then until they leave the group.\n\nRemove team deletes one of your teams and its Season Stats, after two warnings. Team and Pug can't be removed. Parties, solo play and finder groups are never team raids.",
     help = "A profile holds everything the addon saves: settings, window positions, layouts, notes, consumables lists and history. Each character remembers its own; new characters start on the one under New characters. Switching, copying or resetting a profile reloads your interface.\n\nExport gives the whole profile as text, for your own characters: Import saves it as a new profile.\n\nExport settings only gives just settings and window positions, for raiders (where your reports go, whose notes and loot leaders you trust and your own sound files stay yours): Import shows what differs and applies it to this profile, after saving your settings for Undo last import. Keep my window positions keeps where your windows are and the size of your note windows.",
 }
 
 local page
 local controls = {}
-local teamStatus -- the Team raids status line, redrawn on each new count while the page shows
 
 -- Text size in points, for the body text: 8 to 22 pt.
 local TEXT_SIZES = {}
@@ -539,6 +544,77 @@ local function buildLeft(pf)
     controls[#controls + 1] = tooltips
 end
 
+-- Team raids (Team.lua, TeamList.lua): Tonight's team (Team, Pug, your teams, Add team…), Push to raid (the raid
+-- leader), Remove team (your own teams, two warnings: UI/TeamDialogs.lua), the lock line while the raid leader's
+-- push holds the pick, and the status line.
+local function buildTeam(pf, x, top)
+    local Team = CRT.Team
+    heading(pf, x, top, TEXT.teamTitle, TEXT.teamHelp)
+    local unlocked = function()
+        return not Team:IsLocked()
+    end
+    add(UI.Dropdown(pf, TEXT.teamTonight, {
+        labelWidth = LABEL_W,
+        width = CONTROL_W,
+        options = function()
+            return Team:Options()
+        end,
+        enabledIf = unlocked,
+        get = function()
+            return Team:Tonight()
+        end,
+        set = function(key)
+            if key == Team.ADD_KEY then
+                CRT.TeamDialogs.AskName(function(name)
+                    Team:SetTonight(name)
+                    refresh()
+                end)
+                return
+            end
+            Team:SetTonight(key)
+            refresh()
+        end,
+    }), x, top - 18)
+    local push = button(pf, TEXT.teamPush)
+    push:SetPoint("TOPLEFT", x, top - 54)
+    push:SetScript("OnClick", function()
+        Team:Push()
+        refresh()
+    end)
+    push.refresh = function()
+        push:SetEnabled(Team.CanPush())
+    end
+    controls[#controls + 1] = push
+    local remove = button(pf, TEXT.teamRemove)
+    remove:SetPoint("LEFT", push, "RIGHT", 6, 0)
+    remove:SetScript("OnClick", function()
+        CRT.TeamDialogs.AskRemove(Team:Tonight(), refresh)
+    end)
+    remove.refresh = function()
+        remove:SetEnabled(Team:CanRemove(Team:Tonight()))
+    end
+    controls[#controls + 1] = remove
+    local status = pf:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    status:SetPoint("TOPLEFT", x, top - 82)
+    status:SetWidth(COL_W - 20)
+    status:SetJustifyH("LEFT")
+    status.refresh = function()
+        status:SetText(Team.StatusLine())
+    end
+    controls[#controls + 1] = status
+    -- while the raid leader's push holds it: who set it, with a lock
+    local lock = pf:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    lock:SetPoint("TOPLEFT", x, top - 100)
+    lock:SetWidth(COL_W - 20)
+    lock:SetJustifyH("LEFT")
+    lock.refresh = function()
+        local by = Team:LockedBy()
+        lock:SetText(by and (TEXT.teamLockIcon .. TEXT.teamLocked:format(by)) or "")
+        lock:SetShown(by ~= nil)
+    end
+    controls[#controls + 1] = lock
+end
+
 local function buildRight(pf)
     local x = RIGHT_X
 
@@ -577,34 +653,7 @@ local function buildRight(pf)
         refresh()
     end)
 
-    -- Team raids (Team.lua): the share of the raid that must run CRT, and the answer now.
-    local Team = CRT.Team
-    local top = lastLayer - 52
-    heading(pf, x, top, TEXT.teamTitle, TEXT.teamHelp)
-    add(UI.Slider(pf, TEXT.teamSlider, {
-        min = Team.MIN_PERCENT,
-        max = Team.MAX_PERCENT,
-        step = Team.STEP,
-        labelWidth = LABEL_W,
-        width = CONTROL_W,
-        format = percent,
-        get = function()
-            return Team.Percent()
-        end,
-        set = function(v)
-            Team:SetPercent(v)
-            refresh()
-        end,
-    }), x, top - 18)
-    local status = pf:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    status:SetPoint("TOPLEFT", x, top - 54)
-    status:SetWidth(COL_W - 20)
-    status:SetJustifyH("LEFT")
-    status.refresh = function()
-        status:SetText(Team.StatusLine())
-    end
-    controls[#controls + 1] = status
-    teamStatus = status
+    buildTeam(pf, x, lastLayer - 52)
 end
 
 local function buildProfiles(pf)
@@ -816,12 +865,8 @@ local function build(pf)
     pf:SetScript("OnShow", refresh)
     -- Ctrl + mouse wheel changes the scale too, so the slider follows it.
     UI.onScale = refresh
-    -- a hello or a roster change: the Team raids line follows while the page shows
-    CRT.Team:OnRecount(function()
-        if page:IsShown() and teamStatus then
-            teamStatus.refresh()
-        end
-    end)
+    -- a push, a hello or a roster change: Team raids follows while the page shows (refresh checks)
+    CRT.Team:OnRecount(refresh)
 end
 
 UI:RegisterPage("settings", "General Settings", build)
