@@ -119,7 +119,8 @@ Late:End("button", NOW + 60) eq(resets, r0 + 1, "its end resets them")
 do
   local function check(ok, what) eq(ok and true or false, true, what) end
   local teamNow, changed = false, nil
-  local T = { IsTeam = function() return teamNow end, OnChange = function(_, fn) changed = fn end }
+  local T = { IsTeam = function() return teamNow end, OnChange = function(_, fn) changed = fn end,
+    Tonight = function() return teamNow and "Raid Alpha" or "Pug" end }
   local said = {}
   local C2 = { db = { groups = {}, late = { days = { [4] = true }, hour = 20, minute = 0, grace = 0, onlyTeam = true, history = { { id = 1, startedAt = 0, players = {} } }, nextId = 2, lastAuto = "" } },
     Team = T, Groups = CRT.Groups, Invite = CRT.Invite }
@@ -140,6 +141,7 @@ do
   check(n2 ~= nil and n2.how == "schedule", "the group becomes a team raid inside the window: the night starts from the schedule")
   eq(n2 and n2.startedAt, wed, "from the scheduled time")
   eq(n2 and n2.team, true, "stamped a team raid")
+  eq(n2 and n2.teamName, "Raid Alpha", "with tonight's team's name")
   L2:End("button", NOW + 3600)
   -- the next week the group never becomes one: the window passes and says why
   local wed2 = wedAt(28)
@@ -151,6 +153,7 @@ do
   -- Start raid now always starts, stamped as it is
   check(L2:Start("button", NOW), "Start raid now works in a group that isn't a team raid")
   eq(L2:Current().team, false, "stamped not a team raid")
+  eq(L2:Current().teamName, "Pug", "named Pug")
   L2:End("button", NOW + 600)
   eq(L2:HasOtherNights(), true, "now a night that wasn't a team raid is saved")
   eq(#L2:Nights("team"), 2, "Team raids: the two team nights")

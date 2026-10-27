@@ -1147,7 +1147,7 @@ local function buildHistory(f)
         end,
     })
     showDropdown:SetPoint("LEFT", exportButton, "RIGHT", 16, 0)
-    local showHelp = UI.HelpRight(showDropdown, "Show", "Team raids keeps the list, the totals and the export to the nights that were team raids: enough of the raid ran CRT at the start, as set on General Settings > Team raids. All raids adds the other nights. Nights from before this update are team raids.")
+    local showHelp = UI.HelpRight(showDropdown, "Show", "Team raids keeps the list, the totals and the export to the nights that were team raids: tonight's team at the start wasn't Pug (General Settings > Team raids). All raids adds the other nights. Nights from before this update are team raids.")
     local showRefresh = showDropdown.refresh
     showDropdown.refresh = function()
         local on = Late:HasOtherNights()
@@ -1274,7 +1274,7 @@ local function buildSettings(f)
         onlyTeam:SetChecked(Late:Settings().onlyTeam and true or false)
     end
     controls[#controls + 1] = onlyTeam
-    UI.HelpRight(onlyTeamLabel, "Only record team raids", "The schedule starts a night only once the group is a team raid: enough of the raid runs CRT, as set on General Settings > Team raids. It waits for one until 5 minutes after the start time. Start raid now always starts a night, marked as a team raid or not.")
+    UI.HelpRight(onlyTeamLabel, "Only record team raids", "The schedule starts a night only once the group is a team raid: a raid group whose team tonight isn't Pug (General Settings > Team raids). It waits for one until 5 minutes after the start time. Start raid now always starts a night, marked as a team raid or not.")
 end
 
 local function build(pf)

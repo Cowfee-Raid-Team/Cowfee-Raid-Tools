@@ -912,7 +912,7 @@ local function buildHistory(f)
         end,
     })
     showDropdown:SetPoint("LEFT", mechDropdown, "RIGHT", 40, 0)
-    local showHelp = UI.HelpRight(showDropdown, "Show", "Team raids keeps to the pulls that were team raids: enough of the raid ran CRT, as set on General Settings > Team raids. A night with no team pull is left out. All raids adds the pulls recorded with Only record team raids off. Pulls from before this update are team raids.")
+    local showHelp = UI.HelpRight(showDropdown, "Show", "Team raids keeps to the pulls that were team raids: tonight's team at the pull wasn't Pug (General Settings > Team raids). A night with no team pull is left out. All raids adds the pulls recorded with Only record team raids off. Pulls from before this update are team raids.")
     local showRefresh = showDropdown.refresh
     showDropdown.refresh = function()
         local on = Tattle:HasOtherNights()
@@ -1038,7 +1038,7 @@ local function buildSettings(f)
     local autoPost = makeCheck(f, 28, -80, "Post after each pull", "autoPost", trackingOn)
     UI.HelpRight(autoPost.label, "Post after each pull", "Posts the pull's report right after it is read, to the channel below, only if you are the raid leader, so a raid full of this addon posts once. Everyone else sees it in their own chat.")
     local onlyTeam = makeCheck(f, 28, -104, "Only record team raids", "onlyTeam", trackingOn)
-    UI.HelpRight(onlyTeam.label, "Only record team raids", "Records a pull only when it is a team raid: enough of the raid runs CRT, as set on General Settings > Team raids. Other pulls are not read, saved or posted. Turned off, every pull is recorded and marked as a team raid or not, and History can show either.")
+    UI.HelpRight(onlyTeam.label, "Only record team raids", "Records a pull only when it is a team raid: tonight's team isn't Pug (General Settings > Team raids). Other pulls are not read, saved or posted. Turned off, every pull is recorded and marked as a team raid or not, and History can show either.")
 
     local postTo = UI.Dropdown(f, "Post to", {
         options = OUTPUTS,

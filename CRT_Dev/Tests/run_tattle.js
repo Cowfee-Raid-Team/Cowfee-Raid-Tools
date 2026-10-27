@@ -117,8 +117,11 @@ CRT.TattleDB = { bosses = { { boss = "Alpha", encounterID = 9001, mechanics = { 
 local teamAnswer = true
 local asked = 0
 local askedAt, nowAsked = nil, 0
+-- tonight's team: Raid Alpha for a team raid, Pug for one that isn't (CRT_Core/Team.lua)
 CRT.Team = { PullIsTeam = function(_, enc, at) asked = asked + 1 askedAt = at return teamAnswer end,
-  IsTeam = function() nowAsked = nowAsked + 1 return teamAnswer end }
+  IsTeam = function() nowAsked = nowAsked + 1 return teamAnswer end,
+  PullTeam = function() return teamAnswer and "Raid Alpha" or "Pug" end,
+  Tonight = function() return teamAnswer and "Now Team" or "Pug" end }
 
 assert(load(dataSrc, "Tattlebot/Data.lua"))("CowfeeRaidTools", CRT)
 local Tattle = CRT.Tattle
@@ -155,6 +158,7 @@ teamAnswer = true
 pull(9001, "Alpha")
 check(s.current ~= nil and #s.current.pulls == 1, "a team raid pull is recorded")
 eq(s.current.pulls[1].team, true, "and stamped a team raid")
+eq(s.current.pulls[1].teamName, "Raid Alpha", "with the name of the team it started with")
 eq(#posted, 1, "and posted")
 -- a pull waiting for combat's end is dropped when a pull that isn't a team raid ends first
 local before = #s.current.pulls
@@ -196,6 +200,8 @@ eq(#Tattle.InScope(s.history, "all"), #s.history, "All raids keeps every night")
 local bp = Tattle:BossPulls(9001)
 local pugPulls = 0 for _, p in ipairs(bp) do if p.team == false then pugPulls = pugPulls + 1 end end
 eq(pugPulls, 3, "BossPulls marks each pull's kind, for Season Stats")
+local named = {} for _, p in ipairs(bp) do named[tostring(p.teamName)] = (named[tostring(p.teamName)] or 0) + 1 end
+eq(named.Pug, 3, "and its team's name, for Season Stats' Team filter")
 -- a fight saved by hand from the Last fight view is stamped too
 teamAnswer = false
 local scanned = Tattle:AddScannedPull({ spells = { { id = 555 } }, players = {}, boss = { name = "Alpha", encounterID = 9001 } }, { 555 })
@@ -205,6 +211,7 @@ teamAnswer = true
 local scanned2 = Tattle:AddScannedPull({ spells = { { id = 555 } }, players = {} }, { 555 })
 eq(nowAsked, n0 + 1, "a fight that wasn't a boss asks the answer now, not a pull's snapshot")
 eq(scanned2.team, true, "and is stamped by it")
+eq(scanned2.teamName, "Now Team", "with tonight's team now")
 Tattle:EndNight("button")
 -- only the accessor reads the check
 local _, uses = dataSrc:gsub("= CRT%.Team", "")

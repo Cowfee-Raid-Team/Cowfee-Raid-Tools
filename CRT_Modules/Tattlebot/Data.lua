@@ -349,28 +349,40 @@ end
 
 -- Team raids -------------------------------------------------------------------------------------------
 -- Each pull is stamped team = true or false: whether the team raid check (CRT.Team, CRT_Core/Team.lua) said team
--- at the pull's start. With Only record team raids on (CRTDB.tattle.onlyTeam, the default) a pull that isn't a
+-- at the pull's start, that is, whether tonight's team wasn't Pug; and teamName, that team's name (Season Stats'
+-- Team filter reads it; a team removed since reads as Team). With Only record team raids on (CRTDB.tattle.onlyTeam, the default) a pull that isn't a
 -- team raid is never read, saved or posted. Off, a night stays whole and its pulls keep their own stamps; History's
 -- Team raids view shows only the team pulls (a night with none is left out). Pulls saved before team raids have no
 -- stamp and count as team raids.
 
 -- The team raid check, read only here: whether the pull of encounterID that started at startedAt (time()) was a
 -- team raid, by the check's snapshot at its ENCOUNTER_START (else the answer now). With neither known (a fight
--- that wasn't a boss) the answer now. With no check loaded, true, as every pull was before.
-local function pullIsTeam(encounterID, startedAt)
+-- that wasn't a boss) the answer now. With no check loaded, true, as every pull was before. Second, the team's
+-- name the same way (Team:PullTeam, else Team:Tonight), or nil when the check gives none.
+local function pullTeam(encounterID, startedAt)
     local Team = CRT.Team
     if not (Team and Team.PullIsTeam) then
-        return true
+        return true, nil
     end
+    local now = encounterID == nil and startedAt == nil
     local ok, team
-    if encounterID == nil and startedAt == nil then
+    if now then
         ok, team = pcall(Team.IsTeam, Team)
     else
         ok, team = pcall(Team.PullIsTeam, Team, encounterID, startedAt)
     end
-    return not ok or team == true
+    local nameOf = now and Team.Tonight or Team.PullTeam
+    local okName, name
+    if nameOf then
+        okName, name = pcall(nameOf, Team, encounterID, startedAt)
+    end
+    return not ok or team == true, okName and type(name) == "string" and name or nil
 end
-Tattle.PullIsTeam = pullIsTeam
+Tattle.PullTeam = pullTeam
+
+function Tattle.PullIsTeam(encounterID, startedAt)
+    return (pullTeam(encounterID, startedAt))
+end
 
 -- Whether a pull is a team raid's (saved before team raids: yes).
 function Tattle.IsTeam(x)
@@ -450,9 +462,9 @@ function Tattle:EndNight(reason, at)
     self:Fire()
 end
 
--- info is { encounterID, name, difficulty, success, team }. Adds the pull to tonight, starting a new night
--- when there is none or the last pull was more than NIGHT_GAP ago. The pull is stamped team (info.team nil is a
--- team raid).
+-- info is { encounterID, name, difficulty, success, team, teamName }. Adds the pull to tonight, starting a new
+-- night when there is none or the last pull was more than NIGHT_GAP ago. The pull is stamped team (info.team nil is
+-- a team raid) and teamName when known.
 function Tattle:AddPull(pull, info, now)
     local s = tdb()
     now = now or time()
@@ -468,6 +480,7 @@ function Tattle:AddPull(pull, info, now)
         s.current = night
     end
     pull.team = team
+    pull.teamName = type(info.teamName) == "string" and info.teamName or nil
     pull.at = now
     pull.encounterID = info.encounterID
     pull.name = info.name
@@ -758,7 +771,7 @@ function Tattle:BossPulls(encounterID)
                     damage = damage + Tattle.PullDamage(p, pull)
                 end
                 out[#out + 1] = { at = pull.at or night.startedAt, difficulty = pull.difficulty, success = pull.success, damage = damage,
-                    night = night.id, nightAt = night.startedAt, team = pull.team ~= false }
+                    night = night.id, nightAt = night.startedAt, team = pull.team ~= false, teamName = pull.teamName }
             end
         end
     end
@@ -1017,11 +1030,13 @@ function Tattle:AddScannedPull(scan, ids)
         end
     end
     -- saved by hand from the Last fight view, so it is saved whatever the kind of raid, stamped as it was
+    -- (not a boss: the answer now; a boss: its pull's snapshot)
+    local team, teamName = pullTeam(boss and boss.encounterID, boss and boss.startedAt)
     self:AddPull(pull, {
         encounterID = boss and boss.encounterID,
         name = boss and boss.name or "Not a boss",
-        -- not a boss: the answer now; a boss: its pull's snapshot
-        team = pullIsTeam(boss and boss.encounterID, boss and boss.startedAt),
+        team = team,
+        teamName = teamName,
     })
     scannedFight = { pull = pull, combat = combatCount }
     -- Every player's every spell, like a pull read after a boss.
@@ -1240,7 +1255,7 @@ driver:SetScript("OnEvent", function(_, event, ...)
         end
         local id = readable(encounterID) and encounterID or nil
         -- Only record team raids: a pull that wasn't one is never read, saved or posted
-        local team = pullIsTeam(id, pullStart)
+        local team, teamName = pullTeam(id, pullStart)
         if tdb().onlyTeam and not team then
             pending = nil -- a pull waiting from before is dropped too
             return
@@ -1252,6 +1267,7 @@ driver:SetScript("OnEvent", function(_, event, ...)
             difficulty = readable(difficultyID) and difficultyID or nil,
             success = readable(success) and success or nil,
             team = team,
+            teamName = teamName,
         }
         pending = info
         if inCombat then
