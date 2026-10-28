@@ -378,6 +378,11 @@ function Engine.ItemFor(t, index, mine)
         return item
     end
     item.priority = Rules.Priority(2, "normal")
+    -- shield: makes the line's bar a shield bar (Alerts/Absorb.lua), its window from the line's Show from
+    local a = type(t.absorb) == "table" and t.absorb
+    if a and type(a.unit) == "string" and type(a.length) == "number" then
+        item.absorb = { unit = a.unit, length = a.length }
+    end
     if t.show then
         local show = t.show
         local speaks = (t.tts or t.count) and true or false
@@ -479,6 +484,42 @@ end
 
 -- own: your personal note is yours alone, so a Rehearsal previewing as another player leaves it out
 Alerts:RegisterBlock("personal", { label = "Your personal note", group = false, own = true, Entries = personalEntries })
+
+-- The untimed shield bars of a pull (Alerts/Absorb.lua), as Special:AbsorbWatches gives a special alert's: one watch
+-- per line of yours with shield: whose bar shows, in the raid note the pull runs and in your personal note. A note for
+-- the pull's difficulty group (or for any difficulty) gives one to every such line; a note for the other group (the
+-- boss had none for this one) only to a line with "any". Only a boss pull has them. {} when none.
+local function noteWatches(out, n, prefix, run, all)
+    if not n then
+        return
+    end
+    local T = CRT.Timeline
+    local group = Alerts.RunGroup and Alerts:RunGroup(run) or nil
+    local diff = type(n.difficulty) == "string" and n.difficulty:match("%S") and n.difficulty or nil
+    local fits = not diff or not (T and T.GroupFor) or group == nil or T:GroupFor(diff) == group
+    for index, t in ipairs(n.timers) do
+        local a = t.absorb
+        if a and (fits or a.anyDifficulty) and (all or Engine:IsMine(t)) then
+            local item = Engine.ItemFor(t, index, true)
+            if item.absorb and item.outputs and item.outputs.bar then
+                out[#out + 1] = { id = "absorb:" .. prefix .. index, key = prefix .. index, block = prefix:sub(1, -2),
+                    unit = a.unit, length = a.length, text = item.text, icon = item.icon, color = item.color,
+                    priority = item.priority, timed = true }
+            end
+        end
+    end
+end
+
+function Engine:AbsorbWatches(run)
+    local out = {}
+    if not (run and run.reason == "encounter" and run == Alerts.run) then
+        return out
+    end
+    noteWatches(out, note, "note:", run, false)
+    local id = run.encounterID and Notes.PersonalFor and Notes:PersonalFor(run.encounterID, run.difficultyName)
+    noteWatches(out, id and Notes:Parsed(id), "personal:", run, true)
+    return out
+end
 
 -- On a pull, the note for the boss (preferring the same difficulty) becomes the note in use and runs.
 Alerts.onPull[#Alerts.onPull + 1] = function(run)

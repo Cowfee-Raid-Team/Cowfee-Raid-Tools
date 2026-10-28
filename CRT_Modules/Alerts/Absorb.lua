@@ -1,15 +1,18 @@
 local ADDON, CRT = ...
 
 -- Shield bars: a special alert with absorb = { unit, length, anyDifficulty } (the format is at the top of
--- Alerts/Special.lua) shows a bar whose fill is the absorb shield left on its boss unit, and whose tick and seconds are
--- length seconds from when the shield went up. Alerts/Bars.lua draws them (one draw path, drawAbsorb); this file only
--- decides when each bar starts and ends, and keeps the shield's readings. Only with the alert's Bar on.
---   Timed: an item of the run that carries absorb (the special block's, one per cast) opens a window from the entry's
---     own lead before the cast (the boss file's, never your Show from) to length after it. The first
+-- Alerts/Special.lua), one of your reminders with the same field (Alerts/Reminders.lua) or a raid or personal note line
+-- with shield: (Notes/Parse.lua) shows a bar whose fill is the absorb shield left on its boss unit, and whose tick and
+-- seconds are length seconds from when the shield went up. Alerts/Bars.lua draws them (one draw path, drawAbsorb); this
+-- file only decides when each bar starts and ends, and keeps the shield's readings. Only with the alert's Bar on.
+--   Timed: an item of the run that carries absorb (one per cast) opens a window from its absorb.lead before the cast
+--     (a special entry's own lead from the boss file, never your Show from; a reminder's or a note line's Show from)
+--     to length after it. The first
 --     UNIT_ABSORB_AMOUNT_CHANGED for its unit inside it starts the bar. The bar ends when length runs out, when the run
 --     stops (the encounter's end) or when the item leaves the run's lines (a later phase cut it). Each window gives one
 --     bar.
---   Untimed: Special:AbsorbWatches(run) gives a watch per entry. While none of the entry's timed windows is open and no
+--   Untimed: Special:AbsorbWatches(run), Reminders:AbsorbWatches(run) and NoteEngine:AbsorbWatches(run) give a watch
+--     per alert, keyed as its items' absorb.key (else special, else id). While none of the alert's timed windows is open and no
 --     timed bar of it runs (its phase not reached yet, as with no phase triggers and no Next phase; no times on this
 --     difficulty, with anyDifficulty; or the shield came off its plan), the unit's first absorb event starts a bar,
 --     and a new one starts only after it ended and the events stopped for GAP seconds. A window that opens while that
@@ -151,8 +154,14 @@ function Absorb:Sync()
         reset()
         runId = Alerts.runId
     end
-    local Special = CRT.AlertSpecial
-    watches = Special and Special.AbsorbWatches and Special:AbsorbWatches(run) or EMPTY
+    watches = {}
+    for _, source in ipairs({ CRT.AlertSpecial or EMPTY, CRT.AlertReminders or EMPTY, CRT.NoteEngine or EMPTY }) do
+        if source.AbsorbWatches then
+            for _, w in ipairs(source:AbsorbWatches(run) or EMPTY) do
+                watches[#watches + 1] = w
+            end
+        end
+    end
     if devRun(run) then
         watches = { { id = "absorb:dev", key = "dev", unit = dev.unit, length = dev.length, text = dev.label } }
     end
@@ -186,7 +195,13 @@ local function running(st, now)
     return st and now >= st.at and now < st.at + st.length
 end
 
--- The untimed bar of an entry that runs now, or nil.
+-- The alert a shield line stands for, which its untimed watch has as its key: a reminder's or a special entry's
+-- every cast is one alert.
+local function keyOf(line)
+    return line.absorb.key or line.special or line.id
+end
+
+-- The untimed bar of an alert that runs now, or nil.
 local function freeBar(key, now)
     for _, w in ipairs(watches) do
         local f = free[w.id]
@@ -210,11 +225,11 @@ local function timedReading(unit, total, now)
             if st then
                 if running(st, now) then
                     update(st, total)
-                    busy[line.special or line.id] = true
+                    busy[keyOf(line)] = true
                 end
             elseif open then
                 -- an untimed bar already showing this shield goes on as this window's
-                local taken = line.special and freeBar(line.special, now)
+                local taken = freeBar(keyOf(line), now)
                 if taken then
                     taken.adopted = true
                     update(taken, total)
@@ -222,10 +237,10 @@ local function timedReading(unit, total, now)
                 else
                     timed[line.id] = newState(line.id, now, a.length, total, line)
                 end
-                busy[line.special or line.id] = true
+                busy[keyOf(line)] = true
             end
             if open then
-                busy[line.special or line.id] = true
+                busy[keyOf(line)] = true
             end
         end
     end

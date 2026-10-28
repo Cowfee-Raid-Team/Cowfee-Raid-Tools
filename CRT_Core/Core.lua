@@ -10,7 +10,8 @@ CRT.version = (C_AddOns and C_AddOns.GetAddOnMetadata and C_AddOns.GetAddOnMetad
 -- Per season (declared, so the dev season purge, Dev/SeasonTools.lua, clears them for a finished season's bosses):
 -- each module declares its tables kept per boss with Bosses:DeclareStore or DeclareField (CRT_Data/Bosses/Registry.lua).
 --   timeline.bosses, rows, reviewRefs, orders, ignored, abilities, pullNumberBackup (Timeline/Data.lua)
---   alerts.reminders, anyBackup (Alerts/Reminders.lua), alerts.phases (Alerts/Phases.lua), alerts.special (Alerts/Special.lua)
+--   alerts.reminders, anyBackup (Alerts/Reminders.lua), alerts.phases (Alerts/Phases.lua), alerts.special (Alerts/Special.lua),
+--   alerts.shieldPulls (Alerts/ShieldPulls.lua)
 --   pace.own, shared, use, disabled (Pace/Data.lua); markers.disabled (Markers/Display.lua)
 --   dev.hiddenAbilities, mechHidden (Timeline/Data.lua), dev.markerDisplays (Dev/MarkerEditor.lua),
 --   dev.bossRoute[seasonKey] (Dev/BossOrder.lua, kept by season)
@@ -449,6 +450,9 @@ local defaults = {
         -- { on, show, speak, markers }. specialView ("mechanics" or "special") and specialViewPicked were Mech
         -- Alerts' last pick; kept for older saves, no longer read: the tab opens on Special every time.
         special = {},
+        -- Last pull's shields (Alerts/ShieldPulls.lua): shieldPulls[encounterID] = { at, units = { boss2 = seconds } },
+        -- the time each boss unit's shield first went up on the boss's last pull; never its amount.
+        shieldPulls = {},
         specialView = "mechanics",
         specialViewPicked = false,
     },

@@ -253,6 +253,10 @@ local REMINDER_FIELDS = {
     end,
     fill = oneOf({ up = true }),
     countTo = oneOf({ impact = true }),
+    -- a shield bar (Alerts/Absorb.lua), as the alert editor saves it
+    absorb = function(v)
+        return CRT.AlertReminders.AbsorbOf(v)
+    end,
     shifts = perCast(function(x)
         if finite(x) and math.abs(x) <= 600 then
             return x
