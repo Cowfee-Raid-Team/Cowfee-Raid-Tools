@@ -5,8 +5,9 @@ local ADDON, CRT = ...
 -- Saved in CRTDB.seasonStats (defaults in CRT_Core/Core.lua; data, so never in Export settings only):
 --   filled               true once the counters were filled from the Timeline's saved pulls (Backfill, once)
 --   scoped               true once the counters from before team raids were copied into all (Migrate, once)
---   show                 the page's Team filter: "all" (All), "team" (the built-in Team, the default) or a team's
---                        name (Pug or one of yours, CRT_Core/TeamList.lua)
+--   show                 the page's Team filter: "all" (All), "team" (Before teams: the built-in Team's counts, from
+--                        before your own teams) or a team's name (Pug or one of yours, CRT_Core/TeamList.lua); none
+--                        saved reads as Before teams while it has pulls, else tonight's team
 --   bosses[encounterID]  { name, nh = counters, mythic = counters, all = { nh = counters, mythic = counters },
 --                        teams = { [team name] = { nh = counters, mythic = counters } } }, the groups of
 --                        Timeline.DifficultyGroup. A scope per team: boss[group] (the field from before scopes, kept)
@@ -47,6 +48,7 @@ Stats.TEAM, Stats.ALL = "team", "all"
 Stats.SCOPES = { Stats.TEAM, Stats.ALL }
 Stats.TEAM_NAME, Stats.PUG = "Team", "Pug" -- the built-in teams' names (CRT.Team.TEAM, PUG)
 Stats.ALL_LABEL = "All"
+Stats.BEFORE_LABEL = "Before teams" -- the built-in Team's scope: counts from before your own teams, never added to now
 
 local function sdb()
     return CRT.db.seasonStats
@@ -68,16 +70,24 @@ function Stats.ScopeOf(name)
     return name == Stats.TEAM_NAME and Stats.TEAM or name
 end
 
--- The page's Team filter: "all", "team" (the default) or a team's name; a team removed since reads as "team".
+local scopeHas -- below, with the counters
+
+-- The page's Team filter: "all", "team" (Before teams) or a team's name; a team removed since reads as "team".
+-- None saved (or Before teams with no pulls left) reads as Before teams while it has pulls, else tonight's team.
 function Stats:Scope()
     local show = sdb().show
     if show == Stats.ALL then
         return Stats.ALL
     end
-    if show == nil or show == Stats.TEAM then
+    if show ~= nil and show ~= Stats.TEAM then
+        return Stats.ScopeOf(show)
+    end
+    local Team = CRT.Team
+    if scopeHas(Stats.TEAM) or not (Team and Team.Tonight) then
         return Stats.TEAM
     end
-    return Stats.ScopeOf(show)
+    local ok, tonight = pcall(Team.Tonight, Team)
+    return ok and type(tonight) == "string" and Stats.ScopeOf(tonight) or Stats.TEAM
 end
 
 function Stats:SetScope(scope)
@@ -89,18 +99,19 @@ function Stats:SetScope(scope)
     self:Fire()
 end
 
-local scopeHas -- below, with the counters
-
--- The Team filter's entries, { key, label }: All, then each team that has pulls, in the team list's order (Team,
--- Pug, then yours), and the one picked even with none.
+-- The Team filter's entries, { key, label }: All, Before teams only while it has pulls, then each team that has
+-- pulls, in the team list's order (Pug, then yours), and the one picked even with none.
 function Stats.ScopeOptions()
     local out = { { key = Stats.ALL, label = Stats.ALL_LABEL } }
+    if scopeHas(Stats.TEAM) then
+        out[2] = { key = Stats.TEAM, label = Stats.BEFORE_LABEL }
+    end
     local Team = CRT.Team
-    local names = Team and Team.Names and Team:Names() or { Stats.TEAM_NAME, Stats.PUG }
+    local names = Team and Team.Names and Team:Names() or { Stats.PUG }
     local picked = Stats:Scope()
     for _, name in ipairs(names) do
         local scope = Stats.ScopeOf(name)
-        if scope == picked or scopeHas(scope) then
+        if scope ~= Stats.TEAM and (scope == picked or scopeHas(scope)) then
             out[#out + 1] = { key = scope, label = name }
         end
     end
@@ -213,12 +224,29 @@ scopeHas = function(scope)
     return false
 end
 
--- Removing a team (CRT_Core/TeamList.lua): how many pulls it has, and deleting them. Team (boss[group]) and all
--- are never deleted this way.
+-- The table a scope's counters are kept in for a boss: boss itself for "team" (boss[group], the field from before
+-- scopes), boss.all for all, boss.teams[name] for a team. Nil when it has none.
+local function holderOf(boss, scope)
+    if type(boss) ~= "table" then
+        return nil
+    elseif scope == Stats.TEAM then
+        return boss
+    elseif scope == Stats.ALL then
+        return type(boss.all) == "table" and boss.all or nil
+    end
+    return type(boss.teams) == "table" and type(boss.teams[scope]) == "table" and boss.teams[scope] or nil
+end
+
+-- Removing or merging a team (CRT_Core/TeamList.lua): how many pulls it has (Team: Before teams' counts), and
+-- deleting them. Team (boss[group]) and all are never deleted this way.
 function Stats:TeamPulls(name)
     local n = 0
+    local scope = type(name) == "string" and (name == Stats.TEAM_NAME and Stats.TEAM or name)
+    if not scope or scope == Stats.ALL then
+        return 0
+    end
     for _, boss in pairs(sdb().bosses) do
-        local holder = type(boss) == "table" and type(boss.teams) == "table" and boss.teams[name]
+        local holder = holderOf(boss, scope)
         for _, group in ipairs(Stats.GROUPS) do
             local c = type(holder) == "table" and holder[group]
             n = n + (type(c) == "table" and tonumber(c.pulls) or 0)
@@ -337,33 +365,40 @@ local function mergeCounters(into, from)
     end
 end
 
--- Moves every counter saved under from (a saved team's name) into into's scope (Team, Pug or a saved team), then
--- deletes from's; the Team filter on from goes to into. All is left as it is (it counted both already). Returns
--- how many pulls moved.
+-- Moves every counter saved under from (a saved team's name, or Team: Before teams' counts in boss[group]) into
+-- into's scope (Pug or a saved team), then deletes from's; the Team filter on from goes to into. All is left as it
+-- is (it counted both already). Returns how many pulls moved.
 function Stats:MergeTeam(from, into)
     if type(from) ~= "string" or type(into) ~= "string" then
         return 0
     end
+    local fromScope = from == Stats.TEAM_NAME and Stats.TEAM or from
     local scope = Stats.ScopeOf(into)
+    if scope == fromScope or fromScope == Stats.ALL or scope == Stats.ALL then
+        return 0
+    end
     local moved = 0
     for encounterID, boss in pairs(sdb().bosses) do
-        local holder = type(boss) == "table" and type(boss.teams) == "table" and boss.teams[from]
-        if type(holder) == "table" and scope ~= from then
+        local holder = holderOf(boss, fromScope)
+        if holder then
             for _, group in ipairs(Stats.GROUPS) do
                 local c = holder[group]
                 if type(c) == "table" then
                     moved = moved + (num(c.pulls) or 0)
                     local target = counters(encounterID, group, nil, true, scope)
                     mergeCounters(target, c)
+                    holder[group] = nil
                 end
             end
-            boss.teams[from] = nil
-            if next(boss.teams) == nil then
-                boss.teams = nil
+            if fromScope ~= Stats.TEAM then
+                boss.teams[fromScope] = nil
+                if next(boss.teams) == nil then
+                    boss.teams = nil
+                end
             end
         end
     end
-    if sdb().show == from then
+    if sdb().show == fromScope then
         sdb().show = scope
     end
     self:Fire()

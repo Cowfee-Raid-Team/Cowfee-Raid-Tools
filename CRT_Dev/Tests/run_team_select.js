@@ -208,14 +208,14 @@ local function lastFrom(name) for i = #sent, 1, -1 do if sent[i].from == name th
 local S = newClient("Solex")
 local T = S.Team
 ME = "Solex"
-eq(labels(T:Options()), "Team, Pug, Add team\\226\\128\\166", "the dropdown: Team, Pug, then Add team…")
-eq(T:Options()[3].key, T.ADD_KEY, "Add team… has its own key")
-eq(T:Tonight(), "Team", "nothing saved: tonight is Team")
+eq(labels(T:Options()), "Pug, Add team\\226\\128\\166", "the dropdown: Pug, then Add team… (never the built-in Team)")
+eq(T:Options()[2].key, T.ADD_KEY, "Add team… has its own key")
+eq(T:Tonight(), "Pug", "nothing saved: tonight is Pug")
 eq(T:AddTeam("  Cowfee Mythic  "), "Cowfee Mythic", "a name is trimmed and added")
-eq(labels(T:Options()), "Team, Pug, Cowfee Mythic, Add team\\226\\128\\166", "your teams come after the built-in two, before Add team…")
+eq(labels(T:Options()), "Pug, Cowfee Mythic, Add team\\226\\128\\166", "your teams come after Pug, before Add team…")
 local function refused(name, why, what) local n, w = T:AddTeam(name) check(n == nil and type(w) == "string" and w:find(why, 1, true) ~= nil, what .. " (" .. tostring(w) .. ")") end
 refused("cowfee mythic", "already a team named Cowfee Mythic", "a duplicate in another case is refused")
-refused("TEAM", "already a team named Team", "the built-in Team can't be added again")
+refused("TEAM", "can't be a team name", "Team is reserved: no team can be called Team")
 refused("pug", "already a team named Pug", "nor Pug")
 refused(string.rep("x", 25), "at most 24", "25 characters are too many")
 refused("a|b", "|", "a | is refused (it would break the push)")
@@ -278,8 +278,8 @@ do
   check(done and not D.win.shown, "deleted, the dialog closes")
   eq(T:Find("Cowfee Mythic"), nil, "the team is gone from the list")
   eq(table.concat(deleted, ","), "Cowfee Mythic", "only that team's data is deleted")
-  eq(T:Tonight(), "Team", "tonight was that team: back to Team")
-  eq(labels(T:Options()), "Team, Pug, " .. string.rep("y", 24) .. ", Night Crew, Add team\\226\\128\\166", "the others stay")
+  eq(T:Tonight(), "Pug", "tonight was that team: back to Pug")
+  eq(labels(T:Options()), "Pug, " .. string.rep("y", 24) .. ", Night Crew, Add team\\226\\128\\166", "the others stay")
   T:RemoveTeam(string.rep("y", 24))
 end
 -- a stamp of a removed team reads as Team
@@ -356,7 +356,7 @@ check(popupShown("Bell"), "then asks Which team is this raid?")
 eq(B.Popup.win.strip.title, "Which team is this raid?", "the raider's title")
 check(not B.Popup.lootLabel.shown, "no Loot Master question for a raider")
 eq(B.Popup.save.text, "Save", "[Save] [Later]")
-eq(as("Bell", function(c) return c.Team:Tonight() end), "Team", "a raider with no pick starts on Team")
+eq(as("Bell", function(c) return c.Team:Tonight() end), "Pug", "a raider with no pick starts on Pug")
 -- the leader saves and pushes: the raider's open popup closes
 local before = #sent
 as("Solex", function() P.save.OnClick() end)
@@ -392,7 +392,7 @@ newClient("Dot")
 join("Dot")
 advance(30)
 eq(as("Dot", function(c) return c.Team:LockedBy() end), nil, "a joiner gets no stale push")
-eq(as("Dot", function(c) return c.Team:Tonight() end), "Team", "and keeps its own team")
+eq(as("Dot", function(c) return c.Team:Tonight() end), "Pug", "and keeps its own team")
 as("Solex", function() T:SetTonight("Raid Alpha") T:Push() end)
 advance(3)
 eq(as("Dot", function(c) return c.Team:Tonight() end), "Raid Alpha", "Push to raid again sends the new one")
@@ -471,11 +471,11 @@ advance(60)
 check(not popupShown("Moo"), "nor after a /reload in the same group")
 -- the raider's Save sets its team; no push, nothing for Loot Master
 leave("Moo")
-as("Moo", function(c) c.Team:SetTonight("Team") end)
--- picked outside a group: a new group would keep it, so start from no pick
+check(not as("Moo", function(c) return c.Team:SetTonight("Team") end), "the built-in Team can't be picked")
+-- a new group starts on the team you had last, whether picked in or out of a group
 as("Moo", function() CRTDBChar.team.picked = nil end)
 join("Moo")
-eq(as("Moo", function(c) return c.Team:Tonight() end), "Team", "a new group with no pick starts on Team")
+eq(as("Moo", function(c) return c.Team:Tonight() end), "Raid Alpha", "a new group starts on the team you had last")
 advance(12)
 check(popupShown("Moo"), "a new group asks again")
 as("Moo", function() M.Popup.drop.opts.set("Pug") M.Popup.save.OnClick() end)
@@ -543,7 +543,7 @@ do
     check(not c.Team:CanRemove("Brand New"), "and can't be removed: it was never saved")
   end)
   leave("Full")
-  as("Full", function(c) eq(c.Team:Tonight(), "Team", "after leaving, the unsaved team is gone: Team") end)
+  as("Full", function(c) eq(c.Team:Tonight(), "Pug", "after leaving, the unsaved team is gone: Pug") end)
 end
 
 -- 12. The files ------------------------------------------------------------------------------------------------------

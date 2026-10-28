@@ -249,6 +249,16 @@ eq(T:AtPull(3001, time()) and T:AtPull(3001, time()).team, nil, "a Raid Finder p
 eq(T:PullTeam(3001, time()), nil, "and PullTeam gives none")
 shape = "solo"
 on("Solex", "GROUP_ROSTER_UPDATE")
+-- tonight's team: never the built-in Team; none picked yet reads as Pug, then the last of your teams picked
+eq(T:Tonight(), "Pug", "no team picked yet: Pug")
+check(not T:SetTonight("Team"), "the built-in Team can't be picked")
+T:AddTeam("Raid Alpha")
+check(T:SetTonight("Raid Alpha"), "a team of your own picked")
+CRTDBChar.team.tonight = "Team"
+eq(T:Tonight(), "Raid Alpha", "a saved Team reads as the last of your teams picked")
+CRTDBChar.team.tonight = nil
+eq(T:Tonight(), "Raid Alpha", "and so does none")
+CRTDBChar.team.tonight = "Raid Alpha"
 
 -- 4. A raid forms: one hello each, the answers batched, and they stop ---------------------------------------------
 shape = "raid"
@@ -262,8 +272,8 @@ eq(sentBy("Solex"), 1, "joining a raid group: one hello")
 eq(sent[1].channel, "RAID", "to the raid channel")
 eq(sent[1].prefix, "CRTHello", "under CRTHello")
 eq(snap("Solex").crt .. "/" .. snap("Solex").online, "1/1", "alone: 1 of 1")
-eq(T:IsTeam(), true, "a raid group on tonight's default team, Team: a team raid")
-eq(T:Tonight(), "Team", "a new raid group starts on Team")
+eq(T:IsTeam(), true, "a raid group on your team: a team raid")
+eq(T:Tonight(), "Raid Alpha", "a new raid group starts on the team you had")
 -- five more CRTs join within a few seconds, two players without CRT
 local start = #sent + 1
 for i, name in ipairs({ "Moo", "Bell", "Hay", "Dot" }) do join(name, "Sargeras", true) advance(1) end
@@ -292,9 +302,9 @@ for _, m in ipairs(sent) do
 end
 eq(tooSoon, 0, "no CRT sent two hellos within the window")
 -- tonight's team decides, not how many run CRT
-eq(T:IsTeam(), true, "6 of 8 running CRT on Team: a team raid")
-eq(T.StatusText(), "Team", "the status: tonight's team")
-eq(T.StatusLine(), "Now: Team.", "the status line General Settings and /crt team show")
+eq(T:IsTeam(), true, "6 of 8 running CRT on Raid Alpha: a team raid")
+eq(T.StatusText(), "Raid Alpha", "the status: tonight's team")
+eq(T.StatusLine(), "Now: Raid Alpha.", "the status line General Settings and /crt team show")
 
 -- 5. Pug, offline members, OnChange --------------------------------------------------------------------------------
 local flips = {}
@@ -316,9 +326,9 @@ eq(T:Tonight(), "Pug", "and tonight stays")
 raid[#raid].online = false
 on("Solex", "UNIT_CONNECTION", "raid9", false)
 eq(snap("Solex").crt .. "/" .. snap("Solex").online, "6/8", "an offline member is left out of the count")
-T:SetTonight("Team")
-eq(T:IsTeam(), true, "Team again: a team raid")
-eq(flips[#flips], "true:Team", "and OnChange says so")
+T:SetTonight("Raid Alpha")
+eq(T:IsTeam(), true, "Raid Alpha again: a team raid")
+eq(flips[#flips], "true:Raid Alpha", "and OnChange says so")
 local nflips = #flips
 on("Solex", "GROUP_ROSTER_UPDATE")
 eq(#flips, nflips, "OnChange only on a flip")
@@ -499,10 +509,10 @@ local pullAt = time()
 on("Solex", "ENCOUNTER_START", 3129, "Boss", 16, 20)
 local atPull = T:AtPull(3129, pullAt)
 eq(atPull and atPull.isTeam, true, "the pull's snapshot: a team raid")
-eq(atPull and atPull.team, "Team", "and its team's name")
+eq(atPull and atPull.team, "Raid Alpha", "and its team's name")
 T:SetTonight("Pug")
 eq(T:IsTeam(), false, "Pug picked after the pull: not a team raid now")
-eq(T:PullTeam(3129, pullAt), "Team", "the pull keeps the team it started with")
+eq(T:PullTeam(3129, pullAt), "Raid Alpha", "the pull keeps the team it started with")
 eq(T:PullTeam(9999, pullAt + 600), "Pug", "no snapshot: tonight's team now")
 eq(T:PullIsTeam(3129, pullAt), true, "but the pull keeps its answer from the start")
 eq(T:AtPull(3129, pullAt + 600), nil, "a start far from any pull: none")
@@ -510,7 +520,7 @@ eq(T:AtPull(9999, pullAt), nil, "another boss: none")
 eq(T:PullIsTeam(9999, pullAt + 600), false, "no snapshot: the answer now")
 on("Solex", "ENCOUNTER_START", "SECRET", "Boss", 16, 20)
 eq(T:AtPull(nil, time()) and T:AtPull(nil, time()).isTeam, false, "a secret encounter ID is kept as none, matched by time")
-T:SetTonight("Team")
+T:SetTonight("Raid Alpha")
 -- leaving the group forgets the pulls' snapshots too
 shape = "solo"
 on("Solex", "GROUP_ROSTER_UPDATE")

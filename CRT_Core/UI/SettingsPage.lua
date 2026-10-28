@@ -67,7 +67,7 @@ local TEXT = {
     teamLocked = "Set by %s (raid leader). You can change or remove it after you leave the group.",
     -- the game's lock icon (Blizzard_GroupFinder's LFGFrame.xml uses this file), inline before the line
     teamLockIcon = "|TInterface\\LFGFrame\\UI-LFG-ICON-LOCK:14:14|t ",
-    teamHelp = "Pick which team tonight's raid is. Season Stats keeps each team's pulls apart, and Tattlebot and the Late Tracker can record team raids only: any team but Pug. Add team at the bottom of the list adds your own.\n\nWhen you join a new raid group, CRT asks which team it is. The raid leader can push the team to everyone in the raid with CRT, with Push to raid or the popup's Save and push. Raiders can't change it then until they leave the group.\n\nRemove team deletes one of your teams and its Season Stats, after two warnings. Team and Pug can't be removed.\n\nMerge team moves one of your teams' Season Stats, Tattlebot pulls and raid nights into another team, or into Team or Pug, and takes it off your list. Names that differ only in case, spaces or punctuation are one team; when two such teams are saved, CRT asks once whether to merge them.\n\nParties, solo play and finder groups are never team raids.",
+    teamHelp = "Pick which team tonight's raid is: Pug, or one of your teams. Season Stats keeps each team's pulls apart, and Tattlebot and the Late Tracker can record team raids only: any team but Pug. Add team at the bottom of the list adds your own. A new raid group starts on the team you had last.\n\nWhen you join a new raid group, CRT asks which team it is. The raid leader can push the team to everyone in the raid with CRT, with Push to raid or the popup's Save and push. Raiders can't change it then until they leave the group.\n\nRemove team deletes one of your teams and its Season Stats, after two warnings. Pug can't be removed.\n\nMerge team moves one of your teams' Season Stats, Tattlebot pulls and raid nights into another team or Pug, and takes it off your list. Before teams, the pulls from before you had teams of your own, can be merged into one of your teams the same way. Names that differ only in case, spaces or punctuation are one team; when two such teams are saved, CRT asks once whether to merge them.\n\nParties, solo play and finder groups are never team raids.",
     help = "A profile holds everything the addon saves: settings, window positions, layouts, notes, consumables lists and history. Each character remembers its own; new characters start on the one under New characters. Switching, copying or resetting a profile reloads your interface.\n\nExport gives the whole profile as text, for your own characters: Import saves it as a new profile.\n\nExport settings only gives just settings and window positions, for raiders (where your reports go, whose notes and loot leaders you trust and your own sound files stay yours): Import shows what differs and applies it to this profile, after saving your settings for Undo last import. Keep my window positions keeps where your windows are and the size of your note windows.",
 }
 
@@ -545,10 +545,10 @@ local function buildLeft(pf)
     controls[#controls + 1] = tooltips
 end
 
--- Team raids (Team.lua, TeamList.lua): Tonight's team (Team, Pug, your teams, Add team…), Push to raid (the raid
+-- Team raids (Team.lua, TeamList.lua): Tonight's team (Pug, your teams, Add team…), Push to raid (the raid
 -- leader), Remove team (your own teams, two warnings: UI/TeamDialogs.lua), Merge team… (one of your teams into
--- another, Team or Pug: UI/TeamDialogs.lua's merge mode), the lock line while the raid leader's push holds the
--- pick, and the status line.
+-- another or Pug, Before teams into one of yours: UI/TeamDialogs.lua's merge mode), the lock line while the raid
+-- leader's push holds the pick, and the status line.
 local function buildTeam(pf, x, top)
     local Team = CRT.Team
     heading(pf, x, top, TEXT.teamTitle, TEXT.teamHelp)
@@ -596,14 +596,14 @@ local function buildTeam(pf, x, top)
         remove:SetEnabled(Team:CanRemove(Team:Tonight()))
     end
     controls[#controls + 1] = remove
-    -- Merge team…: greyed while a push locks the pick (as Remove) and with fewer than two of your teams
+    -- Merge team…: greyed while a push locks the pick (as Remove) and with fewer than two teams to merge from
     local merge = button(pf, TEXT.teamMerge)
     merge:SetPoint("LEFT", remove, "RIGHT", 6, 0)
     merge:SetScript("OnClick", function()
         CRT.TeamDialogs.AskMerge(Team:Tonight(), nil, refresh)
     end)
     merge.refresh = function()
-        merge:SetEnabled(not Team:IsLocked() and #Team:Saved() >= 2)
+        merge:SetEnabled(not Team:IsLocked() and #Team:MergeSources() >= 2)
     end
     controls[#controls + 1] = merge
     local status = pf:CreateFontString(nil, "OVERLAY", "CRTFontSmall")

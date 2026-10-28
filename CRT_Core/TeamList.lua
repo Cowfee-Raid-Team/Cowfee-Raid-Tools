@@ -1,7 +1,9 @@
 local ADDON, CRT = ...
 
--- The teams you pick tonight's team from (CRT.Team, Team.lua): Team and Pug, built in and never removed, then your
--- own, saved in CRTDB.team.list in the order added. A name is trimmed, 1 to MAX_NAME characters, with no | (it
+-- The teams you pick tonight's team from (CRT.Team, Team.lua): Pug, built in and never removed, then your own,
+-- saved in CRTDB.team.list in the order added. Team, the built-in team from before your own teams, is no longer
+-- picked: it stays only as the scope of the counts and records from before (Season Stats' "Before teams"), which
+-- Team:Merge can move into one of your teams, and as a reserved name. A name is trimmed, 1 to MAX_NAME characters, with no | (it
 -- travels in the push, "T|1|<name>") and no control characters. Two names are one team when their Team.MatchKey is
 -- the same (lower case, spaces and punctuation dropped), so "Chaos Born" can't sit beside "ChaosBorn" or
 -- "chaos-born", and a pushed "ChaosBorn" lands on a saved "Chaos Born"; All is reserved (Season Stats' filter) in
@@ -23,7 +25,8 @@ local Team = CRT.Team
 
 Team.MAX_NAME = 24
 Team.MAX_TEAMS = 20 -- your own teams saved at most; a push of a new team past it is used tonight, not saved
-Team.RESERVED = { all = true } -- Season Stats' All filter, by MatchKey: never a team's name, in any spelling
+-- by MatchKey, never a team's name in any spelling: Season Stats' All filter, and Team (the counts from before teams)
+Team.RESERVED = { all = true, team = true }
 Team.ADD_KEY = "\0add" -- the dropdown's Add team… entry, never a name (Clean refuses control characters)
 Team.LIST_TEXT = {
     add = "Add team\226\128\166",
@@ -33,6 +36,7 @@ Team.LIST_TEXT = {
     taken = "There is already a team named %s.",
     reserved = "%s can't be a team name.",
     full = "You have 20 teams. Remove one to add another.",
+    before = "Before teams", -- the built-in Team's counts, from before your own teams (Season Stats' filter too)
 }
 
 local function settings()
@@ -132,10 +136,10 @@ function Team:Find(name)
     end)
 end
 
--- Every team, the built-in two first, then yours in the order added (and a pushed team your full list couldn't
--- keep, last).
+-- Every team tonight's can be: Pug first, then yours in the order added (and a pushed team your full list couldn't
+-- keep, last). Never the built-in Team.
 function Team:Names()
-    local out = { Team.TEAM, Team.PUG }
+    local out = { Team.PUG }
     for _, n in ipairs(list()) do
         if type(n) == "string" then
             out[#out + 1] = n
@@ -155,6 +159,19 @@ function Team:Saved()
         if type(n) == "string" then
             out[#out + 1] = n
         end
+    end
+    return out
+end
+
+-- The teams a merge can take from: Team (Before teams) while data owners count pulls under it, then your saved
+-- teams.
+function Team:MergeSources()
+    local out = {}
+    if self:TeamPulls(Team.TEAM) > 0 then
+        out[1] = Team.TEAM
+    end
+    for _, n in ipairs(self:Saved()) do
+        out[#out + 1] = n
     end
     return out
 end
@@ -272,7 +289,10 @@ function Team:RemoveTeam(name)
     end
     local s = Team.State()
     if s.tonight == found then
-        s.tonight = Team.TEAM
+        s.tonight = Team.PUG
+    end
+    if s.last == found then
+        s.last = nil
     end
     if s.pushed == found then
         s.pushed = nil -- never sent to a joiner once removed
@@ -311,8 +331,17 @@ end
 -- For the owners that only stamp a team's name on a record (Tattlebot's pulls, the Late Tracker's nights): a
 -- record stamped with a name that reads as from (Team.Resolve) is stamped into instead, and, into Pug, as not a team
 -- raid (team = false), as a Pug night is. Returns true when the record was stamped again.
+-- From Team (before teams): every team raid's record whose name reads as Team, with no name (from before names) or a
+-- team removed since; a record stamped not a team raid stays.
 function Team.Restamp(record, from, into)
-    if type(record) ~= "table" or type(record.teamName) ~= "string" or Team.Resolve(record.teamName) ~= from then
+    if type(record) ~= "table" then
+        return false
+    end
+    if from == Team.TEAM then
+        if record.team == false or Team.Resolve(record.teamName) ~= Team.TEAM then
+            return false
+        end
+    elseif type(record.teamName) ~= "string" or Team.Resolve(record.teamName) ~= from then
         return false
     end
     record.teamName = into
@@ -322,12 +351,13 @@ function Team.Restamp(record, from, into)
     return true
 end
 
--- Whether from can be merged into into now, as saved: from one of your saved teams (never Team or Pug), into Team,
--- Pug or another saved team, and neither locked by the raid leader's push. Returns both names, or nil.
+-- Whether from can be merged into into now, as saved: from one of your saved teams or Team (the counts from before
+-- teams; never Pug), into Pug or another saved team (never Team), and neither locked by the raid leader's push.
+-- Returns both names, or nil.
 function Team:CanMerge(from, into)
     local f, i = self:Find(from), self:Find(into)
     local extra = Team.State().extra
-    if not f or not i or f == i or Team.BuiltIn(f) or f == extra or i == extra then
+    if not f or not i or f == i or f == Team.PUG or i == Team.TEAM or f == extra or i == extra then
         return nil
     end
     local tonight = self:Tonight()
@@ -370,6 +400,9 @@ function Team:Merge(fromName, intoName)
     end
     if s.pushed ~= nil and Team.Resolve(s.pushed) == from then
         s.pushed = into
+    end
+    if s.last ~= nil and Team.Resolve(s.last) == from then
+        s.last = not Team.BuiltIn(into) and into or nil
     end
     local l = list()
     for i = #l, 1, -1 do

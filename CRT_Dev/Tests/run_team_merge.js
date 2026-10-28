@@ -127,7 +127,9 @@ eq(Team:Find("ChaosBorn"), "Chaos Born", "Find: a look-alike reads as the saved 
 local n, why = Team:AddTeam("chaos-born")
 check(n == nil and why == "There is already a team named Chaos Born.", "a look-alike add is refused with the saved spelling (" .. tostring(why) .. ")")
 n, why = Team:AddTeam("T-e-a-m")
-check(n == nil and tostring(why):find("named Team", 1, true), "T-e-a-m is the built-in Team (" .. tostring(why) .. ")")
+check(n == nil and tostring(why):find("can't be a team name", 1, true), "T-e-a-m is reserved like Team (" .. tostring(why) .. ")")
+n, why = Team:AddTeam("Team")
+check(n == nil and tostring(why) == "Team can't be a team name.", "nobody can make a team called Team (" .. tostring(why) .. ")")
 n, why = Team:AddTeam("P u g")
 check(n == nil and tostring(why):find("named Pug", 1, true), "P u g is the built-in Pug (" .. tostring(why) .. ")")
 n, why = Team:AddTeam("A.l.l")
@@ -136,7 +138,7 @@ eq(Team:Find("P u g"), "Pug", "Find reads P u g as Pug")
 eq(Team:Find("!!!"), nil, "a name of only punctuation matches no team")
 eq(Team:Ensure("ChaosBorn"), "Chaos Born", "a pushed look-alike lands on the saved team")
 eq(#CRT.db.team.list, 1, "and adds nothing")
-eq(Team:Ensure("T e a m"), "Team", "a pushed look-alike of Team is Team")
+eq(Team:Ensure("T e a m"), nil, "a push of Team (an older CRT's built-in team) is refused")
 -- the leader's push through the message path: tonight is the saved spelling, locked by the leader
 inRaid = true
 Team.HandleEvent("GROUP_ROSTER_UPDATE")
@@ -197,7 +199,8 @@ eq(S:Boss(3421, "mythic", "ChaosBorn").pulls, 4, "and its counters are still rea
 eq(CRT.db.seasonStats.show, "ChaosBorn", "nothing ran by itself at load")
 
 -- refused merges
-eq(Team:Merge("Team", "Chaos Born"), nil, "never from Team")
+check(Team:CanMerge("Team", "Chaos Born") ~= nil, "from Team (Before teams) into one of your teams is allowed")
+eq(Team:CanMerge("ChaosBorn", "Team"), nil, "never into Team")
 eq(Team:Merge("Pug", "Chaos Born"), nil, "never from Pug")
 eq(Team:Merge("Chaos Born", "Chaos Born"), nil, "never into itself")
 eq(Team:Merge("Nobody", "Chaos Born"), nil, "never from a team not saved")
@@ -258,26 +261,44 @@ eq(Team:Merge("ChaosBorn", "Chaos Born"), nil, "a second merge has nothing to mo
 eq(Team.Resolve("ChaosBorn"), "Chaos Born", "another character's saved spelling reads as the winner")
 eq(S.ScopeOf("ChaosBorn"), "Chaos Born", "and Season Stats files it there")
 
--- 4. Any two teams, into Pug and into Team -----------------------------------------------------------------------------
+-- 4. Before teams into one of yours, and a team into Pug --------------------------------------------------------------
 do
-  local st = { filled = true, scoped = true, show = "Old Crew", bosses = {
-    [1] = { mythic = c({ pulls = 2, wipes = 2, deaths = { 1 } }), teams = { ["Old Crew"] = { mythic = c({ pulls = 3, wipes = 3 }) }, ["Alts"] = { nh = c({ pulls = 6 }) } } } } }
-  local ta = { nextId = 2, custom = {}, history = { { id = 1, pulls = { { team = true, teamName = "Alts" }, { team = true, teamName = "Old Crew" } } } } }
-  local la = { days = {}, nextId = 2, history = { { id = 1, team = true, teamName = "Alts", players = {} } } }
+  local st = { filled = true, scoped = true, show = "team", bosses = {
+    [1] = { mythic = c({ pulls = 2, wipes = 2, first = NOW - 9000, last = NOW - 8000, deaths = { 1 } }), all = { mythic = c({ pulls = 11 }) },
+      teams = { ["Old Crew"] = { mythic = c({ pulls = 3, wipes = 3, first = NOW - 5000, last = NOW - 4000, deaths = { 5 } }) }, ["Alts"] = { nh = c({ pulls = 6 }) } } } } }
+  local ta = { nextId = 2, custom = {}, history = { { id = 1, pulls = { { team = true, teamName = "Alts" }, { team = true, teamName = "Old Crew" },
+    { team = true }, { }, { team = false }, { team = true, teamName = "Gone" } } } } }
+  local la = { days = {}, nextId = 2, history = { { id = 1, team = true, teamName = "Alts", players = {} }, { id = 2, players = {} }, { id = 3, team = false, players = {} } } }
   CRTDBChar = { team = { tonight = "Alts", pushed = "Alts" } }
   local T2, S2 = load_all(fresh({ "Old Crew", "Alts" }, st, ta, la))
-  local r = T2:Merge("Old Crew", "Team")
-  eq(r and r.pulls, 3, "into the built-in Team")
-  eq(S2:Boss(1, "mythic", "team").pulls, 5, "Team's counters (the field from before) get them")
-  eq(st.show, "team", "the filter moves to Team")
-  eq(ta.history[1].pulls[2].teamName, "Team", "its Tattlebot pull now reads Team")
+  eq(T2:Merge("Old Crew", "Team"), nil, "never into the built-in Team")
+  local function opts() local out = {} for _, o in ipairs(S2.ScopeOptions()) do out[#out + 1] = o.key .. "=" .. o.label end return table.concat(out, ", ") end
+  eq(opts(), "all=All, team=Before teams, Old Crew=Old Crew, Alts=Alts", "the filter: Before teams while it has pulls, between All and your teams")
+  eq(T2:TeamPulls("Team"), 2, "Before teams' pulls")
+  eq(table.concat(T2:MergeSources(), "|"), "Team|Old Crew|Alts", "a merge can take from Before teams, first")
+  local r = T2:Merge("Team", "Old Crew")
+  eq(r and r.pulls, 2, "Before teams merged into one of your teams")
+  eq(S2:Boss(1, "mythic", "Old Crew").pulls, 5, "its counters move into the team")
+  eq(table.concat(S2:Boss(1, "mythic", "Old Crew").deaths, ","), "1,5", "in time order")
+  eq(st.bosses[1].mythic, nil, "and leave the field from before")
+  eq(S2:Boss(1, "mythic", "all").pulls, 11, "All untouched")
+  eq(st.show, "Old Crew", "the filter moves to the team")
+  eq(r and r.tattlePulls, 3, "Tattlebot team raids with no name (or a removed team's) restamped")
+  eq(tostring(ta.history[1].pulls[3].teamName) .. "/" .. tostring(ta.history[1].pulls[4].teamName) .. "/" .. tostring(ta.history[1].pulls[6].teamName), "Old Crew/Old Crew/Old Crew", "to the team")
+  eq(ta.history[1].pulls[5].teamName, nil, "a pull that wasn't a team raid stays out")
+  eq(r and r.nights, 1, "a Late night from before names restamped")
+  eq(tostring(la.history[2].teamName) .. "/" .. tostring(la.history[3].teamName), "Old Crew/nil", "but not one that wasn't a team raid")
+  eq(opts(), "all=All, Old Crew=Old Crew, Alts=Alts", "no pulls left: Before teams leaves the filter")
+  eq(table.concat(CRT.db.team.list, "|"), "Old Crew|Alts", "no team left the list")
+  st.show = nil
+  eq(S2:Scope(), "Alts", "no filter saved and nothing before teams: tonight's team")
   r = T2:Merge("Alts", "Pug")
   eq(r and r.pulls, 6, "into Pug")
   eq(S2:Boss(1, "nh", "Pug").pulls, 6, "Pug's counters get them")
   eq(ta.history[1].pulls[1].teamName .. "/" .. tostring(ta.history[1].pulls[1].team), "Pug/false", "a pull merged into Pug is a Pug pull")
   eq(la.history[1].teamName .. "/" .. tostring(la.history[1].team), "Pug/false", "and a night")
   eq(CRTDBChar.team.tonight .. "/" .. CRTDBChar.team.pushed, "Pug/Pug", "tonight and the push follow")
-  eq(#CRT.db.team.list, 0, "both left the list")
+  eq(table.concat(CRT.db.team.list, "|"), "Old Crew", "Alts left the list")
 end
 
 -- 5. Old data with no teams is untouched ------------------------------------------------------------------------------
@@ -319,16 +340,16 @@ do
   eq(D.fromDrop.opts.labelWidth, D.intoDrop.opts.labelWidth, "the rows line up")
   local function keys(opts) local out = {} for _, o in ipairs(opts) do out[#out + 1] = o.key end return table.concat(out, ",") end
   eq(keys(D.fromDrop.opts.options()), "Chaos Born,ChaosBorn", "Merge lists your saved teams, not Team or Pug")
-  eq(keys(D.intoDrop.opts.options()), "Team,Pug,Chaos Born", "into lists Team, Pug and your teams but the one above")
+  eq(keys(D.intoDrop.opts.options()), "Pug,Chaos Born", "into lists Pug and your teams but the one above, never Team")
   eq(D.message:GetText(), "ChaosBorn's 7 pulls, Tattlebot pulls and raid nights move into Chaos Born, and ChaosBorn leaves your list. This can't be undone.", "the summary")
   eq(D.ok.text, "Merge", "[Merge]")
   eq(D.cancel.text, "Cancel", "[Cancel]")
   check(D.ok:IsEnabled(), "Merge enabled for a pair it can merge")
   -- picking the other team above: into can't stay on it, the summary follows
   D.fromDrop.opts.set("Chaos Born")
-  eq(D.intoDrop.opts.get(), "Team", "into can't be the team being merged: back to Team")
-  eq(keys(D.intoDrop.opts.options()), "Team,Pug,ChaosBorn", "and its list leaves it out")
-  eq(D.message:GetText(), "Chaos Born's 10 pulls, Tattlebot pulls and raid nights move into Team, and Chaos Born leaves your list. This can't be undone.", "the summary is rebuilt on every pick")
+  eq(D.intoDrop.opts.get(), "ChaosBorn", "into can't be the team being merged: your other team")
+  eq(keys(D.intoDrop.opts.options()), "Pug,ChaosBorn", "and its list leaves it out")
+  eq(D.message:GetText(), "Chaos Born's 10 pulls, Tattlebot pulls and raid nights move into ChaosBorn, and Chaos Born leaves your list. This can't be undone.", "the summary is rebuilt on every pick")
   D.intoDrop.opts.set("Pug")
   check(D.message:GetText():find("move into Pug", 1, true) ~= nil, "and on into's pick")
   D.fromDrop.opts.set("ChaosBorn") D.intoDrop.opts.set("Chaos Born")
@@ -342,6 +363,16 @@ do
   eq(done and done.pulls, 7, "done gets the summary (the settings page refreshes)")
   check(fired > 0, "Season Stats is told, so its page refreshes")
   eq(printed[#printed], "Merged ChaosBorn into Chaos Born (7 pulls).", "one chat line")
+  -- Before teams: listed first while it has pulls, its own summary
+  CRT.db.seasonStats.bosses[3421].mythic = c({ pulls = 2 })
+  D.AskMerge(nil, nil)
+  eq(keys(D.fromDrop.opts.options()), "Team,Chaos Born", "Before teams is listed first while it has pulls")
+  eq(D.fromDrop.opts.options()[1].label, "Before teams", "named Before teams")
+  eq(D.from .. ">" .. D.into, "Team>Chaos Born", "and picked first, into your first team")
+  eq(D.message:GetText(), "The 2 pulls from before teams, with their Tattlebot pulls and raid nights, move into Chaos Born. This can't be undone.", "its summary")
+  D.ok.OnClick()
+  eq(printed[#printed], "Merged Before teams into Chaos Born (2 pulls).", "its chat line")
+  eq(CRT.db.seasonStats.bosses[3421].mythic, nil, "its counters moved")
   -- with no saved team nothing opens
   CRT.db.team.list = {}
   D.AskMerge(nil, nil)

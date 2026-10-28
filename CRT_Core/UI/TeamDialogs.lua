@@ -8,7 +8,8 @@ local ADDON, CRT = ...
 --            [Remove] [Cancel]. Remove goes on to confirm.
 --   confirm  the second: "This can't be undone. Type the team name to delete it and its N pulls." A box,
 --            [Delete for good] (only while the box holds the name, any case) [Cancel]. It calls Team:RemoveTeam.
---   merge    Merge teams: "Merge [your saved teams]" and "into [Team, Pug and your saved teams but the one above]",
+--   merge    Merge teams: "Merge [Before teams while it has pulls, your saved teams]" and "into [Pug and your saved
+--            teams but the one above]",
 --            the summary under them (rebuilt on every pick), [Merge] [Cancel]. Merge calls Team:Merge
 --            (TeamList.lua), prints what moved and runs done(summary).
 -- D.win, D.mode, D.edit, D.ok, D.cancel, D.fromDrop and D.intoDrop are kept for the tests.
@@ -38,6 +39,7 @@ local TEXT = {
     mergeInto = "into",
     merge = "Merge",
     mergeAsk = "%s's %s, Tattlebot pulls and raid nights move into %s, and %s leaves your list. This can't be undone.",
+    mergeAskBefore = "The %s from before teams, with their Tattlebot pulls and raid nights, move into %s. This can't be undone.",
     merged = "Merged %s into %s (%s).",
 }
 D.TEXT = TEXT
@@ -116,29 +118,44 @@ end
 
 -- Merge teams ---------------------------------------------------------------------------------------------------
 
--- Your saved teams, the ones a merge can take from (Team:Saved).
-local function savedTeams()
-    return Team:Saved()
+-- A team as the dialog names it: Team is Before teams (its counts from before your own teams).
+local function nameOf(n)
+    return n == Team.TEAM and Team.LIST_TEXT.before or n
 end
+D.NameOf = nameOf
 
--- Merge's entries: your saved teams.
+-- Merge's entries: Before teams while it has pulls, then your saved teams (Team:MergeSources).
 function D.FromOptions()
     local out = {}
-    for _, n in ipairs(savedTeams()) do
+    for _, n in ipairs(Team:MergeSources()) do
+        out[#out + 1] = { key = n, label = nameOf(n) }
+    end
+    return out
+end
+
+-- The teams a merge can go into: Pug and your saved teams, but the one being merged.
+local function intoTeams()
+    local out = { Team.PUG }
+    for _, n in ipairs(Team:Saved()) do
+        if n ~= D.from then
+            out[#out + 1] = n
+        end
+    end
+    return out
+end
+
+function D.IntoOptions()
+    local out = {}
+    for _, n in ipairs(intoTeams()) do
         out[#out + 1] = { key = n, label = n }
     end
     return out
 end
 
--- into's entries: Team, Pug and your saved teams, but the one being merged.
-function D.IntoOptions()
-    local out = { { key = Team.TEAM, label = Team.TEAM }, { key = Team.PUG, label = Team.PUG } }
-    for _, n in ipairs(savedTeams()) do
-        if n ~= D.from then
-            out[#out + 1] = { key = n, label = n }
-        end
-    end
-    return out
+-- into when it can't stay: your first other saved team, else Pug.
+local function defaultInto()
+    local list = intoTeams()
+    return list[2] or list[1]
 end
 
 -- The summary under the two rows, and Merge enabled only for a pair Team:CanMerge takes.
@@ -147,13 +164,18 @@ local function mergeSummary()
         D.message:SetText("")
         return
     end
-    D.message:SetText(TEXT.mergeAsk:format(D.from, pullsText(Team:TeamPulls(D.from)), D.into, D.from))
+    local pulls = pullsText(Team:TeamPulls(D.from))
+    if D.from == Team.TEAM then
+        D.message:SetText(TEXT.mergeAskBefore:format(pulls, D.into))
+    else
+        D.message:SetText(TEXT.mergeAsk:format(D.from, pulls, D.into, D.from))
+    end
 end
 
 function D.PickFrom(key)
     D.from = Team:Find(key) or D.from
     if D.into == D.from then
-        D.into = Team.TEAM
+        D.into = defaultInto()
     end
     mergeSummary()
     D.fromDrop.refresh()
@@ -238,18 +260,22 @@ end
 -- Merge teams: from and into start on the ones given (else your first saved team, into Team); done(summary) runs
 -- once merged. Nothing opens with no saved team.
 function D.AskMerge(from, into, done)
-    local saved = savedTeams()
-    if #saved == 0 then
+    local sources = Team:MergeSources()
+    if #sources == 0 then
         return
     end
     D.done, D.name = done, nil
     D.from = Team:Find(from)
-    if not D.from or Team.BuiltIn(D.from) or D.from == Team.State().extra then
-        D.from = saved[1]
+    local listed = false
+    for _, n in ipairs(sources) do
+        listed = listed or n == D.from
+    end
+    if not listed then
+        D.from = sources[1]
     end
     D.into = Team:Find(into)
-    if not D.into or D.into == D.from or D.into == Team.State().extra then
-        D.into = Team.TEAM
+    if not D.into or D.into == D.from or D.into == Team.TEAM or D.into == Team.State().extra then
+        D.into = defaultInto()
     end
     open("merge", TEXT.mergeTitle, nil, TEXT.merge, false)
     mergeSummary()
@@ -264,7 +290,7 @@ function D.Merge()
     if not summary then
         return nil
     end
-    CRT:Print(TEXT.merged:format(summary.from, summary.into, pullsText(summary.pulls or 0)))
+    CRT:Print(TEXT.merged:format(nameOf(summary.from), summary.into, pullsText(summary.pulls or 0)))
     return summary
 end
 

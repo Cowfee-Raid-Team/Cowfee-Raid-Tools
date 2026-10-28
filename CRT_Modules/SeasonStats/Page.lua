@@ -1,7 +1,7 @@
 local ADDON, CRT = ...
 
 -- The Season Stats page (Modules > Season Stats): a Season dropdown (the boss library's season packs, the current
--- one first), a Difficulty dropdown (the Timeline's groups) and a Team filter (All, then each team with pulls, the
+-- one first), a Difficulty dropdown (the Timeline's groups) and a Team filter (All, Before teams while it has pulls, then each team with pulls, the
 -- counters' scopes, saved by Stats:SetScope; everything below follows it); six cards (bosses killed of the season's route,
 -- pulls, raid nights, time in pulls, your repairs and the raid's costs, SeasonStats/Repairs.lua); the table of the
 -- route's bosses in route order (sortable, back to route order on a third click); and the reflection for the boss picked in the table: its longest pull each night as bars,
@@ -49,7 +49,7 @@ local TEXT = {
         .. "Raid costs adds up the same from every raider running CRT, on the pulls Season Stats counted. Raiders without CRT aren't counted.\n\n"
         .. "It isn't confirmed yet whether reputation discounts on repairs are included.\n\n"
         .. "Repair counting starts with this update, so older pulls have none.\n\n"
-        .. "The Team filter picks All or one team. Each pull counts under the team it started with, picked on General Settings > Team raids, and in All. Pug is the raids that weren't a team raid. Pulls from before teams had names count under Team.",
+        .. "The Team filter picks All or one team. Each pull counts under the team it started with, picked on General Settings > Team raids, and in All. Pug is the raids that weren't a team raid. Before teams, shown only while it has pulls, is the pulls from before you had teams of your own: Merge team on General Settings > Team raids can move them into one of your teams.",
     season = "Season", difficulty = "Difficulty", show = "Team",
     killed = "Bosses killed", pulls = "Pulls", nights = "Raid nights", time = "Time in pulls",
     repairs = "Your repairs", raid = "Raid costs",
