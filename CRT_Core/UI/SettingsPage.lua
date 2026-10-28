@@ -879,6 +879,8 @@ local function build(pf)
     UI.onScale = refresh
     -- a push, a hello or a roster change: Team raids follows while the page shows (refresh checks)
     CRT.Team:OnRecount(refresh)
+    -- a merge, from the Merge teams dialog or the look-alike prompt: the list and Merge team… follow
+    CRT.Team:OnMerge(refresh)
 end
 
 UI:RegisterPage("settings", "General Settings", build)

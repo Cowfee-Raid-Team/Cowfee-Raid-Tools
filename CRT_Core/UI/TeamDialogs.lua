@@ -47,6 +47,7 @@ D.TEXT = TEXT
 local function pullsText(n)
     return (n == 1 and TEXT.pull or TEXT.pulls):format(n)
 end
+D.PullsText = pullsText
 
 -- Whether the typed text is the team's name (trimmed, any case).
 function D.Matches(typed, name)
@@ -257,8 +258,9 @@ function D.AskRemove(name, done)
     open("remove", TEXT.removeTitle, TEXT.removeAsk:format(D.name, D.name, pulls), TEXT.remove, false)
 end
 
--- Merge teams: from and into start on the ones given (else your first saved team, into Team); done(summary) runs
--- once merged. Nothing opens with no saved team.
+-- Merge teams: from and into start on the ones given (else the first source, Before teams or your first saved
+-- team, into your first other saved team, else Pug); done(summary) runs once merged. Nothing opens with nothing to
+-- merge from.
 function D.AskMerge(from, into, done)
     local sources = Team:MergeSources()
     if #sources == 0 then
@@ -284,14 +286,21 @@ function D.AskMerge(from, into, done)
     D.Refresh()
 end
 
--- Merges the pair picked; prints what moved. Returns the summary, or nil when Team:Merge refused.
-function D.Merge()
-    local summary = Team:Merge(D.from, D.into)
+-- Merges from into into and prints what moved, for the dialog and the look-alike prompt (TeamLookAlike.lua); the
+-- settings page and Season Stats refresh through Team:OnMerge and Season Stats' own change. Returns the summary, or
+-- nil when Team:Merge refused.
+function D.MergePair(from, into)
+    local summary = Team:Merge(from, into)
     if not summary then
         return nil
     end
     CRT:Print(TEXT.merged:format(nameOf(summary.from), summary.into, pullsText(summary.pulls or 0)))
     return summary
+end
+
+-- Merges the pair picked.
+function D.Merge()
+    return D.MergePair(D.from, D.into)
 end
 
 function D.Accept()

@@ -48,7 +48,6 @@ Stats.TEAM, Stats.ALL = "team", "all"
 Stats.SCOPES = { Stats.TEAM, Stats.ALL }
 Stats.TEAM_NAME, Stats.PUG = "Team", "Pug" -- the built-in teams' names (CRT.Team.TEAM, PUG)
 Stats.ALL_LABEL = "All"
-Stats.BEFORE_LABEL = "Before teams" -- the built-in Team's scope: counts from before your own teams, never added to now
 
 local function sdb()
     return CRT.db.seasonStats
@@ -103,10 +102,12 @@ end
 -- pulls, in the team list's order (Pug, then yours), and the one picked even with none.
 function Stats.ScopeOptions()
     local out = { { key = Stats.ALL, label = Stats.ALL_LABEL } }
-    if scopeHas(Stats.TEAM) then
-        out[2] = { key = Stats.TEAM, label = Stats.BEFORE_LABEL }
-    end
     local Team = CRT.Team
+    if scopeHas(Stats.TEAM) then
+        -- Before teams: the built-in Team's counts, from before your own teams (its name is TeamList.lua's)
+        local before = Team and Team.LIST_TEXT and Team.LIST_TEXT.before or Stats.TEAM_NAME
+        out[2] = { key = Stats.TEAM, label = before }
+    end
     local names = Team and Team.Names and Team:Names() or { Stats.PUG }
     local picked = Stats:Scope()
     for _, name in ipairs(names) do
@@ -314,6 +315,8 @@ local function mergeCounters(into, from)
     into.bestKill = least(into.bestKill, from.bestKill)
     local intoLast, fromLast = num(into.last), num(from.last)
     into.last = most(intoLast, fromLast)
+    -- pulls to first kill is each team's own count: when both pulled the boss before the earlier kill, the merged
+    -- number is only that team's pulls, not both teams' together (which pulls came first isn't kept)
     if num(from.firstKillPull) then
         local takeFrom = not num(into.firstKillPull)
         if not takeFrom then

@@ -5,11 +5,13 @@ local ADDON, CRT = ...
 -- spelling from before names matched that way. A few seconds after you log in, out of combat, a small UI.Window
 -- on the popups layer asks about one pair at a time, the first listed as the one kept:
 --   "Same team?"  "<loser> looks like <winner>. Merge <loser> (N pulls) into <winner>?"  [Merge] [Keep apart]
--- Merge runs Team:Merge and asks about the next pair. Keep apart saves the pair in CRTDB.team.keepApart (its key is
--- both names in lower case, "winner|loser"; a | is never in a team's name), so it is never asked again, and asks
--- about the next. Closing it with X asks nothing more until the next login. Never in combat (it waits for combat's
--- end), never while the new raid group popup or a team dialog shows (it waits until they close), never about a pair
--- Team:CanMerge refuses (a raid leader's push locks either team).
+-- Merge merges as the Merge teams dialog does (TeamDialogs.MergePair) and asks about the next pair. Keep apart saves
+-- the pair in CRTDB.team.keepApart (its key is both names in lower case, sorted and joined by |, which is never in a
+-- team's name, so the pair stays kept whichever is listed first), so it is never asked again, and asks about the
+-- next. Closing it with X asks nothing more until the next login; so does joining a new raid group while it shows
+-- (it closes, for the new raid group popup). Never in combat (it waits for combat's end), never while the new raid
+-- group popup or a team dialog shows (it waits until they close), never about a pair Team:CanMerge refuses (a raid
+-- leader's push locks either team).
 -- P.win, P.message, P.merge, P.keep and P.pair are kept for the tests.
 
 local UI = CRT.UI
@@ -25,13 +27,12 @@ local TEXT = {
     ask = "%s looks like %s. Merge %s (%s) into %s?",
     merge = "Merge",
     keep = "Keep apart",
-    merged = "Merged %s into %s (%s).",
-    pull = "%d pull", pulls = "%d pulls",
 }
 P.TEXT = TEXT
 
+-- "1 pull", "7 pulls": the Merge teams dialog's wording (TeamDialogs.lua).
 local function pullsText(n)
-    return (n == 1 and TEXT.pull or TEXT.pulls):format(n)
+    return CRT.TeamDialogs.PullsText(n)
 end
 
 local function keepApart()
@@ -45,9 +46,13 @@ local function keepApart()
     return s.keepApart
 end
 
--- The key a kept-apart pair is saved under.
-function P.PairKey(winner, loser)
-    return tostring(winner):lower() .. "|" .. tostring(loser):lower()
+-- The key a kept-apart pair is saved under: both names in lower case, sorted, so either order is the same pair.
+function P.PairKey(a, b)
+    a, b = tostring(a):lower(), tostring(b):lower()
+    if b < a then
+        a, b = b, a
+    end
+    return a .. "|" .. b
 end
 
 -- The next pair to ask about, winner and loser, or nil: the first look-alike not kept apart that can be merged now.
@@ -169,10 +174,7 @@ function P.Merge()
     if not pair then
         return
     end
-    local summary = Team:Merge(pair.loser, pair.winner)
-    if summary then
-        CRT:Print(TEXT.merged:format(summary.from, summary.into, pullsText(summary.pulls or 0)))
-    end
+    CRT.TeamDialogs.MergePair(pair.loser, pair.winner)
     P.Try()
 end
 
@@ -207,3 +209,11 @@ end
 
 driver:RegisterEvent("PLAYER_ENTERING_WORLD")
 driver:SetScript("OnEvent", onEvent)
+
+-- a new raid group asks which team it is (TeamPopup.lua): the prompt closes as X closes it, so it never sits over
+-- that popup, and asks again at the next login
+Team:OnNewGroup(function()
+    if P.IsShown() then
+        P.win:Hide()
+    end
+end)

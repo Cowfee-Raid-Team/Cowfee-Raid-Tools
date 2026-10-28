@@ -266,7 +266,7 @@ function Team:CanRemove(name)
     return true
 end
 
--- Removes one of your teams and every owner's data saved under it. Tonight's team goes back to Team when it was
+-- Removes one of your teams and every owner's data saved under it. Tonight's team goes back to Pug when it was
 -- this one. Returns true when it was removed.
 function Team:RemoveTeam(name)
     if not self:CanRemove(name) then
@@ -367,10 +367,18 @@ function Team:CanMerge(from, into)
     return f, i
 end
 
+Team.merges = {}
+
+-- fn(summary) runs after every merge (General Settings' Team raids refreshes).
+function Team:OnMerge(fn)
+    self.merges[#self.merges + 1] = fn
+end
+
 -- Merges one team into another: every owner of data saved under a team name moves from's into into's
--- (Team:OnTeamData's merge = fn(from, into, Team.Restamp), returning a table of counts), tonight's team and your push follow, and
--- from leaves your list. Returns the summary, { from, into, pulls, ... every owner's counts }, or nil when
--- CanMerge refuses.
+-- (Team:OnTeamData's merge = fn(from, into, Team.Restamp), returning a table of counts), tonight's team, your push
+-- and your last team follow (not from Team: a saved "Team" or a removed team keeps reading as it did), and from
+-- leaves your list. Every Team:OnMerge listener runs. Returns the summary, { from, into, pulls, ... every owner's
+-- counts }, or nil when CanMerge refuses.
 function Team:Merge(fromName, intoName)
     local from, into = self:CanMerge(fromName, intoName)
     if not from then
@@ -394,15 +402,19 @@ function Team:Merge(fromName, intoName)
             end
         end
     end
+    -- from Team, nothing saved names it: a saved "Team" or a removed team resolves as Team, and still reads as
+    -- your last team (Team:Tonight)
     local s = Team.State()
-    if s.tonight ~= nil and Team.Resolve(s.tonight) == from then
-        s.tonight = into
-    end
-    if s.pushed ~= nil and Team.Resolve(s.pushed) == from then
-        s.pushed = into
-    end
-    if s.last ~= nil and Team.Resolve(s.last) == from then
-        s.last = not Team.BuiltIn(into) and into or nil
+    if from ~= Team.TEAM then
+        if s.tonight ~= nil and Team.Resolve(s.tonight) == from then
+            s.tonight = into
+        end
+        if s.pushed ~= nil and Team.Resolve(s.pushed) == from then
+            s.pushed = into
+        end
+        if s.last ~= nil and Team.Resolve(s.last) == from then
+            s.last = not Team.BuiltIn(into) and into or nil
+        end
     end
     local l = list()
     for i = #l, 1, -1 do
@@ -411,5 +423,11 @@ function Team:Merge(fromName, intoName)
         end
     end
     Team.Update()
+    for _, fn in ipairs(self.merges) do
+        local ok, err = pcall(fn, summary)
+        if not ok and geterrorhandler then
+            geterrorhandler()(err)
+        end
+    end
     return summary
 end

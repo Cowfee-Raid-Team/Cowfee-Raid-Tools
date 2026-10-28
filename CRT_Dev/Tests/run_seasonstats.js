@@ -660,6 +660,7 @@ do
   local asked = {}
   local listed = { Team = "Team", Pug = "Pug", Cowfee = "Cowfee" }
   CRT.Team = {
+    LIST_TEXT = { before = "Before teams" }, -- TeamList.lua's name for the built-in Team's counts
     PullTeam = function(_, enc, at) asked[#asked + 1] = tostring(enc) .. "@" .. tostring(at) return teamAnswer end,
     Resolve = function(name) return listed[name] or "Team" end,
     Names = function() local out = { "Team", "Pug" } for _, n in ipairs({ "Cowfee", "Fresh" }) do if listed[n] then out[#out + 1] = n end end return out end,

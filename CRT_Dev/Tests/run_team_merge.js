@@ -301,6 +301,25 @@ do
   eq(table.concat(CRT.db.team.list, "|"), "Old Crew", "Alts left the list")
 end
 
+-- 4b. Merging Before teams leaves tonight's team reading as it did; Team:OnMerge -----------------------------------
+do
+  for _, saved in ipairs({ "Team", "Gone" }) do
+    local st = { filled = true, scoped = true, bosses = { [1] = { mythic = c({ pulls = 2 }) } } }
+    CRTDBChar = { team = { tonight = saved, pushed = saved, last = "Alts" } }
+    local T4 = load_all(fresh({ "Old Crew", "Alts" }, st))
+    eq(T4:Tonight(), "Alts", "a saved " .. saved .. " reads as your last team")
+    check(T4:Merge("Team", "Old Crew") ~= nil, "Before teams merged (tonight saved as " .. saved .. ")")
+    eq(T4:Tonight(), "Alts", "tonight reads the same after the merge (" .. saved .. ")")
+    eq(CRTDBChar.team.tonight .. "/" .. CRTDBChar.team.pushed .. "/" .. CRTDBChar.team.last, saved .. "/" .. saved .. "/Alts", "nothing saved is rewritten (" .. saved .. ")")
+  end
+  local heard
+  CRTDBChar = {}
+  local T5 = load_all(fresh({ "A", "B" }))
+  T5:OnMerge(function(sum) heard = sum.from .. ">" .. sum.into end)
+  T5:Merge("A", "B")
+  eq(heard, "A>B", "Team:OnMerge runs after a merge (General Settings refreshes)")
+end
+
 -- 5. Old data with no teams is untouched ------------------------------------------------------------------------------
 do
   local st = { filled = true, scoped = true, bosses = { [1] = { mythic = c({ pulls = 2 }) } } }
@@ -409,11 +428,18 @@ do
   eq(#db.db.team.list, 2, "merging nothing")
   T7, P = login(db)
   check(not P.IsShown(), "a kept-apart pair is never asked about again")
+  db.db.team.list = { "ChaosBorn", "Chaos Born" }
+  T7, P = login(db)
+  check(not P.IsShown(), "a kept-apart pair stays kept whichever is listed first")
+  db.db.team.list = { "Chaos Born", "ChaosBorn" }
   -- Merge
   CRTDBChar = {}
   db = alexShape()
   T7, P = login(db)
+  local refreshed = false
+  T7:OnMerge(function() refreshed = true end)
   P.merge.OnClick()
+  check(refreshed, "a merge from the prompt refreshes General Settings too (Team:OnMerge)")
   check(not P.IsShown(), "Merge closes it")
   eq(table.concat(db.db.team.list, "|"), "Chaos Born", "and merges")
   eq(printed[#printed], "Merged ChaosBorn into Chaos Born (7 pulls).", "with one chat line")
@@ -427,7 +453,16 @@ do
   combat = false
   P.HandleEvent("PLAYER_REGEN_ENABLED")
   check(P.IsShown(), "shown when combat ends")
-  P.win:Hide()
+  -- a new raid group while it shows: it closes, for the new raid group popup, until the next login
+  CRTDBChar = {}
+  inRaid = true
+  T7.HandleEvent("GROUP_ROSTER_UPDATE")
+  check(not P.IsShown(), "a new raid group closes the prompt")
+  P.Try()
+  check(not P.IsShown(), "and it asks nothing more this session")
+  inRaid = false
+  T7.HandleEvent("GROUP_ROSTER_UPDATE")
+  CRTDBChar = {}
   -- never while a push locks either team
   db = alexShape()
   CRTDBChar = { team = { tonight = "ChaosBorn", groupKey = "g1", picked = true, setBy = "Gadios", setByKey = "gadios-silvermoon" } }

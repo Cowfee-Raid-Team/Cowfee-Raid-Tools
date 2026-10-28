@@ -374,6 +374,10 @@ do
         if rawget(merge, "enabled") ~= false then print("FAIL Merge team… is greyed while a push locks the pick") end
         Team.IsLocked = locked
         UI.pages.settings.frame.OnShow()
+        if rawget(merge, "enabled") ~= true then print("FAIL Merge team… works again once unlocked") end
+        -- a merge anywhere (the dialog or the look-alike prompt) refreshes the page: one team left, Merge team… greys
+        Team:Merge("Night Crew", "Cowfee Mythic")
+        if rawget(merge, "enabled") ~= false then print("FAIL a merge refreshes General Settings (Team:OnMerge)") end
       end
     end
     local p = d.pts and d.pts[1]
