@@ -2,14 +2,22 @@ local ADDON, CRT = ...
 
 -- The teams you pick tonight's team from (CRT.Team, Team.lua): Team and Pug, built in and never removed, then your
 -- own, saved in CRTDB.team.list in the order added. A name is trimmed, 1 to MAX_NAME characters, with no | (it
--- travels in the push, "T|1|<name>") and no control characters; names are unique in any case, so "cowfee" can't sit
--- beside "Cowfee"; All is reserved (Season Stats' filter) and at most MAX_TEAMS are saved. The dropdown's entries (Team:Options) end with "Add team…", which General Settings and the new
--- raid group popup both open as TeamDialogs.lua's name box.
+-- travels in the push, "T|1|<name>") and no control characters. Two names are one team when their Team.MatchKey is
+-- the same (lower case, spaces and punctuation dropped), so "Chaos Born" can't sit beside "ChaosBorn" or
+-- "chaos-born", and a pushed "ChaosBorn" lands on a saved "Chaos Born"; All is reserved (Season Stats' filter) in
+-- any such spelling, and at most MAX_TEAMS are saved. The dropdown's entries (Team:Options) end with "Add team…",
+-- which General Settings and the new raid group popup both open as TeamDialogs.lua's name box.
 --
 -- Removing a team deletes the data saved under it: each owner of such data (Season Stats) registers with
--- Team:OnTeamData({ count = fn(name), delete = fn(name) }); Team:TeamPulls(name) adds up count, and
--- Team:RemoveTeam(name) calls every delete. Other records that only stamp a team's name (Tattlebot, the Late
--- Tracker) keep it, and read it as Team once the name is gone (Team.Resolve).
+-- Team:OnTeamData({ count = fn(name), delete = fn(name), merge = fn(from, into, restamp) }); Team:TeamPulls(name)
+-- adds up count, and Team:RemoveTeam(name) calls every delete. Other records that only stamp a team's name
+-- (Tattlebot, the Late Tracker) keep it, and read it as Team once the name is gone (Team.Resolve).
+--
+-- Merging (Team:Merge(from, into), never by itself): every owner's merge moves from's data into into's (Season
+-- Stats' counters; Tattlebot's and the Late Tracker's stamps through Team.Restamp), tonight's team and your push
+-- follow, and from leaves the list. Look-alikes saved before names matched this way (Team:LookAlikes) stay apart,
+-- each found by its own spelling first, until merged: General Settings' Merge team… and the look-alike prompt
+-- (UI/TeamLookAlike.lua) ask.
 
 local Team = CRT.Team
 
@@ -136,6 +144,17 @@ function Team:Names()
     local extra = Team.State and Team.State().extra
     if type(extra) == "string" then
         out[#out + 1] = extra
+    end
+    return out
+end
+
+-- Your saved teams, in list order: not Team or Pug, nor a pushed team your full list couldn't keep.
+function Team:Saved()
+    local out = {}
+    for _, n in ipairs(list()) do
+        if type(n) == "string" then
+            out[#out + 1] = n
+        end
     end
     return out
 end

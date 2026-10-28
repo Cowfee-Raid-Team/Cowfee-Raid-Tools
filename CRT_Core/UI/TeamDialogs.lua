@@ -8,7 +8,10 @@ local ADDON, CRT = ...
 --            [Remove] [Cancel]. Remove goes on to confirm.
 --   confirm  the second: "This can't be undone. Type the team name to delete it and its N pulls." A box,
 --            [Delete for good] (only while the box holds the name, any case) [Cancel]. It calls Team:RemoveTeam.
--- D.win, D.mode, D.edit, D.ok and D.cancel are kept for the tests.
+--   merge    Merge teams: "Merge [your saved teams]" and "into [Team, Pug and your saved teams but the one above]",
+--            the summary under them (rebuilt on every pick), [Merge] [Cancel]. Merge calls Team:Merge
+--            (TeamList.lua), prints what moved and runs done(summary).
+-- D.win, D.mode, D.edit, D.ok, D.cancel, D.fromDrop and D.intoDrop are kept for the tests.
 
 local UI = CRT.UI
 local Team = CRT.Team
@@ -16,7 +19,8 @@ local Team = CRT.Team
 local D = {}
 CRT.TeamDialogs = D
 
-local L = { width = 380, height = 156, editW = 220, editH = 20, buttonH = 22, buttonMinW = 80, gap = 12, bottom = 6, pad = 12 }
+local L = { width = 380, height = 156, mergeH = 196, editW = 220, editH = 20, buttonH = 22, buttonMinW = 80, gap = 12, bottom = 6,
+    pad = 12, labelW = 60, dropW = 240, rowH = 30 }
 
 local TEXT = {
     addTitle = "Add team",
@@ -29,6 +33,12 @@ local TEXT = {
     confirmAsk = "This can't be undone. Type the team name to delete it and its %s.",
     cancel = "Cancel",
     pull = "%d pull", pulls = "%d pulls",
+    mergeTitle = "Merge teams",
+    mergeFrom = "Merge",
+    mergeInto = "into",
+    merge = "Merge",
+    mergeAsk = "%s's %s, Tattlebot pulls and raid nights move into %s, and %s leaves your list. This can't be undone.",
+    merged = "Merged %s into %s (%s).",
 }
 D.TEXT = TEXT
 
@@ -81,6 +91,81 @@ local function build()
     D.edit:SetScript("OnEscapePressed", function()
         win:Hide()
     end)
+    -- the merge rows, shown only in merge mode
+    D.fromDrop = UI.Dropdown(c, TEXT.mergeFrom, {
+        labelWidth = L.labelW,
+        width = L.dropW,
+        options = D.FromOptions,
+        get = function()
+            return D.from
+        end,
+        set = D.PickFrom,
+    })
+    D.fromDrop:SetPoint("TOPLEFT", L.pad, -L.pad)
+    D.intoDrop = UI.Dropdown(c, TEXT.mergeInto, {
+        labelWidth = L.labelW,
+        width = L.dropW,
+        options = D.IntoOptions,
+        get = function()
+            return D.into
+        end,
+        set = D.PickInto,
+    })
+    D.intoDrop:SetPoint("TOPLEFT", L.pad, -L.pad - L.rowH)
+end
+
+-- Merge teams ---------------------------------------------------------------------------------------------------
+
+-- Your saved teams, the ones a merge can take from (Team:Saved).
+local function savedTeams()
+    return Team:Saved()
+end
+
+-- Merge's entries: your saved teams.
+function D.FromOptions()
+    local out = {}
+    for _, n in ipairs(savedTeams()) do
+        out[#out + 1] = { key = n, label = n }
+    end
+    return out
+end
+
+-- into's entries: Team, Pug and your saved teams, but the one being merged.
+function D.IntoOptions()
+    local out = { { key = Team.TEAM, label = Team.TEAM }, { key = Team.PUG, label = Team.PUG } }
+    for _, n in ipairs(savedTeams()) do
+        if n ~= D.from then
+            out[#out + 1] = { key = n, label = n }
+        end
+    end
+    return out
+end
+
+-- The summary under the two rows, and Merge enabled only for a pair Team:CanMerge takes.
+local function mergeSummary()
+    if not (D.from and D.into) then
+        D.message:SetText("")
+        return
+    end
+    D.message:SetText(TEXT.mergeAsk:format(D.from, pullsText(Team:TeamPulls(D.from)), D.into, D.from))
+end
+
+function D.PickFrom(key)
+    D.from = Team:Find(key) or D.from
+    if D.into == D.from then
+        D.into = Team.TEAM
+    end
+    mergeSummary()
+    D.fromDrop.refresh()
+    D.intoDrop.refresh()
+    D.Refresh()
+end
+
+function D.PickInto(key)
+    D.into = Team:Find(key) or D.into
+    mergeSummary()
+    D.intoDrop.refresh()
+    D.Refresh()
 end
 
 -- Sizes a button from its label (both as wide as the wider needs).
@@ -99,6 +184,8 @@ end
 function D.Refresh()
     if D.mode == "confirm" then
         D.ok:SetEnabled(D.Matches(D.edit:GetText() or "", D.name))
+    elseif D.mode == "merge" then
+        D.ok:SetEnabled(Team:CanMerge(D.from, D.into) ~= nil)
     else
         D.ok:SetEnabled(true)
     end
@@ -109,7 +196,16 @@ local function open(mode, title, message, okText, withBox)
         build()
     end
     D.mode = mode
+    local merging = mode == "merge"
     D.win.strip:SetTitle(title)
+    D.win:SetHeight(merging and L.mergeH or L.height)
+    D.fromDrop:SetShown(merging)
+    D.intoDrop:SetShown(merging)
+    -- the message sits under the merge rows, else at the top
+    local top = merging and -L.pad - 2 * L.rowH - 4 or -L.pad
+    D.message:ClearAllPoints()
+    D.message:SetPoint("TOPLEFT", L.pad, top)
+    D.message:SetPoint("TOPRIGHT", -L.pad, top)
     D.message:SetText(message or "")
     D.edit:SetText("")
     D.edit:SetShown(withBox)
@@ -139,6 +235,39 @@ function D.AskRemove(name, done)
     open("remove", TEXT.removeTitle, TEXT.removeAsk:format(D.name, D.name, pulls), TEXT.remove, false)
 end
 
+-- Merge teams: from and into start on the ones given (else your first saved team, into Team); done(summary) runs
+-- once merged. Nothing opens with no saved team.
+function D.AskMerge(from, into, done)
+    local saved = savedTeams()
+    if #saved == 0 then
+        return
+    end
+    D.done, D.name = done, nil
+    D.from = Team:Find(from)
+    if not D.from or Team.BuiltIn(D.from) or D.from == Team.State().extra then
+        D.from = saved[1]
+    end
+    D.into = Team:Find(into)
+    if not D.into or D.into == D.from or D.into == Team.State().extra then
+        D.into = Team.TEAM
+    end
+    open("merge", TEXT.mergeTitle, nil, TEXT.merge, false)
+    mergeSummary()
+    D.fromDrop.refresh()
+    D.intoDrop.refresh()
+    D.Refresh()
+end
+
+-- Merges the pair picked; prints what moved. Returns the summary, or nil when Team:Merge refused.
+function D.Merge()
+    local summary = Team:Merge(D.from, D.into)
+    if not summary then
+        return nil
+    end
+    CRT:Print(TEXT.merged:format(summary.from, summary.into, pullsText(summary.pulls or 0)))
+    return summary
+end
+
 function D.Accept()
     if D.mode == "add" then
         local name, why = Team:AddTeam(D.edit:GetText())
@@ -159,6 +288,16 @@ function D.Accept()
         D.win:Hide()
         if Team:RemoveTeam(D.name) and D.done then
             D.done()
+        end
+    elseif D.mode == "merge" then
+        local summary = D.Merge()
+        if not summary then
+            D.Refresh()
+            return
+        end
+        D.win:Hide()
+        if D.done then
+            D.done(summary)
         end
     end
 end

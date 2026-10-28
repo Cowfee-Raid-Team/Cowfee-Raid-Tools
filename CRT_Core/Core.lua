@@ -386,8 +386,9 @@ local defaults = {
     -- Team raids (Team.lua, TeamList.lua): list is your own team names, in the order added (Team and Pug are built
     -- in, never saved here); popup is the place of the new raid group popup (TeamPopup.lua). Tonight's team and the
     -- group's lock are per character, in CRTDBChar.team. threshold, the share of the raid that once had to run CRT,
-    -- is no longer read and stays only so old saved data keeps its shape.
-    team = { threshold = 0.75, list = {}, popup = {} },
+    -- is no longer read and stays only so old saved data keeps its shape. keepApart is the look-alike teams you
+    -- chose to keep apart (UI/TeamLookAlike.lua): ["winner|loser"] = true, both names in lower case.
+    team = { threshold = 0.75, list = {}, popup = {}, keepApart = {} },
     -- Season Stats (SeasonStats/Data.lua): the raid's own counters per boss and difficulty group, counted from each
     -- pull the Timeline saves. bosses[encounterID] = { name, nh = counters, mythic = counters }; filled is true once
     -- they were filled from the Timeline's saved pulls. Data only: never in Export settings only. boss[group] counts team
