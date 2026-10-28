@@ -1560,11 +1560,7 @@ local function shieldRows(f, row, y0)
     s.lastHit:SetAllPoints(s.lastText)
     s.lastHit:EnableMouse(true)
     s.lastHit:SetScript("OnEnter", function(self)
-        if UI.TooltipOwner then
-            UI.TooltipOwner(GameTooltip, self, "ANCHOR_TOP")
-        else
-            GameTooltip:SetOwner(self, "ANCHOR_TOP")
-        end
+        UI.TooltipOwner(GameTooltip, self, "ANCHOR_TOP")
         GameTooltip:SetText(TEXT.lastPullTitle, 1, 1, 1)
         GameTooltip:AddLine(s.lastTip or "", 0.85, 0.85, 0.85, true)
         GameTooltip:Show()
