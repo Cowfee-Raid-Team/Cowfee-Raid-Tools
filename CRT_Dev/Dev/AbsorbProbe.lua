@@ -8,14 +8,17 @@ local ADDON, CRT = ...
 -- on screen during the pull.
 --
 -- Logged, for boss1 to boss5 (every name checked on warcraft.wiki.gg, 2026-10-25):
---   UNIT_ABSORB_AMOUNT_CHANGED (payload unitTarget): UnitGetTotalAbsorbs(unit) as it came, its type(),
---     whether it is secret, and what canaccessvalue says when that function exists
+--   UNIT_ABSORB_AMOUNT_CHANGED (payload unitTarget), one line per unit per second (it fires about 10 times a
+--     second under a shield): count= the events in that second, then the last one's UnitGetTotalAbsorbs(unit) as
+--     it came, its type(), whether it is secret, and what canaccessvalue says when that function exists. The line
+--     carries the second's first moment and is written when the next second's first event comes, when the events
+--     stop or at the pull's end. When a unit's events stop for STOP_GAP (1 s), an "absorb stopped unit=" line.
 --   UNIT_AURA (payload unitTarget, updateInfo; updateInfo is not read): each HELPFUL aura from
 --     C_UnitAuras.GetAuraDataByIndex(unit, i, "HELPFUL"), i up to 40: spellId, name, points, and whether the
 --     aura table itself is secret. A spell is logged once per 5 s. An error on the aura path (the game
 --     refuses secret auras to a tainted caller) is logged once per unit per pull, with count= kept up to
 --     date on that line, and that unit's auras are not read again this pull.
---   FORMAT, twice per pull at most, tagged kind="readable" (the first readable absorb that is not 0) or
+--   FORMAT, twice per unit per pull at most, tagged kind="readable" (the first readable absorb that is not 0) or
 --     kind="secret" (the first secret one): AbbreviateNumbers
 --     and AbbreviateLargeNumbers (a native API since 12.0.0), string.format("%d") and tostring, each in a
 --     pcall: the result, its type, whether it is secret, or the error text
@@ -43,6 +46,7 @@ CRT.AbsorbProbe = Probe
 Probe.MAX_LINES = 3000 -- UNIT_AURA lines a pull keeps
 Probe.KIND_MAX = 600 -- lines a pull keeps of each other kind
 Probe.AURA_GAP = 5 -- seconds before the same aura is logged again
+Probe.STOP_GAP = 1 -- seconds without a unit's absorb events before it is logged as stopped
 local MAX_AURAS = 40
 local MAX_POINTS = 8
 local BOSS_UNITS = { boss1 = true, boss2 = true, boss3 = true, boss4 = true, boss5 = true }
@@ -53,7 +57,8 @@ local frame, bar
 local pulling = false
 local startedAt = 0
 local seenAura, seenSecretUnit = {}, {}
-local probed -- which kinds of value already ran the format and bar probes this pull: probed.readable, probed.secret
+local probed -- which units and kinds of value already ran the format and bar probes this pull: probed["boss1:secret"]
+local seconds = {} -- unit -> its open second of absorb events: { from, lastAt, count, fields (the last event's) }
 local follow = false -- Boss debug is on: log every pull into its record too
 local debugKinds = {} -- lines of each kind sent to Boss debug this pull
 local auraErrors = {} -- unit -> its aura error line this pull: { seconds, fields, count (the field), own, debug }
@@ -105,15 +110,15 @@ function Probe.Limit(kind)
     return kind == "UNIT_AURA" and Probe.MAX_LINES or Probe.KIND_MAX
 end
 
--- Logs a line. Returns where it went: its index in the probe's own log and Boss debug's handle, each nil
--- when the line was not kept there.
-local function add(kind, fields)
+-- Logs a line, at `at` (a GetTime(); default now). Returns where it went: its index in the probe's own log and
+-- Boss debug's handle, each nil when the line was not kept there.
+local function add(kind, fields, at)
     local s = store()
     local last = s.on and s.last or nil
     if not last and not follow then
         return
     end
-    local line = Probe.Line(GetTime() - startedAt, kind, fields)
+    local line = Probe.Line((at or GetTime()) - startedAt, kind, fields)
     local handle
     if follow and CRT.BossDebug then
         local secrets = 0
@@ -198,6 +203,41 @@ local function setUnitEvents(on)
     end
 end
 
+-- A unit's open second of absorb events written as its one line: count=, then the last event's fields.
+local function writeSecond(sec)
+    local fields = { sec.fields[1], { "count", sec.count } }
+    for i = 2, #sec.fields do
+        fields[#fields + 1] = sec.fields[i]
+    end
+    add("UNIT_ABSORB_AMOUNT_CHANGED", fields, sec.from)
+end
+
+-- Every frame while a second is open: a unit whose events stopped for STOP_GAP gets its line and a stop line.
+local function checkStopped()
+    local now = GetTime()
+    for unit, sec in pairs(seconds) do
+        if now - sec.lastAt >= Probe.STOP_GAP then
+            writeSecond(sec)
+            add("absorb stopped", { { "unit", unit } })
+            seconds[unit] = nil
+        end
+    end
+    if next(seconds) == nil and frame then
+        frame:SetScript("OnUpdate", nil)
+    end
+end
+
+-- The pull's end: the open seconds are written, with no stop line.
+local function closeSeconds()
+    for _, sec in pairs(seconds) do
+        writeSecond(sec)
+    end
+    seconds = {}
+    if frame then
+        frame:SetScript("OnUpdate", nil)
+    end
+end
+
 -- Which functions the game has. A missing one is logged and the probe goes on without it.
 local function logApis()
     local list = {
@@ -219,6 +259,7 @@ local function startPull(encounterID, name, difficultyID, groupSize)
     seenAura, seenSecretUnit = {}, {}
     probed = {}
     debugKinds, auraErrors = {}, {}
+    seconds = {}
     if store().on then
         store().last = { encounterID = readable(encounterID) and encounterID or nil, name = readable(name) and name or nil,
             difficultyID = readable(difficultyID) and difficultyID or nil, started = time(), lines = {}, counts = {}, throttled = 0 }
@@ -232,6 +273,7 @@ local function startPull(encounterID, name, difficultyID, groupSize)
 end
 
 local function endPull(encounterID, success)
+    closeSeconds()
     add("ENCOUNTER_END", { { "encounterID", encounterID }, { "success", success } })
     local last = store().on and store().last
     if last then
@@ -298,13 +340,26 @@ local function onAbsorb(unit)
     if type(canaccessvalue) == "function" then
         fields[#fields + 1] = { "canaccess", ask(canaccessvalue, total) }
     end
-    add("UNIT_ABSORB_AMOUNT_CHANGED", fields)
+    -- one line per unit per second: a new second writes the last one's line
+    local now = GetTime()
+    local sec = seconds[unit]
+    if sec and now - sec.from >= 1 then
+        writeSecond(sec)
+        sec = nil
+    end
+    if not sec then
+        sec = { from = now, count = 0 }
+        seconds[unit] = sec
+        frame:SetScript("OnUpdate", checkStopped) -- until every unit's events stopped
+    end
+    sec.count = sec.count + 1
+    sec.lastAt, sec.fields = now, fields
     if type(total) == "number" then
-        -- Twice a pull at most: the first secret value, and the first readable one that is not 0 (a 0
+        -- Twice a unit a pull at most: the first secret value, and the first readable one that is not 0 (a 0
         -- before the shield lands must not use the slot). The comparison comes after the secret check.
         local kind = isSecret(total) and "secret" or total ~= 0 and "readable" or nil
-        if kind and not probed[kind] then
-            probed[kind] = true
+        if kind and not probed[unit .. ":" .. kind] then
+            probed[unit .. ":" .. kind] = true
             probeFormat(total, kind)
             probeBar(total, kind)
         end

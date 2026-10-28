@@ -477,6 +477,29 @@ check("alerts share: Lua for every boss is one block per boss", function()
   assert(n == 2 and text:find("Plain Boss", 1, true), "two blocks: " .. n)
 end)
 
+check("alerts share: a shield bar's absorb is written in its place and reads back", function()
+  sender()
+  local shield = { key = "shield", label = "Shield", when = { row = "Orb Burst" }, fill = "down",
+    covers = { 5151 }, absorb = { anyDifficulty = true, length = 15, unit = "boss2" } }
+  local list = { SPECIAL[1], SPECIAL[2], shield }
+  B:Register({ encounterID = 9001, name = "Test Boss", season = "T", special = list })
+  local ok, err = pcall(function()
+    local text = Dev.LuaFor(9001, { special = true })
+    assert(text:find('absorb = { unit = "boss2", length = 15, anyDifficulty = true }', 1, true), "absorb in its own order: " .. text)
+    assert(text:find("covers", 1, true) < text:find("absorb", 1, true), "after covers, as Special.lua lists it")
+    local got
+    local chunk = assert(load("local CRT = ...\\nCRT.Bosses:Register({ encounterID = 9001, name = \\"Test Boss\\", season = \\"T\\",\\n" .. text .. "\\n})", "export"))
+    chunk({ Bosses = { Register = function(_, def) got = def end } })
+    local back
+    for _, def in ipairs(got.special) do if def.key == "shield" then back = def end end
+    assert(back and same(back.absorb, shield.absorb), "it comes back as written")
+    local entry = S.Read(back)
+    assert(entry and entry.absorb.unit == "boss2" and entry.absorb.anyDifficulty == true, "and reads")
+  end)
+  B:Register({ encounterID = 9001, name = "Test Boss", season = "T", special = SPECIAL })
+  assert(ok, tostring(err))
+end)
+
 print(ok_ .. " passed, " .. fail .. " failed")
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }

@@ -52,6 +52,17 @@ local ADDON, CRT = ...
 --                                         special alerts) or empties ("down"); each player may change it
 --     covers = { 1234, 5678 },          optional: more spells this alert stands for (besides when's spell or
 --                                         row), so your own reminder on them doesn't alert the same cast twice
+--     absorb = { unit = "boss2", length = 15, anyDifficulty = true },
+--                                       optional: its bar is a shield bar (Alerts/Absorb.lua, drawn by Alerts/Bars.lua):
+--                                         the fill is the absorb left on unit (boss1 to boss8), the tick and seconds the
+--                                         length seconds from when the shield goes up, right to left. It starts on the
+--                                         first UNIT_ABSORB_AMOUNT_CHANGED for unit from lead seconds (the entry's, not
+--                                         your Show from) before a cast to length after it. While none of its windows
+--                                         is open (its phase not reached yet), unit's first absorb event starts the bar
+--                                         anyway (after a bar, again once the events stop for Absorb.GAP).
+--                                         anyDifficulty: on a difficulty the entry isn't for, that untimed bar alone
+--                                         still comes; the timed callout and speech don't, and no other difficulty's
+--                                         times are used. Only with its Bar on. Not with ticks or bar.
 --   } }
 -- No double alerts: an alert covers its when.spellID, its when.row's spell and its covers. When you have it on
 -- and your own reminder on for one of those spells, the engine leaves out your reminder's alert for any cast
@@ -320,6 +331,33 @@ local function readImpacts(def)
     return nil
 end
 
+-- The units a shield bar may watch: the game's boss unit tokens.
+local ABSORB_UNITS = {}
+for i = 1, 8 do
+    ABSORB_UNITS["boss" .. i] = true
+end
+
+-- An entry's absorb (see the top of this file): { unit, length, anyDifficulty }, nil when it has none, or nil and why.
+local function readAbsorb(def)
+    local a = def.absorb
+    if a == nil then
+        return nil
+    end
+    if type(a) ~= "table" or type(a.unit) ~= "string" or not ABSORB_UNITS[a.unit] then
+        return nil, "absorb needs a unit, boss1 to boss8"
+    end
+    if not finite(a.length) or a.length <= 0 then
+        return nil, "absorb needs a length over 0 seconds"
+    end
+    if a.anyDifficulty ~= nil and type(a.anyDifficulty) ~= "boolean" then
+        return nil, "absorb.anyDifficulty must be true or false"
+    end
+    if def.ticks ~= nil or def.bar ~= nil then
+        return nil, "give absorb or a bar (ticks, bar), not both"
+    end
+    return { unit = a.unit, length = a.length, anyDifficulty = a.anyDifficulty == true }
+end
+
 -- Whether v is a game ID: a whole number over 0.
 local function wholeID(v)
     return finite(v) and v > 0 and v == math.floor(v)
@@ -374,6 +412,10 @@ function Special.Read(def)
     if not covers then
         return nil, whyCovers
     end
+    local absorb, whyAbsorb = readAbsorb(def)
+    if whyAbsorb then
+        return nil, whyAbsorb
+    end
     if def.fill ~= nil and not FILLS[def.fill] then
         return nil, "fill must be up or down"
     end
@@ -408,6 +450,7 @@ function Special.Read(def)
         marks = readMarks(def.markers),
         impacts = impacts,
         covers = covers,
+        absorb = absorb,
         fill = def.fill or DEFAULT_FILL,
         icon = def.icon,
         iconFile = def.iconFile,
@@ -854,6 +897,8 @@ local function item(entry, choices, n, at, step, covers, icon)
         barEnd = imp and imp.barEnd,
         fill = choices.fill or DEFAULT_FILL,
         countTo = ticks and choices.countTo or nil,
+        -- a shield bar (Alerts/Absorb.lua): this cast's window gates it, from the entry's own lead (never your Show from)
+        absorb = entry.absorb and { unit = entry.absorb.unit, length = entry.absorb.length, lead = entry.lead } or nil,
         covers = covers,
         id = BLOCK .. ":" .. entry.key .. ":" .. n,
         ph = at.ph,
@@ -936,3 +981,49 @@ local function entries(run)
 end
 
 Alerts:RegisterBlock(BLOCK, { label = "Special alerts", group = true, Entries = entries })
+
+-- Whether an entry's who lets its untimed shield bar go to you: everyone, or a roles list that fits you. A rotation
+-- or a note's numbered lines count casts, which an untimed bar has none of, so they get none.
+local function untimedIsMine(entry)
+    local mode = entry.who.mode
+    if mode == "everyone" then
+        return true
+    elseif mode == "roles" then
+        return Special.IsMine(entry.who.steps[1])
+    end
+    return false
+end
+
+-- The untimed shield bars of a pull (see absorb at the top of this file): one watch per absorb entry you turned on
+-- with its bar shown, { id, key, unit, length, text, icon, abilityType, fill, timed }. Alerts/Absorb.lua starts one on
+-- its unit's first absorb event while none of the entry's timed windows is open. An entry for the run's difficulty
+-- has one (timed = true when it has times there: the fallback for a phase not reached yet); an entry for another
+-- difficulty only with anyDifficulty, and never with times (no other difficulty's times are used). Only a boss pull
+-- has them: any other run hears no absorb events. {} when none.
+function Special:AbsorbWatches(run)
+    local out = {}
+    if not (run and run.reason == "encounter" and type(run.encounterID) == "number") then
+        return out
+    end
+    local group = Alerts.RunGroup and Alerts:RunGroup(run) or nil
+    for _, entry in ipairs(self:List(run.encounterID)) do
+        local fits = entry.absorb and (entry.difficulty == nil or run.anyDifficulty or entry.difficulty == group)
+        local choices = entry.absorb and (fits or entry.absorb.anyDifficulty) and self:Choices(run.encounterID, entry)
+        if choices and choices.on and choices.show.bar and untimedIsMine(entry) then
+            local timed = fits and #self:Times(run.encounterID, entry, group, run.reference) > 0
+            local Reference = CRT.TimelineReference
+            out[#out + 1] = {
+                id = "absorb:" .. entry.key,
+                key = entry.key,
+                unit = entry.absorb.unit,
+                length = entry.absorb.length,
+                text = Special.TextFor(entry, nil),
+                icon = Special.Icon(run.encounterID, entry, group, run.reference),
+                abilityType = (entry.type and Reference and Reference.TYPES and Reference.TYPES[entry.type]) and entry.type or nil,
+                fill = choices.fill,
+                timed = timed and true or false,
+            }
+        end
+    end
+    return out
+end

@@ -161,6 +161,50 @@ end
 -- the files did register bosses (a pack with no special alerts yet is fine: the probe above shows the lint works)
 check(#registered > 0, "the packs register bosses to check (" .. #registered .. ")")
 
+-- The Coiled Altar (Alex, 2026-10-27): a Heroic ability timeline beside the Mythic one, every special alert on both,
+-- each difficulty reading its own times, and the Shield a shield bar on boss2.
+local altar
+for _, r in ipairs(registered) do if r.def.encounterID == 3429 then altar = r.def end end
+check(altar ~= nil, "The Coiled Altar is registered")
+if altar then
+  local byGroup, heroic = {}, nil
+  for _, text in ipairs(altar.references or {}) do
+    local ref = Ref.Parse(text)
+    if ref then byGroup[Ref.Group(ref)] = ref if ref.difficulty == "Heroic" then heroic = ref end end
+  end
+  check(#altar.references == 2 and byGroup.mythic and byGroup.nh, "two ability timelines, Mythic and Normal/Heroic")
+  check(heroic and #heroic.rows == 21, "the Heroic block reads, 21 rows: " .. tostring(heroic and #heroic.rows))
+  local casts = 0
+  for _, row in ipairs(heroic and heroic.rows or {}) do casts = casts + #row.casts end
+  check(casts == 82, "the Heroic block's casts: " .. casts)
+  local starts = {}
+  for _, p in ipairs(heroic and heroic.phases or {}) do starts[#starts + 1] = tostring(p.label) .. "@" .. tostring(p.t) end
+  check(table.concat(starts, ",") == "P2@167,P2.5@268,P3@303", "the Heroic phase lines: " .. table.concat(starts, ","))
+  local list = S:List(3429)
+  local all = #list > 0
+  for _, e in ipairs(list) do if e.difficulty ~= nil then all = false end end
+  check(all, "every Coiled Altar special alert plays on every difficulty")
+  local shield = S:Get(3429, "shield")
+  check(shield and shield.absorb and shield.absorb.unit == "boss2" and shield.absorb.length == 15 and shield.absorb.anyDifficulty, "the Shield is a shield bar on boss2, 15 s")
+  local function abs(ref, ph, t)
+    if ph == 1 then return t end
+    for _, p in ipairs(ref.phases or {}) do
+      local num = tonumber(tostring(p.label):match("%d+%.%d+") or tostring(p.label):match("%d+"))
+      if num == ph then return p.t + t end
+    end
+    return nil
+  end
+  local function first(group)
+    local ref = CRT.AlertReminders.ReferenceFor(3429, { boss = "The Coiled Altar" }, group) or byGroup[group]
+    local times = shield and S:Times(3429, shield, group, ref) or {}
+    return times[1] and abs(byGroup[group], times[1].ph, times[1].t), #times
+  end
+  local h, hn = first("nh")
+  local m, mn = first("mythic")
+  check(h == 237 and hn == 3, "a Heroic run: Eternal Nightfall from the Heroic timeline, first at 3:57: " .. tostring(h) .. ", " .. tostring(hn) .. " casts")
+  check(m == 245 and mn == 4, "a Mythic run: from the Mythic timeline, first at 4:05: " .. tostring(m) .. ", " .. tostring(mn) .. " casts")
+end
+
 print(passes .. " passed, " .. fails .. " failed")
 if fails > 0 then error("season special alerts: " .. fails .. " failed") end
 `;

@@ -422,6 +422,8 @@ local function drawPanel(enc, entry)
     end
     ui.speak:SetChecked(c.speak)
     ui.fill.refresh()
+    -- a shield bar (absorb) fills with the shield left, not with time: nothing to choose
+    ui.fill:SetShown(entry.absorb == nil)
     ui.countTo.refresh()
     drawMarkers(entry)
     ui.message:SetText(state.notice and UI.BadText(state.notice) or "")

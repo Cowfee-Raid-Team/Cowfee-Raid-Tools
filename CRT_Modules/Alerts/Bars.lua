@@ -29,6 +29,8 @@ local ADDON, CRT = ...
 -- Only the bars read these; the callout, speech and the other areas keep the cast's time.
 -- fill = "up" makes a line's bar fill up from empty as its time nears instead of emptying (any other value, or
 -- none: it empties, as every bar did before); its ticks still sit where the fill's edge is at each impact.
+-- Shield bars (a special alert's absorb): Alerts/Absorb.lua hands them out and drawAbsorb below draws them, the fill
+-- the shield left, the tick and seconds its time left; the item that opens its window draws no bar of its own.
 
 local Areas = CRT.AlertAreas
 local Alerts = CRT.Alerts
@@ -98,6 +100,8 @@ local TICK_INSET = 2 -- a tick at either end of the bar is drawn this many pixel
 local TICK_TAIL = Rules.TICK_TAIL -- seconds a bar ending at its last impact runs past it (1 s)
 local CAST_LINE_WIDTH = 1 -- the cast's own line on a bar that starts before it: thinner and fainter than a tick
 local CAST_LINE_ALPHA = 0.45
+local ABSORB_TEXTURE = "Interface\\Buttons\\WHITE8X8" -- a shield bar's fill, tinted with SetStatusBarColor
+local ABSORB_REDRAW = 0.1 -- seconds at least between two readings drawn on a shield bar
 local BORDER_OPTIONS = {
     { key = "none", label = TEXT.noBorder },
     { key = "thin", label = TEXT.thin },
@@ -288,14 +292,20 @@ local function barLines(src)
     end
     local out, starts = src, false
     for i, line in ipairs(src) do
-        local ticks, finish, start = span(line)
-        if ticks then
+        -- a shield bar's item only opens its window: Alerts/Absorb.lua hands out its bar (lines, below)
+        local ticks, finish, start
+        if not line.absorb then
+            ticks, finish, start = span(line)
+        end
+        if ticks or line.absorb then
             if out == src then
                 out = {}
                 for j = 1, i - 1 do
                     out[j] = src[j]
                 end
             end
+        end
+        if ticks then
             local c = {}
             for k, v in pairs(line) do
                 c[k] = v
@@ -308,9 +318,9 @@ local function barLines(src)
             end
             c.barFrom = start and line.at + start or nil
             starts = starts or start ~= nil
-            out[i] = c
-        elseif out ~= src then
-            out[i] = line
+            out[#out + 1] = c
+        elseif out ~= src and not line.absorb then
+            out[#out + 1] = line
         end
     end
     barCache[src] = { lines = out, starts = starts }
@@ -471,12 +481,139 @@ local function drawCastLine(bar, pos, left, room, height)
     t:Show()
 end
 
+-- [shield bar] (to its closing mark: the suite's lint "shield readings are never compared" reads this part)
+-- Shield bars (Alerts/Absorb.lua): a line whose absorb is its shield's state. The fill is a StatusBar over the bar's
+-- room, given the shield's readings as they came: its first as the maximum (SetMinMaxValues), each later one
+-- (SetValue), at most once per ABSORB_REDRAW seconds. The amount on the left is AbbreviateNumbers' text of the last
+-- reading through SetText, blank when that fails or in a Test. The readings may be secret, so nothing else
+-- touches them: no compare, no sum, no measure of the amount's width. The tick is the time left, from the right
+-- end to the left over the bar's length, and the seconds on the right count it down, both on CRT's clock. The
+-- colour is the bar's usual one and never changes. Its texts and tick sit on the StatusBar, above its fill.
+
+-- The status bar and its texts, made on first need and kept with the bar.
+local function absorbParts(bar)
+    local a = bar.absorbParts
+    if a then
+        return a
+    end
+    local sb = CreateFrame("StatusBar", nil, bar)
+    sb:SetStatusBarTexture(ABSORB_TEXTURE)
+    a = { sb = sb }
+    for _, k in ipairs({ "amount", "label", "time" }) do
+        local fs = sb:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
+        fs:SetWordWrap(false)
+        fs:SetShadowOffset(1, -1)
+        a[k] = fs
+    end
+    a.amount:SetJustifyH("LEFT")
+    a.label:SetJustifyH("CENTER")
+    a.time:SetJustifyH("RIGHT")
+    a.tick = sb:CreateTexture(nil, "OVERLAY")
+    UI.Tint(a.tick, "SetColorTexture", TICK_COLOR, 1)
+    bar.absorbParts = a
+    return a
+end
+
+-- The amount's text for a shield's last reading: AbbreviateNumbers' (perhaps secret) text, or "" when it can't be had.
+local function amountText(st)
+    if st.sample or type(AbbreviateNumbers) ~= "function" then
+        return ""
+    end
+    local ok, text = pcall(AbbreviateNumbers, st.value)
+    if ok then
+        return text
+    end
+    return ""
+end
+
+-- What a shield bar shows that moves: the tick (the time left over its length, 1 the right end), its seconds, and a new
+-- reading on its fill and amount. Part of its draw and run every frame in between, as animate.
+local function animateAbsorb(bar, now)
+    local line, r, a = bar.line, bar.row, bar.absorbParts
+    local st = line.absorb
+    local sb = a.sb
+    if bar.absorbState ~= st then
+        bar.absorbState, bar.absorbSeq, bar.absorbDrawn = st, nil, nil
+        pcall(sb.SetMinMaxValues, sb, 0, st.max)
+    end
+    if bar.absorbSeq ~= st.seq and not (bar.absorbDrawn and now >= bar.absorbDrawn and now - bar.absorbDrawn < ABSORB_REDRAW) then
+        bar.absorbSeq, bar.absorbDrawn = st.seq, now
+        pcall(sb.SetValue, sb, st.value)
+        pcall(a.amount.SetText, a.amount, amountText(st))
+    end
+    local left = math.max(0, math.min(st.length, st.at + st.length - now))
+    local pos = left / st.length
+    placeLine(bar, a.tick, pos, bar.fillLeft, bar.fillRoom, snap(TICK_WIDTH, scaleOf(bar), 1), bar.fillHeight)
+    local t = timeText(left)
+    if t ~= bar.absorbTime then
+        bar.absorbTime = t
+        a.time:SetText(t)
+    end
+    r.time, r.tick = t, pos
+end
+
+-- A shield bar's row: its text, icon and colour as any bar's, the seconds and tick as animateAbsorb moves them.
+local function absorbRow(line, now, s)
+    local color, from = Areas.DrawColor(line, colorOf(s.barColor, DEFAULT_BAR_COLOR))
+    color = color or DEFAULT_BAR_COLOR
+    local st = line.absorb
+    local left = math.max(0, math.min(st.length, st.at + st.length - now))
+    return {
+        absorb = true,
+        text = Areas.LineText(line),
+        icon = Areas.LineIcon(line),
+        lineColor = from ~= "custom" and color or nil,
+        color = color,
+        time = timeText(left),
+        tick = left / st.length,
+        total = st.length,
+    }
+end
+
+-- Draws a shield bar on the room right of the icon; the plain bar's own fill, texts and ticks are hidden.
+local function drawAbsorb(bar, line, r, now, s, left, width, height, size, tc)
+    bar.fill:Hide()
+    bar.text:Hide()
+    bar.time:Hide()
+    bar.kind:Hide()
+    drawTicks(bar, nil, left, width - left, height)
+    drawCastLine(bar, nil)
+    local a = absorbParts(bar)
+    local sb = a.sb
+    sb:ClearAllPoints()
+    sb:SetPoint("TOPLEFT", bar, "TOPLEFT", left, 0)
+    sb:SetPoint("BOTTOMRIGHT", bar, "BOTTOMRIGHT", 0, 0)
+    sb:SetStatusBarColor(r.color[1], r.color[2], r.color[3], r.lineColor and LINE_ALPHA or r.color[4] or 1)
+    for _, k in ipairs({ "amount", "label", "time" }) do
+        Areas.SetFont(a[k], fontName(s), size, FONT_OUTLINE)
+        a[k]:SetTextColor(tc[1], tc[2], tc[3], tc[4] or 1)
+    end
+    a.amount:ClearAllPoints()
+    a.amount:SetPoint("LEFT", sb, "LEFT", ICON_GAP, 0)
+    a.time:ClearAllPoints()
+    a.time:SetPoint("RIGHT", sb, "RIGHT", -ICON_GAP, 0)
+    -- the label in the middle, in the third of the room the amount and the seconds leave it
+    a.label:SetText(r.text)
+    a.label:ClearAllPoints()
+    a.label:SetPoint("CENTER", sb, "CENTER", 0, 0)
+    a.label:SetWidth(math.max(1, math.min(a.label:GetUnboundedStringWidth() + 2, (width - left) / 3)))
+    bar.line, bar.row = line, r
+    bar.fillLeft, bar.fillRoom, bar.fillHeight = left, width - left, height
+    animateAbsorb(bar, now)
+    sb:Show()
+end
+-- [/shield bar]
+
 -- What moves with time on a bar: its fill, its seconds and its ticks' fade, from what its last draw kept (the
 -- line, its row, the fill's room). Part of every draw, and run every frame in between (the area's def.move), so
 -- the fill moves smoothly; a handful of calls per bar, and the seconds' text only when it changes.
 local function animate(bar, now)
     local line, r = bar.line, bar.row
     if not (line and r) then
+        return
+    end
+    if r.absorb then
+        animateAbsorb(bar, now)
         return
     end
     local total = r.total
@@ -507,7 +644,8 @@ end
 local function draw(bar, line, now, s, shownAt)
     local width, height, _, border = metrics(s, scaleOf(bar))
     drawBorder(bar, border)
-    local r = row(line, now, aheadOf(s), shownAt, s)
+    local shield = type(line.absorb) == "table"
+    local r = shield and absorbRow(line, now, s) or row(line, now, aheadOf(s), shownAt, s)
     local bg = customOf(s.bgColor, DEFAULT_BG_COLOR)
     local tc = customOf(s.textColor, DEFAULT_TEXT_COLOR)
     local size = math.max(1, math.min(fontSize(s), height - 2)) -- text may not outgrow a small bar
@@ -528,6 +666,15 @@ local function draw(bar, line, now, s, shownAt)
         bar.icon:SetTexture(r.icon)
         left = height
     end
+    if shield then
+        drawAbsorb(bar, line, r, now, s, left, width, height, size, tc)
+        return
+    end
+    if bar.absorbParts then
+        bar.absorbParts.sb:Hide()
+    end
+    bar.text:Show()
+    bar.time:Show()
 
     bar.fill:ClearAllPoints()
     bar.fill:SetPoint("LEFT", left, 0)
@@ -567,7 +714,25 @@ local function lines(now, s, cap)
         end
         list = due
     end
-    return Rules.Bars(list, now, aheadOf(s), cap)
+    local out, more = Rules.Bars(list, now, aheadOf(s), cap)
+    -- the shield bars going now (Alerts/Absorb.lua) come first, whatever Show bars from says
+    local Absorb = CRT.AlertAbsorb
+    local shields = Absorb and Absorb:Lines(now)
+    if not (shields and #shields > 0) then
+        return out, more
+    end
+    local all = {}
+    for _, line in ipairs(shields) do
+        all[#all + 1] = line
+    end
+    for _, line in ipairs(out) do
+        all[#all + 1] = line
+    end
+    local kept = {}
+    for i = 1, math.min(cap, #all) do
+        kept[i] = all[i]
+    end
+    return kept, more + #all - #kept
 end
 
 -- "+N more" under the last bar (above it when they grow up, under the first when they grow sideways).

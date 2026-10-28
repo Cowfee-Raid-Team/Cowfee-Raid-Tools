@@ -149,6 +149,7 @@ CRT_Modules\Alerts\Reminders.lua
 CRT_Modules\Alerts\Colors.lua
 CRT_Modules\Alerts\Special.lua
 CRT_Modules\Alerts\Countdown.lua
+CRT_Modules\Alerts\Absorb.lua
 CRT_Modules\Timeline\Undo.lua
 CRT_Modules\Timeline\JournalExport.lua
 CRT_Modules\SeasonStats\Data.lua

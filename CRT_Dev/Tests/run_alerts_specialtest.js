@@ -400,6 +400,26 @@ check("special pull: the same bar on each of your casts", function()
   assert(#errors == 0, tostring(errors[1]))
 end)
 
+-- A shield bar's Test (absorb, Alerts/Absorb.lua): the bar runs its whole length from the cast, so the test runs that long
+check("special test: a shield bar's Test runs its whole length", function()
+  A:Stop(true) wipe(spoken) wipe(errors) wipe(timers)
+  S.dev[9003] = { { key = "shield", label = "Shield", when = { times = "P1 0:30" }, lead = 6,
+    show = { callout = true, bar = true }, absorb = { unit = "boss2", length = 15 } } }
+  local shield = assert(S:Get(9003, "shield"), "the shield reads")
+  clock = 100
+  local item = assert(S:TestItem(9003, shield, "mythic"), "a test item")
+  assert(item.absorb and item.absorb.length == 15, "the item carries its absorb")
+  assert(E:TestItem(9003, item), "the test starts")
+  A:Stop(true)
+  -- the same alert with no shield bar, for the length the test adds
+  S.dev[9004] = { { key = "plain", label = "Plain", when = { times = "P1 0:30" }, lead = 6, show = { callout = true, bar = true } } }
+  assert(E:TestItem(9004, S:TestItem(9004, S:Get(9004, "plain"), "mythic")), "the plain test starts")
+  A:Stop(true)
+  assert(#timers == 2 and timers[1].s - timers[2].s >= 15 - 1e-6, "the run lasts the bar's 15 s longer: " .. tostring(timers[1] and timers[1].s) .. " " .. tostring(timers[2] and timers[2].s))
+  S.dev[9003], S.dev[9004] = nil, nil
+  assert(#errors == 0, tostring(errors[1]))
+end)
+
 print(ok_ .. " passed, " .. fail .. " failed")
 if fail > 0 then error("special alert test: " .. fail .. " failed") end
 `;

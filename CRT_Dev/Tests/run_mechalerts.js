@@ -2171,6 +2171,23 @@ check("mech special (" .. LOOK .. "): the impacts under When", function()
   assert(#errors == 0, tostring(errors[1]))
 end)
 
+-- A shield bar (absorb) fills with the shield left, so Bar fill has nothing to choose: it is hidden for it
+check("mech special (" .. LOOK .. "): no Bar fill on a shield bar", function()
+  withSpecial({ { key = "plain", label = "Plain", when = { times = "0:30" } },
+    { key = "shield", label = "Shield", when = { times = "0:30" }, absorb = { unit = "boss2", length = 15 } } })
+  local f = freshOpen()
+  local s = f.special
+  click(s.rows[1].frame)
+  assert(s.fill.shown, "a plain bar: Bar fill shows")
+  click(s.rows[2].frame)
+  assert(not s.fill.shown, "a shield bar: Bar fill is hidden")
+  click(s.rows[1].frame)
+  assert(s.fill.shown, "back on a plain bar: shown again")
+  CRT.db.alerts.specialView, CRT.db.alerts.specialViewPicked = "mechanics", true
+  noSpecial()
+  assert(#errors == 0, tostring(errors[1]))
+end)
+
 check("mech special (" .. LOOK .. "): Count down to under Bar fill: the cast or each impact, greyed without ticks", function()
   withSpecial({ { key = "ticks", label = "Ticks", when = { times = "0:30" }, ticks = { 0, 2.5 } },
     { key = "plain", label = "Plain", when = { times = "0:30" } } })
