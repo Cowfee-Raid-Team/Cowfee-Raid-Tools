@@ -9,7 +9,7 @@ local ADDON, CRT = ...
 --                Add team… included), [Save and push to raid] [Later]. Save sets tonight's team and pushes it.
 --   Raider       "Which team is this raid?" with the dropdown, [Save] [Later]. It waits ASK_WAIT seconds after
 --                joining, and isn't shown when the leader's push came first; a push while it shows closes it.
--- Later keeps tonight's team as it is (Team, unless you picked one before the group) and doesn't ask again in this
+-- Later keeps tonight's team as it is (the team you had last, else Pug) and doesn't ask again in this
 -- group; nor does a /reload in it (Team:Asked, saved per character).
 
 local UI = CRT.UI
@@ -30,13 +30,13 @@ local TEXT = {
     savePush = "Save and push to raid",
     save = "Save",
     later = "Later",
-    help = "Which team tonight's raid is. Season Stats keeps each team's pulls apart; Tattlebot and the Late Tracker count any team but Pug as a team raid.\n\nLater keeps Team and doesn't ask again in this group. You can change it on General Settings > Team raids.",
+    help = "Which team tonight's raid is. Season Stats keeps each team's pulls apart; Tattlebot and the Late Tracker count any team but Pug as a team raid.\n\nLater keeps the team you had last (Pug if you never picked one) and doesn't ask again in this group. You can change it on General Settings > Team raids.",
     leaderHelp = "Use Loot Master? Yes turns CRT Looting on for this raid, as Loot Master > Tonight's Turn on does: now if you are in the raid instance, else when you enter it. No leaves it off.\n\nSave and push to raid sets the team for everyone in the raid with CRT. They can't change it until they leave the group.",
 }
 P.TEXT = TEXT
 
 -- What the popup holds until Save: the team picked and the Loot Master answer (nil: none yet).
-local state = { pick = Team.TEAM, loot = nil, leader = false }
+local state = { pick = Team.PUG, loot = nil, leader = false }
 P.state = state
 
 local function selectLoot()

@@ -5,8 +5,9 @@ local ADDON, CRT = ...
 -- Saved in CRTDB.seasonStats (defaults in CRT_Core/Core.lua; data, so never in Export settings only):
 --   filled               true once the counters were filled from the Timeline's saved pulls (Backfill, once)
 --   scoped               true once the counters from before team raids were copied into all (Migrate, once)
---   show                 the page's Team filter: "all" (All), "team" (the built-in Team, the default) or a team's
---                        name (Pug or one of yours, CRT_Core/TeamList.lua)
+--   show                 the page's Team filter: "all" (All), "team" (Before teams: the built-in Team's counts, from
+--                        before your own teams) or a team's name (Pug or one of yours, CRT_Core/TeamList.lua); none
+--                        saved reads as Before teams while it has pulls, else tonight's team
 --   bosses[encounterID]  { name, nh = counters, mythic = counters, all = { nh = counters, mythic = counters },
 --                        teams = { [team name] = { nh = counters, mythic = counters } } }, the groups of
 --                        Timeline.DifficultyGroup. A scope per team: boss[group] (the field from before scopes, kept)
@@ -14,7 +15,8 @@ local ADDON, CRT = ...
 --                        boss.all[group] every raid. A pull counts in all and in the team it started with (CRT.Team's
 --                        snapshot at the pull's start, CRT_Core/Team.lua). Counters saved before scopes count as
 --                        Team and all: Migrate copies them into all once. Pulls saved as not a team raid, before
---                        teams had names, are only in all. Removing a team (Team:RemoveTeam) deletes its teams entry.
+--                        teams had names, are only in all. Removing a team (Team:RemoveTeam) deletes its teams entry;
+--                        merging one into another (Team:Merge) adds its counters into the other's (MergeTeam).
 --   counters             { pulls, wipes, kills, firstKillPull, firstKillAt, bestKill, killTime, pullTime, untimed,
 --                          first, last, nights = { [night] = { longest, phase, pulls } }, causes = { [spellID] = deaths },
 --                          deaths = { deaths per pull, newest last, the last TREND },
@@ -67,16 +69,24 @@ function Stats.ScopeOf(name)
     return name == Stats.TEAM_NAME and Stats.TEAM or name
 end
 
--- The page's Team filter: "all", "team" (the default) or a team's name; a team removed since reads as "team".
+local scopeHas -- below, with the counters
+
+-- The page's Team filter: "all", "team" (Before teams) or a team's name; a team removed since reads as "team".
+-- None saved (or Before teams with no pulls left) reads as Before teams while it has pulls, else tonight's team.
 function Stats:Scope()
     local show = sdb().show
     if show == Stats.ALL then
         return Stats.ALL
     end
-    if show == nil or show == Stats.TEAM then
+    if show ~= nil and show ~= Stats.TEAM then
+        return Stats.ScopeOf(show)
+    end
+    local Team = CRT.Team
+    if scopeHas(Stats.TEAM) or not (Team and Team.Tonight) then
         return Stats.TEAM
     end
-    return Stats.ScopeOf(show)
+    local ok, tonight = pcall(Team.Tonight, Team)
+    return ok and type(tonight) == "string" and Stats.ScopeOf(tonight) or Stats.TEAM
 end
 
 function Stats:SetScope(scope)
@@ -88,18 +98,21 @@ function Stats:SetScope(scope)
     self:Fire()
 end
 
-local scopeHas -- below, with the counters
-
--- The Team filter's entries, { key, label }: All, then each team that has pulls, in the team list's order (Team,
--- Pug, then yours), and the one picked even with none.
+-- The Team filter's entries, { key, label }: All, Before teams only while it has pulls, then each team that has
+-- pulls, in the team list's order (Pug, then yours), and the one picked even with none.
 function Stats.ScopeOptions()
     local out = { { key = Stats.ALL, label = Stats.ALL_LABEL } }
     local Team = CRT.Team
-    local names = Team and Team.Names and Team:Names() or { Stats.TEAM_NAME, Stats.PUG }
+    if scopeHas(Stats.TEAM) then
+        -- Before teams: the built-in Team's counts, from before your own teams (its name is TeamList.lua's)
+        local before = Team and Team.LIST_TEXT and Team.LIST_TEXT.before or Stats.TEAM_NAME
+        out[2] = { key = Stats.TEAM, label = before }
+    end
+    local names = Team and Team.Names and Team:Names() or { Stats.PUG }
     local picked = Stats:Scope()
     for _, name in ipairs(names) do
         local scope = Stats.ScopeOf(name)
-        if scope == picked or scopeHas(scope) then
+        if scope ~= Stats.TEAM and (scope == picked or scopeHas(scope)) then
             out[#out + 1] = { key = scope, label = name }
         end
     end
@@ -212,12 +225,29 @@ scopeHas = function(scope)
     return false
 end
 
--- Removing a team (CRT_Core/TeamList.lua): how many pulls it has, and deleting them. Team (boss[group]) and all
--- are never deleted this way.
+-- The table a scope's counters are kept in for a boss: boss itself for "team" (boss[group], the field from before
+-- scopes), boss.all for all, boss.teams[name] for a team. Nil when it has none.
+local function holderOf(boss, scope)
+    if type(boss) ~= "table" then
+        return nil
+    elseif scope == Stats.TEAM then
+        return boss
+    elseif scope == Stats.ALL then
+        return type(boss.all) == "table" and boss.all or nil
+    end
+    return type(boss.teams) == "table" and type(boss.teams[scope]) == "table" and boss.teams[scope] or nil
+end
+
+-- Removing or merging a team (CRT_Core/TeamList.lua): how many pulls it has (Team: Before teams' counts), and
+-- deleting them. Team (boss[group]) and all are never deleted this way.
 function Stats:TeamPulls(name)
     local n = 0
+    local scope = type(name) == "string" and (name == Stats.TEAM_NAME and Stats.TEAM or name)
+    if not scope or scope == Stats.ALL then
+        return 0
+    end
     for _, boss in pairs(sdb().bosses) do
-        local holder = type(boss) == "table" and type(boss.teams) == "table" and boss.teams[name]
+        local holder = holderOf(boss, scope)
         for _, group in ipairs(Stats.GROUPS) do
             local c = type(holder) == "table" and holder[group]
             n = n + (type(c) == "table" and tonumber(c.pulls) or 0)
@@ -242,6 +272,140 @@ function Stats:DeleteTeam(name)
         sdb().show = Stats.TEAM
     end
     self:Fire()
+end
+
+-- Merging a team into another (Team:Merge, CRT_Core/TeamList.lua) --------------------------------------------------
+
+local SUMS = { "pulls", "wipes", "kills", "killTime", "pullTime", "untimed", "repairs", "repairPulls", "raidRepairs",
+    "raidReporters", "raidPulls" }
+
+local function num(v)
+    return type(v) == "number" and v or nil
+end
+
+-- The smaller (or larger) of two values either of which may be missing.
+local function least(a, b)
+    a, b = num(a), num(b)
+    if a and b then
+        return math.min(a, b)
+    end
+    return a or b
+end
+
+local function most(a, b)
+    a, b = num(a), num(b)
+    if a and b then
+        return math.max(a, b)
+    end
+    return a or b
+end
+
+-- One group's counters of from added into into's (both made by counters()): sums summed; first the earlier, last
+-- the later, bestKill the faster; the first kill the earlier one (by firstKillAt, else the lower pull number) with
+-- its pull number; each night's pulls summed, its longest and phase the higher; causes summed by spell; the deaths
+-- trend, one entry per pull, as both teams' pulls in time order (the team whose last pull came first, first), the
+-- newest TREND kept. A field this doesn't know (one added later) is taken from from when into has none.
+local function mergeCounters(into, from)
+    for _, k in ipairs(SUMS) do
+        if num(from[k]) or num(into[k]) then
+            into[k] = (num(into[k]) or 0) + (num(from[k]) or 0)
+        end
+    end
+    into.first = least(into.first, from.first)
+    into.bestKill = least(into.bestKill, from.bestKill)
+    local intoLast, fromLast = num(into.last), num(from.last)
+    into.last = most(intoLast, fromLast)
+    -- pulls to first kill is each team's own count: when both pulled the boss before the earlier kill, the merged
+    -- number is only that team's pulls, not both teams' together (which pulls came first isn't kept)
+    if num(from.firstKillPull) then
+        local takeFrom = not num(into.firstKillPull)
+        if not takeFrom then
+            local a, b = num(into.firstKillAt), num(from.firstKillAt)
+            if a and b then
+                takeFrom = b < a
+            elseif b then
+                takeFrom = true
+            elseif not a then
+                takeFrom = from.firstKillPull < into.firstKillPull
+            end
+        end
+        if takeFrom then
+            into.firstKillPull, into.firstKillAt = from.firstKillPull, from.firstKillAt
+        end
+    end
+    into.nights = type(into.nights) == "table" and into.nights or {}
+    for key, n in pairs(type(from.nights) == "table" and from.nights or {}) do
+        local m = into.nights[key]
+        if type(m) ~= "table" then
+            into.nights[key] = n
+        elseif type(n) == "table" then
+            m.pulls = (num(m.pulls) or 0) + (num(n.pulls) or 0)
+            m.longest = most(m.longest, n.longest) or 0
+            m.phase = most(m.phase, n.phase)
+        end
+    end
+    into.causes = type(into.causes) == "table" and into.causes or {}
+    for id, n in pairs(type(from.causes) == "table" and from.causes or {}) do
+        into.causes[id] = (num(into.causes[id]) or 0) + (num(n) or 0)
+    end
+    local mine = type(into.deaths) == "table" and into.deaths or {}
+    local theirs = type(from.deaths) == "table" and from.deaths or {}
+    local fromFirst = fromLast ~= nil and (intoLast == nil or fromLast <= intoLast)
+    local trend = {}
+    for _, list in ipairs(fromFirst and { theirs, mine } or { mine, theirs }) do
+        for _, d in ipairs(list) do
+            trend[#trend + 1] = d
+        end
+    end
+    while #trend > Stats.TREND do
+        table.remove(trend, 1)
+    end
+    into.deaths = trend
+    for k, v in pairs(from) do
+        if into[k] == nil then
+            into[k] = v
+        end
+    end
+end
+
+-- Moves every counter saved under from (a saved team's name, or Team: Before teams' counts in boss[group]) into
+-- into's scope (Pug or a saved team), then deletes from's; the Team filter on from goes to into. All is left as it
+-- is (it counted both already). Returns how many pulls moved.
+function Stats:MergeTeam(from, into)
+    if type(from) ~= "string" or type(into) ~= "string" then
+        return 0
+    end
+    local fromScope = from == Stats.TEAM_NAME and Stats.TEAM or from
+    local scope = Stats.ScopeOf(into)
+    if scope == fromScope or fromScope == Stats.ALL or scope == Stats.ALL then
+        return 0
+    end
+    local moved = 0
+    for encounterID, boss in pairs(sdb().bosses) do
+        local holder = holderOf(boss, fromScope)
+        if holder then
+            for _, group in ipairs(Stats.GROUPS) do
+                local c = holder[group]
+                if type(c) == "table" then
+                    moved = moved + (num(c.pulls) or 0)
+                    local target = counters(encounterID, group, nil, true, scope)
+                    mergeCounters(target, c)
+                    holder[group] = nil
+                end
+            end
+            if fromScope ~= Stats.TEAM then
+                boss.teams[fromScope] = nil
+                if next(boss.teams) == nil then
+                    boss.teams = nil
+                end
+            end
+        end
+    end
+    if sdb().show == fromScope then
+        sdb().show = scope
+    end
+    self:Fire()
+    return moved
 end
 
 local function deepCopy(v)
@@ -960,7 +1124,7 @@ if CRT.Alerts and CRT.Alerts.OnChange then
     CRT.Alerts:OnChange(watchPhase)
 end
 
--- removing a team deletes its counters
+-- removing a team deletes its counters; merging one moves them
 if CRT.Team and CRT.Team.OnTeamData then
     CRT.Team:OnTeamData({
         count = function(name)
@@ -968,6 +1132,9 @@ if CRT.Team and CRT.Team.OnTeamData then
         end,
         delete = function(name)
             Stats:DeleteTeam(name)
+        end,
+        merge = function(from, into)
+            return { pulls = Stats:MergeTeam(from, into) }
         end,
     })
 end

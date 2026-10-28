@@ -8,7 +8,11 @@ local ADDON, CRT = ...
 --            [Remove] [Cancel]. Remove goes on to confirm.
 --   confirm  the second: "This can't be undone. Type the team name to delete it and its N pulls." A box,
 --            [Delete for good] (only while the box holds the name, any case) [Cancel]. It calls Team:RemoveTeam.
--- D.win, D.mode, D.edit, D.ok and D.cancel are kept for the tests.
+--   merge    Merge teams: "Merge [Before teams while it has pulls, your saved teams]" and "into [Pug and your saved
+--            teams but the one above]",
+--            the summary under them (rebuilt on every pick), [Merge] [Cancel]. Merge calls Team:Merge
+--            (TeamList.lua), prints what moved and runs done(summary).
+-- D.win, D.mode, D.edit, D.ok, D.cancel, D.fromDrop and D.intoDrop are kept for the tests.
 
 local UI = CRT.UI
 local Team = CRT.Team
@@ -16,7 +20,8 @@ local Team = CRT.Team
 local D = {}
 CRT.TeamDialogs = D
 
-local L = { width = 380, height = 156, editW = 220, editH = 20, buttonH = 22, buttonMinW = 80, gap = 12, bottom = 6, pad = 12 }
+local L = { width = 380, height = 156, mergeH = 196, editW = 220, editH = 20, buttonH = 22, buttonMinW = 80, gap = 12, bottom = 6,
+    pad = 12, labelW = 60, dropW = 240, rowH = 30 }
 
 local TEXT = {
     addTitle = "Add team",
@@ -29,12 +34,20 @@ local TEXT = {
     confirmAsk = "This can't be undone. Type the team name to delete it and its %s.",
     cancel = "Cancel",
     pull = "%d pull", pulls = "%d pulls",
+    mergeTitle = "Merge teams",
+    mergeFrom = "Merge",
+    mergeInto = "into",
+    merge = "Merge",
+    mergeAsk = "%s's %s, Tattlebot pulls and raid nights move into %s, and %s leaves your list. This can't be undone.",
+    mergeAskBefore = "The %s from before teams, with their Tattlebot pulls and raid nights, move into %s. This can't be undone.",
+    merged = "Merged %s into %s (%s).",
 }
 D.TEXT = TEXT
 
 local function pullsText(n)
     return (n == 1 and TEXT.pull or TEXT.pulls):format(n)
 end
+D.PullsText = pullsText
 
 -- Whether the typed text is the team's name (trimmed, any case).
 function D.Matches(typed, name)
@@ -81,6 +94,101 @@ local function build()
     D.edit:SetScript("OnEscapePressed", function()
         win:Hide()
     end)
+    -- the merge rows, shown only in merge mode
+    D.fromDrop = UI.Dropdown(c, TEXT.mergeFrom, {
+        labelWidth = L.labelW,
+        width = L.dropW,
+        options = D.FromOptions,
+        get = function()
+            return D.from
+        end,
+        set = D.PickFrom,
+    })
+    D.fromDrop:SetPoint("TOPLEFT", L.pad, -L.pad)
+    D.intoDrop = UI.Dropdown(c, TEXT.mergeInto, {
+        labelWidth = L.labelW,
+        width = L.dropW,
+        options = D.IntoOptions,
+        get = function()
+            return D.into
+        end,
+        set = D.PickInto,
+    })
+    D.intoDrop:SetPoint("TOPLEFT", L.pad, -L.pad - L.rowH)
+end
+
+-- Merge teams ---------------------------------------------------------------------------------------------------
+
+-- A team as the dialog names it: Team is Before teams (its counts from before your own teams).
+local function nameOf(n)
+    return n == Team.TEAM and Team.LIST_TEXT.before or n
+end
+D.NameOf = nameOf
+
+-- Merge's entries: Before teams while it has pulls, then your saved teams (Team:MergeSources).
+function D.FromOptions()
+    local out = {}
+    for _, n in ipairs(Team:MergeSources()) do
+        out[#out + 1] = { key = n, label = nameOf(n) }
+    end
+    return out
+end
+
+-- The teams a merge can go into: Pug and your saved teams, but the one being merged.
+local function intoTeams()
+    local out = { Team.PUG }
+    for _, n in ipairs(Team:Saved()) do
+        if n ~= D.from then
+            out[#out + 1] = n
+        end
+    end
+    return out
+end
+
+function D.IntoOptions()
+    local out = {}
+    for _, n in ipairs(intoTeams()) do
+        out[#out + 1] = { key = n, label = n }
+    end
+    return out
+end
+
+-- into when it can't stay: your first other saved team, else Pug.
+local function defaultInto()
+    local list = intoTeams()
+    return list[2] or list[1]
+end
+
+-- The summary under the two rows, and Merge enabled only for a pair Team:CanMerge takes.
+local function mergeSummary()
+    if not (D.from and D.into) then
+        D.message:SetText("")
+        return
+    end
+    local pulls = pullsText(Team:TeamPulls(D.from))
+    if D.from == Team.TEAM then
+        D.message:SetText(TEXT.mergeAskBefore:format(pulls, D.into))
+    else
+        D.message:SetText(TEXT.mergeAsk:format(D.from, pulls, D.into, D.from))
+    end
+end
+
+function D.PickFrom(key)
+    D.from = Team:Find(key) or D.from
+    if D.into == D.from then
+        D.into = defaultInto()
+    end
+    mergeSummary()
+    D.fromDrop.refresh()
+    D.intoDrop.refresh()
+    D.Refresh()
+end
+
+function D.PickInto(key)
+    D.into = Team:Find(key) or D.into
+    mergeSummary()
+    D.intoDrop.refresh()
+    D.Refresh()
 end
 
 -- Sizes a button from its label (both as wide as the wider needs).
@@ -99,6 +207,8 @@ end
 function D.Refresh()
     if D.mode == "confirm" then
         D.ok:SetEnabled(D.Matches(D.edit:GetText() or "", D.name))
+    elseif D.mode == "merge" then
+        D.ok:SetEnabled(Team:CanMerge(D.from, D.into) ~= nil)
     else
         D.ok:SetEnabled(true)
     end
@@ -109,7 +219,16 @@ local function open(mode, title, message, okText, withBox)
         build()
     end
     D.mode = mode
+    local merging = mode == "merge"
     D.win.strip:SetTitle(title)
+    D.win:SetHeight(merging and L.mergeH or L.height)
+    D.fromDrop:SetShown(merging)
+    D.intoDrop:SetShown(merging)
+    -- the message sits under the merge rows, else at the top
+    local top = merging and -L.pad - 2 * L.rowH - 4 or -L.pad
+    D.message:ClearAllPoints()
+    D.message:SetPoint("TOPLEFT", L.pad, top)
+    D.message:SetPoint("TOPRIGHT", -L.pad, top)
     D.message:SetText(message or "")
     D.edit:SetText("")
     D.edit:SetShown(withBox)
@@ -139,6 +258,51 @@ function D.AskRemove(name, done)
     open("remove", TEXT.removeTitle, TEXT.removeAsk:format(D.name, D.name, pulls), TEXT.remove, false)
 end
 
+-- Merge teams: from and into start on the ones given (else the first source, Before teams or your first saved
+-- team, into your first other saved team, else Pug); done(summary) runs once merged. Nothing opens with nothing to
+-- merge from.
+function D.AskMerge(from, into, done)
+    local sources = Team:MergeSources()
+    if #sources == 0 then
+        return
+    end
+    D.done, D.name = done, nil
+    D.from = Team:Find(from)
+    local listed = false
+    for _, n in ipairs(sources) do
+        listed = listed or n == D.from
+    end
+    if not listed then
+        D.from = sources[1]
+    end
+    D.into = Team:Find(into)
+    if not D.into or D.into == D.from or D.into == Team.TEAM or D.into == Team.State().extra then
+        D.into = defaultInto()
+    end
+    open("merge", TEXT.mergeTitle, nil, TEXT.merge, false)
+    mergeSummary()
+    D.fromDrop.refresh()
+    D.intoDrop.refresh()
+    D.Refresh()
+end
+
+-- Merges from into into and prints what moved, for the dialog and the look-alike prompt (TeamLookAlike.lua); the
+-- settings page and Season Stats refresh through Team:OnMerge and Season Stats' own change. Returns the summary, or
+-- nil when Team:Merge refused.
+function D.MergePair(from, into)
+    local summary = Team:Merge(from, into)
+    if not summary then
+        return nil
+    end
+    CRT:Print(TEXT.merged:format(nameOf(summary.from), summary.into, pullsText(summary.pulls or 0)))
+    return summary
+end
+
+-- Merges the pair picked.
+function D.Merge()
+    return D.MergePair(D.from, D.into)
+end
+
 function D.Accept()
     if D.mode == "add" then
         local name, why = Team:AddTeam(D.edit:GetText())
@@ -159,6 +323,16 @@ function D.Accept()
         D.win:Hide()
         if Team:RemoveTeam(D.name) and D.done then
             D.done()
+        end
+    elseif D.mode == "merge" then
+        local summary = D.Merge()
+        if not summary then
+            D.Refresh()
+            return
+        end
+        D.win:Hide()
+        if D.done then
+            D.done(summary)
         end
     end
 end

@@ -3,7 +3,7 @@ local ADDON, CRT = ...
 -- Team raids (CRT.Team): which team tonight's raid is, so Season Stats, Tattlebot and the Late Tracker can keep a
 -- team's numbers apart from a night with other players. One owner every module asks.
 --
--- The rule: tonight's team is picked on General Settings > Team raids (Team, Pug or a team you added; the list is
+-- The rule: tonight's team is picked on General Settings > Team raids (Pug or a team you added; the list is
 -- TeamList.lua) or set by the raid leader's push. In a raid group (not a party, not solo, not a finder group) the
 -- group is a team raid when tonight's team isn't Pug; outside one there is no team (nil). Team:IsTeam() answers now,
 -- Team:Tonight() is the name,
@@ -12,9 +12,10 @@ local ADDON, CRT = ...
 -- a pull, Team:OnChange(fn) fires when IsTeam flips, Team:OnRecount(fn) on any change of the snapshot and
 -- Team:OnNewGroup(fn) when you join a new raid group (TeamPopup.lua asks which team it is).
 --
--- Per character, in CRTDBChar.team (a character's group is its own): tonight (the name; a removed team reads as
--- Team), picked (tonight was picked outside a raid group, so the next group keeps it; else a new group starts on
--- Team), groupKey (set while in a raid group, so a /reload in the same group is no new group), setBy and setByKey
+-- Per character, in CRTDBChar.team (a character's group is its own): tonight (the name; "Team", the built-in team
+-- from before it left the list, none, or a removed team reads as last, the last of your teams picked, else Pug),
+-- last, picked (tonight was picked outside a raid group; read no more: a new group always starts on the team you
+-- last had), groupKey (set while in a raid group, so a /reload in the same group is no new group), setBy and setByKey
 -- (the raid leader who pushed tonight's team: the pick is locked until you leave the group, or that player stops
 -- leading), pushed (the team you pushed as the raid leader, sent again to joiners) and asked (the group the popup
 -- was shown in, so it asks once).
@@ -220,13 +221,32 @@ Team.State = state
 -- A saved name as it reads now: the built-in or listed team it names (TeamList.lua's Find, any case), else Team
 -- (a team removed since, or none saved).
 local function resolve(name)
+    -- a stamp's name, never tonight's (Team:Tonight): the built-in Team is the scope of the counts from before teams
     local found = Team.Find and Team:Find(name)
     return found or Team.TEAM
 end
 Team.Resolve = resolve
 
+-- Tonight's team: Pug or one of your teams, never the built-in Team (the scope of the counts from before teams).
+-- A saved "Team", none, or a team removed since reads as the last of your teams picked (state().last), else Pug.
 function Team:Tonight()
-    return resolve(state().tonight)
+    local s = state()
+    local found = Team.Find and Team:Find(s.tonight)
+    if found and found ~= Team.TEAM then
+        return found
+    end
+    local last = Team.Find and Team:Find(s.last)
+    if last and last ~= Team.TEAM and last ~= Team.PUG then
+        return last
+    end
+    return Team.PUG
+end
+
+-- Notes the last of your teams picked (or pushed), which a saved "Team" or a removed team reads as.
+local function noteLast(name)
+    if name ~= Team.TEAM and name ~= Team.PUG then
+        state().last = name
+    end
 end
 
 -- The raid leader who set tonight's team, while it is locked: the name they sent from (no realm), else nil.
@@ -306,10 +326,7 @@ local function newGroup()
     local s = state()
     s.groupKey = string.format("%d", time())
     s.setBy, s.setByKey, s.pushed, s.asked, s.extra = nil, nil, nil, nil, nil
-    if not s.picked then
-        s.tonight = Team.TEAM
-    end
-    s.picked = nil
+    s.picked = nil -- the new group starts on the team you last had
     fire(Team.newGroups)
 end
 
@@ -401,18 +418,19 @@ function Team:OnRecount(fn)
     self.recounts[#self.recounts + 1] = fn
 end
 
--- Picks tonight's team (a built-in or listed name, any case). Refused while a raid leader's push locks it.
--- Returns true when it was set.
+-- Picks tonight's team (Pug or a listed name, any case; never the built-in Team). Refused while a raid leader's
+-- push locks it. Returns true when it was set.
 function Team:SetTonight(name)
     if self:IsLocked() then
         return false
     end
     local found = Team.Find and Team:Find(name)
-    if not found then
+    if not found or found == Team.TEAM then
         return false
     end
     local s = state()
     s.tonight = found
+    noteLast(found)
     s.picked = not Team.InRaidGroup() or nil
     if s.pushed ~= found then
         s.pushed = nil -- a joiner never gets a team you've moved off; Push to raid sends the new one
@@ -736,6 +754,7 @@ local function hearPush(sender, key, name)
     end
     local s = state()
     s.tonight = found
+    noteLast(found)
     s.setBy = sender:match("^([^%-]+)") or sender
     s.setByKey = key
     s.pushed = nil

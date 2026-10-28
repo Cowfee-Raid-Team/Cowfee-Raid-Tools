@@ -320,7 +320,7 @@ do
     print("tooltip position: " .. table.concat(labels, ", "))
   end
 end
--- Team raids: a heading with its (?), the Tonight's team dropdown (Team, Pug, your teams, Add team…), Push to raid
+-- Team raids: a heading with its (?), the Tonight's team dropdown (Pug, your teams, Add team…), Push to raid
 -- and Remove team, the status line, no slider, in the right column and inside the page
 do
   if sliders["Running CRT"] then print("FAIL the Running CRT slider is gone") end
@@ -330,14 +330,14 @@ do
   local function findButton(want) for _, fr in ipairs(frames) do if fr.kind == "Button" and textOf(fr) == want then return fr end end end
   if not d then print("FAIL General Settings has a Tonight's team dropdown") else
     local labels = {} for _, o in ipairs(d.options()) do labels[#labels + 1] = o.label end
-    if table.concat(labels, ",") ~= "Team,Pug,Add team\\226\\128\\166" then print("FAIL Tonight's team lists Team, Pug, Add team…: " .. table.concat(labels, ",")) end
-    if d.get() ~= "Team" then print("FAIL Tonight's team starts on Team: " .. tostring(d.get())) end
+    if table.concat(labels, ",") ~= "Pug,Add team\\226\\128\\166" then print("FAIL Tonight's team lists Pug, Add team… (never Team): " .. table.concat(labels, ",")) end
+    if d.get() ~= "Pug" then print("FAIL Tonight's team starts on Pug: " .. tostring(d.get())) end
     Team:AddTeam("Cowfee Mythic")
     d.set("Cowfee Mythic")
     if d.get() ~= "Cowfee Mythic" then print("FAIL picking a team saves it") end
     -- Add team… opens the shared name box (UI/TeamDialogs.lua), and the added team is picked
     local asked
-    CRT.TeamDialogs = { AskName = function(done) asked = done end, AskRemove = function(name, done) asked = { name, done } end }
+    CRT.TeamDialogs = { AskName = function(done) asked = done end, AskRemove = function(name, done) asked = { name, done } end, AskMerge = function(from, into, done) asked = { "merge", from, done } end }
     d.set(Team.ADD_KEY)
     if type(asked) ~= "function" then print("FAIL Add team… opens the name box") else
       Team:AddTeam("Night Crew") asked("Night Crew")
@@ -350,10 +350,35 @@ do
       if rawget(remove, "enabled") ~= true then print("FAIL Remove team works on your own team") end
       remove.OnClick(remove)
       if not (type(asked) == "table" and asked[1] == "Night Crew") then print("FAIL Remove team asks about tonight's team") end
-      d.set("Team") UI.pages.settings.frame.OnShow()
-      if rawget(remove, "enabled") ~= false then print("FAIL Remove team is greyed for Team") end
+      d.set("Pug") UI.pages.settings.frame.OnShow()
+      if rawget(remove, "enabled") ~= false then print("FAIL Remove team is greyed for Pug") end
       local p = remove.pts[1] or {}
       if not (p[2] == push and p[3] == "RIGHT") then print("FAIL Remove team sits right of Push to raid") end
+      -- Merge team…: right of Remove team; greyed with fewer than two of your teams or while a push locks the pick
+      local merge = findButton("Merge team\\226\\128\\166")
+      if not merge then print("FAIL Team raids has Merge team…") else
+        local mp = merge.pts[1] or {}
+        if not (mp[2] == remove and mp[3] == "RIGHT") then print("FAIL Merge team… sits right of Remove team") end
+        if rawget(merge, "enabled") ~= true then print("FAIL Merge team… works with two of your teams") end
+        merge.OnClick(merge)
+        if not (type(asked) == "table" and asked[1] == "merge" and asked[2] == "Pug") then print("FAIL Merge team… opens the merge dialog") end
+        local listed = CRT.db.team.list
+        local keep = {} for i, n in ipairs(listed) do keep[i] = n end
+        for i = #listed, 2, -1 do listed[i] = nil end
+        UI.pages.settings.frame.OnShow()
+        if rawget(merge, "enabled") ~= false then print("FAIL Merge team… is greyed with one of your teams") end
+        for i, n in ipairs(keep) do listed[i] = n end
+        local locked = Team.IsLocked
+        Team.IsLocked = function() return true end
+        UI.pages.settings.frame.OnShow()
+        if rawget(merge, "enabled") ~= false then print("FAIL Merge team… is greyed while a push locks the pick") end
+        Team.IsLocked = locked
+        UI.pages.settings.frame.OnShow()
+        if rawget(merge, "enabled") ~= true then print("FAIL Merge team… works again once unlocked") end
+        -- a merge anywhere (the dialog or the look-alike prompt) refreshes the page: one team left, Merge team… greys
+        Team:Merge("Night Crew", "Cowfee Mythic")
+        if rawget(merge, "enabled") ~= false then print("FAIL a merge refreshes General Settings (Team:OnMerge)") end
+      end
     end
     local p = d.pts and d.pts[1]
   end

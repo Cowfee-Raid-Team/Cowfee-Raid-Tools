@@ -34,6 +34,7 @@ CRT_Core\UI\PlacementSelect.lua
 CRT_Core\UI\ItemSlot.lua
 CRT_Core\UI\TeamDialogs.lua
 CRT_Core\UI\TeamPopup.lua
+CRT_Core\UI\TeamLookAlike.lua
 CRT_Core\WhatsNew\Data.lua
 CRT_Core\WhatsNew\WhatsNew.lua
 CRT_Modules\Groups\Data.lua

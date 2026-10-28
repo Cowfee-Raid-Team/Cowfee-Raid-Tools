@@ -660,6 +660,7 @@ do
   local asked = {}
   local listed = { Team = "Team", Pug = "Pug", Cowfee = "Cowfee" }
   CRT.Team = {
+    LIST_TEXT = { before = "Before teams" }, -- TeamList.lua's name for the built-in Team's counts
     PullTeam = function(_, enc, at) asked[#asked + 1] = tostring(enc) .. "@" .. tostring(at) return teamAnswer end,
     Resolve = function(name) return listed[name] or "Team" end,
     Names = function() local out = { "Team", "Pug" } for _, n in ipairs({ "Cowfee", "Fresh" }) do if listed[n] then out[#out + 1] = n end end return out end,
@@ -687,7 +688,7 @@ do
   eq(CRT.db.seasonStats.bosses[9002].teams.Cowfee.mythic.pulls, 1, "saved under bosses[id].teams[name]")
   -- the Team filter's entries: All, then each team with pulls
   local function optionText() local out = {} for _, o in ipairs(S.ScopeOptions()) do out[#out + 1] = o.key .. "=" .. o.label end return table.concat(out, ", ") end
-  eq(optionText(), "all=All, team=Team, Pug=Pug, Cowfee=Cowfee", "the Team filter: All, then each team with pulls")
+  eq(optionText(), "all=All, team=Before teams, Pug=Pug, Cowfee=Cowfee", "the Team filter: All, Before teams (it has pulls), then each team with pulls")
   -- removing a team deletes only its own counters
   eq(S:TeamPulls("Cowfee"), 1, "a team's pulls, for Remove team's warning")
   S:SetScope("Cowfee")
@@ -699,7 +700,7 @@ do
   eq(S:Boss(9002, "mythic", "all").pulls, 1, "all keeps the pull")
   eq(S:Boss(9001, "nh", "Pug").pulls, 1, "another team's counters stay")
   eq(S:Scope(), "team", "the filter goes back to Team")
-  eq(optionText(), "all=All, team=Team, Pug=Pug", "and the removed team leaves the filter")
+  eq(optionText(), "all=All, team=Before teams, Pug=Pug", "and the removed team leaves the filter")
   S:DeleteTeam("team") S:DeleteTeam("all")
   eq(S:Boss(9001, "nh", "team").pulls .. "/" .. S:Boss(9001, "nh", "all").pulls, "8/12", "Team and all are never deleted")
   -- a picked team with no pulls still shows as the filter's choice
