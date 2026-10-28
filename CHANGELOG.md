@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.1.5 (2026-10-27)
+
+- **Team raids:** pick tonight's team (Team, Pug or your own) instead of the Running CRT slider. The raid leader's Push to raid sets it for every CRT user in the raid.
+- **New raid group popup:** the leader is asked Use Loot Master? and which team. Raiders are asked which team when the leader hasn't set one.
+- **Season Stats:** a Team filter (All, Team, Pug and your teams). Raid Finder and party pulls count only in All.
+- **Remove team:** deletes a team and its Season Stats, after two warnings.
+
 ## 1.1.4 (2026-10-25)
 
 - **Placement** (new): move, nudge, centre and anchor every movable element from its gear.

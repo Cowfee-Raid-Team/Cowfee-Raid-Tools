@@ -6,6 +6,17 @@ local ADDON, CRT = ...
 -- CRT_Dev/Tests/run_whatsnew.js checks every entry.
 CRT.WhatsNewData = {
     {
+        version = "1.1.5",
+        lines = {
+            "Pick tonight's team: Team, Pug or your own",
+            "Raid leaders push the team to the whole raid",
+            "New raid group popup: Loot Master and team",
+            "Season Stats: filter pulls by team",
+            "Remove a team and its stats, after two warnings",
+        },
+        more = 0,
+    },
+    {
         version = "1.1.4",
         lines = {
             "Placement: move, centre and anchor every element",
