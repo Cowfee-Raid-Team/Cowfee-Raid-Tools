@@ -104,7 +104,7 @@ Profiles.SHARE = {
         reviewRefs = false, -- which ability timeline is in use: your own ones' keys mean nothing on another computer
         healerRows = false, -- the Healer CDs rows you picked per player stay on this computer
     },
-    team = true, -- the team raid threshold (Team.lua)
+    team = { threshold = false, list = false, popup = true }, -- your team names (and the Season Stats saved under them) stay yours
     seasonStats = false, -- the raid's pull counters: data
     longTerm = false, -- long-term data (Core.lua): never a setting
     markers = true,
@@ -129,7 +129,7 @@ Profiles.POSITIONS = {
     "notes.window.width", "notes.window.height", "notes.assignments.width", "notes.assignments.height",
     "notes.personal.width", "notes.personal.height",
     "qol.lowHealth.position", "qol.breakTimer.position",
-    "lootmaster.window", "lootmaster.popup", "lootmaster.answers", "lootmaster.bossLoot", "lootmaster.lootingPrompt",
+    "lootmaster.window", "lootmaster.popup", "lootmaster.answers", "lootmaster.bossLoot", "lootmaster.lootingPrompt", "team.popup",
     "gearChecker.popout", "timeline.popout", "markers.position", "pace.position",
     "alerts.bars.position", "alerts.bars.positionV", "alerts.areas.icons.position", "alerts.areas.texts.position", "alerts.areas.circles.position",
     "alerts.areas.timeline.position",

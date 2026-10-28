@@ -117,8 +117,12 @@ CRT.TattleDB = { bosses = { { boss = "Alpha", encounterID = 9001, mechanics = { 
 local teamAnswer = true
 local asked = 0
 local askedAt, nowAsked = nil, 0
+local outsideRaid = false -- a pull outside a raid group (Raid Finder, a party): no team
+-- tonight's team: Raid Alpha for a team raid, Pug for one that isn't (CRT_Core/Team.lua)
 CRT.Team = { PullIsTeam = function(_, enc, at) asked = asked + 1 askedAt = at return teamAnswer end,
-  IsTeam = function() nowAsked = nowAsked + 1 return teamAnswer end }
+  IsTeam = function() nowAsked = nowAsked + 1 return teamAnswer end,
+  PullTeam = function() if outsideRaid then return nil end return teamAnswer and "Raid Alpha" or "Pug" end,
+  TeamNow = function() return teamAnswer and "Now Team" or "Pug" end }
 
 assert(load(dataSrc, "Tattlebot/Data.lua"))("CowfeeRaidTools", CRT)
 local Tattle = CRT.Tattle
@@ -155,6 +159,7 @@ teamAnswer = true
 pull(9001, "Alpha")
 check(s.current ~= nil and #s.current.pulls == 1, "a team raid pull is recorded")
 eq(s.current.pulls[1].team, true, "and stamped a team raid")
+eq(s.current.pulls[1].teamName, "Raid Alpha", "with the name of the team it started with")
 eq(#posted, 1, "and posted")
 -- a pull waiting for combat's end is dropped when a pull that isn't a team raid ends first
 local before = #s.current.pulls
@@ -176,6 +181,13 @@ pull(9001, "Alpha")
 eq(s.current, teamNight, "pulls that aren't team raids join the same night")
 eq(#teamNight.pulls, before + 2, "kept whole")
 eq(teamNight.pulls[#teamNight.pulls].team, false, "each pull stamped as it was")
+eq(teamNight.pulls[#teamNight.pulls].teamName, "Pug", "a Pug pull named Pug")
+outsideRaid = true
+pull(9001, "Alpha")
+outsideRaid = false
+eq(teamNight.pulls[#teamNight.pulls].team, false, "a pull outside a raid group (Raid Finder, a party) isn't a team raid")
+eq(teamNight.pulls[#teamNight.pulls].teamName, nil, "and has no team's name, so it never files under Pug")
+table.remove(teamNight.pulls)
 eq(Tattle:HasOtherNights(), true, "now there is a pull that wasn't a team raid")
 teamAnswer = true
 pull(9001, "Alpha")
@@ -196,6 +208,8 @@ eq(#Tattle.InScope(s.history, "all"), #s.history, "All raids keeps every night")
 local bp = Tattle:BossPulls(9001)
 local pugPulls = 0 for _, p in ipairs(bp) do if p.team == false then pugPulls = pugPulls + 1 end end
 eq(pugPulls, 3, "BossPulls marks each pull's kind, for Season Stats")
+local named = {} for _, p in ipairs(bp) do named[tostring(p.teamName)] = (named[tostring(p.teamName)] or 0) + 1 end
+eq(named.Pug, 3, "and its team's name, for Season Stats' Team filter")
 -- a fight saved by hand from the Last fight view is stamped too
 teamAnswer = false
 local scanned = Tattle:AddScannedPull({ spells = { { id = 555 } }, players = {}, boss = { name = "Alpha", encounterID = 9001 } }, { 555 })
@@ -205,6 +219,7 @@ teamAnswer = true
 local scanned2 = Tattle:AddScannedPull({ spells = { { id = 555 } }, players = {} }, { 555 })
 eq(nowAsked, n0 + 1, "a fight that wasn't a boss asks the answer now, not a pull's snapshot")
 eq(scanned2.team, true, "and is stamped by it")
+eq(scanned2.teamName, "Now Team", "with tonight's team now")
 Tattle:EndNight("button")
 -- only the accessor reads the check
 local _, uses = dataSrc:gsub("= CRT%.Team", "")

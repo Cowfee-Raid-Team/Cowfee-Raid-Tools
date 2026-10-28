@@ -15,6 +15,7 @@ CRT_Core\Gear.lua
 CRT_Core\Share.lua
 CRT_Core\Profiles.lua
 CRT_Core\Team.lua
+CRT_Core\TeamList.lua
 CRT_Data\Bosses\Registry.lua
 CRT_Core\Slash.lua
 CRT_Core\Perf.lua
@@ -31,6 +32,8 @@ CRT_Core\UI\Placement.lua
 CRT_Core\UI\PlacementPanel.lua
 CRT_Core\UI\PlacementSelect.lua
 CRT_Core\UI\ItemSlot.lua
+CRT_Core\UI\TeamDialogs.lua
+CRT_Core\UI\TeamPopup.lua
 CRT_Core\WhatsNew\Data.lua
 CRT_Core\WhatsNew\WhatsNew.lua
 CRT_Modules\Groups\Data.lua

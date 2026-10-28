@@ -197,6 +197,73 @@ onEvent("PARTY_LEADER_CHANGED")
 GROUP.leader = "Solex-Sargeras"
 onEvent("PARTY_LEADER_CHANGED")
 eq(asked, n + 2, "prompt: asked again on getting the lead back")
+-- the new raid group popup's Use Loot Master? (LM:PlanLooting, CRT_Core/UI/TeamPopup.lua): outside, the answer is
+-- kept for the raid group and taken once, instead of the question, on entering a raid instance; inside, at once
+do
+  local groupKey = "g1"
+  CRT.Team = { GroupKey = function() return groupKey end }
+  local function enterNew()
+    goOutside() onEvent("PLAYER_ENTERING_WORLD", false, false)
+    nextId = nextId + 1 WHERE.id = nextId goInside()
+    onEvent("PLAYER_ENTERING_WORLD", false, false)
+  end
+  goOutside() onEvent("PLAYER_ENTERING_WORLD", false, false)
+  take()
+  LM:PlanLooting(true)
+  eq(LM:LootingOn(), false, "plan: Yes outside an instance turns nothing on yet")
+  eq(CRTDBChar.lootmaster.lootingPlan and CRTDBChar.lootmaster.lootingPlan.group, "g1", "plan: kept for this raid group")
+  local a = asked
+  enterNew()
+  eq(asked, a, "plan: Yes answers the instance's question")
+  eq(LM:LootingOn(), true, "plan: CRT Looting on when the leader enters a raid instance")
+  eq(CRTDBChar.lootmaster.lootingPlan, nil, "plan: taken once")
+  LM:ChooseLooting(false, "off") take()
+  goOutside() onEvent("PLAYER_ENTERING_WORLD", false, false)
+  LM:PlanLooting(false)
+  enterNew()
+  eq(asked, a, "plan: No answers it too")
+  eq(LM:LootingOn(), false, "plan: and leaves CRT Looting off")
+  take()
+  enterNew()
+  eq(asked, a + 1, "plan: the next instance asks as before")
+  goOutside() onEvent("PLAYER_ENTERING_WORLD", false, false)
+  LM:PlanLooting(true)
+  groupKey = "g2"
+  enterNew()
+  eq(asked, a + 2, "plan: another raid group's answer is dropped, and the question asked")
+  eq(LM:LootingOn(), false, "plan: nothing turned on from another group's answer")
+  -- inside a raid instance: answered there and then
+  LM:PlanLooting(true)
+  eq(LM:LootingOn(), true, "plan: Yes inside turns CRT Looting on at once")
+  LM:ChooseLooting(false, "off") take()
+  -- inside during a boss encounter's chat lockdown: the Yes is kept, and used once the lockdown ends
+  groupKey = "g3"
+  enterNew()
+  LOCKED = true
+  LM:PlanLooting(true)
+  eq(LM:LootingOn(), false, "plan: Yes in the chat lockdown can't turn it on yet")
+  check(CRTDBChar.lootmaster.lootingPlan ~= nil, "plan: but is kept")
+  onEvent("ENCOUNTER_END", 1, "Boss", 16, 20, 0)
+  eq(LM:LootingOn(), false, "plan: still locked at the encounter's end: still kept")
+  LOCKED = false
+  onEvent("PLAYER_REGEN_ENABLED")
+  eq(LM:LootingOn(), true, "plan: the lockdown over, the Yes turns CRT Looting on")
+  eq(CRTDBChar.lootmaster.lootingPlan, nil, "plan: used once")
+  LM:ChooseLooting(false, "off") take()
+  -- while the new raid group popup asks Use Loot Master?, the instance question waits; closing it asks
+  local asking = true
+  CRT.TeamPopup = { AsksLoot = function() return asking end }
+  a = asked
+  enterNew()
+  eq(asked, a, "popup: no instance question while the team popup asks Use Loot Master?")
+  asking = false
+  LM.MaybeAskLooting()
+  eq(asked, a + 1, "popup: closed with no answer, the instance question comes")
+  LM.MaybeAskLooting()
+  eq(asked, a + 1, "popup: and only once")
+  CRT.TeamPopup = nil
+  CRT.Team = nil
+end
 WHERE.id = 2810
 onEvent("PLAYER_ENTERING_WORLD", false, false)
 -- a /reload inside: off again, raiders told, and asked again

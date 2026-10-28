@@ -7,7 +7,8 @@ local ADDON, CRT = ...
 -- CRTDB.late.current so it survives a reload, and finished nights go to CRTDB.late.history.
 -- Times are time() values, so the schedule follows this computer's clock.
 -- Team raids: each night is stamped team = true or false, whether the team raid check (CRT.Team,
--- CRT_Core/Team.lua) said team at its start; nights saved before have no stamp and count as team raids. With
+-- CRT_Core/Team.lua) said team at its start (tonight's team wasn't Pug), and teamName, that team's name; nights
+-- saved before have no stamp and count as team raids. With
 -- Only record team raids on (CRTDB.late.onlyTeam, the default) the schedule's start waits, within its window,
 -- until the group is a team raid, checked again on every tick and when the check's answer changes. Start raid
 -- now always starts.
@@ -68,6 +69,17 @@ local function teamNow()
     return not ok or team == true
 end
 Late.TeamNow = teamNow
+
+-- Tonight's team's name now in a raid group, or nil (outside one, or with no check loaded).
+local function teamNameNow()
+    local Team = CRT.Team
+    if not (Team and Team.TeamNow) then
+        return nil
+    end
+    local ok, name = pcall(Team.TeamNow, Team)
+    return ok and type(name) == "string" and name or nil
+end
+Late.TeamNameNow = teamNameNow
 
 -- Whether a night was a team raid (saved before team raids: yes).
 function Late.IsTeam(night)
@@ -183,6 +195,7 @@ function Late:Start(how, startedAt)
         layout = nameOrError,
         grace = s.grace,
         team = teamNow(),
+        teamName = teamNameNow(),
         hadGroup = IsInGroup() and true or false,
         players = {},
     }

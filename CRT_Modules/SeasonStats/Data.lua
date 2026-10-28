@@ -5,12 +5,16 @@ local ADDON, CRT = ...
 -- Saved in CRTDB.seasonStats (defaults in CRT_Core/Core.lua; data, so never in Export settings only):
 --   filled               true once the counters were filled from the Timeline's saved pulls (Backfill, once)
 --   scoped               true once the counters from before team raids were copied into all (Migrate, once)
---   show                 the page's Show: "team" (Team raids, the default) or "all" (All raids)
---   bosses[encounterID]  { name, nh = counters, mythic = counters, all = { nh = counters, mythic = counters } },
---                        the groups of Timeline.DifficultyGroup. Two scopes: boss[group] (the field from before
---                        scopes, kept) counts team raids, boss.all[group] every raid. A pull counts in all, and in
---                        team too when the team raid check (CRT.Team, CRT_Core/Team.lua) said team at its start.
---                        Counters saved before scopes count as both: Migrate copies them into all once.
+--   show                 the page's Team filter: "all" (All), "team" (the built-in Team, the default) or a team's
+--                        name (Pug or one of yours, CRT_Core/TeamList.lua)
+--   bosses[encounterID]  { name, nh = counters, mythic = counters, all = { nh = counters, mythic = counters },
+--                        teams = { [team name] = { nh = counters, mythic = counters } } }, the groups of
+--                        Timeline.DifficultyGroup. A scope per team: boss[group] (the field from before scopes, kept)
+--                        counts the built-in Team, boss.teams[name][group] Pug and each of your teams, and
+--                        boss.all[group] every raid. A pull counts in all and in the team it started with (CRT.Team's
+--                        snapshot at the pull's start, CRT_Core/Team.lua). Counters saved before scopes count as
+--                        Team and all: Migrate copies them into all once. Pulls saved as not a team raid, before
+--                        teams had names, are only in all. Removing a team (Team:RemoveTeam) deletes its teams entry.
 --   counters             { pulls, wipes, kills, firstKillPull, firstKillAt, bestKill, killTime, pullTime, untimed,
 --                          first, last, nights = { [night] = { longest, phase, pulls } }, causes = { [spellID] = deaths },
 --                          deaths = { deaths per pull, newest last, the last TREND },
@@ -40,34 +44,81 @@ Stats.RUN_MATCH = 10 -- seconds between an alerts run's start and a pull's start
 Stats.GROUPS = { "nh", "mythic" }
 Stats.TEAM, Stats.ALL = "team", "all"
 Stats.SCOPES = { Stats.TEAM, Stats.ALL }
+Stats.TEAM_NAME, Stats.PUG = "Team", "Pug" -- the built-in teams' names (CRT.Team.TEAM, PUG)
+Stats.ALL_LABEL = "All"
 
 local function sdb()
     return CRT.db.seasonStats
 end
 
--- The page's Show: "team" (the default) or "all".
+-- A team's name as it reads now: the built-in or listed team it names, else Team (a team removed since, or a stamp
+-- from before names). Through Team.Resolve when the team list is loaded.
+local function teamName(name)
+    local Team = CRT.Team
+    if Team and Team.Resolve then
+        return Team.Resolve(name)
+    end
+    return type(name) == "string" and name or Stats.TEAM_NAME
+end
+
+-- The scope a team's pulls count in: "team" for the built-in Team (the field from before), else the name.
+function Stats.ScopeOf(name)
+    name = teamName(name)
+    return name == Stats.TEAM_NAME and Stats.TEAM or name
+end
+
+-- The page's Team filter: "all", "team" (the default) or a team's name; a team removed since reads as "team".
 function Stats:Scope()
-    return sdb().show == Stats.ALL and Stats.ALL or Stats.TEAM
+    local show = sdb().show
+    if show == Stats.ALL then
+        return Stats.ALL
+    end
+    if show == nil or show == Stats.TEAM then
+        return Stats.TEAM
+    end
+    return Stats.ScopeOf(show)
 end
 
 function Stats:SetScope(scope)
-    sdb().show = scope == Stats.ALL and Stats.ALL or Stats.TEAM
+    if scope == Stats.ALL or scope == Stats.TEAM then
+        sdb().show = scope
+    else
+        sdb().show = Stats.ScopeOf(scope)
+    end
     self:Fire()
 end
 
+local scopeHas -- below, with the counters
+
+-- The Team filter's entries, { key, label }: All, then each team that has pulls, in the team list's order (Team,
+-- Pug, then yours), and the one picked even with none.
 function Stats.ScopeOptions()
-    return { { key = Stats.TEAM, label = "Team raids" }, { key = Stats.ALL, label = "All raids" } }
+    local out = { { key = Stats.ALL, label = Stats.ALL_LABEL } }
+    local Team = CRT.Team
+    local names = Team and Team.Names and Team:Names() or { Stats.TEAM_NAME, Stats.PUG }
+    local picked = Stats:Scope()
+    for _, name in ipairs(names) do
+        local scope = Stats.ScopeOf(name)
+        if scope == picked or scopeHas(scope) then
+            out[#out + 1] = { key = scope, label = name }
+        end
+    end
+    return out
 end
 
--- The scopes a pull counts in: all, and team when the team raid check said team at its start (the answer now when
--- it has no snapshot of the pull; with no check loaded, team, as every pull counted before).
+-- The scopes a pull counts in: the team it started with (CRT.Team's snapshot at its start, else the team now) and
+-- all. A pull outside a raid group (Raid Finder, a party, solo) has no team: all only. With no team check loaded,
+-- Team and all, as every pull counted before.
 local function pullScopes(pull)
     local Team = CRT.Team
-    local team = true
-    if Team and Team.PullIsTeam then
-        team = Team:PullIsTeam(pull.encounterID, pull.startedAt) and true or false
+    if not (Team and Team.PullTeam) then
+        return Stats.SCOPES
     end
-    return team and Stats.SCOPES or { Stats.ALL }
+    local ok, name = pcall(Team.PullTeam, Team, pull.encounterID, pull.startedAt)
+    if not ok or type(name) ~= "string" then
+        return { Stats.ALL }
+    end
+    return { Stats.ScopeOf(name), Stats.ALL }
 end
 
 function Stats:OnChange(fn)
@@ -98,8 +149,8 @@ local function groupOf(difficultyID)
 end
 Stats.GroupOf = groupOf
 
--- A boss's counters for a group in a scope (team, the default, or all); make creates them (and the boss) when
--- missing.
+-- A boss's counters for a group in a scope (team, the default; all; or a team's name); make creates them (and
+-- the boss) when missing.
 local function counters(encounterID, group, name, make, scope)
     local bosses = sdb().bosses
     local boss = bosses[encounterID]
@@ -123,6 +174,21 @@ local function counters(encounterID, group, name, make, scope)
             holder = {}
             boss.all = holder
         end
+    elseif scope ~= nil and scope ~= Stats.TEAM then
+        if type(boss.teams) ~= "table" then
+            if not make then
+                return nil
+            end
+            boss.teams = {}
+        end
+        holder = boss.teams[scope]
+        if type(holder) ~= "table" then
+            if not make then
+                return nil
+            end
+            holder = {}
+            boss.teams[scope] = holder
+        end
     end
     local c = holder[group]
     if not c and make then
@@ -131,6 +197,51 @@ local function counters(encounterID, group, name, make, scope)
         holder[group] = c
     end
     return c
+end
+
+-- Whether any boss has pulls in a scope.
+scopeHas = function(scope)
+    for encounterID in pairs(sdb().bosses) do
+        for _, group in ipairs(Stats.GROUPS) do
+            local c = counters(encounterID, group, nil, false, scope)
+            if c and (c.pulls or 0) > 0 then
+                return true
+            end
+        end
+    end
+    return false
+end
+
+-- Removing a team (CRT_Core/TeamList.lua): how many pulls it has, and deleting them. Team (boss[group]) and all
+-- are never deleted this way.
+function Stats:TeamPulls(name)
+    local n = 0
+    for _, boss in pairs(sdb().bosses) do
+        local holder = type(boss) == "table" and type(boss.teams) == "table" and boss.teams[name]
+        for _, group in ipairs(Stats.GROUPS) do
+            local c = type(holder) == "table" and holder[group]
+            n = n + (type(c) == "table" and tonumber(c.pulls) or 0)
+        end
+    end
+    return n
+end
+
+function Stats:DeleteTeam(name)
+    if type(name) ~= "string" or name == Stats.TEAM or name == Stats.ALL then
+        return
+    end
+    for _, boss in pairs(sdb().bosses) do
+        if type(boss) == "table" and type(boss.teams) == "table" then
+            boss.teams[name] = nil
+            if next(boss.teams) == nil then
+                boss.teams = nil
+            end
+        end
+    end
+    if sdb().show == name then
+        sdb().show = Stats.TEAM
+    end
+    self:Fire()
 end
 
 local function deepCopy(v)
@@ -262,13 +373,15 @@ function Stats:Backfill(latest, phase)
         return false
     end
     self:Migrate()
-    local latestIn
+    local latestIn, latestTeam
     for _, b in ipairs(T:Bosses()) do
         local pulls = T:Pulls(b.encounterID) -- newest first
         for i = #pulls, 1, -1 do
             local p = pulls[i]
             if p == latest then
-                latestIn = add(p, phase, true)
+                local scopes = pullScopes(p)
+                latestTeam = scopes[1] == Stats.TEAM
+                latestIn = add(p, phase, true, scopes)
             else
                 add(p, nil, true, Stats.SCOPES)
             end
@@ -276,8 +389,8 @@ function Stats:Backfill(latest, phase)
         for _, group in ipairs(Stats.GROUPS) do
             for _, scope in ipairs(Stats.SCOPES) do
                 local total = T:PullCount(b.encounterID, group)
-                -- the latest pull, when it isn't a team raid, is in the Timeline's count but not in team
-                if scope == Stats.TEAM and latestIn and #latestIn == 1 and latest.encounterID == b.encounterID and groupOf(latest.difficultyID) == group then
+                -- the latest pull, when it started on another team, is in the Timeline's count but not in Team
+                if scope == Stats.TEAM and latestIn and not latestTeam and latest.encounterID == b.encounterID and groupOf(latest.difficultyID) == group then
                     total = total - 1
                 end
                 local c = counters(b.encounterID, group, b.name, total > 0, scope)
@@ -367,7 +480,7 @@ function Stats:ClearSeason(seasonKey)
 end
 
 -- A boss's counters for a difficulty group, or nil when it has none.
--- scope is "team" or "all", by default the page's Show (Stats:Scope).
+-- scope is "team", "all" or a team's name, by default the page's Team filter (Stats:Scope).
 function Stats:Boss(encounterID, group, scope)
     return counters(encounterID, group, nil, false, scope or self:Scope())
 end
@@ -460,7 +573,7 @@ end
 
 -- One row per boss of a season's route, in route order: { encounterID, name, counters, pulls, wipes, kills,
 -- firstKillPull, firstKillAt, bestKill, pullTime, repairs, repairPulls, raidRepairs, raidReporters, raidPulls };
--- a boss with no pulls has zeros and no counters. scope is "team" or "all", by default the page's Show.
+-- a boss with no pulls has zeros and no counters. scope is "team", "all" or a team's name, by default the Team filter.
 local REPAIR_FIELDS = { "repairs", "repairPulls", "raidRepairs", "raidReporters", "raidPulls" }
 Stats.REPAIR_FIELDS = REPAIR_FIELDS
 
@@ -496,9 +609,26 @@ function Stats:DefaultGroup(seasonKey, scope)
     return (n.nh or 0) > (n.mythic or 0) and "nh" or "mythic"
 end
 
+-- Whether a Late Tracker night or a Tattlebot pull (stamped team, false when not a team raid, and teamName, its
+-- team's name) is in a scope: every one in all; in Pug the ones named Pug; in a team's scope the team raids whose
+-- name reads as that team (no name, from before names, or a team removed since: Team). One stamped not a team raid
+-- with no name (from before names, or outside a raid group) is in all only.
+function Stats.InScope(scope, team, name)
+    if scope == Stats.ALL then
+        return true
+    end
+    if scope == Stats.PUG then
+        return team == false and teamName(name) == Stats.PUG
+    end
+    if team == false then
+        return false
+    end
+    return Stats.ScopeOf(name) == scope
+end
+
 -- The Late Tracker's raid nights in a season: its saved nights (and the running one) that started between the
--- season's first pull (less NIGHT_LEAD) and its last, on any difficulty. 0 with no pulls or no Late Tracker. In the
--- team scope, only the team raid nights (a night saved before team raids is one).
+-- season's first pull (less NIGHT_LEAD) and its last, on any difficulty. 0 with no pulls or no Late Tracker. In a
+-- team's scope, only that team's nights (Stats.InScope).
 function Stats:RaidNights(seasonKey, scope)
     scope = scope or self:Scope()
     local first, last
@@ -523,7 +653,7 @@ function Stats:RaidNights(seasonKey, scope)
     local count = 0
     for _, night in ipairs(nights) do
         local at = type(night) == "table" and night.startedAt
-        local inScope = scope ~= Stats.TEAM or (type(night) == "table" and night.team ~= false)
+        local inScope = type(night) == "table" and Stats.InScope(scope, night.team, night.teamName)
         if inScope and type(at) == "number" and at >= first - Stats.NIGHT_LEAD and at <= last then
             count = count + 1
         end
@@ -533,7 +663,7 @@ end
 
 -- The cards and the rows: { bosses, killed, pulls, pullTime, untimed, nights (the Late Tracker's),
 -- pullNights (nights with a pull on this difficulty), and the season's repairs, repairPulls, raidRepairs,
--- raidReporters and raidPulls }, rows, in a scope (by default the page's Show).
+-- raidReporters and raidPulls }, rows, in a scope (by default the page's Team filter).
 function Stats:Cards(seasonKey, group, scope)
     scope = scope or self:Scope()
     local rows = self:Rows(seasonKey, group, scope)
@@ -625,8 +755,8 @@ end
 -- { key, pulls, damage, perPull, nightIDs, nightID }. nightIDs are the Tattlebot nights with a pull on that date,
 -- newest first; a date can have two (End night pressed, then more pulls), and nightID, the one the page opens in
 -- Tattlebot (CRT.TattlePage.ShowNight), is the first of them, the newest. Nil when Tattlebot has no pull on the
--- boss in that group. In the team scope (by default the page's Show), only Tattlebot's team raid pulls (a pull
--- saved before team raids is one).
+-- boss in that group. In a team's scope (by default the page's Team filter), only that team's Tattlebot pulls
+-- (Stats.InScope).
 function Stats:AvoidableTrend(encounterID, group, max, scope)
     local Tattle = CRT.Tattle
     if not (Tattle and Tattle.BossPulls) then
@@ -636,7 +766,7 @@ function Stats:AvoidableTrend(encounterID, group, max, scope)
     local byKey, list = {}, {}
     for _, p in ipairs(Tattle:BossPulls(encounterID)) do
         -- a difficulty that wasn't readable (secret, saved as nil) belongs to no group
-        local inScope = scope ~= Stats.TEAM or p.team ~= false
+        local inScope = Stats.InScope(scope, p.team, p.teamName)
         if inScope and type(p.at) == "number" and type(p.difficulty) == "number" and groupOf(p.difficulty) == group then
             local key = Stats.NightKey(p.at)
             local night = byKey[key]
@@ -828,6 +958,18 @@ if CRT.Timeline and CRT.Timeline.OnChange then
 end
 if CRT.Alerts and CRT.Alerts.OnChange then
     CRT.Alerts:OnChange(watchPhase)
+end
+
+-- removing a team deletes its counters
+if CRT.Team and CRT.Team.OnTeamData then
+    CRT.Team:OnTeamData({
+        count = function(name)
+            return Stats:TeamPulls(name)
+        end,
+        delete = function(name)
+            Stats:DeleteTeam(name)
+        end,
+    })
 end
 
 local driver = CreateFrame("Frame")

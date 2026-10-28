@@ -384,10 +384,10 @@ instance = { "Raid One", "raid", 15 }
 fire("PLAYER_ENTERING_WORLD")
 check(not driver.events.PLAYER_REGEN_ENABLED, "combat's end is only listened to while a pull waits for its read")
 
--- 6b. Team raids and all raids: a pull's bill and the raid's reports go to each scope it counted in -----------------------
+-- 6b. Teams and all raids: a pull's bill and the raid's reports go to each scope it counted in (its team and all) ---------
 do
   local teamNow = true
-  CRT.Team = { PullIsTeam = function() return teamNow end }
+  CRT.Team = { PullTeam = function() return teamNow and "Team" or "Pug" end }
   local E = 9103
   local function pullScoped(team)
     teamNow = team
@@ -410,11 +410,13 @@ do
   runTimers()
   eq(t.raidRepairs .. "/" .. a.raidRepairs, "3500/3500", "a raider's report in both")
   pullScoped(false)
-  eq(t.repairs .. "/" .. a.repairs, "3000/6000", "a pull that isn't a team raid: your bill only in all")
+  eq(t.repairs .. "/" .. a.repairs, "3000/6000", "a Pug pull: your bill not in Team")
   hear("Moo-Stormrage", R.Encode(E, "mythic", serverNow, 700))
   runTimers()
-  eq(t.raidRepairs .. "/" .. a.raidRepairs, "3500/7200", "and the raid's reports only in all")
+  eq(t.raidRepairs .. "/" .. a.raidRepairs, "3500/7200", "and the raid's reports not in Team")
   eq(t.raidPulls .. "/" .. a.raidPulls, "1/2", "pulls with reports, per scope")
+  local pug = S:Boss(E, "mythic", "Pug")
+  eq(pug and (pug.repairs .. "/" .. pug.raidRepairs), "3000/3700", "the Pug pull's bill and reports in Pug's own counters")
   CRT.Team = nil
 end
 
