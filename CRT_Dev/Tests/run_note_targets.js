@@ -172,6 +172,13 @@ check("assignment lines: which class words count", function()
   assert(table.concat(cut, ",") == "priest", "another word pattern, the same list: " .. table.concat(cut, ","))
 end)
 
+-- shield: (a shield bar) is CRT's own: never sent through the bridge, the rest of the line as before
+check("NSRT: a line's shield: option is left out", function()
+  local text = NSRT.ToNSRTText("EncounterID:3001;Name:Boss\\ntime:183;ph:1;tag:everyone;text:Break it;show:bar;shield:boss2,15,any;spellid:5;")
+  assert(not text:find("shield", 1, true), "no shield field: " .. text)
+  assert(text:find("time:183;ph:1;tag:everyone;text:Break it;spellid:5;", 1, true), "the rest as before: " .. text)
+end)
+
 if checks.failed then error(checks.failed .. " failed") end
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
