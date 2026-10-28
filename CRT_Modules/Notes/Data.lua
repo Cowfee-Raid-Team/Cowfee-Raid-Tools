@@ -578,14 +578,18 @@ end
 -- personal: the note is your own (the Personal tab's Import), replacing yours for that boss and
 -- difficulty. Otherwise it is shared, replacing the shared note of the same source (a sender's guild, see
 -- the top), or one from before sources were kept; never a personal note.
-function Notes:Import(text, from, personal, source, via)
+-- anyText: the Import/New dialog only. Text that doesn't read as a raid note is then saved as a new note
+-- of its own (never replacing one) instead of refused.
+function Notes:Import(text, from, personal, source, via, anyText)
+    text = text or ""
     local note = Parser.Parse(text)
-    if not note.name and not note.encounterID and #note.timers == 0 then
+    local plain = not note.name and not note.encounterID and #note.timers == 0
+    if plain and not anyText then
         return nil, "That doesn't look like a raid note. It needs an EncounterID line or time: lines."
     end
     local db = ndb()
     local id
-    for existingId, record in pairs(db.list) do
+    for existingId, record in pairs(plain and {} or db.list) do
         local sameBoss = note.encounterID and record.encounterID == note.encounterID
         local sameDifficulty = (record.difficulty or "") == (note.difficulty or "")
         local sameKind = (record.personal == true) == (personal == true)
@@ -612,6 +616,11 @@ function Notes:Import(text, from, personal, source, via)
     -- a note shared to you is "received", from its sender; one you pasted is "imported"
     store(record, id, text, from and "received" or "imported", { who = from or me() })
     record.name = note.name or ("Note " .. id)
+    if plain then
+        local first = text:match("^%s*([^\r\n]+)")
+        first = first and first:gsub("%s+$", ""):sub(1, 40):gsub("%s+$", "")
+        record.name = (first and first ~= "") and first or ("New note " .. id)
+    end
     record.encounterID = note.encounterID
     record.difficulty = note.difficulty
     record.updated = date("%Y-%m-%d %H:%M")
@@ -627,6 +636,9 @@ function Notes:Import(text, from, personal, source, via)
 
     -- The invite list becomes a Raid Groups layout the first time, which can then be adjusted there.
     local message = "Imported " .. record.name .. (record.difficulty and (" (" .. record.difficulty .. ")") or "") .. "."
+    if plain then
+        message = "Saved as a new note: " .. record.name .. "."
+    end
     if note.invite and not (record.presetId and CRT.Groups and CRT.Groups:Find(record.presetId)) then
         local presetId = rosterFromInvite(note, record.name .. " " .. (record.difficulty or "") .. " roster")
         if presetId then
