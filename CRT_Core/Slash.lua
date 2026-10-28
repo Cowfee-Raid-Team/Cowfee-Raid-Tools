@@ -203,7 +203,8 @@ SlashCmdList["COWFEERAIDTOOLS"] = function(msg)
     elseif CRT.ShieldBarDev and CRT.ShieldBarDev:Command(msg) then
         -- dev shieldbar (off): the shield bar on your own absorb, against a dummy (Dev/ShieldBarDev.lua)
     elseif CRT.BossDebug and CRT.BossDebug:Command(msg) then
-        -- dev bossdebug on, off, show [boss]: log every boss pull, one log per boss, to copy (Dev/BossDebug.lua)
+        -- dev bossdebug on, off, show [boss], emotes [boss]: log every boss pull, one log per boss, to copy;
+        -- emotes copies only its boss emotes and yells, with phase triggers (Dev/BossDebug.lua, BossEmotes.lua)
     elseif CRT.MarkerProbe and CRT.MarkerProbe:Command(msg) then
         -- dev markerprobe: try drawing a raid marker from hidden chat text (Dev/MarkerProbe.lua)
     elseif CRT.SpecialSampleDev and CRT.SpecialSampleDev:Command(msg) then

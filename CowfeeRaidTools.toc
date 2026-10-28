@@ -199,6 +199,7 @@ CRT_Dev\Dev\ClearProbe.lua
 CRT_Dev\Dev\AbsorbProbe.lua
 CRT_Dev\Dev\ShieldBarDev.lua
 CRT_Dev\Dev\BossDebug.lua
+CRT_Dev\Dev\BossEmotes.lua
 CRT_Dev\Dev\MarkerProbe.lua
 CRT_Dev\Dev\SpecialSample.lua
 CRT_Dev\Dev\AlertExport.lua

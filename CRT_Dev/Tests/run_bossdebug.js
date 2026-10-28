@@ -7,7 +7,7 @@ const fs = require('fs');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
 const harness = `
-local clearSrc, absorbSrc, timelineSrc, debugSrc, panelSrc = ...
+local clearSrc, absorbSrc, timelineSrc, debugSrc, emotesSrc, panelSrc = ...
 local fails, passes = 0, 0
 local function check(ok, what) if ok then passes = passes + 1 print("ok " .. what) else fails = fails + 1 print("FAIL " .. what) end end
 
@@ -87,10 +87,14 @@ function GetDifficultyInfo(id) if id == 17 then return "Looking For Raid", "raid
 C_EncounterTimeline = { GetEventState = function() return 1 end, GetEventTrack = function() return 1, 1 end,
   GetEventInfo = function() return nil end, IsFeatureEnabled = function() return true end }
 C_Spell = { GetSpellName = function(id) return id == 111 and "Coil" or nil end }
+local unitNames = { boss1 = "Boss", player = "Alex", raid1 = "Alex", raid2 = "Bob" }
 function UnitExists(u) return u == "boss1" end
 function UnitGUID(u) return u == "boss1" and secret("Creature-0-1") or nil end
-function UnitName(u) return u == "boss1" and "Boss" or nil end
-function UnitCanAttack() return true end
+function UnitName(u) return unitNames[u] end
+local canAttack = true
+function UnitCanAttack() return canAttack end
+function IsInRaid() return true end
+function GetNumGroupMembers() return 2 end
 function UnitHealthPercent() return 50 end
 local absorbs = {}
 function UnitGetTotalAbsorbs(u) return absorbs[u] end
@@ -127,6 +131,7 @@ local function loadAll(CRT)
   assert(load(absorbSrc, "AbsorbProbe.lua"))("CowfeeRaidTools", CRT)
   assert(load(timelineSrc, "TimelineProbe.lua"))("CowfeeRaidTools", CRT)
   assert(load(debugSrc, "BossDebug.lua"))("CowfeeRaidTools", CRT)
+  assert(load(emotesSrc, "BossEmotes.lua"))("CowfeeRaidTools", CRT)
   assert(load(panelSrc, "BossDebugPanel.lua"))("CowfeeRaidTools", CRT)
 end
 local CRT = newCRT()
@@ -149,7 +154,7 @@ check(BD:IsOn() == false, "off by default")
 check(BD:Command("dev bossdebug on") == true and db.dev.bossDebug.on == true, "/crt dev bossdebug on: saved in CRTDB.dev.bossDebug.on")
 check(BD:Command("dev clearprobe on") == false and BD:Command("dev bossdebugger") == false, "another command is not Boss debug's")
 check(not (db.dev.clearProbe and db.dev.clearProbe.on) and not (db.dev.absorbProbe and db.dev.absorbProbe.on), "the probes' own switches stay off")
-check(listening("ENCOUNTER_START") >= 4, "Boss debug and the three probes listen for the pull: " .. listening("ENCOUNTER_START"))
+check(listening("ENCOUNTER_START") >= 5, "Boss debug, the three probes and the emotes log listen for the pull: " .. listening("ENCOUNTER_START"))
 check(not anyAll(), "no frame listens to every event while waiting")
 
 -- A pull: the record opens, each probe writes its section, nothing is printed or shown.
@@ -167,6 +172,7 @@ now = 212.34
 fire("CHAT_MSG_RAID_BOSS_EMOTE", secret("The altar coils!"), secret("Ula'tek"), "", "")
 check(has(3492, "clear", "+12.3 CHAT_MSG_RAID_BOSS_EMOTE text=<secret> sender=<secret>"), "a secret emote in the clear section")
 check(has(3492, "timeline", "+12.3 chatemote.text@event secret"), "the same emote in the timeline section, as secret")
+check(section(3492, "emotes")[#section(3492, "emotes")] == "0:12.3 CHAT_MSG_RAID_BOSS_EMOTE <secret>: <secret>", "the same emote in the emotes section, sender and text secret: " .. tostring(section(3492, "emotes")[#section(3492, "emotes")]))
 absorbs.boss1 = secret(5000)
 fire("UNIT_ABSORB_AMOUNT_CHANGED", "boss1")
 fire("ENCOUNTER_TIMELINE_EVENT_ADDED", { id = 7, source = 0, spellID = secret(111), spellName = secret("Coil"), duration = 30, isApproximate = false })
@@ -193,9 +199,10 @@ check(not has(3492, "clear", "after"), "nothing is logged after the pull")
 local text = BD:Text(3492) or ""
 check(text:find("Boss debug: Ula'tek, encounter 3492", 1, true) ~= nil, "Text: the boss and encounter ID")
 check(text:find("Looking For Raid (difficulty 17), pulled " .. os.date("%Y-%m-%d %H:%M", clock) .. ", kill, 4:12", 1, true) ~= nil, "Text: difficulty, date and time, kill, length m:ss")
-check(text:find("Lines: " .. r.kept .. " kept, 0 dropped. Secret values: clear " .. r.counts.clear.secret .. ", absorb " .. r.counts.absorb.secret .. ", timeline " .. r.counts.timeline.secret .. ".", 1, true) ~= nil, "Text: lines kept and dropped, secret counts per section")
-local c1, a1, t1 = text:find("== clear ==", 1, true), text:find("== absorb ==", 1, true), text:find("== timeline ==", 1, true)
-check(c1 and a1 and t1 and c1 < a1 and a1 < t1, "Text: clear, absorb, timeline, in that order")
+check(text:find("Lines: " .. r.kept .. " kept, 0 dropped. Secret values: emotes " .. r.counts.emotes.secret .. ", clear " .. r.counts.clear.secret .. ", absorb " .. r.counts.absorb.secret .. ", timeline " .. r.counts.timeline.secret .. ".", 1, true) ~= nil, "Text: lines kept and dropped, secret counts per section")
+local e1, c1, a1, t1 = text:find("== emotes ==", 1, true), text:find("== clear ==", 1, true), text:find("== absorb ==", 1, true), text:find("== timeline ==", 1, true)
+check(e1 and c1 and a1 and t1 and e1 < c1 and c1 < a1 and a1 < t1, "Text: emotes, clear, absorb, timeline, in that order")
+check(BD.SECTIONS[1] == "emotes", "emotes is the first section")
 check(text:find("== clear ==\\n+0.0 ENCOUNTER_START", 1, true) ~= nil and text:find("+12.3 CHAT_MSG_RAID_BOSS_EMOTE", 1, true) ~= nil, "Text: each section's lines with their seconds")
 check(BD:Text(1234) == nil, "Text of a boss with no record: nil")
 
@@ -229,7 +236,7 @@ local help = CRT.helps[#CRT.helps]
 check(help and help.target == sec.check.label and help.text:find("one log per boss", 1, true) and help.text:find("Nothing ships; nothing shows during the pull.", 1, true), "its (?) explains it")
 check(#rows == 2 and rows[1].title.text:find("The Coiled Altar", 1, true) and rows[2].title.text:find("Ula'tek", 1, true), "two rows, route order: " .. tostring(rows[1] and rows[1].title.text) .. " / " .. tostring(rows[2] and rows[2].title.text))
 check(rows[2].title.text == "Ula'tek, Looking For Raid", "a row's first line: boss and difficulty")
-check(rows[2].info.text == os.date("%m-%d %H:%M", 1792540800) .. ", kill 4:12, " .. rec(3492).kept .. " lines, " .. (rec(3492).counts.clear.secret + rec(3492).counts.absorb.secret + rec(3492).counts.timeline.secret) .. " secret", "a row's second line: time, kill m:ss, lines, secret: " .. tostring(rows[2].info.text))
+check(rows[2].info.text == os.date("%m-%d %H:%M", 1792540800) .. ", kill 4:12, " .. rec(3492).kept .. " lines, " .. (rec(3492).counts.emotes.secret + rec(3492).counts.clear.secret + rec(3492).counts.absorb.secret + rec(3492).counts.timeline.secret) .. " secret", "a row's second line: time, kill m:ss, lines, secret: " .. tostring(rows[2].info.text))
 check(rows[1].info.text:find("wipe 1:02", 1, true) ~= nil, "a wipe row: " .. tostring(rows[1].info.text))
 shown = nil
 rows[2].copy:Click()
@@ -261,7 +268,7 @@ fire("ENCOUNTER_START", 3470, "Nek'zali", 16, 20)
 for i = 1, 30 do fire("ENCOUNTER_TIMELINE_EVENT_HIGHLIGHT", i) end
 fire("ENCOUNTER_END", 3470, "Nek'zali", 16, 20, 1)
 local capped = rec(3470)
-local kept = #capped.lines.clear + #(capped.lines.absorb or {}) + #(capped.lines.timeline or {})
+local kept = #capped.lines.clear + #(capped.lines.absorb or {}) + #(capped.lines.timeline or {}) + #(capped.lines.emotes or {})
 check(capped.kept == kept and #capped.lines.clear < 20 and not has(3470, "clear", "ENCOUNTER_END") and capped.dropped > 0, "the record stops taking lines at MAX_LINES and counts the dropped: " .. kept .. " kept, " .. tostring(capped.dropped) .. " dropped")
 check(has(3470, "absorb", "ENCOUNTER_END"), "the absorb probe's kinds other than auras go in past the record's cap")
 check((BD:Text(3470) or ""):find("Lines: " .. kept .. " kept, " .. capped.dropped .. " dropped.", 1, true) and (BD:Text(3470) or ""):find(capped.dropped .. " more lines dropped (a log keeps 20)", 1, true), "Text says how many were dropped")
@@ -300,6 +307,126 @@ for _, l in ipairs(section(3470, "absorb")) do if l:find('UNIT_AURA unit="boss2"
 check(errLines == 1 and has(3470, "absorb", "tainted\\" count=10") and auraCalls == 2,"an aura error in the record: one line whose count is kept up to date")
 C_UnitAuras = nil
 
+-- The emotes section: every boss emote, whisper, yell, say and monster emote, boss units turning targetable or
+-- not and new boss units, kept past the record's cap and a flooded absorb section, under a limit of its own.
+local BE = CRT.BossEmotes
+check(BE and BE.MAX_LINES == 1500, "CRT.BossEmotes exists, MAX_LINES 1500")
+BD.MAX_LINES = 20
+local manyAuras = {}
+for i = 1, 40 do manyAuras[i] = { spellId = 700 + i, name = "B", points = {} } end
+C_UnitAuras = { GetAuraDataByIndex = function(u, i) return u == "boss1" and manyAuras[i] or nil end }
+now = 3000
+clock = clock + 6000
+fire("ENCOUNTER_START", 3492, "Ula'tek", 16, 20)
+check(section(3492, "emotes")[1] == "0:00.0 ENCOUNTER_START Ula'tek: boss1 Boss", "the emotes section starts with the pull and its boss units: " .. tostring(section(3492, "emotes")[1]))
+for i = 1, 30 do fire("ENCOUNTER_TIMELINE_EVENT_HIGHLIGHT", i) end
+fire("UNIT_AURA", "boss1", {})
+local auraKept = 0
+for _, l in ipairs(section(3492, "absorb")) do if l:find("UNIT_AURA unit=", 1, true) then auraKept = auraKept + 1 end end
+check(rec(3492).kept >= 20 and rec(3492).dropped > 0 and auraKept < 40, "the record is full and the absorb section flooded: " .. rec(3492).kept .. " kept, " .. rec(3492).dropped .. " dropped, " .. auraKept .. " aura lines")
+now = 3012.34
+fire("CHAT_MSG_RAID_BOSS_EMOTE", "|cFFFF0000%s|r fixates on Alex!", "Ula'tek", "", "", "Alex")
+fire("RAID_BOSS_EMOTE", "|cFFFF0000%s|r fixates on Alex!", "Ula'tek", 5, true)
+check(has(3492, "emotes", "0:12.3 CHAT_MSG_RAID_BOSS_EMOTE Ula'tek: |cFFFF0000%s|r fixates on Alex!") and has(3492, "emotes", "0:12.3 RAID_BOSS_EMOTE Ula'tek: |cFFFF0000%s|r fixates on Alex!"), "boss emotes kept past MAX_LINES and the flooded absorb section, m:ss.t EVENT sender: text")
+now = 3020
+fire("RAID_BOSS_EMOTE", "|T12345:20|t The altar coils!", "Ula'tek", 5, true)
+now = 3030
+fire("CHAT_MSG_RAID_BOSS_EMOTE", "|cFFFF0000%s|r fixates on Bob!", "Ula'tek", "", "", "Bob")
+now = 3040
+fire("CHAT_MSG_MONSTER_YELL", "You cannot stop the tide!", "Ula'tek")
+now = 3041.06
+fire("CHAT_MSG_MONSTER_YELL", "You cannot stop the tide!", "Ula'tek")
+now = 3050
+fire("CHAT_MSG_RAID_BOSS_WHISPER", secret("Run from the altar"), "Ula'tek")
+fire("CHAT_MSG_MONSTER_SAY", "Hm.", secret("Ula'tek"))
+fire("CHAT_MSG_MONSTER_EMOTE", "Ula'tek roars.", "Ula'tek")
+fire("RAID_BOSS_WHISPER", "Run!", "Ula'tek", 4, false)
+canAttack = secret(false)
+fire("UNIT_TARGETABLE_CHANGED", "boss6")
+canAttack = true
+fire("UNIT_TARGETABLE_CHANGED", "target")
+fire("UNIT_TARGETABLE_CHANGED", "boss9")
+fire("UNIT_TARGETABLE_CHANGED", "boss1")
+fire("INSTANCE_ENCOUNTER_ENGAGE_UNIT")
+check(has(3492, "emotes", "0:40.0 CHAT_MSG_MONSTER_YELL Ula'tek: You cannot stop the tide!") and has(3492, "emotes", "0:41.1 CHAT_MSG_MONSTER_YELL"), "yells, with tenths of a second")
+check(has(3492, "emotes", "0:50.0 CHAT_MSG_RAID_BOSS_WHISPER Ula'tek: <secret>"), "a secret whisper: its text is <secret>")
+check(has(3492, "emotes", "0:50.0 CHAT_MSG_MONSTER_SAY <secret>: Hm.") and has(3492, "emotes", "0:50.0 CHAT_MSG_MONSTER_EMOTE Ula'tek: Ula'tek roars.") and has(3492, "emotes", "0:50.0 RAID_BOSS_WHISPER Ula'tek: Run!"), "says, monster emotes and boss whispers, a secret sender as <secret>")
+check(has(3492, "emotes", "0:50.0 UNIT_TARGETABLE_CHANGED boss6: exists=false canAttack=<secret>") and has(3492, "emotes", "0:50.0 UNIT_TARGETABLE_CHANGED boss1: exists=true canAttack=true"), "targetable changes on boss1 to boss8, a secret canAttack as <secret>")
+check(not has(3492, "emotes", "UNIT_TARGETABLE_CHANGED target") and not has(3492, "emotes", "boss9"), "other units' targetable changes are left out")
+check(has(3492, "emotes", "0:50.0 INSTANCE_ENCOUNTER_ENGAGE_UNIT boss1 Boss"), "a new boss unit: which boss units exist and their names")
+check(rec(3492).counts.emotes.secret == 3, "the section's secret count: " .. rec(3492).counts.emotes.secret)
+-- the section's own limit: past it, lines are counted, not kept, and the summary still counts them
+local before = #section(3492, "emotes")
+BE.MAX_LINES = before + 2
+now = 3060
+for i = 1, 5 do fire("CHAT_MSG_MONSTER_YELL", "Again!", "Ula'tek") end
+check(#section(3492, "emotes") == before + 2 and rec(3492).capped and rec(3492).capped["emotes limit"] == 3, "past the section's own limit lines are counted only: " .. #section(3492, "emotes") .. " kept, " .. tostring(rec(3492).capped and rec(3492).capped["emotes limit"]) .. " left out")
+now = 3070
+fire("ENCOUNTER_END", 3492, "Ula'tek", 16, 20, 1)
+fire("CHAT_MSG_MONSTER_YELL", "After the pull", "Ula'tek")
+check(not has(3492, "emotes", "After the pull"), "nothing goes to the emotes section after the pull")
+-- the summary under the section's lines
+local et = BD:EmotesText(3492) or ""
+local full = BD:Text(3492) or ""
+local function at(s, needle) return s:find(needle, 1, true) end
+check(at(et, "Boss debug: Ula'tek, encounter 3492") and at(et, "== emotes ==") and not at(et, "== clear ==") and not at(et, "== absorb =="), "EmotesText: the header and the emotes section only")
+check(at(et, '0:12.3 2x boss emote (CHAT_MSG_RAID_BOSS_EMOTE 2, RAID_BOSS_EMOTE 1): %s fixates on <name>!\\n  { kind = "emote", value = "fixates on" }'), "summary: a distinct text without colour codes or names, its first time, count, and the trigger line")
+check(at(et, '0:20.0 1x boss emote (RAID_BOSS_EMOTE 1): The altar coils!\\n  { kind = "emote", value = "The altar coils!" }'), "summary: a texture code stripped from the text and the trigger")
+check(at(et, "0:40.0 2x yell (CHAT_MSG_MONSTER_YELL 2): You cannot stop the tide!\\n  (no trigger: phase triggers read boss emotes only)"), "summary: a yell, with no trigger since phase triggers read boss emotes only")
+check(at(et, "0:50.0 1x boss whisper (CHAT_MSG_RAID_BOSS_WHISPER 1): <secret>\\n  (secret text: no trigger)"), "summary: a secret text is listed as secret, not suggested")
+check(at(et, "1:00.0 5x yell (CHAT_MSG_MONSTER_YELL 5): Again!"), "summary: counts the lines past the section's limit")
+local n = 0 for _ in et:gmatch('kind = "emote"') do n = n + 1 end
+check(n == 2, "summary: a trigger line for the two boss emotes only: " .. n)
+local sum = et:sub(at(et, "Summary") or 1)
+check(at(sum, "fixates on <name>") < at(sum, "The altar coils!") and at(sum, "The altar coils!") < at(sum, "You cannot stop") and at(sum, "You cannot stop") < at(sum, "Again!"), "summary: texts in the order they first came")
+check(at(et, "1:10.0 ENCOUNTER_END Ula'tek: kill"), "the pull's end line is kept past the section's limit")
+check(at(et, "Lines: ") and at(et, "3 more emote lines left out (the section keeps " .. BE.MAX_LINES .. ")"), "EmotesText says how many lines the limit left out")
+check(at(full, "== emotes ==") < at(full, "Summary") and at(full, "Summary") < at(full, "== clear =="), "Text: the summary sits under the emotes lines, before the clear section")
+-- /crt dev bossdebug emotes [boss], and the page's Emotes button
+shown = nil
+BD:Command("dev bossdebug emotes ulatek")
+check(shown and shown.text == et and shown.title:find("emotes", 1, true) and shown.title:find("Ula'tek", 1, true), "emotes <boss> opens only the emotes section and summary: " .. tostring(shown and shown.title))
+shown = nil
+BD:Command("dev bossdebug emotes")
+check(shown and shown.text == et, "emotes without a boss opens the latest pull's")
+shown, printed = nil, {}
+BD:Command("dev bossdebug emotes nobody")
+check(shown == nil and #printed == 1 and printed[1]:find("nobody", 1, true), "emotes of a boss with no log says so")
+sec.refresh()
+local erow
+for _, row in ipairs(sec.rows) do if row.shown and row.encounterID == 3492 then erow = row end end
+check(erow and erow.emotes and erow.emotes.text == "Emotes" and erow.emotes.points[1][2] == erow.copy, "a row has Emotes beside Copy")
+shown = nil
+if erow then erow.emotes:Click() end
+check(shown and shown.text == et, "Emotes opens the boss's emotes and summary in the copy window")
+BD.MAX_LINES = 6000
+BE.MAX_LINES = 1500
+C_UnitAuras = nil
+
+-- The trigger value: a spell link's name first, then the longest run that no other boss emote of the pull
+-- contains; when every choice is in another emote too, the line says how many.
+now = 3200
+clock = clock + 600
+fire("ENCOUNTER_START", 3470, "Nek'zali", 16, 20)
+now = 3201
+fire("CHAT_MSG_RAID_BOSS_EMOTE", "|T12345:20|t%s begins to cast |cFFFF0000|Hspell:12345|h[Annihilate]|h|r!", "Nek'zali")
+fire("CHAT_MSG_RAID_BOSS_EMOTE", "%s begins to cast |cFFFF0000|Hspell:678|h[Obliterate]|h|r!", "Nek'zali")
+fire("CHAT_MSG_RAID_BOSS_EMOTE", "|cFFFFFFFFThe sky burns|r while the ground shakes", "Nek'zali")
+fire("CHAT_MSG_RAID_BOSS_EMOTE", "|cFFFFFFFFThe sea rises|r while the ground shakes", "Nek'zali")
+fire("CHAT_MSG_RAID_BOSS_EMOTE", "Doom", "Nek'zali")
+fire("CHAT_MSG_RAID_BOSS_EMOTE", "Doom approaches", "Nek'zali")
+fire("CHAT_MSG_RAID_BOSS_EMOTE", "Alexandra rises beside Alex.", "Nek'zali")
+fire("UNIT_TARGETABLE_CHANGED", secret("boss1"))
+fire("UNIT_TARGETABLE_CHANGED", secret("raid3"))
+now = 3210
+fire("ENCOUNTER_END", 3470, "Nek'zali", 16, 20, 0)
+local nt = BD:EmotesText(3470) or ""
+check(at(nt, '%s begins to cast [Annihilate]!\\n  { kind = "emote", value = "Annihilate" }') and at(nt, '%s begins to cast [Obliterate]!\\n  { kind = "emote", value = "Obliterate" }'), "a spell link's name is the trigger, not the run every cast emote shares")
+check(at(nt, '{ kind = "emote", value = "The sky burns" }') and at(nt, '{ kind = "emote", value = "The sea rises" }'), "a run another emote contains too gives way to the next longest")
+check(at(nt, 'Doom\\n  { kind = "emote", value = "Doom" } -- also matches 1 other emote') and at(nt, '{ kind = "emote", value = "Doom approaches" }\\n'), "a value found in other emotes says how many")
+check(at(nt, ": Alexandra rises beside <name>.") and at(nt, 'value = "Alexandra rises beside"'), "a group name is taken out as a whole word only")
+check(not at(nt, "UNIT_TARGETABLE_CHANGED") and rec(3470).capped and rec(3470).capped["emotes secret unit"] == 2, "a secret unit token is counted, not logged")
+
 -- The probes' own switches still work beside Boss debug.
 CRT.ClearProbe:Command("dev clearprobe on")
 now = 1100
@@ -307,7 +434,7 @@ fire("ENCOUNTER_START", 3429, "The Coiled Altar", 16, 20)
 fire("ENCOUNTER_END", 3429, "The Coiled Altar", 16, 20, 1)
 check(db.dev.clearProbe.last and db.dev.clearProbe.last.lines[1]:find("3429", 1, true) and #section(3429, "clear") == 2, "with the clear probe on too, both logs get the pull")
 CRT.ClearProbe:Command("dev clearprobe off")
-check(listening("ENCOUNTER_START") >= 4, "the clear probe off: it still listens for Boss debug")
+check(listening("ENCOUNTER_START") >= 5, "the clear probe off: it still listens for Boss debug")
 
 -- Slash: show lists the rows; show <boss> or its ID opens the copy window.
 printed = {}
@@ -339,7 +466,7 @@ frames = {}
 local CRT2 = newCRT()
 loadAll(CRT2)
 fire("PLAYER_LOGIN")
-check(CRT2.BossDebug:IsOn() and listening("ENCOUNTER_START") >= 4, "after a /reload: still on, the probes listen")
+check(CRT2.BossDebug:IsOn() and listening("ENCOUNTER_START") >= 5, "after a /reload: still on, the probes listen")
 now = 2000
 fire("ENCOUNTER_START", 3492, "Ula'tek", 17, 20)
 fire("ENCOUNTER_END", 3492, "Ula'tek", 17, 20, 1)
@@ -355,10 +482,10 @@ print(passes .. " passed, " .. fails .. " failed")
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 const d = process.argv[2];
-for (const f of ['ClearProbe', 'AbsorbProbe', 'TimelineProbe', 'BossDebug', 'BossDebugPanel']) {
+for (const f of ['ClearProbe', 'AbsorbProbe', 'TimelineProbe', 'BossDebug', 'BossEmotes', 'BossDebugPanel']) {
   lua.lua_pushstring(L, to_luastring(fs.readFileSync(d + '/CRT_Dev/Dev/' + f + '.lua', 'utf8')));
 }
-if (lua.lua_pcall(L, 5, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
+if (lua.lua_pcall(L, 6, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
 
 // Developer only: both files inside the .toc's do-not-package block, after the probes; the command inside Slash.lua's.
 const toc = fs.readFileSync(d + '/CowfeeRaidTools.toc', 'utf8');
@@ -368,11 +495,12 @@ function inBlock(text, needle) {
   return a >= 0 && i > a && i < b;
 }
 let bad = 0;
-for (const f of ['CRT_Dev\\Dev\\BossDebug.lua', 'CRT_Dev\\Dev\\BossDebugPanel.lua']) {
+for (const f of ['CRT_Dev\\Dev\\BossDebug.lua', 'CRT_Dev\\Dev\\BossEmotes.lua', 'CRT_Dev\\Dev\\BossDebugPanel.lua']) {
   if (!inBlock(toc, f)) { console.log('FAIL ' + f + ' is not in the .toc do-not-package block'); bad++; }
 }
 if (toc.indexOf('CRT_Dev\\Dev\\BossDebug.lua') < toc.indexOf('CRT_Dev\\Dev\\AbsorbProbe.lua')) { console.log('FAIL BossDebug.lua loads before the probes'); bad++; }
-if (toc.indexOf('CRT_Dev\\Dev\\BossDebugPanel.lua') > toc.indexOf('CRT_Dev\\Dev\\DevPage.lua')) { console.log('FAIL BossDebugPanel.lua loads after DevPage.lua'); bad++; }
+if (toc.indexOf('CRT_Dev\\Dev\\BossEmotes.lua') < toc.indexOf('CRT_Dev\\Dev\\BossDebug.lua')) { console.log('FAIL BossEmotes.lua loads before BossDebug.lua'); bad++; }
+if (toc.indexOf('CRT_Dev\\Dev\\BossDebugPanel.lua') >toc.indexOf('CRT_Dev\\Dev\\DevPage.lua')) { console.log('FAIL BossDebugPanel.lua loads after DevPage.lua'); bad++; }
 const sa = slash.indexOf('--@do-not-package@'), sb = slash.indexOf('--@end-do-not-package@'), si = slash.indexOf('CRT.BossDebug:Command');
 if (!(sa >= 0 && si > sa && si < sb)) { console.log('FAIL the bossdebug command is not in the Slash.lua do-not-package block'); bad++; }
 if (bad === 0) console.log('ok the files and the command never ship');
