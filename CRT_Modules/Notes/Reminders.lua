@@ -67,7 +67,6 @@ local TEXT = {
     countHelp = "What the bar's number counts down to: the end of the cast, or the next hit.",
     -- in their place when the alert's bar is a shield bar (the alert editor's Shield bar section)
     shieldTitle = "Shield bar",
-    shieldLine = "Shield bar: Boss %d, %s s",
     shieldHelp = "This alert's bar shows the boss's shield as the raid breaks it, in place of impact ticks and fill. Change it in the alert editor: double-click the alert's cast on the Timeline.",
     also = "Also",
     speak = "Speak the text",
@@ -646,7 +645,7 @@ local function drawBarRows(d)
     panel.shieldLine:SetShown(a ~= nil)
     panel.shieldHelp:SetShown(a ~= nil)
     if a then
-        panel.shieldLine:SetText(string.format(TEXT.shieldLine, tonumber(a.unit:match("%d+")) or 1, ("%g"):format(a.length)))
+        panel.shieldLine:SetText(CRT.AlertShieldPulls.BarLine(a))
         local v = on and 1 or 0.5
         panel.shieldLine:SetTextColor(v, v, v)
     end

@@ -63,7 +63,6 @@ local TEXT = {
     barFill = "Bar fill",
     fillUp = "Bar fills up",
     fillDown = "Bar empties",
-    shieldLine = "Shield bar: Boss %d, %s s", -- in Bar fill's place for a shield bar (absorb)
     countTo = "Count down to",
     countCast = "The cast",
     countImpact = "Each impact",
@@ -425,9 +424,12 @@ local function drawPanel(enc, entry)
     ui.fill.refresh()
     -- a shield bar (absorb) fills with the shield left, not with time: nothing to choose
     ui.fill:SetShown(entry.absorb == nil)
+    -- in Bar fill's place: the shield bar's line (Alerts/ShieldPulls.lua), greyed while Bar is off as Mech Alerts' is
     ui.shieldLine:SetShown(entry.absorb ~= nil)
     if entry.absorb then
-        ui.shieldLine:SetText(string.format(TEXT.shieldLine, tonumber(entry.absorb.unit:match("%d+")) or 1, ("%g"):format(entry.absorb.length)))
+        ui.shieldLine:SetText(CRT.AlertShieldPulls.BarLine(entry.absorb))
+        local v = c.show.bar and 1 or 0.5
+        ui.shieldLine:SetTextColor(v, v, v)
     end
     ui.countTo.refresh()
     drawMarkers(entry)

@@ -159,3 +159,9 @@ end
 function ShieldPulls.UnitNumber(unit)
     return tonumber(type(unit) == "string" and unit:match("^boss(%d)$") or nil)
 end
+
+-- What Mech Alerts' and the Special panel's line says of an alert's shield bar: "Shield bar: Boss 2, 15 s".
+ShieldPulls.BAR_LINE = "Shield bar: Boss %s, %s s"
+function ShieldPulls.BarLine(absorb)
+    return string.format(ShieldPulls.BAR_LINE, tostring(ShieldPulls.UnitNumber(absorb.unit) or "?"), ("%g"):format(absorb.length))
+end
