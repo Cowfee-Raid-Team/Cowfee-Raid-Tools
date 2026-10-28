@@ -3,7 +3,9 @@
 // first one at all), the fill and amount take the shield's secret readings only through StatusBar:SetMinMaxValues,
 // SetValue and AbbreviateNumbers then SetText, the tick runs right to left over its length, the colour never changes,
 // and the bar ends at its length, the encounter's end and when its window closes. Secret values are proxies that raise
-// an error on any use the game forbids (arithmetic, comparison, indexing, length, concatenation, tostring).
+// an error on any use the game forbids (arithmetic, comparison, indexing, length, concatenation, tostring). A proxy
+// can't see == against a number or a truth test (if total then): run_all.sh's lint "shield readings are never
+// compared" reads the code for those.
 // Usage: node run_alerts_absorb.js <addon folder>
 const fs = require('fs');
 const themeLua = require('./theme_stub');
@@ -42,6 +44,8 @@ local function mock(kind, parent)
       return g end end
     if k == "SetScript" then return function(self, n, fn) rawset(self, n, fn) end end
     if k == "RegisterEvent" then return function(self, e) self.events[e] = true end end
+    -- as the game's: the units it listens to, a new call taking the old one's place
+    if k == "RegisterUnitEvent" then return function(self, e, ...) self.events[e] = table.concat({ ... }, ",") end end
     if k == "UnregisterEvent" then return function(self, e) self.events[e] = nil end end
     if k == "Show" then return function(self) self.shown = true end end
     if k == "Hide" then return function(self) self.shown = false end end
@@ -136,10 +140,10 @@ A:RegisterBlock("special", { label = "Special", group = false, Entries = functio
   local c = {} for k, v in pairs(it) do c[k] = v end out[i] = c end return out end })
 local function shieldItems()
   return {
-    { id = "special:shield:1", ph = 1, time = 60, text = "Shield", warn = 6, hold = 0.5, priority = 31,
-      outputs = { alert = true, bar = true }, absorb = { unit = "boss2", length = 15 } },
-    { id = "special:shield:2", ph = 1, time = 150, text = "Shield", warn = 6, hold = 0.5, priority = 31,
-      outputs = { alert = true, bar = true }, absorb = { unit = "boss2", length = 15 } },
+    { id = "special:shield:1", ph = 1, time = 60, text = "Shield", warn = 6, hold = 0.5, priority = 31, special = "shield",
+      outputs = { alert = true, bar = true }, absorb = { unit = "boss2", length = 15, lead = 6 } },
+    { id = "special:shield:2", ph = 1, time = 150, text = "Shield", warn = 6, hold = 0.5, priority = 31, special = "shield",
+      outputs = { alert = true, bar = true }, absorb = { unit = "boss2", length = 15, lead = 6 } },
     { id = "later", ph = 2, time = 5, text = "Later", warn = 0, hold = 0, priority = 31, outputs = { bar = true } },
   }
 end
@@ -159,7 +163,7 @@ end
 
 -- Mythic: the window of the first cast is 154 to 175 s; the item draws no bar of its own
 pull(shieldItems())
-check(absorbFrame() ~= nil, "a pull with a shield item listens to UNIT_ABSORB_AMOUNT_CHANGED")
+check(absorbFrame() ~= nil and absorbFrame().events.UNIT_ABSORB_AMOUNT_CHANGED == "boss2", "a pull with a shield item listens to UNIT_ABSORB_AMOUNT_CHANGED, for boss2 only (RegisterUnitEvent)")
 local first = secret(900000)
 absorbs.boss2 = first
 clock = 150 fire("boss2")
@@ -300,6 +304,95 @@ check(#sh == 1 and sh[1].row.time == "15" and B.pool[1].line.id ~= firstId, "aft
 clock = 140 B:Refresh()
 check(#shields() == 1, "it runs on with no events (the fill stays where it was)")
 fire("boss3")
+check(#errors == 0, tostring(errors[1]))
+
+-- A pull with no shield items or watches registers nothing
+pull({ { id = "plain", ph = 1, time = 10, text = "Plain", warn = 0, hold = 0, outputs = { bar = true } } })
+check(absorbFrame() == nil, "no shield bar in the pull: the event is not registered")
+
+-- Bar off (Show as): no shield bar, and nothing registered when only bar-off items carry absorb
+local function barOff(list) for _, it in ipairs(list) do if it.absorb then it.outputs = { alert = true, bar = false } end end return list end
+pull(barOff(shieldItems()))
+check(absorbFrame() == nil, "Bar off: the event is not registered")
+absorbs.boss2 = secret(5)
+clock = 157 B:Refresh()
+check(#B:Visible() == 0, "Bar off: no bar")
+local mixed = barOff(shieldItems())
+mixed[#mixed + 1] = { id = "special:other:1", ph = 1, time = 60, text = "Other", warn = 6, hold = 0, priority = 31, special = "other",
+  outputs = { bar = true }, absorb = { unit = "boss3", length = 10, lead = 6 } }
+pull(mixed)
+check(absorbFrame() and absorbFrame().events.UNIT_ABSORB_AMOUNT_CHANGED == "boss3", "only the bar-on item's unit is listened to")
+absorbs.boss2, absorbs.boss3 = secret(5), secret(6)
+clock = 157 fire("boss2") fire("boss3") B:Refresh()
+sh = shields()
+check(#sh == 1 and sh[1].row.text == "Other", "only the bar-on item's shield bar")
+
+-- The window is the entry's own lead (absorb.lead, 6 s), not the player's Show from (warn, 10 s here)
+local long = shieldItems()
+long[1].warn = 10
+pull(long)
+absorbs.boss2 = secret(5)
+clock = 152 fire("boss2") B:Refresh()
+check(#shields() == 0, "8 s before the cast: inside your Show from, outside the entry's lead: nothing")
+clock = 154.5 fire("boss2") B:Refresh()
+check(#shields() == 1, "5.5 s before: inside the entry's lead, the bar")
+
+-- An event after the window, with none before: nothing (no untimed watch here)
+pull(shieldItems())
+absorbs.boss2 = secret(5)
+clock = 176 fire("boss2") B:Refresh()
+check(#shields() == 0, "after the cast's window: nothing")
+
+-- The fallback: the shield's casts in phase 2, no phase trigger. Without Next phase its windows never open, so the
+-- untimed watch starts the bar on the first event; with Next phase pressed, inside a window, one timed bar.
+local function phase2Items()
+  local list = shieldItems()
+  list[1].ph, list[1].time = 2, 70
+  list[2].ph, list[2].time = 2, 200
+  list[3].ph = 3
+  -- phase 1 is the pull's: something in it
+  list[4] = { id = "p1", ph = 1, time = 500, text = "Late", warn = 0, hold = 0, priority = 31, outputs = { alert = true } }
+  return list
+end
+local watch = { { id = "absorb:shield", key = "shield", unit = "boss2", length = 15, text = "Shield", timed = true } }
+pull(phase2Items(), watch)
+absorbs.boss2 = secret(5)
+clock = 300 fire("boss2") B:Refresh()
+sh = shields()
+check(#sh == 1 and B.pool[1].line.id == "absorb:shield:1", "no Next phase: the first absorb event starts the bar anyway")
+A:Stop()
+pull(phase2Items(), watch)
+absorbs.boss2 = secret(5)
+clock = 200 A:StartPhase(2) -- the casts at 270 and 400
+clock = 266 fire("boss2") B:Refresh()
+sh = shields()
+check(#sh == 1 and B.pool[1].line.id == "special:shield:1", "Next phase pressed, inside the window: one timed bar")
+for t = 266.1, 270, 0.1 do clock = t fire("boss2") end
+B:Refresh()
+check(#shields() == 1, "still one bar")
+clock = 282 fire("boss2") B:Refresh()
+check(#shields() == 0, "the timed bar ended; the shield still up: no untimed bar on top")
+-- a window that opens while the untimed bar runs takes it over: still one bar
+local early = phase2Items()
+early[1].time = 3
+pull(early, watch)
+absorbs.boss2 = secret(5)
+clock = 260 fire("boss2") B:Refresh()
+check(#shields() == 1 and B.pool[1].line.id == "absorb:shield:1", "before Next phase: the untimed bar")
+local untimedState = B.pool[1].line.absorb
+clock = 262 A:StartPhase(2) -- the first cast at 265: its window is open from 259
+clock = 264 fire("boss2") B:Refresh()
+check(#shields() == 1 and B.pool[1].line.absorb == untimedState, "Next phase with its window open: the same bar goes on, no second one")
+clock = 266 fire("boss2") B:Refresh()
+check(#shields() == 1, "still one")
+clock = 275.5 fire("boss2") B:Refresh()
+check(#shields() == 0, "it ends at its length; the window still open: nothing new")
+-- the timed rules' events count for the gap too: after the window, no untimed bar while the events go on
+for t = 276, 282, 0.5 do clock = t fire("boss2") end
+B:Refresh()
+check(#shields() == 0, "after the window, the events still coming: no untimed bar")
+clock = 284 fire("boss2") B:Refresh()
+check(#shields() == 1 and B.pool[1].line.id == "absorb:shield:2", "after a 2 s gap: a new shield, a new untimed bar")
 check(#errors == 0, tostring(errors[1]))
 
 print(passes .. " passed, " .. fails .. " failed")

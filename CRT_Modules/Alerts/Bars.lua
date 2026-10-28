@@ -481,6 +481,7 @@ local function drawCastLine(bar, pos, left, room, height)
     t:Show()
 end
 
+-- [shield bar] (to its closing mark: the suite's lint "shield readings are never compared" reads this part)
 -- Shield bars (Alerts/Absorb.lua): a line whose absorb is its shield's state. The fill is a StatusBar over the bar's
 -- room, given the shield's readings as they came: its first as the maximum (SetMinMaxValues), each later one
 -- (SetValue), at most once per ABSORB_REDRAW seconds. The amount on the left is AbbreviateNumbers' text of the last
@@ -601,6 +602,7 @@ local function drawAbsorb(bar, line, r, now, s, left, width, height, size, tc)
     animateAbsorb(bar, now)
     sb:Show()
 end
+-- [/shield bar]
 
 -- What moves with time on a bar: its fill, its seconds and its ticks' fade, from what its last draw kept (the
 -- line, its row, the fill's room). Part of every draw, and run every frame in between (the area's def.move), so

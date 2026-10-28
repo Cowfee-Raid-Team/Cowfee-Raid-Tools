@@ -27,7 +27,8 @@ local ADDON, CRT = ...
 --             Every alert plays on every difficulty (no difficulty field): each reads its row from the run's own
 --             difficulty's timeline, Mythic's on Mythic and Heroic's on Normal and Heroic, never the other's.
 --             The Shield (Eternal Nightfall) is a shield bar on Malacrass, boss2 (absorb probe, Heroic, 2026-10-27):
---             its fill is his absorb left, starting when the shield goes up near each cast.
+--             its fill is his absorb left, starting when the shield goes up near each cast, and on the shield's first
+--             absorb event while phase 2 waits for Next phase (Alerts/Absorb.lua's untimed rule).
 --             Still needs Alex: phase triggers, once his /crt dev probe pull confirms the phase events; until then
 --             phase 2 and 3 alerts wait for Next phase.
 --             CRT_Dev/Tests/run_season_special.js checks every entry reads and every row is on both timelines.

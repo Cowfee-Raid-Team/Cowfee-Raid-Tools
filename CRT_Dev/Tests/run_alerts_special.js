@@ -811,13 +811,21 @@ check("special: absorb items on the timeline, a watch of its own where there are
   local shield = {}
   for _, it in ipairs(items) do if it.special == "shield" then shield[#shield + 1] = it end end
   assert(#shield == 2 and shield[1].time == 60 and shield[1].absorb.unit == "boss2" and shield[1].absorb.length == 15, "Mythic: the row's casts carry the absorb")
-  assert(#S:AbsorbWatches(mythic) == 0, "Mythic: the window gates it, no watch of its own")
+  local mw = S:AbsorbWatches(mythic)
+  assert(#mw == 2 and mw[1].key == "shield" and mw[1].timed == true and mw[2].key == "mythicOnly" and mw[2].timed == true,
+    "Mythic: a fallback watch for each absorb entry on, marked timed (its windows come first): " .. #mw)
   -- Heroic: the Mythic entry gives no timed item, and a watch with no times
   local heroic = { encounterID = 9003, group = "nh", reason = "encounter" }
   assert(#A.blocks.special.Entries(heroic) == 0, "Heroic: no timed callout or speech (no Mythic times borrowed)")
   local w = S:AbsorbWatches(heroic)
   assert(#w == 1 and w[1].key == "shield" and w[1].unit == "boss2" and w[1].length == 15, "Heroic: one watch, anyDifficulty only, on ones turned on: " .. #w)
-  assert(w[1].ph == nil and w[1].time == nil and w[1].at == nil, "the watch has no times")
+  assert(w[1].ph == nil and w[1].time == nil and w[1].at == nil and w[1].timed == false, "the watch has no times")
+  assert(shield[1].absorb.lead == 6, "the item's absorb carries the entry's own lead")
+  S:SetChoice(9003, S:Get(9003, "shield"), "lead", 10)
+  for _, it in ipairs(A.blocks.special.Entries(mythic)) do
+    if it.special == "shield" then assert(it.warn == 10 and it.absorb.lead == 6, "your Show from moves the alert, not the window") end
+  end
+  S:SetChoice(9003, S:Get(9003, "shield"), "lead", nil)
   assert(w[1].text == "Shield" and w[1].abilityType == "raid" and w[1].id == "absorb:shield", "its text, type and id")
   -- bar off: no watch; not an encounter: no watch (no absorb events to start it)
   S:SetChoice(9003, S:Get(9003, "shield"), "bar", false, true)
