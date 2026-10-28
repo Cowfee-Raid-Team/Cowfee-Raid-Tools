@@ -14,6 +14,11 @@ local ADDON, CRT = ...
 --   tts:1; count:1;   read the line out; count down 3, 2, 1
 --   ttsat:0;          read the line out at its time, not when it shows (absent: when it shows)
 --   sound:RAID_WARNING; glow:1; warn:6; linger:3; icon:135940;
+--   shield:boss2,15,any;   a shield bar (Alerts/Absorb.lua): the bar shows the absorb shield on boss unit boss2 (boss1
+--                     to boss8) with 15 seconds to break it; "any" also on a difficulty whose ability timeline has no
+--                     times for it. Read as timer.absorb = { unit, length, anyDifficulty }; a value that doesn't read
+--                     is no shield. A CRT from before it reads the line as before (its bar a plain bar) and keeps the
+--                     field when it writes the line back (UnknownFields).
 -- DisplayType: is ignored.
 
 local Parser = {}
@@ -75,6 +80,27 @@ local function flag(s)
         return true
     end
     return nil
+end
+
+-- "boss2,15,any" into { unit = "boss2", length = 15, anyDifficulty = true }, or nil when it doesn't read: a boss
+-- unit boss1 to boss8, then seconds over 0, then "any" or nothing.
+local function shieldOption(s)
+    if type(s) ~= "string" then
+        return nil
+    end
+    local parts = {}
+    for piece in (s .. ","):gmatch("([^,]*),") do
+        parts[#parts + 1] = trim(piece):lower()
+    end
+    local unit, length = parts[1], tonumber(parts[2] or "")
+    local n = unit and unit:match("^boss(%d)$")
+    if not (n and tonumber(n) >= 1 and tonumber(n) <= 8 and length and length > 0 and length < math.huge) then
+        return nil
+    end
+    if #parts > 3 or (parts[3] ~= nil and parts[3] ~= "any" and parts[3] ~= "") then
+        return nil
+    end
+    return { unit = unit, length = length, anyDifficulty = parts[3] == "any" }
 end
 
 -- Comma separated, keeping empty entries so a blank leaves an empty group slot.
@@ -357,7 +383,7 @@ end
 -- its line number in the text, and, when the line has them: show (a set), tts, speakAt ("zero" for
 -- ttsat:0), count, glow (true),
 -- sound (the text as written; the sound engine plays it if it names a sound, see Sound/Engine.lua), warn, linger
--- (seconds) and iconID.
+-- (seconds), iconID and absorb (shield:, { unit, length, anyDifficulty }).
 function Parser.Parse(text)
     local note = { timers = {}, phases = {}, lines = {}, invite = nil, unread = {} }
     local phaseSeen = {}
@@ -397,6 +423,7 @@ function Parser.Parse(text)
                     warn = tonumber(f.warn),
                     linger = tonumber(f.linger),
                     iconID = tonumber(f.icon),
+                    absorb = shieldOption(f.shield),
                 }
                 item.kind = item.spellId and "spell" or "text"
                 note.timers[#note.timers + 1] = item
@@ -548,13 +575,17 @@ function Parser.FormatLine(t)
     if t.iconID then
         add("icon", num(t.iconID))
     end
+    local a = type(t.absorb) == "table" and t.absorb
+    if a and type(a.unit) == "string" and type(a.length) == "number" then
+        add("shield", a.unit .. "," .. num(a.length) .. (a.anyDifficulty and ",any" or ""))
+    end
     return table.concat(out)
 end
 
 -- The keys FormatLine writes.
 local FORMAT_KEYS = {}
 for _, k in ipairs({ "time", "ph", "tag", "spellid", "text", "dur", "colors", "show", "tts", "ttsat", "count", "sound",
-    "glow", "warn", "linger", "icon" }) do
+    "glow", "warn", "linger", "icon", "shield" }) do
     FORMAT_KEYS[k] = true
 end
 

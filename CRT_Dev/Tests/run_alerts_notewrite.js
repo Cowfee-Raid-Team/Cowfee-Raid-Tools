@@ -210,8 +210,49 @@ check("speak at: a note line writes and reads ttsat:0", function()
   assert(P.Parse("time:5;text:x;tts:1;ttsat:5;").timers[1].speakAt == nil, "any other value is on show")
 end)
 
+-- shield:<unit>,<seconds>[,any]; a shield bar on the line (Alerts/Absorb.lua). Written by FormatLine, read back exactly
+check("shield: a note line writes and reads its shield bar option", function()
+  local line = P.FormatLine({ time = 183, ph = 1, tags = { "everyone" }, kind = "text", text = "Break it", show = { bar = true },
+    absorb = { unit = "boss2", length = 15, anyDifficulty = true } })
+  assert(line:find("shield:boss2,15,any;", 1, true), "written as shield:boss2,15,any; " .. line)
+  local t = P.Parse(line).timers[1]
+  assert(t.absorb and t.absorb.unit == "boss2" and t.absorb.length == 15 and t.absorb.anyDifficulty == true, "read back")
+  assert(P.FormatLine(t) == line, "the same line again: " .. P.FormatLine(t))
+  local off = P.FormatLine({ time = 5, kind = "text", text = "x", absorb = { unit = "boss1", length = 7.5, anyDifficulty = false } })
+  assert(off:find("shield:boss1,7.5;", 1, true), "without any: " .. off)
+  local b = P.Parse(off).timers[1].absorb
+  assert(b.unit == "boss1" and b.length == 7.5 and b.anyDifficulty == false, "anyDifficulty off reads back off")
+  assert(not P.FormatLine({ time = 5, kind = "text", text = "x" }):find("shield", 1, true), "no absorb: no shield field")
+  assert(P.UnknownFields("time:1;shield:boss2,15,any;Other:x;") == "Other:x;", "shield is a known field, not kept twice")
+  -- any spelling of the words, spaces too; a value that doesn't read is no shield, and the line still reads
+  local s = P.Parse("time:9;text:x;shield: Boss3 , 20 , ANY ;").timers[1]
+  assert(s.time == 9 and s.absorb and s.absorb.unit == "boss3" and s.absorb.length == 20 and s.absorb.anyDifficulty, "case and spaces")
+  for _, bad in ipairs({ "boss9,15", "boss2", "boss2,0", "boss2,-3", "target,15", "boss2,abc", "" }) do
+    local tb = P.Parse("time:9;text:x;shield:" .. bad .. ";").timers[1]
+    assert(tb and tb.time == 9 and tb.text == "x" and tb.absorb == nil, "'" .. bad .. "' is no shield, the line reads")
+  end
+end)
+
+-- A raider on an older CRT (the v1.1.5 parser, old_Parse.lua) reads the line as it always did: the same timer without
+-- the shield, a plain bar; and writing that line back keeps the shield: field (UnknownFields).
+check("shield: an older CRT ignores the option and keeps it", function()
+  local Old = {}
+  assert(load(OLD_PARSE, "@old_Parse.lua"))("CowfeeRaidTools", Old)
+  local line = "time:183;ph:1;tag:everyone;text:Break it;show:bar;tts:1;warn:6;shield:boss2,15,any;"
+  local t = Old.NoteParser.Parse(line).timers[1]
+  assert(t and t.time == 183 and t.ph == 1 and t.text == "Break it" and t.show.bar and t.tts and t.warn == 6, "the same timer")
+  assert(t.absorb == nil, "no absorb")
+  assert(Old.NoteParser.UnknownFields(line) == "shield:boss2,15,any;", "kept on a rewrite: " .. Old.NoteParser.UnknownFields(line))
+  local rewritten = Old.NoteParser.FormatLine(t) .. Old.NoteParser.UnknownFields(line)
+  local back = P.Parse(rewritten).timers[1]
+  assert(back.absorb and back.absorb.unit == "boss2" and back.absorb.length == 15, "the option survives an older CRT's edit")
+end)
+
 if checks.failed then error(checks.failed .. " failed") end
 `;
+// the v1.1.5 parser, as a raider on an older CRT has it (a fixture beside this file)
+lua.lua_pushstring(L, to_luastring(fs.readFileSync(require('path').join(__dirname, 'old_Parse.lua'), 'utf8')));
+lua.lua_setglobal(L, to_luastring('OLD_PARSE'));
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 const names = ['CRT_Modules/Notes/Parse.lua', 'CRT_Modules/Notes/Data.lua'];
 const files = process.argv.slice(2);
