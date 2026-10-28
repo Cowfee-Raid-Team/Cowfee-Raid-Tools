@@ -35,5 +35,21 @@ Vile Flood (lead 6): 2:20, 4:55, 7:30
 # Stone Breaker's and Ravenous Feast's labels overlap their icons; their times follow the other rows'
 # spacing and need a check against the planner.
 ]],
+        [[
+Boss: The Twin Fangs
+Difficulty: Heroic
+Length: 8:34
+Encounter: 3421
+Eternal Venom: 0:13+501
+Caustic Deluge: 0:09, 1:17, 2:59, 4:07, 5:48, 6:56
+Stone Breaker: 0:32, 1:40, 3:22, 4:29, 6:11, 7:19
+Venomous Emergence: 0:39, 1:47, 3:29, 4:36, 6:18, 7:26
+Coiling Ichor: 0:47, 1:55, 3:36, 4:44, 6:26, 7:34
+Stir the Depths: 0:52, 2:00, 3:41, 4:49, 6:31, 7:38
+Ravenous Feast (lead 6): 1:11, 2:19, 4:00, 5:08, 6:50, 7:58
+Sanguine Storm: 2:30+20, 5:19+20
+Vile Flood (lead 6): 2:34, 5:23
+# Stone Breaker (greyed out in the planner) and Ravenous Feast are several icons a cast with overlapped labels; their times follow the other rows' spacing and need a check against the planner. Sanguine Storm's bars are estimates.
+]],
     },
 })

@@ -34,5 +34,19 @@ Dig In (type generic): 1:40+27, 3:47+27, 5:54+27
 # Raging Crosswinds is greyed out in the planner.
 # Missing: Serpent's Fury (type mythic), its cast times aren't known yet.
 ]],
+        [[
+Boss: Sszorak
+Difficulty: Heroic
+Length: 7:30
+Encounter: 3420
+Mutilate (type raid): 0:08+15, 1:00+15, 2:26+15, 3:18+15, 4:44+15, 5:37+15, 7:03+15
+Ravage (type soak): 0:08, 1:00, 2:26, 3:18, 4:44, 5:37, 7:03
+Tempest (type generic): 0:13, 1:05, 2:31, 3:23, 4:49, 5:41, 7:07
+Venomous Surge (type generic): 0:32, 1:24, 2:50, 3:42, 5:08, 6:00
+Raging Crosswinds (type generic): 0:44, 1:36, 3:02, 3:54, 5:20, 6:12
+Dig In (type generic): 1:51+27, 4:09+27, 6:27+27
+# Estimates: every bar. The green bar covers Mutilate and Ravage; it is on Mutilate, as on Mythic. Raging Crosswinds is greyed out in the planner.
+# Left out, cut off at the edge: the last Venomous Surge (about 7:28).
+]],
     },
 })
