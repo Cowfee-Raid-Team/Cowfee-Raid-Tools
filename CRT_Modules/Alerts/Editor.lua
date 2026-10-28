@@ -17,10 +17,9 @@ local ADDON, CRT = ...
 -- seconds before it shows to TEST_AFTER seconds after it is done (testWindow). The window's run carries the
 -- Test button's tag (opts.tag), so that button reads Stop and Stop closes the window (BindTest, StopTest).
 -- Export shows the draft as a note line in a copy box.
--- Shield bar (under Show as, greyed while Bar is off) makes the alert's bar a shield bar (Alerts/Absorb.lua): Shield on
--- (Boss 1 to Boss 5), Seconds to break and Also without a timeline for this difficulty, saved as a reminder's absorb or
--- a note line's shield:. Its Last pull line reads Alerts/ShieldPulls.lua: which boss units had a shield on the boss's
--- last pull and when, with a Use button for each that picks it in Shield on.
+-- Shield bar (under Show as, greyed while Bar is off) makes the alert's bar a shield bar (Alerts/Absorb.lua): the shared
+-- section of Alerts/ShieldSection.lua (Shield on, Seconds to break, Any time it goes up, Last pull with its Use buttons),
+-- in its wide layout, on the draft's shield, saved as a reminder's absorb or a note line's shield:.
 -- Only the raid leader or an assistant changes the raid note (CRT.Notes:CanEditRaid): for anyone else
 -- Save as Raid note is greyed out, a new alert set to it opens as Only me, a note line opens read-only
 -- (ctx.readOnly: nothing can be changed, no Save or Delete) with Export and Copy to my reminders, which
@@ -125,21 +124,6 @@ local TEXT = {
     reopen = "You can change the raid note now. Close this line and open it again to edit it.",
     noteLineTitle = "Raid note line",
     copyToMine = "Copy to my reminders",
-    -- the Shield bar section, under Show as
-    shieldBar = "Shield bar",
-    shieldHelp = "Draws a bar of the boss's shield when it goes up: the fill drains as the raid breaks it, the tick and seconds count the time you have. Pick which boss carries the shield; Last pull shows which one had a shield on your last pull.",
-    shieldOn = "Shield on",
-    shieldBoss = "Boss %d",
-    shieldLength = "Seconds to break",
-    shieldAny = "Also without a timeline for this difficulty",
-    shieldAnyHelp = "On a difficulty where this alert has no times, the bar still starts when the boss's shield goes up.",
-    lastPull = "Last pull: %s",
-    lastPullMany = "Last pull: %d boss shields", -- two or three: the Use buttons name them, the tooltip says when
-    lastPullTitle = "Last pull",
-    lastPullShield = "Boss %d shield at %s",
-    lastPullNone = "Last pull: no boss shield seen.",
-    lastPullNever = "Last pull: no pull of this boss yet.",
-    useUnit = "Use Boss %d",
 }
 
 local Alerts = CRT.Alerts
@@ -162,17 +146,13 @@ local NO_SOUND = Draft.NO_SOUND
 local FRAME_NAME = "CowfeeRaidToolsAlertEditor"
 local EXPORT_NAME = "CowfeeRaidToolsAlertExport"
 local SHOW_EXTRA = 26 -- Show as takes two rows: every row below it moves down by one row
-local SHIELD_ROW = 28 -- the Shield bar section's rows under Show as, this far apart
-local SHIELD_EXTRA = 3 * SHIELD_ROW -- its three rows: every row below it moves down by them
+-- the Shield bar section's three rows under Show as (Alerts/ShieldSection.lua's wide layout): every row below moves down
+local SHIELD_EXTRA = CRT.AlertShieldSection.Height("wide")
 local WIDTH, HEIGHT = 600, 480 + SHOW_EXTRA + SHIELD_EXTRA
 local SHOW_KEYS = Draft.SHOW_KEYS
 local LEFT = 16
 local MENU_MAX_HEIGHT = 400 -- the For and Sound menus scroll past this (a full raid is taller than the screen)
 local FIELD_X = 91 -- where the boxes and checkboxes of the labelled rows start
-local SHIELD_UNIT_LABEL, SHIELD_UNIT_W = 60, 90 -- Shield on, under Shield bar
-local SHIELD_LENGTH_X, SHIELD_LENGTH_LABEL, SHIELD_LENGTH_W = 266, 100, 130 -- Seconds to break, beside it
-local SHIELD_TEXT_X = 226 -- the Last pull line beside Shield bar, then its Use buttons
-local SHIELD_BUTTON_H = 24 -- as the editor's other buttons
 local SHOW_CHECK_W = 26 -- a Show as box and the gap before its label
 local SHOW_GAP = 10     -- between one Show as label and the next box
 local SAVED_SHIFT = 48 -- a saved alert has no Relative to / Time row or Saves to line: the rows below move up by this
@@ -537,72 +517,6 @@ local function colourRow()
     frame.colorLabel:SetAlpha(colourOn and 1 or 0.5)
 end
 
--- Whether Shield on, Seconds to break, Also and the Use buttons can be changed: Bar and Shield bar ticked.
-local function shieldOn()
-    return editable() and draft ~= nil and draft.show.bar and draft.shield.on and true or false
-end
-
--- The Last pull line's text, the boss units it names (Alerts/ShieldPulls.lua) and its tooltip's full text, for the
--- alert's boss. One shield is named on the line; two or three are counted there ("Last pull: 2 boss shields"), the Use
--- buttons naming each and the tooltip saying when, so nothing is cut short.
-local function lastPull()
-    local SP = CRT.AlertShieldPulls
-    local seen = SP and ctx and type(ctx.encounterID) == "number" and SP:Seen(ctx.encounterID) or nil
-    if not seen then
-        return TEXT.lastPullNever, {}, TEXT.lastPullNever
-    elseif #seen == 0 then
-        return TEXT.lastPullNone, seen, TEXT.lastPullNone
-    end
-    local parts = {}
-    for i, e in ipairs(seen) do
-        parts[i] = string.format(TEXT.lastPullShield, SP.UnitNumber(e.unit), SP.Clock(e.at))
-    end
-    local text = #seen == 1 and string.format(TEXT.lastPull, parts[1]) or string.format(TEXT.lastPullMany, #seen)
-    return text, seen, table.concat(parts, "\n")
-end
-
--- The Shield bar section from the draft: Shield bar greyed while Bar is off, the rest while Shield bar is unticked
--- too (Shield on and Seconds to break through their enabledIf). The Last pull line (only for an alert on a boss) has
--- a Use button, sized by its label, for each boss unit it names; the line is cut short when they don't all fit.
-local SHIELD_BUTTON_GAP = 6
-local function drawShield()
-    local s = frame.shield
-    local barOn = editable() and draft.show.bar and true or false
-    local on = shieldOn()
-    s.check:SetChecked(draft.shield.on and true or false)
-    s.check:SetEnabled(barOn)
-    s.check.label:SetAlpha(barOn and 1 or 0.5)
-    s.any:SetChecked(draft.shield.anyDifficulty and true or false)
-    s.any:SetEnabled(on)
-    s.any.label:SetAlpha(on and 1 or 0.5)
-    local onBoss = ctx ~= nil and type(ctx.encounterID) == "number"
-    local text, seen, tip = lastPull()
-    s.lastText:SetShown(onBoss)
-    s.lastText:SetText(onBoss and text or "")
-    s.lastTip = tip
-    s.lastHit:SetShown(onBoss)
-    -- a length saved above the usual top (a share, an older code) shows as it is
-    if s.lengthRow.SetMax then
-        s.lengthRow.SetMax(math.max(Draft.SHIELD_MAX, draft.shield.length or 0))
-    end
-    local buttons = 0
-    for i, b in ipairs(s.use) do
-        local e = onBoss and seen[i]
-        b:SetShown(e and true or false)
-        if e then
-            b.unit = e.unit
-            b:SetText(string.format(TEXT.useUnit, CRT.AlertShieldPulls.UnitNumber(e.unit)))
-            local fs = b:GetFontString()
-            b:SetWidth(UI.PanelButtonWidth(fs and fs:GetStringWidth() or 0))
-            b:SetEnabled(on)
-            buttons = buttons + SHIELD_BUTTON_GAP + (b:GetWidth() or 0)
-        end
-    end
-    local fs = s.lastText
-    local want = math.ceil(fs.GetUnboundedStringWidth and fs:GetUnboundedStringWidth() or fs:GetStringWidth() or 0)
-    fs:SetWidth(math.max(0, math.min(want, WIDTH - LEFT - SHIELD_TEXT_X - buttons)))
-end
-
 -- Use custom colours ticked or unticked (Raid Notes > Alerts fires the alerts' change) greys the open editor's row.
 CRT.Alerts:OnChange(function()
     if frame and frame:IsShown() then
@@ -674,7 +588,7 @@ local function refresh(rows)
     frame.also.speak:SetChecked(draft.speak and true or false)
     frame.also.count:SetChecked(draft.count and true or false)
     frame.also.glow:SetChecked(draft.glow and true or false)
-    drawShield()
+    frame.shield.Refresh() -- its dropdown and slider are among frame.rows, redrawn above
     local c = draft.color or { 1, 1, 1 }
     frame.colorSwatch.tex:SetColorTexture(c[1], c[2], c[3], 1)
     frame.sourceText:SetText(casts and "" or sourceLine())
@@ -1529,59 +1443,19 @@ local function placeShowAs(f)
     end)
 end
 
--- The Shield bar section under Show as, from y0 down (SHIELD_EXTRA tall): Shield bar and its (?) with the Last pull line
--- and its Use buttons beside them (drawShield), Shield on and Seconds to break, then Also without a timeline for this
--- difficulty.
-local function shieldRows(f, row, y0)
-    local s = { use = {} }
-    f.shield = s
-    s.check = makeCheck(f, TEXT.shieldBar, FIELD_X, y0, setter(function(on) draft.shield.on = on end))
-    s.help = UI.HelpRight(s.check, TEXT.shieldBar, TEXT.shieldHelp)
-    s.unitRow = row(UI.Dropdown(f, TEXT.shieldOn, {
-        labelWidth = SHIELD_UNIT_LABEL, width = SHIELD_UNIT_W, enabledIf = shieldOn,
-        options = function() return Draft.ShieldUnitOptions(TEXT.shieldBoss, draft) end,
-        get = function() return draft and draft.shield.unit or Draft.SHIELD_UNITS[1] end,
-        set = setter(function(v) draft.shield.unit = v end),
-    }), FIELD_X, y0 - SHIELD_ROW)
-    s.lengthRow = row(UI.Slider(f, TEXT.shieldLength, {
-        min = Draft.SHIELD_MIN, max = Draft.SHIELD_MAX, step = 1, labelWidth = SHIELD_LENGTH_LABEL, width = SHIELD_LENGTH_W,
-        enabledIf = shieldOn,
-        format = function(v) return string.format(TEXT.seconds, v) end,
-        get = function() return draft and draft.shield.length or Draft.SHIELD_LENGTH end,
-        set = setter(function(v) draft.shield.length = v end),
-    }), SHIELD_LENGTH_X, y0 - SHIELD_ROW)
-    s.any = makeCheck(f, TEXT.shieldAny, FIELD_X, y0 - 2 * SHIELD_ROW, setter(function(on) draft.shield.anyDifficulty = on end))
-    s.anyHelp = UI.HelpRight(s.any, TEXT.shieldAny, TEXT.shieldAnyHelp)
-    s.lastText = makeLabel(f, "", SHIELD_TEXT_X, y0 - 6)
-    s.lastText:SetJustifyH("LEFT")
-    s.lastText:SetWordWrap(false)
-    -- the line's tooltip: every shield of the last pull and when it went up
-    s.lastHit = CreateFrame("Frame", nil, f)
-    s.lastHit:SetAllPoints(s.lastText)
-    s.lastHit:EnableMouse(true)
-    s.lastHit:SetScript("OnEnter", function(self)
-        UI.TooltipOwner(GameTooltip, self, "ANCHOR_TOP")
-        GameTooltip:SetText(TEXT.lastPullTitle, 1, 1, 1)
-        GameTooltip:AddLine(s.lastTip or "", 0.85, 0.85, 0.85, true)
-        GameTooltip:Show()
-    end)
-    s.lastHit:SetScript("OnLeave", function()
-        GameTooltip:Hide()
-    end)
-    local prev = s.lastText
-    for i = 1, CRT.AlertShieldPulls and CRT.AlertShieldPulls.MAX_SHOWN or 3 do
-        local b = makeButton(f, "", 80)
-        b:SetHeight(SHIELD_BUTTON_H)
-        b:SetPoint("LEFT", prev, "RIGHT", SHIELD_BUTTON_GAP, 0)
-        b:SetScript("OnClick", function(self)
-            if draft and shieldOn() and self.unit then
-                setter(function() draft.shield.unit = self.unit end)()
-            end
-        end)
-        b:Hide()
-        s.use[i] = b
-        prev = b
-    end
+-- The Shield bar section under Show as, from y0 down (SHIELD_EXTRA tall): Alerts/ShieldSection.lua's wide layout on the
+-- draft's shield, its pieces laid out with the editor's rows (lay), so a template's editor moves them up with the rest.
+local function shieldRows(f, y0)
+    f.shield = CRT.AlertShieldSection.Build(f, {
+        layout = "wide", x = FIELD_X, y = y0, width = WIDTH - LEFT - FIELD_X,
+        place = lay,
+        register = function(r) f.rows[#f.rows + 1] = r end,
+        get = function() return draft and draft.shield end,
+        set = function(field, value) setter(function() draft.shield[field] = value end)() end,
+        barOn = function() return draft ~= nil and draft.show.bar and true or false end,
+        editable = editable,
+        encounterID = function() return ctx and ctx.encounterID end,
+    })
 end
 
 -- Show as, Also, Sound and Speak at. Its own function: build is near Lua 5.1's 60 upvalue limit.
@@ -1600,7 +1474,7 @@ local function showAsRows(f, row)
     end
     placeShowAs(f)
 
-    shieldRows(f, row, -274 - ROW1_EXTRA - SHOW_EXTRA)
+    shieldRows(f, -274 - ROW1_EXTRA - SHOW_EXTRA)
 
     -- Also
     local alsoY = -274 - ROW1_EXTRA - SHOW_EXTRA - SHIELD_EXTRA

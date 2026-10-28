@@ -14,7 +14,7 @@ const FILES = [
   'CRT_Modules/Alerts/Rules.lua', 'CRT_Modules/Alerts/Engine.lua', 'CRT_Modules/Alerts/Speech.lua',
   'CRT_Modules/Notes/Parse.lua', 'CRT_Modules/Notes/Data.lua', 'CRT_Modules/Notes/Engine.lua',
   'CRT_Modules/Alerts/Reminders.lua', 'CRT_Modules/Alerts/Special.lua', 'CRT_Modules/Alerts/Absorb.lua', 'CRT_Modules/Alerts/ShieldPulls.lua',
-  'CRT_Modules/Alerts/Draft.lua', 'CRT_Modules/Alerts/SpellLookup.lua', 'CRT_Modules/Alerts/Editor.lua',
+  'CRT_Modules/Alerts/Draft.lua', 'CRT_Modules/Alerts/SpellLookup.lua', 'CRT_Modules/Alerts/ShieldSection.lua', 'CRT_Modules/Alerts/Editor.lua',
 ];
 const harness = `
 local sources = { ... }
@@ -332,6 +332,51 @@ check("one shield, one bar: two units, two bars", function()
   local l = shields(126.5)
   assert(#l == 2, "boss2 and boss3: two bars: " .. #l)
   A:Stop()
+  assert(#errors == 0, tostring(errors[1]))
+end)
+
+-- Your Shield bar choice on a special alert (Mech Alerts > Special): the engine reads the one in use (Special:Absorb),
+-- for its timed windows and its untimed watch alike
+check("a special alert's shield bar: your choice over the boss file's, timed and Any time", function()
+  reset()
+  CRT.db.alerts.special = {}
+  withSpecial(1)
+  local entry = S:Get(ENC, "shield")
+  S:SetChoice(ENC, entry, "absorb", { unit = "boss3", length = 20, anyDifficulty = true })
+  pull(16)
+  assert(listened("boss3") and not listened("boss2"), "your unit is listened to, the shipped one isn't")
+  fire("boss3", 125)
+  local l = shields(125.5)
+  assert(#l == 1 and l[1].text == "Special shield" and l[1].absorb.length == 20 and l[1].id:find("^special:shield:"), "the timed bar: yours, 20 s: " .. tostring(l[1] and l[1].id))
+  assert(#shields(144.9) == 1 and #shields(145.1) == 0, "20 s long")
+  A:Stop()
+  -- false: the shipped bar is off, nothing listened to
+  reset()
+  withSpecial(1)
+  S:SetChoice(ENC, entry, "absorb", false)
+  pull(16)
+  assert(not listened("boss2"), "Shield bar unticked: nothing listened to")
+  fire("boss2", 126)
+  assert(#shields(126.5) == 0, "and no bar")
+  A:Stop()
+  -- Any time: on a difficulty the entry isn't for, only your choice's anyDifficulty brings the untimed bar
+  reset()
+  S.dev[ENC] = { { key = "nh", label = "NH shield", text = "NH shield", default = true, difficulty = "nh", who = { mode = "everyone" },
+    when = { times = "P1 0:30" }, show = { callout = true, bar = true } } }
+  local nh = S:Get(ENC, "nh")
+  S:SetChoice(ENC, nh, "absorb", { unit = "boss4", length = 12, anyDifficulty = false })
+  pull(16)
+  assert(not listened("boss4"), "an entry with no shipped bar, yours without Any time: a Mythic pull has nothing")
+  A:Stop()
+  S:SetChoice(ENC, nh, "absorb", { unit = "boss4", length = 12, anyDifficulty = true })
+  pull(16)
+  assert(listened("boss4"), "with Any time: the watch listens")
+  fire("boss4", 150)
+  l = shields(150.2)
+  assert(#l == 1 and l[1].id == "absorb:nh:1" and l[1].absorb.length == 12 and l[1].text == "NH shield", "the untimed bar: " .. tostring(l[1] and l[1].id))
+  A:Stop()
+  S.dev[ENC] = nil
+  CRT.db.alerts.special = {}
   assert(#errors == 0, tostring(errors[1]))
 end)
 

@@ -5,9 +5,9 @@ local ADDON, CRT = ...
 -- ability, each with a tick that turns its reminder on or off. On the right, one panel shows the selected
 -- row's alert, and every change there saves it at once (the first change on an ability makes its
 -- reminder). The draft and its save are Alerts/Draft.lua's, the name lookup of the Icon box is
--- Alerts/SpellLookup.lua's, and Test and Save as template go through Alerts/Editor.lua, all shared with
--- the pop-out editor. The reminders and their times are in Alerts/Reminders.lua. This tab only reads
--- them when it is built, after login.
+-- Alerts/SpellLookup.lua's, the Shield bar section Alerts/ShieldSection.lua's, and Test and Save as template go
+-- through Alerts/Editor.lua, all shared with the pop-out editor. The reminders and their times are in
+-- Alerts/Reminders.lua. This tab only reads them when it is built, after login.
 
 local UI = CRT.UI
 
@@ -65,9 +65,6 @@ local TEXT = {
     countCast = "The cast",
     countImpact = "Each impact",
     countHelp = "What the bar's number counts down to: the end of the cast, or the next hit.",
-    -- in their place when the alert's bar is a shield bar (the alert editor's Shield bar section)
-    shieldTitle = "Shield bar",
-    shieldHelp = "This alert's bar shows the boss's shield as the raid breaks it, in place of impact ticks and fill. Change it in the alert editor: double-click the alert's cast on the Timeline.",
     also = "Also",
     speak = "Speak the text",
     count = "Count down 3 2 1",
@@ -173,11 +170,14 @@ L.COL_W = math.floor((L.PANEL_W - 2 * L.INSET - L.COL_GAP) / 2)
 L.COL2_X = L.INSET + L.COL_W + L.COL_GAP
 L.CHECK_STEP = 130 -- between the checkboxes of a row
 L.SHOW_GAP = 10 -- between one Show as label and the next box
--- the left column under L.COL_Y, from its top: the two Show as rows, Impact ticks, Bar fill, then Also and its two
--- rows, then a save's problem
+-- the left column under L.COL_Y, from its top: the two Show as rows, Impact ticks, Bar fill, Count down to, then the
+-- Shield bar section (Alerts/ShieldSection.lua's column, four rows down to just above the marker display's tick)
 L.TICKS_DY, L.FILL_DY, L.COUNT_DY = 72, 94, 116
-L.ALSO_DY, L.ALSO_ROW1_DY, L.ALSO_ROW2_DY = 148, 168, 194
-L.MESSAGE_DY = 228
+L.SHIELD_DY = 142
+-- the right column under Look and sound's last row (Also when it lands on me): Also and its two rows
+L.ALSO_DY, L.ALSO_ROW1_DY, L.ALSO_ROW2_DY = 164, 184, 210
+-- a save's problem, in red: beside Show on the Timeline, over the whole panel's width
+L.MESSAGE_GAP = 12
 L.TICKS_LABEL, L.TICKS_W, L.UNIT_GAP, L.BAR_DROP_W = 90, 70, 6, 140 -- TICKS_LABEL fits "Count down to"
 L.LABEL_W = 50
 L.ICON_DROP_W = 90
@@ -634,21 +634,17 @@ local function placeShowAs()
     end)
 end
 
--- The bar's rows under Show as: Impact ticks greyed while Bar is off (Bar fill greys through its enabledIf), its box showing the draft's ticks unless it is being typed in.
+-- The bar's rows under Show as: Impact ticks greyed while Bar is off (Bar fill greys through its enabledIf), its box
+-- showing the draft's ticks unless it is being typed in; then the Shield bar section (its dropdown and slider are among
+-- panel.rows, redrawn with them).
 local function drawBarRows(d)
     local on = d.show.bar and true or false
-    -- a shield bar fills with the shield left, not with time: no ticks or fill to choose, its line instead
+    -- a shield bar fills with the shield left, not with time: no ticks or fill to choose
     local a = CRT.AlertDraft.Absorb(d)
     for _, el in ipairs({ panel.ticksLabel, panel.ticksEdit, panel.ticksUnit, panel.ticksHelp, panel.barFill, panel.countTo, panel.countHelp }) do
         el:SetShown(a == nil)
     end
-    panel.shieldLine:SetShown(a ~= nil)
-    panel.shieldHelp:SetShown(a ~= nil)
-    if a then
-        panel.shieldLine:SetText(CRT.AlertShieldPulls.BarLine(a))
-        local v = on and 1 or 0.5
-        panel.shieldLine:SetTextColor(v, v, v)
-    end
+    panel.shield.Refresh()
     panel.ticksEdit:SetEnabled(on)
     local v = on and 1 or 0.5
     panel.ticksLabel:SetTextColor(v, v, v)
@@ -1364,14 +1360,6 @@ local function buildBarRows(p, row)
     panel.ticksUnit:SetPoint("LEFT", panel.ticksEdit, "RIGHT", L.UNIT_GAP, 0)
     panel.ticksUnit:SetText(TEXT.ticksUnit)
     panel.ticksHelp = UI.HelpRight(panel.ticksUnit, TEXT.ticks, TEXT.ticksHelp)
-    -- a shield bar's line, in the place of the rows above and below (drawBarRows)
-    panel.shieldLine = p:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    panel.shieldLine:SetPoint("TOPLEFT", x, L.COL_Y - L.TICKS_DY - 4)
-    panel.shieldLine:SetJustifyH("LEFT")
-    panel.shieldLine:SetWordWrap(false)
-    panel.shieldLine:Hide()
-    panel.shieldHelp = UI.HelpRight(panel.shieldLine, TEXT.shieldTitle, TEXT.shieldHelp)
-    panel.shieldHelp:Hide()
     local function barOn()
         return cur.draft ~= nil and cur.draft.show.bar and true or false
     end
@@ -1393,6 +1381,16 @@ local function buildBarRows(p, row)
     }))
     panel.countTo:SetPoint("TOPLEFT", x, L.COL_Y - L.COUNT_DY)
     panel.countHelp = UI.HelpRight(panel.countTo, TEXT.countTo, TEXT.countHelp)
+    -- the Shield bar section (Alerts/ShieldSection.lua), as the alert editor's, on the draft's shield: a change saves as
+    -- every other control does (the first change on an ability makes its reminder)
+    panel.shield = CRT.AlertShieldSection.Build(p, {
+        layout = "column", note = true, x = x, y = L.COL_Y - L.SHIELD_DY, width = L.COL_W, buttonHeight = L.BUTTON_H,
+        register = row,
+        get = function() return cur.draft and cur.draft.shield end,
+        set = change(function(field, value) cur.draft.shield[field] = value end),
+        barOn = barOn,
+        encounterID = function() return cur.enc end,
+    })
 end
 
 local function buildPanel(f)
@@ -1490,7 +1488,7 @@ local function buildPanel(f)
     panel.timelineBtn:SetPoint("TOPLEFT", L.INSET, L.TIMELINE_Y)
     panel.timelineBtn:SetScript("OnClick", showOnTimeline)
 
-    -- Left column: Show as, Also
+    -- Left column: Show as, the bar's rows and the Shield bar section
     heading(p, TEXT.showAs, L.INSET, L.COL_Y, TEXT.showAsHelp)
     -- two rows (Draft.SHOW_ROWS), placed by placeShowAs
     panel.checks = {}
@@ -1505,12 +1503,13 @@ local function buildPanel(f)
     end
     placeShowAs()
     buildBarRows(p, row)
-    heading(p, TEXT.also, L.INSET, L.COL_Y - L.ALSO_DY)
+    -- Also, in the right column under Look and sound (the Shield bar section has the left column's foot)
+    heading(p, TEXT.also, L.COL2_X, L.COL_Y - L.ALSO_DY)
     local y1, y2 = L.COL_Y - L.ALSO_ROW1_DY, L.COL_Y - L.ALSO_ROW2_DY
     panel.also = {
-        speak = makeCheck(p, TEXT.speak, L.INSET - 4, y1, change(function(on) cur.draft.speak = on end)),
-        count = makeCheck(p, TEXT.count, L.INSET - 4 + L.CHECK_STEP, y1, change(function(on) cur.draft.count = on end)),
-        glow = makeCheck(p, TEXT.glow, L.INSET - 4, y2, change(function(on) cur.draft.glow = on end)),
+        speak = makeCheck(p, TEXT.speak, L.COL2_X - 4, y1, change(function(on) cur.draft.speak = on end)),
+        count = makeCheck(p, TEXT.count, L.COL2_X - 4 + L.CHECK_STEP, y1, change(function(on) cur.draft.count = on end)),
+        glow = makeCheck(p, TEXT.glow, L.COL2_X - 4, y2, change(function(on) cur.draft.glow = on end)),
     }
     -- Speak at: when Speak the text says it, On show or At 0; greyed while Speak the text is off
     panel.speakAt = row(UI.Dropdown(p, TEXT.speakAt, {
@@ -1520,7 +1519,7 @@ local function buildPanel(f)
         get = function() return Draft.SpeakAtKey(cur.draft) end,
         set = change(function(v) Draft.SetSpeakAt(cur.draft, v) end),
     }))
-    panel.speakAt:SetPoint("TOPLEFT", L.INSET + L.CHECK_STEP, y2) -- in line with Glow at 0
+    panel.speakAt:SetPoint("TOPLEFT", L.COL2_X + L.CHECK_STEP, y2) -- in line with Glow at 0
 
     -- Right column: Look and sound
     heading(p, TEXT.look, L.COL2_X, L.COL_Y)
@@ -1622,10 +1621,11 @@ local function buildPanel(f)
     panel.auraSound.label:SetWidth(L.COL_W - L.CHECK_SIZE - 30)
     UI.HelpRight(panel.auraSound.label, TEXT.auraSound, TEXT.auraSoundHelp)
 
-    -- A save's problem, in red
+    -- A save's problem, in red, beside Show on the Timeline (a long one wraps to a second line, above Show as)
+    local messageX = L.INSET + L.TIMELINE_W + L.MESSAGE_GAP
     panel.message = p:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    panel.message:SetPoint("TOPLEFT", L.INSET, L.COL_Y - L.MESSAGE_DY)
-    panel.message:SetWidth(L.PANEL_W - 2 * L.INSET)
+    panel.message:SetPoint("TOPLEFT", messageX, L.TIMELINE_Y - 5)
+    panel.message:SetWidth(L.PANEL_W - messageX - L.INSET)
     panel.message:SetJustifyH("LEFT")
 
     -- Bottom right: Test, Save as template
