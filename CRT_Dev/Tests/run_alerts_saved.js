@@ -775,6 +775,7 @@ end
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 const files = process.argv.slice(2);
+lua.lua_checkstack(L, files.length + 2); // more sources than the stack's first 20 slots
 for (const file of files) {
   let src; try { src = fs.readFileSync(file, 'utf8'); } catch (e) { console.error('cannot read ' + file); process.exit(1); }
   lua.lua_pushstring(L, to_luastring(src));

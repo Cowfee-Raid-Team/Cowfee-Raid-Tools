@@ -1362,11 +1362,13 @@ check("mech ticks: the rows follow Bar and the ticks", function()
   assert(not helped.helpText:find("Bar ends", 1, true) and not helped.helpText:find("1 s past", 1, true)
     and helped.helpText:find("Seconds after the bar appears when each hit lands. The bar runs from Show from to the cast; a tick past its end isn't shown.", 1, true),
     "its (?) says ticks are in the bar, which ends at the cast: " .. helped.helpText)
-  -- the rows under Bar fill moved up into the room Bar ends left: Also's first row as far under Bar fill as it
-  -- was under Bar ends, and a save's problem as far under that
+  -- Count down to under Bar fill, then the Shield bar section under it; Also's two rows in the right column, and a
+  -- save's problem beside Show on the Timeline
   local function y(fr) local pt = fr.pts[#fr.pts] return pt[#pt] end
-  assert(y(p.barFill) - y(p.countTo) == 22 and y(p.countTo) - y(p.also.speak) == 52, "Count down to under Bar fill, no gap under it: " .. (y(p.countTo) - y(p.also.speak)))
-  assert(y(p.also.speak) - y(p.also.glow) == 26 and y(p.also.speak) - y(p.message) == 60, "Also's rows and the message moved with it")
+  local function x(fr) local pt = fr.pts[#fr.pts] return pt[#pt - 1] end
+  assert(y(p.barFill) - y(p.countTo) == 22 and y(p.countTo) - y(p.shield.check) == 26, "Count down to under Bar fill, Shield bar under it: " .. (y(p.countTo) - y(p.shield.check)))
+  assert(y(p.also.speak) - y(p.also.glow) == 26 and x(p.also.speak) > 300, "Also's rows, in the right column")
+  assert(x(p.message) > x(p.timelineBtn) + p.timelineBtn.w and y(p.message) < y(p.timelineBtn), "the message beside Show on the Timeline")
   -- a new alert has Bar on: ticks and Bar fill on
   assert(p.checks.bar.checked, "Bar on")
   assert(p.ticksEdit.enabled and p.barFill.opts.enabledIf() == true, "on with Bar")
@@ -1417,9 +1419,9 @@ check("mech ticks: saved with the reminder, bad ones not", function()
   assert(#errors == 0, tostring(errors[1]))
 end)
 
--- A reminder whose bar is a shield bar (the alert editor's Shield bar section): its line in place of the ticks, Bar fill
--- and Count down to, and a change on the panel keeps it
-check("mech shield: a shield bar's line in place of ticks and fill, kept by every save", function()
+-- A reminder whose bar is a shield bar: the Shield bar section (Alerts/ShieldSection.lua, the alert editor's) on the
+-- panel, in place of the ticks, Bar fill and Count down to, and a change on the panel keeps it
+check("mech shield: a shield bar hides ticks and fill, and every save keeps it", function()
   local f = fresh()
   local p = f.panel
   setCheck(f.rows[1].check, true)
@@ -1427,8 +1429,8 @@ check("mech shield: a shield bar's line in place of ticks and fill, kept by ever
   R:Get(ENC, id).absorb = { unit = "boss2", length = 15, anyDifficulty = true }
   click(f.rows[2].frame)
   click(f.rows[1].frame)
-  assert(p.shieldLine.shown and p.shieldLine.text == "Shield bar: Boss 2, 15 s", "its line: " .. tostring(p.shieldLine.text))
-  assert(p.shieldHelp.shown and p.shieldHelp.helpTitle == "Shield bar" and p.shieldHelp.helpText:find("alert editor", 1, true), "with a (?)")
+  local s = p.shield
+  assert(s.check.checked and s.unitRow.opts.get() == "boss2" and s.lengthRow.opts.get() == 15 and s.any.checked, "the section shows it")
   assert(not p.ticksEdit.shown and not p.ticksLabel.shown and not p.barFill.shown and not p.countTo.shown, "no ticks, Bar fill or Count down to")
   p.showFrom.opts.set(8)
   local r = R:Get(ENC, id)
@@ -1437,7 +1439,106 @@ check("mech shield: a shield bar's line in place of ticks and fill, kept by ever
   r.absorb = nil
   click(f.rows[2].frame)
   click(f.rows[1].frame)
-  assert(not p.shieldLine.shown and p.ticksEdit.shown and p.barFill.shown, "none: the rows are back")
+  assert(not s.check.checked and p.ticksEdit.shown and p.barFill.shown, "none: the rows are back")
+  assert(#errors == 0, tostring(errors[1]))
+end)
+
+-- The Shield bar section on the Mechanics panel: the editor's controls (one shared builder), greyed while Bar is off and
+-- its rows while Shield bar is unticked; a change makes the ability's reminder (off, as every first change does) and
+-- saves its absorb, which shields every cast of the ability
+check("mech shield: the Shield bar section makes and saves the reminder's absorb", function()
+  local f = fresh()
+  local p = f.panel
+  local s = assert(p.shield, "the section")
+  assert(s.opts.layout == "column" and s.note and s.note.text == "every cast above, plus any shield between them", "the column, with its note: " .. tostring(s.note and s.note.text))
+  assert(s.check.label.text == "Shield bar" and s.help.helpTitle == "Shield bar" and s.any.label.text == "Any time it goes up" and s.anyHelp, "the editor's controls and (?)s")
+  assert(s.unitRow.label == "Shield on" and s.lengthRow.label == "Seconds to break" and s.lengthRow.opts.min == 3 and s.lengthRow.opts.max == 60, "Shield on, 3 to 60 s")
+  assert(s.default == nil, "no Default on Mechanics")
+  assert(#R:List(ENC) == 0 and not s.check.checked and s.check.enabled, "unticked, Bar on: it can be ticked")
+  assert(not s.unitRow.opts.enabledIf() and not s.lengthRow.opts.enabledIf() and not s.any.enabled, "its rows wait for Shield bar")
+  -- Bar off greys the section; on again it can be ticked
+  setCheck(p.checks.bar, false)
+  local _, id = only() -- the change made the reminder
+  assert(not s.check.enabled and not s.unitRow.opts.enabledIf(), "Bar off: greyed")
+  setCheck(p.checks.bar, true)
+  -- tick it: saved at once, Boss 1, 15 s, Any time on
+  setCheck(s.check, true)
+  local r = R:Get(ENC, id)
+  assert(r.absorb and r.absorb.unit == "boss1" and r.absorb.length == 15 and r.absorb.anyDifficulty == true, "ticked: saved")
+  assert(r.enabled == false, "made off, as every first change on an ability")
+  assert(s.unitRow.opts.enabledIf() and s.lengthRow.opts.enabledIf() and s.any.enabled, "its rows with it")
+  s.unitRow.opts.set("boss2")
+  s.lengthRow.opts.set(20)
+  setCheck(s.any, false)
+  r = R:Get(ENC, id)
+  assert(r.absorb.unit == "boss2" and r.absorb.length == 20 and r.absorb.anyDifficulty == false, "each change saved")
+  -- every cast of the ability carries it
+  local items = R:Items(ENC, id, r, "mythic")
+  assert(#items == 2 and items[1].absorb.unit == "boss2" and items[2].absorb.length == 20 and items[1].ticks == nil, "both casts shield: " .. #items)
+  -- unticked: no absorb, the pick kept for a tick back
+  setCheck(s.check, false)
+  assert(R:Get(ENC, id).absorb == nil and s.unitRow.opts.get() == "boss2", "unticked: none saved, the pick kept")
+  setCheck(s.check, true)
+  assert(R:Get(ENC, id).absorb.unit == "boss2" and R:Get(ENC, id).absorb.length == 20, "ticked back as it was")
+  -- reloaded from the store (a /reload)
+  click(f.rows[2].frame)
+  click(f.rows[1].frame)
+  assert(s.check.checked and s.unitRow.opts.get() == "boss2" and s.lengthRow.opts.get() == 20 and not s.any.checked, "read back")
+  assert(#errors == 0, tostring(errors[1]))
+end)
+
+-- Last pull on the Mechanics panel: each boss unit's shield starts on the boss's last pull, with Use
+check("mech shield: Last pull with its Use buttons", function()
+  local f = fresh()
+  local s = f.panel.shield
+  CRT.db.alerts.shieldPulls = { [ENC] = { at = 1, units = { boss3 = 30 }, times = { boss3 = { 30, 90.5 } } } }
+  CRT.NoteReminders.Refresh()
+  assert(s.lastText.shown and s.lastText.text == "Last pull: Boss 3 shield at 0:30.0, 1:30.5", "the line: " .. tostring(s.lastText.text))
+  assert(s.use[1].shown and s.use[1].text == "Use Boss 3" and not s.use[1].enabled, "Use Boss 3, greyed until Shield bar is ticked")
+  setCheck(s.check, true)
+  assert(s.use[1].enabled, "enabled with it")
+  click(s.use[1])
+  local r = only()
+  assert(r.absorb.unit == "boss3", "Use picks Boss 3 and saves it")
+  CRT.db.alerts.shieldPulls = nil
+  assert(#errors == 0, tostring(errors[1]))
+end)
+
+-- The Mechanics panel's layout with the section: it sits under Count down to in the left column, Also moved to the right
+-- column; nothing overlaps and nothing passes the panel
+check("mech shield: the section fits the left column, clear of Also, the marker tick and the buttons", function()
+  local f = fresh()
+  local p = f.panel
+  CRT.db.alerts.shieldPulls = { [ENC] = { at = 1, units = { boss1 = 10, boss2 = 20, boss3 = 30 } } }
+  CRT.NoteReminders.Refresh()
+  local s = p.shield
+  rects = {}
+  local pr = rect(p.frame, f)
+  -- Any time beside Shield on, Last pull on a row of its own under Seconds to break, every Use button on it
+  local function top(m) return rect(m, f)[2] end
+  assert(top(s.any) == top(s.unitRow) and rect(s.any, f)[1] >= rect(s.unitRow, f)[3], "Any time beside Shield on")
+  assert(top(s.lastText) > top(s.lengthRow) + 20 and rect(s.lastText, f)[1] == rect(s.check, f)[1], "Last pull on its own row, under Seconds to break")
+  assert(s.use[1].shown and s.use[2].shown and s.use[3].shown, "a Use button for each of three units")
+  local parts = { s.check, s.unitRow, s.lengthRow, s.any, s.lastText, s.note }
+  for _, b in ipairs(s.use) do if b.shown then parts[#parts + 1] = b end end
+  local others = { p.also.speak, p.also.count, p.also.glow, p.speakAt, p.testBtn, p.templateBtn, p.deleteBtn, p.auraSound, p.sound, p.countTo }
+  local function overlap(a, b) return a[1] < b[3] - 0.5 and b[1] < a[3] - 0.5 and a[2] < b[4] - 0.5 and b[2] < a[4] - 0.5 end
+  -- a dropdown or slider row is 32 high (UI.CONTROL_ROW_H) with its control about 20 high in its middle
+  local function box(m) local r = rect(m, f) if rawget(m, "opts") then return { r[1], r[2] + 6, r[3], r[4] - 6 } end return r end
+  for _, part in ipairs(parts) do
+    local r = rect(part, f)
+    assert(r[1] >= pr[1] and r[3] <= pr[1] + 12 + 351 + 0.5, "inside the left column: " .. tostring(part.label or part.text) .. " " .. r[1] .. ".." .. r[3])
+    assert(r[4] <= pr[4] - 10 - 24 - 1, "above the bottom row (the marker tick and the buttons): " .. tostring(part.label or part.text) .. " " .. r[4])
+    for _, o in ipairs(others) do
+      assert(not overlap(box(part), box(o)), tostring(part.label or part.text) .. " overlaps " .. tostring(o.label or o.text))
+    end
+  end
+  edges(f, "mechanics with the shield section")
+  TEXT_SCALE = 1.75
+  CRT.NoteReminders.Refresh()
+  edges(f, "mechanics with the shield section, large text")
+  TEXT_SCALE = nil
+  CRT.db.alerts.shieldPulls = nil
   assert(#errors == 0, tostring(errors[1]))
 end)
 
@@ -1762,7 +1863,8 @@ check("mech: alerts per difficulty group", function()
     "Normal/Heroic and Mythic only")
   for _, h in ipairs(helps) do
     -- a (?) whose text changes (a special alert's own help) gives it from a function
-    local text = type(h.helpText) == "function" and h.helpText() or h.helpText or ""
+    -- (the Shield bar section's Any time it goes up is a checkbox, not a difficulty)
+    local text = (type(h.helpText) == "function" and h.helpText() or h.helpText or ""):gsub("Any time", "")
     assert(not text:find("Any", 1, true), "no help names Any: " .. tostring(text))
   end
   assert(diff.opts.get() == "mythic" and f.rows[1].name.text == "Real Name", "the boss's first timeline's group")
@@ -2205,13 +2307,126 @@ check("mech special (" .. LOOK .. "): no Bar fill on a shield bar", function()
   assert(s.fill.shown, "a plain bar: Bar fill shows")
   click(s.rows[2].frame)
   assert(not s.fill.shown, "a shield bar: Bar fill is hidden")
-  assert(s.shieldLine and s.shieldLine.shown and s.shieldLine.text == "Shield bar: Boss 2, 15 s", "its Shield bar line in its place: " .. tostring(s.shieldLine and s.shieldLine.text))
+  assert(s.shield.check.checked and s.shield.unitRow.opts.get() == "boss2" and s.shield.lengthRow.opts.get() == 15, "the Shield bar section shows it")
   setCheck(s.checks.bar, false)
-  assert(s.shieldLine.textColor and s.shieldLine.textColor[1] == 0.5, "greyed while Bar is off")
+  assert(not s.shield.check.enabled and not s.shield.unitRow.opts.enabledIf(), "greyed while Bar is off")
   setCheck(s.checks.bar, true)
-  assert(s.shieldLine.textColor[1] == 1, "back with Bar on")
+  assert(s.shield.check.enabled and s.shield.unitRow.opts.enabledIf(), "back with Bar on")
   click(s.rows[1].frame)
-  assert(s.fill.shown and not s.shieldLine.shown, "back on a plain bar: shown again")
+  assert(s.fill.shown and not s.shield.check.checked, "back on a plain bar: shown again")
+  CRT.db.alerts.specialView, CRT.db.alerts.specialViewPicked = "mechanics", true
+  CRT.db.alerts.special = {}
+  noSpecial()
+  assert(#errors == 0, tostring(errors[1]))
+end)
+
+-- The Special tab's Shield bar section: the editor's controls on your choice for the alert (Special:SetChoice "absorb"),
+-- saved only while it differs from the boss file's entry; Default puts the entry's back; false turns the shipped bar off;
+-- an entry with none can get one. The engine reads the one in use (Special:Absorb): its items and its untimed watch.
+local SHIELD_ENTRY = { key = "shield", label = "Shield", when = { times = "0:30, 1:30" }, absorb = { unit = "boss2", length = 15, anyDifficulty = true } }
+check("mech special (" .. LOOK .. "): the Shield bar section, your choice over the shipped one", function()
+  withSpecial({ SHIELD_ENTRY, { key = "plain", label = "Plain", when = { times = "0:30" }, ticks = { 0, 2 } },
+    { key = "myth", label = "Mythic shield", difficulty = "mythic", when = { times = "0:30" }, absorb = { unit = "boss1", length = 10 } } })
+  CRT.db.alerts.special = {}
+  local f = freshOpen()
+  local s = f.special
+  local S = CRT.AlertSpecial
+  local sh = assert(s.shield, "the section")
+  assert(sh.opts.layout == "column" and not sh.opts.anyBeside and sh.note, "a column (Any time on its own row, for Default after it), its note")
+  click(s.rows[1].frame)
+  local entry = S:Get(ENC, "shield")
+  assert(sh.check.checked and sh.unitRow.opts.get() == "boss2" and sh.lengthRow.opts.get() == 15 and sh.any.checked, "the shipped one: Boss 2, 15 s, Any time")
+  assert(sh.default and not sh.default.shown, "no Default while it is the shipped one")
+  assert(sh.any.checked and not sh.any.enabled and sh.unitRow.opts.enabledIf(), "an alert for every difficulty: Any time greyed (it adds nothing), its tick kept")
+  assert(sh.anyHelp.helpText:find("a difficulty this alert isn't set for", 1, true), "Any time's (?)")
+  -- Seconds to break 20: your choice, saved; Default shows; the engine uses it
+  sh.lengthRow.opts.set(20)
+  local saved = CRT.db.alerts.special[ENC].shield.absorb
+  assert(saved and saved.unit == "boss2" and saved.length == 20 and saved.anyDifficulty == true, "saved as your choice")
+  assert(sh.default.shown and sh.lengthRow.opts.get() == 20, "Default appears")
+  assert(S:Absorb(ENC, entry).length == 20, "Special:Absorb: yours")
+  CRT.db.alerts.special[ENC].shield.on = true
+  local items = S:Items(ENC, entry, { group = "mythic" })
+  assert(#items == 2 and items[1].absorb.length == 20 and items[2].absorb.length == 20 and items[1].absorb.unit == "boss2", "every cast carries yours")
+  local test = S:TestItem(ENC, entry, "mythic")
+  assert(test and test.absorb.length == 20, "Test plays a 20 s shield bar")
+  -- the untimed watch of a pull reads it too
+  local watches = S:AbsorbWatches({ reason = "encounter", encounterID = ENC })
+  assert(#watches == 1 and watches[1].length == 20 and watches[1].unit == "boss2", "the untimed watch: yours")
+  -- back to the shipped one: Default
+  click(sh.default)
+  assert(CRT.db.alerts.special[ENC].shield.absorb == nil and not sh.default.shown and sh.lengthRow.opts.get() == 15, "Default: the shipped 15 s")
+  -- set back to the shipped values by hand: nothing kept
+  sh.lengthRow.opts.set(18)
+  sh.lengthRow.opts.set(15)
+  assert(CRT.db.alerts.special[ENC].shield.absorb == nil and not sh.default.shown, "the same as shipped: nothing kept")
+  -- Shield bar unticked: false turns the shipped bar off
+  setCheck(sh.check, false)
+  assert(CRT.db.alerts.special[ENC].shield.absorb == false and S:Absorb(ENC, entry) == nil, "false: no shield bar")
+  assert(sh.default.shown and not sh.check.checked and sh.unitRow.opts.get() == "boss2", "Default shows; the pick stays, greyed")
+  assert(not sh.unitRow.opts.enabledIf() and not sh.lengthRow.opts.enabledIf() and not sh.any.enabled, "its rows greyed")
+  assert(S:Items(ENC, entry, { group = "mythic" })[1].absorb == nil, "the items: no shield bar")
+  assert(#S:AbsorbWatches({ reason = "encounter", encounterID = ENC }) == 0, "and no untimed watch")
+  assert(s.fill.shown, "a plain bar again: Bar fill shows")
+  setCheck(sh.check, true)
+  assert(CRT.db.alerts.special[ENC].shield.absorb == nil and S:Absorb(ENC, entry).length == 15, "ticked back: the shipped one")
+  -- an entry with no shipped shield bar gets one; its impacts give way to it
+  click(s.rows[2].frame)
+  local plain = S:Get(ENC, "plain")
+  assert(not sh.check.checked and sh.unitRow.opts.get() == "boss1" and sh.lengthRow.opts.get() == 15, "none: a new alert's, greyed")
+  assert(s.countTo.opts.enabledIf() == true, "Count down to for its ticks")
+  setCheck(sh.check, true)
+  local own = CRT.db.alerts.special[ENC].plain.absorb
+  assert(own and own.unit == "boss1" and own.length == 15 and own.anyDifficulty == true, "yours: Boss 1, 15 s")
+  assert(not s.fill.shown and s.countTo.opts.enabledIf() == false, "Bar fill hidden, Count down to greyed")
+  local it = S:Items(ENC, plain, { group = "mythic" })[1]
+  assert(it.absorb and it.absorb.unit == "boss1" and it.ticks == nil, "its item: a shield bar, no ticks")
+  setCheck(sh.check, false)
+  assert(CRT.db.alerts.special[ENC].plain.absorb == nil and S:Items(ENC, plain, { group = "mythic" })[1].ticks ~= nil, "unticked: none kept (it had none), its ticks back")
+  -- an alert for one difficulty: Any time can be changed
+  click(s.rows[3].frame)
+  assert(sh.check.checked and not sh.any.checked and sh.any.enabled, "Mythic only: Any time enabled")
+  setCheck(sh.any, true)
+  assert(CRT.db.alerts.special[ENC].myth.absorb.anyDifficulty == true, "saved as your choice")
+  CRT.db.alerts.special = {}
+  CRT.db.alerts.specialView, CRT.db.alerts.specialViewPicked = "mechanics", true
+  noSpecial()
+  assert(#errors == 0, tostring(errors[1]))
+end)
+
+-- The Special panel's layout with the section: right of Show as and Bar fill, between the Who chips and Markers
+check("mech special (" .. LOOK .. "): the Shield bar section sits clear of Show as, Bar fill and Markers", function()
+  withSpecial({ SHIELD_ENTRY })
+  CRT.db.alerts.special = {}
+  CRT.db.alerts.shieldPulls = { [ENC] = { at = 1, units = { boss1 = 10, boss2 = 20, boss3 = 30 } } }
+  local f = freshOpen()
+  local s = f.special
+  local sh = s.shield
+  sh.lengthRow.opts.set(20) -- Default on show
+  rects = {}
+  local pr = rect(s.panel, f)
+  local parts = { sh.check, sh.unitRow, sh.lengthRow, sh.any, sh.lastText, sh.note, sh.default }
+  for _, b in ipairs(sh.use) do if b.shown then parts[#parts + 1] = b end end
+  assert(sh.use[3].shown, "three Use buttons fit its own row")
+  local others = { s.speak, s.fill, s.countTo, s.markHeading, s.markText, s.markCheck, s.testBtn, s.whoText }
+  for _, c in pairs(s.checks) do others[#others + 1] = c others[#others + 1] = c.label end
+  local function overlap(a, b) return a[1] < b[3] - 0.5 and b[1] < a[3] - 0.5 and a[2] < b[4] - 0.5 and b[2] < a[4] - 0.5 end
+  -- a dropdown or slider row is 32 high (UI.CONTROL_ROW_H) with its control about 20 high in its middle
+  local function box(m) local r = rect(m, f) if rawget(m, "opts") then return { r[1], r[2] + 6, r[3], r[4] - 6 } end return r end
+  for _, part in ipairs(parts) do
+    local r = rect(part, f)
+    assert(r[3] <= pr[3] - 12 + 0.5, "inside the panel: " .. tostring(part.label or part.text) .. " " .. r[3])
+    for _, o in ipairs(others) do
+      assert(not overlap(box(part), box(o)), tostring(part.label or part.text) .. " overlaps " .. tostring(o.label or o.text))
+    end
+  end
+  edges(f, "special with the shield section")
+  TEXT_SCALE = 1.75
+  CRT.NoteReminders.Refresh()
+  edges(f, "special with the shield section, large text")
+  TEXT_SCALE = nil
+  CRT.db.alerts.shieldPulls = nil
+  CRT.db.alerts.special = {}
   CRT.db.alerts.specialView, CRT.db.alerts.specialViewPicked = "mechanics", true
   noSpecial()
   assert(#errors == 0, tostring(errors[1]))

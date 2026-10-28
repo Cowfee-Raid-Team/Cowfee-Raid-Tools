@@ -43,6 +43,7 @@ local TEXT = {
     headerFormat = "-- at the top of CRT_Modules/Alerts/Special.lua. An entry made from a Mech Alert could ship as a reference reminder instead.",
     fromMine = "-- from your Mech Alert %q",
     notCarried = "-- not carried over: %s",
+    ownShield = "-- absorb: your Shield bar choice on Mech Alerts > Special",
     leftOut = "-- left out: your Mech Alert %q has no spell, row or times to place it",
     lost = { count = "the count down", speakAt = "speaking at 0", sound = "its sound", glow = "the glow", color = "its colour",
         linger = "Linger", moved = "its moved and turned-off casts", priority = "its priority", icon = "its own icon" },
@@ -284,9 +285,30 @@ function Dev.ReminderDef(enc, r, used)
     return def, comments
 end
 
+-- A boss file entry with your Shield bar choice for it (Special:Absorb: the Mech Alerts Special tab) in place of its
+-- own absorb, and a comment saying so; as it is when you have none. With a shield bar, its impacts (ticks, barTo,
+-- bar) go, as Special.Read takes one or the other.
+function Dev.ShippedDef(enc, d)
+    local Special = CRT.AlertSpecial
+    local entry = Special and Special:Get(enc, d.key)
+    local own = entry and Special:Choices(enc, entry).absorb
+    if own == nil then
+        return d, nil
+    end
+    local out = {}
+    for k, v in pairs(d) do
+        out[k] = v
+    end
+    out.absorb = own or nil
+    if own then
+        out.ticks, out.barTo, out.bar = nil, nil, nil
+    end
+    return out, { TEXT.ownShield }
+end
+
 -- The Lua for one boss: a header comment naming the boss, its encounter ID, season and the date, then the
--- special list. opts: special (the boss file's entries, the dev sample's too), reminders (your Mech Alerts).
--- Nil when there is nothing.
+-- special list. opts: special (the boss file's entries, the dev sample's too, each with your Shield bar choice:
+-- Dev.ShippedDef), reminders (your Mech Alerts). Nil when there is nothing.
 function Dev.LuaFor(enc, opts)
     opts = opts or {}
     local AS, Reminders = CRT.AlertShare, CRT.AlertReminders
@@ -294,7 +316,7 @@ function Dev.LuaFor(enc, opts)
     if opts.special then
         for _, d in ipairs(AS.RawDefs(enc)) do
             used[d.key] = true
-            blocks[#blocks + 1] = entryText(d)
+            blocks[#blocks + 1] = entryText(Dev.ShippedDef(enc, d))
         end
     end
     if opts.reminders then

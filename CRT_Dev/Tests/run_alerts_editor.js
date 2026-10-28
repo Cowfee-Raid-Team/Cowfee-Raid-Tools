@@ -2056,13 +2056,22 @@ do
   E:Open(ENC, nil, { text = "Break it", boss = "Test Boss", times = "P1 3:00" })
   local w = win()
   local s = assert(w.shield, "the section")
-  assert(s.check.label.text == "Shield bar" and s.help and s.help.helpTitle == "Shield bar" and s.help.helpText:find("Last pull shows which one", 1, true), "Shield bar with its (?)")
+  assert(s.check.label.text == "Shield bar" and s.help and s.help.helpTitle == "Shield bar"
+    and s.help.helpText == "Draws a bar of the boss's shield on every cast of this alert, and on any shield that goes up between them. The fill drains as the raid breaks it; the tick and seconds count the time you have.",
+    "Shield bar with its (?): " .. tostring(s.help.helpText))
+  assert(s.anyHelp.helpText:find("a difficulty this alert isn't set for", 1, true) and s.anyHelp.helpText:find("stop for 1.5 s.", 1, true), "Any time's (?): " .. s.anyHelp.helpText)
+  -- the gap in it is Alerts/Absorb.lua's
+  CRT.AlertAbsorb = { GAP = 2.5 }
+  assert(CRT.AlertShieldSection.AnyHelp():find("stop for 2.5 s.", 1, true), "read from Absorb.GAP")
+  CRT.AlertAbsorb = nil
+  assert(s.opts and s.Refresh and CRT.AlertShieldSection, "the shared section (Alerts/ShieldSection.lua)")
+  assert(s.note == nil and s.default == nil, "the editor's: no note beside it, no Default")
   assert(not s.check.checked and s.check.enabled, "unticked, and it can be ticked (Bar is on)")
   local unit, length = dropdowns["Shield on"], sliders["Seconds to break"]
   assert(unit and length and value("Shield on") == "boss1" and length.opts.get() == 15, "Shield on Boss 1, 15 s")
   assert(optionKeys(unit) == "boss1,boss2,boss3,boss4,boss5" and optionList(unit)[2].label == "Boss 2", "Boss 1 to Boss 5: " .. optionKeys(unit))
   assert(length.opts.min == 3 and length.opts.max == 60 and length.opts.step == 1, "3 to 60 s")
-  assert(s.any.label.text == "Also without a timeline for this difficulty" and s.any.checked, "Also..., on")
+  assert(s.any.label.text == "Any time it goes up" and s.any.checked and s.anyHelp and s.anyHelp.helpTitle == "Any time it goes up", "Any time it goes up, on, with its (?)")
   assert(not unit.opts.enabledIf() and not length.opts.enabledIf() and not s.any.enabled, "the rows wait for Shield bar")
   -- every row inside the window, Seconds to break with its value
   local rowEnd = 266 + length.opts.labelWidth + 5 + length.opts.width + 44
@@ -2096,7 +2105,7 @@ do
   A:Start(ENC, "Mythic", "encounter", { difficultyID = 16 })
   clock = 1012.44 SP.HandleEvent("UNIT_ABSORB_AMOUNT_CHANGED", "boss1")
   clock = 1183.8 SP.HandleEvent("UNIT_ABSORB_AMOUNT_CHANGED", "boss2")
-  clock = 1190 SP.HandleEvent("UNIT_ABSORB_AMOUNT_CHANGED", "boss2") -- only the first counts
+  clock = 1184.5 SP.HandleEvent("UNIT_ABSORB_AMOUNT_CHANGED", "boss2") -- the same shield, still being hit
   SP.HandleEvent("UNIT_ABSORB_AMOUNT_CHANGED", "target") SP.HandleEvent("UNIT_ABSORB_AMOUNT_CHANGED", SECRET)
   SP.HandleEvent("UNIT_ABSORB_AMOUNT_CHANGED", "boss6")
   A:Stop()
@@ -2175,6 +2184,11 @@ do
   typeInto(w.timeEdit, "3:00")
   setCheck(s.check, true)
   pick("Shield on", "boss2")
+  -- on the note with no difficulty (Any) the line plays everywhere: Any time adds nothing and is greyed
+  assert(value("Difficulty") == "any" and not s.any.enabled and s.any.checked, "Any: Any time greyed, its tick kept")
+  pick("Difficulty", "Mythic")
+  assert(s.any.enabled, "a note for one difficulty: Any time can be changed")
+  pick("Difficulty", "any")
   local line = E:Export()
   assert(line and line:find("shield:boss2,15,any;", 1, true), "Export carries the option: " .. tostring(line))
   click(w.saveBtn)
@@ -2199,9 +2213,53 @@ do
   print("ok editor: the Shield bar section")
 end
 
+-- Last pull keeps every shield start of a unit (a new one after its events stop for 1.5 s), up to 8, times only; the
+-- line names each, and a record from before (units only) still reads
+do
+  reset()
+  local SP = CRT.AlertShieldPulls
+  CRT.db.alerts.shieldPulls = {}
+  local reads = 0
+  UnitGetTotalAbsorbs = function() reads = reads + 1 return SECRET end
+  clock = 5000
+  A:Start(ENC, "Mythic", "encounter", { difficultyID = 16 })
+  local function at(t, unit) clock = 5000 + t SP.HandleEvent("UNIT_ABSORB_AMOUNT_CHANGED", unit or "boss2") end
+  at(45) at(45.5) at(46.9) -- one shield, hit for a while
+  at(105.2) at(106) -- 58 s later: a second one
+  at(107.4) -- 1.4 s after the last hit: still the second
+  at(200) at(260) at(320) at(380) at(440) at(500) at(560) -- the 9th start is past the cap
+  at(70, "boss1")
+  A:Stop()
+  local rec = CRT.db.alerts.shieldPulls[ENC]
+  assert(rec.units.boss2 == 45 and rec.units.boss1 == 70, "units keeps each first time, as before")
+  local t = rec.times.boss2
+  assert(#t == 8 and t[1] == 45 and t[2] == 105.2 and t[3] == 200 and t[8] == 500, "every start, up to 8: " .. table.concat(t, ","))
+  assert(#rec.times.boss1 == 1 and reads == 0, "boss1 once; the shield's amount never read")
+  local seen = SP:Seen(ENC)
+  assert(seen[1].unit == "boss2" and #seen[1].times == 8 and seen[2].unit == "boss1", "Seen gives each unit's starts")
+  E:Open(ENC, nil, { text = "Break it", boss = "Test Boss", times = "P1 3:00" })
+  local s = win().shield
+  assert(s.lastText.text == "Last pull: 2 boss shields", "two units: counted: " .. s.lastText.text)
+  assert(s.lastTip:find("Boss 2 shield at 0:45.0, 1:45.2, 3:20.0", 1, true) and s.lastTip:find("Boss 1 shield at 1:10.0", 1, true), "the tooltip names every start: " .. s.lastTip)
+  -- one unit with several starts: the line names them all, cut to fit the window, its tooltip whole
+  CRT.db.alerts.shieldPulls[ENC] = { at = 1, units = { boss3 = 30 }, times = { boss3 = { 30, 90.5 } } }
+  E:Open(ENC, nil, { text = "Break it", boss = "Test Boss", times = "P1 3:00" })
+  assert(s.lastText.text == "Last pull: Boss 3 shield at 0:30.0, 1:30.5", "one unit, each time: " .. s.lastText.text)
+  local btns = 0 for _, b in ipairs(s.use) do if b.shown then btns = btns + 6 + b.w end end
+  assert(226 + s.lastText.w + btns <= 600 - 16, "inside the window")
+  -- a record from before the times list: its first time
+  CRT.db.alerts.shieldPulls[ENC] = { at = 1, units = { boss4 = 12 } }
+  E:Open(ENC, nil, { text = "Break it", boss = "Test Boss", times = "P1 3:00" })
+  assert(s.lastText.text == "Last pull: Boss 4 shield at 0:12.0", "an older record: " .. s.lastText.text)
+  UnitGetTotalAbsorbs = nil
+  E:Close()
+  print("ok editor: Last pull keeps every shield start")
+end
+
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 const files = process.argv.slice(2);
+lua.lua_checkstack(L, files.length + 2); // more sources than the stack's first 20 slots
 for (const file of files) {
   let src; try { src = fs.readFileSync(file, 'utf8'); } catch (e) { console.error('cannot read ' + file); process.exit(1); }
   lua.lua_pushstring(L, to_luastring(src));
