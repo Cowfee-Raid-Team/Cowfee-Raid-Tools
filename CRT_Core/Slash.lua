@@ -200,6 +200,8 @@ SlashCmdList["COWFEERAIDTOOLS"] = function(msg)
         -- dev clearprobe on, off, show: log a pull's possible reset moments for a marker display (Dev/ClearProbe.lua)
     elseif CRT.AbsorbProbe and CRT.AbsorbProbe:Command(msg) then
         -- dev absorbprobe on, off, show: log whether a boss's absorb shield is readable in a pull (Dev/AbsorbProbe.lua)
+    elseif CRT.ShieldBarDev and CRT.ShieldBarDev:Command(msg) then
+        -- dev shieldbar (off): the shield bar on your own absorb, against a dummy (Dev/ShieldBarDev.lua)
     elseif CRT.BossDebug and CRT.BossDebug:Command(msg) then
         -- dev bossdebug on, off, show [boss]: log every boss pull, one log per boss, to copy (Dev/BossDebug.lua)
     elseif CRT.MarkerProbe and CRT.MarkerProbe:Command(msg) then

@@ -14,9 +14,9 @@ const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
 const d = process.argv[2];
 const FILES = ['CRT_Modules/Alerts/Rules.lua', 'CRT_Modules/Alerts/Engine.lua', 'CRT_Modules/Alerts/Areas.lua', 'CRT_Modules/Alerts/Bars.lua',
-  'CRT_Modules/Timeline/Reference.lua', 'CRT_Modules/Alerts/Colors.lua', 'CRT_Modules/Alerts/Absorb.lua'];
+  'CRT_Modules/Timeline/Reference.lua', 'CRT_Modules/Alerts/Colors.lua', 'CRT_Modules/Alerts/Absorb.lua', 'CRT_Dev/Dev/ShieldBarDev.lua'];
 const harness = themeLua(d) + placementLua(d) + `
-local rulesSrc, engineSrc, areasSrc, barsSrc, referenceSrc, colorsSrc, absorbSrc = ...
+local rulesSrc, engineSrc, areasSrc, barsSrc, referenceSrc, colorsSrc, absorbSrc, devSrc = ...
 local fails, passes = 0, 0
 local function check(ok, what) if ok then passes = passes + 1 print("ok " .. what) else fails = fails + 1 print("FAIL " .. what) end end
 
@@ -127,6 +127,9 @@ CRT_PLACEMENT(CRT)
 assert(load(areasSrc, "Areas"))("CowfeeRaidTools", CRT)
 assert(load(barsSrc, "Bars"))("CowfeeRaidTools", CRT)
 assert(load(absorbSrc, "Absorb"))("CowfeeRaidTools", CRT)
+local printed = {}
+function CRT:Print(m) printed[#printed + 1] = m end
+assert(load(devSrc, "ShieldBarDev"))("CowfeeRaidTools", CRT)
 local A, B, Ab = CRT.Alerts, CRT.AlertBars, CRT.AlertAbsorb
 check(Ab and Ab.GAP == 1.5, "CRT.AlertAbsorb, a 1.5 s gap")
 
@@ -395,8 +398,62 @@ clock = 284 fire("boss2") B:Refresh()
 check(#shields() == 1 and B.pool[1].line.id == "absorb:shield:2", "after a 2 s gap: a new shield, a new untimed bar")
 check(#errors == 0, tostring(errors[1]))
 
+-- /crt dev shieldbar (Dev/ShieldBarDev.lua): your own absorb on the shield bar's code, outside any pull
+A:Stop()
+items, watchList, absorbs, clock = {}, {}, {}, 100
+local Dev = CRT.ShieldBarDev
+check(Dev and Dev:Command("dev shieldbar") == true and printed[#printed] == "Shield bar test on: put an absorb on yourself and hit a dummy.", "dev shieldbar: on, with its chat line")
+check(Dev:Command("dev shieldbar on") == true and Dev:Command("dev bossdebug") == false, "dev shieldbar on is accepted, other commands are not")
+check(absorbFrame() and absorbFrame().events.UNIT_ABSORB_AMOUNT_CHANGED == "player", "on: UNIT_ABSORB_AMOUNT_CHANGED for player only")
+absorbs.player = secret(700000)
+B:Refresh()
+check(#shields() == 0, "no event yet: no bar")
+fire("player")
+B:Refresh()
+sh = shields()
+check(#sh == 1 and sh[1].row.text == "Shield (test)" and sh[1].row.time == "15" and sh[1].row.tick == 1, "the first player event starts one bar: label Shield (test), 15 s")
+local dsb = sh[1] and sbOf(sh[1].bar)
+local dmm, dvals = callsOf(dsb, "minmax"), callsOf(dsb, "value")
+check(dsb and rawequal(dmm[#dmm][3], absorbs.player) and rawequal(dvals[#dvals][2], absorbs.player), "the first reading is the maximum and the value, as it came")
+check(sh[1].bar.absorbParts.amount.text ~= "", "the amount through AbbreviateNumbers")
+fire("player") fire("boss1") B:Refresh()
+check(#shields() == 1, "more events: still one bar")
+for t = 101, 114 do clock = t fire("player") end
+clock = 115 fire("player") B:Refresh()
+check(#shields() == 0, "the bar ends at 15 s")
+clock = 116 fire("player") B:Refresh()
+check(#shields() == 0, "events still coming (under 1.5 s apart): no new bar")
+clock = 118 fire("player") B:Refresh()
+check(#shields() == 1, "after the 1.5 s gap: a new bar")
+Dev:Command("dev shieldbar off")
+B:Refresh()
+check(printed[#printed] == "Shield bar test off." and #shields() == 0 and not Ab:DevActive(), "off: the bar is cleared, with its chat line")
+check(absorbFrame() == nil and not A.running, "off: the event is unregistered and the run is over")
+clock = 130 fire("player") B:Refresh()
+check(#shields() == 0, "off: a new absorb shows nothing")
+-- a real encounter stops it
+Dev:Command("dev shieldbar on")
+fire("player") B:Refresh()
+check(#shields() == 1, "on again: a bar")
+A.HandleEvent("ENCOUNTER_START", 3001, "Boss", 16)
+check(not Ab:DevActive() and absorbFrame() == nil, "an encounter start stops the dev watch")
+A.HandleEvent("ENCOUNTER_END", 3001, "Boss", 16, 20, 0)
+-- a real pull is untouched by the hook
+pull(shieldItems())
+check(absorbFrame() and absorbFrame().events.UNIT_ABSORB_AMOUNT_CHANGED == "boss2" and not Ab:DevActive(), "a real pull listens for boss2 only, as before")
+Ab:DevStop()
+check(A.running and A.run.reason == "encounter", "DevStop leaves a real pull running")
+A:Stop()
+check(#errors == 0, tostring(errors[1]))
+
 print(passes .. " passed, " .. fails .. " failed")
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 for (const f of FILES) lua.lua_pushstring(L, to_luastring(fs.readFileSync(d + '/' + f, 'utf8')));
 if (lua.lua_pcall(L, FILES.length, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
+const toc = fs.readFileSync(d + '/CowfeeRaidTools.toc', 'utf8');
+const a = toc.indexOf('#@do-not-package@'), b = toc.indexOf('#@end-do-not-package@'), i = toc.indexOf('CRT_Dev\\Dev\\ShieldBarDev.lua');
+console.log(a >= 0 && i > a && i < b ? 'ok ShieldBarDev.lua is in the .toc do-not-package block' : 'FAIL ShieldBarDev.lua is not in the .toc do-not-package block');
+const slash = fs.readFileSync(d + '/CRT_Core/Slash.lua', 'utf8');
+const sa = slash.indexOf('--@do-not-package@'), sb = slash.indexOf('--@end-do-not-package@'), si = slash.indexOf('CRT.ShieldBarDev:Command');
+console.log(sa >= 0 && si > sa && si < sb ? 'ok the command is in the Slash.lua do-not-package block' : 'FAIL the command is not in the Slash.lua do-not-package block');

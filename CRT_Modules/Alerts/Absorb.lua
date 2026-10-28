@@ -39,6 +39,7 @@ local timed = {} -- item line id -> its bar's state
 local free = {} -- watch id -> { n (bars so far), lastEventAt, bar (its state, or nil) }
 local watches = EMPTY -- Special:AbsorbWatches of the run
 local units = {} -- the units any bar of the run watches
+local dev -- the developer watch (Absorb:DevWatch): { unit, label, length } while it runs, or nil
 local frame
 local listening -- the units the event is registered for, as one text ("boss2"), or nil when it is not
 
@@ -128,10 +129,19 @@ local function listen(list)
     end
 end
 
+local DEV_REASON = "devshield" -- the run the developer watch starts (CRT_Dev/Dev/ShieldBarDev.lua)
+
+local function devRun(run)
+    return dev ~= nil and run ~= nil and run == dev.run
+end
+
 -- On every change of the alerts: a new run starts clean, and the watches and the units are read again. Only a boss
 -- pull listens to the event, and only while some bar watches a unit.
 function Absorb:Sync()
     local run = Alerts.running and Alerts.run or nil
+    if dev and run ~= dev.run then
+        dev = nil -- another run (a real pull, a Test) took the place of the developer watch
+    end
     if not run then
         reset()
         listen(EMPTY)
@@ -143,6 +153,9 @@ function Absorb:Sync()
     end
     local Special = CRT.AlertSpecial
     watches = Special and Special.AbsorbWatches and Special:AbsorbWatches(run) or EMPTY
+    if devRun(run) then
+        watches = { { id = "absorb:dev", key = "dev", unit = dev.unit, length = dev.length, text = dev.label } }
+    end
     units = {}
     for _, w in ipairs(watches) do
         units[w.unit] = true
@@ -153,7 +166,7 @@ function Absorb:Sync()
         end
     end
     local list = {}
-    if run.reason == "encounter" then
+    if run.reason == "encounter" or devRun(run) then
         for unit in pairs(units) do
             list[#list + 1] = unit
         end
@@ -294,6 +307,29 @@ function Absorb:Lines(now)
         end
     end
     return out or EMPTY
+end
+
+-- Developer only (CRT_Dev/Dev/ShieldBarDev.lua): an untimed watch on any unit, with its own label and length, in a run
+-- of its own that has no lines (so it works in or out of combat, with no encounter). The first event starts the bar and
+-- a new one only after the GAP rule, as a real untimed bar. Any other run starting (a real pull) ends the watch.
+function Absorb:DevWatch(unit, label, length)
+    self:DevStop()
+    Alerts:Start(nil, nil, DEV_REASON, { blocks = {}, tag = DEV_REASON })
+    dev = { unit = unit, label = label, length = length, run = Alerts.run }
+    self:Sync()
+end
+
+function Absorb:DevStop()
+    local run = Alerts.running and Alerts.run or nil
+    local mine = dev and run == dev.run
+    dev = nil
+    if mine then
+        Alerts:Stop()
+    end
+end
+
+function Absorb:DevActive()
+    return dev ~= nil
 end
 
 Alerts:OnChange(function()
