@@ -110,6 +110,7 @@ local function reset()
   CRT.db.alerts.reminders, CRT.db.alerts.nextId, CRT.db.alerts.overrides = {}, 1, {}
   CRT.db.notes.list, CRT.db.notes.nextId, CRT.db.notes.active = {}, 1, nil
   absorbs = {}
+  CRT.AlertSpecial.dev[ENC] = nil
   wipe(errors)
   clock = 100
 end
@@ -262,6 +263,75 @@ check("the editor's Test: the shield bar's sample, full, no amount, its whole le
   local it = CRT.NoteEngine.ItemFor(t, 1, true)
   assert(it.absorb and it.absorb.unit == "boss1" and it.absorb.length == 8, "the note line's test item")
   assert(CRT.NoteEngine.ItemFor(t, 1, false).absorb == nil, "someone else's line: none")
+  assert(#errors == 0, tostring(errors[1]))
+end)
+
+-- One shield, one bar: a special alert, a raid note line and your own reminder all on boss2 show one bar, labelled by the
+-- first of them in that order; two units still get a bar each
+local S = CRT.AlertSpecial
+local function withSpecial(ph)
+  S.dev[ENC] = { { key = "shield", label = "Special shield", text = "Special shield", default = true, who = { mode = "everyone" },
+    when = { times = "P" .. ph .. " 0:30" }, lead = 6, show = { callout = true, bar = true }, absorb = { unit = "boss2", length = 15, anyDifficulty = true } } }
+  assert(S:Get(ENC, "shield"), "the special entry reads")
+end
+local function noteOn(ph, unit, difficulty)
+  Notes:Import("EncounterID:" .. ENC .. ";Difficulty:" .. (difficulty or "Mythic") .. ";Name:Boss\\ntime:1;ph:1;tag:everyone;text:Pull;\\ntime:30;ph:" .. ph .. ";tag:everyone;text:Note shield;show:bar;warn:6;shield:" .. (unit or "boss2") .. ",10;")
+end
+
+check("one shield, one bar: a special alert, a note line and a reminder on boss2, timed", function()
+  reset()
+  withSpecial(1)
+  noteOn(1)
+  reminder()
+  pull(16)
+  fire("boss2", 126)
+  local l = shields(126.5)
+  assert(#l == 1, "one bar: " .. #l)
+  assert(l[1].text == "Special shield", "the special alert's label: " .. tostring(l[1].text))
+  for t = 126.5, 130, 0.5 do fire("boss2", t) end
+  assert(#shields(130) == 1, "still one")
+  S.dev[ENC] = nil
+  A:Stop()
+  assert(#errors == 0, tostring(errors[1]))
+end)
+
+check("one shield, one bar: untimed (phase 2 not reached), and a window opening later", function()
+  reset()
+  withSpecial(2)
+  noteOn(2)
+  reminder({ times = "P2 0:30" })
+  pull(16)
+  fire("boss2", 300)
+  local l = shields(300.5)
+  assert(#l == 1 and l[1].text == "Special shield", "untimed: one bar, the special alert's: " .. #l .. " " .. tostring(l[1] and l[1].text))
+  A:Stop()
+  -- your reminder's untimed bar first; then the note line's window opens on the same shield: one bar, the note's label.
+  -- (The boss's only note is Heroic's and its line has no any: in this Mythic pull it has its window but no untimed watch.)
+  reset()
+  noteOn(1, "boss2", "Heroic")
+  reminder({ group = "nh" }) -- a Mythic pull: untimed only
+  pull(16)
+  fire("boss2", 110)
+  l = shields(110.5)
+  assert(#l == 1 and l[1].text == "Break it", "your reminder's untimed bar: " .. tostring(l[1] and l[1].text))
+  local st = l[1].absorb
+  fire("boss2", 124.5) -- the note's window is open from 124; the reminder's bar runs until 125
+  l = shields(124.8)
+  assert(#l == 1 and l[1].absorb == st and l[1].text == "Note shield", "the window takes it over, labelled by the note: " .. #l .. " " .. tostring(l[1] and l[1].text))
+  A:Stop()
+  S.dev[ENC] = nil
+  assert(#errors == 0, tostring(errors[1]))
+end)
+
+check("one shield, one bar: two units, two bars", function()
+  reset()
+  noteOn(1, "boss3")
+  reminder()
+  pull(16)
+  fire("boss2", 126) fire("boss3", 126)
+  local l = shields(126.5)
+  assert(#l == 2, "boss2 and boss3: two bars: " .. #l)
+  A:Stop()
   assert(#errors == 0, tostring(errors[1]))
 end)
 
