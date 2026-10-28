@@ -77,10 +77,13 @@ local ADDON, CRT = ...
 -- Blizzard calls it only from its secure templates), so an addon can never put a marker on a player. The
 -- alert names the marks in its text instead (Special.MARKING says so to the Mech Alerts panel).
 -- Each player's choices: CRT.db.alerts.special[encounterID][key] = { on, show = { alert, text, icon, bar,
--- circle, timeline }, speak, markers, fill, lead }, saved once changed; until then the entry's own defaults apply.
--- lead is your Show from (seconds before each cast it shows, LEAD_MIN to LEAD_MAX as on the Mechanics panel), kept
--- only while it differs from the entry's lead. It moves when the alert shows (callout, text, icon, speech, and a bar
--- with no start of its own, which shows with it); a bar of its own (bar.start) keeps the boss file's place.
+-- circle, timeline }, speak, markers, fill, lead, countTo, absorb }, saved once changed; until then the entry's own
+-- defaults apply. lead is your Show from (seconds before each cast it shows, LEAD_MIN to LEAD_MAX as on the Mechanics
+-- panel), kept only while it differs from the entry's lead. It moves when the alert shows (callout, text, icon, speech,
+-- and a bar with no start of its own, which shows with it); a bar of its own (bar.start) keeps the boss file's place.
+-- absorb is your Shield bar (2026-10-28): { unit, length, anyDifficulty } in place of the entry's absorb, or false for
+-- none, kept only while it differs from the entry's; an entry with no absorb can get one this way. Special:Absorb gives
+-- the one in use, and with it the bar's impacts (ticks, bar) are left out, as a reminder's are.
 -- /crt dev special (developer builds) adds a sample to Special.dev[encounterID], never saved.
 
 local Alerts = CRT.Alerts
@@ -535,8 +538,34 @@ local function ownLead(entry, v)
     return nil
 end
 
--- Your choices for an entry: { on, show = { ... }, speak, markers, fill, lead }, the saved ones over the entry's
--- defaults. lead is nil until yours differs from the entry's (Special:Lead gives the one in use).
+local function sameAbsorb(a, b)
+    if a == nil or b == nil then
+        return a == b
+    end
+    return a.unit == b.unit and a.length == b.length and (a.anyDifficulty and true or false) == (b.anyDifficulty and true or false)
+end
+
+-- Your shield bar for an entry (the Mech Alerts Special tab's Shield bar section), or nil while the entry's own is
+-- yours: false turns the entry's off, { unit, length, anyDifficulty } (read as Parser.ReadAbsorb reads one) is yours.
+-- Either is kept only while it differs from the entry's absorb, so the entry's own (or none) is never saved.
+local function ownAbsorb(entry, v)
+    if v == false then
+        if entry.absorb ~= nil then
+            return false
+        end
+        return nil
+    end
+    local a = CRT.AlertReminders and CRT.AlertReminders.AbsorbOf(v)
+    if a and not sameAbsorb(a, entry.absorb) then
+        return a
+    end
+    return nil
+end
+Special.SameAbsorb = sameAbsorb
+
+-- Your choices for an entry: { on, show = { ... }, speak, markers, fill, lead, countTo, absorb }, the saved ones over
+-- the entry's defaults. lead is nil until yours differs from the entry's (Special:Lead gives the one in use); absorb is
+-- nil until yours differs from the entry's (Special:Absorb gives the one in use).
 function Special:Choices(encounterID, entry)
     local all = store()
     local saved = all and type(all[encounterID]) == "table" and all[encounterID][entry.key]
@@ -558,7 +587,8 @@ function Special:Choices(encounterID, entry)
     end
     return { on = pick(saved.on, entry.default), show = show, speak = pick(saved.speak, entry.speak),
         markers = pick(saved.markers, false), fill = FILLS[saved.fill] and saved.fill or entry.fill or DEFAULT_FILL,
-        lead = ownLead(entry, saved.lead), countTo = saved.countTo == "impact" and "impact" or nil }
+        lead = ownLead(entry, saved.lead), countTo = saved.countTo == "impact" and "impact" or nil,
+        absorb = ownAbsorb(entry, saved.absorb) }
 end
 
 -- Seconds before each cast the entry shows for you: your Show from, else the entry's lead.
@@ -566,10 +596,21 @@ function Special:Lead(encounterID, entry)
     return self:Choices(encounterID, entry).lead or entry.lead
 end
 
+-- The entry's shield bar for you, { unit, length, anyDifficulty } or nil: your Shield bar choice over the entry's own
+-- absorb (false: none). Every reader of an entry's shield bar asks this (the items, the untimed watches, the Special
+-- tab), never entry.absorb. choices (optional) are Special:Choices already read.
+function Special:Absorb(encounterID, entry, choices)
+    local own = (choices or self:Choices(encounterID, entry)).absorb
+    if own == false then
+        return nil
+    end
+    return own or entry.absorb
+end
+
 -- Saves one choice ("on", "speak", "markers", "fill" = "up" or "down", "countTo" = "impact" or the cast, "lead" = seconds or nil for the entry's,
--- or a Show as key with show = true) and tells the engine.
--- The whole set is saved, so a later change to the entry's defaults leaves your choices alone; a lead is saved
--- only while it differs from the entry's (one out of range is the entry's too).
+-- "absorb" = a shield bar, false for none or nil for the entry's, or a Show as key with show = true) and tells the engine.
+-- The whole set is saved, so a later change to the entry's defaults leaves your choices alone; a lead or an absorb is
+-- saved only while it differs from the entry's (a lead out of range is the entry's too).
 function Special:SetChoice(encounterID, entry, field, value, show)
     local all = store(true)
     if not (all and entry) then
@@ -584,6 +625,8 @@ function Special:SetChoice(encounterID, entry, field, value, show)
         c.countTo = value == "impact" and "impact" or nil -- the default (to the cast) is saved as nothing
     elseif field == "lead" then
         c.lead = ownLead(entry, value)
+    elseif field == "absorb" then
+        c.absorb = ownAbsorb(entry, value)
     else
         c[field] = value and true or false
     end
@@ -881,7 +924,9 @@ local function item(entry, choices, n, at, step, covers, icon)
     -- your Show from, else the entry's: when the alert shows; a bar of its own keeps its start (barStart)
     local lead = choices.lead or entry.lead
     local spell = entry.when.spellID
-    local imp = entry.impacts
+    -- a shield bar (yours over the entry's, Special:Absorb) takes the bar: its impacts don't apply, as for a reminder
+    local absorb = Special:Absorb(nil, entry, choices)
+    local imp = not absorb and entry.impacts or nil
     local ticks
     if imp then
         ticks = {}
@@ -898,7 +943,7 @@ local function item(entry, choices, n, at, step, covers, icon)
         fill = choices.fill or DEFAULT_FILL,
         countTo = ticks and choices.countTo or nil,
         -- a shield bar (Alerts/Absorb.lua): this cast's window gates it, from the entry's own lead (never your Show from)
-        absorb = entry.absorb and { unit = entry.absorb.unit, length = entry.absorb.length, lead = entry.lead } or nil,
+        absorb = absorb and { unit = absorb.unit, length = absorb.length, lead = entry.lead } or nil,
         covers = covers,
         id = BLOCK .. ":" .. entry.key .. ":" .. n,
         ph = at.ph,
@@ -994,12 +1039,12 @@ local function untimedIsMine(entry)
     return false
 end
 
--- The untimed shield bars of a pull (see absorb at the top of this file): one watch per absorb entry you turned on
--- with its bar shown, { id, key, unit, length, text, icon, abilityType, fill, timed }. Alerts/Absorb.lua starts one on
--- its unit's first absorb event while none of the entry's timed windows is open. An entry for the run's difficulty
--- has one (timed = true when it has times there: the fallback for a phase not reached yet); an entry for another
--- difficulty only with anyDifficulty, and never with times (no other difficulty's times are used). Only a boss pull
--- has them: any other run hears no absorb events. {} when none.
+-- The untimed shield bars of a pull (see absorb at the top of this file): one watch per entry you turned on with a
+-- shield bar (yours over the entry's, Special:Absorb) and its bar shown, { id, key, unit, length, text, icon,
+-- abilityType, fill, timed }. Alerts/Absorb.lua starts one on its unit's first absorb event while none of the entry's
+-- timed windows is open. An entry for the run's difficulty has one (timed = true when it has times there: the fallback
+-- for a phase not reached yet); an entry for another difficulty only with anyDifficulty, and never with times (no
+-- other difficulty's times are used). Only a boss pull has them: any other run hears no absorb events. {} when none.
 function Special:AbsorbWatches(run)
     local out = {}
     if not (run and run.reason == "encounter" and type(run.encounterID) == "number") then
@@ -1007,16 +1052,17 @@ function Special:AbsorbWatches(run)
     end
     local group = Alerts.RunGroup and Alerts:RunGroup(run) or nil
     for _, entry in ipairs(self:List(run.encounterID)) do
-        local fits = entry.absorb and (entry.difficulty == nil or run.anyDifficulty or entry.difficulty == group)
-        local choices = entry.absorb and (fits or entry.absorb.anyDifficulty) and self:Choices(run.encounterID, entry)
-        if choices and choices.on and choices.show.bar and untimedIsMine(entry) then
+        local choices = self:Choices(run.encounterID, entry)
+        local a = self:Absorb(run.encounterID, entry, choices)
+        local fits = entry.difficulty == nil or run.anyDifficulty or entry.difficulty == group
+        if a and (fits or a.anyDifficulty) and choices.on and choices.show.bar and untimedIsMine(entry) then
             local timed = fits and #self:Times(run.encounterID, entry, group, run.reference) > 0
             local Reference = CRT.TimelineReference
             out[#out + 1] = {
                 id = "absorb:" .. entry.key,
                 key = entry.key,
-                unit = entry.absorb.unit,
-                length = entry.absorb.length,
+                unit = a.unit,
+                length = a.length,
                 text = Special.TextFor(entry, nil),
                 icon = Special.Icon(run.encounterID, entry, group, run.reference),
                 abilityType = (entry.type and Reference and Reference.TYPES and Reference.TYPES[entry.type]) and entry.type or nil,

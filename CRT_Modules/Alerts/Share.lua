@@ -8,7 +8,7 @@ local ADDON, CRT = ...
 --     special = { [key] = choices }, defs = { def, ... } } } } }
 -- group is "nh" or "mythic", or "any" for an older reminder on any difficulty and a special alert for both.
 -- A reminder carries only the fields REMINDER_FIELDS lists (what the Mech Alerts store saves, ticks and fill
--- among them; an older reminder's barTo, now ignored, is left out without a count, OLD_REMINDER_FIELDS); special choices are { on, show, speak, markers, fill, lead }; defs are boss file entries.
+-- among them; an older reminder's barTo, now ignored, is left out without a count, OLD_REMINDER_FIELDS); special choices are { on, show, speak, markers, fill, lead, countTo, absorb }; defs are boss file entries.
 -- Reading checks every field the way the editor does (Draft's and Reminders' parsers, Special.Read) and leaves
 -- out, and counts, anything that doesn't read. Read changes nothing: it compares each part with what you have
 -- (new, replaces yours, same as yours), and Apply writes the picked parts into the same store the panel uses.
@@ -308,10 +308,12 @@ end
 
 -- Incoming choices laid over base (your own for the entry, Special:Choices), each field checked; a field that
 -- doesn't read keeps base's and is counted. lead (your Show from) reads in the Mechanics range; one equal to
--- shipped (the entry's own lead) is none of yours, as Special:SetChoice keeps it.
+-- shipped (the entry's own lead) is none of yours, as Special:SetChoice keeps it. absorb (your Shield bar) is false or
+-- a shield bar as Parser.ReadAbsorb reads one; one the same as the entry's own (shippedAbsorb: its absorb, nil for none)
+-- is none of yours.
 local LEAD = seconds(1, 60)
 
-local function cleanChoices(v, base, count, shipped)
+local function cleanChoices(v, base, count, shipped, shippedAbsorb)
     local out = copy(base)
     if type(v) ~= "table" then
         count()
@@ -343,6 +345,19 @@ local function cleanChoices(v, base, count, shipped)
                 out.lead = nil
             else
                 out.lead = x
+            end
+        elseif k == "absorb" then
+            local a = x ~= false and CRT.AlertReminders.AbsorbOf(x) or nil
+            if x == false then
+                -- false turns the entry's own off; with none it is the entry's (none)
+                out.absorb = nil
+                if shippedAbsorb ~= nil then
+                    out.absorb = false
+                end
+            elseif not a then
+                count()
+            else
+                out.absorb = not CRT.AlertSpecial.SameAbsorb(a, shippedAbsorb) and a or nil
             end
         elseif k == "show" and type(x) == "table" then
             for sk, sv in pairs(x) do
@@ -644,7 +659,7 @@ local function readSpecial(info, enc, group, map, defs, skip)
             end
             local clean = cleanChoices(v, base, function()
                 info.dropped = info.dropped + 1
-            end, entry and entry.lead)
+            end, entry and entry.lead, entry and entry.absorb)
             info.items[#info.items + 1] = { kind = "special", enc = enc, group = group, key = key, value = clean, label = entry and entry.label or key,
                 status = same(clean, base) and "same" or "replace" }
         else

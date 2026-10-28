@@ -594,6 +594,85 @@ check("shield editor: Export for shipping writes a Mech Alert's shield bar as ab
   assert(entry and entry.absorb.unit == "boss2" and entry.absorb.length == 15 and entry.absorb.anyDifficulty == true, "the boss file reads it: " .. tostring(why))
 end)
 
+-- Your Shield bar choice on a special alert (Mech Alerts > Special: Special:SetChoice "absorb") travels with your other
+-- choices: a share carries it (false too), Import saves it where the panel does, and Export for shipping writes it as
+-- the entry's absorb
+local SHIPPED_SHIELD = { key = "shield", label = "Shield", when = { row = "Orb Burst" }, absorb = { unit = "boss2", length = 15, anyDifficulty = true } }
+local function withShield(fn)
+  B:Register({ encounterID = 9001, name = "Test Boss", season = "T", special = { SPECIAL[1], SPECIAL[2], SHIPPED_SHIELD } })
+  local ok, err = pcall(fn)
+  B:Register({ encounterID = 9001, name = "Test Boss", season = "T", special = SPECIAL })
+  assert(ok, tostring(err))
+end
+
+check("mech shield: a share carries your Shield bar choice; false and the shipped one too", function()
+  withShield(function()
+    sender()
+    local shield, soaks = S:Get(9001, "shield"), S:Get(9001, "soaks")
+    S:SetChoice(9001, shield, "absorb", { unit = "boss3", length = 20, anyDifficulty = false })
+    S:SetChoice(9001, soaks, "absorb", false) -- soaks has none shipped: false is nothing of yours
+    assert(CRT.db.alerts.special[9001].soaks.absorb == nil, "false on an alert with none shipped: nothing kept")
+    local code = AS:Export({ special = true, bosses = { 9001 } })
+    local data = Share.Decode(code, "alerts", 1, AS.CAPS)
+    assert(same(data.boss[9001].any.special.shield.absorb, { unit = "boss3", length = 20, anyDifficulty = false }), "in the code")
+    receiver()
+    local info = AS:Read(code, { defs = false })
+    local item
+    for _, it in ipairs(info.items) do if it.key == "shield" then item = it end end
+    assert(item and same(item.value.absorb, { unit = "boss3", length = 20, anyDifficulty = false }) and item.status == "replace", "read: yours would be Boss 3, 20 s")
+    AS:Apply(info)
+    assert(S:Absorb(9001, shield).length == 20 and S:Absorb(9001, shield).unit == "boss3", "applied: saved where the panel saves it")
+    assert(AS:Read(code, { defs = false }).counts.same >= 1, "read again: the same as yours")
+    -- the shipped bar turned off travels as false
+    S:SetChoice(9001, shield, "absorb", false)
+    code = AS:Export({ special = true, bosses = { 9001 } })
+    assert(Share.Decode(code, "alerts", 1, AS.CAPS).boss[9001].any.special.shield.absorb == false, "false in the code")
+    receiver()
+    AS:Apply(AS:Read(code, { defs = false }))
+    assert(CRT.db.alerts.special[9001].shield.absorb == false and S:Absorb(9001, shield) == nil, "false applied: no shield bar")
+    -- hand-made: the shipped one is none of yours, a bad one is dropped and counted
+    local function readAbsorb(v)
+      receiver()
+      local payload = { v = 1, from = "Hand", boss = { [9001] = { any = { special = { shield = { on = true, absorb = v } } } } } }
+      local info = assert(AS:Read(Share.Encode("alerts", 1, payload), { defs = false }))
+      for _, it in ipairs(info.items) do if it.key == "shield" then return it.value, info.dropped end end
+    end
+    local v, dropped = readAbsorb({ unit = "boss2", length = 15, anyDifficulty = true })
+    assert(v and v.absorb == nil and dropped == 0, "the shipped one: nothing of yours")
+    v, dropped = readAbsorb({ unit = "focus", length = 15 })
+    assert(v and v.absorb == nil and dropped == 1, "a bad one: dropped and counted")
+  end)
+end)
+
+check("mech shield: Export for shipping writes your Shield bar choice as the entry's absorb", function()
+  withShield(function()
+    sender()
+    local shield, soaks = S:Get(9001, "shield"), S:Get(9001, "soaks")
+    local before = Dev.LuaFor(9001, { special = true })
+    assert(before:find('absorb = { unit = "boss2", length = 15, anyDifficulty = true }', 1, true) and not before:find("your Shield bar", 1, true), "none of yours: as shipped")
+    S:SetChoice(9001, shield, "absorb", { unit = "boss2", length = 20, anyDifficulty = true })
+    S:SetChoice(9001, soaks, "absorb", { unit = "boss1", length = 12, anyDifficulty = false }) -- soaks ships ticks: they go
+    local text = Dev.LuaFor(9001, { special = true })
+    assert(text:find('absorb = { unit = "boss2", length = 20, anyDifficulty = true }', 1, true), "yours written: " .. text)
+    assert(text:find("your Shield bar choice", 1, true), "with a comment saying so")
+    local got
+    local chunk = assert(load("local CRT = ...\\nCRT.Bosses:Register({ encounterID = 9001, name = \\"Test Boss\\", season = \\"T\\",\\n" .. text .. "\\n})", "export"))
+    chunk({ Bosses = { Register = function(_, def) got = def end } })
+    local byKey = {}
+    for _, def in ipairs(got.special) do
+      local entry, why = S.Read(def)
+      assert(entry, "each entry reads: " .. tostring(def.key) .. " " .. tostring(why))
+      byKey[def.key] = def
+    end
+    assert(byKey.soaks.ticks == nil and byKey.soaks.barTo == nil and byKey.soaks.absorb.unit == "boss1", "soaks: your shield bar, its ticks gone")
+    -- the shipped bar turned off: no absorb written
+    S:SetChoice(9001, shield, "absorb", false)
+    chunk = assert(load("local CRT = ...\\nCRT.Bosses:Register({ encounterID = 9001, name = \\"Test Boss\\", season = \\"T\\",\\n" .. Dev.LuaFor(9001, { special = true }) .. "\\n})", "export"))
+    chunk({ Bosses = { Register = function(_, def) got = def end } })
+    for _, def in ipairs(got.special) do if def.key == "shield" then assert(def.absorb == nil, "off: no absorb") end end
+  end)
+end)
+
 print(ok_ .. " passed, " .. fail .. " failed")
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
