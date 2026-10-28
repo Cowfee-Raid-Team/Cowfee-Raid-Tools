@@ -1417,6 +1417,30 @@ check("mech ticks: saved with the reminder, bad ones not", function()
   assert(#errors == 0, tostring(errors[1]))
 end)
 
+-- A reminder whose bar is a shield bar (the alert editor's Shield bar section): its line in place of the ticks, Bar fill
+-- and Count down to, and a change on the panel keeps it
+check("mech shield: a shield bar's line in place of ticks and fill, kept by every save", function()
+  local f = fresh()
+  local p = f.panel
+  setCheck(f.rows[1].check, true)
+  local _, id = only()
+  R:Get(ENC, id).absorb = { unit = "boss2", length = 15, anyDifficulty = true }
+  click(f.rows[2].frame)
+  click(f.rows[1].frame)
+  assert(p.shieldLine.shown and p.shieldLine.text == "Shield bar: Boss 2, 15 s", "its line: " .. tostring(p.shieldLine.text))
+  assert(p.shieldHelp.shown and p.shieldHelp.helpTitle == "Shield bar" and p.shieldHelp.helpText:find("alert editor", 1, true), "with a (?)")
+  assert(not p.ticksEdit.shown and not p.ticksLabel.shown and not p.barFill.shown and not p.countTo.shown, "no ticks, Bar fill or Count down to")
+  p.showFrom.opts.set(8)
+  local r = R:Get(ENC, id)
+  assert(r.warn == 8 and r.absorb and r.absorb.unit == "boss2" and r.absorb.length == 15, "a change on the panel keeps the shield bar")
+  -- another row with none: the bar's rows are back
+  r.absorb = nil
+  click(f.rows[2].frame)
+  click(f.rows[1].frame)
+  assert(not p.shieldLine.shown and p.ticksEdit.shown and p.barFill.shown, "none: the rows are back")
+  assert(#errors == 0, tostring(errors[1]))
+end)
+
 check("mech ticks: Count down to, the cast or each impact", function()
   local f = fresh()
   local p = f.panel
@@ -2181,8 +2205,9 @@ check("mech special (" .. LOOK .. "): no Bar fill on a shield bar", function()
   assert(s.fill.shown, "a plain bar: Bar fill shows")
   click(s.rows[2].frame)
   assert(not s.fill.shown, "a shield bar: Bar fill is hidden")
+  assert(s.shieldLine and s.shieldLine.shown and s.shieldLine.text == "Shield bar: Boss 2, 15 s", "its Shield bar line in its place: " .. tostring(s.shieldLine and s.shieldLine.text))
   click(s.rows[1].frame)
-  assert(s.fill.shown, "back on a plain bar: shown again")
+  assert(s.fill.shown and not s.shieldLine.shown, "back on a plain bar: shown again")
   CRT.db.alerts.specialView, CRT.db.alerts.specialViewPicked = "mechanics", true
   noSpecial()
   assert(#errors == 0, tostring(errors[1]))
