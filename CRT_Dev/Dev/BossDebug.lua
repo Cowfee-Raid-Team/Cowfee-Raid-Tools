@@ -2,16 +2,18 @@ local ADDON, CRT = ...
 
 -- DEVELOPER ONLY. Boss debug: one switch that logs every boss pull, one log per boss, ready to copy.
 -- While on, ENCOUNTER_START opens the boss's record and ENCOUNTER_END closes it (kill or wipe when the
--- success flag is readable); the latest pull on a boss replaces the one before. The clear, absorb and
--- timeline probes (Dev/ClearProbe.lua, AbsorbProbe.lua, TimelineProbe.lua) follow the switch without
--- their own being on, and write the lines they log today into the record's sections through Append.
--- Nothing is printed or shown during a pull. The Development page's Boss debug section
--- (Dev/BossDebugPanel.lua) lists one row per boss with Copy; /crt dev bossdebug on|off|show [boss].
+-- success flag is readable); the latest pull on a boss replaces the one before. The boss emotes log
+-- (Dev/BossEmotes.lua, section "emotes", listed first) and the clear, absorb and timeline probes
+-- (Dev/ClearProbe.lua, AbsorbProbe.lua, TimelineProbe.lua) follow the switch without their own being on,
+-- and write their lines into the record's sections through Append. Nothing is printed or shown during a
+-- pull. The Development page's Boss debug section (Dev/BossDebugPanel.lua) lists one row per boss with
+-- Emotes and Copy; /crt dev bossdebug on|off|show [boss]|emotes [boss].
 --
 -- Saved in CRTDB.dev.bossDebug: on, and bosses[encounterID] = { encounterID, name, difficultyID,
 -- difficultyName, startedAt and endedAt (time()), length (seconds), result ("kill", "wipe" or nil),
 -- lines[section] = { line, ... }, counts[section] = { n, secret }, kept, dropped, capped["section kind"] = n
--- (lines a probe's own cap per kind left out, counted in dropped too) }.
+-- (lines a probe's own cap per kind left out, counted in dropped too), and the emotes summary's
+-- emoteTexts and emoteTextsOver (Dev/BossEmotes.lua) }.
 --
 -- Values from the game go through the secret check before they are compared or stored; the probes pass
 -- finished strings and a count of the secret values in each.
@@ -22,15 +24,16 @@ local BossDebug = {}
 CRT.BossDebug = BossDebug
 
 BossDebug.MAX_LINES = 6000 -- per record, every section together
-BossDebug.SECTIONS = { "clear", "absorb", "timeline" } -- the order the text lists them in
+BossDebug.SECTIONS = { "emotes", "clear", "absorb", "timeline" } -- the order the text lists them in
 
 local TEXT = {
     copyTitle = "Boss debug: %s (Ctrl+C to copy, paste to Claude)",
+    emotesTitle = "Boss debug emotes: %s (Ctrl+C to copy, paste to Claude)",
     on = "Boss debug on: every boss pull is logged, one log per boss. /crt dev bossdebug show lists them.",
     off = "Boss debug off. The logs are kept.",
     none = "Boss debug has no logs yet.",
     noLog = "Boss debug has no log for \"%s\". /crt dev bossdebug show lists them.",
-    status = "Boss debug is %s, with %d boss logs. /crt dev bossdebug on, off, show, or show <boss>.",
+    status = "Boss debug is %s, with %d boss logs. /crt dev bossdebug on, off, show, show <boss>, or emotes [boss].",
     listHead = "Boss debug logs (/crt dev bossdebug show <boss> to copy one):",
     legend = "<secret> or secret is a value the game hid; nil or missing is one that wasn't there. Each line starts with its seconds from the pull.",
     nothing = "(nothing logged)",
@@ -80,7 +83,7 @@ function BossDebug:IsOn()
 end
 
 local function probes()
-    return { CRT.ClearProbe, CRT.AbsorbProbe, CRT.TimelineProbe }
+    return { CRT.BossEmotes, CRT.ClearProbe, CRT.AbsorbProbe, CRT.TimelineProbe }
 end
 
 local function listen(on)
@@ -150,6 +153,14 @@ function BossDebug:Close(encounterID, success)
         current.result = success == 1 and "kill" or "wipe"
     end
     fire()
+end
+
+-- The record lines go to, or nil when none takes lines.
+function BossDebug:Current()
+    if not CRT.db or not store().on then
+        return nil
+    end
+    return current
 end
 
 -- Seconds since the open record's pull started, or nil when no record takes lines.
@@ -291,12 +302,8 @@ function BossDebug:RowText(rec)
     return title, info
 end
 
--- The whole log of a boss: a header, then each section's lines. Nil when the boss has none.
-function BossDebug:Text(encounterID)
-    local rec = self:Record(encounterID)
-    if not rec then
-        return nil
-    end
+-- The log's header: the boss, its difficulty, the pull, the counts and the legend.
+local function header(self, rec)
     local diff = rec.difficultyName and string.format("%s (difficulty %s)", rec.difficultyName, tostring(rec.difficultyID))
         or ("difficulty " .. tostring(rec.difficultyID or "?"))
     local when = date and rec.startedAt and date("%Y-%m-%d %H:%M", rec.startedAt) or "?"
@@ -323,22 +330,54 @@ function BossDebug:Text(encounterID)
         out[#out + 1] = "Capped by kind: " .. table.concat(parts, ", ") .. " (lines a probe left out past its cap for that kind)."
     end
     out[#out + 1] = TEXT.legend
-    for _, s in ipairs(self.SECTIONS) do
-        out[#out + 1] = ""
-        out[#out + 1] = "== " .. s .. " =="
-        local list = rec.lines[s]
-        if list and #list > 0 then
-            for _, line in ipairs(list) do
-                out[#out + 1] = line
-            end
-        else
-            out[#out + 1] = TEXT.nothing
+    return out
+end
+
+-- A section's heading and lines into out; under the emotes section's lines, its summary.
+local function addSection(rec, s, out)
+    out[#out + 1] = ""
+    out[#out + 1] = "== " .. s .. " =="
+    local list = rec.lines[s]
+    if list and #list > 0 then
+        for _, line in ipairs(list) do
+            out[#out + 1] = line
         end
+    else
+        out[#out + 1] = TEXT.nothing
+    end
+    if s == "emotes" and CRT.BossEmotes then
+        for _, line in ipairs(CRT.BossEmotes:Under(rec)) do
+            out[#out + 1] = line
+        end
+    end
+end
+
+-- The whole log of a boss: a header, then each section's lines. Nil when the boss has none.
+function BossDebug:Text(encounterID)
+    local rec = self:Record(encounterID)
+    if not rec then
+        return nil
+    end
+    local out = header(self, rec)
+    for _, s in ipairs(self.SECTIONS) do
+        addSection(rec, s, out)
     end
     if (rec.dropped or 0) > 0 then
         out[#out + 1] = ""
         out[#out + 1] = string.format("... %d more lines dropped (a log keeps %d)", rec.dropped, self.MAX_LINES)
     end
+    return table.concat(out, "\n")
+end
+
+-- A boss's emotes only: the header, then the emotes section and its summary, short enough to always copy.
+-- Nil when the boss has no log.
+function BossDebug:EmotesText(encounterID)
+    local rec = self:Record(encounterID)
+    if not rec then
+        return nil
+    end
+    local out = header(self, rec)
+    addSection(rec, "emotes", out)
     return table.concat(out, "\n")
 end
 
@@ -349,6 +388,16 @@ function BossDebug:Copy(encounterID)
         return false
     end
     CRT.ConsumablesTools:ShowText(string.format(TEXT.copyTitle, bossName(self:Record(encounterID))), text)
+    return true
+end
+
+-- Opens a boss's emotes in the copy window. Returns false when the boss has no log.
+function BossDebug:CopyEmotes(encounterID)
+    local text = self:EmotesText(encounterID)
+    if not text then
+        return false
+    end
+    CRT.ConsumablesTools:ShowText(string.format(TEXT.emotesTitle, bossName(self:Record(encounterID))), text)
     return true
 end
 
@@ -386,7 +435,20 @@ function BossDebug:Find(query)
     end
 end
 
--- Handles "dev bossdebug [on|off|show [boss]]". Returns false for any other command.
+-- The newest pull's record, or nil.
+function BossDebug:Latest()
+    local best
+    if CRT.db then
+        for _, rec in pairs(store().bosses) do
+            if not best or (rec.startedAt or 0) > (best.startedAt or 0) then
+                best = rec
+            end
+        end
+    end
+    return best
+end
+
+-- Handles "dev bossdebug [on|off|show [boss]|emotes [boss]]". Returns false for any other command.
 function BossDebug:Command(msg)
     local rest = msg:match("^dev%s+bossdebug%s*$") and "" or msg:match("^dev%s+bossdebug%s+(.-)%s*$")
     if not rest then
@@ -410,6 +472,17 @@ function BossDebug:Command(msg)
         local query = rest:match("^show%s+(.+)$")
         local rec = self:Find(query)
         if not (rec and self:Copy(rec.encounterID)) then
+            CRT:Print(string.format(TEXT.noLog, query))
+        end
+    elseif rest == "emotes" then
+        local rec = self:Latest()
+        if not (rec and self:CopyEmotes(rec.encounterID)) then
+            CRT:Print(TEXT.none)
+        end
+    elseif rest:match("^emotes%s+") then
+        local query = rest:match("^emotes%s+(.+)$")
+        local rec = self:Find(query)
+        if not (rec and self:CopyEmotes(rec.encounterID)) then
             CRT:Print(string.format(TEXT.noLog, query))
         end
     else

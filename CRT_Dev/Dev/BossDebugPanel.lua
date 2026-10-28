@@ -3,7 +3,8 @@ local ADDON, CRT = ...
 -- DEVELOPER ONLY. The Development page's Boss debug section (Dev/DevPage.lua calls Panel.Build): the
 -- "Log every boss pull" checkbox, Clear logs, and one row per boss that has a log (Dev/BossDebug.lua), in
 -- route order: the boss and difficulty, then the time, kill or wipe and its length, lines and secret
--- values, and Copy, which opens the log in the copy window. Rows are pooled and filled again on
+-- values, then Emotes (only the emotes section and its summary of phase triggers) and Copy (the whole
+-- log), each in the copy window. Rows are pooled and filled again on
 -- BossDebug:OnChange while the page shows, and when it opens.
 --
 -- This file never ships: its .toc line is inside the do-not-package block.
@@ -21,7 +22,8 @@ local L = {
     rowsY = -50, -- the first row
     rowH = 26, -- a row: two lines of small text
     infoY = -13, -- the second line in a row
-    copyH = 20,
+    copyH = 20, -- Copy and Emotes
+    gap = 4, -- between Emotes and Copy
 }
 Panel.MAX_ROWS = 10
 Panel.HEIGHT = -L.rowsY + Panel.MAX_ROWS * L.rowH -- 310: what the page leaves for the section
@@ -29,11 +31,12 @@ Panel.HEIGHT = -L.rowsY + Panel.MAX_ROWS * L.rowH -- 310: what the page leaves f
 local TEXT = {
     heading = "Boss debug",
     check = "Log every boss pull",
-    help = "While on, every boss pull records its phase events, boss casts, deaths and shield reads in one log per boss. A new pull on the same boss replaces the old log. Nothing ships; nothing shows during the pull.",
+    help = "While on, every boss pull records its phase events, boss casts, deaths and shield reads in one log per boss. A new pull on the same boss replaces the old log. Nothing ships; nothing shows during the pull.\n\nEmotes shows every boss emote and yell with its time, and a phase trigger to paste for each boss emote. Copy shows the whole log.",
     clear = "Clear logs",
     confirm = "Clear every boss debug log? Boss debug stays on or off as it is.",
     cancel = "Cancel",
     copy = "Copy",
+    emotes = "Emotes",
     empty = "No boss logs yet.",
     more = "%d more: /crt dev bossdebug show lists them all.",
 }
@@ -63,7 +66,13 @@ local function makeRow(pf, x, y, i)
         end
     end)
     row.copy:SetPoint("RIGHT", row, "RIGHT", 0, 0)
-    local textW = L.width - (row.copy:GetWidth() or 0) - 8
+    row.emotes = UI.PanelButton(row, TEXT.emotes, L.copyH, function()
+        if row.encounterID then
+            BossDebug:CopyEmotes(row.encounterID)
+        end
+    end)
+    row.emotes:SetPoint("RIGHT", row.copy, "LEFT", -L.gap, 0)
+    local textW = L.width - (row.copy:GetWidth() or 0) - (row.emotes:GetWidth() or 0) - L.gap - 8
     row.title = row:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     row.title:SetPoint("TOPLEFT", 0, 0)
     row.info = row:CreateFontString(nil, "OVERLAY", "CRTFontDisableSmall")
