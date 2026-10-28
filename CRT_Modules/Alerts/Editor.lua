@@ -134,6 +134,8 @@ local TEXT = {
     shieldAny = "Also without a timeline for this difficulty",
     shieldAnyHelp = "On a difficulty where this alert has no times, the bar still starts when the boss's shield goes up.",
     lastPull = "Last pull: %s",
+    lastPullMany = "Last pull: %d boss shields", -- two or three: the Use buttons name them, the tooltip says when
+    lastPullTitle = "Last pull",
     lastPullShield = "Boss %d shield at %s",
     lastPullNone = "Last pull: no boss shield seen.",
     lastPullNever = "Last pull: no pull of this boss yet.",
@@ -170,7 +172,7 @@ local FIELD_X = 91 -- where the boxes and checkboxes of the labelled rows start
 local SHIELD_UNIT_LABEL, SHIELD_UNIT_W = 60, 90 -- Shield on, under Shield bar
 local SHIELD_LENGTH_X, SHIELD_LENGTH_LABEL, SHIELD_LENGTH_W = 266, 100, 130 -- Seconds to break, beside it
 local SHIELD_TEXT_X = 226 -- the Last pull line beside Shield bar, then its Use buttons
-local SHIELD_BUTTON_H = 22
+local SHIELD_BUTTON_H = 24 -- as the editor's other buttons
 local SHOW_CHECK_W = 26 -- a Show as box and the gap before its label
 local SHOW_GAP = 10     -- between one Show as label and the next box
 local SAVED_SHIFT = 48 -- a saved alert has no Relative to / Time row or Saves to line: the rows below move up by this
@@ -540,20 +542,23 @@ local function shieldOn()
     return editable() and draft ~= nil and draft.show.bar and draft.shield.on and true or false
 end
 
--- The Last pull line's text and the boss units it names (Alerts/ShieldPulls.lua), for the alert's boss.
+-- The Last pull line's text, the boss units it names (Alerts/ShieldPulls.lua) and its tooltip's full text, for the
+-- alert's boss. One shield is named on the line; two or three are counted there ("Last pull: 2 boss shields"), the Use
+-- buttons naming each and the tooltip saying when, so nothing is cut short.
 local function lastPull()
     local SP = CRT.AlertShieldPulls
     local seen = SP and ctx and type(ctx.encounterID) == "number" and SP:Seen(ctx.encounterID) or nil
     if not seen then
-        return TEXT.lastPullNever, {}
+        return TEXT.lastPullNever, {}, TEXT.lastPullNever
     elseif #seen == 0 then
-        return TEXT.lastPullNone, seen
+        return TEXT.lastPullNone, seen, TEXT.lastPullNone
     end
     local parts = {}
     for i, e in ipairs(seen) do
         parts[i] = string.format(TEXT.lastPullShield, SP.UnitNumber(e.unit), SP.Clock(e.at))
     end
-    return string.format(TEXT.lastPull, table.concat(parts, ", ")), seen
+    local text = #seen == 1 and string.format(TEXT.lastPull, parts[1]) or string.format(TEXT.lastPullMany, #seen)
+    return text, seen, table.concat(parts, "\n")
 end
 
 -- The Shield bar section from the draft: Shield bar greyed while Bar is off, the rest while Shield bar is unticked
@@ -571,9 +576,15 @@ local function drawShield()
     s.any:SetEnabled(on)
     s.any.label:SetAlpha(on and 1 or 0.5)
     local onBoss = ctx ~= nil and type(ctx.encounterID) == "number"
-    local text, seen = lastPull()
+    local text, seen, tip = lastPull()
     s.lastText:SetShown(onBoss)
     s.lastText:SetText(onBoss and text or "")
+    s.lastTip = tip
+    s.lastHit:SetShown(onBoss)
+    -- a length saved above the usual top (a share, an older code) shows as it is
+    if s.lengthRow.SetMax then
+        s.lengthRow.SetMax(math.max(Draft.SHIELD_MAX, draft.shield.length or 0))
+    end
     local buttons = 0
     for i, b in ipairs(s.use) do
         local e = onBoss and seen[i]
@@ -1528,7 +1539,7 @@ local function shieldRows(f, row, y0)
     s.help = UI.HelpRight(s.check, TEXT.shieldBar, TEXT.shieldHelp)
     s.unitRow = row(UI.Dropdown(f, TEXT.shieldOn, {
         labelWidth = SHIELD_UNIT_LABEL, width = SHIELD_UNIT_W, enabledIf = shieldOn,
-        options = Draft.ShieldUnitOptions(TEXT.shieldBoss),
+        options = function() return Draft.ShieldUnitOptions(TEXT.shieldBoss, draft) end,
         get = function() return draft and draft.shield.unit or Draft.SHIELD_UNITS[1] end,
         set = setter(function(v) draft.shield.unit = v end),
     }), FIELD_X, y0 - SHIELD_ROW)
@@ -1544,6 +1555,23 @@ local function shieldRows(f, row, y0)
     s.lastText = makeLabel(f, "", SHIELD_TEXT_X, y0 - 6)
     s.lastText:SetJustifyH("LEFT")
     s.lastText:SetWordWrap(false)
+    -- the line's tooltip: every shield of the last pull and when it went up
+    s.lastHit = CreateFrame("Frame", nil, f)
+    s.lastHit:SetAllPoints(s.lastText)
+    s.lastHit:EnableMouse(true)
+    s.lastHit:SetScript("OnEnter", function(self)
+        if UI.TooltipOwner then
+            UI.TooltipOwner(GameTooltip, self, "ANCHOR_TOP")
+        else
+            GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        end
+        GameTooltip:SetText(TEXT.lastPullTitle, 1, 1, 1)
+        GameTooltip:AddLine(s.lastTip or "", 0.85, 0.85, 0.85, true)
+        GameTooltip:Show()
+    end)
+    s.lastHit:SetScript("OnLeave", function()
+        GameTooltip:Hide()
+    end)
     local prev = s.lastText
     for i = 1, CRT.AlertShieldPulls and CRT.AlertShieldPulls.MAX_SHOWN or 3 do
         local b = makeButton(f, "", 80)

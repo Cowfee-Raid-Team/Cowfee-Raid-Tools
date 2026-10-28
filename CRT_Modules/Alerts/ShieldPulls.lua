@@ -6,8 +6,9 @@ local ADDON, CRT = ...
 -- editor's Shield bar section shows it ("Last pull: Boss 2 shield at 3:03.8") with a Use button for each unit, so a
 -- shield race is set up from what the game showed on the last pull.
 -- Saved per boss, the last pull only: CRT.db.alerts.shieldPulls[encounterID] = { at = time() of the pull,
--- units = { boss2 = 183.8, ... } } (seconds from the pull, to a tenth). A pull starts its boss's record afresh, so a
--- pull with no shield says so. The events are listened to only from the pull to the run's end, through
+-- units = { boss2 = 183.8, ... } } (seconds from the pull, to a tenth). A pull replaces its boss's record once it
+-- sees a shield, or at its end when it lasted MIN_PULL seconds or more (so a pull with no shield says so); a quick wipe
+-- that saw none keeps what the pull before found (Alex, 2026-10-28). The events are listened to only from the pull to the run's end, through
 -- Frame:RegisterUnitEvent (up to four units a frame: two frames), and each unit's first event is the only one used.
 
 local Alerts = CRT.Alerts
@@ -28,9 +29,10 @@ for _, u in ipairs(ShieldPulls.UNITS) do
     IS_UNIT[u] = true
 end
 ShieldPulls.MAX_SHOWN = 3 -- the editor's Last pull line names at most this many
+ShieldPulls.MIN_PULL = 30 -- seconds: a shorter pull with no shield leaves the record as it was
 
 local frames = {}
-local active -- { runId, encounterID, startedAt, record } while a pull is recorded
+local active -- { runId, encounterID, startedAt, record, kept } while a pull is recorded; kept once it is saved
 
 local function readable(v)
     local T = CRT.Timeline
@@ -74,18 +76,23 @@ local function listen(on)
     end
 end
 
--- A boss pull begins: its boss's record starts afresh and the events are listened to.
+-- The pull's record replaces its boss's saved one (once).
+local function keep()
+    local all = active and not active.kept and store(true)
+    if all then
+        all[active.encounterID] = active.record
+        active.kept = true
+    end
+end
+
+-- A boss pull begins: a new record for its boss, saved once it sees a shield or ends long enough, and the events
+-- are listened to.
 local function start(run)
     local enc = run and run.encounterID
     if not (readable(enc) and type(enc) == "number") then
         return
     end
-    local all = store(true)
-    if not all then
-        return
-    end
     local record = { at = time and time() or nil, units = {} }
-    all[enc] = record
     active = { runId = Alerts.runId, encounterID = enc, startedAt = GetTime(), record = record }
     listen(true)
 end
@@ -100,6 +107,7 @@ function ShieldPulls.HandleEvent(event, unit)
     local units = active.record.units
     if units[unit] == nil then
         units[unit] = math.floor((GetTime() - active.startedAt) * 10 + 0.5) / 10
+        keep()
     end
 end
 
@@ -110,6 +118,9 @@ end
 -- The run ended (the encounter's end) or another took its place: the record is done.
 Alerts:OnChange(function()
     if active and not (Alerts.running and Alerts.runId == active.runId) then
+        if GetTime() - active.startedAt >= ShieldPulls.MIN_PULL then
+            keep()
+        end
         active = nil
         listen(false)
     end

@@ -194,6 +194,17 @@ check(hp == 90 and hpSets == 0, "the wheel stops at max")
 hp = 35 h.refresh() hpSets = 0
 print("ok controls: the wheel moves one step")
 
+-- row.SetMax: a value loaded above the usual top shows as it is, and the wheel reaches it
+h.SetMax(120)
+check(h.Slider.high == 120 and h.Slider.steps == (120 - 5) / 5, "the game's slider takes the new range: " .. tostring(h.Slider.high))
+hp = 110 h.refresh()
+check(m.text.text == "110%" and hpSets == 0, "110 shows as it is, nothing saved: " .. tostring(m.text.text))
+m.track.OnMouseWheel(m.track, 1)
+check(hp == 115, "the wheel goes past the old top: " .. hp)
+h.SetMax(90)
+hp = 35 h.refresh() hpSets = 0
+print("ok controls: SetMax")
+
 -- Click the knob without moving: a number box with the plain number.
 cursorX = 100 + m.knob.x + kw / 2
 m.knob.OnMouseDown(m.knob, "LeftButton") m.track.OnUpdate(m.track, 0.01)

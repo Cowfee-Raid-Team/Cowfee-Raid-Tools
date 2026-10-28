@@ -173,7 +173,7 @@ UI.SoundDropdown = function(parent, label, opts) local o = {} for k, v in pairs(
   if opts.help then rawset(r, "help", UI.Help(parent, label, "sound help")) end
   return r end
 UI.Slider = function(parent, label, opts) local r = mock("Row", parent) rawset(r, "label", label) rawset(r, "opts", opts)
-  rawset(r, "refresh", function() end) sliders[label] = r return r end
+  rawset(r, "refresh", function() end) rawset(r, "SetMax", function(top) rawset(r, "max", top) end) sliders[label] = r return r end
 local function loadSource(i, src)
   if src:find("function UI.PickColor", 1, true) then -- the real CRT_Core/UI/Controls.lua: only PickColor is taken, the harness keeps its own Dropdown and Slider
     local tmp = { UI = {} }
@@ -2107,9 +2107,12 @@ do
   assert(n == 2 and reads == 0, "nothing else kept, and the shield's amount never read")
   E:Open(ENC, 1)
   setCheck(s.check, true)
-  assert(s.lastText.text == "Last pull: Boss 1 shield at 0:12.4, Boss 2 shield at 3:03.8", "both, soonest first: " .. tostring(s.lastText.text))
+  -- two or three: a short line, the buttons naming each, the full text in the line's tooltip
+  assert(s.lastText.text == "Last pull: 2 boss shields", "two: a short line: " .. tostring(s.lastText.text))
+  assert(s.lastTip == "Boss 1 shield at 0:12.4\\nBoss 2 shield at 3:03.8", "the tooltip, soonest first: " .. tostring(s.lastTip))
+  assert(s.lastHit and s.lastHit.OnEnter and s.lastHit.shown, "a hover frame over the line")
   assert(s.use[1].shown and s.use[1].text == "Use Boss 1" and s.use[2].shown and s.use[2].text == "Use Boss 2" and not s.use[3].shown, "a Use button each")
-  assert(s.use[1].enabled and s.use[1].w >= 40, "sized from its label, enabled with Shield bar on")
+  assert(s.use[1].enabled and s.use[1].w >= 40 and s.use[1].h == 24, "sized from its label, 24 high, enabled with Shield bar on")
   click(s.use[2])
   assert(value("Shield on") == "boss2", "Use Boss 2 sets Shield on")
   click(s.use[1])
@@ -2118,15 +2121,49 @@ do
   assert(not s.use[1].enabled, "greyed with Shield bar unticked")
   click(s.use[2])
   assert(value("Shield on") == "boss1", "a greyed Use changes nothing")
-  -- the last pull only: a new pull with no shield says so
+  -- a shield bar saved on boss7 for 75 s (a share, an older code): shown as it is, never changed by opening it
+  local rr = R:Get(ENC, 1)
+  rr.absorb = { unit = "boss7", length = 75, anyDifficulty = true }
+  E:Open(ENC, 1)
+  assert(value("Shield on") == "boss7" and optionKeys(unit) == "boss1,boss2,boss3,boss4,boss5,boss7" and hasOption(unit, "boss7").label == "Boss 7", "Boss 7 offered: " .. optionKeys(unit))
+  assert(length.max == 75 and length.opts.get() == 75, "the slider reaches 75: " .. tostring(length.max))
+  click(w.saveBtn)
+  assert(R:Get(ENC, 1).absorb.unit == "boss7" and R:Get(ENC, 1).absorb.length == 75, "saved unchanged")
+  E:Open(ENC, nil, { text = "Other", boss = "Test Boss", times = "P1 1:00" })
+  assert(optionKeys(unit) == "boss1,boss2,boss3,boss4,boss5" and length.max == 60, "a new alert: Boss 1 to 5, 3 to 60 s")
+  rr = R:Get(ENC, 1)
+  rr.absorb = nil
+  -- a quick wipe (under 30 s) that saw no shield keeps what the pull before found
+  clock = 2000
   A:Start(ENC, "Mythic", "encounter", { difficultyID = 16 })
+  clock = 2029
+  A:Stop()
+  E:Open(ENC, 1)
+  assert(s.lastText.text == "Last pull: 2 boss shields", "a 29 s pull with no shield: the record stays: " .. tostring(s.lastText.text))
+  -- a quick pull that saw one replaces it
+  A:Start(ENC, "Mythic", "encounter", { difficultyID = 16 })
+  clock = 2039 SP.HandleEvent("UNIT_ABSORB_AMOUNT_CHANGED", "boss3") -- 10 s into a pull that started at 2029
+  A:Stop()
+  E:Open(ENC, 1)
+  assert(s.lastText.text == "Last pull: Boss 3 shield at 0:10.0", "a short pull that saw a shield: " .. tostring(s.lastText.text))
+  -- the last pull only: a pull of 30 s or more with no shield says so
+  clock = 3000
+  A:Start(ENC, "Mythic", "encounter", { difficultyID = 16 })
+  clock = 3030
   A:Stop()
   E:Open(ENC, 1)
   assert(s.lastText.text == "Last pull: no boss shield seen." and not s.use[1].shown, "no shield on the last pull: " .. tostring(s.lastText.text))
   -- up to three, soonest first
   CRT.db.alerts.shieldPulls[ENC] = { at = 1, units = { boss5 = 50, boss4 = 40, boss3 = 30, boss1 = 10 } }
   E:Open(ENC, 1)
-  assert(s.lastText.text == "Last pull: Boss 1 shield at 0:10.0, Boss 3 shield at 0:30.0, Boss 4 shield at 0:40.0" and s.use[3].shown, "three: " .. s.lastText.text)
+  assert(s.lastText.text == "Last pull: 3 boss shields" and s.use[3].shown and s.use[3].text == "Use Boss 4", "three: " .. s.lastText.text)
+  assert(s.lastTip == "Boss 1 shield at 0:10.0\\nBoss 3 shield at 0:30.0\\nBoss 4 shield at 0:40.0", "all three in the tooltip")
+  -- one: the line says it all
+  CRT.db.alerts.shieldPulls[ENC] = { at = 1, units = { boss2 = 183.8 } }
+  E:Open(ENC, 1)
+  assert(s.lastText.text == "Last pull: Boss 2 shield at 3:03.8" and s.lastTip == "Boss 2 shield at 3:03.8", "one: " .. s.lastText.text)
+  CRT.db.alerts.shieldPulls[ENC] = { at = 1, units = { boss5 = 50, boss4 = 40, boss3 = 30, boss1 = 10 } }
+  E:Open(ENC, 1)
   -- the line and its buttons fit before the window's edge
   local btns = 0 for _, b in ipairs(s.use) do if b.shown then btns = btns + 6 + b.w end end
   assert(226 + s.lastText.w + btns <= 600 - 16, "inside the window: " .. (226 + s.lastText.w + btns))

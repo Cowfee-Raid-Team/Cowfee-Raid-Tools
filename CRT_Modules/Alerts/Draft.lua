@@ -157,11 +157,17 @@ function Draft.Absorb(draft)
     return Reminders.AbsorbOf({ unit = s.unit, length = s.length, anyDifficulty = s.anyDifficulty and true or false })
 end
 
--- The Shield on choices, Boss 1 to Boss 5, in the caller's words (label "Boss %d").
-function Draft.ShieldUnitOptions(label)
+-- The Shield on choices, Boss 1 to Boss 5, in the caller's words (label "Boss %d"), and the draft's own unit after
+-- them when it is another (boss6 to boss8, saved elsewhere), so opening an alert never changes it.
+function Draft.ShieldUnitOptions(label, draft)
     local out = {}
     for i, unit in ipairs(Draft.SHIELD_UNITS) do
         out[i] = { key = unit, label = string.format(label, i) }
+    end
+    local own = draft and draft.shield and draft.shield.unit
+    local n = type(own) == "string" and tonumber(own:match("^boss(%d)$"))
+    if n and n > #Draft.SHIELD_UNITS then
+        out[#out + 1] = { key = own, label = string.format(label, n) }
     end
     return out
 end

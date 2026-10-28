@@ -536,7 +536,8 @@ end
 --                       as minutes): the number box in Modern opens with toDisplay(value), and a
 --                       typed number goes through fromDisplay before it is kept in range on a step
 --   width, labelWidth, enabledIf()
--- Returns the row, with row.refresh(). row.Slider is the game's slider (Classic), row.modern the
+-- Returns the row, with row.refresh() and row.SetMax(high), a new top of the range (such as a saved value above the
+-- usual max, so it shows as it is). row.Slider is the game's slider (Classic), row.modern the
 -- track and knob (built the first time the Modern look shows).
 function UI.Slider(parent, text, opts)
     local labelWidth, width = opts.labelWidth or LABEL_W, opts.width or 200
@@ -557,7 +558,7 @@ function UI.Slider(parent, text, opts)
         return math.floor((value - low) / step + 0.5) * step + low
     end
     s.clamp = function(value)
-        return math.max(low, math.min(high, snap(value)))
+        return math.max(low, math.min(s.high, snap(value)))
     end
 
     local slider = CreateFrame("Frame", nil, row, "MinimalSliderWithSteppersTemplate")
@@ -652,6 +653,19 @@ function UI.Slider(parent, text, opts)
             s.updating = true
             slider:SetValue(opts.get() or low)
             s.updating = false
+        end
+    end
+
+    row.SetMax = function(top)
+        if type(top) ~= "number" or top <= low or top == s.high then
+            return
+        end
+        s.high = top
+        s.updating = true
+        slider:Init(opts.get() or low, low, top, (top - low) / step, formatters)
+        s.updating = false
+        if s.modern then
+            drawKnob(s.modern, s)
         end
     end
 

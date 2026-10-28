@@ -33,6 +33,10 @@ g "alerts colors" && { node run_alerts_colors.js "$WA/CRT_Modules/Timeline/Data.
 g "alerts phases" && { node run_alerts_phases.js "$WA/CRT_Modules/Alerts/Rules.lua" "$WA/CRT_Modules/Alerts/Engine.lua" "$WA/CRT_Modules/Alerts/PhaseDatabase.lua" "$WA/CRT_Modules/Alerts/Phases.lua" 2>&1 | tail -12; echo "exit ${PIPESTATUS[0]}"; }
 g "alerts bars" && { node run_alerts_bars.js "$WA/CRT_Modules/Alerts/Rules.lua" "$WA/CRT_Modules/Alerts/Engine.lua" "$WA/CRT_Modules/Alerts/Areas.lua" "$WA/CRT_Modules/Alerts/Bars.lua" "$WA/CRT_Modules/Timeline/Reference.lua" "$WA/CRT_Modules/Alerts/Colors.lua" 2>&1 | tail -14; echo "exit ${PIPESTATUS[0]}"; }
 g "alerts absorb" && { node run_alerts_absorb.js "$WA" 2>&1 | tail -60; echo "exit ${PIPESTATUS[0]}"; }
+# Last pull's record (Alerts/ShieldPulls.lua) keeps times only: its code (comments left out) never reads a shield's amount
+# (UnitGetTotalAbsorbs or any other absorb getter) and never takes more of the event's payload than its unit (no ...). The
+# first two inputs are planted mistakes it must find.
+g "last pull keeps times only" && { scan() { sed 's/--.*//' | grep -v '^local ADDON, CRT = \.\.\.' | grep -nE 'UnitGet[A-Za-z]*Absorb|\.\.\.'; }; p1=$(echo 'local t = UnitGetTotalAbsorbs(unit)' | scan); p2=$(echo 'f:SetScript("OnEvent", function(_, event, ...)' | scan); bad=$(scan < "$WA/CRT_Modules/Alerts/ShieldPulls.lua"); n=$(grep -c 'function(_, event, unit)' "$WA/CRT_Modules/Alerts/ShieldPulls.lua"); if [ -z "$p1" ] || [ -z "$p2" ]; then echo "FAIL the lint misses a planted read"; elif [ "$n" = "0" ]; then echo "FAIL ShieldPulls.lua's event handler is missing or renamed"; elif [ -n "$bad" ]; then echo "FAIL ShieldPulls.lua reads more than the event's unit:"; echo "$bad"; else echo "all passed"; fi; }
 g "alerts shield" && { node run_alerts_shield.js "$WA" 2>&1 | tail -30; echo "exit ${PIPESTATUS[0]}"; }
 # A shield's readings may be secret: Alerts/Absorb.lua and Bars.lua's [shield bar] part only pass them on (total, st.value,
 # st.max). The harness's secret proxies can't see == against a number or a truth test, so this reads the code: no such name
