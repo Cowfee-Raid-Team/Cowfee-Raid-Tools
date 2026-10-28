@@ -403,6 +403,30 @@ BD.MAX_LINES = 6000
 BE.MAX_LINES = 1500
 C_UnitAuras = nil
 
+-- The trigger value: a spell link's name first, then the longest run that no other boss emote of the pull
+-- contains; when every choice is in another emote too, the line says how many.
+now = 3200
+clock = clock + 600
+fire("ENCOUNTER_START", 3470, "Nek'zali", 16, 20)
+now = 3201
+fire("CHAT_MSG_RAID_BOSS_EMOTE", "|T12345:20|t%s begins to cast |cFFFF0000|Hspell:12345|h[Annihilate]|h|r!", "Nek'zali")
+fire("CHAT_MSG_RAID_BOSS_EMOTE", "%s begins to cast |cFFFF0000|Hspell:678|h[Obliterate]|h|r!", "Nek'zali")
+fire("CHAT_MSG_RAID_BOSS_EMOTE", "|cFFFFFFFFThe sky burns|r while the ground shakes", "Nek'zali")
+fire("CHAT_MSG_RAID_BOSS_EMOTE", "|cFFFFFFFFThe sea rises|r while the ground shakes", "Nek'zali")
+fire("CHAT_MSG_RAID_BOSS_EMOTE", "Doom", "Nek'zali")
+fire("CHAT_MSG_RAID_BOSS_EMOTE", "Doom approaches", "Nek'zali")
+fire("CHAT_MSG_RAID_BOSS_EMOTE", "Alexandra rises beside Alex.", "Nek'zali")
+fire("UNIT_TARGETABLE_CHANGED", secret("boss1"))
+fire("UNIT_TARGETABLE_CHANGED", secret("raid3"))
+now = 3210
+fire("ENCOUNTER_END", 3470, "Nek'zali", 16, 20, 0)
+local nt = BD:EmotesText(3470) or ""
+check(at(nt, '%s begins to cast [Annihilate]!\\n  { kind = "emote", value = "Annihilate" }') and at(nt, '%s begins to cast [Obliterate]!\\n  { kind = "emote", value = "Obliterate" }'), "a spell link's name is the trigger, not the run every cast emote shares")
+check(at(nt, '{ kind = "emote", value = "The sky burns" }') and at(nt, '{ kind = "emote", value = "The sea rises" }'), "a run another emote contains too gives way to the next longest")
+check(at(nt, 'Doom\\n  { kind = "emote", value = "Doom" } -- also matches 1 other emote') and at(nt, '{ kind = "emote", value = "Doom approaches" }\\n'), "a value found in other emotes says how many")
+check(at(nt, ": Alexandra rises beside <name>.") and at(nt, 'value = "Alexandra rises beside"'), "a group name is taken out as a whole word only")
+check(not at(nt, "UNIT_TARGETABLE_CHANGED") and rec(3470).capped and rec(3470).capped["emotes secret unit"] == 2, "a secret unit token is counted, not logged")
+
 -- The probes' own switches still work beside Boss debug.
 CRT.ClearProbe:Command("dev clearprobe on")
 now = 1100

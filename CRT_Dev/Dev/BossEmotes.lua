@@ -17,13 +17,15 @@ local ADDON, CRT = ...
 -- Under the lines, Under(rec) gives a summary: each distinct text (colour, texture and link codes and the
 -- group's names taken out) with its first time, how many times, and a phase trigger to paste in the form
 -- of CRT_Modules/Alerts/PhaseDatabase.lua. Alerts/Phases.lua matches a boss emote's raw text, without
--- case, against the trigger's value as plain text, so the suggested value is the longest plain run of the
--- raw text between those codes and names: it is always found in the emote it came from. Phase triggers
--- read boss emotes only, so yells, says and whispers get no suggestion; nor does a secret text.
+-- case, against the trigger's value as plain text, so the suggested value is part of the raw text: a spell
+-- link's name, else the longest plain run between those codes and names, and the first of them that no
+-- other boss emote of the pull contains (when all do, the line says how many others it matches). Phase
+-- triggers read boss emotes only, so yells, says and whispers get no suggestion; nor does a secret text.
 --
 -- Saved in the boss's record: lines.emotes and counts.emotes as every section, and emoteTexts = { { group,
--- text, value, first, events = { [event] = n }, secret }, ... } in the order they first came, at most
--- MAX_TEXTS; emoteTextsOver counts the texts past it.
+-- text, first, events = { [event] = n }, secret, and for boss emotes raw (the first text as it came) and
+-- candidates (Candidates) }, ... } in the order they first came, at most MAX_TEXTS; emoteTextsOver counts
+-- the texts past it.
 --
 -- This file never ships: its .toc line is inside the do-not-package block.
 
@@ -59,6 +61,7 @@ local TEXT = {
     noTrigger = "  (no trigger: phase triggers read boss emotes only)",
     secretText = "  (secret text: no trigger)",
     noValue = "  (no plain text to match: no trigger)",
+    also = " -- also matches %d other emote%s",
     over = "... %d more texts not listed (the summary keeps %d)",
     leftOut = "... %d more emote lines left out (the section keeps %d)",
 }
@@ -143,13 +146,22 @@ local function readNames()
     return list
 end
 
+-- A name's pattern: the whole word only. Frontier patterns know ASCII letters only, so a name with any other
+-- letter (an accent) is matched as it stands, even inside a longer word.
+local function namePattern(n)
+    if n:find("[\128-\255]") then
+        return escapePattern(n)
+    end
+    return "%f[%w]" .. escapePattern(n) .. "%f[%W]"
+end
+
 -- The text with every code and name replaced by codeRep and nameRep.
 local function mask(text, codeRep, nameRep)
     for _, p in ipairs(CODES) do
         text = text:gsub(p, codeRep)
     end
     for _, n in ipairs(names) do
-        text = text:gsub(escapePattern(n), nameRep)
+        text = text:gsub(namePattern(n), nameRep)
     end
     return text
 end
@@ -161,18 +173,65 @@ function Emotes.Clean(text)
     return (s:gsub("%s+", " "):match("^%s*(.-)%s*$"))
 end
 
--- The phase trigger's value: the longest plain run of the raw text between codes, names and %s, trimmed.
--- Each run is part of the raw text as it came, so Alerts/Phases.lua always finds it there.
-function Emotes.TriggerValue(text)
-    local s = mask(text:gsub("%%s", "\1"):gsub("[\r\n]", "\1"), "\1", "\1")
-    local best = ""
-    for run in s:gmatch("[^\1]+") do
-        run = run:match("^%s*(.-)%s*$")
-        if #run > #best then
-            best = run
+-- The phase trigger's possible values, best first: each link's visible name (a spell link names what this
+-- emote is about, where the words around it, "begins to cast", are shared by every cast emote), then the
+-- plain runs of the raw text between codes, names and %s, longest first, trimmed. Each is part of the raw
+-- text as it came, so Alerts/Phases.lua always finds it there. At most MAX_CANDIDATES.
+Emotes.MAX_CANDIDATES = 6
+function Emotes.Candidates(text)
+    local list, seen = {}, {}
+    local function add(v)
+        v = v and v:match("^%s*(.-)%s*$")
+        if v and v ~= "" and not seen[v:lower()] and #list < Emotes.MAX_CANDIDATES then
+            seen[v:lower()] = true
+            list[#list + 1] = v
         end
     end
-    return best ~= "" and best or nil
+    for name in text:gmatch("|H.-|h([^|]+)|h") do
+        add((name:gsub("^%[", ""):gsub("%]$", "")))
+    end
+    local s = mask(text:gsub("%%s", "\1"):gsub("[\r\n]", "\1"), "\1", "\1")
+    local runs = {}
+    for run in s:gmatch("[^\1]+") do
+        runs[#runs + 1] = run:match("^%s*(.-)%s*$")
+    end
+    for i = 1, #runs do
+        local best
+        for j, run in ipairs(runs) do
+            if run and (not best or #run > #runs[best]) then
+                best = j
+            end
+        end
+        add(runs[best])
+        runs[best] = false
+    end
+    return list
+end
+
+-- How many of the pull's other boss emotes contain value, matched as Alerts/Phases.lua does.
+local function matchesOther(value, e, others)
+    local want, n = value:lower(), 0
+    for _, o in ipairs(others) do
+        if o ~= e and o.raw:lower():find(want, 1, true) then
+            n = n + 1
+        end
+    end
+    return n
+end
+
+-- The trigger value for a summary entry: the first candidate no other boss emote of the pull contains, or
+-- else the first one, with how many others it matches too. Nil when there is none.
+local function pickValue(e, others)
+    local cands = e.candidates or {}
+    for _, v in ipairs(cands) do
+        if matchesOther(v, e, others) == 0 then
+            return v, 0
+        end
+    end
+    if cands[1] then
+        return cands[1], matchesOther(cands[1], e, others)
+    end
+    return nil
 end
 
 -- The section's line count, or nil when no record takes lines.
@@ -224,9 +283,12 @@ local function note(event, text)
             return
         end
         e = { group = group, secret = secret or nil, first = GetTime() - startedAt, events = {} }
-        if not secret then
+        if not secret and type(text) == "string" then
             e.text = clean
-            e.value = type(text) == "string" and Emotes.TriggerValue(text) or nil
+            if group == TRIGGER_GROUP then
+                e.raw = text -- the first one as it came, to check other emotes' trigger values against
+                e.candidates = Emotes.Candidates(text)
+            end
         end
         rec.emoteTexts[#rec.emoteTexts + 1] = e
         map[key] = e
@@ -264,7 +326,8 @@ end
 
 local function onTargetable(unit)
     if isSecret(unit) then
-        add("UNIT_TARGETABLE_CHANGED", "<secret>: unit hidden", 1)
+        -- it fires for every unit, so a hidden token is only counted (capped "emotes secret unit")
+        BossDebug:Capped(SECTION, "secret unit", 1)
         return
     end
     if type(unit) ~= "string" or not BOSS_UNITS[unit] then
@@ -299,6 +362,8 @@ function Emotes.HandleEvent(event, ...)
         pulling = false
         setUnitEvents(false)
     elseif TEXTS[event] then
+        -- RAID_BOSS_EMOTE and CHAT_MSG_RAID_BOSS_EMOTE (and the two whispers) both come for one emote: both
+        -- are logged on purpose, to show which of them the game sends and when
         add(event, show(a2) .. ": " .. show(a1), (isSecret(a1) and 1 or 0) + (isSecret(a2) and 1 or 0))
         note(event, a1)
     elseif event == "UNIT_TARGETABLE_CHANGED" then
@@ -330,7 +395,7 @@ function Emotes:Follow(on)
 end
 
 -- A summary entry's two lines.
-local function entryLines(e, out)
+local function entryLines(e, out, others)
     local events = {}
     for ev in pairs(e.events or {}) do
         events[#events + 1] = ev
@@ -348,11 +413,18 @@ local function entryLines(e, out)
         out[#out + 1] = TEXT.secretText
     elseif e.group ~= TRIGGER_GROUP then
         out[#out + 1] = TEXT.noTrigger
-    elseif not e.value then
-        out[#out + 1] = TEXT.noValue
     else
-        local v = e.value:gsub("\\", "\\\\"):gsub('"', '\\"')
-        out[#out + 1] = '  { kind = "emote", value = "' .. v .. '" }'
+        local value, also = pickValue(e, others)
+        if not value then
+            out[#out + 1] = TEXT.noValue
+            return
+        end
+        local v = value:gsub("\\", "\\\\"):gsub('"', '\\"')
+        local line = '  { kind = "emote", value = "' .. v .. '" }'
+        if also > 0 then
+            line = line .. string.format(TEXT.also, also, also == 1 and "" or "s")
+        end
+        out[#out + 1] = line
     end
 end
 
@@ -369,8 +441,14 @@ function Emotes:Under(rec)
     if #list == 0 then
         out[#out + 1] = TEXT.noTexts
     end
+    local others = {} -- the boss emotes a trigger value could match too
     for _, e in ipairs(list) do
-        entryLines(e, out)
+        if e.raw then
+            others[#others + 1] = e
+        end
+    end
+    for _, e in ipairs(list) do
+        entryLines(e, out, others)
     end
     if (rec.emoteTextsOver or 0) > 0 then
         out[#out + 1] = string.format(TEXT.over, rec.emoteTextsOver, self.MAX_TEXTS)
