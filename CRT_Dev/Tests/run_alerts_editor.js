@@ -173,7 +173,7 @@ UI.SoundDropdown = function(parent, label, opts) local o = {} for k, v in pairs(
   if opts.help then rawset(r, "help", UI.Help(parent, label, "sound help")) end
   return r end
 UI.Slider = function(parent, label, opts) local r = mock("Row", parent) rawset(r, "label", label) rawset(r, "opts", opts)
-  rawset(r, "refresh", function() end) sliders[label] = r return r end
+  rawset(r, "refresh", function() end) rawset(r, "SetMax", function(top) rawset(r, "max", top) end) sliders[label] = r return r end
 local function loadSource(i, src)
   if src:find("function UI.PickColor", 1, true) then -- the real CRT_Core/UI/Controls.lua: only PickColor is taken, the harness keeps its own Dropdown and Slider
     local tmp = { UI = {} }
@@ -228,7 +228,7 @@ do
   E:Open(ENC, nil, { spellID = 777, boss = "Test Boss" })
   local w = win()
   assert(w and w.shown, "window shown")
-  assert(w.w == 600 and w.h == 506, "fits 600 x 506: " .. tostring(w.w) .. "x" .. tostring(w.h))
+  assert(w.w == 600 and w.h == 590, "fits 600 x 590 (the Shield bar section's three rows under Show as): " .. tostring(w.w) .. "x" .. tostring(w.h))
   assert(layers.panel ~= w and previews.alerteditor, "not on the panel layer; preview registered")
   assert(w.strata == "FULLSCREEN_DIALOG" and w.toplevel == true, "editor above every window: " .. tostring(w.strata))
   assert(UISpecialFrames[1] == "CowfeeRaidToolsAlertEditor", "closed by Escape")
@@ -2045,6 +2045,158 @@ do
   E:Open(ENC, nil, { text = "Own", boss = "Test Boss", times = "P1 0:10" })
   assert(w.timeEdit.shown and w.relativeRow.shown and not w.castsText.shown, "your own reminder keeps its Time")
   print("ok editor: an ability's alert shows its casts, your own reminder its Time")
+end
+
+-- The Shield bar section under Show as: greyed while Bar is off, its rows while Shield bar is unticked, saved as a
+-- reminder's absorb and a note line's shield:, and the Last pull line with its Use buttons (Alerts/ShieldPulls.lua)
+do
+  reset()
+  local SP = assert(CRT.AlertShieldPulls, "Alerts/ShieldPulls.lua loaded")
+  CRT.db.alerts.shieldPulls = {}
+  E:Open(ENC, nil, { text = "Break it", boss = "Test Boss", times = "P1 3:00" })
+  local w = win()
+  local s = assert(w.shield, "the section")
+  assert(s.check.label.text == "Shield bar" and s.help and s.help.helpTitle == "Shield bar" and s.help.helpText:find("Last pull shows which one", 1, true), "Shield bar with its (?)")
+  assert(not s.check.checked and s.check.enabled, "unticked, and it can be ticked (Bar is on)")
+  local unit, length = dropdowns["Shield on"], sliders["Seconds to break"]
+  assert(unit and length and value("Shield on") == "boss1" and length.opts.get() == 15, "Shield on Boss 1, 15 s")
+  assert(optionKeys(unit) == "boss1,boss2,boss3,boss4,boss5" and optionList(unit)[2].label == "Boss 2", "Boss 1 to Boss 5: " .. optionKeys(unit))
+  assert(length.opts.min == 3 and length.opts.max == 60 and length.opts.step == 1, "3 to 60 s")
+  assert(s.any.label.text == "Also without a timeline for this difficulty" and s.any.checked, "Also..., on")
+  assert(not unit.opts.enabledIf() and not length.opts.enabledIf() and not s.any.enabled, "the rows wait for Shield bar")
+  -- every row inside the window, Seconds to break with its value
+  local rowEnd = 266 + length.opts.labelWidth + 5 + length.opts.width + 44
+  assert(rowEnd <= 600 - 16, "Seconds to break ends inside the window: " .. rowEnd)
+  -- Bar off greys the whole section
+  setCheck(w.checks.bar, false)
+  assert(not s.check.enabled and not unit.opts.enabledIf(), "Bar off: greyed")
+  setCheck(w.checks.bar, true)
+  setCheck(s.check, true)
+  assert(unit.opts.enabledIf() and length.opts.enabledIf() and s.any.enabled, "ticked: its rows")
+  pick("Shield on", "boss2")
+  length.opts.set(20)
+  setCheck(s.any, false)
+  -- no pull of the boss yet
+  assert(s.lastText.shown and s.lastText.text == "Last pull: no pull of this boss yet." and not s.use[1].shown, "no record: " .. tostring(s.lastText.text))
+  click(w.saveBtn)
+  local r = R:Get(ENC, 1)
+  assert(r and r.absorb and r.absorb.unit == "boss2" and r.absorb.length == 20 and r.absorb.anyDifficulty == false, "saved as Only me with its absorb")
+  -- opens with it, and unticking takes it away
+  E:Open(ENC, 1)
+  assert(s.check.checked and value("Shield on") == "boss2" and length.opts.get() == 20 and not s.any.checked, "reopened")
+  setCheck(s.check, false)
+  assert(value("Shield on") == "boss2", "the pick stays while unticked")
+  click(w.saveBtn)
+  assert(R:Get(ENC, 1).absorb == nil, "unticked: no absorb")
+
+  -- the Last pull line: a pull records the time each boss unit's first absorb event came, never its amount
+  local reads = 0
+  UnitGetTotalAbsorbs = function() reads = reads + 1 return SECRET end
+  clock = 1000
+  A:Start(ENC, "Mythic", "encounter", { difficultyID = 16 })
+  clock = 1012.44 SP.HandleEvent("UNIT_ABSORB_AMOUNT_CHANGED", "boss1")
+  clock = 1183.8 SP.HandleEvent("UNIT_ABSORB_AMOUNT_CHANGED", "boss2")
+  clock = 1190 SP.HandleEvent("UNIT_ABSORB_AMOUNT_CHANGED", "boss2") -- only the first counts
+  SP.HandleEvent("UNIT_ABSORB_AMOUNT_CHANGED", "target") SP.HandleEvent("UNIT_ABSORB_AMOUNT_CHANGED", SECRET)
+  SP.HandleEvent("UNIT_ABSORB_AMOUNT_CHANGED", "boss6")
+  A:Stop()
+  clock = 1300 SP.HandleEvent("UNIT_ABSORB_AMOUNT_CHANGED", "boss3") -- after the pull: not recorded
+  local rec = CRT.db.alerts.shieldPulls[ENC]
+  assert(rec and rec.units.boss1 == 12.4 and rec.units.boss2 == 183.8 and rec.units.boss3 == nil and rec.units.target == nil, "times only, per unit, first event: " .. tostring(rec and rec.units.boss2))
+  local n = 0 for _ in pairs(rec.units) do n = n + 1 end
+  assert(n == 2 and reads == 0, "nothing else kept, and the shield's amount never read")
+  E:Open(ENC, 1)
+  setCheck(s.check, true)
+  -- two or three: a short line, the buttons naming each, the full text in the line's tooltip
+  assert(s.lastText.text == "Last pull: 2 boss shields", "two: a short line: " .. tostring(s.lastText.text))
+  assert(s.lastTip == "Boss 1 shield at 0:12.4\\nBoss 2 shield at 3:03.8", "the tooltip, soonest first: " .. tostring(s.lastTip))
+  assert(s.lastHit and s.lastHit.OnEnter and s.lastHit.shown, "a hover frame over the line")
+  assert(s.use[1].shown and s.use[1].text == "Use Boss 1" and s.use[2].shown and s.use[2].text == "Use Boss 2" and not s.use[3].shown, "a Use button each")
+  assert(s.use[1].enabled and s.use[1].w >= 40 and s.use[1].h == 24, "sized from its label, 24 high, enabled with Shield bar on")
+  click(s.use[2])
+  assert(value("Shield on") == "boss2", "Use Boss 2 sets Shield on")
+  click(s.use[1])
+  assert(value("Shield on") == "boss1", "Use Boss 1 sets Shield on")
+  setCheck(s.check, false)
+  assert(not s.use[1].enabled, "greyed with Shield bar unticked")
+  click(s.use[2])
+  assert(value("Shield on") == "boss1", "a greyed Use changes nothing")
+  -- a shield bar saved on boss7 for 75 s (a share, an older code): shown as it is, never changed by opening it
+  local rr = R:Get(ENC, 1)
+  rr.absorb = { unit = "boss7", length = 75, anyDifficulty = true }
+  E:Open(ENC, 1)
+  assert(value("Shield on") == "boss7" and optionKeys(unit) == "boss1,boss2,boss3,boss4,boss5,boss7" and hasOption(unit, "boss7").label == "Boss 7", "Boss 7 offered: " .. optionKeys(unit))
+  assert(length.max == 75 and length.opts.get() == 75, "the slider reaches 75: " .. tostring(length.max))
+  click(w.saveBtn)
+  assert(R:Get(ENC, 1).absorb.unit == "boss7" and R:Get(ENC, 1).absorb.length == 75, "saved unchanged")
+  E:Open(ENC, nil, { text = "Other", boss = "Test Boss", times = "P1 1:00" })
+  assert(optionKeys(unit) == "boss1,boss2,boss3,boss4,boss5" and length.max == 60, "a new alert: Boss 1 to 5, 3 to 60 s")
+  rr = R:Get(ENC, 1)
+  rr.absorb = nil
+  -- a quick wipe (under 30 s) that saw no shield keeps what the pull before found
+  clock = 2000
+  A:Start(ENC, "Mythic", "encounter", { difficultyID = 16 })
+  clock = 2029
+  A:Stop()
+  E:Open(ENC, 1)
+  assert(s.lastText.text == "Last pull: 2 boss shields", "a 29 s pull with no shield: the record stays: " .. tostring(s.lastText.text))
+  -- a quick pull that saw one replaces it
+  A:Start(ENC, "Mythic", "encounter", { difficultyID = 16 })
+  clock = 2039 SP.HandleEvent("UNIT_ABSORB_AMOUNT_CHANGED", "boss3") -- 10 s into a pull that started at 2029
+  A:Stop()
+  E:Open(ENC, 1)
+  assert(s.lastText.text == "Last pull: Boss 3 shield at 0:10.0", "a short pull that saw a shield: " .. tostring(s.lastText.text))
+  -- the last pull only: a pull of 30 s or more with no shield says so
+  clock = 3000
+  A:Start(ENC, "Mythic", "encounter", { difficultyID = 16 })
+  clock = 3030
+  A:Stop()
+  E:Open(ENC, 1)
+  assert(s.lastText.text == "Last pull: no boss shield seen." and not s.use[1].shown, "no shield on the last pull: " .. tostring(s.lastText.text))
+  -- up to three, soonest first
+  CRT.db.alerts.shieldPulls[ENC] = { at = 1, units = { boss5 = 50, boss4 = 40, boss3 = 30, boss1 = 10 } }
+  E:Open(ENC, 1)
+  assert(s.lastText.text == "Last pull: 3 boss shields" and s.use[3].shown and s.use[3].text == "Use Boss 4", "three: " .. s.lastText.text)
+  assert(s.lastTip == "Boss 1 shield at 0:10.0\\nBoss 3 shield at 0:30.0\\nBoss 4 shield at 0:40.0", "all three in the tooltip")
+  -- one: the line says it all
+  CRT.db.alerts.shieldPulls[ENC] = { at = 1, units = { boss2 = 183.8 } }
+  E:Open(ENC, 1)
+  assert(s.lastText.text == "Last pull: Boss 2 shield at 3:03.8" and s.lastTip == "Boss 2 shield at 3:03.8", "one: " .. s.lastText.text)
+  CRT.db.alerts.shieldPulls[ENC] = { at = 1, units = { boss5 = 50, boss4 = 40, boss3 = 30, boss1 = 10 } }
+  E:Open(ENC, 1)
+  -- the line and its buttons fit before the window's edge
+  local btns = 0 for _, b in ipairs(s.use) do if b.shown then btns = btns + 6 + b.w end end
+  assert(226 + s.lastText.w + btns <= 600 - 16, "inside the window: " .. (226 + s.lastText.w + btns))
+  UnitGetTotalAbsorbs = nil
+
+  -- as a raid note line: shield: in Export and in the note, read back by OpenNote
+  E:Open(ENC, nil, { text = "Break it", boss = "Test Boss" })
+  pick("Save as", "note")
+  typeInto(w.timeEdit, "3:00")
+  setCheck(s.check, true)
+  pick("Shield on", "boss2")
+  local line = E:Export()
+  assert(line and line:find("shield:boss2,15,any;", 1, true), "Export carries the option: " .. tostring(line))
+  click(w.saveBtn)
+  local nid = CRT.Notes:FindForEncounter(ENC, nil) or (CRT.db.notes.list[1] and 1)
+  local found, lineNo
+  for id, rec2 in pairs(CRT.db.notes.list) do
+    local lines = CRT.NoteParser.SplitLines(rec2.raw)
+    for i, l in ipairs(lines) do if l:find("shield:boss2,15,any;", 1, true) then found, lineNo, nid = rec2, i, id end end
+  end
+  assert(found, "saved into the raid note with shield:")
+  E:OpenNote(nid, lineNo)
+  assert(s.check.checked and value("Shield on") == "boss2" and length.opts.get() == 15 and s.any.checked, "OpenNote reads it back")
+  -- someone who can't change the raid note: shown, greyed
+  setMember()
+  E:OpenNote(nid, lineNo)
+  assert(not s.check.enabled and not unit.opts.enabledIf() and not s.any.enabled, "read-only: greyed")
+  -- a template has no boss: no Last pull line
+  reset()
+  E:EditSaved(nil)
+  assert(not s.lastText.shown and not s.use[1].shown, "a template: no Last pull line")
+  E:Close()
+  print("ok editor: the Shield bar section")
 end
 
 `;

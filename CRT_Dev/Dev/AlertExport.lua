@@ -10,7 +10,8 @@ local ADDON, CRT = ...
 --                               saved Mech Alerts, the same store the panel uses
 -- Boss picks one boss (route order, CRT.Bosses:Options) or all bosses; What picks Special alerts, My Mech Alerts
 -- or both. A Mech Alert becomes a special alert entry with its spell (or its typed times), Show from, Show as,
--- impact ticks, bar end and fill; what an entry can't hold is named in a comment on it.
+-- impact ticks, bar end and fill, or its shield bar (absorb, in place of ticks and fill); what an entry can't hold is
+-- named in a comment on it.
 -- This file never ships: its .toc line is inside the do-not-package block.
 
 local UI = CRT.UI
@@ -260,7 +261,9 @@ function Dev.ReminderDef(enc, r, used)
         end
         show[word] = on and true or false
     end
-    local ticks = Reminders.TickList(r.ticks)
+    -- a shield bar takes the place of the bar's ticks and fill (Special.lua refuses both together)
+    local absorb = Reminders.AbsorbOf(r.absorb)
+    local ticks = not absorb and Reminders.TickList(r.ticks) or nil
     local def = {
         key = keyFor(label, used),
         label = label,
@@ -270,7 +273,8 @@ function Dev.ReminderDef(enc, r, used)
         show = show,
         ticks = ticks,
         -- a special alert's bar fills up unless it says down; a reminder's empties unless it says up
-        fill = r.fill ~= "up" and "down" or nil,
+        fill = not absorb and r.fill ~= "up" and "down" or nil,
+        absorb = absorb,
     }
     local comments = { TEXT.fromMine:format(label) }
     local lost = lostParts(r)

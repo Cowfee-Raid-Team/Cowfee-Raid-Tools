@@ -1,19 +1,25 @@
 local ADDON, CRT = ...
 
 -- Shield bars: a special alert with absorb = { unit, length, anyDifficulty } (the format is at the top of
--- Alerts/Special.lua) shows a bar whose fill is the absorb shield left on its boss unit, and whose tick and seconds are
--- length seconds from when the shield went up. Alerts/Bars.lua draws them (one draw path, drawAbsorb); this file only
--- decides when each bar starts and ends, and keeps the shield's readings. Only with the alert's Bar on.
---   Timed: an item of the run that carries absorb (the special block's, one per cast) opens a window from the entry's
---     own lead before the cast (the boss file's, never your Show from) to length after it. The first
+-- Alerts/Special.lua), one of your reminders with the same field (Alerts/Reminders.lua) or a raid or personal note line
+-- with shield: (Notes/Parse.lua) shows a bar whose fill is the absorb shield left on its boss unit, and whose tick and
+-- seconds are length seconds from when the shield went up. Alerts/Bars.lua draws them (one draw path, drawAbsorb); this
+-- file only decides when each bar starts and ends, and keeps the shield's readings. Only with the alert's Bar on.
+--   Timed: an item of the run that carries absorb (one per cast) opens a window from its absorb.lead before the cast
+--     (a special entry's own lead from the boss file, never your Show from; a reminder's or a note line's Show from)
+--     to length after it. The first
 --     UNIT_ABSORB_AMOUNT_CHANGED for its unit inside it starts the bar. The bar ends when length runs out, when the run
 --     stops (the encounter's end) or when the item leaves the run's lines (a later phase cut it). Each window gives one
 --     bar.
---   Untimed: Special:AbsorbWatches(run) gives a watch per entry. While none of the entry's timed windows is open and no
+--   Untimed: Special:AbsorbWatches(run), Reminders:AbsorbWatches(run) and NoteEngine:AbsorbWatches(run) give a watch
+--     per alert, keyed as its items' absorb.key (else special, else id). While none of the alert's timed windows is open and no
 --     timed bar of it runs (its phase not reached yet, as with no phase triggers and no Next phase; no times on this
 --     difficulty, with anyDifficulty; or the shield came off its plan), the unit's first absorb event starts a bar,
---     and a new one starts only after it ended and the events stopped for GAP seconds. A window that opens while that
---     bar runs takes it over, so a shield never gets two bars.
+--     and a new one starts only after it ended and the events stopped for GAP seconds.
+--   One shield, one bar: a unit has at most one bar at a time. A window that opens, or an untimed start, while a bar on
+--     that unit runs takes that bar over (whichever alert started it), so a special alert, a raid note line and your
+--     own reminder on the same shield show one bar. Its label is the highest of them by RANK: a special alert, then a
+--     note line, then your own; the bar keeps the length it started with.
 --   A run that is not a boss pull (Test, a rehearsal) hears no absorb events: its timed bars start at their cast,
 --     full, with no amount, so a Test shows the bar.
 -- UnitGetTotalAbsorbs is secret during an encounter (absorb probe, 2026-10-27): its value is kept as it came and
@@ -80,10 +86,18 @@ local function absorbLines(now)
     return out
 end
 
--- A bar's state: when it started, its length, the shield's first reading (its maximum) and the last one, seq (one up
--- per reading, so the bar redraws only on a new one), and the line the bars draw.
-local function newState(id, at, length, total, src)
-    local st = { at = at, length = length, max = total, value = total, seq = 1 }
+-- Which alert labels a bar several take over, highest first: a special alert (a watch with no block is one), then a
+-- raid or personal note line, then anything else (your own reminder, a test).
+local RANK = { special = 3, note = 2, personal = 2 }
+local function rankOf(src)
+    return RANK[src.block or "special"] or 1
+end
+
+-- A bar's state: its unit, when it started, its length, the shield's first reading (its maximum) and the last one, seq
+-- (one up per reading, so the bar redraws only on a new one), the rank of the alert it is labelled by, and the line the
+-- bars draw.
+local function newState(id, at, length, total, src, unit)
+    local st = { unit = unit, at = at, length = length, max = total, value = total, seq = 1, rank = rankOf(src) }
     st.line = {
         id = id,
         at = at + length,
@@ -151,8 +165,14 @@ function Absorb:Sync()
         reset()
         runId = Alerts.runId
     end
-    local Special = CRT.AlertSpecial
-    watches = Special and Special.AbsorbWatches and Special:AbsorbWatches(run) or EMPTY
+    watches = {}
+    for _, source in ipairs({ CRT.AlertSpecial or EMPTY, CRT.AlertReminders or EMPTY, CRT.NoteEngine or EMPTY }) do
+        if source.AbsorbWatches then
+            for _, w in ipairs(source:AbsorbWatches(run) or EMPTY) do
+                watches[#watches + 1] = w
+            end
+        end
+    end
     if devRun(run) then
         watches = { { id = "absorb:dev", key = "dev", unit = dev.unit, length = dev.length, text = dev.label } }
     end
@@ -186,15 +206,38 @@ local function running(st, now)
     return st and now >= st.at and now < st.at + st.length
 end
 
--- The untimed bar of an entry that runs now, or nil.
-local function freeBar(key, now)
-    for _, w in ipairs(watches) do
-        local f = free[w.id]
-        if w.key == key and f and running(f.bar, now) then
+-- The alert a shield line stands for, which its untimed watch has as its key: a reminder's or a special entry's
+-- every cast is one alert.
+local function keyOf(line)
+    return line.absorb.key or line.special or line.id
+end
+
+-- The bar running on a unit now, timed or untimed, or nil: a unit has one at a time.
+local function unitBar(unit, now)
+    for _, st in pairs(timed) do
+        if st.unit == unit and running(st, now) then
+            return st
+        end
+    end
+    for _, f in pairs(free) do
+        if f.bar and f.bar.unit == unit and running(f.bar, now) then
             return f.bar
         end
     end
     return nil
+end
+
+-- Another alert takes a running bar over: it labels the bar when it ranks higher.
+local LABEL_FIELDS = { "block", "text", "icon", "spellID", "color", "abilityType", "priority" }
+local function takeOver(st, src)
+    local rank = rankOf(src)
+    if rank > st.rank then
+        st.rank = rank
+        for _, k in ipairs(LABEL_FIELDS) do
+            st.line[k] = src[k]
+        end
+        st.line.block = src.block or "special"
+    end
 end
 
 -- The timed rules for one reading. Returns the entries (by key) a window or a timed bar has now: the untimed rules
@@ -210,22 +253,23 @@ local function timedReading(unit, total, now)
             if st then
                 if running(st, now) then
                     update(st, total)
-                    busy[line.special or line.id] = true
+                    busy[keyOf(line)] = true
                 end
             elseif open then
-                -- an untimed bar already showing this shield goes on as this window's
-                local taken = line.special and freeBar(line.special, now)
+                -- a bar already showing this shield (untimed, or another alert's window) goes on as this window's
+                local taken = unitBar(unit, now)
                 if taken then
                     taken.adopted = true
+                    takeOver(taken, line)
                     update(taken, total)
                     timed[line.id] = taken
                 else
-                    timed[line.id] = newState(line.id, now, a.length, total, line)
+                    timed[line.id] = newState(line.id, now, a.length, total, line, unit)
                 end
-                busy[line.special or line.id] = true
+                busy[keyOf(line)] = true
             end
             if open then
-                busy[line.special or line.id] = true
+                busy[keyOf(line)] = true
             end
         end
     end
@@ -263,10 +307,14 @@ function Absorb.HandleEvent(event, unit)
                 -- the timed rules have this shield
             elseif f.bar then
                 update(f.bar, total)
+            elseif unitBar(unit, now) then
+                -- another alert's bar shows this shield: this one takes it over, never a second bar
+                f.bar = unitBar(unit, now)
+                takeOver(f.bar, w)
             elseif not f.lastEventAt or now - f.lastEventAt >= Absorb.GAP then
                 f.n = f.n + 1
                 local id = w.id .. ":" .. f.n -- its own line: the lint reads a line with total on it for operators
-                f.bar = newState(id, now, w.length, total, w)
+                f.bar = newState(id, now, w.length, total, w, unit)
             end
             -- the gap counts every event on the unit, whichever rules took it
             f.lastEventAt = now
@@ -284,24 +332,32 @@ function Absorb:Lines(now)
         self:Sync()
     end
     local out
+    local seen = {} -- a bar several alerts took over is drawn once
     local sample = Alerts.run.reason ~= "encounter"
     for _, line in ipairs(absorbLines(now)) do
         local st = timed[line.id]
-        local length = line.absorb.length
-        if not st and sample and now >= line.at and now < line.at + length then
-            -- no absorb events outside a pull: the bar starts at its cast, full, with no amount
-            st = newState(line.id, line.at, length, 1, line)
-            st.sample = true
+        local a = line.absorb
+        if not st and sample and now >= line.at and now < line.at + a.length then
+            -- no absorb events outside a pull: the bar starts at its cast, full, with no amount; one per unit too
+            st = unitBar(a.unit, now)
+            if st then
+                takeOver(st, line)
+            else
+                st = newState(line.id, line.at, a.length, 1, line, a.unit)
+                st.sample = true
+            end
             timed[line.id] = st
         end
-        if running(st, now) then
+        if running(st, now) and not seen[st] then
+            seen[st] = true
             out = out or {}
             out[#out + 1] = st.line
         end
     end
     for _, w in ipairs(watches) do
         local f = free[w.id]
-        if f and running(f.bar, now) and not f.bar.adopted then
+        if f and running(f.bar, now) and not f.bar.adopted and not seen[f.bar] then
+            seen[f.bar] = true
             out = out or {}
             out[#out + 1] = f.bar.line
         end

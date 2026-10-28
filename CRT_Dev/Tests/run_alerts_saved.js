@@ -519,7 +519,7 @@ do
   assert(w.shown and w.title == "Template: Soak", w.title)
   assert(dropdowns["Save as"].shown and w.forRow.shown, "Save as and For stay")
   assert(not dropdowns["Relative to"].shown and not dropdowns["Difficulty"].shown, "no Relative to, Difficulty")
-  assert(w.h == 506 - 48, "frame shrinks: " .. tostring(w.h))
+  assert(w.h == 590 - 48, "frame shrinks: " .. tostring(w.h))
   -- no gap: every visible element's top is at most one row gap under the one above it
   local function gaps()
     local ys, seen = {}, {}
@@ -590,7 +590,7 @@ do
   -- an ordinary alert opened afterwards has its rows back
   E:Open(ENC, nil, {})
   assert(dropdowns["Save as"].shown and dropdowns["Relative to"].shown and dropdowns["Difficulty"].shown and w.timeEdit.shown and w.saveSavedBtn.shown and w.exportBtn.shown and w.title == "Alert", "rows back")
-  assert(w.h == 506 and dropdowns["Sound"].pts[1][3] == -304 - 14 - 26 and w.messageText.pts[1][3] == -350 - 14 - 26, "normal layout restored")
+  assert(w.h == 590 and dropdowns["Sound"].pts[1][3] == -304 - 14 - 26 - 84 and w.messageText.pts[1][3] == -350 - 14 - 26 - 84, "normal layout restored")
   -- Save as in a saved alert is kept: only me, and a note line for a class
   local mine = S:Save(nil, { text = "Mine", saveAs = "mine", outputs = { alert = true } })
   E:EditSaved(mine)
@@ -713,6 +713,29 @@ do
   assert(S:Get(mine).pin == 1, "an edit keeps the pin")
   CRT.db.alerts.starters = { healthstone = true, healthpotion = true, gate = true }
   print("ok starter templates")
+end
+-- shield bar: a template keeps it (Saved:Save), opens with it in the editor, and Save as template takes it
+do
+  resetSaved()
+  local f = full()
+  f.absorb = { unit = "boss2", length = 15, anyDifficulty = true }
+  local id = S:Save(nil, f)
+  local s = S:Get(id)
+  assert(s.absorb and s.absorb.unit == "boss2" and s.absorb.length == 15 and s.absorb.anyDifficulty == true, "the template keeps its absorb")
+  assert(s.absorb ~= f.absorb, "a copy")
+  local bad = S:Save(nil, { name = "Bad", outputs = { bar = true }, absorb = { unit = "target", length = 15 } })
+  assert(S:Get(bad).absorb == nil, "an absorb that doesn't read is left out")
+  assert(S:Get(S:Save(nil, { name = "None", outputs = { bar = true } })).absorb == nil, "none: none")
+  -- the editor opens it with Shield bar ticked
+  assert(E:EditSaved(id))
+  assert(win().shield.check.checked == true and value("Shield on") == "boss2", "EditSaved: Shield bar on Boss 2")
+  E:Close()
+  E:Open(ENC, nil, S:Prefill(id, ENC, 1, 20, nil, "Test Boss"))
+  assert(win().shield.check.checked == true and value("Shield on") == "boss2", "placed on a boss: Shield bar on Boss 2")
+  local made = S:Save(nil, (function() local r = CRT.AlertDraft.BuildReminder({}, CRT.AlertDraft.ForReminder({ text = "x", outputs = { bar = true }, absorb = { unit = "boss4", length = 9, anyDifficulty = false } })) r.saveAs = "mine" return r end)())
+  assert(S:Get(made).absorb.unit == "boss4" and S:Get(made).absorb.length == 9 and S:Get(made).absorb.anyDifficulty == false, "a draft's shield bar becomes a template's")
+  E:Close()
+  print("ok shield bar: templates keep it")
 end
 -- speak at: templates keep it
 do

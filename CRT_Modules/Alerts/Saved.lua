@@ -3,9 +3,10 @@ local ADDON, CRT = ...
 -- Saved alerts: one alert's setup without its time, kept to place on any boss's Timeline or to open in
 -- the alert editor. Stored in CRT.db.alerts.saved[id] (ids from nextSavedId) as
 --   { name, saveAs, tags, spellID, iconID, text, color, outputs = { alert, text, icon, bar, circle, timeline, speech },
---     speech, speakAt, sound, glow, warn, linger }
+--     speech, speakAt, sound, glow, warn, linger, absorb }
 -- where `tags` are the words of the editor's For choice, `saveAs` is "note" or "mine", and `speech` is
--- "text", "textcount" or "count" and `speakAt` nil or "zero" as a reminder keeps them. The time, phase,
+-- "text", "textcount" or "count" and `speakAt` nil or "zero" as a reminder keeps them, and `absorb` a shield bar
+-- (Reminders.AbsorbOf: { unit, length, anyDifficulty }) as a reminder keeps it. The time, phase,
 -- boss and difficulty of the alert a saved alert was made from are never kept. A saved alert's name
 -- defaults to its text, else its spell's name. Every change tells the alerts windows (CRT.Alerts:Fire)
 -- and this store's own listeners.
@@ -180,6 +181,7 @@ function Saved:Save(id, fields)
         glow = fields.glow and true or nil,
         warn = type(fields.warn) == "number" and fields.warn or 5,
         linger = type(fields.linger) == "number" and fields.linger > 0 and fields.linger or nil,
+        absorb = CRT.AlertReminders and CRT.AlertReminders.AbsorbOf(fields.absorb) or nil,
         outputs = {},
     }
     for _, k in ipairs(OUTPUT_KEYS) do

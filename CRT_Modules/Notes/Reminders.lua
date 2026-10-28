@@ -65,6 +65,9 @@ local TEXT = {
     countCast = "The cast",
     countImpact = "Each impact",
     countHelp = "What the bar's number counts down to: the end of the cast, or the next hit.",
+    -- in their place when the alert's bar is a shield bar (the alert editor's Shield bar section)
+    shieldTitle = "Shield bar",
+    shieldHelp = "This alert's bar shows the boss's shield as the raid breaks it, in place of impact ticks and fill. Change it in the alert editor: double-click the alert's cast on the Timeline.",
     also = "Also",
     speak = "Speak the text",
     count = "Count down 3 2 1",
@@ -634,6 +637,18 @@ end
 -- The bar's rows under Show as: Impact ticks greyed while Bar is off (Bar fill greys through its enabledIf), its box showing the draft's ticks unless it is being typed in.
 local function drawBarRows(d)
     local on = d.show.bar and true or false
+    -- a shield bar fills with the shield left, not with time: no ticks or fill to choose, its line instead
+    local a = CRT.AlertDraft.Absorb(d)
+    for _, el in ipairs({ panel.ticksLabel, panel.ticksEdit, panel.ticksUnit, panel.ticksHelp, panel.barFill, panel.countTo, panel.countHelp }) do
+        el:SetShown(a == nil)
+    end
+    panel.shieldLine:SetShown(a ~= nil)
+    panel.shieldHelp:SetShown(a ~= nil)
+    if a then
+        panel.shieldLine:SetText(CRT.AlertShieldPulls.BarLine(a))
+        local v = on and 1 or 0.5
+        panel.shieldLine:SetTextColor(v, v, v)
+    end
     panel.ticksEdit:SetEnabled(on)
     local v = on and 1 or 0.5
     panel.ticksLabel:SetTextColor(v, v, v)
@@ -1348,7 +1363,15 @@ local function buildBarRows(p, row)
     panel.ticksUnit = p:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     panel.ticksUnit:SetPoint("LEFT", panel.ticksEdit, "RIGHT", L.UNIT_GAP, 0)
     panel.ticksUnit:SetText(TEXT.ticksUnit)
-    UI.HelpRight(panel.ticksUnit, TEXT.ticks, TEXT.ticksHelp)
+    panel.ticksHelp = UI.HelpRight(panel.ticksUnit, TEXT.ticks, TEXT.ticksHelp)
+    -- a shield bar's line, in the place of the rows above and below (drawBarRows)
+    panel.shieldLine = p:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    panel.shieldLine:SetPoint("TOPLEFT", x, L.COL_Y - L.TICKS_DY - 4)
+    panel.shieldLine:SetJustifyH("LEFT")
+    panel.shieldLine:SetWordWrap(false)
+    panel.shieldLine:Hide()
+    panel.shieldHelp = UI.HelpRight(panel.shieldLine, TEXT.shieldTitle, TEXT.shieldHelp)
+    panel.shieldHelp:Hide()
     local function barOn()
         return cur.draft ~= nil and cur.draft.show.bar and true or false
     end
@@ -1369,7 +1392,7 @@ local function buildBarRows(p, row)
         set = change(function(v) cur.draft.countTo = v == "impact" and "impact" or nil end),
     }))
     panel.countTo:SetPoint("TOPLEFT", x, L.COL_Y - L.COUNT_DY)
-    UI.HelpRight(panel.countTo, TEXT.countTo, TEXT.countHelp)
+    panel.countHelp = UI.HelpRight(panel.countTo, TEXT.countTo, TEXT.countHelp)
 end
 
 local function buildPanel(f)

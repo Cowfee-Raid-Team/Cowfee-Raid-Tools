@@ -5,8 +5,12 @@ local ADDON, CRT = ...
 -- you type, and it runs on the alerts engine as the "mine" block beside the raid note. A reminder is
 -- saved in CRT.db.alerts.reminders[encounterID][id] as
 --   { boss, spellID, text, times, outputs = { alert, bar, speech, text, icon, circle, timeline }, warn, speech,
---     priority, group, difficulty, enabled, linger, sound, auraSound, glow, iconID, color, speakAt, ticks, fill, countTo, barTo }
+--     priority, group, difficulty, enabled, linger, sound, auraSound, glow, iconID, color, speakAt, ticks, fill, countTo, barTo,
+--     absorb }
 -- auraSound true also plays the sound when the spell's aura is put on you (Sound/Auras.lua).
+-- absorb (optional, AbsorbOf) = { unit, length, anyDifficulty } makes its bar a shield bar, as a special alert's
+-- (Alerts/Absorb.lua; the format at the top of Alerts/Special.lua): the window opens Show from before each cast, and
+-- AbsorbWatches gives the untimed bar. Its ticks and fill are then not used (they stay saved).
 -- ticks (optional) are the bar's impact ticks, seconds into the bar from when it shows ({ 2, 4 }); fill "up" makes
 -- the bar fill up instead of emptying. A reminder's bar always runs from Show from before the cast to the cast, and
 -- each item carries the ticks inside it as a bar of its own for the bars (barStart, barEnd and ticks as seconds after
@@ -62,6 +66,17 @@ local function copy(v)
         out[k] = copy(x)
     end
     return out
+end
+
+-- A shield bar's absorb as a reminder, a template or a share keeps it: { unit, length, anyDifficulty }, a fresh copy,
+-- or nil when a has none or it doesn't read. The rule is Notes/Parse.lua's Parser.ReadAbsorb, which note lines and
+-- special entries read by too.
+function Reminders.AbsorbOf(a)
+    local P = CRT.NoteParser
+    if type(a) ~= "table" or not (P and P.ReadAbsorb) then
+        return nil
+    end
+    return (P.ReadAbsorb(a.unit, a.length, a.anyDifficulty))
 end
 
 -- The first number in a phase label: "P1.5" gives 1.5, "Phase 2" gives 2, "Intermission" nil.
@@ -1082,13 +1097,8 @@ local function speechList(r, text)
         r.speakAt == "zero")
 end
 
--- The alert items of one reminder (r with any overrides already laid over it), one per time. Used by
--- the block and by the editor's Test, which runs a reminder that is not saved.
--- difficulty is not checked here; the block does that. group and ref (optional) are the run's difficulty
--- group and ability timeline (see Times).
-function Reminders:Items(encounterID, id, r, group, ref)
-    local out = {}
-    local times = Reminders:Times(encounterID, r, ref, group)
+-- A reminder's icon (its own icon ID, else its spell's texture) and its text (its own, else its spell's name).
+local function looks(r)
     local icon
     if type(r.iconID) == "number" and r.iconID > 0 then
         icon = r.iconID
@@ -1108,16 +1118,30 @@ function Reminders:Items(encounterID, id, r, group, ref)
             text = hasSpell and ("Spell " .. tostring(r.spellID)) or "Reminder"
         end
     end
+    return icon, text
+end
+
+-- The alert items of one reminder (r with any overrides already laid over it), one per time. Used by
+-- the block and by the editor's Test, which runs a reminder that is not saved.
+-- difficulty is not checked here; the block does that. group and ref (optional) are the run's difficulty
+-- group and ability timeline (see Times).
+function Reminders:Items(encounterID, id, r, group, ref)
+    local out = {}
+    local times = Reminders:Times(encounterID, r, ref, group)
+    local icon, text = looks(r)
     local o = r.outputs or {}
     local fill = r.fill == "up" and "up" or nil
     local countTo = r.countTo == "impact" and "impact" or nil
     local warn = type(r.warn) == "number" and r.warn or 5
+    -- a shield bar (Alerts/Absorb.lua): each cast's window opens at Show from, and its ticks don't apply
+    local absorb = Reminders.AbsorbOf(r.absorb)
     for n, t in ipairs(times) do
         -- the bar's impact ticks, each item its own copy (BarTicks): with any on it, a bar of its own (Alerts/Bars.lua)
         -- from Show from (warn) before the cast to the cast, so each impact sits at the same place on the bar in a
         -- pull and in a test, whenever the bar first showed. A tick off the bar changes nothing
-        local ticks = Reminders.BarTicks(r.ticks, warn)
+        local ticks = not absorb and Reminders.BarTicks(r.ticks, warn) or nil
         out[#out + 1] = {
+            absorb = absorb and { unit = absorb.unit, length = absorb.length, lead = warn, key = BLOCK .. ":" .. tostring(id) } or nil,
             ticks = ticks,
             barStart = ticks and -warn or nil,
             barEnd = ticks and 0 or nil,
@@ -1165,3 +1189,37 @@ end
 
 -- coverable: a reminder steps aside for a special alert on the same cast (Alerts/Engine.lua, No double alerts)
 Alerts:RegisterBlock(BLOCK, { label = "Your reminders", group = true, own = true, coverable = true, Entries = entries })
+
+-- The untimed shield bars of a pull (Alerts/Absorb.lua), as Special:AbsorbWatches gives a special alert's: one watch
+-- per reminder turned on with absorb and its Bar on, { id, key, block, unit, length, text, icon, color, priority,
+-- timed }. A reminder for the pull's difficulty group has one (timed when it has times there: the fallback while no
+-- window of it is open); one for the other group only with anyDifficulty, untimed. Only a boss pull has them. {} when
+-- none.
+function Reminders:AbsorbWatches(run)
+    local out = {}
+    if not (run and run.reason == "encounter" and type(run.encounterID) == "number") then
+        return out
+    end
+    local group = Alerts.RunGroup and Alerts:RunGroup(run) or nil
+    for _, e in ipairs(Reminders:List(run.encounterID)) do
+        local r = Reminders:Effective(BLOCK, e.id, e.r)
+        local a = Reminders.AbsorbOf(r.absorb)
+        local fits = a and matchesDifficulty(r, run)
+        if a and r.enabled ~= false and type(r.outputs) == "table" and r.outputs.bar and (fits or a.anyDifficulty) then
+            local icon, text = looks(r)
+            out[#out + 1] = {
+                id = "absorb:" .. BLOCK .. ":" .. tostring(e.id),
+                key = BLOCK .. ":" .. tostring(e.id),
+                block = BLOCK,
+                unit = a.unit,
+                length = a.length,
+                text = text,
+                icon = icon,
+                color = r.color,
+                priority = Rules.Priority(3, r.priority),
+                timed = fits and #Reminders:Times(run.encounterID, r, run.reference, group) > 0 or false,
+            }
+        end
+    end
+    return out
+end

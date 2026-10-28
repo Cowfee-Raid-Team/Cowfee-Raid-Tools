@@ -7,13 +7,15 @@ local ADDON, CRT = ...
 --          and for the editor also a note line (noteID, line, expected) or a saved alert (savedMode)
 --   draft  { saveAs, tag, group, difficulty, ph, timeText, timeTouched, keptTimes, spellID, iconType, iconID,
 --          text, color, show = { alert, text, icon, bar, circle, timeline }, speak, speakAt, count, glow, sound,
---          warn, linger, boss, baseDifficulty, difficultyTouched, ticksText, fill }
+--          warn, linger, boss, baseDifficulty, difficultyTouched, ticksText, fill, shield }
 --          speakAt is nil (Speak at: On show) or "zero" (At 0), as a reminder keeps it
 --          ticksText is the Impact ticks box as typed ("2, 4": seconds into the bar, Draft.ParseTicks), fill
 --          "up" (Bar fills up) or nil (it empties), as a reminder keeps them (Alerts/Bars.lua draws them; Only me: a
 --          note line has no such fields). An older reminder's barTo stays saved as it was and is never read
 --          group is the difficulty group Only me saves for ("nh" or "mythic", Draft.Group); difficulty
 --          the raid note's Difficulty a note line goes to, or an older reminder's Difficulty text
+--          shield is the Shield bar section { on, unit, length, anyDifficulty }: kept while it is unticked, so a
+--          tick puts back what was picked; saved (Draft.Absorb) as a reminder's absorb and a note line's shield:
 -- Every function takes ctx and the draft it works on; none keeps either.
 -- A cooldown dropped on the Timeline (or placed from its menu) is saved at once, without the editor:
 -- Draft.PlaceCooldown, with Draft.CooldownDefaults (the one place those are set). A note line, from the
@@ -48,6 +50,10 @@ Draft.TEXT = TEXT
 local SHOW_KEYS = { "alert", "text", "icon", "bar", "circle", "timeline" }
 Draft.SHOW_KEYS = SHOW_KEYS
 local DEFAULT_WARN = 5
+
+-- The Shield bar section's choices: the boss units it offers and what a new alert starts with (Alerts/Absorb.lua).
+Draft.SHIELD_UNITS = { "boss1", "boss2", "boss3", "boss4", "boss5" }
+Draft.SHIELD_MIN, Draft.SHIELD_MAX, Draft.SHIELD_LENGTH = 3, 60, 15 -- Seconds to break
 
 -- A cooldown placed from the Timeline's Cooldowns row: shown as Text only and read out at its time
 -- (Speak at: At 0), from this many seconds ahead, gone at once (Linger), in the default colour.
@@ -124,7 +130,46 @@ end
 function Draft.New()
     return { saveAs = "mine", tag = "everyone", ph = 1, timeText = "", timeTouched = false, iconType = "spell",
         text = "", show = { alert = true, bar = true }, speak = true, count = false, glow = false,
-        warn = DEFAULT_WARN, linger = 0 }
+        warn = DEFAULT_WARN, linger = 0, shield = Draft.NewShield() }
+end
+
+-- The Shield bar section of a new alert: off, on boss1, 15 seconds, also on a difficulty with no times.
+function Draft.NewShield()
+    return { on = false, unit = Draft.SHIELD_UNITS[1], length = Draft.SHIELD_LENGTH, anyDifficulty = true }
+end
+
+-- A saved absorb (a reminder's, a template's or a note line's) into the draft's Shield bar section: ticked with its
+-- values, or the new alert's when there is none.
+function Draft.SetShieldFrom(draft, absorb)
+    local a = Reminders.AbsorbOf(absorb)
+    draft.shield = Draft.NewShield()
+    if a then
+        draft.shield.on, draft.shield.unit, draft.shield.length, draft.shield.anyDifficulty = true, a.unit, a.length, a.anyDifficulty
+    end
+end
+
+-- The draft's shield bar as it is saved, { unit, length, anyDifficulty }, or nil while Shield bar is unticked.
+function Draft.Absorb(draft)
+    local s = draft and draft.shield
+    if not (type(s) == "table" and s.on) then
+        return nil
+    end
+    return Reminders.AbsorbOf({ unit = s.unit, length = s.length, anyDifficulty = s.anyDifficulty and true or false })
+end
+
+-- The Shield on choices, Boss 1 to Boss 5, in the caller's words (label "Boss %d"), and the draft's own unit after
+-- them when it is another (boss6 to boss8, saved elsewhere), so opening an alert never changes it.
+function Draft.ShieldUnitOptions(label, draft)
+    local out = {}
+    for i, unit in ipairs(Draft.SHIELD_UNITS) do
+        out[i] = { key = unit, label = string.format(label, i) }
+    end
+    local own = draft and draft.shield and draft.shield.unit
+    local n = type(own) == "string" and tonumber(own:match("^boss(%d)$"))
+    if n and n > #Draft.SHIELD_UNITS then
+        out[#out + 1] = { key = own, label = string.format(label, n) }
+    end
+    return out
 end
 
 -- A draft's Show as boxes and Read out choices as a reminder's outputs and speech (nil when neither
@@ -290,6 +335,7 @@ function Draft.FromReminder(draft, r)
     draft.ticksText = Reminders.TickList and Draft.TicksText(Reminders.TickList(r.ticks)) or nil
     draft.fill = r.fill == "up" and "up" or nil
     draft.countTo = r.countTo == "impact" and "impact" or nil
+    Draft.SetShieldFrom(draft, r.absorb)
 end
 
 -- A new draft from a saved reminder.
@@ -484,6 +530,7 @@ function Draft.BuildReminder(ctx, draft)
     r.ticks = Draft.Ticks(draft)
     r.fill = draft.fill == "up" and "up" or nil
     r.countTo = draft.countTo == "impact" and "impact" or nil -- the default (to the cast) is saved as nothing
+    r.absorb = Draft.Absorb(draft) -- a shield bar (Alerts/Absorb.lua); unticked, none
     return r
 end
 
@@ -556,6 +603,7 @@ function Draft.NoteTimer(ctx, draft)
         warn = draft.warn,
         linger = draft.linger > 0 and draft.linger or nil,
         iconID = draft.iconType == "id" and validID(draft.iconID) or nil,
+        absorb = Draft.Absorb(draft), -- shield:, which a CRT from before it ignores
     }
 end
 

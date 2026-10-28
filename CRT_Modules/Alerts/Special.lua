@@ -331,31 +331,31 @@ local function readImpacts(def)
     return nil
 end
 
--- The units a shield bar may watch: the game's boss unit tokens.
-local ABSORB_UNITS = {}
-for i = 1, 8 do
-    ABSORB_UNITS["boss" .. i] = true
-end
+-- What a shield bar's absorb that doesn't read says, by the part Parser.ReadAbsorb names.
+local ABSORB_WHY = {
+    unit = "absorb needs a unit, boss1 to boss8",
+    length = "absorb needs a length over 0 seconds",
+    anyDifficulty = "absorb.anyDifficulty must be true or false",
+}
 
 -- An entry's absorb (see the top of this file): { unit, length, anyDifficulty }, nil when it has none, or nil and why.
+-- The rule is Notes/Parse.lua's Parser.ReadAbsorb, which your reminders and note lines read by too.
 local function readAbsorb(def)
     local a = def.absorb
     if a == nil then
         return nil
     end
-    if type(a) ~= "table" or type(a.unit) ~= "string" or not ABSORB_UNITS[a.unit] then
-        return nil, "absorb needs a unit, boss1 to boss8"
+    if type(a) ~= "table" then
+        return nil, ABSORB_WHY.unit
     end
-    if not finite(a.length) or a.length <= 0 then
-        return nil, "absorb needs a length over 0 seconds"
-    end
-    if a.anyDifficulty ~= nil and type(a.anyDifficulty) ~= "boolean" then
-        return nil, "absorb.anyDifficulty must be true or false"
+    local out, why = CRT.NoteParser.ReadAbsorb(a.unit, a.length, a.anyDifficulty)
+    if not out then
+        return nil, ABSORB_WHY[why]
     end
     if def.ticks ~= nil or def.bar ~= nil then
         return nil, "give absorb or a bar (ticks, bar), not both"
     end
-    return { unit = a.unit, length = a.length, anyDifficulty = a.anyDifficulty == true }
+    return out
 end
 
 -- Whether v is a game ID: a whole number over 0.

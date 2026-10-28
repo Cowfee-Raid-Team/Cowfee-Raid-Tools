@@ -114,6 +114,7 @@ Profiles.SHARE = {
         special = true, -- your special alerts' on/off and Show as choices
         specialView = false, specialViewPicked = false, -- the page state of Mech Alerts' list
         speechNotice = false, reminders = false, phases = false, overrides = false, nextId = false, saved = false, nextSavedId = false,
+        shieldPulls = false, -- last pull's shields: data
     },
     importBackup = false, -- the backup Undo last import puts back
     whatsNew = false, -- Show after updates and the last version seen: personal

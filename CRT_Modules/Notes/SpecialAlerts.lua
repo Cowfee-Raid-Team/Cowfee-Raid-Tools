@@ -424,6 +424,13 @@ local function drawPanel(enc, entry)
     ui.fill.refresh()
     -- a shield bar (absorb) fills with the shield left, not with time: nothing to choose
     ui.fill:SetShown(entry.absorb == nil)
+    -- in Bar fill's place: the shield bar's line (Alerts/ShieldPulls.lua), greyed while Bar is off as Mech Alerts' is
+    ui.shieldLine:SetShown(entry.absorb ~= nil)
+    if entry.absorb then
+        ui.shieldLine:SetText(CRT.AlertShieldPulls.BarLine(entry.absorb))
+        local v = c.show.bar and 1 or 0.5
+        ui.shieldLine:SetTextColor(v, v, v)
+    end
     ui.countTo.refresh()
     drawMarkers(entry)
     ui.message:SetText(state.notice and UI.BadText(state.notice) or "")
@@ -709,6 +716,12 @@ local function buildPanel(f)
         end,
     })
     ui.fill:SetPoint("TOPLEFT", L.INSET + L.FILL_X, L.SPEAK_Y)
+    ui.shieldLine = p:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    ui.shieldLine:SetPoint("TOPLEFT", L.INSET + L.FILL_X, L.SPEAK_Y - 6)
+    ui.shieldLine:SetWidth(L.FILL_LABEL + 5 + L.FILL_W)
+    ui.shieldLine:SetJustifyH("LEFT")
+    ui.shieldLine:SetWordWrap(false)
+    ui.shieldLine:Hide()
     -- Count down to: the bar's number counts to the cast (the default) or to each impact; greyed while the bar has no ticks
     ui.countTo = UI.Dropdown(p, TEXT.countTo, {
         labelWidth = L.FILL_LABEL, width = L.FILL_W,

@@ -500,6 +500,100 @@ check("alerts share: a shield bar's absorb is written in its place and reads bac
   assert(ok, tostring(err))
 end)
 
+-- Your own shield bar (the alert editor's Shield bar section): a reminder's absorb, through the draft, a share and
+-- Export for shipping (CRT_Dev/Dev/AlertExport.lua)
+local SHIELD = { unit = "boss2", length = 15, anyDifficulty = true }
+local function shieldReminder()
+  local r = copy(RUN)
+  r.text, r.times, r.absorb, r.ticks, r.fill = "Break it", "P1 3:00", copy(SHIELD), { 2 }, "up"
+  return r
+end
+
+check("shield editor: the draft reads a reminder's absorb and builds it back; unticked, none", function()
+  local D = CRT.AlertDraft
+  local fresh = D.New()
+  assert(fresh.shield and fresh.shield.on == false and fresh.shield.unit == "boss1" and fresh.shield.length == 15 and fresh.shield.anyDifficulty == true,
+    "a new alert: Shield bar off, Boss 1, 15 s, also without a timeline")
+  assert(D.Absorb(fresh) == nil and D.BuildReminder({}, fresh).absorb == nil, "off: no absorb saved")
+  local d = D.ForReminder(shieldReminder())
+  assert(d.shield.on and d.shield.unit == "boss2" and d.shield.length == 15 and d.shield.anyDifficulty, "the draft's section")
+  assert(same(D.BuildReminder({ reminder = shieldReminder() }, d).absorb, SHIELD), "built back the same")
+  d.shield.anyDifficulty = false
+  d.shield.unit = "boss3"
+  local built = D.BuildReminder({ reminder = shieldReminder() }, d)
+  assert(same(built.absorb, { unit = "boss3", length = 15, anyDifficulty = false }), "a change is saved")
+  d.shield.on = false
+  assert(D.BuildReminder({ reminder = shieldReminder() }, d).absorb == nil, "unticked: the saved absorb goes")
+  assert(d.shield.unit == "boss3", "the section keeps what was picked, for a tick back on")
+  -- as a raid note line: the timer carries it, and FormatLine writes shield:
+  d.shield.on = true
+  d.saveAs, d.timeText, d.timeTouched = "note", "3:00", true
+  CRT.Sound = CRT.Sound or { Compact = function(v) return v end } -- no sound engine in this harness
+  local t = D.NoteTimer({}, d)
+  assert(same(t.absorb, { unit = "boss3", length = 15, anyDifficulty = false }), "the note timer's absorb")
+  assert(CRT.NoteParser.FormatLine(t):find("shield:boss3,15;", 1, true), "written as shield:boss3,15;")
+  local back = D.New()
+  D.SetShieldFrom(back, CRT.NoteParser.Parse(CRT.NoteParser.FormatLine(t)).timers[1].absorb)
+  assert(back.shield.on and back.shield.unit == "boss3" and back.shield.anyDifficulty == false, "a note line reads back into the section")
+  assert(R.AbsorbOf({ unit = "player", length = 15 }) == nil and R.AbsorbOf({ unit = "boss2", length = 0 }) == nil
+    and R.AbsorbOf({ unit = "boss2", length = 0 / 0 }) == nil and R.AbsorbOf("boss2") == nil, "AbsorbOf refuses what doesn't read")
+end)
+
+-- One rule for a shield bar's absorb (Notes/Parse.lua's Parser.ReadAbsorb): a reminder's, a note line's and a boss
+-- file's entry agree on what reads
+check("shield editor: one absorb rule for reminders, note lines and special entries", function()
+  local P = CRT.NoteParser
+  assert(P.ReadAbsorb, "Parser.ReadAbsorb")
+  local cases = {
+    { { unit = "boss2", length = 15, anyDifficulty = true }, true }, { { unit = "boss8", length = 0.5 }, true },
+    { { unit = "boss9", length = 15 }, false }, { { unit = "player", length = 15 }, false }, { { unit = "boss2", length = 0 }, false },
+    { { unit = "boss2", length = -1 }, false }, { { unit = "boss2", length = 1 / 0 }, false }, { { unit = "boss2", length = 0 / 0 }, false },
+    { { unit = "boss2", length = "15" }, false }, { { unit = "boss2", length = 15, anyDifficulty = "yes" }, false },
+  }
+  for i, c in ipairs(cases) do
+    local a, want = c[1], c[2]
+    local rule = P.ReadAbsorb(a.unit, a.length, a.anyDifficulty) ~= nil
+    local mine = R.AbsorbOf(a) ~= nil
+    local entry = S.Read({ key = "s" .. i, label = "S", when = { times = "P1 0:10" }, absorb = a }) ~= nil
+    local line = P.Parse("time:1;text:x;shield:" .. tostring(a.unit) .. "," .. tostring(a.length) .. ";").timers[1].absorb ~= nil
+    assert(rule == want and mine == want and entry == want, "case " .. i .. ": rule " .. tostring(rule) .. ", reminder " .. tostring(mine) .. ", entry " .. tostring(entry))
+    if type(a.length) == "number" and a.anyDifficulty == nil then assert(line == want, "case " .. i .. ": note line " .. tostring(line)) end
+  end
+end)
+
+check("shield editor: a share carries a reminder's absorb, and a bad one is dropped and counted", function()
+  sender()
+  CRT.db.alerts.reminders[9001][3] = shieldReminder()
+  local scode = AS:Export({ reminders = true, bosses = { 9001 } })
+  local data = Share.Decode(scode, "alerts", 1, AS.CAPS)
+  local sent
+  for _, r in ipairs(data.boss[9001].nh.reminders) do if r.text == "Break it" then sent = r end end
+  assert(sent and same(sent.absorb, SHIELD), "in the code")
+  receiver()
+  local info = AS:Read(scode)
+  AS:Apply(info)
+  local got = byText(9001)["Break it"]
+  assert(got and same(got.r.absorb, SHIELD), "imported with its absorb")
+  assert(AS:Read(scode).counts.same == 3, "read again: the same as yours")
+  local bad = AS.CleanReminder({ text = "x", times = "0:10", outputs = { alert = true }, absorb = { unit = "focus", length = 5 } })
+  local _, dropped = AS.CleanReminder({ text = "x", times = "0:10", outputs = { alert = true }, absorb = { unit = "focus", length = 5 } })
+  assert(bad and bad.absorb == nil and dropped == 1, "a bad absorb is left out and counted")
+end)
+
+check("shield editor: Export for shipping writes a Mech Alert's shield bar as absorb, in place of ticks and fill", function()
+  sender()
+  CRT.db.alerts.reminders[9001] = { [1] = shieldReminder() }
+  local text = Dev.LuaFor(9001, { reminders = true })
+  assert(text:find('absorb = { unit = "boss2", length = 15, anyDifficulty = true }', 1, true), "absorb written: " .. text)
+  local got
+  local chunk = assert(load("local CRT = ...\\nCRT.Bosses:Register({ encounterID = 9001, name = \\"Test Boss\\", season = \\"T\\",\\n" .. text .. "\\n})", "export"))
+  chunk({ Bosses = { Register = function(_, def) got = def end } })
+  local def = got.special[1]
+  assert(def.ticks == nil and def.fill == nil, "no ticks or fill beside it")
+  local entry, why = S.Read(def)
+  assert(entry and entry.absorb.unit == "boss2" and entry.absorb.length == 15 and entry.absorb.anyDifficulty == true, "the boss file reads it: " .. tostring(why))
+end)
+
 print(ok_ .. " passed, " .. fail .. " failed")
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
