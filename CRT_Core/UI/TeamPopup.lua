@@ -2,9 +2,10 @@ local ADDON, CRT = ...
 
 -- The new raid group popup (CRT.TeamPopup): once per new raid group (Team:OnNewGroup, Team.lua), out of combat, it
 -- asks which team the raid is. A UI.Window dialog on the popups layer; its place is kept in CRTDB.team.popup.
---   Raid leader  "New raid group": Use Loot Master? [Yes] [No] (UI.Toggle2; Yes turns CRT Looting on for this
---                raid, now in a raid instance or when you enter one: LM:PlanLooting in LootMaster/Looting.lua; No
---                leaves it off and isn't asked again there), Which team? (the same dropdown as General Settings,
+--   Raid leader  "New raid group": Use Loot Master? [Yes] [No] (UI.Toggle2, neither lit at first; Yes turns CRT
+--                Looting on for this raid, now in a raid instance or when you enter one: LM:PlanLooting in
+--                LootMaster/Looting.lua; No leaves it off and isn't asked again there; no answer leaves Loot Master's own
+--                question for the instance, which waits while this popup shows), Which team? (the same dropdown as General Settings,
 --                Add team… included), [Save and push to raid] [Later]. Save sets tonight's team and pushes it.
 --   Raider       "Which team is this raid?" with the dropdown, [Save] [Later]. It waits ASK_WAIT seconds after
 --                joining, and isn't shown when the leader's push came first; a push while it shows closes it.
@@ -34,13 +35,13 @@ local TEXT = {
 }
 P.TEXT = TEXT
 
--- What the popup holds until Save: the team picked and the Loot Master answer.
-local state = { pick = Team.TEAM, loot = false, leader = false }
+-- What the popup holds until Save: the team picked and the Loot Master answer (nil: none yet).
+local state = { pick = Team.TEAM, loot = nil, leader = false }
 P.state = state
 
 local function selectLoot()
     if P.toggle then
-        P.toggle:Select(state.loot and "yes" or "no")
+        P.toggle:Select(state.loot == true and "yes" or state.loot == false and "no" or nil)
     end
 end
 
@@ -137,7 +138,7 @@ function P.Show(leader)
     end
     state.leader = leader and true or false
     state.pick = Team:Tonight()
-    state.loot = false
+    state.loot = nil
     layout(state.leader)
     refresh()
     P.win:Show()
@@ -148,9 +149,20 @@ function P.IsShown()
     return P.win ~= nil and P.win:IsShown()
 end
 
+-- Whether the leader's popup shows, asking Use Loot Master? (Loot Master's own instance question waits).
+function P.AsksLoot()
+    return P.IsShown() and state.leader == true
+end
+
+-- Closing the leader's popup lets Loot Master ask its instance question, if it is still wanted.
 function P.Hide()
+    local leader = P.IsShown() and state.leader
     if P.win then
         P.win:Hide()
+    end
+    local LM = CRT.LootMaster
+    if leader and LM and LM.MaybeAskLooting then
+        LM.MaybeAskLooting()
     end
 end
 
@@ -160,7 +172,7 @@ function P.Save()
     if state.leader then
         Team:Push()
         local LM = CRT.LootMaster
-        if LM and LM.PlanLooting then
+        if state.loot ~= nil and LM and LM.PlanLooting then
             LM:PlanLooting(state.loot)
         end
     end

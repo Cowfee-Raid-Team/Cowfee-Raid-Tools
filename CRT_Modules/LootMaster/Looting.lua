@@ -290,17 +290,21 @@ end
 -- instance it is answered there and then: Yes turns CRT Looting on (LM:ChooseLooting), No leaves it off and the
 -- instance's question isn't asked. Elsewhere the answer is kept for this raid group (CRTDBChar.lootmaster.lootingPlan:
 -- { on, group = CRT.Team:GroupKey(), at, resetAt }) and taken, once, instead of the question when you next enter
--- a raid instance while leading this group tonight (LM.Fresh). Nothing else about loot changes.
+-- a raid instance while leading this group tonight (LM.Fresh). A Yes inside during a boss encounter's chat lockdown
+-- is kept the same way, and used once the lockdown ends (ENCOUNTER_END, combat's end, a loading screen). Nothing
+-- else about loot changes.
 function LM:PlanLooting(on)
     on = on and true or false
     local key = LM.InstanceKey()
     if key and isLeader() then
-        if on then
+        if not on then
+            askedFor = key
+            saveAsked(key)
+            return true
+        end
+        if not LM.ChatLocked() then
             return self:ChooseLooting(true)
         end
-        askedFor = key
-        saveAsked(key)
-        return true
     end
     CRTDBChar = CRTDBChar or {}
     CRTDBChar.lootmaster = CRTDBChar.lootmaster or {}
@@ -325,6 +329,31 @@ local function takePlan()
     return plan.on == true
 end
 LM.TakeLootingPlan = takePlan
+
+-- Uses a kept answer now, if there is one and you can lead CRT Looting here: in a raid instance, off, out of the
+-- chat lockdown. Returns true when one was used (or dropped as stale).
+local function applyPlan()
+    local lm = CRTDBChar and type(CRTDBChar.lootmaster) == "table" and CRTDBChar.lootmaster
+    if not (lm and type(lm.lootingPlan) == "table") or own.on or LM.ChatLocked() then
+        return false
+    end
+    local key = LM.InstanceKey()
+    if not key or not LM:CanRunLooting() then
+        return false
+    end
+    local plan = takePlan()
+    if plan == nil then
+        return false
+    end
+    askedFor = key
+    if plan then
+        LM:ChooseLooting(true)
+    else
+        saveAsked(key)
+    end
+    return true
+end
+LM.ApplyLootingPlan = applyPlan
 
 beat = function()
     if not own.on then
@@ -553,18 +582,23 @@ end)
 
 -- Asks the leader once per raid instance (also on becoming the leader inside); a wipe's run back into
 -- the same instance doesn't ask again, nor a /reload or login there once it was answered (savedAsked).
+-- The new raid group popup asking Use Loot Master? while it shows (CRT_Core/UI/TeamPopup.lua): the instance's
+-- question waits, and the popup calls LM.MaybeAskLooting when it closes.
+local function popupAsks()
+    local P = CRT.TeamPopup
+    return P ~= nil and P.AsksLoot ~= nil and P.AsksLoot() == true
+end
+
 local function maybeAsk()
     if lastKey and askedFor ~= lastKey and not own.on and LM:CanRunLooting() and savedAsked() ~= lastKey then
-        askedFor = lastKey
         -- answered already on the new raid group popup
-        local plan = takePlan()
-        if plan == true then
-            LM:ChooseLooting(true)
-            return
-        elseif plan == false then
-            saveAsked(lastKey)
+        if applyPlan() then
             return
         end
+        if popupAsks() then
+            return
+        end
+        askedFor = lastKey
         if LM.AskLooting then
             LM.AskLooting()
         end
@@ -696,6 +730,7 @@ local function regrouped(from)
     maybeAsk()
 end
 LM.LootingRecheck = regrouped
+LM.MaybeAskLooting = maybeAsk
 
 -- A raider back from a /reload or login asked what's running (LootMaster/Resync.lua): the heartbeat now,
 -- so its auto-pass gate doesn't wait for the next one.
@@ -718,9 +753,11 @@ events:SetScript("OnEvent", function(_, event)
     elseif event == "ENCOUNTER_END" then
         inEncounter, endedAt = false, GetTime()
         beatAfterLockdown()
+        applyPlan() -- a Yes held by the lockdown
         report(false)
     elseif event == "PLAYER_REGEN_ENABLED" then
         beat()
+        applyPlan()
     else
         regrouped()
     end

@@ -3,7 +3,7 @@ local ADDON, CRT = ...
 -- The teams you pick tonight's team from (CRT.Team, Team.lua): Team and Pug, built in and never removed, then your
 -- own, saved in CRTDB.team.list in the order added. A name is trimmed, 1 to MAX_NAME characters, with no | (it
 -- travels in the push, "T|1|<name>") and no control characters; names are unique in any case, so "cowfee" can't sit
--- beside "Cowfee". The dropdown's entries (Team:Options) end with "Add team…", which General Settings and the new
+-- beside "Cowfee"; All is reserved (Season Stats' filter) and at most MAX_TEAMS are saved. The dropdown's entries (Team:Options) end with "Add team…", which General Settings and the new
 -- raid group popup both open as TeamDialogs.lua's name box.
 --
 -- Removing a team deletes the data saved under it: each owner of such data (Season Stats) registers with
@@ -14,6 +14,8 @@ local ADDON, CRT = ...
 local Team = CRT.Team
 
 Team.MAX_NAME = 24
+Team.MAX_TEAMS = 20 -- your own teams saved at most; a push of a new team past it is used tonight, not saved
+Team.RESERVED = { all = true } -- Season Stats' All filter: never a team's name, in any case
 Team.ADD_KEY = "\0add" -- the dropdown's Add team… entry, never a name (Clean refuses control characters)
 Team.LIST_TEXT = {
     add = "Add team\226\128\166",
@@ -21,6 +23,8 @@ Team.LIST_TEXT = {
     long = "A team name is at most 24 characters.",
     bar = "A team name can't have a | in it.",
     taken = "There is already a team named %s.",
+    reserved = "%s can't be a team name.",
+    full = "You have 20 teams. Remove one to add another.",
 }
 
 local function settings()
@@ -66,7 +70,8 @@ function Team.BuiltIn(name)
     return name == Team.TEAM or name == Team.PUG
 end
 
--- The team a name means, as saved (any case): Team, Pug or one of your list. Nil for none.
+-- The team a name means, as saved (any case): Team, Pug, one of your list, or the pushed team your full list
+-- couldn't keep (CRTDBChar.team.extra, tonight only). Nil for none.
 function Team:Find(name)
     local clean = Team.Clean(name)
     if not clean then
@@ -83,16 +88,25 @@ function Team:Find(name)
             return n
         end
     end
+    local extra = Team.State and Team.State().extra
+    if type(extra) == "string" and extra:lower() == low then
+        return extra
+    end
     return nil
 end
 
--- Every team, the built-in two first, then yours in the order added.
+-- Every team, the built-in two first, then yours in the order added (and a pushed team your full list couldn't
+-- keep, last).
 function Team:Names()
     local out = { Team.TEAM, Team.PUG }
     for _, n in ipairs(list()) do
         if type(n) == "string" then
             out[#out + 1] = n
         end
+    end
+    local extra = Team.State and Team.State().extra
+    if type(extra) == "string" then
+        out[#out + 1] = extra
     end
     return out
 end
@@ -107,28 +121,53 @@ function Team:Options()
     return out
 end
 
+-- A name that can never be a team (Team.RESERVED), and why: nil for any other.
+local function reserved(clean)
+    if Team.RESERVED[clean:lower()] then
+        return Team.LIST_TEXT.reserved:format(clean)
+    end
+    return nil
+end
+
 -- Adds a team. Returns its name, or nil and why not (a line to show).
 function Team:AddTeam(name)
     local clean, why = Team.Clean(name)
     if not clean then
         return nil, why
     end
+    why = reserved(clean)
+    if why then
+        return nil, why
+    end
     local found = self:Find(clean)
-    if found then
+    if found and found ~= Team.State().extra then
         return nil, Team.LIST_TEXT.taken:format(found)
     end
     local l = list()
+    if #l >= Team.MAX_TEAMS then
+        return nil, Team.LIST_TEXT.full
+    end
     l[#l + 1] = clean
     return clean
 end
 
--- The team a push names, added to your list when new. Nil for a name Clean refuses.
+-- The team a push names, added to your list when new. With the list full it is still tonight's team, kept only
+-- while you are in the group (CRTDBChar.team.extra). Nil for a name Clean refuses or a reserved one.
 function Team:Ensure(name)
-    local found = self:Find(name)
-    if found then
+    local clean = Team.Clean(name)
+    if not clean or reserved(clean) then
+        return nil
+    end
+    local found = self:Find(clean)
+    if found and found ~= Team.State().extra then
         return found
     end
-    return (self:AddTeam(name))
+    local added = self:AddTeam(clean)
+    if added then
+        return added
+    end
+    Team.State().extra = clean
+    return clean
 end
 
 -- Data saved under team names ----------------------------------------------------------------------------------
@@ -156,7 +195,10 @@ end
 -- Whether a team can be removed now: one of yours, and not locked by the raid leader's push.
 function Team:CanRemove(name)
     local found = self:Find(name)
-    return found ~= nil and not Team.BuiltIn(found) and not self:IsLocked()
+    if found == nil or Team.BuiltIn(found) or found == Team.State().extra or self:IsLocked() then
+        return false
+    end
+    return true
 end
 
 -- Removes one of your teams and every owner's data saved under it. Tonight's team goes back to Team when it was
@@ -183,6 +225,9 @@ function Team:RemoveTeam(name)
     local s = Team.State()
     if s.tonight == found then
         s.tonight = Team.TEAM
+    end
+    if s.pushed == found then
+        s.pushed = nil -- never sent to a joiner once removed
     end
     Team.Update()
     return true

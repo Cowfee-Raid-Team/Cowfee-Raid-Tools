@@ -106,15 +106,19 @@ function Stats.ScopeOptions()
     return out
 end
 
--- The scopes a pull counts in: the team it started with (CRT.Team's snapshot at its start, else tonight's team
--- now) and all. With no team check loaded, Team and all, as every pull counted before.
+-- The scopes a pull counts in: the team it started with (CRT.Team's snapshot at its start, else the team now) and
+-- all. A pull outside a raid group (Raid Finder, a party, solo) has no team: all only. With no team check loaded,
+-- Team and all, as every pull counted before.
 local function pullScopes(pull)
     local Team = CRT.Team
     if not (Team and Team.PullTeam) then
         return Stats.SCOPES
     end
     local ok, name = pcall(Team.PullTeam, Team, pull.encounterID, pull.startedAt)
-    return { Stats.ScopeOf(ok and name or nil), Stats.ALL }
+    if not ok or type(name) ~= "string" then
+        return { Stats.ALL }
+    end
+    return { Stats.ScopeOf(name), Stats.ALL }
 end
 
 function Stats:OnChange(fn)
@@ -605,15 +609,16 @@ function Stats:DefaultGroup(seasonKey, scope)
     return (n.nh or 0) > (n.mythic or 0) and "nh" or "mythic"
 end
 
--- Whether a Late Tracker night or a Tattlebot pull (stamped team = false for Pug, teamName with its team's name)
--- is in a scope: every one in all; in Pug the ones stamped not a team raid; in a team's scope the team raids whose
--- name reads as that team (no name, from before names, or a team removed since: Team).
+-- Whether a Late Tracker night or a Tattlebot pull (stamped team, false when not a team raid, and teamName, its
+-- team's name) is in a scope: every one in all; in Pug the ones named Pug; in a team's scope the team raids whose
+-- name reads as that team (no name, from before names, or a team removed since: Team). One stamped not a team raid
+-- with no name (from before names, or outside a raid group) is in all only.
 function Stats.InScope(scope, team, name)
     if scope == Stats.ALL then
         return true
     end
     if scope == Stats.PUG then
-        return team == false
+        return team == false and teamName(name) == Stats.PUG
     end
     if team == false then
         return false

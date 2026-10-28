@@ -358,7 +358,7 @@ end
 -- The team raid check, read only here: whether the pull of encounterID that started at startedAt (time()) was a
 -- team raid, by the check's snapshot at its ENCOUNTER_START (else the answer now). With neither known (a fight
 -- that wasn't a boss) the answer now. With no check loaded, true, as every pull was before. Second, the team's
--- name the same way (Team:PullTeam, else Team:Tonight), or nil when the check gives none.
+-- name the same way (Team:PullTeam, else Team:TeamNow), or nil when it has none (outside a raid group).
 local function pullTeam(encounterID, startedAt)
     local Team = CRT.Team
     if not (Team and Team.PullIsTeam) then
@@ -371,7 +371,7 @@ local function pullTeam(encounterID, startedAt)
     else
         ok, team = pcall(Team.PullIsTeam, Team, encounterID, startedAt)
     end
-    local nameOf = now and Team.Tonight or Team.PullTeam
+    local nameOf = now and Team.TeamNow or Team.PullTeam
     local okName, name
     if nameOf then
         okName, name = pcall(nameOf, Team, encounterID, startedAt)

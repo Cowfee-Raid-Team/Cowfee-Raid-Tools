@@ -236,6 +236,32 @@ do
   LM:PlanLooting(true)
   eq(LM:LootingOn(), true, "plan: Yes inside turns CRT Looting on at once")
   LM:ChooseLooting(false, "off") take()
+  -- inside during a boss encounter's chat lockdown: the Yes is kept, and used once the lockdown ends
+  groupKey = "g3"
+  enterNew()
+  LOCKED = true
+  LM:PlanLooting(true)
+  eq(LM:LootingOn(), false, "plan: Yes in the chat lockdown can't turn it on yet")
+  check(CRTDBChar.lootmaster.lootingPlan ~= nil, "plan: but is kept")
+  onEvent("ENCOUNTER_END", 1, "Boss", 16, 20, 0)
+  eq(LM:LootingOn(), false, "plan: still locked at the encounter's end: still kept")
+  LOCKED = false
+  onEvent("PLAYER_REGEN_ENABLED")
+  eq(LM:LootingOn(), true, "plan: the lockdown over, the Yes turns CRT Looting on")
+  eq(CRTDBChar.lootmaster.lootingPlan, nil, "plan: used once")
+  LM:ChooseLooting(false, "off") take()
+  -- while the new raid group popup asks Use Loot Master?, the instance question waits; closing it asks
+  local asking = true
+  CRT.TeamPopup = { AsksLoot = function() return asking end }
+  a = asked
+  enterNew()
+  eq(asked, a, "popup: no instance question while the team popup asks Use Loot Master?")
+  asking = false
+  LM.MaybeAskLooting()
+  eq(asked, a + 1, "popup: closed with no answer, the instance question comes")
+  LM.MaybeAskLooting()
+  eq(asked, a + 1, "popup: and only once")
+  CRT.TeamPopup = nil
   CRT.Team = nil
 end
 WHERE.id = 2810

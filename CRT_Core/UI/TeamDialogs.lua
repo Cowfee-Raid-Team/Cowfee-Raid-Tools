@@ -58,9 +58,7 @@ local function build()
     D.edit:SetAutoFocus(false)
     D.edit:SetFontObject(CRTFontEdit)
     D.edit:SetMaxLetters(Team.MAX_NAME + 8) -- room for spaces trimmed off; Clean refuses a longer name
-    if UI.SkinEditBox then
-        UI:SkinEditBox(D.edit)
-    end
+    UI:SkinEditBox(D.edit)
     D.error = c:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     D.error:SetPoint("TOP", D.edit, "BOTTOM", 0, -4)
     D.error:SetWidth(L.width - 2 * L.pad)

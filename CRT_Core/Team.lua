@@ -5,8 +5,9 @@ local ADDON, CRT = ...
 --
 -- The rule: tonight's team is picked on General Settings > Team raids (Team, Pug or a team you added; the list is
 -- TeamList.lua) or set by the raid leader's push. In a raid group (not a party, not solo, not a finder group) the
--- group is a team raid when tonight's team isn't Pug. Team:IsTeam() answers now, Team:Tonight() is the name,
--- Team:Snapshot() gives { team = name, isTeam, crt, online, raid, setBy }, Team:AtPull(encounterID, startedAt) the
+-- group is a team raid when tonight's team isn't Pug; outside one there is no team (nil). Team:IsTeam() answers now,
+-- Team:Tonight() is the name,
+-- Team:Snapshot() gives { team = name or nil, isTeam, crt, online, raid, setBy, lead }, Team:AtPull(encounterID, startedAt) the
 -- snapshot taken at that pull's ENCOUNTER_START (so a pull keeps the team it started with), Team:PullTeam the name at
 -- a pull, Team:OnChange(fn) fires when IsTeam flips, Team:OnRecount(fn) on any change of the snapshot and
 -- Team:OnNewGroup(fn) when you join a new raid group (TeamPopup.lua asks which team it is).
@@ -245,20 +246,24 @@ end
 
 local heard = {} -- [key] = true: raid members a hello came from (you included)
 local members = {} -- [key] = online, the last roster read
-local snap = { team = Team.TEAM, isTeam = false, crt = 0, online = 0, raid = false }
+local snap = { team = nil, isTeam = false, crt = 0, online = 0, raid = false, lead = false }
 
 local function copy(t)
-    return { team = t.team, isTeam = t.isTeam, crt = t.crt, online = t.online, raid = t.raid, setBy = t.setBy }
+    return { team = t.team, isTeam = t.isTeam, crt = t.crt, online = t.online, raid = t.raid, setBy = t.setBy, lead = t.lead }
 end
 
--- A raid group is a team raid unless tonight's team is Pug.
+-- A raid group is a team raid unless tonight's team is Pug. Out of a raid group (solo, a party, a finder group such
+-- as Raid Finder) there is no team: team is nil, so a pull there counts under no team (Season Stats' All only).
+-- lead: whether you lead the raid group, so the settings page's Push to raid follows a change of leader.
 local function set(raid, crt, online)
-    local team = Team:Tonight()
+    local team = raid and Team:Tonight() or nil
     local isTeam = raid and team ~= Team.PUG or false
     local setBy = raid and Team:LockedBy() or nil
+    local lead = raid and Team.AmLeader() or false
     local changed = isTeam ~= snap.isTeam
     local moved = changed or raid ~= snap.raid or crt ~= snap.crt or online ~= snap.online or team ~= snap.team or setBy ~= snap.setBy
-    snap = { team = team, isTeam = isTeam, crt = crt, online = online, raid = raid, setBy = setBy }
+        or lead ~= snap.lead
+    snap = { team = team, isTeam = isTeam, crt = crt, online = online, raid = raid, setBy = setBy, lead = lead }
     if changed then
         fire(Team.listeners, isTeam, copy(snap))
     end
@@ -300,7 +305,7 @@ local settled = false
 local function newGroup()
     local s = state()
     s.groupKey = string.format("%d", time())
-    s.setBy, s.setByKey, s.pushed, s.asked = nil, nil, nil, nil
+    s.setBy, s.setByKey, s.pushed, s.asked, s.extra = nil, nil, nil, nil, nil
     if not s.picked then
         s.tonight = Team.TEAM
     end
@@ -311,6 +316,7 @@ end
 local function leftGroup()
     local s = state()
     s.groupKey, s.setBy, s.setByKey, s.pushed, s.asked = nil, nil, nil, nil, nil
+    s.extra = nil -- a pushed team your full list couldn't keep is gone with the group
 end
 
 -- In a raid group: a new one when none was saved, and the lock lifted when its leader no longer leads (the team is
@@ -408,8 +414,17 @@ function Team:SetTonight(name)
     local s = state()
     s.tonight = found
     s.picked = not Team.InRaidGroup() or nil
+    if s.pushed ~= found then
+        s.pushed = nil -- a joiner never gets a team you've moved off; Push to raid sends the new one
+    end
     update()
     return true
+end
+
+-- Tonight's team in a raid group, else nil (no team: solo, a party, a finder group). What the Late Tracker
+-- stamps on a night.
+function Team:TeamNow()
+    return Team.InRaidGroup() and self:Tonight() or nil
 end
 
 -- The status line --------------------------------------------------------------------------------------------------
@@ -484,10 +499,11 @@ function Team:PullIsTeam(encounterID, startedAt)
     return s.isTeam == true
 end
 
--- The team a pull started with: its snapshot at the start, else tonight's team now.
+-- The team a pull started with: its snapshot at the start, else the team now. Nil for a pull outside a raid group
+-- (Raid Finder, a party, solo), which belongs to no team.
 function Team:PullTeam(encounterID, startedAt)
-    local s = self:AtPull(encounterID, startedAt)
-    return s and s.team or self:Tonight()
+    local s = self:AtPull(encounterID, startedAt) or snap
+    return s.team
 end
 
 -- The message ----------------------------------------------------------------------------------------------------
@@ -806,7 +822,11 @@ end
 -- The driver's OnEvent body, exposed so the tests can drive it.
 function Team.HandleEvent(event, ...)
     if event == "GROUP_ROSTER_UPDATE" then
-        settled = true
+        -- a roster event in a raid group settles it; out of one, a fresh login's group may still be coming, so
+        -- only LOGIN_WAIT's timer (or a loading screen that isn't the first) settles it
+        if Team.InRaidGroup() then
+            settled = true
+        end
         local was = snap.raid
         Team:Recount()
         listen(snap.raid)

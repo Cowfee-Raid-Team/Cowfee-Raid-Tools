@@ -117,11 +117,12 @@ CRT.TattleDB = { bosses = { { boss = "Alpha", encounterID = 9001, mechanics = { 
 local teamAnswer = true
 local asked = 0
 local askedAt, nowAsked = nil, 0
+local outsideRaid = false -- a pull outside a raid group (Raid Finder, a party): no team
 -- tonight's team: Raid Alpha for a team raid, Pug for one that isn't (CRT_Core/Team.lua)
 CRT.Team = { PullIsTeam = function(_, enc, at) asked = asked + 1 askedAt = at return teamAnswer end,
   IsTeam = function() nowAsked = nowAsked + 1 return teamAnswer end,
-  PullTeam = function() return teamAnswer and "Raid Alpha" or "Pug" end,
-  Tonight = function() return teamAnswer and "Now Team" or "Pug" end }
+  PullTeam = function() if outsideRaid then return nil end return teamAnswer and "Raid Alpha" or "Pug" end,
+  TeamNow = function() return teamAnswer and "Now Team" or "Pug" end }
 
 assert(load(dataSrc, "Tattlebot/Data.lua"))("CowfeeRaidTools", CRT)
 local Tattle = CRT.Tattle
@@ -180,6 +181,13 @@ pull(9001, "Alpha")
 eq(s.current, teamNight, "pulls that aren't team raids join the same night")
 eq(#teamNight.pulls, before + 2, "kept whole")
 eq(teamNight.pulls[#teamNight.pulls].team, false, "each pull stamped as it was")
+eq(teamNight.pulls[#teamNight.pulls].teamName, "Pug", "a Pug pull named Pug")
+outsideRaid = true
+pull(9001, "Alpha")
+outsideRaid = false
+eq(teamNight.pulls[#teamNight.pulls].team, false, "a pull outside a raid group (Raid Finder, a party) isn't a team raid")
+eq(teamNight.pulls[#teamNight.pulls].teamName, nil, "and has no team's name, so it never files under Pug")
+table.remove(teamNight.pulls)
 eq(Tattle:HasOtherNights(), true, "now there is a pull that wasn't a team raid")
 teamAnswer = true
 pull(9001, "Alpha")

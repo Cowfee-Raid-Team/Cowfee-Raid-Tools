@@ -162,6 +162,7 @@ local function makeUI(c)
     return t
   end
   function UI.HelpRight() return mock("Button") end
+  function UI:SkinEditBox(e) e.skinned = true end
   function UI.BadText(s) return "|cffff0000" .. s .. "|r" end
   return UI
 end
@@ -183,7 +184,8 @@ local function newClient(name)
   function c.CRT:Print() end
   -- Loot Master's answer from the popup, recorded
   c.plans = {}
-  c.CRT.LootMaster = { PlanLooting = function(_, on) c.plans[#c.plans + 1] = on end }
+  c.asks = 0
+  c.CRT.LootMaster = { PlanLooting = function(_, on) c.plans[#c.plans + 1] = on end, MaybeAskLooting = function() c.asks = c.asks + 1 end }
   clients[name] = c
   order[#order + 1] = name
   loadFiles(c)
@@ -233,6 +235,7 @@ do
   D.AskName(function(name) added = name end)
   eq(D.mode, "add", "Add team… opens the name box")
   check(D.win.shown and D.edit.shown, "shown, with its box")
+  check(D.edit.skinned, "the box is skinned like every CRT edit box")
   D.edit:SetText("Cowfee Mythic") D.Accept()
   check(added == nil and D.win.shown and tostring(D.error.text):find("already a team", 1, true) ~= nil, "a duplicate shows why in red and stays open")
   D.edit:SetText(" Night Crew ") D.Accept()
@@ -283,6 +286,14 @@ end
 eq(T.Resolve("Cowfee Mythic"), "Team", "a removed team's name reads as Team")
 eq(T.Resolve(nil), "Team", "no name reads as Team")
 eq(T.Resolve("night crew"), "Night Crew", "a listed name reads as itself")
+-- All is the Season Stats filter's: never a team's name
+refused("all", "can't be a team name", "All is reserved, in any case")
+refused(" ALL ", "can't be a team name", "even with spaces")
+-- a removed team you had pushed is never sent again
+eq(T:AddTeam("Temp"), "Temp", "a team to remove")
+CRTDBChar.team.pushed = "Temp"
+T:RemoveTeam("Temp")
+eq(CRTDBChar.team.pushed, nil, "removing the team you pushed forgets the push")
 
 -- the push's wire format
 eq(T.EncodeTeam("Night Crew"), "T|1|Night Crew", "the push: T|1|<name>")
@@ -320,7 +331,9 @@ eq(P.win.strip.title, "New raid group", "the leader's popup: New raid group")
 check(P.lootLabel.shown and P.toggle.buttons[1].shown, "with Use Loot Master? [Yes] [No]")
 eq(P.save.text, "Save and push to raid", "and Save and push to raid")
 eq(P.state.pick, "Night Crew", "the dropdown starts on tonight's team")
-eq(P.state.loot, false, "and Loot Master on No")
+eq(P.state.loot, nil, "and Use Loot Master? with neither answer picked")
+eq(P.toggle.selected, nil, "neither half lit")
+check(P.AsksLoot(), "while it shows, Loot Master's own instance question waits")
 eq(labels(P.drop.opts.options()), labels(T:Options()), "the popup's dropdown is the same list as General Settings, Add team… last")
 -- Add team… in the popup: the new team is created, saved and picked there
 P.drop.opts.set(T.ADD_KEY)
@@ -371,6 +384,19 @@ eq(as("Moo", function(c) return c.Team:Tonight() end), "Raid Alpha", "the leader
 eq(as("Moo", function(c) return c.Team:LockedBy() end), "Solex", "locked for the joiner too")
 check(not popupShown("Moo"), "the joiner is never asked")
 eq(T.StatusLine(), "Now: Raid Alpha pushed to 2 CRT users.", "the count follows")
+-- the leader moves off the pushed team: a joiner doesn't get the old one, and the status line says so
+as("Solex", function() T:SetTonight("Night Crew") end)
+eq(S.char.team.pushed, nil, "a new pick forgets the push")
+eq(T.StatusLine(), "Now: Night Crew.", "the status line no longer says pushed")
+newClient("Dot")
+join("Dot")
+advance(30)
+eq(as("Dot", function(c) return c.Team:LockedBy() end), nil, "a joiner gets no stale push")
+eq(as("Dot", function(c) return c.Team:Tonight() end), "Team", "and keeps its own team")
+as("Solex", function() T:SetTonight("Raid Alpha") T:Push() end)
+advance(3)
+eq(as("Dot", function(c) return c.Team:Tonight() end), "Raid Alpha", "Push to raid again sends the new one")
+leave("Dot")
 
 -- 5. A push from anyone else is refused -----------------------------------------------------------------------------
 on("Moo", "CHAT_MSG_ADDON", "CRTHello", "T|1|Hacked", "RAID", "Bell-Sargeras")
@@ -384,6 +410,9 @@ secretLead = true
 on("Moo", "CHAT_MSG_ADDON", "CRTHello", "T|1|Hacked", "RAID", "Solex-Sargeras")
 secretLead = false
 eq(as("Moo", function(c) return c.Team:Tonight() end), "Raid Alpha", "a secret leader answer refuses the push")
+on("Moo", "CHAT_MSG_ADDON", "CRTHello", "T|1|all", "RAID", "Solex-Sargeras")
+eq(as("Moo", function(c) return c.Team:Tonight() end), "Raid Alpha", "a push of the reserved name All is refused, even from the leader")
+eq(as("Moo", function(c) return c.Team:Find("all") end), nil, "and adds nothing")
 
 -- 6. A /reload in the same group: still locked, no new group, no popup ----------------------------------------------
 local keyBefore = as("Moo", function(c) return c.Team:GroupKey() end)
@@ -399,6 +428,8 @@ check(not popupShown("Moo"), "and asks nothing")
 leader = "Bell"
 for _, name in ipairs({ "Solex", "Bell", "Moo" }) do on(name, "PARTY_LEADER_CHANGED") end
 eq(as("Moo", function(c) return c.Team:LockedBy() end), nil, "the leader who pushed no longer leads: unlocked")
+eq(as("Bell", function(c) return c.Team:Snapshot().lead end), true, "the snapshot says who leads, so Push to raid follows")
+eq(as("Solex", function(c) return c.Team:Snapshot().lead end), false, "and who no longer does")
 eq(as("Moo", function(c) return c.Team:Tonight() end), "Raid Alpha", "the team is kept")
 check(as("Bell", function(c) return c.Team.CanPush() end), "the new leader can push")
 as("Bell", function(c) c.Team:SetTonight("Pug") c.Team:Push() end)
@@ -471,6 +502,8 @@ raid = {} -- the group isn't known yet at the first loading screen
 loadFiles(M)
 on("Moo", "PLAYER_ENTERING_WORLD", true, false)
 eq(M.char.team.groupKey, savedKey, "a fresh login out of a group keeps the saved group a moment")
+on("Moo", "GROUP_ROSTER_UPDATE")
+eq(M.char.team.groupKey, savedKey, "a roster event out of a raid group doesn't give it up early")
 raid = inRaid
 on("Moo", "GROUP_ROSTER_UPDATE")
 eq(as("Moo", function(c) return c.Team:GroupKey() end), savedKey, "the group comes: the same group, not a new one")
@@ -478,6 +511,40 @@ advance(60)
 check(not popupShown("Moo"), "and no popup")
 leave("Moo")
 eq(M.char.team.groupKey, nil, "leaving clears it")
+
+-- 11b. The leader's popup with no Loot Master answer: Save leaves the plan unset ---------------------------------
+as("Solex", function()
+  local before, asks = #S.plans, S.asks
+  S.Popup.Show(true)
+  check(S.Popup.AsksLoot(), "the leader's popup asks Use Loot Master?")
+  S.Popup.Save()
+  eq(#S.plans, before, "Save with no answer leaves Loot Master's plan unset")
+  eq(S.asks, asks + 1, "and closing lets Loot Master ask its own instance question")
+  check(not S.Popup.AsksLoot(), "no longer asking")
+end)
+
+-- 11c. A full list: 20 teams; a pushed new team is used tonight but not saved ---------------------------------------
+do
+  local F = newClient("Full")
+  as("Full", function(c)
+    for i = 1, 20 do eq(c.Team:AddTeam("Team " .. i) ~= nil, true, "team " .. i .. " added") end
+    local n, why = c.Team:AddTeam("One More")
+    check(n == nil and tostring(why):find("20 teams", 1, true) ~= nil, "a 21st team is refused (" .. tostring(why) .. ")")
+  end)
+  as("Solex", function() T:AddTeam("Brand New") T:SetTonight("Brand New") T:Push() end)
+  join("Full")
+  advance(30)
+  as("Full", function(c)
+    eq(c.Team:Tonight(), "Brand New", "a full list: the pushed team is still tonight's")
+    eq(#c.CRT.db.team.list, 20, "but isn't saved")
+    eq(c.Team:LockedBy(), "Solex", "and is locked")
+    local opts = c.Team:Options()
+    eq(opts[#opts - 1].label, "Brand New", "it shows in the dropdown")
+    check(not c.Team:CanRemove("Brand New"), "and can't be removed: it was never saved")
+  end)
+  leave("Full")
+  as("Full", function(c) eq(c.Team:Tonight(), "Team", "after leaving, the unsaved team is gone: Team") end)
+end
 
 -- 12. The files ------------------------------------------------------------------------------------------------------
 for _, src in ipairs({ teamSrc, listSrc, dialogsSrc, popupSrc }) do

@@ -672,6 +672,13 @@ do
   eq(S:Boss(9001, "nh", "team").pulls .. "/" .. S:Boss(9001, "nh", "all").pulls, "8/10", "a Pug pull: not in Team")
   eq(S:Boss(9001, "nh", "team").kills .. "/" .. S:Boss(9001, "nh", "all").kills, "1/2", "its kill too")
   eq(S:Boss(9001, "nh", "Pug").pulls .. "/" .. S:Boss(9001, "nh", "Pug").kills, "1/1", "but in Pug's own counters")
+  -- a Raid Finder pull and a party's pull in a raid instance: outside a raid group there is no team (PullTeam nil)
+  teamAnswer = nil
+  S:Record({ encounterID = 9001, name = "Alpha", difficultyID = 17, startedAt = NOW + 950, length = 100, kill = false, deaths = {} })
+  S:Record({ encounterID = 9001, name = "Alpha", difficultyID = 14, startedAt = NOW + 960, length = 100, kill = false, deaths = {} })
+  eq(S:Boss(9001, "nh", "team").pulls .. "/" .. S:Boss(9001, "nh", "all").pulls, "8/12", "Raid Finder and a party's pull: in All only")
+  eq(S:Boss(9001, "nh", "Pug").pulls, 1, "never under Pug")
+
   teamAnswer = "Cowfee"
   S:Record({ encounterID = 9002, name = "Beta", difficultyID = 16, startedAt = NOW + 1900, length = 60, kill = false, deaths = {} })
   eq(S:Boss(9002, "mythic", "team"), nil, "a boss only pulled by another team has no Team counters")
@@ -694,7 +701,7 @@ do
   eq(S:Scope(), "team", "the filter goes back to Team")
   eq(optionText(), "all=All, team=Team, Pug=Pug", "and the removed team leaves the filter")
   S:DeleteTeam("team") S:DeleteTeam("all")
-  eq(S:Boss(9001, "nh", "team").pulls .. "/" .. S:Boss(9001, "nh", "all").pulls, "8/10", "Team and all are never deleted")
+  eq(S:Boss(9001, "nh", "team").pulls .. "/" .. S:Boss(9001, "nh", "all").pulls, "8/12", "Team and all are never deleted")
   -- a picked team with no pulls still shows as the filter's choice
   listed.Fresh = "Fresh"
   S:SetScope("Fresh")
@@ -739,13 +746,14 @@ do
   CRT.db.late.history[#CRT.db.late.history + 1] = { id = 9, startedAt = A1 + 3600, players = {}, team = false }
   local inTeam, inAll = S:RaidNights("test-s1", "team"), S:RaidNights("test-s1", "all")
   eq(inAll - inTeam, 1, "a Late Tracker night on Pug isn't Team's")
-  check(S.InScope("Pug", false, nil) and not S.InScope("Pug", true, nil), "a night stamped not a team raid is Pug's, a team raid's isn't")
+  check(S.InScope("Pug", false, "Pug") and not S.InScope("Pug", true, nil), "a night named Pug is Pug's, a team raid's isn't")
+  check(not S.InScope("Pug", false, nil) and not S.InScope("team", false, nil) and S.InScope("all", false, nil), "one outside a raid group (no team's name) is in All only")
   CRT.db.late.history[#CRT.db.late.history].team, CRT.db.late.history[#CRT.db.late.history].teamName = true, "Gone"
   eq(S:RaidNights("test-s1", "team"), inTeam + 1, "a night stamped with a team removed since reads as Team")
   table.remove(CRT.db.late.history)
   local hist = CRT.db.tattle.history
   hist[#hist + 1] = { id = 50, startedAt = A1 + 5 * DAY, season = "Season 1", team = false, pulls = { tpull(A1 + 5 * DAY, 14, 4000, 0) } }
-  hist[#hist].pulls[1].team = false
+  hist[#hist].pulls[1].team, hist[#hist].pulls[1].teamName = false, "Pug"
   local tAll, tTeam = S:AvoidableTrend(9001, "nh", 8, "all"), S:AvoidableTrend(9001, "nh", 8, "team")
   eq(#tAll - #tTeam, 1, "a Tattlebot pull on Pug is only in all's (and Pug's) trend")
   check(S:AvoidableTrend(9001, "nh", 8, "Pug") ~= nil, "Pug's trend has it")

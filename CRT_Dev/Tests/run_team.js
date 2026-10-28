@@ -235,11 +235,18 @@ on("Solex", "GROUP_ROSTER_UPDATE")
 advance(30)
 eq(#sent, 0, "a party: nothing sent")
 eq(T:IsTeam(), false, "a party: never a team raid")
+on("Solex", "ENCOUNTER_START", 3002, "Boss", 14, 5)
+eq(T:PullTeam(3002, time()), nil, "a party's pull in a raid instance has no team")
+eq(T:Snapshot().team, nil, "nor has the snapshot now")
 shape = "finder"
 on("Solex", "GROUP_ROSTER_UPDATE")
 advance(30)
 eq(#sent, 0, "a finder group: nothing sent")
 eq(T:IsTeam(), false, "a finder group: never a team raid")
+-- a Raid Finder pull belongs to no team: no name in the snapshot, so Season Stats counts it in All only
+on("Solex", "ENCOUNTER_START", 3001, "Boss", 17, 25)
+eq(T:AtPull(3001, time()) and T:AtPull(3001, time()).team, nil, "a Raid Finder pull's snapshot has no team")
+eq(T:PullTeam(3001, time()), nil, "and PullTeam gives none")
 shape = "solo"
 on("Solex", "GROUP_ROSTER_UPDATE")
 
@@ -291,7 +298,7 @@ eq(T.StatusLine(), "Now: Team.", "the status line General Settings and /crt team
 
 -- 5. Pug, offline members, OnChange --------------------------------------------------------------------------------
 local flips = {}
-T:OnChange(function(team, s) flips[#flips + 1] = tostring(team) .. ":" .. s.team end)
+T:OnChange(function(team, s) flips[#flips + 1] = tostring(team) .. ":" .. tostring(s.team) end)
 local recounts = 0
 T:OnRecount(function() recounts = recounts + 1 end)
 join("Pug3", "Sargeras", false)

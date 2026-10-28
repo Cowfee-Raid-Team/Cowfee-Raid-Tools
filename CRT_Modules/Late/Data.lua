@@ -70,13 +70,13 @@ local function teamNow()
 end
 Late.TeamNow = teamNow
 
--- Tonight's team's name now, or nil with no check loaded.
+-- Tonight's team's name now in a raid group, or nil (outside one, or with no check loaded).
 local function teamNameNow()
     local Team = CRT.Team
-    if not (Team and Team.Tonight) then
+    if not (Team and Team.TeamNow) then
         return nil
     end
-    local ok, name = pcall(Team.Tonight, Team)
+    local ok, name = pcall(Team.TeamNow, Team)
     return ok and type(name) == "string" and name or nil
 end
 Late.TeamNameNow = teamNameNow
