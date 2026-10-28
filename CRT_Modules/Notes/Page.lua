@@ -183,7 +183,7 @@ local function getImportDialog()
     d:SetScript("OnDragStart", function(self) self:StartMoving(true) end)
     d:SetScript("OnDragStop", d.StopMovingOrSizing)
     tinsert(UISpecialFrames, "CowfeeRaidToolsNoteImport")
-    UI.SetFrameTitle(d, "Import a raid note (paste it below)")
+    UI.SetFrameTitle(d, "Import a raid note, or paste any text for a new one")
 
     local scroll = CreateFrame("ScrollFrame", "CowfeeRaidToolsNoteImportScroll", d, "UIPanelScrollFrameTemplate")
     UI:SkinScrollBar(scroll.ScrollBar)
@@ -199,11 +199,11 @@ local function getImportDialog()
     end)
     scroll:SetScrollChild(d.edit)
 
-    local ok = makeButton(d, "Import", 110, 26)
+    local ok = makeButton(d, "Save", 110, 26)
     ok:SetPoint("BOTTOM", -60, 12)
     ok:SetScript("OnClick", function()
         -- on the Personal tab an import is your own copy, never replaced by a share
-        local id, message = Notes:Import(d.edit:GetText(), nil, listKind == "personal", nil, "Imported")
+        local id, message = Notes:Import(d.edit:GetText(), nil, listKind == "personal", nil, "Imported", true)
         CRT:Print(message)
         if id then
             selected = id
@@ -511,7 +511,7 @@ local function buildNotes(pf)
     end
 
     -- the note buttons, at the bottom of the column (BUTTONS_H high, Send to the last row)
-    local import = makeButton(pf, "Import", 122)
+    local import = makeButton(pf, "Import/New", 122)
     import:SetPoint("TOPLEFT", 8, -(TAB_H - BUTTONS_H))
     import:SetScript("OnClick", function()
         local d = getImportDialog()

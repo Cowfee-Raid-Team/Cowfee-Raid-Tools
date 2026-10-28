@@ -105,7 +105,7 @@ local CRT = {
     Dropdown = function(_, label, opts) local m = mock() rawset(m, "label", label) rawset(m, "opts", opts) rawset(m, "refresh", function() end) return m end,
     Slider = function() local m = mock() rawset(m, "refresh", function() end) return m end,
     RegisterLayer = function() end, RegisterPage = function(_, key, title, fn) pages[key] = fn end, Show = function() end,
-    SetFrameTitle = function() end, RegisterTab = function() end, SetTabSelected = function() end, SkinTree = function() end,
+    SetFrameTitle = function() end, StyleWindow = function() end,RegisterTab = function() end, SetTabSelected = function() end, SkinTree = function() end,
     SkinButton = function() end, SkinCheckButton = function() end, SkinEditBox = function() end, PANEL_BUTTON_PAD = 14,
     LiftOver = function() end, ShownPopup = function(ret) return ret end,
     PanelButtonWidth = function(w) return math.max(40, math.ceil(w or 0) + 28) end },
@@ -504,6 +504,45 @@ do
   assert(not b.shown, "no History on the personal note")
   W.window:Hide()
   ok("the pop-out editor's History opens the same window; none on the personal note")
+end
+
+-- 10. Import/New: the dialog saves any text as a new note; strict callers still refuse it
+do
+  local id, err = Notes:Import("Kite adds to the left")
+  assert(id == nil and err and err:find("doesn't look like a raid note", 1, true), "strict callers still refuse plain text")
+  local a = Notes:Import("  Kite adds to the left\\nsecond line", nil, nil, nil, "Imported", true)
+  assert(a and Notes:Get(a).name == "Kite adds to the left" and Notes:Get(a).via == "Imported", "plain text saved, named from its first line")
+  assert(Notes:Get(a).encounterID == nil and Notes:Get(a).difficulty == nil and not Notes:Get(a).personal, "no boss or difficulty")
+  local _, msg = Notes:Import("Kite adds to the left", nil, nil, nil, "Imported", true)
+  assert(msg == "Saved as a new note: Kite adds to the left.", "message: " .. tostring(msg))
+  local b = Notes:Import("Kite adds to the left", nil, nil, nil, "Imported", true)
+  assert(b ~= a and Notes:Get(a) and Notes:Get(b), "twice makes two notes, never replaces")
+  local e = Notes:Import("", nil, nil, nil, "Imported", true)
+  assert(e and Notes:Get(e).name == "New note " .. e and Notes:Get(e).raw == "", "empty text: an empty New note N")
+  local long = Notes:Import(string.rep("x", 60), nil, true, nil, "Imported", true)
+  assert(#Notes:Get(long).name == 40 and Notes:Get(long).personal == true, "name cut to 40; personal stays yours")
+  -- a proper note still replaces the same boss's note
+  local p1 = Notes:Import("EncounterID:3999;Name:Proper\\nA", nil, nil, nil, "Imported", true)
+  local p2 = Notes:Import("EncounterID:3999;Name:Proper\\nB", nil, nil, nil, "Imported", true)
+  assert(p1 == p2, "a real note replaces as before")
+  ok("Import accepts any text as a new note only when asked; strict callers refuse it")
+
+  -- the page's button and dialog
+  local nb = button("Import/New")
+  assert(nb and not button("Import"), "the button reads Import/New")
+  local del = button("Delete")
+  assert(del.points[1][1] == "LEFT" and del.points[1][2] == nb, "Delete stays after it")
+  nb.scripts.OnClick(nb)
+  local save
+  for _, b in ipairs(buttons) do if rawget(b, "text") == "Save" and rawget(b, "parent") == CowfeeRaidToolsNoteImport then save = b end end
+  assert(save, "the dialog's OK reads Save")
+  local box = edits[#edits]
+  box:SetText("Pull at 3 stacks")
+  save.scripts.OnClick(save)
+  local said
+  for _, m in ipairs(printed) do if m == "Saved as a new note: Pull at 3 stacks." then said = true end end
+  assert(said, "dialog message, last: " .. tostring(printed[#printed]))
+  ok("the Import/New button and its Save dialog")
 end
 print(passes .. " passed, 0 failed")
 `;
