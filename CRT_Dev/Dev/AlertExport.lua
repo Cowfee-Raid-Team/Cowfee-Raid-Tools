@@ -59,13 +59,14 @@ local ALL = "all"
 
 -- The entry fields in the order Alerts/Special.lua documents them, and the order inside its tables.
 local ORDER = { "key", "label", "help", "type", "difficulty", "default", "when", "lead", "icon", "iconFile", "who", "text", "show", "markers",
-    "ticks", "barTo", "bar", "fill", "covers" }
+    "ticks", "barTo", "bar", "fill", "covers", "absorb" }
 local SUB_ORDER = {
     when = { "row", "spellID", "times" },
     who = { "mode", "roles", "rotation", "note" },
     show = { "callout", "bar", "text", "icon", "circle", "timeline", "speech" },
     markers = { "marks" },
     bar = { "start", "length", "ticks" },
+    absorb = { "unit", "length", "anyDifficulty" },
 }
 local KEYWORDS = {}
 for w in ("and break do else elseif end false for function if in local nil not or repeat return then true until while"):gmatch("%a+") do

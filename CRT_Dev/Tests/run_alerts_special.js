@@ -771,6 +771,64 @@ check("special: the pull timer starts a countdown run; cancel, the pull and the 
   assert(#errors == 0, tostring(errors[1]))
 end)
 
+-- absorb = { unit, length, anyDifficulty }: a shield bar (Alerts/Absorb.lua draws it). Read checks the field; a
+-- timed item carries it; with anyDifficulty, a run whose difficulty has no times for the entry gets a watch of its
+-- own (the bar alone, on the first absorb event), and never the other difficulty's times.
+check("special: absorb, read and refused", function()
+  fresh()
+  local base = { key = "shield", label = "Shield", when = { row = "Veil" } }
+  local function with(t) local d = {} for k, v in pairs(base) do d[k] = v end for k, v in pairs(t) do d[k] = v end return d end
+  local e = S.Read(with({ absorb = { unit = "boss2", length = 15 } }))
+  assert(e and e.absorb.unit == "boss2" and e.absorb.length == 15 and e.absorb.anyDifficulty == false, "a unit and a length")
+  e = S.Read(with({ absorb = { unit = "boss8", length = 2.5, anyDifficulty = true } }))
+  assert(e and e.absorb.anyDifficulty == true and e.absorb.length == 2.5, "anyDifficulty")
+  assert(S.Read(base).absorb == nil, "none: nil")
+  local bad = {
+    { absorb = "boss2" }, { absorb = { unit = "boss9", length = 15 } }, { absorb = { unit = "target", length = 15 } },
+    { absorb = { unit = "boss2" } }, { absorb = { unit = "boss2", length = 0 } }, { absorb = { unit = "boss2", length = -3 } },
+    { absorb = { unit = "boss2", length = 1 / 0 } }, { absorb = { unit = "boss2", length = 15, anyDifficulty = "yes" } },
+    { absorb = { unit = "boss2", length = 15 }, bar = { length = 15 } }, { absorb = { unit = "boss2", length = 15 }, ticks = { 1 } },
+  }
+  for i, t in ipairs(bad) do
+    local r, why = S.Read(with(t))
+    assert(r == nil and type(why) == "string" and why ~= "", "refused " .. i)
+  end
+end)
+
+check("special: absorb items on the timeline, a watch of its own where there are no times", function()
+  fresh()
+  B:Register({ encounterID = 9003, name = "Shield Boss", season = "T", special = {
+    { key = "shield", label = "Shield", difficulty = "mythic", default = true, when = { row = "Veil" }, lead = 6, text = "Shield",
+      type = "raid", show = { callout = true, bar = true, speech = true }, absorb = { unit = "boss2", length = 15, anyDifficulty = true } },
+    { key = "mythicOnly", label = "Mythic only", difficulty = "mythic", default = true, when = { row = "Veil" },
+      absorb = { unit = "boss3", length = 10 } },
+    { key = "offShield", label = "Off", default = false, when = { row = "Veil" }, absorb = { unit = "boss4", length = 10, anyDifficulty = true } },
+  } })
+  assert(Ref:Add("Boss: Shield Boss\\nDifficulty: Mythic\\nEncounter: 9003\\nLength: 4:00\\nVeil: 1:00+15, 2:30+15"))
+  -- Mythic: timed items carry the absorb; no watch of its own
+  local mythic = { encounterID = 9003, group = "mythic", reason = "encounter" }
+  local items = A.blocks.special.Entries(mythic)
+  local shield = {}
+  for _, it in ipairs(items) do if it.special == "shield" then shield[#shield + 1] = it end end
+  assert(#shield == 2 and shield[1].time == 60 and shield[1].absorb.unit == "boss2" and shield[1].absorb.length == 15, "Mythic: the row's casts carry the absorb")
+  assert(#S:AbsorbWatches(mythic) == 0, "Mythic: the window gates it, no watch of its own")
+  -- Heroic: the Mythic entry gives no timed item, and a watch with no times
+  local heroic = { encounterID = 9003, group = "nh", reason = "encounter" }
+  assert(#A.blocks.special.Entries(heroic) == 0, "Heroic: no timed callout or speech (no Mythic times borrowed)")
+  local w = S:AbsorbWatches(heroic)
+  assert(#w == 1 and w[1].key == "shield" and w[1].unit == "boss2" and w[1].length == 15, "Heroic: one watch, anyDifficulty only, on ones turned on: " .. #w)
+  assert(w[1].ph == nil and w[1].time == nil and w[1].at == nil, "the watch has no times")
+  assert(w[1].text == "Shield" and w[1].abilityType == "raid" and w[1].id == "absorb:shield", "its text, type and id")
+  -- bar off: no watch; not an encounter: no watch (no absorb events to start it)
+  S:SetChoice(9003, S:Get(9003, "shield"), "bar", false, true)
+  assert(#S:AbsorbWatches(heroic) == 0, "the bar turned off: no watch")
+  S:SetChoice(9003, S:Get(9003, "shield"), "bar", true, true)
+  assert(#S:AbsorbWatches({ encounterID = 9003, group = "nh", reason = "rehearsal" }) == 0, "a rehearsal: no watch")
+  assert(#S:AbsorbWatches({ encounterID = 9003, group = "nh", reason = "countdown" }) == 0, "the countdown run: no watch")
+  assert(#S:AbsorbWatches(nil) == 0, "no run: none")
+  assert(#errors == 0, tostring(errors[1]))
+end)
+
 print(ok_ .. " passed, " .. fail .. " failed")
 if fail > 0 then error("special alerts: " .. fail .. " failed") end
 `;
