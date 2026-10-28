@@ -96,25 +96,50 @@ check(has("APIS UnitGetTotalAbsorbs=true AbbreviateNumbers=true AbbreviateLargeN
 check(frame.events.UNIT_ABSORB_AMOUNT_CHANGED and frame.events.UNIT_AURA and frame.events.UNIT_SPELLCAST_START, "during the pull it listens to the unit events")
 check(barFrame == nil, "no status bar is made before a value comes")
 
--- A readable absorb: the first one also runs the formatter and bar probes, once.
+-- A readable absorb: the first one also runs the formatter and bar probes, once per unit. Absorb events are logged one
+-- line per unit per second, with how many came in it (count=) and the last one's values, and a line when they stop
+-- for 1 s; the second's line is written when the next second's first event comes, or when they stop.
+local function tick(t) now = t if frame.OnUpdate then frame.OnUpdate(frame, 0.016) end end
 now = 203.4
 absorbs.boss1 = 5000000
 fire("UNIT_ABSORB_AMOUNT_CHANGED", "boss1")
-check(has('+3.4 UNIT_ABSORB_AMOUNT_CHANGED unit="boss1" total=5000000 type="number" secret=false canaccess=true'), "a readable absorb as it came, with its type and canaccessvalue")
 check(has('FORMAT kind="readable" fn="AbbreviateNumbers" ok=true result="1.5M" type="string" secret=false'), "AbbreviateNumbers on a readable value")
 check(has('FORMAT kind="readable" fn="AbbreviateLargeNumbers" ok=true result="1.5M"'), "AbbreviateLargeNumbers on a readable value")
 check(has('FORMAT kind="readable" fn="string.format %d" ok=true result="5000000"') and has('FORMAT kind="readable" fn="tostring" ok=true result="5000000"'), "string.format and tostring on a readable value")
 check(has('BAR kind="readable" SetMinMaxValues=true SetValue=true') and barFrame.shown == false and #barFrame.calls == 2, "the hidden status bar took the value")
-fire("UNIT_ABSORB_AMOUNT_CHANGED", "boss1")
-check(countOf('FORMAT kind="readable" fn=') == 4 and countOf(' BAR kind="readable"') == 1, "the readable formatter and bar probes run once per pull")
+check(not has("UNIT_ABSORB_AMOUNT_CHANGED unit="), "the second's line waits for the second to end")
+now = 203.6 fire("UNIT_ABSORB_AMOUNT_CHANGED", "boss1")
+absorbs.boss1 = 4950000
+now = 203.9 fire("UNIT_ABSORB_AMOUNT_CHANGED", "boss1")
+check(countOf('FORMAT kind="readable" fn=') == 4 and countOf(' BAR kind="readable"') == 1, "the readable formatter and bar probes run once per unit")
+absorbs.boss1 = 4900000
+now = 204.5 fire("UNIT_ABSORB_AMOUNT_CHANGED", "boss1")
+check(has('+3.4 UNIT_ABSORB_AMOUNT_CHANGED unit="boss1" count=3 total=4950000 type="number" secret=false canaccess=true'), "one line for the second: its count, the last value, its type and canaccessvalue")
+tick(205.0)
+check(not has("absorb stopped"), "half a second without events: not stopped yet")
+tick(205.6)
+check(has('+4.5 UNIT_ABSORB_AMOUNT_CHANGED unit="boss1" count=1 total=4900000') and has('+5.6 absorb stopped unit="boss1"'), "1 s without events: the open second's line, then absorb stopped")
+check(frame.OnUpdate == nil, "nothing open: no check every frame")
+-- ten a second for three seconds: three lines
+for i = 0, 29 do now = 206 + i * 0.1 fire("UNIT_ABSORB_AMOUNT_CHANGED", "boss1") end
+tick(210)
+check(countOf('UNIT_ABSORB_AMOUNT_CHANGED unit="boss1" count=10 ') == 3 and countOf("absorb stopped") == 2, "30 events in 3 s: three lines of count=10, then stopped: " .. countOf('count=10 '))
 
 -- A secret absorb: logged as <secret>, nothing compared, errors recorded.
 absorbs.boss1 = secret(4000000)
-fire("UNIT_ABSORB_AMOUNT_CHANGED", "boss1")
-check(has("UNIT_ABSORB_AMOUNT_CHANGED unit=\\"boss1\\" total=<secret> type=\\"number\\" secret=true canaccess=false"), "a secret absorb: <secret>, type number, canaccessvalue false")
+now = 220 fire("UNIT_ABSORB_AMOUNT_CHANGED", "boss1")
+tick(221.5)
+check(has("UNIT_ABSORB_AMOUNT_CHANGED unit=\\"boss1\\" count=1 total=<secret> type=\\"number\\" secret=true canaccess=false"), "a secret absorb: <secret>, type number, canaccessvalue false")
 absorbs.boss2 = nil
-fire("UNIT_ABSORB_AMOUNT_CHANGED", "boss2")
-check(has('unit="boss2" total=nil type="nil" secret=false'), "a boss with no absorb value: nil")
+now = 222 fire("UNIT_ABSORB_AMOUNT_CHANGED", "boss2")
+tick(223.5)
+check(has('unit="boss2" count=1 total=nil type="nil" secret=false'), "a boss with no absorb value: nil")
+-- two units in the same second: a line each
+absorbs.boss2 = 7
+now = 224 fire("UNIT_ABSORB_AMOUNT_CHANGED", "boss1") fire("UNIT_ABSORB_AMOUNT_CHANGED", "boss2") fire("UNIT_ABSORB_AMOUNT_CHANGED", "boss2")
+tick(225.5)
+check(has('+24.0 UNIT_ABSORB_AMOUNT_CHANGED unit="boss1" count=1') and has('+24.0 UNIT_ABSORB_AMOUNT_CHANGED unit="boss2" count=2') and has('absorb stopped unit="boss2"'), "a line per unit")
+check(countOf('FORMAT kind="readable" fn=') == 8 and countOf(' BAR kind="readable"') == 2, "boss2's first readable value runs its own probes")
 local n = #log()
 fire("UNIT_ABSORB_AMOUNT_CHANGED", "raid4")
 fire("UNIT_ABSORB_AMOUNT_CHANGED", "player")
@@ -219,15 +244,17 @@ check(has("canaccessvalue=false") and has("UnitCastingInfo=false") and has("C_Un
 fire("UNIT_ABSORB_AMOUNT_CHANGED", "boss1")
 fire("UNIT_AURA", "boss1", {})
 fire("UNIT_SPELLCAST_START", "boss1", "Cast-1", 1)
+tick(701.5)
 check(has('total=42 type="number" secret=false') and not has("canaccess=") and has('FORMAT kind="readable" fn="AbbreviateLargeNumbers" present=false'), "a missing function is skipped, the rest still runs")
 check(countOf("UNIT_AURA") == 0 and countOf("UNIT_SPELLCAST_START") == 0, "no aura or cast line without their functions")
 
--- Two probe runs a pull at most: the first readable value that is not 0, and the first secret one.
+-- Two probe runs a unit a pull at most: the first readable value that is not 0, and the first secret one.
 fire("ENCOUNTER_END", 3005, "Fifth", 16, 20, 1)
 fire("ENCOUNTER_START", 3007, "Seventh", 16, 20)
 absorbs.boss1 = 0
 fire("UNIT_ABSORB_AMOUNT_CHANGED", "boss1")
-check(has("total=0 type=\\"number\\" secret=false") and countOf("FORMAT ") == 0 and countOf("BAR ") == 0, "a readable 0 runs no probe: it must not use the slot")
+tick(703)
+check(has("count=1 total=0 type=\\"number\\" secret=false") and countOf("FORMAT ") == 0 and countOf("BAR ") == 0, "a readable 0 runs no probe: it must not use the slot")
 absorbs.boss1 = 5000
 fire("UNIT_ABSORB_AMOUNT_CHANGED", "boss1")
 check(countOf("FORMAT kind=\\"readable\\"") == 4 and countOf("BAR kind=\\"readable\\"") == 1 and has('kind="readable" fn="tostring" ok=true result="5000"'), "the first readable value that is not 0 runs the probes, tagged readable")
@@ -235,17 +262,20 @@ absorbs.boss1 = 6000
 fire("UNIT_ABSORB_AMOUNT_CHANGED", "boss1")
 absorbs.boss1 = secret(7000)
 fire("UNIT_ABSORB_AMOUNT_CHANGED", "boss1")
-check(countOf("UNIT_ABSORB_AMOUNT_CHANGED") == 4 and countOf("FORMAT kind=\\"secret\\"") == 4 and countOf("BAR kind=\\"secret\\"") == 1, "the first secret value runs them again, tagged secret")
+check(countOf("FORMAT kind=\\"secret\\"") == 4 and countOf("BAR kind=\\"secret\\"") == 1, "the first secret value runs them again, tagged secret")
 absorbs.boss1 = secret(8000)
 fire("UNIT_ABSORB_AMOUNT_CHANGED", "boss1")
 absorbs.boss1 = 9000
 fire("UNIT_ABSORB_AMOUNT_CHANGED", "boss1")
-check(countOf("FORMAT ") == 8 and countOf("BAR ") == 2, "two runs a pull at most: " .. countOf("FORMAT ") .. " FORMAT lines, " .. countOf("BAR ") .. " BAR lines")
+check(countOf("FORMAT ") == 8 and countOf("BAR ") == 2, "two runs a unit a pull at most: " .. countOf("FORMAT ") .. " FORMAT lines, " .. countOf("BAR ") .. " BAR lines")
+fire("ENCOUNTER_END", 3007, "Seventh", 16, 20, 1)
+check(has('UNIT_ABSORB_AMOUNT_CHANGED unit="boss1" count=5 total=9000') and countOf("absorb stopped") == 1, "the pull's end writes the open second, with no stop line")
+check(frame.OnUpdate == nil, "and checks no more")
 
 -- Each kind other than UNIT_AURA stops at its own cap, and the log says how many lines of it were dropped.
-fire("ENCOUNTER_END", 3005, "Fifth", 16, 20, 1)
+now = 2000
 fire("ENCOUNTER_START", 3006, "Sixth", 16, 20)
-for i = 1, P.KIND_MAX + 10 do fire("UNIT_ABSORB_AMOUNT_CHANGED", "boss1") end
+for i = 1, P.KIND_MAX + 10 do now = 2000 + i fire("UNIT_ABSORB_AMOUNT_CHANGED", "boss1") end
 fire("ENCOUNTER_END", 3006, "Sixth", 16, 20, 1)
 check(P.MAX_LINES == 3000 and P.KIND_MAX == 600, "caps: 3000 aura lines, 600 of each other kind")
 check(countOf("UNIT_ABSORB_AMOUNT_CHANGED unit=") == P.KIND_MAX and log()[#log()] == "... 10 more UNIT_ABSORB_AMOUNT_CHANGED lines dropped (the log keeps 600 of them)", "a kind is capped on its own: " .. tostring(log()[#log()]))
@@ -289,7 +319,7 @@ UnitCastingInfo = function(u) local c = casting[u] if not c then return nil end 
 fire("UNIT_SPELLCAST_START", "boss1", "Cast-20", 1)
 fire("ENCOUNTER_END", 3010, "Tenth", 16, 20, 0)
 check(countOf('UNIT_AURA unit="boss3"') == 3000, "aura lines stop at 3000: " .. countOf('UNIT_AURA unit="boss3"'))
-check(has("UNIT_ABSORB_AMOUNT_CHANGED unit=\\"boss1\\" total=77000") and countOf('FORMAT kind="readable"') == 4 and countOf('BAR kind="readable"') == 1 and has('UNIT_SPELLCAST_START unit="boss1" name="Late Cast"'), "the absorb, FORMAT, BAR and cast lines after them are kept")
+check(has("UNIT_ABSORB_AMOUNT_CHANGED unit=\\"boss1\\" count=1 total=77000") and countOf('FORMAT kind="readable"') == 4 and countOf('BAR kind="readable"') == 1 and has('UNIT_SPELLCAST_START unit="boss1" name="Late Cast"'), "the absorb, FORMAT, BAR and cast lines after them are kept")
 check(log()[#log()] == "... 200 more UNIT_AURA lines dropped (the log keeps 3000 of them)", "the end says which kind was capped: " .. tostring(log()[#log()]))
 printed = {}
 P:Command("dev absorbprobe show")
