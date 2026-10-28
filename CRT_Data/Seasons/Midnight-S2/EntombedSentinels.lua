@@ -38,5 +38,26 @@ Vitriolic Stasis: 0:46, 2:26, 4:07, 5:48
 # The planner marks a short intermission ("In...") before each phase line; its start isn't readable, so
 # only the phase lines are here.
 ]],
+        [[
+Boss: Entombed Sentinels
+Difficulty: Heroic
+Length: 9:05
+Encounter: 3445
+Phase: P2 0:57
+Phase: P3 2:40
+Phase: P4 4:33
+Phase: P5 6:18
+Phase: P6 8:05
+Empowering Slam: 0:06, 0:29, 1:03, 1:25, 1:48, 2:11, 2:46, 3:08, 3:31, 3:53, 4:39, 5:01, 5:24, 5:46, 6:25, 6:47, 7:09, 7:31, 8:10, 8:31
+Bloodvenom Injection: 0:07, 0:30, 1:06, 1:28, 1:50, 2:11, 2:49, 3:11, 3:33, 3:55, 4:41, 5:03, 5:25, 5:47, 6:26, 6:47, 7:10, 7:32, 8:12, 8:33
+Venom Coagulation: 0:11, 1:09, 2:01, 2:52, 3:45, 4:46, 5:38, 6:29, 7:21, 8:16
+Toxic Droplets: 0:14, 1:12, 1:45, 2:56, 3:28, 4:49, 5:21, 6:32, 7:04, 8:18, 8:51
+Contaminate: 0:17, 1:15, 2:07, 2:59, 3:50, 4:52, 5:43, 6:35, 7:27, 8:21
+Unstable Miasma (lead 8): 0:26, 1:23, 2:05, 3:06, 3:47, 4:59, 5:40, 6:43, 7:25, 8:30
+Blighted Blood: 0:42, 1:39, 3:22, 5:15, 7:00, 8:46
+Vitriolic Stasis: 0:46, 2:27, 4:10, 6:03, 7:48
+# Phase lines read off the axis. The planner shows an intermission before each one and a sixth section from about 8:05 with no readable label.
+# Left out, cut off at the edge: the last Empowering Slam and Bloodvenom Injection (about 8:5x).
+]],
     },
 })

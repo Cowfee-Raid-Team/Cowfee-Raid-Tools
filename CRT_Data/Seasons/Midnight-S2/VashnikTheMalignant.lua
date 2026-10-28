@@ -36,5 +36,25 @@ Plague Froth: 0:13, 0:54, 1:30, 2:18, 2:54, 3:42, 4:18, 5:06, 5:42, 6:30, 7:06, 
 # Left out: Caustic Surge's first two casts in each group of three (about 10 seconds apart, before 0:53, 2:17, 3:41, 5:05, 6:29 and 7:53).
 # Left out: the last Malignant Catalyst, at 8:1x, cut off at the edge.
 ]],
+        [[
+Boss: Vashnik the Malignant
+Difficulty: Heroic
+Length: 10:50
+Encounter: 3455
+Toxic Vapor: 0:02+648
+Dripping Fangs: 0:10, 0:39, 1:06, 1:34, 2:03, 2:30, 2:58, 3:27, 3:54, 4:22, 4:51, 5:18, 5:46, 6:15, 6:42, 7:10, 7:39, 8:06, 8:34, 9:03, 9:30, 9:58, 10:27
+Imbibe (lead 6): 0:24, 1:48, 3:12, 4:36, 6:00, 7:24, 8:48, 10:12
+Conflagrating Expulsion: 0:24, 1:48, 3:12, 4:36, 6:00, 7:24, 8:48, 10:12
+Gloom Expulsion: 0:24, 1:48, 3:12, 4:36, 6:00, 7:24, 8:48, 10:12
+Burning Presence: 0:27+30, 1:51+30, 3:15+30, 4:39+30, 6:03+30, 7:27+30, 8:51+30, 10:15+30
+Caustic Surge: 0:47, 1:00, 2:11, 2:24, 3:35, 3:48, 4:59, 5:12, 6:23, 6:36, 7:47, 8:00, 9:11, 9:24, 10:35
+Malignant Catalyst (lead 8): 0:35, 1:14, 1:59, 2:38, 3:23, 4:02, 4:47, 5:26, 6:11, 6:50, 7:35, 8:14, 8:59, 9:38, 10:23
+Exploding Infection: 0:42, 1:34, 2:06, 2:58, 3:30, 4:22, 4:54, 5:46, 6:18, 7:10, 7:42, 8:34, 9:06, 9:58, 10:30
+Caustic Explosion: 0:42, 1:34, 2:06, 2:58, 3:30, 4:22, 4:54, 5:46, 6:18, 7:10, 7:42, 8:34, 9:06, 9:58, 10:30
+Stygian Infection: 0:42, 1:34, 2:06, 2:58, 3:30, 4:22, 4:54, 5:46, 6:18, 7:10, 7:42, 8:34, 9:06, 9:58, 10:30
+Plague Froth: 0:13, 0:54, 1:27, 2:18, 2:51, 3:42, 4:15, 5:06, 5:39, 6:30, 7:03, 7:54, 8:27, 9:18, 9:51
+# Estimates: Burning Presence's +30 bars. Caustic Surge's first cast in each pair has a cut label (0:4x, 2:1x ...), read off the axis as 13 s before the second.
+# Left out, cut off at the edge: the last Plague Froth (10:4x) and Caustic Surge (10:48).
+]],
     },
 })

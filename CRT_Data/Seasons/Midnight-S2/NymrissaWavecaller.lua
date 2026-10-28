@@ -28,5 +28,19 @@ Pop!: 1:59, 3:50, 5:40, 7:30
 Murloc Wave: 0:24, 1:08, 2:15, 2:59, 4:05, 4:49, 5:55, 6:39
 # Estimates: Frost Orb's +20 bars and Swirling Whirlpools' lead 3 are read off the axis. The planner shows no phase lines and no Murloc Wave after 6:39.
 ]],
+        [[
+Boss: Nymrissa Wavecaller
+Difficulty: Heroic
+Length: 9:10
+Encounter: 3379
+Abyssal Rain: 0:10, 0:43, 1:27, 2:33, 3:17, 4:23, 5:07, 6:13, 6:57, 8:03, 8:47
+Iceblade Flurry: 0:29, 0:51, 1:12, 1:34, 2:19, 2:41, 3:03, 3:25, 4:09, 4:31, 4:53, 5:15, 5:59, 6:21, 6:43, 7:05, 7:49, 8:11, 8:33, 8:55
+Chilling Frost: 0:37, 1:21, 2:26, 3:11, 4:17, 5:01, 6:07, 6:51, 7:57, 8:41
+Frost Orb: 0:43+20, 1:27+20, 2:33+20, 3:17+20, 4:23+20, 5:07+20, 6:13+20, 6:57+20, 8:03+20, 8:47+20
+Swirling Whirlpools (lead 3): 1:50, 3:41, 5:31, 7:21
+Pop!: 1:59, 3:50, 5:40, 7:30
+Murloc Wave: 0:24, 1:08, 2:15, 2:59, 4:05, 4:49, 5:55, 6:39
+# Estimates: Frost Orb's +20 bars and Swirling Whirlpools' lead 3, as on Mythic. Iceblade Flurry is in Water Jet's row on the Heroic plan.
+]],
     },
 })

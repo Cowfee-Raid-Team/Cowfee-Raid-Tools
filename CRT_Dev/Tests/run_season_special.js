@@ -205,6 +205,29 @@ if altar then
   check(m == 245 and mn == 4, "a Mythic run: from the Mythic timeline, first at 4:05: " .. tostring(m) .. ", " .. tostring(mn) .. " casts")
 end
 
+-- Heroic ability timelines (Alex, 2026-10-28): each boss file carries a Heroic block after its Mythic one. Rows, casts, phase lines.
+do
+  local want = {
+    [3497] = { 16, 91, 4 }, [3445] = { 8, 92, 5 }, [3420] = { 6, 36, 0 }, [3455] = { 12, 146, 0 },
+    [3421] = { 9, 41, 0 }, [3379] = { 7, 67, 0 }, [3513] = { 15, 79, 1 },
+  }
+  for _, r in ipairs(registered) do
+    local w = want[r.def.encounterID]
+    if w then
+      local heroic, mythic
+      for _, text in ipairs(r.def.references or {}) do
+        local ref = Ref.Parse(text)
+        if ref and ref.difficulty == "Heroic" then heroic = ref elseif ref and ref.difficulty == "Mythic" then mythic = ref end
+      end
+      local casts = 0
+      for _, row in ipairs(heroic and heroic.rows or {}) do casts = casts + #row.casts end
+      local got = (heroic and #heroic.rows or -1) .. "/" .. casts .. "/" .. (heroic and #(heroic.phases or {}) or -1)
+      check(heroic ~= nil and mythic ~= nil and got == w[1] .. "/" .. w[2] .. "/" .. w[3],
+        r.def.name .. ": Heroic block after the Mythic one, rows/casts/phase lines " .. w[1] .. "/" .. w[2] .. "/" .. w[3] .. ", got " .. got)
+    end
+  end
+end
+
 print(passes .. " passed, " .. fails .. " failed")
 if fails > 0 then error("season special alerts: " .. fails .. " failed") end
 `;

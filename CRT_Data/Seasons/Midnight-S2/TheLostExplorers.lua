@@ -30,7 +30,7 @@ Malevolent Presence (type generic): 0:02+62, 1:04+119, 3:03+123, 5:06+145
 Empower (type generic): 0:00, 2:02, 4:01, 6:04
 Blink Nova (type raid falloff, lead 8): 0:17, 0:48, 2:20, 2:51, 4:19, 4:50, 5:33, 6:22, 6:53
 Shell Spin (type dodge, lead 6): 0:22, 0:38, 0:53, 1:14, 1:46, 2:25, 2:41, 2:56, 4:24, 4:40, 4:55, 5:25, 5:52, 6:27, 6:43, 6:58
-Shredding Shards (type raid mythic): 0:30, 1:33, 2:33, 3:32, 4:32, 5:35, 6:35
+Shredding Shards (type raid): 0:30, 1:33, 2:33, 3:32, 4:32, 5:35, 6:35
 Disgusting Fish (type generic): 0:37, 1:04, 2:40, 3:03, 4:39, 5:06, 6:42
 Empowered Ascension (type generic, lead 6): 5:05, 7:08
 Throw Junk (type dodge soak): 0:27, 0:58, 1:37, 2:30, 3:01, 3:29, 4:00, 4:29, 5:00, 5:19, 5:46, 6:32, 7:03
@@ -41,6 +41,34 @@ Explosive Surprise (type dodge, lead 12, part Gebbo): 1:26, 1:58
 Dark Whispers (type generic): 2:01, 4:00, 6:03
 Mighty Thud (type soak, lead 10, part Nama): 3:15, 3:47
 Frostfire Volley (type spread, lead 8, part Iku): 5:20, 5:47
+]],
+        [[
+Boss: The Lost Explorers
+Difficulty: Heroic
+Length: 7:22
+Encounter: 3497
+Phase: Empowered A 1:01
+Phase: Empowered B 2:59
+Phase: Empowered C 4:57
+Phase: 7:14
+Order: Empowered A, Empowered B, Empowered C = Iku, Nama, Gebbo
+Malevolent Presence (type generic): 0:02+59, 1:01+118, 2:59+118, 4:57+137
+Empower (type generic): 0:00, 1:59, 3:57, 5:56
+Blink Nova (type raid falloff, lead 8): 0:17, 0:48, 1:28, 2:18, 2:49, 4:16, 4:47, 6:15, 6:46
+Shell Spin (type dodge, lead 6): 0:22, 0:38, 0:53, 1:16, 1:34, 1:48, 2:21, 2:37, 2:52, 3:14, 3:32, 3:46, 4:19, 4:35, 4:50, 5:12, 5:30, 5:44, 6:18, 6:34, 6:49
+Shredding Shards (type raid): 0:30, 1:30, 2:31, 3:28, 4:29, 5:27, 6:28
+Disgusting Fish (type generic): 0:38, 1:01, 2:38, 2:59, 4:36, 4:57, 6:34
+Empowered Ascension (type generic, lead 6): 7:00
+Throw Junk (type dodge soak): 0:27, 0:58, 1:14, 1:41, 2:27, 2:56, 3:10, 3:29, 3:49, 4:25, 4:56, 5:30, 6:24, 6:55
+Evil Eyes (type generic): 1:01, 2:59, 4:57
+Binding Anguish (type generic): 1:01, 2:59, 4:57
+Frostfire Volley (type spread, lead 8, part Iku): 1:12, 1:40
+Icebound Flames (type spread, part Iku): 1:17, 1:21, 1:25, 1:50, 1:55, 2:04, 2:40
+Dark Whispers (type generic): 1:58, 3:56, 5:55
+Mighty Thud (type soak, lead 10, part Nama): 3:12, 3:43
+Mushroom Toss (type dodge soak, lead 8, part Gebbo): 5:07, 5:39
+Explosive Surprise (type dodge, lead 12, part Gebbo): 5:10, 5:42
+# Estimates: Malevolent Presence's bars, the last phase line (about 7:14) and every lead. Throw Junk is three icons a cast with overlapped labels: each time is the label's. Icebound Flames' first casts overlap; read off the axis.
 ]],
     },
 })
