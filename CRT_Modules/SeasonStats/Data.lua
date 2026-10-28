@@ -14,7 +14,8 @@ local ADDON, CRT = ...
 --                        boss.all[group] every raid. A pull counts in all and in the team it started with (CRT.Team's
 --                        snapshot at the pull's start, CRT_Core/Team.lua). Counters saved before scopes count as
 --                        Team and all: Migrate copies them into all once. Pulls saved as not a team raid, before
---                        teams had names, are only in all. Removing a team (Team:RemoveTeam) deletes its teams entry.
+--                        teams had names, are only in all. Removing a team (Team:RemoveTeam) deletes its teams entry;
+--                        merging one into another (Team:Merge) adds its counters into the other's (MergeTeam).
 --   counters             { pulls, wipes, kills, firstKillPull, firstKillAt, bestKill, killTime, pullTime, untimed,
 --                          first, last, nights = { [night] = { longest, phase, pulls } }, causes = { [spellID] = deaths },
 --                          deaths = { deaths per pull, newest last, the last TREND },
@@ -242,6 +243,131 @@ function Stats:DeleteTeam(name)
         sdb().show = Stats.TEAM
     end
     self:Fire()
+end
+
+-- Merging a team into another (Team:Merge, CRT_Core/TeamList.lua) --------------------------------------------------
+
+local SUMS = { "pulls", "wipes", "kills", "killTime", "pullTime", "untimed", "repairs", "repairPulls", "raidRepairs",
+    "raidReporters", "raidPulls" }
+
+local function num(v)
+    return type(v) == "number" and v or nil
+end
+
+-- The smaller (or larger) of two values either of which may be missing.
+local function least(a, b)
+    a, b = num(a), num(b)
+    if a and b then
+        return math.min(a, b)
+    end
+    return a or b
+end
+
+local function most(a, b)
+    a, b = num(a), num(b)
+    if a and b then
+        return math.max(a, b)
+    end
+    return a or b
+end
+
+-- One group's counters of from added into into's (both made by counters()): sums summed; first the earlier, last
+-- the later, bestKill the faster; the first kill the earlier one (by firstKillAt, else the lower pull number) with
+-- its pull number; each night's pulls summed, its longest and phase the higher; causes summed by spell; the deaths
+-- trend, one entry per pull, as both teams' pulls in time order (the team whose last pull came first, first), the
+-- newest TREND kept. A field this doesn't know (one added later) is taken from from when into has none.
+local function mergeCounters(into, from)
+    for _, k in ipairs(SUMS) do
+        if num(from[k]) or num(into[k]) then
+            into[k] = (num(into[k]) or 0) + (num(from[k]) or 0)
+        end
+    end
+    into.first = least(into.first, from.first)
+    into.bestKill = least(into.bestKill, from.bestKill)
+    local intoLast, fromLast = num(into.last), num(from.last)
+    into.last = most(intoLast, fromLast)
+    if num(from.firstKillPull) then
+        local takeFrom = not num(into.firstKillPull)
+        if not takeFrom then
+            local a, b = num(into.firstKillAt), num(from.firstKillAt)
+            if a and b then
+                takeFrom = b < a
+            elseif b then
+                takeFrom = true
+            elseif not a then
+                takeFrom = from.firstKillPull < into.firstKillPull
+            end
+        end
+        if takeFrom then
+            into.firstKillPull, into.firstKillAt = from.firstKillPull, from.firstKillAt
+        end
+    end
+    into.nights = type(into.nights) == "table" and into.nights or {}
+    for key, n in pairs(type(from.nights) == "table" and from.nights or {}) do
+        local m = into.nights[key]
+        if type(m) ~= "table" then
+            into.nights[key] = n
+        elseif type(n) == "table" then
+            m.pulls = (num(m.pulls) or 0) + (num(n.pulls) or 0)
+            m.longest = most(m.longest, n.longest) or 0
+            m.phase = most(m.phase, n.phase)
+        end
+    end
+    into.causes = type(into.causes) == "table" and into.causes or {}
+    for id, n in pairs(type(from.causes) == "table" and from.causes or {}) do
+        into.causes[id] = (num(into.causes[id]) or 0) + (num(n) or 0)
+    end
+    local mine = type(into.deaths) == "table" and into.deaths or {}
+    local theirs = type(from.deaths) == "table" and from.deaths or {}
+    local fromFirst = fromLast ~= nil and (intoLast == nil or fromLast <= intoLast)
+    local trend = {}
+    for _, list in ipairs(fromFirst and { theirs, mine } or { mine, theirs }) do
+        for _, d in ipairs(list) do
+            trend[#trend + 1] = d
+        end
+    end
+    while #trend > Stats.TREND do
+        table.remove(trend, 1)
+    end
+    into.deaths = trend
+    for k, v in pairs(from) do
+        if into[k] == nil then
+            into[k] = v
+        end
+    end
+end
+
+-- Moves every counter saved under from (a saved team's name) into into's scope (Team, Pug or a saved team), then
+-- deletes from's; the Team filter on from goes to into. All is left as it is (it counted both already). Returns
+-- how many pulls moved.
+function Stats:MergeTeam(from, into)
+    if type(from) ~= "string" or type(into) ~= "string" then
+        return 0
+    end
+    local scope = Stats.ScopeOf(into)
+    local moved = 0
+    for encounterID, boss in pairs(sdb().bosses) do
+        local holder = type(boss) == "table" and type(boss.teams) == "table" and boss.teams[from]
+        if type(holder) == "table" and scope ~= from then
+            for _, group in ipairs(Stats.GROUPS) do
+                local c = holder[group]
+                if type(c) == "table" then
+                    moved = moved + (num(c.pulls) or 0)
+                    local target = counters(encounterID, group, nil, true, scope)
+                    mergeCounters(target, c)
+                end
+            end
+            boss.teams[from] = nil
+            if next(boss.teams) == nil then
+                boss.teams = nil
+            end
+        end
+    end
+    if sdb().show == from then
+        sdb().show = scope
+    end
+    self:Fire()
+    return moved
 end
 
 local function deepCopy(v)
@@ -960,7 +1086,7 @@ if CRT.Alerts and CRT.Alerts.OnChange then
     CRT.Alerts:OnChange(watchPhase)
 end
 
--- removing a team deletes its counters
+-- removing a team deletes its counters; merging one moves them
 if CRT.Team and CRT.Team.OnTeamData then
     CRT.Team:OnTeamData({
         count = function(name)
@@ -968,6 +1094,9 @@ if CRT.Team and CRT.Team.OnTeamData then
         end,
         delete = function(name)
             Stats:DeleteTeam(name)
+        end,
+        merge = function(from, into)
+            return { pulls = Stats:MergeTeam(from, into) }
         end,
     })
 end

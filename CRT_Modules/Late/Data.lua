@@ -520,6 +520,37 @@ if CRT.Team and CRT.Team.OnChange then
     end)
 end
 
+-- Merging a team into another (Team:Merge, CRT_Core/TeamList.lua): every night stamped with from's name, saved or
+-- running, is stamped with into's (restamp, Team.Restamp, handed in by Team:Merge). Returns how many.
+function Late:MergeTeam(from, into, restamp)
+    if type(restamp) ~= "function" then
+        return 0
+    end
+    local s = ldb()
+    local nights = { s.current }
+    for _, night in ipairs(s.history or {}) do
+        nights[#nights + 1] = night
+    end
+    local n = 0
+    for _, night in ipairs(nights) do
+        if restamp(night, from, into) then
+            n = n + 1
+        end
+    end
+    if n > 0 then
+        self:Fire()
+    end
+    return n
+end
+
+if CRT.Team and CRT.Team.OnTeamData then
+    CRT.Team:OnTeamData({
+        merge = function(from, into, restamp)
+            return { nights = Late:MergeTeam(from, into, restamp) }
+        end,
+    })
+end
+
 local driver = CreateFrame("Frame")
 driver:RegisterEvent("PLAYER_LOGIN")
 driver:RegisterEvent("GROUP_ROSTER_UPDATE")

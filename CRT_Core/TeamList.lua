@@ -15,7 +15,7 @@ local Team = CRT.Team
 
 Team.MAX_NAME = 24
 Team.MAX_TEAMS = 20 -- your own teams saved at most; a push of a new team past it is used tonight, not saved
-Team.RESERVED = { all = true } -- Season Stats' All filter: never a team's name, in any case
+Team.RESERVED = { all = true } -- Season Stats' All filter, by MatchKey: never a team's name, in any spelling
 Team.ADD_KEY = "\0add" -- the dropdown's Add team… entry, never a name (Clean refuses control characters)
 Team.LIST_TEXT = {
     add = "Add team\226\128\166",
@@ -70,29 +70,58 @@ function Team.BuiltIn(name)
     return name == Team.TEAM or name == Team.PUG
 end
 
--- The team a name means, as saved (any case): Team, Pug, one of your list, or the pushed team your full list
--- couldn't keep (CRTDBChar.team.extra, tonight only). Nil for none.
+-- The key two team names are the same team by: lower case, every space and punctuation character dropped, so
+-- "Chaos Born", "ChaosBorn" and "chaos-born" are one team. Letters and digits stay, other alphabets too (only
+-- %s and %p are dropped). Nil for anything that isn't a readable string.
+function Team.MatchKey(name)
+    if not Team.Readable(name) or type(name) ~= "string" then
+        return nil
+    end
+    return (name:lower():gsub("[%s%p]", ""))
+end
+
+-- The first of the teams that a test picks: Team, Pug, your list in order, then the pushed team your full list
+-- couldn't keep.
+local function firstTeam(test)
+    if test(Team.TEAM) then
+        return Team.TEAM
+    elseif test(Team.PUG) then
+        return Team.PUG
+    end
+    for _, n in ipairs(list()) do
+        if type(n) == "string" and test(n) then
+            return n
+        end
+    end
+    local extra = Team.State and Team.State().extra
+    if type(extra) == "string" and test(extra) then
+        return extra
+    end
+    return nil
+end
+
+-- The team a name means, as saved: Team, Pug, one of your list, or the pushed team your full list couldn't keep
+-- (CRTDBChar.team.extra, tonight only). The same name in any case first, so two look-alike teams saved before
+-- MatchKey stay apart until merged; else the first team with its MatchKey. Nil for none.
 function Team:Find(name)
     local clean = Team.Clean(name)
     if not clean then
         return nil
     end
     local low = clean:lower()
-    if low == Team.TEAM:lower() then
-        return Team.TEAM
-    elseif low == Team.PUG:lower() then
-        return Team.PUG
+    local found = firstTeam(function(n)
+        return n:lower() == low
+    end)
+    if found then
+        return found
     end
-    for _, n in ipairs(list()) do
-        if type(n) == "string" and n:lower() == low then
-            return n
-        end
+    local key = Team.MatchKey(clean)
+    if not key or key == "" then
+        return nil
     end
-    local extra = Team.State and Team.State().extra
-    if type(extra) == "string" and extra:lower() == low then
-        return extra
-    end
-    return nil
+    return firstTeam(function(n)
+        return Team.MatchKey(n) == key
+    end)
 end
 
 -- Every team, the built-in two first, then yours in the order added (and a pushed team your full list couldn't
@@ -123,7 +152,7 @@ end
 
 -- A name that can never be a team (Team.RESERVED), and why: nil for any other.
 local function reserved(clean)
-    if Team.RESERVED[clean:lower()] then
+    if Team.RESERVED[Team.MatchKey(clean) or ""] then
         return Team.LIST_TEXT.reserved:format(clean)
     end
     return nil
@@ -231,4 +260,104 @@ function Team:RemoveTeam(name)
     end
     Team.Update()
     return true
+end
+
+-- Merging teams ------------------------------------------------------------------------------------------------
+
+-- Your saved teams that look alike (the same MatchKey): a list of groups, each its names in list order, the groups
+-- in the order their first name is listed. Only groups of two or more.
+function Team:LookAlikes()
+    local groups, byKey = {}, {}
+    for _, n in ipairs(list()) do
+        local key = type(n) == "string" and Team.MatchKey(n)
+        if key and key ~= "" then
+            local g = byKey[key]
+            if not g then
+                g = {}
+                byKey[key] = g
+                groups[#groups + 1] = g
+            end
+            g[#g + 1] = n
+        end
+    end
+    local out = {}
+    for _, g in ipairs(groups) do
+        if #g > 1 then
+            out[#out + 1] = g
+        end
+    end
+    return out
+end
+
+-- For the owners that only stamp a team's name on a record (Tattlebot's pulls, the Late Tracker's nights): a
+-- record stamped with a name that reads as from (Team.Resolve) is stamped into instead, and, into Pug, as not a team
+-- raid (team = false), as a Pug night is. Returns true when the record was stamped again.
+function Team.Restamp(record, from, into)
+    if type(record) ~= "table" or type(record.teamName) ~= "string" or Team.Resolve(record.teamName) ~= from then
+        return false
+    end
+    record.teamName = into
+    if into == Team.PUG then
+        record.team = false
+    end
+    return true
+end
+
+-- Whether from can be merged into into now, as saved: from one of your saved teams (never Team or Pug), into Team,
+-- Pug or another saved team, and neither locked by the raid leader's push. Returns both names, or nil.
+function Team:CanMerge(from, into)
+    local f, i = self:Find(from), self:Find(into)
+    local extra = Team.State().extra
+    if not f or not i or f == i or Team.BuiltIn(f) or f == extra or i == extra then
+        return nil
+    end
+    local tonight = self:Tonight()
+    if self:IsLocked() and (tonight == f or tonight == i) then
+        return nil
+    end
+    return f, i
+end
+
+-- Merges one team into another: every owner of data saved under a team name moves from's into into's
+-- (Team:OnTeamData's merge = fn(from, into, Team.Restamp), returning a table of counts), tonight's team and your push follow, and
+-- from leaves your list. Returns the summary, { from, into, pulls, ... every owner's counts }, or nil when
+-- CanMerge refuses.
+function Team:Merge(fromName, intoName)
+    local from, into = self:CanMerge(fromName, intoName)
+    if not from then
+        return nil
+    end
+    local summary = { from = from, into = into, pulls = 0 }
+    -- every owner first, while from is still listed (their saved names read through Find)
+    for _, owner in ipairs(self.dataOwners) do
+        if owner.merge then
+            local ok, counts = pcall(owner.merge, from, into, Team.Restamp)
+            if not ok then
+                if geterrorhandler then
+                    geterrorhandler()(counts)
+                end
+            elseif type(counts) == "table" then
+                for k, v in pairs(counts) do
+                    if type(v) == "number" then
+                        summary[k] = (summary[k] or 0) + v
+                    end
+                end
+            end
+        end
+    end
+    local s = Team.State()
+    if s.tonight ~= nil and Team.Resolve(s.tonight) == from then
+        s.tonight = into
+    end
+    if s.pushed ~= nil and Team.Resolve(s.pushed) == from then
+        s.pushed = into
+    end
+    local l = list()
+    for i = #l, 1, -1 do
+        if l[i] == from then
+            table.remove(l, i)
+        end
+    end
+    Team.Update()
+    return summary
 end

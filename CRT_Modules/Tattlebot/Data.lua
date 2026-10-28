@@ -1222,6 +1222,39 @@ end
 -- For tests outside the game.
 Tattle._attempt = attempt
 
+-- Merging a team into another (Team:Merge, CRT_Core/TeamList.lua): every pull stamped with from's name, saved or
+-- tonight's, is stamped with into's (restamp, Team.Restamp, handed in by Team:Merge). Returns how many.
+function Tattle:MergeTeam(from, into, restamp)
+    if type(restamp) ~= "function" then
+        return 0
+    end
+    local s = tdb()
+    local nights = { s.current }
+    for _, night in ipairs(s.history or {}) do
+        nights[#nights + 1] = night
+    end
+    local n = 0
+    for _, night in ipairs(nights) do
+        for _, pull in ipairs(type(night) == "table" and night.pulls or {}) do
+            if restamp(pull, from, into) then
+                n = n + 1
+            end
+        end
+    end
+    if n > 0 then
+        self:Fire()
+    end
+    return n
+end
+
+if CRT.Team and CRT.Team.OnTeamData then
+    CRT.Team:OnTeamData({
+        merge = function(from, into, restamp)
+            return { tattlePulls = Tattle:MergeTeam(from, into, restamp) }
+        end,
+    })
+end
+
 local driver = CreateFrame("Frame")
 driver:RegisterEvent("PLAYER_LOGIN")
 driver:RegisterEvent("PLAYER_REGEN_DISABLED")
