@@ -82,8 +82,31 @@ local function flag(s)
     return nil
 end
 
+-- The one rule for a shield bar's absorb (Alerts/Absorb.lua), shared by a note line's shield: (below), your reminders
+-- and templates (Reminders.AbsorbOf) and a boss file's special entry (Alerts/Special.lua): unit boss1 to boss8, length
+-- seconds over 0, anyDifficulty true, false or nil (off). Returns { unit, length, anyDifficulty }, a fresh table, or
+-- nil and what doesn't read: "unit", "length" or "anyDifficulty". This file loads before the other two.
+local ABSORB_UNITS = {}
+for i = 1, 8 do
+    ABSORB_UNITS["boss" .. i] = true
+end
+Parser.ABSORB_UNITS = ABSORB_UNITS
+
+function Parser.ReadAbsorb(unit, length, anyDifficulty)
+    if not ABSORB_UNITS[unit] then
+        return nil, "unit"
+    end
+    if type(length) ~= "number" or length ~= length or length <= 0 or length >= math.huge then
+        return nil, "length"
+    end
+    if anyDifficulty ~= nil and type(anyDifficulty) ~= "boolean" then
+        return nil, "anyDifficulty"
+    end
+    return { unit = unit, length = length, anyDifficulty = anyDifficulty == true }
+end
+
 -- "boss2,15,any" into { unit = "boss2", length = 15, anyDifficulty = true }, or nil when it doesn't read: a boss
--- unit boss1 to boss8, then seconds over 0, then "any" or nothing.
+-- unit, then its seconds, then "any" or nothing (Parser.ReadAbsorb).
 local function shieldOption(s)
     if type(s) ~= "string" then
         return nil
@@ -92,15 +115,10 @@ local function shieldOption(s)
     for piece in (s .. ","):gmatch("([^,]*),") do
         parts[#parts + 1] = trim(piece):lower()
     end
-    local unit, length = parts[1], tonumber(parts[2] or "")
-    local n = unit and unit:match("^boss(%d)$")
-    if not (n and tonumber(n) >= 1 and tonumber(n) <= 8 and length and length > 0 and length < math.huge) then
-        return nil
-    end
     if #parts > 3 or (parts[3] ~= nil and parts[3] ~= "any" and parts[3] ~= "") then
         return nil
     end
-    return { unit = unit, length = length, anyDifficulty = parts[3] == "any" }
+    return (Parser.ReadAbsorb(parts[1], tonumber(parts[2] or ""), parts[3] == "any"))
 end
 
 -- Comma separated, keeping empty entries so a blank leaves an empty group slot.

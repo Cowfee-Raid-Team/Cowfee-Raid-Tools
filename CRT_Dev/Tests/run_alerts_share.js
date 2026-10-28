@@ -539,6 +539,28 @@ check("shield editor: the draft reads a reminder's absorb and builds it back; un
     and R.AbsorbOf({ unit = "boss2", length = 0 / 0 }) == nil and R.AbsorbOf("boss2") == nil, "AbsorbOf refuses what doesn't read")
 end)
 
+-- One rule for a shield bar's absorb (Notes/Parse.lua's Parser.ReadAbsorb): a reminder's, a note line's and a boss
+-- file's entry agree on what reads
+check("shield editor: one absorb rule for reminders, note lines and special entries", function()
+  local P = CRT.NoteParser
+  assert(P.ReadAbsorb, "Parser.ReadAbsorb")
+  local cases = {
+    { { unit = "boss2", length = 15, anyDifficulty = true }, true }, { { unit = "boss8", length = 0.5 }, true },
+    { { unit = "boss9", length = 15 }, false }, { { unit = "player", length = 15 }, false }, { { unit = "boss2", length = 0 }, false },
+    { { unit = "boss2", length = -1 }, false }, { { unit = "boss2", length = 1 / 0 }, false }, { { unit = "boss2", length = 0 / 0 }, false },
+    { { unit = "boss2", length = "15" }, false }, { { unit = "boss2", length = 15, anyDifficulty = "yes" }, false },
+  }
+  for i, c in ipairs(cases) do
+    local a, want = c[1], c[2]
+    local rule = P.ReadAbsorb(a.unit, a.length, a.anyDifficulty) ~= nil
+    local mine = R.AbsorbOf(a) ~= nil
+    local entry = S.Read({ key = "s" .. i, label = "S", when = { times = "P1 0:10" }, absorb = a }) ~= nil
+    local line = P.Parse("time:1;text:x;shield:" .. tostring(a.unit) .. "," .. tostring(a.length) .. ";").timers[1].absorb ~= nil
+    assert(rule == want and mine == want and entry == want, "case " .. i .. ": rule " .. tostring(rule) .. ", reminder " .. tostring(mine) .. ", entry " .. tostring(entry))
+    if type(a.length) == "number" and a.anyDifficulty == nil then assert(line == want, "case " .. i .. ": note line " .. tostring(line)) end
+  end
+end)
+
 check("shield editor: a share carries a reminder's absorb, and a bad one is dropped and counted", function()
   sender()
   CRT.db.alerts.reminders[9001][3] = shieldReminder()

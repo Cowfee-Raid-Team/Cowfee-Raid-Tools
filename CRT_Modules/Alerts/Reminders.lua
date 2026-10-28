@@ -68,24 +68,15 @@ local function copy(v)
     return out
 end
 
--- A shield bar's absorb as a reminder, a template, a share or a note line keeps it: { unit (boss1 to boss8), length
--- (seconds over 0), anyDifficulty (true or false) }, a fresh copy, or nil when a has none or it doesn't read.
--- Special.lua's entries are read by their own rule, which takes the same units and lengths.
-local ABSORB_UNITS = {}
-for i = 1, 8 do
-    ABSORB_UNITS["boss" .. i] = true
-end
-Reminders.ABSORB_UNITS = ABSORB_UNITS
-
+-- A shield bar's absorb as a reminder, a template or a share keeps it: { unit, length, anyDifficulty }, a fresh copy,
+-- or nil when a has none or it doesn't read. The rule is Notes/Parse.lua's Parser.ReadAbsorb, which note lines and
+-- special entries read by too.
 function Reminders.AbsorbOf(a)
-    if type(a) ~= "table" or not ABSORB_UNITS[a.unit] then
+    local P = CRT.NoteParser
+    if type(a) ~= "table" or not (P and P.ReadAbsorb) then
         return nil
     end
-    local length = a.length
-    if type(length) ~= "number" or length ~= length or length <= 0 or length >= math.huge then
-        return nil
-    end
-    return { unit = a.unit, length = length, anyDifficulty = a.anyDifficulty == true }
+    return (P.ReadAbsorb(a.unit, a.length, a.anyDifficulty))
 end
 
 -- The first number in a phase label: "P1.5" gives 1.5, "Phase 2" gives 2, "Intermission" nil.
