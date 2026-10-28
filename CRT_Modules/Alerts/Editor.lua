@@ -1454,6 +1454,8 @@ local function shieldRows(f, y0)
         set = function(field, value) setter(function() draft.shield[field] = value end)() end,
         barOn = function() return draft ~= nil and draft.show.bar and true or false end,
         editable = editable,
+        -- a raid note line on the boss's note with no difficulty (Any) plays everywhere: Any time adds nothing
+        anyApplies = function() return not (draft and draft.saveAs == "note" and draft.difficulty == nil) end,
         encounterID = function() return ctx and ctx.encounterID end,
     })
 end

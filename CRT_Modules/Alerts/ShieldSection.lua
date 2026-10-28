@@ -8,16 +8,19 @@ local ADDON, CRT = ...
 --   Shield bar (?)            ticked: the alert's bar is a shield bar. Greyed while Bar is off (or nothing may change)
 --   Shield on                 Boss 1 to Boss 5 (Draft.ShieldUnitOptions)
 --   Seconds to break          Draft.SHIELD_MIN to SHIELD_MAX, a step of 1
---   Any time it goes up (?)   the shield bar's anyDifficulty
+--   Any time it goes up (?)   the shield bar's anyDifficulty; greyed too for an alert set for every difficulty
+--                             (opts.anyApplies), where it changes nothing
 --   Last pull                 Alerts/ShieldPulls.lua: the boss units with a shield on the boss's last pull and when (each
 --                             start), with a Use button each that picks it in Shield on; only for an alert on a boss
 --   Default (optional)        the host's, after Any time's (?): shown while its show() says so
 -- Shield on, Seconds to break, Any time and the Use buttons are greyed while Shield bar is unticked or greyed.
 -- Two layouts (rows L.WIDE_ROW or L.ROW apart):
 --   "wide"    the editor: Shield bar with Last pull beside it, Shield on and Seconds to break, Any time (three rows)
---   "column"  a panel's column: Shield bar with a short note beside it (opts.note), Shield on (Last pull beside it, or
---             on a fifth row of its own with opts.lastPullRow), Seconds to break, Any time
--- Every piece placed TOPLEFT goes through opts.place, so the editor's saved-template layout moves it with its rows.
+--   "column"  a panel's column: Shield bar with a short note beside it (opts.note), Shield on (with Any time beside it
+--             when opts.anyBeside), Seconds to break, Any time (unless beside Shield on), then Last pull on a row of its own
+-- Every piece placed TOPLEFT goes through opts.place, so the editor's saved-template layout moves it with its rows. The
+-- Use and Default buttons are made as the editor's own buttons are (UIPanelButtonTemplate in CRT's button fonts,
+-- UI:SkinButton for both looks), sized from their labels.
 
 local UI = CRT.UI
 
@@ -27,14 +30,15 @@ CRT.AlertShieldSection = ShieldSection
 -- Every word of the section, in one place. Keep the keys, change the text in quotes, save, /reload.
 local TEXT = {
     shieldBar = "Shield bar",
-    shieldHelp = "Draws a bar of the boss's shield on every cast of this alert, and on any shield that goes up between them while Any time is on. The fill drains as the raid breaks it; the tick and seconds count the time you have.",
+    shieldHelp = "Draws a bar of the boss's shield on every cast of this alert, and on any shield that goes up between them. The fill drains as the raid breaks it; the tick and seconds count the time you have.",
     note = "every cast above, plus any shield between them",
     shieldOn = "Shield on",
     shieldBoss = "Boss %d",
     shieldLength = "Seconds to break",
     seconds = "%d s",
     anyTime = "Any time it goes up",
-    anyHelp = "On: the bar also comes on a difficulty with no times for this alert, whenever the boss's shield goes up. On a difficulty with times, a shield that goes up between the casts gets a bar either way.\n\nA new bar starts once the shield's hits stop for 1.5 s.",
+    -- %s: Alerts/Absorb.lua's Absorb.GAP
+    anyHelp = "On: the bar also comes on a difficulty this alert isn't set for, whenever the boss's shield goes up. On a difficulty it is set for, a shield that goes up between the casts gets a bar either way.\n\nGreyed for an alert set for every difficulty: it has nothing to add there.\n\nA new bar starts once the shield's hits stop for %s s.",
     lastPull = "Last pull: %s",
     lastPullMany = "Last pull: %d boss shields", -- two or three: the Use buttons name them, the tooltip says when
     lastPullTitle = "Last pull",
@@ -54,7 +58,7 @@ local L = {
     LENGTH_LABEL = 100, LENGTH_W = 130, -- Seconds to break
     WIDE_LENGTH_X = 175, -- the editor: Seconds to break this far right of Shield on
     WIDE_TEXT_X = 135, -- the editor: Last pull this far right of the Shield bar box
-    TEXT_GAP = 8, -- Last pull after Shield on, in a column
+    BESIDE_GAP = 8, -- Any time after Shield on, in a column with opts.anyBeside
     TEXT_DY = -6, -- a line of text beside a checkbox or a dropdown, this far below its top
     USE_GAP = 6, -- before each Use button
     BUTTON_H = 24,
@@ -70,11 +74,18 @@ local function Draft()
 end
 
 -- How tall a layout is: its rows, each L.ROW or L.WIDE_ROW.
-function ShieldSection.Height(layout, lastPullRow)
+function ShieldSection.Height(layout, anyBeside)
     if layout == "wide" then
         return 3 * L.WIDE_ROW
     end
-    return (lastPullRow and 5 or 4) * L.ROW
+    return (anyBeside and 4 or 5) * L.ROW
+end
+
+-- Any time's (?) text, with the untimed rule's gap from Alerts/Absorb.lua.
+function ShieldSection.AnyHelp()
+    local Absorb = CRT.AlertAbsorb
+    local gap = Absorb and type(Absorb.GAP) == "number" and Absorb.GAP or 1.5
+    return string.format(TEXT.anyHelp, ("%g"):format(gap))
 end
 
 local function textWidth(fs)
@@ -118,14 +129,18 @@ local function makeCheck(parent, label, onClick)
     return check
 end
 
--- A button sized from its label by Refresh (UI.PanelButton where it is loaded).
+-- A button as the editor's and the Mech Alerts panels' own (their makeButton): the game's panel button in CRT's button
+-- fonts, skinned for both looks (UI:SkinButton, which a later UI:SkinTree leaves alone). Sized from its label later.
 local function makeButton(parent, height, onClick)
-    if UI.PanelButton then
-        return UI.PanelButton(parent, "", height, onClick)
-    end
     local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
-    b:SetSize(80, height)
+    b:SetNormalFontObject(CRTFontNormal)
+    b:SetHighlightFontObject(CRTFontHighlight)
+    b:SetDisabledFontObject(CRTFontDisable)
+    b:SetSize(UI.PanelButtonWidth(0), height)
     b:SetScript("OnClick", onClick)
+    if UI.SkinButton then
+        UI:SkinButton(b)
+    end
     return b
 end
 
@@ -169,7 +184,8 @@ end
 
 -- Builds the section into parent. opts:
 --   layout     "wide" or "column"; x, y its top left in parent; width the room it has from x
---   note       column: the short note beside Shield bar; lastPullRow: column: Last pull on a row of its own
+--   note       column: the short note beside Shield bar; anyBeside: column: Any time beside Shield on (four rows)
+--   anyApplies function() -> false while Any time changes nothing (an alert set for every difficulty) (optional)
 --   place      function(el, x, y) placing a piece TOPLEFT (default el:SetPoint("TOPLEFT", x, y))
 --   register   function(row): the host redraws this dropdown or slider with its own (optional)
 --   get        function() -> { on, unit, length, anyDifficulty }, or nil while there is nothing to show
@@ -228,8 +244,12 @@ function ShieldSection.Build(parent, o)
         get = function() return (o.get() or EMPTY).length or Draft().SHIELD_LENGTH end,
         set = function(v) o.set("length", v) end,
     }), wide and L.WIDE_LENGTH_X or 0, wide and -R or -2 * R))
-    s.any = at(makeCheck(parent, TEXT.anyTime, function(on) o.set("anyDifficulty", on) end), 0, (wide and -2 or -3) * R)
-    s.anyHelp = UI.HelpRight(s.any, TEXT.anyTime, TEXT.anyHelp)
+    -- Any time: the editor's third row; a column's fourth, or beside Shield on
+    local beside = not wide and o.anyBeside
+    s.anyX = beside and (L.UNIT_LABEL + L.DROP_GAP + L.UNIT_W + L.BESIDE_GAP) or 0
+    local anyY = beside and -R or ((wide and -2 or -3) * R)
+    s.any = at(makeCheck(parent, TEXT.anyTime, function(on) o.set("anyDifficulty", on) end), s.anyX, anyY)
+    s.anyHelp = UI.HelpRight(s.any, TEXT.anyTime, ShieldSection.AnyHelp())
     if o.default then
         s.default = makeButton(parent, o.buttonHeight or L.BUTTON_H, function()
             o.default.click()
@@ -241,10 +261,8 @@ function ShieldSection.Build(parent, o)
     local lastX, lastY
     if wide then
         lastX, lastY = L.WIDE_TEXT_X, L.TEXT_DY
-    elseif o.lastPullRow then
-        lastX, lastY = 0, -4 * R + L.TEXT_DY
     else
-        lastX, lastY = L.UNIT_LABEL + L.DROP_GAP + L.UNIT_W + L.TEXT_GAP, -R + L.TEXT_DY
+        lastX, lastY = 0, (beside and -3 or -4) * R + L.TEXT_DY
     end
     s.lastRoom = o.width - lastX
     buildLastPull(s, parent, o, at, lastX, lastY)
@@ -274,8 +292,15 @@ function ShieldSection.Refresh(s, rows)
         s.note:SetWidth(math.max(0, o.width - before))
     end
     s.any:SetChecked(v.anyDifficulty and true or false)
-    s.any:SetEnabled(on)
-    s.any.label:SetAlpha(on and 1 or 0.5)
+    local anyOn = on and (not o.anyApplies or o.anyApplies()) and true or false
+    s.any:SetEnabled(anyOn)
+    s.any.label:SetAlpha(anyOn and 1 or 0.5)
+    if s.anyX > 0 then
+        -- beside Shield on: its label is cut to the column (a large text size), its (?) after it
+        local room = o.width - s.anyX - L.CHECK - L.CHECK_GAP - UI.HELP_GAP - UI.HELP_SIZE
+        s.any.label:SetWordWrap(false)
+        s.any.label:SetWidth(math.max(0, math.min(textWidth(s.any.label), room)))
+    end
     -- a length saved above the usual top (a share, an older code) shows as it is
     if s.lengthRow.SetMax then
         s.lengthRow.SetMax(math.max(Draft().SHIELD_MAX, v.length or 0))

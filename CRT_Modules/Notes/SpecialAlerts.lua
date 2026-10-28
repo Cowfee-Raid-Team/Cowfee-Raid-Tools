@@ -678,10 +678,15 @@ end
 
 local function buildShield(p)
     ui.shield = CRT.AlertShieldSection.Build(p, {
-        layout = "column", note = true, lastPullRow = true, x = L.SHIELD_X, y = L.SHIELD_Y, width = L.SHIELD_W,
+        layout = "column", note = true, x = L.SHIELD_X, y = L.SHIELD_Y, width = L.SHIELD_W,
         buttonHeight = L.BUTTON_H,
         get = shieldState,
         set = setShield,
+        -- an entry for both difficulty groups (no difficulty) plays everywhere: Any time adds nothing
+        anyApplies = function()
+            local entry = current()
+            return entry ~= nil and entry.difficulty ~= nil
+        end,
         barOn = function()
             local entry, enc = current()
             return entry ~= nil and Special():Choices(enc, entry).show.bar and true or false

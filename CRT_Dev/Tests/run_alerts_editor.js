@@ -2056,7 +2056,14 @@ do
   E:Open(ENC, nil, { text = "Break it", boss = "Test Boss", times = "P1 3:00" })
   local w = win()
   local s = assert(w.shield, "the section")
-  assert(s.check.label.text == "Shield bar" and s.help and s.help.helpTitle == "Shield bar" and s.help.helpText:find("on every cast of this alert", 1, true), "Shield bar with its (?)")
+  assert(s.check.label.text == "Shield bar" and s.help and s.help.helpTitle == "Shield bar"
+    and s.help.helpText == "Draws a bar of the boss's shield on every cast of this alert, and on any shield that goes up between them. The fill drains as the raid breaks it; the tick and seconds count the time you have.",
+    "Shield bar with its (?): " .. tostring(s.help.helpText))
+  assert(s.anyHelp.helpText:find("a difficulty this alert isn't set for", 1, true) and s.anyHelp.helpText:find("stop for 1.5 s.", 1, true), "Any time's (?): " .. s.anyHelp.helpText)
+  -- the gap in it is Alerts/Absorb.lua's
+  CRT.AlertAbsorb = { GAP = 2.5 }
+  assert(CRT.AlertShieldSection.AnyHelp():find("stop for 2.5 s.", 1, true), "read from Absorb.GAP")
+  CRT.AlertAbsorb = nil
   assert(s.opts and s.Refresh and CRT.AlertShieldSection, "the shared section (Alerts/ShieldSection.lua)")
   assert(s.note == nil and s.default == nil, "the editor's: no note beside it, no Default")
   assert(not s.check.checked and s.check.enabled, "unticked, and it can be ticked (Bar is on)")
@@ -2177,6 +2184,11 @@ do
   typeInto(w.timeEdit, "3:00")
   setCheck(s.check, true)
   pick("Shield on", "boss2")
+  -- on the note with no difficulty (Any) the line plays everywhere: Any time adds nothing and is greyed
+  assert(value("Difficulty") == "any" and not s.any.enabled and s.any.checked, "Any: Any time greyed, its tick kept")
+  pick("Difficulty", "Mythic")
+  assert(s.any.enabled, "a note for one difficulty: Any time can be changed")
+  pick("Difficulty", "any")
   local line = E:Export()
   assert(line and line:find("shield:boss2,15,any;", 1, true), "Export carries the option: " .. tostring(line))
   click(w.saveBtn)

@@ -1514,6 +1514,11 @@ check("mech shield: the section fits the left column, clear of Also, the marker 
   local s = p.shield
   rects = {}
   local pr = rect(p.frame, f)
+  -- Any time beside Shield on, Last pull on a row of its own under Seconds to break, every Use button on it
+  local function top(m) return rect(m, f)[2] end
+  assert(top(s.any) == top(s.unitRow) and rect(s.any, f)[1] >= rect(s.unitRow, f)[3], "Any time beside Shield on")
+  assert(top(s.lastText) > top(s.lengthRow) + 20 and rect(s.lastText, f)[1] == rect(s.check, f)[1], "Last pull on its own row, under Seconds to break")
+  assert(s.use[1].shown and s.use[2].shown and s.use[3].shown, "a Use button for each of three units")
   local parts = { s.check, s.unitRow, s.lengthRow, s.any, s.lastText, s.note }
   for _, b in ipairs(s.use) do if b.shown then parts[#parts + 1] = b end end
   local others = { p.also.speak, p.also.count, p.also.glow, p.speakAt, p.testBtn, p.templateBtn, p.deleteBtn, p.auraSound, p.sound, p.countTo }
@@ -2320,17 +2325,20 @@ end)
 -- an entry with none can get one. The engine reads the one in use (Special:Absorb): its items and its untimed watch.
 local SHIELD_ENTRY = { key = "shield", label = "Shield", when = { times = "0:30, 1:30" }, absorb = { unit = "boss2", length = 15, anyDifficulty = true } }
 check("mech special (" .. LOOK .. "): the Shield bar section, your choice over the shipped one", function()
-  withSpecial({ SHIELD_ENTRY, { key = "plain", label = "Plain", when = { times = "0:30" }, ticks = { 0, 2 } } })
+  withSpecial({ SHIELD_ENTRY, { key = "plain", label = "Plain", when = { times = "0:30" }, ticks = { 0, 2 } },
+    { key = "myth", label = "Mythic shield", difficulty = "mythic", when = { times = "0:30" }, absorb = { unit = "boss1", length = 10 } } })
   CRT.db.alerts.special = {}
   local f = freshOpen()
   local s = f.special
   local S = CRT.AlertSpecial
   local sh = assert(s.shield, "the section")
-  assert(sh.opts.layout == "column" and sh.opts.lastPullRow and sh.note, "a column, Last pull on its own row, its note")
+  assert(sh.opts.layout == "column" and not sh.opts.anyBeside and sh.note, "a column (Any time on its own row, for Default after it), its note")
   click(s.rows[1].frame)
   local entry = S:Get(ENC, "shield")
   assert(sh.check.checked and sh.unitRow.opts.get() == "boss2" and sh.lengthRow.opts.get() == 15 and sh.any.checked, "the shipped one: Boss 2, 15 s, Any time")
   assert(sh.default and not sh.default.shown, "no Default while it is the shipped one")
+  assert(sh.any.checked and not sh.any.enabled and sh.unitRow.opts.enabledIf(), "an alert for every difficulty: Any time greyed (it adds nothing), its tick kept")
+  assert(sh.anyHelp.helpText:find("a difficulty this alert isn't set for", 1, true), "Any time's (?)")
   -- Seconds to break 20: your choice, saved; Default shows; the engine uses it
   sh.lengthRow.opts.set(20)
   local saved = CRT.db.alerts.special[ENC].shield.absorb
@@ -2375,6 +2383,11 @@ check("mech special (" .. LOOK .. "): the Shield bar section, your choice over t
   assert(it.absorb and it.absorb.unit == "boss1" and it.ticks == nil, "its item: a shield bar, no ticks")
   setCheck(sh.check, false)
   assert(CRT.db.alerts.special[ENC].plain.absorb == nil and S:Items(ENC, plain, { group = "mythic" })[1].ticks ~= nil, "unticked: none kept (it had none), its ticks back")
+  -- an alert for one difficulty: Any time can be changed
+  click(s.rows[3].frame)
+  assert(sh.check.checked and not sh.any.checked and sh.any.enabled, "Mythic only: Any time enabled")
+  setCheck(sh.any, true)
+  assert(CRT.db.alerts.special[ENC].myth.absorb.anyDifficulty == true, "saved as your choice")
   CRT.db.alerts.special = {}
   CRT.db.alerts.specialView, CRT.db.alerts.specialViewPicked = "mechanics", true
   noSpecial()

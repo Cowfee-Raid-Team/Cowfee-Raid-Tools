@@ -73,6 +73,8 @@ CRT.UI = { Tint = function() end, OnTheme = function() end, SkinScrollBar = func
   RegisterTab = function(_, b) tabs[#tabs + 1] = b end,
   SetTabSelected = function(_, b, on) rawset(b, "selected", on) end,
   Show = function() end, SetFrameTitle = function() end, RegisterLayer = function() end,
+  -- CRT_Core/UI/Panel.lua's: a button as wide as its label plus 14 each side, at least 40 (the Shield bar section's buttons)
+  PanelButtonWidth = function(w) return math.max(40, math.ceil(w or 0) + 28) end,
   Help = function(parent, title, text) local b = mock("Button", parent) rawset(b, "helpTitle", title) rawset(b, "helpText", text) helps[#helps + 1] = b return b end,
   Dropdown = function(parent, label, opts) local r = mock("Row", parent) rawset(r, "label", label) rawset(r, "opts", opts)
     rawset(r, "refresh", function() rawset(r, "refreshed", (rawget(r, "refreshed") or 0) + 1) end)

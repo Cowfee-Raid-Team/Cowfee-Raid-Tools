@@ -1384,7 +1384,10 @@ local function buildBarRows(p, row)
     -- the Shield bar section (Alerts/ShieldSection.lua), as the alert editor's, on the draft's shield: a change saves as
     -- every other control does (the first change on an ability makes its reminder)
     panel.shield = CRT.AlertShieldSection.Build(p, {
-        layout = "column", note = true, x = x, y = L.COL_Y - L.SHIELD_DY, width = L.COL_W, buttonHeight = L.BUTTON_H,
+        -- Any time beside Shield on, so Last pull has a row of its own above the marker display's tick; a reminder
+        -- here is always for one difficulty group, so Any time always applies
+        layout = "column", note = true, anyBeside = true, x = x, y = L.COL_Y - L.SHIELD_DY, width = L.COL_W,
+        buttonHeight = L.BUTTON_H,
         register = row,
         get = function() return cur.draft and cur.draft.shield end,
         set = change(function(field, value) cur.draft.shield[field] = value end),
