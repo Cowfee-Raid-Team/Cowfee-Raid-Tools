@@ -350,7 +350,7 @@ function MechNote.FindNote(encounterID, difficulty)
     if not (Notes and Notes.WriteTarget) then
         return nil
     end
-    return Notes:WriteTarget(encounterID, difficulty, { find = true })
+    return Notes:WriteTarget(encounterID, difficulty, { find = true, makeExact = true })
 end
 
 -- Whether you may write lines for the boss and difficulty now: you may change the raid note, it isn't combat or a
@@ -414,7 +414,7 @@ function MechNote.WriteWith(encounterID, difficulty, bossName, lines, replace)
     if #lines == 0 then
         id = MechNote.FindNote(encounterID, difficulty) or Notes:FindExact(encounterID, difficulty)
     else
-        id, why = Notes:WriteTarget(encounterID, difficulty, { bossName = bossName, via = MechNote.VIA })
+        id, why = Notes:WriteTarget(encounterID, difficulty, { bossName = bossName, via = MechNote.VIA, makeExact = true })
     end
     local record = id and Notes:Get(id)
     if not record then

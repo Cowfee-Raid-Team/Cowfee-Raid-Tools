@@ -206,6 +206,10 @@ CRT.Notes.WriteTarget = function(self, enc, diff, opts)
   local r = id and noteStore[id]
   if r then
     if (r.difficulty and diff and r.difficulty:lower() == diff:lower()) or (not r.difficulty and opts.singleDifficulty) then return id, false end
+    if not r.difficulty and opts.makeExact and not self:FindExact(enc, diff) then
+      if opts.find then return nil end
+      return self:Import("EncounterID:" .. enc .. ";Difficulty:" .. diff .. ";Name:" .. tostring(opts.bossName) .. "\\n", nil, nil, nil, opts.via, nil, true), true
+    end
     return nil, "The " .. diff .. " pull reads the " .. tostring(r.name) .. " (" .. (r.difficulty or "any difficulty") .. ") note. Make a "
       .. diff .. " note first (Raid Notes), then write."
   end
