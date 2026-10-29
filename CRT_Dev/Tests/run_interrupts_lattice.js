@@ -1,7 +1,8 @@
 // The Interrupts numbering lattice (CRT_Modules/Interrupts/Lattice.lua), pure functions with no game calls:
 // reading a boss's interrupts block, every slot of a wave, both tolerance edges, the adds that cast on the
 // whole seconds, slots outside the wave, a pair's offset, and the fallback wave times from the pull. Then the
-// block The Twin Fangs ships (CRT_Data/Seasons/Midnight-S2/TheTwinFangs.lua) reads and matches the spec.
+// block The Twin Fangs ships (CRT_Data/Seasons/Midnight-S2/TheTwinFangs.lua) reads (Interrupts/Setup.lua) and
+// matches the spec: Left and Right of five, with its timing.
 // Usage: node run_interrupts_lattice.js <addon folder>
 const fs = require('fs');
 const path = require('path');
@@ -9,7 +10,7 @@ const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate();
 lualib.luaL_openlibs(L);
 const harness = `
-local latticeSrc, bossSrc = ...
+local latticeSrc, bossSrc, setupSrc = ...
 local fails, passes = 0, 0
 local function check(ok, what) if ok then passes = passes + 1 else fails = fails + 1 print("FAIL " .. what) end end
 local function eq(a, b, what) check(a == b, what .. " (got " .. tostring(a) .. ", want " .. tostring(b) .. ")") end
@@ -17,14 +18,14 @@ local function copy(t) if type(t) ~= "table" then return t end local o = {} for 
 
 local CRT = {}
 assert(load(latticeSrc))("CowfeeRaidTools", CRT)
+assert(load(setupSrc))("CowfeeRaidTools", CRT)
 local Lattice = CRT.InterruptLattice
 check(Lattice ~= nil, "CRT.InterruptLattice is made")
 
-local RAW = { difficulty = 16, anchor = { unit = "boss2", cycle = 7, ordinal = 5, times = { 33, 94, 188, 249, 343, 404 } },
-  firstCast = 4.5, spacing = 1.0, tolerance = 0.3, adds = 10, perNumber = 2, window = 25,
-  groups = { "Left", "Right" }, slots = 5, label = "Kick" }
-local def = assert(Lattice.Read(RAW))
-check(def ~= RAW and def.anchor ~= RAW.anchor and def.groups ~= RAW.groups, "read: a copy, not the block itself")
+local RAW = { anchor = { unit = "boss2", cycle = 7, ordinal = 5, times = { 33, 94, 188, 249, 343, 404 } },
+  firstCast = 4.5, spacing = 1.0, tolerance = 0.3, adds = 10, perNumber = 2, window = 25 }
+local def = assert(Lattice.Read(RAW, 5))
+check(def ~= RAW and def.anchor ~= RAW.anchor, "read: a copy, not the block itself")
 eq(def.anchor.times[6], 404, "read: the fallback times kept")
 
 -- every add of a wave, in pairs
@@ -65,44 +66,44 @@ eq(Lattice.Fallback(def, nil, 1410), nil, "fallback: no pull time")
 check(Lattice.Read({}) == nil, "read: empty block rejected")
 check(Lattice.Read(nil) == nil, "read: no block rejected")
 check(select(2, Lattice.Read({})) ~= nil, "read: with a reason")
-local bad = copy(RAW); bad.adds = 30
-check(Lattice.Read(bad) == nil, "read: more adds than numbers rejected")
-bad = copy(RAW); bad.groups = {}
-check(Lattice.Read(bad) == nil, "read: no groups rejected")
+local bad = copy(RAW); bad.adds = 12
+check(Lattice.Read(bad, 5) == nil, "read: more adds than numbers rejected")
+check(Lattice.Read(bad) ~= nil, "read: with no number count given, any adds")
 bad = copy(RAW); bad.anchor.times = {}
 check(Lattice.Read(bad) == nil, "read: no fallback times rejected")
 bad = copy(RAW); bad.spacing = 0
 check(Lattice.Read(bad) == nil, "read: no spacing rejected")
 bad = copy(RAW); bad.anchor.ordinal = 8
 check(Lattice.Read(bad) == nil, "read: an ordinal past the cycle rejected")
-bad = copy(RAW); bad.label = 5
-check(Lattice.Read(bad) == nil, "read: a label that isn't text rejected")
-bad = copy(RAW); bad.slots = 2.5
-check(Lattice.Read(bad) == nil, "read: a part slot rejected")
-check(Lattice.MAX_GROUPS == 2 and Lattice.MAX_SLOTS == 8, "read: the page fits 2 groups of 8")
-bad = copy(RAW); bad.slots = Lattice.MAX_SLOTS + 1
-check(Lattice.Read(bad) == nil, "read: more slots than the page fits rejected")
-bad = copy(RAW); bad.groups = { "A", "B", "C" }
-check(Lattice.Read(bad) == nil, "read: more groups than the page fits rejected")
-bad = copy(RAW); bad.slots = Lattice.MAX_SLOTS
-check(Lattice.Read(bad) ~= nil, "read: as many slots as the page fits read")
+bad = copy(RAW); bad.perNumber = 2.5
+check(Lattice.Read(bad) == nil, "read: a part number rejected")
+check(Lattice.MAX_GROUPS == nil and Lattice.MAX_SLOTS == nil, "read: no page cap any more (the page scrolls)")
 
 -- the shipped block
 local shipped
 CRT.Bosses = { Register = function(_, d) shipped = d end }
 assert(load(bossSrc))("CowfeeRaidTools", CRT)
 check(shipped and shipped.interrupts ~= nil, "twin fangs: ships an interrupts block")
-local tf = shipped and Lattice.Read(shipped.interrupts)
-check(tf ~= nil, "twin fangs: the block reads")
+local setups, why = CRT.InterruptSetup.Read(shipped and shipped.interrupts)
+check(setups ~= nil, "twin fangs: the block reads " .. tostring(why))
+eq(setups and #setups, 1, "twin fangs: one setup, Mythic only")
+local s1 = setups and setups[1]
+local tf = s1 and s1.timing
+check(tf ~= nil, "twin fangs: timed")
 if tf then
-  for k, v in pairs({ difficulty = 16, firstCast = 4.5, spacing = 1.0, tolerance = 0.3, adds = 10, perNumber = 2, window = 25, slots = 5, label = "Kick" }) do
+  eq(s1.difficulty, 16, "twin fangs: Mythic"); eq(s1.label, "Kick", "twin fangs: Kick")
+  eq(#s1.groups, 2, "twin fangs: two groups")
+  eq(s1.groups[1].key .. "," .. s1.groups[2].key, "left,right", "twin fangs: group keys")
+  eq(s1.groups[1].slots .. "," .. s1.groups[2].slots, "5,5", "twin fangs: five slots each")
+  eq(s1.groups[1].marker, nil, "twin fangs: no markers")
+  for k, v in pairs({ firstCast = 4.5, spacing = 1.0, tolerance = 0.3, adds = 10, perNumber = 2, window = 25 }) do
     eq(tf[k], v, "twin fangs: " .. k)
   end
   eq(tf.anchor.unit, "boss2", "twin fangs: anchor unit")
   eq(tf.anchor.cycle, 7, "twin fangs: anchor cycle")
   eq(tf.anchor.ordinal, 5, "twin fangs: anchor ordinal")
   eq(table.concat(tf.anchor.times, ","), "33,94,188,249,343,404", "twin fangs: fallback times")
-  eq(table.concat(tf.groups, ","), "Left,Right", "twin fangs: groups")
+  eq(s1.groups[1].label .. "," .. s1.groups[2].label, "Left,Right", "twin fangs: groups")
 end
 
 print(string.format("%d passed, %d failed", passes, fails))
@@ -110,8 +111,8 @@ if fails > 0 then error("failures") end
 `;
 const dir = process.argv[2];
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
-for (const f of ['CRT_Modules/Interrupts/Lattice.lua', 'CRT_Data/Seasons/Midnight-S2/TheTwinFangs.lua']) {
+for (const f of ['CRT_Modules/Interrupts/Lattice.lua', 'CRT_Data/Seasons/Midnight-S2/TheTwinFangs.lua', 'CRT_Modules/Interrupts/Setup.lua']) {
   const p = path.join(dir, f);
   lua.lua_pushstring(L, to_luastring(fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : 'error("missing ' + f + '")'));
 }
-if (lua.lua_pcall(L, 2, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
+if (lua.lua_pcall(L, 3, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }

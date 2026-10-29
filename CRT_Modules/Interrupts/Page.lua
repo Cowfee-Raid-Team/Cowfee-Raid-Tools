@@ -1,11 +1,14 @@
 local ADDON, CRT = ...
 
 -- The Interrupts page, after Pace in the menu, shown only while Enable Interrupts is on (General Settings). Two tabs:
---   Assignments  the boss, the status bar (which list is in use and your kick), the kick list (groups x slots name
---                fields, each with a picker of your group), Clear list, Use the raid's list, Share to raid, Test on
---                trash and Preview reminder; on the right, Who has it (the Addon check's answers for the names on the
---                list) and How the numbers are worked out (the boss block, read-only)
+--   Assignments  the boss and difficulty (every kick setup, Interrupts:Bosses) with Edit setup beside it (your own
+--                setup, Interrupts/SetupEditor.lua), the status bar (which list is in use and your kick), the kick
+--                list (Interrupts/PageGrid.lua: a column per group, scrolling when they don't fit), Clear list, Use
+--                the raid's list, Share to raid, Write to the raid note (Interrupts/NoteBlock.lua), Test on trash and
+--                Preview reminder; on the right, Who has it (each player on the list once, with the Addon check's
+--                answer) and How the numbers are worked out (the setup, read-only)
 --   Settings     the numbers above the nameplates, the reminder and sharing
+-- Opening a boss reads its raid note's kick block into the raid's list (NoteBlock.ReadInto).
 -- The fields edit your own list, and are read-only in a group for anyone who can't share. A name the group has is in
 -- its class colour. While the page is open it follows the group (GROUP_ROSTER_UPDATE, PARTY_LEADER_CHANGED) and the
 -- enemy nameplates switch (CVAR_UPDATE). Game calls (warcraft.wiki.gg, read 2026-10-28): GetCVar("nameplateShowEnemies"),
@@ -15,17 +18,21 @@ local UI = CRT.UI
 local Interrupts = CRT.Interrupts
 local Anchor = CRT.InterruptAnchor
 local KickComm = CRT.InterruptComm
+local Setup = CRT.InterruptSetup
 
 local Page = { fields = {}, pickers = {}, slotLabels = {}, headings = {}, whoRows = {}, howLines = {}, tabs = {}, swatches = {} }
 CRT.InterruptsPage = Page
 
 local TEXT = {
     title = "Interrupts",
-    help = "Kick numbers above a boss's adds, a countdown before your own kick, and the raid leader's kick list.\n\nThe game hides every add's name and spells in a raid fight, so an add is known by when its first cast starts: each wave's adds cast in spawn order on a fixed beat after the wave starts. Two adds share each number. Left and Right can't be told apart, so your side is only in your reminder.\n\nNumbers only show for adds whose nameplate is on your screen when they first cast.",
+    help = "Kick numbers above a boss's adds, a reminder before your own kick, and the raid leader's kick list.\n\nSome bosses number their adds by timing: the game hides every add's name and spells in a raid fight, so an add is known by when its first cast starts. Others number by raid marker: each group kicks the add with its marker, in turn.\n\nNumbers only show for adds whose nameplate is on your screen.",
     assignments = "Assignments",
     settings = "Settings",
     boss = "Boss",
-    bossHelp = "The bosses with kick numbers, each on the one difficulty it works on.",
+    bossHelp = "Every boss and difficulty with a kick setup: the one CRT ships, or your own.",
+    editSetup = "Edit setup",
+    editSetupHelp = "Make your own kick setup for any boss and difficulty: the spell, the groups, their raid markers and how many kick each. Yours is used in place of the one CRT ships, until you go back to it.",
+    custom = "your setup",
     noBoss = "No boss with kick numbers is loaded.",
     nameplatesOff = "Enemy nameplates are off (Interface > Nameplates), so no numbers can show.",
     statusNone = "No kick list for this boss yet.",
@@ -34,18 +41,24 @@ local TEXT = {
     yourKick = "Your kick: %s #%d %s.",
     notOn = "You are not on it.",
     kick = "%s #%d",
-    gridHelp = "Type a name, or pick one from your group with the arrow. Names are kept without their realm. Each number is two adds in a row, so both players on it kick one add each.\n\nIn a group, only the raid leader and assistants can edit the list. Solo, the list is yours to test with.",
+    gridHelp = "Type a name, or pick one with the arrow: your group, then each Raid Groups layout. Names are kept without their realm.\n\nIn a group, only the raid leader and assistants can edit the list. Solo, the list is yours to test with.",
     clear = "Clear list",
     clearAsk = "Empty every name on your own kick list for %s?",
     useRaid = "Use the raid's list",
     useRaidAsk = "Copy the raid's kick list from %s over your own list for %s?",
     share = "Share to raid",
     shareHelp = "Sends your list to everyone in the group with CRT and Interrupts on. Only the raid leader or an assistant can share, with every slot filled, before the pull. A shared list sets each raider's number at once.",
+    write = "Write to the raid note",
+    writeHelp = "Puts your list in the raid note this boss's pull reads on this difficulty, as an intstart block: one line per group, the names in kick order. Press it again after you change the list.\n\nOpening a boss reads the block back as the raid's list, when every line has all of its group's names (or none).",
+    writeDone = "Wrote the kick list into the raid note \"%s\".",
+    writeEmpty = "The kick list is empty, so the raid note \"%s\" has no kick block now.",
+    writeNothing = "The kick list is empty: nothing to write.",
     test = "Test on trash",
-    testHelp = "Numbers any pack you fight by the order its mobs start casting: the first two are 1, the next two 2, and so on. Boss fights number by timing instead. Turns off when you change zone.",
+    testHelp = "Tries the boss shown on trash. By timing: any pack is numbered by the order its mobs start casting, the first two 1, the next two 2, and so on. By raid marker: mark a mob with a group's marker, and its number moves on with each cast. Turns off when you change zone.",
     preview = "Preview reminder",
     who = "Who has it",
-    whoHelp = "The names on the list and whether their CRT has Interrupts on, from the Addon check on General Settings. Green: on. Orange: an older CRT, or Interrupts off. Red: no CRT.",
+    whoHelp = "Each player on the list once, and whether their CRT has Interrupts on, from the Addon check on General Settings. Green: on. Orange: an older CRT, or Interrupts off. Red: no CRT.",
+    more = "and %d more",
     check = "Check now",
     noNames = "No names on the list yet.",
     notHere = "not in your group",
@@ -58,7 +71,14 @@ local TEXT = {
     waiting = "asking...",
     offline = "offline",
     how = "How the numbers are worked out",
-    howHelp = "The boss's timing as CRT ships it. If a hotfix moves the adds, numbers stop showing or land on the wrong adds until CRT is updated.",
+    howHelp = "The boss's kick setup. A setup by timing is as CRT ships it: if a hotfix moves the adds, numbers stop showing or land on the wrong adds until CRT is updated.",
+    howSpell = "Kicks: %s.",
+    howNoSpell = "Kicks: the spell isn't named.",
+    howMarker = "Each group kicks the add with its raid marker, in turn.",
+    howTurn = "The number on the add is whose kick its cast is, then the next on each cast.",
+    howGroup = "%s%s: %d to kick.",
+    howNoMarker = "%s: %d to kick, no raid marker.",
+    howPairs = "Each number is %d adds in a row.",
     howAnchor = "A wave starts at cast %d of every %d from %s.",
     howFirst = "Add 1 casts %s s after it, then one every %s s.",
     howTolerance = "A cast more than %s s off its beat is not an add.",
@@ -78,7 +98,7 @@ local TEXT = {
     box = "Box",
     number = "Number",
     reminder = "Reminder",
-    reminderHelp = "Your interrupt's icon counts down the last 5 seconds before your pair's first cast, with your number and side. Move it with Previews.",
+    reminderHelp = "Your interrupt's icon with your kick. By timing, it counts down the last 5 seconds before your pair's first cast. By raid marker, it says Your kick next when your add's cast is yours. Move it with Previews.",
     reminderOn = "Count down before my kick",
     sound = "Sound",
     reminderSize = "Size",
@@ -97,14 +117,16 @@ Page.TEXT = TEXT
 local LAYOUT = {
     tabY = -36, contentY = -66, tabW = 160, tabH = 26, tabGap = 4,
     leftX = 8, rightX = 630,
-    bossY = -8, bossLabelW = 40, bossW = 300,
+    bossY = -8, bossLabelW = 40, bossW = 300, editGap = 34,
     statusY = -46, statusH = 28,
-    -- the kick list: Lattice.MAX_GROUPS columns of Lattice.MAX_SLOTS rows, pooled; a boss shows what its block has
-    gridY = -86, headH = 22, colW = 300, rowH = 30, fieldH = 22, labelW = 56, editX = 64, editW = 140,
-    pickX = 210, pickW = 70, pickDY = 5,
+    -- the kick list (Interrupts/PageGrid.lua): a column per group, as many side by side as fit gridW, then the next
+    -- band below; it scrolls past gridMaxH. Pooled: a slot's fields are made once and reused for every boss.
+    gridY = -86, headH = 22, colW = 284, rowH = 30, fieldH = 22, labelW = 56, editX = 64, editW = 130,
+    pickX = 200, pickW = 70, pickDY = 5, bandGap = 8, gridMaxH = 300, pickMenuH = 400,
     buttonGap = 16, buttonH = 22, buttonSpace = 6, testGap = 38,
     -- the right column
-    whoY = -8, whoTop = -32, whoRowH = 18, whoNameW = 190, whoStateX = 196, howGap = 20, howHeadH = 22, howRowH = 18, howLines = 6,
+    whoY = -8, whoTop = -32, whoRowH = 18, whoNameW = 190, whoStateX = 196, whoRows = 16, howGap = 20, howHeadH = 22,
+    howRowH = 18, howLines = 6,
     -- the Settings tab
     setX2 = 520, setLabelW = 150, setControlW = 160, swatchW = 36, swatchH = 18, swatchLabelW = 100, swatchStep = 100,
     platesY = { head = -8, on = -28, all = -52, size = -80, font = -114, offset = -148, yours = -192, others = -222 },
@@ -115,11 +137,10 @@ local LAYOUT = {
 }
 LAYOUT.rightW = UI.PAGE_W - LAYOUT.rightX - 8
 LAYOUT.statusW = LAYOUT.rightX - LAYOUT.leftX - 22
-LAYOUT.whoRows = CRT.InterruptLattice.MAX_GROUPS * CRT.InterruptLattice.MAX_SLOTS
+LAYOUT.gridW = LAYOUT.rightX - LAYOUT.leftX - 22 - UI.ScrollGutter()
 Page.LAYOUT = LAYOUT
 local L = LAYOUT
 local TAB_Y, CONTENT_Y = L.tabY, L.contentY
-local MAX_GROUPS, MAX_SLOTS = CRT.InterruptLattice.MAX_GROUPS, CRT.InterruptLattice.MAX_SLOTS
 
 local page
 local selected -- the boss shown
@@ -130,6 +151,7 @@ local function settings()
     return Interrupts:Settings()
 end
 
+-- The setup shown: its key ("encounterID:difficultyID").
 local function boss()
     local list = Interrupts:Bosses()
     for _, b in ipairs(list) do
@@ -140,6 +162,31 @@ local function boss()
     selected = list[1] and list[1].key or nil
     return selected
 end
+Page.Boss = boss
+
+-- Shows a setup, its raid note's kick block read in first.
+-- The raid note's kick block read into the raid's list; a block that doesn't fit says so once.
+local noFitSaid = {}
+local function readNote(key)
+    if not (key and CRT.InterruptNote) then
+        return
+    end
+    local ok, _, why = pcall(CRT.InterruptNote.ReadInto, key)
+    if ok and why and not noFitSaid[why] then
+        noFitSaid[why] = true
+        CRT:Print(why)
+    end
+end
+Page.ReadNote = readNote
+
+local function choose(key)
+    selected = key
+    readNote(key)
+    refresh()
+end
+Page.Choose = function(key)
+    choose(key)
+end
 
 local function label(parent, text, font)
     local fs = parent:CreateFontString(nil, "OVERLAY", font or "CRTFontSmall")
@@ -147,6 +194,7 @@ local function label(parent, text, font)
     fs:SetText(text)
     return fs
 end
+Page.Label = label
 
 -- A button as wide as its label.
 local function button(parent, text, onClick)
@@ -160,6 +208,7 @@ local function button(parent, text, onClick)
     b:SetScript("OnClick", onClick)
     return b
 end
+Page.Button = button
 
 -- A label in the theme's text colour, or its muted colour while what it names is greyed out.
 local function greyLabel(fs, on)
@@ -192,6 +241,11 @@ local function add(row, x, y)
     row:SetPoint("TOPLEFT", x, y)
     controls[#controls + 1] = row
     return row
+end
+
+-- Another file's part of the page, refreshed with the rest (PageGrid.lua).
+function Page.AddControl(c)
+    controls[#controls + 1] = c
 end
 
 local function changed()
@@ -247,6 +301,10 @@ local function roster()
     return out
 end
 
+Page.Roster = function()
+    return roster()
+end
+
 local function memberOf(name, list)
     if name == "" then
         return nil
@@ -267,10 +325,12 @@ local function classColor(class)
     end
     return 1, 1, 1
 end
+Page.MemberOf, Page.ClassColor = memberOf, classColor
 
 local function canEdit()
     return not CRT.Comm.Channel() or CRT.Comm.IsLeaderOrAssist("player")
 end
+Page.CanEdit = canEdit
 
 -- A confirm dialog: one window, made the first time.
 local dialog
@@ -313,12 +373,16 @@ end
 local function bossOptions()
     local out = {}
     for _, b in ipairs(Interrupts:Bosses()) do
-        local def = Interrupts:Def(b.key)
-        out[#out + 1] = { key = b.key, label = b.label .. " \194\183 " .. difficultyName(def.difficulty) }
+        local text = b.label .. " \194\183 " .. difficultyName(b.difficulty)
+        if Interrupts:IsCustom(b.key) then
+            text = text .. " (" .. TEXT.custom .. ")"
+        end
+        out[#out + 1] = { key = b.key, label = text }
     end
     return out
 end
 Page.BossOptions = bossOptions
+Page.DifficultyName = difficultyName
 
 local function buildStatus(f)
     local bar = CreateFrame("Frame", nil, f, "BackdropTemplate")
@@ -343,59 +407,10 @@ local function colorByte(v)
     return math.floor(v * 255 + 0.5)
 end
 
--- One slot of the pool: its Kick #N label, its name field and its picker, at group g's column and row s.
-local function buildSlot(f, g, s)
-    local x, y = L.leftX + (g - 1) * L.colW, L.gridY - L.headH - (s - 1) * L.rowH
-    local num = label(f, "")
-    num:SetPoint("TOPLEFT", x, y - 4)
-    num:SetWidth(L.labelW)
-    local edit = CreateFrame("EditBox", nil, f, "InputBoxTemplate")
-    edit:SetSize(L.editW, L.fieldH)
-    edit:SetPoint("TOPLEFT", x + L.editX, y)
-    edit:SetAutoFocus(false)
-    edit:SetFontObject(CRTFontEdit)
-    edit:SetMaxLetters(48)
-    UI:SkinEditBox(edit)
-    local function save(self)
-        if boss() then
-            Interrupts:SetName(boss(), g, s, self:GetText())
-        end
-    end
-    edit:SetScript("OnEnterPressed", function(self)
-        self:ClearFocus()
-        save(self)
-    end)
-    edit:SetScript("OnEditFocusLost", save)
-    edit:SetScript("OnEscapePressed", function(self)
-        self:ClearFocus()
-    end)
-    local pick = UI.Dropdown(f, "", { labelWidth = 0, width = L.pickW,
-        options = function()
-            local out = { { key = "", label = "-" } }
-            for _, m in ipairs(roster()) do
-                local r, gr, b = classColor(m.class)
-                out[#out + 1] = { key = m.name, label = string.format("|cff%02x%02x%02x%s|r", colorByte(r), colorByte(gr), colorByte(b), m.name) }
-            end
-            return out
-        end,
-        get = function()
-            local own = boss() and Interrupts:Own(boss())
-            return own and own[g] and own[g][s] or ""
-        end,
-        set = function(name)
-            if boss() then
-                Interrupts:SetName(boss(), g, s, name)
-            end
-        end,
-        enabledIf = canEdit })
-    pick:SetPoint("TOPLEFT", x + L.pickX, y + L.pickDY)
-    Page.fields[g][s], Page.slotLabels[g][s], Page.pickers[g][s] = edit, num, pick
-end
-
--- The rows under the kick list follow its height: Clear list (Use the raid's list and Share follow it), Test on trash
--- and Preview reminder.
-local function placeBelow(slots)
-    local y = L.gridY - L.headH - (slots - 1) * L.rowH - L.fieldH - L.buttonGap
+-- The rows under the kick list follow its height (the grid's viewport, PageGrid.lua): Clear list (Use the raid's list,
+-- Share and Write follow it), Test on trash and Preview reminder.
+function Page.PlaceBelow(height)
+    local y = L.gridY - height - L.buttonGap
     if Page.clear then
         Page.clear:ClearAllPoints()
         Page.clear:SetPoint("TOPLEFT", L.leftX, y)
@@ -406,58 +421,6 @@ local function placeBelow(slots)
         Page.preview:ClearAllPoints()
         Page.preview:SetPoint("TOPLEFT", L.leftX + L.colW, y - L.testGap)
     end
-end
-
--- The kick list in the shape of the boss shown: the pooled fields its block has, the rest hidden.
-local function refreshGrid()
-    local id = boss()
-    local def = id and Interrupts:Def(id)
-    local own = id and Interrupts:Own(id)
-    local group = roster()
-    local editable = canEdit()
-    local groups, slots = def and #def.groups or 0, def and def.slots or 0
-    for g = 1, MAX_GROUPS do
-        Page.headings[g]:SetShown(g <= groups)
-        if g == 1 and Page.gridHelp then
-            Page.gridHelp:SetShown(groups > 0) -- its (?) goes with the heading
-        end
-        Page.headings[g]:SetText(def and def.groups[g] or "")
-        for s = 1, MAX_SLOTS do
-            local on = g <= groups and s <= slots
-            local edit, pick = Page.fields[g][s], Page.pickers[g][s]
-            Page.slotLabels[g][s]:SetShown(on)
-            edit:SetShown(on)
-            pick:SetShown(on)
-            if on then
-                Page.slotLabels[g][s]:SetText(string.format(TEXT.kick, def.label, s))
-                local name = own[g][s] or ""
-                if not edit:HasFocus() then
-                    edit:SetText(name)
-                end
-                local m = memberOf(name, group)
-                edit:SetTextColor(classColor(m and m.class))
-                edit:SetEnabled(editable)
-                pick.refresh()
-            end
-        end
-    end
-    placeBelow(math.max(slots, 1))
-end
-
-local function buildGrid(f)
-    for g = 1, MAX_GROUPS do
-        local head = label(f, "", "CRTFontNormal")
-        head:SetPoint("TOPLEFT", L.leftX + (g - 1) * L.colW, L.gridY)
-        Page.headings[g] = head
-        if g == 1 then
-            Page.gridHelp = UI.HelpRight(head, TEXT.title, TEXT.gridHelp)
-        end
-        Page.fields[g], Page.slotLabels[g], Page.pickers[g] = {}, {}, {}
-        for s = 1, MAX_SLOTS do
-            buildSlot(f, g, s)
-        end
-    end
-    controls[#controls + 1] = { refresh = refreshGrid }
 end
 
 -- The tooltip of a button says why it is greyed: b.crtReason. A disabled button gets no OnEnter unless told to.
@@ -504,8 +467,25 @@ local function buildButtons(f)
     end)
     share:SetPoint("LEFT", useRaid, "RIGHT", L.buttonSpace, 0)
     reasonTip(share, TEXT.share)
-    UI.HelpRight(share, TEXT.share, TEXT.shareHelp)
-    Page.share, Page.clear, Page.useRaid = share, clear, useRaid
+    local shareHelp = UI.HelpRight(share, TEXT.share, TEXT.shareHelp)
+    local write = button(f, TEXT.write, function()
+        local id = boss()
+        if not (id and CRT.InterruptNote) then
+            return
+        end
+        local ok, noteID, emptied, noteName = CRT.InterruptNote.Write(id)
+        if not ok then
+            CRT:Print(noteID) -- why not
+        elseif not noteID then
+            CRT:Print(TEXT.writeNothing)
+        else
+            CRT:Print(string.format(emptied and TEXT.writeEmpty or TEXT.writeDone, tostring(noteName)))
+        end
+    end)
+    write:SetPoint("LEFT", shareHelp or share, "RIGHT", L.buttonSpace, 0)
+    reasonTip(write, TEXT.write)
+    UI.HelpRight(write, TEXT.write, TEXT.writeHelp)
+    Page.share, Page.clear, Page.useRaid, Page.write = share, clear, useRaid, write
     controls[#controls + 1] = { refresh = function()
         local id = boss()
         local ok, why = false, TEXT.noBoss
@@ -516,6 +496,15 @@ local function buildButtons(f)
         share.crtReason = (not ok) and why or nil
         clear:SetEnabled(id ~= nil and canEdit())
         useRaid:SetEnabled(id ~= nil and Interrupts:Shared(id) ~= nil)
+        local wok, wwhy = id ~= nil and CRT.InterruptNote ~= nil, TEXT.noBoss
+        if wok and CRT.Notes and CRT.Notes.CanEditRaid then
+            wok, wwhy = CRT.Notes:CanEditRaid()
+            if wok and CRT.Notes.Busy() then
+                wok, wwhy = false, CRT.InterruptNote.TEXT.busy
+            end
+        end
+        write:SetEnabled(wok and true or false)
+        write.crtReason = (not wok) and wwhy or nil
     end }
 end
 
@@ -543,21 +532,33 @@ local function whoText(name, group)
 end
 Page.WhoText = whoText
 
-local function refreshWho()
-    local id = boss()
-    local list = id and Interrupts:List(id)
-    local names = {}
+-- Each player on a list once, in the order they first appear (group order, then kick order), case left out.
+function Page.WhoNames(list)
+    local names, seen = {}, {}
     for _, col in ipairs(list or {}) do
         for _, name in ipairs(col) do
-            if name ~= "" then
+            if name ~= "" and not seen[name:lower()] then
+                seen[name:lower()] = true
                 names[#names + 1] = name
             end
         end
     end
+    return names
+end
+
+local function refreshWho()
+    local id = boss()
+    local list = id and Interrupts:List(id)
+    local names = Page.WhoNames(list)
     local group = roster()
+    local rows = #Page.whoRows
     for i, row in ipairs(Page.whoRows) do
         local name = names[i]
-        if i == 1 and not name then
+        if i == rows and #names > rows then
+            -- the last row says how many more there are
+            row.name:SetText(UI.ColorText(string.format(TEXT.more, #names - rows + 1), "muted"))
+            row.state:SetText("")
+        elseif i == 1 and not name then
             row.name:SetText(UI.ColorText(TEXT.noNames, "muted"))
             row.state:SetText("")
         else
@@ -579,6 +580,7 @@ local function buildWho(f)
         end
     end)
     check:SetPoint("TOPRIGHT", f, "TOPLEFT", L.rightX + L.rightW, L.whoY + 4)
+    Page.checkNow = check
     for i = 1, L.whoRows do
         local y = L.whoTop - (i - 1) * L.whoRowH
         local row = { name = label(f, ""), state = label(f, "") }
@@ -602,21 +604,33 @@ local function clock(t)
     return string.format("%d:%02d", math.floor(t / 60), math.floor(t % 60))
 end
 
--- The boss block, as lines for How the numbers are worked out.
+-- A setup, as lines for How the numbers are worked out (at most L.howLines).
 function Page.HowLines(def)
     if not def then
         return {}
     end
+    local t = def.timing
+    if not t then
+        local out = { def.spell and def.spell.name and string.format(TEXT.howSpell, def.spell.name) or TEXT.howNoSpell, TEXT.howMarker, TEXT.howTurn }
+        for _, g in ipairs(def.groups) do
+            if #out >= L.howLines then
+                break
+            end
+            out[#out + 1] = g.marker and string.format(TEXT.howGroup, Setup.MarkerIcon(g.marker, 14) .. " ", g.label, g.slots)
+                or string.format(TEXT.howNoMarker, g.label, g.slots)
+        end
+        return out
+    end
     local times = {}
-    for _, t in ipairs(def.anchor.times) do
-        times[#times + 1] = clock(t)
+    for _, at in ipairs(t.anchor.times) do
+        times[#times + 1] = clock(at)
     end
     return {
-        string.format(TEXT.howAnchor, def.anchor.ordinal, def.anchor.cycle, def.anchor.unit),
-        string.format(TEXT.howFirst, seconds(def.firstCast), seconds(def.spacing)),
-        string.format(TEXT.howTolerance, seconds(def.tolerance)),
-        string.format(TEXT.howAdds, def.adds, def.perNumber),
-        string.format(TEXT.howWindow, def.window),
+        string.format(TEXT.howAnchor, t.anchor.ordinal, t.anchor.cycle, t.anchor.unit),
+        string.format(TEXT.howFirst, seconds(t.firstCast), seconds(t.spacing)),
+        string.format(TEXT.howTolerance, seconds(t.tolerance)),
+        string.format(TEXT.howAdds, t.adds, t.perNumber),
+        string.format(TEXT.howWindow, t.window),
         string.format(TEXT.howFallback, table.concat(times, ", ")),
     }
 end
@@ -647,17 +661,24 @@ local function buildAssignments(f)
             return boss()
         end,
         set = function(id)
-            selected = id
-            refresh()
+            choose(id)
         end })
     add(bossRow, L.leftX, L.bossY)
     Page.bossRow = bossRow
-    -- the boss block's own note (why only that difficulty), from its season-pack file
-    UI.HelpRight(bossRow, TEXT.boss, function()
+    -- the setup's own note (why only that difficulty), from its season-pack file
+    local bossHelp = UI.HelpRight(bossRow, TEXT.boss, function()
         local def = boss() and Interrupts:Def(boss())
         local note = def and type(def.note) == "string" and def.note or nil
         return note and (TEXT.bossHelp .. "\n\n" .. note) or TEXT.bossHelp
     end)
+    local edit = button(f, TEXT.editSetup, function()
+        if CRT.InterruptSetupEditor then
+            CRT.InterruptSetupEditor:Open(boss())
+        end
+    end)
+    edit:SetPoint("TOPLEFT", L.leftX + L.bossLabelW + 5 + L.bossW + L.editGap, L.bossY - 5)
+    UI.HelpRight(edit, TEXT.editSetup, TEXT.editSetupHelp)
+    Page.editSetup, Page.bossHelp = edit, bossHelp
     buildStatus(f)
     buildButtons(f)
     local test = checkbox(f, L.leftX - L.checkInset, 0, TEXT.test, function()
@@ -665,7 +686,7 @@ local function buildAssignments(f)
     end, function(on)
         settings().test = on
         if on then
-            Anchor:StartTest()
+            Anchor:StartTest(boss())
         else
             Anchor:StopTest()
         end
@@ -677,8 +698,8 @@ local function buildAssignments(f)
         CRT.InterruptReminder:Preview()
     end)
     -- the grid last among the left column's refreshes, so it places the rows under it once they exist
-    buildGrid(f)
-    placeBelow(MAX_SLOTS)
+    Page.BuildGrid(f)
+    Page.PlaceBelow(L.gridMaxH)
     buildWho(f)
     buildHow(f)
 end
@@ -887,6 +908,7 @@ local function build(pf)
         if CRT.AddonCheck then
             CRT.AddonCheck:MaybeCheck()
         end
+        readNote(boss())
         selectTab(Page.tab or "assignments")
     end)
     pf:SetScript("OnHide", function()

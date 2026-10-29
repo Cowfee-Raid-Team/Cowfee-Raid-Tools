@@ -9,7 +9,8 @@ local ADDON, CRT = ...
 --             "Cowfee Raid Tools - Boss Reference Transcriptions"). The rows have no types yet: Alex
 --             sets them in game with the Logged Timeline Ref tool on the Development page, and its export
 --             replaces this block.
--- interrupts  Mythic only: the Broodlings' kick numbers (Interrupts/Lattice.lua reads the block). Each wave starts
+-- interrupts  Mythic only: the Broodlings' kick setup (Interrupts/Setup.lua reads the block, Lattice.lua its timing):
+--             Left and Right groups of five, no raid markers (the adds can't be told apart). Each wave starts
 --             at the 5th cast of boss2's 7-cast cycle (casts 5, 12, 19, ...); add 1's first cast is 4.5 s after it,
 --             then one add every 1.0 s, about 0.1 s of jitter, so 0.3 s of tolerance. 10 adds a wave since the
 --             2026-09-15 nerf (14 before), two adds to a kick number. The Spawns of Vexhul cast on the whole
@@ -60,17 +61,23 @@ Vile Flood (lead 6): 2:34, 5:23
 ]],
     },
     interrupts = {
-        difficulty = 16,
-        anchor = { unit = "boss2", cycle = 7, ordinal = 5, times = { 33, 94, 188, 249, 343, 404 } },
-        firstCast = 4.5,
-        spacing = 1.0,
-        tolerance = 0.3,
-        adds = 10,
-        perNumber = 2,
-        window = 25,
-        groups = { "Left", "Right" },
-        slots = 5,
-        label = "Kick",
-        note = "Mythic only: the Heroic fight has no Broodlings.",
+        {
+            difficulty = 16,
+            label = "Kick",
+            groups = {
+                { key = "left", label = "Left", slots = 5 },
+                { key = "right", label = "Right", slots = 5 },
+            },
+            timing = {
+                anchor = { unit = "boss2", cycle = 7, ordinal = 5, times = { 33, 94, 188, 249, 343, 404 } },
+                firstCast = 4.5,
+                spacing = 1.0,
+                tolerance = 0.3,
+                adds = 10,
+                perNumber = 2,
+                window = 25,
+            },
+            note = "Mythic only: the Heroic fight has no Broodlings.",
+        },
     },
 })

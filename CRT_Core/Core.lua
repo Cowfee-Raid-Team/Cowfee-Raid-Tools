@@ -421,12 +421,13 @@ local defaults = {
     pace = { disabled = {}, own = {}, shared = {}, use = {}, shown = true },
     -- Interrupts (Interrupts/): enabled is the module's one switch, off until the player ticks Enable Interrupts on
     -- General Settings; off, the page, its events, received kick lists and its Addon check column are all off.
-    -- own[encounterID] is your own kick list, shared[encounterID] the raid's ({ list, from, at }, Interrupts/Comm.lua)
-    -- and use[encounterID] = "own" uses yours in place of it. accept takes lists from the leader and assistants;
+    -- kicks[encounterID][difficultyID] holds the kick lists by group key: your own, the raid's and which is in use
+    -- (Interrupts/Data.lua); own, shared and use[encounterID] are the lists from before group keys, read into kicks
+    -- once and kept. setups[encounterID][difficultyID] are your own kick setups (Edit setup, Interrupts/SetupEditor.lua). accept takes lists from the leader and assistants;
     -- test is Test on trash, set off at every login. plates are the numbers above the nameplates (box and number
     -- sizes, height above the plate, your pair's colours and the others'), reminder the countdown before your kick.
     -- The reminder's place is per character, in CRTDBChar.interrupts.reminder.
-    interrupts = { enabled = false, own = {}, shared = {}, use = {}, accept = true, test = false,
+    interrupts = { enabled = false, own = {}, shared = {}, use = {}, kicks = {}, setups = {}, accept = true, test = false,
         plates = { on = true, all = false, size = 50, font = 24, offset = 20,
             mineBox = { 0, 1, 0, 1 }, mineText = { 1, 0, 0, 1 }, box = { 1, 0, 0, 1 }, text = { 1, 1, 1, 1 } }, -- saved, the player's to change: not a theme colour
         reminder = { on = true, sound = "none", size = 48 } },
