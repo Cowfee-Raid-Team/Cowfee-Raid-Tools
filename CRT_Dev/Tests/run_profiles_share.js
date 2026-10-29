@@ -438,6 +438,31 @@ do
   P:UndoImport()
 end
 
+-- Enable Interrupts stays each raider's own (Alex, 2026-10-29: "Keep it local"): never exported, and an import never
+-- turns it on or off; the module's other settings travel as before.
+do
+  local function importInterrupts(on)
+    local i = P:Read(craft({ v = 1, kind = "settings", from = "X", data = { interrupts = { enabled = on, plates = { size = on and 70 or 30 } } } }))
+    if i then P:ApplySettings(i, false) end
+    return i
+  end
+  alt.interrupts.enabled = false
+  local i = importInterrupts(true)
+  check(i and i.values["interrupts.enabled"] == nil, "an imported Enable Interrupts is skipped")
+  check(alt.interrupts.enabled == false, "a profile with Interrupts on leaves a client with it off, off")
+  check(alt.interrupts.plates.size == 70, "the other Interrupts settings still apply")
+  P:UndoImport()
+  alt.interrupts.enabled = true
+  importInterrupts(false)
+  check(alt.interrupts.enabled == true, "a profile with Interrupts off leaves a client with it on, on")
+  check(alt.interrupts.plates.size == 30, "and its other settings apply")
+  P:UndoImport()
+  local t = P:ExportSettings()
+  local data = t and payloadOf(t).data
+  check(data and data.interrupts and data.interrupts.enabled == nil and data.interrupts.plates ~= nil, "Export settings only leaves Enable Interrupts out and takes the rest")
+  alt.interrupts.enabled = false
+end
+
 -- Undo puts the backup back exactly as it was saved, even a value an import would refuse.
 do
   alt.importBackup = { from = "X", values = { ["ui.layers"] = { oldLayer = "HIGH" }, ["debuffs.size"] = 44 }, unset = {} }
