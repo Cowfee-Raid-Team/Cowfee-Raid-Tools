@@ -182,7 +182,8 @@ local old = { background = { 0.11, 0.078, 0.063 }, surface = { 0.165, 0.122, 0.0
   warn = "FF8040", bad = "FF2020", knob = "4A3424",
   knobBorder = "1A120C", knobShine = "7A5A3E", knobText = { 1, 1, 1 }, check = { 1, 1, 1 }, checkBorder = "1A120C",
   titleTop = { 0.353, 0.247, 0.173 }, titleBottom = { 0.227, 0.165, 0.122 }, muted = { 0.80, 0.71, 0.60 },
-  outline = "1A120C" } -- the darkest colour (the knob's edge), for the alert bars' Border
+  outline = "1A120C", -- the darkest colour (the knob's edge), for the alert bars' Border
+  steelLight = "C9CCD1", steelDark = "2E3033" } -- the Classic menu headers' bevel
 for _, key in ipairs(CRT.THEME_KEYS) do check(old[key] ~= nil, "the test knows blizzard's old " .. key) end
 palette("blizzard", old)
 print("ok themes: the palettes")

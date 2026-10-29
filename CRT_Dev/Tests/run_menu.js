@@ -146,13 +146,14 @@ local function checkLook(name, modern)
   check(#lay.headers == #groups, name .. ": one header per group shown")
   local pageAt = {}
   for _, p in ipairs(lay.pages) do pageAt[p.key] = p end
-  local row = UI.MENU_LAYOUT.row
+  local row = lay.row
   for i, item in ipairs(lay.headers) do
     local h = menu.headers[i]
     check(h and h.shown, name .. ": header " .. i .. " shows")
     check(h and h.label.text == item.label and item.label == groups[i].label, name .. ": header " .. i .. " reads " .. tostring(groups[i].label))
     check(h and topOf(h) == item.y and h.h == item.h and h.w == lay.width, name .. ": header " .. i .. " sits where the layout puts it")
-    check(h and h.clips == true, name .. ": header " .. i .. " clips its art to itself")
+    check(h and h.bar and h.bar.clips == true and h.bar.h == item.bar, name .. ": header " .. i .. " clips its art to its bar")
+    check(h and item.h == item.bar + 2 * item.inset, name .. ": header " .. i .. " is its bar plus the border on both sides")
     local bottom = item.y - item.h
     local nextTop = lay.headers[i + 1] and lay.headers[i + 1].y or -math.huge
     for n, key in ipairs(groups[i].keys) do
@@ -163,6 +164,7 @@ local function checkLook(name, modern)
         check(p.y <= bottom, name .. ": " .. key .. " is under its header, not over it (page top " .. p.y .. ", header bottom " .. bottom .. ")")
         check(p.y - row >= nextTop, name .. ": " .. key .. " ends above the next header")
         check(topOf(b) == p.y, name .. ": " .. key .. "'s button is at its place")
+        check(b.h == lay.row, name .. ": " .. key .. "'s button is the look's row high")
         if n == 1 then check(p.y < bottom or (modern and p.y <= bottom), name .. ": " .. key .. " starts below the header, clear of its highlight") end
         local prev = groups[i].keys[n - 1]
         if prev then check(pageAt[prev] and pageAt[prev].y - row >= p.y, name .. ": " .. key .. " is below " .. prev .. " without overlapping") end
@@ -187,20 +189,37 @@ if lay then
     check(h.label.font == "CRTFontLarge", "Classic: header " .. i .. " label one step bigger than the highlight font")
     local tc = h.label.textColor
     check(tc and tc[1] == 1 and tc[2] == 1 and tc[3] == 1, "Classic: header " .. i .. " label stays white")
-    -- a frame of four edges, frame px thick, in the heading colour, over the art
-    local fr, hc, c = UI.MENU_LAYOUT.classic.frame, CRT.PALETTE.heading, nil
-    check(fr == 2 and h.edges and #h.edges == 4, "Classic: header " .. i .. " has four frame edges at 2 px")
-    for n, e in ipairs(h.edges or {}) do
-      c = e.color
-      check(e.shown and e.layer == "OVERLAY", "Classic: header " .. i .. " edge " .. n .. " shows over the art")
-      check(c and c[1] == hc[1] and c[2] == hc[2] and c[3] == hc[3], "Classic: header " .. i .. " edge " .. n .. " in the heading colour")
-      check((e.h == fr) ~= (e.w == fr), "Classic: header " .. i .. " edge " .. n .. " is 2 px thick")
+    -- a bevel round the bar, 3 px: lit steel top and left, shaded steel bottom and right, a 1 px black outline outside
+    local L = UI.MENU_LAYOUT.classic
+    local fr, ol, lt, dk = L.frame, L.outline, CRT.PALETTE.steelLight, CRT.PALETTE.steelDark
+    check(fr == 3 and ol == 1 and item.inset == fr + ol, "Classic: the bevel is 3 px with a 1 px outline, outside the bar")
+    local function isColor(e, c) return e.color and math.abs(e.color[1] - c[1]) < 1e-6 and math.abs(e.color[2] - c[2]) < 1e-6 and math.abs(e.color[3] - c[3]) < 1e-6 end
+    check(h.outline and #h.outline == 4 and h.bevel and #h.bevel == 4, "Classic: header " .. i .. " has an outline and a bevel of four edges")
+    for n, e in ipairs(h.outline or {}) do
+      check(e.shown and e.layer == "OVERLAY" and isColor(e, { 0, 0, 0 }), "Classic: header " .. i .. " outline " .. n .. " is black over the art")
+      check((e.h == ol) ~= (e.w == ol), "Classic: header " .. i .. " outline " .. n .. " is 1 px thick")
     end
-    check(UI.MENU_LAYOUT.classic.labelX > fr, "Classic: the label clears the frame")
-    -- the art is the whole atlas scaled to the menu's width; its bar is the header's height
-    local a = UI.MENU_LAYOUT.classic.art
-    check(math.abs(h.art.w - lay.width) < 0.01 and math.abs(h.art.h - lay.width * a.h / a.w) < 0.01, "Classic: header " .. i .. " art keeps the atlas's shape")
-    check(math.abs(item.h - lay.width * a.bar / a.w) <= 0.5, "Classic: header " .. i .. " is the art's bar high, " .. item.h)
+    local names = { "top", "left", "bottom", "right" }
+    for n, e in ipairs(h.bevel or {}) do
+      check(e.shown and e.layer == "OVERLAY", "Classic: header " .. i .. " bevel " .. names[n] .. " shows over the art")
+      check(isColor(e, n <= 2 and lt or dk), "Classic: header " .. i .. " bevel " .. names[n] .. (n <= 2 and " is lit steel" or " is shaded steel"))
+      check((e.h == fr) ~= (e.w == fr), "Classic: header " .. i .. " bevel " .. names[n] .. " is 3 px thick")
+    end
+    check(h.corners and #h.corners == 2 and h.corners[1].shown and h.corners[2].shown and h.corners[1].w == fr and h.corners[1].h == fr, "Classic: header " .. i .. " has its two mitred corners")
+    for n, e in ipairs(h.corners or {}) do
+      local c = e.color
+      check(c and math.abs(c[1] - (lt[1] + dk[1]) / 2) < 1e-6 and math.abs(c[3] - (lt[3] + dk[3]) / 2) < 1e-6, "Classic: header " .. i .. " corner " .. n .. " is the mean of the steels")
+    end
+    check(h.bar.pts[1][1] == "TOPLEFT" and h.bar.pts[1][4] == item.inset and h.bar.pts[1][5] == -item.inset and h.bar.w == lay.width - 2 * item.inset, "Classic: header " .. i .. "'s bar sits inside the border")
+    check(L.labelX > 0 and pointOf(h.label)[2] == h.bar, "Classic: the label sits on the bar, clear of the border")
+    -- the art is the whole atlas scaled to the bar's width; the bar is the art's top 32 px
+    local a = L.art
+    local barW = lay.width - 2 * item.inset
+    check(math.abs(h.art.w - barW) < 0.01 and math.abs(h.art.h - barW * a.h / a.w) < 0.01, "Classic: header " .. i .. " art keeps the atlas's shape")
+    check(math.abs(item.bar - lay.width * a.bar / a.w) <= 0.5, "Classic: header " .. i .. " bar is the art's bar high, " .. item.bar)
+    for _, k in ipairs({ "heading" }) do
+      for _, e in ipairs(h.bevel) do check(not isColor(e, CRT.PALETTE[k]), "Classic: header " .. i .. " has no gold edge") end
+    end
   end
   check(table.concat(atlases, " ") == "Options_CategoryHeader_1 Options_CategoryHeader_2 Options_CategoryHeader_3 Options_CategoryHeader_1",
     "Classic: the headers take the game's three header atlases in turn: " .. table.concat(atlases, " "))
@@ -235,7 +254,10 @@ for _, theme in ipairs({ "midnight", "nitro", "cowfee" }) do
     for i, item in ipairs(lay.headers) do
       local h, box, bg = menu.headers[i], lay.boxes[i], menu.blocks[i]
       check(not h.art.shown, theme .. ": header " .. i .. " has no art")
-      for n, e in ipairs(h.edges or {}) do check(not e.shown, theme .. ": header " .. i .. " frame edge " .. n .. " hidden") end
+      check(item.inset == 0 and item.bar == item.h, theme .. ": header " .. i .. " has no border room")
+      for _, list in ipairs({ h.outline, h.bevel, h.corners }) do
+        for n, e in ipairs(list) do check(not e.shown, theme .. ": header " .. i .. " border piece " .. n .. " hidden") end
+      end
       check(h.label.font == "CRTFontSmall", theme .. ": header " .. i .. " label in the small font")
       local c, m = h.label.textColor, CRT.PALETTE.muted
       check(c and math.abs(c[1] - m[1]) < 0.003 and math.abs(c[2] - m[2]) < 0.003 and math.abs(c[3] - m[3]) < 0.003, theme .. ": header " .. i .. " label in the muted colour")
@@ -246,14 +268,14 @@ for _, theme in ipairs({ "midnight", "nitro", "cowfee" }) do
       local first, last = at[keys[1]], at[keys[#keys]]
       local pad = UI.MENU_LAYOUT.modern.pad
       check(first and box.y - first.y == pad, theme .. ": box " .. i .. " has pad above its first page")
-      check(last and (last.y - UI.MENU_LAYOUT.row) - (box.y - box.h) == pad, theme .. ": box " .. i .. " has the same pad below its last page")
+      check(last and (last.y - lay.row) - (box.y - box.h) == pad, theme .. ": box " .. i .. " has the same pad below its last page")
     end
     check(not lay.scroll and lay.height <= UI.PAGE_H, theme .. ": the menu fits without scrolling (" .. lay.height .. " of " .. UI.PAGE_H .. ")")
     check(pointOf(UI.pages.settings.button.text)[1] == "CENTER", theme .. ": page labels centred in their box")
     -- with Development shown it may scroll (a developer build only)
     UI:SetPageHidden("dev", false)
     local dev = checkLook(theme .. " with Development", true)
-    check(dev and dev.scroll == (dev.height > UI.PAGE_H) and menu.scroll.wheel == dev.scroll, theme .. " with Development scrolls only when it doesn't fit")
+    check(dev and (dev.scroll or false) == (dev.height > UI.PAGE_H) and menu.scroll.wheel == (dev.scroll or false), theme .. " with Development scrolls only when it doesn't fit")
     UI:SetPageHidden("dev", true)
   end
 end
@@ -271,7 +293,7 @@ do
     check(short.width == W - UI.ScrollGutter(), name .. ": scrolling leaves room for the bar (" .. short.width .. ")")
     local tall = UI.MenuLayout(groups, modern, W, UI.PAGE_H)
     check(not tall.scroll and tall.width == W, name .. ": the full-height menu doesn't scroll")
-    for i = 2, #short.pages do check(short.pages[i - 1].y - UI.MENU_LAYOUT.row >= short.pages[i].y, name .. ": scrolling pages don't overlap") end
+    for i = 2, #short.pages do check(short.pages[i - 1].y - short.row >= short.pages[i].y, name .. ": scrolling pages don't overlap") end
   end
   -- many pages: the real menu scrolls
   local extra = {}

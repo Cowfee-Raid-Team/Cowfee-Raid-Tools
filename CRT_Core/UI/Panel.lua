@@ -1114,7 +1114,9 @@ end
 --                 SettingsCategoryListHeaderMixin:Init). The bar is the art's top 32 px; under it two faint
 --                 lines run down the sides, behind the entries. The menu scales the art to its own width and
 --                 clips it to the bar, so the lines never cross a page, its highlight or the divider.
---                 frame: the thickness of the heading-coloured frame drawn round each header's bar.
+--                 frame: the thickness of the bevel round each header's bar (lit steel top and left,
+--                 shaded steel bottom and right); outline: the black line outside it. Both sit outside
+--                 the bar, so a header takes frame + outline more room on every side than its bar.
 --   modern        header: the label's line over each box; pad: inside the box, above the first page and
 --                 below the last; boxRight: the box ends this far from the right; buttonLeft, buttonRight: a
 --                 page's button inside the box; labelX: the label from the left
@@ -1124,11 +1126,13 @@ UI.MENU_LAYOUT = {
     row = 30,
     rowGap = 1,
     classic = {
-        groupGap = 6,
+        groupGap = 0, -- the header's own border (4 px each side) is the space between groups
         headerGap = 1,
+        row = 29, -- a page's button, a pixel under the default: four bordered headers need the room
         textX = 10,
         labelX = 10,
-        frame = 2, -- the frame around each header's bar, in the heading colour
+        frame = 3, -- the bevel around each header's bar, in the theme's steel colours
+        outline = 1, -- the black line outside the bevel
         art = { atlas = "Options_CategoryHeader_", count = 3, w = 199, h = 144, bar = 32 },
     },
     modern = {
@@ -1182,27 +1186,32 @@ UI.MenuGroups = menuGroups
 --   width    the room the groups have: the menu's width, less the scroll bar's when it scrolls
 --   height   the groups' whole height
 --   scroll   true when that is more than the menu's height
---   headers  { label, y, h, art }: art is the header's atlas in Classic, nil in Modern
+--   headers  { label, y, h, bar, inset, art }: h is the header's whole height; bar the bar inside it, inset
+--            from every side (the Classic border; 0 in Modern); art is the header's atlas in Classic, nil in Modern
 --   boxes    { y, h, right } in Modern: each group's box, right its inset from the right
 --   pages    { key, y, left, right }: each page's button, left and right its insets from the edges
 function UI.MenuLayout(groups, modern, width, height)
     local L = UI.MENU_LAYOUT
     local look = modern and L.modern or L.classic
-    local step = L.row + L.rowGap
+    local row = look.row or L.row -- Classic's page rows are a pixel shorter, to fit the headers' borders
+    local step = row + L.rowGap
     local function place(w)
-        local out = { width = w, headers = {}, boxes = {}, pages = {} }
+        local out = { width = w, row = row, headers = {}, boxes = {}, pages = {} }
         local y = 0
         for i, group in ipairs(groups) do
             if i > 1 then
                 y = y - look.groupGap
             end
             local h, art, left, right = look.header, nil, 0, 0
+            local bar, inset = h, 0
             if not modern then
                 local a = look.art
-                h = math.floor(w * a.bar / a.w + 0.5)
+                bar = math.floor(w * a.bar / a.w + 0.5)
+                inset = look.frame + look.outline
+                h = bar + 2 * inset
                 art = a.atlas .. ((i - 1) % a.count + 1)
             end
-            out.headers[#out.headers + 1] = { label = group.label, y = y, h = h, art = art }
+            out.headers[#out.headers + 1] = { label = group.label, y = y, h = h, bar = bar, inset = inset, art = art }
             y = y - h
             if modern then
                 -- pad above the first page's button and below the last one's (its rowGap is inside the box)
@@ -1266,20 +1275,69 @@ local function menuHeader(menu, i)
         return h
     end
     h = CreateFrame("Frame", nil, menu.inner)
-    h:SetClipsChildren(true)
-    h.face = CreateFrame("Frame", nil, h)
+    -- the bar clips to its height; the border is drawn on the header itself, outside the bar
+    h.bar = CreateFrame("Frame", nil, h)
+    h.bar:SetClipsChildren(true)
+    h.face = CreateFrame("Frame", nil, h.bar)
     h.face:SetPoint("TOPLEFT")
     h.art = h.face:CreateTexture(nil, "ARTWORK")
     h.art:SetPoint("TOPLEFT")
     h.label = h.face:CreateFontString(nil, "OVERLAY", "CRTFontLarge")
     h.label:SetJustifyH("LEFT")
-    -- the Classic frame: four edges over the art and the label, anchored to the header's bar
-    h.edges = {}
+    -- the Classic border, made once: a black outline (4 lines), the bevel (lit top and left, shaded bottom
+    -- and right) and the two corners where lit meets shaded, which take the colours' mean
+    h.outline, h.bevel, h.corners = {}, {}, {}
     for n = 1, 4 do
-        h.edges[n] = h.face:CreateTexture(nil, "OVERLAY", nil, 7)
+        h.outline[n] = h:CreateTexture(nil, "OVERLAY", nil, 6)
+        h.bevel[n] = h:CreateTexture(nil, "OVERLAY", nil, 7)
+    end
+    for n = 1, 2 do
+        h.corners[n] = h:CreateTexture(nil, "OVERLAY", nil, 7)
     end
     menu.headers[i] = h
     return h
+end
+
+-- Draws a Classic header's border round its bar, in the theme's steel colours (read now, so a switch
+-- repaints it): the black outline outermost, then the bevel f thick. The lit top and left stop short of
+-- the top right and bottom left corners and the shaded bottom and right start past them; those two
+-- corners take the mean of the two steels, so each reads as a mitre.
+local function layoutBevel(h, look)
+    local o, f = look.outline, look.frame
+    local lt, dk = CRT.PALETTE.steelLight, CRT.PALETTE.steelDark
+    local function place(tex, r, g, b, p1, x1, y1, p2, x2, y2)
+        tex:ClearAllPoints()
+        tex:SetColorTexture(r, g, b, 1)
+        tex:SetPoint(p1, h, p1, x1, y1)
+        if p2 then
+            tex:SetPoint(p2, h, p2, x2, y2)
+        end
+        tex:Show()
+    end
+    local ot, ob, ol, orr = h.outline[1], h.outline[2], h.outline[3], h.outline[4]
+    place(ot, 0, 0, 0, "TOPLEFT", 0, 0, "TOPRIGHT", 0, 0)
+    ot:SetHeight(o)
+    place(ob, 0, 0, 0, "BOTTOMLEFT", 0, 0, "BOTTOMRIGHT", 0, 0)
+    ob:SetHeight(o)
+    place(ol, 0, 0, 0, "TOPLEFT", 0, 0, "BOTTOMLEFT", 0, 0)
+    ol:SetWidth(o)
+    place(orr, 0, 0, 0, "TOPRIGHT", 0, 0, "BOTTOMRIGHT", 0, 0)
+    orr:SetWidth(o)
+    local top, left, bottom, right = h.bevel[1], h.bevel[2], h.bevel[3], h.bevel[4]
+    place(top, lt[1], lt[2], lt[3], "TOPLEFT", o, -o, "TOPRIGHT", -(o + f), -o)
+    top:SetHeight(f)
+    place(left, lt[1], lt[2], lt[3], "TOPLEFT", o, -o, "BOTTOMLEFT", o, o + f)
+    left:SetWidth(f)
+    place(bottom, dk[1], dk[2], dk[3], "BOTTOMLEFT", o + f, o, "BOTTOMRIGHT", -o, o)
+    bottom:SetHeight(f)
+    place(right, dk[1], dk[2], dk[3], "TOPRIGHT", -o, -(o + f), "BOTTOMRIGHT", -o, o)
+    right:SetWidth(f)
+    local mr, mg, mb = (lt[1] + dk[1]) / 2, (lt[2] + dk[2]) / 2, (lt[3] + dk[3]) / 2
+    place(h.corners[1], mr, mg, mb, "TOPRIGHT", -o, -o)
+    place(h.corners[2], mr, mg, mb, "BOTTOMLEFT", o, o)
+    for _, c in ipairs(h.corners) do
+        c:SetSize(f, f)
+    end
 end
 
 function UI:LayoutMenu()
@@ -1312,41 +1370,29 @@ function UI:LayoutMenu()
         h:ClearAllPoints()
         h:SetPoint("TOPLEFT", inner, "TOPLEFT", 0, item.y)
         h:SetSize(lay.width, item.h)
+        local barW = lay.width - 2 * item.inset
+        h.bar:ClearAllPoints()
+        h.bar:SetPoint("TOPLEFT", h, "TOPLEFT", item.inset, -item.inset)
+        h.bar:SetSize(barW, item.bar)
         h.art:SetShown(item.art ~= nil)
         h.label:ClearAllPoints()
-        h.label:SetPoint("LEFT", h, "LEFT", look.labelX, 0)
+        h.label:SetPoint("LEFT", h.bar, "LEFT", look.labelX, 0)
         if item.art then
-            local artH = lay.width * look.art.h / look.art.w
+            local artH = barW * look.art.h / look.art.w
             h.art:SetAtlas(item.art)
-            h.art:SetSize(lay.width, artH)
-            h.face:SetSize(lay.width, artH)
+            h.art:SetSize(barW, artH)
+            h.face:SetSize(barW, artH)
             h.label:SetFontObject("CRTFontLarge")
             h.label:SetTextColor(1, 1, 1)
-            local t = look.frame
-            local top, bottom, left, right = h.edges[1], h.edges[2], h.edges[3], h.edges[4]
-            for _, e in ipairs(h.edges) do
-                e:SetColorTexture(rgba("heading"))
-                e:ClearAllPoints()
-                e:Show()
-            end
-            top:SetPoint("TOPLEFT", h, "TOPLEFT")
-            top:SetPoint("TOPRIGHT", h, "TOPRIGHT")
-            top:SetHeight(t)
-            bottom:SetPoint("BOTTOMLEFT", h, "BOTTOMLEFT")
-            bottom:SetPoint("BOTTOMRIGHT", h, "BOTTOMRIGHT")
-            bottom:SetHeight(t)
-            left:SetPoint("TOPLEFT", h, "TOPLEFT")
-            left:SetPoint("BOTTOMLEFT", h, "BOTTOMLEFT")
-            left:SetWidth(t)
-            right:SetPoint("TOPRIGHT", h, "TOPRIGHT")
-            right:SetPoint("BOTTOMRIGHT", h, "BOTTOMRIGHT")
-            right:SetWidth(t)
+            layoutBevel(h, look)
         else
             h.face:SetSize(lay.width, item.h)
             h.label:SetFontObject("CRTFontSmall")
             h.label:SetTextColor(rgba("muted"))
-            for _, e in ipairs(h.edges) do
-                e:Hide()
+            for _, list in ipairs({ h.outline, h.bevel, h.corners }) do
+                for _, e in ipairs(list) do
+                    e:Hide()
+                end
             end
         end
         h.label:SetText(item.label)
@@ -1368,6 +1414,7 @@ function UI:LayoutMenu()
     for _, p in ipairs(lay.pages) do
         local b = self.pages[p.key].button
         b:ClearAllPoints()
+        b:SetHeight(lay.row)
         b:SetPoint("TOPLEFT", inner, "TOPLEFT", p.left, p.y)
         b:SetPoint("TOPRIGHT", inner, "TOPRIGHT", -p.right, p.y)
         b.text:ClearAllPoints()

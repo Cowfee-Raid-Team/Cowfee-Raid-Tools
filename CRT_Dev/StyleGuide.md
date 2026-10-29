@@ -16,7 +16,7 @@ Every theme fills every key in `CRT.THEME_KEYS`. Each key is named for what it c
 | selected | the selected page and tab, an unticked checkbox's edge |
 | accent | lines, a slider's filled track, hover edges, the Modern help ring, scroll bar thumbs, the alert timeline's line and its tick marks, the break timer's bar |
 | label | button text and labels (the game's gold font takes this colour in a Modern theme) |
-| heading | headings, section titles, highlights, a selected row's tint, the 2 px frame round each Classic menu header (`UI.HeadingText`) |
+| heading | headings, section titles, highlights, a selected row's tint (`UI.HeadingText`) |
 | text | body text (the game's white font takes this colour in a Modern theme) |
 | good | good: synced, answered, on, ready, in bags (`UI.GoodText`) |
 | warn | in between: running low, worn, arrived late, a middling score, Loot Master's No CRT, where the player can still roll in chat (`UI.WarnText`) |
@@ -30,6 +30,8 @@ Every theme fills every key in `CRT.THEME_KEYS`. Each key is named for what it c
 | titleTop, titleBottom | a window title strip's gradient, top and bottom |
 | muted | quiet text: the small note beside a window's title, a roll someone else won, the Modern menu's group labels |
 | outline | a dark edge that must show on any fill: the alert bars' Border, drawn fully opaque. Always the theme's darkest colour |
+| steelLight | the lit top and left edges of the 3 px bevel round each Classic menu header |
+| steelDark | the shaded bottom and right edges of that bevel |
 
 The four status keys mean the same thing on every page and overlay: heading for titles, good for good, warn for in between, bad for bad. Pick by meaning, never by the colour a theme happens to give.
 
@@ -60,6 +62,8 @@ Hex per theme, in menu order. "Game" means Default: Blizzard reads the game's ow
 | titleBottom | 3A2A1F | 0E0E0E | 0E1319 | 3A2A1F |
 | muted | CCB599 | 9E9E9E | 8A9DB0 | CCB599 |
 | outline | 1A120C | 000000 | 000000 | 17110E |
+| steelLight | C9CCD1 | 9E9E9E | 8A9DB0 | D9B48A |
+| steelDark | 2E3033 | 2E2E2E | 28313B | 5A4231 |
 
 Default: Blizzard is the Classic look: the game's art draws the windows, so most of its column is only read by the few surfaces that use `CRT.PALETTE` in both looks. Those values are the colours from before themes and never change (outline came later: its darkest colour, as in every theme). Its heading, good, warn and bad are the game's own text colours.
 

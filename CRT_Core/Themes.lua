@@ -48,9 +48,10 @@ CRT.THEME_MODERN = "cowfee" -- old saved data with the Modern look on
 --   titleTop, titleBottom   a window title bar's gradient (UI.TitleStrip)
 --   muted        quiet text: the small note beside a window's title, a roll someone else won, the menu's group labels
 --   outline      a dark edge that must stand out on any fill: the alert bars' Border; the theme's darkest colour
+--   steelLight, steelDark   the lit (top, left) and shaded (bottom, right) edges of the Classic menu headers' bevel
 CRT.THEME_KEYS = { "background", "surface", "border", "selected", "accent", "label", "heading", "text", "good",
     "warn", "bad", "knob", "knobBorder", "knobShine", "knobText", "check", "checkBorder", "titleTop", "titleBottom", "muted",
-    "outline" }
+    "outline", "steelLight", "steelDark" }
 
 local function hex(h)
     return { tonumber(h:sub(1, 2), 16) / 255, tonumber(h:sub(3, 4), 16) / 255, tonumber(h:sub(5, 6), 16) / 255 }
@@ -93,6 +94,8 @@ CRT.THEMES = {
         titleBottom = { 0.227, 0.165, 0.122 },
         muted = { 0.80, 0.71, 0.60 },
         outline = hex("1A120C"),
+        steelLight = hex("C9CCD1"), -- the game's panel steel
+        steelDark = hex("2E3033"),
     },
     midnight = {
         background = hex("050505"),
@@ -116,6 +119,8 @@ CRT.THEMES = {
         titleBottom = hex("0E0E0E"),
         muted = hex("9E9E9E"),
         outline = hex("000000"),
+        steelLight = hex("9E9E9E"), -- the muted grey
+        steelDark = hex("2E2E2E"), -- the border grey
     },
     nitro = {
         background = hex("06080A"),
@@ -139,6 +144,8 @@ CRT.THEMES = {
         titleBottom = hex("0E1319"),
         muted = hex("8A9DB0"),
         outline = hex("000000"),
+        steelLight = hex("8A9DB0"), -- the muted blue-grey
+        steelDark = hex("28313B"), -- the border
     },
     cowfee = {
         background = hex("17110E"), -- Cold Brew
@@ -162,6 +169,8 @@ CRT.THEMES = {
         titleBottom = { 0.227, 0.165, 0.122 },
         muted = { 0.80, 0.71, 0.60 },
         outline = hex("17110E"), -- Cold Brew, the background
+        steelLight = hex("D9B48A"), -- Hazelnut
+        steelDark = hex("5A4231"), -- Walnut
     },
 }
 
