@@ -16,7 +16,7 @@ Every theme fills every key in `CRT.THEME_KEYS`. Each key is named for what it c
 | selected | the selected page and tab, an unticked checkbox's edge |
 | accent | lines, a slider's filled track, hover edges, the Modern help ring, scroll bar thumbs, the alert timeline's line and its tick marks, the break timer's bar |
 | label | button text and labels (the game's gold font takes this colour in a Modern theme) |
-| heading | headings, section titles, highlights, a selected row's tint (`UI.HeadingText`) |
+| heading | headings, section titles, highlights, a selected row's tint, the 2 px frame round each Classic menu header (`UI.HeadingText`) |
 | text | body text (the game's white font takes this colour in a Modern theme) |
 | good | good: synced, answered, on, ready, in bags (`UI.GoodText`) |
 | warn | in between: running low, worn, arrived late, a middling score, Loot Master's No CRT, where the player can still roll in chat (`UI.WarnText`) |

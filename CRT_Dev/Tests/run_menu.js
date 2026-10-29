@@ -184,7 +184,19 @@ if lay then
     local h = menu.headers[i]
     atlases[#atlases + 1] = h.art.atlas
     check(h.art.shown, "Classic: header " .. i .. " shows its art")
-    check(h.label.font == "CRTFontHighlight", "Classic: header " .. i .. " label in the highlight font")
+    check(h.label.font == "CRTFontLarge", "Classic: header " .. i .. " label one step bigger than the highlight font")
+    local tc = h.label.textColor
+    check(tc and tc[1] == 1 and tc[2] == 1 and tc[3] == 1, "Classic: header " .. i .. " label stays white")
+    -- a frame of four edges, frame px thick, in the heading colour, over the art
+    local fr, hc, c = UI.MENU_LAYOUT.classic.frame, CRT.PALETTE.heading, nil
+    check(fr == 2 and h.edges and #h.edges == 4, "Classic: header " .. i .. " has four frame edges at 2 px")
+    for n, e in ipairs(h.edges or {}) do
+      c = e.color
+      check(e.shown and e.layer == "OVERLAY", "Classic: header " .. i .. " edge " .. n .. " shows over the art")
+      check(c and c[1] == hc[1] and c[2] == hc[2] and c[3] == hc[3], "Classic: header " .. i .. " edge " .. n .. " in the heading colour")
+      check((e.h == fr) ~= (e.w == fr), "Classic: header " .. i .. " edge " .. n .. " is 2 px thick")
+    end
+    check(UI.MENU_LAYOUT.classic.labelX > fr, "Classic: the label clears the frame")
     -- the art is the whole atlas scaled to the menu's width; its bar is the header's height
     local a = UI.MENU_LAYOUT.classic.art
     check(math.abs(h.art.w - lay.width) < 0.01 and math.abs(h.art.h - lay.width * a.h / a.w) < 0.01, "Classic: header " .. i .. " art keeps the atlas's shape")
@@ -223,6 +235,7 @@ for _, theme in ipairs({ "midnight", "nitro", "cowfee" }) do
     for i, item in ipairs(lay.headers) do
       local h, box, bg = menu.headers[i], lay.boxes[i], menu.blocks[i]
       check(not h.art.shown, theme .. ": header " .. i .. " has no art")
+      for n, e in ipairs(h.edges or {}) do check(not e.shown, theme .. ": header " .. i .. " frame edge " .. n .. " hidden") end
       check(h.label.font == "CRTFontSmall", theme .. ": header " .. i .. " label in the small font")
       local c, m = h.label.textColor, CRT.PALETTE.muted
       check(c and math.abs(c[1] - m[1]) < 0.003 and math.abs(c[2] - m[2]) < 0.003 and math.abs(c[3] - m[3]) < 0.003, theme .. ": header " .. i .. " label in the muted colour")
