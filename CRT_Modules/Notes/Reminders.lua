@@ -4,7 +4,9 @@ local ADDON, CRT = ...
 -- on the left see its Encounter Journal abilities, then your own reminders that are not tied to an
 -- ability, each with a tick that turns its reminder on or off. On the right, one panel shows the selected
 -- row's alert, and every change there saves it at once (the first change on an ability makes its
--- reminder). The draft and its save are Alerts/Draft.lua's, the name lookup of the Icon box is
+-- reminder). Under the panel's header its settings sit on subtabs (When, Looks, Sound and speech, Shield bar:
+-- Alerts/SubTabs.lua, shared with the pop-out editor); Test and Save as template stay at the bottom, outside them.
+-- The draft and its save are Alerts/Draft.lua's, the name lookup of the Icon box is
 -- Alerts/SpellLookup.lua's, the Shield bar section Alerts/ShieldSection.lua's, and Test and Save as template go
 -- through Alerts/Editor.lua, all shared with the pop-out editor. The reminders and their times are in
 -- Alerts/Reminders.lua. This tab only reads them when it is built, after login. Save as Raid note writes the alert
@@ -55,7 +57,7 @@ local TEXT = {
     -- you may not change the raid note (not the leader or an assistant): what stays as it was
     linesStay = "Saved as Only me. Its lines stay in the raid note until the raid leader or an assistant takes them out.",
     deletedLinesStay = "Deleted. Its lines stay in the raid note until the raid leader or an assistant takes them out.",
-    triggers = "Triggers",
+    -- the (?) after Linger, on the When tab (its title is the tab's, Alerts/SubTabs.lua)
     triggersHelp = "Show from: how many seconds before each time the alert shows. Linger: how long it stays after 0. The times come from the boss's ability timeline, counted from the start of each phase.",
     showFrom = "Show from",
     linger = "Linger",
@@ -85,14 +87,12 @@ local TEXT = {
     countCast = "The cast",
     countImpact = "Each impact",
     countHelp = "What the bar's number counts down to: the end of the cast, or the next hit.",
-    also = "Also",
     speak = "Speak the text",
     count = "Count down 3 2 1",
     glow = "Glow at 0",
     speakAt = "Speak at",
     onShow = "On show",
     atZero = "At 0",
-    look = "Look and sound",
     text = "Text",
     icon = "Icon",
     iconSpell = "Spell",
@@ -178,9 +178,12 @@ L.SHOW_LABEL, L.LINGER_LABEL, L.SLIDER_W = 70, 50, 150
 L.SHOW_MIN, L.SHOW_MAX, L.SHOW_DEFAULT = 1, 60, 5 -- Show from, seconds
 L.LINGER_MIN, L.LINGER_MAX = 0, 10 -- Linger, seconds
 L.SLIDER_GAP = 20 -- between Show from and Linger
--- The panel's rows, from its top: the header, Triggers and its rows
+-- The panel's rows, from its top: the header, then the subtabs (Alerts/SubTabs.lua) with a rule under them, then the
+-- open tab's rows from CONTENT_Y
 L.ICON_Y, L.NAME_Y, L.ALERT_Y, L.SAVE_Y = -10, -16, -12, -8
-L.TRIGGERS_Y, L.SLIDERS_Y, L.TIMES_Y, L.TIMES_BOX_Y, L.TIMELINE_Y = -50, -66, -104, -100, -124
+L.TABS_Y, L.RULE_Y, L.CONTENT_Y = -66, -90, -100
+-- When: Show from and Linger, the times (or the box for your own) and Show on the Timeline
+L.SLIDERS_Y, L.TIMES_Y, L.TIMES_BOX_Y, L.TIMELINE_Y = L.CONTENT_Y, L.CONTENT_Y - 38, L.CONTENT_Y - 34, L.CONTENT_Y - 58
 L.TIMELINE_W, L.TEMPLATE_W, L.TEST_W, L.DEFAULT_W = 170, 140, 80, 80
 L.BUTTON_GAP = 8
 L.DELETE_W = 80
@@ -188,19 +191,21 @@ L.DELETE_W = 80
 L.BUTTONS_W = L.TEMPLATE_W + L.BUTTON_GAP + L.TEST_W + L.BUTTON_GAP + L.DELETE_W + L.BUTTON_GAP
 L.BOTTOM_Y = 10 -- the bottom row's buttons above the panel's bottom edge
 L.MENU_MAX_H = 400 -- the Sound menu scrolls past this
-L.COL_Y = -162
+-- Looks: two columns from L.COL_Y
+L.COL_Y = L.CONTENT_Y
 L.COL_GAP = 22
 L.COL_W = math.floor((L.PANEL_W - 2 * L.INSET - L.COL_GAP) / 2)
 L.COL2_X = L.INSET + L.COL_W + L.COL_GAP
 L.CHECK_STEP = 130 -- between the checkboxes of a row
 L.SHOW_GAP = 10 -- between one Show as label and the next box
--- the left column under L.COL_Y, from its top: the two Show as rows, Impact ticks, Bar fill, Count down to, then the
--- Shield bar section (Alerts/ShieldSection.lua's column, four rows down to just above the marker display's tick)
+-- the left column under L.COL_Y, from its top: the two Show as rows, Impact ticks, Bar fill, Count down to
 L.TICKS_DY, L.FILL_DY, L.COUNT_DY = 72, 94, 116
-L.SHIELD_DY = 142
--- the right column under Look and sound's last row (Also when it lands on me): Also and its two rows
-L.ALSO_DY, L.ALSO_ROW1_DY, L.ALSO_ROW2_DY = 164, 184, 210
--- a save's problem, in red: beside Show on the Timeline, over the whole panel's width
+-- Sound and speech, one column: Sound, Also when it lands on me, Speak the text (Speak at beside it), Count down, Glow
+L.SOUND_Y, L.AURA_Y, L.SPEAK_Y, L.COUNT_Y, L.GLOW_Y = L.CONTENT_Y, L.CONTENT_Y - 32, L.CONTENT_Y - 62, L.CONTENT_Y - 88,
+    L.CONTENT_Y - 114
+-- Shield bar: the section (Alerts/ShieldSection.lua's column) from the top of the tab, over the panel's width
+L.SHIELD_Y = L.CONTENT_Y
+-- a save's problem, in red: above the bottom row, over the whole panel's width, on every tab
 L.MESSAGE_GAP = 12
 L.TICKS_LABEL, L.TICKS_W, L.UNIT_GAP, L.BAR_DROP_W = 90, 70, 6, 140 -- TICKS_LABEL fits "Count down to"
 L.LABEL_W = 50
@@ -817,6 +822,8 @@ local function drawPanel()
     -- a save's problem, else ticks past the bar (they still save: a longer Show from can fit them)
     local say = notice or CRT.AlertDraft.TicksPast(d)
     panel.message:SetText(say and UI.BadText(say) or "")
+    -- each tab's dot: something on it is on
+    panel.tabs:Paint(d)
 end
 
 local saveTyped
@@ -1513,19 +1520,55 @@ local function buildBarRows(p, row)
     }))
     panel.countTo:SetPoint("TOPLEFT", x, L.COL_Y - L.COUNT_DY)
     panel.countHelp = UI.HelpRight(panel.countTo, TEXT.countTo, TEXT.countHelp)
-    -- the Shield bar section (Alerts/ShieldSection.lua), as the alert editor's, on the draft's shield: a change saves as
-    -- every other control does (the first change on an ability makes its reminder)
+end
+
+-- The Shield bar tab: the Shield bar section (Alerts/ShieldSection.lua), as the alert editor's, on the draft's shield: a
+-- change saves as every other control does (the first change on an ability makes its reminder).
+local function buildShieldTab(p, row)
     panel.shield = CRT.AlertShieldSection.Build(p, {
-        -- Any time beside Shield on, so Last pull has a row of its own above the marker display's tick; a reminder
-        -- here is always for one difficulty group, so Any time always applies
-        layout = "column", note = true, anyBeside = true, x = x, y = L.COL_Y - L.SHIELD_DY, width = L.COL_W,
+        -- Any time beside Shield on, Last pull on a row of its own; a reminder here is always for one difficulty group,
+        -- so Any time always applies
+        layout = "column", note = true, anyBeside = true, x = L.INSET, y = L.SHIELD_Y, width = L.PANEL_W - 2 * L.INSET,
         buttonHeight = L.BUTTON_H,
         register = row,
         get = function() return cur.draft and cur.draft.shield end,
         set = change(function(field, value) cur.draft.shield[field] = value end),
-        barOn = barOn,
+        barOn = function() return cur.draft ~= nil and cur.draft.show.bar and true or false end,
         encounterID = function() return cur.enc end,
     })
+end
+
+-- The Sound and speech tab: Sound with its Play button, Also when it lands on me, Speak the text with Speak at beside
+-- it, Count down 3 2 1 and Glow at 0. Its own function: buildPanel is near Lua 5.1's 60 upvalue limit.
+local function buildSoundTab(p, row)
+    local Draft = CRT.AlertDraft
+    panel.sound = row(UI.SoundDropdown(p, TEXT.sound, {
+        labelWidth = L.LABEL_W, width = L.SOUND_W, maxHeight = L.MENU_MAX_H, playButton = true,
+        options = function() return Draft.SoundOptions(TEXT.soundNone) end,
+        get = function() return cur.draft and Draft.SoundKey(cur.draft.sound) or Draft.NO_SOUND end,
+        set = change(function(v) cur.draft.sound = v ~= Draft.NO_SOUND and v or nil end),
+    }))
+    panel.sound:SetPoint("TOPLEFT", L.INSET, L.SOUND_Y)
+    -- Under Sound: the same sound as an aura sound when the spell lands on you (Sound/Auras.lua).
+    panel.auraSound = makeCheck(p, TEXT.auraSound, L.INSET - 4, L.AURA_Y, change(function(on)
+        cur.draft.auraSound = on
+    end))
+    panel.auraSound.label:SetWidth(L.COL_W - L.CHECK_SIZE - 30)
+    UI.HelpRight(panel.auraSound.label, TEXT.auraSound, TEXT.auraSoundHelp)
+    panel.also = {
+        speak = makeCheck(p, TEXT.speak, L.INSET - 4, L.SPEAK_Y, change(function(on) cur.draft.speak = on end)),
+        count = makeCheck(p, TEXT.count, L.INSET - 4, L.COUNT_Y, change(function(on) cur.draft.count = on end)),
+        glow = makeCheck(p, TEXT.glow, L.INSET - 4, L.GLOW_Y, change(function(on) cur.draft.glow = on end)),
+    }
+    -- Speak at: when Speak the text says it, On show or At 0; greyed while Speak the text is off
+    panel.speakAt = row(UI.Dropdown(p, TEXT.speakAt, {
+        labelWidth = L.SPEAK_AT_LABEL, width = L.SPEAK_AT_W,
+        enabledIf = function() return cur.draft ~= nil and cur.draft.speak and true or false end,
+        options = Draft.SpeakAtOptions(TEXT.onShow, TEXT.atZero),
+        get = function() return Draft.SpeakAtKey(cur.draft) end,
+        set = change(function(v) Draft.SetSpeakAt(cur.draft, v) end),
+    }))
+    panel.speakAt:SetPoint("TOPLEFT", L.INSET + L.CHECK_STEP, L.SPEAK_Y) -- in line with Speak the text
 end
 
 -- Save as and For: Only me, or Raid note (Notes/MechNote.lua) for everyone, a role or picked players. Raid note turns
@@ -1688,11 +1731,17 @@ local function buildPanel(f)
     end)
     buildNoteRow(p, row)
 
-    -- Triggers: Show from, Linger, the times (read only) and Show on the Timeline
-    heading(p, TEXT.triggers, L.INSET, L.TRIGGERS_Y, TEXT.triggersHelp)
+    -- Under the header, the subtabs (Alerts/SubTabs.lua, shared with the alert editor): each tab's controls are built
+    -- into its own frame, so only the open tab's show. The tab picked stays when another row is picked.
+    panel.tabs = CRT.AlertSubTabs.Build(p, { owner = "mechanics", x = L.INSET, y = L.TABS_Y,
+        rule = { y = L.RULE_Y, left = L.INSET, right = L.INSET } })
+    local tf = panel.tabs.frames
+
+    -- When: Show from, Linger, the times (read only) and Show on the Timeline
     local function seconds(v)
         return string.format(TEXT.seconds, v)
     end
+    p = tf.when
     panel.showFrom = row(UI.Slider(p, TEXT.showFrom, {
         min = L.SHOW_MIN, max = L.SHOW_MAX, step = 1, labelWidth = L.SHOW_LABEL, width = L.SLIDER_W, format = seconds,
         onRelease = true, -- saved when the bar is let go, not on every step of a drag
@@ -1707,6 +1756,7 @@ local function buildPanel(f)
         set = change(function(v) cur.draft.linger = v end),
     }))
     panel.linger:SetPoint("TOPLEFT", L.INSET + L.SHOW_LABEL + L.DROP_GAP + L.SLIDER_W + L.SLIDER_VALUE + L.SLIDER_GAP, L.SLIDERS_Y)
+    UI.HelpRight(panel.linger, CRT.AlertSubTabs.TEXT.when, TEXT.triggersHelp)
     panel.times = p:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     panel.times:SetPoint("TOPLEFT", L.INSET, L.TIMES_Y)
     panel.times:SetWidth(L.PANEL_W - 2 * L.INSET)
@@ -1730,7 +1780,8 @@ local function buildPanel(f)
     panel.timelineBtn:SetPoint("TOPLEFT", L.INSET, L.TIMELINE_Y)
     panel.timelineBtn:SetScript("OnClick", showOnTimeline)
 
-    -- Left column: Show as, the bar's rows and the Shield bar section
+    -- Looks, left column: Show as and the bar's rows
+    p = tf.looks
     heading(p, TEXT.showAs, L.INSET, L.COL_Y, TEXT.showAsHelp)
     -- two rows (Draft.SHOW_ROWS), placed by placeShowAs
     panel.checks = {}
@@ -1745,26 +1796,8 @@ local function buildPanel(f)
     end
     placeShowAs()
     buildBarRows(p, row)
-    -- Also, in the right column under Look and sound (the Shield bar section has the left column's foot)
-    heading(p, TEXT.also, L.COL2_X, L.COL_Y - L.ALSO_DY)
-    local y1, y2 = L.COL_Y - L.ALSO_ROW1_DY, L.COL_Y - L.ALSO_ROW2_DY
-    panel.also = {
-        speak = makeCheck(p, TEXT.speak, L.COL2_X - 4, y1, change(function(on) cur.draft.speak = on end)),
-        count = makeCheck(p, TEXT.count, L.COL2_X - 4 + L.CHECK_STEP, y1, change(function(on) cur.draft.count = on end)),
-        glow = makeCheck(p, TEXT.glow, L.COL2_X - 4, y2, change(function(on) cur.draft.glow = on end)),
-    }
-    -- Speak at: when Speak the text says it, On show or At 0; greyed while Speak the text is off
-    panel.speakAt = row(UI.Dropdown(p, TEXT.speakAt, {
-        labelWidth = L.SPEAK_AT_LABEL, width = L.SPEAK_AT_W,
-        enabledIf = function() return cur.draft ~= nil and cur.draft.speak and true or false end,
-        options = Draft.SpeakAtOptions(TEXT.onShow, TEXT.atZero),
-        get = function() return Draft.SpeakAtKey(cur.draft) end,
-        set = change(function(v) Draft.SetSpeakAt(cur.draft, v) end),
-    }))
-    panel.speakAt:SetPoint("TOPLEFT", L.COL2_X + L.CHECK_STEP, y2) -- in line with Glow at 0
 
-    -- Right column: Look and sound
-    heading(p, TEXT.look, L.COL2_X, L.COL_Y)
+    -- Looks, right column: Text, Icon, Color
     label(p, TEXT.text, L.COL2_X, L.COL_Y - 26)
     panel.textEdit = makeEdit(p, L.COL2_X + L.LABEL_W + 4, L.COL_Y - 22, L.COL_W - L.LABEL_W - 8, function(text)
         if cur.draft and text ~= cur.draft.text then
@@ -1849,25 +1882,15 @@ local function buildPanel(f)
             cur.draft.color = nil
         end
     end))
-    panel.sound = row(UI.SoundDropdown(p, TEXT.sound, {
-        labelWidth = L.LABEL_W, width = L.SOUND_W, maxHeight = L.MENU_MAX_H, playButton = true,
-        options = function() return Draft.SoundOptions(TEXT.soundNone) end,
-        get = function() return cur.draft and Draft.SoundKey(cur.draft.sound) or Draft.NO_SOUND end,
-        set = change(function(v) cur.draft.sound = v ~= Draft.NO_SOUND and v or nil end),
-    }))
-    panel.sound:SetPoint("TOPLEFT", L.COL2_X, L.COL_Y - 106)
-    -- Under Sound: the same sound as an aura sound when the spell lands on you (Sound/Auras.lua).
-    panel.auraSound = makeCheck(p, TEXT.auraSound, L.COL2_X - 4, L.COL_Y - 134, change(function(on)
-        cur.draft.auraSound = on
-    end))
-    panel.auraSound.label:SetWidth(L.COL_W - L.CHECK_SIZE - 30)
-    UI.HelpRight(panel.auraSound.label, TEXT.auraSound, TEXT.auraSoundHelp)
 
-    -- A save's problem, in red, beside Show on the Timeline (a long one wraps to a second line, above Show as)
-    local messageX = L.INSET + L.TIMELINE_W + L.MESSAGE_GAP
+    buildSoundTab(tf.sound, row)
+    buildShieldTab(tf.shield, row)
+
+    -- Under the tabs, on every tab: a save's problem, in red, above the bottom row (a long one wraps upwards)
+    p = panel.content
     panel.message = p:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    panel.message:SetPoint("TOPLEFT", messageX, L.TIMELINE_Y - 5)
-    panel.message:SetWidth(L.PANEL_W - messageX - L.INSET)
+    panel.message:SetPoint("BOTTOMLEFT", L.INSET, L.BOTTOM_Y + L.BUTTON_H + L.MESSAGE_GAP)
+    panel.message:SetWidth(L.PANEL_W - 2 * L.INSET)
     panel.message:SetJustifyH("LEFT")
 
     -- Bottom right: Test, Save as template

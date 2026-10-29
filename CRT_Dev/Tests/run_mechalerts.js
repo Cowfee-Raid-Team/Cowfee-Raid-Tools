@@ -1639,13 +1639,14 @@ check("mech ticks: the rows follow Bar and the ticks", function()
   assert(not helped.helpText:find("Bar ends", 1, true) and not helped.helpText:find("1 s past", 1, true)
     and helped.helpText:find("Seconds after the bar appears when each hit lands. The bar runs from Show from to the cast; a tick past its end isn't shown.", 1, true),
     "its (?) says ticks are in the bar, which ends at the cast: " .. helped.helpText)
-  -- Count down to under Bar fill, then the Shield bar section under it; Also's two rows in the right column, and a
-  -- save's problem beside Show on the Timeline
+  -- Count down to under Bar fill on Looks; the Shield bar section at the top of its own tab; Speak the text, Count down
+  -- and Glow one under the other on Sound and speech; a save's problem above the bottom row, on every tab
   local function y(fr) local pt = fr.pts[#fr.pts] return pt[#pt] end
   local function x(fr) local pt = fr.pts[#fr.pts] return pt[#pt - 1] end
-  assert(y(p.barFill) - y(p.countTo) == 22 and y(p.countTo) - y(p.shield.check) == 26, "Count down to under Bar fill, Shield bar under it: " .. (y(p.countTo) - y(p.shield.check)))
-  assert(y(p.also.speak) - y(p.also.glow) == 26 and x(p.also.speak) > 300, "Also's rows, in the right column")
-  assert(x(p.message) > x(p.timelineBtn) + p.timelineBtn.w and y(p.message) < y(p.timelineBtn), "the message beside Show on the Timeline")
+  assert(y(p.barFill) - y(p.countTo) == 22, "Count down to under Bar fill")
+  assert(y(p.shield.check) == -100 and p.shield.check.parent == p.tabs.frames.shield, "Shield bar at the top of its tab: " .. y(p.shield.check))
+  assert(y(p.also.speak) - y(p.also.count) == 26 and y(p.also.count) - y(p.also.glow) == 26 and x(p.also.speak) < 20, "Sound and speech's rows, one column")
+  assert(p.message.pts[1][1] == "BOTTOMLEFT" and p.message.parent == p.content, "the message above the bottom row, outside the tabs")
   -- a new alert has Bar on: ticks and Bar fill on
   assert(p.checks.bar.checked, "Bar on")
   assert(p.ticksEdit.enabled and p.barFill.opts.enabledIf() == true, "on with Bar")
@@ -1781,30 +1782,30 @@ check("mech shield: Last pull with its Use buttons", function()
   assert(#errors == 0, tostring(errors[1]))
 end)
 
--- The Mechanics panel's layout with the section: it sits under Count down to in the left column, Also moved to the right
--- column; nothing overlaps and nothing passes the panel
-check("mech shield: the section fits the left column, clear of Also, the marker tick and the buttons", function()
+-- The Mechanics panel's layout with the section, on its Shield bar tab: Any time beside Shield on, Last pull on a row of
+-- its own; inside the panel, above the bottom row, overlapping nothing on show
+check("mech shield: the section fits its tab, clear of the marker tick and the buttons", function()
   local f = fresh()
   local p = f.panel
+  click(p.tabs.buttons.shield)
   CRT.db.alerts.shieldPulls = { [ENC] = { at = 1, units = { boss1 = 10, boss2 = 20, boss3 = 30 } } }
   CRT.NoteReminders.Refresh()
   local s = p.shield
   rects = {}
   local pr = rect(p.frame, f)
-  -- Any time beside Shield on, Last pull on a row of its own under Seconds to break, every Use button on it
   local function top(m) return rect(m, f)[2] end
   assert(top(s.any) == top(s.unitRow) and rect(s.any, f)[1] >= rect(s.unitRow, f)[3], "Any time beside Shield on")
   assert(top(s.lastText) > top(s.lengthRow) + 20 and rect(s.lastText, f)[1] == rect(s.check, f)[1], "Last pull on its own row, under Seconds to break")
   assert(s.use[1].shown and s.use[2].shown and s.use[3].shown, "a Use button for each of three units")
   local parts = { s.check, s.unitRow, s.lengthRow, s.any, s.lastText, s.note }
   for _, b in ipairs(s.use) do if b.shown then parts[#parts + 1] = b end end
-  local others = { p.also.speak, p.also.count, p.also.glow, p.speakAt, p.testBtn, p.templateBtn, p.deleteBtn, p.auraSound, p.sound, p.countTo }
+  local others = { p.testBtn, p.templateBtn, p.deleteBtn }
   local function overlap(a, b) return a[1] < b[3] - 0.5 and b[1] < a[3] - 0.5 and a[2] < b[4] - 0.5 and b[2] < a[4] - 0.5 end
   -- a dropdown or slider row is 32 high (UI.CONTROL_ROW_H) with its control about 20 high in its middle
   local function box(m) local r = rect(m, f) if rawget(m, "opts") then return { r[1], r[2] + 6, r[3], r[4] - 6 } end return r end
   for _, part in ipairs(parts) do
     local r = rect(part, f)
-    assert(r[1] >= pr[1] and r[3] <= pr[1] + 12 + 351 + 0.5, "inside the left column: " .. tostring(part.label or part.text) .. " " .. r[1] .. ".." .. r[3])
+    assert(r[1] >= pr[1] and r[3] <= pr[3] - 12 + 0.5, "inside the panel: " .. tostring(part.label or part.text) .. " " .. r[1] .. ".." .. r[3])
     assert(r[4] <= pr[4] - 10 - 24 - 1, "above the bottom row (the marker tick and the buttons): " .. tostring(part.label or part.text) .. " " .. r[4])
     for _, o in ipairs(others) do
       assert(not overlap(box(part), box(o)), tostring(part.label or part.text) .. " overlaps " .. tostring(o.label or o.text))
@@ -1816,6 +1817,164 @@ check("mech shield: the section fits the left column, clear of Also, the marker 
   edges(f, "mechanics with the shield section, large text")
   TEXT_SCALE = nil
   CRT.db.alerts.shieldPulls = nil
+  assert(#errors == 0, tostring(errors[1]))
+end)
+
+-- The panel's subtabs (Alerts/SubTabs.lua): When, Looks, Sound and speech, Shield bar under the header, at the approved
+-- mock-up's sizes, each holding its controls; one tab's controls on show at a time; Test and Save as template on every
+-- tab; a dot on a tab while something on it is on; the tab stays when another row is picked.
+local SUBTABS = { "when", "looks", "sound", "shield" }
+local function onTab(p)
+  local s = p.shield
+  return {
+    when = { p.showFrom, p.linger, p.times, p.timesEdit, p.timelineBtn },
+    looks = { p.checks.alert, p.checks.text, p.checks.icon, p.checks.bar, p.checks.circle, p.checks.timeline, p.textEdit,
+      p.iconType, p.idEdit, p.colorSwatch, p.colorDefault, p.colorLabel, p.barFill, p.countTo, p.ticksEdit, p.ticksLabel },
+    sound = { p.sound, p.auraSound, p.also.speak, p.speakAt, p.also.count, p.also.glow },
+    shield = { s.check, s.unitRow, s.lengthRow, s.any, s.lastText },
+  }
+end
+local function visibleIn(m, root) local x = m while x and x ~= root do if not x.shown then return false end x = x.parent end return x == root end
+
+check("mech subtabs: four tabs under the header, in order, at the mock-up's sizes", function()
+  local f = fresh()
+  local p = f.panel
+  local t = p.tabs
+  assert(t and table.concat(t.keys, ",") == table.concat(SUBTABS, ","), "the four tabs, in order: " .. tostring(t and table.concat(t.keys, ",")))
+  local labels, x = {}, 12
+  for i, key in ipairs(t.keys) do
+    local b = t.buttons[key]
+    labels[i] = b.text.text
+    local pt = b.pts[#b.pts]
+    assert(b.parent == p.content and pt[1] == "TOPLEFT" and pt[2] == x and pt[3] == -66, key .. " at " .. tostring(pt[2]) .. ", " .. tostring(pt[3]))
+    assert(b.h == 24 and b.w == (key == "sound" and 150 or 118), key .. " is " .. tostring(b.w) .. " x " .. tostring(b.h))
+    x = x + b.w + 4
+  end
+  assert(table.concat(labels, ",") == "When,Looks,Sound and speech,Shield bar", table.concat(labels, ","))
+  -- the rule under them, the header above them
+  assert(t.rule and t.rule.pts[1][3] == -90, "a rule under the tabs")
+  rects = {}
+  local tabTop = rect(t.buttons.when, f)[2]
+  -- a dropdown row is 32 high (UI.CONTROL_ROW_H) with its control about 20 high in its middle
+  local function bottom(m) return rect(m, f)[4] - (rawget(m, "opts") and 6 or 0) end
+  for _, m in ipairs({ p.forDrop, p.saveAs, p.alertMe, p.noteStatus, p.name, p.icon }) do
+    assert(m.parent == p.content, "the header stays outside the tabs: " .. tostring(m.label or m.text))
+    assert(bottom(m) <= tabTop + 0.5, "above the tabs: " .. tostring(m.label or m.text) .. " ends at " .. bottom(m) .. ", the tabs start at " .. tabTop)
+  end
+  -- each control is built into its own tab's frame
+  for key, list in pairs(onTab(p)) do
+    for i, m in ipairs(list) do
+      assert(m.parent == t.frames[key], key .. " control " .. i .. " (" .. tostring(rawget(m, "label") or rawget(m, "text")) .. ") on its tab")
+    end
+  end
+  -- Test, Save as template and the message stay outside the tabs
+  for _, m in ipairs({ p.testBtn, p.templateBtn, p.message }) do assert(m.parent == p.content, "outside the tabs: " .. tostring(m.text)) end
+  assert(#errors == 0, tostring(errors[1]))
+end)
+
+check("mech subtabs: one tab's controls on show, Test and Save as template on every tab, nothing overlapping", function()
+  local f = fresh()
+  local p = f.panel
+  local list = onTab(p)
+  local function overlap(a, b) return a[1] < b[3] - 0.5 and b[1] < a[3] - 0.5 and a[2] < b[4] - 0.5 and b[2] < a[4] - 0.5 end
+  local function box(m) local r = rect(m, f) if rawget(m, "opts") then return { r[1], r[2] + 6, r[3], r[4] - 6 } end return r end
+  for _, key in ipairs(SUBTABS) do
+    click(p.tabs.buttons[key])
+    assert(p.tabs:Current() == key and p.tabs.buttons[key].tabSelected == true, key .. " selected")
+    for other, ctrls in pairs(list) do
+      for i, m in ipairs(ctrls) do
+        local want = other == key
+        -- a control the tab itself hides (the times box while the timeline has times) only counts when it shows
+        if want then
+          assert(visibleIn(m.parent, f), key .. ": control " .. i .. "'s tab on show")
+        else
+          assert(not visibleIn(m, f), key .. ": " .. other .. " control " .. i .. " hidden")
+        end
+      end
+    end
+    assert(visibleIn(p.testBtn, f) and visibleIn(p.templateBtn, f), key .. ": Test and Save as template on show")
+    -- the tab's controls, the header and the bottom row: none overlapping another
+    rects = {}
+    local shown = { p.saveAs, p.forDrop, p.alertMe, p.testBtn, p.templateBtn, p.tabs.buttons.when, p.tabs.buttons.shield }
+    for _, m in ipairs(list[key]) do if visibleIn(m, f) then shown[#shown + 1] = m end end
+    for i = 1, #shown do
+      for j = i + 1, #shown do
+        assert(not overlap(box(shown[i]), box(shown[j])), key .. ": " .. tostring(rawget(shown[i], "label") or rawget(shown[i], "text")) .. " overlaps "
+          .. tostring(rawget(shown[j], "label") or rawget(shown[j], "text")))
+      end
+    end
+    edges(f, key .. " tab")
+  end
+  click(p.tabs.buttons.when)
+  assert(#errors == 0, tostring(errors[1]))
+end)
+
+check("mech subtabs: a tab's dot follows its settings", function()
+  local f = fresh()
+  local p = f.panel
+  local dots = p.tabs.buttons
+  setCheck(f.rows[1].check, true)
+  local _, id = only()
+  assert(not dots.when.dot.shown, "When has no dot")
+  -- Shield bar: only while the shield bar is on
+  assert(not dots.shield.dot.shown, "no shield bar, no dot")
+  setCheck(p.shield.check, true)
+  assert(R:Get(ENC, id).absorb ~= nil and dots.shield.dot.shown, "Shield bar on: its dot")
+  setCheck(p.shield.check, false)
+  assert(R:Get(ENC, id).absorb == nil and not dots.shield.dot.shown, "Shield bar off: the dot goes")
+  -- Sound and speech: a new alert speaks its text
+  assert(dots.sound.dot.shown, "Speak the text on: a dot")
+  setCheck(p.also.speak, false)
+  assert(not dots.sound.dot.shown, "nothing on Sound and speech: no dot")
+  setCheck(p.also.glow, true)
+  assert(dots.sound.dot.shown, "Glow at 0: a dot")
+  setCheck(p.also.glow, false)
+  p.sound.opts.set("READY_CHECK")
+  assert(dots.sound.dot.shown, "a sound: a dot")
+  p.sound.opts.set(CRT.AlertDraft.NO_SOUND)
+  assert(not dots.sound.dot.shown, "no sound: no dot")
+  -- Looks: while a Show as box is ticked
+  assert(dots.looks.dot.shown, "Show as ticked: a dot")
+  for _, k in ipairs(CRT.AlertDraft.SHOW_KEYS) do if p.checks[k].checked then setCheck(p.checks[k], false) end end
+  assert(not dots.looks.dot.shown, "nothing shown: no dot")
+  -- a tab with its dot stays at least as wide as its label, the dot and the padding
+  local b = dots.sound
+  assert(b.dot.pts[1][1] == "LEFT" and b.dot.pts[1][2] == b.text and b.dot.pts[1][3] == "RIGHT", "the dot after the label")
+  assert(#errors == 0, tostring(errors[1]))
+end)
+
+check("mech subtabs: the tab stays when another row or boss is picked, and for the session", function()
+  local f = fresh()
+  local p = f.panel
+  click(p.tabs.buttons.sound)
+  click(f.rows[2].frame)
+  assert(p.tabs:Current() == "sound" and p.tabs.frames.sound.shown and not p.tabs.frames.when.shown, "another row: still Sound and speech")
+  dropdowns["Boss"].opts.set(5555)
+  dropdowns["Boss"].opts.set(ENC)
+  assert(p.tabs:Current() == "sound", "another boss and back: still Sound and speech")
+  CRT.NoteReminders.Refresh()
+  assert(p.tabs:Current() == "sound", "a redraw keeps it")
+  -- the tab built again (a /reload is a new session): the session's pick
+  local g = fresh()
+  assert(g.panel.tabs:Current() == "sound" and g.panel.tabs.frames.sound.shown, "built again: the tab picked last")
+  click(g.panel.tabs.buttons.when)
+  assert(CRT.AlertSubTabs.Picked("mechanics") == "when", "remembered")
+  assert(#errors == 0, tostring(errors[1]))
+end)
+
+check("mech subtabs: a fifth tab is one more entry in the list", function()
+  local list = {}
+  for i, e in ipairs(CRT.AlertSubTabs.LIST) do list[i] = e end
+  list[#list + 1] = { key = "assign", label = "Assign", width = 118, on = function() return true end }
+  local host = mock("Frame")
+  local s = CRT.AlertSubTabs.Build(host, { owner = "fifth", x = 12, y = -66, list = list })
+  assert(table.concat(s.keys, ",") == "when,looks,sound,shield,assign", table.concat(s.keys, ","))
+  local b = s.buttons.assign
+  assert(b.pts[1][2] == 12 + 118 + 4 + 118 + 4 + 150 + 4 + 118 + 4 and b.w == 118, "after the others: " .. tostring(b.pts[1][2]))
+  assert(s.buttons.when.w == 118 and s.buttons.sound.w == 150, "the others unchanged")
+  assert(s.frames.assign and not s.frames.assign.shown and s:Current() == "when", "its frame, hidden until picked")
+  s:Paint({ show = {} })
+  assert(b.dot.shown, "its own dot")
   assert(#errors == 0, tostring(errors[1]))
 end)
 

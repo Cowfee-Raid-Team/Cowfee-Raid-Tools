@@ -14,7 +14,7 @@ const FILES = [
   'CRT_Modules/Alerts/Rules.lua', 'CRT_Modules/Alerts/Engine.lua', 'CRT_Modules/Alerts/Speech.lua',
   'CRT_Modules/Notes/Parse.lua', 'CRT_Modules/Notes/Data.lua', 'CRT_Modules/Notes/Engine.lua',
   'CRT_Modules/Alerts/Reminders.lua', 'CRT_Modules/Alerts/Special.lua', 'CRT_Modules/Alerts/Absorb.lua', 'CRT_Modules/Alerts/ShieldPulls.lua',
-  'CRT_Modules/Alerts/Draft.lua', 'CRT_Modules/Alerts/SpellLookup.lua', 'CRT_Modules/Alerts/ShieldSection.lua', 'CRT_Modules/Alerts/Editor.lua',
+  'CRT_Modules/Alerts/Draft.lua', 'CRT_Modules/Alerts/SpellLookup.lua', 'CRT_Modules/Alerts/ShieldSection.lua', 'CRT_Modules/Alerts/SubTabs.lua', 'CRT_Modules/Alerts/Editor.lua',
 ];
 const harness = `
 local sources = { ... }
