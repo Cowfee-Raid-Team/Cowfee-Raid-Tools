@@ -9,7 +9,7 @@ const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate();
 lualib.luaL_openlibs(L);
 const harness = `
-local registrySrc, seasonSrc, bossSrc, coreSrc, latticeSrc, dataSrc = ...
+local registrySrc, seasonSrc, bossSrc, coreSrc, latticeSrc, dataSrc, commSrc = ...
 local fails, passes = 0, 0
 local function check(ok, what) if ok then passes = passes + 1 else fails = fails + 1 print("FAIL " .. what) end end
 local function eq(a, b, what) check(a == b, what .. " (got " .. tostring(a) .. ", want " .. tostring(b) .. ")") end
@@ -29,7 +29,7 @@ local defaults = assert(load("return " .. assert(coreSrc:match("\\n    (interrup
 CRT.db = { interrupts = defaults }
 local registered
 CRT.AddonCheck = { Register = function(_, def) registered = def end }
-for _, src in ipairs({ registrySrc, seasonSrc, bossSrc, latticeSrc, dataSrc }) do assert(load(src))("CowfeeRaidTools", CRT) end
+for _, src in ipairs({ registrySrc, seasonSrc, bossSrc, commSrc, latticeSrc, dataSrc }) do assert(load(src))("CowfeeRaidTools", CRT) end
 local I = CRT.Interrupts
 check(I ~= nil, "CRT.Interrupts is made")
 
@@ -113,6 +113,10 @@ I:SetUse(id, "own"); eq(select(2, I:List(id)), "own", "use: back to own")
 eq(select(1, I:Mine(id)), 3, "use: your number from your own")
 I:ReceiveShared(id, FULL, "Brenn")
 eq(select(2, I:List(id)), "raid", "use: a new share switches back")
+fired = 0
+I:SetName(id, 1, 3, I:Own(id)[1][3]); I:SetName(id, 1, 3, " " .. I:Own(id)[1][3] .. "-Realm ")
+eq(select(2, I:List(id)), "raid", "set: the same name again (a field left unchanged) keeps the raid's list in use")
+eq(fired, 0, "set: and changes nothing")
 I:ReceiveShared(9999, full(), "Brenn")
 eq(select(1, I:Mine(id)), 2, "receive: other bosses untouched")
 I:Clear(id); eq(I:Own(id)[1][3], "", "clear: empties own only")
@@ -161,8 +165,8 @@ if fails > 0 then error("failures") end
 const dir = process.argv[2];
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 for (const f of ['CRT_Data/Bosses/Registry.lua', 'CRT_Dev/Tests/SamplePack/Season.lua', 'CRT_Dev/Tests/SamplePack/NekzaliTheSoulcoiler.lua',
-  'CRT_Core/Core.lua', 'CRT_Modules/Interrupts/Lattice.lua', 'CRT_Modules/Interrupts/Data.lua']) {
+  'CRT_Core/Core.lua', 'CRT_Modules/Interrupts/Lattice.lua', 'CRT_Modules/Interrupts/Data.lua', 'CRT_Core/Comm.lua']) {
   const p = path.join(dir, f);
   lua.lua_pushstring(L, to_luastring(fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : 'error("missing ' + f + '")'));
 }
-if (lua.lua_pcall(L, 6, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
+if (lua.lua_pcall(L, 7, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }

@@ -30,15 +30,7 @@ if CRT.Bosses and CRT.Bosses.DeclareField then
     CRT.Bosses:DeclareField("kick list choices", "interrupts", "use")
 end
 
-local function readable(v)
-    if issecretvalue then
-        local ok, secret = pcall(issecretvalue, v)
-        if not ok or secret then
-            return false
-        end
-    end
-    return true
-end
+local readable = CRT.Comm.Readable -- false for nil and for a secret
 
 function Interrupts:OnChange(fn)
     self.listeners[#self.listeners + 1] = fn
@@ -201,13 +193,18 @@ function Interrupts:List(encounterID)
     return nil, nil
 end
 
--- Edits one slot of your own list; your own list is then the one in use.
+-- Edits one slot of your own list; your own list is then the one in use. The same name again (a field focused and
+-- left, the picker's own pick) changes nothing, so it never drops the raid's list.
 function Interrupts:SetName(encounterID, g, s, name)
     local own = self:Own(encounterID)
     if not (own and own[g] and own[g][s] ~= nil) then
         return
     end
-    own[g][s] = clean(name)
+    name = clean(name)
+    if name == own[g][s] then
+        return
+    end
+    own[g][s] = name
     if self:Shared(encounterID) then
         db().use[encounterID] = "own"
     end
