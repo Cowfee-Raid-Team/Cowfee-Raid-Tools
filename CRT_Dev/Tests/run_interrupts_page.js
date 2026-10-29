@@ -14,12 +14,14 @@ const L = lauxlib.luaL_newstate();
 lualib.luaL_openlibs(L);
 const dir = process.argv[2];
 const harness = themeLua(dir) + `
-local registrySrc, seasonSrc, bossSrc, commSrc, latticeSrc, dataSrc, anchorSrc, kickSrc, pageSrc = ...
+local registrySrc, seasonSrc, bossSrc, commSrc, latticeSrc, setupSrc, dataSrc, anchorSrc, kickSrc, pageSrc, parseSrc, notesSrc, editModelSrc, noteBlockSrc, gridSrc, editorSrc, exportSrc = ...
 local fails, passes = 0, 0
 local function check(ok, what) if ok then passes = passes + 1 else fails = fails + 1 print("FAIL " .. what) end end
 local function eq(a, b, what) check(a == b, what .. " (got " .. tostring(a) .. ", want " .. tostring(b) .. ")") end
 local function plain(s) return (tostring(s or ""):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")) end
 time = function() return 1790000000 end
+date = function() return "2026-10-29 12:00" end
+InCombatLockdown = function() return false end
 GetTime = function() return 100 end
 wipe = function(t) for k in pairs(t) do t[k] = nil end return t end
 Ambiguate = function(n) return (n:gsub("%-.*$", "")) end
@@ -109,6 +111,9 @@ function UI.SoundDropdown(parent, text, opts) return row("sound", parent, text, 
 function UI.Slider(parent, text, opts) return row("slider", parent, text, opts, 44) end
 function UI.PickColor(color, set, opts) picked[#picked + 1] = { color = color, set = set, opts = opts } end
 function UI.Window(name, opts) local w = mock("Frame") w.content = mock("Frame", w) w.name, w.opts = name, opts w.shown = false return w end
+function UI.ScrollGutter(w) return 6 + (w or 18) end
+local skinnedBars = 0
+function UI:SkinScrollBar() skinnedBars = skinnedBars + 1 end
 local CRT = { UI = UI, db = { interrupts = { enabled = false, own = {}, shared = {}, use = {}, accept = true, test = false,
   plates = { on = true, all = false, size = 50, font = 24, offset = 20, mineBox = { 0, 1, 0, 1 }, mineText = { 1, 0, 0, 1 }, box = { 1, 0, 0, 1 }, text = { 1, 1, 1, 1 } },
   reminder = { on = true, sound = "none", size = 48 } } } }
@@ -126,15 +131,23 @@ CRT.AddonCheck = { Register = function() end, Roster = function() return ROSTER 
   OnChange = function(_, fn) checkListeners[#checkListeners + 1] = fn end, MaybeCheck = function() asked = asked + 1 end, Check = function() end }
 local previewed = 0
 CRT.InterruptReminder = { Preview = function() previewed = previewed + 1 end }
-for _, src in ipairs({ registrySrc, seasonSrc, bossSrc, commSrc, latticeSrc, dataSrc }) do assert(load(src))("CowfeeRaidTools", CRT) end
-CRT.Bosses:Get(3470).interrupts = { difficulty = 16, anchor = { unit = "boss2", cycle = 7, ordinal = 5, times = { 33, 94, 188, 249, 343, 404 } },
-  firstCast = 4.5, spacing = 1.0, tolerance = 0.3, adds = 10, perNumber = 2, window = 25,
-  groups = { "Left", "Right" }, slots = 5, label = "Kick", note = "Mythic only here." }
+CRT.db.notes = { list = {}, nextId = 1 }
+CRT.db.classCache = { tovi = "WARRIOR" }
+-- Raid Groups: one layout, as the note editor's Players from reads it
+CRT.Groups = { Presets = function() return { { id = 7, name = "Main" } } end,
+  Find = function(_, id) if id == 7 then return { slots = { "Tovi-Kazzak", "", "Solex", "Brenn" } } end end }
+for _, src in ipairs({ registrySrc, seasonSrc, bossSrc, commSrc, parseSrc, notesSrc, editModelSrc, latticeSrc, setupSrc, dataSrc }) do assert(load(src))("CowfeeRaidTools", CRT) end
+CRT.Bosses:Get(3470).interrupts = { { difficulty = 16, label = "Kick", groups = { { key = "left", label = "Left", slots = 5 }, { key = "right", label = "Right", slots = 5 } },
+  timing = { anchor = { unit = "boss2", cycle = 7, ordinal = 5, times = { 33, 94, 188, 249, 343, 404 } },
+  firstCast = 4.5, spacing = 1.0, tolerance = 0.3, adds = 10, perNumber = 2, window = 25 }, note = "Mythic only here." } }
 -- a second boss with another shape: one group of seven
-CRT.Bosses:Register({ encounterID = 3421, name = "Second Boss", season = "sample", interrupts = { difficulty = 16,
-  anchor = { unit = "boss1", cycle = 3, ordinal = 1, times = { 20 } }, firstCast = 2, spacing = 1.5, tolerance = 0.3, adds = 7,
-  perNumber = 1, window = 20, groups = { "North" }, slots = 7, label = "Stop" } })
-for _, src in ipairs({ anchorSrc, kickSrc, pageSrc }) do assert(load(src))("CowfeeRaidTools", CRT) end
+CRT.Bosses:Register({ encounterID = 3421, name = "Second Boss", season = "sample", interrupts = { { difficulty = 16, label = "Stop",
+  groups = { { key = "north", label = "North", slots = 7 } },
+  timing = { anchor = { unit = "boss1", cycle = 3, ordinal = 1, times = { 20 } }, firstCast = 2, spacing = 1.5, tolerance = 0.3, adds = 7,
+  perNumber = 1, window = 20 } } } })
+local shownExport
+CRT.ConsumablesTools = { ShowText = function(_, _, text) shownExport = text end }
+for _, src in ipairs({ anchorSrc, kickSrc, noteBlockSrc, pageSrc, gridSrc, editorSrc, exportSrc }) do assert(load(src))("CowfeeRaidTools", CRT) end
 local I, P = CRT.Interrupts, CRT.InterruptsPage
 local T = P.TEXT
 local id = 3470
@@ -206,9 +219,16 @@ grouped, lead = true, true; P.Refresh()
 local pick = P.pickers[1][2]
 local options = pick.opts.options()
 eq(options[1].key, "", "picker: an empty choice first")
-eq(options[2].key, "Brenn", "picker: the group sorted")
-eq(plain(options[4].label), "Solex", "picker: names without realm")
-check(options[4].label:find("|cff40c7eb", 1, true) == 1, "picker: in class colour: " .. options[4].label)
+check(options[2].title and options[2].label == "In your group", "picker: then your group, under its heading")
+eq(options[3].key, "Brenn", "picker: the group sorted")
+eq(plain(options[4].label), "Quick", "picker: names without realm")
+check(options[5].label:find("|cff40c7eb", 1, true) == 1, "picker: in class colour: " .. options[5].label)
+check(options[6] and options[6].title and options[6].label == "Raid Groups: Main", "picker: then each Raid Groups layout, under its name")
+eq(options[7] and options[7].key, "Tovi", "picker: a layout's players, without realm")
+check(options[7] and options[7].label:find("|cffc79c6e", 1, true) == 1, "picker: a layout player's class from the class cache")
+eq(options[8] and options[8].key, "Solex", "picker: the layout's slots in order, empty ones left out")
+eq(#options, 9, "picker: nothing else")
+eq(pick.opts.maxHeight, P.LAYOUT.pickMenuH, "picker: a long list scrolls")
 pick.opts.set("Brenn")
 eq(I:Own(id)[1][2], "Brenn", "picker: sets your own slot")
 -- Edit a field by typing
@@ -242,6 +262,31 @@ eq(who.Brenn, "Interrupts off", "who: a CRT with Interrupts off")
 eq(who.Quick, "No CRT", "who: no CRT")
 eq(who.P1, "not in your group", "who: a name not in the group")
 check(P.WhoText("Solex", { { name = "Solex", row = ROSTER[1] } }):find("|cff", 1, true) == 1, "who: in colour")
+-- each player once, in the order they first appear, however many slots they fill (Alex's screenshot: Solex four times)
+for s = 1, 4 do I:SetName(id, 2, s, "Solex") end
+I:SetName(id, 1, 1, "Brenn"); P.Refresh()
+local order, count = {}, {}
+for _, r in ipairs(P.whoRows) do
+  local n = plain(r.name.text)
+  if n ~= "" then order[#order + 1] = n count[n] = (count[n] or 0) + 1 end
+end
+eq(count.Solex, 1, "who: Solex once though on five slots")
+eq(count.Brenn, 1, "who: Brenn once though on two")
+eq(table.concat(order, ","), "Brenn,P2,Solex,Quick,P10", "who: in the order they first appear on the list")
+eq(table.concat(P.WhoNames({ { "A", "b", "" }, { "B", "a", "C" } }), ","), "A,b,C", "who: case left out, empty slots left out")
+eq(#P.WhoNames({}), 0, "who: nobody on an empty list")
+check(P.checkNow and P.checkNow.text == T.check and P.checkNow.shown, "who: Check now stays")
+do
+  local list = { {} }
+  for i = 1, 20 do list[1][i] = "N" .. i end
+  local realList = I.List
+  I.List = function() return list, "own" end
+  P.Refresh()
+  eq(plain(P.whoRows[#P.whoRows].name.text), "and 5 more", "who: more names than rows end in how many more")
+  I.List = realList
+  P.Refresh()
+end
+fillOwn(true); I:SetName(id, 1, 4, "Brenn"); I:SetName(id, 1, 5, "Quick"); P.Refresh()
 local how = {}
 for i, fs in ipairs(P.howLines) do how[i] = fs.text end
 eq(how[1], "A wave starts at cast 5 of every 7 from boss2.", "how: the anchor")
@@ -324,18 +369,223 @@ end
 local LAY = P.LAYOUT
 local function yOf(f) return f.points[#f.points] and f.points[#f.points][3] end
 local clearY5 = yOf(P.clear)
-P.bossRow.opts.set(3421)
+eq(clearY5, LAY.gridY - (LAY.headH + 5 * LAY.rowH) - LAY.buttonGap, "shape: the buttons sit under five rows")
+check(P.headings[1].points[1][2] == 0 and P.headings[2].points[1][2] == LAY.colW, "shape: two groups side by side")
+eq(P.gridScroll.h, LAY.headH + 5 * LAY.rowH, "shape: the list as tall as its rows")
+P.bossRow.opts.set("3421:16")
 eq(P.headings[1].text, "North", "shape: the group heading")
 check(not P.headings[2].shown, "shape: the second group's heading hidden")
 check(P.fields[1][7].shown and P.slotLabels[1][7].text == "Stop #7", "shape: seven slots, labelled from the block")
 check(not P.fields[2][1].shown and not P.pickers[2][1].shown, "shape: the second group's fields hidden")
-eq(yOf(P.clear), LAY.gridY - LAY.headH - 6 * LAY.rowH - LAY.fieldH - LAY.buttonGap, "shape: the buttons sit under seven rows")
+eq(yOf(P.clear), LAY.gridY - (LAY.headH + 7 * LAY.rowH) - LAY.buttonGap, "shape: the buttons sit under seven rows")
 check(yOf(P.clear) < clearY5, "shape: lower than under five")
 eq(#P.howLines >= 6 and P.howLines[4].text, "7 adds a wave, 1 to a number.", "shape: How the numbers are worked out follows")
-P.bossRow.opts.set(id)
+P.bossRow.opts.set("3470:16")
 check(P.headings[2].shown and P.fields[2][1].shown and not P.fields[1][7].shown, "shape: back to two groups of five")
 eq(yOf(P.clear), clearY5, "shape: the buttons back where they were")
 eq(P.slotLabels[1][1].text, "Kick #1", "shape: the labels back")
+
+-- an untimed setup by raid marker on another difficulty: listed with its difficulty, marker icons on its headings
+GetDifficultyInfo = function(d) if d == 16 then return "Mythic" elseif d == 15 then return "Heroic" end end
+CRT.Bosses:Get(3470).interrupts[2] = { difficulty = 15, spell = { name = "Wail of Terror" },
+  groups = { { key = "skull", label = "Skull add", marker = 8, slots = 4 }, { key = "cross", label = "Cross add", marker = 7, slots = 4 } } }
+I:ClearCache()
+eq(#P.BossOptions(), 3, "untimed: listed")
+eq(P.BossOptions()[2].label, "Nek'zali the Soulcoiler \\194\\183 Heroic", "untimed: with its difficulty")
+P.bossRow.opts.set("3470:15")
+check(P.headings[1].text:find("UI-RaidTargetingIcon_8", 1, true) and P.headings[1].text:find("Skull add", 1, true), "untimed: the heading has its marker: " .. tostring(P.headings[1].text))
+eq(P.slotLabels[2][4].text, "Kick #4", "untimed: four slots a group")
+check(not P.fields[1][5].shown, "untimed: no fifth slot")
+eq(P.howLines[1].text, "Kicks: Wail of Terror.", "how: the spell")
+check(P.howLines[4].text:find("Skull add: 4 to kick.", 1, true), "how: each group and its marker: " .. tostring(P.howLines[4].text))
+-- Test on trash takes the setup shown
+P.test.checked = true; P.test.scripts.OnClick(P.test)
+eq(CRT.InterruptAnchor.key, "3470:15", "test: the setup shown")
+P.test.checked = false; P.test.scripts.OnClick(P.test)
+
+-- many groups: the list scrolls, the buttons stay inside the page
+I:SetCustom("3470:15", { groups = (function() local g = {} for i = 1, 8 do g[i] = { key = "g" .. i, label = "Add " .. i, marker = i, slots = 10 } end return g end)() })
+P.Refresh()
+check(P.BossOptions()[2].label:find("your setup", 1, true), "custom: named as yours in the list")
+check(P.fields[8] and P.fields[8][10] and P.fields[8][10].shown, "scroll: eight groups of ten, all made")
+check(P.gridContentH > LAY.gridMaxH, "scroll: taller than the room")
+eq(P.gridScroll.h, LAY.gridMaxH, "scroll: the list scrolls past its room")
+eq(P.gridChild.h, P.gridContentH, "scroll: the scroll child holds it all")
+eq(yOf(P.clear), LAY.gridY - LAY.gridMaxH - LAY.buttonGap, "scroll: the buttons under the room")
+check(yOf(P.clear) - 22 - LAY.testGap - 24 >= -(UI.PAGE_H - 66), "scroll: and inside the page")
+check(P.fields[3][1].points[1][2] == LAY.editX and P.headings[3].points[1][3] < 0, "scroll: the third group starts the next band")
+I:DropCustom("3470:15")
+
+-- Write to the raid note
+P.bossRow.opts.set("3470:15")
+for s, n in ipairs({ "Solex", "Brenn", "Quick", "Tovi" }) do I:SetName("3470:15", 1, s, n) end
+P.Refresh()
+check(P.write.enabled, "write: on for the leader")
+P.write.scripts.OnClick(P.write)
+local noteID = CRT.Notes:FindExact(3470, "Heroic")
+check(noteID and CRT.Notes:Get(noteID).raw:find("intstart\\nSolex Brenn Quick Tovi\\nintend", 1, true), "write: the block in the Heroic note")
+check(printed[#printed] == 'Wrote the kick list into the raid note "' .. CRT.Notes:Get(noteID).name .. '".', "write: names the note: " .. tostring(printed[#printed]))
+lead = false; P.Refresh()
+check(not P.write.enabled and P.write.crtReason, "write: off for a raider, with why")
+lead = true; P.Refresh()
+-- opening a boss reads its note's block into the raid's list
+CRT.Notes:UpdateRaw(noteID, "EncounterID:3470;Difficulty:Heroic\\nintstart\\nA B C D\\nE F G H\\nintend\\n")
+P.bossRow.opts.set("3470:16"); P.bossRow.opts.set("3470:15")
+eq(select(2, I:List("3470:15")), "raid", "read: opening the boss reads its note")
+eq(I:Shared("3470:15").list[2][1], "E", "read: the names")
+-- a block with a gap left out is not read, and says so once
+CRT.Notes:UpdateRaw(noteID, "EncounterID:3470;Difficulty:Heroic\\nintstart\\nA B C\\nintend\\n")
+local said = #printed
+P.bossRow.opts.set("3470:16"); P.bossRow.opts.set("3470:15")
+eq(#printed, said + 1, "read: a block that doesn't fit says so")
+check(printed[#printed]:find("doesn't fit", 1, true), "read: why: " .. tostring(printed[#printed]))
+P.bossRow.opts.set("3470:16"); P.bossRow.opts.set("3470:15")
+eq(#printed, said + 1, "read: once")
+eq(I:Shared("3470:15").list[2][1], "E", "read: the raid's list kept")
+
+-- Edit setup opens the setup editor on the setup shown
+check(P.editSetup and P.editSetup.text == T.editSetup, "edit: the button beside Boss")
+P.editSetup.scripts.OnClick(P.editSetup)
+local E = CRT.InterruptSetupEditor
+check(E.window and E.window.shown, "edit: the editor opens")
+eq(E.Draft().boss, 3470, "edit: on the boss shown"); eq(E.Draft().difficulty, 15, "edit: and its difficulty")
+eq(#E.Draft().groups, 2, "edit: its groups to start from")
+CRT.Bosses:Get(3470).interrupts[2] = nil
+I:ClearCache()
+P.bossRow.opts.set("3470:16")
+
+-- the setup editor: a setup of your own for a boss and difficulty with none
+do
+  local EL = E.LAYOUT
+  eq(E.window.opts.kind, "dialog", "editor: a UI.Window dialog")
+  E:Open("3421:15")
+  local d = E.Draft()
+  check(d.boss == 3421 and d.difficulty == 15, "editor: a boss and difficulty with no setup")
+  eq(#d.groups, 1, "editor: starts with one group"); eq(d.groups[1].label, "Group 1", "editor: named Group 1"); eq(d.groups[1].slots, 4, "editor: of four")
+  local rowsShown = 0
+  for _, r in ipairs(rows) do if r.opts.options == E.MarkerOptions and r.shown then rowsShown = rowsShown + 1 end end
+  eq(rowsShown, 1, "editor: one group row shown")
+  local markers = E.MarkerOptions()
+  eq(#markers, 8, "editor: the eight markers, no none (an untimed group needs one)")
+  check(markers[1].label:find("Skull", 1, true) and markers[1].label:find("RaidTargetingIcon_8", 1, true), "editor: Skull first, with its icon")
+  eq(E.Draft().groups[1].marker, 8, "editor: a new group takes Skull")
+  E.addGroup.scripts.OnClick(E.addGroup)
+  eq(#E.Draft().groups, 2, "editor: + Group adds one")
+  eq(E.Draft().groups[2].marker, 7, "editor: the next takes the first marker free, Cross")
+  -- the rows: label typed, marker picked, slots slid
+  local markerRows, slotRows = {}, {}
+  for _, r in ipairs(rows) do
+    if r.opts.options == E.MarkerOptions then markerRows[#markerRows + 1] = r end
+    if r.label == E.TEXT.slots then slotRows[#slotRows + 1] = r end
+  end
+  eq(#markerRows, 8, "editor: a row per possible group, pooled")
+  check(slotRows[1].rowKind == "slider" and slotRows[1].opts.min == 1 and slotRows[1].opts.max == 10, "editor: kickers 1 to 10 on a slider")
+  markerRows[2].opts.set(8)
+  eq(E.Draft().groups[2].marker, 8, "editor: Skull picked for group 2")
+  eq(E.Draft().groups[1].marker, 7, "editor: group 1 takes group 2's Cross in exchange")
+  slotRows[2].opts.set(3)
+  local labelEdits = {}
+  for _, f in ipairs(all) do if f.kind == "EditBox" and f.parent == E.window.content and f.w == EL.labelEditW then labelEdits[#labelEdits + 1] = f end end
+  labelEdits[1].text = "Cross add"; labelEdits[1].scripts.OnTextChanged(labelEdits[1], true)
+  labelEdits[2].text = "Skull add"; labelEdits[2].scripts.OnTextChanged(labelEdits[2], true)
+  E.spellName.text = "Wail of Terror"; E.spellName.scripts.OnTextChanged(E.spellName, true)
+  E.spellID.text = "1234"; E.spellID.scripts.OnTextChanged(E.spellID, true)
+  E.addGroup.scripts.OnClick(E.addGroup)
+  local removes = {}
+  for _, f in ipairs(all) do if f.kind == "Button" and f.text == E.TEXT.remove then removes[#removes + 1] = f end end
+  removes[3].scripts.OnClick(removes[3])
+  eq(#E.Draft().groups, 2, "editor: Remove takes a group out")
+  E.save.scripts.OnClick(E.save)
+  check(I:IsCustom("3421:15"), "editor: Save keeps your setup")
+  local def = I:Def("3421:15")
+  eq(def.groups[1].label .. "/" .. def.groups[1].marker .. "/" .. def.groups[1].slots, "Cross add/7/4", "editor: group 1 as edited")
+  eq(def.groups[2].label .. "/" .. def.groups[2].marker .. "/" .. def.groups[2].slots, "Skull add/8/3", "editor: group 2 as edited")
+  eq(def.groups[1].key, "cross_add", "editor: a new group's key from its label")
+  eq(def.spell.name .. "/" .. def.spell.spellID, "Wail of Terror/1234", "editor: the spell and its ID")
+  eq(def.timing, nil, "editor: untimed")
+  eq(CRT.db.interrupts.setups[3421][15].groups[2].key, "skull_add", "editor: saved per boss and difficulty")
+  eq(P.Boss(), "3421:15", "editor: the page shows it")
+  -- a label changed later keeps the group's key, so the names stay with it
+  I:SetName("3421:15", 1, 1, "Solex")
+  E:Open("3421:15")
+  local relabel
+  for _, f in ipairs(all) do if f.kind == "EditBox" and f.parent == E.window.content and f.w == EL.labelEditW then relabel = f break end end
+  relabel.text = "X add"; relabel.scripts.OnTextChanged(relabel, true)
+  E.save.scripts.OnClick(E.save)
+  eq(I:Def("3421:15").groups[1].key, "cross_add", "editor: a relabelled group keeps its key")
+  eq(I:Own("3421:15")[1][1], "Solex", "editor: and its names")
+  eq(E.shipped.text, E.TEXT.delete, "editor: no shipped setup, so Delete my setup")
+  check(E.shipped.enabled, "editor: on for your own setup")
+  -- a timed shipped setup can't be saved over
+  E:Open("3470:16")
+  eq(#E.Draft().groups, 2, "editor: a shipped setup to start from")
+  check(not E.save.enabled and E.save.crtReason == I.TEXT.timed, "editor: Save greyed on a timed setup, with why")
+  E.save.scripts.OnEnter(E.save)
+  check(GameTooltip.lines[2] == I.TEXT.timed, "editor: its tooltip says why")
+  check(not E:Save(), "editor: and Save refuses it")
+  check(not I:IsCustom("3470:16") and I:Def("3470:16").timing ~= nil, "editor: the lattice kept")
+  eq(E.Draft().groups[1].marker, nil, "editor: a timed setup shown as shipped, no markers made up")
+  check(not E.addGroup.enabled and not E.spellName.enabled, "editor: a timed setup is read-only")
+  local tRows, tSlots = {}, {}
+  for _, r in ipairs(rows) do
+    if r.opts.options == E.MarkerOptions and r.shown then r.refresh() tRows[#tRows + 1] = r end
+    if r.label == E.TEXT.slots and r.shown then r.refresh() tSlots[#tSlots + 1] = r end
+  end
+  check(#tRows == 2 and tRows[1].enabled == false and tSlots[1].enabled == false, "editor: its markers and kickers greyed")
+  local tRemove
+  for _, f in ipairs(all) do if f.kind == "Button" and f.text == E.TEXT.remove and f.shown then tRemove = f break end end
+  check(tRemove and not tRemove.enabled, "editor: no Remove")
+  -- your own setup in place of an untimed shipped one, and back
+  CRT.Bosses:Get(3470).interrupts[2] = { difficulty = 15, groups = { { key = "skull", label = "Skull add", marker = 8, slots = 4 } } }
+  I:ClearCache()
+  E:Open("3470:15")
+  check(E.save.enabled, "editor: Save on for an untimed shipped setup")
+  E.save.scripts.OnClick(E.save)
+  check(I:IsCustom("3470:15"), "editor: your own in place of the shipped one")
+  E:Refresh()
+  eq(E.shipped.text, E.TEXT.shipped, "editor: Back to the shipped setup")
+  check(E.shipped.enabled, "editor: Back to the shipped setup on")
+  E.shipped.scripts.OnClick(E.shipped)
+  check(not I:IsCustom("3470:15") and I:Def("3470:15").groups[1].slots == 4, "editor: back to the shipped setup")
+  CRT.Bosses:Get(3470).interrupts[2] = nil
+  I:ClearCache()
+  -- inside its window
+  for _, f in ipairs(all) do
+    local p = f.points[1]
+    if f.parent == E.window.content and p and p[1] == "TOPLEFT" and type(p[2]) == "number" then
+      check(p[2] >= 0 and p[2] + (f.w or 0) <= EL.width - 16 and p[3] <= 0 and p[3] - (f.h or 0) >= -(EL.height - 26 - 16 - 22), "editor: inside the window (" .. tostring(f.label or f.text or f.kind) .. " at " .. p[2] .. ", " .. p[3] .. ")")
+    end
+  end
+
+  -- Export (dev only): the boss's setups as the boss file's block
+  local X = CRT.KickSetupExport
+  check(X ~= nil, "export: the dev file is loaded")
+  local exportButton
+  for _, f in ipairs(all) do if f.kind == "Button" and f.text == "Export" and f.parent == E.window.content then exportButton = f end end
+  check(exportButton ~= nil, "export: a button on the editor")
+  E:Open("3421:15")
+  exportButton.scripts.OnClick(exportButton)
+  check(shownExport and shownExport:find("interrupts = {", 1, true), "export: shows the block: " .. tostring(shownExport))
+  check(shownExport:find('{ key = "cross_add", label = "X add", marker = 7, slots = 4 },', 1, true), "export: each group on a line")
+  check(shownExport:find('spell = { name = "Wail of Terror", spellID = 1234 },', 1, true), "export: the spell")
+  local back = assert(load("return { " .. shownExport .. " }"))().interrupts
+  local read = CRT.InterruptSetup.Read(back)
+  check(read and #read == 2 and read[2].groups[2].key == "skull_add" and read[2].difficulty == 15, "export: every difficulty, reading back as the same setups")
+  check(read and read[1].timing and read[1].difficulty == 16, "export: the shipped Mythic one with its timing")
+  local timed = X.Text(I:Setups(3470))
+  local tback = CRT.InterruptSetup.Read(assert(load("return { " .. timed .. " }"))().interrupts)
+  check(tback and tback[1].timing and tback[1].timing.anchor.times[6] == 404 and tback[1].note == "Mythic only here.", "export: a timed setup keeps its timing and note")
+  check(X.Text({ { difficulty = 16, label = "Kick", spell = { name = "W" }, groups = { { key = "a", label = "A", slots = 1 } } } }):find("TODO id", 1, true), "export: a spell with no ID says where it comes from")
+  -- a share's shape is never exported
+  I:ReceiveShared("3421:14", { { "A", "B" } }, "Brenn", CRT.InterruptSetup.FromShape(14, "skull:8:2:Skull add", "Kick"))
+  check(I:Def("3421:14") ~= nil and not X.ForBoss(3421):find("difficulty = 14", 1, true), "export: a share's shape left out")
+  -- Delete my setup, for a boss and difficulty with nothing shipped
+  E:Open("3421:15")
+  E.shipped.scripts.OnClick(E.shipped)
+  check(not I:IsCustom("3421:15") and I:Def("3421:15") == nil, "editor: Delete my setup drops it")
+  check(printed[#printed]:find("Deleted your kick setup", 1, true), "editor: and says so")
+  P.bossRow.opts.set("3470:16")
+end
 
 -- every control inside the page area (UI.PAGE_W x UI.PAGE_H, under the tabs)
 local AREA_H = UI.PAGE_H - 66
@@ -364,8 +614,10 @@ if fails > 0 then error("failures") end
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 const FILES = ['CRT_Data/Bosses/Registry.lua', 'CRT_Dev/Tests/SamplePack/Season.lua', 'CRT_Dev/Tests/SamplePack/NekzaliTheSoulcoiler.lua',
-  'CRT_Core/Comm.lua', 'CRT_Modules/Interrupts/Lattice.lua', 'CRT_Modules/Interrupts/Data.lua', 'CRT_Modules/Interrupts/Anchor.lua',
-  'CRT_Modules/Interrupts/Comm.lua', 'CRT_Modules/Interrupts/Page.lua'];
+  'CRT_Core/Comm.lua', 'CRT_Modules/Interrupts/Lattice.lua', 'CRT_Modules/Interrupts/Setup.lua', 'CRT_Modules/Interrupts/Data.lua', 'CRT_Modules/Interrupts/Anchor.lua',
+  'CRT_Modules/Interrupts/Comm.lua', 'CRT_Modules/Interrupts/Page.lua', 'CRT_Modules/Notes/Parse.lua', 'CRT_Modules/Notes/Data.lua',
+  'CRT_Modules/Notes/EditModel.lua', 'CRT_Modules/Interrupts/NoteBlock.lua', 'CRT_Modules/Interrupts/PageGrid.lua', 'CRT_Modules/Interrupts/SetupEditor.lua',
+  'CRT_Dev/Dev/KickSetupExport.lua'];
 for (const f of FILES) {
   const p = path.join(dir, f);
   lua.lua_pushstring(L, to_luastring(fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : 'error("missing ' + f + '")'));

@@ -32,6 +32,11 @@ local ADDON, CRT = ...
 --             Still needs Alex: phase triggers, once his /crt dev probe pull confirms the phase events; until then
 --             phase 2 and 3 alerts wait for Next phase.
 --             CRT_Dev/Tests/run_season_special.js checks every entry reads and every row is on both timelines.
+-- interrupts  The Spiteful Soulcoilers' Wail of Terror (Spiritcackle), from Alex on 2026-10-29: the adds spawn at random
+--             spots, so each kick group finds its add by raid marker, four kickers to an add, rotating 1 to 4 (an
+--             untimed list: the number moves on with each cast of the marked add). Mythic has two adds (Skull and
+--             Cross), Heroic one (Skull). At 100 energy an add goes immune (Consumed by Resentment). The spell ID is
+--             not known yet: it comes from the Journal (Export Abilities) or a pull's /crt dev kicks log, never a guess.
 
 CRT.Bosses:Register({
     encounterID = 3429,
@@ -255,6 +260,25 @@ Blighted Sever: 5:39, 6:11, 6:46, 7:23, 7:56, 8:29
             who = { mode = "everyone" },
             text = "Ghosts (interrupt)",
             show = { callout = true, bar = true, speech = false },
+        },
+    },
+    interrupts = {
+        {
+            difficulty = 16,
+            label = "Kick",
+            spell = { name = "Wail of Terror" }, -- TODO id: Journal Export Abilities or /crt dev kicks
+            groups = {
+                { key = "skull", label = "Skull add", marker = 8, slots = 4 },
+                { key = "cross", label = "Cross add", marker = 7, slots = 4 },
+            },
+        },
+        {
+            difficulty = 15,
+            label = "Kick",
+            spell = { name = "Wail of Terror" }, -- TODO id: Journal Export Abilities or /crt dev kicks
+            groups = {
+                { key = "skull", label = "Skull add", marker = 8, slots = 4 },
+            },
         },
     },
 })

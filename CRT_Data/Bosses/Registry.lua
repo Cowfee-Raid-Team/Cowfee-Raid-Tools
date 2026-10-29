@@ -18,8 +18,9 @@ local ADDON, CRT = ...
 --                  { marks }, ticks = { s }, barTo = "last" | "cast", or bar = { length, ticks, start }, covers =
 --                  { spellIDs } }. The full format is at the top of Alerts/Special.lua; an entry that doesn't read
 --                  is skipped.
---   interrupts  -> CRT.Interrupts (Interrupts/Data.lua: the timing of the boss's adds for their kick numbers,
---                  read by Interrupts/Lattice.lua, whose header has the format); a block that doesn't read is skipped.
+--   interrupts  -> CRT.Interrupts (Interrupts/Data.lua: the boss's kick setups, one per difficulty: groups with
+--                  their raid markers and slots, and optional timing; Interrupts/Setup.lua's header has the format);
+--                  a block that doesn't read is skipped.
 -- Features that don't depend on a boss (the Late Tracker, Raid Groups) never read it. A season's own facts
 -- that aren't about a boss (the Gear Checker's enchant, socket and season checks, the upgrade tracks, and the
 -- game IDs: consumables, class cooldowns, raid buffs and class interrupts) live in a topic file each (Bosses:SeasonData) and are

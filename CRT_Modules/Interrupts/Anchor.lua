@@ -1,7 +1,9 @@
 local ADDON, CRT = ...
 
--- Interrupts: each wave's anchor (CRT.InterruptAnchor). The module arms on ENCOUNTER_START with a boss whose
--- interrupts block exists, on the block's difficulty, while Enable Interrupts is on. Armed, it counts every cast
+-- Interrupts: arming, and each wave's anchor (CRT.InterruptAnchor). The module arms on ENCOUNTER_START with a boss
+-- that has a kick setup for that difficulty (Interrupts:Def of "encounterID:difficultyID"), while Enable Interrupts is
+-- on; Anchor.key is the setup's key and Anchor.def the setup. An untimed setup (no timing) only arms: its numbers
+-- follow each marked add's casts (Interrupts/Plates.lua). A timed one, armed, counts every cast
 -- start of the block's anchor unit (UNIT_SPELLCAST_START: only the moment it fired is read, its payload is secret in
 -- a boss fight); the boss casts a fixed cycle, and the count's ordinal cast in each cycle is a wave's anchor, which
 -- OnWave listeners hear (the reminder resyncs to it). Anchor:For(castTime) gives the anchor a nameplate cast is
@@ -10,8 +12,9 @@ local ADDON, CRT = ...
 -- doesn't fire again, so there is no pull time and no count. Disarmed on ENCOUNTER_END, a zone change (PLAYER_ENTERING_WORLD: a zone change
 -- mid-fight never fires ENCOUNTER_END) or the switch turning off; OnArm listeners hear each change.
 --
--- Test on trash (CRTDB.interrupts.test): armed with the first boss that has a block and no pull; a pack is numbered by
--- cast order (Anchor:TestNumber), not time, so any trash pack gets numbers. A
+-- Test on trash (CRTDB.interrupts.test): armed with the setup shown on the page (Anchor:StartTest(key)), else the
+-- first one, and no pull. A timed setup numbers a pack by cast order (Anchor:TestNumber), not time, so any trash pack
+-- gets numbers; an untimed one numbers marked mobs as in a pull. A
 -- matching pull always wins over it, another boss's pull leaves it as it is, and at the pull's end it comes back.
 --
 -- Events: ENCOUNTER_START, ENCOUNTER_END and PLAYER_ENTERING_WORLD only while the module is on, UNIT_SPELLCAST_START
@@ -20,7 +23,7 @@ local ADDON, CRT = ...
 -- groupSize), ENCOUNTER_END, PLAYER_ENTERING_WORLD, UNIT_SPELLCAST_START (unitTarget, castGUID, spellID, castBarID;
 -- SecretWhenUnitSpellCastRestricted), GetTime, issecretvalue.
 
-local Anchor = { armed = false, mode = nil, def = nil, encounterID = nil, pullTime = nil, waveListeners = {}, armListeners = {},
+local Anchor = { armed = false, mode = nil, def = nil, key = nil, encounterID = nil, pullTime = nil, waveListeners = {}, armListeners = {},
     castListeners = {} }
 CRT.InterruptAnchor = Anchor
 
@@ -84,10 +87,10 @@ function Anchor:Reset()
     count, counted, testWave = 0, nil, nil
 end
 
-local function set(mode, def, encounterID, pullTime)
+local function set(mode, def, key, pullTime)
     Anchor.armed = mode ~= nil
     Anchor.mode = mode
-    Anchor.def, Anchor.encounterID, Anchor.pullTime = def, encounterID, pullTime
+    Anchor.def, Anchor.key, Anchor.encounterID, Anchor.pullTime = def, key, (Interrupts.SplitKey(key)), pullTime
     Anchor:Reset()
     listen()
     notify(Anchor.armListeners, Anchor.armed, mode)
@@ -99,15 +102,21 @@ local function disarm()
     end
 end
 
--- Test on trash, with the first boss that has a block.
-function Anchor:StartTest()
+-- Test on trash, with the setup key given (the page's), else the last one given, else the first setup.
+function Anchor:StartTest(key)
+    if key then
+        self.testKey = key
+    end
     if not Interrupts:Enabled() or not Interrupts:Settings().test or self.mode == "pull" then
         return
     end
-    local first = Interrupts:Bosses()[1]
-    local def = first and Interrupts:Def(first.key)
+    local skey, def = Interrupts:Resolve(self.testKey)
+    if not def then
+        local first = Interrupts:Bosses()[1]
+        skey, def = Interrupts:Resolve(first and first.key)
+    end
     if def then
-        set("test", def, first.key, nil)
+        set("test", def, skey, nil)
     end
 end
 
@@ -125,15 +134,15 @@ local function settle()
 end
 
 function Anchor:For(castTime)
-    local def = self.def
-    if not (self.armed and def) then
+    local timing = self.def and self.def.timing
+    if not (self.armed and timing) then
         return nil
     end
     if self.mode == "pull" then
-        if counted and castTime >= counted and castTime - counted < def.window then
+        if counted and castTime >= counted and castTime - counted < timing.window then
             return counted, false
         end
-        return Lattice.Fallback(def, self.pullTime, castTime), false
+        return Lattice.Fallback(timing, self.pullTime, castTime), false
     end
     return nil -- Test on trash numbers by cast order: Anchor:TestNumber
 end
@@ -142,38 +151,38 @@ end
 -- and 4th 2, ..., the lattice's pairs, whatever the gaps between casts), and when the pack started. A cast window
 -- seconds after the pack's first, or past its adds, starts a new pack at 1.
 function Anchor:TestNumber(castTime)
-    local def = self.def
-    if self.mode ~= "test" or not def then
+    local timing = self.def and self.def.timing
+    if self.mode ~= "test" or not timing then
         return nil
     end
-    if not testWave or castTime - testWave.start >= def.window or testWave.count >= def.adds then
+    if not testWave or castTime - testWave.start >= timing.window or testWave.count >= timing.adds then
         testWave = { start = castTime, count = 0 }
     end
     local index = testWave.count
     testWave.count = index + 1
-    return Lattice.SlotNumber(def, index), testWave.start
+    return Lattice.SlotNumber(timing, index), testWave.start
 end
 
 local function onStart(encounterID, difficultyID)
-    if not (readable(encounterID) and readable(difficultyID)) then
+    if not (readable(encounterID) and readable(difficultyID)) or type(encounterID) ~= "number" or type(difficultyID) ~= "number" then
         return
     end
-    local def = Interrupts:Def(encounterID)
-    if def and difficultyID == def.difficulty then
-        set("pull", def, encounterID, now())
+    local key, def = Interrupts:Resolve(Interrupts.Key(encounterID, difficultyID))
+    if def then
+        set("pull", def, key, now())
     elseif Anchor.mode == "pull" then
         settle() -- a pull that never ended, replaced by another boss's
     end
 end
 
 local function onCast(unit)
-    local def = Anchor.def
-    if Anchor.mode ~= "pull" or not readable(unit) or unit ~= def.anchor.unit then
+    local timing = Anchor.def and Anchor.def.timing
+    if Anchor.mode ~= "pull" or not timing or not readable(unit) or unit ~= timing.anchor.unit then
         return
     end
     count = count + 1
     notify(Anchor.castListeners, count, now())
-    local cycle, ordinal = def.anchor.cycle, def.anchor.ordinal
+    local cycle, ordinal = timing.anchor.cycle, timing.anchor.ordinal
     if count % cycle == ordinal % cycle then
         counted = now()
         notify(Anchor.waveListeners, (count - ordinal) / cycle + 1, counted)

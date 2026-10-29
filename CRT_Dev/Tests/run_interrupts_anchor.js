@@ -10,7 +10,7 @@ const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate();
 lualib.luaL_openlibs(L);
 const harness = `
-local registrySrc, seasonSrc, bossSrc, commSrc, latticeSrc, dataSrc, anchorSrc = ...
+local registrySrc, seasonSrc, bossSrc, commSrc, latticeSrc, setupSrc, dataSrc, anchorSrc = ...
 local fails, passes = 0, 0
 local function check(ok, what) if ok then passes = passes + 1 else fails = fails + 1 print("FAIL " .. what) end end
 local function eq(a, b, what) check(a == b, what .. " (got " .. tostring(a) .. ", want " .. tostring(b) .. ")") end
@@ -27,10 +27,10 @@ issecretvalue = function(v) return secrets[v] == true end
 
 local CRT = { db = { interrupts = { enabled = false, own = {}, shared = {}, use = {}, accept = true, test = false,
   plates = {}, reminder = {} } } }
-for _, src in ipairs({ registrySrc, seasonSrc, bossSrc, commSrc, latticeSrc, dataSrc }) do assert(load(src))("CowfeeRaidTools", CRT) end
-CRT.Bosses:Get(3470).interrupts = { difficulty = 16, anchor = { unit = "boss2", cycle = 7, ordinal = 5, times = { 33, 94, 188, 249, 343, 404 } },
-  firstCast = 4.5, spacing = 1.0, tolerance = 0.3, adds = 10, perNumber = 2, window = 25,
-  groups = { "Left", "Right" }, slots = 5, label = "Kick" }
+for _, src in ipairs({ registrySrc, seasonSrc, bossSrc, commSrc, latticeSrc, setupSrc, dataSrc }) do assert(load(src))("CowfeeRaidTools", CRT) end
+CRT.Bosses:Get(3470).interrupts = { { difficulty = 16, label = "Kick", groups = { { key = "left", label = "Left", slots = 5 }, { key = "right", label = "Right", slots = 5 } },
+  timing = { anchor = { unit = "boss2", cycle = 7, ordinal = 5, times = { 33, 94, 188, 249, 343, 404 } },
+  firstCast = 4.5, spacing = 1.0, tolerance = 0.3, adds = 10, perNumber = 2, window = 25 } } }
 assert(load(anchorSrc))("CowfeeRaidTools", CRT)
 local I, A = CRT.Interrupts, CRT.InterruptAnchor
 check(A ~= nil, "CRT.InterruptAnchor is made")
@@ -122,13 +122,38 @@ CRT.db.interrupts.test = true; A:StartTest()
 check(not A.armed, "test: off means test can't arm")
 CRT.db.interrupts.test = false
 
+-- an untimed setup on another difficulty: it arms on its own difficulty, counts nothing, and Test on trash takes the
+-- setup it is given
+I:SetEnabled(true)
+CRT.Bosses:Get(3470).interrupts[2] = { difficulty = 15, groups = { { key = "skull", label = "Skull add", marker = 8, slots = 4 } } }
+I:ClearCache()
+H("ENCOUNTER_START", id, "Boss", 15)
+check(A.armed and A.mode == "pull", "untimed: a Heroic pull arms its setup")
+eq(A.key, "3470:15", "untimed: the setup's key")
+eq(A.def and A.def.groups[1].key, "skull", "untimed: the setup")
+local before = #waves
+for i = 1, 14 do H("UNIT_SPELLCAST_START", "boss2") end
+eq(#waves, before, "untimed: no waves counted")
+eq(A:For(1040), nil, "untimed: no anchor")
+H("ENCOUNTER_END")
+H("ENCOUNTER_START", id, "Boss", 16)
+eq(A.key, "3470:16", "timed: Mythic still its own setup")
+H("ENCOUNTER_END")
+CRT.db.interrupts.test = true; A:StartTest("3470:15")
+eq(A.key, "3470:15", "test: the setup it is given")
+eq(A:TestNumber(5000), nil, "test: an untimed setup numbers no cast order")
+A:StopTest()
+CRT.db.interrupts.test = true; A:StartTest()
+eq(A.key, "3470:15", "test: the last setup given is kept")
+A:StopTest()
+
 print(string.format("%d passed, %d failed", passes, fails))
 if fails > 0 then error("failures") end
 `;
 const dir = process.argv[2];
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 const FILES = ['CRT_Data/Bosses/Registry.lua', 'CRT_Dev/Tests/SamplePack/Season.lua', 'CRT_Dev/Tests/SamplePack/NekzaliTheSoulcoiler.lua',
-  'CRT_Core/Comm.lua', 'CRT_Modules/Interrupts/Lattice.lua', 'CRT_Modules/Interrupts/Data.lua', 'CRT_Modules/Interrupts/Anchor.lua'];
+  'CRT_Core/Comm.lua', 'CRT_Modules/Interrupts/Lattice.lua', 'CRT_Modules/Interrupts/Setup.lua', 'CRT_Modules/Interrupts/Data.lua', 'CRT_Modules/Interrupts/Anchor.lua'];
 for (const f of FILES) {
   const p = path.join(dir, f);
   lua.lua_pushstring(L, to_luastring(fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : 'error("missing ' + f + '")'));
