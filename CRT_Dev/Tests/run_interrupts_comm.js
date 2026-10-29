@@ -15,7 +15,8 @@ local fails, passes = 0, 0
 local function check(ok, what) if ok then passes = passes + 1 else fails = fails + 1 print("FAIL " .. what) end end
 local function eq(a, b, what) check(a == b, what .. " (got " .. tostring(a) .. ", want " .. tostring(b) .. ")") end
 time = function() return 1790000000 end
-GetTime = function() return 100 end
+local clock = 100
+GetTime = function() return clock end
 wipe = function(t) for k in pairs(t) do t[k] = nil end return t end
 Ambiguate = function(n) return (n:gsub("%-.*$", "")) end
 C_Timer = { After = function() end }
@@ -189,6 +190,39 @@ eq(received, 2, "receive: a boss without a block is skipped")
 eq(#B.printed, lines, "receive: quietly")
 deliver(B, "L|1|" .. id .. "|" .. A.CRT.Comm.Fingerprint("a,b") .. "|1|1|a,b", "Brenn")
 eq(#B.printed, lines, "receive: another slot shape, quietly")
+
+-- parts duplicated and out of order make one list, once
+do
+  local parts = assert(C.Encode(id, def, LONG))
+  check(#parts >= 2, "parts: the long list has " .. #parts .. " parts")
+  local before = received
+  local order = {}
+  for i = #parts, 1, -1 do order[#order + 1] = parts[i] order[#order + 1] = parts[i] end
+  for _, m in ipairs(order) do as(B, function() B.C:Receive(m, "Brenn") end) end
+  eq(received, before + 1, "parts: duplicated and out of order, taken once")
+  eq(B.CRT.db.interrupts.shared[id].list[2][5], LONG[2][5], "parts: the whole list")
+  eq(B.C.Pending(), 0, "parts: nothing left waiting")
+
+  as(B, function() B.C:Receive(parts[1], "Brenn") end)
+  eq(received, before + 1, "parts: a late copy of a part is ignored")
+  clock = clock + B.C.PARTS_TIMEOUT + 1 -- (the same list shared again later is a new share)
+  -- half a list is forgotten on a zone change
+  as(B, function() B.C:Receive(parts[1], "Brenn") end)
+  eq(B.C.Pending(), 1, "half: one list waiting")
+  as(B, function() for _, f in ipairs(B.on) do if f.events.PLAYER_ENTERING_WORLD and f.fn then f.fn(f, "PLAYER_ENTERING_WORLD") end end end)
+  eq(B.C.Pending(), 0, "half: a zone change forgets it")
+  before = received
+  for i = 2, #parts do as(B, function() B.C:Receive(parts[i], "Brenn") end) end
+  eq(received, before, "half: the rest alone makes no list")
+  eq(B.C.Pending(), 1, "half: (the rest waits)")
+  -- and after PARTS_TIMEOUT seconds
+  check(B.C.PARTS_TIMEOUT and B.C.PARTS_TIMEOUT >= 20 and B.C.PARTS_TIMEOUT <= 60, "half: a named timeout (" .. tostring(B.C.PARTS_TIMEOUT) .. ")")
+  clock = clock + B.C.PARTS_TIMEOUT + 1
+  as(B, function() B.C:Receive(parts[#parts], "Brenn") end)
+  eq(B.C.Pending(), 1, "half: an old half list is dropped when the next part comes (only the new one waits)")
+  as(B, function() B.C:Receive(parts[1], "Brenn") end)
+  if #parts > 2 then eq(received, before, "half: and the old parts don't complete it") end
+end
 
 print(string.format("%d passed, %d failed", passes, fails))
 if fails > 0 then error("failures") end

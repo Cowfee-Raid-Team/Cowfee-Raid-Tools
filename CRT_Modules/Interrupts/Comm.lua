@@ -11,7 +11,8 @@ local ADDON, CRT = ...
 -- text is a part of the names, in group order, then slot order, joined by ",", an empty slot an empty field; hash is
 -- CRT.Comm.Fingerprint of all the names, so a list that arrives damaged is dropped with one chat line. version is
 -- VERSION; a later minor version only adds fields after the text, a higher major version is skipped. Each part is
--- at most 255 bytes; ten names usually fit one. A list for a boss this CRT has no block for, or in another shape,
+-- at most 255 bytes; ten names usually fit one. A half-received list is dropped after PARTS_TIMEOUT seconds and on a
+-- zone change (PLAYER_ENTERING_WORLD). A list for a boss this CRT has no block for, or in another shape,
 -- is dropped quietly (an older or newer CRT's boss data).
 --
 -- Game calls (warcraft.wiki.gg, read 2026-10-28): C_ChatInfo.RegisterAddonMessagePrefix, CHAT_MSG_ADDON (prefix,
@@ -28,6 +29,7 @@ KickComm.VERSION = 1
 KickComm.MAX_BYTES = 255
 KickComm.CHUNK = 200 -- the names' bytes in one part
 KickComm.MAX_PARTS = 8
+KickComm.PARTS_TIMEOUT = 30 -- seconds a half-received list waits for its other parts
 
 local TEXT = {
     what = "the kick list",
@@ -200,7 +202,32 @@ function KickComm:Share(encounterID)
     return true
 end
 
-local incoming = {} -- sender .. id .. hash -> { total, parts, count }
+local incoming = {} -- sender .. id .. hash -> { total, parts, count, at }
+local finished = {} -- the same key -> { at, parts } once whole: a late copy of one of its parts is ignored for PARTS_TIMEOUT
+
+-- Half-received lists older than PARTS_TIMEOUT are dropped; all = true drops every one (a zone change).
+local function forget(all)
+    local now = GetTime()
+    for key, buffer in pairs(incoming) do
+        if all or now - buffer.at > KickComm.PARTS_TIMEOUT then
+            incoming[key] = nil
+        end
+    end
+    for key, done in pairs(finished) do
+        if all or now - done.at > KickComm.PARTS_TIMEOUT then
+            finished[key] = nil
+        end
+    end
+end
+
+-- How many half-received lists are waiting (the tests).
+function KickComm.Pending()
+    local n = 0
+    for _ in pairs(incoming) do
+        n = n + 1
+    end
+    return n
+end
 
 function KickComm:Receive(message, sender)
     -- off, or not taking lists: nothing is read at all
@@ -219,10 +246,15 @@ function KickComm:Receive(message, sender)
     if not p then
         return
     end
+    forget(false)
     local key = short .. ":" .. p.id .. ":" .. p.hash
+    local done = finished[key]
+    if done and done.parts[p.part] == p.text then
+        return -- a late copy of a part of a list already taken
+    end
     local buffer = incoming[key]
     if not buffer or buffer.total ~= p.total then
-        buffer = { total = p.total, parts = {}, count = 0 }
+        buffer = { total = p.total, parts = {}, count = 0, at = GetTime() }
         incoming[key] = buffer
     end
     if not buffer.parts[p.part] then
@@ -233,6 +265,7 @@ function KickComm:Receive(message, sender)
         return
     end
     incoming[key] = nil
+    finished[key] = { at = GetTime(), parts = buffer.parts }
     local list, why = self.Read(Interrupts:Def(p.id), p.hash, table.concat(buffer.parts, "", 1, buffer.total))
     if not list then
         if why == "damaged" then
@@ -256,6 +289,9 @@ events:SetScript("OnEvent", function(_, event, prefix, message, _, sender)
     if event == "PLAYER_LOGIN" then
         KickComm.Listen()
         return
+    elseif event == "PLAYER_ENTERING_WORLD" then
+        forget(true) -- a zone change: the rest of a half-received list won't come
+        return
     end
     -- secrets first: nothing is compared or matched before
     if not (Shared.Readable(prefix) and Shared.Readable(message) and Shared.Readable(sender)) then
@@ -269,10 +305,15 @@ end)
 events:RegisterEvent("PLAYER_LOGIN")
 
 function KickComm.Listen()
-    if Interrupts:Enabled() then
-        events:RegisterEvent("CHAT_MSG_ADDON")
-    else
-        events:UnregisterEvent("CHAT_MSG_ADDON")
+    for _, e in ipairs({ "CHAT_MSG_ADDON", "PLAYER_ENTERING_WORLD" }) do
+        if Interrupts:Enabled() then
+            events:RegisterEvent(e)
+        else
+            events:UnregisterEvent(e)
+        end
+    end
+    if not Interrupts:Enabled() then
+        forget(true)
     end
 end
 
