@@ -186,6 +186,7 @@ CRT_Modules\Pace\Comm.lua
 CRT_Modules\Pace\Page.lua
 CRT_Modules\Interrupts\Lattice.lua
 CRT_Modules\Interrupts\Data.lua
+CRT_Modules\Interrupts\Anchor.lua
 CRT_Modules\QoL\LowHealth.lua
 CRT_Modules\QoL\LowHealthSound.lua
 CRT_Modules\QoL\BreakTimer.lua
