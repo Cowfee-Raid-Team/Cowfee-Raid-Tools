@@ -159,6 +159,29 @@ CRT.Notes = {
   Fire = function(self) for _, fn in ipairs(self.listeners) do fn() end end,
   List = function() return {} end, Get = function() return nil end,
 }
+-- CRT_Modules/Notes/Data.lua's store as Notes/MechNote.lua uses it (Save as Raid note): notes by id, the one a pull reads,
+-- one made, and a text changed. Each change tells the listeners.
+local noteStore, noteNext = {}, 1
+local function resetNotes() noteStore, noteNext = {}, 1 end
+CRT.Notes.Get = function(self, id) return id and noteStore[id] or nil end
+CRT.Notes.FindForEncounter = function(self, enc, diff)
+  local any
+  for id, r in pairs(noteStore) do
+    if r.encounterID == enc then
+      if diff and r.difficulty and r.difficulty:lower() == diff:lower() then return id end
+      any = any or id
+    end
+  end
+  return any
+end
+CRT.Notes.Import = function(self, text, from, personal, source, via, anyText, asNew)
+  local id = noteNext noteNext = noteNext + 1
+  local enc, d, name = text:match("^EncounterID:(%d+);Difficulty:([^;\\n]+);Name:([^\\n]+)")
+  noteStore[id] = { raw = text, encounterID = tonumber(enc), difficulty = d, name = name, via = via, asNew = asNew }
+  self:Fire()
+  return id
+end
+CRT.Notes.UpdateRaw = function(self, id, text) noteStore[id].raw = text self:Fire() return true end
 local activeRecord = { encounterID = 9001, name = "Test Boss" }
 CRT.Notes.Active = function() return "n1", activeRecord end
 CRT.NotesPage = { TAB_H = CRT.UI.PAGE_H - 66 } -- CRT_Modules/Notes/Page.lua: a tab's height under the tabs
@@ -508,21 +531,155 @@ check("mech: show on the timeline calls ShowRow", function()
   table.remove(errors, 1)
 end)
 
-check("mech: raid note option disabled with help", function()
+-- Save as Raid note (Notes/MechNote.lua): the alert goes into the boss's raid note for the difficulty on show, one line
+-- per cast (the Mythic ability timeline: Real Name at P1 0:30 and P2 0:20), every change rewrites them, Only me takes
+-- them out
+local function noteFor(enc, diff)
+  local id = CRT.Notes:FindForEncounter(enc, diff)
+  return id and noteStore[id], id
+end
+local function marked(raw, key)
+  local out = {}
+  for line in (raw .. "\\n"):gmatch("(.-)\\n") do
+    if CRT.MechNote.IsMarked(line, key) then out[#out + 1] = CRT.NoteParser.Parse(line).timers[1] end
+  end
+  return out
+end
+local function mineItems()
+  return A.blocks.mine.Entries({ encounterID = ENC, anyDifficulty = true })
+end
+
+check("mech raid note: Save as Raid note writes one line per cast", function()
+  resetNotes()
   local f = fresh()
-  local d = f.panel.saveAs
+  local p = f.panel
+  local d = p.saveAs
   assert(d and d.label == "Save as", "Save as dropdown")
-  local opts = d.opts.options()
-  local note, mine
-  for _, o in ipairs(opts) do if o.key == "note" then note = o elseif o.key == "mine" then mine = o end end
-  assert(note and note.label == "Raid note" and note.disabled == true, "Raid note greyed")
-  assert(mine and mine.label == "Only me" and not mine.disabled, "Only me works")
-  assert(d.opts.get() == "mine")
+  local keys = {}
+  for _, o in ipairs(d.opts.options) do keys[#keys + 1] = o.key .. (o.disabled and "(off)" or "") end
+  assert(table.concat(keys, ",") == "note,mine", "Raid note can be picked: " .. table.concat(keys, ","))
+  assert(d.opts.get() == "mine" and p.forDrop and p.forDrop.label == "For", "Only me, and a For dropdown")
+  assert(p.forDrop.opts.enabledIf() == false, "For greyed while Only me")
+  assert(p.noteStatus.text == "", "no status line")
+  assert(p.saveAsHelp.helpText:find("raid note for the difficulty on show", 1, true) and p.saveAsHelp.helpText:find("Share the note", 1, true), "its (?) says what it does")
+  -- an existing note for the boss: kept, with its free text
+  noteStore[1] = { raw = "EncounterID:9001;Difficulty:Mythic;Name:Test Boss\\nTanks: Abu\\ntime:5;text:Other;", encounterID = 9001, difficulty = "Mythic" }
+  noteNext = 2
   d.opts.set("note")
-  assert(d.opts.get() == "mine", "Raid note can't be picked")
-  local help = f.panel.saveAsHelp
-  assert(help and help.helpText == "Raid note lines have one time each: make them on the Timeline.", tostring(help and help.helpText))
-  assert(#R:List(ENC) == 0, "nothing saved")
+  local r, id = only()
+  assert(r.enabled == true and r.raidNote and r.raidNote.tag == "all" and r.raidNote.key == "777" and r.raidNote.difficulty == "Mythic", "the reminder is on and in the note")
+  assert(d.opts.get() == "note" and p.forDrop.opts.enabledIf() == true, "Raid note shows, For open")
+  local note = noteStore[1]
+  local lines = marked(note.raw, "777")
+  assert(#lines == 2, "one line per cast: " .. note.raw)
+  assert(lines[1].ph == 1 and lines[1].time == 30 and lines[2].ph == 2 and lines[2].time == 20, "phases kept")
+  assert(lines[1].tags[1] == "all" and lines[1].spellId == 777 and lines[1].text == "Real Name" and lines[1].show.alert and lines[1].show.bar and lines[1].tts and lines[1].warn == 5, "the panel's alert")
+  assert(note.raw:find("^EncounterID:9001;Difficulty:Mythic;Name:Test Boss\\nTanks: Abu\\ntime:5;text:Other;\\n"), "the rest kept: " .. note.raw)
+  assert(f.rows[1].check.checked and p.alertMe.checked, "ticked")
+  assert(p.noteStatus.text:find("In the raid note for Test Boss (Mythic): 2 lines. Share the note to send it to the raid.", 1, true), "status: " .. p.noteStatus.text)
+  assert(p.noteStatus.text:find("|cff" .. CRT.UI.Hex("good"), 1, true), "in the good colour")
+  assert(#mineItems() == 0, "your own alert steps aside for the note's lines")
+  -- a change rewrites the lines in place, never adds
+  p.showFrom.opts.set(9)
+  lines = marked(noteStore[1].raw, "777")
+  assert(#lines == 2 and lines[1].warn == 9 and lines[2].warn == 9, "Show from")
+  typeInto(p.textEdit, "Dodge")
+  p.textEdit.OnEnterPressed(p.textEdit)
+  lines = marked(noteStore[1].raw, "777")
+  assert(#lines == 2 and lines[1].text == "Dodge", "Text")
+  setCheck(p.checks.circle, true)
+  assert(marked(noteStore[1].raw, "777")[1].show.circle, "Show as")
+  assert(select(2, noteStore[1].raw:gsub("mech:777;", "")) == 2, "two lines, no duplicates")
+  assert(noteNext == 2, "no second note")
+  assert(#errors == 0, tostring(errors[1]))
+end)
+
+check("mech raid note: For, the tick, and Only me", function()
+  resetNotes()
+  local f = fresh()
+  local p = f.panel
+  p.saveAs.opts.set("note")
+  local note = noteFor(ENC, "Mythic")
+  assert(note and note.name == "Test Boss" and note.difficulty == "Mythic" and note.via == "Mech Alerts" and note.asNew, "a note made for the boss")
+  -- For: a role
+  local labels = {}
+  for _, o in ipairs(p.forDrop.opts.options()) do labels[#labels + 1] = (o.title and "#" or "") .. o.label .. (o.checkbox and "[]" or "") end
+  assert(table.concat(labels, ","):find("^Everyone,Tanks,Healers,Melee,Ranged,#Players"), table.concat(labels, ","))
+  p.forDrop.opts.set("healer")
+  local lines = marked(note.raw, "777")
+  assert(#lines == 2 and lines[1].tags[1] == "healer" and lines[2].tags[1] == "healer", "the lines' tag reads healer")
+  assert(p.forDrop.opts.get() == "healer", "For shows it")
+  -- For: picked players, ticked one by one
+  p.forDrop.opts.toggle("Abu")
+  p.forDrop.opts.toggle("Cheo")
+  lines = marked(note.raw, "777")
+  assert(table.concat(lines[1].tags, " ") == "Abu Cheo" and p.forDrop.opts.checked("Abu"), "players: " .. table.concat(lines[1].tags, " "))
+  labels = {}
+  for _, o in ipairs(p.forDrop.opts.options()) do if o.checkbox then labels[#labels + 1] = o.label end end
+  assert(table.concat(labels, ","):find("Abu", 1, true) and table.concat(labels, ","):find("Cheo", 1, true), "picked players stay listed")
+  p.forDrop.opts.toggle("Abu") p.forDrop.opts.toggle("Cheo")
+  assert(marked(note.raw, "777")[1].tags[1] == "all", "none left: everyone")
+  -- Alert me off: out of the note, and back
+  setCheck(f.rows[1].check, false)
+  assert(#marked(note.raw, "777") == 0 and only().raidNote, "off: the lines are gone, the choice kept")
+  assert(p.noteStatus.text:find("Off", 1, true) and p.noteStatus.text:find("|cff" .. CRT.UI.Hex("warn"), 1, true), "said in the warn colour: " .. p.noteStatus.text)
+  setCheck(f.rows[1].check, true)
+  assert(#marked(note.raw, "777") == 2, "on: back")
+  -- lines gone from the note (a share replaced it): said, and the next change writes them again
+  note.raw = "EncounterID:9001;Difficulty:Mythic;Name:Test Boss\\n"
+  CRT.Notes:Fire()
+  assert(p.noteStatus.text:find("none of its lines", 1, true), p.noteStatus.text)
+  p.linger.opts.set(2)
+  assert(#marked(note.raw, "777") == 2, "written again")
+  -- Only me: the lines go, the personal alert is back
+  note.raw = note.raw .. "free text after\\n"
+  p.saveAs.opts.set("mine")
+  local r = only()
+  assert(r.raidNote == nil and r.enabled == true and p.saveAs.opts.get() == "mine", "Only me again, still on")
+  assert(#marked(note.raw, "777") == 0 and note.raw == "EncounterID:9001;Difficulty:Mythic;Name:Test Boss\\nfree text after\\n", "only its lines taken out: " .. note.raw)
+  assert(#mineItems() == 2, "your own alert runs again: " .. #mineItems())
+  assert(p.noteStatus.text == "" and p.forDrop.opts.enabledIf() == false, "status gone, For greyed")
+  assert(#errors == 0, tostring(errors[1]))
+end)
+
+check("mech raid note: refused when you may not change the raid note; Heroic goes to its own note", function()
+  resetNotes()
+  local f = fresh()
+  local p = f.panel
+  local was = CRT.Notes.CanEditRaid
+  CRT.Notes.CanEditRaid = function() return false, "Only the raid leader or assistants can change the raid note." end
+  p.saveAs.opts.set("note")
+  assert(p.saveAs.opts.get() == "mine" and #R:List(ENC) == 0 and next(noteStore) == nil, "nothing saved or written")
+  assert(p.message.text:find("raid leader", 1, true), "the reason: " .. tostring(p.message.text))
+  CRT.Notes.CanEditRaid = was
+  -- Times from on the Heroic ability timeline: the Heroic note, its one cast
+  dropdowns["Times from"].opts.set("own:2")
+  p.saveAs.opts.set("note")
+  local note = noteFor(ENC, "Heroic")
+  assert(note and note.difficulty == "Heroic" and #marked(note.raw, "777") == 1 and marked(note.raw, "777")[1].time == 45, "Heroic: " .. tostring(note and note.raw))
+  assert(only().raidNote.difficulty == "Heroic" and p.noteStatus.text:find("(Heroic): 1 line.", 1, true), p.noteStatus.text)
+  -- a problem in the panel: nothing written, the lines stay as they were
+  setCheck(p.checks.alert, false) setCheck(p.checks.bar, false)
+  local before = note.raw
+  setCheck(p.also.speak, false)
+  assert(note.raw == before and p.message.text:find("nothing", 1, true), "a change that can't save writes nothing")
+  setCheck(p.checks.alert, true)
+  -- your own reminder in the note, deleted: its lines go too
+  click(f.ownButton)
+  typeInto(p.textEdit, "Mine")
+  typeInto(p.timesEdit, "P1 0:10, 0:50")
+  p.timesEdit.OnEnterPressed(p.timesEdit)
+  p.saveAs.opts.set("note")
+  assert(#marked(note.raw, "mine") == 2, "own reminder: its typed times: " .. note.raw)
+  local popup
+  StaticPopup_ShowCustomGenericConfirmation = function(o) popup = o return {} end
+  CRT.UI.LiftOver = CRT.UI.LiftOver or function(x) return x end
+  CRT.UI.ShownPopup = CRT.UI.ShownPopup or function(x) return x end
+  click(p.deleteBtn)
+  assert(popup, "asked")
+  popup.callback()
+  assert(#marked(note.raw, "mine") == 0 and #marked(note.raw, "777") == 1, "its lines went, the other alert's stay")
+  assert(#errors == 0, tostring(errors[1]))
 end)
 
 check("mech: every (?) is right of what it explains", function()
@@ -1008,6 +1165,10 @@ check("mech: nothing passes the page edges", function()
   -- the header: Alert me's label ends before Save as starts
   local am, sa = rect(f.panel.alertMe.label, f), rect(f.panel.saveAs, f)
   assert(am[3] <= sa[1], "Alert me overlaps Save as: " .. am[3] .. " > " .. sa[1])
+  -- the Raid note status line under the name ends before For, which sits under Save as, in line with it
+  local st, fo = rect(f.panel.noteStatus, f), rect(f.panel.forDrop, f)
+  assert(st[3] <= fo[1] and fo[1] == sa[1] and fo[2] > sa[2], "status " .. st[3] .. ", For " .. fo[1] .. ", Save as " .. sa[1])
+  assert(st[2] > rect(f.panel.alertMe, f)[2], "the status line is under the header")
   assert(pr[3] >= TAB_W - 12 and pr[4] >= TAB_H - 12, "the panel fills the page: " .. pr[3] .. ", " .. pr[4])
   local lr = rect(f.list, f)
   assert(lr[4] >= TAB_H - 60, "the list fills the height: " .. lr[4])
