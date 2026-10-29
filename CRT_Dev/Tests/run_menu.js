@@ -103,7 +103,7 @@ local UI = CRT.UI
 -- 1. The groups and their labels, in order.
 local want = {
   { "General", "settings", "qol" },
-  { "Bosses", "timeline", "notes", "pace" },
+  { "Bosses", "timeline", "notes", "pace", "interrupts" }, -- interrupts only while Enable Interrupts is on
   { "Raid Admin", "readycheck", "groups", "gearcheck", "late" },
   { "Modules", "lootmaster", "loot", "requests", "seasonstats", "tattle" },
 }

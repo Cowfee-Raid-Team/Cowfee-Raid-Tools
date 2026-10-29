@@ -19,6 +19,7 @@ local ADDON, CRT = ...
 --   window      a cast this long after the anchor can't belong to the wave
 --   groups      the kick list's column headings and the side in the reminder ({ "Left", "Right" })
 --   slots       kick numbers per group; label  the word before the number ("Kick")
+--   note        optional: one line for the page's Boss (?), such as why it works on one difficulty only
 
 local Lattice = {}
 CRT.InterruptLattice = Lattice

@@ -190,6 +190,7 @@ CRT_Modules\Interrupts\Anchor.lua
 CRT_Modules\Interrupts\Plates.lua
 CRT_Modules\Interrupts\Reminder.lua
 CRT_Modules\Interrupts\Comm.lua
+CRT_Modules\Interrupts\Page.lua
 CRT_Modules\QoL\LowHealth.lua
 CRT_Modules\QoL\LowHealthSound.lua
 CRT_Modules\QoL\BreakTimer.lua

@@ -29,6 +29,7 @@ Cowfee Raid Tools is a World of Warcraft addon for raid leaders, officers and ra
 - [Late Tracker](#late-tracker)
 - [Tattlebot](#tattlebot)
 - [Timeline](#timeline)
+- [Interrupts](#interrupts)
 - [Commands](#commands)
 - [FAQ](#faq)
 - [Known limitations](#known-limitations)
@@ -50,6 +51,7 @@ Cowfee Raid Tools is a World of Warcraft addon for raid leaders, officers and ra
 | **Tattlebot** | After each boss pull, reads the game's damage meter and reports who took damage from a built-in list of boss mechanics, per pull and per night, with how many pulls each player was hit in. Posts to chat and exports for Discord |
 | **Timeline** | Saves every raid boss pull, ten per boss and difficulty, and draws it as a timeline: time runs left to right, with a row for each boss ability and a row of deaths. Zoom, scroll, hover for the time, and draw the deaths of recent pulls over the shown one to see who keeps dying and when. A boss's reference timeline (shipped for Nek'zali the Soulcoiler on Mythic, or pasted in) shows its planned casts with phase lines and duration bars, and a recent pull can be laid over it |
 | **Pace** | Where each boss's health should be as the fight goes, by phase (seconds into each phase) or by time from the pull. In the pull, a movable window shows each boss's health with a tick where it should be, and AHEAD or BEHIND. Add rows one at a time, or import and export them as text. A raid leader or assistant can share plans with the raid; a shared plan is kept apart from your own and becomes the plan in use |
+| **Interrupts** | Optional, off until you tick **Enable Interrupts** on General Settings. Kick numbers above a boss's adds, by kick pair, a 5 second countdown before your own kick, and a kick list the raid leader shares. The Twin Fangs on Mythic first |
 
 **Previews**, in the top right of the panel, shows every movable window at once so you can drag them into place. The button beside it, or a double-click on the title bar, minimizes the panel to its title bar, and the same again (or `/crt`) restores it. Left of it, the theme button shows the theme in use; click it to pick one: **Default: Blizzard** (the game's own look), **Blackout: Midnight**, **Blackout: Nitro** or **Beanworks: Cowfee** (flat controls and a grouped menu in their own colors). Positions are saved per character.
 
@@ -155,6 +157,10 @@ Grasping Depths [spell 123456]: 0:42, 1:53
 
 `Boss` is required; `Difficulty` (one block per difficulty, each with its own line), `Length` and `Encounter` (the boss's encounter ID) are optional. A time is `m:ss` or plain seconds, `+45` after a time draws a 45-second bar, `lead 7` draws a line 7 seconds before each icon, `color rrggbb` colors the name, `type mythic` (and the other types in the colors above) marks what the ability is, `(planned m:ss)` after a Phase time is where it was before you moved it, `Order: Empowered A, Empowered B, Empowered C = Gebbo, Nama, Iku` names the phases whose parts the raid orders and the parts in the written order (2 to 4, no digits in a part's name; name those phases without digits too, since reminders read a phase's number from its label, and Save warns when a label reads as phase 1 or repeats a number), `part Gebbo` marks a row as that part's, `[spell N]` gives the icon and tooltip, and `[section N]` (before or after `[spell N]`) is the ability's Encounter Journal section, whose text its tooltip shows. Export Abilities on the Journal and Fill spell IDs write both. Blank lines and lines starting with `#` are skipped. Planning markers and sending them to Raid Notes are not built yet.
 
+## Interrupts
+
+`/crt interrupts`. Optional and off for everyone: tick **Enable Interrupts** under General Settings > Appearance > Modules, and the page shows after Pace. On a boss that has kick numbers (The Twin Fangs on Mythic, so far), a box with a number shows above each add's nameplate when it first casts: the game hides the adds' names and spells in a raid fight, so CRT counts the boss's casts to know when each wave starts, and numbers each add by when its first cast lands after that. Two adds share a number, and Left and Right can't be told apart, so your side is only in your reminder. Your own number is in your colours; the others show only with **Show every number**. Five seconds before your pair's first cast, your interrupt's icon counts down with "Kick #3 Left" and plays the sound you picked; move it with **Previews**. The **Assignments** tab has the kick list: type names or pick them from your group, and the raid leader or an assistant presses **Share to raid** before the pull. A shared list sets everyone's number at once and is kept apart from your own list. **Who has it** shows which names on the list have CRT with Interrupts on, from the Addon check. **Test on trash** numbers any pack, and **Preview reminder** runs one countdown. Numbers only show for adds whose nameplate is on your screen when they first cast, so keep enemy nameplates on (the status bar warns when they are off).
+
 ## Commands
 
 | Command | What it does |
@@ -176,6 +182,7 @@ Grasping Depths [spell 123456]: 0:42, 1:53
 | `/crt timeline` | Timeline. `/crt timeline pop` opens the Review tab in its own window, which you can drag to any size |
 | `/crt timeline rehearse` | Rehearse the fight the Timeline shows, with your alerts, in the Rehearsal window |
 | `/crt pace` | Pace |
+| `/crt interrupts` | Interrupts, once Enable Interrupts is ticked on General Settings |
 | `/crt previews` | Toggles the previews, same as the button in the panel |
 | `/crt break 10` | A break timer for that many minutes, counting down in a small window and ending with a sound; `/crt break 0` cancels it. From a raid leader or assistant it reaches everyone with the addon and is posted as a raid warning |
 | `/crt qol` | The Quality of Life page, with the experimental low-health alert and the Debuffs tab |
@@ -263,6 +270,7 @@ CowfeeRaidTools/
                            (Database.lua, Reference.lua), the lanes, the timeline view, the pages
     Loot/, LootMaster/     loot history, and the Loot Master
     Markers/, Pace/, QoL/  boss markers, raid pace, quality of life
+    Interrupts/            kick numbers above the adds: the lattice, lists, wave anchors, plates, reminder, sharing, page
   CRT_Data/
     Bosses/Registry.lua    the boss library: every boss's shipped data, read by the features
     Seasons/               season packs: Season.lua, topic files and one file per boss, listed by the pack's Season.xml (one .toc line per pack)

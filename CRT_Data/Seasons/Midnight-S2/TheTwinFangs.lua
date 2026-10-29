@@ -71,5 +71,6 @@ Vile Flood (lead 6): 2:34, 5:23
         groups = { "Left", "Right" },
         slots = 5,
         label = "Kick",
+        note = "Mythic only: the Heroic fight has no Broodlings.",
     },
 })

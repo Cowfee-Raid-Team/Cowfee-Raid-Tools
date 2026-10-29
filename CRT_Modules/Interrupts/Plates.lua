@@ -300,6 +300,10 @@ Interrupts:OnChange(function(what)
     if Anchor.armed and (what == "list" or what == "settings") then
         Plates:Refresh()
     end
+    -- the Previews sample follows the Settings tab live
+    if Plates.preview and Plates.preview:IsShown() then
+        Plates:Preview(true)
+    end
 end)
 
 -- Previews: one sample box of your number at the screen's centre, to see the size and colours.

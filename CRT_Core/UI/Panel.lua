@@ -406,7 +406,7 @@ end
 
 UI.MENU_GROUPS = {
     { label = TEXT.general, "settings", "qol" },
-    { label = TEXT.bosses, "timeline", "notes", "pace" },
+    { label = TEXT.bosses, "timeline", "notes", "pace", "interrupts" },
     { label = TEXT.raidAdmin, "readycheck", "groups", "gearcheck", "late" },
     { label = TEXT.modules, "lootmaster", "loot", "requests", "seasonstats", "tattle" },
 }
