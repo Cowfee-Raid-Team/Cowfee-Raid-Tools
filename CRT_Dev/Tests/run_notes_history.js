@@ -33,6 +33,7 @@ local function mock(kind, name)
     if k == "GetParent" then return function(self) return rawget(self, "parent") end end
     if k == "HasFocus" then return function(self) return focused == self end end
     if k == "SetFocus" then return function(self) focused = self end end
+    if k == "SetCursorPosition" then return function(self, n) rawset(self, "cursor", n) end end
     if k == "ClearFocus" then return function(self) if focused == self then focused = nil end end end
     if k == "SetEnabled" then return function(self, on) rawset(self, "enabled", on and true or false) end end
     if k == "IsEnabled" then return function(self) return rawget(self, "enabled") ~= false end end
@@ -696,6 +697,19 @@ do
     if rawget(f, "text") == "Shared" and p and p.scripts.OnClick then p.scripts.OnClick(p) end
   end
   ok("Import/New on the Personal tab: a picked boss saves a new personal note")
+end
+
+-- 12. Import/New: a click anywhere in the text area puts the cursor at the end of the text
+do
+  local d = CowfeeRaidToolsNoteImport
+  local scroll = CowfeeRaidToolsNoteImportScroll
+  assert(scroll and scroll.scripts.OnMouseDown, "the import scroll area takes a mouse-down")
+  assert(not d.scripts.OnMouseDown, "the dialog itself is not made a click target (it drags)")
+  d.edit:SetText("abc\\ndef")
+  d.edit:ClearFocus()
+  scroll.scripts.OnMouseDown(scroll)
+  assert(d.edit:HasFocus() and rawget(d.edit, "cursor") == 7, "focused, cursor at the end")
+  ok("Import/New: a click on the text area focuses the box with the cursor at the end")
 end
 print(passes .. " passed, 0 failed")
 `;

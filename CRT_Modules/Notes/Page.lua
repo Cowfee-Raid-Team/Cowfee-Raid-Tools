@@ -339,6 +339,8 @@ local function getImportDialog()
         d.refreshRow()
     end)
     scroll:SetScrollChild(d.edit)
+    -- a click anywhere in the scroll area types; the dialog itself is not passed (it drags)
+    clickToType(scroll, scroll, d.edit)
 
     -- Opens it empty, on No boss.
     d.Open = function()
