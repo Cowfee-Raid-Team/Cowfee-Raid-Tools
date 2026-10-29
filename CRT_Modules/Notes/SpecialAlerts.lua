@@ -29,8 +29,9 @@ local TEXT = {
     whenRow = "Each cast of %s: %s. Shown %s s before.",
     whenNoCasts = "Each cast of %s. None on the ability timeline on show.",
     whenTimes = "At %s. Shown %s s before.",
-    showFrom = "Show from",
-    showFromHelp = "How long before each cast this alert shows. Default puts back the shipped time.",
+    showFrom = "Duration",
+    showFromHelp = "How long before the specified time this alert should start showing up. Default puts back the shipped time.",
+    showFromTip = "How long before the specified time this alert should start showing up",
     seconds = "%d s",
     default = "Default",
     impacts = "Impacts: %s",
@@ -624,6 +625,7 @@ local function buildLead(p)
     local S = Special()
     ui.lead = UI.Slider(p, TEXT.showFrom, {
         min = S.LEAD_MIN, max = S.LEAD_MAX, step = 1, labelWidth = L.LEAD_LABEL, width = L.LEAD_W,
+        tipTitle = TEXT.showFrom, tipText = TEXT.showFromTip,
         format = function(v)
             return string.format(TEXT.seconds, math.floor(v + 0.5))
         end,

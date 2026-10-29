@@ -246,7 +246,8 @@ do
   assert(w.timeEdit.text == "", "no time")
   assert(not w.deleteBtn.shown, "delete hidden for new")
   assert(w.checks.alert.checked and w.checks.bar.checked and not w.checks.text.checked and w.also.speak.checked, "default outputs")
-  assert(sliders["Show from"].opts.get() == 5 and sliders["Show from"].opts.min == 1 and sliders["Show from"].opts.max == 60)
+  assert(sliders["Duration"].opts.get() == 5 and sliders["Duration"].opts.min == 1 and sliders["Duration"].opts.max == 60)
+  assert(sliders["Duration"].opts.tipTitle == "Duration" and sliders["Duration"].opts.tipText == "How long before the specified time this alert should start showing up", "Duration tooltip")
   assert(sliders["Linger"].opts.get() == 0 and sliders["Linger"].opts.min == 0 and sliders["Linger"].opts.max == 10)
   assert(value("Relative to") == 1 and optionList(dropdowns["Relative to"])[1].label == "Pull")
   assert(value("Difficulty") == "nh" and value("Sound") == "none", "Normal/Heroic outside a raid: " .. tostring(value("Difficulty")))
@@ -273,7 +274,7 @@ do
   setCheck(w.checks.text, true) setCheck(w.checks.icon, true) setCheck(w.checks.circle, true) setCheck(w.checks.timeline, true)
   setCheck(w.also.count, true) setCheck(w.also.glow, true)
   pick("Sound", "kit:RAID_WARNING")
-  sliders["Show from"].opts.set(8) sliders["Linger"].opts.set(3)
+  sliders["Duration"].opts.set(8) sliders["Linger"].opts.set(3)
   pick("Icon", "id") typeInto(w.idEdit, "135940")
   assert(w.iconPreview.texture == 135940, "icon ID preview")
   -- Use custom colours off: your own alert's Color is greyed and does nothing; a raid note line's stays open
@@ -411,7 +412,7 @@ do
   assert(w.textEdit.text == "Dodge" and value("Icon") == "id" and w.idEdit.text == "135940")
   assert(w.checks.text.checked and w.checks.circle.checked and not w.checks.alert.checked and not w.checks.bar.checked)
   assert(w.also.speak.checked and not w.also.count.checked and not w.also.glow.checked and value("Sound") == "kit:READY_CHECK")
-  assert(sliders["Show from"].opts.get() == 7 and sliders["Linger"].opts.get() == 2 and w.deleteBtn.shown)
+  assert(sliders["Duration"].opts.get() == 7 and sliders["Linger"].opts.get() == 2 and w.deleteBtn.shown)
   assert(w.colorSwatch.tex.color[1] == 1 and w.colorSwatch.tex.color[2] == 0, "color swatch")
   -- a line that is not a timed line does not open
   assert(E:OpenNote(id, 2) == false, "free text refused")
@@ -430,7 +431,7 @@ do
   reset()
   local id = Notes:Import("EncounterID:9001;Difficulty:Heroic;Name:Test Boss\\ntime:30;ph:1;tag:all;text:Soak;show:bar;warn:8;ticks:2,4;fill:up;countto:impact;mech:777;")
   E:OpenNote(id, 2)
-  sliders["Show from"].opts.set(9)
+  sliders["Duration"].opts.set(9)
   click(win().saveBtn)
   local raw = noteRaw(id)
   assert(raw:find("warn:9;ticks:2,4;fill:up;countto:impact;mech:777;", 1, true), "kept: " .. raw)
@@ -723,7 +724,7 @@ do
   for _, m in ipairs({ dropdowns["Save as"], w.forRow, w.difficultyRow, w.savesText }) do assert(m.parent == w, "header: " .. tostring(m.label)) end
   local s = w.shield
   local tabs = {
-    when = { dropdowns["Relative to"], w.timeEdit, w.timeLabel, w.castsText, w.sourceText, sliders["Show from"], sliders["Linger"] },
+    when = { dropdowns["Relative to"], w.timeEdit, w.timeLabel, w.castsText, w.sourceText, sliders["Duration"], sliders["Linger"] },
     looks = { w.checks.alert, w.checks.text, w.checks.icon, w.checks.bar, w.checks.circle, w.checks.timeline, w.textEdit, dropdowns["Icon"],
       w.idEdit, w.iconPreview, w.colorSwatch, w.colorDefault, w.colorLabel },
     sound = { dropdowns["Sound"], dropdowns["Speak at"], w.also.speak, w.also.count, w.also.glow },
@@ -741,7 +742,7 @@ do
   end
   -- the rows of a tab don't overlap: their tops, each at least a row apart in one column (the When, Looks and Sound tabs)
   local function top(m) local pt = m.pts[#m.pts] return pt[#pt] end
-  assert(top(sliders["Show from"]) == -150 and top(dropdowns["Relative to"]) == -116, "Relative to, then Show from")
+  assert(top(sliders["Duration"]) == -150 and top(dropdowns["Relative to"]) == -116, "Relative to, then Show from")
   assert(top(w.checks.alert) == -116 and top(w.checks.bar) == -142 and top(w.textEdit) == -176 and top(dropdowns["Icon"]) == -202
     and top(w.colorSwatch) == -240, "Show as, Text, Icon, Color")
   assert(top(dropdowns["Sound"]) == -116 and top(w.also.speak) == -150, "Sound, then Also")
@@ -765,7 +766,7 @@ do
   assert(t:Current() == "sound" and t.frames.sound.shown, "the next alert opens on Sound and speech")
   click(t.buttons.when)
   -- a normal alert after a saved one: Show from back under Relative to
-  assert(top(sliders["Show from"]) == -150, "Show from under Relative to")
+  assert(top(sliders["Duration"]) == -150, "Show from under Relative to")
   -- another tab lets go of the Text, Time and Icon ID boxes (the draft already has what was typed)
   for _, edit in ipairs({ w.textEdit, w.timeEdit, w.idEdit }) do edit:SetFocus() end
   typeInto(w.textEdit, "Typed")
@@ -1291,7 +1292,7 @@ do
   for _, label in ipairs({ "Save as", "For", "Difficulty", "Relative to", "Icon", "Sound" }) do
     assert(dropdowns[label].opts.enabledIf and dropdowns[label].opts.enabledIf() == false, label .. " greyed")
   end
-  assert(sliders["Show from"].opts.enabledIf() == false and sliders["Linger"].opts.enabledIf() == false, "sliders greyed")
+  assert(sliders["Duration"].opts.enabledIf() == false and sliders["Linger"].opts.enabledIf() == false, "sliders greyed")
   assert(not w.saveBtn.shown and not w.deleteBtn.shown and not w.saveSavedBtn.shown, "no Save, Delete or Save as saved alert")
   assert(w.exportBtn.shown and w.copyBtn and w.copyBtn.shown and w.copyBtn.text == "Copy to my reminders", "Export and Copy")
   -- nothing changes the draft
