@@ -1721,8 +1721,8 @@ function Methods:NoteAndReminderMarks(lanes, length)
     end
     for _, e in ipairs(Reminders:List(encounterID)) do
         -- a reminder turned off (its tick on Mech Alerts) doesn't fire, so it isn't drawn either
-        -- nor one of another difficulty group than the view's
-        if e.r.enabled ~= false and self:ShowsReminder(e.r) then
+        -- nor one of another difficulty group than the view's, nor one saved as Raid note (its note lines are drawn)
+        if e.r.enabled ~= false and not (Reminders.InNote and Reminders.InNote(e.r)) and self:ShowsReminder(e.r) then
             for index, at in ipairs((self:ReminderTimes(encounterID, e.r))) do
                 add({ ph = at.ph, time = at.t, mine = true, encounterID = encounterID, id = e.id, index = index,
                     kind = "mine" }, e.r.spellID, e.r.text, e.r.iconID)
