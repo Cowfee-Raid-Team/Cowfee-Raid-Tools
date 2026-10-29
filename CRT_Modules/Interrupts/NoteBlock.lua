@@ -216,20 +216,14 @@ end
 -- The note the block lives in for t: the note a pull of that difficulty reads, when it may hold it. nil when the boss
 -- has no note at all; nil and why when the pull reads a note the block can't go in.
 local function noteOf(t)
-    local Notes = t.Notes
-    local id = Notes:FindForEncounter(t.id, t.difficulty)
-    local record = id and Notes:Get(id)
-    if not record then
-        return nil
+    -- the shared rule (Notes:WriteTarget); a note for every difficulty is fine while the boss has one setup at most
+    local id, _, record = t.Notes:WriteTarget(t.id, t.difficulty,
+        { find = true, singleDifficulty = #Interrupts:Setups(t.id) <= 1 })
+    if id or not record then
+        return id
     end
     if type(record.difficulty) == "string" then
-        if record.difficulty:lower() == t.difficulty:lower() then
-            return id
-        end
         return nil, string.format(TEXT.otherNote, t.difficulty, record.difficulty, t.difficulty)
-    end
-    if #Interrupts:Setups(t.id) <= 1 then
-        return id
     end
     return nil, string.format(TEXT.anyNote, t.difficulty, tostring(record.name), t.difficulty)
 end

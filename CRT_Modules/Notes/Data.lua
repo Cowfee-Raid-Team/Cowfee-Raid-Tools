@@ -866,8 +866,8 @@ end
 -- another note, nothing is written: nil and the reason ("The Mythic pull reads the Twin Fangs (Heroic) note. Make a
 -- Mythic note first (Raid Notes), then write."). A note is made, for exactly that difficulty, only when the boss has
 -- none at all, and only without opts.find. opts: bossName, via (how a new note came), find (never make one),
--- singleDifficulty. Returns the note's id (nil with find and no note) and true when it was just made, or nil and the
--- reason.
+-- singleDifficulty. Returns the note's id (nil with find and no note) and true when it was just made, or nil, the
+-- reason and the note the pull reads (its record, for a caller that words the reason its own way, Interrupts/NoteBlock.lua).
 function Notes:WriteTarget(encounterID, difficultyName, opts)
     if type(encounterID) ~= "number" then
         return nil
@@ -882,7 +882,7 @@ function Notes:WriteTarget(encounterID, difficultyName, opts)
             return id, false
         end
         local name = (record.name or "?") .. " (" .. (d or TEXT.anyDifficulty) .. ")"
-        return nil, string.format(TEXT.otherNote, tostring(difficultyName), name, tostring(difficultyName))
+        return nil, string.format(TEXT.otherNote, tostring(difficultyName), name, tostring(difficultyName)), record
     end
     if opts.find then
         return nil
