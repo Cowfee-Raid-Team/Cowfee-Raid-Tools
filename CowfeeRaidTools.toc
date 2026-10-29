@@ -87,6 +87,7 @@ CRT_Modules\Notes\AlertsTab.lua
 CRT_Modules\Notes\Render.lua
 CRT_Modules\Notes\EditModel.lua
 CRT_Modules\Notes\Links.lua
+CRT_Modules\Notes\Assign.lua
 CRT_Modules\Notes\HistoryWindow.lua
 CRT_Modules\Notes\EditorWindow.lua
 CRT_Modules\Notes\EditorLinks.lua

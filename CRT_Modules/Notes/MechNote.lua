@@ -250,12 +250,20 @@ end
 -- The note's text with the marked lines replaced by `lines`: where the first marked line was, else at the end.
 -- Every other line, and the line ends, stay byte for byte. No lines takes the marked ones out.
 function MechNote.Replace(raw, key, lines)
+    return MechNote.ReplaceLines(raw, function(_, text)
+        return MechNote.IsMarked(text, key)
+    end, lines)
+end
+
+-- The same for any lines: mine(n, text) says whether line n (as Notes.SplitPieces numbers them) is one to replace.
+-- The assignment blocks (Notes/Assign.lua) replace theirs through it.
+function MechNote.ReplaceLines(raw, mine, lines)
     raw = raw or ""
     local all = pieces(raw)
     local style = (all[1] and all[1].eol == "\r\n") and "\r\n" or "\n"
     local kept, at, lastEol = {}, nil, nil
-    for _, p in ipairs(all) do
-        if MechNote.IsMarked(p.text, key) then
+    for n, p in ipairs(all) do
+        if mine(n, p.text) then
             at = at or (#kept + 1)
             lastEol = p.eol
         else
@@ -349,8 +357,19 @@ end
 -- the boss is made when it has none (Notes:NoteFor, exact), only when there are lines to write. Returns the note's id
 -- (nil when none was needed) and how many lines it now has. The active note and the shares are left alone.
 function MechNote.Write(encounterID, difficulty, bossName, key, lines)
+    if not key then
+        return nil, 0
+    end
+    return MechNote.WriteWith(encounterID, difficulty, bossName, lines, function(raw)
+        return MechNote.Replace(raw, key, lines)
+    end)
+end
+
+-- The same for any writer: replace(raw) gives the note's new text (the assignment blocks, Notes/Assign.lua). The note
+-- is found or made as Write does, and changed only when its text changes.
+function MechNote.WriteWith(encounterID, difficulty, bossName, lines, replace)
     local Notes = CRT.Notes
-    if not (Notes and type(encounterID) == "number" and key) then
+    if not (Notes and type(encounterID) == "number") then
         return nil, 0
     end
     lines = lines or {}
@@ -365,7 +384,7 @@ function MechNote.Write(encounterID, difficulty, bossName, key, lines)
         return nil, 0
     end
     local raw = record.raw or ""
-    local new = MechNote.Replace(raw, key, lines)
+    local new = replace(raw)
     if new ~= raw then
         Notes:UpdateRaw(id, new, "edited", { lines = true })
     end
