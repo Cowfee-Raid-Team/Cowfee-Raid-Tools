@@ -1114,6 +1114,7 @@ end
 --                 SettingsCategoryListHeaderMixin:Init). The bar is the art's top 32 px; under it two faint
 --                 lines run down the sides, behind the entries. The menu scales the art to its own width and
 --                 clips it to the bar, so the lines never cross a page, its highlight or the divider.
+--                 frame: the thickness of the heading-coloured frame drawn round each header's bar.
 --   modern        header: the label's line over each box; pad: inside the box, above the first page and
 --                 below the last; boxRight: the box ends this far from the right; buttonLeft, buttonRight: a
 --                 page's button inside the box; labelX: the label from the left
@@ -1127,6 +1128,7 @@ UI.MENU_LAYOUT = {
         headerGap = 1,
         textX = 10,
         labelX = 10,
+        frame = 2, -- the frame around each header's bar, in the heading colour
         art = { atlas = "Options_CategoryHeader_", count = 3, w = 199, h = 144, bar = 32 },
     },
     modern = {
@@ -1269,8 +1271,13 @@ local function menuHeader(menu, i)
     h.face:SetPoint("TOPLEFT")
     h.art = h.face:CreateTexture(nil, "ARTWORK")
     h.art:SetPoint("TOPLEFT")
-    h.label = h.face:CreateFontString(nil, "OVERLAY", "CRTFontHighlight")
+    h.label = h.face:CreateFontString(nil, "OVERLAY", "CRTFontLarge")
     h.label:SetJustifyH("LEFT")
+    -- the Classic frame: four edges over the art and the label, anchored to the header's bar
+    h.edges = {}
+    for n = 1, 4 do
+        h.edges[n] = h.face:CreateTexture(nil, "OVERLAY", nil, 7)
+    end
     menu.headers[i] = h
     return h
 end
@@ -1313,12 +1320,34 @@ function UI:LayoutMenu()
             h.art:SetAtlas(item.art)
             h.art:SetSize(lay.width, artH)
             h.face:SetSize(lay.width, artH)
-            h.label:SetFontObject("CRTFontHighlight")
+            h.label:SetFontObject("CRTFontLarge")
             h.label:SetTextColor(1, 1, 1)
+            local t = look.frame
+            local top, bottom, left, right = h.edges[1], h.edges[2], h.edges[3], h.edges[4]
+            for _, e in ipairs(h.edges) do
+                e:SetColorTexture(rgba("heading"))
+                e:ClearAllPoints()
+                e:Show()
+            end
+            top:SetPoint("TOPLEFT", h, "TOPLEFT")
+            top:SetPoint("TOPRIGHT", h, "TOPRIGHT")
+            top:SetHeight(t)
+            bottom:SetPoint("BOTTOMLEFT", h, "BOTTOMLEFT")
+            bottom:SetPoint("BOTTOMRIGHT", h, "BOTTOMRIGHT")
+            bottom:SetHeight(t)
+            left:SetPoint("TOPLEFT", h, "TOPLEFT")
+            left:SetPoint("BOTTOMLEFT", h, "BOTTOMLEFT")
+            left:SetWidth(t)
+            right:SetPoint("TOPRIGHT", h, "TOPRIGHT")
+            right:SetPoint("BOTTOMRIGHT", h, "BOTTOMRIGHT")
+            right:SetWidth(t)
         else
             h.face:SetSize(lay.width, item.h)
             h.label:SetFontObject("CRTFontSmall")
             h.label:SetTextColor(rgba("muted"))
+            for _, e in ipairs(h.edges) do
+                e:Hide()
+            end
         end
         h.label:SetText(item.label)
         h:Show()
