@@ -49,15 +49,23 @@ local function frame(kind, template)
     function f:GenerateMenu()
       local radios = {}
       -- like the game's element description: SetEnabled(false) greys the item and a click on it does nothing
-      local root = { CreateRadio = function(_, label, isSel, setSel, data)
-        local d = { label = label, isSel = isSel, setSel = setSel, data = data, enabled = true }
+      local function element(kind, label, isSel, setSel, data)
+        local d = { kind = kind, label = label, isSel = isSel, setSel = setSel, data = data, enabled = true }
         function d:SetEnabled(on) self.enabled = on and true or false end
         function d:AddInitializer() end
-        radios[#radios + 1] = d return d end }
+        radios[#radios + 1] = d return d
+      end
+      -- like the game's: every ticked element is a selection, the closed dropdown lists them
+      local root = { CreateRadio = function(_, ...) return element("radio", ...) end,
+        CreateCheckbox = function(_, ...) return element("checkbox", ...) end,
+        CreateTitle = function(_, label) self.titles = self.titles or {} self.titles[#self.titles + 1] = label end }
+      self.titles = nil
       self.gen(self, root)
       self.radios = radios
       self.shown = nil
-      for _, r in ipairs(radios) do if r.isSel(r.data) then self.shown = r.label end end
+      local picked = {}
+      for _, r in ipairs(radios) do if r.isSel(r.data) then picked[#picked + 1] = r.label end end
+      self.shown = #picked > 0 and table.concat(picked, ", ") or nil
     end
     function f:Pick(label) self:GenerateMenu() for _, r in ipairs(self.radios) do if r.label == label and r.enabled then r.setSel(r.data) end end end
   elseif template == "MinimalSliderWithSteppersTemplate" then
@@ -104,6 +112,30 @@ d3.Dropdown:Pick("B")
 assert(pickedKey == "a", "a greyed option can't be picked")
 assert(d.Dropdown.radios[1].enabled and d.Dropdown.radios[2].enabled, "options without disabled stay enabled")
 print("ok controls: a disabled option is greyed and can't be picked")
+
+-- Options with checkbox = true are tick boxes beside the radios: several can be ticked (checked/toggle), a title heads them.
+local forTag, ticked = "all", {}
+local d4 = UI.Dropdown({}, "For", { options = function()
+    return { { key = "all", label = "Everyone" }, { key = "healer", label = "Healers" }, { title = true, label = "Players" },
+      { key = "Abu", label = "Abu", checkbox = true }, { key = "Cheo", label = "Cheo", checkbox = true } }
+  end,
+  get = function() return forTag end, set = function(k) forTag = k ticked = {} end,
+  checked = function(k) return ticked[k] == true end, toggle = function(k) ticked[k] = not ticked[k] or nil forTag = nil end })
+d4.refresh()
+assert(d4.Dropdown.titles and d4.Dropdown.titles[1] == "Players", "the heading")
+assert(d4.Dropdown.radios[3].kind == "checkbox" and d4.Dropdown.radios[1].kind == "radio", "tick boxes after the radios")
+assert(d4.Dropdown.shown == "Everyone", "a role picked: " .. tostring(d4.Dropdown.shown))
+d4.Dropdown:Pick("Abu") d4.Dropdown:Pick("Cheo") d4.refresh()
+assert(ticked.Abu and ticked.Cheo and d4.Dropdown.shown == "Abu, Cheo", "two ticked, both listed: " .. tostring(d4.Dropdown.shown))
+d4.Dropdown:Pick("Abu") d4.refresh()
+assert(not ticked.Abu and d4.Dropdown.shown == "Cheo", "a click unticks")
+d4.Dropdown:Pick("Healers") d4.refresh()
+assert(forTag == "healer" and d4.Dropdown.shown == "Healers", "a radio again")
+local d5 = UI.Dropdown({}, "Plain", { options = { { key = "a", label = "A", checkbox = true } }, get = function() end, set = function() end })
+d5.refresh()
+assert(d5.Dropdown.radios[1].isSel("a") == false, "no checked function: never ticked")
+d5.Dropdown:Pick("A")
+print("ok controls: tick boxes in a dropdown")
 
 -- A sound dropdown with playButton: a Play button after it plays the chosen sound once, and is greyed
 -- with no sound chosen or when the row is disabled.
