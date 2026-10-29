@@ -41,8 +41,9 @@ end
 
 -- A dropdown. opts:
 --   options    { { key, label }, ... }, or a function returning that list when the menu opens. An
---              option with disabled = true is shown greyed out and can't be picked, and one with
---              title = true is a heading in the open list (such as a raid over its bosses). An
+--              option with disabled = true is shown greyed out and can't be picked (disabled may be a
+--              function, asked again while the list is open, so a tick can grey other choices at once), and one
+--              with title = true is a heading in the open list (such as a raid over its bosses). An
 --              option's tooltip, when it has one, shows while the mouse is over it in the open list. One with
 --              checkbox = true is a tick box in the open list, so several can be ticked: checked(key) says
 --              whether it is, toggle(key) is called on a click (the closed dropdown lists what is ticked).
@@ -50,6 +51,7 @@ end
 --   set(key)   called when a choice is picked
 --   width, labelWidth, enabledIf() (greys the row out while it returns false)
 --   maxHeight  optional: the open menu scrolls past this many pixels, for a long list
+--   onClose()  optional: called when the open list closes
 --   decorate(button, option)  optional: adds to each item in the open menu, such as a Play button.
 --                             It may return the item's width and height. Anything it attaches with
 --                             button:AttachFrame or AttachFontString is removed when the menu closes.
@@ -94,7 +96,13 @@ function UI.Dropdown(parent, text, opts)
                         opts.set(key)
                     end, option.key)
                 end
-                if option.disabled and radio and radio.SetEnabled then
+                if type(option.disabled) == "function" and radio and radio.SetEnabled then
+                    -- the game's menu asks a function again while the list is open (IsEnabled, polled)
+                    local disabled = option.disabled
+                    radio:SetEnabled(function()
+                        return not disabled()
+                    end)
+                elseif option.disabled and radio and radio.SetEnabled then
                     radio:SetEnabled(false)
                 end
                 if option.tooltip and radio and radio.SetTooltip then
@@ -124,6 +132,11 @@ function UI.Dropdown(parent, text, opts)
                 pcall(menu.Raise, menu)
             end
         end, row)
+        if opts.onClose then
+            dropdown:RegisterCallback(DropdownButtonMixin.Event.OnMenuClose, function()
+                opts.onClose()
+            end, row)
+        end
     end
 
     row.refresh = function()
