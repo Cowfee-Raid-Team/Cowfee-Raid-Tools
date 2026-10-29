@@ -705,25 +705,49 @@ local function noteOpts(enc)
     return { ref = entry and entry.ref, group = shownGroup(), boss = bossName(bosses(), enc) }
 end
 
+-- Whether the panel's alert may write raid note lines now (MechNote.CanWrite: you may change the raid note, it isn't
+-- combat or a boss encounter, and the pull of the difficulty on show reads a note for it), and the reason when not.
+local function noteAllowed(enc)
+    local M = CRT.MechNote
+    local entry = shownReference()
+    return M.CanWrite(enc, M.NoteDifficulty(entry and entry.ref, shownGroup()))
+end
+
+-- Whether Times from shows the boss's default ability timeline for the group (the Timeline's own pick), not one
+-- picked to look at. Only then do lines get written again on their own (resyncNote, the Assign tab).
+local function onDefaultTimeline()
+    if viewPrefer == nil then
+        return true
+    end
+    local T = CRT.Timeline
+    local entry = shownReference()
+    local default = T and T.ReferenceFor and T:ReferenceFor(selected, shownGroup(), bossName(bosses(), selected), nil, bossRefs())
+    return default == nil or (entry ~= nil and default.key == entry.key)
+end
+
 -- A saved reminder that is Raid note: its lines in the boss's note brought in step with it (Notes/MechNote.lua Sync),
 -- its times read from the ability timeline on show, as the panel shows them. False and the reason (on the message
--- line) when you may not change the raid note; nothing is written then.
+-- line) when they can't be written (noteAllowed, or Sync refused); nothing is written then.
 local function syncNote(enc, id)
     local M = CRT.MechNote
     if not (M and id and M.InNote(CRT.AlertReminders:Get(enc, id))) then
         return true
     end
-    local allowed, why = CRT.AlertDraft.CanEditRaid()
+    local allowed, why = noteAllowed(enc)
     if not allowed then
         notice = why
         return false
     end
     local was = saving
     saving = true -- the note's change listeners redraw once, after
-    local ok, err = pcall(M.Sync, enc, id, noteOpts(enc))
+    local ok, err, _, refused = pcall(M.Sync, enc, id, noteOpts(enc))
     saving = was
     if not ok then
         geterrorhandler()(err)
+        return false
+    end
+    if refused then
+        notice = refused
         return false
     end
     return true
@@ -736,8 +760,8 @@ end
 local function resyncNote()
     local M, ctx, Notes = CRT.MechNote, cur.ctx, CRT.Notes
     if not (M and ctx and ctx.id and M.InNote(ctx.reminder)) or saving or not (Notes and Notes.Busy) or Notes.Busy()
-        or not CRT.AlertDraft.CanEditRaid() then
-        return
+        or not CRT.AlertDraft.CanEditRaid() or not onDefaultTimeline() then
+        return -- also never while another ability timeline is picked to look at
     end
     local ok, inStep = pcall(M.InStep, ctx.encounterID, ctx.id, noteOpts(ctx.encounterID))
     if ok and not inStep and syncNote(ctx.encounterID, ctx.id) then
@@ -759,6 +783,8 @@ local function drawNoteStatus()
         local ok, inStep = pcall(M.InStep, ctx.encounterID, ctx.id, noteOpts(ctx.encounterID))
         if r.enabled == false then
             text = UI.WarnText(TEXT.noteOff)
+        elseif select(2, M.FindNote(ctx.encounterID, difficulty)) then
+            text = UI.WarnText(TEXT.otherNote) -- the pull reads another difficulty's note: nothing is written there
         elseif count == 0 then
             text = UI.WarnText(string.format(TEXT.noteGone, tostring(cur.bossName), difficulty))
         elseif CRT.Notes:FindForEncounter(ctx.encounterID, difficulty) ~= M.FindNote(ctx.encounterID, difficulty) then
@@ -1156,7 +1182,7 @@ commit = function(quiet)
     end
     -- a Raid note alert is saved only with its lines: never while you may not change the raid note
     if CRT.MechNote and CRT.MechNote.InNote(ctx.reminder) then
-        local allowed, why = Draft.CanEditRaid()
+        local allowed, why = noteAllowed(ctx.encounterID)
         if not allowed then
             notice = why
             drawPanel()
@@ -1229,7 +1255,7 @@ local function setEnabled(item, on)
             -- a Raid note alert's tick changes its lines: refused while you may not change the raid note
             local allowed, why = true, nil
             if CRT.MechNote and CRT.MechNote.InNote(r) then
-                allowed, why = Draft.CanEditRaid()
+                allowed, why = noteAllowed(enc)
             end
             if not allowed then
                 notice = why
@@ -1607,7 +1633,7 @@ end
 local function buildNoteRow(p, row)
     local M = CRT.MechNote
     local function allowed()
-        local ok, why = CRT.AlertDraft.CanEditRaid()
+        local ok, why = noteAllowed(cur.enc)
         if not ok then
             notice = why
             drawPanel()
@@ -1641,7 +1667,7 @@ local function buildNoteRow(p, row)
             return
         end
         if v == "mine" then
-            if CRT.AlertDraft.CanEditRaid() then
+            if noteAllowed(ctx.encounterID) then
                 M.Leave(ctx.encounterID, { raidNote = before })
             else
                 notice = TEXT.linesStay
@@ -1794,7 +1820,7 @@ local function buildAssignTab(p)
             local entry = shownReference()
             local name = item and item.ability and item.ability.name or (item and not item.pending and itemName(item)) or draftName()
             return { enc = cur.enc, item = item, bossName = cur.bossName, ref = entry and entry.ref, group = shownGroup(),
-                name = name }
+                name = name, defaultTimeline = onDefaultTimeline() }
         end,
         notice = function(message)
             notice = message
@@ -2072,7 +2098,7 @@ local function buildPanel(f)
                 -- a Raid note reminder's lines go with it
                 local stay = false
                 if CRT.MechNote and CRT.MechNote.InNote(saved) then
-                    if CRT.AlertDraft.CanEditRaid() then
+                    if noteAllowed(enc) then
                         CRT.MechNote.Leave(enc, saved)
                     else
                         stay = true

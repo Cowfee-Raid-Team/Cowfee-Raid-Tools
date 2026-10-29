@@ -3,19 +3,20 @@ local ADDON, CRT = ...
 -- The Mech Alerts panel's Assign tab (Notes/Reminders.lua builds it into its Assign subtab, Alerts/SubTabs.lua; the
 -- panel only, never the pop-out alert editor): assignments for the selected mechanic, such as soaks or sides, written
 -- into the boss's raid note for the difficulty on show. Left, the block editor (Notes/AssignBlock.lua): Name (the
--- mechanic's name by default), Times (the mechanic's casts on the ability timeline, read only; typed for your own
--- reminder or a mechanic with no casts), the rows, + Row and Quick fill, the note's status, and + Assignment (a second
--- block on the same mechanic) and Remove. Right, the note editor's own palette (Notes/Palette.lua), 218 wide.
--- The note is the one source: the blocks are read from it (Notes/Assign.lua Read) whenever another mechanic,
--- difficulty or ability timeline is shown, and every change writes the block back at once (Assign.Write: the boss's
--- note for exactly that difficulty, made when it has none), refused with the reason while you may not change the raid
--- note (Notes:CanEditRaid). A block's lines follow the ability timeline: shown again with its casts moved, they are
--- written again, never in combat or a boss encounter (Notes.Busy). Raid note alert lines of the same mechanic stay
--- beside them.
--- Which blocks belong to the mechanic: the one named after it, or the reminder's `assign` list (the blocks' keys,
--- saved only once a block is renamed or a second one is added; Alerts/Reminders.lua).
+-- mechanic's name by default), Assignment (which of the mechanic's blocks, with its (?)), Times (the mechanic's casts on
+-- the ability timeline, read only; typed for your own reminder or a mechanic with no casts), the rows, + Row and Quick
+-- fill, the note's status, and + Assignment (another block on the same mechanic) and Remove. Right, the note editor's
+-- own palette (Notes/Palette.lua), 218 wide.
+-- The note is the one source: a mechanic's blocks are the ones whose heading names it (Assign.BlocksFor: for:, its
+-- MechNote.Key), read whenever another mechanic, difficulty or ability timeline is shown; nothing is saved anywhere
+-- else, and no reminder is made. Every change writes the block back at once (Assign.Write, into the note the pull of
+-- that difficulty reads, Notes:WriteTarget), refused with the reason on the panel's red line: you may not change the
+-- raid note, combat or a boss encounter (Notes.Busy), the pull reads another difficulty's note, or the name is
+-- another block's or list's in that note (Assign.KeyTaken). A block's lines follow the ability timeline on their own
+-- (written again when its casts moved) only when Read found both its heading and its lines, Times from shows the
+-- boss's default ability timeline, and never mid-pull. Raid note alert lines of the same mechanic stay beside them.
 --   Tab.Build(frame, host)   host: x, y, width, height (the tab's area in frame), current() (the panel's mechanic:
---                            enc, item, name, bossName, ref, group, id, reminder), notice(message) (the panel's red
+--                            enc, item, name, bossName, ref, group, defaultTimeline), notice(message) (the panel's red
 --                            line)
 --   tab.Refresh(), tab.Leave(), Tab.HasNames()
 
@@ -29,6 +30,8 @@ CRT.NoteAssignTab = Tab
 
 -- Every word on the tab, in one place. Keep the keys, change the text in quotes, save, /reload.
 local TEXT = {
+    pick = "Assignment",
+    pickHelp = "This mechanic's assignments in the raid note: pick the one to change. + Assignment adds another, such as a second set of soaks. Each has its own name in the note.",
     addBlock = "+ Assignment",
     removeBlock = "Remove",
     removeConfirm = "Take the assignment '%s' out of the raid note?",
@@ -38,7 +41,6 @@ local TEXT = {
     manyLines = "%d timer lines",
     notYet = "Not in the raid note yet. Any change writes it there.",
     otherNote = "The pull uses another note for this boss, so these lines won't run.",
-    sameName = "Another assignment of this mechanic has that name.",
     badTimes = "The times don't read: %s",
     pending = "Make a change on another tab first, so this reminder is saved.",
 }
@@ -46,13 +48,13 @@ Tab.TEXT = TEXT
 
 local L = {
     colW = 484, paletteW = 218, -- the approved mock-up's columns
-    pickW = 150, -- the block picker, right of Name
+    pickLabelW = 70, pickW = 120, -- the block picker, right of Name, then its (?)
     buttonH = 22, buttonGap = 6,
 }
 Tab.L = L
 
--- The tab's state: the mechanic shown (sig), its blocks ({ block, with key: the note's marker, nil before the first
--- write }), the one on show, and the palette's (P).
+-- The tab's state: the mechanic shown (sig, c), its blocks (each with key: the note's marker, nil before the first
+-- write), the one on show, and the palette's (P).
 local S = { blocks = {}, index = 1 }
 local P = { picked = {} }
 local host, ui
@@ -71,8 +73,12 @@ local function noteRecord(c)
 end
 
 local function block()
-    local e = S.blocks[S.index]
-    return e
+    return S.blocks[S.index]
+end
+
+-- The mechanic's key (MechNote.Key: its spell, else its name), which its blocks' headings name.
+local function mechOf(c)
+    return CRT.MechNote.Key(c.item and c.item.spellID, c.name)
 end
 
 -- The mechanic's casts (the ability timeline's, for the group on show), and whether its times are typed instead: your
@@ -103,15 +109,6 @@ local function timesOf(b)
     return S.casts or {}
 end
 
--- The keys of the mechanic's blocks: its reminder's assign list, else the one named after it.
-local function keysOf(c)
-    local r = c.item and c.item.r
-    if r and type(r.assign) == "table" and #r.assign > 0 then
-        return r.assign
-    end
-    return { Assign.Key(c.name) }
-end
-
 local function itemSig(c)
     local item = c.item
     local id = item and (item.pending and "new" or item.ability and ("a:" .. tostring(item.spellID or item.ability.name))
@@ -127,15 +124,18 @@ local function load(c)
     local casts, typed, own = castsOf(c)
     S.casts, S.typed = casts, typed
     local record = noteRecord(c)
-    for _, key in ipairs(keysOf(c)) do
-        local b = record and Assign.Read(record.raw or "", key, (not typed) and casts or nil)
+    local raw = record and record.raw or ""
+    for _, key in ipairs(Assign.BlocksFor(raw, mechOf(c))) do
+        local b = Assign.Read(raw, key, (not typed) and casts or nil)
         if b then
-            b.key = key
+            if not typed then
+                b.times = nil -- the mechanic's casts now
+            end
             S.blocks[#S.blocks + 1] = b
         end
     end
     if #S.blocks == 0 then
-        local b = Assign.NewBlock(c.name)
+        local b = Assign.NewBlock(Assign.FreeName(raw, c.name))
         b.spellID = c.item and c.item.spellID
         if typed and own and #own > 0 then
             b.times = Assign.SortTimes(own)
@@ -144,72 +144,36 @@ local function load(c)
     end
 end
 
+local function linesOf(c, b, key)
+    return Assign.Lines(b, timesOf(b), { key = key, spellID = c.item and c.item.spellID, mech = mechOf(c) })
+end
+
 -- Whether a block's lines in the note are what it would write now (the ability timeline may have moved a cast).
 local function inStep(c, b, raw)
-    if not b.key then
-        return true
-    end
-    local lines = Assign.Lines(b, timesOf(b), { key = b.key, spellID = c.item and c.item.spellID })
-    return Assign.Replace(raw, b.key, lines) == raw
+    return Assign.Replace(raw, b.key, linesOf(c, b, b.key), b.key) == raw
 end
 
--- The pointer on the mechanic's reminder: the blocks' keys, once one is renamed or there are two; none otherwise. A
--- boss ability with no reminder gets one, turned off, to hold it.
-local function savePointer(c)
-    local Reminders = CRT.AlertReminders
-    local item = c.item
-    if not (Reminders and item and c.enc) or item.pending then
-        return
-    end
-    local keys = {}
-    for _, b in ipairs(S.blocks) do
-        if b.key then
-            keys[#keys + 1] = b.key
-        end
-    end
-    local need = #keys > 1 or (keys[1] ~= nil and keys[1] ~= Assign.Key(c.name))
-    local r = item.id and Reminders:Get(c.enc, item.id)
-    if r then
-        if need or r.assign then
-            local saved = CRT.AlertDraft.copy(r)
-            saved.assign = need and keys or nil
-            Reminders:Save(c.enc, item.id, saved)
-        end
-    elseif need and item.ability then
-        Reminders:Save(c.enc, nil, { spellID = item.spellID, boss = c.bossName, text = c.name, enabled = false,
-            group = c.group, assign = keys }, c.group)
-    end
-end
-
--- Writes the block on show into the note. False, with the reason on the panel's line, when it can't be.
+-- Writes a block into the note. False, with the reason on the panel's line, when it can't be: nothing written, and
+-- the block read again from the note.
 local function write(c, b)
-    local allowed, why = CRT.AlertDraft.CanEditRaid()
-    if not allowed then
-        host.notice(why)
-        S.sig = nil -- read again from the note: the change is not kept
-        return false
-    end
+    local allowed, why = CRT.MechNote.CanWrite(c.enc, difficultyOf(c))
     local key = Assign.Key(b.name)
-    for i, other in ipairs(S.blocks) do
-        if i ~= S.index and (other.key or Assign.Key(other.name)) == key then
-            host.notice(TEXT.sameName)
-            S.sig = nil
+    if allowed then
+        S.writing = true
+        local ok, id, refused = pcall(Assign.Write, c.enc, difficultyOf(c), c.bossName, key, linesOf(c, b, key), b.key)
+        S.writing = false
+        if not ok then
+            geterrorhandler()(id)
             return false
         end
+        allowed, why = id ~= nil, refused
     end
-    local lines = Assign.Lines(b, timesOf(b), { key = key, spellID = c.item and c.item.spellID })
-    S.writing = true
-    local ok, err = pcall(Assign.Write, c.enc, difficultyOf(c), c.bossName, key, lines, b.key)
-    S.writing = false
-    if not ok then
-        geterrorhandler()(err)
+    if not allowed then
+        host.notice(why)
+        S.sig = nil
         return false
     end
-    local renamed = b.key ~= key
     b.key = key
-    if renamed or #S.blocks > 1 then
-        savePointer(c)
-    end
     host.notice(nil)
     return true
 end
@@ -262,7 +226,7 @@ local function drawStatus(c)
     ui.status:SetText(text)
 end
 
--- Whether you may change the blocks now.
+-- Whether you may change the blocks now: you may change the raid note (writes ask MechNote.CanWrite again).
 local function readOnly()
     local c = current()
     if not c.enc or (c.item and c.item.pending) then
@@ -296,36 +260,40 @@ end
 
 -- The tab ------------------------------------------------------------------------------------------------------------
 
+-- The lines follow the ability timeline: a block written again when its casts moved, only when its heading and its
+-- lines are both in the note, Times from shows the boss's default ability timeline, and never mid-pull.
+local function follow(c)
+    local record = noteRecord(c)
+    if not (record and not S.typed and c.defaultTimeline ~= false and CRT.MechNote.CanWrite(c.enc, difficultyOf(c))) then
+        return
+    end
+    local shown = S.index
+    for i, b in ipairs(S.blocks) do
+        if b.key and b.hasHeading and b.hasLines and not inStep(c, b, record.raw or "") then
+            S.index = i
+            write(c, b)
+            record = noteRecord(c) or record
+        end
+    end
+    S.index = shown
+end
+
 function Tab.Refresh()
-    if not (ui and host) then
+    if not (ui and host) or S.writing then
         return
     end
     local c = current()
-    if S.writing then
-        return
-    end
     if itemSig(c) ~= S.sig then
         ui:Flush()
         load(c)
-        -- the lines follow the ability timeline: written again when its casts moved (never mid-pull)
-        local record = noteRecord(c)
-        local Notes = CRT.Notes
-        if record and not S.typed and not Notes.Busy() and CRT.AlertDraft.CanEditRaid() then
-            for i, b in ipairs(S.blocks) do
-                if not inStep(c, b, record.raw or "") then
-                    S.index = i
-                    write(c, b)
-                    record = noteRecord(c) or record
-                end
-            end
-            S.index = 1
-        end
+        follow(c)
     end
     ui:Refresh()
     drawStatus(S.c or c)
     S.pick.refresh()
-    S.remove:SetEnabled(not readOnly() and block() ~= nil and block().key ~= nil)
-    S.add:SetEnabled(not readOnly())
+    local ro = readOnly()
+    S.remove:SetEnabled(not ro and block() ~= nil and block().key ~= nil)
+    S.add:SetEnabled(not ro)
     if P.from then
         P.from.refresh()
     end
@@ -351,26 +319,21 @@ function Tab.HasNames()
     return false
 end
 
--- + Assignment: another block on the same mechanic, named after it with a number, written at once.
+-- + Assignment: another block on the same mechanic, named after it with the next free number, written at once.
 local function addBlock()
     local c = S.c or current()
     if readOnly() then
         return
     end
     ui:Flush()
-    local base = Assign.CleanName(c.name)
-    local n, name = #S.blocks + 1, nil
-    repeat
-        name = base .. " " .. n
-        n = n + 1
-        local taken = false
-        for _, b in ipairs(S.blocks) do
-            if Assign.Key(b.name) == Assign.Key(name) then
-                taken = true
-            end
+    local record = noteRecord(c)
+    local raw = record and record.raw or ""
+    for _, b in ipairs(S.blocks) do
+        if not b.key then
+            raw = raw .. "\n" .. table.concat(linesOf(c, b, Assign.Key(b.name)), "\n") -- a block not written yet holds its name
         end
-    until not taken
-    local b = Assign.NewBlock(name)
+    end
+    local b = Assign.NewBlock(Assign.FreeName(raw, Assign.CleanName(c.name) .. " 2"))
     b.spellID = c.item and c.item.spellID
     S.blocks[#S.blocks + 1] = b
     S.index = #S.blocks
@@ -389,21 +352,19 @@ local function removeBlock()
         return
     end
     local function go()
-        local allowed, why = CRT.AlertDraft.CanEditRaid()
-        if not allowed then
+        local allowed, why = CRT.MechNote.CanWrite(c.enc, difficultyOf(c))
+        if allowed then
+            S.writing = true
+            local ok, err = pcall(Assign.Write, c.enc, difficultyOf(c), c.bossName, b.key, {})
+            S.writing = false
+            if not ok then
+                geterrorhandler()(err)
+                return
+            end
+        else
             host.notice(why)
             return
         end
-        S.writing = true
-        local ok, err = pcall(Assign.Write, c.enc, difficultyOf(c), c.bossName, b.key, {})
-        S.writing = false
-        if not ok then
-            geterrorhandler()(err)
-            return
-        end
-        table.remove(S.blocks, S.index)
-        S.index = 1
-        savePointer(c)
         S.sig = nil
         Tab.Refresh()
     end
@@ -423,14 +384,15 @@ end
 function Tab.Build(frame, h)
     host = h
     S, P = { blocks = {}, index = 1 }, { picked = {} } -- a new tab: its own state and palette
+    local BL = CRT.NoteAssignBlock.L
     ui = CRT.NoteAssignBlock.Build(frame, {
-        x = h.x, y = h.y, width = L.colW, height = h.height, nameWidth = L.colW - CRT.NoteAssignBlock.L.labelW - 8 - L.pickW - 8,
+        x = h.x, y = h.y, width = L.colW, height = h.height,
+        nameWidth = L.colW - BL.labelW - 8 - (L.pickLabelW + 5 + L.pickW) - UI.HELP_GAP - UI.HELP_SIZE - 12,
         state = P,
         names = { rows = "CowfeeRaidToolsAssignRows" },
         block = block,
         times = function()
-            local b = block()
-            return timesOf(b), S.typed
+            return timesOf(block()), S.typed
         end,
         timesText = function()
             local b = block()
@@ -439,9 +401,9 @@ function Tab.Build(frame, h)
         changed = changed,
         readOnly = readOnly,
     })
-    -- the block picker, right of Name
-    S.pick = UI.Dropdown(ui.content, "", {
-        labelWidth = 0, width = L.pickW,
+    -- the block picker, right of Name, with its (?)
+    S.pick = UI.Dropdown(ui.content, TEXT.pick, {
+        labelWidth = L.pickLabelW, width = L.pickW,
         options = function()
             local out = {}
             for i, b in ipairs(S.blocks) do
@@ -460,7 +422,8 @@ function Tab.Build(frame, h)
             end
         end,
     })
-    S.pick:SetPoint("TOPRIGHT", ui.content, "TOPRIGHT", 0, 5)
+    S.pick:SetPoint("TOPRIGHT", ui.content, "TOPRIGHT", -(UI.HELP_GAP + UI.HELP_SIZE + 6), 5)
+    S.pickHelp = UI.HelpRight(S.pick, TEXT.pick, TEXT.pickHelp)
     -- + Assignment and Remove, bottom right of the column
     S.remove = UI.PanelButton(ui.content, TEXT.removeBlock, L.buttonH, removeBlock)
     S.remove:SetPoint("BOTTOMRIGHT", 0, 0)

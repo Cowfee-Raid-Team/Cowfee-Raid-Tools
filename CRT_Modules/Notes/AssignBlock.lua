@@ -50,7 +50,7 @@ local L = {
     rowH = 22, -- a name, times or row line
     labelW = 44, -- Name and Times
     gap = 6,
-    rowLabelW = 84, rowTextW = 140,
+    rowLabelW = 84, rowTextW = 130,
     onLabelW = 18, onW = 104, onGap = 5, -- UI.Dropdown's gap between its label and the dropdown
     removeW = 20,
     zonePad = 3, rowGap = 6,
@@ -260,11 +260,8 @@ function Editor:RowFrame(r)
     f.tag:SetScript("OnEnter", tagEnter)
     f.tag:SetScript("OnLeave", hideTip)
     f.casts = self:CastsDropdown(f)
-    f.remove = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
-    f.remove:SetSize(L.removeW, L.rowH - 2)
-    f.remove:SetText("x")
-    UI:SkinButton(f.remove)
-    f.remove:SetScript("OnClick", function()
+    -- x: the shared panel button, as wide as its label
+    f.remove = UI.PanelButton(f, "x", L.rowH - 2, function()
         local block = ui.opts.block()
         if block and not ui.opts.readOnly() and Assign.RemoveRow(block, f.index) then
             ui.selected = nil
@@ -310,7 +307,7 @@ function Editor:DrawRow(f, r, row, width, readOnly)
     f.remove:SetShown(#self.opts.block().rows > 1)
     f.remove:SetEnabled(not readOnly)
     f.casts:ClearAllPoints()
-    f.casts:SetPoint("RIGHT", f, "TOPRIGHT", -(L.removeW + L.gap + 2), -(L.rowH / 2))
+    f.casts:SetPoint("RIGHT", f, "TOPRIGHT", -((f.remove:GetWidth() or L.removeW) + L.gap + 2), -(L.rowH / 2))
     f.casts.refresh()
     local list = self.lines[r] or {}
     f.tag.index = r

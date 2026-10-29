@@ -504,6 +504,10 @@ function Editor.Refresh()
     -- the timer links and their banner over the rows, before the rows that show them
     local el = links()
     W.bannerH = el and el.Refresh(W.rowsWidth + UI.ScrollGutter()) or 0
+    -- under it, Add assignment's banner: group lists with timer lines that could be Assign blocks
+    if assign() then
+        W.bannerH = W.bannerH + assign().RefreshBanner(W.rowsWidth + UI.ScrollGutter(), W.bannerH)
+    end
     layoutLeft()
     Editor.DrawRows()
     if W.assignOn and assign() then
@@ -520,6 +524,8 @@ function Editor.Refresh()
     if W.assignButton then
         W.assignButton:SetEnabled(not readOnly() or W.assignOn == true)
     end
+    -- Raw text can't show while Add assignment holds the left side: greyed until Done
+    W.rawButton:SetEnabled(not W.assignOn)
     local status = ""
     if W.notice then
         status = W.notice
@@ -589,6 +595,9 @@ function Editor.Save()
         end
         W.saving = true
         Notes:SetPersonal(text)
+        if CRT.NoteAssign then
+            CRT.NoteAssign.LinkAll("personal", text)
+        end
         W.saving = false
         CRT:Print(TEXT.personalSaved)
     else
@@ -613,6 +622,10 @@ function Editor.Save()
         end
         W.saving = true
         Notes:UpdateRaw(W.source.id, text)
+        -- the assignment blocks' timer lines follow their rows once saved (Notes/Assign.lua)
+        if CRT.NoteAssign then
+            CRT.NoteAssign.LinkAll(W.source.id, text)
+        end
         W.saving = false
         CRT:Print(TEXT.saved)
     end

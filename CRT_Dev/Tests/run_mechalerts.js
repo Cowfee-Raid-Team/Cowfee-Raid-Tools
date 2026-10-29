@@ -198,6 +198,20 @@ CRT.Notes.NoteFor = function(self, enc, diff, boss, opts)
   if id then return id, false end
   return self:Import("EncounterID:" .. enc .. ";Difficulty:" .. diff .. ";Name:" .. boss .. "\\n", nil, nil, nil, opts and opts.via, nil, opts and opts.exact), true
 end
+-- Notes/Data.lua's WriteTarget (run_mechnote.js tests the real one): the note the pull of that difficulty reads, when it
+-- is for that difficulty; refused with what to do when it is another's; made only when the boss has none
+CRT.Notes.WriteTarget = function(self, enc, diff, opts)
+  opts = opts or {}
+  local id = self:FindForEncounter(enc, diff)
+  local r = id and noteStore[id]
+  if r then
+    if (r.difficulty and diff and r.difficulty:lower() == diff:lower()) or (not r.difficulty and opts.singleDifficulty) then return id, false end
+    return nil, "The " .. diff .. " pull reads the " .. tostring(r.name) .. " (" .. (r.difficulty or "any difficulty") .. ") note. Make a "
+      .. diff .. " note first (Raid Notes), then write."
+  end
+  if opts.find then return nil end
+  return self:Import("EncounterID:" .. enc .. ";Difficulty:" .. diff .. ";Name:" .. tostring(opts.bossName) .. "\\n", nil, nil, nil, opts.via, nil, true), true
+end
 local activeRecord = { encounterID = 9001, name = "Test Boss" }
 CRT.Notes.Active = function() return "n1", activeRecord end
 CRT.NotesPage = { TAB_H = CRT.UI.PAGE_H - 66 } -- CRT_Modules/Notes/Page.lua: a tab's height under the tabs
@@ -863,10 +877,14 @@ check("mech raid note: no rewrite in an encounter, an older alert splits, anothe
   IsEncounterInProgress = nil
   CRT.Notes:Fire()
   assert(#marked(note.raw, "777") == 2, "written once it ended")
-  -- the pull reads another note (an active note for any difficulty, say): said in the warn colour
+  -- the pull reads another note (an active note for any difficulty, say): said in the warn colour, and nothing is
+  -- written there (Notes:WriteTarget)
+  local loose = CRT.Notes:Import("EncounterID:9001;Difficulty:Any;Name:Loose\\n")
+  CRT.Notes:Get(loose).difficulty = nil
   local wasFind = CRT.Notes.FindForEncounter
-  CRT.Notes.FindForEncounter = function() return 999 end
+  CRT.Notes.FindForEncounter = function() return loose end
   CRT.Notes:Fire()
+  assert(#marked(CRT.Notes:Get(loose).raw, "777") == 0, "nothing written into the note for any difficulty")
   assert(p.noteStatus.text:find("The pull uses another note for this boss, so these lines won't run.", 1, true)
     and p.noteStatus.text:find("|cff" .. CRT.UI.Hex("warn"), 1, true), p.noteStatus.text)
   CRT.Notes.FindForEncounter = wasFind
@@ -886,6 +904,22 @@ check("mech raid note: no rewrite in an encounter, an older alert splits, anothe
   end
   assert(#mythic == 1 and mythic[1].raidNote and #nh == 1 and nh[1].raidNote == nil, "split: Mythic in the note, Normal/Heroic Only me")
   assert(#marked(noteFor(ENC, "Mythic").raw, "888") == 1, "its one Mythic cast in the note")
+  assert(#errors == 0, tostring(errors[1]))
+end)
+
+check("mech raid note: your own change is refused in combat or a boss encounter, with the reason", function()
+  resetNotes()
+  local f = fresh()
+  local p = f.panel
+  p.saveAs.opts.set("note")
+  local note = noteFor(ENC, "Mythic")
+  local before = note.raw
+  IsEncounterInProgress = function() return true end
+  p.forDrop.opts.toggle("healer")
+  assert(note.raw == before and p.message.text:find(CRT.MechNote.TEXT.busy, 1, true), "refused: " .. tostring(p.message.text))
+  IsEncounterInProgress = nil
+  p.forDrop.opts.toggle("healer")
+  assert(note.raw ~= before and note.raw:find("tag:healer;", 1, true), "written after the pull")
   assert(#errors == 0, tostring(errors[1]))
 end)
 

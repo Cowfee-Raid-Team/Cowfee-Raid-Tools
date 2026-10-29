@@ -272,9 +272,8 @@ local REMINDER_FIELDS = {
 }
 AS.REMINDER_FIELDS = REMINDER_FIELDS
 -- Fields an older CRT saved and sent that are ignored now: an incoming one reads, is left out, and isn't counted.
--- raidNote (Save as Raid note, Notes/MechNote.lua) and assign (the Assign tab's blocks, Notes/AssignTab.lua) are this
--- computer's own: never sent, and never counted as left out.
-local OLD_REMINDER_FIELDS = { barTo = true, raidNote = true, assign = true }
+-- raidNote (Save as Raid note, Notes/MechNote.lua) is this computer's own: never sent, and never counted as left out.
+local OLD_REMINDER_FIELDS = { barTo = true, raidNote = true }
 
 -- A reminder with only the fields that travel, each checked. Returns the clean copy (nil when it isn't a
 -- reminder you could save: no spell and no text, or nothing it shows, as Draft.Problem says) and how many

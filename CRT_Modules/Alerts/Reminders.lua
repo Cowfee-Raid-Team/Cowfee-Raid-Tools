@@ -6,12 +6,9 @@ local ADDON, CRT = ...
 -- saved in CRT.db.alerts.reminders[encounterID][id] as
 --   { boss, spellID, text, times, outputs = { alert, bar, speech, text, icon, circle, timeline }, warn, speech,
 --     priority, group, difficulty, enabled, linger, sound, auraSound, glow, iconID, color, speakAt, ticks, fill, countTo, barTo,
---     absorb, raidNote, assign }
+--     absorb, raidNote }
 -- raidNote (optional) = { tag, key, difficulty }: saved as Raid note in Mech Alerts (Notes/MechNote.lua). Its lines in the
 -- boss's raid note alert instead, so the "mine" block skips it (InNote); nothing else changes.
--- assign (optional) = { key, ... }: the keys of the mechanic's assignment blocks in the raid note (Notes/AssignTab.lua),
--- saved once a block is renamed or a second one is added; without it, the block named after the mechanic. Nothing
--- else reads it.
 -- auraSound true also plays the sound when the spell's aura is put on you (Sound/Auras.lua).
 -- absorb (optional, AbsorbOf) = { unit, length, anyDifficulty } makes its bar a shield bar, as a special alert's
 -- (Alerts/Absorb.lua; the format at the top of Alerts/Special.lua): the window opens Show from before each cast, and

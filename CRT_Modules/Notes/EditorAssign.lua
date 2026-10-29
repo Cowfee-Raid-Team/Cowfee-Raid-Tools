@@ -10,12 +10,15 @@ local ADDON, CRT = ...
 --   Done         back to the rows
 -- then the block editor (Name, Times, rows, + Row, Quick fill), with the editor's own palette on the right. Each change
 -- is written into the editor's session (its text, as Save will write it), so Raw text and Save follow; nothing reaches
--- the note until Save. The timer lines are linked to their rows (Assign.Link), so the rows view shows them following.
+-- the note until Save, which links the blocks' timer lines to their rows (Assign.LinkAll). A name another block or a
+-- typed list of the note has is refused, with the reason (Assign.KeyTaken). Making a typed list a block asks first,
+-- saying what changes (Assign.AdoptChanges). When a note opens with such lists, a banner over the rows offers it.
 -- Called by the editor:
---   EA.Build(left)   makes the view, hidden
+--   EA.Build(left)   makes the view, hidden, and the banner
 --   EA.Toggle()      Add assignment: opens the view (on the row selected for Quick fill's block, if it is one), or
 --                    closes it
 --   EA.Refresh()     redraws it from the session
+--   EA.RefreshBanner(width, top)   the banner's height (0 hidden), under the Link banner
 --   EA.Close()       back to the rows
 
 local UI = CRT.UI
@@ -39,6 +42,17 @@ local TEXT = {
     mechanics = "Mechanics",
     done = "Done",
     badTimes = "The times don't read: %s",
+    keyTaken = "The note already has an assignment or a group list named %s. Pick another name.",
+    adoptTitle = "Make an Assign block from %s?",
+    adoptLines = "Its %d timer lines become the block's lines.",
+    adoptTexts = "%s: the lines' different texts become one text per row.",
+    adoptDropped = "%d lines lose their colours and other settings.",
+    adoptOff = "%d lines on no cast stay as they are.",
+    adoptButton = "Make block",
+    bannerOne = "%s has timer lines under its rows. Make it an Assign block to change it in one place?",
+    bannerMany = "%d group lists have timer lines under their rows (%s). Make one an Assign block?",
+    bannerMake = "Make an Assign block",
+    bannerLater = "Not now",
     timersHelp = "None: only the heading and the rows go in the note, for names with no timers. Typed times: type the times below. A mechanic: its casts on the boss's ability timeline for this note's difficulty; each row gets a timer line on the casts it is on.\n\nAssignment picks the block to edit: a new one, one the note has, or a group list with timer lines under it (such as a pasted note) to make into a block.",
 }
 EA.TEXT = TEXT
@@ -112,18 +126,32 @@ local function apply(text)
     W.session.selected = selected
 end
 
+-- The mechanic picked in Timers, as its key on the block's heading (for:), or nil.
+local function mechKey()
+    local m = A.mechs[A.timers]
+    return m and CRT.MechNote.Key(m.spellID, m.name) or nil
+end
+
+-- Writes the block into the session. False, with the reason on the status line, when its name is another block's or
+-- a typed list's in the note.
 local function write()
     local b = A.block
     if not b or readOnly() then
-        return
+        return false
     end
     local key = Assign.Key(b.name)
+    local text = W.session:Text()
+    if Assign.KeyTaken(text, key, A.key) then
+        W.notice = UI.BadText(string.format(TEXT.keyTaken, Assign.CleanName(b.name)))
+        return false
+    end
     local list, typed = times()
-    local lines = Assign.Lines(b, (typed or A.timers ~= "none") and list or nil, { key = key, spellID = b.spellID })
-    local text = Assign.Replace(W.session:Text(), key, lines, A.key)
+    local lines = Assign.Lines(b, (typed or A.timers ~= "none") and list or nil,
+        { key = key, spellID = b.spellID, mech = mechKey() })
+    local old = A.key
     A.key = key
-    apply(text)
-    Assign.Link(noteKey(), text, key)
+    apply(Assign.Replace(text, key, lines, old))
+    return true
 end
 
 local function changed(kind)
@@ -149,13 +177,14 @@ local function changed(kind)
     write()
     Editor.Refresh()
 end
+EA.Write = write
 
 -- Picking what to edit -----------------------------------------------------------------------------------------------
 
--- The timers a block read from the text has: the mechanic its spell is, else typed times, else none.
+-- The timers a block read from the text has: the mechanic its heading names, else typed times, else none.
 local function timersFor(b)
     for i, m in ipairs(A.mechs) do
-        if b.spellID and m.spellID == b.spellID then
+        if b.mech and CRT.MechNote.Key(m.spellID, m.name) == b.mech then
             return i
         end
     end
@@ -177,17 +206,14 @@ local function openBlock(key)
     return true
 end
 
+-- A new block, "Assignment n" with the first n whose name the note has free.
 local function newBlock()
-    local base, n = TEXT.assignment, 1
-    local taken = {}
-    for _, key in ipairs(Assign.Keys(W.session:Text())) do
-        taken[key] = true
-    end
+    local text, n = W.session:Text(), 1
     local name
     repeat
-        name = base .. " " .. n
+        name = TEXT.assignment .. " " .. n
         n = n + 1
-    until not taken[Assign.Key(name)] and not Assign.Read(W.session:Text(), Assign.Key(name))
+    until not Assign.KeyTaken(text, Assign.Key(name))
     A.block, A.key = Assign.NewBlock(name), nil
     A.timers = "none"
 end
@@ -195,7 +221,8 @@ end
 -- A group list made into a block (Assign.Adopt), against the timers picked (a mechanic's casts, else the lines' own).
 local function adopt(heading)
     local m = A.mechs[A.timers]
-    local text, b = Assign.Adopt(W.session:Text(), heading, m and m.casts or nil, { spellID = m and m.spellID or nil })
+    local text, b = Assign.Adopt(W.session:Text(), heading, m and m.casts or nil,
+        { spellID = m and m.spellID or nil, mech = mechKey() })
     if not text then
         return
     end
@@ -204,7 +231,47 @@ local function adopt(heading)
     if not m then
         A.timers = b.times and "typed" or "none"
     end
-    Assign.Link(noteKey(), text, b.key)
+    W.assignOn = true
+    Editor.Refresh()
+end
+
+-- What making the list a block changes, for the confirmation.
+local function adoptText(heading)
+    local m = A.mechs[A.timers]
+    local c = Assign.AdoptChanges(W.session:Text(), heading, m and m.casts or nil, CRT.NoteLinks.Saved(noteKey()))
+    if not c then
+        return nil
+    end
+    local out = { string.format(TEXT.adoptTitle, c.name), string.format(TEXT.adoptLines, c.lines) }
+    if #c.texts > 0 then
+        out[#out + 1] = string.format(TEXT.adoptTexts, table.concat(c.texts, ", "))
+    end
+    if c.dropped > 0 then
+        out[#out + 1] = string.format(TEXT.adoptDropped, c.dropped)
+    end
+    if c.off > 0 then
+        out[#out + 1] = string.format(TEXT.adoptOff, c.off)
+    end
+    return table.concat(out, "\n")
+end
+
+-- Make an Assign block: asks first, listing what changes; nothing changes until it is accepted.
+function EA.AskAdopt(heading)
+    local text = adoptText(heading)
+    if not text or readOnly() then
+        return false
+    end
+    UI.LiftOver(UI.ShownPopup(StaticPopup_ShowCustomGenericConfirmation({
+        text = text,
+        acceptText = TEXT.adoptButton,
+        cancelText = CANCEL,
+        callback = function()
+            if W.session and not readOnly() then
+                adopt(heading)
+            end
+        end,
+    }), "GENERIC_CONFIRMATION"))
+    return true
 end
 
 -- The Assignment dropdown's choices: new, the note's blocks, then the group lists to make into one.
@@ -231,12 +298,12 @@ local function pick(key)
     elseif key:find("^b:") then
         openBlock(key:sub(3))
     elseif key:find("^c:") then
-        adopt(tonumber(key:sub(3)))
+        EA.AskAdopt(tonumber(key:sub(3)))
     end
     Editor.Refresh()
 end
 
--- The block of the row selected for Quick fill, if it is one: its heading's key.
+-- The block of the row selected for Quick fill, if it is one: its marked heading's key.
 local function selectedBlock()
     local s = W.session
     local i = s and s.selected
@@ -244,9 +311,7 @@ local function selectedBlock()
         i = i - 1
     end
     local row = i and s.rows[i]
-    if row and row.kind == "heading" and Assign.Read(s:Text(), Assign.Key(row.text)) then
-        return Assign.Key(row.text)
-    end
+    return row and row.assign and row.assign.key or nil
 end
 
 -- The view ---------------------------------------------------------------------------------------------------------
@@ -256,11 +321,19 @@ function EA.Build(left)
     f:SetAllPoints()
     f:Hide()
     W.assignFrame = f
+    EA.BuildBanner(left) -- the banner over the rows (below)
     A.pick = UI.Dropdown(f, TEXT.assignment, {
         labelWidth = L.labelW, width = L.dropW,
         options = choices,
         get = function()
-            return A.key and ("b:" .. A.key) or "new"
+            -- the block on show, while the text has it; else New (a block not written yet)
+            local text = W.session and W.session:Text() or ""
+            for _, key in ipairs(A.key and Assign.Keys(text) or {}) do
+                if key == A.key then
+                    return "b:" .. key
+                end
+            end
+            return "new"
         end,
         set = pick,
         enabledIf = function()
@@ -292,6 +365,7 @@ function EA.Build(left)
             local m = A.mechs[key]
             if A.block then
                 A.block.spellID = m and m.spellID or nil
+                A.block.mech = mechKey() -- the heading names the mechanic picked, or none
                 if key ~= "typed" then
                     A.block.times = nil
                 end
@@ -387,6 +461,75 @@ function EA.Close()
     W.assignOn = false
     A.block, A.key = nil, nil
     Editor.Refresh()
+end
+
+-- The banner ---------------------------------------------------------------------------------------------------------
+-- A note with group lists that timer lines follow (Assign.Candidates: a pasted planner note, say) says so over the rows,
+-- under the Link banner, and offers to make the first one a block (asked first, EA.AskAdopt). Not now hides it until
+-- the text changes. Not for a note you can't change, nor while Add assignment is open.
+
+local BACKDROP = { bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 }
+local BANNER = { pad = 6, gap = 4, buttonH = 22, buttonGap = 6, below = 6 }
+
+function EA.BuildBanner(left)
+    local b = CreateFrame("Frame", nil, left, "BackdropTemplate")
+    b:SetBackdrop(BACKDROP)
+    UI.Tint(b, "SetBackdropColor", "surface", 0.9)
+    UI.Tint(b, "SetBackdropBorderColor", "border")
+    b.title = b:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
+    b.title:SetJustifyH("LEFT")
+    UI.Tint(b.title, "SetTextColor", "heading")
+    b.make = UI.PanelButton(b, TEXT.bannerMake, BANNER.buttonH, function()
+        local c = A.candidates and A.candidates[1]
+        if c then
+            A.mechs = mechanics()
+            A.timers = "none"
+            EA.AskAdopt(c.heading)
+        end
+    end)
+    b.later = UI.PanelButton(b, TEXT.bannerLater, BANNER.buttonH, function()
+        if W.session then
+            A.dismissed = { key = noteKey(), text = W.session:Text() }
+            Editor.Refresh()
+        end
+    end)
+    b:Hide()
+    A.banner = b
+end
+
+function EA.RefreshBanner(width, top)
+    local b = A.banner
+    local s = W.session
+    if not b then
+        return 0
+    end
+    A.candidates = s and not s.readOnly and not W.assignOn and Assign.Candidates(s:Text(), CRT.NoteLinks.Saved(noteKey())) or {}
+    local d = A.dismissed
+    if #A.candidates == 0 or (d and d.key == noteKey() and d.text == s:Text()) then
+        b:Hide()
+        return 0
+    end
+    local names = {}
+    for i, c in ipairs(A.candidates) do
+        names[i] = c.name
+    end
+    b:ClearAllPoints()
+    b:SetPoint("TOPLEFT", 0, -(top or 0))
+    b:SetWidth(width)
+    b.title:ClearAllPoints()
+    b.title:SetPoint("TOPLEFT", BANNER.pad, -BANNER.pad)
+    b.title:SetWidth(width - 2 * BANNER.pad)
+    b.title:SetText(#names == 1 and string.format(TEXT.bannerOne, names[1])
+        or string.format(TEXT.bannerMany, #names, table.concat(names, ", ")))
+    local y = BANNER.pad + math.ceil(b.title:GetStringHeight() or 14) + BANNER.gap
+    b.make:ClearAllPoints()
+    b.make:SetPoint("TOPLEFT", BANNER.pad, -y)
+    b.later:ClearAllPoints()
+    b.later:SetPoint("LEFT", b.make, "RIGHT", BANNER.buttonGap, 0)
+    y = y + BANNER.buttonH + BANNER.pad
+    b:SetHeight(y)
+    b:Show()
+    return y + BANNER.below
 end
 
 function EA.IsOpen()
