@@ -151,6 +151,21 @@ check(#soon > 0, "frameless: a short timer is set")
 frameless.nameplate32 = nil; runSoon()
 check(shownOf("nameplate32"), "frameless: drawn by the timer")
 H("NAME_PLATE_UNIT_REMOVED", "nameplate30"); H("NAME_PLATE_UNIT_REMOVED", "nameplate31"); H("NAME_PLATE_UNIT_REMOVED", "nameplate32")
+-- a plate whose box never attaches: tried at most MAX_RETRIES times, then left
+do
+  local realAttach, tries = P.Attach, 0
+  P.Attach = function() tries = tries + 1 return false end
+  plate("nameplate33"); clock = 1041.7; H("UNIT_SPELLCAST_START", "nameplate33")
+  for _ = 1, 30 do runSoon() end
+  check(P.MAX_RETRIES and P.MAX_RETRIES >= 5 and P.MAX_RETRIES <= 15, "retry: a named limit (" .. tostring(P.MAX_RETRIES) .. ")")
+  eq(tries, 1 + P.MAX_RETRIES, "retry: the first try and MAX_RETRIES more, then it stops")
+  eq(#soon, 0, "retry: no timer left running")
+  plate("nameplate34"); H("NAME_PLATE_UNIT_ADDED", "nameplate34")
+  eq(tries, 1 + P.MAX_RETRIES, "retry: a later plate event doesn't try it again")
+  P.Attach = realAttach
+  H("NAME_PLATE_UNIT_REMOVED", "nameplate33"); H("NAME_PLATE_UNIT_REMOVED", "nameplate34")
+  plates.nameplate33, plates.nameplate34 = nil, nil
+end
 plates.nameplate30, plates.nameplate31, plates.nameplate32 = nil, nil, nil
 eq(box.text.font[2], 24, "box: the number's size"); eq(box.text.font[3], "OUTLINE", "box: outlined")
 eq(table.concat(box.bg.color, ","), "0,1,0,1", "box: your pair in your box colour")

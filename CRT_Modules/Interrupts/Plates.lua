@@ -150,7 +150,8 @@ function Plates.Style(f, n, mine)
     f.text:SetTextColor(text[1], text[2], text[3], text[4] or 1)
 end
 
-local unplaced = {} -- numbered plates whose frame read nil: token -> true, drawn again on the next plate event
+local unplaced = {} -- numbered plates not drawn yet: token -> failed tries, drawn again on the next plate event
+Plates.MAX_RETRIES = 10 -- tries after the first before a box that won't attach is left (until the next Refresh)
 local retrySet = false
 local RETRY = 0.2 -- seconds before a box whose plate frame read nil is tried again
 local retry
@@ -170,8 +171,17 @@ local function draw(unit)
     local plate = ask(C_NamePlate and C_NamePlate.GetNamePlateForUnit, unit)
     local placed = plate ~= nil and Plates.Attach(f, plate)
     f:SetShown(placed and settings().on and (mine or settings().all) and true or false)
-    unplaced[unit] = (not placed) or nil
-    if not placed and not retrySet and C_Timer then
+    if placed then
+        unplaced[unit] = nil
+        return
+    end
+    local tries = (unplaced[unit] or 0) + 1
+    if tries > Plates.MAX_RETRIES then
+        unplaced[unit] = nil -- given up: it never attaches
+        return
+    end
+    unplaced[unit] = tries
+    if not retrySet and C_Timer then
         retrySet = true
         C_Timer.After(RETRY, retry)
     end
