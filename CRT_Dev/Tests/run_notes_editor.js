@@ -12,13 +12,13 @@
 //   linked one first, picked when solo), class colours, search, the tokens written, and when the list redraws.
 //   Timer lines that follow an assignment line (Links.lua, EditorLinks.lua): the Link banner, Link, the one obvious
 //   fix, the row tags and the hover, a row change rewriting the lines that follow it, Not now, read-only.
-// Usage: node run_notes_editor.js <Parse.lua> <Data.lua> <Engine.lua> <EditModel.lua> <Render.lua> <EditorWindow.lua> <Settings.lua> <Page.lua> <Links.lua> <EditorLinks.lua>
+// Usage: node run_notes_editor.js <Parse.lua> <Data.lua> <Engine.lua> <EditModel.lua> <Render.lua> <EditorWindow.lua> <Settings.lua> <Page.lua> <Links.lua> <EditorLinks.lua> <Palette.lua> <MechNote.lua> <Assign.lua> <AssignBlock.lua>
 const fs = require('fs');
 const themeLua = require('./theme_stub');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
 const harness = themeLua(process.argv.slice(2)) + `
-local parseSrc, dataSrc, engineSrc, modelSrc, renderSrc, windowSrc, settingsSrc, pageSrc, linksSrc, editorLinksSrc = ...
+local parseSrc, dataSrc, engineSrc, modelSrc, renderSrc, windowSrc, settingsSrc, pageSrc, linksSrc, editorLinksSrc, paletteSrc, mechNoteSrc, assignSrc, assignBlockSrc = ...
 local edits, buttons, frames, scrolls, events, checks = {}, {}, {}, {}, {}, {}
 local focused
 local cursor = { 0, 0 }
@@ -466,6 +466,7 @@ CRT.UI.HeaderButton = function(parent, label, fn)
 end
 assert(load(renderSrc, "Render.lua"))("CowfeeRaidTools", CRT)
 assert(load(linksSrc, "Links.lua"))("CowfeeRaidTools", CRT)
+assert(load(paletteSrc, "Palette.lua"))("CowfeeRaidTools", CRT)
 assert(load(windowSrc, "EditorWindow.lua"))("CowfeeRaidTools", CRT)
 assert(load(editorLinksSrc, "EditorLinks.lua"))("CowfeeRaidTools", CRT)
 assert(load(settingsSrc, "Settings.lua"))("CowfeeRaidTools", CRT)
@@ -1035,7 +1036,7 @@ end
 print("ok timer lines follow their assignment line: the Link banner, Link, the fix, tags, hover, the rewrite, Not now")
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
-const files = process.argv.slice(2, 12);
+const files = process.argv.slice(2, 16);
 for (const f of files) {
   let src; try { src = fs.readFileSync(f, 'utf8'); } catch (e) { console.error('cannot read ' + f); process.exit(1); }
   lua.lua_pushstring(L, to_luastring(src));

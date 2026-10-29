@@ -19,6 +19,7 @@ local ADDON, CRT = ...
 local Notes = CRT.Notes
 local Model = CRT.NoteEditModel
 local UI = CRT.UI
+local Palette = CRT.NotePalette
 
 local Editor = {}
 CRT.NoteEditor = Editor
@@ -32,9 +33,6 @@ local TEXT = {
     title = "Note editor: %s",
     personalTitle = "Personal note editor",
     untitled = "Note",
-    search = "Search",
-    playersFrom = "Players from",
-    sections = { players = "Players", general = "General", groups = "Groups", classes = "Classes" },
     quickFill = "Quick fill",
     rawText = "Raw text",
     hideRaw = "Hide raw text",
@@ -70,12 +68,11 @@ local TEXT = {
 
 local L = {
     width = 900, height = 580, minWidth = 680, minHeight = 420,
-    paletteW = 270, gap = 10, footerH = 28, rawH = 150, searchH = 22, fromH = 32, fromLabelW = 78,
-    fromGap = 5, -- UI.Dropdown's gap between its label and the dropdown (UI/Controls.lua)
-    rowGap = 4, chipH = 18, chipGap = 4, chipPad = 6, iconW = 16, removeW = 14,
-    timeW = 36, phaseW = 32, infoH = 18, timerAlpha = 0.5, labelMax = 0.35, headingH = 20, blankH = 8, sectionGap = 8,
-    dragStart = 4, -- pixels the mouse moves with the button down before a press becomes a drag
+    paletteW = 270, gap = 10, footerH = 28, rawH = 150,
+    rowGap = 4, timeW = 36, phaseW = 32, infoH = 18, timerAlpha = 0.5, labelMax = 0.35, headingH = 20, blankH = 8,
 }
+-- a chip's height and the palette's sizes: Notes/Palette.lua's (L.chipH below)
+L.chipH = Palette.L.chipH
 
 local POPUP = "COWFEE_RAID_TOOLS_NOTE_EDITOR_UNSAVED"
 local BACKDROP = { bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 }
@@ -85,19 +82,6 @@ local BACKDROP = { bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interfac
 -- made in the dropdown for each note ("personal" for the personal note), kept until the game is reloaded.
 local W = { rowFrames = {}, paletteChips = {}, headings = {}, picked = {} }
 Editor.state = W
-
-local function readable(v)
-    return not (issecretvalue and issecretvalue(v))
-end
-
--- The class colour of a chip, or nil. Not a theme colour: the game's class colours.
-local function classRGB(class)
-    local c = class and RAID_CLASS_COLORS and RAID_CLASS_COLORS[class]
-    if c then
-        return c.r, c.g, c.b
-    end
-    return nil
-end
 
 -- What the editor holds: the note's record (nil for the personal note, or once deleted), its saved text, and
 -- whether it may be changed.
@@ -117,89 +101,6 @@ end
 
 local function readOnly()
     return W.session == nil or W.session.readOnly
-end
-
--- Chips ------------------------------------------------------------------------------------------------------------
-
-local function paintChip(b, selected)
-    b:SetBackdropColor(UI.Color("surface", 0.95))
-    b:SetBackdropBorderColor(UI.Color(selected and "heading" or "border"))
-    local r, g, bl = classRGB(b.class)
-    if r then
-        b.text:SetTextColor(r, g, bl) -- not a theme colour: the class colour
-    else
-        b.text:SetTextColor(UI.Color("text"))
-    end
-    b.remove.text:SetTextColor(UI.Color("muted"))
-end
-
-local chipDown, chipUp, removeClick -- the chips' mouse handlers (Drag and drop, below)
-
-local function makeChip(parent)
-    local b = CreateFrame("Button", nil, parent, "BackdropTemplate")
-    b:SetBackdrop(BACKDROP)
-    b:SetHeight(L.chipH)
-    b.icon = b:CreateTexture(nil, "ARTWORK")
-    b.icon:SetSize(L.chipH - 4, L.chipH - 4)
-    b.icon:SetPoint("LEFT", 2, 0)
-    b.text = b:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    b.text:SetWordWrap(false)
-    b.remove = CreateFrame("Button", nil, b)
-    b.remove:SetSize(L.removeW, L.chipH)
-    b.remove:SetPoint("RIGHT", 0, 0)
-    b.remove.text = b.remove:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    b.remove.text:SetPoint("CENTER", 0, 1)
-    b.remove.text:SetText("x")
-    b.remove:SetScript("OnClick", function()
-        removeClick(b)
-    end)
-    b:EnableMouse(true)
-    b:SetScript("OnMouseDown", function(self, button)
-        chipDown(self, button)
-    end)
-    b:SetScript("OnMouseUp", function(self, button)
-        chipUp(self, button)
-    end)
-    return b
-end
-
--- Fills a chip: entry { label, class }, source (what a drag carries), removable (a row's chip that can be removed),
--- icon (a player's or class's class icon). Returns its width.
-local function fillChip(b, entry, source, removable, icon)
-    b.source, b.class, b.token = source, entry.class, entry.token
-    b.text:SetText(entry.label)
-    local left = L.chipPad
-    b.icon:Hide()
-    if icon and entry.class and GetClassAtlas then
-        local ok, atlas = pcall(GetClassAtlas, entry.class)
-        if ok and type(atlas) == "string" and pcall(b.icon.SetAtlas, b.icon, atlas) then
-            b.icon:Show()
-            left = L.iconW + 2
-        end
-    end
-    b.text:ClearAllPoints()
-    b.text:SetPoint("LEFT", left, 0)
-    b.remove:SetShown(removable)
-    local w = left + math.ceil(b.text:GetStringWidth() or 0) + (removable and L.removeW or L.chipPad)
-    b:SetWidth(w)
-    paintChip(b)
-    b:Show()
-    return w
-end
-
--- Lays chips out left to right from x0, wrapping at width, from y0 down. Returns the height used.
-local function flow(chips, widths, x0, width, y0)
-    local x, y = x0, y0
-    for k, chip in ipairs(chips) do
-        local w = widths[k]
-        if x > x0 and x + w > width then
-            x, y = x0, y + L.chipH + L.chipGap
-        end
-        chip:ClearAllPoints()
-        chip:SetPoint("TOPLEFT", x, -y)
-        x = x + w + L.chipGap
-    end
-    return (#chips > 0) and (y - y0 + L.chipH) or 0
 end
 
 -- Rows -------------------------------------------------------------------------------------------------------------
@@ -262,17 +163,17 @@ local function rowChips(f, i, row, x0, width, y0)
     local editable = W.session:Editable(i)
     local list, widths = {}, {}
     for k, name in ipairs(names) do
-        local chip = f.chips[k] or makeChip(f)
+        local chip = f.chips[k] or Palette.MakeChip(f, W.drag)
         f.chips[k] = chip
         -- a player's class, else the class a class name names ("Demon Hunter")
         local class = (W.classOf and W.classOf(name)) or CRT.NoteParser.ClassOf(name)
-        widths[k] = fillChip(chip, { label = name, class = class, token = name }, { row = i, index = k }, editable, false)
+        widths[k] = Palette.FillChip(chip, { label = name, class = class, token = name }, { row = i, index = k }, editable, false)
         list[k] = chip
     end
     for k = #names + 1, #f.chips do
         f.chips[k]:Hide()
     end
-    return math.max(L.chipH, flow(list, widths, x0, width, y0))
+    return math.max(L.chipH, Palette.Flow(list, widths, x0, width, y0))
 end
 
 -- Lays row i out for its kind and returns its height.
@@ -407,26 +308,7 @@ function Editor.DrawRows()
 end
 
 -- The palette ------------------------------------------------------------------------------------------------------
-
--- The live group out of combat (where its names may be secret, nothing): Groups:ReadRoster.
-local function roster()
-    local Groups = CRT.Groups
-    if (InCombatLockdown and InCombatLockdown()) or not (Groups and Groups.ReadRoster) then
-        return {}
-    end
-    local ok, list = pcall(Groups.ReadRoster, Groups)
-    return ok and type(list) == "table" and list or {}
-end
-
--- Players from: a saved Raid Groups layout by its id (Groups:Find), or nil.
-local function findLayout(id)
-    local Groups = CRT.Groups
-    if id == nil or not (Groups and Groups.Find) then
-        return nil
-    end
-    local preset = Groups:Find(id)
-    return type(preset) == "table" and preset or nil
-end
+-- The note editor's own palette, drawn by Notes/Palette.lua (shared with the Mech Alerts Assign tab).
 
 -- The layout the open note is linked to (its invite list became it on import), if it still exists.
 local function linkedLayout()
@@ -435,34 +317,20 @@ local function linkedLayout()
     end
     local record = Notes:Get(W.source.id)
     local id = record and record.presetId
-    return findLayout(id) and id or nil
+    return Palette.FindLayout(id) and id or nil
 end
 
 local function pickKey()
     return W.source and (W.source.personal and "personal" or W.source.id)
 end
 
--- The choices of the Players from dropdown (Model.Sources).
+-- The choices of the Players from dropdown (Model.Sources); the personal note has no invite list.
 local function sourceChoices()
-    local Groups = CRT.Groups
-    local ok, layouts = false, nil
-    if Groups and Groups.Presets then
-        ok, layouts = pcall(Groups.Presets, Groups)
-    end
-    -- the personal note has no invite list
-    local personal = W.source and W.source.personal
-    return Model.Sources(ok and type(layouts) == "table" and layouts or {}, linkedLayout(), personal)
+    return Palette.Choices(linkedLayout(), W.source and W.source.personal)
 end
 
--- Whether a source can still be listed for the open note: the group, the invite list (not the personal note's), or a
--- layout that still exists.
 local function validSource(from)
-    if from == Model.SOURCE_GROUP then
-        return true
-    elseif from == Model.SOURCE_INVITE then
-        return not (W.source and W.source.personal)
-    end
-    return from ~= nil and findLayout(from) ~= nil
+    return Palette.ValidSource(from, W.source and W.source.personal)
 end
 
 -- Where the Players come from for the open note, worked out once as it opens: the choice made for it, else its
@@ -486,91 +354,22 @@ local function keepSource()
     end
 end
 
--- A player's class: the one stored for that name (Raid Groups keeps it), else the shared class lookup Render uses.
-local function playerClass(name)
-    local cache = CRT.db and CRT.db.classCache
-    local Groups = CRT.Groups
-    if cache then
-        local class = cache[name:lower()]
-        if not class and Groups and Groups.Normalize then
-            local ok, key = pcall(Groups.Normalize, name)
-            class = ok and type(key) == "string" and cache[key:lower()] or nil
-        end
-        if class then
-            return class
-        end
-    end
-    return W.classOf and W.classOf(name) or nil
-end
-
--- A player's last role seen (Groups.CachedRole), for the role order.
-local function playerRole(name)
-    local Groups = CRT.Groups
-    if not (Groups and Groups.CachedRole) then
-        return nil
-    end
-    local role = Groups.CachedRole(name)
-    if not role and Groups.Normalize then
-        local ok, key = pcall(Groups.Normalize, name)
-        role = ok and type(key) == "string" and Groups.CachedRole(key) or nil
-    end
-    return role
-end
-
--- The palette's players from the source picked.
+-- The palette's players from the source picked (the invite list as the session has it now).
 local function sourceRoster()
     local from = W.playersFrom or Model.SOURCE_GROUP
-    if from == Model.SOURCE_GROUP then
-        return roster()
+    if from ~= Model.SOURCE_GROUP then
+        W.classOf = Palette.ClassLookup()
     end
-    -- memoised by Render until the names it knows change
-    W.classOf = CRT.NoteRender and CRT.NoteRender.SharedLookup and CRT.NoteRender.SharedLookup() or nil
-    if from == Model.SOURCE_INVITE then
-        return Model.Roster(W.session and W.session:InviteNames() or {}, playerClass, playerRole)
-    end
-    local preset = findLayout(from)
-    return Model.Roster(preset and preset.slots or {}, playerClass, playerRole)
-end
-
-local function heading(n)
-    local h = W.headings[n]
-    if not h then
-        h = W.paletteChild:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
-        W.headings[n] = h
-    end
-    return h
+    return Palette.Roster(from, function()
+        return W.session and W.session:InviteNames() or {}
+    end, W.classOf)
 end
 
 function Editor.DrawPalette()
     if W.press then
         Editor.CancelDrag() -- its chip is about to be filled with another entry
     end
-    local width = (L.paletteW - UI.ScrollGutter()) - 4
-    local sections = Model.Palette(sourceRoster(), W.query)
-    local used, y = 0, 0
-    for n, section in ipairs(sections) do
-        local h = heading(n)
-        h:ClearAllPoints()
-        h:SetPoint("TOPLEFT", 2, -y)
-        h:SetText(TEXT.sections[section.key])
-        h:SetTextColor(UI.Color("heading"))
-        h:Show()
-        y = y + L.headingH
-        local list, widths = {}, {}
-        for _, entry in ipairs(section.entries) do
-            used = used + 1
-            local chip = W.paletteChips[used] or makeChip(W.paletteChild)
-            W.paletteChips[used] = chip
-            local icon = section.key == "players" or section.key == "classes"
-            widths[#widths + 1] = fillChip(chip, entry, { token = entry.token, kind = section.kind }, false, icon)
-            list[#list + 1] = chip
-        end
-        y = y + flow(list, widths, 2, width, y) + L.sectionGap
-    end
-    for k = used + 1, #W.paletteChips do
-        W.paletteChips[k]:Hide()
-    end
-    W.paletteChild:SetHeight(math.max(1, y))
+    Palette.Draw(W, sourceRoster(), Palette.InnerWidth(L.paletteW))
 end
 
 -- Drag and drop ----------------------------------------------------------------------------------------------------
@@ -598,93 +397,10 @@ local function highlight(target)
     end
 end
 
--- The keys while dragging, for Escape: out of combat only, where letting the other keys through can be changed.
-local function catchKeys(on)
-    local d = W.driver
-    if on and not (InCombatLockdown and InCombatLockdown()) then
-        if d.SetPropagateKeyboardInput then
-            pcall(d.SetPropagateKeyboardInput, d, true)
-        end
-        d:EnableKeyboard(true)
-        W.keys = true
-    elseif W.keys then
-        d:EnableKeyboard(false)
-        W.keys = false
-    end
-end
-
-local function endPress()
-    W.press = nil
-    if W.ghost then
-        W.ghost:Hide()
-    end
-    if W.driver then
-        catchKeys(false)
-        W.driver:Hide()
-    end
-end
-
 function Editor.CancelDrag()
-    if not W.press then
-        return
+    if W.drag then
+        W.drag:Cancel()
     end
-    if W.session then
-        W.session:CancelDrag()
-    end
-    endPress()
-    highlight(nil)
-end
-
-local function cursor()
-    local x, y = GetCursorPosition()
-    local scale = UIParent:GetEffectiveScale() or 1
-    return x / scale, y / scale
-end
-
-local function dragUpdate()
-    local p = W.press
-    if not p then
-        W.driver:Hide()
-        return
-    end
-    -- the button let go where the chip never heard it (its frame hidden or redrawn): the press ends, no drop
-    if IsMouseButtonDown and not IsMouseButtonDown("LeftButton") then
-        Editor.CancelDrag()
-        return
-    end
-    local x, y = cursor()
-    if not p.dragging then
-        if math.abs(x - p.x) + math.abs(y - p.y) < L.dragStart then
-            return
-        end
-        if not W.session:BeginDrag(p.source) then
-            endPress()
-            return
-        end
-        p.dragging = true
-        W.ghost.text:SetText(p.chip.text:GetText() or "")
-        W.ghost:SetWidth(math.ceil(W.ghost.text:GetStringWidth() or 0) + 2 * L.chipPad)
-        local r, g, b = classRGB(p.chip.class)
-        if r then
-            W.ghost.text:SetTextColor(r, g, b) -- not a theme colour: the class colour
-        else
-            W.ghost.text:SetTextColor(UI.Color("text"))
-        end
-        W.ghost:Show()
-        catchKeys(true)
-    end
-    W.ghost:ClearAllPoints()
-    W.ghost:SetPoint("CENTER", UIParent, "BOTTOMLEFT", x, y)
-    highlight(rowUnderMouse())
-end
-
-function chipDown(chip, button)
-    if button ~= "LeftButton" or readOnly() or not chip.source then
-        return
-    end
-    local x, y = cursor()
-    W.press = { chip = chip, source = chip.source, x = x, y = y }
-    W.driver:Show()
 end
 
 -- The palette lists the invite list as it is now: drawn again when the session's names change.
@@ -709,64 +425,48 @@ local function edit(fn)
     return fn()
 end
 
-function chipUp(chip)
-    local p = W.press
-    if not p or p.chip ~= chip then
-        return
-    end
-    endPress()
-    if p.dragging then
-        -- drawn again either way, so a refused drop leaves nothing half shown
-        local target = rowUnderMouse()
-        edit(function()
-            return W.session:Drop(target)
-        end)
-        changed()
-    elseif p.source.token then
-        if edit(function()
-            return W.session:PaletteClick(p.source.token, p.source.kind)
-        end) then
-            changed()
-        end
-    elseif W.session.quickFill then
-        W.session:Select(p.source.row)
-        Editor.DrawRows()
-    end
-end
-
-function removeClick(chip)
-    local s = chip.source
-    if s and s.row and W.session and edit(function()
-        return W.session:Remove(s.row, s.index)
-    end) then
-        changed()
-    end
-end
-
+-- The drag of the editor's chips (Notes/Palette.lua): onto the rows, through the session.
 local function makeDrag()
-    W.driver = CreateFrame("Frame", nil, UIParent)
-    W.driver:SetSize(1, 1)
-    W.driver:Hide()
-    W.driver:SetScript("OnUpdate", dragUpdate)
-    W.driver:SetScript("OnKeyDown", function(self, key)
-        local escape = key == "ESCAPE"
-        if self.SetPropagateKeyboardInput and not (InCombatLockdown and InCombatLockdown()) then
-            pcall(self.SetPropagateKeyboardInput, self, not escape)
-        end
-        if escape then
-            Editor.CancelDrag()
-        end
-    end)
-    local g = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
-    g:SetBackdrop(BACKDROP)
-    g:SetFrameStrata("TOOLTIP")
-    g:SetHeight(L.chipH)
-    g.text = g:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    g.text:SetPoint("LEFT", L.chipPad, 0)
-    UI.Tint(g, "SetBackdropColor", "surface", 0.95)
-    UI.Tint(g, "SetBackdropBorderColor", "accent")
-    g:Hide()
-    W.ghost = g
+    Palette.Drag(W, {
+        readOnly = readOnly,
+        begin = function(source)
+            return W.session:BeginDrag(source)
+        end,
+        target = rowUnderMouse,
+        highlight = highlight,
+        cancel = function()
+            if W.session then
+                W.session:CancelDrag()
+            end
+        end,
+        drop = function(_, target)
+            -- drawn again either way, so a refused drop leaves nothing half shown
+            edit(function()
+                return W.session:Drop(target)
+            end)
+            changed()
+        end,
+        click = function(source)
+            if source.token then
+                if edit(function()
+                    return W.session:PaletteClick(source.token, source.kind)
+                end) then
+                    changed()
+                end
+            elseif W.session.quickFill then
+                W.session:Select(source.row)
+                Editor.DrawRows()
+            end
+        end,
+        remove = function(chip)
+            local src = chip.source
+            if src and src.row and W.session and edit(function()
+                return W.session:Remove(src.row, src.index)
+            end) then
+                changed()
+            end
+        end,
+    })
 end
 
 -- Refresh, save, close ---------------------------------------------------------------------------------------------
@@ -945,34 +645,13 @@ end
 -- Building ---------------------------------------------------------------------------------------------------------
 
 local function buildPalette(c)
-    local right = CreateFrame("Frame", nil, c)
-    right:SetPoint("TOPRIGHT", 0, 0)
-    right:SetPoint("BOTTOMRIGHT", 0, L.footerH + 4)
-    right:SetWidth(L.paletteW)
-    local label = right:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    label:SetPoint("TOPLEFT", 2, -4)
-    label:SetText(TEXT.search)
-    local search = CreateFrame("EditBox", "CowfeeRaidToolsNoteEditorSearch", right, "InputBoxTemplate")
-    search:SetAutoFocus(false)
-    UI:SkinEditBox(search)
-    search:SetFontObject(CRTFontHighlight)
-    search:SetHeight(L.searchH)
-    search:SetPoint("LEFT", label, "RIGHT", 10, 0)
-    search:SetPoint("RIGHT", right, "RIGHT", -4, 0)
-    search:SetScript("OnTextChanged", function(self, user)
-        if user then
-            W.query = strtrim(self:GetText() or "")
+    local right = Palette.Build(c, W, {
+        width = L.paletteW,
+        names = { search = "CowfeeRaidToolsNoteEditorSearch", scroll = "CowfeeRaidToolsNoteEditorPalette" },
+        onSearch = function()
             Editor.DrawPalette()
-        end
-    end)
-    search:SetScript("OnEscapePressed", function(self)
-        self:ClearFocus()
-    end)
-    W.search = search
-    -- Players from: the group, the note's invite list or a saved Raid Groups layout
-    local from = UI.Dropdown(right, TEXT.playersFrom, {
-        labelWidth = L.fromLabelW, width = L.paletteW - L.fromLabelW - L.fromGap - 4,
-        options = sourceChoices,
+        end,
+        choices = sourceChoices,
         get = function()
             return W.playersFrom
         end,
@@ -986,16 +665,9 @@ local function buildPalette(c)
             W.from.refresh()
         end,
     })
-    from:SetPoint("TOPLEFT", 2, -(L.searchH + 6))
-    W.from = from
-    local scroll = CreateFrame("ScrollFrame", "CowfeeRaidToolsNoteEditorPalette", right, "UIPanelScrollFrameTemplate")
-    UI:SkinScrollBar(scroll.ScrollBar)
-    scroll:SetPoint("TOPLEFT", 0, -(L.searchH + 6 + L.fromH + 2))
-    scroll:SetPoint("BOTTOMRIGHT", -UI.ScrollGutter(), 0)
-    W.paletteChild = CreateFrame("Frame", nil, scroll)
-    W.paletteChild:SetSize(L.paletteW - UI.ScrollGutter(), 1)
-    scroll:SetScrollChild(W.paletteChild)
-    W.paletteScroll = scroll
+    right:SetPoint("TOPRIGHT", 0, 0)
+    right:SetPoint("BOTTOMRIGHT", 0, L.footerH + 4)
+    W.right = right
 end
 
 local function buildLeft(c)

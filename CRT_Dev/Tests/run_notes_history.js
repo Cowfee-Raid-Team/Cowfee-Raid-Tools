@@ -14,7 +14,7 @@ const themeLua = require('./theme_stub');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
 const harness = themeLua(process.argv.slice(2)) + `
-local parseSrc, dataSrc, diffSrc, engineSrc, modelSrc, renderSrc, historySrc, windowSrc, settingsSrc, pageSrc = ...
+local parseSrc, dataSrc, diffSrc, engineSrc, modelSrc, renderSrc, historySrc, windowSrc, settingsSrc, pageSrc, paletteSrc = ...
 local buttons, edits, fontStrings, dropdowns = {}, {}, {}, {}
 local focused
 local function mock(kind, name)
@@ -303,7 +303,7 @@ do
 end
 
 -- The page ------------------------------------------------------------------------------------------------------
-for _, src in ipairs({ { renderSrc, "Render.lua" }, { historySrc, "HistoryWindow.lua" }, { windowSrc, "EditorWindow.lua" }, { settingsSrc, "Settings.lua" }, { pageSrc, "Page.lua" } }) do
+for _, src in ipairs({ { renderSrc, "Render.lua" }, { historySrc, "HistoryWindow.lua" }, { paletteSrc, "Palette.lua" }, { windowSrc, "EditorWindow.lua" }, { settingsSrc, "Settings.lua" }, { pageSrc, "Page.lua" } }) do
   assert(load(src[1], src[2]))("CowfeeRaidTools", CRT)
 end
 local function button(text) for _, b in ipairs(buttons) do if rawget(b, "text") == text then return b end end end
@@ -714,7 +714,7 @@ end
 print(passes .. " passed, 0 failed")
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
-const files = process.argv.slice(2, 12);
+const files = process.argv.slice(2, 13);
 for (const f of files) {
   let src; try { src = fs.readFileSync(f, 'utf8'); } catch (e) { console.error('cannot read ' + f); process.exit(1); }
   lua.lua_pushstring(L, to_luastring(src));
