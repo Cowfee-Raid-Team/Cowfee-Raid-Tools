@@ -1173,3 +1173,20 @@ ticker:SetScript("OnEvent", function()
         area:Build()
     end
 end)
+
+-- The Addon check's Mech Alerts column (CRT_Core/AddonCheck.lua): on while any alert area is shown, the bars
+-- (Alerts/Bars.lua) or an area here. Nil in a harness that loads this file alone.
+if CRT.AddonCheck then
+    CRT.AddonCheck:Register({ key = "alerts", label = "Mech Alerts", order = 30, on = function()
+        local alerts = CRT.db.alerts
+        if alerts.bars and alerts.bars.shown ~= false then
+            return true
+        end
+        for _, area in pairs(alerts.areas or {}) do
+            if type(area) == "table" and area.shown ~= false then
+                return true
+            end
+        end
+        return false
+    end })
+end

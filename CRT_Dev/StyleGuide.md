@@ -19,8 +19,8 @@ Every theme fills every key in `CRT.THEME_KEYS`. Each key is named for what it c
 | heading | headings, section titles, highlights, a selected row's tint (`UI.HeadingText`) |
 | text | body text (the game's white font takes this colour in a Modern theme) |
 | good | good: synced, answered, on, ready, in bags (`UI.GoodText`) |
-| warn | in between: running low, worn, arrived late, a middling score, No CRT (`UI.WarnText`) |
-| bad | bad: missing, late, failed, can't, not here (`UI.BadText`), the break timer's bar in its last minute |
+| warn | in between: running low, worn, arrived late, a middling score, Loot Master's No CRT, where the player can still roll in chat (`UI.WarnText`) |
+| bad | bad: missing, late, failed, can't, not here (`UI.BadText`), the Addon check's No CRT (nothing shared reaches them), the break timer's bar in its last minute |
 | knob | a slider's knob, a ticked checkbox, the rounded scroll bar's thumb |
 | knobBorder | the knob's and the rounded scroll bar thumb's 1 px edge |
 | knobShine | the soft highlight inside the knob's and ticked box's top edge |

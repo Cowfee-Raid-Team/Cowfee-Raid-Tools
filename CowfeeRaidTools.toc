@@ -16,6 +16,7 @@ CRT_Core\Share.lua
 CRT_Core\Profiles.lua
 CRT_Core\Team.lua
 CRT_Core\TeamList.lua
+CRT_Core\AddonCheck.lua
 CRT_Data\Bosses\Registry.lua
 CRT_Core\Slash.lua
 CRT_Core\Perf.lua

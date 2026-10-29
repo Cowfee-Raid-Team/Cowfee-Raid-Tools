@@ -889,3 +889,12 @@ function Notes:Delete(id)
     end
     self:Fire()
 end
+
+-- The Addon check's Raid Notes column (CRT_Core/AddonCheck.lua): on while a shared note would be seen, in the
+-- timers window or the assignments window. Nil in a harness that loads this file alone.
+if CRT.AddonCheck then
+    CRT.AddonCheck:Register({ key = "notes", label = "Raid Notes", order = 10, on = function()
+        local n = ndb()
+        return (n.window and n.window.shown ~= false) or (n.assignments and n.assignments.shown ~= false) or false
+    end })
+end

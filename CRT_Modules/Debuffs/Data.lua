@@ -600,3 +600,11 @@ function Debuffs:PositionStore()
     return ddb()
 end
 Debuffs.DEFAULT_POSITION = DEFAULT_POSITION
+
+-- The Addon check's Debuffs column (CRT_Core/AddonCheck.lua): on while the debuff panel is enabled. Nil in a
+-- harness that loads this file alone.
+if CRT.AddonCheck then
+    CRT.AddonCheck:Register({ key = "debuffs", label = "Debuffs", order = 60, on = function()
+        return ddb().enabled ~= false
+    end })
+end

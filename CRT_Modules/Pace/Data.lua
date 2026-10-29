@@ -304,3 +304,11 @@ function Pace:ClearShared(encounterID)
     db().use[encounterID] = nil
     self:Fire()
 end
+
+-- The Addon check's Pace column (CRT_Core/AddonCheck.lua): on while the pace windows are shown (the Pace
+-- page's Show pace windows). Nil in a harness that loads this file alone.
+if CRT.AddonCheck then
+    CRT.AddonCheck:Register({ key = "pace", label = "Pace", order = 40, on = function()
+        return CRT.db.pace.shown ~= false
+    end })
+end

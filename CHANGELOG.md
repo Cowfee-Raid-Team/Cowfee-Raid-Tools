@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Addon check** (General Settings): see who in the group runs CRT, which version, and which optional modules each raider has on, with filters by module and by answer.
+
 ## 1.1.5 (2026-10-27)
 
 - **Team raids:** pick tonight's team (Team, Pug or your own) instead of the Running CRT slider. The raid leader's Push to raid sets it for every CRT user in the raid.

@@ -914,3 +914,11 @@ function Consumables:CheckText()
     lines[#lines + 1] = format("%d entries checked, %d with problems.", total, problems)
     return table.concat(lines, "\n")
 end
+
+-- The Addon check's Consumables column (CRT_Core/AddonCheck.lua): on while the consumables bar is enabled. Nil
+-- in a harness that loads this file alone.
+if CRT.AddonCheck then
+    CRT.AddonCheck:Register({ key = "consumables", label = "Consumables", order = 50, on = function()
+        return cdb().enabled ~= false
+    end })
+end

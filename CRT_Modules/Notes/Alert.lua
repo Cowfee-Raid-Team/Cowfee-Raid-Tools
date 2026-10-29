@@ -448,3 +448,11 @@ CRT.UI:RegisterPreview("alert", function(on)
         frame:Hide()
     end
 end)
+
+-- The Addon check's Note callout column (CRT_Core/AddonCheck.lua): on while the callout is enabled. Nil in a
+-- harness that loads this file alone.
+if CRT.AddonCheck then
+    CRT.AddonCheck:Register({ key = "callout", label = "Note callout", order = 20, on = function()
+        return CRT.db.notes.alert.enabled ~= false
+    end })
+end

@@ -1,6 +1,6 @@
 local ADDON, CRT = ...
 
--- The General Settings page: settings for the whole addon, on two tabs (the last one is remembered in
+-- The General Settings page: settings for the whole addon, on three tabs (the last one is remembered in
 -- CRTDB.ui.settingsTab).
 --   Appearance  three columns. Left: Window (the main window's scale and opacity, UI:ApplyStyle in
 --               UI/Panel.lua; the look is the title bar's UI button) and Text (the font, outline and
@@ -11,6 +11,9 @@ local ADDON, CRT = ...
 --               Push to raid and Remove team: buildTeam, on Team.lua and TeamList.lua)
 --   Profiles    Profiles.lua: switch, create, copy, delete and reset profiles; Export (the whole profile),
 --               Export settings only (for raiders), Import (either kind, with a preview) and Undo last import
+--   Addon check AddonCheck.lua: who in the group runs CRT, which version and which optional modules they have
+--               on, one row per member with a cell per registered module; Module and Show filters, Check
+--               (buildAddonCheck). Opening the tab asks the group when the last ask is stale.
 -- Named Addon Settings before 0.16.0. Its key is still "settings".
 
 local UI = CRT.UI
@@ -812,11 +815,348 @@ local function buildProfiles(pf)
     controls[#controls + 1] = undo
 end
 
+-- The Addon check tab (AddonCheck.lua): a heading with the tab's one (?) tooltip, the Module and Show filters and
+-- Check on the first row, a status line, then the list: one row per group member with their name in class
+-- colour, their version (good: yours or newer; warn: older; bad: No CRT; muted: Offline or waiting) and an
+-- On / Off / — cell per registered module. The filters are page state, never saved. ---------------------------
+
+local CHECK = {
+    heading = "Who runs CRT",
+    help = "Asks everyone in your group which version of Cowfee Raid Tools they run and which optional modules they have switched on, and lists the answers. The group is asked when you open this tab and each time you press Check.\n\nGreen is your version, orange an older one, red No CRT no answer within 3 seconds. A dash means that player's CRT is too old to report that module.\n\nModule and Show narrow the list, so you can see before a pull who would miss a shared note, pace plan or kick list. The game blocks addon messages during a boss fight, so check before the pull.",
+    check = "Check",
+    module = "Module",
+    show = "Show",
+    anyModule = "Any module",
+    notGrouped = "Not in a group.",
+    lockdown = "Addon messages are blocked during an encounter. Check again after the pull ends.",
+    press = "Press Check to ask the group.",
+    checked = "Checked %s ago:",
+    inRaid = "%d in the raid",
+    inParty = "%d in the party",
+    onVersion = "%d on %s",
+    older = "%d older",
+    newer = "%d newer",
+    noCRT = "%d without CRT",
+    offline = "%d offline",
+    waiting = "%d waiting",
+    showing = "Showing %d of %d",
+    name = "Name",
+    version = "Version",
+    you = "%s (you)",
+    none = "No CRT",
+    offlineRow = "Offline",
+    waitingRow = "\226\128\166", -- …
+    on = "On",
+    off = "Off",
+    unknown = "\226\128\148", -- —
+}
+local SHOW_OPTIONS = {
+    { key = "all", label = "Everyone" },
+    { key = "nocrt", label = "No CRT" },
+    { key = "older", label = "Older version" },
+    { key = "on", label = "Module on", needsModule = true },
+    { key = "off", label = "Module off", needsModule = true },
+}
+local CHECK_ROW_H = 22
+local CHECK_NAME_W, CHECK_VERSION_W, CHECK_CELL_W = 200, 110, 100
+local CHECK_LIST_TOP = -112 -- the rows' top, from the tab frame's top (the heading row is at -44, the status line at -70, the column headings at -92)
+local CHECK_BAR_W = 26 -- room for the scroll bar right of the rows
+
+local check = { rows = {}, filterModule = nil, filterShow = "all", cells = {} }
+
+-- A row's stripe: the surface colour in Modern, black in Classic, odd rows darker. Read when painted, so a
+-- theme switch (which refreshes the page) repaints it.
+local function stripeColor(odd)
+    if UI:IsModern() then
+        local c = CRT.PALETTE.surface
+        return c[1], c[2], c[3], odd and 0.85 or 0.55
+    end
+    return 0, 0, 0, odd and 0.35 or 0.2
+end
+
+local function classColor(class)
+    local c = class and ((C_ClassColor and C_ClassColor.GetClassColor(class)) or (RAID_CLASS_COLORS and RAID_CLASS_COLORS[class]))
+    if type(c) == "table" and c.r then
+        return c.r, c.g, c.b
+    end
+    if UI:IsModern() then
+        local r, g, b = UI.Color("text")
+        return r, g, b
+    end
+    return 1, 1, 1
+end
+
+local function ago(seconds)
+    seconds = math.floor(seconds)
+    if seconds < 60 then
+        return seconds .. " s"
+    end
+    return math.floor(seconds / 60) .. " min"
+end
+
+-- The version cell's text for a row of AddonCheck:Rows().
+local function versionText(row)
+    local s = row.state
+    if s == "you" then
+        return UI.GoodText(CHECK.you:format(row.version))
+    elseif s == "same" or s == "newer" then
+        return UI.GoodText(row.version)
+    elseif s == "older" then
+        return UI.WarnText(row.version)
+    elseif s == "none" then
+        return UI.BadText(CHECK.none)
+    elseif s == "offline" then
+        return UI.ColorText(CHECK.offlineRow, "muted")
+    end
+    return UI.ColorText(CHECK.waitingRow, "muted")
+end
+
+-- A module cell: On, Off, — for a CRT that doesn't report it, nothing for a row with no answer.
+local function cellText(row, key)
+    local s = row.state
+    if not (s == "you" or s == "same" or s == "newer" or s == "older") then
+        return ""
+    end
+    local on = row.modules and row.modules[key]
+    if on == true then
+        return UI.GoodText(CHECK.on)
+    elseif on == false then
+        return UI.ColorText(CHECK.off, "muted")
+    end
+    return UI.ColorText(CHECK.unknown, "muted")
+end
+
+local function getCheckRow(i)
+    local row = check.rows[i]
+    if row then
+        return row
+    end
+    row = CreateFrame("Frame", nil, check.child)
+    row:SetHeight(CHECK_ROW_H)
+    row:SetPoint("TOPLEFT", 0, -(i - 1) * CHECK_ROW_H)
+    row:SetPoint("RIGHT", check.child, "RIGHT", 0, 0)
+    row.stripe = row:CreateTexture(nil, "BACKGROUND")
+    row.stripe:SetAllPoints()
+    row.name = row:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    row.name:SetPoint("LEFT", 6, 0)
+    row.name:SetWidth(CHECK_NAME_W - 12)
+    row.name:SetJustifyH("LEFT")
+    row.name:SetWordWrap(false)
+    row.version = row:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    row.version:SetPoint("LEFT", CHECK_NAME_W + 6, 0)
+    row.version:SetWidth(CHECK_VERSION_W - 12)
+    row.version:SetJustifyH("LEFT")
+    row.version:SetWordWrap(false)
+    row.cells = {}
+    for n, m in ipairs(CRT.AddonCheck:Modules()) do
+        local fs = row:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+        fs:SetPoint("LEFT", CHECK_NAME_W + CHECK_VERSION_W + (n - 1) * CHECK_CELL_W, 0)
+        fs:SetWidth(CHECK_CELL_W)
+        fs:SetJustifyH("CENTER")
+        fs:SetWordWrap(false)
+        row.cells[m.key] = fs
+    end
+    check.rows[i] = row
+    return row
+end
+
+-- The status line: not in a group, press Check, or the counts of the last check (zero counts left out).
+local function statusText(rows, counts)
+    local Check = CRT.AddonCheck
+    if not (IsInGroup and IsInGroup()) then
+        return UI.ColorText(CHECK.notGrouped, "muted")
+    end
+    local at = Check:AskedAt()
+    if not at then
+        return UI.ColorText(CHECK.press, "muted")
+    end
+    local sep = UI.ColorText(" \194\183 ", "muted")
+    local parts = {
+        UI.ColorText(CHECK.checked:format(ago((GetTime and GetTime() or at) - at)), "muted") .. " " .. (IsInRaid() and CHECK.inRaid or CHECK.inParty):format(counts.total),
+        UI.GoodText(CHECK.onVersion:format(counts.same, Check.VersionText())),
+    }
+    if counts.older > 0 then
+        parts[#parts + 1] = UI.WarnText(CHECK.older:format(counts.older))
+    end
+    if counts.newer > 0 then
+        parts[#parts + 1] = UI.GoodText(CHECK.newer:format(counts.newer))
+    end
+    if counts.none > 0 then
+        parts[#parts + 1] = UI.BadText(CHECK.noCRT:format(counts.none))
+    end
+    if counts.offline > 0 then
+        parts[#parts + 1] = UI.ColorText(CHECK.offline:format(counts.offline), "muted")
+    end
+    if counts.waiting > 0 then
+        parts[#parts + 1] = UI.ColorText(CHECK.waiting:format(counts.waiting), "muted")
+    end
+    return table.concat(parts, sep)
+end
+
+local function refreshCheck()
+    local Check = CRT.AddonCheck
+    local rows = Check:Rows()
+    local shown = Check.Filter(rows, check.filterModule, check.filterShow)
+    check.status:SetText(statusText(rows, Check.Counts(rows)))
+    check.showing:SetText(#shown < #rows and CHECK.showing:format(#shown, #rows) or "")
+    for i, row in ipairs(shown) do
+        local r = getCheckRow(i)
+        r.stripe:SetColorTexture(stripeColor(i % 2 == 1))
+        r.name:SetText(row.name)
+        r.name:SetTextColor(classColor(row.class))
+        r.version:SetText(versionText(row))
+        for key, fs in pairs(r.cells) do
+            fs:SetText(cellText(row, key))
+        end
+        r:Show()
+    end
+    for i = #shown + 1, #check.rows do
+        check.rows[i]:Hide()
+    end
+    check.child:SetHeight(math.max(1, #shown * CHECK_ROW_H))
+    local can, why = Check:CanCheck()
+    check.button:SetEnabled(can or why == "gap")
+    check.button.why = (not can and why ~= "gap") and why or nil
+end
+
+-- Asks the group again when the tab shows and the last ask is stale (AddonCheck.STALE).
+local function checkTabShown()
+    if page and page:IsShown() and CRT.db.ui.settingsTab == "addoncheck" then
+        CRT.AddonCheck:MaybeCheck()
+    end
+end
+
+local function buildAddonCheck(pf)
+    local Check = CRT.AddonCheck
+    local x, top = LEFT_X, -44
+    heading(pf, x, top, CHECK.heading, CHECK.help)
+
+    -- the first row's right side: Module, Show, Check
+    local checkButton = button(pf, CHECK.check, 80)
+    checkButton:SetPoint("TOPRIGHT", -10, top + 2)
+    checkButton:SetScript("OnClick", function()
+        Check:Check()
+        refresh()
+    end)
+    checkButton:SetMotionScriptsWhileDisabled(true)
+    checkButton:SetScript("OnEnter", function(self)
+        if self.why then
+            UI.TooltipOwner(GameTooltip, self, "ANCHOR_TOP")
+            GameTooltip:SetText(CHECK.check)
+            GameTooltip:AddLine(UI.BadText(self.why == "lockdown" and CHECK.lockdown or CHECK.notGrouped), 1, 1, 1, true)
+            GameTooltip:Show()
+        end
+    end)
+    checkButton:SetScript("OnLeave", function()
+        GameTooltip:Hide()
+    end)
+    check.button = checkButton
+
+    local show = UI.Dropdown(pf, CHECK.show, {
+        options = function()
+            local out = {}
+            for _, o in ipairs(SHOW_OPTIONS) do
+                out[#out + 1] = { key = o.key, label = o.label, disabled = o.needsModule and not check.filterModule or nil }
+            end
+            return out
+        end,
+        labelWidth = 40,
+        width = 150,
+        get = function()
+            return check.filterShow
+        end,
+        set = function(key)
+            check.filterShow = key
+            refresh()
+        end,
+    })
+    show:SetPoint("RIGHT", checkButton, "LEFT", -12, 0)
+    controls[#controls + 1] = show
+    local module = UI.Dropdown(pf, CHECK.module, {
+        options = function()
+            local out = { { key = "any", label = CHECK.anyModule } }
+            for _, m in ipairs(Check:Modules()) do
+                out[#out + 1] = { key = m.key, label = m.label }
+            end
+            return out
+        end,
+        labelWidth = 50,
+        width = 150,
+        get = function()
+            return check.filterModule or "any"
+        end,
+        set = function(key)
+            check.filterModule = key ~= "any" and key or nil
+            -- Module on / off need a module
+            if not check.filterModule and (check.filterShow == "on" or check.filterShow == "off") then
+                check.filterShow = "all"
+            end
+            refresh()
+        end,
+    })
+    module:SetPoint("RIGHT", show, "LEFT", -8, 0)
+    controls[#controls + 1] = module
+
+    check.status = pf:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    check.status:SetPoint("TOPLEFT", x, top - 26)
+    check.status:SetJustifyH("LEFT")
+    check.showing = pf:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    check.showing:SetPoint("TOPRIGHT", -10, top - 26)
+    check.showing:SetJustifyH("RIGHT")
+    UI.Tint(check.showing, "SetTextColor", "muted")
+
+    -- the column headings, then the list under a line
+    local function head(text, offset, width, justify)
+        local fs = pf:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
+        fs:SetPoint("TOPLEFT", x + offset + 6, top - 48)
+        fs:SetWidth(width - 12)
+        fs:SetJustifyH(justify)
+        fs:SetWordWrap(false)
+        fs:SetText(text)
+        return fs
+    end
+    head(CHECK.name, 0, CHECK_NAME_W, "LEFT")
+    head(CHECK.version, CHECK_NAME_W, CHECK_VERSION_W, "LEFT")
+    for n, m in ipairs(Check:Modules()) do
+        head(m.label, CHECK_NAME_W + CHECK_VERSION_W + (n - 1) * CHECK_CELL_W, CHECK_CELL_W, "CENTER")
+    end
+    local line = pf:CreateTexture(nil, "ARTWORK")
+    line:SetHeight(1)
+    line:SetPoint("TOPLEFT", x, CHECK_LIST_TOP + 3)
+    line:SetPoint("TOPRIGHT", -10 - CHECK_BAR_W, CHECK_LIST_TOP + 3)
+    UI.Tint(line, "SetColorTexture", "border")
+
+    local scroll = CreateFrame("ScrollFrame", "CowfeeRaidToolsAddonCheckScroll", pf, "UIPanelScrollFrameTemplate")
+    UI:SkinScrollBar(scroll.ScrollBar)
+    scroll:SetPoint("TOPLEFT", x, CHECK_LIST_TOP)
+    scroll:SetPoint("BOTTOMRIGHT", -10 - CHECK_BAR_W, 8)
+    check.child = CreateFrame("Frame", nil, scroll)
+    check.child:SetSize(UI.PAGE_W - 20 - CHECK_BAR_W, 1)
+    scroll:SetScrollChild(check.child)
+
+    check.refresh = refreshCheck
+    controls[#controls + 1] = check
+    -- "Checked N s ago" keeps counting while the tab shows
+    local elapsed = 0
+    pf:SetScript("OnUpdate", function(_, dt)
+        elapsed = elapsed + dt
+        if elapsed >= 1 then
+            elapsed = 0
+            if check.status and page and page:IsShown() then
+                refreshCheck()
+            end
+        end
+    end)
+    pf:SetScript("OnShow", checkTabShown)
+    Check:OnChange(refresh)
+end
+
 -- The marker macros, which were on a Macros tab here, are on Raid Notes > Marker macros (Markers/MacrosTab.lua).
 -- A saved settingsTab of "macros" opens Appearance.
 local TABS = {
     { key = "appearance", label = "Appearance" },
     { key = "profiles", label = "Profiles" },
+    { key = "addoncheck", label = "Addon check" },
 }
 local tabButtons, tabFrames = {}, {}
 
@@ -830,6 +1170,7 @@ local function selectTab(key)
         tabFrames[tab.key]:SetShown(on)
         UI:SetTabSelected(tabButtons[tab.key], on)
     end
+    checkTabShown()
 end
 
 local function build(pf)
@@ -872,9 +1213,13 @@ local function build(pf)
     buildLeft(tabFrames.appearance)
     buildRight(tabFrames.appearance)
     buildProfiles(tabFrames.profiles)
+    buildAddonCheck(tabFrames.addoncheck)
     selectTab(CRT.db.ui.settingsTab)
 
-    pf:SetScript("OnShow", refresh)
+    pf:SetScript("OnShow", function()
+        refresh()
+        checkTabShown()
+    end)
     -- Ctrl + mouse wheel changes the scale too, so the slider follows it.
     UI.onScale = refresh
     -- a push, a hello or a roster change: Team raids follows while the page shows (refresh checks)

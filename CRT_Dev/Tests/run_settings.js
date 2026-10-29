@@ -5,7 +5,7 @@ const fs = require('fs');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
 const harness = require('./placement_stub')(process.argv[2]) + `
-local coreSrc, panelSrc, controlsSrc, pageSrc, alertSrc, profilesSrc, themesSrc, macrosSrc, windowSrc, tooltipSrc, areasSrc, teamSrc, shareSrc, listSrc = ...
+local coreSrc, panelSrc, controlsSrc, pageSrc, alertSrc, profilesSrc, themesSrc, macrosSrc, windowSrc, tooltipSrc, areasSrc, teamSrc, shareSrc, listSrc, checkSrc = ...
 -- FAIL lines are counted, and the count printed last, so a failure shows past the runner's tail
 local failCount, rawPrint = 0, print
 print = function(s, ...) if type(s) == "string" and s:find("^FAIL ") then failCount = failCount + 1 end rawPrint(s, ...) end
@@ -97,6 +97,11 @@ IsInRaid = function() return false end IsInGroup = function() return false end
 assert(load(teamSrc, "CRT_Core/Team.lua"))("CowfeeRaidTools", CRT)
 assert(load(listSrc, "CRT_Core/TeamList.lua"))("CowfeeRaidTools", CRT)
 -- the shipped textures' folder, set once in Core.lua
+-- the addon check, which General Settings' third tab shows (CRT_Core/AddonCheck.lua; its own harness is run_addoncheck.js)
+UnitFullName = function(u) if u == "player" then return "Solex", nil end end
+UnitClass = function() return "Paladin", "PALADIN" end
+assert(load(checkSrc, "CRT_Core/AddonCheck.lua"))("CowfeeRaidTools", CRT)
+CRT.AddonCheck:Register({ key = "pace", label = "Pace", order = 40, on = function() return CRT.db.pace.shown ~= false end })
 if CRT.MEDIA == "Interface\\\\AddOns\\\\CowfeeRaidTools\\\\CRT_Media\\\\Media\\\\" then print("ok CRT.MEDIA") else print("FAIL CRT.MEDIA: " .. tostring(CRT.MEDIA)) end
 -- ADDON_LOADED, with data saved before themes: the Modern look on and no theme loads as Beanworks: Cowfee.
 CRTDB = { ui = { modern = true } }
@@ -125,6 +130,7 @@ print("back to default: " .. fontLine("CRTFontNormal"))
 assert(load(panelSrc, "Panel.lua"))("CowfeeRaidTools", CRT)
 assert(load(tooltipSrc, "CRT_Core/UI/Tooltip.lua"))("CowfeeRaidTools", CRT)
 local UI = CRT.UI
+UI.SkinScrollBar = UI.SkinScrollBar or function() end -- CRT_Core/UI/ScrollBar.lua isn't loaded here (the Addon check list skins its bar when the page builds)
 -- Controls with simple stand-ins, so the page can build.
 MinimalSliderWithSteppersMixin = { Label = { Right = 2 }, Event = {} }
 function CreateMinimalSliderFormatter(_, fn) return fn end
@@ -400,20 +406,50 @@ end
 local opts = {} for _, o in ipairs(dropdowns["Use profile"].options()) do opts[#opts + 1] = o.label end
 print("use profile choices: " .. table.concat(opts, ", ") .. "; copy from enabled " .. tostring(dropdowns["Copy from"].enabledIf()))
 
--- The tabs: Appearance and Profiles. The macros moved to Raid Notes > Marker macros (Markers/MacrosTab.lua).
+-- The tabs: Appearance, Profiles and Addon check. The macros moved to Raid Notes > Marker macros (Markers/MacrosTab.lua).
 do
   local function textOf(fr) local t = rawget(fr, "text") return type(t) == "string" and t or "" end
   local function findText(want, kind) for _, fr in ipairs(frames) do if (not kind or fr.kind == kind) and textOf(fr) == want then return fr end end end
   local tabLabels = {}
   for _, fr in ipairs(frames) do
     local t = textOf(fr)
-    if fr.kind == "FontString" and rawget(fr, "font") == "CRTFontNormal" and (t == "Appearance" or t == "Macros" or t == "Profiles") then tabLabels[#tabLabels + 1] = t end
+    if fr.kind == "FontString" and rawget(fr, "font") == "CRTFontNormal" and (t == "Appearance" or t == "Macros" or t == "Profiles" or t == "Addon check") then tabLabels[#tabLabels + 1] = t end
   end
   -- the tab labels are made first; the tabs' own headings come after
-  tabLabels = { tabLabels[1], tabLabels[2] }
-  if table.concat(tabLabels, ",") ~= "Appearance,Profiles" then print("FAIL General Settings tabs are Appearance, Profiles (got " .. table.concat(tabLabels, ",") .. ")") end
+  tabLabels = { tabLabels[1], tabLabels[2], tabLabels[3] }
+  if table.concat(tabLabels, ",") ~= "Appearance,Profiles,Addon check" then print("FAIL General Settings tabs are Appearance, Profiles, Addon check (got " .. table.concat(tabLabels, ",") .. ")") end
   if findText("Test calls", "FontString") or findText("Create macros", "Button") then print("FAIL General Settings has no macro rows any more") end
   print("macros tab gone")
+
+  -- Addon check: the heading with its (?), Module and Show, Check greyed out of a group with the reason, the
+  -- status line, the column headings (one per registered module) and your own row.
+  if not findText("Who runs CRT", "FontString") then print("FAIL the Addon check tab has its Who runs CRT heading") end
+  local checkButton = findText("Check", "Button")
+  if not checkButton then print("FAIL the Addon check tab has a Check button") else
+    UI.pages.settings.frame.OnShow()
+    if rawget(checkButton, "enabled") ~= false or checkButton.why ~= "group" then print("FAIL Check is greyed out of a group, with the reason (got " .. tostring(rawget(checkButton, "enabled")) .. ", " .. tostring(checkButton.why) .. ")") end
+  end
+  local module, show = dropdowns["Module"], dropdowns["Show"]
+  if not (module and show) then print("FAIL the Addon check tab has Module and Show dropdowns") else
+    local labels = {} for _, o in ipairs(module.options()) do labels[#labels + 1] = o.label end
+    -- Notes/Alert.lua and Alerts/Areas.lua, loaded here, register their own columns too, in column order
+    if table.concat(labels, ",") ~= "Any module,Note callout,Mech Alerts,Pace" then print("FAIL Module lists Any module and each registered module: " .. table.concat(labels, ",")) end
+    labels = {} for _, o in ipairs(show.options()) do labels[#labels + 1] = o.label .. (o.disabled and "(off)" or "") end
+    if table.concat(labels, ",") ~= "Everyone,No CRT,Older version,Module on(off),Module off(off)" then print("FAIL Show's choices, Module on/off greyed without a module: " .. table.concat(labels, ",")) end
+    module.set("pace")
+    labels = {} for _, o in ipairs(show.options()) do labels[#labels + 1] = o.label .. (o.disabled and "(off)" or "") end
+    if table.concat(labels, ",") ~= "Everyone,No CRT,Older version,Module on,Module off" then print("FAIL with a module picked, Module on/off are live: " .. table.concat(labels, ",")) end
+    show.set("off") module.set("any")
+    if show.get() ~= "all" then print("FAIL Module off goes back to Everyone when the module is cleared (got " .. tostring(show.get()) .. ")") end
+  end
+  if not findText("Pace", "FontString") then print("FAIL a column heading per registered module") end
+  local status
+  for _, fr in ipairs(frames) do if fr.kind == "FontString" and textOf(fr):find("Not in a group.", 1, true) then status = fr end end
+  if not status then print("FAIL the status line says Not in a group. when solo") end
+  local you
+  for _, fr in ipairs(frames) do if fr.kind == "FontString" and textOf(fr):find("(you)", 1, true) then you = fr end end
+  if not you then print("FAIL your own row shows your version with (you)") end
+  print("addon check tab built")
 
   -- Profiles: Export settings only, the import preview, Keep my window positions, Undo last import.
   local function button(want, parent)
@@ -653,5 +689,5 @@ if failCount > 0 then print(failCount .. " failed") end
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 const d = process.argv[2];
-for (const p of ['CRT_Core/Core.lua', 'CRT_Core/UI/Panel.lua', 'CRT_Core/UI/Controls.lua', 'CRT_Core/UI/SettingsPage.lua', 'CRT_Modules/Notes/Alert.lua', 'CRT_Core/Profiles.lua', 'CRT_Core/Themes.lua', 'CRT_Core/Macros.lua', 'CRT_Core/UI/Window.lua', 'CRT_Core/UI/Tooltip.lua', 'CRT_Modules/Alerts/Areas.lua', 'CRT_Core/Team.lua', 'CRT_Core/Share.lua', 'CRT_Core/TeamList.lua']) lua.lua_pushstring(L, to_luastring(fs.readFileSync(d + '/' + p, 'utf8')));
-if (lua.lua_pcall(L, 14, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
+for (const p of ['CRT_Core/Core.lua', 'CRT_Core/UI/Panel.lua', 'CRT_Core/UI/Controls.lua', 'CRT_Core/UI/SettingsPage.lua', 'CRT_Modules/Notes/Alert.lua', 'CRT_Core/Profiles.lua', 'CRT_Core/Themes.lua', 'CRT_Core/Macros.lua', 'CRT_Core/UI/Window.lua', 'CRT_Core/UI/Tooltip.lua', 'CRT_Modules/Alerts/Areas.lua', 'CRT_Core/Team.lua', 'CRT_Core/Share.lua', 'CRT_Core/TeamList.lua', 'CRT_Core/AddonCheck.lua']) lua.lua_pushstring(L, to_luastring(fs.readFileSync(d + '/' + p, 'utf8')));
+if (lua.lua_pcall(L, 15, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
