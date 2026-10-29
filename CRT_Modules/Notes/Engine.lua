@@ -436,10 +436,11 @@ function Engine.ItemFor(t, index, mine)
     return item
 end
 
--- Whether a note's Mech Alerts lines (mech:, Notes/MechNote.lua) are for another difficulty group than the run's. They
--- are written into the note for exactly their difficulty, but a pull of the other group with no note of its own reads
--- that note (Notes:FindForEncounter): its other lines run as ever, the Mech Alerts lines don't, so their times never
--- run on the other group's pull (beside your own alert of the ability there). False when either group is unknown.
+-- Whether a note is for another difficulty group than the run's: the one rule for its lines (entries) and its shield
+-- watches (noteWatches). False when either group is unknown (a note for any difficulty, a run with no difficulty).
+-- A pull of the other group with no note of its own reads that note (Notes:FindForEncounter): its Mech Alerts lines
+-- (mech:, Notes/MechNote.lua), written for exactly the note's difficulty, then neither run nor watch a shield, so their
+-- times never run on the other group's pull (beside your own alert of the ability there); its other lines run as ever.
 local function otherGroup(n, run)
     local T = CRT.Timeline
     local diff = type(n.difficulty) == "string" and n.difficulty:match("%S") and n.difficulty or nil
@@ -521,18 +522,17 @@ Alerts:RegisterBlock("personal", { label = "Your personal note", group = false, 
 -- The untimed shield bars of a pull (Alerts/Absorb.lua), as Special:AbsorbWatches gives a special alert's: one watch
 -- per line of yours with shield: whose bar shows, in the raid note the pull runs and in your personal note. A note for
 -- the pull's difficulty group (or for any difficulty) gives one to every such line; a note for the other group (the
--- boss had none for this one) only to a line with "any". Only a boss pull has them. {} when none.
+-- boss had none for this one, otherGroup) only to a line with "any", never to a raid note's Mech Alerts line, as its
+-- lines skip them (entries). Only a boss pull has them. {} when none.
 local function noteWatches(out, n, prefix, run, all)
     if not n then
         return
     end
-    local T = CRT.Timeline
-    local group = Alerts.RunGroup and Alerts:RunGroup(run) or nil
-    local diff = type(n.difficulty) == "string" and n.difficulty:match("%S") and n.difficulty or nil
-    local fits = not diff or not (T and T.GroupFor) or group == nil or T:GroupFor(diff) == group
+    local other = otherGroup(n, run)
+    local skipMech = other and prefix == "note:"
     for index, t in ipairs(n.timers) do
         local a = t.absorb
-        if a and (fits or a.anyDifficulty) and (all or Engine:IsMine(t)) then
+        if a and (not other or a.anyDifficulty) and not (skipMech and t.mech) and (all or Engine:IsMine(t)) then
             local item = Engine.ItemFor(t, index, true)
             if item.absorb and item.outputs and item.outputs.bar then
                 out[#out + 1] = { id = "absorb:" .. prefix .. index, key = prefix .. index, block = prefix:sub(1, -2),

@@ -546,6 +546,52 @@ check("mechnote: a Mech Alerts line runs only on a pull of its note's difficulty
   A:Stop(true)
 end)
 
+-- The same rule for a Mech Alerts line's shield bar: on the other group's pull it gets no bar and no untimed watch,
+-- even with "any" (one rule for the lines and their watches, Notes/Engine.lua otherGroup); the note's other shield
+-- lines keep theirs, and on its own group's pull the line has both.
+check("mechnote: a Mech Alerts shield line on the other group's pull: no bar, no watch", function()
+  reset()
+  inNote("Break", "break", { absorb = { unit = "boss2", length = 15, anyDifficulty = true } })
+  local nid = M.FindNote(3470, "Mythic")
+  Notes:UpdateRaw(nid, Notes:Get(nid).raw .. "time:36;tag:all;text:Other shield;show:bar;shield:boss3,10,any;\\n")
+  local function watched(text)
+    local n = 0
+    for _, w in ipairs(NE:AbsorbWatches(A.run)) do if w.text == text then n = n + 1 end end
+    return n
+  end
+  A:Start(3470, "Heroic", "encounter", {})
+  assert(shows(A.items, "Break") == 0, "no bar")
+  assert(watched("Break") == 0, "no watch: " .. watched("Break"))
+  assert(watched("Other shield") == 1, "the note's other shield line keeps its watch")
+  A:Stop(true)
+  A:Start(3470, "Mythic", "encounter", {})
+  assert(shows(A.items, "Break", 36) == 1 and watched("Break") > 0, "its own group: the bar and its watches")
+  A:Stop(true)
+end)
+
+-- Two reminders on one marker: the higher id's lines carry "<key>#<id>" (MechNote.UniqueKey). Testing either leaves
+-- out only its own lines, never the other's, so each Test plays once beside the other alert's line.
+check("mechnote: Test of an alert with a #id marker leaves out only its own lines, and the other way round", function()
+  reset()
+  local a = inNote("Row", "777")
+  local b = inNote("Mine", "777")
+  M.Sync(3470, a, { group = "mythic" })
+  local ka, kb = R:Get(3470, a).raidNote.key, R:Get(3470, b).raidNote.key
+  assert(ka == "777" and kb == "777#" .. b, "the markers: " .. ka .. " " .. kb)
+  local function test(id)
+    local r = R:Get(3470, id)
+    local items = R:Items(3470, "test", r, "mythic")
+    for _, it in ipairs(items) do it.block = "editorTest" end
+    return rehearse("Mythic", "mythic", { extra = items, replaces = { block = "note", mech = r.raidNote.key } })
+  end
+  local items = test(b)
+  assert(shows(items, "Mine", 36) == 1 and shows(items, "Row", 36) == 1, "Test of 777#id: once each, the 777 line stays")
+  A:Stop(true)
+  items = test(a)
+  assert(shows(items, "Row", 36) == 1 and shows(items, "Mine", 36) == 1, "Test of 777: once each, the 777#id line stays")
+  A:Stop(true)
+end)
+
 check("no errors raised", function()
   assert(#errors == 0, tostring(errors[1]))
 end)

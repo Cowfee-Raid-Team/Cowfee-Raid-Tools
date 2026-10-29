@@ -9,9 +9,10 @@ local ADDON, CRT = ...
 -- FormatLine never writes it, so every other writer keeps it on the line (Parser.UnknownFields), and a CRT from
 -- before it reads the line as any other timed line.
 -- The reminder keeps what the panel chose in raidNote = { tag, key, difficulty }: who the lines are for (tag words:
--- "all", or any of the role words and players' names, read as any of them), the marker, and the note's Difficulty the lines went to (always a note for
--- exactly that difficulty, never one for any difficulty, so one difficulty's times never run on another's pull). While a reminder
--- has it, its own alerts step aside for the note's lines ("mine" block, Alerts/Reminders.lua); taking it away
+-- "all", or any of the role words and players' names, read as any of them), the marker, and the note's Difficulty
+-- the lines went to (always a note for exactly that difficulty, never one for any difficulty, so one difficulty's
+-- times never run on another's pull). While a reminder has it, its own alerts step aside for the note's lines
+-- ("mine" block, Alerts/Reminders.lua); taking it away
 -- (Only me) puts them back. A raider's own Only me alert for the same ability and the note's line both show.
 -- The text functions are pure; Write, Sync and Leave change the notes store (Notes/Data.lua) and nothing else:
 -- never the active note, never a share.
