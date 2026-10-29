@@ -423,6 +423,20 @@ check("alerts share: a Raid note alert's choice stays home, and an import over i
   assert(M.InStep(9001, id, { group = "mythic" }), "the note follows")
   local raw = CRT.Notes:Get(M.FindNote(9001, "Mythic")).raw
   assert(raw:find("text:Swap now;", 1, true), raw)
+  -- in a raid, not the leader or an assistant: the alert is imported, its note lines stay, and the result says so
+  IsInRaid = function() return true end
+  UnitIsGroupLeader = function() return false end
+  UnitIsGroupAssistant = function() return false end
+  payload.boss[9001].mythic.reminders[1].text = "Swap later"
+  local info2 = AS:Read(Share.Encode("alerts", 1, payload))
+  local n, err, note = AS:Apply(info2)
+  assert(n == 1 and err == nil and R:Get(9001, id).text == "Swap later", "imported")
+  assert(note == "Its raid note lines weren't changed: only the raid leader or an assistant can.", tostring(note))
+  assert(CRT.Notes:Get(M.FindNote(9001, "Mythic")).raw == raw, "the note as it was")
+  UnitIsGroupLeader, UnitIsGroupAssistant = nil, nil
+  local _, _, none = AS:Apply(AS:Read(Share.Encode("alerts", 1, { v = 1, from = "Other", boss = { [9001] = { mythic = { reminders = {
+    { text = "Plain new", times = "P1 0:05", group = "mythic", outputs = { alert = true } } } } } } })))
+  assert(none == nil, "nothing to say for an Only me alert")
   IsInRaid, IsInGroup = nil, nil
 end)
 

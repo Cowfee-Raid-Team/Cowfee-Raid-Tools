@@ -182,6 +182,12 @@ CRT.Notes.Import = function(self, text, from, personal, source, via, anyText, as
   return id
 end
 CRT.Notes.UpdateRaw = function(self, id, text) noteStore[id].raw = text self:Fire() return true end
+-- Notes/Data.lua's Busy: combat, or a boss encounter (the game's call)
+CRT.Notes.Busy = function()
+  if InCombatLockdown() then return true end
+  local fn = (C_InstanceEncounter and C_InstanceEncounter.IsEncounterInProgress) or IsEncounterInProgress
+  return fn ~= nil and fn() == true
+end
 CRT.Notes.FindExact = function(self, enc, diff)
   for id, r in pairs(noteStore) do
     if r.encounterID == enc and r.difficulty and diff and r.difficulty:lower() == diff:lower() then return id end
@@ -745,6 +751,50 @@ check("mech raid note: without the right to change the raid note", function()
   popup.callback()
   assert(#marked(note.raw, "mine") == 1 and p.message.text:find("Deleted", 1, true), "deleted, lines stay, said: " .. tostring(p.message.text))
   CRT.Notes.CanEditRaid = was
+  assert(#errors == 0, tostring(errors[1]))
+end)
+
+-- the panel never rewrites the note on its own mid-pull; an older alert on any difficulty goes into the note for the
+-- group on show only; a pull that reads another note is said
+check("mech raid note: no rewrite in an encounter, an older alert splits, another note for the pull is said", function()
+  resetNotes()
+  local f = fresh()
+  local p = f.panel
+  p.saveAs.opts.set("note")
+  local note = noteFor(ENC, "Mythic")
+  -- a share replaced the note during a pull: nothing written until it ends
+  IsEncounterInProgress = function() return true end
+  note.raw = "EncounterID:9001;Difficulty:Mythic;Name:Test Boss\\n"
+  CRT.Notes:Fire()
+  click(f.rows[2].frame) click(f.rows[1].frame)
+  assert(#marked(note.raw, "777") == 0, "not written during an encounter: " .. note.raw)
+  assert(p.noteStatus.text:find("none of its lines", 1, true), p.noteStatus.text)
+  IsEncounterInProgress = nil
+  CRT.Notes:Fire()
+  assert(#marked(note.raw, "777") == 2, "written once it ended")
+  -- the pull reads another note (an active note for any difficulty, say): said in the warn colour
+  local wasFind = CRT.Notes.FindForEncounter
+  CRT.Notes.FindForEncounter = function() return 999 end
+  CRT.Notes:Fire()
+  assert(p.noteStatus.text:find("The pull uses another note for this boss, so these lines won't run.", 1, true)
+    and p.noteStatus.text:find("|cff" .. CRT.UI.Hex("warn"), 1, true), p.noteStatus.text)
+  CRT.Notes.FindForEncounter = wasFind
+  CRT.Notes:Fire()
+  assert(p.noteStatus.text:find("2 lines", 1, true), p.noteStatus.text)
+  -- an older alert on any difficulty: Raid note for the group on show only, the other half stays Only me
+  resetNotes()
+  local f2 = fresh()
+  local id = R:Save(ENC, nil, { spellID = 888, boss = "Test Boss", text = "Other Spell", outputs = { alert = true }, enabled = true })
+  CRT.db.alerts.reminders[ENC][id].group = nil
+  CRT.NoteReminders.Refresh()
+  click(f2.rows[2].frame)
+  f2.panel.saveAs.opts.set("note")
+  local mythic, nh = {}, {}
+  for _, e in ipairs(R:List(ENC)) do
+    if R.GroupOf(e.r) == "mythic" then mythic[#mythic + 1] = e.r elseif R.GroupOf(e.r) == "nh" then nh[#nh + 1] = e.r end
+  end
+  assert(#mythic == 1 and mythic[1].raidNote and #nh == 1 and nh[1].raidNote == nil, "split: Mythic in the note, Normal/Heroic Only me")
+  assert(#marked(noteFor(ENC, "Mythic").raw, "888") == 1, "its one Mythic cast in the note")
   assert(#errors == 0, tostring(errors[1]))
 end)
 

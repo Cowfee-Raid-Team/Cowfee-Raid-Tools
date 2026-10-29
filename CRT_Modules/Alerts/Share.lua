@@ -30,6 +30,8 @@ AS.CAPS = { depth = 10, entries = 500, total = 20000, string = 2000 }
 local TEXT = {
     nothing = "Nothing to export: no Mech Alerts or special alerts there.",
     combat = "Can't import during combat.",
+    -- an import over one of your Raid note Mech Alerts while you may not change the raid note
+    noteKept = "Its raid note lines weren't changed: only the raid leader or an assistant can.",
     someone = "someone",
     summary = "%s's alerts for %s: %s.",
     counts = " %d new, %d replaces yours, %d same as yours.",
@@ -841,8 +843,13 @@ local function applyReminder(item)
     end
     local id = Reminders:Save(item.enc, item.target, merged)
     -- one of yours saved as Raid note: its lines in the raid note follow the code's alert, when you may change it
+    -- (else item.noteKept, said in the import's result)
     local M = CRT.MechNote
-    if id and M and M.InNote(merged) and CRT.AlertDraft and CRT.AlertDraft.CanEditRaid() then
+    local canEdit = CRT.AlertDraft and CRT.AlertDraft.CanEditRaid()
+    if id and M and M.InNote(merged) and not canEdit then
+        item.noteKept = true
+    end
+    if id and M and M.InNote(merged) and canEdit then
         local ok, err = pcall(M.Sync, item.enc, id, { group = Reminders.GroupOf(merged) })
         if not ok then
             geterrorhandler()(err)
@@ -882,7 +889,7 @@ function AS:Apply(info, pick)
     if InCombatLockdown and InCombatLockdown() then
         return nil, TEXT.combat
     end
-    local n = 0
+    local n, kept = 0, false
     -- definitions first, so a choice for one finds it
     for _, kind in ipairs({ "def", "reminder", "special" }) do
         for _, item in ipairs(info.items) do
@@ -901,6 +908,7 @@ function AS:Apply(info, pick)
                 end
                 if done then
                     n = n + 1
+                    kept = kept or item.noteKept
                 end
             end
         end
@@ -908,5 +916,6 @@ function AS:Apply(info, pick)
     if n > 0 then
         Alerts:Fire()
     end
-    return n
+    -- the third value: what the import's result also says (a Raid note alert whose note lines stayed as they were)
+    return n, nil, kept and TEXT.noteKept or nil
 end

@@ -50,6 +50,8 @@ local TEXT = {
     noteOff = "Off, so not in the raid note. Tick Alert me to put it back.",
     noteGone = "The raid note for %s (%s) has none of its lines now.",
     outOfDate = "The raid note's lines are out of date.",
+    -- a pull of that difficulty reads another of the boss's notes (Notes:FindForEncounter), such as the active one
+    otherNote = "The pull uses another note for this boss, so these lines won't run.",
     -- you may not change the raid note (not the leader or an assistant): what stays as it was
     linesStay = "Saved as Only me. Its lines stay in the raid note until the raid leader or an assistant takes them out.",
     deletedLinesStay = "Deleted. Its lines stay in the raid note until the raid leader or an assistant takes them out.",
@@ -713,10 +715,12 @@ end
 
 -- A Raid note row loaded (picked, the tab shown, a note change such as an incoming share): when you may change the
 -- raid note and its lines aren't what the panel would write (a change on the Timeline or in the season's data, a
--- share that replaced the note), they are written again. The panel owns those lines.
+-- share that replaced the note), they are written again. The panel owns those lines. Never in combat or a boss
+-- encounter (Notes.Busy): the note isn't rewritten mid-pull on its own.
 local function resyncNote()
-    local M, ctx = CRT.MechNote, cur.ctx
-    if not (M and ctx and ctx.id and M.InNote(ctx.reminder)) or saving or not CRT.AlertDraft.CanEditRaid() then
+    local M, ctx, Notes = CRT.MechNote, cur.ctx, CRT.Notes
+    if not (M and ctx and ctx.id and M.InNote(ctx.reminder)) or saving or not (Notes and Notes.Busy) or Notes.Busy()
+        or not CRT.AlertDraft.CanEditRaid() then
         return
     end
     local ok, inStep = pcall(M.InStep, ctx.encounterID, ctx.id, noteOpts(ctx.encounterID))
@@ -726,7 +730,7 @@ local function resyncNote()
 end
 
 -- The line under the header while Save as is Raid note: how many lines the boss's note has (good), or that the alert
--- is off, its lines are gone or out of date (warn). Empty for Only me.
+-- is off, its lines are gone, the pull reads another note, or the lines are out of date (warn). Empty for Only me.
 local function drawNoteStatus()
     local n = noteChoice()
     local ctx = cur.ctx
@@ -741,6 +745,8 @@ local function drawNoteStatus()
             text = UI.WarnText(TEXT.noteOff)
         elseif count == 0 then
             text = UI.WarnText(string.format(TEXT.noteGone, tostring(cur.bossName), difficulty))
+        elseif CRT.Notes:FindForEncounter(ctx.encounterID, difficulty) ~= M.FindNote(ctx.encounterID, difficulty) then
+            text = UI.WarnText(TEXT.otherNote)
         elseif ok and not inStep then
             text = UI.WarnText(TEXT.outOfDate)
         else
@@ -1545,17 +1551,22 @@ local function buildNoteRow(p, row)
         end
         saveTyped()
         local r = ctx.reminder
-        local wasOn = r.enabled
+        local wasOn, wasGroup = r.enabled, r.group
         if v == "note" then
             local item = cur.item
             local ability = item and item.ability
             r.raidNote = { tag = M.ROLES[1], key = M.Key(item and item.spellID or d.spellID, ability and ability.name or draftName()) }
             r.enabled = true
+            -- an older alert on any difficulty: the Raid note is for the group on show only (the save splits it, and
+            -- the other group's half stays Only me)
+            if not CRT.AlertReminders.GroupOf(r) then
+                r.group = shownGroup()
+            end
         else
             r.raidNote = nil
         end
         if not commit() then
-            r.raidNote, r.enabled = before, wasOn -- not saved: the choice stays as it was
+            r.raidNote, r.enabled, r.group = before, wasOn, wasGroup -- not saved: the choice stays as it was
             return
         end
         if v == "mine" then
