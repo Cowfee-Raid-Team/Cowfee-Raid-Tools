@@ -638,7 +638,8 @@ check("mech raid note: For, the tick, and Only me", function()
   p.forDrop.opts.toggle("Abu") p.forDrop.opts.toggle("Cheo") p.forDrop.opts.toggle("healer")
   assert(marked(note.raw, "777")[1].tags[1] == "all", "none left: everyone")
   assert(p.forDrop.opts.checked("all"), "Everyone ticked again")
-  -- Alert me off: out of the note, and back
+  -- Alert me off (For not Everyone, which holds it on): out of the note, and back
+  p.forDrop.opts.toggle("all") p.forDrop.opts.toggle("tank")
   setCheck(f.rows[1].check, false)
   assert(#marked(note.raw, "777") == 0 and only().raidNote, "off: the lines are gone, the choice kept")
   assert(p.noteStatus.text:find("Off", 1, true) and p.noteStatus.text:find("|cff" .. CRT.UI.Hex("warn"), 1, true), "said in the warn colour: " .. p.noteStatus.text)
@@ -701,6 +702,52 @@ check("mech raid note: For ticks several roles; Everyone greys the rest", functi
   assert(o.checked("healer") and not o.checked("all") and not greyed("melee"), "an older role tag")
   o.toggle("melee")
   assert(tags() == "healer melee", "adds to it: " .. tags())
+  assert(#errors == 0, tostring(errors[1]))
+end)
+
+-- #1206 (Alex, 2026-10-29): Raid note + For Everyone greys Alert me, ticked: the note line already reaches you, so a
+-- click (on Alert me or the row's tick) never takes the lines out, and its tooltip says why. Any other For, or Only me,
+-- leaves Alert me as it was; choosing Everyone while it is off turns it on, so the lines are written.
+check("mech raid note: For Everyone greys Alert me, ticked", function()
+  resetNotes()
+  local f = fresh()
+  local p = f.panel
+  p.saveAs.opts.set("note")
+  local note = noteFor(ENC, "Mythic")
+  local _, id = only()
+  local o = p.forDrop.opts
+  assert(p.alertMe.checked == true and p.alertMe.enabled == false, "ticked and greyed")
+  assert(p.alertMe.label.textColor and p.alertMe.label.textColor[1] == 0.5, "its label greyed")
+  -- its tooltip says why
+  local said = {}
+  local wasOwner = CRT.UI.TooltipOwner
+  CRT.UI.TooltipOwner = CRT.UI.TooltipOwner or function() end
+  GameTooltip = setmetatable({}, { __index = function(_, k) return function(_, ...) said[#said + 1] = { k, ... } end end })
+  assert(p.alertMe.OnEnter, "a tooltip")
+  p.alertMe.OnEnter(p.alertMe)
+  local text = ""
+  for _, s in ipairs(said) do if type(s[2]) == "string" then text = text .. s[2] .. " " end end
+  assert(text:find("Everyone", 1, true) and text:find("note line", 1, true), "says why: " .. text)
+  GameTooltip, CRT.UI.TooltipOwner = nil, wasOwner
+  -- a click on it, or on the row's tick, never takes the lines out
+  setCheck(p.alertMe, false)
+  assert(R:Get(ENC, id).enabled == true and #marked(note.raw, "777") == 2 and p.alertMe.checked, "Alert me: still on, lines kept")
+  setCheck(f.rows[1].check, false)
+  assert(R:Get(ENC, id).enabled == true and #marked(note.raw, "777") == 2 and f.rows[1].check.checked, "the row's tick too")
+  -- another For: Alert me as before
+  o.toggle("all") o.toggle("healer")
+  assert(p.alertMe.enabled == true, "freed with Healers")
+  setCheck(p.alertMe, false)
+  assert(R:Get(ENC, id).enabled == false and #marked(note.raw, "777") == 0, "off: the lines out")
+  -- Everyone chosen while it is off: on again, the lines written
+  o.toggle("all")
+  assert(R:Get(ENC, id).enabled == true and #marked(note.raw, "777") == 2, "Everyone turns it on: " .. tostring(R:Get(ENC, id).enabled))
+  assert(p.alertMe.checked == true and p.alertMe.enabled == false, "ticked and greyed again")
+  -- Only me: Alert me as before
+  p.saveAs.opts.set("mine")
+  assert(p.alertMe.enabled == true, "Only me: free")
+  setCheck(p.alertMe, false)
+  assert(R:Get(ENC, id).enabled == false, "Only me: off")
   assert(#errors == 0, tostring(errors[1]))
 end)
 

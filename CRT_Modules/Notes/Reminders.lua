@@ -34,6 +34,7 @@ local TEXT = {
     unnamed = "Reminder",
 
     alertMe = "Alert me",
+    alertMeHeld = "For is Everyone, so the note line already alerts you, as it alerts everyone. Tick other roles or players in For to turn it off.",
     saveAs = "Save as",
     asNote = "Raid note",
     asMine = "Only me",
@@ -687,6 +688,14 @@ local function noteChoice()
     return M and cur.ctx and M.InNote(cur.ctx.reminder) or nil
 end
 
+-- Whether a reminder is Raid note for Everyone: its note line already reaches you, as everyone, so Alert me shows ticked
+-- and greyed and no tick takes its lines out (Alex, 2026-10-29).
+local function alertMeHeld(r)
+    local M = CRT.MechNote
+    local n = M and M.InNote(r)
+    return n and M.IsEveryone(n.tag) or false
+end
+
 -- Where the panel's alert's lines come from (MechNote Expected and Sync): the ability timeline on show, its group
 -- and the boss.
 local function noteOpts(enc)
@@ -785,7 +794,11 @@ local function drawPanel()
     panel.icon:SetShown(icon ~= nil)
     panel.iconHit:SetShown(icon ~= nil)
     panel.name:SetText(draftName())
-    panel.alertMe:SetChecked(cur.item and cur.item.r ~= nil and cur.item.r.enabled ~= false)
+    local held = alertMeHeld(cur.ctx and cur.ctx.reminder)
+    panel.alertMe:SetChecked(held or (cur.item and cur.item.r ~= nil and cur.item.r.enabled ~= false))
+    panel.alertMe:SetEnabled(not held)
+    local v = held and 0.5 or 1
+    panel.alertMe.label:SetTextColor(v, v, v)
     for _, row in ipairs(panel.rows) do
         row.refresh()
     end
@@ -1198,6 +1211,12 @@ local function setEnabled(item, on)
         local r = Reminders:Get(enc, item.id)
         if r then
             r = Draft.copy(r)
+            -- Raid note for Everyone: the note line is your alert, so the tick stays on and the lines stay
+            if not on and alertMeHeld(r) then
+                refresh()
+                drawPanel()
+                return
+            end
             -- a Raid note alert's tick changes its lines: refused while you may not change the raid note
             local allowed, why = true, nil
             if CRT.MechNote and CRT.MechNote.InNote(r) then
@@ -1625,9 +1644,31 @@ local function buildNoteRow(p, row)
         local n = noteChoice()
         if n and n.tag ~= tag and allowed() then
             n.tag = tag
+            -- Everyone holds Alert me on (alertMeHeld): an alert that was off is turned on, so its lines are written
+            if M.IsEveryone(tag) then
+                cur.ctx.reminder.enabled = true
+            end
             commit()
         end
     end
+    -- Alert me greyed while held: its tooltip says why (a disabled button still takes the mouse for it)
+    local alertMe = panel.alertMe
+    if alertMe.SetMotionScriptsWhileDisabled then
+        alertMe:SetMotionScriptsWhileDisabled(true)
+    end
+    alertMe:SetScript("OnEnter", function(self)
+        if GameTooltip and UI.TooltipOwner and alertMeHeld(cur.ctx and cur.ctx.reminder) then
+            UI.TooltipOwner(GameTooltip, self, "ANCHOR_RIGHT")
+            GameTooltip:SetText(TEXT.alertMe, 1, 1, 1)
+            GameTooltip:AddLine(TEXT.alertMeHeld, 0.85, 0.85, 0.85, true)
+            GameTooltip:Show()
+        end
+    end)
+    alertMe:SetScript("OnLeave", function()
+        if GameTooltip then
+            GameTooltip:Hide()
+        end
+    end)
     panel.saveAs = row(UI.Dropdown(p, TEXT.saveAs, {
         labelWidth = L.SAVE_LABEL, width = L.SAVE_W,
         options = { { key = "note", label = TEXT.asNote }, { key = "mine", label = TEXT.asMine } },
