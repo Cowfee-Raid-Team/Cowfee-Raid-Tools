@@ -6,7 +6,8 @@ local ADDON, CRT = ...
 --   CRT.Comm.Channel()              "INSTANCE_CHAT", "RAID", "PARTY", or nil out of a group
 --   CRT.Comm.IsLeaderOrAssist(unit) true for the group's leader or an assistant
 --   CRT.Comm.Fingerprint(text)      a short hash of the text, so a message that arrives damaged is dropped
---   CRT.Comm.Readable(v)            false for nil and for a secret value, which can't be compared or read
+--   CRT.Comm.Readable(v)            false for nil and for a secret value, which can't be compared or read;
+--   CRT.Comm.IsSecret(v)            true only for a secret value (nil is not one)
 --   CRT.Comm:Send(prefix, messages, what)  queues the messages and sends them in order on the group channel.
 --     what names the thing in the chat lines ("the pace plan"), or is { what = "the pace plan", locked =
 --     "Pace plans" } for a lockdown line of its own. Returns false when the messages were dropped.
@@ -57,12 +58,17 @@ function Comm.Fingerprint(text)
 end
 
 -- The secret check comes first: a secret may not even be compared with nil.
+function Comm.IsSecret(v)
+    if not issecretvalue then
+        return false
+    end
+    local ok, secret = pcall(issecretvalue, v)
+    return not ok or secret and true or false
+end
+
 function Comm.Readable(v)
-    if issecretvalue then
-        local ok, secret = pcall(issecretvalue, v)
-        if not ok or secret then
-            return false
-        end
+    if Comm.IsSecret(v) then
+        return false
     end
     return v ~= nil
 end

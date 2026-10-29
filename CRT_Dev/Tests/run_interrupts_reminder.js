@@ -195,6 +195,19 @@ advance(4000 + 30 + 8.5)
 check(not shownFrame(), "late: hidden at 0")
 A:HandleEvent("ENCOUNTER_END")
 
+-- a counted wave the fallback table has no timer for (a seventh wave): its reminder starts from the counted anchor
+arm(6000)
+local before7 = #timers
+clock = 6450; R:Resync(7, 6450)
+eq(#timers, before7 + 1, "counted: a wave with no fallback timer gets one")
+check(timers[#timers].at == 6450 + 8.5 - 5 or timers[1].at == 6450 + 8.5 - 5 or (function() for _, t in ipairs(timers) do if t.at == 6450 + 8.5 - 5 then return true end end end)(), "counted: at the counted anchor + 8.5 - 5")
+advance(6450 + 8.5 - 5); check(shownFrame(), "counted: shown")
+advance(6450 + 8.5)
+local after7 = #timers
+R:Resync(7, 6450); eq(#timers, after7, "counted: a wave already shown is not shown again")
+check(not shownFrame(), "counted: and not on screen again")
+A:HandleEvent("ENCOUNTER_END")
+
 -- Preview reminder: one 5 second countdown, with the sound
 played = {}
 CRT.db.interrupts.reminder.sound = "kit:8960"

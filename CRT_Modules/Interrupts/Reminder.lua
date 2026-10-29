@@ -36,6 +36,7 @@ local FALLBACK_ICON = "Interface\\Icons\\ability_kick"
 local GAP = 4 -- between the icon and the line under it
 
 local timers = {} -- wave -> its pending timer
+local done = {} -- wave -> true once its reminder showed this pull
 local showing -- { wave, endAt, preview } while a countdown is on screen
 local endTimer
 local placing = false -- Previews is on
@@ -213,6 +214,7 @@ local function cancelAll()
         t:Cancel()
         timers[wave] = nil
     end
+    wipe(done)
 end
 
 -- One wave's timer, showing at `at`; at once when that is already past (its cast is still ahead).
@@ -224,6 +226,7 @@ local function setTimer(wave, at)
     local id = Anchor.encounterID
     local function fire()
         timers[wave] = nil
+        done[wave] = true
         local n, group = Interrupts:Mine(id)
         local def = Anchor.def
         if n and def then
@@ -256,10 +259,12 @@ function Reminder:Schedule()
     end
 end
 
--- A counted anchor for a wave: its timer set again from the real time, or the reminder on screen moved to it.
+-- A counted anchor for a wave: its timer set again from the real time, or the reminder on screen moved to it. A wave
+-- the fallback table has no timer for (more waves than its times) starts from the counted anchor; one already shown
+-- is left alone.
 function Reminder:Resync(wave, anchorTime)
     local def = Anchor.def
-    if not (def and Anchor.mode == "pull") then
+    if not (def and Anchor.mode == "pull" and settings().on and Interrupts:Enabled()) then
         return
     end
     local n = Interrupts:Mine(Anchor.encounterID)
@@ -269,7 +274,7 @@ function Reminder:Resync(wave, anchorTime)
     local endAt = anchorTime + Lattice.PairOffset(def, n)
     if showing and showing.wave == wave then
         show(wave, endAt, label:GetText())
-    elseif timers[wave] and endAt > GetTime() then
+    elseif not done[wave] and endAt > GetTime() then
         setTimer(wave, endAt - self.LEAD)
     end
 end

@@ -6,7 +6,8 @@ local ADDON, CRT = ...
 -- a boss fight); the boss casts a fixed cycle, and the count's ordinal cast in each cycle is a wave's anchor, which
 -- OnWave listeners hear (the reminder resyncs to it). Anchor:For(castTime) gives the anchor a nameplate cast is
 -- numbered from: the counted one while the cast is inside its window, else the block's fallback times from the pull
--- (a reload mid-wave has no count). Disarmed on ENCOUNTER_END, a zone change (PLAYER_ENTERING_WORLD: a zone change
+-- (an anchor cast that wasn't seen). After a /reload mid-pull nothing arms until the next pull: ENCOUNTER_START
+-- doesn't fire again, so there is no pull time and no count. Disarmed on ENCOUNTER_END, a zone change (PLAYER_ENTERING_WORLD: a zone change
 -- mid-fight never fires ENCOUNTER_END) or the switch turning off; OnArm listeners hear each change.
 --
 -- Test on trash (CRTDB.interrupts.test): armed with the first boss that has a block and no pull; the first cast seen
@@ -19,7 +20,8 @@ local ADDON, CRT = ...
 -- groupSize), ENCOUNTER_END, PLAYER_ENTERING_WORLD, UNIT_SPELLCAST_START (unitTarget, castGUID, spellID, castBarID;
 -- SecretWhenUnitSpellCastRestricted), GetTime, issecretvalue.
 
-local Anchor = { armed = false, mode = nil, def = nil, encounterID = nil, pullTime = nil, waveListeners = {}, armListeners = {} }
+local Anchor = { armed = false, mode = nil, def = nil, encounterID = nil, pullTime = nil, waveListeners = {}, armListeners = {},
+    castListeners = {} }
 CRT.InterruptAnchor = Anchor
 
 local Interrupts = CRT.Interrupts
@@ -47,6 +49,11 @@ end
 
 function Anchor:OnWave(fn)
     self.waveListeners[#self.waveListeners + 1] = fn
+end
+
+-- fn(count, at) at every cast start of the anchor unit in a pull, before any OnWave it makes (the kick probe).
+function Anchor:OnCast(fn)
+    self.castListeners[#self.castListeners + 1] = fn
 end
 
 function Anchor:OnArm(fn)
@@ -152,6 +159,7 @@ local function onCast(unit)
         return
     end
     count = count + 1
+    notify(Anchor.castListeners, count, now())
     local cycle, ordinal = def.anchor.cycle, def.anchor.ordinal
     if count % cycle == ordinal % cycle then
         counted = now()

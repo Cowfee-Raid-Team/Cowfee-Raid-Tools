@@ -9,6 +9,7 @@ local ADDON, CRT = ...
 --   +40.1 nameplate9 anchor+none -> ignored  no anchor for it
 --   +39.0 nameplate2 not an add            a player, a boss, or a secret answer
 --   +33.2 anchor wave 1                    a counted anchor
+--   +33.2 boss2 cast 5                     every cast start of the anchor unit, with its count
 -- Seconds are from the pull (from the start of Test on trash in test mode). /crt dev kicks show prints the count and
 -- opens the log to copy; /crt dev kicks off stops it, the log stays. Saved in CRTDB.dev.kickProbe: on, and last =
 -- { encounterID, mode, started (time()), lines }, the last run only. Only the moment a cast started is read; the
@@ -65,6 +66,11 @@ if Anchor and Plates then
         startedAt = Anchor.pullTime or GetTime()
         if store().on then
             store().last = { encounterID = Anchor.encounterID, mode = mode, started = time(), lines = {} }
+        end
+    end)
+    Anchor:OnCast(function(n, at)
+        if CRT.db and Anchor.def then
+            add(stamp(at) .. " " .. Anchor.def.anchor.unit .. " cast " .. n)
         end
     end)
     Anchor:OnWave(function(wave, at)

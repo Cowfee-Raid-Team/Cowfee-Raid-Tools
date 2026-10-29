@@ -73,7 +73,11 @@ UnitName = function() return "Solex" end
 -- the units: plates on screen, who is a player, who is the target
 local plates, players, bosses = {}, {}, {}
 local same = {} -- handle -> the plate token it points at
-C_NamePlate = { GetNamePlateForUnit = function(u) return plates[u] end }
+local frameless = {} -- plates whose frame the game hasn't given yet
+C_NamePlate = { GetNamePlateForUnit = function(u) if frameless[u] then return nil end return plates[u] end }
+local soon = {}
+C_Timer = { After = function(_, fn) soon[#soon + 1] = fn end }
+local function runSoon() local list = soon soon = {} for _, fn in ipairs(list) do fn() end end
 UnitExists = function(u) return plates[u] ~= nil or same[u] ~= nil end
 UnitIsPlayer = function(u) return players[u] == true end
 UnitCanAttack = function(a, b) return a == "player" and plates[b] ~= nil end
@@ -135,6 +139,19 @@ do
   f.SetPoint = function() error("restricted") end
   check(P.Attach(f, region("Frame")) == false, "box: a raising SetPoint leaves it unplaced")
 end
+-- a plate whose frame reads nil at its first cast: drawn on the next plate event, or by a short timer
+plate("nameplate30"); frameless.nameplate30 = true; clock = 1041.5; H("UNIT_SPELLCAST_START", "nameplate30")
+eq(P:NumberOf("nameplate30"), 3, "frameless: numbered all the same")
+check(not shownOf("nameplate30"), "frameless: nothing to draw on yet")
+frameless.nameplate30 = nil
+plate("nameplate31"); H("NAME_PLATE_UNIT_ADDED", "nameplate31")
+check(shownOf("nameplate30"), "frameless: drawn on the next plate event")
+plate("nameplate32"); frameless.nameplate32 = true; clock = 1041.6; H("UNIT_SPELLCAST_START", "nameplate32")
+check(#soon > 0, "frameless: a short timer is set")
+frameless.nameplate32 = nil; runSoon()
+check(shownOf("nameplate32"), "frameless: drawn by the timer")
+H("NAME_PLATE_UNIT_REMOVED", "nameplate30"); H("NAME_PLATE_UNIT_REMOVED", "nameplate31"); H("NAME_PLATE_UNIT_REMOVED", "nameplate32")
+plates.nameplate30, plates.nameplate31, plates.nameplate32 = nil, nil, nil
 eq(box.text.font[2], 24, "box: the number's size"); eq(box.text.font[3], "OUTLINE", "box: outlined")
 eq(table.concat(box.bg.color, ","), "0,1,0,1", "box: your pair in your box colour")
 eq(table.concat(box.text.textColor, ","), "1,0,0,1", "box: and your number colour")
@@ -258,12 +275,13 @@ playerPlate("nameplate9"); clock = 1039; H("UNIT_SPELLCAST_START", "nameplate9")
 local lines = CRT.db.dev.kickProbe.last.lines
 local log = table.concat(lines, "\\n")
 check(log:find("33.2 anchor wave 1", 1, true) ~= nil, "probe: the counted anchor logged: " .. log)
+check(log:find("+0.0 boss2 cast 1", 1, true) ~= nil and log:find("+33.2 boss2 cast 5", 1, true) ~= nil, "probe: every anchor-unit cast logged with its count")
 check(log:find("37.7 nameplate1 anchor+4.50 -> 1", 1, true) ~= nil, "probe: a numbered cast logged")
 check(log:find("38.2 nameplate2 anchor+5.00 -> ignored", 1, true) ~= nil, "probe: an off-lattice cast logged")
 check(log:find("39.0 nameplate9 not an add", 1, true) ~= nil, "probe: a player's cast logged")
 K:Command("dev kicks show")
 check(shownText and shownText:find("nameplate1", 1, true), "probe: show opens the log")
-check(printed[#printed]:find("4 lines", 1, true) or table.concat(printed, " "):find("4 lines", 1, true), "probe: show prints the count")
+check(table.concat(printed, " "):find("9 lines", 1, true), "probe: show prints the count")
 K:Command("dev kicks off")
 check(not CRT.db.dev.kickProbe.on, "probe: off")
 plate("nameplate3"); clock = 1039.5; H("UNIT_SPELLCAST_START", "nameplate3")

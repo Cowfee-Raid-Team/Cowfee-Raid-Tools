@@ -34,6 +34,7 @@ local Interrupts = CRT.Interrupts
 local Anchor = CRT.InterruptAnchor
 local Lattice = CRT.InterruptLattice
 local readable = CRT.Comm.Readable
+local isSecret = CRT.Comm.IsSecret
 
 local EVENTS = { "NAME_PLATE_UNIT_ADDED", "NAME_PLATE_UNIT_REMOVED", "UNIT_SPELLCAST_START", "PLAYER_TARGET_CHANGED",
     "PLAYER_FOCUS_CHANGED", "UNIT_TARGET" }
@@ -51,14 +52,6 @@ end
 
 function Plates:OnCast(fn)
     self.castListeners[#self.castListeners + 1] = fn
-end
-
-local function isSecret(v)
-    if not issecretvalue then
-        return false
-    end
-    local ok, secret = pcall(issecretvalue, v)
-    return not ok or secret and true or false
 end
 
 local function isPlate(unit)
@@ -95,19 +88,26 @@ function Plates.Candidate(unit)
     return type(level) == "number" and level >= 0
 end
 
--- target, focus, then each group member's target.
+-- target, focus, then each group member's target: one list, filled again each time, from tokens made once.
+local RAID_TARGETS, PARTY_TARGETS = {}, {}
+for i = 1, 40 do
+    RAID_TARGETS[i] = "raid" .. i .. "target"
+end
+for i = 1, 4 do
+    PARTY_TARGETS[i] = "party" .. i .. "target"
+end
+local handleList = {}
 local function handles()
-    local out = { "target", "focus" }
+    wipe(handleList)
+    handleList[1], handleList[2] = "target", "focus"
+    local tokens, n = PARTY_TARGETS, GetNumSubgroupMembers and GetNumSubgroupMembers() or 0
     if IsInRaid() then
-        for i = 1, GetNumGroupMembers() do
-            out[#out + 1] = "raid" .. i .. "target"
-        end
-    else
-        for i = 1, (GetNumSubgroupMembers and GetNumSubgroupMembers() or 0) do
-            out[#out + 1] = "party" .. i .. "target"
-        end
+        tokens, n = RAID_TARGETS, GetNumGroupMembers()
     end
-    return out
+    for i = 1, math.min(n, #tokens) do
+        handleList[#handleList + 1] = tokens[i]
+    end
+    return handleList
 end
 
 -- Boxes -----------------------------------------------------------------------------------------------------------
@@ -150,6 +150,11 @@ function Plates.Style(f, n, mine)
     f.text:SetTextColor(text[1], text[2], text[3], text[4] or 1)
 end
 
+local unplaced = {} -- numbered plates whose frame read nil: token -> true, drawn again on the next plate event
+local retrySet = false
+local RETRY = 0.2 -- seconds before a box whose plate frame read nil is tried again
+local retry
+
 local function draw(unit)
     local n = Plates.numbers[unit]
     local f = Plates.boxes[unit]
@@ -165,6 +170,26 @@ local function draw(unit)
     local plate = ask(C_NamePlate and C_NamePlate.GetNamePlateForUnit, unit)
     local placed = plate ~= nil and Plates.Attach(f, plate)
     f:SetShown(placed and settings().on and (mine or settings().all) and true or false)
+    unplaced[unit] = (not placed) or nil
+    if not placed and not retrySet and C_Timer then
+        retrySet = true
+        C_Timer.After(RETRY, retry)
+    end
+end
+
+-- The boxes whose plate frame wasn't there yet, tried again.
+retry = function()
+    retrySet = false
+    if not Anchor.armed then
+        return
+    end
+    for unit in pairs(unplaced) do
+        if Plates.numbers[unit] then
+            draw(unit)
+        else
+            unplaced[unit] = nil
+        end
+    end
 end
 
 -- Puts a box above a plate frame. A box lives on UIParent, so the plate's scale never reaches it; a plate that
@@ -191,6 +216,7 @@ local function release(unit)
         f:Hide()
         f:ClearAllPoints()
         Plates.boxes[unit] = nil
+        unplaced[unit] = nil
         pool[#pool + 1] = f
     end
 end
@@ -268,6 +294,9 @@ function Plates.HandleEvent(event, unit)
         if isPlate(unit) then
             onAdded(unit)
         end
+        if next(unplaced) then
+            retry()
+        end
     elseif event == "NAME_PLATE_UNIT_REMOVED" then
         if isPlate(unit) then
             onRemoved(unit)
@@ -304,6 +333,7 @@ function Plates:Stop()
     wipe(self.numbers)
     wipe(seen)
     wipe(parked)
+    wipe(unplaced)
 end
 
 Anchor:OnArm(function(on)
