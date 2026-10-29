@@ -1407,6 +1407,43 @@ do
   local raw = Notes:Get(Notes:FindExact(4343, "Mythic")).raw
   assert(lineCount(raw, "assign:mine/1/") == 2 and raw:find("time:60;ph:1;tag:Abu;", 1, true) and raw:find("times:1@20,1@60;", 1, true), "the typed times' lines: " .. raw)
 end
+-- the pull reads another difficulty's note: the status says what to do first, never "not in the raid note yet"
+do
+  local frame = mock("Frame")
+  Notes:Import("EncounterID:4545;Difficulty:Heroic;Name:Third Boss\\nHeroic")
+  local cur = { enc = 4545, item = { ability = { name = "Ravenous Feast" }, spellID = 1234 }, bossName = "Third Boss",
+    ref = { difficulty = "Mythic" }, group = "mythic", name = "Ravenous Feast", defaultTimeline = true }
+  Tab.Build(frame, { x = 12, y = -100, width = 724, height = 282, current = function() return cur end, notice = function() end })
+  frame.scripts.OnShow(frame)
+  local st = Tab.ui.status:GetText()
+  assert(st:find("The Mythic pull reads the Third Boss (Heroic) note. Make a Mythic note first (Raid Notes), then write.", 1, true)
+    and not st:find("Not in the raid note yet", 1, true), "the reason: " .. st)
+end
+-- Make an Assign block: the note changed before the click on Accept, so nothing is made; with no confirmation dialog
+-- in the game, it is made at once
+do
+  local pasted = table.concat({ "EncounterID:3470;Difficulty:Mythic;Name:Third", "Orbs", "Odd: Abu, Cheo", "Even: Kip, Zed",
+    "time:36;ph:1;tag:Abu Cheo;text:Orbs;", "time:96;ph:1;tag:Kip Zed;text:Orbs;" }, "\\n")
+  local pid = Notes:Import(pasted)
+  assert(Editor.Open({ id = pid }))
+  confirm = nil
+  assert(EA.AskAdopt(2) and confirm, "asked")
+  -- meanwhile the list's heading changed (a share came in, say)
+  W.session = Model.New((pasted:gsub("\\nOrbs\\n", "\\nSomething else\\n")), { base = W.session.base })
+  confirm.callback()
+  assert(W.session:Text() == (pasted:gsub("\\nOrbs\\n", "\\nSomething else\\n")) and not W.session:Text():find("assign:", 1, true), "nothing made")
+  assert(W.status:GetText():find("that group list isn't there any more", 1, true), "said: " .. W.status:GetText())
+  W.session = Model.New(pasted, { base = W.session.base })
+  W.notice = nil
+  local was = StaticPopup_ShowCustomGenericConfirmation
+  StaticPopup_ShowCustomGenericConfirmation = nil
+  assert(EA.AskAdopt(2), "no dialog: made at once")
+  StaticPopup_ShowCustomGenericConfirmation = was
+  assert(W.session:Text():find("assign:orbs;name:Orbs;", 1, true), "made: " .. W.session:Text())
+  EA.Close()
+  W.session = nil
+  W.window:Hide()
+end
 Notes.Busy = realBusy
 print("ok the Assign tab: sizes, the palette, a typed list left alone, a taken name refused, rows written with their lines, On casts, a player change, a move, refused (raid note, combat), follows the default timeline only, + Assignment and Remove with no reminder, two abilities of one name, typed times")
 `;

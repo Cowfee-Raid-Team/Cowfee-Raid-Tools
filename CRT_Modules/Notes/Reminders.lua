@@ -787,8 +787,6 @@ local function drawNoteStatus()
             text = UI.WarnText(TEXT.otherNote) -- the pull reads another difficulty's note: nothing is written there
         elseif count == 0 then
             text = UI.WarnText(string.format(TEXT.noteGone, tostring(cur.bossName), difficulty))
-        elseif CRT.Notes:FindForEncounter(ctx.encounterID, difficulty) ~= M.FindNote(ctx.encounterID, difficulty) then
-            text = UI.WarnText(TEXT.otherNote)
         elseif ok and not inStep then
             text = UI.WarnText(TEXT.outOfDate)
         else
@@ -1667,7 +1665,8 @@ local function buildNoteRow(p, row)
             return
         end
         if v == "mine" then
-            if noteAllowed(ctx.encounterID) then
+            -- taking lines out needs only the right to change the raid note, never the pull's end: they'd be stuck
+            if CRT.AlertDraft.CanEditRaid() then
                 M.Leave(ctx.encounterID, { raidNote = before })
             else
                 notice = TEXT.linesStay
@@ -2098,7 +2097,7 @@ local function buildPanel(f)
                 -- a Raid note reminder's lines go with it
                 local stay = false
                 if CRT.MechNote and CRT.MechNote.InNote(saved) then
-                    if noteAllowed(enc) then
+                    if CRT.AlertDraft.CanEditRaid() then -- taking out: only the right to change the raid note
                         CRT.MechNote.Leave(enc, saved)
                     else
                         stay = true

@@ -49,6 +49,7 @@ local TEXT = {
     adoptDropped = "%d lines lose their colours and other settings.",
     adoptOff = "%d lines on no cast stay as they are.",
     adoptButton = "Make block",
+    adoptGone = "The note changed: that group list isn't there any more.",
     bannerOne = "%s has timer lines under its rows. Make it an Assign block to change it in one place?",
     bannerMany = "%d group lists have timer lines under their rows (%s). Make one an Assign block?",
     bannerMake = "Make an Assign block",
@@ -255,21 +256,44 @@ local function adoptText(heading)
     return table.concat(out, "\n")
 end
 
--- Make an Assign block: asks first, listing what changes; nothing changes until it is accepted.
+-- The name of the group list at that line, while it is still one (Assign.Candidates), else nil.
+local function candidateName(heading)
+    local s = W.session
+    for _, c in ipairs(s and Assign.Candidates(s:Text(), CRT.NoteLinks.Saved(noteKey())) or {}) do
+        if c.heading == heading then
+            return c.name
+        end
+    end
+end
+
+-- Make an Assign block: asks first, listing what changes; nothing changes until it is accepted, and then only when
+-- that line is still the same group list (the note may have changed meanwhile).
 function EA.AskAdopt(heading)
     local text = adoptText(heading)
-    if not text or readOnly() then
+    local name = candidateName(heading)
+    if not (text and name) or readOnly() then
         return false
+    end
+    local function accept()
+        if not (W.session and not readOnly()) then
+            return
+        end
+        if candidateName(heading) ~= name then
+            W.notice = UI.BadText(TEXT.adoptGone)
+            Editor.Refresh()
+            return
+        end
+        adopt(heading)
+    end
+    if not StaticPopup_ShowCustomGenericConfirmation then
+        accept()
+        return true
     end
     UI.LiftOver(UI.ShownPopup(StaticPopup_ShowCustomGenericConfirmation({
         text = text,
         acceptText = TEXT.adoptButton,
         cancelText = CANCEL,
-        callback = function()
-            if W.session and not readOnly() then
-                adopt(heading)
-            end
-        end,
+        callback = accept,
     }), "GENERIC_CONFIRMATION"))
     return true
 end

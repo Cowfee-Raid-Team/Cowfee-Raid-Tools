@@ -923,6 +923,39 @@ check("mech raid note: your own change is refused in combat or a boss encounter,
   assert(#errors == 0, tostring(errors[1]))
 end)
 
+check("mech raid note: Only me or Delete takes the lines out even in combat or a boss encounter", function()
+  resetNotes()
+  local f = fresh()
+  local p = f.panel
+  p.saveAs.opts.set("note")
+  local note = noteFor(ENC, "Mythic")
+  assert(#marked(note.raw, "777") == 2, "in the note")
+  IsEncounterInProgress = function() return true end
+  p.saveAs.opts.set("mine")
+  assert(#marked(note.raw, "777") == 0, "Only me during a pull: the lines go, never stuck: " .. note.raw)
+  IsEncounterInProgress = nil
+  -- your own reminder in the note, deleted during a pull: its lines go with it
+  click(f.ownButton)
+  typeInto(p.textEdit, "Mine")
+  typeInto(p.timesEdit, "P1 0:10, 0:50")
+  p.timesEdit.OnEnterPressed(p.timesEdit)
+  p.saveAs.opts.set("note")
+  assert(#marked(note.raw, "mine") == 2, "own reminder in the note")
+  local popup
+  local wasPopup = StaticPopup_ShowCustomGenericConfirmation
+  StaticPopup_ShowCustomGenericConfirmation = function(o) popup = o return {} end
+  CRT.UI.LiftOver = CRT.UI.LiftOver or function(x) return x end
+  CRT.UI.ShownPopup = CRT.UI.ShownPopup or function(x) return x end
+  IsEncounterInProgress = function() return true end
+  click(p.deleteBtn)
+  assert(popup, "asked")
+  popup.callback()
+  IsEncounterInProgress = nil
+  StaticPopup_ShowCustomGenericConfirmation = wasPopup
+  assert(#marked(note.raw, "mine") == 0, "deleted during a pull: its lines go: " .. note.raw)
+  assert(#errors == 0, tostring(errors[1]))
+end)
+
 check("mech: every (?) is right of what it explains", function()
   local f = fresh()
   for _, h in ipairs(helps) do

@@ -619,6 +619,33 @@ check("mechnote: nothing is written during combat or a boss encounter, with the 
   assert(Notes:Get(id).raw == "EncounterID:3470;Difficulty:Mythic;Name:Fangs\\nkeep", "the note as it was")
 end)
 
+check("mechnote: lines left in the exact note are counted and taken out while the pull reads another note", function()
+  reset()
+  local exact = Notes:Import("EncounterID:3470;Difficulty:Mythic;Name:Fangs\\ntime:1;mech:k;")
+  local loose = Notes:Import("EncounterID:3470;Name:Loose\\nfree")
+  Notes:SetActive(loose)
+  local id, why = M.FindNote(3470, "Mythic")
+  assert(id == nil and why, "the pull reads the note for any difficulty")
+  local n, where = M.CountIn(3470, "Mythic", "k")
+  assert(n == 1 and where == exact, "counted where they went: " .. tostring(n))
+  assert(M.Leave(3470, { raidNote = { key = "k", difficulty = "Mythic", tag = "all" } }) == 1, "Leave finds them")
+  assert(Notes:Get(exact).raw == "EncounterID:3470;Difficulty:Mythic;Name:Fangs\\n" and Notes:Get(loose).raw == "EncounterID:3470;Name:Loose\\nfree",
+    "taken out of the exact note; the other untouched: " .. Notes:Get(exact).raw)
+  -- taking out works during a pull; writing doesn't
+  local busy = Notes.Busy
+  Notes.Busy = function() return true end
+  Notes:SetActive(exact)
+  M.Write(3470, "Mythic", "Fangs", "k", { "time:2;mech:k;" })
+  local written = Notes:Get(exact).raw
+  Notes.Busy = busy
+  assert(not written:find("mech:k", 1, true), "nothing written during a pull")
+  Notes:UpdateRaw(exact, written .. "time:3;mech:k;")
+  Notes.Busy = function() return true end
+  local _, count = M.Write(3470, "Mythic", nil, "k", {})
+  Notes.Busy = busy
+  assert(count == 0 and not Notes:Get(exact).raw:find("mech:k", 1, true), "taken out during a pull")
+end)
+
 check("no errors raised", function()
   assert(#errors == 0, tostring(errors[1]))
 end)
