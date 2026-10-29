@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- **Addon check** (General Settings): see who in the group runs CRT, which version, and which optional modules each raider has on, with filters by module and by answer.
+- **Addon check** (General Settings): see who in the group runs CRT, which version, and which optional modules each raider has on, with filters by module and by answer. Announce posts who is missing or behind to the group with the download link, and a click on their row whispers them.
 
 ## 1.1.5 (2026-10-27)
 

@@ -429,6 +429,8 @@ do
     UI.pages.settings.frame.OnShow()
     if rawget(checkButton, "enabled") ~= false or checkButton.why ~= "group" then print("FAIL Check is greyed out of a group, with the reason (got " .. tostring(rawget(checkButton, "enabled")) .. ", " .. tostring(checkButton.why) .. ")") end
   end
+  local announce = findText("Announce", "Button")
+  if not announce then print("FAIL the Addon check tab has an Announce button") elseif rawget(announce, "enabled") ~= false or announce.why ~= "group" then print("FAIL Announce is greyed out of a group, with the reason (got " .. tostring(announce.why) .. ")") end
   local module, show = dropdowns["Module"], dropdowns["Show"]
   if not (module and show) then print("FAIL the Addon check tab has Module and Show dropdowns") else
     local labels = {} for _, o in ipairs(module.options()) do labels[#labels + 1] = o.label end

@@ -815,15 +815,21 @@ local function buildProfiles(pf)
     controls[#controls + 1] = undo
 end
 
--- The Addon check tab (AddonCheck.lua): a heading with the tab's one (?) tooltip, the Module and Show filters and
--- Check on the first row, a status line, then the list: one row per group member with their name in class
--- colour, their version (good: yours or newer; warn: older; bad: No CRT; muted: Offline or waiting) and an
--- On / Off / — cell per registered module. The filters are page state, never saved. ---------------------------
+-- The Addon check tab (AddonCheck.lua): a heading with the tab's one (?) tooltip, the Module and Show filters,
+-- Announce and Check on the first row, a status line, then the list: one row per group member with their name in
+-- class colour, their version (good: yours or newer; warn: older; bad: No CRT; muted: Offline or waiting) and an
+-- On / Off / — cell per registered module. A click on a No CRT or older row whispers that player. The filters
+-- are page state, never saved. ---------------------------------------------------------------------------------
 
 local CHECK = {
     heading = "Who runs CRT",
-    help = "Asks everyone in your group which version of Cowfee Raid Tools they run and which optional modules they have switched on, and lists the answers. The group is asked when you open this tab and each time you press Check.\n\nGreen is your version, orange an older one, red No CRT no answer within 3 seconds. A dash means that player's CRT is too old to report that module.\n\nModule and Show narrow the list, so you can see before a pull who would miss a shared note, pace plan or kick list. The game blocks addon messages during a boss fight, so check before the pull.",
+    help = "Asks everyone in your group which version of Cowfee Raid Tools they run and which optional modules they have switched on, and lists the answers. The group is asked when you open this tab and each time you press Check.\n\nGreen is your version, orange an older one, red No CRT no answer within 3 seconds. A dash means that player's CRT is too old to report that module.\n\nModule and Show narrow the list, so you can see before a pull who would miss a shared note, pace plan or kick list. The game blocks addon messages during a boss fight, so check before the pull.\n\nAnnounce posts who is missing CRT or on an older version to the group, with the download link. Click a red or orange row to whisper that player the same.",
     check = "Check",
+    announce = "Announce",
+    announceWait = "Press Check first, and wait for the answers.",
+    whisperTip = "Click to whisper %s about getting Cowfee Raid Tools.",
+    whisperOlderTip = "Click to whisper %s about updating Cowfee Raid Tools.",
+    whispered = "Whispered %s.",
     module = "Module",
     show = "Show",
     anyModule = "Any module",
@@ -931,12 +937,35 @@ local function getCheckRow(i)
     if row then
         return row
     end
-    row = CreateFrame("Frame", nil, check.child)
+    -- a button, so a No CRT or older row whispers its player on a click (row.data is the row it shows)
+    row = CreateFrame("Button", nil, check.child)
     row:SetHeight(CHECK_ROW_H)
     row:SetPoint("TOPLEFT", 0, -(i - 1) * CHECK_ROW_H)
     row:SetPoint("RIGHT", check.child, "RIGHT", 0, 0)
     row.stripe = row:CreateTexture(nil, "BACKGROUND")
     row.stripe:SetAllPoints()
+    row.hl = row:CreateTexture(nil, "HIGHLIGHT")
+    row.hl:SetAllPoints()
+    row.hl:SetColorTexture(1, 1, 1, 0.08)
+    row:SetScript("OnClick", function(self)
+        local data = self.data
+        if data and (data.state == "none" or data.state == "older") and CRT.AddonCheck:Whisper(data) then
+            CRT:Print(CHECK.whispered:format(data.name))
+        end
+    end)
+    row:SetScript("OnEnter", function(self)
+        local data = self.data
+        if not (data and (data.state == "none" or data.state == "older")) then
+            return
+        end
+        UI.TooltipOwner(GameTooltip, self, "ANCHOR_RIGHT")
+        GameTooltip:SetText(data.name)
+        GameTooltip:AddLine((data.state == "none" and CHECK.whisperTip or CHECK.whisperOlderTip):format(data.name), 1, 1, 1, true)
+        GameTooltip:Show()
+    end)
+    row:SetScript("OnLeave", function()
+        GameTooltip:Hide()
+    end)
     row.name = row:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     row.name:SetPoint("LEFT", 6, 0)
     row.name:SetWidth(CHECK_NAME_W - 12)
@@ -1001,6 +1030,8 @@ local function refreshCheck()
     check.showing:SetText(#shown < #rows and CHECK.showing:format(#shown, #rows) or "")
     for i, row in ipairs(shown) do
         local r = getCheckRow(i)
+        r.data = row
+        r.hl:SetShown(row.state == "none" or row.state == "older")
         r.stripe:SetColorTexture(stripeColor(i % 2 == 1))
         r.name:SetText(row.name)
         r.name:SetTextColor(classColor(row.class))
@@ -1017,6 +1048,9 @@ local function refreshCheck()
     local can, why = Check:CanCheck()
     check.button:SetEnabled(can or why == "gap")
     check.button.why = (not can and why ~= "gap") and why or nil
+    local canSay, whyNot = Check:CanAnnounce()
+    check.announce:SetEnabled(canSay and true or false)
+    check.announce.why = (not canSay) and whyNot or nil
 end
 
 -- Asks the group again when the tab shows and the last ask is stale (AddonCheck.STALE).
@@ -1052,6 +1086,26 @@ local function buildAddonCheck(pf)
     end)
     check.button = checkButton
 
+    -- Announce, left of Check: greyed with the reason until a check has run and its window has closed
+    local announce = button(pf, CHECK.announce, 90)
+    announce:SetPoint("RIGHT", checkButton, "LEFT", -6, 0)
+    announce:SetScript("OnClick", function()
+        Check:Announce()
+    end)
+    announce:SetMotionScriptsWhileDisabled(true)
+    announce:SetScript("OnEnter", function(self)
+        if self.why then
+            UI.TooltipOwner(GameTooltip, self, "ANCHOR_TOP")
+            GameTooltip:SetText(CHECK.announce)
+            GameTooltip:AddLine(UI.BadText(self.why == "group" and CHECK.notGrouped or CHECK.announceWait), 1, 1, 1, true)
+            GameTooltip:Show()
+        end
+    end)
+    announce:SetScript("OnLeave", function()
+        GameTooltip:Hide()
+    end)
+    check.announce = announce
+
     local show = UI.Dropdown(pf, CHECK.show, {
         options = function()
             local out = {}
@@ -1070,7 +1124,7 @@ local function buildAddonCheck(pf)
             refresh()
         end,
     })
-    show:SetPoint("RIGHT", checkButton, "LEFT", -12, 0)
+    show:SetPoint("RIGHT", announce, "LEFT", -12, 0)
     controls[#controls + 1] = show
     local module = UI.Dropdown(pf, CHECK.module, {
         options = function()

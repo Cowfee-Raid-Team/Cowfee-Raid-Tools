@@ -440,8 +440,9 @@ end
 
 -- The roster ---------------------------------------------------------------------------------------------------------
 
--- The group as rows: { key, name (your own realm left off, another realm kept, as Raid Groups shows names), class
--- (file name), online, me, subgroup }, you first, then roster order. Solo, only you.
+-- The group as rows: { key, name (your own realm left off, another realm kept, as Raid Groups shows names), full
+-- (the name as the game gave it, for a whisper), class (file name), online, me, subgroup }, you first, then roster
+-- order. Solo, only you.
 function Check:Roster()
     local out, mine = {}, me()
     local function add(name, classFile, online, subgroup)
@@ -449,10 +450,11 @@ function Check:Roster()
         if not key then
             return
         end
+        local full = name
         if Ambiguate then
             name = Ambiguate(name, "none")
         end
-        local row = { key = key, name = name, class = readable(classFile) and classFile or nil, online = online and true or false, me = key == mine, subgroup = subgroup or 1 }
+        local row = { key = key, name = name, full = full, class = readable(classFile) and classFile or nil, online = online and true or false, me = key == mine, subgroup = subgroup or 1 }
         if row.me then
             table.insert(out, 1, row)
         else
@@ -562,6 +564,116 @@ end
 
 function Check:OnChange(fn)
     self.listeners[#self.listeners + 1] = fn
+end
+
+-- Announcing ----------------------------------------------------------------------------------------------------------
+
+-- Announce posts who is missing CRT or on an older version to the group, through the raid report's output
+-- (ReadyCheck/Report.lua, which prefixes "[CRT] " and splits long lines, as Tattlebot's posts go); a click on a
+-- No CRT or older row whispers that player. Names follow Leave realm names out (Groups.ReportName). Nothing
+-- posts by itself.
+
+Check.URL = "https://www.curseforge.com/wow/addons/cowfee-raid-tools"
+Check.TEXT = {
+    missing = "Missing Cowfee Raid Tools: %s.",
+    older = "Older version: %s.",
+    get = "Get it: %s",
+    everyone = "Everyone in the %s runs Cowfee Raid Tools %s.",
+    raid = "raid",
+    party = "party",
+    whisperMissing = "[CRT] You're missing Cowfee Raid Tools, which the %s uses for its notes, alerts and plans. Get it: %s",
+    whisperOlder = "[CRT] Your Cowfee Raid Tools is %s; the %s is on %s. Update it: %s",
+    notSent = "Addon check: the whisper to %s could not be sent.",
+}
+
+local function reportName(row)
+    if CRT.Groups and CRT.Groups.ReportName then
+        return CRT.Groups.ReportName(row.full or row.name)
+    end
+    return row.name
+end
+
+local function groupWord()
+    return IsInRaid() and Check.TEXT.raid or Check.TEXT.party
+end
+
+-- The lines Announce posts, from rows (Rows()): the missing names and the older ones with their version, then the
+-- link on a line of its own; or one line that everyone runs it. Offline and waiting members are left out.
+function Check.AnnounceLines(rows, version)
+    local missing, older = {}, {}
+    for _, row in ipairs(rows) do
+        if row.state == "none" then
+            missing[#missing + 1] = reportName(row)
+        elseif row.state == "older" then
+            older[#older + 1] = reportName(row) .. " (" .. tostring(row.version) .. ")"
+        end
+    end
+    if #missing == 0 and #older == 0 then
+        return { Check.TEXT.everyone:format(groupWord(), tostring(version or Check.VersionText())) }
+    end
+    local parts = {}
+    if #missing > 0 then
+        parts[#parts + 1] = Check.TEXT.missing:format(table.concat(missing, ", "))
+    end
+    if #older > 0 then
+        parts[#parts + 1] = Check.TEXT.older:format(table.concat(older, ", "))
+    end
+    return { table.concat(parts, " "), Check.TEXT.get:format(Check.URL) }
+end
+
+-- Whether Announce can post now: true, or false and why ("group": not in a group, "check": no check has run, or
+-- its window is still open, so an answer may still come).
+function Check:CanAnnounce()
+    if not channel() then
+        return false, "group"
+    end
+    if not asked or now() - asked.at < self.WINDOW then
+        return false, "check"
+    end
+    return true
+end
+
+-- Posts the announcement to the group. Returns the lines, or nil and why not.
+function Check:Announce()
+    local ok, why = self:CanAnnounce()
+    if not ok then
+        return nil, why
+    end
+    local lines = self.AnnounceLines(self:Rows())
+    if CRT.RaidReport and CRT.RaidReport.Output then
+        CRT.RaidReport:Output(lines, "raid")
+    else
+        for _, line in ipairs(lines) do
+            CRT:Print(line)
+        end
+    end
+    return lines
+end
+
+-- The whisper for a No CRT or older row, or nil for any other.
+function Check.WhisperText(row, version)
+    version = tostring(version or Check.VersionText())
+    if row.state == "none" then
+        return Check.TEXT.whisperMissing:format(groupWord(), Check.URL)
+    elseif row.state == "older" then
+        return Check.TEXT.whisperOlder:format(tostring(row.version), groupWord(), version, Check.URL)
+    end
+    return nil
+end
+
+-- Whispers the row's player (a chat whisper takes Name-Realm with no space in the realm). Returns true when sent.
+function Check:Whisper(row)
+    local text = self.WhisperText(row)
+    local send = (C_ChatInfo and C_ChatInfo.SendChatMessage) or SendChatMessage
+    if not text or not send or type(row.full) ~= "string" then
+        return false
+    end
+    local target = (row.full:gsub("%s", ""))
+    local ok = pcall(send, text, "WHISPER", nil, target)
+    if not ok then
+        CRT:Print(Check.TEXT.notSent:format(row.name))
+    end
+    return ok
 end
 
 -- Events ---------------------------------------------------------------------------------------------------------------

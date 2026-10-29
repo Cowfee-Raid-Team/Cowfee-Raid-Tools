@@ -196,6 +196,7 @@ eq(texts(), "Solex:Q|1|1", "one ask")
 eq(outbox[1].channel, "RAID", "on the raid channel")
 local rows = as(solex, function() return solex.AC:Rows() end)
 eq(rows[1].name .. ":" .. rows[1].state, "Solex:you", "you are the first row")
+eq(select(2, as(solex, function() return solex.AC:CanAnnounce() end)), "check", "no announcing while the window is open")
 eq(rows[2].state, "waiting", "the others wait inside the window")
 eq(rows[6].state, "offline", "an offline member is offline, not waiting")
 deliverOnce()
@@ -238,6 +239,37 @@ eq(names(solex.AC.Filter(rows, nil, "older")), "Olden", "Older version")
 eq(names(solex.AC.Filter(rows, "pace", "on")), "Solex,Newer", "Pace on")
 eq(names(solex.AC.Filter(rows, "pace", "off")), "Quick,Olden", "Pace off, a CRT too old to report it included")
 eq(names(solex.AC.Filter(rows, nil, "on")), "Solex,Quick,Olden,Newer,Nocrt,Gone", "Module on without a module shows everyone")
+
+-- 5b. Announce and the whispers
+do
+  local lines = solex.AC.AnnounceLines(rows, "1.1.5")
+  eq(#lines, 2, "the announcement: the names, then the link on its own line")
+  -- the raid roster writes a realm with its space; Groups.ReportName (not loaded here) would shorten it the same way
+  eq(lines[1], "Missing Cowfee Raid Tools: Nocrt. Older version: Olden-Aerie Peak (1.1.4).", "who is missing and who is older (offline and waiting left out)")
+  eq(lines[2], "Get it: https://www.curseforge.com/wow/addons/cowfee-raid-tools", "the link")
+  local fine = {}
+  for _, r in ipairs(rows) do if r.state ~= "none" and r.state ~= "older" then fine[#fine + 1] = r end end
+  eq(solex.AC.AnnounceLines(fine, "1.1.5")[1], "Everyone in the raid runs Cowfee Raid Tools 1.1.5.", "nobody missing: one line")
+  eq(#solex.AC.AnnounceLines(fine, "1.1.5"), 1, "and no link then")
+  -- posted through the raid report's output, as every CRT chat post
+  local posted = {}
+  solex.CRT.RaidReport = { Output = function(_, l, out) posted[#posted + 1] = out .. ":" .. table.concat(l, " / ") end }
+  eq(as(solex, function() return (solex.AC:CanAnnounce()) end), true, "can announce once the window has closed")
+  local got = as(solex, function() return solex.AC:Announce() end)
+  eq(#posted, 1, "Announce posts once")
+  eq(posted[1], "raid:" .. lines[1] .. " / " .. lines[2], "to the group, the two lines")
+  eq(#got, 2, "and returns the lines")
+  -- the whispers
+  local whispers = {}
+  C_ChatInfo.SendChatMessage = function(text, kind, _, target) whispers[#whispers + 1] = kind .. ">" .. target .. ": " .. text end
+  eq(solex.AC.WhisperText(byName.Nocrt, "1.1.5"), "[CRT] You're missing Cowfee Raid Tools, which the raid uses for its notes, alerts and plans. Get it: https://www.curseforge.com/wow/addons/cowfee-raid-tools", "the whisper to a player without CRT")
+  eq(solex.AC.WhisperText(byName["Olden-Aerie Peak"], "1.1.5"), "[CRT] Your Cowfee Raid Tools is 1.1.4; the raid is on 1.1.5. Update it: https://www.curseforge.com/wow/addons/cowfee-raid-tools", "the whisper to an older one")
+  eq(solex.AC.WhisperText(byName.Quick), nil, "no whisper for a player on your version")
+  check(as(solex, function() return solex.AC:Whisper(byName["Olden-Aerie Peak"]) end), "the whisper goes")
+  eq(whispers[1]:match("^(WHISPER>[^:]+):"), "WHISPER>Olden-AeriePeak", "to Name-Realm with no space in the realm")
+  eq(as(solex, function() return solex.AC:Whisper(byName.Quick) end), false, "nothing to whisper: not sent")
+  C_ChatInfo.SendChatMessage = nil
+end
 
 -- 6. The ask gap and MaybeCheck
 local ok, why = as(solex, function() return solex.AC:Check() end)
@@ -326,6 +358,8 @@ eq(rows[1].name, "Solex", "solo: your own realm is left off your name")
 eq(rows[1].key, "solex-sargeras", "but the key keeps it")
 ok, why = as(solex, function() return solex.AC:Check() end)
 eq(tostring(ok) .. ":" .. tostring(why), "false:group", "no check out of a group")
+ok, why = as(solex, function() return solex.AC:Announce() end)
+eq(tostring(ok) .. ":" .. tostring(why), "nil:group", "no announcing out of a group")
 
 -- 11. A party works too
 shape = "party"
