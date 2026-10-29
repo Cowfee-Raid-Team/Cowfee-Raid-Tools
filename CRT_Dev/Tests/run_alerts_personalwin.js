@@ -491,6 +491,27 @@ test("stamp: a cleared note keeps the shared windows up for the stamp, then hide
   Notes:Fire()
 end)
 
+test("kick block: the Assignments window shows Kick order and a line per group, the raw note unchanged", function()
+  local raw = "EncounterID:3513;Difficulty:Heroic;Name:Kith'ix\\nMelee: Abu\\nintstart\\nXuelan Sixz\\nDurayn\\nintend\\n"
+  CRT.db.notes.list[9] = { raw = raw, name = "Kith'ix", encounterID = 3513, difficulty = "Heroic" }
+  CRT.db.notes.active = 9
+  RAID_CLASS_COLORS.MAGE = { colorStr = "ff3fc7eb" }
+  local oldCache = CRT.db.classCache
+  CRT.db.classCache = { xuelan = "MAGE" }
+  Notes:Fire()
+  NW:RefreshAll()
+  local shown = NW:Get("assignments"):DrawnText()
+  assert(not shown:find("intstart", 1, true) and not shown:find("intend", 1, true), "no marker lines: " .. shown)
+  assert(shown:find("Kick order", 1, true), "the heading: " .. shown)
+  assert(shown:find("Group 1: ", 1, true) and shown:find("Group 2: ", 1, true), "a line per group: " .. shown)
+  assert(shown:find("|cff3fc7ebXuelan|r", 1, true), "a name in its class colour: " .. shown)
+  assert(CRT.db.notes.list[9].raw == raw, "the raw text is unchanged")
+  CRT.db.classCache = oldCache
+  CRT.db.notes.list[9] = nil
+  CRT.db.notes.active = 1
+  Notes:Fire()
+end)
+
 test("assignment lines: your class marks the line, a sentence never does", function()
   local ORB = { "Orb Soak 1: Demon Hunter Warlock Priest Monk", "Orb Soak 2: Shaman Monk Druid Rogue",
     "Orb Soak 3: Mage Warlock Death Knight Warrior", "Orb Soak 4: Hunter", "Note: the hunter kites",
