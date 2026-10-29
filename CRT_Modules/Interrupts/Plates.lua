@@ -7,8 +7,10 @@ local ADDON, CRT = ...
 -- group's marker shows that group's kick number. It shows 1 until the add's first cast; the first cast keeps 1, and
 -- each cast start after it moves it on by one, 1 again after the group's last slot. So the number is the kicker of the
 -- cast in progress, and it stays until the next cast starts. Only casts of the setup's spell count, when the cast can
--- be read: its spell ID (the event's) against the setup's spell ID, else its name (UnitCastingInfo) against the
--- setup's spell name; when what would be compared is secret or missing, or the setup names no spell, every cast start
+-- be read (Plates.SameSpell). With a spell ID in the setup: the event's spell ID against it, else the cast's name
+-- (UnitCastingInfo) against the game's own name for that ID (C_Spell.GetSpellName, in the client's language). With a
+-- name only: the cast's name against it, on an English client only (GetLocale enUS or enGB), since the setup's name is
+-- English. Whenever what would be compared is secret or can't be had, or the setup names no spell, every cast start
 -- on the marked plate counts. The count is the group's (its marked add's), not the plate's, so a plate that leaves the
 -- screen and comes back, or a new add given the marker, carries on the rotation. The markers are read again on each
 -- plate added and on RAID_TARGET_UPDATE (every plate token on screen). A marker that is secret, can't be read or is no
@@ -32,7 +34,8 @@ local ADDON, CRT = ...
 -- every number (plates.all). Boxes come from one pool, so a long fight makes no new frames after the first wave.
 --
 -- Game calls (warcraft.wiki.gg and Blizzard's 12.1.5 UI source, read 2026-10-28): UnitCastingInfo(unit) -> name first
--- (SecretWhenUnitSpellCastRestricted; read 2026-10-29), GetRaidTargetIndex(unit) -> 1 to 8
+-- (SecretWhenUnitSpellCastRestricted; read 2026-10-29), C_Spell.GetSpellName(spellID) -> name or nil, GetLocale() ->
+-- "enUS" (an enGB client too), "deDE", ... (read 2026-10-29), GetRaidTargetIndex(unit) -> 1 to 8
 -- or nil (SecretReturns; arbitrary for a unit that doesn't exist, so UnitExists first; read 2026-10-29), RAID_TARGET_UPDATE
 -- (no payload: a marker set or cleared), C_NamePlate.GetNamePlateForUnit(unit)
 -- -> the plate frame, NAME_PLATE_UNIT_ADDED and NAME_PLATE_UNIT_REMOVED (unitToken, "nameplateN"),
@@ -335,18 +338,37 @@ local function rescan()
     end
 end
 
--- Whether a cast is of the setup's spell: compared only when readable; anything secret or missing counts.
+-- The cast's name on a plate, or nil when it can't be read.
+local function castName(unit)
+    local name = ask(UnitCastingInfo, unit)
+    return type(name) == "string" and name ~= "" and name or nil
+end
+
+local function englishClient()
+    local locale = ask(GetLocale)
+    return locale == "enUS" or locale == "enGB"
+end
+
+-- Whether a cast is of the setup's spell: compared only when it can be read; anything else counts.
 function Plates.SameSpell(def, unit, spellID)
     local want = def and def.spell
     if not (want and (want.spellID or want.name)) then
         return true
     end
-    if want.spellID and readable(spellID) and type(spellID) == "number" then
-        return spellID == want.spellID
+    if want.spellID then
+        if readable(spellID) and type(spellID) == "number" then
+            return spellID == want.spellID
+        end
+        local gameName = ask(C_Spell and C_Spell.GetSpellName, want.spellID)
+        local name = type(gameName) == "string" and gameName ~= "" and castName(unit)
+        if name then
+            return name == gameName
+        end
+        return true
     end
-    if want.name then
-        local ok, name = pcall(UnitCastingInfo, unit)
-        if ok and readable(name) and type(name) == "string" and name ~= "" then
+    if englishClient() then
+        local name = castName(unit)
+        if name then
             return name:lower() == want.name:lower()
         end
     end

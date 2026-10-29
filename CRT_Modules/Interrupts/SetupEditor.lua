@@ -8,8 +8,8 @@ local ADDON, CRT = ...
 -- swaps the two). Save keeps it in CRTDB.interrupts.setups[encounterID][difficultyID] (Interrupts:SetCustom), where it
 -- is used in place of the shipped setup for that boss and difficulty; Back to the shipped setup drops it
 -- (Interrupts:DropCustom), and is Delete my setup for a boss and difficulty with no shipped setup. A boss whose shipped
--- setup is timed (its numbers come from when the adds first cast) can't be saved over: Save is greyed and says why, so
--- its lattice is never lost. It opens on the setup shown on the page (yours or the shipped one, as a start), or a blank
+-- setup is timed (its numbers come from when the adds first cast) is shown read-only, as shipped (no markers made up for
+-- it): every field greyed and Save greyed with why, so its lattice is never lost. It opens on the setup shown on the page (yours or the shipped one, as a start), or a blank
 -- one for a boss and difficulty with none. A group keeps its key when its label changes, so the names on the list
 -- stay with it; a new group's key is made from its label (Setup.KeyFor).
 -- The kick list, the raid note's block and a share work the same for your own setup as for a shipped one (a share
@@ -100,12 +100,6 @@ function Editor.DraftFor(key)
         id, diff = Interrupts.SplitKey((Interrupts:Resolve(key)))
     end
     local d = { boss = id, difficulty = diff or 16, label = def and def.label or Setup.LABEL, groups = def and copyGroups(def.groups) or { blankGroup(1) } }
-    -- a timed setup's groups may have no marker: they get one, should the setup ever be saved untimed
-    for i, g in ipairs(d.groups) do
-        if not g.marker then
-            g.marker = blankGroup(i, d.groups).marker
-        end
-    end
     d.spellName = def and def.spell and def.spell.name or ""
     d.spellID = def and def.spell and def.spell.spellID or nil
     return d
@@ -198,6 +192,13 @@ function Editor.Draft()
     return draft
 end
 
+-- Whether the draft can be changed: not a boss whose shipped setup is timed.
+function Editor.Editable()
+    local key = Editor.Key(draft)
+    local ship = key and Interrupts:ShippedDef(key)
+    return not (ship and ship.timing)
+end
+
 -- A developer's button at the bottom left (Export): { label, onClick(editor) }. Added before or after the window is made.
 function Editor:AddDevButton(label, onClick)
     self.devButtons[#self.devButtons + 1] = { label = label, onClick = onClick }
@@ -272,7 +273,7 @@ local function buildRow(i)
         end
     end)
     row.label:SetPoint("TOPLEFT", 4, y)
-    row.marker = UI.Dropdown(c, "", { labelWidth = 0, width = L.markerW, options = markerOptions,
+    row.marker = UI.Dropdown(c, "", { labelWidth = 0, width = L.markerW, options = markerOptions, enabledIf = Editor.Editable,
         get = function()
             local g = draft and draft.groups[i]
             return g and g.marker
@@ -292,6 +293,7 @@ local function buildRow(i)
         end })
     row.marker:SetPoint("TOPLEFT", L.markerX, y + 5)
     row.slots = UI.Slider(c, TEXT.slots, { min = 1, max = Setup.MAX_SLOTS, labelWidth = L.slotsLabelW, width = L.slotsW,
+        enabledIf = Editor.Editable,
         get = function()
             local g = draft and draft.groups[i]
             return g and g.slots or 1
@@ -430,6 +432,9 @@ function Editor:Refresh()
         self.spellID:SetText(draft.spellID and tostring(draft.spellID) or "")
     end
     local n = #draft.groups
+    local editable = Editor.Editable()
+    self.spellName:SetEnabled(editable)
+    self.spellID:SetEnabled(editable)
     for i, row in ipairs(rows) do
         local on = i <= n
         local g = draft.groups[i]
@@ -441,14 +446,15 @@ function Editor:Refresh()
             if not row.label:HasFocus() then
                 row.label:SetText(g.label)
             end
+            row.label:SetEnabled(editable)
             row.marker.refresh()
             row.slots.refresh()
-            row.remove:SetEnabled(n > 1)
+            row.remove:SetEnabled(editable and n > 1)
         end
     end
     self.addGroup:ClearAllPoints()
     self.addGroup:SetPoint("TOPLEFT", 4, L.rowsY - n * L.rowH)
-    self.addGroup:SetEnabled(n < Setup.MAX_GROUPS)
+    self.addGroup:SetEnabled(editable and n < Setup.MAX_GROUPS)
     local key = Editor.Key(draft)
     local blocked = Editor.Blocked(draft)
     self.save:SetEnabled(blocked == nil)

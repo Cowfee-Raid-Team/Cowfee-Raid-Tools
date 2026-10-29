@@ -524,6 +524,17 @@ do
   check(GameTooltip.lines[2] == I.TEXT.timed, "editor: its tooltip says why")
   check(not E:Save(), "editor: and Save refuses it")
   check(not I:IsCustom("3470:16") and I:Def("3470:16").timing ~= nil, "editor: the lattice kept")
+  eq(E.Draft().groups[1].marker, nil, "editor: a timed setup shown as shipped, no markers made up")
+  check(not E.addGroup.enabled and not E.spellName.enabled, "editor: a timed setup is read-only")
+  local tRows, tSlots = {}, {}
+  for _, r in ipairs(rows) do
+    if r.opts.options == E.MarkerOptions and r.shown then r.refresh() tRows[#tRows + 1] = r end
+    if r.label == E.TEXT.slots and r.shown then r.refresh() tSlots[#tSlots + 1] = r end
+  end
+  check(#tRows == 2 and tRows[1].enabled == false and tSlots[1].enabled == false, "editor: its markers and kickers greyed")
+  local tRemove
+  for _, f in ipairs(all) do if f.kind == "Button" and f.text == E.TEXT.remove and f.shown then tRemove = f break end end
+  check(tRemove and not tRemove.enabled, "editor: no Remove")
   -- your own setup in place of an untimed shipped one, and back
   CRT.Bosses:Get(3470).interrupts[2] = { difficulty = 15, groups = { { key = "skull", label = "Skull add", marker = 8, slots = 4 } } }
   I:ClearCache()

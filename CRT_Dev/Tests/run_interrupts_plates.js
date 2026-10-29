@@ -401,6 +401,10 @@ check(next(P.boxes) == nil, "marker: the pull's end clears the boxes")
 do
   CRT.Bosses:Get(3470).interrupts[2].spell = { name = "Wail of Terror", spellID = 1234 }
   I:ClearCache()
+  local locale = "enUS"
+  GetLocale = function() return locale end
+  local gameNames = { [1234] = "Wail of Terror" }
+  C_Spell = { GetSpellName = function(id) return gameNames[id] end }
   clock = 4000; A:HandleEvent("ENCOUNTER_START", 3470, "Boss", 15)
   plate("nameplate40"); markers.nameplate40 = 8; H("NAME_PLATE_UNIT_ADDED", "nameplate40")
   local castName = "Wail of Terror"
@@ -410,18 +414,42 @@ do
   H("UNIT_SPELLCAST_START", "nameplate40", "g", 1234); eq(P:NumberOf("nameplate40"), 2, "spell: the next matching one does")
   local hiddenID = setmetatable({}, {}); secrets[hiddenID] = true
   castName = "Shadow Bolt"
-  H("UNIT_SPELLCAST_START", "nameplate40", "g", hiddenID); eq(P:NumberOf("nameplate40"), 2, "spell: a secret ID, a readable other name: not counted")
-  castName = "wail of terror"
-  H("UNIT_SPELLCAST_START", "nameplate40", "g", hiddenID); eq(P:NumberOf("nameplate40"), 3, "spell: a secret ID, the name matching (any case): counted")
+  H("UNIT_SPELLCAST_START", "nameplate40", "g", hiddenID); eq(P:NumberOf("nameplate40"), 2, "spell: a secret ID, another name than the game's for the ID: not counted")
+  castName = "Wail of Terror"
+  H("UNIT_SPELLCAST_START", "nameplate40", "g", hiddenID); eq(P:NumberOf("nameplate40"), 3, "spell: a secret ID, the game's name for the ID: counted")
+  -- a German client: the game's own name for the ID is German, and so is the cast's
+  locale = "deDE"; gameNames[1234] = "Schreckensgeheul"; castName = "Schreckensgeheul"
+  H("UNIT_SPELLCAST_START", "nameplate40", "g", hiddenID); eq(P:NumberOf("nameplate40"), 4, "spell: deDE, the cast matching the ID's own name: counted")
+  castName = "Schattenblitz"
+  H("UNIT_SPELLCAST_START", "nameplate40", "g", hiddenID); eq(P:NumberOf("nameplate40"), 4, "spell: deDE, another spell: not counted")
   local hiddenName = setmetatable({}, {}); secrets[hiddenName] = true
   UnitCastingInfo = function() return hiddenName end
-  H("UNIT_SPELLCAST_START", "nameplate40", "g", hiddenID); eq(P:NumberOf("nameplate40"), 4, "spell: both secret, every cast counts")
+  H("UNIT_SPELLCAST_START", "nameplate40", "g", hiddenID); eq(P:NumberOf("nameplate40"), 1, "spell: both secret, every cast counts")
   UnitCastingInfo = function() error("restricted") end
-  H("UNIT_SPELLCAST_START", "nameplate40"); eq(P:NumberOf("nameplate40"), 1, "spell: nothing readable, every cast counts")
-  check(P.SameSpell({ groups = {} }, "x", 5), "spell: a setup naming no spell counts every cast")
+  H("UNIT_SPELLCAST_START", "nameplate40"); eq(P:NumberOf("nameplate40"), 2, "spell: nothing readable, every cast counts")
+  C_Spell = { GetSpellName = function() error("restricted") end }
+  UnitCastingInfo = function() return "Schattenblitz" end
+  H("UNIT_SPELLCAST_START", "nameplate40", "g", hiddenID); eq(P:NumberOf("nameplate40"), 3, "spell: the ID's name can't be had, every cast counts")
   A:HandleEvent("ENCOUNTER_END")
+  -- a setup with a name only: compared on an English client only
+  local def = { spell = { name = "Wail of Terror" }, groups = {} }
+  plate("nameplate41")
+  UnitCastingInfo = function() return "Schattenblitz" end
+  locale = "deDE"
+  check(P.SameSpell(def, "nameplate41", nil), "spell: a name only, on deDE: every cast counts (the setup's name is English)")
+  locale = "enUS"
+  check(not P.SameSpell(def, "nameplate41", nil), "spell: a name only, on enUS: another name doesn't count")
+  UnitCastingInfo = function() return "wail of terror" end
+  check(P.SameSpell(def, "nameplate41", nil), "spell: a name only, on enUS: the name (any case) counts")
+  locale = "enGB"
+  check(P.SameSpell(def, "nameplate41", nil), "spell: enGB as English")
+  UnitCastingInfo = function() return "Schattenblitz" end
+  GetLocale = function() error("no") end
+  check(P.SameSpell(def, "nameplate41", nil), "spell: a locale that can't be read: every cast counts")
+  check(P.SameSpell({ groups = {} }, "x", 5), "spell: a setup naming no spell counts every cast")
   CRT.Bosses:Get(3470).interrupts[2].spell = nil
   I:ClearCache()
+  GetLocale, C_Spell = nil, nil
 end
 
 -- Test on trash with the untimed setup

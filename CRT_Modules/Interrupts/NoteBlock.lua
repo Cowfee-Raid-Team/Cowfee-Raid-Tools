@@ -7,13 +7,20 @@ local ADDON, CRT = ...
 --   Solex Brenn Quick Mara        one line per group, in the setup's group order, its names in kick order,
 --   Tovi Hale Ruun Pell           space separated, empty slots left out (a group with none is an empty line)
 --   intend
--- Only Write to the raid note on the page writes it, your own list. It goes into the note a pull of that difficulty
--- reads (Notes:FindForEncounter) when that note is for that difficulty or for none, so writing never makes a new note
--- that hides the one the pull reads; otherwise into the boss's note for exactly that difficulty (Notes:FindExact /
--- NoteFor exact, made when it has none). An existing block there is replaced in place, every other line kept byte for
--- byte; a list with no names takes the block out. Never in combat or a boss fight (Notes.Busy), and only while you can
--- change the raid note (Notes:CanEditRaid); a refused write says why.
--- Read back: opening a boss on the page reads the block of that same note into the raid's list (as a share does),
+-- Only Write to the raid note on the page writes it, your own list, into the note a pull of that difficulty reads
+-- (Notes:FindForEncounter), so the block is where the pull finds it and no new note ever hides that one:
+--   the boss has no note at all          a note for exactly that difficulty is made (Notes:NoteFor exact)
+--   the pull reads that difficulty's     written there
+--   the pull reads a note for every      written there only while the boss has kick setups (shipped, your own or a
+--   difficulty (no Difficulty)           share's) for one difficulty; else refused, so Heroic and Mythic never write
+--                                        over each other's block in one note
+--   the pull reads another difficulty's  refused: "The Heroic pull reads the Mythic note. Make a Heroic note first
+--                                        (Raid Notes), then write."
+-- An existing block there is replaced in place, every other line kept byte for byte; a list with no names takes the
+-- block out. Never in combat or a boss fight (Notes.Busy), and only while you can change the raid note
+-- (Notes:CanEditRaid); a refused write says why.
+-- Read back: opening a boss on the page reads the block of that same note (by the same rules, quietly) into the
+-- raid's list (as a share does),
 -- when it fits the setup in use: no more lines than groups, and each line either empty (an empty group) or exactly as
 -- many names as its group's slots. A line with fewer names had empty slots left out, so where they were can't be
 -- told: such a block is not read, and nothing is put in use from it. The text functions are pure (the note's lines
@@ -34,6 +41,8 @@ local TEXT = {
     noBoss = "This boss has no kick setup.",
     fromNote = "the raid note",
     noFit = "The kick block in the raid note \"%s\" doesn't fit %s: each line needs every name of its group, or none.",
+    otherNote = "The %s pull reads the %s note. Make a %s note first (Raid Notes), then write.",
+    anyNote = "The %s pull reads the note \"%s\", which is for every difficulty, and this boss has kick setups for more than one. Make a %s note first (Raid Notes), then write.",
 }
 Block.TEXT = TEXT
 
@@ -190,7 +199,7 @@ end
 -- The Notes API, the key's parts, the setup and the note's Difficulty; or nil and why not.
 local function target(key)
     local Notes = CRT.Notes
-    if not (Notes and Notes.FindExact and Notes.SplitPieces) then
+    if not (Notes and Notes.FindForEncounter and Notes.SplitPieces) then
         return nil, TEXT.noNotes
     end
     local skey, def, id, diff = Interrupts:Resolve(key)
@@ -204,16 +213,25 @@ local function target(key)
     return { Notes = Notes, key = skey, def = def, id = id, difficulty = name }
 end
 
--- The note the block lives in for t, or nil: the note a pull of that difficulty reads, when it is a shared note for
--- that difficulty or for none; else the boss's note for exactly that difficulty.
+-- The note the block lives in for t: the note a pull of that difficulty reads, when it may hold it. nil when the boss
+-- has no note at all; nil and why when the pull reads a note the block can't go in.
 local function noteOf(t)
     local Notes = t.Notes
-    local id = Notes.FindForEncounter and Notes:FindForEncounter(t.id, t.difficulty)
+    local id = Notes:FindForEncounter(t.id, t.difficulty)
     local record = id and Notes:Get(id)
-    if record and not record.personal and (record.difficulty == nil or record.difficulty:lower() == t.difficulty:lower()) then
+    if not record then
+        return nil
+    end
+    if type(record.difficulty) == "string" then
+        if record.difficulty:lower() == t.difficulty:lower() then
+            return id
+        end
+        return nil, string.format(TEXT.otherNote, t.difficulty, record.difficulty, t.difficulty)
+    end
+    if #Interrupts:Setups(t.id) <= 1 then
         return id
     end
-    return Notes:FindExact(t.id, t.difficulty)
+    return nil, string.format(TEXT.anyNote, t.difficulty, tostring(record.name), t.difficulty)
 end
 Block.NoteOf = function(key)
     local t = target(key)
@@ -236,8 +254,12 @@ function Block.Write(key)
         return false, TEXT.busy
     end
     local lines = Block.Lines(t.def, Interrupts:Own(t.key))
-    local noteID = noteOf(t)
+    local noteID, refused = noteOf(t)
+    if refused then
+        return false, refused
+    end
     if not noteID and #lines > 0 then
+        -- the boss has no note at all
         noteID = Notes:NoteFor(t.id, t.difficulty, Interrupts:BossName(t.key), { exact = true, via = Block.VIA })
     end
     local record = noteID and Notes:Get(noteID)

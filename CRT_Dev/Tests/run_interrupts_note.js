@@ -90,24 +90,74 @@ do
   check(back and back[1][3] == "Brenn" and back[2][4] == "D", "round trip: a full list comes back slot for slot")
 end
 
--- Write: the note for exactly that difficulty, made when there is none
+-- Write: a boss with no note at all gets one for exactly that difficulty
 for s, n in ipairs({ "Solex", "Brenn", "Mara", "Tovi" }) do I:SetName(M, 1, s, n) end
 I:SetName(M, 2, 1, "Hale")
-local heroicID = Notes:Import("EncounterID:3470;Difficulty:Heroic;Name:Boss\\nintstart\\nH1 H2 H3 H4\\nintend\\n")
 local ok, noteID, _, written = B.Write(M)
 check(ok and noteID, "write: done")
 local rec = Notes:Get(noteID)
-eq(rec.difficulty, "Mythic", "write: a Mythic note (the pull's note is the Heroic one, not for Mythic)")
+eq(rec.difficulty, "Mythic", "write: a Mythic note made, the boss having none")
 eq(written, rec.name, "write: names the note it wrote to")
 check(rec.raw:find("intstart\\nSolex Brenn Mara Tovi\\nHale\\nintend", 1, true) ~= nil, "write: the block in it: " .. rec.raw)
 eq(rec.via, "Interrupts", "write: a note made here says so")
-check(Notes:Get(heroicID).raw:find("H1 H2", 1, true), "write: the Heroic note untouched")
 I:SetName(M, 1, 1, "Quick")
 B.Write(M)
 local _, count = Notes:Get(noteID).raw:gsub("intstart", "")
 eq(count, 1, "write: written again, one block")
 check(Notes:Get(noteID).raw:find("Quick Brenn", 1, true), "write: with the new name")
--- refused
+local function noteCount() local n = 0 for _ in pairs(CRT.db.notes.list) do n = n + 1 end return n end
+
+-- the Heroic pull reads the Mythic note: refused, no note made to hide it
+for s, n in ipairs({ "H1", "H2", "H3", "H4" }) do I:SetName("3470:15", 1, s, n) end
+local before = noteCount()
+eq(Notes:FindForEncounter(3470, "Heroic"), noteID, "other: (the Heroic pull reads the Mythic note)")
+local okH, whyH = B.Write("3470:15")
+check(not okH, "other: refused")
+eq(whyH, "The Heroic pull reads the Mythic note. Make a Heroic note first (Raid Notes), then write.", "other: and says what to do")
+eq(noteCount(), before, "other: no note made")
+eq(Notes:FindForEncounter(3470, "Heroic"), noteID, "other: the Heroic pull still reads what it did")
+local _, mythicBlocks = Notes:Get(noteID).raw:gsub("intstart", "")
+eq(mythicBlocks, 1, "other: the Mythic note's block untouched")
+eq(B.ReadInto("3470:15"), false, "other: nothing read back from another difficulty's note")
+-- once there is a Heroic note, it is written there
+local heroicID = Notes:Import("EncounterID:3470;Difficulty:Heroic;Name:Boss\\nKeep heroic\\n")
+check(B.Write("3470:15"), "other: with a Heroic note, written")
+check(Notes:Get(heroicID).raw:find("Keep heroic\\nintstart\\nH1 H2 H3 H4\\nintend", 1, true), "other: into the Heroic note")
+check(Notes:Get(noteID).raw:find("Quick Brenn", 1, true) and not Notes:Get(noteID).raw:find("H1", 1, true), "other: the Mythic note left alone")
+
+-- a note for every difficulty: only on a boss with setups for one difficulty
+do
+  CRT.Bosses:Register({ encounterID = 4100, name = "One Boss", season = "sample",
+    interrupts = { { difficulty = 16, groups = { { key = "skull", label = "Skull add", marker = 8, slots = 2 } } } } })
+  I:ClearCache()
+  local anyID = Notes:Import("EncounterID:4100;Name:One Boss\\nKeep me\\n")
+  eq(Notes:FindForEncounter(4100, "Mythic"), anyID, "any: a Mythic pull reads the note for every difficulty")
+  local n0 = noteCount()
+  I:SetName("4100:16", 1, 1, "Solex"); I:SetName("4100:16", 1, 2, "Brenn")
+  local okA, idA = B.Write("4100:16")
+  check(okA and idA == anyID, "any: one difficulty with a setup, written into the note the pull reads")
+  eq(noteCount(), n0, "any: no new note made")
+  eq(Notes:FindForEncounter(4100, "Mythic"), anyID, "any: the pull still reads it")
+  check(Notes:Get(anyID).raw:find("Keep me\\nintstart\\nSolex Brenn\\nintend", 1, true), "any: its lines kept, the block added")
+  eq(B.NoteOf("4100:16"), anyID, "any: read back from the same note")
+  -- a second difficulty with a setup: the shared note is refused for both
+  CRT.Bosses:Get(4100).interrupts[2] = { difficulty = 15, groups = { { key = "skull", label = "Skull add", marker = 8, slots = 2 } } }
+  I:ClearCache()
+  local okB, whyB = B.Write("4100:16")
+  check(not okB and whyB and whyB:find("for every difficulty", 1, true) and whyB:find("Make a Mythic note first", 1, true), "any: refused with two difficulties: " .. tostring(whyB))
+  I:SetName("4100:15", 1, 1, "X"); I:SetName("4100:15", 1, 2, "Y")
+  check(not B.Write("4100:15"), "any: Heroic refused too, so neither overwrites the other's block")
+  eq(noteCount(), n0, "any: still no new note")
+  eq(B.ReadInto("4100:15"), false, "any: never read back on a boss with several difficulties")
+  -- a share's shape for another difficulty counts as a setup too
+  CRT.Bosses:Get(4100).interrupts[2] = nil
+  I:ClearCache()
+  check(B.Write("4100:16"), "any: one difficulty again, written")
+  I:ReceiveShared("4100:14", { { "A", "B" } }, "Brenn", CRT.InterruptSetup.FromShape(14, "skull:8:2:Skull add", "Kick"))
+  check(not B.Write("4100:16"), "any: a share's setup on Normal makes two difficulties")
+end
+
+-- refused for a raider, in a fight and in combat
 raid, lead = true, false
 local ok2, why = B.Write(M)
 check(not ok2 and why:find("leader", 1, true), "write: refused for a raider: " .. tostring(why))
@@ -124,25 +174,6 @@ I:SetName(M, 2, 2, "Ruun"); runTimers()
 check(not Notes:Get(noteID).raw:find("Ruun", 1, true), "no auto write: your change stays off the note")
 eq(#timers, 0, "no auto write: nothing waiting")
 
--- the note a pull reads, when it is for no difficulty: written there, no new note to hide it
-do
-  CRT.Bosses:Get(3470).interrupts[3] = { difficulty = 14, groups = { { key = "skull", label = "Skull add", marker = 8, slots = 2 } } }
-  I:ClearCache()
-  local anyID = Notes:Import("EncounterID:3470;Name:Boss any\\nKeep me\\n")
-  eq(Notes:FindForEncounter(3470, "Normal"), anyID, "any: a Normal pull reads the note with no difficulty")
-  local before = 0 for _ in pairs(CRT.db.notes.list) do before = before + 1 end
-  I:SetName("3470:14", 1, 1, "Solex"); I:SetName("3470:14", 1, 2, "Brenn")
-  local okA, idA = B.Write("3470:14")
-  check(okA and idA == anyID, "any: written into the note the pull reads")
-  local after = 0 for _ in pairs(CRT.db.notes.list) do after = after + 1 end
-  eq(after, before, "any: no new note made")
-  eq(Notes:FindForEncounter(3470, "Normal"), anyID, "any: the pull still reads it")
-  check(Notes:Get(anyID).raw:find("Keep me\\nintstart\\nSolex Brenn\\nintend", 1, true), "any: its lines kept, the block added")
-  eq(B.NoteOf("3470:14"), anyID, "any: read back from the same note")
-  CRT.Bosses:Get(3470).interrupts[3] = nil
-  I:ClearCache()
-end
-
 -- reading the raid note into the raid's list
 Notes:UpdateRaw(noteID, "EncounterID:3470;Difficulty:Mythic\\nintstart\\nA B C D\\nE F G H\\nintend\\n")
 check(B.ReadInto(M), "read: the block fills the raid's list")
@@ -157,6 +188,13 @@ local okR, whyR = B.ReadInto(M)
 check(not okR and whyR and whyR:find("doesn't fit", 1, true), "read: a line with a gap left out is not read, and says why: " .. tostring(whyR))
 eq(I:Shared(M).list[1][1], "A", "read: (the raid's list kept)")
 eq(I:Shared(M).list[2][1], "E", "read: (nothing put in use from it)")
+-- a share's shape in use: the note read back in it keeps it
+I:ReceiveShared("3470:15", { { "A", "B", "C" } }, "Brenn", CRT.InterruptSetup.FromShape(15, "skull:8:3:Skull add", "Kick"))
+eq(I:Def("3470:15").groups[1].slots, 3, "shape: a three-kicker share over the shipped four")
+Notes:UpdateRaw(heroicID, "EncounterID:3470;Difficulty:Heroic\\nintstart\\nP Q R\\nintend\\n")
+check(B.ReadInto("3470:15"), "shape: the note's block read back in it")
+eq(I:Def("3470:15").groups[1].slots, 3, "shape: the shape kept after the read-back")
+eq(I:Shared("3470:15").list[1][3], "R", "shape: the names")
 
 print(string.format("%d passed, %d failed", passes, fails))
 if fails > 0 then error("failures") end

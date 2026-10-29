@@ -207,8 +207,23 @@ do
   eq(I:Def("3470:15").groups[1].slots, 4, "shape: your own list in use, the shipped setup again")
   I:SetUse("3470:15", "raid")
   eq(I:Def("3470:15").groups[1].slots, 3, "shape: the raid's again")
-  I:ReceiveShared("3470:15", { { "A", "B", "C", "D" } }, "Brenn")
-  eq(I:Def("3470:15").groups[1].slots, 4, "shape: a list that fits drops the shape")
+  -- the same shape shared again (no new shape needed to read it): it stays
+  I:ReceiveShared("3470:15", { { "A", "Solex", "Z" } }, "Brenn")
+  eq(I:Def("3470:15").groups[1].slots, 3, "shape: the same setup shared again keeps its shape")
+  eq(I:Shared("3470:15").list[1][3], "Z", "shape: with the new names")
+  -- your own list kept whole while a smaller shape is in use, and back
+  for s4, n in ipairs({ "O1", "O2", "O3", "O4" }) do CRT.db.interrupts.kicks[3470][15].own.skull[s4] = n end
+  eq(#I:Own("3470:15")[1], 3, "own: seen in the shape in use")
+  I:SetName("3470:15", 1, 1, "O1b")
+  eq(CRT.db.interrupts.kicks[3470][15].own.skull[4], "O4", "own: your fourth name never cut")
+  eq(select(2, I:List("3470:15")), "own", "own: editing it puts it in use")
+  eq(I:Def("3470:15").groups[1].slots, 4, "own: the shipped shape again")
+  eq(I:Own("3470:15")[1][4], "O4", "own: and your fourth name is there")
+  eq(I:Own("3470:15")[1][1], "O1b", "own: with the edit")
+  I:SetUse("3470:15", "raid")
+  -- a share in the shipped shape brings it back
+  I:ReceiveShared("3470:15", { { "A", "B", "C", "D" } }, "Brenn", CRT.InterruptSetup.FromShape(15, "skull:8:4:Skull add", "Kick"))
+  eq(I:Def("3470:15").groups[1].slots, 4, "shape: a share in the shipped shape replaces it")
 end
 RAW[2] = nil
 I:ClearCache()

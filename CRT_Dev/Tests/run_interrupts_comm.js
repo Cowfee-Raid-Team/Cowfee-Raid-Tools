@@ -305,6 +305,15 @@ do
   eq(IB:Def("3470:14").groups[1].slots, 3, "custom over shipped: the share's shape is B's setup while it is in use")
   eq(IB:Shared("3470:14").list[1][3], "P3", "custom over shipped: the whole list")
   eq(as(B, function() return (IB:Mine("3470:14")) end), 2, "custom over shipped: B's number")
+  -- the same setup shared again, a name changed: B keeps the shape
+  as(A, function() A.I:SetName("3470:14", 1, 3, "P9") end)
+  outbox = {}
+  as(A, function() return C:Share("3470:14") end)
+  before = received
+  deliver(B, outbox[1].text, "Brenn")
+  eq(received, before + 1, "re-share: taken")
+  eq(IB:Def("3470:14").groups[1].slots, 3, "re-share: the shape kept")
+  eq(IB:Shared("3470:14").list[1][3], "P9", "re-share: the new name")
   -- a share for a difficulty no raid share has
   local m17 = outbox[1].text:gsub("|14|skull", "|17|skull")
   before = received

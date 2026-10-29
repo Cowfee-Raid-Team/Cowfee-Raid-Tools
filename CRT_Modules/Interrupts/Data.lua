@@ -442,8 +442,21 @@ local function entry(encounterID, difficulty, make)
     return e
 end
 
--- Your own list for a key, in the setup's group order, made empty (or filled out to its shape) when needed. Each
--- column is the saved one, so a change to a slot is saved. nil for a key with no setup.
+-- Your saved column for a group key, filled out to slots with "" (never cut short: a share's smaller shape in use
+-- for a while must not lose your names past it).
+local function savedColumn(own, grp)
+    local col = type(own[grp.key]) == "table" and own[grp.key] or {}
+    own[grp.key] = col
+    for s = 1, grp.slots do
+        if type(col[s]) ~= "string" then
+            col[s] = ""
+        end
+    end
+    return col
+end
+
+-- Your own list for a key, in the setup's group order and shape: a copy (SetName changes it). nil for a key with no
+-- setup.
 function Interrupts:Own(key)
     local _, def, id, diff = self:Resolve(key)
     if not def then
@@ -452,16 +465,11 @@ function Interrupts:Own(key)
     local own = entry(id, diff, true).own
     local view = {}
     for g, grp in ipairs(def.groups) do
-        local col = type(own[grp.key]) == "table" and own[grp.key] or {}
-        own[grp.key] = col
-        for s = 1, math.max(#col, grp.slots) do
-            if s > grp.slots then
-                col[s] = nil
-            elseif type(col[s]) ~= "string" then
-                col[s] = ""
-            end
+        local col = savedColumn(own, grp)
+        view[g] = {}
+        for s = 1, grp.slots do
+            view[g][s] = col[s]
         end
-        view[g] = col
     end
     return view
 end
@@ -502,16 +510,17 @@ end
 -- Edits one slot of your own list; your own list is then the one in use. The same name again (a field focused and
 -- left, the picker's own pick) changes nothing, so it never drops the raid's list.
 function Interrupts:SetName(key, g, s, name)
-    local skey, _, id, diff = self:Resolve(key)
-    local own = skey and self:Own(skey)
-    if not (own and own[g] and own[g][s] ~= nil) then
+    local skey, def, id, diff = self:Resolve(key)
+    local grp = def and def.groups[g]
+    if not (grp and type(s) == "number" and s >= 1 and s <= grp.slots) then
         return
     end
+    local col = savedColumn(entry(id, diff, true).own, grp)
     name = clean(name)
-    if name == own[g][s] then
+    if name == col[s] then
         return
     end
-    own[g][s] = name
+    col[s] = name
     if self:Shared(skey) then
         setUse(id, diff, "own")
     end
@@ -552,7 +561,15 @@ end
 -- use. Returns true when it was taken.
 function Interrupts:ReceiveShared(key, list, sender, setup)
     local id, diff = self.SplitKey(key)
-    local skey, def = self:Resolve(key)
+    local skey, def, rid, rdiff = self:Resolve(key)
+    if not setup and rid then
+        -- the list was read in the shape an earlier share brought (the same setup shared again, or read back from the
+        -- raid note): that shape stays with it
+        local shared, inUse = sharedFor(rid, rdiff)
+        if shared and (inUse or not (customFor(rid, rdiff) or shippedFor(rid, rdiff))) then
+            setup = shared
+        end
+    end
     if setup and id and (diff or setup.difficulty) then
         diff = diff or setup.difficulty
         skey, def = self.Key(id, diff), setup
