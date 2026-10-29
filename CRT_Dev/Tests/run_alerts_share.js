@@ -10,8 +10,8 @@ const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
 const FILES = [
   'CRT_Modules/Timeline/Data.lua', 'CRT_Modules/Timeline/Database.lua', 'CRT_Modules/Timeline/Reference.lua', 'CRT_Modules/Timeline/Lanes.lua',
   'CRT_Modules/Alerts/Rules.lua', 'CRT_Modules/Alerts/Engine.lua', 'CRT_Modules/Alerts/Speech.lua',
-  'CRT_Modules/Notes/Parse.lua', 'CRT_Modules/Notes/Data.lua', 'CRT_Modules/Notes/Engine.lua',
-  'CRT_Modules/Alerts/Reminders.lua', 'CRT_Modules/Alerts/Special.lua', 'CRT_Modules/Alerts/Draft.lua',
+  'CRT_Core/Sound/Engine.lua', 'CRT_Modules/Notes/Parse.lua', 'CRT_Modules/Notes/Data.lua', 'CRT_Modules/Notes/Engine.lua',
+  'CRT_Modules/Alerts/Reminders.lua', 'CRT_Modules/Alerts/Special.lua', 'CRT_Modules/Alerts/Draft.lua', 'CRT_Modules/Notes/MechNote.lua',
   'CRT_Core/Share.lua', 'CRT_Modules/Alerts/Share.lua', 'CRT_Dev/Dev/AlertExport.lua',
   'CRT_Data/Bosses/Registry.lua',
 ];
@@ -395,6 +395,35 @@ check("alerts share: an older code's barTo still reads, and is left out quietly"
   for _, it in ipairs(info.items) do if it.kind == "reminder" then r = it.value end end
   assert(r and same(r.ticks, { 1, 2 }) and r.barTo == nil, "its ticks kept, its bar end not")
   assert(AS.REMINDER_FIELDS.barTo == nil, "barTo is no longer a field that travels")
+end)
+
+-- Save as Raid note (Notes/MechNote.lua) is this computer's own: an export leaves it out without counting it, and an
+-- import over a Raid note alert brings its lines in the raid note in step
+check("alerts share: a Raid note alert's choice stays home, and an import over it updates its lines", function()
+  receiver()
+  local M = CRT.MechNote
+  assert(M, "MechNote loaded")
+  local clean, dropped = AS.CleanReminder({ text = "x", times = "P1 0:10", outputs = { alert = true },
+    raidNote = { tag = "all", key = "x", difficulty = "Mythic" } })
+  assert(clean and clean.raidNote == nil and dropped == 0, "left out, not counted: " .. tostring(dropped))
+  local R = CRT.AlertReminders
+  CRT.db.alerts.reminders = {}
+  local id = R:Save(9001, nil, { spellID = 4242, text = "Swap", times = "P1 0:10", outputs = { alert = true }, group = "mythic",
+    raidNote = { tag = "all", key = "4242" } }, "mythic")
+  IsInRaid = function() return false end
+  IsInGroup = function() return false end
+  M.Sync(9001, id, { group = "mythic" })
+  assert(M.CountIn(9001, "Mythic", "4242") >= 1, "in the note")
+  local payload = { v = 1, from = "Other", boss = { [9001] = { mythic = { reminders = {
+    { spellID = 4242, text = "Swap now", times = "P1 0:10, 0:40", group = "mythic", outputs = { alert = true } } } } } } }
+  local info = AS:Read(Share.Encode("alerts", 1, payload))
+  AS:Apply(info)
+  local r = R:Get(9001, id)
+  assert(r and r.text == "Swap now" and r.raidNote, "replaced, still Raid note")
+  assert(M.InStep(9001, id, { group = "mythic" }), "the note follows")
+  local raw = CRT.Notes:Get(M.FindNote(9001, "Mythic")).raw
+  assert(raw:find("text:Swap now;", 1, true), raw)
+  IsInRaid, IsInGroup = nil, nil
 end)
 
 check("alerts share: codes that don't read change nothing", function()
