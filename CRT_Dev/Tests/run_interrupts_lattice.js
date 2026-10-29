@@ -79,6 +79,13 @@ bad = copy(RAW); bad.label = 5
 check(Lattice.Read(bad) == nil, "read: a label that isn't text rejected")
 bad = copy(RAW); bad.slots = 2.5
 check(Lattice.Read(bad) == nil, "read: a part slot rejected")
+check(Lattice.MAX_GROUPS == 2 and Lattice.MAX_SLOTS == 8, "read: the page fits 2 groups of 8")
+bad = copy(RAW); bad.slots = Lattice.MAX_SLOTS + 1
+check(Lattice.Read(bad) == nil, "read: more slots than the page fits rejected")
+bad = copy(RAW); bad.groups = { "A", "B", "C" }
+check(Lattice.Read(bad) == nil, "read: more groups than the page fits rejected")
+bad = copy(RAW); bad.slots = Lattice.MAX_SLOTS
+check(Lattice.Read(bad) ~= nil, "read: as many slots as the page fits read")
 
 -- the shipped block
 local shipped

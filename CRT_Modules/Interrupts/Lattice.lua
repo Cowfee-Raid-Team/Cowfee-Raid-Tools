@@ -24,6 +24,11 @@ local ADDON, CRT = ...
 local Lattice = {}
 CRT.InterruptLattice = Lattice
 
+-- The most groups and slots a block may have: what the Interrupts page's kick list fits (Interrupts/Page.lua lays out
+-- MAX_GROUPS columns of MAX_SLOTS rows, and Who has it one row per name).
+Lattice.MAX_GROUPS = 2
+Lattice.MAX_SLOTS = 8
+
 local EPSILON = 1e-9 -- so a cast exactly on the tolerance edge counts, whatever the float sums give
 
 local function number(v, min)
@@ -79,6 +84,9 @@ function Lattice.Read(raw)
     end
     if type(raw.groups) ~= "table" or #raw.groups < 1 then
         return nil, "groups needs at least one group"
+    end
+    if #raw.groups > Lattice.MAX_GROUPS or raw.slots > Lattice.MAX_SLOTS then
+        return nil, "more groups or slots than the Interrupts page fits"
     end
     for _, g in ipairs(raw.groups) do
         if type(g) ~= "string" or g == "" then

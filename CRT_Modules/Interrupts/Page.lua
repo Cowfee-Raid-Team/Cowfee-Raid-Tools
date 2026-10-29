@@ -16,7 +16,7 @@ local Interrupts = CRT.Interrupts
 local Anchor = CRT.InterruptAnchor
 local KickComm = CRT.InterruptComm
 
-local Page = { fields = {}, pickers = {}, whoRows = {}, howLines = {}, tabs = {} }
+local Page = { fields = {}, pickers = {}, slotLabels = {}, headings = {}, whoRows = {}, howLines = {}, tabs = {} }
 CRT.InterruptsPage = Page
 
 local TEXT = {
@@ -93,15 +93,32 @@ local TEXT = {
 }
 Page.TEXT = TEXT
 
-local TAB_Y, CONTENT_Y = -36, -66
-local LEFT_X, RIGHT_X = 8, 630
-local RIGHT_W = UI.PAGE_W - RIGHT_X - 8
-local COL_W = 300 -- one group's column of the kick list
-local ROW_H = 30
-local GRID_Y = -86
-local STATUS_W = RIGHT_X - LEFT_X - 22
-local WHO_ROWS = 12
-local SET_X2 = 520 -- the Settings tab's second column
+-- Every place and size on the page, from the page's top left (UI.PAGE_W x UI.PAGE_H); the tab frames start at contentY.
+local LAYOUT = {
+    tabY = -36, contentY = -66, tabW = 160, tabH = 26, tabGap = 4,
+    leftX = 8, rightX = 630,
+    bossY = -8, bossLabelW = 40, bossW = 300,
+    statusY = -46, statusH = 28,
+    -- the kick list: Lattice.MAX_GROUPS columns of Lattice.MAX_SLOTS rows, pooled; a boss shows what its block has
+    gridY = -86, headH = 22, colW = 300, rowH = 30, fieldH = 22, labelW = 56, editX = 64, editW = 140,
+    pickX = 210, pickW = 70, pickDY = 5,
+    buttonGap = 16, buttonH = 22, buttonSpace = 6, testGap = 38,
+    -- the right column
+    whoY = -8, whoTop = -32, whoRowH = 18, whoNameW = 190, whoStateX = 196, howGap = 20, howHeadH = 22, howRowH = 18, howLines = 6,
+    -- the Settings tab
+    setX2 = 520, setLabelW = 150, setControlW = 160, swatchW = 36, swatchH = 18, swatchLabelW = 100, swatchStep = 100,
+    platesY = { head = -8, on = -28, all = -52, size = -80, font = -114, offset = -148, yours = -192, others = -222 },
+    reminderY = { head = -8, on = -28, sound = -56, size = -92, sharing = -144, accept = -164 },
+    reminderLabelW = 80, soundW = 200,
+    checkSize = 24, checkInset = 4,
+}
+LAYOUT.rightW = UI.PAGE_W - LAYOUT.rightX - 8
+LAYOUT.statusW = LAYOUT.rightX - LAYOUT.leftX - 22
+LAYOUT.whoRows = CRT.InterruptLattice.MAX_GROUPS * CRT.InterruptLattice.MAX_SLOTS
+Page.LAYOUT = LAYOUT
+local L = LAYOUT
+local TAB_Y, CONTENT_Y = L.tabY, L.contentY
+local MAX_GROUPS, MAX_SLOTS = CRT.InterruptLattice.MAX_GROUPS, CRT.InterruptLattice.MAX_SLOTS
 
 local page
 local selected -- the boss shown
@@ -138,14 +155,15 @@ local function button(parent, text, onClick)
     b:SetDisabledFontObject(CRTFontButtonSmallDisable)
     b:SetText(text)
     local fs = b:GetFontString()
-    b:SetSize(UI.PanelButtonWidth(fs and fs:GetStringWidth() or 0), 22)
+    b:SetSize(UI.PanelButtonWidth(fs and fs:GetStringWidth() or 0), L.buttonH)
     b:SetScript("OnClick", onClick)
     return b
 end
 
-local function checkbox(parent, x, y, text, get, set)
+-- enabledIf, when given, greys the box and its label while it returns false (the switch it depends on is off).
+local function checkbox(parent, x, y, text, get, set, enabledIf)
     local cb = CreateFrame("CheckButton", nil, parent, "UICheckButtonTemplate")
-    cb:SetSize(24, 24)
+    cb:SetSize(L.checkSize, L.checkSize)
     cb:SetPoint("TOPLEFT", x, y)
     cb.label = label(parent, text)
     cb.label:SetPoint("LEFT", cb, "RIGHT", 2, 0)
@@ -154,6 +172,12 @@ local function checkbox(parent, x, y, text, get, set)
     end)
     cb.refresh = function()
         cb:SetChecked(get() and true or false)
+        if enabledIf then
+            local on = enabledIf() and true or false
+            cb:SetEnabled(on)
+            local c = on and 1 or 0.5
+            cb.label:SetTextColor(c, c, c)
+        end
     end
     controls[#controls + 1] = cb
     return cb
@@ -172,11 +196,13 @@ end
 
 -- The status bar ------------------------------------------------------------------------------------------------
 
+-- C_CVar.GetCVar (warcraft.wiki.gg: the namespaced call since 8.1.5; the global is FrameXML's wrapper of it).
 local function nameplatesOff()
-    if not GetCVar then
+    local get = (C_CVar and C_CVar.GetCVar) or GetCVar
+    if not get then
         return false
     end
-    local ok, v = pcall(GetCVar, "nameplateShowEnemies")
+    local ok, v = pcall(get, "nameplateShowEnemies")
     return ok and CRT.Comm.Readable(v) and v == "0"
 end
 
@@ -291,14 +317,14 @@ Page.BossOptions = bossOptions
 
 local function buildStatus(f)
     local bar = CreateFrame("Frame", nil, f, "BackdropTemplate")
-    bar:SetPoint("TOPLEFT", LEFT_X, -46)
-    bar:SetSize(STATUS_W, 28)
+    bar:SetPoint("TOPLEFT", L.leftX, L.statusY)
+    bar:SetSize(L.statusW, L.statusH)
     bar:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
     UI.Tint(bar, "SetBackdropColor", "surface", 0.6)
     UI.Tint(bar, "SetBackdropBorderColor", "border")
     local text = label(bar, "")
     text:SetPoint("LEFT", 8, 0)
-    text:SetWidth(STATUS_W - 16)
+    text:SetWidth(L.statusW - 16)
     text:SetWordWrap(false)
     Page.status = text
     controls[#controls + 1] = { refresh = function()
@@ -308,48 +334,48 @@ local function buildStatus(f)
     end }
 end
 
-local function buildSlot(f, def, g, s, x, y)
-    local num = label(f, string.format(TEXT.kick, def.label, s))
+local function colorByte(v)
+    return math.floor(v * 255 + 0.5)
+end
+
+-- One slot of the pool: its Kick #N label, its name field and its picker, at group g's column and row s.
+local function buildSlot(f, g, s)
+    local x, y = L.leftX + (g - 1) * L.colW, L.gridY - L.headH - (s - 1) * L.rowH
+    local num = label(f, "")
     num:SetPoint("TOPLEFT", x, y - 4)
-    num:SetWidth(56)
+    num:SetWidth(L.labelW)
     local edit = CreateFrame("EditBox", nil, f, "InputBoxTemplate")
-    edit:SetSize(140, 22)
-    edit:SetPoint("TOPLEFT", x + 64, y)
+    edit:SetSize(L.editW, L.fieldH)
+    edit:SetPoint("TOPLEFT", x + L.editX, y)
     edit:SetAutoFocus(false)
     edit:SetFontObject(CRTFontEdit)
     edit:SetMaxLetters(48)
+    UI:SkinEditBox(edit)
     local function save(self)
-        self:ClearFocus()
         if boss() then
             Interrupts:SetName(boss(), g, s, self:GetText())
         end
     end
-    edit:SetScript("OnEnterPressed", save)
-    edit:SetScript("OnEditFocusLost", function(self)
-        if boss() then
-            Interrupts:SetName(boss(), g, s, self:GetText())
-        end
+    edit:SetScript("OnEnterPressed", function(self)
+        self:ClearFocus()
+        save(self)
     end)
+    edit:SetScript("OnEditFocusLost", save)
     edit:SetScript("OnEscapePressed", function(self)
         self:ClearFocus()
     end)
-    Page.fields[g] = Page.fields[g] or {}
-    Page.fields[g][s] = edit
-    local pick = UI.Dropdown(f, "", { labelWidth = 0, width = 70,
+    local pick = UI.Dropdown(f, "", { labelWidth = 0, width = L.pickW,
         options = function()
             local out = { { key = "", label = "-" } }
             for _, m in ipairs(roster()) do
                 local r, gr, b = classColor(m.class)
-                local function byte(v)
-                    return math.floor(v * 255 + 0.5)
-                end
-                out[#out + 1] = { key = m.name, label = string.format("|cff%02x%02x%02x%s|r", byte(r), byte(gr), byte(b), m.name) }
+                out[#out + 1] = { key = m.name, label = string.format("|cff%02x%02x%02x%s|r", colorByte(r), colorByte(gr), colorByte(b), m.name) }
             end
             return out
         end,
         get = function()
             local own = boss() and Interrupts:Own(boss())
-            return own and own[g][s] or ""
+            return own and own[g] and own[g][s] or ""
         end,
         set = function(name)
             if boss() then
@@ -357,52 +383,80 @@ local function buildSlot(f, def, g, s, x, y)
             end
         end,
         enabledIf = canEdit })
-    pick:SetPoint("TOPLEFT", x + 210, y + 5)
-    Page.pickers[#Page.pickers + 1] = pick
+    pick:SetPoint("TOPLEFT", x + L.pickX, y + L.pickDY)
+    Page.fields[g][s], Page.slotLabels[g][s], Page.pickers[g][s] = edit, num, pick
 end
 
+-- The rows under the kick list follow its height: Clear list (Use the raid's list and Share follow it), Test on trash
+-- and Preview reminder.
+local function placeBelow(slots)
+    local y = L.gridY - L.headH - (slots - 1) * L.rowH - L.fieldH - L.buttonGap
+    if Page.clear then
+        Page.clear:ClearAllPoints()
+        Page.clear:SetPoint("TOPLEFT", L.leftX, y)
+    end
+    if Page.test then
+        Page.test:ClearAllPoints()
+        Page.test:SetPoint("TOPLEFT", L.leftX - L.checkInset, y - L.testGap)
+        Page.preview:ClearAllPoints()
+        Page.preview:SetPoint("TOPLEFT", L.leftX + L.colW, y - L.testGap)
+    end
+end
+
+-- The kick list in the shape of the boss shown: the pooled fields its block has, the rest hidden.
 local function refreshGrid()
     local id = boss()
+    local def = id and Interrupts:Def(id)
     local own = id and Interrupts:Own(id)
     local group = roster()
     local editable = canEdit()
-    for g, col in pairs(Page.fields) do
-        for s, edit in pairs(col) do
-            local name = own and own[g] and own[g][s] or ""
-            if not edit:HasFocus() then
-                edit:SetText(name)
+    local groups, slots = def and #def.groups or 0, def and def.slots or 0
+    for g = 1, MAX_GROUPS do
+        Page.headings[g]:SetShown(g <= groups)
+        Page.headings[g]:SetText(def and def.groups[g] or "")
+        for s = 1, MAX_SLOTS do
+            local on = g <= groups and s <= slots
+            local edit, pick = Page.fields[g][s], Page.pickers[g][s]
+            Page.slotLabels[g][s]:SetShown(on)
+            edit:SetShown(on)
+            pick:SetShown(on)
+            if on then
+                Page.slotLabels[g][s]:SetText(string.format(TEXT.kick, def.label, s))
+                local name = own[g][s] or ""
+                if not edit:HasFocus() then
+                    edit:SetText(name)
+                end
+                local m = memberOf(name, group)
+                edit:SetTextColor(classColor(m and m.class))
+                edit:SetEnabled(editable)
+                pick.refresh()
             end
-            local m = memberOf(name, group)
-            edit:SetTextColor(classColor(m and m.class))
-            edit:SetEnabled(editable and id ~= nil)
         end
     end
-    for _, pick in ipairs(Page.pickers) do
-        pick.refresh()
-    end
+    placeBelow(math.max(slots, 1))
 end
 
 local function buildGrid(f)
-    local def = boss() and Interrupts:Def(boss())
-    if not def then
-        return
-    end
-    for g, name in ipairs(def.groups) do
-        local x = LEFT_X + (g - 1) * COL_W
-        local head = label(f, name, "CRTFontNormal")
-        head:SetPoint("TOPLEFT", x, GRID_Y)
+    for g = 1, MAX_GROUPS do
+        local head = label(f, "", "CRTFontNormal")
+        head:SetPoint("TOPLEFT", L.leftX + (g - 1) * L.colW, L.gridY)
+        Page.headings[g] = head
         if g == 1 then
             UI.HelpRight(head, TEXT.title, TEXT.gridHelp)
         end
-        for s = 1, def.slots do
-            buildSlot(f, def, g, s, x, GRID_Y - 22 - (s - 1) * ROW_H)
+        Page.fields[g], Page.slotLabels[g], Page.pickers[g] = {}, {}, {}
+        for s = 1, MAX_SLOTS do
+            buildSlot(f, g, s)
         end
     end
     controls[#controls + 1] = { refresh = refreshGrid }
 end
 
--- The (?) of a greyed button says why: b.crtReason.
+-- The tooltip of a button says why it is greyed: b.crtReason. A disabled button gets no OnEnter unless told to.
 local function reasonTip(b, title)
+    if b.SetMotionScriptsWhileDisabled then
+        b:SetMotionScriptsWhileDisabled(true)
+    end
     b:SetScript("OnEnter", function(self)
         UI.TooltipOwner(GameTooltip, self, "ANCHOR_TOP")
         GameTooltip:SetText(title, 1, 1, 1)
@@ -416,7 +470,7 @@ local function reasonTip(b, title)
     end)
 end
 
-local function buildButtons(f, y)
+local function buildButtons(f)
     local clear = button(f, TEXT.clear, function()
         local id = boss()
         if id then
@@ -425,7 +479,6 @@ local function buildButtons(f, y)
             end)
         end
     end)
-    clear:SetPoint("TOPLEFT", LEFT_X, y)
     local useRaid = button(f, TEXT.useRaid, function()
         local id = boss()
         local shared = id and Interrupts:Shared(id)
@@ -435,13 +488,13 @@ local function buildButtons(f, y)
             end)
         end
     end)
-    useRaid:SetPoint("LEFT", clear, "RIGHT", 6, 0)
+    useRaid:SetPoint("LEFT", clear, "RIGHT", L.buttonSpace, 0)
     local share = button(f, TEXT.share, function()
         if boss() then
             KickComm:Share(boss())
         end
     end)
-    share:SetPoint("LEFT", useRaid, "RIGHT", 6, 0)
+    share:SetPoint("LEFT", useRaid, "RIGHT", L.buttonSpace, 0)
     reasonTip(share, TEXT.share)
     UI.HelpRight(share, TEXT.share, TEXT.shareHelp)
     Page.share, Page.clear, Page.useRaid = share, clear, useRaid
@@ -510,22 +563,22 @@ end
 
 local function buildWho(f)
     local head = label(f, TEXT.who, "CRTFontNormal")
-    head:SetPoint("TOPLEFT", RIGHT_X, -8)
+    head:SetPoint("TOPLEFT", L.rightX, L.whoY)
     UI.HelpRight(head, TEXT.who, TEXT.whoHelp)
     local check = button(f, TEXT.check, function()
         if CRT.AddonCheck then
             CRT.AddonCheck:Check()
         end
     end)
-    check:SetPoint("TOPRIGHT", f, "TOPLEFT", RIGHT_X + RIGHT_W, -4)
-    for i = 1, WHO_ROWS do
-        local y = -32 - (i - 1) * 18
+    check:SetPoint("TOPRIGHT", f, "TOPLEFT", L.rightX + L.rightW, L.whoY + 4)
+    for i = 1, L.whoRows do
+        local y = L.whoTop - (i - 1) * L.whoRowH
         local row = { name = label(f, ""), state = label(f, "") }
-        row.name:SetPoint("TOPLEFT", RIGHT_X, y)
-        row.name:SetWidth(190)
+        row.name:SetPoint("TOPLEFT", L.rightX, y)
+        row.name:SetWidth(L.whoNameW)
         row.name:SetWordWrap(false)
-        row.state:SetPoint("TOPLEFT", RIGHT_X + 196, y)
-        row.state:SetWidth(RIGHT_W - 196)
+        row.state:SetPoint("TOPLEFT", L.rightX + L.whoStateX, y)
+        row.state:SetWidth(L.rightW - L.whoStateX)
         row.state:SetJustifyH("RIGHT")
         row.state:SetWordWrap(false)
         Page.whoRows[i] = row
@@ -561,14 +614,14 @@ function Page.HowLines(def)
 end
 
 local function buildHow(f)
-    local y = -32 - WHO_ROWS * 18 - 20
+    local y = L.whoTop - L.whoRows * L.whoRowH - L.howGap
     local head = label(f, TEXT.how, "CRTFontNormal")
-    head:SetPoint("TOPLEFT", RIGHT_X, y)
+    head:SetPoint("TOPLEFT", L.rightX, y)
     UI.HelpRight(head, TEXT.how, TEXT.howHelp)
-    for i = 1, 6 do
+    for i = 1, L.howLines do
         local fs = label(f, "")
-        fs:SetPoint("TOPLEFT", RIGHT_X, y - 22 - (i - 1) * 18)
-        fs:SetWidth(RIGHT_W)
+        fs:SetPoint("TOPLEFT", L.rightX, y - L.howHeadH - (i - 1) * L.howRowH)
+        fs:SetWidth(L.rightW)
         fs:SetWordWrap(false)
         Page.howLines[i] = fs
     end
@@ -581,7 +634,7 @@ local function buildHow(f)
 end
 
 local function buildAssignments(f)
-    local bossRow = UI.Dropdown(f, TEXT.boss, { options = bossOptions, labelWidth = 40, width = 300,
+    local bossRow = UI.Dropdown(f, TEXT.boss, { options = bossOptions, labelWidth = L.bossLabelW, width = L.bossW,
         get = function()
             return boss()
         end,
@@ -589,7 +642,7 @@ local function buildAssignments(f)
             selected = id
             refresh()
         end })
-    add(bossRow, LEFT_X, -8)
+    add(bossRow, L.leftX, L.bossY)
     Page.bossRow = bossRow
     -- the boss block's own note (why only that difficulty), from its season-pack file
     UI.HelpRight(bossRow, TEXT.boss, function()
@@ -598,11 +651,8 @@ local function buildAssignments(f)
         return note and (TEXT.bossHelp .. "\n\n" .. note) or TEXT.bossHelp
     end)
     buildStatus(f)
-    buildGrid(f)
-    local def = boss() and Interrupts:Def(boss())
-    local bottom = GRID_Y - 22 - ((def and def.slots or 5) - 1) * ROW_H - 22
-    buildButtons(f, bottom - 16)
-    local test = checkbox(f, LEFT_X - 4, bottom - 54, TEXT.test, function()
+    buildButtons(f)
+    local test = checkbox(f, L.leftX - L.checkInset, 0, TEXT.test, function()
         return settings().test
     end, function(on)
         settings().test = on
@@ -615,11 +665,12 @@ local function buildAssignments(f)
     end)
     UI.HelpRight(test, TEXT.test, TEXT.testHelp)
     Page.test = test
-    local preview = button(f, TEXT.preview, function()
+    Page.preview = button(f, TEXT.preview, function()
         CRT.InterruptReminder:Preview()
     end)
-    preview:SetPoint("TOPLEFT", LEFT_X + COL_W, bottom - 54)
-    Page.preview = preview
+    -- the grid last among the left column's refreshes, so it places the rows under it once they exist
+    buildGrid(f)
+    placeBelow(MAX_SLOTS)
     buildWho(f)
     buildHow(f)
 end
@@ -633,22 +684,39 @@ local function heading(f, x, y, text, help)
     return fs
 end
 
+local function plates()
+    return settings().plates
+end
+
+local function reminder()
+    return settings().reminder
+end
+
+local function platesOn()
+    return plates().on
+end
+
+local function reminderOn()
+    return reminder().on
+end
+
 -- A colour swatch for one of the player's box colours (saved RGBA, not a theme colour).
 local function swatch(f, x, y, text, key)
     local name = label(f, text)
     name:SetPoint("TOPLEFT", x, y - 2)
     local b = CreateFrame("Button", nil, f, "BackdropTemplate")
-    b:SetSize(36, 18)
+    b:SetSize(L.swatchW, L.swatchH)
     b:SetPoint("LEFT", name, "RIGHT", 6, 0)
     b:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
     b:SetBackdropBorderColor(0, 0, 0, 1) -- the swatch's edge: not a theme colour
     b.refresh = function()
-        local c = settings().plates[key]
+        local c = plates()[key]
         b:SetBackdropColor(c[1], c[2], c[3], c[4] or 1)
+        b:SetEnabled(platesOn() and true or false)
     end
     b:SetScript("OnClick", function()
-        UI.PickColor(settings().plates[key], function(c)
-            settings().plates[key] = c
+        UI.PickColor(plates()[key], function(c)
+            plates()[key] = c
             changed()
         end, { hasOpacity = true })
     end)
@@ -656,8 +724,9 @@ local function swatch(f, x, y, text, key)
     return b
 end
 
-local function slider(f, x, y, text, holder, key, low, high)
-    return add(UI.Slider(f, text, { min = low, max = high, labelWidth = 150, width = 160,
+local function slider(f, x, y, text, holder, key, low, high, labelW, enabledIf)
+    return add(UI.Slider(f, text, { min = low, max = high, labelWidth = labelW or L.setLabelW, width = L.setControlW,
+        enabledIf = enabledIf,
         get = function()
             return holder()[key]
         end,
@@ -667,73 +736,65 @@ local function slider(f, x, y, text, holder, key, low, high)
         end }), x, y)
 end
 
-local function plates()
-    return settings().plates
+local function swatchRow(f, y, text, boxKey, textKey)
+    local name = label(f, text, "CRTFontNormal")
+    name:SetPoint("TOPLEFT", L.leftX, y)
+    name:SetWidth(L.swatchLabelW)
+    swatch(f, L.leftX + L.swatchLabelW + 4, y, TEXT.box, boxKey)
+    swatch(f, L.leftX + L.swatchLabelW + 4 + L.swatchStep, y, TEXT.number, textKey)
 end
 
-local function reminder()
-    return settings().reminder
-end
-
-local function buildSettings(f)
-    heading(f, LEFT_X, -8, TEXT.plates, TEXT.platesHelp)
-    checkbox(f, LEFT_X - 4, -28, TEXT.platesOn, function()
-        return plates().on
-    end, function(on)
+local function buildPlatesSettings(f)
+    local Y, x = L.platesY, L.leftX
+    heading(f, x, Y.head, TEXT.plates, TEXT.platesHelp)
+    checkbox(f, x - L.checkInset, Y.on, TEXT.platesOn, platesOn, function(on)
         plates().on = on
         changed()
     end)
-    local all = checkbox(f, LEFT_X - 4, -52, TEXT.all, function()
+    local all = checkbox(f, x - L.checkInset, Y.all, TEXT.all, function()
         return plates().all
     end, function(on)
         plates().all = on
         changed()
-    end)
+    end, platesOn)
     UI.HelpRight(all, TEXT.all, TEXT.allHelp)
-    slider(f, LEFT_X, -80, TEXT.size, plates, "size", 10, 100)
-    slider(f, LEFT_X, -114, TEXT.font, plates, "font", 8, 60)
-    slider(f, LEFT_X, -148, TEXT.offset, plates, "offset", -100, 100)
-    local yours = label(f, TEXT.yours, "CRTFontNormal")
-    yours:SetPoint("TOPLEFT", LEFT_X, -192)
-    yours:SetWidth(100)
-    swatch(f, LEFT_X + 104, -192, TEXT.box, "mineBox")
-    swatch(f, LEFT_X + 204, -192, TEXT.number, "mineText")
-    local others = label(f, TEXT.others, "CRTFontNormal")
-    others:SetPoint("TOPLEFT", LEFT_X, -222)
-    others:SetWidth(100)
-    swatch(f, LEFT_X + 104, -222, TEXT.box, "box")
-    swatch(f, LEFT_X + 204, -222, TEXT.number, "text")
+    Page.allCheck = all
+    slider(f, x, Y.size, TEXT.size, plates, "size", 10, 100, nil, platesOn)
+    slider(f, x, Y.font, TEXT.font, plates, "font", 8, 60, nil, platesOn)
+    slider(f, x, Y.offset, TEXT.offset, plates, "offset", -100, 100, nil, platesOn)
+    swatchRow(f, Y.yours, TEXT.yours, "mineBox", "mineText")
+    swatchRow(f, Y.others, TEXT.others, "box", "text")
+end
 
-    heading(f, SET_X2, -8, TEXT.reminder, TEXT.reminderHelp)
-    checkbox(f, SET_X2 - 4, -28, TEXT.reminderOn, function()
-        return reminder().on
-    end, function(on)
+local function buildReminderSettings(f)
+    local Y, x = L.reminderY, L.setX2
+    heading(f, x, Y.head, TEXT.reminder, TEXT.reminderHelp)
+    checkbox(f, x - L.checkInset, Y.on, TEXT.reminderOn, reminderOn, function(on)
         reminder().on = on
         changed()
     end)
-    add(UI.SoundDropdown(f, TEXT.sound, { none = TEXT.soundNone, labelWidth = 80, width = 200, playButton = true, help = true,
+    add(UI.SoundDropdown(f, TEXT.sound, { none = TEXT.soundNone, labelWidth = L.reminderLabelW, width = L.soundW, playButton = true,
+        help = true, enabledIf = reminderOn,
         get = function()
             return reminder().sound
         end,
         set = function(key)
             reminder().sound = key
             changed()
-        end }), SET_X2, -56)
-    add(UI.Slider(f, TEXT.reminderSize, { min = 16, max = 128, labelWidth = 80, width = 160,
-        get = function()
-            return reminder().size
-        end,
-        set = function(v)
-            reminder().size = v
-            changed()
-        end }), SET_X2, -92)
-    heading(f, SET_X2, -144, TEXT.sharing, TEXT.sharingHelp)
-    checkbox(f, SET_X2 - 4, -164, TEXT.accept, function()
+        end }), x, Y.sound)
+    slider(f, x, Y.size, TEXT.reminderSize, reminder, "size", 16, 128, L.reminderLabelW, reminderOn)
+    heading(f, x, Y.sharing, TEXT.sharing, TEXT.sharingHelp)
+    checkbox(f, x - L.checkInset, Y.accept, TEXT.accept, function()
         return settings().accept
     end, function(on)
         settings().accept = on
         refresh()
     end)
+end
+
+local function buildSettings(f)
+    buildPlatesSettings(f)
+    buildReminderSettings(f)
 end
 
 -- The page -------------------------------------------------------------------------------------------------------------
@@ -765,8 +826,8 @@ end
 
 local function makeTab(pf, i, tab)
     local b = CreateFrame("Button", nil, pf, "BackdropTemplate")
-    b:SetSize(160, 26)
-    b:SetPoint("TOPLEFT", 8 + (i - 1) * 164, TAB_Y)
+    b:SetSize(L.tabW, L.tabH)
+    b:SetPoint("TOPLEFT", L.leftX + (i - 1) * (L.tabW + L.tabGap), TAB_Y)
     b:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
     b.sel = b:CreateTexture(nil, "ARTWORK")
     b.sel:SetAllPoints()

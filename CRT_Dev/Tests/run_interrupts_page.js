@@ -73,6 +73,7 @@ local function mock(kind, parent)
     CreateTexture = function(self) return mock("Texture", self) end,
     RegisterEvent = function(self, e) self.events[e] = true end, UnregisterEvent = function(self, e) self.events[e] = nil end,
     UnregisterAllEvents = function(self) self.events = {} end,
+    SetMotionScriptsWhileDisabled = function(self, v) self.motionWhileDisabled = v end,
   }
   all[#all + 1] = m
   return setmetatable(m, { __index = function(_, k) if methods[k] then return methods[k] end if type(k) == "string" and k:match("^%u") then return function() end end end })
@@ -89,6 +90,7 @@ function UI:SetPageHidden(key, hidden) if pages[key] then pages[key].hidden = hi
 function UI:Show(key) shown[#shown + 1] = key end
 function UI:RegisterTab(b) tabs[#tabs + 1] = b end
 function UI:SetTabSelected(b, on) b.selected = on end
+function UI:SkinEditBox(e) e.skinned = true end
 function UI.PanelButtonWidth(w) return math.max(40, math.ceil(w) + 28) end
 function UI.TooltipOwner() end
 function UI.Help(parent, title, text) local m = mock("Button", parent) m.helpTitle, m.helpText = title, text helps[#helps + 1] = m return m end
@@ -127,6 +129,10 @@ for _, src in ipairs({ registrySrc, seasonSrc, bossSrc, commSrc, latticeSrc, dat
 CRT.Bosses:Get(3470).interrupts = { difficulty = 16, anchor = { unit = "boss2", cycle = 7, ordinal = 5, times = { 33, 94, 188, 249, 343, 404 } },
   firstCast = 4.5, spacing = 1.0, tolerance = 0.3, adds = 10, perNumber = 2, window = 25,
   groups = { "Left", "Right" }, slots = 5, label = "Kick", note = "Mythic only here." }
+-- a second boss with another shape: one group of seven
+CRT.Bosses:Register({ encounterID = 3421, name = "Second Boss", season = "sample", interrupts = { difficulty = 16,
+  anchor = { unit = "boss1", cycle = 3, ordinal = 1, times = { 20 } }, firstCast = 2, spacing = 1.5, tolerance = 0.3, adds = 7,
+  perNumber = 1, window = 20, groups = { "North" }, slots = 7, label = "Stop" } })
 for _, src in ipairs({ anchorSrc, kickSrc, pageSrc }) do assert(load(src))("CowfeeRaidTools", CRT) end
 local I, P = CRT.Interrupts, CRT.InterruptsPage
 local T = P.TEXT
@@ -144,12 +150,14 @@ eq(#tabs, 2, "page: two tabs"); eq(P.tabs.settings.label, "Settings", "page: set
 eq(tabs[2].text and tabs[2].text.text, "Settings", "page: the second tab button is Settings")
 check(P.tabs.assignments.frame.shown and not P.tabs.settings.frame.shown, "page: opens on Assignments")
 eq(asked, 1, "page: opening asks the Addon check when stale")
-eq(#P.BossOptions(), 1, "page: one boss listed")
+eq(#P.BossOptions(), 2, "page: the two bosses with a block listed")
 eq(P.BossOptions()[1].label, "Nek'zali the Soulcoiler \\194\\183 Mythic", "page: the boss with its difficulty")
 
 -- the status bar and Share
 local function statusText() return plain(P.status.text) end
 eq(statusText(), T.statusNone, "status: no list")
+check(P.share.motionWhileDisabled == true, "share: its tooltip shows while it is greyed (SetMotionScriptsWhileDisabled)")
+check(P.fields[1][1].skinned, "fields: the name boxes follow the theme (UI:SkinEditBox)")
 check(not P.share.enabled and P.share.crtReason and P.share.crtReason:find("all 10", 1, true), "share: disabled with the slots reason: " .. tostring(P.share.crtReason))
 P.share.scripts.OnEnter(P.share)
 check(GameTooltip.lines[2] and GameTooltip.lines[2]:find("all 10", 1, true), "share: its tooltip says why")
@@ -176,6 +184,10 @@ eq(statusText(), "Enemy nameplates are off (Interface > Nameplates), so no numbe
 eq(P.statusKind, "warn", "status: in the warn colour")
 cvars.nameplateShowEnemies = "1"; P.Refresh()
 check(not statusText():find("nameplates", 1, true), "status: back on, the warning goes")
+C_CVar = { GetCVar = function(name) return name == "nameplateShowEnemies" and "0" or "1" end }
+P.Refresh()
+check(statusText():find("nameplates", 1, true), "status: read through C_CVar.GetCVar first")
+C_CVar = nil; P.Refresh()
 
 -- the fields: your own list, class coloured, read-only for a raider
 eq(P.fields[1][3].text, "Solex", "fields: your own list")
@@ -190,7 +202,7 @@ check(P.fields[1][1].enabled, "fields: editable solo")
 check(P.share.crtReason and P.share.crtReason:find("in a group", 1, true), "share: solo, the group reason")
 grouped, lead = true, true; P.Refresh()
 -- a picker sets the slot
-local pick = P.pickers[2]
+local pick = P.pickers[1][2]
 local options = pick.opts.options()
 eq(options[1].key, "", "picker: an empty choice first")
 eq(options[2].key, "Brenn", "picker: the group sorted")
@@ -272,6 +284,35 @@ eq(#picked, 4, "settings: each opens the colour picker")
 picked[1].set({ 0.5, 0.5, 0.5, 1 })
 eq(CRT.db.interrupts.plates.mineBox[1], 0.5, "settings: your box colour saved")
 check(picked[1].opts and picked[1].opts.hasOpacity, "settings: with its opacity")
+
+-- the controls under a switch grey out while it is off
+CRT.db.interrupts.plates.on = false; P.Refresh()
+check(rowNamed(T.size).enabled == false and rowNamed(T.font).enabled == false and rowNamed(T.offset).enabled == false, "settings: the box sliders grey with numbers off")
+check(P.allCheck.enabled == false, "settings: Show every number greys with numbers off")
+CRT.db.interrupts.plates.on = true; P.Refresh()
+check(rowNamed(T.size).enabled and P.allCheck.enabled, "settings: and come back")
+CRT.db.interrupts.reminder.on = false; P.Refresh()
+check(rowNamed(T.sound).enabled == false and rowNamed(T.reminderSize).enabled == false, "settings: the sound and size grey with the countdown off")
+CRT.db.interrupts.reminder.on = true; P.Refresh()
+check(rowNamed(T.sound).enabled and rowNamed(T.reminderSize).enabled, "settings: and come back")
+P.SelectTab("assignments")
+
+-- another boss's shape: the grid follows (pooled fields, the extras hidden, headings, labels, the rows under it)
+local LAY = P.LAYOUT
+local function yOf(f) return f.points[#f.points] and f.points[#f.points][3] end
+local clearY5 = yOf(P.clear)
+P.bossRow.opts.set(3421)
+eq(P.headings[1].text, "North", "shape: the group heading")
+check(not P.headings[2].shown, "shape: the second group's heading hidden")
+check(P.fields[1][7].shown and P.slotLabels[1][7].text == "Stop #7", "shape: seven slots, labelled from the block")
+check(not P.fields[2][1].shown and not P.pickers[2][1].shown, "shape: the second group's fields hidden")
+eq(yOf(P.clear), LAY.gridY - LAY.headH - 6 * LAY.rowH - LAY.fieldH - LAY.buttonGap, "shape: the buttons sit under seven rows")
+check(yOf(P.clear) < clearY5, "shape: lower than under five")
+eq(#P.howLines >= 6 and P.howLines[4].text, "7 adds a wave, 1 to a number.", "shape: How the numbers are worked out follows")
+P.bossRow.opts.set(id)
+check(P.headings[2].shown and P.fields[2][1].shown and not P.fields[1][7].shown, "shape: back to two groups of five")
+eq(yOf(P.clear), clearY5, "shape: the buttons back where they were")
+eq(P.slotLabels[1][1].text, "Kick #1", "shape: the labels back")
 
 -- every control inside the page area (UI.PAGE_W x UI.PAGE_H, under the tabs)
 local AREA_H = UI.PAGE_H - 66
