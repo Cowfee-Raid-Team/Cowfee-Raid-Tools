@@ -16,9 +16,9 @@ local ADDON, CRT = ...
 --   Ravenous Feast
 --   Left: Solex, Rixxy
 --   Right: Abu, Cheo
---   time:36;ph:1;tag:Solex Rixxy;spellid:1234;text:Soak left;assign:ravenous feast/1;
--- The timed lines carry a marker, assign:<key>/<row>, the block's key (Key: its name in lower case) and the row's
--- number; FormatLine never writes it, so other writers keep it on the line, and an older CRT reads the line as any
+--   time:36;ph:1;tag:Solex Rixxy;spellid:1234;text:Soak left;assign:ravenous feast/1/1;
+-- The timed lines carry a marker, assign:<key>/<row>/<cast>, the block's key (Key: its name in lower case), the row's
+-- number and the cast's (so a line follows its cast when the ability timeline moves it); FormatLine never writes it, so other writers keep it on the line, and an older CRT reads the line as any
 -- other timed line. The heading and its rows are found by the heading's text (the first heading line with the
 -- block's name that has assignment lines under it), so the note editor shows them as rows, as any group list. The
 -- note is the one source: Read gives the block back from the text. An untimed block (no times) is its heading and
@@ -319,9 +319,9 @@ function Assign.RowLines(block, times)
     return out
 end
 
--- The marker a block's timed line ends in.
-function Assign.Marker(key, r)
-    return Assign.FIELD .. ":" .. key .. "/" .. r .. ";"
+-- The marker a block's timed line ends in: its key, row and cast.
+function Assign.Marker(key, r, c)
+    return Assign.FIELD .. ":" .. key .. "/" .. r .. "/" .. c .. ";"
 end
 
 -- The block's lines: its heading, a row line per row, then its timed lines in cast order (each cast's rows in
@@ -353,7 +353,7 @@ function Assign.Lines(block, times, opts)
             if spellID then
                 t.kind, t.spellId = "spell", spellID
             end
-            out[#out + 1] = Parser.FormatLine(t) .. Assign.Marker(key, r)
+            out[#out + 1] = Parser.FormatLine(t) .. Assign.Marker(key, r, c)
         end
     end
     return out
@@ -361,18 +361,21 @@ end
 
 -- Finding a block in a note ----------------------------------------------------------------------------------
 
--- A line's marker: its block's key (lower case) and row number, or nil.
+-- A line's marker: its block's key (lower case), row number and cast number (each nil when missing), or nil.
 function Assign.MarkerOf(line)
     local v = Parser.Field(line or "", Assign.FIELD)
     if not v or v == "" then
         return nil
     end
-    local key, r = v:match("^(.-)/(%d+)$")
+    local key, r, c = v:match("^(.-)/(%d+)/(%d+)$")
+    if not key then
+        key, r = v:match("^(.-)/(%d+)$")
+    end
     key = trim(key or v):lower()
     if key == "" then
         return nil
     end
-    return key, tonumber(r)
+    return key, tonumber(r), tonumber(c)
 end
 
 local function session(src)
@@ -529,18 +532,39 @@ end
 local function fromLines(block, entries, times)
     local list = times and Assign.SortTimes(times)
     if not list then
-        list = {}
+        -- typed times: each cast's time from its lines (by their cast numbers, else their times)
+        local byCast, loose = {}, {}
         for _, e in ipairs(entries) do
-            if not castOf(list, e.ph, e.t) then
-                list[#list + 1] = { ph = e.ph, t = e.t }
+            if e.cast then
+                byCast[e.cast] = byCast[e.cast] or { ph = e.ph, t = e.t }
+            elseif not castOf(loose, e.ph, e.t) then
+                loose[#loose + 1] = { ph = e.ph, t = e.t }
             end
         end
-        list = Assign.SortTimes(list)
+        local numbers = {}
+        for c in pairs(byCast) do
+            numbers[#numbers + 1] = c
+        end
+        table.sort(numbers)
+        list = {}
+        for _, c in ipairs(numbers) do
+            list[#list + 1] = byCast[c]
+        end
+        for _, e in ipairs(Assign.SortTimes(loose)) do
+            if not castOf(list, e.ph, e.t) then
+                list[#list + 1] = e
+            end
+        end
+        -- the lines' cast numbers now count in this list
+        for _, e in ipairs(entries) do
+            e.cast = nil
+        end
         block.times = #list > 0 and list or nil
     end
     local sets, off = {}, {}
     for _, e in ipairs(entries) do
-        local c = castOf(list, e.ph, e.t)
+        -- a marked line is on its cast by number (the timeline may have moved it), else by its time
+        local c = (e.cast and list[e.cast]) and e.cast or castOf(list, e.ph, e.t)
         local row = block.rows[e.r]
         if c and row then
             sets[e.r] = sets[e.r] or {}
@@ -578,12 +602,12 @@ function Assign.Read(text, key, times)
     for _, i in ipairs(f.timed) do
         local row = s.rows[i]
         if row.kind == "timer" then
-            local _, r = Assign.MarkerOf(row.raw)
+            local _, r, c = Assign.MarkerOf(row.raw)
             r = r or 1
             while #block.rows < r do
                 block.rows[#block.rows + 1] = Assign.NewRow(#block.rows + 1)
             end
-            entries[#entries + 1] = { r = r, ph = row.timer.ph or 1, t = row.timer.time, text = row.timer.text,
+            entries[#entries + 1] = { r = r, cast = c, ph = row.timer.ph or 1, t = row.timer.time, text = row.timer.text,
                 spellId = row.timer.spellId }
         end
     end

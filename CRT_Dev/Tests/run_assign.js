@@ -83,12 +83,12 @@ check("assign: lines for all, a list and rotate; a row with no one has no timed 
   assert(out[1] == "Ravenous Feast" and out[2] == "Left: Solex, Rixxy" and out[3] == "Right: Abu" and out[4] == "Center: Cheo, Demon Hunter", joined(out))
   -- cast order 1@36, 1@96, 1@156, 2@20: Left and Right on all four, Center on 2 and 4
   assert(#out == 4 + 4 + 4 + 2, "timed lines: " .. (#out - 4))
-  assert(out[5] == "time:36;ph:1;tag:Solex Rixxy;spellid:1234;text:Soak left;assign:ravenous feast/1;", out[5])
-  assert(out[6] == "time:36;ph:1;tag:Abu;spellid:1234;text:Right;assign:ravenous feast/2;", "an empty text: the label: " .. out[6])
-  assert(out[7] == "time:96;ph:1;tag:Solex Rixxy;spellid:1234;text:Soak left;assign:ravenous feast/1;", out[7])
-  assert(out[9] == "time:96;ph:1;tag:Cheo Demon Hunter;spellid:1234;text:Stack;assign:ravenous feast/3;", out[9])
+  assert(out[5] == "time:36;ph:1;tag:Solex Rixxy;spellid:1234;text:Soak left;assign:ravenous feast/1/1;", out[5])
+  assert(out[6] == "time:36;ph:1;tag:Abu;spellid:1234;text:Right;assign:ravenous feast/2/1;", "an empty text: the label: " .. out[6])
+  assert(out[7] == "time:96;ph:1;tag:Solex Rixxy;spellid:1234;text:Soak left;assign:ravenous feast/1/2;", out[7])
+  assert(out[9] == "time:96;ph:1;tag:Cheo Demon Hunter;spellid:1234;text:Stack;assign:ravenous feast/3/2;", out[9])
   local t = P.Parse(out[9]).timers[1]
-  assert(t.time == 96 and t.ph == 1 and t.text == "Stack" and P.Field(out[9], "assign") == "ravenous feast/3", "reads as a timed line")
+  assert(t.time == 96 and t.ph == 1 and t.text == "Stack" and P.Field(out[9], "assign") == "ravenous feast/3/2", "reads as a timed line")
   -- rotate: the rotate rows take the casts in turn
   local b = feast()
   b.rows[1].casts, b.rows[2].casts, b.rows[3].casts = "rotate", "rotate", "all"
@@ -98,7 +98,7 @@ check("assign: lines for all, a list and rotate; a row with no one has no timed 
   -- no one in a row: its label line only
   b.rows[2].tokens = {}
   out = A.Lines(b, CASTS)
-  assert(out[3] == "Right:" and not joined(out):find("/2;", 1, true), "an empty row writes no timed line")
+  assert(out[3] == "Right:" and not joined(out):find("feast/2/", 1, true), "an empty row writes no timed line")
   -- untimed: the heading and the rows only
   out = A.Lines(feast(), nil)
   assert(#out == 4 and out[1] == "Ravenous Feast", "untimed: " .. joined(out))
@@ -131,6 +131,12 @@ check("assign: a block read back from its lines (all, a list, rotate; typed time
   back = A.Read(joined(A.Lines(feast(), nil)), "ravenous feast", nil)
   assert(back and #back.rows == 3 and back.times == nil and back.rows[1].casts == "all" and table.concat(back.rows[2].tokens, ",") == "Abu", "untimed read back")
   assert(A.Read("Ravenous Feast\\nnot a row", "ravenous feast") == nil, "a heading with no rows under it is no block")
+  -- the ability timeline moved the second cast (96 -> 100): its lines are still that cast's, written at the new time
+  local moved = { { ph = 2, t = 20 }, { ph = 1, t = 100 }, { ph = 1, t = 36 }, { ph = 1, t = 156 } }
+  back = A.Read(text, "ravenous feast", moved)
+  assert(back.rows[1].casts == "all" and table.concat(back.rows[3].casts, ",") == "2,4", "the casts kept by number")
+  local again = joined(A.Lines(back, moved))
+  assert(again:find("time:100;ph:1;tag:Cheo Demon Hunter;", 1, true) and not again:find("time:96;", 1, true), "the lines move with the cast")
 end)
 
 check("assign: Replace in place, every other line byte for byte; rename; remove", function()
