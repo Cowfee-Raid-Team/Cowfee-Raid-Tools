@@ -138,6 +138,7 @@ g "core comm" && { node run_core_comm.js "$W" 2>&1 | tail -20; echo "exit ${PIPE
 g "interrupts lattice" && { node run_interrupts_lattice.js "$W" 2>&1 | tail -20; echo "exit ${PIPESTATUS[0]}"; }
 g "interrupts data" && { node run_interrupts_data.js "$W" 2>&1 | tail -20; echo "exit ${PIPESTATUS[0]}"; }
 g "interrupts anchor" && { node run_interrupts_anchor.js "$W" 2>&1 | tail -20; echo "exit ${PIPESTATUS[0]}"; }
+g "interrupts plates" && { node run_interrupts_plates.js "$W" 2>&1 | tail -20; echo "exit ${PIPESTATUS[0]}"; }
 g "addon check" &&{ node run_addoncheck.js "$W" 2>&1 | tail -30; echo "exit ${PIPESTATUS[0]}"; }
 g "tattlebot team" && { node run_tattle.js "$W" 2>&1 | tail -30; echo "exit ${PIPESTATUS[0]}"; }
 g "season stats" && { node run_seasonstats.js "$W" 2>&1 | tail -30; echo "exit ${PIPESTATUS[0]}"; }

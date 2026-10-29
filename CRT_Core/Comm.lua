@@ -56,17 +56,15 @@ function Comm.Fingerprint(text)
     return string.format("%06x%04x%x", h, a, #text)
 end
 
+-- The secret check comes first: a secret may not even be compared with nil.
 function Comm.Readable(v)
-    if v == nil then
-        return false
-    end
     if issecretvalue then
         local ok, secret = pcall(issecretvalue, v)
         if not ok or secret then
             return false
         end
     end
-    return true
+    return v ~= nil
 end
 
 local function name(what)

@@ -384,6 +384,13 @@ check(slash("nonsense"):find("Unknown command", 1, true) ~= nil, "an unknown wor
 check(slash("late nonsense"):find("Unknown command", 1, true) ~= nil, "an unknown word after a module word is unknown")
 check(slash("modules"):find("Unknown command", 1, true) ~= nil, "/crt modules is unknown")
 check(slash("dev modules"):find("Unknown command", 1, true) ~= nil, "/crt dev modules is unknown")
+-- the kick probe's word, in a dev build only
+local kicks = slash("dev kicks")
+if scenario.release then
+  check(kicks:find("Unknown command", 1, true) ~= nil, "/crt dev kicks is not in a release build")
+else
+  check(kicks:find("Kick probe is", 1, true) ~= nil, "/crt dev kicks answers: " .. kicks)
+end
 
 -- /crt loot alone: your loot popup and All Loot Rolls. Loot History has no word (it opens from the menu); the
 -- leader's words come after /crt loot.

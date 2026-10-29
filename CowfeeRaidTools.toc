@@ -187,6 +187,7 @@ CRT_Modules\Pace\Page.lua
 CRT_Modules\Interrupts\Lattice.lua
 CRT_Modules\Interrupts\Data.lua
 CRT_Modules\Interrupts\Anchor.lua
+CRT_Modules\Interrupts\Plates.lua
 CRT_Modules\QoL\LowHealth.lua
 CRT_Modules\QoL\LowHealthSound.lua
 CRT_Modules\QoL\BreakTimer.lua
@@ -223,5 +224,6 @@ CRT_Dev\Dev\LootProbe.lua
 CRT_Dev\Dev\GearProbe.lua
 CRT_Dev\Dev\Loot.lua
 CRT_Dev\Dev\BossDebugPanel.lua
+CRT_Dev\Dev\KickProbe.lua
 CRT_Dev\Dev\DevPage.lua
 #@end-do-not-package@
