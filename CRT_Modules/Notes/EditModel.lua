@@ -324,6 +324,21 @@ local function rowFor(lineNo, raw, timer, markdown)
     return row
 end
 
+-- A line of the raid note's kick block, shown as the note view shows it: the "Kick order" heading, a read-only line per
+-- group ("<label>: <names>"), nothing for the end line. Its raw text stays, so the saved text is as written.
+local function kickRow(row, item)
+    row.field, row.original, row.editable = nil, nil, nil
+    if item.kind == "heading" then
+        row.kind, row.text = "heading", item.text
+    elseif item.kind == "kick" then
+        local icon = item.marker and CRT.InterruptNote.Icon(item.marker, 14) or ""
+        local names = #item.names > 0 and (" " .. table.concat(item.names, " ")) or ""
+        row.kind, row.text = "text", (icon ~= "" and (icon .. " ") or "") .. item.label .. ":" .. names
+    else
+        row.kind, row.text = "blank", nil
+    end
+end
+
 local Session = {}
 Session.__index = Session
 
@@ -338,8 +353,12 @@ function Model.New(text, opts)
         byLine[t.line] = t
     end
     s.pieces = splitLines(text)
+    local kicks = CRT.InterruptNote and CRT.InterruptNote.View(text)
     for i, piece in ipairs(s.pieces) do
         s.rows[i] = rowFor(i, piece.text, byLine[i], opts.markdown)
+        if kicks and kicks[i] then
+            kickRow(s.rows[i], kicks[i])
+        end
     end
     return s
 end
