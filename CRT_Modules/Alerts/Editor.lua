@@ -814,9 +814,16 @@ local function testLabel(d)
     return Reminders.SpellName(validID(d.spellID)) or TEXT.testBlock
 end
 
--- The saved version of the tested alert, which the Rehearsal leaves out (Alerts:Start's opts.replaces).
+-- The saved version of the tested alert, which the Rehearsal leaves out (Alerts:Start's opts.replaces). A reminder
+-- saved as Raid note plays through its note lines, not as your own (Notes/MechNote.lua): those lines, by their marker,
+-- so the test plays once and never beside one of them.
 local function savedIdentity(c)
     if c.id ~= nil then
+        local M = CRT.MechNote
+        local n = M and type(c.encounterID) == "number" and M.InNote(Reminders:Get(c.encounterID, c.id))
+        if n then
+            return { block = "note", mech = n.key }
+        end
         return { block = "mine", id = c.id }
     elseif c.noteID ~= nil and c.line ~= nil then
         return { block = "note", noteID = c.noteID, line = c.line }

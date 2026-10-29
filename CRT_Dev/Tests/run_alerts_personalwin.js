@@ -198,6 +198,16 @@ test("window: lists the boss's reminders by phase", function()
   assert(not at(show(), "Move"), "disabled reminder listed")
 end)
 
+-- #1206: an alert saved as Raid note (Notes/MechNote.lua) is in the raid note, which lists its lines; your own list
+-- leaves it out, as the alerts do, so it never shows twice
+test("window: an alert saved as Raid note isn't listed as yours", function()
+  R:Save(3470, nil, { boss = "Nek'zali the Soulcoiler", text = "Soak", times = "P1 0:30" })
+  R:Save(3470, nil, { boss = "Nek'zali the Soulcoiler", text = "In the note", times = "P1 0:40",
+    raidNote = { tag = "all", key = "in the note", difficulty = "Mythic" } })
+  local text = show()
+  assert(at(text, "Soak") and not at(text, "In the note"), "only your own:\\n" .. text)
+end)
+
 test("window: out of a run, only the note's difficulty group", function()
   -- the note in use is Mythic: Mythic's own reminders, not Normal/Heroic's (saved per group or as older text)
   R:Save(3470, nil, { boss = "Nek'zali the Soulcoiler", text = "Mythic one", times = "P1 0:31" }, "mythic")

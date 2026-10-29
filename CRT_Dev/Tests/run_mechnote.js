@@ -404,6 +404,114 @@ check("mechnote: an older CRT reads the lines and keeps the marker", function()
   assert(back.time == 40 and back.ticks[2] == 4 and back.fill == "up", "the fields survive")
 end)
 
+-- #1206: a Mech Alert saved as Raid note, For Everyone, reaches you (the leader who wrote it) exactly once per cast,
+-- through its note line: on a pull, in a Rehearsal, previewed as everyone, its shield bar too. Your own alert of it
+-- never runs beside the line.
+local function shows(items, text, at)
+  local n = 0
+  for _, it in ipairs(items or {}) do
+    local o = it.outputs
+    if it.text == text and (at == nil or (it.ph == 1 and it.time == at)) and type(o) == "table"
+      and (o.alert or o.bar or o.speech or o.text or o.icon or o.circle or o.timeline) then
+      n = n + 1
+    end
+  end
+  return n
+end
+local function inNote(text, key, extra)
+  local r = { text = text, times = "P1 0:36, 1:37", outputs = { alert = true, bar = true }, raidNote = { tag = "all", key = key } }
+  for k, v in pairs(extra or {}) do r[k] = v end
+  local id = R:Save(3470, nil, r, "mythic")
+  M.Sync(3470, id, { group = "mythic", boss = "The Twin Fangs" })
+  return id
+end
+local function rehearse(diff, group, opts)
+  local o = { clock = function() return 0 end, group = group }
+  for k, v in pairs(opts or {}) do o[k] = v end
+  A:Start(3470, diff, "rehearsal", o)
+  return A.items
+end
+
+check("mechnote: a Raid note alert reaches you once: a pull, a Rehearsal, Preview as everyone, its shield bar", function()
+  reset()
+  local id = inNote("Spread", "spread")
+  assert(M.CountIn(3470, "Mythic", "spread") == 2, "two lines")
+  A:Start(3470, "Mythic", "encounter", {})
+  assert(shows(A.items, "Spread") == 2 and shows(A.items, "Spread", 36) == 1, "a pull: once per cast, got " .. shows(A.items, "Spread"))
+  A:Stop(true)
+  assert(shows(rehearse("Mythic", "mythic"), "Spread", 36) == 1, "a Rehearsal: once")
+  A:Stop(true)
+  local wasAs = A.PreviewAs
+  A.PreviewAs = function() return "*" end
+  assert(shows(rehearse("Mythic", "mythic", { as = "*" }), "Spread", 36) == 1, "previewed as everyone: once")
+  A.PreviewAs = wasAs
+  A:Stop(true)
+  -- a shield bar: watched through the note's lines only, never your own alert too (a unit has one bar, Alerts/Absorb.lua)
+  local sid = inNote("Break", "break", { absorb = { unit = "boss2", length = 15 } })
+  A:Start(3470, "Mythic", "encounter", {})
+  local mine, lines = 0, 0
+  for _, w in ipairs(R:AbsorbWatches(A.run)) do if w.text == "Break" then mine = mine + 1 end end
+  for _, w in ipairs(NE:AbsorbWatches(A.run)) do if w.text == "Break" and w.unit == "boss2" then lines = lines + 1 end end
+  assert(mine == 0 and lines > 0, "the note's watches only: " .. mine .. " " .. lines)
+  assert(shows(A.items, "Break", 36) == 1, "its bar once")
+  A:Stop(true)
+  assert(id and sid, "saved")
+end)
+
+-- The Test button plays the alert as it stands on screen in the Rehearsal (Alerts/Editor.lua), leaving out its saved
+-- version (opts.replaces). A Raid note alert's saved version is its note lines, named by their marker: they are left
+-- out, so the test plays once, never beside a line, whether the line still has the text from before a change or the
+-- alert is off with its lines still there. Every other line of the note stays.
+check("mechnote: Test in the Rehearsal leaves out the alert's note lines, by marker", function()
+  reset()
+  local id = inNote("Spread", "spread")
+  inNote("Soak", "soak")
+  local r = R:Get(3470, id)
+  local function test()
+    local items = R:Items(3470, "test", r, "mythic")
+    for _, it in ipairs(items) do it.block = "editorTest" end
+    return rehearse("Mythic", "mythic", { extra = items, replaces = { block = "note", mech = r.raidNote.key } })
+  end
+  local items = test()
+  assert(shows(items, "Spread", 36) == 1, "the test plays once: " .. shows(items, "Spread", 36))
+  assert(shows(items, "Soak", 36) == 1, "the other alert's line stays")
+  A:Stop(true)
+  -- the Text changed, the note's lines not yet written again: only the new text, once
+  r.text = "Add Interrupts"
+  items = test()
+  assert(shows(items, "Add Interrupts", 36) == 1 and shows(items, "Spread", 36) == 0, "only the new text: " .. shows(items, "Spread", 36))
+  A:Stop(true)
+  -- off, its lines still in the note (written while you could not change it): the test still plays once
+  r.enabled = false
+  items = test()
+  assert(shows(items, "Add Interrupts", 36) == 1 and shows(items, "Spread", 36) == 0, "off: once")
+  A:Stop(true)
+  -- the marker in any case
+  assert(P.Parse("time:1;text:x;MECH: Spread ;").timers[1].mech == "spread", "the parsed line's marker")
+  assert(P.Parse("time:1;text:x;").timers[1].mech == nil, "none")
+end)
+
+-- A Mech Alerts line is written into the note for exactly its difficulty (Notes/MechNote.lua). A pull of the other group
+-- with no note of its own reads that note (Notes:FindForEncounter's fallback): its other lines run as before, but the
+-- Mech Alerts lines don't, so their times never run on the other group's pull beside your own alert there.
+check("mechnote: a Mech Alerts line runs only on a pull of its note's difficulty group", function()
+  reset()
+  inNote("Spread", "spread")
+  local nid = M.FindNote(3470, "Mythic")
+  Notes:UpdateRaw(nid, Notes:Get(nid).raw .. "time:36;tag:all;text:Plain;\\n")
+  -- your own Normal/Heroic alert on the same ability (the other half of a split)
+  R:Save(3470, nil, { text = "Spread", times = "P1 0:36", outputs = { alert = true, bar = true } }, "nh")
+  A:Start(3470, "Heroic", "encounter", {})
+  assert(shows(A.items, "Spread", 36) == 1, "a Heroic pull: your own alert only, got " .. shows(A.items, "Spread", 36))
+  assert(shows(A.items, "Plain", 36) == 1, "the note's other lines still run")
+  A:Stop(true)
+  assert(shows(rehearse("Heroic", "nh"), "Spread", 36) == 1, "a Heroic Rehearsal: once")
+  A:Stop(true)
+  A:Start(3470, "Mythic", "encounter", {})
+  assert(shows(A.items, "Spread", 36) == 1 and shows(A.items, "Plain", 36) == 1, "a Mythic pull: the line")
+  A:Stop(true)
+end)
+
 check("no errors raised", function()
   assert(#errors == 0, tostring(errors[1]))
 end)

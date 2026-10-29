@@ -1435,6 +1435,34 @@ check("mech: test passes the current draft, saved one replaced", function()
   assert(#errors == 0, tostring(errors[1]))
 end)
 
+-- #1206: a Raid note alert's saved version is its note lines (Notes/MechNote.lua), so Test leaves those out by their
+-- marker, never your own alert (which steps aside anyway): the test plays once, not beside a line, with the text as it
+-- stands after a change, and when it is off with its lines still there
+check("mech raid note: Test leaves out the alert's note lines, by their marker", function()
+  resetNotes()
+  local f = fresh()
+  local p = f.panel
+  p.saveAs.opts.set("note")
+  local _, id = only()
+  typeInto(p.textEdit, "Add Interrupts")
+  p.textEdit.OnEnterPressed(p.textEdit)
+  mockWindow(true)
+  click(p.testBtn)
+  CRT.TimelineRehearsalWindow = nil
+  local o = opened[1] and opened[1].opts
+  local rep = o and o.alerts and o.alerts.replaces
+  assert(rep and rep.block == "note" and rep.mech == "777" and rep.id == nil, "the note's lines are replaced: " .. tostring(rep and rep.block))
+  assert(o.alerts.extra[1].text == "Add Interrupts" and o.testing == "Add Interrupts", "the new text")
+  -- off: no lines, the test still leaves out any left
+  setCheck(p.alertMe, false)
+  mockWindow(true)
+  click(p.testBtn)
+  CRT.TimelineRehearsalWindow = nil
+  rep = opened[1] and opened[1].opts.alerts.replaces
+  assert(rep and rep.block == "note" and rep.mech == R:Get(ENC, id).raidNote.key, "off: the same")
+  assert(#errors == 0, tostring(errors[1]))
+end)
+
 check("mech: test falls back to the quick test when the window can't open", function()
   local f = fresh()
   local p = f.panel
