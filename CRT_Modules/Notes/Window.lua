@@ -198,8 +198,15 @@ end
 
 local function textBlock(lines)
     local out = {}
+    local Kicks = CRT.InterruptNote
     for _, line in ipairs(lines) do
-        out[#out + 1] = textLine(line)
+        -- a kick order line: its group's raid marker icon in front (Interrupts/NoteBlock.lua's Expand)
+        local marker
+        if Kicks then
+            marker, line = Kicks.TakeMarker(line)
+        end
+        local icon = marker and Kicks.Icon(marker, 14) or ""
+        out[#out + 1] = (icon ~= "" and (icon .. " ") or "") .. textLine(line)
     end
     return table.concat(out, "\n")
 end
@@ -453,8 +460,16 @@ local SAMPLE_ASSIGNMENTS = {
 
 local function assignmentsText()
     local _, record, note = Notes:Active()
-    if note and #note.lines > 0 then
-        return textBlock(note.lines), "Assignments: " .. record.name, true
+    local lines = note and note.lines
+    -- the kick block reads as "Kick order" and a line per group (the saved text stays as written)
+    if lines and record.raw and CRT.InterruptNote then
+        local shown = CRT.InterruptNote.Expand(record.raw)
+        if shown ~= record.raw then
+            lines = CRT.NoteParser.Parse(shown).lines
+        end
+    end
+    if lines and #lines > 0 then
+        return textBlock(lines), "Assignments: " .. record.name, true
     end
     if previewOn then
         return textBlock(SAMPLE_ASSIGNMENTS), "Assignments (sample)", true

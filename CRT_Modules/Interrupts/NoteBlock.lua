@@ -176,6 +176,110 @@ function Block.Replace(raw, lines)
     return table.concat(out)
 end
 
+-- Reading view: where CRT shows a note to read, the block is drawn as a "Kick order" heading and one "<label>: <names>"
+-- line per group (the raid marker's icon before the label), never the intstart / intend lines. The note's text itself is
+-- never changed. Pure: the text in, the display out; Render.lua (the note view), Window.lua (the Assignments window) and
+-- EditModel.lua (the editor's rows) all take it from here.
+TEXT.kickOrder = "Kick order"
+TEXT.group = "Group %d"
+local MARKER_TOKEN = "^{rt(%d)} (.*)$" -- Expand's way to carry a raid marker in plain text
+
+-- The raid marker icon for a number 1 to 8 (as the Interrupts page draws it), or "".
+function Block.Icon(marker, size)
+    local Setup = CRT.InterruptSetup
+    return Setup and Setup.MarkerIcon and Setup.MarkerIcon(marker, size) or ""
+end
+
+-- A line of Expand's text split into its raid marker (a number, or nil) and the rest.
+function Block.TakeMarker(line)
+    local marker, rest = tostring(line or ""):match(MARKER_TOKEN)
+    if marker then
+        return tonumber(marker), rest
+    end
+    return nil, line
+end
+
+local DIFFICULTY_IDS = {}
+for id, name in pairs(DIFFICULTY_NAMES) do
+    DIFFICULTY_IDS[name:lower()] = id
+end
+
+-- The group labels of the kick setup in use for a boss and a note's difficulty word: { { label, marker }, ... } in group
+-- order, or {} when the module is off or the boss has none. With no difficulty, the boss's only setup.
+function Block.Labels(encounterID, difficulty)
+    local I = CRT.Interrupts
+    if not (I and I.Enabled and I:Enabled() and type(encounterID) == "number") then
+        return {}
+    end
+    local id = type(difficulty) == "string" and DIFFICULTY_IDS[difficulty:lower()] or nil
+    local def
+    if id then
+        def = I:Def(I.Key(encounterID, id))
+    else
+        local all = I:Setups(encounterID)
+        def = #all == 1 and all[1] or nil
+    end
+    local out = {}
+    for g, grp in ipairs(def and def.groups or {}) do
+        out[g] = { label = grp.label, marker = grp.marker }
+    end
+    return out
+end
+
+-- How a note's lines read: one entry per piece of Notes.SplitPieces (so the same line numbers), nil for a line that is
+-- not in the block, else
+--   { kind = "heading", text }          the start line
+--   { kind = "kick", label, marker, names }   a line of names; the label from the setup, else "Group N"
+--   { kind = "hidden" }                 the end line
+-- Returns nil when the note has no block. Also returns the pieces.
+function Block.View(raw)
+    raw = raw or ""
+    if not raw:lower():find(Block.START, 1, true) then
+        return nil
+    end
+    local all = pieces(raw)
+    local first, last = find(all)
+    if not first then
+        return nil
+    end
+    local note = CRT.NoteParser.Parse(raw)
+    local labels = Block.Labels(note.encounterID, note.difficulty)
+    local items = { [first] = { kind = "heading", text = TEXT.kickOrder }, [last] = { kind = "hidden" } }
+    for i = first + 1, last - 1 do
+        local n = i - first
+        local names = {}
+        for word in all[i].text:gmatch("%S+") do
+            names[#names + 1] = word
+        end
+        local group = labels[n]
+        local label = group and type(group.label) == "string" and group.label ~= "" and group.label or string.format(TEXT.group, n)
+        items[i] = { kind = "kick", label = label, marker = group and group.marker or nil, names = names }
+    end
+    return items, all
+end
+
+-- The note's text as it is read: the block as "Kick order" and "<label>: <names>" lines (a raid marker as a "{rtN} "
+-- token in front, Block.TakeMarker), the end line left out. The same text when the note has no block.
+function Block.Expand(raw)
+    local items, all = Block.View(raw)
+    if not items then
+        return raw
+    end
+    local out = {}
+    for i, p in ipairs(all) do
+        local item = items[i]
+        if not item then
+            out[#out + 1] = p.text .. p.eol
+        elseif item.kind == "heading" then
+            out[#out + 1] = item.text .. p.eol
+        elseif item.kind == "kick" then
+            local names = #item.names > 0 and (" " .. table.concat(item.names, " ")) or ""
+            out[#out + 1] = (item.marker and ("{rt" .. item.marker .. "} ") or "") .. item.label .. ":" .. names .. p.eol
+        end
+    end
+    return table.concat(out)
+end
+
 -- A block's rows as a list in def's group order, or nil when they don't fit it: more lines than groups, or a line
 -- that is neither empty (an empty group; a missing line too) nor exactly its group's slots in names.
 function Block.Fit(def, rows)

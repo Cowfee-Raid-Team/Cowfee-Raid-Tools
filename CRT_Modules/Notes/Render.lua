@@ -241,6 +241,11 @@ local function freeRow(line, ctx)
     if line == "" then
         return { kind = "blank" }
     end
+    -- a kick order line carries its group's raid marker (Interrupts/NoteBlock.lua's Expand)
+    local marker
+    if CRT.InterruptNote then
+        marker, line = CRT.InterruptNote.TakeMarker(line)
+    end
     local bullet = false
     if ctx.markdown then
         local heading = line:match("^%s*#+%s+(.-)%s*$")
@@ -259,7 +264,7 @@ local function freeRow(line, ctx)
     if label and not bullet then
         -- class names coloured only in an assignment's names, never in a sentence
         local classes = CRT.NoteParser.LooksLikeLabel(label)
-        return { kind = "label", label = label,
+        return { kind = "label", label = label, marker = marker,
             parts = ctx.markdown and boldParts(rest, ctx, classes) or parts(rest, ctx, nil, classes) }
     end
     if bullet or line:find(":", 1, true) or line:find("**", 1, true) then
@@ -274,6 +279,10 @@ end
 function Render.Rows(text, ctx)
     ctx = ctx or {}
     local Parser = CRT.NoteParser
+    -- the kick block reads as "Kick order" and a line per group (the saved text stays as written)
+    if CRT.InterruptNote and CRT.InterruptNote.Expand then
+        text = CRT.InterruptNote.Expand(text or "")
+    end
     local note = Parser.Parse(text or "")
     local raw = Parser.SplitLines(text or "")
     local rows = {}
@@ -525,7 +534,8 @@ local function drawRow(row, data, width)
         end
     elseif kind == "label" then
         row.label:SetWidth(0)
-        row.label:SetText(data.label .. ":")
+        local icon = data.marker and CRT.InterruptNote.Icon(data.marker, 14) or ""
+        row.label:SetText((icon ~= "" and (icon .. " ") or "") .. data.label .. ":")
         local max = math.floor(width * LABEL_MAX)
         local w = row.label:GetStringWidth() or 0
         if w > max then
