@@ -617,24 +617,27 @@ check("mech raid note: For, the tick, and Only me", function()
   p.saveAs.opts.set("note")
   local note = noteFor(ENC, "Mythic")
   assert(note and note.name == "Test Boss" and note.difficulty == "Mythic" and note.via == "Mech Alerts" and note.asNew, "a note made for the boss")
-  -- For: a role
+  -- For: every choice a tick box
   local labels = {}
   for _, o in ipairs(p.forDrop.opts.options()) do labels[#labels + 1] = (o.title and "#" or "") .. o.label .. (o.checkbox and "[]" or "") end
-  assert(table.concat(labels, ","):find("^Everyone,Tanks,Healers,Melee,Ranged,#Players"), table.concat(labels, ","))
-  p.forDrop.opts.set("healer")
+  assert(table.concat(labels, ","):find("^Everyone%[%],Tanks%[%],Healers%[%],Melee%[%],Ranged%[%],#Players"), table.concat(labels, ","))
+  -- a role: Everyone unticked first frees the roles
+  p.forDrop.opts.toggle("all")
+  p.forDrop.opts.toggle("healer")
   local lines = marked(note.raw, "777")
   assert(#lines == 2 and lines[1].tags[1] == "healer" and lines[2].tags[1] == "healer", "the lines' tag reads healer")
-  assert(p.forDrop.opts.get() == "healer", "For shows it")
-  -- For: picked players, ticked one by one
+  assert(p.forDrop.opts.checked("healer") and not p.forDrop.opts.checked("all"), "For shows it")
+  -- For: picked players, ticked one by one, beside the role
   p.forDrop.opts.toggle("Abu")
   p.forDrop.opts.toggle("Cheo")
   lines = marked(note.raw, "777")
-  assert(table.concat(lines[1].tags, " ") == "Abu Cheo" and p.forDrop.opts.checked("Abu"), "players: " .. table.concat(lines[1].tags, " "))
+  assert(table.concat(lines[1].tags, " ") == "healer Abu Cheo" and p.forDrop.opts.checked("Abu"), "players: " .. table.concat(lines[1].tags, " "))
   labels = {}
   for _, o in ipairs(p.forDrop.opts.options()) do if o.checkbox then labels[#labels + 1] = o.label end end
   assert(table.concat(labels, ","):find("Abu", 1, true) and table.concat(labels, ","):find("Cheo", 1, true), "picked players stay listed")
-  p.forDrop.opts.toggle("Abu") p.forDrop.opts.toggle("Cheo")
+  p.forDrop.opts.toggle("Abu") p.forDrop.opts.toggle("Cheo") p.forDrop.opts.toggle("healer")
   assert(marked(note.raw, "777")[1].tags[1] == "all", "none left: everyone")
+  assert(p.forDrop.opts.checked("all"), "Everyone ticked again")
   -- Alert me off: out of the note, and back
   setCheck(f.rows[1].check, false)
   assert(#marked(note.raw, "777") == 0 and only().raidNote, "off: the lines are gone, the choice kept")
@@ -657,6 +660,47 @@ check("mech raid note: For, the tick, and Only me", function()
   assert(#marked(note.raw, "777") == 0 and note.raw == "EncounterID:9001;Difficulty:Mythic;Name:Test Boss\\nfree text after\\n", "only its lines taken out: " .. note.raw)
   assert(#mineItems() == 2, "your own alert runs again: " .. #mineItems())
   assert(p.noteStatus.text == "" and p.forDrop.opts.enabledIf() == false, "status gone, For greyed")
+  assert(#errors == 0, tostring(errors[1]))
+end)
+
+-- #1206: For takes several roles. Everyone, Tanks, Healers, Melee and Ranged are tick boxes like the players; Everyone
+-- ticked unticks and greys the rest, unticked frees them; the lines' tag lists every ticked word; nothing ticked is
+-- Everyone; the open list's state goes back to what is saved when it closes; an older single-word tag reads as before
+check("mech raid note: For ticks several roles; Everyone greys the rest", function()
+  resetNotes()
+  local f = fresh()
+  local p = f.panel
+  p.saveAs.opts.set("note")
+  local note = noteFor(ENC, "Mythic")
+  local o = p.forDrop.opts
+  local function option(key) for _, x in ipairs(o.options()) do if x.key == key then return x end end end
+  local function greyed(key) local x = option(key) return type(x.disabled) == "function" and x.disabled() or x.disabled == true end
+  local function tags() return table.concat(marked(note.raw, "777")[1].tags, " ") end
+  -- Everyone ticked: the roles and players greyed (you, the one player of the group)
+  UnitName = function(u) if u == "player" then return "Solex" end end
+  assert(o.checked("all") and greyed("healer") and greyed("tank") and greyed("Solex"), "Everyone greys the rest")
+  UnitName = nil
+  assert(not greyed("all"), "Everyone itself never greys")
+  -- unticked: the rest freed, nothing saved yet (still everyone's lines)
+  o.toggle("all")
+  assert(not o.checked("all") and not greyed("healer") and tags() == "all", "freed, still everyone's")
+  o.toggle("healer") o.toggle("ranged")
+  assert(tags() == "healer ranged", "both roles: " .. tags())
+  assert(o.checked("healer") and o.checked("ranged") and not o.checked("tank") and not o.checked("all") and not greyed("tank"), "both ticked")
+  -- Everyone again: the rest unticked and greyed
+  o.toggle("all")
+  assert(tags() == "all" and o.checked("all") and not o.checked("healer") and greyed("ranged"), "everyone again")
+  -- the list closed while freed with nothing ticked: back to Everyone ticked
+  o.toggle("all")
+  assert(not o.checked("all"), "freed")
+  o.onClose()
+  assert(o.checked("all") and greyed("healer"), "closed: as saved")
+  -- an older single-word tag reads as before
+  R:Get(ENC, (select(2, only()))).raidNote.tag = "healer"
+  CRT.NoteReminders.Refresh()
+  assert(o.checked("healer") and not o.checked("all") and not greyed("melee"), "an older role tag")
+  o.toggle("melee")
+  assert(tags() == "healer melee", "adds to it: " .. tags())
   assert(#errors == 0, tostring(errors[1]))
 end)
 

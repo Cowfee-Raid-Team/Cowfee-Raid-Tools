@@ -9,7 +9,7 @@ local ADDON, CRT = ...
 -- FormatLine never writes it, so every other writer keeps it on the line (Parser.UnknownFields), and a CRT from
 -- before it reads the line as any other timed line.
 -- The reminder keeps what the panel chose in raidNote = { tag, key, difficulty }: who the lines are for (tag words:
--- "all", a role word, or players' names), the marker, and the note's Difficulty the lines went to (always a note for
+-- "all", or any of the role words and players' names, read as any of them), the marker, and the note's Difficulty the lines went to (always a note for
 -- exactly that difficulty, never one for any difficulty, so one difficulty's times never run on another's pull). While a reminder
 -- has it, its own alerts step aside for the note's lines ("mine" block, Alerts/Reminders.lua); taking it away
 -- (Only me) puts them back. A raider's own Only me alert for the same ability and the note's line both show.
@@ -81,17 +81,33 @@ function MechNote.TagWords(tag)
     return out
 end
 
--- Whether a tag is one of the role choices (everyone included); otherwise it names players.
-function MechNote.IsRole(tag)
-    return IS_ROLE[clean(tag):lower()] == true
+-- Whether a word is one of the role choices (everyone included); otherwise it names a player.
+function MechNote.IsRole(word)
+    return IS_ROLE[clean(word):lower()] == true
 end
 
--- Whether a tag names this player (by name, any realm).
-function MechNote.HasPlayer(tag, name)
-    if MechNote.IsRole(tag) or type(name) ~= "string" then
+-- Whether a tag is for everyone: empty, or it holds "all" (Everyone stands alone in the For list).
+function MechNote.IsEveryone(tag)
+    for _, w in ipairs(MechNote.TagWords(tag)) do
+        if w:lower() == MechNote.ROLES[1] then
+            return true
+        end
+    end
+    return false
+end
+
+-- Whether a tag holds this word, a role word or a player's name (any case). Everyone's tag holds no other word.
+function MechNote.HasWord(tag, word)
+    if type(word) ~= "string" then
         return false
     end
-    local want = name:lower()
+    local want = clean(word):lower()
+    if want == MechNote.ROLES[1] then
+        return MechNote.IsEveryone(tag)
+    end
+    if MechNote.IsEveryone(tag) then
+        return false
+    end
     for _, w in ipairs(MechNote.TagWords(tag)) do
         if w:lower() == want then
             return true
@@ -100,24 +116,55 @@ function MechNote.HasPlayer(tag, name)
     return false
 end
 
--- A player ticked or unticked in the For list: the tag with the name added or taken out. A role tag gives way to
--- the players; the last player taken out leaves everyone.
-function MechNote.TogglePlayer(tag, name)
-    name = clean(name)
-    if name == "" then
+-- The players a tag names (its words that aren't roles), as written.
+function MechNote.Players(tag)
+    local out = {}
+    for _, w in ipairs(MechNote.TagWords(tag)) do
+        if not MechNote.IsRole(w) then
+            out[#out + 1] = w
+        end
+    end
+    return out
+end
+
+-- A word ticked or unticked in the For list: the tag with it added or taken out. Everyone ticked is the whole tag
+-- ("all"), so it unticks the rest; a role or a player ticked while it is everyone's replaces it. The roles come first,
+-- in the list's order, then the players in the order they were ticked ("healer ranged Abu"). Nothing left is everyone.
+function MechNote.ToggleWord(tag, word)
+    word = clean(word)
+    if word == "" then
         return tag
     end
-    local words, found = {}, false
-    if not MechNote.IsRole(tag) then
+    if word:lower() == MechNote.ROLES[1] then
+        return MechNote.ROLES[1]
+    end
+    local on = {}
+    local players, found = {}, false
+    if not MechNote.IsEveryone(tag) then
         for _, w in ipairs(MechNote.TagWords(tag)) do
-            if w:lower() == name:lower() then
+            if w:lower() == word:lower() then
                 found = true
+            elseif MechNote.IsRole(w) then
+                on[w:lower()] = true
             else
-                words[#words + 1] = w
+                players[#players + 1] = w
             end
         end
     end
     if not found then
+        if MechNote.IsRole(word) then
+            on[word:lower()] = true
+        else
+            players[#players + 1] = word
+        end
+    end
+    local words = {}
+    for _, role in ipairs(MechNote.ROLES) do
+        if on[role] then
+            words[#words + 1] = role
+        end
+    end
+    for _, name in ipairs(players) do
         words[#words + 1] = name
     end
     return #words > 0 and table.concat(words, " ") or MechNote.ROLES[1]

@@ -128,14 +128,15 @@ end)
 check("mechnote: For tags", function()
   assert(table.concat(M.TagWords(nil), " ") == "all" and table.concat(M.TagWords(" "), " ") == "all", "nothing is everyone")
   assert(M.IsRole("all") and M.IsRole("Healer") and M.IsRole("melee") and not M.IsRole("Abu") and not M.IsRole("Abu Cheo"), "roles")
-  local tag = M.TogglePlayer("all", "Abu")
-  assert(tag == "Abu", "a player replaces a role: " .. tag)
-  tag = M.TogglePlayer(tag, "Cheo-Realm")
-  assert(tag == "Abu Cheo-Realm" and M.HasPlayer(tag, "cheo-realm") and M.HasPlayer(tag, "Abu"), tag)
-  tag = M.TogglePlayer(tag, "abu")
+  local tag = M.ToggleWord("all", "Abu")
+  assert(tag == "Abu", "a player replaces everyone: " .. tag)
+  tag = M.ToggleWord(tag, "Cheo-Realm")
+  assert(tag == "Abu Cheo-Realm" and M.HasWord(tag, "cheo-realm") and M.HasWord(tag, "Abu"), tag)
+  tag = M.ToggleWord(tag, "abu")
   assert(tag == "Cheo-Realm", "taken out in any case: " .. tag)
-  assert(M.TogglePlayer(tag, "Cheo-Realm") == "all", "the last one out leaves everyone")
-  assert(not M.HasPlayer("healer", "healer"), "a role names no player")
+  assert(M.ToggleWord(tag, "Cheo-Realm") == "all", "the last one out leaves everyone")
+  assert(not M.HasWord("all", "healer") and not M.HasWord("healer", "Abu"), "a word not ticked")
+  assert(table.concat(M.Players("healer Abu ranged Cheo"), ",") == "Abu,Cheo" and #M.Players("all") == 0, "the players of a tag")
   -- the players offered: you and your raid, with realms, once each
   group = { "Cheoeqar", "Abu-Other", "Zed" }
   local names = M.GroupNames()
@@ -402,6 +403,39 @@ check("mechnote: an older CRT reads the lines and keeps the marker", function()
   assert(M.IsMarked(rewritten, "1234"), "still marked")
   local back = P.Parse(rewritten).timers[1]
   assert(back.time == 40 and back.ticks[2] == 4 and back.fill == "up", "the fields survive")
+end)
+
+-- For with several roles (#1206): Everyone, the role words and players, each ticked on its own; Everyone stands alone
+-- (ticking it unticks the rest), the tag lists every ticked word with the roles first in the list's order, nothing
+-- ticked is everyone, and an older single-word tag reads as before.
+check("mechnote: For ticks several roles and players; Everyone stands alone", function()
+  assert(M.IsEveryone("all") and M.IsEveryone(nil) and M.IsEveryone("") and M.IsEveryone("ALL") and not M.IsEveryone("healer"), "everyone")
+  local tag = M.ToggleWord("all", "ranged")
+  assert(tag == "ranged", "a role replaces everyone: " .. tag)
+  tag = M.ToggleWord(tag, "healer")
+  assert(tag == "healer ranged", "the roles in the list's order: " .. tag)
+  assert(M.HasWord(tag, "healer") and M.HasWord(tag, "Ranged") and not M.HasWord(tag, "tank") and not M.IsEveryone(tag), "both ticked")
+  tag = M.ToggleWord(tag, "Abu")
+  assert(tag == "healer ranged Abu", "roles first, then players: " .. tag)
+  tag = M.ToggleWord(tag, "tank")
+  assert(tag == "tank healer ranged Abu", tag)
+  assert(M.ToggleWord(tag, "all") == "all", "Everyone unticks the rest")
+  tag = M.ToggleWord(M.ToggleWord("healer ranged", "healer"), "ranged")
+  assert(tag == "all", "nothing ticked: everyone: " .. tag)
+  -- older tags read as before
+  assert(M.HasWord("healer", "healer") and not M.IsEveryone("healer"), "an older role tag")
+  assert(M.HasWord("Abu Cheo", "cheo") and not M.HasWord("Abu Cheo", "healer"), "an older players tag")
+  assert(M.ToggleWord("healer", "melee") == "healer melee", "an older role tag adds a role")
+  -- the lines' tag reads as any of its words (Notes/Engine.lua): a healer gets it, a tank doesn't
+  local line = M.Lines({ text = "x", outputs = { alert = true } }, { { ph = 1, t = 5 } }, "healer ranged", "x")[1]
+  local t = P.Parse(line).timers[1]
+  assert(line:find("tag:healer ranged;", 1, true) and NE:IsMine(t), "a healer's: " .. line)
+  local was = UnitGroupRolesAssigned
+  UnitGroupRolesAssigned = function() return "TANK" end
+  NE:ResetTokens()
+  assert(not NE:IsMine(t), "not a tank's")
+  UnitGroupRolesAssigned = was
+  NE:ResetTokens()
 end)
 
 -- #1206: a Mech Alert saved as Raid note, For Everyone, reaches you (the leader who wrote it) exactly once per cast,
