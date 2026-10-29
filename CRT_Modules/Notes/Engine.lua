@@ -377,7 +377,7 @@ function Engine.ItemFor(t, index, mine)
     if not mine then
         return item
     end
-    item.priority = Rules.Priority(2, "normal")
+    item.priority = Rules.Priority(2, t.prio or "normal") -- prio: high or low (a Mech Alert's priority)
     -- shield: makes the line's bar a shield bar (Alerts/Absorb.lua), its window from the line's Show from
     local a = type(t.absorb) == "table" and t.absorb
     if a and type(a.unit) == "string" and type(a.length) == "number" then

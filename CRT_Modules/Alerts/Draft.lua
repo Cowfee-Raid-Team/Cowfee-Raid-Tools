@@ -592,6 +592,7 @@ function Draft.NoteTimer(ctx, draft)
         kind = spellID and "spell" or "text",
         text = text ~= "" and text or nil,
         dur = base.dur,
+        prio = base.prio, -- a line's prio: stays as it was (no box for it here)
         color = copy(draft.color),
         show = show,
         tts = draft.speak or nil,

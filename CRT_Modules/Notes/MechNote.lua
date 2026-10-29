@@ -4,11 +4,13 @@ local ADDON, CRT = ...
 -- those lines are found again. One line per cast time, in the boss's raid note for the difficulty on show, each
 -- carrying the alert's look and sound (Notes/Parse.lua's fields) and a marker field naming the ability:
 --   time:36;ph:1;tag:all;spellid:1234;text:Spread;...;mech:1234;
--- The marker is the ability's key (MechNote.Key): its spell ID, or for a row with no spell its name in lower case.
+-- The marker is the ability's key (MechNote.Key): its spell ID, or for a row with no spell its name in lower case,
+-- with "#" and the reminder's id when another reminder of the boss has it already (UniqueKey).
 -- FormatLine never writes it, so every other writer keeps it on the line (Parser.UnknownFields), and a CRT from
 -- before it reads the line as any other timed line.
 -- The reminder keeps what the panel chose in raidNote = { tag, key, difficulty }: who the lines are for (tag words:
--- "all", a role word, or players' names), the marker, and the note's Difficulty the lines went to. While a reminder
+-- "all", a role word, or players' names), the marker, and the note's Difficulty the lines went to (always a note for
+-- exactly that difficulty, never one for any difficulty, so one difficulty's times never run on another's pull). While a reminder
 -- has it, its own alerts step aside for the note's lines ("mine" block, Alerts/Reminders.lua); taking it away
 -- (Only me) puts them back. A raider's own Only me alert for the same ability and the note's line both show.
 -- The text functions are pure; Write, Sync and Leave change the notes store (Notes/Data.lua) and nothing else:
@@ -23,7 +25,6 @@ MechNote.FIELD = "mech"
 MechNote.ROLES = { "all", "tank", "healer", "melee", "ranged" }
 MechNote.VIA = "Mech Alerts" -- how a note made here came (a note's via, shown in the Raid Notes list)
 
-local SHOW_KEYS = { "alert", "text", "icon", "bar", "circle", "timeline" }
 local IS_ROLE = {}
 for _, w in ipairs(MechNote.ROLES) do
     IS_ROLE[w] = true
@@ -40,17 +41,6 @@ end
 
 local function validID(v)
     return type(v) == "number" and v > 0 and v or nil
-end
-
-local function copy(v)
-    if type(v) ~= "table" then
-        return v
-    end
-    local out = {}
-    for k, x in pairs(v) do
-        out[k] = copy(x)
-    end
-    return out
 end
 
 -- Keys ---------------------------------------------------------------------------------------------
@@ -135,65 +125,21 @@ end
 
 -- Lines -------------------------------------------------------------------------------------------
 
--- A reminder's look and sound as a note line's timer (Notes/Parse.lua's FormatLine), without its time: the panel
--- setting on the left, the note field on the right.
+-- A reminder's look and sound as a note line's timer (Notes/Parse.lua's FormatLine), without its time, through the
+-- draft the panel edits (Alerts/Draft.lua ForReminder, then NoteTimer: the one mapping of an alert to a note line),
+-- with the For tag and the reminder's priority. The panel setting on the left, the note field on the right:
 --   Text text: (no ";")       spell spellid:        Icon ID icon:          Color colors:
 --   Show as show:             Speak the text tts:1  Count down count:1     Speak at At 0 ttsat:0
 --   Glow at 0 glow:1          Sound sound:          Show from warn:        Linger linger:
 --   Shield bar shield:        Impact ticks ticks:   Bar fills up fill:up   Count down to each impact countto:impact
+--   (priority high or low) prio:
 -- Also when it lands on me (an aura sound) stays yours: a note line can't carry it.
 function MechNote.Timer(r, tag)
-    local o = type(r.outputs) == "table" and r.outputs or {}
-    local show = {}
-    for _, k in ipairs(SHOW_KEYS) do
-        show[k] = o[k] and true or nil
-    end
-    -- read out as a reminder is: speech on unless turned off, the text unless the mode is the count alone
-    local speaks = o.speech ~= false
-    local mode = r.speech or "text"
-    local tts = speaks and mode ~= "count"
-    local count = speaks and (mode == "textcount" or mode == "count")
-    local text = clean(r.text)
-    local spellID = validID(r.spellID)
-    local Sound = CRT.Sound
-    local sound = r.sound
-    if Sound and Sound.Compact then
-        sound = Sound.Compact(sound) -- a game sound by its bare name, as older versions read it
-    end
-    local P = CRT.NoteParser
-    local absorb = type(r.absorb) == "table" and P.ReadAbsorb(r.absorb.unit, r.absorb.length, r.absorb.anyDifficulty) or nil
-    -- a shield bar fills with the shield, not with time: its ticks and fill are left off (as the reminder runs it)
-    local ticks
-    if not absorb and type(r.ticks) == "table" then
-        ticks = {}
-        for _, t in ipairs(r.ticks) do
-            if type(t) == "number" and t == t and t >= 0 and t < math.huge then
-                ticks[#ticks + 1] = t
-            end
-        end
-        table.sort(ticks)
-        ticks = #ticks > 0 and ticks or nil
-    end
-    return {
-        tags = MechNote.TagWords(tag),
-        spellId = spellID,
-        kind = spellID and "spell" or "text",
-        text = text ~= "" and text or nil,
-        color = copy(r.color),
-        show = show,
-        tts = tts or nil,
-        speakAt = (tts and r.speakAt == "zero") and "zero" or nil,
-        count = count or nil,
-        sound = sound,
-        glow = r.glow and true or nil,
-        warn = type(r.warn) == "number" and r.warn or 5,
-        linger = type(r.linger) == "number" and r.linger > 0 and r.linger or nil,
-        iconID = validID(r.iconID),
-        absorb = absorb,
-        ticks = ticks,
-        fill = (not absorb and r.fill == "up") and "up" or nil,
-        countTo = (ticks and r.countTo == "impact") and "impact" or nil,
-    }
+    local Draft = CRT.AlertDraft
+    local t = Draft.NoteTimer(nil, Draft.ForReminder(r))
+    t.tags = MechNote.TagWords(tag)
+    t.prio = (r.priority == "high" or r.priority == "low") and r.priority or nil
+    return t
 end
 
 -- The raw note lines of a reminder: one per time ({ ph, t }, a time with no phase in phase 1), in phase and time
@@ -310,6 +256,17 @@ function MechNote.Replace(raw, key, lines)
     return table.concat(out)
 end
 
+-- The marked lines of a note's text, as written, in order.
+function MechNote.MarkedLines(raw, key)
+    local out = {}
+    for _, p in ipairs(pieces(raw or "")) do
+        if MechNote.IsMarked(p.text, key) then
+            out[#out + 1] = p.text
+        end
+    end
+    return out
+end
+
 -- The note ---------------------------------------------------------------------------------------
 
 -- The Difficulty of the note the lines go to: the ability timeline's own (the one the times are read from), else the
@@ -326,23 +283,14 @@ local function sameDifficulty(a, b)
     return trim(a):lower() == trim(b):lower()
 end
 
--- The shared note a pull of that boss and difficulty reads (Notes:FindForEncounter), when it is for that difficulty
--- or for any; nil when there is none, or only one for another difficulty (that note isn't changed for this one).
+-- The boss's shared note for exactly that difficulty (Notes:FindExact), or nil. A note for any difficulty, or for
+-- another one, is never written: Mythic times would run on a Heroic pull.
 function MechNote.FindNote(encounterID, difficulty)
     local Notes = CRT.Notes
-    local id = Notes and type(encounterID) == "number" and Notes:FindForEncounter(encounterID, difficulty) or nil
-    local record = id and Notes:Get(id)
-    if not record then
-        return nil
-    end
-    local d = record.difficulty
-    if d == nil or trim(d) == "" or sameDifficulty(d, difficulty) then
-        return id
-    end
-    return nil
+    return Notes and Notes.FindExact and Notes:FindExact(encounterID, difficulty) or nil
 end
 
--- How many marked lines the boss's note for that difficulty has (0 with no note).
+-- How many marked lines the boss's note for that difficulty has (0 with no note), and the note.
 function MechNote.CountIn(encounterID, difficulty, key)
     local id = MechNote.FindNote(encounterID, difficulty)
     local record = id and CRT.Notes:Get(id)
@@ -350,30 +298,25 @@ function MechNote.CountIn(encounterID, difficulty, key)
 end
 
 -- Writes the marked lines into the boss's note for that difficulty, in place of the ones there: a note named after
--- the boss is made when it has none (only when there are lines to write). Returns the note's id (nil when none
--- was needed) and how many lines it now has. The active note and the shares are left alone.
+-- the boss is made when it has none (Notes:NoteFor, exact), only when there are lines to write. Returns the note's id
+-- (nil when none was needed) and how many lines it now has. The active note and the shares are left alone.
 function MechNote.Write(encounterID, difficulty, bossName, key, lines)
     local Notes = CRT.Notes
     if not (Notes and type(encounterID) == "number" and key) then
         return nil, 0
     end
     lines = lines or {}
-    local id = MechNote.FindNote(encounterID, difficulty)
-    if not id then
-        if #lines == 0 then
-            return nil, 0
-        end
-        local header = "EncounterID:" .. encounterID .. ";Difficulty:" .. clean(difficulty)
-        if clean(bossName) ~= "" then
-            header = header .. ";Name:" .. clean(bossName)
-        end
-        id = Notes:Import(header .. "\n", nil, nil, nil, MechNote.VIA, nil, true)
-        if not id then
-            return nil, 0
-        end
+    local id
+    if #lines == 0 then
+        id = MechNote.FindNote(encounterID, difficulty)
+    else
+        id = Notes:NoteFor(encounterID, difficulty, bossName, { exact = true, via = MechNote.VIA })
     end
-    local record = Notes:Get(id)
-    local raw = record and record.raw or ""
+    local record = id and Notes:Get(id)
+    if not record then
+        return nil, 0
+    end
+    local raw = record.raw or ""
     local new = MechNote.Replace(raw, key, lines)
     if new ~= raw then
         Notes:UpdateRaw(id, new, "edited", { lines = true })
@@ -400,12 +343,27 @@ function MechNote.Leave(encounterID, r)
     return before
 end
 
--- Brings a saved reminder's lines in step with it (the panel calls it after every save): its times as read from
--- `ref` for `group` (Reminders:Times), one line each, into the note for ref's difficulty; none while the reminder is
--- turned off. Lines left in the note of another difficulty (Times from changed) are taken out, and the reminder
--- keeps the difficulty they went to. opts { ref, group, boss }. Returns the note's id and the line count, or nil
--- for a reminder that is Only me.
-function MechNote.Sync(encounterID, id, opts)
+-- The marker a reminder's lines get: its own, unless another reminder of the boss already uses it (an ability row and
+-- your own reminder on the same spell, two of yours with the same text), then made its own with "#" and its id.
+function MechNote.UniqueKey(encounterID, id, key)
+    local Reminders = CRT.AlertReminders
+    if not (Reminders and key) then
+        return key
+    end
+    for _, e in ipairs(Reminders:List(encounterID)) do
+        local n = e.id ~= id and MechNote.InNote(e.r)
+        if n and n.key:lower() == key:lower() then
+            return key .. "#" .. tostring(id)
+        end
+    end
+    return key
+end
+
+-- What a saved reminder's lines should be now, without writing anything: the lines, the note's Difficulty and the
+-- marker. Its times as read from opts.ref for opts.group (Reminders:Times), into the note for ref's difficulty; with
+-- no ref, the difficulty its lines went to (its ability timeline preferred); none while it is turned off. Nil for a
+-- reminder that is Only me.
+function MechNote.Expected(encounterID, id, opts)
     local Reminders = CRT.AlertReminders
     local r = Reminders and Reminders:Get(encounterID, id)
     local n = MechNote.InNote(r)
@@ -413,16 +371,63 @@ function MechNote.Sync(encounterID, id, opts)
         return nil
     end
     opts = opts or {}
-    local difficulty = MechNote.NoteDifficulty(opts.ref, opts.group)
+    local difficulty = (opts.ref or not n.difficulty) and MechNote.NoteDifficulty(opts.ref, opts.group) or n.difficulty
+    local key = MechNote.UniqueKey(encounterID, id, n.key)
+    local lines = {}
+    if r.enabled ~= false then
+        local probe = r
+        if not opts.ref and not r.difficulty then
+            probe = {}
+            for k, v in pairs(r) do
+                probe[k] = v
+            end
+            probe.difficulty = difficulty -- that difficulty's ability timeline, inside the group
+        end
+        lines = MechNote.Lines(r, (Reminders:Times(encounterID, probe, opts.ref, opts.group)), n.tag, key)
+    end
+    return lines, difficulty, key
+end
+
+-- Whether the note holds exactly a reminder's lines (Expected): the same lines, in the note for the same difficulty.
+function MechNote.InStep(encounterID, id, opts)
+    local lines, difficulty, key = MechNote.Expected(encounterID, id, opts)
+    if not lines then
+        return true
+    end
+    local n = MechNote.InNote(CRT.AlertReminders:Get(encounterID, id))
+    if key ~= n.key or not (n.difficulty and sameDifficulty(n.difficulty, difficulty)) then
+        return false
+    end
+    local noteID = MechNote.FindNote(encounterID, difficulty)
+    local record = noteID and CRT.Notes:Get(noteID)
+    local have = record and MechNote.MarkedLines(record.raw, key) or {}
+    if #have ~= #lines then
+        return false
+    end
+    for i, line in ipairs(lines) do
+        if have[i] ~= line then
+            return false
+        end
+    end
+    return true
+end
+
+-- Brings a saved reminder's lines in step with it (Expected), the panel after every save and an import over it: lines
+-- left in the note of another difficulty (Times from changed) are taken out, and the reminder keeps the difficulty
+-- and marker they went to. opts { ref, group, boss }. Returns the note's id and the line count, or nil for a
+-- reminder that is Only me.
+function MechNote.Sync(encounterID, id, opts)
+    local lines, difficulty, key = MechNote.Expected(encounterID, id, opts)
+    if not lines then
+        return nil
+    end
+    local r = CRT.AlertReminders:Get(encounterID, id)
+    local n = r.raidNote
     if n.difficulty and not sameDifficulty(n.difficulty, difficulty) then
         MechNote.Leave(encounterID, r)
     end
-    n.difficulty = difficulty
-    local lines = {}
-    if r.enabled ~= false then
-        lines = MechNote.Lines(r, (Reminders:Times(encounterID, r, opts.ref, opts.group)), n.tag, n.key)
-    end
-    return MechNote.Write(encounterID, difficulty, opts.boss or r.boss, n.key, lines)
+    n.difficulty, n.key = difficulty, key
+    return MechNote.Write(encounterID, difficulty, (opts and opts.boss) or r.boss, key, lines)
 end
 
 -- The players the For list offers: you and your raid or party, with their realm when it isn't yours, in name order.

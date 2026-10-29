@@ -182,6 +182,16 @@ CRT.Notes.Import = function(self, text, from, personal, source, via, anyText, as
   return id
 end
 CRT.Notes.UpdateRaw = function(self, id, text) noteStore[id].raw = text self:Fire() return true end
+CRT.Notes.FindExact = function(self, enc, diff)
+  for id, r in pairs(noteStore) do
+    if r.encounterID == enc and r.difficulty and diff and r.difficulty:lower() == diff:lower() then return id end
+  end
+end
+CRT.Notes.NoteFor = function(self, enc, diff, boss, opts)
+  local id = opts and opts.exact and self:FindExact(enc, diff) or (not (opts and opts.exact) and self:FindForEncounter(enc, diff))
+  if id then return id, false end
+  return self:Import("EncounterID:" .. enc .. ";Difficulty:" .. diff .. ";Name:" .. boss .. "\\n", nil, nil, nil, opts and opts.via, nil, opts and opts.exact), true
+end
 local activeRecord = { encounterID = 9001, name = "Test Boss" }
 CRT.Notes.Active = function() return "n1", activeRecord end
 CRT.NotesPage = { TAB_H = CRT.UI.PAGE_H - 66 } -- CRT_Modules/Notes/Page.lua: a tab's height under the tabs
