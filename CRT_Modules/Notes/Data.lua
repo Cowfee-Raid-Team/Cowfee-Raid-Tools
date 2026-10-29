@@ -495,6 +495,19 @@ local function sameDifficulty(record, difficultyName)
     return not (difficultyName and record.difficulty) or record.difficulty:lower() == difficultyName:lower()
 end
 
+-- Whether note id is newer than note best (or there is no best yet): the later updated, then, as updated
+-- keeps only the minute, the higher id (the one made later). The same answer whatever order pairs() gives.
+local function newer(id, best)
+    if not best then
+        return true
+    end
+    local a, b = ndb().list[id].updated or "", ndb().list[best].updated or ""
+    if a ~= b then
+        return a > b
+    end
+    return (tonumber(id) or 0) > (tonumber(best) or 0)
+end
+
 -- The shared note a pull of a boss runs (and the Timeline adds lines to): the active note when it is a
 -- shared note for this boss and difficulty; else that boss's shared note of that difficulty, then of any,
 -- the newest when there are several (one per guild). Never a personal note.
@@ -505,9 +518,6 @@ function Notes:FindForEncounter(encounterID, difficultyName)
         return activeId
     end
     local exact, any
-    local function newer(id, best)
-        return not best or (ndb().list[id].updated or "") > (ndb().list[best].updated or "")
-    end
     for id, record in pairs(ndb().list) do
         if record.encounterID == encounterID and not record.personal then
             if difficultyName and record.difficulty and record.difficulty:lower() == difficultyName:lower() then
@@ -522,31 +532,39 @@ function Notes:FindForEncounter(encounterID, difficultyName)
     return exact or any
 end
 
--- Your personal note for a boss: the one of that difficulty, else one with no difficulty. Nil when none.
+-- Your personal note for a boss: the one of that difficulty, else one with no difficulty; the newest
+-- (newer) when there are several, as Import/New's picked boss can make. Nil when none.
 function Notes:PersonalFor(encounterID, difficultyName)
-    local loose
+    local exact, loose
     for id, record in pairs(ndb().list) do
         if record.personal and record.encounterID == encounterID then
             if difficultyName and record.difficulty and record.difficulty:lower() == difficultyName:lower() then
-                return id
-            elseif not record.difficulty then
-                loose = loose or id
+                if newer(id, exact) then
+                    exact = id
+                end
+            elseif not record.difficulty and newer(id, loose) then
+                loose = id
             end
         end
     end
-    return loose
+    return exact or loose
 end
 
--- Your personal note for a boss and difficulty, made (a header line, for your lines under it) when there
--- is none. Returns its id and whether it was just made.
+-- Your personal note for a boss and difficulty (the newest, as PersonalFor), made (a header line, for your
+-- lines under it) when there is none. Returns its id and whether it was just made.
 function Notes:MakePersonal(encounterID, difficultyName, bossName)
     if type(encounterID) ~= "number" then
         return nil
     end
+    local found
     for id, record in pairs(ndb().list) do
-        if record.personal and record.encounterID == encounterID and (record.difficulty or "") == (difficultyName or "") then
-            return id, false
+        if record.personal and record.encounterID == encounterID and (record.difficulty or "") == (difficultyName or "")
+            and newer(id, found) then
+            found = id
         end
+    end
+    if found then
+        return found, false
     end
     local header = "EncounterID:" .. encounterID .. (difficultyName and (";Difficulty:" .. difficultyName) or "")
         .. (bossName and (";Name:" .. bossName) or "")
@@ -572,6 +590,14 @@ local function rosterFromInvite(note, title)
         return nil
     end
     return Groups:CreatePreset(title, slots)
+end
+
+-- A note's name from its text's first line that isn't blank: trimmed and cut to 40 characters. Nil when the
+-- text has none. Import names a plain note by it; the Import/New dialog a note for its picked boss.
+function Notes.FirstLineName(text)
+    local first = (text or ""):match("^%s*([^\r\n]+)")
+    first = first and first:gsub("%s+$", ""):sub(1, 40):gsub("%s+$", "")
+    return (first and first ~= "") and first or nil
 end
 
 -- Imports note text. A note for the same boss and difficulty is replaced. Returns id, message.
@@ -619,9 +645,7 @@ function Notes:Import(text, from, personal, source, via, anyText, asNew)
     store(record, id, text, from and "received" or "imported", { who = from or me() })
     record.name = note.name or ("Note " .. id)
     if plain then
-        local first = text:match("^%s*([^\r\n]+)")
-        first = first and first:gsub("%s+$", ""):sub(1, 40):gsub("%s+$", "")
-        record.name = (first and first ~= "") and first or ("New note " .. id)
+        record.name = Notes.FirstLineName(text) or ("New note " .. id)
     end
     record.encounterID = note.encounterID
     record.difficulty = note.difficulty

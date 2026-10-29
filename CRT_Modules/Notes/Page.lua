@@ -227,15 +227,11 @@ local function importDifficultyOptions()
     return list
 end
 
--- The first line of the pasted text, as a plain new note is named (Notes:Import), or nil.
-local function firstLine(text)
-    local first = text:match("^%s*([^\r\n]+)")
-    first = first and first:gsub("%s+$", ""):sub(1, 40):gsub("%s+$", "")
-    return first ~= "" and first or nil
-end
-
 -- Saves the dialog's text. No boss picked, or text with its own EncounterID line: imported as it always
--- was. A picked boss: the boss's header line, then the text, always a new note. Returns id, message.
+-- was. A picked boss: the boss's header line, then the text, always a new note (never made the active
+-- one: you pick which note to use). The header's Name is the text's first line, as a plain note is named
+-- (Notes.FirstLineName), so two notes for one boss are told apart; the boss's name with no text.
+-- Returns id, message.
 local function saveImport(d)
     local text = d.edit:GetText() or ""
     local personal = listKind == "personal" -- on the Personal tab an import is your own copy, never replaced by a share
@@ -249,10 +245,12 @@ local function saveImport(d)
         end
     end
     bossName = bossName or format(TEXT.bossNumber, pick.boss)
-    local header = "EncounterID:" .. pick.boss .. ";Difficulty:" .. pick.difficulty .. ";Name:" .. bossName
+    -- a ; would end the header's Name field early
+    local name = (Notes.FirstLineName(text) or ""):gsub(";", ""):gsub("^%s+", ""):gsub("%s+$", "")
+    name = name ~= "" and name or nil
+    local header = "EncounterID:" .. pick.boss .. ";Difficulty:" .. pick.difficulty .. ";Name:" .. (name or bossName)
     local id, message = Notes:Import(header .. "\n" .. text, nil, personal, nil, "Imported", true, true)
     if id then
-        local name = firstLine(text)
         message = name and format(TEXT.savedFor, bossName, pick.difficulty, name) or format(TEXT.savedForEmpty, bossName, pick.difficulty)
     end
     return id, message

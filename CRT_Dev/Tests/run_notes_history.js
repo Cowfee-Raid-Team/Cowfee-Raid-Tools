@@ -620,12 +620,17 @@ do
   bo.set(3470)
   dopt.set("Mythic")
   nextId = CRT.db.notes.nextId
+  local activeBefore = Notes:Active()
   save.scripts.OnClick(save)
   local new = Notes:Get(nextId)
   assert(new and nextId ~= id and Notes:Get(id).raw == "EncounterID:3470;Difficulty:Mythic;Name:Nek'zali\\nReplaced", "a second note; the existing one is kept")
-  assert(new.raw == "EncounterID:3470;Difficulty:Mythic;Name:Nek'zali\\nSoak on the left\\nsecond", "the header line, then the text: " .. new.raw)
+  assert(new.raw == "EncounterID:3470;Difficulty:Mythic;Name:Soak on the left\\nSoak on the left\\nsecond", "the header line, named by the text's first line, then the text: " .. new.raw)
+  assert(new.name == "Soak on the left" and Notes:Get(id).name == "Nek'zali", "the two notes for the boss are told apart by name")
+  assert(Notes:Active() == activeBefore, "not made the active note")
   assert(new.encounterID == 3470 and new.difficulty == "Mythic" and not new.personal and Notes.DifficultyGroup(new) == "Mythic", "the boss's fields, listed under Mythic")
   assert(Notes:HistoryCount(nextId) == 0, "a new note has no earlier version")
+  Notes:UpdateRaw(nextId, new.raw .. "\\nthird")
+  assert(Notes:Get(nextId).name == "Soak on the left", "a later save keeps the name")
   assert(said("Saved as a new note for Nek'zali (Mythic): Soak on the left."), "the message names the boss: " .. tostring(printed[#printed]))
   assert(not d:IsShown(), "the dialog closes")
   -- again on Heroic, with no text: still a new note
@@ -634,8 +639,18 @@ do
   dopt.set("Heroic")
   local third = CRT.db.notes.nextId
   save.scripts.OnClick(save)
-  assert(Notes:Get(third) and Notes:Get(third).raw == "EncounterID:3470;Difficulty:Heroic;Name:Nek'zali\\n" and Notes:Get(third).difficulty == "Heroic", "no text: the header line alone")
+  assert(Notes:Get(third) and Notes:Get(third).raw == "EncounterID:3470;Difficulty:Heroic;Name:Nek'zali\\n" and Notes:Get(third).difficulty == "Heroic", "no text: the header line alone, named for the boss")
   assert(said("Saved as a new note for Nek'zali (Heroic)."), "no text: the message without a name")
+  -- a ; in the first line would end the Name field: left out of the name
+  nb.scripts.OnClick(nb)
+  typed("  Soak; then run  \\nmore")
+  bo.set(3470)
+  local semi = CRT.db.notes.nextId
+  save.scripts.OnClick(save)
+  assert(Notes:Get(semi).name == "Soak then run" and Notes:Get(semi).raw:find("^EncounterID:3470;Difficulty:Heroic;Name:Soak then run\\n"), "a ; left out of the name: " .. Notes:Get(semi).raw)
+  assert(said("Saved as a new note for Nek'zali (Heroic): Soak then run."), "and in the message")
+  Notes:Delete(semi)
+  assert(Notes.FirstLineName("\\n  Kite left  \\nb") == "Kite left" and Notes.FirstLineName("  \\n ") == nil and #Notes.FirstLineName(string.rep("y", 50)) == 40, "Notes.FirstLineName: the first line, trimmed, at most 40")
   ok("Import/New: a picked boss saves a second note with the header line and the boss's fields, and says so")
 
   -- the Personal tab: the same, as your own note
@@ -656,8 +671,26 @@ do
   save.scripts.OnClick(save)
   local own = Notes:Get(nextId)
   assert(own and nextId ~= mine and Notes:Get(mine) and own.personal == true and own.encounterID == 3470 and own.difficulty == "Mythic", "a second personal note for the boss")
-  assert(own.raw == "EncounterID:3470;Difficulty:Mythic;Name:Nek'zali\\nMy own line", "with the header line")
+  assert(own.raw == "EncounterID:3470;Difficulty:Mythic;Name:My own line\\nMy own line", "with the header line")
   assert(said("Saved as a new note for Nek'zali (Mythic): My own line."), "the message")
+  -- two personal notes for the boss: the pull and the Timeline use the newest, the same whatever order pairs() gives
+  assert(Notes:Get(mine).updated == own.updated, "made in the same minute")
+  assert(Notes:PersonalFor(3470, "Mythic") == nextId and Notes:PersonalFor(3470, "mythic") == nextId, "the same minute: the one made later, the picked-boss note")
+  assert(Notes:MakePersonal(3470, "Mythic", "Nek'zali") == nextId, "MakePersonal finds that one too, and makes none")
+  local keepUpdated = Notes:Get(mine).updated
+  Notes:Get(mine).updated = "2099-01-01 00:00"
+  assert(Notes:PersonalFor(3470, "Mythic") == mine and Notes:MakePersonal(3470, "Mythic") == mine, "a later updated wins over the higher id")
+  Notes:Get(mine).updated = keepUpdated
+  -- shared notes for one boss in the same minute: the one made later (FindForEncounter's tie-break)
+  local savedActive = Notes:Active()
+  Notes:SetActive(nil)
+  local s1 = Notes:Import("EncounterID:5101;Difficulty:Mythic;Name:Tie\\nA", nil, nil, nil, "Imported", true, true)
+  local s2 = Notes:Import("EncounterID:5101;Difficulty:Mythic;Name:Tie\\nB", nil, nil, nil, "Imported", true, true)
+  assert(s1 ~= s2 and Notes:Get(s1).updated == Notes:Get(s2).updated and Notes:FindForEncounter(5101, "Mythic") == s2, "the same minute: the higher id")
+  Notes:Get(s1).updated = "2099-01-01 00:00"
+  assert(Notes:FindForEncounter(5101, "Mythic") == s1, "else the later updated")
+  Notes:Delete(s1) Notes:Delete(s2)
+  Notes:SetActive(savedActive)
   for _, f in ipairs(fontStrings) do
     local p = rawget(f, "parent")
     if rawget(f, "text") == "Shared" and p and p.scripts.OnClick then p.scripts.OnClick(p) end
