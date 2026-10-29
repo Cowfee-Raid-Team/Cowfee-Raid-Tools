@@ -436,6 +436,21 @@ function Engine.ItemFor(t, index, mine)
     return item
 end
 
+-- Whether a note is for another difficulty group than the run's: the one rule for its lines (entries) and its shield
+-- watches (noteWatches). False when either group is unknown (a note for any difficulty, a run with no difficulty).
+-- A pull of the other group with no note of its own reads that note (Notes:FindForEncounter): its Mech Alerts lines
+-- (mech:, Notes/MechNote.lua), written for exactly the note's difficulty, then neither run nor watch a shield, so their
+-- times never run on the other group's pull (beside your own alert of the ability there); its other lines run as ever.
+local function otherGroup(n, run)
+    local T = CRT.Timeline
+    local diff = type(n.difficulty) == "string" and n.difficulty:match("%S") and n.difficulty or nil
+    local group = Alerts.RunGroup and Alerts:RunGroup(run) or nil
+    if not (diff and group and T and T.GroupFor) then
+        return false
+    end
+    return T:GroupFor(diff) ~= group
+end
+
 -- One item per timer. A line of yours you moved to your own time on the Timeline's Healer CDs
 -- (Notes/Shifts.lua) runs at that time; everyone else's lines, and the note itself, keep theirs.
 local function entries(run)
@@ -446,26 +461,36 @@ local function entries(run)
     local Shifts = CRT.NoteShifts
     local id = Shifts and Notes.IdOf and Notes:IdOf(n)
     local moved = id and Shifts:ByLine(id)
+    local skipMech = otherGroup(n, run or Alerts.run)
     local out = {}
     for index, t in ipairs(n.timers) do
-        local mine = Engine:IsMine(t)
-        local item = Engine.ItemFor(t, index, mine)
-        local own = mine and moved and moved[t.line]
-        if own then
-            item.ph, item.time = own.ph, own.t
+        if not (skipMech and t.mech) then
+            local mine = Engine:IsMine(t)
+            local item = Engine.ItemFor(t, index, mine)
+            local own = mine and moved and moved[t.line]
+            if own then
+                item.ph, item.time = own.ph, own.t
+            end
+            out[#out + 1] = item
         end
-        out[#out + 1] = item
     end
     return out
 end
 
--- Whether an item of this block is the note line a rehearsal's test replaces ({ noteID, line }, see
--- Alerts:Collect): the run's note is that note and the item's timer (its index, "note:<n>") is on that line.
+-- Whether an item of this block is the note line a rehearsal's test replaces (see Alerts:Collect): { noteID, line },
+-- the run's note is that note and the item's timer (its index, "note:<n>") is on that line; or { mech }, a Mech Alert
+-- saved as Raid note, whose saved version is every line with its marker (Notes/MechNote.lua).
 local function replaces(run, rep, item)
     local n = noteFor(run)
     local index = type(item.id) == "string" and tonumber(item.id:match("^note:(%d+)$"))
     local t = n and index and n.timers[index]
-    return t ~= nil and Engine.noteId ~= nil and Engine.noteId == rep.noteID and t.line == rep.line
+    if t == nil then
+        return false
+    end
+    if rep.mech ~= nil then
+        return t.mech ~= nil and t.mech == tostring(rep.mech):lower()
+    end
+    return Engine.noteId ~= nil and Engine.noteId == rep.noteID and t.line == rep.line
 end
 
 Alerts:RegisterBlock("note", { label = "Raid note", group = false, Entries = entries, Replaces = replaces })
@@ -497,18 +522,17 @@ Alerts:RegisterBlock("personal", { label = "Your personal note", group = false, 
 -- The untimed shield bars of a pull (Alerts/Absorb.lua), as Special:AbsorbWatches gives a special alert's: one watch
 -- per line of yours with shield: whose bar shows, in the raid note the pull runs and in your personal note. A note for
 -- the pull's difficulty group (or for any difficulty) gives one to every such line; a note for the other group (the
--- boss had none for this one) only to a line with "any". Only a boss pull has them. {} when none.
+-- boss had none for this one, otherGroup) only to a line with "any", never to a raid note's Mech Alerts line, as its
+-- lines skip them (entries). Only a boss pull has them. {} when none.
 local function noteWatches(out, n, prefix, run, all)
     if not n then
         return
     end
-    local T = CRT.Timeline
-    local group = Alerts.RunGroup and Alerts:RunGroup(run) or nil
-    local diff = type(n.difficulty) == "string" and n.difficulty:match("%S") and n.difficulty or nil
-    local fits = not diff or not (T and T.GroupFor) or group == nil or T:GroupFor(diff) == group
+    local other = otherGroup(n, run)
+    local skipMech = other and prefix == "note:"
     for index, t in ipairs(n.timers) do
         local a = t.absorb
-        if a and (fits or a.anyDifficulty) and (all or Engine:IsMine(t)) then
+        if a and (not other or a.anyDifficulty) and not (skipMech and t.mech) and (all or Engine:IsMine(t)) then
             local item = Engine.ItemFor(t, index, true)
             if item.absorb and item.outputs and item.outputs.bar then
                 out[#out + 1] = { id = "absorb:" .. prefix .. index, key = prefix .. index, block = prefix:sub(1, -2),

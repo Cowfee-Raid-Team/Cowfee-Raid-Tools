@@ -617,25 +617,29 @@ check("mech raid note: For, the tick, and Only me", function()
   p.saveAs.opts.set("note")
   local note = noteFor(ENC, "Mythic")
   assert(note and note.name == "Test Boss" and note.difficulty == "Mythic" and note.via == "Mech Alerts" and note.asNew, "a note made for the boss")
-  -- For: a role
+  -- For: every choice a tick box
   local labels = {}
   for _, o in ipairs(p.forDrop.opts.options()) do labels[#labels + 1] = (o.title and "#" or "") .. o.label .. (o.checkbox and "[]" or "") end
-  assert(table.concat(labels, ","):find("^Everyone,Tanks,Healers,Melee,Ranged,#Players"), table.concat(labels, ","))
-  p.forDrop.opts.set("healer")
+  assert(table.concat(labels, ","):find("^Everyone%[%],Tanks%[%],Healers%[%],Melee%[%],Ranged%[%],#Players"), table.concat(labels, ","))
+  -- a role: Everyone unticked first frees the roles
+  p.forDrop.opts.toggle("all")
+  p.forDrop.opts.toggle("healer")
   local lines = marked(note.raw, "777")
   assert(#lines == 2 and lines[1].tags[1] == "healer" and lines[2].tags[1] == "healer", "the lines' tag reads healer")
-  assert(p.forDrop.opts.get() == "healer", "For shows it")
-  -- For: picked players, ticked one by one
+  assert(p.forDrop.opts.checked("healer") and not p.forDrop.opts.checked("all"), "For shows it")
+  -- For: picked players, ticked one by one, beside the role
   p.forDrop.opts.toggle("Abu")
   p.forDrop.opts.toggle("Cheo")
   lines = marked(note.raw, "777")
-  assert(table.concat(lines[1].tags, " ") == "Abu Cheo" and p.forDrop.opts.checked("Abu"), "players: " .. table.concat(lines[1].tags, " "))
+  assert(table.concat(lines[1].tags, " ") == "healer Abu Cheo" and p.forDrop.opts.checked("Abu"), "players: " .. table.concat(lines[1].tags, " "))
   labels = {}
   for _, o in ipairs(p.forDrop.opts.options()) do if o.checkbox then labels[#labels + 1] = o.label end end
   assert(table.concat(labels, ","):find("Abu", 1, true) and table.concat(labels, ","):find("Cheo", 1, true), "picked players stay listed")
-  p.forDrop.opts.toggle("Abu") p.forDrop.opts.toggle("Cheo")
+  p.forDrop.opts.toggle("Abu") p.forDrop.opts.toggle("Cheo") p.forDrop.opts.toggle("healer")
   assert(marked(note.raw, "777")[1].tags[1] == "all", "none left: everyone")
-  -- Alert me off: out of the note, and back
+  assert(p.forDrop.opts.checked("all"), "Everyone ticked again")
+  -- Alert me off (For not Everyone, which holds it on): out of the note, and back
+  p.forDrop.opts.toggle("all") p.forDrop.opts.toggle("tank")
   setCheck(f.rows[1].check, false)
   assert(#marked(note.raw, "777") == 0 and only().raidNote, "off: the lines are gone, the choice kept")
   assert(p.noteStatus.text:find("Off", 1, true) and p.noteStatus.text:find("|cff" .. CRT.UI.Hex("warn"), 1, true), "said in the warn colour: " .. p.noteStatus.text)
@@ -657,6 +661,93 @@ check("mech raid note: For, the tick, and Only me", function()
   assert(#marked(note.raw, "777") == 0 and note.raw == "EncounterID:9001;Difficulty:Mythic;Name:Test Boss\\nfree text after\\n", "only its lines taken out: " .. note.raw)
   assert(#mineItems() == 2, "your own alert runs again: " .. #mineItems())
   assert(p.noteStatus.text == "" and p.forDrop.opts.enabledIf() == false, "status gone, For greyed")
+  assert(#errors == 0, tostring(errors[1]))
+end)
+
+-- #1206: For takes several roles. Everyone, Tanks, Healers, Melee and Ranged are tick boxes like the players; Everyone
+-- ticked unticks and greys the rest, unticked frees them; the lines' tag lists every ticked word; nothing ticked is
+-- Everyone; the open list's state goes back to what is saved when it closes; an older single-word tag reads as before
+check("mech raid note: For ticks several roles; Everyone greys the rest", function()
+  resetNotes()
+  local f = fresh()
+  local p = f.panel
+  p.saveAs.opts.set("note")
+  local note = noteFor(ENC, "Mythic")
+  local o = p.forDrop.opts
+  local function option(key) for _, x in ipairs(o.options()) do if x.key == key then return x end end end
+  local function greyed(key) local x = option(key) return type(x.disabled) == "function" and x.disabled() or x.disabled == true end
+  local function tags() return table.concat(marked(note.raw, "777")[1].tags, " ") end
+  -- Everyone ticked: the roles and players greyed (you, the one player of the group)
+  UnitName = function(u) if u == "player" then return "Solex" end end
+  assert(o.checked("all") and greyed("healer") and greyed("tank") and greyed("Solex"), "Everyone greys the rest")
+  UnitName = nil
+  assert(not greyed("all"), "Everyone itself never greys")
+  -- unticked: the rest freed, nothing saved yet (still everyone's lines)
+  o.toggle("all")
+  assert(not o.checked("all") and not greyed("healer") and tags() == "all", "freed, still everyone's")
+  o.toggle("healer") o.toggle("ranged")
+  assert(tags() == "healer ranged", "both roles: " .. tags())
+  assert(o.checked("healer") and o.checked("ranged") and not o.checked("tank") and not o.checked("all") and not greyed("tank"), "both ticked")
+  -- Everyone again: the rest unticked and greyed
+  o.toggle("all")
+  assert(tags() == "all" and o.checked("all") and not o.checked("healer") and greyed("ranged"), "everyone again")
+  -- the list closed while freed with nothing ticked: back to Everyone ticked
+  o.toggle("all")
+  assert(not o.checked("all"), "freed")
+  o.onClose()
+  assert(o.checked("all") and greyed("healer"), "closed: as saved")
+  -- an older single-word tag reads as before
+  R:Get(ENC, (select(2, only()))).raidNote.tag = "healer"
+  CRT.NoteReminders.Refresh()
+  assert(o.checked("healer") and not o.checked("all") and not greyed("melee"), "an older role tag")
+  o.toggle("melee")
+  assert(tags() == "healer melee", "adds to it: " .. tags())
+  assert(#errors == 0, tostring(errors[1]))
+end)
+
+-- #1206 (Alex, 2026-10-29): Raid note + For Everyone greys Alert me, ticked: the note line already reaches you, so a
+-- click (on Alert me or the row's tick) never takes the lines out, and its tooltip says why. Any other For, or Only me,
+-- leaves Alert me as it was; choosing Everyone while it is off turns it on, so the lines are written.
+check("mech raid note: For Everyone greys Alert me, ticked", function()
+  resetNotes()
+  local f = fresh()
+  local p = f.panel
+  p.saveAs.opts.set("note")
+  local note = noteFor(ENC, "Mythic")
+  local _, id = only()
+  local o = p.forDrop.opts
+  assert(p.alertMe.checked == true and p.alertMe.enabled == false, "ticked and greyed")
+  assert(p.alertMe.label.textColor and p.alertMe.label.textColor[1] == 0.5, "its label greyed")
+  -- its tooltip says why
+  local said = {}
+  local wasOwner = CRT.UI.TooltipOwner
+  CRT.UI.TooltipOwner = CRT.UI.TooltipOwner or function() end
+  GameTooltip = setmetatable({}, { __index = function(_, k) return function(_, ...) said[#said + 1] = { k, ... } end end })
+  assert(p.alertMe.OnEnter, "a tooltip")
+  p.alertMe.OnEnter(p.alertMe)
+  local text = ""
+  for _, s in ipairs(said) do if type(s[2]) == "string" then text = text .. s[2] .. " " end end
+  assert(text:find("Everyone", 1, true) and text:find("note line", 1, true), "says why: " .. text)
+  GameTooltip, CRT.UI.TooltipOwner = nil, wasOwner
+  -- a click on it, or on the row's tick, never takes the lines out
+  setCheck(p.alertMe, false)
+  assert(R:Get(ENC, id).enabled == true and #marked(note.raw, "777") == 2 and p.alertMe.checked, "Alert me: still on, lines kept")
+  setCheck(f.rows[1].check, false)
+  assert(R:Get(ENC, id).enabled == true and #marked(note.raw, "777") == 2 and f.rows[1].check.checked, "the row's tick too")
+  -- another For: Alert me as before
+  o.toggle("all") o.toggle("healer")
+  assert(p.alertMe.enabled == true, "freed with Healers")
+  setCheck(p.alertMe, false)
+  assert(R:Get(ENC, id).enabled == false and #marked(note.raw, "777") == 0, "off: the lines out")
+  -- Everyone chosen while it is off: on again, the lines written
+  o.toggle("all")
+  assert(R:Get(ENC, id).enabled == true and #marked(note.raw, "777") == 2, "Everyone turns it on: " .. tostring(R:Get(ENC, id).enabled))
+  assert(p.alertMe.checked == true and p.alertMe.enabled == false, "ticked and greyed again")
+  -- Only me: Alert me as before
+  p.saveAs.opts.set("mine")
+  assert(p.alertMe.enabled == true, "Only me: free")
+  setCheck(p.alertMe, false)
+  assert(R:Get(ENC, id).enabled == false, "Only me: off")
   assert(#errors == 0, tostring(errors[1]))
 end)
 
@@ -1432,6 +1523,34 @@ check("mech: test passes the current draft, saved one replaced", function()
   assert(it.text == "Soak" and it.id == "mine:test:1" and it.ph == 1 and it.time == 45, "the draft as typed, at Heroic's time: " .. tostring(it.text) .. " " .. tostring(it.time))
   assert(o.alerts.replaces and o.alerts.replaces.block == "mine" and o.alerts.replaces.id == id, "the saved one is replaced")
   assert(o.testing == "Soak", "label follows the text")
+  assert(#errors == 0, tostring(errors[1]))
+end)
+
+-- #1206: a Raid note alert's saved version is its note lines (Notes/MechNote.lua), so Test leaves those out by their
+-- marker, never your own alert (which steps aside anyway): the test plays once, not beside a line, with the text as it
+-- stands after a change, and when it is off with its lines still there
+check("mech raid note: Test leaves out the alert's note lines, by their marker", function()
+  resetNotes()
+  local f = fresh()
+  local p = f.panel
+  p.saveAs.opts.set("note")
+  local _, id = only()
+  typeInto(p.textEdit, "Add Interrupts")
+  p.textEdit.OnEnterPressed(p.textEdit)
+  mockWindow(true)
+  click(p.testBtn)
+  CRT.TimelineRehearsalWindow = nil
+  local o = opened[1] and opened[1].opts
+  local rep = o and o.alerts and o.alerts.replaces
+  assert(rep and rep.block == "note" and rep.mech == "777" and rep.id == nil, "the note's lines are replaced: " .. tostring(rep and rep.block))
+  assert(o.alerts.extra[1].text == "Add Interrupts" and o.testing == "Add Interrupts", "the new text")
+  -- off: no lines, the test still leaves out any left
+  setCheck(p.alertMe, false)
+  mockWindow(true)
+  click(p.testBtn)
+  CRT.TimelineRehearsalWindow = nil
+  rep = opened[1] and opened[1].opts.alerts.replaces
+  assert(rep and rep.block == "note" and rep.mech == R:Get(ENC, id).raidNote.key, "off: the same")
   assert(#errors == 0, tostring(errors[1]))
 end)
 

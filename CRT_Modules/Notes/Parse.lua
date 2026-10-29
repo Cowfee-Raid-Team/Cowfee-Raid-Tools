@@ -27,7 +27,7 @@ local ADDON, CRT = ...
 --   prio:high;        the line's priority among your alerts at the same moment, high or low (absent: normal), as a
 --                     Mech Alert's (Alerts/Rules.lua Priority). Read as timer.prio; a CRT from before it keeps it.
 --   mech:1234;        the Mech Alerts ability a line was written for (Notes/MechNote.lua). FormatLine never writes it,
---                     so every writer keeps it with the other fields it doesn't know.
+--                     so every writer keeps it with the other fields it doesn't know. Read as timer.mech, in lower case.
 -- DisplayType: is ignored.
 
 local Parser = {}
@@ -431,7 +431,7 @@ end
 -- its line number in the text, and, when the line has them: show (a set), tts, speakAt ("zero" for
 -- ttsat:0), count, glow (true),
 -- sound (the text as written; the sound engine plays it if it names a sound, see Sound/Engine.lua), warn, linger
--- (seconds), iconID, absorb (shield:, { unit, length, anyDifficulty }), ticks, fill, countTo and prio.
+-- (seconds), iconID, absorb (shield:, { unit, length, anyDifficulty }), ticks, fill, countTo, prio and mech.
 function Parser.Parse(text)
     local note = { timers = {}, phases = {}, lines = {}, invite = nil, unread = {} }
     local phaseSeen = {}
@@ -476,6 +476,7 @@ function Parser.Parse(text)
                     fill = (f.fill and f.fill:lower() == "up") and "up" or nil,
                     countTo = (f.countto and f.countto:lower() == "impact") and "impact" or nil,
                     prio = (f.prio and (f.prio:lower() == "high" or f.prio:lower() == "low")) and f.prio:lower() or nil,
+                    mech = (f.mech and f.mech ~= "") and f.mech:lower() or nil,
                 }
                 item.kind = item.spellId and "spell" or "text"
                 note.timers[#note.timers + 1] = item

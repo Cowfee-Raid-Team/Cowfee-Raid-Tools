@@ -550,7 +550,8 @@ end
 
 -- Out of a run: every time of every turned-on reminder of one difficulty group, by phase: the note's, else
 -- (a note of no difficulty, or none) the raid you are in, else Normal/Heroic. So the two copies of a
--- reminder split into one per group never both show.
+-- reminder split into one per group never both show. One saved as Raid note is left out, as the alerts leave it
+-- out: the raid note lists its lines.
 local function plannedLines(encounterID, list, record)
     local R = CRT.AlertReminders
     local difficulty = record and type(record.difficulty) == "string" and record.difficulty ~= "" and record.difficulty or nil
@@ -566,7 +567,7 @@ local function plannedLines(encounterID, list, record)
     for _, e in ipairs(list) do
         local r = R:Effective("mine", e.id, e.r)
         local own = R.GroupOf and R.GroupOf(r) or nil
-        if r.enabled ~= false and not (own and group and own ~= group) then
+        if r.enabled ~= false and not (R.InNote and R.InNote(r)) and not (own and group and own ~= group) then
             for _, it in ipairs(R:Items(encounterID, e.id, r, group)) do
                 items[#items + 1] = it
             end

@@ -34,10 +34,11 @@ local TEXT = {
     unnamed = "Reminder",
 
     alertMe = "Alert me",
+    alertMeHeld = "For is Everyone, so the note line already alerts you, as it alerts everyone. Tick other roles or players in For to turn it off.",
     saveAs = "Save as",
     asNote = "Raid note",
     asMine = "Only me",
-    raidNoteHelp = "Only me: the alert is yours alone.\n\nRaid note: the alert goes into this boss's raid note for the difficulty on show, one line per cast, for the players For names. Every change here rewrites those lines; nothing else in the note changes. Share the note to send it to the raid.\n\nOnly me again takes the lines out and makes it your own alert. Also when it lands on me stays yours. Raiders on an older CRT see a plain bar, without its ticks.",
+    raidNoteHelp = "Only me: the alert is yours alone.\n\nRaid note: the alert goes into this boss's raid note for the difficulty on show, one line per cast, for those ticked in For: Everyone, or any of the roles and players you tick. You get it once, from the note, like everyone else. Every change here rewrites those lines; nothing else in the note changes. Share the note to send it to the raid.\n\nOnly me again takes the lines out and makes it your own alert. Also when it lands on me stays yours. Raiders on an older CRT see a plain bar, without its ticks.",
     forLabel = "For",
     forEveryone = "Everyone",
     forTanks = "Tanks",
@@ -687,6 +688,14 @@ local function noteChoice()
     return M and cur.ctx and M.InNote(cur.ctx.reminder) or nil
 end
 
+-- Whether a reminder is Raid note for Everyone: its note line already reaches you, as everyone, so Alert me shows ticked
+-- and greyed and no tick takes its lines out (Alex, 2026-10-29).
+local function alertMeHeld(r)
+    local M = CRT.MechNote
+    local n = M and M.InNote(r)
+    return n and M.IsEveryone(n.tag) or false
+end
+
 -- Where the panel's alert's lines come from (MechNote Expected and Sync): the ability timeline on show, its group
 -- and the boss.
 local function noteOpts(enc)
@@ -785,7 +794,11 @@ local function drawPanel()
     panel.icon:SetShown(icon ~= nil)
     panel.iconHit:SetShown(icon ~= nil)
     panel.name:SetText(draftName())
-    panel.alertMe:SetChecked(cur.item and cur.item.r ~= nil and cur.item.r.enabled ~= false)
+    local held = alertMeHeld(cur.ctx and cur.ctx.reminder)
+    panel.alertMe:SetChecked(held or (cur.item and cur.item.r ~= nil and cur.item.r.enabled ~= false))
+    panel.alertMe:SetEnabled(not held)
+    local v = held and 0.5 or 1
+    panel.alertMe.label:SetTextColor(v, v, v)
     for _, row in ipairs(panel.rows) do
         row.refresh()
     end
@@ -1198,6 +1211,12 @@ local function setEnabled(item, on)
         local r = Reminders:Get(enc, item.id)
         if r then
             r = Draft.copy(r)
+            -- Raid note for Everyone: the note line is your alert, so the tick stays on and the lines stay
+            if not on and alertMeHeld(r) then
+                refresh()
+                drawPanel()
+                return
+            end
             -- a Raid note alert's tick changes its lines: refused while you may not change the raid note
             local allowed, why = true, nil
             if CRT.MechNote and CRT.MechNote.InNote(r) then
@@ -1625,9 +1644,31 @@ local function buildNoteRow(p, row)
         local n = noteChoice()
         if n and n.tag ~= tag and allowed() then
             n.tag = tag
+            -- Everyone holds Alert me on (alertMeHeld): an alert that was off is turned on, so its lines are written
+            if M.IsEveryone(tag) then
+                cur.ctx.reminder.enabled = true
+            end
             commit()
         end
     end
+    -- Alert me greyed while held: its tooltip says why (a disabled button still takes the mouse for it)
+    local alertMe = panel.alertMe
+    if alertMe.SetMotionScriptsWhileDisabled then
+        alertMe:SetMotionScriptsWhileDisabled(true)
+    end
+    alertMe:SetScript("OnEnter", function(self)
+        if GameTooltip and UI.TooltipOwner and alertMeHeld(cur.ctx and cur.ctx.reminder) then
+            UI.TooltipOwner(GameTooltip, self, "ANCHOR_RIGHT")
+            GameTooltip:SetText(TEXT.alertMe, 1, 1, 1)
+            GameTooltip:AddLine(TEXT.alertMeHeld, 0.85, 0.85, 0.85, true)
+            GameTooltip:Show()
+        end
+    end)
+    alertMe:SetScript("OnLeave", function()
+        if GameTooltip then
+            GameTooltip:Hide()
+        end
+    end)
     panel.saveAs = row(UI.Dropdown(p, TEXT.saveAs, {
         labelWidth = L.SAVE_LABEL, width = L.SAVE_W,
         options = { { key = "note", label = TEXT.asNote }, { key = "mine", label = TEXT.asMine } },
@@ -1636,29 +1677,36 @@ local function buildNoteRow(p, row)
     }))
     panel.saveAs:SetPoint("TOPLEFT", L.SAVE_X, L.SAVE_Y)
     panel.saveAsHelp = UI.HelpRight(panel.saveAs, TEXT.saveAs, TEXT.raidNoteHelp)
-    -- For: the role choices, then the group's players (and any picked who left it) as tick boxes
+    -- For: Everyone, the roles, then the group's players (and any picked who left it), all tick boxes. Everyone ticked
+    -- unticks and greys the rest; unticked (freed, while the list is open) it frees them, the lines staying everyone's
+    -- until something is ticked. Several roles and players can be ticked (MechNote.ToggleWord); nothing ticked is
+    -- Everyone again. The list closing forgets freed, so it opens as saved.
     local roleLabels = { all = TEXT.forEveryone, tank = TEXT.forTanks, healer = TEXT.forHealers, melee = TEXT.forMelee,
         ranged = TEXT.forRanged }
+    local freed = false
+    -- Everyone ticked: also whether the roles and players are greyed
+    local function everyone()
+        local n = noteChoice()
+        return n ~= nil and M.IsEveryone(n.tag) and not freed
+    end
     panel.forDrop = row(UI.Dropdown(p, TEXT.forLabel, {
         labelWidth = L.SAVE_LABEL, width = L.SAVE_W, maxHeight = L.MENU_MAX_H,
         enabledIf = function() return noteChoice() ~= nil end,
         options = function()
             local out, seen = {}, {}
-            for _, key in ipairs(M.ROLES) do
-                out[#out + 1] = { key = key, label = roleLabels[key] }
+            for i, key in ipairs(M.ROLES) do
+                out[#out + 1] = { key = key, label = roleLabels[key], checkbox = true, disabled = i > 1 and everyone or nil }
             end
             out[#out + 1] = { title = true, label = TEXT.forPlayers }
             local n = noteChoice()
             local names = M.GroupNames()
-            if n and not M.IsRole(n.tag) then
-                for _, w in ipairs(M.TagWords(n.tag)) do
-                    names[#names + 1] = w
-                end
+            for _, w in ipairs(n and M.Players(n.tag) or {}) do
+                names[#names + 1] = w
             end
             for _, name in ipairs(names) do
                 if not seen[name:lower()] then
                     seen[name:lower()] = true
-                    out[#out + 1] = { key = name, label = name, checkbox = true }
+                    out[#out + 1] = { key = name, label = name, checkbox = true, disabled = everyone }
                 end
             end
             return out
@@ -1668,14 +1716,32 @@ local function buildNoteRow(p, row)
             return n and n.tag or M.ROLES[1]
         end,
         set = setFor,
-        checked = function(name)
+        checked = function(key)
             local n = noteChoice()
-            return n ~= nil and M.HasPlayer(n.tag, name)
+            if key == M.ROLES[1] then
+                return everyone()
+            end
+            return n ~= nil and M.HasWord(n.tag, key)
         end,
-        toggle = function(name)
+        toggle = function(key)
             local n = noteChoice()
-            if n then
-                setFor(M.TogglePlayer(n.tag, name))
+            if not n then
+                return
+            end
+            if key == M.ROLES[1] and everyone() then
+                freed = true -- nothing saved: the lines stay everyone's until a role or player is ticked
+                return
+            end
+            local tag = M.ToggleWord(n.tag, key)
+            if M.IsEveryone(tag) then
+                freed = false
+            end
+            setFor(tag)
+        end,
+        onClose = function()
+            if freed then
+                freed = false
+                panel.forDrop.refresh()
             end
         end,
     }))

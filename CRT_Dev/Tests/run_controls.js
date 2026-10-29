@@ -51,7 +51,12 @@ local function frame(kind, template)
       -- like the game's element description: SetEnabled(false) greys the item and a click on it does nothing
       local function element(kind, label, isSel, setSel, data)
         local d = { kind = kind, label = label, isSel = isSel, setSel = setSel, data = data, enabled = true }
-        function d:SetEnabled(on) self.enabled = on and true or false end
+        -- a function is asked again while the list is open (the game's IsEnabled polls it): enabledNow() asks it
+        function d:SetEnabled(on)
+          self.enabledFn = type(on) == "function" and on or nil
+          if self.enabledFn then self.enabled = on(self) and true or false else self.enabled = on and true or false end
+        end
+        function d:EnabledNow() if self.enabledFn then self.enabled = self.enabledFn(self) and true or false end return self.enabled end
         function d:AddInitializer() end
         radios[#radios + 1] = d return d
       end
@@ -67,7 +72,10 @@ local function frame(kind, template)
       for _, r in ipairs(radios) do if r.isSel(r.data) then picked[#picked + 1] = r.label end end
       self.shown = #picked > 0 and table.concat(picked, ", ") or nil
     end
-    function f:Pick(label) self:GenerateMenu() for _, r in ipairs(self.radios) do if r.label == label and r.enabled then r.setSel(r.data) end end end
+    function f:Pick(label) self:GenerateMenu() for _, r in ipairs(self.radios) do if r.label == label and r:EnabledNow() then r.setSel(r.data) end end end
+    -- the game's dropdown events (DropdownButtonMixin.Event): a callback with an owner gets the owner first
+    function f:RegisterCallback(event, fn, owner) self.cbs = self.cbs or {} self.cbs[event] = function(...) fn(owner, ...) end end
+    function f:CloseList() if self.cbs and self.cbs.OnMenuClose then self.cbs.OnMenuClose(self) end end
   elseif template == "MinimalSliderWithSteppersTemplate" then
     function f:Init(value, low, high, steps, formatters) self.value, self.low, self.high, self.steps, self.formatters = value, low, high, steps, formatters end
     function f:RegisterCallback(event, fn, owner) self.callbacks[event] = function(...) fn(owner, ...) end end
@@ -80,6 +88,7 @@ end
 function CreateFrame(kind, name, parent, template) return frame(kind, template) end
 MinimalSliderWithSteppersMixin = { Label = { Left = 1, Right = 2 }, Event = { OnValueChanged = "OnValueChanged", OnInteractStart = "OnInteractStart", OnInteractEnd = "OnInteractEnd" } }
 function CreateMinimalSliderFormatter(label, fn) return fn end
+DropdownButtonMixin = { Event = { OnUpdate = "OnUpdate", OnMenuOpen = "OnMenuOpen", OnMenuClose = "OnMenuClose" } }
 local CRT = { UI = { SkinDropdown = function() end } } -- Panel.lua skins the dropdown; not under test here
 assert(load(src, "Controls.lua"))("CowfeeRaidTools", CRT)
 local UI = CRT.UI
@@ -136,6 +145,23 @@ d5.refresh()
 assert(d5.Dropdown.radios[1].isSel("a") == false, "no checked function: never ticked")
 d5.Dropdown:Pick("A")
 print("ok controls: tick boxes in a dropdown")
+
+-- An option's disabled may be a function, asked again while the list is open (one tick greys others at once), and
+-- onClose is called when the open list closes.
+local all, closed = true, 0
+local d6 = UI.Dropdown({}, "For", { options = {
+    { key = "all", label = "Everyone", checkbox = true },
+    { key = "healer", label = "Healers", checkbox = true, disabled = function() return all end } },
+  get = function() end, set = function() end,
+  checked = function(k) return k == "all" and all end, toggle = function(k) if k == "all" then all = not all end end,
+  onClose = function() closed = closed + 1 end })
+d6.refresh()
+assert(d6.Dropdown.radios[2].enabled == false and d6.Dropdown.radios[1].enabled == true, "greyed while Everyone is ticked")
+d6.Dropdown:Pick("Everyone")
+assert(not all and d6.Dropdown.radios[2]:EnabledNow() == true, "freed at once, the list still open")
+d6.Dropdown:CloseList()
+assert(closed == 1, "onClose: " .. closed)
+print("ok controls: a disabled function is asked while the list is open; onClose")
 
 -- A sound dropdown with playButton: a Play button after it plays the chosen sound once, and is greyed
 -- with no sound chosen or when the row is disabled.

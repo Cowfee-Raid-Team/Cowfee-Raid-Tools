@@ -20,9 +20,10 @@ local ADDON, CRT = ...
 -- rehearsal runs no onPull hooks and sends nothing; its onRehearsal hooks pick the boss's note instead.
 -- A real Start (an encounter) replaces it like any other run.
 -- A rehearsal can also test an alert (the editor's Test): opts.extra is a list of items added to the run
--- (time-cut like any other), and opts.replaces ({ block = "mine", id } or { block = "note", noteID, line })
--- names the saved version of that alert, which is left out so it doesn't fire twice (a block may answer
--- for its own items with def.Replaces: the note matches by line). Both apply only in a rehearsal.
+-- (time-cut like any other), and opts.replaces ({ block = "mine", id }, { block = "note", noteID, line } or, for a
+-- Mech Alert saved as Raid note, { block = "note", mech }) names the saved version of that alert, which is left out so
+-- it doesn't fire twice (a block may answer for its own items with def.Replaces: the note matches by line or by its
+-- Mech Alerts marker). Both apply only in a rehearsal.
 
 local Rules = CRT.AlertRules
 
