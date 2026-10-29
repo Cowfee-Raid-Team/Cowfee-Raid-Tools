@@ -14,7 +14,8 @@ local ADDON, CRT = ...
 -- and only a plain true counts.
 --
 -- Each box is a fixed square (plates.size) anchored above the plate frame from C_NamePlate.GetNamePlateForUnit
--- (plates.offset up), never scaled with the plate, the number in the game's font at plates.font, outlined. Your own
+-- (plates.offset up), on UIParent so it never scales with the plate (a plate that refuses anchors from another frame
+-- tree takes it as its child instead: Plates.Attach), the number in the game's font at plates.font, outlined. Your own
 -- pair is drawn in your colours (plates.mineBox, mineText), the others in plates.box and text, shown only with Show
 -- every number (plates.all). Boxes come from one pool, so a long fight makes no new frames after the first wave.
 --
@@ -23,7 +24,8 @@ local ADDON, CRT = ...
 -- UNIT_SPELLCAST_START (unitTarget; the game's own nameplate cast bars listen to it for nameplate tokens),
 -- PLAYER_TARGET_CHANGED, PLAYER_FOCUS_CHANGED, UNIT_TARGET (unitTarget), UnitIsUnit (RequiresComparableUnitTokens,
 -- SecretWhenUnitComparisonRestricted), UnitExists, UnitIsPlayer, UnitCanAttack, UnitLevel (-1 for a boss),
--- IsInRaid, GetNumGroupMembers, GetNumSubgroupMembers, STANDARD_TEXT_FONT.
+-- IsInRaid, GetNumGroupMembers, GetNumSubgroupMembers, STANDARD_TEXT_FONT, ScriptRegion:IsAnchoringRestricted (a SetPoint
+-- across frame trees to such a region raises).
 
 local Plates = { boxes = {}, numbers = {}, castListeners = {} }
 CRT.InterruptPlates = Plates
@@ -161,11 +163,26 @@ local function draw(unit)
     local mine = myNumber ~= nil and n == myNumber
     Plates.Style(f, n, mine)
     local plate = ask(C_NamePlate and C_NamePlate.GetNamePlateForUnit, unit)
-    f:ClearAllPoints()
-    if plate then
-        f:SetPoint("BOTTOM", plate, "TOP", 0, settings().offset)
+    local placed = plate ~= nil and Plates.Attach(f, plate)
+    f:SetShown(placed and settings().on and (mine or settings().all) and true or false)
+end
+
+-- Puts a box above a plate frame. A box lives on UIParent, so the plate's scale never reaches it; a plate that
+-- refuses anchors from another frame tree (ScriptRegion:IsAnchoringRestricted: SetPoint across trees then raises)
+-- takes the box as its child instead, where it scales with the plate. False when neither works.
+function Plates.Attach(f, plate)
+    local offset = settings().offset
+    local restricted = false
+    if plate.IsAnchoringRestricted then
+        local ok, r = pcall(plate.IsAnchoringRestricted, plate)
+        restricted = not ok or isSecret(r) or r == true
     end
-    f:SetShown(plate ~= nil and settings().on and (mine or settings().all) and true or false)
+    local parent = restricted and plate or UIParent
+    if f:GetParent() ~= parent and not pcall(f.SetParent, f, parent) then
+        return false
+    end
+    f:ClearAllPoints()
+    return pcall(f.SetPoint, f, "BOTTOM", plate, "TOP", 0, offset) and true or false
 end
 
 local function release(unit)

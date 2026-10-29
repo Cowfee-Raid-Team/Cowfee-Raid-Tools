@@ -46,12 +46,16 @@ local function region(kind)
   function r:EnableMouse() end
   function r:CreateTexture() return region("Texture") end
   function r:CreateFontString() return region("FontString") end
+  function r:SetParent(p) self.parent = p end
+  function r:GetParent() return self.parent end
+  function r:IsAnchoringRestricted() return self.restricted == true end
   return r
 end
 local frames = {}
 CreateFrame = function(kind, name, parent)
   made = made + 1
   local f = region(kind or "Frame")
+  f.parent = parent
   f.events = {}
   function f:RegisterEvent(e) self.events[e] = true end
   function f:UnregisterEvent(e) self.events[e] = nil end
@@ -123,6 +127,14 @@ eq(box.text and box.text.text, "3", "box: the number")
 local pt = box.points[1]
 check(pt and pt[1] == "BOTTOM" and pt[2] == plates.nameplate2 and pt[3] == "TOP" and pt[4] == 0 and pt[5] == 20, "box: above the plate, 20 up")
 eq(box.w, 50, "box: 50 wide"); eq(box.h, 50, "box: 50 high")
+eq(box.parent, UIParent, "box: on UIParent, so the plate's scale never reaches it")
+do
+  local f, pl = P.NewBox(), region("Frame")
+  pl.restricted = true
+  check(P.Attach(f, pl) and f.parent == pl, "box: a plate that refuses anchors from outside takes the box as its child")
+  f.SetPoint = function() error("restricted") end
+  check(P.Attach(f, region("Frame")) == false, "box: a raising SetPoint leaves it unplaced")
+end
 eq(box.text.font[2], 24, "box: the number's size"); eq(box.text.font[3], "OUTLINE", "box: outlined")
 eq(table.concat(box.bg.color, ","), "0,1,0,1", "box: your pair in your box colour")
 eq(table.concat(box.text.textColor, ","), "1,0,0,1", "box: and your number colour")
