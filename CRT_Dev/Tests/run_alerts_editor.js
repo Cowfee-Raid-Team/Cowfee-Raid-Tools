@@ -422,6 +422,19 @@ do
   print("ok editor: opens for a note line")
 end
 
+-- a Mech Alerts line (Notes/MechNote.lua) saved in the editor keeps its bar's ticks, fill and count down to, and its
+-- marker, so the Mech Alerts panel still finds it
+do
+  reset()
+  local id = Notes:Import("EncounterID:9001;Difficulty:Heroic;Name:Test Boss\\ntime:30;ph:1;tag:all;text:Soak;show:bar;warn:8;ticks:2,4;fill:up;countto:impact;mech:777;")
+  E:OpenNote(id, 2)
+  sliders["Show from"].opts.set(9)
+  click(win().saveBtn)
+  local raw = noteRaw(id)
+  assert(raw:find("warn:9;ticks:2,4;fill:up;countto:impact;mech:777;", 1, true), "kept: " .. raw)
+  print("ok editor: a Mech Alerts line keeps its bar fields and marker")
+end
+
 -- a time dropped on the Timeline keeps its tenths when saved as your own, and reads back
 do
   reset()

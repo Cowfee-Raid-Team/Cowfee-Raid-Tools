@@ -6,7 +6,9 @@ local ADDON, CRT = ...
 -- saved in CRT.db.alerts.reminders[encounterID][id] as
 --   { boss, spellID, text, times, outputs = { alert, bar, speech, text, icon, circle, timeline }, warn, speech,
 --     priority, group, difficulty, enabled, linger, sound, auraSound, glow, iconID, color, speakAt, ticks, fill, countTo, barTo,
---     absorb }
+--     absorb, raidNote }
+-- raidNote (optional) = { tag, key, difficulty }: saved as Raid note in Mech Alerts (Notes/MechNote.lua). Its lines in the
+-- boss's raid note alert instead, so the "mine" block skips it (InNote); nothing else changes.
 -- auraSound true also plays the sound when the spell's aura is put on you (Sound/Auras.lua).
 -- absorb (optional, AbsorbOf) = { unit, length, anyDifficulty } makes its bar a shield bar, as a special alert's
 -- (Alerts/Absorb.lua; the format at the top of Alerts/Special.lua): the window opens Show from before each cast, and
@@ -1169,6 +1171,12 @@ function Reminders:Items(encounterID, id, r, group, ref)
     return out
 end
 
+-- Whether a reminder was saved as Raid note (raidNote, Notes/MechNote.lua): its lines in the boss's raid note alert
+-- in its place, so it runs no alerts of its own until it is Only me again.
+function Reminders.InNote(r)
+    return type(r) == "table" and type(r.raidNote) == "table"
+end
+
 local function entries(run)
     local out = {}
     if not (run and run.encounterID) then
@@ -1178,7 +1186,7 @@ local function entries(run)
     local group = Alerts.RunGroup and Alerts:RunGroup(run) or nil
     for _, e in ipairs(Reminders:List(run.encounterID)) do
         local r = Reminders:Effective(BLOCK, e.id, e.r)
-        if r.enabled ~= false and matchesDifficulty(r, run) then
+        if r.enabled ~= false and not Reminders.InNote(r) and matchesDifficulty(r, run) then
             for _, item in ipairs(Reminders:Items(run.encounterID, e.id, r, group, run.reference)) do
                 out[#out + 1] = item
             end
@@ -1205,7 +1213,8 @@ function Reminders:AbsorbWatches(run)
         local r = Reminders:Effective(BLOCK, e.id, e.r)
         local a = Reminders.AbsorbOf(r.absorb)
         local fits = a and matchesDifficulty(r, run)
-        if a and r.enabled ~= false and type(r.outputs) == "table" and r.outputs.bar and (fits or a.anyDifficulty) then
+        if a and r.enabled ~= false and not Reminders.InNote(r) and type(r.outputs) == "table" and r.outputs.bar
+            and (fits or a.anyDifficulty) then
             local icon, text = looks(r)
             out[#out + 1] = {
                 id = "absorb:" .. BLOCK .. ":" .. tostring(e.id),

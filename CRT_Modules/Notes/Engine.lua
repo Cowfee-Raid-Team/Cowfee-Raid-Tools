@@ -401,6 +401,15 @@ function Engine.ItemFor(t, index, mine)
         item.glow = t.glow and true or nil
         item.speech = Rules.SpeechItems(item.text, item.warn, t.tts and true or false, t.count and true or false,
             t.speakAt == "zero")
+        -- ticks:, fill: and countto: (a Mech Alert's bar, Notes/MechNote.lua): the bar from Show from to the line's
+        -- time with its impact ticks on it, as a reminder's (Alerts/Reminders.lua BarTicks); a shield bar has none
+        local Reminders = CRT.AlertReminders
+        local ticks = not item.absorb and Reminders and Reminders.BarTicks and Reminders.BarTicks(t.ticks, item.warn) or nil
+        item.ticks = ticks
+        item.barStart = ticks and -item.warn or nil
+        item.barEnd = ticks and 0 or nil
+        item.countTo = ticks and t.countTo or nil
+        item.fill = not item.absorb and t.fill or nil
         return item
     end
     local settings = Alerts:Settings() or {}
