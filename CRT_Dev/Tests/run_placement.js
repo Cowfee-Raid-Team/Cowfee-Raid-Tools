@@ -23,6 +23,7 @@ const ELEMENTS = [
   ['CRT_Modules/QoL/LowHealth.lua', 'lowhealth'],
   ['CRT_Modules/Markers/Display.lua', 'markers'],
   ['CRT_Modules/Consumables/Display.lua', 'consumables'],
+  ['CRT_Modules/Interrupts/Reminder.lua', 'kickreminder'],
   ['CRT_Modules/Debuffs/Panel.lua', 'debuffs'],
   ['CRT_Modules/Pace/Display.lua', 'pace'],
   ['CRT_Modules/ReadyCheck/Window.lua', 'readycheck'],

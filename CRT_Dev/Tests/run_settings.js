@@ -260,6 +260,25 @@ print("  " .. fontLine("CRTFontNormal") .. "; " .. fontLine("CRTFontEdit") .. ";
 popup = nil dropdowns["Font"].set("Expressway")
 print("same font again: popup " .. tostring(popup))
 print("settings page built: " .. tostring(UI.pages.settings.frame ~= nil) .. ", title " .. UI.pages.settings.title .. ", profile " .. CRT.Profiles:Current() .. ", minimap " .. tostring(CRT.db.minimap.angle))
+-- Appearance > Modules: Enable Interrupts switches the optional module (CRT_Modules/Interrupts/Data.lua, stood in for)
+do
+  local on
+  CRT.Interrupts = { Enabled = function() return on == true end, SetEnabled = function(_, v) on = v end }
+  local cb
+  for _, fr in ipairs(frames) do
+    local l = rawget(fr, "label")
+    if fr.kind == "CheckButton" and type(l) == "table" and rawget(l, "text") == "Enable Interrupts" then cb = fr end
+  end
+  if not cb then
+    print("FAIL General Settings has an Enable Interrupts checkbox")
+  else
+    cb:SetChecked(true) cb.OnClick(cb)
+    if on ~= true then print("FAIL Enable Interrupts switches the module on") end
+    cb:SetChecked(false) cb.OnClick(cb)
+    if on ~= false then print("FAIL Enable Interrupts switches the module off") end
+  end
+  CRT.Interrupts = nil
+end
 -- every (?) on the page is UI.HelpRight's: HELP_GAP right of its target, or of its text's right edge
 do
   local helps, titled = 0, false

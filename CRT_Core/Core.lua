@@ -13,6 +13,7 @@ CRT.version = (C_AddOns and C_AddOns.GetAddOnMetadata and C_AddOns.GetAddOnMetad
 --   alerts.reminders, anyBackup (Alerts/Reminders.lua), alerts.phases (Alerts/Phases.lua), alerts.special (Alerts/Special.lua),
 --   alerts.shieldPulls (Alerts/ShieldPulls.lua)
 --   pace.own, shared, use, disabled (Pace/Data.lua); markers.disabled (Markers/Display.lua)
+--   interrupts.own, shared, use (Interrupts/Data.lua)
 --   dev.hiddenAbilities, mechHidden (Timeline/Data.lua), dev.markerDisplays (Dev/MarkerEditor.lua),
 --   dev.bossRoute[seasonKey] (Dev/BossOrder.lua, kept by season)
 -- A new table kept per boss is declared the same way, by the module that writes it.
@@ -418,6 +419,17 @@ local defaults = {
     -- shared[encounterID] is the raid's plan, shared by the raid leader or an assistant (Pace/Comm.lua),
     -- and use[encounterID] = "own" uses your own plan in place of it.
     pace = { disabled = {}, own = {}, shared = {}, use = {}, shown = true },
+    -- Interrupts (Interrupts/): enabled is the module's one switch, off until the player ticks Enable Interrupts on
+    -- General Settings; off, the page, its events, received kick lists and its Addon check column are all off.
+    -- own[encounterID] is your own kick list, shared[encounterID] the raid's ({ list, from, at }, Interrupts/Comm.lua)
+    -- and use[encounterID] = "own" uses yours in place of it. accept takes lists from the leader and assistants;
+    -- test is Test on trash, set off at every login. plates are the numbers above the nameplates (box and number
+    -- sizes, height above the plate, your pair's colours and the others'), reminder the countdown before your kick.
+    -- The reminder's place is per character, in CRTDBChar.interrupts.reminder.
+    interrupts = { enabled = false, own = {}, shared = {}, use = {}, accept = true, test = false,
+        plates = { on = true, all = false, size = 50, font = 24, offset = 20,
+            mineBox = { 0, 1, 0, 1 }, mineText = { 1, 0, 0, 1 }, box = { 1, 0, 0, 1 }, text = { 1, 1, 1, 1 } }, -- saved, the player's to change: not a theme colour
+        reminder = { on = true, sound = "none", size = 48 } },
     alerts = {
         bars = { shown = true, noteLines = true, cap = 5, ahead = 20, width = 240, height = 20, spacing = 4, border = "none", font = "Friz Quadrata", fontSize = 13,
             barColor = { 0.44, 0.31, 0.22, 1 }, bgColor = { 0, 0, 0, 0.6 }, textColor = { 0.95, 0.90, 0.84, 1 }, showType = true }, -- saved, the player's to change: not a theme colour

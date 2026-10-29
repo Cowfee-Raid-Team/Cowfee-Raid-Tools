@@ -367,9 +367,27 @@ for word, page in pairs(WORDS) do
   check(shownPages[before + 1] == page, "/crt " .. word .. " opens " .. page .. ", got " .. tostring(shownPages[before + 1]))
   check(help:find("/crt " .. word .. "|r", 1, true) ~= nil, "/crt help lists /crt " .. word)
 end
+-- /crt interrupts: the optional module is off on a fresh install, so the word says so and opens General Settings;
+-- switched on, its page is in the menu after Pace and the word opens it
+do
+  check(CRT.Slash.words.interrupts ~= nil, "/crt interrupts is registered")
+  check(help:find("/crt interrupts|r", 1, true) ~= nil, "/crt help lists /crt interrupts")
+  check(UI.pages.interrupts ~= nil and UI.pages.interrupts.hidden, "the Interrupts page is there, hidden while the module is off")
+  local before = #shownPages
+  local out = slash("interrupts")
+  check(shownPages[before + 1] == "settings" and out:find("Enable Interrupts", 1, true) ~= nil, "/crt interrupts while off opens General Settings: " .. out)
+  CRT.Interrupts:SetEnabled(true)
+  local after, pace = nil, nil
+  for _, g in ipairs(UI.MenuGroups()) do for i, k in ipairs(g.keys) do if k == "interrupts" then after = g.keys[i - 1] end end end
+  check(after == "pace", "the Interrupts page is in the menu after Pace, got " .. tostring(after))
+  before = #shownPages
+  slash("interrupts")
+  check(shownPages[before + 1] == "interrupts", "/crt interrupts opens the page once it is on")
+  CRT.Interrupts:SetEnabled(false)
+end
 local count = 0
 for _ in pairs(CRT.Slash.words) do count = count + 1 end
-check(count == 7, "seven registered words (the six above and loot), got " .. count)
+check(count == 8, "eight registered words (the six above, loot and interrupts), got " .. count)
 check(not help:find("turned off", 1, true), "/crt help names nothing turned off")
 for _, def in pairs(CRT.Slash.words) do
   check(def.module == nil and def.raider == nil and def.raiderHelp == nil, "a registered word has only run, help and top")
@@ -384,6 +402,13 @@ check(slash("nonsense"):find("Unknown command", 1, true) ~= nil, "an unknown wor
 check(slash("late nonsense"):find("Unknown command", 1, true) ~= nil, "an unknown word after a module word is unknown")
 check(slash("modules"):find("Unknown command", 1, true) ~= nil, "/crt modules is unknown")
 check(slash("dev modules"):find("Unknown command", 1, true) ~= nil, "/crt dev modules is unknown")
+-- the kick probe's word, in a dev build only
+local kicks = slash("dev kicks")
+if scenario.release then
+  check(kicks:find("Unknown command", 1, true) ~= nil, "/crt dev kicks is not in a release build")
+else
+  check(kicks:find("Kick probe is", 1, true) ~= nil, "/crt dev kicks answers: " .. kicks)
+end
 
 -- /crt loot alone: your loot popup and All Loot Rolls. Loot History has no word (it opens from the menu); the
 -- leader's words come after /crt loot.
@@ -588,7 +613,8 @@ const LISTEN = [
   'CRT_Modules/Loot/Store.lua', 'CRT_Modules/Loot/Capture.lua', 'CRT_Modules/Loot/RCLC.lua',
   'CRT_Modules/Groups/Apply.lua', 'CRT_Modules/Groups/Invite.lua', 'CRT_Modules/Late/Data.lua',
   'CRT_Modules/Tattlebot/Data.lua', 'CRT_Modules/Timeline/RehearsalWindow.lua', 'CRT_Modules/Timeline/JournalExport.lua',
-  'CRT_Modules/Notes/Comm.lua', 'CRT_Modules/Alerts/Engine.lua'];
+  'CRT_Modules/Notes/Comm.lua', 'CRT_Modules/Alerts/Engine.lua', 'CRT_Modules/Interrupts/Data.lua',
+  'CRT_Modules/Interrupts/Anchor.lua', 'CRT_Modules/Interrupts/Comm.lua'];
 const scenarios = [
   { name: 'dev build', listen: LISTEN },
   { name: 'release build', release: true, listen: LISTEN },
