@@ -1,14 +1,14 @@
 local ADDON, CRT = ...
 
--- Interrupts: the numbering lattice (CRT.InterruptLattice). Nothing can be read off a boss's add in a raid fight
--- (its name, GUID and spells are secret), so an add is known only by when its first cast starts. Each wave has an
--- anchor moment (Interrupts/Anchor.lua finds it), and the adds' first casts land on a fixed lattice after it:
--- add 1 at anchor + firstCast, then one every spacing seconds. The slot a first cast falls into is the add's place
--- in spawn order, and perNumber adds in a row share one kick number. Pure functions, no frames and no game calls,
+-- Interrupts: the numbering lattice of a timed kick setup (CRT.InterruptLattice). Nothing can be read off a boss's
+-- add in a raid fight (its name, GUID and spells are secret), so an add is known only by when its first cast starts.
+-- Each wave has an anchor moment (Interrupts/Anchor.lua finds it), and the adds' first casts land on a fixed lattice
+-- after it: add 1 at anchor + firstCast, then one every spacing seconds. The slot a first cast falls into is the add's
+-- place in spawn order, and perNumber adds in a row share one kick number. Pure functions, no frames and no game calls,
 -- so the Node harness runs them (CRT_Dev/Tests/run_interrupts_lattice.js).
 --
--- The numbers come from the boss's interrupts block in its season-pack file, read through Bosses:Get:
---   difficulty  the difficulty ID the module arms on
+-- The numbers come from a setup's timing table (Interrupts/Setup.lua has the whole setup's format), in the boss's
+-- season-pack file:
 --   anchor      { unit (the boss unit whose casts are counted), cycle (casts in its cycle), ordinal (the cast in
 --               each cycle that starts a wave), times (seconds from the pull to each wave's anchor, used while no
 --               anchor has been counted) }
@@ -17,17 +17,9 @@ local ADDON, CRT = ...
 --   tolerance   a cast further than this from its slot is not an add of the wave
 --   adds        adds per wave; perNumber  adds that share one kick number, in spawn order
 --   window      a cast this long after the anchor can't belong to the wave
---   groups      the kick list's column headings and the side in the reminder ({ "Left", "Right" })
---   slots       kick numbers per group; label  the word before the number ("Kick")
---   note        optional: one line for the page's Boss (?), such as why it works on one difficulty only
 
 local Lattice = {}
 CRT.InterruptLattice = Lattice
-
--- The most groups and slots a block may have: what the Interrupts page's kick list fits (Interrupts/Page.lua lays out
--- MAX_GROUPS columns of MAX_SLOTS rows, and Who has it one row per name).
-Lattice.MAX_GROUPS = 2
-Lattice.MAX_SLOTS = 8
 
 local EPSILON = 1e-9 -- so a cast exactly on the tolerance edge counts, whatever the float sums give
 
@@ -49,16 +41,15 @@ local function copy(t)
     end
     return out
 end
+Lattice.Copy = copy
 
--- A boss's interrupts block, checked: a copy, or nil and what is wrong.
-function Lattice.Read(raw)
+-- A setup's timing table, checked: a copy, or nil and what is wrong. numbers is how many kick numbers the setup has
+-- (its most slots in a group); the adds must fit them.
+function Lattice.Read(raw, numbers)
     if type(raw) ~= "table" then
-        return nil, "no interrupts block"
+        return nil, "no timing"
     end
     local a = raw.anchor
-    if not whole(raw.difficulty, 1) then
-        return nil, "difficulty is not a difficulty ID"
-    end
     if type(a) ~= "table" or type(a.unit) ~= "string" or a.unit == "" then
         return nil, "anchor.unit is missing"
     end
@@ -79,24 +70,10 @@ function Lattice.Read(raw)
     if not number(raw.window) or raw.window <= 0 then
         return nil, "window must be above 0"
     end
-    if not whole(raw.adds, 1) or not whole(raw.perNumber, 1) or not whole(raw.slots, 1) then
-        return nil, "adds, perNumber and slots must be whole numbers of 1 or more"
+    if not whole(raw.adds, 1) or not whole(raw.perNumber, 1) then
+        return nil, "adds and perNumber must be whole numbers of 1 or more"
     end
-    if type(raw.groups) ~= "table" or #raw.groups < 1 then
-        return nil, "groups needs at least one group"
-    end
-    if #raw.groups > Lattice.MAX_GROUPS or raw.slots > Lattice.MAX_SLOTS then
-        return nil, "more groups or slots than the Interrupts page fits"
-    end
-    for _, g in ipairs(raw.groups) do
-        if type(g) ~= "string" or g == "" then
-            return nil, "a group's name is not text"
-        end
-    end
-    if type(raw.label) ~= "string" or raw.label == "" then
-        return nil, "label is not text"
-    end
-    if raw.adds > #raw.groups * raw.slots * raw.perNumber then
+    if whole(numbers, 1) and math.ceil(raw.adds / raw.perNumber) > numbers then
         return nil, "more adds than the kick list has numbers for"
     end
     return copy(raw)
@@ -104,44 +81,44 @@ end
 
 -- The kick number of the add in slot index (0 first, in spawn or cast order): perNumber adds in a row share one.
 -- nil outside the wave's adds.
-function Lattice.SlotNumber(def, index)
-    if index < 0 or index >= def.adds then
+function Lattice.SlotNumber(timing, index)
+    if index < 0 or index >= timing.adds then
         return nil
     end
-    return math.ceil((index + 1) / def.perNumber)
+    return math.ceil((index + 1) / timing.perNumber)
 end
 
 -- The kick number of an add whose first cast started at castTime, in the wave anchored at anchorTime, or nil when
 -- the cast is on no slot of the wave.
-function Lattice.Number(def, anchorTime, castTime)
-    if type(def) ~= "table" or not number(anchorTime) or not number(castTime) then
+function Lattice.Number(timing, anchorTime, castTime)
+    if type(timing) ~= "table" or not number(anchorTime) or not number(castTime) then
         return nil
     end
-    local offset = castTime - anchorTime - def.firstCast
-    local index = math.floor(offset / def.spacing + 0.5)
-    if index < 0 or index >= def.adds then
+    local offset = castTime - anchorTime - timing.firstCast
+    local index = math.floor(offset / timing.spacing + 0.5)
+    if index < 0 or index >= timing.adds then
         return nil
     end
-    if math.abs(offset - index * def.spacing) > def.tolerance + EPSILON then
+    if math.abs(offset - index * timing.spacing) > timing.tolerance + EPSILON then
         return nil
     end
-    return Lattice.SlotNumber(def, index)
+    return Lattice.SlotNumber(timing, index)
 end
 
 -- Seconds from the anchor to the first cast of a kick number's first add.
-function Lattice.PairOffset(def, n)
-    return def.firstCast + (n - 1) * def.perNumber * def.spacing
+function Lattice.PairOffset(timing, n)
+    return timing.firstCast + (n - 1) * timing.perNumber * timing.spacing
 end
 
 -- The anchor time from the fallback table for a cast at castTime, when no anchor was counted: the first
 -- pullTime + times[i] the cast is at or after and less than window seconds from. nil when none.
-function Lattice.Fallback(def, pullTime, castTime)
-    if type(def) ~= "table" or not number(pullTime) or not number(castTime) then
+function Lattice.Fallback(timing, pullTime, castTime)
+    if type(timing) ~= "table" or not number(pullTime) or not number(castTime) then
         return nil
     end
-    for _, t in ipairs(def.anchor.times) do
+    for _, t in ipairs(timing.anchor.times) do
         local at = pullTime + t
-        if castTime >= at and castTime - at < def.window then
+        if castTime >= at and castTime - at < timing.window then
             return at
         end
     end

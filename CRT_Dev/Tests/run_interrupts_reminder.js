@@ -10,7 +10,7 @@ const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate();
 lualib.luaL_openlibs(L);
 const harness = `
-local registrySrc, seasonSrc, bossSrc, commSrc, latticeSrc, dataSrc, anchorSrc, reminderSrc = ...
+local registrySrc, seasonSrc, bossSrc, commSrc, latticeSrc, setupSrc, dataSrc, anchorSrc, reminderSrc = ...
 local fails, passes = 0, 0
 local function check(ok, what) if ok then passes = passes + 1 else fails = fails + 1 print("FAIL " .. what) end end
 local function eq(a, b, what) check(a == b, what .. " (got " .. tostring(a) .. ", want " .. tostring(b) .. ")") end
@@ -117,10 +117,10 @@ CRT.Sound = { Play = function(_, key) played[#played + 1] = key return 1 end }
 CRT.Groups = { PlayerSpecID = function() return specID end }
 local printed = {}
 function CRT:Print(m) printed[#printed + 1] = m end
-for _, src in ipairs({ registrySrc, seasonSrc, bossSrc, commSrc, latticeSrc, dataSrc }) do assert(load(src))("CowfeeRaidTools", CRT) end
-CRT.Bosses:Get(3470).interrupts = { difficulty = 16, anchor = { unit = "boss2", cycle = 7, ordinal = 5, times = { 33, 94, 188, 249, 343, 404 } },
-  firstCast = 4.5, spacing = 1.0, tolerance = 0.3, adds = 10, perNumber = 2, window = 25,
-  groups = { "Left", "Right" }, slots = 5, label = "Kick" }
+for _, src in ipairs({ registrySrc, seasonSrc, bossSrc, commSrc, latticeSrc, setupSrc, dataSrc }) do assert(load(src))("CowfeeRaidTools", CRT) end
+CRT.Bosses:Get(3470).interrupts = { { difficulty = 16, label = "Kick", groups = { { key = "left", label = "Left", slots = 5 }, { key = "right", label = "Right", slots = 5 } },
+  timing = { anchor = { unit = "boss2", cycle = 7, ordinal = 5, times = { 33, 94, 188, 249, 343, 404 } },
+  firstCast = 4.5, spacing = 1.0, tolerance = 0.3, adds = 10, perNumber = 2, window = 25 } } }
 -- the class interrupts as the season's game IDs carry them
 CRT.Bosses:SeasonData("sample", "gameIDs", { kicks = { classes = { WARRIOR = 6552, HUNTER = 147362, PALADIN = 96231 }, specs = { [255] = 187707, [65] = false } } })
 for _, src in ipairs({ anchorSrc, reminderSrc }) do assert(load(src))("CowfeeRaidTools", CRT) end
@@ -239,6 +239,34 @@ check(not shownFrame(), "previews: not while the module is off")
 previews["interrupts-reminder"](false)
 I:SetEnabled(true)
 
+-- an untimed setup: no countdown, "Your kick next" when your group's add moves to your number
+CRT.Bosses:Get(3470).interrupts[2] = { difficulty = 15, groups = { { key = "skull", label = "Skull add", marker = 8, slots = 4 },
+  { key = "cross", label = "Cross add", marker = 7, slots = 4 } } }
+I:ClearCache()
+local myGroup = 2
+I.Mine = function() return mine, mine and "Cross add" or nil, mine and myGroup or nil end
+mine = 2; played = {}
+clock = 7000; A:HandleEvent("ENCOUNTER_START", 3470, "Boss", 15)
+eq(#timers, 0, "untimed: nothing scheduled")
+R:OnTurn(2, 1); check(not shownFrame(), "untimed: another number, nothing")
+R:OnTurn(1, 2); check(not shownFrame(), "untimed: my number on another group's add, nothing")
+R:OnTurn(2, 2)
+check(shownFrame(), "untimed: my group's add on my number")
+eq(R.label:GetText(), "Your kick next: Cross add #2", "untimed: the line")
+eq(R.count:GetText(), "", "untimed: no seconds")
+eq(played[1], "kit:8960", "untimed: the sound as it shows")
+advance(7001); check(shownFrame(), "untimed: stays a moment")
+R:OnTurn(2, 3); check(not shownFrame(), "untimed: hidden when the add moves on")
+R:OnTurn(2, 2); advance(7001 + R.HOLD + 0.1)
+check(not shownFrame(), "untimed: hidden after HOLD seconds")
+check(R.HOLD >= 5 and R.HOLD <= 20, "untimed: a named hold (" .. tostring(R.HOLD) .. ")")
+CRT.db.interrupts.reminder.on = false; R:OnTurn(2, 2); check(not shownFrame(), "untimed: reminder off, nothing")
+CRT.db.interrupts.reminder.on = true
+R:OnTurn(2, 2); A:HandleEvent("ENCOUNTER_END"); check(not shownFrame(), "untimed: the pull's end hides it")
+R:OnTurn(2, 2); check(not shownFrame(), "untimed: nothing while disarmed")
+CRT.Bosses:Get(3470).interrupts[2] = nil
+I:ClearCache()
+
 -- the icon: by spec, then class, then the game's kick icon
 eq(R.KickIcon(), 132938, "icon: the class's interrupt")
 classFile, specID = "HUNTER", 255
@@ -257,7 +285,7 @@ if fails > 0 then error("failures") end
 const dir = process.argv[2];
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 const FILES = ['CRT_Data/Bosses/Registry.lua', 'CRT_Dev/Tests/SamplePack/Season.lua', 'CRT_Dev/Tests/SamplePack/NekzaliTheSoulcoiler.lua',
-  'CRT_Core/Comm.lua', 'CRT_Modules/Interrupts/Lattice.lua', 'CRT_Modules/Interrupts/Data.lua', 'CRT_Modules/Interrupts/Anchor.lua',
+  'CRT_Core/Comm.lua', 'CRT_Modules/Interrupts/Lattice.lua', 'CRT_Modules/Interrupts/Setup.lua', 'CRT_Modules/Interrupts/Data.lua', 'CRT_Modules/Interrupts/Anchor.lua',
   'CRT_Modules/Interrupts/Reminder.lua'];
 for (const f of FILES) {
   const p = path.join(dir, f);

@@ -1,9 +1,13 @@
 local ADDON, CRT = ...
 
--- Interrupts: the countdown before your own pair's first cast (CRT.InterruptReminder). Its own overlay, not an
--- alert area: your interrupt's icon with a draining swipe, the whole seconds left on it, and "Kick #3 Left" under
--- it, from the boss block's label, your number and your group. LEAD seconds before the cast it shows; at 0 it hides
--- and plays the chosen sound (CRT.Sound, on General Settings' sound channel). No number, no reminder.
+-- Interrupts: the reminder before your own kick (CRT.InterruptReminder). Its own overlay, not an alert area: your
+-- interrupt's icon and a line under it. No number, no reminder.
+-- A timed setup counts down: a draining swipe, the whole seconds left on it, and "Kick #3 Left" under it, from the
+-- setup's label, your number and your group. LEAD seconds before the cast it shows; at 0 it hides and plays the chosen
+-- sound (CRT.Sound, on General Settings' sound channel).
+-- An untimed setup has nothing to count down: when your group's add moves to your number (Plates:OnTurn, the cast you
+-- kick has started) it shows "Your kick next: Skull add #2" with the sound, and hides when the add moves on or after
+-- HOLD seconds.
 --
 -- The schedule: when a pull arms (Interrupts/Anchor.lua), one timer per entry of the block's anchor.times, at
 -- pullTime + time + PairOffset(number) - LEAD, since wave 1's reminder is due before its anchor is even cast. When
@@ -19,7 +23,7 @@ local ADDON, CRT = ...
 -- C_Spell.GetSpellTexture(spellID) -> iconID (nothing for an unknown spell), UnitClass, and your spec through
 -- Groups.PlayerSpecID (C_SpecializationInfo.GetSpecialization and GetSpecializationInfo).
 
-local Reminder = { LEAD = 5 }
+local Reminder = { LEAD = 5, HOLD = 12 }
 CRT.InterruptReminder = Reminder
 
 local Interrupts = CRT.Interrupts
@@ -31,6 +35,7 @@ local TEXT = {
     title = "Kick reminder",
     drag = "Kick reminder: drag to move",
     line = "%s #%d %s", -- Kick #3 Left
+    next = "Your kick next: %s #%d", -- Your kick next: Skull add #2
 }
 local FALLBACK_ICON = "Interface\\Icons\\ability_kick"
 local GAP = 4 -- between the icon and the line under it
@@ -144,22 +149,22 @@ function Reminder:Refresh()
 end
 
 -- The text under the icon: your kick, or a sample one when you have none (Preview, Previews).
-local function line(encounterID)
-    local def = encounterID and Interrupts:Def(encounterID)
+local function line(key)
+    local def = key and Interrupts:Def(key)
     if not def then
         local first = Interrupts:Bosses()[1]
-        encounterID = first and first.key
-        def = encounterID and Interrupts:Def(encounterID)
+        key = first and first.key
+        def = key and Interrupts:Def(key)
     end
     local n, group = nil, nil
-    if encounterID then
-        n, group = Interrupts:Mine(encounterID)
+    if key then
+        n, group = Interrupts:Mine(key)
     end
-    return string.format(TEXT.line, def and def.label or "Kick", n or 1, group or (def and def.groups[1]) or "")
+    return string.format(TEXT.line, def and def.label or "Kick", n or 1, group or (def and def.groups[1].label) or "")
 end
 
 local function writeCount()
-    if showing then
+    if showing and showing.endAt then
         count:SetText(tostring(math.max(0, math.ceil(showing.endAt - GetTime() - 1e-6))))
     end
 end
@@ -223,7 +228,7 @@ local function setTimer(wave, at)
         timers[wave]:Cancel()
         timers[wave] = nil
     end
-    local id = Anchor.encounterID
+    local id = Anchor.key
     local function fire()
         timers[wave] = nil
         done[wave] = true
@@ -243,15 +248,16 @@ end
 function Reminder:Schedule()
     cancelAll()
     local def, pull = Anchor.def, Anchor.pullTime
-    if not (Anchor.mode == "pull" and def and pull and Interrupts:Enabled() and settings().on) then
+    local timing = def and def.timing
+    if not (Anchor.mode == "pull" and timing and pull and Interrupts:Enabled() and settings().on) then
         return
     end
-    local n = Interrupts:Mine(Anchor.encounterID)
+    local n = Interrupts:Mine(Anchor.key)
     if not n then
         return
     end
-    local offset = Lattice.PairOffset(def, n)
-    for wave, t in ipairs(def.anchor.times) do
+    local offset = Lattice.PairOffset(timing, n)
+    for wave, t in ipairs(timing.anchor.times) do
         local at = pull + t + offset - self.LEAD
         if at + self.LEAD > GetTime() then
             setTimer(wave, at)
@@ -263,15 +269,15 @@ end
 -- the fallback table has no timer for (more waves than its times) starts from the counted anchor; one already shown
 -- is left alone.
 function Reminder:Resync(wave, anchorTime)
-    local def = Anchor.def
-    if not (def and Anchor.mode == "pull" and settings().on and Interrupts:Enabled()) then
+    local timing = Anchor.def and Anchor.def.timing
+    if not (timing and Anchor.mode == "pull" and settings().on and Interrupts:Enabled()) then
         return
     end
-    local n = Interrupts:Mine(Anchor.encounterID)
+    local n = Interrupts:Mine(Anchor.key)
     if not n then
         return
     end
-    local endAt = anchorTime + Lattice.PairOffset(def, n)
+    local endAt = anchorTime + Lattice.PairOffset(timing, n)
     if showing and showing.wave == wave then
         show(wave, endAt, label:GetText())
     elseif not done[wave] and endAt > GetTime() then
@@ -281,9 +287,53 @@ end
 
 function Reminder:Stop()
     cancelAll()
-    if showing and showing.wave then
+    if showing and (showing.wave or showing.untimed) then
         hide()
     end
+end
+
+-- An untimed setup: a group's add moved to number n. Shown when it is your group and number, hidden when your
+-- group's add moves on.
+function Reminder:OnTurn(g, n)
+    local def = Anchor.def
+    if not (def and not def.timing and Anchor.armed and Interrupts:Enabled() and settings().on) then
+        return
+    end
+    local mine, _, myGroup = Interrupts:Mine(Anchor.key)
+    if not mine or g ~= myGroup then
+        return
+    end
+    if n ~= mine then
+        if showing and showing.untimed then
+            hide()
+        end
+        return
+    end
+    self:Refresh()
+    if endTimer then
+        endTimer:Cancel()
+    end
+    if cooldown.Clear then
+        cooldown:Clear()
+    end
+    showing = { untimed = true, group = g }
+    label:SetText(string.format(TEXT.next, def.groups[g].label, n))
+    count:SetText("")
+    endTimer = C_Timer.NewTimer(self.HOLD, function()
+        endTimer = nil
+        hide()
+    end)
+    f:Show()
+    local sound = settings().sound
+    if sound and sound ~= "none" and CRT.Sound then
+        CRT.Sound:Play(sound)
+    end
+end
+
+if CRT.InterruptPlates and CRT.InterruptPlates.OnTurn then
+    CRT.InterruptPlates:OnTurn(function(g, n)
+        Reminder:OnTurn(g, n)
+    end)
 end
 
 -- Preview reminder: one LEAD second countdown, with the sound, your kick (or a sample).
@@ -291,7 +341,7 @@ function Reminder:Preview()
     if not Interrupts:Enabled() then
         return
     end
-    show(nil, GetTime() + self.LEAD, line(Anchor.encounterID))
+    show(nil, GetTime() + self.LEAD, line(Anchor.key))
 end
 
 -- Previews: the drag box and a still sample, until Previews ends.
@@ -301,7 +351,7 @@ UI:RegisterPreview("interrupts-reminder", function(on)
     if placing then
         Reminder:Refresh()
         if not showing then
-            label:SetText(line(Anchor.encounterID))
+            label:SetText(line(Anchor.key))
             count:SetText(tostring(Reminder.LEAD))
         end
         f:Show()

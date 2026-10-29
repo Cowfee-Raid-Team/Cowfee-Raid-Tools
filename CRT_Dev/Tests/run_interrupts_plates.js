@@ -3,14 +3,17 @@
 // a removed plate's number parked on the target and given back when the add's plate returns, a retarget clearing
 // it, a raising or secret UnitIsUnit survived, players, bosses and plates off screen never numbered, Test on trash
 // on any pack, the box's place and colours, the pool, and Stop hiding everything. Then the kick probe
-// (CRT_Dev/Dev/KickProbe.lua): its log lines, on, off and show. Usage: node run_interrupts_plates.js <addon folder>
+// (CRT_Dev/Dev/KickProbe.lua): its log lines, on, off and show. Then an untimed setup numbering by raid marker: the
+// marked plates on screen when it arms, 1 to the group's last slot and round again on each cast, each group its own
+// count, a secret, raising or missing marker showing nothing, a marker cleared or moved, your number only on your
+// group's add, the turn listeners, Test on trash, and the probe's read lines (what was readable or secret). Usage: node run_interrupts_plates.js <addon folder>
 const fs = require('fs');
 const path = require('path');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate();
 lualib.luaL_openlibs(L);
 const harness = `
-local registrySrc, seasonSrc, bossSrc, commSrc, latticeSrc, dataSrc, anchorSrc, platesSrc, probeSrc = ...
+local registrySrc, seasonSrc, bossSrc, commSrc, latticeSrc, setupSrc, dataSrc, anchorSrc, platesSrc, probeSrc = ...
 local fails, passes = 0, 0
 local function check(ok, what) if ok then passes = passes + 1 else fails = fails + 1 print("FAIL " .. what) end end
 local function eq(a, b, what) check(a == b, what .. " (got " .. tostring(a) .. ", want " .. tostring(b) .. ")") end
@@ -101,17 +104,20 @@ CRT.UI = { RegisterPreview = function(_, key, fn) previews[key] = fn end }
 local printed, shownText = {}, nil
 function CRT:Print(m) printed[#printed + 1] = m end
 CRT.ConsumablesTools = { ShowText = function(_, title, text) shownText = text end }
-for _, src in ipairs({ registrySrc, seasonSrc, bossSrc, commSrc, latticeSrc, dataSrc }) do assert(load(src))("CowfeeRaidTools", CRT) end
-CRT.Bosses:Get(3470).interrupts = { difficulty = 16, anchor = { unit = "boss2", cycle = 7, ordinal = 5, times = { 33, 94, 188, 249, 343, 404 } },
-  firstCast = 4.5, spacing = 1.0, tolerance = 0.3, adds = 10, perNumber = 2, window = 25,
-  groups = { "Left", "Right" }, slots = 5, label = "Kick" }
+for _, src in ipairs({ registrySrc, seasonSrc, bossSrc, commSrc, latticeSrc, setupSrc, dataSrc }) do assert(load(src))("CowfeeRaidTools", CRT) end
+CRT.Bosses:Get(3470).interrupts = { { difficulty = 16, label = "Kick", groups = { { key = "left", label = "Left", slots = 5 }, { key = "right", label = "Right", slots = 5 } },
+  timing = { anchor = { unit = "boss2", cycle = 7, ordinal = 5, times = { 33, 94, 188, 249, 343, 404 } },
+  firstCast = 4.5, spacing = 1.0, tolerance = 0.3, adds = 10, perNumber = 2, window = 25 } } }
 for _, src in ipairs({ anchorSrc, platesSrc, probeSrc }) do assert(load(src))("CowfeeRaidTools", CRT) end
 local I, A, P, K = CRT.Interrupts, CRT.InterruptAnchor, CRT.InterruptPlates, CRT.KickProbe
 check(P ~= nil, "CRT.InterruptPlates is made")
 check(K ~= nil, "CRT.KickProbe is made")
 local mine = nil
-I.Mine = function() return mine, mine and "Left" or nil end
-local function H(event, unit) P.HandleEvent(event, unit) end
+local myGroup = 1
+I.Mine = function() return mine, mine and "Left" or nil, mine and myGroup or nil end
+local markers = {}
+GetRaidTargetIndex = function(u) local m = markers[u] if m == "raise" then error("restricted") end return m end
+local function H(event, ...) P.HandleEvent(event, ...) end
 local function shownOf(u) local b = P.boxes[u] return b ~= nil and b:IsShown() end
 local function arm() I:SetEnabled(true) clock = 1000 A:HandleEvent("ENCOUNTER_START", 3470, "Boss", 16) end
 
@@ -305,12 +311,98 @@ check(log:find("38.2 nameplate2 anchor+5.00 -> ignored", 1, true) ~= nil, "probe
 check(log:find("39.0 nameplate9 not an add", 1, true) ~= nil, "probe: a player's cast logged")
 K:Command("dev kicks show")
 check(shownText and shownText:find("nameplate1", 1, true), "probe: show opens the log")
-check(table.concat(printed, " "):find("9 lines", 1, true), "probe: show prints the count")
+check(table.concat(printed, " "):find("12 lines", 1, true), "probe: show prints the count (with the three read lines)")
+check(log:find("37.7 nameplate1 read: marker none, cast error, cast spell error, event spell none", 1, true) ~= nil, "probe: a plate's read line: " .. log)
+check(not log:find("boss2 read", 1, true), "probe: no read line for the boss units")
 K:Command("dev kicks off")
 check(not CRT.db.dev.kickProbe.on, "probe: off")
 plate("nameplate3"); clock = 1039.5; H("UNIT_SPELLCAST_START", "nameplate3")
 eq(#CRT.db.dev.kickProbe.last.lines, #lines, "probe: off logs nothing")
 eq(K:Command("dev other"), false, "probe: other words are not its")
+
+-- an untimed setup: numbers by raid marker (Heroic here: Skull add of 4, Cross add of 3)
+A:HandleEvent("ENCOUNTER_END")
+CRT.Bosses:Get(3470).interrupts[2] = { difficulty = 15, groups = { { key = "skull", label = "Skull add", marker = 8, slots = 4 },
+  { key = "cross", label = "Cross add", marker = 7, slots = 3 } } }
+I:ClearCache()
+for u in pairs(plates) do plates[u] = nil end
+players, bosses = {}, {}
+CRT.db.interrupts.plates.all = false
+local turnsHeard = {}
+P:OnTurn(function(g, n) turnsHeard[#turnsHeard + 1] = g .. ":" .. n end)
+plate("nameplate1"); markers.nameplate1 = 8 -- marked before the pull
+plate("nameplate9") -- unmarked
+K:Command("dev kicks on")
+clock = 3000; A:HandleEvent("ENCOUNTER_START", 3470, "Boss", 15)
+check(listening("RAID_TARGET_UPDATE"), "marker: the marker event registered while armed")
+eq(P:NumberOf("nameplate1"), 1, "marker: a marked add on screen shows 1 at the pull")
+eq(P:NumberOf("nameplate9"), nil, "marker: an unmarked one shows nothing")
+mine, myGroup = 2, 2; P:Refresh()
+local seq = {}
+for i = 1, 6 do clock = 3000 + i; H("UNIT_SPELLCAST_START", "nameplate1"); seq[i] = tostring(P:NumberOf("nameplate1")) end
+eq(table.concat(seq, " "), "1 2 3 4 1 2", "marker: 1 for the first cast, then one more each cast, round again after 4")
+eq(P:TurnOf(1), 2, "marker: the group's count")
+eq(turnsHeard[1] .. " " .. turnsHeard[2], "1:1 1:2", "marker: the turn listeners hear each number")
+check(not shownOf("nameplate1"), "marker: number 2 of Skull is not mine (I am Cross #2)")
+plate("nameplate2"); markers.nameplate2 = 7; H("NAME_PLATE_UNIT_ADDED", "nameplate2")
+eq(P:NumberOf("nameplate2"), 1, "marker: a Cross plate coming on screen shows 1")
+seq = {}
+for i = 1, 4 do H("UNIT_SPELLCAST_START", "nameplate2"); seq[i] = tostring(P:NumberOf("nameplate2")) end
+eq(table.concat(seq, " "), "1 2 3 1", "marker: the Cross group's own count, 3 slots")
+eq(P:NumberOf("nameplate1"), 2, "marker: Skull's count untouched")
+H("UNIT_SPELLCAST_START", "nameplate2")
+check(shownOf("nameplate2"), "marker: my number on my group's add is shown")
+eq(table.concat(P.boxes.nameplate2.bg.color, ","), "0,1,0,1", "marker: in my colours")
+-- a plate that leaves and comes back keeps the rotation
+H("NAME_PLATE_UNIT_REMOVED", "nameplate2"); eq(P:NumberOf("nameplate2"), nil, "marker: a removed plate has no number")
+plate("nameplate12"); markers.nameplate12 = 7; H("NAME_PLATE_UNIT_ADDED", "nameplate12")
+eq(P:NumberOf("nameplate12"), 2, "marker: the group's add back on screen carries on its rotation")
+-- what shows nothing
+plate("nameplate3"); markers.nameplate3 = "hidden"; secrets.hidden = true
+H("UNIT_SPELLCAST_START", "nameplate3"); eq(P:NumberOf("nameplate3"), nil, "marker: a secret marker shows nothing")
+plate("nameplate4"); markers.nameplate4 = "raise"
+H("UNIT_SPELLCAST_START", "nameplate4"); eq(P:NumberOf("nameplate4"), nil, "marker: a raising marker read shows nothing")
+plate("nameplate5"); markers.nameplate5 = 1
+H("UNIT_SPELLCAST_START", "nameplate5"); eq(P:NumberOf("nameplate5"), nil, "marker: a marker no group has shows nothing")
+H("UNIT_SPELLCAST_START", "nameplate9"); eq(P:NumberOf("nameplate9"), nil, "marker: no marker shows nothing")
+playerPlate("nameplate6"); markers.nameplate6 = 8
+H("UNIT_SPELLCAST_START", "nameplate6"); eq(P:NumberOf("nameplate6"), nil, "marker: a player is never numbered")
+eq(P:TurnOf(1), 2, "marker: and its cast moves no count")
+-- the marker cleared, then put on another mob
+markers.nameplate1 = nil; H("RAID_TARGET_UPDATE")
+eq(P:NumberOf("nameplate1"), nil, "marker: cleared, the number goes")
+check(P.boxes.nameplate1 == nil, "marker: and its box")
+markers.nameplate9 = 8; H("RAID_TARGET_UPDATE")
+eq(P:NumberOf("nameplate9"), 2, "marker: a new add given the marker shows the group's number")
+markers.nameplate3 = 8; secrets.hidden = nil
+local lines = CRT.db.dev.kickProbe.last.lines
+local log = table.concat(lines, "\\n")
+check(log:find("nameplate1 Skull add -> 2", 1, true) ~= nil, "probe: a marked cast logged with its group: " .. log)
+check(log:find("nameplate9 no group's marker", 1, true) ~= nil, "probe: an unmarked cast logged")
+check(log:find("nameplate1 read: marker 8, cast error", 1, true) ~= nil, "probe: the marker read")
+check(log:find("nameplate3 read: marker secret", 1, true) ~= nil, "probe: a secret marker logged as secret")
+check(log:find("nameplate4 read: marker error", 1, true) ~= nil, "probe: a raising read logged")
+UnitCastingInfo = function() return "Wail of Terror", "Wail", 1, 2, 3, false, "c", false, 1234 end
+local hiddenSpell = setmetatable({}, { __tostring = function() error("a secret was printed") end })
+secrets[hiddenSpell] = true
+H("UNIT_SPELLCAST_START", "nameplate2", "guid", 1234)
+H("UNIT_SPELLCAST_START", "nameplate12", "guid", hiddenSpell)
+local tokenSecret = setmetatable({}, { __index = function() error("a secret token was read") end })
+secrets[tokenSecret] = true
+H("UNIT_SPELLCAST_START", tokenSecret, "guid", hiddenSpell)
+log = table.concat(CRT.db.dev.kickProbe.last.lines, "\\n")
+check(log:find("read: marker 7, cast Wail of Terror, cast spell 1234, event spell 1234", 1, true) ~= nil, "probe: a readable cast logged with its name and spell: " .. log:sub(-400))
+check(log:find("event spell secret", 1, true) ~= nil, "probe: a secret event spell logged as secret")
+check(log:find("(secret token) read:", 1, true) ~= nil, "probe: a secret token logged")
+K:Command("dev kicks off")
+A:HandleEvent("ENCOUNTER_END")
+check(next(P.boxes) == nil, "marker: the pull's end clears the boxes")
+-- Test on trash with the untimed setup
+CRT.db.interrupts.test = true; A:StartTest("3470:15")
+eq(P:NumberOf("nameplate9"), 1, "test: a marked trash mob shows 1, a new count")
+H("UNIT_SPELLCAST_START", "nameplate9"); H("UNIT_SPELLCAST_START", "nameplate9")
+eq(P:NumberOf("nameplate9"), 2, "test: and moves on with its casts")
+A:StopTest()
 
 print(string.format("%d passed, %d failed", passes, fails))
 if fails > 0 then error("failures") end
@@ -318,7 +410,7 @@ if fails > 0 then error("failures") end
 const dir = process.argv[2];
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 const FILES = ['CRT_Data/Bosses/Registry.lua', 'CRT_Dev/Tests/SamplePack/Season.lua', 'CRT_Dev/Tests/SamplePack/NekzaliTheSoulcoiler.lua',
-  'CRT_Core/Comm.lua', 'CRT_Modules/Interrupts/Lattice.lua', 'CRT_Modules/Interrupts/Data.lua', 'CRT_Modules/Interrupts/Anchor.lua',
+  'CRT_Core/Comm.lua', 'CRT_Modules/Interrupts/Lattice.lua', 'CRT_Modules/Interrupts/Setup.lua', 'CRT_Modules/Interrupts/Data.lua', 'CRT_Modules/Interrupts/Anchor.lua',
   'CRT_Modules/Interrupts/Plates.lua', 'CRT_Dev/Dev/KickProbe.lua'];
 for (const f of FILES) {
   const p = path.join(dir, f);

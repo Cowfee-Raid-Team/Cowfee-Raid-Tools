@@ -2,14 +2,16 @@
 // interrupts block here: which bosses have one, your own list and the raid's, the list in use and a share
 // switching you back to the raid's, your number from a name typed with its realm and in another case, a
 // received list for one boss leaving the others alone, the season purge's declarations, the switch, Test on
-// trash cleared at login, and the Addon check column. Usage: node run_interrupts_data.js <addon folder>
+// trash cleared at login, and the Addon check column. Then setups per difficulty and their keys, lists kept per
+// group key, the lists from before group keys read in once, your own setups (in place of the shipped one until
+// dropped), and a share's shape making a setup for a boss with none. Usage: node run_interrupts_data.js <addon folder>
 const fs = require('fs');
 const path = require('path');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate();
 lualib.luaL_openlibs(L);
 const harness = `
-local registrySrc, seasonSrc, bossSrc, coreSrc, latticeSrc, dataSrc, commSrc = ...
+local registrySrc, seasonSrc, bossSrc, coreSrc, latticeSrc, dataSrc, commSrc, setupSrc = ...
 local fails, passes = 0, 0
 local function check(ok, what) if ok then passes = passes + 1 else fails = fails + 1 print("FAIL " .. what) end end
 local function eq(a, b, what) check(a == b, what .. " (got " .. tostring(a) .. ", want " .. tostring(b) .. ")") end
@@ -29,7 +31,7 @@ local defaults = assert(load("return " .. assert(coreSrc:match("\\n    (interrup
 CRT.db = { interrupts = defaults }
 local registered
 CRT.AddonCheck = { Register = function(_, def) registered = def end }
-for _, src in ipairs({ registrySrc, seasonSrc, bossSrc, commSrc, latticeSrc, dataSrc }) do assert(load(src))("CowfeeRaidTools", CRT) end
+for _, src in ipairs({ registrySrc, seasonSrc, bossSrc, commSrc, latticeSrc, setupSrc, dataSrc }) do assert(load(src))("CowfeeRaidTools", CRT) end
 local I = CRT.Interrupts
 check(I ~= nil, "CRT.Interrupts is made")
 
@@ -52,18 +54,26 @@ for _, s in ipairs(CRT.Bosses:Stores()) do labels[s.label] = s.getter end
 check(labels["own kick lists"] and labels["own kick lists"](CRT.db) == d.own, "purge: own kick lists declared")
 check(labels["shared kick lists"] and labels["shared kick lists"](CRT.db) == d.shared, "purge: shared kick lists declared")
 check(labels["kick list choices"] and labels["kick list choices"](CRT.db) == d.use, "purge: kick list choices declared")
+check(labels["kick lists"] and labels["kick lists"](CRT.db) == d.kicks, "purge: the kick lists by group key declared")
+check(labels["your kick setups"] and labels["your kick setups"](CRT.db) == d.setups, "purge: your own setups declared")
+check(type(d.kicks) == "table" and type(d.setups) == "table", "defaults: kicks and setups")
 
 -- one sample boss gets a block
 eq(#I:Bosses(), 0, "bosses: none without a block")
-local RAW = { difficulty = 16, anchor = { unit = "boss2", cycle = 7, ordinal = 5, times = { 33, 94, 188, 249, 343, 404 } },
-  firstCast = 4.5, spacing = 1.0, tolerance = 0.3, adds = 10, perNumber = 2, window = 25,
-  groups = { "Left", "Right" }, slots = 5, label = "Kick" }
+local RAW = { { difficulty = 16, label = "Kick", groups = { { key = "left", label = "Left", slots = 5 }, { key = "right", label = "Right", slots = 5 } },
+  timing = { anchor = { unit = "boss2", cycle = 7, ordinal = 5, times = { 33, 94, 188, 249, 343, 404 } },
+  firstCast = 4.5, spacing = 1.0, tolerance = 0.3, adds = 10, perNumber = 2, window = 25 } } }
 CRT.Bosses:Get(3470).interrupts = RAW
-CRT.Bosses:Register({ encounterID = 3421, name = "The Twin Fangs", season = "sample", interrupts = { difficulty = 16 } }) -- a block that does not read
+CRT.Bosses:Register({ encounterID = 3421, name = "The Twin Fangs", season = "sample", interrupts = { { difficulty = 16 } } }) -- a block that does not read
 I:ClearCache()
 eq(#I:Bosses(), 1, "bosses: only the boss with a block")
-local id = I:Bosses()[1].key
-eq(id, 3470, "bosses: its encounter ID")
+local id = 3470
+eq(I:Bosses()[1].key, "3470:16", "bosses: keyed by encounter and difficulty")
+eq(I:Bosses()[1].encounterID, 3470, "bosses: its encounter ID")
+eq(I:Bosses()[1].difficulty, 16, "bosses: its difficulty")
+eq(I.Key(3470, 16), "3470:16", "key: made")
+eq(select(2, I.SplitKey("3470:16")), 16, "key: split")
+eq(select(1, I:Resolve(3470)), "3470:16", "key: a bare encounter ID is the boss's first setup")
 eq(I:Bosses()[1].label, "Nek'zali the Soulcoiler", "bosses: its name")
 check(I:Def(id) and I:Def(id).label == "Kick", "def: read")
 check(I:Def(3421) == nil and I:Def(9999) == nil, "def: none for a bad block or another boss")
@@ -83,6 +93,7 @@ eq(select(2, I:List(id)), "own", "list: your own once a name is in")
 ME = "solex"
 eq(select(1, I:Mine(id)), 3, "mine: realm and case ignored")
 eq(select(2, I:Mine(id)), "Left", "mine: group label")
+eq(select(3, I:Mine(id)), 1, "mine: group index")
 ME = "Solex"
 check(not I:Complete(id, I:Own(id)), "complete: nine empty slots")
 I:SetName(id, 1, 3, "Solex-Illidan")
@@ -121,8 +132,10 @@ I:ReceiveShared(9999, full(), "Brenn")
 eq(select(1, I:Mine(id)), 2, "receive: other bosses untouched")
 I:Clear(id); eq(I:Own(id)[1][3], "", "clear: empties own only")
 eq(select(2, I:List(id)), "raid", "clear: the raid's still in use")
-eq(CRT.db.interrupts.shared[id].from, "Brenn", "receive: sender kept")
-eq(CRT.db.interrupts.shared[id].at, 1790000000, "receive: when")
+eq(I:Shared(id).from, "Brenn", "receive: sender kept")
+eq(I:Shared(id).at, 1790000000, "receive: when")
+eq(CRT.db.interrupts.kicks[3470][16].shared.lists.right[2], "Solex", "receive: kept by group key")
+eq(CRT.db.interrupts.kicks[3470][16].own.left[3], "", "own: kept by group key")
 I:CopyRaids(id)
 eq(I:Own(id)[2][2], "Solex", "copy: the raid's list over your own")
 I:SetName(id, 2, 2, "Brenn")
@@ -136,6 +149,73 @@ eq(I:Own(id)[9], nil, "set: a slot outside the grid is ignored")
 ME = "Nobody"
 eq(I:Mine(id), nil, "mine: not on the list")
 ME = "Solex"
+
+-- what a change says: the key and where it came from
+local said
+I:OnChange(function(what, key, source) if what == "list" then said = tostring(key) .. "/" .. tostring(source) end end)
+I:SetName(id, 1, 1, "Zed"); eq(said, "3470:16/own", "fire: your own edit, with its key")
+I:ReceiveShared("3470:16", full(), "Brenn"); eq(said, "3470:16/raid", "fire: the raid's list")
+I:Clear(id); eq(said, "3470:16/own", "fire: clear is your own")
+
+-- a second difficulty, and setups of your own
+RAW[2] = { difficulty = 15, groups = { { key = "skull", label = "Skull add", marker = 8, slots = 4 } } }
+I:ClearCache()
+eq(#I:Bosses(), 2, "setups: one entry per difficulty")
+eq(I:Bosses()[1].key .. " " .. I:Bosses()[2].key, "3470:16 3470:15", "setups: Mythic first")
+eq(#I:Own("3470:15"), 1, "setups: each its own shape")
+eq(#I:Own("3470:15")[1], 4, "setups: four slots")
+I:SetName("3470:15", 1, 2, "Solex")
+eq(select(1, I:Mine("3470:15")), 2, "setups: lists apart per difficulty")
+eq(select(1, I:Mine("3470:16")), nil, "setups: (the Mythic list untouched)")
+check(not I:IsCustom("3470:15"), "custom: none yet")
+local ok, why = I:SetCustom("3470:15", { label = "Kick", spell = { name = "Wail" }, groups = { { key = "skull", label = "Skull add", marker = 8, slots = 3 },
+  { key = "cross", label = "Cross add", marker = 7, slots = 2 } } })
+check(ok, "custom: saved " .. tostring(why))
+check(I:IsCustom("3470:15"), "custom: in use")
+eq(#I:Def("3470:15").groups, 2, "custom: replaces the shipped setup")
+eq(I:Def("3470:15").timing, nil, "custom: untimed")
+eq(I:Def("3470:15").spell.name, "Wail", "custom: its spell")
+eq(CRT.db.interrupts.setups[3470][15].groups[2].key, "cross", "custom: saved per boss and difficulty")
+eq(#I:Own("3470:15")[1], 3, "custom: the list follows its shape")
+eq(I:Own("3470:15")[1][2], "Solex", "custom: the names kept by group key")
+eq(I:ShippedDef("3470:15").groups[1].slots, 4, "custom: the shipped one still there")
+check(not I:SetCustom("3470:15", { groups = {} }), "custom: a setup that doesn't read is refused")
+I:SetCustom("3470:15", { groups = { { key = "a", label = "A", slots = 2 } }, timing = RAW[1].timing })
+eq(I:Def("3470:15").timing, nil, "custom: never timed")
+check(I:SetCustom("3470:14", { groups = { { key = "x", label = "X", slots = 1 } } }), "custom: a difficulty with no shipped setup")
+eq(#I:Bosses(), 3, "custom: listed with the rest")
+I:DropCustom("3470:15")
+check(not I:IsCustom("3470:15"), "custom: back to the shipped setup")
+eq(#I:Def("3470:15").groups, 1, "custom: the shipped shape again")
+I:DropCustom("3470:14")
+eq(#I:Bosses(), 2, "custom: gone from the list with nothing shipped")
+RAW[2] = nil
+I:ClearCache()
+
+-- a share's shape for a boss with no setup here
+local S = CRT.InterruptSetup
+local shapeSetup = S.FromShape(16, "skull:8:2:Skull add", "Kick")
+check(I:ReceiveShared("4000:16", { { "Solex", "Brenn" } }, "Brenn", shapeSetup), "shape: a list for a boss with no setup is taken with its shape")
+eq(I:Def("4000:16") and I:Def("4000:16").groups[1].label, "Skull add", "shape: the shape is its setup")
+eq(select(1, I:Mine("4000:16")), 1, "shape: your number from it")
+check(not I:ReceiveShared("4001:16", { { "A" } }, "Brenn"), "shape: none without a shape")
+
+-- the lists from before group keys: read in once, the old fields kept
+do
+  local db = CRT.db.interrupts
+  db.kicks[3470] = nil
+  db.own[3470] = { { "A1", "A2", "A3", "A4", "A5" }, { "B1", "B2", "Solex", "B4", "B5" } }
+  db.shared[3470] = { list = { { "R1", "", "", "", "" }, { "", "", "", "", "R10" } }, from = "Brenn", at = 5 }
+  db.use[3470] = "own"
+  eq(I:Own(id)[2][3], "Solex", "migrate: your own list read in")
+  eq(db.kicks[3470][16].own.right[3], "Solex", "migrate: by group key")
+  eq(I:Shared(id).list[2][5], "R10", "migrate: the raid's list")
+  eq(I:Shared(id).from, "Brenn", "migrate: and who sent it")
+  eq(select(2, I:List(id)), "own", "migrate: your choice of list")
+  check(db.own[3470] and db.shared[3470] and db.use[3470] == "own", "migrate: the old fields left as they were")
+  db.own[3470] = { { "X" } }
+  eq(I:Own(id)[1][1], "A1", "migrate: only once")
+end
 
 -- the switch and the Addon check column
 eq(registered and registered.key, "interrupts", "addon check: column registered")
@@ -165,8 +245,9 @@ if fails > 0 then error("failures") end
 const dir = process.argv[2];
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 for (const f of ['CRT_Data/Bosses/Registry.lua', 'CRT_Dev/Tests/SamplePack/Season.lua', 'CRT_Dev/Tests/SamplePack/NekzaliTheSoulcoiler.lua',
-  'CRT_Core/Core.lua', 'CRT_Modules/Interrupts/Lattice.lua', 'CRT_Modules/Interrupts/Data.lua', 'CRT_Core/Comm.lua']) {
+  'CRT_Core/Core.lua', 'CRT_Modules/Interrupts/Lattice.lua', 'CRT_Modules/Interrupts/Data.lua', 'CRT_Core/Comm.lua',
+  'CRT_Modules/Interrupts/Setup.lua']) {
   const p = path.join(dir, f);
   lua.lua_pushstring(L, to_luastring(fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : 'error("missing ' + f + '")'));
 }
-if (lua.lua_pcall(L, 7, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
+if (lua.lua_pcall(L, 8, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }

@@ -1,8 +1,17 @@
 local ADDON, CRT = ...
 
 -- Interrupts: the numbers above the adds' nameplates (CRT.InterruptPlates). Started while the anchor is armed (a
--- matching pull, or Test on trash), stopped when it disarms; stopped, no event is registered.
--- A plate is numbered at its first cast start while it is on screen, by Lattice.Number from Anchor:For: only that
+-- matching pull, or Test on trash), stopped when it disarms; stopped, no event is registered. Two ways to number:
+--
+-- An untimed setup (no timing) numbers by raid marker: a plate whose marker (GetRaidTargetIndex on its token) is a
+-- group's marker shows that group's kick number: 1 until the add's first cast, then one more on each cast start after
+-- it, 1 again after the group's last slot. So the number on the add is whose kick the cast in progress is, or the next
+-- one while it isn't casting. The count is the group's (its marked add's), not the plate's, so a plate that leaves the
+-- screen and comes back, or a new add given the marker, carries on the rotation. The markers are read again on each
+-- plate added and on RAID_TARGET_UPDATE (every plate token on screen). A marker that is secret, can't be read or is no
+-- group's shows nothing, never a wrong number. OnTurn listeners hear each group's new number (the reminder).
+--
+-- A timed setup numbers a plate at its first cast start while it is on screen, by Lattice.Number from Anchor:For: only that
 -- moment is read, since the add's name, GUID and spells are secret in a raid fight. A plate that cast once keeps
 -- what it got (a number, or none); a re-cast is ignored. A plate is a candidate when the unit exists, is not a
 -- player, can be attacked and has a level of 0 or more (a boss reads -1); a secret answer counts as no.
@@ -19,7 +28,9 @@ local ADDON, CRT = ...
 -- pair is drawn in your colours (plates.mineBox, mineText), the others in plates.box and text, shown only with Show
 -- every number (plates.all). Boxes come from one pool, so a long fight makes no new frames after the first wave.
 --
--- Game calls (warcraft.wiki.gg and Blizzard's 12.1.5 UI source, read 2026-10-28): C_NamePlate.GetNamePlateForUnit(unit)
+-- Game calls (warcraft.wiki.gg and Blizzard's 12.1.5 UI source, read 2026-10-28): GetRaidTargetIndex(unit) -> 1 to 8
+-- or nil (SecretReturns; arbitrary for a unit that doesn't exist, so UnitExists first; read 2026-10-29), RAID_TARGET_UPDATE
+-- (no payload: a marker set or cleared), C_NamePlate.GetNamePlateForUnit(unit)
 -- -> the plate frame, NAME_PLATE_UNIT_ADDED and NAME_PLATE_UNIT_REMOVED (unitToken, "nameplateN"),
 -- UNIT_SPELLCAST_START (unitTarget; the game's own nameplate cast bars listen to it for nameplate tokens),
 -- PLAYER_TARGET_CHANGED, PLAYER_FOCUS_CHANGED, UNIT_TARGET (unitTarget), UnitIsUnit (RequiresComparableUnitTokens,
@@ -27,31 +38,52 @@ local ADDON, CRT = ...
 -- IsInRaid, GetNumGroupMembers, GetNumSubgroupMembers, STANDARD_TEXT_FONT, ScriptRegion:IsAnchoringRestricted (a SetPoint
 -- across frame trees to such a region raises).
 
-local Plates = { boxes = {}, numbers = {}, castListeners = {} }
+local Plates = { boxes = {}, numbers = {}, castListeners = {}, turnListeners = {}, rawListeners = {} }
 CRT.InterruptPlates = Plates
 
 local Interrupts = CRT.Interrupts
 local Anchor = CRT.InterruptAnchor
 local Lattice = CRT.InterruptLattice
+local Setup = CRT.InterruptSetup
 local readable = CRT.Comm.Readable
 local isSecret = CRT.Comm.IsSecret
 
 local EVENTS = { "NAME_PLATE_UNIT_ADDED", "NAME_PLATE_UNIT_REMOVED", "UNIT_SPELLCAST_START", "PLAYER_TARGET_CHANGED",
-    "PLAYER_FOCUS_CHANGED", "UNIT_TARGET" }
+    "PLAYER_FOCUS_CHANGED", "UNIT_TARGET", "RAID_TARGET_UPDATE" }
+local MAX_PLATES = 40 -- nameplate1 to nameplate40, looked over for markers
 local BORDER = 1
 
 local pool = {} -- boxes not in use
 local seen = {} -- plates that cast once this time on screen: token -> true
 local parked = {} -- unit handle -> the number of the add it pointed at when its plate went
-local myNumber -- your kick number in the run, or nil
+local myNumber, myGroup -- your kick number and group (its index) in the run, or nil
+local turns = {} -- an untimed setup's groups: index -> { n = the number on its add, started = its first cast seen }
+local groupOf = {} -- an untimed setup's numbered plates: token -> the group's index
 local frame = CreateFrame("Frame")
 
 local function settings()
     return Interrupts:Settings().plates
 end
 
+-- fn(unit, castTime, anchor, number, why, group) at a candidate plate's cast: the first for a timed setup, each for
+-- an untimed one (group is the group's index then, why set when there is no number).
 function Plates:OnCast(fn)
     self.castListeners[#self.castListeners + 1] = fn
+end
+
+-- fn(group, number) when an untimed setup's group moves to its next number (the reminder).
+function Plates:OnTurn(fn)
+    self.turnListeners[#self.turnListeners + 1] = fn
+end
+
+-- fn(unit, ...) at every UNIT_SPELLCAST_START while armed, before anything is read: the event's own arguments, any
+-- of them maybe secret (the kick probe checks which).
+function Plates:OnRawCast(fn)
+    self.rawListeners[#self.rawListeners + 1] = fn
+end
+
+local function untimed()
+    return Anchor.def ~= nil and Anchor.def.timing == nil
 end
 
 local function isPlate(unit)
@@ -166,7 +198,7 @@ local function draw(unit)
         f = table.remove(pool) or newBox()
         Plates.boxes[unit] = f
     end
-    local mine = myNumber ~= nil and n == myNumber
+    local mine = myNumber ~= nil and n == myNumber and (groupOf[unit] == nil or groupOf[unit] == myGroup)
     Plates.Style(f, n, mine)
     local plate = ask(C_NamePlate and C_NamePlate.GetNamePlateForUnit, unit)
     local placed = plate ~= nil and Plates.Attach(f, plate)
@@ -236,10 +268,113 @@ function Plates:NumberOf(unit)
 end
 
 function Plates:Refresh()
-    myNumber = Anchor.encounterID and (Interrupts:Mine(Anchor.encounterID)) or nil
+    myNumber, myGroup = nil, nil
+    if Anchor.key then
+        local n, _, g = Interrupts:Mine(Anchor.key)
+        myNumber, myGroup = n, g
+    end
     for unit in pairs(self.boxes) do
         draw(unit)
     end
+end
+
+-- Raid markers (an untimed setup) ----------------------------------------------------------------------------------
+
+-- The group (index) whose marker a plate has, or nil: the marker read through pcall and the secret check.
+function Plates.GroupOf(unit)
+    if ask(UnitExists, unit) ~= true then
+        return nil
+    end
+    local marker = ask(GetRaidTargetIndex, unit)
+    if type(marker) ~= "number" then
+        return nil
+    end
+    return (Setup.GroupOfMarker(Anchor.def, marker))
+end
+
+local function turnOf(g)
+    return turns[g] and turns[g].n or 1
+end
+
+local function clearPlate(unit)
+    Plates.numbers[unit], groupOf[unit] = nil, nil
+    release(unit)
+end
+
+-- A plate shows its marker's group's number, or nothing.
+local function markShow(unit)
+    local g = Plates.GroupOf(unit)
+    if not g then
+        if Plates.numbers[unit] then
+            clearPlate(unit)
+        end
+        return nil
+    end
+    Plates.numbers[unit], groupOf[unit] = turnOf(g), g
+    draw(unit)
+    return g
+end
+
+local PLATE_TOKENS = {}
+for i = 1, MAX_PLATES do
+    PLATE_TOKENS[i] = "nameplate" .. i
+end
+
+-- Every plate on screen, its marker read again (a marker set or cleared, the run starting).
+local function rescan()
+    for _, unit in ipairs(PLATE_TOKENS) do
+        if ask(UnitExists, unit) == true then
+            markShow(unit)
+        elseif Plates.numbers[unit] then
+            clearPlate(unit)
+        end
+    end
+end
+
+local function onMarkedCast(unit)
+    local t = GetTime()
+    if not Plates.Candidate(unit) then
+        for _, fn in ipairs(Plates.castListeners) do
+            pcall(fn, unit, t, nil, nil, "not an add")
+        end
+        return
+    end
+    local g = Plates.GroupOf(unit)
+    if not g then
+        if Plates.numbers[unit] then
+            clearPlate(unit)
+        end
+        for _, fn in ipairs(Plates.castListeners) do
+            pcall(fn, unit, t, nil, nil, "no group's marker")
+        end
+        return
+    end
+    local turn = turns[g] or { n = 1 }
+    turns[g] = turn
+    if turn.started then
+        turn.n = turn.n % Anchor.def.groups[g].slots + 1
+    end
+    turn.started = true
+    -- the group's number moves on every plate showing it (one add has the marker, but a stale plate may still read it)
+    for other, og in pairs(groupOf) do
+        if og == g and other ~= unit then
+            Plates.numbers[other] = turn.n
+            draw(other)
+        end
+    end
+    Plates.numbers[unit], groupOf[unit] = turn.n, g
+    draw(unit)
+    for _, fn in ipairs(Plates.castListeners) do
+        pcall(fn, unit, t, nil, turn.n, nil, g)
+    end
+    for _, fn in ipairs(Plates.turnListeners) do
+        pcall(fn, g, turn.n)
+    end
+end
+
+-- The number a group's add shows now (an untimed setup), for the tests and the probe.
+function Plates:TurnOf(g)
+    return turnOf(g)
 end
 
 -- Events ----------------------------------------------------------------------------------------------------------
@@ -261,7 +396,7 @@ local function onCast(unit)
         n, at = Anchor:TestNumber(t) -- trash: by cast order
     else
         at = Anchor:For(t) -- a pull: by when the first cast lands on the boss's lattice
-        n = at and Lattice.Number(Anchor.def, at, t) or nil
+        n = at and Lattice.Number(Anchor.def.timing, at, t) or nil
     end
     for _, fn in ipairs(Plates.castListeners) do
         pcall(fn, unit, t, at, n)
@@ -299,22 +434,44 @@ local function onAdded(unit)
     end
 end
 
-function Plates.HandleEvent(event, unit)
+function Plates.HandleEvent(event, unit, ...)
     if not Anchor.armed then
         return
     end
     if event == "UNIT_SPELLCAST_START" then
-        onCast(unit)
+        for _, fn in ipairs(Plates.rawListeners) do
+            pcall(fn, unit, ...)
+        end
+        if untimed() then
+            if isPlate(unit) then
+                onMarkedCast(unit)
+            end
+        else
+            onCast(unit)
+        end
+    elseif event == "RAID_TARGET_UPDATE" then
+        if untimed() then
+            rescan()
+        end
     elseif event == "NAME_PLATE_UNIT_ADDED" then
         if isPlate(unit) then
-            onAdded(unit)
+            if untimed() then
+                clearPlate(unit)
+                markShow(unit)
+            else
+                onAdded(unit)
+            end
         end
         if next(unplaced) then
             retry()
         end
     elseif event == "NAME_PLATE_UNIT_REMOVED" then
         if isPlate(unit) then
-            onRemoved(unit)
+            if untimed() then
+                clearPlate(unit)
+            else
+                onRemoved(unit)
+            end
         end
     elseif event == "PLAYER_TARGET_CHANGED" then
         parked.target = nil
@@ -327,8 +484,8 @@ function Plates.HandleEvent(event, unit)
     end
 end
 
-frame:SetScript("OnEvent", function(_, event, unit)
-    Plates.HandleEvent(event, unit)
+frame:SetScript("OnEvent", function(_, event, ...)
+    Plates.HandleEvent(event, ...)
 end)
 
 function Plates:Start()
@@ -336,6 +493,9 @@ function Plates:Start()
         frame:RegisterEvent(e)
     end
     self:Refresh()
+    if untimed() then
+        rescan()
+    end
 end
 
 function Plates:Stop()
@@ -349,6 +509,8 @@ function Plates:Stop()
     wipe(seen)
     wipe(parked)
     wipe(unplaced)
+    wipe(turns)
+    wipe(groupOf)
 end
 
 Anchor:OnArm(function(on)
@@ -370,7 +532,7 @@ end)
 
 -- Previews: one sample box of your number at the screen's centre, to see the size and colours.
 function Plates:Preview(on)
-    local id = Anchor.encounterID
+    local id = Anchor.key
     if not id then
         local first = Interrupts:Bosses()[1]
         id = first and first.key

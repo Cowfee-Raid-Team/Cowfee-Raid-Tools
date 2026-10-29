@@ -110,8 +110,9 @@ Profiles.SHARE = {
     longTerm = false, -- long-term data (Core.lua): never a setting
     markers = true,
     pace = { disabled = true, shown = true, position = true, own = false, shared = false, use = false },
-    -- the kick lists are data, Test on trash is state, and Enable Interrupts is each raider's own (Alex, 2026-10-29)
-    interrupts = { enabled = false, accept = true, plates = true, reminder = true, own = false, shared = false, use = false, test = false },
+    -- the kick lists and your own kick setups are data, Test on trash is state, and Enable Interrupts is each raider's own (Alex, 2026-10-29)
+    interrupts = { enabled = false, accept = true, plates = true, reminder = true, own = false, shared = false, use = false, kicks = false, setups = false,
+        test = false },
     alerts = {
         bars = true, areas = true, noteLines = true, customColors = true, cooldownFilter = true,
         special = true, -- your special alerts' on/off and Show as choices
