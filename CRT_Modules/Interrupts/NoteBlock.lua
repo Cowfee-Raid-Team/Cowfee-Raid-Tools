@@ -7,14 +7,17 @@ local ADDON, CRT = ...
 --   Solex Brenn Quick Mara        one line per group, in the setup's group order, its names in kick order,
 --   Tovi Hale Ruun Pell           space separated, empty slots left out (a group with none is an empty line)
 --   intend
--- The block goes into the boss's shared note for exactly the difficulty on show (Notes:FindExact / NoteFor exact, the
--- note Mech Alerts writes its lines to), made when it has none; an existing block there is replaced in place, every
--- other line kept byte for byte. Your own list is written: by Write to the raid note on the page, and after each change
--- of your own list (a second after the last), while you can change the raid note (Notes:CanEditRaid) and not in combat
--- or a boss fight (Notes.Busy). A list with no names takes the block out.
--- Read back: opening a boss on the page reads the block of its note into the raid's list (as a share does), when its
--- lines fit the setup (no more lines than groups, no more names on a line than the group's slots) and differ from the
--- raid's list now. The text functions are pure; Write and ReadInto go through the Notes API only.
+-- Only Write to the raid note on the page writes it, your own list. It goes into the note a pull of that difficulty
+-- reads (Notes:FindForEncounter) when that note is for that difficulty or for none, so writing never makes a new note
+-- that hides the one the pull reads; otherwise into the boss's note for exactly that difficulty (Notes:FindExact /
+-- NoteFor exact, made when it has none). An existing block there is replaced in place, every other line kept byte for
+-- byte; a list with no names takes the block out. Never in combat or a boss fight (Notes.Busy), and only while you can
+-- change the raid note (Notes:CanEditRaid); a refused write says why.
+-- Read back: opening a boss on the page reads the block of that same note into the raid's list (as a share does),
+-- when it fits the setup in use: no more lines than groups, and each line either empty (an empty group) or exactly as
+-- many names as its group's slots. A line with fewer names had empty slots left out, so where they were can't be
+-- told: such a block is not read, and nothing is put in use from it. The text functions are pure (the note's lines
+-- through Notes.SplitPieces); Write and ReadInto go through the Notes API only.
 
 local Block = {}
 CRT.InterruptNote = Block
@@ -23,7 +26,6 @@ local Interrupts = CRT.Interrupts
 
 Block.START, Block.END = "intstart", "intend"
 Block.VIA = "Interrupts" -- how a note made here came (a note's via, in the Raid Notes list)
-Block.DELAY = 1 -- seconds after your last change before your list is written
 
 local TEXT = {
     noNotes = "Raid Notes isn't loaded.",
@@ -31,8 +33,7 @@ local TEXT = {
     noDifficulty = "This difficulty has no raid note.",
     noBoss = "This boss has no kick setup.",
     fromNote = "the raid note",
-    written = "Wrote the kick list into the %s raid note for %s.",
-    removed = "Took the kick list out of the %s raid note for %s.",
+    noFit = "The kick block in the raid note \"%s\" doesn't fit %s: each line needs every name of its group, or none.",
 }
 Block.TEXT = TEXT
 
@@ -46,26 +47,9 @@ local function trim(s)
     return (s:gsub("^%s+", ""):gsub("%s+$", ""))
 end
 
--- The text as { text, eol } pieces (Notes/Data.lua's SplitPieces when loaded); concatenated they give it back.
+-- The text as { text, eol } pieces: the notes store's own split (Notes/Data.lua), so a note is cut into lines one way.
 local function pieces(raw)
-    local Notes = CRT.Notes
-    if Notes and Notes.SplitPieces then
-        return Notes.SplitPieces(raw)
-    end
-    local out, pos = {}, 1
-    while true do
-        local nl = raw:find("\n", pos, true)
-        if not nl then
-            out[#out + 1] = { text = raw:sub(pos), eol = "" }
-            return out
-        end
-        local text, eol = raw:sub(pos, nl - 1), "\n"
-        if text:sub(-1) == "\r" then
-            text, eol = text:sub(1, -2), "\r\n"
-        end
-        out[#out + 1] = { text = text, eol = eol }
-        pos = nl + 1
-    end
+    return CRT.Notes.SplitPieces(raw)
 end
 
 -- The block's lines for a list in def's group order (start and end included), or {} when it has no name.
@@ -85,7 +69,7 @@ function Block.Lines(def, list)
     if not any then
         return {}
     end
-    -- trailing groups with no names add nothing
+    -- trailing groups with no names add nothing (a missing line reads as an empty group)
     while rows[#rows] == "" do
         rows[#rows] = nil
     end
@@ -183,8 +167,8 @@ function Block.Replace(raw, lines)
     return table.concat(out)
 end
 
--- A block's rows as a list in def's group order, or nil when they don't fit it (more lines than groups, or more names
--- on a line than its group's slots).
+-- A block's rows as a list in def's group order, or nil when they don't fit it: more lines than groups, or a line
+-- that is neither empty (an empty group; a missing line too) nor exactly its group's slots in names.
 function Block.Fit(def, rows)
     if type(rows) ~= "table" or #rows > #def.groups then
         return nil
@@ -192,7 +176,7 @@ function Block.Fit(def, rows)
     local list = {}
     for g, grp in ipairs(def.groups) do
         local names = rows[g] or {}
-        if #names > grp.slots then
+        if #names ~= 0 and #names ~= grp.slots then
             return nil
         end
         list[g] = {}
@@ -203,10 +187,10 @@ function Block.Fit(def, rows)
     return list
 end
 
--- The note for a key: the Notes API, the key's parts, the setup and the note's Difficulty; or nil and why not.
+-- The Notes API, the key's parts, the setup and the note's Difficulty; or nil and why not.
 local function target(key)
     local Notes = CRT.Notes
-    if not (Notes and Notes.FindExact) then
+    if not (Notes and Notes.FindExact and Notes.SplitPieces) then
         return nil, TEXT.noNotes
     end
     local skey, def, id, diff = Interrupts:Resolve(key)
@@ -220,8 +204,24 @@ local function target(key)
     return { Notes = Notes, key = skey, def = def, id = id, difficulty = name }
 end
 
--- Writes your own list for a key into its raid note. Returns true and the note's id (nil when there was nothing to
--- write and no note), or false and why not.
+-- The note the block lives in for t, or nil: the note a pull of that difficulty reads, when it is a shared note for
+-- that difficulty or for none; else the boss's note for exactly that difficulty.
+local function noteOf(t)
+    local Notes = t.Notes
+    local id = Notes.FindForEncounter and Notes:FindForEncounter(t.id, t.difficulty)
+    local record = id and Notes:Get(id)
+    if record and not record.personal and (record.difficulty == nil or record.difficulty:lower() == t.difficulty:lower()) then
+        return id
+    end
+    return Notes:FindExact(t.id, t.difficulty)
+end
+Block.NoteOf = function(key)
+    local t = target(key)
+    return t and noteOf(t) or nil
+end
+
+-- Writes your own list for a key into its raid note. Returns true, the note's id (nil when there was nothing to write
+-- and no note), whether the block was taken out, and the note's name; or false and why not.
 function Block.Write(key)
     local t, why = target(key)
     if not t then
@@ -236,35 +236,38 @@ function Block.Write(key)
         return false, TEXT.busy
     end
     local lines = Block.Lines(t.def, Interrupts:Own(t.key))
-    local noteID
-    if #lines == 0 then
-        noteID = Notes:FindExact(t.id, t.difficulty)
-    else
+    local noteID = noteOf(t)
+    if not noteID and #lines > 0 then
         noteID = Notes:NoteFor(t.id, t.difficulty, Interrupts:BossName(t.key), { exact = true, via = Block.VIA })
     end
     local record = noteID and Notes:Get(noteID)
     if not record then
-        return true, nil
+        return true, nil, true
     end
     local raw = record.raw or ""
     local new = Block.Replace(raw, lines)
     if new ~= raw then
         Notes:UpdateRaw(noteID, new, "edited", { lines = true })
     end
-    return true, noteID, #lines == 0
+    return true, noteID, #lines == 0, record.name
 end
 
--- Reads the block of a key's raid note into the raid's list, when it fits and differs. True when it did.
+-- Reads the block of a key's raid note into the raid's list, when it fits and differs. True when it did; false and
+-- why when the block is there but doesn't fit (nothing is put in use); false alone when there is nothing to read.
 function Block.ReadInto(key)
     local t = target(key)
     if not t then
         return false
     end
-    local noteID = t.Notes:FindExact(t.id, t.difficulty)
+    local noteID = noteOf(t)
     local record = noteID and t.Notes:Get(noteID)
-    local list = record and Block.Fit(t.def, Block.Rows(record.raw))
-    if not list then
+    local rows = record and Block.Rows(record.raw)
+    if not rows then
         return false
+    end
+    local list = Block.Fit(t.def, rows)
+    if not list then
+        return false, string.format(TEXT.noFit, tostring(record.name), Interrupts:BossName(t.key))
     end
     local shared = Interrupts:Shared(t.key)
     if shared and Interrupts.SameList(t.def, shared.list, list) then
@@ -272,31 +275,3 @@ function Block.ReadInto(key)
     end
     return Interrupts:ReceiveShared(t.key, list, TEXT.fromNote)
 end
-
--- Your own list, written a moment after your last change to it.
-local pending = {}
-local function flush()
-    for key in pairs(pending) do
-        pending[key] = nil
-        Block.Write(key)
-    end
-end
-
-function Block.Flush()
-    flush()
-end
-
-Interrupts:OnChange(function(what, key, source)
-    if what ~= "list" or source ~= "own" or not key or not Interrupts:Enabled() then
-        return
-    end
-    local Notes = CRT.Notes
-    if not (Notes and Notes.CanEditRaid and Notes:CanEditRaid()) then
-        return
-    end
-    local first = next(pending) == nil
-    pending[key] = true
-    if first and C_Timer and C_Timer.After then
-        C_Timer.After(Block.DELAY, flush)
-    end
-end)

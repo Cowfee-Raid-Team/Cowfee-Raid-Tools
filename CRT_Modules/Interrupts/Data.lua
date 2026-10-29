@@ -12,9 +12,10 @@ local ADDON, CRT = ...
 --   SetupEditor.lua  the page
 --
 -- A setup is one boss on one difficulty, named by its key "encounterID:difficultyID" (Interrupts.Key). The setup in
--- use for a key is the player's own (Edit setup: CRTDB.interrupts.setups[encounterID][difficultyID], always untimed)
--- while there is one, else the boss file's (Bosses:Get(id).interrupts), else the shape a share or the raid note
--- brought for it (so a raider without the setup still reads the list). Every function taking a key also takes a bare
+-- use for a key is, in order: the shape the raid's list came in, while that list is in use and its shape didn't fit
+-- the setup here (a leader's own setup reaches raiders who have the shipped one, or none); the player's own (Edit
+-- setup: CRTDB.interrupts.setups[encounterID][difficultyID], always untimed); the boss file's
+-- (Bosses:Get(id).interrupts). A timed shipped setup can't be replaced by your own (its lattice would be lost). Every function taking a key also takes a bare
 -- encounter ID, for the boss's first setup.
 --
 -- A kick list is names without realm per group key, "" for an empty slot, kept per boss and difficulty in
@@ -31,6 +32,10 @@ local ADDON, CRT = ...
 
 local Interrupts = { listeners = {}, shipped = {} }
 CRT.Interrupts = Interrupts
+
+Interrupts.TEXT = {
+    timed = "This boss's kick numbers come from its timing, so its setup can't be changed here.",
+}
 
 local Setup = CRT.InterruptSetup
 
@@ -150,9 +155,13 @@ local function customFor(encounterID, difficulty)
     return readSaved(byBossDiff(db().setups, encounterID, difficulty), difficulty)
 end
 
+-- The shape the raid's list came in, and whether that list is in use (not when you switched to your own).
 local function sharedFor(encounterID, difficulty)
     local e = byBossDiff(db().kicks, encounterID, difficulty)
-    return e and type(e.shared) == "table" and readSaved(e.shared.setup, difficulty) or nil
+    if not (e and type(e.shared) == "table") then
+        return nil, false
+    end
+    return readSaved(e.shared.setup, difficulty), e.use ~= "own"
 end
 
 -- The difficulties a boss has a setup for, of any kind.
@@ -176,9 +185,28 @@ local function difficulties(encounterID)
     return out
 end
 
--- The setup in use for one boss and difficulty: your own, the boss file's, or the shape a share brought.
+-- The setup in use for one boss and difficulty: the raid's list's own shape while it is in use, else your own, else
+-- the boss file's.
 local function setupFor(encounterID, difficulty)
-    return customFor(encounterID, difficulty) or shippedFor(encounterID, difficulty) or sharedFor(encounterID, difficulty)
+    local shared, inUse = sharedFor(encounterID, difficulty)
+    if shared and inUse then
+        return shared
+    end
+    -- with no setup of its own here, the share's shape stays the boss's setup
+    return customFor(encounterID, difficulty) or shippedFor(encounterID, difficulty) or shared
+end
+
+-- A boss's own setups, Mythic first: your own or the boss file's per difficulty, never a share's shape (Export).
+function Interrupts:OwnedSetups(encounterID)
+    local out = {}
+    for _, d in ipairs(type(encounterID) == "number" and difficulties(encounterID) or {}) do
+        local s = customFor(encounterID, d) or shippedFor(encounterID, d)
+        if s then
+            out[#out + 1] = s
+        end
+    end
+    table.sort(out, byDifficulty)
+    return out
 end
 
 -- A boss's setups in use, Mythic first: { setup, ... }.
@@ -244,6 +272,10 @@ function Interrupts:SetCustom(key, raw)
     local id, diff = self.SplitKey(key)
     if not (id and diff) or type(raw) ~= "table" then
         return false, "no boss and difficulty"
+    end
+    local ship = shippedFor(id, diff)
+    if ship and ship.timing then
+        return false, Interrupts.TEXT.timed
     end
     local s, why = Setup.ReadOne({ difficulty = diff, label = raw.label, spell = raw.spell, groups = raw.groups })
     if not s then
@@ -515,12 +547,13 @@ function Interrupts:SetUse(key, use)
 end
 
 -- A list from the raid leader or an assistant, or from the raid note: saved as the raid's list and put in use. Your
--- own is left as it is. setup, when given, is the shape the list came in (Setup.FromShape): kept with it, for a key
--- that has no setup of its own, and used to read it. Returns true when it was taken.
+-- own is left as it is. setup, when given, is the shape the list came in (Setup.FromShape), for a list that doesn't
+-- fit the setup here (or a key with none): the list is read in it, and it is the key's setup while this list is in
+-- use. Returns true when it was taken.
 function Interrupts:ReceiveShared(key, list, sender, setup)
     local id, diff = self.SplitKey(key)
     local skey, def = self:Resolve(key)
-    if not def and setup and id and (diff or setup.difficulty) then
+    if setup and id and (diff or setup.difficulty) then
         diff = diff or setup.difficulty
         skey, def = self.Key(id, diff), setup
     end

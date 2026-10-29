@@ -18,13 +18,16 @@ local ADDON, CRT = ...
 --       },
 --   }
 -- A group's key names its list in the saved data and in a share, so it never changes once shipped: letters, digits
--- and _, starting with a letter. marker is a raid marker (1 Star to 8 Skull) or nil: a group with one shows its
--- numbers only on the add with that marker. A setup with timing numbers adds by when their first cast lands
+-- and _, starting with a letter. marker is a raid marker (1 Star to 8 Skull): a group's numbers show only on the
+-- add with its marker. A setup without timing needs one on every group (it is how the group's add is found); a timed
+-- setup's groups may have none. A setup with timing numbers adds by when their first cast lands
 -- (Lattice.lua); one without is an untimed list in kick order, its numbers advancing on each cast of the marked add.
 -- A player's own setup (Edit setup on the page, CRTDB.interrupts.setups) has the same fields and no timing.
 --
 -- The shape of a setup travels in a share (Interrupts/Comm.lua), so a raider without the setup still reads the list:
 --   key:marker:slots:label/key:marker:slots:label   (marker 0 for none; a label without : / | , ; or line ends)
+-- A setup made from a share's shape is untimed, so each of its groups needs a marker, and only a raid difficulty
+-- (SHARE_DIFFICULTIES: Normal, Heroic, Mythic) is taken from a share.
 
 local Setup = {}
 CRT.InterruptSetup = Setup
@@ -34,6 +37,7 @@ Setup.MAX_SLOTS = 10
 Setup.LABEL = "Kick"
 Setup.MARKERS = { "Star", "Circle", "Diamond", "Triangle", "Moon", "Square", "Cross", "Skull" }
 Setup.KEY_MAX = 16
+Setup.SHARE_DIFFICULTIES = { [14] = true, [15] = true, [16] = true }
 
 local Lattice = CRT.InterruptLattice
 
@@ -149,6 +153,12 @@ function Setup.ReadOne(raw)
             return nil, "timing: " .. tostring(err)
         end
         out.timing = timing
+    else
+        for i, g in ipairs(groups) do
+            if not g.marker then
+                return nil, "group " .. i .. " needs a raid marker (without timing, its add is found by it)"
+            end
+        end
     end
     return out
 end
@@ -232,6 +242,9 @@ end
 
 -- An untimed setup from a share's shape, for a raider who has none for that boss and difficulty.
 function Setup.FromShape(difficulty, shape, label)
+    if not Setup.SHARE_DIFFICULTIES[difficulty] then
+        return nil
+    end
     local groups = Setup.ParseShape(shape)
     if not groups then
         return nil

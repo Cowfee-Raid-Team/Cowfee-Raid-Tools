@@ -4,9 +4,12 @@ local ADDON, CRT = ...
 -- player makes their own kick setup for any boss and difficulty, with no code: the spell (its name, and its spell ID
 -- when known), and the groups, each a label, a raid marker (or none) and 1 to Setup.MAX_SLOTS kick slots; + Group adds
 -- one (up to Setup.MAX_GROUPS), Remove takes one out. Your own setups have no timing: their numbers follow each marked
--- add's casts. Save keeps it in CRTDB.interrupts.setups[encounterID][difficultyID] (Interrupts:SetCustom), where it is
--- used in place of the shipped setup for that boss and difficulty; Back to the shipped setup drops it
--- (Interrupts:DropCustom). It opens on the setup shown on the page (yours or the shipped one, as a start), or a blank
+-- add's casts, so every group has a raid marker (a new group takes the first one free; picking another group's marker
+-- swaps the two). Save keeps it in CRTDB.interrupts.setups[encounterID][difficultyID] (Interrupts:SetCustom), where it
+-- is used in place of the shipped setup for that boss and difficulty; Back to the shipped setup drops it
+-- (Interrupts:DropCustom), and is Delete my setup for a boss and difficulty with no shipped setup. A boss whose shipped
+-- setup is timed (its numbers come from when the adds first cast) can't be saved over: Save is greyed and says why, so
+-- its lattice is never lost. It opens on the setup shown on the page (yours or the shipped one, as a start), or a blank
 -- one for a boss and difficulty with none. A group keeps its key when its label changes, so the names on the list
 -- stay with it; a new group's key is made from its label (Setup.KeyFor).
 -- The kick list, the raid note's block and a share work the same for your own setup as for a shipped one (a share
@@ -21,21 +24,22 @@ CRT.InterruptSetupEditor = Editor
 
 local TEXT = {
     title = "Kick setup",
-    help = "Your own kick setup for a boss and difficulty. Each group kicks the add with its raid marker, in turn: its number moves on with each of that add's casts. Someone marks the adds, by hand or with a marker macro.\n\nYours is used in place of the setup CRT ships, until you go back to it. The kick list, the raid note and Share to raid work the same.",
+    help = "Your own kick setup for a boss and difficulty. Each group kicks the add with its raid marker, in turn: its number moves on with each of that add's casts. So every group needs its own raid marker, and someone marks the adds, by hand or with a marker macro.\n\nYours is used in place of the setup CRT ships, until you go back to it. The kick list, the raid note and Share to raid work the same. A boss whose numbers come from timing can't be changed here.",
     boss = "Boss",
     difficulty = "Difficulty",
     spell = "Spell",
     spellID = "Spell ID",
     spellHelp = "The spell the groups kick, for How the numbers are worked out. The spell ID is optional: the Journal shows it, or a pull's /crt dev kicks log.",
     groups = "Groups",
-    groupsHelp = "One group per add. Its label heads its column on the kick list and shows in the reminder. Its raid marker is how its add is found: numbers only show on the add with that marker.",
+    groupsHelp = "One group per add. Its label heads its column on the kick list and shows in the reminder. Its raid marker is how its add is found: numbers only show on the add with that marker, so each group needs one of its own. Picking another group's marker swaps the two.",
     marker = "Raid marker",
-    noMarker = "No marker",
     slots = "Kickers",
     addGroup = "+ Group",
     remove = "Remove",
     save = "Save",
     shipped = "Back to the shipped setup",
+    delete = "Delete my setup",
+    deleted = "Deleted your kick setup for %s.",
     close = "Close",
     saved = "Saved your kick setup for %s.",
     dropped = "Back to the shipped kick setup for %s.",
@@ -70,8 +74,22 @@ local function copyGroups(groups)
     return out
 end
 
-local function blankGroup(n)
-    return { label = string.format(TEXT.newGroup, n), slots = 4 }
+-- A new group: the first raid marker no group has, Skull first.
+local function blankGroup(n, groups)
+    local taken = {}
+    for _, g in ipairs(groups or {}) do
+        if g.marker then
+            taken[g.marker] = true
+        end
+    end
+    local marker
+    for m = #Setup.MARKERS, 1, -1 do
+        if not taken[m] then
+            marker = m
+            break
+        end
+    end
+    return { label = string.format(TEXT.newGroup, n), marker = marker, slots = 4 }
 end
 
 -- A draft from the setup in use for a key, or a blank one for a boss and difficulty with none.
@@ -82,6 +100,12 @@ function Editor.DraftFor(key)
         id, diff = Interrupts.SplitKey((Interrupts:Resolve(key)))
     end
     local d = { boss = id, difficulty = diff or 16, label = def and def.label or Setup.LABEL, groups = def and copyGroups(def.groups) or { blankGroup(1) } }
+    -- a timed setup's groups may have no marker: they get one, should the setup ever be saved untimed
+    for i, g in ipairs(d.groups) do
+        if not g.marker then
+            g.marker = blankGroup(i, d.groups).marker
+        end
+    end
     d.spellName = def and def.spell and def.spell.name or ""
     d.spellID = def and def.spell and def.spell.spellID or nil
     return d
@@ -113,6 +137,19 @@ function Editor.Key(d)
     return d and d.boss and d.difficulty and Interrupts.Key(d.boss, d.difficulty) or nil
 end
 
+-- Why the draft can't be saved, or nil: no boss, or a shipped setup that is timed.
+function Editor.Blocked(d)
+    local key = Editor.Key(d)
+    if not key then
+        return TEXT.noBoss
+    end
+    local ship = Interrupts:ShippedDef(key)
+    if ship and ship.timing then
+        return Interrupts.TEXT.timed
+    end
+    return nil
+end
+
 -- Saves the draft: true, or false and why not.
 function Editor:Save()
     local key = Editor.Key(draft)
@@ -135,8 +172,9 @@ end
 function Editor:BackToShipped()
     local key = Editor.Key(draft)
     if key and Interrupts:IsCustom(key) then
+        local shipped = Interrupts:ShippedDef(key) ~= nil
         Interrupts:DropCustom(key)
-        CRT:Print(string.format(TEXT.dropped, Interrupts:BossName(key)))
+        CRT:Print(string.format(shipped and TEXT.dropped or TEXT.deleted, Interrupts:BossName(key)))
         draft = Editor.DraftFor(key)
         self:Refresh()
     end
@@ -144,7 +182,7 @@ end
 
 function Editor:AddGroup()
     if draft and #draft.groups < Setup.MAX_GROUPS then
-        draft.groups[#draft.groups + 1] = blankGroup(#draft.groups + 1)
+        draft.groups[#draft.groups + 1] = blankGroup(#draft.groups + 1, draft.groups)
         self:Refresh()
     end
 end
@@ -215,7 +253,7 @@ local function editBox(parent, w, numeric, onChange)
 end
 
 local function markerOptions()
-    local out = { { key = 0, label = TEXT.noMarker } }
+    local out = {}
     for i = #Setup.MARKERS, 1, -1 do
         out[#out + 1] = { key = i, label = Setup.MarkerIcon(i, 14) .. " " .. Setup.MARKERS[i] }
     end
@@ -237,18 +275,18 @@ local function buildRow(i)
     row.marker = UI.Dropdown(c, "", { labelWidth = 0, width = L.markerW, options = markerOptions,
         get = function()
             local g = draft and draft.groups[i]
-            return g and g.marker or 0
+            return g and g.marker
         end,
         set = function(m)
             local g = draft and draft.groups[i]
             if g then
-                -- a marker is one group's: another group with it gives it up
+                -- a marker is one group's: another group with it takes this one's in exchange
                 for _, other in ipairs(draft.groups) do
                     if other ~= g and other.marker == m then
-                        other.marker = nil
+                        other.marker = g.marker
                     end
                 end
-                g.marker = m ~= 0 and m or nil
+                g.marker = m
                 Editor:Refresh()
             end
         end })
@@ -356,6 +394,21 @@ local function build()
         end
     end)
     Editor.save:SetPoint("RIGHT", Editor.close, "LEFT", -L.gap, 0)
+    -- a greyed Save says why on hover
+    if Editor.save.SetMotionScriptsWhileDisabled then
+        Editor.save:SetMotionScriptsWhileDisabled(true)
+    end
+    Editor.save:SetScript("OnEnter", function(self)
+        if self.crtReason then
+            UI.TooltipOwner(GameTooltip, self, "ANCHOR_TOP")
+            GameTooltip:SetText(TEXT.save, 1, 1, 1)
+            GameTooltip:AddLine(self.crtReason, 0.85, 0.85, 0.85, true)
+            GameTooltip:Show()
+        end
+    end)
+    Editor.save:SetScript("OnLeave", function()
+        GameTooltip:Hide()
+    end)
     Editor.shipped = button(c, TEXT.shipped, function()
         Editor:BackToShipped()
     end)
@@ -397,8 +450,15 @@ function Editor:Refresh()
     self.addGroup:SetPoint("TOPLEFT", 4, L.rowsY - n * L.rowH)
     self.addGroup:SetEnabled(n < Setup.MAX_GROUPS)
     local key = Editor.Key(draft)
-    self.save:SetEnabled(key ~= nil)
-    self.shipped:SetEnabled(key ~= nil and Interrupts:IsCustom(key) and Interrupts:ShippedDef(key) ~= nil)
+    local blocked = Editor.Blocked(draft)
+    self.save:SetEnabled(blocked == nil)
+    self.save.crtReason = blocked
+    -- Back to the shipped setup, or Delete my setup when there is none to go back to
+    local shipped = key ~= nil and Interrupts:ShippedDef(key) ~= nil
+    self.shipped:SetText(shipped and TEXT.shipped or TEXT.delete)
+    local fs = self.shipped:GetFontString()
+    self.shipped:SetWidth(UI.PanelButtonWidth(fs and fs:GetStringWidth() or 0))
+    self.shipped:SetEnabled(key ~= nil and Interrupts:IsCustom(key))
 end
 
 -- Opens the editor on a setup key (the page's), or a blank draft.

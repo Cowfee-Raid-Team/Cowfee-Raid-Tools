@@ -397,6 +397,33 @@ check(log:find("(secret token) read:", 1, true) ~= nil, "probe: a secret token l
 K:Command("dev kicks off")
 A:HandleEvent("ENCOUNTER_END")
 check(next(P.boxes) == nil, "marker: the pull's end clears the boxes")
+-- only the setup's spell counts, when the cast can be read
+do
+  CRT.Bosses:Get(3470).interrupts[2].spell = { name = "Wail of Terror", spellID = 1234 }
+  I:ClearCache()
+  clock = 4000; A:HandleEvent("ENCOUNTER_START", 3470, "Boss", 15)
+  plate("nameplate40"); markers.nameplate40 = 8; H("NAME_PLATE_UNIT_ADDED", "nameplate40")
+  local castName = "Wail of Terror"
+  UnitCastingInfo = function() return castName end
+  H("UNIT_SPELLCAST_START", "nameplate40", "g", 1234); eq(P:NumberOf("nameplate40"), 1, "spell: the first matching cast keeps 1")
+  H("UNIT_SPELLCAST_START", "nameplate40", "g", 999); eq(P:NumberOf("nameplate40"), 1, "spell: another spell ID doesn't count")
+  H("UNIT_SPELLCAST_START", "nameplate40", "g", 1234); eq(P:NumberOf("nameplate40"), 2, "spell: the next matching one does")
+  local hiddenID = setmetatable({}, {}); secrets[hiddenID] = true
+  castName = "Shadow Bolt"
+  H("UNIT_SPELLCAST_START", "nameplate40", "g", hiddenID); eq(P:NumberOf("nameplate40"), 2, "spell: a secret ID, a readable other name: not counted")
+  castName = "wail of terror"
+  H("UNIT_SPELLCAST_START", "nameplate40", "g", hiddenID); eq(P:NumberOf("nameplate40"), 3, "spell: a secret ID, the name matching (any case): counted")
+  local hiddenName = setmetatable({}, {}); secrets[hiddenName] = true
+  UnitCastingInfo = function() return hiddenName end
+  H("UNIT_SPELLCAST_START", "nameplate40", "g", hiddenID); eq(P:NumberOf("nameplate40"), 4, "spell: both secret, every cast counts")
+  UnitCastingInfo = function() error("restricted") end
+  H("UNIT_SPELLCAST_START", "nameplate40"); eq(P:NumberOf("nameplate40"), 1, "spell: nothing readable, every cast counts")
+  check(P.SameSpell({ groups = {} }, "x", 5), "spell: a setup naming no spell counts every cast")
+  A:HandleEvent("ENCOUNTER_END")
+  CRT.Bosses:Get(3470).interrupts[2].spell = nil
+  I:ClearCache()
+end
+
 -- Test on trash with the untimed setup
 CRT.db.interrupts.test = true; A:StartTest("3470:15")
 eq(P:NumberOf("nameplate9"), 1, "test: a marked trash mob shows 1, a new count")

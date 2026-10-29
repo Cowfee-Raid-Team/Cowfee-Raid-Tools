@@ -1,7 +1,7 @@
 local ADDON, CRT = ...
 
--- DEVELOPER ONLY. Export on the Interrupts page's setup editor (Interrupts/SetupEditor.lua): the boss's kick setups in
--- use, every difficulty (your own saved ones in place of the shipped ones), as the boss file's interrupts block, to
+-- DEVELOPER ONLY. Export on the Interrupts page's setup editor (Interrupts/SetupEditor.lua): the boss's own kick setups,
+-- every difficulty (your own saved ones in place of the shipped ones; never the shape a share brought), as the boss file's interrupts block, to
 -- paste into CRT_Data/Seasons/<season>/<Boss>.lua so the setup ships for everyone (the crt-season-data skill's "Kick
 -- setups" says how). Save in the editor first: Export writes what is saved, not the fields being edited. A timed
 -- setup's timing goes with it as it is.
@@ -94,7 +94,7 @@ end
 
 -- The export of a boss's setups in use, with a head line naming the boss.
 function Export.ForBoss(encounterID)
-    local setups = CRT.Interrupts:Setups(encounterID)
+    local setups = CRT.Interrupts:OwnedSetups(encounterID) -- never a share's shape
     if #setups == 0 then
         return nil
     end

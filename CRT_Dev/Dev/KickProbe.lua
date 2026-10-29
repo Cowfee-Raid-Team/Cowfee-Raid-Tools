@@ -103,9 +103,9 @@ function Probe.ReadLine(seconds, unit, spellID)
         marker = shown(m)
     end
     local cast, castSpell = "error", "error"
-    local ok2, name, _, _, _, _, _, _, _, castID = pcall(UnitCastingInfo, unit)
+    local ok2, name, _, _, _, _, _, _, _, castSpellID = pcall(UnitCastingInfo, unit)
     if ok2 then
-        cast, castSpell = shown(name), shown(castID)
+        cast, castSpell = shown(name), shown(castSpellID)
     end
     return string.format("+%.1f %s read: marker %s, cast %s, cast spell %s, event spell %s", seconds, token, marker, cast,
         castSpell, shown(spellID))

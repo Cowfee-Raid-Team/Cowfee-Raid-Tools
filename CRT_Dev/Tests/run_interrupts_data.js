@@ -182,13 +182,34 @@ eq(I:ShippedDef("3470:15").groups[1].slots, 4, "custom: the shipped one still th
 check(not I:SetCustom("3470:15", { groups = {} }), "custom: a setup that doesn't read is refused")
 I:SetCustom("3470:15", { groups = { { key = "a", label = "A", slots = 2 } }, timing = RAW[1].timing })
 eq(I:Def("3470:15").timing, nil, "custom: never timed")
-check(I:SetCustom("3470:14", { groups = { { key = "x", label = "X", slots = 1 } } }), "custom: a difficulty with no shipped setup")
+check(not I:SetCustom("3470:14", { groups = { { key = "x", label = "X", slots = 1 } } }), "custom: a group without a raid marker is refused")
+check(I:SetCustom("3470:14", { groups = { { key = "x", label = "X", marker = 2, slots = 1 } } }), "custom: a difficulty with no shipped setup")
+local okT, whyT = I:SetCustom("3470:16", { groups = { { key = "left", label = "Left", marker = 1, slots = 5 } } })
+check(not okT and whyT == I.TEXT.timed, "custom: a timed shipped setup is never replaced (its lattice kept)")
+check(not I:IsCustom("3470:16") and I:Def("3470:16").timing ~= nil, "custom: the timed setup still in use")
+eq(#I:OwnedSetups(3470), 3, "owned: the shipped and your own setups")
 eq(#I:Bosses(), 3, "custom: listed with the rest")
 I:DropCustom("3470:15")
 check(not I:IsCustom("3470:15"), "custom: back to the shipped setup")
 eq(#I:Def("3470:15").groups, 1, "custom: the shipped shape again")
 I:DropCustom("3470:14")
 eq(#I:Bosses(), 2, "custom: gone from the list with nothing shipped")
+
+-- a share whose shape doesn't fit the setup here: its shape is the setup while the raid's list is in use
+do
+  local three = CRT.InterruptSetup.FromShape(15, "skull:8:3:Skull add", "Kick")
+  check(I:ReceiveShared("3470:15", { { "A", "Solex", "C" } }, "Brenn", three), "shape: a three-kicker list over a shipped four")
+  eq(I:Def("3470:15").groups[1].slots, 3, "shape: the share's shape is in use")
+  eq(select(1, I:Mine("3470:15")), 2, "shape: your number from it")
+  eq(I:ShippedDef("3470:15").groups[1].slots, 4, "shape: the shipped one kept")
+  eq(#I:OwnedSetups(3470), 2, "owned: never a share's shape")
+  I:SetUse("3470:15", "own")
+  eq(I:Def("3470:15").groups[1].slots, 4, "shape: your own list in use, the shipped setup again")
+  I:SetUse("3470:15", "raid")
+  eq(I:Def("3470:15").groups[1].slots, 3, "shape: the raid's again")
+  I:ReceiveShared("3470:15", { { "A", "B", "C", "D" } }, "Brenn")
+  eq(I:Def("3470:15").groups[1].slots, 4, "shape: a list that fits drops the shape")
+end
 RAW[2] = nil
 I:ClearCache()
 

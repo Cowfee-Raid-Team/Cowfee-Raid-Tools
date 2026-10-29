@@ -67,7 +67,10 @@ bad(function(b) b[2].timing.anchor = nil end, "timing without an anchor")
 bad(function(b) local g = {} for i = 1, S.MAX_GROUPS + 1 do g[i] = { key = "g" .. i, label = "G" .. i, slots = 1 } end b[1].groups = g end, "too many groups")
 check(S.Read({}) == nil and S.Read(nil) == nil, "refused: no block")
 check(select(2, S.Read({ { difficulty = 16 } })) ~= nil, "refused: with a reason")
-check(S.Read({ { difficulty = 16, groups = { { key = "a", label = "A", slots = S.MAX_SLOTS } } } }) ~= nil, "read: as many slots as allowed")
+check(S.Read({ { difficulty = 16, groups = { { key = "a", label = "A", marker = 1, slots = S.MAX_SLOTS } } } }) ~= nil, "read: as many slots as allowed")
+bad(function(b) b[1].groups[2].marker = nil end, "an untimed group without a raid marker")
+check(S.ReadOne({ difficulty = 16, groups = { { key = "a", label = "A", slots = 2 } } }) == nil, "refused: untimed needs markers")
+check(select(2, S.ReadOne({ difficulty = 16, groups = { { key = "a", label = "A", slots = 2 } } })):find("raid marker", 1, true), "refused: with why")
 
 -- shapes
 local shape = S.Shape(m)
@@ -83,6 +86,10 @@ local made = S.FromShape(16, shape, "Kick")
 check(made and made.difficulty == 16 and #made.groups == 2 and made.timing == nil, "from shape: an untimed setup")
 eq(made and made.groups[1].label, "Skull add", "from shape: its labels")
 eq(S.FromShape(16, "nonsense"), nil, "from shape: nothing from a bad shape")
+eq(S.FromShape(16, "left:0:5:Left"), nil, "from shape: an untimed setup needs its markers")
+eq(S.FromShape(17, shape), nil, "from shape: Looking For Raid is no share's difficulty")
+eq(S.FromShape(8, shape), nil, "from shape: nor a dungeon's")
+check(S.FromShape(14, shape) and S.FromShape(15, shape), "from shape: Normal and Heroic are")
 eq(S.CleanLabel("  a:b/c|d, e  "), "a b c d e", "clean label: the share's separators taken out")
 
 -- keys for new groups, and the marker icon

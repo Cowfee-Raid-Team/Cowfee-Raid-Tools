@@ -5,9 +5,9 @@ local ADDON, CRT = ...
 -- A timed setup counts down: a draining swipe, the whole seconds left on it, and "Kick #3 Left" under it, from the
 -- setup's label, your number and your group. LEAD seconds before the cast it shows; at 0 it hides and plays the chosen
 -- sound (CRT.Sound, on General Settings' sound channel).
--- An untimed setup has nothing to count down: when your group's add moves to your number (Plates:OnTurn, the cast you
--- kick has started) it shows "Your kick next: Skull add #2" with the sound, and hides when the add moves on or after
--- HOLD seconds.
+-- An untimed setup has nothing to count down. When the cast before yours starts on your group's add (Plates:OnTurn moves
+-- it to the number before yours) it shows "Your kick next: Skull add #2" as a heads-up; when your own cast starts it
+-- shows "Kick now: Skull add #2" with the sound. It hides when the add moves past you, or after HOLD seconds.
 --
 -- The schedule: when a pull arms (Interrupts/Anchor.lua), one timer per entry of the block's anchor.times, at
 -- pullTime + time + PairOffset(number) - LEAD, since wave 1's reminder is due before its anchor is even cast. When
@@ -36,6 +36,7 @@ local TEXT = {
     drag = "Kick reminder: drag to move",
     line = "%s #%d %s", -- Kick #3 Left
     next = "Your kick next: %s #%d", -- Your kick next: Skull add #2
+    now = "Kick now: %s #%d",
 }
 local FALLBACK_ICON = "Interface\\Icons\\ability_kick"
 local GAP = 4 -- between the icon and the line under it
@@ -292,8 +293,8 @@ function Reminder:Stop()
     end
 end
 
--- An untimed setup: a group's add moved to number n. Shown when it is your group and number, hidden when your
--- group's add moves on.
+-- An untimed setup: a group's add moved to number n. On your group: the number before yours is the heads-up, yours is
+-- Kick now (with the sound), any other hides it.
 function Reminder:OnTurn(g, n)
     local def = Anchor.def
     if not (def and not def.timing and Anchor.armed and Interrupts:Enabled() and settings().on) then
@@ -303,7 +304,10 @@ function Reminder:OnTurn(g, n)
     if not mine or g ~= myGroup then
         return
     end
-    if n ~= mine then
+    local slots = def.groups[g] and def.groups[g].slots or 1
+    local before = (mine - 2) % slots + 1
+    local now = n == mine
+    if not now and n ~= before then
         if showing and showing.untimed then
             hide()
         end
@@ -317,7 +321,7 @@ function Reminder:OnTurn(g, n)
         cooldown:Clear()
     end
     showing = { untimed = true, group = g }
-    label:SetText(string.format(TEXT.next, def.groups[g].label, n))
+    label:SetText(string.format(now and TEXT.now or TEXT.next, def.groups[g].label, mine))
     count:SetText("")
     endTimer = C_Timer.NewTimer(self.HOLD, function()
         endTimer = nil
@@ -325,7 +329,7 @@ function Reminder:OnTurn(g, n)
     end)
     f:Show()
     local sound = settings().sound
-    if sound and sound ~= "none" and CRT.Sound then
+    if now and sound and sound ~= "none" and CRT.Sound then
         CRT.Sound:Play(sound)
     end
 end

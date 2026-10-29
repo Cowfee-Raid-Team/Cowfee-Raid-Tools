@@ -239,7 +239,7 @@ check(not shownFrame(), "previews: not while the module is off")
 previews["interrupts-reminder"](false)
 I:SetEnabled(true)
 
--- an untimed setup: no countdown, "Your kick next" when your group's add moves to your number
+-- an untimed setup: no countdown; a heads-up when the cast before yours starts, Kick now when yours does
 CRT.Bosses:Get(3470).interrupts[2] = { difficulty = 15, groups = { { key = "skull", label = "Skull add", marker = 8, slots = 4 },
   { key = "cross", label = "Cross add", marker = 7, slots = 4 } } }
 I:ClearCache()
@@ -248,18 +248,26 @@ I.Mine = function() return mine, mine and "Cross add" or nil, mine and myGroup o
 mine = 2; played = {}
 clock = 7000; A:HandleEvent("ENCOUNTER_START", 3470, "Boss", 15)
 eq(#timers, 0, "untimed: nothing scheduled")
-R:OnTurn(2, 1); check(not shownFrame(), "untimed: another number, nothing")
-R:OnTurn(1, 2); check(not shownFrame(), "untimed: my number on another group's add, nothing")
-R:OnTurn(2, 2)
-check(shownFrame(), "untimed: my group's add on my number")
-eq(R.label:GetText(), "Your kick next: Cross add #2", "untimed: the line")
+R:OnTurn(2, 3); check(not shownFrame(), "untimed: another number, nothing")
+R:OnTurn(1, 1); check(not shownFrame(), "untimed: the number before mine on another group's add, nothing")
+R:OnTurn(2, 1)
+check(shownFrame(), "untimed: the cast before mine started on my group's add")
+eq(R.label:GetText(), "Your kick next: Cross add #2", "untimed: the heads-up")
 eq(R.count:GetText(), "", "untimed: no seconds")
-eq(played[1], "kit:8960", "untimed: the sound as it shows")
+eq(#played, 0, "untimed: no sound for the heads-up")
+R:OnTurn(2, 2)
+check(shownFrame(), "untimed: my cast started")
+eq(R.label:GetText(), "Kick now: Cross add #2", "untimed: Kick now")
+eq(played[1], "kit:8960", "untimed: the sound with Kick now")
 advance(7001); check(shownFrame(), "untimed: stays a moment")
-R:OnTurn(2, 3); check(not shownFrame(), "untimed: hidden when the add moves on")
+R:OnTurn(2, 3); check(not shownFrame(), "untimed: hidden when the add moves past me")
 R:OnTurn(2, 2); advance(7001 + R.HOLD + 0.1)
 check(not shownFrame(), "untimed: hidden after HOLD seconds")
 check(R.HOLD >= 5 and R.HOLD <= 20, "untimed: a named hold (" .. tostring(R.HOLD) .. ")")
+mine = 1; R:OnTurn(2, 4)
+eq(R.label:GetText(), "Your kick next: Cross add #1", "untimed: kick #1's heads-up is the group's last number")
+advance(clock + R.HOLD + 1)
+mine = 2
 CRT.db.interrupts.reminder.on = false; R:OnTurn(2, 2); check(not shownFrame(), "untimed: reminder off, nothing")
 CRT.db.interrupts.reminder.on = true
 R:OnTurn(2, 2); A:HandleEvent("ENCOUNTER_END"); check(not shownFrame(), "untimed: the pull's end hides it")

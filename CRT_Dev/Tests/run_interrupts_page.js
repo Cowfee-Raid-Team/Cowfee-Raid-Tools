@@ -424,15 +424,24 @@ check(P.write.enabled, "write: on for the leader")
 P.write.scripts.OnClick(P.write)
 local noteID = CRT.Notes:FindExact(3470, "Heroic")
 check(noteID and CRT.Notes:Get(noteID).raw:find("intstart\\nSolex Brenn Quick Tovi\\nintend", 1, true), "write: the block in the Heroic note")
-check(printed[#printed]:find("Heroic raid note", 1, true), "write: says so: " .. tostring(printed[#printed]))
+check(printed[#printed] == 'Wrote the kick list into the raid note "' .. CRT.Notes:Get(noteID).name .. '".', "write: names the note: " .. tostring(printed[#printed]))
 lead = false; P.Refresh()
 check(not P.write.enabled and P.write.crtReason, "write: off for a raider, with why")
 lead = true; P.Refresh()
 -- opening a boss reads its note's block into the raid's list
-CRT.Notes:UpdateRaw(noteID, "EncounterID:3470;Difficulty:Heroic\\nintstart\\nA B\\nC\\nintend\\n")
+CRT.Notes:UpdateRaw(noteID, "EncounterID:3470;Difficulty:Heroic\\nintstart\\nA B C D\\nE F G H\\nintend\\n")
 P.bossRow.opts.set("3470:16"); P.bossRow.opts.set("3470:15")
 eq(select(2, I:List("3470:15")), "raid", "read: opening the boss reads its note")
-eq(I:Shared("3470:15").list[2][1], "C", "read: the names")
+eq(I:Shared("3470:15").list[2][1], "E", "read: the names")
+-- a block with a gap left out is not read, and says so once
+CRT.Notes:UpdateRaw(noteID, "EncounterID:3470;Difficulty:Heroic\\nintstart\\nA B C\\nintend\\n")
+local said = #printed
+P.bossRow.opts.set("3470:16"); P.bossRow.opts.set("3470:15")
+eq(#printed, said + 1, "read: a block that doesn't fit says so")
+check(printed[#printed]:find("doesn't fit", 1, true), "read: why: " .. tostring(printed[#printed]))
+P.bossRow.opts.set("3470:16"); P.bossRow.opts.set("3470:15")
+eq(#printed, said + 1, "read: once")
+eq(I:Shared("3470:15").list[2][1], "E", "read: the raid's list kept")
 
 -- Edit setup opens the setup editor on the setup shown
 check(P.editSetup and P.editSetup.text == T.editSetup, "edit: the button beside Boss")
@@ -457,10 +466,12 @@ do
   for _, r in ipairs(rows) do if r.opts.options == E.MarkerOptions and r.shown then rowsShown = rowsShown + 1 end end
   eq(rowsShown, 1, "editor: one group row shown")
   local markers = E.MarkerOptions()
-  eq(#markers, 9, "editor: no marker and the eight markers"); eq(markers[1].label, "No marker", "editor: no marker first")
-  check(markers[2].label:find("Skull", 1, true) and markers[2].label:find("RaidTargetingIcon_8", 1, true), "editor: Skull first, with its icon")
+  eq(#markers, 8, "editor: the eight markers, no none (an untimed group needs one)")
+  check(markers[1].label:find("Skull", 1, true) and markers[1].label:find("RaidTargetingIcon_8", 1, true), "editor: Skull first, with its icon")
+  eq(E.Draft().groups[1].marker, 8, "editor: a new group takes Skull")
   E.addGroup.scripts.OnClick(E.addGroup)
   eq(#E.Draft().groups, 2, "editor: + Group adds one")
+  eq(E.Draft().groups[2].marker, 7, "editor: the next takes the first marker free, Cross")
   -- the rows: label typed, marker picked, slots slid
   local markerRows, slotRows = {}, {}
   for _, r in ipairs(rows) do
@@ -469,12 +480,9 @@ do
   end
   eq(#markerRows, 8, "editor: a row per possible group, pooled")
   check(slotRows[1].rowKind == "slider" and slotRows[1].opts.min == 1 and slotRows[1].opts.max == 10, "editor: kickers 1 to 10 on a slider")
-  markerRows[1].opts.set(8); markerRows[2].opts.set(7)
-  eq(E.Draft().groups[1].marker, 8, "editor: Skull for group 1")
   markerRows[2].opts.set(8)
-  eq(E.Draft().groups[2].marker, 8, "editor: Skull moved to group 2")
-  eq(E.Draft().groups[1].marker, nil, "editor: a marker is one group's")
-  markerRows[1].opts.set(7)
+  eq(E.Draft().groups[2].marker, 8, "editor: Skull picked for group 2")
+  eq(E.Draft().groups[1].marker, 7, "editor: group 1 takes group 2's Cross in exchange")
   slotRows[2].opts.set(3)
   local labelEdits = {}
   for _, f in ipairs(all) do if f.kind == "EditBox" and f.parent == E.window.content and f.w == EL.labelEditW then labelEdits[#labelEdits + 1] = f end end
@@ -506,16 +514,30 @@ do
   E.save.scripts.OnClick(E.save)
   eq(I:Def("3421:15").groups[1].key, "cross_add", "editor: a relabelled group keeps its key")
   eq(I:Own("3421:15")[1][1], "Solex", "editor: and its names")
-  check(not E.shipped.enabled, "editor: no shipped setup to go back to")
-  -- your own setup in place of a shipped one, and back
+  eq(E.shipped.text, E.TEXT.delete, "editor: no shipped setup, so Delete my setup")
+  check(E.shipped.enabled, "editor: on for your own setup")
+  -- a timed shipped setup can't be saved over
   E:Open("3470:16")
   eq(#E.Draft().groups, 2, "editor: a shipped setup to start from")
+  check(not E.save.enabled and E.save.crtReason == I.TEXT.timed, "editor: Save greyed on a timed setup, with why")
+  E.save.scripts.OnEnter(E.save)
+  check(GameTooltip.lines[2] == I.TEXT.timed, "editor: its tooltip says why")
+  check(not E:Save(), "editor: and Save refuses it")
+  check(not I:IsCustom("3470:16") and I:Def("3470:16").timing ~= nil, "editor: the lattice kept")
+  -- your own setup in place of an untimed shipped one, and back
+  CRT.Bosses:Get(3470).interrupts[2] = { difficulty = 15, groups = { { key = "skull", label = "Skull add", marker = 8, slots = 4 } } }
+  I:ClearCache()
+  E:Open("3470:15")
+  check(E.save.enabled, "editor: Save on for an untimed shipped setup")
   E.save.scripts.OnClick(E.save)
-  check(I:IsCustom("3470:16") and I:Def("3470:16").timing == nil, "editor: your own in place of the shipped one, untimed")
+  check(I:IsCustom("3470:15"), "editor: your own in place of the shipped one")
   E:Refresh()
+  eq(E.shipped.text, E.TEXT.shipped, "editor: Back to the shipped setup")
   check(E.shipped.enabled, "editor: Back to the shipped setup on")
   E.shipped.scripts.OnClick(E.shipped)
-  check(not I:IsCustom("3470:16") and I:Def("3470:16").timing ~= nil, "editor: back to the shipped setup")
+  check(not I:IsCustom("3470:15") and I:Def("3470:15").groups[1].slots == 4, "editor: back to the shipped setup")
+  CRT.Bosses:Get(3470).interrupts[2] = nil
+  I:ClearCache()
   -- inside its window
   for _, f in ipairs(all) do
     local p = f.points[1]
@@ -543,7 +565,14 @@ do
   local tback = CRT.InterruptSetup.Read(assert(load("return { " .. timed .. " }"))().interrupts)
   check(tback and tback[1].timing and tback[1].timing.anchor.times[6] == 404 and tback[1].note == "Mythic only here.", "export: a timed setup keeps its timing and note")
   check(X.Text({ { difficulty = 16, label = "Kick", spell = { name = "W" }, groups = { { key = "a", label = "A", slots = 1 } } } }):find("TODO id", 1, true), "export: a spell with no ID says where it comes from")
-  I:DropCustom("3421:15")
+  -- a share's shape is never exported
+  I:ReceiveShared("3421:14", { { "A", "B" } }, "Brenn", CRT.InterruptSetup.FromShape(14, "skull:8:2:Skull add", "Kick"))
+  check(I:Def("3421:14") ~= nil and not X.ForBoss(3421):find("difficulty = 14", 1, true), "export: a share's shape left out")
+  -- Delete my setup, for a boss and difficulty with nothing shipped
+  E:Open("3421:15")
+  E.shipped.scripts.OnClick(E.shipped)
+  check(not I:IsCustom("3421:15") and I:Def("3421:15") == nil, "editor: Delete my setup drops it")
+  check(printed[#printed]:find("Deleted your kick setup", 1, true), "editor: and says so")
   P.bossRow.opts.set("3470:16")
 end
 

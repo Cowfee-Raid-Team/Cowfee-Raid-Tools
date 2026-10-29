@@ -49,9 +49,10 @@ local TEXT = {
     share = "Share to raid",
     shareHelp = "Sends your list to everyone in the group with CRT and Interrupts on. Only the raid leader or an assistant can share, with every slot filled, before the pull. A shared list sets each raider's number at once.",
     write = "Write to the raid note",
-    writeHelp = "Puts your list in this boss's raid note for this difficulty, as an intstart block: one line per group, the names in kick order. Your changes are written there too, a second after you make them, while you can change the raid note.\n\nOpening a boss reads the block back as the raid's list.",
-    writeDone = "Wrote the kick list into the %s raid note for %s.",
-    writeEmpty = "The kick list is empty, so the %s raid note for %s has no kick block.",
+    writeHelp = "Puts your list in the raid note this boss's pull reads on this difficulty, as an intstart block: one line per group, the names in kick order. Press it again after you change the list.\n\nOpening a boss reads the block back as the raid's list, when every line has all of its group's names (or none).",
+    writeDone = "Wrote the kick list into the raid note \"%s\".",
+    writeEmpty = "The kick list is empty, so the raid note \"%s\" has no kick block now.",
+    writeNothing = "The kick list is empty: nothing to write.",
     test = "Test on trash",
     testHelp = "Tries the boss shown on trash. By timing: any pack is numbered by the order its mobs start casting, the first two 1, the next two 2, and so on. By raid marker: mark a mob with a group's marker, and its number moves on with each cast. Turns off when you change zone.",
     preview = "Preview reminder",
@@ -164,11 +165,23 @@ end
 Page.Boss = boss
 
 -- Shows a setup, its raid note's kick block read in first.
+-- The raid note's kick block read into the raid's list; a block that doesn't fit says so once.
+local noFitSaid = {}
+local function readNote(key)
+    if not (key and CRT.InterruptNote) then
+        return
+    end
+    local ok, _, why = pcall(CRT.InterruptNote.ReadInto, key)
+    if ok and why and not noFitSaid[why] then
+        noFitSaid[why] = true
+        CRT:Print(why)
+    end
+end
+Page.ReadNote = readNote
+
 local function choose(key)
     selected = key
-    if key and CRT.InterruptNote then
-        pcall(CRT.InterruptNote.ReadInto, key)
-    end
+    readNote(key)
     refresh()
 end
 Page.Choose = function(key)
@@ -460,13 +473,13 @@ local function buildButtons(f)
         if not (id and CRT.InterruptNote) then
             return
         end
-        local ok, why, emptied = CRT.InterruptNote.Write(id)
-        local _, _, _, diff = Interrupts:Resolve(id)
-        local dname = CRT.InterruptNote.DifficultyName(diff) or ""
-        if ok then
-            CRT:Print(string.format(emptied and TEXT.writeEmpty or TEXT.writeDone, dname, Interrupts:BossName(id)))
+        local ok, noteID, emptied, noteName = CRT.InterruptNote.Write(id)
+        if not ok then
+            CRT:Print(noteID) -- why not
+        elseif not noteID then
+            CRT:Print(TEXT.writeNothing)
         else
-            CRT:Print(why)
+            CRT:Print(string.format(emptied and TEXT.writeEmpty or TEXT.writeDone, tostring(noteName)))
         end
     end)
     write:SetPoint("LEFT", shareHelp or share, "RIGHT", L.buttonSpace, 0)
@@ -895,9 +908,7 @@ local function build(pf)
         if CRT.AddonCheck then
             CRT.AddonCheck:MaybeCheck()
         end
-        if boss() and CRT.InterruptNote then
-            pcall(CRT.InterruptNote.ReadInto, boss())
-        end
+        readNote(boss())
         selectTab(Page.tab or "assignments")
     end)
     pf:SetScript("OnHide", function()

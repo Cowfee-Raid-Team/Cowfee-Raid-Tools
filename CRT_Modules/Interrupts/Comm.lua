@@ -15,10 +15,12 @@ local ADDON, CRT = ...
 -- and on a zone change (PLAYER_ENTERING_WORLD).
 -- Version 1.1 added the last three fields, on every part: the setup's difficulty, its shape (Setup.Shape: each
 -- group's key, marker, slots and label) and its label word. The names are read by group key, so a raider whose setup
--- has the same groups in another order reads them right, and one with no setup for that boss and difficulty takes the
--- shape as its setup (Interrupts:ReceiveShared). A 1.0 message (an older CRT: no difficulty, no shape) is read in
--- order into the boss's first setup with as many slots; an older CRT reads a 1.1 message as 1.0 (its extra fields
--- after the text are left). A list whose groups or slots don't fit the setup here is dropped quietly.
+-- has the same groups in another order reads them right. A raider whose setup the shape doesn't fit (the leader's own
+-- setup over the shipped one), or who has none for that boss and difficulty, reads the list in the shape and keeps
+-- the shape as the setup while that list is in use (Interrupts:ReceiveShared). Only Normal, Heroic and Mythic are
+-- taken (Setup.SHARE_DIFFICULTIES). A 1.0 message (an older CRT: no difficulty, no shape) is read in order into the
+-- boss's first setup with as many slots; an older CRT reads a 1.1 message as 1.0 (its extra fields after the text are
+-- left). A list that fits neither is dropped quietly.
 --
 -- Game calls (warcraft.wiki.gg, read 2026-10-28): C_ChatInfo.RegisterAddonMessagePrefix, CHAT_MSG_ADDON (prefix,
 -- text, channel, sender), Ambiguate(name, "none"), UnitName, UnitIsGroupLeader, UnitIsGroupAssistant,
@@ -188,6 +190,9 @@ end
 -- third, to be kept), from the message's encounter ID, difficulty, shape and label. A 1.0 message names no difficulty:
 -- the boss's first setup with count slots. nil when there is none.
 function KickComm.SetupFor(id, difficulty, shape, label, count)
+    if difficulty and not Setup.SHARE_DIFFICULTIES[difficulty] then
+        return nil
+    end
     if difficulty then
         local key = Interrupts.Key(id, difficulty)
         local def = Interrupts:Def(key)
@@ -326,7 +331,7 @@ function KickComm:Receive(message, sender)
         return
     end
     forget(false)
-    local key = short .. ":" .. p.id .. ":" .. p.hash
+    local key = short .. ":" .. p.id .. ":" .. tostring(p.difficulty or "") .. ":" .. p.hash
     local done = finished[key]
     if done and done.parts[p.part] == p.text then
         return -- a late copy of a part of a list already taken
@@ -352,6 +357,11 @@ function KickComm:Receive(message, sender)
     end
     local key, def, made = self.SetupFor(p.id, p.difficulty, p.shape, p.label, #split(body))
     local list = self.Read(def, p.hash, body, p.shape)
+    if not list and key and not made and p.shape then
+        -- the sender's setup isn't the one here (their own over the shipped one): read it in their shape
+        made = Setup.FromShape(p.difficulty, p.shape, p.label)
+        list = made and self.Read(made, p.hash, body, p.shape)
+    end
     if not list then
         return -- another boss or shape: an older or newer CRT's data, quietly
     end

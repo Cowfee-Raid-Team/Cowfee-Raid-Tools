@@ -1,9 +1,10 @@
 // The kick list in the raid note (CRT_Modules/Interrupts/NoteBlock.lua) over the real notes store (Notes/Parse.lua,
 // Notes/Data.lua): the intstart block's lines (one per group, names in kick order, empty slots left out), the block
 // replaced in place with every other line kept byte for byte or added at the end, taken out for an empty list, read
-// back and fitted to the setup, Write making the note for exactly that difficulty and leaving the other difficulty's
-// alone, refused for a raider and during a fight, written a moment after your own changes, and opening a boss
-// reading the block into the raid's list. Usage: node run_interrupts_note.js <addon folder>
+// back only when each line is empty or fills its group (a gap never shifts the numbers), Write going into the note a
+// pull reads when it is for that difficulty or none (never a new note hiding it), else the exact-difficulty note,
+// refused for a raider and during a fight, only the button writing, and opening a boss reading the block into the
+// raid's list. Usage: node run_interrupts_note.js <addon folder>
 const fs = require('fs');
 const path = require('path');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
@@ -70,24 +71,37 @@ eq(B.Replace("intstart\\nX\\nrest", {}), "intstart\\nX\\nrest", "replace: a star
 local rows = B.Rows(new)
 eq(rows and #rows, 2, "rows: two lines"); eq(rows and rows[1][2], "B", "rows: the names")
 eq(B.Rows("no block"), nil, "rows: none")
-local fit = B.Fit(def, B.Rows("intstart\\nA B C D\\nE\\nintend"))
-eq(fit and fit[1][4], "D", "fit: four names on a group of four"); eq(fit and fit[2][2], "", "fit: the rest empty")
+local fit = B.Fit(def, B.Rows("intstart\\nA B C D\\n\\nintend"))
+eq(fit and fit[1][4], "D", "fit: four names on a group of four"); eq(fit and fit[2][2], "", "fit: an empty line is an empty group")
+eq(B.Fit(def, B.Rows("intstart\\nA B C D\\nE\\nintend")), nil, "fit: one name on a group of four doesn't fit (where were the gaps?)")
 eq(B.Fit(def, B.Rows("intstart\\nA B C D E\\nintend")), nil, "fit: five names on a group of four don't fit")
 eq(B.Fit(def, B.Rows("intstart\\nA\\nB\\nC\\nintend")), nil, "fit: more lines than groups don't fit")
-check(B.Fit(def, B.Rows("intstart\\nA\\nintend")) ~= nil, "fit: fewer lines than groups fit")
+local short = B.Fit(def, B.Rows("intstart\\nA B C D\\nintend"))
+check(short and short[2][1] == "", "fit: a missing last line is an empty group")
 eq(B.DifficultyName(16), "Mythic", "difficulty: Mythic"); eq(B.DifficultyName(15), "Heroic", "difficulty: Heroic"); eq(B.DifficultyName(99), nil, "difficulty: unknown")
+-- a gap never shifts the kick numbers: written without it, the block is not read back
+do
+  local gap = { { "Solex", "", "Brenn", "Mara" }, { "" , "", "", "" } }
+  local text = B.Replace("", B.Lines(def, gap))
+  eq(text, "intstart\\nSolex Brenn Mara\\nintend", "gap: written with the empty slot left out")
+  eq(B.Fit(def, B.Rows(text)), nil, "gap: not read back, so Brenn is never #2")
+  local whole = { { "Solex", "Tovi", "Brenn", "Mara" }, { "A", "B", "C", "D" } }
+  local back = B.Fit(def, B.Rows(B.Replace("", B.Lines(def, whole))))
+  check(back and back[1][3] == "Brenn" and back[2][4] == "D", "round trip: a full list comes back slot for slot")
+end
 
 -- Write: the note for exactly that difficulty, made when there is none
 for s, n in ipairs({ "Solex", "Brenn", "Mara", "Tovi" }) do I:SetName(M, 1, s, n) end
 I:SetName(M, 2, 1, "Hale")
-local heroicID = Notes:Import("EncounterID:3470;Difficulty:Heroic;Name:Boss\\nintstart\\nHeroic Line\\nintend\\n")
-local ok, noteID = B.Write(M)
+local heroicID = Notes:Import("EncounterID:3470;Difficulty:Heroic;Name:Boss\\nintstart\\nH1 H2 H3 H4\\nintend\\n")
+local ok, noteID, _, written = B.Write(M)
 check(ok and noteID, "write: done")
 local rec = Notes:Get(noteID)
-eq(rec.difficulty, "Mythic", "write: a Mythic note")
+eq(rec.difficulty, "Mythic", "write: a Mythic note (the pull's note is the Heroic one, not for Mythic)")
+eq(written, rec.name, "write: names the note it wrote to")
 check(rec.raw:find("intstart\\nSolex Brenn Mara Tovi\\nHale\\nintend", 1, true) ~= nil, "write: the block in it: " .. rec.raw)
 eq(rec.via, "Interrupts", "write: a note made here says so")
-check(Notes:Get(heroicID).raw:find("Heroic Line", 1, true), "write: the Heroic note untouched")
+check(Notes:Get(heroicID).raw:find("H1 H2", 1, true), "write: the Heroic note untouched")
 I:SetName(M, 1, 1, "Quick")
 B.Write(M)
 local _, count = Notes:Get(noteID).raw:gsub("intstart", "")
@@ -105,32 +119,44 @@ fight = false; combat = true
 check(not B.Write(M), "write: refused in combat")
 combat = false
 
--- written a moment after your own changes
-runTimers() -- the writes the edits above queued
-I:SetName(M, 2, 2, "Ruun"); I:SetName(M, 2, 3, "Pell")
-eq(#timers, 1, "auto: one timer for several changes")
-check(not Notes:Get(noteID).raw:find("Ruun", 1, true), "auto: not yet")
-runTimers()
-check(Notes:Get(noteID).raw:find("Hale Ruun Pell", 1, true), "auto: written after the moment")
-raid, lead = true, false
-I:SetName(M, 2, 4, "Nobody"); eq(#timers, 0, "auto: nothing for a raider")
-raid, lead = false, true
-I:ReceiveShared(M, { { "X" }, {} }, "Brenn"); eq(#timers, 0, "auto: a share is not written")
-I:Clear(M); runTimers()
-check(not Notes:Get(noteID).raw:find("intstart", 1, true), "auto: an empty list takes the block out")
+-- only the button writes: a change of your list leaves the note alone
+I:SetName(M, 2, 2, "Ruun"); runTimers()
+check(not Notes:Get(noteID).raw:find("Ruun", 1, true), "no auto write: your change stays off the note")
+eq(#timers, 0, "no auto write: nothing waiting")
+
+-- the note a pull reads, when it is for no difficulty: written there, no new note to hide it
+do
+  CRT.Bosses:Get(3470).interrupts[3] = { difficulty = 14, groups = { { key = "skull", label = "Skull add", marker = 8, slots = 2 } } }
+  I:ClearCache()
+  local anyID = Notes:Import("EncounterID:3470;Name:Boss any\\nKeep me\\n")
+  eq(Notes:FindForEncounter(3470, "Normal"), anyID, "any: a Normal pull reads the note with no difficulty")
+  local before = 0 for _ in pairs(CRT.db.notes.list) do before = before + 1 end
+  I:SetName("3470:14", 1, 1, "Solex"); I:SetName("3470:14", 1, 2, "Brenn")
+  local okA, idA = B.Write("3470:14")
+  check(okA and idA == anyID, "any: written into the note the pull reads")
+  local after = 0 for _ in pairs(CRT.db.notes.list) do after = after + 1 end
+  eq(after, before, "any: no new note made")
+  eq(Notes:FindForEncounter(3470, "Normal"), anyID, "any: the pull still reads it")
+  check(Notes:Get(anyID).raw:find("Keep me\\nintstart\\nSolex Brenn\\nintend", 1, true), "any: its lines kept, the block added")
+  eq(B.NoteOf("3470:14"), anyID, "any: read back from the same note")
+  CRT.Bosses:Get(3470).interrupts[3] = nil
+  I:ClearCache()
+end
 
 -- reading the raid note into the raid's list
-Notes:UpdateRaw(noteID, "EncounterID:3470;Difficulty:Mythic\\nintstart\\nA B C D\\nE F\\nintend\\n")
+Notes:UpdateRaw(noteID, "EncounterID:3470;Difficulty:Mythic\\nintstart\\nA B C D\\nE F G H\\nintend\\n")
 check(B.ReadInto(M), "read: the block fills the raid's list")
 eq(select(2, I:List(M)), "raid", "read: in use")
 eq(I:Shared(M).list[2][2], "F", "read: the names")
 eq(I:Shared(M).from, B.TEXT.fromNote, "read: from the raid note")
 check(not B.ReadInto(M), "read: the same block again changes nothing")
 check(B.ReadInto("3470:15"), "read: the Heroic note's block for the Heroic setup")
-eq(I:Shared("3470:15").list[1][1], "Heroic", "read: its names")
-Notes:UpdateRaw(noteID, "EncounterID:3470;Difficulty:Mythic\\nintstart\\nA B C D E\\nintend\\n")
-check(not B.ReadInto(M), "read: a block that doesn't fit is left")
+eq(I:Shared("3470:15").list[1][1], "H1", "read: its names")
+Notes:UpdateRaw(noteID, "EncounterID:3470;Difficulty:Mythic\\nintstart\\nA B C\\nintend\\n")
+local okR, whyR = B.ReadInto(M)
+check(not okR and whyR and whyR:find("doesn't fit", 1, true), "read: a line with a gap left out is not read, and says why: " .. tostring(whyR))
 eq(I:Shared(M).list[1][1], "A", "read: (the raid's list kept)")
+eq(I:Shared(M).list[2][1], "E", "read: (nothing put in use from it)")
 
 print(string.format("%d passed, %d failed", passes, fails))
 if fails > 0 then error("failures") end

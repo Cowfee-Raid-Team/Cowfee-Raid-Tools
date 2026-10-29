@@ -287,10 +287,36 @@ do
   eq(B.printed[#B.printed], "Brenn shared the kick list for Nek'zali the Soulcoiler. Your kick: #2 Skull add.", "no setup: the chat line")
   eq(IB:Def("3470:16").groups[1].key, "left", "no setup: the Mythic setup untouched")
 end
+-- a leader's own setup reaches a raider who has the shipped one (Normal here: Skull add of four on both)
+do
+  for _, side in ipairs({ A, B }) do
+    side.CRT.Bosses:Get(3470).interrupts[2] = { difficulty = 14, spell = { name = "Wail of Terror" },
+      groups = { { key = "skull", label = "Skull add", marker = 8, slots = 4 } } }
+    side.I:ClearCache()
+  end
+  check(as(A, function() return A.I:SetCustom("3470:14", { groups = { { key = "skull", label = "Skull add", marker = 8, slots = 3 } } }) end), "custom over shipped: A's own three-kicker setup")
+  for s, n in ipairs({ "P1", "Solex", "P3" }) do as(A, function() A.I:SetName("3470:14", 1, s, n) end) end
+  outbox = {}
+  eq(as(A, function() return C:Share("3470:14") end), true, "custom over shipped: shared")
+  local before = received
+  deliver(B, outbox[1].text, "Brenn")
+  eq(received, before + 1, "custom over shipped: B takes it")
+  eq(IB:ShippedDef("3470:14").groups[1].slots, 4, "custom over shipped: B has the shipped four")
+  eq(IB:Def("3470:14").groups[1].slots, 3, "custom over shipped: the share's shape is B's setup while it is in use")
+  eq(IB:Shared("3470:14").list[1][3], "P3", "custom over shipped: the whole list")
+  eq(as(B, function() return (IB:Mine("3470:14")) end), 2, "custom over shipped: B's number")
+  -- a share for a difficulty no raid share has
+  local m17 = outbox[1].text:gsub("|14|skull", "|17|skull")
+  before = received
+  deliver(B, m17, "Brenn")
+  eq(received, before, "difficulty: Looking For Raid's is not taken")
+  eq(C.SetupFor(3470, 17, "skull:8:3:Skull add", "Kick", 3), nil, "difficulty: SetupFor refuses it")
+end
+
 -- a setup too big for a message's room
 do
   local groups = {}
-  for i = 1, 8 do groups[i] = { key = "group_number_" .. i, label = "A long group label " .. i, slots = 10 } end
+  for i = 1, 8 do groups[i] = { key = "group_number_" .. i, label = "A long group label " .. i, marker = i, slots = 10 } end
   local big = A.CRT.InterruptSetup.ReadOne({ difficulty = 16, groups = groups })
   local m2, why = C.Encode(id, big, {})
   check(m2 == nil and why == C.TEXT.tooBig, "too big: refused with a reason")

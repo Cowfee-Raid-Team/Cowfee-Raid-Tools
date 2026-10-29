@@ -4,9 +4,12 @@ local ADDON, CRT = ...
 -- matching pull, or Test on trash), stopped when it disarms; stopped, no event is registered. Two ways to number:
 --
 -- An untimed setup (no timing) numbers by raid marker: a plate whose marker (GetRaidTargetIndex on its token) is a
--- group's marker shows that group's kick number: 1 until the add's first cast, then one more on each cast start after
--- it, 1 again after the group's last slot. So the number on the add is whose kick the cast in progress is, or the next
--- one while it isn't casting. The count is the group's (its marked add's), not the plate's, so a plate that leaves the
+-- group's marker shows that group's kick number. It shows 1 until the add's first cast; the first cast keeps 1, and
+-- each cast start after it moves it on by one, 1 again after the group's last slot. So the number is the kicker of the
+-- cast in progress, and it stays until the next cast starts. Only casts of the setup's spell count, when the cast can
+-- be read: its spell ID (the event's) against the setup's spell ID, else its name (UnitCastingInfo) against the
+-- setup's spell name; when what would be compared is secret or missing, or the setup names no spell, every cast start
+-- on the marked plate counts. The count is the group's (its marked add's), not the plate's, so a plate that leaves the
 -- screen and comes back, or a new add given the marker, carries on the rotation. The markers are read again on each
 -- plate added and on RAID_TARGET_UPDATE (every plate token on screen). A marker that is secret, can't be read or is no
 -- group's shows nothing, never a wrong number. OnTurn listeners hear each group's new number (the reminder).
@@ -28,7 +31,8 @@ local ADDON, CRT = ...
 -- pair is drawn in your colours (plates.mineBox, mineText), the others in plates.box and text, shown only with Show
 -- every number (plates.all). Boxes come from one pool, so a long fight makes no new frames after the first wave.
 --
--- Game calls (warcraft.wiki.gg and Blizzard's 12.1.5 UI source, read 2026-10-28): GetRaidTargetIndex(unit) -> 1 to 8
+-- Game calls (warcraft.wiki.gg and Blizzard's 12.1.5 UI source, read 2026-10-28): UnitCastingInfo(unit) -> name first
+-- (SecretWhenUnitSpellCastRestricted; read 2026-10-29), GetRaidTargetIndex(unit) -> 1 to 8
 -- or nil (SecretReturns; arbitrary for a unit that doesn't exist, so UnitExists first; read 2026-10-29), RAID_TARGET_UPDATE
 -- (no payload: a marker set or cleared), C_NamePlate.GetNamePlateForUnit(unit)
 -- -> the plate frame, NAME_PLATE_UNIT_ADDED and NAME_PLATE_UNIT_REMOVED (unitToken, "nameplateN"),
@@ -331,7 +335,25 @@ local function rescan()
     end
 end
 
-local function onMarkedCast(unit)
+-- Whether a cast is of the setup's spell: compared only when readable; anything secret or missing counts.
+function Plates.SameSpell(def, unit, spellID)
+    local want = def and def.spell
+    if not (want and (want.spellID or want.name)) then
+        return true
+    end
+    if want.spellID and readable(spellID) and type(spellID) == "number" then
+        return spellID == want.spellID
+    end
+    if want.name then
+        local ok, name = pcall(UnitCastingInfo, unit)
+        if ok and readable(name) and type(name) == "string" and name ~= "" then
+            return name:lower() == want.name:lower()
+        end
+    end
+    return true
+end
+
+local function onMarkedCast(unit, spellID)
     local t = GetTime()
     if not Plates.Candidate(unit) then
         for _, fn in ipairs(Plates.castListeners) do
@@ -346,6 +368,12 @@ local function onMarkedCast(unit)
         end
         for _, fn in ipairs(Plates.castListeners) do
             pcall(fn, unit, t, nil, nil, "no group's marker")
+        end
+        return
+    end
+    if not Plates.SameSpell(Anchor.def, unit, spellID) then
+        for _, fn in ipairs(Plates.castListeners) do
+            pcall(fn, unit, t, nil, nil, "another spell")
         end
         return
     end
@@ -444,7 +472,8 @@ function Plates.HandleEvent(event, unit, ...)
         end
         if untimed() then
             if isPlate(unit) then
-                onMarkedCast(unit)
+                local _, spellID = ...
+                onMarkedCast(unit, spellID)
             end
         else
             onCast(unit)
