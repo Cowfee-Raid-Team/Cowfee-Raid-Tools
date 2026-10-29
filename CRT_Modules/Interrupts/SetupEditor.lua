@@ -48,7 +48,7 @@ local DIFFICULTIES = { { key = 16, label = "Mythic" }, { key = 15, label = "Hero
 
 local LAYOUT = {
     width = 600, height = 470,
-    labelW = 70, bossW = 250, diffX = 340, diffLabelW = 70, diffW = 120,
+    labelW = 70, bossW = 250, diffX = 370, diffLabelW = 70, diffW = 120,
     spellY = -44, spellW = 200, idX = 320, idLabelW = 60, idW = 90, fieldH = 22,
     groupsY = -80, rowsY = -104, rowH = 34, labelEditW = 150, markerX = 160, markerW = 130, slotsX = 300,
     slotsLabelW = 56, slotsW = 110, removeX = 520,
@@ -290,8 +290,6 @@ local function build()
     win = UI.Window("CowfeeRaidToolsKickSetup", { kind = "dialog", title = TEXT.title, width = L.width, height = L.height })
     Editor.window = win
     local c = win.content
-    local help = UI.Help(c, TEXT.title, TEXT.help)
-    help:SetPoint("TOPRIGHT", -4, -4)
     local bossRow = UI.Dropdown(c, TEXT.boss, { labelWidth = L.labelW, width = L.bossW, maxHeight = 400,
         options = function()
             return CRT.Bosses:Options()
@@ -307,6 +305,7 @@ local function build()
         end })
     bossRow:SetPoint("TOPLEFT", 0, 0)
     controls[#controls + 1] = bossRow
+    UI.HelpRight(bossRow, TEXT.title, TEXT.help)
     local diffRow = UI.Dropdown(c, TEXT.difficulty, { labelWidth = L.diffLabelW, width = L.diffW, options = DIFFICULTIES,
         get = function()
             return draft and draft.difficulty
