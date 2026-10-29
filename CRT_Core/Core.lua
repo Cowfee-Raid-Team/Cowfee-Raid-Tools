@@ -390,6 +390,8 @@ local defaults = {
     -- is no longer read and stays only so old saved data keeps its shape. keepApart is the look-alike teams you
     -- chose to keep apart (UI/TeamLookAlike.lua): ["winner|loser"] = true, both names in lower case.
     team = { threshold = 0.75, list = {}, popup = {}, keepApart = {} },
+    -- The Addon check (CRT_Core/AddonCheck.lua): announceTo is where Announce posts ("self", "raid", "warning" or "officer").
+    addonCheck = { announceTo = "raid" },
     -- Season Stats (SeasonStats/Data.lua): the raid's own counters per boss and difficulty group, counted from each
     -- pull the Timeline saves. bosses[encounterID] = { name, nh = counters, mythic = counters }; filled is true once
     -- they were filled from the Timeline's saved pulls. Data only: never in Export settings only. boss[group] counts team

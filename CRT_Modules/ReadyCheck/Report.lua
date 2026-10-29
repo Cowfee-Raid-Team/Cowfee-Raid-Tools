@@ -451,11 +451,24 @@ end
 
 local send = (C_ChatInfo and C_ChatInfo.SendChatMessage) or SendChatMessage
 
--- output is "self", "raid" or "officer". Anything that can't go to chat is printed to you instead.
+-- Whether you may send a raid warning: the raid leader or an assistant, in a raid.
+function Report.CanWarn()
+    if not (IsInRaid and IsInRaid()) then
+        return false
+    end
+    local okL, lead = pcall(UnitIsGroupLeader, "player")
+    local okA, assist = pcall(UnitIsGroupAssistant, "player")
+    return (okL and lead == true) or (okA and assist == true) or false
+end
+
+-- output is "self", "raid", "warning" (a raid warning, for the leader or an assistant in a raid, else the group
+-- channel) or "officer". Anything that can't go to chat is printed to you instead.
 function Report:Output(lines, output)
     local channel
     if output == "raid" then
         channel = groupChannel()
+    elseif output == "warning" then
+        channel = Report.CanWarn() and "RAID_WARNING" or groupChannel()
     elseif output == "officer" then
         channel = "OFFICER"
     end

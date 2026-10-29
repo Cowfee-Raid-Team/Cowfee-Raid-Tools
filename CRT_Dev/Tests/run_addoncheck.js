@@ -101,7 +101,7 @@ end
 local clients = {}
 local function boot(name, version, flags)
   handlers = {}
-  local CRT = { version = version, db = {} }
+  local CRT = { version = version, db = { addonCheck = { announceTo = "raid" } } }
   local printed = {}
   function CRT:Print(s) printed[#printed + 1] = s end
   assert(load(checkSrc, "CRT_Core/AddonCheck.lua"))("CowfeeRaidTools", CRT)
@@ -259,6 +259,30 @@ do
   eq(#posted, 1, "Announce posts once")
   eq(posted[1], "raid:" .. lines[1] .. " / " .. lines[2], "to the group, the two lines")
   eq(#got, 2, "and returns the lines")
+  -- Announce to: the four outputs, saved, each with its own reason for a greyed Announce
+  local keys = {} for _, o in ipairs(solex.AC.OUTPUTS) do keys[#keys + 1] = o.key end
+  eq(table.concat(keys, ","), "self,raid,warning,officer", "the destinations")
+  eq(solex.AC:AnnounceTo(), "raid", "the default is the group's chat")
+  solex.CRT.db.addonCheck.announceTo = "bogus"
+  eq(solex.AC:AnnounceTo(), "raid", "a saved value that isn't a destination reads as the default")
+  solex.CRT.RaidReport.CanWarn = function() return false end
+  solex.AC:SetAnnounceTo("warning")
+  eq(solex.CRT.db.addonCheck.announceTo, "warning", "the choice is saved")
+  eq(select(2, as(solex, function() return solex.AC:CanAnnounce() end)), "lead", "a raid warning needs the lead")
+  solex.CRT.RaidReport.CanWarn = function() return true end
+  eq(as(solex, function() return (solex.AC:CanAnnounce()) end), true, "and goes with it")
+  as(solex, function() solex.AC:Announce() end)
+  eq(posted[#posted]:match("^[^:]+"), "warning", "posted as a raid warning")
+  solex.CRT.GearChecker = { CanOfficer = function() return false end }
+  solex.AC:SetAnnounceTo("officer")
+  eq(select(2, as(solex, function() return solex.AC:CanAnnounce() end)), "officer", "officer chat needs an officer")
+  solex.CRT.GearChecker.CanOfficer = function() return true end
+  as(solex, function() solex.AC:Announce() end)
+  eq(posted[#posted]:match("^[^:]+"), "officer", "posted to officer chat")
+  solex.AC:SetAnnounceTo("self")
+  as(solex, function() solex.AC:Announce() end)
+  eq(posted[#posted]:match("^[^:]+"), "self", "Only me goes through the same output, which prints it")
+  solex.AC:SetAnnounceTo("raid")
   -- the whispers
   local whispers = {}
   C_ChatInfo.SendChatMessage = function(text, kind, _, target) whispers[#whispers + 1] = kind .. ">" .. target .. ": " .. text end

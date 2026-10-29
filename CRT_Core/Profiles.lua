@@ -105,6 +105,7 @@ Profiles.SHARE = {
         healerRows = false, -- the Healer CDs rows you picked per player stay on this computer
     },
     team = { threshold = false, list = false, popup = true, keepApart = false }, -- your team names (and the Season Stats saved under them) stay yours
+    addonCheck = { announceTo = false }, -- where your announcement goes stays yours
     seasonStats = false, -- the raid's pull counters: data
     longTerm = false, -- long-term data (Core.lua): never a setting
     markers = true,

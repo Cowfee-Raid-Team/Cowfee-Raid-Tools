@@ -431,6 +431,15 @@ do
   end
   local announce = findText("Announce", "Button")
   if not announce then print("FAIL the Addon check tab has an Announce button") elseif rawget(announce, "enabled") ~= false or announce.why ~= "group" then print("FAIL Announce is greyed out of a group, with the reason (got " .. tostring(announce.why) .. ")") end
+  local announceTo = dropdowns["Announce to"]
+  if not announceTo then print("FAIL the Addon check tab has an Announce to dropdown") else
+    local labels = {} for _, o in ipairs(announceTo.options) do labels[#labels + 1] = o.label end
+    if table.concat(labels, ",") ~= "Only me,Raid chat,Raid warning,Officer chat" then print("FAIL Announce to lists the four destinations: " .. table.concat(labels, ",")) end
+    if announceTo.get() ~= "raid" then print("FAIL Announce to starts on Raid chat (got " .. tostring(announceTo.get()) .. ")") end
+    announceTo.set("officer")
+    if CRT.db.addonCheck.announceTo ~= "officer" or announceTo.get() ~= "officer" then print("FAIL Announce to is saved in CRTDB.addonCheck.announceTo") end
+    announceTo.set("raid")
+  end
   local module, show = dropdowns["Module"], dropdowns["Show"]
   if not (module and show) then print("FAIL the Addon check tab has Module and Show dropdowns") else
     local labels = {} for _, o in ipairs(module.options()) do labels[#labels + 1] = o.label end

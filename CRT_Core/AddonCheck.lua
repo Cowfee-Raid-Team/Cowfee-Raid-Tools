@@ -568,10 +568,11 @@ end
 
 -- Announcing ----------------------------------------------------------------------------------------------------------
 
--- Announce posts who is missing CRT or on an older version to the group, through the raid report's output
--- (ReadyCheck/Report.lua, which prefixes "[CRT] " and splits long lines, as Tattlebot's posts go); a click on a
--- No CRT or older row whispers that player. Names follow Leave realm names out (Groups.ReportName). Nothing
--- posts by itself.
+-- Announce posts who is missing CRT or on an older version where Announce to says (only you, the group channel,
+-- a raid warning or officer chat; CRTDB.addonCheck.announceTo, never in Export settings only), through the raid
+-- report's output (ReadyCheck/Report.lua, which prefixes "[CRT] " and splits long lines, as Tattlebot's posts
+-- go); a click on a No CRT or older row whispers that player. Names follow Leave realm names out
+-- (Groups.ReportName). Nothing posts by itself.
 
 Check.URL = "https://www.curseforge.com/wow/addons/cowfee-raid-tools"
 Check.TEXT = {
@@ -621,8 +622,35 @@ function Check.AnnounceLines(rows, version)
     return { table.concat(parts, " "), Check.TEXT.get:format(Check.URL) }
 end
 
+-- Where Announce posts (CRTDB.addonCheck.announceTo), the raid report's outputs plus a raid warning: the keys
+-- ReadyCheck/Report.lua's Output takes.
+Check.OUTPUTS = {
+    { key = "self", label = "Only me" },
+    { key = "raid", label = "Raid chat" },
+    { key = "warning", label = "Raid warning" },
+    { key = "officer", label = "Officer chat" },
+}
+
+function Check:AnnounceTo()
+    local s = CRT.db and CRT.db.addonCheck
+    local key = s and s.announceTo
+    for _, o in ipairs(self.OUTPUTS) do
+        if o.key == key then
+            return key
+        end
+    end
+    return "raid"
+end
+
+function Check:SetAnnounceTo(key)
+    if CRT.db and CRT.db.addonCheck then
+        CRT.db.addonCheck.announceTo = key
+    end
+end
+
 -- Whether Announce can post now: true, or false and why ("group": not in a group, "check": no check has run, or
--- its window is still open, so an answer may still come).
+-- its window is still open, so an answer may still come, "lead": a raid warning needs the raid leader or an
+-- assistant in a raid, "officer": you can't speak in officer chat).
 function Check:CanAnnounce()
     if not channel() then
         return false, "group"
@@ -630,10 +658,17 @@ function Check:CanAnnounce()
     if not asked or now() - asked.at < self.WINDOW then
         return false, "check"
     end
+    local to = self:AnnounceTo()
+    if to == "warning" and CRT.RaidReport and CRT.RaidReport.CanWarn and not CRT.RaidReport.CanWarn() then
+        return false, "lead"
+    end
+    if to == "officer" and CRT.GearChecker and CRT.GearChecker.CanOfficer and not CRT.GearChecker.CanOfficer() then
+        return false, "officer"
+    end
     return true
 end
 
--- Posts the announcement to the group. Returns the lines, or nil and why not.
+-- Posts the announcement where Announce to says. Returns the lines, or nil and why not.
 function Check:Announce()
     local ok, why = self:CanAnnounce()
     if not ok then
@@ -641,7 +676,7 @@ function Check:Announce()
     end
     local lines = self.AnnounceLines(self:Rows())
     if CRT.RaidReport and CRT.RaidReport.Output then
-        CRT.RaidReport:Output(lines, "raid")
+        CRT.RaidReport:Output(lines, self:AnnounceTo())
     else
         for _, line in ipairs(lines) do
             CRT:Print(line)

@@ -816,17 +816,20 @@ local function buildProfiles(pf)
 end
 
 -- The Addon check tab (AddonCheck.lua): a heading with the tab's one (?) tooltip, the Module and Show filters,
--- Announce and Check on the first row, a status line, then the list: one row per group member with their name in
+-- Announce to (saved), Announce and Check on the first row, a status line, then the list: one row per group member with their name in
 -- class colour, their version (good: yours or newer; warn: older; bad: No CRT; muted: Offline or waiting) and an
 -- On / Off / — cell per registered module. A click on a No CRT or older row whispers that player. The filters
 -- are page state, never saved. ---------------------------------------------------------------------------------
 
 local CHECK = {
     heading = "Who runs CRT",
-    help = "Asks everyone in your group which version of Cowfee Raid Tools they run and which optional modules they have switched on, and lists the answers. The group is asked when you open this tab and each time you press Check.\n\nGreen is your version, orange an older one, red No CRT no answer within 3 seconds. A dash means that player's CRT is too old to report that module.\n\nModule and Show narrow the list, so you can see before a pull who would miss a shared note, pace plan or kick list. The game blocks addon messages during a boss fight, so check before the pull.\n\nAnnounce posts who is missing CRT or on an older version to the group, with the download link. Click a red or orange row to whisper that player the same.",
+    help = "Asks everyone in your group which version of Cowfee Raid Tools they run and which optional modules they have switched on, and lists the answers. The group is asked when you open this tab and each time you press Check.\n\nGreen is your version, orange an older one, red No CRT no answer within 3 seconds. A dash means that player's CRT is too old to report that module.\n\nModule and Show narrow the list, so you can see before a pull who would miss a shared note, pace plan or kick list. The game blocks addon messages during a boss fight, so check before the pull.\n\nAnnounce posts who is missing CRT or on an older version, with the download link, where Announce to says: only to you, to the group's chat, as a raid warning (the raid leader or an assistant) or to officer chat. Click a red or orange row to whisper that player the same.",
     check = "Check",
     announce = "Announce",
+    announceTo = "Announce to",
     announceWait = "Press Check first, and wait for the answers.",
+    announceLead = "Only the raid leader or an assistant can send a raid warning, in a raid.",
+    announceOfficer = "You can't speak in your guild's officer chat.",
     whisperTip = "Click to whisper %s about getting Cowfee Raid Tools.",
     whisperOlderTip = "Click to whisper %s about updating Cowfee Raid Tools.",
     whispered = "Whispered %s.",
@@ -1097,7 +1100,8 @@ local function buildAddonCheck(pf)
         if self.why then
             UI.TooltipOwner(GameTooltip, self, "ANCHOR_TOP")
             GameTooltip:SetText(CHECK.announce)
-            GameTooltip:AddLine(UI.BadText(self.why == "group" and CHECK.notGrouped or CHECK.announceWait), 1, 1, 1, true)
+            local reason = (self.why == "group" and CHECK.notGrouped) or (self.why == "lead" and CHECK.announceLead) or (self.why == "officer" and CHECK.announceOfficer) or CHECK.announceWait
+            GameTooltip:AddLine(UI.BadText(reason), 1, 1, 1, true)
             GameTooltip:Show()
         end
     end)
@@ -1105,6 +1109,22 @@ local function buildAddonCheck(pf)
         GameTooltip:Hide()
     end)
     check.announce = announce
+
+    -- where it posts, saved (CRTDB.addonCheck.announceTo)
+    local announceTo = UI.Dropdown(pf, CHECK.announceTo, {
+        options = Check.OUTPUTS,
+        labelWidth = 80,
+        width = 130,
+        get = function()
+            return Check:AnnounceTo()
+        end,
+        set = function(key)
+            Check:SetAnnounceTo(key)
+            refresh()
+        end,
+    })
+    announceTo:SetPoint("RIGHT", announce, "LEFT", -6, 0)
+    controls[#controls + 1] = announceTo
 
     local show = UI.Dropdown(pf, CHECK.show, {
         options = function()
@@ -1124,7 +1144,7 @@ local function buildAddonCheck(pf)
             refresh()
         end,
     })
-    show:SetPoint("RIGHT", announce, "LEFT", -12, 0)
+    show:SetPoint("RIGHT", announceTo, "LEFT", -12, 0)
     controls[#controls + 1] = show
     local module = UI.Dropdown(pf, CHECK.module, {
         options = function()
