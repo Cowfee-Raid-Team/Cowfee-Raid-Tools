@@ -10,8 +10,8 @@ local ADDON, CRT = ...
 -- doesn't fire again, so there is no pull time and no count. Disarmed on ENCOUNTER_END, a zone change (PLAYER_ENTERING_WORLD: a zone change
 -- mid-fight never fires ENCOUNTER_END) or the switch turning off; OnArm listeners hear each change.
 --
--- Test on trash (CRTDB.interrupts.test): armed with the first boss that has a block and no pull; the first cast seen
--- starts a wave at castTime - firstCast, and numbers skip the tolerance check, so any trash pack gets numbers. A
+-- Test on trash (CRTDB.interrupts.test): armed with the first boss that has a block and no pull; a pack is numbered by
+-- cast order (Anchor:TestNumber), not time, so any trash pack gets numbers. A
 -- matching pull always wins over it, another boss's pull leaves it as it is, and at the pull's end it comes back.
 --
 -- Events: ENCOUNTER_START, ENCOUNTER_END and PLAYER_ENTERING_WORLD only while the module is on, UNIT_SPELLCAST_START
@@ -30,7 +30,7 @@ local readable = CRT.Comm.Readable
 
 local count = 0 -- the anchor unit's cast starts this pull
 local counted -- the last counted anchor's time
-local testAnchor -- Test on trash: the wave the casts are numbered from
+local testWave -- Test on trash: { start, count }, the pack being numbered by cast order
 
 local frame = CreateFrame("Frame")
 
@@ -81,7 +81,7 @@ Anchor.Listen = listen
 
 -- Forgets the counted anchors (and the test wave), keeping the pull.
 function Anchor:Reset()
-    count, counted, testAnchor = 0, nil, nil
+    count, counted, testWave = 0, nil, nil
 end
 
 local function set(mode, def, encounterID, pullTime)
@@ -135,10 +135,23 @@ function Anchor:For(castTime)
         end
         return Lattice.Fallback(def, self.pullTime, castTime), false
     end
-    if not testAnchor or castTime - testAnchor >= def.window then
-        testAnchor = castTime - def.firstCast
+    return nil -- Test on trash numbers by cast order: Anchor:TestNumber
+end
+
+-- Test on trash: the number of the next new caster in the pack, by cast order (the 1st and 2nd casters 1, the 3rd
+-- and 4th 2, ..., the lattice's pairs, whatever the gaps between casts), and when the pack started. A cast window
+-- seconds after the pack's first, or past its adds, starts a new pack at 1.
+function Anchor:TestNumber(castTime)
+    local def = self.def
+    if self.mode ~= "test" or not def then
+        return nil
     end
-    return testAnchor, true
+    if not testWave or castTime - testWave.start >= def.window or testWave.count >= def.adds then
+        testWave = { start = castTime, count = 0 }
+    end
+    local index = testWave.count
+    testWave.count = index + 1
+    return Lattice.SlotNumber(def, index), testWave.start
 end
 
 local function onStart(encounterID, difficultyID)

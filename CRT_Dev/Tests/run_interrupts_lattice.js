@@ -43,9 +43,9 @@ eq(Lattice.Number(def, 100, 105.0), nil, "number: the whole-second offset is rej
 for s = 5, 14 do
   eq(Lattice.Number(def, 100, 100 + s), nil, "number: a whole-second cast at +" .. s .. " is rejected")
 end
-eq(Lattice.Number(def, 100, 105.0, true), 1, "number: lenient numbers the whole second")
+for i = 0, 9 do eq(Lattice.SlotNumber(def, i), math.floor(i / 2) + 1, "slot number: slot " .. i) end
 eq(Lattice.Number(def, 100, 103.9), nil, "number: before the first cast")
-eq(Lattice.Number(def, 100, 103.9, true), nil, "number: lenient still needs a slot")
+eq(Lattice.SlotNumber(def, 10), nil, "slot number: past the wave's adds")
 eq(Lattice.Number(def, 100, 104.6), 1, "number: 0.1 s of jitter")
 eq(Lattice.Number(def, 100, "x"), nil, "number: not a number")
 eq(Lattice.Number(nil, 100, 104.5), nil, "number: no block")

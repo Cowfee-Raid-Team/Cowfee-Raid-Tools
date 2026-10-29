@@ -102,9 +102,18 @@ function Lattice.Read(raw)
     return copy(raw)
 end
 
+-- The kick number of the add in slot index (0 first, in spawn or cast order): perNumber adds in a row share one.
+-- nil outside the wave's adds.
+function Lattice.SlotNumber(def, index)
+    if index < 0 or index >= def.adds then
+        return nil
+    end
+    return math.ceil((index + 1) / def.perNumber)
+end
+
 -- The kick number of an add whose first cast started at castTime, in the wave anchored at anchorTime, or nil when
--- the cast is on no slot of the wave. lenient leaves out the tolerance check (Test on trash).
-function Lattice.Number(def, anchorTime, castTime, lenient)
+-- the cast is on no slot of the wave.
+function Lattice.Number(def, anchorTime, castTime)
     if type(def) ~= "table" or not number(anchorTime) or not number(castTime) then
         return nil
     end
@@ -113,10 +122,10 @@ function Lattice.Number(def, anchorTime, castTime, lenient)
     if index < 0 or index >= def.adds then
         return nil
     end
-    if not lenient and math.abs(offset - index * def.spacing) > def.tolerance + EPSILON then
+    if math.abs(offset - index * def.spacing) > def.tolerance + EPSILON then
         return nil
     end
-    return math.ceil((index + 1) / def.perNumber)
+    return Lattice.SlotNumber(def, index)
 end
 
 -- Seconds from the anchor to the first cast of a kick number's first add.

@@ -1,7 +1,7 @@
 // Interrupts' wave anchors (CRT_Modules/Interrupts/Anchor.lua) with a mocked clock: arming on a matching pull only
 // while the module is on, counting the anchor boss's casts across six waves, other units left out, the fallback
-// times from the pull when nothing was counted, the window's end, Test on trash (the first cast starts a wave,
-// lenient), another boss's pull leaving test mode alone, a matching pull winning over it, the events registered
+// times from the pull when nothing was counted, the window's end, Test on trash (numbered
+// by cast order), another boss's pull leaving test mode alone, a matching pull winning over it, the events registered
 // only while armed, a secret payload, and disarming on a zone change or the switch turning off mid-pull.
 // Usage: node run_interrupts_anchor.js <addon folder>
 const fs = require('fs');
@@ -91,10 +91,13 @@ check(A.armed and A.def ~= nil, "anchor: other boss keeps test mode")
 check(A.pullTime == nil, "anchor: other boss starts no pull")
 clock = 1999; H("UNIT_SPELLCAST_START", "boss2")
 eq(#waves, 6, "test: no real anchor counted")
-local at2, lenient2 = A:For(2000)
-eq(at2, 1995.5, "test: first cast starts a wave"); check(lenient2, "test: lenient")
-eq(select(1, A:For(2010)), 1995.5, "test: the same wave inside the window")
-eq(select(1, A:For(2030)), 2025.5, "test: a new wave after it")
+eq(A:For(2000), nil, "test: no time anchor on trash")
+local orderNumbers = {}
+for i, t in ipairs({ 2000, 2000.2, 2009, 2009.1, 2010 }) do local n, start = A:TestNumber(t) orderNumbers[i] = n .. "@" .. start end
+eq(table.concat(orderNumbers, " "), "1@2000 1@2000 2@2000 2@2000 3@2000", "test: numbered by cast order, in the lattice's pairs")
+eq(select(1, A:TestNumber(2030)), 1, "test: a new pack after the window starts at 1")
+for _ = 1, 9 do A:TestNumber(2031) end
+eq(select(1, A:TestNumber(2032)), 1, "test: after a wave's adds, a new pack starts at 1")
 H("ENCOUNTER_START", id, "Boss", 16)
 check(A.pullTime ~= nil, "arm: matching pull wins over test mode")
 check(not select(2, A:For(A.pullTime + 40)), "arm: the pull is not lenient")

@@ -238,15 +238,24 @@ eq(made, before, "pool: no new frames for the next pull's boxes")
 A:HandleEvent("ENCOUNTER_END")
 check(next(P.boxes) == nil, "end: disarming stops the boxes")
 
--- Test on trash: any pack, the first cast starts a wave
+-- Test on trash numbers a pack by cast order (Alex, 2026-10-29): the 1st and 2nd casters 1, the 3rd and 4th 2, ...,
+-- whatever the gaps between casts
 CRT.db.interrupts.test = true; A:StartTest()
 mine = 1
-plate("nameplate1"); clock = 2000; H("UNIT_SPELLCAST_START", "nameplate1")
-plate("nameplate2"); clock = 2001; H("UNIT_SPELLCAST_START", "nameplate2")
-plate("nameplate3"); clock = 2002; H("UNIT_SPELLCAST_START", "nameplate3")
-eq(P:NumberOf("nameplate1"), 1, "test: the first cast is 1")
-eq(P:NumberOf("nameplate2"), 1, "test: the second is 1 too")
-eq(P:NumberOf("nameplate3"), 2, "test: the third is 2")
+local function pack(first, gap, from)
+  for i = 0, 3 do
+    local u = "nameplate" .. (from + i)
+    plate(u); clock = first + i * gap; H("UNIT_SPELLCAST_START", u)
+  end
+  local got = {}
+  for i = 0, 3 do got[#got + 1] = tostring(P:NumberOf("nameplate" .. (from + i))) end
+  return table.concat(got, ", ")
+end
+eq(pack(2000, 3, 1), "1, 1, 2, 2", "test: casts 3 s apart are 1, 1, 2, 2")
+clock = 2005; H("UNIT_SPELLCAST_START", "nameplate1")
+eq(P:NumberOf("nameplate1"), 1, "test: a re-cast is not a new caster")
+for i = 1, 4 do H("NAME_PLATE_UNIT_REMOVED", "nameplate" .. i) plates["nameplate" .. i] = nil end
+eq(pack(2100, 0.2, 21), "1, 1, 2, 2", "test: casts 0.2 s apart are 1, 1, 2, 2 (a new pack after the window)")
 A:StopTest()
 check(next(P.boxes) == nil, "test: off and they go")
 

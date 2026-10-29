@@ -246,8 +246,13 @@ local function onCast(unit)
         end
         return
     end
-    local at, lenient = Anchor:For(t)
-    local n = at and Lattice.Number(Anchor.def, at, t, lenient) or nil
+    local at, n
+    if Anchor.mode == "test" then
+        n, at = Anchor:TestNumber(t) -- trash: by cast order
+    else
+        at = Anchor:For(t) -- a pull: by when the first cast lands on the boss's lattice
+        n = at and Lattice.Number(Anchor.def, at, t) or nil
+    end
     for _, fn in ipairs(Plates.castListeners) do
         pcall(fn, unit, t, at, n)
     end
