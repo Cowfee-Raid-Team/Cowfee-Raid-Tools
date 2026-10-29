@@ -1,5 +1,5 @@
 // CRT_Modules/Notes/Reminders.lua + CRT_Modules/Notes/Phases.lua + CRT_Modules/Notes/Page.lua: the Reminders and Phases tabs, with mock frames.
-// Usage: node run_alerts_tabs.js CRT_Modules/Timeline/Data.lua CRT_Modules/Timeline/Database.lua CRT_Modules/Timeline/Reference.lua CRT_Modules/Timeline/Lanes.lua CRT_Modules/Alerts/Rules.lua CRT_Modules/Alerts/Engine.lua CRT_Modules/Alerts/Reminders.lua CRT_Modules/Alerts/PhaseDatabase.lua CRT_Modules/Alerts/Phases.lua CRT_Modules/Alerts/Draft.lua CRT_Modules/Alerts/SpellLookup.lua CRT_Modules/Notes/Reminders.lua CRT_Modules/Notes/Phases.lua CRT_Modules/Notes/Page.lua
+// Usage: node run_alerts_tabs.js CRT_Modules/Timeline/Data.lua CRT_Modules/Timeline/Database.lua CRT_Modules/Timeline/Reference.lua CRT_Modules/Timeline/Lanes.lua CRT_Modules/Alerts/Rules.lua CRT_Modules/Alerts/Engine.lua CRT_Modules/Alerts/Reminders.lua CRT_Modules/Alerts/PhaseDatabase.lua CRT_Modules/Alerts/Phases.lua CRT_Modules/Alerts/Draft.lua CRT_Modules/Alerts/SpellLookup.lua CRT_Modules/Alerts/ShieldSection.lua CRT_Modules/Alerts/SubTabs.lua CRT_Modules/Notes/Reminders.lua CRT_Modules/Notes/Phases.lua CRT_Modules/Notes/Page.lua
 // The Mech Alerts list and panel themselves are tested in run_mechalerts.js.
 const fs = require('fs');
 const path = require('path');

@@ -17,7 +17,10 @@ local ADDON, CRT = ...
 -- seconds before it shows to TEST_AFTER seconds after it is done (testWindow). The window's run carries the
 -- Test button's tag (opts.tag), so that button reads Stop and Stop closes the window (BindTest, StopTest).
 -- Export shows the draft as a note line in a copy box.
--- Shield bar (under Show as, greyed while Bar is off) makes the alert's bar a shield bar (Alerts/Absorb.lua): the shared
+-- Under the header (Save as, For, Difficulty, Saves to) the settings sit on the subtabs the Mech Alerts panel has
+-- (Alerts/SubTabs.lua): When (Relative to and Time, or the casts; Show from, Linger), Looks (Show as, Text, Icon,
+-- Color), Sound and speech (Sound, Speak at, Also) and Shield bar. The buttons and the message line stay under them.
+-- Shield bar (its tab; greyed while Bar is off) makes the alert's bar a shield bar (Alerts/Absorb.lua): the shared
 -- section of Alerts/ShieldSection.lua (Shield on, Seconds to break, Any time it goes up, Last pull with its Use buttons),
 -- in its wide layout, on the draft's shield, saved as a reminder's absorb or a note line's shield:.
 -- Only the raid leader or an assistant changes the raid note (CRT.Notes:CanEditRaid): for anyone else
@@ -145,18 +148,19 @@ local ANY = "any"    -- a raid note line's difficulty dropdown key for its note 
 local NO_SOUND = Draft.NO_SOUND
 local FRAME_NAME = "CowfeeRaidToolsAlertEditor"
 local EXPORT_NAME = "CowfeeRaidToolsAlertExport"
-local SHOW_EXTRA = 26 -- Show as takes two rows: every row below it moves down by one row
--- the Shield bar section's three rows under Show as (Alerts/ShieldSection.lua's wide layout): every row below moves down
-local SHIELD_EXTRA = CRT.AlertShieldSection.Height("wide")
-local WIDTH, HEIGHT = 600, 480 + SHOW_EXTRA + SHIELD_EXTRA
+local WIDTH, HEIGHT = 600, 360
+-- Under the header (Save as, For, Difficulty and the Saves to line): the subtabs (Alerts/SubTabs.lua, shared with the
+-- Mech Alerts panel) with a rule under them, then the open tab's rows from CONTENT_Y (C below)
+local TABS_Y, RULE_Y, C = -82, -106, -116
 local SHOW_KEYS = Draft.SHOW_KEYS
 local LEFT = 16
 local MENU_MAX_HEIGHT = 400 -- the For and Sound menus scroll past this (a full raid is taller than the screen)
 local FIELD_X = 91 -- where the boxes and checkboxes of the labelled rows start
 local SHOW_CHECK_W = 26 -- a Show as box and the gap before its label
 local SHOW_GAP = 10     -- between one Show as label and the next box
-local SAVED_SHIFT = 48 -- a saved alert has no Relative to / Time row or Saves to line: the rows below move up by this
-local ROW1_EXTRA = 14 -- room under the first row for the Saves to line; every row below moves down by it
+local SHOW_ROW = 26     -- between Show as's two rows
+local SAVED_SHIFT = 34 -- a saved alert has no Relative to / Time row: Show from and Linger move up by this
+local BOTTOM, BUTTON_H, MESSAGE_GAP = 14, 24, 8 -- the buttons above the window's bottom edge; the message above them
 local EXPORT_CHROME = 56 -- the copy window above and below its text box
 local EXPORT_PAD, EXPORT_MIN_TEXT, EXPORT_MAX_TEXT = 6, 16, 180
 local EXPORT_WIDTH = WIDTH - 88 -- the text box
@@ -589,6 +593,7 @@ local function refresh(rows)
     frame.also.count:SetChecked(draft.count and true or false)
     frame.also.glow:SetChecked(draft.glow and true or false)
     frame.shield.Refresh() -- its dropdown and slider are among frame.rows, redrawn above
+    frame.tabs:Paint(draft) -- each tab's dot: something on it is on
     local c = draft.color or { 1, 1, 1 }
     frame.colorSwatch.tex:SetColorTexture(c[1], c[2], c[3], 1)
     frame.sourceText:SetText(casts and "" or sourceLine())
@@ -1092,25 +1097,21 @@ local function makeButton(parent, label, width)
     return b
 end
 
--- Where the rows below the Relative to / Time row sit, so a saved alert's editor can close the gap.
-local placed = {}
-local LOWER_Y = -(98 + ROW1_EXTRA)
-
 local function lay(el, x, y)
     el:SetPoint("TOPLEFT", x, y)
-    if y <= LOWER_Y then
-        placed[#placed + 1] = { el, x, y }
-    end
     return el
 end
 
+-- The rows under the Relative to / Time row on the When tab (Show from and Linger), so a saved alert's editor, which
+-- has no time, can close the gap.
+local shifted = {}
+
 local function applyLayout(savedMode)
     local d = savedMode and SAVED_SHIFT or 0
-    for _, p in ipairs(placed) do
+    for _, p in ipairs(shifted) do
         p[1]:ClearAllPoints()
         p[1]:SetPoint("TOPLEFT", p[2], p[3] + d)
     end
-    frame:SetHeight(HEIGHT - d)
 end
 
 local function makeLabel(parent, label, x, y)
@@ -1416,18 +1417,18 @@ end
 
 -- Speak at: when Speak the text says the text, On show or At 0 (the alert's time). Greyed while Speak the
 -- text is off, and on a read-only note line. Its own function: build is near Lua 5.1's 60 upvalue limit.
-local function speakAtRow(f, row)
-    return row(UI.Dropdown(f, TEXT.speakAt, {
+local function speakAtRow(p, row)
+    return row(UI.Dropdown(p, TEXT.speakAt, {
         labelWidth = SPEAK_AT_LABEL, width = SPEAK_AT_W,
         enabledIf = function() return editable() and draft ~= nil and draft.speak and true or false end,
         options = Draft.SpeakAtOptions(TEXT.onShow, TEXT.atZero),
         get = function() return Draft.SpeakAtKey(draft) end,
         set = setter(function(v) Draft.SetSpeakAt(draft, v) end),
-    }), SPEAK_AT_X, -304 - ROW1_EXTRA - SHOW_EXTRA - SHIELD_EXTRA)
+    }), SPEAK_AT_X, C)
 end
 
 -- The Show as boxes placed by their labels' width (Draft.FlowShowAs), inside the window at any text size.
--- Run on build and on every open, before applyLayout, so a text size changed since then is measured again.
+-- Run on build and on every open, so a text size changed since then is measured again.
 local function placeShowAs(f)
     local rows = {}
     for r, keys in ipairs(Draft.SHOW_ROWS) do
@@ -1437,18 +1438,15 @@ local function placeShowAs(f)
         end
     end
     Draft.FlowShowAs(rows, FIELD_X, WIDTH - LEFT, SHOW_CHECK_W, SHOW_GAP, function(check, x)
-        check.placed[2] = x -- applyLayout keeps it there
         check:ClearAllPoints()
-        check:SetPoint("TOPLEFT", x, check.placed[3])
+        check:SetPoint("TOPLEFT", x, check.rowY)
     end)
 end
 
--- The Shield bar section under Show as, from y0 down (SHIELD_EXTRA tall): Alerts/ShieldSection.lua's wide layout on the
--- draft's shield, its pieces laid out with the editor's rows (lay), so a template's editor moves them up with the rest.
-local function shieldRows(f, y0)
-    f.shield = CRT.AlertShieldSection.Build(f, {
-        layout = "wide", x = FIELD_X, y = y0, width = WIDTH - LEFT - FIELD_X,
-        place = lay,
+-- The Shield bar tab: Alerts/ShieldSection.lua's wide layout on the draft's shield, from the top of the tab.
+local function shieldRows(f, p)
+    f.shield = CRT.AlertShieldSection.Build(p, {
+        layout = "wide", x = LEFT, y = C, width = WIDTH - 2 * LEFT,
         register = function(r) f.rows[#f.rows + 1] = r end,
         get = function() return draft and draft.shield end,
         set = function(field, value) setter(function() draft.shield[field] = value end)() end,
@@ -1460,45 +1458,55 @@ local function shieldRows(f, y0)
     })
 end
 
--- Show as, Also, Sound and Speak at. Its own function: build is near Lua 5.1's 60 upvalue limit.
-local function showAsRows(f, row)
-    makeLabel(f, TEXT.showAs, LEFT, -246 - ROW1_EXTRA)
+-- The Sound and speech tab: Sound with its Play button and Speak at beside it, then Also: Speak the text, Count down
+-- 3 2 1 and Glow at 0. Its own function: build is near Lua 5.1's 60 upvalue limit.
+local function soundRows(f, p, row)
+    row(UI.SoundDropdown(p, TEXT.sound, {
+        labelWidth = 70, width = 160, maxHeight = MENU_MAX_HEIGHT, enabledIf = editable, playButton = true,
+        options = soundOptions,
+        get = function() return draft and Draft.SoundKey(draft.sound) or NO_SOUND end,
+        set = setter(function(v) draft.sound = v ~= NO_SOUND and v or nil end),
+    }), LEFT, C)
+    f.speakAt = speakAtRow(p, row)
+    local alsoY = C - 34
+    makeLabel(p, TEXT.also, LEFT, alsoY - 6)
+    f.also = {
+        speak = makeCheck(p, TEXT.speak, FIELD_X, alsoY, setter(function(on) draft.speak = on end)),
+        count = makeCheck(p, TEXT.count, 226, alsoY, setter(function(on) draft.count = on end)),
+        glow = makeCheck(p, TEXT.glow, 386, alsoY, setter(function(on) draft.glow = on end)),
+    }
+end
+
+-- The Looks tab, top: Show as in two rows. Its own function: build is near Lua 5.1's 60 upvalue limit.
+local function showAsRows(f, p)
+    makeLabel(p, TEXT.showAs, LEFT, C - 6)
     local labels = { alert = TEXT.callout, text = TEXT.showText, icon = TEXT.showIcon, bar = TEXT.bar, circle = TEXT.circle,
         timeline = TEXT.timeline }
     f.checks = {}
     for r, keys in ipairs(Draft.SHOW_ROWS) do
         for _, key in ipairs(keys) do
-            local check = makeCheck(f, labels[key], FIELD_X, -240 - ROW1_EXTRA - (r - 1) * SHOW_EXTRA,
-                setter(function(on) draft.show[key] = on end))
-            check.placed = placed[#placed] -- its entry in the layout, which placeShowAs moves along the row
+            local y = C - (r - 1) * SHOW_ROW
+            local check = makeCheck(p, labels[key], FIELD_X, y, setter(function(on) draft.show[key] = on end))
+            check.rowY = y -- its row, which placeShowAs moves it along
             f.checks[key] = check
         end
     end
     placeShowAs(f)
-
-    shieldRows(f, -274 - ROW1_EXTRA - SHOW_EXTRA)
-
-    -- Also
-    local alsoY = -274 - ROW1_EXTRA - SHOW_EXTRA - SHIELD_EXTRA
-    makeLabel(f, TEXT.also, LEFT, alsoY - 6)
-    f.also = {
-        speak = makeCheck(f, TEXT.speak, FIELD_X, alsoY, setter(function(on) draft.speak = on end)),
-        count = makeCheck(f, TEXT.count, 226, alsoY, setter(function(on) draft.count = on end)),
-        glow = makeCheck(f, TEXT.glow, 386, alsoY, setter(function(on) draft.glow = on end)),
-    }
-    row(UI.SoundDropdown(f, TEXT.sound, {
-        labelWidth = 70, width = 160, maxHeight = MENU_MAX_HEIGHT, enabledIf = editable, playButton = true,
-        options = soundOptions,
-        get = function() return draft and Draft.SoundKey(draft.sound) or NO_SOUND end,
-        set = setter(function(v) draft.sound = v ~= NO_SOUND and v or nil end),
-    }), LEFT, -304 - ROW1_EXTRA - SHOW_EXTRA - SHIELD_EXTRA)
-    f.speakAt = speakAtRow(f, row)
 end
 
--- Icon, Text and Color. Its own function: build is near Lua 5.1's 60 upvalue limit.
-local function lookRows(f, row)
+-- The Looks tab, under Show as: Text, Icon and Color. Its own function: build is near Lua 5.1's 60 upvalue limit.
+local function lookRows(f, p, row)
+    -- Text
+    makeLabel(p, TEXT.text, LEFT, C - 64)
+    f.textEdit = makeEdit(p, FIELD_X + 4, C - 60, WIDTH - FIELD_X - LEFT - 8, function(text)
+        if draft then
+            draft.text = text
+            changed()
+        end
+    end)
+
     -- Icon: Spell or Icon ID, the ID box and a preview
-    row(UI.Dropdown(f, TEXT.icon, {
+    row(UI.Dropdown(p, TEXT.icon, {
         labelWidth = 70, width = 110, enabledIf = editable,
         options = { { key = "spell", label = TEXT.iconSpell }, { key = "id", label = TEXT.iconID } },
         get = function() return draft and draft.iconType or "spell" end,
@@ -1512,18 +1520,18 @@ local function lookRows(f, row)
                 changed(true)
             end
         end,
-    }), LEFT, -132 - ROW1_EXTRA)
-    f.idEdit = makeEdit(f, 212, -138 - ROW1_EXTRA, ID_WIDTH, idTextChanged)
+    }), LEFT, C - 86)
+    f.idEdit = makeEdit(p, 212, C - 92, ID_WIDTH, idTextChanged)
     f.idEdit:SetScript("OnEditFocusGained", function()
         lookupFrom = draft and validID(draft.spellID)
     end)
     UI.HelpRight(f.idEdit, TEXT.iconHelpTitle, TEXT.iconHelp)
-    f.iconPreview = f:CreateTexture(nil, "ARTWORK")
+    f.iconPreview = p:CreateTexture(nil, "ARTWORK")
     f.iconPreview:SetSize(24, 24)
-    lay(f.iconPreview, 326 + ID_SHIFT, -136 - ROW1_EXTRA)
+    lay(f.iconPreview, 326 + ID_SHIFT, C - 90)
     f.iconPreview:SetTexCoord(0.07, 0.93, 0.07, 0.93)
-    f.spellName = f:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    lay(f.spellName, 358 + ID_SHIFT, -142 - ROW1_EXTRA)
+    f.spellName = p:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    lay(f.spellName, 358 + ID_SHIFT, C - 96)
     f.spellName:SetWidth(WIDTH - 358 - ID_SHIFT - LEFT)
     -- the match list of a name lookup, under the box and over the rows below it
     f.lookupCtl = CRT.AlertSpellLookup.Attach(f.idEdit, {
@@ -1532,26 +1540,18 @@ local function lookRows(f, row)
         enabled = function() return draft ~= nil and editable() end,
         onPick = pickMatch,
         onClose = putIDBack,
+        -- over the window (its strata), not the tab; another tab picked closes it (buildTabs)
         levelFrame = f,
     })
     f.lookup = f.lookupCtl.list
     f.spellName:SetJustifyH("LEFT")
     f.spellName:SetWordWrap(false)
 
-    -- Text
-    makeLabel(f, TEXT.text, LEFT, -178 - ROW1_EXTRA)
-    f.textEdit = makeEdit(f, FIELD_X + 4, -174 - ROW1_EXTRA, WIDTH - FIELD_X - LEFT - 8, function(text)
-        if draft then
-            draft.text = text
-            changed()
-        end
-    end)
-
     -- Color: a swatch that opens the game's color picker, and Default for none
-    f.colorLabel = makeLabel(f, TEXT.color, LEFT, -210 - ROW1_EXTRA)
-    f.colorSwatch = CreateFrame("Button", nil, f)
+    f.colorLabel = makeLabel(p, TEXT.color, LEFT, C - 128)
+    f.colorSwatch = CreateFrame("Button", nil, p)
     f.colorSwatch:SetSize(20, 20)
-    lay(f.colorSwatch, FIELD_X, -206 - ROW1_EXTRA)
+    lay(f.colorSwatch, FIELD_X, C - 124)
     f.colorSwatch.edge = f.colorSwatch:CreateTexture(nil, "BACKGROUND")
     f.colorSwatch.edge:SetAllPoints()
     f.colorSwatch.edge:SetColorTexture(0.5, 0.5, 0.5, 1)
@@ -1559,14 +1559,89 @@ local function lookRows(f, row)
     f.colorSwatch.tex:SetPoint("TOPLEFT", 1, -1)
     f.colorSwatch.tex:SetPoint("BOTTOMRIGHT", -1, 1)
     f.colorSwatch:SetScript("OnClick", pickColor)
-    f.colorDefault = makeButton(f, TEXT.colorDefault, 80)
-    lay(f.colorDefault, FIELD_X + 28, -204 - ROW1_EXTRA)
+    f.colorDefault = makeButton(p, TEXT.colorDefault, 80)
+    lay(f.colorDefault, FIELD_X + 28, C - 122)
     f.colorDefault:SetScript("OnClick", function()
         if draft and not readOnly() and colourEditable() then
             draft.color = nil
             changed()
         end
     end)
+end
+
+-- The When tab: Relative to and Time (or, for an alert on a boss ability, its casts), then Show from and Linger, which
+-- move up for a saved alert (applyLayout). Its own function: build is near Lua 5.1's 60 upvalue limit.
+local function whenRows(f, p, row)
+    f.relativeRow = row(UI.Dropdown(p, TEXT.relativeTo, {
+        labelWidth = 70, width = 120, enabledIf = editable,
+        options = phaseOptions,
+        get = function() return draft and draft.ph or 1 end,
+        set = setter(function(v)
+            draft.ph = v
+            draft.timeTouched = true
+        end),
+    }), LEFT, C)
+    f.timeLabel = makeLabel(p, TEXT.time, 226, C - 10)
+    f.timeEdit = makeEdit(p, 264, C - 6, 64, function(text, userInput)
+        if draft then
+            draft.timeText = text
+            if userInput then
+                draft.timeTouched = true
+            end
+            changed()
+        end
+    end)
+    f.timeHelp = UI.HelpRight(f.timeEdit, TEXT.timeHelpTitle, TEXT.timeHelp)
+    f.sourceText = p:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    f.sourceText:SetPoint("TOPLEFT", 360, C - 10)
+    f.sourceText:SetWidth(WIDTH - 360 - LEFT)
+    f.sourceText:SetJustifyH("LEFT")
+    f.sourceText:SetWordWrap(false)
+    -- in their place for an alert on a boss ability (Draft.FollowsCasts): its casts, read only
+    f.castsText = p:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    lay(f.castsText, LEFT, C - 10)
+    f.castsText:SetWidth(WIDTH - 2 * LEFT - 24)
+    f.castsText:SetJustifyH("LEFT")
+    f.castsText:SetWordWrap(false)
+    f.castsHelp = UI.HelpRight(f.castsText, TEXT.castsHelpTitle, TEXT.castsHelp)
+
+    -- Show from, Linger
+    local y = C - SAVED_SHIFT
+    local showFrom = row(UI.Slider(p, TEXT.showFrom, {
+        min = 1, max = 60, step = 1, labelWidth = 70, width = 150, enabledIf = editable,
+        format = function(v) return string.format(TEXT.seconds, v) end,
+        get = function() return draft and draft.warn or 5 end,
+        set = setter(function(v) draft.warn = v end),
+    }), LEFT, y)
+    local linger = row(UI.Slider(p, TEXT.linger, {
+        min = 0, max = 10, step = 1, labelWidth = 50, width = 150, enabledIf = editable,
+        format = function(v) return string.format(TEXT.seconds, v) end,
+        get = function() return draft and draft.linger or 0 end,
+        set = setter(function(v) draft.linger = v end),
+    }), 306, y)
+    shifted[1], shifted[2] = { showFrom, LEFT, y }, { linger, 306, y }
+    f.showFrom, f.linger = showFrom, linger
+end
+
+-- Another subtab picked: the spell lookup's list closes and the Text, Time and Icon ID boxes let go (each box already
+-- wrote the draft as it was typed), so no hidden box keeps the keyboard.
+local function leaveTab()
+    hideLookup()
+    for _, edit in ipairs({ frame.textEdit, frame.timeEdit, frame.idEdit }) do
+        edit:ClearFocus()
+    end
+end
+
+-- The subtabs under the header (Alerts/SubTabs.lua, the Mech Alerts panel's), each tab's rows built into its own frame.
+local function buildTabs(f, row)
+    f.tabs = CRT.AlertSubTabs.Build(f, { owner = "editor", x = LEFT, y = TABS_Y,
+        rule = { y = RULE_Y, left = LEFT, right = LEFT }, onPick = leaveTab })
+    local tf = f.tabs.frames
+    whenRows(f, tf.when, row)
+    showAsRows(f, tf.looks)
+    lookRows(f, tf.looks, row)
+    soundRows(f, tf.sound, row)
+    shieldRows(f, tf.shield)
 end
 
 local function build()
@@ -1692,59 +1767,12 @@ local function build()
     f.savesText:SetJustifyH("RIGHT")
     f.savesText:SetWordWrap(false)
 
-    -- Relative to, Time
-    f.relativeRow = row(UI.Dropdown(f, TEXT.relativeTo, {
-        labelWidth = 70, width = 120, enabledIf = editable,
-        options = phaseOptions,
-        get = function() return draft and draft.ph or 1 end,
-        set = setter(function(v)
-            draft.ph = v
-            draft.timeTouched = true
-        end),
-    }), LEFT, -64 - ROW1_EXTRA)
-    f.timeLabel = makeLabel(f, TEXT.time, 226, -74 - ROW1_EXTRA)
-    f.timeEdit = makeEdit(f, 264, -70 - ROW1_EXTRA, 64, function(text, userInput)
-        if draft then
-            draft.timeText = text
-            if userInput then
-                draft.timeTouched = true
-            end
-            changed()
-        end
-    end)
-    f.timeHelp = UI.HelpRight(f.timeEdit, TEXT.timeHelpTitle, TEXT.timeHelp)
-    f.sourceText = f:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    f.sourceText:SetPoint("TOPLEFT", 360, -74 - ROW1_EXTRA)
-    f.sourceText:SetWidth(WIDTH - 360 - LEFT)
-    f.sourceText:SetJustifyH("LEFT")
-    f.sourceText:SetWordWrap(false)
-    -- in their place for an alert on a boss ability (Draft.FollowsCasts): its casts, read only
-    f.castsText = f:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    lay(f.castsText, LEFT, -74 - ROW1_EXTRA)
-    f.castsText:SetWidth(WIDTH - 2 * LEFT - 24)
-    f.castsText:SetJustifyH("LEFT")
-    f.castsText:SetWordWrap(false)
-    f.castsHelp = UI.HelpRight(f.castsText, TEXT.castsHelpTitle, TEXT.castsHelp)
+    -- Under the header: When, Looks, Sound and speech and Shield bar (Alerts/SubTabs.lua)
+    buildTabs(f, row)
 
-    -- Show from, Linger
-    row(UI.Slider(f, TEXT.showFrom, {
-        min = 1, max = 60, step = 1, labelWidth = 70, width = 150, enabledIf = editable,
-        format = function(v) return string.format(TEXT.seconds, v) end,
-        get = function() return draft and draft.warn or 5 end,
-        set = setter(function(v) draft.warn = v end),
-    }), LEFT, -98 - ROW1_EXTRA)
-    row(UI.Slider(f, TEXT.linger, {
-        min = 0, max = 10, step = 1, labelWidth = 50, width = 150, enabledIf = editable,
-        format = function(v) return string.format(TEXT.seconds, v) end,
-        get = function() return draft and draft.linger or 0 end,
-        set = setter(function(v) draft.linger = v end),
-    }), 306, -98 - ROW1_EXTRA)
-
-    lookRows(f, row)
-    showAsRows(f, row)
-
+    -- A save's or test's problem, on every tab: above the buttons (a long one wraps upwards)
     f.messageText = f:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    lay(f.messageText, LEFT, -350 - ROW1_EXTRA - SHOW_EXTRA - SHIELD_EXTRA)
+    f.messageText:SetPoint("BOTTOMLEFT", LEFT, BOTTOM + BUTTON_H + MESSAGE_GAP)
     f.messageText:SetWidth(WIDTH - 2 * LEFT)
     f.messageText:SetJustifyH("LEFT")
 

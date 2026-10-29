@@ -61,6 +61,8 @@ local function mock(kind, parent, template)
     if k == "GetFrameLevel" then return function() return 1 end end
     if k == "HighlightText" then return function(self) rawset(self, "highlighted", true) end end
     if k == "SetFocus" then return function(self) rawset(self, "focused", true) end end
+    if k == "ClearFocus" then return function(self) rawset(self, "focused", false) end end
+    if k == "HasFocus" then return function(self) return rawget(self, "focused") == true end end
     if k == "SetFrameStrata" then return function(self, v) rawset(self, "strata", v) end end
     if k == "GetFrameStrata" then return function(self) return rawget(self, "strata") or "MEDIUM" end end
     if k == "SetToplevel" then return function(self, v) rawset(self, "toplevel", v) end end
@@ -228,7 +230,7 @@ do
   E:Open(ENC, nil, { spellID = 777, boss = "Test Boss" })
   local w = win()
   assert(w and w.shown, "window shown")
-  assert(w.w == 600 and w.h == 590, "fits 600 x 590 (the Shield bar section's three rows under Show as): " .. tostring(w.w) .. "x" .. tostring(w.h))
+  assert(w.w == 600 and w.h == 360, "fits 600 x 360 (the settings on tabs): " .. tostring(w.w) .. "x" .. tostring(w.h))
   assert(layers.panel ~= w and previews.alerteditor, "not on the panel layer; preview registered")
   assert(w.strata == "FULLSCREEN_DIALOG" and w.toplevel == true, "editor above every window: " .. tostring(w.strata))
   assert(UISpecialFrames[1] == "CowfeeRaidToolsAlertEditor", "closed by Escape")
@@ -667,8 +669,8 @@ do
   E:Open(ENC, nil, { text = "Draft", times = "P1 0:30" })
   rows(1, false)
   local y1, y2 = w.checks.alert.pts[#w.checks.alert.pts][3], w.checks.bar.pts[#w.checks.bar.pts][3]
-  local alsoY = w.also.speak.pts[#w.also.speak.pts][3]
-  assert(y2 < y1 and alsoY < y2 - 20, "the second row under the first, Also under both: " .. y1 .. " " .. y2 .. " " .. alsoY)
+  local textY = w.textEdit.pts[#w.textEdit.pts][3]
+  assert(y2 < y1 and textY < y2 - 20, "the second row under the first, Text under both: " .. y1 .. " " .. y2 .. " " .. textY)
   print("ok editor: Alert timeline only on a raid note line warns")
 end
 
@@ -696,6 +698,89 @@ do
   assert(A:PhaseStart(2) == clock + 7 - 34, "at its 7 s Show from: " .. tostring(A:PhaseStart(2) - clock))
   assert(noteRaw(id) == before and #R:List(ENC) == 0, "nothing saved")
   print("ok editor: test shows every ticked display")
+end
+
+-- the subtabs (Alerts/SubTabs.lua, the Mech Alerts panel's): When, Looks, Sound and speech, Shield bar under the header,
+-- each holding its controls, one on show at a time; the buttons and the message on every tab; the dots; the tab picked
+-- stays for the next alert opened
+do
+  reset()
+  E:Open(ENC, nil, { text = "Draft", times = "P1 0:30" })
+  local w = win()
+  local t = w.tabs
+  assert(t and table.concat(t.keys, ",") == "when,looks,sound,shield", "the four tabs: " .. tostring(t and table.concat(t.keys, ",")))
+  local labels, x = {}, 16
+  for i, key in ipairs(t.keys) do
+    local b = t.buttons[key]
+    labels[i] = b.text.text
+    local pt = b.pts[#b.pts]
+    assert(b.parent == w and pt[2] == x and pt[3] == -82 and b.h == 24 and b.w == (key == "sound" and 150 or 118), key .. " at " .. pt[2] .. ", " .. pt[3] .. ", " .. b.w)
+    x = x + b.w + 4
+  end
+  assert(table.concat(labels, ",") == "When,Looks,Sound and speech,Shield bar", table.concat(labels, ","))
+  assert(x - 4 <= 600 - 16, "the strip fits the window")
+  -- the header stays on the window, above the tabs
+  for _, m in ipairs({ dropdowns["Save as"], w.forRow, w.difficultyRow, w.savesText }) do assert(m.parent == w, "header: " .. tostring(m.label)) end
+  local s = w.shield
+  local tabs = {
+    when = { dropdowns["Relative to"], w.timeEdit, w.timeLabel, w.castsText, w.sourceText, sliders["Show from"], sliders["Linger"] },
+    looks = { w.checks.alert, w.checks.text, w.checks.icon, w.checks.bar, w.checks.circle, w.checks.timeline, w.textEdit, dropdowns["Icon"],
+      w.idEdit, w.iconPreview, w.colorSwatch, w.colorDefault, w.colorLabel },
+    sound = { dropdowns["Sound"], dropdowns["Speak at"], w.also.speak, w.also.count, w.also.glow },
+    shield = { s.check, s.unitRow, s.lengthRow, s.any, s.lastText },
+  }
+  for key, list in pairs(tabs) do
+    for i, m in ipairs(list) do assert(m.parent == t.frames[key], key .. " control " .. i .. " (" .. tostring(rawget(m, "label") or rawget(m, "text")) .. ") on its tab") end
+  end
+  for _, m in ipairs({ w.testBtn, w.saveBtn, w.saveSavedBtn, w.cancelBtn, w.messageText }) do assert(m.parent == w, "outside the tabs: " .. tostring(m.text)) end
+  -- one tab's frame on show at a time
+  for _, key in ipairs(t.keys) do
+    click(t.buttons[key])
+    for _, other in ipairs(t.keys) do assert(t.frames[other].shown == (other == key), key .. ": " .. other .. "'s frame") end
+    assert(t.buttons[key].selected == true, key .. " lit")
+  end
+  -- the rows of a tab don't overlap: their tops, each at least a row apart in one column (the When, Looks and Sound tabs)
+  local function top(m) local pt = m.pts[#m.pts] return pt[#pt] end
+  assert(top(sliders["Show from"]) == -150 and top(dropdowns["Relative to"]) == -116, "Relative to, then Show from")
+  assert(top(w.checks.alert) == -116 and top(w.checks.bar) == -142 and top(w.textEdit) == -176 and top(dropdowns["Icon"]) == -202
+    and top(w.colorSwatch) == -240, "Show as, Text, Icon, Color")
+  assert(top(dropdowns["Sound"]) == -116 and top(w.also.speak) == -150, "Sound, then Also")
+  assert(top(s.check) == -116, "the Shield bar section at the top of its tab")
+  -- the lowest row ends above the message and the buttons (window 360 high, buttons 14 up and 24 high, the message 8 above)
+  assert(-top(w.colorDefault) + 24 <= 360 - 14 - 24 - 8 - 14, "Color clears the message line")
+  -- dots
+  setCheck(w.checks.bar, true)
+  assert(not t.buttons.shield.dot.shown, "no shield bar: no dot")
+  setCheck(s.check, true)
+  assert(t.buttons.shield.dot.shown, "Shield bar on: its dot")
+  setCheck(s.check, false)
+  assert(not t.buttons.shield.dot.shown, "off: the dot goes")
+  assert(t.buttons.looks.dot.shown and t.buttons.sound.dot.shown and not t.buttons.when.dot.shown, "Looks and Sound on, When never")
+  setCheck(w.also.speak, false)
+  assert(not t.buttons.sound.dot.shown, "nothing on Sound and speech: no dot")
+  -- the tab picked stays for the next alert opened, and for a raid note line
+  click(t.buttons.sound)
+  E:Close()
+  E:Open(ENC, nil, { text = "Other", times = "P1 0:40" })
+  assert(t:Current() == "sound" and t.frames.sound.shown, "the next alert opens on Sound and speech")
+  click(t.buttons.when)
+  -- a normal alert after a saved one: Show from back under Relative to
+  assert(top(sliders["Show from"]) == -150, "Show from under Relative to")
+  -- another tab lets go of the Text, Time and Icon ID boxes (the draft already has what was typed)
+  for _, edit in ipairs({ w.textEdit, w.timeEdit, w.idEdit }) do edit:SetFocus() end
+  typeInto(w.textEdit, "Typed")
+  click(t.buttons.sound)
+  assert(not w.textEdit:HasFocus() and not w.timeEdit:HasFocus() and not w.idEdit:HasFocus(), "the boxes let go")
+  click(t.buttons.when)
+  assert(w.textEdit.text == "Typed", "the text stays")
+  -- the editor's own strip leaves out a tab for the Mech Alerts panel only, and fits the window
+  local list = {}
+  for i, e in ipairs(CRT.AlertSubTabs.LIST) do list[i] = e end
+  list[#list + 1] = { key = "assign", label = "Assign", width = 118, hosts = { mechanics = true } }
+  local s2 = CRT.AlertSubTabs.Build(mock("Frame"), { owner = "editor", x = 16, y = -82, list = list })
+  assert(s2.buttons.assign == nil and 16 + s2:Layout() <= 600 - 16, "no panel-only tab, the strip fits")
+  assert(#errors == 0, tostring(errors[1]))
+  print("ok editor: the settings on four subtabs")
 end
 
 -- delete asks first

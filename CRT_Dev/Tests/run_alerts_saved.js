@@ -519,28 +519,12 @@ do
   assert(w.shown and w.title == "Template: Soak", w.title)
   assert(dropdowns["Save as"].shown and w.forRow.shown, "Save as and For stay")
   assert(not dropdowns["Relative to"].shown and not dropdowns["Difficulty"].shown, "no Relative to, Difficulty")
-  assert(w.h == 590 - 48, "frame shrinks: " .. tostring(w.h))
-  -- no gap: every visible element's top is at most one row gap under the one above it
-  local function gaps()
-    local ys, seen = {}, {}
-    for _, m in ipairs(frames) do
-      local pt = m.pts and m.pts[1]
-      if m.parent == w and m.shown and pt and pt[1] == "TOPLEFT" and type(pt[3]) == "number" and not seen[pt[3]] and m ~= w.messageText and (m.kind ~= "FontString" or m.text ~= "") then
-        seen[pt[3]] = true ys[#ys + 1] = pt[3]
-      end
-    end
-    for _, m in ipairs(fontStrings) do
-      local pt = m.pts and m.pts[1]
-      if m.parent == w and m.shown and pt and pt[1] == "TOPLEFT" and type(pt[3]) == "number" and not seen[pt[3]] and m.text ~= "" and m ~= w.messageText then
-        seen[pt[3]] = true ys[#ys + 1] = pt[3]
-      end
-    end
-    table.sort(ys, function(a, b) return a > b end)
-    local worst = 0
-    for i = 2, #ys do worst = math.max(worst, ys[i - 1] - ys[i]) end
-    return worst
-  end
-  assert(gaps() <= 40, "no blank band in saved mode: " .. gaps())
+  assert(w.h == 360, "the same size: the settings are on tabs: " .. tostring(w.h))
+  -- no gap: on the When tab, Show from and Linger move up into the place of the Relative to row (Alerts/SubTabs.lua tabs,
+  -- content from -116)
+  local function top(m) local pt = m.pts[#m.pts] return pt[#pt] end
+  assert(top(sliders["Show from"]) == -116 and top(sliders["Linger"]) == -116, "Show from at the top of the When tab: " .. top(sliders["Show from"]))
+  assert(sliders["Show from"].parent == w.tabs.frames.when, "on the When tab")
   assert(not w.timeEdit.shown and not w.timeLabel.shown and not w.timeHelp.shown and not w.saveSavedBtn.shown, "no Time, no Save as saved alert")
   assert(w.testBtn.shown and not w.exportBtn.shown and w.deleteBtn.shown, "Test and Delete stay; no Export (a saved alert has no time to write)")
   assert(w.textEdit.text == "Soak now" and w.forRow.shown and value("For") == "tank G1" and w.idEdit.text == "135940", "fields")
@@ -590,7 +574,8 @@ do
   -- an ordinary alert opened afterwards has its rows back
   E:Open(ENC, nil, {})
   assert(dropdowns["Save as"].shown and dropdowns["Relative to"].shown and dropdowns["Difficulty"].shown and w.timeEdit.shown and w.saveSavedBtn.shown and w.exportBtn.shown and w.title == "Alert", "rows back")
-  assert(w.h == 590 and dropdowns["Sound"].pts[1][3] == -304 - 14 - 26 - 84 and w.messageText.pts[1][3] == -350 - 14 - 26 - 84, "normal layout restored")
+  local function lastTop(m) local pt = m.pts[#m.pts] return pt[#pt] end
+  assert(w.h == 360 and lastTop(sliders["Show from"]) == -150 and lastTop(sliders["Linger"]) == -150, "normal layout restored: Show from under Relative to")
   -- Save as in a saved alert is kept: only me, and a note line for a class
   local mine = S:Save(nil, { text = "Mine", saveAs = "mine", outputs = { alert = true } })
   E:EditSaved(mine)
