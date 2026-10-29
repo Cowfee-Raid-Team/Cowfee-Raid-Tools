@@ -60,8 +60,9 @@ local TEXT = {
     linesStay = "Saved as Only me. Its lines stay in the raid note until the raid leader or an assistant takes them out.",
     deletedLinesStay = "Deleted. Its lines stay in the raid note until the raid leader or an assistant takes them out.",
     -- the (?) after Linger, on the When tab (its title is the tab's, Alerts/SubTabs.lua)
-    triggersHelp = "Show from: how many seconds before each time the alert shows. Linger: how long it stays after 0. The times come from the boss's ability timeline, counted from the start of each phase.",
-    showFrom = "Show from",
+    triggersHelp = "Duration: how long before the specified time this alert should start showing up. Linger: how long it stays after 0. The times come from the boss's ability timeline, counted from the start of each phase.",
+    showFrom = "Duration",
+    showFromHelp = "How long before the specified time this alert should start showing up",
     linger = "Linger",
     seconds = "%d s",
     noTimes = "No times on the ability timeline for this mechanic.",
@@ -81,7 +82,7 @@ local TEXT = {
     -- under Show as, for the bar: greyed while Bar is off
     ticks = "Impact ticks",
     ticksUnit = "s into the bar",
-    ticksHelp = "Seconds after the bar appears when each hit lands. The bar runs from Show from to the cast; a tick past its end isn't shown.\n\nEach number is a thin line on the bar, such as 2, 4, and the fill reaches it as its hit lands. The seconds count to the cast, or to each hit (Count down to). Leave it empty for no ticks.\n\nThese are for Only me alerts. A raid note line can't carry them.",
+    ticksHelp = "Seconds after the bar appears when each hit lands. The bar runs from Duration to the cast; a tick past its end isn't shown.\n\nEach number is a thin line on the bar, such as 2, 4, and the fill reaches it as its hit lands. The seconds count to the cast, or to each hit (Count down to). Leave it empty for no ticks.\n\nThese are for Only me alerts. A raid note line can't carry them.",
     barFill = "Bar fill",
     fillUp = "Bar fills up",
     fillDown = "Bar empties",
@@ -1858,6 +1859,7 @@ local function buildPanel(f)
     p = tf.when
     panel.showFrom = row(UI.Slider(p, TEXT.showFrom, {
         min = L.SHOW_MIN, max = L.SHOW_MAX, step = 1, labelWidth = L.SHOW_LABEL, width = L.SLIDER_W, format = seconds,
+        tipTitle = TEXT.showFrom, tipText = TEXT.showFromHelp,
         onRelease = true, -- saved when the bar is let go, not on every step of a drag
         get = function() return cur.draft and cur.draft.warn or L.SHOW_DEFAULT end,
         set = change(function(v) cur.draft.warn = v end),

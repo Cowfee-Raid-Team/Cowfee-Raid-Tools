@@ -65,7 +65,8 @@ local TEXT = {
     timeHelp = "Minutes:seconds or plain seconds, from the pull or from the start of the phase in "
         .. "Relative to: 1:30 or 90.\n\nA reminder with several times keeps them all until you change "
         .. "Relative to or Time.",
-    showFrom = "Show from",
+    showFrom = "Duration",
+    showFromHelp = "How long before the specified time this alert should start showing up",
     linger = "Linger",
     seconds = "%d s",
     icon = "Icon",
@@ -1616,6 +1617,7 @@ local function whenRows(f, p, row)
     local y = C - SAVED_SHIFT
     local showFrom = row(UI.Slider(p, TEXT.showFrom, {
         min = 1, max = 60, step = 1, labelWidth = 70, width = 150, enabledIf = editable,
+        tipTitle = TEXT.showFrom, tipText = TEXT.showFromHelp,
         format = function(v) return string.format(TEXT.seconds, v) end,
         get = function() return draft and draft.warn or 5 end,
         set = setter(function(v) draft.warn = v end),

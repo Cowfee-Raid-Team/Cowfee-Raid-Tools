@@ -562,6 +562,7 @@ end
 --                       as minutes): the number box in Modern opens with toDisplay(value), and a
 --                       typed number goes through fromDisplay before it is kept in range on a step
 --   width, labelWidth, enabledIf()
+--   tipTitle, tipText   a hover tooltip on the label
 -- Returns the row, with row.refresh() and row.SetMax(high), a new top of the range (such as a saved value above the
 -- usual max, so it shows as it is). row.Slider is the game's slider (Classic), row.modern the
 -- track and knob (built the first time the Modern look shows).
@@ -570,6 +571,25 @@ function UI.Slider(parent, text, opts)
     local low, high, step = opts.min, opts.max, opts.step or 1
     local row = makeRow(parent, text, labelWidth)
     row:SetWidth(labelWidth + GAP + width + VALUE_W)
+    -- tipTitle and tipText: a hover tooltip on the label
+    if opts.tipTitle then
+        local hit = CreateFrame("Frame", nil, row)
+        hit:SetPoint("TOPLEFT", row.Label, "TOPLEFT")
+        hit:SetPoint("BOTTOMRIGHT", row.Label, "BOTTOMRIGHT")
+        hit:EnableMouse(true)
+        hit:SetScript("OnEnter", function(self)
+            UI.TooltipOwner(GameTooltip, self, "ANCHOR_RIGHT", nil, nil, UI.TOOLTIP_KEEP)
+            GameTooltip:SetText(opts.tipTitle, 1, 1, 1)
+            if opts.tipText then
+                GameTooltip:AddLine(opts.tipText, 0.85, 0.85, 0.85, true)
+            end
+            GameTooltip:Show()
+        end)
+        hit:SetScript("OnLeave", function()
+            GameTooltip:Hide()
+        end)
+        row.labelHit = hit
+    end
 
     -- updating: the value is being set from the saved setting, so it is not saved back.
     -- dragging and pending: with onRelease, the value waits until the mouse lets go.

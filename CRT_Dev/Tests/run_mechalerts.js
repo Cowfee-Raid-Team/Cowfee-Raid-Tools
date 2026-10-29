@@ -1756,7 +1756,7 @@ check("mech ticks: the rows follow Bar and the ticks", function()
   for _, h in ipairs(helps) do if h.helpTitle == "Impact ticks" then helped = h end end
   assert(helped and helped.helpText:find("thin line", 1, true) and helped.helpText:find("Only me", 1, true), "a (?) on the ticks")
   assert(not helped.helpText:find("Bar ends", 1, true) and not helped.helpText:find("1 s past", 1, true)
-    and helped.helpText:find("Seconds after the bar appears when each hit lands. The bar runs from Show from to the cast; a tick past its end isn't shown.", 1, true),
+    and helped.helpText:find("Seconds after the bar appears when each hit lands. The bar runs from Duration to the cast; a tick past its end isn't shown.", 1, true),
     "its (?) says ticks are in the bar, which ends at the cast: " .. helped.helpText)
   -- Count down to under Bar fill on Looks; the Shield bar section at the top of its own tab; Speak the text, Count down
   -- and Glow one under the other on Sound and speech; a save's problem above the bottom row, on every tab
@@ -3092,8 +3092,9 @@ check("mech special (" .. LOOK .. "): Show from under When: yours, saved when it
   local f = freshOpen()
   local s = f.special
   local sl, def = s.lead, s.leadDefault
-  assert(sl and sl.label == "Show from" and sl.kind == "Slider", "a Show from slider")
+  assert(sl and sl.label == "Duration" and sl.kind == "Slider", "a Duration slider")
   local m = f.panel.showFrom.opts
+  assert(sl.opts.tipTitle == "Duration" and sl.opts.tipText == "How long before the specified time this alert should start showing up" and m.tipTitle == "Duration" and m.tipText == sl.opts.tipText, "Duration tooltip on both sliders")
   assert(sl.opts.min == m.min and sl.opts.max == m.max and sl.opts.min == 1 and sl.opts.max == 60 and sl.opts.step == 1, "the Mechanics range, 1 to 60 s")
   assert(sl.opts.labelWidth == m.labelWidth and sl.opts.width == m.width and sl.opts.onRelease == true, "the Mechanics slider's label width, width, saved when let go")
   assert(sl.opts.format(8) == m.format(8), "its value reads as the Mechanics one: " .. tostring(sl.opts.format(8)))
@@ -3102,8 +3103,8 @@ check("mech special (" .. LOOK .. "): Show from under When: yours, saved when it
   assert(def.w == CRT.UI.PanelButtonWidth(#"Default" * 6), "Default sized from its label: " .. tostring(def.w))
   -- the (?) right of the slider, Default after it
   local help
-  for _, h in ipairs(helps) do if h.helpTitle == "Show from" and rawget(h, "helpTarget") == sl then help = h end end
-  assert(help and help.helpText == "How long before each cast this alert shows. Default puts back the shipped time.", "its (?): " .. tostring(help and help.helpText))
+  for _, h in ipairs(helps) do if h.helpTitle == "Duration" and rawget(h, "helpTarget") == sl then help = h end end
+  assert(help and help.helpText == "How long before the specified time this alert should start showing up. Default puts back the shipped time.", "its (?): " .. tostring(help and help.helpText))
   rects = {}
   local sr, hr, dr = rect(sl, f), rect(help, f), rect(def, f)
   local wr, ir, whoR = rect(s.whenText, f), rect(s.impactsText, f), rect(s.whoHeading, f)
