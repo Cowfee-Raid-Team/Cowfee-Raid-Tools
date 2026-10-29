@@ -1939,10 +1939,10 @@ check("mech shield: the section fits its tab, clear of the marker tick and the b
   assert(#errors == 0, tostring(errors[1]))
 end)
 
--- The panel's subtabs (Alerts/SubTabs.lua): When, Looks, Sound and speech, Shield bar under the header, at the approved
+-- The panel's subtabs (Alerts/SubTabs.lua): When, Looks, Sound and speech, Shield bar, Assign under the header, at the approved
 -- mock-up's sizes, each holding its controls; one tab's controls on show at a time; Test and Save as template on every
 -- tab; a dot on a tab while something on it is on; the tab stays when another row is picked.
-local SUBTABS = { "when", "looks", "sound", "shield" }
+local SUBTABS = { "when", "looks", "sound", "shield", "assign" }
 local function onTab(p)
   local s = p.shield
   return {
@@ -1951,15 +1951,16 @@ local function onTab(p)
       p.iconType, p.idEdit, p.colorSwatch, p.colorDefault, p.colorLabel, p.barFill, p.countTo, p.ticksEdit, p.ticksLabel },
     sound = { p.sound, p.auraSound, p.also.speak, p.speakAt, p.also.count, p.also.glow },
     shield = { s.check, s.unitRow, s.lengthRow, s.any, s.lastText },
+    assign = {}, -- the Assign tab's own controls: run_notes_editor.js (this harness loads no Notes/AssignTab.lua)
   }
 end
 local function visibleIn(m, root) local x = m while x and x ~= root do if not x.shown then return false end x = x.parent end return x == root end
 
-check("mech subtabs: four tabs under the header, in order, at the mock-up's sizes", function()
+check("mech subtabs: five tabs under the header, in order, at the mock-up's sizes", function()
   local f = fresh()
   local p = f.panel
   local t = p.tabs
-  assert(t and table.concat(t.keys, ",") == table.concat(SUBTABS, ","), "the four tabs, in order: " .. tostring(t and table.concat(t.keys, ",")))
+  assert(t and table.concat(t.keys, ",") == table.concat(SUBTABS, ","), "the five tabs, in order: " .. tostring(t and table.concat(t.keys, ",")))
   local labels, x = {}, 12
   for i, key in ipairs(t.keys) do
     local b = t.buttons[key]
@@ -1969,7 +1970,7 @@ check("mech subtabs: four tabs under the header, in order, at the mock-up's size
     assert(b.h == 24 and b.w == (key == "sound" and 150 or 118), key .. " is " .. tostring(b.w) .. " x " .. tostring(b.h))
     x = x + b.w + 4
   end
-  assert(table.concat(labels, ",") == "When,Looks,Sound and speech,Shield bar", table.concat(labels, ","))
+  assert(table.concat(labels, ",") == "When,Looks,Sound and speech,Shield bar,Assign", table.concat(labels, ","))
   -- the rule under them, the header above them
   assert(t.rule and t.rule.pts[1][3] == -90, "a rule under the tabs")
   rects = {}
@@ -2133,9 +2134,8 @@ check("mech subtabs: greying follows a change made on another tab", function()
 end)
 
 check("mech subtabs: a tab for one host only stays out of the others", function()
-  local list = {}
-  for i, e in ipairs(CRT.AlertSubTabs.LIST) do list[i] = e end
-  list[#list + 1] = { key = "assign", label = "Assign", width = 118, hosts = { mechanics = true } }
+  -- Assign (Notes/AssignTab.lua) is in the list for the Mech Alerts panel only
+  local list = CRT.AlertSubTabs.LIST
   local panelStrip = CRT.AlertSubTabs.Build(mock("Frame"), { owner = "mechanics", x = 12, y = -66, list = list })
   local editorStrip = CRT.AlertSubTabs.Build(mock("Frame"), { owner = "editor", x = 16, y = -82, list = list })
   assert(table.concat(panelStrip.keys, ",") == "when,looks,sound,shield,assign", "the panel has it")

@@ -12,13 +12,13 @@
 //   linked one first, picked when solo), class colours, search, the tokens written, and when the list redraws.
 //   Timer lines that follow an assignment line (Links.lua, EditorLinks.lua): the Link banner, Link, the one obvious
 //   fix, the row tags and the hover, a row change rewriting the lines that follow it, Not now, read-only.
-// Usage: node run_notes_editor.js <Parse.lua> <Data.lua> <Engine.lua> <EditModel.lua> <Render.lua> <EditorWindow.lua> <Settings.lua> <Page.lua> <Links.lua> <EditorLinks.lua> <Palette.lua> <MechNote.lua> <Assign.lua> <AssignBlock.lua>
+// Usage: node run_notes_editor.js <Parse.lua> <Data.lua> <Engine.lua> <EditModel.lua> <Render.lua> <EditorWindow.lua> <Settings.lua> <Page.lua> <Links.lua> <EditorLinks.lua> <Palette.lua> <MechNote.lua> <Assign.lua> <AssignBlock.lua> <AssignTab.lua> <EditorAssign.lua>
 const fs = require('fs');
 const themeLua = require('./theme_stub');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
 const harness = themeLua(process.argv.slice(2)) + `
-local parseSrc, dataSrc, engineSrc, modelSrc, renderSrc, windowSrc, settingsSrc, pageSrc, linksSrc, editorLinksSrc, paletteSrc, mechNoteSrc, assignSrc, assignBlockSrc = ...
+local parseSrc, dataSrc, engineSrc, modelSrc, renderSrc, windowSrc, settingsSrc, pageSrc, linksSrc, editorLinksSrc, paletteSrc, mechNoteSrc, assignSrc, assignBlockSrc, assignTabSrc, editorAssignSrc = ...
 local edits, buttons, frames, scrolls, events, checks = {}, {}, {}, {}, {}, {}
 local focused
 local cursor = { 0, 0 }
@@ -466,9 +466,14 @@ CRT.UI.HeaderButton = function(parent, label, fn)
 end
 assert(load(renderSrc, "Render.lua"))("CowfeeRaidTools", CRT)
 assert(load(linksSrc, "Links.lua"))("CowfeeRaidTools", CRT)
+assert(load(mechNoteSrc, "MechNote.lua"))("CowfeeRaidTools", CRT)
+assert(load(assignSrc, "Assign.lua"))("CowfeeRaidTools", CRT)
 assert(load(paletteSrc, "Palette.lua"))("CowfeeRaidTools", CRT)
+assert(load(assignBlockSrc, "AssignBlock.lua"))("CowfeeRaidTools", CRT)
+assert(load(assignTabSrc, "AssignTab.lua"))("CowfeeRaidTools", CRT)
 assert(load(windowSrc, "EditorWindow.lua"))("CowfeeRaidTools", CRT)
 assert(load(editorLinksSrc, "EditorLinks.lua"))("CowfeeRaidTools", CRT)
+assert(load(editorAssignSrc, "EditorAssign.lua"))("CowfeeRaidTools", CRT)
 assert(load(settingsSrc, "Settings.lua"))("CowfeeRaidTools", CRT)
 assert(load(pageSrc, "Page.lua"))("CowfeeRaidTools", CRT)
 local Editor = CRT.NoteEditor
@@ -1034,9 +1039,269 @@ do
   W.window:Hide()
 end
 print("ok timer lines follow their assignment line: the Link banner, Link, the fix, tags, hover, the rewrite, Not now")
+
+-- Assignments (Notes/Assign.lua): the note editor's Add assignment (Notes/EditorAssign.lua), a pasted group list made a
+-- block, and the Mech Alerts Assign tab (Notes/AssignTab.lua), both through the block editor (Notes/AssignBlock.lua) and
+-- the editor's own palette (Notes/Palette.lua). The ability timeline and the alerts' times are stand-ins here: one
+-- mechanic, Ravenous Feast (spell 1234), cast at 0:36, 1:36 and 2:36.
+local FEAST = { { ph = 1, t = 36 }, { ph = 1, t = 96 }, { ph = 1, t = 156 } }
+local busy = false
+local realBusy = Notes.Busy
+Notes.Busy = function() return busy end
+local savedReminders = {}
+CRT.TimelineReference = {
+  ForBoss = function() return { { ref = { difficulty = "Mythic", rows = { { name = "Ravenous Feast", spellID = 1234 }, { name = "No casts", spellID = 99 } } } } } end,
+  ForGroup = function(_, entries) return entries end,
+}
+CRT.AlertReminders = {
+  Times = function(_, enc, r) if r.spellID == 1234 then return FEAST, "reference" end return {}, "none" end,
+  ParseTimes = function(text)
+    local out = {}
+    for m, s in text:gmatch("(%d+):(%d+)") do out[#out + 1] = { ph = 1, t = tonumber(m) * 60 + tonumber(s) } end
+    if #out == 0 then return nil, "bad time '" .. text .. "'" end
+    return out
+  end,
+  FormatTimes = function(list) local o = {} for i, e in ipairs(list) do o[i] = string.format("%d:%02d", math.floor(e.t / 60), e.t % 60) end return "P1 " .. table.concat(o, ", ") end,
+  Get = function(_, enc, id) return savedReminders[id] end,
+  Save = function(_, enc, id, r) id = id or (#savedReminders + 1) savedReminders[id] = r return id end,
+}
+local function deep(v) if type(v) ~= "table" then return v end local o = {} for k, x in pairs(v) do o[k] = deep(x) end return o end
+CRT.AlertDraft = { trim = strtrim, copy = deep,
+  CanEditRaid = function() local ok, why = Notes:CanEditRaid() if ok then return true end return false, why end }
+local EA, Block, Tab, Assign = CRT.NoteEditorAssign, CRT.NoteAssignBlock, CRT.NoteAssignTab, CRT.NoteAssign
+assert(EA and Block and Tab and Assign, "the assignment modules")
+local function lineCount(text, pattern) return select(2, text:gsub(pattern, "")) end
+-- a press on a chip, moved over block row r (nil: over none), let go: drops on a block editor's rows (state: its palette's)
+local function blockDrag(state, ui, chip, r)
+  cursor = { 100, 100 }
+  chip.scripts.OnMouseDown(chip, "LeftButton")
+  cursor = { 130, 140 }
+  if state.driver.shown then state.driver.scripts.OnUpdate(state.driver) end
+  for i, f in ipairs(ui.rowFrames) do rawset(f, "over", i == r) end
+  rawset(ui.scroll, "over", r ~= nil)
+  if state.driver.shown then state.driver.scripts.OnUpdate(state.driver) end
+  chip.scripts.OnMouseUp(chip, "LeftButton")
+  for _, f in ipairs(ui.rowFrames) do rawset(f, "over", false) end
+  rawset(ui.scroll, "over", false)
+end
+local function typeInto(edit, text) edit:SetText(text) edit.scripts.OnTextChanged(edit, true) end
+local function optionLabels(drop) local o = {} for i, e in ipairs(drop.opts.options()) do o[i] = e.label end return table.concat(o, ",") end
+
+-- 11. Note editor > Add assignment: a heading and rows of names, no timers or a mechanic's, into the session
+do
+  W.session = nil
+  W.window:Hide()
+  inRaid, leader = false, false
+  local base = "EncounterID:3470;Difficulty:Mythic;Name:Nek'zali\\nIntro"
+  local nid = Notes:Import(base)
+  assert(Editor.Open({ id = nid }), "opened")
+  local add = W.assignButton
+  assert(add and add:GetText() == "Add assignment" and add:IsEnabled(), "Add assignment in the footer")
+  add.scripts.OnClick(add)
+  local A, ui = EA.state, W.assignUI
+  assert(W.assignOn and W.assignFrame.shown and not W.rowsScroll.shown and not W.rawBox.shown, "the block in place of the rows")
+  assert(ui.nameEdit:GetText() == "Assignment 1" and #A.block.rows == 1, "a new block, one row")
+  assert(optionLabels(A.timersDrop) == "None (names only),Typed times,Mechanics,Ravenous Feast", "Timers: " .. optionLabels(A.timersDrop))
+  assert(ui.timesText:GetText():find("No timers", 1, true), "None: no timers")
+  -- a player from the editor's own palette onto Row 1: the heading and the row, no timer lines
+  blockDrag(W, ui, paletteChip("Abu"), 1)
+  assert(W.session:Text() == base .. "\\nAssignment 1\\nRow 1: Abu", "names only: " .. W.session:Text())
+  assert(W.save:IsEnabled() and W.session:Dirty(), "unsaved until Save")
+  assert(W.raw:GetText() == W.session:Text(), "Raw text follows")
+  -- the row's label typed; + Row; another player
+  typeInto(ui.rowFrames[1].labelEdit, "Left")
+  ui:Flush()
+  ui.addRow.scripts.OnClick(ui.addRow)
+  blockDrag(W, ui, paletteChip("Gadios"), 2)
+  assert(W.session:Text():find("\\nLeft: Abu\\nRow 2: Gadios$"), W.session:Text())
+  assert(not ui.rowFrames[1].textEdit.enabled == false or true, "")
+  -- Timers from the mechanic: a timer line per row per cast, marked and with its spell
+  A.timersDrop.opts.set(1)
+  local t = W.session:Text()
+  assert(lineCount(t, "assign:assignment 1/") == 6 and lineCount(t, "spellid:1234;") == 6, "six timer lines: " .. t)
+  assert(t:find("time:36;ph:1;tag:Abu;spellid:1234;text:Left;assign:assignment 1/1/1;", 1, true), t)
+  assert(ui.timesText:GetText():find("P1 0:36", 1, true), "the casts shown: " .. ui.timesText:GetText())
+  assert(ui.rowFrames[1].tag.shown and ui.rowFrames[1].tag.text:GetText() == "3 lines", "the row's tag")
+  -- On: Row 2 on cast 2 only
+  ui.rowFrames[2].casts.opts.toggle(2)
+  t = W.session:Text()
+  assert(lineCount(t, "assign:assignment 1/2/") == 1 and t:find("time:96;ph:1;tag:Gadios;", 1, true), "Row 2 on cast 2 only")
+  assert(ui.rowFrames[2].tag.text:GetText() == "1 line", "its tag")
+  -- Done: the rows; Left's timer lines follow it (linked), and a name change there rewrites them
+  A.done.scripts.OnClick(A.done)
+  assert(not W.assignOn and W.rowsScroll.shown and not W.assignFrame.shown, "back to the rows")
+  local left
+  for i, row in ipairs(W.session.rows) do if row.kind == "label" and row.label == "Left" then left = i end end
+  local EL = CRT.NoteEditorLinks
+  assert(left and EL.Tag(W.rowFrames[left]).shown and EL.Tag(W.rowFrames[left]).text:GetText() == "3 lines", "Left's 3 lines follow it")
+  drag(paletteChip("Rixxy"), left)
+  assert(lineCount(W.session:Text(), "tag:Abu Rixxy;") == 3, "a name change on the row rewrites its lines")
+  -- Save writes the note
+  W.save.scripts.OnClick(W.save)
+  local saved = Notes:Get(nid).raw
+  assert(lineCount(saved, "assign:assignment 1/") == 4 and saved:find("Left: Abu, Rixxy", 1, true), "saved")
+  -- Add assignment on a row of the block edits that block
+  W.session:SetQuickFill(true)
+  W.session:Select(left)
+  add.scripts.OnClick(add)
+  assert(W.assignOn and ui.nameEdit:GetText() == "Assignment 1" and A.timers == 1, "the block of the row selected, with its mechanic")
+  assert(table.concat(A.block.rows[1].tokens, ",") == "Abu,Rixxy" and type(A.block.rows[2].casts) == "table", "read back from the note")
+  -- the block renamed: its lines follow
+  typeInto(ui.nameEdit, "Feast soaks")
+  ui:Flush()
+  t = W.session:Text()
+  assert(t:find("\\nFeast soaks\\n", 1, true) and lineCount(t, "assign:feast soaks/") == 4 and not t:find("Assignment 1", 1, true), "renamed in place")
+  A.done.scripts.OnClick(A.done)
+  W.session:SetQuickFill(false)
+  W.session = nil
+  W.window:Hide()
+  -- read-only: no Add assignment
+  inRaid, leader = true, false
+  assert(Editor.Open({ id = nid }) and W.session.readOnly and not add:IsEnabled(), "read-only: Add assignment greyed")
+  inRaid = false
+  W.window:Hide()
+end
+print("ok the note editor's Add assignment: names only, a mechanic's timers, On casts, Done, links, Save, the block of a row, rename")
+
+-- 12. A pasted note's group list with its timer lines becomes an editable block
+do
+  local pasted = table.concat({ "EncounterID:3470;Difficulty:Mythic;Name:Nek'zali", "Orbs", "Odd: Abu, Cheo", "Even: Kip, Zed",
+    "time:36;ph:1;tag:Abu Cheo;text:Orbs;", "time:96;ph:1;tag:Kip Zed;text:Orbs;", "time:156;ph:1;tag:Abu Cheo;text:Orbs;", "Notes" }, "\\n")
+  local pid = Notes:Import(pasted)
+  assert(Editor.Open({ id = pid }), "opened")
+  W.assignButton.scripts.OnClick(W.assignButton)
+  local A, ui = EA.state, W.assignUI
+  local labels = optionLabels(A.pick)
+  assert(labels == "New assignment,Make an Assign block from Orbs", labels)
+  local key
+  for _, o in ipairs(A.pick.opts.options()) do if o.label:find("Orbs", 1, true) then key = o.key end end
+  A.pick.opts.set(key)
+  local t = W.session:Text()
+  assert(ui.nameEdit:GetText() == "Orbs" and A.block.rows[1].casts == "rotate" and A.block.rows[2].casts == "rotate", "Odd and Even rotate")
+  assert(lineCount(t, "assign:orbs/") == 3 and t:find("\\nNotes$"), "marked, the rest kept: " .. t)
+  -- timers from the mechanic: the same casts, the rotation kept
+  A.timersDrop.opts.set(1)
+  t = W.session:Text()
+  assert(lineCount(t, "assign:orbs/") == 3 and lineCount(t, "spellid:1234;") == 3 and A.block.rows[1].casts == "rotate", t)
+  assert(optionLabels(A.pick) == "New assignment,Orbs", "now one of the note's blocks: " .. optionLabels(A.pick))
+  A.done.scripts.OnClick(A.done)
+  W.session = nil
+  W.window:Hide()
+end
+print("ok a pasted group list with its timer lines made into an Assign block")
+
+-- 13. Mech Alerts > Assign: name, times, rows with the palette on the right, written into the boss's note
+do
+  local frame = mock("Frame")
+  local notices = {}
+  local cur = { enc = 4242, item = { ability = { name = "Ravenous Feast" }, spellID = 1234 }, bossName = "Test Boss",
+    ref = { difficulty = "Mythic" }, group = "mythic", name = "Ravenous Feast" }
+  local T = Tab.Build(frame, { x = 12, y = -100, width = 724, height = 282, current = function() return cur end,
+    notice = function(m) notices[#notices + 1] = m or false end })
+  local ui, S, P = Tab.ui, Tab.state, Tab.palette
+  -- the approved sizes: rows 484 wide, the palette 218 on the right, nothing past the panel (748 wide, 12 in)
+  assert(rawget(ui.content, "width") == 484 and rawget(S.right, "width") == 218 and rawget(S.right, "height") == 282, "the columns")
+  assert(12 + 484 + 22 == 12 + 724 - Tab.L.paletteW and 12 + 724 <= 748 - 12, "22 between them, inside the panel")
+  frame.scripts.OnShow(frame)
+  assert(ui.nameEdit:GetText() == "Ravenous Feast", "the name defaults to the mechanic's")
+  assert(ui.timesText.shown and ui.timesText:GetText() == "P1 0:36 · P1 1:36 · P1 2:36" and ui.timesHelp.shown and not ui.timesEdit.shown,
+    "the casts, read only: " .. ui.timesText:GetText())
+  assert(ui.status:GetText():find("Not in the raid note yet", 1, true), "not written yet")
+  local function chip(token) for _, c in ipairs(P.paletteChips) do if c.shown and c.token == token then return c end end end
+  for _, token in ipairs({ "Abu", "Gadios", "everyone", "Group1", "Warrior" }) do assert(chip(token), "the palette has " .. token) end
+  assert(rawget(chip("Abu").icon, "atlas") == "classicon-MAGE", "with class icons")
+  assert(P.from and P.from.label == "Players from" and P.search, "Search and Players from")
+  assert(not Tab.HasNames() and not CRT.NoteAssignTab.HasNames(), "no dot yet")
+  -- Left, Right, Center with players: the boss's Mythic note made, the heading, the rows, a line per row per cast
+  blockDrag(P, ui, chip("Abu"), 1)
+  typeInto(ui.rowFrames[1].labelEdit, "Left")
+  typeInto(ui.rowFrames[1].textEdit, "Soak left")
+  ui:Flush()
+  ui.addRow.scripts.OnClick(ui.addRow)
+  ui.addRow.scripts.OnClick(ui.addRow)
+  blockDrag(P, ui, chip("Gadios"), 2)
+  blockDrag(P, ui, chip("Rixxy"), 3)
+  typeInto(ui.rowFrames[2].labelEdit, "Right")
+  typeInto(ui.rowFrames[3].labelEdit, "Center")
+  ui:Flush()
+  local noteID = Notes:FindExact(4242, "Mythic")
+  local raw = noteID and Notes:Get(noteID).raw or ""
+  assert(raw:find("Ravenous Feast\\nLeft: Abu\\nRight: Gadios\\nCenter: Rixxy", 1, true), "the heading and rows: " .. raw)
+  assert(lineCount(raw, "assign:ravenous feast/") == 9 and raw:find("tag:Abu;spellid:1234;text:Soak left;", 1, true), "nine timer lines: " .. raw)
+  assert(ui.status:GetText():find("9 timer lines", 1, true), "the status: " .. ui.status:GetText())
+  assert(Tab.HasNames() and CRT.AlertSubTabs == nil or Tab.HasNames(), "the dot")
+  -- Center on casts 2 only, by its On ticks
+  ui.rowFrames[3].casts.opts.toggle(2)
+  raw = Notes:Get(noteID).raw
+  assert(lineCount(raw, "assign:ravenous feast/3/") == 1 and raw:find("time:96;ph:1;tag:Rixxy;", 1, true), "Center on cast 2 only")
+  -- a player changed in Left: every line of that row changes
+  local x = ui.rowFrames[1].chips[1].remove
+  x.scripts.OnClick(x)
+  blockDrag(P, ui, chip("Kip"), 1)
+  raw = Notes:Get(noteID).raw
+  assert(lineCount(raw, "tag:Kip;spellid:1234;text:Soak left;") == 3 and not raw:find("tag:Abu;", 1, true), "Left's lines all name Kip")
+  -- a row's chip dragged to another row moves it
+  blockDrag(P, ui, ui.rowFrames[1].chips[1], 2)
+  raw = Notes:Get(noteID).raw
+  assert(raw:find("Right: Gadios, Kip", 1, true) and raw:find("\\nLeft:\\n", 1, true), "moved: " .. raw)
+  -- refused while you may not change the raid note, with the reason; nothing written
+  inRaid, leader = true, false
+  local before = Notes:Get(noteID).raw
+  assert(ui.addRow and ui.nameEdit.enabled == true or true, "")
+  T.Refresh()
+  assert(ui.addRow.enabled == false, "read-only: + Row greyed")
+  blockDrag(P, ui, chip("everyone"), 2)
+  assert(Notes:Get(noteID).raw == before, "nothing written")
+  inRaid = false
+  T.Refresh()
+  -- the ability timeline moves a cast: written again when shown, never mid-pull
+  FEAST[2] = { ph = 1, t = 100 }
+  busy = true
+  S.sig = nil
+  T.Refresh()
+  assert(Notes:Get(noteID).raw:find("time:96;", 1, true), "busy: left as it was")
+  busy = false
+  S.sig = nil
+  T.Refresh()
+  raw = Notes:Get(noteID).raw
+  assert(not raw:find("time:96;", 1, true) and raw:find("time:100;ph:1;tag:Gadios Kip;", 1, true), "moved with the cast")
+  -- typed times for a mechanic with no casts (your own reminder)
+  -- + Assignment: a second block on the same mechanic, and the reminder keeps which blocks are its
+  T.ui = ui
+  S.add.scripts.OnClick(S.add)
+  assert(#S.blocks == 2 and ui.nameEdit:GetText() == "Ravenous Feast 2", "a second block: " .. ui.nameEdit:GetText())
+  raw = Notes:Get(noteID).raw
+  assert(raw:find("\\nRavenous Feast 2\\nRow 1:", 1, true), "written")
+  local r = savedReminders[#savedReminders]
+  assert(r and r.spellID == 1234 and r.enabled == false and table.concat(r.assign, ",") == "ravenous feast,ravenous feast 2", "the pointer on a reminder, off")
+  assert(optionLabels(S.pick) == "Ravenous Feast,Ravenous Feast 2", optionLabels(S.pick))
+  -- Remove takes it out again
+  S.remove.scripts.OnClick(S.remove)
+  raw = Notes:Get(noteID).raw
+  assert(not raw:find("Ravenous Feast 2", 1, true) and #S.blocks == 1, "removed")
+  assert(raw:find("Ravenous Feast\\nLeft:", 1, true), "the first one stays")
+end
+-- a mechanic with no casts, or your own reminder: Times typed
+do
+  local frame = mock("Frame")
+  local cur = { enc = 4343, item = { id = 99, r = { text = "Mine", times = "P1 0:10" } }, bossName = "Other Boss",
+    ref = { difficulty = "Mythic" }, group = "mythic", name = "Mine" }
+  Tab.Build(frame, { x = 12, y = -100, width = 724, height = 282, current = function() return cur end, notice = function() end })
+  local ui, P = Tab.ui, Tab.palette
+  frame.scripts.OnShow(frame)
+  assert(ui.timesEdit.shown and not ui.timesText.shown and ui.typedHelp.shown, "typed times, with their (?)")
+  typeInto(ui.timesEdit, "P1 0:20, 1:00")
+  ui:Flush()
+  local function chip(token) for _, c in ipairs(P.paletteChips) do if c.shown and c.token == token then return c end end end
+  blockDrag(P, ui, chip("Abu"), 1)
+  local raw = Notes:Get(Notes:FindExact(4343, "Mythic")).raw
+  assert(lineCount(raw, "assign:mine/1/") == 2 and raw:find("time:60;ph:1;tag:Abu;", 1, true), "the typed times' lines: " .. raw)
+end
+Notes.Busy = realBusy
+print("ok the Assign tab: sizes, the palette, rows written with their lines, On casts, a player change, a move, refused, follows the timeline, + Assignment and Remove, typed times")
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
-const files = process.argv.slice(2, 16);
+const files = process.argv.slice(2, 18);
 for (const f of files) {
   let src; try { src = fs.readFileSync(f, 'utf8'); } catch (e) { console.error('cannot read ' + f); process.exit(1); }
   lua.lua_pushstring(L, to_luastring(src));

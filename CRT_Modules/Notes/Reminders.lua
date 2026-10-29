@@ -5,7 +5,8 @@ local ADDON, CRT = ...
 -- ability, each with a tick that turns its reminder on or off. On the right, one panel shows the selected
 -- row's alert, and every change there saves it at once (the first change on an ability makes its
 -- reminder). Under the panel's header its settings sit on subtabs (When, Looks, Sound and speech, Shield bar:
--- Alerts/SubTabs.lua, shared with the pop-out editor); Test and Save as template stay at the bottom, outside them.
+-- Alerts/SubTabs.lua, shared with the pop-out editor, then Assign, the panel's own: the mechanic's assignment blocks in
+-- the raid note, Notes/AssignTab.lua); Test and Save as template stay at the bottom, outside them.
 -- The draft and its save are Alerts/Draft.lua's, the name lookup of the Icon box is
 -- Alerts/SpellLookup.lua's, the Shield bar section Alerts/ShieldSection.lua's, and Test and Save as template go
 -- through Alerts/Editor.lua, all shared with the pop-out editor. The reminders and their times are in
@@ -835,6 +836,10 @@ local function drawPanel()
     -- a save's problem, else ticks past the bar (they still save: a longer Show from can fit them)
     local say = notice or CRT.AlertDraft.TicksPast(d)
     panel.message:SetText(say and UI.BadText(say) or "")
+    -- the Assign tab follows the row shown (its blocks read from the raid note), before its dot is painted
+    if panel.assign then
+        panel.assign.Refresh()
+    end
     -- each tab's dot: something on it is on
     panel.tabs:Paint(d)
 end
@@ -1082,6 +1087,9 @@ local commit
 -- Saves what was typed, if anything waits (Enter, leaving the box, a pause, another row or boss picked,
 -- a tick, the tab hiding). `quiet`: a refresh is already loading the next row, so the save moves nothing.
 saveTyped = function(quiet)
+    if panel.assign then
+        panel.assign.Leave() -- the Assign tab's typing, saved to its own mechanic
+    end
     if typed and cur.draft then
         commit(quiet)
     end
@@ -1757,6 +1765,9 @@ end
 -- Another subtab picked: the boxes let go and what was typed is saved (leaving a box saves it too), and the spell
 -- lookup's list closes, so nothing waits on a tab that isn't on show.
 local function leaveTab()
+    if panel.assign then
+        panel.assign.Leave()
+    end
     if panel.lookupCtl then
         panel.lookupCtl:Hide()
     end
@@ -1764,6 +1775,31 @@ local function leaveTab()
         edit:ClearFocus()
     end
     saveTyped()
+end
+
+-- The Assign tab (Notes/AssignTab.lua), the panel's only: the selected mechanic's assignment blocks, written into the
+-- boss's raid note for the difficulty on show, in the tab's area above the bottom row. Its own function: buildPanel is
+-- near Lua 5.1's 60 upvalue limit.
+local function buildAssignTab(p)
+    local Tab = CRT.NoteAssignTab
+    if not (p and Tab and CRT.NoteAssignBlock) then
+        return nil
+    end
+    return Tab.Build(p, {
+        x = L.INSET, y = L.CONTENT_Y, width = L.PANEL_W - 2 * L.INSET,
+        height = L.PANEL_H + L.CONTENT_Y - (L.BOTTOM_Y + L.BUTTON_H + L.MESSAGE_GAP + 16),
+        current = function()
+            local item = cur.item
+            local entry = shownReference()
+            local name = item and item.ability and item.ability.name or (item and not item.pending and itemName(item)) or draftName()
+            return { enc = cur.enc, item = item, bossName = cur.bossName, ref = entry and entry.ref, group = shownGroup(),
+                name = name }
+        end,
+        notice = function(message)
+            notice = message
+            drawPanel()
+        end,
+    })
 end
 
 local function buildPanel(f)
@@ -1963,6 +1999,7 @@ local function buildPanel(f)
 
     buildSoundTab(tf.sound, row)
     buildShieldTab(tf.shield, row)
+    panel.assign = buildAssignTab(tf.assign)
 
     -- Under the tabs, on every tab: a save's problem, in red, above the bottom row (a long one wraps upwards)
     p = panel.content

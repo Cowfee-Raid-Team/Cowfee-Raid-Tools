@@ -4,7 +4,8 @@ local ADDON, CRT = ...
 -- The raw text stays the one source: an edit changes only names, and Text() gives the raw text back with every
 -- other byte as written (times, phases, text, colours, unknown fields, spacing, line ends, line order). A line
 -- whose names are back to what they were is written exactly as it was.
---   Model.New(text, opts)       a session over the text. opts: markdown (the personal note), readOnly
+--   Model.New(text, opts)       a session over the text. opts: markdown (the personal note), readOnly, base (the
+--                               text it was opened from, when not text)
 --   s.rows                      the note's lines in their own order (see rowFor)
 --   s:Add(i, token, kind)       appends a name or tag word to row i; kind is the palette chip's ("player",
 --                               "general", "group", "class"), nil for a name from a row
@@ -330,7 +331,9 @@ Session.__index = Session
 function Model.New(text, opts)
     opts = opts or {}
     text = text or ""
-    local s = setmetatable({ base = text, readOnly = opts.readOnly and true or false, markdown = opts.markdown,
+    -- opts.base: the text it was opened from, when lines were added since (the note editor's Add assignment), so it
+    -- stays dirty until saved
+    local s = setmetatable({ base = opts.base or text, readOnly = opts.readOnly and true or false, markdown = opts.markdown,
         quickFill = false, rows = {} }, Session)
     local note = Parser.Parse(text)
     local byLine = {}

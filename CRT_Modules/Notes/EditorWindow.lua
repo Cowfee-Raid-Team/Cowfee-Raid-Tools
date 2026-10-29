@@ -15,6 +15,8 @@ local ADDON, CRT = ...
 -- first. History in the title bar opens the note's earlier versions (Notes/HistoryWindow.lua).
 -- Timer lines that list the same players as an assignment line follow it (Notes/EditorLinks.lua, Notes/Links.lua):
 -- a change to the line's names is written on them too, and a banner over the rows offers to link them.
+-- Add assignment (Notes/EditorAssign.lua) shows an assignment block in place of the rows, the same as the Mech Alerts
+-- Assign tab's, with timers from one of the boss's mechanics, typed, or none; the palette drags onto its rows then.
 
 local Notes = CRT.Notes
 local Model = CRT.NoteEditModel
@@ -29,11 +31,17 @@ local function links()
     return CRT.NoteEditorLinks
 end
 
+-- Add assignment (Notes/EditorAssign.lua, loaded after this file), or nil without it.
+local function assign()
+    return CRT.NoteEditorAssign
+end
+
 local TEXT = {
     title = "Note editor: %s",
     personalTitle = "Personal note editor",
     untitled = "Note",
     quickFill = "Quick fill",
+    addAssignment = "Add assignment",
     rawText = "Raw text",
     hideRaw = "Hide raw text",
     save = "Save",
@@ -63,7 +71,9 @@ local TEXT = {
         .. "not in a group.\n\n"
         .. "Timers are shown as the note has them and can't be changed here, except that a timer line listing the "
         .. "same players as an assignment line follows it: change the line's names and the timer line gets them "
-        .. "too. Only names change. Raw text shows the note as it will be saved.",
+        .. "too. Only names change. Raw text shows the note as it will be saved.\n\n"
+        .. "Add assignment adds a heading and rows of players, with timer lines from one of the boss's mechanics, "
+        .. "typed times, or none. Click a row of an assignment first to change that one.",
 }
 
 local L = {
@@ -425,9 +435,10 @@ local function edit(fn)
     return fn()
 end
 
--- The drag of the editor's chips (Notes/Palette.lua): onto the rows, through the session.
+-- The drag of the editor's chips (Notes/Palette.lua): onto the rows, through the session; while Add assignment is
+-- open, onto its block's rows instead (Notes/AssignBlock.lua's handlers, W.assignDrag).
 local function makeDrag()
-    Palette.Drag(W, {
+    local rows = {
         readOnly = readOnly,
         begin = function(source)
             return W.session:BeginDrag(source)
@@ -466,7 +477,13 @@ local function makeDrag()
                 changed()
             end
         end,
-    })
+    }
+    Palette.Drag(W, setmetatable({}, {
+        __index = function(_, k)
+            local o = (W.assignOn and W.assignDrag) or rows
+            return o[k]
+        end,
+    }))
 end
 
 -- Refresh, save, close ---------------------------------------------------------------------------------------------
@@ -489,6 +506,9 @@ function Editor.Refresh()
     W.bannerH = el and el.Refresh(W.rowsWidth + UI.ScrollGutter()) or 0
     layoutLeft()
     Editor.DrawRows()
+    if W.assignOn and assign() then
+        assign().Refresh()
+    end
     local text = W.session:Text()
     if W.raw:GetText() ~= text then
         W.raw:SetText(text)
@@ -497,6 +517,9 @@ function Editor.Refresh()
     W.save:SetEnabled(dirty and not readOnly())
     W.quick:SetEnabled(not readOnly())
     W.quick:SetChecked(W.session.quickFill)
+    if W.assignButton then
+        W.assignButton:SetEnabled(not readOnly() or W.assignOn == true)
+    end
     local status = ""
     if W.notice then
         status = W.notice
@@ -510,6 +533,19 @@ function Editor.Refresh()
 end
 
 function layoutLeft()
+    -- Add assignment open: its block in place of the rows, the banner and the raw text
+    if W.assignFrame then
+        W.assignFrame:SetShown(W.assignOn == true)
+    end
+    W.rowsScroll:SetShown(not W.assignOn)
+    if W.assignOn then
+        W.rawBox:Hide()
+        if W.banner then
+            W.banner:Hide()
+        end
+        W.rawButton:SetText(W.rawShown and TEXT.hideRaw or TEXT.rawText)
+        return
+    end
     W.rowsScroll:ClearAllPoints()
     W.rowsScroll:SetPoint("TOPLEFT", 0, -(W.bannerH or 0)) -- under the Link banner when it shows
     if W.rawShown then
@@ -679,6 +715,9 @@ local function buildLeft(c)
     if el then
         el.Build(left) -- the Link banner, at the top
     end
+    if assign() then
+        assign().Build(left) -- Add assignment's block, hidden until opened
+    end
     local scroll = CreateFrame("ScrollFrame", "CowfeeRaidToolsNoteEditorRows", left, "UIPanelScrollFrameTemplate")
     UI:SkinScrollBar(scroll.ScrollBar)
     W.rowsChild = CreateFrame("Frame", nil, scroll)
@@ -747,9 +786,15 @@ local function buildFooter(c)
         Editor.Refresh()
     end)
     W.rawButton:SetPoint("RIGHT", W.save, "LEFT", -6, 0)
+    W.assignButton = UI.PanelButton(c, TEXT.addAssignment, 24, function()
+        if assign() then
+            assign().Toggle()
+        end
+    end)
+    W.assignButton:SetPoint("RIGHT", W.rawButton, "LEFT", -6, 0)
     W.status = c:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     W.status:SetPoint("LEFT", quickText, "RIGHT", 30, 0)
-    W.status:SetPoint("RIGHT", W.rawButton, "LEFT", -8, 0)
+    W.status:SetPoint("RIGHT", W.assignButton, "LEFT", -8, 0)
     W.status:SetJustifyH("LEFT")
     W.status:SetWordWrap(false)
 end
@@ -856,6 +901,7 @@ function Editor.Open(source)
         return false
     end
     if not (same and W.window:IsShown() and W.session) then
+        W.assignOn = false -- another note: its rows first
         W.source = { id = source.id, personal = source.personal and true or nil }
         loadSession()
         openSource() -- worked out once for this open; a layout edit later never changes it
