@@ -5,6 +5,7 @@ local ADDON, CRT = ...
 --   consumables  Bosses:Consumables()  the ready check row and your bar (format: Consumables/Database.lua)
 --   cooldowns    Bosses:Cooldowns()    the Timeline's Cooldowns row and Healer CDs (format: Alerts/CooldownData.lua)
 --   raidBuffs    Bosses:RaidBuffs()    the ready check's raid buffs (format: above Report.BUFFS in ReadyCheck/Report.lua)
+--   kicks        Bosses:Kicks()        each class's interrupt, the Interrupts reminder's icon (format: Bosses:Kicks)
 -- Never guess an ID and never take one from Wowhead. Confirm the consumables with /crt consumables check in the game.
 --
 -- Consumables: the Midnight item IDs were taken on 2026-10-14 from the item links on Method's "List of all Midnight
@@ -21,6 +22,9 @@ local ADDON, CRT = ...
 -- and go on showing, so only the check catches it.
 --
 -- Raid buffs: the retail spell IDs linked from each Warcraft Wiki page, read 2026-10-14.
+--
+-- Kicks: the spell IDs and which specs have each, from each spell's Warcraft Wiki page (and its Interrupt page),
+-- read 2026-10-28. Holy and Discipline priests, Holy paladins and Restoration druids have none.
 
 -- Healer specs (SpecializationID, warcraft.wiki.gg/wiki/SpecializationID)
 local HOLY_PALADIN, DISC_PRIEST, HOLY_PRIEST, RESTO_SHAMAN = 65, 256, 257, 264
@@ -161,5 +165,30 @@ CRT.Bosses:SeasonData("midnight-s2", "gameIDs", {
         { key = "versatility", spell = 1126, class = "DRUID", label = "Mark of the Wild", short = "Vers" },
         { key = "mastery", spell = 462854, class = "SHAMAN", label = "Skyfury", short = "Mast" },
         { key = "movement", spell = 364342, class = "EVOKER", label = "Blessing of the Bronze", short = "Move" },
+    },
+
+    -- Each class's interrupt, for the Interrupts reminder's icon; a spec's own entry wins, false for a spec with none.
+    kicks = {
+        classes = {
+            WARRIOR = 6552, -- Pummel
+            PALADIN = 96231, -- Rebuke
+            HUNTER = 147362, -- Counter Shot
+            ROGUE = 1766, -- Kick
+            DEATHKNIGHT = 47528, -- Mind Freeze
+            SHAMAN = 57994, -- Wind Shear
+            MAGE = 2139, -- Counterspell
+            WARLOCK = 19647, -- Spell Lock (the Felhunter's)
+            MONK = 116705, -- Spear Hand Strike
+            DRUID = 106839, -- Skull Bash
+            DEMONHUNTER = 183752, -- Disrupt
+            EVOKER = 351338, -- Quell
+        },
+        specs = {
+            [HOLY_PALADIN] = false,
+            [255] = 187707, -- Survival: Muzzle
+            [102] = 78675, -- Balance: Solar Beam
+            [RESTO_DRUID] = false,
+            [258] = 15487, -- Shadow: Silence
+        },
     },
 })

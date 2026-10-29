@@ -22,8 +22,8 @@ local ADDON, CRT = ...
 --                  read by Interrupts/Lattice.lua, whose header has the format); a block that doesn't read is skipped.
 -- Features that don't depend on a boss (the Late Tracker, Raid Groups) never read it. A season's own facts
 -- that aren't about a boss (the Gear Checker's enchant, socket and season checks, the upgrade tracks, and the
--- game IDs: consumables, class cooldowns and raid buffs) live in a topic file each (Bosses:SeasonData) and are
--- read through their accessor (Bosses:GearChecks(), Tracks(), Consumables(), Cooldowns(), RaidBuffs()). Which seasons load is a dev-only choice (Dev/SeasonTools.lua, CRTDB.dev.seasons):
+-- game IDs: consumables, class cooldowns, raid buffs and class interrupts) live in a topic file each (Bosses:SeasonData) and are
+-- read through their accessor (Bosses:GearChecks(), Tracks(), Consumables(), Cooldowns(), RaidBuffs(), Kicks()). Which seasons load is a dev-only choice (Dev/SeasonTools.lua, CRTDB.dev.seasons):
 -- the current season only, by default, or all. See the vault note "Cowfee Raid Tools - Boss Library
 -- Design".
 
@@ -169,6 +169,12 @@ end
 -- The raid buffs the ready check looks for (the format above Report.BUFFS in ReadyCheck/Report.lua).
 function Bosses:RaidBuffs()
     return gameIDs(self, "raidBuffs")
+end
+
+-- Each class's interrupt, for the Interrupts reminder's icon: { classes = { WARRIOR = spellID, ... }, specs =
+-- { [SpecializationID] = spellID, or false for a spec with none } } (the spec's entry wins).
+function Bosses:Kicks()
+    return gameIDs(self, "kicks")
 end
 
 function Bosses:Get(encounterID)
