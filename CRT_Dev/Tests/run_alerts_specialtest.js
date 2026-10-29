@@ -5,7 +5,8 @@
 // Usage: node run_alerts_specialtest.js CRT_Modules/Timeline/Data.lua CRT_Modules/Timeline/Database.lua
 //   CRT_Modules/Timeline/Reference.lua CRT_Modules/Timeline/Lanes.lua CRT_Modules/Alerts/Rules.lua CRT_Modules/Alerts/Engine.lua
 //   CRT_Modules/Alerts/Speech.lua CRT_Modules/Notes/Parse.lua CRT_Modules/Notes/Data.lua CRT_Modules/Notes/Engine.lua CRT_Modules/Notes/Alert.lua
-//   CRT_Modules/Alerts/Reminders.lua CRT_Modules/Alerts/Draft.lua CRT_Modules/Alerts/SpellLookup.lua CRT_Modules/Alerts/Editor.lua
+//   CRT_Modules/Alerts/Reminders.lua CRT_Modules/Alerts/Draft.lua CRT_Modules/Alerts/SpellLookup.lua CRT_Modules/Alerts/ShieldSection.lua
+//   CRT_Modules/Alerts/SubTabs.lua CRT_Modules/Alerts/Editor.lua
 //   CRT_Modules/Alerts/Special.lua CRT_Modules/Alerts/Colors.lua CRT_Modules/Alerts/Areas.lua CRT_Modules/Alerts/Bars.lua
 const fs = require('fs');
 const themeLua = require('./theme_stub');
