@@ -79,7 +79,7 @@ local TEXT = {
 local L = {
     width = 900, height = 580, minWidth = 680, minHeight = 420,
     paletteW = 270, gap = 10, footerH = 28, rawH = 150,
-    rowGap = 4, timeW = 36, phaseW = 32, infoH = 18, timerAlpha = 0.5, labelMax = 0.35, headingH = 20, blankH = 8,
+    rowGap = 4, timeW = 36, phaseW = 32, infoH = 18, timerAlpha = 0.5, headingH = 20, blankH = 8,
 }
 -- a chip's height and the palette's sizes: Notes/Palette.lua's (L.chipH below)
 L.chipH = Palette.L.chipH
@@ -120,9 +120,7 @@ local function rowFrame(i)
     if f then
         return f
     end
-    f = CreateFrame("Button", nil, W.rowsChild, "BackdropTemplate")
-    f:SetBackdrop(BACKDROP)
-    f.chips = {}
+    f = Palette.MakeRow(W.rowsChild) -- the shared group row: its box, f.label and f.chips
     f.time = f:CreateFontString(nil, "OVERLAY", "CRTFontDisableSmall")
     f.time:SetPoint("TOPLEFT", 4, -3)
     f.phase = f:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
@@ -134,9 +132,6 @@ local function rowFrame(i)
     f.info:SetWordWrap(false)
     f.display = f:CreateFontString(nil, "OVERLAY", "CRTFontDisableSmall")
     f.display:SetPoint("TOPRIGHT", -4, -3)
-    f.label = f:CreateFontString(nil, "OVERLAY", "CRTFontButtonSmall")
-    f.label:SetJustifyH("LEFT")
-    f.label:SetWordWrap(false)
     f.heading = f:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
     f.heading:SetPoint("TOPLEFT", 4, -2)
     f.heading:SetJustifyH("LEFT")
@@ -171,19 +166,13 @@ end
 local function rowChips(f, i, row, x0, width, y0)
     local names = W.session:Names(i)
     local editable = W.session:Editable(i)
-    local list, widths = {}, {}
+    local entries = {}
     for k, name in ipairs(names) do
-        local chip = f.chips[k] or Palette.MakeChip(f, W.drag)
-        f.chips[k] = chip
         -- a player's class, else the class a class name names ("Demon Hunter")
         local class = (W.classOf and W.classOf(name)) or CRT.NoteParser.ClassOf(name)
-        widths[k] = Palette.FillChip(chip, { label = name, class = class, token = name }, { row = i, index = k }, editable, false)
-        list[k] = chip
+        entries[k] = { label = name, class = class, token = name, source = { row = i, index = k }, removable = editable }
     end
-    for k = #names + 1, #f.chips do
-        f.chips[k]:Hide()
-    end
-    return math.max(L.chipH, Palette.Flow(list, widths, x0, width, y0))
+    return Palette.RowChips(f, W.drag, entries, x0, width, y0)
 end
 
 -- Lays row i out for its kind and returns its height.
@@ -236,16 +225,10 @@ local function drawRow(f, i, row, width)
         end
         height = L.infoH
     elseif kind == "label" or kind == "invite" then
-        f.label:SetWidth(0)
-        f.label:SetText(kind == "invite" and string.format(TEXT.invite, #W.session:Names(i)) or (row.label .. ":"))
-        local w = math.min(math.ceil(f.label:GetStringWidth() or 0), math.floor(width * L.labelMax))
-        f.label:SetWidth(w)
-        f.label:ClearAllPoints()
-        f.label:SetPoint("TOPLEFT", 4, -4)
-        f.label:Show()
+        local w = Palette.RowLabel(f, kind == "invite" and string.format(TEXT.invite, #W.session:Names(i)) or (row.label .. ":"), width)
         -- how many timer lines follow it, right of the label
         local tagW = (el and kind == "label") and el.LabelTag(f, i, 4 + w + 6) or 0
-        height = rowChips(f, i, row, 4 + w + 8 + tagW, width - 4, 2) + L.rowGap
+        height = rowChips(f, i, row, Palette.RowChipsX(w, tagW), width - 4, 2) + L.rowGap
     else
         if kind == "blank" then
             height = L.blankH
@@ -268,15 +251,7 @@ local function drawRow(f, i, row, width)
         end
     end
     -- an editable row is a drop target: a box, its edge the heading colour when selected for Quick fill
-    local selected = W.session.selected == i
-    if row.editable then
-        f:SetBackdropColor(UI.Color("background", 0.5))
-        f:SetBackdropBorderColor(UI.Color(selected and "heading" or "border", selected and 1 or 0.6))
-    else
-        f:SetBackdropColor(0, 0, 0, 0)
-        f:SetBackdropBorderColor(0, 0, 0, 0)
-    end
-    f.baseBorder = selected and "heading" or "border"
+    Palette.PaintRow(f, row.editable, W.session.selected == i)
     return height
 end
 
@@ -386,23 +361,17 @@ end
 
 -- The row under the mouse that takes names, or nil (outside the rows' scroll area there is none).
 local function rowUnderMouse()
-    if not (W.rowsScroll and W.rowsScroll:IsMouseOver()) then
-        return nil
-    end
-    for i, f in ipairs(W.rowFrames) do
-        if f:IsShown() and W.session.rows[i] and W.session.rows[i].editable and f:IsMouseOver() then
-            return i
-        end
-    end
-    return nil
+    local i = Palette.RowUnderMouse(W.rowsScroll, W.rowFrames, function(r)
+        return W.session.rows[r] ~= nil and W.session.rows[r].editable
+    end)
+    return i -- the row only: a drop lands at its end
 end
 
 local function highlight(target)
     for i, f in ipairs(W.rowFrames) do
         local row = W.session and W.session.rows[i]
         if row and row.editable and f:IsShown() then
-            local key = (i == target) and "accent" or f.baseBorder or "border"
-            f:SetBackdropBorderColor(UI.Color(key, (key == "border") and 0.6 or 1))
+            Palette.HighlightRow(f, i == target)
         end
     end
 end
