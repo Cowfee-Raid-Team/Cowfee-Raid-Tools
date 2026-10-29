@@ -189,6 +189,21 @@ function Notes:CanEditRaid()
     return false, TEXT.notAdmin
 end
 
+-- In combat or a boss encounter: nothing rewrites a raid note on its own then (the note isn't changed mid-pull).
+-- Cooldown proposals' auto-accept (Notes/Proposals.lua) and Mech Alerts' Raid note lines (Notes/Reminders.lua) wait.
+-- C_InstanceEncounter.IsEncounterInProgress, else the older global; an answer that can't be read counts as no.
+function Notes.Busy()
+    if InCombatLockdown and InCombatLockdown() then
+        return true
+    end
+    local fn = (C_InstanceEncounter and C_InstanceEncounter.IsEncounterInProgress) or IsEncounterInProgress
+    if fn then
+        local ok, on = pcall(fn)
+        return ok and not isSecret(on) and on == true
+    end
+    return false
+end
+
 function Notes:Set(section, key, value)
     local target = section and ndb()[section] or ndb()
     target[key] = value

@@ -524,16 +524,9 @@ function P.SetAutoAccept(on)
     redraw()
 end
 
--- In combat or a boss encounter: auto-accept waits (the note isn't rewritten mid-pull).
+-- In combat or a boss encounter: auto-accept waits (the note isn't rewritten mid-pull). Notes/Data.lua's Busy.
 local function busy()
-    if InCombatLockdown() then
-        return true
-    end
-    if IsEncounterInProgress then
-        local ok, on = pcall(IsEncounterInProgress)
-        return ok and readable(on) and on == true
-    end
-    return false
+    return Notes.Busy()
 end
 
 -- Applies the proposals auto-accept holds, once out of combat and encounter. Each is checked again.

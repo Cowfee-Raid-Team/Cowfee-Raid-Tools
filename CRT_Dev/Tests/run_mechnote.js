@@ -289,6 +289,59 @@ check("mechnote: two reminders that would share a marker each get their own", fu
   assert(M.CountIn(3470, "Mythic", kc) == 1 and M.CountIn(3470, "Mythic", kd) == 1, "one line each")
 end)
 
+-- Two saved reminders with the same marker (Reminders.SplitOne copies an older reminder's raidNote into both halves):
+-- the lowest id keeps it, the other moves to its own, and the note never holds a line twice
+check("mechnote: a shared marker is untangled without duplicate lines; the lowest id keeps it", function()
+  reset()
+  local old = R:Save(3470, nil, { text = "Spread", times = "P1 0:36, 1:37", outputs = { alert = true },
+    raidNote = { tag = "all", key = "spread", difficulty = "Mythic" } })
+  CRT.db.alerts.reminders[3470][old].group = nil -- an older reminder on any difficulty
+  local ids = R.SplitOne(3470, old)
+  local a, b = ids.nh, ids.mythic
+  assert(a < b and R:Get(3470, a).raidNote.key == "spread" and R:Get(3470, b).raidNote.key == "spread", "both halves carry the marker")
+  -- the Mythic half was changed and written under the shared marker before the untangling
+  R:Get(3470, b).text = "Spread B"
+  local raw0 = "EncounterID:3470;Difficulty:Mythic;Name:B\\n" .. table.concat(M.Lines(R:Get(3470, b), { { ph = 1, t = 36 }, { ph = 1, t = 97 } }, "all", "spread"), "\\n")
+  Notes:Import(raw0)
+  -- the higher id synced first: it moves to its own marker, the lower keeps "spread" and its lines
+  M.Sync(3470, b, { group = "mythic" })
+  assert(R:Get(3470, b).raidNote.key == "spread#" .. b and R:Get(3470, a).raidNote.key == "spread", "the lowest id keeps the bare marker")
+  local raw = Notes:Get(M.FindNote(3470, "Mythic")).raw
+  -- no alert's line twice, whatever its marker
+  local seen = {}
+  for line in (raw .. "\\n"):gmatch("(.-)\\n") do
+    local bare = line:gsub("mech:[^;]*;", "")
+    assert(not seen[bare], "a line twice: " .. line .. "\\n" .. raw)
+    seen[bare] = true
+  end
+  assert(select(2, raw:gsub("text:Spread B;", "")) == 2 and select(2, raw:gsub("text:Spread;", "")) == 2, raw)
+  assert(M.CountIn(3470, "Mythic", "spread") == 2 and M.CountIn(3470, "Mythic", "spread#" .. b) == 2, "two lines each:\\n" .. raw)
+  -- synced again either way round: nothing changes
+  M.Sync(3470, a, { group = "mythic" }) M.Sync(3470, b, { group = "mythic" })
+  assert(Notes:Get(M.FindNote(3470, "Mythic")).raw == raw, "stable")
+  -- the lower id synced first in a fresh tangle: the same result
+  R:Get(3470, b).raidNote.key = "spread"
+  M.Sync(3470, a, { group = "mythic" })
+  assert(R:Get(3470, a).raidNote.key == "spread" and R:Get(3470, b).raidNote.key == "spread#" .. b, "lower first: the same markers")
+  assert(M.CountIn(3470, "Mythic", "spread") == 2 and M.CountIn(3470, "Mythic", "spread#" .. b) == 2, "two lines each")
+end)
+
+check("notes: Busy is combat or a boss encounter, read safely", function()
+  local wasCombat, wasEnc, wasC = InCombatLockdown, IsEncounterInProgress, C_InstanceEncounter
+  InCombatLockdown = function() return false end
+  IsEncounterInProgress, C_InstanceEncounter = nil, nil
+  assert(Notes.Busy() == false, "neither")
+  IsEncounterInProgress = function() return true end
+  assert(Notes.Busy() == true, "an encounter (the older global)")
+  C_InstanceEncounter = { IsEncounterInProgress = function() return false end }
+  assert(Notes.Busy() == false, "the namespaced call wins")
+  C_InstanceEncounter = { IsEncounterInProgress = function() error("no") end }
+  assert(Notes.Busy() == false, "an error counts as no")
+  InCombatLockdown = function() return true end
+  assert(Notes.Busy() == true, "combat")
+  InCombatLockdown, IsEncounterInProgress, C_InstanceEncounter = wasCombat, wasEnc, wasC
+end)
+
 check("note fields: prio: high or low ranks a note line; older CRTs keep it", function()
   local t = P.Parse("time:5;text:x;show:alert;prio:HIGH;").timers[1]
   assert(t.prio == "high" and P.FormatLine(t):find("prio:high;", 1, true), "read and written")

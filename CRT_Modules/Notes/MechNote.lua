@@ -343,8 +343,16 @@ function MechNote.Leave(encounterID, r)
     return before
 end
 
--- The marker a reminder's lines get: its own, unless another reminder of the boss already uses it (an ability row and
--- your own reminder on the same spell, two of yours with the same text), then made its own with "#" and its id.
+local function lowerID(a, b)
+    if type(a) == "number" and type(b) == "number" then
+        return a < b
+    end
+    return tostring(a) < tostring(b)
+end
+
+-- The marker a reminder's lines get: its own, unless another reminder of the boss with a lower id has it too (an
+-- ability row and your own reminder on the same spell, two of yours with the same text, a reminder split per
+-- difficulty), then made its own with "#" and its id. The lowest id keeps the bare marker.
 function MechNote.UniqueKey(encounterID, id, key)
     local Reminders = CRT.AlertReminders
     if not (Reminders and key) then
@@ -352,7 +360,7 @@ function MechNote.UniqueKey(encounterID, id, key)
     end
     for _, e in ipairs(Reminders:List(encounterID)) do
         local n = e.id ~= id and MechNote.InNote(e.r)
-        if n and n.key:lower() == key:lower() then
+        if n and n.key:lower() == key:lower() and lowerID(e.id, id) then
             return key .. "#" .. tostring(id)
         end
     end
@@ -413,21 +421,44 @@ function MechNote.InStep(encounterID, id, opts)
 end
 
 -- Brings a saved reminder's lines in step with it (Expected), the panel after every save and an import over it: lines
--- left in the note of another difficulty (Times from changed) are taken out, and the reminder keeps the difficulty
--- and marker they went to. opts { ref, group, boss }. Returns the note's id and the line count, or nil for a
--- reminder that is Only me.
-function MechNote.Sync(encounterID, id, opts)
+-- left under its old marker or in the note of another difficulty (Times from changed) are taken out, and the
+-- reminder keeps the difficulty and marker they went to. Other reminders of the boss that shared a marker with it
+-- (before or after) are brought in step too, each with its own (UniqueKey), so no line is left twice or lost.
+-- opts { ref, group, boss }; nested is Sync's own call for those. Returns the note's id and the line count, or nil for
+-- a reminder that is Only me.
+function MechNote.Sync(encounterID, id, opts, nested)
     local lines, difficulty, key = MechNote.Expected(encounterID, id, opts)
     if not lines then
         return nil
     end
-    local r = CRT.AlertReminders:Get(encounterID, id)
+    local Reminders = CRT.AlertReminders
+    local r = Reminders:Get(encounterID, id)
     local n = r.raidNote
+    local oldKey = n.key
     if n.difficulty and not sameDifficulty(n.difficulty, difficulty) then
         MechNote.Leave(encounterID, r)
+    elseif n.difficulty and oldKey ~= key then
+        MechNote.Write(encounterID, n.difficulty, nil, oldKey, {}) -- the lines under the marker it shared
     end
     n.difficulty, n.key = difficulty, key
-    return MechNote.Write(encounterID, difficulty, (opts and opts.boss) or r.boss, key, lines)
+    local boss = (opts and opts.boss) or r.boss
+    local noteID, count = MechNote.Write(encounterID, difficulty, boss, key, lines)
+    if nested then
+        return noteID, count
+    end
+    local others = false
+    for _, e in ipairs(Reminders:List(encounterID)) do
+        local o = e.id ~= id and MechNote.InNote(e.r)
+        if o and (o.key:lower() == oldKey:lower() or o.key:lower() == key:lower()) then
+            others = true
+            MechNote.Sync(encounterID, e.id, { group = Reminders.GroupOf(e.r) }, true)
+        end
+    end
+    if others then
+        -- theirs moved off a marker this one keeps: its own lines written again
+        noteID, count = MechNote.Write(encounterID, difficulty, boss, key, lines)
+    end
+    return noteID, count
 end
 
 -- The players the For list offers: you and your raid or party, with their realm when it isn't yours, in name order.
