@@ -580,7 +580,9 @@ end
 -- the top), or one from before sources were kept; never a personal note.
 -- anyText: the Import/New dialog only. Text that doesn't read as a raid note is then saved as a new note
 -- of its own (never replacing one) instead of refused.
-function Notes:Import(text, from, personal, source, via, anyText)
+-- asNew: the Import/New dialog's picked boss. The note is always a new one, even when that boss and
+-- difficulty already have a note.
+function Notes:Import(text, from, personal, source, via, anyText, asNew)
     text = text or ""
     local note = Parser.Parse(text)
     local plain = not note.name and not note.encounterID and #note.timers == 0
@@ -589,7 +591,7 @@ function Notes:Import(text, from, personal, source, via, anyText)
     end
     local db = ndb()
     local id
-    for existingId, record in pairs(plain and {} or db.list) do
+    for existingId, record in pairs((plain or asNew) and {} or db.list) do
         local sameBoss = note.encounterID and record.encounterID == note.encounterID
         local sameDifficulty = (record.difficulty or "") == (note.difficulty or "")
         local sameKind = (record.personal == true) == (personal == true)

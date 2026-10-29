@@ -15,7 +15,7 @@ const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
 const harness = themeLua(process.argv.slice(2)) + `
 local parseSrc, dataSrc, diffSrc, engineSrc, modelSrc, renderSrc, historySrc, windowSrc, settingsSrc, pageSrc = ...
-local buttons, edits, fontStrings = {}, {}, {}
+local buttons, edits, fontStrings, dropdowns = {}, {}, {}, {}
 local focused
 local function mock(kind, name)
   local m = { shown = true, kind = kind, name = name, scripts = {}, points = {} }
@@ -95,14 +95,16 @@ local asked
 function StaticPopup_ShowCustomGenericConfirmation(info) asked = info return { info = info } end
 local pages, printed = {}, {}
 local CRT = {
-  Bosses = { OnRouteChange = function() end, RouteIndex = function() end },
+  Bosses = { OnRouteChange = function() end, RouteIndex = function() end,
+    Options = function() return { { key = "raid:r1", label = "Raid One", title = true }, { key = 3470, label = "Nek'zali" }, { key = 3480, label = "Fresh" } } end },
   db = { classCache = {}, roleCache = {}, notes = { list = {}, nextId = 1, history = {}, trustedOnly = true, personalText = "", editor = {},
     window = { shown = true, locked = true, hidePassed = true, onlyMe = false, fontSize = 14, alpha = 100, bgAlpha = 50, font = "Friz Quadrata" },
     assignments = { shown = true, locked = true, fontSize = 14, alpha = 100, bgAlpha = 50 },
     alert = { enabled = true, seconds = 10, tts = true, ttsSeconds = 3, ttsVolume = 100 } } },
   UI = { PAGE_W = 1026, PAGE_H = 560, SkinScrollBar = function() end, ScrollGutter = function(w) return 6 + (w or 18) end,
     Help = function(parent, title, text) local m = mock() rawset(m, "helpTitle", title) rawset(m, "helpText", text) return m end,
-    Dropdown = function(_, label, opts) local m = mock() rawset(m, "label", label) rawset(m, "opts", opts) rawset(m, "refresh", function() end) return m end,
+    Dropdown = function(parent, label, opts) local m = mock() rawset(m, "parent", parent) rawset(m, "label", label) rawset(m, "opts", opts)
+      rawset(m, "refresh", function() rawset(m, "refreshes", (rawget(m, "refreshes") or 0) + 1) end) dropdowns[#dropdowns + 1] = m return m end,
     Slider = function() local m = mock() rawset(m, "refresh", function() end) return m end,
     RegisterLayer = function() end, RegisterPage = function(_, key, title, fn) pages[key] = fn end, Show = function() end,
     SetFrameTitle = function() end, StyleWindow = function() end,RegisterTab = function() end, SetTabSelected = function() end, SkinTree = function() end,
@@ -543,6 +545,124 @@ do
   for _, m in ipairs(printed) do if m == "Saved as a new note: Pull at 3 stacks." then said = true end end
   assert(said, "dialog message, last: " .. tostring(printed[#printed]))
   ok("the Import/New button and its Save dialog")
+end
+
+-- 11. Import/New's Boss and Difficulty row: pick the boss when the text doesn't name one
+do
+  local d = CowfeeRaidToolsNoteImport
+  local nb = button("Import/New")
+  local save
+  for _, b in ipairs(buttons) do if rawget(b, "text") == "Save" and rawget(b, "parent") == d then save = b end end
+  local function typed(text) d.edit:SetText(text) d.edit.scripts.OnTextChanged(d.edit, true) end
+  local function said(msg) for _, m in ipairs(printed) do if m == msg then return true end end end
+  local function options(o) return type(o.options) == "function" and o.options() or o.options end
+  local function labelOf(o, key) for _, x in ipairs(options(o)) do if x.key == key then return x.label end end end
+  local bossRow, diffRow
+  for _, dd in ipairs(dropdowns) do
+    if rawget(dd, "parent") == d and rawget(dd, "label") == "Boss" then bossRow = dd end
+    if rawget(dd, "parent") == d and rawget(dd, "label") == "Difficulty" then diffRow = dd end
+  end
+  assert(bossRow and diffRow, "a Boss and a Difficulty dropdown in the dialog")
+  local bo, dopt = bossRow.opts, diffRow.opts
+  local list = options(bo)
+  assert(list[1].key == "none" and list[1].label == "No boss" and list[2].title and list[2].label == "Raid One" and list[3].key == 3470 and list[4].key == 3480, "No boss, then the raid route with its headings")
+  local dl = options(dopt)
+  assert(#dl == 3 and dl[1].key == "Mythic" and dl[2].key == "Heroic" and dl[3].key == "Normal", "Mythic, Heroic, Normal")
+  assert(d.bossHelp and rawget(d.bossHelp, "helpText") == "Pick the boss this note is for, so it shows under that difficulty and runs on that boss's pull. A note whose text starts with an EncounterID line uses that boss instead.", "the (?)")
+  local L = CRT.NotesPage.IMPORT
+  assert(L and L.H > 420 and L.H <= 470 and rawget(d, "height") == L.H and rawget(d, "width") == L.W, "the dialog grew, under 470 high")
+  assert(L.PAD + L.BOSS_LABEL_W + 5 + L.BOSS_W + L.DIFF_GAP + L.DIFF_LABEL_W + 5 + L.DIFF_W + CRT.UI.HELP_GAP + CRT.UI.HELP_SIZE <= L.W - L.PAD, "the row fits across the dialog")
+  assert(L.SCROLL_TOP <= L.ROW_Y - 32 - L.READ_H, "the text box under the row and its line")
+  ok("Import/New: Boss (No boss, then the route with raid headings), Difficulty and a (?) in one row over the text box")
+
+  -- No boss each time it opens; Difficulty greyed until a boss is picked
+  bo.set(3470)
+  nb.scripts.OnClick(nb)
+  assert(bo.get() == "none" and bo.enabledIf() and not dopt.enabledIf(), "opens on No boss, Difficulty greyed")
+  assert(not d.readLine:IsShown(), "no Read from line")
+  bo.set(3470)
+  assert(dopt.enabledIf() and dopt.get() == "Mythic", "a boss picked: Difficulty on, Mythic first")
+  -- text with an EncounterID line fills both and greys them
+  typed("EncounterID:3480;Difficulty:Heroic;Name:Fresh\\ntime:5;text:Go;")
+  assert(bo.get() == 3480 and dopt.get() == "Heroic" and not bo.enabledIf() and not dopt.enabledIf(), "read from the text, both greyed")
+  assert(d.readLine:IsShown() and d.readLine:GetText() == "Read from the note's EncounterID line", "the Read from line")
+  typed("EncounterID:9999;Difficulty:Mythic;Name:Elsewhere\\nA")
+  assert(bo.get() == 9999 and labelOf(bo, 9999) == "Elsewhere", "a boss outside the library shows its Name")
+  typed("EncounterID:9998\\nA")
+  assert(bo.get() == 9998 and labelOf(bo, 9998) == "Boss 9998", "and with no Name, Boss <id>")
+  assert(dopt.get() ~= nil and labelOf(dopt, dopt.get()), "no Difficulty: the dropdown still shows something")
+  typed("plain again")
+  assert(bo.get() == 3470 and bo.enabledIf() and dopt.enabledIf() and dopt.get() == "Mythic" and not d.readLine:IsShown(), "plain text again: your pick is back")
+  ok("Import/New: No boss on open, Difficulty greyed; an EncounterID line fills and greys both, with the Read from line")
+
+  -- No boss: saved exactly as before
+  nb.scripts.OnClick(nb)
+  typed("Just a plain line")
+  local nextId = CRT.db.notes.nextId
+  save.scripts.OnClick(save)
+  assert(said("Saved as a new note: Just a plain line."), "No boss: the old message")
+  local plain = Notes:Get(nextId)
+  assert(plain and plain.raw == "Just a plain line" and plain.encounterID == nil, "No boss: plain text, no boss")
+  -- text with its own EncounterID line imports as today, replacing that boss's note, whatever was picked first
+  local count = 0 for _ in pairs(CRT.db.notes.list) do count = count + 1 end
+  nb.scripts.OnClick(nb)
+  bo.set(3480)
+  typed("EncounterID:3470;Difficulty:Mythic;Name:Nek'zali\\nReplaced")
+  save.scripts.OnClick(save)
+  local after = 0 for _ in pairs(CRT.db.notes.list) do after = after + 1 end
+  assert(after == count and Notes:Get(id).raw == "EncounterID:3470;Difficulty:Mythic;Name:Nek'zali\\nReplaced", "its EncounterID line replaces that boss's note")
+  assert(said("Imported Nek'zali (Mythic)."), "the import message")
+  ok("Import/New: No boss and text with an EncounterID line save as before")
+
+  -- a picked boss: always a new note, with the header line, even when that boss already has one
+  nb.scripts.OnClick(nb)
+  typed("Soak on the left\\nsecond")
+  bo.set(3470)
+  dopt.set("Mythic")
+  nextId = CRT.db.notes.nextId
+  save.scripts.OnClick(save)
+  local new = Notes:Get(nextId)
+  assert(new and nextId ~= id and Notes:Get(id).raw == "EncounterID:3470;Difficulty:Mythic;Name:Nek'zali\\nReplaced", "a second note; the existing one is kept")
+  assert(new.raw == "EncounterID:3470;Difficulty:Mythic;Name:Nek'zali\\nSoak on the left\\nsecond", "the header line, then the text: " .. new.raw)
+  assert(new.encounterID == 3470 and new.difficulty == "Mythic" and not new.personal and Notes.DifficultyGroup(new) == "Mythic", "the boss's fields, listed under Mythic")
+  assert(Notes:HistoryCount(nextId) == 0, "a new note has no earlier version")
+  assert(said("Saved as a new note for Nek'zali (Mythic): Soak on the left."), "the message names the boss: " .. tostring(printed[#printed]))
+  assert(not d:IsShown(), "the dialog closes")
+  -- again on Heroic, with no text: still a new note
+  nb.scripts.OnClick(nb)
+  bo.set(3470)
+  dopt.set("Heroic")
+  local third = CRT.db.notes.nextId
+  save.scripts.OnClick(save)
+  assert(Notes:Get(third) and Notes:Get(third).raw == "EncounterID:3470;Difficulty:Heroic;Name:Nek'zali\\n" and Notes:Get(third).difficulty == "Heroic", "no text: the header line alone")
+  assert(said("Saved as a new note for Nek'zali (Heroic)."), "no text: the message without a name")
+  ok("Import/New: a picked boss saves a second note with the header line and the boss's fields, and says so")
+
+  -- the Personal tab: the same, as your own note
+  local personalTab
+  for _, f in ipairs(fontStrings) do
+    local p = rawget(f, "parent")
+    if rawget(f, "text") == "Personal" and p and p.scripts.OnClick then personalTab = p end
+  end
+  assert(personalTab, "the Personal tab")
+  personalTab.scripts.OnClick(personalTab)
+  local mine = Notes:MakePersonal(3470, "Mythic", "Nek'zali")
+  nb.scripts.OnClick(nb)
+  assert(bo.get() == "none", "No boss again")
+  typed("My own line")
+  bo.set(3470)
+  dopt.set("Mythic")
+  nextId = CRT.db.notes.nextId
+  save.scripts.OnClick(save)
+  local own = Notes:Get(nextId)
+  assert(own and nextId ~= mine and Notes:Get(mine) and own.personal == true and own.encounterID == 3470 and own.difficulty == "Mythic", "a second personal note for the boss")
+  assert(own.raw == "EncounterID:3470;Difficulty:Mythic;Name:Nek'zali\\nMy own line", "with the header line")
+  assert(said("Saved as a new note for Nek'zali (Mythic): My own line."), "the message")
+  for _, f in ipairs(fontStrings) do
+    local p = rawget(f, "parent")
+    if rawget(f, "text") == "Shared" and p and p.scripts.OnClick then p.scripts.OnClick(p) end
+  end
+  ok("Import/New on the Personal tab: a picked boss saves a new personal note")
 end
 print(passes .. " passed, 0 failed")
 `;
