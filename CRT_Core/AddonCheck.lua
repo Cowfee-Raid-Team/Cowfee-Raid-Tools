@@ -440,14 +440,17 @@ end
 
 -- The roster ---------------------------------------------------------------------------------------------------------
 
--- The group as rows: { key, name (as the game writes it, your own realm left off), class (file name), online, me,
--- subgroup }, you first, then roster order. Solo, only you.
+-- The group as rows: { key, name (your own realm left off, another realm kept, as Raid Groups shows names), class
+-- (file name), online, me, subgroup }, you first, then roster order. Solo, only you.
 function Check:Roster()
     local out, mine = {}, me()
     local function add(name, classFile, online, subgroup)
         local key = self.Key(name)
         if not key then
             return
+        end
+        if Ambiguate then
+            name = Ambiguate(name, "none")
         end
         local row = { key = key, name = name, class = readable(classFile) and classFile or nil, online = online and true or false, me = key == mine, subgroup = subgroup or 1 }
         if row.me then

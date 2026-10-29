@@ -59,7 +59,9 @@ local function unitMember(u)
   local n = 0
   for _, m in ipairs(raid) do if m.name ~= ME then n = n + 1 if n == i then return m end end end
 end
-UnitFullName = function(u) local m = unitMember(u) if m then return m.name, m.realm ~= "Sargeras" and m.realm:gsub("%s", "") or nil end end
+-- the game gives the player unit its own realm too; Ambiguate "none" drops your own realm and keeps another
+UnitFullName = function(u) local m = unitMember(u) if m then return m.name, (m.realm:gsub("%s", "")) end end
+Ambiguate = function(name, how) if how == "none" then return (name:gsub("%-Sargeras$", "")) end return name end
 UnitClass = function(u) local m = unitMember(u) if m then return "x", m.class end end
 UnitIsConnected = function() return true end
 GetNormalizedRealmName = function() return "Sargeras" end
@@ -320,6 +322,8 @@ eq(tostring(solex.AC:AskedAt()), "nil", "and the last ask forgotten")
 eq(fired[1], "roster", "the page is told")
 rows = as(solex, function() return solex.AC:Rows() end)
 eq(#rows .. ":" .. rows[1].state, "1:you", "solo: only you")
+eq(rows[1].name, "Solex", "solo: your own realm is left off your name")
+eq(rows[1].key, "solex-sargeras", "but the key keeps it")
 ok, why = as(solex, function() return solex.AC:Check() end)
 eq(tostring(ok) .. ":" .. tostring(why), "false:group", "no check out of a group")
 
@@ -328,6 +332,7 @@ shape = "party"
 eq(as(solex, function() return solex.AC:CanCheck() end), true, "can check in a party")
 rows = as(solex, function() return solex.AC:Rows() end)
 eq(#rows, 5, "a party lists its members")
+eq(rows[2].name .. "," .. rows[3].name, "Quick,Olden-AeriePeak", "a party member's own realm is left off, another realm kept")
 as(solex, function() solex.AC:Check() end)
 eq(outbox[#outbox].channel, "PARTY", "on the party channel")
 
