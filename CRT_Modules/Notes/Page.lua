@@ -39,6 +39,15 @@ local TEXT = {
     sendTo = "Send to",
     crtHelp = "CRT shares the note with CRT's own raid note and makes it everyone's active note. In a raid you must be the leader or an assistant.",
     allHelp = "All available sends with CRT and with every other addon on the list that is loaded, and says in chat how each one went.",
+    importTitle = "Import a raid note, or paste any text for a new one",
+    boss = "Boss",
+    noBoss = "No boss",
+    bossNumber = "Boss %d",
+    noDifficulty = "No difficulty",
+    importHelp = "Pick the boss this note is for, so it shows under that difficulty and runs on that boss's pull. A note whose text starts with an EncounterID line uses that boss instead.",
+    readFromText = "Read from the note's EncounterID line",
+    savedFor = "Saved as a new note for %s (%s): %s.",
+    savedForEmpty = "Saved as a new note for %s (%s).",
 }
 
 -- Share's Send to: "crt", a note target's key, or "all". A saved target that no longer exists is CRT.
@@ -91,6 +100,12 @@ local STATUS_LINE_H = 12
 local STATUS_LINES = 4
 local NOTE_BOX_TOP = 36
 local NOTE_BOX_H = TAB_H - NOTE_BOX_TOP - 8 - STATUS_LINES * STATUS_LINE_H
+-- The Import/New dialog: the Boss and Difficulty row under the title, the Read from line under it, then
+-- the text box down to Save and Cancel.
+local IMPORT = { W = 560, PAD = 14, ROW_Y = -30, BOSS_LABEL_W = 34, BOSS_W = 220, DIFF_GAP = 14, DIFF_LABEL_W = 62,
+    DIFF_W = 110, READ_H = 12, SCROLL_BOTTOM = 46 }
+IMPORT.SCROLL_TOP = IMPORT.ROW_Y - (UI.CONTROL_ROW_H or 32) - IMPORT.READ_H - 6
+IMPORT.H = 420 - 34 - IMPORT.SCROLL_TOP -- the text box as tall as before the row, when it started 34 down
 
 local GRAY = { 0.35, 0.35, 0.35 }
 local GOLD = CRT.PALETTE.heading -- the theme's heading colour; refilled in place on a theme switch
@@ -166,6 +181,80 @@ local function openEditor(source)
 end
 
 -- Import dialog: paste a note. -------------------------------------------------------------
+-- The Boss row says which boss a note without its own EncounterID line is for. pick holds the row:
+-- boss (an encounterID, or "none"), difficulty, and read: what the text's own EncounterID line says
+-- ({ encounterID, difficulty, name }), which the row then shows, greyed.
+local pick = { boss = "none", difficulty = Notes.DIFFICULTIES[1] }
+
+-- What the text's EncounterID line says, or nil when it has none.
+local function readHeader(text)
+    if not text:lower():find("encounterid:", 1, true) then
+        return nil -- most typing: no need to read the whole note
+    end
+    local note = CRT.NoteParser.Parse(text)
+    if note.encounterID then
+        return { encounterID = note.encounterID, difficulty = note.difficulty, name = note.name }
+    end
+end
+
+-- No boss, then the raid route with its raid headings, and a boss read from the text that the
+-- library doesn't have (its Name, or "Boss <id>").
+local function importBossOptions()
+    local list, known = { { key = "none", label = TEXT.noBoss } }, {}
+    local Bosses = CRT.Bosses
+    for _, o in ipairs(Bosses and Bosses.Options and Bosses:Options() or {}) do
+        list[#list + 1] = o
+        known[o.key] = true
+    end
+    local read = pick.read
+    if read and not known[read.encounterID] then
+        table.insert(list, 2, { key = read.encounterID, label = read.name or format(TEXT.bossNumber, read.encounterID) })
+    end
+    return list
+end
+
+-- Mythic, Heroic and Normal, and the text's own difficulty when it is another (or none).
+local function importDifficultyOptions()
+    local list, known = {}, {}
+    for _, name in ipairs(Notes.DIFFICULTIES) do
+        list[#list + 1] = { key = name, label = name }
+        known[name] = true
+    end
+    local read = pick.read
+    if read and not known[read.difficulty or "none"] then
+        list[#list + 1] = { key = read.difficulty or "none", label = read.difficulty or TEXT.noDifficulty }
+    end
+    return list
+end
+
+-- Saves the dialog's text. No boss picked, or text with its own EncounterID line: imported as it always
+-- was. A picked boss: the boss's header line, then the text, always a new note (never made the active
+-- one: you pick which note to use). The header's Name is the text's first line, as a plain note is named
+-- (Notes.FirstLineName), so two notes for one boss are told apart; the boss's name with no text.
+-- Returns id, message.
+local function saveImport(d)
+    local text = d.edit:GetText() or ""
+    local personal = listKind == "personal" -- on the Personal tab an import is your own copy, never replaced by a share
+    if pick.read or pick.boss == "none" then
+        return Notes:Import(text, nil, personal, nil, "Imported", true)
+    end
+    local bossName
+    for _, o in ipairs(importBossOptions()) do
+        if o.key == pick.boss then
+            bossName = tostring(o.label):gsub("[\r\n;]", "")
+        end
+    end
+    bossName = bossName or format(TEXT.bossNumber, pick.boss)
+    -- a ; would end the header's Name field early
+    local name = (Notes.FirstLineName(text) or ""):gsub(";", ""):gsub("^%s+", ""):gsub("%s+$", "")
+    name = name ~= "" and name or nil
+    local header = "EncounterID:" .. pick.boss .. ";Difficulty:" .. pick.difficulty .. ";Name:" .. (name or bossName)
+    local id, message = Notes:Import(header .. "\n" .. text, nil, personal, nil, "Imported", true, true)
+    if id then
+        message = name and format(TEXT.savedFor, bossName, pick.difficulty, name) or format(TEXT.savedForEmpty, bossName, pick.difficulty)
+    end
+    return id, message
+end
 
 local function getImportDialog()
     if importDialog then
@@ -173,7 +262,7 @@ local function getImportDialog()
     end
     local d = CreateFrame("Frame", "CowfeeRaidToolsNoteImport", UIParent, "BasicFrameTemplateWithInset")
     UI:StyleWindow(d)
-    d:SetSize(560, 420)
+    d:SetSize(IMPORT.W, IMPORT.H)
     d:SetPoint("CENTER")
     UI:RegisterLayer("popups", d)
     d:SetClampedToScreen(true)
@@ -183,12 +272,59 @@ local function getImportDialog()
     d:SetScript("OnDragStart", function(self) self:StartMoving(true) end)
     d:SetScript("OnDragStop", d.StopMovingOrSizing)
     tinsert(UISpecialFrames, "CowfeeRaidToolsNoteImport")
-    UI.SetFrameTitle(d, "Import a raid note, or paste any text for a new one")
+    UI.SetFrameTitle(d, TEXT.importTitle)
+
+    -- Boss and Difficulty, greyed while the text's EncounterID line says them (pick.read)
+    d.bossRow = UI.Dropdown(d, TEXT.boss, {
+        labelWidth = IMPORT.BOSS_LABEL_W,
+        width = IMPORT.BOSS_W,
+        options = function()
+            return importBossOptions()
+        end,
+        get = function()
+            return pick.read and pick.read.encounterID or pick.boss
+        end,
+        set = function(key)
+            pick.boss = key
+            d.refreshRow()
+        end,
+        enabledIf = function()
+            return not pick.read
+        end,
+    })
+    d.bossRow:SetPoint("TOPLEFT", IMPORT.PAD, IMPORT.ROW_Y)
+    d.diffRow = UI.Dropdown(d, TEXT.difficulty, {
+        labelWidth = IMPORT.DIFF_LABEL_W,
+        width = IMPORT.DIFF_W,
+        options = function()
+            return importDifficultyOptions()
+        end,
+        get = function()
+            return pick.read and (pick.read.difficulty or "none") or pick.difficulty
+        end,
+        set = function(key)
+            pick.difficulty = key
+            d.refreshRow()
+        end,
+        enabledIf = function()
+            return not pick.read and pick.boss ~= "none"
+        end,
+    })
+    d.diffRow:SetPoint("LEFT", d.bossRow, "RIGHT", IMPORT.DIFF_GAP, 0)
+    d.bossHelp = UI.HelpRight(d.diffRow, TEXT.boss, TEXT.importHelp)
+    d.readLine = d:CreateFontString(nil, "OVERLAY", "CRTFontDisableSmall")
+    d.readLine:SetPoint("TOPLEFT", IMPORT.PAD, IMPORT.ROW_Y - (UI.CONTROL_ROW_H or 32))
+    d.readLine:SetText(TEXT.readFromText)
+    d.refreshRow = function()
+        d.bossRow.refresh()
+        d.diffRow.refresh()
+        d.readLine:SetShown(pick.read ~= nil)
+    end
 
     local scroll = CreateFrame("ScrollFrame", "CowfeeRaidToolsNoteImportScroll", d, "UIPanelScrollFrameTemplate")
     UI:SkinScrollBar(scroll.ScrollBar)
-    scroll:SetPoint("TOPLEFT", 14, -34)
-    scroll:SetPoint("BOTTOMRIGHT", -34, 46)
+    scroll:SetPoint("TOPLEFT", IMPORT.PAD, IMPORT.SCROLL_TOP)
+    scroll:SetPoint("BOTTOMRIGHT", -34, IMPORT.SCROLL_BOTTOM)
     d.edit = CreateFrame("EditBox", nil, scroll)
     d.edit:SetMultiLine(true)
     d.edit:SetAutoFocus(false)
@@ -197,13 +333,27 @@ local function getImportDialog()
     d.edit:SetScript("OnEscapePressed", function()
         d:Hide()
     end)
+    -- read again as you type or paste, so the row follows the text's EncounterID line
+    d.edit:SetScript("OnTextChanged", function(self)
+        pick.read = readHeader(self:GetText() or "")
+        d.refreshRow()
+    end)
     scroll:SetScrollChild(d.edit)
+
+    -- Opens it empty, on No boss.
+    d.Open = function()
+        pick.boss = "none"
+        d.edit:SetText("")
+        pick.read = nil
+        d.refreshRow()
+        d:Show()
+        d.edit:SetFocus()
+    end
 
     local ok = makeButton(d, "Save", 110, 26)
     ok:SetPoint("BOTTOM", -60, 12)
     ok:SetScript("OnClick", function()
-        -- on the Personal tab an import is your own copy, never replaced by a share
-        local id, message = Notes:Import(d.edit:GetText(), nil, listKind == "personal", nil, "Imported", true)
+        local id, message = saveImport(d)
         CRT:Print(message)
         if id then
             selected = id
@@ -514,10 +664,7 @@ local function buildNotes(pf)
     local import = makeButton(pf, "Import/New", 122)
     import:SetPoint("TOPLEFT", 8, -(TAB_H - BUTTONS_H))
     import:SetScript("OnClick", function()
-        local d = getImportDialog()
-        d.edit:SetText("")
-        d:Show()
-        d.edit:SetFocus()
+        getImportDialog().Open()
     end)
     local delete = makeButton(pf, "Delete", 122)
     delete:SetPoint("LEFT", import, "RIGHT", 6, 0)
@@ -931,6 +1078,7 @@ CRT.NotesPage = {
     TAB_H = TAB_H,
     -- the Notes tab's note text box and the detail lines under it, for the layout checks
     NOTE_BOX_TOP = NOTE_BOX_TOP, NOTE_BOX_H = NOTE_BOX_H, STATUS_LINE_H = STATUS_LINE_H, STATUS_LINES = STATUS_LINES,
+    IMPORT = IMPORT, -- the Import/New dialog's layout
     Open = function(tab)
         currentTab = tab
         UI:Show("notes")
