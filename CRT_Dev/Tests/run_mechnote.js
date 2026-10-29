@@ -197,17 +197,27 @@ check("mechnote: a note with an EncounterID header keeps it and its other lines"
   local again = M.Lines(FULL, { { ph = 1, t = 40 } }, "healer", "1234")
   M.Write(3470, "Mythic", nil, "1234", again)
   assert(Notes:Get(id).raw == raw .. again[1] .. "\\n" and M.CountIn(3470, "Mythic", "1234") == 1, "no duplicates")
-  -- a note for any difficulty is never written (Mythic times would run on a Heroic pull): a Mythic note is made
+  -- a note for any difficulty is never written (Mythic times would run on a Heroic pull), and no other note is made
+  -- while the Mythic pull reads it (Notes:WriteTarget): refused, with what to do
   local anyId = Notes:Import("EncounterID:3480;Name:Loose\\nfree")
-  local loose = M.Write(3480, "Mythic", "Loose", "k", { "time:1;mech:k;" })
-  assert(loose and loose ~= anyId and Notes:Get(anyId).raw == "EncounterID:3480;Name:Loose\\nfree", "the any-difficulty note untouched")
-  assert(Notes:Get(loose).difficulty == "Mythic" and Notes:FindForEncounter(3480, "Mythic") == loose, "a Mythic pull reads the new Mythic note")
-  -- (a Heroic pull, with no Heroic note, falls back to the boss's newest note of any difficulty: Notes:FindForEncounter,
-  -- unchanged here)
-  -- a Heroic note only: a Mythic note is made, the Heroic one untouched
+  local notes = count(CRT.db.notes.list)
+  local loose, n0, why = M.Write(3480, "Mythic", "Loose", "k", { "time:1;mech:k;" })
+  assert(loose == nil and n0 == 0 and Notes:Get(anyId).raw == "EncounterID:3480;Name:Loose\\nfree", "the any-difficulty note untouched")
+  assert(why == "The Mythic pull reads the Loose (any difficulty) note. Make a Mythic note first (Raid Notes), then write.", tostring(why))
+  assert(count(CRT.db.notes.list) == notes, "no note made")
+  IsInGroup = IsInGroup or function() return false end -- solo: you may change the raid note
+  local ok, reason = M.CanWrite(3480, "Mythic")
+  assert(not ok and reason == why, "CanWrite says so before")
+  -- the caller says one note serves every difficulty of this boss: then it is written
+  assert(Notes:WriteTarget(3480, "Mythic", { singleDifficulty = true }) == anyId, "single difficulty: the note the pull reads")
+  -- a Heroic note only: the Mythic pull reads it, so refused too, the Heroic one untouched
   local h = Notes:Import("EncounterID:3490;Difficulty:Heroic;Name:H\\ntime:1;text:x;")
-  local m = M.Write(3490, "Mythic", "H", "k", { "time:1;mech:k;" })
-  assert(m and m ~= h and Notes:Get(h).raw == "EncounterID:3490;Difficulty:Heroic;Name:H\\ntime:1;text:x;" and Notes:Get(m).difficulty == "Mythic", "a Mythic note of its own")
+  local m, _, hwhy = M.Write(3490, "Mythic", "H", "k", { "time:1;mech:k;" })
+  assert(m == nil and Notes:Get(h).raw == "EncounterID:3490;Difficulty:Heroic;Name:H\\ntime:1;text:x;", "the Heroic note untouched")
+  assert(hwhy == "The Mythic pull reads the H (Heroic) note. Make a Mythic note first (Raid Notes), then write.", tostring(hwhy))
+  -- with a Mythic note made first, it goes there
+  local made = Notes:Import("EncounterID:3490;Difficulty:Mythic;Name:H\\n")
+  assert(M.Write(3490, "Mythic", "H", "k", { "time:1;mech:k;" }) == made, "the Mythic note")
   assert(M.NoteDifficulty({ difficulty = "Heroic" }, "nh") == "Heroic" and M.NoteDifficulty(nil, "mythic") == "Mythic" and M.NoteDifficulty({}, "nh") == "Heroic", "the note's Difficulty")
 end)
 
@@ -229,7 +239,11 @@ check("mechnote: Sync follows the reminder; turned off or Only me takes the line
   M.Sync(3470, id, { group = "mythic" })
   timers = Notes:Parsed(nid).timers
   assert(#timers == 4 and timers[1].text == "Spread out" and timers[1].tags[1] == "healer", "the four lines changed, none added")
-  -- Times from on a Heroic ability timeline: the lines move to the Heroic note
+  -- Times from on a Heroic ability timeline: the Heroic pull reads the Mythic note, so nothing moves
+  local none, _, why = M.Sync(3470, id, { group = "nh", ref = { difficulty = "Heroic" } })
+  assert(none == nil and why and why:find("Make a Heroic note first", 1, true) and M.CountIn(3470, "Mythic", "spread") == 4, "refused, the lines stay")
+  -- with a Heroic note, the lines move there
+  Notes:Import("EncounterID:3470;Difficulty:Heroic;Name:The Twin Fangs\\n")
   local hid = M.Sync(3470, id, { group = "nh", ref = { difficulty = "Heroic" } })
   assert(hid ~= nid and M.CountIn(3470, "Mythic", "spread") == 0 and M.CountIn(3470, "Heroic", "spread") == 4, "moved")
   M.Sync(3470, id, { group = "mythic", ref = { difficulty = "Mythic" } })
@@ -590,6 +604,19 @@ check("mechnote: Test of an alert with a #id marker leaves out only its own line
   items = test(a)
   assert(shows(items, "Row", 36) == 1 and shows(items, "Mine", 36) == 1, "Test of 777: once each, the 777#id line stays")
   A:Stop(true)
+end)
+
+check("mechnote: nothing is written during combat or a boss encounter, with the reason", function()
+  reset()
+  local id = Notes:Import("EncounterID:3470;Difficulty:Mythic;Name:Fangs\\nkeep")
+  local busy = Notes.Busy
+  Notes.Busy = function() return true end
+  local nid, n, why = M.Write(3470, "Mythic", "Fangs", "k", { "time:1;mech:k;" })
+  local ok, reason = M.CanWrite(3470, "Mythic")
+  Notes.Busy = busy
+  assert(nid == nil and n == 0 and why == M.TEXT.busy, "refused: " .. tostring(why))
+  assert(not ok and reason == M.TEXT.busy, "CanWrite says so")
+  assert(Notes:Get(id).raw == "EncounterID:3470;Difficulty:Mythic;Name:Fangs\\nkeep", "the note as it was")
 end)
 
 check("no errors raised", function()

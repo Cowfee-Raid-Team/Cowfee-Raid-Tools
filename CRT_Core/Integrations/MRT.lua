@@ -179,6 +179,8 @@ function MRT.ToMRTText(raw)
         local lower = line:lower()
         if lower:find("^time:") then
             out[#out + 1] = timedLine(line)
+        elseif CRT.NoteParser and CRT.NoteParser.AssignHeading(line) then
+            out[#out + 1] = CRT.NoteParser.AssignHeading(line).name -- an assignment block's heading (Notes/Assign.lua)
         elseif not (lower:find("^encounterid:") or lower:find("^invitelist:")) then
             out[#out + 1] = line
         end

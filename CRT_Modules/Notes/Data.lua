@@ -24,6 +24,9 @@ local ADDON, CRT = ...
 
 local TEXT = {
     notAdmin = "Only the raid leader or assistants can change the raid note.",
+    -- WriteTarget: the pull of that difficulty reads a note for another difficulty, or for any
+    otherNote = "The %s pull reads the %s note. Make a %s note first (Raid Notes), then write.",
+    anyDifficulty = "any difficulty",
 }
 
 local Parser = CRT.NoteParser
@@ -854,6 +857,38 @@ function Notes:NoteFor(encounterID, difficultyName, bossName, opts)
     end
     local newId = self:Import(headerLine(encounterID, difficultyName, bossName) .. "\n", nil, nil, nil, opts.via or "Timeline",
         nil, opts.exact and true or nil)
+    return newId, newId ~= nil
+end
+
+-- Where lines for a boss and difficulty are written (Mech Alerts' Raid note, Notes/MechNote.lua, and the assignment
+-- blocks, Notes/Assign.lua): the note the pull of that difficulty reads (FindForEncounter), when it is for that
+-- difficulty, or has no difficulty and opts.singleDifficulty says that is fine for this boss. When the pull reads
+-- another note, nothing is written: nil and the reason ("The Mythic pull reads the Twin Fangs (Heroic) note. Make a
+-- Mythic note first (Raid Notes), then write."). A note is made, for exactly that difficulty, only when the boss has
+-- none at all, and only without opts.find. opts: bossName, via (how a new note came), find (never make one),
+-- singleDifficulty. Returns the note's id (nil with find and no note) and true when it was just made, or nil and the
+-- reason.
+function Notes:WriteTarget(encounterID, difficultyName, opts)
+    if type(encounterID) ~= "number" then
+        return nil
+    end
+    opts = opts or {}
+    difficultyName = headerWord(difficultyName)
+    local id = self:FindForEncounter(encounterID, difficultyName)
+    local record = id and self:Get(id)
+    if record then
+        local d = type(record.difficulty) == "string" and record.difficulty or nil
+        if (d and difficultyName and d:lower() == difficultyName:lower()) or (not d and opts.singleDifficulty) then
+            return id, false
+        end
+        local name = (record.name or "?") .. " (" .. (d or TEXT.anyDifficulty) .. ")"
+        return nil, string.format(TEXT.otherNote, tostring(difficultyName), name, tostring(difficultyName))
+    end
+    if opts.find then
+        return nil
+    end
+    local newId = self:Import(headerLine(encounterID, difficultyName, headerWord(opts.bossName)) .. "\n", nil, nil, nil,
+        opts.via or "Timeline", nil, true)
     return newId, newId ~= nil
 end
 

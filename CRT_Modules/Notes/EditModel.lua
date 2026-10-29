@@ -316,6 +316,10 @@ local function rowFor(lineNo, raw, timer, markdown)
         row.field = inviteField(raw)
     elseif lower:find("^time:") or (lower:find("^ph:%s*[%d%.]+%s*;") and lower:find(";%s*time:")) then
         row.kind, row.text = "unread", trim(raw)
+    elseif Parser.AssignHeading(raw) then
+        -- an assignment block's heading line (Notes/Assign.lua): shown as a heading of its name
+        local h = Parser.AssignHeading(raw)
+        row.kind, row.text, row.assign = "heading", h.name, h
     else
         freeRow(row, raw, markdown)
     end

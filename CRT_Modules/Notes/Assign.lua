@@ -2,34 +2,41 @@ local ADDON, CRT = ...
 
 -- An assignment block: who does what on a mechanic (soaks, sides, who sends a cooldown), written into a raid note.
 -- No frames: the Mech Alerts Assign tab (Notes/AssignTab.lua) and the note editor's Add assignment
--- (Notes/EditorWindow.lua) both edit a block through these functions, so both write the same lines.
--- A block is { name, rows, times, spellID }:
---   name     the heading line over the rows (the mechanic's name by default)
+-- (Notes/EditorAssign.lua) both edit a block through these functions, so both write the same lines.
+-- A block is { name, rows, times, spellID, mech }:
+--   name     the heading over the rows (the mechanic's name by default)
 --   rows     { { label, text, tokens, casts } }: each row's label ("Left"), the text its timed lines show ("Soak
 --            left"; empty: the label), its players or tag words (names, "healer", "Group1", "Demon Hunter") and the
 --            casts it is on: "all", "rotate" (the rotate rows take the casts in turn: the first row cast 1, the
 --            second cast 2, ...) or a list of cast numbers ({ 2, 4, 6 })
---   times    nil: the mechanic's casts, read from the ability timeline by the caller; else its own { { ph, t } }
+--   times    nil: the mechanic's casts, read from the ability timeline by the caller; else its own typed { { ph, t } }
 --   spellID  the mechanic's spell (its icon on the timed lines), or nil
--- In the note, a block is plain lines every reader understands, the heading, one "Label: names" assignment line per
--- row, then one timed line per row per cast it is on (a row with no one in it has none):
---   Ravenous Feast
+--   mech     the mechanic it belongs to (MechNote.Key: its spell ID, or its name), or nil (the note editor's own)
+-- In the note, a block is its marked heading line, one "Label: names" assignment line per row, then one timed line
+-- per row per cast it is on (a row with no one in it has none):
+--   assign:ravenous feast;name:Ravenous Feast;for:1234;
 --   Left: Solex, Rixxy
 --   Right: Abu, Cheo
 --   time:36;ph:1;tag:Solex Rixxy;spellid:1234;text:Soak left;assign:ravenous feast/1/1;
--- The timed lines carry a marker, assign:<key>/<row>/<cast>, the block's key (Key: its name in lower case), the row's
--- number and the cast's (so a line follows its cast when the ability timeline moves it); FormatLine never writes it, so other writers keep it on the line, and an older CRT reads the line as any
--- other timed line. The heading and its rows are found by the heading's text (the first heading line with the
--- block's name that has assignment lines under it), so the note editor shows them as rows, as any group list. The
--- note is the one source: Read gives the block back from the text. An untimed block (no times) is its heading and
--- rows only; its rows' texts and casts are then not kept, as no line shows them.
--- Replace writes a block in place of its old lines, every other line byte for byte (MechNote.ReplaceLines); Write
--- does it in the boss's note for exactly one difficulty (MechNote.WriteWith), and links each timed line to its row
+-- The heading line (Parser.AssignHeading) carries the block's key (Key: its name in lower case), its name, the
+-- mechanic (for:) and its typed times (times:, "1@20,1@60": phase @ seconds, so they stay with no one in a row); every
+-- reader shows it as a heading of its name (Parse, the note editor, the MRT and NSRT texts). Only a marked heading is
+-- a block: a group list someone typed under a plain heading never is, until Make an Assign block (Adopt) turns it
+-- into one. The timed lines carry assign:<key>/<row>/<cast> (the cast's number, so a line follows its cast when the
+-- ability timeline moves it); FormatLine never writes it, so other writers keep it, and an older CRT reads the line
+-- as any other timed line. The note is the one source: Read gives the block back from the text. An untimed block is
+-- its heading and rows; its rows' texts and casts are then not kept, as no line shows them.
+-- A key is unique in its note (KeyTaken: another block's, or a typed group list's heading). Replace writes a block in
+-- place of its old lines, every other line byte for byte (MechNote.ReplaceLines); Write does it in the note the pull
+-- of that difficulty reads (MechNote.WriteWith, Notes:WriteTarget), and links each timed line to its row
 -- (Notes/Links.lua LinkTo), so in the note editor a change to a row's names is written on its lines too.
---   Assign.Lines(block, times, opts)     the block's lines. opts: key (default Key(name)), spellID
+--   Assign.Lines(block, times, opts)     the block's lines. opts: key (default Key(name)), spellID, mech
 --   Assign.Read(text, key, times)        the block with that key in a note's text, or nil
+--   Assign.BlocksFor(text, mech)         the keys of a mechanic's blocks
+--   Assign.KeyTaken(text, key, oldKey), Assign.FreeName(text, base)
 --   Assign.Candidates(text)              group lists that timed lines follow but are no block yet (a pasted note)
---   Assign.FromRows(text, heading, times)   such a list as a block, and the lines it takes in
+--   Assign.FromRows(text, heading, times)   such a list as a block, and the lines it takes in; AdoptChanges says what
+--                                        making it a block changes
 --   Assign.Adopt(text, heading, times, opts)   the text with that list rewritten as a block
 
 local Assign = {}
@@ -331,7 +338,7 @@ function Assign.Lines(block, times, opts)
     local key = opts.key or Assign.Key(block.name)
     local spellID = opts.spellID or block.spellID
     spellID = type(spellID) == "number" and spellID > 0 and spellID or nil
-    local out = { Assign.CleanName(block.name) }
+    local out = { Assign.HeadingLine(block, key, opts.mech or block.mech) }
     for r, row in ipairs(block.rows) do
         out[#out + 1] = labelLine(row, r)
     end
@@ -355,6 +362,48 @@ function Assign.Lines(block, times, opts)
             end
             out[#out + 1] = Parser.FormatLine(t) .. Assign.Marker(key, r, c)
         end
+    end
+    return out
+end
+
+-- Typed times as the heading's times: field, "1@20,1@60" (phase @ seconds), and back.
+local function num(n)
+    return (("%.10g"):format(n))
+end
+
+function Assign.FormatTimesField(list)
+    local out = {}
+    for i, e in ipairs(Assign.SortTimes(list)) do
+        out[i] = num(e.ph) .. "@" .. num(e.t)
+    end
+    return table.concat(out, ",")
+end
+
+function Assign.ParseTimesField(text)
+    local out = {}
+    for ph, t in tostring(text or ""):gmatch("([%d%.]+)@(%-?[%d%.]+)") do
+        if tonumber(ph) and tonumber(t) then
+            out[#out + 1] = { ph = tonumber(ph), t = tonumber(t) }
+        end
+    end
+    return Assign.SortTimes(out)
+end
+
+-- A mechanic's key as the heading's for: (no ";").
+local function cleanMech(mech)
+    local m = mech and trim((tostring(mech):gsub("[;\r\n]", ""))):lower()
+    return (m and m ~= "") and m or nil
+end
+
+-- The block's heading line: its key and name, the mechanic (for:) and its typed times (times:), when it has them.
+function Assign.HeadingLine(block, key, mech)
+    local out = Assign.FIELD .. ":" .. key .. ";name:" .. Assign.CleanName(block.name) .. ";"
+    mech = cleanMech(mech)
+    if mech then
+        out = out .. "for:" .. mech .. ";"
+    end
+    if block.times then
+        out = out .. "times:" .. Assign.FormatTimesField(block.times) .. ";"
     end
     return out
 end
@@ -396,7 +445,8 @@ local function labelsUnder(s, heading)
     return out
 end
 
--- Where a block is in a session's lines: { heading, labels = { line }, timed = { line } }.
+-- Where a block is in a session's lines: { heading (its marked heading line), labels = { line } (the assignment
+-- lines right under it), timed = { line } (its marked timed lines) }. A plain heading of the same name is never it.
 local function find(s, key)
     key = tostring(key or ""):lower()
     local f = { labels = {}, timed = {} }
@@ -405,11 +455,8 @@ local function find(s, key)
             if Assign.MarkerOf(row.raw) == key then
                 f.timed[#f.timed + 1] = i
             end
-        elseif not f.heading and row.kind == "heading" and Assign.Key(row.text) == key then
-            local labels = labelsUnder(s, i)
-            if #labels > 0 then
-                f.heading, f.labels = i, labels
-            end
+        elseif not f.heading and row.assign and row.assign.key == key then
+            f.heading, f.labels = i, labelsUnder(s, i)
         end
     end
     return f
@@ -447,19 +494,70 @@ function Assign.Replace(text, key, lines, oldKey)
     end, lines)
 end
 
--- The keys of the blocks a note's timed lines name, in order.
+-- The keys of the blocks in a note: their marked headings', then any its timed lines name alone, in order.
 function Assign.Keys(text)
+    local s = session(text)
     local out, seen = {}, {}
-    for _, row in ipairs(session(text).rows) do
+    local function add(key)
+        if key and not seen[key] then
+            seen[key] = true
+            out[#out + 1] = key
+        end
+    end
+    for _, row in ipairs(s.rows) do
+        add(row.assign and row.assign.key)
+    end
+    for _, row in ipairs(s.rows) do
         if row.kind == "timer" then
-            local key = Assign.MarkerOf(row.raw)
-            if key and not seen[key] then
-                seen[key] = true
-                out[#out + 1] = key
-            end
+            add((Assign.MarkerOf(row.raw)))
         end
     end
     return out
+end
+
+-- The keys of a mechanic's blocks (their headings' for:), in order.
+function Assign.BlocksFor(text, mech)
+    mech = cleanMech(mech)
+    local out = {}
+    for _, row in ipairs(session(text).rows) do
+        if mech and row.assign and row.assign.mech == mech then
+            out[#out + 1] = row.assign.key
+        end
+    end
+    return out
+end
+
+-- Whether a block can't take this key in the note: another block has it, or a group list someone typed (a plain
+-- heading with assignment lines under it) has that name. oldKey: the block's own key, which it keeps.
+function Assign.KeyTaken(text, key, oldKey)
+    key = tostring(key or ""):lower()
+    if oldKey and key == tostring(oldKey):lower() then
+        return false
+    end
+    local s = session(text)
+    for _, k in ipairs(Assign.Keys(s)) do
+        if k == key then
+            return true
+        end
+    end
+    for i, row in ipairs(s.rows) do
+        if row.kind == "heading" and not row.assign and Assign.Key(row.text) == key and #labelsUnder(s, i) > 0 then
+            return true
+        end
+    end
+    return false
+end
+
+-- base, else "base 2", "base 3", ...: the first name whose key the note has free.
+function Assign.FreeName(text, base)
+    local s = session(text)
+    base = Assign.CleanName(base)
+    local name, n = base, 2
+    while Assign.KeyTaken(s, Assign.Key(name)) do
+        name = base .. " " .. n
+        n = n + 1
+    end
+    return name
 end
 
 -- Reading a block back --------------------------------------------------------------------------------------
@@ -593,11 +691,17 @@ function Assign.Read(text, key, times)
     if not f.heading and #f.timed == 0 then
         return nil
     end
-    local block = { key = tostring(key):lower(), rows = {} }
-    block.name = f.heading and trim(s.rows[f.heading].text) or tostring(key)
+    local h = f.heading and s.rows[f.heading].assign
+    local block = { key = tostring(key):lower(), rows = {}, hasHeading = h ~= nil, hasLines = #f.timed > 0 }
+    block.name = h and h.name or tostring(key)
+    block.mech = h and h.mech or nil
+    if h and h.times then
+        block.times = Assign.ParseTimesField(h.times) -- typed times: they are the casts
+    end
     for r, i in ipairs(f.labels) do
         block.rows[r] = rowFrom(s, i)
     end
+    local labelled = #block.rows
     local entries = {}
     for _, i in ipairs(f.timed) do
         local row = s.rows[i]
@@ -607,6 +711,10 @@ function Assign.Read(text, key, times)
             while #block.rows < r do
                 block.rows[#block.rows + 1] = Assign.NewRow(#block.rows + 1)
             end
+            -- a row with no assignment line (its heading's rows edited away): its names from its lines' tag:
+            if r > labelled and #block.rows[r].tokens == 0 then
+                block.rows[r].tokens = Parser.JoinClassWords(row.timer.tags or {})
+            end
             entries[#entries + 1] = { r = r, cast = c, ph = row.timer.ph or 1, t = row.timer.time, text = row.timer.text,
                 spellId = row.timer.spellId }
         end
@@ -614,7 +722,7 @@ function Assign.Read(text, key, times)
     if #block.rows == 0 then
         block.rows[1] = Assign.NewRow(1)
     end
-    fromLines(block, entries, times)
+    fromLines(block, entries, block.times or times)
     return block
 end
 
@@ -631,13 +739,9 @@ end
 function Assign.Candidates(text, saved)
     local s = session(text)
     local m = linkMatch(s, saved)
-    local blocks = {}
-    for _, key in ipairs(Assign.Keys(s)) do
-        blocks[key] = true
-    end
     local out = {}
     for i, row in ipairs(s.rows) do
-        if row.kind == "heading" and not blocks[Assign.Key(row.text)] then
+        if row.kind == "heading" and not row.assign then -- a block's marked heading is a block already
             local labels = labelsUnder(s, i)
             local n = 0
             for _, li in ipairs(labels) do
@@ -658,7 +762,7 @@ end
 function Assign.FromRows(text, heading, times, saved)
     local s = session(text)
     local row = s.rows[heading]
-    if not (row and row.kind == "heading") then
+    if not (row and row.kind == "heading" and not row.assign) then
         return nil
     end
     local labels = labelsUnder(s, heading)
@@ -675,7 +779,8 @@ function Assign.FromRows(text, heading, times, saved)
         taken[i] = true
         for _, line in ipairs(m.byRow[i] or {}) do
             local t = line.timer
-            entries[#entries + 1] = { r = r, ph = t.ph or 1, t = t.time, text = t.text, spellId = t.spellId, index = line.index }
+            entries[#entries + 1] = { r = r, ph = t.ph or 1, t = t.time, text = t.text, spellId = t.spellId, index = line.index,
+                raw = s.rows[line.index].raw }
         end
     end
     local off = fromLines(block, entries, times)
@@ -688,7 +793,51 @@ function Assign.FromRows(text, heading, times, saved)
             taken[e.index] = true
         end
     end
+    block.adopted = { entries = entries, off = off }
     return block, taken
+end
+
+-- The fields a block's timed line keeps; any other (colours, a display, a sound) is dropped when a list is adopted.
+local KEPT = { time = true, ph = true, tag = true, text = true, spellid = true }
+
+-- What making the group list at line `heading` a block changes, for the confirmation: { lines (the timed lines
+-- rewritten), off (left as they are: on no cast), texts (the rows whose lines had several texts, now one), dropped
+-- (lines that lose other fields) }, or nil.
+function Assign.AdoptChanges(text, heading, times, saved)
+    local block = Assign.FromRows(text, heading, times, saved)
+    if not block then
+        return nil
+    end
+    local out = { name = block.name, lines = #block.adopted.entries - #block.adopted.off, off = #block.adopted.off, texts = {},
+        dropped = 0 }
+    local textsOf, off = {}, {}
+    for _, e in ipairs(block.adopted.off) do
+        off[e] = true -- left as they are: nothing changes on them
+    end
+    for _, e in ipairs(block.adopted.entries) do
+        if not off[e] then
+            textsOf[e.r] = textsOf[e.r] or {}
+            textsOf[e.r][e.text or ""] = true
+            for part in (e.raw or ""):gmatch("[^;]+") do
+                local k = part:match("^%s*([^:]+):")
+                if k and not KEPT[trim(k):lower()] then
+                    out.dropped = out.dropped + 1
+                    break
+                end
+            end
+        end
+    end
+    for r, set in pairs(textsOf) do
+        local n = 0
+        for _ in pairs(set) do
+            n = n + 1
+        end
+        if n > 1 then
+            out.texts[#out.texts + 1] = Assign.CleanLabel(block.rows[r].label, r)
+        end
+    end
+    table.sort(out.texts)
+    return out
 end
 
 -- The text with the group list at line `heading` rewritten as a block (FromRows, then Lines in its place), and the
@@ -700,7 +849,21 @@ function Assign.Adopt(text, heading, times, opts)
         return nil
     end
     block.spellID = opts.spellID or block.spellID
+    block.mech = opts.mech
+    block.adopted = nil
+    -- typed times (no mechanic's casts) are kept on the heading
+    if times then
+        block.times = nil
+    end
     local key = opts.key or Assign.Key(block.name)
+    -- the list itself goes, so only the rest of the note can hold its name already
+    local rest = CRT.MechNote.ReplaceLines(text or "", function(i)
+        return taken[i] == true
+    end, {})
+    if Assign.KeyTaken(rest, key) then
+        block.name = Assign.FreeName(rest, block.name)
+        key = Assign.Key(block.name)
+    end
     block.key = key
     local lines = Assign.Lines(block, times or block.times, { key = key })
     return CRT.MechNote.ReplaceLines(text or "", function(i)
@@ -730,18 +893,37 @@ function Assign.Link(noteKey, text, key)
     return Links.LinkTo(noteKey, s, pairs_)
 end
 
--- Writes the block's lines into the boss's note for that difficulty, in place of its old lines (and of oldKey's: a
--- renamed block keeps its place); the note is made when it has none and there are lines (MechNote.WriteWith), and the
--- timed lines are linked to their rows. Returns the note's id, or nil when there was none to write to.
+-- Links the timed lines of every block in a saved note's text to their rows (the note editor's Save; never a text
+-- that isn't saved).
+function Assign.LinkAll(noteKey, text)
+    local n = 0
+    for _, key in ipairs(Assign.Keys(text)) do
+        n = n + Assign.Link(noteKey, text, key)
+    end
+    return n
+end
+
+-- Writes the block's lines into the note the pull of that difficulty reads, in place of its old lines (and of oldKey's:
+-- a renamed block keeps its place); the note is made when the boss has none (MechNote.WriteWith), and the timed lines
+-- are linked to their rows. Refused, nothing written, when the key is another block's or list's in that note
+-- (KeyTaken), in combat or a boss encounter, or when the pull reads another note. Returns the note's id, or nil and the
+-- reason.
+Assign.TEXT.keyTaken = "The note already has an assignment or a group list named %s. Pick another name."
 function Assign.Write(encounterID, difficulty, bossName, key, lines, oldKey)
-    local id = CRT.MechNote.WriteWith(encounterID, difficulty, bossName, lines, function(raw)
+    local M = CRT.MechNote
+    local target = M.FindNote(encounterID, difficulty)
+    local current = target and CRT.Notes:Get(target)
+    if current and lines and #lines > 0 and Assign.KeyTaken(current.raw or "", key, oldKey) then
+        return nil, string.format(Assign.TEXT.keyTaken, key)
+    end
+    local id, _, why = M.WriteWith(encounterID, difficulty, bossName, lines, function(raw)
         return Assign.Replace(raw, key, lines, oldKey)
     end)
     local record = id and CRT.Notes:Get(id)
     if record then
         Assign.Link(id, record.raw or "", key)
     end
-    return id
+    return id, why
 end
 
 -- How many timed lines of a block a note's text has.

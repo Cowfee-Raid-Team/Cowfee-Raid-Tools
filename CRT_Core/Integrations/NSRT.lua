@@ -48,10 +48,12 @@ end
 
 -- Fields only CRT reads. NSRT has its own words for some of these ideas (TTS:, countdown:, sound:,
 -- glowunit:) but not the same values, so they are left out rather than guessed.
--- shield: (a shield bar, Alerts/Absorb.lua), ticks:, fill:, countto: (a bar's impact ticks), prio: and mech: (the Mech Alerts
--- marker, Notes/MechNote.lua) are CRT's alone, so NSRT never sees a field it doesn't know.
+-- shield: (a shield bar, Alerts/Absorb.lua), ticks:, fill:, countto: (a bar's impact ticks), prio:, mech: (the Mech Alerts
+-- marker, Notes/MechNote.lua) and assign: (an assignment block's marker, Notes/Assign.lua) are CRT's alone, so NSRT never
+-- sees a field it doesn't know.
 local CRT_ONLY = { show = true, tts = true, ttsat = true, count = true, glow = true, warn = true, linger = true,
-    icon = true, sound = true, shield = true, ticks = true, fill = true, countto = true, prio = true, mech = true }
+    icon = true, sound = true, shield = true, ticks = true, fill = true, countto = true, prio = true, mech = true,
+    assign = true }
 
 local classIDs -- "DEATHKNIGHT" -> 6, built on first use
 
@@ -144,6 +146,8 @@ function NSRT.ToNSRTText(raw)
             out[#out + 1] = headerLine(line)
         elseif lower:find("^time:") then
             out[#out + 1] = timedLine(line)
+        elseif CRT.NoteParser.AssignHeading(line) then
+            out[#out + 1] = CRT.NoteParser.AssignHeading(line).name -- an assignment block's heading, as plain text
         elseif not lower:find("^invitelist:") then
             out[#out + 1] = assignmentLine(line)
         end

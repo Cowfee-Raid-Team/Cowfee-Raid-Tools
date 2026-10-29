@@ -188,6 +188,19 @@ check("NSRT: a Mech Alerts line's ticks:, fill:, countto:, prio: and mech: are l
   assert(text:find("time:36;ph:1;tag:everyone;spellid:5;text:Spread;", 1, true), "the rest as before: " .. text)
 end)
 
+-- an assignment block (Notes/Assign.lua): its timed lines' assign: marker is CRT's own, its heading line plain text
+check("NSRT and MRT: an assignment block's assign: marker is left out, its heading is its name", function()
+  local note = "EncounterID:3001;Name:Boss\\nassign:ravenous feast;name:Ravenous Feast;for:5;times:1@36;\\nLeft: Abu, Cheo\\n"
+    .. "time:36;ph:1;tag:Abu Cheo;spellid:5;text:Soak;assign:ravenous feast/1/1;"
+  local text = NSRT.ToNSRTText(note)
+  assert(not text:lower():find("assign", 1, true) and not text:find("for:5", 1, true), "no marker reaches NSRT: " .. text)
+  assert(text:find("\\nRavenous Feast\\nLeft: Abu, Cheo\\ntime:36;ph:1;tag:Abu Cheo;spellid:5;text:Soak;$"), text)
+  local mrt = MRT.ToMRTText(note)
+  assert(not mrt:lower():find("assign", 1, true) and mrt:find("^Ravenous Feast\\nLeft: Abu, Cheo\\n"), "MRT: " .. mrt)
+  local parsed = CRT.NoteParser.Parse(note)
+  assert(parsed.lines[1] == "Ravenous Feast" and #parsed.timers == 1, "CRT reads the heading as its name")
+end)
+
 if checks.failed then error(checks.failed .. " failed") end
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }

@@ -25,6 +25,9 @@ MechNote.FIELD = "mech"
 -- ROLE_WORDS), the first being the default.
 MechNote.ROLES = { "all", "tank", "healer", "melee", "ranged" }
 MechNote.VIA = "Mech Alerts" -- how a note made here came (a note's via, shown in the Raid Notes list)
+MechNote.TEXT = {
+    busy = "Not during combat or a boss encounter. Change it after the pull.",
+}
 
 local IS_ROLE = {}
 for _, w in ipairs(MechNote.ROLES) do
@@ -339,11 +342,37 @@ local function sameDifficulty(a, b)
     return trim(a):lower() == trim(b):lower()
 end
 
--- The boss's shared note for exactly that difficulty (Notes:FindExact), or nil. A note for any difficulty, or for
--- another one, is never written: Mythic times would run on a Heroic pull.
+-- The note the lines go to (Notes:WriteTarget): the one the pull of that difficulty reads, when it is for that
+-- difficulty; nil when the boss has none, or the pull reads another note (then also the reason). A note for any
+-- difficulty, or for another one, is never written: Mythic times would run on a Heroic pull.
 function MechNote.FindNote(encounterID, difficulty)
     local Notes = CRT.Notes
-    return Notes and Notes.FindExact and Notes:FindExact(encounterID, difficulty) or nil
+    if not (Notes and Notes.WriteTarget) then
+        return nil
+    end
+    return Notes:WriteTarget(encounterID, difficulty, { find = true })
+end
+
+-- Whether you may write lines for the boss and difficulty now: you may change the raid note, it isn't combat or a
+-- boss encounter (Notes.Busy), and the pull reads a note for that difficulty (or the boss has none yet). False and
+-- the reason when not. Asked again at every write.
+function MechNote.CanWrite(encounterID, difficulty)
+    local Notes = CRT.Notes
+    if not Notes then
+        return false
+    end
+    local ok, why = Notes:CanEditRaid()
+    if not ok then
+        return false, why
+    end
+    if Notes.Busy and Notes.Busy() then
+        return false, MechNote.TEXT.busy
+    end
+    local id, reason = MechNote.FindNote(encounterID, difficulty)
+    if not id and reason then
+        return false, reason
+    end
+    return true
 end
 
 -- How many marked lines the boss's note for that difficulty has (0 with no note), and the note.
@@ -366,22 +395,27 @@ function MechNote.Write(encounterID, difficulty, bossName, key, lines)
 end
 
 -- The same for any writer: replace(raw) gives the note's new text (the assignment blocks, Notes/Assign.lua). The note
--- is found or made as Write does, and changed only when its text changes.
+-- is Notes:WriteTarget's (made when the boss has none, for lines to write); a taking out also looks in the boss's note
+-- for exactly that difficulty, where they went before. Changed only when its text changes. Never during combat or a
+-- boss encounter. Returns the note's id and the line count, or nil, 0 and the reason.
 function MechNote.WriteWith(encounterID, difficulty, bossName, lines, replace)
     local Notes = CRT.Notes
     if not (Notes and type(encounterID) == "number") then
         return nil, 0
     end
+    if Notes.Busy and Notes.Busy() then
+        return nil, 0, MechNote.TEXT.busy
+    end
     lines = lines or {}
-    local id
+    local id, why
     if #lines == 0 then
-        id = MechNote.FindNote(encounterID, difficulty)
+        id = MechNote.FindNote(encounterID, difficulty) or Notes:FindExact(encounterID, difficulty)
     else
-        id = Notes:NoteFor(encounterID, difficulty, bossName, { exact = true, via = MechNote.VIA })
+        id, why = Notes:WriteTarget(encounterID, difficulty, { bossName = bossName, via = MechNote.VIA })
     end
     local record = id and Notes:Get(id)
     if not record then
-        return nil, 0
+        return nil, 0, why
     end
     local raw = record.raw or ""
     local new = replace(raw)
@@ -498,6 +532,15 @@ function MechNote.Sync(encounterID, id, opts, nested)
     if not lines then
         return nil
     end
+    -- nothing moves when the new lines can't be written (combat, or the pull reads another note): the old ones stay
+    local Notes = CRT.Notes
+    if Notes.Busy and Notes.Busy() then
+        return nil, 0, MechNote.TEXT.busy
+    end
+    local target, why = MechNote.FindNote(encounterID, difficulty)
+    if not target and why and #lines > 0 then
+        return nil, 0, why
+    end
     local Reminders = CRT.AlertReminders
     local r = Reminders:Get(encounterID, id)
     local n = r.raidNote
@@ -509,9 +552,9 @@ function MechNote.Sync(encounterID, id, opts, nested)
     end
     n.difficulty, n.key = difficulty, key
     local boss = (opts and opts.boss) or r.boss
-    local noteID, count = MechNote.Write(encounterID, difficulty, boss, key, lines)
-    if nested then
-        return noteID, count
+    local noteID, count, why = MechNote.Write(encounterID, difficulty, boss, key, lines)
+    if nested or why then
+        return noteID, count, why
     end
     local others = false
     for _, e in ipairs(Reminders:List(encounterID)) do
