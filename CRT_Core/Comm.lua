@@ -80,11 +80,30 @@ local function lockedLine(what)
     return text .. " can't be shared during an encounter. Share again after the pull ends."
 end
 
+-- Drops the queue with one chat line for each module whose messages it held (line(what) writes it), in queue order.
 local function drop(line)
+    local seen, lines = {}, {}
+    for _, m in ipairs(queue) do
+        local key = name(m.what)
+        if not seen[key] then
+            seen[key] = true
+            lines[#lines + 1] = line(m.what)
+        end
+    end
     wipe(queue)
     waiting = false
-    CRT:Print(line)
+    local left = {}
+    for _, text in ipairs(lines) do
+        if not left[text] then -- "you left the group" once, whoever's messages they were
+            left[text] = true
+            CRT:Print(text)
+        end
+    end
     return false
+end
+
+local function leftGroup()
+    return "Sharing stopped: you left the group."
 end
 
 -- Sends what is queued, in order. False when the queue was dropped.
@@ -94,20 +113,24 @@ local function pump()
         local m = queue[1]
         local ch = Comm.Channel()
         if not ch then
-            return drop("Sharing stopped: you left the group.")
+            return drop(leftGroup)
         end
         local ok, result = pcall(C_ChatInfo.SendAddonMessage, m.prefix, m.text, ch)
         if not ok then
-            return drop("Sharing " .. name(m.what) .. " failed: " .. tostring(result))
+            return drop(function(what)
+                return "Sharing " .. name(what) .. " failed: " .. tostring(result)
+            end)
         end
         if result == THROTTLED then
             waiting = true
             C_Timer.After(RETRY, pump)
             return true
         elseif result == LOCKDOWN then
-            return drop(lockedLine(m.what))
+            return drop(lockedLine)
         elseif not (result == true or result == nil or result == SUCCESS) then
-            return drop("Sharing " .. name(m.what) .. " failed with result " .. tostring(result) .. ".")
+            return drop(function(what)
+                return "Sharing " .. name(what) .. " failed with result " .. tostring(result) .. "."
+            end)
         end
         table.remove(queue, 1)
     end

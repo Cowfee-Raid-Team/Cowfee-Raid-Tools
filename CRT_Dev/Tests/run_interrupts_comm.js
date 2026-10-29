@@ -82,30 +82,40 @@ local function full(over)
   return l
 end
 local FULL = full({ Solex = { 2, 4 } })
-local msg = assert(C.Encode(id, def, FULL))
-check(msg:find("^L|1|" .. id .. "|%x+|") ~= nil, "encode: head " .. msg)
+local msgs = assert(C.Encode(id, def, FULL))
+eq(#msgs, 1, "encode: ten short names are one message")
+local msg = msgs[1]
+check(msg:find("^L|1|" .. id .. "|%x+|1|1|") ~= nil, "encode: head " .. msg)
 check(msg:find("|Player1,Player2,Player3,Player4,Player5,Player6,Player7,Player8,Solex,Player10$") ~= nil, "encode: names in group then slot order")
-local gotId, list = C.Decode(msg, def)
+local gotId, list = C.Decode(msgs, def)
 eq(gotId, id, "decode: id"); eq(list and list[2][5], FULL[2][5], "decode: last name")
 eq(list and list[2][4], "Solex", "decode: Solex at Right 4")
-check(C.Decode(msg:sub(1, -3), def) == nil, "decode: damaged hash refused")
-check(C.Decode("L|2|" .. id .. "|00|a", def) == nil, "decode: higher major version skipped")
-local names = msg:match("^L|1|%d+|%x+|(.*)$")
+local _, why0 = C.Decode({ msg:sub(1, -3) }, def)
+eq(why0, "damaged", "decode: a damaged list refused as damaged")
+check(C.Decode({ "L|2|" .. id .. "|00|1|1|a" }, def) == nil, "decode: higher major version skipped")
+local names = msg:match("^L|1|%d+|%x+|1|1|(.*)$")
 local hash = msg:match("^L|1|%d+|(%x+)|")
-local later = "L|1.3|" .. id .. "|" .. hash .. "|" .. names .. "|a field for later"
-eq(select(1, C.Decode(later, def)), id, "decode: a later minor version is read, its extra field left")
-check(C.Decode("X|1|" .. id .. "|" .. hash .. "|" .. names, def) == nil, "decode: another kind skipped")
-check(C.Decode("L|1|" .. id .. "|" .. A.CRT.Comm.Fingerprint("a,b") .. "|a,b", def) == nil, "decode: the wrong number of names refused")
+local later = "L|1.3|" .. id .. "|" .. hash .. "|1|1|" .. names .. "|a field for later"
+eq(select(1, C.Decode({ later }, def)), id, "decode: a later minor version is read, its extra field left")
+check(C.Decode({ "X|1|" .. id .. "|" .. hash .. "|1|1|" .. names }, def) == nil, "decode: another kind skipped")
+local _, whyShape = C.Decode({ "L|1|" .. id .. "|" .. A.CRT.Comm.Fingerprint("a,b") .. "|1|1|a,b" }, def)
+eq(whyShape, "shape", "decode: the wrong number of names refused, quietly")
 local empty = full(); empty[1][2] = ""
-local withEmpty = assert(C.Encode(id, def, empty))
-local _, back = C.Decode(withEmpty, def)
+local _, back = C.Decode(assert(C.Encode(id, def, empty)), def)
 eq(back and back[1][2], "", "decode: an empty slot stays empty")
 check(C.Encode(id, def, full({ ["Bad,Name"] = { 1, 1 } })) == nil, "encode: comma refused")
 check(select(2, C.Encode(id, def, full({ ["Bad|Name"] = { 1, 1 } }))) == "A name holds a comma or a bar.", "encode: bar refused with the reason")
+-- long names: split in parts of 255 bytes or less, as Pace's plans are, and whole again in any order
 local LONG = full()
 for g = 1, 2 do for s = 1, 5 do LONG[g][s] = string.rep("x", 24) .. g .. s end end
-check(C.Encode(id, def, LONG) == nil, "encode: over 255 bytes refused")
-eq(select(2, C.Encode(id, def, LONG)), "The list is too long to send; shorten the names.", "encode: its reason")
+local long = assert(C.Encode(id, def, LONG))
+check(#long > 1, "encode: a long list goes in parts (" .. #long .. ")")
+for _, m in ipairs(long) do check(#m <= 255, "encode: each part 255 bytes or less (" .. #m .. ")") end
+local backwards = {}
+for i = #long, 1, -1 do backwards[#backwards + 1] = long[i] end
+local _, longBack = C.Decode(backwards, def)
+eq(longBack and longBack[2][5], LONG[2][5], "decode: the parts make the list again, in any order")
+check(C.Decode({ long[1] }, def) == nil, "decode: half a list is no list")
 
 -- who may share
 for g = 1, 2 do for s = 1, 5 do as(A, function() A.I:SetName(id, g, s, FULL[g][s]) end) end end
@@ -131,6 +141,15 @@ eq(as(A, function() return C:Share(id) end), true, "share: sent")
 eq(#outbox, 1, "share: one message")
 eq(outbox[1].prefix, "CRTKick1", "share: under the prefix")
 eq(outbox[1].text, msg, "share: your own list")
+outbox = {}
+as(A, function() for g = 1, 2 do for s = 1, 5 do A.I:SetName(id, g, s, LONG[g][s]) end end end)
+eq(as(A, function() return C:Share(id) end), true, "share: a long list is sent")
+eq(#outbox, #long, "share: in its parts")
+for _, m in ipairs(outbox) do deliver(B, m.text, "Brenn") end
+eq(B.CRT.db.interrupts.shared[id] and B.CRT.db.interrupts.shared[id].list[2][5], LONG[2][5], "receive: a list in parts")
+received = 0
+B.CRT.db.interrupts.shared[id] = nil
+outbox = { { text = msg } }
 deliver(B, outbox[1].text, "Brenn-Illidan")
 eq(select(2, IB:List(id)), "raid", "receive: accepted from the leader")
 eq(as(B, function() return (IB:Mine(id)) end), 4, "receive: your number")
@@ -147,18 +166,29 @@ deliver(B, hidden, "Brenn-Illidan"); eq(received, 1, "comm: secret values droppe
 local who = setmetatable({}, { __index = function() error("a secret sender was read") end })
 secrets[who] = true
 deliver(B, msg, who); eq(received, 1, "comm: a secret sender dropped")
-deliver(B, msg:sub(1, -3), "Brenn"); eq(received, 1, "receive: damaged, dropped")
-local msg2 = assert(C.Encode(id, def, full()))
-IB:SetEnabled(false); deliver(B, msg2, "Brenn-Illidan"); eq(received, 1, "receive: module off ignores"); IB:SetEnabled(true)
+local damaged = msg:gsub("Player1,", "Player9,")
+deliver(B, damaged, "Brenn"); eq(received, 1, "receive: damaged, dropped")
+eq(B.printed[#B.printed], "A kick list from Brenn arrived damaged. Ask them to share it again.", "receive: a damaged list says so")
+local msg2 = assert(C.Encode(id, def, full()))[1]
+local lines = #B.printed
+IB:SetEnabled(false); deliver(B, msg2, "Brenn-Illidan"); eq(received, 1, "receive: module off ignores")
+as(B, function() B.C:Receive(damaged, "Brenn") end)
+eq(#B.printed, lines, "receive: module off reads nothing, not even to say it's damaged")
+IB:SetEnabled(true)
 IB:Settings().accept = false; deliver(B, msg2, "Brenn-Illidan"); eq(received, 1, "receive: accept off ignores")
+deliver(B, damaged, "Brenn"); eq(#B.printed, lines, "receive: accept off reads nothing")
 IB:Settings().accept = true
 eq(as(B, function() return (IB:Mine(id)) end), 4, "receive: your number kept through the ignored ones")
 deliver(B, msg2, "Brenn-Illidan")
 eq(received, 2, "receive: a new list")
 eq(as(B, function() return (IB:Mine(id)) end), nil, "receive: off the new list, no number")
 eq(B.printed[#B.printed], "Brenn shared the kick list for Nek'zali the Soulcoiler. You are not on it.", "receive: the not-on-it line")
-deliver(B, "L|1|9999|" .. hash .. "|" .. names, "Brenn")
+lines = #B.printed
+deliver(B, "L|1|9999|" .. hash .. "|1|1|" .. names, "Brenn")
 eq(received, 2, "receive: a boss without a block is skipped")
+eq(#B.printed, lines, "receive: quietly")
+deliver(B, "L|1|" .. id .. "|" .. A.CRT.Comm.Fingerprint("a,b") .. "|1|1|a,b", "Brenn")
+eq(#B.printed, lines, "receive: another slot shape, quietly")
 
 print(string.format("%d passed, %d failed", passes, fails))
 if fails > 0 then error("failures") end

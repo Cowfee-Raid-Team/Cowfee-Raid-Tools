@@ -121,6 +121,18 @@ results = { 11 }
 Comm:Send("P", { "l" }, { what = "the plan", locked = "Plans" })
 eq(printed[#printed], "Plans can't be shared during an encounter. Share again after the pull ends.", "send: the table's own lockdown wording")
 
+-- a drop says so for every module whose messages it drops, once each
+results = { 3, 11 }
+Comm:Send("P", { "m1", "m2" }, "the first thing")
+Comm:Send("Q", { "n1" }, { what = "the plan", locked = "Plans" })
+Comm:Send("P", { "m3" }, "the first thing")
+local before2 = #printed
+advance(1)
+eq(#printed - before2, 2, "drop: one line per module dropped")
+eq(printed[before2 + 1], "The first thing can't be shared during an encounter. Share again after the pull ends.", "drop: the first module's line")
+eq(printed[before2 + 2], "Plans can't be shared during an encounter. Share again after the pull ends.", "drop: the second module's line")
+check(Comm:Send("P", { "o" }, "the test") and sent[#sent] == "o", "drop: the queue works after it")
+
 -- Pace on top: its share goes through the queue, with its own lines
 CRT.Pace = { Export = function() return "mode phase\\n1 30 boss1 72" end, BossName = function() return "Boss" end }
 assert(load(paceSrc))("CowfeeRaidTools", CRT)
