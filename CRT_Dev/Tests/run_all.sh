@@ -135,6 +135,7 @@ g "team" && { node run_team.js "$W" 2>&1 | tail -30; echo "exit ${PIPESTATUS[0]}
 g "team select" && { node run_team_select.js "$W" 2>&1 | tail -30; echo "exit ${PIPESTATUS[0]}"; }
 g "team merge" && { node run_team_merge.js "$W" 2>&1 | tail -30; echo "exit ${PIPESTATUS[0]}"; }
 g "core comm" && { node run_core_comm.js "$W" 2>&1 | tail -20; echo "exit ${PIPESTATUS[0]}"; }
+g "interrupts lattice" && { node run_interrupts_lattice.js "$W" 2>&1 | tail -20; echo "exit ${PIPESTATUS[0]}"; }
 g "addon check" &&{ node run_addoncheck.js "$W" 2>&1 | tail -30; echo "exit ${PIPESTATUS[0]}"; }
 g "tattlebot team" && { node run_tattle.js "$W" 2>&1 | tail -30; echo "exit ${PIPESTATUS[0]}"; }
 g "season stats" && { node run_seasonstats.js "$W" 2>&1 | tail -30; echo "exit ${PIPESTATUS[0]}"; }
