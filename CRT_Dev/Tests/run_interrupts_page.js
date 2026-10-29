@@ -74,6 +74,7 @@ local function mock(kind, parent)
     RegisterEvent = function(self, e) self.events[e] = true end, UnregisterEvent = function(self, e) self.events[e] = nil end,
     UnregisterAllEvents = function(self) self.events = {} end,
     SetMotionScriptsWhileDisabled = function(self, v) self.motionWhileDisabled = v end,
+    SetAlpha = function(self, a) self.alpha = a end,
   }
   all[#all + 1] = m
   return setmetatable(m, { __index = function(_, k) if methods[k] then return methods[k] end if type(k) == "string" and k:match("^%u") then return function() end end end })
@@ -289,13 +290,35 @@ check(picked[1].opts and picked[1].opts.hasOpacity, "settings: with its opacity"
 CRT.db.interrupts.plates.on = false; P.Refresh()
 check(rowNamed(T.size).enabled == false and rowNamed(T.font).enabled == false and rowNamed(T.offset).enabled == false, "settings: the box sliders grey with numbers off")
 check(P.allCheck.enabled == false, "settings: Show every number greys with numbers off")
+local function isColor(c, key) local p = CRT.PALETTE[key] return c and math.abs(c[1] - p[1]) < 1e-6 and math.abs(c[2] - p[2]) < 1e-6 and math.abs(c[3] - p[3]) < 1e-6 end
+check(isColor(P.allCheck.label.color, "muted"), "settings: a greyed checkbox's label in the theme's muted colour")
+for _, sw in ipairs(P.swatches) do
+  check(sw.button.enabled == false and sw.button.alpha and sw.button.alpha < 1, "settings: a greyed swatch is dimmed")
+  check(isColor(sw.label.color, "muted"), "settings: and its label muted")
+end
 CRT.db.interrupts.plates.on = true; P.Refresh()
 check(rowNamed(T.size).enabled and P.allCheck.enabled, "settings: and come back")
+check(isColor(P.allCheck.label.color, "text"), "settings: the label back in the theme's text colour")
+for _, sw in ipairs(P.swatches) do
+  check(sw.button.enabled and sw.button.alpha == 1 and isColor(sw.label.color, "text"), "settings: the swatch and its label back")
+end
+eq(#P.swatches, 4, "settings: four swatches tracked")
 CRT.db.interrupts.reminder.on = false; P.Refresh()
 check(rowNamed(T.sound).enabled == false and rowNamed(T.reminderSize).enabled == false, "settings: the sound and size grey with the countdown off")
 CRT.db.interrupts.reminder.on = true; P.Refresh()
 check(rowNamed(T.sound).enabled and rowNamed(T.reminderSize).enabled, "settings: and come back")
 P.SelectTab("assignments")
+
+-- no boss with a block: the first heading's (?) hides with it
+do
+  local realBosses = I.Bosses
+  I.Bosses = function() return {} end
+  P.Refresh()
+  check(not P.headings[1].shown and P.gridHelp and not P.gridHelp.shown, "grid: no heading, no (?)")
+  I.Bosses = realBosses
+  P.Refresh()
+  check(P.headings[1].shown and P.gridHelp.shown, "grid: back with the heading")
+end
 
 -- another boss's shape: the grid follows (pooled fields, the extras hidden, headings, labels, the rows under it)
 local LAY = P.LAYOUT

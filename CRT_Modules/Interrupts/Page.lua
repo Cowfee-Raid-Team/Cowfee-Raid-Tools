@@ -16,7 +16,7 @@ local Interrupts = CRT.Interrupts
 local Anchor = CRT.InterruptAnchor
 local KickComm = CRT.InterruptComm
 
-local Page = { fields = {}, pickers = {}, slotLabels = {}, headings = {}, whoRows = {}, howLines = {}, tabs = {} }
+local Page = { fields = {}, pickers = {}, slotLabels = {}, headings = {}, whoRows = {}, howLines = {}, tabs = {}, swatches = {} }
 CRT.InterruptsPage = Page
 
 local TEXT = {
@@ -111,6 +111,7 @@ local LAYOUT = {
     reminderY = { head = -8, on = -28, sound = -56, size = -92, sharing = -144, accept = -164 },
     reminderLabelW = 80, soundW = 200,
     checkSize = 24, checkInset = 4,
+    greyAlpha = 0.4, -- a greyed swatch, as a disabled checkbox fades
 }
 LAYOUT.rightW = UI.PAGE_W - LAYOUT.rightX - 8
 LAYOUT.statusW = LAYOUT.rightX - LAYOUT.leftX - 22
@@ -160,6 +161,11 @@ local function button(parent, text, onClick)
     return b
 end
 
+-- A label in the theme's text colour, or its muted colour while what it names is greyed out.
+local function greyLabel(fs, on)
+    fs:SetTextColor(UI.Color(on and "text" or "muted"))
+end
+
 -- enabledIf, when given, greys the box and its label while it returns false (the switch it depends on is off).
 local function checkbox(parent, x, y, text, get, set, enabledIf)
     local cb = CreateFrame("CheckButton", nil, parent, "UICheckButtonTemplate")
@@ -175,8 +181,7 @@ local function checkbox(parent, x, y, text, get, set, enabledIf)
         if enabledIf then
             local on = enabledIf() and true or false
             cb:SetEnabled(on)
-            local c = on and 1 or 0.5
-            cb.label:SetTextColor(c, c, c)
+            greyLabel(cb.label, on)
         end
     end
     controls[#controls + 1] = cb
@@ -413,6 +418,9 @@ local function refreshGrid()
     local groups, slots = def and #def.groups or 0, def and def.slots or 0
     for g = 1, MAX_GROUPS do
         Page.headings[g]:SetShown(g <= groups)
+        if g == 1 and Page.gridHelp then
+            Page.gridHelp:SetShown(groups > 0) -- its (?) goes with the heading
+        end
         Page.headings[g]:SetText(def and def.groups[g] or "")
         for s = 1, MAX_SLOTS do
             local on = g <= groups and s <= slots
@@ -442,7 +450,7 @@ local function buildGrid(f)
         head:SetPoint("TOPLEFT", L.leftX + (g - 1) * L.colW, L.gridY)
         Page.headings[g] = head
         if g == 1 then
-            UI.HelpRight(head, TEXT.title, TEXT.gridHelp)
+            Page.gridHelp = UI.HelpRight(head, TEXT.title, TEXT.gridHelp)
         end
         Page.fields[g], Page.slotLabels[g], Page.pickers[g] = {}, {}, {}
         for s = 1, MAX_SLOTS do
@@ -711,9 +719,13 @@ local function swatch(f, x, y, text, key)
     b:SetBackdropBorderColor(0, 0, 0, 1) -- the swatch's edge: not a theme colour
     b.refresh = function()
         local c = plates()[key]
+        local on = platesOn() and true or false
         b:SetBackdropColor(c[1], c[2], c[3], c[4] or 1)
-        b:SetEnabled(platesOn() and true or false)
+        b:SetEnabled(on)
+        b:SetAlpha(on and 1 or L.greyAlpha)
+        greyLabel(name, on)
     end
+    Page.swatches[#Page.swatches + 1] = { button = b, label = name }
     b:SetScript("OnClick", function()
         UI.PickColor(plates()[key], function(c)
             plates()[key] = c
