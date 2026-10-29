@@ -292,7 +292,7 @@ do
   assert(value("Icon") == "id" and w.idEdit.text == "135940", "icon ID kept")
   assert(w.checks.alert.checked and not w.checks.bar.checked and w.checks.text.checked and w.checks.icon.checked and w.checks.circle.checked)
   assert(w.also.speak.checked and w.also.count.checked and w.also.glow.checked, "speak, count, glow")
-  assert(value("Sound") == "kit:RAID_WARNING" and sliders["Show from"].opts.get() == 8 and sliders["Linger"].opts.get() == 3)
+  assert(value("Sound") == "kit:RAID_WARNING" and sliders["Duration"].opts.get() == 8 and sliders["Linger"].opts.get() == 3)
   assert(w.colorSwatch.tex.color[1] == 1 and w.colorSwatch.tex.color[2] == 0.5, "colour")
   assert(w.title == "Alert" and not w.deleteBtn.shown, "an ordinary new alert")
   -- the spell of the saved alert shows its name; Save makes a note line with the time
@@ -523,8 +523,8 @@ do
   -- no gap: on the When tab, Show from and Linger move up into the place of the Relative to row (Alerts/SubTabs.lua tabs,
   -- content from -116)
   local function top(m) local pt = m.pts[#m.pts] return pt[#pt] end
-  assert(top(sliders["Show from"]) == -116 and top(sliders["Linger"]) == -116, "Show from at the top of the When tab: " .. top(sliders["Show from"]))
-  assert(sliders["Show from"].parent == w.tabs.frames.when, "on the When tab")
+  assert(top(sliders["Duration"]) == -116 and top(sliders["Linger"]) == -116, "Show from at the top of the When tab: " .. top(sliders["Duration"]))
+  assert(sliders["Duration"].parent == w.tabs.frames.when, "on the When tab")
   assert(not w.timeEdit.shown and not w.timeLabel.shown and not w.timeHelp.shown and not w.saveSavedBtn.shown, "no Time, no Save as saved alert")
   assert(w.testBtn.shown and not w.exportBtn.shown and w.deleteBtn.shown, "Test and Delete stay; no Export (a saved alert has no time to write)")
   assert(w.textEdit.text == "Soak now" and w.forRow.shown and value("For") == "tank G1" and w.idEdit.text == "135940", "fields")
@@ -575,7 +575,7 @@ do
   E:Open(ENC, nil, {})
   assert(dropdowns["Save as"].shown and dropdowns["Relative to"].shown and dropdowns["Difficulty"].shown and w.timeEdit.shown and w.saveSavedBtn.shown and w.exportBtn.shown and w.title == "Alert", "rows back")
   local function lastTop(m) local pt = m.pts[#m.pts] return pt[#pt] end
-  assert(w.h == 360 and lastTop(sliders["Show from"]) == -150 and lastTop(sliders["Linger"]) == -150, "normal layout restored: Show from under Relative to")
+  assert(w.h == 360 and lastTop(sliders["Duration"]) == -150 and lastTop(sliders["Linger"]) == -150, "normal layout restored: Show from under Relative to")
   -- Save as in a saved alert is kept: only me, and a note line for a class
   local mine = S:Save(nil, { text = "Mine", saveAs = "mine", outputs = { alert = true } })
   E:EditSaved(mine)
