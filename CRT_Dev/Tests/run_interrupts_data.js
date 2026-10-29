@@ -1,0 +1,168 @@
+// Interrupts' kick lists (CRT_Modules/Interrupts/Data.lua) on the sample season pack, one boss given an
+// interrupts block here: which bosses have one, your own list and the raid's, the list in use and a share
+// switching you back to the raid's, your number from a name typed with its realm and in another case, a
+// received list for one boss leaving the others alone, the season purge's declarations, the switch, Test on
+// trash cleared at login, and the Addon check column. Usage: node run_interrupts_data.js <addon folder>
+const fs = require('fs');
+const path = require('path');
+const { lua, lauxlib, lualib, to_luastring } = require('fengari');
+const L = lauxlib.luaL_newstate();
+lualib.luaL_openlibs(L);
+const harness = `
+local registrySrc, seasonSrc, bossSrc, coreSrc, latticeSrc, dataSrc = ...
+local fails, passes = 0, 0
+local function check(ok, what) if ok then passes = passes + 1 else fails = fails + 1 print("FAIL " .. what) end end
+local function eq(a, b, what) check(a == b, what .. " (got " .. tostring(a) .. ", want " .. tostring(b) .. ")") end
+time = function() return 1790000000 end
+wipe = function(t) for k in pairs(t) do t[k] = nil end return t end
+local frames = {}
+CreateFrame = function() local f = { events = {} } function f:RegisterEvent(e) self.events[e] = true end function f:UnregisterEvent(e) self.events[e] = nil end function f:SetScript(_, fn) self.fn = fn end frames[#frames + 1] = f return f end
+local function fire(event, ...) for _, f in ipairs(frames) do if f.events[event] and f.fn then f.fn(f, event, ...) end end end
+local ME = "Solex"
+UnitName = function(u) if u == "player" then return ME end end
+local secrets = {}
+issecretvalue = function(v) return secrets[v] == true end
+
+local CRT = {}
+-- the defaults as Core.lua writes them: its file is read for the interrupts table only
+local defaults = assert(load("return " .. assert(coreSrc:match("\\n    (interrupts = %b{})")):gsub("^interrupts = ", "")))()
+CRT.db = { interrupts = defaults }
+local registered
+CRT.AddonCheck = { Register = function(_, def) registered = def end }
+for _, src in ipairs({ registrySrc, seasonSrc, bossSrc, latticeSrc, dataSrc }) do assert(load(src))("CowfeeRaidTools", CRT) end
+local I = CRT.Interrupts
+check(I ~= nil, "CRT.Interrupts is made")
+
+-- the defaults
+local d = CRT.db.interrupts
+check(d.enabled == false, "defaults: off")
+check(d.accept == true and d.test == false, "defaults: accept on, test off")
+eq(d.plates.size, 50, "defaults: box size"); eq(d.plates.font, 24, "defaults: number size"); eq(d.plates.offset, 20, "defaults: height")
+check(d.plates.on == true and d.plates.all == false, "defaults: numbers on, only yours")
+eq(table.concat(d.plates.mineBox, ","), "0,1,0,1", "defaults: your box green")
+eq(table.concat(d.plates.mineText, ","), "1,0,0,1", "defaults: your number red")
+eq(table.concat(d.plates.box, ","), "1,0,0,1", "defaults: other boxes red")
+eq(table.concat(d.plates.text, ","), "1,1,1,1", "defaults: other numbers white")
+check(d.reminder.on == true and d.reminder.size == 48, "defaults: reminder on, 48")
+eq(d.reminder.sound, "none", "defaults: no sound")
+
+-- the season purge clears the per-boss tables
+local labels = {}
+for _, s in ipairs(CRT.Bosses:Stores()) do labels[s.label] = s.getter end
+check(labels["own kick lists"] and labels["own kick lists"](CRT.db) == d.own, "purge: own kick lists declared")
+check(labels["shared kick lists"] and labels["shared kick lists"](CRT.db) == d.shared, "purge: shared kick lists declared")
+check(labels["kick list choices"] and labels["kick list choices"](CRT.db) == d.use, "purge: kick list choices declared")
+
+-- one sample boss gets a block
+eq(#I:Bosses(), 0, "bosses: none without a block")
+local RAW = { difficulty = 16, anchor = { unit = "boss2", cycle = 7, ordinal = 5, times = { 33, 94, 188, 249, 343, 404 } },
+  firstCast = 4.5, spacing = 1.0, tolerance = 0.3, adds = 10, perNumber = 2, window = 25,
+  groups = { "Left", "Right" }, slots = 5, label = "Kick" }
+CRT.Bosses:Get(3470).interrupts = RAW
+CRT.Bosses:Register({ encounterID = 3421, name = "The Twin Fangs", season = "sample", interrupts = { difficulty = 16 } }) -- a block that does not read
+I:ClearCache()
+eq(#I:Bosses(), 1, "bosses: only the boss with a block")
+local id = I:Bosses()[1].key
+eq(id, 3470, "bosses: its encounter ID")
+eq(I:Bosses()[1].label, "Nek'zali the Soulcoiler", "bosses: its name")
+check(I:Def(id) and I:Def(id).label == "Kick", "def: read")
+check(I:Def(3421) == nil and I:Def(9999) == nil, "def: none for a bad block or another boss")
+eq(I:BossName(id), "Nek'zali the Soulcoiler", "boss name")
+
+-- your own list
+eq(select(2, I:List(id)), nil, "list: none yet")
+eq(#I:Own(id), 2, "own: two groups")
+eq(#I:Own(id)[2], 5, "own: five slots")
+eq(I:Own(id)[2][5], "", "own: empty slots")
+local fired = 0
+I:OnChange(function() fired = fired + 1 end)
+I:SetName(id, 1, 3, "  Solex-Illidan ")
+eq(I:Own(id)[1][3], "Solex", "set: trimmed and realm stripped")
+check(fired > 0, "set: fires")
+eq(select(2, I:List(id)), "own", "list: your own once a name is in")
+ME = "solex"
+eq(select(1, I:Mine(id)), 3, "mine: realm and case ignored")
+eq(select(2, I:Mine(id)), "Left", "mine: group label")
+ME = "Solex"
+check(not I:Complete(id, I:Own(id)), "complete: nine empty slots")
+I:SetName(id, 1, 3, "Solex-Illidan")
+ME = "Solex-Illidan"
+eq(select(1, I:Mine(id)), 3, "mine: your own name with a realm")
+ME = "Solex"
+secrets.Solex = true
+eq(I:Mine(id), nil, "mine: a secret name finds nothing")
+secrets.Solex = nil
+
+local function full(withSolexAt)
+  local l = { {}, {} }
+  local n = 0
+  for g = 1, 2 do for s = 1, 5 do n = n + 1 l[g][s] = "P" .. n end end
+  if withSolexAt then l[withSolexAt[1]][withSolexAt[2]] = "Solex" end
+  return l
+end
+local FULL = full({ 2, 2 })
+check(I:Complete(id, FULL), "complete: ten names")
+I:ReceiveShared(id, FULL, "Brenn")
+eq(select(2, I:List(id)), "raid", "list: the raid's wins")
+eq(select(1, I:Mine(id)), 2, "mine: from the raid's list")
+eq(select(2, I:Mine(id)), "Right", "mine: its group")
+FULL[2][2] = "changed"
+eq(select(1, I:List(id))[2][2], "Solex", "receive: a copy is kept")
+FULL = full({ 2, 2 })
+I:SetUse(id, "own"); eq(select(2, I:List(id)), "own", "use: back to own")
+eq(select(1, I:Mine(id)), 3, "use: your number from your own")
+I:ReceiveShared(id, FULL, "Brenn")
+eq(select(2, I:List(id)), "raid", "use: a new share switches back")
+I:ReceiveShared(9999, full(), "Brenn")
+eq(select(1, I:Mine(id)), 2, "receive: other bosses untouched")
+I:Clear(id); eq(I:Own(id)[1][3], "", "clear: empties own only")
+eq(select(2, I:List(id)), "raid", "clear: the raid's still in use")
+eq(CRT.db.interrupts.shared[id].from, "Brenn", "receive: sender kept")
+eq(CRT.db.interrupts.shared[id].at, 1790000000, "receive: when")
+I:CopyRaids(id)
+eq(I:Own(id)[2][2], "Solex", "copy: the raid's list over your own")
+I:SetName(id, 2, 2, "Brenn")
+eq(I:Own(id)[2][2], "Brenn", "copy: your own is a copy")
+eq(select(1, I:List(id))[2][2], "Brenn", "edit: editing your own puts it in use")
+eq(select(2, I:List(id)), "own", "edit: your own in use")
+I:SetUse(id, "raid")
+eq(select(1, I:Mine(id)), 2, "use: the raid's again")
+I:SetName(id, 9, 9, "x")
+eq(I:Own(id)[9], nil, "set: a slot outside the grid is ignored")
+ME = "Nobody"
+eq(I:Mine(id), nil, "mine: not on the list")
+ME = "Solex"
+
+-- the switch and the Addon check column
+eq(registered and registered.key, "interrupts", "addon check: column registered")
+eq(registered and registered.label, "Interrupts", "addon check: its label")
+eq(registered and registered.order, 45, "addon check: after Pace")
+check(not registered.on(), "addon check: off by default")
+check(not I:Enabled(), "enabled: off by default")
+fired = 0
+I:SetEnabled(true); check(registered.on() and I:Enabled(), "addon check: on follows the switch")
+check(fired > 0, "enabled: the switch fires")
+I:SetEnabled(false); check(not registered.on(), "addon check: off again")
+local hidden
+CRT.UI = { SetPageHidden = function(_, key, h) if key == "interrupts" then hidden = h end end }
+I:SetEnabled(true); eq(hidden, false, "switch: shows the page")
+I:SetEnabled(false); eq(hidden, true, "switch: hides the page")
+-- at login: Test on trash is off, and the page follows the switch
+CRT.db.interrupts.test = true
+CRT.db.interrupts.enabled = true
+hidden = nil
+fire("PLAYER_LOGIN")
+eq(CRT.db.interrupts.test, false, "login: test off")
+eq(hidden, false, "login: the page follows the switch")
+
+print(string.format("%d passed, %d failed", passes, fails))
+if fails > 0 then error("failures") end
+`;
+const dir = process.argv[2];
+if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
+for (const f of ['CRT_Data/Bosses/Registry.lua', 'CRT_Dev/Tests/SamplePack/Season.lua', 'CRT_Dev/Tests/SamplePack/NekzaliTheSoulcoiler.lua',
+  'CRT_Core/Core.lua', 'CRT_Modules/Interrupts/Lattice.lua', 'CRT_Modules/Interrupts/Data.lua']) {
+  const p = path.join(dir, f);
+  lua.lua_pushstring(L, to_luastring(fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : 'error("missing ' + f + '")'));
+}
+if (lua.lua_pcall(L, 6, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }

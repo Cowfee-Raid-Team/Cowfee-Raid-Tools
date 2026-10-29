@@ -110,6 +110,8 @@ Profiles.SHARE = {
     longTerm = false, -- long-term data (Core.lua): never a setting
     markers = true,
     pace = { disabled = true, shown = true, position = true, own = false, shared = false, use = false },
+    -- the kick lists are data, Test on trash is state
+    interrupts = { enabled = true, accept = true, plates = true, reminder = true, own = false, shared = false, use = false, test = false },
     alerts = {
         bars = true, areas = true, noteLines = true, customColors = true, cooldownFilter = true,
         special = true, -- your special alerts' on/off and Show as choices
@@ -181,7 +183,7 @@ local SECTIONS = {
     window = "Main window", ui = "General", minimap = "Minimap", groups = "Raid Groups", consumables = "Consumables",
     readycheck = "Ready Check", debuffs = "Debuffs", notes = "Raid Notes", qol = "Quality of Life", loot = "Loot History",
     lootmaster = "Loot Master", gearChecker = "Gear Checker", sound = "Sounds", late = "Late Tracker", tattle = "Tattlebot",
-    timeline = "Timeline", markers = "Markers", pace = "Pace", alerts = "Alerts", team = "Team raids",
+    timeline = "Timeline", markers = "Markers", pace = "Pace", interrupts = "Interrupts", alerts = "Alerts", team = "Team raids",
 }
 
 -- The top-level keys a profile holds: every key in the defaults, except the shared caches.
