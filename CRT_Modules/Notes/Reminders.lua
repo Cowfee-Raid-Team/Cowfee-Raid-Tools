@@ -48,7 +48,11 @@ local TEXT = {
     oneLine = "1 line",
     manyLines = "%d lines",
     noteOff = "Off, so not in the raid note. Tick Alert me to put it back.",
-    noteGone = "The raid note for %s (%s) has none of its lines now. Change anything here to write them again.",
+    noteGone = "The raid note for %s (%s) has none of its lines now.",
+    outOfDate = "The raid note's lines are out of date.",
+    -- you may not change the raid note (not the leader or an assistant): what stays as it was
+    linesStay = "Saved as Only me. Its lines stay in the raid note until the raid leader or an assistant takes them out.",
+    deletedLinesStay = "Deleted. Its lines stay in the raid note until the raid leader or an assistant takes them out.",
     triggers = "Triggers",
     triggersHelp = "Show from: how many seconds before each time the alert shows. Linger: how long it stays after 0. The times come from the boss's ability timeline, counted from the start of each phase.",
     showFrom = "Show from",
@@ -676,19 +680,69 @@ local function noteChoice()
     return M and cur.ctx and M.InNote(cur.ctx.reminder) or nil
 end
 
+-- Where the panel's alert's lines come from (MechNote Expected and Sync): the ability timeline on show, its group
+-- and the boss.
+local function noteOpts(enc)
+    local entry = shownReference()
+    return { ref = entry and entry.ref, group = shownGroup(), boss = bossName(bosses(), enc) }
+end
+
+-- A saved reminder that is Raid note: its lines in the boss's note brought in step with it (Notes/MechNote.lua Sync),
+-- its times read from the ability timeline on show, as the panel shows them. False and the reason (on the message
+-- line) when you may not change the raid note; nothing is written then.
+local function syncNote(enc, id)
+    local M = CRT.MechNote
+    if not (M and id and M.InNote(CRT.AlertReminders:Get(enc, id))) then
+        return true
+    end
+    local allowed, why = CRT.AlertDraft.CanEditRaid()
+    if not allowed then
+        notice = why
+        return false
+    end
+    local was = saving
+    saving = true -- the note's change listeners redraw once, after
+    local ok, err = pcall(M.Sync, enc, id, noteOpts(enc))
+    saving = was
+    if not ok then
+        geterrorhandler()(err)
+        return false
+    end
+    return true
+end
+
+-- A Raid note row loaded (picked, the tab shown, a note change such as an incoming share): when you may change the
+-- raid note and its lines aren't what the panel would write (a change on the Timeline or in the season's data, a
+-- share that replaced the note), they are written again. The panel owns those lines.
+local function resyncNote()
+    local M, ctx = CRT.MechNote, cur.ctx
+    if not (M and ctx and ctx.id and M.InNote(ctx.reminder)) or saving or not CRT.AlertDraft.CanEditRaid() then
+        return
+    end
+    local ok, inStep = pcall(M.InStep, ctx.encounterID, ctx.id, noteOpts(ctx.encounterID))
+    if ok and not inStep and syncNote(ctx.encounterID, ctx.id) then
+        ctx.reminder = CRT.AlertDraft.copy(CRT.AlertReminders:Get(ctx.encounterID, ctx.id)) or ctx.reminder
+    end
+end
+
 -- The line under the header while Save as is Raid note: how many lines the boss's note has (good), or that the alert
--- is off or its lines are gone (warn). Empty for Only me.
+-- is off, its lines are gone or out of date (warn). Empty for Only me.
 local function drawNoteStatus()
     local n = noteChoice()
-    local r = cur.ctx and cur.ctx.reminder
+    local ctx = cur.ctx
+    local r = ctx and ctx.reminder
     local text = ""
-    if n and r and cur.ctx.id then
+    if n and r and ctx.id then
+        local M = CRT.MechNote
         local difficulty = n.difficulty or "?"
-        local count = CRT.MechNote.CountIn(cur.ctx.encounterID, difficulty, n.key)
+        local count = M.CountIn(ctx.encounterID, difficulty, n.key)
+        local ok, inStep = pcall(M.InStep, ctx.encounterID, ctx.id, noteOpts(ctx.encounterID))
         if r.enabled == false then
             text = UI.WarnText(TEXT.noteOff)
         elseif count == 0 then
             text = UI.WarnText(string.format(TEXT.noteGone, tostring(cur.bossName), difficulty))
+        elseif ok and not inStep then
+            text = UI.WarnText(TEXT.outOfDate)
         else
             local lines = count == 1 and TEXT.oneLine or string.format(TEXT.manyLines, count)
             text = UI.GoodText(string.format(TEXT.inNote, tostring(cur.bossName), difficulty, lines))
@@ -982,6 +1036,7 @@ local function refresh(keepDraft)
     end
     if not keepDraft then
         loadPanel(index and items[index], enc, name)
+        resyncNote()
     else
         cur.item = index and items[index] or cur.item
     end
@@ -1038,32 +1093,8 @@ local function selectItem(item)
     local index = selectedIndex(enc)
     paint(index)
     loadPanel(index and items[index], enc, name)
+    resyncNote()
     drawPanel()
-end
-
--- A saved reminder that is Raid note: its lines in the boss's note brought in step with it (Notes/MechNote.lua Sync),
--- its times read from the ability timeline on show, as the panel shows them. False and the reason (on the message
--- line) when you may not change the raid note; nothing is written then.
-local function syncNote(enc, id)
-    local M = CRT.MechNote
-    if not (M and id and M.InNote(CRT.AlertReminders:Get(enc, id))) then
-        return true
-    end
-    local allowed, why = CRT.AlertDraft.CanEditRaid()
-    if not allowed then
-        notice = why
-        return false
-    end
-    local entry = shownReference()
-    local was = saving
-    saving = true -- the note's change listeners redraw once, after
-    local ok, err = pcall(M.Sync, enc, id, { ref = entry and entry.ref, group = shownGroup(), boss = bossName(bosses(), enc) })
-    saving = was
-    if not ok then
-        geterrorhandler()(err)
-        return false
-    end
-    return true
 end
 
 -- Saves the panel's draft as its row's reminder, or shows why it can't be. The first change on an
@@ -1087,6 +1118,15 @@ commit = function(quiet)
         notice = problem
         drawPanel()
         return false
+    end
+    -- a Raid note alert is saved only with its lines: never while you may not change the raid note
+    if CRT.MechNote and CRT.MechNote.InNote(ctx.reminder) then
+        local allowed, why = Draft.CanEditRaid()
+        if not allowed then
+            notice = why
+            drawPanel()
+            return false
+        end
     end
     saving = true
     local ok, id, err = pcall(Draft.SaveMine, ctx, d)
@@ -1145,6 +1185,17 @@ local function setEnabled(item, on)
         local r = Reminders:Get(enc, item.id)
         if r then
             r = Draft.copy(r)
+            -- a Raid note alert's tick changes its lines: refused while you may not change the raid note
+            local allowed, why = true, nil
+            if CRT.MechNote and CRT.MechNote.InNote(r) then
+                allowed, why = Draft.CanEditRaid()
+            end
+            if not allowed then
+                notice = why
+                refresh() -- the tick shows the saved state again
+                drawPanel()
+                return
+            end
             r.enabled = on
             -- an older alert on any difficulty: the tick is for the group on show only (Save splits it)
             if not Reminders.GroupOf(r) then
@@ -1472,8 +1523,9 @@ local function buildBarRows(p, row)
 end
 
 -- Save as and For: Only me, or Raid note (Notes/MechNote.lua) for everyone, a role or picked players. Raid note turns
--- the alert on and writes its lines into the boss's note; Only me takes them out again (after the save, so a save
--- that is refused leaves the note as it was). Refused, with the reason, when you may not change the raid note.
+-- the alert on and writes its lines into the boss's note (refused, with the reason, when you may not change the raid
+-- note). Only me is always saved, then takes the lines out (after the save, so a save that is refused leaves the
+-- note as it was); while you may not change the raid note they stay there, and the panel says so.
 -- Its own function: buildPanel is near Lua 5.1's 60 upvalue limit.
 local function buildNoteRow(p, row)
     local M = CRT.MechNote
@@ -1488,7 +1540,7 @@ local function buildNoteRow(p, row)
     local function setSaveAs(v)
         local ctx, d = cur.ctx, cur.draft
         local before = noteChoice()
-        if not (ctx and d) or (v == "note") == (before ~= nil) or not allowed() then
+        if not (ctx and d) or (v == "note") == (before ~= nil) or (v == "note" and not allowed()) then
             return
         end
         saveTyped()
@@ -1507,7 +1559,11 @@ local function buildNoteRow(p, row)
             return
         end
         if v == "mine" then
-            M.Leave(ctx.encounterID, { raidNote = before })
+            if CRT.AlertDraft.CanEditRaid() then
+                M.Leave(ctx.encounterID, { raidNote = before })
+            else
+                notice = TEXT.linesStay
+            end
             drawPanel()
         end
     end
@@ -1863,10 +1919,19 @@ local function buildPanel(f)
                 end
                 forget()
                 -- a Raid note reminder's lines go with it
-                if CRT.MechNote and CRT.MechNote.InNote(saved) and CRT.AlertDraft.CanEditRaid() then
-                    CRT.MechNote.Leave(enc, saved)
+                local stay = false
+                if CRT.MechNote and CRT.MechNote.InNote(saved) then
+                    if CRT.AlertDraft.CanEditRaid() then
+                        CRT.MechNote.Leave(enc, saved)
+                    else
+                        stay = true
+                    end
                 end
                 CRT.AlertReminders:Delete(enc, id) -- fires the alerts change, which redraws the tab
+                if stay then
+                    notice = TEXT.deletedLinesStay -- said on the row shown next
+                    drawPanel()
+                end
             end,
         }), "GENERIC_CONFIRMATION"))
     end)

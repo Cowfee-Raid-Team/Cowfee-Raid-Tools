@@ -635,12 +635,14 @@ check("mech raid note: For, the tick, and Only me", function()
   assert(p.noteStatus.text:find("Off", 1, true) and p.noteStatus.text:find("|cff" .. CRT.UI.Hex("warn"), 1, true), "said in the warn colour: " .. p.noteStatus.text)
   setCheck(f.rows[1].check, true)
   assert(#marked(note.raw, "777") == 2, "on: back")
-  -- lines gone from the note (a share replaced it): said, and the next change writes them again
+  -- lines gone from the note (a share replaced it): the panel owns them, so they are written again at once
   note.raw = "EncounterID:9001;Difficulty:Mythic;Name:Test Boss\\n"
   CRT.Notes:Fire()
-  assert(p.noteStatus.text:find("none of its lines", 1, true), p.noteStatus.text)
-  p.linger.opts.set(2)
-  assert(#marked(note.raw, "777") == 2, "written again")
+  assert(#marked(note.raw, "777") == 2 and p.noteStatus.text:find("2 lines", 1, true), "written again: " .. note.raw)
+  -- a line changed elsewhere (a drag on the Timeline): written back as the panel has it when the row is picked
+  note.raw = note.raw:gsub("time:30;", "time:33;")
+  click(f.rows[2].frame) click(f.rows[1].frame)
+  assert(marked(note.raw, "777")[1].time == 30, "the panel's time again")
   -- Only me: the lines go, the personal alert is back
   note.raw = note.raw .. "free text after\\n"
   p.saveAs.opts.set("mine")
@@ -689,6 +691,60 @@ check("mech raid note: refused when you may not change the raid note; Heroic goe
   assert(popup, "asked")
   popup.callback()
   assert(#marked(note.raw, "mine") == 0 and #marked(note.raw, "777") == 1, "its lines went, the other alert's stay")
+  assert(#errors == 0, tostring(errors[1]))
+end)
+
+-- while you may not change the raid note (in a raid, not the leader or an assistant): a Raid note alert's edits and
+-- tick are refused with the reason, the lines are never rewritten, and Only me and Delete still work, saying the lines
+-- stay in the note
+check("mech raid note: without the right to change the raid note", function()
+  resetNotes()
+  local f = fresh()
+  local p = f.panel
+  p.saveAs.opts.set("note")
+  local note = noteFor(ENC, "Mythic")
+  local before = note.raw
+  local _, id = only()
+  local was = CRT.Notes.CanEditRaid
+  local REASON = "Only the raid leader or assistants can change the raid note."
+  CRT.Notes.CanEditRaid = function() return false, REASON end
+  -- an edit
+  p.showFrom.opts.set(12)
+  assert(R:Get(ENC, id).warn == 5 and note.raw == before, "not saved, not written")
+  assert(p.message.text:find("raid leader", 1, true), "the reason: " .. tostring(p.message.text))
+  -- Alert me off
+  setCheck(f.rows[1].check, false)
+  assert(R:Get(ENC, id).enabled == true and note.raw == before, "still on, the lines stay")
+  assert(f.rows[1].check.checked == true and p.message.text:find("raid leader", 1, true), "the tick shows on again, with the reason")
+  setCheck(p.alertMe, false)
+  assert(R:Get(ENC, id).enabled == true, "Alert me too")
+  -- out of step, and nothing written: said in the warn colour
+  note.raw = note.raw:gsub("time:30;", "time:33;")
+  CRT.Notes:Fire()
+  assert(note.raw:find("time:33;", 1, true) and p.noteStatus.text:find("out of date", 1, true)
+    and p.noteStatus.text:find("|cff" .. CRT.UI.Hex("warn"), 1, true), "out of date: " .. p.noteStatus.text)
+  local stale = note.raw
+  -- Only me: always saved; the lines stay, and it says so
+  p.saveAs.opts.set("mine")
+  assert(R:Get(ENC, id).raidNote == nil and p.saveAs.opts.get() == "mine", "Only me saved")
+  assert(note.raw == stale and p.message.text:find("stay in the raid note", 1, true), "lines stay: " .. tostring(p.message.text))
+  -- Delete your own Raid note reminder: deleted, the lines stay, said
+  CRT.Notes.CanEditRaid = was
+  click(f.ownButton)
+  typeInto(p.textEdit, "Mine")
+  typeInto(p.timesEdit, "P1 0:10")
+  p.timesEdit.OnEnterPressed(p.timesEdit)
+  p.saveAs.opts.set("note")
+  assert(#marked(note.raw, "mine") == 1, "own one in the note")
+  CRT.Notes.CanEditRaid = function() return false, REASON end
+  local popup
+  StaticPopup_ShowCustomGenericConfirmation = function(o) popup = o return {} end
+  CRT.UI.LiftOver = CRT.UI.LiftOver or function(x) return x end
+  CRT.UI.ShownPopup = CRT.UI.ShownPopup or function(x) return x end
+  click(p.deleteBtn)
+  popup.callback()
+  assert(#marked(note.raw, "mine") == 1 and p.message.text:find("Deleted", 1, true), "deleted, lines stay, said: " .. tostring(p.message.text))
+  CRT.Notes.CanEditRaid = was
   assert(#errors == 0, tostring(errors[1]))
 end)
 
