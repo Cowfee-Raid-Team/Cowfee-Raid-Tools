@@ -420,7 +420,7 @@ local function doImport()
     if not info then
         return
     end
-    local n, err = CRT.AlertShare:Apply(info, function(item)
+    local n, err, note = CRT.AlertShare:Apply(info, function(item)
         return im.ticks[item]
     end)
     if not n then
@@ -430,7 +430,8 @@ local function doImport()
     end
     -- read again: what was imported is the same as yours now
     if n > 0 then
-        readBox(TEXT.imported:format(n), "good")
+        -- a Raid note alert whose note lines you may not change: said, in the warn colour
+        readBox(TEXT.imported:format(n) .. (note and (" " .. note) or ""), note and "warn" or "good")
     else
         setStatus(im.win.status, TEXT.nothingChanged)
     end

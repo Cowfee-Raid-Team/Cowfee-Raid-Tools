@@ -43,7 +43,9 @@ end
 --   options    { { key, label }, ... }, or a function returning that list when the menu opens. An
 --              option with disabled = true is shown greyed out and can't be picked, and one with
 --              title = true is a heading in the open list (such as a raid over its bosses). An
---              option's tooltip, when it has one, shows while the mouse is over it in the open list.
+--              option's tooltip, when it has one, shows while the mouse is over it in the open list. One with
+--              checkbox = true is a tick box in the open list, so several can be ticked: checked(key) says
+--              whether it is, toggle(key) is called on a click (the closed dropdown lists what is ticked).
 --   get()      the selected key
 --   set(key)   called when a choice is picked
 --   width, labelWidth, enabledIf() (greys the row out while it returns false)
@@ -76,11 +78,22 @@ function UI.Dropdown(parent, text, opts)
             if option.title then
                 root:CreateTitle(option.label)
             else
-                local radio = root:CreateRadio(option.label, function(key)
-                    return opts.get() == key
-                end, function(key)
-                    opts.set(key)
-                end, option.key)
+                local radio
+                if option.checkbox then
+                    radio = root:CreateCheckbox(option.label, function(key)
+                        return opts.checked ~= nil and opts.checked(key) and true or false
+                    end, function(key)
+                        if opts.toggle then
+                            opts.toggle(key)
+                        end
+                    end, option.key)
+                else
+                    radio = root:CreateRadio(option.label, function(key)
+                        return opts.get() == key
+                    end, function(key)
+                        opts.set(key)
+                    end, option.key)
+                end
                 if option.disabled and radio and radio.SetEnabled then
                     radio:SetEnabled(false)
                 end

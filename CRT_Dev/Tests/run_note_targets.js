@@ -179,6 +179,15 @@ check("NSRT: a line's shield: option is left out", function()
   assert(text:find("time:183;ph:1;tag:everyone;text:Break it;spellid:5;", 1, true), "the rest as before: " .. text)
 end)
 
+-- a Mech Alerts line's bar ticks, priority and marker (Notes/MechNote.lua) are CRT's own too
+check("NSRT: a Mech Alerts line's ticks:, fill:, countto:, prio: and mech: are left out", function()
+  local text = NSRT.ToNSRTText("EncounterID:3001;Name:Boss\\ntime:36;ph:1;tag:all;spellid:5;text:Spread;show:bar;warn:8;ticks:2,4;fill:up;countto:impact;prio:high;mech:5;")
+  for _, k in ipairs({ "ticks", "fill", "countto", "prio", "mech" }) do
+    assert(not text:lower():find(k .. ":", 1, true), k .. ": reached the NSRT text: " .. text)
+  end
+  assert(text:find("time:36;ph:1;tag:everyone;spellid:5;text:Spread;", 1, true), "the rest as before: " .. text)
+end)
+
 if checks.failed then error(checks.failed .. " failed") end
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }

@@ -2039,6 +2039,10 @@ function Editor:OpenNote(noteID, lineNumber)
         draft.iconType = draft.iconID and "id" or "spell"
     end
     Draft.SetShieldFrom(draft, timer.absorb) -- shield:
+    -- ticks:, fill: and countto: (a Mech Alert's bar): no boxes here, kept so a save writes them back
+    draft.ticksText = Draft.TicksText(timer.ticks)
+    draft.fill = timer.fill == "up" and "up" or nil
+    draft.countTo = timer.countTo == "impact" and "impact" or nil
     local s = Notes:Alert() or {}
     draft.warn = timer.warn or s.seconds or 10
     -- someone who can't change the raid note only sees it, and may copy it to their reminders

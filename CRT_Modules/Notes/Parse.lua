@@ -19,6 +19,15 @@ local ADDON, CRT = ...
 --                     times for it. Read as timer.absorb = { unit, length, anyDifficulty }; a value that doesn't read
 --                     is no shield. A CRT from before it reads the line as before (its bar a plain bar) and keeps the
 --                     field when it writes the line back (UnknownFields).
+--   ticks:2,4; fill:up; countto:impact;   the bar's impact ticks (seconds into the bar, which runs from warn: before the
+--                     time to the time), the bar filling up instead of emptying, and its number counting to each impact
+--                     instead of the time, as a Mech Alert's bar (Alerts/Reminders.lua). Read as timer.ticks (a sorted
+--                     list), timer.fill ("up") and timer.countTo ("impact"); anything else is none. A CRT from before them
+--                     shows the plain bar and keeps the fields when it writes the line back (UnknownFields).
+--   prio:high;        the line's priority among your alerts at the same moment, high or low (absent: normal), as a
+--                     Mech Alert's (Alerts/Rules.lua Priority). Read as timer.prio; a CRT from before it keeps it.
+--   mech:1234;        the Mech Alerts ability a line was written for (Notes/MechNote.lua). FormatLine never writes it,
+--                     so every writer keeps it with the other fields it doesn't know.
 -- DisplayType: is ignored.
 
 local Parser = {}
@@ -119,6 +128,27 @@ local function shieldOption(s)
         return nil
     end
     return (Parser.ReadAbsorb(parts[1], tonumber(parts[2] or ""), parts[3] == "any"))
+end
+
+-- "2, 4" into { 2, 4 }: seconds into the bar, 0 or more, in order, each once; nil when none reads (a word or a
+-- number under 0 makes the whole field none).
+local function tickList(s)
+    if type(s) ~= "string" then
+        return nil
+    end
+    local out, seen = {}, {}
+    for word in s:gmatch("[^,%s]+") do
+        local t = word:match("^%d*%.?%d+$") and tonumber(word)
+        if not t then
+            return nil
+        end
+        if not seen[t] then
+            seen[t] = true
+            out[#out + 1] = t
+        end
+    end
+    table.sort(out)
+    return #out > 0 and out or nil
 end
 
 -- Comma separated, keeping empty entries so a blank leaves an empty group slot.
@@ -401,7 +431,7 @@ end
 -- its line number in the text, and, when the line has them: show (a set), tts, speakAt ("zero" for
 -- ttsat:0), count, glow (true),
 -- sound (the text as written; the sound engine plays it if it names a sound, see Sound/Engine.lua), warn, linger
--- (seconds), iconID and absorb (shield:, { unit, length, anyDifficulty }).
+-- (seconds), iconID, absorb (shield:, { unit, length, anyDifficulty }), ticks, fill, countTo and prio.
 function Parser.Parse(text)
     local note = { timers = {}, phases = {}, lines = {}, invite = nil, unread = {} }
     local phaseSeen = {}
@@ -442,6 +472,10 @@ function Parser.Parse(text)
                     linger = tonumber(f.linger),
                     iconID = tonumber(f.icon),
                     absorb = shieldOption(f.shield),
+                    ticks = tickList(f.ticks),
+                    fill = (f.fill and f.fill:lower() == "up") and "up" or nil,
+                    countTo = (f.countto and f.countto:lower() == "impact") and "impact" or nil,
+                    prio = (f.prio and (f.prio:lower() == "high" or f.prio:lower() == "low")) and f.prio:lower() or nil,
                 }
                 item.kind = item.spellId and "spell" or "text"
                 note.timers[#note.timers + 1] = item
@@ -597,13 +631,29 @@ function Parser.FormatLine(t)
     if a and type(a.unit) == "string" and type(a.length) == "number" then
         add("shield", a.unit .. "," .. num(a.length) .. (a.anyDifficulty and ",any" or ""))
     end
+    if type(t.ticks) == "table" and #t.ticks > 0 then
+        local list = {}
+        for i, tick in ipairs(t.ticks) do
+            list[i] = num(tick)
+        end
+        add("ticks", table.concat(list, ","))
+    end
+    if t.fill == "up" then
+        add("fill", "up")
+    end
+    if t.countTo == "impact" then
+        add("countto", "impact")
+    end
+    if t.prio == "high" or t.prio == "low" then
+        add("prio", t.prio)
+    end
     return table.concat(out)
 end
 
 -- The keys FormatLine writes.
 local FORMAT_KEYS = {}
 for _, k in ipairs({ "time", "ph", "tag", "spellid", "text", "dur", "colors", "show", "tts", "ttsat", "count", "sound",
-    "glow", "warn", "linger", "icon", "shield" }) do
+    "glow", "warn", "linger", "icon", "shield", "ticks", "fill", "countto", "prio" }) do
     FORMAT_KEYS[k] = true
 end
 

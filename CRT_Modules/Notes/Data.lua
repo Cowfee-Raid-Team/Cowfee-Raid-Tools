@@ -189,6 +189,21 @@ function Notes:CanEditRaid()
     return false, TEXT.notAdmin
 end
 
+-- In combat or a boss encounter: nothing rewrites a raid note on its own then (the note isn't changed mid-pull).
+-- Cooldown proposals' auto-accept (Notes/Proposals.lua) and Mech Alerts' Raid note lines (Notes/Reminders.lua) wait.
+-- C_InstanceEncounter.IsEncounterInProgress, else the older global; an answer that can't be read counts as no.
+function Notes.Busy()
+    if InCombatLockdown and InCombatLockdown() then
+        return true
+    end
+    local fn = (C_InstanceEncounter and C_InstanceEncounter.IsEncounterInProgress) or IsEncounterInProgress
+    if fn then
+        local ok, on = pcall(fn)
+        return ok and not isSecret(on) and on == true
+    end
+    return false
+end
+
 function Notes:Set(section, key, value)
     local target = section and ndb()[section] or ndb()
     target[key] = value
@@ -793,19 +808,52 @@ local function headerLine(encounterID, difficultyName, bossName)
     return header
 end
 
+-- The boss's shared note written for exactly that difficulty (any case): the one FindForEncounter gives when it is,
+-- else the newest such note; nil when the boss has none for it (a note for any difficulty doesn't count).
+function Notes:FindExact(encounterID, difficultyName)
+    difficultyName = headerWord(difficultyName)
+    if type(encounterID) ~= "number" or not difficultyName then
+        return nil
+    end
+    local function exact(record)
+        return record and not record.personal and record.encounterID == encounterID and type(record.difficulty) == "string"
+            and record.difficulty:lower() == difficultyName:lower()
+    end
+    local id = self:FindForEncounter(encounterID, difficultyName)
+    if exact(ndb().list[id]) then
+        return id
+    end
+    local best
+    for other, record in pairs(ndb().list) do
+        if exact(record) and newer(other, best) then
+            best = other
+        end
+    end
+    return best
+end
+
 -- The note a pull of that difficulty reads (FindForEncounter), made when the boss has no note at
 -- all: a note with only the header line, which the Raid Notes page then shows like any other.
+-- opts (optional): exact (only a note for exactly that difficulty, FindExact, else a new one is made, never
+-- replacing another) and via (how a new note came, "Timeline" by default).
 -- Returns the note id and true when it was just made.
-function Notes:NoteFor(encounterID, difficultyName, bossName)
+function Notes:NoteFor(encounterID, difficultyName, bossName, opts)
     if type(encounterID) ~= "number" then
         return nil
     end
+    opts = opts or {}
     difficultyName, bossName = headerWord(difficultyName), headerWord(bossName)
-    local id = self:FindForEncounter(encounterID, difficultyName)
+    local id
+    if opts.exact then
+        id = self:FindExact(encounterID, difficultyName)
+    else
+        id = self:FindForEncounter(encounterID, difficultyName)
+    end
     if id then
         return id, false
     end
-    local newId = self:Import(headerLine(encounterID, difficultyName, bossName) .. "\n", nil, nil, nil, "Timeline")
+    local newId = self:Import(headerLine(encounterID, difficultyName, bossName) .. "\n", nil, nil, nil, opts.via or "Timeline",
+        nil, opts.exact and true or nil)
     return newId, newId ~= nil
 end
 

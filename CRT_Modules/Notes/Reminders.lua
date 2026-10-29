@@ -7,7 +7,8 @@ local ADDON, CRT = ...
 -- reminder). The draft and its save are Alerts/Draft.lua's, the name lookup of the Icon box is
 -- Alerts/SpellLookup.lua's, the Shield bar section Alerts/ShieldSection.lua's, and Test and Save as template go
 -- through Alerts/Editor.lua, all shared with the pop-out editor. The reminders and their times are in
--- Alerts/Reminders.lua. This tab only reads them when it is built, after login.
+-- Alerts/Reminders.lua. This tab only reads them when it is built, after login. Save as Raid note writes the alert
+-- into the boss's raid note instead, one line per cast, kept in step with every change (Notes/MechNote.lua).
 
 local UI = CRT.UI
 
@@ -34,7 +35,26 @@ local TEXT = {
     saveAs = "Save as",
     asNote = "Raid note",
     asMine = "Only me",
-    raidNoteHelp = "Raid note lines have one time each: make them on the Timeline.",
+    raidNoteHelp = "Only me: the alert is yours alone.\n\nRaid note: the alert goes into this boss's raid note for the difficulty on show, one line per cast, for the players For names. Every change here rewrites those lines; nothing else in the note changes. Share the note to send it to the raid.\n\nOnly me again takes the lines out and makes it your own alert. Also when it lands on me stays yours. Raiders on an older CRT see a plain bar, without its ticks.",
+    forLabel = "For",
+    forEveryone = "Everyone",
+    forTanks = "Tanks",
+    forHealers = "Healers",
+    forMelee = "Melee",
+    forRanged = "Ranged",
+    forPlayers = "Players",
+    -- under the header, while Save as is Raid note: the boss, the note's difficulty and how many lines it has
+    inNote = "In the raid note for %s (%s): %s. Share the note to send it to the raid.",
+    oneLine = "1 line",
+    manyLines = "%d lines",
+    noteOff = "Off, so not in the raid note. Tick Alert me to put it back.",
+    noteGone = "The raid note for %s (%s) has none of its lines now.",
+    outOfDate = "The raid note's lines are out of date.",
+    -- a pull of that difficulty reads another of the boss's notes (Notes:FindForEncounter), such as the active one
+    otherNote = "The pull uses another note for this boss, so these lines won't run.",
+    -- you may not change the raid note (not the leader or an assistant): what stays as it was
+    linesStay = "Saved as Only me. Its lines stay in the raid note until the raid leader or an assistant takes them out.",
+    deletedLinesStay = "Deleted. Its lines stay in the raid note until the raid leader or an assistant takes them out.",
     triggers = "Triggers",
     triggersHelp = "Show from: how many seconds before each time the alert shows. Linger: how long it stays after 0. The times come from the boss's ability timeline, counted from the start of each phase.",
     showFrom = "Show from",
@@ -149,6 +169,10 @@ L.CHECK_W = L.CHECK_SIZE + 2 + L.CHECK_LABEL_W -- a checkbox and its label
 L.SAVE_X = L.PANEL_W - L.INSET - L.HELP_ROOM - (L.SAVE_LABEL + L.DROP_GAP + L.SAVE_W)
 L.ALERT_X = L.SAVE_X - L.CHECK_W - 8
 L.TITLE_W = L.ALERT_X - (L.INSET + L.HEADER_ICON + 8) - 10
+-- For, under Save as and as wide (Raid note only); the Raid note status line under the name, up to For
+L.FOR_GAP = 30
+L.STATUS_X, L.STATUS_Y = L.INSET + L.HEADER_ICON + 8, -36
+L.STATUS_W = L.SAVE_X - L.STATUS_X - 8
 L.SLIDER_VALUE = 44 -- UI/Controls.lua: a slider's value beside its bar
 L.SHOW_LABEL, L.LINGER_LABEL, L.SLIDER_W = 70, 50, 150
 L.SHOW_MIN, L.SHOW_MAX, L.SHOW_DEFAULT = 1, 60, 5 -- Show from, seconds
@@ -652,6 +676,87 @@ local function drawBarRows(d)
     setBox(panel.ticksEdit, d.ticksText)
 end
 
+-- The panel's Raid note choice ({ tag, key, difficulty }, Notes/MechNote.lua), or nil while Save as is Only me.
+local function noteChoice()
+    local M = CRT.MechNote
+    return M and cur.ctx and M.InNote(cur.ctx.reminder) or nil
+end
+
+-- Where the panel's alert's lines come from (MechNote Expected and Sync): the ability timeline on show, its group
+-- and the boss.
+local function noteOpts(enc)
+    local entry = shownReference()
+    return { ref = entry and entry.ref, group = shownGroup(), boss = bossName(bosses(), enc) }
+end
+
+-- A saved reminder that is Raid note: its lines in the boss's note brought in step with it (Notes/MechNote.lua Sync),
+-- its times read from the ability timeline on show, as the panel shows them. False and the reason (on the message
+-- line) when you may not change the raid note; nothing is written then.
+local function syncNote(enc, id)
+    local M = CRT.MechNote
+    if not (M and id and M.InNote(CRT.AlertReminders:Get(enc, id))) then
+        return true
+    end
+    local allowed, why = CRT.AlertDraft.CanEditRaid()
+    if not allowed then
+        notice = why
+        return false
+    end
+    local was = saving
+    saving = true -- the note's change listeners redraw once, after
+    local ok, err = pcall(M.Sync, enc, id, noteOpts(enc))
+    saving = was
+    if not ok then
+        geterrorhandler()(err)
+        return false
+    end
+    return true
+end
+
+-- A Raid note row loaded (picked, the tab shown, a note change such as an incoming share): when you may change the
+-- raid note and its lines aren't what the panel would write (a change on the Timeline or in the season's data, a
+-- share that replaced the note), they are written again. The panel owns those lines. Never in combat or a boss
+-- encounter (Notes.Busy): the note isn't rewritten mid-pull on its own.
+local function resyncNote()
+    local M, ctx, Notes = CRT.MechNote, cur.ctx, CRT.Notes
+    if not (M and ctx and ctx.id and M.InNote(ctx.reminder)) or saving or not (Notes and Notes.Busy) or Notes.Busy()
+        or not CRT.AlertDraft.CanEditRaid() then
+        return
+    end
+    local ok, inStep = pcall(M.InStep, ctx.encounterID, ctx.id, noteOpts(ctx.encounterID))
+    if ok and not inStep and syncNote(ctx.encounterID, ctx.id) then
+        ctx.reminder = CRT.AlertDraft.copy(CRT.AlertReminders:Get(ctx.encounterID, ctx.id)) or ctx.reminder
+    end
+end
+
+-- The line under the header while Save as is Raid note: how many lines the boss's note has (good), or that the alert
+-- is off, its lines are gone, the pull reads another note, or the lines are out of date (warn). Empty for Only me.
+local function drawNoteStatus()
+    local n = noteChoice()
+    local ctx = cur.ctx
+    local r = ctx and ctx.reminder
+    local text = ""
+    if n and r and ctx.id then
+        local M = CRT.MechNote
+        local difficulty = n.difficulty or "?"
+        local count = M.CountIn(ctx.encounterID, difficulty, n.key)
+        local ok, inStep = pcall(M.InStep, ctx.encounterID, ctx.id, noteOpts(ctx.encounterID))
+        if r.enabled == false then
+            text = UI.WarnText(TEXT.noteOff)
+        elseif count == 0 then
+            text = UI.WarnText(string.format(TEXT.noteGone, tostring(cur.bossName), difficulty))
+        elseif CRT.Notes:FindForEncounter(ctx.encounterID, difficulty) ~= M.FindNote(ctx.encounterID, difficulty) then
+            text = UI.WarnText(TEXT.otherNote)
+        elseif ok and not inStep then
+            text = UI.WarnText(TEXT.outOfDate)
+        else
+            local lines = count == 1 and TEXT.oneLine or string.format(TEXT.manyLines, count)
+            text = UI.GoodText(string.format(TEXT.inNote, tostring(cur.bossName), difficulty, lines))
+        end
+    end
+    panel.noteStatus:SetText(text)
+end
+
 -- Everything on the panel from the draft, except a box being typed in.
 local function drawPanel()
     if not panel.frame then
@@ -669,6 +774,7 @@ local function drawPanel()
         panel.name:SetText("")
         return
     end
+    drawNoteStatus()
     local icon = draftIcon()
     panel.icon:SetTexture(icon)
     panel.icon:SetShown(icon ~= nil)
@@ -936,6 +1042,7 @@ local function refresh(keepDraft)
     end
     if not keepDraft then
         loadPanel(index and items[index], enc, name)
+        resyncNote()
     else
         cur.item = index and items[index] or cur.item
     end
@@ -992,11 +1099,12 @@ local function selectItem(item)
     local index = selectedIndex(enc)
     paint(index)
     loadPanel(index and items[index], enc, name)
+    resyncNote()
     drawPanel()
 end
 
 -- Saves the panel's draft as its row's reminder, or shows why it can't be. The first change on an
--- ability or a new reminder of your own makes the reminder.
+-- ability or a new reminder of your own makes the reminder. A Raid note reminder's lines follow.
 commit = function(quiet)
     local d, ctx = cur.draft, cur.ctx
     typed = false -- the whole draft is saved, typing included
@@ -1017,6 +1125,15 @@ commit = function(quiet)
         drawPanel()
         return false
     end
+    -- a Raid note alert is saved only with its lines: never while you may not change the raid note
+    if CRT.MechNote and CRT.MechNote.InNote(ctx.reminder) then
+        local allowed, why = Draft.CanEditRaid()
+        if not allowed then
+            notice = why
+            drawPanel()
+            return false
+        end
+    end
     saving = true
     local ok, id, err = pcall(Draft.SaveMine, ctx, d)
     saving = false
@@ -1031,6 +1148,7 @@ commit = function(quiet)
     end
     notice = nil
     ctx.id = id
+    syncNote(ctx.encounterID, id)
     ctx.reminder = Draft.copy(CRT.AlertReminders:Get(ctx.encounterID, id))
     pendingOwn[ctx.encounterID] = nil -- saved: the new row is a reminder now, never left behind empty
     if quiet then
@@ -1073,17 +1191,31 @@ local function setEnabled(item, on)
         local r = Reminders:Get(enc, item.id)
         if r then
             r = Draft.copy(r)
+            -- a Raid note alert's tick changes its lines: refused while you may not change the raid note
+            local allowed, why = true, nil
+            if CRT.MechNote and CRT.MechNote.InNote(r) then
+                allowed, why = Draft.CanEditRaid()
+            end
+            if not allowed then
+                notice = why
+                refresh() -- the tick shows the saved state again
+                drawPanel()
+                return
+            end
             r.enabled = on
             -- an older alert on any difficulty: the tick is for the group on show only (Save splits it)
             if not Reminders.GroupOf(r) then
                 r.group = shownGroup()
             end
             local id = Reminders:Save(enc, item.id, r)
+            -- Raid note: off takes its lines out of the note, on writes them again
+            syncNote(enc, id or item.id)
             if cur.ctx and cur.ctx.id == item.id and cur.ctx.reminder then
                 -- the panel's next save keeps the tick, on the reminder of the group on show
                 cur.ctx.id = id or item.id
                 cur.ctx.reminder = Draft.copy(Reminders:Get(enc, cur.ctx.id)) or cur.ctx.reminder
             end
+            drawPanel() -- the Raid note line under the header
         end
     elseif on then
         if itemKey(item) == cur.key and cur.draft and not Draft.Problem(cur.ctx, cur.draft) then
@@ -1396,6 +1528,123 @@ local function buildBarRows(p, row)
     })
 end
 
+-- Save as and For: Only me, or Raid note (Notes/MechNote.lua) for everyone, a role or picked players. Raid note turns
+-- the alert on and writes its lines into the boss's note (refused, with the reason, when you may not change the raid
+-- note). Only me is always saved, then takes the lines out (after the save, so a save that is refused leaves the
+-- note as it was); while you may not change the raid note they stay there, and the panel says so.
+-- Its own function: buildPanel is near Lua 5.1's 60 upvalue limit.
+local function buildNoteRow(p, row)
+    local M = CRT.MechNote
+    local function allowed()
+        local ok, why = CRT.AlertDraft.CanEditRaid()
+        if not ok then
+            notice = why
+            drawPanel()
+        end
+        return ok
+    end
+    local function setSaveAs(v)
+        local ctx, d = cur.ctx, cur.draft
+        local before = noteChoice()
+        if not (ctx and d) or (v == "note") == (before ~= nil) or (v == "note" and not allowed()) then
+            return
+        end
+        saveTyped()
+        local r = ctx.reminder
+        local wasOn, wasGroup = r.enabled, r.group
+        if v == "note" then
+            local item = cur.item
+            local ability = item and item.ability
+            r.raidNote = { tag = M.ROLES[1], key = M.Key(item and item.spellID or d.spellID, ability and ability.name or draftName()) }
+            r.enabled = true
+            -- an older alert on any difficulty: the Raid note is for the group on show only (the save splits it, and
+            -- the other group's half stays Only me)
+            if not CRT.AlertReminders.GroupOf(r) then
+                r.group = shownGroup()
+            end
+        else
+            r.raidNote = nil
+        end
+        if not commit() then
+            r.raidNote, r.enabled, r.group = before, wasOn, wasGroup -- not saved: the choice stays as it was
+            return
+        end
+        if v == "mine" then
+            if CRT.AlertDraft.CanEditRaid() then
+                M.Leave(ctx.encounterID, { raidNote = before })
+            else
+                notice = TEXT.linesStay
+            end
+            drawPanel()
+        end
+    end
+    local function setFor(tag)
+        local n = noteChoice()
+        if n and n.tag ~= tag and allowed() then
+            n.tag = tag
+            commit()
+        end
+    end
+    panel.saveAs = row(UI.Dropdown(p, TEXT.saveAs, {
+        labelWidth = L.SAVE_LABEL, width = L.SAVE_W,
+        options = { { key = "note", label = TEXT.asNote }, { key = "mine", label = TEXT.asMine } },
+        get = function() return noteChoice() and "note" or "mine" end,
+        set = setSaveAs,
+    }))
+    panel.saveAs:SetPoint("TOPLEFT", L.SAVE_X, L.SAVE_Y)
+    panel.saveAsHelp = UI.HelpRight(panel.saveAs, TEXT.saveAs, TEXT.raidNoteHelp)
+    -- For: the role choices, then the group's players (and any picked who left it) as tick boxes
+    local roleLabels = { all = TEXT.forEveryone, tank = TEXT.forTanks, healer = TEXT.forHealers, melee = TEXT.forMelee,
+        ranged = TEXT.forRanged }
+    panel.forDrop = row(UI.Dropdown(p, TEXT.forLabel, {
+        labelWidth = L.SAVE_LABEL, width = L.SAVE_W, maxHeight = L.MENU_MAX_H,
+        enabledIf = function() return noteChoice() ~= nil end,
+        options = function()
+            local out, seen = {}, {}
+            for _, key in ipairs(M.ROLES) do
+                out[#out + 1] = { key = key, label = roleLabels[key] }
+            end
+            out[#out + 1] = { title = true, label = TEXT.forPlayers }
+            local n = noteChoice()
+            local names = M.GroupNames()
+            if n and not M.IsRole(n.tag) then
+                for _, w in ipairs(M.TagWords(n.tag)) do
+                    names[#names + 1] = w
+                end
+            end
+            for _, name in ipairs(names) do
+                if not seen[name:lower()] then
+                    seen[name:lower()] = true
+                    out[#out + 1] = { key = name, label = name, checkbox = true }
+                end
+            end
+            return out
+        end,
+        get = function()
+            local n = noteChoice()
+            return n and n.tag or M.ROLES[1]
+        end,
+        set = setFor,
+        checked = function(name)
+            local n = noteChoice()
+            return n ~= nil and M.HasPlayer(n.tag, name)
+        end,
+        toggle = function(name)
+            local n = noteChoice()
+            if n then
+                setFor(M.TogglePlayer(n.tag, name))
+            end
+        end,
+    }))
+    panel.forDrop:SetPoint("TOPLEFT", L.SAVE_X, L.SAVE_Y - L.FOR_GAP)
+    -- under the header, the note's line count (drawNoteStatus)
+    panel.noteStatus = p:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    panel.noteStatus:SetPoint("TOPLEFT", L.STATUS_X, L.STATUS_Y)
+    panel.noteStatus:SetWidth(L.STATUS_W)
+    panel.noteStatus:SetJustifyH("LEFT")
+    panel.noteStatus:SetWordWrap(false)
+end
+
 local function buildPanel(f)
     local Draft = CRT.AlertDraft
     local frame = CreateFrame("Frame", nil, f, "BackdropTemplate")
@@ -1437,17 +1686,7 @@ local function buildPanel(f)
     panel.alertMe = makeCheck(p, TEXT.alertMe, L.ALERT_X, L.ALERT_Y, function(on)
         setEnabled(cur.item, on)
     end)
-    -- Raid note is greyed out here: a mechanic has several times, a note line one
-    panel.saveAs = row(UI.Dropdown(p, TEXT.saveAs, {
-        labelWidth = L.SAVE_LABEL, width = L.SAVE_W,
-        options = function()
-            return { { key = "note", label = TEXT.asNote, disabled = true }, { key = "mine", label = TEXT.asMine } }
-        end,
-        get = function() return "mine" end,
-        set = function() drawPanel() end,
-    }))
-    panel.saveAs:SetPoint("TOPLEFT", L.SAVE_X, L.SAVE_Y)
-    panel.saveAsHelp = UI.HelpRight(panel.saveAs, TEXT.asNote, TEXT.raidNoteHelp)
+    buildNoteRow(p, row)
 
     -- Triggers: Show from, Linger, the times (read only) and Show on the Timeline
     heading(p, TEXT.triggers, L.INSET, L.TRIGGERS_Y, TEXT.triggersHelp)
@@ -1690,7 +1929,20 @@ local function buildPanel(f)
                     return -- changed or gone since the click
                 end
                 forget()
+                -- a Raid note reminder's lines go with it
+                local stay = false
+                if CRT.MechNote and CRT.MechNote.InNote(saved) then
+                    if CRT.AlertDraft.CanEditRaid() then
+                        CRT.MechNote.Leave(enc, saved)
+                    else
+                        stay = true
+                    end
+                end
                 CRT.AlertReminders:Delete(enc, id) -- fires the alerts change, which redraws the tab
+                if stay then
+                    notice = TEXT.deletedLinesStay -- said on the row shown next
+                    drawPanel()
+                end
             end,
         }), "GENERIC_CONFIRMATION"))
     end)

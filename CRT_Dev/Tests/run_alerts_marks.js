@@ -1670,6 +1670,14 @@ do
   v:Refresh()
   assert(mine(v) == "12,80", "and gone: " .. mine(v))
   assert(R:AddTime(3001, id, 1, 125, ref, group) and R:Get(3001, id).off == nil, "an added time turns the nearest cast back on")
+  -- saved as Raid note (Notes/MechNote.lua): its note lines are drawn, never its own flags too
+  R:Get(3001, id).raidNote = { tag = "all", key = "4242", difficulty = "Mythic" }
+  v:Refresh()
+  assert(mine(v) == "", "a Raid note alert draws no flags of its own: " .. mine(v))
+  R:Get(3001, id).raidNote = nil
+  v:Refresh()
+  assert(mine(v) ~= "", "Only me again: its flags are back")
+  print("ok marks: a Raid note alert draws only its note lines")
   -- a note or reminder of its own difficulty shows only on a view of its group, as in a pull
   CRT.db.alerts.reminders = {}
   R:Save(3001, nil, { text = "Heroic own", times = "P1 0:50", boss = "Nek", difficulty = "Heroic" })

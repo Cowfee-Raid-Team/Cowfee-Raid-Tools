@@ -10,8 +10,8 @@ local ADDON, CRT = ...
 --          warn, linger, boss, baseDifficulty, difficultyTouched, ticksText, fill, shield }
 --          speakAt is nil (Speak at: On show) or "zero" (At 0), as a reminder keeps it
 --          ticksText is the Impact ticks box as typed ("2, 4": seconds into the bar, Draft.ParseTicks), fill
---          "up" (Bar fills up) or nil (it empties), as a reminder keeps them (Alerts/Bars.lua draws them; Only me: a
---          note line has no such fields). An older reminder's barTo stays saved as it was and is never read
+--          "up" (Bar fills up) or nil (it empties), as a reminder keeps them (Alerts/Bars.lua draws them; a note line
+--          keeps them as ticks:, fill: and countto:). An older reminder's barTo stays saved as it was and is never read
 --          group is the difficulty group Only me saves for ("nh" or "mythic", Draft.Group); difficulty
 --          the raid note's Difficulty a note line goes to, or an older reminder's Difficulty text
 --          shield is the Shield bar section { on, unit, length, anyDifficulty }: kept while it is unticked, so a
@@ -592,6 +592,7 @@ function Draft.NoteTimer(ctx, draft)
         kind = spellID and "spell" or "text",
         text = text ~= "" and text or nil,
         dur = base.dur,
+        prio = base.prio, -- a line's prio: stays as it was (no box for it here)
         color = copy(draft.color),
         show = show,
         tts = draft.speak or nil,
@@ -604,6 +605,10 @@ function Draft.NoteTimer(ctx, draft)
         linger = draft.linger > 0 and draft.linger or nil,
         iconID = draft.iconType == "id" and validID(draft.iconID) or nil,
         absorb = Draft.Absorb(draft), -- shield:, which a CRT from before it ignores
+        -- ticks:, fill: and countto: (the bar's impact ticks), which a CRT from before them ignores; a shield bar has none
+        ticks = not Draft.Absorb(draft) and Draft.Ticks(draft) or nil,
+        fill = (not Draft.Absorb(draft) and draft.fill == "up") and "up" or nil,
+        countTo = (not Draft.Absorb(draft) and Draft.Ticks(draft) and draft.countTo == "impact") and "impact" or nil,
     }
 end
 
