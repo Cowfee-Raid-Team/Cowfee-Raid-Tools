@@ -58,7 +58,8 @@ local function anySound(d)
 end
 
 -- The tabs, in order. width: the approved mock-up's, widened for a label that needs more. on(draft): its dot; When
--- has none (Show from always has a value).
+-- has none (Show from always has a value). hosts (optional): the hosts that get the tab, by owner, such as
+-- { mechanics = true } for a tab only the Mech Alerts panel has room for (the editor's strip is 600 px); none: every host.
 SubTabs.LIST = {
     { key = "when", label = TEXT.when, width = 118 },
     { key = "looks", label = TEXT.looks, width = 118, on = anyShown },
@@ -88,41 +89,9 @@ Strip.__index = Strip
 function SubTabs.Build(parent, o)
     local s = setmetatable({ keys = {}, buttons = {}, frames = {}, entries = {}, opts = o }, Strip)
     for _, entry in ipairs(o.list or SubTabs.LIST) do
-        local key = entry.key
-        s.keys[#s.keys + 1] = key
-        s.entries[key] = entry
-        local b = CreateFrame("Button", nil, parent, "BackdropTemplate")
-        if b.SetBackdrop then
-            b:SetBackdrop(BACKDROP)
+        if not entry.hosts or entry.hosts[o.owner] then
+            SubTabs.AddTab(s, parent, entry)
         end
-        b.sel = b:CreateTexture(nil, "ARTWORK")
-        b.sel:SetAllPoints()
-        b.text = b:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
-        b.text:SetPoint("CENTER")
-        b.text:SetText(entry.label)
-        b.key = key
-        b.dot = b:CreateTexture(nil, "OVERLAY")
-        b.dot:SetSize(L.DOT, L.DOT)
-        b.dot:SetPoint("LEFT", b.text, "RIGHT", L.DOT_GAP, 0)
-        UI.Tint(b.dot, "SetColorTexture", "accent", 1)
-        if b.dot.SetMask then
-            b.dot:SetMask("Interface\\CharacterFrame\\TempPortraitAlphaMask") -- round, as the Mech Alerts list's dots
-        end
-        b.dot:Hide()
-        b:SetScript("OnClick", function()
-            local changed = s.current ~= key
-            s:Select(key)
-            if changed and o.onPick then
-                o.onPick(key)
-            end
-        end)
-        UI:RegisterTab(b)
-        s.buttons[key] = b
-        local f = CreateFrame("Frame", nil, parent)
-        f:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, 0)
-        f:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", 0, 0)
-        f:Hide()
-        s.frames[key] = f
     end
     if o.rule then
         s.rule = parent:CreateTexture(nil, "ARTWORK")
@@ -134,6 +103,46 @@ function SubTabs.Build(parent, o)
     s:Layout()
     s:Select(picked[o.owner])
     return s
+end
+
+-- One tab of the strip: its button (label, dot) and its frame over the whole parent.
+function SubTabs.AddTab(s, parent, entry)
+    local o = s.opts
+    local key = entry.key
+    s.keys[#s.keys + 1] = key
+    s.entries[key] = entry
+    local b = CreateFrame("Button", nil, parent, "BackdropTemplate")
+    if b.SetBackdrop then
+        b:SetBackdrop(BACKDROP)
+    end
+    b.sel = b:CreateTexture(nil, "ARTWORK")
+    b.sel:SetAllPoints()
+    b.text = b:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
+    b.text:SetPoint("CENTER")
+    b.text:SetText(entry.label)
+    b.key = key
+    b.dot = b:CreateTexture(nil, "OVERLAY")
+    b.dot:SetSize(L.DOT, L.DOT)
+    b.dot:SetPoint("LEFT", b.text, "RIGHT", L.DOT_GAP, 0)
+    UI.Tint(b.dot, "SetColorTexture", "accent", 1)
+    if b.dot.SetMask then
+        b.dot:SetMask("Interface\\CharacterFrame\\TempPortraitAlphaMask") -- round, as the Mech Alerts list's dots
+    end
+    b.dot:Hide()
+    b:SetScript("OnClick", function()
+        local changed = s.current ~= key
+        s:Select(key)
+        if changed and o.onPick then
+            o.onPick(key)
+        end
+    end)
+    UI:RegisterTab(b)
+    s.buttons[key] = b
+    local f = CreateFrame("Frame", nil, parent)
+    f:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, 0)
+    f:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", 0, 0)
+    f:Hide()
+    s.frames[key] = f
 end
 
 -- Sizes and places the tabs from x, y: each its entry's width, or its label (and dot) and padding when wider.

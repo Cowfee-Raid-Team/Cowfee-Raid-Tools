@@ -1962,6 +1962,74 @@ check("mech subtabs: the tab stays when another row or boss is picked, and for t
   assert(#errors == 0, tostring(errors[1]))
 end)
 
+check("mech subtabs: another tab saves what was typed, lets go of the boxes and closes the lookup", function()
+  local f = fresh()
+  local p = f.panel
+  setCheck(f.rows[1].check, true)
+  local _, id = only()
+  click(p.tabs.buttons.looks)
+  typeInto(p.textEdit, "Soak it")
+  assert(R:Get(ENC, id).text == "Real Name", "not saved while typing")
+  click(p.tabs.buttons.when)
+  assert(R:Get(ENC, id).text == "Soak it", "saved on leaving the tab: " .. tostring(R:Get(ENC, id).text))
+  assert(not p.textEdit:HasFocus(), "the Text box let go")
+  click(p.tabs.buttons.looks)
+  -- the lookup open, then another tab: closed when Looks shows again
+  typeInto(p.idEdit, "other")
+  assert(p.lookup.shown, "the lookup open")
+  click(p.tabs.buttons.sound)
+  assert(not p.idEdit:HasFocus(), "the Icon box let go")
+  click(p.tabs.buttons.looks)
+  assert(not p.lookup.shown, "closed on coming back to Looks")
+  assert(p.idEdit.text == "777", "the ID back in the box: " .. tostring(p.idEdit.text))
+  click(p.tabs.buttons.when)
+  assert(#errors == 0, tostring(errors[1]))
+end)
+
+check("mech subtabs: greying follows a change made on another tab", function()
+  local f = fresh()
+  local p = f.panel
+  setCheck(f.rows[1].check, true)
+  -- Speak the text off on Sound and speech: Speak at greys, still after going to another tab and back
+  click(p.tabs.buttons.sound)
+  assert(p.speakAt.opts.enabledIf() == true, "Speak at on with Speak the text")
+  setCheck(p.also.speak, false)
+  click(p.tabs.buttons.when)
+  click(p.tabs.buttons.sound)
+  assert(p.speakAt.opts.enabledIf() == false, "Speak at greyed")
+  setCheck(p.also.speak, true)
+  -- Bar off on Looks: the Shield bar tab's section greys
+  click(p.tabs.buttons.shield)
+  assert(p.shield.check.enabled == true, "Shield bar on with Bar")
+  click(p.tabs.buttons.looks)
+  setCheck(p.checks.bar, false)
+  click(p.tabs.buttons.shield)
+  assert(p.shield.check.enabled == false and p.shield.unitRow.opts.enabledIf() == false, "Shield bar greyed with Bar off on Looks")
+  click(p.tabs.buttons.looks)
+  setCheck(p.checks.bar, true)
+  click(p.tabs.buttons.shield)
+  assert(p.shield.check.enabled == true, "back on")
+  click(p.tabs.buttons.when)
+  assert(#errors == 0, tostring(errors[1]))
+end)
+
+check("mech subtabs: a tab for one host only stays out of the others", function()
+  local list = {}
+  for i, e in ipairs(CRT.AlertSubTabs.LIST) do list[i] = e end
+  list[#list + 1] = { key = "assign", label = "Assign", width = 118, hosts = { mechanics = true } }
+  local panelStrip = CRT.AlertSubTabs.Build(mock("Frame"), { owner = "mechanics", x = 12, y = -66, list = list })
+  local editorStrip = CRT.AlertSubTabs.Build(mock("Frame"), { owner = "editor", x = 16, y = -82, list = list })
+  assert(table.concat(panelStrip.keys, ",") == "when,looks,sound,shield,assign", "the panel has it")
+  assert(table.concat(editorStrip.keys, ",") == "when,looks,sound,shield" and editorStrip.buttons.assign == nil and editorStrip.frames.assign == nil,
+    "the editor hasn't: " .. table.concat(editorStrip.keys, ","))
+  -- the editor's strip fits its 600 px window (16 in from each side)
+  assert(16 + editorStrip:Layout() <= 600 - 16, "the editor strip fits: " .. editorStrip:Layout())
+  -- the panel's five fit the panel (748 wide, 12 in from each side)
+  assert(12 + panelStrip:Layout() <= 748 - 12, "the panel strip fits: " .. panelStrip:Layout())
+  click(panelStrip.buttons.when) -- the session's pick back on When
+  assert(#errors == 0, tostring(errors[1]))
+end)
+
 check("mech subtabs: a fifth tab is one more entry in the list", function()
   local list = {}
   for i, e in ipairs(CRT.AlertSubTabs.LIST) do list[i] = e end

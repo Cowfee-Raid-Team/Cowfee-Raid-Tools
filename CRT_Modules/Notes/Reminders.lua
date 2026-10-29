@@ -1688,6 +1688,18 @@ local function buildNoteRow(p, row)
     panel.noteStatus:SetWordWrap(false)
 end
 
+-- Another subtab picked: the boxes let go and what was typed is saved (leaving a box saves it too), and the spell
+-- lookup's list closes, so nothing waits on a tab that isn't on show.
+local function leaveTab()
+    if panel.lookupCtl then
+        panel.lookupCtl:Hide()
+    end
+    for _, edit in ipairs(panelEdits()) do
+        edit:ClearFocus()
+    end
+    saveTyped()
+end
+
 local function buildPanel(f)
     local Draft = CRT.AlertDraft
     local frame = CreateFrame("Frame", nil, f, "BackdropTemplate")
@@ -1734,7 +1746,7 @@ local function buildPanel(f)
     -- Under the header, the subtabs (Alerts/SubTabs.lua, shared with the alert editor): each tab's controls are built
     -- into its own frame, so only the open tab's show. The tab picked stays when another row is picked.
     panel.tabs = CRT.AlertSubTabs.Build(p, { owner = "mechanics", x = L.INSET, y = L.TABS_Y,
-        rule = { y = L.RULE_Y, left = L.INSET, right = L.INSET } })
+        rule = { y = L.RULE_Y, left = L.INSET, right = L.INSET }, onPick = leaveTab })
     local tf = panel.tabs.frames
 
     -- When: Show from, Linger, the times (read only) and Show on the Timeline

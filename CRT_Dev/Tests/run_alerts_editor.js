@@ -61,6 +61,8 @@ local function mock(kind, parent, template)
     if k == "GetFrameLevel" then return function() return 1 end end
     if k == "HighlightText" then return function(self) rawset(self, "highlighted", true) end end
     if k == "SetFocus" then return function(self) rawset(self, "focused", true) end end
+    if k == "ClearFocus" then return function(self) rawset(self, "focused", false) end end
+    if k == "HasFocus" then return function(self) return rawget(self, "focused") == true end end
     if k == "SetFrameStrata" then return function(self, v) rawset(self, "strata", v) end end
     if k == "GetFrameStrata" then return function(self) return rawget(self, "strata") or "MEDIUM" end end
     if k == "SetToplevel" then return function(self, v) rawset(self, "toplevel", v) end end
@@ -764,6 +766,19 @@ do
   click(t.buttons.when)
   -- a normal alert after a saved one: Show from back under Relative to
   assert(top(sliders["Show from"]) == -150, "Show from under Relative to")
+  -- another tab lets go of the Text, Time and Icon ID boxes (the draft already has what was typed)
+  for _, edit in ipairs({ w.textEdit, w.timeEdit, w.idEdit }) do edit:SetFocus() end
+  typeInto(w.textEdit, "Typed")
+  click(t.buttons.sound)
+  assert(not w.textEdit:HasFocus() and not w.timeEdit:HasFocus() and not w.idEdit:HasFocus(), "the boxes let go")
+  click(t.buttons.when)
+  assert(w.textEdit.text == "Typed", "the text stays")
+  -- the editor's own strip leaves out a tab for the Mech Alerts panel only, and fits the window
+  local list = {}
+  for i, e in ipairs(CRT.AlertSubTabs.LIST) do list[i] = e end
+  list[#list + 1] = { key = "assign", label = "Assign", width = 118, hosts = { mechanics = true } }
+  local s2 = CRT.AlertSubTabs.Build(mock("Frame"), { owner = "editor", x = 16, y = -82, list = list })
+  assert(s2.buttons.assign == nil and 16 + s2:Layout() <= 600 - 16, "no panel-only tab, the strip fits")
   assert(#errors == 0, tostring(errors[1]))
   print("ok editor: the settings on four subtabs")
 end

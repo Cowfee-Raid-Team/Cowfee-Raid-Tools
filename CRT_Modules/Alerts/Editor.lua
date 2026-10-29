@@ -1623,10 +1623,19 @@ local function whenRows(f, p, row)
     f.showFrom, f.linger = showFrom, linger
 end
 
+-- Another subtab picked: the spell lookup's list closes and the Text, Time and Icon ID boxes let go (each box already
+-- wrote the draft as it was typed), so no hidden box keeps the keyboard.
+local function leaveTab()
+    hideLookup()
+    for _, edit in ipairs({ frame.textEdit, frame.timeEdit, frame.idEdit }) do
+        edit:ClearFocus()
+    end
+end
+
 -- The subtabs under the header (Alerts/SubTabs.lua, the Mech Alerts panel's), each tab's rows built into its own frame.
 local function buildTabs(f, row)
     f.tabs = CRT.AlertSubTabs.Build(f, { owner = "editor", x = LEFT, y = TABS_Y,
-        rule = { y = RULE_Y, left = LEFT, right = LEFT }, onPick = hideLookup })
+        rule = { y = RULE_Y, left = LEFT, right = LEFT }, onPick = leaveTab })
     local tf = f.tabs.frames
     whenRows(f, tf.when, row)
     showAsRows(f, tf.looks)
