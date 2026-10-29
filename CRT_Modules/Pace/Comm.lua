@@ -8,106 +8,49 @@ local ADDON, CRT = ...
 --
 -- Message under the prefix CRTPace1: "<encounterID>|<hash>|<part>|<total>|<text>", where text is a part
 -- of the plan as Pace:Export writes it (plain text, its lines joined by ";"), and hash is its
--- fingerprint, so a plan that arrives damaged is dropped.
+-- fingerprint, so a plan that arrives damaged is dropped. The send queue, throttle and lockdown handling are
+-- CRT_Core/Comm.lua's (CRT.Comm), shared with the other modules that send.
 
 local Pace = CRT.Pace
 local Comm = {}
 CRT.PaceComm = Comm
+local Shared = CRT.Comm
 
 local PREFIX = "CRTPace1"
 local CHUNK = 200
-local RESULT = Enum and Enum.SendAddonMessageResult or {}
-local SUCCESS = RESULT.Success or 0
-local THROTTLED = RESULT.AddonMessageThrottle or 3
-local LOCKDOWN = RESULT.AddOnMessageLockdown or 11
+-- how CRT.Comm names a pace plan in its chat lines
+local WHAT = { what = "the pace plan", locked = "Pace plans" }
 
 if C_ChatInfo and C_ChatInfo.RegisterAddonMessagePrefix then
     C_ChatInfo.RegisterAddonMessagePrefix(PREFIX)
 end
 
-local queue = {} -- messages waiting to go, in order
 local incoming = {} -- sender .. id .. hash -> { total, parts, count }
 
-local function channel()
-    if IsInGroup(LE_PARTY_CATEGORY_INSTANCE) then
-        return "INSTANCE_CHAT"
-    elseif IsInRaid() then
-        return "RAID"
-    elseif IsInGroup() then
-        return "PARTY"
-    end
-end
-
-local function isLeaderOrAssist(unit)
-    return (UnitIsGroupLeader(unit) or UnitIsGroupAssistant(unit)) and true or false
-end
-
--- Two small running sums (a djb2 kept under 2^24 and an Adler-style sum), plus the length, so a
--- damaged plan practically never matches, with every number small enough for any Lua.
-local function fingerprint(text)
-    local h, a = 5381, 1
-    for i = 1, #text do
-        local b = text:byte(i)
-        h = (h * 33 + b) % 16777216
-        a = (a * 7 + b) % 65521
-    end
-    return string.format("%06x%04x%x", h, a, #text)
-end
-
 function Comm:CanShare()
-    if not channel() then
+    if not Shared.Channel() then
         return false, "You need to be in a group to share pace plans."
     end
-    if not isLeaderOrAssist("player") then
+    if not Shared.IsLeaderOrAssist("player") then
         return false, "Only the raid leader or an assistant can share pace plans."
     end
     return true
 end
 
-local function sendQueue()
-    local ch = channel()
-    if not ch then
-        wipe(queue)
-        CRT:Print("Sharing stopped: you left the group.")
-        return
-    end
-    while #queue > 0 do
-        local ok, result = pcall(C_ChatInfo.SendAddonMessage, PREFIX, queue[1], ch)
-        if not ok then
-            wipe(queue)
-            CRT:Print("Sharing the pace plan failed: " .. tostring(result))
-            return
-        end
-        if result == THROTTLED then
-            C_Timer.After(1, sendQueue)
-            return
-        elseif result == LOCKDOWN then
-            wipe(queue)
-            CRT:Print("Pace plans can't be shared during an encounter. Share again after the pull ends.")
-            return
-        elseif not (result == true or result == nil or result == SUCCESS) then
-            wipe(queue)
-            CRT:Print("Sharing the pace plan failed with result " .. tostring(result) .. ".")
-            return
-        end
-        table.remove(queue, 1)
-    end
-end
-
--- Queues one boss's plan in use. Returns true when there was one.
-local function queuePlan(encounterID)
+-- Adds one boss's plan in use to list. Returns true when there was one.
+local function queuePlan(encounterID, list)
     -- Line breaks travel as ";" (plan text has none of its own).
     local text = (Pace:Export(encounterID):gsub("\n", ";"))
     if text == "" then
         return false
     end
-    local hash = fingerprint(text)
+    local hash = Shared.Fingerprint(text)
     local parts = {}
     for pos = 1, #text, CHUNK do
         parts[#parts + 1] = text:sub(pos, pos + CHUNK - 1)
     end
     for i, part in ipairs(parts) do
-        queue[#queue + 1] = encounterID .. "|" .. hash .. "|" .. i .. "|" .. #parts .. "|" .. part
+        list[#list + 1] = encounterID .. "|" .. hash .. "|" .. i .. "|" .. #parts .. "|" .. part
     end
     return true
 end
@@ -119,9 +62,9 @@ function Comm:Share(ids)
         CRT:Print(why)
         return 0
     end
-    local n = 0
+    local n, list = 0, {}
     for _, id in ipairs(ids) do
-        if queuePlan(id) then
+        if queuePlan(id, list) then
             n = n + 1
         end
     end
@@ -129,7 +72,7 @@ function Comm:Share(ids)
         CRT:Print("There is no pace plan to share.")
         return 0
     end
-    sendQueue()
+    Shared:Send(PREFIX, list, WHAT)
     CRT:Print(string.format("Shared %d pace plan%s with the group.", n, n == 1 and "" or "s"))
     return n
 end
@@ -166,7 +109,7 @@ events:SetScript("OnEvent", function(_, _, prefix, message, _, sender)
         return
     end
     local short = Ambiguate(sender, "none")
-    if short == UnitName("player") or not isLeaderOrAssist(short) then
+    if short == UnitName("player") or not Shared.IsLeaderOrAssist(short) then
         return
     end
     local id, hash, part, total, data = message:match("^(%d+)|(%x+)|(%d+)|(%d+)|(.*)$")
@@ -189,7 +132,7 @@ events:SetScript("OnEvent", function(_, _, prefix, message, _, sender)
     end
     incoming[key] = nil
     local text = table.concat(buffer.parts, "", 1, buffer.total)
-    if fingerprint(text) ~= hash then
+    if Shared.Fingerprint(text) ~= hash then
         CRT:Print("A pace plan from " .. short .. " arrived damaged. Ask them to share it again.")
         return
     end
