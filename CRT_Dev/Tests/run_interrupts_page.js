@@ -25,7 +25,10 @@ InCombatLockdown = function() return false end
 GetTime = function() return 100 end
 wipe = function(t) for k in pairs(t) do t[k] = nil end return t end
 Ambiguate = function(n) return (n:gsub("%-.*$", "")) end
-C_Timer = { After = function() end, NewTimer = function() return { Cancel = function() end } end }
+-- C_Timer.After(0): queued until flush() runs it, as the next frame would; longer waits never come
+local nextFrame = {}
+C_Timer = { After = function(d, fn) if d == 0 then nextFrame[#nextFrame + 1] = fn end end, NewTimer = function() return { Cancel = function() end } end }
+local function flush() local n = 0 while #nextFrame > 0 and n < 100 do n = n + 1 table.remove(nextFrame, 1)() end end
 issecretvalue = function() return false end
 local ME = "Solex"
 UnitName = function(u) if u == "player" then return ME end end
@@ -102,7 +105,11 @@ local function row(kind, parent, text, opts, extra)
   r.label, r.opts, r.rowKind = text, opts, kind
   r.w = (opts.labelWidth or 140) + 5 + (opts.width or 200) + (extra or 0)
   r.h = 32
-  r.refresh = function() if opts.enabledIf then r.enabled = opts.enabledIf() and true or false end end
+  -- as UI.Dropdown's refresh does: GenerateMenu runs the menu's generator, which asks options()
+  r.refresh = function()
+    if kind == "dropdown" and type(opts.options) == "function" then opts.options() end
+    if opts.enabledIf then r.enabled = opts.enabledIf() and true or false end
+  end
   rows[#rows + 1] = r
   return r
 end
@@ -166,6 +173,35 @@ check(P.tabs.assignments.frame.shown and not P.tabs.settings.frame.shown, "page:
 eq(asked, 1, "page: opening asks the Addon check when stale")
 eq(#P.BossOptions(), 2, "page: the two bosses with a block listed")
 eq(P.BossOptions()[1].label, "Nek'zali the Soulcoiler \\194\\183 Mythic", "page: the boss with its difficulty")
+
+-- the work per show (#1211): the group read, the Raid Groups layouts read, the page refreshed and the note read, at most
+-- once each when the page is shown again, and the Addon check's answer arriving while it shows coalesced into one refresh
+do
+  flush()
+  local n = { roster = 0, layouts = 0, refresh = 0, note = 0 }
+  local realRoster, realPresets, realStatus, realRead = CRT.AddonCheck.Roster, CRT.Groups.Presets, P.Status, CRT.InterruptNote.ReadInto
+  CRT.AddonCheck.Roster = function(...) n.roster = n.roster + 1 return realRoster(...) end
+  CRT.Groups.Presets = function(...) n.layouts = n.layouts + 1 return realPresets(...) end
+  P.Status = function(...) n.refresh = n.refresh + 1 return realStatus(...) end
+  CRT.InterruptNote.ReadInto = function(...) n.note = n.note + 1 return realRead(...) end
+  pf:Hide(); pf:Show()
+  for _, fn in ipairs(checkListeners) do fn("reply") end
+  flush()
+  print(string.format("work per show: %d roster builds, %d layout reads, %d refreshes, %d note reads", n.roster, n.layouts, n.refresh, n.note))
+  check(n.roster <= 1, "perf: the group read at most once a show (got " .. n.roster .. ")")
+  check(n.layouts <= 1, "perf: the Raid Groups layouts read at most once a show (got " .. n.layouts .. ")")
+  eq(n.refresh, 1, "perf: one refresh a show")
+  check(n.note <= 1, "perf: the note read at most once a show (got " .. n.note .. ")")
+  -- shown again with nothing changed: the group and layouts come from the cache, the note isn't read again
+  for k in pairs(n) do n[k] = 0 end
+  pf:Hide(); pf:Show(); flush()
+  print(string.format("work per show, nothing changed: %d roster builds, %d layout reads, %d refreshes, %d note reads", n.roster, n.layouts, n.refresh, n.note))
+  eq(n.roster, 0, "perf: nothing changed, the group from the cache")
+  eq(n.layouts, 0, "perf: nothing changed, the layouts from the cache")
+  eq(n.note, 0, "perf: nothing changed, the note not read again")
+  eq(n.refresh, 1, "perf: and one refresh")
+  CRT.AddonCheck.Roster, CRT.Groups.Presets, P.Status, CRT.InterruptNote.ReadInto = realRoster, realPresets, realStatus, realRead
+end
 
 -- the status bar and Share
 local function statusText() return plain(P.status.text) end
