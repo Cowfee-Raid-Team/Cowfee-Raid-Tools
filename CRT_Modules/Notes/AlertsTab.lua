@@ -6,10 +6,11 @@ local ADDON, CRT = ...
 --          callout and speech in CRTDB.notes.alert (enabled, tts), the bars in alerts.bars.noteLines, the rest in
 --          alerts.noteLines. A note line with its own show: keeps its displays (see Notes/Engine.lua).
 --          Under it, Colours (Use custom colours, alerts.customColors, the one switch for your own alert colours:
---          the areas' colour rows, your reminders' and templates' colour; see Alerts/Colors.lua), then Previews
---          and a test of every area.
---   Right  Configuration, from half the page: a dropdown of the note callout and the five alert areas, and the
---          chosen one's settings, drawn by Alerts/Areas.lua's panel from each area's def.settings (the callout's
+--          the areas' colour rows, your reminders' and templates' colour; see Alerts/Colors.lua), then Try it:
+--          Preview alerts (the callout and the five areas only, UI.PreviewButton), a test of every area, and a
+--          strip naming which of them preview now.
+--   Right  Configuration, from half the page: a dropdown of the note callout and the five alert areas with the
+--          chosen one's own preview button beside it, and the chosen one's settings, drawn by Alerts/Areas.lua's panel from each area's def.settings (the callout's
 --          from CRT.NoteAlert.PanelEntry), in a scroll frame (CowfeeRaidToolsAlertSettingsScroll) for one with
 --          more rows than fit. The choice is kept for the session. The callout's Read them out row is the same
 --          setting (notes.alert.tts) as the left column's: each follows the other.
@@ -44,10 +45,33 @@ local TEXT = {
     custom = "Use custom colours",
 
     tryIt = "Try it",
-    tryHelp = "Previews shows every alert with samples, so you can drag them into place; the cog on each opens its settings here. Test all areas counts three test alerts down in each.",
-    previews = "Previews",
+    tryHelp = "Preview alerts shows the note callout and every alert area with samples, so you can drag them into place; the cog on each opens its settings here. Test all areas counts three test alerts down in each.",
+    previews = "Preview alerts",
+    previewsTip = "Shows the note callout and the five alert areas with samples, so you can drag them into place. Other previews stay as they are.",
+    onScreen = "On screen now: %s",
     testAll = "Test all areas",
     testLine = "Test alert %d",
+    -- the Configuration pane's button for the one area picked in its list
+    previewKind = {
+        callout = "Preview callout",
+        icons = "Preview icons",
+        texts = "Preview alerts text",
+        bars = "Preview bars",
+        circles = "Preview circles",
+        timeline = "Preview timeline",
+    },
+    previewKindTip = {
+        callout = "Shows the note callout with a sample line so you can drag it into place.",
+        icons = "Shows the icons area with sample icons so you can drag it into place.",
+        texts = "Shows the critical alerts text with sample lines so you can drag it into place.",
+        bars = "Shows the bars area with sample bars so you can drag it into place.",
+        circles = "Shows the circles area with sample circles so you can drag it into place.",
+        timeline = "Shows the alert timeline with samples so you can drag it into place.",
+    },
+    -- the strip's short name for each display that previews
+    stripName = {
+        callout = "Callout", icons = "Icons", texts = "Alerts text", bars = "Bars", circles = "Circles", timeline = "Timeline",
+    },
 
     config = "Configuration",
     configHelp = "How each kind of alert looks. Pick one from the list to see its settings; a change shows at once.\n\n"
@@ -72,6 +96,16 @@ local KINDS = {
     { key = "timeline", label = TEXT.timelineArea },
 }
 local DEFAULT_KIND = CALLOUT
+-- Each kind's preview key (UI:RegisterPreview): the callout's in Notes/Alert.lua, the areas' in Alerts/Areas.lua.
+-- Preview alerts turns them all on; the alert editor ("alerteditor") is a window of its own and stays out.
+local PREVIEW_KEY = {
+    callout = "alert", icons = "alerticons", texts = "alerttexts", bars = "alertbars", circles = "alertcircles",
+    timeline = "alerttimeline",
+}
+local ALERT_KEYS = {}
+for _, kind in ipairs(KINDS) do
+    ALERT_KEYS[#ALERT_KEYS + 1] = PREVIEW_KEY[kind.key]
+end
 -- Two columns, each half of the page (UI.PAGE_W): where your note lines go on the left, Configuration
 -- on the right. The tab is UI.PAGE_H - 66 high under the tabs (Notes/Page.lua); an area's rows that run
 -- taller than the room under the dropdown scroll (the timeline has many).
@@ -82,6 +116,8 @@ local ROWS_TOP = 68      -- the rows start this far down the tab, under the drop
 local ROWS_BOTTOM = 4    -- and end this far above its bottom: room for the bars' 13 rows without scrolling
 local KIND_DROP_MIN_W = 180 -- the Configuration dropdown at its narrowest
 local KIND_DROP_PAD = 40    -- the dropdown's text inset and arrow, beside its longest choice
+local KIND_PREVIEW_GAP = 8  -- the chosen kind's preview button, this far right of the dropdown
+local STRIP_GAP = 8         -- the On screen now strip, this far under the Try it buttons
 local TEST_ICONS = { 136243, 135808, 136116 }
 local TEST_TIMES = { 8, 12, 16 } -- seconds until each test alert reaches 0
 local TEST_HOLD = 1
@@ -89,7 +125,8 @@ local TEST_HOLD = 1
 local WHITE = { 1, 1, 1 }
 local GREY = { 0.5, 0.5, 0.5 }
 
-local tab, panel, kindDrop, rowsScroll
+local tab, panel, kindDrop, rowsScroll, strip
+local kindPreviews = {} -- kind key -> its preview button; only the chosen kind's shows
 local selected = DEFAULT_KIND
 local controls = {}
 
@@ -199,6 +236,24 @@ local function show(key)
     if kindDrop then
         kindDrop.refresh()
     end
+    for kindKey, b in pairs(kindPreviews) do
+        b:SetShown(kindKey == key)
+    end
+end
+
+-- The strip under Try it: which of this tab's displays preview now. Hidden while none does.
+local function refreshStrip()
+    if not strip then
+        return
+    end
+    local names = {}
+    for _, kind in ipairs(KINDS) do
+        if UI:IsPreviewing(PREVIEW_KEY[kind.key]) then
+            names[#names + 1] = TEXT.stripName[kind.key]
+        end
+    end
+    strip:SetText(format(TEXT.onScreen, table.concat(names, ", ")))
+    strip:SetShown(#names > 0)
 end
 
 -- Three test alerts in every area, counting down without a run.
@@ -283,14 +338,19 @@ local function build(pf)
     local tryTop = y - 20
     local tryTitle = heading(pf, 8, tryTop, TEXT.tryIt)
     UI.HelpRight(tryTitle, TEXT.tryIt, TEXT.tryHelp)
-    local previews = makeButton(pf, TEXT.previews, 140)
+    local previews = UI.PreviewButton(pf, TEXT.previews, ALERT_KEYS, { tooltip = TEXT.previewsTip, height = 24 })
     previews:SetPoint("TOPLEFT", 8, tryTop - 24)
-    previews:SetScript("OnClick", function()
-        UI:SetPreviews(true)
-    end)
     local test = makeButton(pf, TEXT.testAll, 140)
     test:SetPoint("LEFT", previews, "RIGHT", 8, 0)
     test:SetScript("OnClick", testAll)
+    -- On screen now: one line under the buttons, as wide as the left column
+    strip = pf:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    strip:SetPoint("TOPLEFT", previews, "BOTTOMLEFT", 0, -STRIP_GAP)
+    strip:SetWidth(RIGHT_X - COLUMN_GAP - 8)
+    strip:SetJustifyH("LEFT")
+    strip:SetWordWrap(true)
+    UI:OnPreviewChange(refreshStrip)
+    refreshStrip()
 
     -- Right: how each kind of alert looks.
     local configTitle = heading(pf, RIGHT_X, -14, TEXT.config)
@@ -315,6 +375,14 @@ local function build(pf)
         set = show,
     })
     kindDrop:SetPoint("TOPLEFT", RIGHT_X - 4, -32)
+    -- the picked kind's own preview button, beside the list; show() swaps which one is up
+    for _, kind in ipairs(KINDS) do
+        local b = UI.PreviewButton(pf, TEXT.previewKind[kind.key], { PREVIEW_KEY[kind.key] },
+            { tooltip = TEXT.previewKindTip[kind.key] })
+        b:SetPoint("LEFT", kindDrop, "RIGHT", KIND_PREVIEW_GAP, 0)
+        b:Hide()
+        kindPreviews[kind.key] = b
+    end
     -- The chosen area's rows, in a scroll frame that clips them to the tab; its bar shows only when needed.
     local scroll = CreateFrame("ScrollFrame", "CowfeeRaidToolsAlertSettingsScroll", pf, "UIPanelScrollFrameTemplate")
     UI:SkinScrollBar(scroll.ScrollBar)

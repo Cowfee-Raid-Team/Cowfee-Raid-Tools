@@ -121,10 +121,34 @@ CRT.UI = { PAGE_W = 1026, PAGE_H = 560, SkinScrollBar = function() end, ScrollGu
     f:ClearAllPoints()
     f:SetPoint(w.point, UIParent, w.point, w.x, w.y)
   end,
-  SetPreviews = function(self, on)
-    previewsOn = on
-    self.previewing = on and true or false
-    for _, fn in pairs(previews) do fn(on) end
+  -- As CRT_Core/UI/Panel.lua (run_previews.js tests the real one): each key keeps its own state; the helper
+  -- alertwindow runs while any display previews
+  previewOn = {}, previewListeners = {},
+  SetPreviewGroup = function(self, keys, on)
+    if on and InCombatLockdown and InCombatLockdown() then return end
+    for _, key in ipairs(keys) do
+      if previews[key] and key ~= "alertwindow" then self.previewOn[key] = on and true or nil previews[key](on) end
+    end
+    local any = next(self.previewOn) ~= nil
+    if any ~= self.previewing or not on then
+      self.previewing = any
+      if previews.alertwindow then previews.alertwindow(any) end
+    end
+    previewsOn = any
+    for _, fn in ipairs(self.previewListeners) do fn() end
+  end,
+  SetPreview = function(self, key, on) self:SetPreviewGroup({ key }, on) end,
+  SetPreviews = function(self, on) local keys = {} for k in pairs(previews) do keys[#keys + 1] = k end self:SetPreviewGroup(keys, on) end,
+  IsPreviewing = function(self, key) return self.previewOn[key] == true end,
+  OnPreviewChange = function(self, fn) self.previewListeners[#self.previewListeners + 1] = fn end,
+  GroupPreviewing = function(self, keys) for _, k in ipairs(keys) do if not self.previewOn[k] then return false end end return true end,
+  PreviewButton = function(parent, label, keys, opts)
+    local UI = CRT.UI
+    local b = UI.PanelButton(parent, label, (opts and opts.height) or 22, function() UI:SetPreviewGroup(keys, not UI:GroupPreviewing(keys)) end)
+    rawset(b, "previewKeys", keys) rawset(b, "previewLabel", label) rawset(b, "tooltip", opts and opts.tooltip)
+    local function refresh() b:SetText(UI:GroupPreviewing(keys) and "Stop preview" or label) end
+    UI:OnPreviewChange(refresh) refresh()
+    return b
   end,
   RegisterPreview = function(_, key, fn) previews[key] = fn end,
   RegisterLayer = function() end,
@@ -395,17 +419,51 @@ check("tab: routing checkboxes bind the saved fields", function()
   local speechHelp
   for _, f in ipairs(frames) do if rawget(f, "helpTitle") == "Read them out (text to speech)" and not under(f, scroll) then speechHelp = f end end
   assert(speechHelp and speechHelp.helpText:find("wherever") and speechHelp.helpText:find("reminders"), "speech (?)")
-  -- Try it: Previews and Test all areas
+  -- Try it: Preview alerts (the callout and the five areas only) and Test all areas
   local previewsBtn, testBtn, tryIt
   for _, f in ipairs(frames) do
-    if f.kind == "Button" and f.text == "Previews" then previewsBtn = f end
+    if f.kind == "Button" and f.text == "Preview alerts" then previewsBtn = f end
     if f.kind == "Button" and f.text == "Test all areas" then testBtn = f end
   end
   for _, f in ipairs(fontStrings) do if f.text == "Try it" then tryIt = f end end
-  assert(tryIt and previewsBtn and testBtn, "Try it, Previews and Test all areas")
+  assert(tryIt and previewsBtn and testBtn, "Try it, Preview alerts and Test all areas")
+  -- another section's preview, which the alert group must leave alone
+  local other = false
+  previews.othersection = function(on) other = on end
+  CRT.UI:SetPreview("othersection", true)
+  local strip
+  for _, f in ipairs(fontStrings) do if tostring(f.text):find("^On screen now") then strip = f end end
   click(previewsBtn)
-  assert(previewsOn == true, "Previews on")
-  CRT.UI:SetPreviews(false)
+  local UI = CRT.UI
+  for _, key in ipairs({ "alert", "alerttexts", "alertbars", "alerticons", "alertcircles", "alerttimeline" }) do
+    assert(UI:IsPreviewing(key), "Preview alerts turns on " .. key)
+  end
+  assert(previewsBtn.text == "Stop preview", "the button reads Stop preview: " .. tostring(previewsBtn.text))
+  for _, f in ipairs(fontStrings) do if tostring(f.text):find("^On screen now") then strip = f end end
+  assert(strip and strip.shown and strip.text == "On screen now: Callout, Icons, Alerts text, Bars, Circles, Timeline", "the strip lists them: " .. tostring(strip and strip.text))
+  click(previewsBtn)
+  assert(not UI:IsPreviewing("alertbars") and not UI:IsPreviewing("alert"), "Stop preview turns them off")
+  assert(UI:IsPreviewing("othersection") and other == true, "and leaves the other section on")
+  assert(not strip.shown, "the strip hides with none of the alerts on")
+  UI:SetPreview("othersection", false)
+  previews.othersection = nil
+  -- the Configuration pane's button follows the list: one for the picked area only
+  configDropdown().opts.set("bars")
+  local kindBtns = {}
+  for _, f in ipairs(frames) do if rawget(f, "previewKeys") and #f.previewKeys == 1 then kindBtns[f.previewLabel] = f end end
+  local barsBtn = kindBtns["Preview bars"]
+  assert(barsBtn and barsBtn.shown and not kindBtns["Preview icons"].shown and not kindBtns["Preview callout"].shown, "only Preview bars shows with Bars picked")
+  assert(barsBtn.tooltip:find("bars area"), "its tooltip names what it shows")
+  click(barsBtn)
+  assert(UI:IsPreviewing("alertbars") and not UI:IsPreviewing("alerticons") and not UI:IsPreviewing("alert"), "Preview bars shows only bars")
+  assert(strip.shown and strip.text == "On screen now: Bars", "strip: " .. tostring(strip.text))
+  assert(previewsBtn.text == "Preview alerts", "the group is off with one area on")
+  configDropdown().opts.set("callout")
+  assert(kindBtns["Preview callout"].shown and not barsBtn.shown, "the callout's button with the callout picked")
+  assert(kindBtns["Preview callout"].previewKeys[1] == "alert", "the callout's key")
+  for _, k in pairs(kindBtns) do assert(k.previewKeys[1] ~= "alerteditor", "no button for the alert editor") end
+  UI:SetPreviews(false)
+  assert(not strip.shown, "all off")
   click(testBtn)
   for _, key in ipairs({ "AlertIcons", "AlertTexts", "AlertBars", "AlertCircles", "AlertTimeline" }) do
     assert(#CRT[key]:Visible() == 3, key .. " tests three lines: " .. #CRT[key]:Visible())

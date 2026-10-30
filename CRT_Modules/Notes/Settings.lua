@@ -12,7 +12,7 @@ local UI = CRT.UI
 -- Every word on this tab, in one place so the wording is easy to change. Keep the keys, change the
 -- text in quotes, save, and /reload.
 local TEXT = {
-    hint = "Untick Locked to drag a window and resize it from its corner, then lock it so clicks pass through. Keep up when empty leaves a window on screen with nothing to show. Previews shows every window with sample text.",
+    hint = "Untick Locked to drag a window and resize it from its corner, then lock it so clicks pass through. Keep up when empty leaves a window on screen with nothing to show. Preview note windows shows all three with sample text; the button under each window shows just that one.",
 
     -- The three window columns.
     timers = "Timers",
@@ -30,8 +30,14 @@ local TEXT = {
 
     -- All three note windows.
     allWindows = "All note windows",
-    allWindowsHelp = "Settings for the Timers, Assignments and Personal note windows together. Show outside of raid: tick it to show all three outside a raid instance too; off, they show only in a raid. Previews still shows them.",
+    allWindowsHelp = "Settings for the Timers, Assignments and Personal note windows together. Show outside of raid: tick it to show all three outside a raid instance too; off, they show only in a raid. A preview still shows them.",
     showOutsideRaid = "Show outside of raid",
+    previewAll = "Preview note windows",
+    previewAllTip = "Shows the Timers, Assignments and Personal note windows with sample text so you can drag and resize them. Other previews stay as they are.",
+    previewTimers = "Preview timers",
+    previewAssignments = "Preview assignments",
+    previewPersonal = "Preview personal note",
+    previewOneTip = "Shows the %s window with sample text so you can drag and resize it.",
 
     -- Sharing.
     sharing = "Sharing",
@@ -58,11 +64,19 @@ local FOURTH_W = UI.PAGE_W - 8 - FOURTH_X
 -- All note windows comes first, at the top left; the columns start ALL_H under it: its heading and
 -- its check box (20 apart, as in every section), then the 36 a section leaves before the next heading.
 local TOP, ALL_H = -14, 56
+-- Each window's preview key, as Notes/Window.lua registers it.
 local WINDOWS = {
-    { key = "window", title = TEXT.timers },
-    { key = "assignments", title = TEXT.assignments },
-    { key = "personal", title = TEXT.personal },
+    { key = "window", title = TEXT.timers, preview = "note-timers", previewLabel = TEXT.previewTimers },
+    { key = "assignments", title = TEXT.assignments, preview = "note-assignments", previewLabel = TEXT.previewAssignments },
+    { key = "personal", title = TEXT.personal, preview = "note-personal", previewLabel = TEXT.previewPersonal },
 }
+local ALL_PREVIEWS = { WINDOWS[1].preview, WINDOWS[2].preview, WINDOWS[3].preview }
+-- A column's rows, from its heading down (buildColumn): Show, Locked and Keep up when empty 24 apart, the
+-- timers window's two more, then the sliders and the font list. Each window's preview button sits
+-- under the timers column's last row, so the three line up.
+local ROW_H = 24
+local FONT_ROW_Y = 92 + 2 * ROW_H + 88 -- the timers column's font list, under its heading
+local PREVIEW_ROW_Y = FONT_ROW_Y + 36   -- the window preview buttons, under the font list
 
 local WHITE = { 1, 1, 1 }
 local GREY = { 0.5, 0.5, 0.5 }
@@ -192,6 +206,10 @@ local function buildColumn(pf, index, def, top)
     })
     font:SetPoint("TOPLEFT", x, y - 88)
     controls[#controls + 1] = font
+
+    local preview = UI.PreviewButton(pf, def.previewLabel, { def.preview },
+        { tooltip = format(TEXT.previewOneTip, def.title) })
+    preview:SetPoint("TOPLEFT", x, top - PREVIEW_ROW_Y)
 end
 
 local function refresh()
@@ -214,6 +232,9 @@ local function build(pf)
     end, function(value)
         Notes:Set(nil, "showOutsideRaid", value)
     end)
+    -- all three windows' previews, in the second column beside the check box
+    local previewAll = UI.PreviewButton(pf, TEXT.previewAll, ALL_PREVIEWS, { tooltip = TEXT.previewAllTip })
+    previewAll:SetPoint("TOPLEFT", 8 + COLUMN_W, TOP - 20)
     local top = TOP - ALL_H
 
     -- The three note windows.
