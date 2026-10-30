@@ -59,8 +59,13 @@ local LOOKS = UI.SCROLL_BAR_LOOKS
 -- clip, ends its rows UI.ScrollGutter(the bar's width) short of where the bar ends.
 UI.SCROLL_GAP = 6
 UI.SCROLL_BAR_W = 18
-function UI.ScrollGutter(width)
-    return UI.SCROLL_GAP + (width or UI.SCROLL_BAR_W)
+-- A thin bar, for a list that is short of width (the main menu): UI:SkinScrollBar(bar, { width = ... }) sizes
+-- the bar to it, caps the look's track and thumb at it and, in Default: Blizzard, hides the arrow buttons
+-- and thins the game's thumb to it. Its gap to the rows is smaller too: ScrollGutter(width, gap).
+UI.THIN_SCROLL_W = 8
+UI.THIN_SCROLL_GAP = 2
+function UI.ScrollGutter(width, gap)
+    return (gap or UI.SCROLL_GAP) + (width or UI.SCROLL_BAR_W)
 end
 
 local HOVER_LIGHTEN = 0.25 -- how far toward white the thumb goes under the mouse
@@ -216,11 +221,16 @@ function build.rounded(p, k, w)
 end
 
 -- The track and thumb widths of look k on a bar with parts p: the narrow ones on a MinimalScrollBar.
-local function widths(p, k)
+-- A thin bar (cap, its width in px) keeps the look inside it.
+local function widths(p, k, cap)
+    local track, thumb = k.track, k.thumb
     if p.narrow then
-        return { track = k.narrowTrack, thumb = k.narrowThumb }
+        track, thumb = k.narrowTrack, k.narrowThumb
     end
-    return { track = k.track, thumb = k.thumb }
+    if cap then
+        track, thumb = math.min(track, cap), math.min(thumb, cap)
+    end
+    return { track = track, thumb = thumb }
 end
 
 -- Shows the look in use (s.style, nil for the bar's own art) and hides the rest; a look is built the
@@ -229,15 +239,17 @@ local function paint(s)
     local style = s.style and LOOKS[s.style] and build[s.style] and s.style or nil
     if style and not s.looks[style] then
         local k = LOOKS[style]
-        s.looks[style] = build[style](s.parts, k, widths(s.parts, k))
+        s.looks[style] = build[style](s.parts, k, widths(s.parts, k, s.width))
     end
     local on = style ~= nil
     for _, t in ipairs(s.parts.art) do
         t:SetAlpha(on and 0 or 1)
     end
+    -- a thin bar has no room for arrow buttons, in any theme
+    local noButtons = on or s.width ~= nil
     for _, b in ipairs(s.parts.buttons) do
-        b:SetAlpha(on and 0 or 1)
-        b:EnableMouse((not on) and s.mouse[b] or false)
+        b:SetAlpha(noButtons and 0 or 1)
+        b:EnableMouse((not noButtons) and s.mouse[b] or false)
     end
     local game = s.parts.gameThumb
     local thumbShown = not game or game:IsShown()
@@ -255,7 +267,8 @@ local function paint(s)
     end
 end
 
-function UI:SkinScrollBar(bar)
+-- opts.width: a thin bar of that many px (see UI.THIN_SCROLL_W); the caller anchors it.
+function UI:SkinScrollBar(bar, opts)
     if not isTable(bar) or bar.crtSkin then
         return
     end
@@ -263,7 +276,14 @@ function UI:SkinScrollBar(bar)
     if not parts then
         return
     end
-    local s = { parts = parts, looks = {}, hover = false, mouse = {} }
+    local s = { parts = parts, looks = {}, hover = false, mouse = {}, width = opts and opts.width or nil }
+    if s.width then
+        bar:SetWidth(s.width)
+        if parts.gameThumb then
+            -- the game's own thumb, thinned so Default: Blizzard still shows a bar that drags and wheels
+            parts.gameThumb:SetWidth(s.width)
+        end
+    end
     for _, b in ipairs(parts.buttons) do
         s.mouse[b] = b:IsMouseEnabled() and true or false
     end

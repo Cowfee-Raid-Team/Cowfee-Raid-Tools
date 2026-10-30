@@ -51,6 +51,7 @@ local function frame(kind, parent)
     Show = function(self) self.shown = true end, Hide = function(self) self.shown = false end,
     SetShown = function(self, v) self.shown = v and true or false end, IsShown = function(self) return self.shown end,
     SetAlpha = function(self, a) self.alpha = a end, GetAlpha = function(self) return self.alpha end,
+    SetWidth = function(self, w) self.w = w end,
     EnableMouse = function(self, on) self.mouse = on and true or false end,
     IsMouseEnabled = function(self) return self.mouse end,
   }
@@ -316,6 +317,34 @@ SCROLL_INSETS = table.concat(insets, ";")
 SCROLL_GAP = UI.SCROLL_GAP
 print("ok scrollbar: the gutter is the same in every theme")
 
+-- A thin bar (opts.width): the menu's. 8 px wide, 2 px from its rows; the looks fit inside it; the default
+-- keeps the game's arrow buttons off, and a bar skinned without the option is untouched.
+check(UI.THIN_SCROLL_W == 8 and UI.THIN_SCROLL_GAP == 2 and UI.ScrollGutter(UI.THIN_SCROLL_W, UI.THIN_SCROLL_GAP) == 10, "the thin bar is 8 px with a 2 px gap: a 10 px gutter")
+check(UI.ScrollGutter() == 24 and UI.ScrollGutter(4) == 10, "the gutter without a gap is unchanged")
+for _, key in ipairs({ "blizzard", "midnight", "nitro", "cowfee" }) do
+  UI:SetTheme(key)
+  local thinPage = frame("Frame", nil)
+  local thin = panelScrollFrame(thinPage).ScrollBar
+  UI:SkinScrollBar(thin, { width = UI.THIN_SCROLL_W })
+  check(thin.w == 8, key .. ": the thin bar is 8 px wide")
+  check(buttonsHidden(thin), key .. ": the thin bar has no arrow buttons")
+  if key == "blizzard" then
+    check(thin.ThumbTexture.w == 8 and artShows(thin), key .. ": the game's thumb is thinned to the bar, still shown")
+  else
+    for _, look in pairs(thin.crtScroll.looks) do
+      for _, list in ipairs({ look.track, look.thumb }) do
+        for _, t in ipairs(list) do check(t.w == nil or t.w <= 8, key .. ": a thin look's texture fits 8 px (" .. tostring(t.w) .. ")") end
+      end
+    end
+    check(thin.crtScroll.looks[looks[key]] ~= nil, key .. ": the thin bar is still skinned")
+  end
+  local plain = panelScrollFrame(thinPage).ScrollBar
+  UI:SkinScrollBar(plain)
+  check(plain.w == nil and (key ~= "blizzard" or (buttonsShow(plain) and plain.ThumbTexture.w == nil)), key .. ": a bar skinned without the option keeps its size")
+end
+UI:SetTheme("blizzard")
+print("ok scrollbar: a thin bar by option")
+
 print(passes .. " passed, " .. fails .. " failed")
 if fails > 0 then error(fails .. " scroll bar checks failed") end
 `;
@@ -405,6 +434,15 @@ let clear = 0;
 const reEsc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 function gutter(where, text, after, name, template, bare) {
   let kind, offset;
+  if (template === 'UIPanelScrollFrameTemplate' && new RegExp('UI:SkinScrollBar\\(' + reEsc(name) + '\\.ScrollBar,\\s*\\{\\s*width\\s*=\\s*UI\\.THIN_SCROLL_W\\s*\\}\\)').test(after)) {
+    // a thin bar (8 px): its look is capped at the bar's width, so it draws nothing left of its own edge; the
+    // bar is anchored UI.THIN_SCROLL_GAP (2 px) right of the scroll frame, which clips its rows
+    if (!new RegExp('SetPoint\\("TOPLEFT",\\s*' + reEsc(name) + ',\\s*"TOPRIGHT",\\s*UI\\.THIN_SCROLL_GAP,').test(text)) {
+      return fail(where + ' a thin scroll bar not anchored UI.THIN_SCROLL_GAP right of its scroll frame');
+    }
+    clear++;
+    return;
+  }
   if (template === 'UIPanelScrollFrameTemplate') {
     kind = 'panel';
     if (new RegExp(reEsc(name) + '\\.ScrollBar:(SetPoint|ClearAllPoints|SetAllPoints|SetWidth|SetSize)\\(').test(text)) {
@@ -477,7 +515,7 @@ for (const file of files) {
       if (o && o[1] === 'HORIZONTAL') return fail(where + ' a hand-made horizontal Slider: the skin only does vertical bars; skin it or add it to ALLOW with a reason');
     }
     const want = m[1] + (template ? KNOWN_TEMPLATES[template] : '');
-    if (new RegExp('UI:SkinScrollBar\\(' + want.replace(/[.]/g, '\\.') + '\\)').test(after)) skinned++;
+    if (new RegExp('UI:SkinScrollBar\\(' + want.replace(/[.]/g, '\\.') + '(,\\s*\\{[^}]*\\})?\\)').test(after)) skinned++;
     else fail(where + ' ' + (template || 'a hand-made Slider') + ' without UI:SkinScrollBar(' + want + ') within ' + WINDOW + ' lines');
     gutter(where, lines.join('\n'), after, m[1], template, bare);
   });

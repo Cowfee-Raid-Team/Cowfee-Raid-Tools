@@ -290,7 +290,10 @@ do
     local name = modern and "Modern" or "Classic"
     local short = UI.MenuLayout(groups, modern, W, 300)
     check(short.scroll == true, name .. ": a 300 px menu scrolls")
-    check(short.width == W - UI.ScrollGutter(), name .. ": scrolling leaves room for the bar (" .. short.width .. ")")
+    check(short.width == W - 10, name .. ": scrolling leaves room for the thin bar and its 2 px gap (" .. short.width .. ")")
+    for _, p in ipairs(short.pages) do
+      check(short.width - p.left - p.right >= W - 14, name .. ": a scrolling menu's " .. p.key .. " button is at least MENU_W - 14 wide (" .. (short.width - p.left - p.right) .. ")")
+    end
     local tall = UI.MenuLayout(groups, modern, W, UI.PAGE_H)
     check(not tall.scroll and tall.width == W, name .. ": the full-height menu doesn't scroll")
     for i = 2, #short.pages do check(short.pages[i - 1].y - short.row >= short.pages[i].y, name .. ": scrolling pages don't overlap") end
@@ -309,7 +312,11 @@ do
     lay = menu.layout
     check(lay.scroll == true and lay.height > UI.PAGE_H, theme .. ": too many pages make the menu scroll")
     local p = menu.scroll.pts[2] or {}
-    check(p[1] == "BOTTOMRIGHT" and p[2] == -UI.ScrollGutter(), theme .. ": the scroll frame leaves the bar's room inside the menu")
+    check(p[1] == "BOTTOMRIGHT" and p[2] == -10, theme .. ": the scroll frame leaves the thin bar's room inside the menu")
+    local bar = menu.scroll.ScrollBar
+    local at = bar.pts[1] or {}
+    check(at[1] == "TOPLEFT" and at[2] == menu.scroll and at[3] == "TOPRIGHT" and at[4] == 2, theme .. ": the bar sits 2 px right of the menu's rows")
+    check(UI.MENU_LAYOUT.modern.buttonRight == 3 and UI.MENU_LAYOUT.modern.boxRight == 2 and UI.MENU_LAYOUT.modern.buttonLeft == 1 and UI.MENU_LAYOUT.classic.textX == 8, theme .. ": the padding is thinned")
     check(menu.scroll.wheel == true, theme .. ": the wheel scrolls the menu")
     check(menu.inner.w == lay.width and menu.inner.h == lay.height, theme .. ": the scrolled frame is the groups' size")
     checkLook(theme .. " scrolling", theme ~= "blizzard")
