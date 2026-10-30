@@ -86,6 +86,7 @@ B:Register({ encounterID = 3470, name = "Nek'zali the Soulcoiler", season = "sam
   [5003] = { type = "soak", also = { "spread" } },
   [5004] = { tags = { "tank", "sparkly" } },
   ["5005"] = { type = "raid" },
+  [5006] = { name = 42, row = "yes", type = "raid" },
 } })
 B:Register({ encounterID = 3445, name = "Entombed Sentinels", season = "sample" })
 B:Register({ encounterID = 3420, name = "Sszorak", season = "sample" })
@@ -99,6 +100,8 @@ check("a spell ID written as text is left out", a["5005"] == nil and a[5005] == 
 local said = table.concat(printed, "\n")
 check("a developer build says what was left out", said:find("type nonsense of spell 5002", 1, true) ~= nil and said:find("field also of spell 5003", 1, true) ~= nil
   and said:find("tag sparkly of spell 5004", 1, true) ~= nil and said:find("entry 5005", 1, true) ~= nil)
+check("a name that isn't text and a row that isn't true are left out, and said", a[5006] and a[5006].type == "raid" and a[5006].name == nil and a[5006].row == nil
+  and said:find("name 42 of spell 5006", 1, true) ~= nil and said:find("row yes of spell 5006", 1, true) ~= nil)
 check("a boss with no field has none", B:Abilities(3445) == nil and B:Abilities(9999) == nil)
 printed = {}
 CRT.Dev = nil

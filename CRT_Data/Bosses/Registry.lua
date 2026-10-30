@@ -394,9 +394,13 @@ local function readLabel(spellID, def, say)
     end
     if type(def.name) == "string" and def.name ~= "" then
         label.name = def.name
+    elseif def.name ~= nil then
+        say(string.format("name %s of spell %d (a name is text)", tostring(def.name), spellID))
     end
     if def.row == true then
         label.row = true
+    elseif def.row ~= nil then
+        say(string.format("row %s of spell %d (row is true or left out)", tostring(def.row), spellID))
     end
     if type(def.tags) == "table" then
         label.tags = {}

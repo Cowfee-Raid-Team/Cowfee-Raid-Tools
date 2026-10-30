@@ -192,6 +192,9 @@ local TEXT_MENU = {
     row = "Show as a timeline row",
     type = "Set type",
     noType = "No type",
+    -- a value from the boss file (Bosses:Abilities): yours can't take it away, so the menu says where it comes from
+    fromFile = " (boss file)",
+    noTypeFromFile = "No type (edit the boss file to remove its type)",
     tags = "Tags",
     journalTags = "Use the Journal's icons",
     addPhase = "Add phase here...",
@@ -397,6 +400,13 @@ end
 local AbilityMenu = {}
 CRT.TimelineAbilityMenu = AbilityMenu
 
+-- The boss file's label for an ability (Bosses:Abilities), or an empty table.
+local function shippedLabel(boss, spellID)
+    local Bosses = CRT.Bosses
+    local list = Bosses and Bosses.Abilities and tonumber(boss) and Bosses:Abilities(tonumber(boss))
+    return list and list[spellID] or {}
+end
+
 function AbilityMenu.Fill(root, boss, row, hideName)
     local spellID = boss and row.spellID and row.spellID ~= 0 and row.spellID or nil
     local Timeline = CRT.Timeline
@@ -411,20 +421,28 @@ function AbilityMenu.Fill(root, boss, row, hideName)
     end
     root:CreateTitle((get("name") or row.name or "") .. (get("name") and (" (" .. (row.name or "") .. ")") or ""))
     if spellID then
-        root:CreateCheckbox(TEXT_MENU.row, function()
+        -- the boss file's label (shipped to everyone): yours can't take its values away, so they are marked
+        local shipped = shippedLabel(boss, spellID)
+        local rowBox = root:CreateCheckbox(TEXT_MENU.row .. (shipped.row and TEXT_MENU.fromFile or ""), function()
             return get("row") and true or false
         end, function()
             Timeline:SetAbility(boss, spellID, "row", not get("row") or nil)
         end)
+        if shipped.row and rowBox and rowBox.SetEnabled then
+            rowBox:SetEnabled(false)
+        end
         local types = root:CreateButton(TEXT_MENU.type)
-        types:CreateRadio(TEXT_MENU.noType, function()
+        local noType = types:CreateRadio(shipped.type and TEXT_MENU.noTypeFromFile or TEXT_MENU.noType, function()
             return get("type") == nil
         end, function()
             Timeline:SetAbility(boss, spellID, "type", nil)
         end)
+        if shipped.type and noType and noType.SetEnabled then
+            noType:SetEnabled(false)
+        end
         for _, key in ipairs(Reference.TYPE_ORDER) do
             local t = Reference.TYPES[key]
-            types:CreateRadio("|cff" .. t.hex .. t.label .. "|r  " .. t.desc, function()
+            types:CreateRadio("|cff" .. t.hex .. t.label .. "|r  " .. t.desc .. (shipped.type == key and TEXT_MENU.fromFile or ""), function()
                 return get("type") == key
             end, function()
                 Timeline:SetAbility(boss, spellID, "type", key)
@@ -438,7 +456,11 @@ function AbilityMenu.Fill(root, boss, row, hideName)
         end
         for _, key in ipairs(Reference.TAG_ORDER) do
             local t = Reference.TAGS[key]
-            tags:CreateCheckbox("|A:" .. t.atlas .. ":14:14|a " .. t.label, function()
+            local fromFile = false
+            for _, k in ipairs(shipped.tags or {}) do
+                fromFile = fromFile or k == key
+            end
+            tags:CreateCheckbox("|A:" .. t.atlas .. ":14:14|a " .. t.label .. (fromFile and TEXT_MENU.fromFile or ""), function()
                 for _, k in ipairs(current()) do
                     if k == key then
                         return true

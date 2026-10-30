@@ -831,6 +831,44 @@ do
 end
 print("ok a packaged build skips your own timeline layers")
 
+-- the ability menu marks a value from the boss file (Bosses:Abilities): its row can't be unticked, its type is
+-- "(boss file)" and No type is off, its icons are "(boss file)"; nothing saved changes
+do
+  local function root()
+    local r = { items = {} }
+    local function add(kind, text) local el = { kind = kind, text = text, enabled = true } function el:SetEnabled(v) self.enabled = v end
+      function el:CreateRadio(t) local c = add("radio", t) table.insert(self.items, c) return c end
+      function el:CreateCheckbox(t) local c = add("check", t) table.insert(self.items, c) return c end
+      function el:CreateButton(t) local c = add("button", t) table.insert(self.items, c) return c end
+      el.items = {} return el end
+    function r:CreateTitle() end function r:CreateDivider() end
+    function r:CreateCheckbox(t) local c = add("check", t) table.insert(self.items, c) return c end
+    function r:CreateButton(t) local c = add("button", t) table.insert(self.items, c) return c end
+    return r
+  end
+  local function find(items, text) for _, el in ipairs(items) do if el.text:find(text, 1, true) then return el end end end
+  local savedAbilities = CRT.Bosses.abilities[3470]
+  CRT.Bosses.abilities[3470] = { [1286873] = { type = "raid", row = true, tags = { "tank" } } }
+  local r = root()
+  CRT.TimelineAbilityMenu.Fill(r, 3470, { name = "Soulcoil Rite", spellID = 1286873, tags = { "magic" } })
+  local rowBox = find(r.items, "Show as a timeline row")
+  assert(rowBox.text == "Show as a timeline row (boss file)" and rowBox.enabled == false, "a shipped row: marked and off")
+  local types = find(r.items, "Set type").items
+  assert(types[1].text == "No type (edit the boss file to remove its type)" and types[1].enabled == false, "a shipped type: No type is off and says where to remove it")
+  assert(find(types, "Raid damage").text:find("(boss file)", 1, true) and not find(types, "Soak").text:find("(boss file)", 1, true), "the shipped type is marked, no other")
+  local tagItems = find(r.items, "Tags").items
+  assert(find(tagItems, "Tank").text:find("(boss file)", 1, true) and not find(tagItems, "Magic").text:find("(boss file)", 1, true), "the shipped icons are marked")
+  assert(find(tagItems, "Use the Journal's icons") == nil, "no Journal's icons button with no icons of yours")
+  assert(T:OwnAbility(3470, 1286873) == nil, "nothing saved by opening the menu")
+  CRT.Bosses.abilities[3470] = nil
+  r = root()
+  CRT.TimelineAbilityMenu.Fill(r, 3470, { name = "Soulcoil Rite", spellID = 1286873 })
+  assert(find(r.items, "Show as a timeline row").text == "Show as a timeline row" and find(r.items, "Show as a timeline row").enabled, "no boss file label: the row as before")
+  assert(find(r.items, "Set type").items[1].text == "No type" and find(r.items, "Set type").items[1].enabled, "no boss file label: No type as before")
+  CRT.Bosses.abilities[3470] = savedAbilities
+end
+print("ok the ability menu marks the boss file's values")
+
 -- Share note on the Review tab: makes the boss's raid note when it has none, then shares it
 do
   local function shareBtn() for _, b in ipairs(buttons) do if b.text == "Share note" then return b end end end

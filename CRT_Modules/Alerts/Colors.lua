@@ -4,7 +4,7 @@ local ADDON, CRT = ...
 -- ability's type, the Timeline's ability types (the one table, Reference.ABILITY_TYPES in Timeline/Reference.lua:
 -- dispel blue, soak pink, Mythic only orange, ...). The type is found from the boss data the Timeline already has,
 -- in this order:
---   1. your own label for the ability on the Timeline (Timeline:Ability(boss, spell).type)
+--   1. the ability's label (yours, then the boss file's) on the Timeline (Timeline:Ability(boss, spell).type)
 --   2. the boss's ability timeline: the row of the alert's spell (by spell ID, else by the spell's name or the
 --      alert's text, as reminders find their times) and its first, main type. The difficulty's own ability
 --      timelines are asked first, then the boss's others.
@@ -115,7 +115,7 @@ local function referenceRow(ctx, spellID, text)
     return nil
 end
 
--- Your own label's type for a spell of the boss (the Timeline's Journal list).
+-- The type of the ability's label (yours, then the boss file's) for a spell of the boss.
 local function labelType(encounterID, spellID)
     local T = CRT.Timeline
     if not (spellID and T and T.Ability) then
@@ -164,7 +164,7 @@ local function tagsIn(ctx, row, spell)
     return nil
 end
 
--- Every type of an ability, its main one first: your own label's (the one type), else the ability timeline row's
+-- Every type of an ability, its main one first: the ability's label's (yours, then the boss file's; the one type), else the ability timeline row's
 -- known types, else the Journal icons'. An empty list when none is known. Second value: its Journal icons (tagsIn).
 local function typesIn(ctx, spellID, text)
     if not (readable(spellID) and type(spellID) == "number" and spellID > 0) then
