@@ -179,6 +179,27 @@ CRT.UI = {
   RegisterLayer = function() end,
   RegisterPreview = function(_, key, fn) previewFns[key] = fn end,
   SetPreviews = function() end,
+  -- As CRT_Core/UI/Panel.lua (run_previews.js tests the real one): each key keeps its own state, combat refuses on
+  previewOn = {}, previewListeners = {},
+  SetPreviewGroup = function(self, keys, on)
+    if on and InCombatLockdown() then return end
+    for _, key in ipairs(keys) do
+      if previewFns[key] then self.previewOn[key] = on and true or nil previewFns[key](on) end
+    end
+    self.previewing = next(self.previewOn) ~= nil
+    for _, fn in ipairs(self.previewListeners) do fn() end
+  end,
+  IsPreviewing = function(self, key) return self.previewOn[key] == true end,
+  GroupPreviewing = function(self, keys) for _, k in ipairs(keys) do if not self.previewOn[k] then return false end end return true end,
+  OnPreviewChange = function(self, fn) self.previewListeners[#self.previewListeners + 1] = fn end,
+  PreviewButton = function(parent, label, keys, opts)
+    local UI = CRT.UI
+    local b = UI.PanelButton(parent, label, 22, function() UI:SetPreviewGroup(keys, not UI:GroupPreviewing(keys)) end)
+    rawset(b, "previewKeys", keys) rawset(b, "tip", opts and opts.tooltip)
+    local function refresh() b:SetText(UI:GroupPreviewing(keys) and "Stop preview" or label) end
+    UI:OnPreviewChange(refresh) refresh()
+    return b
+  end,
   ResetButtonWidth = function() return 44 end, ResetButton = function() return mock("Button") end,
   Slider = function(p, text, opts) local r = mock("Slider") rawset(r, "opts", opts) rawset(r, "refresh", function() end) sliders[text] = r return r end,
   Dropdown = function(p, text, opts) local r = mock("Dropdown") rawset(r, "opts", opts) rawset(r, "refresh", function() end) dropdowns[text] = r return r end,
@@ -1110,14 +1131,18 @@ do
   end
 end
 
--- Preview debuffs: only this panel, its label, combat, and closing the tab.
+-- Preview debuffs: a UI.PreviewButton on the "debuffs" key only, its label, combat, and another section's preview.
 local pb
 for _, f in ipairs(frames) do if f.kind == "Button" and rawget(f, "text") == "Preview debuffs" then pb = f end end
 check("the Preview debuffs button exists", pb ~= nil and type(rawget(pb, "OnClick")) == "function")
+check("on the debuffs preview key only", pb and #pb.previewKeys == 1 and pb.previewKeys[1] == "debuffs")
+check("its tooltip says what it shows", pb and pb.tip and pb.tip:find("debuff panel", 1, true) ~= nil)
+local otherOn = 0
+previewFns.othersection = function(on) otherOn = otherOn + 1 end
 pf:Show()
 pb.OnClick(pb)
 check("Preview debuffs turns the debuff preview on", Panel:IsPreviewing() == true)
-check("and leaves the global Previews off", CRT.UI.previewing == false)
+check("and no other section's", otherOn == 0)
 check("the label reads Stop preview", pb.text == "Stop preview", pb.text)
 pb.OnClick(pb)
 check("Stop preview turns it off", Panel:IsPreviewing() == false and pb.text == "Preview debuffs", pb.text)
@@ -1130,19 +1155,11 @@ combat = true
 pb.OnClick(pb)
 check("in combat Stop preview still works", Panel:IsPreviewing() == false and pb.text == "Preview debuffs", pb.text)
 combat = false
-previewFns.debuffs(true)
-check("the global Previews sets the label", pb.text == "Stop preview", pb.text)
-previewFns.debuffs(false)
+CRT.UI:SetPreviewGroup({ "othersection", "debuffs" }, true)
+check("the title bar's Previews sets the label", pb.text == "Stop preview", pb.text)
+CRT.UI:SetPreviewGroup({ "othersection", "debuffs" }, false)
 check("and sets it back", pb.text == "Preview debuffs", pb.text)
-pb.OnClick(pb)
-pf.OnHide(pf)
-check("closing the tab ends the preview", Panel:IsPreviewing() == false and pb.text == "Preview debuffs", pb.text)
-CRT.UI.previewing = true
-previewFns.debuffs(true)
-pf.OnHide(pf)
-check("closing the tab leaves it on while Previews is on", Panel:IsPreviewing() == true)
-CRT.UI.previewing = false
-previewFns.debuffs(false)
+previewFns.othersection = nil
 
 -- The Debuffs tab's (?) and Preview debuffs: the button sits right of the title's (?).
 do

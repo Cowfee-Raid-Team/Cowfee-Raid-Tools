@@ -1,7 +1,7 @@
 local ADDON, CRT = ...
 
 -- The Debuffs tab of the Quality of Life page (a page of its own before 0.17.2): settings for the
--- debuff panel. The panel is moved with "Preview debuffs" on the tab, which previews only
+-- debuff panel. The panel is moved with "Preview debuffs" on the tab (UI.PreviewButton), which previews only
 -- this panel, or with "Previews" in the corner of the main window, which previews them all.
 -- QoL/Page.lua builds it into its tab through CRT.DebuffsPage.Build. Under the settings, Ignore.lua
 -- builds the Ignore these debuffs section.
@@ -9,14 +9,16 @@ local ADDON, CRT = ...
 local Debuffs = CRT.Debuffs
 local UI = CRT.UI
 
-local page, enabledCheck, sizeEdit, countEdit, durationEdit, dispelCheck, dispelSizeEdit, slotsCheck, previewButton
+local page, enabledCheck, sizeEdit, countEdit, durationEdit, dispelCheck, dispelSizeEdit, slotsCheck
 local refresh
 
-local PREVIEW_LABEL, STOP_LABEL = "Preview debuffs", "Stop preview"
 local look = {} -- the Look section's controls, each with refresh(on)
+local PREVIEW_GAP = 12 -- Preview debuffs, this far right of the title's (?)
 
--- The wording of the tooltip settings.
+-- The wording of the preview button and the tooltip settings.
 local TEXT = {
+    preview = "Preview debuffs",
+    previewTip = "Shows the debuff panel with sample debuffs so you can drag it into place and see each Look change. Other previews stay as they are.",
     tooltips = "Show tooltips on hover",
     tooltipsHelp = "Hover a debuff on the panel to see its tooltip. It is the game's own tooltip, so it works in combat too.\n\n"
         .. "On, the icons take the mouse when you hover them. Off, the panel stays click-through, as before.\n\n"
@@ -27,16 +29,6 @@ local TEXT = {
         .. "An icon the game first makes during an encounter keeps the game's own hover and placement until the encounter ends.",
     tooltipPicker = "The icon",
 }
-
-local function makeButton(parent, label, width, height)
-    local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
-    b:SetNormalFontObject(CRTFontNormal)
-    b:SetHighlightFontObject(CRTFontHighlight)
-    b:SetDisabledFontObject(CRTFontDisable)
-    b:SetSize(width, height or 26)
-    b:SetText(label)
-    return b
-end
 
 local function makeCheck(pf, label, yOffset, onClick, x)
     local check = CreateFrame("CheckButton", nil, pf, "UICheckButtonTemplate")
@@ -185,7 +177,6 @@ refresh = function()
     countEdit.refresh()
     durationEdit.refresh()
     dispelSizeEdit.refresh()
-    previewButton:SetText(CRT.DebuffPanel:IsPreviewing() and STOP_LABEL or PREVIEW_LABEL)
     usable(dispelCheck, on)
     usable(slotsCheck, on)
     for _, control in ipairs(look) do
@@ -203,37 +194,10 @@ local function build(pf)
 
     local help = UI.HelpRight(title, "The debuff panel", "A movable row of the debuffs enemies put on you, shortest first, in and out of combat. Press Preview debuffs to see it with samples and drag it into place. The game fills the row itself, so it works in combat. Your own debuffs, long ones, and lockouts such as Exhaustion are left out.")
 
-    -- Only this panel's preview, not every panel's. It ends when the tab closes, unless Previews is on.
-    previewButton = makeButton(pf, PREVIEW_LABEL, 120, 22)
-    local labelWidth = 0
-    local text = previewButton:GetFontString()
-    if text then
-        for _, label in ipairs({ PREVIEW_LABEL, STOP_LABEL }) do
-            text:SetText(label)
-            labelWidth = math.max(labelWidth, text:GetStringWidth() or 0)
-        end
-    end
-    if labelWidth > 0 then
-        previewButton:SetWidth(math.ceil(labelWidth) + 24)
-    end
-    previewButton:SetText(PREVIEW_LABEL)
-    previewButton:SetPoint("LEFT", help, "RIGHT", 12, 0)
-    previewButton:SetScript("OnClick", function()
-        local panel = CRT.DebuffPanel
-        if not panel:IsPreviewing() and InCombatLockdown() then
-            CRT:Print("Previews can't be turned on during combat.")
-            return
-        end
-        panel:ShowPreview(not panel:IsPreviewing())
-    end)
-    CRT.DebuffPanel.onPreviewChange = function(on)
-        previewButton:SetText(on and STOP_LABEL or PREVIEW_LABEL)
-    end
-    pf:SetScript("OnHide", function()
-        if CRT.DebuffPanel:IsPreviewing() and not UI.previewing then
-            CRT.DebuffPanel:ShowPreview(false)
-        end
-    end)
+    -- Only this panel's preview, not every panel's. Like every section's, it stays on until stopped, the
+    -- title bar's Previews turns everything off, or the main window closes.
+    local previewButton = UI.PreviewButton(pf, TEXT.preview, { "debuffs" }, { tooltip = TEXT.previewTip })
+    previewButton:SetPoint("LEFT", help, "RIGHT", PREVIEW_GAP, 0)
 
     enabledCheck = makeCheck(pf, "Show the debuff panel", -30, function(checked)
         Debuffs:SetEnabled(checked)

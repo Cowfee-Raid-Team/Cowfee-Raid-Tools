@@ -194,8 +194,8 @@ for (const [file, keys] of pages) {
     if (!src.includes(k)) { console.log('FAIL ' + file + ' never names the preview key ' + k); bad++; }
   }
 }
-// the alert editor is its own window: it stays out of the alert group
-if (/"alerteditor"/.test(read('CRT_Modules/Notes/AlertsTab.lua'))) { console.log('FAIL the alert group names alerteditor'); bad++; }
+// the alert editor is its own window: it stays out of the alert group (its code, comments left out)
+if (/"alerteditor"/.test(read('CRT_Modules/Notes/AlertsTab.lua').replace(/--.*$/gm, ''))) { console.log('FAIL the alert group names alerteditor'); bad++; }
 // no page sets the whole switch: pages own their buttons, the core owns the state
 for (const file of pages.map((p) => p[0])) {
   if (/UI:SetPreviews\(true\)/.test(read(file))) { console.log('FAIL ' + file + ' turns on every preview'); bad++; }
