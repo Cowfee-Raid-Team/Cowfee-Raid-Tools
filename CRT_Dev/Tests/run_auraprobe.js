@@ -90,18 +90,18 @@ check(has("raid1") and line("raid1 "):find("byName: error ", 1, true) ~= nil, "a
 check(line("raid2 "):find("raid2 <secret> spell 1301117 byID: secret table | byName: nothing", 1, true) ~= nil, "a hidden aura table and a hidden name, nothing read: " .. line("raid2 "))
 check(line("raid3 "):find("byID: error ", 1, true) ~= nil and line("raid3 "):find("byName: secret table", 1, true) ~= nil, "an erroring lookup by ID, a hidden one by name")
 check(line("raid4 "):find("byID: nothing", 1, true) ~= nil and line("raid4 "):find("byName: readable spellId=secret", 1, true) ~= nil, "nothing by ID; by name a field the game hides")
-check(has("TIER spell 1301117 readable (someone has it)") and DL:Seen(1301117) == "readable", "the tier: readable, saved for the Looks tab")
+check(has("TIER spell 1301117 readable (someone has it)") and DL:Seen(3492, 1301117) == "readable", "the tier: readable, saved for the Looks tab")
 
 -- secret booleans and failing APIs: the private and unreadable tiers
 byID = { raid1 = secret(true), raid2 = secret(false) }
 pcall(P.Command, P, "dev aura 1301117")
-check(has("byID: secret boolean") and has("TIER spell 1301117 secret") and DL:Seen(1301117) == "secret", "a secret boolean: the secret tier")
+check(has("byID: secret boolean") and has("TIER spell 1301117 secret") and DL:Seen(3492, 1301117) == "secret", "a secret boolean: the secret tier")
 byID = { raid1 = "error", raid2 = "error", raid3 = "error", raid4 = "error" }
 pcall(P.Command, P, "dev aura 1301117")
-check(has("TIER spell 1301117 unreadable") and DL:Notice(1301117) ~= nil, "every lookup failing: unreadable, the notice set")
+check(has("TIER spell 1301117 unreadable") and DL:Notice(3492, 1301117) ~= nil, "every lookup failing: unreadable, the notice set")
 private = true
 pcall(P.Command, P, "dev aura 1301117")
-check(has("private=true") and has("TIER spell 1301117 private") and DL:Seen(1301117) == "private", "AuraIsPrivate true: private")
+check(has("private=true") and has("TIER spell 1301117 private") and DL:Seen(3492, 1301117) == "private", "AuraIsPrivate true: private")
 private = "error"
 byID = {}
 ok, err = pcall(P.Command, P, "dev aura 1301117")
@@ -150,14 +150,35 @@ check(CRT.db.dev.auraProbe.on == false and not f.events.UNIT_AURA and #log() > b
 P:Command("dev aura on 1301117")
 check(CRT.db.dev.auraProbe.spells[1] == 1301117, "on with a spell")
 P:Command("dev aura off")
--- the cap
+-- the cap: UNIT_AURA lines on their own, counted per unit past it; the lookup, TIER and STATE lines and the pull-end
+-- snapshot are always kept
 CRT.db.dev.auraProbe.on = true
-P.MAX_LINES = 5
+P.AURA_MAX = 5
 fire("ENCOUNTER_START", 3492, "Ula'tek", 16, 20)
-for _ = 1, 20 do fire("UNIT_AURA", "raid1", {}) end
-check(#log() == 5 and CRT.db.dev.auraProbe.last.dropped > 0, "the log stops at its cap")
+for i = 1, 300 do
+  byID.raid1 = (i % 2 == 0) and { spellId = 1301117 } or nil -- the answer flips: a lookup line each time
+  fire("UNIT_AURA", i % 3 == 0 and "raid2" or "raid1", {})
+end
+check(count("UNIT_AURA unit=") == 5, "UNIT_AURA lines stop at their cap: " .. count("UNIT_AURA unit="))
+local drops = CRT.db.dev.auraProbe.last.dropped
+check(drops and drops['"raid1"'] == 196 and drops['"raid2"'] == 99, "the rest counted per unit: " .. tostring(drops and drops['"raid1"']) .. ", " .. tostring(drops and drops['"raid2"']))
+check(count('raid1 "Name-raid1" spell 1301117 byID:') > 50, "every changed lookup line kept past the cap")
+fire("ENCOUNTER_END", 3492, "Ula'tek", 16, 20, 0)
+local lines = log()
+local tierAfter, stateAfter = false, false
+local seenEnd = false
+for _, l in ipairs(lines) do
+  if l:find("ENCOUNTER_END", 1, true) then seenEnd = true end
+  if seenEnd and l:find("TIER spell 1301117", 1, true) then tierAfter = true end
+  if seenEnd and l:find("STATE ", 1, true) and l:find("(pull end)", 1, true) then stateAfter = true end
+end
+check(seenEnd and tierAfter and stateAfter, "after a flood of UNIT_AURA the pull-end snapshot's STATE and TIER lines are there")
 P:Command("dev aura show")
-check(shown.text:find("more lines dropped", 1, true) ~= nil, "and says so")
+check(shown.text:find('more UNIT_AURA lines left out (the log keeps 5 of them): "raid1" 196, "raid2" 99', 1, true) ~= nil, "and the log says how many, by unit")
+-- a spell no debuff list watches: logged, not saved
+CRT.db.alerts.debuffTiers = {}
+pcall(P.Command, P, "dev aura 4242")
+check(has("TIER spell 4242") and has("not saved") and next(CRT.db.alerts.debuffTiers) == nil, "a spell of no list: its tier is logged, not saved")
 
 print(passes .. " passed, " .. fails .. " failed")
 if fails > 0 then error("aura probe: " .. fails .. " failed") end

@@ -17,7 +17,9 @@ local ADDON, CRT = ...
 -- debuff list would use (DL.Classify: readable, secret, private or unreadable), which is saved for the Looks tab's
 -- notice (DL:SetSeen). A UNIT_AURA line says the unit (or <secret>) and whether updateInfo was readable.
 -- Nothing is compared, indexed or joined before its secret check; every game call is in a pcall.
--- Saved in CRTDB.dev.auraProbe: on, spells, and last = { started (time()), lines, dropped }, the last run only.
+-- Saved in CRTDB.dev.auraProbe: on, spells, and last = { started (time()), lines, auras (UNIT_AURA lines heard),
+-- dropped (UNIT_AURA lines left out past AURA_MAX, by unit) }, the last run only. The tier is saved per boss whose
+-- debuff list watches the spell (DL:SetSeen).
 -- Game calls (warcraft.wiki.gg and Blizzard's UnitAuraDocumentation.lua, live, read 2026-10-30):
 -- C_UnitAuras.GetUnitAuraBySpellID (AllowedWhenTainted, RequiresNonSecretAura, SecretWhenUnitAuraRestricted),
 -- C_UnitAuras.GetAuraDataBySpellName(unit, spellName, filter) (AllowedWhenUntainted: secret arguments only from
@@ -31,7 +33,10 @@ local ADDON, CRT = ...
 local Probe = {}
 CRT.AuraProbe = Probe
 
-Probe.MAX_LINES = 3000
+-- UNIT_AURA lines a log keeps, on their own cap (as AbsorbProbe.lua caps each kind), so a flood of them never pushes out
+-- the lookup, TIER and STATE lines or the pull-end snapshot: those are always kept. Past the cap the UNIT_AURA lines
+-- are counted per unit, and the log says how many of each were left out.
+Probe.AURA_MAX = 2000
 local FIELDS = { "spellId", "name", "auraInstanceID", "isHarmful", "applications", "duration", "expirationTime", "sourceUnit" }
 
 local frame
@@ -86,23 +91,33 @@ local function stamp()
     return string.format("+%.1f", (GetTime() or 0) - startedAt)
 end
 
--- Adds a line to the open log (a snapshot alone opens a fresh one).
+-- Adds a line to the open log (a snapshot alone opens a fresh one). Every line is kept but UNIT_AURA's past AURA_MAX.
 local function add(line)
+    local last = store().last
+    if last then
+        last.lines[#last.lines + 1] = line
+    end
+end
+
+-- A UNIT_AURA line, kept up to AURA_MAX a log; past it counted per unit (unitText: the unit as the log shows it).
+local function addAura(line, unitText)
     local last = store().last
     if not last then
         return
     end
-    if #last.lines >= Probe.MAX_LINES then
-        last.dropped = (last.dropped or 0) + 1
+    last.auras = (last.auras or 0) + 1
+    if last.auras > Probe.AURA_MAX then
+        last.dropped = type(last.dropped) == "table" and last.dropped or {}
+        last.dropped[unitText] = (last.dropped[unitText] or 0) + 1
         return
     end
-    last.lines[#last.lines + 1] = line
+    add(line)
 end
 
 local function fresh()
     startedAt = GetTime() or 0
     lastAnswer = {}
-    store().last = { started = time and time() or 0, lines = {} }
+    store().last = { started = time and time() or 0, lines = {}, auras = 0 }
 end
 
 -- The group's units: raid1 to raid40, else you and party1 to party4, each that exists.
@@ -207,10 +222,21 @@ local function tierLine(spellID, units)
     end
     local private = DL.IsPrivate(spellID)
     local tier, any = DL.Classify(states, private)
-    if tier ~= "readable" or any then
-        DL:SetSeen(spellID, tier)
+    -- saved for each boss whose debuff list watches this spell (none: a spell of no list is only logged)
+    local bosses = 0
+    local B = CRT.Bosses
+    for _, def in ipairs(B and B.List and B:List() or {}) do
+        for _, e in ipairs(DL.Entries(def.encounterID)) do
+            if e.spellID == spellID then
+                bosses = bosses + 1
+                if tier ~= "readable" or any then
+                    DL:SetSeen(def.encounterID, spellID, tier, any)
+                end
+            end
+        end
     end
-    return string.format("%s TIER spell %d %s%s", stamp(), spellID, tier, any and " (someone has it)" or "")
+    return string.format("%s TIER spell %d %s%s%s", stamp(), spellID, tier, any and " (someone has it)" or "",
+        bosses == 0 and " (no debuff list watches it: not saved)" or "")
 end
 
 -- The spells to watch: the ones given, else every debuff list's of the loaded bosses.
@@ -261,7 +287,7 @@ function Probe.OnAura(unit, info)
         end)
         infoText = infoText .. " isFullUpdate=" .. (okF and show(full) or "error")
     end
-    add(string.format("%s UNIT_AURA unit=%s updateInfo=%s", stamp(), show(unit), infoText))
+    addAura(string.format("%s UNIT_AURA unit=%s updateInfo=%s", stamp(), show(unit), infoText), show(unit))
     if isSecret(unit) or type(unit) ~= "string" then
         return
     end
@@ -349,8 +375,17 @@ function Probe:Text()
     end
     local when = date and last.started and date("%Y-%m-%d %H:%M", last.started) or "?"
     local text = "Aura probe, started " .. when .. "\n" .. table.concat(last.lines, "\n")
-    if last.dropped then
-        text = text .. "\n... " .. last.dropped .. " more lines dropped (the log keeps " .. Probe.MAX_LINES .. ")"
+    if type(last.dropped) == "table" then
+        local units = {}
+        for u in pairs(last.dropped) do
+            units[#units + 1] = u
+        end
+        table.sort(units)
+        local parts = {}
+        for i, u in ipairs(units) do
+            parts[i] = u .. " " .. last.dropped[u]
+        end
+        text = text .. "\n... more UNIT_AURA lines left out (the log keeps " .. Probe.AURA_MAX .. " of them): " .. table.concat(parts, ", ")
     end
     return text
 end

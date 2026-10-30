@@ -175,6 +175,10 @@ CRT_THEME(CRT, CRT.UI)
 CRT_PREVIEWS(CRT, CRT.UI)
 previews = CRT.UI.previews
 CRT_PLACEMENT(CRT) -- UI/Placement.lua, which every area is placed by
+-- a debuff list's display (Alerts/DebuffListView.lua, made at PLAYER_LOGIN before the tab is built): Preview alerts takes it
+local debuffListOn = false
+CRT.UI:RegisterPreview("debufflist-3492-fangs", function(on) debuffListOn = on end)
+CRT.AlertDebuffListView = { PreviewKeys = function() return { "debufflist-3492-fangs" } end }
 local coreSrc
 local function loadSource(i, src)
   if src:find("CRT.defaults = defaults", 1, true) then -- CRT_Core/Core.lua: read, not run
@@ -414,11 +418,12 @@ check("tab: routing checkboxes bind the saved fields", function()
   for _, key in ipairs({ "alert", "alerttexts", "alertbars", "alerticons", "alertcircles", "alerttimeline" }) do
     assert(UI:IsPreviewing(key), "Preview alerts turns on " .. key)
   end
+  assert(UI:IsPreviewing("debufflist-3492-fangs") and debuffListOn, "Preview alerts turns on every debuff list's display too")
   assert(previewsBtn.text == "Stop preview", "the button reads Stop preview: " .. tostring(previewsBtn.text))
   for _, f in ipairs(fontStrings) do if tostring(f.text):find("^On screen now") then strip = f end end
   assert(strip and strip.shown and strip.text == "On screen now: Callout, Icons, Alerts text, Bars, Circles, Timeline", "the strip lists them: " .. tostring(strip and strip.text))
   click(previewsBtn)
-  assert(not UI:IsPreviewing("alertbars") and not UI:IsPreviewing("alert"), "Stop preview turns them off")
+  assert(not UI:IsPreviewing("alertbars") and not UI:IsPreviewing("alert") and not debuffListOn, "Stop preview turns them off, the debuff list too")
   assert(UI:IsPreviewing("othersection") and other == true, "and leaves the other section on")
   assert(not strip.shown, "the strip hides with none of the alerts on")
   UI:SetPreview("othersection", false)

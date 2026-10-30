@@ -121,6 +121,7 @@ Profiles.SHARE = {
         shieldPulls = false, -- last pull's shields: data
         debuffLists = true, -- your debuff lists' looks (groups, colours, sizes, place)
         debuffTiers = false, -- what a pull saw of each debuff: data
+        debuffPull = false, -- the pull being followed: state
     },
     importBackup = false, -- the backup Undo last import puts back
     whatsNew = false, -- Show after updates and the last version seen: personal

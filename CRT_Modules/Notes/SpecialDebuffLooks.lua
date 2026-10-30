@@ -5,8 +5,8 @@ local ADDON, CRT = ...
 --   Sides (?)          a row per side, as many as the entry has: its name, its raid groups typed in a box ("1, 3",
 --                      1 to 8, saved on Enter or when the box lets go), Default (that side's groups and colours back to
 --                      the boss file's), and two swatches, With it and Without it, on the game's colour picker
---   Show every player (?)   off lists only the players with the debuff; greyed and on once the game was seen hiding
---                      who has it (the secret tier: rows can't be filtered)
+--   Show every player (?)   off lists only the players with the debuff; greyed and off until a pull saw someone with
+--                      it (DL:ShowAllRefused); greyed and on for the secret tier (rows can't be filtered)
 --   Sort by role       tanks, healers, damage, then name; off, by name
 --   Bar height, Bar width   UI.Slider, saved when the bar is let go
 --   Preview <label>    UI.PreviewButton on the display's key (Alerts/DebuffListView.lua), one per entry
@@ -26,6 +26,7 @@ local TEXT = {
     default = "Default",
     showAll = "Show every player",
     showAllHelp = "Lists every player of a side, with or without the debuff. Off, only the players with it show.",
+    showAllRefused = "This stays off until a pull has seen someone with this debuff. Until then, an empty list may mean the game hides it, so only players seen with it show.",
     showAllForced = "The game hides who has this debuff, so the list can't pick them out. Every player of a side shows, coloured with it or without it, so this stays on.",
     sortByRole = "Sort by role",
     sortHelp = "Tanks first, then healers, then damage, each by name. Off, by name only.",
@@ -100,6 +101,9 @@ function M.Build(parent, host)
         r.edit:SetAutoFocus(false)
         r.edit:SetFontObject(CRTFontEdit)
         r.edit:SetSize(L.EDIT_W, L.EDIT_H)
+        if UI.SkinEditBox then
+            UI:SkinEditBox(r.edit) -- the look's edit box, as the other boxes
+        end
         local function save(self)
             local entry = current()
             local side = r.side
@@ -180,9 +184,11 @@ function M.Build(parent, host)
         set("showAll", on)
     end)
     t.showAllHelp = UI.HelpRight(t.showAll.label, TEXT.showAll, function()
-        local entry = current()
-        if entry and DL():ForcedShowAll(entry.spellID) then
+        local entry, enc = current()
+        if entry and DL():ForcedShowAll(enc, entry.spellID) then
             return TEXT.showAllHelp .. "\n\n" .. TEXT.showAllForced
+        elseif entry and DL():ShowAllRefused(enc, entry.spellID) then
+            return TEXT.showAllHelp .. "\n\n" .. TEXT.showAllRefused
         end
         return TEXT.showAllHelp
     end)
@@ -231,8 +237,8 @@ function M.Build(parent, host)
     end
 
     function t.PaintNotice()
-        local entry = current()
-        local hidden = entry and DL():Notice(entry.spellID)
+        local entry, enc = current()
+        local hidden = entry and DL():Notice(enc, entry.spellID)
         if t.problem then
             t.notice:SetText(UI.BadText(t.problem))
         elseif hidden then
@@ -291,12 +297,14 @@ function M.Build(parent, host)
         end
         y = y - 4
         -- Show every player: greyed and on while the game hides who has it (the rows can't be filtered)
-        local forced = DL():ForcedShowAll(entry.spellID)
+        local forced = DL():ForcedShowAll(enc, entry.spellID)
+        -- refused until a pull saw someone with it: before that, an empty list may be the game hiding the debuff
+        local refused = DL():ShowAllRefused(enc, entry.spellID)
         t.showAll:ClearAllPoints()
         t.showAll:SetPoint("TOPLEFT", x - 4, y)
-        t.showAll:SetChecked(forced or look.showAll)
-        t.showAll:SetEnabled(not forced)
-        t.showAll.label:SetAlpha(forced and 0.5 or 1)
+        t.showAll:SetChecked(forced or (look.showAll and not refused))
+        t.showAll:SetEnabled(not (forced or refused))
+        t.showAll.label:SetAlpha((forced or refused) and 0.5 or 1)
         t.sortByRole:ClearAllPoints()
         t.sortByRole:SetPoint("TOPLEFT", x - 4, y - 26)
         t.sortByRole:SetChecked(look.sortByRole)

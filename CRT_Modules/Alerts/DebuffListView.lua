@@ -11,7 +11,10 @@ local ADDON, CRT = ...
 -- when there is no row (nobody has it and Show every player is off, or the game hides the debuff).
 --
 -- When it runs: the entry ticked (Alert me), its boss engaged (ENCOUNTER_START to ENCOUNTER_END) on a difficulty it is
--- for, and you in a group. It listens to UNIT_AURA and GROUP_ROSTER_UPDATE only then. Work once, draw often: the roster
+-- for, and you in a group. UNIT_AURA and GROUP_ROSTER_UPDATE are registered only while a list of the engaged boss is
+-- ticked and for this difficulty (wanted), checked again on every look or alert change, so ticking or unticking one
+-- mid-pull starts or stops them. A /reload mid-pull picks the pull up again (alerts.debuffPull and
+-- C_InstanceEncounter.IsEncounterInProgress). Work once, draw often: the roster
 -- is read again only after GROUP_ROSTER_UPDATE, a unit's aura only after its UNIT_AURA (every unit when the event's
 -- unit is hidden), and all of it at most once a frame (one OnUpdate that removes itself).
 -- Game calls (warcraft.wiki.gg, read 2026-10-30): ENCOUNTER_START (encounterID, encounterName, difficultyID,
@@ -294,9 +297,11 @@ function View:Update(d)
     if d.handle then
         d.handle:Hide()
     end
-    local view = active(d, entry) and not failed[entry.spellID] and DL.Build(look, entry.spellID, roster, reader(entry.spellID), private[entry.spellID])
+    local spellID = entry.spellID
+    local view = active(d, entry) and not failed[spellID]
+        and DL.Build(look, spellID, roster, reader(spellID), private[spellID], DL:Confirmed(d.enc, spellID))
     if view and (view.tier ~= "readable" or view.any) then
-        DL:SetSeen(entry.spellID, view.tier) -- readable only once someone was seen with it
+        DL:SetSeen(d.enc, spellID, view.tier, view.any) -- readable only once someone was seen with it
     end
     if not (view and anyRow(view)) then
         if d.frame then
@@ -307,8 +312,8 @@ function View:Update(d)
     build(d)
     if not draw(d, view, look) then
         -- the game gave a secret the bars can't take: nothing usable, so nothing is shown this pull
-        failed[entry.spellID] = true
-        DL:SetSeen(entry.spellID, "unreadable")
+        failed[spellID] = true
+        DL:SetSeen(d.enc, spellID, "unreadable")
         d.frame:Hide()
         return
     end
@@ -428,17 +433,7 @@ local function groupUnit(unit)
     return unit == "player" or unit:match("^raid%d+$") ~= nil or unit:match("^party%d$") ~= nil
 end
 
-local function listen(on)
-    for _, e in ipairs(DURING) do
-        if on then
-            events:RegisterEvent(e)
-        else
-            events:UnregisterEvent(e)
-        end
-    end
-end
-
--- Whether a boss has a debuff list: only then does a pull of it listen.
+-- Whether a boss has a debuff list: only then does a pull of it count.
 local function hasList(enc)
     for _, k in ipairs(View.order) do
         if View.displays[k].enc == enc then
@@ -448,9 +443,87 @@ local function hasList(enc)
     return false
 end
 
+-- Whether some debuff list of the engaged boss is ticked and for this difficulty: only then are UNIT_AURA and
+-- GROUP_ROSTER_UPDATE registered.
+local function wanted()
+    if not engaged then
+        return false
+    end
+    local S = Special()
+    for _, entry in ipairs(DL.Entries(engaged.enc)) do
+        if (entry.difficulty == nil or entry.difficulty == engaged.group) and S:Choices(engaged.enc, entry).on then
+            return true
+        end
+    end
+    return false
+end
+
+local listening = false
+
+-- Registers the pull's events while wanted() and drops them when not, then redraws. Starting afresh reads the roster
+-- and every unit again, since nothing was heard meanwhile.
+local function relisten()
+    local want = wanted()
+    if want ~= listening then
+        listening = want
+        for _, e in ipairs(DURING) do
+            if want then
+                events:RegisterEvent(e)
+            else
+                events:UnregisterEvent(e)
+            end
+        end
+        if want then
+            states, dirty, rosterDirty = {}, {}, true
+        end
+    end
+    schedule()
+end
+View.Relisten = relisten
+
+-- The pull being followed, kept through a /reload (alerts.debuffPull = { encounterID, difficultyID }), so a reload
+-- mid-pull picks it up again while C_InstanceEncounter.IsEncounterInProgress says the encounter still runs.
+local function pullStore()
+    local s = CRT.db and CRT.db.alerts
+    if type(s) ~= "table" then
+        return nil
+    end
+    s.debuffPull = type(s.debuffPull) == "table" and s.debuffPull or {}
+    return s.debuffPull
+end
+
+local function engage(enc, difficultyID)
+    engaged = { enc = enc, group = groupOf(difficultyID) }
+    states, private, failed, dirty = {}, {}, {}, {}
+    for _, entry in ipairs(DL.Entries(enc)) do
+        private[entry.spellID] = DL.IsPrivate(entry.spellID)
+    end
+    rosterDirty = true
+    local p = pullStore()
+    if p then
+        p.encounterID, p.difficultyID = enc, difficultyID
+    end
+    relisten()
+end
+
+local function encounterRuns()
+    local fn = C_InstanceEncounter and C_InstanceEncounter.IsEncounterInProgress
+    if type(fn) ~= "function" then
+        return false
+    end
+    local ok, on = pcall(fn)
+    return ok and not isSecret(on) and on == true
+end
+
 function View.HandleEvent(event, a1, a2, a3)
     if event == "PLAYER_LOGIN" then
         View:Register()
+        local p = CRT.db and pullStore()
+        if p and type(p.encounterID) == "number" and hasList(p.encounterID) and encounterRuns() then
+            engage(p.encounterID, p.difficultyID) -- a /reload mid-pull
+        elseif p then
+            p.encounterID, p.difficultyID = nil, nil
+        end
         return
     end
     if not CRT.db then
@@ -460,19 +533,15 @@ function View.HandleEvent(event, a1, a2, a3)
         if isSecret(a1) or type(a1) ~= "number" or not hasList(a1) then
             return
         end
-        engaged = { enc = a1, group = groupOf(not isSecret(a3) and a3 or nil) }
-        states, private, failed, dirty = {}, {}, {}, {}
-        for _, entry in ipairs(DL.Entries(a1)) do
-            private[entry.spellID] = DL.IsPrivate(entry.spellID)
-        end
-        rosterDirty = true
-        listen(true)
-        schedule()
+        engage(a1, not isSecret(a3) and type(a3) == "number" and a3 or nil)
     elseif event == "ENCOUNTER_END" then
         if engaged then
             engaged = nil
-            listen(false)
-            schedule()
+            local p = pullStore()
+            if p then
+                p.encounterID, p.difficultyID = nil, nil
+            end
+            relisten()
         end
     elseif event == "GROUP_ROSTER_UPDATE" then
         rosterDirty = true
@@ -496,8 +565,8 @@ events:SetScript("OnEvent", function(_, event, ...)
     View.HandleEvent(event, ...)
 end)
 
--- A look changed, an entry was ticked or unticked: redraw on the next frame.
-DL:OnChange(schedule)
+-- A look changed, an entry was ticked or unticked (mid-pull too): listen or stop, and redraw on the next frame.
+DL:OnChange(relisten)
 if CRT.Alerts and CRT.Alerts.OnChange then
-    CRT.Alerts:OnChange(schedule)
+    CRT.Alerts:OnChange(relisten)
 end

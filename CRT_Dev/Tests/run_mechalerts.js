@@ -3628,6 +3628,14 @@ check("special debuff list (" .. LOOK .. "): its own Looks, the tabs it has no u
   click(d.sides[1].default)
   click(d.sides[2].default)
   assert(saved.groups == nil and saved.colors == nil and d.sides[1].edit.text == "1, 3", "Default: the boss file's groups and colours")
+  -- Show every player: refused until a pull saw someone with it (an empty list may be the game hiding the debuff)
+  local help
+  for _, h in ipairs(helps) do if h.helpTitle == "Show every player" then help = h end end
+  assert(not d.showAll.enabled and not d.showAll.checked and help.helpText():find("until a pull has seen someone", 1, true),
+    "nobody seen yet: Show every player greyed and off, its (?) says why")
+  CRT.AlertDebuffList:SetSeen(ENC, 777, "readable", true)
+  CRT.NoteReminders.Refresh()
+  assert(d.showAll.enabled, "a pull saw someone with it: Show every player can be ticked")
   -- Show every player, Sort by role, the sliders
   setCheck(d.showAll, true)
   assert(saved.showAll == true, "Show every player saved")
@@ -3638,15 +3646,13 @@ check("special debuff list (" .. LOOK .. "): its own Looks, the tabs it has no u
   sliders["Bar width"].opts.set(200)
   assert(saved.barHeight == 30 and saved.barWidth == 200, "the bar sizes saved")
   -- the tier seen: secret greys Show every player on; private shows the notice
-  CRT.AlertDebuffList:SetSeen(777, "secret")
+  CRT.AlertDebuffList:SetSeen(ENC, 777, "secret")
   CRT.NoteReminders.Refresh()
   assert(d.showAll.checked and not d.showAll.enabled, "the game hid who has it: Show every player on and greyed")
-  local help
-  for _, h in ipairs(helps) do if h.helpTitle == "Show every player" then help = h end end
   assert(help and type(help.helpText) == "function" and help.helpText():find("stays on", 1, true), "its (?) says why")
-  CRT.AlertDebuffList:SetSeen(777, "private")
+  CRT.AlertDebuffList:SetSeen(ENC, 777, "private")
   CRT.NoteReminders.Refresh()
-  assert(d.showAll.enabled and d.notice.text:find("The game hides this debuff from addons, so the list can't fill in.", 1, true), "private: the notice")
+  assert(not d.showAll.enabled and d.notice.text:find("The game hides this debuff from addons, so the list can't fill in.", 1, true), "private: the notice, Show every player refused")
   -- Preview <label>
   local pb = d.previews["debufflist-" .. ENC .. "-fangs"]
   assert(pb and pb.text == "Preview Grasping Fangs" and pb.keys[1] == "debufflist-" .. ENC .. "-fangs" and pb.shown, "Preview Grasping Fangs on its key")

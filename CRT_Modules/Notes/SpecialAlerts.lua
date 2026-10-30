@@ -926,7 +926,7 @@ local function buildPanel(f)
     buildWho(tf.who)
     buildLooks(tf.looks)
     buildDebuffLooks(tf.looks)
-    ui.speak =makeCheck(tf.sound, TEXT.speak, L.INSET - 4, L.SPEAK_Y, setChoice("speak"))
+    ui.speak = makeCheck(tf.sound, TEXT.speak, L.INSET - 4, L.SPEAK_Y, setChoice("speak"))
     buildShield(tf.shield)
     buildMarkers(tf.markers)
 

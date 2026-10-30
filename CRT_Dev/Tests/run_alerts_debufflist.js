@@ -217,6 +217,12 @@ check(#view.sides[1].rows == 4 and #view.sides[2].rows == 4, "Show every player 
 local onCount = 0
 for _, r in ipairs(view.sides[1].rows) do if r.state == "on" then onCount = onCount + 1 end end
 check(onCount == 2, "raid1 and raid6 on, the rest off: " .. rowNames(view.sides[1]))
+-- nobody has it and nobody was ever seen with it: Show every player is refused, since the game may be hiding it
+auras = {}
+view = DL.Build(look, 1301117, roster)
+check(not view.showAll and #view.sides[1].rows == 0 and #view.sides[2].rows == 0, "nobody seen yet: Show every player refused, the list empty (never every player as off)")
+view = DL.Build(look, 1301117, roster, nil, false, true)
+check(view.showAll and #view.sides[1].rows == 4, "once a pull saw someone with it (confirmed): every player")
 look.showAll = false
 -- an aura table the game hides still says has it (its truth is tested, never its fields)
 auras = { raid3 = secret({ spellId = 1 }) }
@@ -254,16 +260,29 @@ check(view.tier == "private" and #view.sides[1].rows == 0 and #view.sides[2].row
 auras = { raid1 = "error", raid2 = "error", raid5 = "error", raid6 = "error", raid3 = "error", raid4 = "error", raid7 = "error", raid8 = "error" }
 view = DL.Build(look, 1301117, roster, nil, false)
 check(view.tier == "unreadable" and #view.sides[1].rows == 0, "every lookup failing: unreadable, no rows")
-check(DL:Notice(1301117) == nil, "no notice before a pull saw it")
-DL:SetSeen(1301117, "private")
-check(DL:Notice(1301117) == "The game hides this debuff from addons, so the list can't fill in.", "private seen: the Looks tab's notice")
-check(CRT.db.alerts.debuffTiers[1301117].tier == "private" and CRT.db.alerts.debuffTiers[1301117].at == 1792540800, "saved per spell, with when")
-DL:SetSeen(1301117, "unreadable")
-check(DL:Notice(1301117) ~= nil, "unreadable: the same notice")
-DL:SetSeen(1301117, "secret")
-check(DL:Notice(1301117) == nil and DL:ForcedShowAll(1301117), "secret: no notice, Show every player forced")
-DL:SetSeen(1301117, "bogus")
-check(DL:Seen(1301117) == "secret", "an unknown tier is not saved")
+check(DL:Notice(ENC, 1301117) == nil, "no notice before a pull saw it")
+check(DL:ShowAllRefused(ENC, 1301117) and not DL:Confirmed(ENC, 1301117), "nothing seen: Show every player refused")
+local fired = 0
+DL:OnChange(function() fired = fired + 1 end)
+DL:SetSeen(ENC, 1301117, "private")
+check(DL:Notice(ENC, 1301117) == "The game hides this debuff from addons, so the list can't fill in.", "private seen: the Looks tab's notice")
+check(CRT.db.alerts.debuffTiers[ENC][1301117].tier == "private" and CRT.db.alerts.debuffTiers[ENC][1301117].at == 1792540800, "saved per boss and spell, with when")
+local firstAt = CRT.db.alerts.debuffTiers[ENC][1301117]
+DL:SetSeen(ENC, 1301117, "private")
+check(fired == 1 and rawequal(CRT.db.alerts.debuffTiers[ENC][1301117], firstAt), "the same tier again: nothing written, nobody told")
+DL:SetSeen(ENC, 1301117, "unreadable")
+check(DL:Notice(ENC, 1301117) ~= nil and fired == 2, "unreadable: the same notice, written once")
+DL:SetSeen(ENC, 1301117, "readable", false)
+check(DL:Seen(ENC, 1301117) == "readable" and DL:ShowAllRefused(ENC, 1301117), "readable with nobody seen: still refused")
+DL:SetSeen(ENC, 1301117, "readable", true)
+check(DL:Confirmed(ENC, 1301117) and not DL:ShowAllRefused(ENC, 1301117) and CRT.db.alerts.debuffTiers[ENC][1301117].seen == true, "someone seen: Show every player allowed")
+DL:SetSeen(ENC, 1301117, "readable", false)
+check(DL:Confirmed(ENC, 1301117), "seen stays once a pull saw someone")
+DL:SetSeen(ENC, 1301117, "secret")
+check(DL:Notice(ENC, 1301117) == nil and DL:ForcedShowAll(ENC, 1301117) and not DL:ShowAllRefused(ENC, 1301117), "secret: no notice, Show every player forced")
+DL:SetSeen(ENC, 1301117, "bogus")
+check(DL:Seen(ENC, 1301117) == "secret", "an unknown tier is not saved")
+check(DL:Seen(9999, 1301117) == nil, "kept per boss")
 CRT.db.alerts.debuffTiers = {}
 privateSpells = {}
 
@@ -326,10 +345,18 @@ auras = { raid1 = { spellId = 1301117 } }
 fire("ENCOUNTER_START", ENC, "Boss", 16, 20)
 frame()
 check(not d.frame.shown, "off (Alert me unticked): nothing in a pull")
+check(not updater.events.UNIT_AURA and not updater.events.GROUP_ROSTER_UPDATE, "off: UNIT_AURA and the roster are not registered")
 S:SetChoice(ENC, entry, "on", true)
 frame()
 check(d.frame.shown and d.bars[1][1].name.text == roster[1].name and not d.bars[1][2].shown, "on: the player with it, alone")
-check(updater.events.UNIT_AURA and updater.events.GROUP_ROSTER_UPDATE, "it listens to UNIT_AURA and the roster during the pull")
+check(updater.events.UNIT_AURA and updater.events.GROUP_ROSTER_UPDATE, "ticked mid-pull: it listens to UNIT_AURA and the roster")
+S:SetChoice(ENC, entry, "on", false)
+frame()
+check(not updater.events.UNIT_AURA and not updater.events.GROUP_ROSTER_UPDATE and not d.frame.shown, "unticked mid-pull: it stops listening, nothing shows")
+S:SetChoice(ENC, entry, "on", true)
+frame()
+check(updater.events.UNIT_AURA and d.frame.shown, "ticked again: back")
+check(DL:Confirmed(ENC, 1301117), "the pull saw raid1 with it: confirmed for Show every player")
 local calls = auraCalls
 auras.raid4 = { spellId = 1301117 }
 for _ = 1, 20 do fire("UNIT_AURA", "raid4", {}) end
@@ -352,16 +379,34 @@ for i = 1, 10 do auras["raid" .. i] = secret(i == 1) end
 fire("UNIT_AURA", secret("x"))
 frame()
 check(d.frame.shown and d.bars[1][4].shown and d.bars[1][1].fill.fromBoolean ~= nil, "secret: every player, coloured from the secret")
-check(DL:Seen(1301117) == "secret", "the pull saved the secret tier")
+check(DL:Seen(ENC, 1301117) == "secret", "the pull saved the secret tier")
+check(CRT.db.alerts.debuffPull.encounterID == ENC and CRT.db.alerts.debuffPull.difficultyID == 16, "the pull is kept for a /reload")
 fire("ENCOUNTER_END", ENC, "Boss", 16, 20, 0)
 frame()
 check(not d.frame.shown and not updater.events.UNIT_AURA, "after the pull: hidden, UNIT_AURA no more")
+check(CRT.db.alerts.debuffPull.encounterID == nil, "and the kept pull cleared")
+-- a /reload mid-pull: PLAYER_LOGIN picks the pull up again while the encounter runs
+auras = { raid1 = { spellId = 1301117 } }
+CRT.db.alerts.debuffTiers = {}
+CRT.db.alerts.debuffPull = { encounterID = ENC, difficultyID = 16 }
+C_InstanceEncounter = { IsEncounterInProgress = function() return true end }
+fire("PLAYER_LOGIN")
+frame()
+check(updater.events.UNIT_AURA and d.frame.shown, "a /reload mid-pull: the list runs again")
+fire("ENCOUNTER_END", ENC, "Boss", 16, 20, 0)
+frame()
+CRT.db.alerts.debuffPull = { encounterID = ENC, difficultyID = 16 }
+C_InstanceEncounter = { IsEncounterInProgress = function() return false end }
+fire("PLAYER_LOGIN")
+frame()
+check(not updater.events.UNIT_AURA and CRT.db.alerts.debuffPull.encounterID == nil, "after the encounter ended: nothing runs, the kept pull cleared")
+C_InstanceEncounter = nil
 -- private: nothing, and the notice
 privateSpells[1301117] = true
 auras = { raid1 = { spellId = 1301117 } }
 fire("ENCOUNTER_START", ENC, "Boss", 16, 20)
 frame()
-check(not d.frame.shown and DL:Notice(1301117) ~= nil, "private in a pull: nothing shows, the notice is set")
+check(not d.frame.shown and DL:Notice(ENC, 1301117) ~= nil, "private in a pull: nothing shows, the notice is set")
 fire("ENCOUNTER_END", ENC, "Boss", 16, 20, 0)
 privateSpells = {}
 -- another boss's pull: nothing listens
@@ -373,7 +418,7 @@ fileList = { with({ difficulty = "mythic" }) }
 auras = { raid1 = { spellId = 1301117 } }
 fire("ENCOUNTER_START", ENC, "Boss", 15, 20)
 frame()
-check(not d.frame.shown, "a Mythic list on Heroic: nothing")
+check(not d.frame.shown and not updater.events.UNIT_AURA, "a Mythic list on Heroic: nothing, nothing registered")
 fire("ENCOUNTER_END", ENC, "Boss", 15, 20, 0)
 check(#errors == 0, "no errors: " .. tostring(errors[1]))
 

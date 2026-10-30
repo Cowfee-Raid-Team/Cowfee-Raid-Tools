@@ -14,17 +14,20 @@ local ADDON, CRT = ...
 --               not. An aura table the game hides (a secret) still says "has it": a boolean test on a secret that is
 --               not a boolean is allowed (warcraft.wiki.gg Secret_values), and its fields are never read. Rows can
 --               be filtered: Show every player off lists only the players with it.
---   secret      the game gives a secret boolean: it is never tested or compared. It goes straight to the bar's
---               Region:SetVertexColorFromBoolean (12.0.0, AllowedWhenTainted), which colours it on or off. Rows
---               can't be filtered, so every player of the side shows (Show every player is forced on).
+--   secret      reserved for a source that gives a secret boolean per player, which GetUnitAuraBySpellID doesn't
+--               today (it gives a table or nothing). Such a boolean is never tested or compared: it goes straight to
+--               the bar's Region:SetVertexColorFromBoolean (12.0.0, AllowedWhenTainted), which colours it on or off.
+--               Rows can't be filtered, so every player of the side shows (Show every player is forced on).
 --   private     C_UnitAuras.AuraIsPrivate(spellID) says the game keeps it from addons: the list shows nothing.
 --   unreadable  every lookup errored (or the function is missing): the list shows nothing.
--- GetUnitAuraBySpellID is RequiresNonSecretAura: on an aura the game hides it returns nothing, which reads as "doesn't
--- have it". So a readable tier that never sees anyone with it is not proof; /crt dev aura (CRT_Dev/Dev/AuraProbe.lua)
--- answers which tier a debuff is in on a real pull.
--- What a pull (or the probe) saw is kept per debuff in CRT.db.alerts.debuffTiers[spellID] = { tier, at }: private and
--- unreadable put a notice on the Looks tab, secret greys Show every player. readable is kept only once someone was
--- seen with it.
+-- GetUnitAuraBySpellID is RequiresNonSecretAura: on an aura the game hides it returns nothing, which reads the same as
+-- "nobody has it". So the list never shows a wrong list: in the readable tier Show every player is refused (greyed,
+-- its (?) says why) until a pull has seen at least one player with the debuff (DL:Confirmed). Until then only the
+-- players seen with it show, so the list stays empty when the game hides the aura. /crt dev aura
+-- (CRT_Dev/Dev/AuraProbe.lua) answers which tier a debuff is in on a real pull.
+-- What a pull (or the probe) saw is kept per boss and debuff in CRT.db.alerts.debuffTiers[encounterID][spellID] =
+-- { tier, at, seen } (declared for the season purge): seen is true once someone had it. Private and unreadable put a
+-- notice on the Looks tab, secret greys Show every player on. It is written only when it changes.
 --
 -- The rows: the group's players by side (their raid subgroup in the side's groups; a party is group 1), sorted by role
 -- (tanks, healers, damage) then name when Sort by role is on, else by name. A player whose name, group or role the
@@ -41,6 +44,7 @@ CRT.AlertDebuffList = DL
 -- Your looks are kept per boss: declared for the dev season purge (Bosses:DeclareStore, CRT_Data/Bosses/Registry.lua).
 if CRT.Bosses and CRT.Bosses.DeclareField then
     CRT.Bosses:DeclareField("debuff list looks", "alerts", "debuffLists")
+    CRT.Bosses:DeclareField("what pulls saw of debuff lists' debuffs", "alerts", "debuffTiers")
 end
 
 DL.MAX_RAID = 40 -- the game's raid1 to raid40 (MAX_RAID_MEMBERS)
@@ -279,31 +283,55 @@ local function tierStore(create)
     return type(s.debuffTiers) == "table" and s.debuffTiers or nil
 end
 
--- The tier a pull or the probe last saw for a debuff, or nil.
-function DL:Seen(spellID)
+-- The record of a boss's debuff: { tier, at, seen }, or nil.
+local function record(enc, spellID)
     local all = tierStore()
-    local t = all and all[spellID]
-    return type(t) == "table" and DL.TIERS[t.tier] and t.tier or nil
+    local boss = all and all[enc]
+    local t = type(boss) == "table" and boss[spellID]
+    return type(t) == "table" and DL.TIERS[t.tier] and t or nil
 end
 
-function DL:SetSeen(spellID, tier)
-    if type(spellID) ~= "number" or not DL.TIERS[tier] then
+-- The tier a pull or the probe last saw for a boss's debuff, or nil.
+function DL:Seen(enc, spellID)
+    local t = record(enc, spellID)
+    return t and t.tier or nil
+end
+
+-- Whether a pull (or the probe) has seen at least one player with the debuff: until then the readable tier can't tell
+-- "nobody has it" from "the game hides it", so Show every player is refused.
+function DL:Confirmed(enc, spellID)
+    local t = record(enc, spellID)
+    return t ~= nil and t.seen == true and (t.tier == "readable" or t.tier == "secret")
+end
+
+-- Saves what a pull saw: tier, and any (someone had it). Written only when it changes: a new tier, or seen turning
+-- on; private and unreadable clear seen. Tells the listeners then.
+function DL:SetSeen(enc, spellID, tier, any)
+    if type(enc) ~= "number" or type(spellID) ~= "number" or not DL.TIERS[tier] then
+        return
+    end
+    local before = record(enc, spellID)
+    local seen
+    if tier == "private" or tier == "unreadable" then
+        seen = nil
+    else
+        seen = (any == true or (before ~= nil and before.seen == true)) or nil
+    end
+    if before and before.tier == tier and before.seen == seen then
         return
     end
     local all = tierStore(true)
     if not all then
         return
     end
-    local before = self:Seen(spellID)
-    all[spellID] = { tier = tier, at = time and time() or 0 }
-    if before ~= tier then
-        self:Fire()
-    end
+    all[enc] = type(all[enc]) == "table" and all[enc] or {}
+    all[enc][spellID] = { tier = tier, at = time and time() or 0, seen = seen }
+    self:Fire()
 end
 
 -- The Looks tab's one line for a debuff the game hides, or nil.
-function DL:Notice(spellID)
-    local t = self:Seen(spellID)
+function DL:Notice(enc, spellID)
+    local t = self:Seen(enc, spellID)
     if t == "private" or t == "unreadable" then
         return TEXT.hidden
     end
@@ -311,8 +339,13 @@ function DL:Notice(spellID)
 end
 
 -- Whether Show every player is forced on (the game gave a secret: rows can't be filtered).
-function DL:ForcedShowAll(spellID)
-    return self:Seen(spellID) == "secret"
+function DL:ForcedShowAll(enc, spellID)
+    return self:Seen(enc, spellID) == "secret"
+end
+
+-- Whether Show every player is refused: the readable tier before anyone was seen with it (see the top of this file).
+function DL:ShowAllRefused(enc, spellID)
+    return not self:ForcedShowAll(enc, spellID) and not self:Confirmed(enc, spellID)
 end
 
 -- Reading ------------------------------------------------------------------------------------------
@@ -468,9 +501,10 @@ end
 
 -- What the display shows: { tier, any (someone has it), showAll (in use), sides = { { key, label, groups, rows =
 -- { { name, unit, role, isMe, state, raw } } } } }. read(unit) gives a unit's state and raw (default DL.ReadUnit for
--- spellID); private is DL.IsPrivate's answer. private and unreadable have no rows; secret lists every player;
--- readable every player with Show every player on, else those with it.
-function DL.Build(look, spellID, roster, read, private)
+-- spellID); private is DL.IsPrivate's answer; confirmed is DL:Confirmed's (someone was seen with it before). private
+-- and unreadable have no rows; secret lists every player; readable every player with Show every player on once the
+-- debuff is confirmed (before, or now: someone has it), else only those with it.
+function DL.Build(look, spellID, roster, read, private, confirmed)
     read = read or function(unit)
         return DL.ReadUnit(unit, spellID)
     end
@@ -486,14 +520,16 @@ function DL.Build(look, spellID, roster, read, private)
     end
     local tier, any = DL.Classify(states, private)
     local view = { tier = tier, any = any, sides = {} }
-    view.showAll = tier == "secret" or look.showAll
+    view.showAll = tier == "secret" or (look.showAll and (confirmed == true or any == true))
     for i, side in ipairs(sides) do
         local rows = {}
         if tier == "readable" or tier == "secret" then
             for _, p in ipairs(side.players) do
                 local st = states[p.unit]
                 if view.showAll or st.state == "on" then
-                    rows[#rows + 1] = { name = p.name, unit = p.unit, role = p.role, isMe = p.isMe, state = st.state, raw = st.raw }
+                    local row = { name = p.name, unit = p.unit, role = p.role, isMe = p.isMe, state = st.state }
+                    row.raw = st.raw -- a secret is only passed on (the lint "debuff list secrets are never tested")
+                    rows[#rows + 1] = row
                 end
             end
         end

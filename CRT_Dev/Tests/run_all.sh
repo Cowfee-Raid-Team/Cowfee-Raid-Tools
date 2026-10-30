@@ -45,6 +45,11 @@ g "alerts shield" && { node run_alerts_shield.js "$WA" 2>&1 | tail -30; echo "ex
 # on a line (comments left out) with a comparison, arithmetic, length, concatenation or a test (if, while, and, or, not), but
 # type(total). The first two inputs are planted mistakes it must find.
 g "shield readings are never compared" && { scan() { sed 's/--.*//' | grep -nE '(\btotal\b|\bst\.value\b|\bst\.max\b)' | grep -v 'type(total)' | grep -E '==|~=|<|>|[-+*/%^#]|\.\.|\b(if|while|and|or|not)\b'; }; p1=$(echo 'if total then' | scan); p2=$(echo 'local x = st.max / 2' | scan); bad=$( { cat "$WA/CRT_Modules/Alerts/Absorb.lua"; awk '/\[shield bar\]/{on=1} /\[\/shield bar\]/{on=0} on' "$WA/CRT_Modules/Alerts/Bars.lua"; } | scan); n=$(awk '/\[shield bar\]/{on=1} /\[\/shield bar\]/{on=0} on' "$WA/CRT_Modules/Alerts/Bars.lua" | grep -c 'st\.max'); if [ -z "$p1" ] || [ -z "$p2" ]; then echo "FAIL the lint misses a planted compare"; elif [ "$n" = "0" ]; then echo "FAIL Bars.lua's [shield bar] part is missing or moved"; elif [ -n "$bad" ]; then echo "FAIL a shield reading compared, tested or used in arithmetic:"; echo "$bad"; else echo "all passed"; fi; }
+# A debuff list keeps a secret as raw (Alerts/DebuffList.lua, Alerts/DebuffListView.lua) and only passes it on, to
+# SetVertexColorFromBoolean. A secret proxy can not catch a truth test, so this reads the code: no raw on a line (comments
+# left out) with a comparison, arithmetic, length, concatenation or a test (if, while, and, or, not). The first two
+# inputs are planted mistakes it must find.
+g "debuff list secrets are never tested" && { scan() { sed "s/--.*//" | grep -nE "\braw\b" | grep -E "==|~=|<|>|[-+*/%^#]|\.\.|\b(if|while|and|or|not)\b"; }; p1=$(echo "if row.raw then" | scan); p2=$(echo "local on = st.raw == true" | scan); n=$(cat "$WA/CRT_Modules/Alerts/DebuffList.lua" "$WA/CRT_Modules/Alerts/DebuffListView.lua" | sed "s/--.*//" | grep -c "\braw\b"); bad=$(cat "$WA/CRT_Modules/Alerts/DebuffList.lua" "$WA/CRT_Modules/Alerts/DebuffListView.lua" | scan); if [ -z "$p1" ] || [ -z "$p2" ]; then echo "FAIL the lint misses a planted test"; elif [ "$n" = "0" ]; then echo "FAIL the debuff list files keep no raw: the lint reads nothing"; elif [ -n "$bad" ]; then echo "FAIL a debuff list secret (raw) tested, compared or used in arithmetic:"; echo "$bad"; else echo "all passed"; fi; }
 g "alerts areas" && { node run_alerts_areas.js "$WA/CRT_Modules/Alerts/Rules.lua" "$WA/CRT_Modules/Alerts/Engine.lua" "$WA/CRT_Modules/Alerts/Areas.lua" "$WA/CRT_Modules/Alerts/Texts.lua" 2>&1 | tail -14; echo "exit ${PIPESTATUS[0]}"; }
 g "alerts icons" && { node run_alerts_icons.js "$WA/CRT_Modules/Alerts/Rules.lua" "$WA/CRT_Modules/Alerts/Engine.lua" "$WA/CRT_Modules/Alerts/Areas.lua" "$WA/CRT_Modules/Alerts/Icons.lua" 2>&1 | tail -10; echo "exit ${PIPESTATUS[0]}"; }
 g "alerts circles" && { node run_alerts_circles.js "$WA/CRT_Modules/Alerts/Rules.lua" "$WA/CRT_Modules/Alerts/Engine.lua" "$WA/CRT_Modules/Alerts/Areas.lua" "$WA/CRT_Modules/Alerts/Circles.lua" "$WA/CRT_Core/UI/Controls.lua" "$WA/CRT_Modules/Timeline/Reference.lua" "$WA/CRT_Modules/Alerts/Colors.lua" 2>&1 | tail -10; echo "exit ${PIPESTATUS[0]}"; }
@@ -168,7 +173,7 @@ g "spec cache" && { node run_spec_cache.js "$W" 2>&1 | tail -30; echo "exit ${PI
 g "invites" && { node run_invites.js "$W" 2>&1 | tail -80; echo "exit ${PIPESTATUS[0]}"; }
 g "clearprobe" && { node run_clearprobe.js "$W" 2>&1 | tail -60; echo "exit ${PIPESTATUS[0]}"; }
 g "auraprobe" && { node run_auraprobe.js "$W" 2>&1 | tail -60; echo "exit ${PIPESTATUS[0]}"; }
-g "absorbprobe" &&{ node run_absorbprobe.js "$W" 2>&1 | tail -60; echo "exit ${PIPESTATUS[0]}"; }
+g "absorbprobe" && { node run_absorbprobe.js "$W" 2>&1 | tail -60; echo "exit ${PIPESTATUS[0]}"; }
 g "bossdebug" && { node run_bossdebug.js "$W" 2>&1 | tail -140; echo "exit ${PIPESTATUS[0]}"; }
 g "markerprobe" && { node run_markerprobe.js "$W" 2>&1 | tail -60; echo "exit ${PIPESTATUS[0]}"; }
 g "markers" &&{ node run_markers.js "$W" 2>&1 | tail -160; echo "exit ${PIPESTATUS[0]}"; }
