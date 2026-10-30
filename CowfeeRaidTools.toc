@@ -201,6 +201,8 @@ CRT_Modules\Interrupts\Comm.lua
 CRT_Modules\Interrupts\NoteBlock.lua
 CRT_Modules\Interrupts\Page.lua
 CRT_Modules\Interrupts\PageGrid.lua
+CRT_Modules\Interrupts\PagePalette.lua
+CRT_Modules\Interrupts\WhoWindow.lua
 CRT_Modules\Interrupts\SetupEditor.lua
 CRT_Modules\QoL\LowHealth.lua
 CRT_Modules\QoL\LowHealthSound.lua
@@ -239,6 +241,7 @@ CRT_Dev\Dev\GearProbe.lua
 CRT_Dev\Dev\Loot.lua
 CRT_Dev\Dev\BossDebugPanel.lua
 CRT_Dev\Dev\KickProbe.lua
+CRT_Dev\Dev\KickPerf.lua
 CRT_Dev\Dev\KickSetupExport.lua
 CRT_Dev\Dev\DevPage.lua
 #@end-do-not-package@

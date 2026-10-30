@@ -10,6 +10,10 @@ local ADDON, CRT = ...
 --                                       state.paletteScroll. opts: width, names = { search, scroll } (global names),
 --                                       choices(), get(), set(key) for Players from, onSearch() (redraw)
 --   Palette.Draw(state, roster, width)  the chips for the roster (Palette.Roster), under state.query
+--   Palette.DrawSections(state, sections, width)  a host's own sections of chips (the Interrupts page's players)
+--   Palette.MakeRow(parent), RowLabel, RowChipsX, RowChips, PaintRow, HighlightRow, RowUnderMouse
+--                                       the note editor's group rows (a label, then chips with x; a drop target),
+--                                       shared with the Interrupts page's kick rows
 --   Palette.Drag(state, opts)           a drag of chips: state.driver, state.ghost, state.press. opts: readOnly(),
 --                                       begin(source), target() (the row under the mouse, or nil), highlight(target),
 --                                       drop(source, target), click(source, chip), remove(chip), cancel()
@@ -36,6 +40,8 @@ local L = {
     fromGap = 5, -- UI.Dropdown's gap between its label and the dropdown (UI/Controls.lua)
     chipH = 18, chipGap = 4, chipPad = 6, iconW = 16, removeW = 14, headingH = 20, sectionGap = 8,
     dragStart = 4, -- pixels the mouse moves with the button down before a press becomes a drag
+    -- a group row (Palette.MakeRow): its label's inset, the gap to the chips, the label's widest share of the row
+    rowPad = 4, rowLabelY = 4, rowLabelGap = 8, rowLabelMax = 0.35,
 }
 Palette.L = L
 
@@ -131,6 +137,98 @@ function Palette.Flow(chips, widths, x0, width, y0)
         x = x + w + L.chipGap
     end
     return (#chips > 0) and (y - y0 + L.chipH) or 0
+end
+
+-- Group rows -------------------------------------------------------------------------------------------------------
+-- The note editor's row of names (Notes/EditorWindow.lua), for any host: a box, its label on the left, then its
+-- chips; a drop target while it takes names. The host keeps the names and says what a drop or an x does.
+
+-- A row frame: f.label, f.chips. The host may add its own parts to it.
+function Palette.MakeRow(parent)
+    local f = CreateFrame("Button", nil, parent, "BackdropTemplate")
+    f:SetBackdrop(BACKDROP)
+    f.chips = {}
+    f.label = f:CreateFontString(nil, "OVERLAY", "CRTFontButtonSmall")
+    f.label:SetJustifyH("LEFT")
+    f.label:SetWordWrap(false)
+    return f
+end
+
+-- The row's label, top left, at most L.rowLabelMax of the row's width. Returns its width.
+function Palette.RowLabel(f, text, width)
+    f.label:SetWidth(0)
+    f.label:SetText(text)
+    local w = math.min(math.ceil(f.label:GetStringWidth() or 0), math.floor(width * L.rowLabelMax))
+    f.label:SetWidth(w)
+    f.label:ClearAllPoints()
+    f.label:SetPoint("TOPLEFT", L.rowPad, -L.rowLabelY)
+    f.label:Show()
+    return w
+end
+
+-- Where a row's chips start, right of a label w wide (and of tagW more the host put after it).
+function Palette.RowChipsX(w, tagW)
+    return L.rowPad + w + L.rowLabelGap + (tagW or 0)
+end
+
+-- The row's chips, from x0 and y0 to width: entries { label, class, token, source (what a drag carries), removable
+-- (its x shows), selected (outlined) }; extra, when given, is { frame, width } laid out after the last chip (a
+-- host's own field). Returns the height the chips take.
+function Palette.RowChips(f, drag, entries, x0, width, y0, extra)
+    local list, widths = {}, {}
+    for k, e in ipairs(entries) do
+        local chip = f.chips[k] or Palette.MakeChip(f, drag)
+        f.chips[k] = chip
+        widths[k] = Palette.FillChip(chip, e, e.source, e.removable and true or false, false)
+        if e.selected then
+            Palette.PaintChip(chip, true)
+        end
+        list[k] = chip
+    end
+    for k = #entries + 1, #f.chips do
+        f.chips[k]:Hide()
+    end
+    if extra then
+        list[#list + 1], widths[#widths + 1] = extra.frame, extra.width
+    end
+    return math.max(L.chipH, Palette.Flow(list, widths, x0, width, y0))
+end
+
+-- The row's box: a drop target's while it takes names (its edge the heading colour when selected), else none.
+function Palette.PaintRow(f, takesNames, selected)
+    if takesNames then
+        f:SetBackdropColor(UI.Color("background", 0.5))
+        f:SetBackdropBorderColor(UI.Color(selected and "heading" or "border", selected and 1 or 0.6))
+    else
+        f:SetBackdropColor(0, 0, 0, 0)
+        f:SetBackdropBorderColor(0, 0, 0, 0)
+    end
+    f.baseBorder = selected and "heading" or "border"
+end
+
+-- The row's edge while a drag is over it (on), or back to its own.
+function Palette.HighlightRow(f, on)
+    local key = on and "accent" or f.baseBorder or "border"
+    f:SetBackdropBorderColor(UI.Color(key, (key == "border") and 0.6 or 1))
+end
+
+-- The row under the mouse among frames (inside scroll) that takes(i) names, and the chip k under the mouse in it
+-- (nil: none). nil outside scroll.
+function Palette.RowUnderMouse(scroll, frames, takes)
+    if not (scroll and scroll:IsMouseOver()) then
+        return nil
+    end
+    for i, f in ipairs(frames) do
+        if f:IsShown() and takes(i) and f:IsMouseOver() then
+            for k, chip in ipairs(f.chips) do
+                if chip:IsShown() and chip:IsMouseOver() then
+                    return i, k
+                end
+            end
+            return i, nil
+        end
+    end
+    return nil
 end
 
 -- Where the players come from --------------------------------------------------------------------------------------
@@ -240,18 +338,20 @@ local function heading(state, n)
     return h
 end
 
--- The chips for a roster (Model.Palette's sections, under state.query), width wide.
-function Palette.Draw(state, roster, width)
+-- Draws sections of chips into state.paletteChild, width wide: each section { title, entries = { { label, class,
+-- token } }, icon (class icons on its chips), source(entry) (what a drag of the chip carries) }. Any host's own
+-- sections go through here as well as the note editor's. The chips and headings are pooled in state.
+function Palette.DrawSections(state, sections, width)
+    state.paletteChips, state.headings = state.paletteChips or {}, state.headings or {}
     if state.press and state.drag then
         state.drag:Cancel() -- its chip is about to be filled with another entry
     end
-    local sections = Model.Palette(roster, state.query)
     local used, y = 0, 0
     for n, section in ipairs(sections) do
         local h = heading(state, n)
         h:ClearAllPoints()
         h:SetPoint("TOPLEFT", 2, -y)
-        h:SetText(TEXT.sections[section.key])
+        h:SetText(section.title)
         h:SetTextColor(UI.Color("heading"))
         h:Show()
         y = y + L.headingH
@@ -260,8 +360,7 @@ function Palette.Draw(state, roster, width)
             used = used + 1
             local chip = state.paletteChips[used] or Palette.MakeChip(state.paletteChild, state.drag)
             state.paletteChips[used] = chip
-            local icon = section.key == "players" or section.key == "classes"
-            widths[#widths + 1] = Palette.FillChip(chip, entry, { token = entry.token, kind = section.kind }, false, icon)
+            widths[#widths + 1] = Palette.FillChip(chip, entry, section.source(entry), false, section.icon)
             list[#list + 1] = chip
         end
         y = y + Palette.Flow(list, widths, 2, width, y) + L.sectionGap
@@ -269,7 +368,24 @@ function Palette.Draw(state, roster, width)
     for k = used + 1, #state.paletteChips do
         state.paletteChips[k]:Hide()
     end
+    for k = #sections + 1, #state.headings do
+        state.headings[k]:Hide()
+    end
     state.paletteChild:SetHeight(math.max(1, y))
+end
+
+-- The chips for a roster (Model.Palette's sections, under state.query), width wide.
+function Palette.Draw(state, roster, width)
+    local sections = {}
+    for n, section in ipairs(Model.Palette(roster, state.query)) do
+        local kind = section.kind
+        sections[n] = { title = TEXT.sections[section.key], entries = section.entries,
+            icon = section.key == "players" or section.key == "classes",
+            source = function(entry)
+                return { token = entry.token, kind = kind }
+            end }
+    end
+    Palette.DrawSections(state, sections, width)
 end
 
 -- Search, Players from and the chips' scroll area, in a frame `width` wide filling parent's height (opts.top and

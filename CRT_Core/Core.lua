@@ -424,10 +424,11 @@ local defaults = {
     -- kicks[encounterID][difficultyID] holds the kick lists by group key: your own, the raid's and which is in use
     -- (Interrupts/Data.lua); own, shared and use[encounterID] are the lists from before group keys, read into kicks
     -- once and kept. setups[encounterID][difficultyID] are your own kick setups (Edit setup, Interrupts/SetupEditor.lua). accept takes lists from the leader and assistants;
+    -- whoWindow keeps the Who has it pop-out's place and size (Interrupts/WhoWindow.lua).
     -- test is Test on trash, set off at every login. plates are the numbers above the nameplates (box and number
     -- sizes, height above the plate, your pair's colours and the others'), reminder the countdown before your kick.
     -- The reminder's place is per character, in CRTDBChar.interrupts.reminder.
-    interrupts = { enabled = false, own = {}, shared = {}, use = {}, kicks = {}, setups = {}, accept = true, test = false,
+    interrupts = { enabled = false, own = {}, shared = {}, use = {}, kicks = {}, setups = {}, whoWindow = {}, accept = true, test = false,
         plates = { on = true, all = false, size = 50, font = 24, offset = 20,
             mineBox = { 0, 1, 0, 1 }, mineText = { 1, 0, 0, 1 }, box = { 1, 0, 0, 1 }, text = { 1, 1, 1, 1 } }, -- saved, the player's to change: not a theme colour
         reminder = { on = true, sound = "none", size = 48 } },

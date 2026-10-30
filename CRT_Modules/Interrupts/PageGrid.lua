@@ -1,225 +1,294 @@
 local ADDON, CRT = ...
 
--- The Interrupts page's kick list (Interrupts/Page.lua builds it through Page.BuildGrid): one column per group of the
--- setup shown, headed by the group's raid marker and label, a Kick #N row per slot with a name field and a picker. As
--- many columns side by side as fit, then the next band of columns below; past LAYOUT.gridMaxH the list scrolls. The
--- fields are pooled per place (group g, slot s), made the first time a setup needs them and reused for every other.
--- Page.fields[g][s], Page.slotLabels[g][s] and Page.pickers[g][s] are the pool, Page.headings[g] the headings.
---
--- A slot's picker lists "In your group" (the Addon check's roster), then each Raid Groups layout's players, the
--- layouts as the note editor's Players from lists them (Notes/EditModel.lua: Model.Sources for the layouts in order,
--- Model.Roster for each one's players), class coloured; a name typed in the field works as well.
+-- The Interrupts page's kick list (Interrupts/Page.lua builds it through Page.BuildGrid): one row per group of the
+-- setup shown, the note editor's group rows (Notes/Palette.lua: Palette.MakeRow and the Row helpers). A row's label is
+-- the group's raid marker, its label and how many of its slots are filled ("3/4"); then its chips, one per kick: the
+-- kick number, then the name in class colour, your own outlined, x to take it off. Players are dragged in from the
+-- palette on the right (Interrupts/PagePalette.lua), along a row to change the order (a chip dropped on another takes
+-- its place), or onto another group's row to move there; a row takes at most its group's slots, so a drop on a full
+-- row is refused. "Add name" at a row's end takes a typed name. The order is the kick order and empty slots close up;
+-- every change is saved slot by slot (Interrupts:SetName). In a group, the rows are read-only for anyone who can't
+-- edit (Page.CanEdit): no drag, no x, no Add name. Past LAYOUT.gridMaxH the rows scroll. The rows are pooled per
+-- group, made the first time a setup needs them: Page.rows[g] (row.add, row.hint: its Add name field).
 
 local UI = CRT.UI
 local Interrupts = CRT.Interrupts
 local Setup = CRT.InterruptSetup
+local Palette = CRT.NotePalette
 local Page = CRT.InterruptsPage
 
 local TEXT = {
-    kick = "%s #%d",
-    fromGroup = "In your group",
-    fromLayout = "Raid Groups: %s",
-    none = "-",
+    count = "%d/%d",
+    add = "Add name",
 }
 Page.GridText = TEXT
 
+local LAYOUT = {
+    rowGap = 4, -- between two rows
+    addW = 90, -- the Add name field
+    chipsY = 2, -- the chips' top inside the row
+}
+Page.GridLayout = LAYOUT
+
 local L = Page.LAYOUT
+local PL = Palette.L
 local child, scroll
+Page.rows = {}
 
-local function colorByte(v)
-    return math.floor(v * 255 + 0.5)
-end
+-- The moves -----------------------------------------------------------------------------------------------------------
 
-local function colored(name, class)
-    local r, g, b = Page.ClassColor(class)
-    return string.format("|cff%02x%02x%02x%s|r", colorByte(r), colorByte(g), colorByte(b), name)
-end
-
--- A player's class: the one Raid Groups stored for the name, else the shared class lookup the notes use.
-local function classOf(name)
-    local cache = CRT.db and CRT.db.classCache
-    if type(cache) == "table" then
-        local class = cache[name:lower()] or cache[Interrupts.CleanName(name):lower()]
-        if class then
-            return class
-        end
-    end
-    local Render = CRT.NoteRender
-    local lookup = Render and Render.SharedLookup and Render.SharedLookup()
-    return lookup and lookup(name) or nil
-end
-
--- The Raid Groups layouts with their players: { { label, entries = { { name, class } } } }, through the note editor's
--- sources (Model.Sources, Model.Roster).
-local function layouts()
-    local Model, Groups = CRT.NoteEditModel, CRT.Groups
-    if not (Model and Model.Sources and Groups and Groups.Presets and Groups.Find) then
-        return {}
-    end
-    local ok, presets = pcall(Groups.Presets, Groups)
+local function copy(list)
     local out = {}
-    for _, source in ipairs(Model.Sources(ok and type(presets) == "table" and presets or {}, nil, true)) do
-        if source.key ~= Model.SOURCE_GROUP then
-            local preset = Groups:Find(source.key)
-            local entries = {}
-            for _, e in ipairs(Model.Roster(type(preset) == "table" and preset.slots or {}, classOf)) do
-                entries[#entries + 1] = { name = Interrupts.CleanName(e.key), class = e.class }
-            end
-            if #entries > 0 then
-                out[#out + 1] = { label = source.label, entries = entries }
-            end
+    for k, v in ipairs(list) do
+        out[k] = v
+    end
+    return out
+end
+
+-- A group's names in kick order, empty slots closed up.
+function Page.RowNames(column)
+    local out = {}
+    for _, name in ipairs(column or {}) do
+        if name ~= "" then
+            out[#out + 1] = name
         end
     end
     return out
 end
 
--- The picker's choices: an empty one, your group, then each layout, each name once in its section.
-function Page.PickerOptions()
-    local out = { { key = "", label = TEXT.none } }
-    local function section(title, entries)
-        if #entries == 0 then
-            return
+-- A drop on the rows. names[g] are the groups' names in order (Page.RowNames), slots[g] how many each takes; source
+-- is { name } from the palette or { g, k } a row's chip; target { g, at } (at: the chip dropped on, which the name
+-- takes the place of; nil for the row's end). Returns the groups it changed (g -> their new names), or nil when it is
+-- refused or changes nothing.
+function Page.MoveKick(names, slots, source, target)
+    local tg = target and target.g
+    if not (tg and names[tg]) then
+        return nil
+    end
+    local into = copy(names[tg])
+    local name, from = source.name, nil
+    if source.g then
+        from = names[source.g] and copy(names[source.g])
+        name = from and from[source.k]
+        if not name then
+            return nil
         end
-        out[#out + 1] = { key = "title:" .. title, label = title, title = true }
-        local seen = {}
-        for _, e in ipairs(entries) do
-            if e.name ~= "" and not seen[e.name:lower()] then
-                seen[e.name:lower()] = true
-                out[#out + 1] = { key = e.name, label = colored(e.name, e.class) }
+        if source.g == tg then
+            from = nil
+            if target.at == source.k or (not target.at and source.k == #into) then
+                return nil
             end
+            table.remove(into, source.k)
         end
     end
-    section(TEXT.fromGroup, Page.Roster())
-    for _, layout in ipairs(layouts()) do
-        section(string.format(TEXT.fromLayout, layout.label), layout.entries)
+    if type(name) ~= "string" or name == "" or #into >= (slots[tg] or 0) then
+        return nil -- the row is full
+    end
+    local at = target.at and math.min(target.at, #into + 1) or (#into + 1)
+    table.insert(into, at, name)
+    local out = { [tg] = into }
+    if from then
+        table.remove(from, source.k)
+        out[source.g] = from
     end
     return out
 end
 
--- One slot of the pool, at group g and slot s: its Kick #N label, its name field and its picker.
-local function buildSlot(g, s)
-    local num = Page.Label(child, "")
-    num:SetWidth(L.labelW)
-    local edit = CreateFrame("EditBox", nil, child, "InputBoxTemplate")
-    edit:SetSize(L.editW, L.fieldH)
+-- Saves the changed groups' names into your own list, slot by slot, the rest of each row emptied.
+local function save(changed)
+    local key = Page.Boss()
+    local def = key and Interrupts:Def(key)
+    if not (def and changed) then
+        return false
+    end
+    for g, names in pairs(changed) do
+        local grp = def.groups[g]
+        for s = 1, grp and grp.slots or 0 do
+            Interrupts:SetName(key, g, s, names[s] or "")
+        end
+    end
+    return true
+end
+
+local function rowsNow()
+    local key = Page.Boss()
+    local def = key and Interrupts:Def(key)
+    local own = def and Interrupts:Own(key)
+    if not own then
+        return nil
+    end
+    local names, slots = {}, {}
+    for g, grp in ipairs(def.groups) do
+        names[g], slots[g] = Page.RowNames(own[g]), grp.slots
+    end
+    return names, slots
+end
+
+-- Drops a source on a target; true when it was saved.
+function Page.DropKick(source, target)
+    if not Page.CanEdit() then
+        return false
+    end
+    local names, slots = rowsNow()
+    return names and save(Page.MoveKick(names, slots, source, target)) or false
+end
+
+-- Takes a group's kick k off its row.
+function Page.RemoveKick(g, k)
+    local names = rowsNow()
+    if not (Page.CanEdit() and names and names[g] and names[g][k]) then
+        return false
+    end
+    local row = copy(names[g])
+    table.remove(row, k)
+    return save({ [g] = row })
+end
+
+-- The drag ------------------------------------------------------------------------------------------------------------
+
+-- The row (and the chip in it) under the mouse: { g, at }, or nil.
+local function target()
+    local g, k = Palette.RowUnderMouse(scroll, Page.rows, function()
+        return true
+    end)
+    return g and { g = g, at = k } or nil
+end
+Page.KickTarget = target
+
+local function highlight(t)
+    for g, row in ipairs(Page.rows) do
+        if row:IsShown() then
+            Palette.HighlightRow(row, t ~= nil and t.g == g)
+        end
+    end
+end
+
+local function dragOpts()
+    return {
+        readOnly = function()
+            return not (Page.Boss() and Page.CanEdit())
+        end,
+        begin = function(source)
+            return Page.Boss() ~= nil and Page.CanEdit() and (source.name ~= nil or source.g ~= nil)
+        end,
+        target = target,
+        highlight = highlight,
+        drop = function(source, t)
+            highlight(nil)
+            if not Page.DropKick(source, t) then
+                Page.Refresh() -- drawn again, so a refused drop leaves nothing half shown
+            end
+        end,
+        click = function() end,
+        remove = function(chip)
+            local src = chip.source
+            if src and src.g then
+                Page.RemoveKick(src.g, src.k)
+            end
+        end,
+        cancel = function() end,
+    }
+end
+
+-- The rows ------------------------------------------------------------------------------------------------------------
+
+local function makeAdd(row, g)
+    local edit = CreateFrame("EditBox", nil, row, "InputBoxTemplate")
+    edit:SetSize(LAYOUT.addW, PL.chipH)
     edit:SetAutoFocus(false)
     edit:SetFontObject(CRTFontEdit)
     edit:SetMaxLetters(48)
     UI:SkinEditBox(edit)
-    local function save(self)
-        if Page.Boss() then
-            Interrupts:SetName(Page.Boss(), g, s, self:GetText())
-        end
-    end
+    local hint = edit:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    hint:SetPoint("LEFT", 4, 0)
+    hint:SetText(TEXT.add)
+    hint:SetTextColor(UI.Color("muted"))
+    edit:SetScript("OnEditFocusGained", function()
+        hint:Hide()
+    end)
+    edit:SetScript("OnEditFocusLost", function(self)
+        hint:SetShown((self:GetText() or "") == "")
+    end)
     edit:SetScript("OnEnterPressed", function(self)
+        local name = strtrim(self:GetText() or "")
+        self:SetText("")
         self:ClearFocus()
-        save(self)
+        if name ~= "" then
+            Page.DropKick({ name = Interrupts.CleanName(name) }, { g = g })
+        end
     end)
-    edit:SetScript("OnEditFocusLost", save)
     edit:SetScript("OnEscapePressed", function(self)
+        self:SetText("")
         self:ClearFocus()
     end)
-    local pick = UI.Dropdown(child, "", { labelWidth = 0, width = L.pickW, maxHeight = L.pickMenuH,
-        options = Page.PickerOptions,
-        get = function()
-            local own = Page.Boss() and Interrupts:Own(Page.Boss())
-            return own and own[g] and own[g][s] or ""
-        end,
-        set = function(name)
-            if Page.Boss() then
-                Interrupts:SetName(Page.Boss(), g, s, name)
-            end
-        end,
-        enabledIf = Page.CanEdit })
-    Page.fields[g] = Page.fields[g] or {}
-    Page.slotLabels[g] = Page.slotLabels[g] or {}
-    Page.pickers[g] = Page.pickers[g] or {}
-    Page.fields[g][s], Page.slotLabels[g][s], Page.pickers[g][s] = edit, num, pick
+    row.add, row.hint = edit, hint
 end
 
-local function heading(g)
-    local head = Page.headings[g]
-    if not head then
-        head = Page.Label(child, "", "CRTFontNormal")
-        Page.headings[g] = head
+local function rowOf(g)
+    local row = Page.rows[g]
+    if not row then
+        row = Palette.MakeRow(child)
+        makeAdd(row, g)
+        Page.rows[g] = row
     end
-    return head
+    return row
 end
 
--- Places and fills one slot for the setup shown.
-local function showSlot(def, own, g, s, x, y, group, editable)
-    if not (Page.fields[g] and Page.fields[g][s]) then
-        buildSlot(g, s)
+local function myName()
+    local me = UnitName and UnitName("player")
+    return type(me) == "string" and me:lower() or nil
+end
+
+-- Fills row g with its names (kick order), width wide; returns the row's height.
+local function fillRow(def, g, names, width, editable)
+    local row = rowOf(g)
+    local grp = def.groups[g]
+    local icon = Setup.MarkerIcon(grp.marker, 16)
+    local count = UI.ColorText(string.format(TEXT.count, #names, grp.slots), #names >= grp.slots and "good" or "muted")
+    local w = Palette.RowLabel(row, (icon ~= "" and (icon .. " " .. grp.label) or grp.label) .. "  " .. count, width)
+    local me = myName()
+    local entries = {}
+    for k, name in ipairs(names) do
+        entries[k] = { label = UI.ColorText(tostring(k), "heading") .. " " .. name, class = Page.ClassOf(name),
+            source = { g = g, k = k }, removable = editable, selected = me ~= nil and name:lower() == me }
     end
-    local num, edit, pick = Page.slotLabels[g][s], Page.fields[g][s], Page.pickers[g][s]
-    local top = y - L.headH - (s - 1) * L.rowH
-    num:ClearAllPoints()
-    num:SetPoint("TOPLEFT", x, top - 4)
-    edit:ClearAllPoints()
-    edit:SetPoint("TOPLEFT", x + L.editX, top)
-    pick:ClearAllPoints()
-    pick:SetPoint("TOPLEFT", x + L.pickX, top + L.pickDY)
-    num:SetText(string.format(TEXT.kick, def.label, s))
-    local name = own[g][s] or ""
-    if not edit:HasFocus() then
-        edit:SetText(name)
+    local addShown = editable and #names < grp.slots
+    row.add:SetShown(addShown)
+    if addShown and not row.add:HasFocus() then
+        row.hint:SetShown((row.add:GetText() or "") == "")
     end
-    local m = Page.MemberOf(name, group)
-    edit:SetTextColor(Page.ClassColor(m and m.class))
-    edit:SetEnabled(editable)
-    pick.refresh()
-    num:Show()
-    edit:Show()
-    pick:Show()
+    local extra = addShown and { frame = row.add, width = LAYOUT.addW } or nil
+    local h = Palette.RowChips(row, Page.dragState.drag, entries, Palette.RowChipsX(w), width - PL.rowPad, LAYOUT.chipsY, extra)
+    Palette.PaintRow(row, editable, false)
+    return h + 2 * LAYOUT.chipsY
 end
 
--- How many columns sit side by side.
-function Page.GridColumns()
-    return math.max(1, math.floor(L.gridW / L.colW))
-end
-
--- The kick list in the shape of the setup shown: the pooled fields it has, the rest hidden.
+-- The kick list in the shape of the setup shown: the pooled rows it has, the rest hidden.
 local function refreshGrid()
     local key = Page.Boss()
     local def = key and Interrupts:Def(key)
     local own = def and Interrupts:Own(key)
     local groups = def and #def.groups or 0
-    -- everything hidden first, then what the setup has shown again
-    for g, head in pairs(Page.headings) do
-        head:SetShown(false)
+    for g = groups + 1, #Page.rows do
+        Page.rows[g]:Hide()
     end
-    for g, col in pairs(Page.fields) do
-        for s, edit in pairs(col) do
-            edit:Hide()
-            Page.slotLabels[g][s]:Hide()
-            Page.pickers[g][s]:Hide()
-        end
-    end
-    local cols = Page.GridColumns()
-    local bandH = L.headH + (def and Setup.MaxSlots(def) or 0) * L.rowH + L.bandGap
-    local group, editable = Page.Roster(), Page.CanEdit()
+    local editable = Page.CanEdit()
+    local y = 0
     for g = 1, groups do
-        local grp = def.groups[g]
-        local x, y = ((g - 1) % cols) * L.colW, -math.floor((g - 1) / cols) * bandH
-        local head = heading(g)
-        head:ClearAllPoints()
-        head:SetPoint("TOPLEFT", x, y)
-        local icon = Setup.MarkerIcon(grp.marker, 16)
-        head:SetText(icon ~= "" and (icon .. " " .. grp.label) or grp.label)
-        head:Show()
-        for s = 1, grp.slots do
-            showSlot(def, own, g, s, x, y, group, editable)
-        end
+        local row = rowOf(g)
+        local h = fillRow(def, g, Page.RowNames(own[g]), L.gridW, editable)
+        row:ClearAllPoints()
+        row:SetPoint("TOPLEFT", 0, -y)
+        row:SetSize(L.gridW, h)
+        row:Show()
+        y = y + h + LAYOUT.rowGap
     end
-    if Page.gridHelp then
-        Page.gridHelp:SetShown(groups > 0) -- its (?) goes with the first heading
-    end
-    local contentH = groups > 0 and (math.ceil(groups / cols) * bandH - L.bandGap) or 0
+    local contentH = groups > 0 and (y - LAYOUT.rowGap) or 0
     local height = math.min(contentH, L.gridMaxH)
     child:SetHeight(math.max(contentH, 1))
     scroll:SetHeight(math.max(height, 1))
     Page.gridHeight, Page.gridContentH = height, contentH
-    Page.PlaceBelow(math.max(height, L.headH))
+    Page.PlaceBelow(math.max(height, PL.chipH))
 end
 Page.RefreshGrid = refreshGrid
 
@@ -234,7 +303,11 @@ function Page.BuildGrid(f)
     child:SetSize(L.gridW, 1)
     scroll:SetScrollChild(child)
     Page.gridScroll, Page.gridChild = scroll, child
-    -- the first heading carries the list's (?)
-    Page.gridHelp = UI.HelpRight(heading(1), Page.TEXT.title, Page.TEXT.gridHelp)
+    -- one drag for the rows' chips and the palette's (Interrupts/PagePalette.lua)
+    Page.dragState = { paletteChips = {}, headings = {} }
+    Palette.Drag(Page.dragState, dragOpts())
+    f:HookScript("OnHide", function()
+        Page.dragState.drag:Cancel()
+    end)
     Page.AddControl({ refresh = refreshGrid })
 end

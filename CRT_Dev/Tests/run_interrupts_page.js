@@ -1,9 +1,12 @@
 // The Interrupts page (CRT_Modules/Interrupts/Page.lua) built on mock frames with a stubbed CRT.UI, over the real
 // lists, anchor and sharing (Data.lua, Anchor.lua, Comm.lua) on the sample season pack: registered hidden, two tabs
 // with Settings last, one boss listed with its difficulty, the status bar's states (no list, your own list, the raid's
-// list and your kick, enemy nameplates off first), Share greyed with its reason, the fields read-only for a raider in a
-// group and class coloured for a group member, Clear list asking first, Use the raid's list, Who has it from the Addon
-// check, How the numbers are worked out from the boss block, Test on trash, Preview reminder, the Settings tab's
+// list and your kick, enemy nameplates off first), Share greyed with its reason, the work per show (the group, the
+// layouts and the note read once, one refresh), the kick rows (the note editor's rows: kick order, class colours, your
+// own outlined, x, read-only for a raider), the palette (your group, then each Raid Groups layout), drops from the
+// palette, along a row and onto another, a full row refusing, Add name, Clear list asking first, Use the raid's list,
+// Who has it in its pop-out from the Addon check, How the numbers are worked out in the Kick list's (?), Test on trash,
+// Preview reminder, the Settings tab's
 // sliders and colours, every control inside the page area, /crt interrupts, and the General Settings switch hiding and
 // showing the page. Usage: node run_interrupts_page.js <addon folder>
 const fs = require('fs');
@@ -14,7 +17,7 @@ const L = lauxlib.luaL_newstate();
 lualib.luaL_openlibs(L);
 const dir = process.argv[2];
 const harness = themeLua(dir) + `
-local registrySrc, seasonSrc, bossSrc, commSrc, latticeSrc, setupSrc, dataSrc, anchorSrc, kickSrc, pageSrc, parseSrc, notesSrc, editModelSrc, noteBlockSrc, gridSrc, editorSrc, exportSrc = ...
+local registrySrc, seasonSrc, bossSrc, commSrc, latticeSrc, setupSrc, dataSrc, anchorSrc, kickSrc, pageSrc, parseSrc, notesSrc, editModelSrc, noteBlockSrc, gridSrc, editorSrc, exportSrc, paletteSrc, pagePaletteSrc, whoSrc = ...
 local fails, passes = 0, 0
 local function check(ok, what) if ok then passes = passes + 1 else fails = fails + 1 print("FAIL " .. what) end end
 local function eq(a, b, what) check(a == b, what .. " (got " .. tostring(a) .. ", want " .. tostring(b) .. ")") end
@@ -23,9 +26,13 @@ time = function() return 1790000000 end
 date = function() return "2026-10-29 12:00" end
 InCombatLockdown = function() return false end
 GetTime = function() return 100 end
+strtrim = function(t) return (t:gsub("^%s+", ""):gsub("%s+$", "")) end
 wipe = function(t) for k in pairs(t) do t[k] = nil end return t end
 Ambiguate = function(n) return (n:gsub("%-.*$", "")) end
-C_Timer = { After = function() end, NewTimer = function() return { Cancel = function() end } end }
+-- C_Timer.After(0): queued until flush() runs it, as the next frame would; longer waits never come
+local nextFrame = {}
+C_Timer = { After = function(d, fn) if d == 0 then nextFrame[#nextFrame + 1] = fn end end, NewTimer = function() return { Cancel = function() end } end }
+local function flush() local n = 0 while #nextFrame > 0 and n < 100 do n = n + 1 table.remove(nextFrame, 1)() end end
 issecretvalue = function() return false end
 local ME = "Solex"
 UnitName = function(u) if u == "player" then return ME end end
@@ -77,6 +84,8 @@ local function mock(kind, parent)
     UnregisterAllEvents = function(self) self.events = {} end,
     SetMotionScriptsWhileDisabled = function(self, v) self.motionWhileDisabled = v end,
     SetAlpha = function(self, a) self.alpha = a end,
+    IsMouseOver = function(self) return self.mouseOver and true or false end,
+    SetBackdropBorderColor = function(self, r, g, b) self.border = { r, g, b } end,
   }
   all[#all + 1] = m
   return setmetatable(m, { __index = function(_, k) if methods[k] then return methods[k] end if type(k) == "string" and k:match("^%u") then return function() end end end })
@@ -95,6 +104,7 @@ function UI:RegisterTab(b) tabs[#tabs + 1] = b end
 function UI:SetTabSelected(b, on) b.selected = on end
 function UI:SkinEditBox(e) e.skinned = true end
 function UI.PanelButtonWidth(w) return math.max(40, math.ceil(w) + 28) end
+function UI.PanelButton(parent, text, h, onClick) local b = mock("Button", parent) b.text = text b.h = h b.scripts.OnClick = onClick return b end
 function UI.TooltipOwner() end
 function UI.Help(parent, title, text) local m = mock("Button", parent) m.helpTitle, m.helpText = title, text helps[#helps + 1] = m return m end
 local function row(kind, parent, text, opts, extra)
@@ -102,7 +112,11 @@ local function row(kind, parent, text, opts, extra)
   r.label, r.opts, r.rowKind = text, opts, kind
   r.w = (opts.labelWidth or 140) + 5 + (opts.width or 200) + (extra or 0)
   r.h = 32
-  r.refresh = function() if opts.enabledIf then r.enabled = opts.enabledIf() and true or false end end
+  -- as UI.Dropdown's refresh does: GenerateMenu runs the menu's generator, which asks options()
+  r.refresh = function()
+    if kind == "dropdown" and type(opts.options) == "function" then opts.options() end
+    if opts.enabledIf then r.enabled = opts.enabledIf() and true or false end
+  end
   rows[#rows + 1] = r
   return r
 end
@@ -110,7 +124,7 @@ function UI.Dropdown(parent, text, opts) return row("dropdown", parent, text, op
 function UI.SoundDropdown(parent, text, opts) return row("sound", parent, text, opts, 50 + 24) end
 function UI.Slider(parent, text, opts) return row("slider", parent, text, opts, 44) end
 function UI.PickColor(color, set, opts) picked[#picked + 1] = { color = color, set = set, opts = opts } end
-function UI.Window(name, opts) local w = mock("Frame") w.content = mock("Frame", w) w.name, w.opts = name, opts w.shown = false return w end
+function UI.Window(name, opts) local w = mock("Frame") w.content = mock("Frame", w) w.strip = mock("Frame", w) w.name, w.opts = name, opts w.shown = false return w end
 function UI.ScrollGutter(w) return 6 + (w or 18) end
 local skinnedBars = 0
 function UI:SkinScrollBar() skinnedBars = skinnedBars + 1 end
@@ -136,7 +150,7 @@ CRT.db.classCache = { tovi = "WARRIOR" }
 -- Raid Groups: one layout, as the note editor's Players from reads it
 CRT.Groups = { Presets = function() return { { id = 7, name = "Main" } } end,
   Find = function(_, id) if id == 7 then return { slots = { "Tovi-Kazzak", "", "Solex", "Brenn" } } end end }
-for _, src in ipairs({ registrySrc, seasonSrc, bossSrc, commSrc, parseSrc, notesSrc, editModelSrc, latticeSrc, setupSrc, dataSrc }) do assert(load(src))("CowfeeRaidTools", CRT) end
+for _, src in ipairs({ registrySrc, seasonSrc, bossSrc, commSrc, parseSrc, notesSrc, editModelSrc, paletteSrc, latticeSrc, setupSrc, dataSrc }) do assert(load(src))("CowfeeRaidTools", CRT) end
 CRT.Bosses:Get(3470).interrupts = { { difficulty = 16, label = "Kick", groups = { { key = "left", label = "Left", slots = 5 }, { key = "right", label = "Right", slots = 5 } },
   timing = { anchor = { unit = "boss2", cycle = 7, ordinal = 5, times = { 33, 94, 188, 249, 343, 404 } },
   firstCast = 4.5, spacing = 1.0, tolerance = 0.3, adds = 10, perNumber = 2, window = 25 }, note = "Mythic only here." } }
@@ -147,8 +161,10 @@ CRT.Bosses:Register({ encounterID = 3421, name = "Second Boss", season = "sample
   perNumber = 1, window = 20 } } } })
 local shownExport
 CRT.ConsumablesTools = { ShowText = function(_, _, text) shownExport = text end }
-for _, src in ipairs({ anchorSrc, kickSrc, noteBlockSrc, pageSrc, gridSrc, editorSrc, exportSrc }) do assert(load(src))("CowfeeRaidTools", CRT) end
+for _, src in ipairs({ anchorSrc, kickSrc, noteBlockSrc, pageSrc, gridSrc, pagePaletteSrc, whoSrc, editorSrc, exportSrc }) do assert(load(src))("CowfeeRaidTools", CRT) end
 local I, P = CRT.Interrupts, CRT.InterruptsPage
+-- P.Refresh draws on the next frame: here, the frame comes at once, so a check after it sees the page drawn
+do local queue = P.Refresh P.Refresh = function() queue() flush() end end
 local T = P.TEXT
 local id = 3470
 
@@ -167,11 +183,46 @@ eq(asked, 1, "page: opening asks the Addon check when stale")
 eq(#P.BossOptions(), 2, "page: the two bosses with a block listed")
 eq(P.BossOptions()[1].label, "Nek'zali the Soulcoiler \\194\\183 Mythic", "page: the boss with its difficulty")
 
+-- the work per show (#1211): the group read, the Raid Groups layouts read, the page refreshed and the note read, at most
+-- once each when the page is shown again, and the Addon check's answer arriving while it shows coalesced into one refresh
+do
+  flush()
+  local n = { roster = 0, layouts = 0, refresh = 0, note = 0 }
+  local realRoster, realPresets, realStatus, realRead = CRT.AddonCheck.Roster, CRT.Groups.Presets, P.Status, CRT.InterruptNote.ReadInto
+  CRT.AddonCheck.Roster = function(...) n.roster = n.roster + 1 return realRoster(...) end
+  CRT.Groups.Presets = function(...) n.layouts = n.layouts + 1 return realPresets(...) end
+  P.Status = function(...) n.refresh = n.refresh + 1 return realStatus(...) end
+  CRT.InterruptNote.ReadInto = function(...) n.note = n.note + 1 return realRead(...) end
+  -- the group changed while the page was hidden: the next show works it out again, once
+  pf:Hide()
+  local told = 0
+  for _, f in ipairs(all) do
+    if f.events.GROUP_ROSTER_UPDATE and f.scripts.OnEvent then f.scripts.OnEvent(f, "GROUP_ROSTER_UPDATE") told = told + 1 end
+  end
+  check(told > 0, "perf: something follows the group while the page is hidden")
+  pf:Show()
+  for _, fn in ipairs(checkListeners) do fn("reply") end
+  flush()
+  print(string.format("work per show: %d roster builds, %d layout reads, %d refreshes, %d note reads", n.roster, n.layouts, n.refresh, n.note))
+  eq(n.roster, 1, "perf: the changed group read once a show")
+  eq(n.layouts, 1, "perf: the Raid Groups layouts read once a show")
+  eq(n.refresh, 1, "perf: one refresh a show")
+  check(n.note <= 1, "perf: the note read at most once a show (got " .. n.note .. ")")
+  -- shown again with nothing changed: the group and layouts come from the cache, the note isn't read again
+  for k in pairs(n) do n[k] = 0 end
+  pf:Hide(); pf:Show(); flush()
+  print(string.format("work per show, nothing changed: %d roster builds, %d layout reads, %d refreshes, %d note reads", n.roster, n.layouts, n.refresh, n.note))
+  eq(n.roster, 0, "perf: nothing changed, the group from the cache")
+  eq(n.layouts, 0, "perf: nothing changed, the layouts from the cache")
+  eq(n.note, 0, "perf: nothing changed, the note not read again")
+  eq(n.refresh, 1, "perf: and one refresh")
+  CRT.AddonCheck.Roster, CRT.Groups.Presets, P.Status, CRT.InterruptNote.ReadInto = realRoster, realPresets, realStatus, realRead
+end
+
 -- the status bar and Share
 local function statusText() return plain(P.status.text) end
 eq(statusText(), T.statusNone, "status: no list")
 check(P.share.motionWhileDisabled == true, "share: its tooltip shows while it is greyed (SetMotionScriptsWhileDisabled)")
-check(P.fields[1][1].skinned, "fields: the name boxes follow the theme (UI:SkinEditBox)")
 check(not P.share.enabled and P.share.crtReason and P.share.crtReason:find("all 10", 1, true), "share: disabled with the slots reason: " .. tostring(P.share.crtReason))
 P.share.scripts.OnEnter(P.share)
 check(GameTooltip.lines[2] and GameTooltip.lines[2]:find("all 10", 1, true), "share: its tooltip says why")
@@ -203,38 +254,99 @@ P.Refresh()
 check(statusText():find("nameplates", 1, true), "status: read through C_CVar.GetCVar first")
 C_CVar = nil; P.Refresh()
 
--- the fields: your own list, class coloured, read-only for a raider
-eq(P.fields[1][3].text, "Solex", "fields: your own list")
-eq(P.fields[1][3].color and P.fields[1][3].color[1], 0.25, "fields: a group member in their class colour")
-eq(P.fields[1][1].color and P.fields[1][1].color[1], 1, "fields: anyone else in white")
-check(P.fields[1][1].enabled, "fields: editable for the leader")
+-- the kick rows (the note editor's group rows): your own list in kick order, class coloured, your own outlined,
+-- read-only for a raider
+local function chipsOf(g)
+  local out, row = {}, P.rows[g]
+  if not (row and row.shown) then return out end
+  for _, c in ipairs(row.chips) do if c.shown then out[#out + 1] = c end end
+  return out
+end
+local function namesOf(g)
+  local t = {}
+  for _, c in ipairs(chipsOf(g)) do t[#t + 1] = (plain(c.text.text):gsub("^%d+ ", "")) end
+  return table.concat(t, ",")
+end
+local function isKey(c, key) local p = CRT.PALETTE[key] return c and math.abs(c[1] - p[1]) < 1e-6 and math.abs(c[2] - p[2]) < 1e-6 and math.abs(c[3] - p[3]) < 1e-6 end
+local drag = P.dragState.drag.opts
+eq(namesOf(1), "P1,P2,Solex,P4,P5", "rows: your own list in kick order")
+eq(plain(chipsOf(1)[3].text.text), "3 Solex", "rows: a chip is its kick number, then the name")
+eq(chipsOf(1)[3].text.color and chipsOf(1)[3].text.color[1], 0.25, "rows: a group member in their class colour")
+check(chipsOf(1)[1].text.color and chipsOf(1)[1].text.color[1] ~= 0.25, "rows: anyone else in the text colour")
+check(isKey(chipsOf(1)[3].border, "heading") and not isKey(chipsOf(1)[1].border, "heading"), "rows: your own chip outlined")
+check(P.rows[1].label.text:find("Left", 1, true) and P.rows[1].label.text:find("5/5", 1, true), "rows: the label, and how many slots are filled: " .. tostring(P.rows[1].label.text))
+check(P.rows[1].kind == "Button" and P.rows[1].chips ~= nil, "rows: made by the note editor's row (Palette.MakeRow)")
+check(chipsOf(1)[1].remove.shown, "rows: x on each chip for the leader")
+check(not P.rows[1].add.shown, "rows: a full row has no Add name")
+check(P.rows[1].add.skinned, "rows: Add name follows the theme (UI:SkinEditBox)")
 lead = false; P.Refresh()
-check(not P.fields[1][1].enabled, "fields: read-only for a raider in a group")
-check(not P.share.enabled and P.share.crtReason:find("raid leader", 1, true), "share: a raider's reason")
+check(not chipsOf(1)[1].remove.shown, "rows: no x for a raider in a group")
+check(drag.readOnly(), "rows: no drag for a raider")
+check(not P.DropKick({ name = "Brenn" }, { g = 1 }), "rows: a raider's drop refused")
+check(not P.RemoveKick(1, 1), "rows: a raider's x refused")
 grouped = false; P.Refresh()
-check(P.fields[1][1].enabled, "fields: editable solo")
-check(P.share.crtReason and P.share.crtReason:find("in a group", 1, true), "share: solo, the group reason")
+check(chipsOf(1)[1].remove.shown and not drag.readOnly(), "rows: editable solo")
 grouped, lead = true, true; P.Refresh()
--- a picker sets the slot
-local pick = P.pickers[1][2]
-local options = pick.opts.options()
-eq(options[1].key, "", "picker: an empty choice first")
-check(options[2].title and options[2].label == "In your group", "picker: then your group, under its heading")
-eq(options[3].key, "Brenn", "picker: the group sorted")
-eq(plain(options[4].label), "Quick", "picker: names without realm")
-check(options[5].label:find("|cff40c7eb", 1, true) == 1, "picker: in class colour: " .. options[5].label)
-check(options[6] and options[6].title and options[6].label == "Raid Groups: Main", "picker: then each Raid Groups layout, under its name")
-eq(options[7] and options[7].key, "Tovi", "picker: a layout's players, without realm")
-check(options[7] and options[7].label:find("|cffc79c6e", 1, true) == 1, "picker: a layout player's class from the class cache")
-eq(options[8] and options[8].key, "Solex", "picker: the layout's slots in order, empty ones left out")
-eq(#options, 9, "picker: nothing else")
-eq(pick.opts.maxHeight, P.LAYOUT.pickMenuH, "picker: a long list scrolls")
-pick.opts.set("Brenn")
-eq(I:Own(id)[1][2], "Brenn", "picker: sets your own slot")
--- Edit a field by typing
-P.fields[2][5].text = "  Typed-Realm "
-P.fields[2][5].scripts.OnEnterPressed(P.fields[2][5])
-eq(I:Own(id)[2][5], "Typed", "fields: a typed name, trimmed and without realm")
+
+-- the palette: your group, then each Raid Groups layout
+local sections = P.PaletteSections()
+eq(sections[1].title, "In your group", "palette: your group first")
+eq(sections[1].entries[1].name, "Brenn", "palette: the group sorted")
+eq(sections[1].entries[2].name, "Quick", "palette: names without realm")
+eq(sections[2] and sections[2].title, "Raid Groups: Main", "palette: then each Raid Groups layout")
+eq(sections[2] and sections[2].entries[1].name, "Tovi", "palette: a layout's players, without realm")
+eq(sections[2] and sections[2].entries[1].class, "WARRIOR", "palette: a layout player's class from the class cache")
+eq(sections[2] and sections[2].entries[2].name, "Solex", "palette: the layout's slots in order")
+eq(sections[2] and #sections[2].entries, 3, "palette: empty slots left out")
+eq(#sections, 2, "palette: nothing else")
+local pchips = 0
+for _, c in ipairs(P.dragState.paletteChips) do if c.shown then pchips = pchips + 1 end end
+eq(pchips, 6, "palette: a chip per player in each section")
+eq(P.dragState.paletteChips[1].source.name, "Brenn", "palette: a chip drags its name")
+check(P.paletteHelp and P.paletteHelp.helpTarget == P.paletteHead, "palette: how to drag in its (?)")
+
+-- drops: from the palette, along a row, onto another row; a full row refuses
+I:Clear(id); P.Refresh()
+eq(namesOf(1), "", "drop: an empty row")
+check(P.rows[1].add.shown, "drop: Add name on a row with room")
+drag.drop({ name = "Brenn" }, { g = 1 }); flush()
+drag.drop({ name = "Quick" }, { g = 1 }); flush()
+drag.drop({ name = "Solex" }, { g = 1, at = 1 }); flush()
+eq(namesOf(1), "Solex,Brenn,Quick", "drop: dropped on a chip, a name takes its place")
+eq(I:Own(id)[1][1] .. "," .. I:Own(id)[1][2] .. "," .. I:Own(id)[1][3], "Solex,Brenn,Quick", "drop: saved slot by slot")
+check(P.rows[1].label.text:find("3/5", 1, true), "drop: the count follows")
+drag.drop({ g = 1, k = 1 }, { g = 1 }); flush()
+eq(namesOf(1), "Brenn,Quick,Solex", "drop: along the row to its end")
+drag.drop({ g = 1, k = 3 }, { g = 1, at = 1 }); flush()
+eq(namesOf(1), "Solex,Brenn,Quick", "drop: along the row onto the first")
+drag.drop({ g = 1, k = 2 }, { g = 2 }); flush()
+eq(namesOf(1) .. "|" .. namesOf(2), "Solex,Quick|Brenn", "drop: onto another row moves it, the gap closed up")
+eq(I:Own(id)[1][3], "", "drop: the last slot emptied")
+chipsOf(1)[1].remove.scripts.OnClick(chipsOf(1)[1].remove); flush()
+eq(namesOf(1), "Quick", "x: takes the chip off, the rest close up")
+eq(plain(chipsOf(1)[1].text.text), "1 Quick", "x: the numbers follow the order")
+for s = 1, 5 do I:SetName(id, 2, s, "F" .. s) end
+P.Refresh()
+check(not P.DropKick({ name = "Brenn" }, { g = 2 }), "full: a drop on a full row refused")
+check(not P.DropKick({ g = 1, k = 1 }, { g = 2, at = 1 }), "full: a move onto a full row refused")
+eq(namesOf(1) .. "|" .. namesOf(2), "Quick|F1,F2,F3,F4,F5", "full: nothing changed")
+check(P.DropKick({ g = 2, k = 5 }, { g = 2, at = 1 }), "full: a full row can still be put in another order")
+P.Refresh()
+eq(namesOf(2), "F5,F1,F2,F3,F4", "full: in the new order")
+eq(P.MoveKick({ { "A", "B" } }, { 2 }, { name = "C" }, { g = 1 }), nil, "move: refused on a full row")
+eq(P.MoveKick({ { "A", "B" } }, { 3 }, { g = 1, k = 2 }, { g = 1 }), nil, "move: the last chip to the end changes nothing")
+local addBox = P.rows[1].add
+addBox.text = "  Typed-Realm "; addBox.scripts.OnEnterPressed(addBox); flush()
+eq(namesOf(1), "Quick,Typed", "add: a typed name at the row's end, trimmed and without realm")
+-- the row and chip under the mouse
+P.gridScroll.mouseOver, P.rows[2].mouseOver, chipsOf(2)[2].mouseOver = true, true, true
+local tgt = P.KickTarget()
+check(tgt and tgt.g == 2 and tgt.at == 2, "target: the row and the chip under the mouse")
+chipsOf(2)[2].mouseOver = false
+tgt = P.KickTarget()
+check(tgt and tgt.g == 2 and tgt.at == nil, "target: the row's end")
+P.gridScroll.mouseOver, P.rows[2].mouseOver = false, false
+check(P.KickTarget() == nil, "target: none outside the rows")
 
 -- Use the raid's list and Clear list ask first
 check(P.useRaid.enabled, "use raid: there is a raid's list")
@@ -252,49 +364,80 @@ eq(I:Own(id)[1][1], "R11", "clear: Cancel keeps it")
 P.clear.scripts.OnClick(P.clear); dlg.ok.scripts.OnClick(dlg.ok)
 eq(I:Own(id)[1][1], "", "clear: OK empties your own list")
 
--- Who has it and How the numbers are worked out
+-- Who has it: a pop-out window opened by its button, and How the numbers are worked out in a (?)
 fillOwn(true); I:SetUse(id, "own")
 I:SetName(id, 1, 4, "Brenn"); I:SetName(id, 1, 5, "Quick"); P.Refresh()
+eq(P.whoButton and plain(P.whoButton.text), "Who has it (1 of 10)", "who: the button counts who has it")
+check(P.Who.window == nil, "who: no window until it is opened")
+P.whoButton.scripts.OnClick(P.whoButton)
+local WW = P.Who.window
+check(WW and WW.shown and WW.opts.kind == "popout", "who: the button opens a pop-out (UI.Window)")
+check(WW.opts.saved() == CRT.db.interrupts.whoWindow, "who: its place kept in the saved settings")
+WW.content.h = 300
+P.Who.Refresh()
+local function whoRows()
+  local out = {}
+  for _, r in ipairs(WW.rows) do if r.name.shown and r.name.text and r.name.text ~= "" then out[#out + 1] = r end end
+  return out
+end
 local who = {}
-for _, r in ipairs(P.whoRows) do if r.name.text and r.name.text ~= "" then who[plain(r.name.text)] = plain(r.state.text) end end
+for _, r in ipairs(whoRows()) do who[plain(r.name.text)] = plain(r.state.text) end
 eq(who.Solex, "you, v1.2.0", "who: you, with Interrupts on")
 eq(who.Brenn, "Interrupts off", "who: a CRT with Interrupts off")
 eq(who.Quick, "No CRT", "who: no CRT")
 eq(who.P1, "not in your group", "who: a name not in the group")
-check(P.WhoText("Solex", { { name = "Solex", row = ROSTER[1] } }):find("|cff", 1, true) == 1, "who: in colour")
+check(P.WhoText("Solex"):find("|cff", 1, true) == 1, "who: in colour")
 -- each player once, in the order they first appear, however many slots they fill (Alex's screenshot: Solex four times)
 for s = 1, 4 do I:SetName(id, 2, s, "Solex") end
 I:SetName(id, 1, 1, "Brenn"); P.Refresh()
 local order, count = {}, {}
-for _, r in ipairs(P.whoRows) do
+for _, r in ipairs(whoRows()) do
   local n = plain(r.name.text)
-  if n ~= "" then order[#order + 1] = n count[n] = (count[n] or 0) + 1 end
+  order[#order + 1] = n count[n] = (count[n] or 0) + 1
 end
 eq(count.Solex, 1, "who: Solex once though on five slots")
 eq(count.Brenn, 1, "who: Brenn once though on two")
 eq(table.concat(order, ","), "Brenn,P2,Solex,Quick,P10", "who: in the order they first appear on the list")
 eq(table.concat(P.WhoNames({ { "A", "b", "" }, { "B", "a", "C" } }), ","), "A,b,C", "who: case left out, empty slots left out")
 eq(#P.WhoNames({}), 0, "who: nobody on an empty list")
-check(P.checkNow and P.checkNow.text == T.check and P.checkNow.shown, "who: Check now stays")
+check(WW.check and WW.check.text == "Check now", "who: Check now in the window")
 do
   local list = { {} }
   for i = 1, 20 do list[1][i] = "N" .. i end
   local realList = I.List
   I.List = function() return list, "own" end
-  P.Refresh()
-  eq(plain(P.whoRows[#P.whoRows].name.text), "and 5 more", "who: more names than rows end in how many more")
+  P.Who.Refresh()
+  local shown = whoRows()
+  eq(#shown, 15, "who: as many rows as fit the window")
+  eq(plain(shown[#shown].name.text), "and 6 more", "who: more names than rows end in how many more")
   I.List = realList
-  P.Refresh()
+  P.Who.Refresh()
+end
+-- closed, it does no work
+do
+  WW:Hide()
+  local asked = 0
+  local realStatus = CRT.AddonCheck.Status
+  CRT.AddonCheck.Status = function(...) asked = asked + 1 return realStatus(...) end
+  P.Who.Refresh()
+  I:SetName(id, 1, 2, "Quick")
+  eq(asked, 0, "who: closed, the Addon check isn't read for it")
+  CRT.AddonCheck.Status = realStatus
+  P.whoButton.scripts.OnClick(P.whoButton)
+  check(WW.shown, "who: the button opens it again")
+  P.whoButton.scripts.OnClick(P.whoButton)
+  check(not WW.shown, "who: and closes it")
 end
 fillOwn(true); I:SetName(id, 1, 4, "Brenn"); I:SetName(id, 1, 5, "Quick"); P.Refresh()
-local how = {}
-for i, fs in ipairs(P.howLines) do how[i] = fs.text end
-eq(how[1], "A wave starts at cast 5 of every 7 from boss2.", "how: the anchor")
-eq(how[2], "Add 1 casts 4.5 s after it, then one every 1 s.", "how: the first casts")
-eq(how[3], "A cast more than 0.3 s off its beat is not an add.", "how: the tolerance")
-eq(how[4], "10 adds a wave, 2 to a number.", "how: the adds")
-eq(how[5], "A cast over 25 s after the wave's start is not in it.", "how: the window")
-eq(how[6], "Without a cast count, waves start at 0:33, 1:34, 3:08, 4:09, 5:43, 6:44.", "how: the fallback times")
+eq(P.listHead and P.listHead.text, "Kick list", "how: the Kick list heading")
+check(P.howHelp and P.howHelp.helpTarget == P.listHead and P.howHelp.helpText == P.HowText, "how: How the numbers are worked out in its (?)")
+local how = P.HowText()
+check(how:find(T.howHelp, 1, true) == 1, "how: the setup's note first")
+for _, line in ipairs({ "A wave starts at cast 5 of every 7 from boss2.", "Add 1 casts 4.5 s after it, then one every 1 s.",
+  "A cast more than 0.3 s off its beat is not an add.", "10 adds a wave, 2 to a number.", "A cast over 25 s after the wave's start is not in it.",
+  "Without a cast count, waves start at 0:33, 1:34, 3:08, 4:09, 5:43, 6:44." }) do
+  check(how:find(line, 1, true), "how: " .. line)
+end
 local bossHelp
 for _, h in ipairs(helps) do if h.helpTarget == P.bossRow then bossHelp = h end end
 check(bossHelp and type(bossHelp.helpText) == "function" and bossHelp.helpText():find("Mythic only here.", 1, true), "boss: the block's note in its (?)")
@@ -354,66 +497,64 @@ CRT.db.interrupts.reminder.on = true; P.Refresh()
 check(rowNamed(T.sound).enabled and rowNamed(T.reminderSize).enabled, "settings: and come back")
 P.SelectTab("assignments")
 
--- no boss with a block: the first heading's (?) hides with it
+-- no boss with a setup: no rows
 do
   local realBosses = I.Bosses
   I.Bosses = function() return {} end
   P.Refresh()
-  check(not P.headings[1].shown and P.gridHelp and not P.gridHelp.shown, "grid: no heading, no (?)")
+  check(not P.rows[1].shown and not P.rows[2].shown, "grid: no boss, no rows")
   I.Bosses = realBosses
   P.Refresh()
-  check(P.headings[1].shown and P.gridHelp.shown, "grid: back with the heading")
+  check(P.rows[1].shown and P.rows[2].shown, "grid: back with the rows")
 end
 
--- another boss's shape: the grid follows (pooled fields, the extras hidden, headings, labels, the rows under it)
+-- another boss's shape: the rows follow (pooled, the extras hidden, labels, the buttons under them)
 local LAY = P.LAYOUT
 local function yOf(f) return f.points[#f.points] and f.points[#f.points][3] end
-local clearY5 = yOf(P.clear)
-eq(clearY5, LAY.gridY - (LAY.headH + 5 * LAY.rowH) - LAY.buttonGap, "shape: the buttons sit under five rows")
-check(P.headings[1].points[1][2] == 0 and P.headings[2].points[1][2] == LAY.colW, "shape: two groups side by side")
-eq(P.gridScroll.h, LAY.headH + 5 * LAY.rowH, "shape: the list as tall as its rows")
-P.bossRow.opts.set("3421:16")
-eq(P.headings[1].text, "North", "shape: the group heading")
-check(not P.headings[2].shown, "shape: the second group's heading hidden")
-check(P.fields[1][7].shown and P.slotLabels[1][7].text == "Stop #7", "shape: seven slots, labelled from the block")
-check(not P.fields[2][1].shown and not P.pickers[2][1].shown, "shape: the second group's fields hidden")
-eq(yOf(P.clear), LAY.gridY - (LAY.headH + 7 * LAY.rowH) - LAY.buttonGap, "shape: the buttons sit under seven rows")
-check(yOf(P.clear) < clearY5, "shape: lower than under five")
-eq(#P.howLines >= 6 and P.howLines[4].text, "7 adds a wave, 1 to a number.", "shape: How the numbers are worked out follows")
-P.bossRow.opts.set("3470:16")
-check(P.headings[2].shown and P.fields[2][1].shown and not P.fields[1][7].shown, "shape: back to two groups of five")
-eq(yOf(P.clear), clearY5, "shape: the buttons back where they were")
-eq(P.slotLabels[1][1].text, "Kick #1", "shape: the labels back")
+local twoH = P.gridScroll.h
+eq(yOf(P.clear), LAY.gridY - twoH - LAY.buttonGap, "shape: the buttons sit under the rows")
+check(P.rows[1].points[1][3] == 0 and P.rows[2].points[1][3] < 0, "shape: a row per group, one under the other")
+P.bossRow.opts.set("3421:16"); flush()
+check(P.rows[1].label.text:find("North", 1, true), "shape: the group's label")
+check(P.rows[1].label.text:find("/7", 1, true), "shape: seven slots")
+check(not P.rows[2].shown, "shape: the second group's row hidden")
+check(P.HowText():find("7 adds a wave, 1 to a number.", 1, true), "shape: How the numbers are worked out follows")
+P.bossRow.opts.set("3470:16"); flush()
+check(P.rows[2].shown, "shape: back to two groups")
+eq(P.gridScroll.h, twoH, "shape: the list as tall as before")
+eq(yOf(P.clear), LAY.gridY - twoH - LAY.buttonGap, "shape: the buttons back where they were")
 
--- an untimed setup by raid marker on another difficulty: listed with its difficulty, marker icons on its headings
+-- an untimed setup by raid marker on another difficulty: listed with its difficulty, marker icons on its rows
 GetDifficultyInfo = function(d) if d == 16 then return "Mythic" elseif d == 15 then return "Heroic" end end
 CRT.Bosses:Get(3470).interrupts[2] = { difficulty = 15, spell = { name = "Wail of Terror" },
   groups = { { key = "skull", label = "Skull add", marker = 8, slots = 4 }, { key = "cross", label = "Cross add", marker = 7, slots = 4 } } }
 I:ClearCache()
 eq(#P.BossOptions(), 3, "untimed: listed")
 eq(P.BossOptions()[2].label, "Nek'zali the Soulcoiler \\194\\183 Heroic", "untimed: with its difficulty")
-P.bossRow.opts.set("3470:15")
-check(P.headings[1].text:find("UI-RaidTargetingIcon_8", 1, true) and P.headings[1].text:find("Skull add", 1, true), "untimed: the heading has its marker: " .. tostring(P.headings[1].text))
-eq(P.slotLabels[2][4].text, "Kick #4", "untimed: four slots a group")
-check(not P.fields[1][5].shown, "untimed: no fifth slot")
-eq(P.howLines[1].text, "Kicks: Wail of Terror.", "how: the spell")
-check(P.howLines[4].text:find("Skull add: 4 to kick.", 1, true), "how: each group and its marker: " .. tostring(P.howLines[4].text))
+P.bossRow.opts.set("3470:15"); flush()
+check(P.rows[1].label.text:find("UI-RaidTargetingIcon_8", 1, true) and P.rows[1].label.text:find("Skull add", 1, true), "untimed: the row has its marker: " .. tostring(P.rows[1].label.text))
+check(P.rows[2].label.text:find("/4", 1, true), "untimed: four slots a group")
+for s = 1, 4 do check(P.DropKick({ name = "K" .. s }, { g = 1 }), "untimed: kick " .. s .. " fills the row") end
+check(not P.DropKick({ name = "K5" }, { g = 1 }), "untimed: a fifth drop is refused")
+I:Clear("3470:15")
+check(P.HowText():find("Kicks: Wail of Terror.", 1, true), "how: the spell")
+check(P.HowText():find("Skull add: 4 to kick.", 1, true), "how: each group and its marker")
 -- Test on trash takes the setup shown
 P.test.checked = true; P.test.scripts.OnClick(P.test)
 eq(CRT.InterruptAnchor.key, "3470:15", "test: the setup shown")
 P.test.checked = false; P.test.scripts.OnClick(P.test)
 
--- many groups: the list scrolls, the buttons stay inside the page
+-- many groups: the rows scroll, the buttons stay inside the page
 I:SetCustom("3470:15", { groups = (function() local g = {} for i = 1, 8 do g[i] = { key = "g" .. i, label = "Add " .. i, marker = i, slots = 10 } end return g end)() })
+for g = 1, 8 do for s = 1, 10 do I:SetName("3470:15", g, s, "N" .. g .. s) end end
 P.Refresh()
 check(P.BossOptions()[2].label:find("your setup", 1, true), "custom: named as yours in the list")
-check(P.fields[8] and P.fields[8][10] and P.fields[8][10].shown, "scroll: eight groups of ten, all made")
+check(P.rows[8] and P.rows[8].shown and #chipsOf(8) == 10, "scroll: eight groups of ten, all made")
 check(P.gridContentH > LAY.gridMaxH, "scroll: taller than the room")
 eq(P.gridScroll.h, LAY.gridMaxH, "scroll: the list scrolls past its room")
 eq(P.gridChild.h, P.gridContentH, "scroll: the scroll child holds it all")
 eq(yOf(P.clear), LAY.gridY - LAY.gridMaxH - LAY.buttonGap, "scroll: the buttons under the room")
 check(yOf(P.clear) - 22 - LAY.testGap - 24 >= -(UI.PAGE_H - 66), "scroll: and inside the page")
-check(P.fields[3][1].points[1][2] == LAY.editX and P.headings[3].points[1][3] < 0, "scroll: the third group starts the next band")
 I:DropCustom("3470:15")
 
 -- Write to the raid note
@@ -617,7 +758,8 @@ const FILES = ['CRT_Data/Bosses/Registry.lua', 'CRT_Dev/Tests/SamplePack/Season.
   'CRT_Core/Comm.lua', 'CRT_Modules/Interrupts/Lattice.lua', 'CRT_Modules/Interrupts/Setup.lua', 'CRT_Modules/Interrupts/Data.lua', 'CRT_Modules/Interrupts/Anchor.lua',
   'CRT_Modules/Interrupts/Comm.lua', 'CRT_Modules/Interrupts/Page.lua', 'CRT_Modules/Notes/Parse.lua', 'CRT_Modules/Notes/Data.lua',
   'CRT_Modules/Notes/EditModel.lua', 'CRT_Modules/Interrupts/NoteBlock.lua', 'CRT_Modules/Interrupts/PageGrid.lua', 'CRT_Modules/Interrupts/SetupEditor.lua',
-  'CRT_Dev/Dev/KickSetupExport.lua'];
+  'CRT_Dev/Dev/KickSetupExport.lua', 'CRT_Modules/Notes/Palette.lua', 'CRT_Modules/Interrupts/PagePalette.lua', 'CRT_Modules/Interrupts/WhoWindow.lua'];
+lua.lua_checkstack(L, FILES.length + 4); // more sources than Lua's default stack room
 for (const f of FILES) {
   const p = path.join(dir, f);
   lua.lua_pushstring(L, to_luastring(fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : 'error("missing ' + f + '")'));

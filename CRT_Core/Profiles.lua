@@ -112,7 +112,7 @@ Profiles.SHARE = {
     pace = { disabled = true, shown = true, position = true, own = false, shared = false, use = false },
     -- the kick lists and your own kick setups are data, Test on trash is state, and Enable Interrupts is each raider's own (Alex, 2026-10-29)
     interrupts = { enabled = false, accept = true, plates = true, reminder = true, own = false, shared = false, use = false, kicks = false, setups = false,
-        test = false },
+        test = false, whoWindow = true }, -- whoWindow: the Who has it pop-out's place, a window position
     alerts = {
         bars = true, areas = true, noteLines = true, customColors = true, cooldownFilter = true,
         special = true, -- your special alerts' on/off and Show as choices
@@ -137,7 +137,7 @@ Profiles.POSITIONS = {
     "lootmaster.window", "lootmaster.popup", "lootmaster.answers", "lootmaster.bossLoot", "lootmaster.lootingPrompt", "team.popup",
     "gearChecker.popout", "timeline.popout", "markers.position", "pace.position",
     "alerts.bars.position", "alerts.bars.positionV", "alerts.areas.icons.position", "alerts.areas.texts.position", "alerts.areas.circles.position",
-    "alerts.areas.timeline.position",
+    "alerts.areas.timeline.position", "interrupts.whoWindow",
 }
 
 -- Settings saved only once they are set, so they have no default to match: their path and shape
