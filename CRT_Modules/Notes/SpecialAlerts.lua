@@ -491,22 +491,23 @@ local function drawPanel(enc, entry)
     ui.tabs:Paint(M.TabState(enc, entry, c, picks))
 end
 
--- Draws the view: the toggle always, the Special list and panel while Special is on show.
+-- Draws the view: the toggle always, the Special list and panel while Special is on show. The list and panel show or
+-- hide first, so a redraw that fails further on never leaves them over the Mechanics view.
 function M.Refresh()
     if not ui.mechBtn then
         return
     end
+    local view = M.View()
+    local special = view == "special"
+    ui.list:SetShown(special)
+    ui.panel:SetShown(special)
     local list, enc = entries()
     ui.specialBtn.text:SetText(string.format(TEXT.special, #list))
     layToggle()
-    local view = M.View()
-    local special = view == "special"
     -- SetTabSelected skins the whole tab (UI:SkinTree), so only when the view changes; a plain redraw restyles
     local changed = ui.tabView ~= view
     ui.tabView = view
     ui.toggle:Select(view, changed)
-    ui.list:SetShown(special)
-    ui.panel:SetShown(special)
     if not special then
         return
     end
@@ -888,6 +889,7 @@ end
 
 local function buildPanel(f)
     local frame = CreateFrame("Frame", nil, f, "BackdropTemplate")
+    frame:Hide() -- until M.Refresh shows Special
     frame:SetSize(L.PANEL_W, L.PANEL_H)
     frame:SetPoint("TOPLEFT", L.PANEL_X, L.PANEL_Y)
     backdrop(frame, 0.6)
@@ -949,12 +951,7 @@ local function buildPanel(f)
     ui.testBtn = b
 end
 
--- Builds the view into the tab f. h: the host (see above). g: where things go, in the tab's numbers:
--- x, y (the toggle's top left), toggleH, listY, listW, listH (the Special list, down to the tab's
--- bottom), panelX, panelY, panelW, panelH. Returns the parts, for the tab and the tests.
-function M.Build(f, h, g)
-    host = h
-    ui, state = {}, { picked = {}, views = {}, offset = 0, notice = nil, shields = {} }
+local function build(f, g)
     L.X, L.Y, L.TOGGLE_H = g.x, g.y, g.toggleH
     L.LIST_W, L.LIST_H = g.listW, g.listH
     L.PANEL_X, L.PANEL_Y, L.PANEL_W, L.PANEL_H = g.panelX, g.panelY, g.panelW, g.panelH
@@ -967,6 +964,7 @@ function M.Build(f, h, g)
     ui.toggleHelp = UI.HelpRight(ui.mechBtn, TEXT.mechanics, TEXT.toggleHelp)
 
     local list = CreateFrame("Frame", nil, f, "BackdropTemplate")
+    list:Hide() -- until M.Refresh shows Special
     list:SetSize(L.LIST_W, L.LIST_H)
     list:SetPoint("TOPLEFT", L.X, g.listY)
     backdrop(list, 0.8)
@@ -995,10 +993,33 @@ function M.Build(f, h, g)
     UI.Tint(ui.emptyHint, "SetTextColor", "muted")
 
     buildPanel(f)
-    list:Hide()
-    ui.panel:Hide()
     M.Refresh()
-    return ui
+end
+
+-- The parts on the tab itself, hidden when the view fails to build.
+local OWN_PARTS = { "specialBtn", "mechBtn", "toggleHelp", "list", "panel" }
+
+-- Builds the view into the tab f. h: the host (see above). g: where things go, in the tab's numbers:
+-- x, y (the toggle's top left), toggleH, listY, listW, listH (the Special list, down to the tab's
+-- bottom), panelX, panelY, panelW, panelH. Returns the parts, for the tab and the tests. Should a part fail to
+-- build, its error goes to the game's error handler (from where it happened), nothing of the view stays on show,
+-- and it returns nil, so the tab keeps Mechanics alone.
+function M.Build(f, h, g)
+    host = h
+    ui, state = {}, { picked = {}, views = {}, offset = 0, notice = nil, shields = {} }
+    local ok = xpcall(function()
+        build(f, g)
+    end, geterrorhandler())
+    if ok then
+        return ui
+    end
+    for _, key in ipairs(OWN_PARTS) do
+        if ui[key] then
+            ui[key]:Hide()
+        end
+    end
+    ui = {}
+    return nil
 end
 
 M.TEXT = TEXT
