@@ -521,18 +521,11 @@ function View.DrawSquare(b)
     b.tex:Show()
 end
 
--- A note line's or reminder's text as shown: raid marker codes ({cross}, {rt1}) as their icons, as tall as the text
--- (CRT_Core/MarkerText.lua). A secret text is passed back as it is.
-local function shownText(text)
-    local f = CRT.MarkerText
-    return f and f(text) or text
-end
-
 -- A marker: the alert's text, who it is for, its phase and time, and where it is saved.
 local function flagEnter(f)
     local m = f.mark
     CRT.UI.TooltipOwner(GameTooltip, f, "ANCHOR_RIGHT", nil, nil, "timeline")
-    GameTooltip:SetText(shownText(m.text), 1, 0.82, 0)
+    GameTooltip:SetText(CRT.MarkerText(m.text), 1, 0.82, 0)
     local who = TEXT.onlyMe
     if not m.mine then
         local words = {}
@@ -2498,11 +2491,11 @@ local function askDeleteMark(self, m)
     end
     local question
     if m.noteID then
-        question = string.format(TEXT.deleteNote, shownText(tostring(m.text or "")))
+        question = string.format(TEXT.deleteNote, CRT.MarkerText(tostring(m.text or "")))
     else
         local r = CRT.AlertReminders:Get(m.encounterID, m.id)
         local times = r and self:ReminderTimes(m.encounterID, r)
-        question = string.format(times and #times > 1 and TEXT.deleteTime or TEXT.deleteReminder, shownText(tostring(m.text or "")))
+        question = string.format(times and #times > 1 and TEXT.deleteTime or TEXT.deleteReminder, CRT.MarkerText(tostring(m.text or "")))
     end
     local UI = CRT.UI
     UI.LiftOver(UI.ShownPopup(StaticPopup_ShowCustomGenericConfirmation({
@@ -3672,7 +3665,7 @@ end
 -- way to add a time, so there is no Copy. A raid note line you may not change has View in place of
 -- Edit (the editor opens it read-only) and no Delete.
 function Methods:FlagMenu(m, owner)
-    local title = shownText(tostring(m.text or ""))
+    local title = CRT.MarkerText(tostring(m.text or ""))
     title = title .. " \194\183 " .. CRT.AlertReminders.FormatTimes({ { ph = m.ph, t = m.time } })
     -- your own cast on Healer CDs moves for you only: its line is still the raid's to edit or delete
     local changeable = canChange(m) and not (m.hvOwn and not canEditRaid())

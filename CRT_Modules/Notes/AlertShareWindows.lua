@@ -119,7 +119,7 @@ local function rowTip(row)
         return
     end
     UI.TooltipOwner(GameTooltip, row, "ANCHOR_RIGHT")
-    GameTooltip:SetText(e.label or "", 1, 1, 1, 1, true)
+    GameTooltip:SetText(CRT.MarkerText(e.label or ""), 1, 1, 1, 1, true)
     for _, line in ipairs(e.tip or {}) do
         GameTooltip:AddLine(line, 0.85, 0.85, 0.85, true)
     end
@@ -197,7 +197,7 @@ local function fillList(list, entries)
             row.tag:SetText(e.tag and UI.ColorText(e.tag, e.tagColor or "muted") or "")
             row.name:SetPoint("LEFT", L.nameX, 0)
             row.name:SetPoint("RIGHT", row.tag, "LEFT", -L.tagGap, 0)
-            row.name:SetText(e.label or "")
+            row.name:SetText(CRT.MarkerText(e.label or ""))
             y = y + L.rowH
         end
         row:Show()

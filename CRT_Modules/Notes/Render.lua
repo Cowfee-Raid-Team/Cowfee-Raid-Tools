@@ -48,19 +48,6 @@ local function num(n)
     return (("%.10g"):format(n))
 end
 
--- Raid marker codes ({cross}, {rt1}) as their icons, as tall as the row's font (CRT_Core/MarkerText.lua). Only the
--- drawn text: the rows keep the codes as written.
-local function markers(text)
-    local f = CRT.MarkerText
-    return f and f(text) or text
-end
-
--- Whether the word from start to stop (one past its end) is a marker code in braces, so it is never a name.
-local function markerWord(s, start, stop)
-    local Codes = CRT.MarkerCodes
-    return Codes ~= nil and Codes.InBraces(s, start, stop)
-end
-
 -- Class colours -----------------------------------------------------------------------------------
 
 -- One source of names: by full key ("name-realm", lower case, no spaces) and by name alone, the second
@@ -187,7 +174,7 @@ local function parts(s, ctx, out, classes)
     local pos = 1
     for _, item in ipairs(items) do
         -- a marker code ({cross}) stays in the plain text around it, so a player named Cross never splits it
-        if not markerWord(s, item.start, item.stop) then
+        if not CRT.MarkerCodes.InBraces(s, item.start, item.stop) then
             if item.start > pos then
                 out[#out + 1] = { text = s:sub(pos, item.start - 1) }
             end
@@ -415,7 +402,7 @@ local function rowMarkup(row)
 end
 
 function Render.Markup(row)
-    return markers(rowMarkup(row))
+    return CRT.MarkerText(rowMarkup(row))
 end
 
 -- The view ------------------------------------------------------------------------------------------
@@ -555,7 +542,7 @@ local function drawRow(row, data, width)
     elseif kind == "label" then
         row.label:SetWidth(0)
         local icon = data.marker and CRT.InterruptNote.Icon(data.marker, 14) or ""
-        row.label:SetText((icon ~= "" and (icon .. " ") or "") .. markers(data.label) .. ":")
+        row.label:SetText((icon ~= "" and (icon .. " ") or "") .. CRT.MarkerText(data.label) .. ":")
         local max = math.floor(width * LABEL_MAX)
         local w = row.label:GetStringWidth() or 0
         if w > max then

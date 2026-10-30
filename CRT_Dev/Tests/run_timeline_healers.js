@@ -177,6 +177,7 @@ CRT.TimelineJournal = { ResolveID = function(_, k, r) if type(k) == "number" the
 CRT.db.alerts = { bars = {}, reminders = {}, phases = {}, overrides = {}, nextId = 1, saved = {}, nextSavedId = 1, starters = {}, cooldownFilter = "mine" }
 run("CRT_Core/UI/Panel.lua", CRT)
 CRT_TOOLTIP(CRT)
+CRT_MARKERS(CRT) -- CRT.MarkerText, the real CRT_Core/MarkerText.lua
 run("CRT_Core/UI/Controls.lua", CRT)
 run("CRT_Modules/Groups/Data.lua", CRT)
 run("CRT_Modules/Alerts/Roster.lua", CRT)

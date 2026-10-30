@@ -48,7 +48,6 @@ local function allTags()
     tags, tagsFrom = out, game
     return out
 end
-Codes.Tags = allTags
 
 function Codes.Number(code)
     if type(code) ~= "string" then

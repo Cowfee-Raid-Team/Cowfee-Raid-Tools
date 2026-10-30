@@ -21,7 +21,7 @@ const FILES = ['CRT_Core/MarkerText.lua', 'CRT_Modules/Notes/Parse.lua', 'CRT_Mo
   'CRT_Modules/Alerts/TimelineArea.lua', 'CRT_Modules/Alerts/GameTimeline.lua', 'CRT_Modules/Notes/EditorWindow.lua',
   'CRT_Modules/Notes/EditorLinks.lua', 'CRT_Modules/Notes/EditorAssign.lua', 'CRT_Modules/Timeline/View.lua',
   'CRT_Core/Integrations/NoteTargets.lua', 'CRT_Core/Integrations/NSRT.lua', 'CRT_Core/Integrations/MRT.lua', 'CRT_Modules/Notes/Comm.lua',
-  'CRT_Modules/Notes/Page.lua'];
+  'CRT_Modules/Notes/Page.lua', 'CRT_Modules/Notes/AlertShareWindows.lua'];
 
 // Every Lua file of the addon outside the tests, for the "one list" and "no chat post" checks.
 function luaFiles(dir, out) {
@@ -212,7 +212,7 @@ do
   check(has(personal, icon(8) .. " Boss") and has(personal, icon(1)), "the personal note's heading and bold bullet show icons")
   check(NW.PersonalLine("plain words: none") == "plain words: none", "a line with no code is as before")
 end
-check(has(SRC["CRT_Modules/Notes/Window.lua"], "markers(tostring(item.text or TEXT.reminder))") and has(SRC["CRT_Modules/Notes/Window.lua"], "markers(tostring(it.text or TEXT.reminder))"),
+check(has(SRC["CRT_Modules/Notes/Window.lua"], "CRT.MarkerText(tostring(item.text or TEXT.reminder))") and has(SRC["CRT_Modules/Notes/Window.lua"], "CRT.MarkerText(tostring(it.text or TEXT.reminder))"),
   "the personal window's reminder lines go through the helper, planned and running")
 
 -- 5. Speech: the line is read as written, never a texture path ------------------------------------------------------
@@ -246,15 +246,21 @@ check(count(code("CRT_Modules/Alerts/Bars.lua"), "text = Areas.ShownText(line)")
 check(has(code("CRT_Modules/Alerts/TimelineArea.lua"), "Areas.ShownText(line)"), "the timeline area")
 check(has(code("CRT_Modules/Alerts/GameTimeline.lua"), "overrideName = Areas.LineText(line)"), "the game's own timeline gets the text as written")
 local editor = code("CRT_Modules/Notes/EditorWindow.lua")
-check(has(editor, "return markers(out)") and has(editor, "(markers(row.label) .. \\":\\")") and has(editor, "f.heading:SetText(markers(text))"),
+check(has(editor, "return CRT.MarkerText(out)") and has(editor, "(CRT.MarkerText(row.label) .. \\":\\")") and has(editor, "f.heading:SetText(CRT.MarkerText(text))"),
   "the pop-out editor's drawn rows: timers, group labels, headings and text")
 local raw = {}
-for line in editor:gmatch("[^\\n]+") do if line:find("markers(", 1, true) and (line:lower():find("edit") or line:find("W.raw", 1, true) or line:find("Raw", 1, true)) then raw[#raw + 1] = line end end
+for line in editor:gmatch("[^\\n]+") do if line:find("MarkerText(", 1, true) and (line:lower():find("edit") or line:find("W.raw", 1, true) or line:find("Raw", 1, true)) then raw[#raw + 1] = line end end
 check(#raw == 0, "nothing the player types in goes through the helper: " .. table.concat(raw, " | "))
-check(has(code("CRT_Modules/Notes/EditorLinks.lua"), "fs:SetText(markers(text))"), "the editor's linked groups banner")
+check(has(code("CRT_Modules/Notes/EditorLinks.lua"), "fs:SetText(CRT.MarkerText(text))"), "the editor's linked groups banner")
+check(has(code("CRT_Modules/Notes/EditorLinks.lua"), "\\"  \\" .. CRT.MarkerText(text)"), "the editor's tag tooltip lines match its title")
 check(has(code("CRT_Modules/Notes/EditorAssign.lua"), "CRT.MarkerText(title)"), "the editor's assignments banner")
+local share = code("CRT_Modules/Notes/AlertShareWindows.lua")
+check(has(share, "GameTooltip:SetText(CRT.MarkerText(e.label") and has(share, "row.name:SetText(CRT.MarkerText(e.label"), "the alert share windows' labels and their tooltips")
+for _, p in ipairs({ "CRT_Modules/Notes/Render.lua", "CRT_Modules/Notes/Window.lua", "CRT_Modules/Notes/EditorWindow.lua", "CRT_Modules/Notes/EditorLinks.lua", "CRT_Modules/Timeline/View.lua" }) do
+  check(not code(p):find("local function markers", 1, true) and not code(p):find("local function shownText", 1, true) and not code(p):find("local function markerWord", 1, true), p .. " calls the helper itself, no copied wrapper")
+end
 local view = code("CRT_Modules/Timeline/View.lua")
-check(has(view, "GameTooltip:SetText(shownText(m.text)") and has(view, "local title = shownText(tostring(m.text"), "the Timeline's note flags: tooltip and menu title")
+check(has(view, "GameTooltip:SetText(CRT.MarkerText(m.text)") and has(view, "local title = CRT.MarkerText(tostring(m.text"), "the Timeline's note flags: tooltip and menu title")
 local page = code("CRT_Modules/Notes/Page.lua")
 check(has(page, "Render.View(") and not has(page, "MarkerText"), "the Raid Notes page shows notes through the read view only (its boxes stay raw)")
 
