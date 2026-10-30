@@ -8,7 +8,7 @@ const path = require('path');
 const themeLua = require('./theme_stub');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
-const harness = themeLua(process.argv.slice(2)) + require('./placement_stub')(process.argv.slice(2)) + `
+const harness = themeLua(process.argv.slice(2)) + require('./placement_stub')(process.argv.slice(2)) + require('./previews_stub')(process.argv.slice(2)) + `
 local coreSrc, dataSrc, panelSrc, pageSrc, clickSrc, ignoreSrc, qolPageSrc, tooltipSrc = ...
 local passed, failed = 0, 0
 local function check(name, cond, detail)
@@ -177,29 +177,6 @@ CRT.UI = {
     return b
   end,
   RegisterLayer = function() end,
-  RegisterPreview = function(_, key, fn) previewFns[key] = fn end,
-  SetPreviews = function() end,
-  -- As CRT_Core/UI/Panel.lua (run_previews.js tests the real one): each key keeps its own state, combat refuses on
-  previewOn = {}, previewListeners = {},
-  SetPreviewGroup = function(self, keys, on)
-    if on and InCombatLockdown() then return end
-    for _, key in ipairs(keys) do
-      if previewFns[key] then self.previewOn[key] = on and true or nil previewFns[key](on) end
-    end
-    self.previewing = next(self.previewOn) ~= nil
-    for _, fn in ipairs(self.previewListeners) do fn() end
-  end,
-  IsPreviewing = function(self, key) return self.previewOn[key] == true end,
-  GroupPreviewing = function(self, keys) for _, k in ipairs(keys) do if not self.previewOn[k] then return false end end return true end,
-  OnPreviewChange = function(self, fn) self.previewListeners[#self.previewListeners + 1] = fn end,
-  PreviewButton = function(parent, label, keys, opts)
-    local UI = CRT.UI
-    local b = UI.PanelButton(parent, label, 22, function() UI:SetPreviewGroup(keys, not UI:GroupPreviewing(keys)) end)
-    rawset(b, "previewKeys", keys) rawset(b, "tip", opts and opts.tooltip)
-    local function refresh() b:SetText(UI:GroupPreviewing(keys) and "Stop preview" or label) end
-    UI:OnPreviewChange(refresh) refresh()
-    return b
-  end,
   ResetButtonWidth = function() return 44 end, ResetButton = function() return mock("Button") end,
   Slider = function(p, text, opts) local r = mock("Slider") rawset(r, "opts", opts) rawset(r, "refresh", function() end) sliders[text] = r return r end,
   Dropdown = function(p, text, opts) local r = mock("Dropdown") rawset(r, "opts", opts) rawset(r, "refresh", function() end) dropdowns[text] = r return r end,
@@ -208,6 +185,9 @@ CRT.UI = {
   SpotPicker = function(p, opts) local r = mock("SpotPicker") rawset(r, "opts", opts) rawset(r, "refresh", function() end) spotPickers[#spotPickers + 1] = r return r end,
 }
 CRT_THEME(CRT, CRT.UI)
+-- the real previews (CRT_Core/UI/Panel.lua's [previews] block): the panel registers into CRT.UI.previews
+CRT_PREVIEWS(CRT, CRT.UI)
+previewFns = CRT.UI.previews
 -- the tooltip rules (UI.TooltipAnchor, the areas, the Tooltip position setting)
 assert(load(tooltipSrc, "Tooltip.lua"))("CowfeeRaidTools", CRT)
 function CRT:Print(m) print("  [print] " .. tostring(m)) end
@@ -1136,7 +1116,7 @@ local pb
 for _, f in ipairs(frames) do if f.kind == "Button" and rawget(f, "text") == "Preview debuffs" then pb = f end end
 check("the Preview debuffs button exists", pb ~= nil and type(rawget(pb, "OnClick")) == "function")
 check("on the debuffs preview key only", pb and #pb.previewKeys == 1 and pb.previewKeys[1] == "debuffs")
-check("its tooltip says what it shows", pb and pb.tip and pb.tip:find("debuff panel", 1, true) ~= nil)
+check("its tooltip says what it shows", pb and pb.previewTip and pb.previewTip:find("debuff panel", 1, true) ~= nil)
 local otherOn = 0
 previewFns.othersection = function(on) otherOn = otherOn + 1 end
 pf:Show()

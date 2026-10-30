@@ -5,7 +5,7 @@ local ADDON, CRT = ...
 --   * see the same bar that shows on the ready check, with live status,
 --   * drag an item from your bags onto an icon to add it to that category (optional),
 --   * drag the rows to set the icon order, and which item is used first when you click an icon,
---   * show the real bar for a few seconds (Preview on screen), or keep it up to place it (Preview your bar).
+--   * show the real bar for a few seconds (Test on screen), or keep it up to place it (Preview your bar).
 -- Whether the bar shows, and the warning time, are on the Ready Check page's Settings tab.
 -- The buff of a food or flask is learned the first time you use it, see Consumables/Data.lua.
 
@@ -14,10 +14,10 @@ local Ants = CRT.Ants
 local Bar = CRT.ConsumablesBar
 local UI = CRT.UI
 
--- The tab's wording for its two on-screen buttons. Preview on screen is a short test of the bar; Preview your bar
+-- The tab's wording for its two on-screen buttons. Test on screen is a short test of the bar; Preview your bar
 -- keeps it up, with its drag box, until you stop it.
 local TEXT = {
-    test = "Preview on screen",
+    test = "Test on screen",
     preview = "Preview your bar",
     previewTip = "Shows your consumables bar on screen with its drag box so you can drag it into place. It stays until you stop it.",
 }

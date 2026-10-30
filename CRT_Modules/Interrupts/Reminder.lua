@@ -12,7 +12,7 @@ local ADDON, CRT = ...
 -- The schedule: when a pull arms (Interrupts/Anchor.lua), one timer per entry of the block's anchor.times, at
 -- pullTime + time + PairOffset(number) - LEAD, since wave 1's reminder is due before its anchor is even cast. When
 -- the anchor is counted for a wave, that wave's timer is set again from the real time; a reminder already on screen
--- moves to the new end. Test on trash has no pull, so no schedule; Preview reminder runs one 5 second countdown.
+-- moves to the new end. Test on trash has no pull, so no schedule; Test reminder runs one 5 second countdown.
 --
 -- The window is a UI.Window overlay; its place, drag, nudge and Reset are the shared placement helper's (Previews
 -- shows its drag box), saved per character in CRTDBChar.interrupts.reminder.position.
@@ -340,7 +340,7 @@ if CRT.InterruptPlates and CRT.InterruptPlates.OnTurn then
     end)
 end
 
--- Preview reminder: one LEAD second countdown, with the sound, your kick (or a sample).
+-- Test reminder: one LEAD second countdown, with the sound, your kick (or a sample).
 function Reminder:Preview()
     if not Interrupts:Enabled() then
         return

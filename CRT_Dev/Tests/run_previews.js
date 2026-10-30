@@ -26,6 +26,7 @@ local function mock()
     GetWidth = function(self) return rawget(self, "w") end,
     SetScript = function(self, k, fn) local t = rawget(self, "scripts") or {} rawset(self, "scripts", t) t[k] = fn end,
     GetScript = function(self, k) local t = rawget(self, "scripts") return t and t[k] end,
+    SetEnabled = function(self, on) self.enabled = on end,
   }
   return setmetatable(o, { __index = function(_, k) return methods[k] or (type(k) == "string" and k:find("^%u") and function() end) or nil end })
 end
@@ -163,6 +164,25 @@ check(UI:IsPreviewing("pace"), "a button can take one key")
 single:GetScript("OnClick")(single)
 check(not UI:IsPreviewing("pace"), "and turns it off again")
 
+-- 9. opts.enabledIf: greyed with its reason in the tooltip while not ok; a preview already on can still be stopped
+local can, lines = false, {}
+GameTooltip.AddLine = function(_, text) lines[#lines + 1] = text end
+UI.Color = function() return 1, 0.5, 0 end
+local gated = UI.PreviewButton(UIParent, "Preview number box", { "pace" }, { tooltip = "Shows a box.",
+  enabledIf = function() if can then return true end return false, "Turn it on first." end })
+check(gated.enabled == false, "enabledIf: greyed while not ok")
+gated:GetScript("OnEnter")(gated)
+check(lines[#lines] == "Turn it on first.", "enabledIf: the tooltip adds the reason")
+can = true
+gated.refresh()
+check(gated.enabled == true, "enabledIf: usable again after a refresh")
+UI:SetPreview("pace", true)
+can = false
+gated.refresh()
+check(gated.enabled == true and gated:GetText() == "Stop preview", "enabledIf: an on preview can still be stopped")
+UI:SetPreview("pace", false)
+check(gated.enabled == false, "enabledIf: greyed again once off")
+
 print(passes .. " passed, " .. fails .. " failed")
 if fails > 0 then error(fails .. " preview checks failed") end
 `;
@@ -174,26 +194,85 @@ lua.lua_pushstring(L, to_luastring(read('CRT_Core/UI/Panel.lua')));
 lua.lua_pushstring(L, to_luastring(read('CRT_Core/Themes.lua')));
 if (lua.lua_pcall(L, 2, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); bad++; }
 
-// Each page's preview buttons, read from its source: built by UI.PreviewButton with these keys, and no page makes its own
-// preview toggle. [file, label key in its TEXT table or literal, keys]
+// Each page's preview buttons, read from its source (comments left out): the keys argument of each UI.PreviewButton( call,
+// with the names in it replaced by their local definitions in the file, must name these keys. A key written anywhere else
+// in the file (a tab's key, say) does not count. aliases: a loop variable read from a table (def from WINDOWS) or a list
+// filled in a loop (ALERT_KEYS from PREVIEW_KEY). Each group: the keys that one button must take together.
 const pages = [
-  ['CRT_Modules/Notes/AlertsTab.lua', ['"alert"', '"alerttexts"', '"alertbars"', '"alerticons"', '"alertcircles"', '"alerttimeline"']],
-  ['CRT_Modules/Notes/Settings.lua', ['"note-timers"', '"note-assignments"', '"note-personal"']],
-  ['CRT_Modules/Markers/MacrosTab.lua', ['"markers"']],
-  ['CRT_Modules/ReadyCheck/Page.lua', ['"readycheckwindow"', '"consumables"']],
-  ['CRT_Modules/Consumables/Page.lua', ['"consumables"']],
-  ['CRT_Modules/Interrupts/Page.lua', ['"interrupts-box"', '"interrupts-reminder"']],
-  ['CRT_Modules/Pace/Page.lua', ['"pace"']],
-  ['CRT_Modules/QoL/Page.lua', ['"lowhealth"', '"break"']],
-  ['CRT_Modules/Debuffs/Page.lua', ['"debuffs"']],
+  ['CRT_Modules/Notes/AlertsTab.lua', [['"alert"', '"alerttexts"', '"alertbars"', '"alerticons"', '"alertcircles"', '"alerttimeline"']], { ALERT_KEYS: 'PREVIEW_KEY' }],
+  ['CRT_Modules/Notes/Settings.lua', [['"note-timers"', '"note-assignments"', '"note-personal"']], { def: 'WINDOWS' }],
+  ['CRT_Modules/Markers/MacrosTab.lua', [['"markers"']]],
+  ['CRT_Modules/ReadyCheck/Page.lua', [['"readycheckwindow"', '"consumables"'], ['"readycheckwindow"']]],
+  ['CRT_Modules/Consumables/Page.lua', [['"consumables"']]],
+  ['CRT_Modules/Interrupts/Page.lua', [['"interrupts-box"', '"interrupts-reminder"'], ['"interrupts-box"'], ['"interrupts-reminder"']]],
+  ['CRT_Modules/Pace/Page.lua', [['"pace"']]],
+  ['CRT_Modules/QoL/Page.lua', [['"lowhealth"'], ['"break"']]],
+  ['CRT_Modules/Debuffs/Page.lua', [['"debuffs"']]],
 ];
-for (const [file, keys] of pages) {
-  const src = read(file);
-  if (!/UI\.PreviewButton\(/.test(src)) { console.log('FAIL ' + file + ' has no UI.PreviewButton'); bad++; continue; }
-  for (const k of keys) {
-    if (!src.includes(k)) { console.log('FAIL ' + file + ' never names the preview key ' + k); bad++; }
+// the text from an opening bracket to its match
+function balanced(s, at) {
+  const open = s[at], close = { '(': ')', '{': '}', '[': ']' }[open];
+  let depth = 0;
+  for (let i = at; i < s.length; i++) {
+    if (s[i] === open) depth++;
+    else if (s[i] === close && --depth === 0) return s.slice(at, i + 1);
+  }
+  return s.slice(at);
+}
+// the arguments of a call, split at its top-level commas
+function args(call) {
+  const inner = call.slice(1, -1), out = [];
+  let depth = 0, start = 0;
+  for (let i = 0; i < inner.length; i++) {
+    const c = inner[i];
+    if ('({['.includes(c)) depth++;
+    else if (')}]'.includes(c)) depth--;
+    else if (c === ',' && depth === 0) { out.push(inner.slice(start, i).trim()); start = i + 1; }
+  }
+  out.push(inner.slice(start).trim());
+  return out;
+}
+// a local's definition: its table, or the rest of its line (the matching value of a multiple assignment)
+function definition(src, name) {
+  const m = new RegExp('^local\\s+([\\w, ]*\\b' + name + '\\b[\\w, ]*)=\\s*', 'm').exec(src);
+  if (!m) return '';
+  const at = m.index + m[0].length;
+  if (src[at] === '{') return balanced(src, at);
+  const line = src.slice(at).split(/\r?\n/)[0];
+  const names = m[1].split(',').map((n) => n.trim()), values = args('(' + line + ')');
+  return values.length === names.length ? values[names.indexOf(name)] : line;
+}
+function expand(src, text, aliases, depth) {
+  if (depth > 3) return text;
+  return text.replace(/(^|[^.\w"])([A-Za-z_]\w*)/g, (all, pre, name) => {
+    const target = aliases[name] || name;
+    const def = definition(src, target);
+    return pre + (def ? expand(src, def, aliases, depth + 1) : name);
+  });
+}
+for (const [file, groups, aliases] of pages) {
+  const src = read(file).replace(/--.*$/gm, '');
+  const calls = [];
+  for (const m of src.matchAll(/UI\.PreviewButton\(/g)) {
+    const a = args(balanced(src, m.index + m[0].length - 1));
+    calls.push(expand(src, a[2] || '', aliases || {}, 0));
+  }
+  if (calls.length === 0) { console.log('FAIL ' + file + ' has no UI.PreviewButton'); bad++; continue; }
+  for (const keys of groups) {
+    // a button whose keys take this group, and for a one-key group no more than that one key
+    const ok = calls.some((c) => keys.every((k) => c.includes(k)) && (keys.length > 1 || (c.match(/"[\w-]+"/g) || []).length === 1));
+    if (!ok) { console.log('FAIL ' + file + ': no UI.PreviewButton takes ' + keys.join(', ')); bad++; }
   }
 }
+// the check itself finds a key written only outside a PreviewButton call
+{
+  const planted = 'local TABS = { { key = "lowhealth" } }\nlocal b = UI.PreviewButton(pf, TEXT.x, { "break" })';
+  const c = args(balanced(planted, planted.indexOf('UI.PreviewButton(') + 'UI.PreviewButton'.length))[2];
+  if (expand(planted, c, {}, 0).includes('"lowhealth"')) { console.log('FAIL the key check counts a tab key outside the call'); bad++; }
+}
+// the timed tests read Test, so they don't look like the placement previews
+if (!/\btest = "Test on screen"/.test(read('CRT_Modules/Consumables/Page.lua'))) { console.log('FAIL Your bar\'s timed test does not read Test on screen'); bad++; }
+if (!/\btestReminder = "Test reminder"/.test(read('CRT_Modules/Interrupts/Page.lua'))) { console.log('FAIL the Kick list\'s timed test does not read Test reminder'); bad++; }
 // the alert editor is its own window: it stays out of the alert group (its code, comments left out)
 if (/"alerteditor"/.test(read('CRT_Modules/Notes/AlertsTab.lua').replace(/--.*$/gm, ''))) { console.log('FAIL the alert group names alerteditor'); bad++; }
 // no page sets the whole switch: pages own their buttons, the core owns the state

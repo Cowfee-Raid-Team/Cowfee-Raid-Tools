@@ -6,7 +6,7 @@
 // own outlined, x, read-only for a raider), the palette (your group, then each Raid Groups layout), drops from the
 // palette, along a row and onto another, a full row refusing, Add name, Clear list asking first, Use the raid's list,
 // Who has it in its pop-out from the Addon check, How the numbers are worked out in the Kick list's (?), Test on trash,
-// Preview reminder, the Settings tab's
+// Test reminder, the Settings tab's
 // sliders and colours, every control inside the page area, /crt interrupts, and the General Settings switch hiding and
 // showing the page. Usage: node run_interrupts_page.js <addon folder>
 const fs = require('fs');
@@ -111,7 +111,12 @@ function UI.PanelButtonWidth(w) return math.max(40, math.ceil(w) + 28) end
 function UI.PanelButton(parent, text, h, onClick) local b = mock("Button", parent) b.text = text b.h = h b.scripts.OnClick = onClick return b end
 function UI.TooltipOwner() end
 -- CRT_Core/UI/Panel.lua's preview toggle (run_previews.js tests it): a button that keeps its label and keys
-function UI.PreviewButton(parent, text, keys, opts) local b = UI.PanelButton(parent, text, 22) b.previewKeys, b.tip = keys, opts and opts.tooltip b.w = UI.PanelButtonWidth(#text * 6) b.h = 22 return b end
+function UI.PreviewButton(parent, text, keys, opts)
+  local b = UI.PanelButton(parent, text, 22) b.previewKeys, b.tip = keys, opts and opts.tooltip b.w = UI.PanelButtonWidth(#text * 6) b.h = 22
+  -- as the real one: opts.enabledIf greys it and gives the reason its tooltip adds
+  b.refresh = function() local ok, why = true, nil if opts and opts.enabledIf then ok, why = opts.enabledIf() end b.enabled, b.why = ok and true or false, why end
+  return b
+end
 function UI.Help(parent, title, text) local m = mock("Button", parent) m.helpTitle, m.helpText = title, text helps[#helps + 1] = m return m end
 local function row(kind, parent, text, opts, extra)
   local r = mock("Frame", parent)
@@ -151,6 +156,8 @@ CRT.AddonCheck = { Register = function() end, Roster = function() return ROSTER 
   OnChange = function(_, fn) checkListeners[#checkListeners + 1] = fn end, MaybeCheck = function() asked = asked + 1 end, Check = function() end }
 local previewed = 0
 CRT.InterruptReminder = { Preview = function() previewed = previewed + 1 end }
+local previewBoss = 3470
+CRT.InterruptPlates = { PreviewBoss = function() return previewBoss end }
 CRT.db.notes = { list = {}, nextId = 1 }
 CRT.db.classCache = { tovi = "WARRIOR" }
 -- Raid Groups: one layout, as the note editor's Players from reads it
@@ -541,7 +548,7 @@ for _, h in ipairs(helps) do if h.helpTarget == P.bossRow then bossHelp = h end 
 check(bossHelp and type(bossHelp.helpText) == "function" and bossHelp.helpText():find("Mythic only here.", 1, true), "boss: the block's note in its (?)")
 for _, h in ipairs(helps) do check(h.helpTarget ~= nil, "help: every (?) placed by UI.HelpRight: " .. tostring(h.helpTitle)) end
 
--- Test on trash and Preview reminder
+-- Test on trash and Test reminder
 P.test.checked = true; P.test.scripts.OnClick(P.test)
 check(CRT.InterruptAnchor.armed and CRT.InterruptAnchor.mode == "test", "test: ticking arms test mode")
 P.test.checked = false; P.test.scripts.OnClick(P.test)
@@ -597,8 +604,18 @@ check(rowNamed(T.sound).enabled and rowNamed(T.reminderSize).enabled, "settings:
 check(P.previewBox and P.previewBox.text == T.previewBox and P.previewBox.previewKeys[1] == "interrupts-box" and #P.previewBox.previewKeys == 1, "settings: Preview number box")
 check(P.previewReminder and P.previewReminder.previewKeys[1] == "interrupts-reminder" and #P.previewReminder.previewKeys == 1, "settings: Preview reminder icon")
 check(P.previewAll and table.concat(P.previewAll.previewKeys, ",") == "interrupts-box,interrupts-reminder", "settings: Preview kick displays takes both")
-check(T.previewReminder ~= T.preview, "settings: the reminder's preview is named apart from the Kick list's test countdown")
+check(T.testReminder == "Test reminder" and T.previewReminder ~= T.testReminder, "settings: the Kick list's test countdown reads Test reminder, apart from the reminder's preview")
+check(P.preview.text == "Test reminder", "the Kick list's button reads Test reminder")
 for _, b in ipairs({ P.previewBox, P.previewReminder, P.previewAll }) do check(b.tip and b.tip:find("Shows"), "settings: " .. b.text .. " says what it shows") end
+P.Refresh()
+check(P.previewBox.enabled == true, "settings: Preview number box usable with Interrupts on and a boss")
+previewBoss = nil; P.Refresh()
+check(P.previewBox.enabled == false and P.previewBox.why == T.previewBoxNoBoss, "settings: greyed with no boss to number, and says why")
+previewBoss = 3470
+CRT.db.interrupts.enabled = false; P.Refresh()
+check(P.previewBox.enabled == false and P.previewBox.why == T.previewBoxOff and T.previewBoxOff:find("Turn on Interrupts"), "settings: greyed with Interrupts off, its tooltip says to turn it on")
+CRT.db.interrupts.enabled = true; P.Refresh()
+check(P.previewBox.enabled == true, "settings: and usable again")
 P.SelectTab("assignments")
 
 -- no boss with a setup: no rows

@@ -1047,9 +1047,6 @@ function Panel:SetPreview(on)
     updateTiles()
     layout()
     updateVisibility()
-    if self.onPreviewChange then
-        self.onPreviewChange(previewOn)
-    end
 end
 
 function Panel:IsPreviewing()
@@ -1296,8 +1293,8 @@ events:SetScript("OnEvent", function(_, event)
     end
 end)
 
--- Shows or hides the preview, building the panel first when it hasn't been yet: for Previews in the
--- main window, and for Preview debuffs on the Debuffs tab, which shows only this panel.
+-- Shows or hides the preview, building the panel first when it hasn't been yet: for the "debuffs" preview
+-- key, which the main window's Previews and the Debuffs tab's Preview debuffs (a UI.PreviewButton) turn on.
 function Panel:ShowPreview(on)
     if not frame and safeToWire() then
         build()

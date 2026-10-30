@@ -347,8 +347,8 @@ function Display:Preview()
     end
 end
 
--- Keeps the row on screen, with its drag handle, until it is turned off. Used by the
--- "Previews" button in the main panel.
+-- Keeps the row on screen, with its drag handle, until it is turned off: the "consumables" preview key, which
+-- the main window's Previews, Ready Check's Preview ready check and Your bar's Preview your bar turn on.
 function Display:SetPreview(on)
     if on then
         show(nil, true)

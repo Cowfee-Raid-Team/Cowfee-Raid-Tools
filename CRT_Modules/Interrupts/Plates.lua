@@ -581,13 +581,19 @@ Interrupts:OnChange(function(what)
     end
 end)
 
--- Previews: one sample box of your number at the screen's centre, to see the size and colours.
-function Plates:Preview(on)
+-- The boss the sample box shows your number for: the armed one, else the first with a kick setup; nil for none.
+function Plates:PreviewBoss()
     local id = Anchor.key
     if not id then
         local first = Interrupts:Bosses()[1]
         id = first and first.key
     end
+    return id
+end
+
+-- Previews: one sample box of your number at the screen's centre, to see the size and colours.
+function Plates:Preview(on)
+    local id = self:PreviewBoss()
     if not self.preview then
         self.preview = newBox()
     end

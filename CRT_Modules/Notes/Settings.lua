@@ -75,7 +75,9 @@ local ALL_PREVIEWS = { WINDOWS[1].preview, WINDOWS[2].preview, WINDOWS[3].previe
 -- timers window's two more, then the sliders and the font list. Each window's preview button sits
 -- under the timers column's last row, so the three line up.
 local ROW_H = 24
-local FONT_ROW_Y = 92 + 2 * ROW_H + 88 -- the timers column's font list, under its heading
+local COLUMN_ROWS_Y = 92 -- the rows after Show, Locked and Keep up when empty, under the heading
+local FONT_GAP = 88      -- the font list, under the first slider: the three sliders 28 apart and a gap
+local FONT_ROW_Y = COLUMN_ROWS_Y + 2 * ROW_H + FONT_GAP -- the timers column's font list, under its heading
 local PREVIEW_ROW_Y = FONT_ROW_Y + 36   -- the window preview buttons, under the font list
 
 local WHITE = { 1, 1, 1 }
@@ -174,11 +176,11 @@ local function buildColumn(pf, index, def, top)
     makeCheck(pf, x - 4, top - 20, TEXT.show, nil, setting(def.key, "shown"))
     makeCheck(pf, x - 4, top - 44, TEXT.locked, shown, setting(def.key, "locked"))
     makeCheck(pf, x - 4, top - 68, TEXT.keepEmpty, shown, setting(def.key, "keepEmpty"))
-    local y = top - 92
+    local y = top - COLUMN_ROWS_Y
     if def.key == "window" then
         makeCheck(pf, x - 4, y, TEXT.hidePassed, shown, setting(def.key, "hidePassed"))
-        makeCheck(pf, x - 4, y - 24, TEXT.onlyMe, shown, setting(def.key, "onlyMe"))
-        y = y - 48
+        makeCheck(pf, x - 4, y - ROW_H, TEXT.onlyMe, shown, setting(def.key, "onlyMe"))
+        y = y - 2 * ROW_H
     end
     makeNumber(pf, x, y, TEXT.fontSize, { low = 8, high = 32, enabledIf = shown }, setting(def.key, "fontSize"))
     makeNumber(pf, x, y - 28, TEXT.windowAlpha, { low = 10, high = 100, format = percent, enabledIf = shown }, setting(def.key, "alpha"))
@@ -204,7 +206,7 @@ local function buildColumn(pf, index, def, top)
         end,
         enabledIf = shown,
     })
-    font:SetPoint("TOPLEFT", x, y - 88)
+    font:SetPoint("TOPLEFT", x, y - FONT_GAP)
     controls[#controls + 1] = font
 
     local preview = UI.PreviewButton(pf, def.previewLabel, { def.preview },

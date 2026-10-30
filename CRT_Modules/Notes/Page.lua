@@ -8,7 +8,8 @@ local ADDON, CRT = ...
 --   Alerts     where your note lines show and how each kind of alert looks (Notes/AlertsTab.lua)
 --   Settings   the three note windows, your alert's timing and voice, and sharing (Notes/Settings.lua)
 -- (The Phases tab, Notes/Phases.lua, is off the page; see TABS below.)
--- The note windows and your alert are moved with "Previews".
+-- The note windows and your alert are moved with their preview buttons (UI.PreviewButton) on Notes Settings and
+-- Alert Settings, or with the main window's Previews.
 
 local Notes = CRT.Notes
 local Engine = CRT.NoteEngine

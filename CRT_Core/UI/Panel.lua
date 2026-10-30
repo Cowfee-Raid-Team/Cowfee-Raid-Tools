@@ -33,6 +33,8 @@ function UI:SetPageHidden(key, hidden, closeHides)
     end
 end
 
+-- [previews] (harnesses load the code from here to [/previews] through CRT_Dev/Tests/previews_stub.js: it uses
+-- only UI and CRT)
 -- Previews: the panels that appear on their own, such as the ready check bar and the debuff panel,
 -- register here. setFn(on) shows or hides one panel's preview. Each key keeps its own on state, so a
 -- page can preview just its own displays (UI:SetPreview, UI:SetPreviewGroup, UI.PreviewButton) and
@@ -143,7 +145,9 @@ function UI:GroupPreviewing(keys)
 end
 
 -- A page's preview button: a PanelButton reading label while its keys are off and "Stop preview"
--- while they are all on; a click toggles them. opts.tooltip says what it shows; opts.height.
+-- while they are all on; a click toggles them. opts.tooltip says what it shows; opts.height. opts.enabledIf,
+-- when given, returns ok, reason: while it is not ok the button greys out (a preview already on can still be
+-- stopped) and its tooltip adds the reason. b.refresh() reads it again, for the page's own refresh.
 UI.PREVIEW_STOP = "Stop preview"
 
 function UI.PreviewButton(parent, label, keys, opts)
@@ -156,15 +160,28 @@ function UI.PreviewButton(parent, label, keys, opts)
     b:SetText(label)
     local fs = b:GetFontString()
     b:SetWidth(math.max(stopW, UI.PanelButtonWidth(fs and fs:GetStringWidth() or 0)))
-    b.previewKeys, b.previewLabel = keys, label
+    b.previewKeys, b.previewLabel, b.previewTip = keys, label, opts.tooltip
+    local function usable()
+        if not opts.enabledIf then
+            return true
+        end
+        return opts.enabledIf()
+    end
     function b.refresh()
-        b:SetText(UI:GroupPreviewing(keys) and UI.PREVIEW_STOP or label)
+        local on = UI:GroupPreviewing(keys)
+        b:SetText(on and UI.PREVIEW_STOP or label)
+        b:SetEnabled((on or usable()) and true or false)
     end
     b:SetScript("OnEnter", function(self)
         UI.TooltipOwner(GameTooltip, self, "ANCHOR_TOP")
         GameTooltip:SetText(label, 1, 1, 1)
         if opts.tooltip then
             GameTooltip:AddLine(opts.tooltip, 0.8, 0.8, 0.8, true)
+        end
+        local ok, reason = usable()
+        if not ok and reason then
+            local r, g, bl = UI.Color("warn")
+            GameTooltip:AddLine(reason, r, g, bl, true)
         end
         GameTooltip:Show()
     end)
@@ -175,6 +192,7 @@ function UI.PreviewButton(parent, label, keys, opts)
     b.refresh()
     return b
 end
+-- [/previews]
 
 -- The panel's size as a percent, 50 to 200. SetScale scales everything in it, text included.
 UI.MIN_SCALE, UI.MAX_SCALE = 50, 200
