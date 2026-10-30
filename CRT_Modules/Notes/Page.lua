@@ -781,7 +781,8 @@ local function buildNotes(pf)
             textBox:Raw()
         end,
         context = function()
-            return { rosterLinked = textBox.contextKey }
+            -- the note's record: its boss and difficulty name the kick block's groups when the text has no header
+            return { rosterLinked = textBox.contextKey, boss = textBox.owner ~= nil and Notes:Get(textBox.owner) or nil }
         end,
     })
     textBox = Render.Bind(textView, scroll, editor, function()

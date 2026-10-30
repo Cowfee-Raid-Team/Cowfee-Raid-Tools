@@ -64,11 +64,23 @@ end
 
 -- The block's lines for a list in def's group order (start and end included), or {} when it has no name.
 function Block.Lines(def, list)
-    local rows, any = {}, false
+    local rows = {}
     for g, grp in ipairs(def.groups) do
-        local names = {}
+        rows[g] = {}
         for s = 1, grp.slots do
-            local name = type(list) == "table" and type(list[g]) == "table" and list[g][s]
+            rows[g][s] = type(list) == "table" and type(list[g]) == "table" and list[g][s] or ""
+        end
+    end
+    return Block.LinesOf(rows)
+end
+
+-- The block's lines for groups of names ({ { names }, ... } in group order, as the note editor's rows hold them),
+-- the same way: empty names left out, trailing empty groups too, {} when there is no name.
+function Block.LinesOf(groups)
+    local rows, any = {}, false
+    for g, list in ipairs(groups) do
+        local names = {}
+        for _, name in ipairs(type(list) == "table" and list or {}) do
             if type(name) == "string" and trim(name) ~= "" then
                 names[#names + 1] = trim(name)
                 any = true
@@ -205,12 +217,13 @@ for id, name in pairs(DIFFICULTY_NAMES) do
     DIFFICULTY_IDS[name:lower()] = id
 end
 
--- The group labels of the kick setup in use for a boss and a note's difficulty word: { { label, marker }, ... } in group
--- order, or {} when the module is off or the boss has none. With no difficulty, the boss's only setup.
-function Block.Labels(encounterID, difficulty)
+-- The kick setup in use for a boss and a note's difficulty word, and its key; nil when the boss has none. With no
+-- difficulty, the boss's only setup. Read whether or not the tracker is switched on: the setup is the boss's data, and a
+-- note's groups are named by it either way (a Twin Fangs Mythic note read "Group 1 / Group 2" with the tracker off).
+function Block.SetupFor(encounterID, difficulty)
     local I = CRT.Interrupts
-    if not (I and I.Enabled and I:Enabled() and type(encounterID) == "number") then
-        return {}
+    if not (I and type(encounterID) == "number") then
+        return nil
     end
     local id = type(difficulty) == "string" and DIFFICULTY_IDS[difficulty:lower()] or nil
     local def
@@ -220,9 +233,18 @@ function Block.Labels(encounterID, difficulty)
         local all = I:Setups(encounterID)
         def = #all == 1 and all[1] or nil
     end
+    if not def then
+        return nil
+    end
+    return def, I.Key(encounterID, def.difficulty)
+end
+
+-- The group labels of that setup: { { label, marker, slots }, ... } in group order, or {} when the boss has none.
+function Block.Labels(encounterID, difficulty)
+    local def = Block.SetupFor(encounterID, difficulty)
     local out = {}
     for g, grp in ipairs(def and def.groups or {}) do
-        out[g] = { label = grp.label, marker = grp.marker }
+        out[g] = { label = grp.label, marker = grp.marker, slots = grp.slots }
     end
     return out
 end
@@ -230,10 +252,19 @@ end
 -- How a note's lines read: one entry per piece of Notes.SplitPieces (so the same line numbers), nil for a line that is
 -- not in the block, else
 --   { kind = "heading", text }          the start line
---   { kind = "kick", label, marker, names }   a line of names; the label from the setup, else "Group N"
---   { kind = "hidden" }                 the end line
--- Returns nil when the note has no block. Also returns the pieces.
-function Block.View(raw)
+--   { kind = "kick", group, label, marker, slots, names }   a line of names, group its number; the label and slots
+--                                       from the setup, else "Group N" and no slots
+--   { kind = "hidden", missing }        the end line; missing the setup's groups past the block's last line (a block
+--                                       leaves trailing empty groups out), each { group, label, marker, slots }
+-- Returns nil when the note has no block. Also returns the pieces. boss (optional): the note record's
+-- { encounterID, difficulty }, for a text whose header doesn't say them (the header wins).
+local function viewGroup(labels, n)
+    local group = labels[n]
+    local label = group and type(group.label) == "string" and group.label ~= "" and group.label or string.format(TEXT.group, n)
+    return { group = n, label = label, marker = group and group.marker or nil, slots = group and group.slots or nil }
+end
+
+function Block.View(raw, boss)
     raw = raw or ""
     if not raw:lower():find(Block.START, 1, true) then
         return nil
@@ -244,25 +275,27 @@ function Block.View(raw)
         return nil
     end
     local note = CRT.NoteParser.Parse(raw)
-    local labels = Block.Labels(note.encounterID, note.difficulty)
-    local items = { [first] = { kind = "heading", text = TEXT.kickOrder }, [last] = { kind = "hidden" } }
+    boss = type(boss) == "table" and boss or {}
+    local labels = Block.Labels(note.encounterID or boss.encounterID, note.difficulty or boss.difficulty)
+    local items = { [first] = { kind = "heading", text = TEXT.kickOrder }, [last] = { kind = "hidden", missing = {} } }
     for i = first + 1, last - 1 do
-        local n = i - first
-        local names = {}
+        local item = viewGroup(labels, i - first)
+        item.kind, item.names = "kick", {}
         for word in all[i].text:gmatch("%S+") do
-            names[#names + 1] = word
+            item.names[#item.names + 1] = word
         end
-        local group = labels[n]
-        local label = group and type(group.label) == "string" and group.label ~= "" and group.label or string.format(TEXT.group, n)
-        items[i] = { kind = "kick", label = label, marker = group and group.marker or nil, names = names }
+        items[i] = item
+    end
+    for n = last - first, #labels do
+        table.insert(items[last].missing, viewGroup(labels, n))
     end
     return items, all
 end
 
 -- The note's text as it is read: the block as "Kick order" and "<label>: <names>" lines (a raid marker as a "{rtN} "
 -- token in front, Block.TakeMarker), the end line left out. The same text when the note has no block.
-function Block.Expand(raw)
-    local items, all = Block.View(raw)
+function Block.Expand(raw, boss)
+    local items, all = Block.View(raw, boss)
     if not items then
         return raw
     end
@@ -395,4 +428,101 @@ function Block.ReadInto(key)
         return false
     end
     return Interrupts:ReceiveShared(t.key, list, TEXT.fromNote)
+end
+
+-- Whether two texts' blocks hold the same names, line by line (nil for no block).
+local function sameRows(a, b)
+    if (a == nil) ~= (b == nil) then
+        return false
+    end
+    for i = 1, math.max(#(a or {}), #(b or {})) do
+        if table.concat(a[i] or {}, " ") ~= table.concat(b[i] or {}, " ") then
+            return false
+        end
+    end
+    return true
+end
+
+-- Interrupts' lists follow a note's block (Saved, below): your own list takes its names (you saved it), and the raid's
+-- list is read back from it (ReadInto). A row short of its slots can't be read back, so your own list is then the one
+-- in use. One change is fired, so an open page refreshes once. Only while the note is the one the block lives in for its
+-- boss and difficulty (noteOf); true when the lists followed.
+local function follow(noteID)
+    local record = CRT.Notes:Get(noteID)
+    local _, key = Block.SetupFor(record and record.encounterID, record and record.difficulty)
+    local t = key and target(key)
+    if not t or noteOf(t) ~= noteID then
+        return false
+    end
+    local rows = Block.Rows(record.raw) or {}
+    local list = {}
+    for g, grp in ipairs(t.def.groups) do
+        list[g] = {}
+        for s = 1, grp.slots do
+            list[g][s] = rows[g] and rows[g][s] or ""
+        end
+    end
+    local changed = Interrupts:SetOwn(t.key, list, true)
+    local ok, took = pcall(Block.ReadInto, t.key)
+    if not ok and geterrorhandler then
+        geterrorhandler()(took)
+    end
+    if changed and not (ok and took) then
+        Interrupts:Fire("list", t.key, "own")
+    end
+    return true
+end
+
+-- Notes saved in a fight (Notes.Busy), by id: their lists follow once the fight is over, so the plates and reminders
+-- never renumber mid-pull.
+local held, watch = {}, nil
+
+local function flush()
+    if CRT.Notes.Busy() then
+        return
+    end
+    local ids = {}
+    for id in pairs(held) do
+        ids[#ids + 1] = id
+    end
+    wipe(held)
+    for _, id in ipairs(ids) do
+        local ok, err = pcall(follow, id)
+        if not ok and geterrorhandler then
+            geterrorhandler()(err)
+        end
+    end
+end
+Block.FlushHeld = flush
+
+local function hold(noteID)
+    held[noteID] = true
+    if not watch then
+        watch = CreateFrame("Frame")
+        watch:SetScript("OnEvent", function()
+            flush()
+            -- the encounter's end can come before the fight's flag clears: once more, a moment later
+            if next(held) and C_Timer then
+                C_Timer.After(2, flush)
+            end
+        end)
+        watch:RegisterEvent("PLAYER_REGEN_ENABLED")
+        watch:RegisterEvent("ENCOUNTER_END")
+    end
+end
+
+-- A note saved in the note editor (Notes/EditorWindow.lua) from before to after: when its block changed, Interrupts'
+-- lists follow it (follow, above), with the tracker on or off (they are ready for when it is turned on). In combat or a
+-- boss fight they follow once it is over. True when they followed, or true and "held" until then.
+function Block.Saved(noteID, before, after)
+    local Notes = CRT.Notes
+    local record = Notes and Notes:Get(noteID)
+    if not record or record.personal or sameRows(Block.Rows(before), Block.Rows(after)) then
+        return false
+    end
+    if Notes.Busy() then
+        hold(noteID)
+        return true, "held"
+    end
+    return follow(noteID)
 end

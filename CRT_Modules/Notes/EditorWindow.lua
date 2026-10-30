@@ -15,6 +15,9 @@ local ADDON, CRT = ...
 -- first. History in the title bar opens the note's earlier versions (Notes/HistoryWindow.lua).
 -- Timer lines that list the same players as an assignment line follow it (Notes/EditorLinks.lua, Notes/Links.lua):
 -- a change to the line's names is written on them too, and a banner over the rows offers to link them.
+-- The raid note's kick block (Interrupts/NoteBlock.lua) shows as its "Kick order" heading and a row per group, the same
+-- rows: each chip numbered with its kick, a drop at a chip takes its place, a full group refuses (the status line says
+-- why). Saving it, Interrupts' lists for that boss follow (NoteBlock's Saved).
 -- Add assignment (Notes/EditorAssign.lua) shows an assignment block in place of the rows, the same as the Mech Alerts
 -- Assign tab's, with timers from one of the boss's mechanics, typed, or none; the palette drags onto its rows then.
 
@@ -74,6 +77,11 @@ local TEXT = {
         .. "too. Only names change. Raw text shows the note as it will be saved.\n\n"
         .. "Add assignment adds a heading and rows of players, with timer lines from one of the boss's mechanics, "
         .. "typed times, or none. Click a row of an assignment first to change that one.",
+    kickHelpTitle = "Kick order",
+    kickHelp = "The raid note's kick list, one row per group. The number on a name is its kick.\n\n"
+        .. "Drag players onto a group. Drop a name on another name to put it there. A group takes as many names as "
+        .. "it has kicks.\n\nSave, and the Interrupts lists for this boss follow.",
+    kickChip = "%d %s",
 }
 
 local L = {
@@ -170,9 +178,30 @@ local function rowChips(f, i, row, x0, width, y0)
     for k, name in ipairs(names) do
         -- a player's class, else the class a class name names ("Demon Hunter")
         local class = (W.classOf and W.classOf(name)) or CRT.NoteParser.ClassOf(name)
-        entries[k] = { label = name, class = class, token = name, source = { row = i, index = k }, removable = editable }
+        -- a kick row's chip carries its kick number
+        local label = row.kind == "kick" and string.format(TEXT.kickChip, k, name) or name
+        entries[k] = { label = label, class = class, token = name, source = { row = i, index = k }, removable = editable }
     end
     return Palette.RowChips(f, W.drag, entries, x0, width, y0)
+end
+
+-- The (?) right of the kick block's heading, made the first time a row frame shows it.
+local function kickHelp(f, show)
+    W.kickHelps = W.kickHelps or {} -- by row frame
+    local help = W.kickHelps[f]
+    if show and not help then
+        help = UI.HelpRight(f.heading, TEXT.kickHelpTitle, TEXT.kickHelp) -- it follows the heading's text
+        W.kickHelps[f] = help
+    end
+    if help then
+        help:SetShown(show)
+    end
+end
+
+-- A kick row's label: its raid marker's icon, then its group's label.
+local function kickLabel(row)
+    local icon = row.marker and CRT.InterruptNote and CRT.InterruptNote.Icon(row.marker, 14) or ""
+    return (icon ~= "" and (icon .. " ") or "") .. row.label .. ":"
 end
 
 -- Lays row i out for its kind and returns its height.
@@ -189,7 +218,8 @@ local function drawRow(f, i, row, width)
     local kind = row.kind
     -- a timed line is shown dimmed, under the Timers heading: no drop target, nothing to drag or remove
     f:SetAlpha(kind == "timer" and L.timerAlpha or 1)
-    if kind ~= "label" and kind ~= "invite" then
+    kickHelp(f, row.kicks == true)
+    if kind ~= "label" and kind ~= "invite" and kind ~= "kick" then
         for _, chip in ipairs(f.chips) do
             chip:Hide()
         end
@@ -224,6 +254,9 @@ local function drawRow(f, i, row, width)
             el.TimerRow(f, i) -- the row it follows, on hover
         end
         height = L.infoH
+    elseif kind == "kick" then
+        local w = Palette.RowLabel(f, kickLabel(row), width)
+        height = rowChips(f, i, row, Palette.RowChipsX(w), width - 4, 2) + L.rowGap
     elseif kind == "label" or kind == "invite" then
         local w = Palette.RowLabel(f, kind == "invite" and string.format(TEXT.invite, #W.session:Names(i)) or (row.label .. ":"), width)
         -- how many timer lines follow it, right of the label
@@ -269,7 +302,9 @@ function Editor.DrawRows()
         W.timerHeading = W.rowsChild:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
     end
     W.timerHeading:Hide()
-    for i, row in ipairs(W.session.rows) do
+    -- in the order they show: a kick block's groups with no line yet before its end line (Model's Order)
+    for _, i in ipairs(W.session:Order()) do
+        local row = W.session.rows[i]
         if row.kind == "timer" and not W.timerHeading:IsShown() then
             W.timerHeading:ClearAllPoints()
             W.timerHeading:SetPoint("TOPLEFT", 4, -(y + 2))
@@ -360,11 +395,19 @@ end
 -- Drag and drop ----------------------------------------------------------------------------------------------------
 
 -- The row under the mouse that takes names, or nil (outside the rows' scroll area there is none).
-local function rowUnderMouse()
-    local i = Palette.RowUnderMouse(W.rowsScroll, W.rowFrames, function(r)
+local function rowAndChip()
+    return Palette.RowUnderMouse(W.rowsScroll, W.rowFrames, function(r)
         return W.session.rows[r] ~= nil and W.session.rows[r].editable
     end)
-    return i -- the row only: a drop lands at its end
+end
+
+local function rowUnderMouse()
+    return (rowAndChip()) -- the row only: a drop lands at its end, or (a kick row) at the chip under the mouse
+end
+
+-- A drop or a click a kick row refused, for the status line (Refresh); gone at the next change.
+local function refused(why)
+    W.refused = why
 end
 
 local function highlight(target)
@@ -421,16 +464,26 @@ local function makeDrag()
         end,
         drop = function(_, target)
             -- drawn again either way, so a refused drop leaves nothing half shown
+            local row, at = rowAndChip()
+            local why
             edit(function()
-                return W.session:Drop(target)
+                local ok, no = W.session:Drop(target, row == target and at or nil)
+                why = no
+                return ok
             end)
+            refused(why)
             changed()
         end,
         click = function(source)
             if source.token then
-                if edit(function()
-                    return W.session:PaletteClick(source.token, source.kind)
-                end) then
+                local why
+                local ok = edit(function()
+                    local added, no = W.session:PaletteClick(source.token, source.kind)
+                    why = no
+                    return added
+                end)
+                refused(why)
+                if ok or why then
                     changed()
                 end
             elseif W.session.quickFill then
@@ -443,6 +496,7 @@ local function makeDrag()
             if src and src.row and W.session and edit(function()
                 return W.session:Remove(src.row, src.index)
             end) then
+                refused(nil)
                 changed()
             end
         end,
@@ -498,6 +552,8 @@ function Editor.Refresh()
     local status = ""
     if W.notice then
         status = W.notice
+    elseif W.refused then
+        status = UI.WarnText(W.refused)
     elseif readOnly() and not W.source.personal then
         local _, why = Notes:CanEditRaid()
         status = UI.WarnText(why or "")
@@ -536,8 +592,10 @@ end
 -- A new session over the saved text.
 local function loadSession()
     local text, editable = sourceText()
-    W.session = Model.New(text or "", { markdown = W.source.personal, readOnly = not editable })
-    W.notice = nil
+    -- the note's record: its boss and difficulty name the kick block's groups when the text has no header
+    W.session = Model.New(text or "", { markdown = W.source.personal, readOnly = not editable,
+        boss = not W.source.personal and Notes:Get(W.source.id) or nil })
+    W.notice, W.refused = nil, nil
     if W.source.personal then
         W.window.strip:SetTitle(TEXT.personalTitle)
     else
@@ -594,6 +652,13 @@ function Editor.Save()
         -- the assignment blocks' timer lines follow their rows once saved (Notes/Assign.lua)
         if CRT.NoteAssign then
             CRT.NoteAssign.LinkAll(W.source.id, text)
+        end
+        -- a changed kick block: Interrupts' lists for that boss follow it (Interrupts/NoteBlock.lua)
+        if CRT.InterruptNote and CRT.InterruptNote.Saved then
+            local ok, err = pcall(CRT.InterruptNote.Saved, W.source.id, s.base, text)
+            if not ok and geterrorhandler then
+                geterrorhandler()(err)
+            end
         end
         W.saving = false
         CRT:Print(TEXT.saved)

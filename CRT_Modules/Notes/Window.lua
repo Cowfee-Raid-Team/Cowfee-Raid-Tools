@@ -463,7 +463,7 @@ local function assignmentsText()
     local lines = note and note.lines
     -- the kick block reads as "Kick order" and a line per group (the saved text stays as written)
     if lines and record.raw and CRT.InterruptNote then
-        local shown = CRT.InterruptNote.Expand(record.raw)
+        local shown = CRT.InterruptNote.Expand(record.raw, record)
         if shown ~= record.raw then
             lines = CRT.NoteParser.Parse(shown).lines
         end

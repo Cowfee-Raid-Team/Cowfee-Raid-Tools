@@ -12,7 +12,7 @@
 //   linked one first, picked when solo), class colours, search, the tokens written, and when the list redraws.
 //   Timer lines that follow an assignment line (Links.lua, EditorLinks.lua): the Link banner, Link, the one obvious
 //   fix, the row tags and the hover, a row change rewriting the lines that follow it, Not now, read-only.
-// Usage: node run_notes_editor.js <Parse.lua> <Data.lua> <Engine.lua> <EditModel.lua> <Render.lua> <EditorWindow.lua> <Settings.lua> <Page.lua> <Links.lua> <EditorLinks.lua> <Palette.lua> <MechNote.lua> <Assign.lua> <AssignBlock.lua> <AssignTab.lua> <EditorAssign.lua>
+// Usage: node run_notes_editor.js <Parse.lua> <Data.lua> <Engine.lua> <EditModel.lua> <Render.lua> <EditorWindow.lua> <Settings.lua> <Page.lua> <Links.lua> <EditorLinks.lua> <Palette.lua> <MechNote.lua> <Assign.lua> <AssignBlock.lua> <AssignTab.lua> <EditorAssign.lua> <Interrupts/NoteBlock.lua>
 const fs = require('fs');
 const themeLua = require('./theme_stub');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
@@ -1446,9 +1446,75 @@ do
 end
 Notes.Busy = realBusy
 print("ok the Assign tab: sizes, the palette, a typed list left alone, a taken name refused, rows written with their lines, On casts, a player change, a move, refused (raid note, combat), follows the default timeline only, + Assignment and Remove with no reminder, two abilities of one name, typed times")
+
+-- 12. The raid note's Kick order block (Interrupts/NoteBlock.lua, the real file, over a stand-in for the Interrupts
+-- data): its groups as the editor's rows, chips numbered, a full group refuses saying why, a drop on a chip takes its
+-- place, Save writes the block and Interrupts' lists follow, read-only with no drag and no x
+do
+  local kickSrc = select(17, ...)
+  local DEF = { difficulty = 16, groups = { { key = "l", label = "Left", marker = 1, slots = 2 }, { key = "r", label = "Right", slots = 2 } } }
+  local fired, own = {}, nil
+  CRT.Interrupts = { listeners = {},
+    Key = function(e, d) return e .. ":" .. d end,
+    Def = function(_, key) return key == "4747:16" and DEF or nil end,
+    Setups = function(_, e) return e == 4747 and { DEF } or {} end,
+    Resolve = function(_, key) if key == "4747:16" then return key, DEF, 4747, 16 end end,
+    SetOwn = function(_, key, list, quiet) own = { key = key, list = list, quiet = quiet } return true end,
+    Fire = function(_, what) fired[#fired + 1] = what end,
+    Shared = function() return nil end,
+    SameList = function() return false end,
+    ReceiveShared = function() fired[#fired + 1] = "raid" return true end,
+    BossName = function() return "Kick Boss" end }
+  CRT.InterruptSetup = { MarkerIcon = function(m) return "|TUI-RaidTargetingIcon_" .. m .. ":14|t" end }
+  assert(load(kickSrc, "NoteBlock.lua"))("CowfeeRaidTools", CRT)
+  inRaid, leader = true, true
+  local kid = Notes:Import("EncounterID:4747;Difficulty:Mythic;Name:Kicks\\nintstart\\nAbu Gadios\\nintend\\n")
+  assert(Editor.Open({ id = kid }) and not W.session.readOnly, "the note opens, editable")
+  local s = W.session
+  -- rows: 1 header, 2 heading, 3 Left, 4 intend, 5 the end; 6 Right (no line yet), shown before the end line
+  assert(s.rows[3].kind == "kick" and s.rows[6].kind == "kick" and s.rows[6].label == "Right", "a row per group")
+  assert(table.concat(s:Order(), ",") == "1,2,3,6,4,5", "Right before the end line: " .. table.concat(s:Order(), ","))
+  local kh = W.kickHelps and W.kickHelps[W.rowFrames[2]]
+  assert(kh and kh.shown and rawget(kh, "helpTitle") == "Kick order", "Kick order with its (?)")
+  assert(not (W.kickHelps[W.rowFrames[1]] and W.kickHelps[W.rowFrames[1]].shown), "no (?) on another row")
+  local left = W.rowFrames[3]
+  assert(left.label:GetText():find("UI-RaidTargetingIcon_1", 1, true) and left.label:GetText():find("Left:", 1, true), "labelled with its marker: " .. left.label:GetText())
+  assert(left.chips[1].text:GetText() == "1 Abu" and left.chips[2].text:GetText() == "2 Gadios" and left.chips[1].remove.shown, "numbered chips with x")
+  assert(left.chips[1].token == "Abu", "the chip carries the name alone")
+  assert(W.rowFrames[6].shown and W.rowFrames[6].label:GetText() == "Right:", "the Right row shows")
+  -- a full group refuses, and says why
+  drag(paletteChip("Rixxy"), 3)
+  assert(table.concat(s:Names(3), " ") == "Abu Gadios", "Left is full")
+  assert(W.status:GetText():find("Left takes 2 names at most.", 1, true), "the status says why: " .. W.status:GetText())
+  -- onto Right, then a drop on Abu's chip puts Gadios first
+  drag(paletteChip("Rixxy"), 6)
+  assert(table.concat(s:Names(6), " ") == "Rixxy" and not W.status:GetText():find("at most", 1, true), "Rixxy on Right, the refusal gone")
+  rawset(left.chips[1], "over", true)
+  drag(left.chips[2], 3)
+  rawset(left.chips[1], "over", false)
+  assert(table.concat(s:Names(3), " ") == "Gadios Abu", "reordered: " .. table.concat(s:Names(3), " "))
+  assert(W.raw:GetText():find("intstart\\nGadios Abu\\nRixxy\\nintend\\n", 1, true), "the raw text: " .. W.raw:GetText())
+  -- Save: the block written, Interrupts' lists follow
+  assert(Editor.Save(), "saved")
+  assert(Notes:Get(kid).raw == "EncounterID:4747;Difficulty:Mythic;Name:Kicks\\nintstart\\nGadios Abu\\nRixxy\\nintend\\n", "the note: " .. Notes:Get(kid).raw)
+  assert(own and own.key == "4747:16" and own.quiet and table.concat(own.list[1], ",") == "Gadios,Abu" and table.concat(own.list[2], ",") == "Rixxy,", "your own list follows")
+  assert(table.concat(fired, ",") == "list", "one change (Right is short of its slots, so the raid's list isn't read): " .. table.concat(fired, ","))
+  -- read-only: no x, no drag
+  leader = false
+  Editor.Discard()
+  assert(Editor.Open({ id = kid }) and W.session.readOnly, "read-only for a raider")
+  left = W.rowFrames[3]
+  assert(left.chips[1].shown and not left.chips[1].remove.shown, "no x")
+  local before = W.session:Text()
+  drag(left.chips[1], 6)
+  assert(W.session:Text() == before, "no drag")
+  Editor.Discard()
+  inRaid = false
+end
+print("ok the Kick order block: rows per group, numbered chips, a full group refused, a drop on a chip, Save and the Interrupts lists, read-only")
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
-const files = process.argv.slice(2, 18);
+const files = process.argv.slice(2, 19);
 for (const f of files) {
   let src; try { src = fs.readFileSync(f, 'utf8'); } catch (e) { console.error('cannot read ' + f); process.exit(1); }
   lua.lua_pushstring(L, to_luastring(src));

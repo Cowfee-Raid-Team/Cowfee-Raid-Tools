@@ -274,14 +274,14 @@ local function freeRow(line, ctx)
 end
 
 -- ctx: classOf (name -> class), me (your name, lower case), spell (id -> { name, icon } or nil),
--- inviteOpen, rosterLinked, markdown. Returns the rows in order: the header, the timers by phase and time,
+-- inviteOpen, rosterLinked, markdown, boss (the note's record, for its kick block's groups). Returns the rows in order: the header, the timers by phase and time,
 -- lines it could not read, the other lines, the invite list (its names under it when open).
 function Render.Rows(text, ctx)
     ctx = ctx or {}
     local Parser = CRT.NoteParser
     -- the kick block reads as "Kick order" and a line per group (the saved text stays as written)
     if CRT.InterruptNote and CRT.InterruptNote.Expand then
-        text = CRT.InterruptNote.Expand(text or "")
+        text = CRT.InterruptNote.Expand(text or "", ctx.boss)
     end
     local note = Parser.Parse(text or "")
     local raw = Parser.SplitLines(text or "")
@@ -577,7 +577,7 @@ function Render.View(parent, opts)
     function view:Redraw()
         local extra = opts.context and opts.context() or {}
         local ctx = { classOf = Render.SharedLookup(), inviteOpen = self.inviteOpen, rosterLinked = extra.rosterLinked,
-            markdown = extra.markdown, spell = function(id)
+            markdown = extra.markdown, boss = extra.boss, spell = function(id)
                 return CRT.Notes:SpellInfo(id)
             end }
         local me = UnitName and UnitName("player")
