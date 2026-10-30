@@ -41,6 +41,11 @@ local TEXT = {
     typed = "Typed times",
     mechanics = "Mechanics",
     done = "Done",
+    remove = "Remove assignment",
+    removeTip = "Takes this assignment out of the note, with its timer lines and the blank line before it.",
+    removeConfirm = "Take the assignment '%s' out of the note?",
+    removeButton = "Remove",
+    removed = "Removed %s.",
     badTimes = "The times don't read: %s",
     keyTaken = "The note already has an assignment or a group list named %s. Pick another name.",
     adoptTitle = "Make an Assign block from %s?",
@@ -327,6 +332,45 @@ local function pick(key)
     Editor.Refresh()
 end
 
+-- Remove assignment: the block, its timer lines and the blank line before it (Assign.Replace) taken out of the session,
+-- after a confirmation. The view goes back to New assignment; the editor shows the change unsaved.
+function EA.AskRemove()
+    local key, b = A.key, A.block
+    if not (key and b) or readOnly() then
+        return false
+    end
+    local name = Assign.CleanName(b.name)
+    local function go()
+        if not (W.session and not readOnly()) or not Assign.Read(W.session:Text(), key) then
+            return
+        end
+        A.ui:Flush()
+        local old = W.session:Text()
+        local text = Assign.Replace(old, key, {})
+        -- a block that ended the note took its last line's end with it: the line before it ends the note again
+        if not old:find("\n$") then
+            text = text:gsub("\r?\n$", "")
+        end
+        apply(text)
+        newBlock()
+        Editor.Refresh()
+        W.notice = UI.GoodText(string.format(TEXT.removed, name))
+        Editor.Refresh()
+    end
+    if not StaticPopup_ShowCustomGenericConfirmation then
+        go()
+        return true
+    end
+    UI.LiftOver(UI.ShownPopup(StaticPopup_ShowCustomGenericConfirmation({
+        text = string.format(TEXT.removeConfirm, name),
+        acceptText = TEXT.removeButton,
+        cancelText = CANCEL,
+        showAlert = true,
+        callback = go,
+    }), "GENERIC_CONFIRMATION"))
+    return true
+end
+
 -- The block of the row selected for Quick fill, if it is one: its marked heading's key.
 local function selectedBlock()
     local s = W.session
@@ -421,6 +465,24 @@ function EA.Build(left)
         EA.Close()
     end)
     A.done:SetPoint("BOTTOMRIGHT", 0, 0)
+    -- Remove assignment, left of Done: only for a block the note has
+    A.remove = UI.PanelButton(A.ui.content, TEXT.remove, 22, function()
+        EA.AskRemove()
+    end)
+    A.remove:SetPoint("RIGHT", A.done, "LEFT", -6, 0)
+    A.remove:Hide()
+    if A.remove.SetMotionScriptsWhileDisabled then
+        A.remove:SetMotionScriptsWhileDisabled(true)
+    end
+    A.remove:SetScript("OnEnter", function(self)
+        UI.TooltipOwner(GameTooltip, self, "ANCHOR_TOP")
+        GameTooltip:SetText(TEXT.remove, 1, 1, 1)
+        GameTooltip:AddLine(TEXT.removeTip, 0.85, 0.85, 0.85, true)
+        GameTooltip:Show()
+    end)
+    A.remove:SetScript("OnLeave", function()
+        GameTooltip:Hide()
+    end)
     W.assignDrag = CRT.NoteAssignBlock.DragOpts(A.ui)
     W.assignUI = A.ui
 end
@@ -457,6 +519,8 @@ function EA.Refresh()
     A.pick.refresh()
     A.timersDrop.refresh()
     A.ui:Refresh()
+    A.remove:SetShown(A.key ~= nil)
+    A.remove:SetEnabled(not readOnly())
     A.ui.status:SetText("")
 end
 

@@ -1198,6 +1198,62 @@ do
   inRaid = false
   W.window:Hide()
 end
+
+-- 11b. Note editor > Add assignment > Remove assignment: the block, its timer lines and the blank line before it
+do
+  W.session = nil
+  W.window:Hide()
+  inRaid, leader = false, false
+  local base = "EncounterID:3470;Difficulty:Mythic;Name:Nek'zali\\nIntro"
+  local nid = Notes:Import(base)
+  assert(Editor.Open({ id = nid }), "opened")
+  local add = W.assignButton
+  add.scripts.OnClick(add)
+  local A, ui = EA.state, W.assignUI
+  assert(A.remove and not A.remove.shown, "no Remove assignment for a new block")
+  blockDrag(W, ui, paletteChip("Abu"), 1)
+  local added = W.session:Text()
+  assert(added ~= base and A.remove.shown and A.remove:IsEnabled(), "shown once it is in the note")
+  assert(A.remove:GetText() == "Remove assignment", "its label")
+  -- at the end: the note as it was before the add, no blank line left
+  confirm = nil
+  A.remove.scripts.OnClick(A.remove)
+  assert(confirm and confirm.text == "Take the assignment 'Assignment 1' out of the note?" and confirm.acceptText == "Remove", "asked first")
+  assert(W.session:Text() == added, "nothing changes until it is accepted")
+  confirm.callback()
+  assert(W.session:Text() == base, "byte for byte as before: " .. W.session:Text())
+  assert(W.status:GetText():find("Removed Assignment 1.", 1, true), "said: " .. W.status:GetText())
+  assert(W.assignOn and A.pick.opts.get() == "new" and not A.remove.shown, "back to New assignment")
+  -- in the middle: one blank line between the neighbours
+  blockDrag(W, ui, paletteChip("Abu"), 1)
+  local block = W.session:Text():sub(#base + 1)
+  local tail = "\\n\\nNext\\nZ: q"
+  W.session = Model.New(base .. block .. tail, { base = W.session.base })
+  A.pick.opts.set("b:assignment 1")
+  assert(A.remove.shown, "shown for a block the note has")
+  confirm = nil
+  A.remove.scripts.OnClick(A.remove)
+  confirm.callback()
+  assert(W.session:Text() == base .. tail, "one blank line: " .. W.session:Text())
+  -- read-only: greyed
+  A.done.scripts.OnClick(A.done)
+  W.session = nil
+  W.window:Hide()
+  local ro = Notes:Import(base .. block)
+  inRaid, leader = true, false
+  assert(Editor.Open({ id = ro }) and W.session.readOnly, "read-only")
+  W.session.selected = nil
+  EA.state.key = "assignment 1"
+  W.assignOn = true
+  Editor.Refresh()
+  assert(A.remove.shown and not A.remove:IsEnabled(), "greyed out when read-only")
+  W.assignOn = false
+  A.key, A.block = nil, nil
+  inRaid = false
+  W.session = nil
+  W.window:Hide()
+end
+print("ok Remove assignment: confirm, byte for byte at the end, one blank line in the middle, hidden for a new block, greyed read-only")
 print("ok the note editor's Add assignment: names only, a mechanic's timers, On casts, a taken name refused, links on Save, the block of a row, rename, typed times")
 
 -- 12. A pasted note's group list with its timer lines: a banner offers it, a confirmation says what changes
