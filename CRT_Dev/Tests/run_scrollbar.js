@@ -387,7 +387,6 @@ const KNOWN = [
   ['CRT_Modules/Loot/Page.lua', 'MinimalScrollBar'],
   ['CRT_Modules/GearChecker/Page.lua', 'MinimalScrollBar'], // the Gear Checker list
   ['CRT_Modules/Timeline/View.lua', 'CowfeeRaidToolsTimelineView'],
-  ['CRT_Modules/Timeline/SettingsTab.lua', 'CowfeeRaidToolsTimelineRowsScroll'],
   ['CRT_Modules/Timeline/ReferencePage.lua', 'CowfeeRaidToolsTimelineReferenceScroll'],
   ['CRT_Modules/Timeline/ReferencePage.lua', 'CowfeeRaidToolsTimelineAbilitiesScroll'],
   ['CRT_Modules/Notes/AlertsTab.lua', 'CowfeeRaidToolsAlertSettingsScroll'], // an alert area's settings rows

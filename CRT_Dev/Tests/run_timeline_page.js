@@ -9,6 +9,8 @@ const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
 const harness = themeLua(process.argv.slice(2)) + `
 local dataSrc, dbSrc, refSrc, lanesSrc, refPageSrc, settingsTabSrc, pageSrc, journalSrc, regSrc, seasonSrc, nekSrc, reviewSrc, rehSrc, rehWinSrc, slashSrc, toggleSrc = ...
 local strings, checks, edits, buttons, dropdowns, sliders = {}, {}, {}, {}, {}, {}
+pills = {}
+selectedTabButton = nil
 local function mock(kind)
   local m = { shown = false, kind = kind }
   return setmetatable(m, { __index = function(t, k)
@@ -29,6 +31,7 @@ local function mock(kind)
     if k == "SetScript" then return function(self, name, fn) rawset(self, name, fn) end end
     if k == "SetPoint" then return function(self, ...) rawset(self, "pt", { ... }) end end
     if k == "SetEnabled" then return function(self, v) self.enabled = v end end
+    if k == "SetAlpha" then return function(self, a) rawset(self, "alpha", a) end end
     if k == "SetNumeric" then return function(self, v) rawset(self, "numeric", v) end end
     if k == "SetMultiLine" then return function(self, v) rawset(self, "multi", v) end end
     if k == "SetTextColor" then return function(self, r, g, b) rawset(self, "color", { r, g, b }) end end
@@ -77,15 +80,24 @@ local CRT = { db = { timeline = { record = true, minPull = 15, keep = 10, bosses
       rawset(b, "SetWidth", function(self, w) self.w = w self.sized = true end)
       b.sized = true return b end,
     PanelButtonWidth = function(w) return math.max(40, math.ceil(w or 0) + 28) end,
+    -- CRT_Core/UI/Controls.lua's value pill (tested in run_controls.js): its options, its refresh greys it
+    ValuePill = function(parent, o) local m = mock("pill") m.opts, m.parent = o, parent pills[#pills + 1] = m
+      rawset(m, "refresh", function() m.enabled = not o.enabledIf or (o.enabledIf() and true or false) m.text = tostring(o.get()) end) m.refresh() return m end,
     SkinTree = function(_, f) skinCalls = skinCalls + 1 end,
+    SkinEditBox = function(_, e) rawset(e, "skinned", true) end,
     RegisterPage = function(_, key, title, fn) pages[key] = { title = title, build = fn } end,
-    RegisterTab = function(_, b) tabs[#tabs+1] = b end, SetTabSelected = function() end,
+    RegisterTab = function(_, b) tabs[#tabs+1] = b end, SetTabSelected = function(_, b, on) if on then selectedTabButton = b end end,
     IsModern = function() return true end, Scale = function() return 100 end, RegisterLayer = function(_, k, f) layered = k if k == "timeline" then popFrame = f end end, SelectPage = function(_, k) selectedPage = k end,
     ResetButtonWidth = function() return 44 end, ResetButton = function() return mock() end, Show = function() end, SkinCloseButton = function() end,
     StyleWindow = function() end, SetFrameTitle = function() end },
   PALETTE = { background = { 0.1, 0.1, 0.1 }, border = { 0.3, 0.3, 0.3 }, accent = { 0.78, 0.56, 0.36 }, label = { 0.87, 0.73, 0.56 }, text = { 0.95, 0.9, 0.84 } },
 }
 CRT_THEME(CRT, CRT.UI)
+-- Timeline.DevMode reads the Development page's hidden flag: /crt dev open while the tests run, unless one closes it
+CRT.UI.pages = { dev = { hidden = false } }
+local function setDev(on) CRT.UI.pages.dev.hidden = not on end
+-- a developer build: the CRT_Dev files loaded (CRT.Dev); a test takes it away for a packaged build
+CRT.Dev = {}
 -- the real CRT_Core/UI/Toggle.lua (UI.Toggle2, the pop-out's Abilities | Healer CDs toggle)
 assert(load(toggleSrc, "CRT_Core/UI/Toggle.lua"))("CowfeeRaidTools", CRT)
 -- over the real UI/Tooltip.lua's (CRT_THEME loads it): the Tooltip position dropdown with its spot picker,
@@ -105,9 +117,10 @@ function CRT.UI.Window(name, o)
   return w
 end
 local customAdded = {}
+customRemoved = {}
 journalHidden = {}
 CRT.TimelineJournal = { ResolveID = function(_, k, r) if type(k) == "number" then return k end if r and type(r.encounterID) == "number" then return r.encounterID end end, Rows = function() return rowsList end, AddCustom = function(_, e, s) customAdded[#customAdded+1] = s end,
-  RemoveCustom = function() end, SetHidden = function(_, e, s, h) journalHidden[e .. ":" .. s] = h or nil end,
+  RemoveCustom = function(_, e, s) customRemoved[#customRemoved + 1] = s end, SetHidden = function(_, e, s, h) journalHidden[e .. ":" .. s] = h or nil end,
   IsHidden = function(_, e, s) return journalHidden[e .. ":" .. tostring(s)] and true or false end }
 do
   local realCRT = {}
@@ -186,10 +199,10 @@ pages.timeline.build(pf)
 pf:Show()
 
 local function tabText(b) return type(b.text) == "table" and b.text.text or b.text end
+local function find(list, text) for _, d in ipairs(list) do if d.text == text then return d end end end
 assert(#tabs == 3 and tabText(tabs[1]) == "Review" and tabText(tabs[2]) == "Settings" and tabText(tabs[3]) == "Advanced", "tabs order: Review, Settings, Advanced")
 print("ok tabs order")
 
-local function find(list, text) for _, d in ipairs(list) do if d.text == text then return d end end end
 assert(find(dropdowns, "Pull") == nil, "no Pull dropdown on the Review tab")
 print("ok no Pull dropdown")
 -- the read-only label of the ability timeline shown, where the Pull dropdown was (the Unnamed casts (?) follows it)
@@ -238,7 +251,7 @@ do
   assert(shownLabel() and shownLabel().kind == "fs" and shownLabel().pt[4] == 412, "Unnamed casts' (?) is right of the label, where the Pull dropdown was")
   assert(helpTargets["Order"] == find(dropdowns, "Order"), "Order's (?) is right of its dropdown")
   local deaths = helpTargets["Deaths from recent pulls"]
-  assert(deaths and deaths.kind == "fs" and deaths.text == "Deaths from recent pulls", "the Deaths checkbox's (?) is right of its label's text")
+  assert(deaths and deaths.kind == "fs" and deaths.text == "pulls", "the Deaths checkbox's (?) is right of the word after its pill")
   assert(helpTargets["Pop out"] and helpTargets["Pop out"].text == "Pop out", "Pop out's (?) is right of its button")
   local pt = helpTargets["Pop out"].pt
   assert(pt and pt[1] == "TOPRIGHT" and pt[4] == -8 - 4 - 20, "Pop out stands a (?) in from the right, so its (?) ends at the frame's inset: " .. tostring(pt and pt[4]))
@@ -267,9 +280,8 @@ do
   local hp = helpTargets["Tooltips"].pt or {}
   local rp = rawget(g.row, "pt") or {}
   assert(hp[1] == "TOPLEFT" and hp[4] == 360 and rp[1] == "TOPLEFT" and rp[4] == 360 and rp[5] < hp[5], "Tooltips sits in the right column, the dropdown under its heading")
-  local del
-  for _, b in ipairs(buttons) do if b.text == "Delete this boss's pulls" then del = b end end
-  assert(del and del.pt and hp[5] < del.pt[5] - 20, "Tooltips sits under the Delete button")
+  local overlayPulls = find(sliders, "Overlay pulls")
+  assert(overlayPulls and overlayPulls.pt[4] == 360 and hp[5] < overlayPulls.pt[5] - 20, "Tooltips sits under Overlay pulls in the right column")
   -- under the dropdown (about 30 high), the picker (UI.SPOT_PICKER_H, at most 70) stays inside the tab
   local labelW = g.opts and g.opts.labelWidth or 140
   assert(rp[5] - 32 - 70 > -(CRT.UI.PAGE_H - 60) and 360 + labelW + 5 + 126 < CRT.UI.PAGE_W, "the Tooltips picker fits the tab: " .. tostring(rp[5]))
@@ -330,59 +342,83 @@ reviewTab.OnClick(reviewTab)
 assert(view.refreshes > before, "review tab refreshes the view")
 print("ok review tab refreshes")
 
--- the zoom slider
-local zoom = find(sliders, "Time visible")
-assert(zoom and zoom.opts.min == 60 and zoom.opts.max == 600 and zoom.opts.step == 30, "zoom slider exists")
-assert(zoom.opts.format(90) == "1:30", "zoom slider formats minutes")
-zoom.opts.set(120)
-assert(T:Settings().span == 120 and view.span == 120, "zoom slider sets span and view")
-T:Settings().span = 90
-assert(zoom.opts.get() == 90, "zoom slider re-reads span")
-assert(find(sliders, "Seconds visible"), "settings tab keeps its span slider")
--- both span sliders show m:ss, so a typed number is minutes
-for _, label in ipairs({ "Time visible", "Seconds visible" }) do
-  local o = find(sliders, label).opts
-  assert(o.toDisplay and o.toDisplay(90) == 1.5 and o.fromDisplay(2.5) == 150, label .. " is typed in minutes")
-end
-for _, sl in ipairs(sliders) do
-  if sl.text ~= "Time visible" and sl.text ~= "Seconds visible" then assert(sl.opts.toDisplay == nil, sl.text .. " types what it shows") end
-end
-print("ok zoom slider")
-
--- Fit: right after the zoom slider, zooms the view out to the whole fight; a drag zoom moves the slider too
+-- Review has no Time visible row and no Fit button (Alex, 2026-10-30); Seconds visible stays on Settings,
+-- and the view's zoom (the wheel, a drag, a right-click on the axis) needs no slider to follow it
 do
-  local fit
-  for _, b in ipairs(buttons) do if b.text == "Fit" then fit = b end end
-  assert(fit and fit.template == "UIPanelButtonTemplate", "a Fit button")
-  assert(fit.pt and fit.pt[1] == "LEFT" and fit.pt[2] == zoom and fit.pt[3] == "RIGHT", "Fit sits right after the zoom slider")
-  assert(CRTFontButtonSmall and fit.normalFont == CRTFontButtonSmall and fit.highlightFont == CRTFontButtonSmallHighlight
-    and fit.disabledFont == CRTFontButtonSmallDisable, "Fit has the Review buttons' small fonts")
-  assert(fit.sized and fit:GetWidth() == math.max(40, 3 * 5 + 28), "Fit is sized from its label in that font: " .. tostring(fit:GetWidth()))
-  fit.OnClick(fit)
-  assert(view.fits == 1, "Fit zooms the view out")
-  local refreshed = 0
-  rawset(zoom, "refresh", function() refreshed = refreshed + 1 end)
-  assert(type(view.onSpan) == "function", "the view tells the page of a zoom")
-  view.onSpan(90)
-  assert(refreshed == 1, "the zoom slider follows a drag zoom")
-  rawset(zoom, "refresh", function() end)
-  local realOwner, realTip, area, said = CRT.UI.TooltipOwner, GameTooltip, nil, {}
-  CRT.UI.TooltipOwner = function(_, _, _, _, _, how) area = how end
-  GameTooltip = { SetText = function(_, t) said[#said + 1] = t end, AddLine = function(_, t) said[#said + 1] = t end, Show = function() end, Hide = function() end }
-  fit.OnEnter(fit)
-  assert(area == "timeline" and said[1] == "Fit" and tostring(said[2]):find("whole fight", 1, true), "Fit's tooltip, in the timeline's area: " .. tostring(said[2]))
-  CRT.UI.TooltipOwner, GameTooltip = realOwner, realTip
-  -- the help names the ways to zoom
+  assert(find(sliders, "Time visible") == nil, "Review has no Time visible slider")
+  for _, b in ipairs(buttons) do assert(b.text ~= "Fit", "Review has no Fit button") end
+  local secs = find(sliders, "Seconds visible")
+  assert(secs and secs.opts.min == 60 and secs.opts.max == 600 and secs.opts.step == 30, "Settings keeps Seconds visible")
+  assert(secs.opts.format(90) == "1:30" and secs.opts.toDisplay(90) == 1.5 and secs.opts.fromDisplay(2.5) == 150, "Seconds visible is typed in minutes")
+  secs.opts.set(120)
+  assert(T:Settings().span == 120, "Seconds visible sets the span")
+  for _, sl in ipairs(sliders) do
+    if sl.text ~= "Seconds visible" then assert(sl.opts.toDisplay == nil, sl.text .. " types what it shows") end
+  end
+  assert(view.onSpan == nil, "no slider on Review follows a zoom")
+  -- the timeline takes the row the slider had: right under the checkboxes
+  local holderTop
+  for _, fr in ipairs(allFrames) do if rawget(fr, "pt") and fr.pt[1] == "TOPLEFT" and fr.pt[4] == 8 and (fr.pt[5] == -64 or fr.pt[5] == -96) and rawget(fr, "kind") == "Frame" then holderTop = fr.pt[5] end end
+  assert(holderTop == -64 or holderTop == -96, "the timeline starts under the checkboxes")
   local help = helps["The Timeline"]
-  assert(help:find("time axis", 1, true) and help:find("Ctrl", 1, true) and help:find("Fit", 1, true) and help:find("right-click the axis", 1, true), "the Timeline's help names drag zoom, Fit and the right-click")
+  assert(help:find("time axis", 1, true) and help:find("Ctrl", 1, true) and help:find("right-click the axis", 1, true) and not help:find("Fit", 1, true), "the Timeline's help names drag zoom and the right-click, no Fit")
+  assert(not help:find("Advanced", 1, true), "the Timeline's help doesn't point at the Advanced tab")
 end
+print("ok Review has no Time visible row")
+
+-- Deaths from the last (N) pulls: the pill is Overlay pulls, both ways, and greyed while the box is off
+do
+  local pill = pills[1]
+  local overlayCheck
+  for _, c in ipairs(checks) do if c.Label and c.Label.text == "Deaths from the last" then overlayCheck = c end end
+  assert(overlayCheck and pill, "the checkbox reads Deaths from the last, with a pill")
+  assert(pill.pt and pill.pt[1] == "LEFT" and pill.pt[2] == overlayCheck.Label, "the pill sits right after the checkbox's words")
+  local word
+  for _, st in ipairs(strings) do if st.text == "pulls" and rawget(st, "pt") and st.pt[2] == pill then word = st end end
+  assert(word, "then the word pulls")
+  assert(pill.opts.min == 2 and pill.opts.max == 5, "the pill's range is Overlay pulls': 2 to 5")
+  local slider = find(sliders, "Overlay pulls")
+  assert(slider.opts.min == pill.opts.min and slider.opts.max == pill.opts.max, "one range for both")
+  pill.opts.set(5)
+  assert(T:Settings().overlay == 5 and slider.opts.get() == 5, "the pill writes Overlay pulls; the slider follows")
+  slider.opts.set(2)
+  assert(pill.opts.get() == 2, "the slider writes it; the pill follows")
+  T:Set("overlay", 3)
+  assert(pill.text == "3", "a change redraws the pill (it is one of Review's controls): " .. tostring(pill.text))
+  T:Set("overlayOn", false)
+  assert(pill.enabled == false, "greyed while Deaths from the last pulls is off")
+  overlayCheck:SetChecked(true) overlayCheck.OnClick(overlayCheck)
+  assert(T:Settings().overlayOn == true and pill.enabled == true, "ticking the box frees the pill")
+  T:Set("overlayOn", false)
+  assert(helps["Deaths from recent pulls"]:find("How many pulls it covers: the number, or Overlay pulls on the Settings tab.", 1, true), "the (?) says where the number is set")
+end
+print("ok the pulls pill")
+
+-- Settings: no Rows block; Hide rows with no casts stays, under View
+do
+  assert(helps["Rows"] == nil, "the Settings tab has no Rows heading")
+  for _, st in ipairs(strings) do assert(type(st.text) ~= "string" or not st.text:find("^Rows for "), "no Rows for line") end
+  local hide
+  for _, c in ipairs(checks) do if c.Label and c.Label.text == "Hide rows with no casts in this pull" then hide = c end end
+  assert(hide and hide.pt[4] == 8 - 4, "Hide rows with no casts is on Settings, in the left column")
+  local icon = find(sliders, "Icon size")
+  assert(hide.pt[5] < icon.pt[5], "under Icon size, in View")
+  hide:SetChecked(true) hide.OnClick(hide)
+  assert(T:Settings().hideEmpty == true, "it writes hideEmpty")
+  hide:SetChecked(false) hide.OnClick(hide)
+  assert(T:Settings().hideEmpty == false, "and back")
+  -- the sections moved up: Recording sits under View on the left, Tooltips under Deaths on the right
+  local recHelp = helpTargets["Recording"]
+  assert(recHelp.pt[4] == 8 and recHelp.pt[5] > -200, "Recording moved up into the left column: " .. tostring(recHelp.pt[5]))
+end
+print("ok Settings has no Rows block")
 print("ok fit button")
 
--- new row lines are skinned
+-- new lines of the Journal abilities list are skinned (their tick)
 rowsList = { { spellID = 1, name = "A", own = true } }
 local skinBefore = skinCalls
 T:Set("grid", 30)
-assert(skinCalls > skinBefore, "new row lines are skinned")
+assert(skinCalls > skinBefore, "new list lines are skinned")
 print("ok row lines skinned")
 rowsList = {}
 
@@ -498,46 +534,52 @@ do
 end
 print("ok recent pulls toggle overlay")
 
--- reference rows on the Settings tab hide by name
-do
-  local line
+-- Advanced, Journal abilities: a Shown tick on each line hides or shows the row (Journal:SetHidden), an
+-- unticked line is dimmed; your own spells are marked yours, with an x and Remove on the menu
+local function abilityLineNamed(name)
   for _, c in ipairs(checks) do
-    local p = rawget(c, "line")
-    if p and p.shown and p.text and p.text.text == "Soulcoil Rite" then line = p end
+    local l = rawget(c, "line")
+    if l and l.shown and l.name and l.name.text == name then return l end
   end
-  assert(line, "reference rows listed on the Settings tab")
-  line.check:SetChecked(false) line.check.OnClick(line.check)
-  assert(CRT.db.timeline.rows[3470].hiddenNames["soulcoil rite"] == true, "reference rows hide by name")
-  line.check:SetChecked(true) line.check.OnClick(line.check)
-  assert(not CRT.db.timeline.rows[3470].hiddenNames["soulcoil rite"], "reference rows show again")
 end
-print("ok reference rows hide by name")
-
--- a reference row with no [spell] whose Journal match by name is hidden shows unticked
 do
-  rowsList = { { spellID = 777, name = "Grasping Depths", icon = "texG" } }
-  journalHidden["3470:777"] = true
-  local function laneShown()
-    local lanes = CRT.TimelineLanes.Build(view.pull, rowsList, T:Settings(), 3470)
-    for _, l in ipairs(lanes) do if l.label == "Grasping Depths" then return true end end
-    return false
-  end
+  rowsList = { { spellID = 777, name = "Grasping Depths", icon = "texG" }, { spellID = 555, name = "Mine", own = true } }
   T:Set("grid", 30)
-  local line
-  for _, c in ipairs(checks) do
-    local p = rawget(c, "line")
-    if p and p.shown and p.text and p.text.text == "Grasping Depths" then line = p end
-  end
-  assert(line and not line.check.checked and not laneShown(), "journal-hidden reference row shows unticked")
-  line.check:SetChecked(true) line.check.OnClick(line.check)
-  assert(not journalHidden["3470:777"] and laneShown() and line.check.checked, "ticking it shows the lane again")
-  line.check:SetChecked(false) line.check.OnClick(line.check)
-  assert(not journalHidden["3470:777"] and not laneShown() and CRT.db.timeline.rows[3470].hiddenNames["grasping depths"], "unticking hides by name only")
-  line.check:SetChecked(true) line.check.OnClick(line.check)
+  local l = abilityLineNamed("Grasping Depths")
+  assert(l and l.check.shown and l.check.checked and l.check.template == "UICheckButtonTemplate", "each Journal ability has a Shown tick, ticked")
+  assert(l.check.pt[1] == "LEFT" and l.icon.pt[2] > l.check.pt[2] and l.name.pt[2] > l.icon.pt[2], "the tick, then the icon, then the name")
+  assert(l.id.text == "777", "the spell ID stays")
+  l.check:SetChecked(false) l.check.OnClick(l.check)
+  assert(journalHidden["3470:777"], "unticking hides the Journal row")
+  T:Set("grid", 30)
+  l = abilityLineNamed("Grasping Depths")
+  assert(not l.check.checked and rawget(l.name, "alpha") and l.name.alpha < 1 and l.icon.alpha < 1, "an unticked row is dimmed")
+  l.check:SetChecked(true) l.check.OnClick(l.check)
+  assert(not journalHidden["3470:777"], "ticking shows it again")
+  T:Set("grid", 30)
+  l = abilityLineNamed("Grasping Depths")
+  assert(l.check.checked and l.name.alpha == 1 and not l.remove.shown, "back to full, and no x on a Journal row")
+  local mine = abilityLineNamed("Mine")
+  assert(mine and mine.tag.text == "yours" and mine.remove.shown, "your own spell is marked yours, with Remove")
+  assert(mine.remove.text == "Remove" and mine.remove.template == "UIPanelButtonTemplate" and mine.remove.normalFont == CRTFontButtonSmall, "Remove is a small panel button")
+  mine.remove.OnClick(mine.remove)
+  assert(customRemoved[#customRemoved] == 555, "Remove takes it out")
   rowsList = {}
   T:Set("grid", 30)
 end
-print("ok journal-hidden reference row shows unticked")
+print("ok Advanced ticks hide and show Journal rows")
+
+-- Add spell ID: adds a row of your own for the list's boss
+do
+  local realName = C_Spell.GetSpellName
+  C_Spell.GetSpellName = function(id) if id == 4321 then return "Custom Cast" end end
+  edit:SetText("4321") add.OnClick(add)
+  assert(customAdded[#customAdded] == 4321 and edit:GetText() == "", "Add spell ID adds a custom row")
+  assert(rawget(edit, "skinned"), "the spell ID box is skinned (UI:SkinEditBox)")
+  C_Spell.GetSpellName = realName
+  assert(helps["Add"] and helps["Add"]:find("recorded pulls", 1, true), "Add's (?) says recorded pulls only")
+end
+print("ok add spell ID")
 
 -- the References tab
 local paste
@@ -631,17 +673,17 @@ print("ok own reference label marked yours")
 
 do
   bossDD.opts.set(3470)
-  assert(edit.enabled == false and add.enabled == false, "add spell disabled on a reference")
-  assert(helps["Rows"]:find("recorded pulls", 1, true), "add spell disabled on a reference: help says so")
-  assert(helps["Rows"]:find("Encounter Journal", 1, true) and helps["Rows"]:find("combat", 1, true), "Rows help: icons need the Journal, not read in combat")
+  assert(edit.enabled == true and add.enabled == true, "add spell: on for a boss's Journal list, ability timeline or not")
+  assert(helps["Journal abilities"]:find("combat", 1, true), "Journal abilities help: not read in combat")
   assert(helps["Abilities Text"]:find("combat", 1, true), "References help: icons need the Journal, not read in combat")
-  local b2 = recentRow(2) b2.OnClick(b2)
-  assert(add.enabled == false, "add spell disabled on a reference: a pull laid over it changes nothing")
-  b2 = recentRow(2) b2.OnClick(b2)
-  bossDD.opts.set(3002)
-  assert(edit.enabled == true and add.enabled == true, "add spell disabled on a reference: enabled again for a boss with none")
-  bossDD.opts.set(3470)
-  assert(add.enabled == false, "add spell disabled on a reference: and off again")
+  local key = R:Add("Boss: Nek'zali the Soulcoiler\\nDifficulty: Mythic\\nA: 0:10")
+  local edit2
+  for _, b in ipairs(buttons) do if b.text == "Edit" and b.shown and rawget(b, "key") == key then edit2 = b end end
+  edit2.OnClick(edit2)
+  assert(edit.enabled == false and add.enabled == false, "add spell: off while your ability timeline is open in the box")
+  btn("Clear").OnClick(btn("Clear"))
+  assert(edit.enabled == true and add.enabled == true, "add spell: on again")
+  R:Delete(key)
 end
 print("ok add spell disabled on a reference")
 
@@ -713,6 +755,81 @@ do
   btn("Clear").OnClick(btn("Clear"))
   J.ResolveID = oldResolve
 end
+
+-- with your ability timeline open in the box, its rows are listed: their ticks hide by name for the page's boss
+do
+  rowsList = { { spellID = 777, name = "Grasping Depths", icon = "texG" } }
+  local key = T:SaveReferenceText("Boss: Nek'zali the Soulcoiler\\nDifficulty: Mythic\\nEncounter: 3470\\nSoulcoil Rite: 0:10\\nGrasping Depths: 0:20")
+  assert(key, "an ability timeline of yours, open in the box")
+  local l = abilityLineNamed("Soulcoil Rite")
+  assert(l and l.refRow and l.check.shown and l.check.checked, "its rows have ticks")
+  l.check:SetChecked(false) l.check.OnClick(l.check)
+  assert(CRT.db.timeline.rows[3470].hiddenNames["soulcoil rite"] == true, "reference rows hide by name")
+  l.check:SetChecked(true) l.check.OnClick(l.check)
+  assert(not CRT.db.timeline.rows[3470].hiddenNames["soulcoil rite"], "reference rows show again")
+  -- a row whose Journal match is hidden shows unticked; ticking it shows the spell again
+  journalHidden["3470:777"] = true
+  T:Set("grid", 30)
+  l = abilityLineNamed("Grasping Depths")
+  assert(l and not l.check.checked, "journal-hidden reference row shows unticked")
+  l.check:SetChecked(true) l.check.OnClick(l.check)
+  assert(not journalHidden["3470:777"], "ticking it shows the spell again")
+  R:Delete(key)
+  for _, b in ipairs(buttons) do if b.text == "Clear" then b.OnClick(b) end end
+  rowsList = {}
+  T:Set("grid", 30)
+end
+print("ok reference rows tick by name on Advanced")
+
+-- Advanced only with /crt dev open: hidden otherwise, and a selected Advanced goes back to Review
+do
+  local adv = tabs[3]
+  adv.OnClick(adv)
+  assert(selectedTabButton == adv and adv.shown, "with /crt dev open, Advanced shows and can be picked")
+  setDev(false)
+  T:Fire()
+  assert(not adv.shown and tabs[1].shown and tabs[2].shown, "without /crt dev, the tab bar has Review and Settings")
+  assert(selectedTabButton == tabs[1], "Advanced was selected: back to Review")
+  adv.OnClick(adv)
+  assert(selectedTabButton == tabs[1], "a hidden tab can't be picked")
+  -- Send to Timeline outside dev: saves nothing, says so, opens no hidden tab
+  local before, count = #printed, #CRT.db.timeline.references
+  local key = T:SaveReferenceText("Boss: Nek'zali the Soulcoiler\\nDifficulty: Mythic\\nEncounter: 3470\\nOdd: 0:10")
+  assert(key == nil and #CRT.db.timeline.references == count and selectedTabButton == tabs[1], "Save outside dev saves nothing and selects no hidden tab")
+  assert(#printed == before + 1 and not printed[#printed]:find("/crt dev", 1, true), "and says so, without pointing at /crt dev: " .. tostring(printed[#printed]))
+  T:OpenReferenceText("Boss: X")
+  assert(#printed == before + 2 and selectedTabButton == tabs[1], "Open outside dev says so too, and opens nothing")
+  setDev(true)
+  T:Fire()
+  assert(adv.shown, "with /crt dev open again, Advanced is back without a reload")
+  tabs[1].OnClick(tabs[1])
+end
+print("ok Advanced only behind /crt dev")
+
+-- a packaged build (no CRT_Dev files) reads none of your own timeline layers that only Advanced manages:
+-- rows hidden by name, your ability labels; the saved data stays, and a developer build reads it again
+do
+  local ref = R:Find("ship:1").ref
+  local function laneNamed(name)
+    local lanes = CRT.TimelineLanes.AsShown({ reference = ref }, {}, T:Settings(), 3470, nil, "mythic")
+    for _, l in ipairs(lanes) do if l.label == name or l.baseLabel == name then return l end end
+  end
+  local s = T:Settings()
+  s.rows[3470] = s.rows[3470] or {}
+  s.rows[3470].hiddenNames = { ["soulcoil rite"] = true }
+  T:SetAbility(3470, 1286873, "name", "My name")
+  assert(laneNamed("Soulcoil Rite") == nil and T:Ability(3470, 1286873).name == "My name", "developer build: your hide and your label are read")
+  CRT.Dev = nil
+  assert(T.DevBuild() == false and laneNamed("Soulcoil Rite") ~= nil and T:Ability(3470, 1286873) == nil, "packaged build: neither is read")
+  local lanes = { { label = "X", spellID = 1286873 } }
+  assert(T:ApplyAbilities(lanes, 3470, {}) == lanes and lanes[1].label == "X", "packaged build: no labels laid on")
+  assert(s.rows[3470].hiddenNames["soulcoil rite"] == true and s.abilities["3470"][1286873].name == "My name", "packaged build: nothing saved is removed")
+  CRT.Dev = {}
+  assert(laneNamed("Soulcoil Rite") == nil and T:Ability(3470, 1286873).name == "My name", "developer build again: read as before")
+  s.rows[3470].hiddenNames = nil
+  T:SetAbility(3470, 1286873, "name", nil)
+end
+print("ok a packaged build skips your own timeline layers")
 
 -- Share note on the Review tab: makes the boss's raid note when it has none, then shares it
 do
@@ -989,14 +1106,9 @@ do
   rawset(f, "GetWidth", function() return 760 end)
   orderDD.refresh()
   pt = orderDD.pt
-  local fit
-  for _, b in ipairs(buttons) do if b.text == "Fit" then fit = b end end
-  local zoomRow = find(sliders, "Time visible")
-  local fitRight = 8 + zoomRow:GetWidth() + fit.pt[4] + fit:GetWidth()
-  assert(pt[4] >= fitRight + 8 and pt[5] == -64, "layout: at the pop-out's smallest Order drops to the third row, after Fit: " .. tostring(pt[4]))
+  assert(pt[4] == 8 and pt[5] == -64, "layout: at the pop-out's smallest Order drops to the third row, at its start: " .. tostring(pt[4]))
   local shareLeft = 760 - (8 + HELP) - 90
   assert(pt[4] + 185 + HELP < shareLeft, "layout: clear of Share note at the pop-out's smallest")
-  assert(fitRight < shareLeft, "layout: Fit fits at the pop-out's smallest")
   -- the label itself: where the Pull dropdown was, its text cut short before it reaches Order
   assert(shownLabel().pt[4] == 412 and shownLabel().pt[5] == -9, "layout: the label sits where the Pull dropdown was")
   rawset(f, "GetWidth", nil)
@@ -1436,53 +1548,55 @@ do
 end
 print("ok slash rehearse follows the button")
 
--- Play on the Review tab and the playhead -----------------------------------------------------------
+-- No Play on the Review tab (Alex, 2026-10-30): Rehearse is first in the row, then Pop out and Share note.
+-- The playhead stays: it follows the Rehearsal window's own Play.
 do
-  local function playBtn() for i = #buttons, 1, -1 do local x = buttons[i] if (x.text == "Play" or x.text == "Pause") and not (RW.frame and x == RW.frame.play) then return x end end end
   -- the Review tab's per-frame update: every OnUpdate but the view's and the Rehearsal window's own
   local function tick() for _, fr in ipairs(allFrames) do local fn = rawget(fr, "OnUpdate") if fn and fr ~= view.frame and fr ~= RW.frame and fr ~= RW.frame.strip then pcall(fn, fr) end end end
   if RW:IsOpen() then RW:Close() end
   diffDD.opts.set("mythic")
   bossDD.opts.set(3470)
-  local b = playBtn()
-  assert(b and helps["Play"], "a Play button with a (?)")
-  assert(b.enabled == true, "enabled with a fight shown")
+  for _, x in ipairs(buttons) do
+    assert(not ((x.text == "Play" or x.text == "Pause") and not (RW.frame and x == RW.frame.play)), "Review has no Play button")
+  end
+  assert(helps["Play"] == nil, "and no Play (?)")
+  local reh, pop, share = rehearseBtn(), helpTargets["Pop out"], helpTargets["Share note"]
+  -- wide (the main panel): Rehearse, Pop out, Share note, left to right, on the second row
+  local f -- the review frame of the page built last (the page is built again above, as on a reload)
+  for _, d in ipairs(dropdowns) do if d.text == "Order" then f = d.parent end end
+  rawset(f, "GetWidth", function() return CRT.UI.PAGE_W end)
+  T:Fire()
+  assert(reh.pt[1] == "RIGHT" and reh.pt[2] == pop and reh.pt[3] == "LEFT", "Rehearse is first, right before Pop out")
+  assert(pop.pt[1] == "RIGHT" and pop.pt[2] == share, "then Pop out, right before Share note")
+  assert(share.pt[1] == "TOPRIGHT" and share.pt[5] == -38, "Share note ends the second row: " .. tostring(share.pt[5]))
+  rawset(f, "GetWidth", nil)
+  T:Fire()
+  assert(pop.pt[1] == "TOPRIGHT" and share.pt[5] == -64, "narrow: Share note on the third row, Pop out ends the second")
+  reh.OnClick(reh)
+  assert(RW:IsOpen() and RW.source.boss == 3470 and RW.source.pull == "ship:1" and RW.source.group == "mythic", "Rehearse opens the shown fight")
   tick()
-  assert(view.playT == nil, "no playhead without a rehearsal")
-  b.OnClick(b)
-  assert(RW:IsOpen() and RW:Playing(), "Play opens the Rehearsal on the shown fight and plays it")
-  assert(RW.source.boss == 3470 and RW.source.pull == "ship:1" and RW.source.group == "mythic", "the source names the boss, pull and difficulty")
-  tick()
-  assert(view.playT and view.playFollow == true and b.text == "Pause", "the playhead follows while playing, the button says Pause")
-  b.OnClick(b)
-  assert(RW:IsOpen() and not RW:Playing(), "Play again pauses the same fight")
-  RW:Seek(42)
-  tick()
-  assert(view.playT == 42 and view.playFollow == false and b.text == "Play", "the playhead at the Rehearsal's time, paused: " .. tostring(view.playT))
-  -- the window's own Play moves it too
   RW:Play()
   tick()
-  assert(b.text == "Pause" and view.playFollow == true, "the window's Play plays here too")
+  assert(view.playT and view.playFollow == true, "the playhead follows the window's Play")
   RW:Pause()
-  -- a pull laid over the abilities is the same fight: the playhead stays
+  RW:Seek(42)
+  tick()
+  assert(view.playT == 42 and view.playFollow == false, "paused: the playhead at the Rehearsal's time: " .. tostring(view.playT))
   local b2 = recentRow(2) b2.OnClick(b2)
   tick()
   assert(view.playT == 42, "a pull laid over it keeps the playhead")
   b2 = recentRow(2) b2.OnClick(b2)
-  -- another fight shown: no playhead, and Play opens the shown one instead
   local zid = T:SavePull({ encounterID = 4004, name = "Zork the Late", difficultyID = 16, length = 90, kill = false, casts = {}, deaths = {} })
   bossDD.opts.set(4004)
   tick()
-  assert(view.playT == nil and b.text == "Play", "a rehearsal of another fight shows no playhead")
-  b.OnClick(b)
-  assert(RW:IsOpen() and RW.source.pull == zid and RW:Playing(), "Play opens the shown fight")
+  assert(view.playT == nil, "a rehearsal of another fight shows no playhead")
   RW:Close()
   tick()
   assert(view.playT == nil, "closing the Rehearsal hides the playhead")
   T:DeleteBoss(4004)
   bossDD.opts.set(3470)
 end
-print("ok play on the timeline moves the playhead")
+print("ok Review has no Play; Rehearse is first in the row")
 do
   -- Send to Timeline saves the Journal's export at once and opens it; the middle list is that reference
   local text = table.concat({ "Boss: Nek'zali the Soulcoiler", "Difficulty: Mythic", "Encounter: 3470", "# Stage One",

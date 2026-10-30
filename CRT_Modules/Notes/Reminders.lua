@@ -113,7 +113,7 @@ local TEXT = {
     deleteConfirm = "Delete reminder '%s'?",
     noTest = "Nothing to test: this alert has no times.",
 
-    noType = "No type yet. Set one on the Timeline's Advanced tab: click the ability, then Set type.",
+    noType = "No type yet.",
 
     markerTitle = "Marker display",
     markerShow = "Show the marker display: %s",

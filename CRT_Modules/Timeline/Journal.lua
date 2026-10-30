@@ -542,7 +542,8 @@ function Journal:Rows(encounterID)
     if root then
         collect(root, rows, seen)
     end
-    local mine = settings().rows and settings().rows[encounterID]
+    -- your own spells: a developer build only (Timeline.DevBuild); the Advanced tab adds them
+    local mine = CRT.Timeline.DevBuild() and settings().rows and settings().rows[encounterID]
     if mine and mine.custom then
         for _, spellID in ipairs(mine.custom) do
             if not seen[spellID] then
@@ -1040,7 +1041,11 @@ function Journal:SetHidden(encounterID, spellID, hidden)
     changed(encounterID)
 end
 
+-- A row you hid on the Advanced tab: a developer build only (Timeline.DevBuild).
 function Journal:IsHidden(encounterID, spellID)
+    if not CRT.Timeline.DevBuild() then
+        return false
+    end
     local r = settings().rows and settings().rows[encounterID]
     return (r and r.hidden and r.hidden[spellID]) and true or false
 end

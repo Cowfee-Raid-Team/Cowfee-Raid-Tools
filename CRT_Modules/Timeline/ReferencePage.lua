@@ -11,7 +11,9 @@ local ADDON, CRT = ...
 -- reference has a Copy to button that adds a copy for the other group. With more than one listed, In use
 -- picks the one the Review tab shows (Timeline:SetChosenReference). Recent(parent, width, pullLabel, toggle)
 -- makes the Review tab's Recent pulls list: the boss's saved pulls on the right, where a click picks one
--- and a second click clears it (toggle(pullID)); the page keeps which one, and says with recent:Update.
+-- and a second click clears it (toggle(pullID)); the page keeps which one, and says with recent:Update;
+-- recent:SetTop(y) moves its top. Under the Journal abilities, a tick per row shows or hides it on your
+-- timeline, with a spell ID box to add your own and Hide rows with no casts (see "Your rows").
 
 local Reference = CRT.TimelineReference
 local Journal = CRT.TimelineJournal
@@ -103,6 +105,11 @@ function ReferencePage.Recent(f, width, pullLabel, toggle)
     UI.HelpRight(title, "Recent pulls", "This boss's saved pulls on this difficulty, counted per boss. Click one to see it over the ability timeline: its deaths in the Deaths row, its casts as ticks in a row of their own, and a line where it ended. Click it again to clear it, or another pull to switch.\n\nA boss with no ability timeline shows the pull itself.")
 
     local recent, lines = {}, {}
+
+    -- Where the list starts, level with the timeline beside it (the Review tab's rows above can grow).
+    function recent:SetTop(y)
+        frame:SetPoint("TOPRIGHT", f, "TOPRIGHT", -8, y)
+    end
 
     -- A row's tooltip: the pull, and what a click does.
     local function lineEnter(self)
@@ -203,7 +210,136 @@ local TEXT_MENU = {
     renamePrompt = "Your name for %s on the timeline:",
     hide = "Hide from the timeline (dev, ships)",
     hidden = "hidden",
+    remove = "Remove",
 }
+
+-- Your rows: a Shown tick on each line of the list, your own spells added by ID, and their remove x.
+local TEXT_ROWS = {
+    abilities = "Journal abilities",
+    abilitiesHelp = "The boss's abilities in the Encounter Journal, with their spell IDs; a line whose name matches one gets its icon and tooltip. Click or right-click an ability to give it a row on the timeline, a type, your own name, or a Mech Alert; these are only yours.\n\nUntick an ability to hide its row on your timeline. Spells you add by ID under the list are marked yours; Remove takes one out.\n\nWhile one of your ability timelines is open in the box, this list shows its abilities under its phases: right-click to add a phase or intermission, or set a phase's start. Their ticks hide a row by its name, for the boss picked on the Review tab.\n\nNothing shows in combat or while the Journal window is open.",
+    shown = "Shown",
+    shownTip = "Untick to hide this row on your timeline. Only yours.",
+    yours = "yours",
+    remove = "Remove",
+    removeTip = "Remove this spell of yours",
+    spellID = "spell ID",
+    add = "Add",
+    addHelp = "Adds a row for a cast the Encounter Journal doesn't list, by its spell ID. It shows on recorded pulls only.",
+    typeNumber = "Type a spell ID, a number.",
+    pickBoss = "Pick a boss on the Review tab first.",
+    noSpell = "No spell with that ID.",
+}
+local TICK_W = 20 -- the Shown tick, left of the icon
+local TICK_SIZE = 18
+local ICON_W = 22 -- the icon and the gap after it
+local NAME_W = 180
+local REMOVE_H = 16 -- Remove on your own rows, at the right end: a small panel button
+local REMOVE_GAP = 4 -- between Remove and the spell ID
+local DIM = 0.4 -- an unticked row's icon and name
+local ADD_ROW_H = 30 -- the spell ID box under the list
+local ADD_EDIT_W = 90
+
+-- A name as the lanes compare it, the key of a reference row hidden by name (timeline.rows[boss].hiddenNames).
+local nameKey = CRT.TimelineLanes.NameKey
+
+-- A row of an ability timeline is hidden by its name, or by the spell the lanes give it (its [spell] or
+-- its Journal match by name) when that spell is hidden. boss: the page's boss key, where hiddenNames is
+-- kept; eid: the encounter ID the Journal knows it by.
+local function refRowHidden(row, boss, eid)
+    local all = CRT.Timeline:Settings().rows
+    local mine = all and all[boss]
+    local spellID = CRT.TimelineLanes.RowSpell(row, eid)
+    return (mine and mine.hiddenNames and mine.hiddenNames[nameKey(row.name)])
+        or (spellID ~= 0 and Journal:IsHidden(eid, spellID)) or false
+end
+
+-- Hides or shows it by name; showing it also shows its spell when that was hidden.
+local function setRefRowHidden(row, hidden, boss, eid)
+    local s = CRT.Timeline:Settings()
+    s.rows = s.rows or {}
+    s.rows[boss] = s.rows[boss] or {}
+    local mine = s.rows[boss]
+    mine.hiddenNames = mine.hiddenNames or {}
+    mine.hiddenNames[nameKey(row.name)] = hidden or nil
+    local spellID = CRT.TimelineLanes.RowSpell(row, eid)
+    if not hidden and spellID ~= 0 and Journal:IsHidden(eid, spellID) then
+        Journal:SetHidden(eid, spellID, false)
+    end
+    CRT.Timeline:Fire()
+end
+
+-- A line's Shown tick: a Journal ability by its spell (Journal:SetHidden), a row of the open ability
+-- timeline by its name (refRowHidden). l.boss is the encounter ID the list is for, l.pageBoss the page's.
+local function lineShown(l)
+    if l.refRow then
+        return not refRowHidden(l.row, l.pageBoss, l.boss)
+    end
+    return not Journal:IsHidden(l.boss, l.row.spellID)
+end
+
+local function tickClicked(self)
+    local l = self.line
+    local shown = self:GetChecked() and true or false
+    if l.refRow then
+        setRefRowHidden(l.row, not shown, l.pageBoss, l.boss)
+    else
+        Journal:SetHidden(l.boss, l.row.spellID, not shown)
+    end
+end
+
+local function tipEnter(self)
+    UI.TooltipOwner(GameTooltip, self, "ANCHOR_RIGHT", nil, nil, "timeline")
+    GameTooltip:SetText(self.tipTitle, 1, 1, 1)
+    if self.tipText then
+        GameTooltip:AddLine(self.tipText, 0.85, 0.85, 0.85, true)
+    end
+    GameTooltip:Show()
+end
+
+local function tipLeave()
+    GameTooltip:Hide()
+end
+
+-- The tick and Remove of a line of the list (abilityLine).
+local function addRowControls(l)
+    l.check = CreateFrame("CheckButton", nil, l, "UICheckButtonTemplate")
+    l.check:SetSize(TICK_SIZE, TICK_SIZE)
+    l.check:SetPoint("LEFT", 0, 0)
+    l.check.line = l
+    l.check.tipTitle, l.check.tipText = TEXT_ROWS.shown, TEXT_ROWS.shownTip
+    l.check:SetScript("OnClick", tickClicked)
+    l.check:SetScript("OnEnter", tipEnter)
+    l.check:SetScript("OnLeave", tipLeave)
+    -- a small panel button, sized from its label in the small button font
+    l.remove = UI.PanelButton(l, TEXT_ROWS.remove, REMOVE_H, function()
+        Journal:RemoveCustom(l.boss, l.row.spellID)
+    end)
+    l.remove:SetNormalFontObject(CRTFontButtonSmall)
+    l.remove:SetHighlightFontObject(CRTFontButtonSmallHighlight)
+    l.remove:SetDisabledFontObject(CRTFontButtonSmallDisable)
+    local text = l.remove:GetFontString()
+    l.removeW = UI.PanelButtonWidth(text and text:GetStringWidth() or 0)
+    l.remove:SetWidth(l.removeW)
+    l.remove:SetPoint("RIGHT", 0, 0)
+    l.remove.tipTitle = TEXT_ROWS.removeTip
+    l.remove.line = l
+    l.remove:SetScript("OnEnter", tipEnter)
+    l.remove:SetScript("OnLeave", tipLeave)
+end
+
+-- The tick, the dimming and Remove for what the line now shows. tick: whether it gets a tick.
+local function showRowControls(l, tick)
+    local own = tick and not l.refRow and l.row and l.row.own and true or false
+    l.check:SetShown(tick)
+    local shown = not tick or lineShown(l)
+    l.check:SetChecked(shown)
+    local alpha = shown and 1 or DIM
+    l.icon:SetAlpha(alpha)
+    l.name:SetAlpha(alpha)
+    l.remove:SetShown(own)
+    l.id:ClearAllPoints()
+    l.id:SetPoint("RIGHT", own and -(l.removeW + REMOVE_GAP) or 0, 0)
+end
 local RENAME_ABILITY = "COWFEERAIDTOOLS_RENAME_ABILITY"
 local abilityMenu -- set in Build, where the list is
 
@@ -346,6 +482,57 @@ function AbilityMenu.Fill(root, boss, row, hideName)
             Timeline:SetHidden(boss, hideName, not Timeline:Hidden(boss, hideName))
         end)
     end
+end
+
+-- Under the Journal abilities: "spell ID [ ] Add (?)", which adds a spell of your own to the boss the
+-- list is for (boss(), an encounter ID, or nil) after checking the game knows the ID. Returns the edit
+-- box and the Add button.
+function ReferencePage.AddSpellRow(f, boss)
+    local idLabel = label(f, TEXT_ROWS.spellID, "CRTFontSmall")
+    idLabel:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", LIST_X, 8 + 4)
+    local edit = CreateFrame("EditBox", nil, f, "InputBoxTemplate")
+    edit:SetAutoFocus(false)
+    edit:SetFontObject(CRTFontHighlight)
+    edit:SetNumeric(true)
+    edit:SetMaxLetters(8)
+    edit:SetSize(ADD_EDIT_W, 20)
+    edit:SetPoint("LEFT", idLabel, "RIGHT", 10, 0)
+    UI:SkinEditBox(edit)
+    local function add()
+        local spellID = tonumber(edit:GetText())
+        if not spellID or spellID <= 0 or spellID ~= math.floor(spellID) then
+            CRT:Print(TEXT_ROWS.typeNumber)
+            return
+        end
+        local id = boss()
+        if not id then
+            CRT:Print(TEXT_ROWS.pickBoss)
+            return
+        end
+        local ok, name = pcall(C_Spell.GetSpellName, spellID)
+        if not ok or not name then
+            CRT:Print(TEXT_ROWS.noSpell)
+            return
+        end
+        Journal:AddCustom(id, spellID)
+        edit:SetText("")
+        edit:ClearFocus()
+    end
+    edit:SetScript("OnEnterPressed", add)
+    edit:SetScript("OnEscapePressed", function(self)
+        self:SetText("")
+        self:ClearFocus()
+    end)
+    -- sized from its label in the small button font, as the Review tab's buttons are
+    local addButton = UI.PanelButton(f, TEXT_ROWS.add, 20, add)
+    addButton:SetNormalFontObject(CRTFontButtonSmall)
+    addButton:SetHighlightFontObject(CRTFontButtonSmallHighlight)
+    addButton:SetDisabledFontObject(CRTFontButtonSmallDisable)
+    local text = addButton:GetFontString()
+    addButton:SetWidth(UI.PanelButtonWidth(text and text:GetStringWidth() or 0))
+    addButton:SetPoint("LEFT", edit, "RIGHT", 8, 0)
+    UI.HelpRight(addButton, TEXT_ROWS.add, TEXT_ROWS.addHelp)
+    return edit, addButton
 end
 
 -- The References tab -----------------------------------------------------------------------------
@@ -493,6 +680,13 @@ function ReferencePage.Build(f, ctx)
         status:SetTextColor(UI.Color("good"))
     end
 
+    -- The encounter ID the Journal knows the page's boss by, or nil.
+    local function selectedJournalID()
+        local selected = ctx.selectedBoss()
+        local refs = selected and ctx.references() or {}
+        return selected and Journal:ResolveID(selected, refs[1] and refs[1].ref) or nil
+    end
+
     -- The boss whose Journal abilities fit the box: its Boss and Encounter lines when it has them,
     -- else the selected boss. Returns the encounter ID to ask the Journal (or nil) and a name.
     local function journalBoss()
@@ -500,11 +694,8 @@ function ReferencePage.Build(f, ctx)
         if boss or encounterID then
             return Journal:ResolveID(nil, { boss = boss, encounterID = encounterID }), boss or tostring(encounterID)
         end
-        local selected = ctx.selectedBoss()
-        local refs = selected and ctx.references() or {}
-        return Journal:ResolveID(selected, refs[1] and refs[1].ref), ctx.bossName()
+        return selectedJournalID(), ctx.bossName()
     end
-
 
     local fillIDs = button(f, "Fill spell IDs", 110)
     fillIDs:SetPoint("LEFT", clear, "RIGHT", 8, 0)
@@ -624,7 +815,7 @@ function ReferencePage.Build(f, ctx)
     abilitiesLabel:SetWidth(280)
     abilitiesLabel:SetJustifyH("LEFT")
     abilitiesLabel:SetWordWrap(false)
-    UI.HelpRight(abilitiesLabel, "Journal abilities", "The boss's abilities in the Encounter Journal, with their spell IDs; a line whose name matches one gets its icon and tooltip. Click or right-click an ability to give it a row on the timeline, a type, your own name, or a Mech Alert; these are only yours.\n\nWhile one of your ability timelines is open in the box, this list shows its abilities under its phases: right-click to add a phase or intermission, or set a phase's start.\n\nNothing shows in combat or while the Journal window is open.")
+    UI.HelpRight(abilitiesLabel, TEXT_ROWS.abilities, TEXT_ROWS.abilitiesHelp)
     local abilitiesNone = label(f, "", "CRTFontSmall")
     abilitiesNone:SetWidth(300)
     abilitiesNone:SetJustifyH("LEFT")
@@ -640,7 +831,7 @@ function ReferencePage.Build(f, ctx)
         abilitiesNone:SetPoint("TOPLEFT", f, "TOPLEFT", LIST_X, top - 24)
         abilitiesScroll:ClearAllPoints()
         abilitiesScroll:SetPoint("TOPLEFT", f, "TOPLEFT", LIST_X, top - 22)
-        abilitiesScroll:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", LIST_X, 8)
+        abilitiesScroll:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", LIST_X, 8 + ADD_ROW_H)
         abilitiesScroll:SetWidth(LIST_W - 10)
     end
     placeAbilities(0)
@@ -668,10 +859,10 @@ function ReferencePage.Build(f, ctx)
         l:SetPoint("TOPLEFT", abilitiesChild, "TOPLEFT", 0, -(i - 1) * ABILITY_H)
         l.icon = l:CreateTexture(nil, "ARTWORK")
         l.icon:SetSize(16, 16)
-        l.icon:SetPoint("LEFT", 0, 0)
+        l.icon:SetPoint("LEFT", TICK_W, 0)
         l.name = label(l, "", "CRTFontSmall")
-        l.name:SetPoint("LEFT", 22, 0)
-        l.name:SetWidth(200)
+        l.name:SetPoint("LEFT", TICK_W + ICON_W, 0)
+        l.name:SetWidth(NAME_W)
         l.name:SetJustifyH("LEFT")
         l.name:SetWordWrap(false)
         l.id = label(l, "", "CRTFontSmall")
@@ -680,7 +871,9 @@ function ReferencePage.Build(f, ctx)
         l.tag = label(l, "", "CRTFontSmall")
         l.tag:SetPoint("RIGHT", l.id, "LEFT", -6, 0)
         l.tag:SetTextColor(0.85, 0.7, 0.4)
+        addRowControls(l)
         abilityLines[i] = l
+        UI:SkinTree(l) -- so the Modern look skins the new tick
         return l
     end
 
@@ -807,6 +1000,12 @@ function ReferencePage.Build(f, ctx)
         end
         View.OpenMenu(l, function(root)
             AbilityMenu.Fill(root, boss, row, row.name)
+            if row.own and not l.refRow then
+                root:CreateDivider()
+                root:CreateButton(TEXT_MENU.remove, function()
+                    Journal:RemoveCustom(boss, row.spellID)
+                end)
+            end
             if l.refRow and row.line then
                 root:CreateDivider()
                 root:CreateButton(TEXT_MENU.addPhase, function()
@@ -824,20 +1023,21 @@ function ReferencePage.Build(f, ctx)
     local function showAbility(l, id, row, refRow)
         local Timeline = CRT.Timeline
         l.boss, l.row, l.refRow, l.phase = id, row, refRow, nil
+        l.pageBoss = ctx.selectedBoss()
         local spellID = row.spellID ~= 0 and row.spellID or nil
         local a = spellID and Timeline.Ability and Timeline:Ability(id, spellID) or nil
         local typeKey = (a and a.type) or (row.types and row.types[1])
         local t = typeKey and Reference.TYPES[typeKey]
         l.icon:SetTexture(row.icon or 134400)
         l.icon:Show()
-        l.name:SetPoint("LEFT", 22, 0)
+        l.name:SetPoint("LEFT", TICK_W + ICON_W, 0)
         l.name:SetText((a and a.name) or row.name or "")
         if t then
             l.name:SetTextColor(t.color[1], t.color[2], t.color[3])
         else
             l.name:SetTextColor(1, 1, 1)
         end
-        local tag = a and a.row and TEXT_ROW or ""
+        local tag = (row.own and TEXT_ROWS.yours) or (a and a.row and TEXT_ROW) or ""
         if refRow and #(row.casts or {}) == 0 then
             tag = TEXT_MENU.noTimes
         end
@@ -846,6 +1046,9 @@ function ReferencePage.Build(f, ctx)
         end
         l.tag:SetText(tag)
         l.id:SetText(spellID and tostring(spellID) or "")
+        -- a row of the open ability timeline is hidden by name for the page's boss, so it gets a tick
+        -- only when the box is that boss's
+        showRowControls(l, not refRow or (l.pageBoss ~= nil and id == selectedJournalID()))
         l:Show()
     end
 
@@ -853,6 +1056,7 @@ function ReferencePage.Build(f, ctx)
         l.boss, l.row, l.refRow, l.phase = nil, nil, nil, p
         l.icon:Hide()
         l.name:SetPoint("LEFT", 0, 0)
+        showRowControls(l, false)
         l.name:SetText(p.title or p.label or "") -- "Intermission: Ritual of Awakening", not its number
         l.name:SetTextColor(UI.Color("heading"))
         l.tag:SetText("")
@@ -861,6 +1065,9 @@ function ReferencePage.Build(f, ctx)
     end
 
     local abilitiesFor -- the encounter ID the list was last filled for, so typing doesn't refill it
+    local addEdit, addButton = ReferencePage.AddSpellRow(f, function()
+        return abilitiesFor
+    end)
     refreshAbilities = function()
         local id, name = journalBoss()
         abilitiesFor = id
@@ -917,6 +1124,9 @@ function ReferencePage.Build(f, ctx)
         abilitiesChild:SetHeight(math.max(1, n * ABILITY_H))
         abilitiesNone:SetText(name and "No Journal abilities found" or "No boss picked")
         abilitiesNone:SetShown(n == 0)
+        -- your own spells are Journal rows: not while the list shows an open ability timeline
+        addEdit:SetEnabled(not entry)
+        addButton:SetEnabled(not entry)
     end
     edit:SetScript("OnTextChanged", function()
         local id = journalBoss()

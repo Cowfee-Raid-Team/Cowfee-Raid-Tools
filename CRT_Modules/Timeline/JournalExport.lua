@@ -4,8 +4,9 @@ local ADDON, CRT = ...
 -- (clear of the boss's name and the difficulty dropdown), while a boss is open. It reads that boss (EncounterJournal.encounterID, set by EncounterJournal_DisplayEncounter) and the
 -- difficulty picked in the Journal (EJ_GetDifficulty), and writes a starting reference timeline for it:
 -- the Boss, Difficulty and Encounter lines, then one line per Journal ability with its spell ID, each a
--- "#" line (skipped when read) until it gets times. It opens in a copy window with Send to Timeline, which
--- puts it in the Timeline's Advanced tab reference box to fill in and Save. The Journal is only read here,
+-- "#" line (skipped when read) until it gets times. It opens in a copy window; with /crt dev open
+-- (Timeline.DevMode) the window has Send to Timeline, which saves it and opens it in the Timeline's Advanced
+-- tab reference box to fill in. Without it the window only shows the text to copy. The Journal is only read here,
 -- for the boss already shown, so the window's own selection is never changed.
 -- The Journal is a load-on-demand addon (Blizzard_EncounterJournal): the button is made when it loads.
 
@@ -14,7 +15,7 @@ CRT.TimelineJournalExport = Export
 
 local TEXT = {
     button = "Export Abilities",
-    tip = "Cowfee Raid Tools: writes this boss's abilities as an ability timeline, with every spell, for you to add the cast times on the Timeline's Advanced tab.",
+    tip = "Cowfee Raid Tools: writes this boss's abilities as an ability timeline, with every spell and its ID, for you to copy.",
     title = "Abilities for %s (Ctrl+C to copy)",
     send = "Send to Timeline",
     none = "Open a boss in the Journal first.",
@@ -23,7 +24,7 @@ local TEXT = {
         "# From the Encounter Journal. Add each ability's times after its colon, as m:ss or seconds: 0:02, 1:17",
         "# A Phase line with no time yet is the stage's start to fill in: Phase: P1.5 3:17 (Intermission: ...)",
     },
-    saved = "Saved the abilities for %s. Add their times on the Timeline's Advanced tab.",
+    saved = "Saved the abilities for %s. Add their times on the Timeline's Advanced tab.", -- /crt dev only
 }
 
 -- The Journal's icons that are reference types too: a dispellable debuff, a Heroic or a Mythic mechanic.
@@ -145,15 +146,21 @@ function Export.Build(journalEncounterID, difficultyID)
     return table.concat(lines, "\n"), name
 end
 
+-- The copy window; Send to Timeline only with /crt dev open, since only the Advanced tab can manage
+-- what it saves.
 local function show(text, name)
-    CRT.ConsumablesTools:ShowText(string.format(TEXT.title, name), text, {
-        label = TEXT.send,
-        onClick = function(t)
-            if CRT.Timeline:SaveReferenceText(t) then
-                CRT:Print(string.format(TEXT.saved, name))
-            end
-        end,
-    })
+    local send
+    if CRT.Timeline.DevMode() then
+        send = {
+            label = TEXT.send,
+            onClick = function(t)
+                if CRT.Timeline:SaveReferenceText(t) then
+                    CRT:Print(string.format(TEXT.saved, name))
+                end
+            end,
+        }
+    end
+    CRT.ConsumablesTools:ShowText(string.format(TEXT.title, name), text, send)
 end
 
 function Export:Run()

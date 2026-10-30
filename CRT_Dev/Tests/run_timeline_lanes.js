@@ -9,6 +9,7 @@ function CreateFrame() return { RegisterEvent = function() end, SetScript = func
 function InCombatLockdown() return false end
 C_Timer = { After = function() end }
 local CRT = {
+  Dev = {}, -- a developer build (the CRT_Dev files loaded): your own timeline layers are read (Timeline.DevBuild)
   db = { timeline = { record = true, minPull = 15, keep = 10, bosses = {}, rows = {}, span = 300, grid = 30, iconSize = 22,
     deathRows = "combined", roles = { TANK = true, HEALER = true, DAMAGER = true }, firstDeaths = 0, overlay = 3,
     overlayOn = false, hideEmpty = true, nextId = 1 } },

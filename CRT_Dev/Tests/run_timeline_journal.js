@@ -43,6 +43,9 @@ local CRT = { db = { timeline = defaults() }, Timeline = {} }
 local fired = 0
 function CRT.Timeline:Settings() return CRT.db.timeline end
 function CRT.Timeline:Fire() fired = fired + 1 end
+-- a developer build (the CRT_Dev files loaded) unless a test says otherwise
+local devBuild = true
+CRT.Timeline.DevBuild = function() return devBuild end
 assert(load(src, "CRT_Modules/Timeline/Journal.lua"))("CowfeeRaidTools", CRT)
 local J = CRT.TimelineJournal
 local function ids(rows) local t = {} for i, r in ipairs(rows) do t[i] = r.spellID end return table.concat(t, ",") end
@@ -67,6 +70,21 @@ assert(J:IsHidden(3001, 5002) and not J:IsHidden(3001, 5001) and ids(J:Rows(3001
 J:SetHidden(3001, 5002, false)
 assert(not J:IsHidden(3001, 5002) and not J:IsHidden(4242, 1), "hidden flag cleared")
 print("ok hidden flag")
+
+-- a packaged build reads neither your hidden rows nor your own spells; nothing saved goes, and a
+-- developer build reads them again
+J:AddCustom(3001, 9999)
+J:SetHidden(3001, 5002, true)
+devBuild = false
+J:SetHidden(3001, 5002, true) -- clears the cache
+assert(ids(J:Rows(3001)) == "5001,5002" and not J:IsHidden(3001, 5002), "packaged build: no own spells, nothing hidden")
+assert(CRT.db.timeline.rows[3001].custom[1] == 9999 and CRT.db.timeline.rows[3001].hidden[5002] == true, "packaged build: the saved data is kept")
+devBuild = true
+J:SetHidden(3001, 5002, true) -- clears the cache
+assert(ids(J:Rows(3001)) == "5001,5002,9999" and J:IsHidden(3001, 5002), "developer build: read as before")
+J:RemoveCustom(3001, 9999)
+J:SetHidden(3001, 5002, false)
+print("ok packaged build skips your own rows")
 
 assert(#J:Rows(4242) == 0 and selected == 777, "journal: unknown encounter gives no rows")
 print("ok journal: unknown encounter gives no rows")
