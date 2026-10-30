@@ -22,7 +22,9 @@ local ADDON, CRT = ...
 --
 -- Who runs CRT: every raid member a hello was heard from (you count). Members who leave the group or go offline
 -- are dropped on GROUP_ROSTER_UPDATE (or UNIT_CONNECTION), so they count again once they say hello again; the set
--- resets when you leave the group. The count is for the status line ("pushed to N CRT users").
+-- resets when you leave the group. The count is for the status line ("pushed to N CRT users"). Each hello's addon
+-- version is kept with it (Team:VersionOf, in memory only, dropped the same way), so the Addon check
+-- (AddonCheck.lua) can show the version of a CRT from before its own ask, which answers only the hello.
 --
 -- The messages, under the prefix CRTHello, to and heard on the RAID channel only:
 --   H|<version>|<addon version>[|A]          the hello, e.g. "H|1|1.1.2" or "H|1|1.1.2|A"
@@ -265,6 +267,7 @@ end
 -- The count ----------------------------------------------------------------------------------------------------
 
 local heard = {} -- [key] = true: raid members a hello came from (you included)
+local versions = {} -- [key] = the addon version of that member's last hello
 local members = {} -- [key] = online, the last roster read
 local snap = { team = nil, isTeam = false, crt = 0, online = 0, raid = false, lead = false }
 
@@ -394,6 +397,11 @@ function Team:Recount()
             heard[key] = nil
         end
     end
+    for key in pairs(versions) do
+        if not roster[key] then
+            versions[key] = nil
+        end
+    end
     count()
 end
 
@@ -408,6 +416,11 @@ end
 -- Whether a player was heard running CRT (key: Team.Key of their name).
 function Team:Runs(key)
     return heard[key] == true
+end
+
+-- The addon version from a raid member's last hello (key: Team.Key of their name), or nil when none was heard.
+function Team:VersionOf(key)
+    return key and versions[key] or nil
 end
 
 function Team:OnChange(fn)
@@ -711,7 +724,7 @@ local function resume(field)
 end
 
 reset = function()
-    heard, members, pulls = {}, {}, {}
+    heard, members, pulls, versions = {}, {}, {}, {}
     for _, q in ipairs(senders) do
         q.wanted, q.ask, q.combatWait, q.encounterWait = false, false, false, false
         q.lastSent = nil
@@ -803,6 +816,9 @@ function Team:Hear(sender, text)
     end
     local known = heard[key]
     heard[key] = true
+    -- the hello's addon version, for the Addon check (no | or control characters, at most MAX_VERSION_TEXT)
+    local clean = type(addon) == "string" and addon:gsub("[|%c]", ""):sub(1, Team.MAX_VERSION_TEXT) or ""
+    versions[key] = clean ~= "" and clean or nil
     if ask or not known then
         request(hello)
     end

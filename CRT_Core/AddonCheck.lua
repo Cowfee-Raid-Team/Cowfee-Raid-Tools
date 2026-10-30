@@ -29,6 +29,13 @@ local ADDON, CRT = ...
 -- members who leave the group and cleared when you leave it. An ask is answered within WINDOW seconds or not at
 -- all: a member without an answer after that is "No CRT". Your own row never waits: it reads your own switches.
 --
+-- Older CRTs: a CRT from before this file never answers the ask, but every CRT speaks the hello (Team.lua, prefix
+-- CRTHello), which carries its addon version. So in a raid group a check also asks for hellos, through Team's own
+-- send path and rules (Team.Request(true): the hello as it always was, with A), and a member with no answer to the
+-- ask takes the version of their last hello (Team:VersionOf), with no modules (helloOnly). The hello's answers
+-- come after Team's DEBOUNCE on both sides, so after such a check a member with neither answer is No CRT only
+-- after HELLO_WINDOW seconds. Outside a raid group there are no hellos, and WINDOW stands.
+--
 -- Game calls (warcraft.wiki.gg, read 2026-10-28): C_ChatInfo.RegisterAddonMessagePrefix,
 -- C_ChatInfo.SendAddonMessage(prefix, message, chatType) -> Enum.SendAddonMessageResult (255 bytes a message, 16 for
 -- the prefix), CHAT_MSG_ADDON (prefix, text, channel, sender), GetRaidRosterInfo (name, rank, subgroup, level,
@@ -42,6 +49,7 @@ CRT.AddonCheck = Check
 Check.PREFIX = "CRTCheck1"
 Check.VERSION = 1
 Check.WINDOW = 3 -- seconds after an ask: a member with no answer by then is No CRT
+Check.HELLO_WINDOW = 6 -- the same, after an ask that also asked for hellos (Team's debounce, theirs, delivery)
 Check.ASK_GAP = 5 -- seconds between two asks of your own
 Check.STALE = 30 -- seconds: opening the tab asks again when the last ask is older
 Check.REPLY_WINDOW = 5 -- seconds: a CRT answers at most once in this time
@@ -361,8 +369,23 @@ end
 
 -- Asking ------------------------------------------------------------------------------------------------------------
 
-local asked = nil -- { at, id } of your last ask, nil before the first or after leaving the group
+local asked = nil -- { at, id, wait } of your last ask, nil before the first or after leaving the group
 local nextAsk = 0
+
+-- Asks for hellos too, through Team's send path, when Team can send (a raid group). True when asked.
+local function askHellos()
+    local Team = CRT.Team
+    if not (Team and Team.Request and Team.CanSend and Team.CanSend()) then
+        return false
+    end
+    local ok = pcall(Team.Request, true)
+    return ok
+end
+
+-- Seconds after the last ask before a member with no answer is No CRT.
+local function window()
+    return asked and asked.wait or Check.WINDOW
+end
 
 -- Whether a check can go now: true, or false and why ("group": not in a group, "lockdown": an encounter's
 -- message lockdown, "gap": asked less than ASK_GAP ago).
@@ -386,12 +409,15 @@ function Check:Check()
         return false, why
     end
     nextAsk = nextAsk + 1
-    asked = { at = now(), id = nextAsk }
+    asked = { at = now(), id = nextAsk, wait = self.WINDOW }
     send(Check.EncodeAsk(nextAsk))
+    if askHellos() then
+        asked.wait = math.max(self.WINDOW, self.HELLO_WINDOW)
+    end
     fire("ask")
     local id = nextAsk
     -- the window closes: members with no answer turn to No CRT
-    C_Timer.After(self.WINDOW, function()
+    C_Timer.After(asked.wait, function()
         if asked and asked.id == id then
             fire("window")
         end
@@ -490,11 +516,22 @@ function Check:Roster()
     return out
 end
 
--- A member's standing: state, version, modules (key -> true or false, nil for a module their CRT doesn't report).
+-- The addon version of a member's last hello (Team.lua), or nil.
+local function helloVersion(key)
+    local Team = CRT.Team
+    if not (Team and Team.VersionOf) then
+        return nil
+    end
+    local ok, version = pcall(Team.VersionOf, Team, key)
+    return ok and type(version) == "string" and version ~= "" and version or nil
+end
+
+-- A member's standing: state, version, modules (key -> true or false, nil for a module their CRT doesn't report),
+-- helloOnly (true when the version came from a hello: a CRT too old to answer the ask, which reports no modules).
 --   "you"      yourself: your version and your own switches, never waited for
 --   "same"     the same version as yours; "newer" a later one; "older" an earlier one
---   "waiting"  no answer yet, inside the WINDOW after the last ask (or before any ask)
---   "none"     no answer within the window: No CRT
+--   "waiting"  no answer yet, inside the window after the last ask (or before any ask)
+--   "none"     no answer to the ask and no hello within the window: No CRT
 --   "offline"  the member is offline (when the row says so), never asked
 function Check:Status(name, online)
     local key = type(name) == "table" and name.key or self.Key(name)
@@ -508,21 +545,28 @@ function Check:Status(name, online)
         return "offline"
     end
     local r = self.replies[key]
+    local version, modules, helloOnly
     if r then
-        local c = self.CompareVersions(r.version, self.VersionText())
-        return (c < 0 and "older") or (c > 0 and "newer") or "same", r.version, r.modules
+        version, modules = r.version, r.modules
+    else
+        version = helloVersion(key)
+        helloOnly = version ~= nil or nil
     end
-    if asked and now() - asked.at >= self.WINDOW then
+    if version then
+        local c = self.CompareVersions(version, self.VersionText())
+        return (c < 0 and "older") or (c > 0 and "newer") or "same", version, modules, helloOnly
+    end
+    if asked and now() - asked.at >= window() then
         return "none"
     end
     return "waiting"
 end
 
--- The roster with each row's state, version and modules filled in.
+-- The roster with each row's state, version, modules and helloOnly filled in.
 function Check:Rows()
     local rows = self:Roster()
     for _, row in ipairs(rows) do
-        row.state, row.version, row.modules = self:Status(row, row.online)
+        row.state, row.version, row.modules, row.helloOnly = self:Status(row, row.online)
     end
     return rows
 end
@@ -585,6 +629,7 @@ Check.TEXT = {
     whisperMissing = "[CRT] You're missing Cowfee Raid Tools, which the %s uses for its notes, alerts and plans. Get it: %s",
     whisperOlder = "[CRT] Your Cowfee Raid Tools is %s; the %s is on %s. Update it: %s",
     notSent = "Addon check: the whisper to %s could not be sent.",
+    helloOnly = "This version can't report its modules. Modules show once they update.",
 }
 
 local function reportName(row)
@@ -655,7 +700,7 @@ function Check:CanAnnounce()
     if not channel() then
         return false, "group"
     end
-    if not asked or now() - asked.at < self.WINDOW then
+    if not asked or now() - asked.at < window() then
         return false, "check"
     end
     local to = self:AnnounceTo()

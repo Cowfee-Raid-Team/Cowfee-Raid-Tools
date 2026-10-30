@@ -837,7 +837,7 @@ end
 
 local CHECK = {
     heading = "Who runs CRT",
-    help = "Asks everyone in your group which version of Cowfee Raid Tools they run and which optional modules they have switched on, and lists the answers. The group is asked when you open this tab and each time you press Check.\n\nGreen is your version, orange an older one, red No CRT no answer within 3 seconds. A dash means that player's CRT is too old to report that module.\n\nModule and Show narrow the list, so you can see before a pull who would miss a shared note, pace plan or kick list. The game blocks addon messages during a boss fight, so check before the pull.\n\nAnnounce posts who is missing CRT or on an older version, with the download link, where Announce to says: only to you, to the group's chat, as a raid warning (the raid leader or an assistant) or to officer chat. Click a red or orange row to whisper that player the same.",
+    help = "Asks everyone in your group which version of Cowfee Raid Tools they run and which optional modules they have switched on, and lists the answers. The group is asked when you open this tab and each time you press Check.\n\nGreen is your version, orange an older one, red No CRT: no answer within a few seconds. A dash means that player's CRT is too old to report that module. A CRT from before the Addon check shows only its version, with blank modules.\n\nModule and Show narrow the list, so you can see before a pull who would miss a shared note, pace plan or kick list. The game blocks addon messages during a boss fight, so check before the pull.\n\nAnnounce posts who is missing CRT or on an older version, with the download link, where Announce to says: only to you, to the group's chat, as a raid warning (the raid leader or an assistant) or to officer chat. Click a red or orange row to whisper that player the same.",
     check = "Check",
     announce = "Announce",
     announceTo = "Announce to",
@@ -857,7 +857,8 @@ local CHECK = {
     inRaid = "%d in the raid",
     inParty = "%d in the party",
     onVersion = "%d on %s",
-    older = "%d older",
+    older = "%d on older versions",
+    olderOne = "%d on an older version",
     newer = "%d newer",
     noCRT = "%d without CRT",
     offline = "%d offline",
@@ -934,10 +935,11 @@ local function versionText(row)
     return UI.ColorText(CHECK.waitingRow, "muted")
 end
 
--- A module cell: On, Off, — for a CRT that doesn't report it, nothing for a row with no answer.
+-- A module cell: On, Off, — for a CRT that doesn't report it, nothing for a row with no answer or a CRT known only
+-- from its hello (too old to report any module).
 local function cellText(row, key)
     local s = row.state
-    if not (s == "you" or s == "same" or s == "newer" or s == "older") then
+    if row.helloOnly or not (s == "you" or s == "same" or s == "newer" or s == "older") then
         return ""
     end
     local on = row.modules and row.modules[key]
@@ -972,12 +974,19 @@ local function getCheckRow(i)
     end)
     row:SetScript("OnEnter", function(self)
         local data = self.data
-        if not (data and (data.state == "none" or data.state == "older")) then
+        local whisper = data and (data.state == "none" or data.state == "older")
+        if not (whisper or (data and data.helloOnly)) then
             return
         end
         UI.TooltipOwner(GameTooltip, self, "ANCHOR_RIGHT")
         GameTooltip:SetText(data.name)
-        GameTooltip:AddLine((data.state == "none" and CHECK.whisperTip or CHECK.whisperOlderTip):format(data.name), 1, 1, 1, true)
+        if data.helloOnly then
+            -- a CRT known only from its hello: why its module cells are blank
+            GameTooltip:AddLine(CRT.AddonCheck.TEXT.helloOnly, 1, 1, 1, true)
+        end
+        if whisper then
+            GameTooltip:AddLine((data.state == "none" and CHECK.whisperTip or CHECK.whisperOlderTip):format(data.name), 1, 1, 1, true)
+        end
         GameTooltip:Show()
     end)
     row:SetScript("OnLeave", function()
@@ -1022,7 +1031,7 @@ local function statusText(rows, counts)
         UI.GoodText(CHECK.onVersion:format(counts.same, Check.VersionText())),
     }
     if counts.older > 0 then
-        parts[#parts + 1] = UI.WarnText(CHECK.older:format(counts.older))
+        parts[#parts + 1] = UI.WarnText((counts.older == 1 and CHECK.olderOne or CHECK.older):format(counts.older))
     end
     if counts.newer > 0 then
         parts[#parts + 1] = UI.GoodText(CHECK.newer:format(counts.newer))
