@@ -106,18 +106,147 @@ eq(table.concat(blabels, ","), "Left,Right", "render: the record's boss names th
 local n0 = R.Rows("Melee: Xuelan\\nSpread out\\n", { classOf = classOf })
 eq(#n0, 2, "render: a note with no block is as before")
 
--- the note editor's rows
+-- the note editor's rows (#1212): the block's groups are rows of names, as the assignment lines are
 local s = M.New(head("Heroic") .. BLOCK)
 eq(s.rows[2].kind, "heading", "editor: intstart row is the heading")
 eq(s.rows[2].text, "Kick order", "editor: its text")
-eq(s.rows[3].kind, "text", "editor: a block line is a read-only row")
-check(s.rows[3].text:find("UI-RaidTargetingIcon_1", 1, true) and s.rows[3].text:find("Left: Xuelan Sixz", 1, true), "editor: labelled the same way: " .. s.rows[3].text)
-check(not s.rows[3].editable, "editor: not editable")
+check(s.rows[2].kicks, "editor: the heading is the kick block's (its help)")
+eq(s.rows[3].kind, "kick", "editor: a block line is a row of names")
+eq(s.rows[3].label, "Left", "editor: labelled from the setup")
+eq(s.rows[3].marker, 1, "editor: its raid marker")
+eq(s.rows[3].cap, 5, "editor: at most the group's slots")
+check(s:Editable(3), "editor: it takes names")
+eq(table.concat(s:Names(3), " "), "Xuelan Sixz", "editor: its names in kick order")
 eq(s.rows[5].kind, "blank", "editor: intend shows nothing")
 local sm = M.New(head("Mythic") .. BLOCK)
-check(sm.rows[3].text:find("UI-RaidTargetingIcon_8", 1, true) ~= nil, "editor: the marker icon")
+eq(sm.rows[3].label, "Skull add", "editor: the Mythic label")
+eq(sm.rows[3].marker, 8, "editor: the marker")
 eq(s:Text(), head("Heroic") .. BLOCK, "editor: the raw text is unchanged")
+check(not s:Dirty(), "editor: not dirty as opened")
 eq(M.New("Melee: a\\n").rows[1].kind, "label", "editor: other rows as before")
+
+-- the editor's edits: drop from the palette, reorder, move between rows, x, the cap, and the text they write
+do
+  local raw = head("Heroic") .. "Melee: Abu\\n" .. BLOCK .. "Spread out\\n"
+  local e = M.New(raw)
+  local L, Rt = 4, 5 -- the Left and Right rows (line 2 is Melee, 3 intstart)
+  eq(e.rows[L].label, "Left", "edit: the Left row")
+  check(e:Add(L, "Solex", "player"), "edit: a player from the palette")
+  eq(table.concat(e:Names(L), " "), "Xuelan Sixz Solex", "edit: on the end")
+  check(not e:Add(L, "everyone", "general"), "edit: no tag word: a kick is a player's")
+  check(not e:Add(L, "Solex", "player"), "edit: a name once per row")
+  check(e:Move(L, 3, L, 1), "edit: reorder within the row")
+  eq(table.concat(e:Names(L), " "), "Solex Xuelan Sixz", "edit: Solex first")
+  check(e:Move(L, 2, Rt, 1), "edit: move to the Right row, at a place")
+  eq(table.concat(e:Names(Rt), " "), "Xuelan Durayn Sarrantha", "edit: Xuelan first on Right")
+  eq(table.concat(e:Names(L), " "), "Solex Sixz", "edit: gone from Left")
+  check(e:Remove(Rt, 3), "edit: x removes")
+  eq(e:Text(), head("Heroic") .. "Melee: Abu\\nintstart\\nSolex Sixz\\nXuelan Durayn\\nintend\\nSpread out\\n", "edit: the block in the new order, the rest as written")
+  check(e:Dirty(), "edit: dirty")
+  -- the cap: Left takes five
+  for _, n in ipairs({ "A", "B", "C" }) do e:Add(L, n, "player") end
+  eq(#e:Names(L), 5, "cap: Left is full")
+  local ok, why = e:Add(L, "Sixth", "player")
+  check(not ok, "cap: a sixth name is refused")
+  eq(why, "Left takes 5 names at most.", "cap: and says why")
+  e:BeginDrag({ row = Rt, index = 1 })
+  local dok, dwhy = e:Drop(L, 1)
+  check(not dok and dwhy == "Left takes 5 names at most.", "cap: a drop on a full row is refused, saying why")
+  eq(table.concat(e:Names(Rt), " "), "Xuelan Durayn", "cap: nothing lost from the row it came from")
+  check(e:Move(L, 5, L, 1), "cap: a full row still reorders")
+  -- with the names back, the line is written exactly as it was
+  local back = M.New(raw)
+  back:Add(L, "Solex", "player")
+  back:Remove(L, 3)
+  eq(back:Text(), raw, "edit: back to the names it had, the text as written")
+  check(not back:Dirty(), "edit: not dirty then")
+  -- a CRLF note keeps its line ends
+  local crlf = (head("Heroic") .. BLOCK):gsub("\\n", "\\r\\n")
+  local c = M.New(crlf)
+  c:Remove(3, 1)
+  eq(c:Text(), (head("Heroic") .. "intstart\\nSixz\\nDurayn Sarrantha\\nintend\\n"):gsub("\\n", "\\r\\n"), "edit: CRLF kept")
+end
+
+-- a block that leaves trailing empty groups out still shows a row for each group, which takes names
+do
+  local raw = head("Heroic") .. "intstart\\nXuelan Sixz\\nintend\\nSpread out\\n"
+  local e = M.New(raw)
+  local order, rightAt = e:Order(), nil
+  local kinds = {}
+  for n, i in ipairs(order) do
+    kinds[#kinds + 1] = e.rows[i].kind .. (e.rows[i].label and (":" .. e.rows[i].label) or "")
+    if e.rows[i].label == "Right" then rightAt = i end
+  end
+  eq(table.concat(kinds, ","), "header,heading,kick:Left,kick:Right,blank,heading,blank", "missing: Right shown before the end line")
+  check(rightAt and e:Editable(rightAt), "missing: it takes names")
+  eq(e:Text(), raw, "missing: nothing written while it is empty")
+  e:Add(rightAt, "Durayn", "player")
+  eq(e:Text(), head("Heroic") .. "intstart\\nXuelan Sixz\\nDurayn\\nintend\\nSpread out\\n", "missing: its line written in group order")
+  -- every name out: the block is taken out, as the Interrupts page's write does
+  local x = M.New(raw)
+  x:Remove(3, 1)
+  x:Remove(3, 1)
+  eq(x:Text(), head("Heroic") .. "Spread out\\n", "empty: no block")
+end
+
+-- no setup: Group N rows, no cap
+do
+  local e = M.New("EncounterID:3470;Difficulty:Normal\\n" .. BLOCK)
+  eq(e.rows[3].label, "Group 1", "no setup: Group N")
+  eq(e.rows[3].cap, nil, "no setup: no cap")
+  for _, n in ipairs({ "A", "B", "C", "D", "E", "F" }) do e:Add(3, n, "player") end
+  eq(#e:Names(3), 8, "no setup: any number of names")
+  -- the record's boss, for a text with no header
+  local r = M.New(BLOCK, { boss = { encounterID = 3470, difficulty = "Heroic" } })
+  eq(r.rows[2].label, "Left", "editor: the record's boss names the rows")
+end
+
+-- read-only: no drag, no x
+do
+  local e = M.New(head("Heroic") .. BLOCK, { readOnly = true })
+  check(not e:Editable(3), "read-only: takes no names")
+  check(not e:Add(3, "Solex", "player"), "read-only: no add")
+  check(not e:Remove(3, 1), "read-only: no x")
+  check(not e:BeginDrag({ row = 3, index = 1 }), "read-only: no drag")
+end
+
+-- after a save: Interrupts' lists for that boss and difficulty follow (Block.Saved)
+do
+  local Notes = CRT.Notes
+  CRT.db.notes.list, CRT.db.notes.nextId, CRT.db.notes.active = {}, 1, nil
+  local before = head("Heroic") .. "intstart\\nA1 A2 A3 A4 A5\\nB1 B2 B3 B4 B5\\nintend\\n"
+  local id = Notes:Import(before)
+  local fired = 0
+  I:OnChange(function(what) if what == "list" then fired = fired + 1 end end)
+  local after = head("Heroic") .. "intstart\\nA2 A1 A3 A4 A5\\nB1 B2 B3 B4 B5\\nintend\\n"
+  Notes:UpdateRaw(id, after)
+  fired = 0
+  check(B.Saved(id, before, after), "sync: the block changed, the lists follow")
+  local key = I.Key(3470, 15)
+  eq(table.concat(I:Own(key)[1], " "), "A2 A1 A3 A4 A5", "sync: your own list in the new order")
+  local list, from = I:List(key)
+  eq(from, "raid", "sync: the raid's list is in use")
+  eq(table.concat(list[1], " "), "A2 A1 A3 A4 A5", "sync: the raid's list read back from the note")
+  eq(fired, 1, "sync: one change, so an open page refreshes once")
+  -- a row with names short of its slots: your own list follows, the raid's can't be read from it
+  local short = head("Heroic") .. "intstart\\nA2 A1\\nB1 B2 B3 B4 B5\\nintend\\n"
+  Notes:UpdateRaw(id, short)
+  fired = 0
+  B.Saved(id, after, short)
+  eq(table.concat(I:Own(key)[1], ","), "A2,A1,,,", "sync: own list with the empty slots")
+  local l2, f2 = I:List(key)
+  eq(f2, "own", "sync: your own list in use, since the raid's no longer matches the note")
+  eq(fired, 1, "sync: one change")
+  -- nothing in the block changed: nothing follows
+  fired = 0
+  check(not B.Saved(id, short, short .. "Spread out\\n"), "sync: the block as it was, nothing done")
+  eq(fired, 0, "sync: no change fired")
+  -- a personal note never holds the raid's block: left alone
+  local mine = Notes:Import(head("Heroic") .. "intstart\\nZ1\\nintend\\n", nil, true)
+  fired = 0
+  check(not B.Saved(mine, before, after), "sync: a personal note, nothing done")
+  eq(fired, 0, "sync: nothing fired for it")
+end
 
 -- a kick block and an assignment block (Notes/Assign.lua) in one note: each reads as its own, neither takes the other's
 -- lines, both directly after each other with no blank line between them
@@ -138,15 +267,15 @@ do
     check(v:find("heading:Ravenous Feast|label:Soak|label:Back", 1, true), order .. ": render: the Assign heading and its rows: " .. v)
     check(not v:find("assign:", 1, true) and not v:find("intstart", 1, true), order .. ": render: no marker shown: " .. v)
     eq(select(2, v:gsub("timer:", "")), 3, order .. ": render: the block's three timer lines")
-    -- the note editor: the kick lines read only, the Assign heading a heading, its rows editable
+    -- the note editor: the kick lines rows of names, the Assign heading a heading, its rows editable
     local s = M.New(raw)
     local kinds = {}
     for i, row in ipairs(s.rows) do kinds[i] = row.kind .. (row.assign and "*" or "") end
     local k = table.concat(kinds, ",")
     if order == "kick first" then
-      eq(k, "header,heading,text,text,blank,heading*,label,label,timer,timer,timer,blank", "editor rows")
+      eq(k, "header,heading,kick,kick,blank,heading*,label,label,timer,timer,timer,blank", "editor rows")
     else
-      eq(k, "header,heading*,label,label,timer,timer,timer,heading,text,text,blank,blank", "editor rows (assign first)")
+      eq(k, "header,heading*,label,label,timer,timer,timer,heading,kick,kick,blank,blank", "editor rows (assign first)")
     end
     eq(s:Text(), raw, order .. ": editor: the raw text unchanged")
     -- the Assign block reads only its own rows, the kick block only its own lines

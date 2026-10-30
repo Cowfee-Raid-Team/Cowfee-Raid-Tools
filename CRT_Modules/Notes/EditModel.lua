@@ -13,7 +13,9 @@ local ADDON, CRT = ...
 --   s:Move(i, k, j)             moves row i's k-th name to row j
 --   s:Text(), s:Dirty()         the raw text now, and whether it differs from the text opened
 --   s:SetQuickFill(on), s:Select(i), s:PaletteClick(token, kind)   Quick fill: a click on a chip adds it to the row
---   s:BeginDrag(source), s:Drop(i), s:CancelDrag()   a drag: { token, kind } from the palette, { row, index } from a row
+--   s:BeginDrag(source), s:Drop(i, at), s:CancelDrag()   a drag: { token, kind } from the palette, { row, index } from a
+--                               row; at (optional) the place in row i it lands (a kick row's, below), else its end
+--   s:Order()                   the rows' indices in the order they show (a kick block's missing groups, below)
 --   Model.Palette(roster, query)  the palette's sections: Players, General, Groups and Classes
 --   Model.Sources(layouts, linkedId, noInvite), Model.DefaultSource(linkedId, inGroup), Model.Roster(names, classOf, roleOf)
 --                               where the Players come from: the group, the note's invite list or a Raid Groups layout
@@ -24,6 +26,13 @@ local ADDON, CRT = ...
 --   the invite     "invitelist:A,B,,C;", its comma-separated slots in group order. Only players: a removed name
 --   list           leaves its slot empty, so everyone after it keeps their group; a new one fills the first empty
 --                  slot, else goes on the end. The spaces in a slot and everything around the list stay as written.
+--   the kick      the raid note's kick list (Interrupts/NoteBlock.lua, CRT.InterruptNote): one row per group of its
+--   block         setup, labelled from it (the raid marker's icon, its label), its names in kick order, at most the
+--                 group's slots (a block whose boss has no setup: "Group N", no cap). Players only, each once a row;
+--                 names reorder within a row. A group the block has no line for (trailing empty groups are left out)
+--                 is a row after the last line all the same (s.rows past the note's lines, shown by s:Order()). Once
+--                 any of its names change, the block is written again the way the Interrupts page writes it
+--                 (NoteBlock's LinesOf and Replace), every other line as it was.
 -- Every other line (the header, the timed lines, headings, text, a timer the parser could not read) is shown as
 -- written and never changes, except a timed line's names when it follows an assignment line (Notes/Links.lua):
 --   s:TimerNames(i), s:SetTimerNames(i, names)   a timer row's names, and writing new ones as its tag
@@ -43,7 +52,9 @@ local TEXT = {
     group = "Group %d",
     fromGroup = "Current group",
     fromInvite = "This note's invite list",
+    rowFull = "%s takes %d names at most.",
 }
+Model.TEXT = TEXT
 
 -- The tag words the alerts understand (Notes/Engine.lua: IsMine, groupTag and the class words), which the
 -- Raid Notes integrations also read: "everyone", a role, "Group1".."Group8" in one word (Integrations/MRT.lua
@@ -159,7 +170,11 @@ end
 
 local function names(f)
     local out = {}
-    if f.kind == "invite" then
+    if f.kind == "kick" then
+        for k, name in ipairs(f.names) do
+            out[k] = name
+        end
+    elseif f.kind == "invite" then
         for _, slot in ipairs(f.slots) do
             if slot.name ~= "" then
                 out[#out + 1] = slot.name
@@ -184,7 +199,11 @@ local function has(f, token)
     return false
 end
 
-local function add(f, token)
+local function add(f, token, at)
+    if f.kind == "kick" then
+        table.insert(f.names, math.max(1, math.min(at or (#f.names + 1), #f.names + 1)), token)
+        return
+    end
     if f.kind == "invite" then
         for _, slot in ipairs(f.slots) do
             if slot.name == "" then
@@ -204,6 +223,9 @@ end
 -- Removes the k-th name: a label's with the separator before it (the first name: the one after it goes); an
 -- invite list's leaves its slot empty.
 local function remove(f, k)
+    if f.kind == "kick" then
+        return table.remove(f.names, k) ~= nil
+    end
     if f.kind == "invite" then
         local n = 0
         for _, slot in ipairs(f.slots) do
@@ -329,19 +351,43 @@ local function rowFor(lineNo, raw, timer, markdown)
     return row
 end
 
--- A line of the raid note's kick block, shown as the note view shows it: the "Kick order" heading, a read-only line per
--- group ("<label>: <names>"), nothing for the end line. Its raw text stays, so the saved text is as written.
+-- A line of the raid note's kick block (Interrupts/NoteBlock.lua's View): the "Kick order" heading, a row of names per
+-- group, nothing for the end line. A row's raw text stays: the block is written again from the rows (Session:Text).
 local function kickRow(row, item)
     row.field, row.original, row.editable = nil, nil, nil
     if item.kind == "heading" then
-        row.kind, row.text = "heading", item.text
+        row.kind, row.text, row.kicks = "heading", item.text, true
     elseif item.kind == "kick" then
-        local icon = item.marker and CRT.InterruptNote.Icon(item.marker, 14) or ""
-        local names = #item.names > 0 and (" " .. table.concat(item.names, " ")) or ""
-        row.kind, row.text = "text", (icon ~= "" and (icon .. " ") or "") .. item.label .. ":" .. names
+        row.kind, row.label, row.marker, row.group, row.cap = "kick", item.label, item.marker, item.group, item.slots
+        row.editable = true
+        row.field = { kind = "kick", names = {} }
+        for k, name in ipairs(item.names) do
+            row.field.names[k] = name
+        end
+        row.original = shape(row.field)
     else
         row.kind, row.text = "blank", nil
     end
+end
+
+-- The kick block's rows by group: each line's, then one past the note's lines for each group it has no line for
+-- (its missing groups), shown before its end line.
+local function kickRows(s, kicks)
+    local rows, last = {}, nil
+    for i, item in pairs(kicks) do
+        if item.kind == "kick" then
+            rows[item.group] = i
+        elseif item.kind == "hidden" then
+            last = i
+        end
+    end
+    for _, m in ipairs(last and kicks[last].missing or {}) do
+        local i = #s.rows + 1
+        s.rows[i] = { raw = "", virtual = true, before = last }
+        kickRow(s.rows[i], { kind = "kick", group = m.group, label = m.label, marker = m.marker, slots = m.slots, names = {} })
+        rows[m.group] = i
+    end
+    s.kick = { rows = rows }
 end
 
 local Session = {}
@@ -360,14 +406,36 @@ function Model.New(text, opts)
         byLine[t.line] = t
     end
     s.pieces = splitLines(text)
-    local kicks = CRT.InterruptNote and CRT.InterruptNote.View(text)
+    -- opts.boss: the note record's { encounterID, difficulty }, for a text whose header doesn't name them
+    local kicks = (not opts.markdown) and CRT.InterruptNote and CRT.InterruptNote.View(text, opts.boss)
     for i, piece in ipairs(s.pieces) do
         s.rows[i] = rowFor(i, piece.text, byLine[i], opts.markdown)
         if kicks and kicks[i] then
             kickRow(s.rows[i], kicks[i])
         end
     end
+    if kicks then
+        kickRows(s, kicks)
+    end
     return s
+end
+
+-- The rows' indices in the order they show: the note's lines, a kick block's missing groups before its end line.
+function Session:Order()
+    local before = {}
+    for i = #self.pieces + 1, #self.rows do
+        local at = self.rows[i].before
+        before[at] = before[at] or {}
+        table.insert(before[at], i)
+    end
+    local out = {}
+    for i = 1, #self.pieces do
+        for _, v in ipairs(before[i] or {}) do
+            out[#out + 1] = v
+        end
+        out[#out + 1] = i
+    end
+    return out
 end
 
 -- Row i's names now (a copy; an invite list's without its empty slots).
@@ -397,20 +465,25 @@ local function validToken(token)
 end
 Model.ValidToken = validToken
 
--- Adds a name to row i. False when the row takes no names, the token isn't one word, the row has it already, or
--- (the invite list) it is not a player.
-function Session:Add(i, token, kind)
+-- Adds a name to row i (a kick row's at place at, else its end). False when the row takes no names, the token isn't
+-- one word, the row has it already, or (the invite list, a kick row) it is not a player; false and why when a kick row
+-- is full.
+function Session:Add(i, token, kind, at)
     if not (self:Editable(i) and validToken(token)) then
         return false
     end
-    local f = self.rows[i].field
+    local row = self.rows[i]
+    local f = row.field
     if has(f, token) then
         return false
     end
-    if f.kind == "invite" and ((kind ~= nil and kind ~= "player") or notPlayer(token)) then
+    if (f.kind == "invite" or f.kind == "kick") and ((kind ~= nil and kind ~= "player") or notPlayer(token)) then
         return false
     end
-    add(f, token)
+    if f.kind == "kick" and row.cap and #f.names >= row.cap then
+        return false, string.format(TEXT.rowFull, row.label, row.cap)
+    end
+    add(f, token, at)
     return true
 end
 
@@ -422,15 +495,29 @@ function Session:Remove(i, k)
     return remove(self.rows[i].field, k)
 end
 
--- Moves row i's k-th name to row j. Nothing changes when j can't take it.
-function Session:Move(i, k, j)
-    if i == j or not (self:Editable(i) and self:Editable(j)) then
+-- Moves row i's k-th name to row j (a kick row's at place at). Within one kick row it moves to place at. Nothing
+-- changes when j can't take it (false and why, as Add).
+function Session:Move(i, k, j, at)
+    if not (self:Editable(i) and self:Editable(j)) then
         return false
+    end
+    local f = self.rows[i].field
+    if i == j then
+        if f.kind ~= "kick" or not f.names[k] or not at then
+            return false
+        end
+        local word = table.remove(f.names, k)
+        table.insert(f.names, math.max(1, math.min(at, #f.names + 1)), word)
+        return true
     end
     -- added to j first, removed from i only once it is in: a word j refuses is never lost
     local word = self:Names(i)[k]
-    if not (word and validToken(word)) or not self:Add(j, word) then
+    if not (word and validToken(word)) then
         return false
+    end
+    local ok, why = self:Add(j, word, nil, at)
+    if not ok then
+        return false, why
     end
     return self:Remove(i, k)
 end
@@ -502,6 +589,9 @@ end
 -- Row i's line now: as written while its names are the ones it had.
 function Session:LineText(i)
     local row = self.rows[i]
+    if row and row.kind == "kick" then
+        return row.raw -- the block is written whole, from its rows (Text)
+    end
     if row and row.rewritten then
         return row.rewritten
     end
@@ -511,12 +601,32 @@ function Session:LineText(i)
     return fieldText(row.field)
 end
 
+-- The kick block's names now, group by group, when any of them changed; else nil.
+function Session:KickNames()
+    if not self.kick then
+        return nil
+    end
+    local out, any = {}, false
+    for g = 1, #self.kick.rows do -- every group from 1 has a row (a line, or a missing group)
+        local i = self.kick.rows[g]
+        out[g] = i and self:Names(i) or {}
+        any = any or (i ~= nil and changed(self.rows[i]))
+    end
+    return any and out or nil
+end
+
 function Session:Text()
     local out = {}
     for i, piece in ipairs(self.pieces) do
         out[i] = self:LineText(i) .. piece.eol
     end
-    return table.concat(out)
+    local text = table.concat(out)
+    local kicks = self:KickNames()
+    if kicks then
+        local Block = CRT.InterruptNote
+        text = Block.Replace(text, Block.LinesOf(kicks))
+    end
+    return text
 end
 
 function Session:Dirty()
@@ -583,17 +693,18 @@ function Session:BeginDrag(source)
     return true
 end
 
--- Drops the drag on row i (nil: outside every row, which does nothing). Returns whether a name was added or moved.
-function Session:Drop(i)
+-- Drops the drag on row i (nil: outside every row, which does nothing), at place at in a kick row. Returns whether a
+-- name was added or moved (false and why for a full kick row).
+function Session:Drop(i, at)
     local d = self.drag
     self.drag = nil
     if not (d and i) then
         return false
     end
     if d.row then
-        return self:Move(d.row, d.index, i)
+        return self:Move(d.row, d.index, i, at)
     end
-    return self:Add(i, d.token, d.kind)
+    return self:Add(i, d.token, d.kind, at)
 end
 
 function Session:CancelDrag()

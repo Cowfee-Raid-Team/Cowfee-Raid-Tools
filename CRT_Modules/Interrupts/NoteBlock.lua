@@ -64,11 +64,23 @@ end
 
 -- The block's lines for a list in def's group order (start and end included), or {} when it has no name.
 function Block.Lines(def, list)
-    local rows, any = {}, false
+    local rows = {}
     for g, grp in ipairs(def.groups) do
-        local names = {}
+        rows[g] = {}
         for s = 1, grp.slots do
-            local name = type(list) == "table" and type(list[g]) == "table" and list[g][s]
+            rows[g][s] = type(list) == "table" and type(list[g]) == "table" and list[g][s] or ""
+        end
+    end
+    return Block.LinesOf(rows)
+end
+
+-- The block's lines for groups of names ({ { names }, ... } in group order, as the note editor's rows hold them),
+-- the same way: empty names left out, trailing empty groups too, {} when there is no name.
+function Block.LinesOf(groups)
+    local rows, any = {}, false
+    for g, list in ipairs(groups) do
+        local names = {}
+        for _, name in ipairs(type(list) == "table" and list or {}) do
             if type(name) == "string" and trim(name) ~= "" then
                 names[#names + 1] = trim(name)
                 any = true
@@ -416,4 +428,49 @@ function Block.ReadInto(key)
         return false
     end
     return Interrupts:ReceiveShared(t.key, list, TEXT.fromNote)
+end
+
+-- Whether two texts' blocks hold the same names, line by line (nil for no block).
+local function sameRows(a, b)
+    if (a == nil) ~= (b == nil) then
+        return false
+    end
+    for i = 1, math.max(#(a or {}), #(b or {})) do
+        if table.concat(a[i] or {}, " ") ~= table.concat(b[i] or {}, " ") then
+            return false
+        end
+    end
+    return true
+end
+
+-- A note saved in the note editor (Notes/EditorWindow.lua) from before to after: when its block changed and it is the
+-- note the block lives in for its boss and difficulty (noteOf), Interrupts' lists follow it: your own list takes its
+-- names (you saved it), and the raid's list is read back from it (ReadInto). A row short of its slots can't be read
+-- back, so your own list is then the one in use. One change is fired, so an open page refreshes once. True when the
+-- lists were followed.
+function Block.Saved(noteID, before, after)
+    local Notes = CRT.Notes
+    local record = Notes and Notes:Get(noteID)
+    if not record or record.personal or sameRows(Block.Rows(before), Block.Rows(after)) then
+        return false
+    end
+    local _, key = Block.SetupFor(record.encounterID, record.difficulty)
+    local t = key and target(key)
+    if not t or noteOf(t) ~= noteID then
+        return false
+    end
+    local rows = Block.Rows(after) or {}
+    local list = {}
+    for g, grp in ipairs(t.def.groups) do
+        list[g] = {}
+        for s = 1, grp.slots do
+            list[g][s] = rows[g] and rows[g][s] or ""
+        end
+    end
+    local changed = Interrupts:SetOwn(t.key, list, true)
+    local ok, took = pcall(Block.ReadInto, t.key)
+    if changed and not (ok and took) then
+        Interrupts:Fire("list", t.key, "own")
+    end
+    return true
 end
