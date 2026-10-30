@@ -40,7 +40,7 @@ local d = CRT.db.interrupts
 check(d.enabled == false, "defaults: off")
 check(d.accept == true and d.test == false, "defaults: accept on, test off")
 eq(d.plates.size, 50, "defaults: box size"); eq(d.plates.font, 24, "defaults: number size"); eq(d.plates.offset, 20, "defaults: height")
-check(d.plates.on == true and d.plates.all == false, "defaults: numbers on, only yours")
+check(d.plates.on == true and d.plates.all == true, "defaults: numbers on, every number shown")
 eq(table.concat(d.plates.mineBox, ","), "0,1,0,1", "defaults: your box green")
 eq(table.concat(d.plates.mineText, ","), "1,0,0,1", "defaults: your number red")
 eq(table.concat(d.plates.box, ","), "1,0,0,1", "defaults: other boxes red")
