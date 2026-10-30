@@ -101,6 +101,7 @@ CRT.UI = { PAGE_W = 1026, PAGE_H = 560,
   Dropdown = function(_, label, opts) local r = mock("Dropdown") r.refresh = function() end dropdowns[label] = opts return r end,
   HelpRight = function(target, title, text, opts) local b = (function(_, title, text) helps[title] = text return mock("Help") end)(opts and opts.parent or target, title, text) rawset(b, "helpTarget", target) return b end, HELP_GAP = 4, HELP_SIZE = 20, Help = function(_, title, text) helps[title] = text return mock("Help") end,
   LiftOver = function() end, ShownPopup = function(ret) return ret end,
+  PreviewButton = function(_, label, keys) local b = mock("Button") rawset(b, "previewLabel", label) rawset(b, "previewKeys", keys) return b end,
 }
 
 assert(load(engineSrc, "CRT_Core/Macros.lua"))("CowfeeRaidTools", CRT)

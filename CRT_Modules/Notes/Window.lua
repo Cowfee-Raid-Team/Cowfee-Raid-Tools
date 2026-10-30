@@ -41,7 +41,8 @@ local STAMP_WINDOWS = { window = true, assignments = true, personal = true }
 -- The same list as the General Settings page's font choice, in Core.lua.
 NoteWindow.FONTS = CRT.FONTS
 
-local previewOn = false
+-- Previews, per window key ("window", "assignments", "personal"): each shows with a sample while on.
+local previewing = {}
 
 -- Work once, draw often. The windows' text is rebuilt only when something it shows may have changed: the
 -- note, the settings, the group, your role, your reminders, the alerts run (a phase start included), the
@@ -426,7 +427,7 @@ end
 local function timersBuild(_, force)
     local record, note = timersNote()
     if not note then
-        if previewOn then
+        if previewing.window then
             return textLines(timers.sample, gold("> 0:03") .. SAMPLE_TIMERS), "Raid note (sample)", true
         end
         return textLines(timers.empty, "No note loaded."), "Raid note", false
@@ -471,7 +472,7 @@ local function assignmentsText()
     if lines and #lines > 0 then
         return textBlock(lines), "Assignments: " .. record.name, true
     end
-    if previewOn then
+    if previewing.assignments then
         return textBlock(SAMPLE_ASSIGNMENTS), "Assignments (sample)", true
     end
     return "", "Assignments", false
@@ -871,7 +872,7 @@ local function personalBuild(_, force)
     if n > 0 then
         return out, "Personal note", true
     end
-    if previewOn then
+    if previewing.personal then
         return textLines(k.sample, "Your personal note shows here.\nWrite it on the Raid Notes page."), "Personal note (sample)", true
     end
     return NO_LINES, "Personal note", false
@@ -1108,7 +1109,7 @@ local function createWindow(key, defaultPosition, build)
     end
 
     local function unlocked()
-        return previewOn or not s().locked
+        return previewing[key] or not s().locked
     end
 
     frame:SetScript("OnDragStart", function()
@@ -1187,12 +1188,12 @@ local function createWindow(key, defaultPosition, build)
         self.flashPending = nil
         local stamping = stampNow or self.stamp:IsPlaying()
         -- Keep up when empty: a window with nothing to show stays up, blank at its own transparency
-        local visible = previewOn or (NoteWindow.AllowedHere() and s().shown and (hasContent or stamping or s().keepEmpty))
+        local visible = previewing[key] or (NoteWindow.AllowedHere() and s().shown and (hasContent or stamping or s().keepEmpty))
         frame:SetShown(visible and true or false)
         if not visible then
             return
         end
-        if not hasContent and not previewOn then
+        if not hasContent and not previewing[key] then
             lines, heading = NO_LINES, ""
         end
         if stampNow then
@@ -1332,9 +1333,13 @@ CRT.UI:OnTheme(function()
     end
 end)
 
-CRT.UI:RegisterPreview("note", function(on)
-    build()
-    previewOn = on and true or false
-    changed()
-    styleAll()
-end)
+-- One preview per window, so Notes Settings can preview one window or all three (its group button).
+NoteWindow.PREVIEW_KEYS = { window = "note-timers", assignments = "note-assignments", personal = "note-personal" }
+for windowKey, previewKey in pairs(NoteWindow.PREVIEW_KEYS) do
+    CRT.UI:RegisterPreview(previewKey, function(on)
+        build()
+        previewing[windowKey] = on and true or nil
+        changed()
+        styleAll()
+    end)
+end

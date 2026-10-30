@@ -8,7 +8,7 @@ const path = require('path');
 const themeLua = require('./theme_stub');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
-const harness = themeLua(process.argv.slice(2)) + require('./placement_stub')(process.argv.slice(2)) + `
+const harness = themeLua(process.argv.slice(2)) + require('./placement_stub')(process.argv.slice(2)) + require('./previews_stub')(process.argv.slice(2)) + `
 local coreSrc, dataSrc, panelSrc, pageSrc, clickSrc, ignoreSrc, qolPageSrc, tooltipSrc = ...
 local passed, failed = 0, 0
 local function check(name, cond, detail)
@@ -177,8 +177,6 @@ CRT.UI = {
     return b
   end,
   RegisterLayer = function() end,
-  RegisterPreview = function(_, key, fn) previewFns[key] = fn end,
-  SetPreviews = function() end,
   ResetButtonWidth = function() return 44 end, ResetButton = function() return mock("Button") end,
   Slider = function(p, text, opts) local r = mock("Slider") rawset(r, "opts", opts) rawset(r, "refresh", function() end) sliders[text] = r return r end,
   Dropdown = function(p, text, opts) local r = mock("Dropdown") rawset(r, "opts", opts) rawset(r, "refresh", function() end) dropdowns[text] = r return r end,
@@ -187,6 +185,9 @@ CRT.UI = {
   SpotPicker = function(p, opts) local r = mock("SpotPicker") rawset(r, "opts", opts) rawset(r, "refresh", function() end) spotPickers[#spotPickers + 1] = r return r end,
 }
 CRT_THEME(CRT, CRT.UI)
+-- the real previews (CRT_Core/UI/Panel.lua's [previews] block): the panel registers into CRT.UI.previews
+CRT_PREVIEWS(CRT, CRT.UI)
+previewFns = CRT.UI.previews
 -- the tooltip rules (UI.TooltipAnchor, the areas, the Tooltip position setting)
 assert(load(tooltipSrc, "Tooltip.lua"))("CowfeeRaidTools", CRT)
 function CRT:Print(m) print("  [print] " .. tostring(m)) end
@@ -1110,14 +1111,18 @@ do
   end
 end
 
--- Preview debuffs: only this panel, its label, combat, and closing the tab.
+-- Preview debuffs: a UI.PreviewButton on the "debuffs" key only, its label, combat, and another section's preview.
 local pb
 for _, f in ipairs(frames) do if f.kind == "Button" and rawget(f, "text") == "Preview debuffs" then pb = f end end
 check("the Preview debuffs button exists", pb ~= nil and type(rawget(pb, "OnClick")) == "function")
+check("on the debuffs preview key only", pb and #pb.previewKeys == 1 and pb.previewKeys[1] == "debuffs")
+check("its tooltip says what it shows", pb and pb.previewTip and pb.previewTip:find("debuff panel", 1, true) ~= nil)
+local otherOn = 0
+previewFns.othersection = function(on) otherOn = otherOn + 1 end
 pf:Show()
 pb.OnClick(pb)
 check("Preview debuffs turns the debuff preview on", Panel:IsPreviewing() == true)
-check("and leaves the global Previews off", CRT.UI.previewing == false)
+check("and no other section's", otherOn == 0)
 check("the label reads Stop preview", pb.text == "Stop preview", pb.text)
 pb.OnClick(pb)
 check("Stop preview turns it off", Panel:IsPreviewing() == false and pb.text == "Preview debuffs", pb.text)
@@ -1130,19 +1135,11 @@ combat = true
 pb.OnClick(pb)
 check("in combat Stop preview still works", Panel:IsPreviewing() == false and pb.text == "Preview debuffs", pb.text)
 combat = false
-previewFns.debuffs(true)
-check("the global Previews sets the label", pb.text == "Stop preview", pb.text)
-previewFns.debuffs(false)
+CRT.UI:SetPreviewGroup({ "othersection", "debuffs" }, true)
+check("the title bar's Previews sets the label", pb.text == "Stop preview", pb.text)
+CRT.UI:SetPreviewGroup({ "othersection", "debuffs" }, false)
 check("and sets it back", pb.text == "Preview debuffs", pb.text)
-pb.OnClick(pb)
-pf.OnHide(pf)
-check("closing the tab ends the preview", Panel:IsPreviewing() == false and pb.text == "Preview debuffs", pb.text)
-CRT.UI.previewing = true
-previewFns.debuffs(true)
-pf.OnHide(pf)
-check("closing the tab leaves it on while Previews is on", Panel:IsPreviewing() == true)
-CRT.UI.previewing = false
-previewFns.debuffs(false)
+previewFns.othersection = nil
 
 -- The Debuffs tab's (?) and Preview debuffs: the button sits right of the title's (?).
 do

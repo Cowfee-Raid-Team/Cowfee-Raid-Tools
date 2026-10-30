@@ -208,7 +208,7 @@ R:Resync(7, 6450); eq(#timers, after7, "counted: a wave already shown is not sho
 check(not shownFrame(), "counted: and not on screen again")
 A:HandleEvent("ENCOUNTER_END")
 
--- Preview reminder: one 5 second countdown, with the sound
+-- Test reminder: one 5 second countdown, with the sound
 played = {}
 CRT.db.interrupts.reminder.sound = "kit:8960"
 clock = 5000; R:Preview()

@@ -6,9 +6,10 @@ local ADDON, CRT = ...
 --                list heading (its (?) is how the numbers are worked out: the setup, read-only), the kick rows
 --                (Interrupts/PageGrid.lua: a row of chips per group, scrolling when they don't fit), Clear list, Use
 --                the raid's list, Share to raid, Who has it (N of M) (Interrupts/WhoWindow.lua, a pop-out), Test on
---                trash, Preview reminder and Write to the raid note (Interrupts/NoteBlock.lua); on the right, the
+--                trash, Test reminder and Write to the raid note (Interrupts/NoteBlock.lua); on the right, the
 --                players to drag onto the rows (Interrupts/PagePalette.lua)
---   Settings     the numbers above the nameplates, the reminder and sharing
+--   Settings     the numbers above the nameplates, the reminder and sharing; a preview button under each display's
+--                settings and Preview kick displays for both (UI.PreviewButton)
 -- Opening a boss reads its raid note's kick block into the raid's list (NoteBlock.ReadInto), again only once the boss
 -- or the note's text changed. The rows edit your own list, and are read-only in a group for anyone who can't share.
 -- Work once, draw often: Page.Refresh marks the page to be drawn and draws it once on the next frame, however many
@@ -60,7 +61,7 @@ local TEXT = {
     writeNothing = "The kick list is empty: nothing to write.",
     test = "Test on trash",
     testHelp = "Tries the boss shown on trash. By timing: any pack is numbered by the order its mobs start casting, the first two 1, the next two 2, and so on. By raid marker: mark a mob with a group's marker, and its number moves on with each cast. Turns off when you change zone.",
-    preview = "Preview reminder",
+    testReminder = "Test reminder",
     how = "How the numbers are worked out",
     howHelp = "The boss's kick setup. A setup by timing is as CRT ships it: if a hotfix moves the adds, numbers stop showing or land on the wrong adds until CRT is updated.",
     howSpell = "Kicks: %s.",
@@ -89,7 +90,7 @@ local TEXT = {
     box = "Box",
     number = "Number",
     reminder = "Reminder",
-    reminderHelp = "Your interrupt's icon with your kick. By timing, it counts down the last 5 seconds before your pair's first cast. By raid marker, it says Your kick next when your add's cast is yours. Move it with Previews.",
+    reminderHelp = "Your interrupt's icon with your kick. By timing, it counts down the last 5 seconds before your pair's first cast. By raid marker, it says Your kick next when your add's cast is yours. Move it with Preview reminder icon.",
     reminderOn = "Count down before my kick",
     sound = "Sound",
     reminderSize = "Size",
@@ -101,7 +102,18 @@ local TEXT = {
     confirm = "Interrupts",
     slashOff = "Interrupts is switched off. Tick Enable Interrupts on General Settings first.",
     soundNone = "None",
+    -- the Settings tab's previews: both displays, the number box, the reminder
+    previewAll = "Preview kick displays",
+    previewAllTip = "Shows a sample number box and the reminder on screen, so you can check the box and drag the reminder into place. Other previews stay as they are.",
+    previewBox = "Preview number box",
+    previewBoxTip = "Shows a sample number box in the middle of the screen, at its height above the plate, in your colours.",
+    previewBoxOff = "Turn on Interrupts (Enable Interrupts on General Settings) to preview the number box.",
+    previewBoxNoBoss = "No boss has a kick setup, so there is no number to show.",
+    previewReminder = "Preview reminder icon",
+    previewReminderTip = "Shows the reminder with its drag box so you can drag it into place. Test reminder on the Kick list tab plays a test countdown instead.",
 }
+-- The preview keys: Interrupts/Plates.lua's number box and Interrupts/Reminder.lua's reminder.
+local PREVIEW_BOX, PREVIEW_REMINDER = "interrupts-box", "interrupts-reminder"
 Page.TEXT = TEXT
 
 -- Every place and size on the page, from the page's top left (UI.PAGE_W x UI.PAGE_H); the tab frames start at contentY.
@@ -117,8 +129,10 @@ local LAYOUT = {
     -- the right column: the players (Interrupts/PagePalette.lua)
     -- the Settings tab
     setX2 = 520, setLabelW = 150, setControlW = 160, swatchW = 36, swatchH = 18, swatchLabelW = 100, swatchStep = 100,
-    platesY = { head = -8, on = -28, all = -52, size = -80, font = -114, offset = -148, yours = -192, others = -222 },
-    reminderY = { head = -8, on = -28, sound = -56, size = -92, sharing = -144, accept = -164 },
+    -- preview: the column's own preview button, under its last row; previewAll: both, under the plates column
+    platesY = { head = -8, on = -28, all = -52, size = -80, font = -114, offset = -148, yours = -192, others = -222,
+        preview = -256, previewAll = -300 },
+    reminderY = { head = -8, on = -28, sound = -56, size = -92, preview = -126, sharing = -168, accept = -188 },
     reminderLabelW = 80, soundW = 200,
     checkSize = 24, checkInset = 4,
     greyAlpha = 0.4, -- a greyed swatch, as a disabled checkbox fades
@@ -380,7 +394,7 @@ local function buildStatus(f)
 end
 
 -- The rows under the kick list follow its height (the grid's viewport, PageGrid.lua): Clear list (Use the raid's list,
--- Share and Who has it follow it), Test on trash and Preview reminder (Write to the raid note follows it).
+-- Share and Who has it follow it), Test on trash and Test reminder (Write to the raid note follows it).
 function Page.PlaceBelow(height)
     local y = L.gridY - height - L.buttonGap
     if Page.clear then
@@ -578,10 +592,10 @@ local function buildAssignments(f)
     end)
     UI.HelpRight(test, TEXT.test, TEXT.testHelp)
     Page.test = test
-    Page.preview = button(f, TEXT.preview, function()
+    Page.preview = button(f, TEXT.testReminder, function()
         CRT.InterruptReminder:Preview()
     end)
-    -- Write to the raid note after Preview reminder: the row above is full with Who has it
+    -- Write to the raid note after Test reminder: the row above is full with Who has it
     Page.write:SetPoint("LEFT", Page.preview, "RIGHT", L.buttonSpace, 0)
     buildListHeading(f)
     -- the grid last among the left column's refreshes, so it places the rows under it once they exist
@@ -683,6 +697,21 @@ local function buildPlatesSettings(f)
     slider(f, x, Y.offset, TEXT.offset, plates, "offset", -100, 100, nil, platesOn)
     swatchRow(f, Y.yours, TEXT.yours, "mineBox", "mineText")
     swatchRow(f, Y.others, TEXT.others, "box", "text")
+    -- greyed while the box can't show: Interrupts off, or no boss to number (Interrupts/Plates.lua's Preview)
+    Page.previewBox = UI.PreviewButton(f, TEXT.previewBox, { PREVIEW_BOX }, { tooltip = TEXT.previewBoxTip,
+        enabledIf = function()
+            if not Interrupts:Enabled() then
+                return false, TEXT.previewBoxOff
+            end
+            if not CRT.InterruptPlates:PreviewBoss() then
+                return false, TEXT.previewBoxNoBoss
+            end
+            return true
+        end })
+    Page.previewBox:SetPoint("TOPLEFT", x, Y.preview)
+    controls[#controls + 1] = Page.previewBox
+    Page.previewAll = UI.PreviewButton(f, TEXT.previewAll, { PREVIEW_BOX, PREVIEW_REMINDER }, { tooltip = TEXT.previewAllTip })
+    Page.previewAll:SetPoint("TOPLEFT", x, Y.previewAll)
 end
 
 local function buildReminderSettings(f)
@@ -702,6 +731,8 @@ local function buildReminderSettings(f)
             changed()
         end }), x, Y.sound)
     slider(f, x, Y.size, TEXT.reminderSize, reminder, "size", 16, 128, L.reminderLabelW, reminderOn)
+    Page.previewReminder = UI.PreviewButton(f, TEXT.previewReminder, { PREVIEW_REMINDER }, { tooltip = TEXT.previewReminderTip })
+    Page.previewReminder:SetPoint("TOPLEFT", x, Y.preview)
     heading(f, x, Y.sharing, TEXT.sharing, TEXT.sharingHelp)
     checkbox(f, x - L.checkInset, Y.accept, TEXT.accept, function()
         return settings().accept

@@ -44,7 +44,9 @@ local alertSettings = { enabled = true, seconds = 10, tts = true, ttsSeconds = 3
 local win = { shown = true, locked = true, fontSize = 14, alpha = 100, bgAlpha = 50, font = "Friz Quadrata", hidePassed = true, onlyMe = false }
 local CRT = {
   Bosses = { OnRouteChange = function() end, RouteIndex = function() end },
-  UI = { PAGE_W = 1026, PAGE_H = 560, SkinScrollBar = function() end, ScrollGutter = function(w) return 6 + (w or 18) end, Help = function() local h = mock() helps[#helps + 1] = h return h end, Dropdown = function(_, _, o) local m = mock() rawset(m, "refresh", function() if o.enabledIf then rawset(m, "enabled", o.enabledIf() and true or false) end end) return m end, Slider = function(_, t, o) sliderLabels[t] = o local m = mock() rawset(m, "refresh", function() if o.enabledIf then rawset(m, "enabled", o.enabledIf() and true or false) end end) return m end,  RegisterLayer = function() end, RegisterPage = function(_, key, title, fn) pages[key] = fn end, Show = function() end, SetFrameTitle = function() end, RegisterTab = function() end, SetPreviews = function(_, on) previewsOn = on end, SetTabSelected = function() end },
+  UI = { PAGE_W = 1026, PAGE_H = 560, SkinScrollBar = function() end, ScrollGutter = function(w) return 6 + (w or 18) end, Help = function() local h = mock() helps[#helps + 1] = h return h end, Dropdown = function(_, _, o) local m = mock() rawset(m, "refresh", function() if o.enabledIf then rawset(m, "enabled", o.enabledIf() and true or false) end end) return m end, Slider = function(_, t, o) sliderLabels[t] = o local m = mock() rawset(m, "refresh", function() if o.enabledIf then rawset(m, "enabled", o.enabledIf() and true or false) end end) return m end,  RegisterLayer = function() end, RegisterPage = function(_, key, title, fn) pages[key] = fn end, Show = function() end, SetFrameTitle = function() end, RegisterTab = function() end, SetPreviews = function(_, on) previewsOn = on end, SetTabSelected = function() end,
+    -- CRT_Core/UI/Panel.lua's (run_previews.js tests it): a button that records its label and keys
+    PreviewButton = function(_, label, keys, opts) local b = CreateFrame("Button") rawset(b, "text", label) rawset(b, "previewKeys", keys) rawset(b, "tip", opts and opts.tooltip) return b end },
   Notes = {
     CanEditRaid = function() return true end, -- CRT_Modules/Notes/Data.lua: solo, you may change the raid note
     WindowSettings = function() return win end, Alert = function() return alertSettings end, Set = function(_, k, f, v) print("Set", k, f, v); local t = k == "alert" and alertSettings or win; t[f] = v; for _, fn in ipairs(listeners) do fn() end end,
@@ -112,6 +114,23 @@ rawset(auto, "GetChecked", function() return true end)
 auto.OnClick(auto)
 assert(win.autoAcceptCooldowns == true, "ticking it sets notes.autoAcceptCooldowns")
 print("ok the auto-accept box")
+-- The previews: one for all three windows beside Show outside of raid, and one under each window's column
+local previewBtns = {}
+for _, f in ipairs(allFrames) do if rawget(f, "previewKeys") then previewBtns[f.text] = f end end
+local group = previewBtns["Preview note windows"]
+assert(group and table.concat(group.previewKeys, ",") == "note-timers,note-assignments,note-personal", "Preview note windows takes all three")
+assert(y(group.pt) == -34 and group.pt[2] > 4 + 222, "beside Show outside of raid, clear of its label")
+local wantKeys = { ["Preview timers"] = "note-timers", ["Preview assignments"] = "note-assignments", ["Preview personal note"] = "note-personal" }
+local rowY
+for label, key in pairs(wantKeys) do
+  local b = previewBtns[label]
+  assert(b and #b.previewKeys == 1 and b.previewKeys[1] == key, label .. " takes " .. key)
+  assert(b.tip and b.tip:find("window"), label .. ": its tooltip says what it shows")
+  rowY = rowY or y(b.pt)
+  assert(y(b.pt) == rowY, label .. " lines up with the others")
+end
+assert(rowY < -70 - 92 - 48 - 88, "the window buttons sit under the timers column's font list: " .. rowY)
+print("ok the note window previews")
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 lua.lua_pushstring(L, to_luastring(fs.readFileSync(process.argv[2], 'utf8')));

@@ -2,7 +2,9 @@ local ADDON, CRT = ...
 
 -- The Quality of Life page: a home for small conveniences and their settings, in CRTDB.qol with
 -- defaults in Core.lua: the experimental low-health alert (QoL/LowHealth.lua), and on its own tab the
--- break timer's other-addon formats and bridge (QoL/BreakTimer.lua, Integrations/Breaks.lua). The
+-- break timer's other-addon formats and bridge (QoL/BreakTimer.lua, Integrations/Breaks.lua). The Low health,
+-- Debuffs and Break timer tabs each have a preview button for their display (UI.PreviewButton); with no
+-- Settings tab, the page has no group button. The
 -- window scale moved to the Addon Settings page (UI/SettingsPage.lua) in 0.13.1.
 
 local UI = CRT.UI
@@ -44,7 +46,11 @@ local TEXT = {
     breakAlsoNote = "When you start or cancel a break as the leader or an assistant, it is also sent in each ticked format, so raiders on those addons get it in their own break bar. Northern Sky needs NSRT loaded here; BigWigs and DBM are sent even if you don't run them.",
     breakBridge = "Bridge breaks between addons (raid leader)",
     breakBridgeNote = "When you are the raid leader and someone starts or cancels a break in another addon, your CRT sends the same break on in the formats it didn't arrive in, so everyone sees it. It waits a moment to see which formats came in, then sends each missing one once.",
-    lowHealthNote = "Experimental: in combat the game hides your health from addons, so the banner lets the game compare it to your setting. If it misbehaves, untick it here or type /crt lowhp off. Use Previews to place the banner.",
+    lowHealthNote = "Experimental: in combat the game hides your health from addons, so the banner lets the game compare it to your setting. If it misbehaves, untick it here or type /crt lowhp off. Use Preview banner to place the banner.",
+    lowHealthPreview = "Preview banner",
+    lowHealthPreviewTip = "Shows the LOW HEALTH banner with its drag box so you can drag it into place. Other previews stay as they are.",
+    breakPreview = "Preview break timer",
+    breakPreviewTip = "Shows the break timer with a sample break so you can drag it into place. Other previews stay as they are.",
 }
 
 local page
@@ -75,6 +81,9 @@ end
 
 -- Both sliders line up: the labels share one width. The sliders are Edit Mode sliders (UI/Controls.lua).
 local SLIDER_LABEL_W = 230
+-- The preview buttons: Low health's under its last row (Play once, top - 192), Break timer's under the bridge row.
+local LOWHEALTH_PREVIEW_Y = 230
+local BREAK_PREVIEW_GAP = 44
 
 local function percent(v)
     return v .. "%"
@@ -307,6 +316,8 @@ local function buildLowHealth(pf, top)
         end,
     }
 
+    local preview = UI.PreviewButton(pf, TEXT.lowHealthPreview, { "lowhealth" }, { tooltip = TEXT.lowHealthPreviewTip })
+    preview:SetPoint("TOPLEFT", 8, top - LOWHEALTH_PREVIEW_Y)
 end
 
 -- Your sound files (Sound/Engine.lua) --------------------------------------------------------
@@ -479,6 +490,9 @@ local function buildBreak(pf, top)
     end
     controls[#controls + 1] = bridge
     UI.HelpRight(bridge.label, TEXT.breakBridge, TEXT.breakBridgeNote)
+
+    local preview = UI.PreviewButton(pf, TEXT.breakPreview, { "break" }, { tooltip = TEXT.breakPreviewTip })
+    preview:SetPoint("TOPLEFT", 8, y - BREAK_PREVIEW_GAP)
 end
 
 -- Tabs: Low health, Debuffs, Break timer and Sounds (the debuff panel, Debuffs/Page.lua). Both are only settings.

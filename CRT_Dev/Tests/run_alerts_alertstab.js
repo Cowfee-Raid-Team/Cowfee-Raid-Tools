@@ -7,9 +7,10 @@ const fs = require('fs');
 const path = require('path');
 const themeLua = require('./theme_stub');
 const placementLua = require('./placement_stub');
+const previewsLua = require('./previews_stub');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
-const harness = themeLua(process.argv.slice(2)) + placementLua(process.argv.slice(2)) + `
+const harness = themeLua(process.argv.slice(2)) + placementLua(process.argv.slice(2)) + previewsLua(process.argv.slice(2)) + `
 local sources = { ... }
 local frames, fontStrings = {}, {}
 local function mock(kind, parent, template)
@@ -68,6 +69,8 @@ function CreateFrame(kind, name, parent, template)
   return f
 end
 local clock = 100
+local combat = false
+function InCombatLockdown() return combat end
 format = string.format
 function GetTime() return clock end
 CANCEL = "Cancel"
@@ -104,7 +107,6 @@ local pages, tabs, previews, rowsMade = {}, {}, {}, 0
 local dropdowns, sliders = {}, {}
 local shownPages = {}
 local pagePf
-local previewsOn = false
 CRT.UI = { PAGE_W = 1026, PAGE_H = 560, SkinScrollBar = function() end, ScrollGutter = function(w) return 6 + (w or 18) end,
   RegisterPage = function(_, key, title, fn) pages[key] = fn end,
   RegisterTab = function(_, b) tabs[#tabs + 1] = b end,
@@ -121,12 +123,6 @@ CRT.UI = { PAGE_W = 1026, PAGE_H = 560, SkinScrollBar = function() end, ScrollGu
     f:ClearAllPoints()
     f:SetPoint(w.point, UIParent, w.point, w.x, w.y)
   end,
-  SetPreviews = function(self, on)
-    previewsOn = on
-    self.previewing = on and true or false
-    for _, fn in pairs(previews) do fn(on) end
-  end,
-  RegisterPreview = function(_, key, fn) previews[key] = fn end,
   RegisterLayer = function() end,
   SetFrameTitle = function(f, t) rawset(f, "title", t) end,
   StyleWindow = function(_, f) rawset(f, "styled", true) end,
@@ -141,6 +137,7 @@ CRT.UI = { PAGE_W = 1026, PAGE_H = 560, SkinScrollBar = function() end, ScrollGu
     rawset(r, "value", opts.get() or opts.min)
     rawset(r, "refresh", function() rawset(r, "value", opts.get() or opts.min) if opts.enabledIf then rawset(r, "enabled", opts.enabledIf() and true or false) end end)
     sliders[#sliders + 1] = r return r end,
+  PanelButtonWidth = function(w) return math.max(40, math.ceil(w or 0) + 28) end,
   -- as CRT_Core/UI/Panel.lua: a button as wide as its label (6 a letter here)
   PanelButton = function(parent, label, height, onClick) local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
     b:SetText(label) b:SetSize(math.max(40, #label * 6 + 28), height) b:SetScript("OnClick", onClick) return b end,
@@ -174,6 +171,9 @@ CRT.NoteReminders = { Build = function() end }
 CRT.NotePhases = { Build = function() end }
 
 CRT_THEME(CRT, CRT.UI)
+-- the real previews (CRT_Core/UI/Panel.lua's [previews] block): every module registers into CRT.UI.previews
+CRT_PREVIEWS(CRT, CRT.UI)
+previews = CRT.UI.previews
 CRT_PLACEMENT(CRT) -- UI/Placement.lua, which every area is placed by
 local coreSrc
 local function loadSource(i, src)
@@ -395,17 +395,51 @@ check("tab: routing checkboxes bind the saved fields", function()
   local speechHelp
   for _, f in ipairs(frames) do if rawget(f, "helpTitle") == "Read them out (text to speech)" and not under(f, scroll) then speechHelp = f end end
   assert(speechHelp and speechHelp.helpText:find("wherever") and speechHelp.helpText:find("reminders"), "speech (?)")
-  -- Try it: Previews and Test all areas
+  -- Try it: Preview alerts (the callout and the five areas only) and Test all areas
   local previewsBtn, testBtn, tryIt
   for _, f in ipairs(frames) do
-    if f.kind == "Button" and f.text == "Previews" then previewsBtn = f end
+    if f.kind == "Button" and f.text == "Preview alerts" then previewsBtn = f end
     if f.kind == "Button" and f.text == "Test all areas" then testBtn = f end
   end
   for _, f in ipairs(fontStrings) do if f.text == "Try it" then tryIt = f end end
-  assert(tryIt and previewsBtn and testBtn, "Try it, Previews and Test all areas")
+  assert(tryIt and previewsBtn and testBtn, "Try it, Preview alerts and Test all areas")
+  -- another section's preview, which the alert group must leave alone
+  local other = false
+  previews.othersection = function(on) other = on end
+  CRT.UI:SetPreview("othersection", true)
+  local strip
+  for _, f in ipairs(fontStrings) do if tostring(f.text):find("^On screen now") then strip = f end end
   click(previewsBtn)
-  assert(previewsOn == true, "Previews on")
-  CRT.UI:SetPreviews(false)
+  local UI = CRT.UI
+  for _, key in ipairs({ "alert", "alerttexts", "alertbars", "alerticons", "alertcircles", "alerttimeline" }) do
+    assert(UI:IsPreviewing(key), "Preview alerts turns on " .. key)
+  end
+  assert(previewsBtn.text == "Stop preview", "the button reads Stop preview: " .. tostring(previewsBtn.text))
+  for _, f in ipairs(fontStrings) do if tostring(f.text):find("^On screen now") then strip = f end end
+  assert(strip and strip.shown and strip.text == "On screen now: Callout, Icons, Alerts text, Bars, Circles, Timeline", "the strip lists them: " .. tostring(strip and strip.text))
+  click(previewsBtn)
+  assert(not UI:IsPreviewing("alertbars") and not UI:IsPreviewing("alert"), "Stop preview turns them off")
+  assert(UI:IsPreviewing("othersection") and other == true, "and leaves the other section on")
+  assert(not strip.shown, "the strip hides with none of the alerts on")
+  UI:SetPreview("othersection", false)
+  previews.othersection = nil
+  -- the Configuration pane's button follows the list: one for the picked area only
+  configDropdown().opts.set("bars")
+  local kindBtns = {}
+  for _, f in ipairs(frames) do if rawget(f, "previewKeys") and #f.previewKeys == 1 then kindBtns[f.previewLabel] = f end end
+  local barsBtn = kindBtns["Preview bars"]
+  assert(barsBtn and barsBtn.shown and not kindBtns["Preview icons"].shown and not kindBtns["Preview callout"].shown, "only Preview bars shows with Bars picked")
+  assert(barsBtn.previewTip:find("bars area"), "its tooltip names what it shows")
+  click(barsBtn)
+  assert(UI:IsPreviewing("alertbars") and not UI:IsPreviewing("alerticons") and not UI:IsPreviewing("alert"), "Preview bars shows only bars")
+  assert(strip.shown and strip.text == "On screen now: Bars", "strip: " .. tostring(strip.text))
+  assert(previewsBtn.text == "Preview alerts", "the group is off with one area on")
+  configDropdown().opts.set("callout")
+  assert(kindBtns["Preview callout"].shown and not barsBtn.shown, "the callout's button with the callout picked")
+  assert(kindBtns["Preview callout"].previewKeys[1] == "alert", "the callout's key")
+  for _, k in pairs(kindBtns) do assert(k.previewKeys[1] ~= "alerteditor", "no button for the alert editor") end
+  UI:SetPreviews(false)
+  assert(not strip.shown, "all off")
   click(testBtn)
   for _, key in ipairs({ "AlertIcons", "AlertTexts", "AlertBars", "AlertCircles", "AlertTimeline" }) do
     assert(#CRT[key]:Visible() == 3, key .. " tests three lines: " .. #CRT[key]:Visible())

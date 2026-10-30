@@ -449,10 +449,16 @@ test("show outside of raid: hides the note windows in the open world, not in a r
   instType = "none"
   fire("ZONE_CHANGED_NEW_AREA")
   assert(not win.shown, "a zone change out of the raid hides it")
-  previewFns.note(true)
+  -- each window has its own preview: another window's leaves this one hidden
+  previewFns["note-timers"](true)
+  NW:RefreshAll()
+  assert(not win.shown, "the timers window's preview leaves the personal window hidden")
+  assert(named.CowfeeRaidToolsNote_window.shown, "and shows the timers window")
+  previewFns["note-timers"](false)
+  previewFns["note-personal"](true)
   NW:RefreshAll()
   assert(win.shown, "a preview shows it anyway")
-  previewFns.note(false)
+  previewFns["note-personal"](false)
   NW:RefreshAll()
   assert(not win.shown, "hidden again after the preview")
   CRT.db.notes.showOutsideRaid = true
