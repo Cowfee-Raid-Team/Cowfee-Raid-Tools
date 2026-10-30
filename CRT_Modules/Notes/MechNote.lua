@@ -350,7 +350,7 @@ function MechNote.FindNote(encounterID, difficulty)
     if not (Notes and Notes.WriteTarget) then
         return nil
     end
-    return Notes:WriteTarget(encounterID, difficulty, { find = true })
+    return Notes:WriteTarget(encounterID, difficulty, { find = true, makeExact = true })
 end
 
 -- Whether you may write lines for the boss and difficulty now: you may change the raid note, it isn't combat or a
@@ -375,16 +375,18 @@ function MechNote.CanWrite(encounterID, difficulty)
     return true
 end
 
--- How many marked lines the boss's note for that difficulty has (0 with no note), and the note.
+-- How many marked lines the boss's note for that difficulty has (0 with no note), and the note: the one the lines go
+-- to, else the boss's note for exactly that difficulty, where they went before (as WriteWith's taking out looks).
 function MechNote.CountIn(encounterID, difficulty, key)
-    local id = MechNote.FindNote(encounterID, difficulty)
+    local id = MechNote.FindNote(encounterID, difficulty) or CRT.Notes:FindExact(encounterID, difficulty)
     local record = id and CRT.Notes:Get(id)
     return record and MechNote.Count(record.raw, key) or 0, id
 end
 
--- Writes the marked lines into the boss's note for that difficulty, in place of the ones there: a note named after
--- the boss is made when it has none (Notes:NoteFor, exact), only when there are lines to write. Returns the note's id
--- (nil when none was needed) and how many lines it now has. The active note and the shares are left alone.
+-- Writes the marked lines into the note the pull of that difficulty reads (Notes:WriteTarget; one for exactly that
+-- difficulty is made when the boss has none, only when there are lines to write), in place of the ones there. Returns
+-- the note's id (nil when none was needed) and how many lines it now has, or nil, 0 and the reason. The active note
+-- and the shares are left alone.
 function MechNote.Write(encounterID, difficulty, bossName, key, lines)
     if not key then
         return nil, 0
@@ -396,22 +398,23 @@ end
 
 -- The same for any writer: replace(raw) gives the note's new text (the assignment blocks, Notes/Assign.lua). The note
 -- is Notes:WriteTarget's (made when the boss has none, for lines to write); a taking out also looks in the boss's note
--- for exactly that difficulty, where they went before. Changed only when its text changes. Never during combat or a
--- boss encounter. Returns the note's id and the line count, or nil, 0 and the reason.
+-- for exactly that difficulty, where they went before. Changed only when its text changes. Lines are never written
+-- during combat or a boss encounter; taking them out is (so they never stay stuck there). Returns the note's id and
+-- the line count, or nil, 0 and the reason.
 function MechNote.WriteWith(encounterID, difficulty, bossName, lines, replace)
     local Notes = CRT.Notes
     if not (Notes and type(encounterID) == "number") then
         return nil, 0
     end
-    if Notes.Busy and Notes.Busy() then
+    lines = lines or {}
+    if #lines > 0 and Notes.Busy and Notes.Busy() then
         return nil, 0, MechNote.TEXT.busy
     end
-    lines = lines or {}
     local id, why
     if #lines == 0 then
         id = MechNote.FindNote(encounterID, difficulty) or Notes:FindExact(encounterID, difficulty)
     else
-        id, why = Notes:WriteTarget(encounterID, difficulty, { bossName = bossName, via = MechNote.VIA })
+        id, why = Notes:WriteTarget(encounterID, difficulty, { bossName = bossName, via = MechNote.VIA, makeExact = true })
     end
     local record = id and Notes:Get(id)
     if not record then

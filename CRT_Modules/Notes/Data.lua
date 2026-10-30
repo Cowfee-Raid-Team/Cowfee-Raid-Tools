@@ -866,7 +866,9 @@ end
 -- another note, nothing is written: nil and the reason ("The Mythic pull reads the Twin Fangs (Heroic) note. Make a
 -- Mythic note first (Raid Notes), then write."). A note is made, for exactly that difficulty, only when the boss has
 -- none at all, and only without opts.find. opts: bossName, via (how a new note came), find (never make one),
--- singleDifficulty. Returns the note's id (nil with find and no note) and true when it was just made, or nil, the
+-- singleDifficulty, makeExact (Alex, 2026-10-29, for Mech Alerts' Raid note and the assignment blocks: when the boss's
+-- notes are only for every difficulty, a note for exactly this difficulty is made and written, which the pull of
+-- this difficulty then reads; not while a note for every difficulty is the active one, which the pull would still read). Returns the note's id (nil with find and no note) and true when it was just made, or nil, the
 -- reason and the note the pull reads (its record, for a caller that words the reason its own way, Interrupts/NoteBlock.lua).
 function Notes:WriteTarget(encounterID, difficultyName, opts)
     if type(encounterID) ~= "number" then
@@ -880,6 +882,16 @@ function Notes:WriteTarget(encounterID, difficultyName, opts)
         local d = type(record.difficulty) == "string" and record.difficulty or nil
         if (d and difficultyName and d:lower() == difficultyName:lower()) or (not d and opts.singleDifficulty) then
             return id, false
+        end
+        if not d and opts.makeExact and difficultyName and id ~= ndb().active and not self:FindExact(encounterID, difficultyName) then
+            if opts.find then
+                return nil -- none yet: one is made on the first write
+            end
+            local newId = self:Import(headerLine(encounterID, difficultyName, headerWord(opts.bossName)) .. "\n", nil, nil, nil,
+                opts.via or "Timeline", nil, true)
+            if newId and self:FindForEncounter(encounterID, difficultyName) == newId then
+                return newId, true
+            end
         end
         local name = (record.name or "?") .. " (" .. (d or TEXT.anyDifficulty) .. ")"
         return nil, string.format(TEXT.otherNote, tostring(difficultyName), name, tostring(difficultyName)), record

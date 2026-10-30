@@ -8,8 +8,9 @@ local ADDON, CRT = ...
 --   Tovi Hale Ruun Pell           space separated, empty slots left out (a group with none is an empty line)
 --   intend
 -- Only Write to the raid note on the page writes it, your own list, into the note a pull of that difficulty reads
--- (Notes:FindForEncounter), so the block is where the pull finds it and no new note ever hides that one:
---   the boss has no note at all          a note for exactly that difficulty is made (Notes:NoteFor exact)
+-- (Notes:WriteTarget, the one rule Raid note alerts and assignment blocks use too), so the block is where the pull finds
+-- it and no new note ever hides that one:
+--   the boss has no note at all          a note for exactly that difficulty is made (Notes:WriteTarget)
 --   the pull reads that difficulty's     written there
 --   the pull reads a note for every      written there only while the boss has kick setups (shipped, your own or a
 --   difficulty (no Difficulty)           share's) for one difficulty; else refused, so Heroic and Mythic never write
@@ -357,8 +358,8 @@ function Block.Write(key)
         return false, refused
     end
     if not noteID and #lines > 0 then
-        -- the boss has no note at all
-        noteID = Notes:NoteFor(t.id, t.difficulty, Interrupts:BossName(t.key), { exact = true, via = Block.VIA })
+        -- the boss has no note at all: made by the shared rule, the one way a note for lines is made
+        noteID = Notes:WriteTarget(t.id, t.difficulty, { bossName = Interrupts:BossName(t.key), via = Block.VIA })
     end
     local record = noteID and Notes:Get(noteID)
     if not record then

@@ -40,7 +40,6 @@ local TEXT = {
     oneLine = "1 timer line",
     manyLines = "%d timer lines",
     notYet = "Not in the raid note yet. Any change writes it there.",
-    otherNote = "The pull uses another note for this boss, so these lines won't run.",
     badTimes = "The times don't read: %s",
     pending = "Make a change on another tab first, so this reminder is saved.",
 }
@@ -67,9 +66,14 @@ local function difficultyOf(c)
     return CRT.MechNote.NoteDifficulty(c.ref, c.group)
 end
 
+-- The note the lines go to (MechNote.FindNote, Notes:WriteTarget), its id, and when there is none because the pull
+-- reads another difficulty's note, the reason.
 local function noteRecord(c)
-    local id = c.enc and CRT.MechNote.FindNote(c.enc, difficultyOf(c))
-    return id and CRT.Notes:Get(id), id
+    if not c.enc then
+        return nil
+    end
+    local id, why = CRT.MechNote.FindNote(c.enc, difficultyOf(c))
+    return id and CRT.Notes:Get(id), id, why
 end
 
 local function block()
@@ -206,14 +210,14 @@ end
 local function drawStatus(c)
     local b = block()
     local text = ""
-    local record, id = noteRecord(c)
+    local record, _, why = noteRecord(c)
     local difficulty = difficultyOf(c)
     if c.item and c.item.pending then
         text = UI.WarnText(TEXT.pending)
+    elseif why then
+        text = UI.WarnText(why) -- the pull reads another difficulty's note: what to do first
     elseif not (b and b.key and record) then
         text = UI.WarnText(TEXT.notYet)
-    elseif CRT.Notes:FindForEncounter(c.enc, difficulty) ~= id then
-        text = UI.WarnText(TEXT.otherNote)
     else
         local n = Assign.CountIn(record.raw or "", b.key)
         if n == 0 then
