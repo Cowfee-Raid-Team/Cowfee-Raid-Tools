@@ -131,10 +131,10 @@ check(not ok and why:find("in a group", 1, true), "share: refused out of a group
 grouped = true
 ok, why = as(B, function() return B.C:CanShare(id) end)
 check(not ok and why:find("raid leader or an assistant", 1, true), "share: refused for a raider: " .. tostring(why))
-as(A, function() A.I:SetName(id, 1, 1, "") end)
+as(A, function() A.I:SetName(id, 1, 5, "") end) -- the last slot: your own list keeps no gap, so an empty slot is at its end
 ok, why = as(A, function() return C:CanShare(id) end)
 check(not ok and why:find("all 10", 1, true), "share: refused with an empty slot: " .. tostring(why))
-as(A, function() A.I:SetName(id, 1, 1, "Player1") end)
+as(A, function() A.I:SetName(id, 1, 5, FULL[1][5]) end)
 inCombat = true; eq(select(1, as(A, function() return C:CanShare(id) end)), false, "share: refused in an encounter")
 check(select(2, as(A, function() return C:CanShare(id) end)):find("boss fight", 1, true), "share: its reason")
 eq(as(A, function() return C:Share(id) end), false, "share: Share refuses too")

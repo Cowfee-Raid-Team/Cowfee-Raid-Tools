@@ -59,7 +59,7 @@ end
 -- A drop on the rows. names[g] are the groups' names in order (Page.RowNames), slots[g] how many each takes; source
 -- is { name } from the palette or { g, k } a row's chip; target { g, at } (at: the chip dropped on, which the name
 -- takes the place of; nil for the row's end). Returns the groups it changed (g -> their new names), or nil when it is
--- refused or changes nothing.
+-- refused (a full row, or a name it has) or changes nothing.
 function Page.MoveKick(names, slots, source, target)
     local tg = target and target.g
     if not (tg and names[tg]) then
@@ -83,6 +83,13 @@ function Page.MoveKick(names, slots, source, target)
     end
     if type(name) ~= "string" or name == "" or #into >= (slots[tg] or 0) then
         return nil -- the row is full
+    end
+    -- a name the row has already (case and realm left out, as the note editor's rows do) is refused
+    local key = Interrupts.CleanName(name):lower()
+    for _, other in ipairs(into) do
+        if Interrupts.CleanName(other):lower() == key then
+            return nil
+        end
     end
     local at = target.at and math.min(target.at, #into + 1) or (#into + 1)
     table.insert(into, at, name)
@@ -249,7 +256,7 @@ local function fillRow(def, g, names, width, editable)
     local me = myName()
     local entries = {}
     for k, name in ipairs(names) do
-        entries[k] = { label = UI.ColorText(tostring(k), "heading") .. " " .. name, class = Page.ClassOf(name),
+        entries[k] = { label = UI.ColorText(tostring(k), "heading") .. " " .. name, token = name, class = Page.ClassOf(name),
             source = { g = g, k = k }, removable = editable, selected = me ~= nil and name:lower() == me }
     end
     local addShown = editable and #names < grp.slots
