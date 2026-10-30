@@ -2787,6 +2787,10 @@ local function withSpecial(list)
 end
 local function noSpecial() CRT.Bosses.Get, CRT.Bosses.Loaded = nil, nil end
 local SA = CRT.NoteSpecialAlerts
+-- a debuff list (kind debuffList), for its checks below
+local FANGS_ENTRY = { kind = "debuffList", key = "fangs", label = "Grasping Fangs", spellID = 777,
+  sides = { { key = "left", label = "Left", groups = { 1, 3 } }, { key = "right", label = "Right", groups = { 2, 4 } } },
+  colors = { left = { on = { 0.9, 0.2, 0.7 }, off = { 0.35, 0.05, 0.1 } }, right = { on = { 0.2, 0.5, 1 }, off = { 0.05, 0.1, 0.3 } } } }
 -- every check in both looks
 for _, LOOK in ipairs({ "Modern", "Classic" }) do
 MODERN = LOOK == "Modern"
@@ -3591,10 +3595,7 @@ end)
 
 -- A debuff list (Alerts/Special.lua's kind debuffList): listed with its spell's icon; selected, When, Who, Sound and speech
 -- and Shield bar hide, and its Looks (Notes/SpecialDebuffLooks.lua) take the Looks tab: sides with groups and colours,
--- Show every player, Sort by role, the bar sliders, Preview <label> and the notice.
-local FANGS_ENTRY = { kind = "debuffList", key = "fangs", label = "Grasping Fangs", spellID = 777,
-  sides = { { key = "left", label = "Left", groups = { 1, 3 } }, { key = "right", label = "Right", groups = { 2, 4 } } },
-  colors = { left = { on = { 0.9, 0.2, 0.7 }, off = { 0.35, 0.05, 0.1 } }, right = { on = { 0.2, 0.5, 1 }, off = { 0.05, 0.1, 0.3 } } } }
+-- Show every player, Sort by role, the bar sliders, Preview <label> and the notice. FANGS_ENTRY is above the looks loop.
 check("special debuff list (" .. LOOK .. "): its own Looks, the tabs it has no use for hidden", function()
   withSpecial({ SPECIAL_LIST[1], FANGS_ENTRY })
   CRT.db.alerts.special, CRT.db.alerts.debuffLists, CRT.db.alerts.debuffTiers = {}, {}, {}
@@ -3710,7 +3711,7 @@ check("#1222: a timed special alert first, then a debuff list: one view at every
   click(s.specialBtn)
   oneView(f, "special", "back to Special")
   click(s.rows[2].frame)
-  assert(s.title.text == "Grasping Fangs" and s.debuffLooks.frame.shown, "Grasping Fangs, its own Looks")
+  assert(s.title.text == "Grasping Fangs" and s.debuffLooks.frame.shown, "Grasping Fangs, its own Looks: " .. tostring(s.title.text))
   oneView(f, "special", "Grasping Fangs")
   click(s.rows[1].frame)
   assert(s.title.text == "Caustic Waves" and not s.debuffLooks.frame.shown, "Caustic Waves, the alert's Looks")
