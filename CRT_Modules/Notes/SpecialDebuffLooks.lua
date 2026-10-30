@@ -56,11 +56,6 @@ local function DL()
     return CRT.AlertDebuffList
 end
 
-local function width(fs)
-    local w = fs.GetUnboundedStringWidth and fs:GetUnboundedStringWidth() or fs:GetStringWidth()
-    return math.ceil(tonumber(w) or 0)
-end
-
 -- Builds the tab into parent. host: { x (the left inset), y (the top), current = fn -> entry, enc }. Returns the tab:
 -- frame, sides (each row's parts), showAll, sortByRole, height, width, notice, previews (by key), and Refresh().
 function M.Build(parent, host)
@@ -172,8 +167,9 @@ function M.Build(parent, host)
         local fs = f:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
         fs:SetPoint("LEFT", c, "RIGHT", 2, 0)
         fs:SetJustifyH("LEFT")
+        fs:SetWordWrap(false)
+        fs:SetWidth(L.CHECK_LABEL_W) -- its (?) sits after the words (UI.HelpRight measures them)
         fs:SetText(label)
-        fs:SetWidth(math.min(L.CHECK_LABEL_W, width(fs) + 4))
         c.label = fs
         c:SetScript("OnClick", function(self)
             onClick(self:GetChecked() and true or false)

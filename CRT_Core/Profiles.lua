@@ -119,6 +119,8 @@ Profiles.SHARE = {
         specialView = false, specialViewPicked = false, -- the page state of Mech Alerts' list
         speechNotice = false, reminders = false, phases = false, overrides = false, nextId = false, saved = false, nextSavedId = false,
         shieldPulls = false, -- last pull's shields: data
+        debuffLists = true, -- your debuff lists' looks (groups, colours, sizes, place)
+        debuffTiers = false, -- what a pull saw of each debuff: data
     },
     importBackup = false, -- the backup Undo last import puts back
     whatsNew = false, -- Show after updates and the last version seen: personal
