@@ -431,6 +431,63 @@ check(secs == 570 and mm.edit.text == "9.5", "Down while typing moves one step, 
 mm.edit.OnEscapePressed(mm.edit)
 check(secs == 570, "Escape keeps it")
 print("ok controls: a slider shown in minutes is typed in minutes")
+
+-- UI.ValuePill: the slider's knob on its own, in a line of text ("Deaths from the last (3) pulls")
+do
+  check(type(UI.ValuePill) == "function", "UI.ValuePill exists")
+  if type(UI.ValuePill) == "function" then
+    local n, nSets, on = 3, 0, true
+    local skinnedBefore = #UI.skinned
+    local pill = UI.ValuePill({}, { min = 2, max = 5, get = function() return n end, set = function(v) n = v nSets = nSets + 1 end,
+      enabledIf = function() return on end })
+    check(pill.text.text == "3" and nSets == 0, "the pill shows the value, and saves nothing: " .. tostring(pill.text.text))
+    check(pill.width >= 38 and pill.height == 22, "the pill is the knob's size: " .. tostring(pill.width) .. " x " .. tostring(pill.height))
+    check(#UI.skinned == skinnedBefore + 1 and UI.skinned[#UI.skinned] == pill and pill.crtSkin, "a theme switch repaints the pill")
+    -- the wheel steps it, and stops at the ends
+    pill.OnMouseWheel(pill, 1)
+    check(n == 4 and pill.text.text == "4", "wheel up: one step: " .. n)
+    pill.OnMouseWheel(pill, 1) pill.OnMouseWheel(pill, 1)
+    check(n == 5 and nSets == 2, "the wheel stops at max: " .. n .. ", sets " .. nSets)
+    pill.OnMouseWheel(pill, -1)
+    check(n == 4, "wheel down: one step: " .. n)
+    -- a click types a number: Enter saves it, kept in range; Escape keeps the old one; focus lost saves
+    pill.OnClick(pill, "LeftButton")
+    check(pill.edit.shown and pill.edit.focus and pill.edit.text == "4" and not pill.text.shown, "a click opens the number box: " .. tostring(pill.edit.text))
+    pill.edit:SetText("9") pill.edit.OnEnterPressed(pill.edit)
+    check(n == 5 and not pill.edit.shown and pill.text.shown and pill.text.text == "5", "typed 9 is kept at 5: " .. n)
+    pill.OnClick(pill, "LeftButton") pill.edit:SetText("1") pill.edit.OnEnterPressed(pill.edit)
+    check(n == 2, "typed 1 is kept at 2: " .. n)
+    pill.OnClick(pill, "LeftButton") pill.edit:SetText("4") pill.edit.OnEscapePressed(pill.edit)
+    check(n == 2 and not pill.edit.shown, "Escape keeps the old value: " .. n)
+    pill.OnClick(pill, "LeftButton") pill.edit:SetText("3") pill.edit.OnEditFocusLost(pill.edit)
+    check(n == 3 and not pill.edit.shown, "focus lost saves: " .. n)
+    pill.OnClick(pill, "LeftButton") pill.edit:SetText("abc") pill.edit.OnEnterPressed(pill.edit)
+    check(n == 3, "text that isn't a number changes nothing: " .. n)
+    -- the setting changed elsewhere (the Settings slider): refresh shows it
+    n = 5 pill.refresh()
+    check(pill.text.text == "5", "refresh follows the setting: " .. tostring(pill.text.text))
+    -- greyed: half alpha, no typing, the wheel goes through to the page
+    on = false pill.refresh()
+    local setsBefore = nSets
+    pill.OnClick(pill, "LeftButton") pill.OnMouseWheel(pill, -1)
+    check(pill.alpha < 1 and not pill.edit.shown and n == 5 and nSets == setsBefore and pill.wheelOn == false, "greyed: no typing, no wheel")
+    on = true pill.refresh()
+    check(pill.alpha == 1 and pill.wheelOn == true, "enabled again")
+    -- greyed while typing: the box closes and keeps the old value
+    pill.OnClick(pill, "LeftButton") pill.edit:SetText("2") on = false pill.refresh()
+    check(not pill.edit.shown and n == 5, "greyed while typing: closed, nothing saved")
+    on = true pill.refresh()
+    -- Ctrl + wheel goes to the window
+    local scaledBy
+    local win = { GetScript = function(_, name) if name == "OnMouseWheel" then return function(_, d) scaledBy = d end end end, GetParent = function() return nil end }
+    function pill:GetParent() return win end
+    IsControlKeyDown = function() return true end
+    pill.OnMouseWheel(pill, -1)
+    IsControlKeyDown = function() return false end
+    check(scaledBy == -1 and n == 5, "Ctrl + wheel reaches the window, not the pill")
+  end
+end
+print("ok controls: a value pill")
 print(fails .. " failed")
 if fails > 0 then error(fails .. " slider checks failed") end
 `;

@@ -314,6 +314,79 @@ local function readTyped(text)
     return tonumber((text:gsub("[^%d%.%-]", "")))
 end
 
+-- The knob, the Modern slider's and UI.ValuePill's: a Button in owner with a 1 px dark edge, the face
+-- 1 px inside it, a 1 px line just inside the top edge between the corners, the value's text, and a
+-- hidden number box over it for typing. Returns { knob, edge, face, shine, text, edit }.
+local function makeKnob(owner)
+    local knob = CreateFrame("Button", nil, owner)
+    knob:SetHeight(KNOB_H)
+    local k = { knob = knob }
+    k.edge = UI.RoundRect(knob, knob, "BACKGROUND", 0, KNOB_R, 0)
+    k.face = UI.RoundRect(knob, knob, "BACKGROUND", 1, KNOB_R - 1, 1)
+    k.shine = knob:CreateTexture(nil, "BACKGROUND", nil, 2)
+    k.shine:SetPoint("TOPLEFT", knob, "TOPLEFT", KNOB_R, -1)
+    k.shine:SetPoint("TOPRIGHT", knob, "TOPRIGHT", -KNOB_R, -1)
+    k.shine:SetHeight(1)
+    k.text = knob:CreateFontString(nil, "OVERLAY", "CRTFontStandard")
+    k.text:SetPoint("CENTER", 0, 0)
+    k.text:SetWordWrap(false)
+
+    local edit = CreateFrame("EditBox", nil, knob)
+    edit:SetPoint("TOPLEFT", 3, -2)
+    edit:SetPoint("BOTTOMRIGHT", -3, 2)
+    edit:SetAutoFocus(false)
+    if CRTFontStandard then
+        edit:SetFontObject(CRTFontStandard)
+    end
+    edit:SetJustifyH("CENTER")
+    edit:SetMaxLetters(10)
+    edit:Hide()
+    k.edit = edit
+    return k
+end
+
+-- The knob's colours from the theme, and its height: tall enough for its font.
+local function paintKnob(k)
+    UI.PaintShape(k.edge, "knobBorder")
+    UI.PaintShape(k.face, "knob")
+    local shine = CRT.PALETTE.knobShine
+    k.shine:SetColorTexture(shine[1], shine[2], shine[3])
+    local white = CRT.PALETTE.knobText
+    k.edit:SetTextColor(white[1], white[2], white[3])
+    k.text:SetTextColor(white[1], white[2], white[3])
+    local _, fontHeight = k.text:GetFont()
+    k.knobH = math.max(KNOB_H, math.ceil(tonumber(fontHeight) or 0) + KNOB_TEXT_PAD)
+    k.knob:SetHeight(k.knobH)
+end
+
+-- How wide a knob is for the widest of texts: at least KNOB_MIN_W, the text and KNOB_PAD.
+local function knobWidth(k, texts)
+    local widest = 0
+    for _, text in ipairs(texts) do
+        k.text:SetText(text)
+        widest = math.max(widest, k.text:GetUnboundedStringWidth() or 0)
+    end
+    return widest, math.max(KNOB_MIN_W, math.ceil(widest) + KNOB_PAD)
+end
+
+-- Ctrl + wheel is the window's scale (UI/Panel.lua): it goes to the first frame above frame with a
+-- wheel handler, as it would without the control there. Returns true when it did.
+local function wheelToWindow(frame, delta)
+    if not (IsControlKeyDown and IsControlKeyDown()) then
+        return false
+    end
+    local parent = frame:GetParent()
+    while parent do
+        local handler = parent:GetScript("OnMouseWheel")
+        if handler then
+            handler(parent, delta)
+            return true
+        end
+        parent = parent:GetParent()
+    end
+    return true
+end
+
 -- The knob's look and position for s.current. s is the slider's state (UI.Slider). The knob keeps
 -- the widest text it has shown, so it never grows in the middle of a drag.
 local function drawKnob(m, s)
@@ -340,21 +413,8 @@ end
 local function restyleKnob(m, s)
     UI.PaintShape(m.empty, "border")
     UI.PaintShape(m.filled, "accent")
-    UI.PaintShape(m.edge, "knobBorder")
-    UI.PaintShape(m.face, "knob")
-    local shine = CRT.PALETTE.knobShine
-    m.shine:SetColorTexture(shine[1], shine[2], shine[3])
-    local white = CRT.PALETTE.knobText
-    m.edit:SetTextColor(white[1], white[2], white[3])
-    local _, fontHeight = m.text:GetFont()
-    m.knobH = math.max(KNOB_H, math.ceil(tonumber(fontHeight) or 0) + KNOB_TEXT_PAD)
-    m.knob:SetHeight(m.knobH)
-    local widest = 0
-    for _, v in ipairs({ s.low, s.high }) do
-        m.text:SetText(s.format(v))
-        widest = math.max(widest, m.text:GetUnboundedStringWidth() or 0)
-    end
-    m.widest = widest
+    paintKnob(m)
+    m.widest = knobWidth(m, { s.format(s.low), s.format(s.high) })
     drawKnob(m, s)
 end
 
@@ -433,19 +493,9 @@ local function wireModern(m, s)
     end
     m.closeEdit = closeEdit
 
-    -- Ctrl + wheel is the window's scale (UI/Panel.lua): it goes to the first frame above the slider
-    -- with a wheel handler, as it would without the slider there.
+    -- Ctrl + wheel is the window's scale (wheelToWindow)
     local function wheel(self, delta)
-        if IsControlKeyDown and IsControlKeyDown() then
-            local parent = track:GetParent()
-            while parent do
-                local handler = parent:GetScript("OnMouseWheel")
-                if handler then
-                    handler(parent, delta)
-                    return
-                end
-                parent = parent:GetParent()
-            end
+        if wheelToWindow(track, delta) then
             return
         end
         if s.enabled and not s.dragging then
@@ -501,11 +551,12 @@ end
 
 -- Builds the Modern slider over the row's bar and value text, the first time the Modern look shows.
 local function buildModern(row, s)
-    local m = { trackW = s.width + VALUE_W }
+    local trackW = s.width + VALUE_W
     local track = CreateFrame("Frame", nil, row)
-    track:SetSize(m.trackW, ROW_H)
+    track:SetSize(trackW, ROW_H)
     track:SetPoint("LEFT", row.Label, "RIGHT", GAP, 0)
-    m.track = track
+    local m = makeKnob(track)
+    m.trackW, m.track = trackW, track
     -- the bar, and the part of it up to the knob's centre: hidden textures the shapes are drawn over
     local barArea = track:CreateTexture(nil, "BACKGROUND")
     barArea:SetPoint("LEFT")
@@ -518,33 +569,6 @@ local function buildModern(row, s)
     m.fillArea:Hide()
     m.empty = UI.RoundRect(track, barArea, "BACKGROUND", 0, TRACK_R, 0, TRACK_H)
     m.filled = UI.RoundRect(track, m.fillArea, "BACKGROUND", 1, TRACK_R, 0, TRACK_H)
-
-    local knob = CreateFrame("Button", nil, track)
-    knob:SetHeight(KNOB_H)
-    m.knob = knob
-    -- a 1 px dark edge: the edge shape, the knob one 1 px inside it, and a 1 px line just inside the
-    -- top edge, between the corners
-    m.edge = UI.RoundRect(knob, knob, "BACKGROUND", 0, KNOB_R, 0)
-    m.face = UI.RoundRect(knob, knob, "BACKGROUND", 1, KNOB_R - 1, 1)
-    m.shine = knob:CreateTexture(nil, "BACKGROUND", nil, 2)
-    m.shine:SetPoint("TOPLEFT", knob, "TOPLEFT", KNOB_R, -1)
-    m.shine:SetPoint("TOPRIGHT", knob, "TOPRIGHT", -KNOB_R, -1)
-    m.shine:SetHeight(1)
-    m.text = knob:CreateFontString(nil, "OVERLAY", "CRTFontStandard")
-    m.text:SetPoint("CENTER", 0, 0)
-    m.text:SetWordWrap(false)
-
-    local edit = CreateFrame("EditBox", nil, knob)
-    edit:SetPoint("TOPLEFT", 3, -2)
-    edit:SetPoint("BOTTOMRIGHT", -3, 2)
-    edit:SetAutoFocus(false)
-    if CRTFontStandard then
-        edit:SetFontObject(CRTFontStandard)
-    end
-    edit:SetJustifyH("CENTER")
-    edit:SetMaxLetters(10)
-    edit:Hide()
-    m.edit = edit
 
     wireModern(m, s)
     return m
@@ -749,6 +773,108 @@ function UI.Slider(parent, text, opts)
     end
     row.crtSkin(UI.IsModern and UI:IsModern() or false)
     return row
+end
+
+-- A value pill: the slider's knob on its own, for a number inside a line of text, such as "Deaths from
+-- the last (3) pulls", so it is plain that the number can be changed there. It looks the same in both
+-- looks (the theme's knob colours). opts:
+--   min, max, step (default 1)
+--   get(), set(value)   value is always a whole step in range
+--   format(value)       the text on the pill, by default the number
+--   enabledIf()         optional: greys the pill (half alpha) while it returns false; greyed, it takes no
+--                       clicks and lets the mouse wheel through to the page under it
+-- Click it to type a number: Enter or a click elsewhere saves it, kept in range on a step; Escape keeps
+-- the old one. The mouse wheel moves one step (Ctrl + wheel is the window's scale). Returns the pill (a
+-- Button sized to the widest value), with pill.refresh(), pill.text and pill.edit.
+function UI.ValuePill(parent, opts)
+    local low, high, step = opts.min, opts.max, opts.step or 1
+    local format = opts.format or tostring
+    local k = makeKnob(parent)
+    local pill, edit = k.knob, k.edit
+    pill.text, pill.edit = k.text, edit
+    local enabled, editing = true, false
+
+    local function current()
+        return opts.get() or low
+    end
+    local function clamp(value)
+        return math.max(low, math.min(high, math.floor((value - low) / step + 0.5) * step + low))
+    end
+    local function commit(value)
+        value = clamp(value)
+        if value ~= current() then
+            opts.set(value)
+        end
+        pill.refresh()
+    end
+    local function closeEdit(apply)
+        if not editing then
+            return
+        end
+        editing = false
+        local typed = readTyped(edit:GetText())
+        edit:Hide()
+        k.text:Show()
+        edit:ClearFocus()
+        if apply and typed then
+            commit(typed)
+        end
+    end
+
+    pill:SetScript("OnClick", function()
+        if not enabled or editing then
+            return
+        end
+        editing = true
+        edit:SetText(plainNumber(current()))
+        k.text:Hide()
+        edit:Show()
+        edit:SetFocus()
+        edit:HighlightText()
+    end)
+    pill:EnableMouseWheel(true)
+    pill:SetScript("OnMouseWheel", function(self, delta)
+        if wheelToWindow(self, delta) or not enabled then
+            return
+        end
+        closeEdit(false)
+        commit(current() + (delta > 0 and 1 or -1) * step)
+    end)
+    edit:SetScript("OnEnterPressed", function()
+        closeEdit(true)
+    end)
+    edit:SetScript("OnEscapePressed", function()
+        closeEdit(false)
+    end)
+    edit:SetScript("OnEditFocusLost", function()
+        closeEdit(true)
+    end)
+
+    local function paint()
+        paintKnob(k)
+        local _, width = knobWidth(k, { format(low), format(high) })
+        pill:SetSize(width, k.knobH)
+        k.text:SetText(format(current()))
+    end
+    pill.refresh = function()
+        enabled = not opts.enabledIf or (opts.enabledIf() and true or false)
+        if not enabled then
+            closeEdit(false)
+        end
+        pill:SetAlpha(enabled and 1 or 0.5)
+        pill:EnableMouseWheel(enabled)
+        k.text:SetText(format(current()))
+    end
+    -- a look or theme switch repaints it (UI:ApplyStyle runs every crtSkin)
+    pill.crtSkin = function()
+        paint()
+    end
+    if UI.skinned then
+        UI.skinned[#UI.skinned + 1] = pill
+    end
+    paint()
+    pill.refresh()
+    return pill
 end
 
 -- A spot picker: a box standing for something (what you hover, a window) with twelve small square spots
