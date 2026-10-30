@@ -2247,6 +2247,16 @@ check("mech subtabs: a tab for one host only stays out of the others", function(
   assert(total <= 724, "at 1.75 the six still fit 724: " .. total)
   for key, w in pairs(widths) do assert(w >= needs[key], key .. " never under its label: " .. w .. " < " .. needs[key]) end
   assert(fit:Layout() == 710, "back at 1: the mock-up's widths again")
+  -- the largest text size offered: Text size 22 over the 14 point body (CRT_Core/Core.lua's ApplyFonts, 8 to 22), and
+  -- 1.1 more in the Modern look's default font. The labels alone fit 724 there, so the strip stays inside the panel.
+  local largest = 22 / 14 * 1.1
+  for _, scale in ipairs({ largest, 1.75 }) do
+    TEXT_SCALE = scale
+    local w = fit:Layout()
+    TEXT_SCALE = nil
+    assert(w <= 724, "at " .. scale .. " the six fit 724: " .. w)
+  end
+  fit:Layout()
   click(panelStrip.buttons.when) -- the session's pick back on When
   click(specialStrip.buttons.when)
   assert(#errors == 0, tostring(errors[1]))
@@ -3518,10 +3528,18 @@ check("special subtabs (" .. LOOK .. "): a tab's dot follows the special alert's
   assert(dots.shield.dot.shown, "Shield bar ticked: its dot")
   setCheck(s.shield.check, false)
   assert(not dots.shield.dot.shown, "unticked: the dot goes")
-  -- Mark the players on (saved as your choice; an addon can't tick it today, so set as a saved choice would be)
+  -- Mark the players on, from an old save: while marking isn't allowed the box is greyed and unticked, so no dot
   CRT.AlertSpecial:SetChoice(ENC, CRT.AlertSpecial:Get(ENC, "soaks"), "markers", true)
   CRT.NoteReminders.Refresh()
-  assert(dots.markers.dot.shown, "marks and Mark the players: Markers' dot")
+  assert(CRT.AlertSpecial.MARKING.allowed == false and not dots.markers.dot.shown, "marking not allowed: no Markers dot from a saved tick")
+  -- were marking allowed: marks and Mark the players light Markers' dot
+  CRT.AlertSpecial.MARKING.allowed = true
+  CRT.NoteReminders.Refresh()
+  local markedDot = dots.markers.dot.shown
+  CRT.AlertSpecial.MARKING.allowed = false
+  CRT.NoteReminders.Refresh()
+  assert(markedDot, "marks and Mark the players: Markers' dot")
+  assert(not dots.markers.dot.shown, "not allowed again: the dot goes")
   -- Mythic dance: everyone, no marks
   click(s.rows[2].frame)
   assert(not dots.who.dot.shown and not dots.markers.dot.shown, "Everyone, no marks: no Who or Markers dot")

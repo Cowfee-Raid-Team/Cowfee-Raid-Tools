@@ -169,7 +169,9 @@ end
 
 -- Each tab's width: its entry's (the host's own, widthBy[owner], when it has one), or its label (and dot) and padding
 -- when wider. With opts.maxW and the tabs past it (a large text size), the tabs wider than their label give the room
--- back, each in proportion to what it has spare, never under its label.
+-- back, each in proportion to what it has spare, never under its label. When the labels alone don't fit maxW, the
+-- strip still runs past it: a label is never cut. The Special panel's six fit 724 at the largest text size offered
+-- (run_mechalerts.js checks it); a host adding tabs must check that again.
 local function widths(s)
     local owner, out, need, spare = s.opts.owner, {}, {}, 0
     local total = (#s.keys - 1) * L.GAP

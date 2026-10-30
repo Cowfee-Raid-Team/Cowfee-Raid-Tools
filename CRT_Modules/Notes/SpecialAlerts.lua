@@ -8,11 +8,11 @@ local ADDON, CRT = ...
 -- file's), Who (a rotation's steps as chips, a roles list as "Roles: Tank, Healer"), Looks (Show as, Bar fill, Count
 -- down to; your choices, saved at once), Sound and speech (Speak the text), Shield bar (Alerts/ShieldSection.lua, as in
 -- the alert editor: your shield bar over the entry's absorb, Special:SetChoice "absorb", with Default for the boss
--- file's) and Markers (greyed: an addon can't set them); Test at the bottom right on every tab. The tab hands it the boss, the difficulty group and the ability timeline
--- on show (host), and the places of its list and panel. Special first: the tab opens on Special every time
--- (M.Opened), a boss with none too. A click on Mechanics holds for that boss until the tab is left; Make a
--- Mech Alert opens it on Mechanics (M.ShowMechanics). CRT.db.alerts.specialView and specialViewPicked, the
--- older saved pick, are no longer read or written.
+-- file's) and Markers (greyed: an addon can't set them); Test at the bottom right on every tab. The tab hands it the
+-- boss, the difficulty group and the ability timeline on show (host), and the places of its list and panel. Special
+-- first: the tab opens on Special every time (M.Opened), a boss with none too. A click on Mechanics holds for that boss
+-- until the tab is left; Make a Mech Alert opens it on Mechanics (M.ShowMechanics). CRT.db.alerts.specialView and
+-- specialViewPicked, the older saved pick, are no longer read or written.
 
 local UI = CRT.UI
 
@@ -387,12 +387,14 @@ end
 
 -- The selected alert's choices in a draft's shape, for the subtabs' dots (Alerts/SubTabs.lua's on functions): its
 -- Show as boxes, Speak the text, the shield bar in use, and for Who and Markers whoPicks and marked (marks, and Mark
--- the players on).
+-- the players on; never while marking isn't allowed, when the box shows greyed and unticked whatever was saved).
 function M.TabState(enc, entry, c, picks)
-    local a = Special():Absorb(enc, entry, c)
+    local S = Special()
+    local a = S:Absorb(enc, entry, c)
     return { show = c.show, speak = c.speak,
         shield = a and { on = true, unit = a.unit, length = a.length, anyDifficulty = a.anyDifficulty } or nil,
-        whoPicks = picks and true or false, marked = entry.marks ~= nil and c.markers == true }
+        whoPicks = picks and true or false,
+        marked = S.MARKING.allowed == true and entry.marks ~= nil and c.markers == true }
 end
 
 local function drawMarkers(entry)
