@@ -130,7 +130,9 @@ CRT.UI = { Tint = function(r, m, k, a) local c = CRT.PALETTE[k] r[m](r, c[1], c[
   Dropdown = function(parent, label, opts) local r = mock("Row", parent) rawset(r, "label", label) rawset(r, "opts", opts)
     rawset(r, "refresh", function() rawset(r, "value", opts.get()) end)
     dropdowns[label] = r return r end,
+  -- CRT_Core/UI/Controls.lua's UI.Slider reads its value once as it is built
   Slider = function(parent, label, opts) local r = mock("Slider", parent) rawset(r, "label", label) rawset(r, "opts", opts)
+    rawset(r, "value", opts.get())
     rawset(r, "refresh", function() rawset(r, "value", opts.get()) end)
     sliders[label] = r return r end,
 }
@@ -3674,6 +3676,85 @@ end)
 
 end
 MODERN = nil
+
+-- #1222 (1.2.1): Mech Alerts on a boss whose first special alert is timed and which has a debuff list too. The debuff
+-- list's Looks read the timed alert's look as they were built (its Bar sliders), DL:Look errored on its missing sides,
+-- the build stopped, and both views drew over each other. After every step: one view's list, panel and strip, no error.
+local WAVES_ENTRY = { key = "waves", label = "Caustic Waves", type = "dodge", difficulty = "mythic", when = { times = "P1 0:20" },
+  show = { callout = true } }
+local function oneView(f, want, step)
+  local s = f.special
+  local sp = s.list.shown and s.panel.shown and visibleIn(s.tabs.buttons.looks, f)
+  local mech = f.list.shown and f.panel.frame.shown and visibleIn(f.panel.tabs.buttons.looks, f)
+  local spAny = s.list.shown or s.panel.shown
+  local mechAny = f.list.shown or f.panel.frame.shown
+  if want == "special" then
+    assert(sp and not mechAny, step .. ": only Special's list, panel and strip")
+  else
+    assert(mech and not spAny, step .. ": only Mechanics' list, panel and strip")
+  end
+  assert(#errors == 0, step .. ": " .. tostring(errors[1]))
+end
+check("#1222: a timed special alert first, then a debuff list: one view at every step", function()
+  withSpecial({ WAVES_ENTRY, FANGS_ENTRY })
+  CRT.db.alerts.special, CRT.db.alerts.debuffLists, CRT.db.alerts.debuffTiers = {}, {}, {}
+  CRT.UI.PreviewButton = function(p, label, keys, opts)
+    local b = CRT.UI.PanelButton(p, label, opts and opts.height or 22) rawset(b, "keys", keys) rawset(b, "refresh", function() end) return b end
+  local f = freshOpen()
+  local s = f.special
+  assert(s and s.debuffLooks, "the Special view and the debuff list's Looks built")
+  assert(s.title.text == "Caustic Waves", "the timed alert selected first: " .. tostring(s.title.text))
+  oneView(f, "special", "opened")
+  click(s.mechBtn)
+  oneView(f, "mechanics", "Mechanics")
+  click(s.specialBtn)
+  oneView(f, "special", "back to Special")
+  click(s.rows[2].frame)
+  assert(s.title.text == "Grasping Fangs" and s.debuffLooks.frame.shown, "Grasping Fangs, its own Looks")
+  oneView(f, "special", "Grasping Fangs")
+  click(s.rows[1].frame)
+  assert(s.title.text == "Caustic Waves" and not s.debuffLooks.frame.shown, "Caustic Waves, the alert's Looks")
+  oneView(f, "special", "Caustic Waves")
+  click(s.mechBtn)
+  oneView(f, "mechanics", "Mechanics again")
+  CRT.UI.PreviewButton = nil
+  CRT.db.alerts.special, CRT.db.alerts.debuffLists, CRT.db.alerts.debuffTiers = {}, {}, {}
+  noSpecial()
+end)
+
+check("#1222: a debuff list's look of an entry with no sides is empty, not an error", function()
+  local look = CRT.AlertDebuffList:Look(ENC, WAVES_ENTRY)
+  assert(type(look.sides) == "table" and #look.sides == 0 and next(look.colors) == nil, "no sides, no colours")
+end)
+
+check("#1222: a Special view that fails to build reports it, and leaves only Mechanics on show", function()
+  withSpecial({ WAVES_ENTRY })
+  local Looks = CRT.NoteDebuffLooks
+  local build = Looks.Build
+  Looks.Build = function() error("broken Looks") end
+  -- the frames the Special view makes straight on the tab
+  local SA_Build, first, last = SA.Build
+  SA.Build = function(...) first = #made + 1 local r = SA_Build(...) last = #made return r end
+  local ok, err = pcall(freshOpen)
+  last = last or #made
+  SA.Build, Looks.Build = SA_Build, build
+  noSpecial()
+  local raised = errors[1]
+  for i = #errors, 1, -1 do errors[i] = nil end
+  assert(ok, "the tab still builds: " .. tostring(err))
+  local f = err
+  assert(raised and tostring(raised):find("broken Looks", 1, true), "the error reached the error handler: " .. tostring(raised))
+  assert(f.special == nil, "no Special view")
+  for _, step in ipairs({ "opened", "redrawn" }) do
+    assert(f.list.shown and f.panel.frame.shown, step .. ": Mechanics on show")
+    for i = first, last do
+      local m = made[i]
+      if m.parent == f then assert(not m.shown, step .. ": a " .. m.kind .. " of the failed Special view on show") end
+    end
+    CRT.NoteReminders.Refresh()
+    assert(#errors == 0, tostring(errors[1]))
+  end
+end)
 
 check("no errors raised", function()
   assert(#errors == 0, tostring(errors[1]))
