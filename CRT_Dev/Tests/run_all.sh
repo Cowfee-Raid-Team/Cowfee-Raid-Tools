@@ -167,7 +167,8 @@ g "groups extras" && { node run_groups_extras.js "$W" 2>&1 | tail -30; echo "exi
 g "spec cache" && { node run_spec_cache.js "$W" 2>&1 | tail -30; echo "exit ${PIPESTATUS[0]}"; }
 g "invites" && { node run_invites.js "$W" 2>&1 | tail -80; echo "exit ${PIPESTATUS[0]}"; }
 g "clearprobe" && { node run_clearprobe.js "$W" 2>&1 | tail -60; echo "exit ${PIPESTATUS[0]}"; }
-g "absorbprobe" && { node run_absorbprobe.js "$W" 2>&1 | tail -60; echo "exit ${PIPESTATUS[0]}"; }
+g "auraprobe" && { node run_auraprobe.js "$W" 2>&1 | tail -60; echo "exit ${PIPESTATUS[0]}"; }
+g "absorbprobe" &&{ node run_absorbprobe.js "$W" 2>&1 | tail -60; echo "exit ${PIPESTATUS[0]}"; }
 g "bossdebug" && { node run_bossdebug.js "$W" 2>&1 | tail -140; echo "exit ${PIPESTATUS[0]}"; }
 g "markerprobe" && { node run_markerprobe.js "$W" 2>&1 | tail -60; echo "exit ${PIPESTATUS[0]}"; }
 g "markers" &&{ node run_markers.js "$W" 2>&1 | tail -160; echo "exit ${PIPESTATUS[0]}"; }
