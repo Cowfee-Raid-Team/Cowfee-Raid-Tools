@@ -13,10 +13,11 @@ local ADDON, CRT = ...
 --   spellID  the mechanic's spell (its icon on the timed lines), or nil
 --   mech     the mechanic it belongs to (MechNote.Key: its spell ID, or its name), or nil (the note editor's own)
 -- In the note, a block is its marked heading line, one "Label: names" assignment line per row, then one timed line
--- per row per cast it is on (a row with no one in it has none):
+-- per row per cast it is on (a row with no one in it has none). Names go without their realms, one space between
+-- them, as the Kick order's lines have them; a new block goes at the note's end after a blank line:
 --   assign:ravenous feast;name:Ravenous Feast;for:1234;
---   Left: Solex, Rixxy
---   Right: Abu, Cheo
+--   Left: Solex Rixxy
+--   Right: Abu Cheo
 --   time:36;ph:1;tag:Solex Rixxy;spellid:1234;text:Soak left;assign:ravenous feast/1/1;
 -- The heading line (Parser.AssignHeading) carries the block's key (Key: its name in lower case), its name, the
 -- mechanic (for:) and its typed times (times:, "1@20,1@60": phase @ seconds, so they stay with no one in a row); every
@@ -67,6 +68,20 @@ end
 
 local function words(s)
     return (s:gsub("%s+", " "))
+end
+
+-- A row's name as a block writes it: without its realm, as the note's other group lines (the Kick order's) have it
+-- (Alex, 2026-10-30). The alerts read a tag without its realm all the same (Notes/Engine.lua). A tag word has none.
+local function short(token)
+    return (tostring(token or ""):gsub("%-.*$", ""))
+end
+
+local function shortAll(tokens)
+    local out = {}
+    for k, w in ipairs(tokens) do
+        out[k] = short(w)
+    end
+    return out
 end
 
 -- Names and keys ---------------------------------------------------------------------------------------------
@@ -159,24 +174,25 @@ function Assign.RemoveRow(block, r)
     return true
 end
 
+-- Whether the row has the token, a player's with or without a realm, a class in any spelling.
 local function hasToken(row, token)
-    local lower, class = token:lower(), Parser.ClassOf(token)
+    local lower, class = short(token):lower(), Parser.ClassOf(token)
     for _, w in ipairs(row.tokens) do
-        if w:lower() == lower or (class and Parser.ClassOf(w) == class) then
+        if short(w):lower() == lower or (class and Parser.ClassOf(w) == class) then
             return true
         end
     end
     return false
 end
 
--- Adds a player or tag word to row r (the palette's tokens, Model.ValidToken). False when it isn't one, or the row
--- has it already.
+-- Adds a player (without its realm) or tag word to row r (the palette's tokens, Model.ValidToken). False when it isn't
+-- one, or the row has it already.
 function Assign.AddToken(block, r, token)
     local row = block.rows[r]
     if not (row and Model.ValidToken(token)) or hasToken(row, token) then
         return false
     end
-    row.tokens[#row.tokens + 1] = token
+    row.tokens[#row.tokens + 1] = short(token)
     return true
 end
 
@@ -296,12 +312,13 @@ end
 
 -- Lines ------------------------------------------------------------------------------------------------------
 
+-- "Label: names", one space between the names, as the Kick order's lines and the timed lines' tag: write them.
 local function labelLine(row, r)
     local label = Assign.CleanLabel(row.label, r)
     if #row.tokens == 0 then
         return label .. ":"
     end
-    return label .. ": " .. table.concat(row.tokens, ", ")
+    return label .. ": " .. table.concat(shortAll(row.tokens), " ")
 end
 
 -- The text a row's timed lines show: its own, else its label.
@@ -356,7 +373,7 @@ function Assign.Lines(block, times, opts)
     for c, e in ipairs(list) do
         for _, r in ipairs(byCast[c] or {}) do
             local row = block.rows[r]
-            local t = { time = e.t, ph = e.ph, tags = row.tokens, text = Assign.RowText(row, r) }
+            local t = { time = e.t, ph = e.ph, tags = shortAll(row.tokens), text = Assign.RowText(row, r) }
             if spellID then
                 t.kind, t.spellId = "spell", spellID
             end
@@ -478,16 +495,56 @@ function Assign.Find(text, key)
     return set, any, f
 end
 
+local function blankAt(s, i)
+    local row = s.rows[i]
+    return row ~= nil and row.kind == "blank"
+end
+
+-- Whether a block added at the end needs a blank line before it: the line it goes after (the last one, or the one
+-- before a trailing line end) is neither blank nor the header, nor is the note empty.
+local function needsGap(s)
+    local p, n = s.pieces, #s.pieces
+    if n > 1 and p[n].text == "" and p[n].eol == "" then
+        n = n - 1
+    end
+    local row = s.rows[n]
+    return row ~= nil and row.kind ~= "blank" and row.kind ~= "header"
+end
+
+-- A block taken out: the blank line right before it goes too when only a blank line or the note's end follows it.
+local function dropGap(s, set)
+    local first, last
+    for i in pairs(set) do
+        first, last = math.min(first or i, i), math.max(last or i, i)
+    end
+    if first and blankAt(s, first - 1) and (s.pieces[last + 1] == nil or blankAt(s, last + 1)) then
+        set[first - 1] = true
+    end
+end
+
 -- The note's text with the block's lines replaced by `lines` (where its first line was, else at the end), every
 -- other line byte for byte. No lines takes the block out. oldKey (optional): a renamed block's old key, whose lines
--- go too, the new ones taking their place.
+-- go too, the new ones taking their place. A new block at the end gets a blank line before it, so it never reads as
+-- part of the group over it (Alex, 2026-10-30), and the blank line goes with it when it is taken out (dropGap).
 function Assign.Replace(text, key, lines, oldKey)
     local s = session(text or "")
-    local set = Assign.Find(s, key)
+    local set, any = Assign.Find(s, key)
     if oldKey and oldKey ~= key then
-        for i in pairs((Assign.Find(s, oldKey))) do
+        local old, oldAny = Assign.Find(s, oldKey)
+        for i in pairs(old) do
             set[i] = true
         end
+        any = any or oldAny
+    end
+    lines = lines or {}
+    if not any and #lines > 0 and needsGap(s) then
+        local gapped = { "" }
+        for i, line in ipairs(lines) do
+            gapped[i + 1] = line
+        end
+        lines = gapped
+    elseif any and #lines == 0 then
+        dropGap(s, set)
     end
     return CRT.MechNote.ReplaceLines(text or "", function(i)
         return set[i] == true
