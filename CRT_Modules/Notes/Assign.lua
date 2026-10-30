@@ -546,9 +546,24 @@ function Assign.Replace(text, key, lines, oldKey)
     elseif any and #lines == 0 then
         dropGap(s, set)
     end
-    return CRT.MechNote.ReplaceLines(text or "", function(i)
+    local out = CRT.MechNote.ReplaceLines(text or "", function(i)
         return set[i] == true
     end, lines)
+    -- A block that ended the note (no line end after it) taken out: the line before it ends the note again, in the
+    -- note's own line-end style, so the text is as it was before the block was added.
+    local pieces = s.pieces
+    local n = #pieces
+    if any and #lines == 0 and n > 0 and set[n] and pieces[n].eol == "" then
+        local keep = n - 1
+        while keep > 0 and set[keep] do
+            keep = keep - 1
+        end
+        local eol = keep > 0 and pieces[keep].eol or ""
+        if eol ~= "" and out:sub(-#eol) == eol then
+            out = out:sub(1, #out - #eol)
+        end
+    end
+    return out
 end
 
 -- Names in one form: without realms, one space between them, commas and runs of spaces read as one space.
