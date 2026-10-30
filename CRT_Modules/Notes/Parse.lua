@@ -425,6 +425,25 @@ function Parser.LooksLikeLabel(label)
     return not (lower:match("^phase%s*[%d%.]+$") or lower:match("^p[%d%.]+$") or lower:match("^intermission"))
 end
 
+-- An assignment block's heading line (Notes/Assign.lua): "assign:<key>;name:<name>;" with an optional for: (the
+-- mechanic's key) and times: (its typed times, "1@20,2@5": phase @ seconds), never a timed line. Every reader shows
+-- it as a heading of its name: Parse puts the name in note.lines, the note editor's rows (EditModel.lua) and the
+-- integrations (MRT.lua, NSRT.lua) write the name. Returns { key, name, mech, times } or nil.
+function Parser.AssignHeading(line)
+    local t = trim(line or "")
+    if not t:lower():find("^assign:") then
+        return nil
+    end
+    local f = fields(t)
+    local key = f.assign and f.assign:lower() or ""
+    if f.time or key == "" or key:find("/", 1, true) then
+        return nil
+    end
+    local name = (f.name and f.name ~= "") and f.name or key
+    return { key = key, name = name, mech = (f["for"] and f["for"] ~= "") and f["for"]:lower() or nil,
+        times = (f.times and f.times ~= "") and f.times or nil }
+end
+
 -- Returns { encounterID, difficulty, name, timers = {...}, phases = {...}, lines = {...}, invite = {...},
 -- unread = {...} }, unread the lines that start like a timer but have no time it can read, as written.
 -- Each timer is { time, ph, tags, kind = "spell" or "text", spellId, text, dur, color, line } with `line`
@@ -491,7 +510,8 @@ function Parser.Parse(text)
             local list = line:match("^[^:]+:(.*)$") or ""
             note.invite = nameList((list:gsub(";%s*$", "")))
         else
-            note.lines[#note.lines + 1] = line
+            local heading = Parser.AssignHeading(line)
+            note.lines[#note.lines + 1] = heading and heading.name or line -- an assignment block's heading: its name
         end
     end
 

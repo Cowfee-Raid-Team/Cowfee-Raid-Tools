@@ -197,17 +197,39 @@ check("mechnote: a note with an EncounterID header keeps it and its other lines"
   local again = M.Lines(FULL, { { ph = 1, t = 40 } }, "healer", "1234")
   M.Write(3470, "Mythic", nil, "1234", again)
   assert(Notes:Get(id).raw == raw .. again[1] .. "\\n" and M.CountIn(3470, "Mythic", "1234") == 1, "no duplicates")
-  -- a note for any difficulty is never written (Mythic times would run on a Heroic pull): a Mythic note is made
+  -- a note for any difficulty is never written (Mythic times would run on a Heroic pull): when the boss's only note is
+  -- for every difficulty, a Mythic note is made and written (Alex, 2026-10-29; Notes:WriteTarget makeExact), the one a
+  -- Mythic pull then reads
   local anyId = Notes:Import("EncounterID:3480;Name:Loose\\nfree")
-  local loose = M.Write(3480, "Mythic", "Loose", "k", { "time:1;mech:k;" })
-  assert(loose and loose ~= anyId and Notes:Get(anyId).raw == "EncounterID:3480;Name:Loose\\nfree", "the any-difficulty note untouched")
-  assert(Notes:Get(loose).difficulty == "Mythic" and Notes:FindForEncounter(3480, "Mythic") == loose, "a Mythic pull reads the new Mythic note")
-  -- (a Heroic pull, with no Heroic note, falls back to the boss's newest note of any difficulty: Notes:FindForEncounter,
-  -- unchanged here)
-  -- a Heroic note only: a Mythic note is made, the Heroic one untouched
+  IsInGroup = IsInGroup or function() return false end -- solo: you may change the raid note
+  assert(M.CanWrite(3480, "Mythic"), "CanWrite: fine, a note is made on the first write")
+  local notes = count(CRT.db.notes.list)
+  local loose, n0, why = M.Write(3480, "Mythic", "Loose", "k", { "time:1;mech:k;" })
+  assert(loose and loose ~= anyId and n0 == 1 and why == nil, "written: " .. tostring(why))
+  assert(Notes:Get(anyId).raw == "EncounterID:3480;Name:Loose\\nfree", "the any-difficulty note left as it was")
+  assert(count(CRT.db.notes.list) == notes + 1 and Notes:Get(loose).difficulty == "Mythic" and Notes:Get(loose).raw:find("mech:k;", 1, true), "a Mythic note made")
+  assert(Notes:FindForEncounter(3480, "Mythic") == loose, "the one the Mythic pull reads")
+  assert(M.Write(3480, "Mythic", "Loose", "k", { "time:2;mech:k;" }) == loose and count(CRT.db.notes.list) == notes + 1, "written there again, no more notes")
+  -- the note for every difficulty as the active note: the pull would still read it, so refused, with what to do
+  local anyB = Notes:Import("EncounterID:3485;Name:Active\\nfree")
+  Notes:SetActive(anyB)
+  local none, _, whyB = M.Write(3485, "Mythic", "Active", "k", { "time:1;mech:k;" })
+  assert(none == nil and whyB == "The Mythic pull reads the Active (any difficulty) note. Make a Mythic note first (Raid Notes), then write.", tostring(whyB))
+  local ok, reason = M.CanWrite(3485, "Mythic")
+  assert(not ok and reason == whyB, "CanWrite says so before")
+  Notes:SetActive(nil)
+  -- the caller says one note serves every difficulty of this boss: then it is written
+  local one = Notes:Import("EncounterID:3486;Name:One\\nfree")
+  assert(Notes:WriteTarget(3486, "Mythic", { singleDifficulty = true }) == one, "single difficulty: the note the pull reads")
+  assert(Notes:WriteTarget(3486, "Mythic", { find = true }) == nil and select(2, Notes:WriteTarget(3486, "Mythic", { find = true })), "without makeExact (Interrupts): refused")
+  -- a Heroic note only: the Mythic pull reads it, so refused too, the Heroic one untouched
   local h = Notes:Import("EncounterID:3490;Difficulty:Heroic;Name:H\\ntime:1;text:x;")
-  local m = M.Write(3490, "Mythic", "H", "k", { "time:1;mech:k;" })
-  assert(m and m ~= h and Notes:Get(h).raw == "EncounterID:3490;Difficulty:Heroic;Name:H\\ntime:1;text:x;" and Notes:Get(m).difficulty == "Mythic", "a Mythic note of its own")
+  local m, _, hwhy = M.Write(3490, "Mythic", "H", "k", { "time:1;mech:k;" })
+  assert(m == nil and Notes:Get(h).raw == "EncounterID:3490;Difficulty:Heroic;Name:H\\ntime:1;text:x;", "the Heroic note untouched")
+  assert(hwhy == "The Mythic pull reads the H (Heroic) note. Make a Mythic note first (Raid Notes), then write.", tostring(hwhy))
+  -- with a Mythic note made first, it goes there
+  local made = Notes:Import("EncounterID:3490;Difficulty:Mythic;Name:H\\n")
+  assert(M.Write(3490, "Mythic", "H", "k", { "time:1;mech:k;" }) == made, "the Mythic note")
   assert(M.NoteDifficulty({ difficulty = "Heroic" }, "nh") == "Heroic" and M.NoteDifficulty(nil, "mythic") == "Mythic" and M.NoteDifficulty({}, "nh") == "Heroic", "the note's Difficulty")
 end)
 
@@ -229,7 +251,11 @@ check("mechnote: Sync follows the reminder; turned off or Only me takes the line
   M.Sync(3470, id, { group = "mythic" })
   timers = Notes:Parsed(nid).timers
   assert(#timers == 4 and timers[1].text == "Spread out" and timers[1].tags[1] == "healer", "the four lines changed, none added")
-  -- Times from on a Heroic ability timeline: the lines move to the Heroic note
+  -- Times from on a Heroic ability timeline: the Heroic pull reads the Mythic note, so nothing moves
+  local none, _, why = M.Sync(3470, id, { group = "nh", ref = { difficulty = "Heroic" } })
+  assert(none == nil and why and why:find("Make a Heroic note first", 1, true) and M.CountIn(3470, "Mythic", "spread") == 4, "refused, the lines stay")
+  -- with a Heroic note, the lines move there
+  Notes:Import("EncounterID:3470;Difficulty:Heroic;Name:The Twin Fangs\\n")
   local hid = M.Sync(3470, id, { group = "nh", ref = { difficulty = "Heroic" } })
   assert(hid ~= nid and M.CountIn(3470, "Mythic", "spread") == 0 and M.CountIn(3470, "Heroic", "spread") == 4, "moved")
   M.Sync(3470, id, { group = "mythic", ref = { difficulty = "Mythic" } })
@@ -590,6 +616,46 @@ check("mechnote: Test of an alert with a #id marker leaves out only its own line
   items = test(a)
   assert(shows(items, "Row", 36) == 1 and shows(items, "Mine", 36) == 1, "Test of 777: once each, the 777#id line stays")
   A:Stop(true)
+end)
+
+check("mechnote: nothing is written during combat or a boss encounter, with the reason", function()
+  reset()
+  local id = Notes:Import("EncounterID:3470;Difficulty:Mythic;Name:Fangs\\nkeep")
+  local busy = Notes.Busy
+  Notes.Busy = function() return true end
+  local nid, n, why = M.Write(3470, "Mythic", "Fangs", "k", { "time:1;mech:k;" })
+  local ok, reason = M.CanWrite(3470, "Mythic")
+  Notes.Busy = busy
+  assert(nid == nil and n == 0 and why == M.TEXT.busy, "refused: " .. tostring(why))
+  assert(not ok and reason == M.TEXT.busy, "CanWrite says so")
+  assert(Notes:Get(id).raw == "EncounterID:3470;Difficulty:Mythic;Name:Fangs\\nkeep", "the note as it was")
+end)
+
+check("mechnote: lines left in the exact note are counted and taken out while the pull reads another note", function()
+  reset()
+  local exact = Notes:Import("EncounterID:3470;Difficulty:Mythic;Name:Fangs\\ntime:1;mech:k;")
+  local loose = Notes:Import("EncounterID:3470;Name:Loose\\nfree")
+  Notes:SetActive(loose)
+  local id, why = M.FindNote(3470, "Mythic")
+  assert(id == nil and why, "the pull reads the note for any difficulty")
+  local n, where = M.CountIn(3470, "Mythic", "k")
+  assert(n == 1 and where == exact, "counted where they went: " .. tostring(n))
+  assert(M.Leave(3470, { raidNote = { key = "k", difficulty = "Mythic", tag = "all" } }) == 1, "Leave finds them")
+  assert(Notes:Get(exact).raw == "EncounterID:3470;Difficulty:Mythic;Name:Fangs\\n" and Notes:Get(loose).raw == "EncounterID:3470;Name:Loose\\nfree",
+    "taken out of the exact note; the other untouched: " .. Notes:Get(exact).raw)
+  -- taking out works during a pull; writing doesn't
+  local busy = Notes.Busy
+  Notes.Busy = function() return true end
+  Notes:SetActive(exact)
+  M.Write(3470, "Mythic", "Fangs", "k", { "time:2;mech:k;" })
+  local written = Notes:Get(exact).raw
+  Notes.Busy = busy
+  assert(not written:find("mech:k", 1, true), "nothing written during a pull")
+  Notes:UpdateRaw(exact, written .. "time:3;mech:k;")
+  Notes.Busy = function() return true end
+  local _, count = M.Write(3470, "Mythic", nil, "k", {})
+  Notes.Busy = busy
+  assert(count == 0 and not Notes:Get(exact).raw:find("mech:k", 1, true), "taken out during a pull")
 end)
 
 check("no errors raised", function()

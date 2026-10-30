@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **Assignments:** build soaks, sides and other assignments on the new Assign tab in Mech Alerts, or with Add assignment in the note editor. Drag players onto rows; each row gets timers on the casts it is on, in the boss's raid note. A pasted note's group list can become one too.
 - **Addon check** (General Settings): see who in the group runs CRT, which version, and which optional modules each raider has on, with filters by module and by answer. Announce posts who is missing or behind, with the download link, to the group, as a raid warning, to officer chat or only to you (Announce to), and a click on their row whispers them.
 - **Interrupts** (new, optional): numbers above a boss's adds by kick pair, a countdown before your kick, and a kick list the raid leader shares. The Twin Fangs on Mythic first. Off by default: tick Enable Interrupts under General Settings to use it.
 

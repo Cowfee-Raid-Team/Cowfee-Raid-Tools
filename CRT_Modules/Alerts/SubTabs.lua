@@ -6,6 +6,7 @@ local ADDON, CRT = ...
 --   Looks             Show as, Text, Icon, Color, and the bar's rows
 --   Sound and speech  Sound, Also when it lands on me, Speak the text, Speak at, Count down 3 2 1, Glow at 0
 --   Shield bar        the Shield bar section (Alerts/ShieldSection.lua)
+--   Assign            the mechanic's assignment blocks in the raid note (Notes/AssignTab.lua), the Mech Alerts panel only
 -- The strip is laid out from SubTabs.LIST, in order: a new tab is one more entry there (key, label, width, and on for
 -- its dot), and every host gets it. Each tab has a frame over the whole host frame; the host builds that tab's
 -- controls into it, at the host's own coordinates, so only the open tab's controls show. A tab's label carries a
@@ -24,6 +25,7 @@ local TEXT = {
     looks = "Looks",
     sound = "Sound and speech",
     shield = "Shield bar",
+    assign = "Assign",
 }
 SubTabs.TEXT = TEXT
 
@@ -65,6 +67,9 @@ SubTabs.LIST = {
     { key = "looks", label = TEXT.looks, width = 118, on = anyShown },
     { key = "sound", label = TEXT.sound, width = 150, on = anySound },
     { key = "shield", label = TEXT.shield, width = 118, on = function(d) return Draft().Absorb(d) ~= nil end },
+    -- its dot: the mechanic has an assignment with players in the raid note
+    { key = "assign", label = TEXT.assign, width = 118, hosts = { mechanics = true },
+        on = function() return CRT.NoteAssignTab ~= nil and CRT.NoteAssignTab.HasNames() end },
 }
 
 -- The tab each host picked last, for the session: [owner] = key.

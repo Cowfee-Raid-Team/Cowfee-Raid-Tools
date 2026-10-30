@@ -8,8 +8,9 @@ local ADDON, CRT = ...
 --   Tovi Hale Ruun Pell           space separated, empty slots left out (a group with none is an empty line)
 --   intend
 -- Only Write to the raid note on the page writes it, your own list, into the note a pull of that difficulty reads
--- (Notes:FindForEncounter), so the block is where the pull finds it and no new note ever hides that one:
---   the boss has no note at all          a note for exactly that difficulty is made (Notes:NoteFor exact)
+-- (Notes:WriteTarget, the one rule Raid note alerts and assignment blocks use too), so the block is where the pull finds
+-- it and no new note ever hides that one:
+--   the boss has no note at all          a note for exactly that difficulty is made (Notes:WriteTarget)
 --   the pull reads that difficulty's     written there
 --   the pull reads a note for every      written there only while the boss has kick setups (shipped, your own or a
 --   difficulty (no Difficulty)           share's) for one difficulty; else refused, so Heroic and Mythic never write
@@ -320,20 +321,14 @@ end
 -- The note the block lives in for t: the note a pull of that difficulty reads, when it may hold it. nil when the boss
 -- has no note at all; nil and why when the pull reads a note the block can't go in.
 local function noteOf(t)
-    local Notes = t.Notes
-    local id = Notes:FindForEncounter(t.id, t.difficulty)
-    local record = id and Notes:Get(id)
-    if not record then
-        return nil
+    -- the shared rule (Notes:WriteTarget); a note for every difficulty is fine while the boss has one setup at most
+    local id, _, record = t.Notes:WriteTarget(t.id, t.difficulty,
+        { find = true, singleDifficulty = #Interrupts:Setups(t.id) <= 1 })
+    if id or not record then
+        return id
     end
     if type(record.difficulty) == "string" then
-        if record.difficulty:lower() == t.difficulty:lower() then
-            return id
-        end
         return nil, string.format(TEXT.otherNote, t.difficulty, record.difficulty, t.difficulty)
-    end
-    if #Interrupts:Setups(t.id) <= 1 then
-        return id
     end
     return nil, string.format(TEXT.anyNote, t.difficulty, tostring(record.name), t.difficulty)
 end
@@ -363,8 +358,8 @@ function Block.Write(key)
         return false, refused
     end
     if not noteID and #lines > 0 then
-        -- the boss has no note at all
-        noteID = Notes:NoteFor(t.id, t.difficulty, Interrupts:BossName(t.key), { exact = true, via = Block.VIA })
+        -- the boss has no note at all: made by the shared rule, the one way a note for lines is made
+        noteID = Notes:WriteTarget(t.id, t.difficulty, { bossName = Interrupts:BossName(t.key), via = Block.VIA })
     end
     local record = noteID and Notes:Get(noteID)
     if not record then

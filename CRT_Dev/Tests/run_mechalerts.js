@@ -198,6 +198,24 @@ CRT.Notes.NoteFor = function(self, enc, diff, boss, opts)
   if id then return id, false end
   return self:Import("EncounterID:" .. enc .. ";Difficulty:" .. diff .. ";Name:" .. boss .. "\\n", nil, nil, nil, opts and opts.via, nil, opts and opts.exact), true
 end
+-- Notes/Data.lua's WriteTarget (run_mechnote.js tests the real one): the note the pull of that difficulty reads, when it
+-- is for that difficulty; refused with what to do when it is another's; made only when the boss has none
+CRT.Notes.WriteTarget = function(self, enc, diff, opts)
+  opts = opts or {}
+  local id = self:FindForEncounter(enc, diff)
+  local r = id and noteStore[id]
+  if r then
+    if (r.difficulty and diff and r.difficulty:lower() == diff:lower()) or (not r.difficulty and opts.singleDifficulty) then return id, false end
+    if not r.difficulty and opts.makeExact and not self:FindExact(enc, diff) then
+      if opts.find then return nil end
+      return self:Import("EncounterID:" .. enc .. ";Difficulty:" .. diff .. ";Name:" .. tostring(opts.bossName) .. "\\n", nil, nil, nil, opts.via, nil, true), true
+    end
+    return nil, "The " .. diff .. " pull reads the " .. tostring(r.name) .. " (" .. (r.difficulty or "any difficulty") .. ") note. Make a "
+      .. diff .. " note first (Raid Notes), then write."
+  end
+  if opts.find then return nil end
+  return self:Import("EncounterID:" .. enc .. ";Difficulty:" .. diff .. ";Name:" .. tostring(opts.bossName) .. "\\n", nil, nil, nil, opts.via, nil, true), true
+end
 local activeRecord = { encounterID = 9001, name = "Test Boss" }
 CRT.Notes.Active = function() return "n1", activeRecord end
 CRT.NotesPage = { TAB_H = CRT.UI.PAGE_H - 66 } -- CRT_Modules/Notes/Page.lua: a tab's height under the tabs
@@ -863,10 +881,14 @@ check("mech raid note: no rewrite in an encounter, an older alert splits, anothe
   IsEncounterInProgress = nil
   CRT.Notes:Fire()
   assert(#marked(note.raw, "777") == 2, "written once it ended")
-  -- the pull reads another note (an active note for any difficulty, say): said in the warn colour
+  -- the pull reads another note (an active note for any difficulty, say): said in the warn colour, and nothing is
+  -- written there (Notes:WriteTarget)
+  local loose = CRT.Notes:Import("EncounterID:9001;Difficulty:Any;Name:Loose\\n")
+  CRT.Notes:Get(loose).difficulty = nil
   local wasFind = CRT.Notes.FindForEncounter
-  CRT.Notes.FindForEncounter = function() return 999 end
+  CRT.Notes.FindForEncounter = function() return loose end
   CRT.Notes:Fire()
+  assert(#marked(CRT.Notes:Get(loose).raw, "777") == 0, "nothing written into the note for any difficulty")
   assert(p.noteStatus.text:find("The pull uses another note for this boss, so these lines won't run.", 1, true)
     and p.noteStatus.text:find("|cff" .. CRT.UI.Hex("warn"), 1, true), p.noteStatus.text)
   CRT.Notes.FindForEncounter = wasFind
@@ -886,6 +908,55 @@ check("mech raid note: no rewrite in an encounter, an older alert splits, anothe
   end
   assert(#mythic == 1 and mythic[1].raidNote and #nh == 1 and nh[1].raidNote == nil, "split: Mythic in the note, Normal/Heroic Only me")
   assert(#marked(noteFor(ENC, "Mythic").raw, "888") == 1, "its one Mythic cast in the note")
+  assert(#errors == 0, tostring(errors[1]))
+end)
+
+check("mech raid note: your own change is refused in combat or a boss encounter, with the reason", function()
+  resetNotes()
+  local f = fresh()
+  local p = f.panel
+  p.saveAs.opts.set("note")
+  local note = noteFor(ENC, "Mythic")
+  local before = note.raw
+  IsEncounterInProgress = function() return true end
+  p.forDrop.opts.toggle("healer")
+  assert(note.raw == before and p.message.text:find(CRT.MechNote.TEXT.busy, 1, true), "refused: " .. tostring(p.message.text))
+  IsEncounterInProgress = nil
+  p.forDrop.opts.toggle("healer")
+  assert(note.raw ~= before and note.raw:find("tag:healer;", 1, true), "written after the pull")
+  assert(#errors == 0, tostring(errors[1]))
+end)
+
+check("mech raid note: Only me or Delete takes the lines out even in combat or a boss encounter", function()
+  resetNotes()
+  local f = fresh()
+  local p = f.panel
+  p.saveAs.opts.set("note")
+  local note = noteFor(ENC, "Mythic")
+  assert(#marked(note.raw, "777") == 2, "in the note")
+  IsEncounterInProgress = function() return true end
+  p.saveAs.opts.set("mine")
+  assert(#marked(note.raw, "777") == 0, "Only me during a pull: the lines go, never stuck: " .. note.raw)
+  IsEncounterInProgress = nil
+  -- your own reminder in the note, deleted during a pull: its lines go with it
+  click(f.ownButton)
+  typeInto(p.textEdit, "Mine")
+  typeInto(p.timesEdit, "P1 0:10, 0:50")
+  p.timesEdit.OnEnterPressed(p.timesEdit)
+  p.saveAs.opts.set("note")
+  assert(#marked(note.raw, "mine") == 2, "own reminder in the note")
+  local popup
+  local wasPopup = StaticPopup_ShowCustomGenericConfirmation
+  StaticPopup_ShowCustomGenericConfirmation = function(o) popup = o return {} end
+  CRT.UI.LiftOver = CRT.UI.LiftOver or function(x) return x end
+  CRT.UI.ShownPopup = CRT.UI.ShownPopup or function(x) return x end
+  IsEncounterInProgress = function() return true end
+  click(p.deleteBtn)
+  assert(popup, "asked")
+  popup.callback()
+  IsEncounterInProgress = nil
+  StaticPopup_ShowCustomGenericConfirmation = wasPopup
+  assert(#marked(note.raw, "mine") == 0, "deleted during a pull: its lines go: " .. note.raw)
   assert(#errors == 0, tostring(errors[1]))
 end)
 
@@ -1939,10 +2010,10 @@ check("mech shield: the section fits its tab, clear of the marker tick and the b
   assert(#errors == 0, tostring(errors[1]))
 end)
 
--- The panel's subtabs (Alerts/SubTabs.lua): When, Looks, Sound and speech, Shield bar under the header, at the approved
+-- The panel's subtabs (Alerts/SubTabs.lua): When, Looks, Sound and speech, Shield bar, Assign under the header, at the approved
 -- mock-up's sizes, each holding its controls; one tab's controls on show at a time; Test and Save as template on every
 -- tab; a dot on a tab while something on it is on; the tab stays when another row is picked.
-local SUBTABS = { "when", "looks", "sound", "shield" }
+local SUBTABS = { "when", "looks", "sound", "shield", "assign" }
 local function onTab(p)
   local s = p.shield
   return {
@@ -1951,15 +2022,16 @@ local function onTab(p)
       p.iconType, p.idEdit, p.colorSwatch, p.colorDefault, p.colorLabel, p.barFill, p.countTo, p.ticksEdit, p.ticksLabel },
     sound = { p.sound, p.auraSound, p.also.speak, p.speakAt, p.also.count, p.also.glow },
     shield = { s.check, s.unitRow, s.lengthRow, s.any, s.lastText },
+    assign = {}, -- the Assign tab's own controls: run_notes_editor.js (this harness loads no Notes/AssignTab.lua)
   }
 end
 local function visibleIn(m, root) local x = m while x and x ~= root do if not x.shown then return false end x = x.parent end return x == root end
 
-check("mech subtabs: four tabs under the header, in order, at the mock-up's sizes", function()
+check("mech subtabs: five tabs under the header, in order, at the mock-up's sizes", function()
   local f = fresh()
   local p = f.panel
   local t = p.tabs
-  assert(t and table.concat(t.keys, ",") == table.concat(SUBTABS, ","), "the four tabs, in order: " .. tostring(t and table.concat(t.keys, ",")))
+  assert(t and table.concat(t.keys, ",") == table.concat(SUBTABS, ","), "the five tabs, in order: " .. tostring(t and table.concat(t.keys, ",")))
   local labels, x = {}, 12
   for i, key in ipairs(t.keys) do
     local b = t.buttons[key]
@@ -1969,7 +2041,7 @@ check("mech subtabs: four tabs under the header, in order, at the mock-up's size
     assert(b.h == 24 and b.w == (key == "sound" and 150 or 118), key .. " is " .. tostring(b.w) .. " x " .. tostring(b.h))
     x = x + b.w + 4
   end
-  assert(table.concat(labels, ",") == "When,Looks,Sound and speech,Shield bar", table.concat(labels, ","))
+  assert(table.concat(labels, ",") == "When,Looks,Sound and speech,Shield bar,Assign", table.concat(labels, ","))
   -- the rule under them, the header above them
   assert(t.rule and t.rule.pts[1][3] == -90, "a rule under the tabs")
   rects = {}
@@ -2133,9 +2205,8 @@ check("mech subtabs: greying follows a change made on another tab", function()
 end)
 
 check("mech subtabs: a tab for one host only stays out of the others", function()
-  local list = {}
-  for i, e in ipairs(CRT.AlertSubTabs.LIST) do list[i] = e end
-  list[#list + 1] = { key = "assign", label = "Assign", width = 118, hosts = { mechanics = true } }
+  -- Assign (Notes/AssignTab.lua) is in the list for the Mech Alerts panel only
+  local list = CRT.AlertSubTabs.LIST
   local panelStrip = CRT.AlertSubTabs.Build(mock("Frame"), { owner = "mechanics", x = 12, y = -66, list = list })
   local editorStrip = CRT.AlertSubTabs.Build(mock("Frame"), { owner = "editor", x = 16, y = -82, list = list })
   assert(table.concat(panelStrip.keys, ",") == "when,looks,sound,shield,assign", "the panel has it")

@@ -5,7 +5,8 @@ local ADDON, CRT = ...
 -- ability, each with a tick that turns its reminder on or off. On the right, one panel shows the selected
 -- row's alert, and every change there saves it at once (the first change on an ability makes its
 -- reminder). Under the panel's header its settings sit on subtabs (When, Looks, Sound and speech, Shield bar:
--- Alerts/SubTabs.lua, shared with the pop-out editor); Test and Save as template stay at the bottom, outside them.
+-- Alerts/SubTabs.lua, shared with the pop-out editor, then Assign, the panel's own: the mechanic's assignment blocks in
+-- the raid note, Notes/AssignTab.lua); Test and Save as template stay at the bottom, outside them.
 -- The draft and its save are Alerts/Draft.lua's, the name lookup of the Icon box is
 -- Alerts/SpellLookup.lua's, the Shield bar section Alerts/ShieldSection.lua's, and Test and Save as template go
 -- through Alerts/Editor.lua, all shared with the pop-out editor. The reminders and their times are in
@@ -704,25 +705,49 @@ local function noteOpts(enc)
     return { ref = entry and entry.ref, group = shownGroup(), boss = bossName(bosses(), enc) }
 end
 
+-- Whether the panel's alert may write raid note lines now (MechNote.CanWrite: you may change the raid note, it isn't
+-- combat or a boss encounter, and the pull of the difficulty on show reads a note for it), and the reason when not.
+local function noteAllowed(enc)
+    local M = CRT.MechNote
+    local entry = shownReference()
+    return M.CanWrite(enc, M.NoteDifficulty(entry and entry.ref, shownGroup()))
+end
+
+-- Whether Times from shows the boss's default ability timeline for the group (the Timeline's own pick), not one
+-- picked to look at. Only then do lines get written again on their own (resyncNote, the Assign tab).
+local function onDefaultTimeline()
+    if viewPrefer == nil then
+        return true
+    end
+    local T = CRT.Timeline
+    local entry = shownReference()
+    local default = T and T.ReferenceFor and T:ReferenceFor(selected, shownGroup(), bossName(bosses(), selected), nil, bossRefs())
+    return default == nil or (entry ~= nil and default.key == entry.key)
+end
+
 -- A saved reminder that is Raid note: its lines in the boss's note brought in step with it (Notes/MechNote.lua Sync),
 -- its times read from the ability timeline on show, as the panel shows them. False and the reason (on the message
--- line) when you may not change the raid note; nothing is written then.
+-- line) when they can't be written (noteAllowed, or Sync refused); nothing is written then.
 local function syncNote(enc, id)
     local M = CRT.MechNote
     if not (M and id and M.InNote(CRT.AlertReminders:Get(enc, id))) then
         return true
     end
-    local allowed, why = CRT.AlertDraft.CanEditRaid()
+    local allowed, why = noteAllowed(enc)
     if not allowed then
         notice = why
         return false
     end
     local was = saving
     saving = true -- the note's change listeners redraw once, after
-    local ok, err = pcall(M.Sync, enc, id, noteOpts(enc))
+    local ok, err, _, refused = pcall(M.Sync, enc, id, noteOpts(enc))
     saving = was
     if not ok then
         geterrorhandler()(err)
+        return false
+    end
+    if refused then
+        notice = refused
         return false
     end
     return true
@@ -735,8 +760,8 @@ end
 local function resyncNote()
     local M, ctx, Notes = CRT.MechNote, cur.ctx, CRT.Notes
     if not (M and ctx and ctx.id and M.InNote(ctx.reminder)) or saving or not (Notes and Notes.Busy) or Notes.Busy()
-        or not CRT.AlertDraft.CanEditRaid() then
-        return
+        or not CRT.AlertDraft.CanEditRaid() or not onDefaultTimeline() then
+        return -- also never while another ability timeline is picked to look at
     end
     local ok, inStep = pcall(M.InStep, ctx.encounterID, ctx.id, noteOpts(ctx.encounterID))
     if ok and not inStep and syncNote(ctx.encounterID, ctx.id) then
@@ -758,10 +783,10 @@ local function drawNoteStatus()
         local ok, inStep = pcall(M.InStep, ctx.encounterID, ctx.id, noteOpts(ctx.encounterID))
         if r.enabled == false then
             text = UI.WarnText(TEXT.noteOff)
+        elseif select(2, M.FindNote(ctx.encounterID, difficulty)) then
+            text = UI.WarnText(TEXT.otherNote) -- the pull reads another difficulty's note: nothing is written there
         elseif count == 0 then
             text = UI.WarnText(string.format(TEXT.noteGone, tostring(cur.bossName), difficulty))
-        elseif CRT.Notes:FindForEncounter(ctx.encounterID, difficulty) ~= M.FindNote(ctx.encounterID, difficulty) then
-            text = UI.WarnText(TEXT.otherNote)
         elseif ok and not inStep then
             text = UI.WarnText(TEXT.outOfDate)
         else
@@ -836,6 +861,10 @@ local function drawPanel()
     -- a save's problem, else ticks past the bar (they still save: a longer Show from can fit them)
     local say = notice or CRT.AlertDraft.TicksPast(d)
     panel.message:SetText(say and UI.BadText(say) or "")
+    -- the Assign tab follows the row shown (its blocks read from the raid note), before its dot is painted
+    if panel.assign then
+        panel.assign.Refresh()
+    end
     -- each tab's dot: something on it is on
     panel.tabs:Paint(d)
 end
@@ -1083,6 +1112,9 @@ local commit
 -- Saves what was typed, if anything waits (Enter, leaving the box, a pause, another row or boss picked,
 -- a tick, the tab hiding). `quiet`: a refresh is already loading the next row, so the save moves nothing.
 saveTyped = function(quiet)
+    if panel.assign then
+        panel.assign.Leave() -- the Assign tab's typing, saved to its own mechanic
+    end
     if typed and cur.draft then
         commit(quiet)
     end
@@ -1148,7 +1180,7 @@ commit = function(quiet)
     end
     -- a Raid note alert is saved only with its lines: never while you may not change the raid note
     if CRT.MechNote and CRT.MechNote.InNote(ctx.reminder) then
-        local allowed, why = Draft.CanEditRaid()
+        local allowed, why = noteAllowed(ctx.encounterID)
         if not allowed then
             notice = why
             drawPanel()
@@ -1221,7 +1253,7 @@ local function setEnabled(item, on)
             -- a Raid note alert's tick changes its lines: refused while you may not change the raid note
             local allowed, why = true, nil
             if CRT.MechNote and CRT.MechNote.InNote(r) then
-                allowed, why = Draft.CanEditRaid()
+                allowed, why = noteAllowed(enc)
             end
             if not allowed then
                 notice = why
@@ -1599,7 +1631,7 @@ end
 local function buildNoteRow(p, row)
     local M = CRT.MechNote
     local function allowed()
-        local ok, why = CRT.AlertDraft.CanEditRaid()
+        local ok, why = noteAllowed(cur.enc)
         if not ok then
             notice = why
             drawPanel()
@@ -1633,6 +1665,7 @@ local function buildNoteRow(p, row)
             return
         end
         if v == "mine" then
+            -- taking lines out needs only the right to change the raid note, never the pull's end: they'd be stuck
             if CRT.AlertDraft.CanEditRaid() then
                 M.Leave(ctx.encounterID, { raidNote = before })
             else
@@ -1758,6 +1791,9 @@ end
 -- Another subtab picked: the boxes let go and what was typed is saved (leaving a box saves it too), and the spell
 -- lookup's list closes, so nothing waits on a tab that isn't on show.
 local function leaveTab()
+    if panel.assign then
+        panel.assign.Leave()
+    end
     if panel.lookupCtl then
         panel.lookupCtl:Hide()
     end
@@ -1765,6 +1801,31 @@ local function leaveTab()
         edit:ClearFocus()
     end
     saveTyped()
+end
+
+-- The Assign tab (Notes/AssignTab.lua), the panel's only: the selected mechanic's assignment blocks, written into the
+-- boss's raid note for the difficulty on show, in the tab's area above the bottom row. Its own function: buildPanel is
+-- near Lua 5.1's 60 upvalue limit.
+local function buildAssignTab(p)
+    local Tab = CRT.NoteAssignTab
+    if not (p and Tab and CRT.NoteAssignBlock) then
+        return nil
+    end
+    return Tab.Build(p, {
+        x = L.INSET, y = L.CONTENT_Y, width = L.PANEL_W - 2 * L.INSET,
+        height = L.PANEL_H + L.CONTENT_Y - (L.BOTTOM_Y + L.BUTTON_H + L.MESSAGE_GAP + 16),
+        current = function()
+            local item = cur.item
+            local entry = shownReference()
+            local name = item and item.ability and item.ability.name or (item and not item.pending and itemName(item)) or draftName()
+            return { enc = cur.enc, item = item, bossName = cur.bossName, ref = entry and entry.ref, group = shownGroup(),
+                name = name, defaultTimeline = onDefaultTimeline() }
+        end,
+        notice = function(message)
+            notice = message
+            drawPanel()
+        end,
+    })
 end
 
 local function buildPanel(f)
@@ -1965,6 +2026,7 @@ local function buildPanel(f)
 
     buildSoundTab(tf.sound, row)
     buildShieldTab(tf.shield, row)
+    panel.assign = buildAssignTab(tf.assign)
 
     -- Under the tabs, on every tab: a save's problem, in red, above the bottom row (a long one wraps upwards)
     p = panel.content
@@ -2035,7 +2097,7 @@ local function buildPanel(f)
                 -- a Raid note reminder's lines go with it
                 local stay = false
                 if CRT.MechNote and CRT.MechNote.InNote(saved) then
-                    if CRT.AlertDraft.CanEditRaid() then
+                    if CRT.AlertDraft.CanEditRaid() then -- taking out: only the right to change the raid note
                         CRT.MechNote.Leave(enc, saved)
                     else
                         stay = true

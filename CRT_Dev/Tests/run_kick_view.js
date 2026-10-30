@@ -13,7 +13,8 @@ const dir = process.argv[2];
 const FILES = ['CRT_Data/Bosses/Registry.lua', 'CRT_Dev/Tests/SamplePack/Season.lua', 'CRT_Dev/Tests/SamplePack/NekzaliTheSoulcoiler.lua',
   'CRT_Core/Comm.lua', 'CRT_Modules/Notes/Parse.lua', 'CRT_Modules/Notes/Data.lua', 'CRT_Modules/Interrupts/Lattice.lua',
   'CRT_Modules/Interrupts/Setup.lua', 'CRT_Modules/Interrupts/Data.lua', 'CRT_Modules/Interrupts/NoteBlock.lua',
-  'CRT_Modules/Notes/Render.lua', 'CRT_Modules/Notes/EditModel.lua'];
+  'CRT_Modules/Notes/Render.lua', 'CRT_Modules/Notes/EditModel.lua', 'CRT_Modules/Notes/Links.lua', 'CRT_Modules/Notes/MechNote.lua',
+  'CRT_Modules/Notes/Assign.lua'];
 const harness = themeLua([path.join(dir, 'CRT_Core/Themes.lua')]) + `
 local sources = { ... }
 local fails, passes = 0, 0
@@ -105,6 +106,53 @@ local sm = M.New(head("Mythic") .. BLOCK)
 check(sm.rows[3].text:find("UI-RaidTargetingIcon_8", 1, true) ~= nil, "editor: the marker icon")
 eq(s:Text(), head("Heroic") .. BLOCK, "editor: the raw text is unchanged")
 eq(M.New("Melee: a\\n").rows[1].kind, "label", "editor: other rows as before")
+
+-- a kick block and an assignment block (Notes/Assign.lua) in one note: each reads as its own, neither takes the other's
+-- lines, both directly after each other with no blank line between them
+do
+  local A = CRT.NoteAssign
+  local casts = { { ph = 1, t = 36 }, { ph = 1, t = 96 } }
+  local feast = { name = "Ravenous Feast", spellID = 1234, rows = {
+    { label = "Soak", text = "", tokens = { "Xuelan", "Sixz" }, casts = "all" },
+    { label = "Back", text = "", tokens = { "Durayn" }, casts = { 2 } } } }
+  local assignText = table.concat(A.Lines(feast, casts, { mech = "1234" }), "\\n") .. "\\n"
+  for _, order in ipairs({ "kick first", "assign first" }) do
+    local raw = order == "kick first" and (head("Heroic") .. BLOCK .. assignText) or (head("Heroic") .. assignText .. BLOCK)
+    -- the rendered view: Kick order with its group labels, the Assign heading with its rows and timer lines
+    local view = {}
+    for _, r in ipairs(R.Rows(raw, { classOf = classOf })) do view[#view + 1] = r.kind .. ":" .. (r.text or r.label or "") end
+    local v = table.concat(view, "|")
+    check(v:find("heading:Kick order|label:Left|label:Right", 1, true), order .. ": render: Kick order and its groups: " .. v)
+    check(v:find("heading:Ravenous Feast|label:Soak|label:Back", 1, true), order .. ": render: the Assign heading and its rows: " .. v)
+    check(not v:find("assign:", 1, true) and not v:find("intstart", 1, true), order .. ": render: no marker shown: " .. v)
+    eq(select(2, v:gsub("timer:", "")), 3, order .. ": render: the block's three timer lines")
+    -- the note editor: the kick lines read only, the Assign heading a heading, its rows editable
+    local s = M.New(raw)
+    local kinds = {}
+    for i, row in ipairs(s.rows) do kinds[i] = row.kind .. (row.assign and "*" or "") end
+    local k = table.concat(kinds, ",")
+    if order == "kick first" then
+      eq(k, "header,heading,text,text,blank,heading*,label,label,timer,timer,timer,blank", "editor rows")
+    else
+      eq(k, "header,heading*,label,label,timer,timer,timer,heading,text,text,blank,blank", "editor rows (assign first)")
+    end
+    eq(s:Text(), raw, order .. ": editor: the raw text unchanged")
+    -- the Assign block reads only its own rows, the kick block only its own lines
+    local b = A.Read(raw, "ravenous feast", casts)
+    check(b and #b.rows == 2 and table.concat(b.rows[1].tokens, " ") == "Xuelan Sixz" and table.concat(b.rows[2].tokens, " ") == "Durayn",
+      order .. ": the Assign block's two rows")
+    local items = B.View(raw)
+    local groups = {}
+    for _, it in pairs(items) do if it.kind == "kick" then groups[#groups + 1] = it.label .. "=" .. table.concat(it.names, " ") end end
+    table.sort(groups)
+    eq(table.concat(groups, ","), "Left=Xuelan Sixz,Right=Durayn Sarrantha", order .. ": the kick block's two groups")
+    -- changing the Assign block leaves the kick block byte for byte, and Expand leaves the Assign lines as written
+    b.rows[1].tokens = { "Sarrantha" }
+    local changed = A.Replace(raw, "ravenous feast", A.Lines(b, casts, { mech = "1234" }), "ravenous feast")
+    check(changed:find(BLOCK, 1, true) ~= nil, order .. ": the kick block untouched by the Assign write")
+    check(B.Expand(raw):find(assignText, 1, true) ~= nil, order .. ": the Assign lines untouched by Expand")
+  end
+end
 
 print(string.format("%d passed, %d failed", passes, fails))
 if fails > 0 then error("failures") end

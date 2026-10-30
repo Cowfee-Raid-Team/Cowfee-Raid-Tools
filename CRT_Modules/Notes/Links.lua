@@ -356,6 +356,8 @@ function Links.Saved(key)
     return (e and type(e.links) == "table") and e.links or {}
 end
 
+local save -- below: writes the links
+
 -- Saves a link for each of the lines (by index) that follows a row now; links to lines no longer in the note are
 -- dropped. Returns how many of the lines are linked.
 function Links.Link(key, s, indices)
@@ -364,10 +366,39 @@ function Links.Link(key, s, indices)
     end
     local lines = Links.Lines(s)
     local m = Links.Match(Links.Rows(s), lines, Links.Saved(key))
-    local want = {}
+    local want, asked = {}, {}
     for _, i in ipairs(indices or {}) do
-        want[i] = true
+        asked[i] = true
+        local f = m.follow[i]
+        if f then
+            want[i] = f.row
+        end
     end
+    return save(key, lines, want, asked)
+end
+
+-- Links each line to the row given ({ { line, row } }, by their lines' indices), whatever names they list: an
+-- assignment block's timed lines (Notes/Assign.lua), which hold their row's names, even one name. Returns how many.
+function Links.LinkTo(key, s, list)
+    if key == nil then
+        return 0
+    end
+    local byIndex = {}
+    for _, row in ipairs(Links.Rows(s)) do
+        byIndex[row.index] = row
+    end
+    local want = {}
+    for _, e in ipairs(list or {}) do
+        if byIndex[e.row] then
+            want[e.line] = byIndex[e.row]
+        end
+    end
+    return save(key, Links.Lines(s), want, want)
+end
+
+-- Saves the links: want[line index] = the row it follows; a line asked about (asked[line index]) loses its old link.
+-- Links to lines no longer in the note are dropped.
+save = function(key, lines, want, asked)
     local present = {}
     for _, line in ipairs(lines) do
         present[line.sig] = line
@@ -390,15 +421,15 @@ function Links.Link(key, s, indices)
     for _, link in ipairs(Links.Saved(key)) do
         for _, sig in ipairs(link.sigs or {}) do
             local line = present[sig]
-            if line and not want[line.index] then
+            if line and not asked[line.index] then
                 add(link.block or "", link.row or "", sig)
             end
         end
     end
     for _, line in ipairs(lines) do
-        local f = want[line.index] and m.follow[line.index]
-        if f then
-            add(f.row.block, f.row.label, line.sig)
+        local row = want[line.index]
+        if row then
+            add(row.block, row.label, line.sig)
             n = n + 1
         end
     end
