@@ -97,7 +97,8 @@ local KINDS = {
 }
 local DEFAULT_KIND = CALLOUT
 -- Each kind's preview key (UI:RegisterPreview): the callout's in Notes/Alert.lua, the areas' in Alerts/Areas.lua.
--- Preview alerts turns them all on; the alert editor ("alerteditor") is a window of its own and stays out.
+-- Preview alerts turns them all on, and every debuff list's display (added when the tab is built); the alert editor
+-- ("alerteditor") is a window of its own and stays out.
 local PREVIEW_KEY = {
     callout = "alert", icons = "alerticons", texts = "alerttexts", bars = "alertbars", circles = "alertcircles",
     timeline = "alerttimeline",
@@ -338,6 +339,17 @@ local function build(pf)
     local tryTop = y - 20
     local tryTitle = heading(pf, 8, tryTop, TEXT.tryIt)
     UI.HelpRight(tryTitle, TEXT.tryIt, TEXT.tryHelp)
+    -- Preview alerts takes every debuff list's display too (Alerts/DebuffListView.lua, made at PLAYER_LOGIN, before
+    -- this tab is built)
+    local View, have = CRT.AlertDebuffListView, {}
+    for _, key in ipairs(ALERT_KEYS) do
+        have[key] = true
+    end
+    for _, key in ipairs(View and View.PreviewKeys() or {}) do
+        if not have[key] then
+            ALERT_KEYS[#ALERT_KEYS + 1] = key
+        end
+    end
     local previews = UI.PreviewButton(pf, TEXT.previews, ALERT_KEYS, { tooltip = TEXT.previewsTip, height = 24 })
     previews:SetPoint("TOPLEFT", 8, tryTop - 24)
     local test = makeButton(pf, TEXT.testAll, 140)

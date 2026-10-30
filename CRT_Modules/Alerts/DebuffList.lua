@@ -251,7 +251,11 @@ function DL:SetLook(enc, entry, field, value, side, which)
         end
     elseif field == "showAll" or field == "sortByRole" then
         local v = value and true or false
-        s[field] = v ~= entry[field] and v or nil
+        if v == entry[field] then
+            s[field] = nil
+        else
+            s[field] = v
+        end
     elseif field == "barHeight" or field == "barWidth" then
         local r = Special().BAR_RANGE[field == "barHeight" and "height" or "width"]
         local v = type(value) == "number" and math.floor(math.max(r.min, math.min(r.max, value)) + 0.5) or nil

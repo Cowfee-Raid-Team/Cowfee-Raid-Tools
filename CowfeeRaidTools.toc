@@ -81,6 +81,7 @@ CRT_Modules\Notes\MechLook.lua
 CRT_Modules\Notes\MechNote.lua
 CRT_Modules\Notes\Reminders.lua
 CRT_Modules\Notes\SpecialAlerts.lua
+CRT_Modules\Notes\SpecialDebuffLooks.lua
 CRT_Modules\Notes\AlertShareWindows.lua
 CRT_Modules\Notes\Phases.lua
 CRT_Modules\Notes\AlertsTab.lua

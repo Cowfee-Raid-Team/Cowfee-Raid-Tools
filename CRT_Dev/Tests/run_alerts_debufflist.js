@@ -286,6 +286,10 @@ DL:SetLook(ENC, entry, "showAll", false)
 DL:SetLook(ENC, entry, "barHeight", 24)
 local saved = CRT.db.alerts.debuffLists[ENC].fangs
 check(saved.showAll == nil and saved.barHeight == nil, "the file's values again: nothing kept")
+DL:SetLook(ENC, entry, "sortByRole", false)
+check(saved.sortByRole == false and DL:Look(ENC, entry).sortByRole == false, "Sort by role off is kept (a false choice is saved)")
+DL:SetLook(ENC, entry, "sortByRole", true)
+check(saved.sortByRole == nil, "on again: the file's")
 check(DL.Heading({ label = "Left", groups = { 1, 3 } }) == "Left: groups 1, 3" and DL.Heading({ label = "Raid", groups = { 2 } }) == "Raid: group 2", "headings")
 
 -- 6. The preview key is registered; the display ------------------------------------------------------------------
