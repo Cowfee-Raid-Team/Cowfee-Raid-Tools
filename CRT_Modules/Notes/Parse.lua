@@ -450,7 +450,8 @@ end
 -- its line number in the text, and, when the line has them: show (a set), tts, speakAt ("zero" for
 -- ttsat:0), count, glow (true),
 -- sound (the text as written; the sound engine plays it if it names a sound, see Sound/Engine.lua), warn, linger
--- (seconds), iconID, absorb (shield:, { unit, length, anyDifficulty }), ticks, fill, countTo, prio and mech.
+-- (seconds), iconID, absorb (shield:, { unit, length, anyDifficulty }), ticks, fill, countTo, prio and mech; and
+-- specInfo when a tag is a spec word (Notes/SpecWords.lua's Mark).
 function Parser.Parse(text)
     local note = { timers = {}, phases = {}, lines = {}, invite = nil, unread = {} }
     local phaseSeen = {}
@@ -534,6 +535,11 @@ function Parser.Parse(text)
         cleaned[#cleaned] = nil
     end
     note.lines = cleaned
+    -- a timer with a spec word ("RestoDruid2") gets the note's slot counts (Notes/SpecWords.lua), for who it means
+    local Specs = CRT.NoteSpecs
+    if Specs and Specs.Mark then
+        Specs.Mark(note)
+    end
     return note
 end
 
