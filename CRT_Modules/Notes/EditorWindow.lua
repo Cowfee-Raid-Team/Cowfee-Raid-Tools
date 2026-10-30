@@ -185,20 +185,16 @@ local function rowChips(f, i, row, x0, width, y0)
     return Palette.RowChips(f, W.drag, entries, x0, width, y0)
 end
 
--- The (?) by the kick block's heading, made the first time a row frame shows it.
+-- The (?) right of the kick block's heading, made the first time a row frame shows it.
 local function kickHelp(f, show)
     W.kickHelps = W.kickHelps or {} -- by row frame
-    local b = W.kickHelps[f]
-    if show and not b then
-        b = UI.Help(f, TEXT.kickHelpTitle, TEXT.kickHelp)
-        W.kickHelps[f] = b
+    local help = W.kickHelps[f]
+    if show and not help then
+        help = UI.HelpRight(f.heading, TEXT.kickHelpTitle, TEXT.kickHelp) -- it follows the heading's text
+        W.kickHelps[f] = help
     end
-    if b then
-        b:SetShown(show)
-        if show then
-            b:ClearAllPoints()
-            b:SetPoint("LEFT", f.heading, "LEFT", math.ceil(f.heading:GetStringWidth() or 0) + 4, 0)
-        end
+    if help then
+        help:SetShown(show)
     end
 end
 
