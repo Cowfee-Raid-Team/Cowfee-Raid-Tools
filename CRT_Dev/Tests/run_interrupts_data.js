@@ -86,6 +86,7 @@ eq(#I:Own(id)[2], 5, "own: five slots")
 eq(I:Own(id)[2][5], "", "own: empty slots")
 local fired = 0
 I:OnChange(function() fired = fired + 1 end)
+I:SetName(id, 1, 1, "A1"); I:SetName(id, 1, 2, "A2")
 I:SetName(id, 1, 3, "  Solex-Illidan ")
 eq(I:Own(id)[1][3], "Solex", "set: trimmed and realm stripped")
 check(fired > 0, "set: fires")
@@ -95,7 +96,7 @@ eq(select(1, I:Mine(id)), 3, "mine: realm and case ignored")
 eq(select(2, I:Mine(id)), "Left", "mine: group label")
 eq(select(3, I:Mine(id)), 1, "mine: group index")
 ME = "Solex"
-check(not I:Complete(id, I:Own(id)), "complete: nine empty slots")
+check(not I:Complete(id, I:Own(id)), "complete: seven empty slots")
 I:SetName(id, 1, 3, "Solex-Illidan")
 ME = "Solex-Illidan"
 eq(select(1, I:Mine(id)), 3, "mine: your own name with a realm")
@@ -157,6 +158,24 @@ I:SetName(id, 1, 1, "Zed"); eq(said, "3470:16/own", "fire: your own edit, with i
 I:ReceiveShared("3470:16", full(), "Brenn"); eq(said, "3470:16/raid", "fire: the raid's list")
 I:Clear(id); eq(said, "3470:16/own", "fire: clear is your own")
 
+-- your own list keeps no gap (#1211): its slot is the kick number the page shows, the plates and the reminder use
+I:SetUse(id, "own")
+I:SetName(id, 2, 4, "Gap")
+eq(I:Own(id)[2][1], "Gap", "gaps: a name set past the last takes the next kick")
+eq(CRT.db.interrupts.kicks[3470][16].own.right[4], "", "gaps: and is saved there")
+CRT.db.interrupts.kicks[3470][16].own.left = { "A", "", "Solex", "", "" } -- saved by the old per-slot fields
+eq(I:Own(id)[1][2], "Solex", "gaps: an old gap closes up as the list is read")
+eq(select(1, I:Mine(id)), 2, "gaps: your number is the closed-up one")
+eq(CRT.db.interrupts.kicks[3470][16].own.left[2] .. "|" .. CRT.db.interrupts.kicks[3470][16].own.left[3], "Solex|", "gaps: closed up in the saved list too")
+CRT.db.interrupts.kicks[3470][16].own.left = { "", "B", "", "C" }
+I:CloseUpSaved()
+eq(table.concat(CRT.db.interrupts.kicks[3470][16].own.left, ","), "B,C,,", "gaps: the login pass closes every saved list")
+I:ReceiveShared(id, { { "R1", "", "R3", "R4", "R5" }, { "R6", "R7", "R8", "R9", "R10" } }, "Older")
+I:CopyRaids(id)
+eq(I:Own(id)[1][2], "R3", "gaps: an older share's gap closes as it is copied over your own")
+eq(CRT.db.interrupts.kicks[3470][16].own.left[5], "", "gaps: the empty slot at the end")
+I:Clear(id)
+
 -- a second difficulty, and setups of your own
 RAW[2] = { difficulty = 15, groups = { { key = "skull", label = "Skull add", marker = 8, slots = 4 } } }
 I:ClearCache()
@@ -164,7 +183,7 @@ eq(#I:Bosses(), 2, "setups: one entry per difficulty")
 eq(I:Bosses()[1].key .. " " .. I:Bosses()[2].key, "3470:16 3470:15", "setups: Mythic first")
 eq(#I:Own("3470:15"), 1, "setups: each its own shape")
 eq(#I:Own("3470:15")[1], 4, "setups: four slots")
-I:SetName("3470:15", 1, 2, "Solex")
+I:SetName("3470:15", 1, 1, "A"); I:SetName("3470:15", 1, 2, "Solex")
 eq(select(1, I:Mine("3470:15")), 2, "setups: lists apart per difficulty")
 eq(select(1, I:Mine("3470:16")), nil, "setups: (the Mythic list untouched)")
 check(not I:IsCustom("3470:15"), "custom: none yet")
