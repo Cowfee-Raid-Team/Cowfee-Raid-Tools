@@ -442,11 +442,36 @@ local function entry(encounterID, difficulty, make)
     return e
 end
 
--- Your saved column for a group key, filled out to slots with "" (never cut short: a share's smaller shape in use
--- for a while must not lose your names past it).
+-- A saved column with its gaps closed up, in place: its names in kick order from slot 1, then "" to its length. Your
+-- own list is kept this way, so a name's slot is the kick number the page shows (#1211); a gap left by an older CRT's
+-- fields, or copied from an older share, closes the first time the list is read or written.
+local function closeUp(col)
+    local last = 0
+    for k in pairs(col) do
+        if type(k) == "number" and k > last then
+            last = k
+        end
+    end
+    local names = {}
+    for s = 1, last do
+        local name = col[s]
+        if type(name) == "string" and name ~= "" then
+            names[#names + 1] = name
+        end
+    end
+    for s = 1, last do
+        col[s] = names[s] or ""
+    end
+    return col
+end
+Interrupts.CloseUp = closeUp
+
+-- Your saved column for a group key, its gaps closed up and filled out to slots with "" (never cut short: a share's
+-- smaller shape in use for a while must not lose your names past it).
 local function savedColumn(own, grp)
     local col = type(own[grp.key]) == "table" and own[grp.key] or {}
     own[grp.key] = col
+    closeUp(col)
     for s = 1, grp.slots do
         if type(col[s]) ~= "string" then
             col[s] = ""
@@ -508,7 +533,8 @@ local function setUse(id, diff, use)
 end
 
 -- Edits one slot of your own list; your own list is then the one in use. The same name again (a field focused and
--- left, the picker's own pick) changes nothing, so it never drops the raid's list.
+-- left, the picker's own pick) changes nothing, so it never drops the raid's list. The column's gaps close up after
+-- it, so a name set past the last one takes the next kick.
 function Interrupts:SetName(key, g, s, name)
     local skey, def, id, diff = self:Resolve(key)
     local grp = def and def.groups[g]
@@ -521,6 +547,7 @@ function Interrupts:SetName(key, g, s, name)
         return
     end
     col[s] = name
+    closeUp(col)
     if self:Shared(skey) then
         setUse(id, diff, "own")
     end
@@ -542,6 +569,9 @@ function Interrupts:CopyRaids(key)
     if shared then
         local e = entry(id, diff, true)
         e.own = byKey(def, shared.list)
+        for _, col in pairs(e.own) do
+            closeUp(col) -- an older CRT's share may have a gap: your own list never keeps one
+        end
         e.use = nil
         self:Fire("list", skey, "own")
     end
@@ -643,6 +673,22 @@ function Interrupts:Mine(key)
     return nil, nil, nil
 end
 
+-- Every saved own list with its gaps closed up (closeUp): the lists saved before #1211 are closed up once, at login.
+function Interrupts:CloseUpSaved()
+    local kicks = db().kicks
+    for _, byBoss in pairs(type(kicks) == "table" and kicks or {}) do
+        for _, e in pairs(type(byBoss) == "table" and byBoss or {}) do
+            if type(e) == "table" and type(e.own) == "table" then
+                for _, col in pairs(e.own) do
+                    if type(col) == "table" then
+                        closeUp(col)
+                    end
+                end
+            end
+        end
+    end
+end
+
 -- Test on trash never carries over a login, and the page follows the switch from the saved data.
 local login = CreateFrame("Frame")
 login:RegisterEvent("PLAYER_LOGIN")
@@ -651,6 +697,7 @@ login:SetScript("OnEvent", function()
         return
     end
     db().test = false
+    Interrupts:CloseUpSaved()
     if CRT.UI and CRT.UI.SetPageHidden then
         CRT.UI:SetPageHidden("interrupts", not Interrupts:Enabled())
     end
