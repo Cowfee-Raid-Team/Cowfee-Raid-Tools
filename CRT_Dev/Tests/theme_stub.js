@@ -5,7 +5,9 @@
 // and UI:OnTheme are small stand-ins with the same behaviour. UI.SwitchTheme(key) stands in for UI:SetTheme: it refills
 // CRT.PALETTE and repaints tinted parts, themed texts and the hooks, so a harness can check a module follows a live switch.
 // run_themes.js tests the real UI:SetTheme. The real CRT_Core/UI/Tooltip.lua is loaded onto UI too (UI.TooltipOwner), unless
-// the harness already has it; CRT_TOOLTIP(CRT, UI) loads only that, for a harness with no other CRT.UI.
+// the harness already has it; CRT_TOOLTIP(CRT, UI) loads only that, for a harness with no other CRT.UI. CRT_THEME also loads
+// CRT_Core/MarkerText.lua (CRT.MarkerText and CRT.MarkerCodes), which the .toc loads right after Themes.lua; CRT_MARKERS(CRT)
+// loads only that.
 // Usage, in a harness: const themeLua = require('./theme_stub'); put themeLua(where) before the Lua source, then call
 // CRT_THEME(CRT, CRT.UI) before loading the module files. where is the addon folder, a file in it, or a list of files
 // (the harness's arguments): the folder holding CRT_Core/Themes.lua is found from them.
@@ -37,7 +39,8 @@ module.exports = function themeLua(where) {
   const src = fs.readFileSync(path.join(root, 'CRT_Core/Themes.lua'), 'utf8');
   const helpers = helperBlock(root);
   const tooltip = fs.readFileSync(path.join(root, 'CRT_Core/UI/Tooltip.lua'), 'utf8');
-  for (const s of [src, helpers, tooltip]) if (s.includes(']====]')) throw new Error('theme_stub: a source holds the long-string closer');
+  const markers = fs.readFileSync(path.join(root, 'CRT_Core/MarkerText.lua'), 'utf8');
+  for (const s of [src, helpers, tooltip, markers]) if (s.includes(']====]')) throw new Error('theme_stub: a source holds the long-string closer');
   return `
 -- CRT_TOOLTIP(CRT, UI): the real CRT_Core/UI/Tooltip.lua onto UI (by default CRT.UI); it reads CRT.db when a tooltip opens
 function CRT_TOOLTIP(CRT, UI)
@@ -46,10 +49,15 @@ function CRT_TOOLTIP(CRT, UI)
   if not UI.WindowOf then UI.WindowOf = function() return nil end end
   assert(load([====[${tooltip}]====], "CRT_Core/UI/Tooltip.lua"))("CowfeeRaidTools", setmetatable({ UI = UI }, { __index = CRT }))
 end
+-- CRT_MARKERS(CRT): the real CRT_Core/MarkerText.lua into CRT
+function CRT_MARKERS(CRT)
+  assert(load([====[${markers}]====], "CRT_Core/MarkerText.lua"))("CowfeeRaidTools", CRT)
+end
 function CRT_THEME(CRT, UI)
   UI = UI or {} -- a harness with no CRT.UI yet takes the palette only
   local own = CRT.PALETTE
   assert(load([====[${src}]====], "Themes.lua"))("CowfeeRaidTools", CRT)
+  CRT_MARKERS(CRT)
   for k, v in pairs(own or {}) do
     local m = CRT.PALETTE[k]
     if m then m[1], m[2], m[3] = v[1], v[2], v[3] else CRT.PALETTE[k] = v end

@@ -173,16 +173,19 @@ local function parts(s, ctx, out, classes)
     end
     local pos = 1
     for _, item in ipairs(items) do
-        if item.start > pos then
-            out[#out + 1] = { text = s:sub(pos, item.start - 1) }
+        -- a marker code ({cross}) stays in the plain text around it, so a player named Cross never splits it
+        if not CRT.MarkerCodes.InBraces(s, item.start, item.stop) then
+            if item.start > pos then
+                out[#out + 1] = { text = s:sub(pos, item.start - 1) }
+            end
+            local player = not item.text:find(" ", 1, true) and ctx.classOf and ctx.classOf(item.text)
+            if item.counts and not player then
+                out[#out + 1] = { text = item.text, class = item.class, me = false } -- the spaces as written
+            else
+                out[#out + 1] = nameOf(item.text, ctx)
+            end
+            pos = item.stop
         end
-        local player = not item.text:find(" ", 1, true) and ctx.classOf and ctx.classOf(item.text)
-        if item.counts and not player then
-            out[#out + 1] = { text = item.text, class = item.class, me = false } -- the spaces as written
-        else
-            out[#out + 1] = nameOf(item.text, ctx)
-        end
-        pos = item.stop
     end
     if pos <= #s then
         out[#out + 1] = { text = s:sub(pos) }
@@ -369,8 +372,8 @@ local function swatch(c)
 end
 
 -- A row's main text: for a timer the names (comma separated), the swatch, the icon and the text; for a
--- label its names; for text its words; for the invite list its count.
-function Render.Markup(row)
+-- label its names; for text its words; for the invite list its count. Raid marker codes drawn as icons.
+local function rowMarkup(row)
     local kind = row.kind
     if kind == "timer" then
         local names = {}
@@ -396,6 +399,10 @@ function Render.Markup(row)
         return UI.HeadingText(row.text or "")
     end
     return row.text or ""
+end
+
+function Render.Markup(row)
+    return CRT.MarkerText(rowMarkup(row))
 end
 
 -- The view ------------------------------------------------------------------------------------------
@@ -535,7 +542,7 @@ local function drawRow(row, data, width)
     elseif kind == "label" then
         row.label:SetWidth(0)
         local icon = data.marker and CRT.InterruptNote.Icon(data.marker, 14) or ""
-        row.label:SetText((icon ~= "" and (icon .. " ") or "") .. data.label .. ":")
+        row.label:SetText((icon ~= "" and (icon .. " ") or "") .. CRT.MarkerText(data.label) .. ":")
         local max = math.floor(width * LABEL_MAX)
         local w = row.label:GetStringWidth() or 0
         if w > max then

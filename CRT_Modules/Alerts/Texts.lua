@@ -80,7 +80,7 @@ local function draw(w, line, now, s)
         w.text:SetPoint(p[1], w, p[1], p[2], 0)
         w.text:SetJustifyH(edge)
     end
-    local text, time = Areas.LineText(line), seconds(line.at - now)
+    local text, time = Areas.ShownText(line), seconds(line.at - now)
     w.text:SetText(text ~= "" and (text .. " (" .. time .. ")") or time)
     w:SetSize(math.ceil(textWidth(w.text)) + PAD, size + PAD)
     local c = Areas.DrawColor(line) or WHITE -- its ability type's colour, unless its own may win

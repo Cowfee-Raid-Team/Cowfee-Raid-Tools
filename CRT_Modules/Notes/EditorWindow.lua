@@ -174,7 +174,7 @@ local function timerInfo(row)
     if row.tags and #row.tags > 0 then
         out = table.concat(CRT.NoteParser.JoinClassWords(row.tags), ", ") .. "  " .. out
     end
-    return out
+    return CRT.MarkerText(out)
 end
 
 local function rowChips(f, i, row, x0, width, y0)
@@ -264,7 +264,7 @@ local function drawRow(f, i, row, width)
         local w = Palette.RowLabel(f, kickLabel(row), width)
         height = rowChips(f, i, row, Palette.RowChipsX(w), width - 4, 2) + L.rowGap
     elseif kind == "label" or kind == "invite" then
-        local w = Palette.RowLabel(f, kind == "invite" and string.format(TEXT.invite, #W.session:Names(i)) or (row.label .. ":"), width)
+        local w = Palette.RowLabel(f, kind == "invite" and string.format(TEXT.invite, #W.session:Names(i)) or (CRT.MarkerText(row.label) .. ":"), width)
         -- how many timer lines follow it, right of the label
         local tagW = (el and kind == "label") and el.LabelTag(f, i, 4 + w + 6) or 0
         height = rowChips(f, i, row, Palette.RowChipsX(w, tagW), width - 4, 2) + L.rowGap
@@ -279,7 +279,7 @@ local function drawRow(f, i, row, width)
             end
             f.heading:SetFontObject(_G[font] or font)
             f.heading:SetWidth(width - 8)
-            f.heading:SetText(text)
+            f.heading:SetText(CRT.MarkerText(text))
             if kind == "heading" or kind == "header" then
                 f.heading:SetTextColor(UI.Color("heading"))
             else

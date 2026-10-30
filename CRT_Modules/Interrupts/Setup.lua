@@ -77,12 +77,12 @@ function Setup.KeyFor(label, taken)
     return key
 end
 
--- The game's raid target icon as text (Interface\TargetingFrame\UI-RaidTargetingIcon_1 to _8), "" for none.
+-- The game's raid target icon as text (CRT_Core/MarkerText.lua's, the addon's one), "" for none.
 function Setup.MarkerIcon(marker, size)
     if not whole(marker, 1, 8) then
         return ""
     end
-    return string.format("|TInterface\\TargetingFrame\\UI-RaidTargetingIcon_%d:%d|t", marker, size or 0)
+    return CRT.MarkerCodes.Icon(marker, size)
 end
 
 local function readGroups(groups)

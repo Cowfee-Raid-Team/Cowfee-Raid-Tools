@@ -175,7 +175,8 @@ local function show(iconTexture, text, time, color)
     if iconTexture then
         icon:SetTexture(iconTexture)
     end
-    label:SetText(text)
+    -- raid marker codes ({cross}) as their icons, as tall as the text (CRT_Core/MarkerText.lua)
+    label:SetText(CRT.MarkerText and CRT.MarkerText(text) or text)
     if color then
         label:SetTextColor(color[1], color[2], color[3])
     else

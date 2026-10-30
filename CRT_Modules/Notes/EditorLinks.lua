@@ -253,7 +253,7 @@ local function drawBanner(sum, width)
         fs:ClearAllPoints()
         fs:SetPoint("TOPLEFT", L.pad, -y)
         fs:SetWidth(inner)
-        fs:SetText(text)
+        fs:SetText(CRT.MarkerText(text))
         fs:Show()
         y = y + math.ceil(fs:GetStringHeight() or 12) + 2
     end
@@ -329,7 +329,7 @@ local function lineText(line)
         local info = t.spellId and Notes.SpellInfo and Notes:SpellInfo(t.spellId)
         text = info and info.name or (t.spellId and string.format(TEXT.spell, tostring(t.spellId))) or ""
     end
-    return (line.time or "") .. " P" .. (line.ph or "1") .. "  " .. text
+    return (line.time or "") .. " P" .. (line.ph or "1") .. "  " .. CRT.MarkerText(text)
 end
 
 local function tagEnter(self)
@@ -339,7 +339,7 @@ local function tagEnter(self)
         return
     end
     UI.TooltipOwner(GameTooltip, self, "ANCHOR_RIGHT")
-    GameTooltip:SetText(string.format(TEXT.tagTip, row.label or ""), 1, 1, 1)
+    GameTooltip:SetText(CRT.MarkerText(string.format(TEXT.tagTip, row.label or "")), 1, 1, 1)
     for _, line in ipairs(list) do
         GameTooltip:AddLine(lineText(line), 0.85, 0.85, 0.85)
     end
@@ -392,9 +392,9 @@ local function rowEnter(self)
     end
     UI.TooltipOwner(GameTooltip, self, "ANCHOR_RIGHT")
     if row.block ~= "" then
-        GameTooltip:SetText(string.format(TEXT.follows, row.label, row.block), 1, 1, 1)
+        GameTooltip:SetText(CRT.MarkerText(string.format(TEXT.follows, row.label, row.block)), 1, 1, 1)
     else
-        GameTooltip:SetText(string.format(TEXT.followsPlain, row.label), 1, 1, 1)
+        GameTooltip:SetText(CRT.MarkerText(string.format(TEXT.followsPlain, row.label)), 1, 1, 1)
     end
     GameTooltip:Show()
 end

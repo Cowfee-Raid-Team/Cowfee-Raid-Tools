@@ -158,6 +158,7 @@ local helps = {}
 CRT.UI = { LiftOver = function(d) lifted[#lifted + 1] = d end, ShownPopup = function(ret, name) return { named = name } end,
   HelpRight = function(target, title, text, opts) local b = (function(parent, title, text) local b = mock("Button") rawset(b, "helpTitle", title) rawset(b, "helpText", text) helps[#helps + 1] = b return b end)(opts and opts.parent or target, title, text) rawset(b, "helpTarget", target) return b end, HELP_GAP = 4, HELP_SIZE = 20, Help = function(parent, title, text) local b = mock("Button") rawset(b, "helpTitle", title) rawset(b, "helpText", text) helps[#helps + 1] = b return b end }
 CRT_TOOLTIP(CRT) -- UI.TooltipOwner, the real CRT_Core/UI/Tooltip.lua
+CRT_MARKERS(CRT) -- CRT.MarkerText, the real CRT_Core/MarkerText.lua
 local View, Rem, Notes = CRT.TimelineView, CRT.AlertReminders, CRT.Notes
 local function reset()
   for i = #opened, 1, -1 do opened[i] = nil end

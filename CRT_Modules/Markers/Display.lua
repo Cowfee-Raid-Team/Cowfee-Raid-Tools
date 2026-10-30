@@ -8,8 +8,8 @@ local ADDON, CRT = ...
 --
 -- A readable message fills a slot only when it holds a raid marker code ({rt1} to {rt8}, or a name
 -- such as {skull}, any case), and the slot shows only its marker icons, not the rest of the text.
--- The codes are the game's own: ICON_TAG_LIST in Blizzard's ChatFrameConstants.lua, with the English
--- names from warcraft.wiki.gg's Raid target icons page when that table is missing.
+-- The codes are the addon's one list (CRT.MarkerCodes, CRT_Core/MarkerText.lua): the game's ICON_TAG_LIST
+-- from Blizzard's ChatFrameConstants.lua, with the English names from warcraft.wiki.gg's Raid target icons page.
 --
 -- Inside a raid, and during a boss fight, the game hides chat text and sender names from addons
 -- (they arrive as secret values). The addon can't read, search or compare them, and no game function
@@ -55,8 +55,6 @@ local RING_SEGMENTS = 64 -- the circle outline is drawn as this many short lines
 local GHOST_ALPHA = 0.45 -- a slot's marker while the dev editor shows it to drag
 local SAMPLE = { "{rt1}", "{rt6}", "{rt8}", "{rt7}", "{rt2}", "{rt3}", "{rt4}", "{rt5}" }
 local SAMPLE_NAMES = { "Ashka", "Brenn", "Corvi", "Dalla", "Eskel", "Fira", "Galen", "Hesta" }
--- The marker names in English, by marker number, for when the game's ICON_TAG_LIST is missing.
-local ICON_NAMES = { star = 1, circle = 2, diamond = 3, triangle = 4, moon = 5, square = 6, cross = 7, x = 7, skull = 8 }
 local IDENTICAL = 4 -- Enum.CollationStrength.Identical (IntlSharedTypesDocumentation.lua), if Enum lacks it
 
 local frame, handle, title
@@ -81,26 +79,11 @@ local function readable(v)
     return v ~= nil
 end
 
--- Every marker code the game turns into an icon, lower case without braces, to its marker number.
-local function markerTags()
-    local tags = {}
-    for i = 1, 8 do
-        tags["rt" .. i] = i
-    end
-    local game = type(ICON_TAG_LIST) == "table" and ICON_TAG_LIST or ICON_NAMES
-    for tag, i in pairs(game) do
-        if type(tag) == "string" and type(i) == "number" and i >= 1 and i <= 8 then
-            tags[(tag:lower():gsub("[{}]", ""))] = i
-        end
-    end
-    return tags
-end
-
 -- The raid markers in a readable message, in order, as marker numbers: "go {star} {X}" is { 1, 7 }.
 function Markers.FindMarkers(text)
-    local found, tags = {}, markerTags()
+    local found = {}
     for code in text:gmatch("{([^{}]*)}") do
-        local i = tags[code:lower()]
+        local i = CRT.MarkerCodes.Number(code)
         if i then
             found[#found + 1] = i
         end
