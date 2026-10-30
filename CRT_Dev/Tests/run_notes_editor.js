@@ -1624,6 +1624,14 @@ do
   push.scripts.OnClick(push)
   assert(#shares == 3 and #via == 3, "a refused save shares nothing")
   assert(W.status:GetText():find("changed since you opened", 1, true), "the status says why: " .. W.status:GetText())
+  -- the status line cut off in a narrow window: its whole text on hover; not cut off: no tooltip
+  rawset(W.status, "IsTruncated", function() return true end)
+  W.statusHover.scripts.OnEnter(W.statusHover)
+  assert(tips[1] == W.status:GetText(), "the whole status on hover: " .. tostring(tips[1]))
+  rawset(W.status, "IsTruncated", function() return false end)
+  tips = {}
+  W.statusHover.scripts.OnEnter(W.statusHover)
+  assert(tips[1] == nil, "not cut off: no tooltip")
   Editor.Discard()
   -- you can't share: greyed, the reason in its tooltip; a click anyway shares nothing
   assert(Editor.Open({ id = pid }), "opened again")
@@ -1659,6 +1667,14 @@ do
   can = true
   Notes:Fire()
   assert(push:IsEnabled(), "on when it ends")
+  Editor.Discard()
+  -- a note deleted while open: greyed, says so
+  local gone = Notes:Import("EncounterID:4801;Difficulty:Mythic;Name:Gone Boss\\nSoak: Abu")
+  assert(Editor.Open({ id = gone }), "opened")
+  Notes:Delete(gone)
+  Editor.Refresh()
+  push.scripts.OnEnter(push)
+  assert(not push:IsEnabled() and tips[2]:find("deleted, so there is nothing to share", 1, true), "deleted: " .. tostring(tips[2]))
   Editor.Discard()
   -- a personal note: greyed, says why
   local mine = Notes:MakePersonal(4800, "Mythic", "Push Boss")

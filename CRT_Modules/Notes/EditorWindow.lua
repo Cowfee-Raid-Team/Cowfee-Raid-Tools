@@ -53,6 +53,7 @@ local TEXT = {
     pushTip = "Saves your changes, then shares the note the same way as Share to raid on the Raid Notes page, to its Send to choice.",
     pushPersonal = "A personal note is your own. It isn't shared.",
     pushBusy = "Notes can't be shared in combat or during a boss fight.",
+    pushGone = "This note was deleted, so there is nothing to share.",
     close = CLOSE or "Close",
     unsaved = "Unsaved changes.",
     saved = "Saved.",
@@ -524,7 +525,7 @@ local layoutLeft -- the rows, the banner over them and the raw text under them (
 local function canPush()
     local record = W.source and not W.source.personal and Notes:Get(W.source.id)
     if not record then
-        return false, (W.source and not W.source.personal) and TEXT.gone or TEXT.pushPersonal
+        return false, (W.source and not W.source.personal) and TEXT.pushGone or TEXT.pushPersonal
     end
     if record.personal then
         return false, TEXT.pushPersonal
@@ -928,6 +929,23 @@ local function buildFooter(c)
     W.status:SetPoint("RIGHT", W.assignButton, "LEFT", -8, 0)
     W.status:SetJustifyH("LEFT")
     W.status:SetWordWrap(false)
+    -- the status line is short in a narrow window: cut off, its whole text shows on hover
+    local hover = CreateFrame("Frame", nil, c)
+    hover:SetAllPoints(W.status)
+    hover:EnableMouse(true)
+    hover:SetScript("OnEnter", function(self)
+        local text = W.status:GetText() or ""
+        if text == "" or not (W.status.IsTruncated and W.status:IsTruncated()) then
+            return
+        end
+        UI.TooltipOwner(GameTooltip, self, "ANCHOR_TOP")
+        GameTooltip:SetText(text, 1, 1, 1, 1, true)
+        GameTooltip:Show()
+    end)
+    hover:SetScript("OnLeave", function()
+        GameTooltip:Hide()
+    end)
+    W.statusHover = hover
 end
 
 -- History in the title bar, left of Reset: the note's earlier versions (Notes/HistoryWindow.lua), the same
