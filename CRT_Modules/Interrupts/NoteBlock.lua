@@ -443,23 +443,18 @@ local function sameRows(a, b)
     return true
 end
 
--- A note saved in the note editor (Notes/EditorWindow.lua) from before to after: when its block changed and it is the
--- note the block lives in for its boss and difficulty (noteOf), Interrupts' lists follow it: your own list takes its
--- names (you saved it), and the raid's list is read back from it (ReadInto). A row short of its slots can't be read
--- back, so your own list is then the one in use. One change is fired, so an open page refreshes once. True when the
--- lists were followed.
-function Block.Saved(noteID, before, after)
-    local Notes = CRT.Notes
-    local record = Notes and Notes:Get(noteID)
-    if not record or record.personal or sameRows(Block.Rows(before), Block.Rows(after)) then
-        return false
-    end
-    local _, key = Block.SetupFor(record.encounterID, record.difficulty)
+-- Interrupts' lists follow a note's block (Saved, below): your own list takes its names (you saved it), and the raid's
+-- list is read back from it (ReadInto). A row short of its slots can't be read back, so your own list is then the one
+-- in use. One change is fired, so an open page refreshes once. Only while the note is the one the block lives in for its
+-- boss and difficulty (noteOf); true when the lists followed.
+local function follow(noteID)
+    local record = CRT.Notes:Get(noteID)
+    local _, key = Block.SetupFor(record and record.encounterID, record and record.difficulty)
     local t = key and target(key)
     if not t or noteOf(t) ~= noteID then
         return false
     end
-    local rows = Block.Rows(after) or {}
+    local rows = Block.Rows(record.raw) or {}
     local list = {}
     for g, grp in ipairs(t.def.groups) do
         list[g] = {}
@@ -469,8 +464,65 @@ function Block.Saved(noteID, before, after)
     end
     local changed = Interrupts:SetOwn(t.key, list, true)
     local ok, took = pcall(Block.ReadInto, t.key)
+    if not ok and geterrorhandler then
+        geterrorhandler()(took)
+    end
     if changed and not (ok and took) then
         Interrupts:Fire("list", t.key, "own")
     end
     return true
+end
+
+-- Notes saved in a fight (Notes.Busy), by id: their lists follow once the fight is over, so the plates and reminders
+-- never renumber mid-pull.
+local held, watch = {}, nil
+
+local function flush()
+    if CRT.Notes.Busy() then
+        return
+    end
+    local ids = {}
+    for id in pairs(held) do
+        ids[#ids + 1] = id
+    end
+    wipe(held)
+    for _, id in ipairs(ids) do
+        local ok, err = pcall(follow, id)
+        if not ok and geterrorhandler then
+            geterrorhandler()(err)
+        end
+    end
+end
+Block.FlushHeld = flush
+
+local function hold(noteID)
+    held[noteID] = true
+    if not watch then
+        watch = CreateFrame("Frame")
+        watch:SetScript("OnEvent", function()
+            flush()
+            -- the encounter's end can come before the fight's flag clears: once more, a moment later
+            if next(held) and C_Timer then
+                C_Timer.After(2, flush)
+            end
+        end)
+        watch:RegisterEvent("PLAYER_REGEN_ENABLED")
+        watch:RegisterEvent("ENCOUNTER_END")
+    end
+end
+
+-- A note saved in the note editor (Notes/EditorWindow.lua) from before to after: when its block changed, Interrupts'
+-- lists follow it (follow, above), with the tracker on or off (they are ready for when it is turned on). In combat or a
+-- boss fight they follow once it is over. True when they followed, or true and "held" until then.
+function Block.Saved(noteID, before, after)
+    local Notes = CRT.Notes
+    local record = Notes and Notes:Get(noteID)
+    if not record or record.personal or sameRows(Block.Rows(before), Block.Rows(after)) then
+        return false
+    end
+    if Notes.Busy() then
+        hold(noteID)
+        return true, "held"
+    end
+    return follow(noteID)
 end

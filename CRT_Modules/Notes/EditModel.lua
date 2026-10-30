@@ -353,10 +353,16 @@ end
 
 -- A line of the raid note's kick block (Interrupts/NoteBlock.lua's View): the "Kick order" heading, a row of names per
 -- group, nothing for the end line. A row's raw text stays: the block is written again from the rows (Session:Text).
-local function kickRow(row, item)
+-- shown: only shown, a read-only "<label>: <names>" line per group, as the note view has it (the personal note, which
+-- the raid's kick list never reads from).
+local function kickRow(row, item, shown)
     row.field, row.original, row.editable = nil, nil, nil
     if item.kind == "heading" then
-        row.kind, row.text, row.kicks = "heading", item.text, true
+        row.kind, row.text, row.kicks = "heading", item.text, not shown or nil
+    elseif item.kind == "kick" and shown then
+        local icon = item.marker and CRT.InterruptNote.Icon(item.marker, 14) or ""
+        local names = #item.names > 0 and (" " .. table.concat(item.names, " ")) or ""
+        row.kind, row.text = "text", (icon ~= "" and (icon .. " ") or "") .. item.label .. ":" .. names
     elseif item.kind == "kick" then
         row.kind, row.label, row.marker, row.group, row.cap = "kick", item.label, item.marker, item.group, item.slots
         row.editable = true
@@ -407,14 +413,15 @@ function Model.New(text, opts)
     end
     s.pieces = splitLines(text)
     -- opts.boss: the note record's { encounterID, difficulty }, for a text whose header doesn't name them
-    local kicks = (not opts.markdown) and CRT.InterruptNote and CRT.InterruptNote.View(text, opts.boss)
+    -- the personal note (markdown) shows a block read-only: the raid's kick list never comes from it
+    local kicks = CRT.InterruptNote and CRT.InterruptNote.View(text, opts.boss)
     for i, piece in ipairs(s.pieces) do
         s.rows[i] = rowFor(i, piece.text, byLine[i], opts.markdown)
         if kicks and kicks[i] then
-            kickRow(s.rows[i], kicks[i])
+            kickRow(s.rows[i], kicks[i], opts.markdown)
         end
     end
-    if kicks then
+    if kicks and not opts.markdown then
         kickRows(s, kicks)
     end
     return s
@@ -503,11 +510,12 @@ function Session:Move(i, k, j, at)
     end
     local f = self.rows[i].field
     if i == j then
-        if f.kind ~= "kick" or not f.names[k] or not at then
+        -- a kick row's name to place at, or to the end when dropped on the row past its names
+        if f.kind ~= "kick" or not f.names[k] then
             return false
         end
         local word = table.remove(f.names, k)
-        table.insert(f.names, math.max(1, math.min(at, #f.names + 1)), word)
+        table.insert(f.names, math.max(1, math.min(at or (#f.names + 1), #f.names + 1)), word)
         return true
     end
     -- added to j first, removed from i only once it is in: a word j refuses is never lost

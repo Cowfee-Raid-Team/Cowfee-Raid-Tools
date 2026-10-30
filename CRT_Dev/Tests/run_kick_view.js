@@ -248,6 +248,94 @@ do
   eq(fired, 0, "sync: nothing fired for it")
 end
 
+-- review round 1 (#1212)
+do
+  local Notes = CRT.Notes
+  -- a start with no end is no block: the lines are the editor's usual rows, the text as written
+  local open = head("Heroic") .. "intstart\\nXuelan Sixz\\nSpread out\\n"
+  local e = M.New(open)
+  check(e.kick == nil and e.rows[3].kind ~= "kick", "no intend: no kick rows")
+  eq(e:Text(), open, "no intend: the text as written")
+  -- more lines than the setup has groups: the extra one is Group 3, with no cap
+  local more = head("Heroic") .. "intstart\\nA B\\nC D\\nE F\\nintend\\n"
+  local m = M.New(more)
+  eq(m.rows[5].label, "Group 3", "more lines: past the groups is Group N")
+  eq(m.rows[5].cap, nil, "more lines: no cap")
+  eq(m:Text(), more, "more lines: unchanged, as written")
+  check(m:Move(5, 1, 5, nil), "more lines: a drop on the row's empty part moves it to the end")
+  eq(m:Text(), head("Heroic") .. "intstart\\nA B\\nC D\\nF E\\nintend\\n", "more lines: every line written again, in order")
+  -- a CRLF note opens clean
+  local crlf = (head("Heroic") .. BLOCK .. "Melee: Abu\\n"):gsub("\\n", "\\r\\n")
+  check(not M.New(crlf):Dirty(), "CRLF: not dirty as opened")
+  -- the personal note shows the block read-only, as #1210 did
+  local p = M.New(head("Heroic") .. BLOCK, { markdown = true })
+  eq(p.rows[2].kind, "heading", "personal: the Kick order heading")
+  check(p.rows[3].kind == "text" and p.rows[3].text:find("Left: Xuelan Sixz", 1, true) and not p.rows[3].editable, "personal: a read-only line: " .. tostring(p.rows[3].text))
+  eq(p.rows[5].kind, "blank", "personal: no intend line")
+  check(p.kick == nil, "personal: no kick rows")
+
+  -- SetOwn: a name clean() empties leaves no gap; the list in use is decided even when no name changed
+  CRT.db.notes.list, CRT.db.notes.nextId, CRT.db.notes.active = {}, 1, nil
+  local key = I.Key(3470, 15)
+  I:Clear(key)
+  I:SetOwn(key, { { "-Gone", "A1" }, {} }, true)
+  eq(table.concat(I:Own(key)[1], ","), "A1,,,,", "SetOwn: no gap")
+  I:ReceiveShared(key, { { "X1", "X2", "X3", "X4", "X5" }, { "Y1", "Y2", "Y3", "Y4", "Y5" } }, "Lead")
+  eq(select(2, I:List(key)), "raid", "the raid's list in use")
+  check(I:SetOwn(key, { { "A1" }, {} }, true), "SetOwn: the same names, the list in use changes")
+  eq(select(2, I:List(key)), "own", "SetOwn: your own, since the raid's differs from it")
+
+  local fired = 0
+  I:OnChange(function(what) if what == "list" then fired = fired + 1 end end)
+  local before = head("Heroic") .. "intstart\\nA1 A2 A3 A4 A5\\nB1 B2 B3 B4 B5\\nintend\\n"
+  local after = head("Heroic") .. "intstart\\nA5 A2 A3 A4 A1\\nB1 B2 B3 B4 B5\\nintend\\n"
+  local id = Notes:Import(after)
+  -- a note the pull doesn't read (another note for that boss and difficulty is the one in use): nothing follows
+  local other = Notes:Import("EncounterID:3470;Difficulty:Heroic;Name:Other\\nSpread out\\n", "Someone", nil, "pug:Someone")
+  Notes:SetActive(other)
+  check(Notes:FindForEncounter(3470, "Heroic") == other, "setup: the other note is the one the pull reads")
+  fired = 0
+  check(not B.Saved(id, before, after), "sync: a note the pull doesn't read, nothing done")
+  eq(fired, 0, "sync: nothing fired")
+  Notes:SetActive(id)
+  -- the tracker off: the lists still follow, ready for when it is on
+  I:SetEnabled(false)
+  fired = 0
+  check(B.Saved(id, before, after), "sync with the tracker off")
+  eq(table.concat(I:Own(key)[1], " "), "A5 A2 A3 A4 A1", "tracker off: your own list follows")
+  I:SetEnabled(true)
+  -- in a fight: the note is saved, the lists wait until it is over, then follow once
+  local frameScripts, events = nil, {}
+  local realCreate = CreateFrame
+  CreateFrame = function()
+    local f = realCreate()
+    function f:SetScript(name, fn) if name == "OnEvent" then frameScripts = fn end end
+    function f:RegisterEvent(ev) events[ev] = true end
+    return f
+  end
+  local inFight = true
+  InCombatLockdown = function() return inFight end
+  local later = head("Heroic") .. "intstart\\nA1 A2 A3 A4 A5\\nB5 B2 B3 B4 B1\\nintend\\n"
+  Notes:UpdateRaw(id, later)
+  fired = 0
+  local ok, how = B.Saved(id, after, later)
+  check(ok and how == "held", "in a fight: held")
+  eq(table.concat(I:Own(key)[2], " "), "B1 B2 B3 B4 B5", "in a fight: your own list not yet changed")
+  eq(fired, 0, "in a fight: nothing fired")
+  check(events.PLAYER_REGEN_ENABLED and events.ENCOUNTER_END and frameScripts, "it waits for the fight's end")
+  frameScripts(nil, "ENCOUNTER_END")
+  eq(fired, 0, "still in combat: still held")
+  inFight = false
+  frameScripts(nil, "PLAYER_REGEN_ENABLED")
+  eq(table.concat(I:Own(key)[2], " "), "B5 B2 B3 B4 B1", "out of the fight: your own list follows")
+  eq(table.concat(I:List(key)[2], " "), "B5 B2 B3 B4 B1", "and the list in use")
+  eq(fired, 1, "once")
+  frameScripts(nil, "PLAYER_REGEN_ENABLED")
+  eq(fired, 1, "and only once")
+  CreateFrame = realCreate
+  InCombatLockdown = function() return false end
+end
+
 -- a kick block and an assignment block (Notes/Assign.lua) in one note: each reads as its own, neither takes the other's
 -- lines, both directly after each other with no blank line between them
 do

@@ -555,27 +555,31 @@ function Interrupts:SetName(key, g, s, name)
 end
 
 -- Your own list for a key, every slot at once (a list in group order, as SetName would set each): the raid note's
--- block saved in the note editor (Interrupts/NoteBlock.lua's Saved). Your own list is then the one in use, unless the
--- raid's holds the same names. quiet: no change fired (the caller fires one). Returns whether a name changed.
+-- block saved in the note editor (Interrupts/NoteBlock.lua's Saved). The column's gaps close up after it (a name clean()
+-- empties leaves none), as SetName's. Which list is in use is decided either way: your own while the raid's holds other
+-- names, else as it was. quiet: no change fired (the caller fires one). Returns whether a name or the list in use
+-- changed.
 function Interrupts:SetOwn(key, list, quiet)
     local skey, def, id, diff = self:Resolve(key)
     if not def then
         return false
     end
-    local own = entry(id, diff, true).own
+    local e = entry(id, diff, true)
     local new = copyList(def, list)
     local changed = false
     for g, grp in ipairs(def.groups) do
-        local col = savedColumn(own, grp)
+        local col = savedColumn(e.own, grp)
         for s = 1, grp.slots do
             if col[s] ~= new[g][s] then
                 col[s], changed = new[g][s], true
             end
         end
+        closeUp(col)
     end
     local shared = self:Shared(skey)
-    if changed and shared and not Interrupts.SameList(def, shared.list, new) then
+    if shared and e.use ~= "own" and not Interrupts.SameList(def, shared.list, self:Own(skey)) then
         setUse(id, diff, "own")
+        changed = true
     end
     if changed and not quiet then
         self:Fire("list", skey, "own")
