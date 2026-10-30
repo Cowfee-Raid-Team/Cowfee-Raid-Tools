@@ -110,6 +110,8 @@ function UI:SkinEditBox(e) e.skinned = true end
 function UI.PanelButtonWidth(w) return math.max(40, math.ceil(w) + 28) end
 function UI.PanelButton(parent, text, h, onClick) local b = mock("Button", parent) b.text = text b.h = h b.scripts.OnClick = onClick return b end
 function UI.TooltipOwner() end
+-- CRT_Core/UI/Panel.lua's preview toggle (run_previews.js tests it): a button that keeps its label and keys
+function UI.PreviewButton(parent, text, keys, opts) local b = UI.PanelButton(parent, text, 22) b.previewKeys, b.tip = keys, opts and opts.tooltip b.w = UI.PanelButtonWidth(#text * 6) b.h = 22 return b end
 function UI.Help(parent, title, text) local m = mock("Button", parent) m.helpTitle, m.helpText = title, text helps[#helps + 1] = m return m end
 local function row(kind, parent, text, opts, extra)
   local r = mock("Frame", parent)
@@ -591,6 +593,12 @@ CRT.db.interrupts.reminder.on = false; P.Refresh()
 check(rowNamed(T.sound).enabled == false and rowNamed(T.reminderSize).enabled == false, "settings: the sound and size grey with the countdown off")
 CRT.db.interrupts.reminder.on = true; P.Refresh()
 check(rowNamed(T.sound).enabled and rowNamed(T.reminderSize).enabled, "settings: and come back")
+-- the previews: one under each display's settings, and one for both
+check(P.previewBox and P.previewBox.text == T.previewBox and P.previewBox.previewKeys[1] == "interrupts-box" and #P.previewBox.previewKeys == 1, "settings: Preview number box")
+check(P.previewReminder and P.previewReminder.previewKeys[1] == "interrupts-reminder" and #P.previewReminder.previewKeys == 1, "settings: Preview reminder icon")
+check(P.previewAll and table.concat(P.previewAll.previewKeys, ",") == "interrupts-box,interrupts-reminder", "settings: Preview kick displays takes both")
+check(T.previewReminder ~= T.preview, "settings: the reminder's preview is named apart from the Kick list's test countdown")
+for _, b in ipairs({ P.previewBox, P.previewReminder, P.previewAll }) do check(b.tip and b.tip:find("Shows"), "settings: " .. b.text .. " says what it shows") end
 P.SelectTab("assignments")
 
 -- no boss with a setup: no rows

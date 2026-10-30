@@ -4,7 +4,8 @@ local ADDON, CRT = ...
 -- consumables ships with the addon, and here you can:
 --   * see the same bar that shows on the ready check, with live status,
 --   * drag an item from your bags onto an icon to add it to that category (optional),
---   * drag the rows to set the icon order, and which item is used first when you click an icon.
+--   * drag the rows to set the icon order, and which item is used first when you click an icon,
+--   * show the real bar for a few seconds (Preview on screen), or keep it up to place it (Preview your bar).
 -- Whether the bar shows, and the warning time, are on the Ready Check page's Settings tab.
 -- The buff of a food or flask is learned the first time you use it, see Consumables/Data.lua.
 
@@ -13,7 +14,16 @@ local Ants = CRT.Ants
 local Bar = CRT.ConsumablesBar
 local UI = CRT.UI
 
+-- The tab's wording for its two on-screen buttons. Preview on screen is a short test of the bar; Preview your bar
+-- keeps it up, with its drag box, until you stop it.
+local TEXT = {
+    test = "Preview on screen",
+    preview = "Preview your bar",
+    previewTip = "Shows your consumables bar on screen with its drag box so you can drag it into place. It stays until you stop it.",
+}
+
 local CAT_ROW_H = 32
+local BUTTON_GAP = 8 -- between the two buttons in the top right
 local ITEM_ROW_H = 36
 local LEFT_W = 290
 local RIGHT_X = 316
@@ -363,11 +373,13 @@ local function build(pf)
     UI.Tint(line, "SetColorTexture", "heading")
     marker:Hide()
 
-    local preview = makeButton(pf, "Preview on screen", 160)
+    local preview = makeButton(pf, TEXT.test, 160)
     preview:SetPoint("TOPRIGHT", pf, "TOPRIGHT", -8, -10)
     preview:SetScript("OnClick", function()
         CRT.ConsumablesDisplay:Preview()
     end)
+    local place = UI.PreviewButton(pf, TEXT.preview, { "consumables" }, { tooltip = TEXT.previewTip, height = 26 })
+    place:SetPoint("RIGHT", preview, "LEFT", -BUTTON_GAP, 0)
 
     buildBar(pf)
 

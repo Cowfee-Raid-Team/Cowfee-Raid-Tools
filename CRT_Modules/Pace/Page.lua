@@ -10,7 +10,7 @@ local UI = CRT.UI
 
 local TEXT = {
     title = "Pace",
-    help = "Where a boss's health should be as the fight goes, so you can see in the pull whether the raid is ahead or behind. By phase counts a row's seconds from its phase start; By time from the pull. Between rows the expected health runs in a straight line. In the pull, the pace window shows each boss's health with a tick where it should be, and AHEAD or BEHIND. The game hides boss health from addons in combat, so the addon can't announce it. Move the window with Previews.",
+    help = "Where a boss's health should be as the fight goes, so you can see in the pull whether the raid is ahead or behind. By phase counts a row's seconds from its phase start; By time from the pull. Between rows the expected health runs in a straight line. In the pull, the pace window shows each boss's health with a tick where it should be, and AHEAD or BEHIND. The game hides boss health from addons in combat, so the addon can't announce it. Move the window with Preview pace window.",
     boss = "Boss",
     mode = "Times",
     showBoss = "Show the pace window for this boss",
@@ -36,6 +36,8 @@ local TEXT = {
     share = "Share to raid",
     shareAll = "Share all",
     shareHelp = "Share to raid sends this boss's plan to everyone in the group with the addon; Share all sends every boss. Only the raid leader or an assistant can share. A shared plan becomes the plan in use; anyone can switch a boss back to their own plan under Plan in use. Share before the pull.",
+    preview = "Preview pace window",
+    previewTip = "Shows the pace window with a sample boss bar so you can drag it into place. Other previews stay as they are.",
 }
 
 local MODES = { { key = "phase", label = "By phase (seconds into each phase)" }, { key = "time", label = "By time from the pull" } }
@@ -55,6 +57,7 @@ local LIST_X = 390
 local LIST_W = UI.PAGE_W - LIST_X - 8 - 16 -- the scroll bar takes the rest
 local LIST_TOP = -82
 local MAX_ROWS = math.floor((UI.PAGE_H + LIST_TOP - 44) / ROW_H)
+local PREVIEW_Y = -292 -- Preview pace window, in the left column under the new-checkpoint row
 
 local page, selected, rows, offset = nil, nil, {}, 0
 local controls = {}
@@ -336,6 +339,9 @@ local function build(pf)
             hpEdit:SetText("")
         end
     end)
+
+    local preview = UI.PreviewButton(pf, TEXT.preview, { "pace" }, { tooltip = TEXT.previewTip })
+    preview:SetPoint("TOPLEFT", 8, PREVIEW_Y)
 
     -- The list.
     local head = pf:CreateFontString(nil, "OVERLAY", "CRTFontNormal")

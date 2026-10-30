@@ -2,7 +2,8 @@ local ADDON, CRT = ...
 
 -- The Marker macros tab of the Raid Notes page (Notes/Page.lua builds it into its tab): what a raider needs to call
 -- markers on a boss with a marker display (Markers/Display.lua).
---   Top     the boss, picked from the raid route (CRT.Bosses:Options); kept for the session
+--   Top     the boss, picked from the raid route (CRT.Bosses:Options); kept for the session; Preview marker display
+--           (UI.PreviewButton) shows the display on screen to place it
 --   Left    How it works on this boss: the boss file's markerHelp (Markers:Help), or a line saying there is none
 --   Right   Marker display: a small live copy of the boss's display, drawn from its own settings with
 --           Markers.Geometry, and what it does (slots, layout, fill order, what clears it). Test markers starts the
@@ -44,6 +45,8 @@ local TEXT = {
     removeAsk = "Remove the %s macros the addon made? Macros you edited or renamed stay.",
     combat = "Not in combat: the game doesn't let addons change macros during a fight.",
     sayCombat = "Not in combat: the test's /say waits until the fight ends.",
+    preview = "Preview marker display",
+    previewTip = "Shows the marker display on screen with sample markers so you can drag it into place.",
 }
 
 local LAYOUTS = { row = "Row, left to right", column = "Column, top to bottom", grid = "Grid, rows of four", free = "Freeform" }
@@ -56,6 +59,7 @@ local RIGHT_X = 464
 local BOX_W, BOX_H = 300, 160
 local FACTS_X = RIGHT_X + BOX_W + 12
 local FACTS_W = UI.PAGE_W - 8 - FACTS_X
+local TOP_ROW_Y = -8 -- the boss list, and the display's preview button over the right column
 local COLUMNS_TOP = -48
 local MACROS_TOP = -284
 local CELL_W = math.floor((UI.PAGE_W - 16) / 8)
@@ -541,8 +545,10 @@ local function build(pf)
         end,
         set = pickBoss,
     })
-    drop:SetPoint("TOPLEFT", LEFT_X, -8)
+    drop:SetPoint("TOPLEFT", LEFT_X, TOP_ROW_Y)
     controls[#controls + 1] = drop
+    local previewButton = UI.PreviewButton(pf, TEXT.preview, { "markers" }, { tooltip = TEXT.previewTip })
+    previewButton:SetPoint("TOPLEFT", RIGHT_X, TOP_ROW_Y)
 
     buildHow()
     buildDisplay()

@@ -11,6 +11,20 @@ local ADDON, CRT = ...
 local Report = CRT.RaidReport
 local UI = CRT.UI
 
+-- The page's preview buttons: Settings previews both its displays, the Window tab the ready check window.
+-- Your bar's own is on that tab (Consumables/Page.lua).
+local TEXT = {
+    previewAll = "Preview ready check",
+    previewAllTip = "Shows the ready check window and your consumables bar on screen so you can drag them into place. Other previews stay as they are.",
+    previewWindow = "Preview window",
+    previewWindowTip = "Shows the ready check window on screen so you can drag it into place. It stays until you stop it.",
+}
+local PREVIEW_KEYS = { "readycheckwindow", "consumables" }
+-- Where the preview buttons sit: Settings', under its last check box in the left column; the Window tab's, at the
+-- end of its button row.
+local AUTO_PREVIEW_Y = -370
+local BUTTON_GAP = 8
+
 local TABS = {
     { key = "window", label = "Window" },
     { key = "bar", label = "Your bar" },
@@ -144,7 +158,9 @@ local function buildAuto(f)
     makeCheck(f, 4, -274, "Count a lower quality flask as a problem", "lowFlask")
     local lock = makeCheck(f, 4, -304, "Lock my Ready button until everyone has my raid buff", "buffLock")
     local fade = makeCheck(f, 4, -334, "Fade out my bar and the ready check window on a pull timer", "fadeOnPull")
-    UI.HelpRight(fade, "Fade on a pull timer", "When anyone starts a pull timer, your bar and the ready check window fade out over 2 seconds. They come back on the next ready check; Previews keeps them up.")
+    UI.HelpRight(fade, "Fade on a pull timer", "When anyone starts a pull timer, your bar and the ready check window fade out over 2 seconds. They come back on the next ready check; a preview keeps them up.")
+    local previewAll = UI.PreviewButton(f, TEXT.previewAll, PREVIEW_KEYS, { tooltip = TEXT.previewAllTip })
+    previewAll:SetPoint("TOPLEFT", 8, AUTO_PREVIEW_Y)
     -- Early Pull Checker, its own section in the right column under Your bar (below the include
     -- checkboxes, which run under both columns).
     local earlyTitle = label(f, "Early Pull Checker")
@@ -300,6 +316,8 @@ local function buildWindow(f)
         Window:Show()
     end)
     tooltip(live, "Show with my group", "Opens the window with your current group, as a ready check would. Raid buff columns follow Only raid buff columns my group can give.")
+    local place = UI.PreviewButton(f, TEXT.previewWindow, { "readycheckwindow" }, { tooltip = TEXT.previewWindowTip, height = 24 })
+    place:SetPoint("LEFT", live, "RIGHT", BUTTON_GAP, 0)
 end
 
 -- Tabs ----------------------------------------------------------------------------------------

@@ -196,6 +196,13 @@ function CRT.UI.HelpRight(target, title, text)
 end
 CRT.UI.Help = CRT.UI.HelpRight
 function CRT.UI.ResetButton(parent) local b = CreateFrame("Button", nil, parent) b:SetSize(16, 16) return b end
+-- CRT_Core/UI/Panel.lua's preview toggle: as wide as the longer of its label and Stop preview
+function CRT.UI.PreviewButton(parent, label)
+  local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
+  b:SetText(label)
+  b:SetSize(CRT.UI.PanelButtonWidth(math.max(#label, #"Stop preview") * 6), 22)
+  return b
+end
 CRT_THEME(CRT, CRT.UI)
 local UI = CRT.UI
 assert(load(controlsSrc, "Controls.lua"))("CowfeeRaidTools", CRT)
