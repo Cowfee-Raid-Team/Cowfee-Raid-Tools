@@ -107,7 +107,7 @@ Strip.__index = Strip
 --   list   the tabs (default SubTabs.LIST)
 --   onPick function(key) after a click changed the tab (optional)
 -- Returns the strip: keys (in order), buttons[key], frames[key] (each over the whole parent), rule, and Select, Current,
--- Paint and Layout.
+-- Paint, Layout and SetHidden (tabs a selected item has no use for, such as a debuff list's When).
 function SubTabs.Build(parent, o)
     local s = setmetatable({ keys = {}, buttons = {}, frames = {}, entries = {}, opts = o }, Strip)
     for _, entry in ipairs(o.list or SubTabs.LIST) do
@@ -172,10 +172,21 @@ end
 -- back, each in proportion to what it has spare, never under its label. When the labels alone don't fit maxW, the
 -- strip still runs past it: a label is never cut. The Special panel's six fit 724 at the largest text size offered
 -- (run_mechalerts.js checks it); a host adding tabs must check that again.
-local function widths(s)
+-- The keys on show, in order (Strip:SetHidden leaves some out).
+local function shownKeys(s)
+    local out = {}
+    for _, key in ipairs(s.keys) do
+        if not (s.hidden and s.hidden[key]) then
+            out[#out + 1] = key
+        end
+    end
+    return out
+end
+
+local function widths(s, keys)
     local owner, out, need, spare = s.opts.owner, {}, {}, 0
-    local total = (#s.keys - 1) * L.GAP
-    for i, key in ipairs(s.keys) do
+    local total = (#keys - 1) * L.GAP
+    for i, key in ipairs(keys) do
         local b, entry = s.buttons[key], s.entries[key]
         need[i] = textWidth(b.text) + 2 * L.PAD + (entry.on and (L.DOT_GAP + L.DOT) or 0)
         out[i] = math.max((entry.widthBy and entry.widthBy[owner]) or entry.width or 0, need[i])
@@ -195,8 +206,9 @@ end
 -- Sizes and places the tabs from x, y (widths above). Measured on every call, so a changed text size is followed.
 function Strip:Layout()
     local x = self.opts.x
-    local w = widths(self)
-    for i, key in ipairs(self.keys) do
+    local keys = shownKeys(self)
+    local w = widths(self, keys)
+    for i, key in ipairs(keys) do
         local b = self.buttons[key]
         b:SetSize(w[i], L.H)
         b:ClearAllPoints()
@@ -210,8 +222,8 @@ end
 -- Opens a tab (an unknown key: the first): its frame shows, the others hide, and the session remembers it. The
 -- buttons are restyled only when the tab changes (UI:SetTabSelected also skins the parent).
 function Strip:Select(key)
-    if not self.entries[key] then
-        key = self.keys[1]
+    if not self.entries[key] or (self.hidden and self.hidden[key]) then
+        key = shownKeys(self)[1] or self.keys[1]
     end
     picked[self.opts.owner] = key
     if self.current == key then
@@ -229,6 +241,33 @@ end
 
 function Strip:Current()
     return self.current
+end
+
+-- Hides some tabs (hidden: a set of keys; nil shows them all), such as the ones a debuff list has no use for on the
+-- Special panel. The rest close up from the left; when the open tab is hidden, the first one shown opens. The tab the
+-- host picked before is opened again once it shows.
+function Strip:SetHidden(hidden)
+    hidden = hidden and next(hidden) and hidden or nil
+    if hidden == self.hidden then
+        return
+    end
+    self.hidden = hidden
+    for _, key in ipairs(self.keys) do
+        self.buttons[key]:SetShown(not (hidden and hidden[key]))
+    end
+    self:Layout()
+    if hidden and self.current and hidden[self.current] then
+        local want = self.current
+        self:Select(want) -- the first tab shown
+        self.wanted, self.fallback = want, self.current
+        picked[self.opts.owner] = want
+    elseif self.wanted and not (hidden and hidden[self.wanted]) then
+        local want, fallback = self.wanted, self.fallback
+        self.wanted, self.fallback = nil, nil
+        if self.current == fallback then
+            self:Select(want) -- no other tab was picked meanwhile
+        end
+    end
 end
 
 -- Each tab's dot from the draft (nil: no dots), and the tabs sized again.

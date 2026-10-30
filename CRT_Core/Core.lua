@@ -467,6 +467,15 @@ local defaults = {
         -- { on, show, speak, markers }. specialView ("mechanics" or "special") and specialViewPicked were Mech
         -- Alerts' last pick; kept for older saves, no longer read: the tab opens on Special every time.
         special = {},
+        -- Debuff lists (Alerts/DebuffList.lua), the special alerts of kind debuffList: your looks per boss and entry,
+        -- debuffLists[encounterID][key] = { groups = { [side] = { 1, 3 } }, colors = { [side] = { on, off } }, showAll,
+        -- sortByRole, barHeight, barWidth, position }, each kept only while it differs from the boss file's; what a
+        -- pull or /crt dev aura last saw of each debuff, debuffTiers[encounterID][spellID] = { tier, at, seen } (tier
+        -- readable, secret, private or unreadable; seen once someone had it), for the Looks tab; and the pull being
+        -- followed, debuffPull = { encounterID, difficultyID }, so a /reload mid-pull picks it up again.
+        debuffLists = {},
+        debuffTiers = {},
+        debuffPull = {},
         -- Last pull's shields (Alerts/ShieldPulls.lua): shieldPulls[encounterID] = { at, units = { boss2 = seconds } },
         -- the time each boss unit's shield first went up on the boss's last pull; never its amount.
         shieldPulls = {},

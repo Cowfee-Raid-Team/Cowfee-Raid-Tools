@@ -205,6 +205,21 @@ if altar then
   check(m == 245 and mn == 4, "a Mythic run: from the Mythic timeline, first at 4:05: " .. tostring(m) .. ", " .. tostring(mn) .. " casts")
 end
 
+-- Ula'tek's Grasping Fangs (Alex, 2026-10-30): a debuff list on every difficulty, Left groups 1 and 3, Right 2 and 4,
+-- spell 1301117, in the mockup's colours (on brighter than off on each side).
+do
+  local fangs = S:Get(3492, "graspingFangs")
+  check(fangs and S.IsDebuffList(fangs) and fangs.spellID == 1301117 and fangs.difficulty == nil, "Ula'tek: Grasping Fangs is a debuff list on spell 1301117, every difficulty")
+  local sides = fangs and fangs.sides or {}
+  check(#sides == 2 and sides[1].label == "Left" and table.concat(sides[1].groups, ",") == "1,3" and sides[2].label == "Right" and table.concat(sides[2].groups, ",") == "2,4",
+    "its sides: Left 1, 3 and Right 2, 4")
+  local function sum(c) return c[1] + c[2] + c[3] end
+  local c = fangs and fangs.colors or {}
+  check(c.left and c.right and sum(c.left.on) > sum(c.left.off) and sum(c.right.on) > sum(c.right.off) and c.left.on[1] > c.left.on[2] and c.right.on[3] > c.right.on[1],
+    "magenta and blue when on, darker when off")
+  check(fangs and #S:Times(3492, fangs, "mythic") == 0, "no times: the debuff drives it")
+end
+
 -- Heroic ability timelines (Alex, 2026-10-28): each boss file carries a Heroic block after its Mythic one. Rows, casts, phase lines.
 do
   local want = {

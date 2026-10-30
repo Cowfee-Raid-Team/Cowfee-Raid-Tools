@@ -23,6 +23,7 @@ local ADDON, CRT = ...
 --             Pre-Pot is listed. Once a Heroic ability timeline lands, the others lose their difficulty, but
 --             Toxic Incubation and Serpent's Bite keep difficulty = "mythic": the wiki's Journal text marks
 --             them Mythic-only mechanics.
+--             Grasping Fangs is a debuff list (kind = "debuffList"), not a timed alert: who has the debuff, by side.
 --             Still needs Alex:
 --               - a Heroic ability timeline (from his screenshot): until then Normal and Heroic get no row
 --                 alerts;
@@ -189,6 +190,26 @@ Fester Burst: 0:39, 1:14, 1:48, 2:23, 7:45, 8:19
             who = { mode = "everyone" },
             text = "Pre-Pot",
             show = { callout = true, bar = false, speech = true },
+        },
+        {
+            -- a debuff list (the format is at the top of Alerts/Special.lua): who has Grasping Fangs, by side. Six
+            -- players get it, three a side, but the list reads that from the debuff, so nothing here says six.
+            -- spellID 1301117 from Alex's screenshot of the Journal's abilities list (2026-10-30); every difficulty.
+            -- Whether the game lets addons read it is open until /crt dev aura runs on a pull (Alerts/DebuffList.lua).
+            kind = "debuffList",
+            key = "graspingFangs",
+            label = "Grasping Fangs",
+            help = "Lists the players with Grasping Fangs, by side of the raid.",
+            spellID = 1301117,
+            sides = {
+                { key = "left", label = "Left", groups = { 1, 3 } },
+                { key = "right", label = "Right", groups = { 2, 4 } },
+            },
+            -- the side colours from Alex's mockup: magenta and dark red on the left, blue and dark blue on the right
+            colors = {
+                left = { on = { 0.85, 0.2, 0.65 }, off = { 0.35, 0.06, 0.1 } },
+                right = { on = { 0.2, 0.45, 0.95 }, off = { 0.06, 0.1, 0.3 } },
+            },
         },
     },
 })

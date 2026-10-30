@@ -13,6 +13,9 @@ local ADDON, CRT = ...
 -- first: the tab opens on Special every time (M.Opened), a boss with none too. A click on Mechanics holds for that boss
 -- until the tab is left; Make a Mech Alert opens it on Mechanics (M.ShowMechanics). CRT.db.alerts.specialView and
 -- specialViewPicked, the older saved pick, are no longer read or written.
+-- A debuff list (kind debuffList, Alerts/DebuffList.lua) is listed the same way, its icon its debuff's; selected, its
+-- panel hides When, Who, Sound and speech and Shield bar (SubTabs' SetHidden), its Looks are Notes/SpecialDebuffLooks.lua
+-- in place of the alert's, and Test shows its display with sample names (Alerts/DebuffListView.lua).
 
 local UI = CRT.UI
 
@@ -433,6 +436,28 @@ local function placeShowAs()
     end)
 end
 
+-- The tabs a debuff list has no use for: it has no times, no one picked, no sound and no shield bar. Sound and speech
+-- is hidden too: a "say when you get it" would need the readable tier, which only a pull can show (Alerts/DebuffList.lua).
+local LIST_HIDES = { when = true, who = true, sound = true, shield = true }
+
+-- Shows the alert's Looks or a debuff list's (Notes/SpecialDebuffLooks.lua), and the tabs it uses. Returns whether the
+-- entry is a debuff list.
+local function showKind(enc, entry)
+    local S = Special()
+    local isList = S.IsDebuffList ~= nil and S.IsDebuffList(entry)
+    ui.tabs:SetHidden(isList and LIST_HIDES or nil)
+    for _, part in ipairs(ui.alertLooks) do
+        part:SetShown(not isList)
+    end
+    if ui.debuffLooks then
+        ui.debuffLooks.frame:SetShown(isList)
+        if isList then
+            ui.debuffLooks.Refresh()
+        end
+    end
+    return isList
+end
+
 local function drawPanel(enc, entry)
     ui.content:SetShown(entry ~= nil)
     if not entry then
@@ -442,7 +467,8 @@ local function drawPanel(enc, entry)
     ui.title:SetText(entry.label)
     ui.titleHelp:SetShown(entry.help ~= nil)
     ui.alertMe:SetChecked(c.on)
-    ui.whenText:SetText(whenText(enc, entry))
+    local isList = showKind(enc, entry)
+    ui.whenText:SetText(isList and "" or whenText(enc, entry)) -- a debuff list has no times (When is hidden)
     local impacts = M.ImpactsText(entry)
     ui.impactsText:SetText(impacts or "")
     ui.impactsText:SetShown(impacts ~= nil)
@@ -456,7 +482,7 @@ local function drawPanel(enc, entry)
     ui.speak:SetChecked(c.speak)
     ui.fill.refresh()
     -- a shield bar (yours or the entry's absorb) fills with the shield left, not with time: nothing to choose
-    ui.fill:SetShown(Special():Absorb(enc, entry, c) == nil)
+    ui.fill:SetShown(not isList and Special():Absorb(enc, entry, c) == nil)
     ui.shield.Refresh(true)
     ui.countTo.refresh()
     drawMarkers(entry)
@@ -521,6 +547,14 @@ local function test()
     if not entry then
         return
     end
+    local View = CRT.AlertDebuffListView
+    if Special().IsDebuffList(entry) and View then
+        -- a debuff list's Test: its display with sample names for a few seconds (Alerts/DebuffListView.lua)
+        state.notice = nil
+        View:Test(enc, entry)
+        M.Refresh()
+        return
+    end
     local item = Special():TestItem(enc, entry, host.group(), ref())
     local Editor = CRT.AlertEditor
     local ok, err = false, TEXT.noTest
@@ -555,7 +589,7 @@ local function heading(parent, label, y, helpTitle, helpText)
     fs:SetPoint("TOPLEFT", L.INSET, y)
     fs:SetText(label)
     if helpText then
-        UI.HelpRight(fs, helpTitle or label, helpText)
+        fs.help = UI.HelpRight(fs, helpTitle or label, helpText)
     end
     return fs
 end
@@ -773,14 +807,18 @@ local function buildMarkers(p)
     ui.markCheck.label:SetWidth(L.PANEL_W / 2)
 end
 
--- Looks: Show as, then Bar fill and Count down to under it.
+-- Looks: Show as, then Bar fill and Count down to under it. ui.alertLooks holds every part, so a debuff list (which
+-- has its own Looks, Notes/SpecialDebuffLooks.lua) hides them.
 local function buildLooks(p)
-    heading(p, TEXT.showAs, L.SHOW_Y, nil, TEXT.showAsHelp)
+    local showAs = heading(p, TEXT.showAs, L.SHOW_Y, nil, TEXT.showAsHelp)
+    ui.alertLooks = { showAs, showAs.help }
     ui.checks = {}
     local labels = { alert = TEXT.callout, text = TEXT.showText, icon = TEXT.showIcon, bar = TEXT.bar, circle = TEXT.circle,
         timeline = TEXT.timeline }
     for key, label in pairs(labels) do
         ui.checks[key] = makeCheck(p, label, L.INSET - 4, L.SHOW_Y, setChoice(key, true))
+        ui.alertLooks[#ui.alertLooks + 1] = ui.checks[key]
+        ui.alertLooks[#ui.alertLooks + 1] = ui.checks[key].label
     end
     placeShowAs()
     -- Bar fill: whether the bar fills up to the cast or empties, saved with your choices; greyed while Bar is off
@@ -832,7 +870,20 @@ local function buildLooks(p)
         end,
     })
     ui.countTo:SetPoint("TOPLEFT", L.INSET, L.COUNT_Y)
-    UI.HelpRight(ui.countTo, TEXT.countTo, TEXT.countHelp)
+    local countHelp = UI.HelpRight(ui.countTo, TEXT.countTo, TEXT.countHelp)
+    for _, part in ipairs({ ui.fill, ui.countTo, countHelp }) do
+        ui.alertLooks[#ui.alertLooks + 1] = part
+    end
+end
+
+-- A debuff list's Looks (Notes/SpecialDebuffLooks.lua), over the same tab; shown in place of the alert's.
+local function buildDebuffLooks(p)
+    local Looks = CRT.NoteDebuffLooks
+    if not Looks then
+        return
+    end
+    ui.debuffLooks = Looks.Build(p, { x = L.INSET, y = L.SHOW_Y, width = L.PANEL_W - 2 * L.INSET, current = current })
+    ui.debuffLooks.frame:Hide()
 end
 
 local function buildPanel(f)
@@ -874,6 +925,7 @@ local function buildPanel(f)
     buildWhen(tf.when)
     buildWho(tf.who)
     buildLooks(tf.looks)
+    buildDebuffLooks(tf.looks)
     ui.speak = makeCheck(tf.sound, TEXT.speak, L.INSET - 4, L.SPEAK_Y, setChoice("speak"))
     buildShield(tf.shield)
     buildMarkers(tf.markers)
