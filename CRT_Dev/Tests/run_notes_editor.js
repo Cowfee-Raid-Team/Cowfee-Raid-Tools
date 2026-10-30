@@ -1419,6 +1419,33 @@ do
   assert(st:find("The Mythic pull reads the Third Boss (Heroic) note. Make a Mythic note first (Raid Notes), then write.", 1, true)
     and not st:find("Not in the raid note yet", 1, true), "the reason: " .. st)
 end
+-- a block written before names went without realms and commas: opening the tab leaves it byte for byte (no History
+-- version); a cast that really moved still writes it again
+do
+  local frame = mock("Frame")
+  local function feastLine(t, c) return "time:" .. t .. ";ph:1;tag:Abu-Sargeras Cheo;spellid:1234;text:Left;assign:old soaks/1/" .. c .. ";" end
+  local old = table.concat({ "EncounterID:4646;Difficulty:Mythic;Name:Old Boss", "assign:old soaks;name:Old Soaks;for:1234;",
+    "Left: Abu-Sargeras, Cheo", feastLine(FEAST[1].t, 1), feastLine(FEAST[2].t, 2), feastLine(FEAST[3].t, 3) }, "\\n")
+  local oid = Notes:Import(old)
+  local versions = Notes:HistoryCount(oid)
+  local cur = { enc = 4646, item = { ability = { name = "Ravenous Feast" }, spellID = 1234 }, bossName = "Old Boss",
+    ref = { difficulty = "Mythic" }, group = "mythic", name = "Ravenous Feast", defaultTimeline = true }
+  local T = Tab.Build(frame, { x = 12, y = -100, width = 724, height = 282, current = function() return cur end, notice = function() end })
+  frame.scripts.OnShow(frame)
+  assert(#Tab.state.blocks == 1 and Tab.state.blocks[1].key == "old soaks", "the old block read")
+  assert(Notes:Get(oid).raw == old and Notes:HistoryCount(oid) == versions, "an old block's text is kept: " .. Notes:Get(oid).raw)
+  Tab.state.sig = nil
+  T.Refresh()
+  assert(Notes:Get(oid).raw == old, "shown again: still kept")
+  -- the ability timeline moved cast 2: written again, at the new time
+  local was = FEAST[2]
+  FEAST[2] = { ph = 1, t = was.t + 10 }
+  Tab.state.sig = nil
+  T.Refresh()
+  local raw = Notes:Get(oid).raw
+  assert(raw ~= old and raw:find("time:" .. (was.t + 10) .. ";ph:1;", 1, true) and not raw:find("time:" .. was.t .. ";", 1, true), "moved with the cast: " .. raw)
+  FEAST[2] = was
+end
 -- Make an Assign block: the note changed before the click on Accept, so nothing is made; with no confirmation dialog
 -- in the game, it is made at once
 do

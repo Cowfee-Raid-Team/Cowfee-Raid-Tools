@@ -551,6 +551,34 @@ function Assign.Replace(text, key, lines, oldKey)
     end, lines)
 end
 
+-- Names in one form: without realms, one space between them, commas and runs of spaces read as one space.
+local function nameRun(s)
+    s = s:gsub("([%w\128-\255])%-[^%s,]+", "%1"):gsub("[%s,]+", " ")
+    return trim(s)
+end
+
+-- A note's text with the names of its assignment lines ("Label: names") and timed lines' tag: in one form (nameRun),
+-- every other byte as it is: to tell whether a block is out of step with the ability timeline, never how its names
+-- were written (a block from before 2026-10-30 wrote "Left: Abu-Sargeras, Cheo"). Only for comparing; never written.
+function Assign.NameForm(text)
+    local out = {}
+    for _, p in ipairs(CRT.Notes.SplitPieces(text or "")) do
+        local line = p.text
+        if Parser.Field(line, "tag") then
+            line = line:gsub("([Tt][Aa][Gg]%s*:)([^;]*)", function(k, v)
+                return k .. nameRun(v)
+            end)
+        elseif not line:find(";", 1, true) then
+            local label, rest = line:match("^([^:]+:)(.*)$")
+            if label then
+                line = label .. nameRun(rest)
+            end
+        end
+        out[#out + 1] = line .. p.eol
+    end
+    return table.concat(out)
+end
+
 -- The keys of the blocks in a note: their marked headings', then any its timed lines name alone, in order.
 function Assign.Keys(text)
     local s = session(text)

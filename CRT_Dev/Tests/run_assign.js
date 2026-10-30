@@ -198,6 +198,11 @@ check("assign: a new block in the note's own form: names without realms, spaces 
   -- a block read back from an older note keeps its realm names; written again, they go
   local old = A.Read("assign:x;name:X;\\nLeft: Abu-Sargeras, Cheo", "x")
   assert(table.concat(old.rows[1].tokens, ",") == "Abu-Sargeras,Cheo" and A.Lines(old)[2] == "Left: Abu Cheo", "rewritten: " .. A.Lines(old)[2])
+  -- comparing two texts, how the names are written never counts; a time or a text does
+  local oldForm = "Left: Abu-Sargeras, Cheo\\ntime:36;ph:1;tag:Abu-Sargeras  Cheo;text:Soak;"
+  assert(A.NameForm(oldForm) == A.NameForm("Left: Abu Cheo\\ntime:36;ph:1;tag:Abu Cheo;text:Soak;"), "the same names: " .. A.NameForm(oldForm))
+  assert(A.NameForm(oldForm) ~= A.NameForm("Left: Abu Cheo\\ntime:40;ph:1;tag:Abu Cheo;text:Soak;"), "a moved time counts")
+  assert(A.NameForm(oldForm) ~= A.NameForm("Left: Abu Kip\\ntime:36;ph:1;tag:Abu Cheo;text:Soak;"), "another name counts")
   -- written again in place: one blank line, never another
   b.rows[1].tokens = { "Solex" }
   local again = A.Replace(text, A.Key(b.name), A.Lines(b, nil))

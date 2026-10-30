@@ -152,9 +152,10 @@ local function linesOf(c, b, key)
     return Assign.Lines(b, timesOf(b), { key = key, spellID = c.item and c.item.spellID, mech = mechOf(c) })
 end
 
--- Whether a block's lines in the note are what it would write now (the ability timeline may have moved a cast).
+-- Whether a block's lines in the note are what it would write now (the ability timeline may have moved a cast). How
+-- its names are written never counts (Assign.NameForm): an older block's "Abu-Sargeras, Cheo" stays as it is.
 local function inStep(c, b, raw)
-    return Assign.Replace(raw, b.key, linesOf(c, b, b.key), b.key) == raw
+    return Assign.NameForm(Assign.Replace(raw, b.key, linesOf(c, b, b.key), b.key)) == Assign.NameForm(raw)
 end
 
 -- Writes a block into the note. False, with the reason on the panel's line, when it can't be: nothing written, and
